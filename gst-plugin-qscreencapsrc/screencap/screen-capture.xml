@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="screen_capture">
+
+  <copyright>
+    Copyright (c) 2018, The Linux Foundation. All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are
+    met:
+    * Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above
+    copyright notice, this list of conditions and the following
+    disclaimer in the documentation and/or other materials provided
+    with the distribution.
+    * Neither the name of The Linux Foundation nor the names of its
+    contributors may be used to endorse or promote products derived
+    from this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
+    WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
+    ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
+    BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+    CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+    SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+    BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+    WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+    OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+    IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+    Copyright (c) 2014, 2015 Collabora, Ltd.
+
+    Permission to use, copy, modify, distribute, and sell this
+    software and its documentation for any purpose is hereby granted
+    without fee, provided that the above copyright notice appear in
+    all copies and that both that copyright notice and this permission
+    notice appear in supporting documentation, and that the name of
+    the copyright holders not be used in advertising or publicity
+    pertaining to distribution of the software without specific,
+    written prior permission.  The copyright holders make no
+    representations about the suitability of this software for any
+    purpose.  It is provided "as is" without express or implied
+    warranty.
+
+    THE COPYRIGHT HOLDERS DISCLAIM ALL WARRANTIES WITH REGARD TO THIS
+    SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+    FITNESS, IN NO EVENT SHALL THE COPYRIGHT HOLDERS BE LIABLE FOR ANY
+    SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+    WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN
+    AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+    ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+    THIS SOFTWARE.
+  </copyright>
+
+  <interface name="screen_capture" version="1">
+    <description summary="screen capture support">
+    This factory interface is used to composite a specified screen content to
+    a client GBM buffer.
+    </description>
+
+    <request name="destroy" type="destructor">
+      <description summary="unbind the factory">
+        Destroy the protocol object created at client.
+      </description>
+    </request>
+
+    <request name="create_screen">
+      <description summary="create a screen capture">
+        This object is used to hold information during the lifetime of screen
+        capture. It can only be used once and should be destroyed after an
+        'created' or 'failed' event has been received.
+        With wl_output argument, user can choose to capture the screen content
+        of the corresponding output.
+      </description>
+      <arg name="output" type="object" interface="wl_output"/>
+      <arg name="width" type="uint" summary="width in pixels"/>
+      <arg name="height" type="uint" summary="height in pixels"/>
+    </request>
+
+    <event name="created">
+      <description summary="screen creation succeeded">
+        This event indicates that the attempted screen creation was
+        successful.
+        Upon receiving this event, the client can start attach the
+        GBM buffer.
+      </description>
+    </event>
+
+    <event name="failed">
+      <description summary="screen creation failed">
+        This event indicates that the attempted screen creation has
+        failed.
+        Upon receiving this event, the client should exit.
+      </description>
+    </event>
+
+    <request name="destroy_screen">
+      <description summary="destroy the screen capture screen">
+        The screen capture object will be destroyed. stop function must be
+        called before this function. All attached wl_buffer will be released
+        immediately after this function, it's also safe for application to
+        destroy all corresponding GBM buffer after receiving all buffer release
+        events.
+      </description>
+    </request>
+
+    <event name="destroyed">
+      <description summary="capture screen is destroyed">
+        This event indicates that the screen is destroyed.
+        Upon receiving this event, the client should prepare for exit.
+      </description>
+    </event>
+
+    <request name="start">
+      <description summary="start screen capture">
+        Will start screen capture from the next frame rendering of specified
+        output. The first attached buffer will be used as the output buffer
+        of screen capture composition. This function only needs to be called
+        once unless client stops the screen capture pipeline.
+      </description>
+    </request>
+
+    <event name="started">
+      <description summary="screen capture is started">
+        This event indicates that the screen capture is started.
+        Upon receiving this event, the client can start attach operation.
+      </description>
+    </event>
+
+    <request name="stop">
+      <description summary="stop screen capture">
+        Screen capture pipeline will be stopped. If previous capture is still
+        on-going, the whole pipeline will be stopped after that, which means
+        the next frame rendering of specified output will not trigger capture
+        again unless client restarts the screen capture later. The previous
+        output buffer will be released when it's not used any more.
+      </description>
+    </request>
+
+    <event name="stopped">
+      <description summary="screen capture is stopped">
+        This event indicates that the screen capture is stopped.
+        Upon receiving this event, the client should stop capture.
+      </description>
+    </event>
+  </interface>
+
+</protocol>
