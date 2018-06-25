@@ -105,15 +105,15 @@ bool c2d_blend::Init()
         m_gbmhandle = dlopen("libgbm.so", RTLD_NOW);
         if (m_gbmhandle)
         {
-            gbm_create_device = (void *) dlsym(m_gbmhandle,"gbm_create_device");
-            gbm_device_destroy = (void *) dlsym(m_gbmhandle,"gbm_device_destroy");
-            gbm_bo_get_height = (void *) dlsym(m_gbmhandle,"gbm_bo_get_height");
-            gbm_bo_get_stride = (void *) dlsym(m_gbmhandle,"gbm_bo_get_stride");
-            gbm_bo_create = (void *) dlsym(m_gbmhandle,"gbm_bo_create");
-            gbm_bo_destroy = (void *) dlsym(m_gbmhandle,"gbm_bo_destroy");
-            gbm_bo_get_fd = (void *) dlsym(m_gbmhandle,"gbm_bo_get_fd");
-            gbm_perform = (void *) dlsym(m_gbmhandle,"gbm_perform");
-            GST_DEBUG("gbm %p %p %p %p %p %p %p",
+            gbm_create_device = (struct gbm_device * (*)(int)) dlsym(m_gbmhandle,"gbm_create_device");
+            gbm_device_destroy = (void (*)(struct gbm_device *)) dlsym(m_gbmhandle,"gbm_device_destroy");
+            gbm_bo_get_height = (uint32_t (*)(struct gbm_bo *)) dlsym(m_gbmhandle,"gbm_bo_get_height");
+            gbm_bo_get_stride = (uint32_t (*)(struct gbm_bo *)) dlsym(m_gbmhandle,"gbm_bo_get_stride");
+            gbm_bo_create = (struct gbm_bo * (*)(struct gbm_device *, uint32_t, uint32_t, uint32_t, uint32_t)) dlsym(m_gbmhandle,"gbm_bo_create");
+            gbm_bo_destroy = (void (*)(struct gbm_bo *)) dlsym(m_gbmhandle,"gbm_bo_destroy");
+            gbm_bo_get_fd = (int (*)(struct gbm_bo *)) dlsym(m_gbmhandle,"gbm_bo_get_fd");
+            gbm_perform = (int (* )(int, ...)) dlsym(m_gbmhandle,"gbm_perform");
+            GST_DEBUG("gbm %p %p %p %p %p %p %p %p",
                 gbm_create_device,
                 gbm_device_destroy,
                 gbm_bo_get_height,

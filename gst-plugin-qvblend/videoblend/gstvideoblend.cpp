@@ -444,15 +444,15 @@ gst_videoblend_pad_class_init (GstVideoBlendPadClass * klass)
     g_object_class_install_property (gobject_class, PROP_PAD_TYPE,
                                      g_param_spec_uint ("type", "Background or Foreground", "0 for background video and 1 for foreground video",
                                                         0, 1, DEFAULT_PAD_TYPE,
-                                                        G_PARAM_READABLE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+                                                        (GParamFlags)(G_PARAM_READABLE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS)));
     g_object_class_install_property (gobject_class, PROP_PAD_XPOS,
                                      g_param_spec_int ("xpos", "X Position", "X Position of the picture",
                                                        G_MININT, G_MAXINT, DEFAULT_PAD_XPOS,
-                                                       G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+                                                       (GParamFlags)(G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS)));
     g_object_class_install_property (gobject_class, PROP_PAD_YPOS,
                                      g_param_spec_int ("ypos", "Y Position", "Y Position of the picture",
                                                        G_MININT, G_MAXINT, DEFAULT_PAD_YPOS,
-                                                       G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+                                                       (GParamFlags)(G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS)));
 }
 
 static void
@@ -520,7 +520,7 @@ gst_videoblend_fill_queues (GstVideoBlend * blend, GstClockTime output_start_tim
             GstClockTime start_time, end_time;
 
             start_time = GST_BUFFER_TIMESTAMP (buf);
-            if (start_time == -1)
+            if (start_time == GST_CLOCK_TIME_NONE)
             {
                 gst_buffer_unref (buf);
                 GST_ERROR_OBJECT (pad, "Need timestamped buffers!");
@@ -551,7 +551,7 @@ gst_videoblend_fill_queues (GstVideoBlend * blend, GstClockTime output_start_tim
             {
                 end_time = GST_BUFFER_DURATION (buf);
 
-                if (end_time == -1)
+                if (end_time == GST_CLOCK_TIME_NONE)
                 {
                     blendcol->queued = buf;
                     buf = gst_collect_pads_pop (blend->collect, &blendcol->collect);
@@ -562,7 +562,7 @@ gst_videoblend_fill_queues (GstVideoBlend * blend, GstClockTime output_start_tim
                 }
             }
 
-            g_assert (start_time != -1 && end_time != -1);
+            g_assert (start_time != GST_CLOCK_TIME_NONE && end_time != GST_CLOCK_TIME_NONE);
             end_time += start_time;   /* convert from duration to position */
 
             /* Check if it's inside the segment */
@@ -588,13 +588,13 @@ gst_videoblend_fill_queues (GstVideoBlend * blend, GstClockTime output_start_tim
 
             /* Clip to segment and convert to running time */
             start_time = MAX (start_time, segment->start);
-            if (segment->stop != -1)
+            if (segment->stop != GST_CLOCK_TIME_NONE)
                 end_time = MIN (end_time, segment->stop);
             start_time = gst_segment_to_running_time (segment, GST_FORMAT_TIME, start_time);
             end_time = gst_segment_to_running_time (segment, GST_FORMAT_TIME, end_time);
-            g_assert (start_time != -1 && end_time != -1);
+            g_assert (start_time != GST_CLOCK_TIME_NONE && end_time != GST_CLOCK_TIME_NONE);
 
-            if (blendcol->end_time != -1 && blendcol->end_time > end_time)
+            if (blendcol->end_time != GST_CLOCK_TIME_NONE && blendcol->end_time > end_time)
             {
                 GST_DEBUG_OBJECT (pad, "Buffer from the past, dropping");
                 if (buf == blendcol->queued)
@@ -662,7 +662,7 @@ gst_videoblend_fill_queues (GstVideoBlend * blend, GstClockTime output_start_tim
         }
         else
         {
-            if (blendcol->end_time != -1)
+            if (blendcol->end_time != GST_CLOCK_TIME_NONE)
             {
                 if (blendcol->end_time <= output_start_time)
                 {
@@ -744,7 +744,7 @@ gst_videoblend_blend_buffers (GstVideoBlend * blend, GstClockTime output_start_t
 {
     GSList *l;
     GstVideoFormat pad_format;
-    guint target_width, target_height, source_width, source_height;
+    gint target_width, target_height, source_width, source_height;
     ColorConvertFormat target_format, source_format;
     c2d_blend *c2d = blend->c2d;
     GstIonBufFdMeta *meta;
@@ -985,7 +985,7 @@ gst_videoblend_collected (GstCollectPads * pads, GstVideoBlend * blend)
         blend->newseg_pending = FALSE;
     }
 
-    if (blend->segment.position == -1)
+    if (blend->segment.position == GST_CLOCK_TIME_NONE)
         output_start_time = blend->segment.start;
     else
         output_start_time = blend->segment.position;
@@ -1005,7 +1005,7 @@ gst_videoblend_collected (GstCollectPads * pads, GstVideoBlend * blend)
         }
     }
 
-    if (blend->segment.stop != -1)
+    if (blend->segment.stop != GST_CLOCK_TIME_NONE)
         output_end_time = MIN (output_end_time, blend->segment.stop);
 
     res = gst_videoblend_fill_queues (blend, output_start_time, output_end_time);
