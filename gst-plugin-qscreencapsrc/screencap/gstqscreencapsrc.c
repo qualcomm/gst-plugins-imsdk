@@ -363,7 +363,7 @@ gst_qscreencap_src_create (GstPushSrc * bs, GstBuffer ** buf)
   GstClockTime frame_duration;
   GstClockTime base_time;
   GstBuffer *gstbuf;
-
+  gint32 counting;
 
   GST_OBJECT_LOCK (qscreencapsrc);
   if (GST_ELEMENT_CLOCK (qscreencapsrc) == NULL) {
@@ -380,6 +380,7 @@ gst_qscreencap_src_create (GstPushSrc * bs, GstBuffer ** buf)
   }
 
 retry:
+  counting = 0;
   GST_OBJECT_LOCK (qscreencapsrc);
   base_time = GST_ELEMENT_CAST (qscreencapsrc)->base_time;
   next_screencap_ts = gst_clock_get_time (GST_ELEMENT_CLOCK (qscreencapsrc));
@@ -437,10 +438,18 @@ retry:
   }
   qscreencapsrc->last_frame_no = next_frame_no;
   GST_OBJECT_UNLOCK (qscreencapsrc);
+redraw_checking:
   if (g_atomic_int_get (&qscreencapsrc->redraw_pending) == TRUE)
   {
-     GST_WARNING_OBJECT (qscreencapsrc,"redraw pending bufer len %d\n ", g_queue_get_length (&qscreencapsrc->qctx->qdisplay->pending_buffers));
-    goto retry;
+    counting ++;
+    GST_WARNING_OBJECT (qscreencapsrc,"redraw pending bufer len %d ", g_queue_get_length (&qscreencapsrc->qctx->qdisplay->pending_buffers));
+    usleep(500); //sleep 500us
+
+    if(counting > 30)
+      goto retry;
+    else
+     goto redraw_checking;
+
   } else {
     /* commit wlbuf for screen catching */
     gstbuf = gst_qscreencap_src_qscreencap_catch (qscreencapsrc);
