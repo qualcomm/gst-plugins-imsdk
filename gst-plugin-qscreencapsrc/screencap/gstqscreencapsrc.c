@@ -43,7 +43,6 @@
 #include <gst/video/video.h>
 #include <gst/ionbuf/gstionbuf_meta.h>
 
-
 #define GSTBUFFERNUMBER 5
 
 GST_DEBUG_CATEGORY_STATIC (gst_debug_qscreencap_src);
@@ -99,6 +98,8 @@ gst_qscreencap_src_return_buf (GstQScreenCapSrc * qscreencapsrc, GstBuffer * qsc
   GstMetaQScreenCap *sm = GST_META_QSCREENCAP_GET (qscreencapbuf);
   /* True will make dispose free the buffer,
      while false will reuse  it */
+  g_assert(sm != NULL);
+
   ret= TRUE;
 
   /* resolution change */
@@ -240,6 +241,8 @@ gst_qscreencap_src_qscreencap_catch (GstQScreenCapSrc * qscreencapsrc)
     qscreencap = qscreencapsrc->buffer_list->data;
 
     meta = GST_META_QSCREENCAP_GET (qscreencap);
+    g_assert(meta != NULL);
+
 
     qscreencapsrc->buffer_list = g_slist_delete_link (qscreencapsrc->buffer_list,
         qscreencapsrc->buffer_list);
@@ -297,6 +300,7 @@ gst_qscreencap_src_qscreencap_catch (GstQScreenCapSrc * qscreencapsrc)
   g_return_val_if_fail (GST_IS_QSCREENCAP_SRC (qscreencapsrc), NULL);
 
   meta = GST_META_QSCREENCAP_GET (qscreencap);
+  g_assert(meta != NULL);
 
   GST_DEBUG_OBJECT (qscreencapsrc, "screen_capture_commit wlbuf %p",meta->qwlbuf.wlbuf);
 
@@ -462,6 +466,7 @@ retry:
 
        g_hash_table_remove (qdisplay->buffers,gstbuf);
        meta = GST_META_QSCREENCAP_GET (gstbuf);
+       g_assert(meta != NULL);
 
        ionmeta = gst_buffer_add_ionbuf_meta (gstbuf, meta->gbminfo->bo_fd, 0,
 	   meta->size, FALSE, meta->gbminfo->meta_fd, 0, 0, 0);

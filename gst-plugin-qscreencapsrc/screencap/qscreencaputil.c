@@ -328,9 +328,13 @@ registry_handle_global(void *data, struct wl_registry *registry,
        &ivi_application_interface, 1);
   } else  if (strcmp(interface, "wl_output") == 0) {
     self->output = malloc(sizeof (struct output));
-    self->output->output = wl_registry_bind(registry, id, &wl_output_interface, 1);
+    if(self->output) {
+      self->output->output = wl_registry_bind(registry, id, &wl_output_interface, 1);
 	wl_list_insert(&self->output_list, &self->output->link);
 	 wl_output_add_listener(self->output->output, &output_listener, self->output);
+    } else {
+        GST_ERROR("self->output malloc failed\n");
+    }
   } else if (strcmp(interface, "screen_capture") == 0) {
                 self->screen_cap = wl_registry_bind(registry,
                                              id, &screen_capture_interface, 1);
@@ -391,7 +395,8 @@ static QDisplay *create_display(void)
 	qdisplay = g_new0 (QDisplay, 1);
 	if (qdisplay == NULL)
 	{
-		GST_ERROR("out of memory\n");
+	   GST_ERROR("out of memory for qdisplay\n");
+           return NULL;
 	}
         qdisplay->buffers = g_hash_table_new (g_direct_hash, g_direct_equal);
 	g_mutex_init (&qdisplay->capture_lock);
@@ -494,13 +499,17 @@ qscreencap_qctx_get (GstElement * parent)
   GstQCtx *qctx = NULL;
 
   qctx = g_new0 (GstQCtx, 1);
-  qctx->gbmhandle = dlopen("libgbm.so", RTLD_NOW);
+  if(!qctx) {
+    GST_ERROR("g_new0 (GstQCtx) failed");
+    return NULL;
+  }
 
-  qctx->qdisplay = create_display();
-  qctx->width = qctx->qdisplay->output->width;
-  qctx->height = qctx->qdisplay->output->height;
-
-  if (qctx->gbmhandle) {
+  qctx->gbmhandle = dlopen("libgbm.so",  RTLD_NOW);
+  if(!qctx->gbmhandle) {
+    GST_ERROR("dlopen libgbm.so failed");
+    g_free(qctx);
+    return NULL;
+  } else {
     qctx->gbm_create_device = (void *) dlsym(qctx->gbmhandle,"gbm_create_device");
     qctx->gbm_device_destroy = (void *) dlsym(qctx->gbmhandle,"gbm_device_destroy");
     qctx->gbm_bo_get_height = (void *) dlsym(qctx->gbmhandle,"gbm_bo_get_height");
@@ -509,13 +518,32 @@ qscreencap_qctx_get (GstElement * parent)
     qctx->gbm_bo_destroy = (void *) dlsym(qctx->gbmhandle,"gbm_bo_destroy");
     qctx->gbm_bo_get_fd = (void *) dlsym(qctx->gbmhandle,"gbm_bo_get_fd");
     qctx->gbm_perform = (void *) dlsym(qctx->gbmhandle,"gbm_perform");
-    GST_DEBUG("gbm %p %p %p %p %p %p %p %p",qctx->gbm_create_device,qctx->gbm_device_destroy,qctx->gbm_bo_get_height,qctx->gbm_bo_get_stride,qctx->gbm_bo_create,qctx->gbm_bo_destroy,qctx->gbm_bo_get_fd,qctx->gbm_perform);
 
-  } else {
+    if ( !qctx->gbm_create_device || !qctx->gbm_device_destroy ||
+        !qctx->gbm_bo_get_height || !qctx->gbm_bo_get_stride ||
+        !qctx->gbm_bo_create || !qctx->gbm_bo_destroy ||
+        !qctx->gbm_bo_get_fd || !qctx->gbm_perform ) {
+      GST_ERROR("no gbm module %p %p %p %p %p %p %p %p",qctx->gbm_create_device,
+               qctx->gbm_device_destroy,qctx->gbm_bo_get_height,
+               qctx->gbm_bo_get_stride,qctx->gbm_bo_create,
+               qctx->gbm_bo_destroy,qctx->gbm_bo_get_fd,qctx->gbm_perform);
+      dlclose(qctx->gbmhandle);
+      g_free(qctx);
+      return NULL;
+    }
 
-     GST_WARNING("no gbm module");
-     return qctx;
   }
+
+  qctx->qdisplay = create_display();
+  if(qctx->qdisplay == NULL) {
+    GST_ERROR("create_displaycreate_display failed");
+    dlclose(qctx->gbmhandle);
+    g_free(qctx);
+    return NULL;
+  }
+
+  qctx->width = qctx->qdisplay->output->width;
+  qctx->height = qctx->qdisplay->output->height;
 
   qctx->gbm_device_fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
   if (qctx->gbm_device_fd < 0) {
@@ -543,6 +571,8 @@ gst_buffer_force_release(GstBuffer * self)
 
 void destroy_display(QDisplay *qdisplay)
 {
+    if(qdisplay == NULL)
+      return;
 
     if (qdisplay->is_capture_started)
     {
@@ -640,6 +670,7 @@ gst_qscreencap_buffer_dispose (GstBuffer * qscreencapbuf)
   gboolean ret = TRUE;
 
   meta = GST_META_QSCREENCAP_GET (qscreencapbuf);
+  g_assert(meta != NULL);
 
   parent = meta->parent;
   if (parent == NULL) {
@@ -659,6 +690,7 @@ gst_qscreencap_buffer_free (GstBuffer * qscreencapbuf)
 {
   GstMetaQScreenCap *meta;
   meta = GST_META_QSCREENCAP_GET (qscreencapbuf);
+  g_assert(meta != NULL);
 
   /* make sure it is not recycled */
   meta->width = -1;
@@ -734,6 +766,8 @@ gst_qscreencapbuf_new (GstQCtx * qctx,
       (GstMiniObjectDisposeFunction) gst_qscreencap_buffer_dispose;
 
   meta = GST_META_QSCREENCAP_ADD (qscreencapbuf);
+  g_assert(meta != NULL);
+
   meta->width = width;
   meta->height = height;
   meta->qwlbuf.qdisplay = qctx->qdisplay;
@@ -760,11 +794,19 @@ gst_qscreencapbuf_new (GstQCtx * qctx,
 
   }
   flags =  GBM_BUFFER_PARAMS_FLAGS_SCREEN_CAPTURE;
+
   params = gbm_buffer_backend_create_params(qctx->qdisplay->gbmbuf);
+  if (!params) {
+    GST_ERROR("gbm_buffer_backend_create_params failed\n");
+    return NULL;
+  }
+
   gbm_buffer_params_add_listener(params, &params_listener, &meta->qwlbuf);
   gbm_buffer_params_create(params, meta->gbminfo->bo_fd,meta->gbminfo->meta_fd, width,height,DRM_FORMAT_ABGR8888, flags);
+
   wl_display_roundtrip(qctx->qdisplay->display);
   wl_display_dispatch_queue_pending (qctx->qdisplay->display, qctx->qdisplay->queue);
+
   timeout = g_get_monotonic_time () + G_TIME_SPAN_SECOND;
   while (meta->qwlbuf.wlbuf == NULL) {
     if (!g_cond_wait_until (&qctx->qdisplay->wlbuf_cond, &qctx->qdisplay->wlbuf_lock, timeout)) {
@@ -773,6 +815,7 @@ gst_qscreencapbuf_new (GstQCtx * qctx,
         gbm_buffer_params_destroy(params);
     }
   }
+
   GST_DEBUG("meta->qwlbuf.wlbuf %p",meta->qwlbuf.wlbuf);
   succeeded = TRUE;
 
@@ -800,6 +843,7 @@ gst_qscreencapbuf_destroy (GstQCtx * qctx, GstBuffer * qscreencapbuf)
   GstMetaQScreenCap *meta;
 
   meta = GST_META_QSCREENCAP_GET (qscreencapbuf);
+  g_assert(meta != NULL);
 
    if (!qctx)
     goto teak;
