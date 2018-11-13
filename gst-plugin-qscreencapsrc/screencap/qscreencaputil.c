@@ -849,6 +849,11 @@ gst_qscreencapbuf_destroy (GstQCtx * qctx, GstBuffer * qscreencapbuf)
     goto teak;
 
   g_return_if_fail (qscreencapbuf != NULL);
+
+  GST_DEBUG("destroy wlbuffer from buffer %p ",qscreencapbuf);
+  if(meta->qwlbuf.wlbuf)
+       wl_buffer_destroy (meta->qwlbuf.wlbuf);
+
   GST_DEBUG("destroy gmb from buffer %p ",qscreencapbuf);
   if (meta->gbminfo) {
       gbm_memory_free (qctx,meta->gbminfo);
