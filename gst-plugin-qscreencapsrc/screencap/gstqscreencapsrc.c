@@ -138,6 +138,16 @@ gst_qscreencap_src_open_display (GstQScreenCapSrc * s)
   if (s->qctx != NULL)
   {
     g_mutex_lock (&s->qc_lock);
+    if (s->qctx->qdisplay == NULL) {
+      s->qctx->qdisplay = create_display();
+      if (s->qctx->qdisplay == NULL) {
+        g_mutex_unlock (&s->qc_lock);
+        GST_ERROR_OBJECT (s,"Could not create display");
+        return FALSE;
+      }
+      s->qctx->width = s->qctx->qdisplay->output->width;
+      s->qctx->height = s->qctx->qdisplay->output->height;
+    }
     s->width = s->qctx->width;
     s->height = s->qctx->height;
     g_mutex_unlock (&s->qc_lock);
@@ -250,7 +260,7 @@ gst_qscreencap_src_qscreencap_catch (GstQScreenCapSrc * qscreencapsrc)
     qscreencapsrc->buffer_list = g_slist_delete_link (qscreencapsrc->buffer_list,
         qscreencapsrc->buffer_list);
 
-    if ((meta->width == qscreencapsrc->width) ||
+    if ((meta->width == qscreencapsrc->width) &&
         (meta->height == qscreencapsrc->height))
       break;
     GST_DEBUG_OBJECT (qscreencapsrc, "width or heigh not match free the buffer");
@@ -550,6 +560,7 @@ gst_qscreencap_src_finalize (GObject * object)
   gst_qscreencap_src_clear_bufpool(src);
   if (src->qctx)
     qscreencap_qctx_clear (src->qctx);
+  src->qctx = NULL;
 
   g_mutex_clear (&src->buffer_lock);
   g_mutex_clear (&src->qc_lock);

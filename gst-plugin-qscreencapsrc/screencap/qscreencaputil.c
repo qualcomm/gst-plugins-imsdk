@@ -385,7 +385,7 @@ static const struct ivi_surface_listener ivi_surface_listener = {
 
 #define IVI_SURFACE_ID 9000
 
-static QDisplay *create_display(void)
+QDisplay *create_display(void)
 {
 	struct output *output, *next;
 	int found = 0;
