@@ -290,6 +290,7 @@ qmmfsrc_video_pad_init(GstQmmfSrcVideoPad* pad)
   pad->width     = -1;
   pad->height    = -1;
   pad->framerate = 0;
+  pad->srcidx = -1;
   pad->format    = GST_VIDEO_FORMAT_UNKNOWN;
 
   pad->duration  = 0;

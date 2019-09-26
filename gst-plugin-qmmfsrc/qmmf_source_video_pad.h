@@ -39,6 +39,7 @@ G_BEGIN_DECLS
 #define QMMFSRC_COMMON_VIDEO_CAPS          \
     "width = (int) [ 16, 1920 ], "         \
     "height = (int) [ 16, 1080 ], "        \
+    "source-index = (int) [ -1, 20 ], "      \
     "framerate = (fraction) [ 0/1, 30/1 ]"
 
 #define QMMFSRC_VIDEO_CAPS(type, formats) \
@@ -94,6 +95,9 @@ struct _GstQmmfSrcVideoPad {
   gfloat         framerate;
   /// GStreamer video pad output buffers format.
   GstVideoFormat format;
+  /// QMMF Recorder master track index, set by the pad capabilities.
+  /// The field is valid for linked tracks only.
+  gint           srcidx;
 
   /// QMMF Recorder track buffers duration, calculated from framerate.
   guint64        duration;

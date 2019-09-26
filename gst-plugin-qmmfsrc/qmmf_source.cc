@@ -40,6 +40,7 @@
 
 #include "qmmf_source_video_pad.h"
 #include "qmmf_source_audio_pad.h"
+#include <qmmf-sdk/qmmf_recorder_extra_param_tags.h>
 
 using namespace qmmf::recorder;
 
@@ -504,6 +505,8 @@ qmmfsrc_open(GstElement *element)
   while (g_hash_table_iter_next(&iter, &key, &value)) {
     pad = GST_PAD(g_list_nth_data(element->srcpads, g_direct_hash(key)));
     caps = gst_pad_get_allowed_caps(pad);
+    gst_caps_fixate(caps);
+    gst_pad_set_caps (pad, caps);
     structure = gst_caps_get_structure(caps, 0);
 
     vpad = GST_QMMFSRC_VIDEO_PAD(pad);
@@ -518,6 +521,9 @@ qmmfsrc_open(GstElement *element)
 
     success = gst_structure_get_int(structure, "height", &vpad->height);
     QMMF_CHECK(qmmfsrc, !success, "Failed to get caps height field!");
+
+    success = gst_structure_get_int(structure, "source-index", &vpad->srcidx);
+    QMMF_CHECK(qmmfsrc, !success, "Failed to get caps source-index field!");
 
     gint fps_n, fps_d;
     success = gst_structure_get_fraction(structure, "framerate", &fps_n, &fps_d);
@@ -704,8 +710,26 @@ qmmfsrc_create_session(GstElement *element)
         { VideoTrackDataCb(pad, track_id, buffers, metabufs); };
 
     track_id = vpad->index + VIDEO_TRACK_ID_OFFSET;
-    status = qmmfsrc->recorder->CreateVideoTrack(session_id, track_id,
-                                                 params, track_cbs);
+
+    if (vpad->srcidx != -1) {
+      gboolean is_master = g_hash_table_contains(qmmfsrc->vidindexes,
+                           GUINT_TO_POINTER(vpad->srcidx));
+      QMMF_CHECK(qmmfsrc, !is_master, "The srcidx is wrong!");
+
+      guint master_track_id = vpad->srcidx + VIDEO_TRACK_ID_OFFSET;
+
+      VideoExtraParam extra_param;
+      SourceVideoTrack surface_video_linked;
+      surface_video_linked.source_track_id = master_track_id;
+      extra_param.Update(QMMF_SOURCE_VIDEO_TRACK_ID, surface_video_linked);
+
+      status = qmmfsrc->recorder->CreateVideoTrack(session_id, track_id,
+                                                   params, extra_param,
+                                                   track_cbs);
+    } else {
+      status = qmmfsrc->recorder->CreateVideoTrack(session_id, track_id,
+                                                   params, track_cbs);
+    }
     QMMF_CHECK(qmmfsrc, (status != 0), "CreateVideoTrack Failed!");
 
     vpad->id = track_id;
