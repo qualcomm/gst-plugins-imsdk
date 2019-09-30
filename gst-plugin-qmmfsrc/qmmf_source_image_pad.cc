@@ -27,51 +27,51 @@
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "qmmf_source_video_pad.h"
+#include "qmmf_source_image_pad.h"
 
 #include <gst/gstplugin.h>
 #include <gst/gstelementfactory.h>
 #include <gst/gstpadtemplate.h>
 
-// Declare qmmfsrc_video_pad_class_init() and qmmfsrc_video_pad_init()
-// functions, implement qmmfsrc_video_pad_get_type() function and set
-// qmmfsrc_video_pad_parent_class variable.
-G_DEFINE_TYPE(GstQmmfSrcVideoPad, qmmfsrc_video_pad, GST_TYPE_PAD);
+// Declare qmmfsrc_image_pad_class_init() and qmmfsrc_image_pad_init()
+// functions, implement qmmfsrc_image_pad_get_type() function and set
+// qmmfsrc_image_pad_parent_class variable.
+G_DEFINE_TYPE(GstQmmfSrcImagePad, qmmfsrc_image_pad, GST_TYPE_PAD);
 
-GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
-#define GST_CAT_DEFAULT qmmfsrc_video_pad_debug
+GST_DEBUG_CATEGORY_STATIC (qmmfsrc_image_pad_debug);
+#define GST_CAT_DEFAULT qmmfsrc_image_pad_debug
 
-#define DEFAULT_VIDEO_STREAM_WIDTH   640
-#define DEFAULT_VIDEO_STREAM_HEIGHT  480
-#define DEFAULT_VIDEO_STREAM_FPS_NUM 30
-#define DEFAULT_VIDEO_STREAM_FPS_DEN 1
+#define DEFAULT_IMAGE_STREAM_WIDTH   640
+#define DEFAULT_IMAGE_STREAM_HEIGHT  480
+#define DEFAULT_IMAGE_STREAM_FPS_NUM 30
+#define DEFAULT_IMAGE_STREAM_FPS_DEN 1
 
 enum
 {
   PROP_0,
 };
 
-static void
-video_pad_worker_task (GstPad * pad)
+void
+image_pad_worker_task (GstPad * pad)
 {
   GstDataQueue *buffers;
   GstDataQueueItem *item;
   GstBuffer *gstbuffer;
 
-  buffers = GST_QMMFSRC_VIDEO_PAD (pad)->buffers;
+  buffers = GST_QMMFSRC_IMAGE_PAD (pad)->buffers;
 
   if (gst_data_queue_pop (buffers, &item)) {
     gstbuffer = GST_BUFFER (item->object);
     gst_pad_push (pad, gstbuffer);
     item->destroy (item);
   } else {
-    GST_INFO_OBJECT (gst_pad_get_parent (pad), "Pause video pad worker thread");
+    GST_INFO_OBJECT (gst_pad_get_parent (pad), "Pause image pad worker thread");
     gst_pad_pause_task (pad);
   }
 }
 
 static gboolean
-video_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
+image_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
 {
   gboolean success = TRUE;
 
@@ -83,7 +83,7 @@ video_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
       GstClockTime min_latency, max_latency;
 
       // Minimum latency is the time to capture one video frame.
-      min_latency = GST_QMMFSRC_VIDEO_PAD (pad)->duration;
+      min_latency = GST_QMMFSRC_IMAGE_PAD (pad)->duration;
 
       // TODO This will change once GstBufferPool is implemented.
       max_latency = GST_CLOCK_TIME_NONE;
@@ -105,7 +105,7 @@ video_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
 }
 
 static gboolean
-video_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
+image_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
 {
   gboolean success = TRUE;
 
@@ -113,21 +113,25 @@ video_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
 
   switch (GST_EVENT_TYPE (event)) {
     case GST_EVENT_FLUSH_START:
-      qmmfsrc_video_pad_flush_buffers_queue (pad, TRUE);
+      qmmfsrc_image_pad_flush_buffers_queue (pad, TRUE);
       success = gst_pad_pause_task (pad);
       gst_event_unref (event);
       break;
     case GST_EVENT_FLUSH_STOP:
-      qmmfsrc_video_pad_flush_buffers_queue (pad, FALSE);
+      qmmfsrc_image_pad_flush_buffers_queue (pad, FALSE);
       success = gst_pad_start_task (
-          pad, (GstTaskFunction) video_pad_worker_task, pad, NULL);
+          pad, (GstTaskFunction) image_pad_worker_task, pad, NULL);
       gst_event_unref (event);
       break;
     case GST_EVENT_EOS:
       // After EOS, we should not send any more buffers, even if there are
       // more requests coming in.
-      qmmfsrc_video_pad_flush_buffers_queue (pad, TRUE);
+      qmmfsrc_image_pad_flush_buffers_queue (pad, TRUE);
       gst_event_unref (event);
+      break;
+    case GST_EVENT_CUSTOM_UPSTREAM:
+    case GST_EVENT_CUSTOM_DOWNSTREAM:
+    case GST_EVENT_CUSTOM_BOTH:
       break;
     default:
       success = gst_pad_event_default (pad, parent, event);
@@ -137,7 +141,7 @@ video_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
 }
 
 static gboolean
-video_pad_activate_mode (GstPad * pad, GstObject * parent,
+image_pad_activate_mode (GstPad * pad, GstObject * parent,
                          GstPadMode mode, gboolean active)
 {
   gboolean success = TRUE;
@@ -145,11 +149,11 @@ video_pad_activate_mode (GstPad * pad, GstObject * parent,
   switch (mode) {
     case GST_PAD_MODE_PUSH:
       if (active) {
-        qmmfsrc_video_pad_flush_buffers_queue (pad, FALSE);
+        qmmfsrc_image_pad_flush_buffers_queue (pad, FALSE);
         success = gst_pad_start_task (
-            pad, (GstTaskFunction) video_pad_worker_task, pad, NULL);
+            pad, (GstTaskFunction) image_pad_worker_task, pad, NULL);
       } else {
-        qmmfsrc_video_pad_flush_buffers_queue (pad, TRUE);
+        qmmfsrc_image_pad_flush_buffers_queue (pad, TRUE);
         success = gst_pad_stop_task (pad);
       }
       break;
@@ -158,24 +162,24 @@ video_pad_activate_mode (GstPad * pad, GstObject * parent,
   }
 
   if (!success) {
-    GST_ERROR_OBJECT (parent, "Failed to activate video pad task!");
+    GST_ERROR_OBJECT (parent, "Failed to activate image pad task!");
     return success;
   }
 
   GST_DEBUG_OBJECT (parent, "Video Pad (%u) mode: %s",
-      GST_QMMFSRC_VIDEO_PAD (pad)->index, active ? "ACTIVE" : "STOPED");
+      GST_QMMFSRC_IMAGE_PAD (pad)->index, active ? "ACTIVE" : "STOPED");
 
   // Call the default pad handler for activate mode.
   return gst_pad_activate_mode (pad, mode, active);
 }
 
 static void
-video_pad_set_params (GstPad * pad, GstStructure *structure)
+image_pad_set_params (GstPad * pad, GstStructure *structure)
 {
-  GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
+  GstQmmfSrcImagePad *vpad = GST_QMMFSRC_IMAGE_PAD (pad);
   gint fps_n = 0, fps_d = 0;
 
-  GST_QMMFSRC_VIDEO_PAD_LOCK (pad);
+  GST_QMMFSRC_IMAGE_PAD_LOCK (pad);
 
   gst_structure_get_int (structure, "width", &vpad->width);
   gst_structure_get_int (structure, "height", &vpad->height);
@@ -185,35 +189,25 @@ video_pad_set_params (GstPad * pad, GstStructure *structure)
   vpad->framerate = 1 / GST_TIME_AS_SECONDS (
       gst_guint64_to_gdouble (vpad->duration));
 
-  if (gst_structure_has_name (structure, "video/x-h264")) {
-    const gchar *profile, *level;
-
-    profile = gst_structure_get_string (structure, "profile");
-    gst_structure_set (vpad->params, "profile", G_TYPE_STRING, profile, NULL);
-
-    level = gst_structure_get_string (structure, "level");
-    gst_structure_set (vpad->params, "level", G_TYPE_STRING, level, NULL);
-
-    vpad->codec = GST_VIDEO_CODEC_TYPE_H264;
+  if (gst_structure_has_name (structure, "image/jpeg")) {
+    vpad->codec = GST_IMAGE_CODEC_TYPE_JPEG;
     vpad->format = GST_VIDEO_FORMAT_ENCODED;
   } else if (gst_structure_has_name (structure, "video/x-raw")) {
-    vpad->codec = GST_VIDEO_CODEC_TYPE_NONE;
+    vpad->codec = GST_IMAGE_CODEC_TYPE_NONE;
     vpad->format = gst_video_format_from_string (
         gst_structure_get_string (structure, "format"));
   }
 
-  if (gst_structure_has_field (structure, "source-index"))
-    gst_structure_get_int (structure, "source-index", &vpad->srcidx);
-
-  GST_QMMFSRC_VIDEO_PAD_UNLOCK (pad);
+  GST_QMMFSRC_IMAGE_PAD_UNLOCK (pad);
 }
 
+
 GstPad *
-qmmfsrc_request_video_pad (GstPadTemplate * templ, const gchar * name,
+qmmfsrc_request_image_pad (GstPadTemplate * templ, const gchar * name,
                            const guint index)
 {
   GstPad *srcpad = GST_PAD (g_object_new (
-      GST_TYPE_QMMFSRC_VIDEO_PAD,
+      GST_TYPE_QMMFSRC_IMAGE_PAD,
       "name", name,
       "direction", templ->direction,
       "template", templ,
@@ -221,12 +215,12 @@ qmmfsrc_request_video_pad (GstPadTemplate * templ, const gchar * name,
   ));
   g_return_val_if_fail (srcpad != NULL, NULL);
 
-  GST_QMMFSRC_VIDEO_PAD (srcpad)->index = index;
+  GST_QMMFSRC_IMAGE_PAD (srcpad)->index = index;
 
-  gst_pad_set_query_function (srcpad, GST_DEBUG_FUNCPTR (video_pad_query));
-  gst_pad_set_event_function (srcpad, GST_DEBUG_FUNCPTR (video_pad_event));
+  gst_pad_set_query_function (srcpad, GST_DEBUG_FUNCPTR (image_pad_query));
+  gst_pad_set_event_function (srcpad, GST_DEBUG_FUNCPTR (image_pad_event));
   gst_pad_set_activatemode_function (
-      srcpad, GST_DEBUG_FUNCPTR (video_pad_activate_mode));
+      srcpad, GST_DEBUG_FUNCPTR (image_pad_activate_mode));
 
   gst_pad_use_fixed_caps (srcpad);
   gst_pad_set_active (srcpad, TRUE);
@@ -235,10 +229,10 @@ qmmfsrc_request_video_pad (GstPadTemplate * templ, const gchar * name,
 }
 
 void
-qmmfsrc_release_video_pad (GstElement * element, GstPad * pad)
+qmmfsrc_release_image_pad (GstElement * element, GstPad * pad)
 {
   gchar *padname = GST_PAD_NAME (pad);
-  guint index = GST_QMMFSRC_VIDEO_PAD (pad)->index;
+  guint index = GST_QMMFSRC_IMAGE_PAD (pad)->index;
 
   gst_object_ref (pad);
 
@@ -250,8 +244,18 @@ qmmfsrc_release_video_pad (GstElement * element, GstPad * pad)
   gst_object_unref (pad);
 }
 
+void
+qmmfsrc_image_pad_flush_buffers_queue (GstPad * pad, gboolean flush)
+{
+  GST_INFO_OBJECT (gst_pad_get_parent (pad), "Flushing buffer queue: %s",
+      flush ? "TRUE" : "FALSE");
+
+  gst_data_queue_set_flushing (GST_QMMFSRC_IMAGE_PAD (pad)->buffers, flush);
+  gst_data_queue_flush (GST_QMMFSRC_IMAGE_PAD (pad)->buffers);
+}
+
 gboolean
-qmmfsrc_video_pad_fixate_caps (GstPad * pad)
+qmmfsrc_image_pad_fixate_caps (GstPad * pad)
 {
   GstCaps *caps;
   GstStructure *structure;
@@ -263,7 +267,7 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
 
   // Immediately return the fetched caps if they are fixed.
   if (gst_caps_is_fixed (caps)) {
-    video_pad_set_params (pad, gst_caps_get_structure (caps, 0));
+    image_pad_set_params (pad, gst_caps_get_structure (caps, 0));
     return TRUE;
   }
 
@@ -277,87 +281,75 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
 
   if (!width) {
     gst_structure_set (structure, "width", G_TYPE_INT,
-        DEFAULT_VIDEO_STREAM_WIDTH, NULL);
+        DEFAULT_IMAGE_STREAM_WIDTH, NULL);
     GST_DEBUG_OBJECT (pad, "Width not set, using default value: %d",
-        DEFAULT_VIDEO_STREAM_WIDTH);
+        DEFAULT_IMAGE_STREAM_WIDTH);
   }
 
   if (!height) {
     gst_structure_set (structure, "height", G_TYPE_INT,
-        DEFAULT_VIDEO_STREAM_HEIGHT, NULL);
+        DEFAULT_IMAGE_STREAM_HEIGHT, NULL);
     GST_DEBUG_OBJECT (pad, "Height not set, using default value: %d",
-        DEFAULT_VIDEO_STREAM_HEIGHT);
+        DEFAULT_IMAGE_STREAM_HEIGHT);
   }
 
   if (!gst_value_is_fixed (framerate)) {
     gst_structure_fixate_field_nearest_fraction (structure, "framerate",
-        DEFAULT_VIDEO_STREAM_FPS_NUM, DEFAULT_VIDEO_STREAM_FPS_DEN);
+        DEFAULT_IMAGE_STREAM_FPS_NUM, DEFAULT_IMAGE_STREAM_FPS_DEN);
     GST_DEBUG_OBJECT (pad, "Framerate not set, using default value: %d/%d",
-        DEFAULT_VIDEO_STREAM_FPS_NUM, DEFAULT_VIDEO_STREAM_FPS_DEN);
+        DEFAULT_IMAGE_STREAM_FPS_NUM, DEFAULT_IMAGE_STREAM_FPS_DEN);
   }
-
-  gst_structure_remove_fields (structure, "stream-format", "alignment", NULL);
 
   caps = gst_caps_fixate (caps);
   gst_pad_set_caps (pad, caps);
 
-  video_pad_set_params (pad, structure);
+  image_pad_set_params (pad, structure);
   return TRUE;
 }
 
-void
-qmmfsrc_video_pad_flush_buffers_queue (GstPad * pad, gboolean flush)
-{
-  GST_INFO_OBJECT (gst_pad_get_parent(pad), "Flushing buffer queue: %s",
-      flush ? "TRUE" : "FALSE");
-
-  gst_data_queue_set_flushing (GST_QMMFSRC_VIDEO_PAD (pad)->buffers, flush);
-  gst_data_queue_flush (GST_QMMFSRC_VIDEO_PAD (pad)->buffers);
-}
-
 static void
-video_pad_set_property (GObject * object, guint property_id,
-                        const GValue * value, GParamSpec *pspec)
+image_pad_set_property (GObject * object, guint property_id,
+                        const GValue * value, GParamSpec * pspec)
 {
-  GstQmmfSrcVideoPad *pad = GST_QMMFSRC_VIDEO_PAD (object);
+  GstQmmfSrcImagePad *pad = GST_QMMFSRC_IMAGE_PAD (object);
 
-  GST_QMMFSRC_VIDEO_PAD_LOCK (pad);
+  GST_QMMFSRC_IMAGE_PAD_LOCK (pad);
 
   switch (property_id) {
     default:
-      G_OBJECT_WARN_INVALID_PROPERTY_ID (pad, property_id, pspec);
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
   }
 
-  GST_QMMFSRC_VIDEO_PAD_UNLOCK (pad);
+  GST_QMMFSRC_IMAGE_PAD_UNLOCK (pad);
 }
 
 static void
-video_pad_get_property (GObject * object, guint property_id,
+image_pad_get_property (GObject * object, guint property_id,
                         GValue * value, GParamSpec * pspec)
 {
-  GstQmmfSrcVideoPad *pad = GST_QMMFSRC_VIDEO_PAD (object);
+  GstQmmfSrcImagePad *pad = GST_QMMFSRC_IMAGE_PAD (object);
 
-  GST_QMMFSRC_VIDEO_PAD_LOCK (pad);
+  GST_QMMFSRC_IMAGE_PAD_LOCK (pad);
 
   switch (property_id) {
     default:
-      G_OBJECT_WARN_INVALID_PROPERTY_ID (pad, property_id, pspec);
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
   }
 
-  GST_QMMFSRC_VIDEO_PAD_UNLOCK (pad);
+  GST_QMMFSRC_IMAGE_PAD_UNLOCK (pad);
 }
 
 static void
-video_pad_finalize (GObject * object)
+image_pad_finalize (GObject * object)
 {
-  GstQmmfSrcVideoPad *pad = GST_QMMFSRC_VIDEO_PAD (object);
+  GstQmmfSrcImagePad *pad = GST_QMMFSRC_IMAGE_PAD (object);
 
   if (pad->buffers != NULL) {
-    gst_data_queue_set_flushing (pad->buffers, TRUE);
-    gst_data_queue_flush (pad->buffers);
-    gst_object_unref (GST_OBJECT_CAST (pad->buffers));
+    gst_data_queue_set_flushing(pad->buffers, TRUE);
+    gst_data_queue_flush(pad->buffers);
+    gst_object_unref(GST_OBJECT_CAST(pad->buffers));
     pad->buffers = NULL;
   }
 
@@ -366,7 +358,7 @@ video_pad_finalize (GObject * object)
     pad->params = NULL;
   }
 
-  G_OBJECT_CLASS (qmmfsrc_video_pad_parent_class)->finalize(object);
+  G_OBJECT_CLASS(qmmfsrc_image_pad_parent_class)->finalize(object);
 }
 
 static gboolean
@@ -377,32 +369,31 @@ queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
   return FALSE;
 }
 
-// QMMF Source video pad class initialization.
+// QMMF Source image pad class initialization.
 static void
-qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
+qmmfsrc_image_pad_class_init (GstQmmfSrcImagePadClass * klass)
 {
   GObjectClass *gobject = G_OBJECT_CLASS (klass);
 
-  gobject->get_property = GST_DEBUG_FUNCPTR (video_pad_get_property);
-  gobject->set_property = GST_DEBUG_FUNCPTR (video_pad_set_property);
-  gobject->finalize     = GST_DEBUG_FUNCPTR (video_pad_finalize);
+  gobject->get_property = GST_DEBUG_FUNCPTR (image_pad_get_property);
+  gobject->set_property = GST_DEBUG_FUNCPTR (image_pad_set_property);
+  gobject->finalize     = GST_DEBUG_FUNCPTR (image_pad_finalize);
 
-  GST_DEBUG_CATEGORY_INIT (qmmfsrc_video_pad_debug, "qmmfsrc-video", 0,
-      "QTI QMMF Source video pad");
+  GST_DEBUG_CATEGORY_INIT (qmmfsrc_image_pad_debug, "qmmfsrc-image", 0,
+      "QTI QMMF Source image pad");
 }
 
-// QMMF Source video pad initialization.
+// QMMF Source image pad initialization.
 static void
-qmmfsrc_video_pad_init (GstQmmfSrcVideoPad * pad)
+qmmfsrc_image_pad_init (GstQmmfSrcImagePad * pad)
 {
-  pad->index     = -1;
-  pad->srcidx    = -1;
+  pad->index     = 0;
 
   pad->width     = -1;
   pad->height    = -1;
   pad->framerate = 0;
   pad->format    = GST_VIDEO_FORMAT_UNKNOWN;
-  pad->codec     = GST_VIDEO_CODEC_TYPE_UNKNOWN;
+  pad->codec     = GST_IMAGE_CODEC_TYPE_UNKNOWN;
   pad->params    = gst_structure_new_empty ("codec-params");
 
   pad->duration  = 0;

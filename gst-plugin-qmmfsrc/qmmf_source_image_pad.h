@@ -27,8 +27,8 @@
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __GST_QMMFSRC_VIDEO_PAD_H__
-#define __GST_QMMFSRC_VIDEO_PAD_H__
+#ifndef __GST_QMMFSRC_IMAGE_PAD_H__
+#define __GST_QMMFSRC_IMAGE_PAD_H__
 
 #include <gst/gst.h>
 #include <gst/base/gstdataqueue.h>
@@ -36,85 +36,77 @@
 
 G_BEGIN_DECLS
 
-#define QMMFSRC_COMMON_VIDEO_CAPS(formats) \
-    "camera = (int) [ 0, 2 ], "      \
+#define QMMFSRC_COMMON_IMAGE_CAPS(formats) \
     "format = (string) " formats ", "      \
     "width = (int) [ 16, 1920 ], "         \
     "height = (int) [ 16, 1080 ], "        \
-    "source-index = (int) [ -1, 20 ], "      \
     "framerate = (fraction) [ 0/1, 30/1 ]"
 
-#define QMMFSRC_VIDEO_H264_CAPS(formats)                       \
-    "video/x-h264, "                                           \
+#define QMMFSRC_IMAGE_JPEG_CAPS(formats) \
+    "image/jpeg, "                       \
     QMMFSRC_COMMON_VIDEO_CAPS(formats)
 
-#define QMMFSRC_VIDEO_H264_CAPS_WITH_FEATURES(features, formats) \
-    "video/x-h264(" features "), "                               \
+#define QMMFSRC_IMAGE_JPEG_CAPS_WITH_FEATURES(features, formats) \
+    "image/jpeg(" features "), "                                 \
     QMMFSRC_COMMON_VIDEO_CAPS(formats)
 
-#define QMMFSRC_VIDEO_RAW_CAPS(formats) \
+#define QMMFSRC_IMAGE_RAW_CAPS(formats) \
     "video/x-raw, "                     \
     QMMFSRC_COMMON_VIDEO_CAPS(formats)
 
-#define QMMFSRC_VIDEO_RAW_CAPS_WITH_FEATURES(features, formats) \
+#define QMMFSRC_IMAGE_RAW_CAPS_WITH_FEATURES(features, formats) \
     "video/x-raw(" features "), "                               \
     QMMFSRC_COMMON_VIDEO_CAPS(formats)
 
 // Boilerplate cast macros and type check macros for QMMF Source Video Pad.
-#define GST_TYPE_QMMFSRC_VIDEO_PAD (qmmfsrc_video_pad_get_type())
-#define GST_QMMFSRC_VIDEO_PAD(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_QMMFSRC_VIDEO_PAD,GstQmmfSrcVideoPad))
-#define GST_QMMFSRC_VIDEO_PAD_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_QMMFSRC_VIDEO_PAD,GstQmmfSrcVideoPadClass))
-#define GST_IS_QMMFSRC_VIDEO_PAD(obj) \
-  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_QMMFSRC_VIDEO_PAD))
-#define GST_IS_QMMFSRC_VIDEO_PAD_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_QMMFSRC_VIDEO_PAD))
+#define GST_TYPE_QMMFSRC_IMAGE_PAD (qmmfsrc_image_pad_get_type())
+#define GST_QMMFSRC_IMAGE_PAD(obj) \
+  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_QMMFSRC_IMAGE_PAD,GstQmmfSrcImagePad))
+#define GST_QMMFSRC_IMAGE_PAD_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_QMMFSRC_IMAGE_PAD,GstQmmfSrcImagePadClass))
+#define GST_IS_QMMFSRC_IMAGE_PAD(obj) \
+  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_QMMFSRC_IMAGE_PAD))
+#define GST_IS_QMMFSRC_IMAGE_PAD_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_QMMFSRC_IMAGE_PAD))
 
-#define GST_QMMFSRC_VIDEO_PAD_GET_LOCK(obj) (&GST_QMMFSRC_VIDEO_PAD(obj)->lock)
-#define GST_QMMFSRC_VIDEO_PAD_LOCK(obj) \
-  g_mutex_lock(GST_QMMFSRC_VIDEO_PAD_GET_LOCK(obj))
-#define GST_QMMFSRC_VIDEO_PAD_UNLOCK(obj) \
-  g_mutex_unlock(GST_QMMFSRC_VIDEO_PAD_GET_LOCK(obj))
-
-#define VIDEO_TRACK_ID_OFFSET (0x01)
+#define GST_QMMFSRC_IMAGE_PAD_GET_LOCK(obj) (&GST_QMMFSRC_IMAGE_PAD(obj)->lock)
+#define GST_QMMFSRC_IMAGE_PAD_LOCK(obj) \
+  g_mutex_lock(GST_QMMFSRC_IMAGE_PAD_GET_LOCK(obj))
+#define GST_QMMFSRC_IMAGE_PAD_UNLOCK(obj) \
+  g_mutex_unlock(GST_QMMFSRC_IMAGE_PAD_GET_LOCK(obj))
 
 typedef enum {
-  GST_VIDEO_CODEC_TYPE_UNKNOWN,
-  GST_VIDEO_CODEC_TYPE_NONE,
-  GST_VIDEO_CODEC_TYPE_H264,
-} GstVideoCodecType;
+  GST_IMAGE_CODEC_TYPE_UNKNOWN,
+  GST_IMAGE_CODEC_TYPE_NONE,
+  GST_IMAGE_CODEC_TYPE_JPEG,
+} GstImageCodecType;
 
-typedef struct _GstQmmfSrcVideoPad GstQmmfSrcVideoPad;
-typedef struct _GstQmmfSrcVideoPadClass GstQmmfSrcVideoPadClass;
+typedef struct _GstQmmfSrcImagePad GstQmmfSrcImagePad;
+typedef struct _GstQmmfSrcImagePadClass GstQmmfSrcImagePadClass;
 
-struct _GstQmmfSrcVideoPad {
+struct _GstQmmfSrcImagePad {
   /// Inherited parent structure.
   GstPad            parent;
 
   /// Global mutex lock.
   GMutex            lock;
-  /// Index of the video pad.
+  /// Index of the image pad.
   guint             index;
-  /// QMMF Recorder master track index, set by the pad capabilities.
-  gint              srcidx;
 
-  /// ID of the QMMF Recorder track which belongs to this pad.
-  guint             id;
-  /// QMMF Recorder track width, set by the pad capabilities.
+  /// QMMF Recorder image stream width, set by the pad capabilities.
   gint              width;
-  /// QMMF Recorder track height, set by the pad capabilities.
+  /// QMMF Recorder image stream height, set by the pad capabilities.
   gint              height;
-  /// QMMF Recorder track framerate, set by the pad capabilities.
+  /// QMMF Recorder image stream framerate, set by the pad capabilities.
   gfloat            framerate;
   /// GStreamer video pad output buffers format.
   GstVideoFormat    format;
   /// Whether the GStreamer stream is uncompressed or compressed and its type.
-  GstVideoCodecType codec;
+  GstImageCodecType codec;
   /// Agnostic structure containing codec specific parameters.
   GstStructure     *params;
 
-  /// QMMF Recorder track buffers duration, calculated from framerate.
+  /// QMMF Recorder image stream buffers duration, calculated from framerate.
   guint64           duration;
   /// Timestamp base used to normalize buffer timestamps to running time.
   guint64           tsbase;
@@ -123,28 +115,28 @@ struct _GstQmmfSrcVideoPad {
   GstDataQueue     *buffers;
 };
 
-struct _GstQmmfSrcVideoPadClass {
+struct _GstQmmfSrcImagePadClass {
   /// Inherited parent structure.
   GstPadClass parent;
 };
 
-GType qmmfsrc_video_pad_get_type (void);
+GType qmmfsrc_image_pad_get_type(void);
 
 /// Allocates memory for a source video pad with given template, name and index.
 /// It will also set custom functions for query, event and activatemode.
-GstPad * qmmfsrc_request_video_pad (GstPadTemplate * templ, const gchar * name,
+GstPad * qmmfsrc_request_image_pad (GstPadTemplate *templ, const gchar *name,
                                     const guint index);
 
-/// Deactivates and releases the memory allocated for the source video pad.
-void     qmmfsrc_release_video_pad (GstElement * element, GstPad * pad);
+/// Deactivates and releases the memory allocated for the source image pad.
+void     qmmfsrc_release_image_pad (GstElement *element, GstPad *pad);
 
 /// Sets the GST buffers queue to flushing state if flushing is TRUE.
 /// If set to flushing state, any incoming data on the queue will be discarded.
-void     qmmfsrc_video_pad_flush_buffers_queue (GstPad * pad, gboolean flush);
+void     qmmfsrc_image_pad_flush_buffers_queue (GstPad *pad, gboolean flush);
 
 /// Modifies the pad capabilities into a representation with only fixed values.
-gboolean qmmfsrc_video_pad_fixate_caps (GstPad * pad);
+gboolean qmmfsrc_image_pad_fixate_caps (GstPad * pad);
 
 G_END_DECLS
 
-#endif // __GST_QMMFSRC_VIDEO_PAD_H__
+#endif // __GST_QMMFSRC_IMAGE_PAD_H__

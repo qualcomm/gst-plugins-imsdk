@@ -36,25 +36,24 @@
 
 G_BEGIN_DECLS
 
-#define QMMFSRC_COMMON_AUDIO_CAPS(d, c, r, b) \
-    "device = (int) [ 0, " G_STRINGIFY (d) " ], " \
+#define QMMFSRC_COMMON_AUDIO_CAPS(c, r, b)          \
     "channels = (int) [ 1, " G_STRINGIFY (c) " ], " \
-    "rate = (int) [ 1, " G_STRINGIFY (r) " ], " \
+    "rate = (int) [ 1, " G_STRINGIFY (r) " ], "     \
     "bitdepth = (int) [ 1, " G_STRINGIFY (b) " ]"
 
-#define QMMFSRC_AUDIO_AAC_CAPS \
-    "audio/mpeg, " \
-    "mpegversion = (int) { 2, 4 }, " \
+#define QMMFSRC_AUDIO_AAC_CAPS                              \
+    "audio/mpeg, "                                          \
+    "mpegversion = (int) { 4 }, "                        \
     "stream-format = (string) { adts, adif, raw, mp4ff }, " \
-    QMMFSRC_COMMON_AUDIO_CAPS(10, 2, 128000, 128)
+    QMMFSRC_COMMON_AUDIO_CAPS(2, 128000, 128)
 
-#define QMMFSRC_AUDIO_AMR_CAPS \
-    "audio/AMR, " \
-    QMMFSRC_COMMON_AUDIO_CAPS(10, 2, 8000, 128)
+#define QMMFSRC_AUDIO_AMR_CAPS              \
+    "audio/AMR, "                           \
+    QMMFSRC_COMMON_AUDIO_CAPS(2, 8000, 128)
 
-#define QMMFSRC_AUDIO_AMRWB_CAPS \
-    "audio/AMR-WB, " \
-    QMMFSRC_COMMON_AUDIO_CAPS(10, 2, 16000, 128)
+#define QMMFSRC_AUDIO_AMRWB_CAPS             \
+    "audio/AMR-WB, "                         \
+    QMMFSRC_COMMON_AUDIO_CAPS(2, 16000, 128)
 
 // Boilerplate cast macros and type check macros for QMMF Source Audio Pad.
 #define GST_TYPE_QMMFSRC_AUDIO_PAD (qmmfsrc_audio_pad_get_type())
@@ -73,41 +72,52 @@ G_BEGIN_DECLS
 #define GST_QMMFSRC_AUDIO_PAD_UNLOCK(obj) \
   g_mutex_unlock(GST_QMMFSRC_AUDIO_PAD_GET_LOCK(obj))
 
+#define AUDIO_TRACK_ID_OFFSET (0xFF)
+
+typedef enum {
+  GST_AUDIO_CODEC_TYPE_UNKNOWN,
+  GST_AUDIO_CODEC_TYPE_NONE,
+  GST_AUDIO_CODEC_TYPE_AAC,
+  GST_AUDIO_CODEC_TYPE_AMR,
+  GST_AUDIO_CODEC_TYPE_AMRWB,
+} GstAudioCodecType;
+
 typedef struct _GstQmmfSrcAudioPad GstQmmfSrcAudioPad;
 typedef struct _GstQmmfSrcAudioPadClass GstQmmfSrcAudioPadClass;
 
 struct _GstQmmfSrcAudioPad {
   /// Inherited parent structure.
-  GstPad         parent;
+  GstPad            parent;
 
   /// Global mutex lock.
-  GMutex         lock;
-  /// Index of the video pad.
-  guint          index;
+  GMutex            lock;
+  /// Index of the audio pad.
+  guint             index;
 
   /// ID of the QMMF Recorder track which belongs to this pad.
-  guint          id;
+  guint             id;
   /// QMMF Recorder track audio device ID, set by the pad capabilities.
-  gint           device;
+  gint              device;
   /// QMMF Recorder track channels, set by the pad capabilities.
-  gint           channels;
+  gint              channels;
   /// QMMF Recorder track sample rate, set by the pad capabilities.
-  gint           samplerate;
+  gint              samplerate;
   /// QMMF Recorder track bit rate, set by the pad capabilities.
-  gint           bitdepth;
+  gint              bitdepth;
   /// GStreamer audio pad output buffers format.
-  GstAudioFormat format;
+  GstAudioFormat    format;
+  /// Whether the GStreamer stream is uncompressed or compressed and its type.
+  GstAudioCodecType codec;
+  /// Agnostic structure containing codec specific parameters.
+  GstStructure     *params;
 
-  /// QMMF Recorder track buffers duration, calculated from samplerate.
-  guint64        duration;
+  /// QMMF Recorder stream buffers duration, calculated from samplerate.
+  guint64           duration;
   /// Timestamp base used to normalize buffer timestamps to running time.
-  guint64        tsbase;
-
-  /// Agnostic structure containing format specific parameters.
-  GstStructure  *params;
+  guint64           tsbase;
 
   /// Queue for GStreamer buffers wrappers around QMMF Recorder buffers.
-  GstDataQueue  *buffers;
+  GstDataQueue     *buffers;
 };
 
 struct _GstQmmfSrcAudioPadClass {
@@ -119,8 +129,8 @@ GType qmmfsrc_audio_pad_get_type(void);
 
 /// Allocates memory for a source audio pad with given template, name and index.
 /// It will also set custom functions for query, event and activatemode.
-GstPad * qmmfsrc_request_audio_pad (GstElement *element, GstPadTemplate *templ,
-                                    const gchar *name, const guint index);
+GstPad * qmmfsrc_request_audio_pad (GstPadTemplate *templ, const gchar *name,
+                                    const guint index);
 
 /// Deactivates and releases the memory allocated for the source audio pad.
 void     qmmfsrc_release_audio_pad (GstElement *element, GstPad *pad);
@@ -128,6 +138,9 @@ void     qmmfsrc_release_audio_pad (GstElement *element, GstPad *pad);
 /// Sets the GST buffers queue to flushing state if flushing is TRUE.
 /// If set to flushing state, any incoming data on the queue will be discarded.
 void     qmmfsrc_audio_pad_flush_buffers_queue (GstPad *pad, gboolean flush);
+
+/// Modifies the pad capabilities into a representation with only fixed values.
+gboolean qmmfsrc_audio_pad_fixate_caps (GstPad * pad);
 
 G_END_DECLS
 

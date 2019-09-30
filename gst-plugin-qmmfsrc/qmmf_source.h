@@ -64,10 +64,10 @@ struct _GstQmmfSrc {
   GstElement parent;
 
   /// Global mutex lock.
-  GMutex      lock;
+  GMutex     lock;
 
-  /// List containing the indexes of existing source pads.
-  GHashTable *srcindexes;
+  /// List containing the existing source pads.
+  GHashTable *srcpads;
   /// Next available index for the source pads.
   guint       nextidx;
 
@@ -75,14 +75,31 @@ struct _GstQmmfSrc {
   GHashTable *vidindexes;
   /// List containing the indexes of existing video source pads.
   GHashTable *audindexes;
+  /// List containing the indexes of existing video source pads.
+  GHashTable *imgindexes;
 
   /// QMMF Recorder instance.
   qmmf::recorder::Recorder *recorder;
 
-  /// List of QMMF Recorder camera devices opened by this source.
-  GHashTable *camera_ids;
+  /// QMMF Recorder camera device opened by this source.
+  gint       camera_id;
   /// QMMF Recorder multimedia session ID.
-  guint       session_id;
+  guint      session_id;
+
+  /// Camera frame effect property.
+  guint      effect;
+  /// Camera scene optimization property.
+  guint      scene;
+  /// Camera antibanding mode property.
+  guint      antibanding;
+  /// Camera Auto Exposure compensation property.
+  gboolean   aecomp;
+  /// Camera Auto Exposure lock property.
+  gboolean   aelock;
+  /// Camera Auto White Balance mode property.
+  guint      awbmode;
+  /// Camera Auto White Balance lock property.
+  gboolean   awblock;
 };
 
 struct _GstQmmfSrcClass {
