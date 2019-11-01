@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -33,7 +33,8 @@
 #include <gst/gst.h>
 #include <gobject/gtype.h>
 #include <glib/gtypes.h>
-#include <qmmf-sdk/qmmf_recorder.h>
+
+#include "qmmf_source_context.h"
 
 G_BEGIN_DECLS
 
@@ -61,45 +62,25 @@ typedef struct _GstQmmfSrcClass GstQmmfSrcClass;
 
 struct _GstQmmfSrc {
   /// Inherited parent structure.
-  GstElement parent;
+  GstElement     parent;
 
   /// Global mutex lock.
-  GMutex     lock;
+  GMutex         lock;
 
   /// List containing the existing source pads.
-  GHashTable *srcpads;
+  GHashTable     *srcpads;
   /// Next available index for the source pads.
-  guint       nextidx;
+  guint          nextidx;
 
   /// List containing the indexes of existing video source pads.
-  GHashTable *vidindexes;
+  GHashTable     *vidindexes;
   /// List containing the indexes of existing video source pads.
-  GHashTable *audindexes;
+  GHashTable     *audindexes;
   /// List containing the indexes of existing video source pads.
-  GHashTable *imgindexes;
+  GHashTable     *imgindexes;
 
-  /// QMMF Recorder instance.
-  qmmf::recorder::Recorder *recorder;
-
-  /// QMMF Recorder camera device opened by this source.
-  guint      camera_id;
-  /// QMMF Recorder multimedia session ID.
-  guint      session_id;
-
-  /// Camera frame effect property.
-  guint      effect;
-  /// Camera scene optimization property.
-  guint      scene;
-  /// Camera antibanding mode property.
-  guint      antibanding;
-  /// Camera Auto Exposure compensation property.
-  gboolean   aecomp;
-  /// Camera Auto Exposure lock property.
-  gboolean   aelock;
-  /// Camera Auto White Balance mode property.
-  guint      awbmode;
-  /// Camera Auto White Balance lock property.
-  gboolean   awblock;
+  /// QMMF context.
+  GstQmmfContext *context;
 };
 
 struct _GstQmmfSrcClass {

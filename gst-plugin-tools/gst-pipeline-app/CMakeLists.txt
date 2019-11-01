@@ -2,7 +2,7 @@
 set(GST_PIPELINE_EXECUTABLE gst-pipeline-app)
 
 add_executable(${GST_PIPELINE_EXECUTABLE}
-  gst_pipeline_app.c
+  main.c
 )
 
 target_include_directories(${GST_PIPELINE_EXECUTABLE} PRIVATE
@@ -11,9 +11,6 @@ target_include_directories(${GST_PIPELINE_EXECUTABLE} PRIVATE
 
 target_link_libraries(${GST_PIPELINE_EXECUTABLE} PRIVATE
   ${GST_LIBRARIES}
-  ${GST_VIDEO_LIBRARIES}
-  ${GST_AUDIO_LIBRARIES}
-  ${GST_ALLOC_LIBRARIES}
 )
 
 install(

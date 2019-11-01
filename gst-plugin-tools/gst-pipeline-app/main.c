@@ -320,9 +320,10 @@ stop_pipeline (GstAppContext * appctx)
 
     g_mutex_lock (&appctx->pstatus.mutex);
 
-    g_print ("Waiting for EOS event...\n");
-    while (!appctx->pstatus.flags & GST_APP_PIPE_STATUS_EOS)
+    while (!appctx->pstatus.flags & GST_APP_PIPE_STATUS_EOS) {
+      g_print ("Waiting for EOS event...\n");
       g_cond_wait (&appctx->pstatus.changed, &appctx->pstatus.mutex);
+    }
 
     appctx->pstatus.flags &= ~GST_APP_PIPE_STATUS_EOS;
     g_mutex_unlock (&appctx->pstatus.mutex);

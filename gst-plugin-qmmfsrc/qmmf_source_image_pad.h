@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -36,18 +36,18 @@
 
 G_BEGIN_DECLS
 
-#define QMMFSRC_COMMON_IMAGE_CAPS()        \
+#define QMMFSRC_COMMON_IMAGE_CAPS          \
     "width = (int) [ 16, 1920 ], "         \
     "height = (int) [ 16, 1080 ], "        \
     "framerate = (fraction) [ 0/1, 30/1 ]"
 
-#define QMMFSRC_IMAGE_JPEG_CAPS() \
-    "image/jpeg, "                \
-    QMMFSRC_COMMON_IMAGE_CAPS()
+#define QMMFSRC_IMAGE_JPEG_CAPS \
+    "image/jpeg, "              \
+    QMMFSRC_COMMON_IMAGE_CAPS
 
 #define QMMFSRC_IMAGE_JPEG_CAPS_WITH_FEATURES(features) \
     "image/jpeg(" features "), "                        \
-    QMMFSRC_COMMON_IMAGE_CAPS()
+    QMMFSRC_COMMON_IMAGE_CAPS
 
 // Boilerplate cast macros and type check macros for QMMF Source Video Pad.
 #define GST_TYPE_QMMFSRC_IMAGE_PAD (qmmfsrc_image_pad_get_type())
@@ -98,9 +98,9 @@ struct _GstQmmfSrcImagePad {
   GstStructure     *params;
 
   /// QMMF Recorder image stream buffers duration, calculated from framerate.
-  guint64           duration;
+  GstClockTime      duration;
   /// Timestamp base used to normalize buffer timestamps to running time.
-  guint64           tsbase;
+  GstClockTime      tsbase;
 
   /// Queue for GStreamer buffers wrappers around QMMF Recorder buffers.
   GstDataQueue     *buffers;

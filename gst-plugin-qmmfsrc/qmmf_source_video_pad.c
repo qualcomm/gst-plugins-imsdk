@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -32,6 +32,9 @@
 #include <gst/gstplugin.h>
 #include <gst/gstelementfactory.h>
 #include <gst/gstpadtemplate.h>
+#include <gst/allocators/allocators.h>
+
+#include "qmmf_source_utils.h"
 
 // Declare qmmfsrc_video_pad_class_init() and qmmfsrc_video_pad_init()
 // functions, implement qmmfsrc_video_pad_get_type() function and set
@@ -45,10 +48,53 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
 #define DEFAULT_VIDEO_STREAM_HEIGHT  480
 #define DEFAULT_VIDEO_STREAM_FPS_NUM 30
 #define DEFAULT_VIDEO_STREAM_FPS_DEN 1
+#define DEFAULT_VIDEO_CODEC_PROFILE  "high"
+#define DEFAULT_VIDEO_CODEC_LEVEL    "3"
+
+#define DEFAULT_PROP_SOURCE_INDEX    (-1)
+#define DEFAULT_PROP_FRAMERATE       30.0
+#define DEFAULT_PROP_BITRATE         10000000
+#define DEFAULT_PROP_BITRATE_CONTROL GST_VIDEO_CONTROL_RATE_MAXBITRATE
+#define DEFAULT_PROP_QUANT_I_FRAMES  27
+#define DEFAULT_PROP_QUANT_P_FRAMES  28
+#define DEFAULT_PROP_QUANT_B_FRAMES  28
+#define DEFAULT_PROP_MIN_QP          10
+#define DEFAULT_PROP_MAX_QP          51
+#define DEFAULT_PROP_MIN_QP_I_FRAMES 10
+#define DEFAULT_PROP_MAX_QP_I_FRAMES 51
+#define DEFAULT_PROP_MIN_QP_P_FRAMES 10
+#define DEFAULT_PROP_MAX_QP_P_FRAMES 51
+#define DEFAULT_PROP_MIN_QP_B_FRAMES 10
+#define DEFAULT_PROP_MAX_QP_B_FRAMES 51
+
+#define GST_TYPE_VIDEO_PAD_CONTROL_RATE (gst_video_pad_control_rate_get_type ())
+static GType
+gst_video_pad_control_rate_get_type (void)
+{
+  static GType gtype = 0;
+  if (gtype == 0) {
+    static const GEnumValue values[] = {
+      {GST_VIDEO_CONTROL_RATE_DISABLE, "Disable", "disable"},
+      {GST_VIDEO_CONTROL_RATE_VARIABLE, "Variable", "variable"},
+      {GST_VIDEO_CONTROL_RATE_CONSTANT, "Constant", "constant"},
+      {GST_VIDEO_CONTROL_RATE_MAXBITRATE, "Max Bitrate", "maxbitrate"},
+      {GST_VIDEO_CONTROL_RATE_VARIABLE_SKIP_FRAMES,
+          "Variable Skip Frames", "constant-skip-frames"},
+      {GST_VIDEO_CONTROL_RATE_CONSTANT_SKIP_FRAMES,
+          "Constant Skip Frames", "variable-skip-frames"},
+      {GST_VIDEO_CONTROL_RATE_MAXBITRATE_SKIP_FRAMES,
+          "Max Bitrate Skip Frames", "maxbitrate-skip-frames"},
+      {0, NULL, NULL}
+    };
+    gtype = g_enum_register_static ("GstVideoControlRate", values);
+  }
+  return gtype;
+}
 
 enum
 {
   PROP_0,
+  PROP_VIDEO_SOURCE_INDEX,
 };
 
 static void
@@ -56,16 +102,23 @@ video_pad_worker_task (GstPad * pad)
 {
   GstDataQueue *buffers;
   GstDataQueueItem *item;
-  GstBuffer *gstbuffer;
 
   buffers = GST_QMMFSRC_VIDEO_PAD (pad)->buffers;
 
   if (gst_data_queue_pop (buffers, &item)) {
-    gstbuffer = GST_BUFFER (item->object);
-    gst_pad_push (pad, gstbuffer);
+    GstBuffer *buffer = GST_BUFFER (item->object);
+    GstMemory *memory = gst_buffer_get_memory (buffer, 0);
+
+    GST_TRACE_OBJECT (pad, "Buffer FD %d pts: %" GST_TIME_FORMAT ", dts: %"
+        GST_TIME_FORMAT ", duration: %" GST_TIME_FORMAT,
+        gst_fd_memory_get_fd (memory), GST_TIME_ARGS (buffer->pts),
+        GST_TIME_ARGS (buffer->dts), GST_TIME_ARGS (buffer->duration));
+    gst_memory_unref (memory);
+
+    gst_pad_push (pad, buffer);
     item->destroy (item);
   } else {
-    GST_INFO_OBJECT (gst_pad_get_parent (pad), "Pause video pad worker thread");
+    GST_INFO_OBJECT (pad, "Pause video pad worker thread");
     gst_pad_pause_task (pad);
   }
 }
@@ -75,7 +128,7 @@ video_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
 {
   gboolean success = TRUE;
 
-  GST_DEBUG_OBJECT (parent, "Received QUERY %s", GST_QUERY_TYPE_NAME (query));
+  GST_DEBUG_OBJECT (pad, "Received QUERY %s", GST_QUERY_TYPE_NAME (query));
 
   switch (GST_QUERY_TYPE (query)) {
     case GST_QUERY_LATENCY:
@@ -88,7 +141,7 @@ video_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
       // TODO This will change once GstBufferPool is implemented.
       max_latency = GST_CLOCK_TIME_NONE;
 
-      GST_DEBUG_OBJECT (parent, "Latency %" GST_TIME_FORMAT "/%" GST_TIME_FORMAT,
+      GST_DEBUG_OBJECT (pad, "Latency %" GST_TIME_FORMAT "/%" GST_TIME_FORMAT,
           GST_TIME_ARGS (min_latency), GST_TIME_ARGS (max_latency));
 
       // We are always live, the minimum latency is 1 frame and
@@ -109,7 +162,7 @@ video_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
 {
   gboolean success = TRUE;
 
-  GST_DEBUG_OBJECT (parent, "Received EVENT %s", GST_EVENT_TYPE_NAME (event));
+  GST_DEBUG_OBJECT (pad, "Received EVENT %s", GST_EVENT_TYPE_NAME (event));
 
   switch (GST_EVENT_TYPE (event)) {
     case GST_EVENT_FLUSH_START:
@@ -137,10 +190,10 @@ video_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
 }
 
 static gboolean
-video_pad_activate_mode (GstPad * pad, GstObject * parent,
-                         GstPadMode mode, gboolean active)
+video_pad_activate_mode (GstPad * pad, GstObject * parent, GstPadMode mode,
+    gboolean active)
 {
-  gboolean success = TRUE;
+  gboolean success = FALSE;
 
   switch (mode) {
     case GST_PAD_MODE_PUSH:
@@ -158,11 +211,11 @@ video_pad_activate_mode (GstPad * pad, GstObject * parent,
   }
 
   if (!success) {
-    GST_ERROR_OBJECT (parent, "Failed to activate video pad task!");
+    GST_ERROR_OBJECT (pad, "Failed to activate video pad task!");
     return success;
   }
 
-  GST_DEBUG_OBJECT (parent, "Video Pad (%u) mode: %s",
+  GST_DEBUG_OBJECT (pad, "Video Pad (%u) mode: %s",
       GST_QMMFSRC_VIDEO_PAD (pad)->index, active ? "ACTIVE" : "STOPED");
 
   // Call the default pad handler for activate mode.
@@ -170,7 +223,7 @@ video_pad_activate_mode (GstPad * pad, GstObject * parent,
 }
 
 static void
-video_pad_set_params (GstPad * pad, GstStructure *structure)
+video_pad_update_params (GstPad * pad, GstStructure * structure)
 {
   GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
   gint fps_n = 0, fps_d = 0;
@@ -194,23 +247,20 @@ video_pad_set_params (GstPad * pad, GstStructure *structure)
     level = gst_structure_get_string (structure, "level");
     gst_structure_set (vpad->params, "level", G_TYPE_STRING, level, NULL);
 
-    vpad->codec = GST_VIDEO_CODEC_TYPE_H264;
+    vpad->codec = GST_VIDEO_CODEC_H264;
     vpad->format = GST_VIDEO_FORMAT_ENCODED;
   } else if (gst_structure_has_name (structure, "video/x-raw")) {
-    vpad->codec = GST_VIDEO_CODEC_TYPE_NONE;
+    vpad->codec = GST_VIDEO_CODEC_NONE;
     vpad->format = gst_video_format_from_string (
         gst_structure_get_string (structure, "format"));
   }
-
-  if (gst_structure_has_field (structure, "source-index"))
-    gst_structure_get_int (structure, "source-index", &vpad->srcidx);
 
   GST_QMMFSRC_VIDEO_PAD_UNLOCK (pad);
 }
 
 GstPad *
 qmmfsrc_request_video_pad (GstPadTemplate * templ, const gchar * name,
-                           const guint index)
+    const guint index)
 {
   GstPad *srcpad = GST_PAD (g_object_new (
       GST_TYPE_QMMFSRC_VIDEO_PAD,
@@ -260,10 +310,11 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
 
   // Get the negotiated caps between the pad and its peer.
   caps = gst_pad_get_allowed_caps (pad);
+  g_return_val_if_fail (caps != NULL, FALSE);
 
   // Immediately return the fetched caps if they are fixed.
   if (gst_caps_is_fixed (caps)) {
-    video_pad_set_params (pad, gst_caps_get_structure (caps, 0));
+    video_pad_update_params (pad, gst_caps_get_structure (caps, 0));
     return TRUE;
   }
 
@@ -296,20 +347,41 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
         DEFAULT_VIDEO_STREAM_FPS_NUM, DEFAULT_VIDEO_STREAM_FPS_DEN);
   }
 
+  if (gst_structure_has_field (structure, "profile")) {
+    const gchar *profile = gst_structure_get_string (structure, "profile");
+
+    if (!profile) {
+      gst_structure_set (structure, "profile", G_TYPE_STRING,
+          DEFAULT_VIDEO_CODEC_PROFILE, NULL);
+      GST_DEBUG_OBJECT (pad, "Codec profile not set, using default value: %s",
+          DEFAULT_VIDEO_CODEC_PROFILE);
+    }
+  }
+
+  if (gst_structure_has_field (structure, "level")) {
+    const gchar *level = gst_structure_get_string (structure, "level");
+
+    if (!level) {
+      gst_structure_set (structure, "level", G_TYPE_STRING,
+          DEFAULT_VIDEO_CODEC_LEVEL, NULL);
+      GST_DEBUG_OBJECT (pad, "Codec level not set, using default value: %s",
+          DEFAULT_VIDEO_CODEC_LEVEL);
+    }
+  }
+
   gst_structure_remove_fields (structure, "stream-format", "alignment", NULL);
 
   caps = gst_caps_fixate (caps);
   gst_pad_set_caps (pad, caps);
 
-  video_pad_set_params (pad, structure);
+  video_pad_update_params (pad, structure);
   return TRUE;
 }
 
 void
 qmmfsrc_video_pad_flush_buffers_queue (GstPad * pad, gboolean flush)
 {
-  GST_INFO_OBJECT (gst_pad_get_parent(pad), "Flushing buffer queue: %s",
-      flush ? "TRUE" : "FALSE");
+  GST_INFO_OBJECT (pad, "Flushing buffer queue: %s", flush ? "TRUE" : "FALSE");
 
   gst_data_queue_set_flushing (GST_QMMFSRC_VIDEO_PAD (pad)->buffers, flush);
   gst_data_queue_flush (GST_QMMFSRC_VIDEO_PAD (pad)->buffers);
@@ -317,30 +389,47 @@ qmmfsrc_video_pad_flush_buffers_queue (GstPad * pad, gboolean flush)
 
 static void
 video_pad_set_property (GObject * object, guint property_id,
-                        const GValue * value, GParamSpec *pspec)
+    const GValue * value, GParamSpec *pspec)
 {
   GstQmmfSrcVideoPad *pad = GST_QMMFSRC_VIDEO_PAD (object);
+  const gchar *propname = g_param_spec_get_name (pspec);
+  GstState state = GST_STATE (pad);
+
+  if (!QMMFSRC_IS_PROPERTY_MUTABLE_IN_CURRENT_STATE(pspec, state)) {
+    GST_WARNING_OBJECT (pad, "Property '%s' change not supported in %s state!",
+        propname, gst_element_state_get_name (state));
+    return;
+  }
 
   GST_QMMFSRC_VIDEO_PAD_LOCK (pad);
 
   switch (property_id) {
+    case PROP_VIDEO_SOURCE_INDEX:
+      pad->srcidx = g_value_get_int (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (pad, property_id, pspec);
       break;
   }
 
   GST_QMMFSRC_VIDEO_PAD_UNLOCK (pad);
+
+  // Emit a 'notify' signal for the changed property.
+  g_object_notify_by_pspec (G_OBJECT (pad), pspec);
 }
 
 static void
-video_pad_get_property (GObject * object, guint property_id,
-                        GValue * value, GParamSpec * pspec)
+video_pad_get_property (GObject * object, guint property_id, GValue * value,
+    GParamSpec * pspec)
 {
   GstQmmfSrcVideoPad *pad = GST_QMMFSRC_VIDEO_PAD (object);
 
   GST_QMMFSRC_VIDEO_PAD_LOCK (pad);
 
   switch (property_id) {
+    case PROP_VIDEO_SOURCE_INDEX:
+      g_value_set_int (value, pad->srcidx);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (pad, property_id, pspec);
       break;
@@ -371,7 +460,7 @@ video_pad_finalize (GObject * object)
 
 static gboolean
 queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
-                  guint64 time, gpointer checkdata)
+    guint64 time, gpointer checkdata)
 {
   // There won't be any condition limiting for the buffer queue size.
   return FALSE;
@@ -387,6 +476,13 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
   gobject->set_property = GST_DEBUG_FUNCPTR (video_pad_set_property);
   gobject->finalize     = GST_DEBUG_FUNCPTR (video_pad_finalize);
 
+  g_object_class_install_property (gobject, PROP_VIDEO_SOURCE_INDEX,
+      g_param_spec_int ("source-index", "Source index",
+          "Index of the source video pad to which this pad will be linked",
+          -1, G_MAXINT, DEFAULT_PROP_SOURCE_INDEX,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+
   GST_DEBUG_CATEGORY_INIT (qmmfsrc_video_pad_debug, "qmmfsrc-video", 0,
       "QTI QMMF Source video pad");
 }
@@ -400,13 +496,41 @@ qmmfsrc_video_pad_init (GstQmmfSrcVideoPad * pad)
 
   pad->width     = -1;
   pad->height    = -1;
-  pad->framerate = 0;
+  pad->framerate = 0.0;
   pad->format    = GST_VIDEO_FORMAT_UNKNOWN;
-  pad->codec     = GST_VIDEO_CODEC_TYPE_UNKNOWN;
+  pad->codec     = GST_VIDEO_CODEC_UNKNOWN;
   pad->params    = gst_structure_new_empty ("codec-params");
 
   pad->duration  = 0;
   pad->tsbase    = 0;
+
+  // TODO temporality solution until properties are implemented.
+  gst_structure_set (pad->params, "bitrate", G_TYPE_UINT,
+      DEFAULT_PROP_BITRATE, NULL);
+  gst_structure_set (pad->params, "bitrate-control",
+      GST_TYPE_VIDEO_PAD_CONTROL_RATE, DEFAULT_PROP_BITRATE_CONTROL, NULL);
+  gst_structure_set (pad->params, "quant-i-frames", G_TYPE_UINT,
+      DEFAULT_PROP_QUANT_I_FRAMES, NULL);
+  gst_structure_set (pad->params, "quant-p-frames", G_TYPE_UINT,
+      DEFAULT_PROP_QUANT_P_FRAMES, NULL);
+  gst_structure_set (pad->params, "quant-b-frames", G_TYPE_UINT,
+      DEFAULT_PROP_QUANT_B_FRAMES, NULL);
+  gst_structure_set (pad->params, "min-qp", G_TYPE_UINT,
+      DEFAULT_PROP_MIN_QP, NULL);
+  gst_structure_set (pad->params, "max-qp", G_TYPE_UINT,
+      DEFAULT_PROP_MAX_QP, NULL);
+  gst_structure_set (pad->params, "min-qp-i-frames", G_TYPE_UINT,
+      DEFAULT_PROP_MIN_QP_I_FRAMES, NULL);
+  gst_structure_set (pad->params, "max-qp-i-frames", G_TYPE_UINT,
+      DEFAULT_PROP_MAX_QP_I_FRAMES, NULL);
+  gst_structure_set (pad->params, "min-qp-p-frames", G_TYPE_UINT,
+      DEFAULT_PROP_MIN_QP_P_FRAMES, NULL);
+  gst_structure_set (pad->params, "max-qp-p-frames", G_TYPE_UINT,
+      DEFAULT_PROP_MAX_QP_P_FRAMES, NULL);
+  gst_structure_set (pad->params, "min-qp-b-frames", G_TYPE_UINT,
+      DEFAULT_PROP_MIN_QP_B_FRAMES, NULL);
+  gst_structure_set (pad->params, "max-qp-b-frames", G_TYPE_UINT,
+      DEFAULT_PROP_MAX_QP_B_FRAMES, NULL);
 
   pad->buffers   = gst_data_queue_new (queue_is_full_cb, NULL, NULL, pad);
 }

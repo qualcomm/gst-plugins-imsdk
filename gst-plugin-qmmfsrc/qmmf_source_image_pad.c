@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -32,6 +32,9 @@
 #include <gst/gstplugin.h>
 #include <gst/gstelementfactory.h>
 #include <gst/gstpadtemplate.h>
+#include <gst/allocators/allocators.h>
+
+#include "qmmf_source_utils.h"
 
 // Declare qmmfsrc_image_pad_class_init() and qmmfsrc_image_pad_init()
 // functions, implement qmmfsrc_image_pad_get_type() function and set
@@ -46,6 +49,14 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_image_pad_debug);
 #define DEFAULT_IMAGE_STREAM_FPS_NUM 30
 #define DEFAULT_IMAGE_STREAM_FPS_DEN 1
 
+#define DEFAULT_PROP_QUALITY            85
+#define DEFAULT_PROP_THUMBNAIL_WIDTH    0
+#define DEFAULT_PROP_THUMBNAIL_HEIGHT   0
+#define DEFAULT_PROP_THUMBNAIL_QUALITY  85
+#define DEFAULT_PROP_SCREENNAIL_WIDTH   0
+#define DEFAULT_PROP_SCREENNAIL_HEIGHT  0
+#define DEFAULT_PROP_SCREENNAIL_QUALITY 85
+
 enum
 {
   PROP_0,
@@ -56,16 +67,23 @@ image_pad_worker_task (GstPad * pad)
 {
   GstDataQueue *buffers;
   GstDataQueueItem *item;
-  GstBuffer *gstbuffer;
 
   buffers = GST_QMMFSRC_IMAGE_PAD (pad)->buffers;
 
   if (gst_data_queue_pop (buffers, &item)) {
-    gstbuffer = GST_BUFFER (item->object);
-    gst_pad_push (pad, gstbuffer);
+    GstBuffer *buffer = GST_BUFFER (item->object);
+    GstMemory *memory = gst_buffer_get_memory (buffer, 0);
+
+    GST_TRACE_OBJECT (pad, "Buffer FD %d pts: %" GST_TIME_FORMAT ", dts: %"
+        GST_TIME_FORMAT ", duration: %" GST_TIME_FORMAT,
+        gst_fd_memory_get_fd (memory), GST_TIME_ARGS (buffer->pts),
+        GST_TIME_ARGS (buffer->dts), GST_TIME_ARGS (buffer->duration));
+    gst_memory_unref (memory);
+
+    gst_pad_push (pad, buffer);
     item->destroy (item);
   } else {
-    GST_INFO_OBJECT (gst_pad_get_parent (pad), "Pause image pad worker thread");
+    GST_INFO_OBJECT (pad, "Pause image pad worker thread");
     gst_pad_pause_task (pad);
   }
 }
@@ -75,7 +93,7 @@ image_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
 {
   gboolean success = TRUE;
 
-  GST_DEBUG_OBJECT (parent, "Received QUERY %s", GST_QUERY_TYPE_NAME (query));
+  GST_DEBUG_OBJECT (pad, "Received QUERY %s", GST_QUERY_TYPE_NAME (query));
 
   switch (GST_QUERY_TYPE (query)) {
     case GST_QUERY_LATENCY:
@@ -88,7 +106,7 @@ image_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
       // TODO This will change once GstBufferPool is implemented.
       max_latency = GST_CLOCK_TIME_NONE;
 
-      GST_DEBUG_OBJECT (parent, "Latency %" GST_TIME_FORMAT "/%" GST_TIME_FORMAT,
+      GST_DEBUG_OBJECT (pad, "Latency %" GST_TIME_FORMAT "/%" GST_TIME_FORMAT,
           GST_TIME_ARGS (min_latency), GST_TIME_ARGS (max_latency));
 
       // We are always live, the minimum latency is 1 frame and
@@ -109,7 +127,7 @@ image_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
 {
   gboolean success = TRUE;
 
-  GST_DEBUG_OBJECT (parent, "Received EVENT %s", GST_EVENT_TYPE_NAME (event));
+  GST_DEBUG_OBJECT (pad, "Received EVENT %s", GST_EVENT_TYPE_NAME (event));
 
   switch (GST_EVENT_TYPE (event)) {
     case GST_EVENT_FLUSH_START:
@@ -141,8 +159,8 @@ image_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
 }
 
 static gboolean
-image_pad_activate_mode (GstPad * pad, GstObject * parent,
-                         GstPadMode mode, gboolean active)
+image_pad_activate_mode (GstPad * pad, GstObject * parent, GstPadMode mode,
+    gboolean active)
 {
   gboolean success = TRUE;
 
@@ -162,11 +180,11 @@ image_pad_activate_mode (GstPad * pad, GstObject * parent,
   }
 
   if (!success) {
-    GST_ERROR_OBJECT (parent, "Failed to activate image pad task!");
+    GST_ERROR_OBJECT (pad, "Failed to activate image pad task!");
     return success;
   }
 
-  GST_DEBUG_OBJECT (parent, "Video Pad (%u) mode: %s",
+  GST_DEBUG_OBJECT (pad, "Video Pad (%u) mode: %s",
       GST_QMMFSRC_IMAGE_PAD (pad)->index, active ? "ACTIVE" : "STOPED");
 
   // Call the default pad handler for activate mode.
@@ -204,7 +222,7 @@ image_pad_set_params (GstPad * pad, GstStructure *structure)
 
 GstPad *
 qmmfsrc_request_image_pad (GstPadTemplate * templ, const gchar * name,
-                           const guint index)
+    const guint index)
 {
   GstPad *srcpad = GST_PAD (g_object_new (
       GST_TYPE_QMMFSRC_IMAGE_PAD,
@@ -247,8 +265,7 @@ qmmfsrc_release_image_pad (GstElement * element, GstPad * pad)
 void
 qmmfsrc_image_pad_flush_buffers_queue (GstPad * pad, gboolean flush)
 {
-  GST_INFO_OBJECT (gst_pad_get_parent (pad), "Flushing buffer queue: %s",
-      flush ? "TRUE" : "FALSE");
+  GST_INFO_OBJECT (pad, "Flushing buffer queue: %s", flush ? "TRUE" : "FALSE");
 
   gst_data_queue_set_flushing (GST_QMMFSRC_IMAGE_PAD (pad)->buffers, flush);
   gst_data_queue_flush (GST_QMMFSRC_IMAGE_PAD (pad)->buffers);
@@ -264,6 +281,7 @@ qmmfsrc_image_pad_fixate_caps (GstPad * pad)
 
   // Get the negotiated caps between the pad and its peer.
   caps = gst_pad_get_allowed_caps (pad);
+  g_return_val_if_fail (caps != NULL, FALSE);
 
   // Immediately return the fetched caps if they are fixed.
   if (gst_caps_is_fixed (caps)) {
@@ -309,9 +327,17 @@ qmmfsrc_image_pad_fixate_caps (GstPad * pad)
 
 static void
 image_pad_set_property (GObject * object, guint property_id,
-                        const GValue * value, GParamSpec * pspec)
+    const GValue * value, GParamSpec * pspec)
 {
   GstQmmfSrcImagePad *pad = GST_QMMFSRC_IMAGE_PAD (object);
+  const gchar *propname = g_param_spec_get_name (pspec);
+  GstState state = GST_STATE (pad);
+
+  if (!QMMFSRC_IS_PROPERTY_MUTABLE_IN_CURRENT_STATE(pspec, state)) {
+    GST_WARNING_OBJECT (pad, "Property '%s' change not supported in %s state!",
+        propname, gst_element_state_get_name (state));
+    return;
+  }
 
   GST_QMMFSRC_IMAGE_PAD_LOCK (pad);
 
@@ -322,11 +348,14 @@ image_pad_set_property (GObject * object, guint property_id,
   }
 
   GST_QMMFSRC_IMAGE_PAD_UNLOCK (pad);
+
+  // Emit a 'notify' signal for the changed property.
+  g_object_notify_by_pspec (G_OBJECT (pad), pspec);
 }
 
 static void
-image_pad_get_property (GObject * object, guint property_id,
-                        GValue * value, GParamSpec * pspec)
+image_pad_get_property (GObject * object, guint property_id, GValue * value,
+    GParamSpec * pspec)
 {
   GstQmmfSrcImagePad *pad = GST_QMMFSRC_IMAGE_PAD (object);
 
@@ -358,7 +387,7 @@ image_pad_finalize (GObject * object)
     pad->params = NULL;
   }
 
-  G_OBJECT_CLASS(qmmfsrc_image_pad_parent_class)->finalize(object);
+  G_OBJECT_CLASS (qmmfsrc_image_pad_parent_class)->finalize(object);
 }
 
 static gboolean
@@ -398,6 +427,22 @@ qmmfsrc_image_pad_init (GstQmmfSrcImagePad * pad)
 
   pad->duration  = 0;
   pad->tsbase    = 0;
+
+  // TODO temporality solution until properties are implemented.
+  gst_structure_set (pad->params, "quality", G_TYPE_UINT,
+      DEFAULT_PROP_QUALITY, NULL);
+  gst_structure_set (pad->params, "thumbnail-width", G_TYPE_UINT,
+      DEFAULT_PROP_THUMBNAIL_WIDTH, NULL);
+  gst_structure_set (pad->params, "thumbnail-height", G_TYPE_UINT,
+      DEFAULT_PROP_THUMBNAIL_HEIGHT, NULL);
+  gst_structure_set (pad->params, "thumbnail-quality", G_TYPE_UINT,
+      DEFAULT_PROP_THUMBNAIL_QUALITY, NULL);
+  gst_structure_set (pad->params, "screennail-width", G_TYPE_UINT,
+      DEFAULT_PROP_SCREENNAIL_WIDTH, NULL);
+  gst_structure_set (pad->params, "screennail-height", G_TYPE_UINT,
+      DEFAULT_PROP_SCREENNAIL_HEIGHT, NULL);
+  gst_structure_set (pad->params, "screennail-quality", G_TYPE_UINT,
+      DEFAULT_PROP_SCREENNAIL_QUALITY, NULL);
 
   pad->buffers   = gst_data_queue_new (queue_is_full_cb, NULL, NULL, pad);
 }

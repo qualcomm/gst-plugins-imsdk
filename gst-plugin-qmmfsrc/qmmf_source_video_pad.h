@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -36,28 +36,38 @@
 
 G_BEGIN_DECLS
 
-#define QMMFSRC_COMMON_VIDEO_CAPS(formats) \
-    "format = (string) " formats ", "      \
+#define QMMFSRC_COMMON_VIDEO_CAPS \
     "width = (int) [ 16, 1920 ], "         \
     "height = (int) [ 16, 1080 ], "        \
-    "source-index = (int) [ -1, 20 ], "      \
     "framerate = (fraction) [ 0/1, 30/1 ]"
 
-#define QMMFSRC_VIDEO_H264_CAPS(formats)                       \
-    "video/x-h264, "                                           \
-    QMMFSRC_COMMON_VIDEO_CAPS(formats)
+#define QMMFSRC_VIDEO_H264_PROFILES \
+    "baseline, main, high"
 
-#define QMMFSRC_VIDEO_H264_CAPS_WITH_FEATURES(features, formats) \
-    "video/x-h264(" features "), "                               \
-    QMMFSRC_COMMON_VIDEO_CAPS(formats)
+#define QMMFSRC_VIDEO_H264_LEVELS \
+    "1, 1.3, 2, 2.1, 2.2, 3, 3.1, 3.2, 4, 4.1, 4.2, 5, 5.1, 5.2"
+
+#define QMMFSRC_VIDEO_H264_CAPS                                \
+    "video/x-h264, "                                           \
+    "profile = (string) { " QMMFSRC_VIDEO_H264_PROFILES " }, " \
+    "level = (string) { " QMMFSRC_VIDEO_H264_LEVELS " }, "     \
+    QMMFSRC_COMMON_VIDEO_CAPS
+
+#define QMMFSRC_VIDEO_H264_CAPS_WITH_FEATURES(features)        \
+    "video/x-h264(" features "), "                             \
+    "profile = (string) { " QMMFSRC_VIDEO_H264_PROFILES " }, " \
+    "level = (string) { " QMMFSRC_VIDEO_H264_LEVELS " }, "     \
+    QMMFSRC_COMMON_VIDEO_CAPS
 
 #define QMMFSRC_VIDEO_RAW_CAPS(formats) \
     "video/x-raw, "                     \
-    QMMFSRC_COMMON_VIDEO_CAPS(formats)
+    "format = (string) " formats ", "   \
+    QMMFSRC_COMMON_VIDEO_CAPS
 
 #define QMMFSRC_VIDEO_RAW_CAPS_WITH_FEATURES(features, formats) \
     "video/x-raw(" features "), "                               \
-    QMMFSRC_COMMON_VIDEO_CAPS(formats)
+    "format = (string) " formats ", "                           \
+    QMMFSRC_COMMON_VIDEO_CAPS
 
 // Boilerplate cast macros and type check macros for QMMF Source Video Pad.
 #define GST_TYPE_QMMFSRC_VIDEO_PAD (qmmfsrc_video_pad_get_type())
@@ -79,10 +89,23 @@ G_BEGIN_DECLS
 #define VIDEO_TRACK_ID_OFFSET (0x01)
 
 typedef enum {
-  GST_VIDEO_CODEC_TYPE_UNKNOWN,
-  GST_VIDEO_CODEC_TYPE_NONE,
-  GST_VIDEO_CODEC_TYPE_H264,
-} GstVideoCodecType;
+  GST_VIDEO_CODEC_UNKNOWN,
+  GST_VIDEO_CODEC_NONE,
+  GST_VIDEO_CODEC_H264,
+} GstVideoCodec;
+
+enum
+{
+  GST_VIDEO_CONTROL_RATE_DISABLE,
+  GST_VIDEO_CONTROL_RATE_VARIABLE,
+  GST_VIDEO_CONTROL_RATE_CONSTANT,
+  GST_VIDEO_CONTROL_RATE_MAXBITRATE,
+  GST_VIDEO_CONTROL_RATE_VARIABLE_SKIP_FRAMES,
+  GST_VIDEO_CONTROL_RATE_CONSTANT_SKIP_FRAMES,
+  GST_VIDEO_CONTROL_RATE_MAXBITRATE_SKIP_FRAMES,
+};
+
+typedef void (*GstVideoParamCb) (GstPad * pad, guint param_id, gpointer data);
 
 typedef struct _GstQmmfSrcVideoPad GstQmmfSrcVideoPad;
 typedef struct _GstQmmfSrcVideoPadClass GstQmmfSrcVideoPadClass;
@@ -105,18 +128,18 @@ struct _GstQmmfSrcVideoPad {
   /// QMMF Recorder track height, set by the pad capabilities.
   gint              height;
   /// QMMF Recorder track framerate, set by the pad capabilities.
-  gfloat            framerate;
+  gdouble           framerate;
   /// GStreamer video pad output buffers format.
   GstVideoFormat    format;
   /// Whether the GStreamer stream is uncompressed or compressed and its type.
-  GstVideoCodecType codec;
+  GstVideoCodec     codec;
   /// Agnostic structure containing codec specific parameters.
   GstStructure     *params;
 
   /// QMMF Recorder track buffers duration, calculated from framerate.
-  guint64           duration;
+  GstClockTime      duration;
   /// Timestamp base used to normalize buffer timestamps to running time.
-  guint64           tsbase;
+  GstClockTime      tsbase;
 
   /// Queue for GStreamer buffers wrappers around QMMF Recorder buffers.
   GstDataQueue     *buffers;
@@ -135,11 +158,11 @@ GstPad * qmmfsrc_request_video_pad (GstPadTemplate * templ, const gchar * name,
                                     const guint index);
 
 /// Deactivates and releases the memory allocated for the source video pad.
-void     qmmfsrc_release_video_pad (GstElement * element, GstPad * pad);
+void qmmfsrc_release_video_pad (GstElement * element, GstPad * pad);
 
 /// Sets the GST buffers queue to flushing state if flushing is TRUE.
 /// If set to flushing state, any incoming data on the queue will be discarded.
-void     qmmfsrc_video_pad_flush_buffers_queue (GstPad * pad, gboolean flush);
+void qmmfsrc_video_pad_flush_buffers_queue (GstPad * pad, gboolean flush);
 
 /// Modifies the pad capabilities into a representation with only fixed values.
 gboolean qmmfsrc_video_pad_fixate_caps (GstPad * pad);

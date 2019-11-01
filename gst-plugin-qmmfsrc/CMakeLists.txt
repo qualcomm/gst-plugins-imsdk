@@ -38,11 +38,12 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-variable")
 set(GST_QMMFSRC_PLUGIN gstqmmfsrc)
 
 add_library(${GST_QMMFSRC_PLUGIN} SHARED
-  qmmf_source.cc
+  qmmf_source.c
   qmmf_source_utils.c
-  qmmf_source_video_pad.cc
-  qmmf_source_audio_pad.cc
-  qmmf_source_image_pad.cc
+  qmmf_source_video_pad.c
+  qmmf_source_audio_pad.c
+  qmmf_source_image_pad.c
+  qmmf_source_context.cc
 )
 
 target_include_directories(${GST_QMMFSRC_PLUGIN} PRIVATE
@@ -65,4 +66,3 @@ install(
               GROUP_EXECUTE GROUP_READ
 )
 
-add_subdirectory(test)

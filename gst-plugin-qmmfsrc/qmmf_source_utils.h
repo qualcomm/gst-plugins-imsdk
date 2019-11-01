@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -52,7 +52,7 @@ G_BEGIN_DECLS
   } \
 }
 
-#define QMMFSRC_RETURN_IF_FAIL(element, expression, value, ...) \
+#define QMMFSRC_RETURN_IF_FAIL(element, expression, ...) \
 { \
   if (!(expression)) { \
     GST_ERROR_OBJECT (element, __VA_ARGS__); \
@@ -60,7 +60,7 @@ G_BEGIN_DECLS
   } \
 }
 
-#define QMMFSRC_RETURN_IF_FAIL_WITH_CLEAN(element, expression, cleanup, value,...) \
+#define QMMFSRC_RETURN_IF_FAIL_WITH_CLEAN(element, expression, cleanup,...) \
 { \
   if (!(expression)) { \
     GST_ERROR_OBJECT (element, __VA_ARGS__); \
@@ -68,6 +68,12 @@ G_BEGIN_DECLS
     return; \
   } \
 }
+
+#define QMMFSRC_IS_PROPERTY_MUTABLE_IN_CURRENT_STATE(pspec, state) \
+    ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
+        : ((pspec->flags & GST_PARAM_MUTABLE_PAUSED) ? (state <= GST_STATE_PAUSED) \
+            : ((pspec->flags & GST_PARAM_MUTABLE_READY) ? (state <= GST_STATE_READY) \
+                : (state <= GST_STATE_NULL))))
 
 #define GST_TYPE_QMMFSRC_EFFECT_MODE (gst_qmmfsrc_effect_mode_get_type())
 #define GST_TYPE_QMMFSRC_SCENE_MODE (gst_qmmfsrc_scene_mode_get_type())

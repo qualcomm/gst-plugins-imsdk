@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -32,6 +32,9 @@
 #include <gst/gstplugin.h>
 #include <gst/gstelementfactory.h>
 #include <gst/gstpadtemplate.h>
+#include <gst/allocators/allocators.h>
+
+#include "qmmf_source_utils.h"
 
 // Declare qmmfsrc_audio_pad_class_init() and qmmfsrc_audio_pad_init()
 // functions, implement qmmfsrc_audio_pad_get_type() function and set
@@ -63,16 +66,23 @@ audio_pad_worker_task (GstPad * pad)
 {
   GstDataQueue *buffers;
   GstDataQueueItem *item;
-  GstBuffer *gstbuffer;
 
   buffers = GST_QMMFSRC_AUDIO_PAD (pad)->buffers;
 
   if (gst_data_queue_pop (buffers, &item)) {
-    gstbuffer = GST_BUFFER (item->object);
-    gst_pad_push (pad, gstbuffer);
+    GstBuffer *buffer = GST_BUFFER (item->object);
+    GstMemory *memory = gst_buffer_get_memory (buffer, 0);
+
+    GST_TRACE_OBJECT (pad, "Buffer FD %d pts: %" GST_TIME_FORMAT ", dts: %"
+        GST_TIME_FORMAT ", duration: %" GST_TIME_FORMAT,
+        gst_fd_memory_get_fd (memory), GST_TIME_ARGS (buffer->pts),
+        GST_TIME_ARGS (buffer->dts), GST_TIME_ARGS (buffer->duration));
+    gst_memory_unref (memory);
+
+    gst_pad_push (pad, buffer);
     item->destroy (item);
   } else {
-    GST_INFO_OBJECT (gst_pad_get_parent (pad), "Pause audio pad worker thread");
+    GST_INFO_OBJECT (pad, "Pause audio pad worker thread");
     gst_pad_pause_task (pad);
   }
 }
@@ -82,7 +92,7 @@ audio_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
 {
   gboolean success = TRUE;
 
-  GST_DEBUG_OBJECT (parent, "Received QUERY %s", GST_QUERY_TYPE_NAME (query));
+  GST_DEBUG_OBJECT (pad, "Received QUERY %s", GST_QUERY_TYPE_NAME (query));
 
   switch (GST_QUERY_TYPE (query)) {
     case GST_QUERY_LATENCY:
@@ -95,7 +105,7 @@ audio_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
       // TODO This will change once GstBufferPool is implemented.
       max_latency = GST_CLOCK_TIME_NONE;
 
-      GST_DEBUG_OBJECT (parent, "Latency %" GST_TIME_FORMAT "/%" GST_TIME_FORMAT,
+      GST_DEBUG_OBJECT (pad, "Latency %" GST_TIME_FORMAT "/%" GST_TIME_FORMAT,
           GST_TIME_ARGS (min_latency), GST_TIME_ARGS (max_latency));
 
       // We are always live, the minimum latency is 1 frame and
@@ -116,7 +126,7 @@ audio_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
 {
   gboolean success = TRUE;
 
-  GST_DEBUG_OBJECT (parent, "Received EVENT %s", GST_EVENT_TYPE_NAME (event));
+  GST_DEBUG_OBJECT (pad, "Received EVENT %s", GST_EVENT_TYPE_NAME (event));
 
   switch (GST_EVENT_TYPE (event)) {
     case GST_EVENT_FLUSH_START:
@@ -144,8 +154,8 @@ audio_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
 }
 
 static gboolean
-audio_pad_activate_mode (GstPad * pad, GstObject * parent,
-                         GstPadMode mode, gboolean active)
+audio_pad_activate_mode (GstPad * pad, GstObject * parent, GstPadMode mode,
+    gboolean active)
 {
   gboolean success = TRUE;
 
@@ -165,11 +175,11 @@ audio_pad_activate_mode (GstPad * pad, GstObject * parent,
   }
 
   if (!success) {
-    GST_ERROR_OBJECT (parent, "Failed to activate audio pad task!");
+    GST_ERROR_OBJECT (pad, "Failed to activate audio pad task!");
     return success;
   }
 
-  GST_DEBUG_OBJECT (parent, "Audio Pad (%u) mode: %s",
+  GST_DEBUG_OBJECT (pad, "Audio Pad (%u) mode: %s",
       GST_QMMFSRC_AUDIO_PAD (pad)->index, active ? "ACTIVE" : "STOPED");
 
   // Call the default pad handler for activate mode.
@@ -226,9 +236,8 @@ audio_pad_set_params (GstPad * pad, GstStructure *structure)
       apad->bitdepth = 32;
     }
 
-    apad->duration = gst_util_uint64_scale_int (
-        GST_SECOND, apad->channels, apad->samplerate);
-    apad->duration *= G_GUINT64_CONSTANT(1000);
+    // Pulse audio has a hardcoded framerate of 20 fps.
+    apad->duration = gst_util_uint64_scale_int (GST_SECOND, 1, 20);
   }
 
   apad->format = GST_AUDIO_FORMAT_ENCODED;
@@ -238,7 +247,7 @@ audio_pad_set_params (GstPad * pad, GstStructure *structure)
 
 GstPad *
 qmmfsrc_request_audio_pad (GstPadTemplate * templ, const gchar * name,
-                           const guint index)
+    const guint index)
 {
   GstPad *srcpad = GST_PAD (g_object_new (
       GST_TYPE_QMMFSRC_AUDIO_PAD,
@@ -281,8 +290,7 @@ qmmfsrc_release_audio_pad (GstElement * element, GstPad * pad)
 void
 qmmfsrc_audio_pad_flush_buffers_queue (GstPad * pad, gboolean flush)
 {
-  GST_INFO_OBJECT (gst_pad_get_parent (pad), "Flushing buffer queue: %s",
-      flush ? "TRUE" : "FALSE");
+  GST_INFO_OBJECT (pad, "Flushing buffer queue: %s", flush ? "TRUE" : "FALSE");
 
   gst_data_queue_set_flushing (GST_QMMFSRC_AUDIO_PAD (pad)->buffers, flush);
   gst_data_queue_flush (GST_QMMFSRC_AUDIO_PAD (pad)->buffers);
@@ -400,9 +408,17 @@ qmmfsrc_audio_pad_fixate_caps (GstPad * pad)
 
 static void
 audio_pad_set_property (GObject * object, guint property_id,
-                        const GValue * value, GParamSpec * pspec)
+    const GValue * value, GParamSpec * pspec)
 {
   GstQmmfSrcAudioPad *pad = GST_QMMFSRC_AUDIO_PAD (object);
+  const gchar *propname = g_param_spec_get_name (pspec);
+  GstState state = GST_STATE (pad);
+
+  if (!QMMFSRC_IS_PROPERTY_MUTABLE_IN_CURRENT_STATE(pspec, state)) {
+    GST_WARNING_OBJECT (pad, "Property '%s' change not supported in %s state!",
+        propname, gst_element_state_get_name (state));
+    return;
+  }
 
   GST_QMMFSRC_AUDIO_PAD_LOCK (pad);
 
@@ -413,11 +429,14 @@ audio_pad_set_property (GObject * object, guint property_id,
   }
 
   GST_QMMFSRC_AUDIO_PAD_UNLOCK (pad);
+
+  // Emit a 'notify' signal for the changed property.
+  g_object_notify_by_pspec (G_OBJECT (pad), pspec);
 }
 
 static void
-audio_pad_get_property (GObject * object, guint property_id,
-                        GValue * value, GParamSpec * pspec)
+audio_pad_get_property (GObject * object, guint property_id, GValue * value,
+    GParamSpec * pspec)
 {
   GstQmmfSrcAudioPad *pad = GST_QMMFSRC_AUDIO_PAD (object);
 
@@ -454,7 +473,7 @@ audio_pad_finalize (GObject * object)
 
 static gboolean
 queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
-                  guint64 time, gpointer checkdata)
+    guint64 time, gpointer checkdata)
 {
   // There won't be any condition limiting for the buffer queue size.
   return FALSE;
