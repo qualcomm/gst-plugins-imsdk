@@ -707,25 +707,30 @@ gst_video_transform_fixate_format (GstVideoTransform *vtrans, GstCaps * incaps,
 
 static gboolean
 gst_video_transform_fill_pixel_aspect_ratio (GstVideoTransform * vtrans,
-    GstPadDirection direction, GstStructure * inputs, GstStructure * outputs)
+    GstPadDirection direction, GstStructure * input, GstStructure * output)
 {
+  const GValue *in_par, *out_par;
+
+  in_par = gst_structure_get_value (input, "pixel-aspect-ratio");
+  out_par = gst_structure_get_value (output, "pixel-aspect-ratio");
+
   switch (direction) {
     case GST_PAD_SRC:
-      if (!gst_structure_has_field (inputs, "pixel-aspect-ratio"))
-        gst_structure_set (inputs, "pixel-aspect-ratio",
+      if ((NULL == in_par) || !gst_value_is_fixed (in_par))
+        gst_structure_set (input, "pixel-aspect-ratio",
             GST_TYPE_FRACTION, 1, 1, NULL);
 
-      if (!gst_structure_has_field (outputs, "pixel-aspect-ratio"))
-        gst_structure_set (outputs, "pixel-aspect-ratio",
+      if ((NULL == out_par) || !gst_value_is_fixed (out_par))
+        gst_structure_set (output, "pixel-aspect-ratio",
             GST_TYPE_FRACTION, 1, 1, NULL);
       break;
     case GST_PAD_SINK:
-      if (!gst_structure_has_field (inputs, "pixel-aspect-ratio"))
-        gst_structure_set (inputs, "pixel-aspect-ratio",
+      if ((NULL == in_par) || !gst_value_is_fixed (in_par))
+        gst_structure_set (input, "pixel-aspect-ratio",
             GST_TYPE_FRACTION, 1, 1, NULL);
 
-      if (!gst_structure_has_field (outputs, "pixel-aspect-ratio"))
-        gst_structure_set (outputs, "pixel-aspect-ratio",
+      if (NULL == out_par)
+        gst_structure_set (output, "pixel-aspect-ratio",
             GST_TYPE_FRACTION_RANGE, 1, G_MAXINT, G_MAXINT, 1, NULL);
       break;
     case GST_PAD_UNKNOWN:
@@ -1331,7 +1336,7 @@ gst_video_transform_fixate_dimensions (GstVideoTransform * vtrans,
       gst_structure_set (output, "pixel-aspect-ratio", GST_TYPE_FRACTION,
           set_par_n, set_par_d, NULL);
 
-      GST_DEBUG_OBJECT (vtrans, "Output dimensions fixated to: %d/%d, and PAR"
+      GST_DEBUG_OBJECT (vtrans, "Output dimensions fixated to: %dx%d, and PAR"
           " fixated to: %d/%d", out_width, out_height, set_par_n, set_par_d);
 
       gst_structure_free (structure);
@@ -1360,7 +1365,7 @@ gst_video_transform_fixate_dimensions (GstVideoTransform * vtrans,
       gst_structure_set (output, "pixel-aspect-ratio", GST_TYPE_FRACTION,
           set_par_n, set_par_d, NULL);
 
-      GST_DEBUG_OBJECT (vtrans, "Output dimensions fixated to: %d/%d, and PAR"
+      GST_DEBUG_OBJECT (vtrans, "Output dimensions fixated to: %dx%d, and PAR"
           " fixated to: %d/%d", out_width, out_height, set_par_n, set_par_d);
 
       gst_structure_free (structure);
@@ -1389,7 +1394,7 @@ gst_video_transform_fixate_dimensions (GstVideoTransform * vtrans,
     gst_structure_set (output, "pixel-aspect-ratio", GST_TYPE_FRACTION,
         out_par_n, out_par_d, NULL);
 
-    GST_DEBUG_OBJECT (vtrans, "Output dimensions fixated to: %d/%d, and PAR"
+    GST_DEBUG_OBJECT (vtrans, "Output dimensions fixated to: %dx%d, and PAR"
         " fixated to: %d/%d", out_width, out_height, out_par_n, out_par_d);
   }
 
@@ -1401,11 +1406,17 @@ gst_video_transform_fixate_caps (GstBaseTransform * trans,
     GstPadDirection direction, GstCaps * incaps, GstCaps * outcaps)
 {
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM (trans);
-  gboolean success;
+  GstStructure *input, *output;
 
   // Truncate and make the output caps writable.
   outcaps = gst_caps_truncate (outcaps);
   outcaps = gst_caps_make_writable (outcaps);
+
+  output = gst_caps_get_structure (outcaps, 0);
+
+  // Take a copy of the input caps structure so we can freely modify it.
+  input = gst_caps_get_structure (incaps, 0);
+  input = gst_structure_copy (input);
 
   GST_DEBUG_OBJECT (vtrans, "Trying to fixate output caps %" GST_PTR_FORMAT
       " based on caps %" GST_PTR_FORMAT, outcaps, incaps);
@@ -1414,18 +1425,16 @@ gst_video_transform_fixate_caps (GstBaseTransform * trans,
   gst_video_transform_fixate_format (vtrans, incaps, outcaps);
 
   {
-    // Fixate output width, height and PAR.
-    GstStructure *input, *output;
-    gint width = 0, height = 0;
-    const GValue *par = NULL;
-
-    input = gst_caps_get_structure (incaps, 0);
-    output = gst_caps_get_structure (outcaps, 0);
-
     // Fill the pixel-aspect-ratio fields if they weren't set in the caps.
-    success = gst_video_transform_fill_pixel_aspect_ratio (
+    gboolean success = gst_video_transform_fill_pixel_aspect_ratio (
         vtrans, direction, input, output);
     g_return_val_if_fail (success, outcaps);
+  }
+
+  {
+    // Fixate output width, height and PAR.
+    gint width = 0, height = 0;
+    const GValue *par = NULL;
 
     // Retrieve the output width and height.
     gst_structure_get_int (output, "width", &width);
@@ -1463,8 +1472,19 @@ gst_video_transform_transform_frame (GstVideoFilter * filter,
     GstVideoFrame * inframe, GstVideoFrame * outframe)
 {
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM_CAST (filter);
+  GstClockTime ts_begin, ts_end;
+  GstClockTimeDiff timedelta;
+
+  ts_begin = gst_util_get_timestamp ();
 
   gst_c2d_video_converter_frame (vtrans->c2dconvert, inframe, outframe);
+
+  ts_end = gst_util_get_timestamp ();
+
+  timedelta = GST_CLOCK_DIFF (ts_begin, ts_end);
+
+  GST_LOG ("Conversion took %lld.%03lld ms", GST_TIME_AS_MSECONDS (timedelta),
+      (GST_TIME_AS_USECONDS (timedelta) % 1000));
 
   return GST_FLOW_OK;
 }
