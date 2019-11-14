@@ -82,7 +82,7 @@ struct _GstQmmfSrc {
   qmmf::recorder::Recorder *recorder;
 
   /// QMMF Recorder camera device opened by this source.
-  gint       camera_id;
+  guint      camera_id;
   /// QMMF Recorder multimedia session ID.
   guint      session_id;
 

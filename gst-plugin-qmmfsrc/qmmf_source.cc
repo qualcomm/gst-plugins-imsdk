@@ -75,6 +75,7 @@ enum
 enum
 {
   PROP_0,
+  PROP_CAMERA_ID,
   PROP_CAMERA_EFFECT_MODE,
   PROP_CAMERA_SCENE_MODE,
   PROP_CAMERA_ANTIBANDING_MODE,
@@ -682,7 +683,7 @@ static gboolean
 qmmfsrc_open (GstElement * element)
 {
   GstQmmfSrc *qmmfsrc = GST_QMMFSRC (element);
-  gint status, camera_id = -1;
+  gint status;
 
   GST_TRACE_OBJECT (qmmfsrc, "Open QMMF source");
 
@@ -692,57 +693,6 @@ qmmfsrc_open (GstElement * element)
 
   status = qmmfsrc->recorder->Connect(cb);
   QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, status == 0, FALSE, "Connect Failed!");
-
-  GHashTableIter iter;
-  gpointer key, value;
-
-  GST_QMMFSRC_LOCK(qmmfsrc);
-
-  g_hash_table_iter_init(&iter, qmmfsrc->vidindexes);
-
-  qmmfsrc->camera_id = camera_id;
-
-  while (g_hash_table_iter_next(&iter, &key, &value)) {
-    GstPad *pad = GST_PAD(g_list_nth_data (element->srcpads, g_direct_hash(key)));
-    GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
-    GstCaps *caps;
-    GstStructure *structure;
-    gboolean success;
-    const GValue *camera;
-
-    GST_QMMFSRC_VIDEO_PAD_LOCK (vpad);
-
-    caps = gst_pad_get_allowed_caps (pad);
-    caps = gst_caps_make_writable (caps);
-
-    structure = gst_caps_get_structure (caps, 0);
-    if (gst_structure_has_field (structure, "camera")) {
-      camera = gst_structure_get_value (structure, "camera");
-
-      if (!gst_value_is_fixed (camera)) {
-        gst_structure_fixate_field_nearest_int (structure, "camera",
-            DEFAULT_PROP_CAMERA_ID);
-      }
-      gst_structure_get_int (structure, "camera", &camera_id);
-    } else {
-      gst_structure_set (structure, "camera", G_TYPE_INT,
-          DEFAULT_PROP_CAMERA_ID, NULL);
-      camera_id = DEFAULT_PROP_CAMERA_ID;
-    }
-
-    GST_QMMFSRC_VIDEO_PAD_UNLOCK (vpad);
-
-    if ((qmmfsrc->camera_id != -1) && (camera_id != qmmfsrc->camera_id)) {
-      GST_ERROR_OBJECT (qmmfsrc, "Multiple cameras for the same plugin not "
-          "supported!");
-      return FALSE;
-    }
-
-    qmmfsrc->camera_id = camera_id;
-    gst_caps_unref (caps);
-  }
-
-  GST_QMMFSRC_UNLOCK(qmmfsrc);
 
   status = qmmfsrc->recorder->StartCamera(qmmfsrc->camera_id, 30);
   QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, status == 0, FALSE,
@@ -1288,6 +1238,9 @@ qmmfsrc_set_property (GObject * object, guint property_id,
   GST_QMMFSRC_LOCK (qmmfsrc);
 
   switch (property_id) {
+    case PROP_CAMERA_ID:
+      qmmfsrc->camera_id = g_value_get_uint (value);
+      break;
     case PROP_CAMERA_EFFECT_MODE:
       qmmfsrc->effect = g_value_get_enum (value);
       qmmfsrc_set_camera_property (qmmfsrc, ANDROID_CONTROL_EFFECT_MODE,
@@ -1342,6 +1295,9 @@ qmmfsrc_get_property (GObject * object, guint property_id,
   GST_QMMFSRC_LOCK (qmmfsrc);
 
   switch (property_id) {
+    case PROP_CAMERA_ID:
+      g_value_set_uint (value, qmmfsrc->camera_id);
+      break;
     case PROP_CAMERA_EFFECT_MODE:
       g_value_set_enum (value, qmmfsrc->effect);
       break;
@@ -1432,6 +1388,12 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
       "Reads frames from a device via QMMF service", "QTI"
   );
 
+  g_object_class_install_property (gobject, PROP_CAMERA_ID,
+      g_param_spec_uint ("camera", "Camera ID",
+          "Camera device ID to be used by video/image pads",
+          0, 10, DEFAULT_PROP_CAMERA_ID,
+          (GParamFlags)(G_PARAM_CONSTRUCT | G_PARAM_READWRITE |
+              G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY)));
   g_object_class_install_property (gobject, PROP_CAMERA_EFFECT_MODE,
       g_param_spec_enum ("effect", "Effect",
            "Effect applied on the camera frames",

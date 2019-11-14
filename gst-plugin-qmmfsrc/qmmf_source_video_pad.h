@@ -37,7 +37,6 @@
 G_BEGIN_DECLS
 
 #define QMMFSRC_COMMON_VIDEO_CAPS(formats) \
-    "camera = (int) [ 0, 2 ], "      \
     "format = (string) " formats ", "      \
     "width = (int) [ 16, 1920 ], "         \
     "height = (int) [ 16, 1080 ], "        \
