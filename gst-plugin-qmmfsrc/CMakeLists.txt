@@ -18,6 +18,8 @@ pkg_check_modules(GST_ALLOC
   REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_VIDEO
   REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_AUDIO
+  REQUIRED gstreamer-audio-1.0>=${GST_VERSION_REQUIRED})
 
 # Generate configuration header file.
 configure_file(config.h.in config.h @ONLY)

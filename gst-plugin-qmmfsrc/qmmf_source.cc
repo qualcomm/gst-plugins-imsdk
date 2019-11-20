@@ -128,20 +128,9 @@ static GstStaticPadTemplate qmmfsrc_image_src_template =
         GST_PAD_SRC,
         GST_PAD_REQUEST,
         GST_STATIC_CAPS (
-            QMMFSRC_IMAGE_JPEG_CAPS (
-                "{ NV12 }"
-            ) "; "
+            QMMFSRC_IMAGE_JPEG_CAPS () "; "
             QMMFSRC_IMAGE_JPEG_CAPS_WITH_FEATURES (
-                GST_CAPS_FEATURE_MEMORY_GBM,
-                "{ NV12 }"
-            ) "; "
-            QMMFSRC_IMAGE_RAW_CAPS(
-                "{ NV12 }"
-            ) "; "
-            QMMFSRC_IMAGE_RAW_CAPS_WITH_FEATURES(
-                GST_CAPS_FEATURE_MEMORY_GBM,
-                "{ NV12 }"
-            )
+                GST_CAPS_FEATURE_MEMORY_GBM)
         )
     );
 
@@ -598,68 +587,73 @@ static void
 qmmfsrc_capture_image (GstQmmfSrc * qmmfsrc)
 {
   GstQmmfSrcImagePad *ipad;
-  GList *keys;
+  GHashTableIter iter;
+  gpointer key, value;
   gint status;
 
   GST_QMMFSRC_LOCK (qmmfsrc);
 
-  // Currently there is support for only one image pad.
-  keys = g_hash_table_get_keys (qmmfsrc->imgindexes);
-  ipad = GST_QMMFSRC_IMAGE_PAD (g_hash_table_lookup (
-      qmmfsrc->srcpads, g_list_nth_data (keys, 0)));
-
-  GST_QMMFSRC_IMAGE_PAD_LOCK(ipad);
-
-  qmmf::recorder::ImageParam imgparam;
-  imgparam.width = ipad->width;
-  imgparam.height = ipad->height;
-
-  if (ipad->codec == GST_IMAGE_CODEC_TYPE_JPEG) {
-    imgparam.image_format = qmmf::ImageFormat::kJPEG;
-  } else {
-    switch (ipad->format) {
-      case GST_VIDEO_FORMAT_NV12:
-        imgparam.image_format = qmmf::ImageFormat::kNV12;
-        break;
-      case GST_VIDEO_FORMAT_NV21:
-        imgparam.image_format = qmmf::ImageFormat::kNV21;
-        break;
-      default:
-        GST_ERROR_OBJECT (qmmfsrc, "Unsupported format %s",
-            gst_video_format_to_string (ipad->format));
-        GST_QMMFSRC_IMAGE_PAD_UNLOCK(ipad);
-        GST_QMMFSRC_UNLOCK (qmmfsrc);
-        return;
-    }
-  }
-
-  gst_structure_get_uint (ipad->params, "quality", &imgparam.image_quality);
-
-  std::vector<android::CameraMetadata> metadata;
-  android::CameraMetadata meta;
-
-  status = qmmfsrc->recorder->GetDefaultCaptureParam(qmmfsrc->camera_id, meta);
-  if (status != 0) {
-    GST_ERROR_OBJECT (qmmfsrc, "GetDefaultCaptureParam Failed!");
-    GST_QMMFSRC_IMAGE_PAD_UNLOCK(ipad);
-    GST_QMMFSRC_UNLOCK (qmmfsrc);
+  // Only one image pad is supported for now.
+  if (g_hash_table_size (qmmfsrc->imgindexes) != 1) {
+    GST_WARNING_OBJECT (qmmfsrc, "There is no active image pad!");
     return;
   }
 
-  metadata.push_back(meta);
+  g_hash_table_iter_init(&iter, qmmfsrc->imgindexes);
 
-  qmmf::recorder::ImageCaptureCb cb =
-      [&, ipad] (uint32_t camera_id, uint32_t imgcount,
-          qmmf::BufferDescriptor buffer, qmmf::recorder::MetaData meta)
-      { ImageDataCb(GST_PAD (ipad), camera_id, imgcount, buffer, meta); };
+  while (g_hash_table_iter_next(&iter, &key, &value)) {
+    ipad = GST_QMMFSRC_IMAGE_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
 
-  status = qmmfsrc->recorder->CaptureImage(qmmfsrc->camera_id, imgparam,
-                                           1, metadata, cb);
-  if (status != 0) {
-    GST_ERROR_OBJECT (qmmfsrc, "CaptureImage Failed!");
+    GST_QMMFSRC_IMAGE_PAD_LOCK (ipad);
+
+    qmmf::recorder::ImageParam imgparam;
+    imgparam.width = ipad->width;
+    imgparam.height = ipad->height;
+    imgparam.image_quality = 95;
+
+    if (ipad->codec == GST_IMAGE_CODEC_TYPE_JPEG) {
+      imgparam.image_format = qmmf::ImageFormat::kJPEG;
+    } else {
+      switch (ipad->format) {
+        case GST_VIDEO_FORMAT_NV12:
+          imgparam.image_format = qmmf::ImageFormat::kNV12;
+          break;
+        case GST_VIDEO_FORMAT_NV21:
+          imgparam.image_format = qmmf::ImageFormat::kNV21;
+          break;
+        default:
+          GST_ERROR_OBJECT (qmmfsrc, "Unsupported format %s",
+              gst_video_format_to_string (ipad->format));
+          GST_QMMFSRC_IMAGE_PAD_UNLOCK (ipad);
+          break;
+      }
+    }
+
+    std::vector<android::CameraMetadata> metadata;
+    android::CameraMetadata meta;
+
+    status = qmmfsrc->recorder->GetDefaultCaptureParam(qmmfsrc->camera_id, meta);
+    if (status != 0) {
+      GST_ERROR_OBJECT (qmmfsrc, "GetDefaultCaptureParam Failed!");
+      GST_QMMFSRC_IMAGE_PAD_UNLOCK (ipad);
+      break;
+    }
+
+    metadata.push_back(meta);
+
+    qmmf::recorder::ImageCaptureCb cb =
+        [&, ipad] (uint32_t camera_id, uint32_t imgcount,
+            qmmf::BufferDescriptor buffer, qmmf::recorder::MetaData meta)
+        { ImageDataCb(GST_PAD (ipad), camera_id, imgcount, buffer, meta); };
+
+    status = qmmfsrc->recorder->CaptureImage(qmmfsrc->camera_id, imgparam,
+                                             1, metadata, cb);
+    if (status != 0) {
+      GST_ERROR_OBJECT (qmmfsrc, "CaptureImage Failed!");
+    }
+
+    GST_QMMFSRC_IMAGE_PAD_UNLOCK (ipad);
   }
-
-  GST_QMMFSRC_IMAGE_PAD_UNLOCK(ipad);
 
   GST_QMMFSRC_UNLOCK (qmmfsrc);
 }
@@ -899,48 +893,6 @@ qmmfsrc_create_session (GstElement * element)
   while (g_hash_table_iter_next(&iter, &key, &value)) {
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
     qmmfsrc_image_pad_fixate_caps (pad);
-
-    ipad = GST_QMMFSRC_IMAGE_PAD(pad);
-
-    GST_QMMFSRC_IMAGE_PAD_LOCK(ipad);
-
-    qmmf::recorder::ImageConfigParam config;
-
-    if (ipad->codec == GST_IMAGE_CODEC_TYPE_JPEG) {
-      qmmf::recorder::ImageThumbnail thumbnail;
-      qmmf::recorder::ImageExif exif;
-      guint width, height, quality;
-
-      gst_structure_get_uint (ipad->params, "thumbnail-width", &width);
-      gst_structure_get_uint (ipad->params, "thumbnail-height", &height);
-      gst_structure_get_uint (ipad->params, "thumbnail-quality", &quality);
-
-      if (width > 0 && height > 0) {
-        thumbnail.width = width;
-        thumbnail.height = height;
-        thumbnail.quality = quality;
-        config.Update(qmmf::recorder::QMMF_IMAGE_THUMBNAIL, thumbnail, 0);
-      }
-
-      gst_structure_get_uint (ipad->params, "screennail-width", &width);
-      gst_structure_get_uint (ipad->params, "screennail-height", &height);
-      gst_structure_get_uint (ipad->params, "screennail-quality", &quality);
-
-      if (width > 0 && height > 0) {
-        thumbnail.width = width;
-        thumbnail.height = height;
-        thumbnail.quality = quality;
-        config.Update(qmmf::recorder::QMMF_IMAGE_THUMBNAIL, thumbnail, 1);
-      }
-
-      config.Update(qmmf::recorder::QMMF_EXIF, exif, 0);
-    }
-
-    status = qmmfsrc->recorder->ConfigImageCapture(qmmfsrc->camera_id, config);
-    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, status == 0, FALSE,
-        "ConfigImageCapture Failed!");
-
-    GST_QMMFSRC_IMAGE_PAD_UNLOCK(ipad);
   }
 
   android::CameraMetadata meta;

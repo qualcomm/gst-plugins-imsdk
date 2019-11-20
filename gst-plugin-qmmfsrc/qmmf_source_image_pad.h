@@ -36,27 +36,18 @@
 
 G_BEGIN_DECLS
 
-#define QMMFSRC_COMMON_IMAGE_CAPS(formats) \
-    "format = (string) " formats ", "      \
+#define QMMFSRC_COMMON_IMAGE_CAPS()        \
     "width = (int) [ 16, 1920 ], "         \
     "height = (int) [ 16, 1080 ], "        \
     "framerate = (fraction) [ 0/1, 30/1 ]"
 
-#define QMMFSRC_IMAGE_JPEG_CAPS(formats) \
-    "image/jpeg, "                       \
-    QMMFSRC_COMMON_VIDEO_CAPS(formats)
+#define QMMFSRC_IMAGE_JPEG_CAPS() \
+    "image/jpeg, "                \
+    QMMFSRC_COMMON_IMAGE_CAPS()
 
-#define QMMFSRC_IMAGE_JPEG_CAPS_WITH_FEATURES(features, formats) \
-    "image/jpeg(" features "), "                                 \
-    QMMFSRC_COMMON_VIDEO_CAPS(formats)
-
-#define QMMFSRC_IMAGE_RAW_CAPS(formats) \
-    "video/x-raw, "                     \
-    QMMFSRC_COMMON_VIDEO_CAPS(formats)
-
-#define QMMFSRC_IMAGE_RAW_CAPS_WITH_FEATURES(features, formats) \
-    "video/x-raw(" features "), "                               \
-    QMMFSRC_COMMON_VIDEO_CAPS(formats)
+#define QMMFSRC_IMAGE_JPEG_CAPS_WITH_FEATURES(features) \
+    "image/jpeg(" features "), "                        \
+    QMMFSRC_COMMON_IMAGE_CAPS()
 
 // Boilerplate cast macros and type check macros for QMMF Source Video Pad.
 #define GST_TYPE_QMMFSRC_IMAGE_PAD (qmmfsrc_image_pad_get_type())
