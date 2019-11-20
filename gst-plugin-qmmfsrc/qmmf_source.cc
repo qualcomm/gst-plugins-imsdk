@@ -117,7 +117,8 @@ static GstStaticPadTemplate qmmfsrc_audio_src_template =
         GST_STATIC_CAPS (
             QMMFSRC_AUDIO_AAC_CAPS "; "
             QMMFSRC_AUDIO_AMR_CAPS "; "
-            QMMFSRC_AUDIO_AMRWB_CAPS
+            QMMFSRC_AUDIO_AMRWB_CAPS "; "
+            QMMFSRC_AUDIO_PCM_CAPS
         )
     );
 
@@ -912,6 +913,9 @@ qmmfsrc_create_session (GstElement * element)
         params.format = qmmf::AudioFormat::kAMR;
         params.codec_params.amr.bit_rate = 12200;
         params.codec_params.amr.isWAMR = TRUE;
+        break;
+      case GST_AUDIO_CODEC_TYPE_NONE:
+        params.format = qmmf::AudioFormat::kPCM;
         break;
       default:
         GST_ERROR_OBJECT (qmmfsrc, "Unsupported audio format %d!", apad->codec);

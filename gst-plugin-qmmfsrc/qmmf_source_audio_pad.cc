@@ -50,6 +50,8 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_audio_pad_debug);
 #define DEFAULT_AUDIO_STREAM_AMR_BITDEPTH     32
 #define DEFAULT_AUDIO_STREAM_AMRWB_SAMPLERATE 16000
 #define DEFAULT_AUDIO_STREAM_AMRWB_BITDEPTH   32
+#define DEFAULT_AUDIO_STREAM_PCM_FORMAT       "S16LE"
+#define DEFAULT_AUDIO_STREAM_PCM_SAMPLERATE   8000
 
 enum
 {
@@ -183,12 +185,13 @@ audio_pad_set_params (GstPad * pad, GstStructure *structure)
 
   gst_structure_get_int (structure, "channels", &apad->channels);
   gst_structure_get_int (structure, "rate", &apad->samplerate);
-  gst_structure_get_int (structure, "bitdepth", &apad->bitdepth);
 
   if (gst_structure_has_name (structure, "audio/mpeg")) {
     const gchar *type = NULL;
 
     apad->codec = GST_AUDIO_CODEC_TYPE_AAC;
+
+    gst_structure_get_int (structure, "bitdepth", &apad->bitdepth);
 
     type = gst_structure_get_string (structure, "stream-format");
     gst_structure_set (apad->params, "type", G_TYPE_STRING, type, NULL);
@@ -198,13 +201,33 @@ audio_pad_set_params (GstPad * pad, GstStructure *structure)
   } else if (gst_structure_has_name (structure, "audio/AMR")) {
     apad->codec = GST_AUDIO_CODEC_TYPE_AMR;
 
+    gst_structure_get_int (structure, "bitdepth", &apad->bitdepth);
+
     // AMR has a hardcoded framerate of 50 fps.
     apad->duration = gst_util_uint64_scale_int (GST_SECOND, 1, 50);
   } else if (gst_structure_has_name (structure, "audio/AMR-WB")) {
     apad->codec = GST_AUDIO_CODEC_TYPE_AMRWB;
 
+    gst_structure_get_int (structure, "bitdepth", &apad->bitdepth);
+
     // AMR has a hardcoded framerate of 50 fps.
     apad->duration = gst_util_uint64_scale_int (GST_SECOND, 1, 50);
+  } else if (gst_structure_has_name (structure, "audio/x-raw")) {
+    const gchar *type = NULL;
+
+    apad->codec = GST_AUDIO_CODEC_TYPE_NONE;
+
+    type = gst_structure_get_string (structure, "format");
+    if (g_strcmp0(type, "S16LE") == 0) {
+      apad->bitdepth = 16;
+    } else if (g_strcmp0(type, "S24LE") == 0) {
+      apad->bitdepth = 24;
+    } else if (g_strcmp0(type, "S32LE") == 0) {
+      apad->bitdepth = 32;
+    }
+
+    apad->duration = gst_util_uint64_scale_int (
+        GST_SECOND, apad->channels, apad->samplerate);
   }
 
   apad->format = GST_AUDIO_FORMAT_ENCODED;
@@ -346,6 +369,23 @@ qmmfsrc_audio_pad_fixate_caps (GstPad * pad)
           DEFAULT_AUDIO_STREAM_AMRWB_BITDEPTH, NULL);
       GST_DEBUG_OBJECT (pad, "Bit depth not set, using default value: %d",
           DEFAULT_AUDIO_STREAM_AMRWB_BITDEPTH);
+    }
+  } else if (gst_structure_has_name (structure, "audio/x-raw")) {
+    const gchar *type = NULL;
+
+    type = gst_structure_get_string (structure, "format");
+    if (!type) {
+      gst_structure_set (structure, "format", G_TYPE_STRING,
+          DEFAULT_AUDIO_STREAM_PCM_FORMAT, NULL);
+      GST_DEBUG_OBJECT (pad, "Format not set, using default value: %s",
+          DEFAULT_AUDIO_STREAM_PCM_FORMAT);
+    }
+
+    if (!samplerate) {
+      gst_structure_set (structure, "rate", G_TYPE_INT,
+          DEFAULT_AUDIO_STREAM_PCM_SAMPLERATE, NULL);
+      GST_DEBUG_OBJECT (pad, "Sample rate not set, using default value: %d",
+          DEFAULT_AUDIO_STREAM_PCM_SAMPLERATE);
     }
   }
 

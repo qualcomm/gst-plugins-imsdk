@@ -36,24 +36,34 @@
 
 G_BEGIN_DECLS
 
-#define QMMFSRC_COMMON_AUDIO_CAPS(c, r, b)          \
+#define QMMFSRC_COMMON_AUDIO_CAPS(c, r)             \
     "channels = (int) [ 1, " G_STRINGIFY (c) " ], " \
-    "rate = (int) [ 1, " G_STRINGIFY (r) " ], "     \
-    "bitdepth = (int) [ 1, " G_STRINGIFY (b) " ]"
+    "rate = (int) [ 1, " G_STRINGIFY (r) " ]"
 
 #define QMMFSRC_AUDIO_AAC_CAPS                              \
     "audio/mpeg, "                                          \
-    "mpegversion = (int) { 4 }, "                        \
+    "mpegversion = (int) { 4 }, "                           \
     "stream-format = (string) { adts, adif, raw, mp4ff }, " \
-    QMMFSRC_COMMON_AUDIO_CAPS(2, 128000, 128)
+    "bitdepth = (int) [ 1, 128 ], "                         \
+    QMMFSRC_COMMON_AUDIO_CAPS(2, 128000)
 
-#define QMMFSRC_AUDIO_AMR_CAPS              \
-    "audio/AMR, "                           \
-    QMMFSRC_COMMON_AUDIO_CAPS(2, 8000, 128)
+#define QMMFSRC_AUDIO_AMR_CAPS         \
+    "audio/AMR, "                      \
+    "bitdepth = (int) [ 1, 128 ], "    \
+    QMMFSRC_COMMON_AUDIO_CAPS(2, 8000)
 
-#define QMMFSRC_AUDIO_AMRWB_CAPS             \
-    "audio/AMR-WB, "                         \
-    QMMFSRC_COMMON_AUDIO_CAPS(2, 16000, 128)
+#define QMMFSRC_AUDIO_AMRWB_CAPS        \
+    "audio/AMR-WB, "                    \
+    "bitdepth = (int) [ 1, 128 ], "     \
+    QMMFSRC_COMMON_AUDIO_CAPS(2, 16000)
+
+#define QMMFSRC_AUDIO_PCM_FORMATS \
+    "S16LE, S24LE, S32LE"
+
+#define QMMFSRC_AUDIO_PCM_CAPS                              \
+    "audio/x-raw, "                                         \
+    "format = (string) { " QMMFSRC_AUDIO_PCM_FORMATS " }, " \
+    QMMFSRC_COMMON_AUDIO_CAPS(2, 192000)
 
 // Boilerplate cast macros and type check macros for QMMF Source Audio Pad.
 #define GST_TYPE_QMMFSRC_AUDIO_PAD (qmmfsrc_audio_pad_get_type())
