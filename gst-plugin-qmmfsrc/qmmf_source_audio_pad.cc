@@ -228,6 +228,7 @@ audio_pad_set_params (GstPad * pad, GstStructure *structure)
 
     apad->duration = gst_util_uint64_scale_int (
         GST_SECOND, apad->channels, apad->samplerate);
+    apad->duration *= G_GUINT64_CONSTANT(1000);
   }
 
   apad->format = GST_AUDIO_FORMAT_ENCODED;
