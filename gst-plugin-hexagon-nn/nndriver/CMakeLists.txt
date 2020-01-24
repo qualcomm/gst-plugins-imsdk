@@ -1,0 +1,23 @@
+set(NNDRIVER nndriver)
+
+add_library(${NNDRIVER} SHARED
+  nndriver.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/hexagon/nn/${HEXAGON_VER}/hexagon_nn_stub.c
+)
+
+target_include_directories(${NNDRIVER} PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/hexagon
+  ${CMAKE_CURRENT_SOURCE_DIR}/hexagon/nn/${HEXAGON_VER}
+)
+
+target_link_libraries(${NNDRIVER} PUBLIC
+  cdsprpc
+)
+
+install(
+  TARGETS ${NNDRIVER}
+  LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}
+  PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
+              GROUP_EXECUTE GROUP_READ
+)
