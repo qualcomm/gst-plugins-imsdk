@@ -37,8 +37,8 @@
 G_BEGIN_DECLS
 
 #define QMMFSRC_COMMON_IMAGE_CAPS          \
-    "width = (int) [ 16, 1920 ], "         \
-    "height = (int) [ 16, 1080 ], "        \
+    "width = (int) [ 16, 4000 ], "         \
+    "height = (int) [ 16, 4000 ], "        \
     "framerate = (fraction) [ 0/1, 30/1 ]"
 
 #define QMMFSRC_IMAGE_JPEG_CAPS \
@@ -49,7 +49,27 @@ G_BEGIN_DECLS
     "image/jpeg(" features "), "                        \
     QMMFSRC_COMMON_IMAGE_CAPS
 
-// Boilerplate cast macros and type check macros for QMMF Source Video Pad.
+#define QMMFSRC_IMAGE_BAYER_CAPS(formats) \
+    "video/x-bayer, "                     \
+    "format = (string) " formats ", "     \
+    QMMFSRC_COMMON_IMAGE_CAPS
+
+#define QMMFSRC_IMAGE_BAYER_CAPS_WITH_FEATURES(features, formats) \
+    "video/x-bayer(" features "), "                               \
+    "format = (string) " formats ", "                             \
+    QMMFSRC_COMMON_IMAGE_CAPS
+
+#define QMMFSRC_IMAGE_RAW_CAPS(formats) \
+    "video/x-raw, "                     \
+    "format = (string) " formats ", "   \
+    QMMFSRC_COMMON_IMAGE_CAPS
+
+#define QMMFSRC_IMAGE_RAW_CAPS_WITH_FEATURES(features, formats) \
+    "video/x-raw(" features "), "                               \
+    "format = (string) " formats ", "                           \
+    QMMFSRC_COMMON_IMAGE_CAPS
+
+// Boilerplate cast macros and type check macros for QMMF Source Image Pad.
 #define GST_TYPE_QMMFSRC_IMAGE_PAD (qmmfsrc_image_pad_get_type())
 #define GST_QMMFSRC_IMAGE_PAD(obj) \
   (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_QMMFSRC_IMAGE_PAD,GstQmmfSrcImagePad))
@@ -65,6 +85,14 @@ G_BEGIN_DECLS
   g_mutex_lock(GST_QMMFSRC_IMAGE_PAD_GET_LOCK(obj))
 #define GST_QMMFSRC_IMAGE_PAD_UNLOCK(obj) \
   g_mutex_unlock(GST_QMMFSRC_IMAGE_PAD_GET_LOCK(obj))
+
+typedef enum {
+  GST_IMAGE_FORMAT_UNKNOWN,
+  GST_IMAGE_FORMAT_RAW8,
+  GST_IMAGE_FORMAT_RAW10,
+  GST_IMAGE_FORMAT_RAW12,
+  GST_IMAGE_FORMAT_RAW16,
+} GstImageBayerFormat;
 
 typedef enum {
   GST_IMAGE_CODEC_TYPE_UNKNOWN,
@@ -95,6 +123,8 @@ struct _GstQmmfSrcImagePad {
   gfloat            framerate;
   /// GStreamer video pad output buffers format.
   GstVideoFormat    format;
+  /// GStreamer image pad output buffers format.
+  GstImageBayerFormat    bayer;
   /// Whether the GStreamer stream is uncompressed or compressed and its type.
   GstImageCodecType codec;
   /// Agnostic structure containing codec specific parameters.
@@ -114,7 +144,7 @@ struct _GstQmmfSrcImagePadClass {
 
 GType qmmfsrc_image_pad_get_type(void);
 
-/// Allocates memory for a source video pad with given template, name and index.
+/// Allocates memory for a source image pad with given template, name and index.
 /// It will also set custom functions for query, event and activatemode.
 GstPad * qmmfsrc_request_image_pad (GstPadTemplate *templ, const gchar *name,
                                     const guint index);

@@ -44,10 +44,12 @@ G_DEFINE_TYPE(GstQmmfSrcImagePad, qmmfsrc_image_pad, GST_TYPE_PAD);
 GST_DEBUG_CATEGORY_STATIC (qmmfsrc_image_pad_debug);
 #define GST_CAT_DEFAULT qmmfsrc_image_pad_debug
 
-#define DEFAULT_IMAGE_STREAM_WIDTH   640
-#define DEFAULT_IMAGE_STREAM_HEIGHT  480
-#define DEFAULT_IMAGE_STREAM_FPS_NUM 30
-#define DEFAULT_IMAGE_STREAM_FPS_DEN 1
+#define DEFAULT_IMAGE_STREAM_WIDTH            640
+#define DEFAULT_IMAGE_STREAM_HEIGHT           480
+#define DEFAULT_IMAGE_STREAM_FPS_NUM          30
+#define DEFAULT_IMAGE_STREAM_FPS_DEN          1
+#define DEFAULT_IMAGE_STREAM_RAW              "NV12"
+#define DEFAULT_IMAGE_STREAM_BAYER            "RAW10"
 
 #define DEFAULT_PROP_QUALITY            85
 #define DEFAULT_PROP_THUMBNAIL_WIDTH    0
@@ -193,26 +195,38 @@ image_pad_activate_mode (GstPad * pad, GstObject * parent, GstPadMode mode,
 static void
 image_pad_set_params (GstPad * pad, GstStructure *structure)
 {
-  GstQmmfSrcImagePad *vpad = GST_QMMFSRC_IMAGE_PAD (pad);
+  GstQmmfSrcImagePad *ipad = GST_QMMFSRC_IMAGE_PAD (pad);
   gint fps_n = 0, fps_d = 0;
 
   GST_QMMFSRC_IMAGE_PAD_LOCK (pad);
 
-  gst_structure_get_int (structure, "width", &vpad->width);
-  gst_structure_get_int (structure, "height", &vpad->height);
+  gst_structure_get_int (structure, "width", &ipad->width);
+  gst_structure_get_int (structure, "height", &ipad->height);
   gst_structure_get_fraction (structure, "framerate", &fps_n, &fps_d);
 
-  vpad->duration = gst_util_uint64_scale_int (GST_SECOND, fps_d, fps_n);
-  vpad->framerate = 1 / GST_TIME_AS_SECONDS (
-      gst_guint64_to_gdouble (vpad->duration));
+  ipad->duration = gst_util_uint64_scale_int (GST_SECOND, fps_d, fps_n);
+  ipad->framerate = 1 / GST_TIME_AS_SECONDS (
+      gst_guint64_to_gdouble (ipad->duration));
 
   if (gst_structure_has_name (structure, "image/jpeg")) {
-    vpad->codec = GST_IMAGE_CODEC_TYPE_JPEG;
-    vpad->format = GST_VIDEO_FORMAT_ENCODED;
+    ipad->codec = GST_IMAGE_CODEC_TYPE_JPEG;
+    ipad->format = GST_VIDEO_FORMAT_ENCODED;
   } else if (gst_structure_has_name (structure, "video/x-raw")) {
-    vpad->codec = GST_IMAGE_CODEC_TYPE_NONE;
-    vpad->format = gst_video_format_from_string (
+    ipad->codec = GST_IMAGE_CODEC_TYPE_NONE;
+    ipad->format = gst_video_format_from_string (
         gst_structure_get_string (structure, "format"));
+  } else if (gst_structure_has_name (structure, "video/x-bayer")) {
+    ipad->codec = GST_IMAGE_CODEC_TYPE_NONE;
+    const gchar *bayer = gst_structure_get_string (structure, "format");
+    if (g_strcmp0(bayer, "RAW8") == 0) {
+      ipad->bayer = GST_IMAGE_FORMAT_RAW8;
+    } else if (g_strcmp0(bayer, "RAW10") == 0) {
+      ipad->bayer = GST_IMAGE_FORMAT_RAW10;
+    } else if (g_strcmp0(bayer, "RAW12") == 0) {
+      ipad->bayer = GST_IMAGE_FORMAT_RAW12;
+    } else if (g_strcmp0(bayer, "RAW16") == 0) {
+      ipad->bayer = GST_IMAGE_FORMAT_RAW16;
+    }
   }
 
   GST_QMMFSRC_IMAGE_PAD_UNLOCK (pad);
@@ -315,6 +329,28 @@ qmmfsrc_image_pad_fixate_caps (GstPad * pad)
         DEFAULT_IMAGE_STREAM_FPS_NUM, DEFAULT_IMAGE_STREAM_FPS_DEN);
     GST_DEBUG_OBJECT (pad, "Framerate not set, using default value: %d/%d",
         DEFAULT_IMAGE_STREAM_FPS_NUM, DEFAULT_IMAGE_STREAM_FPS_DEN);
+  }
+
+  if (gst_structure_has_name (structure, "video/x-bayer")) {
+    const gchar *type = NULL;
+    type = gst_structure_get_string (structure, "format");
+    if (!type) {
+      gst_structure_set (structure, "format", G_TYPE_STRING,
+          DEFAULT_IMAGE_STREAM_BAYER, NULL);
+      GST_DEBUG_OBJECT (pad, "Image format not set, using default value: %s",
+          DEFAULT_IMAGE_STREAM_BAYER);
+    }
+  }
+
+  if (gst_structure_has_name (structure, "video/x-raw")) {
+    const gchar *type = NULL;
+    type = gst_structure_get_string (structure, "format");
+    if (!type) {
+      gst_structure_set (structure, "format", G_TYPE_STRING,
+          DEFAULT_IMAGE_STREAM_RAW, NULL);
+      GST_DEBUG_OBJECT (pad, "Image format not set, using default value: %s",
+          DEFAULT_IMAGE_STREAM_RAW);
+    }
   }
 
   caps = gst_caps_fixate (caps);
@@ -424,6 +460,7 @@ qmmfsrc_image_pad_init (GstQmmfSrcImagePad * pad)
   pad->framerate = 0;
   pad->format    = GST_VIDEO_FORMAT_UNKNOWN;
   pad->codec     = GST_IMAGE_CODEC_TYPE_UNKNOWN;
+  pad->bayer = GST_IMAGE_FORMAT_UNKNOWN;
   pad->params    = gst_structure_new_empty ("codec-params");
 
   pad->duration  = GST_CLOCK_TIME_NONE;

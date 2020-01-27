@@ -123,7 +123,17 @@ static GstStaticPadTemplate qmmfsrc_image_src_template =
         GST_STATIC_CAPS (
             QMMFSRC_IMAGE_JPEG_CAPS "; "
             QMMFSRC_IMAGE_JPEG_CAPS_WITH_FEATURES (
-                GST_CAPS_FEATURE_MEMORY_GBM)
+                GST_CAPS_FEATURE_MEMORY_GBM) "; "
+            QMMFSRC_IMAGE_BAYER_CAPS(
+                "{ RAW8, RAW10, RAW12, RAW16 }") "; "
+            QMMFSRC_IMAGE_BAYER_CAPS_WITH_FEATURES(
+                GST_CAPS_FEATURE_MEMORY_GBM,
+                "{ RAW8, RAW10, RAW12, RAW16 }") "; "
+            QMMFSRC_IMAGE_RAW_CAPS(
+                "{ NV12 }") "; "
+            QMMFSRC_IMAGE_RAW_CAPS_WITH_FEATURES(
+                GST_CAPS_FEATURE_MEMORY_GBM,
+                "{ NV12 }") "; "
         )
     );
 
