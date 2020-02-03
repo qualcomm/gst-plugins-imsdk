@@ -1017,6 +1017,27 @@ gst_qmmf_context_stop_session (GstQmmfContext * context)
 }
 
 gboolean
+gst_qmmf_context_pause_session (GstQmmfContext * context)
+{
+  gint status = 0;
+
+  GST_TRACE ("Pausing QMMF context session");
+
+  G_LOCK (recorder);
+
+  status = recorder->PauseSession (context->session_id);
+
+  G_UNLOCK (recorder);
+
+  QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
+      "QMMF Recorder PauseSession Failed!");
+
+  GST_TRACE ("QMMF context session paused");
+
+  return TRUE;
+}
+
+gboolean
 gst_qmmf_context_capture_image (GstQmmfContext * context, GstPad * pad)
 {
   gint status = 0;

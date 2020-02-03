@@ -457,6 +457,22 @@ qmmfsrc_stop_session (GstQmmfSrc * qmmfsrc)
 }
 
 static gboolean
+qmmfsrc_pause_session (GstQmmfSrc * qmmfsrc)
+{
+  gboolean success = FALSE, flush = TRUE;
+
+  GST_TRACE_OBJECT (qmmfsrc, "Pausing session");
+
+  success = gst_qmmf_context_pause_session (qmmfsrc->context);
+  QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
+      "Session pause failed!");
+
+  GST_TRACE_OBJECT (qmmfsrc, "Session paused");
+
+  return TRUE;
+}
+
+static gboolean
 qmmfsrc_capture_image (GstQmmfSrc * qmmfsrc)
 {
   GHashTableIter iter;
@@ -548,12 +564,19 @@ qmmfsrc_change_state (GstElement * element, GstStateChange transition)
       ret = GST_STATE_CHANGE_SUCCESS;
       break;
     case GST_STATE_CHANGE_PLAYING_TO_PAUSED:
+      if (!qmmfsrc_pause_session (qmmfsrc)) {
+        GST_ERROR_OBJECT(qmmfsrc, "Failed to pause session!");
+        return GST_STATE_CHANGE_FAILURE;
+      }
+      // Return NO_PREROLL to inform bin/pipeline we won't be able to
+      // produce data in the PAUSED state, as this is a live source.
+      ret = GST_STATE_CHANGE_NO_PREROLL;
+      break;
+    case GST_STATE_CHANGE_PAUSED_TO_READY:
       if (!qmmfsrc_stop_session (qmmfsrc)) {
         GST_ERROR_OBJECT(qmmfsrc, "Failed to stop session!");
         return GST_STATE_CHANGE_FAILURE;
       }
-      break;
-    case GST_STATE_CHANGE_PAUSED_TO_READY:
       if (!qmmfsrc_delete_session (qmmfsrc)) {
         GST_ERROR_OBJECT (qmmfsrc, "Failed to delete session!");
         return GST_STATE_CHANGE_FAILURE;

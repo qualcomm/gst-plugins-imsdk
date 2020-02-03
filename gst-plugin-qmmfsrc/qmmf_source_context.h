@@ -83,6 +83,9 @@ GST_API gboolean
 gst_qmmf_context_stop_session (GstQmmfContext * context);
 
 GST_API gboolean
+gst_qmmf_context_pause_session (GstQmmfContext * context);
+
+GST_API gboolean
 gst_qmmf_context_capture_image (GstQmmfContext * context, GstPad * pad);
 
 GST_API gboolean
