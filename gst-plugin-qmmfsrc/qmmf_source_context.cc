@@ -42,6 +42,12 @@
 #include "qmmf_source_video_pad.h"
 #include "qmmf_source_audio_pad.h"
 
+#define GST_QMMF_CONTEXT_GET_LOCK(obj) (&GST_QMMF_CONTEXT_CAST(obj)->lock)
+#define GST_QMMF_CONTEXT_LOCK(obj) \
+  g_mutex_lock(GST_QMMF_CONTEXT_GET_LOCK(obj))
+#define GST_QMMF_CONTEXT_UNLOCK(obj) \
+  g_mutex_unlock(GST_QMMF_CONTEXT_GET_LOCK(obj))
+
 #define GST_CAT_DEFAULT qmmf_context_debug_category()
 static GstDebugCategory *
 qmmf_context_debug_category (void)
@@ -49,7 +55,7 @@ qmmf_context_debug_category (void)
   static gsize catgonce = 0;
 
   if (g_once_init_enter (&catgonce)) {
-    gsize catdone = (gsize) _gst_debug_category_new ("qmmf-context", 0,
+    gsize catdone = (gsize) _gst_debug_category_new ("qmmfsrc", 0,
         "qmmf-context object");
     g_once_init_leave (&catgonce, catdone);
   }
@@ -58,27 +64,32 @@ qmmf_context_debug_category (void)
 
 struct _GstQmmfContext {
   /// Global mutex lock.
-  GMutex     lock;
+  GMutex       lock;
 
   /// QMMF Recorder camera device opened by this source.
-  guint      camera_id;
+  guint        camera_id;
   /// QMMF Recorder multimedia session ID.
-  guint      session_id;
+  guint        session_id;
 
   /// Camera frame effect property.
-  guchar     effect;
+  guchar       effect;
   /// Camera scene optimization property.
-  guchar     scene;
+  guchar       scene;
   /// Camera antibanding mode property.
-  guchar     antibanding;
+  guchar       antibanding;
   /// Camera Auto Exposure compensation property.
-  gint       aecompensation;
+  gint         aecompensation;
   /// Camera Auto Exposure Compensation lock property.
-  gboolean   aelock;
+  gboolean     aelock;
   /// Camera Auto White Balance mode property.
-  guchar     awbmode;
+  guchar       awbmode;
   /// Camera Auto White Balance lock property.
-  gboolean   awblock;
+  gboolean     awblock;
+
+  /// Video and image pads timestamp base.
+  GstClockTime vtsbase;
+  /// Audio pads timestamp base.
+  GstClockTime atsbase;
 };
 
 /// Global QMMF Recorder instance.
@@ -91,27 +102,40 @@ static grefcount refcount = 0;
 static G_DEFINE_QUARK(QmmfBufferQDataQuark, qmmf_buffer_qdata);
 
 
+static GstClockTime
+qmmfsrc_running_time (GstPad * pad)
+{
+  GstElement *element = GST_ELEMENT (gst_pad_get_parent (pad));
+  GstClock *clock = gst_element_get_clock (element);
+  GstClockTime runningtime = GST_CLOCK_TIME_NONE;
+
+  runningtime =
+      gst_clock_get_time (clock) - gst_element_get_base_time (element);
+
+  gst_object_unref (clock);
+  gst_object_unref (element);
+
+  return runningtime;
+}
+
 void
 qmmfsrc_free_queue_item (GstDataQueueItem * item)
 {
+  gst_buffer_unref (GST_BUFFER (item->object));
   g_slice_free (GstDataQueueItem, item);
 }
 
 void
 qmmfsrc_gst_buffer_release (GstStructure * structure)
 {
-  GstQmmfContext *context = NULL;
-  GstPad *pad = NULL;
-
   guint value, track_id, session_id, camera_id;
   std::vector<::qmmf::BufferDescriptor> buffers;
   ::qmmf::BufferDescriptor buffer;
 
-  gst_structure_get_uint (structure, "context", &value);
-  context = GST_QMMF_CONTEXT_CAST (GUINT_TO_POINTER(value));
+  GST_TRACE ("%s", gst_structure_to_string (structure));
 
-  gst_structure_get_uint (structure, "pad", &value);
-  pad = GST_PAD (GUINT_TO_POINTER(value));
+  gst_structure_get_uint (structure, "camera", &camera_id);
+  gst_structure_get_uint (structure, "session", &session_id);
 
   gst_structure_get_uint (structure, "data", &value);
   buffer.data = GUINT_TO_POINTER (value);
@@ -126,25 +150,10 @@ qmmfsrc_gst_buffer_release (GstStructure * structure)
 
   buffers.push_back (buffer);
 
-  if (GST_IS_QMMFSRC_VIDEO_PAD (pad)) {
-    GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
-
-    track_id = vpad->id;
-    session_id = context->session_id;
-
+  if (gst_structure_has_field (structure, "track")) {
+    gst_structure_get_uint (structure, "track", &track_id);
     recorder->ReturnTrackBuffer (session_id, track_id, buffers);
-  } else if (GST_IS_QMMFSRC_AUDIO_PAD (pad)) {
-    GstQmmfSrcAudioPad *apad = GST_QMMFSRC_AUDIO_PAD (pad);
-
-    track_id = apad->id;
-    session_id = context->session_id;
-
-    recorder->ReturnTrackBuffer (session_id, track_id, buffers);
-  } else if (GST_IS_QMMFSRC_IMAGE_PAD (pad)) {
-    GstQmmfSrcImagePad *ipad = GST_QMMFSRC_IMAGE_PAD (pad);
-
-    camera_id = context->camera_id;
-
+  } else {
     recorder->ReturnImageCaptureBuffer (camera_id, buffer);
   }
 
@@ -188,10 +197,25 @@ qmmfsrc_gst_buffer_new_wrapped (GstQmmfContext * context, GstPad * pad,
   gst_object_unref (allocator);
 
   // GSreamer structure for later recreating the QMMF buffer to be returned.
-  structure = gst_structure_new (
-      "QMMF_BUFFER",
-      "context", G_TYPE_UINT, GPOINTER_TO_UINT (context),
-      "pad", G_TYPE_UINT, GPOINTER_TO_UINT (pad),
+  structure = gst_structure_new_empty ("QMMF_BUFFER");
+  QMMFSRC_RETURN_VAL_IF_FAIL_WITH_CLEAN (NULL, structure != NULL,
+      gst_buffer_unref (gstbuffer), NULL, "Failed to create buffer structure!");
+
+  gst_structure_set (structure,
+      "camera", G_TYPE_UINT, context->camera_id,
+      "session", G_TYPE_UINT, context->session_id,
+      NULL
+  );
+
+  if (GST_IS_QMMFSRC_VIDEO_PAD (pad))
+    gst_structure_set (structure, "track", G_TYPE_UINT,
+        GST_QMMFSRC_VIDEO_PAD (pad)->id, NULL);
+
+  if (GST_IS_QMMFSRC_AUDIO_PAD (pad))
+    gst_structure_set (structure, "track", G_TYPE_UINT,
+        GST_QMMFSRC_AUDIO_PAD (pad)->id, NULL);
+
+  gst_structure_set (structure,
       "data", G_TYPE_UINT, GPOINTER_TO_UINT (buffer->data),
       "fd", G_TYPE_INT, buffer->fd,
       "bufid", G_TYPE_UINT, buffer->buf_id,
@@ -202,8 +226,6 @@ qmmfsrc_gst_buffer_new_wrapped (GstQmmfContext * context, GstPad * pad,
       "flag", G_TYPE_UINT, buffer->flag,
       NULL
   );
-  QMMFSRC_RETURN_VAL_IF_FAIL_WITH_CLEAN (NULL, structure != NULL,
-      gst_buffer_unref (gstbuffer), NULL, "Failed to create buffer structure!");
 
   // Set a notification function to signal when the buffer is no longer used.
   gst_mini_object_set_qdata (
@@ -211,6 +233,7 @@ qmmfsrc_gst_buffer_new_wrapped (GstQmmfContext * context, GstPad * pad,
       structure, (GDestroyNotify) qmmfsrc_gst_buffer_release
   );
 
+  GST_TRACE ("%s", gst_structure_to_string (structure));
   return gstbuffer;
 }
 
@@ -272,14 +295,23 @@ void video_data_callback (GstQmmfContext * context, GstPad * pad,
         numplanes, offset, stride
     );
 
-    GST_QMMFSRC_VIDEO_PAD_LOCK (vpad);
-    // Initialize the timestamp base value for calculating running time.
-    vpad->tsbase = (vpad->tsbase == 0) ? buffer.timestamp : vpad->tsbase;
+    GST_QMMF_CONTEXT_LOCK (context);
+    // Initialize the timestamp base value for buffer synchronization.
+    context->vtsbase = (GST_CLOCK_TIME_NONE == context->vtsbase) ?
+        buffer.timestamp - qmmfsrc_running_time (pad) : context->vtsbase;
 
-    GST_BUFFER_PTS (gstbuffer) = buffer.timestamp - vpad->tsbase;
+    if (GST_FORMAT_UNDEFINED == vpad->segment.format) {
+      gst_segment_init (&(vpad)->segment, GST_FORMAT_TIME);
+      gst_pad_push_event (pad, gst_event_new_segment (&(vpad)->segment));
+    }
+
+    GST_BUFFER_PTS (gstbuffer) = buffer.timestamp - context->vtsbase;
     GST_BUFFER_DTS (gstbuffer) = GST_CLOCK_TIME_NONE;
 
-    // TODO Does it need more precise calculations?!
+    vpad->segment.position = GST_BUFFER_PTS (gstbuffer);
+    GST_QMMF_CONTEXT_UNLOCK (context);
+
+    GST_QMMFSRC_VIDEO_PAD_LOCK (vpad);
     GST_BUFFER_DURATION (gstbuffer) = vpad->duration;
     GST_QMMFSRC_VIDEO_PAD_UNLOCK (vpad);
 
@@ -291,10 +323,8 @@ void video_data_callback (GstQmmfContext * context, GstPad * pad,
     item->destroy = (GDestroyNotify) qmmfsrc_free_queue_item;
 
     // Push the buffer into the queue or free it on failure.
-    if (!gst_data_queue_push (vpad->buffers, item)) {
-      gst_buffer_unref (gstbuffer);
+    if (!gst_data_queue_push (vpad->buffers, item))
       item->destroy (item);
-    }
   }
 }
 
@@ -323,15 +353,24 @@ void audio_data_callback (GstQmmfContext * context, GstPad * pad,
         GST_BUFFER_FLAG_HEADER : GST_BUFFER_FLAG_LIVE;
     GST_BUFFER_FLAG_SET (gstbuffer, gstflags);
 
-    GST_QMMFSRC_AUDIO_PAD_LOCK (pad);
-    // Initialize the timestamp base value for calculating running time.
-    apad->tsbase = (apad->tsbase == 0) ? buffer.timestamp : apad->tsbase;
+    GST_QMMF_CONTEXT_LOCK (context);
+    // Initialize the timestamp base value for buffer synchronization.
+    context->atsbase = (GST_CLOCK_TIME_NONE == context->atsbase) ?
+        buffer.timestamp - qmmfsrc_running_time (pad) : context->atsbase;
 
-    GST_BUFFER_PTS (gstbuffer) = buffer.timestamp - apad->tsbase;
-    GST_BUFFER_PTS (gstbuffer) *= G_GUINT64_CONSTANT (1000);
+    if (GST_FORMAT_UNDEFINED == apad->segment.format) {
+      gst_segment_init (&(apad)->segment, GST_FORMAT_TIME);
+      gst_pad_push_event (pad, gst_event_new_segment (&(apad)->segment));
+    }
+
+    GST_BUFFER_PTS (gstbuffer) = buffer.timestamp - context->atsbase;
+    GST_BUFFER_PTS (gstbuffer) *= G_GUINT64_CONSTANT(1000);
     GST_BUFFER_DTS (gstbuffer) = GST_CLOCK_TIME_NONE;
 
-    // TODO Does it need more precise calculations?!
+    apad->segment.position = GST_BUFFER_PTS (gstbuffer);
+    GST_QMMF_CONTEXT_UNLOCK (context);
+
+    GST_QMMFSRC_AUDIO_PAD_LOCK (pad);
     GST_BUFFER_DURATION (gstbuffer) = apad->duration;
     GST_QMMFSRC_AUDIO_PAD_UNLOCK (pad);
 
@@ -343,10 +382,8 @@ void audio_data_callback (GstQmmfContext * context, GstPad * pad,
     item->destroy = (GDestroyNotify) qmmfsrc_free_queue_item;
 
     // Push the buffer into the queue or free it on failure.
-    if (!gst_data_queue_push (apad->buffers, item)) {
-      gst_buffer_unref (gstbuffer);
+    if (!gst_data_queue_push (apad->buffers, item))
       item->destroy (item);
-    }
   }
 }
 
@@ -370,15 +407,23 @@ void image_data_callback (GstQmmfContext * context, GstPad * pad,
       GST_BUFFER_FLAG_HEADER : GST_BUFFER_FLAG_LIVE;
   GST_BUFFER_FLAG_SET (gstbuffer, gstflags);
 
-  GST_QMMFSRC_IMAGE_PAD_LOCK (ipad);
-  // Initialize the timestamp base value for calculating running time.
-  ipad->tsbase = (ipad->tsbase == 0) ? buffer.timestamp : ipad->tsbase;
+  GST_QMMF_CONTEXT_LOCK (context);
+  // Initialize the timestamp base value for buffer synchronization.
+  context->vtsbase = (GST_CLOCK_TIME_NONE == context->vtsbase) ?
+      buffer.timestamp - qmmfsrc_running_time (pad) : context->vtsbase;
 
-  GST_BUFFER_PTS (gstbuffer) = buffer.timestamp - ipad->tsbase;
-  GST_BUFFER_PTS (gstbuffer) *= G_GUINT64_CONSTANT(1000);
+  if (GST_FORMAT_UNDEFINED == ipad->segment.format) {
+    gst_segment_init (&(ipad)->segment, GST_FORMAT_TIME);
+    gst_pad_push_event (pad, gst_event_new_segment (&(ipad)->segment));
+  }
+
+  GST_BUFFER_PTS (gstbuffer) = buffer.timestamp - context->vtsbase;
   GST_BUFFER_DTS (gstbuffer) = GST_CLOCK_TIME_NONE;
 
-  // TODO Does it need more precise calculations?!
+  ipad->segment.position = GST_BUFFER_PTS (gstbuffer);
+  GST_QMMF_CONTEXT_UNLOCK (context);
+
+  GST_QMMFSRC_IMAGE_PAD_LOCK (ipad);
   GST_BUFFER_DURATION (gstbuffer) = ipad->duration;
   GST_QMMFSRC_IMAGE_PAD_UNLOCK (ipad);
 
@@ -390,10 +435,8 @@ void image_data_callback (GstQmmfContext * context, GstPad * pad,
   item->destroy = (GDestroyNotify) qmmfsrc_free_queue_item;
 
   // Push the buffer into the queue or free it on failure.
-  if (!gst_data_queue_push (ipad->buffers, item)) {
-    gst_buffer_unref (gstbuffer);
+  if (!gst_data_queue_push (ipad->buffers, item))
     item->destroy (item);
-  }
 }
 
 GstQmmfContext *
@@ -979,6 +1022,9 @@ gst_qmmf_context_start_session (GstQmmfContext * context)
 {
   gint status = 0;
 
+  context->vtsbase = GST_CLOCK_TIME_NONE;
+  context->atsbase = GST_CLOCK_TIME_NONE;
+
   GST_TRACE ("Starting QMMF context session");
 
   G_LOCK (recorder);
@@ -1012,6 +1058,9 @@ gst_qmmf_context_stop_session (GstQmmfContext * context)
       "QMMF Recorder StopSession Failed!");
 
   GST_TRACE ("QMMF context session stopped");
+
+  context->vtsbase = GST_CLOCK_TIME_NONE;
+  context->atsbase = GST_CLOCK_TIME_NONE;
 
   return TRUE;
 }
@@ -1073,7 +1122,7 @@ gst_qmmf_context_capture_image (GstQmmfContext * context, GstPad * pad)
 
   gst_structure_get_uint (ipad->params, "quality", &imgparam.image_quality);
 
-  imagecb = [&, ipad] (uint32_t camera_id, uint32_t imgcount,
+  imagecb = [&, context, pad] (uint32_t camera_id, uint32_t imgcount,
       ::qmmf::BufferDescriptor buffer, ::qmmf::recorder::MetaData meta)
       { image_data_callback (context, pad, buffer, meta); };
 
@@ -1112,7 +1161,7 @@ gst_qmmf_context_cancel_capture (GstQmmfContext * context)
 
   G_LOCK (recorder);
 
-  status = recorder->CancelCaptureImage (context->session_id);
+  status = recorder->CancelCaptureImage (context->camera_id);
 
   G_UNLOCK (recorder);
 

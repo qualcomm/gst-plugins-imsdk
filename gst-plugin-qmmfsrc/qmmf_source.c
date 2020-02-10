@@ -128,17 +128,21 @@ static GstStaticPadTemplate qmmfsrc_image_src_template =
     );
 
 static gboolean
-qmmfsrc_pad_push_event (GstElement * element, GstPad * pad, GstEvent * event)
+qmmfsrc_pad_push_event (GstElement * element, GstPad * pad, gpointer data)
 {
   GstQmmfSrc *qmmfsrc = GST_QMMFSRC (element);
+  GstEvent *event = GST_EVENT (data);
+
   GST_DEBUG_OBJECT (qmmfsrc, "Event: %s", GST_EVENT_TYPE_NAME (event));
   return gst_pad_push_event (pad, gst_event_copy (event));
 }
 
 static gboolean
-qmmfsrc_pad_send_event (GstElement * element, GstPad * pad, GstEvent * event)
+qmmfsrc_pad_send_event (GstElement * element, GstPad * pad, gpointer data)
 {
   GstQmmfSrc *qmmfsrc = GST_QMMFSRC (element);
+  GstEvent *event = GST_EVENT (data);
+
   GST_DEBUG_OBJECT (qmmfsrc, "Event: %s", GST_EVENT_TYPE_NAME (event));
   return gst_pad_send_event (pad, gst_event_copy (event));
 }
@@ -148,7 +152,6 @@ qmmfsrc_pad_flush_buffers (GstElement * element, GstPad * pad, gpointer data)
 {
   GstQmmfSrc *qmmfsrc = GST_QMMFSRC (element);
   gboolean flush = GPOINTER_TO_UINT (data);
-  GstSegment segment;
 
   GST_DEBUG_OBJECT (qmmfsrc, "Flush pad: %s", GST_PAD_NAME (pad));
 
@@ -159,10 +162,6 @@ qmmfsrc_pad_flush_buffers (GstElement * element, GstPad * pad, gpointer data)
   } else if (GST_IS_QMMFSRC_IMAGE_PAD (pad)) {
     qmmfsrc_image_pad_flush_buffers_queue (pad, flush);
   }
-
-  // Ensure segment (format) is properly setup.
-  gst_segment_init (&segment, GST_FORMAT_TIME);
-  gst_pad_push_event (pad, gst_event_new_segment (&segment));
 
   return TRUE;
 }
@@ -302,7 +301,7 @@ qmmfsrc_create_session (GstQmmfSrc * qmmfsrc)
   gboolean success = FALSE;
   GHashTableIter iter;
   gpointer key, value;
-  GstPad *pad;
+  GstPad *pad = NULL;
 
   GST_TRACE_OBJECT (qmmfsrc, "Create session");
 
@@ -413,14 +412,12 @@ qmmfsrc_delete_session (GstQmmfSrc * qmmfsrc)
 static gboolean
 qmmfsrc_start_session (GstQmmfSrc * qmmfsrc)
 {
-  gboolean success = FALSE, flush = FALSE;
+  gboolean success = FALSE;
 
   GST_TRACE_OBJECT (qmmfsrc, "Starting session");
 
-  success = gst_element_foreach_src_pad (
-      GST_ELEMENT (qmmfsrc), qmmfsrc_pad_flush_buffers,
-      GUINT_TO_POINTER (flush)
-  );
+  success = gst_element_foreach_src_pad (GST_ELEMENT (qmmfsrc),
+      qmmfsrc_pad_flush_buffers, GUINT_TO_POINTER (FALSE));
   QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
       "Failed to flush source pads!");
 
@@ -436,14 +433,12 @@ qmmfsrc_start_session (GstQmmfSrc * qmmfsrc)
 static gboolean
 qmmfsrc_stop_session (GstQmmfSrc * qmmfsrc)
 {
-  gboolean success = FALSE, flush = TRUE;
+  gboolean success = FALSE;
 
   GST_TRACE_OBJECT (qmmfsrc, "Stopping session");
 
-  success = gst_element_foreach_src_pad (
-      GST_ELEMENT (qmmfsrc), qmmfsrc_pad_flush_buffers,
-      GUINT_TO_POINTER (flush)
-  );
+  success = gst_element_foreach_src_pad (GST_ELEMENT (qmmfsrc),
+      qmmfsrc_pad_flush_buffers, GUINT_TO_POINTER (TRUE));
   QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
       "Failed to flush source pads!");
 
@@ -613,16 +608,14 @@ qmmfsrc_send_event (GstElement * element, GstEvent * event)
     // Bidirectional events.
     case GST_EVENT_FLUSH_START:
       GST_DEBUG_OBJECT (qmmfsrc, "Pushing FLUSH_START event");
-      success = gst_element_foreach_src_pad (
-          element, (GstElementForeachPadFunc) qmmfsrc_pad_send_event, event
-      );
+      success =
+          gst_element_foreach_src_pad (element, qmmfsrc_pad_send_event, event);
       gst_event_unref (event);
       break;
     case GST_EVENT_FLUSH_STOP:
       GST_DEBUG_OBJECT (qmmfsrc, "Pushing FLUSH_STOP event");
-      success = gst_element_foreach_src_pad (
-          element, (GstElementForeachPadFunc) qmmfsrc_pad_send_event, event
-      );
+      success =
+          gst_element_foreach_src_pad (element, qmmfsrc_pad_send_event, event);
       gst_event_unref(event);
       break;
 
@@ -854,17 +847,13 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           GST_PARAM_MUTABLE_PLAYING));
 
   signals[SIGNAL_CAPTURE_IMAGE] =
-      g_signal_new_class_handler ("capture-image",
-      G_TYPE_FROM_CLASS (klass),
-      G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION,
-      G_CALLBACK (qmmfsrc_capture_image),
+      g_signal_new_class_handler ("capture-image", G_TYPE_FROM_CLASS (klass),
+      G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION, G_CALLBACK (qmmfsrc_capture_image),
       NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
 
   signals[SIGNAL_CANCEL_CAPTURE] =
-      g_signal_new_class_handler ("cancel-capture",
-      G_TYPE_FROM_CLASS (klass),
-      G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION,
-      G_CALLBACK (qmmfsrc_cancel_capture),
+      g_signal_new_class_handler ("cancel-capture", G_TYPE_FROM_CLASS (klass),
+      G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION, G_CALLBACK (qmmfsrc_cancel_capture),
       NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
 
   gstelement->request_new_pad = GST_DEBUG_FUNCPTR (qmmfsrc_request_pad);

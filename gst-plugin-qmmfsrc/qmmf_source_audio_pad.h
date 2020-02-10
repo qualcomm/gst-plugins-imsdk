@@ -99,6 +99,9 @@ struct _GstQmmfSrcAudioPad {
   /// Inherited parent structure.
   GstPad            parent;
 
+  /// Synchronization segment.
+  GstSegment        segment;
+
   /// Global mutex lock.
   GMutex            lock;
   /// Index of the audio pad.
@@ -119,15 +122,13 @@ struct _GstQmmfSrcAudioPad {
   /// Whether the GStreamer stream is uncompressed or compressed and its type.
   GstAudioCodecType codec;
   /// Agnostic structure containing codec specific parameters.
-  GstStructure     *params;
+  GstStructure      *params;
 
   /// QMMF Recorder stream buffers duration, calculated from samplerate.
   GstClockTime      duration;
-  /// Timestamp base used to normalize buffer timestamps to running time.
-  GstClockTime      tsbase;
 
   /// Queue for GStreamer buffers wrappers around QMMF Recorder buffers.
-  GstDataQueue     *buffers;
+  GstDataQueue      *buffers;
 };
 
 struct _GstQmmfSrcAudioPadClass {

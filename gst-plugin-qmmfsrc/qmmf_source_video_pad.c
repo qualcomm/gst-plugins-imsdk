@@ -106,17 +106,10 @@ video_pad_worker_task (GstPad * pad)
   buffers = GST_QMMFSRC_VIDEO_PAD (pad)->buffers;
 
   if (gst_data_queue_pop (buffers, &item)) {
-    GstBuffer *buffer = GST_BUFFER (item->object);
-    GstMemory *memory = gst_buffer_get_memory (buffer, 0);
-
-    GST_TRACE_OBJECT (pad, "Buffer FD %d pts: %" GST_TIME_FORMAT ", dts: %"
-        GST_TIME_FORMAT ", duration: %" GST_TIME_FORMAT,
-        gst_fd_memory_get_fd (memory), GST_TIME_ARGS (buffer->pts),
-        GST_TIME_ARGS (buffer->dts), GST_TIME_ARGS (buffer->duration));
-    gst_memory_unref (memory);
+    GstBuffer *buffer = gst_buffer_ref (GST_BUFFER (item->object));
+    item->destroy (item);
 
     gst_pad_push (pad, buffer);
-    item->destroy (item);
   } else {
     GST_INFO_OBJECT (pad, "Pause video pad worker thread");
     gst_pad_pause_task (pad);
@@ -175,12 +168,18 @@ video_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
       success = gst_pad_start_task (
           pad, (GstTaskFunction) video_pad_worker_task, pad, NULL);
       gst_event_unref (event);
+
+      gst_segment_init (&GST_QMMFSRC_VIDEO_PAD (pad)->segment,
+          GST_FORMAT_UNDEFINED);
       break;
     case GST_EVENT_EOS:
       // After EOS, we should not send any more buffers, even if there are
       // more requests coming in.
       qmmfsrc_video_pad_flush_buffers_queue (pad, TRUE);
       gst_event_unref (event);
+
+      gst_segment_init (&GST_QMMFSRC_VIDEO_PAD (pad)->segment,
+          GST_FORMAT_UNDEFINED);
       break;
     default:
       success = gst_pad_event_default (pad, parent, event);
@@ -314,6 +313,7 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
 
   // Immediately return the fetched caps if they are fixed.
   if (gst_caps_is_fixed (caps)) {
+    gst_pad_set_caps (pad, caps);
     video_pad_update_params (pad, gst_caps_get_structure (caps, 0));
     return TRUE;
   }
@@ -351,8 +351,8 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
     const gchar *profile = gst_structure_get_string (structure, "profile");
 
     if (!profile) {
-      gst_structure_set (structure, "profile", G_TYPE_STRING,
-          DEFAULT_VIDEO_CODEC_PROFILE, NULL);
+      gst_structure_fixate_field_string (structure, "profile",
+          DEFAULT_VIDEO_CODEC_PROFILE);
       GST_DEBUG_OBJECT (pad, "Codec profile not set, using default value: %s",
           DEFAULT_VIDEO_CODEC_PROFILE);
     }
@@ -362,8 +362,8 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
     const gchar *level = gst_structure_get_string (structure, "level");
 
     if (!level) {
-      gst_structure_set (structure, "level", G_TYPE_STRING,
-          DEFAULT_VIDEO_CODEC_LEVEL, NULL);
+      gst_structure_fixate_field_string (structure, "level",
+          DEFAULT_VIDEO_CODEC_LEVEL);
       GST_DEBUG_OBJECT (pad, "Codec level not set, using default value: %s",
           DEFAULT_VIDEO_CODEC_LEVEL);
     }
@@ -483,7 +483,7 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
 
-  GST_DEBUG_CATEGORY_INIT (qmmfsrc_video_pad_debug, "qmmfsrc-video", 0,
+  GST_DEBUG_CATEGORY_INIT (qmmfsrc_video_pad_debug, "qmmfsrc", 0,
       "QTI QMMF Source video pad");
 }
 
@@ -491,6 +491,8 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
 static void
 qmmfsrc_video_pad_init (GstQmmfSrcVideoPad * pad)
 {
+  gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
+
   pad->index     = -1;
   pad->srcidx    = -1;
 
@@ -501,8 +503,7 @@ qmmfsrc_video_pad_init (GstQmmfSrcVideoPad * pad)
   pad->codec     = GST_VIDEO_CODEC_UNKNOWN;
   pad->params    = gst_structure_new_empty ("codec-params");
 
-  pad->duration  = 0;
-  pad->tsbase    = 0;
+  pad->duration  = GST_CLOCK_TIME_NONE;
 
   // TODO temporality solution until properties are implemented.
   gst_structure_set (pad->params, "bitrate", G_TYPE_UINT,

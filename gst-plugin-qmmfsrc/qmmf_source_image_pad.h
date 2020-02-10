@@ -79,6 +79,9 @@ struct _GstQmmfSrcImagePad {
   /// Inherited parent structure.
   GstPad            parent;
 
+  /// Synchronization segment.
+  GstSegment        segment;
+
   /// Global mutex lock.
   GMutex            lock;
   /// Index of the image pad.
@@ -95,15 +98,13 @@ struct _GstQmmfSrcImagePad {
   /// Whether the GStreamer stream is uncompressed or compressed and its type.
   GstImageCodecType codec;
   /// Agnostic structure containing codec specific parameters.
-  GstStructure     *params;
+  GstStructure      *params;
 
   /// QMMF Recorder image stream buffers duration, calculated from framerate.
   GstClockTime      duration;
-  /// Timestamp base used to normalize buffer timestamps to running time.
-  GstClockTime      tsbase;
 
   /// Queue for GStreamer buffers wrappers around QMMF Recorder buffers.
-  GstDataQueue     *buffers;
+  GstDataQueue      *buffers;
 };
 
 struct _GstQmmfSrcImagePadClass {

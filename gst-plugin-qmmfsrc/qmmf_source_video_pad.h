@@ -114,6 +114,9 @@ struct _GstQmmfSrcVideoPad {
   /// Inherited parent structure.
   GstPad            parent;
 
+  /// Synchronization segment.
+  GstSegment        segment;
+
   /// Global mutex lock.
   GMutex            lock;
   /// Index of the video pad.
@@ -138,8 +141,6 @@ struct _GstQmmfSrcVideoPad {
 
   /// QMMF Recorder track buffers duration, calculated from framerate.
   GstClockTime      duration;
-  /// Timestamp base used to normalize buffer timestamps to running time.
-  GstClockTime      tsbase;
 
   /// Queue for GStreamer buffers wrappers around QMMF Recorder buffers.
   GstDataQueue     *buffers;

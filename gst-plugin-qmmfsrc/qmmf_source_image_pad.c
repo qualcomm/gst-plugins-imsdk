@@ -71,17 +71,10 @@ image_pad_worker_task (GstPad * pad)
   buffers = GST_QMMFSRC_IMAGE_PAD (pad)->buffers;
 
   if (gst_data_queue_pop (buffers, &item)) {
-    GstBuffer *buffer = GST_BUFFER (item->object);
-    GstMemory *memory = gst_buffer_get_memory (buffer, 0);
-
-    GST_TRACE_OBJECT (pad, "Buffer FD %d pts: %" GST_TIME_FORMAT ", dts: %"
-        GST_TIME_FORMAT ", duration: %" GST_TIME_FORMAT,
-        gst_fd_memory_get_fd (memory), GST_TIME_ARGS (buffer->pts),
-        GST_TIME_ARGS (buffer->dts), GST_TIME_ARGS (buffer->duration));
-    gst_memory_unref (memory);
+    GstBuffer *buffer = gst_buffer_ref (GST_BUFFER (item->object));
+    item->destroy (item);
 
     gst_pad_push (pad, buffer);
-    item->destroy (item);
   } else {
     GST_INFO_OBJECT (pad, "Pause image pad worker thread");
     gst_pad_pause_task (pad);
@@ -140,12 +133,18 @@ image_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
       success = gst_pad_start_task (
           pad, (GstTaskFunction) image_pad_worker_task, pad, NULL);
       gst_event_unref (event);
+
+      gst_segment_init (&GST_QMMFSRC_IMAGE_PAD (pad)->segment,
+          GST_FORMAT_UNDEFINED);
       break;
     case GST_EVENT_EOS:
       // After EOS, we should not send any more buffers, even if there are
       // more requests coming in.
       qmmfsrc_image_pad_flush_buffers_queue (pad, TRUE);
       gst_event_unref (event);
+
+      gst_segment_init (&GST_QMMFSRC_IMAGE_PAD (pad)->segment,
+          GST_FORMAT_UNDEFINED);
       break;
     case GST_EVENT_CUSTOM_UPSTREAM:
     case GST_EVENT_CUSTOM_DOWNSTREAM:
@@ -408,7 +407,7 @@ qmmfsrc_image_pad_class_init (GstQmmfSrcImagePadClass * klass)
   gobject->set_property = GST_DEBUG_FUNCPTR (image_pad_set_property);
   gobject->finalize     = GST_DEBUG_FUNCPTR (image_pad_finalize);
 
-  GST_DEBUG_CATEGORY_INIT (qmmfsrc_image_pad_debug, "qmmfsrc-image", 0,
+  GST_DEBUG_CATEGORY_INIT (qmmfsrc_image_pad_debug, "qmmfsrc", 0,
       "QTI QMMF Source image pad");
 }
 
@@ -416,6 +415,8 @@ qmmfsrc_image_pad_class_init (GstQmmfSrcImagePadClass * klass)
 static void
 qmmfsrc_image_pad_init (GstQmmfSrcImagePad * pad)
 {
+  gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
+
   pad->index     = 0;
 
   pad->width     = -1;
@@ -425,8 +426,7 @@ qmmfsrc_image_pad_init (GstQmmfSrcImagePad * pad)
   pad->codec     = GST_IMAGE_CODEC_TYPE_UNKNOWN;
   pad->params    = gst_structure_new_empty ("codec-params");
 
-  pad->duration  = 0;
-  pad->tsbase    = 0;
+  pad->duration  = GST_CLOCK_TIME_NONE;
 
   // TODO temporality solution until properties are implemented.
   gst_structure_set (pad->params, "quality", G_TYPE_UINT,

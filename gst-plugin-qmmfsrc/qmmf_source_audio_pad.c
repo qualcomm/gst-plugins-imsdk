@@ -70,17 +70,10 @@ audio_pad_worker_task (GstPad * pad)
   buffers = GST_QMMFSRC_AUDIO_PAD (pad)->buffers;
 
   if (gst_data_queue_pop (buffers, &item)) {
-    GstBuffer *buffer = GST_BUFFER (item->object);
-    GstMemory *memory = gst_buffer_get_memory (buffer, 0);
-
-    GST_TRACE_OBJECT (pad, "Buffer FD %d pts: %" GST_TIME_FORMAT ", dts: %"
-        GST_TIME_FORMAT ", duration: %" GST_TIME_FORMAT,
-        gst_fd_memory_get_fd (memory), GST_TIME_ARGS (buffer->pts),
-        GST_TIME_ARGS (buffer->dts), GST_TIME_ARGS (buffer->duration));
-    gst_memory_unref (memory);
+    GstBuffer *buffer = gst_buffer_ref (GST_BUFFER (item->object));
+    item->destroy (item);
 
     gst_pad_push (pad, buffer);
-    item->destroy (item);
   } else {
     GST_INFO_OBJECT (pad, "Pause audio pad worker thread");
     gst_pad_pause_task (pad);
@@ -139,12 +132,18 @@ audio_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
       success = gst_pad_start_task (
           pad, (GstTaskFunction) audio_pad_worker_task, pad, NULL);
       gst_event_unref(event);
+
+      gst_segment_init (&GST_QMMFSRC_AUDIO_PAD (pad)->segment,
+          GST_FORMAT_UNDEFINED);
       break;
     case GST_EVENT_EOS:
       // After EOS, we should not send any more buffers, even if there are
       // more requests coming in.
       qmmfsrc_audio_pad_flush_buffers_queue (pad, TRUE);
       gst_event_unref (event);
+
+      gst_segment_init (&GST_QMMFSRC_AUDIO_PAD (pad)->segment,
+          GST_FORMAT_UNDEFINED);
       break;
     default:
       success = gst_pad_event_default (pad, parent, event);
@@ -489,7 +488,7 @@ qmmfsrc_audio_pad_class_init (GstQmmfSrcAudioPadClass * klass)
   gobject->set_property = GST_DEBUG_FUNCPTR (audio_pad_set_property);
   gobject->finalize     = GST_DEBUG_FUNCPTR (audio_pad_finalize);
 
-  GST_DEBUG_CATEGORY_INIT (qmmfsrc_audio_pad_debug, "qmmfsrc-audio", 0,
+  GST_DEBUG_CATEGORY_INIT (qmmfsrc_audio_pad_debug, "qmmfsrc", 0,
       "QTI QMMF Source audio pad");
 }
 
@@ -497,6 +496,8 @@ qmmfsrc_audio_pad_class_init (GstQmmfSrcAudioPadClass * klass)
 static void
 qmmfsrc_audio_pad_init (GstQmmfSrcAudioPad * pad)
 {
+  gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
+
   pad->index      = 0;
 
   pad->device     = DEFAULT_AUDIO_STREAM_DEVICE_ID;
@@ -507,8 +508,7 @@ qmmfsrc_audio_pad_init (GstQmmfSrcAudioPad * pad)
   pad->codec      = GST_AUDIO_CODEC_TYPE_UNKNOWN;
   pad->params     = gst_structure_new_empty ("codec-params");
 
-  pad->duration   = 0;
-  pad->tsbase     = 0;
+  pad->duration   = GST_CLOCK_TIME_NONE;
 
   pad->buffers    = gst_data_queue_new (queue_is_full_cb, NULL, NULL, pad);
 }
