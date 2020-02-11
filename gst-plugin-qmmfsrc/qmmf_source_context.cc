@@ -36,6 +36,7 @@
 #include <gst/allocators/allocators.h>
 #include <qmmf-sdk/qmmf_recorder.h>
 #include <qmmf-sdk/qmmf_recorder_extra_param_tags.h>
+#include <qmmf-sdk/qmmf_recorder_extra_param.h>
 
 #include "qmmf_source_utils.h"
 #include "qmmf_source_image_pad.h"
@@ -94,6 +95,8 @@ struct _GstQmmfContext {
   GstClockTime vtsbase;
   /// Audio pads timestamp base.
   GstClockTime atsbase;
+  /// Camera Slave mode.
+  gboolean   slave;
 };
 
 /// Global QMMF Recorder instance.
@@ -525,6 +528,14 @@ gst_qmmf_context_open (GstQmmfContext * context)
 
   qmmf::recorder::CameraExtraParam extra_param;
 
+  // Slave Mode
+  qmmf::recorder::CameraSlaveMode camera_slave_mode;
+  camera_slave_mode.mode = context->slave ?
+      qmmf::recorder::SlaveMode::kSlave :
+      qmmf::recorder::SlaveMode::kMaster;
+  extra_param.Update(::qmmf::recorder::QMMF_CAMERA_SLAVE_MODE,
+      camera_slave_mode);
+
   // EIS
   qmmf::recorder::EISSetup eis_mode;
   eis_mode.enable = context->eis;
@@ -876,6 +887,10 @@ gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad)
       ::qmmf::recorder::SourceVideoTrack srctrack;
       srctrack.source_track_id = vpad->srcidx + VIDEO_TRACK_ID_OFFSET;
       extraparam.Update(::qmmf::recorder::QMMF_SOURCE_VIDEO_TRACK_ID, srctrack);
+    } else if (context->slave) {
+      ::qmmf::recorder::LinkedTrackInSlaveMode linked_track_slave_mode;
+      linked_track_slave_mode.enable = true;
+      extraparam.Update(::qmmf::recorder::QMMF_USE_LINKED_TRACK_IN_SLAVE_MODE, linked_track_slave_mode);
     }
 
     G_LOCK (recorder);
@@ -1040,11 +1055,11 @@ gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad)
   mvalue = context->awblock;
   meta.update(ANDROID_CONTROL_AWB_LOCK, &mvalue, 1);
 
-  G_LOCK (recorder);
-
-  status = recorder->SetCameraParam (context->camera_id, meta);
-
-  G_UNLOCK (recorder);
+  if (!context->slave) {
+    G_LOCK (recorder);
+    status = recorder->SetCameraParam (context->camera_id, meta);
+    G_UNLOCK (recorder);
+  }
 
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
       "SetCameraParam Failed!");
@@ -1332,13 +1347,18 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       meta.update(ANDROID_CONTROL_AWB_LOCK, &lock, 1);
       break;
     }
+    case PARAM_CAMERA_SLAVE:
+    {
+      context->slave = g_value_get_boolean (value);
+      break;
+    }
   }
 
-  G_LOCK (recorder);
-
-  recorder->SetCameraParam (context->camera_id, meta);
-
-  G_UNLOCK (recorder);
+  if (!context->slave) {
+    G_LOCK (recorder);
+    recorder->SetCameraParam (context->camera_id, meta);
+    G_UNLOCK (recorder);
+  }
 }
 
 void
@@ -1375,6 +1395,9 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       break;
     case PARAM_CAMERA_AWB_LOCK:
       g_value_set_boolean (value, context->awbmode);
+      break;
+    case PARAM_CAMERA_SLAVE:
+      g_value_set_boolean (value, context->slave);
       break;
   }
 }

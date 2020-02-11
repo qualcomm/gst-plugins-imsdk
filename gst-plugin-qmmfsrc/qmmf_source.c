@@ -59,6 +59,7 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
 #define DEFAULT_PROP_CAMERA_AE_LOCK         FALSE
 #define DEFAULT_PROP_CAMERA_AWB_MODE        AWB_MODE_AUTO
 #define DEFAULT_PROP_CAMERA_AWB_LOCK        FALSE
+#define DEFAULT_PROP_CAMERA_SLAVE           FALSE
 
 static void gst_qmmfsrc_child_proxy_init (gpointer g_iface, gpointer data);
 
@@ -90,6 +91,7 @@ enum
   PROP_CAMERA_AE_LOCK,
   PROP_CAMERA_AWB_MODE,
   PROP_CAMERA_AWB_LOCK,
+  PROP_CAMERA_SLAVE,
 };
 
 static GstStaticPadTemplate qmmfsrc_video_src_template =
@@ -695,6 +697,10 @@ qmmfsrc_set_property (GObject * object, guint property_id,
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_AWB_LOCK, value);
       break;
+    case PROP_CAMERA_SLAVE:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_SLAVE, value);
+        break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -749,6 +755,10 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_AWB_LOCK, value);
       break;
+    case PROP_CAMERA_SLAVE:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_SLAVE, value);
+        break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -865,6 +875,11 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
   g_object_class_install_property (gobject, PROP_CAMERA_AWB_LOCK,
       g_param_spec_boolean ("awb-lock", "AWB Lock",
           "Auto White Balance lock", DEFAULT_PROP_CAMERA_AWB_LOCK,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_CAMERA_SLAVE,
+      g_param_spec_boolean ("slave", "Slave mode",
+          "Set camera as slave device", DEFAULT_PROP_CAMERA_SLAVE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
 
