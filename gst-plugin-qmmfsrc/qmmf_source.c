@@ -50,6 +50,8 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
 #define GST_CAT_DEFAULT qmmfsrc_debug
 
 #define DEFAULT_PROP_CAMERA_ID              0
+#define DEFAULT_PROP_CAMERA_SHDR_MODE       FALSE
+#define DEFAULT_PROP_CAMERA_EIS_MODE        FALSE
 #define DEFAULT_PROP_CAMERA_EFFECT_MODE     EFFECT_MODE_OFF
 #define DEFAULT_PROP_CAMERA_SCENE_MODE      SCENE_MODE_DISABLED
 #define DEFAULT_PROP_CAMERA_ANTIBANDING     ANTIBANDING_MODE_AUTO
@@ -79,6 +81,8 @@ enum
 {
   PROP_0,
   PROP_CAMERA_ID,
+  PROP_CAMERA_SHDR,
+  PROP_CAMERA_EIS,
   PROP_CAMERA_EFFECT_MODE,
   PROP_CAMERA_SCENE_MODE,
   PROP_CAMERA_ANTIBANDING_MODE,
@@ -665,6 +669,14 @@ qmmfsrc_set_property (GObject * object, guint property_id,
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_ID, value);
       break;
+    case PROP_CAMERA_SHDR:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_SHDR, value);
+      break;
+    case PROP_CAMERA_EIS:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_EIS, value);
+      break;
     case PROP_CAMERA_EFFECT_MODE:
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_EFFECT_MODE, value);
@@ -710,6 +722,14 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
     case PROP_CAMERA_ID:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_ID, value);
+      break;
+    case PROP_CAMERA_SHDR:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_SHDR, value);
+      break;
+    case PROP_CAMERA_EIS:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_EIS, value);
       break;
     case PROP_CAMERA_EFFECT_MODE:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
@@ -807,6 +827,15 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
       g_param_spec_uint ("camera", "Camera ID",
           "Camera device ID to be used by video/image pads",
           0, 10, DEFAULT_PROP_CAMERA_ID,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+    g_object_class_install_property (gobject, PROP_CAMERA_SHDR,
+      g_param_spec_boolean ("shdr", "SHDR",
+          "Super High Dynamic Range Imaging", DEFAULT_PROP_CAMERA_SHDR_MODE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+    g_object_class_install_property (gobject, PROP_CAMERA_EIS,
+      g_param_spec_boolean ("eis", "EIS",
+          "Image Stabilization technology to reduce the effects of camera shake",
+          DEFAULT_PROP_CAMERA_EIS_MODE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_CAMERA_EFFECT_MODE,
       g_param_spec_enum ("effect", "Effect",

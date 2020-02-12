@@ -71,6 +71,10 @@ struct _GstQmmfContext {
   /// QMMF Recorder multimedia session ID.
   guint        session_id;
 
+  /// Camera property to Enable or Disable EIS.
+  gboolean   eis;
+  /// Camera property to Enable or Disable SHDR.
+  gboolean   shdr;
   /// Camera frame effect property.
   guchar       effect;
   /// Camera scene optimization property.
@@ -513,7 +517,19 @@ gst_qmmf_context_open (GstQmmfContext * context)
 
   G_LOCK (recorder);
 
-  status = recorder->StartCamera (context->camera_id, 30);
+  qmmf::recorder::CameraExtraParam extra_param;
+
+  // EIS
+  qmmf::recorder::EISSetup eis_mode;
+  eis_mode.enable = context->eis;
+  extra_param.Update(qmmf::recorder::QMMF_EIS, eis_mode);
+
+  // SHDR
+  qmmf::recorder::VideoHDRMode vid_hdr_mode;
+  vid_hdr_mode.enable = context->shdr;
+  extra_param.Update(qmmf::recorder::QMMF_VIDEO_HDR_MODE, vid_hdr_mode);
+
+  status = recorder->StartCamera(context->camera_id, 30, extra_param);
 
   G_UNLOCK (recorder);
 
@@ -1202,6 +1218,12 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_ID:
       context->camera_id = g_value_get_uint (value);
       break;
+    case PARAM_CAMERA_SHDR:
+      context->shdr = g_value_get_boolean (value);
+      break;
+    case PARAM_CAMERA_EIS:
+      context->eis = g_value_get_boolean (value);
+      break;
     case PARAM_CAMERA_EFFECT_MODE:
     {
       guchar mode;
@@ -1281,6 +1303,12 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
   switch (param_id) {
     case PARAM_CAMERA_ID:
       g_value_set_uint (value, context->camera_id);
+      break;
+    case PARAM_CAMERA_SHDR:
+      g_value_set_boolean (value, context->shdr);
+      break;
+    case PARAM_CAMERA_EIS:
+      g_value_set_boolean (value, context->eis);
       break;
     case PARAM_CAMERA_EFFECT_MODE:
       g_value_set_enum (value, context->effect);
