@@ -46,6 +46,13 @@ add_library(${GST_QMMFSRC_PLUGIN} SHARED
   qmmf_source_context.cc
 )
 
+# Enable 4K Resolution.
+if (ENABLE_4K_RESOLUTION)
+  target_compile_definitions(${GST_QMMFSRC_PLUGIN} PRIVATE MAX_WIDTH="3840" MAX_HEIGHT="2160")
+else ()
+  target_compile_definitions(${GST_QMMFSRC_PLUGIN} PRIVATE MAX_WIDTH="1920" MAX_HEIGHT="1080")
+endif()
+
 target_include_directories(${GST_QMMFSRC_PLUGIN} PRIVATE
   ${GST_INCLUDE_DIRS}
 )
