@@ -48,8 +48,10 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
 #define DEFAULT_VIDEO_STREAM_HEIGHT  480
 #define DEFAULT_VIDEO_STREAM_FPS_NUM 30
 #define DEFAULT_VIDEO_STREAM_FPS_DEN 1
-#define DEFAULT_VIDEO_CODEC_PROFILE  "high"
-#define DEFAULT_VIDEO_CODEC_LEVEL    "3"
+#define DEFAULT_VIDEO_H264_PROFILE   "high"
+#define DEFAULT_VIDEO_H265_PROFILE   "main"
+#define DEFAULT_VIDEO_H264_LEVEL     "3"
+#define DEFAULT_VIDEO_H265_LEVEL     "5.1"
 
 #define DEFAULT_PROP_SOURCE_INDEX    (-1)
 #define DEFAULT_PROP_FRAMERATE       30.0
@@ -237,21 +239,26 @@ video_pad_update_params (GstPad * pad, GstStructure * structure)
   vpad->framerate = 1 / GST_TIME_AS_SECONDS (
       gst_guint64_to_gdouble (vpad->duration));
 
-  if (gst_structure_has_name (structure, "video/x-h264")) {
+  if (gst_structure_has_name(structure, "video/x-raw")) {
+    vpad->codec = GST_VIDEO_CODEC_NONE;
+    vpad->format = gst_video_format_from_string(
+        gst_structure_get_string(structure, "format"));
+  } else {
     const gchar *profile, *level;
 
-    profile = gst_structure_get_string (structure, "profile");
-    gst_structure_set (vpad->params, "profile", G_TYPE_STRING, profile, NULL);
+    profile = gst_structure_get_string(structure, "profile");
+    gst_structure_set(vpad->params, "profile", G_TYPE_STRING, profile, NULL);
 
-    level = gst_structure_get_string (structure, "level");
-    gst_structure_set (vpad->params, "level", G_TYPE_STRING, level, NULL);
+    level = gst_structure_get_string(structure, "level");
+    gst_structure_set(vpad->params, "level", G_TYPE_STRING, level, NULL);
 
-    vpad->codec = GST_VIDEO_CODEC_H264;
     vpad->format = GST_VIDEO_FORMAT_ENCODED;
-  } else if (gst_structure_has_name (structure, "video/x-raw")) {
-    vpad->codec = GST_VIDEO_CODEC_NONE;
-    vpad->format = gst_video_format_from_string (
-        gst_structure_get_string (structure, "format"));
+
+    if (gst_structure_has_name(structure, "video/x-h264")) {
+      vpad->codec = GST_VIDEO_CODEC_H264;
+    } else if (gst_structure_has_name(structure, "video/x-h265")) {
+      vpad->codec = GST_VIDEO_CODEC_H265;
+    }
   }
 
   GST_QMMFSRC_VIDEO_PAD_UNLOCK (pad);
@@ -351,10 +358,19 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
     const gchar *profile = gst_structure_get_string (structure, "profile");
 
     if (!profile) {
-      gst_structure_fixate_field_string (structure, "profile",
-          DEFAULT_VIDEO_CODEC_PROFILE);
-      GST_DEBUG_OBJECT (pad, "Codec profile not set, using default value: %s",
-          DEFAULT_VIDEO_CODEC_PROFILE);
+      if (gst_structure_has_name (structure, "video/x-h264")) {
+        gst_structure_set (structure, "profile", G_TYPE_STRING,
+            DEFAULT_VIDEO_H264_PROFILE, NULL);
+        GST_DEBUG_OBJECT (pad, "Codec profile not set,using default value: %s",
+            DEFAULT_VIDEO_H264_PROFILE);
+      } else if (gst_structure_has_name (structure, "video/x-h265")) {
+        gst_structure_set (structure, "profile", G_TYPE_STRING,
+            DEFAULT_VIDEO_H265_PROFILE, NULL);
+        GST_DEBUG_OBJECT (pad, "Codec profile not set,using default value: %s",
+            DEFAULT_VIDEO_H265_PROFILE);
+      } else {
+        GST_DEBUG_OBJECT (pad, "Codec profile not required");
+      }
     }
   }
 
@@ -362,10 +378,19 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
     const gchar *level = gst_structure_get_string (structure, "level");
 
     if (!level) {
-      gst_structure_fixate_field_string (structure, "level",
-          DEFAULT_VIDEO_CODEC_LEVEL);
-      GST_DEBUG_OBJECT (pad, "Codec level not set, using default value: %s",
-          DEFAULT_VIDEO_CODEC_LEVEL);
+      if (gst_structure_has_name (structure, "video/x-h264")) {
+        gst_structure_set (structure, "level", G_TYPE_STRING,
+            DEFAULT_VIDEO_H264_LEVEL, NULL);
+        GST_DEBUG_OBJECT (pad, "Codec level not set, using default value: %s",
+            DEFAULT_VIDEO_H264_LEVEL);
+      } else if (gst_structure_has_name (structure, "video/x-h265")) {
+        gst_structure_set (structure, "level", G_TYPE_STRING,
+            DEFAULT_VIDEO_H265_LEVEL, NULL);
+        GST_DEBUG_OBJECT (pad, "Codec level not set, using default value: %s",
+            DEFAULT_VIDEO_H265_LEVEL);
+      } else {
+        GST_DEBUG_OBJECT (pad, "Codec level not required");
+      }
     }
   }
 

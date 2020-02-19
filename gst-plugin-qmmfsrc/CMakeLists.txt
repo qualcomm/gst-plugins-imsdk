@@ -28,6 +28,11 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 # Precompiler definitions.
 add_definitions(-DHAVE_CONFIG_H)
 
+# Enable H265 encode.
+if (ENABLE_H265_ENCODE)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DENABLE_H265_ENCODE")
+endif()
+
 # Common compiler flags.
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror")

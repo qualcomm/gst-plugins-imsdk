@@ -47,6 +47,12 @@ G_BEGIN_DECLS
 #define QMMFSRC_VIDEO_H264_LEVELS \
     "1, 1.3, 2, 2.1, 2.2, 3, 3.1, 3.2, 4, 4.1, 4.2, 5, 5.1, 5.2"
 
+#define QMMFSRC_VIDEO_H265_PROFILES \
+    "main"
+
+#define QMMFSRC_VIDEO_H265_LEVELS \
+    "3, 4, 5, 5.1, 5.2"
+
 #define QMMFSRC_VIDEO_H264_CAPS                                \
     "video/x-h264, "                                           \
     "profile = (string) { " QMMFSRC_VIDEO_H264_PROFILES " }, " \
@@ -57,6 +63,18 @@ G_BEGIN_DECLS
     "video/x-h264(" features "), "                             \
     "profile = (string) { " QMMFSRC_VIDEO_H264_PROFILES " }, " \
     "level = (string) { " QMMFSRC_VIDEO_H264_LEVELS " }, "     \
+    QMMFSRC_COMMON_VIDEO_CAPS
+
+#define QMMFSRC_VIDEO_H265_CAPS                                \
+    "video/x-h265, "                                           \
+    "profile = (string) { " QMMFSRC_VIDEO_H265_PROFILES " }, " \
+    "level = (string) { " QMMFSRC_VIDEO_H265_LEVELS " }, "     \
+    QMMFSRC_COMMON_VIDEO_CAPS
+
+#define QMMFSRC_VIDEO_H265_CAPS_WITH_FEATURES(features)        \
+    "video/x-h265(" features "), "                             \
+    "profile = (string) { " QMMFSRC_VIDEO_H265_PROFILES " }, " \
+    "level = (string) { " QMMFSRC_VIDEO_H265_LEVELS " }, "     \
     QMMFSRC_COMMON_VIDEO_CAPS
 
 #define QMMFSRC_VIDEO_RAW_CAPS(formats) \
@@ -92,6 +110,7 @@ typedef enum {
   GST_VIDEO_CODEC_UNKNOWN,
   GST_VIDEO_CODEC_NONE,
   GST_VIDEO_CODEC_H264,
+  GST_VIDEO_CODEC_H265,
 } GstVideoCodec;
 
 enum

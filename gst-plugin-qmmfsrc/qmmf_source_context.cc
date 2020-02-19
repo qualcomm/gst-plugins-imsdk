@@ -637,6 +637,9 @@ gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad)
       case GST_VIDEO_CODEC_H264:
         format = ::qmmf::VideoFormat::kAVC;
         break;
+      case GST_VIDEO_CODEC_H265:
+        format = ::qmmf::VideoFormat::kHEVC;
+        break;
       default:
         GST_ERROR ("Unsupported video format!");
         return FALSE;
@@ -646,153 +649,210 @@ gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad)
       context->camera_id, format, vpad->width, vpad->height, vpad->framerate
     );
 
-    profile = gst_structure_get_string (vpad->params, "profile");
-    if (g_strcmp0 (profile, "baseline") == 0) {
-      params.codec_param.avc.profile = ::qmmf::AVCProfileType::kBaseline;
-    } else if (g_strcmp0 (profile, "main") == 0) {
-      params.codec_param.hevc.profile = ::qmmf::HEVCProfileType::kMain;
-      params.codec_param.avc.profile = ::qmmf::AVCProfileType::kMain;
-    } else if (g_strcmp0 (profile, "high") == 0) {
-      params.codec_param.avc.profile = ::qmmf::AVCProfileType::kHigh;
+    if (format == ::qmmf::VideoFormat::kAVC) {
+      profile = gst_structure_get_string(vpad->params, "profile");
+      if (g_strcmp0(profile, "baseline") == 0) {
+        params.codec_param.avc.profile = ::qmmf::AVCProfileType::kBaseline;
+      } else if (g_strcmp0(profile, "main") == 0) {
+        params.codec_param.avc.profile = ::qmmf::AVCProfileType::kMain;
+      } else if (g_strcmp0(profile, "high") == 0) {
+        params.codec_param.avc.profile = ::qmmf::AVCProfileType::kHigh;
+      }
+
+      level = gst_structure_get_string(vpad->params, "level");
+      if (g_strcmp0(level, "1") == 0) {
+        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel1;
+      } else if (g_strcmp0(level, "1.3") == 0) {
+        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel1_3;
+      } else if (g_strcmp0(level, "2") == 0) {
+        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel2;
+      } else if (g_strcmp0(level, "2.1") == 0) {
+        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel2_1;
+      } else if (g_strcmp0(level, "2.2") == 0) {
+        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel2_2;
+      } else if (g_strcmp0(level, "3") == 0) {
+        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel3;
+      } else if (g_strcmp0(level, "3.1") == 0) {
+        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel3_1;
+      } else if (g_strcmp0(level, "3.2") == 0) {
+        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel3_2;
+      } else if (g_strcmp0(level, "4") == 0) {
+        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel4;
+      } else if (g_strcmp0(level, "4.1") == 0) {
+        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel4_1;
+      } else if (g_strcmp0(level, "4.2") == 0) {
+        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel4_2;
+      } else if (g_strcmp0(level, "5") == 0) {
+        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel5;
+      } else if (g_strcmp0(level, "5.1") == 0) {
+        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel5_1;
+      } else if (g_strcmp0(level, "5.2") == 0) {
+        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel5_2;
+      }
+
+      gst_structure_get_uint(vpad->params, "bitrate-control", &ratecontrol);
+      switch (ratecontrol) {
+        case GST_VIDEO_CONTROL_RATE_DISABLE:
+          params.codec_param.avc.ratecontrol_type =
+              ::qmmf::VideoRateControlType::kDisable;
+          break;
+        case GST_VIDEO_CONTROL_RATE_VARIABLE:
+          params.codec_param.avc.ratecontrol_type =
+              ::qmmf::VideoRateControlType::kVariable;
+          break;
+        case GST_VIDEO_CONTROL_RATE_CONSTANT:
+          params.codec_param.avc.ratecontrol_type =
+              ::qmmf::VideoRateControlType::kConstant;
+          break;
+        case GST_VIDEO_CONTROL_RATE_MAXBITRATE:
+          params.codec_param.avc.ratecontrol_type =
+              ::qmmf::VideoRateControlType::kMaxBitrate;
+          break;
+        case GST_VIDEO_CONTROL_RATE_VARIABLE_SKIP_FRAMES:
+          params.codec_param.avc.ratecontrol_type =
+              ::qmmf::VideoRateControlType::kVariableSkipFrames;
+          break;
+        case GST_VIDEO_CONTROL_RATE_CONSTANT_SKIP_FRAMES:
+          params.codec_param.avc.ratecontrol_type =
+              ::qmmf::VideoRateControlType::kConstantSkipFrames;
+          break;
+        case GST_VIDEO_CONTROL_RATE_MAXBITRATE_SKIP_FRAMES:
+          params.codec_param.avc.ratecontrol_type =
+              ::qmmf::VideoRateControlType::kMaxBitrateSkipFrames;
+          break;
+      }
+
+      gst_structure_get_uint(vpad->params, "bitrate", &bitrate);
+      params.codec_param.avc.bitrate = bitrate;
+
+      gst_structure_get_uint(vpad->params, "quant-i-frames", &qpvalue);
+      params.codec_param.avc.qp_params.init_qp.init_IQP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "quant-p-frames", &qpvalue);
+      params.codec_param.avc.qp_params.init_qp.init_PQP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "quant-b-frames", &qpvalue);
+      params.codec_param.avc.qp_params.init_qp.init_BQP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "min-qp", &qpvalue);
+      params.codec_param.avc.qp_params.qp_range.min_QP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "max-qp", &qpvalue);
+      params.codec_param.avc.qp_params.qp_range.max_QP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "min-qp-i-frames", &qpvalue);
+      params.codec_param.avc.qp_params.qp_IBP_range.min_IQP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "max-qp-i-frames", &qpvalue);
+      params.codec_param.avc.qp_params.qp_IBP_range.max_IQP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "min-qp-p-frames", &qpvalue);
+      params.codec_param.avc.qp_params.qp_IBP_range.min_PQP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "max-qp-p-frames", &qpvalue);
+      params.codec_param.avc.qp_params.qp_IBP_range.max_PQP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "min-qp-b-frames", &qpvalue);
+      params.codec_param.avc.qp_params.qp_IBP_range.min_BQP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "max-qp-b-frames", &qpvalue);
+      params.codec_param.avc.qp_params.qp_IBP_range.max_BQP = qpvalue;
+
+      params.codec_param.avc.qp_params.enable_init_qp = true;
+      params.codec_param.avc.qp_params.enable_qp_range = true;
+      params.codec_param.avc.qp_params.enable_qp_IBP_range = true;
+
+    } else if (format == ::qmmf::VideoFormat::kHEVC) {
+      profile = gst_structure_get_string(vpad->params, "profile");
+      if (g_strcmp0(profile, "main") == 0) {
+        params.codec_param.hevc.profile = ::qmmf::HEVCProfileType::kMain;
+      }
+
+      level = gst_structure_get_string(vpad->params, "level");
+      if (g_strcmp0(level, "3") == 0) {
+        params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel3;
+      } else if (g_strcmp0(level, "4") == 0) {
+        params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel4;
+      } else if (g_strcmp0(level, "5") == 0) {
+        params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel5;
+      } else if (g_strcmp0(level, "5.1") == 0) {
+        params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel5_1;
+      } else if (g_strcmp0(level, "5.2") == 0) {
+        params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel5_2;
+      }
+
+      gst_structure_get_uint(vpad->params, "bitrate-control", &ratecontrol);
+      switch (ratecontrol) {
+        case GST_VIDEO_CONTROL_RATE_DISABLE:
+          params.codec_param.hevc.ratecontrol_type =
+              ::qmmf::VideoRateControlType::kDisable;
+          break;
+        case GST_VIDEO_CONTROL_RATE_VARIABLE:
+          params.codec_param.hevc.ratecontrol_type =
+              ::qmmf::VideoRateControlType::kVariable;
+          break;
+        case GST_VIDEO_CONTROL_RATE_CONSTANT:
+          params.codec_param.hevc.ratecontrol_type =
+              ::qmmf::VideoRateControlType::kConstant;
+          break;
+        case GST_VIDEO_CONTROL_RATE_MAXBITRATE:
+          params.codec_param.hevc.ratecontrol_type =
+              ::qmmf::VideoRateControlType::kMaxBitrate;
+          break;
+        case GST_VIDEO_CONTROL_RATE_VARIABLE_SKIP_FRAMES:
+          params.codec_param.hevc.ratecontrol_type =
+              ::qmmf::VideoRateControlType::kVariableSkipFrames;
+          break;
+        case GST_VIDEO_CONTROL_RATE_CONSTANT_SKIP_FRAMES:
+          params.codec_param.hevc.ratecontrol_type =
+              ::qmmf::VideoRateControlType::kConstantSkipFrames;
+          break;
+        case GST_VIDEO_CONTROL_RATE_MAXBITRATE_SKIP_FRAMES:
+          params.codec_param.hevc.ratecontrol_type =
+              ::qmmf::VideoRateControlType::kMaxBitrateSkipFrames;
+          break;
+      }
+
+      gst_structure_get_uint(vpad->params, "bitrate", &bitrate);
+      params.codec_param.hevc.bitrate = bitrate;
+
+      gst_structure_get_uint(vpad->params, "quant-i-frames", &qpvalue);
+      params.codec_param.hevc.qp_params.init_qp.init_IQP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "quant-p-frames", &qpvalue);
+      params.codec_param.hevc.qp_params.init_qp.init_PQP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "quant-b-frames", &qpvalue);
+      params.codec_param.hevc.qp_params.init_qp.init_BQP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "min-qp", &qpvalue);
+      params.codec_param.hevc.qp_params.qp_range.min_QP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "max-qp", &qpvalue);
+      params.codec_param.hevc.qp_params.qp_range.max_QP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "min-qp-i-frames", &qpvalue);
+      params.codec_param.hevc.qp_params.qp_IBP_range.min_IQP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "max-qp-i-frames", &qpvalue);
+      params.codec_param.hevc.qp_params.qp_IBP_range.max_IQP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "min-qp-p-frames", &qpvalue);
+      params.codec_param.hevc.qp_params.qp_IBP_range.min_PQP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "max-qp-p-frames", &qpvalue);
+      params.codec_param.hevc.qp_params.qp_IBP_range.max_PQP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "min-qp-b-frames", &qpvalue);
+      params.codec_param.hevc.qp_params.qp_IBP_range.min_BQP = qpvalue;
+
+      gst_structure_get_uint(vpad->params, "max-qp-b-frames", &qpvalue);
+      params.codec_param.hevc.qp_params.qp_IBP_range.max_BQP = qpvalue;
+
+      params.codec_param.hevc.qp_params.enable_init_qp = true;
+      params.codec_param.hevc.qp_params.enable_qp_range = true;
+      params.codec_param.hevc.qp_params.enable_qp_IBP_range = true;
     }
-
-    level = gst_structure_get_string (vpad->params, "level");
-    if (g_strcmp0 (level, "1") == 0) {
-      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel1;
-    } else if (g_strcmp0 (level, "1.3") == 0) {
-      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel1_3;
-    } else if (g_strcmp0 (level, "2") == 0) {
-      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel2;
-    } else if (g_strcmp0 (level, "2.1") == 0) {
-      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel2_1;
-    } else if (g_strcmp0 (level, "2.2") == 0) {
-      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel2_2;
-    } else if (g_strcmp0 (level, "3") == 0) {
-      params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel3;
-      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel3;
-    } else if (g_strcmp0 (level, "3.1") == 0) {
-      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel3_1;
-    } else if (g_strcmp0 (level, "3.2") == 0) {
-      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel3_2;
-    } else if (g_strcmp0 (level, "4") == 0) {
-      params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel4;
-      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel4;
-    } else if (g_strcmp0 (level, "4.1") == 0) {
-      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel4_1;
-    } else if (g_strcmp0 (level, "4.2") == 0) {
-      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel4_2;
-    } else if (g_strcmp0 (level, "5") == 0) {
-      params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel5;
-      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel5;
-    } else if (g_strcmp0 (level, "5.1") == 0) {
-      params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel5_1;
-      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel5_1;
-    } else if (g_strcmp0 (level, "5.2") == 0) {
-      params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel5_2;
-      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel5_2;
-    }
-
-    gst_structure_get_uint (vpad->params, "bitrate-control", &ratecontrol);
-    switch (ratecontrol) {
-      case GST_VIDEO_CONTROL_RATE_DISABLE:
-        params.codec_param.avc.ratecontrol_type =
-            ::qmmf::VideoRateControlType::kDisable;
-        params.codec_param.hevc.ratecontrol_type =
-            ::qmmf::VideoRateControlType::kDisable;
-        break;
-      case GST_VIDEO_CONTROL_RATE_VARIABLE:
-        params.codec_param.avc.ratecontrol_type =
-            ::qmmf::VideoRateControlType::kVariable;
-        params.codec_param.hevc.ratecontrol_type =
-            ::qmmf::VideoRateControlType::kVariable;
-        break;
-      case GST_VIDEO_CONTROL_RATE_CONSTANT:
-        params.codec_param.avc.ratecontrol_type =
-            ::qmmf::VideoRateControlType::kConstant;
-        params.codec_param.hevc.ratecontrol_type =
-            ::qmmf::VideoRateControlType::kConstant;
-        break;
-      case GST_VIDEO_CONTROL_RATE_MAXBITRATE:
-        params.codec_param.avc.ratecontrol_type =
-            ::qmmf::VideoRateControlType::kMaxBitrate;
-        params.codec_param.hevc.ratecontrol_type =
-            ::qmmf::VideoRateControlType::kMaxBitrate;
-        break;
-      case GST_VIDEO_CONTROL_RATE_VARIABLE_SKIP_FRAMES:
-        params.codec_param.avc.ratecontrol_type =
-            ::qmmf::VideoRateControlType::kVariableSkipFrames;
-        params.codec_param.hevc.ratecontrol_type =
-            ::qmmf::VideoRateControlType::kVariableSkipFrames;
-        break;
-      case GST_VIDEO_CONTROL_RATE_CONSTANT_SKIP_FRAMES:
-        params.codec_param.avc.ratecontrol_type =
-            ::qmmf::VideoRateControlType::kConstantSkipFrames;
-        params.codec_param.hevc.ratecontrol_type =
-            ::qmmf::VideoRateControlType::kConstantSkipFrames;
-        break;
-      case GST_VIDEO_CONTROL_RATE_MAXBITRATE_SKIP_FRAMES:
-        params.codec_param.avc.ratecontrol_type =
-            ::qmmf::VideoRateControlType::kMaxBitrateSkipFrames;
-        params.codec_param.hevc.ratecontrol_type =
-            ::qmmf::VideoRateControlType::kMaxBitrateSkipFrames;
-        break;
-    }
-
-    gst_structure_get_uint (vpad->params, "bitrate", &bitrate);
-    params.codec_param.avc.bitrate = bitrate;
-    params.codec_param.hevc.bitrate = bitrate;
-
-    gst_structure_get_uint (vpad->params, "quant-i-frames", &qpvalue);
-    params.codec_param.avc.qp_params.init_qp.init_IQP = qpvalue;
-    params.codec_param.hevc.qp_params.init_qp.init_IQP = qpvalue;
-
-    gst_structure_get_uint (vpad->params, "quant-p-frames", &qpvalue);
-    params.codec_param.avc.qp_params.init_qp.init_PQP = qpvalue;
-    params.codec_param.hevc.qp_params.init_qp.init_PQP = qpvalue;
-
-    gst_structure_get_uint (vpad->params, "quant-b-frames", &qpvalue);
-    params.codec_param.avc.qp_params.init_qp.init_BQP = qpvalue;
-    params.codec_param.hevc.qp_params.init_qp.init_BQP = qpvalue;
-
-    gst_structure_get_uint (vpad->params, "min-qp", &qpvalue);
-    params.codec_param.avc.qp_params.qp_range.min_QP = qpvalue;
-    params.codec_param.hevc.qp_params.qp_range.min_QP = qpvalue;
-
-    gst_structure_get_uint (vpad->params, "max-qp", &qpvalue);
-    params.codec_param.avc.qp_params.qp_range.max_QP = qpvalue;
-    params.codec_param.hevc.qp_params.qp_range.max_QP = qpvalue;
-
-    gst_structure_get_uint (vpad->params, "min-qp-i-frames", &qpvalue);
-    params.codec_param.avc.qp_params.qp_IBP_range.min_IQP = qpvalue;
-    params.codec_param.hevc.qp_params.qp_IBP_range.min_IQP = qpvalue;
-
-    gst_structure_get_uint (vpad->params, "max-qp-i-frames", &qpvalue);
-    params.codec_param.avc.qp_params.qp_IBP_range.max_IQP = qpvalue;
-    params.codec_param.hevc.qp_params.qp_IBP_range.max_IQP = qpvalue;
-
-    gst_structure_get_uint (vpad->params, "min-qp-p-frames", &qpvalue);
-    params.codec_param.avc.qp_params.qp_IBP_range.min_PQP = qpvalue;
-    params.codec_param.hevc.qp_params.qp_IBP_range.min_PQP = qpvalue;
-
-    gst_structure_get_uint (vpad->params, "max-qp-p-frames", &qpvalue);
-    params.codec_param.avc.qp_params.qp_IBP_range.max_PQP = qpvalue;
-    params.codec_param.hevc.qp_params.qp_IBP_range.max_PQP = qpvalue;
-
-    gst_structure_get_uint (vpad->params, "min-qp-b-frames", &qpvalue);
-    params.codec_param.avc.qp_params.qp_IBP_range.min_BQP = qpvalue;
-    params.codec_param.hevc.qp_params.qp_IBP_range.min_BQP = qpvalue;
-
-    gst_structure_get_uint (vpad->params, "max-qp-b-frames", &qpvalue);
-    params.codec_param.avc.qp_params.qp_IBP_range.max_BQP = qpvalue;
-    params.codec_param.hevc.qp_params.qp_IBP_range.max_BQP = qpvalue;
-
-    params.codec_param.avc.qp_params.enable_init_qp = true;
-    params.codec_param.avc.qp_params.enable_qp_range = true;
-    params.codec_param.avc.qp_params.enable_qp_IBP_range = true;
-
-    params.codec_param.hevc.qp_params.enable_init_qp = true;
-    params.codec_param.hevc.qp_params.enable_qp_range = true;
-    params.codec_param.hevc.qp_params.enable_qp_IBP_range = true;
 
     track_cbs.event_cb =
         [&] (uint32_t track_id, ::qmmf::recorder::EventType type,
