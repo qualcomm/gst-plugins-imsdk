@@ -78,7 +78,13 @@ G_BEGIN_DECLS
 #define GST_TYPE_QMMFSRC_EFFECT_MODE (gst_qmmfsrc_effect_mode_get_type())
 #define GST_TYPE_QMMFSRC_SCENE_MODE (gst_qmmfsrc_scene_mode_get_type())
 #define GST_TYPE_QMMFSRC_ANTIBANDING (gst_qmmfsrc_antibanding_get_type())
+#define GST_TYPE_QMMFSRC_AE_MODE (gst_qmmfsrc_ae_mode_get_type())
 #define GST_TYPE_QMMFSRC_AWB_MODE (gst_qmmfsrc_awb_mode_get_type())
+#define GST_TYPE_QMMFSRC_AF_MODE (gst_qmmfsrc_af_mode_get_type())
+#define GST_TYPE_QMMFSRC_IR_MODE (gst_qmmfsrc_ir_mode_get_type())
+#define GST_TYPE_QMMFSRC_ISO_MODE (gst_qmmfsrc_iso_mode_get_type())
+#define GST_TYPE_QMMFSRC_AE_METERING_MODE (gst_qmmfsrc_ae_metering_mode_get_type())
+#define GST_TYPE_QMMFSRC_NOISE_REDUCTION (gst_qmmfsrc_noise_reduction_get_type())
 
 enum
 {
@@ -123,6 +129,12 @@ enum
 
 enum
 {
+  AE_MODE_OFF,
+  AE_MODE_ON,
+};
+
+enum
+{
   AWB_MODE_OFF,
   AWB_MODE_AUTO,
   AWB_MODE_SHADE,
@@ -134,13 +146,73 @@ enum
   AWB_MODE_TWILIGHT,
 };
 
+enum
+{
+  AF_MODE_OFF,
+  AF_MODE_AUTO,
+  AF_MODE_MACRO,
+  AF_MODE_CONTINUOUS,
+  AF_MODE_EDOF,
+};
+
+enum
+{
+  IR_MODE_OFF,
+  IR_MODE_ON,
+  IR_MODE_AUTO,
+};
+
+enum
+{
+  ISO_MODE_AUTO,
+  ISO_MODE_DEBLUR,
+  ISO_MODE_100,
+  ISO_MODE_200,
+  ISO_MODE_400,
+  ISO_MODE_800,
+  ISO_MODE_1600,
+  ISO_MODE_3200,
+};
+
+enum
+{
+  AE_METERING_MODE_AVERAGE,
+  AE_METERING_MODE_CENTER_WEIGHTED,
+  AE_METERING_MODE_SPOT,
+  AE_METERING_MODE_SMART,
+  AE_METERING_MODE_SPOT_ADVANCED,
+  AE_METERING_MODE_CENTER_WEIGHTED_ADVANCED,
+  AE_METERING_MODE_CUSTOM,
+};
+
+enum
+{
+  NOISE_REDUCTION_OFF,
+  NOISE_REDUCTION_FAST,
+  NOISE_REDUCTION_HIGH_QUALITY,
+  NOISE_REDUCTION_MINIMAL,
+  NOISE_REDUCTION_ZSL,
+};
+
 GType gst_qmmfsrc_effect_mode_get_type (void);
 
 GType gst_qmmfsrc_scene_mode_get_type (void);
 
 GType gst_qmmfsrc_antibanding_get_type (void);
 
+GType gst_qmmfsrc_ae_mode_get_type (void);
+
 GType gst_qmmfsrc_awb_mode_get_type (void);
+
+GType gst_qmmfsrc_af_mode_get_type (void);
+
+GType gst_qmmfsrc_ir_mode_get_type (void);
+
+GType gst_qmmfsrc_iso_mode_get_type (void);
+
+GType gst_qmmfsrc_ae_metering_mode_get_type (void);
+
+GType gst_qmmfsrc_noise_reduction_get_type (void);
 
 guchar gst_qmmfsrc_effect_mode_android_value (const guint value);
 
@@ -148,7 +220,59 @@ guchar gst_qmmfsrc_scene_mode_android_value (const guint value);
 
 guchar gst_qmmfsrc_antibanding_android_value (const guint value);
 
+guchar gst_qmmfsrc_ae_mode_android_value (const guint value);
+
 guchar gst_qmmfsrc_awb_mode_android_value (const guint value);
+
+guchar gst_qmmfsrc_af_mode_android_value (const guint value);
+
+guchar gst_qmmfsrc_noise_reduction_android_value (const guint value);
+
+/// org.quic.camera.defog
+static const gchar * gst_camera_defog_table[] =
+{
+    "enable",
+    "algo_type",
+    "algo_decision_mode",
+    "strength",
+    "convergence_speed",
+    "lp_color_comp_gain",
+    "abc_en",
+    "acc_en",
+    "afsd_en",
+    "afsd_2a_en",
+    "defog_dark_thres",
+    "defog_bright_thres",
+    "abc_gain",
+    "acc_max_dark_str",
+    "acc_max_bright_str",
+    "dark_limit",
+    "bright_limit",
+    "dark_preserve",
+    "bright_preserve",
+    "trig_params",
+    "ce_en",
+    "convergence_mode",
+    "guc_en",
+    "dcc_en",
+    "guc_str",
+    "dcc_dark_str",
+    "dcc_bright_str",
+    "ce_trig_params",
+};
+
+/// org.codeaurora.qcamera3.exposuretable
+static const gchar * gst_camera_exposure_table[] =
+{
+    "isValid",
+    "sensitivityCorrectionFactor",
+    "kneeCount",
+    "gainKneeEntries",
+    "expTimeKneeEntries",
+    "incrementPriorityKneeEntries",
+    "expIndexKneeEntries",
+    "thresAntiBandingMinExpTimePct",
+};
 
 G_END_DECLS
 

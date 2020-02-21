@@ -48,17 +48,26 @@
 GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
 #define GST_CAT_DEFAULT qmmfsrc_debug
 
-#define DEFAULT_PROP_CAMERA_ID              0
-#define DEFAULT_PROP_CAMERA_SHDR_MODE       FALSE
-#define DEFAULT_PROP_CAMERA_EIS_MODE        FALSE
-#define DEFAULT_PROP_CAMERA_EFFECT_MODE     EFFECT_MODE_OFF
-#define DEFAULT_PROP_CAMERA_SCENE_MODE      SCENE_MODE_DISABLED
-#define DEFAULT_PROP_CAMERA_ANTIBANDING     ANTIBANDING_MODE_AUTO
-#define DEFAULT_PROP_CAMERA_AE_COMPENSATION 0
-#define DEFAULT_PROP_CAMERA_AE_LOCK         FALSE
-#define DEFAULT_PROP_CAMERA_AWB_MODE        AWB_MODE_AUTO
-#define DEFAULT_PROP_CAMERA_AWB_LOCK        FALSE
-#define DEFAULT_PROP_CAMERA_SLAVE           FALSE
+#define DEFAULT_PROP_CAMERA_ID               0
+#define DEFAULT_PROP_CAMERA_SHDR_MODE        FALSE
+#define DEFAULT_PROP_CAMERA_EIS_MODE         FALSE
+#define DEFAULT_PROP_CAMERA_EFFECT_MODE      EFFECT_MODE_OFF
+#define DEFAULT_PROP_CAMERA_SCENE_MODE       SCENE_MODE_DISABLED
+#define DEFAULT_PROP_CAMERA_ANTIBANDING      ANTIBANDING_MODE_AUTO
+#define DEFAULT_PROP_CAMERA_AE_COMPENSATION  0
+#define DEFAULT_PROP_CAMERA_AE_METERING_MODE AE_METERING_MODE_AVERAGE
+#define DEFAULT_PROP_CAMERA_AE_MODE          AE_MODE_ON
+#define DEFAULT_PROP_CAMERA_AE_LOCK          FALSE
+#define DEFAULT_PROP_CAMERA_EXPOSURE_TABLE   NULL
+#define DEFAULT_PROP_CAMERA_EXPOSURE_TIME    33333333
+#define DEFAULT_PROP_CAMERA_AWB_MODE         AWB_MODE_AUTO
+#define DEFAULT_PROP_CAMERA_AWB_LOCK         FALSE
+#define DEFAULT_PROP_CAMERA_AF_MODE          AF_MODE_AUTO
+#define DEFAULT_PROP_CAMERA_IR_MODE          IR_MODE_OFF
+#define DEFAULT_PROP_CAMERA_NOISE_REDUCTION  NOISE_REDUCTION_OFF
+#define DEFAULT_PROP_CAMERA_ISO_MODE         ISO_MODE_AUTO
+#define DEFAULT_PROP_CAMERA_DEFOG_TABLE      NULL
+#define DEFAULT_PROP_CAMERA_SLAVE            FALSE
 
 static void gst_qmmfsrc_child_proxy_init (gpointer g_iface, gpointer data);
 
@@ -87,10 +96,20 @@ enum
   PROP_CAMERA_SCENE_MODE,
   PROP_CAMERA_ANTIBANDING_MODE,
   PROP_CAMERA_AE_COMPENSATION,
+  PROP_CAMERA_AE_METERING_MODE,
+  PROP_CAMERA_AE_MODE,
   PROP_CAMERA_AE_LOCK,
+  PROP_CAMERA_EXPOSURE_TIME,
+  PROP_CAMERA_EXPOSURE_TABLE,
   PROP_CAMERA_AWB_MODE,
   PROP_CAMERA_AWB_LOCK,
   PROP_CAMERA_SLAVE,
+  PROP_CAMERA_AF_MODE,
+  PROP_CAMERA_IR_MODE,
+  PROP_CAMERA_ISO_MODE,
+  PROP_CAMERA_NOISE_REDUCTION,
+  PROP_CAMERA_ZOOM,
+  PROP_CAMERA_DEFOG_TABLE,
 };
 
 static GstStaticPadTemplate qmmfsrc_video_src_template =
@@ -631,9 +650,25 @@ qmmfsrc_set_property (GObject * object, guint property_id,
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_AE_COMPENSATION, value);
       break;
+    case PROP_CAMERA_AE_METERING_MODE:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_AE_METERING_MODE, value);
+      break;
+    case PROP_CAMERA_AE_MODE:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_AE_MODE, value);
+      break;
     case PROP_CAMERA_AE_LOCK:
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_AE_LOCK, value);
+      break;
+    case PROP_CAMERA_EXPOSURE_TIME:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_EXPOSURE_TIME, value);
+      break;
+    case PROP_CAMERA_EXPOSURE_TABLE:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_EXPOSURE_TABLE, value);
       break;
     case PROP_CAMERA_AWB_MODE:
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
@@ -647,6 +682,30 @@ qmmfsrc_set_property (GObject * object, guint property_id,
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_SLAVE, value);
         break;
+    case PROP_CAMERA_AF_MODE:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_AF_MODE, value);
+      break;
+    case PROP_CAMERA_IR_MODE:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_IR_MODE, value);
+      break;
+    case PROP_CAMERA_ISO_MODE:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_ISO_MODE, value);
+      break;
+    case PROP_CAMERA_NOISE_REDUCTION:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_NOISE_REDUCTION, value);
+      break;
+    case PROP_CAMERA_ZOOM:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_ZOOM, value);
+      break;
+    case PROP_CAMERA_DEFOG_TABLE:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_DEFOG_TABLE, value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -689,9 +748,25 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_AE_COMPENSATION, value);
       break;
+    case PROP_CAMERA_AE_METERING_MODE:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_AE_METERING_MODE, value);
+      break;
+    case PROP_CAMERA_AE_MODE:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_AE_MODE, value);
+      break;
     case PROP_CAMERA_AE_LOCK:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_AE_LOCK, value);
+      break;
+    case PROP_CAMERA_EXPOSURE_TIME:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_EXPOSURE_TIME, value);
+      break;
+    case PROP_CAMERA_EXPOSURE_TABLE:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_EXPOSURE_TABLE, value);
       break;
     case PROP_CAMERA_AWB_MODE:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
@@ -705,6 +780,30 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_SLAVE, value);
         break;
+    case PROP_CAMERA_AF_MODE:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_AF_MODE, value);
+      break;
+    case PROP_CAMERA_IR_MODE:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_IR_MODE, value);
+      break;
+    case PROP_CAMERA_ISO_MODE:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_ISO_MODE, value);
+      break;
+    case PROP_CAMERA_NOISE_REDUCTION:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_NOISE_REDUCTION, value);
+      break;
+    case PROP_CAMERA_ZOOM:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_ZOOM, value);
+      break;
+    case PROP_CAMERA_DEFOG_TABLE:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_DEFOG_TABLE, value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -800,17 +899,41 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           -12, 12, DEFAULT_PROP_CAMERA_AE_COMPENSATION,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_CAMERA_AE_METERING_MODE,
+      g_param_spec_enum ("ae-metering-mode", "AE Metering Mode",
+          "Auro exposure metering mode",
+          GST_TYPE_QMMFSRC_AE_METERING_MODE, DEFAULT_PROP_CAMERA_AE_METERING_MODE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_CAMERA_AE_MODE,
+      g_param_spec_enum ("ae-mode", "AE Mode",
+          "Auto Exposure mode",
+          GST_TYPE_QMMFSRC_AE_MODE, DEFAULT_PROP_CAMERA_AE_MODE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_CAMERA_AE_LOCK,
       g_param_spec_boolean ("ae-lock", "AE Lock",
           "Auto Exposure lock", DEFAULT_PROP_CAMERA_AE_LOCK,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
-  g_object_class_install_property (gobject, PROP_CAMERA_AWB_MODE,
-      g_param_spec_enum ("awb-mode", "AWB Mode",
-           "Auto White Balance mode",
-           GST_TYPE_QMMFSRC_AWB_MODE, DEFAULT_PROP_CAMERA_AWB_MODE,
+  g_object_class_install_property (gobject, PROP_CAMERA_EXPOSURE_TIME,
+      g_param_spec_int64 ("exposure-time", "Exposure Time",
+           "Manual exposure time in nanoseconds. Used when the AE mode is "
+           "set to 'off'", 0, G_MAXINT64, DEFAULT_PROP_CAMERA_EXPOSURE_TIME,
            G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
            GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_CAMERA_EXPOSURE_TABLE,
+      g_param_spec_string ("exposure-table", "Exposure Table",
+          "A GstStructure describing exposure table",
+          DEFAULT_PROP_CAMERA_EXPOSURE_TABLE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_CAMERA_AWB_MODE,
+      g_param_spec_enum ("awb-mode", "AWB Mode",
+          "Auto White Balance mode",
+          GST_TYPE_QMMFSRC_AWB_MODE, DEFAULT_PROP_CAMERA_AWB_MODE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_CAMERA_AWB_LOCK,
       g_param_spec_boolean ("awb-lock", "AWB Lock",
           "Auto White Balance lock", DEFAULT_PROP_CAMERA_AWB_LOCK,
@@ -820,6 +943,44 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
       g_param_spec_boolean ("slave", "Slave mode",
           "Set camera as slave device", DEFAULT_PROP_CAMERA_SLAVE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_CAMERA_AF_MODE,
+      g_param_spec_enum ("af-mode", "AF Mode",
+          "Auto Focus mode",
+          GST_TYPE_QMMFSRC_AF_MODE, DEFAULT_PROP_CAMERA_AF_MODE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_CAMERA_IR_MODE,
+      g_param_spec_enum ("infrared-mode", "IR Mode", "Infrared Mode",
+          GST_TYPE_QMMFSRC_IR_MODE, DEFAULT_PROP_CAMERA_IR_MODE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_CAMERA_ISO_MODE,
+      g_param_spec_enum ("iso-mode", "ISO Mode",
+          "ISO exposure mode",
+          GST_TYPE_QMMFSRC_ISO_MODE, DEFAULT_PROP_CAMERA_ISO_MODE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_CAMERA_NOISE_REDUCTION,
+      g_param_spec_enum ("noise-reduction", "Noise Reduction",
+          "Noise reduction filter mode",
+          GST_TYPE_QMMFSRC_NOISE_REDUCTION, DEFAULT_PROP_CAMERA_NOISE_REDUCTION,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_CAMERA_ZOOM,
+      gst_param_spec_array ("zoom", "Zoom rectangle",
+          "Camera zoom rectangle ('<X, Y, WIDTH, HEIGHT >') in sensor active "
+          "pixel array coordinates",
+          g_param_spec_int ("value", "Zoom Value",
+              "One of X, Y, WIDTH or HEIGHT value.", 0, G_MAXINT, 0,
+              G_PARAM_WRITABLE | G_PARAM_STATIC_STRINGS),
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_CAMERA_DEFOG_TABLE,
+      g_param_spec_string ("defog-table", "Defog Table",
+          "A GstStructure describing defog table",
+          DEFAULT_PROP_CAMERA_DEFOG_TABLE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
 
   signals[SIGNAL_CAPTURE_IMAGE] =
