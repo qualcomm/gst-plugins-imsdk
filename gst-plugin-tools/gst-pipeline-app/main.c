@@ -30,8 +30,75 @@
 #include <stdio.h>
 #include <gst/gst.h>
 
-#define OPTION_ARRAY_SIZE 20
-#define QUIT_OPTION       "q"
+#define PRINT_LINE(c, l) \
+  { guint i = 0; while (i < l) { g_print ("%c", c); i++; } }
+
+#define PRINT_SECTION_SEPARATOR(c) \
+  { g_print(" "); PRINT_LINE(c, 79); g_print("\n"); }
+
+#define PRINT_MENU_HEADER \
+  {\
+    g_print("\n\n"); \
+    PRINT_LINE('#', 37); g_print (" MENU "); PRINT_LINE('#', 37); \
+    g_print("\n\n"); \
+  }
+
+#define PRINT_ELEMENT_PROPERTIES_SECTION(props) \
+  if (g_list_length (props) > 0) { \
+    GList *list = NULL; \
+    \
+    g_print(" "); \
+    PRINT_LINE('=', 34); g_print (" Properties "); PRINT_LINE('=', 34); \
+    g_print("\n"); \
+    \
+    for (list = props; list != NULL; list = list->next) \
+      g_print ("%s\n", (gchar *) list->data); \
+    \
+    g_list_free_full (props, g_free); \
+    props = NULL; \
+  }
+
+#define PRINT_PAD_PROPERTIES_SECTION(name, props) \
+  if (g_list_length (props) > 0) { \
+    GList *list = NULL; \
+    \
+    g_print(" "); \
+    PRINT_LINE('-', (72 - strlen(name)) / 2); \
+    g_print (" %*s Pad ", strlen(name), name); \
+    PRINT_LINE('-', (74 - strlen(name)) / 2); \
+    g_print("\n"); \
+    \
+    for (list = props; list != NULL; list = list->next) \
+      g_print ("%s\n", (gchar *) list->data); \
+    \
+    g_list_free_full (props, g_free); \
+    props = NULL; \
+  }
+
+#define PRINT_ELEMENT_SIGNALS_SECTION(signals) \
+  if (g_list_length (signals) > 0) { \
+    GList *list = NULL; \
+    \
+    g_print(" "); \
+    PRINT_LINE('=', 36); g_print (" Signals "); PRINT_LINE('=', 35); \
+    g_print("\n"); \
+    \
+    for (list = signals; list != NULL; list = list->next) \
+      g_print ("%s\n", (gchar *) list->data); \
+    \
+    g_list_free_full (signals, g_free); \
+    signals = NULL; \
+  }
+
+#define PRINT_OTHER_OPTS_HEADER \
+  {\
+    g_print(" "); \
+    PRINT_LINE('=', 36); g_print (" Other "); PRINT_LINE('=', 36); \
+    g_print("\n"); \
+  }
+
+#define MAX_INPUT_SIZE  50
+#define QUIT_OPTION     "q"
 
 #define GST_APP_CONTEXT_CAST(obj)           ((GstAppContext*)(obj))
 
@@ -349,7 +416,7 @@ print_pipeline_elements (GstElement * pipeline)
   if (NULL == pipeline)
     return;
 
-  g_print (" ---------------------------------\n");
+  PRINT_SECTION_SEPARATOR ('-');
   g_print (" Pipeline plugin names:");
 
   it = gst_bin_iterate_sorted (GST_BIN (pipeline));
@@ -374,26 +441,23 @@ print_pipeline_elements (GstElement * pipeline)
     g_print ("%s", done ? "\n" : " ");
   }
 
-  g_print (" ---------------------------------\n");
+  PRINT_SECTION_SEPARATOR ('-');
 
   g_value_unset (&item);
   gst_iterator_free (it);
 }
 
 static void
-print_property_options (GstElement * element, const gchar * name)
+print_property_info (GObject * object, GParamSpec *propspecs)
 {
-  GParamSpec *propspecs =
-      g_object_class_find_property (G_OBJECT_GET_CLASS (element), name);
-
-  g_print (" ---------------------------------\n");
+  PRINT_SECTION_SEPARATOR ('-');
 
   switch (G_PARAM_SPEC_VALUE_TYPE (propspecs)) {
     case G_TYPE_UINT:
     {
       guint value;
       GParamSpecUInt *range = G_PARAM_SPEC_UINT (propspecs);
-      g_object_get (G_OBJECT (element), name, &value, NULL);
+      g_object_get (object, propspecs->name, &value, NULL);
 
       g_print (" Current value: %u, Range: %u - %u\n", value,
           range->minimum, range->maximum);
@@ -403,7 +467,7 @@ print_property_options (GstElement * element, const gchar * name)
     {
       gint value;
       GParamSpecInt *range = G_PARAM_SPEC_INT (propspecs);
-      g_object_get (G_OBJECT (element), name, &value, NULL);
+      g_object_get (object, propspecs->name, &value, NULL);
 
       g_print (" Current value: %d, Range: %d - %d\n", value,
           range->minimum, range->maximum);
@@ -413,7 +477,7 @@ print_property_options (GstElement * element, const gchar * name)
     {
       gulong value;
       GParamSpecULong *range = G_PARAM_SPEC_ULONG (propspecs);
-      g_object_get (G_OBJECT (element), name, &value, NULL);
+      g_object_get (object, propspecs->name, &value, NULL);
 
       g_print (" Current value: %lu, Range: %lu - %lu\n", value,
           range->minimum, range->maximum);
@@ -423,7 +487,7 @@ print_property_options (GstElement * element, const gchar * name)
     {
       glong value;
       GParamSpecLong *range = G_PARAM_SPEC_LONG (propspecs);
-      g_object_get (G_OBJECT (element), name, &value, NULL);
+      g_object_get (object, propspecs->name, &value, NULL);
 
       g_print (" Current value: %ld, Range: %ld - %ld\n", value,
           range->minimum, range->maximum);
@@ -433,7 +497,7 @@ print_property_options (GstElement * element, const gchar * name)
     {
       guint64 value;
       GParamSpecUInt64 *range = G_PARAM_SPEC_UINT64 (propspecs);
-      g_object_get (G_OBJECT (element), name, &value, NULL);
+      g_object_get (object, propspecs->name, &value, NULL);
 
       g_print (" Current value: %" G_GUINT64_FORMAT ", "
           "Range: %" G_GUINT64_FORMAT " - %" G_GUINT64_FORMAT "\n", value,
@@ -444,7 +508,7 @@ print_property_options (GstElement * element, const gchar * name)
     {
       gint64 value;
       GParamSpecInt64 *range = G_PARAM_SPEC_INT64 (propspecs);
-      g_object_get (G_OBJECT (element), name, &value, NULL);
+      g_object_get (object, propspecs->name, &value, NULL);
 
       g_print (" Current value: %" G_GINT64_FORMAT ", "
           "Range: %" G_GINT64_FORMAT " - %" G_GINT64_FORMAT "\n", value,
@@ -455,7 +519,7 @@ print_property_options (GstElement * element, const gchar * name)
     {
       gfloat value;
       GParamSpecFloat *range = G_PARAM_SPEC_FLOAT (propspecs);
-      g_object_get (G_OBJECT (element), name, &value, NULL);
+      g_object_get (object, propspecs->name, &value, NULL);
 
       g_print (" Current value: %15.7g, Range: %15.7g - %15.7g\n", value,
           range->minimum, range->maximum);
@@ -465,7 +529,7 @@ print_property_options (GstElement * element, const gchar * name)
     {
       gdouble value;
       GParamSpecDouble *range = G_PARAM_SPEC_DOUBLE (propspecs);
-      g_object_get (G_OBJECT (element), name, &value, NULL);
+      g_object_get (object, propspecs->name, &value, NULL);
 
       g_print (" Current value: %15.7g, Range: %15.7g - %15.7g\n", value,
           range->minimum, range->maximum);
@@ -474,7 +538,7 @@ print_property_options (GstElement * element, const gchar * name)
     case G_TYPE_BOOLEAN:
     {
       gboolean value;
-      g_object_get (G_OBJECT (element), name, &value, NULL);
+      g_object_get (object, propspecs->name, &value, NULL);
       g_print (" Current value: %s, Possible values: 0(false), 1(true)\n",
           value ? "true" : "false");
       break;
@@ -482,7 +546,7 @@ print_property_options (GstElement * element, const gchar * name)
     case G_TYPE_STRING:
     {
       gchar *value;
-      g_object_get (G_OBJECT (element), name, &value, NULL);
+      g_object_get (object, propspecs->name, &value, NULL);
       g_print (" Current value: %s\n", value);
       break;
     }
@@ -493,7 +557,7 @@ print_property_options (GstElement * element, const gchar * name)
         const gchar *nick = "";
         guint idx = 0;
 
-        g_object_get (G_OBJECT (element), name, &value, NULL);
+        g_object_get (object, propspecs->name, &value, NULL);
         enumvalues = G_ENUM_CLASS (
             g_type_class_ref (propspecs->value_type))->values;
 
@@ -508,6 +572,18 @@ print_property_options (GstElement * element, const gchar * name)
         }
 
         g_print ("\n Current value: %d, \"%s\"\n", value, nick);
+      } else if (propspecs->value_type == GST_TYPE_ARRAY) {
+        GValue value = G_VALUE_INIT;
+        gchar *string = NULL;
+
+        g_value_init (&value, GST_TYPE_ARRAY);
+        g_object_get_property (object, propspecs->name, &value);
+
+        string = gst_value_serialize (&value);
+        g_print ("\n Current value: %s\n", string);
+
+        g_value_unset (&value);
+        g_free (string);
       } else {
         g_print ("Unknown type %ld \"%s\"\n",
             (glong) propspecs->value_type, g_type_name (propspecs->value_type));
@@ -515,55 +591,65 @@ print_property_options (GstElement * element, const gchar * name)
       break;
   }
 
-  g_print (" ---------------------------------\n");
+  PRINT_SECTION_SEPARATOR ('-');
 }
 
-static void
-print_menu_options (GstElement * element, GstStructure * props,
-    GstStructure * signals)
+static GList *
+get_object_properties (GObject * object, guint * index, GstStructure * props)
 {
   GParamSpec **propspecs;
-  GSignalQuery *query = NULL;
-  guint *signal_ids = NULL;
-  guint i = 0, idx = 0, nprops = 0, nsignals = 0;
-  gchar *field = NULL;
-  GType type;
-
-  g_print ("\n\n================= Menu Options =================\n\n");
-  g_print (" --------------- Properties ---------------\n");
+  GList *list = NULL;
+  guint i = 0, nprops = 0;
 
   propspecs = g_object_class_list_properties (
-      G_OBJECT_GET_CLASS (element), &nprops);
+      G_OBJECT_GET_CLASS (object), &nprops);
 
   for (i = 0; i < nprops; i++) {
     GParamSpec *param = propspecs[i];
-    const gchar *name;
+    gchar *field = NULL, *property = NULL;
+    const gchar *name = NULL;
 
     // List only the properties that are mutable in any state.
     if (!(param->flags & GST_PARAM_MUTABLE_PLAYING))
       continue;
 
     name = g_param_spec_get_name (param);
-    g_print ("   (%u) %-20s: %s\n", idx, name, g_param_spec_get_blurb (param));
 
-    field = g_strdup_printf ("%u", idx);
-    gst_structure_set (props, field, G_TYPE_STRING, name, NULL);
+    field = g_strdup_printf ("%u", (*index));
+    property = !GST_IS_PAD (object) ? g_strdup (name) :
+        g_strdup_printf ("%s::%s", GST_PAD_NAME (object), name);
 
+    gst_structure_set (props, field, G_TYPE_STRING, property, NULL);
+
+    list = g_list_append (list, g_strdup_printf ("   (%2u) %-20s: %s",
+        (*index), name, g_param_spec_get_blurb (param)));
+
+    g_free (property);
     g_free (field);
-    field = NULL;
 
     // Increment the index for the next option.
-    idx++;
+    (*index)++;
   }
 
-  g_print (" ---------------- Signals -----------------\n");
+  return list;
+}
 
-  for (type = G_OBJECT_TYPE (element); type; type = g_type_parent (type)) {
+static GList *
+get_object_signals (GObject * object, guint * index, GstStructure * signals)
+{
+  GType type;
+  GList *list = NULL;
+  GSignalQuery *query = NULL;
+  guint i = 0, *signal_ids = NULL, nsignals = 0;
+  gchar *field = NULL;
+
+  for (type = G_OBJECT_TYPE (object); type; type = g_type_parent (type)) {
+
     if (type == GST_TYPE_ELEMENT || type == GST_TYPE_OBJECT)
       break;
 
     // Ignore GstBin elements.
-    if (type == GST_TYPE_BIN && G_OBJECT_TYPE (element) != GST_TYPE_BIN)
+    if (type == GST_TYPE_BIN && G_OBJECT_TYPE (object) != GST_TYPE_BIN)
       continue;
 
     // Lists the signals that this element type has.
@@ -575,17 +661,18 @@ print_menu_options (GstElement * element, GstStructure * props,
       g_signal_query (signal_ids[i], query);
 
       if (query->signal_flags & G_SIGNAL_ACTION) {
-        g_print ("   (%u) %-20s\n", idx, query->signal_name);
-
-        field = g_strdup_printf ("%u", idx);
+        field = g_strdup_printf ("%u", (*index));
         gst_structure_set (signals, field, G_TYPE_STRING,
             query->signal_name, NULL);
+
+        list = g_list_append (list, g_strdup_printf ("   (%2u) %-20s",
+            (*index), query->signal_name));
 
         g_free (field);
         field = NULL;
 
         // Increment the index for the next option.
-        idx++;
+        (*index)++;
       }
 
       g_free (query);
@@ -597,7 +684,59 @@ print_menu_options (GstElement * element, GstStructure * props,
     signal_ids = NULL;
   }
 
-  g_print (" ----------------- Other ------------------\n");
+  return list;
+}
+
+static void
+print_menu_options (GstElement * element, GstStructure * props,
+    GstStructure * signals)
+{
+  guint index = 0;
+  GList *options = NULL;
+
+  PRINT_MENU_HEADER;
+
+  // Get the plugin element properties.
+  options = get_object_properties (G_OBJECT (element), &index, props);
+  PRINT_ELEMENT_PROPERTIES_SECTION (options);
+
+  {
+    GstIterator *it = NULL;
+    gboolean done = FALSE;
+
+    // Iterate over the element pads and check their properties.
+    it = gst_element_iterate_pads (element);
+
+    while (!done) {
+      GValue item = G_VALUE_INIT;
+      GObject *object = NULL;
+
+      switch (gst_iterator_next (it, &item)) {
+        case GST_ITERATOR_OK:
+          object = g_value_get_object (&item);
+          options = get_object_properties (object, &index, props);
+
+          PRINT_PAD_PROPERTIES_SECTION (GST_PAD_NAME (object), options)
+          g_value_reset (&item);
+          break;
+        case GST_ITERATOR_RESYNC:
+          gst_iterator_resync (it);
+          break;
+        case GST_ITERATOR_ERROR:
+        case GST_ITERATOR_DONE:
+          done = TRUE;
+          break;
+      }
+    }
+
+    gst_iterator_free (it);
+  }
+
+  // Get the plugin element signals.
+  options = get_object_signals (G_OBJECT (element), &index, signals);
+  PRINT_ELEMENT_SIGNALS_SECTION (options);
+
+  PRINT_OTHER_OPTS_HEADER;
   g_print ("   (%s) Quit\n", QUIT_OPTION);
 }
 
@@ -605,8 +744,9 @@ static void
 parse_input (gchar * input)
 {
   fflush (stdout);
+  memset (input, '\0', MAX_INPUT_SIZE * sizeof (*input));
 
-  if (!fgets (input, OPTION_ARRAY_SIZE, stdin) ) {
+  if (!fgets (input, MAX_INPUT_SIZE, stdin) ) {
     g_print ("Failed to parse input!\n");
     return;
   }
@@ -619,12 +759,10 @@ static gpointer
 main_menu (gpointer data)
 {
   GstAppContext *appctx = GST_APP_CONTEXT_CAST (data);
-  GstElement *element = NULL;
   GstStructure *props = gst_structure_new_empty ("properties");
   GstStructure *signals = gst_structure_new_empty ("signals");
-  gchar *option = g_new0 (gchar, OPTION_ARRAY_SIZE);
-  gchar *value = g_new0 (gchar, OPTION_ARRAY_SIZE);
-  gchar *name = g_new0 (gchar, OPTION_ARRAY_SIZE);
+  GstElement *element = NULL;
+  gchar *input = g_new0 (gchar, MAX_INPUT_SIZE);
 
   // Start pipeline.
   gboolean active = start_pipeline (appctx);
@@ -635,49 +773,72 @@ main_menu (gpointer data)
   // Choose a plugin to control.
   while (active && (NULL == element)) {
     g_print ("\nEnter name of the plugin which will be controlled: ");
-    parse_input (name);
+    parse_input (input);
 
-    element = gst_bin_get_by_name (GST_BIN (appctx->pipeline), name);
+    element = gst_bin_get_by_name (GST_BIN (appctx->pipeline), input);
     if (NULL == element)
       g_printerr ("WARNING: Invalid plugin name!\n");
   }
-
-  g_free (name);
 
   // Options menu loop.
   while (active) {
     print_menu_options (element, props, signals);
 
     g_print ("\n\nChoose an option: ");
-    parse_input (option);
+    parse_input (input);
 
-    if (gst_structure_has_field (props, option)) {
-      const gchar *propname = gst_structure_get_string (props, option);
+    if (gst_structure_has_field (props, input)) {
+      GObject *object = NULL;
+      GParamSpec *propspecs = NULL;
+      gchar **strings = NULL;
 
-      print_property_options (element, propname);
+      // Get the property string from the structure.
+      const gchar *propname = gst_structure_get_string (props, input);
+
+      // Split the string in order to check whether it is pad property.
+      strings = g_strsplit (propname, "::", 2);
+
+      // In case property belongs to a pad get reference to that pad by name.
+      object = (g_strv_length (strings) != 2) ? G_OBJECT (element) :
+          G_OBJECT (gst_element_get_static_pad (element, strings[0]));
+
+      // In case property belongs to a pad get pad property name.
+      propname = (g_strv_length (strings) != 2) ? propname : strings[1];
+
+      // Get the property specs structure.
+      propspecs =
+          g_object_class_find_property (G_OBJECT_GET_CLASS (object), propname);
+
+      print_property_info (object, propspecs);
       g_print ("\nEnter value (or press Enter to keep current one): ");
-      parse_input (value);
+      parse_input (input);
 
-      if (!g_str_equal (value, "")) {
-        gint propval = g_ascii_strtoll (value, NULL, 10);
-        g_object_set (G_OBJECT (element), propname, propval, NULL);
+      // If it's not an empty string deserialize the string to a GValue.
+      if (!g_str_equal (input, "")) {
+        GValue value = G_VALUE_INIT;
+        g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+
+        if (gst_value_deserialize (&value, input))
+          g_object_set_property (object, propname, &value);
       }
-    } else if (gst_structure_has_field (signals, option)) {
-      const gchar *signalname = gst_structure_get_string (signals, option);
+
+      // Unreference in case the object was a pad.
+      if (GST_IS_PAD (object))
+        gst_object_unref (object);
+
+      g_strfreev (strings);
+    } else if (gst_structure_has_field (signals, input)) {
+      const gchar *signalname = gst_structure_get_string (signals, input);
       g_signal_emit_by_name (element, signalname);
-    } else if (g_str_equal (option, QUIT_OPTION)) {
+    } else if (g_str_equal (input, QUIT_OPTION)) {
       active = FALSE;
     } else {
-      g_print ("Invalid option: '%s'\n", option);
+      g_print ("Invalid option: '%s'\n", input);
     }
-
-    memset (value, 0x0, OPTION_ARRAY_SIZE * sizeof (*value));
-    memset (option, 0x0, OPTION_ARRAY_SIZE * sizeof (*option));
   }
 
   // Free allocated resources.
-  g_free (value);
-  g_free (option);
+  g_free (input);
 
   gst_structure_free (props);
   gst_structure_free (signals);
