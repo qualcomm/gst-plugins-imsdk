@@ -26,6 +26,7 @@ target_link_libraries(${GST_HEXAGONNN} PRIVATE
   qtimlmeta
   Engine_DEEPLABV3
   Engine_POSENET
+  Engine_MNETSSD
 )
 
 install(

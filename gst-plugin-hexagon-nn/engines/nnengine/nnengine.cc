@@ -43,7 +43,7 @@ int32_t NNEngine::EngineInit(const NNSourceInfo* source_info,
   scale_width_ = (uint32_t)(in_width_ * ratio);
   scale_height_ = (uint32_t)(in_height_ * ratio);
 
-  ALOGD("%d:%d: in: %dx%d scaled: %dx%d nn: %dx%d ", __func__, __LINE__,
+  ALOGD("%s:%d: in: %dx%d scaled: %dx%d nn: %dx%d ", __func__, __LINE__,
     in_width_, in_height_, scale_width_, scale_height_,
     pad_width_, pad_height_);
 
@@ -423,3 +423,23 @@ void NNEngine::PreProcessColorConvertBGR(
                            pDst,
                            0);
 }
+
+uint8_t NNEngine::ReadLabelsFiles(const std::string& file_name,
+                                  std::vector<std::string>& result) {
+  std::ifstream file(file_name);
+  if (!file) {
+    ALOGE("%s: Labels file %s not found!", __func__, file_name.c_str());
+    return NN_FAIL;
+  }
+  result.clear();
+  std::string line;
+  while (std::getline(file, line)) {
+    result.push_back(line);
+  }
+  const int padding = 16;
+  while (result.size() % padding) {
+    result.emplace_back();
+  }
+  return NN_OK;
+}
+

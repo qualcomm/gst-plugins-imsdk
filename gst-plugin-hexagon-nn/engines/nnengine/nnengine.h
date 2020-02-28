@@ -173,6 +173,9 @@ protected:
       const uint32_t scaleHeight,
       NNImgFormat    format);
 
+  uint8_t ReadLabelsFiles(const std::string& file_name,
+                          std::vector<std::string>& result);
+
   static const uint8_t     kMaxOut = 4;
 
   const std::string        model_lib_;

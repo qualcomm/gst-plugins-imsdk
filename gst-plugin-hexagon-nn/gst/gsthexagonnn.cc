@@ -199,8 +199,10 @@ gst_hexagonnn_set_info (GstVideoFilter * filter, GstCaps * in,
     hnn->engine = static_cast <NNEngine *> (new DeepLabv3Engine ());
   } else if (!g_strcmp0(hnn->model, "posenet")) {
     hnn->engine = static_cast <NNEngine *> (new PoseNetEngine ());
+  } else if (!g_strcmp0(hnn->model, "mnetssd")) {
+    hnn->engine = static_cast <NNEngine *> (new MnetSSDEngine ());
   } else {
-    GST_ERROR_OBJECT (hnn, "Cannot find engine for: %d", hnn->model);
+    GST_ERROR_OBJECT (hnn, "Cannot find engine for: %s", hnn->model);
     return FALSE;
   }
 
@@ -269,7 +271,7 @@ gst_hexagonnn_class_init (GstHexagonNNClass * klass)
               "model-name",
               "model",
               "Specify which of model to execute."
-              "Supported models: segmentation, posenet",
+              "Supported models: segmentation, posenet, mnetssd",
               "segmentation",
               static_cast<GParamFlags>(G_PARAM_CONSTRUCT |
                                        G_PARAM_READWRITE |
