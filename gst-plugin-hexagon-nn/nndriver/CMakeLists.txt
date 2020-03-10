@@ -2,13 +2,14 @@ set(NNDRIVER nndriver)
 
 add_library(${NNDRIVER} SHARED
   nndriver.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/hexagon/nn/${HEXAGON_VER}/hexagon_nn_stub.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/hexagon/${HEXAGON_VER}/hexagon_nn_stub.c
 )
 
 target_include_directories(${NNDRIVER} PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/hexagon
-  ${CMAKE_CURRENT_SOURCE_DIR}/hexagon/nn/${HEXAGON_VER}
+  ${CMAKE_CURRENT_SOURCE_DIR}/hexagon/${HEXAGON_VER}
+  ${SYSROOT_INCDIR}/fastrpc/inc
 )
 
 target_link_libraries(${NNDRIVER} PUBLIC
