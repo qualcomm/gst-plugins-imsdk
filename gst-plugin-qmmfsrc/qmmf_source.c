@@ -174,7 +174,6 @@ qmmfsrc_request_pad (GstElement * element, GstPadTemplate * templ,
   GstElementClass *klass = GST_ELEMENT_GET_CLASS (element);
 
   gchar *padname = NULL;
-  GHashTable *indexes = NULL;
   guint index = 0, nextindex = 0;
   gboolean isvideo = FALSE, isaudio = FALSE, isimage = FALSE;
   GstPad *srcpad = NULL;
@@ -217,7 +216,8 @@ qmmfsrc_request_pad (GstElement * element, GstPadTemplate * templ,
     GST_DEBUG_OBJECT(element, "Requesting video pad %s (%d)", padname, index);
     srcpad = qmmfsrc_request_video_pad (templ, padname, index);
 
-    indexes = qmmfsrc->vidindexes;
+    qmmfsrc->vidindexes =
+        g_list_append (qmmfsrc->vidindexes, GUINT_TO_POINTER (index));
     g_free (padname);
   } else if (isaudio) {
     padname = g_strdup_printf ("audio_%u", index);
@@ -225,18 +225,20 @@ qmmfsrc_request_pad (GstElement * element, GstPadTemplate * templ,
     GST_DEBUG_OBJECT(element, "Requesting audio pad %s (%d)", padname, index);
     srcpad = qmmfsrc_request_audio_pad (templ, padname, index);
 
-    indexes = qmmfsrc->audindexes;
+    qmmfsrc->audindexes =
+        g_list_append (qmmfsrc->audindexes, GUINT_TO_POINTER (index));
     g_free (padname);
   } else if (isimage) {
     // Currently there is support for only one image pad.
-    g_return_val_if_fail (g_hash_table_size (qmmfsrc->imgindexes) == 0, NULL);
+    g_return_val_if_fail (g_list_length (qmmfsrc->imgindexes) == 0, NULL);
 
     padname = g_strdup_printf ("image_%u", index);
 
     GST_DEBUG_OBJECT(element, "Requesting image pad %d (%s)", index, padname);
     srcpad = qmmfsrc_request_image_pad (templ, padname, index);
 
-    indexes = qmmfsrc->imgindexes;
+    qmmfsrc->imgindexes =
+        g_list_append (qmmfsrc->imgindexes, GUINT_TO_POINTER (index));
     g_free (padname);
   }
 
@@ -250,7 +252,6 @@ qmmfsrc_request_pad (GstElement * element, GstPadTemplate * templ,
 
   qmmfsrc->nextidx = nextindex;
   g_hash_table_insert (qmmfsrc->srcpads, GUINT_TO_POINTER (index), srcpad);
-  g_hash_table_insert (indexes, GUINT_TO_POINTER (index), NULL);
 
   GST_QMMFSRC_UNLOCK (qmmfsrc);
 
@@ -274,19 +275,22 @@ qmmfsrc_release_pad (GstElement * element, GstPad * pad)
     GST_DEBUG_OBJECT (element, "Releasing video pad %d", index);
 
     qmmfsrc_release_video_pad (element, pad);
-    g_hash_table_remove (qmmfsrc->vidindexes, GUINT_TO_POINTER (index));
+    qmmfsrc->vidindexes =
+        g_list_remove (qmmfsrc->vidindexes, GUINT_TO_POINTER (index));
   } else if (GST_IS_QMMFSRC_AUDIO_PAD (pad)) {
     index = GST_QMMFSRC_AUDIO_PAD (pad)->index;
     GST_DEBUG_OBJECT (element, "Releasing audio pad %d", index);
 
     qmmfsrc_release_audio_pad (element, pad);
-    g_hash_table_remove (qmmfsrc->audindexes, GUINT_TO_POINTER (index));
+    qmmfsrc->audindexes =
+        g_list_remove (qmmfsrc->audindexes, GUINT_TO_POINTER (index));
   } else if (GST_IS_QMMFSRC_IMAGE_PAD (pad)) {
     index = GST_QMMFSRC_IMAGE_PAD (pad)->index;
     GST_DEBUG_OBJECT (element, "Releasing image pad %d", index);
 
     qmmfsrc_release_image_pad (element, pad);
-    g_hash_table_remove (qmmfsrc->imgindexes, GUINT_TO_POINTER (index));
+    qmmfsrc->imgindexes =
+        g_list_remove (qmmfsrc->imgindexes, GUINT_TO_POINTER (index));
   }
 
   g_hash_table_remove (qmmfsrc->srcpads, GUINT_TO_POINTER (index));
@@ -299,9 +303,9 @@ static gboolean
 qmmfsrc_create_session (GstQmmfSrc * qmmfsrc)
 {
   gboolean success = FALSE;
-  GHashTableIter iter;
-  gpointer key, value;
+  gpointer key;
   GstPad *pad = NULL;
+  GList *list = NULL;
 
   GST_TRACE_OBJECT (qmmfsrc, "Create session");
 
@@ -309,9 +313,8 @@ qmmfsrc_create_session (GstQmmfSrc * qmmfsrc)
   QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
       "Session creation failed!");
 
-  g_hash_table_iter_init (&iter, qmmfsrc->vidindexes);
-
-  while (g_hash_table_iter_next (&iter, &key, &value)) {
+  for (list = qmmfsrc->vidindexes; list != NULL; list = list->next) {
+    key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
     success = qmmfsrc_video_pad_fixate_caps (pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
@@ -329,9 +332,8 @@ qmmfsrc_create_session (GstQmmfSrc * qmmfsrc)
         G_CALLBACK (gst_qmmf_context_update_video_param), qmmfsrc->context);
   }
 
-  g_hash_table_iter_init (&iter, qmmfsrc->audindexes);
-
-  while (g_hash_table_iter_next (&iter, &key, &value)) {
+  for (list = qmmfsrc->audindexes; list != NULL; list = list->next) {
+    key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
     success = qmmfsrc_audio_pad_fixate_caps (pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
@@ -342,9 +344,8 @@ qmmfsrc_create_session (GstQmmfSrc * qmmfsrc)
         "Audio stream creation failed!");
   }
 
-  g_hash_table_iter_init (&iter, qmmfsrc->imgindexes);
-
-  while (g_hash_table_iter_next (&iter, &key, &value)) {
+  for (list = qmmfsrc->imgindexes; list != NULL; list = list->next) {
+    key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
     success = qmmfsrc_image_pad_fixate_caps (pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
@@ -364,15 +365,14 @@ static gboolean
 qmmfsrc_delete_session (GstQmmfSrc * qmmfsrc)
 {
   gboolean success = FALSE;
-  GHashTableIter iter;
-  gpointer key, value;
+  gpointer key;
   GstPad *pad;
+  GList *list = NULL;
 
   GST_TRACE_OBJECT (qmmfsrc, "Delete session");
 
-  g_hash_table_iter_init (&iter, qmmfsrc->audindexes);
-
-  while (g_hash_table_iter_next (&iter, &key, &value)) {
+  for (list = qmmfsrc->audindexes; list != NULL; list = list->next) {
+    key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
 
     success = gst_qmmf_context_delete_stream (qmmfsrc->context, pad);
@@ -380,9 +380,8 @@ qmmfsrc_delete_session (GstQmmfSrc * qmmfsrc)
         "Video stream deletion failed!");
   }
 
-  g_hash_table_iter_init (&iter, qmmfsrc->vidindexes);
-
-  while (g_hash_table_iter_next (&iter, &key, &value)) {
+  for (list = qmmfsrc->vidindexes; list != NULL; list = list->next) {
+    key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
 
     success = gst_qmmf_context_delete_stream (qmmfsrc->context, pad);
@@ -390,9 +389,8 @@ qmmfsrc_delete_session (GstQmmfSrc * qmmfsrc)
         "Audio stream deletion failed!");
   }
 
-  g_hash_table_iter_init (&iter, qmmfsrc->imgindexes);
-
-  while (g_hash_table_iter_next (&iter, &key, &value)) {
+  for (list = qmmfsrc->imgindexes; list != NULL; list = list->next) {
+    key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
 
     success = gst_qmmf_context_delete_stream (qmmfsrc->context, pad);
@@ -470,14 +468,13 @@ qmmfsrc_pause_session (GstQmmfSrc * qmmfsrc)
 static gboolean
 qmmfsrc_capture_image (GstQmmfSrc * qmmfsrc)
 {
-  GHashTableIter iter;
-  gpointer key, value;
+  gpointer key;
+  GList *list = NULL;
 
   GST_TRACE_OBJECT (qmmfsrc, "Submit capture image/s");
 
-  g_hash_table_iter_init (&iter, qmmfsrc->imgindexes);
-
-  while (g_hash_table_iter_next (&iter, &key, &value)) {
+  for (list = qmmfsrc->imgindexes; list != NULL; list = list->next) {
+    key = list->data;
     GstPad *pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
 
     gboolean success = gst_qmmf_context_capture_image (qmmfsrc->context, pad);
@@ -493,14 +490,13 @@ qmmfsrc_capture_image (GstQmmfSrc * qmmfsrc)
 static gboolean
 qmmfsrc_cancel_capture (GstQmmfSrc * qmmfsrc)
 {
-  GHashTableIter iter;
-  gpointer key, value;
+  gpointer key;
+  GList *list = NULL;
 
   GST_TRACE_OBJECT (qmmfsrc, "Canceling image capture");
 
-  g_hash_table_iter_init (&iter, qmmfsrc->imgindexes);
-
-  while (g_hash_table_iter_next (&iter, &key, &value)) {
+  for (list = qmmfsrc->imgindexes; list != NULL; list = list->next) {
+    key = list->data;
     gboolean success = gst_qmmf_context_cancel_capture (qmmfsrc->context);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Cancel capture image failed!");
@@ -752,20 +748,17 @@ qmmfsrc_finalize (GObject * object)
   }
 
   if (qmmfsrc->vidindexes != NULL) {
-    g_hash_table_remove_all (qmmfsrc->vidindexes);
-    g_hash_table_destroy (qmmfsrc->vidindexes);
+    g_list_free (qmmfsrc->vidindexes);
     qmmfsrc->vidindexes = NULL;
   }
 
   if (qmmfsrc->audindexes != NULL) {
-    g_hash_table_remove_all (qmmfsrc->audindexes);
-    g_hash_table_destroy (qmmfsrc->audindexes);
+    g_list_free (qmmfsrc->audindexes);
     qmmfsrc->audindexes = NULL;
   }
 
   if (qmmfsrc->imgindexes != NULL) {
-    g_hash_table_remove_all (qmmfsrc->imgindexes);
-    g_hash_table_destroy (qmmfsrc->imgindexes);
+    g_list_free (qmmfsrc->imgindexes);
     qmmfsrc->imgindexes = NULL;
   }
 
@@ -875,9 +868,10 @@ qmmfsrc_init (GstQmmfSrc * qmmfsrc)
   qmmfsrc->srcpads = g_hash_table_new (NULL, NULL);
   qmmfsrc->nextidx = 0;
 
-  qmmfsrc->vidindexes = g_hash_table_new (NULL, NULL);
-  qmmfsrc->audindexes = g_hash_table_new (NULL, NULL);
-  qmmfsrc->imgindexes = g_hash_table_new (NULL, NULL);
+
+  qmmfsrc->vidindexes = NULL;
+  qmmfsrc->audindexes = NULL;
+  qmmfsrc->imgindexes = NULL;
 
   qmmfsrc->context = gst_qmmf_context_new ();
   g_return_if_fail (qmmfsrc->context != NULL);

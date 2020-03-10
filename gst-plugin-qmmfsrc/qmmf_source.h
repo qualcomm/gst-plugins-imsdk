@@ -73,11 +73,11 @@ struct _GstQmmfSrc {
   guint          nextidx;
 
   /// List containing the indexes of existing video source pads.
-  GHashTable     *vidindexes;
+  GList          *vidindexes;
   /// List containing the indexes of existing video source pads.
-  GHashTable     *audindexes;
+  GList          *audindexes;
   /// List containing the indexes of existing video source pads.
-  GHashTable     *imgindexes;
+  GList          *imgindexes;
 
   /// QMMF context.
   GstQmmfContext *context;
