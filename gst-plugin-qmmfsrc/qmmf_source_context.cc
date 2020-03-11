@@ -419,6 +419,12 @@ void image_data_callback (GstQmmfContext * context, GstPad * pad,
   if (GST_FORMAT_UNDEFINED == ipad->segment.format) {
     gst_segment_init (&(ipad)->segment, GST_FORMAT_TIME);
     gst_pad_push_event (pad, gst_event_new_segment (&(ipad)->segment));
+
+    // This is the 1st capture which is used for stream configuration.
+    // TODO Remove this once ConfigImageCapture is actually configuring image.
+    gst_buffer_unref (gstbuffer);
+    GST_QMMF_CONTEXT_UNLOCK (context);
+    return;
   }
 
   GST_BUFFER_PTS (gstbuffer) = buffer.timestamp - context->vtsbase;
@@ -1243,27 +1249,6 @@ gst_qmmf_context_capture_image (GstQmmfContext * context, GstPad * pad)
 
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
       "QMMF Recorder CaptureImage Failed!");
-
-  return TRUE;
-}
-
-gboolean
-gst_qmmf_context_cancel_capture (GstQmmfContext * context)
-{
-  gint status = 0;
-
-  GST_TRACE ("Cancel image capture");
-
-  G_LOCK (recorder);
-
-  status = recorder->CancelCaptureImage (context->camera_id);
-
-  G_UNLOCK (recorder);
-
-  QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
-      "QMMF Recorder CancelCaptureImage Failed!");
-
-  GST_TRACE ("Image capture canceled");
 
   return TRUE;
 }

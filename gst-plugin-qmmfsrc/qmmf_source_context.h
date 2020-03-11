@@ -90,9 +90,6 @@ gst_qmmf_context_pause_session (GstQmmfContext * context);
 GST_API gboolean
 gst_qmmf_context_capture_image (GstQmmfContext * context, GstPad * pad);
 
-GST_API gboolean
-gst_qmmf_context_cancel_capture (GstQmmfContext * context);
-
 GST_API void
 gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
                                    const GValue * value);
