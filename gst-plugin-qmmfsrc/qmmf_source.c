@@ -399,15 +399,6 @@ qmmfsrc_delete_session (GstQmmfSrc * qmmfsrc)
         "Video stream deletion failed!");
   }
 
-  for (list = qmmfsrc->vidindexes; list != NULL; list = list->next) {
-    key = list->data;
-    pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
-
-    success = gst_qmmf_context_delete_stream (qmmfsrc->context, pad);
-    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
-        "Audio stream deletion failed!");
-  }
-
   for (list = qmmfsrc->imgindexes; list != NULL; list = list->next) {
     key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
@@ -415,6 +406,15 @@ qmmfsrc_delete_session (GstQmmfSrc * qmmfsrc)
     success = gst_qmmf_context_delete_stream (qmmfsrc->context, pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Image stream deletion failed!");
+  }
+
+  for (list = qmmfsrc->vidindexes; list != NULL; list = list->next) {
+    key = list->data;
+    pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
+
+    success = gst_qmmf_context_delete_stream (qmmfsrc->context, pad);
+    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
+        "Audio stream deletion failed!");
   }
 
   success = gst_qmmf_context_delete_session (qmmfsrc->context);
