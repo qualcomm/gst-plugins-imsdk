@@ -51,14 +51,32 @@ G_DEFINE_TYPE (GstOverlay, gst_overlay, GST_TYPE_VIDEO_FILTER);
 #define DEFAULT_PROP_OVERLAY_BBOX_COLOR  kColorBlue
 #define DEFAULT_PROP_OVERLAY_DATE_COLOR  kColorRed
 #define DEFAULT_PROP_OVERLAY_TEXT_COLOR  kColorYellow
+#define DEFAULT_PROP_OVERLAY_POSE_COLOR  kColorLightGreen
 
 #define GST_OVERLAY_UNUSED(var) ((void)var)
+
+static GstMLKeyPointsType PoseChain [][2] {
+  {LEFT_SHOULDER,  RIGHT_SHOULDER},
+  {LEFT_SHOULDER,  LEFT_ELBOW},
+  {LEFT_SHOULDER,  LEFT_HIP},
+  {RIGHT_SHOULDER, RIGHT_ELBOW},
+  {RIGHT_SHOULDER, RIGHT_HIP},
+  {LEFT_ELBOW,     LEFT_WRIST},
+  {RIGHT_ELBOW,    RIGHT_WRIST},
+  {LEFT_HIP,       RIGHT_HIP},
+  {LEFT_HIP,       LEFT_KNEE},
+  {RIGHT_HIP,      RIGHT_KNEE},
+  {LEFT_KNEE,      LEFT_ANKLE},
+  {RIGHT_KNEE,     RIGHT_ANKLE}
+};
+
 
 enum {
   PROP_0,
   PROP_OVERLAY_BBOX_COLOR,
   PROP_OVERLAY_DATE_COLOR,
-  PROP_OVERLAY_TEXT_COLOR
+  PROP_OVERLAY_TEXT_COLOR,
+  PROP_OVERLAY_POSE_COLOR
 };
 
 static GstStaticCaps gst_overlay_format_caps =
@@ -290,30 +308,7 @@ gst_overlay_apply_text_item (GstOverlay *gst_overlay, gpointer metadata,
     ov_param = {};
     ov_param.type = OverlayType::kUserText;
     ov_param.color = gst_overlay->text_color;
-
-    switch (meta->location) {
-      case GstOverlayLocationType::TOP_LEFT:
-        ov_param.location = OverlayLocationType::kTopLeft;
-        break;
-      case GstOverlayLocationType::TOP_RIGHT:
-        ov_param.location = OverlayLocationType::kTopRight;
-        break;
-      case GstOverlayLocationType::CENTER:
-        ov_param.location = OverlayLocationType::kCenter;
-        break;
-      case GstOverlayLocationType::BOTTOM_LEFT:
-        ov_param.location = OverlayLocationType::kBottomLeft;
-        break;
-      case GstOverlayLocationType::BOTTOM_RIGHT:
-        ov_param.location = OverlayLocationType::kBottomRight;
-        break;
-      case GstOverlayLocationType::CUSTOM:
-      default:
-        GST_ERROR_OBJECT (gst_overlay,
-            "location: %d not supported. Set to Top Left", meta->location);
-        ov_param.location = OverlayLocationType::kTopLeft;
-        break;
-    }
+    ov_param.location = OverlayLocationType::kTopLeft;
 
     if (sizeof (ov_param.bounding_box.box_name) < strlen (meta->result.name)) {
       GST_ERROR_OBJECT (gst_overlay, "Text size exceeded %d < %d",
@@ -355,6 +350,198 @@ gst_overlay_apply_text_item (GstOverlay *gst_overlay, gpointer metadata,
       return FALSE;
     }
   }
+  return TRUE;
+}
+
+static gboolean
+gst_overlay_apply_pose_item (GstOverlay *gst_overlay, gpointer metadata,
+  uint32_t * item_id)
+{
+  OverlayParam ov_param;
+  int32_t ret = 0;
+
+  g_return_val_if_fail (item_id != NULL, FALSE);
+  g_return_val_if_fail (metadata != NULL, FALSE);
+  g_return_val_if_fail (item_id != NULL, FALSE);
+
+  GstMLPoseNetMeta * pose = (GstMLPoseNetMeta *) metadata;
+
+  static float kScoreTreshold = 0.1;
+
+  if (!(*item_id)) {
+    ov_param = {};
+    ov_param.type = OverlayType::kGraph;
+    ov_param.color = gst_overlay->pose_color;
+  } else {
+    ret = gst_overlay->overlay->GetOverlayParams (*item_id, ov_param);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay get param failed! ret: %d", ret);
+      return FALSE;
+    }
+  }
+
+  ov_param.dst_rect.start_x = 0;
+  ov_param.dst_rect.start_y = 0;
+  ov_param.dst_rect.width = gst_overlay->width;
+  ov_param.dst_rect.height = gst_overlay->height;
+
+  gint count = 0;
+  gint points[KEY_POINTS_COUNT];
+
+  if (pose->points[NOSE].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = pose->points[NOSE].x;
+    ov_param.graph.points[count].y = pose->points[NOSE].y;
+    points[NOSE] = count;
+    count++;
+  }
+
+  if (pose->points[LEFT_EYE].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = pose->points[LEFT_EYE].x;
+    ov_param.graph.points[count].y = pose->points[LEFT_EYE].y;
+    points[LEFT_EYE] = count;
+    count++;
+  }
+
+  if (pose->points[RIGHT_EYE].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = pose->points[RIGHT_EYE].x;
+    ov_param.graph.points[count].y = pose->points[RIGHT_EYE].y;
+    points[RIGHT_EYE] = count;
+    count++;
+  }
+
+  if (pose->points[LEFT_EAR].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = pose->points[LEFT_EAR].x;
+    ov_param.graph.points[count].y = pose->points[LEFT_EAR].y;
+    points[LEFT_EAR] = count;
+    count++;
+  }
+
+  if (pose->points[RIGHT_EAR].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = pose->points[RIGHT_EAR].x;
+    ov_param.graph.points[count].y = pose->points[RIGHT_EAR].y;
+    points[RIGHT_EAR] = count;
+    count++;
+  }
+
+  if (pose->points[LEFT_SHOULDER].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = pose->points[LEFT_SHOULDER].x;
+    ov_param.graph.points[count].y = pose->points[LEFT_SHOULDER].y;
+    points[LEFT_SHOULDER] = count;
+    count++;
+  }
+
+  if (pose->points[RIGHT_SHOULDER].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = pose->points[RIGHT_SHOULDER].x;
+    ov_param.graph.points[count].y = pose->points[RIGHT_SHOULDER].y;
+    points[RIGHT_SHOULDER] = count;
+    count++;
+  }
+
+  if (pose->points[LEFT_ELBOW].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = pose->points[LEFT_ELBOW].x;
+    ov_param.graph.points[count].y = pose->points[LEFT_ELBOW].y;
+    points[LEFT_ELBOW] = count;
+    count++;
+  }
+
+  if (pose->points[RIGHT_ELBOW].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = pose->points[RIGHT_ELBOW].x;
+    ov_param.graph.points[count].y = pose->points[RIGHT_ELBOW].y;
+    points[RIGHT_ELBOW] = count;
+    count++;
+  }
+
+  if (pose->points[LEFT_WRIST].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = pose->points[LEFT_WRIST].x;
+    ov_param.graph.points[count].y = pose->points[LEFT_WRIST].y;
+    points[LEFT_WRIST] = count;
+    count++;
+  }
+
+  if (pose->points[RIGHT_WRIST].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = pose->points[RIGHT_WRIST].x;
+    ov_param.graph.points[count].y = pose->points[RIGHT_WRIST].y;
+    points[RIGHT_WRIST] = count;
+    count++;
+  }
+
+  if (pose->points[LEFT_HIP].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = pose->points[LEFT_HIP].x;
+    ov_param.graph.points[count].y = pose->points[LEFT_HIP].y;
+    points[LEFT_HIP] = count;
+    count++;
+  }
+
+  if (pose->points[RIGHT_HIP].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = pose->points[RIGHT_HIP].x;
+    ov_param.graph.points[count].y = pose->points[RIGHT_HIP].y;
+    points[RIGHT_HIP] = count;
+    count++;
+  }
+
+  if (pose->points[LEFT_KNEE].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = pose->points[LEFT_KNEE].x;
+    ov_param.graph.points[count].y = pose->points[LEFT_KNEE].y;
+    points[LEFT_KNEE] = count;
+    count++;
+  }
+
+  if (pose->points[RIGHT_KNEE].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = pose->points[RIGHT_KNEE].x;
+    ov_param.graph.points[count].y = pose->points[RIGHT_KNEE].y;
+    points[RIGHT_KNEE] = count;
+    count++;
+  }
+
+  if (pose->points[LEFT_ANKLE].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = pose->points[LEFT_ANKLE].x;
+    ov_param.graph.points[count].y = pose->points[LEFT_ANKLE].y;
+    points[LEFT_ANKLE] = count;
+    count++;
+  }
+
+  if (pose->points[RIGHT_ANKLE].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = pose->points[RIGHT_ANKLE].x;
+    ov_param.graph.points[count].y = pose->points[RIGHT_ANKLE].y;
+    points[RIGHT_ANKLE] = count;
+    count++;
+  }
+  ov_param.graph.points_count = count;
+
+  count = 0;
+  ov_param.graph.chain_count = 0;
+  for (gint i = 0; i < sizeof (PoseChain) / sizeof (PoseChain[0]); i++) {
+    GstMLKeyPointsType point0 = PoseChain[i][0];
+    GstMLKeyPointsType point1 = PoseChain[i][1];
+    if (pose->points[point0].score > kScoreTreshold &&
+        pose->points[point1].score > kScoreTreshold) {
+      ov_param.graph.chain[count][0] = points[point0];
+      ov_param.graph.chain[count][1] = points[point1];
+      count++;
+    }
+  }
+  ov_param.graph.chain_count = count;
+
+  if (!(*item_id)) {
+    ret = gst_overlay->overlay->CreateOverlayItem (ov_param, item_id);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay create failed! ret: %d", ret);
+      return FALSE;
+    }
+
+    ret = gst_overlay->overlay->EnableOverlayItem (*item_id);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay enable failed! ret: %d", ret);
+      return FALSE;
+    }
+  } else {
+    ret = gst_overlay->overlay->UpdateOverlayParams (*item_id, ov_param);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay set param failed! ret: %d", ret);
+      return FALSE;
+    }
+  }
+
   return TRUE;
 }
 
@@ -424,6 +611,10 @@ gst_overlay_finalize (GObject * object)
         gst_overlay);
     g_sequence_free (gst_overlay->text_id);
 
+    g_sequence_foreach (gst_overlay->pose_id, gst_overlay_destroy_overlay_item,
+        gst_overlay);
+    g_sequence_free (gst_overlay->pose_id);
+
     delete (gst_overlay->overlay);
     gst_overlay->overlay = nullptr;
   }
@@ -448,6 +639,9 @@ gst_overlay_set_property (GObject * object, guint prop_id,
     case PROP_OVERLAY_TEXT_COLOR:
       gst_overlay->text_color = g_value_get_uint (value);
       break;
+    case PROP_OVERLAY_POSE_COLOR:
+      gst_overlay->pose_color = g_value_get_uint (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -471,6 +665,9 @@ gst_overlay_get_property (GObject * object, guint prop_id, GValue * value,
       break;
     case PROP_OVERLAY_TEXT_COLOR:
       g_value_set_uint (value, gst_overlay->text_color);
+      break;
+    case PROP_OVERLAY_POSE_COLOR:
+      g_value_set_uint (value, gst_overlay->pose_color);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -576,9 +773,20 @@ gst_overlay_transform_frame_ip (GstVideoFilter *filter, GstVideoFrame *frame)
     return GST_FLOW_ERROR;
   }
 
+  res = gst_overlay_apply_item_list (gst_overlay,
+                            gst_buffer_get_posenet_meta (frame->buffer),
+                            gst_overlay_apply_pose_item,
+                            gst_overlay->pose_id);
+  if (!res) {
+    GST_ERROR_OBJECT (gst_overlay,
+        "Overlay apply pose item list failed!");
+    return GST_FLOW_ERROR;
+  }
+
   if (!g_sequence_is_empty (gst_overlay->bbox_id) ||
       !g_sequence_is_empty (gst_overlay->simg_id) ||
-      !g_sequence_is_empty (gst_overlay->text_id)) {
+      !g_sequence_is_empty (gst_overlay->text_id) ||
+      !g_sequence_is_empty (gst_overlay->pose_id)) {
     res = gst_overlay_apply_overlay (gst_overlay, frame);
     if (!res) {
       GST_ERROR_OBJECT (gst_overlay, "Overlay apply failed!");
@@ -614,6 +822,11 @@ gst_overlay_class_init (GstOverlayClass * klass)
       0, G_MAXUINT, DEFAULT_PROP_OVERLAY_TEXT_COLOR, static_cast<GParamFlags>(
         G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
+  g_object_class_install_property (gobject, PROP_OVERLAY_POSE_COLOR,
+    g_param_spec_uint ("pose-color", "Pose color", "Pose overlay color",
+      0, G_MAXUINT, DEFAULT_PROP_OVERLAY_POSE_COLOR, static_cast<GParamFlags>(
+        G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
   gst_element_class_set_static_metadata (element, "QTI Overlay", "Overlay",
       "Apply image, bounding boxes and text overlay.", "QTI");
 
@@ -633,10 +846,12 @@ gst_overlay_init (GstOverlay * gst_overlay)
   gst_overlay->bbox_id = g_sequence_new (free);
   gst_overlay->simg_id = g_sequence_new (free);
   gst_overlay->text_id = g_sequence_new (free);
+  gst_overlay->pose_id = g_sequence_new (free);
 
   gst_overlay->bbox_color = DEFAULT_PROP_OVERLAY_BBOX_COLOR;
   gst_overlay->date_color = DEFAULT_PROP_OVERLAY_DATE_COLOR;
   gst_overlay->text_color = DEFAULT_PROP_OVERLAY_TEXT_COLOR;
+  gst_overlay->pose_color = DEFAULT_PROP_OVERLAY_POSE_COLOR;
 
   GST_DEBUG_CATEGORY_INIT (overlay_debug, "qtioverlay", 0, "QTI overlay");
 }

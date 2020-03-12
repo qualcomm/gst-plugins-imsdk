@@ -62,10 +62,12 @@ struct _GstOverlay {
   GSequence           *bbox_id;
   GSequence           *simg_id;
   GSequence           *text_id;
+  GSequence           *pose_id;
 
   guint               bbox_color;
   guint               date_color;
   guint               text_color;
+  guint               pose_color;
 
   guint               width;
   guint               height;
