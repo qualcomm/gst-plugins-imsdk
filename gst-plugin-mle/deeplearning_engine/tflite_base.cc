@@ -31,12 +31,16 @@
 #include <vector>
 #include <string>
 #include <fastcv/fastcv.h>
-#include <tensorflow/lite/kernels/register.h>
+#include <tensorflow/lite/delegates/nnapi/nnapi_delegate.h>
 #include <tensorflow/lite/examples/label_image/get_top_n.h>
 #include <tensorflow/lite/examples/label_image/get_top_n_impl.h>
+#include <tensorflow/lite/kernels/register.h>
+#include <tensorflow/lite/tools/evaluation/utils.h>
 #include "tflite_base.h"
 
 namespace mle {
+
+static const uint32_t delegate_preferences = 00300000;
 
 // Takes a file name, and loads a list of labels from it, one per line, and
 // returns a vector of the strings. It pads with empty strings so the length
@@ -69,6 +73,26 @@ TFLBase::TFLBase(MLConfig &config) {
   config_.number_of_threads = config.number_of_threads;
   config_.use_nnapi = config.use_nnapi;
   input_params_.scale_buf = nullptr;
+}
+
+TfLiteDelegatePtrMap TFLBase::GetDelegates() {
+  TfLiteDelegatePtrMap delegates;
+
+  if (config_.use_nnapi) {
+    tflite::StatefulNnApiDelegate::Options options;
+    options.execution_preference =
+        static_cast<tflite::StatefulNnApiDelegate::Options::ExecutionPreference>(
+        delegate_preferences);
+
+    auto delegate = tflite::evaluation::CreateNNAPIDelegate(options);
+    if (!delegate) {
+      VAM_ML_LOGI("NNAPI acceleration is unsupported on this platform.");
+    } else {
+      delegates.emplace("NNAPI", std::move(delegate));
+    }
+  }
+
+  return delegates;
 }
 
 int32_t TFLBase::Init(const struct MLEInputParams* source_info) {
@@ -111,7 +135,6 @@ int32_t TFLBase::Init(const struct MLEInputParams* source_info) {
   }
 
   // Set the interpreter configurations
-  engine_params_.interpreter->UseNNAPI(config_.use_nnapi);
   engine_params_.interpreter->SetNumThreads(config_.number_of_threads);
   VAM_ML_LOGI("%s: USE_NNAPI %d No: of threads %d", __func__,
                    config_.use_nnapi, config_.number_of_threads);
@@ -142,6 +165,14 @@ int32_t TFLBase::Init(const struct MLEInputParams* source_info) {
     }
   } else {
     engine_params_.do_rescale = false;
+  }
+
+  auto delegates = GetDelegates();
+  for (const auto& delegate : delegates) {
+    if (engine_params_.interpreter->ModifyGraphWithDelegate(delegate.second.get()) !=
+        kTfLiteOk) {
+      VAM_ML_LOGE("Failed to apply delegate.");
+    }
   }
 
   // Allocate output buffer for re-scaling

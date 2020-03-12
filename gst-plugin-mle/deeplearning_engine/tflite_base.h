@@ -43,6 +43,9 @@
 
 namespace mle {
 
+using TfLiteDelegatePtr = tflite::Interpreter::TfLiteDelegatePtr;
+using TfLiteDelegatePtrMap = std::map<std::string, TfLiteDelegatePtr>;
+
 struct TFLiteEngineInputParams {
   uint32_t width;
   uint32_t height;
@@ -98,6 +101,7 @@ class TFLBase : public MLEngine {
     const uint32_t width,
     const uint32_t height,
     MLEImageFormat format);
+  TfLiteDelegatePtrMap GetDelegates();
 
  protected:
   TFLiteEngineInputParams input_params_;
