@@ -63,6 +63,10 @@ struct _GstOverlay {
   GSequence           *simg_id;
   GSequence           *text_id;
   GSequence           *pose_id;
+  guint               user_text_id;
+  gchar               *user_text;
+  guint               date_id;
+  gboolean            date_overlay;
 
   guint               bbox_color;
   guint               date_color;
@@ -78,6 +82,12 @@ struct _GstOverlayClass {
 };
 
 G_GNUC_INTERNAL GType gst_overlay_get_type (void);
+
+#define OVERLAY_IS_PROPERTY_MUTABLE_IN_CURRENT_STATE(pspec, state) \
+    ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
+        : ((pspec->flags & GST_PARAM_MUTABLE_PAUSED) ? (state <= GST_STATE_PAUSED) \
+            : ((pspec->flags & GST_PARAM_MUTABLE_READY) ? (state <= GST_STATE_READY) \
+                : (state <= GST_STATE_NULL))))
 
 G_END_DECLS
 
