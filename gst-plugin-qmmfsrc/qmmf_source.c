@@ -373,6 +373,11 @@ qmmfsrc_create_session (GstQmmfSrc * qmmfsrc)
     success = gst_qmmf_context_create_stream (qmmfsrc->context, pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Image stream creation failed!");
+
+    // TODO Remove this once ConfigImageCapture is actually configuring image.
+    success = gst_qmmf_context_capture_image (qmmfsrc->context, pad);
+    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
+        "Capture image failed!");
   }
 
   GST_TRACE_OBJECT (qmmfsrc, "Session created");
@@ -399,15 +404,6 @@ qmmfsrc_delete_session (GstQmmfSrc * qmmfsrc)
         "Video stream deletion failed!");
   }
 
-  for (list = qmmfsrc->vidindexes; list != NULL; list = list->next) {
-    key = list->data;
-    pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
-
-    success = gst_qmmf_context_delete_stream (qmmfsrc->context, pad);
-    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
-        "Audio stream deletion failed!");
-  }
-
   for (list = qmmfsrc->imgindexes; list != NULL; list = list->next) {
     key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
@@ -415,6 +411,15 @@ qmmfsrc_delete_session (GstQmmfSrc * qmmfsrc)
     success = gst_qmmf_context_delete_stream (qmmfsrc->context, pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Image stream deletion failed!");
+  }
+
+  for (list = qmmfsrc->vidindexes; list != NULL; list = list->next) {
+    key = list->data;
+    pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
+
+    success = gst_qmmf_context_delete_stream (qmmfsrc->context, pad);
+    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
+        "Audio stream deletion failed!");
   }
 
   success = gst_qmmf_context_delete_session (qmmfsrc->context);
@@ -502,26 +507,6 @@ qmmfsrc_capture_image (GstQmmfSrc * qmmfsrc)
   }
 
   GST_TRACE_OBJECT (qmmfsrc, "Capture image/s submitted");
-
-  return TRUE;
-}
-
-static gboolean
-qmmfsrc_cancel_capture (GstQmmfSrc * qmmfsrc)
-{
-  gpointer key;
-  GList *list = NULL;
-
-  GST_TRACE_OBJECT (qmmfsrc, "Canceling image capture");
-
-  for (list = qmmfsrc->imgindexes; list != NULL; list = list->next) {
-    key = list->data;
-    gboolean success = gst_qmmf_context_cancel_capture (qmmfsrc->context);
-    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
-        "Cancel capture image failed!");
-  }
-
-  GST_TRACE_OBJECT (qmmfsrc, "Image capture canceled");
 
   return TRUE;
 }
@@ -886,11 +871,6 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
   signals[SIGNAL_CAPTURE_IMAGE] =
       g_signal_new_class_handler ("capture-image", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION, G_CALLBACK (qmmfsrc_capture_image),
-      NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
-
-  signals[SIGNAL_CANCEL_CAPTURE] =
-      g_signal_new_class_handler ("cancel-capture", G_TYPE_FROM_CLASS (klass),
-      G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION, G_CALLBACK (qmmfsrc_cancel_capture),
       NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
 
   gstelement->request_new_pad = GST_DEBUG_FUNCPTR (qmmfsrc_request_pad);
