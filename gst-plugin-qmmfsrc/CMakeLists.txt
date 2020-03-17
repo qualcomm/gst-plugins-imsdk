@@ -18,8 +18,6 @@ pkg_check_modules(GST_ALLOC
   REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_VIDEO
   REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(GST_AUDIO
-  REQUIRED gstreamer-audio-1.0>=${GST_VERSION_REQUIRED})
 
 # Generate configuration header file.
 configure_file(config.h.in config.h @ONLY)
@@ -46,7 +44,6 @@ add_library(${GST_QMMFSRC_PLUGIN} SHARED
   qmmf_source.c
   qmmf_source_utils.c
   qmmf_source_video_pad.c
-  qmmf_source_audio_pad.c
   qmmf_source_image_pad.c
   qmmf_source_context.cc
 )
@@ -66,7 +63,6 @@ target_link_libraries(${GST_QMMFSRC_PLUGIN} PRIVATE
   qmmf_recorder_client
   ${GST_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
-  ${GST_AUDIO_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
 )
 

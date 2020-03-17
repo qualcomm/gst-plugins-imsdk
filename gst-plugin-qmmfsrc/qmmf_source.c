@@ -43,7 +43,6 @@
 #include "qmmf_source_utils.h"
 #include "qmmf_source_image_pad.h"
 #include "qmmf_source_video_pad.h"
-#include "qmmf_source_audio_pad.h"
 
 // Declare static GstDebugCategory variable for qmmfsrc.
 GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
@@ -115,18 +114,6 @@ static GstStaticPadTemplate qmmfsrc_video_src_template =
         )
     );
 
-static GstStaticPadTemplate qmmfsrc_audio_src_template =
-    GST_STATIC_PAD_TEMPLATE("audio_%u",
-        GST_PAD_SRC,
-        GST_PAD_REQUEST,
-        GST_STATIC_CAPS (
-            QMMFSRC_AUDIO_AAC_CAPS "; "
-            QMMFSRC_AUDIO_AMR_CAPS "; "
-            QMMFSRC_AUDIO_AMRWB_CAPS "; "
-            QMMFSRC_AUDIO_PCM_CAPS
-        )
-    );
-
 static GstStaticPadTemplate qmmfsrc_image_src_template =
     GST_STATIC_PAD_TEMPLATE("image_%u",
         GST_PAD_SRC,
@@ -178,8 +165,6 @@ qmmfsrc_pad_flush_buffers (GstElement * element, GstPad * pad, gpointer data)
 
   if (GST_IS_QMMFSRC_VIDEO_PAD (pad)) {
     qmmfsrc_video_pad_flush_buffers_queue (pad, flush);
-  } else if (GST_IS_QMMFSRC_AUDIO_PAD (pad)) {
-    qmmfsrc_audio_pad_flush_buffers_queue (pad, flush);
   } else if (GST_IS_QMMFSRC_IMAGE_PAD (pad)) {
     qmmfsrc_image_pad_flush_buffers_queue (pad, flush);
   }
@@ -196,14 +181,13 @@ qmmfsrc_request_pad (GstElement * element, GstPadTemplate * templ,
 
   gchar *padname = NULL;
   guint index = 0, nextindex = 0;
-  gboolean isvideo = FALSE, isaudio = FALSE, isimage = FALSE;
+  gboolean isvideo = FALSE, isimage = FALSE;
   GstPad *srcpad = NULL;
 
   isvideo = (templ == gst_element_class_get_pad_template (klass, "video_%u"));
-  isaudio = (templ == gst_element_class_get_pad_template (klass, "audio_%u"));
   isimage = (templ == gst_element_class_get_pad_template (klass, "image_%u"));
 
-  if (!isvideo && !isaudio && !isimage) {
+  if (!isvideo && !isimage) {
     GST_ERROR_OBJECT (qmmfsrc, "Invalid pad template");
     return NULL;
   }
@@ -211,7 +195,6 @@ qmmfsrc_request_pad (GstElement * element, GstPadTemplate * templ,
   GST_QMMFSRC_LOCK (qmmfsrc);
 
   if ((reqname && sscanf (reqname, "video_%u", &index) == 1) ||
-      (reqname && sscanf (reqname, "audio_%u", &index) == 1) ||
       (reqname && sscanf (reqname, "image_%u", &index) == 1)) {
     if (g_hash_table_contains (qmmfsrc->srcpads, GUINT_TO_POINTER (index))) {
       GST_ERROR_OBJECT (qmmfsrc, "Source pad name %s is not unique", reqname);
@@ -239,15 +222,6 @@ qmmfsrc_request_pad (GstElement * element, GstPadTemplate * templ,
 
     qmmfsrc->vidindexes =
         g_list_append (qmmfsrc->vidindexes, GUINT_TO_POINTER (index));
-    g_free (padname);
-  } else if (isaudio) {
-    padname = g_strdup_printf ("audio_%u", index);
-
-    GST_DEBUG_OBJECT(element, "Requesting audio pad %s (%d)", padname, index);
-    srcpad = qmmfsrc_request_audio_pad (templ, padname, index);
-
-    qmmfsrc->audindexes =
-        g_list_append (qmmfsrc->audindexes, GUINT_TO_POINTER (index));
     g_free (padname);
   } else if (isimage) {
     // Currently there is support for only one image pad.
@@ -298,13 +272,6 @@ qmmfsrc_release_pad (GstElement * element, GstPad * pad)
     qmmfsrc_release_video_pad (element, pad);
     qmmfsrc->vidindexes =
         g_list_remove (qmmfsrc->vidindexes, GUINT_TO_POINTER (index));
-  } else if (GST_IS_QMMFSRC_AUDIO_PAD (pad)) {
-    index = GST_QMMFSRC_AUDIO_PAD (pad)->index;
-    GST_DEBUG_OBJECT (element, "Releasing audio pad %d", index);
-
-    qmmfsrc_release_audio_pad (element, pad);
-    qmmfsrc->audindexes =
-        g_list_remove (qmmfsrc->audindexes, GUINT_TO_POINTER (index));
   } else if (GST_IS_QMMFSRC_IMAGE_PAD (pad)) {
     index = GST_QMMFSRC_IMAGE_PAD (pad)->index;
     GST_DEBUG_OBJECT (element, "Releasing image pad %d", index);
@@ -353,18 +320,6 @@ qmmfsrc_create_session (GstQmmfSrc * qmmfsrc)
         G_CALLBACK (gst_qmmf_context_update_video_param), qmmfsrc->context);
   }
 
-  for (list = qmmfsrc->audindexes; list != NULL; list = list->next) {
-    key = list->data;
-    pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
-    success = qmmfsrc_audio_pad_fixate_caps (pad);
-    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
-        "Failed to fixate audio caps!");
-
-    success = gst_qmmf_context_create_stream (qmmfsrc->context, pad);
-    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
-        "Audio stream creation failed!");
-  }
-
   for (list = qmmfsrc->imgindexes; list != NULL; list = list->next) {
     key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
@@ -397,15 +352,6 @@ qmmfsrc_delete_session (GstQmmfSrc * qmmfsrc)
 
   GST_TRACE_OBJECT (qmmfsrc, "Delete session");
 
-  for (list = qmmfsrc->audindexes; list != NULL; list = list->next) {
-    key = list->data;
-    pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
-
-    success = gst_qmmf_context_delete_stream (qmmfsrc->context, pad);
-    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
-        "Video stream deletion failed!");
-  }
-
   for (list = qmmfsrc->imgindexes; list != NULL; list = list->next) {
     key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
@@ -421,7 +367,7 @@ qmmfsrc_delete_session (GstQmmfSrc * qmmfsrc)
 
     success = gst_qmmf_context_delete_stream (qmmfsrc->context, pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
-        "Audio stream deletion failed!");
+        "Video stream deletion failed!");
   }
 
   success = gst_qmmf_context_delete_session (qmmfsrc->context);
@@ -782,11 +728,6 @@ qmmfsrc_finalize (GObject * object)
     qmmfsrc->vidindexes = NULL;
   }
 
-  if (qmmfsrc->audindexes != NULL) {
-    g_list_free (qmmfsrc->audindexes);
-    qmmfsrc->audindexes = NULL;
-  }
-
   if (qmmfsrc->imgindexes != NULL) {
     g_list_free (qmmfsrc->imgindexes);
     qmmfsrc->imgindexes = NULL;
@@ -814,12 +755,10 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
   gst_element_class_add_static_pad_template_with_gtype (gstelement,
       &qmmfsrc_video_src_template, GST_TYPE_QMMFSRC_VIDEO_PAD);
   gst_element_class_add_static_pad_template_with_gtype (gstelement,
-      &qmmfsrc_audio_src_template, GST_TYPE_QMMFSRC_AUDIO_PAD);
-  gst_element_class_add_static_pad_template_with_gtype (gstelement,
       &qmmfsrc_image_src_template, GST_TYPE_QMMFSRC_IMAGE_PAD);
 
   gst_element_class_set_static_metadata (
-      gstelement, "QMMF Video/Audio Source", "Source/Video",
+      gstelement, "QMMF Video Source", "Source/Video",
       "Reads frames from a device via QMMF service", "QTI"
   );
 
@@ -909,7 +848,6 @@ qmmfsrc_init (GstQmmfSrc * qmmfsrc)
 
 
   qmmfsrc->vidindexes = NULL;
-  qmmfsrc->audindexes = NULL;
   qmmfsrc->imgindexes = NULL;
 
   qmmfsrc->context = gst_qmmf_context_new ();

@@ -41,7 +41,6 @@
 #include "qmmf_source_utils.h"
 #include "qmmf_source_image_pad.h"
 #include "qmmf_source_video_pad.h"
-#include "qmmf_source_audio_pad.h"
 
 #define GST_QMMF_CONTEXT_GET_LOCK(obj) (&GST_QMMF_CONTEXT_CAST(obj)->lock)
 #define GST_QMMF_CONTEXT_LOCK(obj) \
@@ -92,9 +91,7 @@ struct _GstQmmfContext {
   gboolean     awblock;
 
   /// Video and image pads timestamp base.
-  GstClockTime vtsbase;
-  /// Audio pads timestamp base.
-  GstClockTime atsbase;
+  GstClockTime tsbase;
   /// Camera Slave mode.
   gboolean   slave;
 };
@@ -218,10 +215,6 @@ qmmfsrc_gst_buffer_new_wrapped (GstQmmfContext * context, GstPad * pad,
     gst_structure_set (structure, "track", G_TYPE_UINT,
         GST_QMMFSRC_VIDEO_PAD (pad)->id, NULL);
 
-  if (GST_IS_QMMFSRC_AUDIO_PAD (pad))
-    gst_structure_set (structure, "track", G_TYPE_UINT,
-        GST_QMMFSRC_AUDIO_PAD (pad)->id, NULL);
-
   gst_structure_set (structure,
       "data", G_TYPE_UINT, GPOINTER_TO_UINT (buffer->data),
       "fd", G_TYPE_INT, buffer->fd,
@@ -246,13 +239,6 @@ qmmfsrc_gst_buffer_new_wrapped (GstQmmfContext * context, GstPad * pad,
 
 void
 video_event_callback (uint32_t track_id, ::qmmf::recorder::EventType type,
-                      void * data, size_t size)
-{
-  GST_WARNING ("Not Implemented!");
-}
-
-void
-audio_event_callback (uint32_t track_id, ::qmmf::recorder::EventType type,
                       void * data, size_t size)
 {
   GST_WARNING ("Not Implemented!");
@@ -304,15 +290,15 @@ void video_data_callback (GstQmmfContext * context, GstPad * pad,
 
     GST_QMMF_CONTEXT_LOCK (context);
     // Initialize the timestamp base value for buffer synchronization.
-    context->vtsbase = (GST_CLOCK_TIME_NONE == context->vtsbase) ?
-        buffer.timestamp - qmmfsrc_running_time (pad) : context->vtsbase;
+    context->tsbase = (GST_CLOCK_TIME_NONE == context->tsbase) ?
+        buffer.timestamp - qmmfsrc_running_time (pad) : context->tsbase;
 
     if (GST_FORMAT_UNDEFINED == vpad->segment.format) {
       gst_segment_init (&(vpad)->segment, GST_FORMAT_TIME);
       gst_pad_push_event (pad, gst_event_new_segment (&(vpad)->segment));
     }
 
-    GST_BUFFER_PTS (gstbuffer) = buffer.timestamp - context->vtsbase;
+    GST_BUFFER_PTS (gstbuffer) = buffer.timestamp - context->tsbase;
     GST_BUFFER_DTS (gstbuffer) = GST_CLOCK_TIME_NONE;
 
     vpad->segment.position = GST_BUFFER_PTS (gstbuffer);
@@ -331,65 +317,6 @@ void video_data_callback (GstQmmfContext * context, GstPad * pad,
 
     // Push the buffer into the queue or free it on failure.
     if (!gst_data_queue_push (vpad->buffers, item))
-      item->destroy (item);
-  }
-}
-
-void audio_data_callback (GstQmmfContext * context, GstPad * pad,
-                          std::vector<::qmmf::BufferDescriptor> buffers,
-                          std::vector<::qmmf::recorder::MetaData> metabufs)
-{
-  GstQmmfSrcAudioPad *apad = GST_QMMFSRC_AUDIO_PAD (pad);
-
-  guint idx = 0;
-
-  GstBuffer *gstbuffer = NULL;
-  GstBufferFlags gstflags;
-
-  GstDataQueueItem *item = NULL;
-
-  for (idx = 0; idx < buffers.size(); ++idx) {
-    ::qmmf::BufferDescriptor& buffer = buffers[idx];
-
-    gstbuffer = qmmfsrc_gst_buffer_new_wrapped (context, pad, &buffer);
-    QMMFSRC_RETURN_IF_FAIL_WITH_CLEAN (NULL, gstbuffer != NULL,
-        recorder->ReturnTrackBuffer (context->session_id, apad->id, buffers),
-        "Failed to create GST buffer!");
-
-    gstflags = (buffer.flag & (guint)::qmmf::BufferFlags::kFlagCodecConfig) ?
-        GST_BUFFER_FLAG_HEADER : GST_BUFFER_FLAG_LIVE;
-    GST_BUFFER_FLAG_SET (gstbuffer, gstflags);
-
-    GST_QMMF_CONTEXT_LOCK (context);
-    // Initialize the timestamp base value for buffer synchronization.
-    context->atsbase = (GST_CLOCK_TIME_NONE == context->atsbase) ?
-        buffer.timestamp - qmmfsrc_running_time (pad) : context->atsbase;
-
-    if (GST_FORMAT_UNDEFINED == apad->segment.format) {
-      gst_segment_init (&(apad)->segment, GST_FORMAT_TIME);
-      gst_pad_push_event (pad, gst_event_new_segment (&(apad)->segment));
-    }
-
-    GST_BUFFER_PTS (gstbuffer) = buffer.timestamp - context->atsbase;
-    GST_BUFFER_PTS (gstbuffer) *= G_GUINT64_CONSTANT(1000);
-    GST_BUFFER_DTS (gstbuffer) = GST_CLOCK_TIME_NONE;
-
-    apad->segment.position = GST_BUFFER_PTS (gstbuffer);
-    GST_QMMF_CONTEXT_UNLOCK (context);
-
-    GST_QMMFSRC_AUDIO_PAD_LOCK (pad);
-    GST_BUFFER_DURATION (gstbuffer) = apad->duration;
-    GST_QMMFSRC_AUDIO_PAD_UNLOCK (pad);
-
-    item = g_slice_new0 (GstDataQueueItem);
-    item->object = GST_MINI_OBJECT (gstbuffer);
-    item->size = gst_buffer_get_size (gstbuffer);
-    item->duration = GST_BUFFER_DURATION (gstbuffer);
-    item->visible = TRUE;
-    item->destroy = (GDestroyNotify) qmmfsrc_free_queue_item;
-
-    // Push the buffer into the queue or free it on failure.
-    if (!gst_data_queue_push (apad->buffers, item))
       item->destroy (item);
   }
 }
@@ -416,8 +343,8 @@ void image_data_callback (GstQmmfContext * context, GstPad * pad,
 
   GST_QMMF_CONTEXT_LOCK (context);
   // Initialize the timestamp base value for buffer synchronization.
-  context->vtsbase = (GST_CLOCK_TIME_NONE == context->vtsbase) ?
-      buffer.timestamp - qmmfsrc_running_time (pad) : context->vtsbase;
+  context->tsbase = (GST_CLOCK_TIME_NONE == context->tsbase) ?
+      buffer.timestamp - qmmfsrc_running_time (pad) : context->tsbase;
 
   if (GST_FORMAT_UNDEFINED == ipad->segment.format) {
     gst_segment_init (&(ipad)->segment, GST_FORMAT_TIME);
@@ -430,7 +357,7 @@ void image_data_callback (GstQmmfContext * context, GstPad * pad,
     return;
   }
 
-  GST_BUFFER_PTS (gstbuffer) = buffer.timestamp - context->vtsbase;
+  GST_BUFFER_PTS (gstbuffer) = buffer.timestamp - context->tsbase;
   GST_BUFFER_DTS (gstbuffer) = GST_CLOCK_TIME_NONE;
 
   ipad->segment.position = GST_BUFFER_PTS (gstbuffer);
@@ -906,81 +833,6 @@ gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad)
     QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
         "QMMF Recorder CreateVideoTrack Failed!");
 
-  } else if (GST_IS_QMMFSRC_AUDIO_PAD (pad)) {
-    GstQmmfSrcAudioPad *apad = GST_QMMFSRC_AUDIO_PAD (pad);
-
-    GST_QMMFSRC_AUDIO_PAD_LOCK (apad);
-
-    ::qmmf::recorder::AudioTrackCreateParam params;
-    params.channels = apad->channels;
-    params.sample_rate = apad->samplerate;
-    params.bit_depth = apad->bitdepth;
-    params.in_devices_num = 1;
-    params.in_devices[0] = apad->device;
-    params.out_device = 0;
-    params.flags = 0;
-
-    switch (apad->codec) {
-      case GST_AUDIO_CODEC_TYPE_AAC:
-      {
-        params.format = ::qmmf::AudioFormat::kAAC;
-        params.codec_params.aac.bit_rate = 8 * apad->samplerate * apad->channels;
-        params.codec_params.aac.mode = ::qmmf::AACMode::kAALC;
-
-        const gchar *type = gst_structure_get_string (apad->params, "type");
-        if (g_strcmp0(type, "adts") == 0) {
-          params.codec_params.aac.format = ::qmmf::AACFormat::kADTS;
-        } else if (g_strcmp0(type, "adif") == 0) {
-          params.codec_params.aac.format = ::qmmf::AACFormat::kADIF;
-        } else if (g_strcmp0(type, "raw") == 0) {
-          params.codec_params.aac.format = ::qmmf::AACFormat::kRaw;
-        } else if (g_strcmp0(type, "mp4ff") == 0) {
-          params.codec_params.aac.format = ::qmmf::AACFormat::kMP4FF;
-        }
-        break;
-      }
-      case GST_AUDIO_CODEC_TYPE_AMR:
-        params.format = ::qmmf::AudioFormat::kAMR;
-        params.codec_params.amr.bit_rate = 12200;
-        params.codec_params.amr.isWAMR = FALSE;
-        break;
-      case GST_AUDIO_CODEC_TYPE_AMRWB:
-        params.format = ::qmmf::AudioFormat::kAMR;
-        params.codec_params.amr.bit_rate = 12200;
-        params.codec_params.amr.isWAMR = TRUE;
-        break;
-      case GST_AUDIO_CODEC_TYPE_NONE:
-        params.format = qmmf::AudioFormat::kPCM;
-        break;
-      default:
-        GST_ERROR ("Unsupported audio codec %d!", apad->codec);
-        return FALSE;
-    }
-
-    track_cbs.event_cb =
-        [&] (uint32_t track_id, ::qmmf::recorder::EventType type,
-            void *data, size_t size)
-        { audio_event_callback (track_id, type, data, size); };
-    track_cbs.data_cb =
-        [&, context, pad] (uint32_t track_id,
-            std::vector<::qmmf::BufferDescriptor> buffers,
-            std::vector<::qmmf::recorder::MetaData> metabufs)
-        { audio_data_callback (context, pad, buffers, metabufs); };
-
-    apad->id = apad->index + AUDIO_TRACK_ID_OFFSET;
-
-    G_LOCK (recorder);
-
-    status = recorder->CreateAudioTrack (
-        context->session_id, apad->id, params, track_cbs);
-
-    G_UNLOCK (recorder);
-
-    GST_QMMFSRC_AUDIO_PAD_UNLOCK (apad);
-
-    QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
-        "QMMF Recorder CreateAudioTrack Failed!");
-
   } else if (GST_IS_QMMFSRC_IMAGE_PAD (pad)) {
     GstQmmfSrcImagePad *ipad = GST_QMMFSRC_IMAGE_PAD (pad);
 
@@ -1087,17 +939,6 @@ gst_qmmf_context_delete_stream (GstQmmfContext * context, GstPad * pad)
 
     QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
         "QMMF Recorder DeleteVideoTrack Failed!");
-  } else if (GST_IS_QMMFSRC_AUDIO_PAD (pad)) {
-    GstQmmfSrcAudioPad *apad = GST_QMMFSRC_AUDIO_PAD (pad);
-
-    G_LOCK (recorder);
-
-    status = recorder->DeleteAudioTrack (context->session_id, apad->id);
-
-    G_UNLOCK (recorder);
-
-    QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
-        "QMMF Recorder DeleteAudioTrack Failed!");
   } else if (GST_IS_QMMFSRC_IMAGE_PAD (pad)) {
     G_LOCK (recorder);
 
@@ -1119,8 +960,7 @@ gst_qmmf_context_start_session (GstQmmfContext * context)
 {
   gint status = 0;
 
-  context->vtsbase = GST_CLOCK_TIME_NONE;
-  context->atsbase = GST_CLOCK_TIME_NONE;
+  context->tsbase = GST_CLOCK_TIME_NONE;
 
   GST_TRACE ("Starting QMMF context session");
 
@@ -1156,8 +996,7 @@ gst_qmmf_context_stop_session (GstQmmfContext * context)
 
   GST_TRACE ("QMMF context session stopped");
 
-  context->vtsbase = GST_CLOCK_TIME_NONE;
-  context->atsbase = GST_CLOCK_TIME_NONE;
+  context->tsbase = GST_CLOCK_TIME_NONE;
 
   return TRUE;
 }

@@ -74,9 +74,8 @@ struct _GstQmmfSrc {
 
   /// List containing the indexes of existing video source pads.
   GList          *vidindexes;
-  /// List containing the indexes of existing video source pads.
-  GList          *audindexes;
-  /// List containing the indexes of existing video source pads.
+
+  /// List containing the indexes of existing image source pads.
   GList          *imgindexes;
 
   /// QMMF context.
