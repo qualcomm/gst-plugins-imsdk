@@ -7,6 +7,7 @@ project(GST_PLUGIN_QTI_OSS_MLE
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 include_directories(${SYSROOT_INCDIR})
+include_directories(${SYSROOT_INCDIR}/tflite)
 
 link_directories(${SYSROOT_LIBDIR})
 
