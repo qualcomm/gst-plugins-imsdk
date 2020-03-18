@@ -68,7 +68,7 @@ TFLBase::TFLBase(MLConfig &config) {
   config_.labels_file = config.labels_file;
   config_.number_of_threads = config.number_of_threads;
   config_.use_nnapi = config.use_nnapi;
-  input_params_.rgb_buf = nullptr;
+  input_params_.scale_buf = nullptr;
 }
 
 int32_t TFLBase::Init(const struct MLEInputParams* source_info) {
@@ -97,7 +97,7 @@ int32_t TFLBase::Init(const struct MLEInputParams* source_info) {
   // Gather input configuration parameters
   input_params_.width  = source_info->width;
   input_params_.height = source_info->height;
-//  input_params_.format = source_info->img_format;
+  input_params_.format = source_info->format;
 
   VAM_ML_LOGI("%s: Input data: format %d, height %d, width %d", __func__,
                    1, input_params_.height, input_params_.width);
@@ -131,12 +131,13 @@ int32_t TFLBase::Init(const struct MLEInputParams* source_info) {
       (input_params_.height != engine_params_.height)) {
     engine_params_.do_rescale = true;
 
-    // Allocate output buffer for color conversion
-    posix_memalign(reinterpret_cast<void**>(&input_params_.rgb_buf),
+    // Allocate output buffer for pre-processing
+    posix_memalign(reinterpret_cast<void**>(&input_params_.scale_buf),
                                     128,
-                                    (input_params_.width * input_params_.height * 3));
-    if (nullptr == input_params_.rgb_buf) {
-      VAM_ML_LOGE("%s: Color conv. output buffer allocation failed", __func__);
+                                    ((engine_params_.width *
+                                          engine_params_.height * 3) / 2));
+    if (nullptr == input_params_.scale_buf) {
+      VAM_ML_LOGE("%s: Buffer allocation failed", __func__);
       return MLE_FAIL;
     }
   } else {
@@ -149,9 +150,9 @@ int32_t TFLBase::Init(const struct MLEInputParams* source_info) {
   // Allocate the tensors
   if (engine_params_.interpreter->AllocateTensors() != kTfLiteOk) {
     VAM_ML_LOGE("%s: Failed to allocate tensors!", __func__);
-    if (nullptr != input_params_.rgb_buf) {
-      free(input_params_.rgb_buf);
-      input_params_.rgb_buf = nullptr;
+    if (nullptr != input_params_.scale_buf) {
+      free(input_params_.scale_buf);
+      input_params_.scale_buf = nullptr;
     }
     return MLE_FAIL;
   }
@@ -177,9 +178,9 @@ int32_t TFLBase::Init(const struct MLEInputParams* source_info) {
 
 void TFLBase::Deinit() {
   VAM_ML_LOGI("%s: Enter", __func__);
-  if (nullptr != input_params_.rgb_buf) {
-    free(input_params_.rgb_buf);
-    input_params_.rgb_buf = nullptr;
+  if (nullptr != input_params_.scale_buf) {
+    free(input_params_.scale_buf);
+    input_params_.scale_buf = nullptr;
   }
   VAM_ML_LOGI("%s: Exit", __func__);
 }
@@ -328,22 +329,75 @@ int32_t TFLBase::ValidateModelInfo() {
   return MLE_OK;
 }
 
+void TFLBase::PreProcessScale(
+  uint8_t*       pSrcLuma,
+  uint8_t*       pSrcChroma,
+  uint8_t*       pDst,
+  const uint32_t srcWidth,
+  const uint32_t srcHeight,
+  const uint32_t scaleWidth,
+  const uint32_t scaleHeight,
+  MLEImageFormat format)
+{
+
+  if ((format == mle_format_nv12) || (format == mle_format_nv21)) {
+    fcvScaleDownMNu8(pSrcLuma,
+                     srcWidth,
+                     srcHeight,
+                     0,
+                     pDst,
+                     scaleWidth,
+                     scaleHeight,
+                     0);
+    fcvScaleDownMNu8(pSrcChroma,
+                     srcWidth,
+                     srcHeight/2,
+                     0,
+                     pDst + (scaleWidth*scaleHeight),
+                     scaleWidth,
+                     scaleHeight/2,
+                     0);
+  }
+}
+
+void TFLBase::PreProcessColorConvertRGB(
+    uint8_t*       pSrcLuma,
+    uint8_t*       pSrcChroma,
+    uint8_t*       pDst,
+    const uint32_t width,
+    const uint32_t height,
+    MLEImageFormat format)
+{
+  if ((format == mle_format_nv12) || (format == mle_format_nv21)) {
+    fcvColorYCbCr420PseudoPlanarToRGB888u8(pSrcLuma,
+                                           pSrcChroma,
+                                           width,
+                                           height,
+                                           0,
+                                           0,
+                                           pDst,
+                                           0);
+  }
+}
+
 int32_t TFLBase::PreProcessInput(SourceFrame* frame_info) {
   VAM_ML_LOGI("%s: Enter", __func__);
   if (engine_params_.do_rescale) {
-    //Color conversion
-    fcvColorYCbCr420PseudoPlanarToRGB888u8(frame_info->frame_data[0],
-                                           frame_info->frame_data[1],
-                                           input_params_.width,
-                                           input_params_.height, 0, 0,
-                                           input_params_.rgb_buf, 0);
-    VAM_ML_LOGI("%s: Color conversion completed!", __func__);
+    PreProcessScale(frame_info->frame_data[0],
+                    frame_info->frame_data[1],
+                    input_params_.scale_buf,
+                    input_params_.width,
+                    input_params_.height,
+                    engine_params_.width,
+                    engine_params_.height,
+                    input_params_.format);
 
-    // rescaling
-    fcvScaleDownMNu8(input_params_.rgb_buf,
-                     (input_params_.width * 3), input_params_.height, 0,
-                     engine_params_.input_buffer,
-                     (engine_params_.width * 3), engine_params_.height, 0);
+    PreProcessColorConvertRGB(input_params_.scale_buf,
+                              input_params_.scale_buf + (engine_params_.width * engine_params_.height),
+                              engine_params_.input_buffer,
+                              engine_params_.width,
+                              engine_params_.height,
+                              input_params_.format);
   } else {
     //Color conversion
     fcvColorYCbCr420PseudoPlanarToRGB888u8(frame_info->frame_data[0],

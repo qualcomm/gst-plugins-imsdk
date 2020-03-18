@@ -47,7 +47,7 @@ struct TFLiteEngineInputParams {
   uint32_t width;
   uint32_t height;
   MLEImageFormat format;
-  uint8_t* rgb_buf;
+  uint8_t* scale_buf;
 };
 
 struct TFLiteEngineParams {
@@ -83,6 +83,21 @@ class TFLBase : public MLEngine {
   TfLiteStatus ReadLabelsFile(const std::string& file_name,
                               std::vector<std::string>& result,
                               size_t& found_label_count);
+  void PreProcessScale(uint8_t*       pSrcLuma,
+                      uint8_t*       pSrcChroma,
+                      uint8_t*       pDst,
+                      const uint32_t srcWidth,
+                      const uint32_t srcHeight,
+                      const uint32_t scaleWidth,
+                      const uint32_t scaleHeight,
+                      MLEImageFormat format);
+  void PreProcessColorConvertRGB(
+    uint8_t*       pSrcLuma,
+    uint8_t*       pSrcChroma,
+    uint8_t*       pDst,
+    const uint32_t width,
+    const uint32_t height,
+    MLEImageFormat format);
 
  protected:
   TFLiteEngineInputParams input_params_;
