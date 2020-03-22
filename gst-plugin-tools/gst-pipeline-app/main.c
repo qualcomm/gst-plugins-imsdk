@@ -97,7 +97,7 @@
     g_print("\n"); \
   }
 
-#define MAX_INPUT_SIZE  50
+#define MAX_INPUT_SIZE  1024
 #define QUIT_OPTION     "q"
 
 #define GST_APP_CONTEXT_CAST(obj)           ((GstAppContext*)(obj))
@@ -584,6 +584,22 @@ print_property_info (GObject * object, GParamSpec *propspecs)
 
         g_value_unset (&value);
         g_free (string);
+      } else if (propspecs->value_type == GST_TYPE_STRUCTURE) {
+        GValue value = G_VALUE_INIT;
+        GstStructure *structure = NULL;
+        gchar *string = NULL;
+
+        g_value_init (&value, GST_TYPE_STRUCTURE);
+        g_object_get_property (object, propspecs->name, &value);
+
+        structure = g_value_dup_boxed (&value);
+        g_value_unset (&value);
+
+        string = gst_structure_to_string (structure);
+        gst_structure_free (structure);
+
+        g_print ("\n Current value: %s\n", string);
+        g_free (string);
       } else {
         g_print ("Unknown type %ld \"%s\"\n",
             (glong) propspecs->value_type, g_type_name (propspecs->value_type));
@@ -810,16 +826,22 @@ main_menu (gpointer data)
           g_object_class_find_property (G_OBJECT_GET_CLASS (object), propname);
 
       print_property_info (object, propspecs);
-      g_print ("\nEnter value (or press Enter to keep current one): ");
-      parse_input (input);
 
-      // If it's not an empty string deserialize the string to a GValue.
-      if (!g_str_equal (input, "")) {
-        GValue value = G_VALUE_INIT;
-        g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+      if (propspecs->flags & G_PARAM_READWRITE) {
+        g_print ("\nEnter value (or press Enter to keep current one): ");
+        parse_input (input);
 
-        if (gst_value_deserialize (&value, input))
-          g_object_set_property (object, propname, &value);
+        // If it's not an empty string deserialize the string to a GValue.
+        if (!g_str_equal (input, "")) {
+          GValue value = G_VALUE_INIT;
+          g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+
+          if (gst_value_deserialize (&value, input))
+            g_object_set_property (object, propname, &value);
+        }
+      } else if (propspecs->flags & G_PARAM_READABLE) {
+        g_print ("\nRead-Only property. Press Enter to continue...");
+        getchar();
       }
 
       // Unreference in case the object was a pad.

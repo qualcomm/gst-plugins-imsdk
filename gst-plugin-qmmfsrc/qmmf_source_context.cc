@@ -37,6 +37,8 @@
 #include <qmmf-sdk/qmmf_recorder.h>
 #include <qmmf-sdk/qmmf_recorder_extra_param_tags.h>
 #include <qmmf-sdk/qmmf_recorder_extra_param.h>
+#include <camera/VendorTagDescriptor.h>
+#include <camera/CameraMetadata.h>
 
 #include "qmmf_source_utils.h"
 #include "qmmf_source_image_pad.h"
@@ -64,31 +66,51 @@ qmmf_context_debug_category (void)
 
 struct _GstQmmfContext {
   /// Global mutex lock.
-  GMutex       lock;
+  GMutex            lock;
 
   /// QMMF Recorder camera device opened by this source.
-  guint        camera_id;
+  guint             camera_id;
   /// QMMF Recorder multimedia session ID.
-  guint        session_id;
+  guint             session_id;
 
   /// Camera property to Enable or Disable EIS.
-  gboolean   eis;
+  gboolean          eis;
   /// Camera property to Enable or Disable SHDR.
-  gboolean   shdr;
+  gboolean          shdr;
   /// Camera frame effect property.
-  guchar       effect;
+  guchar            effect;
   /// Camera scene optimization property.
-  guchar       scene;
+  guchar            scene;
   /// Camera antibanding mode property.
-  guchar       antibanding;
+  guchar            antibanding;
   /// Camera Auto Exposure compensation property.
-  gint         aecompensation;
+  gint              aecompensation;
+  /// Camera Exposure metering mode property.
+  gint              expmetering;
+  /// Camera Auto Exposure mode property.
+  guchar            aemode;
   /// Camera Auto Exposure Compensation lock property.
-  gboolean     aelock;
+  gboolean          aelock;
+  /// Camera Manual Exposure time property.
+  gint64            exptime;
+  /// Camera Exposure table property.
+  GstStructure      *exptable;
   /// Camera Auto White Balance mode property.
-  guchar       awbmode;
+  guchar            awbmode;
   /// Camera Auto White Balance lock property.
-  gboolean     awblock;
+  gboolean          awblock;
+  /// Camera Auto Focus mode property.
+  guchar            afmode;
+  /// Camera IR mode property.
+  gint              irmode;
+  /// Camera ISO exposure mode property.
+  gint              isomode;
+  /// Camera Noise Reduction mode property.
+  guchar            nrmode;
+  /// Camera Zoom region property.
+  GstVideoRectangle zoom;
+  /// Camera Defog table property.
+  GstStructure      *defogtable;
 
   /// Video and image pads timestamp base.
   GstClockTime tsbase;
@@ -106,6 +128,14 @@ static grefcount refcount = 0;
 static G_DEFINE_QUARK(QmmfBufferQDataQuark, qmmf_buffer_qdata);
 
 
+static gboolean
+update_structure (GQuark id, const GValue * value, gpointer data)
+{
+  GstStructure *structure = GST_STRUCTURE (data);
+  gst_structure_id_set_value (structure, id, value);
+  return TRUE;
+}
+
 static GstClockTime
 qmmfsrc_running_time (GstPad * pad)
 {
@@ -120,6 +150,236 @@ qmmfsrc_running_time (GstPad * pad)
   gst_object_unref (element);
 
   return runningtime;
+}
+
+static guint
+get_vendor_tag_by_name (const gchar * section, const gchar * name)
+{
+  ::android::sp<::android::VendorTagDescriptor> vtags;
+  ::android::status_t status = 0;
+  guint tag_id = 0;
+
+  vtags = ::android::VendorTagDescriptor::getGlobalVendorTagDescriptor();
+  if (vtags.get() == NULL) {
+    GST_WARNING ("Failed to retrieve Global Vendor Tag Descriptor!");
+    return 0;
+  }
+
+  status = vtags->lookupTag(::android::String8(name),
+      ::android::String8(section), &tag_id);
+  if (status != 0) {
+    GST_WARNING ("Unable to locate tag for '%s', section '%s'!", name, section);
+    return 0;
+  }
+
+  return tag_id;
+}
+
+static void
+set_vendor_tags (GstStructure * structure, ::android::CameraMetadata * meta)
+{
+  gint idx = 0, tag_id = 0;
+  const gchar *name = NULL, *section = NULL;
+  const GValue *value = NULL;
+
+  for (idx = 0; idx < gst_structure_n_fields (structure); ++idx) {
+    section = gst_structure_get_name (structure);
+    name = gst_structure_nth_field_name (structure, idx);
+
+    if ((tag_id = get_vendor_tag_by_name (section, name)) == 0)
+      continue;
+
+    value = gst_structure_get_value (structure, name);
+
+    if (G_VALUE_HOLDS (value, G_TYPE_BOOLEAN)) {
+      guchar uvalue = g_value_get_boolean (value);
+      meta->update(tag_id, &uvalue, 1);
+    } else if (G_VALUE_HOLDS (value, G_TYPE_UCHAR)) {
+      guchar uvalue = g_value_get_uchar (value);
+      meta->update(tag_id, &uvalue, 1);
+    } else if (G_VALUE_HOLDS (value, G_TYPE_INT)) {
+      gint ivalue = g_value_get_int (value);
+      meta->update(tag_id, &ivalue, 1);
+    } else if (G_VALUE_HOLDS (value, G_TYPE_DOUBLE)) {
+      gfloat fvalue = g_value_get_double (value);
+      meta->update(tag_id, &fvalue, 1);
+    } else if (G_VALUE_HOLDS (value, GST_TYPE_INT_RANGE)) {
+      gint range[2];
+      range[0] = gst_value_get_int_range_min (value);
+      range[1] = gst_value_get_int_range_max (value);
+      meta->update(tag_id, range, 2);
+    } else if (G_VALUE_HOLDS (value, GST_TYPE_DOUBLE_RANGE)) {
+      gfloat range[2];
+      range[0] = gst_value_get_double_range_min (value);
+      range[1] = gst_value_get_double_range_max (value);
+      meta->update(tag_id, range, 2);
+    } else if (G_VALUE_HOLDS (value, GST_TYPE_ARRAY)) {
+      guint num = 0, n_bytes = 0;
+      gpointer data = NULL;
+
+      // Due to discrepancy in CamX vendor tags with the camera_metadata
+      // the count and type fields are not actually describing the contents.
+      // Adding this workaround until it is fixed.
+      if (g_strcmp0 (section, "org.codeaurora.qcamera3.exposuretable") == 0) {
+        if (g_strcmp0 (name, "gainKneeEntries") == 0) {
+          n_bytes = gst_value_array_get_size (value) * sizeof(gfloat);
+          data = g_malloc0 (n_bytes);
+
+          for (num = 0; num < gst_value_array_get_size (value); num++) {
+            const GValue *val = gst_value_array_get_value (value, num);
+            ((gfloat*)data)[num] = g_value_get_double (val);
+          }
+
+          meta->update(tag_id, (gfloat*)data, n_bytes / sizeof(gfloat));
+          g_free (data);
+        } else if (g_strcmp0 (name, "expTimeKneeEntries") == 0) {
+          n_bytes = gst_value_array_get_size (value) * sizeof(gint64);
+          data = g_malloc0 (n_bytes);
+
+          for (num = 0; num < gst_value_array_get_size (value); num++) {
+            const GValue *val = gst_value_array_get_value (value, num);
+            ((gint64*)data)[num] = g_value_get_int (val);
+          }
+
+          meta->update(tag_id, (gint64*)data, n_bytes / sizeof(gint64));
+          g_free (data);
+        } else if (g_strcmp0 (name, "incrementPriorityKneeEntries") == 0) {
+          n_bytes = gst_value_array_get_size (value) * sizeof(gint);
+          data = g_malloc0 (n_bytes);
+
+          for (num = 0; num < gst_value_array_get_size (value); num++) {
+            const GValue *val = gst_value_array_get_value (value, num);
+            ((gint*)data)[num] = g_value_get_int (val);
+          }
+
+          meta->update(tag_id, (gint*)data, n_bytes / sizeof(gint));
+          g_free (data);
+        } else if (g_strcmp0 (name, "expIndexKneeEntries") == 0) {
+          n_bytes = gst_value_array_get_size (value) * sizeof(gfloat);
+          data = g_malloc0 (n_bytes);
+
+          for (num = 0; num < gst_value_array_get_size (value); num++) {
+            const GValue *val = gst_value_array_get_value (value, num);
+            ((gfloat*)data)[num] = g_value_get_double (val);
+          }
+
+          meta->update(tag_id, (gfloat*)data, n_bytes / sizeof(gfloat));
+          g_free (data);
+        }
+      } else if (g_strcmp0 (section, "org.quic.camera.defog") == 0) {
+        n_bytes = gst_value_array_get_size (value) * 4;
+        data = g_malloc0 (n_bytes);
+
+        for (num = 0; num < gst_value_array_get_size (value); num += 3) {
+          const GValue *val = gst_value_array_get_value (value, num);
+          ((gfloat*)data)[num] = g_value_get_double (val);
+
+          val = gst_value_array_get_value (value, num + 1);
+          ((gfloat*)data)[num + 1] = g_value_get_double (val);
+
+          val = gst_value_array_get_value (value, num + 2);
+          ((gint*)data)[num + 2] = g_value_get_int (val);
+        }
+
+        meta->update(tag_id, (guchar*)data, n_bytes);
+        g_free (data);
+      }
+
+    }
+  }
+}
+
+static void
+get_vendor_tags (const gchar * section, const gchar * names[], guint n_names,
+    GstStructure * structure, ::android::CameraMetadata * meta)
+{
+  guint idx = 0, num = 0, tag_id = 0;
+  const gchar *name = NULL;
+  GValue value = G_VALUE_INIT;
+
+  for (idx = 0; idx < n_names; ++idx) {
+    name = names[idx];
+
+    if ((tag_id = get_vendor_tag_by_name (section, name)) == 0)
+      continue;
+
+    camera_metadata_entry e = meta->find(tag_id);
+
+    if (e.count == 0) {
+      GST_WARNING ("No entries in the retrieved tag with name '%s', "
+          "section '%s'", name, section);
+      continue;
+    }
+
+    if (e.count == 2 && (e.type == TYPE_FLOAT || e.type == TYPE_DOUBLE)) {
+      g_value_init (&value, GST_TYPE_DOUBLE_RANGE);
+      gst_value_set_double_range (&value, e.data.f[0], e.data.f[1]);
+    } else if (e.count == 2 && e.type == TYPE_INT32) {
+      g_value_init (&value, GST_TYPE_INT_RANGE);
+      gst_value_set_double_range (&value, e.data.i32[0], e.data.i32[1]);
+    } else if (e.count > 2) {
+      g_value_init (&value, GST_TYPE_ARRAY);
+
+      // Due to discrepancy in CamX vendor tags with the camera_metadata
+      // the count and type fields are not actually describing the contents.
+      // Adding this workaround until it is fixed.
+      if (g_strcmp0 (section, "org.quic.camera.defog") == 0) {
+        GValue val = G_VALUE_INIT;
+
+        for (num = 0; num < (e.count / 4); num += 3) {
+          g_value_init (&val, G_TYPE_DOUBLE);
+
+          g_value_set_double (&val, (gdouble)e.data.f[num]);
+          gst_value_array_append_value (&value, &val);
+          g_value_unset (&val);
+
+          g_value_init (&val, G_TYPE_DOUBLE);
+
+          g_value_set_double (&val, (gdouble)e.data.f[num + 1]);
+          gst_value_array_append_value (&value, &val);
+          g_value_unset (&val);
+
+          g_value_init (&val, G_TYPE_DOUBLE);
+
+          g_value_set_double (&val, e.data.i32[num + 2]);
+          gst_value_array_append_value (&value, &val);
+          g_value_unset (&val);
+        }
+      } else {
+        for (num = 0; num < e.count; ++num) {
+          GValue val = G_VALUE_INIT;
+
+          if (e.type == TYPE_INT32) {
+            g_value_init (&val, G_TYPE_INT);
+            g_value_set_int (&val, e.data.i32[num]);
+          } else if (e.type == TYPE_INT64) {
+            g_value_init (&val, G_TYPE_INT64);
+            g_value_set_int64 (&val, e.data.i64[num]);
+          } else if (e.type == TYPE_BYTE) {
+            g_value_init (&val, G_TYPE_UCHAR);
+            g_value_set_uchar (&val, e.data.u8[num]);
+          } else if (e.type == TYPE_FLOAT || e.type == TYPE_DOUBLE) {
+            g_value_init (&val, G_TYPE_DOUBLE);
+            g_value_set_double (&val, (gdouble)e.data.f[num]);
+          }
+
+          gst_value_array_append_value (&value, &val);
+        }
+      }
+    } else if (e.type == TYPE_FLOAT || e.type == TYPE_DOUBLE) {
+      g_value_init (&value, G_TYPE_DOUBLE);
+      g_value_set_double (&value, (gdouble)e.data.f[0]);
+    } else if (e.type == TYPE_INT32) {
+      g_value_init (&value, G_TYPE_INT);
+      g_value_set_int (&value, e.data.i32[0]);
+    } else if (e.type == TYPE_BYTE) {
+      g_value_init (&value, G_TYPE_BOOLEAN);
+      g_value_set_boolean (&value, e.data.u8[0]);
+    }
+
+    gst_structure_set_value (structure, name, &value);
+    g_value_unset (&value);
+  }
 }
 
 void
@@ -422,6 +682,10 @@ gst_qmmf_context_new ()
 
   G_UNLOCK (recorder);
 
+  context->defogtable = gst_structure_new_empty ("org.quic.camera.defog");
+  context->exptable =
+      gst_structure_new_empty ("org.codeaurora.qcamera3.exposuretable");
+
   GST_INFO ("Created QMMF context: %p", context);
   return context;
 }
@@ -439,6 +703,9 @@ gst_qmmf_context_free (GstQmmfContext * context)
   }
 
   G_UNLOCK (recorder);
+
+  gst_structure_free (context->defogtable);
+  gst_structure_free (context->exptable);
 
   GST_INFO ("Destroyed QMMF context: %p", context);
   g_slice_free (GstQmmfContext, context);
@@ -884,28 +1151,70 @@ gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad)
   }
 
   ::android::CameraMetadata meta;
-  guchar mvalue;
+  gint tag_id = 0;
+  guchar numvalue = 0;
 
-  mvalue = gst_qmmfsrc_effect_mode_android_value (context->effect);
-  meta.update(ANDROID_CONTROL_EFFECT_MODE, &mvalue, 1);
+  G_LOCK (recorder);
 
-  mvalue = gst_qmmfsrc_scene_mode_android_value (context->scene);
-  meta.update(ANDROID_CONTROL_SCENE_MODE, &mvalue, 1);
+  recorder->GetCameraParam (context->camera_id, meta);
 
-  mvalue = gst_qmmfsrc_antibanding_android_value (context->antibanding);
-  meta.update(ANDROID_CONTROL_AE_ANTIBANDING_MODE, &mvalue, 1);
+  G_UNLOCK (recorder);
 
-  mvalue = context->aecompensation;
-  meta.update(ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION, &mvalue, 1);
+  numvalue = gst_qmmfsrc_effect_mode_android_value (context->effect);
+  meta.update(ANDROID_CONTROL_EFFECT_MODE, &numvalue, 1);
 
-  mvalue = context->aelock;
-  meta.update(ANDROID_CONTROL_AE_LOCK, &mvalue, 1);
+  numvalue = gst_qmmfsrc_scene_mode_android_value (context->scene);
+  meta.update(ANDROID_CONTROL_SCENE_MODE, &numvalue, 1);
 
-  mvalue = gst_qmmfsrc_awb_mode_android_value (context->awbmode);
-  meta.update(ANDROID_CONTROL_AWB_MODE, &mvalue, 1);
+  numvalue = gst_qmmfsrc_antibanding_android_value (context->antibanding);
+  meta.update(ANDROID_CONTROL_AE_ANTIBANDING_MODE, &numvalue, 1);
 
-  mvalue = context->awblock;
-  meta.update(ANDROID_CONTROL_AWB_LOCK, &mvalue, 1);
+  meta.update(ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION,
+              &(context)->aecompensation, 1);
+
+  numvalue = gst_qmmfsrc_ae_mode_android_value (context->aemode);
+  meta.update(ANDROID_CONTROL_AE_MODE, &numvalue, 1);
+
+  numvalue = context->aelock;
+  meta.update(ANDROID_CONTROL_AE_LOCK, &numvalue, 1);
+
+  meta.update(ANDROID_SENSOR_EXPOSURE_TIME, &(context)->exptime, 1);
+
+  numvalue = gst_qmmfsrc_awb_mode_android_value (context->awbmode);
+  meta.update(ANDROID_CONTROL_AWB_MODE, &numvalue, 1);
+
+  numvalue = context->awblock;
+  meta.update(ANDROID_CONTROL_AWB_LOCK, &numvalue, 1);
+
+  numvalue = gst_qmmfsrc_af_mode_android_value (context->afmode);
+  meta.update(ANDROID_CONTROL_AF_MODE, &numvalue, 1);
+
+  numvalue = gst_qmmfsrc_noise_reduction_android_value (context->nrmode);
+  meta.update(ANDROID_NOISE_REDUCTION_MODE, &numvalue, 1);
+
+  if (context->zoom.w > 0 && context->zoom.h > 0) {
+    gint32 crop[] = { context->zoom.x, context->zoom.y,
+        context->zoom.w, context->zoom.h };
+    meta.update(ANDROID_SCALER_CROP_REGION, crop, 4);
+  }
+
+  tag_id = get_vendor_tag_by_name (
+      "org.codeaurora.qcamera3.ir_led", "mode");
+  if (tag_id != 0)
+    meta.update(tag_id, &(context)->irmode, 1);
+
+  tag_id = get_vendor_tag_by_name (
+      "org.codeaurora.qcamera3.iso_exp_priority", "select_priority");
+  if (tag_id != 0)
+    meta.update(tag_id, &(context)->isomode, 1);
+
+  tag_id = get_vendor_tag_by_name (
+      "org.codeaurora.qcamera3.exposure_metering", "exposure_metering_mode");
+  if (tag_id != 0)
+    meta.update(tag_id, &(context)->expmetering, 1);
+
+  set_vendor_tags (context->defogtable, &meta);
+  set_vendor_tags (context->exptable, &meta);
 
   if (!context->slave) {
     G_LOCK (recorder);
@@ -1113,6 +1422,12 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
 {
   ::android::CameraMetadata meta;
 
+  G_LOCK (recorder);
+
+  recorder->GetCameraParam (context->camera_id, meta);
+
+  G_UNLOCK (recorder);
+
   switch (param_id) {
     case PARAM_CAMERA_ID:
       context->camera_id = g_value_get_uint (value);
@@ -1159,6 +1474,15 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       meta.update(ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION, &compensation, 1);
       break;
     }
+    case PARAM_CAMERA_AE_MODE:
+    {
+      guchar mode;
+      context->aemode = g_value_get_enum (value);
+
+      mode = gst_qmmfsrc_ae_mode_android_value (context->aemode);
+      meta.update(ANDROID_CONTROL_AE_MODE, &mode, 1);
+      break;
+    }
     case PARAM_CAMERA_AE_LOCK:
     {
       guchar lock;
@@ -1166,6 +1490,15 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
 
       lock = context->aelock;
       meta.update(ANDROID_CONTROL_AE_LOCK, &lock, 1);
+      break;
+    }
+    case PARAM_CAMERA_EXPOSURE_TIME:
+    {
+      gint64 time;
+      context->exptime = g_value_get_int64 (value);
+
+      time = context->exptime;
+      meta.update(ANDROID_SENSOR_EXPOSURE_TIME, &time, 1);
       break;
     }
     case PARAM_CAMERA_AWB_MODE:
@@ -1191,6 +1524,158 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       context->slave = g_value_get_boolean (value);
       break;
     }
+    case PARAM_CAMERA_AF_MODE:
+    {
+      guchar mode;
+      context->afmode = g_value_get_enum (value);
+
+      mode = gst_qmmfsrc_af_mode_android_value (context->afmode);
+      meta.update(ANDROID_CONTROL_AF_MODE, &mode, 1);
+      break;
+    }
+    case PARAM_CAMERA_IR_MODE:
+    {
+      guint tag_id = get_vendor_tag_by_name (
+          "org.codeaurora.qcamera3.ir_led", "mode");
+
+      context->irmode = g_value_get_enum (value);
+      meta.update(tag_id, &(context)->irmode, 1);
+      break;
+    }
+    case PARAM_CAMERA_ISO_MODE:
+    {
+      guint tag_id = get_vendor_tag_by_name (
+          "org.codeaurora.qcamera3.iso_exp_priority", "select_priority");
+
+      context->isomode = g_value_get_enum (value);
+      meta.update(tag_id, &(context)->isomode, 1);
+      break;
+    }
+    case PARAM_CAMERA_AE_METERING_MODE:
+    {
+      guint tag_id = get_vendor_tag_by_name (
+          "org.codeaurora.qcamera3.exposure_metering", "exposure_metering_mode");
+
+      context->expmetering = g_value_get_enum (value);
+      meta.update(tag_id, &(context)->expmetering, 1);
+      break;
+    }
+    case PARAM_CAMERA_NOISE_REDUCTION:
+    {
+      guchar mode;
+      context->nrmode = g_value_get_enum (value);
+
+      mode = gst_qmmfsrc_noise_reduction_android_value (context->nrmode);
+      meta.update(ANDROID_NOISE_REDUCTION_MODE, &mode, 1);
+      break;
+    }
+    case PARAM_CAMERA_ZOOM:
+    {
+      gint32 crop[4];
+      g_return_if_fail (gst_value_array_get_size (value) == 4);
+
+      context->zoom.x = g_value_get_int (gst_value_array_get_value (value, 0));
+      context->zoom.y = g_value_get_int (gst_value_array_get_value (value, 1));
+      context->zoom.w = g_value_get_int (gst_value_array_get_value (value, 2));
+      context->zoom.h = g_value_get_int (gst_value_array_get_value (value, 3));
+
+      crop[0] = context->zoom.x;
+      crop[1] = context->zoom.y;
+      crop[2] = context->zoom.w;
+      crop[3] = context->zoom.h;
+      meta.update(ANDROID_SCALER_CROP_REGION, crop, 4);
+      break;
+    }
+    case PARAM_CAMERA_DEFOG_TABLE:
+    {
+      const gchar *input = g_value_get_string (value);
+      GstStructure *structure = NULL;
+
+      GValue gvalue = G_VALUE_INIT;
+      g_value_init (&gvalue, GST_TYPE_STRUCTURE);
+
+      if (g_file_test (input, G_FILE_TEST_IS_REGULAR)) {
+        gchar *contents = NULL;
+        GError *error = NULL;
+        gboolean success = FALSE;
+
+        if (!g_file_get_contents (input, &contents, NULL, &error)) {
+          GST_WARNING ("Failed to get Defog Table file contents, error: %s!",
+              GST_STR_NULL (error->message));
+          g_clear_error (&error);
+          break;
+        }
+
+        // Remove trailing space and replace new lines with a coma delimeter.
+        contents = g_strstrip (contents);
+        contents = g_strdelimit (contents, "\n", ',');
+
+        success = gst_value_deserialize (&gvalue, contents);
+        g_free (contents);
+
+        if (!success) {
+          GST_WARNING ("Failed to deserialize Defog Table file contents!");
+          break;
+        }
+      } else if (!gst_value_deserialize (&gvalue, input)) {
+        GST_WARNING ("Failed to deserialize Defog Table input!");
+        break;
+      }
+
+      structure = GST_STRUCTURE (g_value_dup_boxed (&gvalue));
+      g_value_unset (&gvalue);
+
+      gst_structure_foreach (structure, update_structure, context->defogtable);
+      gst_structure_free (structure);
+
+      set_vendor_tags (context->defogtable, &meta);
+      break;
+    }
+    case PARAM_CAMERA_EXPOSURE_TABLE:
+    {
+      const gchar *input = g_value_get_string (value);
+      GstStructure *structure = NULL;
+
+      GValue gvalue = G_VALUE_INIT;
+      g_value_init (&gvalue, GST_TYPE_STRUCTURE);
+
+      if (g_file_test (input, G_FILE_TEST_IS_REGULAR)) {
+        gchar *contents = NULL;
+        GError *error = NULL;
+        gboolean success = FALSE;
+
+        if (!g_file_get_contents (input, &contents, NULL, &error)) {
+          GST_WARNING ("Failed to get Exposure Table file contents, error: %s!",
+              GST_STR_NULL (error->message));
+          g_clear_error (&error);
+          break;
+        }
+
+        // Remove trailing space and replace new lines with a coma delimeter.
+        contents = g_strstrip (contents);
+        contents = g_strdelimit (contents, "\n", ',');
+
+        success = gst_value_deserialize (&gvalue, contents);
+        g_free (contents);
+
+        if (!success) {
+          GST_WARNING ("Failed to deserialize Exposure Table file contents!");
+          break;
+        }
+      } else if (!gst_value_deserialize (&gvalue, input)) {
+        GST_WARNING ("Failed to deserialize Exposure Table input!");
+        break;
+      }
+
+      structure = GST_STRUCTURE (g_value_dup_boxed (&gvalue));
+      g_value_unset (&gvalue);
+
+      gst_structure_foreach (structure, update_structure, context->exptable);
+      gst_structure_free (structure);
+
+      set_vendor_tags (context->exptable, &meta);
+      break;
+    }
   }
 
   if (!context->slave) {
@@ -1204,6 +1689,14 @@ void
 gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
                                    GValue * value)
 {
+  ::android::CameraMetadata meta;
+
+  G_LOCK (recorder);
+
+  recorder->GetCameraParam (context->camera_id, meta);
+
+  G_UNLOCK (recorder);
+
   switch (param_id) {
     case PARAM_CAMERA_ID:
       g_value_set_uint (value, context->camera_id);
@@ -1226,8 +1719,14 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_AE_COMPENSATION:
       g_value_set_int (value, context->aecompensation);
       break;
+    case PARAM_CAMERA_AE_MODE:
+      g_value_set_enum (value, context->aemode);
+      break;
     case PARAM_CAMERA_AE_LOCK:
       g_value_set_boolean (value, context->aelock);
+      break;
+    case PARAM_CAMERA_EXPOSURE_TIME:
+      g_value_set_int64 (value, context->exptime);
       break;
     case PARAM_CAMERA_AWB_MODE:
       g_value_set_enum (value, context->awbmode);
@@ -1238,6 +1737,65 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_SLAVE:
       g_value_set_boolean (value, context->slave);
       break;
+    case PARAM_CAMERA_AF_MODE:
+      g_value_set_enum (value, context->afmode);
+      break;
+    case PARAM_CAMERA_IR_MODE:
+      g_value_set_enum (value, context->irmode);
+      break;
+    case PARAM_CAMERA_ISO_MODE:
+      g_value_set_enum (value, context->isomode);
+      break;
+    case PARAM_CAMERA_AE_METERING_MODE:
+      g_value_set_enum (value, context->expmetering);
+      break;
+    case PARAM_CAMERA_NOISE_REDUCTION:
+      g_value_set_enum (value, context->nrmode);
+      break;
+    case PARAM_CAMERA_ZOOM:
+    {
+      GValue val = G_VALUE_INIT;
+      g_value_init (&val, G_TYPE_INT);
+
+      g_value_set_int (&val, context->zoom.x);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, context->zoom.y);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, context->zoom.w);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, context->zoom.h);
+      gst_value_array_append_value (value, &val);
+      break;
+    }
+    case PARAM_CAMERA_DEFOG_TABLE:
+    {
+      gchar *string = NULL;
+
+      get_vendor_tags ("org.quic.camera.defog",
+          gst_camera_defog_table, G_N_ELEMENTS (gst_camera_defog_table),
+          context->defogtable, &meta);
+      string = gst_structure_to_string (context->defogtable);
+
+      g_value_set_string (value, string);
+      g_free (string);
+      break;
+    }
+    case PARAM_CAMERA_EXPOSURE_TABLE:
+    {
+      gchar *string = NULL;
+
+      get_vendor_tags ("org.codeaurora.qcamera3.exposuretable",
+          gst_camera_exposure_table, G_N_ELEMENTS (gst_camera_exposure_table),
+          context->exptable, &meta);
+      string = gst_structure_to_string (context->exptable);
+
+      g_value_set_string (value, string);
+      g_free (string);
+      break;
+    }
   }
 }
 

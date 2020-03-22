@@ -42,9 +42,9 @@ set(GST_QMMFSRC_PLUGIN gstqmmfsrc)
 
 add_library(${GST_QMMFSRC_PLUGIN} SHARED
   qmmf_source.c
-  qmmf_source_utils.c
   qmmf_source_video_pad.c
   qmmf_source_image_pad.c
+  qmmf_source_utils.c
   qmmf_source_context.cc
 )
 
