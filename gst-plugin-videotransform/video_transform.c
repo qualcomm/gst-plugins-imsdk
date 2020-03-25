@@ -63,10 +63,7 @@ G_DEFINE_TYPE (GstVideoTransform, gst_video_transform, GST_TYPE_VIDEO_FILTER);
 #undef GST_VIDEO_SIZE_RANGE
 #define GST_VIDEO_SIZE_RANGE "(int) [ 1, 32767]"
 
-#define GST_VIDEO_FORMATS "{ I420, YV12, YUY2, UYVY, AYUV, BGRA, ABGR, " \
-    "RGBx, BGRx, xRGB, xBGR, BGR, RGB, Y41B, Y42B, YVYU, Y444, NV12, NV21, " \
-    "v308, BGR16, RGB16, UYVP, A420, YUV9, YVU9, IYU1, NV16, NV61, IYU2, " \
-    "VYUY, GRAY8 }"
+#define GST_VIDEO_FORMATS "{ BGRA, RGBA, BGR, RGB, NV12, NV21 }"
 
 enum
 {
