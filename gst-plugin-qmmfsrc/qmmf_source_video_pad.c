@@ -650,7 +650,7 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
 
-  GST_DEBUG_CATEGORY_INIT (qmmfsrc_video_pad_debug, "qmmfsrc", 0,
+  GST_DEBUG_CATEGORY_INIT (qmmfsrc_video_pad_debug, "qtiqmmfsrc", 0,
       "QTI QMMF Source video pad");
 }
 

@@ -38,7 +38,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-variable")
 
 # GStreamer plugin.
-set(GST_QMMFSRC_PLUGIN gstqmmfsrc)
+set(GST_QMMFSRC_PLUGIN gstqtiqmmfsrc)
 
 add_library(${GST_QMMFSRC_PLUGIN} SHARED
   qmmf_source.c

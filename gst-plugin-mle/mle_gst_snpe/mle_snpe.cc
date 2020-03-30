@@ -715,21 +715,21 @@ gst_mle_snpe_init (GstMLESNPE * mle)
   mle->preprocessing_type = DEFAULT_PROP_MLE_PREPROCESSING_TYPE;
   mle->conf_threshold = DEFAULT_PROP_MLE_CONF_THRESHOLD;
 
-  GST_DEBUG_CATEGORY_INIT (mle_snpe_debug, "mlesnpe", 0,
+  GST_DEBUG_CATEGORY_INIT (mle_snpe_debug, "qtimlesnpe", 0,
       "QTI Machine Learning Engine");
 }
 
 static gboolean
 plugin_init (GstPlugin * plugin)
 {
-  return gst_element_register (plugin, "mlesnpe", GST_RANK_PRIMARY,
+  return gst_element_register (plugin, "qtimlesnpe", GST_RANK_PRIMARY,
                                GST_TYPE_MLE_SNPE);
 }
 
 GST_PLUGIN_DEFINE (
     GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
-    mlesnpe,
+    qtimlesnpe,
     "Machine Learning Engine SNPE",
     plugin_init,
     PACKAGE_VERSION,

@@ -1056,7 +1056,7 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
   gstelement->change_state = GST_DEBUG_FUNCPTR (qmmfsrc_change_state);
 
   // Initializes a new qmmfsrc GstDebugCategory with the given properties.
-  GST_DEBUG_CATEGORY_INIT (qmmfsrc_debug, "qmmfsrc", 0, "QTI QMMF Source");
+  GST_DEBUG_CATEGORY_INIT (qmmfsrc_debug, "qtiqmmfsrc", 0, "QTI QMMF Source");
 }
 
 // GObject element initialization function.
@@ -1125,14 +1125,14 @@ gst_qmmfsrc_child_proxy_init (gpointer g_iface, gpointer data)
 static gboolean
 plugin_init (GstPlugin * plugin)
 {
-  return gst_element_register (plugin, "qmmfsrc", GST_RANK_PRIMARY,
+  return gst_element_register (plugin, "qtiqmmfsrc", GST_RANK_PRIMARY,
       GST_TYPE_QMMFSRC);
 }
 
 GST_PLUGIN_DEFINE(
     GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
-    qmmfsrc,
+    qtiqmmfsrc,
     "QTI QMMF plugin library",
     plugin_init,
     PACKAGE_VERSION,

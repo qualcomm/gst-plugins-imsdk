@@ -699,21 +699,21 @@ gst_mle_tflite_init (GstMLETFLite * mle)
   mle->conf_threshold = DEFAULT_PROP_MLE_TFLITE_CONF_THRESHOLD;
   mle->num_threads = DEFAULT_TFLITE_NUM_THREADS;
 
-  GST_DEBUG_CATEGORY_INIT (mle_tflite_debug, "mletflite", 0,
+  GST_DEBUG_CATEGORY_INIT (mle_tflite_debug, "qtimletflite", 0,
       "QTI Machine Learning Engine");
 }
 
 static gboolean
 plugin_init (GstPlugin * plugin)
 {
-  return gst_element_register (plugin, "mletflite", GST_RANK_PRIMARY,
+  return gst_element_register (plugin, "qtimletflite", GST_RANK_PRIMARY,
                                GST_TYPE_MLE_TFLITE);
 }
 
 GST_PLUGIN_DEFINE (
     GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
-    mletflite,
+    qtimletflite,
     "Machine Learning Engine TFLite",
     plugin_init,
     PACKAGE_VERSION,

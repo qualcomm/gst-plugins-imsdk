@@ -443,7 +443,7 @@ qmmfsrc_image_pad_class_init (GstQmmfSrcImagePadClass * klass)
   gobject->set_property = GST_DEBUG_FUNCPTR (image_pad_set_property);
   gobject->finalize     = GST_DEBUG_FUNCPTR (image_pad_finalize);
 
-  GST_DEBUG_CATEGORY_INIT (qmmfsrc_image_pad_debug, "qmmfsrc", 0,
+  GST_DEBUG_CATEGORY_INIT (qmmfsrc_image_pad_debug, "qtiqmmfsrc", 0,
       "QTI QMMF Source image pad");
 }
 

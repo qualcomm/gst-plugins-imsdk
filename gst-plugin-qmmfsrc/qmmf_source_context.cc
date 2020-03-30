@@ -57,7 +57,7 @@ qmmf_context_debug_category (void)
   static gsize catgonce = 0;
 
   if (g_once_init_enter (&catgonce)) {
-    gsize catdone = (gsize) _gst_debug_category_new ("qmmfsrc", 0,
+    gsize catdone = (gsize) _gst_debug_category_new ("qtiqmmfsrc", 0,
         "qmmf-context object");
     g_once_init_leave (&catgonce, catdone);
   }
