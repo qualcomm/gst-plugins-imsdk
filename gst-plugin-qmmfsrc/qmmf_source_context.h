@@ -41,6 +41,7 @@ typedef struct _GstQmmfContext GstQmmfContext;
 enum
 {
   PARAM_CAMERA_ID,
+  PARAM_CAMERA_LDC,
   PARAM_CAMERA_SHDR,
   PARAM_CAMERA_EIS,
   PARAM_CAMERA_EFFECT_MODE,

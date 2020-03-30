@@ -73,6 +73,8 @@ struct _GstQmmfContext {
   /// QMMF Recorder multimedia session ID.
   guint             session_id;
 
+  /// Camera property to Enable or Disable LDC.
+  gboolean          ldc;
   /// Camera property to Enable or Disable EIS.
   gboolean          eis;
   /// Camera property to Enable or Disable SHDR.
@@ -830,6 +832,11 @@ gst_qmmf_context_open (GstQmmfContext * context)
   extra_param.Update(::qmmf::recorder::QMMF_CAMERA_SLAVE_MODE,
       camera_slave_mode);
 
+  // LDC
+  qmmf::recorder::LDCMode ldc;
+  ldc.enable = context->ldc;
+  extra_param.Update(qmmf::recorder::QMMF_LDC, ldc);
+
   // EIS
   qmmf::recorder::EISSetup eis_mode;
   eis_mode.enable = context->eis;
@@ -1467,6 +1474,9 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_ID:
       context->camera_id = g_value_get_uint (value);
       break;
+    case PARAM_CAMERA_LDC:
+      context->ldc = g_value_get_boolean (value);
+      break;
     case PARAM_CAMERA_SHDR:
       context->shdr = g_value_get_boolean (value);
       break;
@@ -1770,6 +1780,9 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
   switch (param_id) {
     case PARAM_CAMERA_ID:
       g_value_set_uint (value, context->camera_id);
+      break;
+    case PARAM_CAMERA_LDC:
+      g_value_set_boolean (value, context->ldc);
       break;
     case PARAM_CAMERA_SHDR:
       g_value_set_boolean (value, context->shdr);
