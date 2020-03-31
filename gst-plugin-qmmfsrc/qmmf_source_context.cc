@@ -111,11 +111,12 @@ struct _GstQmmfContext {
   GstVideoRectangle zoom;
   /// Camera Defog table property.
   GstStructure      *defogtable;
-
   /// Video and image pads timestamp base.
-  GstClockTime tsbase;
+  GstClockTime      tsbase;
   /// Camera Slave mode.
-  gboolean   slave;
+  gboolean          slave;
+  /// To check if Camera is opened or not
+  gboolean          opened;
 };
 
 /// Global QMMF Recorder instance.
@@ -747,6 +748,8 @@ gst_qmmf_context_open (GstQmmfContext * context)
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
       "QMMF Recorder StartCamera Failed!");
 
+  context->opened = TRUE;
+
   GST_TRACE ("QMMF context opened");
 
   return TRUE;
@@ -767,6 +770,8 @@ gst_qmmf_context_close (GstQmmfContext * context)
 
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
       "QMMF Recorder StopCamera Failed!");
+
+  context->opened = FALSE;
 
   GST_TRACE ("QMMF context closed");
 
@@ -1154,11 +1159,11 @@ gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad)
   gint tag_id = 0;
   guchar numvalue = 0;
 
-  G_LOCK (recorder);
+  G_LOCK(recorder);
 
-  recorder->GetCameraParam (context->camera_id, meta);
+  recorder->GetCameraParam(context->camera_id, meta);
 
-  G_UNLOCK (recorder);
+  G_UNLOCK(recorder);
 
   numvalue = gst_qmmfsrc_effect_mode_android_value (context->effect);
   meta.update(ANDROID_CONTROL_EFFECT_MODE, &numvalue, 1);
@@ -1217,13 +1222,12 @@ gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad)
   set_vendor_tags (context->exptable, &meta);
 
   if (!context->slave) {
-    G_LOCK (recorder);
-    status = recorder->SetCameraParam (context->camera_id, meta);
-    G_UNLOCK (recorder);
+    G_LOCK(recorder);
+    status = recorder->SetCameraParam(context->camera_id, meta);
+    G_UNLOCK(recorder);
+    QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
+        "SetCameraParam Failed!");
   }
-
-  QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
-      "SetCameraParam Failed!");
 
   GST_TRACE ("QMMF context stream created");
 
@@ -1422,11 +1426,11 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
 {
   ::android::CameraMetadata meta;
 
-  G_LOCK (recorder);
-
-  recorder->GetCameraParam (context->camera_id, meta);
-
-  G_UNLOCK (recorder);
+  if (context->opened) {
+    G_LOCK(recorder);
+    recorder->GetCameraParam(context->camera_id, meta);
+    G_UNLOCK(recorder);
+  }
 
   switch (param_id) {
     case PARAM_CAMERA_ID:
@@ -1679,9 +1683,11 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
   }
 
   if (!context->slave) {
-    G_LOCK (recorder);
-    recorder->SetCameraParam (context->camera_id, meta);
-    G_UNLOCK (recorder);
+    if (context->opened) {
+      G_LOCK(recorder);
+      recorder->SetCameraParam(context->camera_id, meta);
+      G_UNLOCK(recorder);
+    }
   }
 }
 
@@ -1691,11 +1697,11 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
 {
   ::android::CameraMetadata meta;
 
-  G_LOCK (recorder);
-
-  recorder->GetCameraParam (context->camera_id, meta);
-
-  G_UNLOCK (recorder);
+  if (context->opened) {
+    G_LOCK(recorder);
+    recorder->GetCameraParam(context->camera_id, meta);
+    G_UNLOCK(recorder);
+  }
 
   switch (param_id) {
     case PARAM_CAMERA_ID:
