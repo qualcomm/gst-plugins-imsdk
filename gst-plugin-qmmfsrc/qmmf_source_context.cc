@@ -676,10 +676,9 @@ gst_qmmf_context_new ()
     }
 
     g_ref_count_init (&refcount);
-  }
-
-  if (recorder != NULL)
+  } else {
     g_ref_count_inc (&refcount);
+  }
 
   G_UNLOCK (recorder);
 
