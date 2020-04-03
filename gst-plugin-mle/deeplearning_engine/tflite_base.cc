@@ -74,6 +74,8 @@ TFLBase::TFLBase(MLConfig &config) {
   config_.use_nnapi = config.use_nnapi;
   config_.preprocess_mode = config.preprocess_mode;
   input_params_.scale_buf = nullptr;
+  input_params_.rgb_buf = nullptr;
+  need_labels_ = true;
 }
 
 TfLiteDelegatePtrMap TFLBase::GetDelegates() {
@@ -100,6 +102,36 @@ TfLiteDelegatePtrMap TFLBase::GetDelegates() {
   return delegates;
 }
 
+int32_t TFLBase::AllocateInternalBuffers() {
+  int32_t ret = MLE_OK;
+  // TODO: use preprocessing_mode to determine buffer sizes // kKeepFOV
+  posix_memalign(reinterpret_cast<void**>(&input_params_.scale_buf),
+                                  128,
+                                  ((scale_width_ *
+                                        scale_height_ * 3) / 2));
+  posix_memalign(reinterpret_cast<void**>(&input_params_.rgb_buf),
+                                  128,
+                                  ((scale_width_ *
+                                        scale_height_ * 3)));
+  if (nullptr == input_params_.scale_buf ||
+      nullptr == input_params_.rgb_buf) {
+    VAM_ML_LOGE("%s: Buffer allocation failed", __func__);
+    ret = MLE_FAIL;
+  }
+  return ret;
+}
+
+void TFLBase::FreeInternalBuffers() {
+  if (nullptr != input_params_.scale_buf) {
+    free(input_params_.scale_buf);
+    input_params_.scale_buf = nullptr;
+  }
+  if (nullptr != input_params_.rgb_buf) {
+    free(input_params_.rgb_buf);
+    input_params_.rgb_buf = nullptr;
+  }
+}
+
 int32_t TFLBase::Init(const struct MLEInputParams* source_info) {
 
   // Load tflite model from file
@@ -112,24 +144,23 @@ int32_t TFLBase::Init(const struct MLEInputParams* source_info) {
   }
   VAM_ML_LOGI("%s: Loaded model from %s", __func__, model_file.c_str());
 
-  // Load labels from file
-  std::string labels_file_name = folder + "/" + config_.labels_file;
-  if (ReadLabelsFile(labels_file_name, engine_params_.labels,
-                     engine_params_.label_count) != kTfLiteOk) {
-    VAM_ML_LOGE("%s: Failed to read labeles file %s", __func__,
-                     labels_file_name.c_str());
-    return MLE_FAIL;
+  if (need_labels_) {
+    // Load labels from file
+    std::string labels_file_name = folder + "/" + config_.labels_file;
+    if (ReadLabelsFile(labels_file_name, engine_params_.labels,
+                      engine_params_.label_count) != kTfLiteOk) {
+      VAM_ML_LOGE("%s: Failed to read labeles file %s", __func__,
+                      labels_file_name.c_str());
+      return MLE_FAIL;
+    }
+    VAM_ML_LOGI("%s: Loaded %d labels from %s", __func__,
+                    engine_params_.label_count, labels_file_name.c_str());
   }
-  VAM_ML_LOGI("%s: Loaded %d labels from %s", __func__,
-                   engine_params_.label_count, labels_file_name.c_str());
 
   // Gather input configuration parameters
   input_params_.width  = source_info->width;
   input_params_.height = source_info->height;
   input_params_.format = source_info->format;
-
-  VAM_ML_LOGI("%s: Input data: format %d, height %d, width %d", __func__,
-                   1, input_params_.height, input_params_.width);
 
   // Create the interpreter
   tflite::ops::builtin::BuiltinOpResolver resolver;
@@ -150,22 +181,25 @@ int32_t TFLBase::Init(const struct MLEInputParams* source_info) {
     return MLE_FAIL;
   }
 
-  // Allocate buffer for appending input frame's data
-  // Since fast-cv based color conversion is used, no need to
-  // append frame_l_data[0], frame_l_data[1] & frame_l_data[2]
+  // Manage aspect ratio
+  float ratio =
+      (engine_params_.width & ~0x1) * 1.0 / fmax(input_params_.width, input_params_.height);
+  scale_width_ = (uint32_t)(input_params_.width * ratio);
+  scale_height_ = (uint32_t)(input_params_.height * ratio);
+
+  VAM_ML_LOGI("%s: Input data: format %d, height %d, width %d scale_width %d scale_height %d",
+                    __func__,
+                    (int)input_params_.format, input_params_.height,
+                    input_params_.width,
+                    scale_width_,
+                    scale_height_);
 
   // Check if rescaling is required or not
   if ((input_params_.width != engine_params_.width) ||
       (input_params_.height != engine_params_.height)) {
     engine_params_.do_rescale = true;
-
-    // Allocate output buffer for pre-processing
-    posix_memalign(reinterpret_cast<void**>(&input_params_.scale_buf),
-                                    128,
-                                    ((engine_params_.width *
-                                          engine_params_.height * 3) / 2));
-    if (nullptr == input_params_.scale_buf) {
-      VAM_ML_LOGE("%s: Buffer allocation failed", __func__);
+    if (AllocateInternalBuffers() != MLE_OK) {
+      VAM_ML_LOGE("%s Buffer allocation failed", __func__);
       return MLE_FAIL;
     }
   } else {
@@ -190,6 +224,10 @@ int32_t TFLBase::Init(const struct MLEInputParams* source_info) {
       free(input_params_.scale_buf);
       input_params_.scale_buf = nullptr;
     }
+    if (nullptr != input_params_.rgb_buf) {
+      free(input_params_.rgb_buf);
+      input_params_.rgb_buf = nullptr;
+    }
     return MLE_FAIL;
   }
 
@@ -199,6 +237,10 @@ int32_t TFLBase::Init(const struct MLEInputParams* source_info) {
   switch (input_type) {
     case kTfLiteUInt8:
       engine_params_.input_buffer = (engine_params_.interpreter->tensor(input)->data).uint8;
+      // input buffer is RGB pad_width x pad_height
+      // memset input buffer now to avoid it while padding
+      memset(engine_params_.input_buffer, 128,
+             engine_params_.width * engine_params_.height * 3);
       break;
     case kTfLiteFloat32:
       engine_params_.input_buffer_f = (engine_params_.interpreter->tensor(input)->data).f;
@@ -214,10 +256,7 @@ int32_t TFLBase::Init(const struct MLEInputParams* source_info) {
 
 void TFLBase::Deinit() {
   VAM_ML_LOGI("%s: Enter", __func__);
-  if (nullptr != input_params_.scale_buf) {
-    free(input_params_.scale_buf);
-    input_params_.scale_buf = nullptr;
-  }
+  FreeInternalBuffers();
   VAM_ML_LOGI("%s: Exit", __func__);
 }
 
@@ -301,7 +340,8 @@ int32_t TFLBase::ValidateModelInfo() {
   // Validate output nodes
   const std::vector<int> outputs = engine_params_.interpreter->outputs();
   engine_params_.num_outputs = outputs.size();
-  if (engine_params_.num_inputs != 1 && engine_params_.num_inputs != 4) {
+  if (engine_params_.num_inputs != 1 && engine_params_.num_inputs != 3 &&
+      engine_params_.num_inputs != 4) {
     VAM_ML_LOGE("%s: No support for %d output nodes", __func__,
                 engine_params_.num_outputs);
     return MLE_FAIL;
@@ -314,6 +354,7 @@ int32_t TFLBase::ValidateModelInfo() {
     switch (output_type) {
       case kTfLiteUInt8:
       case kTfLiteFloat32:
+      case kTfLiteInt32:
         break;
       default:
         VAM_ML_LOGE("%s: No support for %d output type", __func__, output_type);
@@ -324,7 +365,7 @@ int32_t TFLBase::ValidateModelInfo() {
     // Check for output tensor dimensions
     TfLiteIntArray* output_dims = engine_params_.interpreter->tensor(output)->dims;
     engine_params_.num_predictions = output_dims->data[output_dims->size - 1];
-    if (engine_params_.label_count != engine_params_.num_predictions) {
+    if (need_labels_ && engine_params_.label_count != engine_params_.num_predictions) {
       VAM_ML_LOGE("%s: No: of labels %d, DO NOT match no: of predictions %d",
                        __func__, engine_params_.label_count,
                        engine_params_.num_predictions);
@@ -361,6 +402,7 @@ int32_t TFLBase::ValidateModelInfo() {
                   engine_params_.interpreter->tensor(output)->params.zero_point);
     }
   }
+  // TODO add validation for num_outputs = 3
 
   return MLE_OK;
 }
@@ -462,7 +504,47 @@ void TFLBase::PreProcessColorConvertRGB(
   }
 }
 
+void TFLBase::Pad(
+    uint8_t*       input_buf,
+    const uint32_t input_width,
+    const uint32_t input_height,
+    const uint32_t pad_width,
+    const uint32_t pad_height,
+    uint8_t*       output_buf)
+{
+  MLE_UNUSED(pad_height);
+  // This API assume that buffer is already fill up with
+  // pad value and only active area is copied.
+  // This optimization reduce time ~10 times.
+  for (uint32_t y = 0; y < input_height; y++) {
+    for (uint32_t x = 0; x < 3 * input_width; x++) {
+      uint32_t index_src = y * 3 * input_width + x;
+      uint32_t index_dst = y * 3 * pad_width + x;
+      output_buf[index_dst] = input_buf[index_src];
+    }
+  }
+}
+
 int32_t TFLBase::PreProcessInput(SourceFrame* frame_info) {
+
+  if ((input_params_.format != mle_format_nv12) &&
+      (input_params_.format != mle_format_nv21)) {
+    VAM_ML_LOGE("Unsupported format");
+    return MLE_FAIL;
+  }
+
+  uint8_t* rgb_buf = nullptr;
+  bool padding = false;
+  if (scale_width_ != engine_params_.width ||
+      scale_height_ != engine_params_.height) {
+    // with padding
+    rgb_buf = input_params_.rgb_buf;
+    padding = true;
+  } else {
+    // no padding
+    rgb_buf = engine_params_.input_buffer;
+  }
+  // TODO Use preprocessing_mode_
   VAM_ML_LOGI("%s: Enter", __func__);
   if (engine_params_.do_rescale) {
     //Scale Image
@@ -471,16 +553,24 @@ int32_t TFLBase::PreProcessInput(SourceFrame* frame_info) {
                     input_params_.scale_buf,
                     input_params_.width,
                     input_params_.height,
-                    engine_params_.width,
-                    engine_params_.height,
+                    scale_width_,
+                    scale_height_,
                     input_params_.format);
     //Color Conversion
     PreProcessColorConvertRGB(input_params_.scale_buf,
-                              input_params_.scale_buf + (engine_params_.width * engine_params_.height),
-                              engine_params_.input_buffer,
-                              engine_params_.width,
-                              engine_params_.height,
+                              input_params_.scale_buf + (scale_width_ * scale_height_),
+                              rgb_buf,
+                              scale_width_,
+                              scale_height_,
                               input_params_.format);
+    if (padding) {
+      Pad(rgb_buf,
+          scale_width_,
+          scale_height_,
+          engine_params_.width,
+          engine_params_.height,
+          engine_params_.input_buffer);
+    }
   } else {
     //Color conversion
     fcvColorYCbCr420PseudoPlanarToRGB888u8(frame_info->frame_data[0],

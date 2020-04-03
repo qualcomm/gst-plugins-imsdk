@@ -27,58 +27,17 @@
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __GST_MLE_TFLITE_H__
-#define __GST_MLE_TFLITE_H__
+#pragma once
 
-#include <gst/gst.h>
-#include <gst/video/video.h>
-#include <gst/video/gstvideofilter.h>
-#include <gst/allocators/allocators.h>
-#include <ml-meta/ml_meta.h>
-#include "deeplearning_engine/ml_engine_intf.h"
+#include "tflite_base.h"
 
-G_BEGIN_DECLS
+namespace mle {
 
-#define GST_TYPE_MLE_TFLITE \
-  (gst_mle_tflite_get_type())
-#define GST_MLE_TFLITE(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_MLE_TFLITE,GstMLETFLite))
-#define GST_MLE_TFLITE_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_MLE_TFLITE,GstMLETFLiteClass))
-#define GST_IS_MLE_TFLITE(obj) \
-  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_MLE_TFLITE))
-#define GST_IS_MLE_TFLITE_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_MLE_TFLITE))
-#define GST_MLE_TFLITE_CAST(obj)       ((GstMLETFLite *)(obj))
-
-typedef struct _GstMLETFLite      GstMLETFLite;
-typedef struct _GstMLETFLiteClass GstMLETFLiteClass;
-
-struct _GstMLETFLite {
-  GstVideoFilter      parent;
-
-  mle::MLEInputParams source_info;
-  mle::SourceFrame source_frame;
-  mle::MLEngine* engine;
-  gboolean is_init;
-  guint property_mask;
-
-  gchar *config_location;
-  gchar *model_filename;
-  gchar *labels_filename;
-  guint output_type;
-  guint preprocessing_type;
-  gfloat conf_threshold;
-  guint use_nnapi;
-  guint num_threads;
+class TFLSegmentation : public TFLBase {
+ public:
+  TFLSegmentation(MLConfig &config);
+  ~TFLSegmentation();
+  int32_t PostProcessOutput(GstBuffer* buffer);
 };
 
-struct _GstMLETFLiteClass {
-  GstVideoFilterClass parent;
-};
-
-G_GNUC_INTERNAL GType gst_mle_tflite_get_type(void);
-
-G_END_DECLS
-
-#endif // __GST_MLE_TFLITE_H__
+}; // namespace mle
