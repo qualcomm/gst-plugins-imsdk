@@ -235,6 +235,8 @@ gst_mle_create_engine(GstMLETFLite *mle) {
   configuration.conf_threshold = mle->conf_threshold;
   configuration.use_nnapi = mle->use_nnapi;
   configuration.number_of_threads = mle->num_threads;
+  configuration.preprocess_mode =
+      (mle::PreprocessingMode)mle->preprocessing_type;
 
   // Set configuration values from json config file
   if (mle->config_location) {
@@ -262,6 +264,10 @@ gst_mle_create_engine(GstMLETFLite *mle) {
   }
   if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_TFLITE_USE_NNAPI)) {
     configuration.use_nnapi = mle->use_nnapi;
+  }
+  if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_PREPROCESSING_TYPE)) {
+    configuration.preprocess_mode =
+        (mle::PreprocessingMode)mle->preprocessing_type;
   }
   mle->engine = new mle::TFLBase(configuration);
   if (nullptr == mle->engine) {

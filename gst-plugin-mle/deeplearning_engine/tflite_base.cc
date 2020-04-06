@@ -72,6 +72,7 @@ TFLBase::TFLBase(MLConfig &config) {
   config_.labels_file = config.labels_file;
   config_.number_of_threads = config.number_of_threads;
   config_.use_nnapi = config.use_nnapi;
+  config_.preprocess_mode = config.preprocess_mode;
   input_params_.scale_buf = nullptr;
 }
 
@@ -374,20 +375,66 @@ void TFLBase::PreProcessScale(
   const uint32_t scaleHeight,
   MLEImageFormat format)
 {
+  uint8_t *src_buffer_y = pSrcLuma;
+  uint8_t *src_buffer_uv = pSrcChroma;
+  uint32_t x = 0, y = 0;
+  uint32_t width = srcWidth;
+  uint32_t height = srcHeight;
+  uint32_t src_y_offset  = 0;
+  uint32_t src_uv_offset = 0;
+  uint32_t stride = srcWidth;
+
+  if (config_.preprocess_mode == PreprocessingMode::kKeepAR) {
+    double in_ar = 0, out_ar = 0;
+    in_ar  = static_cast<double>(width) / height;
+    out_ar = static_cast<double>(scaleWidth) / scaleHeight;
+
+    if (in_ar > out_ar) {
+      width = out_ar * height;
+      x = (srcWidth - width) / 2;
+      width = width & ~1;
+      x = x & ~1;
+    } else if (in_ar < out_ar) {
+      height = width / out_ar;
+      y = (srcHeight - height) / 2;
+      height = height & ~1;
+      y = y & ~1;
+    }
+
+    po_.width = width;
+    po_.height = height;
+    po_.x_offset = x;
+    po_.y_offset = y;
+
+    //Adjust the Y pointer.
+    src_y_offset = y * srcWidth + x;
+    //Adjust the UV pointer.
+    src_uv_offset = (y/2) * srcWidth + x;
+
+    src_buffer_y = reinterpret_cast<uint8_t *>
+                      ((intptr_t)src_buffer_y + src_y_offset);
+    src_buffer_uv = reinterpret_cast<uint8_t *>
+                        ((intptr_t)src_buffer_uv + src_uv_offset);
+  } else if (config_.preprocess_mode == PreprocessingMode::kKeepFOV) {
+    // DO NOTHING
+  } else if (config_.preprocess_mode == PreprocessingMode::kDirectDownscale) {
+    po_.width = width;
+    po_.height = height;
+   }
 
   if ((format == mle_format_nv12) || (format == mle_format_nv21)) {
-    fcvScaleDownMNu8(pSrcLuma,
-                     srcWidth,
-                     srcHeight,
-                     0,
+    fcvScaleDownMNu8(src_buffer_y,
+                     width,
+                     height,
+                     stride,
                      pDst,
                      scaleWidth,
                      scaleHeight,
                      0);
-    fcvScaleDownMNu8(pSrcChroma,
-                     srcWidth,
-                     srcHeight/2,
-                     0,
+    fcvScaleDownMNu8(src_buffer_uv,
+                     width,
+                     height/2,
+                     stride,
                      pDst + (scaleWidth*scaleHeight),
                      scaleWidth,
                      scaleHeight/2,
@@ -418,6 +465,7 @@ void TFLBase::PreProcessColorConvertRGB(
 int32_t TFLBase::PreProcessInput(SourceFrame* frame_info) {
   VAM_ML_LOGI("%s: Enter", __func__);
   if (engine_params_.do_rescale) {
+    //Scale Image
     PreProcessScale(frame_info->frame_data[0],
                     frame_info->frame_data[1],
                     input_params_.scale_buf,
@@ -426,7 +474,7 @@ int32_t TFLBase::PreProcessInput(SourceFrame* frame_info) {
                     engine_params_.width,
                     engine_params_.height,
                     input_params_.format);
-
+    //Color Conversion
     PreProcessColorConvertRGB(input_params_.scale_buf,
                               input_params_.scale_buf + (engine_params_.width * engine_params_.height),
                               engine_params_.input_buffer,
@@ -461,6 +509,11 @@ int32_t TFLBase::PostProcessMultiOutput(GstBuffer* buffer) {
     uint32_t width = input_params_.width;
     uint32_t height = input_params_.height;
 
+    if (config_.preprocess_mode == PreprocessingMode::kKeepAR) {
+      width = po_.width;
+      height = po_.height;
+    }
+
     GstMLDetectionMeta *meta = gst_buffer_add_detection_meta(buffer);
     if (!meta) {
       VAM_ML_LOGE("Failed to create metadata");
@@ -482,13 +535,13 @@ int32_t TFLBase::PostProcessMultiOutput(GstBuffer* buffer) {
     meta->box_info = g_slist_append (meta->box_info, box_info);
 
     meta->bounding_box.x = static_cast<uint32_t>(
-        detected_boxes[i * 4 + 1] * width);
+        detected_boxes[i * 4 + 1] * width) + po_.x_offset;
     meta->bounding_box.y = static_cast<uint32_t>(
-        detected_boxes[i * 4] * height);
+        detected_boxes[i * 4] * height) + po_.y_offset;
     meta->bounding_box.width = static_cast<uint32_t>(
-        detected_boxes[i * 4 + 3] * width) - meta->bounding_box.x;
+        detected_boxes[i * 4 + 3] * width) + po_.x_offset - meta->bounding_box.x;
     meta->bounding_box.height = static_cast<uint32_t>(
-        detected_boxes[i * 4 + 2] * height) - meta->bounding_box.y;
+        detected_boxes[i * 4 + 2] * height) + po_.y_offset - meta->bounding_box.y;
   }
   VAM_ML_LOGI("%s: Exit", __func__);
   return MLE_OK;
