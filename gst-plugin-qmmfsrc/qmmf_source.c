@@ -68,6 +68,7 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
 #define DEFAULT_PROP_CAMERA_ISO_MODE         ISO_MODE_AUTO
 #define DEFAULT_PROP_CAMERA_DEFOG_TABLE      NULL
 #define DEFAULT_PROP_CAMERA_SLAVE            FALSE
+#define DEFAULT_PROP_CAMERA_ADRC             FALSE
 
 static void gst_qmmfsrc_child_proxy_init (gpointer g_iface, gpointer data);
 
@@ -106,6 +107,7 @@ enum
   PROP_CAMERA_SLAVE,
   PROP_CAMERA_AF_MODE,
   PROP_CAMERA_IR_MODE,
+  PROP_CAMERA_ADRC,
   PROP_CAMERA_ISO_MODE,
   PROP_CAMERA_NOISE_REDUCTION,
   PROP_CAMERA_ZOOM,
@@ -690,6 +692,10 @@ qmmfsrc_set_property (GObject * object, guint property_id,
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_IR_MODE, value);
       break;
+    case PROP_CAMERA_ADRC:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_ADRC, value);
+      break;
     case PROP_CAMERA_ISO_MODE:
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_ISO_MODE, value);
@@ -787,6 +793,10 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
     case PROP_CAMERA_IR_MODE:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_IR_MODE, value);
+      break;
+    case PROP_CAMERA_ADRC:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_ADRC, value);
       break;
     case PROP_CAMERA_ISO_MODE:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
@@ -953,6 +963,11 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
   g_object_class_install_property (gobject, PROP_CAMERA_IR_MODE,
       g_param_spec_enum ("infrared-mode", "IR Mode", "Infrared Mode",
           GST_TYPE_QMMFSRC_IR_MODE, DEFAULT_PROP_CAMERA_IR_MODE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_CAMERA_ADRC,
+      g_param_spec_boolean ("adrc", "ADRC",
+          "Automatic dynamic range compression", DEFAULT_PROP_CAMERA_ADRC,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_CAMERA_ISO_MODE,

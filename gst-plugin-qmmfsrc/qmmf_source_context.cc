@@ -117,6 +117,8 @@ struct _GstQmmfContext {
   gboolean          slave;
   /// To check if Camera is opened or not
   gboolean          opened;
+  /// ADRC property
+  gboolean          adrc;
 };
 
 /// Global QMMF Recorder instance.
@@ -1196,6 +1198,12 @@ gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad)
   numvalue = gst_qmmfsrc_noise_reduction_android_value (context->nrmode);
   meta.update(ANDROID_NOISE_REDUCTION_MODE, &numvalue, 1);
 
+  numvalue = context->adrc;
+  tag_id = get_vendor_tag_by_name (
+      "org.codeaurora.qcamera3.adrc", "disable");
+  if (tag_id != 0)
+    meta.update(tag_id, &numvalue, 1);
+
   if (context->zoom.w > 0 && context->zoom.h > 0) {
     gint32 crop[] = { context->zoom.x, context->zoom.y,
         context->zoom.w, context->zoom.h };
@@ -1545,6 +1553,17 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       meta.update(tag_id, &(context)->irmode, 1);
       break;
     }
+    case PARAM_CAMERA_ADRC:
+    {
+      guchar mode;
+      context->adrc = g_value_get_boolean (value);
+      mode = context->adrc;
+
+      guint tag_id = get_vendor_tag_by_name (
+          "org.codeaurora.qcamera3.adrc", "disable");
+      meta.update(tag_id, &mode, 1);
+      break;
+    }
     case PARAM_CAMERA_ISO_MODE:
     {
       guint tag_id = get_vendor_tag_by_name (
@@ -1747,6 +1766,9 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       break;
     case PARAM_CAMERA_IR_MODE:
       g_value_set_enum (value, context->irmode);
+      break;
+    case PARAM_CAMERA_ADRC:
+      g_value_set_boolean (value, context->adrc);
       break;
     case PARAM_CAMERA_ISO_MODE:
       g_value_set_enum (value, context->isomode);
