@@ -87,7 +87,8 @@ enum class EngineOutput {
   kSingle = 0,
   kMulti,
   kSqueezenet,
-  kSingleSSD
+  kSingleSSD,
+  kSegmentation
 };
 
 enum class PreprocessingMode {
