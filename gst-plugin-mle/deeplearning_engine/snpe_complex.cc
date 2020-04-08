@@ -55,41 +55,12 @@ int32_t SNPEComplex::EnginePostProcess(GstBuffer* buffer) {
       [&](const char* name)
       {
         if (config_.io_type == NetworkIO::kUserBuffer) {
-          if ((config_.input_format == InputFormat::kBgr) ||
-              (config_.input_format == InputFormat::kRgb)) {
-            if (0 == std::strcmp(name, config_.result_layers[0].c_str())) {
-              IONBuffer b = snpe_params_.out_heap_map.at(name);
-              for (size_t i = 0; i < b.size / sizeof(uint8_t); i++) {
-                score_buf.push_back(b.addr[i]);
-              }
-            } else if (0 == std::strcmp(name, config_.result_layers[1].c_str())) {
-              IONBuffer b = snpe_params_.out_heap_map.at(name);
-              for (size_t i = 0; i < b.size / sizeof(uint8_t); i++) {
-                box_buf.push_back(b.addr[i]);
-              }
-            } else if (0 == std::strcmp(name, config_.result_layers[2].c_str())) {
-              IONBuffer b = snpe_params_.out_heap_map.at(name);
-              for (size_t i = 0; i < b.size / sizeof(uint8_t); i++) {
-                class_buf.push_back(b.addr[i]);
-              }
-            }
-          } else {
-            if (0 == std::strcmp(name, config_.result_layers[0].c_str())) {
-              IONBuffer b = snpe_params_.out_heap_map.at(name);
-              for (size_t i = 0; i < b.size / sizeof(float); i++) {
-                score_buf.push_back(b.addr_f[i]);
-              }
-            } else if (0 == std::strcmp(name, config_.result_layers[1].c_str())) {
-              IONBuffer b = snpe_params_.out_heap_map.at(name);
-              for (size_t i = 0; i < b.size / sizeof(float); i++) {
-                box_buf.push_back(b.addr_f[i]);
-              }
-            } else if (0 == std::strcmp(name, config_.result_layers[2].c_str())) {
-              IONBuffer b = snpe_params_.out_heap_map.at(name);
-              for (size_t i = 0; i < b.size / sizeof(float); i++) {
-                class_buf.push_back(b.addr_f[i]);
-              }
-            }
+          if (0 == std::strcmp(name, config_.result_layers[0].c_str())) {
+            score_buf = snpe_params_.out_heap_map.at(name);
+          } else if (0 == std::strcmp(name, config_.result_layers[1].c_str())) {
+            box_buf = snpe_params_.out_heap_map.at(name);
+          } else if (0 == std::strcmp(name, config_.result_layers[2].c_str())) {
+            class_buf = snpe_params_.out_heap_map.at(name);
           }
         } else if (config_.io_type == NetworkIO::kITensor) {
           if (0 == std::strcmp(name, config_.result_layers[0].c_str())) {
@@ -152,16 +123,8 @@ int32_t SNPEComplex::EnginePostProcess(GstBuffer* buffer) {
                                               meta->bounding_box.y;
 
       if (config_.preprocess_mode == PreprocessingMode::kKeepFOV) {
-#ifdef QMMF_ALG
-        meta->bounding_box.x = (std::lround(box_buf[i * 4 + 1] * width) -
-            po_.x_offset) * (scale_width_ / po_.width);
-        meta->bounding_box.y = (std::lround(box_buf[i * 4] * height) -
-            po_.y_offset) * (scale_height_ / po_.height);
+        VAM_ML_LOGI("KeepFOV mode is not supported");
       }
-#else
-     VAM_ML_LOGI("KeepFOV mode is supported only in QMMF_ALG pre-processing");
-    }
-#endif
 
     num_obj++;
 

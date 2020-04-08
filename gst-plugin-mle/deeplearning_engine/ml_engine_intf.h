@@ -37,23 +37,23 @@
 namespace mle {
 
 enum MLEImageFormat {
-    mle_format_invalid = 0,
-    mle_format_yv12,
-    mle_format_nv12,
-    mle_format_nv21,
-    mle_format_YUVJ420P,
-    mle_format_YUVJ422P,
-    mle_format_YUVJ444P,
-    mle_format_GRAY8,
-    mle_format_RGB24,
-    mle_format_JPEG,
+  mle_format_invalid = 0,
+  mle_format_yv12,
+  mle_format_nv12,
+  mle_format_nv21,
+  mle_format_YUVJ420P,
+  mle_format_YUVJ422P,
+  mle_format_YUVJ444P,
+  mle_format_GRAY8,
+  mle_format_RGB24,
+  mle_format_JPEG,
 };
 
 enum MLEErrors {
-    MLE_OK = 0,
-    MLE_FAIL,
-    MLE_NULLPTR,
-    MLE_IMG_FORMAT_NOT_SUPPORTED
+  MLE_OK = 0,
+  MLE_FAIL,
+  MLE_NULLPTR,
+  MLE_IMG_FORMAT_NOT_SUPPORTED
 };
 
 enum class FrameworkType {
@@ -117,7 +117,6 @@ struct MLEInputParams {
 };
 
 struct SourceFrame {
-  int32_t fd;
   uint8_t *frame_data[2];
 };
 

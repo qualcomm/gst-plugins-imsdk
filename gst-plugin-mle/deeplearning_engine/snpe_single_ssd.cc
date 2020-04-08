@@ -53,21 +53,8 @@ int32_t SNPESingleSSD::EnginePostProcess(GstBuffer* buffer) {
       {
     // Currently, singleSSD supports only UserBuffers
         if (config_.io_type == NetworkIO::kUserBuffer) {
-          if ((config_.input_format == InputFormat::kBgr) ||
-              (config_.input_format == InputFormat::kRgb)) {
-            if (0 == std::strcmp(name, config_.result_layers[0].c_str())) {
-              IONBuffer b = snpe_params_.out_heap_map.at(name);
-              for (size_t i = 0; i < b.size / sizeof(uint8_t); i++) {
-                result_buf.push_back(b.addr[i]);
-              }
-            }
-          } else {
-            if (0 == std::strcmp(name, config_.result_layers[0].c_str())) {
-              IONBuffer b = snpe_params_.out_heap_map.at(name);
-              for (size_t i = 0; i < b.size / sizeof(float); i++) {
-                result_buf.push_back(b.addr_f[i]);
-              }
-            }
+          if (0 == std::strcmp(name, config_.result_layers[0].c_str())) {
+            result_buf = snpe_params_.out_heap_map.at(name);
           }
         }
       });
