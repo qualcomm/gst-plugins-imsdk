@@ -274,6 +274,14 @@ static const gchar * gst_camera_exposure_table[] =
     "thresAntiBandingMinExpTimePct",
 };
 
+/// org.quic.camera.ltmDynamicContrast
+static const gchar * gst_camera_ltm_data[] =
+{
+    "ltmDynamicContrastStrength",
+    "ltmDarkBoostStrength",
+    "ltmBrightSupressStrength",
+};
+
 G_END_DECLS
 
 #endif // __GST_QMMFSRC_UTILS_H__

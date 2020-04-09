@@ -119,6 +119,8 @@ struct _GstQmmfContext {
   gboolean          opened;
   /// ADRC property
   gboolean          adrc;
+  /// Local tone Mapping
+  GstStructure      *ltmdata;
 };
 
 /// Global QMMF Recorder instance.
@@ -687,6 +689,8 @@ gst_qmmf_context_new ()
   context->defogtable = gst_structure_new_empty ("org.quic.camera.defog");
   context->exptable =
       gst_structure_new_empty ("org.codeaurora.qcamera3.exposuretable");
+  context->ltmdata =
+      gst_structure_new_empty ("org.quic.camera.ltmDynamicContrast");
 
   GST_INFO ("Created QMMF context: %p", context);
   return context;
@@ -708,6 +712,7 @@ gst_qmmf_context_free (GstQmmfContext * context)
 
   gst_structure_free (context->defogtable);
   gst_structure_free (context->exptable);
+  gst_structure_free (context->ltmdata);
 
   GST_INFO ("Destroyed QMMF context: %p", context);
   g_slice_free (GstQmmfContext, context);
@@ -1227,6 +1232,7 @@ gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad)
 
   set_vendor_tags (context->defogtable, &meta);
   set_vendor_tags (context->exptable, &meta);
+  set_vendor_tags (context->ltmdata, &meta);
 
   if (!context->slave) {
     G_LOCK(recorder);
@@ -1698,6 +1704,28 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       set_vendor_tags (context->exptable, &meta);
       break;
     }
+
+    case PARAM_CAMERA_LOCAL_TONE_MAPPING:
+    {
+      GstStructure *structure = NULL;
+      const gchar *input = g_value_get_string(value);
+      GValue gvalue = G_VALUE_INIT;
+      g_value_init(&gvalue, GST_TYPE_STRUCTURE);
+
+      if (!gst_value_deserialize(&gvalue, input)) {
+        GST_ERROR("Failed to deserialize LTM data!");
+        break;
+      }
+
+      structure = GST_STRUCTURE(g_value_dup_boxed(&gvalue));
+      g_value_unset(&gvalue);
+
+      gst_structure_foreach(structure, update_structure, context->ltmdata);
+      gst_structure_free(structure);
+
+      set_vendor_tags(context->ltmdata, &meta);
+      break;
+    }
   }
 
   if (!context->slave) {
@@ -1818,6 +1846,19 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
           gst_camera_exposure_table, G_N_ELEMENTS (gst_camera_exposure_table),
           context->exptable, &meta);
       string = gst_structure_to_string (context->exptable);
+
+      g_value_set_string (value, string);
+      g_free (string);
+      break;
+    }
+    case PARAM_CAMERA_LOCAL_TONE_MAPPING:
+    {
+      gchar *string = NULL;
+
+      get_vendor_tags ("org.quic.camera.ltmDynamicContrast",
+          gst_camera_ltm_data, G_N_ELEMENTS (gst_camera_ltm_data),
+          context->ltmdata, &meta);
+      string = gst_structure_to_string (context->ltmdata);
 
       g_value_set_string (value, string);
       g_free (string);
