@@ -29,39 +29,49 @@
 
 #pragma once
 
+#include <fstream>
 #include <vector>
-#include "snpe_base.h"
+#include <string>
+#include <cstdio>
+#include <memory>
+
+#include <tensorflow/lite/interpreter.h>
+#include <tensorflow/lite/model.h>
+
+#include "ml_engine_intf.h"
+#include "common_utils.h"
 
 namespace mle {
 
-struct Box {
-  float x_min;
-  float y_min;
-  float x_max;
-  float y_max;
+using TfLiteDelegatePtr = tflite::Interpreter::TfLiteDelegatePtr;
+using TfLiteDelegatePtrMap = std::map<std::string, TfLiteDelegatePtr>;
+
+struct TFLiteEngineParams {
+  std::unique_ptr<tflite::FlatBufferModel> model;
+  std::unique_ptr<tflite::Interpreter> interpreter;
+  uint32_t num_inputs;
+  uint32_t num_outputs;
+  uint32_t num_predictions;
 };
 
-struct OutputParams {
-  float index;
-  float label;
-  float score;
-  Box boxes;
-};
-
-class SNPESingleSSD : public SNPEBase {
+class TFLBase : public MLEngine {
  public:
-  SNPESingleSSD(MLConfig &config);
-  ~SNPESingleSSD();
-  int32_t Process(struct SourceFrame* frame_info, GstBuffer* buffer);
-  int32_t EnginePostProcess(GstBuffer* buffer);
-  size_t CalculateSizeFromDims(const size_t rank,
-                               const zdl::DlSystem::Dimension* dims,
-                               const size_t& element_size);
-  std::vector<size_t> GetStrides(zdl::DlSystem::TensorShape dims,
-                                 const size_t& element_size);
+  TFLBase(MLConfig &config);
+  ~TFLBase() {};
 
  private:
-  OutputParams *output_params_;
+  int32_t LoadModel(std::string& model_path);
+  int32_t InitFramework();
+  int32_t ExecuteModel();
+  int32_t ValidateModelInfo();
+  void* GetInputBuffer();
+  int32_t PostProcessMultiOutput(GstBuffer* buffer);
+  int32_t PostProcess(GstBuffer* buffer);
+  TfLiteDelegatePtrMap GetDelegates();
+
+
+ protected:
+  TFLiteEngineParams tflite_params_;
 };
 
 }; // namespace mle

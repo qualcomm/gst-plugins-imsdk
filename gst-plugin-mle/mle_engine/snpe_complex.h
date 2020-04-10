@@ -29,56 +29,15 @@
 
 #pragma once
 
-#include <sstream>
-#include <string>
-#include <memory>
-#include <cutils/properties.h>
-#include <sys/mman.h>
-#include <utils/Log.h>
+#include "snpe_base.h"
 
-#define VAM_ML_LOGI(...) ALOGI("MLWrapper: " __VA_ARGS__)
-#define VAM_ML_LOGE(...) ALOGE("MLWrapper: " __VA_ARGS__)
-#define VAM_ML_LOGD(...) ALOGD("MLWrapper: " __VA_ARGS__)
+namespace mle {
 
-#define MLE_UNUSED(var) ((void)var)
-
-class Property {
+class SNPEComplex : public SNPEBase {
  public:
-  /** Get
-   *    @property: property
-   *    @default_value: default value
-   *
-   * Gets requested property value
-   *
-   * return: property value
-   **/
-  template <typename TProperty>
-  static TProperty Get(std::string property, TProperty default_value) {
-    TProperty value = default_value;
-    char prop_val[PROPERTY_VALUE_MAX];
-    std::stringstream s;
-    s << default_value;
-    property_get(property.c_str(), prop_val, s.str().c_str());
-
-    std::stringstream output(prop_val);
-    output >> value;
-    return value;
-  }
-
-  /** Set
-   *    @property: property
-   *    @value: value
-   *
-   * Sets requested property value
-   *
-   * return: nothing
-   **/
-  template <typename TProperty>
-  static void Set(std::string property, TProperty value) {
-    std::stringstream s;
-    s << value;
-    std::string value_string = s.str();
-    value_string.resize(PROPERTY_VALUE_MAX);
-    property_set(property.c_str(), value_string.c_str());
-  }
+  SNPEComplex(MLConfig &config);
+  ~SNPEComplex();
+  int32_t PostProcess(GstBuffer* buffer);
 };
+
+}; // namespace mle

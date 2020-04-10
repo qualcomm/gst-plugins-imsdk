@@ -35,10 +35,10 @@
 #endif
 
 #include "mle_snpe.h"
-#include "deeplearning_engine/snpe_base.h"
-#include "deeplearning_engine/snpe_complex.h"
-#include "deeplearning_engine/snpe_single_ssd.h"
-#include "deeplearning_engine/snpe_segmentation.h"
+#include "mle_engine/snpe_base.h"
+#include "mle_engine/snpe_complex.h"
+#include "mle_engine/snpe_single_ssd.h"
+#include "mle_engine/snpe_segmentation.h"
 
 #define GST_CAT_DEFAULT mle_snpe_debug
 GST_DEBUG_CATEGORY_STATIC (mle_snpe_debug);
@@ -49,14 +49,11 @@ G_DEFINE_TYPE (GstMLESNPE, gst_mle_snpe, GST_TYPE_VIDEO_FILTER);
 #define GST_ML_VIDEO_FORMATS "{ NV12, NV21 }"
 
 #define DEFAULT_PROP_SNPE_INPUT_FORMAT 3 //kBgrFloat
-#define DEFAULT_PROP_SNPE_OUTPUT 1 //kMulti
-#define DEFAULT_PROP_SNPE_IO_TYPE 0 //kUserBufer
-#define DEFAULT_PROP_SNPE_MEAN_VALUE 128.0
-#define DEFAULT_PROP_SNPE_SIGMA_VALUE 255.0
-#define DEFAULT_PROP_SNPE_USE_NORM 1
+#define DEFAULT_PROP_MLE_MEAN_VALUE 128.0
+#define DEFAULT_PROP_MLE_SIGMA_VALUE 128.0
 #define DEFAULT_PROP_SNPE_RUNTIME 1
 #define DEFAULT_PROP_MLE_CONF_THRESHOLD 0.5
-#define DEFAULT_PROP_MLE_PREPROCESSING_TYPE 0
+#define DEFAULT_PROP_MLE_PREPROCESSING_TYPE 1 //kKeepARPad
 #define GST_MLE_UNUSED(var) ((void)var)
 
 enum {
@@ -66,18 +63,11 @@ enum {
   PROP_MLE_MODEL_FILENAME,
   PROP_MLE_LABELS_FILENAME,
   PROP_SNPE_INPUT_FORMAT,
-  PROP_SNPE_OUTPUT,
-  PROP_SNPE_IO_TYPE,
-  PROP_SNPE_MEAN_BLUE,
-  PROP_SNPE_MEAN_GREEN,
-  PROP_SNPE_MEAN_RED,
-  PROP_SNPE_SIGMA_BLUE,
-  PROP_SNPE_SIGMA_GREEN,
-  PROP_SNPE_SIGMA_RED,
-  PROP_SNPE_USE_NORM,
+  PROP_MLE_POSTPROCESSING,
+  PROP_MLE_MEAN_VALUES,
+  PROP_MLE_SIGMA_VALUES,
   PROP_SNPE_RUNTIME,
   PROP_SNPE_OUTPUT_LAYERS,
-  PROP_SNPE_RESULT_LAYERS,
   PROP_MLE_PREPROCESSING_TYPE,
   PROP_MLE_CONF_THRESHOLD,
 };
@@ -127,41 +117,27 @@ gst_mle_snpe_set_property(GObject *object, guint property_id,
       gst_mle_set_property_mask(mle->property_mask, property_id);
       mle->input_format = g_value_get_uint (value);
       break;
-    case PROP_SNPE_OUTPUT:
+    case PROP_MLE_POSTPROCESSING:
       gst_mle_set_property_mask(mle->property_mask, property_id);
-      mle->output = g_value_get_uint (value);
+      mle->postprocessing = g_strdup(g_value_get_string (value));
       break;
-    case PROP_SNPE_IO_TYPE:
+    case PROP_MLE_MEAN_VALUES:
       gst_mle_set_property_mask(mle->property_mask, property_id);
-      mle->io_type = g_value_get_uint (value);
+      mle->blue_mean =
+          g_value_get_double (gst_value_array_get_value (value, 0));
+      mle->green_mean =
+          g_value_get_double (gst_value_array_get_value (value, 1));
+      mle->red_mean =
+          g_value_get_double (gst_value_array_get_value (value, 2));
       break;
-    case PROP_SNPE_MEAN_BLUE:
+    case PROP_MLE_SIGMA_VALUES:
       gst_mle_set_property_mask(mle->property_mask, property_id);
-      mle->blue_mean = g_value_get_float (value);
-      break;
-    case PROP_SNPE_MEAN_GREEN:
-      gst_mle_set_property_mask(mle->property_mask, property_id);
-      mle->green_mean = g_value_get_float (value);
-      break;
-    case PROP_SNPE_MEAN_RED:
-      gst_mle_set_property_mask(mle->property_mask, property_id);
-      mle->red_mean = g_value_get_float (value);
-      break;
-    case PROP_SNPE_SIGMA_BLUE:
-      gst_mle_set_property_mask(mle->property_mask, property_id);
-      mle->blue_sigma = g_value_get_float (value);
-      break;
-    case PROP_SNPE_SIGMA_GREEN:
-      gst_mle_set_property_mask(mle->property_mask, property_id);
-      mle->green_sigma = g_value_get_float (value);
-      break;
-    case PROP_SNPE_SIGMA_RED:
-      gst_mle_set_property_mask(mle->property_mask, property_id);
-      mle->red_sigma = g_value_get_float (value);
-      break;
-    case PROP_SNPE_USE_NORM:
-      gst_mle_set_property_mask(mle->property_mask, property_id);
-      mle->use_norm = g_value_get_uint (value);
+      mle->blue_sigma =
+          g_value_get_double (gst_value_array_get_value (value, 0));
+      mle->green_sigma =
+          g_value_get_double (gst_value_array_get_value (value, 1));
+      mle->red_sigma =
+          g_value_get_double (gst_value_array_get_value (value, 2));
       break;
     case PROP_SNPE_RUNTIME:
       gst_mle_set_property_mask(mle->property_mask, property_id);
@@ -170,10 +146,6 @@ gst_mle_snpe_set_property(GObject *object, guint property_id,
     case PROP_SNPE_OUTPUT_LAYERS:
       gst_mle_set_property_mask(mle->property_mask, property_id);
       mle->output_layers = g_strdup(g_value_get_string (value));
-      break;
-    case PROP_SNPE_RESULT_LAYERS:
-      gst_mle_set_property_mask(mle->property_mask, property_id);
-      mle->result_layers = g_strdup(g_value_get_string (value));
       break;
     case PROP_MLE_CONF_THRESHOLD:
       gst_mle_set_property_mask(mle->property_mask, property_id);
@@ -209,41 +181,36 @@ gst_mle_snpe_get_property(GObject *object, guint property_id,
     case PROP_SNPE_INPUT_FORMAT:
       g_value_set_uint (value, mle->input_format);
       break;
-    case PROP_SNPE_OUTPUT:
-      g_value_set_uint (value, mle->output);
+    case PROP_MLE_POSTPROCESSING:
+      g_value_set_string (value, mle->postprocessing);
       break;
-    case PROP_SNPE_IO_TYPE:
-      g_value_set_uint (value, mle->io_type);
+    case PROP_MLE_MEAN_VALUES: {
+      GValue val = G_VALUE_INIT;
+      g_value_init (&val, G_TYPE_DOUBLE);
+      g_value_set_double (&val, mle->blue_mean);
+      gst_value_array_append_value (value, &val);
+      g_value_set_double (&val, mle->green_mean);
+      gst_value_array_append_value (value, &val);
+      g_value_set_double (&val, mle->red_mean);
+      gst_value_array_append_value (value, &val);
       break;
-    case PROP_SNPE_MEAN_BLUE:
-      g_value_set_float (value, mle->blue_mean);
+    }
+    case PROP_MLE_SIGMA_VALUES: {
+      GValue val = G_VALUE_INIT;
+      g_value_init (&val, G_TYPE_DOUBLE);
+      g_value_set_double (&val, mle->blue_sigma);
+      gst_value_array_append_value (value, &val);
+      g_value_set_double (&val, mle->green_sigma);
+      gst_value_array_append_value (value, &val);
+      g_value_set_double (&val, mle->red_sigma);
+      gst_value_array_append_value (value, &val);
       break;
-    case PROP_SNPE_MEAN_GREEN:
-      g_value_set_float (value, mle->green_mean);
-      break;
-    case PROP_SNPE_MEAN_RED:
-      g_value_set_float (value, mle->red_mean);
-      break;
-    case PROP_SNPE_SIGMA_BLUE:
-      g_value_set_float (value, mle->blue_sigma);
-      break;
-    case PROP_SNPE_SIGMA_GREEN:
-      g_value_set_float (value, mle->green_sigma);
-      break;
-    case PROP_SNPE_SIGMA_RED:
-      g_value_set_float (value, mle->red_sigma);
-      break;
-    case PROP_SNPE_USE_NORM:
-      g_value_set_uint (value, mle->use_norm);
-      break;
+    }
     case PROP_SNPE_RUNTIME:
       g_value_set_uint (value, mle->runtime);
       break;
     case PROP_SNPE_OUTPUT_LAYERS:
       g_value_set_string (value, mle->output_layers);
-      break;
-    case PROP_SNPE_RESULT_LAYERS:
-      g_value_set_string (value, mle->result_layers);
       break;
     case PROP_MLE_CONF_THRESHOLD:
       g_value_set_float (value, mle->conf_threshold);
@@ -267,14 +234,17 @@ gst_mle_snpe_finalize(GObject * object)
   if (mle->output_layers) {
     g_free(mle->output_layers);
   }
-  if (mle->result_layers) {
-    g_free(mle->result_layers);
-  }
   if (mle->model_filename) {
     g_free(mle->model_filename);
   }
   if (mle->labels_filename) {
     g_free(mle->labels_filename);
+  }
+  if (mle->config_location) {
+    g_free(mle->config_location);
+  }
+  if (mle->postprocessing) {
+    g_free(mle->postprocessing);
   }
 
   G_OBJECT_CLASS(parent_class)->finalize(G_OBJECT(mle));
@@ -315,8 +285,6 @@ gst_mle_snpe_parse_config(gchar *config_location,
     Json::Reader reader;
     Json::Value val;
     if (reader.parse(in, val)) {
-      configuration.engine_output = (mle::EngineOutput)val.get("EngineOutput", 0).asInt();
-      configuration.io_type = (mle::NetworkIO)val.get("NetworkIO", 0).asInt();
       configuration.input_format =
           (mle::InputFormat)val.get("InputFormat", 3).asInt();
       configuration.blue_mean = val.get("BlueMean", 0).asFloat();
@@ -325,15 +293,15 @@ gst_mle_snpe_parse_config(gchar *config_location,
       configuration.green_sigma = val.get("GreenSigma", 255).asFloat();
       configuration.red_mean = val.get("RedMean", 0).asFloat();
       configuration.red_sigma = val.get("RedSigma", 255).asFloat();
-      configuration.use_norm = val.get("UseNorm", 0).asInt();
+      configuration.use_norm = val.get("UseNorm", false).asBool();
+      configuration.preprocess_mode =
+          (mle::PreprocessingMode)val.get("PreProcessing", 1).asInt();
       configuration.conf_threshold = val.get("ConfThreshold", 0.0).asFloat();
       configuration.model_file = val.get("MODEL_FILENAME", "").asString();
       configuration.labels_file = val.get("LABELS_FILENAME", "").asString();
       for (size_t i = 0; i < val["OutputLayers"].size(); i++) {
-        configuration.output_layers.push_back(val["OutputLayers"][i].asString());
-      }
-      for (size_t i = 0; i < val["ResultLayers"].size(); i++) {
-        configuration.result_layers.push_back(val["ResultLayers"][i].asString());
+        configuration.output_layers.push_back(
+                                    val["OutputLayers"][i].asString());
       }
       configuration.runtime = (mle::RuntimeType)val.get("Runtime", 0).asInt();
       rc = TRUE;
@@ -341,6 +309,34 @@ gst_mle_snpe_parse_config(gchar *config_location,
     in.close();
   }
   return rc;
+}
+
+static void
+gst_mle_print_config(GstMLESNPE *mle,
+                     mle::MLConfig &configuration,
+                     gchar *postprocessing)
+{
+  GST_DEBUG_OBJECT(mle, "==== Configuration Begin ====");
+  GST_DEBUG_OBJECT(mle, "Model %s", configuration.model_file.c_str());
+  GST_DEBUG_OBJECT(mle, "Labels %s", configuration.labels_file.c_str());
+  GST_DEBUG_OBJECT(mle, "Pre-processing %d",
+                   (gint)configuration.preprocess_mode);
+  GST_DEBUG_OBJECT(mle, "Mean(B,G,R): %f, %f, %f", configuration.blue_mean,
+                                                   configuration.green_mean,
+                                                   configuration.red_mean);
+  GST_DEBUG_OBJECT(mle, "Sigma(B,G,R): %f, %f, %f", configuration.blue_sigma,
+                                                    configuration.green_sigma,
+                                                    configuration.red_sigma);
+  GST_DEBUG_OBJECT(mle, "Confidence threshold %f",
+                   configuration.conf_threshold);
+  GST_DEBUG_OBJECT(mle, "Input format %d", (gint)configuration.input_format);
+  GST_DEBUG_OBJECT(mle, "Runtime %d", (gint)configuration.runtime);
+  for (guint i = 0; i < configuration.output_layers.size(); i++) {
+    GST_DEBUG_OBJECT(mle, "Output layers[%d] %s", i,
+                    configuration.output_layers[i].c_str());
+  }
+  GST_DEBUG_OBJECT(mle, "Post-processing %s", postprocessing);
+  GST_DEBUG_OBJECT(mle, "==== Configuration End ====");
 }
 
 static void
@@ -369,16 +365,16 @@ gst_mle_create_engine(GstMLESNPE *mle) {
 
   // Set default configuration values
   configuration.blue_mean = configuration.green_mean = configuration.red_mean =
-      DEFAULT_PROP_SNPE_MEAN_VALUE;
+      DEFAULT_PROP_MLE_MEAN_VALUE;
   configuration.blue_sigma = configuration.green_sigma =
-      configuration.red_sigma = DEFAULT_PROP_SNPE_SIGMA_VALUE;
-  configuration.engine_output = (mle::EngineOutput)mle->output;
+      configuration.red_sigma = DEFAULT_PROP_MLE_SIGMA_VALUE;
   configuration.input_format = (mle::InputFormat)mle->input_format;
-  configuration.use_norm = mle->use_norm;
+  configuration.use_norm = false;
   configuration.runtime = (mle::RuntimeType)mle->runtime;
   configuration.preprocess_mode =
       (mle::PreprocessingMode)mle->preprocessing_type;
   configuration.conf_threshold = DEFAULT_PROP_MLE_CONF_THRESHOLD;
+  configuration.io_type = mle::NetworkIO::kUserBuffer;
 
   // Set configuration values from json config file
   if (mle->config_location) {
@@ -400,36 +396,21 @@ gst_mle_create_engine(GstMLESNPE *mle) {
   if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_CONF_THRESHOLD)) {
     configuration.conf_threshold = mle->conf_threshold;
   }
-
-  if (gst_mle_check_is_set(mle->property_mask, PROP_SNPE_OUTPUT)) {
-    configuration.engine_output = mle::EngineOutput(mle->output);
-  }
   if (gst_mle_check_is_set(mle->property_mask, PROP_SNPE_INPUT_FORMAT)) {
     configuration.input_format = (mle::InputFormat)mle->input_format;
   }
-  if (gst_mle_check_is_set(mle->property_mask, PROP_SNPE_IO_TYPE)) {
-    configuration.io_type = (mle::NetworkIO) mle->io_type;
-  }
-  if (gst_mle_check_is_set(mle->property_mask, PROP_SNPE_MEAN_BLUE)) {
+  if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_MEAN_VALUES)) {
     configuration.blue_mean = mle->blue_mean;
-  }
-  if (gst_mle_check_is_set(mle->property_mask, PROP_SNPE_MEAN_GREEN)) {
     configuration.green_mean = mle->green_mean;
-  }
-  if (gst_mle_check_is_set(mle->property_mask, PROP_SNPE_MEAN_RED)) {
     configuration.red_mean = mle->red_mean;
   }
-  if (gst_mle_check_is_set(mle->property_mask, PROP_SNPE_SIGMA_BLUE)) {
+  if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_SIGMA_VALUES)) {
     configuration.blue_sigma = mle->blue_sigma;
-  }
-  if (gst_mle_check_is_set(mle->property_mask, PROP_SNPE_SIGMA_GREEN)) {
     configuration.green_sigma = mle->green_sigma;
-  }
-  if (gst_mle_check_is_set(mle->property_mask, PROP_SNPE_SIGMA_RED)) {
     configuration.red_sigma = mle->red_sigma;
-  }
-  if (gst_mle_check_is_set(mle->property_mask, PROP_SNPE_USE_NORM)) {
-    configuration.use_norm = mle->use_norm;
+
+    //set normalization flag
+    configuration.use_norm = true;
   }
   if (gst_mle_check_is_set(mle->property_mask, PROP_SNPE_RUNTIME)) {
     configuration.runtime = (mle::RuntimeType) mle->runtime;
@@ -439,45 +420,38 @@ gst_mle_create_engine(GstMLESNPE *mle) {
         (mle::PreprocessingMode)mle->preprocessing_type;
   }
   gst_mle_parse_snpe_layers(mle->output_layers, configuration.output_layers);
-  gst_mle_parse_snpe_layers(mle->result_layers, configuration.result_layers);
-  switch (configuration.engine_output) {
-    case mle::EngineOutput::kSingle: {
-      mle->engine = new mle::SNPEBase(configuration);
-      if (nullptr == mle->engine) {
-        GST_ERROR_OBJECT (mle, "Failed to create SNPE instance.");
-        rc = FALSE;
-      }
-      break;
+
+  gst_mle_print_config(mle, configuration, mle->postprocessing);
+
+  if (!g_strcmp0(mle->postprocessing, "classification")) {
+    mle->engine = new mle::SNPEBase(configuration);
+    if (nullptr == mle->engine) {
+      GST_ERROR_OBJECT (mle, "Failed to create SNPE instance.");
+      rc = FALSE;
     }
-    case mle::EngineOutput::kMulti: {
+  } else if (!g_strcmp0(mle->postprocessing, "detection")) {
       mle->engine = new mle::SNPEComplex(configuration);
       if (nullptr == mle->engine) {
         GST_ERROR_OBJECT (mle, "Failed to create SNPE instance.");
         rc = FALSE;
       }
-      break;
-    }
-    case mle::EngineOutput::kSingleSSD: {
+  } else if(!g_strcmp0(mle->postprocessing, "singlessd")) {
       mle->engine = new mle::SNPESingleSSD(configuration);
       if (nullptr == mle->engine) {
         GST_ERROR_OBJECT (mle, "Failed to create SNPE instance.");
         rc = FALSE;
       }
-      break;
-    }
-    case mle::EngineOutput::kSegmentation: {
+  } else if (!g_strcmp0(mle->postprocessing, "segmentation")) {
       mle->engine = new mle::SNPESegmentation(configuration);
       if (nullptr == mle->engine) {
         GST_ERROR_OBJECT (mle, "Failed to create SNPE instance.");
         rc = FALSE;
       }
-      break;
-    }
-    default: {
-      GST_ERROR_OBJECT (mle, "Unknown SNPE output type.");
-      rc = FALSE;
-    }
+  } else {
+    GST_ERROR_OBJECT (mle, "Unsupported SNPE postprocessing.");
+    rc = FALSE;
   }
+
   return rc;
 }
 
@@ -514,7 +488,6 @@ gst_mle_snpe_set_info(GstVideoFilter *filter, GstCaps *in,
   if (mle->engine && mle->is_init) {
     if ((gint)mle->source_info.width != GST_VIDEO_INFO_WIDTH(ininfo) ||
         (gint)mle->source_info.height != GST_VIDEO_INFO_HEIGHT(ininfo) ||
-        (gint)mle->source_info.stride != GST_VIDEO_INFO_PLANE_STRIDE(ininfo, 0) ||
         mle->source_info.format != gst_mle_get_video_format(video_format)) {
       mle->engine->Deinit();
       mle->engine = nullptr;
@@ -528,8 +501,6 @@ gst_mle_snpe_set_info(GstVideoFilter *filter, GstCaps *in,
 
   mle->source_info.width = GST_VIDEO_INFO_WIDTH(ininfo);
   mle->source_info.height = GST_VIDEO_INFO_HEIGHT(ininfo);
-  mle->source_info.stride = GST_VIDEO_INFO_PLANE_STRIDE(ininfo, 0);
-  mle->source_info.scanline = GST_VIDEO_INFO_HEIGHT(ininfo);
   mle->source_info.format = gst_mle_get_video_format(video_format);
   if (mle->source_info.format != mle::MLEImageFormat::mle_format_nv12 &&
       mle->source_info.format != mle::MLEImageFormat::mle_format_nv21) {
@@ -600,7 +571,7 @@ gst_mle_snpe_class_init (GstMLESNPEClass * klass)
       g_param_spec_string(
           "model",
           "Model file",
-          "Model .dlc file",
+          "Path to model file. Eg.: /data/misc/camera/model.dlc",
           NULL,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));
@@ -611,7 +582,7 @@ gst_mle_snpe_class_init (GstMLESNPEClass * klass)
       g_param_spec_string(
           "labels",
           "Labels filename",
-          ".txt labels file",
+          "Path to labels file. Eg.: /data/misc/camera/labels.txt",
           NULL,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));
@@ -631,120 +602,37 @@ gst_mle_snpe_class_init (GstMLESNPEClass * klass)
 
   g_object_class_install_property(
       gobject,
-      PROP_SNPE_OUTPUT,
-      g_param_spec_uint(
-          "output",
-          "SNPE output",
-          "Model output type: Eg.: 0 - classification; 1 - SSD; 4 - segmentation",
-          0,
-          5,
-          DEFAULT_PROP_SNPE_OUTPUT,
+      PROP_MLE_POSTPROCESSING,
+      g_param_spec_string(
+          "postprocessing",
+          "Postprocessing",
+          "Supported Postprocessing: classification; detection; singlessd;"
+                                    " segmentation",
+          NULL,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));
 
-  g_object_class_install_property(
-      gobject,
-      PROP_SNPE_IO_TYPE,
-      g_param_spec_uint(
-          "io-type",
-          "SNPE IO type",
-          "UserBuffer or ITensor",
-          0,
-          1,
-          DEFAULT_PROP_SNPE_IO_TYPE,
-          static_cast<GParamFlags>(G_PARAM_READWRITE |
-                                   G_PARAM_STATIC_STRINGS)));
+  g_object_class_install_property (gobject, PROP_MLE_MEAN_VALUES,
+      gst_param_spec_array ("mean", "Mean Subtraction",
+          "Channel Mean Subtraction values ('<B, G, R>')",
+          g_param_spec_double ("value", "Mean Value",
+              "One of B, G or R value.", 0, 255,
+            DEFAULT_PROP_MLE_MEAN_VALUE,
+            static_cast<GParamFlags>(G_PARAM_READWRITE |
+                                     G_PARAM_STATIC_STRINGS)),
+            static_cast<GParamFlags>(G_PARAM_READWRITE |
+                                     G_PARAM_STATIC_STRINGS)));
 
-  g_object_class_install_property(
-      gobject,
-      PROP_SNPE_MEAN_BLUE,
-      g_param_spec_float(
-          "blue-mean",
-          "SNPE Blue mean",
-          "Blue mean value",
-          0,
-          255,
-          DEFAULT_PROP_SNPE_MEAN_VALUE,
-          static_cast<GParamFlags>(G_PARAM_READWRITE |
-                                   G_PARAM_STATIC_STRINGS)));
-
-  g_object_class_install_property(
-      gobject,
-      PROP_SNPE_MEAN_GREEN,
-      g_param_spec_float(
-          "green-mean",
-          "SNPE Green mean",
-          "Green mean value",
-          0,
-          255,
-          DEFAULT_PROP_SNPE_MEAN_VALUE,
-          static_cast<GParamFlags>(G_PARAM_READWRITE |
-                                   G_PARAM_STATIC_STRINGS)));
-
-  g_object_class_install_property(
-      gobject,
-      PROP_SNPE_MEAN_RED,
-      g_param_spec_float(
-          "red-mean",
-          "SNPE Red mean",
-          "Red mean value",
-          0,
-          255,
-          DEFAULT_PROP_SNPE_MEAN_VALUE,
-          static_cast<GParamFlags>(G_PARAM_READWRITE |
-                                   G_PARAM_STATIC_STRINGS)));
-
-  g_object_class_install_property(
-      gobject,
-      PROP_SNPE_SIGMA_BLUE,
-      g_param_spec_float(
-          "blue-sigma",
-          "Blue sigma",
-          "Divisor of blue channel for norm",
-          0,
-          255,
-          DEFAULT_PROP_SNPE_SIGMA_VALUE,
-          static_cast<GParamFlags>(G_PARAM_READWRITE |
-                                   G_PARAM_STATIC_STRINGS)));
-
-  g_object_class_install_property(
-      gobject,
-      PROP_SNPE_SIGMA_GREEN,
-      g_param_spec_float(
-          "green-sigma",
-          "Green sigma",
-          "Divisor of green channel for norm",
-          0,
-          255,
-          DEFAULT_PROP_SNPE_SIGMA_VALUE,
-          static_cast<GParamFlags>(G_PARAM_READWRITE |
-                                   G_PARAM_STATIC_STRINGS)));
-
-  g_object_class_install_property(
-      gobject,
-      PROP_SNPE_SIGMA_RED,
-      g_param_spec_float(
-          "red-sigma",
-          "Red sigma",
-          "Divisor of red channel for norm",
-          0.0,
-          255.0,
-          DEFAULT_PROP_SNPE_SIGMA_VALUE,
-          static_cast<GParamFlags>(G_PARAM_READWRITE |
-                                   G_PARAM_STATIC_STRINGS)));
-
-  g_object_class_install_property(
-      gobject,
-      PROP_SNPE_USE_NORM,
-      g_param_spec_uint(
-          "norm",
-          "Use normalization",
-          "0 - do not use; 1 - use normalization",
-          0,
-          1,
-          DEFAULT_PROP_SNPE_USE_NORM,
-          static_cast<GParamFlags>(G_PARAM_READWRITE |
-                                   G_PARAM_STATIC_STRINGS)));
+  g_object_class_install_property (gobject, PROP_MLE_SIGMA_VALUES,
+      gst_param_spec_array ("sigma", "Sigma values",
+          "Channel divisor values ('<B, G, R>')",
+          g_param_spec_double ("value", "Sigma Value",
+              "One of B, G or R divisors value.", 0, 255,
+            DEFAULT_PROP_MLE_SIGMA_VALUE,
+            static_cast<GParamFlags>(G_PARAM_READWRITE |
+                                     G_PARAM_STATIC_STRINGS)),
+            static_cast<GParamFlags>(G_PARAM_READWRITE |
+                                     G_PARAM_STATIC_STRINGS)));
 
   g_object_class_install_property(
       gobject,
@@ -765,18 +653,8 @@ gst_mle_snpe_class_init (GstMLESNPEClass * klass)
       g_param_spec_string(
           "output-layers",
           "SNPE output layers",
-          "Model output layers, comma separated",
-          NULL,
-          static_cast<GParamFlags>(G_PARAM_READWRITE |
-                                   G_PARAM_STATIC_STRINGS)));
-
-  g_object_class_install_property(
-      gobject,
-      PROP_SNPE_RESULT_LAYERS,
-      g_param_spec_string(
-          "result-layers",
-          "SNPE result layers",
-          "Model result layers, comma separated",
+          "Model output layers, comma separated."
+          "Should be set if model have more than one output",
           NULL,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));
@@ -785,9 +663,9 @@ gst_mle_snpe_class_init (GstMLESNPEClass * klass)
       gobject,
       PROP_MLE_PREPROCESSING_TYPE,
       g_param_spec_uint(
-          "maintain-ar",
-          "Maintain AR",
-          "Pre-processing AR maintenance",
+          "preprocess-type",
+          "Preprocess type",
+          "Possible values: 0-kKeepARCrop, 1-kKeepARPad, 2-kDirectDownscale",
           0,
           2,
           DEFAULT_PROP_MLE_PREPROCESSING_TYPE,
@@ -798,8 +676,8 @@ gst_mle_snpe_class_init (GstMLESNPEClass * klass)
       gobject,
       PROP_MLE_CONF_THRESHOLD,
       g_param_spec_float(
-          "conf-threshold",
-          "ConfThreshold",
+          "confidence-threshold",
+          "Confidence Threshold",
           "Confidence Threshold value",
           0.0,
           1.0,
@@ -828,15 +706,11 @@ gst_mle_snpe_init (GstMLESNPE * mle)
   mle->config_location = nullptr;
   mle->is_init = FALSE;
   mle->input_format = DEFAULT_PROP_SNPE_INPUT_FORMAT;
-  mle->output = DEFAULT_PROP_SNPE_OUTPUT;
-  mle->io_type = DEFAULT_PROP_SNPE_IO_TYPE;
   mle->blue_mean = mle->green_mean = mle->red_mean =
-      DEFAULT_PROP_SNPE_MEAN_VALUE;
+      DEFAULT_PROP_MLE_MEAN_VALUE;
   mle->blue_sigma = mle->green_sigma = mle->red_sigma =
-      DEFAULT_PROP_SNPE_SIGMA_VALUE;
-  mle->use_norm = 0;
+      DEFAULT_PROP_MLE_SIGMA_VALUE;
   mle->output_layers = nullptr;
-  mle->result_layers = nullptr;
   mle->runtime = DEFAULT_PROP_SNPE_RUNTIME;
   mle->preprocessing_type = DEFAULT_PROP_MLE_PREPROCESSING_TYPE;
   mle->conf_threshold = DEFAULT_PROP_MLE_CONF_THRESHOLD;

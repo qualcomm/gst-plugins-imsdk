@@ -69,10 +69,9 @@ TFLPoseNet::~TFLPoseNet() {}
 
 int32_t TFLPoseNet::AllocateInternalBuffers() {
     int32_t ret = MLE_OK;
-  // TODO: use preprocessing_mode to determine buffer sizes // kKeepFOV
-  posix_memalign(reinterpret_cast<void**>(&input_params_.scale_buf), 128,
+  posix_memalign(reinterpret_cast<void**>(&buffers_.scale_buf), 128,
                                   ((scale_width_ * scale_height_ * 3) / 2));
-  posix_memalign(reinterpret_cast<void**>(&input_params_.rgb_buf), 128,
+  posix_memalign(reinterpret_cast<void**>(&buffers_.rgb_buf), 128,
                                   ((scale_width_ * scale_height_ * 3)));
   // Allocate buffers for dequantization
   posix_memalign(reinterpret_cast<void**>(&pRawHeatmaps), 128,
@@ -82,25 +81,25 @@ int32_t TFLPoseNet::AllocateInternalBuffers() {
   posix_memalign(reinterpret_cast<void**>(&pRawDisplacements), 128,
                                         kDisplacementSize * kOutBytesPerPixel);
 
-  if (nullptr == input_params_.scale_buf ||
-      nullptr == input_params_.rgb_buf ||
+  if (nullptr == buffers_.scale_buf ||
+      nullptr == buffers_.rgb_buf ||
       nullptr == pRawHeatmaps ||
       nullptr == pRawOffsets ||
       nullptr == pRawDisplacements) {
-    VAM_ML_LOGE("%s: Buffer allocation failed", __func__);
+    MLE_LOGE("%s: Buffer allocation failed", __func__);
     ret = MLE_FAIL;
   }
   return ret;
 }
 
 void TFLPoseNet::FreeInternalBuffers() {
-  if (nullptr != input_params_.scale_buf) {
-    free(input_params_.scale_buf);
-    input_params_.scale_buf = nullptr;
+  if (nullptr != buffers_.scale_buf) {
+    free(buffers_.scale_buf);
+    buffers_.scale_buf = nullptr;
   }
-  if (nullptr != input_params_.rgb_buf) {
-    free(input_params_.rgb_buf);
-    input_params_.rgb_buf = nullptr;
+  if (nullptr != buffers_.rgb_buf) {
+    free(buffers_.rgb_buf);
+    buffers_.rgb_buf = nullptr;
   }
   if (nullptr != pRawHeatmaps) {
     free(pRawHeatmaps);
@@ -116,8 +115,8 @@ void TFLPoseNet::FreeInternalBuffers() {
   }
 }
 
-int32_t TFLPoseNet::PostProcessOutput(GstBuffer* buffer) {
-  VAM_ML_LOGI("%s Enter", __func__);
+int32_t TFLPoseNet::PostProcess(GstBuffer* buffer) {
+  MLE_LOGI("%s Enter", __func__);
 
   PoseResult        instancePoseResults;
   Part              scoredParts[PoseMaxNumScoredParts];
@@ -125,9 +124,9 @@ int32_t TFLPoseNet::PostProcessOutput(GstBuffer* buffer) {
   ParentChildTurple parentChildTurples[TotalKeypointNum - 1];
 
   // Get outputs from model
-  uint8_t* pRawHeatmaps_temp      = engine_params_.interpreter->typed_output_tensor<uint8_t>(0);
-  uint8_t* pRawOffsets_temp       = engine_params_.interpreter->typed_output_tensor<uint8_t>(1);
-  uint8_t* pRawDisplacements_temp = engine_params_.interpreter->typed_output_tensor<uint8_t>(2);
+  uint8_t* pRawHeatmaps_temp      = tflite_params_.interpreter->typed_output_tensor<uint8_t>(0);
+  uint8_t* pRawOffsets_temp       = tflite_params_.interpreter->typed_output_tensor<uint8_t>(1);
+  uint8_t* pRawDisplacements_temp = tflite_params_.interpreter->typed_output_tensor<uint8_t>(2);
 
   // Dequantization of model outputs is needed,
   // because the postprocessing operates on float values
@@ -182,7 +181,7 @@ int32_t TFLPoseNet::PostProcessOutput(GstBuffer* buffer) {
 
   if ((NULL == pOffsets) || (NULL == pDisplacementsBwd) || (NULL == pDisplacementsFwd))
   {
-      VAM_ML_LOGE(" Error: Couldn't allocate buffer for PoseNet raw model short-range and mid-range offset outputs \n");
+      MLE_LOGE(" Error: Couldn't allocate buffer for PoseNet raw model short-range and mid-range offset outputs \n");
       exit(0);
   }
 
@@ -250,23 +249,23 @@ int32_t TFLPoseNet::PostProcessOutput(GstBuffer* buffer) {
   }
 
   if (buffer) {
-    scale_back_x_ = input_params_.width / scale_width_;
-    scale_back_y_ = input_params_.height / scale_height_;
+    scale_back_x_ = source_params_.width / scale_width_;
+    scale_back_y_ = source_params_.height / scale_height_;
     // Display final results for pose estimation
-    VAM_ML_LOGD("\nPose Estimation Results (coordinates: [y(row), x(col)]):\n\n");
+    MLE_LOGD("\nPose Estimation Results (coordinates: [y(row), x(col)]):\n\n");
     for (int i = 0; i < pose_count_; i++)
     {
-        VAM_ML_LOGD("Pose #%d,  score = %.4f\n", i, pose_results_[i].poseScore);
+        MLE_LOGD("Pose #%d,  score = %.4f\n", i, pose_results_[i].poseScore);
         GstMLPoseNetMeta *meta = gst_buffer_add_posenet_meta (buffer);
         if (!meta) {
-            VAM_ML_LOGD("%s: Failed to add metadata!", __func__);
+            MLE_LOGD("%s: Failed to add metadata!", __func__);
             return MLE_FAIL;
         }
         meta->score = pose_results_[i].poseScore;
 
         for (int j = 0; j < pose_pp_config_.numKeypoint; j++)
         {
-            VAM_ML_LOGD("Keypoint ID:%2d score = %.4f,  coords = [%.2f, %.2f] \n",
+            MLE_LOGD("Keypoint ID:%2d score = %.4f,  coords = [%.2f, %.2f] \n",
                 j,
                 pose_results_[i].keypointScore[j],
                 pose_results_[i].keypointCoord[j * 2],
@@ -285,7 +284,7 @@ int32_t TFLPoseNet::PostProcessOutput(GstBuffer* buffer) {
   free(pDisplacementsBwd);
   free(pDisplacementsFwd);
 
-  VAM_ML_LOGI("%s Exit", __func__);
+  MLE_LOGI("%s Exit", __func__);
   return MLE_OK;
 }
 
@@ -390,7 +389,7 @@ void TFLPoseNet::ListTopN(
 
         for (int i = 0; i < topNum; i++)
         {
-            VAM_ML_LOGD("Rank:%d, Score:%f, Class:%s, ClassIdx:%d \n",
+            MLE_LOGD("Rank:%d, Score:%f, Class:%s, ClassIdx:%d \n",
                    i,
                    pSorted[i].val,
                    labels[pSorted[i].index],
@@ -416,7 +415,7 @@ void TFLPoseNet::ListTopN(
     }
     else
     {
-        VAM_ML_LOGE("%s: Couldn't allocate memory!", __FUNCTION__);
+        MLE_LOGE("%s: Couldn't allocate memory!", __FUNCTION__);
     }
 }
 
@@ -437,7 +436,7 @@ void TFLPoseNet::CalculateLabel(
         {
             if (num[j] != 0)
             {
-                VAM_ML_LOGE("This image contain %d pixels of label \"%s\" \n", num[j], labels[j]);
+                MLE_LOGE("This image contain %d pixels of label \"%s\" \n", num[j], labels[j]);
             }
         }
 }
@@ -890,7 +889,7 @@ float TFLPoseNet::CalculatePoseInstanceScore(
         int* flagNMS = static_cast<int*>(malloc(poseCount * TotalKeypointNum * sizeof(int)));
         if (NULL == flagNMS)
         {
-            VAM_ML_LOGE(" Error: Couldn't allocate flagNMS buffer for PoseNet\n");
+            MLE_LOGE(" Error: Couldn't allocate flagNMS buffer for PoseNet\n");
             exit(0);
         }
 

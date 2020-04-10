@@ -34,9 +34,9 @@
 #endif
 
 #include "mle_tflite.h"
-#include "deeplearning_engine/tflite_base.h"
-#include "deeplearning_engine/tflite_segmentation.h"
-#include "deeplearning_engine/tflite_posenet.h"
+#include "mle_engine/tflite_base.h"
+#include "mle_engine/tflite_segmentation.h"
+#include "mle_engine/tflite_posenet.h"
 
 #define GST_CAT_DEFAULT mle_tflite_debug
 GST_DEBUG_CATEGORY_STATIC (mle_tflite_debug);
@@ -47,8 +47,10 @@ G_DEFINE_TYPE (GstMLETFLite, gst_mle_tflite, GST_TYPE_VIDEO_FILTER);
 #define GST_ML_VIDEO_FORMATS "{ NV12, NV21 }"
 
 #define DEFAULT_PROP_MLE_TFLITE_CONF_THRESHOLD 0.5
-#define DEFAULT_PROP_OUTPUT_TYPE 1 //kMulti
-#define DEFAULT_PROP_MLE_TFLITE_PREPROCESSING_TYPE 0
+#define DEFAULT_PROP_MLE_TFLITE_PREPROCESSING_TYPE 1 //kKeepARPad
+#define DEFAULT_PROP_TFLITE_INPUT_FORMAT 0 //RGB
+#define DEFAULT_PROP_MLE_MEAN_VALUE 0.0
+#define DEFAULT_PROP_MLE_SIGMA_VALUE 0.0
 #define DEFAULT_TFLITE_NUM_THREADS 2
 #define GST_MLE_UNUSED(var) ((void)var)
 
@@ -57,10 +59,13 @@ enum {
   PROP_MLE_PARSE_CONFIG,
   PROP_MLE_MODEL_FILENAME,
   PROP_MLE_LABELS_FILENAME,
-  PROP_MLE_OUTPUT_TYPE,
+  PROP_MLE_TFLITE_INPUT_FORMAT,
+  PROP_MLE_POSTPROCESSING,
+  PROP_MLE_MEAN_VALUES,
+  PROP_MLE_SIGMA_VALUES,
   PROP_MLE_PREPROCESSING_TYPE,
   PROP_MLE_CONF_THRESHOLD,
-  PROP_MLE_TFLITE_USE_NNAPI,
+  PROP_MLE_TFLITE_DELEGATE,
   PROP_MLE_TFLITE_NUM_THREADS,
 };
 
@@ -93,9 +98,27 @@ gst_mle_tflite_set_property(GObject *object, guint property_id,
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
       mle->config_location = g_strdup(g_value_get_string (value));
       break;
-    case PROP_MLE_OUTPUT_TYPE:
+    case PROP_MLE_POSTPROCESSING:
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
-      mle->output_type = g_value_get_uint (value);
+      mle->postprocessing = g_strdup(g_value_get_string (value));
+      break;
+    case PROP_MLE_MEAN_VALUES:
+      gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
+      mle->blue_mean =
+          g_value_get_double (gst_value_array_get_value (value, 0));
+      mle->green_mean =
+          g_value_get_double (gst_value_array_get_value (value, 1));
+      mle->red_mean =
+          g_value_get_double (gst_value_array_get_value (value, 2));
+      break;
+    case PROP_MLE_SIGMA_VALUES:
+      gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
+      mle->blue_sigma =
+          g_value_get_double (gst_value_array_get_value (value, 0));
+      mle->green_sigma =
+          g_value_get_double (gst_value_array_get_value (value, 1));
+      mle->red_sigma =
+          g_value_get_double (gst_value_array_get_value (value, 2));
       break;
     case PROP_MLE_PREPROCESSING_TYPE:
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
@@ -109,13 +132,17 @@ gst_mle_tflite_set_property(GObject *object, guint property_id,
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
       mle->labels_filename = g_strdup(g_value_get_string (value));
       break;
+    case PROP_MLE_TFLITE_INPUT_FORMAT:
+      gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
+      mle->input_format = g_value_get_uint (value);
+      break;
     case PROP_MLE_CONF_THRESHOLD:
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
       mle->conf_threshold = g_value_get_float (value);
       break;
-    case PROP_MLE_TFLITE_USE_NNAPI:
+    case PROP_MLE_TFLITE_DELEGATE:
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
-      mle->use_nnapi = g_value_get_uint (value);
+      mle->delegate = g_strdup(g_value_get_string (value));
       break;
     case PROP_MLE_TFLITE_NUM_THREADS:
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
@@ -139,23 +166,48 @@ gst_mle_tflite_get_property(GObject *object, guint property_id,
     case PROP_MLE_PARSE_CONFIG:
       g_value_set_string (value, mle->config_location);
       break;
-    case PROP_MLE_OUTPUT_TYPE:
-      g_value_set_uint (value, mle->output_type);
+    case PROP_MLE_POSTPROCESSING:
+      g_value_set_string (value, mle->postprocessing);
       break;
     case PROP_MLE_PREPROCESSING_TYPE:
       g_value_set_uint (value, mle->preprocessing_type);
       break;
+    case PROP_MLE_MEAN_VALUES: {
+      GValue val = G_VALUE_INIT;
+      g_value_init (&val, G_TYPE_DOUBLE);
+      g_value_set_double (&val, mle->blue_mean);
+      gst_value_array_append_value (value, &val);
+      g_value_set_double (&val, mle->green_mean);
+      gst_value_array_append_value (value, &val);
+      g_value_set_double (&val, mle->red_mean);
+      gst_value_array_append_value (value, &val);
+      break;
+    }
+    case PROP_MLE_SIGMA_VALUES: {
+      GValue val = G_VALUE_INIT;
+      g_value_init (&val, G_TYPE_DOUBLE);
+      g_value_set_double (&val, mle->blue_sigma);
+      gst_value_array_append_value (value, &val);
+      g_value_set_double (&val, mle->green_sigma);
+      gst_value_array_append_value (value, &val);
+      g_value_set_double (&val, mle->red_sigma);
+      gst_value_array_append_value (value, &val);
+      break;
+    }
     case PROP_MLE_MODEL_FILENAME:
       g_value_set_string (value, mle->model_filename);
       break;
     case PROP_MLE_LABELS_FILENAME:
       g_value_set_string (value, mle->labels_filename);
       break;
+    case PROP_MLE_TFLITE_INPUT_FORMAT:
+      g_value_set_uint (value, mle->input_format);
+      break;
     case PROP_MLE_CONF_THRESHOLD:
       g_value_set_float (value, mle->conf_threshold);
       break;
-    case PROP_MLE_TFLITE_USE_NNAPI:
-      g_value_set_uint (value, mle->use_nnapi);
+    case PROP_MLE_TFLITE_DELEGATE:
+      g_value_set_string (value, mle->delegate);
       break;
     case PROP_MLE_TFLITE_NUM_THREADS:
       g_value_set_uint (value, mle->num_threads);
@@ -181,6 +233,15 @@ gst_mle_tflite_finalize(GObject * object)
   }
   if (mle->labels_filename) {
     g_free(mle->labels_filename);
+  }
+  if (mle->postprocessing) {
+    g_free(mle->postprocessing);
+  }
+  if (mle->delegate) {
+    g_free(mle->delegate);
+  }
+  if (mle->config_location) {
+    g_free(mle->config_location);
   }
 
   G_OBJECT_CLASS(parent_class)->finalize(G_OBJECT(mle));
@@ -221,17 +282,55 @@ gst_mle_tflite_parse_config(gchar *config_location,
     Json::Reader reader;
     Json::Value val;
     if (reader.parse(in, val)) {
+      configuration.input_format =
+          (mle::InputFormat)val.get("InputFormat", 3).asInt();
+      configuration.blue_mean = val.get("BlueMean", 0).asFloat();
+      configuration.blue_sigma = val.get("BlueSigma", 0).asFloat();
+      configuration.green_mean = val.get("GreenMean", 0).asFloat();
+      configuration.green_sigma = val.get("GreenSigma", 0).asFloat();
+      configuration.red_mean = val.get("RedMean", 0).asFloat();
+      configuration.red_sigma = val.get("RedSigma", 0).asFloat();
+      configuration.use_norm = val.get("UseNorm", false).asBool();
+      configuration.preprocess_mode =
+          (mle::PreprocessingMode)val.get("PreProcessing", 1).asInt();
       configuration.conf_threshold = val.get("ConfThreshold", 0.0).asFloat();
       configuration.model_file = val.get("MODEL_FILENAME", "").asString();
       configuration.labels_file = val.get("LABELS_FILENAME", "").asString();
       configuration.number_of_threads = val.get("NUM_THREADS", 2).asInt();
-      configuration.use_nnapi = val.get("USE_NNAPI", 0).asInt();
+      configuration.delegate = val.get("DELEGATE", "").asString();
       rc = TRUE;
     }
     in.close();
 
   }
   return rc;
+}
+
+static void
+gst_mle_print_config(GstMLETFLite *mle,
+                     mle::MLConfig &configuration,
+                     gchar *postprocessing)
+{
+  GST_DEBUG_OBJECT(mle, "==== Configuration Begin ====");
+  GST_DEBUG_OBJECT(mle, "Model %s", configuration.model_file.c_str());
+  GST_DEBUG_OBJECT(mle, "Labels %s", configuration.labels_file.c_str());
+  GST_DEBUG_OBJECT(mle, "Pre-processing %d",
+                   (gint)configuration.preprocess_mode);
+  GST_DEBUG_OBJECT(mle, "Mean(B,G,R): %f, %f, %f", configuration.blue_mean,
+                                                   configuration.green_mean,
+                                                   configuration.red_mean);
+  GST_DEBUG_OBJECT(mle, "Sigma(B,G,R): %f, %f, %f", configuration.blue_sigma,
+                                                    configuration.green_sigma,
+                                                    configuration.red_sigma);
+  GST_DEBUG_OBJECT(mle, "Confidence threshold %f",
+                   configuration.conf_threshold);
+  GST_DEBUG_OBJECT(mle, "Input format %d", (gint)configuration.input_format);
+  GST_DEBUG_OBJECT(mle, "Delegate %s", configuration.delegate.c_str());
+  GST_DEBUG_OBJECT(mle, "Number of threads %d",
+                   configuration.number_of_threads);
+
+  GST_DEBUG_OBJECT(mle, "Post-processing %s", postprocessing);
+  GST_DEBUG_OBJECT(mle, "==== Configuration End ====");
 }
 
 static gboolean
@@ -244,11 +343,16 @@ gst_mle_create_engine(GstMLETFLite *mle) {
   mle::MLConfig configuration {};
 
   // Set default configuration values
+  configuration.blue_mean = configuration.green_mean = configuration.red_mean =
+      DEFAULT_PROP_MLE_MEAN_VALUE;
+  configuration.blue_sigma = configuration.green_sigma =
+      configuration.red_sigma = DEFAULT_PROP_MLE_SIGMA_VALUE;
   configuration.conf_threshold = mle->conf_threshold;
-  configuration.use_nnapi = mle->use_nnapi;
+  configuration.delegate = "default";
   configuration.number_of_threads = mle->num_threads;
   configuration.preprocess_mode =
       (mle::PreprocessingMode)mle->preprocessing_type;
+  configuration.input_format = (mle::InputFormat)mle->input_format;
 
   // Set configuration values from json config file
   if (mle->config_location) {
@@ -270,49 +374,68 @@ gst_mle_create_engine(GstMLETFLite *mle) {
   if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_CONF_THRESHOLD)) {
     configuration.conf_threshold = mle->conf_threshold;
   }
-  if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_OUTPUT_TYPE)) {
-    configuration.engine_output = mle::EngineOutput(mle->output_type);
+  if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_TFLITE_INPUT_FORMAT)) {
+    configuration.input_format = (mle::InputFormat)mle->input_format;
   }
-  if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_TFLITE_NUM_THREADS)) {
-    configuration.number_of_threads = mle->num_threads;
+  if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_MEAN_VALUES)) {
+    configuration.blue_mean = mle->blue_mean;
+    configuration.green_mean = mle->green_mean;
+    configuration.red_mean = mle->red_mean;
   }
-  if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_TFLITE_USE_NNAPI)) {
-    configuration.use_nnapi = mle->use_nnapi;
+  if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_SIGMA_VALUES)) {
+    configuration.blue_sigma = mle->blue_sigma;
+    configuration.green_sigma = mle->green_sigma;
+    configuration.red_sigma = mle->red_sigma;
+
+    //set normalization flag
+    configuration.use_norm = true;
   }
   if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_PREPROCESSING_TYPE)) {
     configuration.preprocess_mode =
         (mle::PreprocessingMode)mle->preprocessing_type;
   }
-  switch (configuration.engine_output) {
-    case mle::EngineOutput::kSingle:
-    case mle::EngineOutput::kMulti:  {
+  if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_TFLITE_NUM_THREADS)) {
+    configuration.number_of_threads = mle->num_threads;
+  }
+  if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_TFLITE_DELEGATE)) {
+    if ((!g_strcmp0(mle->delegate, "default")) ||
+        (!g_strcmp0(mle->delegate, "dsp"))) {
+      configuration.delegate = mle->delegate;
+    } else {
+      GST_ERROR_OBJECT (mle, "Unsupported TFLite delegate: %s", mle->delegate);
+      return FALSE;
+    }
+  }
+
+  gst_mle_print_config(mle, configuration, mle->postprocessing);
+
+  if (!g_strcmp0(mle->postprocessing, "classification")) {
+    mle->engine = new mle::TFLBase(configuration);
+    if (nullptr == mle->engine) {
+      GST_ERROR_OBJECT (mle, "Failed to create TFLite instance.");
+      rc = FALSE;
+    }
+  } else if (!g_strcmp0(mle->postprocessing, "detection")) {
       mle->engine = new mle::TFLBase(configuration);
       if (nullptr == mle->engine) {
         GST_ERROR_OBJECT (mle, "Failed to create TFLite instance.");
         rc = FALSE;
       }
-      break;
-    }
-    case mle::EngineOutput::kSegmentation: {
+  } else if (!g_strcmp0(mle->postprocessing, "segmentation")) {
       mle->engine = new mle::TFLSegmentation(configuration);
       if (nullptr == mle->engine) {
         GST_ERROR_OBJECT (mle, "Failed to create TFLite instance.");
         rc = FALSE;
       }
-      break;
-    }
-    case mle::EngineOutput::kPoseNet: {
+  } else if (!g_strcmp0(mle->postprocessing, "posenet")) {
       mle->engine = new mle::TFLPoseNet(configuration);
       if (nullptr == mle->engine) {
         GST_ERROR_OBJECT (mle, "Failed to create TFLite instance.");
         rc = FALSE;
       }
-      break;
-    }
-    default: {
-      GST_ERROR_OBJECT (mle, "Unknown TFLite output type.");
-      rc = FALSE;
-    }
+  } else {
+    GST_ERROR_OBJECT (mle, "Unsupported TFLite postprocessing.");
+    rc = FALSE;
   }
 
   return rc;
@@ -351,7 +474,6 @@ gst_mle_tflite_set_info(GstVideoFilter *filter, GstCaps *in,
   if (mle->engine && mle->is_init) {
     if ((gint)mle->source_info.width != GST_VIDEO_INFO_WIDTH(ininfo) ||
         (gint)mle->source_info.height != GST_VIDEO_INFO_HEIGHT(ininfo) ||
-        (gint)mle->source_info.stride != GST_VIDEO_INFO_PLANE_STRIDE(ininfo, 0) ||
         mle->source_info.format != gst_mle_get_video_format(video_format)) {
       mle->engine->Deinit();
       mle->engine = nullptr;
@@ -365,8 +487,6 @@ gst_mle_tflite_set_info(GstVideoFilter *filter, GstCaps *in,
 
   mle->source_info.width = GST_VIDEO_INFO_WIDTH(ininfo);
   mle->source_info.height = GST_VIDEO_INFO_HEIGHT(ininfo);
-  mle->source_info.stride = GST_VIDEO_INFO_PLANE_STRIDE(ininfo, 0);
-  mle->source_info.scanline = GST_VIDEO_INFO_HEIGHT(ininfo);
   mle->source_info.format = gst_mle_get_video_format(video_format);
   if (mle->source_info.format != mle::MLEImageFormat::mle_format_nv12 &&
       mle->source_info.format != mle::MLEImageFormat::mle_format_nv21) {
@@ -437,7 +557,7 @@ gst_mle_tflite_class_init (GstMLETFLiteClass * klass)
       g_param_spec_string(
           "model",
           "Model file",
-          "Model .tflite file",
+          "Path to model file. Eg.: /data/misc/camera/model.tflite",
           NULL,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));
@@ -448,31 +568,64 @@ gst_mle_tflite_class_init (GstMLETFLiteClass * klass)
       g_param_spec_string(
           "labels",
           "Labels filename",
-          ".txt labels file",
+          "Path to labels file. Eg.: /data/misc/camera/labels.txt",
           NULL,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));
 
   g_object_class_install_property(
       gobject,
-      PROP_MLE_OUTPUT_TYPE,
+      PROP_MLE_TFLITE_INPUT_FORMAT,
       g_param_spec_uint(
-          "output-type",
-          "Engine output",
-          "Model output type: Eg.: 0 - classification; 1 - SSD; 4 - Segmentation; 5 - PoseNet",
+          "input-format",
+          "SNPE input format",
+          "0 - RGB; 1 - BGR; 2 - RGBFloat; 3 - BGRFloat",
           0,
-          5,
-          DEFAULT_PROP_OUTPUT_TYPE,
+          3,
+          DEFAULT_PROP_TFLITE_INPUT_FORMAT,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));
 
   g_object_class_install_property(
       gobject,
+      PROP_MLE_POSTPROCESSING,
+      g_param_spec_string(
+          "postprocessing",
+          "Postprocessing",
+          "Supported Postprocessing: classification; detection; segmentation; posenet",
+          NULL,
+          static_cast<GParamFlags>(G_PARAM_READWRITE |
+                                   G_PARAM_STATIC_STRINGS)));
+
+  g_object_class_install_property (gobject, PROP_MLE_MEAN_VALUES,
+      gst_param_spec_array ("mean", "Mean Subtraction",
+          "Channel Mean Subtraction values ('<B, G, R>')",
+          g_param_spec_double ("value", "Mean Value",
+              "One of B, G or R value.", 0, 255,
+            DEFAULT_PROP_MLE_MEAN_VALUE,
+            static_cast<GParamFlags>(G_PARAM_READWRITE |
+                                     G_PARAM_STATIC_STRINGS)),
+            static_cast<GParamFlags>(G_PARAM_READWRITE |
+                                     G_PARAM_STATIC_STRINGS)));
+
+  g_object_class_install_property (gobject, PROP_MLE_SIGMA_VALUES,
+      gst_param_spec_array ("sigma", "Sigma values",
+          "Channel divisor values ('<B, G, R>')",
+          g_param_spec_double ("value", "Sigma Value",
+              "One of B, G or R divisors value.", 0, 255,
+            DEFAULT_PROP_MLE_SIGMA_VALUE,
+            static_cast<GParamFlags>(G_PARAM_READWRITE |
+                                     G_PARAM_STATIC_STRINGS)),
+            static_cast<GParamFlags>(G_PARAM_READWRITE |
+                                     G_PARAM_STATIC_STRINGS)));
+
+  g_object_class_install_property(
+      gobject,
       PROP_MLE_PREPROCESSING_TYPE,
       g_param_spec_uint(
-          "maintain-ar",
-          "Maintain AR",
-          "Pre-processing AR maintenance",
+          "preprocess-type",
+          "Preprocess type",
+          "Possible values: 0-kKeepARCrop, 1-kKeepARPad, 2-kDirectDownscale",
           0,
           2,
           DEFAULT_PROP_MLE_TFLITE_PREPROCESSING_TYPE,
@@ -483,8 +636,8 @@ gst_mle_tflite_class_init (GstMLETFLiteClass * klass)
       gobject,
       PROP_MLE_CONF_THRESHOLD,
       g_param_spec_float(
-          "conf-threshold",
-          "ConfThreshold",
+          "confidence-threshold",
+          "Confidence Threshold",
           "Confidence Threshold value",
           0.0,
           1.0,
@@ -494,14 +647,13 @@ gst_mle_tflite_class_init (GstMLETFLiteClass * klass)
 
   g_object_class_install_property(
       gobject,
-      PROP_MLE_TFLITE_USE_NNAPI,
-      g_param_spec_uint(
-          "use-nnapi",
-          "TFLite NN API",
-          "USE NN API",
-          0,
-          1,
-          0,
+      PROP_MLE_TFLITE_DELEGATE,
+      g_param_spec_string(
+          "delegate",
+          "TFLite delegate",
+          "Supported TFLite delegates: default - use CPU; "
+          "dsp - use DSP",
+          NULL,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));
 
@@ -538,11 +690,14 @@ gst_mle_tflite_init (GstMLETFLite * mle)
   mle->engine = nullptr;
   mle->config_location = nullptr;
   mle->is_init = FALSE;
-  mle->output_type = DEFAULT_PROP_OUTPUT_TYPE;
+  mle->input_format = DEFAULT_PROP_TFLITE_INPUT_FORMAT;
+  mle->blue_mean = mle->green_mean = mle->red_mean =
+      DEFAULT_PROP_MLE_MEAN_VALUE;
+  mle->blue_sigma = mle->green_sigma = mle->red_sigma =
+      DEFAULT_PROP_MLE_SIGMA_VALUE;
   mle->preprocessing_type = DEFAULT_PROP_MLE_TFLITE_PREPROCESSING_TYPE;
   mle->conf_threshold = DEFAULT_PROP_MLE_TFLITE_CONF_THRESHOLD;
   mle->num_threads = DEFAULT_TFLITE_NUM_THREADS;
-  mle->use_nnapi = 0;
 
   GST_DEBUG_CATEGORY_INIT (mle_tflite_debug, "mletflite", 0,
       "QTI Machine Learning Engine");

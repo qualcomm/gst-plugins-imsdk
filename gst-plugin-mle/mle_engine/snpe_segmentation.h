@@ -33,13 +33,11 @@
 
 namespace mle {
 
-class SNPEComplex : public SNPEBase {
+class SNPESegmentation : public SNPEBase {
  public:
-  SNPEComplex(MLConfig &config);
-  ~SNPEComplex();
-  int32_t Process(struct SourceFrame* frame_info,
-                  GstBuffer* buffer);
-  int32_t EnginePostProcess(GstBuffer* buffer);
+  SNPESegmentation(MLConfig &config);
+  ~SNPESegmentation();
+  int32_t PostProcess(GstBuffer* buffer);
 };
 
 }; // namespace mle

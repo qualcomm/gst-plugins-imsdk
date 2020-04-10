@@ -37,12 +37,8 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-terminate")
 
-add_subdirectory(deeplearning_engine)
-
-if (TFLITE_ENABLE)
-add_subdirectory(mle_tflite)
-endif()
-
+add_subdirectory(mle_engine)
+add_subdirectory(mle_gst_tflite)
 if (SNPE_ENABLE)
-add_subdirectory(mle_snpe)
+add_subdirectory(mle_gst_snpe)
 endif()

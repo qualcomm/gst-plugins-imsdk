@@ -36,7 +36,7 @@ namespace mle {
 SNPEComplex::SNPEComplex(MLConfig &config) : SNPEBase(config) {}
 SNPEComplex::~SNPEComplex() {}
 
-int32_t SNPEComplex::EnginePostProcess(GstBuffer* buffer) {
+int32_t SNPEComplex::PostProcess(GstBuffer* buffer) {
   std::vector<float> score_buf;
   std::vector<float> box_buf;
   std::vector<float> class_buf;
@@ -55,25 +55,29 @@ int32_t SNPEComplex::EnginePostProcess(GstBuffer* buffer) {
       [&](const char* name)
       {
         if (config_.io_type == NetworkIO::kUserBuffer) {
-          if (0 == std::strcmp(name, config_.result_layers[0].c_str())) {
+          if (0 == std::strcmp(name, snpe_params_.result_layers[2].c_str())) {
             score_buf = snpe_params_.out_heap_map.at(name);
-          } else if (0 == std::strcmp(name, config_.result_layers[1].c_str())) {
+          } else if (0 == std::strcmp(
+                          name, snpe_params_.result_layers[0].c_str())) {
             box_buf = snpe_params_.out_heap_map.at(name);
-          } else if (0 == std::strcmp(name, config_.result_layers[2].c_str())) {
+          } else if (0 == std::strcmp(
+                          name, snpe_params_.result_layers[3].c_str())) {
             class_buf = snpe_params_.out_heap_map.at(name);
           }
         } else if (config_.io_type == NetworkIO::kITensor) {
-          if (0 == std::strcmp(name, config_.result_layers[0].c_str())) {
+          if (0 == std::strcmp(name, snpe_params_.result_layers[0].c_str())) {
             auto t = snpe_params_.output_tensor_map.getTensor(name);
             for (auto it = t->begin(); it != t->end(); it++) {
               score_buf.push_back(*it);
             }
-          } else if (0 == std::strcmp(name, config_.result_layers[1].c_str())) {
+          } else if (0 == std::strcmp(
+                          name, snpe_params_.result_layers[1].c_str())) {
             auto t = snpe_params_.output_tensor_map.getTensor(name);
             for (auto it = t->begin(); it != t->end(); it++) {
               box_buf.push_back(*it);
             }
-          } else if (0 == std::strcmp(name, config_.result_layers[2].c_str())) {
+          } else if (0 == std::strcmp(
+                          name, snpe_params_.result_layers[2].c_str())) {
             auto t = snpe_params_.output_tensor_map.getTensor(name);
             for (auto it = t->begin(); it != t->end(); it++) {
               class_buf.push_back(*it);
@@ -82,10 +86,10 @@ int32_t SNPEComplex::EnginePostProcess(GstBuffer* buffer) {
         }
       });
 
-  uint32_t width = init_params_.width;
-  uint32_t height = init_params_.height;
+  uint32_t width = source_params_.width;
+  uint32_t height = source_params_.height;
 
-  if (config_.preprocess_mode == PreprocessingMode::kKeepAR) {
+  if (config_.preprocess_mode == PreprocessingMode::kKeepARCrop) {
     width = po_.width;
     height = po_.height;
   }
@@ -93,12 +97,12 @@ int32_t SNPEComplex::EnginePostProcess(GstBuffer* buffer) {
   if (score_buf.size() && box_buf.size() && class_buf.size()) {
     uint32_t num_obj = 0;
     for (size_t i = 0; i < score_buf.size(); i++) {
-      if (score_buf[i] < init_params_.conf_threshold) {
+      if (score_buf[i] < config_.conf_threshold) {
         continue;
       }
       GstMLDetectionMeta *meta = gst_buffer_add_detection_meta(buffer);
       if (!meta) {
-        VAM_ML_LOGE("Failed to create metadata");
+        MLE_LOGE("Failed to create metadata");
         return MLE_NULLPTR;
       }
 
@@ -117,48 +121,26 @@ int32_t SNPEComplex::EnginePostProcess(GstBuffer* buffer) {
           po_.x_offset;
       meta->bounding_box.y = std::lround(box_buf[i * 4] * height) +
           po_.y_offset;
-      meta->bounding_box.width = (std::lround(box_buf[i * 4 + 3] * width) + po_.x_offset) -
-                                             meta->bounding_box.x;
-      meta->bounding_box.height = (std::lround(box_buf[i * 4 + 2] * height) + po_.y_offset) -
-                                              meta->bounding_box.y;
-
-      if (config_.preprocess_mode == PreprocessingMode::kKeepFOV) {
-        VAM_ML_LOGI("KeepFOV mode is not supported");
-      }
+      meta->bounding_box.width =
+            (std::lround(box_buf[i * 4 + 3] * width) + po_.x_offset) -
+                                                        meta->bounding_box.x;
+      meta->bounding_box.height =
+            (std::lround(box_buf[i * 4 + 2] * height) + po_.y_offset) -
+                                                        meta->bounding_box.y;
 
     num_obj++;
 
-    VAM_ML_LOGD("object info: name: %s , score %f, box x %d y %d w %d h %d",
-                box_info->name, box_info->confidence, meta->bounding_box.x, meta->bounding_box.y,
-                meta->bounding_box.width, meta->bounding_box.height);
+    MLE_LOGD("object info: name: %s , score %f, box x %d y %d w %d h %d",
+                box_info->name, box_info->confidence,
+                meta->bounding_box.x,
+                meta->bounding_box.y,
+                meta->bounding_box.width,
+                meta->bounding_box.height);
     }
-    VAM_ML_LOGI("Inference engine detected %d objects, highest score: %f",
+    MLE_LOGI("Inference engine detected %d objects, highest score: %f",
                   num_obj, score_buf[0]);
   }
   return MLE_OK;
-}
-
-int32_t SNPEComplex::Process(struct SourceFrame* frame_info,
-                             GstBuffer* buffer) {
-  int32_t result = MLE_OK;
-
-  result = PreProcessBuffer(frame_info);
-  if (MLE_OK != result) {
-    VAM_ML_LOGE("PreProcessBuffer failed");
-    return result;
-  }
-
-  result = ExecuteSNPE();
-  if (MLE_OK != result) {
-    VAM_ML_LOGE("SNPE execution failed");
-    return result;
-  }
-
-  result = EnginePostProcess(buffer);
-  if (MLE_OK != result) {
-    VAM_ML_LOGE("EnginePostProcess failed");
-  }
-  return result;
 }
 
 }; // namespace mle

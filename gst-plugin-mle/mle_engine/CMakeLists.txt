@@ -3,6 +3,7 @@ set(GST_MLE_LIBRARY Engine_MLE)
 list(APPEND SOURCE_FILES "tflite_base.cc")
 list(APPEND SOURCE_FILES "tflite_segmentation.cc")
 list(APPEND SOURCE_FILES "tflite_posenet.cc")
+list(APPEND SOURCE_FILES "ml_engine_impl.cc")
 
 if (SNPE_ENABLE)
   add_definitions(-DSNPE_ENABLE)

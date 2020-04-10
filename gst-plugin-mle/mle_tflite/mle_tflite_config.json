@@ -1,6 +1,0 @@
-{
-    "MODEL_FILENAME":"detect.tflite",
-    "LABELS_FILENAME":"labelmap.txt",
-    "USE_NNAPI":0,
-    "NUM_THREADS":2
-}

@@ -31,6 +31,7 @@
 
 #include <vector>
 #include <string>
+#include <time.h>
 #include <ml-meta/ml_meta.h>
 #include "common_utils.h"
 
@@ -65,11 +66,6 @@ enum MLEErrors {
   MLE_IMG_FORMAT_NOT_SUPPORTED
 };
 
-enum class FrameworkType {
-  kSNPE = 0,
-  kTFLite
-};
-
 enum class RuntimeType {
   CPU = 0,
   DSP,
@@ -82,28 +78,24 @@ enum class InputFormat {
   kBgrFloat
 };
 
-enum class BufferType {
-  kOutput = 0,
-  kInput
-};
-
 enum class NetworkIO {
   kUserBuffer = 0,
   kITensor
 };
 
-enum class EngineOutput {
-  kSingle = 0,
-  kMulti,
-  kSqueezenet,
-  kSingleSSD,
-  kSegmentation,
-  kPoseNet
-};
+/*
+MLE supports three pre-processing modes
+  kKeepARCrop - This mode crops from the original frame to match engine's input
+            aspect ratio. Objects outside the crop region will not be detected
+  kKeepARPad - This mode keeps original frame aspect ratio. In order to match
+             engine's input requirements, padding with mean value is added
+  kDirectDownscale - This mode doesn't keep the aspect ratio of the original
+                      frame and shrinks it
+*/
 
 enum class PreprocessingMode {
-  kKeepAR = 0,
-  kKeepFOV,
+  kKeepARCrop = 0,
+  kKeepARPad,
   kDirectDownscale,
   kMax
 };
@@ -119,11 +111,14 @@ struct PreprocessingOffsets {
   uint32_t height;
 };
 
+struct PreprocessingBuffers {
+  uint8_t* scale_buf;
+  uint8_t* rgb_buf;
+};
+
 struct MLEInputParams {
   uint32_t width;
   uint32_t height;
-  uint32_t stride;
-  uint32_t scanline;
   MLEImageFormat format;
 };
 
@@ -134,7 +129,6 @@ struct SourceFrame {
 struct MLConfig {
 
   //applicable to SNPE
-  EngineOutput engine_output;
   NetworkIO io_type;
 
   //Input image format for the desired network
@@ -150,7 +144,7 @@ struct MLConfig {
   float green_sigma;
   float red_mean;
   float red_sigma;
-  uint32_t use_norm;
+  bool use_norm;
   // end normalization
 
   float conf_threshold;
@@ -162,56 +156,113 @@ struct MLConfig {
 
   //tflite specific
   uint32_t number_of_threads;
-  uint32_t use_nnapi;
+  std::string delegate;
 
   //snpe layers
-  std::string input_layer;
   std::vector<std::string> output_layers;
-  std::vector<std::string> result_layers;
 };
 
 class MLEngine {
  public:
-  MLEngine(){};
+  MLEngine(MLConfig &config);
   virtual ~MLEngine(){};
-  virtual int32_t Init(const MLEInputParams* source_info) = 0;
-  virtual void Deinit() = 0;
-  virtual int32_t Process(struct SourceFrame* frame_info,
-                          GstBuffer* buffer) = 0;
+  int32_t Init(const MLEInputParams* source_info);
+  virtual void Deinit();
+  int32_t PreProcess(const struct SourceFrame* frame_info);
+  int32_t Process(struct SourceFrame* frame_info,
+                          GstBuffer* buffer);
+ private:
+  virtual int32_t LoadModel(std::string& model_path) = 0;
+  virtual int32_t InitFramework() = 0;
+  virtual int32_t ExecuteModel() = 0;
+  virtual void* GetInputBuffer() = 0;
+  virtual int32_t PostProcess(GstBuffer* buffer) = 0;
+  int32_t ReadLabelsFile(const std::string& file_name,
+                        std::vector<std::string>& result,
+                        size_t& found_label_count);
+  virtual int32_t AllocateInternalBuffers();
+  virtual void FreeInternalBuffers();
  protected:
+
   void DumpFrame(const uint8_t* buffer, const uint32_t& width,
-      const uint32_t& height, const uint32_t& size, const std::string& suffix) {
+      const uint32_t& height, const uint32_t& size, const std::string& suffix);
 
-    std::string file_path("/data/misc/camera/ml_engine_");
-    size_t written_len = 0;
-    file_path += std::to_string(width);
-    file_path += "x";
-    file_path += std::to_string(height);
-    file_path += suffix;
-    FILE *file = fopen(file_path.c_str(), "w+");
-    if (!file) {
-      VAM_ML_LOGE("%s: Unable to open file(%s)", __func__,
-          file_path.c_str());
-      goto FAIL;
-    }
-    written_len = fwrite(buffer, sizeof(uint8_t), size, file);
-    VAM_ML_LOGD("%s: written_len: %d", __func__, written_len);
-    if (size != written_len) {
-      VAM_ML_LOGE("%s: Bad Write error (%d):(%s)", __func__, errno,
-          strerror(errno));
-      goto FAIL;
-    }
-    VAM_ML_LOGD("%s: Buffer Size:%u Stored:%s", __func__, written_len,
-      file_path.c_str());
+  void Pad(
+      uint8_t*       input_buf,
+      const uint32_t input_width,
+      const uint32_t input_height,
+      const uint32_t pad_width,
+      const uint32_t pad_height,
+      uint8_t*       output_buf);
 
-  FAIL:
-    if (file != nullptr) {
-      fclose(file);
-    }
-  }
+  void PreProcessColorConvertRGB(
+      uint8_t*       pSrcLuma,
+      uint8_t*       pSrcChroma,
+      uint8_t*       pDst,
+      const uint32_t width,
+      const uint32_t height,
+      MLEImageFormat format);
+
+  void PreProcessColorConvertBGR(
+      uint8_t*       pSrc,
+      uint8_t*       pDst,
+      const uint32_t width,
+      const uint32_t height);
+
+  void PreProcessScale(
+      uint8_t*       pSrcLuma,
+      uint8_t*       pSrcChroma,
+      uint8_t*       pDst,
+      const uint32_t srcWidth,
+      const uint32_t srcHeight,
+      const uint32_t scaleWidth,
+      const uint32_t scaleHeight,
+      MLEImageFormat format);
+
+  void MeanSubtract(uint8_t* input_buf, const uint32_t width,
+                    const uint32_t height, float* processed_buf);
 
   MLConfig config_;
+  MLEInputParams source_params_;
+  //params for engine's input requirements
+  MLEInputParams engine_input_params_;
+  PreprocessingBuffers buffers_;
   PreprocessingOffsets po_;
+  uint32_t scale_width_;
+  uint32_t scale_height_;
+  bool do_rescale_;
+  bool need_labels_;
+  std::vector<std::string> labels_;
+  size_t label_count_;
+
+};
+
+class Timer {
+  std::string str;
+  uint64_t begin;
+
+public:
+
+  Timer (std::string s) : str(s) {
+    begin = GetMicroSeconds();
+  }
+
+  ~Timer () {
+    uint64_t end = GetMicroSeconds();
+    MLE_LOGD("%s: %llu us", str.c_str(), end - begin);
+  }
+
+  uint64_t GetMicroSeconds()
+{
+  timespec time;
+
+  clock_gettime(CLOCK_MONOTONIC, &time);
+
+  uint64_t microSeconds = (static_cast<uint32_t>(time.tv_sec) * 1000000ULL) +
+                          (static_cast<uint32_t>(time.tv_nsec)) / 1000;
+
+  return microSeconds;
+}
 };
 
 }; // namespace mle

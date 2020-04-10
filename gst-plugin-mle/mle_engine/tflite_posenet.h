@@ -104,7 +104,7 @@ public:
 private:
   int32_t AllocateInternalBuffers();
   void FreeInternalBuffers();
-  int32_t PostProcessOutput(GstBuffer* buffer);
+  int32_t PostProcess(GstBuffer* buffer);
 
     static int ScoreSort(
       const void* pVal1,

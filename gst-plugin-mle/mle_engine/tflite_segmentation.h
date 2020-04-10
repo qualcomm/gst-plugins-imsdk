@@ -29,17 +29,15 @@
 
 #pragma once
 
-#include "snpe_base.h"
+#include "tflite_base.h"
 
 namespace mle {
 
-class SNPESegmentation : public SNPEBase {
+class TFLSegmentation : public TFLBase {
  public:
-  SNPESegmentation(MLConfig &config);
-  ~SNPESegmentation();
-  int32_t Process(struct SourceFrame* frame_info,
-                  GstBuffer* buffer);
-  int32_t EnginePostProcess(GstBuffer* buffer);
+  TFLSegmentation(MLConfig &config);
+  ~TFLSegmentation();
+  int32_t PostProcess(GstBuffer* buffer);
 };
 
 }; // namespace mle

@@ -38,8 +38,8 @@ SNPESingleSSD::SNPESingleSSD(MLConfig &config) : SNPEBase(config),
                                                  output_params_(nullptr) {}
 SNPESingleSSD::~SNPESingleSSD() {}
 
-int32_t SNPESingleSSD::EnginePostProcess(GstBuffer* buffer) {
-  VAM_ML_LOGI("%s: Enter", __func__);
+int32_t SNPESingleSSD::PostProcess(GstBuffer* buffer) {
+  MLE_LOGI("%s: Enter", __func__);
 
   std::vector<float> result_buf;
   const zdl::DlSystem::StringList &output_buf_names =
@@ -53,7 +53,7 @@ int32_t SNPESingleSSD::EnginePostProcess(GstBuffer* buffer) {
       {
     // Currently, singleSSD supports only UserBuffers
         if (config_.io_type == NetworkIO::kUserBuffer) {
-          if (0 == std::strcmp(name, config_.result_layers[0].c_str())) {
+          if (0 == std::strcmp(name, snpe_params_.result_layers[0].c_str())) {
             result_buf = snpe_params_.out_heap_map.at(name);
           }
         }
@@ -62,16 +62,16 @@ int32_t SNPESingleSSD::EnginePostProcess(GstBuffer* buffer) {
   if (result_buf.size()) {
     output_params_ = reinterpret_cast<OutputParams*>(result_buf.data());
 
-    uint32_t width = init_params_.width;
-    uint32_t height = init_params_.height;
+    uint32_t width = source_params_.width;
+    uint32_t height = source_params_.height;
 
-    if (config_.preprocess_mode == PreprocessingMode::kKeepAR) {
+    if (config_.preprocess_mode == PreprocessingMode::kKeepARCrop) {
       width = po_.width;
       height = po_.height;
     }
 
     for (size_t i = 0; i < kMaxNumObjects; i++) {
-      if (output_params_[i].score < init_params_.conf_threshold) {
+      if (output_params_[i].score < config_.conf_threshold) {
         continue;
       }
       if ((output_params_[i].boxes.x_min < 0) ||
@@ -83,7 +83,7 @@ int32_t SNPESingleSSD::EnginePostProcess(GstBuffer* buffer) {
 
       GstMLDetectionMeta *meta = gst_buffer_add_detection_meta(buffer);
       if (!meta) {
-        VAM_ML_LOGE("Failed to create metadata");
+        MLE_LOGE("Failed to create metadata");
         return MLE_NULLPTR;
       }
 
@@ -102,42 +102,21 @@ int32_t SNPESingleSSD::EnginePostProcess(GstBuffer* buffer) {
       box_info->confidence = output_params_[i].score;
       meta->box_info = g_slist_append (meta->box_info, box_info);
 
-      meta->bounding_box.x = std::lround(output_params_[i].boxes.x_min * width) +
-          po_.x_offset;
-      meta->bounding_box.y = std::lround(output_params_[i].boxes.y_min * height) +
-          po_.y_offset;
-      meta->bounding_box.width = (std::lround(output_params_[i].boxes.x_max * width) +
-          po_.x_offset) - meta->bounding_box.x;
-      meta->bounding_box.height = (std::lround(output_params_[i].boxes.y_max * width) +
-          po_.x_offset) - meta->bounding_box.y;
+      meta->bounding_box.x =
+          std::lround(output_params_[i].boxes.x_min * width) + po_.x_offset;
+      meta->bounding_box.y =
+          std::lround(output_params_[i].boxes.y_min * height) + po_.y_offset;
+      meta->bounding_box.width =
+          (std::lround(output_params_[i].boxes.x_max * width) + po_.x_offset) -
+              meta->bounding_box.x;
+      meta->bounding_box.height =
+          (std::lround(output_params_[i].boxes.y_max * width) + po_.x_offset) -
+              meta->bounding_box.y;
     }
   }
 
-  VAM_ML_LOGI("%s: Exit", __func__);
+  MLE_LOGI("%s: Exit", __func__);
   return MLE_OK;
-}
-
-int32_t SNPESingleSSD::Process(struct SourceFrame* frame_info, GstBuffer* buffer) {
-  int32_t result = MLE_OK;
-
-  result = PreProcessBuffer(frame_info);
-  if (MLE_OK != result) {
-    VAM_ML_LOGE("PreProcessBuffer failed");
-    return result;
-  }
-
-  result = ExecuteSNPE();
-  if (MLE_OK != result) {
-    VAM_ML_LOGE("SNPE execution failed");
-    return result;
-  }
-
-  result = EnginePostProcess(buffer);
-  if (MLE_OK != result) {
-    VAM_ML_LOGE("EnginePostProcess failed");
-  }
-
-  return result;
 }
 
 size_t SNPESingleSSD::CalculateSizeFromDims(const size_t rank,

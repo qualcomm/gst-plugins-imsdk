@@ -62,14 +62,9 @@
 
 namespace mle {
 
-struct InitParams {
-  uint32_t width;
-  uint32_t height;
-  uint32_t stride;
-  uint32_t scanline;
-  MLEImageFormat format;
-  float conf_threshold;
-  uint8_t* bgr_buf;
+enum class BufferType {
+  kOutput = 0,
+  kInput
 };
 
 struct SNPEParams {
@@ -86,69 +81,30 @@ struct SNPEParams {
 
   std::unordered_map<std::string, std::vector<float>> in_heap_map;
   std::unordered_map<std::string, std::vector<float>> out_heap_map;
+
+  std::string input_layer;
+  std::vector<std::string> result_layers;
 };
 
 class SNPEBase : public MLEngine {
  public:
   SNPEBase(MLConfig &config);
   virtual ~SNPEBase(){};
-  int32_t Init(const struct MLEInputParams* source_info);
-  void Deinit();
-  virtual int32_t Process(struct SourceFrame* frame_info, GstBuffer* buffer);
 
  protected:
-  int32_t PreProcessBuffer(const struct SourceFrame* frame_info);
-  void Pad(
-      uint8_t*       input_buf,
-      const uint32_t input_width,
-      const uint32_t input_height,
-      const uint32_t pad_width,
-      const uint32_t pad_height,
-      uint8_t*       output_buf);
-
-  void PreProcessColorConvertRGB(
-      uint8_t*       pSrcLuma,
-      uint8_t*       pSrcChroma,
-      uint8_t*       pDst,
-      const uint32_t width,
-      const uint32_t height,
-      MLEImageFormat    format);
-
-  void PreProcessColorConvertBGR(
-      uint8_t*       pSrc,
-      uint8_t*       pDst,
-      const uint32_t width,
-      const uint32_t height);
-
-  void PreProcessScale(
-      uint8_t*       pSrcLuma,
-      uint8_t*       pSrcChroma,
-      uint8_t*       pDst,
-      const uint32_t srcWidth,
-      const uint32_t srcHeight,
-      const uint32_t scaleWidth,
-      const uint32_t scaleHeight,
-      MLEImageFormat    format);
-
   void PrintErrorStringAndExit();
-
-  int32_t ExecuteSNPE();
-  virtual int32_t EnginePostProcess(GstBuffer* buffer);
-
-  std::vector<std::string> labels_;
-
-  uint32_t pad_width_;  //model's input
-  uint32_t pad_height_; //model's input
-  uint32_t scale_width_;
-  uint32_t scale_height_;
-  InitParams init_params_;
+  virtual int32_t PostProcess(GstBuffer* buffer);
   SNPEParams snpe_params_;
   zdl::DlSystem::Runtime_t runtime_;
   zdl::DlSystem::Version_t version_;
 
  private:
+  int32_t LoadModel(std::string& model_path);
   int32_t ConfigureRuntime(MLConfig &config);
   int32_t ConfigureDimensions();
+  int32_t InitFramework();
+  int32_t ExecuteModel();
+  void* GetInputBuffer();
   std::unique_ptr<zdl::DlContainer::IDlContainer> LoadContainerFromFile(
       std::string container_path);
   std::unique_ptr<zdl::SNPE::SNPE> SetBuilderOptions();
@@ -161,12 +117,6 @@ class SNPEBase : public MLEngine {
   int32_t PopulateMap(BufferType type);
   int32_t CreateUserBuffer(BufferType type, const char* name);
   int32_t CreateTensor(BufferType type, const char* name);
-  int32_t InitSNPE();
-
-  void MeanSubtract(uint8_t* input_buf, const uint32_t width,
-                    const uint32_t height, float* processed_buf);
-  uint8_t* scale_buffer_;
-  uint8_t* pad_buffer_;
 };
 
 }; // namespace mle

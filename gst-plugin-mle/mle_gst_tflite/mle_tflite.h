@@ -27,34 +27,34 @@
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __GST_MLE_SNPE_H__
-#define __GST_MLE_SNPE_H__
+#ifndef __GST_MLE_TFLITE_H__
+#define __GST_MLE_TFLITE_H__
 
 #include <gst/gst.h>
 #include <gst/video/video.h>
 #include <gst/video/gstvideofilter.h>
 #include <gst/allocators/allocators.h>
 #include <ml-meta/ml_meta.h>
-#include "deeplearning_engine/ml_engine_intf.h"
+#include "mle_engine/ml_engine_intf.h"
 
 G_BEGIN_DECLS
 
-#define GST_TYPE_MLE_SNPE \
-  (gst_mle_snpe_get_type())
-#define GST_MLE_SNPE(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_MLE_SNPE,GstMLESNPE))
-#define GST_MLE_SNPE_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_MLE_SNPE,GstMLESNPEClass))
-#define GST_IS_MLE_SNPE(obj) \
-  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_MLE_SNPE))
-#define GST_IS_MLE_SNPE_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_MLE_SNPE))
-#define GST_MLE_SNPE_CAST(obj)       ((GstMLESNPE *)(obj))
+#define GST_TYPE_MLE_TFLITE \
+  (gst_mle_tflite_get_type())
+#define GST_MLE_TFLITE(obj) \
+  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_MLE_TFLITE,GstMLETFLite))
+#define GST_MLE_TFLITE_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_MLE_TFLITE,GstMLETFLiteClass))
+#define GST_IS_MLE_TFLITE(obj) \
+  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_MLE_TFLITE))
+#define GST_IS_MLE_TFLITE_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_MLE_TFLITE))
+#define GST_MLE_TFLITE_CAST(obj)       ((GstMLETFLite *)(obj))
 
-typedef struct _GstMLESNPE      GstMLESNPE;
-typedef struct _GstMLESNPEClass GstMLESNPEClass;
+typedef struct _GstMLETFLite      GstMLETFLite;
+typedef struct _GstMLETFLiteClass GstMLETFLiteClass;
 
-struct _GstMLESNPE {
+struct _GstMLETFLite {
   GstVideoFilter      parent;
 
   mle::MLEInputParams source_info;
@@ -66,29 +66,26 @@ struct _GstMLESNPE {
   gchar *config_location;
   gchar *model_filename;
   gchar *labels_filename;
+  gchar *postprocessing;
+  gchar *delegate;
+  guint preprocessing_type;
   guint input_format;
-  guint output;
-  guint io_type;
   gfloat blue_mean;
   gfloat green_mean;
   gfloat red_mean;
   gfloat blue_sigma;
   gfloat green_sigma;
   gfloat red_sigma;
-  guint use_norm;
-  guint runtime;
-  gchar *output_layers;
-  gchar *result_layers;
-  guint preprocessing_type;
   gfloat conf_threshold;
+  guint num_threads;
 };
 
-struct _GstMLESNPEClass {
+struct _GstMLETFLiteClass {
   GstVideoFilterClass parent;
 };
 
-G_GNUC_INTERNAL GType gst_mle_snpe_get_type(void);
+G_GNUC_INTERNAL GType gst_mle_tflite_get_type(void);
 
 G_END_DECLS
 
-#endif // __GST_MLE_SNPE_H__
+#endif // __GST_MLE_TFLITE_H__
