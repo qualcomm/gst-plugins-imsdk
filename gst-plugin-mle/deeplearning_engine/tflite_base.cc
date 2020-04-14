@@ -78,6 +78,7 @@ TFLBase::TFLBase(MLConfig &config) {
 TfLiteDelegatePtrMap TFLBase::GetDelegates() {
   TfLiteDelegatePtrMap delegates;
 
+#ifdef DELEGATE_SUPPORT
   if (config_.use_nnapi) {
     tflite::StatefulNnApiDelegate::Options options;
     options.execution_preference =
@@ -86,11 +87,14 @@ TfLiteDelegatePtrMap TFLBase::GetDelegates() {
 
     auto delegate = tflite::evaluation::CreateNNAPIDelegate(options);
     if (!delegate) {
-      VAM_ML_LOGI("NNAPI acceleration is unsupported on this platform.");
+      VAM_ML_LOGI("%s: NNAPI acceleration is unsupported on this platform.", __func__);
     } else {
       delegates.emplace("NNAPI", std::move(delegate));
     }
   }
+#else
+  VAM_ML_LOGE("%s: This platform do not support delegates.", __func__);
+#endif
 
   return delegates;
 }
@@ -171,7 +175,7 @@ int32_t TFLBase::Init(const struct MLEInputParams* source_info) {
   for (const auto& delegate : delegates) {
     if (engine_params_.interpreter->ModifyGraphWithDelegate(delegate.second.get()) !=
         kTfLiteOk) {
-      VAM_ML_LOGE("Failed to apply delegate.");
+      VAM_ML_LOGE("%s: Failed to apply delegate.", __func__);
     }
   }
 

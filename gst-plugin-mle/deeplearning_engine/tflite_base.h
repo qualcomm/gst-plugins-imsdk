@@ -33,6 +33,7 @@
 #include <vector>
 #include <string>
 #include <cstdio>
+#include <map>
 #include <memory>
 
 #include <tensorflow/lite/interpreter.h>
@@ -101,6 +102,7 @@ class TFLBase : public MLEngine {
     const uint32_t width,
     const uint32_t height,
     MLEImageFormat format);
+
   TfLiteDelegatePtrMap GetDelegates();
 
  protected:
