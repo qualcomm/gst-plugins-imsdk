@@ -52,6 +52,8 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
 #define DEFAULT_VIDEO_H265_PROFILE   "main"
 #define DEFAULT_VIDEO_H264_LEVEL     "5.1"
 #define DEFAULT_VIDEO_H265_LEVEL     "5.1"
+#define DEFAULT_VIDEO_FORMAT         "NV12"
+#define DEFAULT_VIDEO_COMPRESSION    "none"
 
 #define DEFAULT_PROP_SOURCE_INDEX    (-1)
 #define DEFAULT_PROP_FRAMERATE       30.0
@@ -73,22 +75,34 @@ GType
 gst_video_pad_control_rate_get_type (void)
 {
   static GType gtype = 0;
-  if (gtype == 0) {
-    static const GEnumValue values[] = {
-      {GST_VIDEO_CONTROL_RATE_DISABLE, "Disable", "disable"},
-      {GST_VIDEO_CONTROL_RATE_VARIABLE, "Variable", "variable"},
-      {GST_VIDEO_CONTROL_RATE_CONSTANT, "Constant", "constant"},
-      {GST_VIDEO_CONTROL_RATE_MAXBITRATE, "Max Bitrate", "maxbitrate"},
-      {GST_VIDEO_CONTROL_RATE_VARIABLE_SKIP_FRAMES,
-          "Variable Skip Frames", "constant-skip-frames"},
-      {GST_VIDEO_CONTROL_RATE_CONSTANT_SKIP_FRAMES,
-          "Constant Skip Frames", "variable-skip-frames"},
-      {GST_VIDEO_CONTROL_RATE_MAXBITRATE_SKIP_FRAMES,
-          "Max Bitrate Skip Frames", "maxbitrate-skip-frames"},
-      {0, NULL, NULL}
-    };
-    gtype = g_enum_register_static ("GstVideoControlRate", values);
-  }
+  static const GEnumValue variants[] = {
+    { GST_VIDEO_CONTROL_RATE_DISABLE,
+        "Disable", "disable"
+    },
+    { GST_VIDEO_CONTROL_RATE_VARIABLE,
+        "Variable", "variable"
+    },
+    { GST_VIDEO_CONTROL_RATE_CONSTANT,
+        "Constant", "constant"
+    },
+    { GST_VIDEO_CONTROL_RATE_MAXBITRATE,
+        "Max Bitrate", "maxbitrate"
+    },
+    { GST_VIDEO_CONTROL_RATE_VARIABLE_SKIP_FRAMES,
+        "Variable Skip Frames", "constant-skip-frames"
+    },
+    { GST_VIDEO_CONTROL_RATE_CONSTANT_SKIP_FRAMES,
+        "Constant Skip Frames", "variable-skip-frames"
+    },
+    { GST_VIDEO_CONTROL_RATE_MAXBITRATE_SKIP_FRAMES,
+        "Max Bitrate Skip Frames", "maxbitrate-skip-frames"
+    },
+    {0, NULL, NULL}
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstVideoControlRate", variants);
+
   return gtype;
 }
 
@@ -252,26 +266,33 @@ video_pad_update_params (GstPad * pad, GstStructure * structure)
   vpad->framerate = 1 / GST_TIME_AS_SECONDS (
       gst_guint64_to_gdouble (vpad->duration));
 
-  if (gst_structure_has_name(structure, "video/x-raw")) {
+  if (gst_structure_has_name (structure, "video/x-raw")) {
     vpad->codec = GST_VIDEO_CODEC_NONE;
-    vpad->format = gst_video_format_from_string(
-        gst_structure_get_string(structure, "format"));
+    vpad->format = gst_video_format_from_string (
+        gst_structure_get_string (structure, "format"));
   } else {
     const gchar *profile, *level;
 
-    profile = gst_structure_get_string(structure, "profile");
-    gst_structure_set(vpad->params, "profile", G_TYPE_STRING, profile, NULL);
+    profile = gst_structure_get_string (structure, "profile");
+    gst_structure_set (vpad->params, "profile", G_TYPE_STRING, profile, NULL);
 
-    level = gst_structure_get_string(structure, "level");
-    gst_structure_set(vpad->params, "level", G_TYPE_STRING, level, NULL);
+    level = gst_structure_get_string (structure, "level");
+    gst_structure_set (vpad->params, "level", G_TYPE_STRING, level, NULL);
 
     vpad->format = GST_VIDEO_FORMAT_ENCODED;
 
-    if (gst_structure_has_name(structure, "video/x-h264")) {
+    if (gst_structure_has_name (structure, "video/x-h264"))
       vpad->codec = GST_VIDEO_CODEC_H264;
-    } else if (gst_structure_has_name(structure, "video/x-h265")) {
+    else if (gst_structure_has_name (structure, "video/x-h265"))
       vpad->codec = GST_VIDEO_CODEC_H265;
-    }
+  }
+
+  if (gst_structure_has_field (structure, "compression")) {
+    const gchar *compression =
+        gst_structure_get_string (structure, "compression");
+
+    vpad->compression = (g_strcmp0 (compression, "ubwc") == 0) ?
+        GST_VIDEO_COMPRESSION_UBWC : GST_VIDEO_COMPRESSION_NONE;
   }
 
   GST_QMMFSRC_VIDEO_PAD_UNLOCK (pad);
@@ -367,19 +388,42 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
         DEFAULT_VIDEO_STREAM_FPS_NUM, DEFAULT_VIDEO_STREAM_FPS_DEN);
   }
 
+  if (gst_structure_has_field (structure, "format")) {
+    const gchar *format = gst_structure_get_string (structure, "format");
+
+    if (!format) {
+      gst_structure_fixate_field_string (structure, "format",
+          DEFAULT_VIDEO_FORMAT);
+      GST_DEBUG_OBJECT (pad, "Format not set, using default value: %s",
+          DEFAULT_VIDEO_FORMAT);
+    }
+  }
+
+  if (gst_structure_has_field (structure, "compression")) {
+    const gchar *compression =
+        gst_structure_get_string (structure, "compression");
+
+    if (!compression) {
+      gst_structure_fixate_field_string (structure, "compression",
+            DEFAULT_VIDEO_COMPRESSION);
+      GST_DEBUG_OBJECT (pad, "Format layout not set, using default value: %s",
+            DEFAULT_VIDEO_COMPRESSION);
+    }
+  }
+
   if (gst_structure_has_field (structure, "profile")) {
     const gchar *profile = gst_structure_get_string (structure, "profile");
 
     if (!profile) {
       if (gst_structure_has_name (structure, "video/x-h264")) {
-        gst_structure_set (structure, "profile", G_TYPE_STRING,
-            DEFAULT_VIDEO_H264_PROFILE, NULL);
-        GST_DEBUG_OBJECT (pad, "Codec profile not set,using default value: %s",
+        gst_structure_fixate_field_string (structure, "profile",
+            DEFAULT_VIDEO_H264_PROFILE);
+        GST_DEBUG_OBJECT (pad, "Codec profile not set, using default value: %s",
             DEFAULT_VIDEO_H264_PROFILE);
       } else if (gst_structure_has_name (structure, "video/x-h265")) {
-        gst_structure_set (structure, "profile", G_TYPE_STRING,
-            DEFAULT_VIDEO_H265_PROFILE, NULL);
-        GST_DEBUG_OBJECT (pad, "Codec profile not set,using default value: %s",
+        gst_structure_fixate_field_string (structure, "profile",
+            DEFAULT_VIDEO_H265_PROFILE);
+        GST_DEBUG_OBJECT (pad, "Codec profile not set, using default value: %s",
             DEFAULT_VIDEO_H265_PROFILE);
       } else {
         GST_DEBUG_OBJECT (pad, "Codec profile not required");
@@ -392,13 +436,13 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
 
     if (!level) {
       if (gst_structure_has_name (structure, "video/x-h264")) {
-        gst_structure_set (structure, "level", G_TYPE_STRING,
-            DEFAULT_VIDEO_H264_LEVEL, NULL);
+        gst_structure_fixate_field_string (structure, "level",
+            DEFAULT_VIDEO_H264_LEVEL);
         GST_DEBUG_OBJECT (pad, "Codec level not set, using default value: %s",
             DEFAULT_VIDEO_H264_LEVEL);
       } else if (gst_structure_has_name (structure, "video/x-h265")) {
-        gst_structure_set (structure, "level", G_TYPE_STRING,
-            DEFAULT_VIDEO_H265_LEVEL, NULL);
+        gst_structure_fixate_field_string (structure, "level",
+            DEFAULT_VIDEO_H265_LEVEL);
         GST_DEBUG_OBJECT (pad, "Codec level not set, using default value: %s",
             DEFAULT_VIDEO_H265_LEVEL);
       } else {
@@ -660,15 +704,16 @@ qmmfsrc_video_pad_init (GstQmmfSrcVideoPad * pad)
 {
   gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
 
-  pad->index     = -1;
-  pad->srcidx    = -1;
+  pad->index        = -1;
+  pad->srcidx       = -1;
 
-  pad->width     = -1;
-  pad->height    = -1;
-  pad->framerate = 0.0;
-  pad->format    = GST_VIDEO_FORMAT_UNKNOWN;
-  pad->codec     = GST_VIDEO_CODEC_UNKNOWN;
-  pad->params    = gst_structure_new_empty ("codec-params");
+  pad->width        = -1;
+  pad->height       = -1;
+  pad->framerate    = 0.0;
+  pad->format       = GST_VIDEO_FORMAT_UNKNOWN;
+  pad->compression  = GST_VIDEO_COMPRESSION_NONE;
+  pad->codec        = GST_VIDEO_CODEC_UNKNOWN;
+  pad->params       = gst_structure_new_empty ("codec-params");
 
   pad->duration  = GST_CLOCK_TIME_NONE;
 

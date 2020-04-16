@@ -48,7 +48,7 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_image_pad_debug);
 #define DEFAULT_IMAGE_STREAM_HEIGHT           480
 #define DEFAULT_IMAGE_STREAM_FPS_NUM          30
 #define DEFAULT_IMAGE_STREAM_FPS_DEN          1
-#define DEFAULT_IMAGE_STREAM_RAW              "NV12"
+#define DEFAULT_IMAGE_STREAM_RAW              "NV21"
 #define DEFAULT_IMAGE_STREAM_BAYER            "RAW10"
 
 #define DEFAULT_PROP_QUALITY            85

@@ -126,12 +126,8 @@ static GstStaticPadTemplate qmmfsrc_video_src_template =
         GST_PAD_REQUEST,
         GST_STATIC_CAPS (
             QMMFSRC_VIDEO_H264_CAPS "; "
-            QMMFSRC_VIDEO_H264_CAPS_WITH_FEATURES (
-                GST_CAPS_FEATURE_MEMORY_GBM) "; "
 #ifdef ENABLE_H265_ENCODE
             QMMFSRC_VIDEO_H265_CAPS "; "
-            QMMFSRC_VIDEO_H265_CAPS_WITH_FEATURES (
-                GST_CAPS_FEATURE_MEMORY_GBM) "; "
 #endif
             QMMFSRC_VIDEO_RAW_CAPS(
                 "{ NV12 }") "; "
@@ -155,10 +151,10 @@ static GstStaticPadTemplate qmmfsrc_image_src_template =
                 GST_CAPS_FEATURE_MEMORY_GBM,
                 "{ RAW8, RAW10, RAW12, RAW16 }") "; "
             QMMFSRC_IMAGE_RAW_CAPS(
-                "{ NV12 }") "; "
+                "{ NV21 }") "; "
             QMMFSRC_IMAGE_RAW_CAPS_WITH_FEATURES(
                 GST_CAPS_FEATURE_MEMORY_GBM,
-                "{ NV12 }") "; "
+                "{ NV21 }") "; "
         )
     );
 

@@ -92,13 +92,13 @@ typedef enum {
   GST_IMAGE_FORMAT_RAW10,
   GST_IMAGE_FORMAT_RAW12,
   GST_IMAGE_FORMAT_RAW16,
-} GstImageBayerFormat;
+} GstBayerFormat;
 
 typedef enum {
   GST_IMAGE_CODEC_TYPE_UNKNOWN,
   GST_IMAGE_CODEC_TYPE_NONE,
   GST_IMAGE_CODEC_TYPE_JPEG,
-} GstImageCodecType;
+} GstImageCodec;
 
 typedef struct _GstQmmfSrcImagePad GstQmmfSrcImagePad;
 typedef struct _GstQmmfSrcImagePadClass GstQmmfSrcImagePadClass;
@@ -124,9 +124,9 @@ struct _GstQmmfSrcImagePad {
   /// GStreamer video pad output buffers format.
   GstVideoFormat    format;
   /// GStreamer image pad output buffers format.
-  GstImageBayerFormat    bayer;
+  GstBayerFormat    bayer;
   /// Whether the GStreamer stream is uncompressed or compressed and its type.
-  GstImageCodecType codec;
+  GstImageCodec     codec;
   /// Agnostic structure containing codec specific parameters.
   GstStructure      *params;
 
