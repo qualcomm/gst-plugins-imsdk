@@ -387,6 +387,99 @@ get_vendor_tags (const gchar * section, const gchar * names[], guint n_names,
   }
 }
 
+static gboolean
+initialize_camera_param (GstQmmfContext * context)
+{
+  ::android::CameraMetadata meta;
+  gint tag_id = 0;
+  guchar numvalue = 0;
+  gint status = 0;
+
+  G_LOCK(recorder);
+
+  status = recorder->GetCameraParam(context->camera_id, meta);
+
+  G_UNLOCK(recorder);
+
+  QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
+      "QMMF Recorder GetCameraParam Failed!");
+
+  numvalue = gst_qmmfsrc_effect_mode_android_value(context->effect);
+  meta.update(ANDROID_CONTROL_EFFECT_MODE, &numvalue, 1);
+
+  numvalue = gst_qmmfsrc_scene_mode_android_value(context->scene);
+  meta.update(ANDROID_CONTROL_SCENE_MODE, &numvalue, 1);
+
+  numvalue = gst_qmmfsrc_antibanding_android_value(context->antibanding);
+  meta.update(ANDROID_CONTROL_AE_ANTIBANDING_MODE, &numvalue, 1);
+
+  meta.update(ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION,
+              &(context)->aecompensation, 1);
+
+  numvalue = gst_qmmfsrc_ae_mode_android_value(context->aemode);
+  meta.update(ANDROID_CONTROL_AE_MODE, &numvalue, 1);
+
+  numvalue = context->aelock;
+  meta.update(ANDROID_CONTROL_AE_LOCK, &numvalue, 1);
+
+  meta.update(ANDROID_SENSOR_EXPOSURE_TIME, &(context)->exptime, 1);
+
+  numvalue = gst_qmmfsrc_awb_mode_android_value(context->awbmode);
+  meta.update(ANDROID_CONTROL_AWB_MODE, &numvalue, 1);
+
+  numvalue = context->awblock;
+  meta.update(ANDROID_CONTROL_AWB_LOCK, &numvalue, 1);
+
+  numvalue = gst_qmmfsrc_af_mode_android_value(context->afmode);
+  meta.update(ANDROID_CONTROL_AF_MODE, &numvalue, 1);
+
+  numvalue = gst_qmmfsrc_noise_reduction_android_value(context->nrmode);
+  meta.update(ANDROID_NOISE_REDUCTION_MODE, &numvalue, 1);
+
+  numvalue = context->adrc;
+  tag_id = get_vendor_tag_by_name (
+      "org.codeaurora.qcamera3.adrc", "disable");
+  if (tag_id != 0)
+    meta.update(tag_id, &numvalue, 1);
+
+  if (context->zoom.w > 0 && context->zoom.h > 0) {
+    gint32 crop[] = { context->zoom.x, context->zoom.y, context->zoom.w,
+        context->zoom.h };
+    meta.update(ANDROID_SCALER_CROP_REGION, crop, 4);
+  }
+
+  tag_id = get_vendor_tag_by_name("org.codeaurora.qcamera3.ir_led", "mode");
+  if (tag_id != 0)
+    meta.update(tag_id, &(context)->irmode, 1);
+
+  tag_id = get_vendor_tag_by_name("org.codeaurora.qcamera3.iso_exp_priority",
+                                  "select_priority");
+  if (tag_id != 0)
+    meta.update(tag_id, &(context)->isomode, 1);
+
+  tag_id = get_vendor_tag_by_name("org.codeaurora.qcamera3.exposure_metering",
+                                  "exposure_metering_mode");
+  if (tag_id != 0)
+    meta.update(tag_id, &(context)->expmetering, 1);
+
+  set_vendor_tags(context->defogtable, &meta);
+  set_vendor_tags(context->exptable, &meta);
+  set_vendor_tags(context->ltmdata, &meta);
+
+  if (!context->slave) {
+    G_LOCK(recorder);
+
+    status = recorder->SetCameraParam(context->camera_id, meta);
+
+    G_UNLOCK(recorder);
+
+    QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
+        "QMMF Recorder SetCameraParam Failed!");
+  }
+
+  return TRUE;
+}
+
 void
 qmmfsrc_free_queue_item (GstDataQueueItem * item)
 {
@@ -1161,87 +1254,6 @@ gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad)
         "QMMF Recorder ConfigImageCapture Failed!");
   }
 
-  ::android::CameraMetadata meta;
-  gint tag_id = 0;
-  guchar numvalue = 0;
-
-  G_LOCK(recorder);
-
-  recorder->GetCameraParam(context->camera_id, meta);
-
-  G_UNLOCK(recorder);
-
-  numvalue = gst_qmmfsrc_effect_mode_android_value (context->effect);
-  meta.update(ANDROID_CONTROL_EFFECT_MODE, &numvalue, 1);
-
-  numvalue = gst_qmmfsrc_scene_mode_android_value (context->scene);
-  meta.update(ANDROID_CONTROL_SCENE_MODE, &numvalue, 1);
-
-  numvalue = gst_qmmfsrc_antibanding_android_value (context->antibanding);
-  meta.update(ANDROID_CONTROL_AE_ANTIBANDING_MODE, &numvalue, 1);
-
-  meta.update(ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION,
-              &(context)->aecompensation, 1);
-
-  numvalue = gst_qmmfsrc_ae_mode_android_value (context->aemode);
-  meta.update(ANDROID_CONTROL_AE_MODE, &numvalue, 1);
-
-  numvalue = context->aelock;
-  meta.update(ANDROID_CONTROL_AE_LOCK, &numvalue, 1);
-
-  meta.update(ANDROID_SENSOR_EXPOSURE_TIME, &(context)->exptime, 1);
-
-  numvalue = gst_qmmfsrc_awb_mode_android_value (context->awbmode);
-  meta.update(ANDROID_CONTROL_AWB_MODE, &numvalue, 1);
-
-  numvalue = context->awblock;
-  meta.update(ANDROID_CONTROL_AWB_LOCK, &numvalue, 1);
-
-  numvalue = gst_qmmfsrc_af_mode_android_value (context->afmode);
-  meta.update(ANDROID_CONTROL_AF_MODE, &numvalue, 1);
-
-  numvalue = gst_qmmfsrc_noise_reduction_android_value (context->nrmode);
-  meta.update(ANDROID_NOISE_REDUCTION_MODE, &numvalue, 1);
-
-  numvalue = context->adrc;
-  tag_id = get_vendor_tag_by_name (
-      "org.codeaurora.qcamera3.adrc", "disable");
-  if (tag_id != 0)
-    meta.update(tag_id, &numvalue, 1);
-
-  if (context->zoom.w > 0 && context->zoom.h > 0) {
-    gint32 crop[] = { context->zoom.x, context->zoom.y,
-        context->zoom.w, context->zoom.h };
-    meta.update(ANDROID_SCALER_CROP_REGION, crop, 4);
-  }
-
-  tag_id = get_vendor_tag_by_name (
-      "org.codeaurora.qcamera3.ir_led", "mode");
-  if (tag_id != 0)
-    meta.update(tag_id, &(context)->irmode, 1);
-
-  tag_id = get_vendor_tag_by_name (
-      "org.codeaurora.qcamera3.iso_exp_priority", "select_priority");
-  if (tag_id != 0)
-    meta.update(tag_id, &(context)->isomode, 1);
-
-  tag_id = get_vendor_tag_by_name (
-      "org.codeaurora.qcamera3.exposure_metering", "exposure_metering_mode");
-  if (tag_id != 0)
-    meta.update(tag_id, &(context)->expmetering, 1);
-
-  set_vendor_tags (context->defogtable, &meta);
-  set_vendor_tags (context->exptable, &meta);
-  set_vendor_tags (context->ltmdata, &meta);
-
-  if (!context->slave) {
-    G_LOCK(recorder);
-    status = recorder->SetCameraParam(context->camera_id, meta);
-    G_UNLOCK(recorder);
-    QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
-        "SetCameraParam Failed!");
-  }
-
   GST_TRACE ("QMMF context stream created");
 
   return TRUE;
@@ -1285,8 +1297,14 @@ gboolean
 gst_qmmf_context_start_session (GstQmmfContext * context)
 {
   gint status = 0;
+  gboolean success = FALSE;
 
   context->tsbase = GST_CLOCK_TIME_NONE;
+
+  success = initialize_camera_param(context);
+
+  QMMFSRC_RETURN_VAL_IF_FAIL (NULL, success, FALSE,
+      "Failed to initialize camera parameters!");
 
   GST_TRACE ("Starting QMMF context session");
 
