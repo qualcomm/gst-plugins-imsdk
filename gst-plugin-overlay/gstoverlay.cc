@@ -56,6 +56,7 @@ G_DEFINE_TYPE (GstOverlay, gst_overlay, GST_TYPE_VIDEO_FILTER);
 #define DEFAULT_PROP_OVERLAY_DATE_COLOR  kColorRed
 #define DEFAULT_PROP_OVERLAY_TEXT_COLOR  kColorYellow
 #define DEFAULT_PROP_OVERLAY_POSE_COLOR  kColorLightGreen
+#define DEFAULT_PROP_OVERLAY_MASK_COLOR  kColorDarkGray
 
 #define DEFAULT_PROP_DEST_RECT_X      0
 #define DEFAULT_PROP_DEST_RECT_Y      0
@@ -71,6 +72,7 @@ G_DEFINE_TYPE (GstOverlay, gst_overlay, GST_TYPE_VIDEO_FILTER);
 #define GST_OVERLAY_DATE_STRING_SIZE 100
 #define GST_OVERLAY_SIMG_STRING_SIZE 100
 #define GST_OVERLAY_BBOX_STRING_SIZE 80
+#define GST_OVERLAY_MASK_STRING_SIZE 100
 
 #define GST_OVERLAY_UNUSED(var) ((void)var)
 
@@ -94,6 +96,7 @@ static GstMLKeyPointsType PoseChain [][2] {
  * PROP_OVERLAY_DATE - overlays date and time
  * PROP_OVERLAY_SIMG - overlays static image
  * PROP_OVERLAY_BBOX - overlays bounding box
+ * PROP_OVERLAY_MASK - overlays privacy mask
  * PROP_OVERLAY_BBOX_COLOR - ML Detection color
  * PROP_OVERLAY_DATE_COLOR - ML Time and Date color
  * PROP_OVERLAY_TEXT_COLOR - ML Classification color
@@ -106,6 +109,7 @@ enum {
   PROP_OVERLAY_DATE,
   PROP_OVERLAY_SIMG,
   PROP_OVERLAY_BBOX,
+  PROP_OVERLAY_MASK,
   PROP_OVERLAY_BBOX_COLOR,
   PROP_OVERLAY_DATE_COLOR,
   PROP_OVERLAY_TEXT_COLOR,
@@ -990,6 +994,111 @@ gst_overlay_apply_user_date_item (gpointer data, gpointer user_data)
 }
 
 /**
+ * gst_overlay_apply_mask_item:
+ * @gst_overlay: context
+ * @circle: circle dimensions
+ * @rectangle: rectangle dimensions
+ * @color: privacy mask color
+ * @dest_rect: render destination rectangle in video stream
+ * @item_id: pointer to overlay item instance id
+ *
+ * Configures and enables privacy mask overlay instance.
+ *
+ * Return true if succeed.
+ */
+static gboolean
+gst_overlay_apply_mask_item (GstOverlay * gst_overlay,
+    OverlayPrivacyMaskType type, Overlaycircle *circle, OverlayRect *rectangle,
+    guint color, GstVideoRectangle * dest_rect, uint32_t * item_id)
+{
+  OverlayParam ov_param;
+  int32_t ret = 0;
+
+  g_return_val_if_fail (gst_overlay != NULL, FALSE);
+  g_return_val_if_fail (circle != NULL, FALSE);
+  g_return_val_if_fail (rectangle != NULL, FALSE);
+  g_return_val_if_fail (dest_rect != NULL, FALSE);
+  g_return_val_if_fail (item_id != NULL, FALSE);
+
+  if (!(*item_id)) {
+    ov_param = {};
+    ov_param.type = OverlayType::kPrivacyMask;
+  } else {
+    ret = gst_overlay->overlay->GetOverlayParams (*item_id, ov_param);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay get param failed! ret: %d", ret);
+      return FALSE;
+    }
+  }
+
+  ov_param.color = color;
+  ov_param.location = OverlayLocationType::kNone;
+  ov_param.dst_rect.start_x = dest_rect->x;
+  ov_param.dst_rect.start_y = dest_rect->y;
+  ov_param.dst_rect.width = dest_rect->w;
+  ov_param.dst_rect.height = dest_rect->h;
+
+  ov_param.privacy_mask.type = type;
+  if (type == OverlayPrivacyMaskType::kInverseRectangle ||
+      type == OverlayPrivacyMaskType::kRectangle) {
+    ov_param.privacy_mask.rectangle = *rectangle;
+  } else {
+    ov_param.privacy_mask.circle = *circle;
+  }
+
+  if (!(*item_id)) {
+    ret = gst_overlay->overlay->CreateOverlayItem (ov_param, item_id);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay create failed! ret: %d", ret);
+      return FALSE;
+    }
+
+    ret = gst_overlay->overlay->EnableOverlayItem (*item_id);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay enable failed! ret: %d", ret);
+      return FALSE;
+    }
+  } else {
+    ret = gst_overlay->overlay->UpdateOverlayParams (*item_id, ov_param);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay set param failed! ret: %d", ret);
+      return FALSE;
+    }
+  }
+
+  return TRUE;
+}
+
+/**
+ * gst_overlay_apply_user_mask_item:
+ * @data: context
+ * @user_data: overlay configuration of GstOverlayUsrMask type
+ *
+ * Configures privacy mask overlay instace with user provided configuration
+ * and enables it.
+ */
+static void
+gst_overlay_apply_user_mask_item (gpointer data, gpointer user_data)
+{
+  g_return_if_fail (data != NULL);
+  g_return_if_fail (user_data != NULL);
+
+  GstOverlay * gst_overlay = (GstOverlay *) user_data;
+  GstOverlayUsrMask * ov_data = (GstOverlayUsrMask *) data;
+
+  if (!ov_data->base.is_applied) {
+    gboolean res = gst_overlay_apply_mask_item (gst_overlay, ov_data->type,
+        &ov_data->circle, &ov_data->rectangle, ov_data->color,
+        &ov_data->dest_rect, &ov_data->base.item_id);
+    if (!res) {
+      GST_ERROR_OBJECT (gst_overlay, "User overlay apply failed!");
+      return;
+    }
+    ov_data->base.is_applied = TRUE;
+  }
+}
+
+/**
  * gst_overlay_apply_overlay:
  * @gst_overlay: context
  * @frame: GST video frame
@@ -1295,7 +1404,7 @@ static gboolean
 gst_overlay_set_bbox_overlay (GstOverlayUser * entry, GstStructure * structure,
   gboolean entry_exist)
 {
-  GstOverlayUsrBBox * text_entry = (GstOverlayUsrBBox *) entry;
+  GstOverlayUsrBBox * bbox_entry = (GstOverlayUsrBBox *) entry;
   gboolean color_set = FALSE;
   gboolean entry_valid = FALSE;
   gboolean bbox_valid = FALSE;
@@ -1309,35 +1418,35 @@ gst_overlay_set_bbox_overlay (GstOverlayUser * entry, GstStructure * structure,
 
     if (!g_strcmp0 (name, "bbox") && G_VALUE_HOLDS (value, GST_TYPE_ARRAY) &&
         gst_value_array_get_size (value) == 4) {
-      text_entry->boundind_box.x =
+      bbox_entry->boundind_box.x =
         g_value_get_int (gst_value_array_get_value (value, 0));
-      text_entry->boundind_box.y =
+      bbox_entry->boundind_box.y =
         g_value_get_int (gst_value_array_get_value (value, 1));
-      text_entry->boundind_box.w =
+      bbox_entry->boundind_box.w =
         g_value_get_int (gst_value_array_get_value (value, 2));
-      text_entry->boundind_box.h =
+      bbox_entry->boundind_box.h =
         g_value_get_int (gst_value_array_get_value (value, 3));
       bbox_valid = TRUE;
     }
 
     if (!g_strcmp0 (name, "label") && G_VALUE_HOLDS (value, G_TYPE_STRING)) {
-      text_entry->label = g_strdup (g_value_get_string (value));
-      if (strlen (text_entry->label) > 0) {
+      bbox_entry->label = g_strdup (g_value_get_string (value));
+      if (strlen (bbox_entry->label) > 0) {
         label_valid = TRUE;
       } else {
         GST_INFO ("String is empty. Stop overlay if exist");
-        free (text_entry->label);
+        free (bbox_entry->label);
         return FALSE;
       }
     }
 
     if (!g_strcmp0 (name, "color")) {
       if (G_VALUE_HOLDS (value, G_TYPE_UINT)) {
-        text_entry->color = g_value_get_uint (value);
+        bbox_entry->color = g_value_get_uint (value);
         color_set = TRUE;
       }
       if (G_VALUE_HOLDS (value, G_TYPE_INT)) {
-        text_entry->color = (guint)g_value_get_int (value);
+        bbox_entry->color = (guint)g_value_get_int (value);
         color_set = TRUE;
       }
     }
@@ -1346,7 +1455,119 @@ gst_overlay_set_bbox_overlay (GstOverlayUser * entry, GstStructure * structure,
   entry_valid = bbox_valid && label_valid;
 
   if (!color_set && entry_valid && !entry_exist) {
-    text_entry->color = DEFAULT_PROP_OVERLAY_BBOX_COLOR;
+    bbox_entry->color = DEFAULT_PROP_OVERLAY_BBOX_COLOR;
+  }
+
+  return entry_valid;
+}
+
+/**
+ * gst_overlay_set_mask_overlay:
+ * @entry: result of parsed input is stored here
+ * @structure: user input
+ * @entry_exist: hint if entry exist or new entry. This is helpfull when
+ *               some default values are needed to be set.
+ *
+ * This function parses user overlay configuration. Function is called when
+ * overlay is configured by GST property.
+ *
+ * Return true if succeed.
+ */
+static gboolean
+gst_overlay_set_mask_overlay (GstOverlayUser * entry, GstStructure * structure,
+  gboolean entry_exist)
+{
+  GstOverlayUsrMask * mask_entry = (GstOverlayUsrMask *) entry;
+  gboolean color_set = FALSE;
+  gboolean entry_valid = FALSE;
+  gboolean circle_valid = FALSE;
+  gboolean rectangle_valid = FALSE;
+  gboolean dest_rect_valid = FALSE;
+  gboolean inverse = FALSE;
+
+  for (gint idx = 0; idx < gst_structure_n_fields (structure); ++idx) {
+    const gchar *name = gst_structure_nth_field_name (structure, idx);
+
+    const GValue *value = NULL;
+    value = gst_structure_get_value (structure, name);
+
+    if (!g_strcmp0 (name, "circle") && G_VALUE_HOLDS (value, GST_TYPE_ARRAY)
+         && gst_value_array_get_size (value) == 3) {
+      mask_entry->circle.center_x =
+        g_value_get_int (gst_value_array_get_value (value, 0));
+      mask_entry->circle.center_y =
+        g_value_get_int (gst_value_array_get_value (value, 1));
+      mask_entry->circle.radius =
+        g_value_get_int (gst_value_array_get_value (value, 2));
+      circle_valid = TRUE;
+    }
+
+    if (!g_strcmp0 (name, "rectangle") && G_VALUE_HOLDS (value, GST_TYPE_ARRAY)
+         && gst_value_array_get_size (value) == 4) {
+      mask_entry->rectangle.start_x =
+        g_value_get_int (gst_value_array_get_value (value, 0));
+      mask_entry->rectangle.start_y =
+        g_value_get_int (gst_value_array_get_value (value, 1));
+      mask_entry->rectangle.width =
+        g_value_get_int (gst_value_array_get_value (value, 2));
+      mask_entry->rectangle.height =
+        g_value_get_int (gst_value_array_get_value (value, 3));
+      rectangle_valid = TRUE;
+    }
+
+    if (!g_strcmp0 (name, "inverse") && G_VALUE_HOLDS (value, G_TYPE_BOOLEAN)) {
+      inverse = g_value_get_boolean (value);
+    }
+
+    if (!g_strcmp0 (name, "color")) {
+      if (G_VALUE_HOLDS (value, G_TYPE_UINT)) {
+        mask_entry->color = g_value_get_uint (value);
+        color_set = TRUE;
+      }
+      if (G_VALUE_HOLDS (value, G_TYPE_INT)) {
+        mask_entry->color = (guint)g_value_get_int (value);
+        color_set = TRUE;
+      }
+    }
+
+    if (!g_strcmp0 (name, "dest-rect") && G_VALUE_HOLDS (value, GST_TYPE_ARRAY)
+         && gst_value_array_get_size (value) == 4) {
+      mask_entry->dest_rect.x =
+        g_value_get_int (gst_value_array_get_value (value, 0));
+      mask_entry->dest_rect.y =
+        g_value_get_int (gst_value_array_get_value (value, 1));
+      mask_entry->dest_rect.w =
+        g_value_get_int (gst_value_array_get_value (value, 2));
+      mask_entry->dest_rect.h =
+        g_value_get_int (gst_value_array_get_value (value, 3));
+      dest_rect_valid = TRUE;
+    }
+  }
+
+  if (circle_valid && rectangle_valid) {
+    GST_INFO ("circle and rectangle cannot be set in the same time");
+    return FALSE;
+  }
+
+  entry_valid = (circle_valid || rectangle_valid) && dest_rect_valid;
+
+  if (entry_valid) {
+    if (circle_valid && inverse) {
+      mask_entry->type = OverlayPrivacyMaskType::kInverseCircle;
+    } else if (circle_valid) {
+      mask_entry->type = OverlayPrivacyMaskType::kCircle;
+    } else if (rectangle_valid && inverse) {
+      mask_entry->type = OverlayPrivacyMaskType::kInverseRectangle;
+    } else if (rectangle_valid) {
+      mask_entry->type = OverlayPrivacyMaskType::kRectangle;
+    } else {
+      GST_INFO ("Error cannot find privacy mask type!");
+      return FALSE;
+    }
+
+    if (!color_set && !entry_exist) {
+      mask_entry->color = DEFAULT_PROP_OVERLAY_MASK_COLOR;
+    }
   }
 
   return entry_valid;
@@ -1675,6 +1896,69 @@ gst_overlay_bbox_overlay_to_string (gpointer data, gpointer user_data)
 }
 
 /**
+ * gst_overlay_mask_overlay_to_string:
+ * @data: user text overlay entry of GstOverlayUsrMask type
+ * @user_data: output string of GstOverlayString type
+ *
+ * Converts privacy mask overlay configuration to string.
+ */
+static void
+gst_overlay_mask_overlay_to_string (gpointer data, gpointer user_data)
+{
+  GstOverlayUsrMask * ov_data = (GstOverlayUsrMask *) data;
+  GstOverlayString * output = (GstOverlayString *) user_data;
+
+  gint size = GST_OVERLAY_MASK_STRING_SIZE + strlen (ov_data->base.user_id);
+  gchar * tmp = (gchar *) malloc(size);
+  if (!tmp) {
+    GST_ERROR ("%s: failed to allocate memory", __func__);
+    return;
+  }
+
+  gint ret;
+  if (ov_data->type == OverlayPrivacyMaskType::kRectangle ||
+      ov_data->type == OverlayPrivacyMaskType::kInverseRectangle) {
+    ret = snprintf (tmp, size,
+        "%s, rectangle=<%d, %d, %d, %d>, inverse=%s, color=0x%x, dest-rect=<%d, %d, %d, %d>; ",
+        ov_data->base.user_id, ov_data->rectangle.start_x,
+        ov_data->rectangle.start_y, ov_data->rectangle.width,
+        ov_data->rectangle.height,
+        ov_data->type == OverlayPrivacyMaskType::kRectangle ? "false" : "true",
+        ov_data->color, ov_data->dest_rect.x, ov_data->dest_rect.y,
+        ov_data->dest_rect.w, ov_data->dest_rect.h);
+  } else {
+    ret = snprintf (tmp, size,
+        "%s, circle=<%d, %d, %d>, inverse=%s, color=0x%x, dest-rect=<%d, %d, %d, %d>; ",
+        ov_data->base.user_id, ov_data->circle.center_x,
+        ov_data->circle.center_y, ov_data->circle.radius,
+        ov_data->type == OverlayPrivacyMaskType::kRectangle ? "false" : "true",
+        ov_data->color, ov_data->dest_rect.x, ov_data->dest_rect.y,
+        ov_data->dest_rect.w, ov_data->dest_rect.h);
+  }
+
+  if (ret < 0 || ret >= size) {
+    GST_ERROR ("%s: String size %d exceed size %d", __func__, ret, size);
+    free (tmp);
+    return;
+  }
+
+  if (output->capacity < (strlen (output->string) + strlen (tmp))) {
+    size = (strlen (output->string) + strlen (tmp)) * 2;
+    output->string = (gchar *) realloc(output->string, size);
+    if (!output->string) {
+      GST_ERROR ("%s: Failed to reallocate memory. Size %d", __func__, size);
+      free (tmp);
+      return;
+    }
+    output->capacity = size;
+  }
+
+  g_strlcat (output->string, tmp, output->capacity);
+
+  free (tmp);
+}
+
+/**
  * gst_overlay_get_user_overlay:
  * @gst_overlay: context
  * @value: output value
@@ -1749,6 +2033,10 @@ gst_overlay_set_property (GObject * object, guint prop_id,
       gst_overlay_set_user_overlay (gst_overlay, gst_overlay->usr_bbox,
         sizeof (GstOverlayUsrBBox), gst_overlay_set_bbox_overlay, value);
       break;
+    case PROP_OVERLAY_MASK:
+      gst_overlay_set_user_overlay (gst_overlay, gst_overlay->usr_mask,
+        sizeof (GstOverlayUsrMask), gst_overlay_set_mask_overlay, value);
+      break;
     case PROP_OVERLAY_BBOX_COLOR:
       gst_overlay->bbox_color = g_value_get_uint (value);
       break;
@@ -1815,6 +2103,10 @@ gst_overlay_get_property (GObject * object, guint prop_id, GValue * value,
     case PROP_OVERLAY_BBOX:
       gst_overlay_get_user_overlay (gst_overlay, value,
         gst_overlay->usr_bbox, gst_overlay_bbox_overlay_to_string);
+      break;
+    case PROP_OVERLAY_MASK:
+      gst_overlay_get_user_overlay (gst_overlay, value,
+        gst_overlay->usr_mask, gst_overlay_mask_overlay_to_string);
       break;
     case PROP_OVERLAY_BBOX_COLOR:
       g_value_set_uint (value, gst_overlay->bbox_color);
@@ -1885,6 +2177,7 @@ gst_overlay_finalize (GObject * object)
     g_sequence_free (gst_overlay->usr_date);
     g_sequence_free (gst_overlay->usr_simg);
     g_sequence_free (gst_overlay->usr_bbox);
+    g_sequence_free (gst_overlay->usr_mask);
 
     delete (gst_overlay->overlay);
     gst_overlay->overlay = nullptr;
@@ -2036,6 +2329,10 @@ gst_overlay_transform_frame_ip (GstVideoFilter *filter, GstVideoFrame *frame)
                       gst_overlay_apply_user_bbox_item,
                       gst_overlay);
 
+  g_sequence_foreach (gst_overlay->usr_mask,
+                      gst_overlay_apply_user_mask_item,
+                      gst_overlay);
+
   g_mutex_unlock (&gst_overlay->lock);
 
   if (!g_sequence_is_empty (gst_overlay->bbox_id) ||
@@ -2045,7 +2342,8 @@ gst_overlay_transform_frame_ip (GstVideoFilter *filter, GstVideoFrame *frame)
       !g_sequence_is_empty (gst_overlay->usr_text) ||
       !g_sequence_is_empty (gst_overlay->usr_date) ||
       !g_sequence_is_empty (gst_overlay->usr_simg) ||
-      !g_sequence_is_empty (gst_overlay->usr_bbox)) {
+      !g_sequence_is_empty (gst_overlay->usr_bbox) ||
+      !g_sequence_is_empty (gst_overlay->usr_mask)) {
     res = gst_overlay_apply_overlay (gst_overlay, frame);
     if (!res) {
       GST_ERROR_OBJECT (gst_overlay, "Overlay apply failed!");
@@ -2140,6 +2438,7 @@ gst_overlay_init (GstOverlay * gst_overlay)
   gst_overlay->usr_date = g_sequence_new (gst_overlay_free_user_overlay_entry);
   gst_overlay->usr_simg = g_sequence_new (gst_overlay_free_user_simg_entry);
   gst_overlay->usr_bbox = g_sequence_new (gst_overlay_free_user_bbox_entry);
+  gst_overlay->usr_mask = g_sequence_new (gst_overlay_free_user_overlay_entry);
 
   gst_overlay->bbox_color = DEFAULT_PROP_OVERLAY_BBOX_COLOR;
   gst_overlay->date_color = DEFAULT_PROP_OVERLAY_DATE_COLOR;
@@ -2190,6 +2489,13 @@ gst_overlay_class_init (GstOverlayClass * klass)
   g_object_class_install_property (gobject, PROP_OVERLAY_BBOX,
     g_param_spec_string ("overlay-bbox", "Bounding Box Overlay",
       "Renders bounding box and label on top of video stream.",
+      DEFAULT_PROP_OVERLAY_TEXT, static_cast <GParamFlags> (
+        G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING)));
+
+  g_object_class_install_property (gobject, PROP_OVERLAY_MASK,
+    g_param_spec_string ("overlay-mask", "Privacy Mask Overlay",
+      "Renders privacy mask on top of video stream.",
       DEFAULT_PROP_OVERLAY_TEXT, static_cast <GParamFlags> (
         G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING)));

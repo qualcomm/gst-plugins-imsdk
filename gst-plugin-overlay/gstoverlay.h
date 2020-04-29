@@ -59,6 +59,7 @@ typedef struct _GstOverlayUsrText GstOverlayUsrText;
 typedef struct _GstOverlayUsrDate GstOverlayUsrDate;
 typedef struct _GstOverlayUsrSImg GstOverlayUsrSImg;
 typedef struct _GstOverlayUsrBBox GstOverlayUsrBBox;
+typedef struct _GstOverlayUsrMask GstOverlayUsrMask;
 typedef struct _GstOverlayString GstOverlayString;
 
 struct _GstOverlay {
@@ -87,6 +88,7 @@ struct _GstOverlay {
   GSequence           *usr_date;
   GSequence           *usr_simg;
   GSequence           *usr_bbox;
+  GSequence           *usr_mask;
 };
 
 struct _GstOverlayClass {
@@ -165,6 +167,23 @@ struct _GstOverlayUsrBBox {
   gchar                 *label;
   GstVideoRectangle     boundind_box;
   guint                 color;
+};
+
+/* GstOverlayUsrMask - parameters for privacy mask overlay
+ * base: common parameters for all user overlays
+ * type: privacy mask type
+ * circle: circle dimensions
+ * rectangle: rectangle dimensions
+ * color: overlay color
+ * dest_rect: render destination rectangle in video stream
+ */
+struct _GstOverlayUsrMask {
+  GstOverlayUser        base;
+  OverlayPrivacyMaskType type;
+  Overlaycircle         circle;
+  OverlayRect           rectangle;
+  guint                 color;
+  GstVideoRectangle     dest_rect;
 };
 
 /* GstOverlayString - pair for string and capacity
