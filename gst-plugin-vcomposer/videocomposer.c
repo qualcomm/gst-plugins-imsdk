@@ -200,14 +200,14 @@ gst_video_composer_rotation_to_c2d_rotate (GstVideoComposerRotate rotation)
   return GST_C2D_VIDEO_ROTATE_NONE;
 }
 
-gint
+static gint
 gst_video_composer_zorder_compare (const GstVideoComposerSinkPad * lpad,
     const GstVideoComposerSinkPad * rpad)
 {
   return lpad->zorder - rpad->zorder;
 }
 
-gint
+static gint
 gst_video_composer_index_compare (const GstVideoComposerSinkPad * pad,
     const guint * index)
 {
@@ -230,6 +230,20 @@ gst_video_composer_caps_has_feature (const GstCaps * caps,
   }
 
   return FALSE;
+}
+
+static gboolean
+gst_video_composer_caps_has_compression (const GstCaps * caps,
+    const gchar * compression)
+{
+  GstStructure *structure = NULL;
+  const gchar *string = NULL;
+
+  structure = gst_caps_get_structure (caps, 0);
+  string = gst_structure_has_field (structure, "compression") ?
+      gst_structure_get_string (structure, "compression") : NULL;
+
+  return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
 }
 
 static GstBufferPool *
@@ -261,13 +275,18 @@ gst_video_composer_create_pool (GstVideoComposer * vcomposer, GstCaps * caps)
   allocator = gst_fd_allocator_new ();
   gst_buffer_pool_config_set_allocator (config, allocator, NULL);
   gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
-  g_object_unref (allocator);
+
+  if (gst_video_composer_caps_has_compression (caps, "ubwc")) {
+    gst_buffer_pool_config_add_option (config,
+        GST_IMAGE_BUFFER_POOL_OPTION_UBWC_MODE);
+  }
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING_OBJECT (vcomposer, "Failed to set pool configuration!");
-    g_object_unref (pool);
-    return NULL;
+    g_clear_object (&pool);
   }
+
+  g_object_unref (allocator);
 
   return pool;
 }
@@ -277,6 +296,7 @@ gst_video_composer_set_opts (GstElement * element, GstPad * pad, gpointer data)
 {
   GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER_CAST (element);
   GstVideoComposerSinkPad *sinkpad = GST_VIDEO_COMPOSER_SINKPAD (pad);
+  GstCaps *caps = gst_pad_get_current_caps (pad);
   GstStructure *options = NULL;
   guint idx = 0;
 
@@ -287,7 +307,7 @@ gst_video_composer_set_opts (GstElement * element, GstPad * pad, gpointer data)
       sinkpad->flip_h,
       GST_C2D_VIDEO_CONVERTER_OPT_FLIP_VERTICAL, G_TYPE_BOOLEAN,
       sinkpad->flip_v,
-      GST_C2D_VIDEO_CONVERTER_OPT_ROTATE_MODE, GST_TYPE_C2D_VIDEO_ROTATE_MODE,
+      GST_C2D_VIDEO_CONVERTER_OPT_ROTATION, GST_TYPE_C2D_VIDEO_ROTATION,
       gst_video_composer_rotation_to_c2d_rotate (sinkpad->rotation),
       GST_C2D_VIDEO_CONVERTER_OPT_SRC_X, G_TYPE_INT,
       sinkpad->crop.x,
@@ -309,7 +329,17 @@ gst_video_composer_set_opts (GstElement * element, GstPad * pad, gpointer data)
       sinkpad->alpha,
       NULL);
 
+
+  // Check whether the input caps have ubwc compression.
+  if (gst_video_composer_caps_has_compression (caps, "ubwc")) {
+    gst_structure_set (options,
+        GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN, TRUE,
+        NULL);
+  }
+
   GST_VIDEO_COMPOSER_SINKPAD_UNLOCK (sinkpad);
+
+  gst_caps_unref (caps);
 
   GST_OBJECT_LOCK (vcomposer);
   idx = g_list_index (element->sinkpads, pad);
@@ -485,7 +515,7 @@ gst_video_composer_property_rotate_cb (GObject * object,
   GST_VIDEO_COMPOSER_SINKPAD_LOCK (sinkpad);
 
   opts = gst_structure_new (GST_PAD_NAME (sinkpad),
-      GST_C2D_VIDEO_CONVERTER_OPT_ROTATE_MODE, GST_TYPE_C2D_VIDEO_ROTATE_MODE,
+      GST_C2D_VIDEO_CONVERTER_OPT_ROTATION, GST_TYPE_C2D_VIDEO_ROTATION,
       gst_video_composer_rotation_to_c2d_rotate (sinkpad->rotation),
       NULL);
 
@@ -1030,6 +1060,7 @@ gst_video_composer_negotiated_src_caps (GstAggregator * aggregator,
     GstCaps * caps)
 {
   GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER (aggregator);
+  GstStructure *options = NULL;
   GstVideoInfo info;
   gint dar_n = 0, dar_d = 0;
   gboolean success = FALSE;
@@ -1041,6 +1072,7 @@ gst_video_composer_negotiated_src_caps (GstAggregator * aggregator,
     return FALSE;
   }
 
+  // Iterate over the sink pads and set the converter input options.
   success = gst_element_foreach_sink_pad (GST_ELEMENT (vcomposer),
       gst_video_composer_set_opts, NULL);
 
@@ -1048,6 +1080,21 @@ gst_video_composer_negotiated_src_caps (GstAggregator * aggregator,
     GST_ERROR_OBJECT (vcomposer, "Failed to set converter options!");
     return FALSE;
   }
+
+  // Fill the converter output options structure.
+  if (NULL == (options = gst_structure_new_empty ("qtivtransform"))) {
+    GST_ERROR_OBJECT (vcomposer, "Failed to create options structure!");
+    return FALSE;
+  }
+
+  // Check whether the output caps have ubwc compression.
+  if (gst_video_composer_caps_has_compression (caps, "ubwc")) {
+    gst_structure_set (options,
+        GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN, TRUE,
+        NULL);
+  }
+
+  gst_c2d_video_converter_set_output_opts (vcomposer->c2dconvert, options);
 
   if (!gst_util_fraction_multiply (info.width, info.height,
           info.par_n, info.par_d, &dar_n, &dar_d)) {

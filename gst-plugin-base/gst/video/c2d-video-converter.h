@@ -73,16 +73,16 @@ typedef enum {
   GST_C2D_VIDEO_ROTATE_180,
 } GstC2dVideoRotate;
 
-GST_VIDEO_API GType gst_c2d_video_rotate_mode_get_type (void);
-#define GST_TYPE_C2D_VIDEO_ROTATE_MODE (gst_c2d_video_rotate_mode_get_type())
+GST_VIDEO_API GType gst_c2d_video_rotation_get_type (void);
+#define GST_TYPE_C2D_VIDEO_ROTATION (gst_c2d_video_rotation_get_type())
 
 /**
  * GST_C2D_VIDEO_CONVERTER_OPT_ROTATION:
  *
- * #GST_TYPE_C2D_VIDEO_ROTATE_MODE, set the output rotation flags
+ * #GST_TYPE_C2D_VIDEO_ROTATION, set the output rotation flags
  * Default: #GST_C2D_VIDEO_ROTATE_NONE.
  */
-#define GST_C2D_VIDEO_CONVERTER_OPT_ROTATE_MODE \
+#define GST_C2D_VIDEO_CONVERTER_OPT_ROTATION \
     "GstC2dVideoConverter.rotation"
 
 /**
@@ -189,6 +189,15 @@ GST_VIDEO_API GType gst_c2d_video_rotate_mode_get_type (void);
  */
 #define GST_C2D_VIDEO_CONVERTER_OPT_DEST_HEIGHT \
     "GstC2dVideoConverter.destination-height"
+
+/**
+ * GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT:
+ *
+ * #G_TYPE_BOOLEAN, whether buffers have UBWC (Universal Bandwidth Compression)
+ * Default: FALSE
+ */
+#define GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT \
+    "GstC2dVideoConverter.ubwc-format"
 
 typedef struct _GstC2dVideoConverter GstC2dVideoConverter;
 

@@ -61,7 +61,7 @@ G_DEFINE_TYPE (GstVideoTransform, gst_video_transform, GST_TYPE_BASE_TRANSFORM);
 
 // Caps video size range.
 #undef GST_VIDEO_SIZE_RANGE
-#define GST_VIDEO_SIZE_RANGE "(int) [ 1, 32767]"
+#define GST_VIDEO_SIZE_RANGE "(int) [ 1, 32767 ]"
 
 // Caps FPS range.
 #undef GST_VIDEO_FPS_RANGE
@@ -90,10 +90,18 @@ gst_video_trasform_rotate_get_type (void)
 {
   static GType video_rotation_type = 0;
   static const GEnumValue methods[] = {
-    { GST_VIDEO_TRANSFORM_ROTATE_NONE, "No rotation", "none"},
-    { GST_VIDEO_TRANSFORM_ROTATE_90_CW, "Rotate 90 degrees clockwise", "90CW"},
-    { GST_VIDEO_TRANSFORM_ROTATE_90_CCW, "Rotate 90 degrees counter-clockwise", "90CCW"},
-    { GST_VIDEO_TRANSFORM_ROTATE_180, "Rotate 180 degrees", "180"},
+    { GST_VIDEO_TRANSFORM_ROTATE_NONE,
+        "No rotation", "none"
+    },
+    { GST_VIDEO_TRANSFORM_ROTATE_90_CW,
+        "Rotate 90 degrees clockwise", "90CW"
+    },
+    { GST_VIDEO_TRANSFORM_ROTATE_90_CCW,
+        "Rotate 90 degrees counter-clockwise", "90CCW"
+    },
+    { GST_VIDEO_TRANSFORM_ROTATE_180,
+        "Rotate 180 degrees", "180"
+    },
     {0, NULL, NULL},
   };
   if (!video_rotation_type) {
@@ -166,6 +174,20 @@ gst_video_transform_caps_has_feature (const GstCaps * caps,
   return FALSE;
 }
 
+static gboolean
+gst_video_transform_caps_has_compression (const GstCaps * caps,
+    const gchar * compression)
+{
+  GstStructure *structure = NULL;
+  const gchar *string = NULL;
+
+  structure = gst_caps_get_structure (caps, 0);
+  string = gst_structure_has_field (structure, "compression") ?
+      gst_structure_get_string (structure, "compression") : NULL;
+
+  return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
+}
+
 static GstBufferPool *
 gst_video_transform_create_pool (GstVideoTransform * vtrans, GstCaps * caps)
 {
@@ -196,11 +218,17 @@ gst_video_transform_create_pool (GstVideoTransform * vtrans, GstCaps * caps)
   gst_buffer_pool_config_set_allocator (config, allocator, NULL);
   gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
 
+  if (gst_video_transform_caps_has_compression (caps, "ubwc")) {
+    gst_buffer_pool_config_add_option (config,
+        GST_IMAGE_BUFFER_POOL_OPTION_UBWC_MODE);
+  }
+
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING_OBJECT (vtrans, "Failed to set pool configuration!");
     g_object_unref (pool);
     pool = NULL;
   }
+
   g_object_unref (allocator);
 
   return pool;
@@ -398,9 +426,9 @@ gst_video_transform_transform_caps (GstBaseTransform * trans,
           GST_TYPE_FRACTION_RANGE, 1, G_MAXINT, G_MAXINT, 1, NULL);
     }
 
-    // Remove the format/color related fields.
+    // Remove the format/color/compression related fields.
     gst_structure_remove_fields (structure, "format", "colorimetry",
-        "chroma-site", NULL);
+        "chroma-site", "compression", NULL);
 
     gst_caps_append_structure_full (result, structure,
         gst_caps_features_copy (features));
@@ -454,12 +482,15 @@ gst_video_transform_set_caps (GstBaseTransform * trans, GstCaps * incaps,
       && vtrans->rotation == GST_VIDEO_TRANSFORM_ROTATE_NONE) {
     gst_base_transform_set_passthrough (trans, TRUE);
   } else {
-    GstStructure *options = gst_structure_new ("qtivtransform",
+    GstStructure *inopts = NULL, *outopts = NULL;
+
+    // Fill the converter input options structure.
+    inopts = gst_structure_new ("qtivtransform",
         GST_C2D_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL, G_TYPE_BOOLEAN,
         vtrans->flip_h,
         GST_C2D_VIDEO_CONVERTER_OPT_FLIP_VERTICAL, G_TYPE_BOOLEAN,
         vtrans->flip_v,
-        GST_C2D_VIDEO_CONVERTER_OPT_ROTATE_MODE, GST_TYPE_C2D_VIDEO_ROTATE_MODE,
+        GST_C2D_VIDEO_CONVERTER_OPT_ROTATION, GST_TYPE_C2D_VIDEO_ROTATION,
         gst_video_transform_rotation_to_c2d_rotate (vtrans->rotation),
         GST_C2D_VIDEO_CONVERTER_OPT_SRC_X, G_TYPE_INT,
         vtrans->crop.x,
@@ -475,7 +506,26 @@ gst_video_transform_set_caps (GstBaseTransform * trans, GstCaps * incaps,
         GST_VIDEO_INFO_HEIGHT (&outinfo),
         NULL);
 
-    gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, options);
+    // Check whether the input caps have ubwc compression.
+    if (gst_video_transform_caps_has_compression (incaps, "ubwc")) {
+      gst_structure_set (inopts,
+          GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN, TRUE,
+          NULL);
+    }
+
+    // Fill the converter output options structure.
+    outopts = gst_structure_new_empty ("qtivtransform");
+
+    // Check whether the output caps have ubwc compression.
+    if (gst_video_transform_caps_has_compression (outcaps, "ubwc")) {
+      gst_structure_set (outopts,
+          GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN, TRUE,
+          NULL);
+    }
+
+    gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
+    gst_c2d_video_converter_set_output_opts (vtrans->c2dconvert, outopts);
+
     gst_base_transform_set_passthrough (trans, FALSE);
   }
 
@@ -548,66 +598,77 @@ gst_video_transform_score_format (GstVideoTransform * vtrans,
 }
 
 static void
-gst_video_transform_fixate_format (GstVideoTransform *vtrans, GstCaps * incaps,
-    GstCaps * outcaps)
+gst_video_transform_fixate_format (GstVideoTransform *vtrans,
+    GstStructure * input, GstStructure * output)
 {
-  const GstStructure *structure = NULL;
   const GstVideoFormatInfo *ininfo, *outinfo = NULL;
-  const GValue *fmtvalue, *value;
-  gint i, j, capslen, length, score = G_MININT;
+  const GValue *format = NULL, *value = NULL;
+  gint idx, length, score = G_MININT;
+  const gchar *infmt = NULL;
 
-  structure = gst_caps_get_structure (incaps, 0);
+  infmt = gst_structure_get_string (input, "format");
+  g_return_if_fail (infmt != NULL);
 
-  {
-    const gchar *infmt = gst_structure_get_string (structure, "format");
-    g_return_if_fail (infmt != NULL);
+  GST_DEBUG_OBJECT (vtrans, "Source format %s", infmt);
 
-    GST_DEBUG_OBJECT (vtrans, "Source format %s", infmt);
+  ininfo = gst_video_format_get_info (gst_video_format_from_string (infmt));
+  g_return_if_fail (ininfo != NULL);
 
-    ininfo = gst_video_format_get_info (gst_video_format_from_string (infmt));
-    g_return_if_fail (ininfo != NULL);
-  }
+  format = gst_structure_get_value (output, "format");
+  g_return_if_fail (format != NULL);
 
-  capslen = gst_caps_get_size (outcaps);
+  if (GST_VALUE_HOLDS_LIST (format)) {
+    length = gst_value_list_get_size (format);
 
-  GST_DEBUG_OBJECT (vtrans, "Iterate %u caps structures", capslen);
+    GST_DEBUG_OBJECT (vtrans, "Have %u formats", length);
 
-  for (i = 0; i < capslen; i++) {
-    fmtvalue = gst_structure_get_value (
-        gst_caps_get_structure (outcaps, i), "format");
+    for (idx = 0; idx < length; idx++) {
+      value = gst_value_list_get_value (format, idx);
 
-    if (GST_VALUE_HOLDS_LIST (fmtvalue)) {
-      length = gst_value_list_get_size (fmtvalue);
-
-      GST_DEBUG_OBJECT (vtrans, "Have %u formats", length);
-
-      for (j = 0; j < length; j++) {
-        value = gst_value_list_get_value (fmtvalue, j);
-
-        if (G_VALUE_HOLDS_STRING (value)) {
-          gst_video_transform_score_format (vtrans, ininfo, value, &score,
-              &outinfo);
-        }
+      if (G_VALUE_HOLDS_STRING (value)) {
+        gst_video_transform_score_format (vtrans, ininfo, value, &score,
+            &outinfo);
+      } else {
+        GST_WARNING_OBJECT (vtrans, "Format value has invalid type!");
       }
-    } else if (G_VALUE_HOLDS_STRING (fmtvalue)) {
-      gst_video_transform_score_format (vtrans, ininfo, fmtvalue, &score,
-          &outinfo);
     }
-  }
-
-  if (gst_structure_has_field (structure, "colorimetry")) {
-    const GValue *value = gst_structure_get_value (structure, "colorimetry");
-    gst_caps_set_value (outcaps, "colorimetry", value);
-  }
-
-  if (gst_structure_has_field (structure, "chroma-site")) {
-    const GValue *value = gst_structure_get_value (structure, "chroma-site");
-    gst_caps_set_value (outcaps, "chroma-site", value);
+  } else if (G_VALUE_HOLDS_STRING (format)) {
+    gst_video_transform_score_format (vtrans, ininfo, format, &score,
+        &outinfo);
+  } else {
+    GST_WARNING_OBJECT (vtrans, "Format field has invalid type!");
   }
 
   if (outinfo != NULL) {
-    gst_structure_set (gst_caps_get_structure (outcaps, 0), "format",
-        G_TYPE_STRING, GST_VIDEO_FORMAT_INFO_NAME (outinfo), NULL);
+    gst_structure_fixate_field_string (output, "format",
+        GST_VIDEO_FORMAT_INFO_NAME (outinfo));
+  }
+
+  if (gst_structure_has_field (input, "colorimetry")) {
+    const gchar *string = gst_structure_get_string (input, "colorimetry");
+
+    if (gst_structure_has_field (output, "colorimetry"))
+      gst_structure_fixate_field_string (output, "colorimetry", string);
+    else
+      gst_structure_set (output, "colorimetry", G_TYPE_STRING, string, NULL);
+  }
+
+  if (gst_structure_has_field (input, "chroma-site")) {
+    const gchar *string = gst_structure_get_string (input, "chroma-site");
+
+    if (gst_structure_has_field (output, "chroma-site"))
+      gst_structure_fixate_field_string (output, "chroma-site", string);
+    else
+      gst_structure_set (output, "chroma-site", G_TYPE_STRING, string, NULL);
+  }
+
+  if (gst_structure_has_field (input, "compression")) {
+    const gchar *string = gst_structure_get_string (input, "compression");
+
+    if (gst_structure_has_field (output, "compression"))
+      gst_structure_fixate_field_string (output, "compression", string);
+    else
+      gst_structure_set (output, "compression", G_TYPE_STRING, string, NULL);
   }
 }
 
@@ -1328,7 +1389,7 @@ gst_video_transform_fixate_caps (GstBaseTransform * trans,
       " based on caps %" GST_PTR_FORMAT, outcaps, incaps);
 
   // First fixate the output format.
-  gst_video_transform_fixate_format (vtrans, incaps, outcaps);
+  gst_video_transform_fixate_format (vtrans, input, output);
 
   {
     // Fill the pixel-aspect-ratio fields if they weren't set in the caps.
