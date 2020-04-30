@@ -83,7 +83,8 @@ enum {
 
 
 static GstStaticCaps gst_mle_snpe_format_caps =
-    GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE_WITH_FEATURES ("ANY", GST_ML_VIDEO_FORMATS));
+    GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_ML_VIDEO_FORMATS) ";"
+    GST_VIDEO_CAPS_MAKE_WITH_FEATURES ("ANY", GST_ML_VIDEO_FORMATS));
 
 static void
 gst_mle_set_property_mask(guint &mask, guint property_id)
