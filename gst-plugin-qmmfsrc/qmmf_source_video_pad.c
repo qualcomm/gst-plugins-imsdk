@@ -97,6 +97,20 @@ enum
 {
   PROP_0,
   PROP_VIDEO_SOURCE_INDEX,
+  PROP_VIDEO_FRAMERATE,
+  PROP_VIDEO_BITRATE,
+  PROP_VIDEO_BITRATE_CONTROL,
+  PROP_VIDEO_QUANT_I_FRAMES,
+  PROP_VIDEO_QUANT_P_FRAMES,
+  PROP_VIDEO_QUANT_B_FRAMES,
+  PROP_VIDEO_MIN_QP,
+  PROP_VIDEO_MAX_QP,
+  PROP_VIDEO_MIN_QP_I_FRAMES,
+  PROP_VIDEO_MAX_QP_I_FRAMES,
+  PROP_VIDEO_MIN_QP_P_FRAMES,
+  PROP_VIDEO_MAX_QP_P_FRAMES,
+  PROP_VIDEO_MIN_QP_B_FRAMES,
+  PROP_VIDEO_MAX_QP_B_FRAMES,
 };
 
 static void
@@ -432,6 +446,24 @@ video_pad_set_property (GObject * object, guint property_id,
     case PROP_VIDEO_SOURCE_INDEX:
       pad->srcidx = g_value_get_int (value);
       break;
+    case PROP_VIDEO_FRAMERATE:
+      pad->framerate = g_value_get_double (value);
+      break;
+    case PROP_VIDEO_BITRATE:
+    case PROP_VIDEO_BITRATE_CONTROL:
+    case PROP_VIDEO_QUANT_I_FRAMES:
+    case PROP_VIDEO_QUANT_P_FRAMES:
+    case PROP_VIDEO_QUANT_B_FRAMES:
+    case PROP_VIDEO_MIN_QP:
+    case PROP_VIDEO_MAX_QP:
+    case PROP_VIDEO_MIN_QP_I_FRAMES:
+    case PROP_VIDEO_MAX_QP_I_FRAMES:
+    case PROP_VIDEO_MIN_QP_P_FRAMES:
+    case PROP_VIDEO_MAX_QP_P_FRAMES:
+    case PROP_VIDEO_MIN_QP_B_FRAMES:
+    case PROP_VIDEO_MAX_QP_B_FRAMES:
+      gst_structure_set_value (pad->params, propname, value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (pad, property_id, pspec);
       break;
@@ -454,6 +486,25 @@ video_pad_get_property (GObject * object, guint property_id, GValue * value,
   switch (property_id) {
     case PROP_VIDEO_SOURCE_INDEX:
       g_value_set_int (value, pad->srcidx);
+      break;
+    case PROP_VIDEO_FRAMERATE:
+      g_value_set_double (value, pad->framerate);
+      break;
+    case PROP_VIDEO_BITRATE:
+    case PROP_VIDEO_BITRATE_CONTROL:
+    case PROP_VIDEO_QUANT_I_FRAMES:
+    case PROP_VIDEO_QUANT_P_FRAMES:
+    case PROP_VIDEO_QUANT_B_FRAMES:
+    case PROP_VIDEO_MIN_QP:
+    case PROP_VIDEO_MAX_QP:
+    case PROP_VIDEO_MIN_QP_I_FRAMES:
+    case PROP_VIDEO_MAX_QP_I_FRAMES:
+    case PROP_VIDEO_MIN_QP_P_FRAMES:
+    case PROP_VIDEO_MAX_QP_P_FRAMES:
+    case PROP_VIDEO_MIN_QP_B_FRAMES:
+    case PROP_VIDEO_MAX_QP_B_FRAMES:
+      g_value_copy (gst_structure_get_value (pad->params,
+           g_param_spec_get_name (pspec)), value);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (pad, property_id, pspec);
@@ -507,6 +558,98 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
           -1, G_MAXINT, DEFAULT_PROP_SOURCE_INDEX,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_VIDEO_FRAMERATE,
+      g_param_spec_double ("framerate", "Framerate",
+          "Target framerate in frames per second for displaying",
+          0.0, 30.0, DEFAULT_PROP_FRAMERATE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_VIDEO_BITRATE,
+      g_param_spec_uint ("bitrate", "Bitrate",
+          "Target bitrate in bits per second for compressed streams",
+          0, G_MAXUINT, DEFAULT_PROP_BITRATE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_VIDEO_BITRATE_CONTROL,
+      g_param_spec_enum ("bitrate-control", "Bitrate Control",
+          "Bitrate control method for compressed streams",
+          GST_TYPE_VIDEO_PAD_CONTROL_RATE, DEFAULT_PROP_BITRATE_CONTROL,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_VIDEO_QUANT_I_FRAMES,
+      g_param_spec_uint ("quant-i-frames", "I-Frame Quantization",
+          "Quantization parameter on I-frames for compressed streams",
+          0, G_MAXUINT, DEFAULT_PROP_QUANT_I_FRAMES,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_VIDEO_QUANT_P_FRAMES,
+      g_param_spec_uint ("quant-p-frames", "P-Frame Quantization",
+          "Quantization parameter on P-frames for compressed streams",
+          0, G_MAXUINT, DEFAULT_PROP_QUANT_P_FRAMES,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_VIDEO_QUANT_B_FRAMES,
+      g_param_spec_uint ("quant-b-frames", "B-Frame Quantization",
+          "Quantization parameter on B-frames for compressed streams",
+          0, G_MAXUINT, DEFAULT_PROP_QUANT_B_FRAMES,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_VIDEO_MIN_QP,
+      g_param_spec_uint ("min-qp", "Min Quantization value",
+          "Minimum QP value allowed during rate control for compressed "
+          "streams",
+          0, 51, DEFAULT_PROP_MIN_QP,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_VIDEO_MAX_QP,
+      g_param_spec_uint ("max-qp", "Max Quantization value",
+          "Maximum QP value allowed during rate control for compressed "
+          "streams",
+          0, 51, DEFAULT_PROP_MAX_QP,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_VIDEO_MIN_QP_I_FRAMES,
+      g_param_spec_uint ("min-qp-i-frames", "I-Frame Min Quantization value",
+          "Minimum QP value allowed on I-Frames during rate control for "
+          "compressed streams",
+          0, 51, DEFAULT_PROP_MIN_QP_I_FRAMES,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_VIDEO_MAX_QP_I_FRAMES,
+      g_param_spec_uint ("max-qp-i-frames", "I-Frame Max Quantization value",
+          "Maximum QP value allowed on I-Frames during rate control for "
+          "compressed streams",
+          0, 51, DEFAULT_PROP_MAX_QP_I_FRAMES,
+          (GParamFlags)(G_PARAM_CONSTRUCT | G_PARAM_READWRITE |
+              G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY)));
+  g_object_class_install_property (gobject, PROP_VIDEO_MIN_QP_P_FRAMES,
+      g_param_spec_uint ("min-qp-p-frames", "P-Frame Min Quantization value",
+          "Minimum QP value allowed on for P-Frames during rate control for "
+          "compressed streams",
+          0, 51, DEFAULT_PROP_MIN_QP_P_FRAMES,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_VIDEO_MAX_QP_P_FRAMES,
+      g_param_spec_uint ("max-qp-p-frames", "P-Frame Max Quantization value",
+          "Maximum QP value allowed on P-Frames during rate control for "
+          "compressed streams",
+          0, 51, DEFAULT_PROP_MAX_QP_P_FRAMES,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_VIDEO_MIN_QP_B_FRAMES,
+      g_param_spec_uint ("min-qp-b-frames", "B-Frame Min Quantization value",
+          "Minimum QP value allowed on B-Frames during rate control for "
+          "compressed streams",
+          0, 51, DEFAULT_PROP_MIN_QP_B_FRAMES,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_VIDEO_MAX_QP_B_FRAMES,
+      g_param_spec_uint ("max-qp-b-frames", "B-Frame Max Quantization value",
+          "Maximum QP value allowed on B-Frames during rate control for "
+          "compressed streams",
+          0, 51, DEFAULT_PROP_MAX_QP_B_FRAMES,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
 
   GST_DEBUG_CATEGORY_INIT (qmmfsrc_video_pad_debug, "qmmfsrc", 0,
       "QTI QMMF Source video pad");
@@ -529,34 +672,6 @@ qmmfsrc_video_pad_init (GstQmmfSrcVideoPad * pad)
   pad->params    = gst_structure_new_empty ("codec-params");
 
   pad->duration  = GST_CLOCK_TIME_NONE;
-
-  // TODO temporality solution until properties are implemented.
-  gst_structure_set (pad->params, "bitrate", G_TYPE_UINT,
-      DEFAULT_PROP_BITRATE, NULL);
-  gst_structure_set (pad->params, "bitrate-control",
-      GST_TYPE_VIDEO_PAD_CONTROL_RATE, DEFAULT_PROP_BITRATE_CONTROL, NULL);
-  gst_structure_set (pad->params, "quant-i-frames", G_TYPE_UINT,
-      DEFAULT_PROP_QUANT_I_FRAMES, NULL);
-  gst_structure_set (pad->params, "quant-p-frames", G_TYPE_UINT,
-      DEFAULT_PROP_QUANT_P_FRAMES, NULL);
-  gst_structure_set (pad->params, "quant-b-frames", G_TYPE_UINT,
-      DEFAULT_PROP_QUANT_B_FRAMES, NULL);
-  gst_structure_set (pad->params, "min-qp", G_TYPE_UINT,
-      DEFAULT_PROP_MIN_QP, NULL);
-  gst_structure_set (pad->params, "max-qp", G_TYPE_UINT,
-      DEFAULT_PROP_MAX_QP, NULL);
-  gst_structure_set (pad->params, "min-qp-i-frames", G_TYPE_UINT,
-      DEFAULT_PROP_MIN_QP_I_FRAMES, NULL);
-  gst_structure_set (pad->params, "max-qp-i-frames", G_TYPE_UINT,
-      DEFAULT_PROP_MAX_QP_I_FRAMES, NULL);
-  gst_structure_set (pad->params, "min-qp-p-frames", G_TYPE_UINT,
-      DEFAULT_PROP_MIN_QP_P_FRAMES, NULL);
-  gst_structure_set (pad->params, "max-qp-p-frames", G_TYPE_UINT,
-      DEFAULT_PROP_MAX_QP_P_FRAMES, NULL);
-  gst_structure_set (pad->params, "min-qp-b-frames", G_TYPE_UINT,
-      DEFAULT_PROP_MIN_QP_B_FRAMES, NULL);
-  gst_structure_set (pad->params, "max-qp-b-frames", G_TYPE_UINT,
-      DEFAULT_PROP_MAX_QP_B_FRAMES, NULL);
 
   pad->buffers   = gst_data_queue_new (queue_is_full_cb, NULL, NULL, pad);
 }

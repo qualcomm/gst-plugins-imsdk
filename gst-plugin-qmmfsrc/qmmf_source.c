@@ -279,6 +279,13 @@ qmmfsrc_request_pad (GstElement * element, GstPadTemplate * templ,
   gst_child_proxy_child_added (GST_CHILD_PROXY (element), G_OBJECT (srcpad),
       GST_OBJECT_NAME (srcpad));
 
+  // Connect a callback to the 'notify' signal of a pad property to be
+  // called when a that property changes during runtime.
+  g_signal_connect (srcpad, "notify::bitrate",
+      G_CALLBACK (gst_qmmf_context_update_video_param), qmmfsrc->context);
+  g_signal_connect (srcpad, "notify::framerate",
+      G_CALLBACK (gst_qmmf_context_update_video_param), qmmfsrc->context);
+
   return srcpad;
 }
 
@@ -336,13 +343,6 @@ qmmfsrc_create_session (GstQmmfSrc * qmmfsrc)
     success = gst_qmmf_context_create_stream (qmmfsrc->context, pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Video stream creation failed!");
-
-    // Connect a callback to the 'notify' signal of a pad property to be
-    // called when a that property changes during runtime.
-    g_signal_connect (pad, "notify::bitrate",
-        G_CALLBACK (gst_qmmf_context_update_video_param), qmmfsrc->context);
-    g_signal_connect (pad, "notify::framerate",
-        G_CALLBACK (gst_qmmf_context_update_video_param), qmmfsrc->context);
   }
 
   for (list = qmmfsrc->imgindexes; list != NULL; list = list->next) {
