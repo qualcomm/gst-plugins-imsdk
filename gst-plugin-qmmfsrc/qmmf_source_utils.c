@@ -386,8 +386,11 @@ gst_qmmfsrc_noise_reduction_get_type (void)
     { NOISE_REDUCTION_OFF,
         "No noise reduction filter is applied.", "off"
     },
+    { NOISE_REDUCTION_FAST,
+        "TNR (Temoral Noise Reduction) Fast Mode.", "fast"
+    },
     { NOISE_REDUCTION_HIGH_QUALITY,
-        "TNR (Temoral Noise Reduction) mode", "hq"
+        "TNR (Temoral Noise Reduction) High Quality Mode.", "hq"
     },
     {0, NULL, NULL},
   };
@@ -535,8 +538,6 @@ gst_qmmfsrc_noise_reduction_android_value (const guint value)
       {NOISE_REDUCTION_OFF, ANDROID_NOISE_REDUCTION_MODE_OFF},
       {NOISE_REDUCTION_FAST, ANDROID_NOISE_REDUCTION_MODE_FAST},
       {NOISE_REDUCTION_HIGH_QUALITY, ANDROID_NOISE_REDUCTION_MODE_HIGH_QUALITY},
-      {NOISE_REDUCTION_MINIMAL, ANDROID_NOISE_REDUCTION_MODE_MINIMAL},
-      {NOISE_REDUCTION_ZSL, ANDROID_NOISE_REDUCTION_MODE_ZERO_SHUTTER_LAG},
   };
 
   for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(map); ++idx) {
