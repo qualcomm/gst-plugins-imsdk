@@ -42,9 +42,6 @@
 #include <fcntl.h>
 #include <condition_variable>
 #include <mutex>
-#include <linux/msm_ion.h>
-#include <sys/ioctl.h>
-#include <sys/mman.h>
 
 #include "DlContainer/IDlContainer.hpp"
 #include "SNPE/SNPE.hpp"
@@ -65,22 +62,6 @@
 
 namespace mle {
 
-struct IONBuffer {
-  uint8_t* addr = nullptr;
-  float* addr_f = nullptr;
-  uint32_t size;
-  int32_t fd;
-  int32_t handle;
-  bool cached;
-  uint32_t width;
-  uint32_t height;
-  uint32_t stride;
-#ifdef QMMF_ALG
-  void GetAlgBuffer(qmmf::qmmf_alg_plugin::AlgBuffer* buf,
-                    const InputFormat& format);
-#endif
-};
-
 struct InitParams {
   uint32_t width;
   uint32_t height;
@@ -88,9 +69,7 @@ struct InitParams {
   uint32_t scanline;
   MLEImageFormat format;
   float conf_threshold;
-#ifndef QMMF_ALG
   uint8_t* bgr_buf;
-#endif // !QMMF_ALG
 };
 
 struct SNPEParams {
@@ -105,16 +84,11 @@ struct SNPEParams {
   zdl::DlSystem::TensorMap output_tensor_map;
   zdl::DlSystem::TensorMap input_tensor_map;
 
-  std::unordered_map<std::string, IONBuffer> in_heap_map;
-  std::unordered_map<std::string, IONBuffer> out_heap_map;
+  std::unordered_map<std::string, std::vector<float>> in_heap_map;
+  std::unordered_map<std::string, std::vector<float>> out_heap_map;
 };
 
-#ifdef QMMF_ALG
-class SNPEBase : public qmmf::qmmf_alg_plugin::IEventListener, public MLTools,
-                 public MLEngine {
-#else
 class SNPEBase : public MLEngine {
-#endif
  public:
   SNPEBase(MLConfig &config);
   virtual ~SNPEBase(){};
@@ -124,20 +98,47 @@ class SNPEBase : public MLEngine {
 
  protected:
   int32_t PreProcessBuffer(const struct SourceFrame* frame_info);
-  void PrintErrorStringAndExit();
+  void Pad(
+      uint8_t*       input_buf,
+      const uint32_t input_width,
+      const uint32_t input_height,
+      const uint32_t pad_width,
+      const uint32_t pad_height,
+      uint8_t*       output_buf);
 
-  IONBuffer AllocateBuffer(const uint32_t& size,
-                           const InputFormat& input_format);
-  void ReleaseBuffer(const IONBuffer& buf);
+  void PreProcessColorConvertRGB(
+      uint8_t*       pSrcLuma,
+      uint8_t*       pSrcChroma,
+      uint8_t*       pDst,
+      const uint32_t width,
+      const uint32_t height,
+      MLEImageFormat    format);
+
+  void PreProcessColorConvertBGR(
+      uint8_t*       pSrc,
+      uint8_t*       pDst,
+      const uint32_t width,
+      const uint32_t height);
+
+  void PreProcessScale(
+      uint8_t*       pSrcLuma,
+      uint8_t*       pSrcChroma,
+      uint8_t*       pDst,
+      const uint32_t srcWidth,
+      const uint32_t srcHeight,
+      const uint32_t scaleWidth,
+      const uint32_t scaleHeight,
+      MLEImageFormat    format);
+
+  void PrintErrorStringAndExit();
 
   int32_t ExecuteSNPE();
   virtual int32_t EnginePostProcess(GstBuffer* buffer);
 
   std::vector<std::string> labels_;
-  int32_t ion_device_;
 
-  uint32_t scale_stride_;
-
+  uint32_t pad_width_;  //model's input
+  uint32_t pad_height_; //model's input
   uint32_t scale_width_;
   uint32_t scale_height_;
   InitParams init_params_;
@@ -162,32 +163,10 @@ class SNPEBase : public MLEngine {
   int32_t CreateTensor(BufferType type, const char* name);
   int32_t InitSNPE();
 
-#ifdef QMMF_ALG
-  void InitAlgo();
-  void DeinitAlgo();
-  void *algo_lib_handle_;
-  qmmf::qmmf_alg_plugin::IAlgPlugin *algo_;
-  std::map<int32_t, qmmf::qmmf_alg_plugin::AlgBuffer> alg_input_buffers_map_;
-  std::vector<qmmf::qmmf_alg_plugin::AlgBuffer> alg_output_buffers_;
-  std::condition_variable signal_;
-  std::mutex lock_;
-  bool algo_process_done_;
-  std::string AlgoConfiguration() const;
-  int32_t GetOffsets(const std::string& conf_data);
-
-  // qmmf::qmmf_alg_plugin::IEventListener methods
-  void OnFrameReady(const qmmf::qmmf_alg_plugin::AlgBuffer &output_buffer);
-  void OnFrameProcessed(const qmmf::qmmf_alg_plugin::AlgBuffer &input_buffer) {};
-  void OnError(qmmf::qmmf_alg_plugin::RuntimeError err) {};
-#else
-  int32_t ColorConvert();
-  int32_t ScaleImage(uint8_t* input_buf, uint8_t* scaled_buf, const uint32_t width,
-                  const uint32_t height, const uint32_t scaled_width,
-                  const uint32_t scaled_height);
   void MeanSubtract(uint8_t* input_buf, const uint32_t width,
                     const uint32_t height, float* processed_buf);
-  IONBuffer scale_ion_buffer_;
-#endif
+  uint8_t* scale_buffer_;
+  uint8_t* pad_buffer_;
 };
 
 }; // namespace mle
