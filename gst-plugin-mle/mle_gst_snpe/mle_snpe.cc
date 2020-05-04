@@ -301,7 +301,7 @@ gst_mle_snpe_parse_config(gchar *config_location,
           val.get("confidence-threshold", 0.0).asFloat();
       configuration.model_file = val.get("model", "").asString();
       configuration.labels_file = val.get("labels", "").asString();
-      for (size_t i = 0; i < val["output-layers"].size(); i++) {
+      for (uint32_t i = 0; i < val["output-layers"].size(); i++) {
         configuration.output_layers.push_back(
                                     val["output-layers"][i].asString());
       }
