@@ -132,7 +132,7 @@ static ::qmmf::recorder::Recorder *recorder = NULL;
 
 /// Mutex and refcount for the QMMF recorder instance.
 G_LOCK_DEFINE_STATIC (recorder);
-static grefcount refcount = 0;
+static gint refcount = 0;
 
 static G_DEFINE_QUARK(QmmfBufferQDataQuark, qmmf_buffer_qdata);
 
@@ -776,11 +776,10 @@ gst_qmmf_context_new ()
       GST_ERROR ("QMMF Recorder Connect failed!");
       return NULL;
     }
-
-    g_ref_count_init (&refcount);
-  } else {
-    g_ref_count_inc (&refcount);
   }
+
+  // Increase the reference count;
+  refcount++;
 
   G_UNLOCK (recorder);
 
@@ -801,7 +800,7 @@ gst_qmmf_context_free (GstQmmfContext * context)
 {
   G_LOCK (recorder);
 
-  if (recorder != NULL && g_ref_count_dec (&refcount)) {
+  if (recorder != NULL && ((--refcount) == 0)) {
     recorder->Disconnect ();
 
     delete recorder;
