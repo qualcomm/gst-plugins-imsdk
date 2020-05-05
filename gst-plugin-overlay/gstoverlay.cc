@@ -48,12 +48,29 @@ G_DEFINE_TYPE (GstOverlay, gst_overlay, GST_TYPE_VIDEO_FILTER);
 
 #define GST_VIDEO_FORMATS "{ NV12, NV21 }"
 
-#define DEFAULT_PROP_OVERLAY_TEXT        ""
-#define DEFAULT_PROP_OVERLAY_DATE        FALSE
+#define DEFAULT_PROP_OVERLAY_TEXT        NULL
+#define DEFAULT_PROP_OVERLAY_DATE        NULL
+#define DEFAULT_PROP_OVERLAY_SIMG        NULL
+#define DEFAULT_PROP_OVERLAY_BBOX        NULL
 #define DEFAULT_PROP_OVERLAY_BBOX_COLOR  kColorBlue
 #define DEFAULT_PROP_OVERLAY_DATE_COLOR  kColorRed
 #define DEFAULT_PROP_OVERLAY_TEXT_COLOR  kColorYellow
 #define DEFAULT_PROP_OVERLAY_POSE_COLOR  kColorLightGreen
+
+#define DEFAULT_PROP_DEST_RECT_X      0
+#define DEFAULT_PROP_DEST_RECT_Y      0
+#define DEFAULT_PROP_DEST_RECT_WIDTH  0
+#define DEFAULT_PROP_DEST_RECT_HEIGHT 0
+
+
+/* This is initial value. Size is recalculated runtime and buffer is
+ * reallocated runtime.
+ */
+#define GST_OVERLAY_TO_STRING_SIZE 256
+#define GST_OVERLAY_TEXT_STRING_SIZE 80
+#define GST_OVERLAY_DATE_STRING_SIZE 100
+#define GST_OVERLAY_SIMG_STRING_SIZE 100
+#define GST_OVERLAY_BBOX_STRING_SIZE 80
 
 #define GST_OVERLAY_UNUSED(var) ((void)var)
 
@@ -72,15 +89,28 @@ static GstMLKeyPointsType PoseChain [][2] {
   {RIGHT_KNEE,     RIGHT_ANKLE}
 };
 
-
+/* Supported GST properties
+ * PROP_OVERLAY_TEXT - overlays user defined text
+ * PROP_OVERLAY_DATE - overlays date and time
+ * PROP_OVERLAY_SIMG - overlays static image
+ * PROP_OVERLAY_BBOX - overlays bounding box
+ * PROP_OVERLAY_BBOX_COLOR - ML Detection color
+ * PROP_OVERLAY_DATE_COLOR - ML Time and Date color
+ * PROP_OVERLAY_TEXT_COLOR - ML Classification color
+ * PROP_OVERLAY_POSE_COLOR - ML PoseNet color
+ * PROP_OVERLAY_TEXT_DEST_RECT - ML Classification destination rectangle
+ */
 enum {
   PROP_0,
   PROP_OVERLAY_TEXT,
   PROP_OVERLAY_DATE,
+  PROP_OVERLAY_SIMG,
+  PROP_OVERLAY_BBOX,
   PROP_OVERLAY_BBOX_COLOR,
   PROP_OVERLAY_DATE_COLOR,
   PROP_OVERLAY_TEXT_COLOR,
-  PROP_OVERLAY_POSE_COLOR
+  PROP_OVERLAY_POSE_COLOR,
+  PROP_OVERLAY_TEXT_DEST_RECT
 };
 
 static GstStaticCaps gst_overlay_format_caps =
@@ -91,35 +121,118 @@ static GstStaticCaps gst_overlay_format_caps =
  * GstOverlayMetaApplyFunc:
  * @gst_overlay: context
  * @meta: metadata payload
- * @item_id: overlay item unique id
+ * @item_id: overlay item instance id
  *
- * Function called when overlay is configured by metadata.
+ * API for overlay configuration by metadata.
  */
-typedef gboolean (*GstOverlayMetaApplyFunc)
+typedef gboolean (* GstOverlayMetaApplyFunc)
     (GstOverlay *gst_overlay, gpointer meta, uint32_t * item_id);
 
+/**
+ * GstOverlaySetFunc:
+ * @entry: result of parsed input is stored here
+ * @structure: user input
+ * @entry_exist: hint if entry exist or new entry. This is helpfull when
+ *               some default values are needed to be set.
+ *
+ * API for overlay configuration by GST property.
+ */
+typedef gboolean (* GstOverlaySetFunc)
+    (GstOverlayUser * entry, GstStructure * structure, gboolean entry_exist);
 
+/**
+ * GstOverlayGetFunc:
+ * @data: input structure
+ * @user_data: output string
+ *
+ * API for quering overlay configuration by GST property.
+ */
+typedef void (* GstOverlayGetFunc) (gpointer data, gpointer user_data);
+
+/**
+ * gst_overlay_caps:
+ *
+ * Expose overlay pads capabilities.
+ */
+static GstCaps *
+gst_overlay_caps (void)
+{
+  static GstCaps *caps = NULL;
+  static volatile gsize inited = 0;
+  if (g_once_init_enter (&inited)) {
+    caps = gst_static_caps_get (&gst_overlay_format_caps);
+    g_once_init_leave (&inited, 1);
+  }
+  return caps;
+}
+
+/**
+ * gst_overlay_src_template:
+ *
+ * Expose overlay source pads capabilities.
+ */
+static GstPadTemplate *
+gst_overlay_src_template (void)
+{
+  return gst_pad_template_new ("src", GST_PAD_SRC, GST_PAD_ALWAYS,
+      gst_overlay_caps ());
+}
+
+/**
+ * gst_overlay_sink_template:
+ *
+ * Expose overlay sink pads capabilities.
+ */
+static GstPadTemplate *
+gst_overlay_sink_template (void)
+{
+  return gst_pad_template_new ("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
+      gst_overlay_caps ());
+}
+
+/**
+ * gst_overlay_destroy_overlay_item:
+ * @data: pointer to overlay item instance id
+ * @user_data: context
+ *
+ * Destroy overlay instance and reset overlay instance id.
+ */
 static void
 gst_overlay_destroy_overlay_item (gpointer data, gpointer user_data)
 {
   uint32_t *item_id = (uint32_t *) data;
-  GstOverlay *gst_overlay = (GstOverlay *) user_data;
+  Overlay *overlay = (Overlay *) user_data;
 
-  int32_t ret = gst_overlay->overlay->DisableOverlayItem (*item_id);
+  int32_t ret = overlay->DisableOverlayItem (*item_id);
   if (ret != 0) {
-    GST_ERROR_OBJECT (gst_overlay, "Overlay disable failed!");
+    GST_ERROR ("Overlay %d disable failed!", *item_id);
   }
 
-  ret = gst_overlay->overlay->DeleteOverlayItem (*item_id);
+  ret = overlay->DeleteOverlayItem (*item_id);
   if (ret != 0) {
-    GST_ERROR_OBJECT (gst_overlay, "Overlay delete failed!");
+    GST_ERROR ("Overlay %d delete failed!", *item_id);
   }
 
   *item_id = 0;
 }
 
-static gboolean gst_overlay_apply_item_list (GstOverlay *gst_overlay,
-  GSList * meta_list, GstOverlayMetaApplyFunc apply_func, GSequence * ov_id)
+/**
+ * gst_overlay_apply_item_list:
+ * @gst_overlay: context
+ * @meta_list: List of metadata entries
+ * @apply_func: overlay configuration API. Converts metadata to overlay
+ *              configuration and applies it
+ * @ov_id: overlay item instance id handlers
+ *
+ * Iterates list of metadata entries and call provided overlay configuration
+ * API for each of them. Overlay instances ids are also managed by this
+ * function.
+ *
+ * Return true if succeed.
+ */
+static gboolean
+gst_overlay_apply_item_list (GstOverlay *gst_overlay,
+    GSList * meta_list, GstOverlayMetaApplyFunc apply_func, GSequence * ov_id)
 {
   gboolean res = TRUE;
 
@@ -144,7 +257,7 @@ static gboolean gst_overlay_apply_item_list (GstOverlay *gst_overlay,
     g_sequence_foreach_range (
         g_sequence_get_iter_at_pos (ov_id, meta_num),
         g_sequence_get_end_iter (ov_id),
-        gst_overlay_destroy_overlay_item, gst_overlay);
+        gst_overlay_destroy_overlay_item, gst_overlay->overlay);
     g_sequence_remove_range (
         g_sequence_get_iter_at_pos (ov_id, meta_num),
         g_sequence_get_end_iter (ov_id));
@@ -153,8 +266,92 @@ static gboolean gst_overlay_apply_item_list (GstOverlay *gst_overlay,
   return TRUE;
 }
 
+/**
+ * gst_overlay_apply_bbox_item:
+ * @gst_overlay: context
+ * @bbox: bounding box rectangle
+ * @label: bounding box label
+ * @color: text overlay
+ * @item_id: pointer to overlay item instance id
+ *
+ * Configures and enables bounding box overlay instance.
+ *
+ * Return true if succeed.
+ */
 static gboolean
-gst_overlay_apply_bbox_item (GstOverlay * gst_overlay, gpointer metadata,
+gst_overlay_apply_bbox_item (GstOverlay * gst_overlay, GstVideoRectangle * bbox,
+    gchar * label, guint color, uint32_t * item_id)
+{
+  OverlayParam ov_param;
+  int32_t ret = 0;
+
+  g_return_val_if_fail (gst_overlay != NULL, FALSE);
+  g_return_val_if_fail (bbox != NULL, FALSE);
+  g_return_val_if_fail (label != NULL, FALSE);
+  g_return_val_if_fail (item_id != NULL, FALSE);
+
+  if (!(*item_id)) {
+    ov_param = {};
+    ov_param.type = OverlayType::kBoundingBox;
+    ov_param.location = OverlayLocationType::kTopLeft;
+  } else {
+    ret = gst_overlay->overlay->GetOverlayParams (*item_id, ov_param);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay get param failed! ret: %d", ret);
+      return FALSE;
+    }
+  }
+
+  ov_param.color = color;
+  ov_param.dst_rect.start_x = bbox->x;
+  ov_param.dst_rect.start_y = bbox->y;
+  ov_param.dst_rect.width = bbox->w;
+  ov_param.dst_rect.height = bbox->h;
+
+  if (sizeof (ov_param.bounding_box.box_name) <= strlen (label)) {
+    GST_ERROR_OBJECT (gst_overlay, "Text size exceeded %d <= %d",
+        sizeof (ov_param.bounding_box.box_name), strlen (label));
+    return FALSE;
+  }
+  g_strlcpy (ov_param.bounding_box.box_name, label,
+      sizeof (ov_param.bounding_box.box_name));
+
+  if (!(*item_id)) {
+    ret = gst_overlay->overlay->CreateOverlayItem (ov_param, item_id);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay create failed! ret: %d", ret);
+      return FALSE;
+    }
+
+    ret = gst_overlay->overlay->EnableOverlayItem (*item_id);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay enable failed! ret: %d", ret);
+      return FALSE;
+    }
+  } else {
+    ret = gst_overlay->overlay->UpdateOverlayParams (*item_id, ov_param);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay set param failed! ret: %d", ret);
+      return FALSE;
+    }
+  }
+
+  return TRUE;
+}
+
+/**
+ * gst_overlay_apply_ml_bbox_item:
+ * @gst_overlay: context
+ * @metadata: machine learning metadata entry
+ * @item_id: pointer to overlay item instance id
+ *
+ * Converts GstMLDetectionMeta metadata to overlay configuration and applies it
+ * as bounding box overlay.
+ *
+ * Return true if succeed.
+ */
+static gboolean
+gst_overlay_apply_ml_bbox_item (GstOverlay * gst_overlay, gpointer metadata,
     uint32_t * item_id)
 {
   OverlayParam ov_param;
@@ -168,94 +365,100 @@ gst_overlay_apply_bbox_item (GstOverlay * gst_overlay, gpointer metadata,
   GstMLClassificationResult * result =
       (GstMLClassificationResult *) g_slist_nth_data (meta->box_info, 0);
 
-  if (!(*item_id)) {
-    ov_param = {};
-    ov_param.type = OverlayType::kBoundingBox;
-    ov_param.location = OverlayLocationType::kTopLeft;
-    ov_param.color = gst_overlay->bbox_color;
-    ov_param.dst_rect.start_x = meta->bounding_box.x;
-    ov_param.dst_rect.start_y = meta->bounding_box.y;
-    ov_param.dst_rect.width = meta->bounding_box.width;
-    ov_param.dst_rect.height = meta->bounding_box.height;
+  GstVideoRectangle bbox;
+  bbox.x = meta->bounding_box.x;
+  bbox.y = meta->bounding_box.y;
+  bbox.w = meta->bounding_box.width;
+  bbox.h = meta->bounding_box.height;
 
-    if (sizeof (ov_param.bounding_box.box_name) < strlen (result->name)) {
-      GST_ERROR_OBJECT (gst_overlay, "Text size exceeded %d < %d",
-        sizeof (ov_param.bounding_box.box_name), strlen (result->name));
-      return FALSE;
-    }
-    g_strlcpy (ov_param.bounding_box.box_name, result->name,
-        sizeof (ov_param.bounding_box.box_name));
-
-    ret = gst_overlay->overlay->CreateOverlayItem (ov_param, item_id);
-    if (ret != 0) {
-      GST_ERROR_OBJECT (gst_overlay, "Overlay create failed! ret: %d", ret);
-      return FALSE;
-    }
-
-    ret = gst_overlay->overlay->EnableOverlayItem (*item_id);
-    if (ret != 0) {
-      GST_ERROR_OBJECT (gst_overlay, "Overlay enable failed! ret: %d", ret);
-      return FALSE;
-    }
-  } else {
-    ret = gst_overlay->overlay->GetOverlayParams (*item_id, ov_param);
-    if (ret != 0) {
-      GST_ERROR_OBJECT (gst_overlay, "Overlay get param failed! ret: %d", ret);
-      return FALSE;
-    }
-
-    ov_param.dst_rect.start_x = meta->bounding_box.x;
-    ov_param.dst_rect.start_y = meta->bounding_box.y;
-    ov_param.dst_rect.width = meta->bounding_box.width;
-    ov_param.dst_rect.height = meta->bounding_box.height;
-
-    if (sizeof (ov_param.bounding_box.box_name) < strlen (result->name)) {
-      GST_ERROR_OBJECT (gst_overlay, "Text size exceeded %d < %d",
-        sizeof (ov_param.bounding_box.box_name), strlen (result->name));
-      return FALSE;
-    }
-    g_strlcpy (ov_param.bounding_box.box_name, result->name,
-        sizeof (ov_param.bounding_box.box_name));
-
-    ret = gst_overlay->overlay->UpdateOverlayParams (*item_id, ov_param);
-    if (ret != 0) {
-      GST_ERROR_OBJECT (gst_overlay, "Overlay set param failed! ret: %d", ret);
-      return FALSE;
-    }
-  }
-  return TRUE;
+  return gst_overlay_apply_bbox_item (gst_overlay, &bbox, result->name,
+      gst_overlay->bbox_color, item_id);
 }
 
+/**
+ * gst_overlay_apply_user_bbox_item:
+ * @data: context
+ * @user_data: overlay configuration of GstOverlayUsrBBox type
+ *
+ * Configures text overlay instance with user provided configuration
+ * and enables it.
+ */
+static void
+gst_overlay_apply_user_bbox_item (gpointer data, gpointer user_data)
+{
+  g_return_if_fail (data != NULL);
+  g_return_if_fail (user_data != NULL);
+
+  GstOverlay * gst_overlay = (GstOverlay *) user_data;
+  GstOverlayUsrBBox * ov_data = (GstOverlayUsrBBox *) data;
+
+  if (!ov_data->base.is_applied) {
+    gboolean res = gst_overlay_apply_bbox_item (gst_overlay,
+        &ov_data->boundind_box, ov_data->label, ov_data->color,
+        &ov_data->base.item_id);
+    if (!res) {
+      GST_ERROR_OBJECT (gst_overlay, "User overlay apply failed!");
+      return;
+    }
+    ov_data->base.is_applied = TRUE;
+  }
+}
+
+/**
+ * gst_overlay_apply_simg_item:
+ * @gst_overlay: context
+ * @img_buffer: pointer to image buffer
+ * @img_size: image buffer size
+ * @src_rect: represent image dimension in buffer
+ * @dst_rect: render destination rectangle in video stream
+ * @item_id: pointer to overlay item instance id
+ *
+ * Configures and enables static image overlay instance.
+ *
+ * Return true if succeed.
+ */
 static gboolean
-gst_overlay_apply_simg_item (GstOverlay *gst_overlay, gpointer metadata,
+gst_overlay_apply_simg_item (GstOverlay *gst_overlay, gpointer img_buffer,
+    guint img_size, GstVideoRectangle *src_rect, GstVideoRectangle *dst_rect,
     uint32_t *item_id)
 {
   OverlayParam ov_param;
   int32_t ret = 0;
 
   g_return_val_if_fail (gst_overlay != NULL, FALSE);
-  g_return_val_if_fail (metadata != NULL, FALSE);
+  g_return_val_if_fail (img_buffer != NULL, FALSE);
+  g_return_val_if_fail (src_rect != NULL, FALSE);
+  g_return_val_if_fail (dst_rect != NULL, FALSE);
   g_return_val_if_fail (item_id != NULL, FALSE);
 
-  GstMLSegmentationMeta *meta = (GstMLSegmentationMeta *) metadata;
 
   if (!(*item_id)) {
     ov_param = {};
     ov_param.type = OverlayType::kStaticImage;
-    ov_param.location = OverlayLocationType::kRandom;
-    ov_param.dst_rect.start_x = 0;
-    ov_param.dst_rect.start_y = 0;
-    ov_param.dst_rect.width = gst_overlay->width;
-    ov_param.dst_rect.height = gst_overlay->height;
     ov_param.image_info.image_type = OverlayImageType::kBlobType;
-    ov_param.image_info.source_rect.start_x = 0;
-    ov_param.image_info.source_rect.start_y = 0;
-    ov_param.image_info.source_rect.width = meta->img_width;
-    ov_param.image_info.source_rect.height = meta->img_height;
-    ov_param.image_info.image_buffer = (char *)meta->img_buffer;
-    ov_param.image_info.image_size = meta->img_size;
-    ov_param.image_info.buffer_updated = true;
+    ov_param.location = OverlayLocationType::kRandom;
+  } else {
+    ret = gst_overlay->overlay->GetOverlayParams (*item_id, ov_param);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay get param failed! ret: %d", ret);
+      return FALSE;
+    }
+  }
 
+  ov_param.dst_rect.start_x = dst_rect->x;
+  ov_param.dst_rect.start_y = dst_rect->y;
+  ov_param.dst_rect.width = dst_rect->w;
+  ov_param.dst_rect.height = dst_rect->h;
+
+  ov_param.image_info.source_rect.start_x = src_rect->x;
+  ov_param.image_info.source_rect.start_y = src_rect->y;
+  ov_param.image_info.source_rect.width = src_rect->w;
+  ov_param.image_info.source_rect.height = src_rect->h;
+  ov_param.image_info.image_buffer = (char *)img_buffer;
+  ov_param.image_info.image_size = img_size;
+  ov_param.image_info.buffer_updated = true;
+
+  if (!(*item_id)) {
     ret = gst_overlay->overlay->CreateOverlayItem (ov_param, item_id);
     if (ret != 0) {
       GST_ERROR_OBJECT (gst_overlay, "Overlay create failed! ret: %d", ret);
@@ -268,57 +471,146 @@ gst_overlay_apply_simg_item (GstOverlay *gst_overlay, gpointer metadata,
       return FALSE;
     }
   } else {
-    ret = gst_overlay->overlay->GetOverlayParams (*item_id, ov_param);
-    if (ret != 0) {
-      GST_ERROR_OBJECT (gst_overlay, "Overlay get param failed! ret: %d", ret);
-      return FALSE;
-    }
-
-    ov_param.dst_rect.start_x = 0;
-    ov_param.dst_rect.start_y = 0;
-    ov_param.dst_rect.width = gst_overlay->width;
-    ov_param.dst_rect.height = gst_overlay->height;
-    ov_param.image_info.source_rect.start_x = 0;
-    ov_param.image_info.source_rect.start_y = 0;
-    ov_param.image_info.source_rect.width = meta->img_width;
-    ov_param.image_info.source_rect.height = meta->img_height;
-    ov_param.image_info.image_buffer = (char *)meta->img_buffer;
-    ov_param.image_info.image_size = meta->img_size;
-    ov_param.image_info.buffer_updated = true;
-
     ret = gst_overlay->overlay->UpdateOverlayParams (*item_id, ov_param);
     if (ret != 0) {
       GST_ERROR_OBJECT (gst_overlay, "Overlay set param failed! ret: %d", ret);
       return FALSE;
     }
   }
+
   return TRUE;
 }
 
+/**
+ * gst_overlay_apply_ml_simg_item:
+ * @gst_overlay: context
+ * @metadata: machine learning metadata entry
+ * @item_id: pointer to overlay item instance id
+ *
+ * Converts GstMLSegmentationMeta metadata to overlay configuration and applies
+ * it as static image overlay.
+ *
+ * Return true if succeed.
+ */
 static gboolean
-gst_overlay_apply_user_text_item (GstOverlay *gst_overlay, gchar *name,
-  uint32_t * item_id)
+gst_overlay_apply_ml_simg_item (GstOverlay *gst_overlay, gpointer metadata,
+    uint32_t *item_id)
+{
+  g_return_val_if_fail (gst_overlay != NULL, FALSE);
+  g_return_val_if_fail (metadata != NULL, FALSE);
+  g_return_val_if_fail (item_id != NULL, FALSE);
+
+  GstMLSegmentationMeta *meta = (GstMLSegmentationMeta *) metadata;
+
+  GstVideoRectangle dst_rect;
+  dst_rect.x = 0;
+  dst_rect.y = 0;
+  dst_rect.w = gst_overlay->width;
+  dst_rect.h = gst_overlay->height;
+
+  GstVideoRectangle src_rect;
+  src_rect.x = 0;
+  src_rect.y = 0;
+  src_rect.w = meta->img_width;
+  src_rect.h = meta->img_height;
+
+  return gst_overlay_apply_simg_item (gst_overlay, meta->img_buffer,
+    meta->img_size, &src_rect, &dst_rect, item_id);
+}
+
+/**
+ * gst_overlay_apply_user_simg_item:
+ * @data: context
+ * @user_data: overlay configuration of GstOverlayUsrSImg type
+ *
+ * Configures static image overlay instance with user provided configuration
+ * and enables it.
+ */
+static void
+gst_overlay_apply_user_simg_item (gpointer data, gpointer user_data)
+{
+  g_return_if_fail (data != NULL);
+  g_return_if_fail (user_data != NULL);
+
+  GstOverlay * gst_overlay = (GstOverlay *) user_data;
+  GstOverlayUsrSImg * ov_data = (GstOverlayUsrSImg *) data;
+
+  if (!ov_data->base.is_applied) {
+    GstVideoRectangle dst_rect;
+    dst_rect.x = ov_data->dest_rect.x;
+    dst_rect.y = ov_data->dest_rect.y;
+    dst_rect.w = ov_data->dest_rect.w;
+    dst_rect.h = ov_data->dest_rect.h;
+
+    GstVideoRectangle src_rect;
+    src_rect.x = 0;
+    src_rect.y = 0;
+    src_rect.w = ov_data->img_width;
+    src_rect.h = ov_data->img_height;
+
+    gboolean res = gst_overlay_apply_simg_item (gst_overlay,
+      ov_data->img_buffer, ov_data->img_size, &src_rect, &dst_rect,
+      &ov_data->base.item_id);
+    if (!res) {
+      GST_ERROR_OBJECT (gst_overlay, "User overlay apply failed!");
+      return;
+    }
+    ov_data->base.is_applied = TRUE;
+  }
+}
+
+/**
+ * gst_overlay_apply_text_item:
+ * @gst_overlay: context
+ * @name: overlay text
+ * @color: text overlay
+ * @location: render location in video stream
+ * @dest_rect: render destination rectangle in video stream
+ * @item_id: pointer to overlay item instance id
+ *
+ * Configures and enables text overlay instance.
+ *
+ * Return true if succeed.
+ */
+static gboolean
+gst_overlay_apply_text_item (GstOverlay * gst_overlay, gchar * name,
+    guint color, OverlayLocationType location, GstVideoRectangle * dest_rect,
+    uint32_t * item_id)
 {
   OverlayParam ov_param;
   int32_t ret = 0;
 
   g_return_val_if_fail (gst_overlay != NULL, FALSE);
   g_return_val_if_fail (name != NULL, FALSE);
-  g_return_val_if_fail (item_id != NULL, FALSE);;
+  g_return_val_if_fail (dest_rect != NULL, FALSE);
+  g_return_val_if_fail (item_id != NULL, FALSE);
 
   if (!(*item_id)) {
     ov_param = {};
     ov_param.type = OverlayType::kUserText;
-    ov_param.color = gst_overlay->text_color;
-    ov_param.location = OverlayLocationType::kTopLeft;
-
-    if (sizeof (ov_param.bounding_box.box_name) < strlen (name)) {
-      GST_ERROR_OBJECT (gst_overlay, "Text size exceeded %d < %d",
-        sizeof (ov_param.bounding_box.box_name), strlen (name));
+  } else {
+    ret = gst_overlay->overlay->GetOverlayParams (*item_id, ov_param);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay get param failed! ret: %d", ret);
       return FALSE;
     }
-    g_strlcpy (ov_param.user_text, name, sizeof (ov_param.user_text));
+  }
 
+  ov_param.color = color;
+  ov_param.location = OverlayLocationType::kNone;
+  ov_param.dst_rect.start_x = dest_rect->x;
+  ov_param.dst_rect.start_y = dest_rect->y;
+  ov_param.dst_rect.width = dest_rect->w;
+  ov_param.dst_rect.height = dest_rect->h;
+
+  if (sizeof (ov_param.user_text) <= strlen (name)) {
+    GST_ERROR_OBJECT (gst_overlay, "Text size exceeded %d <= %d",
+      sizeof (ov_param.user_text), strlen (name));
+    return FALSE;
+  }
+  g_strlcpy (ov_param.user_text, name, sizeof (ov_param.user_text));
+
+  if (!(*item_id)) {
     ret = gst_overlay->overlay->CreateOverlayItem (ov_param, item_id);
     if (ret != 0) {
       GST_ERROR_OBJECT (gst_overlay, "Overlay create failed! ret: %d", ret);
@@ -331,48 +623,85 @@ gst_overlay_apply_user_text_item (GstOverlay *gst_overlay, gchar *name,
       return FALSE;
     }
   } else {
-    ret = gst_overlay->overlay->GetOverlayParams (*item_id, ov_param);
-    if (ret != 0) {
-      GST_ERROR_OBJECT (gst_overlay, "Overlay get param failed! ret: %d", ret);
-      return FALSE;
-    }
-
-    if (sizeof (ov_param.bounding_box.box_name) < strlen (name)) {
-      GST_ERROR_OBJECT (gst_overlay, "Text size exceeded %d < %d",
-        sizeof (ov_param.bounding_box.box_name), strlen (name));
-      return FALSE;
-    }
-    g_strlcpy (ov_param.user_text, name, sizeof (ov_param.user_text));
-
     ret = gst_overlay->overlay->UpdateOverlayParams (*item_id, ov_param);
     if (ret != 0) {
       GST_ERROR_OBJECT (gst_overlay, "Overlay set param failed! ret: %d", ret);
       return FALSE;
     }
   }
+
   return TRUE;
 }
 
+/**
+ * gst_overlay_apply_ml_text_item:
+ * @gst_overlay: context
+ * @metadata: machine learning metadata entry
+ * @item_id: pointer to overlay item instance id
+ *
+ * Converts GstMLClassificationMeta metadata to overlay configuration and
+ * applies it as text overlay.
+ *
+ * Return true if succeed.
+ */
 static gboolean
-gst_overlay_apply_text_item (GstOverlay *gst_overlay, gpointer metadata,
-  uint32_t * item_id)
+gst_overlay_apply_ml_text_item (GstOverlay *gst_overlay, gpointer metadata,
+    uint32_t * item_id)
 {
-  OverlayParam ov_param;
-  int32_t ret = 0;
-
-  g_return_val_if_fail (item_id != NULL, FALSE);
+  g_return_val_if_fail (gst_overlay != NULL, FALSE);
   g_return_val_if_fail (metadata != NULL, FALSE);
   g_return_val_if_fail (item_id != NULL, FALSE);
 
   GstMLClassificationMeta * meta = (GstMLClassificationMeta *) metadata;
 
-  return gst_overlay_apply_user_text_item (gst_overlay, meta->result.name,
-      item_id);
+  return gst_overlay_apply_text_item (gst_overlay, meta->result.name,
+    gst_overlay->text_color, OverlayLocationType::kTopLeft,
+    &gst_overlay->text_dest_rect, item_id);
 }
 
+/**
+ * gst_overlay_apply_user_text_item:
+ * @data: context
+ * @user_data: overlay configuration of GstOverlayUsrText type
+ *
+ * Configures text overlay instance with user provided configuration
+ * and enables it.
+ */
+static void
+gst_overlay_apply_user_text_item (gpointer data, gpointer user_data)
+{
+  g_return_if_fail (data != NULL);
+  g_return_if_fail (user_data != NULL);
+
+  GstOverlay * gst_overlay = (GstOverlay *) user_data;
+  GstOverlayUsrText * ov_data = (GstOverlayUsrText *) data;
+
+  if (!ov_data->base.is_applied) {
+    gboolean res = gst_overlay_apply_text_item (gst_overlay, ov_data->text,
+      ov_data->color, OverlayLocationType::kNone, &ov_data->dest_rect,
+      &ov_data->base.item_id);
+    if (!res) {
+      GST_ERROR_OBJECT (gst_overlay, "User overlay apply failed!");
+      return;
+    }
+    ov_data->base.is_applied = TRUE;
+  }
+}
+
+/**
+ * gst_overlay_apply_ml_pose_item:
+ * @gst_overlay: context
+ * @metadata: machine learning metadata entry
+ * @item_id: pointer to overlay item instance id
+ *
+ * Converts GstMLPoseNetMeta metadata to overlay configuration and applies
+ * it as graph overlay.
+ *
+ * Return true if succeed.
+ */
 static gboolean
-gst_overlay_apply_pose_item (GstOverlay *gst_overlay, gpointer metadata,
-  uint32_t * item_id)
+gst_overlay_apply_ml_pose_item (GstOverlay *gst_overlay, gpointer metadata,
+    uint32_t * item_id)
 {
   OverlayParam ov_param;
   int32_t ret = 0;
@@ -562,57 +891,113 @@ gst_overlay_apply_pose_item (GstOverlay *gst_overlay, gpointer metadata,
   return TRUE;
 }
 
+/**
+ * gst_overlay_apply_date_item:
+ * @gst_overlay: context
+ * @time_format: time format
+ * @date_format: date format
+ * @color:  date and time color
+ * @location: render location in video stream
+ * @dest_rect: render destination rectangle in video stream
+ * @item_id: pointer to overlay item instance id
+ *
+ * Configures and enables date overlay instance.
+ *
+ * Return true if succeed.
+ */
 static gboolean
-gst_overlay_apply_date_item (GstOverlay *vtrans,
-  OverlayTimeFormatType time_format, OverlayDateFormatType date_format,
-  uint32_t * item_id)
+gst_overlay_apply_date_item (GstOverlay *gst_overlay,
+    OverlayTimeFormatType time_format, OverlayDateFormatType date_format,
+    guint color, OverlayLocationType location, GstVideoRectangle * dest_rect,
+    uint32_t * item_id)
 {
   OverlayParam ov_param;
   int32_t ret = 0;
 
-  g_return_val_if_fail (vtrans != NULL, FALSE);
+  g_return_val_if_fail (gst_overlay != NULL, FALSE);
   g_return_val_if_fail (item_id != NULL, FALSE);
-
 
   if (!(*item_id)) {
     ov_param = {};
     ov_param.type = OverlayType::kDateType;
-    ov_param.location = OverlayLocationType::kBottomRight;
-    ov_param.color = vtrans->date_color;
-    ov_param.date_time.time_format = time_format;
-    ov_param.date_time.date_format = date_format;
-
-    ret = vtrans->overlay->CreateOverlayItem (ov_param, item_id);
-    if (ret != 0) {
-      GST_ERROR_OBJECT (vtrans, "Overlay create failed! ret: %d", ret);
-      return FALSE;
-    }
-
-    ret = vtrans->overlay->EnableOverlayItem (*item_id);
-    if (ret != 0) {
-      GST_ERROR_OBJECT (vtrans, "Overlay enable failed! ret: %d", ret);
-      return FALSE;
-    }
   } else {
-    ret = vtrans->overlay->GetOverlayParams (*item_id, ov_param);
+    ret = gst_overlay->overlay->GetOverlayParams (*item_id, ov_param);
     if (ret != 0) {
-      GST_ERROR_OBJECT (vtrans, "Overlay get param failed! ret: %d", ret);
-      return FALSE;
-    }
-
-    ov_param.date_time.time_format = time_format;
-    ov_param.date_time.date_format = date_format;
-
-    ret = vtrans->overlay->UpdateOverlayParams (*item_id, ov_param);
-    if (ret != 0) {
-      GST_ERROR_OBJECT (vtrans, "Overlay set param failed! ret: %d", ret);
+      GST_ERROR_OBJECT (gst_overlay, "Overlay get param failed! ret: %d", ret);
       return FALSE;
     }
   }
+
+  ov_param.color = color;
+  ov_param.location = location;
+  ov_param.dst_rect.start_x = dest_rect->x;
+  ov_param.dst_rect.start_y = dest_rect->y;
+  ov_param.dst_rect.width = dest_rect->w;
+  ov_param.dst_rect.height = dest_rect->h;
+  ov_param.date_time.time_format = time_format;
+  ov_param.date_time.date_format = date_format;
+
+  if (!(*item_id)) {
+    ret = gst_overlay->overlay->CreateOverlayItem (ov_param, item_id);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay create failed! ret: %d", ret);
+      return FALSE;
+    }
+
+    ret = gst_overlay->overlay->EnableOverlayItem (*item_id);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay enable failed! ret: %d", ret);
+      return FALSE;
+    }
+  } else {
+    ret = gst_overlay->overlay->UpdateOverlayParams (*item_id, ov_param);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay set param failed! ret: %d", ret);
+      return FALSE;
+    }
+  }
+
   return TRUE;
 }
 
+/**
+ * gst_overlay_apply_user_date_item:
+ * @data: context
+ * @user_data: overlay configuration of GstOverlayUsrDate type
+ *
+ * Configures date overlay instance with user provided configuration
+ * and enables it.
+ */
+static void
+gst_overlay_apply_user_date_item (gpointer data, gpointer user_data)
+{
+  g_return_if_fail (data != NULL);
+  g_return_if_fail (user_data != NULL);
 
+  GstOverlay * gst_overlay = (GstOverlay *) user_data;
+  GstOverlayUsrDate * ov_data = (GstOverlayUsrDate *) data;
+
+  if (!ov_data->base.is_applied) {
+    gboolean res = gst_overlay_apply_date_item (gst_overlay,
+      ov_data->time_format, ov_data->date_format, ov_data->color,
+      OverlayLocationType::kNone, &ov_data->dest_rect, &ov_data->base.item_id);
+    if (!res) {
+      GST_ERROR_OBJECT (gst_overlay, "User overlay apply failed!");
+      return;
+    }
+    ov_data->base.is_applied = TRUE;
+  }
+}
+
+/**
+ * gst_overlay_apply_overlay:
+ * @gst_overlay: context
+ * @frame: GST video frame
+ *
+ * Renders all created overlay instances on top of a video frame.
+ *
+ * Return true if succeed.
+ */
 static gboolean
 gst_overlay_apply_overlay (GstOverlay *gst_overlay, GstVideoFrame *frame)
 {
@@ -635,32 +1020,845 @@ gst_overlay_apply_overlay (GstOverlay *gst_overlay, GstVideoFrame *frame)
   return TRUE;
 }
 
-static GstCaps *
-gst_overlay_caps (void)
+/**
+ * gst_overlay_set_text_overlay:
+ * @entry: result of parsed input is stored here
+ * @structure: user input
+ * @entry_exist: hint if entry exist or new entry. This is helpfull when
+ *               some default values are needed to be set.
+ *
+ * This function parses user overlay configuration. Function is called when
+ * overlay is configured by GST property.
+ *
+ * Return true if succeed.
+ */
+static gboolean
+gst_overlay_set_text_overlay (GstOverlayUser * entry, GstStructure * structure,
+  gboolean entry_exist)
 {
-  static GstCaps *caps = NULL;
-  static volatile gsize inited = 0;
-  if (g_once_init_enter (&inited)) {
-    caps = gst_static_caps_get (&gst_overlay_format_caps);
-    g_once_init_leave (&inited, 1);
+  GstOverlayUsrText * text_entry = (GstOverlayUsrText *) entry;
+  gboolean color_set = FALSE;
+  gboolean entry_valid = FALSE;
+
+  for (gint idx = 0; idx < gst_structure_n_fields (structure); ++idx) {
+    const gchar *name = gst_structure_nth_field_name (structure, idx);
+
+    const GValue *value = NULL;
+    value = gst_structure_get_value (structure, name);
+
+    if (!g_strcmp0 (name, "text") && G_VALUE_HOLDS (value, G_TYPE_STRING)) {
+      text_entry->text = g_strdup (g_value_get_string (value));
+      if (strlen (text_entry->text) > 0) {
+        entry_valid = TRUE;
+      } else {
+        GST_INFO ("String is empty. Stop overlay if exist");
+        free (text_entry->text);
+        return FALSE;
+      }
+    }
+
+    if (!g_strcmp0 (name, "color")) {
+      if (G_VALUE_HOLDS (value, G_TYPE_UINT)) {
+        text_entry->color = g_value_get_uint (value);
+        color_set = TRUE;
+      }
+      if (G_VALUE_HOLDS (value, G_TYPE_INT)) {
+        text_entry->color = (guint)g_value_get_int (value);
+        color_set = TRUE;
+      }
+    }
+
+    if (!g_strcmp0 (name, "dest-rect") && G_VALUE_HOLDS (value, GST_TYPE_ARRAY)
+         && gst_value_array_get_size (value) == 4) {
+      text_entry->dest_rect.x =
+        g_value_get_int (gst_value_array_get_value (value, 0));
+      text_entry->dest_rect.y =
+        g_value_get_int (gst_value_array_get_value (value, 1));
+      text_entry->dest_rect.w =
+        g_value_get_int (gst_value_array_get_value (value, 2));
+      text_entry->dest_rect.h =
+        g_value_get_int (gst_value_array_get_value (value, 3));
+    }
   }
-  return caps;
+
+  if (!color_set && entry_valid && !entry_exist) {
+    text_entry->color = DEFAULT_PROP_OVERLAY_TEXT_COLOR;
+  }
+
+  return entry_valid;
 }
 
-static GstPadTemplate *
-gst_overlay_src_template (void)
+/**
+ * gst_overlay_set_date_overlay:
+ * @entry: result of parsed input is stored here
+ * @structure: user input
+ * @entry_exist: hint if entry exist or new entry. This is helpfull when
+ *               some default values are needed to be set.
+ *
+ * This function parses user overlay configuration. Function is called when
+ * overlay is configured by GST property.
+ *
+ * Return true if succeed.
+ */
+static gboolean
+gst_overlay_set_date_overlay (GstOverlayUser * entry, GstStructure * structure,
+  gboolean entry_exist)
 {
-  return gst_pad_template_new ("src", GST_PAD_SRC, GST_PAD_ALWAYS,
-      gst_overlay_caps ());
+  GstOverlayUsrDate * date_entry = (GstOverlayUsrDate *) entry;
+  gboolean color_set = FALSE;
+  gboolean entry_valid = FALSE;
+  gboolean date_valid = FALSE;
+  gboolean time_valid = FALSE;
+
+  for (gint idx = 0; idx < gst_structure_n_fields (structure); ++idx) {
+    const gchar *name = gst_structure_nth_field_name (structure, idx);
+
+    const GValue *value = NULL;
+    value = gst_structure_get_value (structure, name);
+
+    if (!g_strcmp0(name, "date-format") && G_VALUE_HOLDS (value, G_TYPE_STRING)) {
+      if (!g_strcmp0 (g_value_get_string (value), "YYYYMMDD")) {
+        date_entry->date_format = OverlayDateFormatType::kYYYYMMDD;
+      } else if (!g_strcmp0 (g_value_get_string (value), "MMDDYYYY")) {
+        date_entry->date_format = OverlayDateFormatType::kMMDDYYYY;
+      } else {
+        GST_ERROR ("Unsupported date format %s", g_value_get_string (value));
+        return FALSE;
+      }
+      date_valid = TRUE;
+    }
+
+    if (!g_strcmp0(name, "time-format") && G_VALUE_HOLDS (value, G_TYPE_STRING)) {
+      if (!g_strcmp0 (g_value_get_string (value), "HHMMSS_24HR")) {
+        date_entry->time_format = OverlayTimeFormatType::kHHMMSS_24HR;
+      } else if (!g_strcmp0 (g_value_get_string (value), "HHMMSS_AMPM")) {
+        date_entry->time_format = OverlayTimeFormatType::kHHMMSS_AMPM;
+      } else if (!g_strcmp0 (g_value_get_string (value), "HHMM_24HR")) {
+        date_entry->time_format = OverlayTimeFormatType::kHHMM_24HR;
+      } else if (!g_strcmp0 (g_value_get_string (value), "HHMM_AMPM")) {
+        date_entry->time_format = OverlayTimeFormatType::kHHMM_AMPM;
+      } else {
+        GST_ERROR ("Unsupported time format %s", g_value_get_string (value));
+        return FALSE;
+      }
+      time_valid = TRUE;
+    }
+
+    if (!g_strcmp0 (name, "color")) {
+      if (G_VALUE_HOLDS (value, G_TYPE_UINT)) {
+        date_entry->color = g_value_get_uint (value);
+        color_set = TRUE;
+      }
+      if (G_VALUE_HOLDS (value, G_TYPE_INT)) {
+        date_entry->color = (guint)g_value_get_int (value);
+        color_set = TRUE;
+      }
+    }
+
+    if (!g_strcmp0 (name, "dest-rect") && G_VALUE_HOLDS (value, GST_TYPE_ARRAY)
+         && gst_value_array_get_size (value) == 4) {
+      date_entry->dest_rect.x =
+        g_value_get_int (gst_value_array_get_value (value, 0));
+      date_entry->dest_rect.y =
+        g_value_get_int (gst_value_array_get_value (value, 1));
+      date_entry->dest_rect.w =
+        g_value_get_int (gst_value_array_get_value (value, 2));
+      date_entry->dest_rect.h =
+        g_value_get_int (gst_value_array_get_value (value, 3));
+    }
+  }
+
+  entry_valid = date_valid && time_valid;
+
+  if (!color_set && entry_valid && !entry_exist) {
+    date_entry->color = DEFAULT_PROP_OVERLAY_DATE_COLOR;
+  }
+
+  return entry_valid;
 }
 
-static GstPadTemplate *
-gst_overlay_sink_template (void)
+/**
+ * gst_overlay_set_simg_overlay:
+ * @entry: result of parsed input is stored here
+ * @structure: user input
+ * @entry_exist: hint if entry exist or new entry. This is helpfull when
+ *               some default values are needed to be set.
+ *
+ * This function parses user overlay configuration. Function is called when
+ * overlay is configured by GST property.
+ *
+ * Return true if succeed.
+ */
+static gboolean
+gst_overlay_set_simg_overlay (GstOverlayUser * entry, GstStructure * structure,
+  gboolean entry_exist)
 {
-  return gst_pad_template_new ("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
-      gst_overlay_caps ());
+  GstOverlayUsrSImg * simg_entry = (GstOverlayUsrSImg *) entry;
+  gboolean entry_valid = FALSE;
+  gboolean image_valid = FALSE;
+  gboolean resolution_valid = FALSE;
+
+  for (gint idx = 0; idx < gst_structure_n_fields (structure); ++idx) {
+    const gchar *name = gst_structure_nth_field_name (structure, idx);
+
+    const GValue *value = NULL;
+    value = gst_structure_get_value (structure, name);
+
+    if (!g_strcmp0 (name, "image") && G_VALUE_HOLDS (value, G_TYPE_STRING)) {
+      simg_entry->img_file = g_strdup (g_value_get_string (value));
+      if (!strlen (simg_entry->img_file)) {
+        GST_INFO ("String is empty. Stop overlay if exist");
+        break;
+      }
+
+      if (!g_file_test (simg_entry->img_file, G_FILE_TEST_IS_REGULAR)) {
+        GST_INFO ("File %s does not exist", simg_entry->img_file);
+        break;
+      }
+
+      // free previous buffer in case of reconfiguration
+      if (entry_exist && simg_entry->img_buffer) {
+        free (simg_entry->img_buffer);
+        simg_entry->img_buffer = NULL;
+        simg_entry->img_size = 0;
+      }
+
+      GError *error = NULL;
+      gboolean ret = g_file_get_contents (simg_entry->img_file,
+          &simg_entry->img_buffer, &simg_entry->img_size, &error);
+      if (!ret) {
+        GST_INFO ("Failed to get image file content, error: %s!",
+            GST_STR_NULL (error->message));
+        g_clear_error (&error);
+        break;
+      }
+      image_valid = TRUE;
+    }
+
+    if (!g_strcmp0 (name, "resolution") && G_VALUE_HOLDS (value, GST_TYPE_ARRAY)
+         && gst_value_array_get_size (value) == 2) {
+      simg_entry->img_width =
+        g_value_get_int (gst_value_array_get_value (value, 0));
+      simg_entry->img_height =
+        g_value_get_int (gst_value_array_get_value (value, 1));
+      if (simg_entry->img_width == 0 || simg_entry->img_height == 0) {
+        GST_INFO ("Invalid image resolution %dx%d!", simg_entry->img_width,
+            simg_entry->img_height);
+        break;
+      }
+      resolution_valid = TRUE;
+    }
+
+    if (!g_strcmp0 (name, "dest-rect") && G_VALUE_HOLDS (value, GST_TYPE_ARRAY)
+         && gst_value_array_get_size (value) == 4) {
+      simg_entry->dest_rect.x =
+        g_value_get_int (gst_value_array_get_value (value, 0));
+      simg_entry->dest_rect.y =
+        g_value_get_int (gst_value_array_get_value (value, 1));
+      simg_entry->dest_rect.w =
+        g_value_get_int (gst_value_array_get_value (value, 2));
+      simg_entry->dest_rect.h =
+        g_value_get_int (gst_value_array_get_value (value, 3));
+    }
+  }
+
+  entry_valid = image_valid && resolution_valid;
+
+  if (!entry_valid && !entry_exist) {
+    // Clean up if entry is not valid and does not exist. If entry exists but
+    // it is not valid than entry will be stoped and release handle will take
+    // care of cleaning up.
+    if (simg_entry->img_file) {
+      free (simg_entry->img_file);
+    }
+    if (simg_entry->img_buffer) {
+      free (simg_entry->img_buffer);
+    }
+  }
+
+  return entry_valid;
 }
 
+/**
+ * gst_overlay_set_bbox_overlay:
+ * @entry: result of parsed input is stored here
+ * @structure: user input
+ * @entry_exist: hint if entry exist or new entry. This is helpfull when
+ *               some default values are needed to be set.
+ *
+ * This function parses user overlay configuration. Function is called when
+ * overlay is configured by GST property.
+ *
+ * Return true if succeed.
+ */
+static gboolean
+gst_overlay_set_bbox_overlay (GstOverlayUser * entry, GstStructure * structure,
+  gboolean entry_exist)
+{
+  GstOverlayUsrBBox * text_entry = (GstOverlayUsrBBox *) entry;
+  gboolean color_set = FALSE;
+  gboolean entry_valid = FALSE;
+  gboolean bbox_valid = FALSE;
+  gboolean label_valid = FALSE;
+
+  for (gint idx = 0; idx < gst_structure_n_fields (structure); ++idx) {
+    const gchar *name = gst_structure_nth_field_name (structure, idx);
+
+    const GValue *value = NULL;
+    value = gst_structure_get_value (structure, name);
+
+    if (!g_strcmp0 (name, "bbox") && G_VALUE_HOLDS (value, GST_TYPE_ARRAY) &&
+        gst_value_array_get_size (value) == 4) {
+      text_entry->boundind_box.x =
+        g_value_get_int (gst_value_array_get_value (value, 0));
+      text_entry->boundind_box.y =
+        g_value_get_int (gst_value_array_get_value (value, 1));
+      text_entry->boundind_box.w =
+        g_value_get_int (gst_value_array_get_value (value, 2));
+      text_entry->boundind_box.h =
+        g_value_get_int (gst_value_array_get_value (value, 3));
+      bbox_valid = TRUE;
+    }
+
+    if (!g_strcmp0 (name, "label") && G_VALUE_HOLDS (value, G_TYPE_STRING)) {
+      text_entry->label = g_strdup (g_value_get_string (value));
+      if (strlen (text_entry->label) > 0) {
+        label_valid = TRUE;
+      } else {
+        GST_INFO ("String is empty. Stop overlay if exist");
+        free (text_entry->label);
+        return FALSE;
+      }
+    }
+
+    if (!g_strcmp0 (name, "color")) {
+      if (G_VALUE_HOLDS (value, G_TYPE_UINT)) {
+        text_entry->color = g_value_get_uint (value);
+        color_set = TRUE;
+      }
+      if (G_VALUE_HOLDS (value, G_TYPE_INT)) {
+        text_entry->color = (guint)g_value_get_int (value);
+        color_set = TRUE;
+      }
+    }
+  }
+
+  entry_valid = bbox_valid && label_valid;
+
+  if (!color_set && entry_valid && !entry_exist) {
+    text_entry->color = DEFAULT_PROP_OVERLAY_BBOX_COLOR;
+  }
+
+  return entry_valid;
+}
+
+/**
+ * gst_overlay_compare_overlay_id:
+ * @a: a value
+ * @b: a value to compare with
+ *
+ * Compares two user overlay instance ids.
+ *
+ * Return 0 if match.
+ */
+static gint
+gst_overlay_compare_overlay_id (gconstpointer a, gconstpointer b, gpointer)
+{
+  return g_strcmp0 (((const GstOverlayUser *) a)->user_id,
+      ((const GstOverlayUser *) b)->user_id);
+}
+
+/**
+ * gst_overlay_set_user_overlay:
+ * @gst_overlay: context
+ * @user_ov: pointer to GSequence of user overlays of the same type
+ * @entry_size: size of configuration structure of the overlay type
+ * @set_func: function which set overlay type specific parameters
+ * @value: input configuration which comes from GST property
+ *
+ * The generic setter for all user overlays. This function parse input string
+ * to GstStructure. Check if overlay instance already exists. Creates new if
+ * does not exist otherwise updates existing one. If mandatory parameters are
+ * not provided overlay instance is distoried. set_func is use to set
+ * overlay specific parameters.
+ */
+static void
+gst_overlay_set_user_overlay (GstOverlay *gst_overlay, GSequence * user_ov,
+    guint entry_size, GstOverlaySetFunc set_func, const GValue * value)
+{
+  const gchar *input = g_value_get_string (value);
+
+  if (!input) {
+    GST_WARNING ("Empty input. Default value or invalid user input.");
+    return;
+  }
+
+  GValue gvalue = G_VALUE_INIT;
+  g_value_init (&gvalue, GST_TYPE_STRUCTURE);
+
+  gboolean success = gst_value_deserialize (&gvalue, input);
+  if (!success) {
+    GST_WARNING ("Failed to deserialize text overlay input <%s>", input);
+    return;
+  }
+
+  GstStructure *structure = GST_STRUCTURE (g_value_dup_boxed (&gvalue));
+  g_value_unset (&gvalue);
+
+  gboolean entry_valid = FALSE;
+  gboolean entry_exist = FALSE;
+
+  gchar *ov_id = (gchar *) gst_structure_get_name(structure);
+
+  g_mutex_lock (&gst_overlay->lock);
+
+  GstOverlayUser * entry = NULL;
+  GstOverlayUser lookup;
+  lookup.user_id = ov_id;
+
+  GSequenceIter * iter = g_sequence_lookup (user_ov, &lookup,
+      gst_overlay_compare_overlay_id, NULL);
+  if (iter) {
+    entry = (GstOverlayUser *) g_sequence_get (iter);
+    entry_exist = TRUE;
+  } else {
+    entry = (GstOverlayUser *) calloc (1, entry_size);
+    if (!entry) {
+      GST_ERROR("failed to allocate memory for new entry");
+      g_mutex_unlock (&gst_overlay->lock);
+      return;
+    }
+    entry->user_data = gst_overlay;
+  }
+
+  entry_valid = set_func (entry, structure, entry_exist);
+
+  gst_structure_free (structure);
+
+  if (entry_valid && entry_exist) {
+    entry->is_applied = FALSE;
+  } else if (entry_valid) {
+    entry->user_id = g_strdup (ov_id);
+    g_sequence_insert_sorted (user_ov, entry,
+                              gst_overlay_compare_overlay_id, NULL);
+  } else if (entry_exist) {
+    g_sequence_remove (iter);
+  } else {
+    free (entry);
+  }
+
+  g_mutex_unlock (&gst_overlay->lock);
+}
+
+/**
+ * gst_overlay_text_overlay_to_string:
+ * @data: user text overlay entry of GstOverlayUsrText type
+ * @user_data: output string of GstOverlayString type
+ *
+ * Converts text overlay configuration to string.
+ */
+static void
+gst_overlay_text_overlay_to_string (gpointer data, gpointer user_data)
+{
+  GstOverlayUsrText * ov_data = (GstOverlayUsrText *) data;
+  GstOverlayString * output = (GstOverlayString *) user_data;
+
+  gint size = GST_OVERLAY_TEXT_STRING_SIZE + strlen (ov_data->base.user_id) +
+    strlen (ov_data->text);
+  gchar * tmp = (gchar *) malloc(size);
+  if (!tmp) {
+    GST_ERROR ("%s: failed to allocate memory", __func__);
+    return;
+  }
+
+  gint ret = snprintf (tmp, size,
+    "%s, text=\"%s\", color=0x%x, dest-rect=<%d, %d, %d, %d>; ",
+    ov_data->base.user_id, ov_data->text, ov_data->color, ov_data->dest_rect.x,
+    ov_data->dest_rect.y, ov_data->dest_rect.w, ov_data->dest_rect.h);
+  if (ret < 0 || ret >= size) {
+    GST_ERROR ("%s: String size %d exceed size %d", __func__, ret, size);
+    free (tmp);
+    return;
+  }
+
+  if (output->capacity < (strlen (output->string) + strlen (tmp))) {
+    size = (strlen (output->string) + strlen (tmp)) * 2;
+    output->string = (gchar *) realloc(output->string, size);
+    if (!output->string) {
+      GST_ERROR ("%s: Failed to reallocate memory. Size %d", __func__, size);
+      free (tmp);
+      return;
+    }
+    output->capacity = size;
+  }
+
+  g_strlcat (output->string, tmp, output->capacity);
+
+  free (tmp);
+}
+
+/**
+ * gst_overlay_date_overlay_to_string:
+ * @data: user date overlay entry of GstOverlayUsrDate type
+ * @user_data: output string of GstOverlayString type
+ *
+ * Converts date overlay configuration to string.
+ */
+static void
+gst_overlay_date_overlay_to_string (gpointer data, gpointer user_data)
+{
+  GstOverlayUsrDate * ov_data = (GstOverlayUsrDate *) data;
+  GstOverlayString * output = (GstOverlayString *) user_data;
+
+  gint size = GST_OVERLAY_DATE_STRING_SIZE + strlen (ov_data->base.user_id);
+  gchar * tmp = (gchar *) malloc (size);
+  if (!tmp) {
+    GST_ERROR ("%s: failed to allocate memory", __func__);
+    return;
+  }
+
+  gchar * date_format;
+  switch (ov_data->date_format) {
+    case OverlayDateFormatType::kYYYYMMDD:
+      date_format = (gchar *)"YYYYMMDD";
+      break;
+    case OverlayDateFormatType::kMMDDYYYY:
+      date_format = (gchar *)"MMDDYYYY";
+      break;
+    default:
+      GST_ERROR ("Error unsupported date format %d", (gint)ov_data->date_format);
+      free (tmp);
+      return;
+  }
+
+  gchar * time_format;
+  switch (ov_data->time_format) {
+    case OverlayTimeFormatType::kHHMMSS_24HR:
+      time_format = (gchar *)"HHMMSS_24HR";
+      break;
+    case OverlayTimeFormatType::kHHMMSS_AMPM:
+      time_format = (gchar *)"HHMMSS_AMPM";
+      break;
+    case OverlayTimeFormatType::kHHMM_24HR:
+      time_format = (gchar *)"HHMM_24HR";
+      break;
+    case OverlayTimeFormatType::kHHMM_AMPM:
+      time_format = (gchar *)"HHMM_AMPM";
+      break;
+    default:
+      GST_ERROR ("Error unsupported time format %d", (gint)ov_data->time_format);
+      free (tmp);
+      return;
+  }
+
+  gint ret = snprintf (tmp, size,
+    "%s, date-format=%s, time-format=%s, color=0x%x, dest-rect=<%d, %d, %d, %d>; ",
+    ov_data->base.user_id, date_format, time_format, ov_data->color,
+    ov_data->dest_rect.x, ov_data->dest_rect.y, ov_data->dest_rect.w,
+    ov_data->dest_rect.h);
+  if (ret < 0 || ret >= size) {
+    GST_ERROR ("%s: String size %d exceed size %d", __func__, ret, size);
+    free (tmp);
+    return;
+  }
+
+  if (output->capacity < (strlen (output->string) + strlen (tmp))) {
+    size = (strlen (output->string) + strlen (tmp)) * 2;
+    output->string = (gchar *) realloc(output->string, size);
+    if (!output->string) {
+      GST_ERROR ("%s: Failed to reallocate memory. Size %d", __func__, size);
+      free (tmp);
+      return;
+    }
+    output->capacity = size;
+  }
+
+  g_strlcat (output->string, tmp, output->capacity);
+
+  free (tmp);
+}
+
+/**
+ * gst_overlay_simg_overlay_to_string:
+ * @data: user static image overlay entry of GstOverlayUsrSImg type
+ * @user_data: output string of GstOverlayString type
+ *
+ * Converts static image overlay configuration to string.
+ */
+static void
+gst_overlay_simg_overlay_to_string (gpointer data, gpointer user_data)
+{
+  GstOverlayUsrSImg * ov_data = (GstOverlayUsrSImg *) data;
+  GstOverlayString * output = (GstOverlayString *) user_data;
+
+  gint size = GST_OVERLAY_SIMG_STRING_SIZE + strlen (ov_data->base.user_id) +
+      strlen (ov_data->img_file);
+  gchar * tmp = (gchar *) malloc(size);
+  if (!tmp) {
+    GST_ERROR ("%s: failed to allocate memory", __func__);
+    return;
+  }
+
+  gint ret = snprintf (tmp, size,
+    "%s, image=\"%s\", resolution=<%d, %d>, dest-rect=<%d, %d, %d, %d>; ",
+    ov_data->base.user_id, ov_data->img_file, ov_data->img_width,
+    ov_data->img_height, ov_data->dest_rect.x, ov_data->dest_rect.y,
+    ov_data->dest_rect.w, ov_data->dest_rect.h);
+  if (ret < 0 || ret >= size) {
+    GST_ERROR ("%s: String size %d exceed size %d", __func__, ret, size);
+    free (tmp);
+    return;
+  }
+
+  if (output->capacity < (strlen (output->string) + strlen (tmp))) {
+    size = (strlen (output->string) + strlen (tmp)) * 2;
+    output->string = (gchar *) realloc(output->string, size);
+    if (!output->string) {
+      GST_ERROR ("%s: Failed to reallocate memory. Size %d", __func__, size);
+      free (tmp);
+      return;
+    }
+    output->capacity = size;
+  }
+
+  g_strlcat (output->string, tmp, output->capacity);
+
+  free (tmp);
+}
+
+/**
+ * gst_overlay_bbox_overlay_to_string:
+ * @data: user text overlay entry of GstOverlayUsrBBox type
+ * @user_data: output string of GstOverlayString type
+ *
+ * Converts text overlay configuration to string.
+ */
+static void
+gst_overlay_bbox_overlay_to_string (gpointer data, gpointer user_data)
+{
+  GstOverlayUsrBBox * ov_data = (GstOverlayUsrBBox *) data;
+  GstOverlayString * output = (GstOverlayString *) user_data;
+
+  gint size = GST_OVERLAY_BBOX_STRING_SIZE + strlen (ov_data->base.user_id) +
+    strlen (ov_data->label);
+  gchar * tmp = (gchar *) malloc(size);
+  if (!tmp) {
+    GST_ERROR ("%s: failed to allocate memory", __func__);
+    return;
+  }
+
+  gint ret = snprintf (tmp, size,
+    "%s, bbox=<%d, %d, %d, %d>, label=\"%s\", color=0x%x; ",
+    ov_data->base.user_id, ov_data->boundind_box.x, ov_data->boundind_box.y,
+    ov_data->boundind_box.w, ov_data->boundind_box.h, ov_data->label,
+    ov_data->color);
+  if (ret < 0 || ret >= size) {
+    GST_ERROR ("%s: String size %d exceed size %d", __func__, ret, size);
+    free (tmp);
+    return;
+  }
+
+  if (output->capacity < (strlen (output->string) + strlen (tmp))) {
+    size = (strlen (output->string) + strlen (tmp)) * 2;
+    output->string = (gchar *) realloc(output->string, size);
+    if (!output->string) {
+      GST_ERROR ("%s: Failed to reallocate memory. Size %d", __func__, size);
+      free (tmp);
+      return;
+    }
+    output->capacity = size;
+  }
+
+  g_strlcat (output->string, tmp, output->capacity);
+
+  free (tmp);
+}
+
+/**
+ * gst_overlay_get_user_overlay:
+ * @gst_overlay: context
+ * @value: output value
+ * @user_ov: list of overlay setting of one type
+ * @get_func: parameter features
+ *
+ * The generic getter for all user overlay setting. This function iterate
+ * all overlay instances provided by user_ov paramter and converts it to
+ * string by provided get_func function.
+ */
+static void
+gst_overlay_get_user_overlay (GstOverlay *gst_overlay, GValue * value,
+    GSequence * user_ov, GstOverlayGetFunc get_func)
+{
+  g_mutex_lock (&gst_overlay->lock);
+
+  GstOverlayString output;
+  output.capacity = GST_OVERLAY_TO_STRING_SIZE;
+  output.string = (gchar *) malloc (GST_OVERLAY_TO_STRING_SIZE);
+  if (!output.string) {
+    GST_ERROR ("%s: failed to allocate memory", __func__);
+    g_mutex_unlock (&gst_overlay->lock);
+    return;
+  }
+  output.string[0] = '\0';
+
+  g_sequence_foreach (user_ov, get_func, &output);
+  g_value_set_string (value, output.string);
+  free (output.string);
+
+  g_mutex_unlock (&gst_overlay->lock);
+}
+
+/**
+ * gst_overlay_get_property:
+ * @object: gst overlay object
+ * @prop_id: GST property id
+ * @value: value of GST property
+ * @pspec: parameter features
+ *
+ * The generic setter for all properties of this type.
+ */
+static void
+gst_overlay_set_property (GObject * object, guint prop_id,
+    const GValue * value, GParamSpec * pspec)
+{
+  GstOverlay *gst_overlay = GST_OVERLAY (object);
+  const gchar *propname = g_param_spec_get_name (pspec);
+  GstState state = GST_STATE (gst_overlay);
+
+  if (!OVERLAY_IS_PROPERTY_MUTABLE_IN_CURRENT_STATE(pspec, state)) {
+    GST_WARNING ("Property '%s' change not supported in %s state!",
+        propname, gst_element_state_get_name (state));
+    return;
+  }
+
+  GST_OBJECT_LOCK (gst_overlay);
+  switch (prop_id) {
+    case PROP_OVERLAY_TEXT:
+      gst_overlay_set_user_overlay (gst_overlay, gst_overlay->usr_text,
+        sizeof (GstOverlayUsrText), gst_overlay_set_text_overlay, value);
+      break;
+    case PROP_OVERLAY_DATE:
+      gst_overlay_set_user_overlay (gst_overlay, gst_overlay->usr_date,
+        sizeof (GstOverlayUsrDate), gst_overlay_set_date_overlay, value);
+      break;
+    case PROP_OVERLAY_SIMG:
+      gst_overlay_set_user_overlay (gst_overlay, gst_overlay->usr_simg,
+        sizeof (GstOverlayUsrSImg), gst_overlay_set_simg_overlay, value);
+      break;
+    case PROP_OVERLAY_BBOX:
+      gst_overlay_set_user_overlay (gst_overlay, gst_overlay->usr_bbox,
+        sizeof (GstOverlayUsrBBox), gst_overlay_set_bbox_overlay, value);
+      break;
+    case PROP_OVERLAY_BBOX_COLOR:
+      gst_overlay->bbox_color = g_value_get_uint (value);
+      break;
+    case PROP_OVERLAY_DATE_COLOR:
+      gst_overlay->date_color = g_value_get_uint (value);
+      break;
+    case PROP_OVERLAY_TEXT_COLOR:
+      gst_overlay->text_color = g_value_get_uint (value);
+      break;
+    case PROP_OVERLAY_POSE_COLOR:
+      gst_overlay->pose_color = g_value_get_uint (value);
+      break;
+    case PROP_OVERLAY_TEXT_DEST_RECT:
+      if (gst_value_array_get_size(value) != 4) {
+        GST_DEBUG_OBJECT(gst_overlay,
+          "dest-rect is not set. Use default values.");
+        break;
+      }
+      gst_overlay->text_dest_rect.x =
+          g_value_get_int(gst_value_array_get_value(value, 0));
+      gst_overlay->text_dest_rect.y =
+          g_value_get_int(gst_value_array_get_value(value, 1));
+      gst_overlay->text_dest_rect.w =
+          g_value_get_int(gst_value_array_get_value(value, 2));
+      gst_overlay->text_dest_rect.h =
+          g_value_get_int(gst_value_array_get_value(value, 3));
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
+  GST_OBJECT_UNLOCK (gst_overlay);
+}
+
+/**
+ * gst_overlay_get_property:
+ * @object: gst overlay object
+ * @prop_id: GST property id
+ * @value: output value
+ * @pspec: parameter features
+ *
+ * The generic getter for all properties of this type.
+ */
+static void
+gst_overlay_get_property (GObject * object, guint prop_id, GValue * value,
+    GParamSpec * pspec)
+{
+  GstOverlay *gst_overlay = GST_OVERLAY (object);
+
+  GST_OBJECT_LOCK (gst_overlay);
+  switch (prop_id) {
+    case PROP_OVERLAY_TEXT:
+      gst_overlay_get_user_overlay (gst_overlay, value,
+        gst_overlay->usr_text, gst_overlay_text_overlay_to_string);
+      break;
+    case PROP_OVERLAY_DATE:
+      gst_overlay_get_user_overlay (gst_overlay, value,
+        gst_overlay->usr_date, gst_overlay_date_overlay_to_string);
+      break;
+    case PROP_OVERLAY_SIMG:
+      gst_overlay_get_user_overlay (gst_overlay, value,
+        gst_overlay->usr_simg, gst_overlay_simg_overlay_to_string);
+      break;
+    case PROP_OVERLAY_BBOX:
+      gst_overlay_get_user_overlay (gst_overlay, value,
+        gst_overlay->usr_bbox, gst_overlay_bbox_overlay_to_string);
+      break;
+    case PROP_OVERLAY_BBOX_COLOR:
+      g_value_set_uint (value, gst_overlay->bbox_color);
+      break;
+    case PROP_OVERLAY_DATE_COLOR:
+      g_value_set_uint (value, gst_overlay->date_color);
+      break;
+    case PROP_OVERLAY_TEXT_COLOR:
+      g_value_set_uint (value, gst_overlay->text_color);
+      break;
+    case PROP_OVERLAY_POSE_COLOR:
+      g_value_set_uint (value, gst_overlay->pose_color);
+      break;
+    case PROP_OVERLAY_TEXT_DEST_RECT:
+    {
+      GValue val = G_VALUE_INIT;
+      g_value_init (&val, G_TYPE_INT);
+
+      g_value_set_int (&val, gst_overlay->text_dest_rect.x);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, gst_overlay->text_dest_rect.y);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, gst_overlay->text_dest_rect.w);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, gst_overlay->text_dest_rect.h);
+      gst_value_array_append_value (value, &val);
+      break;
+    }
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
+  GST_OBJECT_UNLOCK (gst_overlay);
+}
+
+/**
+ * gst_overlay_finalize:
+ * @object: gst overlay object
+ *
+ * GST object finalize handler.
+ */
 static void
 gst_overlay_finalize (GObject * object)
 {
@@ -683,95 +1881,32 @@ gst_overlay_finalize (GObject * object)
         gst_overlay);
     g_sequence_free (gst_overlay->pose_id);
 
-    if (gst_overlay->user_text_id) {
-      gst_overlay_destroy_overlay_item(&gst_overlay->user_text_id, gst_overlay);
-    }
-
-    if (gst_overlay->date_id) {
-      gst_overlay_destroy_overlay_item(&gst_overlay->date_id, gst_overlay);
-    }
+    g_sequence_free (gst_overlay->usr_text);
+    g_sequence_free (gst_overlay->usr_date);
+    g_sequence_free (gst_overlay->usr_simg);
+    g_sequence_free (gst_overlay->usr_bbox);
 
     delete (gst_overlay->overlay);
     gst_overlay->overlay = nullptr;
   }
 
+  g_mutex_clear (&gst_overlay->lock);
+
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (gst_overlay));
 }
 
-static void
-gst_overlay_set_property (GObject * object, guint prop_id,
-    const GValue * value, GParamSpec * pspec)
-{
-  GstOverlay *gst_overlay = GST_OVERLAY (object);
-  const gchar *propname = g_param_spec_get_name (pspec);
-  GstState state = GST_STATE (gst_overlay);
-
-  if (!OVERLAY_IS_PROPERTY_MUTABLE_IN_CURRENT_STATE(pspec, state)) {
-    GST_WARNING ("Property '%s' change not supported in %s state!",
-        propname, gst_element_state_get_name (state));
-    return;
-  }
-
-  GST_OBJECT_LOCK (gst_overlay);
-  switch (prop_id) {
-    case PROP_OVERLAY_TEXT:
-      gst_overlay->user_text = g_strdup(g_value_get_string (value));
-      break;
-    case PROP_OVERLAY_DATE:
-      gst_overlay->date_overlay = g_value_get_boolean (value);
-      break;
-    case PROP_OVERLAY_BBOX_COLOR:
-      gst_overlay->bbox_color = g_value_get_uint (value);
-      break;
-    case PROP_OVERLAY_DATE_COLOR:
-      gst_overlay->date_color = g_value_get_uint (value);
-      break;
-    case PROP_OVERLAY_TEXT_COLOR:
-      gst_overlay->text_color = g_value_get_uint (value);
-      break;
-    case PROP_OVERLAY_POSE_COLOR:
-      gst_overlay->pose_color = g_value_get_uint (value);
-      break;
-    default:
-      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
-      break;
-  }
-  GST_OBJECT_UNLOCK (gst_overlay);
-}
-
-static void
-gst_overlay_get_property (GObject * object, guint prop_id, GValue * value,
-    GParamSpec * pspec)
-{
-  GstOverlay *gst_overlay = GST_OVERLAY (object);
-
-  GST_OBJECT_LOCK (gst_overlay);
-  switch (prop_id) {
-    case PROP_OVERLAY_TEXT:
-      g_value_set_string (value, gst_overlay->user_text);
-      break;
-    case PROP_OVERLAY_DATE:
-      g_value_set_boolean (value, gst_overlay->date_overlay);
-      break;
-    case PROP_OVERLAY_BBOX_COLOR:
-      g_value_set_uint (value, gst_overlay->bbox_color);
-      break;
-    case PROP_OVERLAY_DATE_COLOR:
-      g_value_set_uint (value, gst_overlay->date_color);
-      break;
-    case PROP_OVERLAY_TEXT_COLOR:
-      g_value_set_uint (value, gst_overlay->text_color);
-      break;
-    case PROP_OVERLAY_POSE_COLOR:
-      g_value_set_uint (value, gst_overlay->pose_color);
-      break;
-    default:
-      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
-      break;
-  }
-  GST_OBJECT_UNLOCK (gst_overlay);
-}
-
+/**
+ * gst_overlay_set_info:
+ * @filter: gst overlay object
+ * @in: negotiated sink pad capabilites
+ * @ininfo: Information describing input image properties
+ * @out: negotiated source pad capabilites
+ * @outinfo: Information describing output image properties
+ *
+ * Function to be called with the negotiated caps and video infos.
+ *
+ * Return true if succeed.
+ */
 static gboolean
 gst_overlay_set_info (GstVideoFilter * filter, GstCaps * in,
     GstVideoInfo * ininfo, GstCaps * out, GstVideoInfo * outinfo)
@@ -825,16 +1960,21 @@ gst_overlay_set_info (GstVideoFilter * filter, GstCaps * in,
   return TRUE;
 }
 
+/**
+ * gst_overlay_set_info:
+ * @filter: gst overlay object
+ * @frame: GST video buffer
+ *
+ * Apply all overlay items from machine learning metadata and user provided
+ * overlays in video frame in place.
+ *
+ * Return GST_FLOW_OK if succeed otherwise GST_FLOW_ERROR.
+ */
 static GstFlowReturn
 gst_overlay_transform_frame_ip (GstVideoFilter *filter, GstVideoFrame *frame)
 {
   GstOverlay *gst_overlay = GST_OVERLAY_CAST (filter);
   gboolean res = TRUE;
-
-  GST_DEBUG_OBJECT (gst_overlay,
-    "process id %d dim %dx%d, stride %d size %d flags 0x%x", frame->id,
-    frame->info.width, frame->info.height, frame->info.stride[0],
-    frame->info.size, frame->flags);
 
   if (!gst_overlay->overlay) {
     GST_ERROR_OBJECT (gst_overlay, "failed: overlay not initialized");
@@ -843,7 +1983,7 @@ gst_overlay_transform_frame_ip (GstVideoFilter *filter, GstVideoFrame *frame)
 
   res = gst_overlay_apply_item_list (gst_overlay,
                             gst_buffer_get_detection_meta (frame->buffer),
-                            gst_overlay_apply_bbox_item,
+                            gst_overlay_apply_ml_bbox_item,
                             gst_overlay->bbox_id);
   if (!res) {
     GST_ERROR_OBJECT (gst_overlay, "Overlay apply bbox item list failed!");
@@ -852,7 +1992,7 @@ gst_overlay_transform_frame_ip (GstVideoFilter *filter, GstVideoFrame *frame)
 
   res = gst_overlay_apply_item_list (gst_overlay,
                             gst_buffer_get_segmentation_meta (frame->buffer),
-                            gst_overlay_apply_simg_item,
+                            gst_overlay_apply_ml_simg_item,
                             gst_overlay->simg_id);
   if (!res) {
     GST_ERROR_OBJECT (gst_overlay, "Overlay apply image item list failed!");
@@ -861,7 +2001,7 @@ gst_overlay_transform_frame_ip (GstVideoFilter *filter, GstVideoFrame *frame)
 
   res = gst_overlay_apply_item_list (gst_overlay,
                             gst_buffer_get_classification_meta (frame->buffer),
-                            gst_overlay_apply_text_item,
+                            gst_overlay_apply_ml_text_item,
                             gst_overlay->text_id);
   if (!res) {
     GST_ERROR_OBJECT (gst_overlay,
@@ -871,51 +2011,148 @@ gst_overlay_transform_frame_ip (GstVideoFilter *filter, GstVideoFrame *frame)
 
   res = gst_overlay_apply_item_list (gst_overlay,
                             gst_buffer_get_posenet_meta (frame->buffer),
-                            gst_overlay_apply_pose_item,
+                            gst_overlay_apply_ml_pose_item,
                             gst_overlay->pose_id);
   if (!res) {
-    GST_ERROR_OBJECT (gst_overlay,
-        "Overlay apply pose item list failed!");
+    GST_ERROR_OBJECT (gst_overlay, "Overlay apply pose item list failed!");
     return GST_FLOW_ERROR;
   }
 
-  if (gst_overlay->date_overlay) {
-    res = gst_overlay_apply_date_item (gst_overlay,
-                                       OverlayTimeFormatType::kHHMMSS_24HR,
-                                       OverlayDateFormatType::kMMDDYYYY,
-                                       &gst_overlay->date_id);
-    if (!res) {
-      GST_ERROR_OBJECT (gst_overlay, "Overlay apply date item failed!");
-      return GST_FLOW_ERROR;
-    }
-  } else if (gst_overlay->date_id) {
-    gst_overlay_destroy_overlay_item(&gst_overlay->date_id, gst_overlay);
-  }
+  g_mutex_lock (&gst_overlay->lock);
 
-  if (gst_overlay->user_text) {
-    res = gst_overlay_apply_user_text_item(gst_overlay,
-                                           gst_overlay->user_text,
-                                           &gst_overlay->user_text_id);
-    if (!res) {
-      GST_ERROR_OBJECT (gst_overlay, "Overlay apply user text item failed!");
-      return GST_FLOW_ERROR;
-    }
-  }  else if (gst_overlay->user_text_id) {
-    gst_overlay_destroy_overlay_item(&gst_overlay->user_text_id, gst_overlay);
-  }
+  g_sequence_foreach (gst_overlay->usr_text,
+                      gst_overlay_apply_user_text_item,
+                      gst_overlay);
+
+  g_sequence_foreach (gst_overlay->usr_date,
+                      gst_overlay_apply_user_date_item,
+                      gst_overlay);
+
+  g_sequence_foreach (gst_overlay->usr_simg,
+                      gst_overlay_apply_user_simg_item,
+                      gst_overlay);
+
+  g_sequence_foreach (gst_overlay->usr_bbox,
+                      gst_overlay_apply_user_bbox_item,
+                      gst_overlay);
+
+  g_mutex_unlock (&gst_overlay->lock);
 
   if (!g_sequence_is_empty (gst_overlay->bbox_id) ||
       !g_sequence_is_empty (gst_overlay->simg_id) ||
       !g_sequence_is_empty (gst_overlay->text_id) ||
       !g_sequence_is_empty (gst_overlay->pose_id) ||
-      gst_overlay->user_text_id || gst_overlay->date_id) {
+      !g_sequence_is_empty (gst_overlay->usr_text) ||
+      !g_sequence_is_empty (gst_overlay->usr_date) ||
+      !g_sequence_is_empty (gst_overlay->usr_simg) ||
+      !g_sequence_is_empty (gst_overlay->usr_bbox)) {
     res = gst_overlay_apply_overlay (gst_overlay, frame);
     if (!res) {
       GST_ERROR_OBJECT (gst_overlay, "Overlay apply failed!");
       return GST_FLOW_ERROR;
     }
   }
+
   return GST_FLOW_OK;
+}
+
+/**
+ * gst_overlay_free_user_overlay_entry:
+ * @ptr: GstOverlayUser
+ *
+ * Disable overlay item and free all user overlay common data. All resources
+ * freed in this function are allocated in gst_overlay_set_user_overlay().
+ */
+static void
+gst_overlay_free_user_overlay_entry (gpointer ptr)
+{
+  if (ptr) {
+    GstOverlayUser * entry = (GstOverlayUser *) ptr;
+    GstOverlay * gst_overlay = (GstOverlay *) entry->user_data;
+    if (entry->item_id && gst_overlay && gst_overlay->overlay) {
+      gst_overlay_destroy_overlay_item (&entry->item_id, gst_overlay->overlay);
+    }
+    free (entry->user_id);
+    free (entry);
+  }
+}
+
+/**
+ * gst_overlay_free_user_text_entry:
+ * @ptr: GstOverlayUsrText
+ *
+ * Free text user overlay data.
+ */
+static void
+gst_overlay_free_user_text_entry (gpointer ptr)
+{
+  if (ptr) {
+    GstOverlayUsrText * entry = (GstOverlayUsrText *) ptr;
+    free (entry->text);
+    gst_overlay_free_user_overlay_entry (ptr);
+  }
+}
+
+/**
+ * gst_overlay_free_user_simg_entry:
+ * @ptr: GstOverlayUsrSImg
+ *
+ * Free static image user overlay data.
+ */
+static void
+gst_overlay_free_user_simg_entry (gpointer ptr)
+{
+  if (ptr) {
+    GstOverlayUsrSImg * entry = (GstOverlayUsrSImg *) ptr;
+    free (entry->img_file);
+    free (entry->img_buffer);
+    gst_overlay_free_user_overlay_entry (ptr);
+  }
+}
+
+/**
+ * gst_overlay_free_user_bbox_entry:
+ * @ptr: GstOverlayUsrBBox
+ *
+ * Free bounding box user overlay data.
+ */
+static void
+gst_overlay_free_user_bbox_entry (gpointer ptr)
+{
+  if (ptr) {
+    GstOverlayUsrBBox * entry = (GstOverlayUsrBBox *) ptr;
+    free (entry->label);
+    gst_overlay_free_user_overlay_entry (ptr);
+  }
+}
+
+static void
+gst_overlay_init (GstOverlay * gst_overlay)
+{
+  gst_overlay->overlay = nullptr;
+
+  gst_overlay->bbox_id = g_sequence_new (free);
+  gst_overlay->simg_id = g_sequence_new (free);
+  gst_overlay->text_id = g_sequence_new (free);
+  gst_overlay->pose_id = g_sequence_new (free);
+
+  gst_overlay->usr_text = g_sequence_new (gst_overlay_free_user_text_entry);
+  gst_overlay->usr_date = g_sequence_new (gst_overlay_free_user_overlay_entry);
+  gst_overlay->usr_simg = g_sequence_new (gst_overlay_free_user_simg_entry);
+  gst_overlay->usr_bbox = g_sequence_new (gst_overlay_free_user_bbox_entry);
+
+  gst_overlay->bbox_color = DEFAULT_PROP_OVERLAY_BBOX_COLOR;
+  gst_overlay->date_color = DEFAULT_PROP_OVERLAY_DATE_COLOR;
+  gst_overlay->text_color = DEFAULT_PROP_OVERLAY_TEXT_COLOR;
+  gst_overlay->pose_color = DEFAULT_PROP_OVERLAY_POSE_COLOR;
+  gst_overlay->text_dest_rect.x = DEFAULT_PROP_DEST_RECT_X;
+  gst_overlay->text_dest_rect.y = DEFAULT_PROP_DEST_RECT_Y;
+  gst_overlay->text_dest_rect.w = DEFAULT_PROP_DEST_RECT_WIDTH;
+  gst_overlay->text_dest_rect.h = DEFAULT_PROP_DEST_RECT_HEIGHT;
+
+  g_mutex_init (&gst_overlay->lock);
+
+  GST_DEBUG_CATEGORY_INIT (overlay_debug, "qtioverlay", 0, "QTI overlay");
 }
 
 static void
@@ -929,17 +2166,33 @@ gst_overlay_class_init (GstOverlayClass * klass)
   gobject->get_property = GST_DEBUG_FUNCPTR (gst_overlay_get_property);
   gobject->finalize     = GST_DEBUG_FUNCPTR (gst_overlay_finalize);
 
-
   g_object_class_install_property (gobject, PROP_OVERLAY_TEXT,
-    g_param_spec_string ("overlay-text", "Overlay Text", "Text Overlay.",
-      DEFAULT_PROP_OVERLAY_TEXT, static_cast<GParamFlags>(
+    g_param_spec_string ("overlay-text", "Text Overlay",
+      "Renders text on top of video stream.",
+      DEFAULT_PROP_OVERLAY_TEXT, static_cast <GParamFlags> (
         G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING)));
 
   g_object_class_install_property (gobject, PROP_OVERLAY_DATE,
-    g_param_spec_boolean ("overlay-date", "Overlay Date", "Date overlay.",
-      DEFAULT_PROP_OVERLAY_DATE, static_cast<GParamFlags>(
-        G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+    g_param_spec_string ("overlay-date", "Date Overlay",
+      "Renders date and time on top of video stream.",
+      DEFAULT_PROP_OVERLAY_DATE, static_cast <GParamFlags> (
+        G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING)));
+
+  g_object_class_install_property (gobject, PROP_OVERLAY_SIMG,
+    g_param_spec_string ("overlay-simg", "Static Image Overlay",
+      "Renders static image on top of video stream.",
+      DEFAULT_PROP_OVERLAY_DATE, static_cast <GParamFlags> (
+        G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING)));
+
+  g_object_class_install_property (gobject, PROP_OVERLAY_BBOX,
+    g_param_spec_string ("overlay-bbox", "Bounding Box Overlay",
+      "Renders bounding box and label on top of video stream.",
+      DEFAULT_PROP_OVERLAY_TEXT, static_cast <GParamFlags> (
+        G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING)));
 
   g_object_class_install_property (gobject, PROP_OVERLAY_BBOX_COLOR,
     g_param_spec_uint ("bbox-color", "BBox color", "Bounding box overlay color",
@@ -961,8 +2214,23 @@ gst_overlay_class_init (GstOverlayClass * klass)
       0, G_MAXUINT, DEFAULT_PROP_OVERLAY_POSE_COLOR, static_cast<GParamFlags>(
         G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
+  g_object_class_install_property (gobject, PROP_OVERLAY_TEXT_DEST_RECT,
+      gst_param_spec_array ("dest-rect-ml-text",
+          "Destination Rectangle for ML Detection overlay",
+          "Destination rectangle params for ML Detection overlay. "
+          "The Start-X, Start-Y , Width, Height of the destination rectangle "
+          "format is <X, Y, WIDTH, HEIGHT>",
+          g_param_spec_int ("coord", "Coordinate",
+              "One of X, Y, Width, Height value.", 0, G_MAXINT, 0,
+              static_cast <GParamFlags> (G_PARAM_WRITABLE |
+                                         G_PARAM_STATIC_STRINGS)),
+          static_cast <GParamFlags> (G_PARAM_CONSTRUCT |
+                                     G_PARAM_READWRITE |
+                                     G_PARAM_STATIC_STRINGS)));
+
   gst_element_class_set_static_metadata (element, "QTI Overlay", "Overlay",
-      "Apply image, bounding boxes and text overlay.", "QTI");
+      "This plugin renders text, image, bounding box or graph on top of a "
+      "video stream.", "QTI");
 
   gst_element_class_add_pad_template (element, gst_overlay_sink_template ());
   gst_element_class_add_pad_template (element, gst_overlay_src_template ());
@@ -970,28 +2238,6 @@ gst_overlay_class_init (GstOverlayClass * klass)
   filter->set_info = GST_DEBUG_FUNCPTR (gst_overlay_set_info);
   filter->transform_frame_ip =
       GST_DEBUG_FUNCPTR (gst_overlay_transform_frame_ip);
-}
-
-static void
-gst_overlay_init (GstOverlay * gst_overlay)
-{
-  gst_overlay->overlay = nullptr;
-
-  gst_overlay->bbox_id = g_sequence_new (free);
-  gst_overlay->simg_id = g_sequence_new (free);
-  gst_overlay->text_id = g_sequence_new (free);
-  gst_overlay->pose_id = g_sequence_new (free);
-
-  gst_overlay->user_text_id = 0;
-  gst_overlay->date_id = 0;
-  gst_overlay->user_text = NULL;
-  gst_overlay->date_overlay = DEFAULT_PROP_OVERLAY_DATE;
-  gst_overlay->bbox_color = DEFAULT_PROP_OVERLAY_BBOX_COLOR;
-  gst_overlay->date_color = DEFAULT_PROP_OVERLAY_DATE_COLOR;
-  gst_overlay->text_color = DEFAULT_PROP_OVERLAY_TEXT_COLOR;
-  gst_overlay->pose_color = DEFAULT_PROP_OVERLAY_POSE_COLOR;
-
-  GST_DEBUG_CATEGORY_INIT (overlay_debug, "qtioverlay", 0, "QTI overlay");
 }
 
 static gboolean
@@ -1005,7 +2251,8 @@ GST_PLUGIN_DEFINE (
     GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
     qtioverlay,
-    "QTI Overlay. Supports image, bounding boxes and text overlay.",
+    "QTI Overlay. This plugin renders text, image, bounding box or graph on "
+      "top of a video stream.",
     plugin_init,
     PACKAGE_VERSION,
     PACKAGE_LICENSE,
