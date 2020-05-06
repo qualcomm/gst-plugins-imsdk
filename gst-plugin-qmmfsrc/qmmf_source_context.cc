@@ -123,6 +123,8 @@ struct _GstQmmfContext {
   gboolean          adrc;
   /// Local tone Mapping
   GstStructure      *ltmdata;
+  /// Noise Reduction Tuning
+  GstStructure      *nrtuning;
 };
 
 /// Global QMMF Recorder instance.
@@ -467,6 +469,7 @@ initialize_camera_param (GstQmmfContext * context)
   set_vendor_tags(context->defogtable, &meta);
   set_vendor_tags(context->exptable, &meta);
   set_vendor_tags(context->ltmdata, &meta);
+  set_vendor_tags(context->nrtuning, &meta);
 
   if (!context->slave) {
     G_LOCK(recorder);
@@ -786,6 +789,8 @@ gst_qmmf_context_new ()
       gst_structure_new_empty ("org.codeaurora.qcamera3.exposuretable");
   context->ltmdata =
       gst_structure_new_empty ("org.quic.camera.ltmDynamicContrast");
+  context->nrtuning =
+      gst_structure_new_empty ("org.quic.camera.anr_tuning");
 
   GST_INFO ("Created QMMF context: %p", context);
   return context;
@@ -808,6 +813,7 @@ gst_qmmf_context_free (GstQmmfContext * context)
   gst_structure_free (context->defogtable);
   gst_structure_free (context->exptable);
   gst_structure_free (context->ltmdata);
+  gst_structure_free (context->nrtuning);
 
   GST_INFO ("Destroyed QMMF context: %p", context);
   g_slice_free (GstQmmfContext, context);
@@ -1754,6 +1760,28 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       set_vendor_tags(context->ltmdata, &meta);
       break;
     }
+
+    case PARAM_CAMERA_NOISE_REDUCTION_TUNING:
+    {
+      GstStructure *structure = NULL;
+      const gchar *input = g_value_get_string(value);
+      GValue gvalue = G_VALUE_INIT;
+      g_value_init(&gvalue, GST_TYPE_STRUCTURE);
+
+      if (!gst_value_deserialize(&gvalue, input)) {
+        GST_ERROR("Failed to deserialize NR tuning data!");
+        break;
+      }
+
+      structure = GST_STRUCTURE(g_value_dup_boxed(&gvalue));
+      g_value_unset(&gvalue);
+
+      gst_structure_foreach(structure, update_structure, context->nrtuning);
+      gst_structure_free(structure);
+
+      set_vendor_tags(context->nrtuning, &meta);
+      break;
+    }
   }
 
   if (!context->slave) {
@@ -1890,6 +1918,19 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
           gst_camera_ltm_data, G_N_ELEMENTS (gst_camera_ltm_data),
           context->ltmdata, &meta);
       string = gst_structure_to_string (context->ltmdata);
+
+      g_value_set_string (value, string);
+      g_free (string);
+      break;
+    }
+    case PARAM_CAMERA_NOISE_REDUCTION_TUNING:
+    {
+      gchar *string = NULL;
+
+      get_vendor_tags ("org.quic.camera.anr_tuning",
+          gst_camera_nr_tuning_data, G_N_ELEMENTS (gst_camera_nr_tuning_data),
+          context->nrtuning, &meta);
+      string = gst_structure_to_string (context->nrtuning);
 
       g_value_set_string (value, string);
       g_free (string);

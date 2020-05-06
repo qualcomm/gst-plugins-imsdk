@@ -280,6 +280,13 @@ static const gchar * gst_camera_ltm_data[] =
     "ltmBrightSupressStrength",
 };
 
+/// org.quic.camera.anr_tuning
+static const gchar * gst_camera_nr_tuning_data[] =
+{
+    "anr_intensity",
+    "anr_motion_sensitivity",
+};
+
 G_END_DECLS
 
 #endif // __GST_QMMFSRC_UTILS_H__
