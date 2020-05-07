@@ -106,6 +106,8 @@ G_BEGIN_DECLS
 
 #define VIDEO_TRACK_ID_OFFSET (0x01)
 
+#define GST_TYPE_VIDEO_PAD_CONTROL_RATE (gst_video_pad_control_rate_get_type ())
+
 typedef enum {
   GST_VIDEO_CODEC_UNKNOWN,
   GST_VIDEO_CODEC_NONE,
@@ -186,6 +188,8 @@ void qmmfsrc_video_pad_flush_buffers_queue (GstPad * pad, gboolean flush);
 
 /// Modifies the pad capabilities into a representation with only fixed values.
 gboolean qmmfsrc_video_pad_fixate_caps (GstPad * pad);
+
+GType gst_video_pad_control_rate_get_type (void);
 
 G_END_DECLS
 

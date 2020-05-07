@@ -69,8 +69,7 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
 #define DEFAULT_PROP_MIN_QP_B_FRAMES 10
 #define DEFAULT_PROP_MAX_QP_B_FRAMES 51
 
-#define GST_TYPE_VIDEO_PAD_CONTROL_RATE (gst_video_pad_control_rate_get_type ())
-static GType
+GType
 gst_video_pad_control_rate_get_type (void)
 {
   static GType gtype = 0;

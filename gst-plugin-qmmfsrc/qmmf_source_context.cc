@@ -952,8 +952,9 @@ gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad)
 
   if (GST_IS_QMMFSRC_VIDEO_PAD (pad)) {
     GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
-    guint bitrate, ratecontrol, qpvalue;
+    guint bitrate, qpvalue;
     const gchar *profile, *level;
+    gint ratecontrol;
 
     GST_QMMFSRC_VIDEO_PAD_LOCK (vpad);
 
@@ -1018,7 +1019,8 @@ gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad)
         params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel5_2;
       }
 
-      gst_structure_get_uint(vpad->params, "bitrate-control", &ratecontrol);
+      gst_structure_get_enum (vpad->params, "bitrate-control",
+          GST_TYPE_VIDEO_PAD_CONTROL_RATE, &ratecontrol);
       switch (ratecontrol) {
         case GST_VIDEO_CONTROL_RATE_DISABLE:
           params.codec_param.avc.ratecontrol_type =
@@ -1109,7 +1111,8 @@ gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad)
         params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel5_2;
       }
 
-      gst_structure_get_uint(vpad->params, "bitrate-control", &ratecontrol);
+      gst_structure_get_enum (vpad->params, "bitrate-control",
+          GST_TYPE_VIDEO_PAD_CONTROL_RATE, &ratecontrol);
       switch (ratecontrol) {
         case GST_VIDEO_CONTROL_RATE_DISABLE:
           params.codec_param.hevc.ratecontrol_type =
