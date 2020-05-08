@@ -36,6 +36,15 @@
 
 namespace mle {
 
+#define DEFAULT_ALPHA 128
+
+typedef struct {
+  uint8_t red;
+  uint8_t green;
+  uint8_t blue;
+  uint8_t alpha;
+} rgba;
+
 enum MLEImageFormat {
   mle_format_invalid = 0,
   mle_format_yv12,
@@ -88,7 +97,8 @@ enum class EngineOutput {
   kMulti,
   kSqueezenet,
   kSingleSSD,
-  kSegmentation
+  kSegmentation,
+  kPoseNet
 };
 
 enum class PreprocessingMode {

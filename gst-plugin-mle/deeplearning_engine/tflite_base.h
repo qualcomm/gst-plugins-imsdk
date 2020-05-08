@@ -52,6 +52,7 @@ struct TFLiteEngineInputParams {
   uint32_t height;
   MLEImageFormat format;
   uint8_t* scale_buf;
+  uint8_t* rgb_buf;
 };
 
 struct TFLiteEngineParams {
@@ -81,9 +82,11 @@ class TFLBase : public MLEngine {
 
  private:
   int32_t ValidateModelInfo();
+  virtual int32_t AllocateInternalBuffers();
+  virtual void FreeInternalBuffers();
   int32_t PreProcessInput(SourceFrame* frame_info);
   int32_t PostProcessMultiOutput(GstBuffer* buffer);
-  int32_t PostProcessOutput(GstBuffer* buffer);
+  virtual int32_t PostProcessOutput(GstBuffer* buffer);
   TfLiteStatus ReadLabelsFile(const std::string& file_name,
                               std::vector<std::string>& result,
                               size_t& found_label_count);
@@ -103,11 +106,22 @@ class TFLBase : public MLEngine {
     const uint32_t height,
     MLEImageFormat format);
 
+  void Pad(
+    uint8_t*       input_buf,
+    const uint32_t input_width,
+    const uint32_t input_height,
+    const uint32_t pad_width,
+    const uint32_t pad_height,
+    uint8_t*       output_buf);
   TfLiteDelegatePtrMap GetDelegates();
+
 
  protected:
   TFLiteEngineInputParams input_params_;
   TFLiteEngineParams engine_params_;
+  uint32_t scale_width_;
+  uint32_t scale_height_;
+  bool need_labels_;
 };
 
 }; // namespace mle

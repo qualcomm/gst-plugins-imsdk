@@ -35,6 +35,8 @@
 
 #include "mle_tflite.h"
 #include "deeplearning_engine/tflite_base.h"
+#include "deeplearning_engine/tflite_segmentation.h"
+#include "deeplearning_engine/tflite_posenet.h"
 
 #define GST_CAT_DEFAULT mle_tflite_debug
 GST_DEBUG_CATEGORY_STATIC (mle_tflite_debug);
@@ -45,6 +47,7 @@ G_DEFINE_TYPE (GstMLETFLite, gst_mle_tflite, GST_TYPE_VIDEO_FILTER);
 #define GST_ML_VIDEO_FORMATS "{ NV12, NV21 }"
 
 #define DEFAULT_PROP_MLE_TFLITE_CONF_THRESHOLD 0.5
+#define DEFAULT_PROP_OUTPUT_TYPE 1 //kMulti
 #define DEFAULT_PROP_MLE_TFLITE_PREPROCESSING_TYPE 0
 #define DEFAULT_TFLITE_NUM_THREADS 2
 #define GST_MLE_UNUSED(var) ((void)var)
@@ -54,6 +57,7 @@ enum {
   PROP_MLE_PARSE_CONFIG,
   PROP_MLE_MODEL_FILENAME,
   PROP_MLE_LABELS_FILENAME,
+  PROP_MLE_OUTPUT_TYPE,
   PROP_MLE_PREPROCESSING_TYPE,
   PROP_MLE_CONF_THRESHOLD,
   PROP_MLE_TFLITE_USE_NNAPI,
@@ -88,6 +92,10 @@ gst_mle_tflite_set_property(GObject *object, guint property_id,
     case PROP_MLE_PARSE_CONFIG:
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
       mle->config_location = g_strdup(g_value_get_string (value));
+      break;
+    case PROP_MLE_OUTPUT_TYPE:
+      gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
+      mle->output_type = g_value_get_uint (value);
       break;
     case PROP_MLE_PREPROCESSING_TYPE:
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
@@ -130,6 +138,9 @@ gst_mle_tflite_get_property(GObject *object, guint property_id,
   switch (property_id) {
     case PROP_MLE_PARSE_CONFIG:
       g_value_set_string (value, mle->config_location);
+      break;
+    case PROP_MLE_OUTPUT_TYPE:
+      g_value_set_uint (value, mle->output_type);
       break;
     case PROP_MLE_PREPROCESSING_TYPE:
       g_value_set_uint (value, mle->preprocessing_type);
@@ -259,7 +270,9 @@ gst_mle_create_engine(GstMLETFLite *mle) {
   if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_CONF_THRESHOLD)) {
     configuration.conf_threshold = mle->conf_threshold;
   }
-
+  if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_OUTPUT_TYPE)) {
+    configuration.engine_output = mle::EngineOutput(mle->output_type);
+  }
   if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_TFLITE_NUM_THREADS)) {
     configuration.number_of_threads = mle->num_threads;
   }
@@ -270,10 +283,36 @@ gst_mle_create_engine(GstMLETFLite *mle) {
     configuration.preprocess_mode =
         (mle::PreprocessingMode)mle->preprocessing_type;
   }
-  mle->engine = new mle::TFLBase(configuration);
-  if (nullptr == mle->engine) {
-    GST_ERROR_OBJECT (mle, "Failed to create TFLite instance.");
-    rc = FALSE;
+  switch (configuration.engine_output) {
+    case mle::EngineOutput::kSingle:
+    case mle::EngineOutput::kMulti:  {
+      mle->engine = new mle::TFLBase(configuration);
+      if (nullptr == mle->engine) {
+        GST_ERROR_OBJECT (mle, "Failed to create TFLite instance.");
+        rc = FALSE;
+      }
+      break;
+    }
+    case mle::EngineOutput::kSegmentation: {
+      mle->engine = new mle::TFLSegmentation(configuration);
+      if (nullptr == mle->engine) {
+        GST_ERROR_OBJECT (mle, "Failed to create TFLite instance.");
+        rc = FALSE;
+      }
+      break;
+    }
+    case mle::EngineOutput::kPoseNet: {
+      mle->engine = new mle::TFLPoseNet(configuration);
+      if (nullptr == mle->engine) {
+        GST_ERROR_OBJECT (mle, "Failed to create TFLite instance.");
+        rc = FALSE;
+      }
+      break;
+    }
+    default: {
+      GST_ERROR_OBJECT (mle, "Unknown TFLite output type.");
+      rc = FALSE;
+    }
   }
 
   return rc;
@@ -416,6 +455,19 @@ gst_mle_tflite_class_init (GstMLETFLiteClass * klass)
 
   g_object_class_install_property(
       gobject,
+      PROP_MLE_OUTPUT_TYPE,
+      g_param_spec_uint(
+          "output-type",
+          "Engine output",
+          "Model output type: Eg.: 0 - classification; 1 - SSD; 4 - Segmentation; 5 - PoseNet",
+          0,
+          5,
+          DEFAULT_PROP_OUTPUT_TYPE,
+          static_cast<GParamFlags>(G_PARAM_READWRITE |
+                                   G_PARAM_STATIC_STRINGS)));
+
+  g_object_class_install_property(
+      gobject,
       PROP_MLE_PREPROCESSING_TYPE,
       g_param_spec_uint(
           "maintain-ar",
@@ -486,7 +538,7 @@ gst_mle_tflite_init (GstMLETFLite * mle)
   mle->engine = nullptr;
   mle->config_location = nullptr;
   mle->is_init = FALSE;
-
+  mle->output_type = DEFAULT_PROP_OUTPUT_TYPE;
   mle->preprocessing_type = DEFAULT_PROP_MLE_TFLITE_PREPROCESSING_TYPE;
   mle->conf_threshold = DEFAULT_PROP_MLE_TFLITE_CONF_THRESHOLD;
   mle->num_threads = DEFAULT_TFLITE_NUM_THREADS;
