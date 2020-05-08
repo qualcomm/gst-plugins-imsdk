@@ -38,6 +38,7 @@
 #include "deeplearning_engine/snpe_base.h"
 #include "deeplearning_engine/snpe_complex.h"
 #include "deeplearning_engine/snpe_single_ssd.h"
+#include "deeplearning_engine/snpe_segmentation.h"
 
 #define GST_CAT_DEFAULT mle_snpe_debug
 GST_DEBUG_CATEGORY_STATIC (mle_snpe_debug);
@@ -464,6 +465,14 @@ gst_mle_create_engine(GstMLESNPE *mle) {
       }
       break;
     }
+    case mle::EngineOutput::kSegmentation: {
+      mle->engine = new mle::SNPESegmentation(configuration);
+      if (nullptr == mle->engine) {
+        GST_ERROR_OBJECT (mle, "Failed to create SNPE instance.");
+        rc = FALSE;
+      }
+      break;
+    }
     default: {
       GST_ERROR_OBJECT (mle, "Unknown SNPE output type.");
       rc = FALSE;
@@ -626,9 +635,9 @@ gst_mle_snpe_class_init (GstMLESNPEClass * klass)
       g_param_spec_uint(
           "output",
           "SNPE output",
-          "Model output type: Eg.: 0 - classification; 1 - SSD",
+          "Model output type: Eg.: 0 - classification; 1 - SSD; 4 - segmentation",
           0,
-          3,
+          5,
           DEFAULT_PROP_SNPE_OUTPUT,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));

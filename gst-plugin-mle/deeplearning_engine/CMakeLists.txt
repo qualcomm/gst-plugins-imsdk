@@ -7,6 +7,7 @@ if (SNPE_ENABLE)
   list(APPEND SOURCE_FILES "snpe_base.cc")
   list(APPEND SOURCE_FILES "snpe_complex.cc")
   list(APPEND SOURCE_FILES "snpe_single_ssd.cc")
+  list(APPEND SOURCE_FILES "snpe_segmentation.cc")
   list(APPEND SNPE_DIRS "${SNPE_INCLUDE_DIR}")
   add_library(SNPE SHARED IMPORTED)
   set_target_properties(SNPE PROPERTIES
