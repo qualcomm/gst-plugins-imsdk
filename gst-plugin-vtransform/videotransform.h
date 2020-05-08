@@ -72,7 +72,6 @@ struct _GstVideoTransform {
   GstVideoInfo            *outinfo;
 
   // Output buffer pool
-  GstBufferPool           *inpool;
   GstBufferPool           *outpool;
 
   /// Supported converters.

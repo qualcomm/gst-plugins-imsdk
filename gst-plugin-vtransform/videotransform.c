@@ -59,8 +59,13 @@ G_DEFINE_TYPE (GstVideoTransform, gst_video_transform, GST_TYPE_BASE_TRANSFORM);
 
 #define ALIGN(value, alignment) (((value) + alignment - 1) & (~(alignment - 1)))
 
+// Caps video size range.
 #undef GST_VIDEO_SIZE_RANGE
 #define GST_VIDEO_SIZE_RANGE "(int) [ 1, 32767]"
+
+// Caps FPS range.
+#undef GST_VIDEO_FPS_RANGE
+#define GST_VIDEO_FPS_RANGE "(fraction) [ 0, 255 ]"
 
 #define GST_VIDEO_FORMATS "{ BGRA, RGBA, BGR, RGB, NV12, NV21 }"
 
@@ -203,69 +208,64 @@ gst_video_transform_create_pool (GstVideoTransform * vtrans, GstCaps * caps)
 
 static gboolean
 gst_video_transform_propose_allocation (GstBaseTransform * trans,
-    GstQuery * decide_query, GstQuery * query)
+    GstQuery * inquery, GstQuery * outquery)
 {
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM_CAST (trans);
 
   GstCaps *caps = NULL;
   GstBufferPool *pool = NULL;
-  GstStructure *config = NULL;
-  GstAllocator *allocator = NULL;
   GstVideoInfo info;
-  gboolean needpool;
-  guint size, minbuffers, maxbuffers;
-  GstAllocationParams params;
+  guint size = 0;
+  gboolean needpool = FALSE;
 
-  // If we are not passthrough, we can handle buffers and video meta.
-  if (decide_query) {
-    gst_query_parse_allocation (query, &caps, &needpool);
-    if (!caps) {
-      GST_ERROR_OBJECT (vtrans, "Failed to parse the propose_allocation caps!");
-      return FALSE;
-    }
+  if (!GST_BASE_TRANSFORM_CLASS (parent_class)->propose_allocation (
+        trans, inquery, outquery))
+    return FALSE;
 
-    if (!gst_video_info_from_caps (&info, caps)) {
-      GST_ERROR_OBJECT (vtrans, "Failed to get video info!");
-      return FALSE;
-    }
+  // No input query, nothing to do.
+  if (NULL == inquery)
+    return TRUE;
 
-    // Update the internal pool if any allocation attribute changed.
-    if (vtrans->inpool && !gst_video_info_is_equal (
-        gst_image_buffer_pool_get_info (vtrans->inpool), &info)) {
-      gst_object_unref (vtrans->inpool);
-      vtrans->inpool = gst_video_transform_create_pool (vtrans, caps);
-    } else {
-      // Create buffer pool for input.
-      vtrans->inpool = gst_video_transform_create_pool (vtrans, caps);
-    }
+  // Extract caps from the query.
+  gst_query_parse_allocation (outquery, &caps, &needpool);
 
-    // Get the size and allocator params from pool and set it in query.
-    if (needpool) {
-      pool = gst_video_transform_create_pool (vtrans, caps);
-    } else {
-      pool = gst_object_ref (vtrans->inpool);
-    }
-
-    config = gst_buffer_pool_get_config (pool);
-    gst_buffer_pool_config_get_params (config, NULL, &size, &minbuffers,
-        &maxbuffers);
-
-    if (gst_buffer_pool_config_get_allocator (config, &allocator, &params))
-      gst_query_add_allocation_param (query, allocator, &params);
-
-    gst_structure_free (config);
-
-    // If upstream does't have a pool requirement, set only size,
-    // min buffers and max buffers in query.
-    gst_query_add_allocation_pool (query, needpool ? pool : NULL, size,
-        minbuffers, 0);
-    gst_object_unref (pool);
-
-    gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL);
+  if (NULL == caps) {
+    GST_ERROR_OBJECT (vtrans, "Failed to extract caps from query!");
+    return FALSE;
   }
 
-  return GST_BASE_TRANSFORM_CLASS (parent_class)->propose_allocation (trans,
-      decide_query, query);
+  if (!gst_video_info_from_caps (&info, caps)) {
+    GST_ERROR_OBJECT (vtrans, "Failed to get video info!");
+    return FALSE;
+  }
+
+  // Get the size from video info.
+  size = GST_VIDEO_INFO_SIZE (&info);
+
+  if (needpool) {
+    GstStructure *structure = NULL;
+
+    pool = gst_video_transform_create_pool (vtrans, caps);
+    structure = gst_buffer_pool_get_config (pool);
+
+    // Set caps and size in query.
+    gst_buffer_pool_config_set_params (structure, caps, size, 0, 0);
+
+    if (!gst_buffer_pool_set_config (pool, structure)) {
+      GST_ERROR_OBJECT (vtrans, "Failed to set buffer pool configuration!");
+      gst_object_unref (pool);
+      return FALSE;
+    }
+  }
+
+  // If upstream does't have a pool requirement, set only size in query.
+  gst_query_add_allocation_pool (outquery, needpool ? pool : NULL, size, 0, 0);
+
+  if (pool != NULL)
+    gst_object_unref (pool);
+
+  gst_query_add_allocation_meta (outquery, GST_VIDEO_META_API_TYPE, NULL);
+  return TRUE;
 }
 
 static gboolean
@@ -288,8 +288,10 @@ gst_video_transform_decide_allocation (GstBaseTransform * trans,
   }
 
   // Invalidate the cached pool if there is an allocation_query.
-  if (vtrans->outpool)
+  if (vtrans->outpool) {
+    gst_buffer_pool_set_active (vtrans->outpool, FALSE);
     gst_object_unref (vtrans->outpool);
+  }
 
   // Create a new buffer pool.
   pool = gst_video_transform_create_pool (vtrans, caps);
@@ -1507,9 +1509,6 @@ gst_video_transform_finalize (GObject * object)
   if (vtrans->outinfo != NULL)
     gst_video_info_free (vtrans->outinfo);
 
-  if (vtrans->inpool != NULL)
-    gst_object_unref (vtrans->inpool);
-
   if (vtrans->outpool != NULL)
     gst_object_unref (vtrans->outpool);
 
@@ -1596,7 +1595,6 @@ gst_video_transform_init (GstVideoTransform * vtrans)
   vtrans->ininfo = NULL;
   vtrans->outinfo = NULL;
 
-  vtrans->inpool = NULL;
   vtrans->outpool = NULL;
 
   vtrans->c2dconvert = gst_c2d_video_converter_new ();
