@@ -1406,7 +1406,8 @@ gst_video_transform_transform (GstBaseTransform * trans, GstBuffer * inbuffer,
 
     timedelta = GST_CLOCK_DIFF (ts_begin, ts_end);
 
-    GST_LOG ("Conversion took %lld.%03lld ms", GST_TIME_AS_MSECONDS (timedelta),
+    GST_LOG_OBJECT (vtrans, "Conversion took %" G_GINT64_FORMAT ".%03"
+        G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (timedelta),
         (GST_TIME_AS_USECONDS (timedelta) % 1000));
   }
 

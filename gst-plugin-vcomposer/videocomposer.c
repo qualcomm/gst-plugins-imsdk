@@ -1096,8 +1096,8 @@ gst_video_composer_task_loop (gpointer userdata)
     // Get time difference between current time and start.
     request->time = GST_CLOCK_DIFF (request->time, gst_util_get_timestamp ());
 
-    GST_LOG_OBJECT (vcomposer, "Request %p took %lld.%03lld ms", request->id,
-        GST_TIME_AS_MSECONDS (request->time),
+    GST_LOG_OBJECT (vcomposer, "Request %p took %" G_GINT64_FORMAT ".%03"
+        G_GINT64_FORMAT " ms", request->id, GST_TIME_AS_MSECONDS (request->time),
         (GST_TIME_AS_USECONDS (request->time) % 1000));
 
     buffer = gst_buffer_ref (request->outframes[0].buffer);
