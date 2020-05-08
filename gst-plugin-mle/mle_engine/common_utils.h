@@ -42,6 +42,151 @@
 
 #define MLE_UNUSED(var) ((void)var)
 
+#define DEFAULT_ALPHA 128
+
+#define COLOR_TABLE_SIZE 32
+
+typedef struct {
+  uint8_t red;
+  uint8_t green;
+  uint8_t blue;
+  uint8_t alpha;
+} rgba;
+
+static rgba color_table[COLOR_TABLE_SIZE] = {
+  { //Black(background 0)
+  .red   = 0,
+  .green = 0,
+  .blue  = 0,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Maroon(aeroplane 1)
+  .red   = 128,
+  .green = 0,
+  .blue  = 0,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Green(bicycle 2)
+  .red   = 0,
+  .green = 128,
+  .blue  = 0,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Olive(bird 3)
+  .red   = 128,
+  .green = 128,
+  .blue  = 0,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Navy(boat 4)
+  .red   = 0,
+  .green = 0,
+  .blue  = 128,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Purple(bottle 5)
+  .red   = 128,
+  .green = 0,
+  .blue  = 128,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Teal(bus 6)
+  .red   = 0,
+  .green = 128,
+  .blue  = 128,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Silver(car 7)
+  .red   = 192,
+  .green = 192,
+  .blue  = 192,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Grey(cat 8)
+  .red   = 128,
+  .green = 128,
+  .blue  = 128,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Red(chair 9)
+  .red   = 255,
+  .green = 0,
+  .blue  = 0,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Lime(cow 10)
+  .red   = 0,
+  .green = 255,
+  .blue  = 0,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Yellow(diningtable 11)
+  .red   = 255,
+  .green = 255,
+  .blue  = 0,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Blue(dog 12)
+  .red   = 0,
+  .green = 0,
+  .blue  = 255,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Fuchsia(horse 13)
+  .red   = 255,
+  .green = 0,
+  .blue  = 255,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Aqua(motorbike 14)
+  .red   = 0,
+  .green = 255,
+  .blue  = 255,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //White(person 15)
+  .red   = 255,
+  .green = 255,
+  .blue  = 255,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Honeydew2(potted plant 16)
+  .red   = 215,
+  .green = 255,
+  .blue  = 215,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Salmon1(sheep 17)
+  .red   = 255,
+  .green = 135,
+  .blue  = 95,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Orange1(sofa 18)
+  .red   = 255,
+  .green = 175,
+  .blue  = 0,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Gold1(train 19)
+  .red   = 255,
+  .green = 215,
+  .blue  = 0,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Thistle1(tv/monitor 20)
+  .red   = 255,
+  .green = 215,
+  .blue  = 255,
+  .alpha = DEFAULT_ALPHA
+ },
+ { //Cornsilk1(unknown 255)
+  .red   = 255,
+  .green = 255,
+  .blue  = 215,
+  .alpha = DEFAULT_ALPHA
+ }
+};
 class Property {
  public:
   /** Get
@@ -54,6 +199,7 @@ class Property {
    **/
   template <typename TProperty>
   static TProperty Get(std::string property, TProperty default_value) {
+    MLE_UNUSED(color_table); // Consider removing
     TProperty value = default_value;
     char prop_val[PROPERTY_VALUE_MAX];
     std::stringstream s;

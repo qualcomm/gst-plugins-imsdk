@@ -33,10 +33,10 @@
 
 namespace mle {
 
-class SNPEComplex : public SNPEBase {
+class SNPEDetection : public SNPEBase {
  public:
-  SNPEComplex(MLConfig &config);
-  ~SNPEComplex();
+  SNPEDetection(MLConfig &config);
+  ~SNPEDetection();
   int32_t PostProcess(GstBuffer* buffer);
 };
 

@@ -37,26 +37,11 @@
 
 namespace mle {
 
-#define DEFAULT_ALPHA 128
-
-typedef struct {
-  uint8_t red;
-  uint8_t green;
-  uint8_t blue;
-  uint8_t alpha;
-} rgba;
-
 enum MLEImageFormat {
   mle_format_invalid = 0,
-  mle_format_yv12,
   mle_format_nv12,
   mle_format_nv21,
-  mle_format_YUVJ420P,
-  mle_format_YUVJ422P,
-  mle_format_YUVJ444P,
-  mle_format_GRAY8,
   mle_format_RGB24,
-  mle_format_JPEG,
 };
 
 enum MLEErrors {
@@ -209,7 +194,7 @@ class MLEngine {
       const uint32_t width,
       const uint32_t height);
 
-  void PreProcessScale(
+  int32_t PreProcessScale(
       uint8_t*       pSrcLuma,
       uint8_t*       pSrcChroma,
       uint8_t*       pDst,

@@ -53,8 +53,8 @@ TfLiteDelegatePtrMap TFLBase::GetDelegates() {
   if (!(config_.delegate.compare("dsp"))) {
     tflite::StatefulNnApiDelegate::Options options;
     options.execution_preference =
-        static_cast<tflite::StatefulNnApiDelegate::Options::ExecutionPreference>(
-        delegate_preferences);
+      static_cast<tflite::StatefulNnApiDelegate::Options::ExecutionPreference>(
+      delegate_preferences);
 
     auto delegate = tflite::evaluation::CreateNNAPIDelegate(options);
     if (!delegate) {
@@ -72,7 +72,8 @@ TfLiteDelegatePtrMap TFLBase::GetDelegates() {
 
 int32_t TFLBase::LoadModel(std::string& model_path) {
   int32_t res = MLE_OK;
-  tflite_params_.model = tflite::FlatBufferModel::BuildFromFile(model_path.c_str());
+  tflite_params_.model =
+      tflite::FlatBufferModel::BuildFromFile(model_path.c_str());
   if (!tflite_params_.model) {
     MLE_LOGE("%s: Failed to load model from %s", __func__, model_path.c_str());
     res = MLE_FAIL;
@@ -86,7 +87,8 @@ int32_t TFLBase::InitFramework() {
 
   // Create the interpreter
   tflite::ops::builtin::BuiltinOpResolver resolver;
-  tflite::InterpreterBuilder(*tflite_params_.model, resolver)(&tflite_params_.interpreter);
+  tflite::InterpreterBuilder(*tflite_params_.model, resolver)
+        (&tflite_params_.interpreter);
   if (!tflite_params_.interpreter) {
     MLE_LOGE("%s: Failed to construct interpreter", __func__);
     return MLE_FAIL;
@@ -103,8 +105,8 @@ int32_t TFLBase::InitFramework() {
 
   auto delegates = GetDelegates();
   for (const auto& delegate : delegates) {
-    if (tflite_params_.interpreter->ModifyGraphWithDelegate(delegate.second.get()) !=
-        kTfLiteOk) {
+    if (tflite_params_.interpreter->ModifyGraphWithDelegate(
+          delegate.second.get()) != kTfLiteOk) {
       MLE_LOGE("Failed to apply delegate.");
     } else {
       MLE_LOGI("%s delegate applied successfully!", delegate.first.c_str());
@@ -131,7 +133,8 @@ int32_t TFLBase::InitFramework() {
 
 void* TFLBase::GetInputBuffer() {
   void* buf = nullptr;
-  size_t buf_size = engine_input_params_.width * engine_input_params_.height * 3;
+  size_t buf_size =
+      engine_input_params_.width * engine_input_params_.height * 3;
   int input = tflite_params_.interpreter->inputs()[0];
   TfLiteType input_type = tflite_params_.interpreter->tensor(input)->type;
   switch (input_type) {
@@ -164,13 +167,6 @@ int32_t TFLBase::ExecuteModel() {
 }
 
 int32_t TFLBase::ValidateModelInfo() {
-  // Validate for supported models
-  // Mobilenet model
-  //   - input tensor (1, uint8_t, 1 X height X width X 3)
-  //   - output tensor (1, uint8_t or float, 1 X number of labels)
-  //   - order of predictions corresponds to order of labels, as listed in labels file
-  MLE_LOGI("%s: Support tensor types - kTfLiteFloat32 %d - kTfLiteUInt8 %d",
-                  __func__, kTfLiteFloat32, kTfLiteUInt8);
   // Validate input nodes
   const std::vector<int> inputs = tflite_params_.interpreter->inputs();
   tflite_params_.num_inputs = inputs.size();
@@ -209,14 +205,14 @@ int32_t TFLBase::ValidateModelInfo() {
   MLE_LOGI("%s: Input tensor: height %d, width %d", __func__,
               engine_input_params_.height, engine_input_params_.width);
   MLE_LOGI("%s: Input tensor: quantization scale %f, zero_point %d",
-              __func__, tflite_params_.interpreter->tensor(input)->params.scale,
-              tflite_params_.interpreter->tensor(input)->params.zero_point);
+            __func__, tflite_params_.interpreter->tensor(input)->params.scale,
+            tflite_params_.interpreter->tensor(input)->params.zero_point);
 
   // Validate output nodes
   const std::vector<int> outputs = tflite_params_.interpreter->outputs();
   tflite_params_.num_outputs = outputs.size();
-  if (tflite_params_.num_inputs != 1 && tflite_params_.num_inputs != 3 &&
-      tflite_params_.num_inputs != 4) {
+  if (tflite_params_.num_outputs != 1 && tflite_params_.num_outputs != 3 &&
+      tflite_params_.num_outputs != 4) {
     MLE_LOGE("%s: No support for %d output nodes", __func__,
                 tflite_params_.num_outputs);
     return MLE_FAIL;
@@ -238,7 +234,8 @@ int32_t TFLBase::ValidateModelInfo() {
     }
 
     // Check for output tensor dimensions
-    TfLiteIntArray* output_dims = tflite_params_.interpreter->tensor(output)->dims;
+    TfLiteIntArray* output_dims =
+        tflite_params_.interpreter->tensor(output)->dims;
     tflite_params_.num_predictions = output_dims->data[output_dims->size - 1];
     if (need_labels_ && label_count_ != tflite_params_.num_predictions) {
       MLE_LOGE("%s: No: of labels %d, DO NOT match no: of predictions %d",
@@ -250,17 +247,20 @@ int32_t TFLBase::ValidateModelInfo() {
     MLE_LOGI("%s: Output tensor: type %d, no: of predictions %d", __func__,
                      output_type, tflite_params_.num_predictions);
     MLE_LOGI("%s: Output tensor: quantization scale %f, zero_point %d",
-                     __func__,
-                     tflite_params_.interpreter->tensor(output)->params.scale,
-                     tflite_params_.interpreter->tensor(output)->params.zero_point);
-  } else if (tflite_params_.num_outputs == 4) {
+              __func__,
+              tflite_params_.interpreter->tensor(output)->params.scale,
+              tflite_params_.interpreter->tensor(output)->params.zero_point);
+  } else if (tflite_params_.num_outputs == 3 ||
+             tflite_params_.num_outputs == 4) {
     for (uint32_t i = 0; i < tflite_params_.num_outputs; ++i) {
       int output = tflite_params_.interpreter->outputs()[i];
 
       // Check for output tensor type
       TfLiteType output_type = tflite_params_.interpreter->tensor(output)->type;
       switch (output_type) {
+        case kTfLiteInt32:
         case kTfLiteFloat32:
+        case kTfLiteUInt8:
           break;
         default:
           MLE_LOGE("%s: For output node %d, no support for %d output type",
@@ -277,7 +277,6 @@ int32_t TFLBase::ValidateModelInfo() {
                   tflite_params_.interpreter->tensor(output)->params.zero_point);
     }
   }
-  // TODO add validation for num_outputs = 3
 
   return MLE_OK;
 }
@@ -285,9 +284,12 @@ int32_t TFLBase::ValidateModelInfo() {
 int32_t TFLBase::PostProcessMultiOutput(GstBuffer* buffer) {
   MLE_LOGI("%s: Enter", __func__);
 
-  float *detected_boxes = tflite_params_.interpreter->typed_output_tensor<float>(0);
-  float *detected_classes = tflite_params_.interpreter->typed_output_tensor<float>(1);
-  float *detected_scores = tflite_params_.interpreter->typed_output_tensor<float>(2);
+  float *detected_boxes =
+      tflite_params_.interpreter->typed_output_tensor<float>(0);
+  float *detected_classes =
+      tflite_params_.interpreter->typed_output_tensor<float>(1);
+  float *detected_scores =
+      tflite_params_.interpreter->typed_output_tensor<float>(2);
   float *num_boxes = tflite_params_.interpreter->typed_output_tensor<float>(3);
 
   float num_box = num_boxes[0];
@@ -297,6 +299,9 @@ int32_t TFLBase::PostProcessMultiOutput(GstBuffer* buffer) {
 
     uint32_t width = source_params_.width;
     uint32_t height = source_params_.height;
+
+    float scale_ratio_x = (float)engine_input_params_.width / scale_width_;
+    float scale_ratio_y = (float)engine_input_params_.height / scale_height_;
 
     if (config_.preprocess_mode == PreprocessingMode::kKeepARCrop) {
       width = po_.width;
@@ -324,14 +329,14 @@ int32_t TFLBase::PostProcessMultiOutput(GstBuffer* buffer) {
     meta->box_info = g_slist_append (meta->box_info, box_info);
 
     meta->bounding_box.x = static_cast<uint32_t>(
-        detected_boxes[i * 4 + 1] * width) + po_.x_offset;
+        detected_boxes[i * 4 + 1] * width * scale_ratio_x) + po_.x_offset;
     meta->bounding_box.y = static_cast<uint32_t>(
-        detected_boxes[i * 4] * height) + po_.y_offset;
+        detected_boxes[i * 4] * height * scale_ratio_y) + po_.y_offset;
     meta->bounding_box.width = static_cast<uint32_t>(
-        detected_boxes[i * 4 + 3] * width) + po_.x_offset -
+        detected_boxes[i * 4 + 3] * width * scale_ratio_x) + po_.x_offset -
             meta->bounding_box.x;
     meta->bounding_box.height = static_cast<uint32_t>(
-        detected_boxes[i * 4 + 2] * height) + po_.y_offset -
+        detected_boxes[i * 4 + 2] * height * scale_ratio_y) + po_.y_offset -
             meta->bounding_box.y;
   }
   MLE_LOGI("%s: Exit", __func__);
@@ -362,27 +367,29 @@ int32_t TFLBase::PostProcess(GstBuffer* buffer) {
   switch (tflite_params_.interpreter->tensor(output)->type) {
     case kTfLiteFloat32:
       if (verbose) {
-        float* temp_output = tflite_params_.interpreter->typed_output_tensor<float>(0);
+        float* temp_output =
+            tflite_params_.interpreter->typed_output_tensor<float>(0);
         for (uint32_t i = 0; i < tflite_params_.num_predictions; ++i) {
           MLE_LOGI("%s: i - %d :: conf - %f", __func__, i, temp_output[i]);
         }
       }
       tflite::label_image::get_top_n<float>(
-                       tflite_params_.interpreter->typed_output_tensor<float>(0),
-                       tflite_params_.num_predictions, top_results_count,
-                       config_.conf_threshold, &top_results, true);
+                  tflite_params_.interpreter->typed_output_tensor<float>(0),
+                  tflite_params_.num_predictions, top_results_count,
+                  config_.conf_threshold, &top_results, true);
       break;
     case kTfLiteUInt8:
       if (verbose) {
-        uint8_t* temp_output = tflite_params_.interpreter->typed_output_tensor<uint8_t>(0);
+        uint8_t* temp_output =
+            tflite_params_.interpreter->typed_output_tensor<uint8_t>(0);
         for (uint32_t i = 0; i < tflite_params_.num_predictions; ++i) {
           MLE_LOGI("%s: i - %d :: conf - %d", __func__, i, temp_output[i]);
         }
       }
       tflite::label_image::get_top_n<uint8_t>(
-                       tflite_params_.interpreter->typed_output_tensor<uint8_t>(0),
-                       tflite_params_.num_predictions, top_results_count,
-                       config_.conf_threshold, &top_results, false);
+                  tflite_params_.interpreter->typed_output_tensor<uint8_t>(0),
+                  tflite_params_.num_predictions, top_results_count,
+                  config_.conf_threshold, &top_results, false);
       break;
     default:
       MLE_LOGE("%s: Invalid output tensor type %d", __func__,

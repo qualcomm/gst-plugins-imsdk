@@ -89,10 +89,10 @@ FAIL:
 
 int32_t MLEngine::AllocateInternalBuffers() {
   if (do_rescale_) {
-  posix_memalign(reinterpret_cast<void**>(&buffers_.scale_buf),
-                                  128,
-                                  ((scale_width_ *
-                                        scale_height_ * 3) / 2));
+    posix_memalign(reinterpret_cast<void**>(&buffers_.scale_buf),
+                                    128,
+                                    ((scale_width_ *
+                                          scale_height_ * 3) / 2));
     if (nullptr == buffers_.scale_buf) {
       MLE_LOGE("%s: Scale buf allocation failed", __func__);
       return MLE_FAIL;
@@ -178,7 +178,7 @@ void MLEngine::Pad(
   }
 }
 
-void MLEngine::PreProcessScale(
+int32_t MLEngine::PreProcessScale(
   uint8_t*       pSrcLuma,
   uint8_t*       pSrcChroma,
   uint8_t*       pDst,
@@ -188,7 +188,7 @@ void MLEngine::PreProcessScale(
   const uint32_t scaleHeight,
   MLEImageFormat format)
 {
-
+  int32_t rc = MLE_OK;
   if ((format == mle_format_nv12) || (format == mle_format_nv21)) {
     uint8_t *src_buffer_y = pSrcLuma;
     uint8_t *src_buffer_uv = pSrcChroma;
@@ -250,7 +250,9 @@ void MLEngine::PreProcessScale(
                      0);
   } else {
     MLE_LOGE("Unsupported format %d", (int)format);
+    rc = MLE_IMG_FORMAT_NOT_SUPPORTED;
   }
+  return rc;
 }
 
 void MLEngine::PreProcessColorConvertRGB(
@@ -354,6 +356,13 @@ int32_t MLEngine::Init(const MLEInputParams* source_info) {
     scale_height_ = engine_input_params_.height;
   }
 
+  MLE_LOGI("%s scale width %d scale height %d model width %d height %d",
+           __func__,
+           scale_width_,
+           scale_height_,
+           engine_input_params_.width,
+           engine_input_params_.height);
+
   // Allocate internal buffers
   if (source_params_.width != engine_input_params_.width ||
       source_params_.height != engine_input_params_.height) {
@@ -447,14 +456,18 @@ int32_t MLEngine::PreProcess(const struct SourceFrame* frame_info) {
   }
 
   if (do_rescale_) {
-    PreProcessScale(frame_info->frame_data[0],
-                    frame_info->frame_data[1],
-                    buffers_.scale_buf,
-                    source_params_.width,
-                    source_params_.height,
-                    scale_width_,
-                    scale_height_,
-                    source_params_.format);
+    res = PreProcessScale(frame_info->frame_data[0],
+                          frame_info->frame_data[1],
+                          buffers_.scale_buf,
+                          source_params_.width,
+                          source_params_.height,
+                          scale_width_,
+                          scale_height_,
+                          source_params_.format);
+    if (MLE_OK != res) {
+      MLE_LOGE("PreProcessScale failed due to unsupported image format");
+      return res;
+    }
     PreProcessColorConvertRGB(buffers_.scale_buf,
                             buffers_.scale_buf + scale_width_ * scale_height_,
                             rgb_buf,

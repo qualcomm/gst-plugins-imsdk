@@ -1,5 +1,5 @@
 {
-    "InputFormat":3,
+    "input-format":0,
     "BlueMean":0.0,
     "GreenMean":0.0,
     "RedMean":0.0,
@@ -7,10 +7,10 @@
     "GreenSigma":0.0,
     "RedSigma":0.0,
     "UseNorm":false,
-    "PreProcessing":1,
-    "ConfThreshold":0.4,
-    "MODEL_FILENAME":"/data/misc/camera/detect.tflite",
-    "LABELS_FILENAME":"/data/misc/camera/labelmap.txt",
-    "DELEGATE":"dsp",
-    "NUM_THREADS":2
+    "preprocess-type":1,
+    "confidence-threshold":0.6,
+    "model":"/data/misc/camera/detect.tflite",
+    "labels":"/data/misc/camera/labelmap.txt",
+    "delegate":"dsp",
+    "num-threads":2
 }

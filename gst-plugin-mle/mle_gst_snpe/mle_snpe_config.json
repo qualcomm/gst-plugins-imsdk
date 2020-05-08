@@ -1,5 +1,5 @@
 {
-    "InputFormat":3,
+    "input-format":3,
     "BlueMean":128.0,
     "GreenMean":128.0,
     "RedMean":128.0,
@@ -7,10 +7,10 @@
     "GreenSigma":128.0,
     "RedSigma":128.0,
     "UseNorm":true,
-    "PreProcessing":1,
-    "ConfThreshold":0.4,
-    "OutputLayers":["add_6", "Postprocessor/BatchMultiClassNonMaxSuppression"],
-    "Runtime":1,
-    "MODEL_FILENAME":"/data/misc/camera/mobilenet-SSD.dlc",
-    "LABELS_FILENAME":"/data/misc/camera/coco_labels.txt"
+    "preprocess-type":1,
+    "confidence-threshold":0.6,
+    "output-layers":["add_6", "Postprocessor/BatchMultiClassNonMaxSuppression"],
+    "runtime":1,
+    "model":"/data/misc/camera/mobilenet-SSD.dlc",
+    "labels":"/data/misc/camera/coco_labels.txt"
 }

@@ -33,19 +33,19 @@ namespace mle {
 
 static char PartNames[TotalKeypointNum][MaxKeypointNameLen] =
 {
-    "nose", "leftEye", "rightEye", "leftEar", "rightEar", "leftShoulder",
-    "rightShoulder", "leftElbow", "rightElbow", "leftWrist", "rightWrist",
-    "leftHip", "rightHip", "leftKnee", "rightKnee", "leftAnkle", "rightAnkle"
+  "nose", "leftEye", "rightEye", "leftEar", "rightEar", "leftShoulder",
+  "rightShoulder", "leftElbow", "rightElbow", "leftWrist", "rightWrist",
+  "leftHip", "rightHip", "leftKnee", "rightKnee", "leftAnkle", "rightAnkle"
 };
 
 static char PoseChain[32][MaxKeypointNameLen] =
 {
-    "nose", "leftEye", "leftEye", "leftEar", "nose", "rightEye", "rightEye",
-    "rightEar", "nose", "leftShoulder","leftShoulder", "leftElbow",
-    "leftElbow", "leftWrist", "leftShoulder", "leftHip", "leftHip", "leftKnee",
-    "leftKnee", "leftAnkle", "nose", "rightShoulder", "rightShoulder",
-    "rightElbow", "rightElbow", "rightWrist", "rightShoulder", "rightHip",
-    "rightHip", "rightKnee", "rightKnee", "rightAnkle"
+  "nose", "leftEye", "leftEye", "leftEar", "nose", "rightEye", "rightEye",
+  "rightEar", "nose", "leftShoulder","leftShoulder", "leftElbow",
+  "leftElbow", "leftWrist", "leftShoulder", "leftHip", "leftHip", "leftKnee",
+  "leftKnee", "leftAnkle", "nose", "rightShoulder", "rightShoulder",
+  "rightElbow", "rightElbow", "rightWrist", "rightShoulder", "rightHip",
+  "rightHip", "rightKnee", "rightKnee", "rightAnkle"
 };
 
   //TODO query this information from model
@@ -68,7 +68,7 @@ TFLPoseNet::TFLPoseNet(MLConfig &config) : TFLBase(config) {
 TFLPoseNet::~TFLPoseNet() {}
 
 int32_t TFLPoseNet::AllocateInternalBuffers() {
-    int32_t ret = MLE_OK;
+  int32_t ret = MLE_OK;
   posix_memalign(reinterpret_cast<void**>(&buffers_.scale_buf), 128,
                                   ((scale_width_ * scale_height_ * 3) / 2));
   posix_memalign(reinterpret_cast<void**>(&buffers_.rgb_buf), 128,
@@ -124,9 +124,12 @@ int32_t TFLPoseNet::PostProcess(GstBuffer* buffer) {
   ParentChildTurple parentChildTurples[TotalKeypointNum - 1];
 
   // Get outputs from model
-  uint8_t* pRawHeatmaps_temp      = tflite_params_.interpreter->typed_output_tensor<uint8_t>(0);
-  uint8_t* pRawOffsets_temp       = tflite_params_.interpreter->typed_output_tensor<uint8_t>(1);
-  uint8_t* pRawDisplacements_temp = tflite_params_.interpreter->typed_output_tensor<uint8_t>(2);
+  uint8_t* pRawHeatmaps_temp =
+      tflite_params_.interpreter->typed_output_tensor<uint8_t>(0);
+  uint8_t* pRawOffsets_temp =
+      tflite_params_.interpreter->typed_output_tensor<uint8_t>(1);
+  uint8_t* pRawDisplacements_temp =
+      tflite_params_.interpreter->typed_output_tensor<uint8_t>(2);
 
   // Dequantization of model outputs is needed,
   // because the postprocessing operates on float values
@@ -173,15 +176,21 @@ int32_t TFLPoseNet::PostProcess(GstBuffer* buffer) {
   // Sort selected keypoints according to heatmap scores
   qsort(scoredParts, partsCount, sizeof(Part), SortPartScore);
 
-  int       pRawOffsetsHalfSize = pose_pp_config_.featureHeight * pose_pp_config_.featureWidth * TotalKeypointNum * 2;
-  int pRawDisplacementsHalfSize = pose_pp_config_.featureHeight * pose_pp_config_.featureWidth * (TotalKeypointNum - 1) * 2;
-  float*               pOffsets = static_cast<float*>(malloc(pRawOffsetsHalfSize * sizeof(float)));
-  float*      pDisplacementsBwd = static_cast<float*>(malloc(pRawDisplacementsHalfSize * sizeof(float)));
-  float*      pDisplacementsFwd = static_cast<float*>(malloc(pRawDisplacementsHalfSize * sizeof(float)));
+  int pRawOffsetsHalfSize = pose_pp_config_.featureHeight *
+      pose_pp_config_.featureWidth * TotalKeypointNum * 2;
+  int pRawDisplacementsHalfSize =
+      pose_pp_config_.featureHeight * pose_pp_config_.featureWidth *
+      (TotalKeypointNum - 1) * 2;
+  float* pOffsets =
+      static_cast<float*>(malloc(pRawOffsetsHalfSize * sizeof(float)));
+  float* pDisplacementsBwd =
+      static_cast<float*>(malloc(pRawDisplacementsHalfSize * sizeof(float)));
+  float* pDisplacementsFwd =
+      static_cast<float*>(malloc(pRawDisplacementsHalfSize * sizeof(float)));
 
   if ((NULL == pOffsets) || (NULL == pDisplacementsBwd) || (NULL == pDisplacementsFwd))
   {
-      MLE_LOGE(" Error: Couldn't allocate buffer for PoseNet raw model short-range and mid-range offset outputs \n");
+      MLE_LOGE("Couldn't allocate buffer for PoseNet raw model short-range and mid-range offset outputs \n");
       exit(0);
   }
 
@@ -259,6 +268,9 @@ int32_t TFLPoseNet::PostProcess(GstBuffer* buffer) {
         GstMLPoseNetMeta *meta = gst_buffer_add_posenet_meta (buffer);
         if (!meta) {
             MLE_LOGD("%s: Failed to add metadata!", __func__);
+            free(pOffsets);
+            free(pDisplacementsBwd);
+            free(pDisplacementsFwd);
             return MLE_FAIL;
         }
         meta->score = pose_results_[i].poseScore;

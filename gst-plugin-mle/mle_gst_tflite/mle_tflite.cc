@@ -283,7 +283,7 @@ gst_mle_tflite_parse_config(gchar *config_location,
     Json::Value val;
     if (reader.parse(in, val)) {
       configuration.input_format =
-          (mle::InputFormat)val.get("InputFormat", 3).asInt();
+          (mle::InputFormat)val.get("input-format", 3).asInt();
       configuration.blue_mean = val.get("BlueMean", 0).asFloat();
       configuration.blue_sigma = val.get("BlueSigma", 0).asFloat();
       configuration.green_mean = val.get("GreenMean", 0).asFloat();
@@ -292,12 +292,13 @@ gst_mle_tflite_parse_config(gchar *config_location,
       configuration.red_sigma = val.get("RedSigma", 0).asFloat();
       configuration.use_norm = val.get("UseNorm", false).asBool();
       configuration.preprocess_mode =
-          (mle::PreprocessingMode)val.get("PreProcessing", 1).asInt();
-      configuration.conf_threshold = val.get("ConfThreshold", 0.0).asFloat();
-      configuration.model_file = val.get("MODEL_FILENAME", "").asString();
-      configuration.labels_file = val.get("LABELS_FILENAME", "").asString();
-      configuration.number_of_threads = val.get("NUM_THREADS", 2).asInt();
-      configuration.delegate = val.get("DELEGATE", "").asString();
+          (mle::PreprocessingMode)val.get("preprocess-type", 1).asInt();
+      configuration.conf_threshold =
+          val.get("confidence-threshold", 0.0).asFloat();
+      configuration.model_file = val.get("model", "").asString();
+      configuration.labels_file = val.get("labels", "").asString();
+      configuration.number_of_threads = val.get("num-threads", 2).asInt();
+      configuration.delegate = val.get("delegate", "").asString();
       rc = TRUE;
     }
     in.close();
@@ -416,23 +417,23 @@ gst_mle_create_engine(GstMLETFLite *mle) {
       rc = FALSE;
     }
   } else if (!g_strcmp0(mle->postprocessing, "detection")) {
-      mle->engine = new mle::TFLBase(configuration);
-      if (nullptr == mle->engine) {
-        GST_ERROR_OBJECT (mle, "Failed to create TFLite instance.");
-        rc = FALSE;
-      }
+    mle->engine = new mle::TFLBase(configuration);
+    if (nullptr == mle->engine) {
+      GST_ERROR_OBJECT (mle, "Failed to create TFLite instance.");
+      rc = FALSE;
+    }
   } else if (!g_strcmp0(mle->postprocessing, "segmentation")) {
-      mle->engine = new mle::TFLSegmentation(configuration);
-      if (nullptr == mle->engine) {
-        GST_ERROR_OBJECT (mle, "Failed to create TFLite instance.");
-        rc = FALSE;
-      }
+    mle->engine = new mle::TFLSegmentation(configuration);
+    if (nullptr == mle->engine) {
+      GST_ERROR_OBJECT (mle, "Failed to create TFLite instance.");
+      rc = FALSE;
+    }
   } else if (!g_strcmp0(mle->postprocessing, "posenet")) {
-      mle->engine = new mle::TFLPoseNet(configuration);
-      if (nullptr == mle->engine) {
-        GST_ERROR_OBJECT (mle, "Failed to create TFLite instance.");
-        rc = FALSE;
-      }
+    mle->engine = new mle::TFLPoseNet(configuration);
+    if (nullptr == mle->engine) {
+      GST_ERROR_OBJECT (mle, "Failed to create TFLite instance.");
+      rc = FALSE;
+    }
   } else {
     GST_ERROR_OBJECT (mle, "Unsupported TFLite postprocessing.");
     rc = FALSE;

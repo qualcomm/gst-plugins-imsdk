@@ -29,14 +29,14 @@
 
 #include <vector>
 #include <cmath>
-#include "snpe_complex.h"
+#include "snpe_detection.h"
 
 namespace mle {
 
-SNPEComplex::SNPEComplex(MLConfig &config) : SNPEBase(config) {}
-SNPEComplex::~SNPEComplex() {}
+SNPEDetection::SNPEDetection(MLConfig &config) : SNPEBase(config) {}
+SNPEDetection::~SNPEDetection() {}
 
-int32_t SNPEComplex::PostProcess(GstBuffer* buffer) {
+int32_t SNPEDetection::PostProcess(GstBuffer* buffer) {
   std::vector<float> score_buf;
   std::vector<float> box_buf;
   std::vector<float> class_buf;
@@ -89,6 +89,9 @@ int32_t SNPEComplex::PostProcess(GstBuffer* buffer) {
   uint32_t width = source_params_.width;
   uint32_t height = source_params_.height;
 
+  float scale_ratio_x = (float)engine_input_params_.width / scale_width_;
+  float scale_ratio_y = (float)engine_input_params_.height / scale_height_;
+
   if (config_.preprocess_mode == PreprocessingMode::kKeepARCrop) {
     width = po_.width;
     height = po_.height;
@@ -117,16 +120,16 @@ int32_t SNPEComplex::PostProcess(GstBuffer* buffer) {
       box_info->confidence = score_buf[i];
       meta->box_info = g_slist_append (meta->box_info, box_info);
 
-      meta->bounding_box.x = std::lround(box_buf[i * 4 + 1] * width) +
-          po_.x_offset;
-      meta->bounding_box.y = std::lround(box_buf[i * 4] * height) +
-          po_.y_offset;
+      meta->bounding_box.x =
+        std::lround(box_buf[i * 4 + 1] * width * scale_ratio_x) + po_.x_offset;
+      meta->bounding_box.y =
+        std::lround(box_buf[i * 4] * height * scale_ratio_y) + po_.y_offset;
       meta->bounding_box.width =
-            (std::lround(box_buf[i * 4 + 3] * width) + po_.x_offset) -
-                                                        meta->bounding_box.x;
+        (std::lround(box_buf[i * 4 + 3] * width * scale_ratio_x) +
+                     po_.x_offset) - meta->bounding_box.x;
       meta->bounding_box.height =
-            (std::lround(box_buf[i * 4 + 2] * height) + po_.y_offset) -
-                                                        meta->bounding_box.y;
+        (std::lround(box_buf[i * 4 + 2] * height * scale_ratio_y) +
+                     po_.y_offset) - meta->bounding_box.y;
 
     num_obj++;
 
