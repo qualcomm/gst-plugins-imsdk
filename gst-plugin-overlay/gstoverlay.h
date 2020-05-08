@@ -54,31 +54,126 @@ G_BEGIN_DECLS
 
 typedef struct _GstOverlay GstOverlay;
 typedef struct _GstOverlayClass GstOverlayClass;
+typedef struct _GstOverlayUser GstOverlayUser;
+typedef struct _GstOverlayUsrText GstOverlayUsrText;
+typedef struct _GstOverlayUsrDate GstOverlayUsrDate;
+typedef struct _GstOverlayUsrSImg GstOverlayUsrSImg;
+typedef struct _GstOverlayUsrBBox GstOverlayUsrBBox;
+typedef struct _GstOverlayString GstOverlayString;
 
 struct _GstOverlay {
   GstVideoFilter      parent;
   Overlay             *overlay;
   TargetBufferFormat  format;
+  guint               width;
+  guint               height;
+  GMutex              lock;
+
+  /* Machine learning overlay */
   GSequence           *bbox_id;
   GSequence           *simg_id;
   GSequence           *text_id;
   GSequence           *pose_id;
-  guint               user_text_id;
-  gchar               *user_text;
-  guint               date_id;
-  gboolean            date_overlay;
 
   guint               bbox_color;
   guint               date_color;
   guint               text_color;
   guint               pose_color;
 
-  guint               width;
-  guint               height;
+  GstVideoRectangle   text_dest_rect;
+
+  /* User overlay */
+  GSequence           *usr_text;
+  GSequence           *usr_date;
+  GSequence           *usr_simg;
+  GSequence           *usr_bbox;
 };
 
 struct _GstOverlayClass {
   GstVideoFilterClass parent;
+};
+
+/* GstOverlayUser - common parameters for all user overlays
+ * user_id: overlay user instance id
+ * item_id: overlay HW instacne id
+ * is_applied: flag indicating if new configuration is applied
+ * user_data: user pointer which is used in release handler
+ */
+struct _GstOverlayUser {
+  gchar                 *user_id;
+  guint                 item_id;
+  gboolean              is_applied;
+  gpointer              user_data;
+};
+
+
+/* GstOverlayUsrText - parameters for user text overlay
+ * base: common parameters for all user overlays
+ * text: user text
+ * color: overlay color
+ * dest_rect: render destination rectangle in video stream
+ */
+struct _GstOverlayUsrText {
+  GstOverlayUser        base;
+  gchar                 *text;
+  guint                 color;
+  GstVideoRectangle     dest_rect;
+};
+
+/* GstOverlayUsrDate - parameters for user date overlay
+ * base: common parameters for all user overlays
+ * date_format: date format
+ * time_format: time format
+ * color: overlay color
+ * dest_rect: render destination rectangle in video stream
+ */
+struct _GstOverlayUsrDate {
+  GstOverlayUser        base;
+  OverlayDateFormatType date_format;
+  OverlayTimeFormatType time_format;
+  guint                 color;
+  GstVideoRectangle     dest_rect;
+};
+
+/* GstOverlayUsrSImg - parameters for user static image overlay
+ * base: common parameters for all user overlays
+ * img_file: image file name with full path
+ * img_width: image width
+ * img_height: image height
+ * img_buffer: pointer to image buffer
+ * img_size: image buffer size
+ * dest_rect: render destination rectangle in video stream
+ */
+struct _GstOverlayUsrSImg {
+  GstOverlayUser        base;
+  gchar                 *img_file;
+  guint                 img_width;
+  guint                 img_height;
+  gchar                 *img_buffer;
+  guint                 img_size;
+  GstVideoRectangle     dest_rect;
+};
+
+/* GstOverlayUsrBBox - parameters for user bounding box overlay
+ * base: common parameters for all user overlays
+ * label: bounding box label
+ * boundind_box: boundind box rectangle
+ * color: overlay color
+ */
+struct _GstOverlayUsrBBox {
+  GstOverlayUser        base;
+  gchar                 *label;
+  GstVideoRectangle     boundind_box;
+  guint                 color;
+};
+
+/* GstOverlayString - pair for string and capacity
+ * string: pointer to string
+ * capacity: size of the storage space currently allocated for the string
+ */
+struct _GstOverlayString {
+  gchar *string;
+  guint  capacity;
 };
 
 G_GNUC_INTERNAL GType gst_overlay_get_type (void);
