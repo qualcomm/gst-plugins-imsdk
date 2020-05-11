@@ -34,6 +34,7 @@
 #include <string>
 #include <cstdio>
 #include <memory>
+#include <map>
 
 #include <tensorflow/lite/interpreter.h>
 #include <tensorflow/lite/model.h>

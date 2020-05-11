@@ -49,6 +49,7 @@ TFLBase::TFLBase(MLConfig &config) : MLEngine(config) {
 TfLiteDelegatePtrMap TFLBase::GetDelegates() {
   TfLiteDelegatePtrMap delegates;
 
+#ifdef DELEGATE_SUPPORT
   if (!(config_.delegate.compare("dsp"))) {
     tflite::StatefulNnApiDelegate::Options options;
     options.execution_preference =
@@ -62,6 +63,9 @@ TfLiteDelegatePtrMap TFLBase::GetDelegates() {
       delegates.emplace("NNAPI", std::move(delegate));
     }
   }
+#else
+  MLE_LOGE("%s: This platform do not support delegates.", __func__);
+#endif
 
   return delegates;
 }
