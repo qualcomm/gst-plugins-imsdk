@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -31,11 +31,9 @@
 #define __GST_QTI_VIDEO_TRANSFORM_H__
 
 #include <gst/gst.h>
+#include <gst/base/gstbasetransform.h>
 #include <gst/video/video.h>
-#include <gst/video/gstvideofilter.h>
-
-#include "c2d_video_converter.h"
-#include "video_transform_buffer_pool.h"
+#include <gst/video/c2d-video-converter.h>
 
 G_BEGIN_DECLS
 
@@ -52,23 +50,26 @@ G_BEGIN_DECLS
 #define GST_VIDEO_TRANSFORM_CAST(obj)       ((GstVideoTransform *)(obj))
 
 typedef enum {
-  GST_VIDEO_TRANS_ROTATE_NONE,
-  GST_VIDEO_TRANS_ROTATE_90_CW,
-  GST_VIDEO_TRANS_ROTATE_90_CCW,
-  GST_VIDEO_TRANS_ROTATE_180,
+  GST_VIDEO_TRANSFORM_ROTATE_NONE,
+  GST_VIDEO_TRANSFORM_ROTATE_90_CW,
+  GST_VIDEO_TRANSFORM_ROTATE_90_CCW,
+  GST_VIDEO_TRANSFORM_ROTATE_180,
 } GstVideoTransformRotate;
 
 typedef struct _GstVideoTransform GstVideoTransform;
 typedef struct _GstVideoTransformClass GstVideoTransformClass;
 
 struct _GstVideoTransform {
-  GstVideoFilter          parent;
+  GstBaseTransform        parent;
 
   /// Properties.
   gboolean                flip_v;
   gboolean                flip_h;
   GstVideoTransformRotate rotation;
   GstVideoRectangle       crop;
+
+  GstVideoInfo            *ininfo;
+  GstVideoInfo            *outinfo;
 
   // Output buffer pool
   GstBufferPool           *inpool;
@@ -79,7 +80,7 @@ struct _GstVideoTransform {
 };
 
 struct _GstVideoTransformClass {
-  GstVideoFilterClass parent;
+  GstBaseTransformClass parent;
 };
 
 G_GNUC_INTERNAL GType gst_video_transform_get_type (void);

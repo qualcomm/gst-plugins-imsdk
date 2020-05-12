@@ -29,29 +29,23 @@ add_definitions(-DHAVE_CONFIG_H)
 # Common compiler flags.
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-variable")
 
 # GStreamer plugin.
-set(GST_QTI_VIDEO_TRANSFORM videotransform)
+set(GST_QTI_VIDEO_TRANSFORM gstqtivtransform)
 
 add_library(${GST_QTI_VIDEO_TRANSFORM} SHARED
-  video_transform.c
-  video_transform_buffer_pool.c
-  c2d_video_converter.c
+  videotransform.c
 )
 
 target_include_directories(${GST_QTI_VIDEO_TRANSFORM} PUBLIC
   ${GST_INCLUDE_DIRS}
-)
-target_include_directories(${GST_QTI_VIDEO_TRANSFORM} PRIVATE
-  ${KERNEL_BUILDDIR}/usr/include
 )
 
 target_link_libraries(${GST_QTI_VIDEO_TRANSFORM} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
-  gbm
+  gstqtivideobase
 )
 
 install(

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -27,55 +27,55 @@
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef GST_VIDEO_TRANS_BUFFER_POOL_H
-#define GST_VIDEO_TRANS_BUFFER_POOL_H
+#ifndef __GST_IMAGE_POOL_H__
+#define __GST_IMAGE_POOL_H__
 
 #include <gst/video/video.h>
 #include <gst/allocators/allocators.h>
 
 G_BEGIN_DECLS
 
-#define GST_TYPE_VTRANS_BUFFER_POOL \
-  (gst_vtrans_buffer_pool_get_type ())
-#define GST_VTRANS_BUFFER_POOL(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST ((obj), GST_TYPE_VTRANS_BUFFER_POOL, \
-      GstVTransBufferPool))
-#define GST_VTRANS_BUFFER_POOL_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_CAST ((klass), GST_TYPE_VTRANS_BUFFER_POOL, \
-      GstVTransBufferPoolClass))
-#define GST_IS_VIDEO_TRANS_BUFFER_POOL(obj) \
-  (G_TYPE_CHECK_INSTANCE_TYPE ((obj), GST_TYPE_VTRANS_BUFFER_POOL))
-#define GST_IS_VIDEO_TRANS_BUFFER_POOL_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_TYPE ((klass), GST_TYPE_VTRANS_BUFFER_POOL))
-#define GST_VIDEO_TRANS_BUFFER_POOL_CAST(obj) ((GstVTransBufferPool*)(obj))
+#define GST_TYPE_IMAGE_BUFFER_POOL \
+  (gst_image_buffer_pool_get_type ())
+#define GST_IMAGE_BUFFER_POOL(obj) \
+  (G_TYPE_CHECK_INSTANCE_CAST ((obj), GST_TYPE_IMAGE_BUFFER_POOL, \
+      GstImageBufferPool))
+#define GST_IMAGE_BUFFER_POOL_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_CAST ((klass), GST_TYPE_IMAGE_BUFFER_POOL, \
+      GstImageBufferPoolClass))
+#define GST_IS_IMAGE_BUFFER_POOL(obj) \
+  (G_TYPE_CHECK_INSTANCE_TYPE ((obj), GST_TYPE_IMAGE_BUFFER_POOL))
+#define GST_IS_IMAGE_BUFFER_POOL_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_TYPE ((klass), GST_TYPE_IMAGE_BUFFER_POOL))
+#define GST_IMAGE_BUFFER_POOL_CAST(obj) ((GstImageBufferPool*)(obj))
 
-typedef struct _GstVTransBufferPool GstVTransBufferPool;
-typedef struct _GstVTransBufferPoolClass GstVTransBufferPoolClass;
-typedef struct _GstVTransBufferPoolPrivate GstVTransBufferPoolPrivate;
+typedef struct _GstImageBufferPool GstImageBufferPool;
+typedef struct _GstImageBufferPoolClass GstImageBufferPoolClass;
+typedef struct _GstImageBufferPoolPrivate GstImageBufferPoolPrivate;
 
-#define GST_VTRANS_BUFFER_POOL_TYPE_ION "GstBufferPoolTypeIonMemory"
-#define GST_VTRANS_BUFFER_POOL_TYPE_GBM "GstBufferPoolTypeGbmMemory"
+#define GST_IMAGE_BUFFER_POOL_TYPE_ION "GstBufferPoolTypeIonMemory"
+#define GST_IMAGE_BUFFER_POOL_TYPE_GBM "GstBufferPoolTypeGbmMemory"
 
-struct _GstVTransBufferPool
+struct _GstImageBufferPool
 {
   GstBufferPool parent;
 
-  GstVTransBufferPoolPrivate *priv;
+  GstImageBufferPoolPrivate *priv;
 };
 
-struct _GstVTransBufferPoolClass
+struct _GstImageBufferPoolClass
 {
   GstBufferPoolClass parent;
 };
 
-GType gst_vtrans_buffer_pool_get_type (void);
+GType gst_image_buffer_pool_get_type (void);
 
 /// Creates a buffer pool for managing video frames.
-GstBufferPool * gst_vtrans_buffer_pool_new (const gchar * type);
+GstBufferPool * gst_image_buffer_pool_new (const gchar * type);
 
 /// Retrieve current set video configuration.
-const GstVideoInfo * gst_vtrans_buffer_pool_get_info (GstBufferPool * pool);
+const GstVideoInfo * gst_image_buffer_pool_get_info (GstBufferPool * pool);
 
 G_END_DECLS
 
-#endif /* GST_VIDEO_TRANS_BUFFER_POOL_H */
+#endif /* __GST_IMAGE_POOL_H__ */
