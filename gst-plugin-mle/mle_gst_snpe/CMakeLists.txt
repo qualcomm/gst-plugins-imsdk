@@ -1,5 +1,5 @@
 # GStreamer plugin.
-set(GST_MLE_SNPE gstmlesnpe)
+set(GST_MLE_SNPE gstqtimlesnpe)
 
 add_library(${GST_MLE_SNPE} SHARED
   mle_snpe.cc

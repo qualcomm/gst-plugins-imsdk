@@ -1,5 +1,5 @@
 # GStreamer plugin.
-set(GST_MLE_TFLITE gstmletflite)
+set(GST_MLE_TFLITE gstqtimletflite)
 
 add_library(${GST_MLE_TFLITE} SHARED
   mle_tflite.cc
