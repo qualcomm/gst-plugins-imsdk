@@ -109,6 +109,7 @@ struct MLEInputParams {
 
 struct SourceFrame {
   uint8_t *frame_data[2];
+  uint32_t stride;
 };
 
 struct MLConfig {
@@ -200,6 +201,7 @@ class MLEngine {
       uint8_t*       pDst,
       const uint32_t srcWidth,
       const uint32_t srcHeight,
+      const uint32_t srcStride,
       const uint32_t scaleWidth,
       const uint32_t scaleHeight,
       MLEImageFormat format);

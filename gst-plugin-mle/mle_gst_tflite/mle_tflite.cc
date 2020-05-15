@@ -520,6 +520,7 @@ static GstFlowReturn gst_mle_tflite_transform_frame_ip(GstVideoFilter *filter,
 
   mle->source_frame.frame_data[0] = (uint8_t*) GST_VIDEO_FRAME_PLANE_DATA (frame, 0);
   mle->source_frame.frame_data[1] = (uint8_t*) GST_VIDEO_FRAME_PLANE_DATA (frame, 1);
+  mle->source_frame.stride = GST_VIDEO_FRAME_PLANE_STRIDE(frame, 0);
 
   gint ret = mle->engine->Process(&mle->source_frame, frame->buffer);
   if (ret) {
