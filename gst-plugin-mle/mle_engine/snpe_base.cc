@@ -95,7 +95,6 @@ std::unique_ptr<zdl::SNPE::SNPE> SNPEBase::SetBuilderOptions() {
   std::unique_ptr <zdl::SNPE::SNPE> snpe;
   zdl::SNPE::SNPEBuilder snpeBuilder(snpe_params_.container.get());
   zdl::DlSystem::StringList output_layers;
-  zdl::DlSystem::StringList empty_layers;
 
   for (size_t i = 0; i < config_.output_layers.size(); i++) {
     output_layers.append(config_.output_layers[i].c_str());
@@ -377,9 +376,6 @@ int32_t SNPEBase::InitFramework() {
 
   if (MLE_OK == res) {
     ConfigureDimensions();
-  }
-
-  if (MLE_OK == res) {
     res = PopulateMap(BufferType::kInput);
   }
   if (MLE_OK == res) {

@@ -36,7 +36,7 @@
 
 #include "mle_snpe.h"
 #include "mle_engine/snpe_base.h"
-#include "mle_engine/snpe_complex.h"
+#include "mle_engine/snpe_detection.h"
 #include "mle_engine/snpe_single_ssd.h"
 #include "mle_engine/snpe_segmentation.h"
 
@@ -286,7 +286,7 @@ gst_mle_snpe_parse_config(gchar *config_location,
     Json::Value val;
     if (reader.parse(in, val)) {
       configuration.input_format =
-          (mle::InputFormat)val.get("InputFormat", 3).asInt();
+          (mle::InputFormat)val.get("input-format", 3).asInt();
       configuration.blue_mean = val.get("BlueMean", 0).asFloat();
       configuration.blue_sigma = val.get("BlueSigma", 255).asFloat();
       configuration.green_mean = val.get("GreenMean", 0).asFloat();
@@ -295,15 +295,16 @@ gst_mle_snpe_parse_config(gchar *config_location,
       configuration.red_sigma = val.get("RedSigma", 255).asFloat();
       configuration.use_norm = val.get("UseNorm", false).asBool();
       configuration.preprocess_mode =
-          (mle::PreprocessingMode)val.get("PreProcessing", 1).asInt();
-      configuration.conf_threshold = val.get("ConfThreshold", 0.0).asFloat();
-      configuration.model_file = val.get("MODEL_FILENAME", "").asString();
-      configuration.labels_file = val.get("LABELS_FILENAME", "").asString();
-      for (size_t i = 0; i < val["OutputLayers"].size(); i++) {
+          (mle::PreprocessingMode)val.get("preprocess-type", 1).asInt();
+      configuration.conf_threshold =
+          val.get("confidence-threshold", 0.0).asFloat();
+      configuration.model_file = val.get("model", "").asString();
+      configuration.labels_file = val.get("labels", "").asString();
+      for (size_t i = 0; i < val["output-layers"].size(); i++) {
         configuration.output_layers.push_back(
-                                    val["OutputLayers"][i].asString());
+                                    val["output-layers"][i].asString());
       }
-      configuration.runtime = (mle::RuntimeType)val.get("Runtime", 0).asInt();
+      configuration.runtime = (mle::RuntimeType)val.get("runtime", 0).asInt();
       rc = TRUE;
     }
     in.close();
@@ -419,6 +420,10 @@ gst_mle_create_engine(GstMLESNPE *mle) {
     configuration.preprocess_mode =
         (mle::PreprocessingMode)mle->preprocessing_type;
   }
+
+  if (gst_mle_check_is_set(mle->property_mask, PROP_SNPE_OUTPUT_LAYERS)) {
+    configuration.output_layers.clear();
+  }
   gst_mle_parse_snpe_layers(mle->output_layers, configuration.output_layers);
 
   gst_mle_print_config(mle, configuration, mle->postprocessing);
@@ -430,7 +435,7 @@ gst_mle_create_engine(GstMLESNPE *mle) {
       rc = FALSE;
     }
   } else if (!g_strcmp0(mle->postprocessing, "detection")) {
-      mle->engine = new mle::SNPEComplex(configuration);
+      mle->engine = new mle::SNPEDetection(configuration);
       if (nullptr == mle->engine) {
         GST_ERROR_OBJECT (mle, "Failed to create SNPE instance.");
         rc = FALSE;
