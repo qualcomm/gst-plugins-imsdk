@@ -36,6 +36,7 @@
 #include <ml-meta/ml_meta.h>
 
 #include "deeplabengine.h"
+#include "posenetengine.h"
 
 G_BEGIN_DECLS
 
