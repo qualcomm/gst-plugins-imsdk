@@ -229,6 +229,7 @@ gst_mle_snpe_finalize(GObject * object)
 
   if (mle->engine) {
     mle->engine->Deinit();
+    delete (mle->engine);
     mle->engine = nullptr;
   }
   if (mle->output_layers) {
@@ -494,10 +495,13 @@ gst_mle_snpe_set_info(GstVideoFilter *filter, GstCaps *in,
     if ((gint)mle->source_info.width != GST_VIDEO_INFO_WIDTH(ininfo) ||
         (gint)mle->source_info.height != GST_VIDEO_INFO_HEIGHT(ininfo) ||
         mle->source_info.format != gst_mle_get_video_format(video_format)) {
+      GST_DEBUG_OBJECT(mle, "Reinitializing due to source change.");
       mle->engine->Deinit();
+      delete (mle->engine);
       mle->engine = nullptr;
       mle->is_init = FALSE;
     } else {
+      GST_DEBUG_OBJECT(mle, "Already initialized.");
       return TRUE;
     }
   }
@@ -522,6 +526,8 @@ gst_mle_snpe_set_info(GstVideoFilter *filter, GstCaps *in,
   gint ret = mle->engine->Init(&mle->source_info);
   if (ret) {
     GST_ERROR_OBJECT (mle, "MLE init failed.");
+    delete (mle->engine);
+    mle->engine = nullptr;
     rc = FALSE;
   } else {
     GST_DEBUG_OBJECT (mle, "MLE instance created addr %p", mle->engine);
