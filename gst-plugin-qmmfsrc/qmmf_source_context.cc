@@ -949,7 +949,7 @@ gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad)
 
   if (GST_IS_QMMFSRC_VIDEO_PAD (pad)) {
     GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
-    guint bitrate, qpvalue;
+    guint bitrate, qpvalue, idr_interval;
     const gchar *profile, *level;
     gint ratecontrol;
 
@@ -1097,6 +1097,9 @@ gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad)
       params.codec_param.avc.qp_params.enable_qp_range = true;
       params.codec_param.avc.qp_params.enable_qp_IBP_range = true;
 
+      gst_structure_get_uint(vpad->params, "idr-interval", &idr_interval);
+      params.codec_param.avc.idr_interval = idr_interval;
+
     } else if (format == ::qmmf::VideoFormat::kHEVC) {
       profile = gst_structure_get_string(vpad->params, "profile");
       if (g_strcmp0 (profile, "main") == 0) {
@@ -1188,6 +1191,9 @@ gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad)
       params.codec_param.hevc.qp_params.enable_init_qp = true;
       params.codec_param.hevc.qp_params.enable_qp_range = true;
       params.codec_param.hevc.qp_params.enable_qp_IBP_range = true;
+
+      gst_structure_get_uint(vpad->params, "idr-interval", &idr_interval);
+      params.codec_param.hevc.idr_interval = idr_interval;
     }
 
     track_cbs.event_cb =
@@ -1974,6 +1980,17 @@ gst_qmmf_context_update_video_param (GstPad * pad, GParamSpec * pspec,
     gfloat fps = g_value_get_double (&value);
     status = recorder->SetVideoTrackParam (session_id, track_id,
         ::qmmf::CodecParamType::kFrameRateType, &fps, sizeof (fps)
+    );
+  } else if (g_strcmp0 (pname, "idr-interval") == 0) {
+    guint idr_interval = g_value_get_uint (&value);
+    ::qmmf::VideoEncIdrInterval param;
+
+    param.num_pframes = (idr_interval == 0) ? 0 :
+        ((idr_interval * vpad->framerate) - 1);
+    param.num_bframes = 0;
+    param.idr_period = (idr_interval == 0) ? 0 : 1;
+    status = recorder->SetVideoTrackParam (session_id, track_id,
+        ::qmmf::CodecParamType::kIDRIntervalType, &param, sizeof (param)
     );
   } else {
     GST_WARNING ("Unsupported parameter '%s'!", pname);
