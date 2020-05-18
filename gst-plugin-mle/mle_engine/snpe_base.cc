@@ -42,8 +42,6 @@ SNPEBase::SNPEBase(MLConfig &config) : MLEngine(config) {
 }
 
 int32_t SNPEBase::ConfigureRuntime(MLConfig &config) {
-  version_ = zdl::SNPE::SNPEFactory::getLibraryVersion();
-
   switch (config.runtime) {
     case RuntimeType::DSP: {
       if (zdl::SNPE::SNPEFactory::isRuntimeAvailable(
@@ -366,6 +364,8 @@ void SNPEBase::PrintErrorStringAndExit() {
 
 int32_t SNPEBase::InitFramework() {
   MLE_LOGI("%s Enter", __func__);
+  version_ = zdl::SNPE::SNPEFactory::getLibraryVersion();
+  MLE_LOGI("SNPE version: %s", version_.toString().c_str());
   int32_t res = MLE_OK;
 
   snpe_params_.snpe = SetBuilderOptions();
