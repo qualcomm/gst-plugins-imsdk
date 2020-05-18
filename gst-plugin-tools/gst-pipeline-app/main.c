@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -29,6 +29,10 @@
 
 #include <stdio.h>
 #include <gst/gst.h>
+#include <linux/input.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #define PRINT_LINE(c, l) \
   { guint i = 0; while (i < l) { g_print ("%c", c); i++; } }
@@ -140,6 +144,12 @@ struct _GstAppContext
 
   // Command line option variables.
   gboolean      eos_on_exit;
+
+  // Command line option for warm-boot
+  gboolean      warm_boot;
+
+  // Device status
+  gboolean      in_suspend;
 };
 
 static void
@@ -269,7 +279,7 @@ warning_cb (GstBus * bus, GstMessage * message, gpointer data)
   gchar *debug = NULL;
   GError *error = NULL;
 
-  gst_message_parse_error (message, &error, &debug);
+  gst_message_parse_warning (message, &error, &debug);
   gst_object_default_error (GST_MESSAGE_SRC (message), error, debug);
 
   g_free (debug);
@@ -283,7 +293,7 @@ error_cb (GstBus * bus, GstMessage * message, gpointer data)
   gchar *debug = NULL;
   GError *error = NULL;
 
-  gst_message_parse_warning (message, &error, &debug);
+  gst_message_parse_error (message, &error, &debug);
   gst_object_default_error (GST_MESSAGE_SRC (message), error, debug);
 
   g_free (debug);
@@ -304,7 +314,9 @@ eos_cb (GstBus * bus, GstMessage * message, gpointer data)
 
   g_mutex_unlock (&appctx->pstatus.mutex);
 
-  g_main_loop_quit (appctx->mloop);
+  if (!appctx->warm_boot) {
+    g_main_loop_quit (appctx->mloop);
+  }
 }
 
 static void
@@ -373,6 +385,8 @@ start_pipeline (GstAppContext * appctx)
 
   wait_state (appctx, GST_STATE_PLAYING);
 
+  appctx->in_suspend = FALSE;
+
   return TRUE;
 }
 
@@ -404,6 +418,95 @@ stop_pipeline (GstAppContext * appctx)
 
   g_print ("Setting pipeline to NULL ...\n");
   gst_element_set_state (appctx->pipeline, GST_STATE_NULL);
+
+  appctx->in_suspend = TRUE;
+}
+
+static gpointer
+monitor_power_key (gpointer data)
+{
+  GstAppContext *appctx = GST_APP_CONTEXT_CAST (data);
+
+  struct input_event ev;
+  guint n = 0;
+  const gchar *input_device = "/dev/input/event0";
+  const gchar *wake_lock_node = "/sys/power/wake_lock";
+  const gchar *wake_unlock_node = "/sys/power/wake_unlock";
+  const gchar *buf = "gst_pipeline_wakelock";
+
+  gint resume_fd = open (wake_lock_node, O_WRONLY);
+  if (resume_fd == -1) {
+    g_print ("Error in opening WAKE_LOCK_NODE node\n");
+    exit (2);
+  }
+
+  gint suspend_fd = open (wake_unlock_node, O_WRONLY);
+  if (suspend_fd == -1) {
+    g_print ("Error in opening WAKE_UNLOCK_NODE node\n");
+    exit (2);
+  }
+
+  gint input_fd = open (input_device, O_RDONLY);
+  if (input_fd == -1) {
+    g_print ("Error in opening input key device node ... Exiting\n");
+    exit (2);
+  }
+
+  if (write (resume_fd, buf, strlen(buf)) == -1) {
+    g_print ("First Write to resume_fd failed %d (%s)\n", errno,
+        strerror (errno));
+    exit (2);
+  }
+
+  // start pipeline
+  start_pipeline (appctx);
+
+  while ((n = read (input_fd, &ev, sizeof (struct input_event))) > 0) {
+    if (n < sizeof (struct input_event)) {
+      g_print ("Error reading input event\n");
+      exit (2);
+    }
+    if (ev.type == EV_KEY && ev.code == KEY_POWER && ev.value == 1) {
+      if (appctx->in_suspend == FALSE) {
+        g_print ("PowerKey Press detected, going to suspend\n");
+        // stop pipeline
+        stop_pipeline (appctx);
+
+        if (write (suspend_fd, buf, strlen (buf)) == -1) {
+          g_print ("Failed to write suspend_fd %d (%s)\n", errno,
+              strerror (errno));
+          exit (2);
+        }
+      } else {
+        g_print ("PowerKey Press detected, going to resume\n");
+        if (write (resume_fd, buf, strlen (buf)) == -1) {
+          g_print ("Failed to write resume_fd %d (%s)\n", errno,
+              strerror(errno));
+          exit (2);
+        }
+        start_pipeline (appctx);
+      }
+    }
+  }
+
+  if (appctx->in_suspend == FALSE) {
+    stop_pipeline (appctx);
+  }
+
+  if (resume_fd) {
+    close (resume_fd);
+  }
+
+  if (suspend_fd) {
+    close (suspend_fd);
+  }
+
+  if (input_fd) {
+    close (input_fd);
+  }
+
+  // Signal Main loop to shutdown.
+  g_main_loop_quit (appctx->mloop);
 }
 
 static void
@@ -883,6 +986,8 @@ main (gint argc, gchar *argv[])
   GOptionEntry entries[] = {
       {"eos-on-exit", 'e', 0, G_OPTION_ARG_NONE, &appctx->eos_on_exit,
           "Send EOS event before shutting the pipeline down", NULL},
+      {"warm-boot", 'w', 0, G_OPTION_ARG_NONE, &appctx->warm_boot,
+          "Monitor Power Key events for warm boot", NULL},
       {NULL}
   };
 
@@ -957,6 +1062,7 @@ main (gint argc, gchar *argv[])
   g_cond_init (&appctx->pstatus.changed);
   appctx->pstatus.state = GST_STATE_NULL;
   appctx->pstatus.flags = 0;
+  appctx->in_suspend = FALSE;
 
   {
     // Watch for messages on the pipeline's bus.
@@ -979,9 +1085,16 @@ main (gint argc, gchar *argv[])
   }
 
   {
-    // Initiate the main menu thread.
-    GThread *thread = g_thread_new ("MainMenuThread", main_menu, appctx);
+    GThread *thread = NULL;
 
+    if (appctx->warm_boot) {
+      // Initiate the monitor power key thread.
+      thread = g_thread_new ("MonitorPowerKeyThread", monitor_power_key,
+          appctx);
+    } else {
+      // Initiate the main menu thread.
+      thread = g_thread_new ("MainMenuThread", main_menu, appctx);
+    }
     // Run main loop.
     g_main_loop_run (appctx->mloop);
 
