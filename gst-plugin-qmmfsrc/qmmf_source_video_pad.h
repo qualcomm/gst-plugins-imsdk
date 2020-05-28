@@ -37,9 +37,9 @@
 G_BEGIN_DECLS
 
 #define QMMFSRC_COMMON_VIDEO_CAPS \
-    "width = (int) [ 16, " MAX_WIDTH " ], "   \
-    "height = (int) [ 16," MAX_HEIGHT " ], "  \
-    "framerate = (fraction) [ 0/1, 30/1 ]"
+    "width = (int) [ 16, " GST_VIDEO_MAX_WIDTH " ], "       \
+    "height = (int) [ 16," GST_VIDEO_MAX_HEIGHT " ], "      \
+    "framerate = (fraction) [ 0/1, " GST_VIDEO_MAX_FPS " ]"
 
 #define QMMFSRC_VIDEO_H264_PROFILES \
     "baseline, main, high"

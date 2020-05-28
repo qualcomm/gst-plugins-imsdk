@@ -126,7 +126,7 @@ static GstStaticPadTemplate qmmfsrc_video_src_template =
         GST_PAD_REQUEST,
         GST_STATIC_CAPS (
             QMMFSRC_VIDEO_H264_CAPS "; "
-#ifdef ENABLE_H265_ENCODE
+#if defined(GST_VIDEO_H265_ENABLE)
             QMMFSRC_VIDEO_H265_CAPS "; "
 #endif
             QMMFSRC_VIDEO_RAW_CAPS(

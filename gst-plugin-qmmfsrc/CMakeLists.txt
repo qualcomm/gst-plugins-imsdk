@@ -26,11 +26,6 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 # Precompiler definitions.
 add_definitions(-DHAVE_CONFIG_H)
 
-# Enable H265 encode.
-if (ENABLE_H265_ENCODE)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DENABLE_H265_ENCODE")
-endif()
-
 # Common compiler flags.
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror")
@@ -48,12 +43,13 @@ add_library(${GST_QMMFSRC_PLUGIN} SHARED
   qmmf_source_context.cc
 )
 
-# Enable 4K Resolution.
-if (ENABLE_4K_RESOLUTION)
-  target_compile_definitions(${GST_QMMFSRC_PLUGIN} PRIVATE MAX_WIDTH="3840" MAX_HEIGHT="2160")
-else ()
-  target_compile_definitions(${GST_QMMFSRC_PLUGIN} PRIVATE MAX_WIDTH="1920" MAX_HEIGHT="1080")
-endif()
+# Add target specific precompiler defintions.
+target_compile_definitions(${GST_QMMFSRC_PLUGIN} PRIVATE
+  GST_VIDEO_MAX_WIDTH="${GST_VIDEO_MAX_WIDTH}"
+  GST_VIDEO_MAX_HEIGHT="${GST_VIDEO_MAX_HEIGHT}"
+  GST_VIDEO_MAX_FPS="${GST_VIDEO_MAX_FPS}"
+  $<$<BOOL:${GST_VIDEO_H265_ENABLE}>:GST_VIDEO_H265_ENABLE>
+)
 
 target_include_directories(${GST_QMMFSRC_PLUGIN} PRIVATE
   ${GST_INCLUDE_DIRS}
