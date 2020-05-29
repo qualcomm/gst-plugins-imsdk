@@ -1866,19 +1866,19 @@ gst_overlay_finalize (GObject * object)
 
   if (gst_overlay->overlay) {
     g_sequence_foreach (gst_overlay->bbox_id, gst_overlay_destroy_overlay_item,
-        gst_overlay);
+        gst_overlay->overlay);
     g_sequence_free (gst_overlay->bbox_id);
 
     g_sequence_foreach (gst_overlay->simg_id, gst_overlay_destroy_overlay_item,
-        gst_overlay);
+        gst_overlay->overlay);
     g_sequence_free (gst_overlay->simg_id);
 
     g_sequence_foreach (gst_overlay->text_id, gst_overlay_destroy_overlay_item,
-        gst_overlay);
+        gst_overlay->overlay);
     g_sequence_free (gst_overlay->text_id);
 
     g_sequence_foreach (gst_overlay->pose_id, gst_overlay_destroy_overlay_item,
-        gst_overlay);
+        gst_overlay->overlay);
     g_sequence_free (gst_overlay->pose_id);
 
     g_sequence_free (gst_overlay->usr_text);
