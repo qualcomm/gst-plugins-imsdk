@@ -505,7 +505,7 @@ qmmfsrc_gst_buffer_release (GstStructure * structure)
   gst_structure_get_uint (structure, "session", &session_id);
 
   gst_structure_get_uint (structure, "data", &value);
-  buffer.data = GUINT_TO_POINTER (value);
+  buffer.data = GSIZE_TO_POINTER (value);
 
   gst_structure_get_int (structure, "fd", &buffer.fd);
   gst_structure_get_uint (structure, "bufid", &buffer.buf_id);
@@ -579,7 +579,7 @@ qmmfsrc_gst_buffer_new_wrapped (GstQmmfContext * context, GstPad * pad,
         GST_QMMFSRC_VIDEO_PAD (pad)->id, NULL);
 
   gst_structure_set (structure,
-      "data", G_TYPE_UINT, GPOINTER_TO_UINT (buffer->data),
+      "data", G_TYPE_ULONG, GPOINTER_TO_SIZE (buffer->data),
       "fd", G_TYPE_INT, buffer->fd,
       "bufid", G_TYPE_UINT, buffer->buf_id,
       "size", G_TYPE_UINT, buffer->size,

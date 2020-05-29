@@ -459,11 +459,11 @@ create_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
     // Y plane GPU address.
     surface.phys0 = gpuaddress;
     // UV plane (U plane in planar format)  GPU address.
-    surface.phys1 = GUINT_TO_POINTER (GPOINTER_TO_UINT (gpuaddress) +
+    surface.phys1 = GSIZE_TO_POINTER (GPOINTER_TO_SIZE (gpuaddress) +
         GST_VIDEO_FRAME_PLANE_OFFSET (frame, 1));
     // V plane (planar format, ignored in other formats) GPU address.
     surface.phys2 = (GST_VIDEO_FRAME_N_PLANES (frame) != 3) ?
-        NULL : GUINT_TO_POINTER (GPOINTER_TO_UINT (gpuaddress) +
+        NULL : GSIZE_TO_POINTER (GPOINTER_TO_SIZE (gpuaddress) +
         GST_VIDEO_FRAME_PLANE_OFFSET (frame, 2));
 
     GST_DEBUG ("%s %s surface - phys0(%p) phys1(%p) phys2(%p)",

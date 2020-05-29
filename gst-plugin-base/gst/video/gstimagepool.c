@@ -349,7 +349,7 @@ ion_device_alloc (GstImageBufferPool * vpool)
   fd = fd_data.fd;
 
   g_hash_table_insert (priv->datamap, GINT_TO_POINTER (fd),
-      GINT_TO_POINTER (alloc_data.handle));
+      GSIZE_TO_POINTER (alloc_data.handle));
 #else
   fd = alloc_data.fd;
 #endif
@@ -367,7 +367,7 @@ ion_device_free (GstImageBufferPool * vpool, gint fd)
   GST_DEBUG_OBJECT (vpool, "Closing ION memory FD %d", fd);
 
 #ifndef TARGET_ION_ABI_VERSION
-  ion_user_handle_t handle = GPOINTER_TO_INT (
+  ion_user_handle_t handle = GPOINTER_TO_SIZE (
       g_hash_table_lookup (vpool->priv->datamap, GINT_TO_POINTER (fd)));
 
   if (ioctl (vpool->priv->devfd, ION_IOC_FREE, &handle) < 0) {
