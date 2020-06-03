@@ -471,16 +471,14 @@ initialize_camera_param (GstQmmfContext * context)
   set_vendor_tags(context->ltmdata, &meta);
   set_vendor_tags(context->nrtuning, &meta);
 
-  if (!context->slave) {
-    G_LOCK(recorder);
+  G_LOCK(recorder);
 
-    status = recorder->SetCameraParam(context->camera_id, meta);
+  status = recorder->SetCameraParam(context->camera_id, meta);
 
-    G_UNLOCK(recorder);
+  G_UNLOCK(recorder);
 
-    QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
-        "QMMF Recorder SetCameraParam Failed!");
-  }
+  QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
+      "QMMF Recorder SetCameraParam Failed!");
 
   return TRUE;
 }
@@ -1323,10 +1321,12 @@ gst_qmmf_context_start_session (GstQmmfContext * context)
 
   context->tsbase = GST_CLOCK_TIME_NONE;
 
-  success = initialize_camera_param(context);
+  if (!context->slave) {
+    success = initialize_camera_param(context);
 
-  QMMFSRC_RETURN_VAL_IF_FAIL (NULL, success, FALSE,
-      "Failed to initialize camera parameters!");
+    QMMFSRC_RETURN_VAL_IF_FAIL (NULL, success, FALSE,
+        "Failed to initialize camera parameters!");
+  }
 
   GST_TRACE ("Starting QMMF context session");
 
