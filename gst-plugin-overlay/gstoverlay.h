@@ -150,7 +150,7 @@ struct _GstOverlayUsrSImg {
   guint                 img_width;
   guint                 img_height;
   gchar                 *img_buffer;
-  guint                 img_size;
+  gsize                 img_size;
   GstVideoRectangle     dest_rect;
 };
 
