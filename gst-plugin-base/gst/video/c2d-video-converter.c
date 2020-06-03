@@ -317,30 +317,6 @@ gst_video_format_to_c2d_format (GstVideoFormat format)
       return C2D_COLOR_FORMAT_444_AYUV;
     case GST_VIDEO_FORMAT_Y444:
       return C2D_COLOR_FORMAT_444_Y_U_V;
-#if G_BYTE_ORDER == G_BIG_ENDIAN
-    case GST_VIDEO_FORMAT_BGRx:
-      return C2D_COLOR_FORMAT_8888_RGBA | C2D_FORMAT_DISABLE_ALPHA |
-          C2D_FORMAT_SWAP_RB;
-    case GST_VIDEO_FORMAT_RGBx:
-      return C2D_COLOR_FORMAT_8888_RGBA | C2D_FORMAT_DISABLE_ALPHA;
-    case GST_VIDEO_FORMAT_xBGR:
-      return C2D_COLOR_FORMAT_8888_ARGB | C2D_FORMAT_DISABLE_ALPHA |
-          C2D_FORMAT_SWAP_RB;
-    case GST_VIDEO_FORMAT_xRGB:
-      return C2D_COLOR_FORMAT_8888_ARGB | C2D_FORMAT_DISABLE_ALPHA;
-    case GST_VIDEO_FORMAT_RGBA:
-      return C2D_COLOR_FORMAT_8888_RGBA;
-    case GST_VIDEO_FORMAT_ARGB:
-      return C2D_COLOR_FORMAT_8888_ARGB;
-    case GST_VIDEO_FORMAT_BGR:
-      return C2D_COLOR_FORMAT_888_RGB | C2D_FORMAT_SWAP_RB;
-    case GST_VIDEO_FORMAT_RGB:
-      return C2D_COLOR_FORMAT_888_RGB;
-    case GST_VIDEO_FORMAT_BGR16:
-      return C2D_COLOR_FORMAT_565_RGB | C2D_FORMAT_SWAP_RB;
-    case GST_VIDEO_FORMAT_RGB16:
-      return C2D_COLOR_FORMAT_565_RGB;
-#else
     case GST_VIDEO_FORMAT_BGRx:
       return C2D_COLOR_FORMAT_8888_ARGB | C2D_FORMAT_DISABLE_ALPHA;
     case GST_VIDEO_FORMAT_RGBx:
@@ -363,7 +339,6 @@ gst_video_format_to_c2d_format (GstVideoFormat format)
       return C2D_COLOR_FORMAT_565_RGB;
     case GST_VIDEO_FORMAT_RGB16:
       return C2D_COLOR_FORMAT_565_RGB | C2D_FORMAT_SWAP_RB;
-#endif
     case GST_VIDEO_FORMAT_GRAY8:
       return C2D_COLOR_FORMAT_8_L;
     default:
@@ -376,7 +351,7 @@ static guint
 create_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
     guint bits)
 {
-  C2D_STATUS status = C2D_STATUS_OK;
+  C2D_STATUS status = C2D_STATUS_NOT_SUPPORTED;
   const gchar *format;
   guint surface_id;
 
@@ -657,7 +632,7 @@ GstC2dVideoConverter *
 gst_c2d_video_converter_new ()
 {
   GstC2dVideoConverter *convert;
-  gboolean success = FALSE;
+  gboolean success = TRUE;
   C2D_DRIVER_SETUP_INFO setup;
   C2D_DRIVER_INFO info;
   C2D_STATUS status = C2D_STATUS_OK;
@@ -672,60 +647,36 @@ gst_c2d_video_converter_new ()
       "error: %s!", dlerror());
 
   // Load C2D library symbols.
-  success = load_symbol ((gpointer*)&convert->DriverInit, convert->c2dhandle,
+  success &= load_symbol ((gpointer*)&convert->DriverInit, convert->c2dhandle,
       "c2dDriverInit");
-  C2D_RETURN_NULL_IF_FAIL (success, gst_c2d_video_converter_free (convert));
-
-  success = load_symbol ((gpointer*)&convert->DriverDeInit, convert->c2dhandle,
+  success &= load_symbol ((gpointer*)&convert->DriverDeInit, convert->c2dhandle,
       "c2dDriverDeInit");
-  C2D_RETURN_NULL_IF_FAIL (success, gst_c2d_video_converter_free (convert));
-
-  success = load_symbol ((gpointer*)&convert->CreateSurface,
+  success &= load_symbol ((gpointer*)&convert->CreateSurface,
       convert->c2dhandle, "c2dCreateSurface");
-  C2D_RETURN_NULL_IF_FAIL (success, gst_c2d_video_converter_free (convert));
-
-  success = load_symbol ((gpointer*)&convert->DestroySurface,
+  success &= load_symbol ((gpointer*)&convert->DestroySurface,
       convert->c2dhandle, "c2dDestroySurface");
-  C2D_RETURN_NULL_IF_FAIL (success, gst_c2d_video_converter_free (convert));
-
-  success = load_symbol ((gpointer*)&convert->UpdateSurface,
+  success &= load_symbol ((gpointer*)&convert->UpdateSurface,
       convert->c2dhandle, "c2dUpdateSurface");
-  C2D_RETURN_NULL_IF_FAIL (success, gst_c2d_video_converter_free (convert));
-
-  success = load_symbol ((gpointer*)&convert->SurfaceUpdated,
+  success &= load_symbol ((gpointer*)&convert->SurfaceUpdated,
       convert->c2dhandle, "c2dSurfaceUpdated");
-  C2D_RETURN_NULL_IF_FAIL (success, gst_c2d_video_converter_free (convert));
-
-  success = load_symbol ((gpointer*)&convert->FillSurface,
+  success &= load_symbol ((gpointer*)&convert->FillSurface,
       convert->c2dhandle, "c2dFillSurface");
-  C2D_RETURN_NULL_IF_FAIL (success, gst_c2d_video_converter_free (convert));
-
-  success = load_symbol ((gpointer*)&convert->Draw, convert->c2dhandle,
+  success &= load_symbol ((gpointer*)&convert->Draw, convert->c2dhandle,
       "c2dDraw");
-  C2D_RETURN_NULL_IF_FAIL (success, gst_c2d_video_converter_free (convert));
-
-  success = load_symbol ((gpointer*)&convert->Flush, convert->c2dhandle,
+  success &= load_symbol ((gpointer*)&convert->Flush, convert->c2dhandle,
       "c2dFlush");
-  C2D_RETURN_NULL_IF_FAIL (success, gst_c2d_video_converter_free (convert));
-
-  success = load_symbol ((gpointer*)&convert->Finish, convert->c2dhandle,
+  success &= load_symbol ((gpointer*)&convert->Finish, convert->c2dhandle,
       "c2dFinish");
-  C2D_RETURN_NULL_IF_FAIL (success, gst_c2d_video_converter_free (convert));
-
-  success = load_symbol ((gpointer*)&convert->WaitTimestamp,
+  success &= load_symbol ((gpointer*)&convert->WaitTimestamp,
       convert->c2dhandle, "c2dWaitTimestamp");
-  C2D_RETURN_NULL_IF_FAIL (success, gst_c2d_video_converter_free (convert));
-
-  success = load_symbol ((gpointer*)&convert->MapAddr, convert->c2dhandle,
+  success &= load_symbol ((gpointer*)&convert->MapAddr, convert->c2dhandle,
       "c2dMapAddr");
-  C2D_RETURN_NULL_IF_FAIL (success, gst_c2d_video_converter_free (convert));
-
-  success = load_symbol ((gpointer*)&convert->UnMapAddr, convert->c2dhandle,
+  success &= load_symbol ((gpointer*)&convert->UnMapAddr, convert->c2dhandle,
       "c2dUnMapAddr");
-  C2D_RETURN_NULL_IF_FAIL (success, gst_c2d_video_converter_free (convert));
-
-  success = load_symbol ((gpointer*)&convert->GetDriverCapabilities,
+  success &= load_symbol ((gpointer*)&convert->GetDriverCapabilities,
       convert->c2dhandle, "c2dGetDriverCapabilities");
+
+  // Check whether symbol loading was successful.
   C2D_RETURN_NULL_IF_FAIL (success, gst_c2d_video_converter_free (convert));
 
   convert->insurfaces = g_hash_table_new (NULL, NULL);
@@ -898,7 +849,7 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
 
   GST_C2D_LOCK (convert);
 
-  // Resize the C2D draw objects in case frames count changed.
+  // C2D draw objects.
   objects = g_new0 (C2D_OBJECT, n_inputs);
 
   // Iterate over the input frames.
@@ -912,8 +863,8 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
     // Get the 1st (and only) memory block from the input GstBuffer.
     memory = gst_buffer_peek_memory (inframe->buffer, 0);
     C2D_RETURN_NULL_IF_FAIL_WITH_MSG (gst_is_fd_memory (memory),
-        GST_C2D_UNLOCK (convert), "Input buffer %p does not have FD memory!",
-        inframe->buffer);
+        GST_C2D_UNLOCK (convert); g_free (objects),
+        "Input buffer %p does not have FD memory!", inframe->buffer);
 
     // Get the input buffer FD from the GstBuffer memory block.
     fd = gst_fd_memory_get_fd (memory);
@@ -922,7 +873,8 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
       // Create an input surface and add its ID to the input hash table.
       surface_id = create_surface (convert, inframe, C2D_SOURCE);
       C2D_RETURN_NULL_IF_FAIL_WITH_MSG (surface_id != 0,
-          GST_C2D_UNLOCK (convert), "Failed to create surface!");
+          GST_C2D_UNLOCK (convert); g_free (objects),
+          "Failed to create surface!");
 
       g_hash_table_insert (convert->insurfaces, GUINT_TO_POINTER (fd),
           GUINT_TO_POINTER (surface_id));
@@ -953,8 +905,8 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
   // Get the 1st (and only) memory block from the output GstBuffer.
   memory = gst_buffer_peek_memory (outframe->buffer, 0);
   C2D_RETURN_NULL_IF_FAIL_WITH_MSG (gst_is_fd_memory (memory),
-      GST_C2D_UNLOCK (convert), "Output buffer %p does not have FD memory!",
-      outframe->buffer);
+      GST_C2D_UNLOCK (convert); g_free (objects),
+      "Output buffer %p does not have FD memory!", outframe->buffer);
 
   // Get the output buffer FD from the GstBuffer memory block.
   fd = gst_fd_memory_get_fd (memory);
@@ -963,7 +915,8 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
     // Create an output surface and add its ID to the output hash table.
     surface_id = create_surface (convert, outframe, C2D_TARGET);
     C2D_RETURN_NULL_IF_FAIL_WITH_MSG (surface_id != 0,
-        GST_C2D_UNLOCK (convert), "Failed to create surface!");
+        GST_C2D_UNLOCK (convert); g_free (objects),
+        "Failed to create surface!");
 
     g_hash_table_insert (convert->outsurfaces, GUINT_TO_POINTER (fd),
         GUINT_TO_POINTER (surface_id));
@@ -979,14 +932,17 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
       GET_OPT_BACKGROUND (convert->outopts), NULL);
 
   C2D_RETURN_NULL_IF_FAIL_WITH_MSG (C2D_STATUS_OK == status,
-      GST_C2D_UNLOCK (convert), "c2dFillSurface failed for target surface %x,"
-      " error: %d!", surface_id, status);
+      GST_C2D_UNLOCK (convert); g_free (objects), "c2dFillSurface failed for"
+      " target surface %x, error: %d!", surface_id, status);
 
   status = convert->Draw (surface_id, 0, NULL, 0, 0, objects, 0);
 
   C2D_RETURN_NULL_IF_FAIL_WITH_MSG (C2D_STATUS_OK == status,
-      GST_C2D_UNLOCK (convert), "c2dDraw failed for target surface %x,"
-      " error: %d!", surface_id, status);
+      GST_C2D_UNLOCK (convert); g_free (objects), "c2dDraw failed for"
+      " target surface %x, error: %d!", surface_id, status);
+
+  // Free C2D draw objects.
+  g_free (objects);
 
   GST_C2D_UNLOCK (convert);
 

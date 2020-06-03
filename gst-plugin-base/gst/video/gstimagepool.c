@@ -95,26 +95,6 @@ gst_video_format_to_gbm_format (GstVideoFormat format)
       return GBM_FORMAT_NV12;
     case GST_VIDEO_FORMAT_NV21:
       return GBM_FORMAT_NV21_ZSL;
-#if G_BYTE_ORDER == G_BIG_ENDIAN
-    case GST_VIDEO_FORMAT_xRGB:
-      return GBM_FORMAT_XRGB8888;
-    case GST_VIDEO_FORMAT_ARGB:
-      return GBM_FORMAT_ARGB8888;
-    case GST_VIDEO_FORMAT_xBGR:
-      return GBM_FORMAT_XBGR8888;
-    case GST_VIDEO_FORMAT_RGBx:
-      return GBM_FORMAT_RGBX8888;
-    case GST_VIDEO_FORMAT_ABGR:
-      return GBM_FORMAT_ABGR8888;
-    case GST_VIDEO_FORMAT_RGBA:
-      return GBM_FORMAT_RGBA8888;
-    case GST_VIDEO_FORMAT_RGB:
-      return GBM_FORMAT_RGB888;
-    case GST_VIDEO_FORMAT_BGR16:
-      return GBM_FORMAT_BGR565;
-    case GST_VIDEO_FORMAT_RGB16:
-      return GBM_FORMAT_RGB565;
-#else
     case GST_VIDEO_FORMAT_BGRx:
       return GBM_FORMAT_XRGB8888;
     case GST_VIDEO_FORMAT_BGRA:
@@ -133,7 +113,6 @@ gst_video_format_to_gbm_format (GstVideoFormat format)
       return GBM_FORMAT_RGB565;
     case GST_VIDEO_FORMAT_RGB16:
       return GBM_FORMAT_BGR565;
-#endif
     default:
       GST_ERROR ("Unsupported format %s!", gst_video_format_to_string (format));
   }
@@ -187,7 +166,7 @@ open_gbm_device (GstImageBufferPool * vpool)
     return FALSE;
   }
 
-  // Load C2D library symbols.
+  // Load GBM library symbols.
   success &= load_symbol ((gpointer*)&priv->gbm_create_device, priv->gbmhandle,
       "gbm_create_device");
   success &= load_symbol ((gpointer*)&priv->gbm_device_destroy, priv->gbmhandle,
@@ -426,11 +405,19 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
   }
 
   if (!gst_buffer_pool_config_get_allocator (config, &allocator, &params)) {
-    GST_ERROR_OBJECT (vpool, "Allocator missing from configuration");
+    GST_ERROR_OBJECT (vpool, "Allocator missing from configuration!");
     return FALSE;
-  } else if (!GST_IS_FD_ALLOCATOR (allocator)) {
-    GST_ERROR_OBJECT (vpool, "Allocator %p is not FD backed!", allocator);
-    return FALSE;
+  } else if (NULL == allocator) {
+    // No allocator set in configuration, create default FD allocator.
+    if (NULL == (allocator = gst_fd_allocator_new ())) {
+      GST_ERROR_OBJECT (vpool, "Failed to create FD allocator!");
+      return FALSE;
+    }
+  }
+
+  if (!GST_IS_FD_ALLOCATOR (allocator)) {
+     GST_ERROR_OBJECT (vpool, "Allocator %p is not FD backed!", allocator);
+     return FALSE;
   }
 
   GST_DEBUG_OBJECT (pool, "Video dimensions %dx%d, caps %" GST_PTR_FORMAT,

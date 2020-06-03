@@ -65,10 +65,7 @@ GST_DEBUG_CATEGORY_STATIC (gst_video_composer_debug);
 #define GST_VIDEO_FPS_RANGE "(fraction) [ 0, 255 ]"
 
 // Caps formats.
-#define GST_VIDEO_FORMATS "{ I420, YV12, YUY2, UYVY, AYUV, BGRA, ABGR, "     \
-    "RGBx, BGRx, xRGB, xBGR, BGR, RGB, Y41B, Y42B, YVYU, Y444, NV12, NV21, " \
-    "v308, BGR16, RGB16, UYVP, A420, YUV9, YVU9, IYU1, NV16, NV61, IYU2, "   \
-    "VYUY, GRAY8 }"
+#define GST_VIDEO_FORMATS "{ BGRA, RGBA, BGR, RGB, NV12, NV21 }"
 
 static GType gst_converter_request_get_type(void);
 #define GST_TYPE_CONVERTER_REQUEST  (gst_converter_request_get_type())
@@ -506,13 +503,20 @@ gst_video_composer_propose_allocation (GstAggregator * aggregator,
     GstAggregatorPad * pad, GstQuery * inquery, GstQuery * outquery)
 {
   GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER_CAST (aggregator);
-  guint idx = 0, n_metas = 0;
-  guint size, minbuffers, maxbuffers;
+
+  GstCaps *caps = NULL;
+  GstBufferPool *pool = NULL;
+  GstVideoInfo info;
+  guint idx = 0, n_metas = 0, size = 0;
+  gboolean needpool = FALSE;
 
   GST_DEBUG_OBJECT (vcomposer, "Pad %s:%s", GST_DEBUG_PAD_NAME (pad));
 
-  n_metas = (inquery != NULL) ?
-      gst_query_get_n_allocation_metas (inquery) : 0;
+  // No input query, nothing to do.
+  if (NULL == inquery)
+    return TRUE;
+
+  n_metas = gst_query_get_n_allocation_metas (inquery);
 
   for (idx = 0; idx < n_metas; idx++) {
     GType gtype;
@@ -523,50 +527,45 @@ gst_video_composer_propose_allocation (GstAggregator * aggregator,
     gst_query_add_allocation_meta (outquery, gtype, params);
   }
 
-  gst_query_add_allocation_meta (outquery, GST_VIDEO_META_API_TYPE, NULL);
+  // Extract caps from the query.
+  gst_query_parse_allocation (outquery, &caps, &needpool);
 
-  if (inquery != NULL) {
-    GstCaps *caps = NULL;
-    GstBufferPool *pool = NULL;
-    GstVideoInfo info;
-    gboolean needpool = FALSE;
-
-    gst_query_parse_allocation (outquery, &caps, &needpool);
-    if (NULL == caps) {
-      GST_ERROR_OBJECT (vcomposer, "Allocation has no caps specified!");
-      return FALSE;
-    }
-
-    if (!gst_video_info_from_caps (&info, caps)) {
-      GST_ERROR_OBJECT (vcomposer, "Failed to get video info from caps!");
-      return FALSE;
-    }
-
-    // Get the size and allocator params from pool and set it in query.
-    if (needpool) {
-      GstStructure *config = NULL;
-      GstAllocator *allocator = NULL;
-      GstAllocationParams params;
-
-      pool = gst_video_composer_create_pool (vcomposer, caps);
-
-      config = gst_buffer_pool_get_config (pool);
-      gst_buffer_pool_config_get_params (config, NULL, &size, &minbuffers,
-          &maxbuffers);
-
-      if (gst_buffer_pool_config_get_allocator (config, &allocator, &params))
-        gst_query_add_allocation_param (outquery, allocator, &params);
-
-      gst_structure_free (config);
-    }
-
-    // If upstream does't have a pool requirement, set only size,
-    // min buffers and max buffers in query.
-    gst_query_add_allocation_pool (outquery, needpool ? pool : NULL, size,
-        minbuffers, 0);
-    gst_object_unref (pool);
+  if (NULL == caps) {
+    GST_ERROR_OBJECT (vcomposer, "Failed to extract caps from query!");
+    return FALSE;
   }
 
+  if (!gst_video_info_from_caps (&info, caps)) {
+    GST_ERROR_OBJECT (vcomposer, "Failed to get video info!");
+    return FALSE;
+  }
+
+  // Get the size from video info.
+  size = GST_VIDEO_INFO_SIZE (&info);
+
+  if (needpool) {
+    GstStructure *structure = NULL;
+
+    pool = gst_video_composer_create_pool (vcomposer, caps);
+    structure = gst_buffer_pool_get_config (pool);
+
+    // Set caps and size in query.
+    gst_buffer_pool_config_set_params (structure, caps, size, 0, 0);
+
+    if (!gst_buffer_pool_set_config (pool, structure)) {
+      GST_ERROR_OBJECT (vcomposer, "Failed to set buffer pool configuration!");
+      gst_object_unref (pool);
+      return FALSE;
+    }
+  }
+
+  // If upstream does't have a pool requirement, set only size in query.
+  gst_query_add_allocation_pool (outquery, needpool ? pool : NULL, size, 0, 0);
+
+  if (pool != NULL)
+    gst_object_unref (pool);
+
+  gst_query_add_allocation_meta (outquery, GST_VIDEO_META_API_TYPE, NULL);
   return TRUE;
 }
 
@@ -586,8 +585,10 @@ gst_video_composer_decide_allocation (GstAggregator * aggregator,
   }
 
   // Invalidate the cached pool if there is an allocation_query.
-  if (vcomposer->outpool)
+  if (vcomposer->outpool) {
+    gst_buffer_pool_set_active (vcomposer->outpool, FALSE);
     gst_object_unref (vcomposer->outpool);
+  }
 
   // Create a new buffer pool.
   pool = gst_video_composer_create_pool (vcomposer, caps);
@@ -1301,7 +1302,10 @@ gst_video_composer_request_pad (GstElement * element, GstPadTemplate * templ,
   g_signal_connect (pad, "notify::crop",
       G_CALLBACK (gst_video_composer_property_crop_cb),
       vcomposer);
-  g_signal_connect (pad, "notify::destination",
+  g_signal_connect (pad, "notify::position",
+      G_CALLBACK (gst_video_composer_property_destination_cb),
+      vcomposer);
+  g_signal_connect (pad, "notify::dimensions",
       G_CALLBACK (gst_video_composer_property_destination_cb),
       vcomposer);
   g_signal_connect (pad, "notify::alpha",
