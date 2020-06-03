@@ -64,25 +64,24 @@ typedef struct _GstVideoComposerSinkPadClass GstVideoComposerSinkPadClass;
 
 struct _GstVideoComposerSinkPad {
   /// Inherited parent structure.
-  GstAggregatorPad  parent;
+  GstAggregatorPad        parent;
 
   /// Global mutex lock.
-  GMutex            lock;
+  GMutex                  lock;
 
   /// Sink pad index.
-  guint             index;
-
+  guint                   index;
   /// Negotiated caps on the pad input parsed to video info.
-  GstVideoInfo      *info;
+  GstVideoInfo            *info;
 
   /// Properties.
-  GstVideoRectangle crop;
-  GstVideoRectangle destination;
-  gboolean          flip_v;
-  gboolean          flip_h;
+  GstVideoRectangle       crop;
+  GstVideoRectangle       destination;
+  gboolean                flip_v;
+  gboolean                flip_h;
   GstVideoComposerRotate  rotation;
-  gdouble           alpha;
-  gint              zorder;
+  gdouble                 alpha;
+  gint                    zorder;
 };
 
 struct _GstVideoComposerSinkPadClass {

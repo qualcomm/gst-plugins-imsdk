@@ -70,16 +70,17 @@
 
 #define DEFAULT_OPT_FLIP_HORIZONTAL FALSE
 #define DEFAULT_OPT_FLIP_VERTICAL   FALSE
-#define DEFAULT_OPT_ROTATE_MODE     GST_C2D_VIDEO_ROTATE_NONE
+#define DEFAULT_OPT_ROTATION        GST_C2D_VIDEO_ROTATE_NONE
 #define DEFAULT_OPT_BACKGROUND      0xFF808080
+#define DEFAULT_OPT_UBWC_FORMAT     FALSE
 
 #define GET_OPT_FLIP_HORIZONTAL(s) get_opt_bool (s, \
     GST_C2D_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL, DEFAULT_OPT_FLIP_HORIZONTAL)
 #define GET_OPT_FLIP_VERTICAL(s) get_opt_bool (s, \
     GST_C2D_VIDEO_CONVERTER_OPT_FLIP_VERTICAL, DEFAULT_OPT_FLIP_VERTICAL)
-#define GET_OPT_ROTATE_MODE(s) get_opt_enum(s, \
-    GST_C2D_VIDEO_CONVERTER_OPT_ROTATE_MODE, GST_TYPE_C2D_VIDEO_ROTATE_MODE, \
-    DEFAULT_OPT_ROTATE_MODE)
+#define GET_OPT_ROTATION(s) get_opt_enum(s, \
+    GST_C2D_VIDEO_CONVERTER_OPT_ROTATION, GST_TYPE_C2D_VIDEO_ROTATION, \
+    DEFAULT_OPT_ROTATION)
 #define GET_OPT_BACKGROUND(s) get_opt_uint (s, \
     GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND, DEFAULT_OPT_BACKGROUND)
 #define GET_OPT_ALPHA(s, v) get_opt_double (s, \
@@ -100,6 +101,8 @@
     GST_C2D_VIDEO_CONVERTER_OPT_DEST_WIDTH, v)
 #define GET_OPT_DEST_HEIGHT(s, v) get_opt_int (s, \
     GST_C2D_VIDEO_CONVERTER_OPT_DEST_HEIGHT, v)
+#define GET_OPT_UBWC_FORMAT(s) get_opt_bool(s, \
+    GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, DEFAULT_OPT_UBWC_FORMAT)
 
 #define GST_C2D_GET_LOCK(obj) (&((GstC2dVideoConverter *) obj)->lock)
 #define GST_C2D_LOCK(obj)     g_mutex_lock (GST_C2D_GET_LOCK(obj))
@@ -169,11 +172,11 @@ struct _GstC2dVideoConverter
 };
 
 GType
-gst_c2d_video_rotate_mode_get_type (void)
+gst_c2d_video_rotation_get_type (void)
 {
   static GType gtype = 0;
 
-  static const GEnumValue methods[] = {
+  static const GEnumValue variants[] = {
     { GST_C2D_VIDEO_ROTATE_NONE,
       "No rotation", "none"
     },
@@ -190,7 +193,7 @@ gst_c2d_video_rotate_mode_get_type (void)
   };
 
   if (!gtype)
-    gtype = g_enum_register_static ("GstC2dVideoRotate", methods);
+    gtype = g_enum_register_static ("GstC2dVideoRotation", variants);
 
   return gtype;
 }
@@ -349,11 +352,11 @@ gst_video_format_to_c2d_format (GstVideoFormat format)
 
 static guint
 create_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
-    guint bits)
+    guint bits, gboolean isubwc)
 {
   C2D_STATUS status = C2D_STATUS_NOT_SUPPORTED;
-  const gchar *format;
-  guint surface_id;
+  const gchar *format = NULL, *compression = NULL;
+  guint surface_id = 0;
 
   gpointer gpuaddress = map_gpu_address (convert, frame);
   g_return_val_if_fail (gpuaddress != NULL, 0);
@@ -368,25 +371,33 @@ create_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
         gst_video_format_to_c2d_format (GST_VIDEO_FRAME_FORMAT (frame));
     g_return_val_if_fail (surface.format != 0, 0);
 
+    // In case the format has UBWC enabled append additional format flags.
+    if (isubwc) {
+      surface.format |= C2D_FORMAT_UBWC_COMPRESSED;
+      compression = " UBWC";
+    } else {
+      compression = "";
+    }
+
     // Set surface dimensions.
     surface.width = GST_VIDEO_FRAME_WIDTH (frame);
     surface.height = GST_VIDEO_FRAME_HEIGHT (frame);
 
-    GST_DEBUG ("%s %s surface - width(%u) height(%u)", (bits & C2D_SOURCE) ?
-        "Input" : "Output", format, surface.width, surface.height);
+    GST_DEBUG ("%s %s%s surface - width(%u) height(%u)", (bits & C2D_SOURCE) ?
+        "Input" : "Output", format, compression, surface.width, surface.height);
 
     // Plane stride.
     surface.stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0);
 
-    GST_DEBUG ("%s %s surface - stride(%d)", (bits & C2D_SOURCE) ?
-        "Input" : "Output", format, surface.stride);
+    GST_DEBUG ("%s %s%s surface - stride(%d)", (bits & C2D_SOURCE) ?
+        "Input" : "Output", format, compression, surface.stride);
 
     // Set plane virtual and GPU address.
     surface.buffer = GST_VIDEO_FRAME_PLANE_DATA (frame, 0);
     surface.phys = gpuaddress;
 
-    GST_DEBUG ("%s %s surface - plane(%p) phys(%p)", (bits & C2D_SOURCE) ?
-        "Input" : "Output", format, surface.buffer, surface.phys);
+    GST_DEBUG ("%s %s%s surface - plane(%p) phys(%p)", (bits & C2D_SOURCE) ?
+        "Input" : "Output", format, compression, surface.buffer, surface.phys);
 
     type = (C2D_SURFACE_TYPE)(C2D_SURFACE_RGB_HOST | C2D_SURFACE_WITH_PHYS);
 
@@ -400,12 +411,20 @@ create_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
         gst_video_format_to_c2d_format (GST_VIDEO_FRAME_FORMAT (frame));
     g_return_val_if_fail (surface.format != 0, 0);
 
+    // In case the format has UBWC enabled append additional format flags.
+    if (isubwc) {
+      surface.format |= C2D_FORMAT_UBWC_COMPRESSED;
+      compression = " UBWC";
+    } else {
+      compression = "";
+    }
+
     // Set surface dimensions.
     surface.width = GST_VIDEO_FRAME_WIDTH (frame);
     surface.height = GST_VIDEO_FRAME_HEIGHT (frame);
 
-    GST_DEBUG ("%s %s surface - width(%u) height(%u)", (bits & C2D_SOURCE) ?
-        "Input" : "Output", format, surface.width, surface.height);
+    GST_DEBUG ("%s %s%s surface - width(%u) height(%u)", (bits & C2D_SOURCE) ?
+        "Input" : "Output", format, compression, surface.width, surface.height);
 
     // Y plane stride.
     surface.stride0 = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0);
@@ -415,9 +434,9 @@ create_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
     surface.stride2 = (GST_VIDEO_FRAME_N_PLANES (frame) != 3) ?
         0 : GST_VIDEO_FRAME_PLANE_STRIDE (frame, 2);
 
-    GST_DEBUG ("%s %s surface - stride0(%d) stride1(%d) stride2(%d)",
-        (bits & C2D_SOURCE) ? "Input" : "Output", format, surface.stride0,
-        surface.stride1, surface.stride2);
+    GST_DEBUG ("%s %s%s surface - stride0(%d) stride1(%d) stride2(%d)",
+        (bits & C2D_SOURCE) ? "Input" : "Output", format, compression,
+        surface.stride0, surface.stride1, surface.stride2);
 
     // Y plane virtual address.
     surface.plane0 = GST_VIDEO_FRAME_PLANE_DATA (frame, 0);
@@ -427,9 +446,9 @@ create_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
     surface.plane2 = (GST_VIDEO_FRAME_N_PLANES (frame) != 3) ?
         NULL : GST_VIDEO_FRAME_PLANE_DATA (frame, 2);
 
-    GST_DEBUG ("%s %s surface - plane0(%p) plane1(%p) plane2(%p)",
-        (bits & C2D_SOURCE) ? "Input" : "Output", format, surface.plane0,
-        surface.plane1, surface.plane2);
+    GST_DEBUG ("%s %s%s surface - plane0(%p) plane1(%p) plane2(%p)",
+        (bits & C2D_SOURCE) ? "Input" : "Output", format, compression,
+        surface.plane0, surface.plane1, surface.plane2);
 
     // Y plane GPU address.
     surface.phys0 = gpuaddress;
@@ -441,9 +460,9 @@ create_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
         NULL : GSIZE_TO_POINTER (GPOINTER_TO_SIZE (gpuaddress) +
         GST_VIDEO_FRAME_PLANE_OFFSET (frame, 2));
 
-    GST_DEBUG ("%s %s surface - phys0(%p) phys1(%p) phys2(%p)",
-         (bits & C2D_SOURCE) ? "Input" : "Output", format, surface.phys0,
-         surface.phys1, surface.phys2);
+    GST_DEBUG ("%s %s%s surface - phys0(%p) phys1(%p) phys2(%p)",
+         (bits & C2D_SOURCE) ? "Input" : "Output", format, compression,
+         surface.phys0, surface.phys1, surface.phys2);
 
     type = (C2D_SURFACE_TYPE)(C2D_SURFACE_YUV_HOST | C2D_SURFACE_WITH_PHYS);
 
@@ -533,7 +552,7 @@ update_object (C2D_OBJECT * object, guint surface_id, const GstStructure * opts,
   height = GET_OPT_DEST_HEIGHT (opts, 0);
 
   // Setup rotation angle and adjustments.
-  switch (GET_OPT_ROTATE_MODE (opts)) {
+  switch (GET_OPT_ROTATION (opts)) {
     case GST_C2D_VIDEO_ROTATE_90_CW:
       object->config_mask |= (C2D_OVERRIDE_GLOBAL_TARGET_ROTATE_CONFIG |
           C2D_OVERRIDE_TARGET_ROTATE_270);
@@ -860,6 +879,15 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
     if (NULL == inframe->buffer)
       continue;
 
+    // Initialize empty options structure in case none have been set.
+    if (idx >= g_list_length (convert->inopts)) {
+      convert->inopts = g_list_append (convert->inopts,
+          gst_structure_new_empty ("GstC2dVideoConverter"));
+    }
+
+    // Get the options for current input buffer.
+    opts = g_list_nth_data (convert->inopts, idx);
+
     // Get the 1st (and only) memory block from the input GstBuffer.
     memory = gst_buffer_peek_memory (inframe->buffer, 0);
     C2D_RETURN_NULL_IF_FAIL_WITH_MSG (gst_is_fd_memory (memory),
@@ -871,7 +899,8 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
 
     if (!g_hash_table_contains (convert->insurfaces, GUINT_TO_POINTER (fd))) {
       // Create an input surface and add its ID to the input hash table.
-      surface_id = create_surface (convert, inframe, C2D_SOURCE);
+      surface_id = create_surface (convert, inframe, C2D_SOURCE,
+          GET_OPT_UBWC_FORMAT (opts));
       C2D_RETURN_NULL_IF_FAIL_WITH_MSG (surface_id != 0,
           GST_C2D_UNLOCK (convert); g_free (objects),
           "Failed to create surface!");
@@ -883,14 +912,6 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
       surface_id = GPOINTER_TO_UINT (
           g_hash_table_lookup (convert->insurfaces, GUINT_TO_POINTER (fd)));
     }
-
-    if (idx >= g_list_length (convert->inopts)) {
-      convert->inopts = g_list_append (convert->inopts,
-          gst_structure_new_empty ("GstC2dVideoConverter"));
-    }
-
-    // Get the options for current input buffer.
-    opts = g_list_nth_data (convert->inopts, idx);
 
     // Update the input C2D object.
     update_object (&objects[id], surface_id, opts, inframe, outframe);
@@ -913,7 +934,8 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
 
   if (!g_hash_table_contains (convert->outsurfaces, GUINT_TO_POINTER (fd))) {
     // Create an output surface and add its ID to the output hash table.
-    surface_id = create_surface (convert, outframe, C2D_TARGET);
+    surface_id = create_surface (convert, outframe, C2D_TARGET,
+        GET_OPT_UBWC_FORMAT (convert->outopts));
     C2D_RETURN_NULL_IF_FAIL_WITH_MSG (surface_id != 0,
         GST_C2D_UNLOCK (convert); g_free (objects),
         "Failed to create surface!");

@@ -49,6 +49,13 @@ G_BEGIN_DECLS
   (G_TYPE_CHECK_CLASS_TYPE ((klass), GST_TYPE_IMAGE_BUFFER_POOL))
 #define GST_IMAGE_BUFFER_POOL_CAST(obj) ((GstImageBufferPool*)(obj))
 
+/**
+ * GST_IMAGE_BUFFER_POOL_OPTION_UBWC_MODE:
+ *
+ * An option indicating that the allocated buffer must be UBWC.
+ */
+#define GST_IMAGE_BUFFER_POOL_OPTION_UBWC_MODE "GstBufferPoolOptionUBWCMode"
+
 typedef struct _GstImageBufferPool GstImageBufferPool;
 typedef struct _GstImageBufferPoolClass GstImageBufferPoolClass;
 typedef struct _GstImageBufferPoolPrivate GstImageBufferPoolPrivate;
