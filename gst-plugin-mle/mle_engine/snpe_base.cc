@@ -54,6 +54,28 @@ int32_t SNPEBase::ConfigureRuntime(MLConfig &config) {
       }
       break;
     }
+    case RuntimeType::GPU: {
+      if (zdl::SNPE::SNPEFactory::isRuntimeAvailable(
+          zdl::DlSystem::Runtime_t::GPU)) {
+        runtime_ = zdl::DlSystem::Runtime_t::GPU;
+        MLE_LOGI("GPU runtime selected");
+      } else {
+        runtime_ = zdl::DlSystem::Runtime_t::CPU;
+        MLE_LOGI("CPU runtime selected, but GPU was configured");
+      }
+      break;
+    }
+    case RuntimeType::AIP: {
+      if (zdl::SNPE::SNPEFactory::isRuntimeAvailable(
+          zdl::DlSystem::Runtime_t::AIP_FIXED8_TF)) {
+        runtime_ = zdl::DlSystem::Runtime_t::AIP_FIXED8_TF;
+        MLE_LOGI("AIP runtime selected");
+      } else {
+        runtime_ = zdl::DlSystem::Runtime_t::CPU;
+        MLE_LOGI("CPU runtime selected, but AIP was configured");
+      }
+      break;
+    }
     case RuntimeType::CPU: {
       runtime_ = zdl::DlSystem::Runtime_t::CPU;
       MLE_LOGI("CPU runtime selected");

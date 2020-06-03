@@ -54,6 +54,8 @@ enum MLEErrors {
 enum class RuntimeType {
   CPU = 0,
   DSP,
+  GPU,
+  AIP
 };
 
 enum class InputFormat {
