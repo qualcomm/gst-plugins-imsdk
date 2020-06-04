@@ -357,11 +357,6 @@ qmmfsrc_create_session (GstQmmfSrc * qmmfsrc)
     success = gst_qmmf_context_create_stream (qmmfsrc->context, pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Image stream creation failed!");
-
-    // TODO Remove this once ConfigImageCapture is actually configuring image.
-    success = gst_qmmf_context_capture_image (qmmfsrc->context, pad);
-    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
-        "Capture image failed!");
   }
 
   GST_TRACE_OBJECT (qmmfsrc, "Session created");

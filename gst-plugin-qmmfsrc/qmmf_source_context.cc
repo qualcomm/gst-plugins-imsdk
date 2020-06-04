@@ -723,12 +723,6 @@ void image_data_callback (GstQmmfContext * context, GstPad * pad,
   if (GST_FORMAT_UNDEFINED == ipad->segment.format) {
     gst_segment_init (&(ipad)->segment, GST_FORMAT_TIME);
     gst_pad_push_event (pad, gst_event_new_segment (&(ipad)->segment));
-
-    // This is the 1st capture which is used for stream configuration.
-    // TODO Remove this once ConfigImageCapture is actually configuring image.
-    gst_buffer_unref (gstbuffer);
-    GST_QMMF_CONTEXT_UNLOCK (context);
-    return;
   }
 
   GST_BUFFER_PTS (gstbuffer) = buffer.timestamp - context->tsbase;
@@ -1251,8 +1245,15 @@ gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad)
     GST_QMMFSRC_IMAGE_PAD_LOCK (ipad);
 
     ::qmmf::recorder::ImageConfigParam config;
+    ::qmmf::recorder::ImageParam imgparam;
+
+    imgparam.width = ipad->width;
+    imgparam.height = ipad->height;
 
     if (ipad->codec == GST_IMAGE_CODEC_TYPE_JPEG) {
+      imgparam.image_format = ::qmmf::ImageFormat::kJPEG;
+      gst_structure_get_uint (ipad->params, "quality", &imgparam.image_quality);
+
       ::qmmf::recorder::ImageThumbnail thumbnail;
       ::qmmf::recorder::ImageExif exif;
       guint width, height, quality;
@@ -1281,11 +1282,45 @@ gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad)
 
       exif.enable = true;
       config.Update (::qmmf::recorder::QMMF_EXIF, exif, 0);
+    } else if (ipad->codec == GST_IMAGE_CODEC_TYPE_NONE) {
+      switch (ipad->format) {
+        case GST_VIDEO_FORMAT_NV12:
+          imgparam.image_format = ::qmmf::ImageFormat::kNV12;
+          break;
+        case GST_VIDEO_FORMAT_NV21:
+          imgparam.image_format = ::qmmf::ImageFormat::kNV21;
+          break;
+        case GST_VIDEO_FORMAT_UNKNOWN: {
+          switch (ipad->bayer) {
+            case GST_IMAGE_FORMAT_RAW8:
+              imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI8BIT;
+              break;
+            case GST_IMAGE_FORMAT_RAW10:
+              imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI10BIT;
+              break;
+            case GST_IMAGE_FORMAT_RAW12:
+              imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI12BIT;
+              break;
+            case GST_IMAGE_FORMAT_RAW16:
+              imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI16BIT;
+              break;
+            default:
+              GST_ERROR ("Unsupported format %d", ipad->bayer);
+              GST_QMMFSRC_IMAGE_PAD_UNLOCK(ipad);
+              return FALSE;
+          }
+          break;
+        }
+        default:
+          GST_ERROR ("Unsupported format %d", ipad->format);
+          GST_QMMFSRC_IMAGE_PAD_UNLOCK(ipad);
+          return FALSE;
+      }
     }
 
     G_LOCK (recorder);
 
-    status = recorder->ConfigImageCapture (context->camera_id, config);
+    status = recorder->ConfigImageCapture (context->camera_id, imgparam, config);
 
     G_UNLOCK (recorder);
 
@@ -1421,49 +1456,6 @@ gst_qmmf_context_capture_image (GstQmmfContext * context, GstPad * pad)
 
   GST_QMMFSRC_IMAGE_PAD_LOCK (ipad);
 
-  ::qmmf::recorder::ImageParam imgparam;
-  imgparam.width = ipad->width;
-  imgparam.height = ipad->height;
-
-  if (ipad->codec == GST_IMAGE_CODEC_TYPE_JPEG) {
-    imgparam.image_format = ::qmmf::ImageFormat::kJPEG;
-    gst_structure_get_uint (ipad->params, "quality", &imgparam.image_quality);
-  } else if (ipad->codec == GST_IMAGE_CODEC_TYPE_NONE) {
-    switch (ipad->format) {
-      case GST_VIDEO_FORMAT_NV12:
-        imgparam.image_format = ::qmmf::ImageFormat::kNV12;
-        break;
-      case GST_VIDEO_FORMAT_NV21:
-        imgparam.image_format = ::qmmf::ImageFormat::kNV21;
-        break;
-      case GST_VIDEO_FORMAT_UNKNOWN: {
-        switch (ipad->bayer) {
-          case GST_IMAGE_FORMAT_RAW8:
-            imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI8BIT;
-            break;
-          case GST_IMAGE_FORMAT_RAW10:
-            imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI10BIT;
-            break;
-          case GST_IMAGE_FORMAT_RAW12:
-            imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI12BIT;
-            break;
-          case GST_IMAGE_FORMAT_RAW16:
-            imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI16BIT;
-            break;
-          default:
-            GST_ERROR ("Unsupported format %d", ipad->bayer);
-            GST_QMMFSRC_IMAGE_PAD_UNLOCK(ipad);
-            return FALSE;
-        }
-        break;
-      }
-      default:
-        GST_ERROR ("Unsupported format %d", ipad->format);
-        GST_QMMFSRC_IMAGE_PAD_UNLOCK(ipad);
-        return FALSE;
-    }
-  }
-
   imagecb = [&, context, pad] (uint32_t camera_id, uint32_t imgcount,
       ::qmmf::BufferDescriptor buffer, ::qmmf::recorder::MetaData meta)
       { image_data_callback (context, pad, buffer, meta); };
@@ -1484,7 +1476,7 @@ gst_qmmf_context_capture_image (GstQmmfContext * context, GstPad * pad)
   G_LOCK (recorder);
 
   status = recorder->CaptureImage (
-      context->camera_id, imgparam, 1, metadata, imagecb);
+      context->camera_id, 1, metadata, imagecb);
 
   G_UNLOCK (recorder);
 
