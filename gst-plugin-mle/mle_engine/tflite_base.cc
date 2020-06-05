@@ -34,6 +34,7 @@
 #include <tensorflow/lite/examples/label_image/get_top_n_impl.h>
 #include <tensorflow/lite/kernels/register.h>
 #include <tensorflow/lite/tools/evaluation/utils.h>
+#include <tensorflow/core/public/version.h>
 #include "tflite_base.h"
 
 namespace mle {
@@ -83,6 +84,7 @@ int32_t TFLBase::LoadModel(std::string& model_path) {
 
 int32_t TFLBase::InitFramework() {
   MLE_LOGI("%s Enter", __func__);
+  MLE_LOGI("TFLite version: %s", TF_VERSION_STRING);
   int32_t res = MLE_OK;
 
   // Create the interpreter
