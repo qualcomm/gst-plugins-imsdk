@@ -35,7 +35,6 @@ target_link_libraries(${GST_MLE_LIBRARY} PRIVATE
   log
   dl
   cutils
-  jsoncpp
   fastcvopt
 )
 

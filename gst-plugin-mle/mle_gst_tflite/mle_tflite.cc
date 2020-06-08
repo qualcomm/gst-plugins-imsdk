@@ -27,7 +27,6 @@
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <json/json.h>
 #include <cstring>
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -278,33 +277,85 @@ static gboolean
 gst_mle_tflite_parse_config(gchar *config_location,
                             mle::MLConfig &configuration) {
   gboolean rc = FALSE;
-  std::ifstream in(config_location, std::ios::in | std::ios::binary);
-  if (in) {
-    Json::Reader reader;
-    Json::Value val;
-    if (reader.parse(in, val)) {
-      configuration.input_format =
-          (mle::InputFormat)val.get("input-format", 3).asInt();
-      configuration.blue_mean = val.get("BlueMean", 0).asFloat();
-      configuration.blue_sigma = val.get("BlueSigma", 0).asFloat();
-      configuration.green_mean = val.get("GreenMean", 0).asFloat();
-      configuration.green_sigma = val.get("GreenSigma", 0).asFloat();
-      configuration.red_mean = val.get("RedMean", 0).asFloat();
-      configuration.red_sigma = val.get("RedSigma", 0).asFloat();
-      configuration.use_norm = val.get("UseNorm", false).asBool();
-      configuration.preprocess_mode =
-          (mle::PreprocessingMode)val.get("preprocess-type", 1).asInt();
-      configuration.conf_threshold =
-          val.get("confidence-threshold", 0.0).asFloat();
-      configuration.model_file = val.get("model", "").asString();
-      configuration.labels_file = val.get("labels", "").asString();
-      configuration.number_of_threads = val.get("num-threads", 2).asInt();
-      configuration.delegate = val.get("delegate", "").asString();
-      rc = TRUE;
-    }
-    in.close();
+  GstStructure *structure = NULL;
 
+  GValue gvalue = G_VALUE_INIT;
+  g_value_init (&gvalue, GST_TYPE_STRUCTURE);
+
+  if (g_file_test (config_location, G_FILE_TEST_IS_REGULAR)) {
+    gchar *contents = NULL;
+    GError *error = NULL;
+
+    if (!g_file_get_contents (config_location, &contents, NULL, &error)) {
+      GST_WARNING ("Failed to get config file contents, error: %s!",
+          GST_STR_NULL (error->message));
+      g_clear_error (&error);
+      return FALSE;
+    }
+
+    // Remove trailing space and replace new lines with a coma delimeter.
+    contents = g_strstrip (contents);
+    contents = g_strdelimit (contents, "\n", ',');
+
+    rc = gst_value_deserialize (&gvalue, contents);
+    g_free (contents);
+
+    if (!rc) {
+      GST_WARNING ("Failed to deserialize config file contents!");
+      return rc;
+    }
+  } else if (!gst_value_deserialize (&gvalue, config_location)) {
+    GST_WARNING ("Failed to deserialize the config!");
+    return FALSE;
   }
+
+  structure = GST_STRUCTURE (g_value_dup_boxed (&gvalue));
+  g_value_unset (&gvalue);
+
+  gint value = 0;
+  gdouble dvalue = 0.0;
+  gboolean bvalue = false;
+
+  if (gst_structure_get_int (structure, "input_format", &value))
+    configuration.input_format = (mle::InputFormat)value;
+
+  if (gst_structure_get_double (structure, "BlueMean", &dvalue))
+    configuration.blue_mean = dvalue;
+
+  if (gst_structure_get_double (structure, "BlueSigma", &dvalue))
+   configuration.blue_sigma = dvalue;
+
+  if (gst_structure_get_double (structure, "GreenMean", &dvalue))
+    configuration.green_mean = dvalue;
+
+  if (gst_structure_get_double (structure, "GreenSigma", &dvalue))
+    configuration.green_sigma = dvalue;
+
+  if (gst_structure_get_double (structure, "RedMean", &dvalue))
+    configuration.red_mean = dvalue;
+
+  if (gst_structure_get_double (structure, "RedSigma", &dvalue))
+    configuration.red_sigma = dvalue;
+
+  if (gst_structure_get_boolean (structure, "UseNorm", &bvalue))
+    configuration.use_norm = dvalue;
+
+  if (gst_structure_get_int (structure, "preprocess_type", &value))
+    configuration.preprocess_mode = (mle::PreprocessingMode)value;
+
+  if (gst_structure_get_double (structure, "confidence_threshold", &dvalue))
+    configuration.conf_threshold = dvalue;
+
+  if (gst_structure_get_int (structure, "num_threads", &value))
+    configuration.number_of_threads = value;
+
+
+  configuration.model_file = gst_structure_get_string (structure, "model");
+  configuration.labels_file = gst_structure_get_string (structure, "labels");
+  configuration.delegate = gst_structure_get_string (structure, "delegate");
+
+  gst_structure_free (structure);
+
   return rc;
 }
 
@@ -356,7 +407,7 @@ gst_mle_create_engine(GstMLETFLite *mle) {
       (mle::PreprocessingMode)mle->preprocessing_type;
   configuration.input_format = (mle::InputFormat)mle->input_format;
 
-  // Set configuration values from json config file
+  // Set configuration values from config file
   if (mle->config_location) {
     parse = gst_mle_tflite_parse_config(mle->config_location, configuration);
     if (FALSE == parse) {
@@ -554,7 +605,7 @@ gst_mle_tflite_class_init (GstMLETFLiteClass * klass)
       g_param_spec_string(
           "config",
           "Path to config file",
-          "Path to JSON file. Eg.: /data/misc/camera/mle_tflite_config.json",
+          "Path to config file. Eg.: /data/misc/camera/mle_tflite.config",
           NULL,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS )));
