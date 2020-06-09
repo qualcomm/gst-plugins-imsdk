@@ -1,9 +1,13 @@
 set(GST_MLE_LIBRARY Engine_MLE)
 
-list(APPEND SOURCE_FILES "tflite_base.cc")
-list(APPEND SOURCE_FILES "tflite_segmentation.cc")
-list(APPEND SOURCE_FILES "tflite_posenet.cc")
 list(APPEND SOURCE_FILES "ml_engine_impl.cc")
+
+if (TFLITE_ENABLE)
+  add_definitions(-DTFLITE_ENABLE)
+  list(APPEND SOURCE_FILES "tflite_base.cc")
+  list(APPEND SOURCE_FILES "tflite_segmentation.cc")
+  list(APPEND SOURCE_FILES "tflite_posenet.cc")
+endif()
 
 if (SNPE_ENABLE)
   add_definitions(-DSNPE_ENABLE)
@@ -11,13 +15,6 @@ if (SNPE_ENABLE)
   list(APPEND SOURCE_FILES "snpe_detection.cc")
   list(APPEND SOURCE_FILES "snpe_single_ssd.cc")
   list(APPEND SOURCE_FILES "snpe_segmentation.cc")
-  list(APPEND SNPE_DIRS "${SNPE_INCLUDE_DIR}")
-  add_library(SNPE SHARED IMPORTED)
-  set_target_properties(SNPE PROPERTIES
-    IMPORTED_LOCATION ${SNPE_LIB_DIR}/libSNPE.so
-  )
-
-  set(SNPE SNPE)
 endif()
 
 add_library(${GST_MLE_LIBRARY} SHARED
@@ -27,13 +24,11 @@ add_library(${GST_MLE_LIBRARY} SHARED
 target_include_directories(${GST_MLE_LIBRARY} PUBLIC
   ${GST_INCLUDE_DIRS}
   ${SYSROOT_INCDIR}/ion_headers
-  ${SNPE_DIRS}
 )
 
 target_include_directories(${GST_MLE_LIBRARY} PRIVATE
   ${KERNEL_BUILDDIR}/usr/include
   ${SYSROOT_INCDIR}/ion_headers
-  ${SNPE_DIRS}
 )
 
 target_link_libraries(${GST_MLE_LIBRARY} PRIVATE
@@ -42,9 +37,15 @@ target_link_libraries(${GST_MLE_LIBRARY} PRIVATE
   cutils
   jsoncpp
   fastcvopt
-  tensorflow-lite
-  ${SNPE}
 )
+
+if (SNPE_ENABLE)
+  target_link_libraries(${GST_MLE_LIBRARY} PRIVATE SNPE)
+endif()
+
+if (TFLITE_ENABLE)
+  target_link_libraries(${GST_MLE_LIBRARY} PRIVATE tensorflow-lite)
+endif()
 
 install(
   TARGETS ${GST_MLE_LIBRARY}
