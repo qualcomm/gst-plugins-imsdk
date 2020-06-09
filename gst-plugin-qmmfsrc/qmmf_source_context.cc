@@ -106,7 +106,7 @@ struct _GstQmmfContext {
   /// Camera IR mode property.
   gint              irmode;
   /// Camera ISO exposure mode property.
-  gint              isomode;
+  gint64            isomode;
   /// Camera Noise Reduction mode property.
   guchar            nrmode;
   /// Camera Zoom region property.
@@ -456,10 +456,17 @@ initialize_camera_param (GstQmmfContext * context)
   if (tag_id != 0)
     meta.update(tag_id, &(context)->irmode, 1);
 
-  tag_id = get_vendor_tag_by_name("org.codeaurora.qcamera3.iso_exp_priority",
-                                  "select_priority");
+  // Here select_priority is ISOPriority whose index is 0.
+  gint select_iso_priority = 0;
+  tag_id = get_vendor_tag_by_name (
+      "org.codeaurora.qcamera3.iso_exp_priority", "select_priority");
   if (tag_id != 0)
-    meta.update(tag_id, &(context)->isomode, 1);
+    meta.update(tag_id, &select_iso_priority, 1);
+
+  tag_id = get_vendor_tag_by_name (
+      "org.codeaurora.qcamera3.iso_exp_priority", "use_iso_exp_priority");
+    if (tag_id != 0)
+      meta.update(tag_id, &(context)->isomode, 1);
 
   tag_id = get_vendor_tag_by_name("org.codeaurora.qcamera3.exposure_metering",
                                   "exposure_metering_mode");
@@ -1615,8 +1622,15 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
     }
     case PARAM_CAMERA_ISO_MODE:
     {
+      // Here select_priority is ISOPriority whose index is 0.
+      gint select_iso_priority = 0;
       guint tag_id = get_vendor_tag_by_name (
           "org.codeaurora.qcamera3.iso_exp_priority", "select_priority");
+      if (tag_id != 0)
+        meta.update(tag_id, &select_iso_priority, 1);
+
+      tag_id = get_vendor_tag_by_name (
+          "org.codeaurora.qcamera3.iso_exp_priority", "use_iso_exp_priority");
 
       context->isomode = g_value_get_enum (value);
       meta.update(tag_id, &(context)->isomode, 1);
