@@ -1,16 +1,15 @@
 Steps to enable SNPE GST plugin:
 
 1. Enable SNPE Distro:
-       Go to poky/meta-qti-bsp/conf/distro/include/qti-distro-fullstack.inc
-       Add DISTRO_FEATURES_append += "${@bb.utils.contains('MACHINE', 'qcs610-odk', 'snpe-enable', '', d)}" to line 42
+       Add 'qti-snpe' to 'DISTRO_FEATURES_append' list in the distro conf file
 
-2. Add SNPE Path in recipe file:
-       2.1 Download SNPE package and keep it in root folder of workspace.
-       2.2 Open recipe file poky/meta-qti-gst/recipes/gstreamer/gstreamer1.0-plugins-qti-oss-mle.bb and add SNPE path at SNPE_ROOT at line 29.
-       Example: SNPE_ROOT=<path_to_SNPE_package_in_workspace>
+2. Add SNPE package in the workspace:
+       2.1 Download SNPE package and unzip it.
+       2.2 Go to poky/meta-qti-ml-prop/recipes/snpe-sdk/
+       2.3 Create a folder 'files' in this directory
+       2.4 Copy the unzipped SNPE package folder to poky/meta-qti-ml-prop/recipes/snpe-sdk/files/
+       2.5 Rename the copied folder name to 'snpe'
+               For example - if the SNPE folder name was 'snpe-x.y.z', rename it to 'snpe'
+                             The final directory structure should look like - poky/meta-qti-ml-prop/recipes/snpe-sdk/files/snpe/
 
 3. Rebuild the image and flash the image to device
-
-4. Push SNPE libraries to target (manually change SNPE_ROOT)
-       4.1 adb push <SNPE_ROOT>/lib/arm-oe-linux-gcc8.2hf/* /usr/lib
-       4.2 adb push <SNPE_ROOT>/lib/dsp/* /usr/lib/rfsa/adsp
