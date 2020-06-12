@@ -19,7 +19,6 @@ target_link_libraries(${GST_MLE_TFLITE} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
-  jsoncpp
   qtimlmeta
   Engine_MLE
 )
@@ -33,7 +32,7 @@ install(
 )
 
 install(
-  FILES ${CMAKE_CURRENT_SOURCE_DIR}/mle_tflite_config.json
+  FILES ${CMAKE_CURRENT_SOURCE_DIR}/mle_tflite.config
   DESTINATION /data/misc/camera
   PERMISSIONS OWNER_WRITE OWNER_READ
   GROUP_READ

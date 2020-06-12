@@ -19,7 +19,6 @@ target_link_libraries(${GST_MLE_SNPE} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
-  jsoncpp
   qtimlmeta
   Engine_MLE
 )
@@ -33,7 +32,7 @@ install(
 )
 
 install(
-  FILES ${CMAKE_CURRENT_SOURCE_DIR}/mle_snpe_config.json
+  FILES ${CMAKE_CURRENT_SOURCE_DIR}/mle_snpe.config
   DESTINATION /data/misc/camera
   PERMISSIONS OWNER_WRITE OWNER_READ
   GROUP_READ
