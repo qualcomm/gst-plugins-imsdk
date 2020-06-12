@@ -125,6 +125,8 @@ struct _GstQmmfContext {
   GstStructure      *ltmdata;
   /// Noise Reduction Tuning
   GstStructure      *nrtuning;
+  /// Sharpness
+  gint              sharpness;
 };
 
 /// Global QMMF Recorder instance.
@@ -472,6 +474,12 @@ initialize_camera_param (GstQmmfContext * context)
                                   "exposure_metering_mode");
   if (tag_id != 0)
     meta.update(tag_id, &(context)->expmetering, 1);
+
+  tag_id = get_vendor_tag_by_name ("org.codeaurora.qcamera3.sharpness",
+      "strength");
+
+  if (tag_id != 0)
+    meta.update (tag_id, &(context)->sharpness, 1);
 
   set_vendor_tags(context->defogtable, &meta);
   set_vendor_tags(context->exptable, &meta);
@@ -1805,6 +1813,16 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       set_vendor_tags(context->nrtuning, &meta);
       break;
     }
+
+    case PARAM_CAMERA_SHARPNESS_STRENGTH:
+    {
+      guint tag_id = get_vendor_tag_by_name (
+          "org.codeaurora.qcamera3.sharpness", "strength");
+
+      context->sharpness = g_value_get_int (value);
+      meta.update(tag_id, &(context)->sharpness, 1);
+      break;
+    }
   }
 
   if (!context->slave) {
@@ -1959,6 +1977,9 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       g_free (string);
       break;
     }
+    case PARAM_CAMERA_SHARPNESS_STRENGTH:
+      g_value_set_int (value, context->sharpness);
+      break;
   }
 }
 
