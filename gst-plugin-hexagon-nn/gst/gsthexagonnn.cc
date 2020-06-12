@@ -234,6 +234,7 @@ gst_hexagonnn_transform_frame_ip (GstVideoFilter * trans,
   NNFrameInfo pFrameInfo;
   pFrameInfo.frame_data[0] = (uint8_t * ) GST_VIDEO_FRAME_PLANE_DATA (frame, 0);
   pFrameInfo.frame_data[1] = (uint8_t * ) GST_VIDEO_FRAME_PLANE_DATA (frame, 1);
+  pFrameInfo.stride = GST_VIDEO_FRAME_PLANE_STRIDE(frame, 0);
 
   if (!g_strcmp0(hnn->mode, "default")) {
     ret = hnn->engine->Process (&pFrameInfo, frame->buffer, true);
