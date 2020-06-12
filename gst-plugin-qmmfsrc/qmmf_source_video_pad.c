@@ -70,6 +70,7 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
 #define DEFAULT_PROP_MAX_QP_P_FRAMES 51
 #define DEFAULT_PROP_MIN_QP_B_FRAMES 10
 #define DEFAULT_PROP_MAX_QP_B_FRAMES 51
+#define DEFAULT_PROP_IDR_INTERVAL    1
 
 GType
 gst_video_pad_control_rate_get_type (void)
@@ -124,6 +125,7 @@ enum
   PROP_VIDEO_MAX_QP_P_FRAMES,
   PROP_VIDEO_MIN_QP_B_FRAMES,
   PROP_VIDEO_MAX_QP_B_FRAMES,
+  PROP_VIDEO_IDR_INTERVAL,
 };
 
 static void
@@ -505,6 +507,7 @@ video_pad_set_property (GObject * object, guint property_id,
     case PROP_VIDEO_MAX_QP_P_FRAMES:
     case PROP_VIDEO_MIN_QP_B_FRAMES:
     case PROP_VIDEO_MAX_QP_B_FRAMES:
+    case PROP_VIDEO_IDR_INTERVAL:
       gst_structure_set_value (pad->params, propname, value);
       break;
     default:
@@ -546,6 +549,7 @@ video_pad_get_property (GObject * object, guint property_id, GValue * value,
     case PROP_VIDEO_MAX_QP_P_FRAMES:
     case PROP_VIDEO_MIN_QP_B_FRAMES:
     case PROP_VIDEO_MAX_QP_B_FRAMES:
+    case PROP_VIDEO_IDR_INTERVAL:
       g_value_copy (gst_structure_get_value (pad->params,
            g_param_spec_get_name (pspec)), value);
       break;
@@ -693,6 +697,12 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
           0, 51, DEFAULT_PROP_MAX_QP_B_FRAMES,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_VIDEO_IDR_INTERVAL,
+      g_param_spec_uint ("idr-interval", "Instantaneous Decoder Refresh "
+          "interval", "IDR interval for compressed streams",
+          0, G_MAXUINT, DEFAULT_PROP_IDR_INTERVAL,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
 
   GST_DEBUG_CATEGORY_INIT (qmmfsrc_video_pad_debug, "qtiqmmfsrc", 0,
       "QTI QMMF Source video pad");

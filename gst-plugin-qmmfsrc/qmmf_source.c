@@ -285,6 +285,8 @@ qmmfsrc_request_pad (GstElement * element, GstPadTemplate * templ,
       G_CALLBACK (gst_qmmf_context_update_video_param), qmmfsrc->context);
   g_signal_connect (srcpad, "notify::framerate",
       G_CALLBACK (gst_qmmf_context_update_video_param), qmmfsrc->context);
+  g_signal_connect (srcpad, "notify::idr-interval",
+      G_CALLBACK (gst_qmmf_context_update_video_param), qmmfsrc->context);
 
   return srcpad;
 }
