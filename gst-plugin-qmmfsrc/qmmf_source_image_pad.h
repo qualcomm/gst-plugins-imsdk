@@ -86,6 +86,8 @@ G_BEGIN_DECLS
 #define GST_QMMFSRC_IMAGE_PAD_UNLOCK(obj) \
   g_mutex_unlock(GST_QMMFSRC_IMAGE_PAD_GET_LOCK(obj))
 
+#define GST_TYPE_QMMFSRC_IMAGE_PAD_MODE (gst_qmmfsrc_image_pad_mode_get_type())
+
 typedef enum {
   GST_IMAGE_FORMAT_UNKNOWN,
   GST_IMAGE_FORMAT_RAW8,
@@ -99,6 +101,12 @@ typedef enum {
   GST_IMAGE_CODEC_TYPE_NONE,
   GST_IMAGE_CODEC_TYPE_JPEG,
 } GstImageCodec;
+
+enum
+{
+  GST_IMAGE_MODE_VIDEO,
+  GST_IMAGE_MODE_CONTINUOUS,
+};
 
 typedef struct _GstQmmfSrcImagePad GstQmmfSrcImagePad;
 typedef struct _GstQmmfSrcImagePadClass GstQmmfSrcImagePadClass;
@@ -158,6 +166,9 @@ void     qmmfsrc_image_pad_flush_buffers_queue (GstPad *pad, gboolean flush);
 
 /// Modifies the pad capabilities into a representation with only fixed values.
 gboolean qmmfsrc_image_pad_fixate_caps (GstPad * pad);
+
+GType
+gst_qmmfsrc_image_pad_mode_get_type();
 
 G_END_DECLS
 

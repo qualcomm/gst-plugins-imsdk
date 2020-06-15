@@ -1330,7 +1330,29 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context,
 
       exif.enable = true;
       config.Update (::qmmf::recorder::QMMF_EXIF, exif, 0);
-      config.Update (::qmmf::recorder::QMMF_SNAPSHOT_TYPE, snapshot_type, 0);
+
+      /// Configure Image Mode
+      gint mode;
+      ::qmmf::recorder::SnapshotType snapshot_mode;
+      gst_structure_get_enum (ipad->params, "mode",
+          GST_TYPE_QMMFSRC_IMAGE_PAD_MODE, &mode);
+      switch (mode) {
+        case GST_IMAGE_MODE_VIDEO:
+          snapshot_mode.type = ::qmmf::recorder::SnapshotMode::kVideo;
+          break;
+        case GST_IMAGE_MODE_CONTINUOUS:
+          snapshot_mode.type = ::qmmf::recorder::SnapshotMode::kContinuous;
+          break;
+        default:
+          GST_ERROR ("Unsupported format %d", mode);
+          GST_QMMFSRC_IMAGE_PAD_UNLOCK(ipad);
+          return FALSE;
+      }
+      if (bayerpad != NULL) {
+        config.Update (::qmmf::recorder::QMMF_SNAPSHOT_TYPE, snapshot_type, 0);
+        GST_WARNING ("JPEG and RAW has enabled. Image Mode is ignored.");
+      } else
+        config.Update (::qmmf::recorder::QMMF_SNAPSHOT_TYPE, snapshot_mode, 0);
     } else if (ipad->codec == GST_IMAGE_CODEC_TYPE_NONE) {
       switch (ipad->format) {
         case GST_VIDEO_FORMAT_NV12:

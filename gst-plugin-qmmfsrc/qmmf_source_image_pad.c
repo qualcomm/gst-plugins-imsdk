@@ -58,11 +58,35 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_image_pad_debug);
 #define DEFAULT_PROP_SCREENNAIL_WIDTH   0
 #define DEFAULT_PROP_SCREENNAIL_HEIGHT  0
 #define DEFAULT_PROP_SCREENNAIL_QUALITY 85
+#define DEFAULT_PROP_IMAGE_MODE         GST_IMAGE_MODE_VIDEO
 
 enum
 {
   PROP_0,
+  PROP_IMAGE_MODE,
 };
+
+GType
+gst_qmmfsrc_image_pad_mode_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { GST_IMAGE_MODE_VIDEO,
+        "Video snapshot is captured with video settings. Video recording will "
+        "not be interrupted in this mode", "video"
+    },
+    { GST_IMAGE_MODE_CONTINUOUS,
+        "Continuously capture images at the set frame rate in the "
+        "capabilities.", "continuous"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstImageMode", variants);
+
+  return gtype;
+}
 
 void
 image_pad_worker_task (GstPad * pad)
@@ -377,6 +401,9 @@ image_pad_set_property (GObject * object, guint property_id,
   GST_QMMFSRC_IMAGE_PAD_LOCK (pad);
 
   switch (property_id) {
+    case PROP_IMAGE_MODE:
+      gst_structure_set_value (pad->params, propname, value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -397,6 +424,10 @@ image_pad_get_property (GObject * object, guint property_id, GValue * value,
   GST_QMMFSRC_IMAGE_PAD_LOCK (pad);
 
   switch (property_id) {
+    case PROP_IMAGE_MODE:
+      g_value_copy (gst_structure_get_value (pad->params,
+           g_param_spec_get_name (pspec)), value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -442,6 +473,13 @@ qmmfsrc_image_pad_class_init (GstQmmfSrcImagePadClass * klass)
   gobject->get_property = GST_DEBUG_FUNCPTR (image_pad_get_property);
   gobject->set_property = GST_DEBUG_FUNCPTR (image_pad_set_property);
   gobject->finalize     = GST_DEBUG_FUNCPTR (image_pad_finalize);
+
+  g_object_class_install_property (gobject, PROP_IMAGE_MODE,
+      g_param_spec_enum ("mode", "Image Mode",
+          "Different image mode.",
+          GST_TYPE_QMMFSRC_IMAGE_PAD_MODE, DEFAULT_PROP_IMAGE_MODE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
 
   GST_DEBUG_CATEGORY_INIT (qmmfsrc_image_pad_debug, "qtiqmmfsrc", 0,
       "QTI QMMF Source image pad");
