@@ -80,6 +80,9 @@ struct _GstQmmfSrc {
 
   /// QMMF context.
   GstQmmfContext *context;
+
+  /// Jpeg and Bayer feature is enabled.
+  gboolean       jpegbayerenabled;
 };
 
 struct _GstQmmfSrcClass {

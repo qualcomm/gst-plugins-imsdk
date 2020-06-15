@@ -249,8 +249,9 @@ qmmfsrc_request_pad (GstElement * element, GstPadTemplate * templ,
         g_list_append (qmmfsrc->vidindexes, GUINT_TO_POINTER (index));
     g_free (padname);
   } else if (isimage) {
-    // Currently there is support for only one image pad.
-    g_return_val_if_fail (g_list_length (qmmfsrc->imgindexes) == 0, NULL);
+    // Currently there is support for only two image pad.
+    // Two image pad is required to accommodate Jpeg and Bayer feature.
+    g_return_val_if_fail (g_list_length (qmmfsrc->imgindexes) <= 1, NULL);
 
     padname = g_strdup_printf ("image_%u", index);
 
@@ -326,7 +327,7 @@ qmmfsrc_create_session (GstQmmfSrc * qmmfsrc)
 {
   gboolean success = FALSE;
   gpointer key;
-  GstPad *pad = NULL;
+  GstPad *pad = NULL, *jpegpad = NULL, *bayerpad = NULL;
   GList *list = NULL;
 
   GST_TRACE_OBJECT (qmmfsrc, "Create session");
@@ -342,7 +343,7 @@ qmmfsrc_create_session (GstQmmfSrc * qmmfsrc)
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Failed to fixate video caps!");
 
-    success = gst_qmmf_context_create_stream (qmmfsrc->context, pad);
+    success = gst_qmmf_context_create_video_stream (qmmfsrc->context, pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Video stream creation failed!");
   }
@@ -350,13 +351,42 @@ qmmfsrc_create_session (GstQmmfSrc * qmmfsrc)
   for (list = qmmfsrc->imgindexes; list != NULL; list = list->next) {
     key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
+
     success = qmmfsrc_image_pad_fixate_caps (pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Failed to fixate image caps!");
 
-    success = gst_qmmf_context_create_stream (qmmfsrc->context, pad);
+    if (GST_QMMFSRC_IMAGE_PAD (pad)->codec == GST_IMAGE_CODEC_TYPE_JPEG)
+      jpegpad = pad;
+
+    if (GST_QMMFSRC_IMAGE_PAD (pad)->bayer != GST_IMAGE_FORMAT_UNKNOWN)
+      bayerpad = pad;
+  }
+
+  // This is to check whether 2 image pad are of Jpeg and Bayer format or not.
+  qmmfsrc->jpegbayerenabled = (jpegpad != NULL && bayerpad != NULL) ?
+      TRUE : FALSE;
+
+  QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc,
+      !(g_list_length (qmmfsrc->imgindexes) == 2 &&
+      !qmmfsrc->jpegbayerenabled), FALSE,
+      "Image pad combination is not correct.");
+
+  if (qmmfsrc->jpegbayerenabled) {
+    success = gst_qmmf_context_create_image_stream (qmmfsrc->context,
+        jpegpad, bayerpad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Image stream creation failed!");
+  } else {
+    if (g_list_length (qmmfsrc->imgindexes) > 0) {
+      pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads,
+          (qmmfsrc->imgindexes)->data));
+
+      success = gst_qmmf_context_create_image_stream (qmmfsrc->context,
+          pad, NULL);
+      QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
+          "Image stream creation failed!");
+    }
   }
 
   GST_TRACE_OBJECT (qmmfsrc, "Session created");
@@ -374,9 +404,9 @@ qmmfsrc_delete_session (GstQmmfSrc * qmmfsrc)
 
   GST_TRACE_OBJECT (qmmfsrc, "Delete session");
 
-  for (list = qmmfsrc->imgindexes; list != NULL; list = list->next) {
-    key = list->data;
-    pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
+  if (g_list_length (qmmfsrc->imgindexes) > 0) {
+    pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads,
+        (qmmfsrc->imgindexes)->data));
 
     success = gst_qmmf_context_delete_stream (qmmfsrc->context, pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
@@ -464,18 +494,38 @@ qmmfsrc_capture_image (GstQmmfSrc * qmmfsrc)
 {
   gpointer key;
   GList *list = NULL;
+  gboolean success = FALSE;
+  GstPad *pad = NULL, *jpegpad = NULL, *bayerpad = NULL;
 
   GST_TRACE_OBJECT (qmmfsrc, "Submit capture image/s");
 
-  for (list = qmmfsrc->imgindexes; list != NULL; list = list->next) {
-    key = list->data;
-    GstPad *pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
+  if (qmmfsrc->jpegbayerenabled) {
+    for (list = qmmfsrc->imgindexes; list != NULL; list = list->next) {
+      key = list->data;
+      pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
 
-    gboolean success = gst_qmmf_context_capture_image (qmmfsrc->context, pad);
+      if (GST_QMMFSRC_IMAGE_PAD (pad)->codec == GST_IMAGE_CODEC_TYPE_JPEG)
+        jpegpad = pad;
+
+      if (GST_QMMFSRC_IMAGE_PAD (pad)->bayer != GST_IMAGE_FORMAT_UNKNOWN)
+        bayerpad = pad;
+    }
+
+    success = gst_qmmf_context_capture_image (qmmfsrc->context, jpegpad,
+        bayerpad);
+
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Capture image failed!");
-  }
+  } else {
+    if (g_list_length (qmmfsrc->imgindexes) > 0) {
+      pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads,
+          (qmmfsrc->imgindexes)->data));
 
+      success = gst_qmmf_context_capture_image (qmmfsrc->context, pad, NULL);
+      QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
+          "Capture image failed!");
+    }
+  }
   GST_TRACE_OBJECT (qmmfsrc, "Capture image/s submitted");
 
   return TRUE;

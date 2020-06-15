@@ -87,7 +87,12 @@ GST_API gboolean
 gst_qmmf_context_delete_session (GstQmmfContext * context);
 
 GST_API gboolean
-gst_qmmf_context_create_stream (GstQmmfContext * context, GstPad * pad);
+gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad);
+
+GST_API gboolean
+gst_qmmf_context_create_image_stream (GstQmmfContext * context,
+                                      GstPad * pad,
+                                      GstPad * bayerpad);
 
 GST_API gboolean
 gst_qmmf_context_delete_stream (GstQmmfContext * context, GstPad * pad);
@@ -102,7 +107,8 @@ GST_API gboolean
 gst_qmmf_context_pause_session (GstQmmfContext * context);
 
 GST_API gboolean
-gst_qmmf_context_capture_image (GstQmmfContext * context, GstPad * pad);
+gst_qmmf_context_capture_image (GstQmmfContext * context, GstPad * pad,
+                                GstPad * bayerpad);
 
 GST_API void
 gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
