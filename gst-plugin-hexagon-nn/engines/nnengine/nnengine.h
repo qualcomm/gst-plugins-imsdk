@@ -197,7 +197,7 @@ protected:
   NNDriver                 nn_driver_;
   void *                   outputs_[kMaxOut];
 
-  static const uint8_t     kTimeOut = 1000;
+  static const uint32_t     kTimeOut = 1000;
 
   std::future<void>        future_;
   std::mutex               process_lock_;

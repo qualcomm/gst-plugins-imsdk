@@ -92,9 +92,9 @@ int32_t NNEngine::EngineDeInit()
     do {
       status = future_.wait_for(std::chrono::milliseconds(kTimeOut));
       if (status == std::future_status::deferred) {
-          ALOGE("Future wait deferred", __func__);
+          ALOGE("%s: Future wait deferred", __func__);
       } else if (status == std::future_status::timeout) {
-          ALOGE("Future wait timeout %d ms", __func__, kTimeOut);
+          ALOGE("%s: Future wait timeout %d ms", __func__, kTimeOut);
       }
     } while (status != std::future_status::ready);
   }
