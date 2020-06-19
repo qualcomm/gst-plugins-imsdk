@@ -49,7 +49,8 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_image_pad_debug);
 #define DEFAULT_IMAGE_STREAM_FPS_NUM 30
 #define DEFAULT_IMAGE_STREAM_FPS_DEN 1
 #define DEFAULT_IMAGE_RAW_FORMAT     "NV21"
-#define DEFAULT_IMAGE_BAYER_FORMAT   "RAW10"
+#define DEFAULT_IMAGE_BAYER_FORMAT   "bggr"
+#define DEFAULT_IMAGE_BAYER_BPP      "10"
 
 #define DEFAULT_PROP_QUALITY            85
 #define DEFAULT_PROP_THUMBNAIL_WIDTH    0
@@ -240,17 +241,30 @@ image_pad_update_params (GstPad * pad, GstStructure *structure)
     ipad->format = gst_video_format_from_string (
         gst_structure_get_string (structure, "format"));
   } else if (gst_structure_has_name (structure, "video/x-bayer")) {
+    const gchar *format = gst_structure_get_string (structure, "format");
+    const gchar *bpp = gst_structure_get_string (structure, "bpp");
+
     ipad->codec = GST_IMAGE_CODEC_NONE;
-    const gchar *bayer = gst_structure_get_string (structure, "format");
-    if (g_strcmp0(bayer, "RAW8") == 0) {
-      ipad->bayer = GST_IMAGE_FORMAT_RAW8;
-    } else if (g_strcmp0(bayer, "RAW10") == 0) {
-      ipad->bayer = GST_IMAGE_FORMAT_RAW10;
-    } else if (g_strcmp0(bayer, "RAW12") == 0) {
-      ipad->bayer = GST_IMAGE_FORMAT_RAW12;
-    } else if (g_strcmp0(bayer, "RAW16") == 0) {
-      ipad->bayer = GST_IMAGE_FORMAT_RAW16;
-    }
+
+    if (g_strcmp0 (bpp, "8") == 0)
+      ipad->bpp = 8;
+    else if (g_strcmp0 (bpp, "10") == 0)
+      ipad->bpp = 10;
+    else if (g_strcmp0 (bpp, "12") == 0)
+      ipad->bpp = 12;
+    else if (g_strcmp0 (bpp, "16") == 0)
+      ipad->bpp = 16;
+
+    if (g_strcmp0 (format, "bggr") == 0)
+      ipad->format = GST_BAYER_FORMAT_BGGR;
+    else if (g_strcmp0 (format, "rggb") == 0)
+      ipad->format = GST_BAYER_FORMAT_RGGB;
+    else if (g_strcmp0 (format, "gbrg") == 0)
+      ipad->format = GST_BAYER_FORMAT_GBRG;
+    else if (g_strcmp0 (format, "grbg") == 0)
+      ipad->format = GST_BAYER_FORMAT_GRBG;
+    else if (g_strcmp0 (format, "mono") == 0)
+      ipad->format = GST_BAYER_FORMAT_MONO;
   }
 
   GST_QMMFSRC_IMAGE_PAD_UNLOCK (pad);
@@ -355,25 +369,26 @@ qmmfsrc_image_pad_fixate_caps (GstPad * pad)
         DEFAULT_IMAGE_STREAM_FPS_NUM, DEFAULT_IMAGE_STREAM_FPS_DEN);
   }
 
-  if (gst_structure_has_name (structure, "video/x-bayer")) {
-    const gchar *type = NULL;
-    type = gst_structure_get_string (structure, "format");
-    if (!type) {
-      gst_structure_set (structure, "format", G_TYPE_STRING,
-          DEFAULT_IMAGE_BAYER_FORMAT, NULL);
-      GST_DEBUG_OBJECT (pad, "Image format not set, using default value: %s",
-          DEFAULT_IMAGE_BAYER_FORMAT);
+  if (gst_structure_has_field (structure, "format")) {
+    const gchar *format = gst_structure_get_string (structure, "format");
+    gboolean isbayer = gst_structure_has_name (structure, "video/x-bayer");
+
+    if (!format) {
+      gst_structure_fixate_field_string (structure, "format",
+          isbayer ? DEFAULT_IMAGE_BAYER_FORMAT : DEFAULT_IMAGE_RAW_FORMAT);
+      GST_DEBUG_OBJECT (pad, "Format not set, using default value: %s",
+          isbayer ? DEFAULT_IMAGE_BAYER_FORMAT : DEFAULT_IMAGE_RAW_FORMAT);
     }
   }
 
-  if (gst_structure_has_name (structure, "video/x-raw")) {
-    const gchar *type = NULL;
-    type = gst_structure_get_string (structure, "format");
-    if (!type) {
-      gst_structure_set (structure, "format", G_TYPE_STRING,
-          DEFAULT_IMAGE_RAW_FORMAT, NULL);
-      GST_DEBUG_OBJECT (pad, "Image format not set, using default value: %s",
-          DEFAULT_IMAGE_RAW_FORMAT);
+  if (gst_structure_has_field (structure, "bpp")) {
+    const gchar *bpp = gst_structure_get_string (structure, "bpp");
+
+    if (!bpp) {
+      gst_structure_fixate_field_string (structure, "bpp",
+          DEFAULT_IMAGE_BAYER_BPP);
+      GST_DEBUG_OBJECT (pad, "BPP not set, using default value: %s",
+          DEFAULT_IMAGE_BAYER_BPP);
     }
   }
 
@@ -504,7 +519,6 @@ qmmfsrc_image_pad_init (GstQmmfSrcImagePad * pad)
   pad->height    = -1;
   pad->framerate = 0;
   pad->format    = GST_VIDEO_FORMAT_UNKNOWN;
-  pad->bayer     = GST_IMAGE_FORMAT_UNKNOWN;
   pad->codec     = GST_IMAGE_CODEC_UNKNOWN;
   pad->params    = gst_structure_new_empty ("codec-params");
   pad->mode      = DEFAULT_PROP_IMAGE_MODE;

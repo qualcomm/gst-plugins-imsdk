@@ -135,7 +135,10 @@ static GstStaticPadTemplate qmmfsrc_video_src_template =
                 "{ NV12 }") "; "
             QMMFSRC_VIDEO_RAW_CAPS_WITH_FEATURES(
                 GST_CAPS_FEATURE_MEMORY_GBM,
-                "{ NV12 }")
+                "{ NV12 }") "; "
+            QMMFSRC_VIDEO_BAYER_CAPS(
+                "{ bggr, rggb, gbrg, grbg, mono }",
+                "{ 8, 10, 12, 16 }")
         )
     );
 
@@ -145,18 +148,14 @@ static GstStaticPadTemplate qmmfsrc_image_src_template =
         GST_PAD_REQUEST,
         GST_STATIC_CAPS (
             QMMFSRC_IMAGE_JPEG_CAPS "; "
-            QMMFSRC_IMAGE_JPEG_CAPS_WITH_FEATURES (
-                GST_CAPS_FEATURE_MEMORY_GBM) "; "
-            QMMFSRC_IMAGE_BAYER_CAPS(
-                "{ RAW8, RAW10, RAW12, RAW16 }") "; "
-            QMMFSRC_IMAGE_BAYER_CAPS_WITH_FEATURES(
-                GST_CAPS_FEATURE_MEMORY_GBM,
-                "{ RAW8, RAW10, RAW12, RAW16 }") "; "
             QMMFSRC_IMAGE_RAW_CAPS(
                 "{ NV21 }") "; "
             QMMFSRC_IMAGE_RAW_CAPS_WITH_FEATURES(
                 GST_CAPS_FEATURE_MEMORY_GBM,
                 "{ NV21 }") "; "
+            QMMFSRC_IMAGE_BAYER_CAPS(
+                "{ bggr, rggb, gbrg, grbg, mono }",
+                "{ 8, 10, 12, 16 }")
         )
     );
 
@@ -362,7 +361,7 @@ qmmfsrc_create_session (GstQmmfSrc * qmmfsrc)
     if (GST_QMMFSRC_IMAGE_PAD (pad)->codec == GST_IMAGE_CODEC_JPEG)
       jpegpad = pad;
 
-    if (GST_QMMFSRC_IMAGE_PAD (pad)->bayer != GST_IMAGE_FORMAT_UNKNOWN)
+    if (GST_QMMFSRC_IMAGE_PAD (pad)->format >= GST_BAYER_FORMAT_OFFSET)
       bayerpad = pad;
   }
 
@@ -510,7 +509,7 @@ qmmfsrc_capture_image (GstQmmfSrc * qmmfsrc)
       if (GST_QMMFSRC_IMAGE_PAD (pad)->codec == GST_IMAGE_CODEC_JPEG)
         jpegpad = pad;
 
-      if (GST_QMMFSRC_IMAGE_PAD (pad)->bayer != GST_IMAGE_FORMAT_UNKNOWN)
+      if (GST_QMMFSRC_IMAGE_PAD (pad)->format >= GST_BAYER_FORMAT_OFFSET)
         bayerpad = pad;
     }
 

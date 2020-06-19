@@ -165,6 +165,84 @@ running_time (GstPad * pad)
   return runningtime;
 }
 
+static gboolean
+validate_bayer_params (GstQmmfContext * context, GstPad * pad)
+{
+  ::android::CameraMetadata meta;
+  camera_metadata_entry entry;
+  gint width = 0, height = 0, format = 0;
+  gboolean supported = FALSE;
+
+  G_LOCK (recorder);
+
+  recorder->GetCameraCharacteristics (context->camera_id, meta);
+
+  G_UNLOCK (recorder);
+
+  if (GST_IS_QMMFSRC_VIDEO_PAD (pad)) {
+    width = GST_QMMFSRC_VIDEO_PAD (pad)->width;
+    height = GST_QMMFSRC_VIDEO_PAD (pad)->height;
+    format = GST_QMMFSRC_VIDEO_PAD (pad)->format;
+  } else if (GST_IS_QMMFSRC_IMAGE_PAD (pad)) {
+    width = GST_QMMFSRC_IMAGE_PAD (pad)->width;
+    height = GST_QMMFSRC_IMAGE_PAD (pad)->height;
+    format = GST_QMMFSRC_IMAGE_PAD (pad)->format;
+  } else {
+    GST_WARNING ("Unsupported pad '%s'!", GST_PAD_NAME (pad));
+    return FALSE;
+  }
+
+  if (!meta.exists (ANDROID_SENSOR_INFO_COLOR_FILTER_ARRANGEMENT)) {
+    GST_WARNING ("There is no sensor filter information!");
+    return FALSE;
+  }
+
+  entry = meta.find (ANDROID_SENSOR_INFO_COLOR_FILTER_ARRANGEMENT);
+
+  switch (entry.data.u8[0]) {
+    case ANDROID_SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_BGGR:
+      QMMFSRC_RETURN_VAL_IF_FAIL (NULL, format == GST_BAYER_FORMAT_BGGR,
+          FALSE, "Invalid bayer matrix format, expected format 'bggr' !");
+      break;
+    case ANDROID_SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_GRBG:
+      QMMFSRC_RETURN_VAL_IF_FAIL (NULL, format == GST_BAYER_FORMAT_GRBG,
+          FALSE, "Invalid bayer matrix format, expected format 'grbg' !");
+      break;
+    case ANDROID_SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_GBRG:
+      QMMFSRC_RETURN_VAL_IF_FAIL (NULL, format == GST_BAYER_FORMAT_GBRG,
+          FALSE, "Invalid bayer matrix format, expected format 'gbrg' !");
+      break;
+    case ANDROID_SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_RGGB:
+      QMMFSRC_RETURN_VAL_IF_FAIL (NULL, format == GST_BAYER_FORMAT_RGGB,
+          FALSE, "Invalid bayer matrix format, expected format 'rggb' !");
+      break;
+#if defined(CAMERA_METADATA_1_1)
+    case ANDROID_SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_MONO:
+      QMMFSRC_RETURN_VAL_IF_FAIL (NULL, format == GST_BAYER_FORMAT_MONO,
+          FALSE, "Invalid bayer matrix format, expected format 'mono' !");
+      break;
+#endif
+    default:
+      GST_WARNING ("Unsupported sensor filter arrangement!");
+      return FALSE;
+  }
+
+  if (!meta.exists (ANDROID_SENSOR_OPAQUE_RAW_SIZE)) {
+    GST_WARNING ("There is no camera bayer size information!");
+    return FALSE;
+  }
+
+  entry = meta.find (ANDROID_SENSOR_OPAQUE_RAW_SIZE);
+
+  supported = (width == entry.data.i32[0]) && (height == entry.data.i32[1]);
+
+  QMMFSRC_RETURN_VAL_IF_FAIL (NULL, supported, FALSE,
+      "Invalid bayer resolution, expected %dx%d !", entry.data.i32[0],
+      entry.data.i32[1]);
+
+  return TRUE;
+}
+
 static guint
 get_vendor_tag_by_name (const gchar * section, const gchar * name)
 {
@@ -661,7 +739,7 @@ void video_data_callback (GstQmmfContext * context, GstPad * pad,
     // Set GStreamer buffer video metadata.
     gst_buffer_add_video_meta_full (
         gstbuffer, GST_VIDEO_FRAME_FLAG_NONE,
-        vpad->format, vpad->width, vpad->height,
+        (GstVideoFormat)vpad->format, vpad->width, vpad->height,
         numplanes, offset, stride
     );
 
@@ -981,6 +1059,27 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
       format = (vpad->compression == GST_VIDEO_COMPRESSION_UBWC) ?
           ::qmmf::VideoFormat::kNV12UBWC : ::qmmf::VideoFormat::kNV12;
       break;
+    case GST_BAYER_FORMAT_BGGR:
+    case GST_BAYER_FORMAT_RGGB:
+    case GST_BAYER_FORMAT_GBRG:
+    case GST_BAYER_FORMAT_GRBG:
+    case GST_BAYER_FORMAT_MONO:
+      if (!validate_bayer_params (context, pad)) {
+        GST_ERROR ("Invalid bayer format or resolution!");
+        GST_QMMFSRC_VIDEO_PAD_UNLOCK (vpad);
+        return FALSE;
+      } else if (vpad->bpp == 8) {
+        format = ::qmmf::VideoFormat::kBayerRDI8BIT;
+      } else if (vpad->bpp == 10) {
+        format = ::qmmf::VideoFormat::kBayerRDI10BIT;
+      } else if (vpad->bpp == 12) {
+        format = ::qmmf::VideoFormat::kBayerRDI12BIT;
+      } else {
+        GST_ERROR ("Unsupported bits per pixel for bayer format!");
+        GST_QMMFSRC_VIDEO_PAD_UNLOCK (vpad);
+        return FALSE;
+      }
+      break;
     case GST_VIDEO_FORMAT_ENCODED:
       // Encoded stream.
       break;
@@ -1272,21 +1371,32 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context,
     GST_QMMFSRC_IMAGE_PAD_LOCK (bpad);
 
     snapshotparam.type = ::qmmf::recorder::SnapshotMode::kVideoPlusRaw;
-    switch (bpad->bayer) {
-      case GST_IMAGE_FORMAT_RAW8:
-        snapshotparam.raw_format = ::qmmf::ImageFormat::kBayerRDI8BIT;
-        break;
-      case GST_IMAGE_FORMAT_RAW10:
-        snapshotparam.raw_format = ::qmmf::ImageFormat::kBayerRDI10BIT;
-        break;
-      case GST_IMAGE_FORMAT_RAW12:
-        snapshotparam.raw_format = ::qmmf::ImageFormat::kBayerRDI12BIT;
-        break;
-      case GST_IMAGE_FORMAT_RAW16:
-        snapshotparam.raw_format = ::qmmf::ImageFormat::kBayerRDI16BIT;
+    switch (bpad->format) {
+      case GST_BAYER_FORMAT_BGGR:
+      case GST_BAYER_FORMAT_RGGB:
+      case GST_BAYER_FORMAT_GBRG:
+      case GST_BAYER_FORMAT_GRBG:
+      case GST_BAYER_FORMAT_MONO:
+        if (!validate_bayer_params (context, bayerpad)) {
+          GST_ERROR ("Invalid bayer format or resolution!");
+          GST_QMMFSRC_IMAGE_PAD_UNLOCK (bpad);
+          return FALSE;
+        } else if (bpad->bpp == 8) {
+          snapshotparam.raw_format = ::qmmf::ImageFormat::kBayerRDI8BIT;
+        } else if (bpad->bpp == 10) {
+          snapshotparam.raw_format = ::qmmf::ImageFormat::kBayerRDI10BIT;
+        } else if (bpad->bpp == 12) {
+          snapshotparam.raw_format = ::qmmf::ImageFormat::kBayerRDI12BIT;
+        } else if (bpad->bpp == 16) {
+          snapshotparam.raw_format = ::qmmf::ImageFormat::kBayerRDI16BIT;
+        } else {
+          GST_ERROR ("Unsupported bits per pixel for bayer format!");
+          GST_QMMFSRC_IMAGE_PAD_UNLOCK (bpad);
+          return FALSE;
+        }
         break;
       default:
-        GST_ERROR ("Unsupported bayer format: %d", bpad->bayer);
+        GST_ERROR ("Unsupported format: %d", bpad->format);
         GST_QMMFSRC_IMAGE_PAD_UNLOCK (bpad);
         return FALSE;
     }
@@ -1361,27 +1471,29 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context,
       case GST_VIDEO_FORMAT_NV21:
         imgparam.image_format = ::qmmf::ImageFormat::kNV21;
         break;
-      case GST_VIDEO_FORMAT_UNKNOWN: {
-        switch (ipad->bayer) {
-          case GST_IMAGE_FORMAT_RAW8:
-            imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI8BIT;
-            break;
-          case GST_IMAGE_FORMAT_RAW10:
-            imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI10BIT;
-            break;
-          case GST_IMAGE_FORMAT_RAW12:
-            imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI12BIT;
-            break;
-          case GST_IMAGE_FORMAT_RAW16:
-            imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI16BIT;
-            break;
-          default:
-            GST_ERROR ("Unsupported bayer format: %d", ipad->bayer);
-            GST_QMMFSRC_IMAGE_PAD_UNLOCK (ipad);
-            return FALSE;
+      case GST_BAYER_FORMAT_BGGR:
+      case GST_BAYER_FORMAT_RGGB:
+      case GST_BAYER_FORMAT_GBRG:
+      case GST_BAYER_FORMAT_GRBG:
+      case GST_BAYER_FORMAT_MONO:
+        if (!validate_bayer_params (context, pad)) {
+          GST_ERROR ("Invalid bayer format or resolution!");
+          GST_QMMFSRC_IMAGE_PAD_UNLOCK (ipad);
+          return FALSE;
+        } else if (ipad->bpp == 8) {
+          imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI8BIT;
+        } else if (ipad->bpp == 10) {
+          imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI10BIT;
+        } else if (ipad->bpp == 12) {
+          imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI12BIT;
+        } else if (ipad->bpp == 16) {
+          imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI16BIT;
+        } else {
+         GST_ERROR ("Unsupported bits per pixel for bayer format!");
+         GST_QMMFSRC_IMAGE_PAD_UNLOCK (ipad);
+         return FALSE;
         }
         break;
-      }
       default:
         GST_ERROR ("Unsupported format %d", ipad->format);
         GST_QMMFSRC_IMAGE_PAD_UNLOCK (ipad);
