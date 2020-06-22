@@ -1009,7 +1009,7 @@ gst_overlay_apply_overlay (GstOverlay *gst_overlay, GstVideoFrame *frame)
   overlay_buf.width     = GST_VIDEO_FRAME_WIDTH (frame);
   overlay_buf.height    = GST_VIDEO_FRAME_HEIGHT (frame);
   overlay_buf.ion_fd    = fd;
-  overlay_buf.frame_len = GST_VIDEO_FRAME_SIZE (frame);
+  overlay_buf.frame_len = gst_buffer_get_size (frame->buffer);
   overlay_buf.format    = gst_overlay->format;
 
   ret = gst_overlay->overlay->ApplyOverlay (overlay_buf);
