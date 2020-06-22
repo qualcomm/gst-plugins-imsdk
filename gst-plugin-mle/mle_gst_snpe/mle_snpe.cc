@@ -715,9 +715,9 @@ gst_mle_snpe_class_init (GstMLESNPEClass * klass)
       g_param_spec_uint(
           "runtime",
           "SNPE Runtime",
-          "0 - CPU; 1 - DSP",
+          "0 - CPU; 1 - DSP; 2 - GPU; 3 - AIP",
           0,
-          1,
+          3,
           DEFAULT_PROP_SNPE_RUNTIME,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));
