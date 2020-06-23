@@ -664,7 +664,7 @@ gst_video_composer_prepare_input_frame (GstElement * element, GstPad * pad,
   guint idx = 0;
 
   if (gst_aggregator_pad_is_eos (GST_AGGREGATOR_PAD (pad)))
-     return TRUE;
+    return TRUE;
 
   if (!gst_aggregator_pad_has_buffer (GST_AGGREGATOR_PAD (pad))) {
     GST_TRACE_OBJECT (vcomposer, "Pad %s does not have a buffer!",
@@ -708,7 +708,7 @@ gst_video_composer_prepare_input_frame (GstElement * element, GstPad * pad,
   if (!gst_video_frame_map (&frames[idx], sinkpad->info, buffer,
           GST_MAP_READ | GST_VIDEO_FRAME_MAP_FLAG_NO_REF)) {
     GST_ERROR_OBJECT (vcomposer, "Failed to map input buffer!");
-    return TRUE;
+    return FALSE;
   }
 
   GST_TRACE_OBJECT (vcomposer, "Pad %s %" GST_PTR_FORMAT, GST_PAD_NAME (pad),
@@ -843,7 +843,7 @@ gst_video_composer_src_query (GstAggregator * aggregator, GstQuery * query)
 {
   GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER (aggregator);
 
-  GST_TRACE_OBJECT (vcomposer, "Received %s query on src pad",
+  GST_DEBUG_OBJECT (vcomposer, "Received %s query on src pad",
       GST_QUERY_TYPE_NAME (query));
 
   switch (GST_QUERY_TYPE (query)) {
@@ -1230,6 +1230,23 @@ gst_video_composer_get_next_time (GstAggregator * aggregator)
   return nexttime;
 }
 
+static gboolean
+gst_video_composer_is_eos (GstAggregator * aggregator)
+{
+  GList *list = NULL;
+  gboolean eos = TRUE;
+
+  GST_OBJECT_LOCK (aggregator);
+
+  // Iterate over every sink pad and check whether they reached EOS.
+  for (list = GST_ELEMENT (aggregator)->sinkpads; list; list = list->next)
+    eos &= gst_aggregator_pad_is_eos (GST_AGGREGATOR_PAD (list->data));
+
+  GST_OBJECT_UNLOCK (aggregator);
+
+  return eos;
+}
+
 static GstFlowReturn
 gst_video_composer_aggregate (GstAggregator * aggregator, gboolean timeout)
 {
@@ -1240,6 +1257,10 @@ gst_video_composer_aggregate (GstAggregator * aggregator, gboolean timeout)
 
   if (timeout && (NULL == vcomposer->outinfo))
     return GST_AGGREGATOR_FLOW_NEED_DATA;
+
+  // Check whether all pads have reached EOS.
+  if (gst_video_composer_is_eos (aggregator))
+    return GST_FLOW_EOS;
 
   request = gst_converter_request_new ();
   request->inframes = g_new0 (GstVideoFrame, vcomposer->n_inputs);
