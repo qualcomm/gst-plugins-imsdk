@@ -73,12 +73,22 @@ struct _GstQmmfContext {
   /// QMMF Recorder multimedia session ID.
   guint             session_id;
 
-  /// Camera property to Enable or Disable LDC.
+  /// To check if Camera is opened or not
+  gboolean          opened;
+
+  /// Video and image pads timestamp base.
+  GstClockTime      tsbase;
+
+  /// Camera Slave mode.
+  gboolean          slave;
+  /// Camera property to Enable or Disable Lens Distortion Correction.
   gboolean          ldc;
-  /// Camera property to Enable or Disable EIS.
+  /// Camera property to Enable or Disable Electronic Image Stabilization.
   gboolean          eis;
-  /// Camera property to Enable or Disable SHDR.
+  /// Camera property to Enable or Disable Super High Dynamic Range.
   gboolean          shdr;
+  /// Camera property to Enable or Disable Auto Dynamic Range Compression.
+  gboolean          adrc;
   /// Camera frame effect property.
   guchar            effect;
   /// Camera scene optimization property.
@@ -109,23 +119,15 @@ struct _GstQmmfContext {
   gint64            isomode;
   /// Camera Noise Reduction mode property.
   guchar            nrmode;
+  /// Camera Noise Reduction Tuning
+  GstStructure      *nrtuning;
   /// Camera Zoom region property.
   GstVideoRectangle zoom;
   /// Camera Defog table property.
   GstStructure      *defogtable;
-  /// Video and image pads timestamp base.
-  GstClockTime      tsbase;
-  /// Camera Slave mode.
-  gboolean          slave;
-  /// To check if Camera is opened or not
-  gboolean          opened;
-  /// ADRC property
-  gboolean          adrc;
-  /// Local tone Mapping
+  /// Camera Local Tone Mapping property.
   GstStructure      *ltmdata;
-  /// Noise Reduction Tuning
-  GstStructure      *nrtuning;
-  /// Sharpness
+  /// Camera Sharpness property.
   gint              sharpness;
 };
 
@@ -148,7 +150,7 @@ update_structure (GQuark id, const GValue * value, gpointer data)
 }
 
 static GstClockTime
-qmmfsrc_running_time (GstPad * pad)
+running_time (GstPad * pad)
 {
   GstElement *element = GST_ELEMENT (gst_pad_get_parent (pad));
   GstClock *clock = gst_element_get_clock (element);
@@ -401,11 +403,11 @@ initialize_camera_param (GstQmmfContext * context)
   guchar numvalue = 0;
   gint status = 0;
 
-  G_LOCK(recorder);
+  G_LOCK (recorder);
 
-  status = recorder->GetCameraParam(context->camera_id, meta);
+  status = recorder->GetCameraParam (context->camera_id, meta);
 
-  G_UNLOCK(recorder);
+  G_UNLOCK (recorder);
 
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
       "QMMF Recorder GetCameraParam Failed!");
@@ -481,16 +483,16 @@ initialize_camera_param (GstQmmfContext * context)
   if (tag_id != 0)
     meta.update (tag_id, &(context)->sharpness, 1);
 
-  set_vendor_tags(context->defogtable, &meta);
-  set_vendor_tags(context->exptable, &meta);
-  set_vendor_tags(context->ltmdata, &meta);
-  set_vendor_tags(context->nrtuning, &meta);
+  set_vendor_tags (context->defogtable, &meta);
+  set_vendor_tags (context->exptable, &meta);
+  set_vendor_tags (context->ltmdata, &meta);
+  set_vendor_tags (context->nrtuning, &meta);
 
-  G_LOCK(recorder);
+  G_LOCK (recorder);
 
-  status = recorder->SetCameraParam(context->camera_id, meta);
+  status = recorder->SetCameraParam (context->camera_id, meta);
 
-  G_UNLOCK(recorder);
+  G_UNLOCK (recorder);
 
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
       "QMMF Recorder SetCameraParam Failed!");
@@ -666,7 +668,7 @@ void video_data_callback (GstQmmfContext * context, GstPad * pad,
     GST_QMMF_CONTEXT_LOCK (context);
     // Initialize the timestamp base value for buffer synchronization.
     context->tsbase = (GST_CLOCK_TIME_NONE == context->tsbase) ?
-        buffer.timestamp - qmmfsrc_running_time (pad) : context->tsbase;
+        buffer.timestamp - running_time (pad) : context->tsbase;
 
     if (GST_FORMAT_UNDEFINED == vpad->segment.format) {
       gst_segment_init (&(vpad)->segment, GST_FORMAT_TIME);
@@ -718,7 +720,7 @@ void image_data_callback (GstQmmfContext * context, GstPad * pad,
   GST_QMMF_CONTEXT_LOCK (context);
   // Initialize the timestamp base value for buffer synchronization.
   context->tsbase = (GST_CLOCK_TIME_NONE == context->tsbase) ?
-      buffer.timestamp - qmmfsrc_running_time (pad) : context->tsbase;
+      buffer.timestamp - running_time (pad) : context->tsbase;
 
   if (GST_FORMAT_UNDEFINED == ipad->segment.format) {
     gst_segment_init (&(ipad)->segment, GST_FORMAT_TIME);
@@ -830,32 +832,32 @@ gst_qmmf_context_open (GstQmmfContext * context)
 
   GST_TRACE ("Open QMMF context");
 
-  G_LOCK (recorder);
-
-  qmmf::recorder::CameraExtraParam extra_param;
+  ::qmmf::recorder::CameraExtraParam extra_param;
 
   // Slave Mode
-  qmmf::recorder::CameraSlaveMode camera_slave_mode;
+  ::qmmf::recorder::CameraSlaveMode camera_slave_mode;
   camera_slave_mode.mode = context->slave ?
-      qmmf::recorder::SlaveMode::kSlave :
-      qmmf::recorder::SlaveMode::kMaster;
+      ::qmmf::recorder::SlaveMode::kSlave :
+      ::qmmf::recorder::SlaveMode::kMaster;
   extra_param.Update(::qmmf::recorder::QMMF_CAMERA_SLAVE_MODE,
       camera_slave_mode);
 
   // LDC
-  qmmf::recorder::LDCMode ldc;
+  ::qmmf::recorder::LDCMode ldc;
   ldc.enable = context->ldc;
-  extra_param.Update(qmmf::recorder::QMMF_LDC, ldc);
+  extra_param.Update(::qmmf::recorder::QMMF_LDC, ldc);
 
   // EIS
-  qmmf::recorder::EISSetup eis_mode;
+  ::qmmf::recorder::EISSetup eis_mode;
   eis_mode.enable = context->eis;
-  extra_param.Update(qmmf::recorder::QMMF_EIS, eis_mode);
+  extra_param.Update(::qmmf::recorder::QMMF_EIS, eis_mode);
 
   // SHDR
-  qmmf::recorder::VideoHDRMode vid_hdr_mode;
+  ::qmmf::recorder::VideoHDRMode vid_hdr_mode;
   vid_hdr_mode.enable = context->shdr;
-  extra_param.Update(qmmf::recorder::QMMF_VIDEO_HDR_MODE, vid_hdr_mode);
+  extra_param.Update(::qmmf::recorder::QMMF_VIDEO_HDR_MODE, vid_hdr_mode);
+
+  G_LOCK (recorder);
 
   status = recorder->StartCamera(context->camera_id, 30, extra_param);
 
@@ -931,7 +933,7 @@ gst_qmmf_context_delete_session (GstQmmfContext * context)
 
   G_LOCK (recorder);
 
-  status = recorder->DeleteSession(context->session_id);
+  status = recorder->DeleteSession (context->session_id);
 
   G_UNLOCK (recorder);
 
@@ -948,298 +950,305 @@ gst_qmmf_context_delete_session (GstQmmfContext * context)
 gboolean
 gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
 {
+  GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
   ::qmmf::recorder::TrackCb track_cbs;
   ::qmmf::recorder::VideoExtraParam extraparam;
   gint status = 0;
 
   GST_TRACE ("Create QMMF context video stream");
 
-  if (GST_IS_QMMFSRC_VIDEO_PAD (pad)) {
-    GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
+  GST_QMMFSRC_VIDEO_PAD_LOCK (vpad);
+
+  ::qmmf::VideoFormat format;
+  switch (vpad->codec) {
+    case GST_VIDEO_CODEC_H264:
+      format = ::qmmf::VideoFormat::kAVC;
+      break;
+    case GST_VIDEO_CODEC_H265:
+      format = ::qmmf::VideoFormat::kHEVC;
+      break;
+    case GST_VIDEO_CODEC_NONE:
+      // Not an encoded stream.
+      break;
+    default:
+      GST_ERROR ("Unsupported video codec!");
+      GST_QMMFSRC_VIDEO_PAD_UNLOCK (vpad);
+      return FALSE;
+  }
+
+  switch (vpad->format) {
+    case GST_VIDEO_FORMAT_NV12:
+      format = (vpad->compression == GST_VIDEO_COMPRESSION_UBWC) ?
+          ::qmmf::VideoFormat::kNV12UBWC : ::qmmf::VideoFormat::kNV12;
+      break;
+    case GST_VIDEO_FORMAT_ENCODED:
+      // Encoded stream.
+      break;
+    default:
+      GST_ERROR ("Unsupported video format!");
+      GST_QMMFSRC_VIDEO_PAD_UNLOCK (vpad);
+      return FALSE;
+  }
+
+  ::qmmf::recorder::VideoTrackCreateParam params (
+    context->camera_id, format, vpad->width, vpad->height, vpad->framerate
+  );
+
+  if (format == ::qmmf::VideoFormat::kAVC) {
     guint bitrate, qpvalue, idr_interval;
     const gchar *profile, *level;
     gint ratecontrol;
 
-    GST_QMMFSRC_VIDEO_PAD_LOCK (vpad);
-
-    ::qmmf::VideoFormat format;
-    switch (vpad->codec) {
-      case GST_VIDEO_CODEC_NONE:
-        switch (vpad->format) {
-          case GST_VIDEO_FORMAT_NV12:
-            format = (vpad->compression == GST_VIDEO_COMPRESSION_UBWC) ?
-                ::qmmf::VideoFormat::kNV12UBWC : ::qmmf::VideoFormat::kNV12;
-            break;
-          default:
-            GST_ERROR ("Unsupported video format!");
-            return FALSE;
-        }
-        break;
-      case GST_VIDEO_CODEC_H264:
-        format = ::qmmf::VideoFormat::kAVC;
-        break;
-      case GST_VIDEO_CODEC_H265:
-        format = ::qmmf::VideoFormat::kHEVC;
-        break;
-      default:
-        GST_ERROR ("Unsupported video codec!");
-        return FALSE;
+    profile = gst_structure_get_string (vpad->params, "profile");
+    if (g_strcmp0 (profile, "baseline") == 0) {
+      params.codec_param.avc.profile = ::qmmf::AVCProfileType::kBaseline;
+    } else if (g_strcmp0 (profile, "main") == 0) {
+      params.codec_param.avc.profile = ::qmmf::AVCProfileType::kMain;
+    } else if (g_strcmp0 (profile, "high") == 0) {
+      params.codec_param.avc.profile = ::qmmf::AVCProfileType::kHigh;
     }
 
-    ::qmmf::recorder::VideoTrackCreateParam params (
-      context->camera_id, format, vpad->width, vpad->height, vpad->framerate
-    );
-
-    if (format == ::qmmf::VideoFormat::kAVC) {
-      profile = gst_structure_get_string (vpad->params, "profile");
-      if (g_strcmp0 (profile, "baseline") == 0) {
-        params.codec_param.avc.profile = ::qmmf::AVCProfileType::kBaseline;
-      } else if (g_strcmp0 (profile, "main") == 0) {
-        params.codec_param.avc.profile = ::qmmf::AVCProfileType::kMain;
-      } else if (g_strcmp0 (profile, "high") == 0) {
-        params.codec_param.avc.profile = ::qmmf::AVCProfileType::kHigh;
-      }
-
-      level = gst_structure_get_string (vpad->params, "level");
-      if (g_strcmp0 (level, "1") == 0) {
-        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel1;
-      } else if (g_strcmp0 (level, "1.3") == 0) {
-        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel1_3;
-      } else if (g_strcmp0 (level, "2") == 0) {
-        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel2;
-      } else if (g_strcmp0 (level, "2.1") == 0) {
-        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel2_1;
-      } else if (g_strcmp0 (level, "2.2") == 0) {
-        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel2_2;
-      } else if (g_strcmp0 (level, "3") == 0) {
-        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel3;
-      } else if (g_strcmp0 (level, "3.1") == 0) {
-        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel3_1;
-      } else if (g_strcmp0 (level, "3.2") == 0) {
-        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel3_2;
-      } else if (g_strcmp0 (level, "4") == 0) {
-        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel4;
-      } else if (g_strcmp0 (level, "4.1") == 0) {
-        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel4_1;
-      } else if (g_strcmp0 (level, "4.2") == 0) {
-        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel4_2;
-      } else if (g_strcmp0 (level, "5") == 0) {
-        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel5;
-      } else if (g_strcmp0 (level, "5.1") == 0) {
-        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel5_1;
-      } else if (g_strcmp0 (level, "5.2") == 0) {
-        params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel5_2;
-      }
-
-      gst_structure_get_enum (vpad->params, "bitrate-control",
-          GST_TYPE_VIDEO_PAD_CONTROL_RATE, &ratecontrol);
-      switch (ratecontrol) {
-        case GST_VIDEO_CONTROL_RATE_DISABLE:
-          params.codec_param.avc.ratecontrol_type =
-              ::qmmf::VideoRateControlType::kDisable;
-          break;
-        case GST_VIDEO_CONTROL_RATE_VARIABLE:
-          params.codec_param.avc.ratecontrol_type =
-              ::qmmf::VideoRateControlType::kVariable;
-          break;
-        case GST_VIDEO_CONTROL_RATE_CONSTANT:
-          params.codec_param.avc.ratecontrol_type =
-              ::qmmf::VideoRateControlType::kConstant;
-          break;
-        case GST_VIDEO_CONTROL_RATE_MAXBITRATE:
-          params.codec_param.avc.ratecontrol_type =
-              ::qmmf::VideoRateControlType::kMaxBitrate;
-          break;
-        case GST_VIDEO_CONTROL_RATE_VARIABLE_SKIP_FRAMES:
-          params.codec_param.avc.ratecontrol_type =
-              ::qmmf::VideoRateControlType::kVariableSkipFrames;
-          break;
-        case GST_VIDEO_CONTROL_RATE_CONSTANT_SKIP_FRAMES:
-          params.codec_param.avc.ratecontrol_type =
-              ::qmmf::VideoRateControlType::kConstantSkipFrames;
-          break;
-        case GST_VIDEO_CONTROL_RATE_MAXBITRATE_SKIP_FRAMES:
-          params.codec_param.avc.ratecontrol_type =
-              ::qmmf::VideoRateControlType::kMaxBitrateSkipFrames;
-          break;
-      }
-
-      gst_structure_get_uint (vpad->params, "bitrate", &bitrate);
-      params.codec_param.avc.bitrate = bitrate;
-
-      gst_structure_get_uint (vpad->params, "quant-i-frames", &qpvalue);
-      params.codec_param.avc.qp_params.init_qp.init_IQP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "quant-p-frames", &qpvalue);
-      params.codec_param.avc.qp_params.init_qp.init_PQP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "quant-b-frames", &qpvalue);
-      params.codec_param.avc.qp_params.init_qp.init_BQP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "min-qp", &qpvalue);
-      params.codec_param.avc.qp_params.qp_range.min_QP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "max-qp", &qpvalue);
-      params.codec_param.avc.qp_params.qp_range.max_QP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "min-qp-i-frames", &qpvalue);
-      params.codec_param.avc.qp_params.qp_IBP_range.min_IQP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "max-qp-i-frames", &qpvalue);
-      params.codec_param.avc.qp_params.qp_IBP_range.max_IQP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "min-qp-p-frames", &qpvalue);
-      params.codec_param.avc.qp_params.qp_IBP_range.min_PQP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "max-qp-p-frames", &qpvalue);
-      params.codec_param.avc.qp_params.qp_IBP_range.max_PQP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "min-qp-b-frames", &qpvalue);
-      params.codec_param.avc.qp_params.qp_IBP_range.min_BQP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "max-qp-b-frames", &qpvalue);
-      params.codec_param.avc.qp_params.qp_IBP_range.max_BQP = qpvalue;
-
-      params.codec_param.avc.qp_params.enable_init_qp = true;
-      params.codec_param.avc.qp_params.enable_qp_range = true;
-      params.codec_param.avc.qp_params.enable_qp_IBP_range = true;
-
-      gst_structure_get_uint(vpad->params, "idr-interval", &idr_interval);
-      params.codec_param.avc.idr_interval = idr_interval;
-
-    } else if (format == ::qmmf::VideoFormat::kHEVC) {
-      profile = gst_structure_get_string(vpad->params, "profile");
-      if (g_strcmp0 (profile, "main") == 0) {
-        params.codec_param.hevc.profile = ::qmmf::HEVCProfileType::kMain;
-      }
-
-      level = gst_structure_get_string (vpad->params, "level");
-      if (g_strcmp0 (level, "3") == 0) {
-        params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel3;
-      } else if (g_strcmp0 (level, "4") == 0) {
-        params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel4;
-      } else if (g_strcmp0 (level, "5") == 0) {
-        params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel5;
-      } else if (g_strcmp0 (level, "5.1") == 0) {
-        params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel5_1;
-      } else if (g_strcmp0 (level, "5.2") == 0) {
-        params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel5_2;
-      }
-
-      gst_structure_get_enum (vpad->params, "bitrate-control",
-          GST_TYPE_VIDEO_PAD_CONTROL_RATE, &ratecontrol);
-      switch (ratecontrol) {
-        case GST_VIDEO_CONTROL_RATE_DISABLE:
-          params.codec_param.hevc.ratecontrol_type =
-              ::qmmf::VideoRateControlType::kDisable;
-          break;
-        case GST_VIDEO_CONTROL_RATE_VARIABLE:
-          params.codec_param.hevc.ratecontrol_type =
-              ::qmmf::VideoRateControlType::kVariable;
-          break;
-        case GST_VIDEO_CONTROL_RATE_CONSTANT:
-          params.codec_param.hevc.ratecontrol_type =
-              ::qmmf::VideoRateControlType::kConstant;
-          break;
-        case GST_VIDEO_CONTROL_RATE_MAXBITRATE:
-          params.codec_param.hevc.ratecontrol_type =
-              ::qmmf::VideoRateControlType::kMaxBitrate;
-          break;
-        case GST_VIDEO_CONTROL_RATE_VARIABLE_SKIP_FRAMES:
-          params.codec_param.hevc.ratecontrol_type =
-              ::qmmf::VideoRateControlType::kVariableSkipFrames;
-          break;
-        case GST_VIDEO_CONTROL_RATE_CONSTANT_SKIP_FRAMES:
-          params.codec_param.hevc.ratecontrol_type =
-              ::qmmf::VideoRateControlType::kConstantSkipFrames;
-          break;
-        case GST_VIDEO_CONTROL_RATE_MAXBITRATE_SKIP_FRAMES:
-          params.codec_param.hevc.ratecontrol_type =
-              ::qmmf::VideoRateControlType::kMaxBitrateSkipFrames;
-          break;
-      }
-
-      gst_structure_get_uint (vpad->params, "bitrate", &bitrate);
-      params.codec_param.hevc.bitrate = bitrate;
-
-      gst_structure_get_uint (vpad->params, "quant-i-frames", &qpvalue);
-      params.codec_param.hevc.qp_params.init_qp.init_IQP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "quant-p-frames", &qpvalue);
-      params.codec_param.hevc.qp_params.init_qp.init_PQP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "quant-b-frames", &qpvalue);
-      params.codec_param.hevc.qp_params.init_qp.init_BQP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "min-qp", &qpvalue);
-      params.codec_param.hevc.qp_params.qp_range.min_QP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "max-qp", &qpvalue);
-      params.codec_param.hevc.qp_params.qp_range.max_QP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "min-qp-i-frames", &qpvalue);
-      params.codec_param.hevc.qp_params.qp_IBP_range.min_IQP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "max-qp-i-frames", &qpvalue);
-      params.codec_param.hevc.qp_params.qp_IBP_range.max_IQP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "min-qp-p-frames", &qpvalue);
-      params.codec_param.hevc.qp_params.qp_IBP_range.min_PQP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "max-qp-p-frames", &qpvalue);
-      params.codec_param.hevc.qp_params.qp_IBP_range.max_PQP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "min-qp-b-frames", &qpvalue);
-      params.codec_param.hevc.qp_params.qp_IBP_range.min_BQP = qpvalue;
-
-      gst_structure_get_uint (vpad->params, "max-qp-b-frames", &qpvalue);
-      params.codec_param.hevc.qp_params.qp_IBP_range.max_BQP = qpvalue;
-
-      params.codec_param.hevc.qp_params.enable_init_qp = true;
-      params.codec_param.hevc.qp_params.enable_qp_range = true;
-      params.codec_param.hevc.qp_params.enable_qp_IBP_range = true;
-
-      gst_structure_get_uint(vpad->params, "idr-interval", &idr_interval);
-      params.codec_param.hevc.idr_interval = idr_interval;
+    level = gst_structure_get_string (vpad->params, "level");
+    if (g_strcmp0 (level, "1") == 0) {
+      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel1;
+    } else if (g_strcmp0 (level, "1.3") == 0) {
+      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel1_3;
+    } else if (g_strcmp0 (level, "2") == 0) {
+      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel2;
+    } else if (g_strcmp0 (level, "2.1") == 0) {
+      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel2_1;
+    } else if (g_strcmp0 (level, "2.2") == 0) {
+      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel2_2;
+    } else if (g_strcmp0 (level, "3") == 0) {
+      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel3;
+    } else if (g_strcmp0 (level, "3.1") == 0) {
+      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel3_1;
+    } else if (g_strcmp0 (level, "3.2") == 0) {
+      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel3_2;
+    } else if (g_strcmp0 (level, "4") == 0) {
+      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel4;
+    } else if (g_strcmp0 (level, "4.1") == 0) {
+      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel4_1;
+    } else if (g_strcmp0 (level, "4.2") == 0) {
+      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel4_2;
+    } else if (g_strcmp0 (level, "5") == 0) {
+      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel5;
+    } else if (g_strcmp0 (level, "5.1") == 0) {
+      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel5_1;
+    } else if (g_strcmp0 (level, "5.2") == 0) {
+      params.codec_param.avc.level = ::qmmf::AVCLevelType::kLevel5_2;
     }
 
-    track_cbs.event_cb =
-        [&] (uint32_t track_id, ::qmmf::recorder::EventType type,
-            void *data, size_t size)
-        { video_event_callback (track_id, type, data, size); };
-    track_cbs.data_cb =
-        [&, context, pad] (uint32_t track_id,
-            std::vector<::qmmf::BufferDescriptor> buffers,
-            std::vector<::qmmf::recorder::MetaData> metabufs)
-        { video_data_callback (context, pad, buffers, metabufs); };
-
-    vpad->id = vpad->index + VIDEO_TRACK_ID_OFFSET;
-
-    if (vpad->srcidx != -1) {
-      ::qmmf::recorder::SourceVideoTrack srctrack;
-      srctrack.source_track_id = vpad->srcidx + VIDEO_TRACK_ID_OFFSET;
-      extraparam.Update(::qmmf::recorder::QMMF_SOURCE_VIDEO_TRACK_ID, srctrack);
-    } else if (context->slave) {
-      ::qmmf::recorder::LinkedTrackInSlaveMode linked_track_slave_mode;
-      linked_track_slave_mode.enable = true;
-      extraparam.Update(::qmmf::recorder::QMMF_USE_LINKED_TRACK_IN_SLAVE_MODE,
-          linked_track_slave_mode);
+    gst_structure_get_enum (vpad->params, "bitrate-control",
+        GST_TYPE_VIDEO_PAD_CONTROL_RATE, &ratecontrol);
+    switch (ratecontrol) {
+      case GST_VIDEO_CONTROL_RATE_DISABLE:
+        params.codec_param.avc.ratecontrol_type =
+            ::qmmf::VideoRateControlType::kDisable;
+        break;
+      case GST_VIDEO_CONTROL_RATE_VARIABLE:
+        params.codec_param.avc.ratecontrol_type =
+            ::qmmf::VideoRateControlType::kVariable;
+        break;
+      case GST_VIDEO_CONTROL_RATE_CONSTANT:
+        params.codec_param.avc.ratecontrol_type =
+            ::qmmf::VideoRateControlType::kConstant;
+        break;
+      case GST_VIDEO_CONTROL_RATE_MAXBITRATE:
+        params.codec_param.avc.ratecontrol_type =
+            ::qmmf::VideoRateControlType::kMaxBitrate;
+        break;
+      case GST_VIDEO_CONTROL_RATE_VARIABLE_SKIP_FRAMES:
+        params.codec_param.avc.ratecontrol_type =
+            ::qmmf::VideoRateControlType::kVariableSkipFrames;
+        break;
+      case GST_VIDEO_CONTROL_RATE_CONSTANT_SKIP_FRAMES:
+        params.codec_param.avc.ratecontrol_type =
+            ::qmmf::VideoRateControlType::kConstantSkipFrames;
+        break;
+      case GST_VIDEO_CONTROL_RATE_MAXBITRATE_SKIP_FRAMES:
+        params.codec_param.avc.ratecontrol_type =
+            ::qmmf::VideoRateControlType::kMaxBitrateSkipFrames;
+        break;
     }
 
-    G_LOCK (recorder);
+    gst_structure_get_uint (vpad->params, "bitrate", &bitrate);
+    params.codec_param.avc.bitrate = bitrate;
 
-    status = recorder->CreateVideoTrack (
-        context->session_id, vpad->id, params, extraparam, track_cbs);
-    extraparam.Clear();
+    gst_structure_get_uint (vpad->params, "quant-i-frames", &qpvalue);
+    params.codec_param.avc.qp_params.init_qp.init_IQP = qpvalue;
 
-    G_UNLOCK (recorder);
+    gst_structure_get_uint (vpad->params, "quant-p-frames", &qpvalue);
+    params.codec_param.avc.qp_params.init_qp.init_PQP = qpvalue;
 
-    GST_QMMFSRC_VIDEO_PAD_UNLOCK (vpad);
+    gst_structure_get_uint (vpad->params, "quant-b-frames", &qpvalue);
+    params.codec_param.avc.qp_params.init_qp.init_BQP = qpvalue;
 
-    QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
-        "QMMF Recorder CreateVideoTrack Failed!");
+    gst_structure_get_uint (vpad->params, "min-qp", &qpvalue);
+    params.codec_param.avc.qp_params.qp_range.min_QP = qpvalue;
 
+    gst_structure_get_uint (vpad->params, "max-qp", &qpvalue);
+    params.codec_param.avc.qp_params.qp_range.max_QP = qpvalue;
+
+    gst_structure_get_uint (vpad->params, "min-qp-i-frames", &qpvalue);
+    params.codec_param.avc.qp_params.qp_IBP_range.min_IQP = qpvalue;
+
+    gst_structure_get_uint (vpad->params, "max-qp-i-frames", &qpvalue);
+    params.codec_param.avc.qp_params.qp_IBP_range.max_IQP = qpvalue;
+
+    gst_structure_get_uint (vpad->params, "min-qp-p-frames", &qpvalue);
+    params.codec_param.avc.qp_params.qp_IBP_range.min_PQP = qpvalue;
+
+    gst_structure_get_uint (vpad->params, "max-qp-p-frames", &qpvalue);
+    params.codec_param.avc.qp_params.qp_IBP_range.max_PQP = qpvalue;
+
+    gst_structure_get_uint (vpad->params, "min-qp-b-frames", &qpvalue);
+    params.codec_param.avc.qp_params.qp_IBP_range.min_BQP = qpvalue;
+
+    gst_structure_get_uint (vpad->params, "max-qp-b-frames", &qpvalue);
+    params.codec_param.avc.qp_params.qp_IBP_range.max_BQP = qpvalue;
+
+    params.codec_param.avc.qp_params.enable_init_qp = true;
+    params.codec_param.avc.qp_params.enable_qp_range = true;
+    params.codec_param.avc.qp_params.enable_qp_IBP_range = true;
+
+    gst_structure_get_uint(vpad->params, "idr-interval", &idr_interval);
+    params.codec_param.avc.idr_interval = idr_interval;
+
+  } else if (format == ::qmmf::VideoFormat::kHEVC) {
+    guint bitrate, qpvalue, idr_interval;
+    const gchar *profile, *level;
+    gint ratecontrol;
+
+    profile = gst_structure_get_string(vpad->params, "profile");
+    if (g_strcmp0 (profile, "main") == 0) {
+      params.codec_param.hevc.profile = ::qmmf::HEVCProfileType::kMain;
+    }
+
+    level = gst_structure_get_string (vpad->params, "level");
+    if (g_strcmp0 (level, "3") == 0) {
+      params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel3;
+    } else if (g_strcmp0 (level, "4") == 0) {
+      params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel4;
+    } else if (g_strcmp0 (level, "5") == 0) {
+      params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel5;
+    } else if (g_strcmp0 (level, "5.1") == 0) {
+      params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel5_1;
+    } else if (g_strcmp0 (level, "5.2") == 0) {
+      params.codec_param.hevc.level = ::qmmf::HEVCLevelType::kLevel5_2;
+    }
+
+    gst_structure_get_enum (vpad->params, "bitrate-control",
+        GST_TYPE_VIDEO_PAD_CONTROL_RATE, &ratecontrol);
+    switch (ratecontrol) {
+      case GST_VIDEO_CONTROL_RATE_DISABLE:
+        params.codec_param.hevc.ratecontrol_type =
+            ::qmmf::VideoRateControlType::kDisable;
+        break;
+      case GST_VIDEO_CONTROL_RATE_VARIABLE:
+        params.codec_param.hevc.ratecontrol_type =
+            ::qmmf::VideoRateControlType::kVariable;
+        break;
+      case GST_VIDEO_CONTROL_RATE_CONSTANT:
+        params.codec_param.hevc.ratecontrol_type =
+            ::qmmf::VideoRateControlType::kConstant;
+        break;
+      case GST_VIDEO_CONTROL_RATE_MAXBITRATE:
+        params.codec_param.hevc.ratecontrol_type =
+            ::qmmf::VideoRateControlType::kMaxBitrate;
+        break;
+      case GST_VIDEO_CONTROL_RATE_VARIABLE_SKIP_FRAMES:
+        params.codec_param.hevc.ratecontrol_type =
+            ::qmmf::VideoRateControlType::kVariableSkipFrames;
+        break;
+      case GST_VIDEO_CONTROL_RATE_CONSTANT_SKIP_FRAMES:
+        params.codec_param.hevc.ratecontrol_type =
+            ::qmmf::VideoRateControlType::kConstantSkipFrames;
+        break;
+      case GST_VIDEO_CONTROL_RATE_MAXBITRATE_SKIP_FRAMES:
+        params.codec_param.hevc.ratecontrol_type =
+            ::qmmf::VideoRateControlType::kMaxBitrateSkipFrames;
+        break;
+    }
+
+    gst_structure_get_uint (vpad->params, "bitrate", &bitrate);
+    params.codec_param.hevc.bitrate = bitrate;
+
+    gst_structure_get_uint (vpad->params, "quant-i-frames", &qpvalue);
+    params.codec_param.hevc.qp_params.init_qp.init_IQP = qpvalue;
+
+    gst_structure_get_uint (vpad->params, "quant-p-frames", &qpvalue);
+    params.codec_param.hevc.qp_params.init_qp.init_PQP = qpvalue;
+
+    gst_structure_get_uint (vpad->params, "quant-b-frames", &qpvalue);
+    params.codec_param.hevc.qp_params.init_qp.init_BQP = qpvalue;
+
+    gst_structure_get_uint (vpad->params, "min-qp", &qpvalue);
+    params.codec_param.hevc.qp_params.qp_range.min_QP = qpvalue;
+
+    gst_structure_get_uint (vpad->params, "max-qp", &qpvalue);
+    params.codec_param.hevc.qp_params.qp_range.max_QP = qpvalue;
+
+    gst_structure_get_uint (vpad->params, "min-qp-i-frames", &qpvalue);
+    params.codec_param.hevc.qp_params.qp_IBP_range.min_IQP = qpvalue;
+
+    gst_structure_get_uint (vpad->params, "max-qp-i-frames", &qpvalue);
+    params.codec_param.hevc.qp_params.qp_IBP_range.max_IQP = qpvalue;
+
+    gst_structure_get_uint (vpad->params, "min-qp-p-frames", &qpvalue);
+    params.codec_param.hevc.qp_params.qp_IBP_range.min_PQP = qpvalue;
+
+    gst_structure_get_uint (vpad->params, "max-qp-p-frames", &qpvalue);
+    params.codec_param.hevc.qp_params.qp_IBP_range.max_PQP = qpvalue;
+
+    gst_structure_get_uint (vpad->params, "min-qp-b-frames", &qpvalue);
+    params.codec_param.hevc.qp_params.qp_IBP_range.min_BQP = qpvalue;
+
+    gst_structure_get_uint (vpad->params, "max-qp-b-frames", &qpvalue);
+    params.codec_param.hevc.qp_params.qp_IBP_range.max_BQP = qpvalue;
+
+    params.codec_param.hevc.qp_params.enable_init_qp = true;
+    params.codec_param.hevc.qp_params.enable_qp_range = true;
+    params.codec_param.hevc.qp_params.enable_qp_IBP_range = true;
+
+    gst_structure_get_uint(vpad->params, "idr-interval", &idr_interval);
+    params.codec_param.hevc.idr_interval = idr_interval;
   }
+
+  track_cbs.event_cb =
+      [&] (uint32_t track_id, ::qmmf::recorder::EventType type,
+          void *data, size_t size)
+      { video_event_callback (track_id, type, data, size); };
+  track_cbs.data_cb =
+      [&, context, pad] (uint32_t track_id,
+          std::vector<::qmmf::BufferDescriptor> buffers,
+          std::vector<::qmmf::recorder::MetaData> metabufs)
+      { video_data_callback (context, pad, buffers, metabufs); };
+
+  vpad->id = vpad->index + VIDEO_TRACK_ID_OFFSET;
+
+  if (vpad->srcidx != -1) {
+    ::qmmf::recorder::SourceVideoTrack srctrack;
+    srctrack.source_track_id = vpad->srcidx + VIDEO_TRACK_ID_OFFSET;
+    extraparam.Update(::qmmf::recorder::QMMF_SOURCE_VIDEO_TRACK_ID, srctrack);
+  } else if (context->slave) {
+    ::qmmf::recorder::LinkedTrackInSlaveMode linked_track_slave_mode;
+    linked_track_slave_mode.enable = true;
+    extraparam.Update(::qmmf::recorder::QMMF_USE_LINKED_TRACK_IN_SLAVE_MODE,
+        linked_track_slave_mode);
+  }
+
+  G_LOCK (recorder);
+
+  status = recorder->CreateVideoTrack (
+      context->session_id, vpad->id, params, extraparam, track_cbs);
+
+  G_UNLOCK (recorder);
+
+  GST_QMMFSRC_VIDEO_PAD_UNLOCK (vpad);
+
+  QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
+      "QMMF Recorder CreateVideoTrack Failed!");
 
   GST_TRACE ("QMMF context video stream created");
 
@@ -1251,155 +1260,145 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context,
                                       GstPad * pad,
                                       GstPad * bayerpad)
 {
+  GstQmmfSrcImagePad *ipad = GST_QMMFSRC_IMAGE_PAD (pad);
+  ::qmmf::recorder::SnapshotType snapshotparam;
   gint status = 0;
 
   GST_TRACE ("Create QMMF context image stream");
 
-  if (GST_IS_QMMFSRC_IMAGE_PAD (pad)) {
-    GstQmmfSrcImagePad *ipad = GST_QMMFSRC_IMAGE_PAD (pad);
-    ::qmmf::recorder::SnapshotType snapshot_type;
+  if ((bayerpad != NULL) && GST_IS_QMMFSRC_IMAGE_PAD (bayerpad)) {
+    GstQmmfSrcImagePad *bpad = GST_QMMFSRC_IMAGE_PAD (bayerpad);
+
+    GST_QMMFSRC_IMAGE_PAD_LOCK (bpad);
+
+    snapshotparam.type = ::qmmf::recorder::SnapshotMode::kVideoPlusRaw;
+    switch (bpad->bayer) {
+      case GST_IMAGE_FORMAT_RAW8:
+        snapshotparam.raw_format = ::qmmf::ImageFormat::kBayerRDI8BIT;
+        break;
+      case GST_IMAGE_FORMAT_RAW10:
+        snapshotparam.raw_format = ::qmmf::ImageFormat::kBayerRDI10BIT;
+        break;
+      case GST_IMAGE_FORMAT_RAW12:
+        snapshotparam.raw_format = ::qmmf::ImageFormat::kBayerRDI12BIT;
+        break;
+      case GST_IMAGE_FORMAT_RAW16:
+        snapshotparam.raw_format = ::qmmf::ImageFormat::kBayerRDI16BIT;
+        break;
+      default:
+        GST_ERROR ("Unsupported bayer format: %d", bpad->bayer);
+        GST_QMMFSRC_IMAGE_PAD_UNLOCK (bpad);
+        return FALSE;
+    }
+
+    GST_QMMFSRC_IMAGE_PAD_UNLOCK (bpad);
+  }
+
+  GST_QMMFSRC_IMAGE_PAD_LOCK (ipad);
+
+  ::qmmf::recorder::ImageConfigParam config;
+  ::qmmf::recorder::ImageParam imgparam;
+
+  imgparam.width = ipad->width;
+  imgparam.height = ipad->height;
+
+  if (ipad->codec == GST_IMAGE_CODEC_JPEG) {
+    imgparam.image_format = ::qmmf::ImageFormat::kJPEG;
+    gst_structure_get_uint (ipad->params, "quality", &imgparam.image_quality);
+
+    ::qmmf::recorder::ImageThumbnail thumbnail;
+    ::qmmf::recorder::ImageExif exif;
+    guint width, height, quality;
+
+    gst_structure_get_uint (ipad->params, "thumbnail-width", &width);
+    gst_structure_get_uint (ipad->params, "thumbnail-height", &height);
+    gst_structure_get_uint (ipad->params, "thumbnail-quality", &quality);
+
+    if (width > 0 && height > 0) {
+      thumbnail.width = width;
+      thumbnail.height = height;
+      thumbnail.quality = quality;
+      config.Update (::qmmf::recorder::QMMF_IMAGE_THUMBNAIL, thumbnail, 0);
+    }
+
+    gst_structure_get_uint (ipad->params, "screennail-width", &width);
+    gst_structure_get_uint (ipad->params, "screennail-height", &height);
+    gst_structure_get_uint (ipad->params, "screennail-quality", &quality);
+
+    if (width > 0 && height > 0) {
+      thumbnail.width = width;
+      thumbnail.height = height;
+      thumbnail.quality = quality;
+      config.Update (::qmmf::recorder::QMMF_IMAGE_THUMBNAIL, thumbnail, 1);
+    }
+
+    exif.enable = true;
+    config.Update (::qmmf::recorder::QMMF_EXIF, exif, 0);
 
     if (bayerpad != NULL) {
-      if (GST_IS_QMMFSRC_IMAGE_PAD (bayerpad)) {
-        GstQmmfSrcImagePad *bpad = GST_QMMFSRC_IMAGE_PAD (bayerpad);
-
-        GST_QMMFSRC_IMAGE_PAD_LOCK (bpad);
-
-        snapshot_type.type = ::qmmf::recorder::SnapshotMode::kVideoPlusRaw;
-        switch (bpad->bayer) {
-          case GST_IMAGE_FORMAT_RAW8:
-            snapshot_type.raw_format = ::qmmf::ImageFormat::kBayerRDI8BIT;
-            break;
-          case GST_IMAGE_FORMAT_RAW10:
-            snapshot_type.raw_format = ::qmmf::ImageFormat::kBayerRDI10BIT;
-            break;
-          case GST_IMAGE_FORMAT_RAW12:
-            snapshot_type.raw_format = ::qmmf::ImageFormat::kBayerRDI12BIT;
-            break;
-          case GST_IMAGE_FORMAT_RAW16:
-            snapshot_type.raw_format = ::qmmf::ImageFormat::kBayerRDI16BIT;
-            break;
-          default:
-            GST_QMMFSRC_IMAGE_PAD_UNLOCK(bpad);
-            GST_ERROR ("Unsupported format: %d", bpad->bayer);
-            return FALSE;
-
-        }
-
-        GST_QMMFSRC_IMAGE_PAD_UNLOCK (bpad);
-      }
-    }
-
-    GST_QMMFSRC_IMAGE_PAD_LOCK (ipad);
-
-    ::qmmf::recorder::ImageConfigParam config;
-    ::qmmf::recorder::ImageParam imgparam;
-
-    imgparam.width = ipad->width;
-    imgparam.height = ipad->height;
-
-    if (ipad->codec == GST_IMAGE_CODEC_TYPE_JPEG) {
-      imgparam.image_format = ::qmmf::ImageFormat::kJPEG;
-      gst_structure_get_uint (ipad->params, "quality", &imgparam.image_quality);
-
-      ::qmmf::recorder::ImageThumbnail thumbnail;
-      ::qmmf::recorder::ImageExif exif;
-      guint width, height, quality;
-
-      gst_structure_get_uint (ipad->params, "thumbnail-width", &width);
-      gst_structure_get_uint (ipad->params, "thumbnail-height", &height);
-      gst_structure_get_uint (ipad->params, "thumbnail-quality", &quality);
-
-      if (width > 0 && height > 0) {
-        thumbnail.width = width;
-        thumbnail.height = height;
-        thumbnail.quality = quality;
-        config.Update (::qmmf::recorder::QMMF_IMAGE_THUMBNAIL, thumbnail, 0);
-      }
-
-      gst_structure_get_uint (ipad->params, "screennail-width", &width);
-      gst_structure_get_uint (ipad->params, "screennail-height", &height);
-      gst_structure_get_uint (ipad->params, "screennail-quality", &quality);
-
-      if (width > 0 && height > 0) {
-        thumbnail.width = width;
-        thumbnail.height = height;
-        thumbnail.quality = quality;
-        config.Update (::qmmf::recorder::QMMF_IMAGE_THUMBNAIL, thumbnail, 1);
-      }
-
-      exif.enable = true;
-      config.Update (::qmmf::recorder::QMMF_EXIF, exif, 0);
-
-      /// Configure Image Mode
-      gint mode;
-      ::qmmf::recorder::SnapshotType snapshot_mode;
-      gst_structure_get_enum (ipad->params, "mode",
-          GST_TYPE_QMMFSRC_IMAGE_PAD_MODE, &mode);
-      switch (mode) {
+      config.Update (::qmmf::recorder::QMMF_SNAPSHOT_TYPE, snapshotparam, 0);
+      GST_WARNING ("JPEG and RAW has enabled. Image Mode is ignored.");
+    } else {
+      switch (ipad->mode) {
         case GST_IMAGE_MODE_VIDEO:
-          snapshot_mode.type = ::qmmf::recorder::SnapshotMode::kVideo;
+          snapshotparam.type = ::qmmf::recorder::SnapshotMode::kVideo;
           break;
         case GST_IMAGE_MODE_CONTINUOUS:
-          snapshot_mode.type = ::qmmf::recorder::SnapshotMode::kContinuous;
+          snapshotparam.type = ::qmmf::recorder::SnapshotMode::kContinuous;
           break;
         default:
-          GST_ERROR ("Unsupported format %d", mode);
+          GST_ERROR ("Unsupported mode %d", ipad->mode);
           GST_QMMFSRC_IMAGE_PAD_UNLOCK(ipad);
           return FALSE;
       }
-      if (bayerpad != NULL) {
-        config.Update (::qmmf::recorder::QMMF_SNAPSHOT_TYPE, snapshot_type, 0);
-        GST_WARNING ("JPEG and RAW has enabled. Image Mode is ignored.");
-      } else
-        config.Update (::qmmf::recorder::QMMF_SNAPSHOT_TYPE, snapshot_mode, 0);
-    } else if (ipad->codec == GST_IMAGE_CODEC_TYPE_NONE) {
-      switch (ipad->format) {
-        case GST_VIDEO_FORMAT_NV12:
-          imgparam.image_format = ::qmmf::ImageFormat::kNV12;
-          break;
-        case GST_VIDEO_FORMAT_NV21:
-          imgparam.image_format = ::qmmf::ImageFormat::kNV21;
-          break;
-        case GST_VIDEO_FORMAT_UNKNOWN: {
-          switch (ipad->bayer) {
-            case GST_IMAGE_FORMAT_RAW8:
-              imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI8BIT;
-              break;
-            case GST_IMAGE_FORMAT_RAW10:
-              imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI10BIT;
-              break;
-            case GST_IMAGE_FORMAT_RAW12:
-              imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI12BIT;
-              break;
-            case GST_IMAGE_FORMAT_RAW16:
-              imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI16BIT;
-              break;
-            default:
-              GST_ERROR ("Unsupported format %d", ipad->bayer);
-              GST_QMMFSRC_IMAGE_PAD_UNLOCK(ipad);
-              return FALSE;
-          }
-          break;
-        }
-        default:
-          GST_ERROR ("Unsupported format %d", ipad->format);
-          GST_QMMFSRC_IMAGE_PAD_UNLOCK(ipad);
-          return FALSE;
-      }
+      config.Update (::qmmf::recorder::QMMF_SNAPSHOT_TYPE, snapshotparam, 0);
     }
-
-    G_LOCK (recorder);
-
-    status = recorder->ConfigImageCapture (context->camera_id, imgparam, config);
-
-    G_UNLOCK (recorder);
-
-    GST_QMMFSRC_IMAGE_PAD_UNLOCK (ipad);
-
-    QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
-        "QMMF Recorder ConfigImageCapture Failed!");
+  } else if (ipad->codec == GST_IMAGE_CODEC_NONE) {
+    switch (ipad->format) {
+      case GST_VIDEO_FORMAT_NV12:
+        imgparam.image_format = ::qmmf::ImageFormat::kNV12;
+        break;
+      case GST_VIDEO_FORMAT_NV21:
+        imgparam.image_format = ::qmmf::ImageFormat::kNV21;
+        break;
+      case GST_VIDEO_FORMAT_UNKNOWN: {
+        switch (ipad->bayer) {
+          case GST_IMAGE_FORMAT_RAW8:
+            imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI8BIT;
+            break;
+          case GST_IMAGE_FORMAT_RAW10:
+            imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI10BIT;
+            break;
+          case GST_IMAGE_FORMAT_RAW12:
+            imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI12BIT;
+            break;
+          case GST_IMAGE_FORMAT_RAW16:
+            imgparam.image_format = ::qmmf::ImageFormat::kBayerRDI16BIT;
+            break;
+          default:
+            GST_ERROR ("Unsupported bayer format: %d", ipad->bayer);
+            GST_QMMFSRC_IMAGE_PAD_UNLOCK (ipad);
+            return FALSE;
+        }
+        break;
+      }
+      default:
+        GST_ERROR ("Unsupported format %d", ipad->format);
+        GST_QMMFSRC_IMAGE_PAD_UNLOCK (ipad);
+        return FALSE;
+    }
   }
+
+  G_LOCK (recorder);
+
+  status = recorder->ConfigImageCapture (context->camera_id, imgparam, config);
+
+  G_UNLOCK (recorder);
+
+  GST_QMMFSRC_IMAGE_PAD_UNLOCK (ipad);
+
+  QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
+      "QMMF Recorder ConfigImageCapture Failed!");
 
   GST_TRACE ("QMMF context image stream created");
 
@@ -1575,24 +1574,38 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
   ::android::CameraMetadata meta;
 
   if (context->opened) {
-    G_LOCK(recorder);
-    recorder->GetCameraParam(context->camera_id, meta);
-    G_UNLOCK(recorder);
+    G_LOCK (recorder);
+    recorder->GetCameraParam (context->camera_id, meta);
+    G_UNLOCK (recorder);
   }
 
   switch (param_id) {
     case PARAM_CAMERA_ID:
       context->camera_id = g_value_get_uint (value);
       break;
+    case PARAM_CAMERA_SLAVE:
+      context->slave = g_value_get_boolean (value);
+      break;
     case PARAM_CAMERA_LDC:
       context->ldc = g_value_get_boolean (value);
-      break;
-    case PARAM_CAMERA_SHDR:
-      context->shdr = g_value_get_boolean (value);
       break;
     case PARAM_CAMERA_EIS:
       context->eis = g_value_get_boolean (value);
       break;
+    case PARAM_CAMERA_SHDR:
+      context->shdr = g_value_get_boolean (value);
+      break;
+    case PARAM_CAMERA_ADRC:
+    {
+      guchar mode;
+      context->adrc = g_value_get_boolean (value);
+      mode = context->adrc;
+
+      guint tag_id = get_vendor_tag_by_name (
+          "org.codeaurora.qcamera3.adrc", "disable");
+      meta.update(tag_id, &mode, 1);
+      break;
+    }
     case PARAM_CAMERA_EFFECT_MODE:
     {
       guchar mode;
@@ -1674,11 +1687,6 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       meta.update(ANDROID_CONTROL_AWB_LOCK, &lock, 1);
       break;
     }
-    case PARAM_CAMERA_SLAVE:
-    {
-      context->slave = g_value_get_boolean (value);
-      break;
-    }
     case PARAM_CAMERA_AF_MODE:
     {
       guchar mode;
@@ -1695,17 +1703,6 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
 
       context->irmode = g_value_get_enum (value);
       meta.update(tag_id, &(context)->irmode, 1);
-      break;
-    }
-    case PARAM_CAMERA_ADRC:
-    {
-      guchar mode;
-      context->adrc = g_value_get_boolean (value);
-      mode = context->adrc;
-
-      guint tag_id = get_vendor_tag_by_name (
-          "org.codeaurora.qcamera3.adrc", "disable");
-      meta.update(tag_id, &mode, 1);
       break;
     }
     case PARAM_CAMERA_ISO_MODE:
@@ -1740,6 +1737,27 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
 
       mode = gst_qmmfsrc_noise_reduction_android_value (context->nrmode);
       meta.update(ANDROID_NOISE_REDUCTION_MODE, &mode, 1);
+      break;
+    }
+    case PARAM_CAMERA_NOISE_REDUCTION_TUNING:
+    {
+      GstStructure *structure = NULL;
+      const gchar *input = g_value_get_string(value);
+      GValue gvalue = G_VALUE_INIT;
+      g_value_init(&gvalue, GST_TYPE_STRUCTURE);
+
+      if (!gst_value_deserialize(&gvalue, input)) {
+        GST_ERROR("Failed to deserialize NR tuning data!");
+        break;
+      }
+
+      structure = GST_STRUCTURE(g_value_dup_boxed(&gvalue));
+      g_value_unset(&gvalue);
+
+      gst_structure_foreach(structure, update_structure, context->nrtuning);
+      gst_structure_free(structure);
+
+      set_vendor_tags(context->nrtuning, &meta);
       break;
     }
     case PARAM_CAMERA_ZOOM:
@@ -1849,7 +1867,6 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       set_vendor_tags (context->exptable, &meta);
       break;
     }
-
     case PARAM_CAMERA_LOCAL_TONE_MAPPING:
     {
       GstStructure *structure = NULL;
@@ -1871,29 +1888,6 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       set_vendor_tags(context->ltmdata, &meta);
       break;
     }
-
-    case PARAM_CAMERA_NOISE_REDUCTION_TUNING:
-    {
-      GstStructure *structure = NULL;
-      const gchar *input = g_value_get_string(value);
-      GValue gvalue = G_VALUE_INIT;
-      g_value_init(&gvalue, GST_TYPE_STRUCTURE);
-
-      if (!gst_value_deserialize(&gvalue, input)) {
-        GST_ERROR("Failed to deserialize NR tuning data!");
-        break;
-      }
-
-      structure = GST_STRUCTURE(g_value_dup_boxed(&gvalue));
-      g_value_unset(&gvalue);
-
-      gst_structure_foreach(structure, update_structure, context->nrtuning);
-      gst_structure_free(structure);
-
-      set_vendor_tags(context->nrtuning, &meta);
-      break;
-    }
-
     case PARAM_CAMERA_SHARPNESS_STRENGTH:
     {
       guint tag_id = get_vendor_tag_by_name (
@@ -1905,12 +1899,10 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
     }
   }
 
-  if (!context->slave) {
-    if (context->opened) {
-      G_LOCK(recorder);
-      recorder->SetCameraParam(context->camera_id, meta);
-      G_UNLOCK(recorder);
-    }
+  if (!context->slave && context->opened) {
+    G_LOCK (recorder);
+    recorder->SetCameraParam (context->camera_id, meta);
+    G_UNLOCK (recorder);
   }
 }
 
@@ -1921,23 +1913,29 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
   ::android::CameraMetadata meta;
 
   if (context->opened) {
-    G_LOCK(recorder);
-    recorder->GetCameraParam(context->camera_id, meta);
-    G_UNLOCK(recorder);
+    G_LOCK (recorder);
+    recorder->GetCameraParam (context->camera_id, meta);
+    G_UNLOCK (recorder);
   }
 
   switch (param_id) {
     case PARAM_CAMERA_ID:
       g_value_set_uint (value, context->camera_id);
       break;
+    case PARAM_CAMERA_SLAVE:
+      g_value_set_boolean (value, context->slave);
+      break;
     case PARAM_CAMERA_LDC:
       g_value_set_boolean (value, context->ldc);
+      break;
+    case PARAM_CAMERA_EIS:
+      g_value_set_boolean (value, context->eis);
       break;
     case PARAM_CAMERA_SHDR:
       g_value_set_boolean (value, context->shdr);
       break;
-    case PARAM_CAMERA_EIS:
-      g_value_set_boolean (value, context->eis);
+    case PARAM_CAMERA_ADRC:
+      g_value_set_boolean (value, context->adrc);
       break;
     case PARAM_CAMERA_EFFECT_MODE:
       g_value_set_enum (value, context->effect);
@@ -1966,17 +1964,11 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_AWB_LOCK:
       g_value_set_boolean (value, context->awbmode);
       break;
-    case PARAM_CAMERA_SLAVE:
-      g_value_set_boolean (value, context->slave);
-      break;
     case PARAM_CAMERA_AF_MODE:
       g_value_set_enum (value, context->afmode);
       break;
     case PARAM_CAMERA_IR_MODE:
       g_value_set_enum (value, context->irmode);
-      break;
-    case PARAM_CAMERA_ADRC:
-      g_value_set_boolean (value, context->adrc);
       break;
     case PARAM_CAMERA_ISO_MODE:
       g_value_set_enum (value, context->isomode);
@@ -1987,6 +1979,19 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_NOISE_REDUCTION:
       g_value_set_enum (value, context->nrmode);
       break;
+    case PARAM_CAMERA_NOISE_REDUCTION_TUNING:
+    {
+      gchar *string = NULL;
+
+      get_vendor_tags ("org.quic.camera.anr_tuning",
+          gst_camera_nr_tuning_data, G_N_ELEMENTS (gst_camera_nr_tuning_data),
+          context->nrtuning, &meta);
+      string = gst_structure_to_string (context->nrtuning);
+
+      g_value_set_string (value, string);
+      g_free (string);
+      break;
+    }
     case PARAM_CAMERA_ZOOM:
     {
       GValue val = G_VALUE_INIT;
@@ -2039,19 +2044,6 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
           gst_camera_ltm_data, G_N_ELEMENTS (gst_camera_ltm_data),
           context->ltmdata, &meta);
       string = gst_structure_to_string (context->ltmdata);
-
-      g_value_set_string (value, string);
-      g_free (string);
-      break;
-    }
-    case PARAM_CAMERA_NOISE_REDUCTION_TUNING:
-    {
-      gchar *string = NULL;
-
-      get_vendor_tags ("org.quic.camera.anr_tuning",
-          gst_camera_nr_tuning_data, G_N_ELEMENTS (gst_camera_nr_tuning_data),
-          context->nrtuning, &meta);
-      string = gst_structure_to_string (context->nrtuning);
 
       g_value_set_string (value, string);
       g_free (string);

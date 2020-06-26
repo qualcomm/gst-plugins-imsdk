@@ -44,16 +44,16 @@ G_DEFINE_TYPE(GstQmmfSrcVideoPad, qmmfsrc_video_pad, GST_TYPE_PAD);
 GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
 #define GST_CAT_DEFAULT qmmfsrc_video_pad_debug
 
-#define DEFAULT_VIDEO_STREAM_WIDTH   640
-#define DEFAULT_VIDEO_STREAM_HEIGHT  480
-#define DEFAULT_VIDEO_STREAM_FPS_NUM 30
-#define DEFAULT_VIDEO_STREAM_FPS_DEN 1
-#define DEFAULT_VIDEO_H264_PROFILE   "high"
-#define DEFAULT_VIDEO_H265_PROFILE   "main"
-#define DEFAULT_VIDEO_H264_LEVEL     "5.1"
-#define DEFAULT_VIDEO_H265_LEVEL     "5.1"
-#define DEFAULT_VIDEO_FORMAT         "NV12"
-#define DEFAULT_VIDEO_COMPRESSION    "none"
+#define DEFAULT_VIDEO_STREAM_WIDTH    640
+#define DEFAULT_VIDEO_STREAM_HEIGHT   480
+#define DEFAULT_VIDEO_STREAM_FPS_NUM  30
+#define DEFAULT_VIDEO_STREAM_FPS_DEN  1
+#define DEFAULT_VIDEO_H264_PROFILE    "high"
+#define DEFAULT_VIDEO_H265_PROFILE    "main"
+#define DEFAULT_VIDEO_H264_LEVEL      "5.1"
+#define DEFAULT_VIDEO_H265_LEVEL      "5.1"
+#define DEFAULT_VIDEO_RAW_FORMAT      "NV12"
+#define DEFAULT_VIDEO_RAW_COMPRESSION "none"
 
 #define DEFAULT_PROP_SOURCE_INDEX    (-1)
 #define DEFAULT_PROP_FRAMERATE       30.0
@@ -395,9 +395,9 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
 
     if (!format) {
       gst_structure_fixate_field_string (structure, "format",
-          DEFAULT_VIDEO_FORMAT);
+          DEFAULT_VIDEO_RAW_FORMAT);
       GST_DEBUG_OBJECT (pad, "Format not set, using default value: %s",
-          DEFAULT_VIDEO_FORMAT);
+          DEFAULT_VIDEO_RAW_FORMAT);
     }
   }
 
@@ -407,9 +407,9 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
 
     if (!compression) {
       gst_structure_fixate_field_string (structure, "compression",
-            DEFAULT_VIDEO_COMPRESSION);
-      GST_DEBUG_OBJECT (pad, "Format layout not set, using default value: %s",
-            DEFAULT_VIDEO_COMPRESSION);
+            DEFAULT_VIDEO_RAW_COMPRESSION);
+      GST_DEBUG_OBJECT (pad, "Compression not set, using default value: %s",
+            DEFAULT_VIDEO_RAW_COMPRESSION);
     }
   }
 

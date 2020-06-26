@@ -97,16 +97,15 @@ typedef enum {
 } GstBayerFormat;
 
 typedef enum {
-  GST_IMAGE_CODEC_TYPE_UNKNOWN,
-  GST_IMAGE_CODEC_TYPE_NONE,
-  GST_IMAGE_CODEC_TYPE_JPEG,
+  GST_IMAGE_CODEC_UNKNOWN,
+  GST_IMAGE_CODEC_NONE,
+  GST_IMAGE_CODEC_JPEG,
 } GstImageCodec;
 
-enum
-{
+typedef enum {
   GST_IMAGE_MODE_VIDEO,
   GST_IMAGE_MODE_CONTINUOUS,
-};
+} GstImageMode;
 
 typedef struct _GstQmmfSrcImagePad GstQmmfSrcImagePad;
 typedef struct _GstQmmfSrcImagePadClass GstQmmfSrcImagePadClass;
@@ -137,6 +136,9 @@ struct _GstQmmfSrcImagePad {
   GstImageCodec     codec;
   /// Agnostic structure containing codec specific parameters.
   GstStructure      *params;
+
+  /// Whether the GStreamer stream is uncompressed or compressed and its type.
+  GstImageMode      mode;
 
   /// QMMF Recorder image stream buffers duration, calculated from framerate.
   GstClockTime      duration;

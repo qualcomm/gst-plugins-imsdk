@@ -138,10 +138,10 @@ typedef struct _GstQmmfSrcVideoPadClass GstQmmfSrcVideoPadClass;
 
 struct _GstQmmfSrcVideoPad {
   /// Inherited parent structure.
-  GstPad            parent;
+  GstPad              parent;
 
   /// Synchronization segment.
-  GstSegment        segment;
+  GstSegment          segment;
 
   /// Global mutex lock.
   GMutex              lock;
