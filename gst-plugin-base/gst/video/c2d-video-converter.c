@@ -866,10 +866,10 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
   g_return_val_if_fail ((inframes != NULL) && (n_inputs != 0), NULL);
   g_return_val_if_fail (outframe != NULL, NULL);
 
-  GST_C2D_LOCK (convert);
-
-  // C2D draw objects.
+  // Allocate memory for the C2D draw objects.
   objects = g_new0 (C2D_OBJECT, n_inputs);
+
+  GST_C2D_LOCK (convert);
 
   // Iterate over the input frames.
   for (idx = 0; idx < n_inputs; idx++) {
@@ -963,10 +963,10 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
       GST_C2D_UNLOCK (convert); g_free (objects), "c2dDraw failed for"
       " target surface %x, error: %d!", surface_id, status);
 
+  GST_C2D_UNLOCK (convert);
+
   // Free C2D draw objects.
   g_free (objects);
-
-  GST_C2D_UNLOCK (convert);
 
   status = convert->Flush (surface_id, &timestamp);
   if (status != C2D_STATUS_OK) {
@@ -1001,4 +1001,28 @@ gst_c2d_video_converter_wait_request (GstC2dVideoConverter *convert,
 
   GST_LOG ("Finished waiting timestamp: %p", timestamp);
   return TRUE;
+}
+
+void
+gst_c2d_video_converter_flush (GstC2dVideoConverter *convert)
+{
+  C2D_STATUS status = C2D_STATUS_OK;
+  GHashTableIter iter;
+  gpointer key, value;
+
+  GST_LOG ("Forcing pending requests to complete");
+
+  g_hash_table_iter_init (&iter, convert->outsurfaces);
+
+  while (g_hash_table_iter_next (&iter, &key, &value)) {
+    guint fd = GPOINTER_TO_UINT (key);
+    guint surface_id = GPOINTER_TO_UINT (value);
+
+    if ((status = convert->Finish (surface_id)) != C2D_STATUS_OK)
+      GST_ERROR ("c2dFinish failed for surface %x and fd %d, error: %d!",
+          surface_id, fd, status);
+  }
+
+  GST_LOG ("Finished pending requests");
+  return;
 }

@@ -30,7 +30,7 @@
 #ifndef __GST_C2D_VIDEO_CONVERTER_H__
 #define __GST_C2D_VIDEO_CONVERTER_H__
 
-#include <gst/video/video-converter.h>
+#include <gst/video/video.h>
 #include <gst/allocators/allocators.h>
 
 G_BEGIN_DECLS
@@ -224,6 +224,9 @@ gst_c2d_video_converter_submit_request  (GstC2dVideoConverter *convert,
 GST_VIDEO_API gboolean
 gst_c2d_video_converter_wait_request    (GstC2dVideoConverter *convert,
                                          gpointer request_id);
+
+GST_VIDEO_API void
+gst_c2d_video_converter_flush           (GstC2dVideoConverter *convert);
 
 G_END_DECLS
 
