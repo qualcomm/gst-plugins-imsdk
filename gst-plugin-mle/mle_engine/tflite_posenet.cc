@@ -64,6 +64,7 @@ TFLPoseNet::TFLPoseNet(MLConfig &config) : TFLBase(config) {
   pRawOffsets = nullptr;
   pRawDisplacements = nullptr;
   need_labels_ = false;
+  pose_count_ = 0;
 }
 TFLPoseNet::~TFLPoseNet() {}
 
@@ -163,6 +164,8 @@ int32_t TFLPoseNet::PostProcess(GstBuffer* buffer) {
 
   int partsCount = SelectKeypointWithScore(&pose_pp_config_, pRawHeatmaps, &scoredParts[0]);
 
+  pose_count_ = 0;
+
   for (int i = 0; i < PoseMaxNumDetect; i++)
   {
       pose_results_[i].poseScore = 0.0f;
@@ -214,9 +217,6 @@ int32_t TFLPoseNet::PostProcess(GstBuffer* buffer) {
           rootCoord[1] * pose_pp_config_.numKeypoint * 2 + rootId * 2;
       float rootImageCoords[2] = { float(rootCoord[0]) * float(pose_pp_config_.outputStride) + pOffsets[tmpIdx],
                                     float(rootCoord[1]) * float(pose_pp_config_.outputStride) + pOffsets[tmpIdx + 1] };
-
-
-      pose_count_ = 0;
 
       // Check NMS for the current keypoint root/seed by comparing its location with those of detected poses
       if (DoNMSPose(&pose_results_[0], pose_count_, rootId, squaredNmsRadius, rootImageCoords, pose_pp_config_.numKeypoint))
