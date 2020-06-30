@@ -16,3 +16,4 @@ pkg_check_modules(GST_RTSP
 
 add_subdirectory(gst-pipeline-app)
 add_subdirectory(gst-rtsp-server)
+add_subdirectory(gst-warmboot-app)
