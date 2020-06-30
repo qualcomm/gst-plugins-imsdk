@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -48,6 +48,12 @@ G_BEGIN_DECLS
 #define GST_IS_VIDEO_TRANSFORM_CLASS(klass) \
   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_VIDEO_TRANSFORM))
 #define GST_VIDEO_TRANSFORM_CAST(obj)       ((GstVideoTransform *)(obj))
+
+#define GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE(pspec, state) \
+  ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
+      : ((pspec->flags & GST_PARAM_MUTABLE_PAUSED) ? (state <= GST_STATE_PAUSED) \
+          : ((pspec->flags & GST_PARAM_MUTABLE_READY) ? (state <= GST_STATE_READY) \
+              : (state <= GST_STATE_NULL))))
 
 typedef enum {
   GST_VIDEO_TRANSFORM_ROTATE_NONE,

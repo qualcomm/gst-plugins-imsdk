@@ -74,11 +74,8 @@ enum
   PROP_0,
   PROP_FLIP_HORIZONTAL,
   PROP_FLIP_VERTICAL,
-  PROP_ROTATE_METHOD,
-  PROP_CROP_X,
-  PROP_CROP_Y,
-  PROP_CROP_WIDTH,
-  PROP_CROP_HEIGHT,
+  PROP_ROTATE,
+  PROP_CROP,
 };
 
 static GstStaticCaps gst_video_transform_format_caps =
@@ -1485,30 +1482,64 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
 {
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM (object);
+  const gchar *propname = g_param_spec_get_name (pspec);
+  GstState state = GST_STATE (vtrans);
+
+  if (!GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE (pspec, state)) {
+    GST_WARNING_OBJECT (vtrans, "Property '%s' change not supported in %s "
+        "state!", propname, gst_element_state_get_name (state));
+    return;
+  }
 
   GST_OBJECT_LOCK (vtrans);
 
   switch (prop_id) {
     case PROP_FLIP_HORIZONTAL:
       vtrans->flip_h = g_value_get_boolean (value);
+
+      if (vtrans->c2dconvert != NULL) {
+        GstStructure *inopts = gst_structure_new ("qtivtransform",
+          GST_C2D_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL, G_TYPE_BOOLEAN,
+          vtrans->flip_h,
+          NULL);
+        gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
+      }
       break;
     case PROP_FLIP_VERTICAL:
       vtrans->flip_v = g_value_get_boolean (value);
+
+      if (vtrans->c2dconvert != NULL) {
+        GstStructure *inopts = gst_structure_new ("qtivtransform",
+          GST_C2D_VIDEO_CONVERTER_OPT_FLIP_VERTICAL, G_TYPE_BOOLEAN,
+          vtrans->flip_v,
+          NULL);
+        gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
+      }
       break;
-    case PROP_ROTATE_METHOD:
+    case PROP_ROTATE:
       vtrans->rotation = g_value_get_enum (value);
       break;
-    case PROP_CROP_X:
-      vtrans->crop.x = g_value_get_uint (value);
-      break;
-    case PROP_CROP_Y:
-      vtrans->crop.y = g_value_get_uint (value);
-      break;
-    case PROP_CROP_WIDTH:
-      vtrans->crop.w = g_value_get_uint (value);
-      break;
-    case PROP_CROP_HEIGHT:
-      vtrans->crop.h = g_value_get_uint (value);
+    case PROP_CROP:
+      g_return_if_fail (gst_value_array_get_size (value) == 4);
+
+      vtrans->crop.x = g_value_get_int (gst_value_array_get_value (value, 0));
+      vtrans->crop.y = g_value_get_int (gst_value_array_get_value (value, 1));
+      vtrans->crop.w = g_value_get_int (gst_value_array_get_value (value, 2));
+      vtrans->crop.h = g_value_get_int (gst_value_array_get_value (value, 3));
+
+      if (vtrans->c2dconvert != NULL) {
+        GstStructure *inopts = gst_structure_new ("qtivtransform",
+          GST_C2D_VIDEO_CONVERTER_OPT_SRC_X, G_TYPE_INT,
+          vtrans->crop.x,
+          GST_C2D_VIDEO_CONVERTER_OPT_SRC_Y, G_TYPE_INT,
+          vtrans->crop.y,
+          GST_C2D_VIDEO_CONVERTER_OPT_SRC_WIDTH, G_TYPE_INT,
+          vtrans->crop.w,
+          GST_C2D_VIDEO_CONVERTER_OPT_SRC_HEIGHT, G_TYPE_INT,
+          vtrans->crop.h,
+          NULL);
+        gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
+      }
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1533,21 +1564,27 @@ gst_video_transform_get_property (GObject * object, guint prop_id,
     case PROP_FLIP_VERTICAL:
       g_value_set_boolean (value, vtrans->flip_v);
       break;
-    case PROP_ROTATE_METHOD:
+    case PROP_ROTATE:
       g_value_set_enum (value, vtrans->rotation);
       break;
-    case PROP_CROP_X:
-      g_value_set_uint (value, vtrans->crop.x);
+    case PROP_CROP:
+    {
+      GValue val = G_VALUE_INIT;
+      g_value_init (&val, G_TYPE_INT);
+
+      g_value_set_int (&val, vtrans->crop.x);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, vtrans->crop.y);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, vtrans->crop.w);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, vtrans->crop.h);
+      gst_value_array_append_value (value, &val);
       break;
-    case PROP_CROP_Y:
-      g_value_set_uint (value, vtrans->crop.y);
-      break;
-    case PROP_CROP_WIDTH:
-      g_value_set_uint (value, vtrans->crop.w);
-      break;
-    case PROP_CROP_HEIGHT:
-      g_value_set_uint (value, vtrans->crop.h);
-      break;
+    }
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -1590,35 +1627,25 @@ gst_video_transform_class_init (GstVideoTransformClass * klass)
   g_object_class_install_property (gobject, PROP_FLIP_HORIZONTAL,
       g_param_spec_boolean ("flip-horizontal", "Flip horizontally",
           "Flip video image horizontally", DEFAULT_PROP_FLIP_HORIZONTAL,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_FLIP_VERTICAL,
       g_param_spec_boolean ("flip-vertical", "Flip vertically",
           "Flip video image vertically", DEFAULT_PROP_FLIP_VERTICAL,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject, PROP_ROTATE_METHOD,
-      g_param_spec_enum ("rotate", "Rotate clockwise", "Rotate video image",
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_ROTATE,
+      g_param_spec_enum ("rotate", "Rotate", "Rotate video image",
           GST_TYPE_VIDEO_TRANSFORM_ROTATE, DEFAULT_PROP_ROTATE,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject, PROP_CROP_X,
-      g_param_spec_uint ("crop-x", "Crop X",
-          "Pixels to crop starting from X axis coordinate", 0, G_MAXUINT,
-          DEFAULT_PROP_CROP_X,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject, PROP_CROP_Y,
-      g_param_spec_uint ("crop-y", "Crop Y",
-          "Pixels to crop starting from Y axis coordinate", 0, G_MAXUINT,
-          DEFAULT_PROP_CROP_Y,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject, PROP_CROP_WIDTH,
-      g_param_spec_uint ("crop-width", "Crop Width",
-          "Width of the crop rectangle", 0, G_MAXUINT,
-          DEFAULT_PROP_CROP_WIDTH,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject, PROP_CROP_HEIGHT,
-      g_param_spec_uint ("crop-height", "Crop Height",
-          "Height of the crop rectangle", 0, G_MAXUINT,
-          DEFAULT_PROP_CROP_HEIGHT,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject, PROP_CROP,
+      gst_param_spec_array ("crop", "Crop rectangle",
+          "The crop rectangle ('<X, Y, WIDTH, HEIGHT >')",
+          g_param_spec_int ("value", "Crop Value",
+              "One of X, Y, WIDTH or HEIGHT value.", 0, G_MAXINT, 0,
+              G_PARAM_WRITABLE | G_PARAM_STATIC_STRINGS),
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
 
   gst_element_class_set_static_metadata (element,
       "Video transformer", "Filter/Effect/Converter/Video/Scaler",
