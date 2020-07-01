@@ -36,7 +36,7 @@ target_link_libraries(${POSENET_NN} PUBLIC
   nndriver
 )
 
-target_compile_options(${POSENET_NN} PUBLIC -Wno-strict-aliasing)
+target_compile_options(${POSENET_NN} PRIVATE -Wno-strict-aliasing)
 
 install(
   TARGETS ${POSENET_NN}

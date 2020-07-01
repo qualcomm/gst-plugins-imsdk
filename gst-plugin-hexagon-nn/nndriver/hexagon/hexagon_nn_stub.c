@@ -172,10 +172,10 @@ static __inline void _qaic_memmove(void* dst, void* src, int size) {
 
 #ifdef __QAIC_DEBUG__
 #define _ALLOCATE(nErr, pal, size, alignment, pv) _TRY(nErr, _allocator_alloc(pal, __FILE_LINE__, size, alignment, (void**)&pv));\
-                                                     _ASSERT(nErr,pv)
+                                                  _ASSERT(nErr,pv || !(size))
 #else
 #define _ALLOCATE(nErr, pal, size, alignment, pv) _TRY(nErr, _allocator_alloc(pal, 0, size, alignment, (void**)&pv));\
-                                                     _ASSERT(nErr,pv)
+                                                  _ASSERT(nErr,pv || !(size))
 #endif
 
 
@@ -450,27 +450,19 @@ struct Interface {
 #define __QAIC_SLIM_EXPORT
 #endif
 
-#ifndef _WIN32
-static const Type types[13];
-#else
-extern const Type types[13];
-#endif
-static const Type* const typeArrays[17] = {&(types[1]),&(types[1]),&(types[1]),&(types[1]),&(types[11]),&(types[1]),&(types[1]),&(types[1]),&(types[6]),&(types[1]),&(types[7]),&(types[8]),&(types[12]),&(types[11]),&(types[1]),&(types[1]),&(types[3])};
-static const StructType structTypes[7] = {{0x3,&(typeArrays[12]),0xc,0x4,0x8,0x4,0x4,0x4},{0x1,&(typeArrays[10]),0x4,0x0,0x4,0x4,0x1,0x4},{0x2,&(typeArrays[0]),0x8,0x0,0x8,0x4,0x1,0x4},{0x2,&(typeArrays[15]),0x104,0x0,0x104,0x4,0x1,0x4},{0x5,&(typeArrays[7]),0x30,0x0,0x30,0x4,0x1,0x4},{0x4,&(typeArrays[0]),0x10,0x0,0x10,0x4,0x1,0x4},{0x7,&(typeArrays[0]),0x1c,0x4,0x18,0x4,0x4,0x4}};
-static const SequenceType sequenceTypes[1] = {{&(types[10]),0x0,0x1c,0x4,0x18}};
-#ifndef _WIN32
-static const Type types[13] = {{0x8,{{(const uintptr_t)&(structTypes[2]),0}}, 6,0x4},{0x4,{{(const uintptr_t)0,(const uintptr_t)0}}, 2,0x4},{0x104,{{(const uintptr_t)&(structTypes[3]),0}}, 6,0x4},{0x100,{{(const uintptr_t)&(types[4]),(const uintptr_t)0x100}}, 8,0x1},{0x1,{{(const uintptr_t)0,(const uintptr_t)0}}, 2,0x1},{0x30,{{(const uintptr_t)&(structTypes[4]),0}}, 6,0x4},{0x20,{{(const uintptr_t)&(types[1]),(const uintptr_t)0x8}}, 8,0x4},{0x4,{{(const uintptr_t)0,(const uintptr_t)1}}, 2,0x4},{0x4,{{(const uintptr_t)1,(const uintptr_t)0}}, 2,0x4},{0x10,{{(const uintptr_t)&(structTypes[5]),0}}, 6,0x4},{SLIM_IFPTR32(0x20,0x28),{{(const uintptr_t)&(structTypes[6]),0}}, 22,SLIM_IFPTR32(0x4,0x8)},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(types[4]),(const uintptr_t)0x0}}, 9,SLIM_IFPTR32(0x4,0x8)},{0x4,{{0,0}}, 3,0x4}};
-#else
-const Type types[13] = {{0x8,{{(const uintptr_t)&(structTypes[2]),0}}, 6,0x4},{0x4,{{(const uintptr_t)0,(const uintptr_t)0}}, 2,0x4},{0x104,{{(const uintptr_t)&(structTypes[3]),0}}, 6,0x4},{0x100,{{(const uintptr_t)&(types[4]),(const uintptr_t)0x100}}, 8,0x1},{0x1,{{(const uintptr_t)0,(const uintptr_t)0}}, 2,0x1},{0x30,{{(const uintptr_t)&(structTypes[4]),0}}, 6,0x4},{0x20,{{(const uintptr_t)&(types[1]),(const uintptr_t)0x8}}, 8,0x4},{0x4,{{(const uintptr_t)0,(const uintptr_t)1}}, 2,0x4},{0x4,{{(const uintptr_t)1,(const uintptr_t)0}}, 2,0x4},{0x10,{{(const uintptr_t)&(structTypes[5]),0}}, 6,0x4},{SLIM_IFPTR32(0x20,0x28),{{(const uintptr_t)&(structTypes[6]),0}}, 22,SLIM_IFPTR32(0x4,0x8)},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(types[4]),(const uintptr_t)0x0}}, 9,SLIM_IFPTR32(0x4,0x8)},{0x4,{{0,0}}, 3,0x4}};
-#endif
-static const Parameter parameters[18] = {{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(types[0]),(const uintptr_t)0x0}}, 9,SLIM_IFPTR32(0x4,0x8),0,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(types[2]),(const uintptr_t)0x0}}, 9,SLIM_IFPTR32(0x4,0x8),0,0},{0x4,{{(const uintptr_t)0,(const uintptr_t)1}}, 2,0x4,0,0},{0x4,{{(const uintptr_t)0,(const uintptr_t)0}}, 2,0x4,3,0},{0x4,{{(const uintptr_t)0,(const uintptr_t)1}}, 2,0x4,3,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(types[4]),(const uintptr_t)0x0}}, 9,SLIM_IFPTR32(0x4,0x8),4,0},{0x4,{{(const uintptr_t)0,(const uintptr_t)0}}, 2,0x4,0,0},{0x4,{{0,0}}, 3,0x4,0,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(types[5]),(const uintptr_t)0x0}}, 9,SLIM_IFPTR32(0x4,0x8),0,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(types[4]),(const uintptr_t)0x0}}, 9,SLIM_IFPTR32(0x4,0x8),0,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(types[4]),(const uintptr_t)0x0}}, 9,SLIM_IFPTR32(0x4,0x8),3,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(types[9]),(const uintptr_t)0x0}}, 9,SLIM_IFPTR32(0x4,0x8),3,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)0x0,0}}, 4,SLIM_IFPTR32(0x4,0x8),0,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)0x0,0}}, 4,SLIM_IFPTR32(0x4,0x8),3,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(sequenceTypes[0]),0}}, 25,SLIM_IFPTR32(0x4,0x8),0,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(sequenceTypes[0]),0}}, 25,SLIM_IFPTR32(0x4,0x8),3,0},{SLIM_IFPTR32(0x10,0x18),{{(const uintptr_t)&(structTypes[0]),0}}, 22,SLIM_IFPTR32(0x4,0x8),3,0},{0x4,{{(const uintptr_t)&(structTypes[1]),0}}, 6,0x4,0,0}};
-static const Parameter* const parameterArrays[84] = {(&(parameters[2])),(&(parameters[6])),(&(parameters[6])),(&(parameters[6])),(&(parameters[6])),(&(parameters[9])),(&(parameters[3])),(&(parameters[3])),(&(parameters[3])),(&(parameters[3])),(&(parameters[10])),(&(parameters[3])),(&(parameters[2])),(&(parameters[6])),(&(parameters[2])),(&(parameters[3])),(&(parameters[3])),(&(parameters[3])),(&(parameters[3])),(&(parameters[10])),(&(parameters[3])),(&(parameters[2])),(&(parameters[6])),(&(parameters[2])),(&(parameters[6])),(&(parameters[6])),(&(parameters[6])),(&(parameters[6])),(&(parameters[9])),(&(parameters[2])),(&(parameters[6])),(&(parameters[6])),(&(parameters[6])),(&(parameters[6])),(&(parameters[6])),(&(parameters[6])),(&(parameters[2])),(&(parameters[6])),(&(parameters[6])),(&(parameters[6])),(&(parameters[6])),(&(parameters[6])),(&(parameters[9])),(&(parameters[2])),(&(parameters[6])),(&(parameters[6])),(&(parameters[7])),(&(parameters[0])),(&(parameters[8])),(&(parameters[2])),(&(parameters[14])),(&(parameters[15])),(&(parameters[16])),(&(parameters[2])),(&(parameters[6])),(&(parameters[2])),(&(parameters[9])),(&(parameters[2])),(&(parameters[6])),(&(parameters[9])),(&(parameters[6])),(&(parameters[2])),(&(parameters[12])),(&(parameters[2])),(&(parameters[2])),(&(parameters[2])),(&(parameters[3])),(&(parameters[2])),(&(parameters[11])),(&(parameters[3])),(&(parameters[7])),(&(parameters[7])),(&(parameters[6])),(&(parameters[2])),(&(parameters[0])),(&(parameters[1])),(&(parameters[4])),(&(parameters[17])),(&(parameters[6])),(&(parameters[13])),(&(parameters[12])),(&(parameters[3])),(&(parameters[2])),(&(parameters[5]))};
-static const Method methods[31] = {{REMOTE_SCALARS_MAKEX(0,0,0x0,0x0,0x0,0x0),0x0,0x0,0,0,0,0x0,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x3,0x0,0x0,0x0),0x8,0x0,4,2,(&(parameterArrays[74])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x3,0x0,0x0,0x0),0xc,0x0,5,3,(&(parameterArrays[73])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x0,0x1,0x0,0x0),0x0,0x8,2,2,(&(parameterArrays[6])),0x1,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x0,0x1,0x0,0x0),0x0,0x4,1,1,(&(parameterArrays[76])),0x1,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x0,0x0,0x0),0x8,0x0,2,2,(&(parameterArrays[63])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x1,0x0,0x0),0xc,0x0,4,2,(&(parameterArrays[82])),0x4,0x1},{REMOTE_SCALARS_MAKEX(0,0,0x3,0x0,0x0,0x0),0x18,0x0,8,6,(&(parameterArrays[43])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x0,0x0,0x0),0x1c,0x0,8,7,(&(parameterArrays[36])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x0,0x0,0x0),0x1c,0x0,7,7,(&(parameterArrays[29])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x0,0x0,0x0),0x10,0x0,5,4,(&(parameterArrays[57])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x0,0x0,0x0),0x4,0x0,1,1,(&(parameterArrays[0])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x2,0x0,0x0),0x1c,0x14,15,12,(&(parameterArrays[0])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x2,0x0,0x0),0x10,0x14,11,9,(&(parameterArrays[12])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x0,0x0,0x0),0x20,0x0,9,8,(&(parameterArrays[21])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x0,0x0,0x0),0x10,0x0,5,4,(&(parameterArrays[53])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x0,0x0,0x0),0x4,0x0,1,1,(&(parameterArrays[1])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x0,0x0,0x0),0xc,0x0,3,3,(&(parameterArrays[70])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x2,0x0,0x0),0x8,0x4,5,3,(&(parameterArrays[67])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x0,0x0,0x0),0x8,0x0,2,2,(&(parameterArrays[0])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x1,0x0,0x0),0x4,0x8,3,3,(&(parameterArrays[14])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x1,0x0,0x0),0x4,0x4,2,2,(&(parameterArrays[80])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x1,0x0,0x0),0x8,0x0,4,2,(&(parameterArrays[78])),0x4,0x1},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x1,0x0,0x0),0x4,0x4,2,2,(&(parameterArrays[14])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x0,0x0,0x0),0x4,0x0,2,1,(&(parameterArrays[5])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,255,255,15,15),0xc,0x0,6,3,(&(parameterArrays[49])),0x4,0x1},{REMOTE_SCALARS_MAKEX(0,0,255,255,15,15),0x10,0x8,7,4,(&(parameterArrays[49])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x1,0x0,0x0),0x4,0x4,2,2,(&(parameterArrays[76])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x1,0x0,0x0),0x8,0x4,3,3,(&(parameterArrays[64])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x0,0x0,0x0),0xc,0x0,3,3,(&(parameterArrays[61])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x0,0x0,0x0),0x8,0x0,3,2,(&(parameterArrays[55])),0x4,0x0}};
-static const Method* const methodArrays[39] = {&(methods[0]),&(methods[1]),&(methods[2]),&(methods[3]),&(methods[4]),&(methods[5]),&(methods[6]),&(methods[6]),&(methods[7]),&(methods[8]),&(methods[9]),&(methods[10]),&(methods[11]),&(methods[12]),&(methods[11]),&(methods[13]),&(methods[14]),&(methods[15]),&(methods[16]),&(methods[17]),&(methods[18]),&(methods[19]),&(methods[20]),&(methods[4]),&(methods[21]),&(methods[22]),&(methods[23]),&(methods[0]),&(methods[4]),&(methods[24]),&(methods[25]),&(methods[26]),&(methods[27]),&(methods[28]),&(methods[20]),&(methods[11]),&(methods[29]),&(methods[30]),&(methods[20])};
-static const char strings[1180] = "GetHexagonBinaryVersion\0append_empty_const_node\0multi_execution_cycles\0get_num_nodes_in_graph\0last_execution_cycles\0set_powersave_details\0last_execution_usecs\0set_powersave_level\0variable_write_flat\0populate_const_node\0config_with_options\0fastrpc_shell_addr\0extraInfoValidLen\0execute_with_info\0append_const_node\0set_graph_option\0set_debug_level\0libhexagon_addr\0populate_graph\0init_with_info\0data_valid_len\0reset_perfinfo\0variable_write\0get_dsp_offset\0string_options\0op_id_to_name\0op_name_to_id\0variable_read\0target_offset\0get_nodetype\0execute_info\0disable_dcvs\0get_perfinfo\0output_index\0data_len_out\0graph_config\0uint_options\0execute_new\0batches_out\0zero_offset\0elementsize\0append_node\0string_data\0graph_data\0counter_hi\0counter_lo\0executions\0height_out\0batches_in\0output_idx\0uint_value\0get_power\0node_type\0extraInfo\0num_nodes\0cycles_hi\0cycles_lo\0depth_out\0width_out\0height_in\0max_sizes\0operation\0option_id\0usecs_hi\0usecs_lo\0graph_id\0priority\0PrintLog\0info_out\0teardown\0data_out\0depth_in\0width_in\0stepsize\0snpprint\0version\0n_items\0latency\0data_in\0execute\0prepare\0batches\0outputs\0padding\0node_id\0result\0unused\0corner\0height\0src_id\0inputs\0getlog\0event\0depth\0width\0rank\0init\0ver\0buf\0";
-static const uint16_t methodStrings[208] = {276,491,1129,1062,1115,1155,1149,693,391,1101,1070,1062,1115,1155,1149,693,391,1101,535,1094,806,258,626,491,1129,1062,1115,1155,1149,693,391,1101,1070,1062,1115,1155,1149,693,391,1101,674,491,1086,886,1078,1129,1122,764,1070,1161,876,662,650,996,1046,491,753,866,987,978,1038,638,742,856,846,969,587,494,491,1086,574,638,742,856,846,969,587,421,491,1086,574,1062,1115,1155,1149,1038,561,491,951,1086,731,720,709,1022,24,491,1086,1062,1115,1155,1149,669,294,491,1086,1062,1115,1155,1149,693,600,491,613,896,775,451,896,686,219,613,896,775,451,896,686,179,491,1086,574,1038,199,491,1086,693,508,138,491,915,906,312,491,475,780,48,491,836,826,522,924,1086,796,376,611,289,933,94,491,836,826,116,1108,556,1030,361,491,698,71,491,816,466,1086,475,480,475,1086,406,491,1143,1136,491,1175,1005,491,1175,329,491,173,436,345,239,786,530,942,1175,0,1171,1014,1171,159,173,960,491,1054,491,1166,611,548,606};
-static const uint16_t methodStringsArrays[39] = {207,118,110,187,204,184,181,178,40,102,94,130,202,54,200,67,77,125,198,159,86,175,155,196,172,169,166,206,194,192,22,0,151,147,143,190,139,163,135};
-__QAIC_SLIM_EXPORT const Interface __QAIC_SLIM(hexagon_nn_slim) = {39,&(methodArrays[0]),0,0,&(methodStringsArrays [0]),methodStrings,strings};
+static const Type types[15];
+static const Type* const typeArrays[19] = {&(types[1]),&(types[1]),&(types[1]),&(types[1]),&(types[13]),&(types[1]),&(types[1]),&(types[1]),&(types[8]),&(types[1]),&(types[9]),&(types[10]),&(types[14]),&(types[13]),&(types[1]),&(types[1]),&(types[3]),&(types[9]),&(types[9])};
+static const StructType structTypes[7] = {{0x3,&(typeArrays[12]),0xc,0x4,0x8,0x4,0x4,0x4},{0x2,&(typeArrays[17]),0x8,0x0,0x8,0x4,0x1,0x4},{0x2,&(typeArrays[0]),0x8,0x0,0x8,0x4,0x1,0x4},{0x2,&(typeArrays[15]),0x104,0x0,0x104,0x4,0x1,0x4},{0x5,&(typeArrays[7]),0x30,0x0,0x30,0x4,0x1,0x4},{0x4,&(typeArrays[0]),0x10,0x0,0x10,0x4,0x1,0x4},{0x7,&(typeArrays[0]),0x1c,0x4,0x18,0x4,0x4,0x4}};
+static const SequenceType sequenceTypes[1] = {{&(types[12]),0x0,0x1c,0x4,0x18}};
+static const Type types[15] = {{0x8,{{(const uintptr_t)&(structTypes[2]),0}}, 6,0x4},{0x4,{{(const uintptr_t)0,(const uintptr_t)1}}, 2,0x4},{0x104,{{(const uintptr_t)&(structTypes[3]),0}}, 6,0x4},{0x100,{{(const uintptr_t)&(types[4]),(const uintptr_t)0x100}}, 8,0x1},{0x1,{{(const uintptr_t)0,(const uintptr_t)1}}, 2,0x1},{0x1,{{(const uintptr_t)0,(const uintptr_t)1}}, 2,0x1},{0x8,{{(const uintptr_t)&(structTypes[2]),0}}, 6,0x4},{0x30,{{(const uintptr_t)&(structTypes[4]),0}}, 6,0x4},{0x20,{{(const uintptr_t)&(types[1]),(const uintptr_t)0x8}}, 8,0x4},{0x4,{{(const uintptr_t)0,(const uintptr_t)1}}, 2,0x4},{0x4,{{(const uintptr_t)0,(const uintptr_t)1}}, 2,0x4},{0x10,{{(const uintptr_t)&(structTypes[5]),0}}, 6,0x4},{SLIM_IFPTR32(0x20,0x28),{{(const uintptr_t)&(structTypes[6]),0}}, 22,SLIM_IFPTR32(0x4,0x8)},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(types[5]),(const uintptr_t)0x0}}, 9,SLIM_IFPTR32(0x4,0x8)},{0x4,{{0,0}}, 3,0x4}};
+static const Parameter parameters[27] = {{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(types[0]),(const uintptr_t)0x0}}, 9,SLIM_IFPTR32(0x4,0x8),0,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(types[2]),(const uintptr_t)0x0}}, 9,SLIM_IFPTR32(0x4,0x8),0,0},{0x4,{{(const uintptr_t)0,(const uintptr_t)1}}, 2,0x4,0,0},{0x4,{{(const uintptr_t)0,(const uintptr_t)1}}, 2,0x4,3,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)0x0,0}}, 4,SLIM_IFPTR32(0x4,0x8),0,0},{0x4,{{(const uintptr_t)0,(const uintptr_t)1}}, 2,0x4,3,0},{0x4,{{0,0}}, 3,0x4,3,0},{0x4,{{(const uintptr_t)0,(const uintptr_t)1}}, 2,0x4,0,0},{0x4,{{(const uintptr_t)0,(const uintptr_t)1}}, 2,0x4,3,0},{0x4,{{(const uintptr_t)0,(const uintptr_t)1}}, 2,0x4,0,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(types[5]),(const uintptr_t)0x0}}, 9,SLIM_IFPTR32(0x4,0x8),4,0},{0x4,{{(const uintptr_t)0,(const uintptr_t)1}}, 2,0x4,0,0},{0x4,{{0,0}}, 3,0x4,0,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(types[6]),(const uintptr_t)0x0}}, 9,SLIM_IFPTR32(0x4,0x8),0,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(types[7]),(const uintptr_t)0x0}}, 9,SLIM_IFPTR32(0x4,0x8),0,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(types[4]),(const uintptr_t)0x0}}, 9,SLIM_IFPTR32(0x4,0x8),0,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(types[5]),(const uintptr_t)0x0}}, 9,SLIM_IFPTR32(0x4,0x8),0,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(types[5]),(const uintptr_t)0x0}}, 9,SLIM_IFPTR32(0x4,0x8),3,0},{0x4,{{0,0}}, 3,0x4,0,0},{0x4,{{0,0}}, 3,0x4,0,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(types[11]),(const uintptr_t)0x0}}, 9,SLIM_IFPTR32(0x4,0x8),3,0},{0x4,{{(const uintptr_t)0,(const uintptr_t)1}}, 2,0x4,3,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)0x0,0}}, 4,SLIM_IFPTR32(0x4,0x8),3,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(sequenceTypes[0]),0}}, 25,SLIM_IFPTR32(0x4,0x8),0,0},{SLIM_IFPTR32(0x8,0x10),{{(const uintptr_t)&(sequenceTypes[0]),0}}, 25,SLIM_IFPTR32(0x4,0x8),3,0},{SLIM_IFPTR32(0x10,0x18),{{(const uintptr_t)&(structTypes[0]),0}}, 22,SLIM_IFPTR32(0x4,0x8),3,0},{0x8,{{(const uintptr_t)&(structTypes[1]),0}}, 6,0x4,0,0}};
+static const Parameter* const parameterArrays[111] = {(&(parameters[2])),(&(parameters[11])),(&(parameters[11])),(&(parameters[11])),(&(parameters[11])),(&(parameters[16])),(&(parameters[3])),(&(parameters[3])),(&(parameters[3])),(&(parameters[3])),(&(parameters[17])),(&(parameters[3])),(&(parameters[2])),(&(parameters[11])),(&(parameters[9])),(&(parameters[3])),(&(parameters[3])),(&(parameters[3])),(&(parameters[3])),(&(parameters[17])),(&(parameters[3])),(&(parameters[2])),(&(parameters[11])),(&(parameters[9])),(&(parameters[11])),(&(parameters[11])),(&(parameters[11])),(&(parameters[11])),(&(parameters[16])),(&(parameters[2])),(&(parameters[11])),(&(parameters[4])),(&(parameters[4])),(&(parameters[15])),(&(parameters[13])),(&(parameters[14])),(&(parameters[6])),(&(parameters[2])),(&(parameters[11])),(&(parameters[11])),(&(parameters[11])),(&(parameters[11])),(&(parameters[11])),(&(parameters[11])),(&(parameters[2])),(&(parameters[11])),(&(parameters[11])),(&(parameters[11])),(&(parameters[11])),(&(parameters[11])),(&(parameters[16])),(&(parameters[2])),(&(parameters[11])),(&(parameters[11])),(&(parameters[12])),(&(parameters[13])),(&(parameters[14])),(&(parameters[2])),(&(parameters[23])),(&(parameters[24])),(&(parameters[25])),(&(parameters[2])),(&(parameters[11])),(&(parameters[9])),(&(parameters[16])),(&(parameters[2])),(&(parameters[11])),(&(parameters[16])),(&(parameters[11])),(&(parameters[16])),(&(parameters[8])),(&(parameters[3])),(&(parameters[2])),(&(parameters[17])),(&(parameters[3])),(&(parameters[2])),(&(parameters[4])),(&(parameters[9])),(&(parameters[2])),(&(parameters[2])),(&(parameters[3])),(&(parameters[2])),(&(parameters[3])),(&(parameters[3])),(&(parameters[2])),(&(parameters[20])),(&(parameters[3])),(&(parameters[18])),(&(parameters[19])),(&(parameters[11])),(&(parameters[4])),(&(parameters[5])),(&(parameters[6])),(&(parameters[2])),(&(parameters[0])),(&(parameters[1])),(&(parameters[2])),(&(parameters[16])),(&(parameters[8])),(&(parameters[26])),(&(parameters[11])),(&(parameters[22])),(&(parameters[4])),(&(parameters[3])),(&(parameters[2])),(&(parameters[10])),(&(parameters[2])),(&(parameters[9])),(&(parameters[7])),(&(parameters[6])),(&(parameters[21]))};
+static const Method methods[39] = {{REMOTE_SCALARS_MAKEX(0,0,0x0,0x0,0x0,0x0),0x0,0x0,0,0,0,0x0,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x3,0x0,0x0,0x0),0x8,0x0,4,2,(&(parameterArrays[94])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x3,0x0,0x0,0x0),0xc,0x0,5,3,(&(parameterArrays[93])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x0,0x1,0x0,0x0),0x0,0x8,2,2,(&(parameterArrays[6])),0x1,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x1,0x0,0x0),0x4,0x8,3,3,(&(parameterArrays[90])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x1,0x0,0x0),0x4,0x4,2,2,(&(parameterArrays[108])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x0,0x1,0x0,0x0),0x0,0x4,1,1,(&(parameterArrays[36])),0x1,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x0,0x1,0x0,0x0),0x0,0x4,1,1,(&(parameterArrays[70])),0x1,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x0,0x0,0x0),0x8,0x0,2,2,(&(parameterArrays[106])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x1,0x0,0x0),0xc,0x0,4,2,(&(parameterArrays[104])),0x4,0x1},{REMOTE_SCALARS_MAKEX(0,0,0x3,0x0,0x0,0x0),0x18,0x0,8,6,(&(parameterArrays[51])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x6,0x1,0x0,0x0),0x1c,0x4,11,8,(&(parameterArrays[29])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x0,0x0,0x0),0x1c,0x0,8,7,(&(parameterArrays[44])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x0,0x0,0x0),0x1c,0x0,7,7,(&(parameterArrays[37])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x0,0x0,0x0),0x10,0x0,5,4,(&(parameterArrays[65])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x0,0x0,0x0),0x4,0x0,1,1,(&(parameterArrays[0])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x2,0x0,0x0),0x1c,0x14,15,12,(&(parameterArrays[0])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x2,0x0,0x0),0x10,0x14,11,9,(&(parameterArrays[12])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x0,0x0,0x0),0x20,0x0,9,8,(&(parameterArrays[21])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x0,0x0,0x0),0x10,0x0,5,4,(&(parameterArrays[61])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x0,0x0,0x0),0x4,0x0,1,1,(&(parameterArrays[1])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x0,0x0,0x0),0xc,0x0,3,3,(&(parameterArrays[87])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x2,0x0,0x0),0x8,0x4,5,3,(&(parameterArrays[84])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x0,0x0,0x0),0x8,0x0,2,2,(&(parameterArrays[0])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x1,0x0,0x0),0x4,0x8,3,3,(&(parameterArrays[81])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x0,0x1,0x0,0x0),0x0,0x4,1,1,(&(parameterArrays[110])),0x1,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x1,0x0,0x0),0x4,0x4,2,2,(&(parameterArrays[102])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x1,0x0,0x0),0x8,0x0,4,2,(&(parameterArrays[100])),0x4,0x1},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x1,0x0,0x0),0x4,0x4,2,2,(&(parameterArrays[79])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x0,0x0,0x0),0x4,0x0,2,1,(&(parameterArrays[5])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,255,255,15,15),0xc,0x0,6,3,(&(parameterArrays[57])),0x4,0x1},{REMOTE_SCALARS_MAKEX(0,0,255,255,15,15),0x10,0x8,7,4,(&(parameterArrays[57])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x1,0x0,0x0),0x8,0x4,2,2,(&(parameterArrays[98])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x1,0x0,0x0),0x8,0x4,3,3,(&(parameterArrays[78])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x0,0x0,0x0),0x4,0x0,1,1,(&(parameterArrays[14])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x0,0x0,0x0),0xc,0x0,3,3,(&(parameterArrays[75])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x0,0x0,0x0),0x8,0x0,3,2,(&(parameterArrays[96])),0x4,0x0},{REMOTE_SCALARS_MAKEX(0,0,0x1,0x2,0x0,0x0),0x8,0x4,5,3,(&(parameterArrays[72])),0x4,0x4},{REMOTE_SCALARS_MAKEX(0,0,0x2,0x1,0x0,0x0),0x4,0x8,4,3,(&(parameterArrays[69])),0x4,0x4}};
+static const Method* const methodArrays[46] = {&(methods[0]),&(methods[1]),&(methods[2]),&(methods[3]),&(methods[4]),&(methods[5]),&(methods[6]),&(methods[7]),&(methods[8]),&(methods[9]),&(methods[9]),&(methods[10]),&(methods[11]),&(methods[12]),&(methods[13]),&(methods[14]),&(methods[15]),&(methods[16]),&(methods[15]),&(methods[17]),&(methods[18]),&(methods[19]),&(methods[20]),&(methods[21]),&(methods[22]),&(methods[23]),&(methods[24]),&(methods[25]),&(methods[26]),&(methods[27]),&(methods[28]),&(methods[0]),&(methods[25]),&(methods[29]),&(methods[30]),&(methods[31]),&(methods[32]),&(methods[33]),&(methods[24]),&(methods[34]),&(methods[35]),&(methods[36]),&(methods[24]),&(methods[37]),&(methods[38]),&(methods[24])};
+static const char strings[1436] = "serialized_obj_size_out\0GetHexagonBinaryVersion\0append_empty_const_node\0flattened_static_params\0free_udo_individual_lib\0udo_lib_registration_id\0multi_execution_cycles\0get_num_nodes_in_graph\0last_execution_cycles\0set_powersave_details\0last_execution_usecs\0set_powersave_level\0variable_write_flat\0populate_const_node\0config_with_options\0fastrpc_shell_addr\0extraInfoValidLen\0execute_with_info\0append_const_node\0set_graph_option\0register_udo_lib\0append_udo_node\0set_debug_level\0libhexagon_addr\0serialize_size\0populate_graph\0cpuEarlyWakeup\0init_with_info\0data_valid_len\0reset_perfinfo\0variable_write\0get_dsp_offset\0string_options\0new_graph_out\0op_id_to_name\0op_name_to_id\0variable_read\0target_offset\0free_udo_libs\0get_nodetype\0execute_info\0disable_dcvs\0get_perfinfo\0output_index\0data_len_out\0package_name\0so_path_name\0graph_config\0uint_options\0deserialize\0return_code\0execute_new\0batches_out\0zero_offset\0elementsize\0append_node\0string_data\0graph_data\0counter_hi\0counter_lo\0executions\0height_out\0batches_in\0output_idx\0uint_value\0get_power\0node_type\0extraInfo\0num_nodes\0cycles_hi\0cycles_lo\0depth_out\0width_out\0height_in\0max_sizes\0operation\0option_id\0usecs_hi\0usecs_lo\0graph_id\0priority\0PrintLog\0info_out\0teardown\0data_out\0depth_in\0width_in\0stepsize\0snpprint\0version\0n_items\0latency\0data_in\0execute\0prepare\0batches\0op_type\0outputs\0padding\0node_id\0buffer\0result\0unused\0corner\0height\0src_id\0inputs\0getlog\0event\0depth\0width\0rank\0init\0ver\0buf\0err\0";
+static const uint16_t methodStrings[246] = {372,141,1381,1299,1367,1407,1401,930,550,1353,1315,1299,1367,1407,1401,930,550,1353,722,1346,1043,354,863,141,1381,1299,1367,1407,1401,930,550,1353,1315,1299,1367,1407,1401,930,550,1353,442,141,1331,787,1307,72,1381,1374,1001,1315,1413,1113,899,887,1233,1431,911,141,1331,1123,1323,1381,1374,1001,1315,1413,1113,899,887,1233,1283,141,990,1103,1224,1215,1275,875,979,1093,1083,1206,774,667,141,1331,761,875,979,1093,1083,1206,774,580,141,1331,761,1299,1367,1407,1401,1275,748,141,1188,1331,968,957,946,1259,48,141,1331,1299,1367,1407,1401,500,390,141,1331,1299,1367,1407,1401,930,813,141,826,1133,1012,610,1133,923,315,826,1133,1012,610,1133,923,535,824,385,1170,520,275,141,1331,761,1275,295,141,1331,930,681,234,141,1152,1143,839,1339,625,851,841,141,1339,851,490,141,0,851,408,141,648,1017,144,141,1073,1063,709,1161,1331,1033,190,141,1073,1063,212,1360,743,1267,425,800,120,1431,505,141,935,167,141,1053,639,1331,648,653,648,1331,565,141,1395,1388,141,1427,1242,141,1427,458,141,269,96,120,1431,595,474,335,1023,717,1179,1427,24,1423,1251,1423,255,269,1197,141,1291,141,1418,824,695,1431,735,819};
+static const uint16_t methodStringsArrays[46] = {245,134,126,223,192,220,242,240,217,214,211,56,40,118,110,151,238,70,236,83,93,146,234,188,102,208,184,232,205,202,199,244,230,228,22,0,141,180,176,226,172,196,168,164,160,156};
+__QAIC_SLIM_EXPORT const Interface __QAIC_SLIM(hexagon_nn_slim) = {46,&(methodArrays[0]),0,0,&(methodStringsArrays [0]),methodStrings,strings};
 #endif //_HEXAGON_NN_SLIM_H
 #ifdef __cplusplus
 extern "C" {
@@ -578,7 +570,7 @@ __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_config)(void) __QAIC_STUB_ATTRIBUT
    uint32_t _mid = 0;
    return _stub_method(_hexagon_nn_handle(), _mid);
 }
-static __inline int _stub_method_1(remote_handle _handle, uint32_t _mid, char* _in0[1], uint32_t _in0Len[1], char* _in1[1], uint32_t _in1Len[1]) {
+static __inline int _stub_method_1(remote_handle _handle, uint32_t _mid, const hexagon_nn_uint_option* _in0[1], int _in0Len[1], const hexagon_nn_string_option* _in1[1], int _in1Len[1]) {
    remote_arg _pra[3];
    uint32_t _primIn[2];
    remote_arg* _praIn;
@@ -587,10 +579,10 @@ static __inline int _stub_method_1(remote_handle _handle, uint32_t _mid, char* _
    _pra[0].buf.nLen = sizeof(_primIn);
    _COPY(_primIn, 0, _in0Len, 0, 4);
    _praIn = (_pra + 1);
-   _praIn[0].buf.pv = _in0[0];
+   _praIn[0].buf.pv = (void*) _in0[0];
    _praIn[0].buf.nLen = (8 * _in0Len[0]);
    _COPY(_primIn, 4, _in1Len, 0, 4);
-   _praIn[1].buf.pv = _in1[0];
+   _praIn[1].buf.pv = (void*) _in1[0];
    _praIn[1].buf.nLen = (260 * _in1Len[0]);
    _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 3, 0, 0, 0), _pra));
    _CATCH(_nErr) {}
@@ -598,9 +590,9 @@ static __inline int _stub_method_1(remote_handle _handle, uint32_t _mid, char* _
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_config_with_options)(const hexagon_nn_uint_option* uint_options, int uint_optionsLen, const hexagon_nn_string_option* string_options, int string_optionsLen) __QAIC_STUB_ATTRIBUTE {
    uint32_t _mid = 1;
-   return _stub_method_1(_hexagon_nn_handle(), _mid, (char**)&uint_options, (uint32_t*)&uint_optionsLen, (char**)&string_options, (uint32_t*)&string_optionsLen);
+   return _stub_method_1(_hexagon_nn_handle(), _mid, (const hexagon_nn_uint_option**)&uint_options, (int*)&uint_optionsLen, (const hexagon_nn_string_option**)&string_options, (int*)&string_optionsLen);
 }
-static __inline int _stub_method_2(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], char* _in1[1], uint32_t _in1Len[1], char* _in2[1], uint32_t _in2Len[1]) {
+static __inline int _stub_method_2(remote_handle _handle, uint32_t _mid, hexagon_nn_nn_id _in0[1], const hexagon_nn_uint_option* _in1[1], int _in1Len[1], const hexagon_nn_string_option* _in2[1], int _in2Len[1]) {
    remote_arg _pra[3];
    uint32_t _primIn[3];
    remote_arg* _praIn;
@@ -610,10 +602,10 @@ static __inline int _stub_method_2(remote_handle _handle, uint32_t _mid, uint32_
    _COPY(_primIn, 0, _in0, 0, 4);
    _COPY(_primIn, 4, _in1Len, 0, 4);
    _praIn = (_pra + 1);
-   _praIn[0].buf.pv = _in1[0];
+   _praIn[0].buf.pv = (void*) _in1[0];
    _praIn[0].buf.nLen = (8 * _in1Len[0]);
    _COPY(_primIn, 8, _in2Len, 0, 4);
-   _praIn[1].buf.pv = _in2[0];
+   _praIn[1].buf.pv = (void*) _in2[0];
    _praIn[1].buf.nLen = (260 * _in2Len[0]);
    _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 3, 0, 0, 0), _pra));
    _CATCH(_nErr) {}
@@ -621,9 +613,9 @@ static __inline int _stub_method_2(remote_handle _handle, uint32_t _mid, uint32_
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_graph_config)(hexagon_nn_nn_id id, const hexagon_nn_uint_option* uint_options, int uint_optionsLen, const hexagon_nn_string_option* string_options, int string_optionsLen) __QAIC_STUB_ATTRIBUTE {
    uint32_t _mid = 2;
-   return _stub_method_2(_hexagon_nn_handle(), _mid, (uint32_t*)&id, (char**)&uint_options, (uint32_t*)&uint_optionsLen, (char**)&string_options, (uint32_t*)&string_optionsLen);
+   return _stub_method_2(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)&id, (const hexagon_nn_uint_option**)&uint_options, (int*)&uint_optionsLen, (const hexagon_nn_string_option**)&string_options, (int*)&string_optionsLen);
 }
-static __inline int _stub_method_3(remote_handle _handle, uint32_t _mid, uint32_t _rout0[1], uint32_t _rout1[1]) {
+static __inline int _stub_method_3(remote_handle _handle, uint32_t _mid, unsigned int _rout0[1], unsigned int _rout1[1]) {
    int _numIn[1];
    remote_arg _pra[1];
    uint32_t _primROut[2];
@@ -639,9 +631,75 @@ static __inline int _stub_method_3(remote_handle _handle, uint32_t _mid, uint32_
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_get_dsp_offset)(unsigned int* libhexagon_addr, unsigned int* fastrpc_shell_addr) __QAIC_STUB_ATTRIBUTE {
    uint32_t _mid = 3;
-   return _stub_method_3(_hexagon_nn_handle(), _mid, (uint32_t*)libhexagon_addr, (uint32_t*)fastrpc_shell_addr);
+   return _stub_method_3(_hexagon_nn_handle(), _mid, (unsigned int*)libhexagon_addr, (unsigned int*)fastrpc_shell_addr);
 }
-static __inline int _stub_method_4(remote_handle _handle, uint32_t _mid, uint32_t _rout0[1]) {
+static __inline int _stub_method_4(remote_handle _handle, uint32_t _mid, const char* _in0[1], uint32_t _rout1[1], hexagon_nn_udo_err _rout2[1]) {
+   int _in0Len[1];
+   int _numIn[1];
+   remote_arg _pra[3];
+   uint32_t _primIn[1];
+   uint32_t _primROut[2];
+   remote_arg* _praIn;
+   int _nErr = 0;
+   _numIn[0] = 1;
+   _pra[0].buf.pv = (void*)_primIn;
+   _pra[0].buf.nLen = sizeof(_primIn);
+   _pra[(_numIn[0] + 1)].buf.pv = (void*)_primROut;
+   _pra[(_numIn[0] + 1)].buf.nLen = sizeof(_primROut);
+   _in0Len[0] = (1 + strlen(_in0[0]));
+   _COPY(_primIn, 0, _in0Len, 0, 4);
+   _praIn = (_pra + 1);
+   _praIn[0].buf.pv = (void*) _in0[0];
+   _praIn[0].buf.nLen = (1 * _in0Len[0]);
+   _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 2, 1, 0, 0), _pra));
+   _COPY(_rout1, 0, _primROut, 0, 4);
+   _COPY(_rout2, 0, _primROut, 4, 4);
+   _CATCH(_nErr) {}
+   return _nErr;
+}
+__QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_register_udo_lib)(const char* so_path_name, uint32_t* udo_lib_registration_id, hexagon_nn_udo_err* err) __QAIC_STUB_ATTRIBUTE {
+   uint32_t _mid = 4;
+   return _stub_method_4(_hexagon_nn_handle(), _mid, (const char**)&so_path_name, (uint32_t*)udo_lib_registration_id, (hexagon_nn_udo_err*)err);
+}
+static __inline int _stub_method_5(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], hexagon_nn_udo_err _rout1[1]) {
+   int _numIn[1];
+   remote_arg _pra[2];
+   uint32_t _primIn[1];
+   uint32_t _primROut[1];
+   int _nErr = 0;
+   _numIn[0] = 0;
+   _pra[0].buf.pv = (void*)_primIn;
+   _pra[0].buf.nLen = sizeof(_primIn);
+   _pra[(_numIn[0] + 1)].buf.pv = (void*)_primROut;
+   _pra[(_numIn[0] + 1)].buf.nLen = sizeof(_primROut);
+   _COPY(_primIn, 0, _in0, 0, 4);
+   _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 1, 1, 0, 0), _pra));
+   _COPY(_rout1, 0, _primROut, 0, 4);
+   _CATCH(_nErr) {}
+   return _nErr;
+}
+__QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_free_udo_individual_lib)(uint32_t udo_lib_registration_id, hexagon_nn_udo_err* err) __QAIC_STUB_ATTRIBUTE {
+   uint32_t _mid = 5;
+   return _stub_method_5(_hexagon_nn_handle(), _mid, (uint32_t*)&udo_lib_registration_id, (hexagon_nn_udo_err*)err);
+}
+static __inline int _stub_method_6(remote_handle _handle, uint32_t _mid, hexagon_nn_udo_err _rout0[1]) {
+   int _numIn[1];
+   remote_arg _pra[1];
+   uint32_t _primROut[1];
+   int _nErr = 0;
+   _numIn[0] = 0;
+   _pra[(_numIn[0] + 0)].buf.pv = (void*)_primROut;
+   _pra[(_numIn[0] + 0)].buf.nLen = sizeof(_primROut);
+   _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 0, 1, 0, 0), _pra));
+   _COPY(_rout0, 0, _primROut, 0, 4);
+   _CATCH(_nErr) {}
+   return _nErr;
+}
+__QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_free_udo_libs)(hexagon_nn_udo_err* err) __QAIC_STUB_ATTRIBUTE {
+   uint32_t _mid = 6;
+   return _stub_method_6(_hexagon_nn_handle(), _mid, (hexagon_nn_udo_err*)err);
+}
+static __inline int _stub_method_7(remote_handle _handle, uint32_t _mid, hexagon_nn_nn_id _rout0[1]) {
    int _numIn[1];
    remote_arg _pra[1];
    uint32_t _primROut[1];
@@ -655,10 +713,10 @@ static __inline int _stub_method_4(remote_handle _handle, uint32_t _mid, uint32_
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_init)(hexagon_nn_nn_id* g) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 4;
-   return _stub_method_4(_hexagon_nn_handle(), _mid, (uint32_t*)g);
+   uint32_t _mid = 7;
+   return _stub_method_7(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)g);
 }
-static __inline int _stub_method_5(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], uint32_t _in1[1]) {
+static __inline int _stub_method_8(remote_handle _handle, uint32_t _mid, hexagon_nn_nn_id _in0[1], int _in1[1]) {
    remote_arg _pra[1];
    uint32_t _primIn[2];
    int _nErr = 0;
@@ -671,10 +729,10 @@ static __inline int _stub_method_5(remote_handle _handle, uint32_t _mid, uint32_
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_set_debug_level)(hexagon_nn_nn_id id, int level) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 5;
-   return _stub_method_5(_hexagon_nn_handle(), _mid, (uint32_t*)&id, (uint32_t*)&level);
+   uint32_t _mid = 8;
+   return _stub_method_8(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)&id, (int*)&level);
 }
-static __inline int _stub_method_6(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], char* _in1[1], uint32_t _in1Len[1], char* _rout1[1], uint32_t _rout1Len[1]) {
+static __inline int _stub_method_9(remote_handle _handle, uint32_t _mid, hexagon_nn_nn_id _in0[1], const unsigned char* _in1[1], int _in1Len[1], unsigned char* _rout1[1], int _rout1Len[1]) {
    int _numIn[1];
    remote_arg _pra[3];
    uint32_t _primIn[3];
@@ -687,7 +745,7 @@ static __inline int _stub_method_6(remote_handle _handle, uint32_t _mid, uint32_
    _COPY(_primIn, 0, _in0, 0, 4);
    _COPY(_primIn, 4, _in1Len, 0, 4);
    _praIn = (_pra + 1);
-   _praIn[0].buf.pv = _in1[0];
+   _praIn[0].buf.pv = (void*) _in1[0];
    _praIn[0].buf.nLen = (1 * _in1Len[0]);
    _COPY(_primIn, 8, _rout1Len, 0, 4);
    _praROut = (_praIn + _numIn[0] + 0);
@@ -698,14 +756,14 @@ static __inline int _stub_method_6(remote_handle _handle, uint32_t _mid, uint32_
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_snpprint)(hexagon_nn_nn_id id, unsigned char* buf, int bufLen) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 6;
-   return _stub_method_6(_hexagon_nn_handle(), _mid, (uint32_t*)&id, (char**)&buf, (uint32_t*)&bufLen, (char**)&buf, (uint32_t*)&bufLen);
+   uint32_t _mid = 9;
+   return _stub_method_9(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)&id, (const unsigned char**)&buf, (int*)&bufLen, (unsigned char**)&buf, (int*)&bufLen);
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_getlog)(hexagon_nn_nn_id id, unsigned char* buf, int bufLen) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 7;
-   return _stub_method_6(_hexagon_nn_handle(), _mid, (uint32_t*)&id, (char**)&buf, (uint32_t*)&bufLen, (char**)&buf, (uint32_t*)&bufLen);
+   uint32_t _mid = 10;
+   return _stub_method_9(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)&id, (const unsigned char**)&buf, (int*)&bufLen, (unsigned char**)&buf, (int*)&bufLen);
 }
-static __inline int _stub_method_7(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], uint32_t _in1[1], uint32_t _in2[1], uint32_t _in3[1], char* _in4[1], uint32_t _in4Len[1], char* _in5[1], uint32_t _in5Len[1]) {
+static __inline int _stub_method_10(remote_handle _handle, uint32_t _mid, hexagon_nn_nn_id _in0[1], unsigned int _in1[1], unsigned int _in2[1], hexagon_nn_padding_type _in3[1], const hexagon_nn_input* _in4[1], int _in4Len[1], const hexagon_nn_output* _in5[1], int _in5Len[1]) {
    remote_arg _pra[3];
    uint32_t _primIn[6];
    remote_arg* _praIn;
@@ -718,20 +776,63 @@ static __inline int _stub_method_7(remote_handle _handle, uint32_t _mid, uint32_
    _COPY(_primIn, 12, _in3, 0, 4);
    _COPY(_primIn, 16, _in4Len, 0, 4);
    _praIn = (_pra + 1);
-   _praIn[0].buf.pv = _in4[0];
+   _praIn[0].buf.pv = (void*) _in4[0];
    _praIn[0].buf.nLen = (8 * _in4Len[0]);
    _COPY(_primIn, 20, _in5Len, 0, 4);
-   _praIn[1].buf.pv = _in5[0];
+   _praIn[1].buf.pv = (void*) _in5[0];
    _praIn[1].buf.nLen = (48 * _in5Len[0]);
    _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 3, 0, 0, 0), _pra));
    _CATCH(_nErr) {}
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_append_node)(hexagon_nn_nn_id id, unsigned int node_id, unsigned int operation, hexagon_nn_padding_type padding, const hexagon_nn_input* inputs, int inputsLen, const hexagon_nn_output* outputs, int outputsLen) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 8;
-   return _stub_method_7(_hexagon_nn_handle(), _mid, (uint32_t*)&id, (uint32_t*)&node_id, (uint32_t*)&operation, (uint32_t*)&padding, (char**)&inputs, (uint32_t*)&inputsLen, (char**)&outputs, (uint32_t*)&outputsLen);
+   uint32_t _mid = 11;
+   return _stub_method_10(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)&id, (unsigned int*)&node_id, (unsigned int*)&operation, (hexagon_nn_padding_type*)&padding, (const hexagon_nn_input**)&inputs, (int*)&inputsLen, (const hexagon_nn_output**)&outputs, (int*)&outputsLen);
 }
-static __inline int _stub_method_8(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], uint32_t _in1[1], uint32_t _in2[1], uint32_t _in3[1], uint32_t _in4[1], uint32_t _in5[1], char* _in6[1], uint32_t _in6Len[1]) {
+static __inline int _stub_method_11(remote_handle _handle, uint32_t _mid, hexagon_nn_nn_id _in0[1], unsigned int _in1[1], const char* _in2[1], const char* _in3[1], const char* _in4[1], int _in4Len[1], const hexagon_nn_input* _in5[1], int _in5Len[1], const hexagon_nn_output* _in6[1], int _in6Len[1], hexagon_nn_udo_err _rout7[1]) {
+   int _in2Len[1];
+   int _in3Len[1];
+   int _numIn[1];
+   remote_arg _pra[7];
+   uint32_t _primIn[7];
+   uint32_t _primROut[1];
+   remote_arg* _praIn;
+   int _nErr = 0;
+   _numIn[0] = 5;
+   _pra[0].buf.pv = (void*)_primIn;
+   _pra[0].buf.nLen = sizeof(_primIn);
+   _pra[(_numIn[0] + 1)].buf.pv = (void*)_primROut;
+   _pra[(_numIn[0] + 1)].buf.nLen = sizeof(_primROut);
+   _COPY(_primIn, 0, _in0, 0, 4);
+   _COPY(_primIn, 4, _in1, 0, 4);
+   _in2Len[0] = (1 + strlen(_in2[0]));
+   _COPY(_primIn, 8, _in2Len, 0, 4);
+   _praIn = (_pra + 1);
+   _praIn[0].buf.pv = (void*) _in2[0];
+   _praIn[0].buf.nLen = (1 * _in2Len[0]);
+   _in3Len[0] = (1 + strlen(_in3[0]));
+   _COPY(_primIn, 12, _in3Len, 0, 4);
+   _praIn[1].buf.pv = (void*) _in3[0];
+   _praIn[1].buf.nLen = (1 * _in3Len[0]);
+   _COPY(_primIn, 16, _in4Len, 0, 4);
+   _praIn[2].buf.pv = (void*) _in4[0];
+   _praIn[2].buf.nLen = (1 * _in4Len[0]);
+   _COPY(_primIn, 20, _in5Len, 0, 4);
+   _praIn[3].buf.pv = (void*) _in5[0];
+   _praIn[3].buf.nLen = (8 * _in5Len[0]);
+   _COPY(_primIn, 24, _in6Len, 0, 4);
+   _praIn[4].buf.pv = (void*) _in6[0];
+   _praIn[4].buf.nLen = (48 * _in6Len[0]);
+   _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 6, 1, 0, 0), _pra));
+   _COPY(_rout7, 0, _primROut, 0, 4);
+   _CATCH(_nErr) {}
+   return _nErr;
+}
+__QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_append_udo_node)(hexagon_nn_nn_id id, unsigned int node_id, const char* package_name, const char* op_type, const char* flattened_static_params, int flattened_static_paramsLen, const hexagon_nn_input* inputs, int inputsLen, const hexagon_nn_output* outputs, int outputsLen, hexagon_nn_udo_err* err) __QAIC_STUB_ATTRIBUTE {
+   uint32_t _mid = 12;
+   return _stub_method_11(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)&id, (unsigned int*)&node_id, (const char**)&package_name, (const char**)&op_type, (const char**)&flattened_static_params, (int*)&flattened_static_paramsLen, (const hexagon_nn_input**)&inputs, (int*)&inputsLen, (const hexagon_nn_output**)&outputs, (int*)&outputsLen, (hexagon_nn_udo_err*)err);
+}
+static __inline int _stub_method_12(remote_handle _handle, uint32_t _mid, hexagon_nn_nn_id _in0[1], unsigned int _in1[1], unsigned int _in2[1], unsigned int _in3[1], unsigned int _in4[1], unsigned int _in5[1], const unsigned char* _in6[1], int _in6Len[1]) {
    remote_arg _pra[2];
    uint32_t _primIn[7];
    remote_arg* _praIn;
@@ -746,17 +847,17 @@ static __inline int _stub_method_8(remote_handle _handle, uint32_t _mid, uint32_
    _COPY(_primIn, 20, _in5, 0, 4);
    _COPY(_primIn, 24, _in6Len, 0, 4);
    _praIn = (_pra + 1);
-   _praIn[0].buf.pv = _in6[0];
+   _praIn[0].buf.pv = (void*) _in6[0];
    _praIn[0].buf.nLen = (1 * _in6Len[0]);
    _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 2, 0, 0, 0), _pra));
    _CATCH(_nErr) {}
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_append_const_node)(hexagon_nn_nn_id id, unsigned int node_id, unsigned int batches, unsigned int height, unsigned int width, unsigned int depth, const unsigned char* data, int dataLen) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 9;
-   return _stub_method_8(_hexagon_nn_handle(), _mid, (uint32_t*)&id, (uint32_t*)&node_id, (uint32_t*)&batches, (uint32_t*)&height, (uint32_t*)&width, (uint32_t*)&depth, (char**)&data, (uint32_t*)&dataLen);
+   uint32_t _mid = 13;
+   return _stub_method_12(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)&id, (unsigned int*)&node_id, (unsigned int*)&batches, (unsigned int*)&height, (unsigned int*)&width, (unsigned int*)&depth, (const unsigned char**)&data, (int*)&dataLen);
 }
-static __inline int _stub_method_9(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], uint32_t _in1[1], uint32_t _in2[1], uint32_t _in3[1], uint32_t _in4[1], uint32_t _in5[1], uint32_t _in6[1]) {
+static __inline int _stub_method_13(remote_handle _handle, uint32_t _mid, hexagon_nn_nn_id _in0[1], unsigned int _in1[1], unsigned int _in2[1], unsigned int _in3[1], unsigned int _in4[1], unsigned int _in5[1], unsigned int _in6[1]) {
    remote_arg _pra[1];
    uint32_t _primIn[7];
    int _nErr = 0;
@@ -774,10 +875,10 @@ static __inline int _stub_method_9(remote_handle _handle, uint32_t _mid, uint32_
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_append_empty_const_node)(hexagon_nn_nn_id id, unsigned int node_id, unsigned int batches, unsigned int height, unsigned int width, unsigned int depth, unsigned int size) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 10;
-   return _stub_method_9(_hexagon_nn_handle(), _mid, (uint32_t*)&id, (uint32_t*)&node_id, (uint32_t*)&batches, (uint32_t*)&height, (uint32_t*)&width, (uint32_t*)&depth, (uint32_t*)&size);
+   uint32_t _mid = 14;
+   return _stub_method_13(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)&id, (unsigned int*)&node_id, (unsigned int*)&batches, (unsigned int*)&height, (unsigned int*)&width, (unsigned int*)&depth, (unsigned int*)&size);
 }
-static __inline int _stub_method_10(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], uint32_t _in1[1], char* _in2[1], uint32_t _in2Len[1], uint32_t _in3[1]) {
+static __inline int _stub_method_14(remote_handle _handle, uint32_t _mid, hexagon_nn_nn_id _in0[1], unsigned int _in1[1], const unsigned char* _in2[1], int _in2Len[1], unsigned int _in3[1]) {
    remote_arg _pra[2];
    uint32_t _primIn[4];
    remote_arg* _praIn;
@@ -788,7 +889,7 @@ static __inline int _stub_method_10(remote_handle _handle, uint32_t _mid, uint32
    _COPY(_primIn, 4, _in1, 0, 4);
    _COPY(_primIn, 8, _in2Len, 0, 4);
    _praIn = (_pra + 1);
-   _praIn[0].buf.pv = _in2[0];
+   _praIn[0].buf.pv = (void*) _in2[0];
    _praIn[0].buf.nLen = (1 * _in2Len[0]);
    _COPY(_primIn, 12, _in3, 0, 4);
    _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 2, 0, 0, 0), _pra));
@@ -796,10 +897,10 @@ static __inline int _stub_method_10(remote_handle _handle, uint32_t _mid, uint32
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_populate_const_node)(hexagon_nn_nn_id id, unsigned int node_id, const unsigned char* data, int dataLen, unsigned int target_offset) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 11;
-   return _stub_method_10(_hexagon_nn_handle(), _mid, (uint32_t*)&id, (uint32_t*)&node_id, (char**)&data, (uint32_t*)&dataLen, (uint32_t*)&target_offset);
+   uint32_t _mid = 15;
+   return _stub_method_14(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)&id, (unsigned int*)&node_id, (const unsigned char**)&data, (int*)&dataLen, (unsigned int*)&target_offset);
 }
-static __inline int _stub_method_11(remote_handle _handle, uint32_t _mid, uint32_t _in0[1]) {
+static __inline int _stub_method_15(remote_handle _handle, uint32_t _mid, hexagon_nn_nn_id _in0[1]) {
    remote_arg _pra[1];
    uint32_t _primIn[1];
    int _nErr = 0;
@@ -811,10 +912,10 @@ static __inline int _stub_method_11(remote_handle _handle, uint32_t _mid, uint32
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_prepare)(hexagon_nn_nn_id id) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 12;
-   return _stub_method_11(_hexagon_nn_handle(), _mid, (uint32_t*)&id);
+   uint32_t _mid = 16;
+   return _stub_method_15(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)&id);
 }
-static __inline int _stub_method_12(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], uint32_t _in1[1], uint32_t _in2[1], uint32_t _in3[1], uint32_t _in4[1], char* _in5[1], uint32_t _in5Len[1], uint32_t _rout6[1], uint32_t _rout7[1], uint32_t _rout8[1], uint32_t _rout9[1], char* _rout10[1], uint32_t _rout10Len[1], uint32_t _rout11[1]) {
+static __inline int _stub_method_16(remote_handle _handle, uint32_t _mid, hexagon_nn_nn_id _in0[1], unsigned int _in1[1], unsigned int _in2[1], unsigned int _in3[1], unsigned int _in4[1], const unsigned char* _in5[1], int _in5Len[1], unsigned int _rout6[1], unsigned int _rout7[1], unsigned int _rout8[1], unsigned int _rout9[1], unsigned char* _rout10[1], int _rout10Len[1], unsigned int _rout11[1]) {
    int _numIn[1];
    remote_arg _pra[4];
    uint32_t _primIn[7];
@@ -834,7 +935,7 @@ static __inline int _stub_method_12(remote_handle _handle, uint32_t _mid, uint32
    _COPY(_primIn, 16, _in4, 0, 4);
    _COPY(_primIn, 20, _in5Len, 0, 4);
    _praIn = (_pra + 1);
-   _praIn[0].buf.pv = _in5[0];
+   _praIn[0].buf.pv = (void*) _in5[0];
    _praIn[0].buf.nLen = (1 * _in5Len[0]);
    _COPY(_primIn, 24, _rout10Len, 0, 4);
    _praROut = (_praIn + _numIn[0] + 1);
@@ -850,14 +951,14 @@ static __inline int _stub_method_12(remote_handle _handle, uint32_t _mid, uint32
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_execute)(hexagon_nn_nn_id id, unsigned int batches_in, unsigned int height_in, unsigned int width_in, unsigned int depth_in, const unsigned char* data_in, int data_inLen, unsigned int* batches_out, unsigned int* height_out, unsigned int* width_out, unsigned int* depth_out, unsigned char* data_out, int data_outLen, unsigned int* data_len_out) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 13;
-   return _stub_method_12(_hexagon_nn_handle(), _mid, (uint32_t*)&id, (uint32_t*)&batches_in, (uint32_t*)&height_in, (uint32_t*)&width_in, (uint32_t*)&depth_in, (char**)&data_in, (uint32_t*)&data_inLen, (uint32_t*)batches_out, (uint32_t*)height_out, (uint32_t*)width_out, (uint32_t*)depth_out, (char**)&data_out, (uint32_t*)&data_outLen, (uint32_t*)data_len_out);
+   uint32_t _mid = 17;
+   return _stub_method_16(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)&id, (unsigned int*)&batches_in, (unsigned int*)&height_in, (unsigned int*)&width_in, (unsigned int*)&depth_in, (const unsigned char**)&data_in, (int*)&data_inLen, (unsigned int*)batches_out, (unsigned int*)height_out, (unsigned int*)width_out, (unsigned int*)depth_out, (unsigned char**)&data_out, (int*)&data_outLen, (unsigned int*)data_len_out);
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_teardown)(hexagon_nn_nn_id id) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 14;
-   return _stub_method_11(_hexagon_nn_handle(), _mid, (uint32_t*)&id);
+   uint32_t _mid = 18;
+   return _stub_method_15(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)&id);
 }
-static __inline int _stub_method_13(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], uint32_t _in1[1], uint32_t _in2[1], uint32_t _rout3[1], uint32_t _rout4[1], uint32_t _rout5[1], uint32_t _rout6[1], char* _rout7[1], uint32_t _rout7Len[1], uint32_t _rout8[1]) {
+static __inline int _stub_method_17(remote_handle _handle, uint32_t _mid, hexagon_nn_nn_id _in0[1], unsigned int _in1[1], int _in2[1], unsigned int _rout3[1], unsigned int _rout4[1], unsigned int _rout5[1], unsigned int _rout6[1], unsigned char* _rout7[1], int _rout7Len[1], unsigned int _rout8[1]) {
    int _numIn[1];
    remote_arg _pra[3];
    uint32_t _primIn[4];
@@ -888,10 +989,10 @@ static __inline int _stub_method_13(remote_handle _handle, uint32_t _mid, uint32
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_variable_read)(hexagon_nn_nn_id id, unsigned int node_id, int output_index, unsigned int* batches_out, unsigned int* height_out, unsigned int* width_out, unsigned int* depth_out, unsigned char* data_out, int data_outLen, unsigned int* data_len_out) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 15;
-   return _stub_method_13(_hexagon_nn_handle(), _mid, (uint32_t*)&id, (uint32_t*)&node_id, (uint32_t*)&output_index, (uint32_t*)batches_out, (uint32_t*)height_out, (uint32_t*)width_out, (uint32_t*)depth_out, (char**)&data_out, (uint32_t*)&data_outLen, (uint32_t*)data_len_out);
+   uint32_t _mid = 19;
+   return _stub_method_17(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)&id, (unsigned int*)&node_id, (int*)&output_index, (unsigned int*)batches_out, (unsigned int*)height_out, (unsigned int*)width_out, (unsigned int*)depth_out, (unsigned char**)&data_out, (int*)&data_outLen, (unsigned int*)data_len_out);
 }
-static __inline int _stub_method_14(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], uint32_t _in1[1], uint32_t _in2[1], uint32_t _in3[1], uint32_t _in4[1], uint32_t _in5[1], uint32_t _in6[1], char* _in7[1], uint32_t _in7Len[1]) {
+static __inline int _stub_method_18(remote_handle _handle, uint32_t _mid, hexagon_nn_nn_id _in0[1], unsigned int _in1[1], int _in2[1], unsigned int _in3[1], unsigned int _in4[1], unsigned int _in5[1], unsigned int _in6[1], const unsigned char* _in7[1], int _in7Len[1]) {
    remote_arg _pra[2];
    uint32_t _primIn[8];
    remote_arg* _praIn;
@@ -907,17 +1008,17 @@ static __inline int _stub_method_14(remote_handle _handle, uint32_t _mid, uint32
    _COPY(_primIn, 24, _in6, 0, 4);
    _COPY(_primIn, 28, _in7Len, 0, 4);
    _praIn = (_pra + 1);
-   _praIn[0].buf.pv = _in7[0];
+   _praIn[0].buf.pv = (void*) _in7[0];
    _praIn[0].buf.nLen = (1 * _in7Len[0]);
    _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 2, 0, 0, 0), _pra));
    _CATCH(_nErr) {}
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_variable_write)(hexagon_nn_nn_id id, unsigned int node_id, int output_index, unsigned int batches, unsigned int height, unsigned int width, unsigned int depth, const unsigned char* data_in, int data_inLen) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 16;
-   return _stub_method_14(_hexagon_nn_handle(), _mid, (uint32_t*)&id, (uint32_t*)&node_id, (uint32_t*)&output_index, (uint32_t*)&batches, (uint32_t*)&height, (uint32_t*)&width, (uint32_t*)&depth, (char**)&data_in, (uint32_t*)&data_inLen);
+   uint32_t _mid = 20;
+   return _stub_method_18(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)&id, (unsigned int*)&node_id, (int*)&output_index, (unsigned int*)&batches, (unsigned int*)&height, (unsigned int*)&width, (unsigned int*)&depth, (const unsigned char**)&data_in, (int*)&data_inLen);
 }
-static __inline int _stub_method_15(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], uint32_t _in1[1], uint32_t _in2[1], char* _in3[1], uint32_t _in3Len[1]) {
+static __inline int _stub_method_19(remote_handle _handle, uint32_t _mid, hexagon_nn_nn_id _in0[1], unsigned int _in1[1], int _in2[1], const unsigned char* _in3[1], int _in3Len[1]) {
    remote_arg _pra[2];
    uint32_t _primIn[4];
    remote_arg* _praIn;
@@ -929,21 +1030,32 @@ static __inline int _stub_method_15(remote_handle _handle, uint32_t _mid, uint32
    _COPY(_primIn, 8, _in2, 0, 4);
    _COPY(_primIn, 12, _in3Len, 0, 4);
    _praIn = (_pra + 1);
-   _praIn[0].buf.pv = _in3[0];
+   _praIn[0].buf.pv = (void*) _in3[0];
    _praIn[0].buf.nLen = (1 * _in3Len[0]);
    _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 2, 0, 0, 0), _pra));
    _CATCH(_nErr) {}
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_variable_write_flat)(hexagon_nn_nn_id id, unsigned int node_id, int output_index, const unsigned char* data_in, int data_inLen) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 17;
-   return _stub_method_15(_hexagon_nn_handle(), _mid, (uint32_t*)&id, (uint32_t*)&node_id, (uint32_t*)&output_index, (char**)&data_in, (uint32_t*)&data_inLen);
+   uint32_t _mid = 21;
+   return _stub_method_19(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)&id, (unsigned int*)&node_id, (int*)&output_index, (const unsigned char**)&data_in, (int*)&data_inLen);
+}
+static __inline int _stub_method_20(remote_handle _handle, uint32_t _mid, unsigned int _in0[1]) {
+   remote_arg _pra[1];
+   uint32_t _primIn[1];
+   int _nErr = 0;
+   _pra[0].buf.pv = (void*)_primIn;
+   _pra[0].buf.nLen = sizeof(_primIn);
+   _COPY(_primIn, 0, _in0, 0, 4);
+   _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 1, 0, 0, 0), _pra));
+   _CATCH(_nErr) {}
+   return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_set_powersave_level)(unsigned int level) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 18;
-   return _stub_method_11(_hexagon_nn_handle(), _mid, (uint32_t*)&level);
+   uint32_t _mid = 22;
+   return _stub_method_20(_hexagon_nn_handle(), _mid, (unsigned int*)&level);
 }
-static __inline int _stub_method_16(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], uint32_t _in1[1], uint32_t _in2[1]) {
+static __inline int _stub_method_21(remote_handle _handle, uint32_t _mid, hexagon_nn_corner_type _in0[1], hexagon_nn_dcvs_type _in1[1], unsigned int _in2[1]) {
    remote_arg _pra[1];
    uint32_t _primIn[3];
    int _nErr = 0;
@@ -957,10 +1069,10 @@ static __inline int _stub_method_16(remote_handle _handle, uint32_t _mid, uint32
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_set_powersave_details)(hexagon_nn_corner_type corner, hexagon_nn_dcvs_type dcvs, unsigned int latency) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 19;
-   return _stub_method_16(_hexagon_nn_handle(), _mid, (uint32_t*)&corner, (uint32_t*)&dcvs, (uint32_t*)&latency);
+   uint32_t _mid = 23;
+   return _stub_method_21(_hexagon_nn_handle(), _mid, (hexagon_nn_corner_type*)&corner, (hexagon_nn_dcvs_type*)&dcvs, (unsigned int*)&latency);
 }
-static __inline int _stub_method_17(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], char* _rout1[1], uint32_t _rout1Len[1], uint32_t _rout2[1]) {
+static __inline int _stub_method_22(remote_handle _handle, uint32_t _mid, hexagon_nn_nn_id _in0[1], hexagon_nn_perfinfo* _rout1[1], int _rout1Len[1], unsigned int _rout2[1]) {
    int _numIn[1];
    remote_arg _pra[3];
    uint32_t _primIn[2];
@@ -985,14 +1097,26 @@ static __inline int _stub_method_17(remote_handle _handle, uint32_t _mid, uint32
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_get_perfinfo)(hexagon_nn_nn_id id, hexagon_nn_perfinfo* info_out, int info_outLen, unsigned int* n_items) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 20;
-   return _stub_method_17(_hexagon_nn_handle(), _mid, (uint32_t*)&id, (char**)&info_out, (uint32_t*)&info_outLen, (uint32_t*)n_items);
+   uint32_t _mid = 24;
+   return _stub_method_22(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)&id, (hexagon_nn_perfinfo**)&info_out, (int*)&info_outLen, (unsigned int*)n_items);
+}
+static __inline int _stub_method_23(remote_handle _handle, uint32_t _mid, hexagon_nn_nn_id _in0[1], unsigned int _in1[1]) {
+   remote_arg _pra[1];
+   uint32_t _primIn[2];
+   int _nErr = 0;
+   _pra[0].buf.pv = (void*)_primIn;
+   _pra[0].buf.nLen = sizeof(_primIn);
+   _COPY(_primIn, 0, _in0, 0, 4);
+   _COPY(_primIn, 4, _in1, 0, 4);
+   _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 1, 0, 0, 0), _pra));
+   _CATCH(_nErr) {}
+   return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_reset_perfinfo)(hexagon_nn_nn_id id, unsigned int event) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 21;
-   return _stub_method_5(_hexagon_nn_handle(), _mid, (uint32_t*)&id, (uint32_t*)&event);
+   uint32_t _mid = 25;
+   return _stub_method_23(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)&id, (unsigned int*)&event);
 }
-static __inline int _stub_method_18(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], uint32_t _rout1[1], uint32_t _rout2[1]) {
+static __inline int _stub_method_24(remote_handle _handle, uint32_t _mid, hexagon_nn_nn_id _in0[1], unsigned int _rout1[1], unsigned int _rout2[1]) {
    int _numIn[1];
    remote_arg _pra[2];
    uint32_t _primIn[1];
@@ -1011,15 +1135,28 @@ static __inline int _stub_method_18(remote_handle _handle, uint32_t _mid, uint32
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_last_execution_cycles)(hexagon_nn_nn_id id, unsigned int* cycles_lo, unsigned int* cycles_hi) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 22;
-   return _stub_method_18(_hexagon_nn_handle(), _mid, (uint32_t*)&id, (uint32_t*)cycles_lo, (uint32_t*)cycles_hi);
+   uint32_t _mid = 26;
+   return _stub_method_24(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)&id, (unsigned int*)cycles_lo, (unsigned int*)cycles_hi);
+}
+static __inline int _stub_method_25(remote_handle _handle, uint32_t _mid, int _rout0[1]) {
+   int _numIn[1];
+   remote_arg _pra[1];
+   uint32_t _primROut[1];
+   int _nErr = 0;
+   _numIn[0] = 0;
+   _pra[(_numIn[0] + 0)].buf.pv = (void*)_primROut;
+   _pra[(_numIn[0] + 0)].buf.nLen = sizeof(_primROut);
+   _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 0, 1, 0, 0), _pra));
+   _COPY(_rout0, 0, _primROut, 0, 4);
+   _CATCH(_nErr) {}
+   return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_version)(int* ver) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 23;
-   return _stub_method_4(_hexagon_nn_handle(), _mid, (uint32_t*)ver);
+   uint32_t _mid = 27;
+   return _stub_method_25(_hexagon_nn_handle(), _mid, (int*)ver);
 }
-static __inline int _stub_method_19(remote_handle _handle, uint32_t _mid, char* _in0[1], uint32_t _rout1[1]) {
-   uint32_t _in0Len[1];
+static __inline int _stub_method_26(remote_handle _handle, uint32_t _mid, const char* _in0[1], unsigned int _rout1[1]) {
+   int _in0Len[1];
    int _numIn[1];
    remote_arg _pra[3];
    uint32_t _primIn[1];
@@ -1034,7 +1171,7 @@ static __inline int _stub_method_19(remote_handle _handle, uint32_t _mid, char* 
    _in0Len[0] = (1 + strlen(_in0[0]));
    _COPY(_primIn, 0, _in0Len, 0, 4);
    _praIn = (_pra + 1);
-   _praIn[0].buf.pv = _in0[0];
+   _praIn[0].buf.pv = (void*) _in0[0];
    _praIn[0].buf.nLen = (1 * _in0Len[0]);
    _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 2, 1, 0, 0), _pra));
    _COPY(_rout1, 0, _primROut, 0, 4);
@@ -1042,10 +1179,10 @@ static __inline int _stub_method_19(remote_handle _handle, uint32_t _mid, char* 
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_op_name_to_id)(const char* name, unsigned int* node_id) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 24;
-   return _stub_method_19(_hexagon_nn_handle(), _mid, (char**)&name, (uint32_t*)node_id);
+   uint32_t _mid = 28;
+   return _stub_method_26(_hexagon_nn_handle(), _mid, (const char**)&name, (unsigned int*)node_id);
 }
-static __inline int _stub_method_20(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], char* _rout1[1], uint32_t _rout1Len[1]) {
+static __inline int _stub_method_27(remote_handle _handle, uint32_t _mid, unsigned int _in0[1], char* _rout1[1], int _rout1Len[1]) {
    int _numIn[1];
    remote_arg _pra[2];
    uint32_t _primIn[2];
@@ -1070,10 +1207,10 @@ static __inline int _stub_method_20(remote_handle _handle, uint32_t _mid, uint32
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_op_id_to_name)(unsigned int node_id, char* name, int nameLen) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 25;
-   return _stub_method_20(_hexagon_nn_handle(), _mid, (uint32_t*)&node_id, (char**)&name, (uint32_t*)&nameLen);
+   uint32_t _mid = 29;
+   return _stub_method_27(_hexagon_nn_handle(), _mid, (unsigned int*)&node_id, (char**)&name, (int*)&nameLen);
 }
-static __inline int _stub_method_21(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], uint32_t _rout1[1]) {
+static __inline int _stub_method_28(remote_handle _handle, uint32_t _mid, hexagon_nn_nn_id _in0[1], unsigned int _rout1[1]) {
    int _numIn[1];
    remote_arg _pra[2];
    uint32_t _primIn[1];
@@ -1091,37 +1228,66 @@ static __inline int _stub_method_21(remote_handle _handle, uint32_t _mid, uint32
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_get_num_nodes_in_graph)(hexagon_nn_nn_id id, unsigned int* num_nodes) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 26;
-   return _stub_method_21(_hexagon_nn_handle(), _mid, (uint32_t*)&id, (uint32_t*)num_nodes);
+   uint32_t _mid = 30;
+   return _stub_method_28(_hexagon_nn_handle(), _mid, (hexagon_nn_nn_id*)&id, (unsigned int*)num_nodes);
+}
+static __inline int _stub_method_29(remote_handle _handle, uint32_t _mid, uint32_t _in0[1]) {
+   remote_arg _pra[1];
+   uint32_t _primIn[1];
+   int _nErr = 0;
+   _pra[0].buf.pv = (void*)_primIn;
+   _pra[0].buf.nLen = sizeof(_primIn);
+   _COPY(_primIn, 0, _in0, 0, 4);
+   _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 1, 0, 0, 0), _pra));
+   _CATCH(_nErr) {}
+   return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_disable_dcvs)(void) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 27;
-   return _stub_method(_hexagon_nn_handle(), _mid);
+   uint32_t _mid = 31;
+   return _stub_method_29(_hexagon_nn_handle(), 31, &_mid);
 }
-__QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_GetHexagonBinaryVersion)(int* ver) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 28;
-   return _stub_method_4(_hexagon_nn_handle(), _mid, (uint32_t*)ver);
-}
-static __inline int _stub_method_22(remote_handle _handle, uint32_t _mid, char* _in0[1], uint32_t _in0Len[1]) {
+static __inline int _stub_method_30(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], int _rout1[1]) {
+   int _numIn[1];
    remote_arg _pra[2];
    uint32_t _primIn[1];
+   uint32_t _primROut[1];
+   int _nErr = 0;
+   _numIn[0] = 0;
+   _pra[0].buf.pv = (void*)_primIn;
+   _pra[0].buf.nLen = sizeof(_primIn);
+   _pra[(_numIn[0] + 1)].buf.pv = (void*)_primROut;
+   _pra[(_numIn[0] + 1)].buf.nLen = sizeof(_primROut);
+   _COPY(_primIn, 0, _in0, 0, 4);
+   _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 1, 1, 0, 0), _pra));
+   _COPY(_rout1, 0, _primROut, 0, 4);
+   _CATCH(_nErr) {}
+   return _nErr;
+}
+__QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_GetHexagonBinaryVersion)(int* ver) __QAIC_STUB_ATTRIBUTE {
+   uint32_t _mid = 32;
+   return _stub_method_30(_hexagon_nn_handle(), 31, &_mid, (int*)ver);
+}
+static __inline int _stub_method_31(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], const unsigned char* _in1[1], int _in1Len[1]) {
+   remote_arg _pra[2];
+   uint32_t _primIn[2];
    remote_arg* _praIn;
    int _nErr = 0;
    _pra[0].buf.pv = (void*)_primIn;
    _pra[0].buf.nLen = sizeof(_primIn);
-   _COPY(_primIn, 0, _in0Len, 0, 4);
+   _COPY(_primIn, 0, _in0, 0, 4);
+   _COPY(_primIn, 4, _in1Len, 0, 4);
    _praIn = (_pra + 1);
-   _praIn[0].buf.pv = _in0[0];
-   _praIn[0].buf.nLen = (1 * _in0Len[0]);
+   _praIn[0].buf.pv = (void*) _in1[0];
+   _praIn[0].buf.nLen = (1 * _in1Len[0]);
    _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 2, 0, 0, 0), _pra));
    _CATCH(_nErr) {}
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_PrintLog)(const unsigned char* buf, int bufLen) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 29;
-   return _stub_method_22(_hexagon_nn_handle(), _mid, (char**)&buf, (uint32_t*)&bufLen);
+   uint32_t _mid = 33;
+   return _stub_method_31(_hexagon_nn_handle(), 31, &_mid, (const unsigned char**)&buf, (int*)&bufLen);
 }
-static __inline int _stub_unpack(remote_arg* _praROutPost, remote_arg* _ppraROutPost[1], void* _primROut, uint32_t _rout0[1], uint32_t _rout1[1], uint32_t _rout2[1], uint32_t _rout3[1], char* _rout4[1], uint32_t _rout4Len[1], uint32_t _rout5[1], uint32_t _rout6[1]) {
+static __inline int _stub_unpack(remote_arg* _praROutPost, remote_arg* _ppraROutPost[1], void* _primROut, unsigned int _rout0[1], unsigned int _rout1[1], unsigned int _rout2[1], unsigned int _rout3[1], unsigned char* _rout4[1], int _rout4Len[1], unsigned int _rout5[1], unsigned int _rout6[1]) {
    int _nErr = 0;
    remote_arg* _praROutPostStart = _praROutPost;
    remote_arg** _ppraROutPostStart = _ppraROutPost;
@@ -1135,20 +1301,20 @@ static __inline int _stub_unpack(remote_arg* _praROutPost, remote_arg* _ppraROut
    _ppraROutPostStart[0] += (_praROutPost - _praROutPostStart) +1;
    return _nErr;
 }
-static __inline int _stub_unpack_1(remote_arg* _praROutPost, remote_arg* _ppraROutPost[1], void* _primROut, uintptr_t _rout0[SLIM_IFPTR32(8, 5)]) {
+static __inline int _stub_unpack_1(remote_arg* _praROutPost, remote_arg* _ppraROutPost[1], void* _primROut, hexagon_nn_tensordef _rout0[SLIM_IFPTR32(8, 5)]) {
    int _nErr = 0;
    _allocator _al[1] = {{0}};
    remote_arg* _praROutPostStart = _praROutPost;
    remote_arg** _ppraROutPostStart = _ppraROutPost;
    _ppraROutPost = &_praROutPost;
    _allocator_init(_al, 0, 0);
-   _TRY(_nErr, _stub_unpack((_praROutPost + 0), _ppraROutPost, ((char*)_primROut + 0), (uint32_t*)&(((uint32_t*)_rout0)[0]), (uint32_t*)&(((uint32_t*)_rout0)[1]), (uint32_t*)&(((uint32_t*)_rout0)[2]), (uint32_t*)&(((uint32_t*)_rout0)[3]), SLIM_IFPTR32((char**)&(((uint32_t*)_rout0)[4]), (char**)&(((uint64_t*)_rout0)[2])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout0)[5]), (uint32_t*)&(((uint32_t*)_rout0)[6])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout0)[6]), (uint32_t*)&(((uint32_t*)_rout0)[7])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout0)[7]), (uint32_t*)&(((uint32_t*)_rout0)[8]))));
+   _TRY(_nErr, _stub_unpack((_praROutPost + 0), _ppraROutPost, ((char*)_primROut + 0), (unsigned int*)&(((uint32_t*)_rout0)[0]), (unsigned int*)&(((uint32_t*)_rout0)[1]), (unsigned int*)&(((uint32_t*)_rout0)[2]), (unsigned int*)&(((uint32_t*)_rout0)[3]), SLIM_IFPTR32((unsigned char**)&(((uint32_t*)_rout0)[4]), (unsigned char**)&(((uint64_t*)_rout0)[2])), SLIM_IFPTR32((int*)&(((uint32_t*)_rout0)[5]), (int*)&(((uint32_t*)_rout0)[6])), SLIM_IFPTR32((unsigned int*)&(((uint32_t*)_rout0)[6]), (unsigned int*)&(((uint32_t*)_rout0)[7])), SLIM_IFPTR32((unsigned int*)&(((uint32_t*)_rout0)[7]), (unsigned int*)&(((uint32_t*)_rout0)[8]))));
    _ppraROutPostStart[0] += (_praROutPost - _praROutPostStart) +0;
    _CATCH(_nErr) {}
    _allocator_deinit(_al);
    return _nErr;
 }
-static __inline int _stub_unpack_2(remote_arg* _praROutPost, remote_arg* _ppraROutPost[1], void* _primROut, uintptr_t _in0[SLIM_IFPTR32(8, 5)]) {
+static __inline int _stub_unpack_2(remote_arg* _praROutPost, remote_arg* _ppraROutPost[1], void* _primROut, const hexagon_nn_tensordef _in0[SLIM_IFPTR32(8, 5)]) {
    int _nErr = 0;
    remote_arg* _praROutPostStart = _praROutPost;
    remote_arg** _ppraROutPostStart = _ppraROutPost;
@@ -1156,7 +1322,7 @@ static __inline int _stub_unpack_2(remote_arg* _praROutPost, remote_arg* _ppraRO
    _ppraROutPostStart[0] += (_praROutPost - _praROutPostStart) +0;
    return _nErr;
 }
-static __inline int _stub_pack(_allocator* _al, remote_arg* _praIn, remote_arg* _ppraIn[1], remote_arg* _praROut, remote_arg* _ppraROut[1], remote_arg* _praHIn, remote_arg* _ppraHIn[1], remote_arg* _praHROut, remote_arg* _ppraHROut[1], void* _primIn, void* _primROut, uint32_t _rout0[1], uint32_t _rout1[1], uint32_t _rout2[1], uint32_t _rout3[1], char* _rout4[1], uint32_t _rout4Len[1], uint32_t _rout5[1], uint32_t _rout6[1]) {
+static __inline int _stub_pack(_allocator* _al, remote_arg* _praIn, remote_arg* _ppraIn[1], remote_arg* _praROut, remote_arg* _ppraROut[1], remote_arg* _praHIn, remote_arg* _ppraHIn[1], remote_arg* _praHROut, remote_arg* _ppraHROut[1], void* _primIn, void* _primROut, unsigned int _rout0[1], unsigned int _rout1[1], unsigned int _rout2[1], unsigned int _rout3[1], unsigned char* _rout4[1], int _rout4Len[1], unsigned int _rout5[1], unsigned int _rout6[1]) {
    int _nErr = 0;
    remote_arg* _praInStart = _praIn;
    remote_arg** _ppraInStart = _ppraIn;
@@ -1171,7 +1337,7 @@ static __inline int _stub_pack(_allocator* _al, remote_arg* _praIn, remote_arg* 
    _ppraROutStart[0] += (_praROut - _praROutStart) +1;
    return _nErr;
 }
-static __inline int _stub_pack_1(_allocator* _al, remote_arg* _praIn, remote_arg* _ppraIn[1], remote_arg* _praROut, remote_arg* _ppraROut[1], remote_arg* _praHIn, remote_arg* _ppraHIn[1], remote_arg* _praHROut, remote_arg* _ppraHROut[1], void* _primIn, void* _primROut, uintptr_t _rout0[SLIM_IFPTR32(8, 5)]) {
+static __inline int _stub_pack_1(_allocator* _al, remote_arg* _praIn, remote_arg* _ppraIn[1], remote_arg* _praROut, remote_arg* _ppraROut[1], remote_arg* _praHIn, remote_arg* _ppraHIn[1], remote_arg* _praHROut, remote_arg* _ppraHROut[1], void* _primIn, void* _primROut, hexagon_nn_tensordef _rout0[SLIM_IFPTR32(8, 5)]) {
    int _nErr = 0;
    remote_arg* _praInStart = _praIn;
    remote_arg** _ppraInStart = _ppraIn;
@@ -1179,13 +1345,13 @@ static __inline int _stub_pack_1(_allocator* _al, remote_arg* _praIn, remote_arg
    remote_arg** _ppraROutStart = _ppraROut;
    _ppraIn = &_praIn;
    _ppraROut = &_praROut;
-   _TRY(_nErr, _stub_pack(_al, (_praIn + 0), _ppraIn, (_praROut + 0), _ppraROut, _praHIn, _ppraHIn, _praHROut, _ppraHROut, ((char*)_primIn + 0), ((char*)_primROut + 0), (uint32_t*)&(((uint32_t*)_rout0)[0]), (uint32_t*)&(((uint32_t*)_rout0)[1]), (uint32_t*)&(((uint32_t*)_rout0)[2]), (uint32_t*)&(((uint32_t*)_rout0)[3]), SLIM_IFPTR32((char**)&(((uint32_t*)_rout0)[4]), (char**)&(((uint64_t*)_rout0)[2])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout0)[5]), (uint32_t*)&(((uint32_t*)_rout0)[6])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout0)[6]), (uint32_t*)&(((uint32_t*)_rout0)[7])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout0)[7]), (uint32_t*)&(((uint32_t*)_rout0)[8]))));
+   _TRY(_nErr, _stub_pack(_al, (_praIn + 0), _ppraIn, (_praROut + 0), _ppraROut, _praHIn, _ppraHIn, _praHROut, _ppraHROut, ((char*)_primIn + 0), ((char*)_primROut + 0), (unsigned int*)&(((uint32_t*)_rout0)[0]), (unsigned int*)&(((uint32_t*)_rout0)[1]), (unsigned int*)&(((uint32_t*)_rout0)[2]), (unsigned int*)&(((uint32_t*)_rout0)[3]), SLIM_IFPTR32((unsigned char**)&(((uint32_t*)_rout0)[4]), (unsigned char**)&(((uint64_t*)_rout0)[2])), SLIM_IFPTR32((int*)&(((uint32_t*)_rout0)[5]), (int*)&(((uint32_t*)_rout0)[6])), SLIM_IFPTR32((unsigned int*)&(((uint32_t*)_rout0)[6]), (unsigned int*)&(((uint32_t*)_rout0)[7])), SLIM_IFPTR32((unsigned int*)&(((uint32_t*)_rout0)[7]), (unsigned int*)&(((uint32_t*)_rout0)[8]))));
    _ppraInStart[0] += (_praIn - _praInStart) + 0;
    _ppraROutStart[0] += (_praROut - _praROutStart) +0;
    _CATCH(_nErr) {}
    return _nErr;
 }
-static __inline int _stub_pack_2(_allocator* _al, remote_arg* _praIn, remote_arg* _ppraIn[1], remote_arg* _praROut, remote_arg* _ppraROut[1], remote_arg* _praHIn, remote_arg* _ppraHIn[1], remote_arg* _praHROut, remote_arg* _ppraHROut[1], void* _primIn, void* _primROut, uint32_t _in0[1], uint32_t _in1[1], uint32_t _in2[1], uint32_t _in3[1], char* _in4[1], uint32_t _in4Len[1], uint32_t _in5[1], uint32_t _in6[1]) {
+static __inline int _stub_pack_2(_allocator* _al, remote_arg* _praIn, remote_arg* _ppraIn[1], remote_arg* _praROut, remote_arg* _ppraROut[1], remote_arg* _praHIn, remote_arg* _ppraHIn[1], remote_arg* _praHROut, remote_arg* _ppraHROut[1], void* _primIn, void* _primROut, unsigned int _in0[1], unsigned int _in1[1], unsigned int _in2[1], unsigned int _in3[1], const unsigned char* _in4[1], int _in4Len[1], unsigned int _in5[1], unsigned int _in6[1]) {
    int _nErr = 0;
    remote_arg* _praInStart = _praIn;
    remote_arg** _ppraInStart = _ppraIn;
@@ -1198,7 +1364,7 @@ static __inline int _stub_pack_2(_allocator* _al, remote_arg* _praIn, remote_arg
    _COPY(_primIn, 8, _in2, 0, 4);
    _COPY(_primIn, 12, _in3, 0, 4);
    _COPY(_primIn, 16, _in4Len, 0, 4);
-   _praIn[0].buf.pv = _in4[0];
+   _praIn[0].buf.pv = (void*) _in4[0];
    _praIn[0].buf.nLen = (1 * _in4Len[0]);
    _COPY(_primIn, 20, _in5, 0, 4);
    _COPY(_primIn, 24, _in6, 0, 4);
@@ -1206,7 +1372,7 @@ static __inline int _stub_pack_2(_allocator* _al, remote_arg* _praIn, remote_arg
    _ppraROutStart[0] += (_praROut - _praROutStart) +0;
    return _nErr;
 }
-static __inline int _stub_pack_3(_allocator* _al, remote_arg* _praIn, remote_arg* _ppraIn[1], remote_arg* _praROut, remote_arg* _ppraROut[1], remote_arg* _praHIn, remote_arg* _ppraHIn[1], remote_arg* _praHROut, remote_arg* _ppraHROut[1], void* _primIn, void* _primROut, uintptr_t _in0[SLIM_IFPTR32(8, 5)]) {
+static __inline int _stub_pack_3(_allocator* _al, remote_arg* _praIn, remote_arg* _ppraIn[1], remote_arg* _praROut, remote_arg* _ppraROut[1], remote_arg* _praHIn, remote_arg* _ppraHIn[1], remote_arg* _praHROut, remote_arg* _ppraHROut[1], void* _primIn, void* _primROut, const hexagon_nn_tensordef _in0[SLIM_IFPTR32(8, 5)]) {
    int _nErr = 0;
    remote_arg* _praInStart = _praIn;
    remote_arg** _ppraInStart = _ppraIn;
@@ -1214,49 +1380,49 @@ static __inline int _stub_pack_3(_allocator* _al, remote_arg* _praIn, remote_arg
    remote_arg** _ppraROutStart = _ppraROut;
    _ppraIn = &_praIn;
    _ppraROut = &_praROut;
-   _TRY(_nErr, _stub_pack_2(_al, (_praIn + 0), _ppraIn, (_praROut + 0), _ppraROut, _praHIn, _ppraHIn, _praHROut, _ppraHROut, ((char*)_primIn + 0), 0, (uint32_t*)&(((uint32_t*)_in0)[0]), (uint32_t*)&(((uint32_t*)_in0)[1]), (uint32_t*)&(((uint32_t*)_in0)[2]), (uint32_t*)&(((uint32_t*)_in0)[3]), SLIM_IFPTR32((char**)&(((uint32_t*)_in0)[4]), (char**)&(((uint64_t*)_in0)[2])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_in0)[5]), (uint32_t*)&(((uint32_t*)_in0)[6])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_in0)[6]), (uint32_t*)&(((uint32_t*)_in0)[7])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_in0)[7]), (uint32_t*)&(((uint32_t*)_in0)[8]))));
+   _TRY(_nErr, _stub_pack_2(_al, (_praIn + 0), _ppraIn, (_praROut + 0), _ppraROut, _praHIn, _ppraHIn, _praHROut, _ppraHROut, ((char*)_primIn + 0), 0, (unsigned int*)&(((uint32_t*)_in0)[0]), (unsigned int*)&(((uint32_t*)_in0)[1]), (unsigned int*)&(((uint32_t*)_in0)[2]), (unsigned int*)&(((uint32_t*)_in0)[3]), SLIM_IFPTR32((const unsigned char**)&(((uint32_t*)_in0)[4]), (const unsigned char**)&(((uint64_t*)_in0)[2])), SLIM_IFPTR32((int*)&(((uint32_t*)_in0)[5]), (int*)&(((uint32_t*)_in0)[6])), SLIM_IFPTR32((unsigned int*)&(((uint32_t*)_in0)[6]), (unsigned int*)&(((uint32_t*)_in0)[7])), SLIM_IFPTR32((unsigned int*)&(((uint32_t*)_in0)[7]), (unsigned int*)&(((uint32_t*)_in0)[8]))));
    _ppraInStart[0] += (_praIn - _praInStart) + 0;
    _ppraROutStart[0] += (_praROut - _praROutStart) +0;
    _CATCH(_nErr) {}
    return _nErr;
 }
-static __inline void _count(int _numIn[1], int _numROut[1], int _numInH[1], int _numROutH[1], uint32_t _rout0[1], uint32_t _rout1[1], uint32_t _rout2[1], uint32_t _rout3[1], char* _rout4[1], uint32_t _rout4Len[1], uint32_t _rout5[1], uint32_t _rout6[1]) {
+static __inline void _count(int _numIn[1], int _numROut[1], int _numInH[1], int _numROutH[1], unsigned int _rout0[1], unsigned int _rout1[1], unsigned int _rout2[1], unsigned int _rout3[1], unsigned char* _rout4[1], int _rout4Len[1], unsigned int _rout5[1], unsigned int _rout6[1]) {
    _numIn[0] += 0;
    _numROut[0] += 1;
    _numInH[0] += 0;
    _numROutH[0] += 0;
 }
-static __inline void _count_1(int _numIn[1], int _numROut[1], int _numInH[1], int _numROutH[1], uintptr_t _rout0[SLIM_IFPTR32(8, 5)]) {
+static __inline void _count_1(int _numIn[1], int _numROut[1], int _numInH[1], int _numROutH[1], hexagon_nn_tensordef _rout0[SLIM_IFPTR32(8, 5)]) {
    _numIn[0] += 0;
    _numROut[0] += 0;
    _numInH[0] += 0;
    _numROutH[0] += 0;
-   _count(_numIn, _numROut, _numInH, _numROutH, (uint32_t*)&(((uint32_t*)_rout0)[0]), (uint32_t*)&(((uint32_t*)_rout0)[1]), (uint32_t*)&(((uint32_t*)_rout0)[2]), (uint32_t*)&(((uint32_t*)_rout0)[3]), SLIM_IFPTR32((char**)&(((uint32_t*)_rout0)[4]), (char**)&(((uint64_t*)_rout0)[2])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout0)[5]), (uint32_t*)&(((uint32_t*)_rout0)[6])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout0)[6]), (uint32_t*)&(((uint32_t*)_rout0)[7])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout0)[7]), (uint32_t*)&(((uint32_t*)_rout0)[8])));
+   _count(_numIn, _numROut, _numInH, _numROutH, (unsigned int*)&(((uint32_t*)_rout0)[0]), (unsigned int*)&(((uint32_t*)_rout0)[1]), (unsigned int*)&(((uint32_t*)_rout0)[2]), (unsigned int*)&(((uint32_t*)_rout0)[3]), SLIM_IFPTR32((unsigned char**)&(((uint32_t*)_rout0)[4]), (unsigned char**)&(((uint64_t*)_rout0)[2])), SLIM_IFPTR32((int*)&(((uint32_t*)_rout0)[5]), (int*)&(((uint32_t*)_rout0)[6])), SLIM_IFPTR32((unsigned int*)&(((uint32_t*)_rout0)[6]), (unsigned int*)&(((uint32_t*)_rout0)[7])), SLIM_IFPTR32((unsigned int*)&(((uint32_t*)_rout0)[7]), (unsigned int*)&(((uint32_t*)_rout0)[8])));
 }
-static __inline void _count_2(int _numIn[1], int _numROut[1], int _numInH[1], int _numROutH[1], uint32_t _in0[1], uint32_t _in1[1], uint32_t _in2[1], uint32_t _in3[1], char* _in4[1], uint32_t _in4Len[1], uint32_t _in5[1], uint32_t _in6[1]) {
+static __inline void _count_2(int _numIn[1], int _numROut[1], int _numInH[1], int _numROutH[1], unsigned int _in0[1], unsigned int _in1[1], unsigned int _in2[1], unsigned int _in3[1], const unsigned char* _in4[1], int _in4Len[1], unsigned int _in5[1], unsigned int _in6[1]) {
    _numIn[0] += 1;
    _numROut[0] += 0;
    _numInH[0] += 0;
    _numROutH[0] += 0;
 }
-static __inline void _count_3(int _numIn[1], int _numROut[1], int _numInH[1], int _numROutH[1], uintptr_t _in0[SLIM_IFPTR32(8, 5)]) {
+static __inline void _count_3(int _numIn[1], int _numROut[1], int _numInH[1], int _numROutH[1], const hexagon_nn_tensordef _in0[SLIM_IFPTR32(8, 5)]) {
    _numIn[0] += 0;
    _numROut[0] += 0;
    _numInH[0] += 0;
    _numROutH[0] += 0;
-   _count_2(_numIn, _numROut, _numInH, _numROutH, (uint32_t*)&(((uint32_t*)_in0)[0]), (uint32_t*)&(((uint32_t*)_in0)[1]), (uint32_t*)&(((uint32_t*)_in0)[2]), (uint32_t*)&(((uint32_t*)_in0)[3]), SLIM_IFPTR32((char**)&(((uint32_t*)_in0)[4]), (char**)&(((uint64_t*)_in0)[2])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_in0)[5]), (uint32_t*)&(((uint32_t*)_in0)[6])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_in0)[6]), (uint32_t*)&(((uint32_t*)_in0)[7])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_in0)[7]), (uint32_t*)&(((uint32_t*)_in0)[8])));
+   _count_2(_numIn, _numROut, _numInH, _numROutH, (unsigned int*)&(((uint32_t*)_in0)[0]), (unsigned int*)&(((uint32_t*)_in0)[1]), (unsigned int*)&(((uint32_t*)_in0)[2]), (unsigned int*)&(((uint32_t*)_in0)[3]), SLIM_IFPTR32((const unsigned char**)&(((uint32_t*)_in0)[4]), (const unsigned char**)&(((uint64_t*)_in0)[2])), SLIM_IFPTR32((int*)&(((uint32_t*)_in0)[5]), (int*)&(((uint32_t*)_in0)[6])), SLIM_IFPTR32((unsigned int*)&(((uint32_t*)_in0)[6]), (unsigned int*)&(((uint32_t*)_in0)[7])), SLIM_IFPTR32((unsigned int*)&(((uint32_t*)_in0)[7]), (unsigned int*)&(((uint32_t*)_in0)[8])));
 }
-static __inline int _stub_method_23(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], void* _in1[1], uint32_t _in1Len[1], void* _rout2[1], uint32_t _rout2Len[1]) {
+static __inline int _stub_method_32(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], hexagon_nn_nn_id _in1[1], const hexagon_nn_tensordef* _in2[1], int _in2Len[1], hexagon_nn_tensordef* _rout3[1], int _rout3Len[1]) {
    remote_arg* _pra;
    int _numIn[1];
    int _numROut[1];
    int _numInH[1];
    int _numROutH[1];
-   char* _seq_nat1;
-   int _ii;
    char* _seq_nat2;
+   int _ii;
+   char* _seq_nat3;
    _allocator _al[1] = {{0}};
-   uint32_t _primIn[3];
+   uint32_t _primIn[4];
    remote_arg* _praIn;
    remote_arg* _praROut;
    remote_arg* _praROutPost;
@@ -1267,21 +1433,21 @@ static __inline int _stub_method_23(remote_handle _handle, uint32_t _mid, uint32
    remote_arg** _ppraHIn = &_praHIn;
    remote_arg* _praHROut = 0;
    remote_arg** _ppraHROut = &_praHROut;
-   char* _seq_primIn1;
-   int _nErr = 0;
    char* _seq_primIn2;
-   char* _seq_primROut2;
+   int _nErr = 0;
+   char* _seq_primIn3;
+   char* _seq_primROut3;
    _numIn[0] = 2;
    _numROut[0] = 1;
    _numInH[0] = 0;
    _numROutH[0] = 0;
-   for(_ii = 0, _seq_nat1 = (char*)_in1[0];_ii < (int)_in1Len[0];++_ii, _seq_nat1 = (_seq_nat1 + SLIM_IFPTR32(32, 40)))
+   for(_ii = 0, _seq_nat2 = (char*)_in2[0];_ii < (int)_in2Len[0];++_ii, _seq_nat2 = (_seq_nat2 + SLIM_IFPTR32(32, 40)))
    {
-      _count_3(_numIn, _numROut, _numInH, _numROutH, SLIM_IFPTR32((uintptr_t*)&(((uint32_t*)_seq_nat1)[0]), (uintptr_t*)&(((uint64_t*)_seq_nat1)[0])));
+      _count_3(_numIn, _numROut, _numInH, _numROutH, SLIM_IFPTR32((const hexagon_nn_tensordef*)&(((uint32_t*)_seq_nat2)[0]), (const hexagon_nn_tensordef*)&(((uint64_t*)_seq_nat2)[0])));
    }
-   for(_ii = 0, _seq_nat2 = (char*)_rout2[0];_ii < (int)_rout2Len[0];++_ii, _seq_nat2 = (_seq_nat2 + SLIM_IFPTR32(32, 40)))
+   for(_ii = 0, _seq_nat3 = (char*)_rout3[0];_ii < (int)_rout3Len[0];++_ii, _seq_nat3 = (_seq_nat3 + SLIM_IFPTR32(32, 40)))
    {
-      _count_1(_numIn, _numROut, _numInH, _numROutH, SLIM_IFPTR32((uintptr_t*)&(((uint32_t*)_seq_nat2)[0]), (uintptr_t*)&(((uint64_t*)_seq_nat2)[0])));
+      _count_1(_numIn, _numROut, _numInH, _numROutH, SLIM_IFPTR32((hexagon_nn_tensordef*)&(((uint32_t*)_seq_nat3)[0]), (hexagon_nn_tensordef*)&(((uint64_t*)_seq_nat3)[0])));
    }
    _allocator_init(_al, 0, 0);
    _ALLOCATE(_nErr, _al, ((((((((_numIn[0] + _numROut[0]) + _numInH[0]) + _numROutH[0]) + 1) + 0) + 0) + 0) * sizeof(_pra[0])), 4, _pra);
@@ -1291,48 +1457,49 @@ static __inline int _stub_method_23(remote_handle _handle, uint32_t _mid, uint32
    _praROut = (_praIn + _numIn[0] + 0);
    _praROutPost = _praROut;
    _COPY(_primIn, 0, _in0, 0, 4);
-   _COPY(_primIn, 4, _in1Len, 0, 4);
+   _COPY(_primIn, 4, _in1, 0, 4);
+   _COPY(_primIn, 8, _in2Len, 0, 4);
    if(_praHIn == 0)
    {
       _praHIn = ((_praROut + _numROut[0]) + 0);
    }
    if(_praHROut == 0)
       (_praHROut = _praHIn + _numInH[0] + 0);
-   _ALLOCATE(_nErr, _al, (_in1Len[0] * 28), 4, _praIn[0].buf.pv);
-   _praIn[0].buf.nLen = (28 * _in1Len[0]);
-   for(_ii = 0, _seq_primIn1 = (char*)_praIn[0].buf.pv, _seq_nat1 = (char*)_in1[0];_ii < (int)_in1Len[0];++_ii, _seq_primIn1 = (_seq_primIn1 + 28), _seq_nat1 = (_seq_nat1 + SLIM_IFPTR32(32, 40)))
+   _ALLOCATE(_nErr, _al, (_in2Len[0] * 28), 4, _praIn[0].buf.pv);
+   _praIn[0].buf.nLen = (28 * _in2Len[0]);
+   for(_ii = 0, _seq_primIn2 = (char*)_praIn[0].buf.pv, _seq_nat2 = (char*)_in2[0];_ii < (int)_in2Len[0];++_ii, _seq_primIn2 = (_seq_primIn2 + 28), _seq_nat2 = (_seq_nat2 + SLIM_IFPTR32(32, 40)))
    {
-      _TRY(_nErr, _stub_pack_3(_al, (_praIn + 1), _ppraIn, (_praROut + 0), _ppraROut, _praHIn, _ppraHIn, _praHROut, _ppraHROut, _seq_primIn1, 0, SLIM_IFPTR32((uintptr_t*)&(((uint32_t*)_seq_nat1)[0]), (uintptr_t*)&(((uint64_t*)_seq_nat1)[0]))));
+      _TRY(_nErr, _stub_pack_3(_al, (_praIn + 1), _ppraIn, (_praROut + 0), _ppraROut, _praHIn, _ppraHIn, _praHROut, _ppraHROut, _seq_primIn2, 0, SLIM_IFPTR32((const hexagon_nn_tensordef*)&(((uint32_t*)_seq_nat2)[0]), (const hexagon_nn_tensordef*)&(((uint64_t*)_seq_nat2)[0]))));
    }
-   _COPY(_primIn, 8, _rout2Len, 0, 4);
-   _ALLOCATE(_nErr, _al, (_rout2Len[0] * 4), 4, _praIn[1].buf.pv);
-   _praIn[1].buf.nLen = (4 * _rout2Len[0]);
-   _ALLOCATE(_nErr, _al, (_rout2Len[0] * 24), 4, _praROut[0].buf.pv);
-   _praROut[0].buf.nLen = (24 * _rout2Len[0]);
-   for(_ii = 0, _seq_primIn2 = (char*)_praIn[1].buf.pv, _seq_primROut2 = (char*)_praROut[0].buf.pv, _seq_nat2 = (char*)_rout2[0];_ii < (int)_rout2Len[0];++_ii, _seq_primIn2 = (_seq_primIn2 + 4), _seq_primROut2 = (_seq_primROut2 + 24), _seq_nat2 = (_seq_nat2 + SLIM_IFPTR32(32, 40)))
+   _COPY(_primIn, 12, _rout3Len, 0, 4);
+   _ALLOCATE(_nErr, _al, (_rout3Len[0] * 4), 4, _praIn[1].buf.pv);
+   _praIn[1].buf.nLen = (4 * _rout3Len[0]);
+   _ALLOCATE(_nErr, _al, (_rout3Len[0] * 24), 4, _praROut[0].buf.pv);
+   _praROut[0].buf.nLen = (24 * _rout3Len[0]);
+   for(_ii = 0, _seq_primIn3 = (char*)_praIn[1].buf.pv, _seq_primROut3 = (char*)_praROut[0].buf.pv, _seq_nat3 = (char*)_rout3[0];_ii < (int)_rout3Len[0];++_ii, _seq_primIn3 = (_seq_primIn3 + 4), _seq_primROut3 = (_seq_primROut3 + 24), _seq_nat3 = (_seq_nat3 + SLIM_IFPTR32(32, 40)))
    {
-      _TRY(_nErr, _stub_pack_1(_al, (_praIn + 2), _ppraIn, (_praROut + 1), _ppraROut, _praHIn, _ppraHIn, _praHROut, _ppraHROut, _seq_primIn2, _seq_primROut2, SLIM_IFPTR32((uintptr_t*)&(((uint32_t*)_seq_nat2)[0]), (uintptr_t*)&(((uint64_t*)_seq_nat2)[0]))));
+      _TRY(_nErr, _stub_pack_1(_al, (_praIn + 2), _ppraIn, (_praROut + 1), _ppraROut, _praHIn, _ppraHIn, _praHROut, _ppraHROut, _seq_primIn3, _seq_primROut3, SLIM_IFPTR32((hexagon_nn_tensordef*)&(((uint32_t*)_seq_nat3)[0]), (hexagon_nn_tensordef*)&(((uint64_t*)_seq_nat3)[0]))));
    }
    _ASSERT(_nErr, (_numInH[0] + 0) <= 15);
    _ASSERT(_nErr, (_numROutH[0] + 0) <= 15);
    _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, (_numIn[0] + 1), (_numROut[0] + 0), (_numInH[0] + 0), (_numROutH[0] + 0)), _pra));
-   for(_ii = 0, _seq_nat1 = (char*)_in1[0];_ii < (int)_in1Len[0];++_ii, _seq_nat1 = (_seq_nat1 + SLIM_IFPTR32(32, 40)))
+   for(_ii = 0, _seq_nat2 = (char*)_in2[0];_ii < (int)_in2Len[0];++_ii, _seq_nat2 = (_seq_nat2 + SLIM_IFPTR32(32, 40)))
    {
-      _TRY(_nErr, _stub_unpack_2((_praROutPost + 0), _ppraROutPost, 0, SLIM_IFPTR32((uintptr_t*)&(((uint32_t*)_seq_nat1)[0]), (uintptr_t*)&(((uint64_t*)_seq_nat1)[0]))));
+      _TRY(_nErr, _stub_unpack_2((_praROutPost + 0), _ppraROutPost, 0, SLIM_IFPTR32((const hexagon_nn_tensordef*)&(((uint32_t*)_seq_nat2)[0]), (const hexagon_nn_tensordef*)&(((uint64_t*)_seq_nat2)[0]))));
    }
-   for(_ii = 0, _seq_primROut2 = (char*)_praROutPost[0].buf.pv, _seq_nat2 = (char*)_rout2[0];_ii < (int)_rout2Len[0];++_ii, _seq_primROut2 = (_seq_primROut2 + 24), _seq_nat2 = (_seq_nat2 + SLIM_IFPTR32(32, 40)))
+   for(_ii = 0, _seq_primROut3 = (char*)_praROutPost[0].buf.pv, _seq_nat3 = (char*)_rout3[0];_ii < (int)_rout3Len[0];++_ii, _seq_primROut3 = (_seq_primROut3 + 24), _seq_nat3 = (_seq_nat3 + SLIM_IFPTR32(32, 40)))
    {
-      _TRY(_nErr, _stub_unpack_1((_praROutPost + 1), _ppraROutPost, _seq_primROut2, SLIM_IFPTR32((uintptr_t*)&(((uint32_t*)_seq_nat2)[0]), (uintptr_t*)&(((uint64_t*)_seq_nat2)[0]))));
+      _TRY(_nErr, _stub_unpack_1((_praROutPost + 1), _ppraROutPost, _seq_primROut3, SLIM_IFPTR32((hexagon_nn_tensordef*)&(((uint32_t*)_seq_nat3)[0]), (hexagon_nn_tensordef*)&(((uint64_t*)_seq_nat3)[0]))));
    }
    _CATCH(_nErr) {}
    _allocator_deinit(_al);
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_execute_new)(hexagon_nn_nn_id id, const hexagon_nn_tensordef* inputs, int inputsLen, hexagon_nn_tensordef* outputs, int outputsLen) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 30;
-   return _stub_method_23(_hexagon_nn_handle(), _mid, (uint32_t*)&id, (void**)&inputs, (uint32_t*)&inputsLen, (void**)&outputs, (uint32_t*)&outputsLen);
+   uint32_t _mid = 34;
+   return _stub_method_32(_hexagon_nn_handle(), 31, &_mid, (hexagon_nn_nn_id*)&id, (const hexagon_nn_tensordef**)&inputs, (int*)&inputsLen, (hexagon_nn_tensordef**)&outputs, (int*)&outputsLen);
 }
-static __inline int _stub_unpack_3(remote_arg* _praROutPost, remote_arg* _ppraROutPost[1], void* _primROut, uint32_t _rout0[1], char* _rout1[1], uint32_t _rout1Len[1], uint32_t _rout2[1]) {
+static __inline int _stub_unpack_3(remote_arg* _praROutPost, remote_arg* _ppraROutPost[1], void* _primROut, hexagon_nn_execute_result _rout0[1], unsigned char* _rout1[1], int _rout1Len[1], unsigned int _rout2[1]) {
    int _nErr = 0;
    remote_arg* _praROutPostStart = _praROutPost;
    remote_arg** _ppraROutPostStart = _ppraROutPost;
@@ -1342,7 +1509,7 @@ static __inline int _stub_unpack_3(remote_arg* _praROutPost, remote_arg* _ppraRO
    _ppraROutPostStart[0] += (_praROutPost - _praROutPostStart) +1;
    return _nErr;
 }
-static __inline int _stub_unpack_4(remote_arg* _praROutPost, remote_arg* _ppraROutPost[1], void* _primROut, uint32_t _rout0[1], uint32_t _rout1[1], uint32_t _rout2[1], uint32_t _rout3[1], char* _rout4[1], uint32_t _rout4Len[1], uint32_t _rout5[1], uint32_t _rout6[1]) {
+static __inline int _stub_unpack_4(remote_arg* _praROutPost, remote_arg* _ppraROutPost[1], void* _primROut, unsigned int _rout0[1], unsigned int _rout1[1], unsigned int _rout2[1], unsigned int _rout3[1], unsigned char* _rout4[1], int _rout4Len[1], unsigned int _rout5[1], unsigned int _rout6[1]) {
    int _nErr = 0;
    remote_arg* _praROutPostStart = _praROutPost;
    remote_arg** _ppraROutPostStart = _ppraROutPost;
@@ -1356,20 +1523,20 @@ static __inline int _stub_unpack_4(remote_arg* _praROutPost, remote_arg* _ppraRO
    _ppraROutPostStart[0] += (_praROutPost - _praROutPostStart) +1;
    return _nErr;
 }
-static __inline int _stub_unpack_5(remote_arg* _praROutPost, remote_arg* _ppraROutPost[1], void* _primROut, uintptr_t _rout0[SLIM_IFPTR32(8, 5)]) {
+static __inline int _stub_unpack_5(remote_arg* _praROutPost, remote_arg* _ppraROutPost[1], void* _primROut, hexagon_nn_tensordef _rout0[SLIM_IFPTR32(8, 5)]) {
    int _nErr = 0;
    _allocator _al[1] = {{0}};
    remote_arg* _praROutPostStart = _praROutPost;
    remote_arg** _ppraROutPostStart = _ppraROutPost;
    _ppraROutPost = &_praROutPost;
    _allocator_init(_al, 0, 0);
-   _TRY(_nErr, _stub_unpack_4((_praROutPost + 0), _ppraROutPost, ((char*)_primROut + 0), (uint32_t*)&(((uint32_t*)_rout0)[0]), (uint32_t*)&(((uint32_t*)_rout0)[1]), (uint32_t*)&(((uint32_t*)_rout0)[2]), (uint32_t*)&(((uint32_t*)_rout0)[3]), SLIM_IFPTR32((char**)&(((uint32_t*)_rout0)[4]), (char**)&(((uint64_t*)_rout0)[2])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout0)[5]), (uint32_t*)&(((uint32_t*)_rout0)[6])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout0)[6]), (uint32_t*)&(((uint32_t*)_rout0)[7])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout0)[7]), (uint32_t*)&(((uint32_t*)_rout0)[8]))));
+   _TRY(_nErr, _stub_unpack_4((_praROutPost + 0), _ppraROutPost, ((char*)_primROut + 0), (unsigned int*)&(((uint32_t*)_rout0)[0]), (unsigned int*)&(((uint32_t*)_rout0)[1]), (unsigned int*)&(((uint32_t*)_rout0)[2]), (unsigned int*)&(((uint32_t*)_rout0)[3]), SLIM_IFPTR32((unsigned char**)&(((uint32_t*)_rout0)[4]), (unsigned char**)&(((uint64_t*)_rout0)[2])), SLIM_IFPTR32((int*)&(((uint32_t*)_rout0)[5]), (int*)&(((uint32_t*)_rout0)[6])), SLIM_IFPTR32((unsigned int*)&(((uint32_t*)_rout0)[6]), (unsigned int*)&(((uint32_t*)_rout0)[7])), SLIM_IFPTR32((unsigned int*)&(((uint32_t*)_rout0)[7]), (unsigned int*)&(((uint32_t*)_rout0)[8]))));
    _ppraROutPostStart[0] += (_praROutPost - _praROutPostStart) +0;
    _CATCH(_nErr) {}
    _allocator_deinit(_al);
    return _nErr;
 }
-static __inline int _stub_unpack_6(remote_arg* _praROutPost, remote_arg* _ppraROutPost[1], void* _primROut, uintptr_t _in0[SLIM_IFPTR32(8, 5)]) {
+static __inline int _stub_unpack_6(remote_arg* _praROutPost, remote_arg* _ppraROutPost[1], void* _primROut, const hexagon_nn_tensordef _in0[SLIM_IFPTR32(8, 5)]) {
    int _nErr = 0;
    remote_arg* _praROutPostStart = _praROutPost;
    remote_arg** _ppraROutPostStart = _ppraROutPost;
@@ -1377,7 +1544,7 @@ static __inline int _stub_unpack_6(remote_arg* _praROutPost, remote_arg* _ppraRO
    _ppraROutPostStart[0] += (_praROutPost - _praROutPostStart) +0;
    return _nErr;
 }
-static __inline int _stub_pack_4(_allocator* _al, remote_arg* _praIn, remote_arg* _ppraIn[1], remote_arg* _praROut, remote_arg* _ppraROut[1], remote_arg* _praHIn, remote_arg* _ppraHIn[1], remote_arg* _praHROut, remote_arg* _ppraHROut[1], void* _primIn, void* _primROut, uint32_t _rout0[1], char* _rout1[1], uint32_t _rout1Len[1], uint32_t _rout2[1]) {
+static __inline int _stub_pack_4(_allocator* _al, remote_arg* _praIn, remote_arg* _ppraIn[1], remote_arg* _praROut, remote_arg* _ppraROut[1], remote_arg* _praHIn, remote_arg* _ppraHIn[1], remote_arg* _praHROut, remote_arg* _ppraHROut[1], void* _primIn, void* _primROut, hexagon_nn_execute_result _rout0[1], unsigned char* _rout1[1], int _rout1Len[1], unsigned int _rout2[1]) {
    int _nErr = 0;
    remote_arg* _praInStart = _praIn;
    remote_arg** _ppraInStart = _ppraIn;
@@ -1392,7 +1559,7 @@ static __inline int _stub_pack_4(_allocator* _al, remote_arg* _praIn, remote_arg
    _ppraROutStart[0] += (_praROut - _praROutStart) +1;
    return _nErr;
 }
-static __inline int _stub_pack_5(_allocator* _al, remote_arg* _praIn, remote_arg* _ppraIn[1], remote_arg* _praROut, remote_arg* _ppraROut[1], remote_arg* _praHIn, remote_arg* _ppraHIn[1], remote_arg* _praHROut, remote_arg* _ppraHROut[1], void* _primIn, void* _primROut, uint32_t _rout0[1], uint32_t _rout1[1], uint32_t _rout2[1], uint32_t _rout3[1], char* _rout4[1], uint32_t _rout4Len[1], uint32_t _rout5[1], uint32_t _rout6[1]) {
+static __inline int _stub_pack_5(_allocator* _al, remote_arg* _praIn, remote_arg* _ppraIn[1], remote_arg* _praROut, remote_arg* _ppraROut[1], remote_arg* _praHIn, remote_arg* _ppraHIn[1], remote_arg* _praHROut, remote_arg* _ppraHROut[1], void* _primIn, void* _primROut, unsigned int _rout0[1], unsigned int _rout1[1], unsigned int _rout2[1], unsigned int _rout3[1], unsigned char* _rout4[1], int _rout4Len[1], unsigned int _rout5[1], unsigned int _rout6[1]) {
    int _nErr = 0;
    remote_arg* _praInStart = _praIn;
    remote_arg** _ppraInStart = _ppraIn;
@@ -1407,7 +1574,7 @@ static __inline int _stub_pack_5(_allocator* _al, remote_arg* _praIn, remote_arg
    _ppraROutStart[0] += (_praROut - _praROutStart) +1;
    return _nErr;
 }
-static __inline int _stub_pack_6(_allocator* _al, remote_arg* _praIn, remote_arg* _ppraIn[1], remote_arg* _praROut, remote_arg* _ppraROut[1], remote_arg* _praHIn, remote_arg* _ppraHIn[1], remote_arg* _praHROut, remote_arg* _ppraHROut[1], void* _primIn, void* _primROut, uintptr_t _rout0[SLIM_IFPTR32(8, 5)]) {
+static __inline int _stub_pack_6(_allocator* _al, remote_arg* _praIn, remote_arg* _ppraIn[1], remote_arg* _praROut, remote_arg* _ppraROut[1], remote_arg* _praHIn, remote_arg* _ppraHIn[1], remote_arg* _praHROut, remote_arg* _ppraHROut[1], void* _primIn, void* _primROut, hexagon_nn_tensordef _rout0[SLIM_IFPTR32(8, 5)]) {
    int _nErr = 0;
    remote_arg* _praInStart = _praIn;
    remote_arg** _ppraInStart = _ppraIn;
@@ -1415,13 +1582,13 @@ static __inline int _stub_pack_6(_allocator* _al, remote_arg* _praIn, remote_arg
    remote_arg** _ppraROutStart = _ppraROut;
    _ppraIn = &_praIn;
    _ppraROut = &_praROut;
-   _TRY(_nErr, _stub_pack_5(_al, (_praIn + 0), _ppraIn, (_praROut + 0), _ppraROut, _praHIn, _ppraHIn, _praHROut, _ppraHROut, ((char*)_primIn + 0), ((char*)_primROut + 0), (uint32_t*)&(((uint32_t*)_rout0)[0]), (uint32_t*)&(((uint32_t*)_rout0)[1]), (uint32_t*)&(((uint32_t*)_rout0)[2]), (uint32_t*)&(((uint32_t*)_rout0)[3]), SLIM_IFPTR32((char**)&(((uint32_t*)_rout0)[4]), (char**)&(((uint64_t*)_rout0)[2])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout0)[5]), (uint32_t*)&(((uint32_t*)_rout0)[6])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout0)[6]), (uint32_t*)&(((uint32_t*)_rout0)[7])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout0)[7]), (uint32_t*)&(((uint32_t*)_rout0)[8]))));
+   _TRY(_nErr, _stub_pack_5(_al, (_praIn + 0), _ppraIn, (_praROut + 0), _ppraROut, _praHIn, _ppraHIn, _praHROut, _ppraHROut, ((char*)_primIn + 0), ((char*)_primROut + 0), (unsigned int*)&(((uint32_t*)_rout0)[0]), (unsigned int*)&(((uint32_t*)_rout0)[1]), (unsigned int*)&(((uint32_t*)_rout0)[2]), (unsigned int*)&(((uint32_t*)_rout0)[3]), SLIM_IFPTR32((unsigned char**)&(((uint32_t*)_rout0)[4]), (unsigned char**)&(((uint64_t*)_rout0)[2])), SLIM_IFPTR32((int*)&(((uint32_t*)_rout0)[5]), (int*)&(((uint32_t*)_rout0)[6])), SLIM_IFPTR32((unsigned int*)&(((uint32_t*)_rout0)[6]), (unsigned int*)&(((uint32_t*)_rout0)[7])), SLIM_IFPTR32((unsigned int*)&(((uint32_t*)_rout0)[7]), (unsigned int*)&(((uint32_t*)_rout0)[8]))));
    _ppraInStart[0] += (_praIn - _praInStart) + 0;
    _ppraROutStart[0] += (_praROut - _praROutStart) +0;
    _CATCH(_nErr) {}
    return _nErr;
 }
-static __inline int _stub_pack_7(_allocator* _al, remote_arg* _praIn, remote_arg* _ppraIn[1], remote_arg* _praROut, remote_arg* _ppraROut[1], remote_arg* _praHIn, remote_arg* _ppraHIn[1], remote_arg* _praHROut, remote_arg* _ppraHROut[1], void* _primIn, void* _primROut, uint32_t _in0[1], uint32_t _in1[1], uint32_t _in2[1], uint32_t _in3[1], char* _in4[1], uint32_t _in4Len[1], uint32_t _in5[1], uint32_t _in6[1]) {
+static __inline int _stub_pack_7(_allocator* _al, remote_arg* _praIn, remote_arg* _ppraIn[1], remote_arg* _praROut, remote_arg* _ppraROut[1], remote_arg* _praHIn, remote_arg* _ppraHIn[1], remote_arg* _praHROut, remote_arg* _ppraHROut[1], void* _primIn, void* _primROut, unsigned int _in0[1], unsigned int _in1[1], unsigned int _in2[1], unsigned int _in3[1], const unsigned char* _in4[1], int _in4Len[1], unsigned int _in5[1], unsigned int _in6[1]) {
    int _nErr = 0;
    remote_arg* _praInStart = _praIn;
    remote_arg** _ppraInStart = _ppraIn;
@@ -1434,7 +1601,7 @@ static __inline int _stub_pack_7(_allocator* _al, remote_arg* _praIn, remote_arg
    _COPY(_primIn, 8, _in2, 0, 4);
    _COPY(_primIn, 12, _in3, 0, 4);
    _COPY(_primIn, 16, _in4Len, 0, 4);
-   _praIn[0].buf.pv = _in4[0];
+   _praIn[0].buf.pv = (void*) _in4[0];
    _praIn[0].buf.nLen = (1 * _in4Len[0]);
    _COPY(_primIn, 20, _in5, 0, 4);
    _COPY(_primIn, 24, _in6, 0, 4);
@@ -1442,7 +1609,7 @@ static __inline int _stub_pack_7(_allocator* _al, remote_arg* _praIn, remote_arg
    _ppraROutStart[0] += (_praROut - _praROutStart) +0;
    return _nErr;
 }
-static __inline int _stub_pack_8(_allocator* _al, remote_arg* _praIn, remote_arg* _ppraIn[1], remote_arg* _praROut, remote_arg* _ppraROut[1], remote_arg* _praHIn, remote_arg* _ppraHIn[1], remote_arg* _praHROut, remote_arg* _ppraHROut[1], void* _primIn, void* _primROut, uintptr_t _in0[SLIM_IFPTR32(8, 5)]) {
+static __inline int _stub_pack_8(_allocator* _al, remote_arg* _praIn, remote_arg* _ppraIn[1], remote_arg* _praROut, remote_arg* _ppraROut[1], remote_arg* _praHIn, remote_arg* _ppraHIn[1], remote_arg* _praHROut, remote_arg* _ppraHROut[1], void* _primIn, void* _primROut, const hexagon_nn_tensordef _in0[SLIM_IFPTR32(8, 5)]) {
    int _nErr = 0;
    remote_arg* _praInStart = _praIn;
    remote_arg** _ppraInStart = _ppraIn;
@@ -1450,19 +1617,19 @@ static __inline int _stub_pack_8(_allocator* _al, remote_arg* _praIn, remote_arg
    remote_arg** _ppraROutStart = _ppraROut;
    _ppraIn = &_praIn;
    _ppraROut = &_praROut;
-   _TRY(_nErr, _stub_pack_7(_al, (_praIn + 0), _ppraIn, (_praROut + 0), _ppraROut, _praHIn, _ppraHIn, _praHROut, _ppraHROut, ((char*)_primIn + 0), 0, (uint32_t*)&(((uint32_t*)_in0)[0]), (uint32_t*)&(((uint32_t*)_in0)[1]), (uint32_t*)&(((uint32_t*)_in0)[2]), (uint32_t*)&(((uint32_t*)_in0)[3]), SLIM_IFPTR32((char**)&(((uint32_t*)_in0)[4]), (char**)&(((uint64_t*)_in0)[2])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_in0)[5]), (uint32_t*)&(((uint32_t*)_in0)[6])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_in0)[6]), (uint32_t*)&(((uint32_t*)_in0)[7])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_in0)[7]), (uint32_t*)&(((uint32_t*)_in0)[8]))));
+   _TRY(_nErr, _stub_pack_7(_al, (_praIn + 0), _ppraIn, (_praROut + 0), _ppraROut, _praHIn, _ppraHIn, _praHROut, _ppraHROut, ((char*)_primIn + 0), 0, (unsigned int*)&(((uint32_t*)_in0)[0]), (unsigned int*)&(((uint32_t*)_in0)[1]), (unsigned int*)&(((uint32_t*)_in0)[2]), (unsigned int*)&(((uint32_t*)_in0)[3]), SLIM_IFPTR32((const unsigned char**)&(((uint32_t*)_in0)[4]), (const unsigned char**)&(((uint64_t*)_in0)[2])), SLIM_IFPTR32((int*)&(((uint32_t*)_in0)[5]), (int*)&(((uint32_t*)_in0)[6])), SLIM_IFPTR32((unsigned int*)&(((uint32_t*)_in0)[6]), (unsigned int*)&(((uint32_t*)_in0)[7])), SLIM_IFPTR32((unsigned int*)&(((uint32_t*)_in0)[7]), (unsigned int*)&(((uint32_t*)_in0)[8]))));
    _ppraInStart[0] += (_praIn - _praInStart) + 0;
    _ppraROutStart[0] += (_praROut - _praROutStart) +0;
    _CATCH(_nErr) {}
    return _nErr;
 }
-static __inline void _count_4(int _numIn[1], int _numROut[1], int _numInH[1], int _numROutH[1], uint32_t _rout0[1], char* _rout1[1], uint32_t _rout1Len[1], uint32_t _rout2[1]) {
+static __inline void _count_4(int _numIn[1], int _numROut[1], int _numInH[1], int _numROutH[1], hexagon_nn_execute_result _rout0[1], unsigned char* _rout1[1], int _rout1Len[1], unsigned int _rout2[1]) {
    _numIn[0] += 0;
    _numROut[0] += 1;
    _numInH[0] += 0;
    _numROutH[0] += 0;
 }
-static __inline int _stub_method_24(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], uint32_t _in1[1], void* _in2[1], uint32_t _in2Len[1], void* _rout3[1], uint32_t _rout3Len[1], uintptr_t _rout4[SLIM_IFPTR32(4, 3)]) {
+static __inline int _stub_method_33(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], hexagon_nn_nn_id _in1[1], const hexagon_nn_tensordef* _in2[1], int _in2Len[1], hexagon_nn_tensordef* _rout3[1], int _rout3Len[1], hexagon_nn_execute_info _rout4[SLIM_IFPTR32(4, 3)]) {
    remote_arg* _pra;
    int _numIn[1];
    int _numROut[1];
@@ -1494,13 +1661,13 @@ static __inline int _stub_method_24(remote_handle _handle, uint32_t _mid, uint32
    _numROutH[0] = 0;
    for(_ii = 0, _seq_nat2 = (char*)_in2[0];_ii < (int)_in2Len[0];++_ii, _seq_nat2 = (_seq_nat2 + SLIM_IFPTR32(32, 40)))
    {
-      _count_3(_numIn, _numROut, _numInH, _numROutH, SLIM_IFPTR32((uintptr_t*)&(((uint32_t*)_seq_nat2)[0]), (uintptr_t*)&(((uint64_t*)_seq_nat2)[0])));
+      _count_3(_numIn, _numROut, _numInH, _numROutH, SLIM_IFPTR32((const hexagon_nn_tensordef*)&(((uint32_t*)_seq_nat2)[0]), (const hexagon_nn_tensordef*)&(((uint64_t*)_seq_nat2)[0])));
    }
    for(_ii = 0, _seq_nat3 = (char*)_rout3[0];_ii < (int)_rout3Len[0];++_ii, _seq_nat3 = (_seq_nat3 + SLIM_IFPTR32(32, 40)))
    {
-      _count_1(_numIn, _numROut, _numInH, _numROutH, SLIM_IFPTR32((uintptr_t*)&(((uint32_t*)_seq_nat3)[0]), (uintptr_t*)&(((uint64_t*)_seq_nat3)[0])));
+      _count_1(_numIn, _numROut, _numInH, _numROutH, SLIM_IFPTR32((hexagon_nn_tensordef*)&(((uint32_t*)_seq_nat3)[0]), (hexagon_nn_tensordef*)&(((uint64_t*)_seq_nat3)[0])));
    }
-   _count_4(_numIn, _numROut, _numInH, _numROutH, (uint32_t*)&(((uint32_t*)_rout4)[0]), SLIM_IFPTR32((char**)&(((uint32_t*)_rout4)[1]), (char**)&(((uint64_t*)_rout4)[1])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout4)[2]), (uint32_t*)&(((uint32_t*)_rout4)[4])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout4)[3]), (uint32_t*)&(((uint32_t*)_rout4)[5])));
+   _count_4(_numIn, _numROut, _numInH, _numROutH, (hexagon_nn_execute_result*)&(((uint32_t*)_rout4)[0]), SLIM_IFPTR32((unsigned char**)&(((uint32_t*)_rout4)[1]), (unsigned char**)&(((uint64_t*)_rout4)[1])), SLIM_IFPTR32((int*)&(((uint32_t*)_rout4)[2]), (int*)&(((uint32_t*)_rout4)[4])), SLIM_IFPTR32((unsigned int*)&(((uint32_t*)_rout4)[3]), (unsigned int*)&(((uint32_t*)_rout4)[5])));
    _allocator_init(_al, 0, 0);
    _ALLOCATE(_nErr, _al, ((((((((_numIn[0] + _numROut[0]) + _numInH[0]) + _numROutH[0]) + 1) + 1) + 0) + 0) * sizeof(_pra[0])), 4, _pra);
    _pra[0].buf.pv = (void*)_primIn;
@@ -1523,7 +1690,7 @@ static __inline int _stub_method_24(remote_handle _handle, uint32_t _mid, uint32
    _praIn[0].buf.nLen = (28 * _in2Len[0]);
    for(_ii = 0, _seq_primIn2 = (char*)_praIn[0].buf.pv, _seq_nat2 = (char*)_in2[0];_ii < (int)_in2Len[0];++_ii, _seq_primIn2 = (_seq_primIn2 + 28), _seq_nat2 = (_seq_nat2 + SLIM_IFPTR32(32, 40)))
    {
-      _TRY(_nErr, _stub_pack_8(_al, (_praIn + 1), _ppraIn, (_praROut + 0), _ppraROut, _praHIn, _ppraHIn, _praHROut, _ppraHROut, _seq_primIn2, 0, SLIM_IFPTR32((uintptr_t*)&(((uint32_t*)_seq_nat2)[0]), (uintptr_t*)&(((uint64_t*)_seq_nat2)[0]))));
+      _TRY(_nErr, _stub_pack_8(_al, (_praIn + 1), _ppraIn, (_praROut + 0), _ppraROut, _praHIn, _ppraHIn, _praHROut, _ppraHROut, _seq_primIn2, 0, SLIM_IFPTR32((const hexagon_nn_tensordef*)&(((uint32_t*)_seq_nat2)[0]), (const hexagon_nn_tensordef*)&(((uint64_t*)_seq_nat2)[0]))));
    }
    _COPY(_primIn, 12, _rout3Len, 0, 4);
    _ALLOCATE(_nErr, _al, (_rout3Len[0] * 4), 4, _praIn[1].buf.pv);
@@ -1532,33 +1699,33 @@ static __inline int _stub_method_24(remote_handle _handle, uint32_t _mid, uint32
    _praROut[0].buf.nLen = (24 * _rout3Len[0]);
    for(_ii = 0, _seq_primIn3 = (char*)_praIn[1].buf.pv, _seq_primROut3 = (char*)_praROut[0].buf.pv, _seq_nat3 = (char*)_rout3[0];_ii < (int)_rout3Len[0];++_ii, _seq_primIn3 = (_seq_primIn3 + 4), _seq_primROut3 = (_seq_primROut3 + 24), _seq_nat3 = (_seq_nat3 + SLIM_IFPTR32(32, 40)))
    {
-      _TRY(_nErr, _stub_pack_6(_al, (_praIn + 2), _ppraIn, (_praROut + 1), _ppraROut, _praHIn, _ppraHIn, _praHROut, _ppraHROut, _seq_primIn3, _seq_primROut3, SLIM_IFPTR32((uintptr_t*)&(((uint32_t*)_seq_nat3)[0]), (uintptr_t*)&(((uint64_t*)_seq_nat3)[0]))));
+      _TRY(_nErr, _stub_pack_6(_al, (_praIn + 2), _ppraIn, (_praROut + 1), _ppraROut, _praHIn, _ppraHIn, _praHROut, _ppraHROut, _seq_primIn3, _seq_primROut3, SLIM_IFPTR32((hexagon_nn_tensordef*)&(((uint32_t*)_seq_nat3)[0]), (hexagon_nn_tensordef*)&(((uint64_t*)_seq_nat3)[0]))));
    }
-   _TRY(_nErr, _stub_pack_4(_al, (_praIn + 2), _ppraIn, (_praROut + 1), _ppraROut, _praHIn, _ppraHIn, _praHROut, _ppraHROut, ((char*)_primIn + 16), ((char*)_primROut + 0), (uint32_t*)&(((uint32_t*)_rout4)[0]), SLIM_IFPTR32((char**)&(((uint32_t*)_rout4)[1]), (char**)&(((uint64_t*)_rout4)[1])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout4)[2]), (uint32_t*)&(((uint32_t*)_rout4)[4])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout4)[3]), (uint32_t*)&(((uint32_t*)_rout4)[5]))));
+   _TRY(_nErr, _stub_pack_4(_al, (_praIn + 2), _ppraIn, (_praROut + 1), _ppraROut, _praHIn, _ppraHIn, _praHROut, _ppraHROut, ((char*)_primIn + 16), ((char*)_primROut + 0), (hexagon_nn_execute_result*)&(((uint32_t*)_rout4)[0]), SLIM_IFPTR32((unsigned char**)&(((uint32_t*)_rout4)[1]), (unsigned char**)&(((uint64_t*)_rout4)[1])), SLIM_IFPTR32((int*)&(((uint32_t*)_rout4)[2]), (int*)&(((uint32_t*)_rout4)[4])), SLIM_IFPTR32((unsigned int*)&(((uint32_t*)_rout4)[3]), (unsigned int*)&(((uint32_t*)_rout4)[5]))));
    _ASSERT(_nErr, (_numInH[0] + 0) <= 15);
    _ASSERT(_nErr, (_numROutH[0] + 0) <= 15);
    _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, (_numIn[0] + 1), (_numROut[0] + 1), (_numInH[0] + 0), (_numROutH[0] + 0)), _pra));
    for(_ii = 0, _seq_nat2 = (char*)_in2[0];_ii < (int)_in2Len[0];++_ii, _seq_nat2 = (_seq_nat2 + SLIM_IFPTR32(32, 40)))
    {
-      _TRY(_nErr, _stub_unpack_6((_praROutPost + 0), _ppraROutPost, 0, SLIM_IFPTR32((uintptr_t*)&(((uint32_t*)_seq_nat2)[0]), (uintptr_t*)&(((uint64_t*)_seq_nat2)[0]))));
+      _TRY(_nErr, _stub_unpack_6((_praROutPost + 0), _ppraROutPost, 0, SLIM_IFPTR32((const hexagon_nn_tensordef*)&(((uint32_t*)_seq_nat2)[0]), (const hexagon_nn_tensordef*)&(((uint64_t*)_seq_nat2)[0]))));
    }
    for(_ii = 0, _seq_primROut3 = (char*)_praROutPost[0].buf.pv, _seq_nat3 = (char*)_rout3[0];_ii < (int)_rout3Len[0];++_ii, _seq_primROut3 = (_seq_primROut3 + 24), _seq_nat3 = (_seq_nat3 + SLIM_IFPTR32(32, 40)))
    {
-      _TRY(_nErr, _stub_unpack_5((_praROutPost + 1), _ppraROutPost, _seq_primROut3, SLIM_IFPTR32((uintptr_t*)&(((uint32_t*)_seq_nat3)[0]), (uintptr_t*)&(((uint64_t*)_seq_nat3)[0]))));
+      _TRY(_nErr, _stub_unpack_5((_praROutPost + 1), _ppraROutPost, _seq_primROut3, SLIM_IFPTR32((hexagon_nn_tensordef*)&(((uint32_t*)_seq_nat3)[0]), (hexagon_nn_tensordef*)&(((uint64_t*)_seq_nat3)[0]))));
    }
-   _TRY(_nErr, _stub_unpack_3((_praROutPost + 1), _ppraROutPost, ((char*)_primROut + 0), (uint32_t*)&(((uint32_t*)_rout4)[0]), SLIM_IFPTR32((char**)&(((uint32_t*)_rout4)[1]), (char**)&(((uint64_t*)_rout4)[1])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout4)[2]), (uint32_t*)&(((uint32_t*)_rout4)[4])), SLIM_IFPTR32((uint32_t*)&(((uint32_t*)_rout4)[3]), (uint32_t*)&(((uint32_t*)_rout4)[5]))));
+   _TRY(_nErr, _stub_unpack_3((_praROutPost + 1), _ppraROutPost, ((char*)_primROut + 0), (hexagon_nn_execute_result*)&(((uint32_t*)_rout4)[0]), SLIM_IFPTR32((unsigned char**)&(((uint32_t*)_rout4)[1]), (unsigned char**)&(((uint64_t*)_rout4)[1])), SLIM_IFPTR32((int*)&(((uint32_t*)_rout4)[2]), (int*)&(((uint32_t*)_rout4)[4])), SLIM_IFPTR32((unsigned int*)&(((uint32_t*)_rout4)[3]), (unsigned int*)&(((uint32_t*)_rout4)[5]))));
    _CATCH(_nErr) {}
    _allocator_deinit(_al);
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_execute_with_info)(hexagon_nn_nn_id id, const hexagon_nn_tensordef* inputs, int inputsLen, hexagon_nn_tensordef* outputs, int outputsLen, hexagon_nn_execute_info* execute_info) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 31;
-   return _stub_method_24(_hexagon_nn_handle(), 31, &_mid, (uint32_t*)&id, (void**)&inputs, (uint32_t*)&inputsLen, (void**)&outputs, (uint32_t*)&outputsLen, (uintptr_t*)execute_info);
+   uint32_t _mid = 35;
+   return _stub_method_33(_hexagon_nn_handle(), 31, &_mid, (hexagon_nn_nn_id*)&id, (const hexagon_nn_tensordef**)&inputs, (int*)&inputsLen, (hexagon_nn_tensordef**)&outputs, (int*)&outputsLen, (hexagon_nn_execute_info*)execute_info);
 }
-static __inline int _stub_method_25(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], uint32_t _rout1[1], uint32_t _in2[1]) {
+static __inline int _stub_method_34(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], hexagon_nn_nn_id _rout1[1], const hexagon_nn_initinfo _in2[2]) {
    int _numIn[1];
    remote_arg _pra[2];
-   uint32_t _primIn[2];
+   uint32_t _primIn[3];
    uint32_t _primROut[1];
    int _nErr = 0;
    _numIn[0] = 0;
@@ -1567,17 +1734,17 @@ static __inline int _stub_method_25(remote_handle _handle, uint32_t _mid, uint32
    _pra[(_numIn[0] + 1)].buf.pv = (void*)_primROut;
    _pra[(_numIn[0] + 1)].buf.nLen = sizeof(_primROut);
    _COPY(_primIn, 0, _in0, 0, 4);
-   _COPY(_primIn, 4, _in2, 0, 4);
+   _COPY(_primIn, 4, _in2, 0, 8);
    _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 1, 1, 0, 0), _pra));
    _COPY(_rout1, 0, _primROut, 0, 4);
    _CATCH(_nErr) {}
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_init_with_info)(hexagon_nn_nn_id* g, const hexagon_nn_initinfo* info) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 32;
-   return _stub_method_25(_hexagon_nn_handle(), 31, &_mid, (uint32_t*)g, (uint32_t*)info);
+   uint32_t _mid = 36;
+   return _stub_method_34(_hexagon_nn_handle(), 31, &_mid, (hexagon_nn_nn_id*)g, (const hexagon_nn_initinfo*)info);
 }
-static __inline int _stub_method_26(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], uint32_t _in1[1], uint32_t _in2[1], uint32_t _rout3[1]) {
+static __inline int _stub_method_35(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], hexagon_nn_nn_id _in1[1], hexagon_nn_nn_id _in2[1], unsigned int _rout3[1]) {
    int _numIn[1];
    remote_arg _pra[2];
    uint32_t _primIn[3];
@@ -1597,10 +1764,10 @@ static __inline int _stub_method_26(remote_handle _handle, uint32_t _mid, uint32
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_get_nodetype)(hexagon_nn_nn_id graph_id, hexagon_nn_nn_id node_id, unsigned int* node_type) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 33;
-   return _stub_method_26(_hexagon_nn_handle(), 31, &_mid, (uint32_t*)&graph_id, (uint32_t*)&node_id, (uint32_t*)node_type);
+   uint32_t _mid = 37;
+   return _stub_method_35(_hexagon_nn_handle(), 31, &_mid, (hexagon_nn_nn_id*)&graph_id, (hexagon_nn_nn_id*)&node_id, (unsigned int*)node_type);
 }
-static __inline int _stub_method_27(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], uint32_t _in1[1], uint32_t _rout2[1], uint32_t _rout3[1]) {
+static __inline int _stub_method_36(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], hexagon_nn_nn_id _in1[1], unsigned int _rout2[1], unsigned int _rout3[1]) {
    int _numIn[1];
    remote_arg _pra[2];
    uint32_t _primIn[2];
@@ -1620,15 +1787,27 @@ static __inline int _stub_method_27(remote_handle _handle, uint32_t _mid, uint32
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_multi_execution_cycles)(hexagon_nn_nn_id id, unsigned int* cycles_lo, unsigned int* cycles_hi) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 34;
-   return _stub_method_27(_hexagon_nn_handle(), 31, &_mid, (uint32_t*)&id, (uint32_t*)cycles_lo, (uint32_t*)cycles_hi);
+   uint32_t _mid = 38;
+   return _stub_method_36(_hexagon_nn_handle(), 31, &_mid, (hexagon_nn_nn_id*)&id, (unsigned int*)cycles_lo, (unsigned int*)cycles_hi);
+}
+static __inline int _stub_method_37(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], int _in1[1]) {
+   remote_arg _pra[1];
+   uint32_t _primIn[2];
+   int _nErr = 0;
+   _pra[0].buf.pv = (void*)_primIn;
+   _pra[0].buf.nLen = sizeof(_primIn);
+   _COPY(_primIn, 0, _in0, 0, 4);
+   _COPY(_primIn, 4, _in1, 0, 4);
+   _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 1, 0, 0, 0), _pra));
+   _CATCH(_nErr) {}
+   return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_get_power)(int type) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 35;
-   return _stub_method_5(_hexagon_nn_handle(), 31, &_mid, (uint32_t*)&type);
+   uint32_t _mid = 39;
+   return _stub_method_37(_hexagon_nn_handle(), 31, &_mid, (int*)&type);
 }
-static __inline int _stub_method_28(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], uint32_t _in1[1], char* _in2[1], uint32_t _in3[1]) {
-   uint32_t _in2Len[1];
+static __inline int _stub_method_38(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], hexagon_nn_nn_id _in1[1], const char* _in2[1], int _in3[1]) {
+   int _in2Len[1];
    remote_arg _pra[2];
    uint32_t _primIn[4];
    remote_arg* _praIn;
@@ -1640,7 +1819,7 @@ static __inline int _stub_method_28(remote_handle _handle, uint32_t _mid, uint32
    _in2Len[0] = (1 + strlen(_in2[0]));
    _COPY(_primIn, 8, _in2Len, 0, 4);
    _praIn = (_pra + 1);
-   _praIn[0].buf.pv = _in2[0];
+   _praIn[0].buf.pv = (void*) _in2[0];
    _praIn[0].buf.nLen = (1 * _in2Len[0]);
    _COPY(_primIn, 12, _in3, 0, 4);
    _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 2, 0, 0, 0), _pra));
@@ -1648,10 +1827,10 @@ static __inline int _stub_method_28(remote_handle _handle, uint32_t _mid, uint32
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_set_graph_option)(hexagon_nn_nn_id id, const char* name, int value) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 36;
-   return _stub_method_28(_hexagon_nn_handle(), 31, &_mid, (uint32_t*)&id, (char**)&name, (uint32_t*)&value);
+   uint32_t _mid = 40;
+   return _stub_method_38(_hexagon_nn_handle(), 31, &_mid, (hexagon_nn_nn_id*)&id, (const char**)&name, (int*)&value);
 }
-static __inline int _stub_method_29(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], uint32_t _in1[1], char* _in2[1], uint32_t _in2Len[1]) {
+static __inline int _stub_method_39(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], hexagon_nn_nn_id _in1[1], const unsigned char* _in2[1], int _in2Len[1]) {
    remote_arg _pra[2];
    uint32_t _primIn[3];
    remote_arg* _praIn;
@@ -1662,19 +1841,79 @@ static __inline int _stub_method_29(remote_handle _handle, uint32_t _mid, uint32
    _COPY(_primIn, 4, _in1, 0, 4);
    _COPY(_primIn, 8, _in2Len, 0, 4);
    _praIn = (_pra + 1);
-   _praIn[0].buf.pv = _in2[0];
+   _praIn[0].buf.pv = (void*) _in2[0];
    _praIn[0].buf.nLen = (1 * _in2Len[0]);
    _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 2, 0, 0, 0), _pra));
    _CATCH(_nErr) {}
    return _nErr;
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_populate_graph)(hexagon_nn_nn_id id, const unsigned char* graph_data, int graph_dataLen) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 37;
-   return _stub_method_29(_hexagon_nn_handle(), 31, &_mid, (uint32_t*)&id, (char**)&graph_data, (uint32_t*)&graph_dataLen);
+   uint32_t _mid = 41;
+   return _stub_method_39(_hexagon_nn_handle(), 31, &_mid, (hexagon_nn_nn_id*)&id, (const unsigned char**)&graph_data, (int*)&graph_dataLen);
+}
+__QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_serialize_size)(hexagon_nn_nn_id id, unsigned int* serialized_obj_size_out, unsigned int* return_code) __QAIC_STUB_ATTRIBUTE {
+   uint32_t _mid = 42;
+   return _stub_method_36(_hexagon_nn_handle(), 31, &_mid, (hexagon_nn_nn_id*)&id, (unsigned int*)serialized_obj_size_out, (unsigned int*)return_code);
+}
+static __inline int _stub_method_40(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], hexagon_nn_nn_id _in1[1], unsigned char* _rout2[1], int _rout2Len[1], unsigned int _rout3[1]) {
+   int _numIn[1];
+   remote_arg _pra[3];
+   uint32_t _primIn[3];
+   uint32_t _primROut[1];
+   remote_arg* _praIn;
+   remote_arg* _praROut;
+   int _nErr = 0;
+   _numIn[0] = 0;
+   _pra[0].buf.pv = (void*)_primIn;
+   _pra[0].buf.nLen = sizeof(_primIn);
+   _pra[(_numIn[0] + 1)].buf.pv = (void*)_primROut;
+   _pra[(_numIn[0] + 1)].buf.nLen = sizeof(_primROut);
+   _COPY(_primIn, 0, _in0, 0, 4);
+   _COPY(_primIn, 4, _in1, 0, 4);
+   _COPY(_primIn, 8, _rout2Len, 0, 4);
+   _praIn = (_pra + 1);
+   _praROut = (_praIn + _numIn[0] + 1);
+   _praROut[0].buf.pv = _rout2[0];
+   _praROut[0].buf.nLen = (1 * _rout2Len[0]);
+   _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 1, 2, 0, 0), _pra));
+   _COPY(_rout3, 0, _primROut, 0, 4);
+   _CATCH(_nErr) {}
+   return _nErr;
+}
+__QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_serialize)(hexagon_nn_nn_id id, unsigned char* buffer, int bufferLen, unsigned int* return_code) __QAIC_STUB_ATTRIBUTE {
+   uint32_t _mid = 43;
+   return _stub_method_40(_hexagon_nn_handle(), 31, &_mid, (hexagon_nn_nn_id*)&id, (unsigned char**)&buffer, (int*)&bufferLen, (unsigned int*)return_code);
+}
+static __inline int _stub_method_41(remote_handle _handle, uint32_t _mid, uint32_t _in0[1], const unsigned char* _in1[1], int _in1Len[1], hexagon_nn_nn_id _rout2[1], unsigned int _rout3[1]) {
+   int _numIn[1];
+   remote_arg _pra[3];
+   uint32_t _primIn[2];
+   uint32_t _primROut[2];
+   remote_arg* _praIn;
+   int _nErr = 0;
+   _numIn[0] = 1;
+   _pra[0].buf.pv = (void*)_primIn;
+   _pra[0].buf.nLen = sizeof(_primIn);
+   _pra[(_numIn[0] + 1)].buf.pv = (void*)_primROut;
+   _pra[(_numIn[0] + 1)].buf.nLen = sizeof(_primROut);
+   _COPY(_primIn, 0, _in0, 0, 4);
+   _COPY(_primIn, 4, _in1Len, 0, 4);
+   _praIn = (_pra + 1);
+   _praIn[0].buf.pv = (void*) _in1[0];
+   _praIn[0].buf.nLen = (1 * _in1Len[0]);
+   _TRY(_nErr, __QAIC_REMOTE(remote_handle_invoke)(_handle, REMOTE_SCALARS_MAKEX(0, _mid, 2, 1, 0, 0), _pra));
+   _COPY(_rout2, 0, _primROut, 0, 4);
+   _COPY(_rout3, 0, _primROut, 4, 4);
+   _CATCH(_nErr) {}
+   return _nErr;
+}
+__QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_deserialize)(const unsigned char* buffer, int bufferLen, hexagon_nn_nn_id* new_graph_out, unsigned int* return_code) __QAIC_STUB_ATTRIBUTE {
+   uint32_t _mid = 44;
+   return _stub_method_41(_hexagon_nn_handle(), 31, &_mid, (const unsigned char**)&buffer, (int*)&bufferLen, (hexagon_nn_nn_id*)new_graph_out, (unsigned int*)return_code);
 }
 __QAIC_STUB_EXPORT int __QAIC_STUB(hexagon_nn_last_execution_usecs)(hexagon_nn_nn_id id, unsigned int* usecs_lo, unsigned int* usecs_hi) __QAIC_STUB_ATTRIBUTE {
-   uint32_t _mid = 38;
-   return _stub_method_27(_hexagon_nn_handle(), 31, &_mid, (uint32_t*)&id, (uint32_t*)usecs_lo, (uint32_t*)usecs_hi);
+   uint32_t _mid = 45;
+   return _stub_method_36(_hexagon_nn_handle(), 31, &_mid, (hexagon_nn_nn_id*)&id, (unsigned int*)usecs_lo, (unsigned int*)usecs_hi);
 }
 #ifdef __cplusplus
 }

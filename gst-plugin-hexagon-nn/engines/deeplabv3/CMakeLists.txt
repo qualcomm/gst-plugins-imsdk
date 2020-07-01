@@ -36,7 +36,7 @@ target_link_libraries(${DEEP_LAB_V3_NN} PUBLIC
   nndriver
 )
 
-target_compile_options(${DEEP_LAB_V3_NN} PUBLIC -Wno-strict-aliasing)
+target_compile_options(${DEEP_LAB_V3_NN} PRIVATE -Wno-strict-aliasing)
 
 install(
   TARGETS ${DEEP_LAB_V3_NN}

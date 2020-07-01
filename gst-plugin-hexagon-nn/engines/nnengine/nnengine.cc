@@ -66,7 +66,7 @@ int32_t NNEngine::EngineInit(const NNSourceInfo* source_info,
     return -1;
   }
 
-  void (*init_graph)(int nn_id);
+  InitGraph init_graph;
   *(void **)&(init_graph) = dlsym(libptr, "init_graph");
 
   int ret = nn_driver_.Init(&nn_input_buf_, pad_width_, pad_height_,

@@ -33,29 +33,32 @@
 
 #include "nndriver.h"
 
-uint32_t NNDriver::GraphSetup(void (*init_graph)(int32_t nn_id))
+const char NNDriver::kURI[] =
+  "file:///libhexagon_nn_skel_dp.so?hexagon_nn_domains_skel_handle_invoke&_modver=1.0&_dom=cdsp";
+
+uint32_t NNDriver::GraphSetup(InitGraph init_graph)
 {
   int32_t ret = 0;
   uint32_t id = 0;
 
-  ret = hexagon_nn_init((hexagon_nn_nn_id*)(&id));
+  ret = hexagon_nn_domains_init(handle_, (hexagon_nn_nn_id *)(&id));
   if (0 == ret) {
-    ret = hexagon_nn_set_powersave_level(0);
+    ret = hexagon_nn_domains_set_powersave_level(handle_, 0);
     if (0 == ret) {
-      hexagon_nn_set_debug_level(id, 0);
+      hexagon_nn_domains_set_debug_level(handle_, id, 0);
 
-      init_graph(id);
+      init_graph(handle_, id);
 
-      ret = hexagon_nn_prepare(id);
+      ret = hexagon_nn_domains_prepare(handle_, id);
       if (0 != ret) {
-        ALOGE(" hexagon_nn_prepare failed: %d\n", ret);
+        ALOGE(" hexagon_nn_domains_prepare failed: %d\n", ret);
         id = 0;
       }
     } else {
-      ALOGE(" hexagon_nn_set_powersave_level failed: %d\n", ret);
+      ALOGE(" hexagon_nn_domains_set_powersave_level failed: %d\n", ret);
     }
   } else {
-    ALOGE(" hexagon_nn_init failed: %d\n", ret);
+    ALOGE(" hexagon_nn_domains_init failed: %d\n", ret);
   }
 
   return id;
@@ -65,8 +68,8 @@ int32_t NNDriver::Process(
     uint8_t* in_buffer,
     void**   outs)
 {
-  int32_t ret = hexagon_nn_execute_new(graph_id_, &in_tensor_, 1,
-      &out_tensors_[0], num_outputs_);
+  int32_t ret = hexagon_nn_domains_execute_new(handle_, graph_id_, &in_tensor_,
+      1, &out_tensors_[0], num_outputs_);
   if (0 == ret) {
     for (int32_t i = 0; i < num_outputs_; i++) {
       outs[i] = nn_out_bufs_[i];
@@ -82,7 +85,7 @@ int32_t NNDriver::Init(
     int32_t   height,
     int32_t   num_outputs,
     int32_t*  out_sizes,
-    void      (*init_graph)(int32_t nn_id))
+    InitGraph init_graph)
 {
   int32_t ret = 0;
 
@@ -111,7 +114,14 @@ int32_t NNDriver::Init(
   }
 
   if (0 == ret) {
-    hexagon_nn_config();
+    hexagon_nn_domains_open(kURI, &handle_);
+
+    struct remote_rpc_control_latency data;
+    data.enable = 1;
+    remote_handle64_control(handle_, DSPRPC_CONTROL_LATENCY, (void*)&data,
+        sizeof(data));
+
+    hexagon_nn_domains_config(handle_);
 
     graph_id_ = GraphSetup(init_graph);
     if (0 == graph_id_) {
@@ -158,7 +168,9 @@ int32_t NNDriver::Init(
 void NNDriver::DeInit()
 {
   if (0 != graph_id_) {
-    hexagon_nn_teardown(graph_id_);
+    hexagon_nn_domains_set_powersave_level(handle_, 255);
+    hexagon_nn_domains_teardown(handle_, graph_id_);
+    hexagon_nn_domains_close(handle_);
   }
 
   if (NULL != nn_in_buf_) {

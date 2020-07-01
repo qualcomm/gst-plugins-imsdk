@@ -22,6 +22,8 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 # Precompiler definitions.
 add_definitions(-DHAVE_CONFIG_H)
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror")
+
 add_subdirectory(nndriver)
 add_subdirectory(engines/nnengine)
 add_subdirectory(engines/deeplabv3)

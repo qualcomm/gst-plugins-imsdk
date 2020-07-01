@@ -35,7 +35,7 @@ target_link_libraries(${MNET_SSD_NN} PUBLIC
   nndriver
 )
 
-target_compile_options(${MNET_SSD_NN} PUBLIC -Wno-strict-aliasing)
+target_compile_options(${MNET_SSD_NN} PRIVATE -Wno-strict-aliasing)
 
 install(
   TARGETS ${MNET_SSD_NN}

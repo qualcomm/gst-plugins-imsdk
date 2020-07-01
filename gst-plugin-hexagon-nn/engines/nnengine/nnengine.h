@@ -90,7 +90,7 @@ public:
 
   ~Timer () {
     uint64_t end = GetMicroSeconds();
-    ALOGD("%s: %llu us", str.c_str(), end - begin);
+    ALOGD("%s: %" G_GINT64_FORMAT " us", str.c_str(), end - begin);
   }
 };
 

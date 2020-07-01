@@ -90,6 +90,7 @@ typedef int hexagon_nn_nn_id;
 typedef struct hexagon_nn_initinfo hexagon_nn_initinfo;
 struct hexagon_nn_initinfo {
    int priority;
+   int cpuEarlyWakeup;
 };
 enum hexagon_nn_padding_type {
    NN_PAD_NA,
@@ -130,10 +131,54 @@ struct hexagon_nn_tensordef {
    unsigned int data_valid_len;
    unsigned int unused;
 };
+enum hexagon_nn_udo_err {
+   UDO_SUCCESS,
+   UDO_GRAPH_ID_NOT_FOUND,
+   UDO_GRAPH_NOT_UNDER_CONSTRUCTION,
+   UDO_NODE_ALLOCATION_FAILURE,
+   UDO_MEMORY_ALLOCATION_FAILURE,
+   UDO_INVALID_INPUTS_OUTPUTS_NUMBER,
+   UDO_INVALID_INPUTS_OUTPUTS_ELEMENT_SIZE,
+   UDO_LIB_FAILED_TO_OPEN,
+   UDO_LIB_FAILED_TO_LOAD_GET_IMP_INFO,
+   UDO_LIB_FAILED_TO_LOAD_CREATE_OP_FACTORY,
+   UDO_LIB_FAILED_TO_LOAD_CREATE_OP,
+   UDO_LIB_FAILED_TO_LOAD_EXECUTE_OP,
+   UDO_LIB_FAILED_TO_LOAD_RELEASE_OP,
+   UDO_LIB_FAILED_TO_LOAD_RELEASE_OP_FACTORY,
+   UDO_LIB_FAILED_TO_LOAD_TERMINATE_LIBRARY,
+   UDO_LIB_FAILED_TO_LOAD_GET_VERSION,
+   UDO_LIB_FAILED_TO_LOAD_QUERY_OP,
+   UDO_HEXNN_FAILED_TO_INITIALIZE_INFRASTRUCTURE,
+   UDO_LIB_FAILED_TO_INITIALIZE,
+   UDO_LIB_FAILED_TO_RETURN_INFO,
+   UDO_LIB_WRONG_CORE_TYPE,
+   UDO_LIB_FAILED_TO_QUERY_VERSION,
+   UDO_LIB_VERSION_MISMATCH,
+   UDO_LIB_ALREADY_REGISTERED,
+   UDO_LIB_NOT_REGISTERED,
+   UDO_LIB_NOT_REGISTERED_WITH_THIS_OP,
+   UDO_LIB_FAILED_TO_QUERY_OP,
+   UDO_LIB_UNSUPPORTED_QUANTIZATION_TYPE,
+   UDO_FAILED_TO_CREATE_OP_FACTORY,
+   UDO_INVALID_NODE_ID,
+   UDO_LIB_FAILED_TO_TERMINATE,
+   _32BIT_PLACEHOLDER_hexagon_nn_udo_err = 0x7fffffff
+};
+typedef enum hexagon_nn_udo_err hexagon_nn_udo_err;
 enum hexagon_nn_execute_result {
    NN_EXECUTE_SUCCESS,
    NN_EXECUTE_ERROR,
    NN_EXECUTE_BUFFER_SIZE_ERROR,
+   NN_EXECUTE_UDO_ERROR,
+   NN_EXECUTE_GRAPH_NOT_FOUND,
+   NN_EXECUTE_GRAPH_NOT_PREPARED,
+   NN_EXECUTE_INPUTS_MEM_ALLOC_ERROR,
+   NN_EXECUTE_OUTPUTS_MEM_ALLOC_ERROR,
+   NN_EXECUTE_PRIORITY_UPDATE_ERROR,
+   NN_EXECUTE_PRIORITY_RESTORE_ERROR,
+   NN_EXECUTE_VTCM_ACQUIRE_ERROR,
+   NN_EXECUTE_LOOP_UPDATE_ERROR,
    _32BIT_PLACEHOLDER_hexagon_nn_execute_result = 0x7fffffff
 };
 typedef enum hexagon_nn_execute_result hexagon_nn_execute_result;
@@ -172,11 +217,15 @@ __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_config)(void) __QAIC_HEADER_AT
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_config_with_options)(const hexagon_nn_uint_option* uint_options, int uint_optionsLen, const hexagon_nn_string_option* string_options, int string_optionsLen) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_graph_config)(hexagon_nn_nn_id id, const hexagon_nn_uint_option* uint_options, int uint_optionsLen, const hexagon_nn_string_option* string_options, int string_optionsLen) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_get_dsp_offset)(unsigned int* libhexagon_addr, unsigned int* fastrpc_shell_addr) __QAIC_HEADER_ATTRIBUTE;
+__QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_register_udo_lib)(const char* so_path_name, uint32_t* udo_lib_registration_id, hexagon_nn_udo_err* err) __QAIC_HEADER_ATTRIBUTE;
+__QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_free_udo_individual_lib)(uint32_t udo_lib_registration_id, hexagon_nn_udo_err* err) __QAIC_HEADER_ATTRIBUTE;
+__QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_free_udo_libs)(hexagon_nn_udo_err* err) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_init)(hexagon_nn_nn_id* g) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_set_debug_level)(hexagon_nn_nn_id id, int level) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_snpprint)(hexagon_nn_nn_id id, unsigned char* buf, int bufLen) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_getlog)(hexagon_nn_nn_id id, unsigned char* buf, int bufLen) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_append_node)(hexagon_nn_nn_id id, unsigned int node_id, unsigned int operation, hexagon_nn_padding_type padding, const hexagon_nn_input* inputs, int inputsLen, const hexagon_nn_output* outputs, int outputsLen) __QAIC_HEADER_ATTRIBUTE;
+__QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_append_udo_node)(hexagon_nn_nn_id id, unsigned int node_id, const char* package_name, const char* op_type, const char* flattened_static_params, int flattened_static_paramsLen, const hexagon_nn_input* inputs, int inputsLen, const hexagon_nn_output* outputs, int outputsLen, hexagon_nn_udo_err* err) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_append_const_node)(hexagon_nn_nn_id id, unsigned int node_id, unsigned int batches, unsigned int height, unsigned int width, unsigned int depth, const unsigned char* data, int dataLen) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_append_empty_const_node)(hexagon_nn_nn_id id, unsigned int node_id, unsigned int batches, unsigned int height, unsigned int width, unsigned int depth, unsigned int size) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_populate_const_node)(hexagon_nn_nn_id id, unsigned int node_id, const unsigned char* data, int dataLen, unsigned int target_offset) __QAIC_HEADER_ATTRIBUTE;
@@ -206,6 +255,9 @@ __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_multi_execution_cycles)(hexago
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_get_power)(int type) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_set_graph_option)(hexagon_nn_nn_id id, const char* name, int value) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_populate_graph)(hexagon_nn_nn_id id, const unsigned char* graph_data, int graph_dataLen) __QAIC_HEADER_ATTRIBUTE;
+__QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_serialize_size)(hexagon_nn_nn_id id, unsigned int* serialized_obj_size_out, unsigned int* return_code) __QAIC_HEADER_ATTRIBUTE;
+__QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_serialize)(hexagon_nn_nn_id id, unsigned char* buffer, int bufferLen, unsigned int* return_code) __QAIC_HEADER_ATTRIBUTE;
+__QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_deserialize)(const unsigned char* buffer, int bufferLen, hexagon_nn_nn_id* new_graph_out, unsigned int* return_code) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_last_execution_usecs)(hexagon_nn_nn_id id, unsigned int* usecs_lo, unsigned int* usecs_hi) __QAIC_HEADER_ATTRIBUTE;
 /**
     * Opens the handle in the specified domain.  If this is the first
@@ -241,11 +293,15 @@ __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_config)(remote_handle6
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_config_with_options)(remote_handle64 _h, const hexagon_nn_uint_option* uint_options, int uint_optionsLen, const hexagon_nn_string_option* string_options, int string_optionsLen) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_graph_config)(remote_handle64 _h, hexagon_nn_nn_id id, const hexagon_nn_uint_option* uint_options, int uint_optionsLen, const hexagon_nn_string_option* string_options, int string_optionsLen) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_get_dsp_offset)(remote_handle64 _h, unsigned int* libhexagon_addr, unsigned int* fastrpc_shell_addr) __QAIC_HEADER_ATTRIBUTE;
+__QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_register_udo_lib)(remote_handle64 _h, const char* so_path_name, uint32_t* udo_lib_registration_id, hexagon_nn_udo_err* err) __QAIC_HEADER_ATTRIBUTE;
+__QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_free_udo_individual_lib)(remote_handle64 _h, uint32_t udo_lib_registration_id, hexagon_nn_udo_err* err) __QAIC_HEADER_ATTRIBUTE;
+__QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_free_udo_libs)(remote_handle64 _h, hexagon_nn_udo_err* err) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_init)(remote_handle64 _h, hexagon_nn_nn_id* g) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_set_debug_level)(remote_handle64 _h, hexagon_nn_nn_id id, int level) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_snpprint)(remote_handle64 _h, hexagon_nn_nn_id id, unsigned char* buf, int bufLen) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_getlog)(remote_handle64 _h, hexagon_nn_nn_id id, unsigned char* buf, int bufLen) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_append_node)(remote_handle64 _h, hexagon_nn_nn_id id, unsigned int node_id, unsigned int operation, hexagon_nn_padding_type padding, const hexagon_nn_input* inputs, int inputsLen, const hexagon_nn_output* outputs, int outputsLen) __QAIC_HEADER_ATTRIBUTE;
+__QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_append_udo_node)(remote_handle64 _h, hexagon_nn_nn_id id, unsigned int node_id, const char* package_name, const char* op_type, const char* flattened_static_params, int flattened_static_paramsLen, const hexagon_nn_input* inputs, int inputsLen, const hexagon_nn_output* outputs, int outputsLen, hexagon_nn_udo_err* err) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_append_const_node)(remote_handle64 _h, hexagon_nn_nn_id id, unsigned int node_id, unsigned int batches, unsigned int height, unsigned int width, unsigned int depth, const unsigned char* data, int dataLen) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_append_empty_const_node)(remote_handle64 _h, hexagon_nn_nn_id id, unsigned int node_id, unsigned int batches, unsigned int height, unsigned int width, unsigned int depth, unsigned int size) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_populate_const_node)(remote_handle64 _h, hexagon_nn_nn_id id, unsigned int node_id, const unsigned char* data, int dataLen, unsigned int target_offset) __QAIC_HEADER_ATTRIBUTE;
@@ -275,6 +331,9 @@ __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_multi_execution_cycles
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_get_power)(remote_handle64 _h, int type) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_set_graph_option)(remote_handle64 _h, hexagon_nn_nn_id id, const char* name, int value) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_populate_graph)(remote_handle64 _h, hexagon_nn_nn_id id, const unsigned char* graph_data, int graph_dataLen) __QAIC_HEADER_ATTRIBUTE;
+__QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_serialize_size)(remote_handle64 _h, hexagon_nn_nn_id id, unsigned int* serialized_obj_size_out, unsigned int* return_code) __QAIC_HEADER_ATTRIBUTE;
+__QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_serialize)(remote_handle64 _h, hexagon_nn_nn_id id, unsigned char* buffer, int bufferLen, unsigned int* return_code) __QAIC_HEADER_ATTRIBUTE;
+__QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_deserialize)(remote_handle64 _h, const unsigned char* buffer, int bufferLen, hexagon_nn_nn_id* new_graph_out, unsigned int* return_code) __QAIC_HEADER_ATTRIBUTE;
 __QAIC_HEADER_EXPORT int __QAIC_HEADER(hexagon_nn_domains_last_execution_usecs)(remote_handle64 _h, hexagon_nn_nn_id id, unsigned int* usecs_lo, unsigned int* usecs_hi) __QAIC_HEADER_ATTRIBUTE;
 #ifndef hexagon_nn_domains_URI
 #define hexagon_nn_domains_URI "file:///libhexagon_nn_skel.so?hexagon_nn_domains_skel_handle_invoke&_modver=1.0"

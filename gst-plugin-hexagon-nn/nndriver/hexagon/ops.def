@@ -160,6 +160,7 @@ DEF_OP(BitwiseOr_int32)
 DEF_OP(BitwiseXor_int32)
 DEF_OP(Shape_int32)
 DEF_OP(Pack_int32)
+DEF_OP(Pack_f)
 DEF_OP(MirrorPad_f)
 DEF_OP(MirrorPad_8)
 DEF_OP(ResizeNearestNeighbor_f)
@@ -495,6 +496,21 @@ DEF_OP(InputSupernode_16x16p32to16_outd32)
 DEF_OP(Requantize_8to8_d32)
 
 DEF_OP_WREF(QuantizedCorrelation1d_8x8to8)
+DEF_OP(Unpack_int32)
+DEF_OP(Unpack_f)
+DEF_OP(Close_q_qint32)
+
+DEF_OP(SsdDetectionOut)
+DEF_OP(QuantizedTransposeConv2d_8x8p8to8)
+DEF_OP(QuantizedPack_8)
+DEF_OP(QuantizedUnpack_8)
+
+DEF_OP_WREF(QuantizedHardSwish_8)
+DEF_OP(QuantizedHardSwish_8_d32)
+
+DEF_OP(Close_q_quint16)
+
+DEF_OP_WREF(QuantizedLayerNorm_i16)
 // Add new operations above this line
 #ifdef __SELF_DEF_OP_WREF
 #undef __SELF_DEF_OP_WREF
