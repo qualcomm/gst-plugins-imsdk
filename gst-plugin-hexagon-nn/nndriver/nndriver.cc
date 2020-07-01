@@ -27,19 +27,39 @@
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <dlfcn.h>
 #include <string.h>
 
 #include "rpcmem.h"
 
 #include "nndriver.h"
 
-const char NNDriver::kURI[] =
+const char NNDriverHVX::kURI[] =
   "file:///libhexagon_nn_skel_dp.so?hexagon_nn_domains_skel_handle_invoke&_modver=1.0&_dom=cdsp";
 
-uint32_t NNDriver::GraphSetup(InitGraph init_graph)
+uint32_t NNDriverHVX::GraphSetup(std::string &lib_name)
 {
   int32_t ret = 0;
   uint32_t id = 0;
+
+  dlerror();
+
+  void *libptr = dlopen(lib_name.c_str(), RTLD_LAZY);
+  auto err = dlerror();
+  if (err) {
+    ALOGE("%s: dlopen failed: %s", __func__, dlerror());
+    return id;
+  }
+
+  void (*init_graph)(remote_handle64 handle, int nn_id);
+
+  *(void **)&(init_graph) = dlsym(libptr, "init_graph");
+  err = dlerror();
+  if (err) {
+    ALOGE("dlsym failed: %s", err);
+    dlclose(libptr);
+    return id;
+  }
 
   ret = hexagon_nn_domains_init(handle_, (hexagon_nn_nn_id *)(&id));
   if (0 == ret) {
@@ -61,10 +81,12 @@ uint32_t NNDriver::GraphSetup(InitGraph init_graph)
     ALOGE(" hexagon_nn_domains_init failed: %d\n", ret);
   }
 
+  dlclose(libptr);
+
   return id;
 }
 
-int32_t NNDriver::Process(
+int32_t NNDriverHVX::Process(
     uint8_t* in_buffer,
     void**   outs)
 {
@@ -79,13 +101,13 @@ int32_t NNDriver::Process(
   return ret;
 }
 
-int32_t NNDriver::Init(
-    uint8_t** input_buf,
-    int32_t   width,
-    int32_t   height,
-    int32_t   num_outputs,
-    int32_t*  out_sizes,
-    InitGraph init_graph)
+int32_t NNDriverHVX::Init(
+    uint8_t     **input_buf,
+    int32_t     width,
+    int32_t     height,
+    int32_t     num_outputs,
+    int32_t     *out_sizes,
+    std::string &lib_name)
 {
   int32_t ret = 0;
 
@@ -123,7 +145,7 @@ int32_t NNDriver::Init(
 
     hexagon_nn_domains_config(handle_);
 
-    graph_id_ = GraphSetup(init_graph);
+    graph_id_ = GraphSetup(lib_name);
     if (0 == graph_id_) {
       ALOGE(" Graph setup failed\n");
       ret = -1;
@@ -165,7 +187,7 @@ int32_t NNDriver::Init(
   return ret;
 }
 
-void NNDriver::DeInit()
+void NNDriverHVX::DeInit()
 {
   if (0 != graph_id_) {
     hexagon_nn_domains_set_powersave_level(handle_, 255);

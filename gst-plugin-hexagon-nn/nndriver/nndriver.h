@@ -37,34 +37,49 @@
 
 #include "hexagon_nn.h"
 
-typedef void (*InitGraph)(remote_handle64 handle, int nn_id);
-
 class NNDriver {
 public:
+  virtual int32_t Init(
+      uint8_t**   input_buf,
+      int32_t     width,
+      int32_t     height,
+      int32_t     num_outputs,
+      int32_t*    out_sizes,
+      std::string &lib_name) = 0;
 
-  NNDriver() : handle_(-1),
-               graph_id_(0),
-               out_sizes_{},
-               nn_out_bufs_{},
-               nn_in_buf_{} {};
+  virtual int32_t Process(
+      uint8_t*  in_buffer,
+      void**    outs) = 0;
+
+  virtual void DeInit() = 0;
+};
+
+class NNDriverHVX : public NNDriver {
+public:
+
+  NNDriverHVX() : handle_(-1),
+                  graph_id_(0),
+                  out_sizes_{},
+                  nn_out_bufs_{},
+                  nn_in_buf_{} {};
 
   int32_t Init(
-      uint8_t** input_buf,
-      int32_t   width,
-      int32_t   height,
-      int32_t   num_outputs,
-      int32_t*  out_sizes,
-      InitGraph init_graph);
+      uint8_t**   input_buf,
+      int32_t     width,
+      int32_t     height,
+      int32_t     num_outputs,
+      int32_t*    out_sizes,
+      std::string &lib_name) override;
 
   int32_t Process(
       uint8_t*  in_buffer,
-      void**    outs);
+      void**    outs) override;
 
-  void DeInit();
+  void DeInit() override;
 
 private:
 
-  uint32_t GraphSetup(InitGraph init_graph);
+  uint32_t GraphSetup(std::string &lib_name);
 
   static const int32_t       kMaxOut          = 4;
   static const uint32_t      kIonHeapIdSystem = 25;
