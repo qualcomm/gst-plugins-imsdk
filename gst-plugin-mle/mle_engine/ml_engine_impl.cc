@@ -72,13 +72,13 @@ void MLEngine::DumpFrame(const uint8_t* buffer, const uint32_t& width,
     goto FAIL;
   }
   written_len = fwrite(buffer, sizeof(uint8_t), size, file);
-  MLE_LOGD("%s: written_len: %d", __func__, written_len);
+  MLE_LOGD("%s: written_len: %zu", __func__, written_len);
   if (size != written_len) {
     MLE_LOGE("%s: Bad Write error (%d):(%s)", __func__, errno,
              strerror(errno));
     goto FAIL;
   }
-  MLE_LOGD("%s: Buffer Size:%u Stored:%s", __func__, written_len,
+  MLE_LOGD("%s: Buffer Size:%zu Stored:%s", __func__, written_len,
     file_path.c_str());
 
 FAIL:

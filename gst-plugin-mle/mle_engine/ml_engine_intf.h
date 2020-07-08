@@ -238,7 +238,8 @@ public:
 
   ~Timer () {
     uint64_t end = GetMicroSeconds();
-    MLE_LOGD("%s: %llu us", str.c_str(), end - begin);
+    MLE_LOGD("%s: %llu us", str.c_str(),
+        static_cast<long long unsigned>(end - begin));
   }
 
   uint64_t GetMicroSeconds()

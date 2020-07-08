@@ -209,7 +209,7 @@ int32_t SNPEBase::CreateUserBuffer(BufferType type, const char * name) {
   const zdl::DlSystem::TensorShape& buffer_shape = (*uba_opt)->getDims();
 
   size_t elem_size = (*uba_opt)->getElementSize();
-  MLE_LOGI("Bufer type %d elements size in bytes: %d", (int)type, elem_size);
+  MLE_LOGI("Bufer type %d elements size in bytes: %zu", (int)type, elem_size);
 
   size_t buf_size = CalculateSizeFromDims(buffer_shape.rank(),
                                           buffer_shape.getDimensions(),
@@ -244,7 +244,7 @@ int32_t SNPEBase::CreateTensor(BufferType type, const char* name) {
   const zdl::DlSystem::TensorShape& tensor_shape = (*tensor_opt)->getDims();
 
   size_t elem_size = (*tensor_opt)->getElementSize();
-  MLE_LOGI("Bufer type %d elements size in bytes: %d", (int)type, elem_size);
+  MLE_LOGI("Bufer type %d elements size in bytes: %zu", (int)type, elem_size);
 
   size_t buf_size = CalculateSizeFromDims(tensor_shape.rank(),
                                           tensor_shape.getDimensions(),

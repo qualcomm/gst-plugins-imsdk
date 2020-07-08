@@ -243,7 +243,7 @@ int32_t TFLBase::ValidateModelInfo() {
         tflite_params_.interpreter->tensor(output)->dims;
     tflite_params_.num_predictions = output_dims->data[output_dims->size - 1];
     if (need_labels_ && label_count_ != tflite_params_.num_predictions) {
-      MLE_LOGE("%s: No: of labels %d, DO NOT match no: of predictions %d",
+      MLE_LOGE("%s: No: of labels %zu, DO NOT match no: of predictions %d",
                        __func__, label_count_,
                        tflite_params_.num_predictions);
       return MLE_FAIL;
@@ -402,7 +402,7 @@ int32_t TFLBase::PostProcess(GstBuffer* buffer) {
       return MLE_FAIL;
       break;
   }
-  MLE_LOGI("%s: Found %d objects", __func__, top_results.size());
+  MLE_LOGI("%s: Found %zu objects", __func__, top_results.size());
 
   // If found, return the label with most confidence level
   if (top_results.size() > 0) {
