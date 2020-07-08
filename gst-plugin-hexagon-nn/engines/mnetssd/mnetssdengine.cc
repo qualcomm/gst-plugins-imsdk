@@ -52,8 +52,12 @@ int32_t MnetSSDEngine::Init(const NNSourceInfo* source_info)
       return ret;
   }
 
-  scale_back_x_ = in_width_ / scale_width_;
-  scale_back_y_ = in_height_ / scale_height_;
+  scale_back_x_ = (float)in_width_ / scale_width_;
+  scale_back_y_ = (float)in_height_ / scale_height_;
+
+  ALOGD("%s:%d: scale_back: %.2fx%.2f in: %dx%d scaled: %dx%d", __func__,
+      __LINE__, scale_back_x_, scale_back_y_, in_width_, in_height_,
+      scale_width_, scale_height_);
 
   return NN_OK;
 }
