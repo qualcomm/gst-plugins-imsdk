@@ -107,10 +107,12 @@ struct _GstQmmfContext {
   gint64            exptime;
   /// Camera Exposure table property.
   GstStructure      *exptable;
-  /// Camera Auto White Balance mode property.
-  guchar            awbmode;
-  /// Camera Auto White Balance lock property.
-  gboolean          awblock;
+  /// Camera White Balance mode property.
+  guchar            wbmode;
+  /// Camera White Balance lock property.
+  gboolean          wblock;
+  /// Camera manual White Balance settings property.
+  GstStructure      *mwbsettings;
   /// Camera Auto Focus mode property.
   guchar            afmode;
   /// Camera IR mode property.
@@ -191,7 +193,8 @@ get_vendor_tag_by_name (const gchar * section, const gchar * name)
 static void
 set_vendor_tags (GstStructure * structure, ::android::CameraMetadata * meta)
 {
-  gint idx = 0, tag_id = 0;
+  gint idx = 0;
+  guint tag_id = 0;
   const gchar *name = NULL, *section = NULL;
   const GValue *value = NULL;
 
@@ -296,8 +299,20 @@ set_vendor_tags (GstStructure * structure, ::android::CameraMetadata * meta)
 
         meta->update(tag_id, (guchar*)data, n_bytes);
         g_free (data);
-      }
+      } else if (g_strcmp0 (section, "org.codeaurora.qcamera3.manualWB") == 0) {
+        if (g_strcmp0 (name, "gains") == 0) {
+          n_bytes = gst_value_array_get_size (value) * sizeof(gfloat);
+          data = g_malloc0 (n_bytes);
 
+          for (num = 0; num < gst_value_array_get_size (value); num++) {
+            const GValue *val = gst_value_array_get_value (value, num);
+            ((gfloat*)data)[num] = g_value_get_double (val);
+          }
+
+          meta->update(tag_id, (gfloat*)data, n_bytes / sizeof(gfloat));
+          g_free (data);
+        }
+      }
     }
   }
 }
@@ -399,9 +414,9 @@ static gboolean
 initialize_camera_param (GstQmmfContext * context)
 {
   ::android::CameraMetadata meta;
-  gint tag_id = 0;
+  guint tag_id = 0;
   guchar numvalue = 0;
-  gint status = 0;
+  gint ivalue = 0, status = 0;
 
   G_LOCK (recorder);
 
@@ -432,10 +447,21 @@ initialize_camera_param (GstQmmfContext * context)
 
   meta.update(ANDROID_SENSOR_EXPOSURE_TIME, &(context)->exptime, 1);
 
-  numvalue = gst_qmmfsrc_awb_mode_android_value(context->awbmode);
-  meta.update(ANDROID_CONTROL_AWB_MODE, &numvalue, 1);
+  numvalue = gst_qmmfsrc_wb_mode_android_value(context->wbmode);
 
-  numvalue = context->awblock;
+  // If the returned value is not UCHAR_MAX then we have an Android enum.
+  if (numvalue != UCHAR_MAX)
+    meta.update(ANDROID_CONTROL_AWB_MODE, &numvalue, 1);
+
+  tag_id = get_vendor_tag_by_name (
+      "org.codeaurora.qcamera3.manualWB", "partial_mwb_mode");
+
+  // If the returned value is UCHAR_MAX, we have manual WB mode so set
+  // that value for the vendor tag, otherwise disable manual WB mode.
+  ivalue = (numvalue == UCHAR_MAX) ? context->wbmode : 0;
+  meta.update(tag_id, &ivalue, 1);
+
+  numvalue = context->wblock;
   meta.update(ANDROID_CONTROL_AWB_LOCK, &numvalue, 1);
 
   numvalue = gst_qmmfsrc_af_mode_android_value(context->afmode);
@@ -487,6 +513,7 @@ initialize_camera_param (GstQmmfContext * context)
   set_vendor_tags (context->exptable, &meta);
   set_vendor_tags (context->ltmdata, &meta);
   set_vendor_tags (context->nrtuning, &meta);
+  set_vendor_tags (context->mwbsettings, &meta);
 
   G_LOCK (recorder);
 
@@ -797,6 +824,8 @@ gst_qmmf_context_new ()
       gst_structure_new_empty ("org.quic.camera.ltmDynamicContrast");
   context->nrtuning =
       gst_structure_new_empty ("org.quic.camera.anr_tuning");
+  context->mwbsettings =
+      gst_structure_new_empty ("org.codeaurora.qcamera3.manualWB");
 
   GST_INFO ("Created QMMF context: %p", context);
   return context;
@@ -820,6 +849,7 @@ gst_qmmf_context_free (GstQmmfContext * context)
   gst_structure_free (context->exptable);
   gst_structure_free (context->ltmdata);
   gst_structure_free (context->nrtuning);
+  gst_structure_free (context->mwbsettings);
 
   GST_INFO ("Destroyed QMMF context: %p", context);
   g_slice_free (GstQmmfContext, context);
@@ -1669,22 +1699,79 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       meta.update(ANDROID_SENSOR_EXPOSURE_TIME, &time, 1);
       break;
     }
-    case PARAM_CAMERA_AWB_MODE:
+    case PARAM_CAMERA_WHITE_BALANCE_MODE:
     {
-      guchar mode;
-      context->awbmode = g_value_get_enum (value);
+      guint tag_id = 0;
+      gint mode = UCHAR_MAX;
 
-      mode = gst_qmmfsrc_awb_mode_android_value (context->awbmode);
-      meta.update(ANDROID_CONTROL_AWB_MODE, &mode, 1);
+      context->wbmode = g_value_get_enum (value);
+      mode = gst_qmmfsrc_wb_mode_android_value (context->wbmode);
+
+      // If the returned value is not UCHAR_MAX then we have an Android enum.
+      if (mode != UCHAR_MAX)
+        meta.update(ANDROID_CONTROL_AWB_MODE, (guchar*)&mode, 1);
+
+      tag_id = get_vendor_tag_by_name (
+          "org.codeaurora.qcamera3.manualWB", "partial_mwb_mode");
+
+      // If the returned value is UCHAR_MAX, we have manual WB mode so set
+      // that value for the vendor tag, otherwise disable manual WB mode.
+      mode = (mode == UCHAR_MAX) ? context->wbmode : 0;
+      meta.update(tag_id, &mode, 1);
       break;
     }
-    case PARAM_CAMERA_AWB_LOCK:
+    case PARAM_CAMERA_WHITE_BALANCE_LOCK:
     {
       guchar lock;
-      context->awblock = g_value_get_boolean (value);
+      context->wblock = g_value_get_boolean (value);
 
-      lock = context->awblock;
+      lock = context->wblock;
       meta.update(ANDROID_CONTROL_AWB_LOCK, &lock, 1);
+      break;
+    }
+    case PARAM_CAMERA_MANUAL_WB_SETTINGS:
+    {
+      const gchar *input = g_value_get_string (value);
+      GstStructure *structure = NULL;
+
+      GValue gvalue = G_VALUE_INIT;
+      g_value_init (&gvalue, GST_TYPE_STRUCTURE);
+
+      if (g_file_test (input, G_FILE_TEST_IS_REGULAR)) {
+        gchar *contents = NULL;
+        GError *error = NULL;
+        gboolean success = FALSE;
+
+        if (!g_file_get_contents (input, &contents, NULL, &error)) {
+          GST_WARNING ("Failed to get manual WB file contents, error: %s!",
+              GST_STR_NULL (error->message));
+          g_clear_error (&error);
+          break;
+        }
+
+        // Remove trailing space and replace new lines with a comma delimiter.
+        contents = g_strstrip (contents);
+        contents = g_strdelimit (contents, "\n", ',');
+
+        success = gst_value_deserialize (&gvalue, contents);
+        g_free (contents);
+
+        if (!success) {
+          GST_WARNING ("Failed to deserialize manual WB file contents!");
+          break;
+        }
+      } else if (!gst_value_deserialize (&gvalue, input)) {
+        GST_WARNING ("Failed to deserialize manual WB input!");
+        break;
+      }
+
+      structure = GST_STRUCTURE (g_value_dup_boxed (&gvalue));
+      g_value_unset (&gvalue);
+
+      gst_structure_foreach (structure, update_structure, context->mwbsettings);
+      gst_structure_free (structure);
+
+      set_vendor_tags (context->mwbsettings, &meta);
       break;
     }
     case PARAM_CAMERA_AF_MODE:
@@ -1797,7 +1884,7 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
           break;
         }
 
-        // Remove trailing space and replace new lines with a coma delimeter.
+        // Remove trailing space and replace new lines with a comma delimiter.
         contents = g_strstrip (contents);
         contents = g_strdelimit (contents, "\n", ',');
 
@@ -1842,7 +1929,7 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
           break;
         }
 
-        // Remove trailing space and replace new lines with a coma delimeter.
+        // Remove trailing space and replace new lines with a comma delimiter.
         contents = g_strstrip (contents);
         contents = g_strdelimit (contents, "\n", ',');
 
@@ -1958,12 +2045,26 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_EXPOSURE_TIME:
       g_value_set_int64 (value, context->exptime);
       break;
-    case PARAM_CAMERA_AWB_MODE:
-      g_value_set_enum (value, context->awbmode);
+    case PARAM_CAMERA_WHITE_BALANCE_MODE:
+      g_value_set_enum (value, context->wbmode);
       break;
-    case PARAM_CAMERA_AWB_LOCK:
-      g_value_set_boolean (value, context->awbmode);
+    case PARAM_CAMERA_WHITE_BALANCE_LOCK:
+      g_value_set_boolean (value, context->wblock);
       break;
+    case PARAM_CAMERA_MANUAL_WB_SETTINGS:
+    {
+      gchar *string = NULL;
+
+      get_vendor_tags ("org.codeaurora.qcamera3.manualWB",
+          gst_camera_manual_wb_settings,
+          G_N_ELEMENTS (gst_camera_manual_wb_settings),
+          context->mwbsettings, &meta);
+      string = gst_structure_to_string (context->mwbsettings);
+
+      g_value_set_string (value, string);
+      g_free (string);
+      break;
+    }
     case PARAM_CAMERA_AF_MODE:
       g_value_set_enum (value, context->afmode);
       break;

@@ -79,7 +79,7 @@ G_BEGIN_DECLS
 #define GST_TYPE_QMMFSRC_SCENE_MODE (gst_qmmfsrc_scene_mode_get_type())
 #define GST_TYPE_QMMFSRC_ANTIBANDING (gst_qmmfsrc_antibanding_get_type())
 #define GST_TYPE_QMMFSRC_AE_MODE (gst_qmmfsrc_ae_mode_get_type())
-#define GST_TYPE_QMMFSRC_AWB_MODE (gst_qmmfsrc_awb_mode_get_type())
+#define GST_TYPE_QMMFSRC_WHITE_BALANCE_MODE (gst_qmmfsrc_white_balance_mode_get_type())
 #define GST_TYPE_QMMFSRC_AF_MODE (gst_qmmfsrc_af_mode_get_type())
 #define GST_TYPE_QMMFSRC_IR_MODE (gst_qmmfsrc_ir_mode_get_type())
 #define GST_TYPE_QMMFSRC_ISO_MODE (gst_qmmfsrc_iso_mode_get_type())
@@ -135,15 +135,17 @@ enum
 
 enum
 {
-  AWB_MODE_OFF,
-  AWB_MODE_AUTO,
-  AWB_MODE_SHADE,
-  AWB_MODE_INCANDESCENT,
-  AWB_MODE_FLUORESCENT,
-  AWB_MODE_WARM_FLUORESCENT,
-  AWB_MODE_DAYLIGHT,
-  AWB_MODE_CLOUDY_DAYLIGHT,
-  AWB_MODE_TWILIGHT,
+  WHITE_BALANCE_MODE_OFF,
+  WHITE_BALANCE_MODE_MANUAL_CCTEMP,
+  WHITE_BALANCE_MODE_MANUAL_GAINS,
+  WHITE_BALANCE_MODE_AUTO,
+  WHITE_BALANCE_MODE_SHADE,
+  WHITE_BALANCE_MODE_INCANDESCENT,
+  WHITE_BALANCE_MODE_FLUORESCENT,
+  WHITE_BALANCE_MODE_WARM_FLUORESCENT,
+  WHITE_BALANCE_MODE_DAYLIGHT,
+  WHITE_BALANCE_MODE_CLOUDY_DAYLIGHT,
+  WHITE_BALANCE_MODE_TWILIGHT,
 };
 
 enum
@@ -200,7 +202,7 @@ GType gst_qmmfsrc_antibanding_get_type (void);
 
 GType gst_qmmfsrc_ae_mode_get_type (void);
 
-GType gst_qmmfsrc_awb_mode_get_type (void);
+GType gst_qmmfsrc_white_balance_mode_get_type (void);
 
 GType gst_qmmfsrc_af_mode_get_type (void);
 
@@ -220,7 +222,7 @@ guchar gst_qmmfsrc_antibanding_android_value (const guint value);
 
 guchar gst_qmmfsrc_ae_mode_android_value (const guint value);
 
-guchar gst_qmmfsrc_awb_mode_android_value (const guint value);
+guchar gst_qmmfsrc_wb_mode_android_value (const guint value);
 
 guchar gst_qmmfsrc_af_mode_android_value (const guint value);
 
@@ -285,6 +287,13 @@ static const gchar * gst_camera_nr_tuning_data[] =
 {
     "anr_intensity",
     "anr_motion_sensitivity",
+};
+
+/// org.codeaurora.qcamera3.manualWB
+static const gchar * gst_camera_manual_wb_settings[] =
+{
+    "gains",
+    "color_temperature",
 };
 
 G_END_DECLS

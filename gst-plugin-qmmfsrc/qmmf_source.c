@@ -62,8 +62,9 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
 #define DEFAULT_PROP_CAMERA_AE_LOCK                   FALSE
 #define DEFAULT_PROP_CAMERA_EXPOSURE_TABLE            NULL
 #define DEFAULT_PROP_CAMERA_EXPOSURE_TIME             33333333
-#define DEFAULT_PROP_CAMERA_AWB_MODE                  AWB_MODE_AUTO
-#define DEFAULT_PROP_CAMERA_AWB_LOCK                  FALSE
+#define DEFAULT_PROP_CAMERA_WHITE_BALANCE_MODE        WHITE_BALANCE_MODE_AUTO
+#define DEFAULT_PROP_CAMERA_WHITE_BALANCE_LOCK        FALSE
+#define DEFAULT_PROP_CAMERA_MANUAL_WB_SETTINGS        NULL
 #define DEFAULT_PROP_CAMERA_AF_MODE                   AF_MODE_AUTO
 #define DEFAULT_PROP_CAMERA_IR_MODE                   IR_MODE_OFF
 #define DEFAULT_PROP_CAMERA_NOISE_REDUCTION           NOISE_REDUCTION_FAST
@@ -109,8 +110,9 @@ enum
   PROP_CAMERA_AE_LOCK,
   PROP_CAMERA_EXPOSURE_TIME,
   PROP_CAMERA_EXPOSURE_TABLE,
-  PROP_CAMERA_AWB_MODE,
-  PROP_CAMERA_AWB_LOCK,
+  PROP_CAMERA_WHITE_BALANCE_MODE,
+  PROP_CAMERA_WHITE_BALANCE_LOCK,
+  PROP_CAMERA_MANUAL_WB_SETTINGS,
   PROP_CAMERA_AF_MODE,
   PROP_CAMERA_IR_MODE,
   PROP_CAMERA_ISO_MODE,
@@ -738,13 +740,17 @@ qmmfsrc_set_property (GObject * object, guint property_id,
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_EXPOSURE_TABLE, value);
       break;
-    case PROP_CAMERA_AWB_MODE:
+    case PROP_CAMERA_WHITE_BALANCE_MODE:
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
-          PARAM_CAMERA_AWB_MODE, value);
+          PARAM_CAMERA_WHITE_BALANCE_MODE, value);
       break;
-    case PROP_CAMERA_AWB_LOCK:
+    case PROP_CAMERA_WHITE_BALANCE_LOCK:
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
-          PARAM_CAMERA_AWB_LOCK, value);
+          PARAM_CAMERA_WHITE_BALANCE_LOCK, value);
+      break;
+    case PROP_CAMERA_MANUAL_WB_SETTINGS:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_MANUAL_WB_SETTINGS, value);
       break;
     case PROP_CAMERA_AF_MODE:
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
@@ -856,13 +862,17 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_EXPOSURE_TABLE, value);
       break;
-    case PROP_CAMERA_AWB_MODE:
+    case PROP_CAMERA_WHITE_BALANCE_MODE:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
-          PARAM_CAMERA_AWB_MODE, value);
+          PARAM_CAMERA_WHITE_BALANCE_MODE, value);
       break;
-    case PROP_CAMERA_AWB_LOCK:
+    case PROP_CAMERA_WHITE_BALANCE_LOCK:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
-          PARAM_CAMERA_AWB_LOCK, value);
+          PARAM_CAMERA_WHITE_BALANCE_LOCK, value);
+      break;
+    case PROP_CAMERA_MANUAL_WB_SETTINGS:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_MANUAL_WB_SETTINGS, value);
       break;
     case PROP_CAMERA_AF_MODE:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
@@ -1037,16 +1047,25 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           DEFAULT_PROP_CAMERA_EXPOSURE_TABLE,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
-  g_object_class_install_property (gobject, PROP_CAMERA_AWB_MODE,
-      g_param_spec_enum ("awb-mode", "AWB Mode",
-          "Auto White Balance mode",
-          GST_TYPE_QMMFSRC_AWB_MODE, DEFAULT_PROP_CAMERA_AWB_MODE,
+  g_object_class_install_property (gobject, PROP_CAMERA_WHITE_BALANCE_MODE,
+      g_param_spec_enum ("white-balance-mode", "White Balance Mode",
+          "White Balance mode.", GST_TYPE_QMMFSRC_WHITE_BALANCE_MODE,
+          DEFAULT_PROP_CAMERA_WHITE_BALANCE_MODE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
-  g_object_class_install_property (gobject, PROP_CAMERA_AWB_LOCK,
-      g_param_spec_boolean ("awb-lock", "AWB Lock",
-          "Auto White Balance lock", DEFAULT_PROP_CAMERA_AWB_LOCK,
+  g_object_class_install_property (gobject, PROP_CAMERA_WHITE_BALANCE_LOCK,
+      g_param_spec_boolean ("white-balance-lock", "White Balance Lock",
+          "Locks current White Balance values from changing. Affects only "
+          "non-manual white balance modes.",
+          DEFAULT_PROP_CAMERA_WHITE_BALANCE_LOCK,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_CAMERA_MANUAL_WB_SETTINGS,
+      g_param_spec_string ("manual-wb-settings", "Manual WB Settings",
+          "Manual White Balance settings such as color correction temperature "
+          "and R/G/B gains. Used in manual white balance modes.",
+          DEFAULT_PROP_CAMERA_MANUAL_WB_SETTINGS,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_CAMERA_AF_MODE,
       g_param_spec_enum ("af-mode", "AF Mode",

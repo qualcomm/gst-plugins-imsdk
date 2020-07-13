@@ -205,48 +205,58 @@ gst_qmmfsrc_ae_mode_get_type (void)
 }
 
 GType
-gst_qmmfsrc_awb_mode_get_type (void)
+gst_qmmfsrc_white_balance_mode_get_type (void)
 {
   static GType gtype = 0;
   static const GEnumValue variants[] = {
-    { AWB_MODE_OFF,
-        "The auto-white balance routine is disabled.", "off"
+    { WHITE_BALANCE_MODE_OFF,
+        "Both auto and manual white balance routines are disabled.", "off"
     },
-    { AWB_MODE_AUTO,
+    { WHITE_BALANCE_MODE_MANUAL_CCTEMP,
+        "The auto-white balance routine is inactive and manual color correction"
+        " temperature is used which is set via the 'manual-wb-settings' "
+        "property.", "manual-cc-temp"
+    },
+    { WHITE_BALANCE_MODE_MANUAL_GAINS,
+        "The auto-white balance routine is inactive and manual R/G/B gains are"
+        " used which are set via the 'manual-wb-settings' property.",
+        "manual-rgb-gains"
+    },
+    { WHITE_BALANCE_MODE_AUTO,
         "The auto-white balance routine is active.", "auto"
     },
-    { AWB_MODE_SHADE,
+    { WHITE_BALANCE_MODE_SHADE,
         "The camera device uses shade light as the assumed scene illumination "
-        "for white balance.", "shade"
+        "for white balance correction.", "shade"
     },
-    { AWB_MODE_INCANDESCENT,
+    { WHITE_BALANCE_MODE_INCANDESCENT,
         "The camera device uses incandescent light as the assumed scene "
-        "illumination for white balance.", "incandescent"
+        "illumination for white balance correction.", "incandescent"
     },
-    { AWB_MODE_FLUORESCENT,
+    { WHITE_BALANCE_MODE_FLUORESCENT,
         "The camera device uses fluorescent light as the assumed scene "
-        "illumination for white balance.", "fluorescent"
+        "illumination for white balance correction.", "fluorescent"
     },
-    { AWB_MODE_WARM_FLUORESCENT,
+    { WHITE_BALANCE_MODE_WARM_FLUORESCENT,
         "The camera device uses warm fluorescent light as the assumed scene "
-        "illumination for white balance.", "warm-fluorescent"
+        "illumination for white balance correction.", "warm-fluorescent"
     },
-    { AWB_MODE_DAYLIGHT,
+    { WHITE_BALANCE_MODE_DAYLIGHT,
         "The camera device uses daylight light as the assumed scene "
-        "illumination for white balance.", "daylight"},
-    { AWB_MODE_CLOUDY_DAYLIGHT,
+        "illumination for white balance correction.", "daylight"},
+    { WHITE_BALANCE_MODE_CLOUDY_DAYLIGHT,
         "The camera device uses cloudy daylight light as the assumed scene "
-        "illumination for white balance.", "cloudy-daylight"
+        "illumination for white balance correction.", "cloudy-daylight"
     },
-    { AWB_MODE_TWILIGHT,
+    { WHITE_BALANCE_MODE_TWILIGHT,
         "The camera device uses twilight light as the assumed scene "
-        "illumination for white balance.", "twilight"
+        "illumination for white balance correction.", "twilight"
     },
     {0, NULL, NULL},
   };
 
   if (!gtype)
-    gtype = g_enum_register_static ("GstCameraAWBMode", variants);
+    gtype = g_enum_register_static ("GstCameraWiteBalanceMode", variants);
 
   return gtype;
 }
@@ -489,19 +499,37 @@ gst_qmmfsrc_ae_mode_android_value (const guint value)
 }
 
 guchar
-gst_qmmfsrc_awb_mode_android_value (const guint value)
+gst_qmmfsrc_wb_mode_android_value (const guint value)
 {
   static guint idx = 0;
   static const PropAndroidEnum map[] = {
-      {AWB_MODE_OFF, ANDROID_CONTROL_AWB_MODE_OFF},
-      {AWB_MODE_AUTO, ANDROID_CONTROL_AWB_MODE_AUTO},
-      {AWB_MODE_SHADE, ANDROID_CONTROL_AWB_MODE_SHADE},
-      {AWB_MODE_INCANDESCENT, ANDROID_CONTROL_AWB_MODE_INCANDESCENT},
-      {AWB_MODE_FLUORESCENT, ANDROID_CONTROL_AWB_MODE_FLUORESCENT},
-      {AWB_MODE_WARM_FLUORESCENT, ANDROID_CONTROL_AWB_MODE_WARM_FLUORESCENT},
-      {AWB_MODE_DAYLIGHT, ANDROID_CONTROL_AWB_MODE_DAYLIGHT},
-      {AWB_MODE_CLOUDY_DAYLIGHT, ANDROID_CONTROL_AWB_MODE_CLOUDY_DAYLIGHT},
-      {AWB_MODE_TWILIGHT, ANDROID_CONTROL_AWB_MODE_TWILIGHT},
+      { WHITE_BALANCE_MODE_OFF,
+          ANDROID_CONTROL_AWB_MODE_OFF
+      },
+      { WHITE_BALANCE_MODE_AUTO,
+          ANDROID_CONTROL_AWB_MODE_AUTO
+      },
+      { WHITE_BALANCE_MODE_SHADE,
+          ANDROID_CONTROL_AWB_MODE_SHADE
+      },
+      { WHITE_BALANCE_MODE_INCANDESCENT,
+          ANDROID_CONTROL_AWB_MODE_INCANDESCENT
+      },
+      { WHITE_BALANCE_MODE_FLUORESCENT,
+          ANDROID_CONTROL_AWB_MODE_FLUORESCENT
+      },
+      { WHITE_BALANCE_MODE_WARM_FLUORESCENT,
+          ANDROID_CONTROL_AWB_MODE_WARM_FLUORESCENT
+      },
+      { WHITE_BALANCE_MODE_DAYLIGHT,
+          ANDROID_CONTROL_AWB_MODE_DAYLIGHT
+      },
+      { WHITE_BALANCE_MODE_CLOUDY_DAYLIGHT,
+          ANDROID_CONTROL_AWB_MODE_CLOUDY_DAYLIGHT
+      },
+      { WHITE_BALANCE_MODE_TWILIGHT,
+          ANDROID_CONTROL_AWB_MODE_TWILIGHT
+      },
   };
 
   for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(map); ++idx) {
