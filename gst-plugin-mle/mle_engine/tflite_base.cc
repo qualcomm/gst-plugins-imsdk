@@ -33,7 +33,6 @@
 #include <tensorflow/lite/examples/label_image/get_top_n.h>
 #include <tensorflow/lite/examples/label_image/get_top_n_impl.h>
 #include <tensorflow/lite/kernels/register.h>
-#include <tensorflow/lite/tools/evaluation/utils.h>
 #include <tensorflow/core/public/version.h>
 #include "tflite_base.h"
 
@@ -57,7 +56,11 @@ TfLiteDelegatePtrMap TFLBase::GetDelegates() {
       static_cast<tflite::StatefulNnApiDelegate::Options::ExecutionPreference>(
       delegate_preferences);
 
-    auto delegate = tflite::evaluation::CreateNNAPIDelegate(options);
+    auto delegate = TfLiteDelegatePtr(
+      new tflite::StatefulNnApiDelegate(options), [](TfLiteDelegate* delegate) {
+        delete reinterpret_cast<tflite::StatefulNnApiDelegate*>(delegate);
+      });
+
     if (!delegate) {
       MLE_LOGI("NNAPI acceleration is unsupported on this platform.");
     } else {
