@@ -389,10 +389,18 @@ image_pad_set_property (GObject * object, guint property_id,
     const GValue * value, GParamSpec * pspec)
 {
   GstQmmfSrcImagePad *pad = GST_QMMFSRC_IMAGE_PAD (object);
+  GstElement *parent = gst_pad_get_parent_element (GST_PAD (pad));
   const gchar *propname = g_param_spec_get_name (pspec);
-  GstState state = GST_STATE (pad);
 
-  if (!QMMFSRC_IS_PROPERTY_MUTABLE_IN_CURRENT_STATE(pspec, state)) {
+  // Extract the state from the pad parent or in case there is no parent
+  // use default value as parameters are being set upon object construction.
+  GstState state = parent ? GST_STATE (parent) : GST_STATE_VOID_PENDING;
+
+  // Decrease the pad parent reference count as it is not needed any more.
+  if (parent != NULL)
+    gst_object_unref (parent);
+
+  if (!QMMFSRC_IS_PROPERTY_MUTABLE_IN_CURRENT_STATE (pspec, state)) {
     GST_WARNING_OBJECT (pad, "Property '%s' change not supported in %s state!",
         propname, gst_element_state_get_name (state));
     return;

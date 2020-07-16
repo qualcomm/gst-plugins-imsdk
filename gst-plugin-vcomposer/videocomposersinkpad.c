@@ -325,8 +325,16 @@ gst_video_composer_sinkpad_set_property (GObject * object, guint property_id,
     const GValue * value, GParamSpec *pspec)
 {
   GstVideoComposerSinkPad *sinkpad = GST_VIDEO_COMPOSER_SINKPAD (object);
+  GstElement *parent = gst_pad_get_parent_element (GST_PAD (sinkpad));
   const gchar *propname = g_param_spec_get_name (pspec);
-  GstState state = GST_STATE (sinkpad);
+
+  // Extract the state from the pad parent or in case there is no parent
+  // use default value as parameters are being set upon object construction.
+  GstState state = parent ? GST_STATE (parent) : GST_STATE_VOID_PENDING;
+
+  // Decrease the pad parent reference count as it is not needed any more.
+  if (parent != NULL)
+    gst_object_unref (parent);
 
   if (!GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE (pspec, state)) {
     GST_WARNING_OBJECT (sinkpad, "Property '%s' change not supported in %s "
