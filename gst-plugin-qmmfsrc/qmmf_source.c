@@ -412,7 +412,7 @@ qmmfsrc_delete_session (GstQmmfSrc * qmmfsrc)
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads,
         (qmmfsrc->imgindexes)->data));
 
-    success = gst_qmmf_context_delete_stream (qmmfsrc->context, pad);
+    success = gst_qmmf_context_delete_image_stream (qmmfsrc->context, pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Image stream deletion failed!");
   }
@@ -421,7 +421,7 @@ qmmfsrc_delete_session (GstQmmfSrc * qmmfsrc)
     key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
 
-    success = gst_qmmf_context_delete_stream (qmmfsrc->context, pad);
+    success = gst_qmmf_context_delete_video_stream (qmmfsrc->context, pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Video stream deletion failed!");
   }
