@@ -323,7 +323,7 @@ gst_hexagonnn_class_init (GstHexagonNNClass * klass)
           gobject,
           PROP_HEXAGONNN_LABEL_FILE,
           g_param_spec_string(
-              "label_file",
+              "label-file",
               "label",
               "Specify name of label file if any. "
               "If label file is not set default name will be used.",
