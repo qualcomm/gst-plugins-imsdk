@@ -78,13 +78,16 @@ G_BEGIN_DECLS
 #define GST_TYPE_QMMFSRC_EFFECT_MODE (gst_qmmfsrc_effect_mode_get_type())
 #define GST_TYPE_QMMFSRC_SCENE_MODE (gst_qmmfsrc_scene_mode_get_type())
 #define GST_TYPE_QMMFSRC_ANTIBANDING (gst_qmmfsrc_antibanding_get_type())
-#define GST_TYPE_QMMFSRC_AE_MODE (gst_qmmfsrc_ae_mode_get_type())
-#define GST_TYPE_QMMFSRC_WHITE_BALANCE_MODE (gst_qmmfsrc_white_balance_mode_get_type())
-#define GST_TYPE_QMMFSRC_AF_MODE (gst_qmmfsrc_af_mode_get_type())
+#define GST_TYPE_QMMFSRC_EXPOSURE_MODE (gst_qmmfsrc_exposure_mode_get_type())
+#define GST_TYPE_QMMFSRC_EXPOSURE_METERING \
+    (gst_qmmfsrc_exposure_metering_get_type())
+#define GST_TYPE_QMMFSRC_WHITE_BALANCE_MODE \
+    (gst_qmmfsrc_white_balance_mode_get_type())
+#define GST_TYPE_QMMFSRC_FOCUS_MODE (gst_qmmfsrc_focus_mode_get_type())
 #define GST_TYPE_QMMFSRC_IR_MODE (gst_qmmfsrc_ir_mode_get_type())
 #define GST_TYPE_QMMFSRC_ISO_MODE (gst_qmmfsrc_iso_mode_get_type())
-#define GST_TYPE_QMMFSRC_AE_METERING_MODE (gst_qmmfsrc_ae_metering_mode_get_type())
-#define GST_TYPE_QMMFSRC_NOISE_REDUCTION (gst_qmmfsrc_noise_reduction_get_type())
+#define GST_TYPE_QMMFSRC_NOISE_REDUCTION \
+    (gst_qmmfsrc_noise_reduction_get_type())
 
 #define GST_BAYER_FORMAT_OFFSET 0x1000
 
@@ -151,8 +154,19 @@ enum
 
 enum
 {
-  AE_MODE_OFF,
-  AE_MODE_ON,
+  EXPOSURE_MODE_OFF,
+  EXPOSURE_MODE_AUTO,
+};
+
+enum
+{
+  EXPOSURE_METERING_AVERAGE,
+  EXPOSURE_METERING_CENTER_WEIGHTED,
+  EXPOSURE_METERING_SPOT,
+  EXPOSURE_METERING_SMART,
+  EXPOSURE_METERING_SPOT_ADVANCED,
+  EXPOSURE_METERING_CENTER_WEIGHTED_ADVANCED,
+  EXPOSURE_METERING_CUSTOM,
 };
 
 enum
@@ -172,11 +186,11 @@ enum
 
 enum
 {
-  AF_MODE_OFF,
-  AF_MODE_AUTO,
-  AF_MODE_MACRO,
-  AF_MODE_CONTINUOUS,
-  AF_MODE_EDOF,
+  FOCUS_MODE_OFF,
+  FOCUS_MODE_AUTO,
+  FOCUS_MODE_MACRO,
+  FOCUS_MODE_CONTINUOUS,
+  FOCUS_MODE_EDOF,
 };
 
 enum
@@ -200,17 +214,6 @@ enum
 
 enum
 {
-  AE_METERING_MODE_AVERAGE,
-  AE_METERING_MODE_CENTER_WEIGHTED,
-  AE_METERING_MODE_SPOT,
-  AE_METERING_MODE_SMART,
-  AE_METERING_MODE_SPOT_ADVANCED,
-  AE_METERING_MODE_CENTER_WEIGHTED_ADVANCED,
-  AE_METERING_MODE_CUSTOM,
-};
-
-enum
-{
   NOISE_REDUCTION_OFF,
   NOISE_REDUCTION_FAST,
   NOISE_REDUCTION_HIGH_QUALITY,
@@ -222,17 +225,17 @@ GType gst_qmmfsrc_scene_mode_get_type (void);
 
 GType gst_qmmfsrc_antibanding_get_type (void);
 
-GType gst_qmmfsrc_ae_mode_get_type (void);
+GType gst_qmmfsrc_exposure_mode_get_type (void);
+
+GType gst_qmmfsrc_exposure_metering_get_type (void);
 
 GType gst_qmmfsrc_white_balance_mode_get_type (void);
 
-GType gst_qmmfsrc_af_mode_get_type (void);
+GType gst_qmmfsrc_focus_mode_get_type (void);
 
 GType gst_qmmfsrc_ir_mode_get_type (void);
 
 GType gst_qmmfsrc_iso_mode_get_type (void);
-
-GType gst_qmmfsrc_ae_metering_mode_get_type (void);
 
 GType gst_qmmfsrc_noise_reduction_get_type (void);
 
@@ -242,11 +245,11 @@ guchar gst_qmmfsrc_scene_mode_android_value (const guint value);
 
 guchar gst_qmmfsrc_antibanding_android_value (const guint value);
 
-guchar gst_qmmfsrc_ae_mode_android_value (const guint value);
+guchar gst_qmmfsrc_exposure_mode_android_value (const guint value);
 
-guchar gst_qmmfsrc_wb_mode_android_value (const guint value);
+guchar gst_qmmfsrc_white_balance_mode_android_value (const guint value);
 
-guchar gst_qmmfsrc_af_mode_android_value (const guint value);
+guchar gst_qmmfsrc_focus_mode_android_value (const guint value);
 
 guchar gst_qmmfsrc_noise_reduction_android_value (const guint value);
 

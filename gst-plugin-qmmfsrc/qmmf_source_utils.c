@@ -188,22 +188,22 @@ gst_qmmfsrc_antibanding_get_type (void)
 }
 
 GType
-gst_qmmfsrc_ae_mode_get_type (void)
+gst_qmmfsrc_exposure_mode_get_type (void)
 {
   static GType gtype = 0;
   static const GEnumValue variants[] = {
-    { AE_MODE_OFF,
+    { EXPOSURE_MODE_OFF,
         "The auto exposure routine is disabled. Manual exposure time will be "
-        "used", "off"
+        "used set via the 'exposure-time' property", "off"
     },
-    { AE_MODE_ON,
-        "The auto exposure routine is active.", "on"
+    { EXPOSURE_MODE_AUTO,
+        "The auto exposure routine is active.", "auto"
     },
     {0, NULL, NULL},
   };
 
   if (!gtype)
-    gtype = g_enum_register_static ("GstCameraAEMode", variants);
+    gtype = g_enum_register_static ("GstCameraExposureMode", variants);
 
   return gtype;
 }
@@ -266,26 +266,26 @@ gst_qmmfsrc_white_balance_mode_get_type (void)
 }
 
 GType
-gst_qmmfsrc_af_mode_get_type (void)
+gst_qmmfsrc_focus_mode_get_type (void)
 {
   static GType gtype = 0;
   static const GEnumValue variants[] = {
-    { AF_MODE_OFF,
+    { FOCUS_MODE_OFF,
         "The auto focus routine is disabled.", "off"
     },
-    { AF_MODE_AUTO,
+    { FOCUS_MODE_AUTO,
         "The auto focus routine is active.", "auto"
     },
-    { AF_MODE_MACRO,
+    { FOCUS_MODE_MACRO,
         "In this mode, the auto focus algorithm is optimized for focusing on "
         "objects very close to the camera.", "macro"
     },
-    { AF_MODE_CONTINUOUS,
+    { FOCUS_MODE_CONTINUOUS,
         "In this mode, the AF algorithm modifies the lens position continually"
         " to attempt to provide a constantly-in-focus image stream.",
         "continuous"
     },
-    { AF_MODE_EDOF,
+    { FOCUS_MODE_EDOF,
         "The camera device will produce images with an extended depth of field"
         " automatically; no special focusing operations need to be done before"
         " taking a picture.", "edof"
@@ -294,7 +294,7 @@ gst_qmmfsrc_af_mode_get_type (void)
   };
 
   if (!gtype)
-    gtype = g_enum_register_static ("GstCameraAFMode", variants);
+    gtype = g_enum_register_static ("GstCameraFocusMode", variants);
 
   return gtype;
 }
@@ -363,23 +363,23 @@ gst_qmmfsrc_iso_mode_get_type (void)
 }
 
 GType
-gst_qmmfsrc_ae_metering_mode_get_type (void)
+gst_qmmfsrc_exposure_metering_get_type (void)
 {
   static GType gtype = 0;
   static const GEnumValue variants[] = {
-    { AE_METERING_MODE_AVERAGE,
+    { EXPOSURE_METERING_AVERAGE,
         "The camera device's exposure metering is calculated as average from "
         "the whole frame.", "average"
     },
-    { AE_METERING_MODE_CENTER_WEIGHTED,
+    { EXPOSURE_METERING_CENTER_WEIGHTED,
         "The camera device's exposure metering is calculated from the center "
         "region of the frame.", "center-weighted"
     },
-    { AE_METERING_MODE_SPOT,
+    { EXPOSURE_METERING_SPOT,
         "The camera device's exposure metering is calculated from a chosen "
         "spot.", "spot"
     },
-    { AE_METERING_MODE_CUSTOM,
+    { EXPOSURE_METERING_CUSTOM,
         "The camera device's exposure metering is calculated from a custom "
         "metering table.", "custom"
     },
@@ -387,7 +387,7 @@ gst_qmmfsrc_ae_metering_mode_get_type (void)
   };
 
   if (!gtype)
-    gtype = g_enum_register_static ("GstCameraAEMeteringMode", variants);
+    gtype = g_enum_register_static ("GstCameraExposureMetering", variants);
 
   return gtype;
 }
@@ -488,12 +488,12 @@ gst_qmmfsrc_antibanding_android_value (const guint value)
 }
 
 guchar
-gst_qmmfsrc_ae_mode_android_value (const guint value)
+gst_qmmfsrc_exposure_mode_android_value (const guint value)
 {
   static guint idx = 0;
   static const PropAndroidEnum map[] = {
-      {AE_MODE_OFF, ANDROID_CONTROL_AE_MODE_OFF},
-      {AE_MODE_ON, ANDROID_CONTROL_AE_MODE_ON},
+      {EXPOSURE_MODE_OFF, ANDROID_CONTROL_AE_MODE_OFF},
+      {EXPOSURE_MODE_AUTO, ANDROID_CONTROL_AE_MODE_ON},
   };
 
   for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(map); ++idx) {
@@ -504,7 +504,7 @@ gst_qmmfsrc_ae_mode_android_value (const guint value)
 }
 
 guchar
-gst_qmmfsrc_wb_mode_android_value (const guint value)
+gst_qmmfsrc_white_balance_mode_android_value (const guint value)
 {
   static guint idx = 0;
   static const PropAndroidEnum map[] = {
@@ -545,15 +545,15 @@ gst_qmmfsrc_wb_mode_android_value (const guint value)
 }
 
 guchar
-gst_qmmfsrc_af_mode_android_value (const guint value)
+gst_qmmfsrc_focus_mode_android_value (const guint value)
 {
   static guint idx = 0;
   static const PropAndroidEnum map[] = {
-      {AF_MODE_OFF, ANDROID_CONTROL_AF_MODE_OFF},
-      {AF_MODE_AUTO, ANDROID_CONTROL_AF_MODE_AUTO},
-      {AF_MODE_MACRO, ANDROID_CONTROL_AF_MODE_MACRO},
-      {AF_MODE_CONTINUOUS, ANDROID_CONTROL_AF_MODE_CONTINUOUS_VIDEO},
-      {AF_MODE_EDOF, ANDROID_CONTROL_AF_MODE_EDOF},
+      {FOCUS_MODE_OFF, ANDROID_CONTROL_AF_MODE_OFF},
+      {FOCUS_MODE_AUTO, ANDROID_CONTROL_AF_MODE_AUTO},
+      {FOCUS_MODE_MACRO, ANDROID_CONTROL_AF_MODE_MACRO},
+      {FOCUS_MODE_CONTINUOUS, ANDROID_CONTROL_AF_MODE_CONTINUOUS_VIDEO},
+      {FOCUS_MODE_EDOF, ANDROID_CONTROL_AF_MODE_EDOF},
   };
 
   for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(map); ++idx) {
