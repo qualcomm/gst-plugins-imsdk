@@ -45,20 +45,6 @@ G_BEGIN_DECLS
     "image/jpeg, "              \
     QMMFSRC_COMMON_IMAGE_CAPS
 
-#define QMMFSRC_IMAGE_JPEG_CAPS_WITH_FEATURES(features) \
-    "image/jpeg(" features "), "                        \
-    QMMFSRC_COMMON_IMAGE_CAPS
-
-#define QMMFSRC_IMAGE_BAYER_CAPS(formats) \
-    "video/x-bayer, "                     \
-    "format = (string) " formats ", "     \
-    QMMFSRC_COMMON_IMAGE_CAPS
-
-#define QMMFSRC_IMAGE_BAYER_CAPS_WITH_FEATURES(features, formats) \
-    "video/x-bayer(" features "), "                               \
-    "format = (string) " formats ", "                             \
-    QMMFSRC_COMMON_IMAGE_CAPS
-
 #define QMMFSRC_IMAGE_RAW_CAPS(formats) \
     "video/x-raw, "                     \
     "format = (string) " formats ", "   \
@@ -67,6 +53,12 @@ G_BEGIN_DECLS
 #define QMMFSRC_IMAGE_RAW_CAPS_WITH_FEATURES(features, formats) \
     "video/x-raw(" features "), "                               \
     "format = (string) " formats ", "                           \
+    QMMFSRC_COMMON_IMAGE_CAPS
+
+#define QMMFSRC_IMAGE_BAYER_CAPS(formats, bpps) \
+    "video/x-bayer, "                           \
+    "format = (string) " formats ", "           \
+    "bpp = (string) " bpps ", "                 \
     QMMFSRC_COMMON_IMAGE_CAPS
 
 // Boilerplate cast macros and type check macros for QMMF Source Image Pad.
@@ -87,14 +79,6 @@ G_BEGIN_DECLS
   g_mutex_unlock(GST_QMMFSRC_IMAGE_PAD_GET_LOCK(obj))
 
 #define GST_TYPE_QMMFSRC_IMAGE_PAD_MODE (gst_qmmfsrc_image_pad_mode_get_type())
-
-typedef enum {
-  GST_IMAGE_FORMAT_UNKNOWN,
-  GST_IMAGE_FORMAT_RAW8,
-  GST_IMAGE_FORMAT_RAW10,
-  GST_IMAGE_FORMAT_RAW12,
-  GST_IMAGE_FORMAT_RAW16,
-} GstBayerFormat;
 
 typedef enum {
   GST_IMAGE_CODEC_UNKNOWN,
@@ -128,10 +112,10 @@ struct _GstQmmfSrcImagePad {
   gint              height;
   /// QMMF Recorder image stream framerate, set by the pad capabilities.
   gfloat            framerate;
-  /// GStreamer video pad output buffers format.
-  GstVideoFormat    format;
   /// GStreamer image pad output buffers format.
-  GstBayerFormat    bayer;
+  gint              format;
+  /// GStreamer image pad output bayer format bits per pixel.
+  guint             bpp;
   /// Whether the GStreamer stream is uncompressed or compressed and its type.
   GstImageCodec     codec;
   /// Agnostic structure containing codec specific parameters.

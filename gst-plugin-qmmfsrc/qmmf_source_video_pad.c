@@ -54,6 +54,8 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
 #define DEFAULT_VIDEO_H265_LEVEL      "5.1"
 #define DEFAULT_VIDEO_RAW_FORMAT      "NV12"
 #define DEFAULT_VIDEO_RAW_COMPRESSION "none"
+#define DEFAULT_VIDEO_BAYER_FORMAT    "bggr"
+#define DEFAULT_VIDEO_BAYER_BPP       "10"
 
 #define DEFAULT_PROP_SOURCE_INDEX    (-1)
 #define DEFAULT_PROP_FRAMERATE       30.0
@@ -272,6 +274,31 @@ video_pad_update_params (GstPad * pad, GstStructure * structure)
     vpad->codec = GST_VIDEO_CODEC_NONE;
     vpad->format = gst_video_format_from_string (
         gst_structure_get_string (structure, "format"));
+  } else if (gst_structure_has_name (structure, "video/x-bayer")) {
+    const gchar *format = gst_structure_get_string (structure, "format");
+    const gchar *bpp = gst_structure_get_string (structure, "bpp");
+
+    vpad->codec = GST_VIDEO_CODEC_NONE;
+
+    if (g_strcmp0 (bpp, "8") == 0)
+      vpad->bpp = 8;
+    else if (g_strcmp0 (bpp, "10") == 0)
+      vpad->bpp = 10;
+    else if (g_strcmp0 (bpp, "12") == 0)
+      vpad->bpp = 12;
+    else if (g_strcmp0 (bpp, "16") == 0)
+      vpad->bpp = 16;
+
+    if (g_strcmp0 (format, "bggr") == 0)
+      vpad->format = GST_BAYER_FORMAT_BGGR;
+    else if (g_strcmp0 (format, "rggb") == 0)
+      vpad->format = GST_BAYER_FORMAT_RGGB;
+    else if (g_strcmp0 (format, "gbrg") == 0)
+      vpad->format = GST_BAYER_FORMAT_GBRG;
+    else if (g_strcmp0 (format, "grbg") == 0)
+      vpad->format = GST_BAYER_FORMAT_GRBG;
+    else if (g_strcmp0 (format, "mono") == 0)
+      vpad->format = GST_BAYER_FORMAT_MONO;
   } else {
     const gchar *profile, *level;
 
@@ -392,12 +419,24 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
 
   if (gst_structure_has_field (structure, "format")) {
     const gchar *format = gst_structure_get_string (structure, "format");
+    gboolean isbayer = gst_structure_has_name (structure, "video/x-bayer");
 
     if (!format) {
       gst_structure_fixate_field_string (structure, "format",
-          DEFAULT_VIDEO_RAW_FORMAT);
+          isbayer ? DEFAULT_VIDEO_BAYER_FORMAT : DEFAULT_VIDEO_RAW_FORMAT);
       GST_DEBUG_OBJECT (pad, "Format not set, using default value: %s",
-          DEFAULT_VIDEO_RAW_FORMAT);
+          isbayer ? DEFAULT_VIDEO_BAYER_FORMAT : DEFAULT_VIDEO_RAW_FORMAT);
+    }
+  }
+
+  if (gst_structure_has_field (structure, "bpp")) {
+    const gchar *bpp = gst_structure_get_string (structure, "bpp");
+
+    if (!bpp) {
+      gst_structure_fixate_field_string (structure, "bpp",
+          DEFAULT_VIDEO_BAYER_BPP);
+      GST_DEBUG_OBJECT (pad, "BPP not set, using default value: %s",
+          DEFAULT_VIDEO_BAYER_BPP);
     }
   }
 

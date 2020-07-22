@@ -59,20 +59,8 @@ G_BEGIN_DECLS
     "level = (string) { " QMMFSRC_VIDEO_H264_LEVELS " }, "     \
     QMMFSRC_COMMON_VIDEO_CAPS
 
-#define QMMFSRC_VIDEO_H264_CAPS_WITH_FEATURES(features)        \
-    "video/x-h264(" features "), "                             \
-    "profile = (string) { " QMMFSRC_VIDEO_H264_PROFILES " }, " \
-    "level = (string) { " QMMFSRC_VIDEO_H264_LEVELS " }, "     \
-    QMMFSRC_COMMON_VIDEO_CAPS
-
 #define QMMFSRC_VIDEO_H265_CAPS                                \
     "video/x-h265, "                                           \
-    "profile = (string) { " QMMFSRC_VIDEO_H265_PROFILES " }, " \
-    "level = (string) { " QMMFSRC_VIDEO_H265_LEVELS " }, "     \
-    QMMFSRC_COMMON_VIDEO_CAPS
-
-#define QMMFSRC_VIDEO_H265_CAPS_WITH_FEATURES(features)        \
-    "video/x-h265(" features "), "                             \
     "profile = (string) { " QMMFSRC_VIDEO_H265_PROFILES " }, " \
     "level = (string) { " QMMFSRC_VIDEO_H265_LEVELS " }, "     \
     QMMFSRC_COMMON_VIDEO_CAPS
@@ -85,6 +73,12 @@ G_BEGIN_DECLS
 #define QMMFSRC_VIDEO_RAW_CAPS_WITH_FEATURES(features, formats) \
     "video/x-raw(" features "), "                               \
     "format = (string) " formats ", "                           \
+    QMMFSRC_COMMON_VIDEO_CAPS
+
+#define QMMFSRC_VIDEO_BAYER_CAPS(formats, bpps) \
+    "video/x-bayer, "                           \
+    "format = (string) " formats ", "           \
+    "bpp = (string) " bpps ", "                 \
     QMMFSRC_COMMON_VIDEO_CAPS
 
 // Boilerplate cast macros and type check macros for QMMF Source Video Pad.
@@ -159,11 +153,13 @@ struct _GstQmmfSrcVideoPad {
   /// QMMF Recorder track framerate, set by the pad capabilities.
   gdouble             framerate;
   /// GStreamer video pad output buffers format.
-  GstVideoFormat      format;
-  /// Whether the GStreamer stream is uncompressed or compressed and its type.
-  GstVideoCodec       codec;
+  gint                format;
+  /// GStreamer video pad output bayer format bits per pixel.
+  guint               bpp;
   /// Video format compression (none or ubwc).
   GstVideoCompression compression;
+  /// Whether the GStreamer stream is uncompressed or compressed and its type.
+  GstVideoCodec       codec;
   /// Agnostic structure containing codec specific parameters.
   GstStructure        *params;
 

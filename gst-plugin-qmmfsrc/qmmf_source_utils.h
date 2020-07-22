@@ -86,6 +86,17 @@ G_BEGIN_DECLS
 #define GST_TYPE_QMMFSRC_AE_METERING_MODE (gst_qmmfsrc_ae_metering_mode_get_type())
 #define GST_TYPE_QMMFSRC_NOISE_REDUCTION (gst_qmmfsrc_noise_reduction_get_type())
 
+#define GST_BAYER_FORMAT_OFFSET 0x1000
+
+// Extension to the GstVideoFormat for supporting bayer formats.
+typedef enum {
+  GST_BAYER_FORMAT_BGGR = GST_BAYER_FORMAT_OFFSET,
+  GST_BAYER_FORMAT_RGGB,
+  GST_BAYER_FORMAT_GBRG,
+  GST_BAYER_FORMAT_GRBG,
+  GST_BAYER_FORMAT_MONO,
+} GstBayerFormat;
+
 enum
 {
   EFFECT_MODE_OFF,
