@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -95,6 +95,10 @@ gst_qmmfsrc_scene_mode_get_type (void)
   static const GEnumValue variants[] = {
     { SCENE_MODE_DISABLED,
         "Indicates that no scene modes are set.", "disabled"
+    },
+    { SCENE_MODE_FACE_PRIORITY,
+        "Optimized for photos of with priority of people faces.",
+        "face-priority"
     },
     { SCENE_MODE_ACTION,
         "Optimized for photos of quickly moving objects.", "action"
@@ -440,6 +444,7 @@ gst_qmmfsrc_scene_mode_android_value (const guint value)
   static guint idx = 0;
   static const PropAndroidEnum map[] = {
       {SCENE_MODE_DISABLED, ANDROID_CONTROL_SCENE_MODE_DISABLED},
+      {SCENE_MODE_FACE_PRIORITY, ANDROID_CONTROL_SCENE_MODE_FACE_PRIORITY},
       {SCENE_MODE_ACTION, ANDROID_CONTROL_SCENE_MODE_ACTION},
       {SCENE_MODE_PORTRAIT, ANDROID_CONTROL_SCENE_MODE_PORTRAIT},
       {SCENE_MODE_LANDSCAPE, ANDROID_CONTROL_SCENE_MODE_LANDSCAPE},
