@@ -17,6 +17,10 @@ target_link_libraries(${NNENGINE} PRIVATE
   fastcvopt
 )
 
+target_compile_definitions(${NNENGINE} PRIVATE
+  NNENGINE_LIB_DIR="${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}"
+)
+
 install(
   TARGETS ${NNENGINE}
   LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}

@@ -58,10 +58,11 @@ int32_t NNEngine::EngineInit(const NNSourceInfo* source_info,
     return NN_FAIL;
   }
 
-  void *libptr = dlopen(model_lib_.c_str(), RTLD_LAZY);
+  std::string lib = std::string(NNENGINE_LIB_DIR) + "/" + model_lib_;
+  void *libptr = dlopen(lib.c_str(), RTLD_LAZY);
   if (!libptr) {
-    ALOGE("%s: Error loading library : %s %s\n", __func__,
-        model_lib_.c_str(), dlerror());
+    ALOGE("%s: Error loading library : %s %s\n", __func__, lib.c_str(),
+        dlerror());
     return -1;
   }
 

@@ -31,7 +31,7 @@
 
 #include "posenetengine.h"
 
-const std::string PoseNetEngine::kModelLib = "/usr/lib/libposenet_nn.so";
+const std::string PoseNetEngine::kModelLib = "libposenet_nn.so";
 
 int32_t PoseNetEngine::Init(const NNSourceInfo* source_info)
 {

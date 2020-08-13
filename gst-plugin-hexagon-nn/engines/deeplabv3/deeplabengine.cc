@@ -174,7 +174,7 @@ rgba color_table[COLOR_TABLE_SIZE] = {
  }
 };
 
-const std::string DeepLabv3Engine::kModelLib = "/usr/lib/libdeeplabv3_nn.so";
+const std::string DeepLabv3Engine::kModelLib = "libdeeplabv3_nn.so";
 
 int32_t DeepLabv3Engine::Init(const NNSourceInfo* source_info)
 {
