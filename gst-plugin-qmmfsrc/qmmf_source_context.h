@@ -91,12 +91,14 @@ GST_API gboolean
 gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad);
 
 GST_API gboolean
-gst_qmmf_context_create_image_stream (GstQmmfContext * context,
-                                      GstPad * pad,
+gst_qmmf_context_delete_video_stream (GstQmmfContext * context, GstPad * pad);
+
+GST_API gboolean
+gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad,
                                       GstPad * bayerpad);
 
 GST_API gboolean
-gst_qmmf_context_delete_stream (GstQmmfContext * context, GstPad * pad);
+gst_qmmf_context_delete_image_stream (GstQmmfContext * context, GstPad * pad);
 
 GST_API gboolean
 gst_qmmf_context_start_session (GstQmmfContext * context);
