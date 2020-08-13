@@ -160,6 +160,14 @@ gst_converter_request_unref (GstConverterRequest * request)
 }
 
 static void
+gst_video_composer_free_queue_item (gpointer data)
+{
+  GstDataQueueItem *item = data;
+  gst_converter_request_unref (GST_CONVERTER_REQUEST (item->object));
+  g_slice_free (GstDataQueueItem, item);
+}
+
+static void
 gst_video_composer_child_proxy_init (gpointer g_iface, gpointer data);
 
 G_DEFINE_TYPE_WITH_CODE (GstVideoComposer, gst_video_composer,
@@ -1158,8 +1166,9 @@ gst_video_composer_task_loop (gpointer userdata)
     GstBuffer *buffer = NULL;
     gboolean success = FALSE;
 
-    request = GST_CONVERTER_REQUEST (item->object);
-    g_slice_free (GstDataQueueItem, item);
+    // Increase the request reference count to indicate that it is in use.
+    request = GST_CONVERTER_REQUEST (gst_mini_object_ref (item->object));
+    item->destroy (item);
 
     GST_TRACE_OBJECT (vcomposer, "Waiting request %p", request->id);
     success = gst_c2d_video_converter_wait_request (
@@ -1178,10 +1187,14 @@ gst_video_composer_task_loop (gpointer userdata)
         G_GINT64_FORMAT " ms", request->id, GST_TIME_AS_MSECONDS (request->time),
         (GST_TIME_AS_USECONDS (request->time) % 1000));
 
+    // Increase the buffer reference count to indicate that it is in use.
     buffer = gst_buffer_ref (request->outframes[0].buffer);
     gst_converter_request_unref (request);
 
     gst_aggregator_finish_buffer (GST_AGGREGATOR (vcomposer), buffer);
+  } else {
+    GST_DEBUG_OBJECT (vcomposer, "Paused worker thread");
+    gst_task_pause (vcomposer->worktask);
   }
 }
 
@@ -1199,11 +1212,12 @@ gst_video_composer_start (GstAggregator * aggregator)
 
   gst_task_set_lock (vcomposer->worktask, &vcomposer->worklock);
 
-  if (!gst_task_set_state (vcomposer->worktask, GST_TASK_STARTED)) {
+  if (!gst_task_start (vcomposer->worktask)) {
     GST_ERROR_OBJECT (vcomposer, "Failed to start worker task!");
     return FALSE;
   }
 
+  // Disable requests queue in flushing state to enable normal work.
   gst_data_queue_set_flushing (vcomposer->requests, FALSE);
   return TRUE;
 }
@@ -1216,21 +1230,24 @@ gst_video_composer_stop (GstAggregator * aggregator)
   if (NULL == vcomposer->worktask)
     return TRUE;
 
-  GST_OBJECT_LOCK (vcomposer);
-  GST_AGGREGATOR_PAD (aggregator->srcpad)->segment.position =
-      GST_CLOCK_TIME_NONE;
-  GST_OBJECT_UNLOCK (vcomposer);
-
+  // Set the requests queue in flushing state.
   gst_data_queue_set_flushing (vcomposer->requests, TRUE);
-  gst_data_queue_flush (vcomposer->requests);
 
-  if (!gst_task_set_state (vcomposer->worktask, GST_TASK_STOPPED))
+  if (!gst_task_stop (vcomposer->worktask))
     GST_WARNING_OBJECT (vcomposer, "Failed to stop worker task!");
+
+  // Make sure task is not running.
+  g_rec_mutex_lock (&vcomposer->worklock);
+  g_rec_mutex_unlock (&vcomposer->worklock);
 
   if (!gst_task_join (vcomposer->worktask)) {
     GST_ERROR_OBJECT (vcomposer, "Failed to join worker task!");
     return FALSE;
   }
+
+  // Flush converter and requests queue.
+  gst_c2d_video_converter_flush (vcomposer->c2dconvert);
+  gst_data_queue_flush (vcomposer->requests);
 
   GST_INFO_OBJECT (vcomposer, "Removing task %p", vcomposer->worktask);
 
@@ -1309,13 +1326,12 @@ gst_video_composer_aggregate (GstAggregator * aggregator, gboolean timeout)
   item = g_slice_new0 (GstDataQueueItem);
   item->object = GST_MINI_OBJECT (request);
   item->visible = TRUE;
+  item->destroy = gst_video_composer_free_queue_item;
 
   // Push the request into the queue or free it on failure.
   if (!gst_data_queue_push (vcomposer->requests, item)) {
-    GST_ERROR_OBJECT (vcomposer, "Failed to push request in queue!");
-    g_slice_free (GstDataQueueItem, item);
-    gst_converter_request_unref (request);
-    return GST_FLOW_ERROR;
+    item->destroy (item);
+    return GST_FLOW_OK;
   }
 
   GST_TRACE_OBJECT (vcomposer, "Submitted request with ID: %p", request->id);
@@ -1329,7 +1345,11 @@ gst_video_composer_flush (GstAggregator * aggregator)
 
   GST_INFO_OBJECT (vcomposer, "Flushing request queue");
 
+  // Set the requests queue in flushing state.
   gst_data_queue_set_flushing (vcomposer->requests, TRUE);
+
+  // Flush converter and requests queue.
+  gst_c2d_video_converter_flush (vcomposer->c2dconvert);
   gst_data_queue_flush (vcomposer->requests);
 
   return GST_AGGREGATOR_CLASS (parent_class)->flush (aggregator);;
@@ -1488,9 +1508,9 @@ gst_video_composer_finalize (GObject * object)
     gst_c2d_video_converter_free (vcomposer->c2dconvert);
 
   if (vcomposer->requests != NULL) {
-    gst_data_queue_set_flushing(vcomposer->requests, TRUE);
-    gst_data_queue_flush(vcomposer->requests);
-    gst_object_unref(GST_OBJECT_CAST(vcomposer->requests));
+    gst_data_queue_set_flushing (vcomposer->requests, TRUE);
+    gst_data_queue_flush (vcomposer->requests);
+    gst_object_unref (GST_OBJECT_CAST(vcomposer->requests));
   }
 
   if (vcomposer->outpool != NULL)
