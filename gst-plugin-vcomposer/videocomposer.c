@@ -1055,6 +1055,36 @@ gst_video_composer_update_src_caps (GstAggregator * aggregator,
   return configured ? GST_FLOW_OK : GST_AGGREGATOR_FLOW_NEED_DATA;
 }
 
+static GstCaps *
+gst_video_composer_fixate_src_caps (GstAggregator * aggregator, GstCaps * caps)
+{
+  GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER (aggregator);
+  guint idx = 0;
+
+  // Check caps structures for memory:GBM feature.
+  for (idx = 0; idx < gst_caps_get_size (caps); idx++) {
+    GstCapsFeatures *features = gst_caps_get_features (caps, idx);
+
+    if (!gst_caps_features_is_any (features) &&
+        gst_caps_features_contains (features, GST_CAPS_FEATURE_MEMORY_GBM)) {
+      // Found caps structure with memory:GBM feature, remove all others.
+      GstStructure *structure = gst_caps_steal_structure (caps, idx);
+
+      gst_caps_unref (caps);
+      caps = gst_caps_new_empty ();
+
+      gst_caps_append_structure_full (caps, structure,
+          gst_caps_features_new (GST_CAPS_FEATURE_MEMORY_GBM, NULL));
+      break;
+    }
+  }
+
+  caps = gst_caps_fixate (caps);
+  GST_DEBUG_OBJECT (vcomposer, "Fixated output caps to %" GST_PTR_FORMAT, caps);
+
+  return caps;
+}
+
 static gboolean
 gst_video_composer_negotiated_src_caps (GstAggregator * aggregator,
     GstCaps * caps)
@@ -1522,6 +1552,8 @@ gst_video_composer_class_init (GstVideoComposerClass * klass)
   aggregator->src_query = GST_DEBUG_FUNCPTR (gst_video_composer_src_query);
   aggregator->update_src_caps =
       GST_DEBUG_FUNCPTR (gst_video_composer_update_src_caps);
+  aggregator->fixate_src_caps =
+      GST_DEBUG_FUNCPTR (gst_video_composer_fixate_src_caps);
   aggregator->negotiated_src_caps =
       GST_DEBUG_FUNCPTR (gst_video_composer_negotiated_src_caps);
   aggregator->start = GST_DEBUG_FUNCPTR (gst_video_composer_start);
