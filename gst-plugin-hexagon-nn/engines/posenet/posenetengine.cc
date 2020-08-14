@@ -45,6 +45,8 @@ int32_t PoseNetEngine::Init(const NNSourceInfo* source_info)
   scale_back_x_ = (float)in_width_ / scale_width_;
   scale_back_y_ = (float)in_height_ / scale_height_;
 
+  pose_count_ = 0;
+
   ALOGD("%s:%d: scale_back: %.2fx%.2f in: %dx%d scaled: %dx%d", __func__,
       __LINE__, scale_back_x_, scale_back_y_, in_width_, in_height_,
       scale_width_, scale_height_);
@@ -85,6 +87,8 @@ int32_t PoseNetEngine::PostProcess(void* outputs[], GstBuffer * gst_buffer)
     float candidatePoseInstanceScore = 0.0f;
 
     int partsCount = SelectKeypointWithScore(&pose_pp_config_, pRawHeatmaps, &scoredParts[0]);
+
+    pose_count_ = 0;
 
     for (int i = 0; i < PoseMaxNumDetect; i++)
     {
@@ -133,8 +137,6 @@ int32_t PoseNetEngine::PostProcess(void* outputs[], GstBuffer * gst_buffer)
         float rootImageCoords[2] = { float(rootCoord[0]) * float(pose_pp_config_.outputStride) + pOffsets[tmpIdx],
                                      float(rootCoord[1]) * float(pose_pp_config_.outputStride) + pOffsets[tmpIdx + 1] };
 
-
-        pose_count_ = 0;
 
         // Check NMS for the current keypoint root/seed by comparing its location with those of detected poses
         if (DoNMSPose(&pose_results_[0], pose_count_, rootId, squaredNmsRadius, rootImageCoords, pose_pp_config_.numKeypoint))
