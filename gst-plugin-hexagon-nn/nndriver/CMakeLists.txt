@@ -3,6 +3,7 @@ set(NNDRIVER nndriver)
 add_library(${NNDRIVER} SHARED
   nndriver.cc
   hexagon/hexagon_nn_stub.c
+  hexagon/hexagon_nn_domains_stub.c
 )
 
 target_include_directories(${NNDRIVER} PUBLIC

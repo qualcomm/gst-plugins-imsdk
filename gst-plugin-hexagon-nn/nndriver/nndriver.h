@@ -37,10 +37,13 @@
 
 #include "hexagon_nn.h"
 
+typedef void (*InitGraph)(remote_handle64 handle, int nn_id);
+
 class NNDriver {
 public:
 
-  NNDriver() : graph_id_(0),
+  NNDriver() : handle_(-1),
+               graph_id_(0),
                out_sizes_{},
                nn_out_bufs_{},
                nn_in_buf_{} {};
@@ -51,7 +54,7 @@ public:
       int32_t   height,
       int32_t   num_outputs,
       int32_t*  out_sizes,
-      void      (*init_graph)(int32_t nn_id));
+      InitGraph init_graph);
 
   int32_t Process(
       uint8_t*  in_buffer,
@@ -61,11 +64,13 @@ public:
 
 private:
 
-  uint32_t GraphSetup(void  (*init_graph)(int32_t nn_id));
+  uint32_t GraphSetup(InitGraph init_graph);
 
   static const int32_t       kMaxOut          = 4;
   static const uint32_t      kIonHeapIdSystem = 25;
+  static const char          kURI[];
 
+  remote_handle64            handle_;
   uint32_t                   graph_id_;
   int32_t                    width_;
   int32_t                    height_;
