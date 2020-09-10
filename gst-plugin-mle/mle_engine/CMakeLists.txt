@@ -44,6 +44,8 @@ endif()
 
 if (TFLITE_ENABLE)
   target_link_libraries(${GST_MLE_LIBRARY} PRIVATE tensorflow-lite)
+  target_link_libraries(${GST_MLE_LIBRARY} PRIVATE gpu_delegate)
+  target_link_libraries(${GST_MLE_LIBRARY} PRIVATE xnnpack_delegate)
 endif()
 
 install(

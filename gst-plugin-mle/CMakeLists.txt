@@ -35,9 +35,9 @@ add_definitions(-DDELEGATE_SUPPORT)
 endif()
 
 # Common compiler flags.
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-terminate")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-terminate -Wno-attributes")
 
 add_subdirectory(mle_engine)
 if (TFLITE_ENABLE)
