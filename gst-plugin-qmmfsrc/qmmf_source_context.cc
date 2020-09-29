@@ -874,7 +874,16 @@ camera_event_callback (GstQmmfContext * context,
       GST_ERROR ("Camera %u encountered an error with code %d !",
           error->camera_id, error->error_code);
 
-      eos = (context->camera_id == error->camera_id) ? TRUE : FALSE;;
+      switch ((GstCameraError) error->error_code) {
+        case GST_ERROR_CAMERA_INVALID_ERROR:
+        case GST_ERROR_CAMERA_DISCONNECTED:
+        case GST_ERROR_CAMERA_DEVICE:
+        case GST_ERROR_CAMERA_SERVICE:
+          eos = (context->camera_id == error->camera_id) ? TRUE : FALSE;
+          break;
+        default:
+          GST_WARNING ("Camera has encounter a non-fatal error");
+      }
     }
       break;
     case ::qmmf::recorder::EventType::kCameraOpened:

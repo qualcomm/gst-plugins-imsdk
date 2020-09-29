@@ -88,6 +88,16 @@ G_BEGIN_DECLS
 
 #define GST_BAYER_FORMAT_OFFSET 0x1000
 
+#define GST_CAMERA_ERROR_OFFSET -1
+
+// Fatal Camera Errors
+typedef enum {
+  GST_ERROR_CAMERA_INVALID_ERROR = GST_CAMERA_ERROR_OFFSET,
+  GST_ERROR_CAMERA_DISCONNECTED,
+  GST_ERROR_CAMERA_DEVICE,
+  GST_ERROR_CAMERA_SERVICE,
+} GstCameraError;
+
 // Extension to the GstVideoFormat for supporting bayer formats.
 typedef enum {
   GST_BAYER_FORMAT_BGGR = GST_BAYER_FORMAT_OFFSET,
