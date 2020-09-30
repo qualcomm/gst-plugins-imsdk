@@ -42,6 +42,8 @@ SNPESegmentation::SNPESegmentation(MLConfig &config) : SNPEBase(config) {
 SNPESegmentation::~SNPESegmentation() {}
 
 int32_t SNPESegmentation::PostProcess(GstBuffer* buffer) {
+  MLE_LOGI("%s: Enter", __func__);
+
   std::vector<float> segm_buf;
 
   const zdl::DlSystem::StringList &output_buf_names =
@@ -106,6 +108,7 @@ int32_t SNPESegmentation::PostProcess(GstBuffer* buffer) {
     }
   }
 
+  MLE_LOGI("%s: Exit", __func__);
   return MLE_OK;
 }
 

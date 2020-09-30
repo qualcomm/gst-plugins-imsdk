@@ -30,6 +30,7 @@
 #include <vector>
 #include <cmath>
 #include "snpe_detection.h"
+#include "common_utils.h"
 
 namespace mle {
 
@@ -37,6 +38,8 @@ SNPEDetection::SNPEDetection(MLConfig &config) : SNPEBase(config) {}
 SNPEDetection::~SNPEDetection() {}
 
 int32_t SNPEDetection::PostProcess(GstBuffer* buffer) {
+  MLE_LOGI("%s: Enter", __func__);
+
   std::vector<float> score_buf;
   std::vector<float> box_buf;
   std::vector<float> class_buf;
@@ -143,6 +146,8 @@ int32_t SNPEDetection::PostProcess(GstBuffer* buffer) {
     MLE_LOGI("Inference engine detected %d objects, highest score: %f",
                   num_obj, score_buf[0]);
   }
+
+  MLE_LOGI("%s: Exit", __func__);
   return MLE_OK;
 }
 

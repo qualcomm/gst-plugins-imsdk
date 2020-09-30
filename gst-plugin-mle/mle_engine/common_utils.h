@@ -34,11 +34,68 @@
 #include <memory>
 #include <cutils/properties.h>
 #include <sys/mman.h>
-#include <utils/Log.h>
 
-#define MLE_LOGI(...) ALOGI("MLE: " __VA_ARGS__)
+#ifndef GST_DISABLE_GST_DEBUG
+#include <gst/gst.h>
+#define GST_CAT_DEFAULT ensure_debug_category()
+static GstDebugCategory *
+ensure_debug_category (void)
+{
+  static gsize category = 0;
+
+  if (g_once_init_enter (&category)) {
+    gsize cat_done;
+
+    cat_done = (gsize) _gst_debug_category_new("qtimle", 0,
+        "GST QTI Machine Learning Engine");
+
+    g_once_init_leave (&category, cat_done);
+  }
+
+  return (GstDebugCategory *) category;
+}
+
+#define MLE_LOGE(...) GST_ERROR(__VA_ARGS__)
+#define MLE_LOGI(...) GST_INFO(__VA_ARGS__)
+#define MLE_LOGD(...) GST_DEBUG(__VA_ARGS__)
+#define MLE_LOGV(...) GST_LOG(__VA_ARGS__)
+#else
+#include <utils/Log.h>
 #define MLE_LOGE(...) ALOGE("MLE: " __VA_ARGS__)
+#define MLE_LOGI(...) ALOGI("MLE: " __VA_ARGS__)
 #define MLE_LOGD(...) ALOGD("MLE: " __VA_ARGS__)
+#define MLE_LOGV(...) ALOGD("MLE: " __VA_ARGS__)
+#define ensure_debug_category() /* NOOP */
+#endif /* GST_DISABLE_GST_DEBUG */
+
+class Timer {
+  std::string str;
+  uint64_t begin;
+
+public:
+
+  Timer (std::string s) : str(s) {
+    MLE_LOGV("%s: Start", str.c_str());
+    begin = GetMicroSeconds();
+  }
+
+  ~Timer () {
+    uint64_t end = GetMicroSeconds();
+    MLE_LOGD("%s: %llu us", str.c_str(),
+        static_cast<long long unsigned>(end - begin));
+  }
+
+  uint64_t GetMicroSeconds() {
+    timespec time;
+
+    clock_gettime(CLOCK_MONOTONIC, &time);
+
+    uint64_t microSeconds = (static_cast<uint32_t>(time.tv_sec) * 1000000ULL) +
+                            (static_cast<uint32_t>(time.tv_nsec)) / 1000;
+
+    return microSeconds;
+  }
+};
 
 #define MLE_UNUSED(var) ((void)var)
 

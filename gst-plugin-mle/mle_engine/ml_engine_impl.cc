@@ -34,6 +34,7 @@
 #include <sstream>
 #include <math.h>
 #include "ml_engine_intf.h"
+#include "common_utils.h"
 
 namespace mle {
 
@@ -292,6 +293,10 @@ int32_t MLEngine::PreProcessScale(
   const uint32_t scaleHeight,
   MLEImageFormat format)
 {
+  MLE_LOGI("%s: Enter ", __func__);
+  MLE_LOGV("%s: format %d preprocess_mode %d", __func__, format,
+    (uint32_t)config_.preprocess_mode);
+
   int32_t rc = MLE_OK;
   if ((format == mle_format_nv12) || (format == mle_format_nv21)) {
     uint8_t *src_buffer_y = pSrcLuma;
@@ -335,6 +340,8 @@ int32_t MLEngine::PreProcessScale(
                         ((intptr_t)src_buffer_uv + src_uv_offset);
     }
 
+    MLE_LOGV("%s: Scale Luma plane", __func__);
+
     fcvScaleDownMNu8(src_buffer_y,
                      width,
                      height,
@@ -343,6 +350,9 @@ int32_t MLEngine::PreProcessScale(
                      scaleWidth,
                      scaleHeight,
                      0);
+
+    MLE_LOGV("%s: Scale Croma plane", __func__);
+
     fcvScaleDownMNu8(src_buffer_uv,
                      width,
                      height/2,
@@ -355,6 +365,8 @@ int32_t MLEngine::PreProcessScale(
     MLE_LOGE("Unsupported format %d", (int)format);
     rc = MLE_IMG_FORMAT_NOT_SUPPORTED;
   }
+
+  MLE_LOGI("%s: Exit", __func__);
   return rc;
 }
 
@@ -543,7 +555,7 @@ int32_t MLEngine::Process(GstVideoFrame *frame) {
     Timer t("Inference time");
     res = ExecuteModel();
     if (MLE_OK != res) {
-      MLE_LOGE(" SNPE execution failed");
+      MLE_LOGE(" Inference failed");
       return res;
     }
   }
@@ -586,12 +598,15 @@ int32_t MLEngine::PreProcess(GstVideoFrame *frame) {
     rgb_buf = buffers_.rgb_buf;
   } else {
     padding = false;
-      if (float_input) {
-        rgb_buf = buffers_.rgb_buf;
-      } else {
-        rgb_buf = (uint8_t*)engine_input_buf;
-      }
+    if (float_input) {
+      rgb_buf = buffers_.rgb_buf;
+    } else {
+      rgb_buf = (uint8_t*)engine_input_buf;
+    }
   }
+
+  MLE_LOGV("%s: padding: %d float_input: %d do_rescale: %d ", __func__, padding,
+      float_input, do_rescale_);
 
   if (do_rescale_) {
     if (use_c2d_preprocess_) {

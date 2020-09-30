@@ -31,6 +31,7 @@
 #include <memory>
 
 #include "snpe_base.h"
+#include "common_utils.h"
 
 namespace mle {
 
@@ -300,14 +301,14 @@ void* SNPEBase::GetInputBuffer() {
 }
 
 int32_t SNPEBase::ExecuteModel() {
-    MLE_LOGI("%s: Execution begin!", __func__);
+  MLE_LOGI("%s: Enter", __func__);
+
   if (config_.io_type == NetworkIO::kUserBuffer) {
     if (!snpe_params_.snpe->execute(snpe_params_.input_ub_map,
                                     snpe_params_.output_ub_map)) {
       PrintErrorStringAndExit();
       return MLE_FAIL;
     }
-    MLE_LOGI("%s: Execution completed!", __func__);
   } else if (config_.io_type == NetworkIO::kITensor) {
     snpe_params_.output_tensor_map.clear();
     if (!snpe_params_.snpe->execute(snpe_params_.input_tensor_map,
@@ -315,16 +316,18 @@ int32_t SNPEBase::ExecuteModel() {
       PrintErrorStringAndExit();
       return MLE_FAIL;
     }
-    MLE_LOGI("%s: Execution completed!", __func__);
   } else {
     MLE_LOGE("%s: Invalid Network IO value", __func__);
     return MLE_FAIL;
   }
 
+  MLE_LOGI("%s: Exit", __func__);
   return MLE_OK;
 }
 
 int32_t SNPEBase::PostProcess(GstBuffer* buffer) {
+  MLE_LOGI("%s: Enter", __func__);
+
   std::vector<float> score_buf;
   const zdl::DlSystem::StringList &output_buf_names =
       snpe_params_.output_ub_map.getUserBufferNames();
@@ -376,6 +379,7 @@ int32_t SNPEBase::PostProcess(GstBuffer* buffer) {
     snprintf(meta->result.name, label_size, "%s", labels_.at(top_score_idx).c_str());
   }
 
+  MLE_LOGI("%s: Exit", __func__);
   return MLE_OK;
 }
 
