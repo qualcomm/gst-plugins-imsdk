@@ -324,7 +324,7 @@ int32_t PoseNetEngine::FillMLMeta(GstBuffer * gst_buffer)
   for (int i = 0; i < pose_count_; i++) {
     GstMLPoseNetMeta *meta = gst_buffer_add_posenet_meta (gst_buffer);
     if (!meta) {
-      ALOGD("%s: Failed to add metadata!", __func__);
+      NN_LOGD("%s: Failed to add metadata!", __func__);
       return NN_FAIL;
     }
     meta->score = pose_results_[i].poseScore;

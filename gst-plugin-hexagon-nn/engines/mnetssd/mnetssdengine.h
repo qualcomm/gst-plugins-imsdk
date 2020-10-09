@@ -31,6 +31,7 @@
 #define MNETSSD_H
 
 #include "nnengine.h"
+#include "engines/common_utils.h"
 
 #define MaxNumDetect 64
 

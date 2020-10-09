@@ -6,6 +6,7 @@ add_library(${POSENET} SHARED
 
 target_include_directories(${POSENET} PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_SOURCE_DIR}
 )
 
 target_link_libraries(${POSENET} PUBLIC

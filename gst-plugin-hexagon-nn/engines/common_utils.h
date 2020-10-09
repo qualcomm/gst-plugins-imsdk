@@ -27,49 +27,38 @@
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef DEEPLABENGINE_H
-#define DEEPLABENGINE_H
+#pragma once
 
-#include "nnengine.h"
-#include "engines/common_utils.h"
+#ifndef GST_DISABLE_GST_DEBUG
+#include <gst/gst.h>
 
-class DeepLabv3Engine : public NNEngine {
-public:
+#define GST_CAT_DEFAULT ensure_debug_category()
+static GstDebugCategory *
+ensure_debug_category (void)
+{
+  static gsize category = 0;
 
-  DeepLabv3Engine ()
-          : NNEngine(kModelLib, kPadWidth, kPadHeight, kNumOutputs, kInFormat)
-            {};
+  if (g_once_init_enter (&category)) {
+    gsize cat_done;
 
-  int32_t Init(const NNSourceInfo* pSourceInfo) override;
+    cat_done = (gsize) _gst_debug_category_new("qtihexagonnn", 0,
+        "QTI HexagonNN plugin");
 
-  void DeInit() override;
+    g_once_init_leave (&category, cat_done);
+  }
 
-private:
+  return (GstDebugCategory *) category;
+}
 
-  int32_t PostProcess(void* outputs[], GstBuffer * gst_buffer) override;
-
-  int32_t FillMLMeta(GstBuffer * gst_buffer) override;
-
-  void * GenerateMeta(GstBuffer * gst_buffer);
-
-  void GenerateRGBAImage(void* outputs[], void *buffer);
-
-  static const std::string    kModelLib;
-
-  // input
-  static const NNImgFormat    kInFormat         = NN_FORMAT_RGB24;
-  static const uint32_t       kPadWidth         = 513;
-  static const uint32_t       kPadHeight        = 513;
-
-  // output
-  static const uint32_t       kNumOutputs       = 1;
-  static const uint32_t       kOutBytesPerPixel = 4;
-  static const uint32_t       kOutSize0         =
-                                kPadWidth * kPadHeight * kOutBytesPerPixel;
-
-  // local copy of inference result for async oprating mode
-  uint8_t*                    result_buff_;
-  std::mutex                  lock_;
-};
-
-#endif // DEEPLABENGINE_H
+#define NN_LOGE(...) GST_ERROR(__VA_ARGS__)
+#define NN_LOGI(...) GST_INFO(__VA_ARGS__)
+#define NN_LOGD(...) GST_DEBUG(__VA_ARGS__)
+#define NN_LOGV(...) GST_LOG(__VA_ARGS__)
+#else
+#include <utils/Log.h>
+#define NN_LOGE(...) ALOGE("NN: " __VA_ARGS__)
+#define NN_LOGI(...) ALOGI("NN: " __VA_ARGS__)
+#define NN_LOGD(...) ALOGD("NN: " __VA_ARGS__)
+#define NN_LOGV(...) ALOGD("NN: " __VA_ARGS__)
+#define ensure_debug_category() /* NOOP */
+#endif /* GST_DISABLE_GST_DEBUG */

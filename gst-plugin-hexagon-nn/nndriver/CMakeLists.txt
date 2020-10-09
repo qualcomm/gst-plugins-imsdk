@@ -9,7 +9,9 @@ add_library(${NNDRIVER} SHARED
 target_include_directories(${NNDRIVER} PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/hexagon
+  ${CMAKE_SOURCE_DIR}
   ${SYSROOT_INCDIR}/fastrpc/inc
+  ${GST_INCLUDE_DIRS}
 )
 
 target_link_libraries(${NNDRIVER} PUBLIC

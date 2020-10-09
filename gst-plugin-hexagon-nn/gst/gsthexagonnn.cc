@@ -33,9 +33,6 @@
 
 #define GST_VIDEO_FORMATS "{NV12, NV21}"
 
-#define GST_CAT_DEFAULT gst_hexagonnn_debug
-GST_DEBUG_CATEGORY_STATIC (gst_hexagonnn_debug);
-
 #define gst_hexagonnn_parent_class parent_class
 G_DEFINE_TYPE (GstHexagonNN, gst_hexagonnn, GST_TYPE_VIDEO_FILTER);
 
@@ -345,9 +342,6 @@ gst_hexagonnn_class_init (GstHexagonNNClass * klass)
   filter->set_info = GST_DEBUG_FUNCPTR (gst_hexagonnn_set_info);
   filter->transform_frame_ip =
       GST_DEBUG_FUNCPTR (gst_hexagonnn_transform_frame_ip);
-
-  GST_DEBUG_CATEGORY_INIT (gst_hexagonnn_debug, "qtihexagonnn", 0,
-      "QTI HexagonNN plugin");
 
 }
 
