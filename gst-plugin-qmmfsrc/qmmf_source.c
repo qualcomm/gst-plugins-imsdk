@@ -136,10 +136,6 @@ static GstStaticPadTemplate qmmfsrc_video_src_template =
         GST_PAD_SRC,
         GST_PAD_REQUEST,
         GST_STATIC_CAPS (
-            QMMFSRC_VIDEO_H264_CAPS "; "
-#if defined(GST_VIDEO_H265_ENABLE)
-            QMMFSRC_VIDEO_H265_CAPS "; "
-#endif
             QMMFSRC_VIDEO_JPEG_CAPS "; "
             QMMFSRC_VIDEO_RAW_CAPS(
 #if defined(GST_VIDEO_YUY2_FORMAT_ENABLE)
@@ -299,15 +295,10 @@ qmmfsrc_request_pad (GstElement * element, GstPadTemplate * templ,
 
   // Connect a callback to the 'notify' signal of a pad property to be
   // called when a that property changes during runtime.
-  g_signal_connect (srcpad, "notify::bitrate",
-      G_CALLBACK (gst_qmmf_context_update_video_param), qmmfsrc->context);
   g_signal_connect (srcpad, "notify::framerate",
-      G_CALLBACK (gst_qmmf_context_update_video_param), qmmfsrc->context);
-  g_signal_connect (srcpad, "notify::idr-interval",
       G_CALLBACK (gst_qmmf_context_update_video_param), qmmfsrc->context);
   g_signal_connect (srcpad, "notify::crop",
       G_CALLBACK (gst_qmmf_context_update_video_param), qmmfsrc->context);
-
   return srcpad;
 }
 
