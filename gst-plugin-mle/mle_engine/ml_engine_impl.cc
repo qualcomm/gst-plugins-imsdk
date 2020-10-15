@@ -27,7 +27,6 @@
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <fastcv/fastcv.h>
 #include <string>
 #include <fstream>
 #include <vector>
@@ -38,22 +37,36 @@
 
 namespace mle {
 
-MLEngine::MLEngine(MLConfig &config) {
-  fcvSetOperationMode(FASTCV_OP_PERFORMANCE);
-  config_.input_format = config.input_format;
-  config_.preprocess_mode = config.preprocess_mode;
-  config_.blue_mean = config.blue_mean;
-  config_.blue_sigma = config.blue_sigma;
-  config_.green_mean = config.green_mean;
-  config_.green_sigma = config.green_sigma;
-  config_.red_mean = config.red_mean;
-  config_.red_sigma = config.red_sigma;
-  config_.use_norm = config.use_norm;
-  config_.model_file = config.model_file;
-  config_.labels_file = config.labels_file;
-  config_.conf_threshold = config.conf_threshold;
+MLEngine::MLEngine(MLConfig &config) : config_(config) {
+  PreProcessAccelerator();
+
   buffers_.scale_buf = nullptr;
   buffers_.rgb_buf = nullptr;
+}
+
+void MLEngine::PreProcessAccelerator() {
+  fcvOperationMode mode = FASTCV_OP_CPU_PERFORMANCE;
+
+  switch(config_.preprocess_accel) {
+    case PreprocessingAccel::lowPower:
+      MLE_LOGI("%s FastCV operation is LOW POWER", __func__);
+      mode = FASTCV_OP_LOW_POWER;
+      break;
+    case PreprocessingAccel::cpuOffload:
+      MLE_LOGI("%s FastCV operation is CPU OFFLOAD", __func__);
+      mode = FASTCV_OP_CPU_OFFLOAD;
+      break;
+    case PreprocessingAccel::performance:
+      MLE_LOGI("%s FastCV operation is PERFORMANCE", __func__);
+      mode = FASTCV_OP_PERFORMANCE;
+      break;
+    case PreprocessingAccel::cpuPerf:
+    default:
+      MLE_LOGI("%s FastCV operation is CPU PERFORMANCE", __func__);
+      break;
+  }
+
+  fcvSetOperationMode(mode);
 }
 
 void MLEngine::DumpFrame(const uint8_t* buffer, const uint32_t& width,

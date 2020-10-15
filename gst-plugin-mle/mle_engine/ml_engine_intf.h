@@ -32,6 +32,7 @@
 #include <vector>
 #include <string>
 #include <time.h>
+#include <fastcv/fastcv.h>
 #include <ml-meta/ml_meta.h>
 #include "common_utils.h"
 
@@ -87,6 +88,13 @@ enum class PreprocessingMode {
   kMax
 };
 
+enum class PreprocessingAccel {
+  lowPower = 0,
+  cpuPerf,
+  cpuOffload,
+  performance
+};
+
 struct PreprocessingOffsets {
   PreprocessingOffsets(): x_offset(0),
                           y_offset(0),
@@ -124,6 +132,7 @@ struct MLConfig {
 
   //Aspect ratio maintenance
   PreprocessingMode preprocess_mode;
+  PreprocessingAccel preprocess_accel;
 
   // normalization
   float blue_mean;
@@ -170,6 +179,8 @@ class MLEngine {
                         size_t& found_label_count);
   virtual int32_t AllocateInternalBuffers();
   virtual void FreeInternalBuffers();
+  void PreProcessAccelerator();
+
  protected:
 
   void DumpFrame(const uint8_t* buffer, const uint32_t& width,

@@ -76,6 +76,7 @@ struct _GstMLESNPE {
   gfloat red_sigma;
   guint runtime;
   gchar *output_layers;
+  guint preprocess_accel;
   guint preprocessing_type;
   gfloat conf_threshold;
 };

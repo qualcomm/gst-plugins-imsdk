@@ -51,6 +51,7 @@ G_DEFINE_TYPE (GstMLETFLite, gst_mle_tflite, GST_TYPE_VIDEO_FILTER);
 #define DEFAULT_PROP_MLE_MEAN_VALUE 0.0
 #define DEFAULT_PROP_MLE_SIGMA_VALUE 0.0
 #define DEFAULT_TFLITE_NUM_THREADS 2
+#define DEFAULT_PROP_MLE_PREPROCESS_ACCEL 1 //cpu performance
 #define GST_MLE_UNUSED(var) ((void)var)
 
 enum {
@@ -63,6 +64,7 @@ enum {
   PROP_MLE_MEAN_VALUES,
   PROP_MLE_SIGMA_VALUES,
   PROP_MLE_PREPROCESSING_TYPE,
+  PROP_MLE_PREPROCESSING_ACCEL,
   PROP_MLE_CONF_THRESHOLD,
   PROP_MLE_TFLITE_DELEGATE,
   PROP_MLE_TFLITE_NUM_THREADS,
@@ -123,6 +125,10 @@ gst_mle_tflite_set_property(GObject *object, guint property_id,
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
       mle->preprocessing_type = g_value_get_uint (value);
       break;
+    case PROP_MLE_PREPROCESSING_ACCEL:
+      gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
+      mle->preprocess_accel = g_value_get_uint (value);
+      break;
     case PROP_MLE_MODEL_FILENAME:
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
       mle->model_filename = g_strdup(g_value_get_string (value));
@@ -170,6 +176,9 @@ gst_mle_tflite_get_property(GObject *object, guint property_id,
       break;
     case PROP_MLE_PREPROCESSING_TYPE:
       g_value_set_uint (value, mle->preprocessing_type);
+      break;
+    case PROP_MLE_PREPROCESSING_ACCEL:
+      g_value_set_uint (value, mle->preprocess_accel);
       break;
     case PROP_MLE_MEAN_VALUES: {
       GValue val = G_VALUE_INIT;
@@ -343,6 +352,9 @@ gst_mle_tflite_parse_config(gchar *config_location,
   if (gst_structure_get_int (structure, "preprocess_type", &value))
     configuration.preprocess_mode = (mle::PreprocessingMode)value;
 
+  if (gst_structure_get_int (structure, "preprocess_accel", &value))
+    configuration.preprocess_accel = (mle::PreprocessingAccel)value;
+
   if (gst_structure_get_double (structure, "confidence_threshold", &dvalue))
     configuration.conf_threshold = dvalue;
 
@@ -369,6 +381,8 @@ gst_mle_print_config(GstMLETFLite *mle,
   GST_DEBUG_OBJECT(mle, "Labels %s", configuration.labels_file.c_str());
   GST_DEBUG_OBJECT(mle, "Pre-processing %d",
                    (gint)configuration.preprocess_mode);
+  GST_DEBUG_OBJECT(mle, "Pre-processing accelerator %d",
+                   (gint)configuration.preprocess_accel);
   GST_DEBUG_OBJECT(mle, "Mean(B,G,R): %f, %f, %f", configuration.blue_mean,
                                                    configuration.green_mean,
                                                    configuration.red_mean);
@@ -405,6 +419,8 @@ gst_mle_create_engine(GstMLETFLite *mle) {
   configuration.number_of_threads = mle->num_threads;
   configuration.preprocess_mode =
       (mle::PreprocessingMode)mle->preprocessing_type;
+  configuration.preprocess_accel =
+      (mle::PreprocessingAccel)mle->preprocess_accel;
   configuration.input_format = (mle::InputFormat)mle->input_format;
 
   // Set configuration values from config file
@@ -446,6 +462,10 @@ gst_mle_create_engine(GstMLETFLite *mle) {
   if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_PREPROCESSING_TYPE)) {
     configuration.preprocess_mode =
         (mle::PreprocessingMode)mle->preprocessing_type;
+  }
+  if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_PREPROCESSING_ACCEL)) {
+    configuration.preprocess_accel =
+        (mle::PreprocessingAccel)mle->preprocess_accel;
   }
   if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_TFLITE_NUM_THREADS)) {
     configuration.number_of_threads = mle->num_threads;
@@ -693,6 +713,19 @@ gst_mle_tflite_class_init (GstMLETFLiteClass * klass)
 
   g_object_class_install_property(
       gobject,
+      PROP_MLE_PREPROCESSING_ACCEL,
+      g_param_spec_uint(
+          "preprocess-accel",
+          "Preprocessing accelerator",
+          "Possible values: 0-low power, 1-cpu performance, 2-cpu offload, 3-performance",
+          0,
+          3,
+          DEFAULT_PROP_MLE_PREPROCESS_ACCEL,
+          static_cast<GParamFlags>(G_PARAM_READWRITE |
+                                   G_PARAM_STATIC_STRINGS)));
+
+  g_object_class_install_property(
+      gobject,
       PROP_MLE_CONF_THRESHOLD,
       g_param_spec_float(
           "confidence-threshold",
@@ -755,6 +788,7 @@ gst_mle_tflite_init (GstMLETFLite * mle)
   mle->blue_sigma = mle->green_sigma = mle->red_sigma =
       DEFAULT_PROP_MLE_SIGMA_VALUE;
   mle->preprocessing_type = DEFAULT_PROP_MLE_TFLITE_PREPROCESSING_TYPE;
+  mle->preprocess_accel = DEFAULT_PROP_MLE_PREPROCESS_ACCEL;
   mle->conf_threshold = DEFAULT_PROP_MLE_TFLITE_CONF_THRESHOLD;
   mle->num_threads = DEFAULT_TFLITE_NUM_THREADS;
 
