@@ -119,7 +119,10 @@ protected:
                rgb_buf_(nullptr),
                scale_buf_(nullptr),
                nn_input_buf_(nullptr) {
-    fcvSetOperationMode(FASTCV_OP_PERFORMANCE);
+    if (!fastcv_mode_is_set_) {
+      fcvSetOperationMode(FASTCV_OP_PERFORMANCE);
+      fastcv_mode_is_set_ = true;
+    }
   }
 
   int32_t EngineInit(const NNSourceInfo* source_info, int32_t* out_sizes);
@@ -202,6 +205,11 @@ protected:
   std::future<void>        future_;
   std::mutex               process_lock_;
   std::mutex               result_lock_;
+
+ private:
+
+  static bool fastcv_mode_is_set_;
+
 };
 
 #endif // NNEGINE_H

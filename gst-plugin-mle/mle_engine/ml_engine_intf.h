@@ -180,6 +180,7 @@ class MLEngine {
   virtual int32_t AllocateInternalBuffers();
   virtual void FreeInternalBuffers();
   void PreProcessAccelerator();
+  static bool fastcv_mode_is_set_;
 
  protected:
 

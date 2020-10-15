@@ -37,8 +37,13 @@
 
 namespace mle {
 
+bool MLEngine::fastcv_mode_is_set_ = false;
+
 MLEngine::MLEngine(MLConfig &config) : config_(config) {
-  PreProcessAccelerator();
+  if (!fastcv_mode_is_set_) {
+    PreProcessAccelerator();
+    fastcv_mode_is_set_ = true;
+  }
 
   buffers_.scale_buf = nullptr;
   buffers_.rgb_buf = nullptr;
