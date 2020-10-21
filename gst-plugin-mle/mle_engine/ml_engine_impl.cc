@@ -38,8 +38,10 @@
 namespace mle {
 
 bool MLEngine::fastcv_mode_is_set_ = false;
+std::mutex MLEngine::fastcv_process_lock_;
 
 MLEngine::MLEngine(MLConfig &config) : config_(config) {
+  std::lock_guard<std::mutex> lock(fastcv_process_lock_);
   if (!fastcv_mode_is_set_) {
     PreProcessAccelerator();
     fastcv_mode_is_set_ = true;

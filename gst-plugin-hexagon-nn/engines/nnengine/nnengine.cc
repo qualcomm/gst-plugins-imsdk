@@ -33,6 +33,7 @@
 #include "nnengine.h"
 
 bool NNEngine::fastcv_mode_is_set_ = false;
+std::mutex NNEngine::fastcv_process_lock_;
 
 int32_t NNEngine::EngineInit(const NNSourceInfo* source_info,
   int32_t* out_sizes)

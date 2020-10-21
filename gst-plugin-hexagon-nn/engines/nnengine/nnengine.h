@@ -119,6 +119,7 @@ protected:
                rgb_buf_(nullptr),
                scale_buf_(nullptr),
                nn_input_buf_(nullptr) {
+    std::lock_guard<std::mutex> lock(fastcv_process_lock_);
     if (!fastcv_mode_is_set_) {
       fcvSetOperationMode(FASTCV_OP_PERFORMANCE);
       fastcv_mode_is_set_ = true;
@@ -209,7 +210,7 @@ protected:
  private:
 
   static bool fastcv_mode_is_set_;
-
+  static std::mutex fastcv_process_lock_;
 };
 
 #endif // NNEGINE_H

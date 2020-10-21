@@ -31,6 +31,7 @@
 
 #include <vector>
 #include <string>
+#include <mutex>
 #include <time.h>
 #include <fastcv/fastcv.h>
 #include <ml-meta/ml_meta.h>
@@ -190,6 +191,7 @@ class MLEngine {
   virtual void FreeInternalBuffers();
   void PreProcessAccelerator();
   static bool fastcv_mode_is_set_;
+  static std::mutex fastcv_process_lock_;
 
  protected:
 
