@@ -29,10 +29,14 @@
 
 #include <vector>
 #include <string>
+
+#ifdef DELEGATE_SUPPORT
 #include <tensorflow/lite/delegates/nnapi/nnapi_delegate.h>
 #include <tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h>
 #include <tensorflow/lite/delegates/gpu/delegate.h>
 #include <tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h>
+#endif
+
 #include <tensorflow/lite/examples/label_image/get_top_n.h>
 #include <tensorflow/lite/examples/label_image/get_top_n_impl.h>
 #include <tensorflow/lite/kernels/register.h>
