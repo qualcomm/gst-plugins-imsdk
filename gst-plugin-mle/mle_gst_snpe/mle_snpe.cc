@@ -53,7 +53,7 @@ G_DEFINE_TYPE (GstMLESNPE, gst_mle_snpe, GST_TYPE_VIDEO_FILTER);
 #define DEFAULT_PROP_SNPE_RUNTIME 1
 #define DEFAULT_PROP_MLE_CONF_THRESHOLD 0.5
 #define DEFAULT_PROP_MLE_PREPROCESSING_TYPE 1 //kKeepARPad
-#define DEFAULT_PROP_MLE_PREPROCESS_ACCEL 1 //cpu performance
+#define DEFAULT_PROP_MLE_PREPROCESS_ACCEL 2 //gpu preprocessing
 #define GST_MLE_UNUSED(var) ((void)var)
 
 enum {
@@ -624,12 +624,7 @@ static GstFlowReturn gst_mle_snpe_transform_frame_ip(GstVideoFilter * filter,
                                                      GstVideoFrame * frame)
 {
   GstMLESNPE *mle = GST_MLE_SNPE (filter);
-
-  mle->source_frame.frame_data[0] = (uint8_t*)GST_VIDEO_FRAME_PLANE_DATA (frame, 0);
-  mle->source_frame.frame_data[1] = (uint8_t*)GST_VIDEO_FRAME_PLANE_DATA (frame, 1);
-  mle->source_frame.stride = GST_VIDEO_FRAME_PLANE_STRIDE(frame, 0);
-
-  gint ret = mle->engine->Process(&mle->source_frame, frame->buffer);
+  gint ret = mle->engine->Process(frame);
   if (ret) {
     GST_ERROR_OBJECT (mle, "MLE Process failed.");
     return GST_FLOW_ERROR;
@@ -773,9 +768,9 @@ gst_mle_snpe_class_init (GstMLESNPEClass * klass)
       g_param_spec_uint(
           "preprocess-accel",
           "Preprocessing accelerator",
-          "Possible values: 0-low power, 1-cpu performance, 2-cpu offload, 3-performance",
+          "Possible values: 0-cpu, 1-dsp, 2-gpu",
           0,
-          3,
+          2,
           DEFAULT_PROP_MLE_PREPROCESS_ACCEL,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));
