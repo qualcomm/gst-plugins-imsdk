@@ -59,11 +59,17 @@ gst_ml_detection_init (GstMeta * meta, gpointer params, GstBuffer * buffer)
   return TRUE;
 }
 
+void ml_detection_buffer_free (gpointer box_info) {
+  GstMLClassificationResult *element = (GstMLClassificationResult*)box_info;
+  free(element->name);
+  free(element);
+}
+
 static void
 gst_ml_detection_free (GstMeta *meta, GstBuffer *buffer)
 {
   GstMLDetectionMeta *bb_meta = (GstMLDetectionMeta *) meta;
-  g_slist_free_full(bb_meta->box_info, free);
+  g_slist_free_full(bb_meta->box_info, ml_detection_buffer_free);
   GST_DEBUG ("free detection meta ts: %llu ", buffer->pts);
 }
 
