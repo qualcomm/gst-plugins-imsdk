@@ -41,6 +41,92 @@
 
 namespace mle {
 
+#define GST_TYPE_MLE_INPUT_FORMAT (mle::gst_mle_input_format_get_type())
+#define GST_TYPE_MLE_PREPROCESSING_MODE (mle::gst_mle_preprocessing_mode_get_type())
+#define GST_TYPE_MLE_SNPE_RUNTIME_TYPE (mle::gst_mle_snpe_runtime_type_get_type())
+#define GST_TYPE_MLE_PREPROCESSING_ACCEL (mle::gst_mle_preprocessing_accel_get_type())
+#define GST_TYPE_MLE_TFLITE_DELEGATE_TYPE (mle::gst_mle_tflite_delegate_type_get_type())
+
+GType gst_mle_input_format_get_type (void);
+GType gst_mle_preprocessing_mode_get_type (void);
+GType gst_mle_snpe_runtime_type_get_type (void);
+GType gst_mle_preprocessing_accel_get_type (void);
+GType gst_mle_tflite_delegate_type_get_type (void);
+
+/*
+Input Format
+  kRgb - RGB
+  kBgr - BGR
+  kRgbFloat RGB Float
+  kBgrFloat - BGR Float
+ */
+enum {
+  kRgb,
+  kBgr,
+  kRgbFloat,
+  kBgrFloat
+};
+
+/*
+MLE supports three pre-processing modes
+  kKeepARCrop - This mode crops from the original frame to match engine's input
+            aspect ratio. Objects outside the crop region will not be detected
+  kKeepARPad - This mode keeps original frame aspect ratio. In order to match
+             engine's input requirements, padding with mean value is added
+  kDirectDownscale - This mode doesn't keep the aspect ratio of the original
+                      frame and shrinks it
+*/
+enum {
+  kKeepARCrop,
+  kKeepARPad,
+  kDirectDownscale,
+  kMax
+};
+
+/*
+Runtime supported by SNPE
+  kSnpeCpu - CPU runtime
+  kSnpeDsp - DSP runtime
+  kSnpeGpu - GPU runtime
+  kSnpeAip - AIP runtime
+ */
+enum {
+  kSnpeCpu,
+  kSnpeDsp,
+  kSnpeGpu,
+  kSnpeAip
+};
+
+/*
+Preprocess Options
+  kPrerocessCpu - FastCV CPU performance mode
+  kPrerocessDsp - FastCV performance mode
+  kPrerocessGpu - C2D preprocess
+ */
+enum {
+  kPreprocessCpu,
+  kPreprocessDsp,
+  kPreprocessGpu
+};
+
+/*
+Delegate supported by TFLite
+  kTfliteNnapi - NNAPI delegate no predefine accelerator
+  kTfliteNnapiNpu - NNAPI delegate NPU accelerator
+  kTfliteHexagonNn - Hexagon NN delegate
+  kTfliteGpu - GPU delegate
+  kTfliteXnnpack - XNN Pack delegate
+  kTfliteCpu - CPU runtime
+ */
+enum {
+  kTfliteNnapi,
+  kTfliteNnapiNpu,
+  kTfliteHexagonNn,
+  kTfliteGpu,
+  kTfliteXnnpack,
+  kTfliteCpu
+};
+
 enum MLEImageFormat {
   mle_format_invalid = 0,
   mle_format_nv12,
@@ -55,55 +141,9 @@ enum MLEErrors {
   MLE_IMG_FORMAT_NOT_SUPPORTED
 };
 
-enum class RuntimeType {
-  CPU = 0,
-  DSP,
-  GPU,
-  AIP
-};
-
-enum class InputFormat {
-  kRgb = 0,
-  kBgr,
-  kRgbFloat,
-  kBgrFloat
-};
-
 enum class NetworkIO {
   kUserBuffer = 0,
   kITensor
-};
-
-/*
-MLE supports three pre-processing modes
-  kKeepARCrop - This mode crops from the original frame to match engine's input
-            aspect ratio. Objects outside the crop region will not be detected
-  kKeepARPad - This mode keeps original frame aspect ratio. In order to match
-             engine's input requirements, padding with mean value is added
-  kDirectDownscale - This mode doesn't keep the aspect ratio of the original
-                      frame and shrinks it
-*/
-
-enum class PreprocessingMode {
-  kKeepARCrop = 0,
-  kKeepARPad,
-  kDirectDownscale,
-  kMax
-};
-
-enum class PreprocessingAccel {
-  cpu = 0,
-  dsp,
-  gpu
-};
-
-enum class DelegateType {
-  nnapi = 0,
-  nnapi_npu,
-  hexagon_nn,
-  gpu,
-  xnnpack,
-  cpu
 };
 
 struct PreprocessingOffsets {
@@ -134,11 +174,11 @@ struct MLConfig {
   NetworkIO io_type;
 
   //Input image format for the desired network
-  InputFormat input_format;
+  uint32_t input_format;
 
   //Aspect ratio maintenance
-  PreprocessingMode preprocess_mode;
-  PreprocessingAccel preprocess_accel;
+  uint32_t preprocess_mode;
+  uint32_t preprocess_accel;
 
   // normalization
   float blue_mean;
@@ -154,12 +194,12 @@ struct MLConfig {
   std::string model_file;
   std::string labels_file;
 
-  //runtime
-  RuntimeType runtime;
+  //snpe specific
+  uint32_t runtime;
 
   //tflite specific
   uint32_t number_of_threads;
-  DelegateType delegate;
+  uint32_t delegate;
 
   //snpe layers
   std::vector<std::string> output_layers;

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -46,13 +46,13 @@ G_DEFINE_TYPE (GstMLETFLite, gst_mle_tflite, GST_TYPE_VIDEO_FILTER);
 #define GST_ML_VIDEO_FORMATS "{ NV12, NV21 }"
 
 #define DEFAULT_PROP_MLE_TFLITE_CONF_THRESHOLD 0.5
-#define DEFAULT_PROP_MLE_TFLITE_PREPROCESSING_TYPE 1 //kKeepARPad
-#define DEFAULT_PROP_MLE_TFLITE_DELEGATE 0 // NNAPI
-#define DEFAULT_PROP_TFLITE_INPUT_FORMAT 0 //RGB
+#define DEFAULT_PROP_MLE_TFLITE_PREPROCESSING_TYPE mle::kKeepARPad
+#define DEFAULT_PROP_MLE_TFLITE_DELEGATE mle::kTfliteNnapi
+#define DEFAULT_PROP_TFLITE_INPUT_FORMAT mle::kRgb
 #define DEFAULT_PROP_MLE_MEAN_VALUE 0.0
 #define DEFAULT_PROP_MLE_SIGMA_VALUE 0.0
 #define DEFAULT_TFLITE_NUM_THREADS 2
-#define DEFAULT_PROP_MLE_PREPROCESS_ACCEL 2 //gpu preprocessing
+#define DEFAULT_PROP_MLE_PREPROCESS_ACCEL mle::kPreprocessGpu
 #define GST_MLE_UNUSED(var) ((void)var)
 
 enum {
@@ -124,11 +124,11 @@ gst_mle_tflite_set_property(GObject *object, guint property_id,
       break;
     case PROP_MLE_PREPROCESSING_TYPE:
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
-      mle->preprocessing_type = g_value_get_uint (value);
+      mle->preprocessing_type = g_value_get_enum (value);
       break;
     case PROP_MLE_PREPROCESSING_ACCEL:
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
-      mle->preprocess_accel = g_value_get_uint (value);
+      mle->preprocess_accel = g_value_get_enum (value);
       break;
     case PROP_MLE_MODEL_FILENAME:
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
@@ -140,7 +140,7 @@ gst_mle_tflite_set_property(GObject *object, guint property_id,
       break;
     case PROP_MLE_TFLITE_INPUT_FORMAT:
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
-      mle->input_format = g_value_get_uint (value);
+      mle->input_format = g_value_get_enum (value);
       break;
     case PROP_MLE_CONF_THRESHOLD:
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
@@ -148,7 +148,7 @@ gst_mle_tflite_set_property(GObject *object, guint property_id,
       break;
     case PROP_MLE_TFLITE_DELEGATE:
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
-      mle->delegate = g_value_get_uint (value);
+      mle->delegate = g_value_get_enum (value);
       break;
     case PROP_MLE_TFLITE_NUM_THREADS:
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
@@ -176,10 +176,10 @@ gst_mle_tflite_get_property(GObject *object, guint property_id,
       g_value_set_string (value, mle->postprocessing);
       break;
     case PROP_MLE_PREPROCESSING_TYPE:
-      g_value_set_uint (value, mle->preprocessing_type);
+      g_value_set_enum (value, mle->preprocessing_type);
       break;
     case PROP_MLE_PREPROCESSING_ACCEL:
-      g_value_set_uint (value, mle->preprocess_accel);
+      g_value_set_enum (value, mle->preprocess_accel);
       break;
     case PROP_MLE_MEAN_VALUES: {
       GValue val = G_VALUE_INIT;
@@ -210,13 +210,13 @@ gst_mle_tflite_get_property(GObject *object, guint property_id,
       g_value_set_string (value, mle->labels_filename);
       break;
     case PROP_MLE_TFLITE_INPUT_FORMAT:
-      g_value_set_uint (value, mle->input_format);
+      g_value_set_enum (value, mle->input_format);
       break;
     case PROP_MLE_CONF_THRESHOLD:
       g_value_set_float (value, mle->conf_threshold);
       break;
     case PROP_MLE_TFLITE_DELEGATE:
-      g_value_set_uint (value, mle->delegate);
+      g_value_set_enum (value, mle->delegate);
       break;
     case PROP_MLE_TFLITE_NUM_THREADS:
       g_value_set_uint (value, mle->num_threads);
@@ -323,8 +323,8 @@ gst_mle_tflite_parse_config(gchar *config_location,
   gdouble dvalue = 0.0;
   gboolean bvalue = false;
 
-  if (gst_structure_get_int (structure, "input_format", &value))
-    configuration.input_format = (mle::InputFormat)value;
+  if (gst_structure_get_enum (structure, "input_format", GST_TYPE_MLE_INPUT_FORMAT, &value))
+    configuration.input_format = value;
 
   if (gst_structure_get_double (structure, "BlueMean", &dvalue))
     configuration.blue_mean = dvalue;
@@ -347,11 +347,13 @@ gst_mle_tflite_parse_config(gchar *config_location,
   if (gst_structure_get_boolean (structure, "UseNorm", &bvalue))
     configuration.use_norm = dvalue;
 
-  if (gst_structure_get_int (structure, "preprocess_type", &value))
-    configuration.preprocess_mode = (mle::PreprocessingMode)value;
+  if (gst_structure_get_enum (structure, "preprocess_type", 
+    GST_TYPE_MLE_PREPROCESSING_MODE, &value))
+    configuration.preprocess_mode = value;
 
-  if (gst_structure_get_int (structure, "preprocess_accel", &value))
-    configuration.preprocess_accel = (mle::PreprocessingAccel)value;
+  if (gst_structure_get_enum (structure, "preprocess_accel",
+    GST_TYPE_MLE_PREPROCESSING_ACCEL, &value))
+    configuration.preprocess_accel = value;
 
   if (gst_structure_get_double (structure, "confidence_threshold", &dvalue))
     configuration.conf_threshold = dvalue;
@@ -359,8 +361,9 @@ gst_mle_tflite_parse_config(gchar *config_location,
   if (gst_structure_get_int (structure, "num_threads", &value))
     configuration.number_of_threads = value;
 
-  if(gst_structure_get_int (structure, "delegate", &value))
-    configuration.delegate = (mle::DelegateType)value;
+  if (gst_structure_get_enum (structure, "delegate",
+    GST_TYPE_MLE_TFLITE_DELEGATE_TYPE, &value))
+    configuration.delegate = value;
 
   configuration.model_file = gst_structure_get_string (structure, "model");
   configuration.labels_file = gst_structure_get_string (structure, "labels");
@@ -391,7 +394,7 @@ gst_mle_print_config(GstMLETFLite *mle,
   GST_DEBUG_OBJECT(mle, "Confidence threshold %f",
                    configuration.conf_threshold);
   GST_DEBUG_OBJECT(mle, "Input format %d", (gint)configuration.input_format);
-  GST_DEBUG_OBJECT(mle, "Delegate %d", (gint)configuration.delegate);
+  GST_DEBUG_OBJECT(mle, "Delegate %d", configuration.delegate);
   GST_DEBUG_OBJECT(mle, "Number of threads %d",
                    configuration.number_of_threads);
 
@@ -414,13 +417,11 @@ gst_mle_create_engine(GstMLETFLite *mle) {
   configuration.blue_sigma = configuration.green_sigma =
       configuration.red_sigma = DEFAULT_PROP_MLE_SIGMA_VALUE;
   configuration.conf_threshold = mle->conf_threshold;
-  configuration.delegate = (mle::DelegateType)mle->delegate;
+  configuration.delegate = mle->delegate;
   configuration.number_of_threads = mle->num_threads;
-  configuration.preprocess_mode =
-      (mle::PreprocessingMode)mle->preprocessing_type;
-  configuration.preprocess_accel =
-      (mle::PreprocessingAccel)mle->preprocess_accel;
-  configuration.input_format = (mle::InputFormat)mle->input_format;
+  configuration.preprocess_mode = mle->preprocessing_type;
+  configuration.preprocess_accel = mle->preprocess_accel;
+  configuration.input_format = mle->input_format;
 
   // Set configuration values from config file
   if (mle->config_location) {
@@ -443,7 +444,7 @@ gst_mle_create_engine(GstMLETFLite *mle) {
     configuration.conf_threshold = mle->conf_threshold;
   }
   if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_TFLITE_INPUT_FORMAT)) {
-    configuration.input_format = (mle::InputFormat)mle->input_format;
+    configuration.input_format = mle->input_format;
   }
   if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_MEAN_VALUES)) {
     configuration.blue_mean = mle->blue_mean;
@@ -459,18 +460,16 @@ gst_mle_create_engine(GstMLETFLite *mle) {
     configuration.use_norm = true;
   }
   if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_PREPROCESSING_TYPE)) {
-    configuration.preprocess_mode =
-        (mle::PreprocessingMode)mle->preprocessing_type;
+    configuration.preprocess_mode = mle->preprocessing_type;
   }
   if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_PREPROCESSING_ACCEL)) {
-    configuration.preprocess_accel =
-        (mle::PreprocessingAccel)mle->preprocess_accel;
+    configuration.preprocess_accel = mle->preprocess_accel;
   }
   if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_TFLITE_NUM_THREADS)) {
     configuration.number_of_threads = mle->num_threads;
   }
   if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_TFLITE_DELEGATE)) {
-    configuration.delegate = (mle::DelegateType)mle->delegate;
+    configuration.delegate = mle->delegate;
   }
 
   gst_mle_print_config(mle, configuration, mle->postprocessing);
@@ -643,12 +642,11 @@ gst_mle_tflite_class_init (GstMLETFLiteClass * klass)
   g_object_class_install_property(
       gobject,
       PROP_MLE_TFLITE_INPUT_FORMAT,
-      g_param_spec_uint(
+      g_param_spec_enum(
           "input-format",
-          "SNPE input format",
-          "0 - RGB; 1 - BGR; 2 - RGBFloat; 3 - BGRFloat",
-          0,
-          3,
+          "Input format",
+          "Select input format",
+          GST_TYPE_MLE_INPUT_FORMAT,
           DEFAULT_PROP_TFLITE_INPUT_FORMAT,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));
@@ -689,12 +687,11 @@ gst_mle_tflite_class_init (GstMLETFLiteClass * klass)
   g_object_class_install_property(
       gobject,
       PROP_MLE_PREPROCESSING_TYPE,
-      g_param_spec_uint(
+      g_param_spec_enum(
           "preprocess-type",
           "Preprocess type",
-          "Possible values: 0-kKeepARCrop, 1-kKeepARPad, 2-kDirectDownscale",
-          0,
-          2,
+          "Select preprocess type",
+          GST_TYPE_MLE_PREPROCESSING_MODE,
           DEFAULT_PROP_MLE_TFLITE_PREPROCESSING_TYPE,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));
@@ -702,12 +699,11 @@ gst_mle_tflite_class_init (GstMLETFLiteClass * klass)
   g_object_class_install_property(
       gobject,
       PROP_MLE_PREPROCESSING_ACCEL,
-      g_param_spec_uint(
+      g_param_spec_enum(
           "preprocess-accel",
           "Preprocessing accelerator",
-          "Possible values: 0-cpu, 1-dsp, 2-gpu",
-          0,
-          2,
+          "Select FastCV preprocessing accelerator",
+          GST_TYPE_MLE_PREPROCESSING_ACCEL,
           DEFAULT_PROP_MLE_PREPROCESS_ACCEL,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));
@@ -728,12 +724,11 @@ gst_mle_tflite_class_init (GstMLETFLiteClass * klass)
   g_object_class_install_property(
       gobject,
       PROP_MLE_TFLITE_DELEGATE,
-      g_param_spec_uint(
+      g_param_spec_enum(
           "delegate",
           "TFLite delegate",
-          "Supported TFLite delegates: 0-nnapi, 1-nnapi-npu, 2-hexagon-nn, 3-gpu, 4-xnnpack 5-cpu",
-          0,
-          5,
+          "Select delegate option for TFLite",
+          GST_TYPE_MLE_TFLITE_DELEGATE_TYPE,
           DEFAULT_PROP_MLE_TFLITE_DELEGATE,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));

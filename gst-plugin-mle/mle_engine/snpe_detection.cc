@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -95,7 +95,7 @@ int32_t SNPEDetection::PostProcess(GstBuffer* buffer) {
   float scale_ratio_x = (float)engine_input_params_.width / scale_width_;
   float scale_ratio_y = (float)engine_input_params_.height / scale_height_;
 
-  if (config_.preprocess_mode == PreprocessingMode::kKeepARCrop) {
+  if (config_.preprocess_mode == kKeepARCrop) {
     width = po_.width;
     height = po_.height;
   }

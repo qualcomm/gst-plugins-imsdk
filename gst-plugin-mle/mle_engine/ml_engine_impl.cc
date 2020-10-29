@@ -61,15 +61,15 @@ void MLEngine::PreProcessAccelerator() {
   use_c2d_preprocess_ = false;
 
   switch(config_.preprocess_accel) {
-    case PreprocessingAccel::gpu:
-      MLE_LOGI("%s preprocessing is enabled on GPU", __func__);
+    case kPreprocessGpu:
+      MLE_LOGI("%s Use C2D for postprocessing", __func__);
       use_c2d_preprocess_ = true;
       break;
-    case PreprocessingAccel::dsp:
+    case kPreprocessDsp:
       MLE_LOGI("%s FastCV operation is PERFORMANCE", __func__);
       mode = FASTCV_OP_PERFORMANCE;
       break;
-    case PreprocessingAccel::cpu:
+    case kPreprocessCpu:
     default:
       MLE_LOGI("%s FastCV operation is CPU PERFORMANCE", __func__);
       break;
@@ -173,8 +173,8 @@ int32_t MLEngine::AllocateInternalBuffers() {
     c2d_buf_outframe_ = g_slice_new (GstVideoFrame);
 
     GstVideoFormat format = GST_VIDEO_FORMAT_RGB;
-    if (config_.input_format == InputFormat::kBgr ||
-        config_.input_format == InputFormat::kBgrFloat) {
+    if (config_.input_format == kBgr ||
+        config_.input_format == kBgrFloat) {
       format = GST_VIDEO_FORMAT_BGR;
     }
     gst_video_info_set_format (&vinfo, format, scale_width_, scale_height_);
@@ -315,7 +315,7 @@ int32_t MLEngine::PreProcessScale(
     uint32_t src_y_offset  = 0;
     uint32_t src_uv_offset = 0;
 
-    if (config_.preprocess_mode == PreprocessingMode::kKeepARCrop) {
+    if (config_.preprocess_mode == kKeepARCrop) {
       double in_ar = 0, out_ar = 0;
       in_ar  = static_cast<double>(width) / height;
       out_ar = static_cast<double>(scaleWidth) / scaleHeight;
@@ -469,7 +469,7 @@ int32_t MLEngine::Init(const MLEInputParams* source_info) {
   }
 
   // Calculate downscale params
-  if (config_.preprocess_mode == PreprocessingMode::kKeepARPad) {
+  if (config_.preprocess_mode == kKeepARPad) {
     float ratio = (engine_input_params_.width & ~0x1) * 1.0 /
                   fmax(source_params_.width, source_params_.height);
     scale_width_ = (uint32_t)(source_params_.width * ratio) & ~0x1;
@@ -631,8 +631,8 @@ int32_t MLEngine::PreProcess(GstVideoFrame *frame) {
                                 source_params_.format);
     }
 
-    if (config_.input_format == InputFormat::kBgr ||
-        config_.input_format == InputFormat::kBgrFloat) {
+    if (config_.input_format == kBgr ||
+        config_.input_format == kBgrFloat) {
       PreProcessColorConvertBGR(buffers_.rgb_buf,
                                 buffers_.rgb_buf,
                                 scale_width_,
@@ -641,8 +641,8 @@ int32_t MLEngine::PreProcess(GstVideoFrame *frame) {
   }
 
   // MLE assumes mean subtract will be needed only if engine's input is float
-  if (config_.input_format == InputFormat::kRgbFloat ||
-      config_.input_format == InputFormat::kBgrFloat) {
+  if (config_.input_format == kRgbFloat ||
+      config_.input_format == kBgrFloat) {
     MeanSubtract(buffers_.rgb_buf,
                  scale_width_,
                  scale_height_,
@@ -660,6 +660,110 @@ int32_t MLEngine::PreProcess(GstVideoFrame *frame) {
 
   MLE_LOGI("%s: Exit", __func__);
   return res;
+}
+
+GType
+gst_mle_input_format_get_type (void)
+{
+  static GType gtype = 0;
+
+  if (!gtype) {
+    static const GEnumValue variants[] = {
+      {kRgb, "RGB value as input", "RGB"},
+      {kBgr, "BGR value as input", "BGR"},
+      {kRgbFloat, "RGB float value as input", "RGB Float"},
+      {kBgrFloat, "BGR float value as input", "BGR Float"},
+      {0, NULL, NULL},
+    };
+
+    gtype = g_enum_register_static ("InputFormat", variants);
+  }
+
+  return gtype;
+}
+
+GType
+gst_mle_preprocessing_mode_get_type (void)
+{
+  static GType gtype = 0;
+
+  if (!gtype) {
+    static const GEnumValue variants[] = {
+      {kKeepARCrop, "keep aspect ratio by cropping", "Keep AR Crop"},
+      {kKeepARPad, "keep aspect ratio by adding pads", "Keep AR Pad"},
+      {kDirectDownscale, "directly down scale the frame", "Direct Downscale"},
+      {kMax, "use max width or height", "Max"},
+      {0, NULL, NULL},
+    };
+
+    gtype = g_enum_register_static ("PreprocessingMode", variants);
+  }
+
+  return gtype;
+}
+
+GType
+gst_mle_snpe_runtime_type_get_type (void)
+{
+  static GType gtype = 0;
+
+  if (!gtype) {
+    static const GEnumValue variants[] = {
+      {kSnpeCpu, "use CPU runtime", "CPU"},
+      {kSnpeDsp, "use DSP runtime", "DSP"},
+      {kSnpeGpu, "use GPU runtime", "GPU"},
+      {kSnpeAip, "use API runtime", "AIP"},
+      {0, NULL, NULL},
+    };
+
+    gtype = g_enum_register_static ("Runtime", variants);
+  }
+
+  return gtype;
+}
+
+GType
+gst_mle_preprocessing_accel_get_type (void)
+{
+  static GType gtype = 0;
+  if (!gtype) {
+    static const GEnumValue variants[] = {
+      {kPreprocessCpu,
+          "Execute with FastCV CPU performance option",
+          "CPU"},
+      {kPreprocessDsp,
+          "Execute with FastCV performance option",
+          "DSP"},
+      {kPreprocessGpu,
+          "Execute with C2D preprocess",
+          "GPU"},
+      {0, NULL, NULL},
+    };
+
+    gtype = g_enum_register_static ("PreprocessAccel", variants);
+  }
+
+  return gtype;
+}
+
+GType
+gst_mle_tflite_delegate_type_get_type (void)
+{
+  static GType gtype = 0;
+  if (!gtype) {
+    static const GEnumValue variants[] = {
+      {kTfliteNnapi, "NNAPI delegate with DSP accelerator", "NNAPI"},
+      {kTfliteNnapiNpu, "NNAPI delegate with NPU accelerator", "NPU"},
+      {kTfliteHexagonNn, "HEXAGON NN delegate", "Hexagon NN"},
+      {kTfliteGpu, "GPU delegate", "GPU"},
+      {kTfliteXnnpack, "XNN PACK delegate", "XNN Pack"},
+      {kTfliteCpu, "CPU runtime", "CPU"},
+      {0, NULL, NULL},
+    };
+
+    gtype = g_enum_register_static ("DelegateType", variants);
+  }
+  return gtype;
 }
 
 }; // namespace mle

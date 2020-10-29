@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -47,13 +47,13 @@ G_DEFINE_TYPE (GstMLESNPE, gst_mle_snpe, GST_TYPE_VIDEO_FILTER);
 
 #define GST_ML_VIDEO_FORMATS "{ NV12, NV21 }"
 
-#define DEFAULT_PROP_SNPE_INPUT_FORMAT 3 //kBgrFloat
+#define DEFAULT_PROP_SNPE_INPUT_FORMAT mle::kBgrFloat
 #define DEFAULT_PROP_MLE_MEAN_VALUE 128.0
 #define DEFAULT_PROP_MLE_SIGMA_VALUE 128.0
-#define DEFAULT_PROP_SNPE_RUNTIME 1
+#define DEFAULT_PROP_SNPE_RUNTIME mle::kSnpeDsp
 #define DEFAULT_PROP_MLE_CONF_THRESHOLD 0.5
-#define DEFAULT_PROP_MLE_PREPROCESSING_TYPE 1 //kKeepARPad
-#define DEFAULT_PROP_MLE_PREPROCESS_ACCEL 2 //gpu preprocessing
+#define DEFAULT_PROP_MLE_PREPROCESSING_TYPE mle::kKeepARPad
+#define DEFAULT_PROP_MLE_PREPROCESS_ACCEL mle::kPreprocessGpu
 #define GST_MLE_UNUSED(var) ((void)var)
 
 enum {
@@ -104,11 +104,11 @@ gst_mle_snpe_set_property(GObject *object, guint property_id,
       break;
     case PROP_MLE_PREPROCESSING_TYPE:
       gst_mle_set_property_mask(mle->property_mask, property_id);
-      mle->preprocessing_type = g_value_get_uint (value);
+      mle->preprocessing_type = g_value_get_enum (value);
       break;
     case PROP_MLE_PREPROCESSING_ACCEL:
       gst_mle_set_property_mask(mle->property_mask, property_id);
-      mle->preprocess_accel = g_value_get_uint (value);
+      mle->preprocess_accel = g_value_get_enum (value);
       break;
     case PROP_MLE_MODEL_FILENAME:
       gst_mle_set_property_mask(mle->property_mask, property_id);
@@ -120,7 +120,7 @@ gst_mle_snpe_set_property(GObject *object, guint property_id,
       break;
     case PROP_SNPE_INPUT_FORMAT:
       gst_mle_set_property_mask(mle->property_mask, property_id);
-      mle->input_format = g_value_get_uint (value);
+      mle->input_format = g_value_get_enum (value);
       break;
     case PROP_MLE_POSTPROCESSING:
       gst_mle_set_property_mask(mle->property_mask, property_id);
@@ -146,7 +146,7 @@ gst_mle_snpe_set_property(GObject *object, guint property_id,
       break;
     case PROP_SNPE_RUNTIME:
       gst_mle_set_property_mask(mle->property_mask, property_id);
-      mle->runtime = g_value_get_uint (value);
+      mle->runtime = g_value_get_enum (value);
       break;
     case PROP_SNPE_OUTPUT_LAYERS:
       gst_mle_set_property_mask(mle->property_mask, property_id);
@@ -175,10 +175,10 @@ gst_mle_snpe_get_property(GObject *object, guint property_id,
       g_value_set_string (value, mle->config_location);
       break;
     case PROP_MLE_PREPROCESSING_TYPE:
-      g_value_set_uint (value, mle->preprocessing_type);
+      g_value_set_enum (value, mle->preprocessing_type);
       break;
     case PROP_MLE_PREPROCESSING_ACCEL:
-      g_value_set_uint (value, mle->preprocess_accel);
+      g_value_set_enum (value, mle->preprocess_accel);
       break;
     case PROP_MLE_MODEL_FILENAME:
       g_value_set_string (value, mle->model_filename);
@@ -187,7 +187,7 @@ gst_mle_snpe_get_property(GObject *object, guint property_id,
       g_value_set_string (value, mle->labels_filename);
       break;
     case PROP_SNPE_INPUT_FORMAT:
-      g_value_set_uint (value, mle->input_format);
+      g_value_set_enum (value, mle->input_format);
       break;
     case PROP_MLE_POSTPROCESSING:
       g_value_set_string (value, mle->postprocessing);
@@ -215,7 +215,7 @@ gst_mle_snpe_get_property(GObject *object, guint property_id,
       break;
     }
     case PROP_SNPE_RUNTIME:
-      g_value_set_uint (value, mle->runtime);
+      g_value_set_enum (value, mle->runtime);
       break;
     case PROP_SNPE_OUTPUT_LAYERS:
       g_value_set_string (value, mle->output_layers);
@@ -328,8 +328,9 @@ gst_mle_snpe_parse_config(gchar *config_location,
   gdouble dvalue = 0.0;
   gboolean bvalue = false;
 
-  if (gst_structure_get_int (structure, "input_format", &value))
-    configuration.input_format = (mle::InputFormat)value;
+  if (gst_structure_get_enum (structure, "input_format",
+      GST_TYPE_MLE_INPUT_FORMAT, &value))
+    configuration.input_format = value;
 
   if (gst_structure_get_double (structure, "BlueMean", &dvalue))
     configuration.blue_mean = dvalue;
@@ -352,11 +353,13 @@ gst_mle_snpe_parse_config(gchar *config_location,
   if (gst_structure_get_boolean (structure, "UseNorm", &bvalue))
     configuration.use_norm = dvalue;
 
-  if (gst_structure_get_int (structure, "preprocess_type", &value))
-    configuration.preprocess_mode = (mle::PreprocessingMode)value;
+  if (gst_structure_get_enum (structure, "preprocess_type",
+      GST_TYPE_MLE_PREPROCESSING_MODE, &value))
+    configuration.preprocess_mode = value;
 
-  if (gst_structure_get_int (structure, "preprocess_accel", &value))
-    configuration.preprocess_accel = (mle::PreprocessingAccel)value;
+  if (gst_structure_get_enum (structure, "preprocess_accel",
+      GST_TYPE_MLE_PREPROCESSING_ACCEL, &value))
+    configuration.preprocess_accel = value;
 
   if (gst_structure_get_double (structure, "confidence_threshold", &dvalue))
     configuration.conf_threshold = dvalue;
@@ -364,8 +367,9 @@ gst_mle_snpe_parse_config(gchar *config_location,
   if (gst_structure_get_int (structure, "num_threads", &value))
     configuration.number_of_threads = value;
 
-  if (gst_structure_get_int (structure, "runtime", &value))
-    configuration.runtime = (mle::RuntimeType)value;
+  if (gst_structure_get_enum (structure, "runtime",
+                              GST_TYPE_MLE_SNPE_RUNTIME_TYPE, &value))
+    configuration.runtime = value;
 
 
   configuration.model_file = gst_structure_get_string (structure, "model");
@@ -397,9 +401,9 @@ gst_mle_print_config(GstMLESNPE *mle,
   GST_DEBUG_OBJECT(mle, "Model %s", configuration.model_file.c_str());
   GST_DEBUG_OBJECT(mle, "Labels %s", configuration.labels_file.c_str());
   GST_DEBUG_OBJECT(mle, "Pre-processing %d",
-                   (gint)configuration.preprocess_mode);
+                   configuration.preprocess_mode);
   GST_DEBUG_OBJECT(mle, "Pre-processing accelerator %d",
-                   (gint)configuration.preprocess_accel);
+                   configuration.preprocess_accel);
   GST_DEBUG_OBJECT(mle, "Mean(B,G,R): %f, %f, %f", configuration.blue_mean,
                                                    configuration.green_mean,
                                                    configuration.red_mean);
@@ -408,8 +412,8 @@ gst_mle_print_config(GstMLESNPE *mle,
                                                     configuration.red_sigma);
   GST_DEBUG_OBJECT(mle, "Confidence threshold %f",
                    configuration.conf_threshold);
-  GST_DEBUG_OBJECT(mle, "Input format %d", (gint)configuration.input_format);
-  GST_DEBUG_OBJECT(mle, "Runtime %d", (gint)configuration.runtime);
+  GST_DEBUG_OBJECT(mle, "Input format %d", configuration.input_format);
+  GST_DEBUG_OBJECT(mle, "Runtime %d", configuration.runtime);
   for (guint i = 0; i < configuration.output_layers.size(); i++) {
     GST_DEBUG_OBJECT(mle, "Output layers[%d] %s", i,
                     configuration.output_layers[i].c_str());
@@ -447,13 +451,11 @@ gst_mle_create_engine(GstMLESNPE *mle) {
       DEFAULT_PROP_MLE_MEAN_VALUE;
   configuration.blue_sigma = configuration.green_sigma =
       configuration.red_sigma = DEFAULT_PROP_MLE_SIGMA_VALUE;
-  configuration.input_format = (mle::InputFormat)mle->input_format;
+  configuration.input_format = mle->input_format;
   configuration.use_norm = false;
-  configuration.runtime = (mle::RuntimeType)mle->runtime;
-  configuration.preprocess_mode =
-      (mle::PreprocessingMode)mle->preprocessing_type;
-  configuration.preprocess_accel =
-      (mle::PreprocessingAccel)mle->preprocess_accel;
+  configuration.runtime = mle->runtime;
+  configuration.preprocess_mode = mle->preprocessing_type;
+  configuration.preprocess_accel = mle->preprocess_accel;
   configuration.conf_threshold = DEFAULT_PROP_MLE_CONF_THRESHOLD;
   configuration.io_type = mle::NetworkIO::kUserBuffer;
 
@@ -478,7 +480,7 @@ gst_mle_create_engine(GstMLESNPE *mle) {
     configuration.conf_threshold = mle->conf_threshold;
   }
   if (gst_mle_check_is_set(mle->property_mask, PROP_SNPE_INPUT_FORMAT)) {
-    configuration.input_format = (mle::InputFormat)mle->input_format;
+    configuration.input_format = mle->input_format;
   }
   if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_MEAN_VALUES)) {
     configuration.blue_mean = mle->blue_mean;
@@ -494,16 +496,14 @@ gst_mle_create_engine(GstMLESNPE *mle) {
     configuration.use_norm = true;
   }
   if (gst_mle_check_is_set(mle->property_mask, PROP_SNPE_RUNTIME)) {
-    configuration.runtime = (mle::RuntimeType) mle->runtime;
+    configuration.runtime = mle->runtime;
   }
   if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_PREPROCESSING_TYPE)) {
-    configuration.preprocess_mode =
-        (mle::PreprocessingMode)mle->preprocessing_type;
+    configuration.preprocess_mode = mle->preprocessing_type;
   }
 
   if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_PREPROCESSING_ACCEL)) {
-    configuration.preprocess_accel =
-        (mle::PreprocessingAccel)mle->preprocess_accel;
+    configuration.preprocess_accel = mle->preprocess_accel;
   }
   if (gst_mle_check_is_set(mle->property_mask, PROP_SNPE_OUTPUT_LAYERS)) {
     configuration.output_layers.clear();
@@ -680,12 +680,11 @@ gst_mle_snpe_class_init (GstMLESNPEClass * klass)
   g_object_class_install_property(
       gobject,
       PROP_SNPE_INPUT_FORMAT,
-      g_param_spec_uint(
+      g_param_spec_enum(
           "input-format",
-          "SNPE input format",
-          "0 - RGB; 1 - BGR; 2 - RGBFloat; 3 - BGRFloat",
-          0,
-          3,
+          "Input format",
+          "Select input format",
+          GST_TYPE_MLE_INPUT_FORMAT,
           DEFAULT_PROP_SNPE_INPUT_FORMAT,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));
@@ -727,12 +726,11 @@ gst_mle_snpe_class_init (GstMLESNPEClass * klass)
   g_object_class_install_property(
       gobject,
       PROP_SNPE_RUNTIME,
-      g_param_spec_uint(
+      g_param_spec_enum(
           "runtime",
           "SNPE Runtime",
-          "0 - CPU; 1 - DSP; 2 - GPU; 3 - AIP",
-          0,
-          3,
+          "Select runtime",
+          GST_TYPE_MLE_SNPE_RUNTIME_TYPE,
           DEFAULT_PROP_SNPE_RUNTIME,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));
@@ -752,12 +750,11 @@ gst_mle_snpe_class_init (GstMLESNPEClass * klass)
   g_object_class_install_property(
       gobject,
       PROP_MLE_PREPROCESSING_TYPE,
-      g_param_spec_uint(
+      g_param_spec_enum(
           "preprocess-type",
           "Preprocess type",
-          "Possible values: 0-kKeepARCrop, 1-kKeepARPad, 2-kDirectDownscale",
-          0,
-          2,
+          "Select preprocess type",
+          GST_TYPE_MLE_PREPROCESSING_MODE,
           DEFAULT_PROP_MLE_PREPROCESSING_TYPE,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));
@@ -765,12 +762,11 @@ gst_mle_snpe_class_init (GstMLESNPEClass * klass)
   g_object_class_install_property(
       gobject,
       PROP_MLE_PREPROCESSING_ACCEL,
-      g_param_spec_uint(
+      g_param_spec_enum(
           "preprocess-accel",
           "Preprocessing accelerator",
-          "Possible values: 0-cpu, 1-dsp, 2-gpu",
-          0,
-          2,
+          "Select FastCV preprocessing accelerator",
+          GST_TYPE_MLE_PREPROCESSING_ACCEL,
           DEFAULT_PROP_MLE_PREPROCESS_ACCEL,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));

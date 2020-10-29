@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -66,7 +66,7 @@ int32_t SNPESingleSSD::PostProcess(GstBuffer* buffer) {
     uint32_t width = source_params_.width;
     uint32_t height = source_params_.height;
 
-    if (config_.preprocess_mode == PreprocessingMode::kKeepARCrop) {
+    if (config_.preprocess_mode == kKeepARCrop) {
       width = po_.width;
       height = po_.height;
     }
