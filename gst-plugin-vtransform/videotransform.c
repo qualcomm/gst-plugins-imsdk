@@ -43,13 +43,18 @@ G_DEFINE_TYPE (GstVideoTransform, gst_video_transform, GST_TYPE_BASE_TRANSFORM);
 
 #define GST_TYPE_VIDEO_TRANSFORM_ROTATE (gst_video_trasform_rotate_get_type())
 
-#define DEFAULT_PROP_FLIP_HORIZONTAL  FALSE
-#define DEFAULT_PROP_FLIP_VERTICAL    FALSE
-#define DEFAULT_PROP_ROTATE           GST_VIDEO_TRANSFORM_ROTATE_NONE
-#define DEFAULT_PROP_CROP_X           0
-#define DEFAULT_PROP_CROP_Y           0
-#define DEFAULT_PROP_CROP_WIDTH       0
-#define DEFAULT_PROP_CROP_HEIGHT      0
+#define DEFAULT_PROP_FLIP_HORIZONTAL    FALSE
+#define DEFAULT_PROP_FLIP_VERTICAL      FALSE
+#define DEFAULT_PROP_ROTATE             GST_VIDEO_TRANSFORM_ROTATE_NONE
+#define DEFAULT_PROP_CROP_X             0
+#define DEFAULT_PROP_CROP_Y             0
+#define DEFAULT_PROP_CROP_WIDTH         0
+#define DEFAULT_PROP_CROP_HEIGHT        0
+#define DEFAULT_PROP_DESTINATION_X      0
+#define DEFAULT_PROP_DESTINATION_Y      0
+#define DEFAULT_PROP_DESTINATION_WIDTH  0
+#define DEFAULT_PROP_DESTINATION_HEIGHT 0
+
 #define DEFAULT_PROP_MIN_BUFFERS      2
 #define DEFAULT_PROP_MAX_BUFFERS      10
 
@@ -76,6 +81,7 @@ enum
   PROP_FLIP_VERTICAL,
   PROP_ROTATE,
   PROP_CROP,
+  PROP_DESTINATION,
 };
 
 static GstStaticCaps gst_video_transform_format_caps =
@@ -473,10 +479,11 @@ gst_video_transform_set_caps (GstBaseTransform * trans, GstCaps * incaps,
     to_dar_n = to_dar_d = -1;
   }
 
-  if (ininfo.width == outinfo.width && ininfo.height == outinfo.height
-      && ininfo.finfo->format == outinfo.finfo->format && !vtrans->flip_h
-      && !vtrans->flip_v && vtrans->crop.w == 0 && vtrans->crop.h == 0
-      && vtrans->rotation == GST_VIDEO_TRANSFORM_ROTATE_NONE) {
+  if (ininfo.width == outinfo.width && ininfo.height == outinfo.height &&
+      ininfo.finfo->format == outinfo.finfo->format && !vtrans->flip_h &&
+      !vtrans->flip_v && vtrans->crop.w == 0 && vtrans->crop.h == 0 &&
+      vtrans->destination.w == 0 && vtrans->destination.h == 0 &&
+      vtrans->rotation == GST_VIDEO_TRANSFORM_ROTATE_NONE) {
     gst_base_transform_set_passthrough (trans, TRUE);
   } else {
     GstStructure *inopts = NULL, *outopts = NULL;
@@ -502,6 +509,20 @@ gst_video_transform_set_caps (GstBaseTransform * trans, GstCaps * incaps,
         GST_C2D_VIDEO_CONVERTER_OPT_DEST_HEIGHT, G_TYPE_INT,
         GST_VIDEO_INFO_HEIGHT (&outinfo),
         NULL);
+
+    // In case destination rectangle was set use its values.
+    if (vtrans->destination.w != 0 && vtrans->destination.h != 0) {
+      gst_structure_set (inopts,
+        GST_C2D_VIDEO_CONVERTER_OPT_DEST_X, G_TYPE_INT,
+        vtrans->destination.x,
+        GST_C2D_VIDEO_CONVERTER_OPT_DEST_Y, G_TYPE_INT,
+        vtrans->destination.y,
+        GST_C2D_VIDEO_CONVERTER_OPT_DEST_WIDTH, G_TYPE_INT,
+        vtrans->destination.w,
+        GST_C2D_VIDEO_CONVERTER_OPT_DEST_HEIGHT, G_TYPE_INT,
+        vtrans->destination.h,
+        NULL);
+    }
 
     // Check whether the input caps have ubwc compression.
     if (gst_video_transform_caps_has_compression (incaps, "ubwc")) {
@@ -1541,6 +1562,32 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
         gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
       }
       break;
+    case PROP_DESTINATION:
+      g_return_if_fail (gst_value_array_get_size (value) == 4);
+
+      vtrans->destination.x =
+          g_value_get_int (gst_value_array_get_value (value, 0));
+      vtrans->destination.y =
+          g_value_get_int (gst_value_array_get_value (value, 1));
+      vtrans->destination.w =
+          g_value_get_int (gst_value_array_get_value (value, 2));
+      vtrans->destination.h =
+          g_value_get_int (gst_value_array_get_value (value, 3));
+
+      if (vtrans->c2dconvert != NULL) {
+        GstStructure *inopts = gst_structure_new ("qtivtransform",
+          GST_C2D_VIDEO_CONVERTER_OPT_DEST_X, G_TYPE_INT,
+          vtrans->destination.x,
+          GST_C2D_VIDEO_CONVERTER_OPT_DEST_Y, G_TYPE_INT,
+          vtrans->destination.y,
+          GST_C2D_VIDEO_CONVERTER_OPT_DEST_WIDTH, G_TYPE_INT,
+          vtrans->destination.w,
+          GST_C2D_VIDEO_CONVERTER_OPT_DEST_HEIGHT, G_TYPE_INT,
+          vtrans->destination.h,
+          NULL);
+        gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
+      }
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -1582,6 +1629,24 @@ gst_video_transform_get_property (GObject * object, guint prop_id,
       gst_value_array_append_value (value, &val);
 
       g_value_set_int (&val, vtrans->crop.h);
+      gst_value_array_append_value (value, &val);
+      break;
+    }
+    case PROP_DESTINATION:
+    {
+      GValue val = G_VALUE_INIT;
+      g_value_init (&val, G_TYPE_INT);
+
+      g_value_set_int (&val, vtrans->destination.x);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, vtrans->destination.y);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, vtrans->destination.w);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, vtrans->destination.h);
       gst_value_array_append_value (value, &val);
       break;
     }
@@ -1640,7 +1705,15 @@ gst_video_transform_class_init (GstVideoTransformClass * klass)
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_CROP,
       gst_param_spec_array ("crop", "Crop rectangle",
-          "The crop rectangle ('<X, Y, WIDTH, HEIGHT >')",
+          "The crop rectangle inside the input ('<X, Y, WIDTH, HEIGHT >')",
+          g_param_spec_int ("value", "Crop Value",
+              "One of X, Y, WIDTH or HEIGHT value.", 0, G_MAXINT, 0,
+              G_PARAM_WRITABLE | G_PARAM_STATIC_STRINGS),
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_DESTINATION,
+      gst_param_spec_array ("destination", "Destination rectangle",
+          "Destination rectangle inside the output ('<X, Y, WIDTH, HEIGHT >')",
           g_param_spec_int ("value", "Crop Value",
               "One of X, Y, WIDTH or HEIGHT value.", 0, G_MAXINT, 0,
               G_PARAM_WRITABLE | G_PARAM_STATIC_STRINGS),
@@ -1674,11 +1747,15 @@ gst_video_transform_init (GstVideoTransform * vtrans)
 {
   vtrans->flip_h = DEFAULT_PROP_FLIP_HORIZONTAL;
   vtrans->flip_v = DEFAULT_PROP_FLIP_VERTICAL;
+  vtrans->rotation = DEFAULT_PROP_ROTATE;
   vtrans->crop.x = DEFAULT_PROP_CROP_X;
   vtrans->crop.y = DEFAULT_PROP_CROP_Y;
   vtrans->crop.w = DEFAULT_PROP_CROP_WIDTH;
   vtrans->crop.h = DEFAULT_PROP_CROP_HEIGHT;
-  vtrans->rotation = DEFAULT_PROP_ROTATE;
+  vtrans->destination.x = DEFAULT_PROP_DESTINATION_X;
+  vtrans->destination.y = DEFAULT_PROP_DESTINATION_Y;
+  vtrans->destination.w = DEFAULT_PROP_DESTINATION_WIDTH;
+  vtrans->destination.h = DEFAULT_PROP_DESTINATION_HEIGHT;
 
   vtrans->ininfo = NULL;
   vtrans->outinfo = NULL;

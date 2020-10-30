@@ -73,6 +73,7 @@ struct _GstVideoTransform {
   gboolean                flip_h;
   GstVideoTransformRotate rotation;
   GstVideoRectangle       crop;
+  GstVideoRectangle       destination;
 
   GstVideoInfo            *ininfo;
   GstVideoInfo            *outinfo;
