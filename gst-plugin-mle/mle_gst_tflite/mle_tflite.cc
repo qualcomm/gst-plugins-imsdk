@@ -47,6 +47,7 @@ G_DEFINE_TYPE (GstMLETFLite, gst_mle_tflite, GST_TYPE_VIDEO_FILTER);
 
 #define DEFAULT_PROP_MLE_TFLITE_CONF_THRESHOLD 0.5
 #define DEFAULT_PROP_MLE_TFLITE_PREPROCESSING_TYPE 1 //kKeepARPad
+#define DEFAULT_PROP_MLE_TFLITE_DELEGATE 0 // NNAPI
 #define DEFAULT_PROP_TFLITE_INPUT_FORMAT 0 //RGB
 #define DEFAULT_PROP_MLE_MEAN_VALUE 0.0
 #define DEFAULT_PROP_MLE_SIGMA_VALUE 0.0
@@ -147,7 +148,7 @@ gst_mle_tflite_set_property(GObject *object, guint property_id,
       break;
     case PROP_MLE_TFLITE_DELEGATE:
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
-      mle->delegate = g_strdup(g_value_get_string (value));
+      mle->delegate = g_value_get_uint (value);
       break;
     case PROP_MLE_TFLITE_NUM_THREADS:
       gst_mle_tflite_set_property_mask(mle->property_mask, property_id);
@@ -215,7 +216,7 @@ gst_mle_tflite_get_property(GObject *object, guint property_id,
       g_value_set_float (value, mle->conf_threshold);
       break;
     case PROP_MLE_TFLITE_DELEGATE:
-      g_value_set_string (value, mle->delegate);
+      g_value_set_uint (value, mle->delegate);
       break;
     case PROP_MLE_TFLITE_NUM_THREADS:
       g_value_set_uint (value, mle->num_threads);
@@ -245,9 +246,6 @@ gst_mle_tflite_finalize(GObject * object)
   }
   if (mle->postprocessing) {
     g_free(mle->postprocessing);
-  }
-  if (mle->delegate) {
-    g_free(mle->delegate);
   }
   if (mle->config_location) {
     g_free(mle->config_location);
@@ -361,10 +359,11 @@ gst_mle_tflite_parse_config(gchar *config_location,
   if (gst_structure_get_int (structure, "num_threads", &value))
     configuration.number_of_threads = value;
 
+  if(gst_structure_get_int (structure, "delegate", &value))
+    configuration.delegate = (mle::DelegateType)value;
 
   configuration.model_file = gst_structure_get_string (structure, "model");
   configuration.labels_file = gst_structure_get_string (structure, "labels");
-  configuration.delegate = gst_structure_get_string (structure, "delegate");
 
   gst_structure_free (structure);
 
@@ -392,7 +391,7 @@ gst_mle_print_config(GstMLETFLite *mle,
   GST_DEBUG_OBJECT(mle, "Confidence threshold %f",
                    configuration.conf_threshold);
   GST_DEBUG_OBJECT(mle, "Input format %d", (gint)configuration.input_format);
-  GST_DEBUG_OBJECT(mle, "Delegate %s", configuration.delegate.c_str());
+  GST_DEBUG_OBJECT(mle, "Delegate %d", (gint)configuration.delegate);
   GST_DEBUG_OBJECT(mle, "Number of threads %d",
                    configuration.number_of_threads);
 
@@ -415,7 +414,7 @@ gst_mle_create_engine(GstMLETFLite *mle) {
   configuration.blue_sigma = configuration.green_sigma =
       configuration.red_sigma = DEFAULT_PROP_MLE_SIGMA_VALUE;
   configuration.conf_threshold = mle->conf_threshold;
-  configuration.delegate = "default";
+  configuration.delegate = (mle::DelegateType)mle->delegate;
   configuration.number_of_threads = mle->num_threads;
   configuration.preprocess_mode =
       (mle::PreprocessingMode)mle->preprocessing_type;
@@ -471,13 +470,7 @@ gst_mle_create_engine(GstMLETFLite *mle) {
     configuration.number_of_threads = mle->num_threads;
   }
   if (gst_mle_check_is_set(mle->property_mask, PROP_MLE_TFLITE_DELEGATE)) {
-    if ((!g_strcmp0(mle->delegate, "default")) ||
-        (!g_strcmp0(mle->delegate, "dsp"))) {
-      configuration.delegate = mle->delegate;
-    } else {
-      GST_ERROR_OBJECT (mle, "Unsupported TFLite delegate: %s", mle->delegate);
-      return FALSE;
-    }
+    configuration.delegate = (mle::DelegateType)mle->delegate;
   }
 
   gst_mle_print_config(mle, configuration, mle->postprocessing);
@@ -740,12 +733,13 @@ gst_mle_tflite_class_init (GstMLETFLiteClass * klass)
   g_object_class_install_property(
       gobject,
       PROP_MLE_TFLITE_DELEGATE,
-      g_param_spec_string(
+      g_param_spec_uint(
           "delegate",
           "TFLite delegate",
-          "Supported TFLite delegates: default - use CPU; "
-          "dsp - use DSP",
-          NULL,
+          "Supported TFLite delegates: 0-nnapi, 1-nnapi-npu, 2-hexagon-nn, 3-gpu, 4-xnnpack 5-cpu",
+          0,
+          5,
+          DEFAULT_PROP_MLE_TFLITE_DELEGATE,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));
 
@@ -791,6 +785,7 @@ gst_mle_tflite_init (GstMLETFLite * mle)
   mle->preprocess_accel = DEFAULT_PROP_MLE_PREPROCESS_ACCEL;
   mle->conf_threshold = DEFAULT_PROP_MLE_TFLITE_CONF_THRESHOLD;
   mle->num_threads = DEFAULT_TFLITE_NUM_THREADS;
+  mle->delegate = DEFAULT_PROP_MLE_TFLITE_DELEGATE;
 
   GST_DEBUG_CATEGORY_INIT (mle_tflite_debug, "qtimletflite", 0,
       "QTI Machine Learning Engine");

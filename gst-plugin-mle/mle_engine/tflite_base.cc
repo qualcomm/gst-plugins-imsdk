@@ -29,7 +29,14 @@
 
 #include <vector>
 #include <string>
+
+#ifdef DELEGATE_SUPPORT
 #include <tensorflow/lite/delegates/nnapi/nnapi_delegate.h>
+#include <tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h>
+#include <tensorflow/lite/delegates/gpu/delegate.h>
+#include <tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h>
+#endif
+
 #include <tensorflow/lite/examples/label_image/get_top_n.h>
 #include <tensorflow/lite/examples/label_image/get_top_n_impl.h>
 #include <tensorflow/lite/kernels/register.h>
@@ -37,8 +44,6 @@
 #include "tflite_base.h"
 
 namespace mle {
-
-static const uint32_t delegate_preferences = 00300000;
 
 TFLBase::TFLBase(MLConfig &config) : MLEngine(config) {
   config_.number_of_threads = config.number_of_threads;
@@ -50,21 +55,116 @@ TfLiteDelegatePtrMap TFLBase::GetDelegates() {
   TfLiteDelegatePtrMap delegates;
 
 #ifdef DELEGATE_SUPPORT
-  if (!(config_.delegate.compare("dsp"))) {
-    tflite::StatefulNnApiDelegate::Options options;
-    options.execution_preference =
-      static_cast<tflite::StatefulNnApiDelegate::Options::ExecutionPreference>(
-      delegate_preferences);
+  switch (config_.delegate) {
+    case DelegateType::nnapi:
+    {
+      MLE_LOGI("%s: Using NNAPI delegate", __func__);
+      uint32_t delegate_preferences_dsp = 00100000;
 
-    auto delegate = TfLiteDelegatePtr(
-      new tflite::StatefulNnApiDelegate(options), [](TfLiteDelegate* delegate) {
-        delete reinterpret_cast<tflite::StatefulNnApiDelegate*>(delegate);
+      tflite::StatefulNnApiDelegate::Options options;
+
+      options.execution_preference =
+          static_cast<tflite::StatefulNnApiDelegate::Options::ExecutionPreference>(
+            delegate_preferences_dsp);
+
+      auto delegate = TfLiteDelegatePtr(
+        new tflite::StatefulNnApiDelegate(options), [](TfLiteDelegate* delegate) {
+          delete reinterpret_cast<tflite::StatefulNnApiDelegate*>(delegate);
+        });
+
+      if (!delegate) {
+        MLE_LOGE("NNAPI acceleration is unsupported on this platform.");
+      } else {
+        delegates.emplace("NNAPI", std::move(delegate));
+      }
+      break;
+    }
+    case DelegateType::nnapi_npu:
+    {
+      MLE_LOGI("%s: Using NNAPI-NPU delegate", __func__);
+      uint32_t delegate_preferences_npu = 00300000;
+
+      tflite::StatefulNnApiDelegate::Options options;
+
+      options.execution_preference =
+          static_cast<tflite::StatefulNnApiDelegate::Options::ExecutionPreference>(
+            delegate_preferences_npu);
+
+      auto delegate = TfLiteDelegatePtr(
+        new tflite::StatefulNnApiDelegate(options), [](TfLiteDelegate* delegate) {
+          delete reinterpret_cast<tflite::StatefulNnApiDelegate*>(delegate);
+        });
+
+      if (!delegate) {
+        MLE_LOGE("NNAPI-NPU acceleration is unsupported on this platform.");
+      } else {
+        delegates.emplace("NNAPI-NPU", std::move(delegate));
+      }
+      break;
+    }
+    case DelegateType::hexagon_nn:
+    {
+      MLE_LOGI("%s: Using hexagon delegate", __func__);
+      TfLiteHexagonInit();
+      const TfLiteHexagonDelegateOptions options = {
+        /*debug_level=*/0, /*powersave_level=*/0, /*profiling*/false,
+        /*print_graph_debug=*/false};
+
+      TfLiteDelegate* hexagon_delegate = TfLiteHexagonDelegateCreate(&options);
+      if (!hexagon_delegate) {
+        MLE_LOGI("Hexagon delegate is not supported");
+        return delegates;
+      }
+
+      auto delegate = TfLiteDelegatePtr(
+        hexagon_delegate, [](TfLiteDelegate* delegate) {
+        TfLiteHexagonDelegateDelete(delegate);
+        TfLiteHexagonTearDown();
       });
 
-    if (!delegate) {
-      MLE_LOGI("NNAPI acceleration is unsupported on this platform.");
-    } else {
-      delegates.emplace("NNAPI", std::move(delegate));
+      if (!delegate) {
+        MLE_LOGE("Hexagon delegate is not supported");
+      } else {
+        delegates.emplace("HEXAGON", std::move(delegate));
+      }
+      break;
+    }
+    case DelegateType::gpu:
+    {
+      MLE_LOGI("%s: Using GPU delegate", __func__);
+
+      TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
+
+      auto delegate = TfLiteDelegatePtr(TfLiteGpuDelegateV2Create(&options),
+                      &TfLiteGpuDelegateV2Delete);
+
+      if (!delegate) {
+        MLE_LOGE("GPU delegate is not supported");
+      } else {
+          delegates.emplace("GPU", std::move(delegate));
+      }
+      break;
+    }
+    case DelegateType::xnnpack:
+    {
+      MLE_LOGI("%s: Using xnnpack delegate", __func__);
+
+      TfLiteXNNPackDelegateOptions options = TfLiteXNNPackDelegateOptionsDefault();
+
+      auto delegate = TfLiteDelegatePtr(TfLiteXNNPackDelegateCreate(&options),
+                      &TfLiteXNNPackDelegateDelete);
+
+      if (!delegate) {
+        MLE_LOGE("XNNPACK delegate is not supported");
+      } else {
+        delegates.emplace("XNNPACK", std::move(delegate));
+      }
+      break;
+    }
+    case DelegateType::cpu:
+    default:
+    {
+      MLE_LOGD("%s: Fallback to CPU runtime", __func__);
     }
   }
 #else

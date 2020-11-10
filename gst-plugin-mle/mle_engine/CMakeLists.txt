@@ -46,6 +46,12 @@ if (TFLITE_ENABLE)
   target_link_libraries(${GST_MLE_LIBRARY} PRIVATE tensorflow-lite)
 endif()
 
+if (DELEGATE_SUPPORT)
+  target_link_libraries(${GST_MLE_LIBRARY} PRIVATE gpu_delegate)
+  target_link_libraries(${GST_MLE_LIBRARY} PRIVATE xnnpack_delegate)
+endif()
+
+
 install(
   TARGETS ${GST_MLE_LIBRARY}
   LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_ENGINEDIR}

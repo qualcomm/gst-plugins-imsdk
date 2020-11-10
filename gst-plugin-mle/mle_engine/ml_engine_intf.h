@@ -95,6 +95,15 @@ enum class PreprocessingAccel {
   performance
 };
 
+enum class DelegateType {
+  nnapi = 0,
+  nnapi_npu,
+  hexagon_nn,
+  gpu,
+  xnnpack,
+  cpu
+};
+
 struct PreprocessingOffsets {
   PreprocessingOffsets(): x_offset(0),
                           y_offset(0),
@@ -153,7 +162,7 @@ struct MLConfig {
 
   //tflite specific
   uint32_t number_of_threads;
-  std::string delegate;
+  DelegateType delegate;
 
   //snpe layers
   std::vector<std::string> output_layers;
