@@ -853,67 +853,12 @@ int32_t Overlay::ApplyOverlay_C2D (const OverlayTargetBuffer& buffer)
   surface_def.format = GetC2dColorFormat (buffer.format);
   surface_def.width = buffer.width;
   surface_def.height = buffer.height;
-  int32_t planeYLen;
-  switch (surface_def.format) {
-    case C2D_COLOR_FORMAT_420_NV12:
-    //Y plane stride.
-    surface_def.stride0 = VENUS_Y_STRIDE (COLOR_FMT_NV12, surface_def.width);
-
-    //UV plane stride.
-    surface_def.stride1 = VENUS_UV_STRIDE (COLOR_FMT_NV12, surface_def.width);
-
-    //UV plane hostptr.
-    planeYLen = surface_def.stride0
-    * VENUS_Y_SCANLINES (COLOR_FMT_NV12, surface_def.height);
-
-    break;
-    case C2D_COLOR_FORMAT_420_NV21:
-    //Y plane stride.
-    surface_def.stride0 = VENUS_Y_STRIDE (COLOR_FMT_NV21, surface_def.width);
-
-    //UV plane stride.
-    surface_def.stride1 = VENUS_UV_STRIDE (COLOR_FMT_NV21, surface_def.width);
-
-    //UV plane hostptr.
-    planeYLen = surface_def.stride0
-    * VENUS_Y_SCANLINES (COLOR_FMT_NV21, surface_def.height);
-
-    break;
-    case (C2D_COLOR_FORMAT_420_NV12 | C2D_FORMAT_UBWC_COMPRESSED):
-    //Y plane stride.
-    surface_def.stride0 = VENUS_Y_STRIDE (COLOR_FMT_NV12_UBWC,
-        surface_def.width);
-
-    //UV plane stride.
-    surface_def.stride1 = VENUS_UV_STRIDE (COLOR_FMT_NV12_UBWC,
-        surface_def.width);
-
-    //UV plane hostptr.
-    planeYLen = ROUND_TO(
-        VENUS_Y_META_STRIDE (COLOR_FMT_NV12_UBWC, surface_def.width)
-        * VENUS_Y_META_SCANLINES (COLOR_FMT_NV12_UBWC, surface_def.height),
-        4096) +
-    ROUND_TO(surface_def.stride0 *
-        VENUS_Y_SCANLINES(COLOR_FMT_NV12_UBWC,
-            surface_def.height), 4096);
-    break;
-    default:
-    OVDBG_ERROR ("%s: Unknown format: %d", __func__, surface_def.format);
-    goto EXIT;
-  }
-
-  OVDBG_DEBUG ("%s: surface_def.stride0 = %d ", __func__, surface_def.stride0);
-  OVDBG_DEBUG ("%s: planeYLen = %d", __func__, planeYLen);
-
-  //Y plane hostptr.
+  surface_def.stride0 = buffer.stride[0];
+  surface_def.stride1 = buffer.stride[1];
   surface_def.plane0 = (void*) bufVaddr;
-  //Y plane Gpu address.
   surface_def.phys0 = (void*) gpuAddr;
-
-  surface_def.plane1 = (void*) ((intptr_t) bufVaddr + planeYLen);
-
-  //UV plane Gpu address.
-  surface_def.phys1 = (void*) ((intptr_t) gpuAddr + planeYLen);
+  surface_def.plane1 = (void*) ((intptr_t) bufVaddr + buffer.offset[1]);
+  surface_def.phys1 = (void*) ((intptr_t) gpuAddr + buffer.offset[1]);
 
   //Create C2d target surface outof camera buffer. camera buffer
   //is target surface where c2d blits different types of overlays
@@ -1028,7 +973,6 @@ int32_t Overlay::ApplyOverlay_C2D (const OverlayTargetBuffer& buffer)
 int32_t Overlay::ApplyOverlay_CL (const OverlayTargetBuffer& buffer)
 {
   OVDBG_VERBOSE ("%s: Enter", __func__);
-
 #ifdef DEBUG_BLIT_TIME
   auto start_time = ::std::chrono::high_resolution_clock::now();
 #endif
@@ -1053,8 +997,7 @@ int32_t Overlay::ApplyOverlay_CL (const OverlayTargetBuffer& buffer)
   OVDBG_VERBOSE ("%s:OverlayTargetBuffer: ion_fd = %d", __func__, buffer.ion_fd);
   OVDBG_VERBOSE (
       "%s:OverlayTargetBuffer: Width = %d & Height = %d & frameLength" " =% d",
-      __func__, buffer.width, buffer.height,
-      (int32_t) buffer.frame_len);
+      __func__, buffer.width, buffer.height, buffer.frame_len);
   OVDBG_VERBOSE ("%s: OverlayTargetBuffer: format = %d", __func__,
       (int32_t) buffer.format);
 
@@ -1097,20 +1040,12 @@ int32_t Overlay::ApplyOverlay_CL (const OverlayTargetBuffer& buffer)
     }
   }
 
-  in_frame.plane0_offset = 0;
-  if (buffer.format == TargetBufferFormat::kYUVNV12) {
-    in_frame.stride0 = VENUS_Y_STRIDE (COLOR_FMT_NV12, buffer.width);
-    in_frame.stride1 = VENUS_UV_STRIDE (COLOR_FMT_NV12, buffer.width);
-    in_frame.plane1_offset = in_frame.stride0
-        * VENUS_Y_SCANLINES (COLOR_FMT_NV12, buffer.height);
-    in_frame.swap_uv = false;
-  } else {
-    in_frame.stride0 = VENUS_Y_STRIDE (COLOR_FMT_NV21, buffer.width);
-    in_frame.stride1 = VENUS_UV_STRIDE (COLOR_FMT_NV21, buffer.width);
-    in_frame.plane1_offset = in_frame.stride0
-        * VENUS_Y_SCANLINES (COLOR_FMT_NV21, buffer.height);
-    in_frame.swap_uv = true;
-  }
+  in_frame.plane0_offset = buffer.offset[0];
+  in_frame.plane1_offset = buffer.offset[1];
+  in_frame.stride0 = buffer.stride[0];
+  in_frame.stride1 = buffer.stride[1];
+  in_frame.swap_uv =
+      (buffer.format == TargetBufferFormat::kYUVNV12) ? false : true;
 
   // Configure kernels
   for (auto &item : draw_infos) {

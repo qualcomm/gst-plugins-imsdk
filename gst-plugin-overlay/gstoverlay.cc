@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -1099,6 +1099,10 @@ gst_overlay_apply_overlay (GstOverlay *gst_overlay, GstVideoFrame *frame)
   OverlayTargetBuffer overlay_buf;
   overlay_buf.width     = GST_VIDEO_FRAME_WIDTH (frame);
   overlay_buf.height    = GST_VIDEO_FRAME_HEIGHT (frame);
+  overlay_buf.offset[0] = GST_VIDEO_FRAME_PLANE_OFFSET(frame, 0);
+  overlay_buf.offset[1] = GST_VIDEO_FRAME_PLANE_OFFSET(frame, 1);
+  overlay_buf.stride[0] = GST_VIDEO_FRAME_PLANE_STRIDE(frame, 0);
+  overlay_buf.stride[1] = GST_VIDEO_FRAME_PLANE_STRIDE(frame, 1);
   overlay_buf.ion_fd    = fd;
   overlay_buf.frame_len = gst_buffer_get_size (frame->buffer);
   overlay_buf.format    = gst_overlay->format;

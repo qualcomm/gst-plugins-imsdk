@@ -208,6 +208,8 @@ struct OverlayTargetBuffer {
   TargetBufferFormat format;
   uint32_t width;
   uint32_t height;
+  uint32_t offset[2];
+  uint32_t stride[2];
   uint32_t ion_fd;
   uint32_t frame_len;
 };
