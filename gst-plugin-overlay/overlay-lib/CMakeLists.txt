@@ -2,13 +2,9 @@ cmake_minimum_required(VERSION 3.1)
 
 project(overlay_lib)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_SKIA=0 -DUSE_CAIRO=1")
-
 if (NOT OVERLAY_ENABLED)
 set(exclude EXCLUDE_FROM_ALL)
 endif()
-
-add_definitions(-DOVERLAY_OPEN_CL_BLIT)
 
 add_library(overlay_lib SHARED ${exclude}
 ${CMAKE_CURRENT_SOURCE_DIR}/overlay_lib.cc
@@ -34,9 +30,9 @@ target_link_libraries(overlay_lib log pthread utils cutils dl C2D2 cairo OpenCL)
 target_link_libraries(overlay_lib ion)
 
 file(GLOB_RECURSE RGB_FILES ${CMAKE_CURRENT_LIST_DIR}/raw_image/*.rgba)
-install(FILES ${RGB_FILES} DESTINATION ${QMMF_DATA})
+install(FILES ${RGB_FILES} DESTINATION /data/misc)
 
 install(
     FILES ${CMAKE_CURRENT_SOURCE_DIR}/overlay_blit_kernel.cl
-    DESTINATION /usr/lib/qmmf
+    DESTINATION /usr/lib
 )

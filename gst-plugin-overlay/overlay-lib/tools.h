@@ -45,7 +45,7 @@
 #include <fcntl.h>
 #endif
 
-namespace qmmf {
+namespace overlay {
 
 /** SyncStart
  *    @fd: ion fd
@@ -86,5 +86,4 @@ inline void SyncEnd (int32_t fd)
 #endif
   ALOGV ("%s: Exit", __func__);
 }
-
-}  // namespace qmmf
+}  // namespace overlay

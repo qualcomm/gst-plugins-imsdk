@@ -6,6 +6,8 @@ project(GST_PLUGIN_QTI_OSS_OVERLAY
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
+#add_definitions(-DOVERLAY_OPEN_CL_BLIT)
+
 include_directories(${SYSROOT_INCDIR})
 link_directories(${SYSROOT_LIBDIR})
 
@@ -29,7 +31,6 @@ add_definitions(-DHAVE_CONFIG_H)
 # Common compiler flags.
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
-set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -DUSE_SKIA=0 -DUSE_CAIRO=1")
 
 # GStreamer plugin.
 set(GST_QTI_OVERLAY qtioverlay)

@@ -27,7 +27,7 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/*! @file qmmf_overlay.h
+/*! @file overlay.h
  */
 
 #pragma once
@@ -38,24 +38,62 @@
 #include <vector>
 #include <memory>
 
-namespace qmmf {
+#ifndef GST_DISABLE_GST_DEBUG
+#include <gst/gst.h>
 
-/// @namespace qmmf::overlay
+#define GST_CAT_DEFAULT ensure_debug_category()
+static GstDebugCategory *
+ensure_debug_category (void)
+{
+  static gsize category = 0;
+
+  if (g_once_init_enter (&category)) {
+    gsize cat_done;
+
+    cat_done = (gsize) _gst_debug_category_new("qtioverlay", 0,
+        "QTI overlay");
+
+    g_once_init_leave (&category, cat_done);
+  }
+
+  return (GstDebugCategory *) category;
+}
+
+#define OVDBG_ERROR(...) GST_ERROR(__VA_ARGS__)
+#define OVDBG_INFO(...) GST_INFO(__VA_ARGS__)
+#define OVDBG_DEBUG(...) GST_DEBUG(__VA_ARGS__)
+#define OVDBG_VERBOSE(...) GST_LOG(__VA_ARGS__)
+#else
+#include <utils/Log.h>
+#define OVDBG_INFO(fmt, args...)  ALOGI(fmt, ##args)
+#define OVDBG_ERROR(fmt, args...) ALOGE(fmt, ##args)
+#define OVDBG_WARN(fmt, args...)  ALOGW(fmt, ##args)
+
+// Remove comment markers to define LOG_LEVEL_DEBUG for debugging-related logs
+//#define LOG_LEVEL_DEBUG
+
+// Remove comment markers to define LOG_LEVEL_VERBOSE for complete logs
+//#define LOG_LEVEL_VERBOSE
+
+#ifdef LOG_LEVEL_DEBUG
+#define OVDBG_DEBUG(fmt, args...)  ALOGD(fmt, ##args)
+#else
+#define OVDBG_DEBUG(...) ((void)0)
+#endif
+
+#ifdef LOG_LEVEL_VERBOSE
+#define OVDBG_VERBOSE(fmt, args...)  ALOGD(fmt, ##args)
+#else
+#define OVDBG_VERBOSE(...) ((void)0)
+#endif
+#define ensure_debug_category() /* NOOP */
+#endif /* GST_DISABLE_GST_DEBUG */
+
+/// @namespace overlay
 namespace overlay {
 
 #define MAX_STRING_LENGTH 128
 
-#if USE_SKIA
-static const uint32_t kColorRed = 0xFFFF0000;
-static const uint32_t kColorLightGray = 0xFFCCCCCC;
-static const uint32_t kColorDarkGray = 0x202020FF;
-static const uint32_t kColorYellow = 0xFFFF00FF;
-static const uint32_t kColorBlue = 0x0000CCFF;
-static const uint32_t kColorWhilte = 0xFFFFFFFF;
-static const uint32_t kColorOrange = 0xFF8000FF;
-static const uint32_t kColorLightGreen = 0x33CC00FF;
-static const uint32_t kColorLightBlue = 0x189BF2FF;
-#elif USE_CAIRO
 static const uint32_t kColorRed = 0xFF0000FF;
 static const uint32_t kColorLightGray = 0xCCCCCCFF;
 static const uint32_t kColorDarkGray = 0x202020FF;
@@ -65,7 +103,6 @@ static const uint32_t kColorWhilte = 0xFFFFFFFF;
 static const uint32_t kColorOrange = 0xFF8000FF;
 static const uint32_t kColorLightGreen = 0x33CC00FF;
 static const uint32_t kColorLightBlue = 0x189BF2FF;
-#endif
 
 #define OVERLAY_GRAPH_NODES_MAX_COUNT 20
 #define OVERLAY_GRAPH_CHAIN_MAX_COUNT 40
@@ -77,16 +114,6 @@ enum class OverlayType {
   kBoundingBox,
   kPrivacyMask,
   kGraph
-};
-
-enum class OverlayLocationType {
-  kTopLeft,
-  kTopRight,
-  kCenter,
-  kBottomLeft,
-  kBottomRight,
-  kRandom,
-  kNone
 };
 
 enum class OverlayTimeFormatType {
@@ -110,27 +137,20 @@ struct BoundingBox {
   char box_name[MAX_STRING_LENGTH];
 };
 
-enum class OverlayImageType {
-  kFilePath,
-  kBlobType
-};
-
 struct OverlayRect {
-  int32_t start_x;
-  int32_t start_y;
-  int32_t width;
-  int32_t height;
+  uint32_t start_x;
+  uint32_t start_y;
+  uint32_t width;
+  uint32_t height;
 };
 
 struct Overlaycircle {
-  int32_t center_x;
-  int32_t center_y;
-  int32_t radius;
+  uint32_t center_x;
+  uint32_t center_y;
+  uint32_t radius;
 };
 
 struct OverlayImageInfo {
-  OverlayImageType image_type;
-  char image_location[MAX_STRING_LENGTH];
   char * image_buffer;
   uint32_t image_size;
   OverlayRect source_rect;
@@ -166,7 +186,6 @@ struct OverlayGraph {
 
 struct OverlayParam {
   OverlayType type;
-  OverlayLocationType location;
   uint32_t color;
   OverlayRect dst_rect;
   union {
@@ -272,14 +291,15 @@ private:
 
   std::map<uint32_t, OverlayItem*> overlay_items_;
 
+#ifndef OVERLAY_OPEN_CL_BLIT
   uint32_t target_c2dsurface_id_;
-#ifdef OVERLAY_OPEN_CL_BLIT
+#else
   std::shared_ptr<OpenClKernel> blit_instance_;
 #endif // OVERLAY_OPEN_CL_BLIT
+
   int32_t ion_device_;
   uint32_t id_;
   std::mutex lock_;
 };
 
 }; // namespace overlay
-}; // namespace qmmf
