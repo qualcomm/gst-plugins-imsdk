@@ -394,7 +394,10 @@ int32_t OpenClKernel::SetKernelArgs (OpenClFrame &frame, OpenCLArgs &args)
   cl_mem mask_to_process = args.mask;
 
   cl_uint offset_y = frame.plane0_offset + args.y * frame.stride0 + args.x;
-  cl_uint offset_nv = frame.plane1_offset + args.y * frame.stride1 / 2 + args.x;
+  // Use even x and y for chroma only to prevent color swapping due to
+  // processing 4 pixels at once in the kernel
+  cl_uint offset_nv = frame.plane1_offset + (args.y & ~1) *
+      frame.stride1 / 2 + (args.x & ~1);
   cl_ushort swap_uv = frame.swap_uv;
   cl_ushort stride = frame.stride0;
 

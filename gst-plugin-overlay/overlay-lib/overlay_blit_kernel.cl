@@ -45,50 +45,99 @@ kernel void overlay_cl(__read_only image2d_t mask, // 1
 
   // Read input yuv data
   uint offset = 2 * (stride * y + x);
-  uchar2 y_out1 = *(frame + y_offset + offset);
-  uchar2 y_out2 = *(frame + y_offset + offset + stride);
+  uchar y_out1 = *(frame + y_offset + offset);
+  uchar y_out1_2 = *(frame + y_offset + offset + 1);
+  uchar y_out2 = *(frame + y_offset + offset + stride);
+  uchar y_out2_2 = *(frame + y_offset + offset + stride + 1);
 
   offset = stride * y + x * 2;
   uchar2 uv_out = *(__global uchar2 *)(frame + nv_offset + offset);
 
   // Read and resize mask data
   float2 coord;
-  coord.s0 = (KERNEL_X_SIZE * x) / get_global_size(0);
-  coord.s1 = (KERNEL_Y_SIZE * y) / get_global_size(1);
-  uchar4 mask_data = convert_uchar4(read_imageui(mask, smp, coord));
+  coord.s0 = (KERNEL_X_SIZE * x) / (get_global_size(0) - 0.5f);
+  coord.s1 = (KERNEL_Y_SIZE * y) / (get_global_size(1) - 0.5f);
+  uchar4 mask_data1 = convert_uchar4(read_imageui(mask, smp, coord));
+
+  coord.s0 = (KERNEL_X_SIZE * x + 0.5f) / (get_global_size(0) - 0.5f);
+  coord.s1 = (KERNEL_Y_SIZE * y) / (get_global_size(1) - 0.5f);
+  uchar4 mask_data2 = convert_uchar4(read_imageui(mask, smp, coord));
+
+  coord.s0 = (KERNEL_X_SIZE * x) / (get_global_size(0) - 0.5f);
+  coord.s1 = (KERNEL_Y_SIZE * y + 0.5f) / (get_global_size(1) - 0.5f);
+  uchar4 mask_data3 = convert_uchar4(read_imageui(mask, smp, coord));
+
+  coord.s0 = (KERNEL_X_SIZE * x + 0.5f) / (get_global_size(0) - 0.5f);
+  coord.s1 = (KERNEL_Y_SIZE * y + 0.5f) / (get_global_size(1) - 0.5f);
+  uchar4 mask_data4 = convert_uchar4(read_imageui(mask, smp, coord));
 
   // Convert rgb to yuv
-  float luma;
+  float luma1;
+  float luma2;
+  float luma3;
+  float luma4;
   float2 chroma;
 
-  luma =
-      0.2126f * mask_data.s0 + 0.7152f * mask_data.s1 + 0.0722f * mask_data.s2;
-  chroma.s0 = -0.09991f * mask_data.s0 - 0.33609f * mask_data.s1 +
-              0.436f * mask_data.s2;
+  luma1 =
+      0.257f * mask_data1.s2 +
+      0.504f * mask_data1.s1 +
+      0.098f * mask_data1.s0 + 16;
+  luma2 =
+      0.257f * mask_data2.s2 +
+      0.504f * mask_data2.s1 +
+      0.098f * mask_data2.s0 + 16;
+  luma3 =
+      0.257f * mask_data3.s2 +
+      0.504f * mask_data3.s1 +
+      0.098f * mask_data3.s0 + 16;
+  luma4 =
+      0.257f * mask_data4.s2 +
+      0.504f * mask_data4.s1 +
+      0.098f * mask_data4.s0 + 16;
+
+  chroma.s0 =
+     -0.148f * mask_data1.s2 -
+      0.291f * mask_data1.s1 +
+      0.439f * mask_data1.s0;
   chroma.s1 =
-      0.615f * mask_data.s0 - 0.55861 * mask_data.s1 - 0.05639f * mask_data.s2;
+      0.439f * mask_data1.s2 -
+      0.368f * mask_data1.s1 -
+      0.071f * mask_data1.s0;
   chroma += 128;
 
   if (swap_uv) {
     chroma.s01 = chroma.s10;
   }
 
-  luma = clamp(luma, 0.0f, 255.0f);
+  luma1 = clamp(luma1, 0.0f, 255.0f);
+  luma2 = clamp(luma2, 0.0f, 255.0f);
+  luma3 = clamp(luma3, 0.0f, 255.0f);
+  luma4 = clamp(luma4, 0.0f, 255.0f);
   chroma = clamp(chroma, 0.0f, 255.0f);
 
   // Apply alpha blending
-  float alpha = mask_data.s3 / 255.0f;
+  float alpha1 = mask_data1.s3 / 255.0f;
+  float alpha2 = mask_data2.s3 / 255.0f;
+  float alpha3 = mask_data3.s3 / 255.0f;
+  float alpha4 = mask_data4.s3 / 255.0f;
+
   y_out1 =
-      convert_uchar2(alpha * luma + (1.0f - alpha) * convert_float2(y_out1));
+      convert_uchar(alpha1 * luma1 + (1.0f - alpha1) * convert_float(y_out1));
+  y_out1_2 =
+      convert_uchar(alpha2 * luma2 + (1.0f - alpha2) * convert_float(y_out1_2));
   y_out2 =
-      convert_uchar2(alpha * luma + (1.0f - alpha) * convert_float2(y_out2));
+      convert_uchar(alpha3 * luma3 + (1.0f - alpha3) * convert_float(y_out2));
+  y_out2_2 =
+      convert_uchar(alpha4 * luma4 + (1.0f - alpha4) * convert_float(y_out2_2));
   uv_out =
-      convert_uchar2(alpha * chroma + (1.0f - alpha) * convert_float2(uv_out));
+      convert_uchar2(alpha1 * chroma + (1.0f - alpha1) * convert_float2(uv_out));
 
   // Store output yuv data
   offset = 2 * (stride * y + x);
-  *(__global uchar2 *)(frame + y_offset + offset) = y_out1;
-  *(__global uchar2 *)(frame + y_offset + offset + stride) = y_out2;
+  *(__global uchar *)(frame + y_offset + offset) = y_out1;
+  *(__global uchar *)(frame + y_offset + offset + 1) = y_out1_2;
+  *(__global uchar *)(frame + y_offset + offset + stride) = y_out2;
+  *(__global uchar *)(frame + y_offset + offset + stride + 1) = y_out2_2;
 
   offset = stride * y + x * 2;
   *(__global uchar2 *)(frame + nv_offset + offset) = uv_out;
