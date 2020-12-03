@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -2693,6 +2693,7 @@ int32_t OverlayItemPrivacyMask::UpdateAndDraw ()
   ExtractColorValues (mask_color_, &mask_color);
   cairo_set_source_rgba (cr_context_, mask_color.red, mask_color.green,
       mask_color.blue, mask_color.alpha);
+  cairo_set_antialias (cr_context_, CAIRO_ANTIALIAS_BEST);
 
   switch (config_.type) {
   case OverlayPrivacyMaskType::kRectangle: {
