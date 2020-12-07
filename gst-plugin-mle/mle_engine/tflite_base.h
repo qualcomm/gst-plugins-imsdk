@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -35,6 +35,10 @@
 #include <cstdio>
 #include <memory>
 #include <map>
+#include <thread>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 
 #include <tensorflow/lite/interpreter.h>
 #include <tensorflow/lite/model.h>
@@ -61,14 +65,26 @@ class TFLBase : public MLEngine {
 
  private:
   int32_t LoadModel(std::string& model_path);
+  void TFliteRuntimeRun();
   int32_t InitFramework();
   int32_t ExecuteModel();
   int32_t ValidateModelInfo();
   void* GetInputBuffer();
+  void Deinit();
   int32_t PostProcessMultiOutput(GstBuffer* buffer);
   int32_t PostProcess(GstBuffer* buffer);
   TfLiteDelegatePtrMap GetDelegates();
-
+  std::thread tflite_thread_;
+  std::atomic<bool> process_frame_;
+  std::atomic<bool> frame_ready_;
+  std::condition_variable processed_cv_;
+  std::mutex processed_mutex_;
+  std::condition_variable config_cv_;
+  std::mutex config_mutex_;
+  std::condition_variable inference_cv_;
+  std::mutex inference_mutex_;
+  std::atomic<int32_t> status_code_;
+  int32_t invoke_fail_count_;
 
  protected:
   TFLiteEngineParams tflite_params_;

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -50,6 +50,21 @@ TFLBase::TFLBase(MLConfig &config) : MLEngine(config) {
   config_.number_of_threads = config.number_of_threads;
   config_.delegate = config.delegate;
   need_labels_ = true;
+  process_frame_ = false;
+  frame_ready_ = false;
+  status_code_ = MLE_OK;
+}
+
+void TFLBase::Deinit() {
+  MLEngine::FreeInternalBuffers();
+  process_frame_ = false;
+  frame_ready_ = true;
+  std::unique_lock<std::mutex> lk(inference_mutex_);
+  inference_cv_.notify_one();
+  lk.unlock();
+  if (tflite_thread_.joinable()) {
+    tflite_thread_.join();
+  }
 }
 
 TfLiteDelegatePtrMap TFLBase::GetDelegates() {
@@ -186,28 +201,10 @@ int32_t TFLBase::LoadModel(std::string& model_path) {
   return res;
 }
 
-int32_t TFLBase::InitFramework() {
-  MLE_LOGI("%s Enter", __func__);
-  MLE_LOGI("TFLite version: %s", TF_VERSION_STRING);
-  int32_t res = MLE_OK;
-
-  // Create the interpreter
-  tflite::ops::builtin::BuiltinOpResolver resolver;
-  tflite::InterpreterBuilder(*tflite_params_.model, resolver)
-        (&tflite_params_.interpreter);
-  if (!tflite_params_.interpreter) {
-    MLE_LOGE("%s: Failed to construct interpreter", __func__);
-    return MLE_FAIL;
-  }
+void TFLBase::TFliteRuntimeRun() {
 
   // Set the interpreter configurations
   tflite_params_.interpreter->SetNumThreads(config_.number_of_threads);
-
-  // Validate & process model information
-  if (ValidateModelInfo() != MLE_OK) {
-    MLE_LOGE("%s: Provided model is not supported", __func__);
-    return MLE_FAIL;
-  }
 
   auto delegates = GetDelegates();
   for (const auto& delegate : delegates) {
@@ -222,14 +219,89 @@ int32_t TFLBase::InitFramework() {
   // Allocate the tensors
   if (tflite_params_.interpreter->AllocateTensors() != kTfLiteOk) {
     MLE_LOGE("%s: Failed to allocate tensors!", __func__);
+    process_frame_ = false;
+    status_code_ = MLE_FAIL;
+    std::unique_lock<std::mutex> lk_config(config_mutex_);
+    config_cv_.notify_one();
+    return;
+  }
+
+  {
+    process_frame_ = true;
+    std::unique_lock<std::mutex> lk_config(config_mutex_);
+    config_cv_.notify_one();
+  }
+
+
+  while (1) {
+    std::unique_lock<std::mutex> lk(inference_mutex_);
+    inference_cv_.wait(lk, [this] {return frame_ready_ == true;});
+    if (!process_frame_) {
+      status_code_ = MLE_FAIL;
+      frame_ready_ = false;
+      std::unique_lock<std::mutex> lk_process(processed_mutex_);
+      processed_cv_.notify_one();
+      return;
+    }
+
+    MLE_LOGD("%s: time to invoke Kernel!", __func__);
+
+    // Execute the network
+    if (tflite_params_.interpreter->Invoke() != kTfLiteOk) {
+      invoke_fail_count_++;
+      MLE_LOGE("%s: Invoke fail occured %d", __func__, invoke_fail_count_);
+      status_code_ = MLE_FAIL;
+    }
+    if (frame_ready_) {
+      frame_ready_ = false;
+    } else {  // Execute Model thread timed out and exited already
+      continue;  // Therefore no need to notify and wait for new frame
+    }
+    std::unique_lock<std::mutex> lk_process(processed_mutex_);
+    processed_cv_.notify_one();
+    lk_process.unlock();
+  }
+   return ;
+}
+
+int32_t TFLBase::InitFramework() {
+  MLE_LOGI("%s Enter", __func__);
+  MLE_LOGI("TFLite version: %s", TF_VERSION_STRING);
+
+  // Create the interpreter
+  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::InterpreterBuilder(*tflite_params_.model, resolver)
+        (&tflite_params_.interpreter);
+  if (!tflite_params_.interpreter) {
+    MLE_LOGE("%s: Failed to construct interpreter", __func__);
     return MLE_FAIL;
   }
 
+  // Validate & process model information
+  if (ValidateModelInfo() != MLE_OK) {
+    MLE_LOGE("%s: Provided model is not supported", __func__);
+    return MLE_FAIL;
+  }
+
+  tflite_thread_ = std::thread(&TFLBase::TFliteRuntimeRun, this);
+
   MLE_LOGI("%s Exit", __func__);
-  return res;
+  return MLE_OK;
 }
 
 void* TFLBase::GetInputBuffer() {
+
+  while (!process_frame_) {
+    std::unique_lock<std::mutex> lk(config_mutex_);
+    config_cv_.wait_for(lk, std::chrono::seconds(1),
+                        [this] { return process_frame_ == true; });
+    lk.unlock();
+    if (status_code_ == MLE_FAIL || !process_frame_) {
+      MLE_LOGE("%s TFLite Runtime not configured", __func__);
+      return nullptr;
+    }
+  }
+
   void* buf = nullptr;
   size_t buf_size =
       engine_input_params_.width * engine_input_params_.height * 3;
@@ -254,15 +326,25 @@ void* TFLBase::GetInputBuffer() {
 }
 
 int32_t TFLBase::ExecuteModel() {
-  MLE_LOGI("%s: Enter", __func__);
-
-  // Execute the network
-  if (tflite_params_.interpreter->Invoke() != kTfLiteOk) {
-    MLE_LOGE("%s: Failed to invoke!", __func__);
-    return MLE_FAIL;
+  frame_ready_ = true;
+  std::unique_lock<std::mutex> lk_infer(inference_mutex_);
+  inference_cv_.notify_one();
+  lk_infer.unlock();
+  MLE_LOGD("%s: Notify to resume inference!", __func__);
+  std::unique_lock<std::mutex> lk(processed_mutex_);
+  while (frame_ready_) {
+    if (processed_cv_.wait_for(lk, std::chrono::seconds(5)) ==
+        std::cv_status::no_timeout) {
+      MLE_LOGI("%s: Execution completed!", __func__);
+      if (status_code_ != kTfLiteOk) {
+        return MLE_FAIL;
+      }
+    } else {
+      MLE_LOGE("%s: Execution Timed Out!", __func__);
+      frame_ready_ = false;
+      return MLE_FAIL;
+    }
   }
-
-  MLE_LOGI("%s: Exit", __func__);
   return MLE_OK;
 }
 
