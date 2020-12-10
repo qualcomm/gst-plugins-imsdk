@@ -6,8 +6,6 @@ project(GST_PLUGIN_QTI_OSS_OVERLAY
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-#add_definitions(-DOVERLAY_OPEN_CL_BLIT)
-
 include_directories(${SYSROOT_INCDIR})
 link_directories(${SYSROOT_LIBDIR})
 

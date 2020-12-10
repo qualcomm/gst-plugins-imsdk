@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -38,10 +38,8 @@
 #include <gst/gst.h>
 #include <cairo/cairo.h>
 
-#ifdef OVERLAY_OPEN_CL_BLIT
 #include <CL/cl.h>
 #include <CL/cl_ext.h>
-#endif // OVERLAY_OPEN_CL_BLIT
 
 namespace overlay {
 
@@ -66,8 +64,6 @@ namespace overlay {
 #define PROP_BOX_STROKE_WIDTH       "persist.overlay.stroke.width"
 
 #define OV_UNUSED(a) (void)(a)
-
-#ifdef OVERLAY_OPEN_CL_BLIT
 
 struct OpenClFrame {
   cl_mem cl_buffer;
@@ -175,19 +171,14 @@ class OpenClKernel {
   } sync_;
 };
 
-#endif // OVERLAY_OPEN_CL_BLIT
-
 struct DrawInfo {
   uint32_t width;
   uint32_t height;
   uint32_t x;
   uint32_t y;
-#ifdef OVERLAY_OPEN_CL_BLIT
   cl_mem mask;
   std::shared_ptr<OpenClKernel> blit_inst;
-#else
   uint32_t c2dSurfaceId;
-#endif
   uint32_t in_width;
   uint32_t in_height;
   uint32_t in_x;
@@ -215,12 +206,9 @@ class OverlaySurface {
           ion_fd_ (0),
           size_ (0)
   {
-#ifdef OVERLAY_OPEN_CL_BLIT
     cl_buffer_ = nullptr;
     blit_inst_ = nullptr;
-#else // OVERLAY_OPEN_CL_BLIT
     c2dsurface_id_ = -1;
-#endif // OVERLAY_OPEN_CL_BLIT
   }
 
   uint32_t width_;
@@ -230,24 +218,17 @@ class OverlaySurface {
   int32_t ion_fd_;
   uint32_t size_;
 
-#ifdef OVERLAY_OPEN_CL_BLIT
   cl_mem cl_buffer_;
   std::shared_ptr<OpenClKernel> blit_inst_;
-#else // OVERLAY_OPEN_CL_BLIT
   uint32_t c2dsurface_id_;
-#endif // OVERLAY_OPEN_CL_BLIT
 };
 
 //Base class for all types of overlays.
 class OverlayItem {
  public:
 
-#ifdef OVERLAY_OPEN_CL_BLIT
   OverlayItem (int32_t ion_device, OverlayType type,
       std::shared_ptr<OpenClKernel> &blit);
-#else // OVERLAY_OPEN_CL_BLIT
-  OverlayItem(int32_t ion_device, OverlayType type);
-#endif // OVERLAY_OPEN_CL_BLIT
 
   virtual ~OverlayItem ();
 
@@ -265,6 +246,11 @@ class OverlayItem {
   OverlayType& GetItemType ()
   {
     return type_;
+  }
+
+  void SetBlitType (OverlayBlitType type)
+  {
+    blit_type_ = type;
   }
 
   void MarkDirty (bool dirty);
@@ -311,6 +297,7 @@ protected:
   OverlayType type_;
   cairo_surface_t* cr_surface_;
   cairo_t* cr_context_;
+  OverlayBlitType blit_type_;
 
  private:
 
@@ -320,14 +307,9 @@ protected:
 class OverlayItemStaticImage : public OverlayItem {
  public:
 
-#ifdef OVERLAY_OPEN_CL_BLIT
   OverlayItemStaticImage (int32_t ion_device,
       std::shared_ptr<OpenClKernel> &blit) :
           OverlayItem (ion_device, OverlayType::kStaticImage, blit) {};
-#else // OVERLAY_OPEN_CL_BLIT
-  OverlayItemStaticImage(int32_t ion_device) :
-      OverlayItem(ion_device, OverlayType::kStaticImage) {};
-#endif // OVERLAY_OPEN_CL_BLIT
 
   virtual ~OverlayItemStaticImage () {};
 
@@ -361,12 +343,8 @@ class OverlayItemStaticImage : public OverlayItem {
 class OverlayItemDateAndTime : public OverlayItem {
  public:
 
-#ifdef OVERLAY_OPEN_CL_BLIT
   OverlayItemDateAndTime (int32_t ion_device,
       std::shared_ptr<OpenClKernel> &blit);
-#else // OVERLAY_OPEN_CL_BLIT
-  OverlayItemDateAndTime(int32_t ion_device);
-#endif // OVERLAY_OPEN_CL_BLIT
 
   virtual ~OverlayItemDateAndTime ();
 
@@ -397,12 +375,8 @@ private:
 class OverlayItemBoundingBox : public OverlayItem {
  public:
 
-#ifdef OVERLAY_OPEN_CL_BLIT
   OverlayItemBoundingBox (int32_t ion_device,
       std::shared_ptr<OpenClKernel> &blit);
-#else // OVERLAY_OPEN_CL_BLIT
-  OverlayItemBoundingBox(int32_t ion_device);
-#endif // OVERLAY_OPEN_CL_BLIT
 
   virtual ~OverlayItemBoundingBox ();
 
@@ -445,13 +419,8 @@ class OverlayItemBoundingBox : public OverlayItem {
 class OverlayItemText : public OverlayItem {
  public:
 
-#ifdef OVERLAY_OPEN_CL_BLIT
   OverlayItemText (int32_t ion_device, std::shared_ptr<OpenClKernel> &blit) :
       OverlayItem (ion_device, OverlayType::kUserText, blit) {};
-#else // OVERLAY_OPEN_CL_BLIT
-  OverlayItemText(int32_t ion_device) :
-      OverlayItem(ion_device, OverlayType::kUserText) {};
-#endif // OVERLAY_OPEN_CL_BLIT
 
   virtual ~OverlayItemText ();
 
@@ -481,14 +450,9 @@ class OverlayItemText : public OverlayItem {
 class OverlayItemPrivacyMask : public OverlayItem {
  public:
 
-#ifdef OVERLAY_OPEN_CL_BLIT
   OverlayItemPrivacyMask (int32_t ion_device,
       std::shared_ptr<OpenClKernel> &blit) :
           OverlayItem (ion_device, OverlayType::kPrivacyMask, blit) {};
-#else // OVERLAY_OPEN_CL_BLIT
-  OverlayItemPrivacyMask(int32_t ion_device) :
-      OverlayItem (ion_device, OverlayType::kPrivacyMask) {};
-#endif // OVERLAY_OPEN_CL_BLIT
 
   virtual ~OverlayItemPrivacyMask () {};
 
@@ -515,13 +479,8 @@ class OverlayItemPrivacyMask : public OverlayItem {
 class OverlayItemGraph : public OverlayItem {
  public:
 
-#ifdef OVERLAY_OPEN_CL_BLIT
   OverlayItemGraph (int32_t ion_device, std::shared_ptr<OpenClKernel> &blit) :
       OverlayItem (ion_device, OverlayType::kGraph, blit) {};
-#else // OVERLAY_OPEN_CL_BLIT
-  OverlayItemGraph(int32_t ion_device) :
-      OverlayItem(ion_device, OverlayType::kGraph) {};
-#endif // OVERLAY_OPEN_CL_BLIT
 
   virtual ~OverlayItemGraph () {};
 
