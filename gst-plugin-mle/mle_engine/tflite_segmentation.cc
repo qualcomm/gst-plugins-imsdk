@@ -43,7 +43,7 @@ int32_t TFLSegmentation::PostProcess(GstBuffer* buffer) {
   MLE_LOGI("%s Enter", __func__);
   GstMLSegmentationMeta *img_meta = gst_buffer_add_segmentation_meta (buffer);
   if (!img_meta) {
-    ALOGE ("Failed to add overlay image meta");
+    MLE_LOGE ("Failed to add overlay image meta");
     return MLE_FAIL;
   }
 
@@ -52,7 +52,7 @@ int32_t TFLSegmentation::PostProcess(GstBuffer* buffer) {
   if (img_meta->img_buffer == nullptr) {
     img_meta->img_buffer = (gpointer) calloc (1, image_size);
     if (!img_meta->img_buffer) {
-      ALOGE(" Failed to allocate image buffer");
+      MLE_LOGE(" Failed to allocate image buffer");
       return MLE_FAIL;
     }
   }

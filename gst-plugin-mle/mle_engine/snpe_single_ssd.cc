@@ -29,6 +29,7 @@
 
 #include <vector>
 #include "snpe_single_ssd.h"
+#include "common_utils.h"
 
 namespace mle {
 

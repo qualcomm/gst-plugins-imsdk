@@ -38,7 +38,6 @@
 #include <gst/video/gstimagepool.h>
 #include <fastcv/fastcv.h>
 #include <ml-meta/ml_meta.h>
-#include "common_utils.h"
 
 namespace mle {
 
@@ -248,35 +247,6 @@ class MLEngine {
   static bool use_c2d_preprocess_;
   GstVideoFrame *scale_buf_outframe_;
   GstBuffer *gst_scale_buf_;
-};
-
-class Timer {
-  std::string str;
-  uint64_t begin;
-
-public:
-
-  Timer (std::string s) : str(s) {
-    begin = GetMicroSeconds();
-  }
-
-  ~Timer () {
-    uint64_t end = GetMicroSeconds();
-    MLE_LOGD("%s: %llu us", str.c_str(),
-        static_cast<long long unsigned>(end - begin));
-  }
-
-  uint64_t GetMicroSeconds()
-{
-  timespec time;
-
-  clock_gettime(CLOCK_MONOTONIC, &time);
-
-  uint64_t microSeconds = (static_cast<uint32_t>(time.tv_sec) * 1000000ULL) +
-                          (static_cast<uint32_t>(time.tv_nsec)) / 1000;
-
-  return microSeconds;
-}
 };
 
 }; // namespace mle

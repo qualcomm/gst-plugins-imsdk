@@ -40,7 +40,6 @@
 #include <tensorflow/lite/model.h>
 
 #include "ml_engine_intf.h"
-#include "common_utils.h"
 
 namespace mle {
 

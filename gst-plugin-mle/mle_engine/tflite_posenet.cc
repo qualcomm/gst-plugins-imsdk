@@ -28,6 +28,7 @@
 */
 
 #include "tflite_posenet.h"
+#include "common_utils.h"
 
 namespace mle {
 
