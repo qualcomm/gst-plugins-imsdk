@@ -46,7 +46,7 @@ target_include_directories(${GST_QTI_OVERLAY} PRIVATE
 )
 
 target_link_libraries(${GST_QTI_OVERLAY} PRIVATE
-  qmmf_overlay
+  overlay_lib
   qtimlmeta
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
@@ -60,3 +60,5 @@ install(
               GROUP_EXECUTE GROUP_READ
               GROUP_EXECUTE GROUP_READ
 )
+
+add_subdirectory(overlay-lib)
