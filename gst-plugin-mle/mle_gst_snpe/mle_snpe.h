@@ -58,7 +58,6 @@ struct _GstMLESNPE {
   GstVideoFilter      parent;
 
   mle::MLEInputParams source_info;
-  mle::SourceFrame source_frame;
   mle::MLEngine* engine;
   gboolean is_init;
   guint property_mask;

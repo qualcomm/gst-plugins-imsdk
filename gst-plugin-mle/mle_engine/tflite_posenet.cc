@@ -70,10 +70,12 @@ TFLPoseNet::~TFLPoseNet() {}
 
 int32_t TFLPoseNet::AllocateInternalBuffers() {
   int32_t ret = MLE_OK;
-  posix_memalign(reinterpret_cast<void**>(&buffers_.scale_buf), 128,
-                                  ((scale_width_ * scale_height_ * 3) / 2));
-  posix_memalign(reinterpret_cast<void**>(&buffers_.rgb_buf), 128,
-                                  ((scale_width_ * scale_height_ * 3)));
+
+  if (MLEngine::AllocateInternalBuffers() != MLE_OK) {
+    MLE_LOGE("%s: Failed AllocateInternalBuffers", __func__);
+    return MLE_FAIL;
+  }
+
   // Allocate buffers for dequantization
   posix_memalign(reinterpret_cast<void**>(&pRawHeatmaps), 128,
                                           kHeatMapSize * kOutBytesPerPixel);
@@ -82,9 +84,7 @@ int32_t TFLPoseNet::AllocateInternalBuffers() {
   posix_memalign(reinterpret_cast<void**>(&pRawDisplacements), 128,
                                         kDisplacementSize * kOutBytesPerPixel);
 
-  if (nullptr == buffers_.scale_buf ||
-      nullptr == buffers_.rgb_buf ||
-      nullptr == pRawHeatmaps ||
+  if (nullptr == pRawHeatmaps ||
       nullptr == pRawOffsets ||
       nullptr == pRawDisplacements) {
     MLE_LOGE("%s: Buffer allocation failed", __func__);
@@ -94,14 +94,7 @@ int32_t TFLPoseNet::AllocateInternalBuffers() {
 }
 
 void TFLPoseNet::FreeInternalBuffers() {
-  if (nullptr != buffers_.scale_buf) {
-    free(buffers_.scale_buf);
-    buffers_.scale_buf = nullptr;
-  }
-  if (nullptr != buffers_.rgb_buf) {
-    free(buffers_.rgb_buf);
-    buffers_.rgb_buf = nullptr;
-  }
+
   if (nullptr != pRawHeatmaps) {
     free(pRawHeatmaps);
     pRawHeatmaps = nullptr;
@@ -114,6 +107,8 @@ void TFLPoseNet::FreeInternalBuffers() {
     free(pRawDisplacements);
     pRawDisplacements = nullptr;
   }
+
+  MLEngine::FreeInternalBuffers();
 }
 
 int32_t TFLPoseNet::PostProcess(GstBuffer* buffer) {

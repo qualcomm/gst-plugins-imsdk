@@ -33,6 +33,9 @@
 #include <string>
 #include <mutex>
 #include <time.h>
+#include <adreno/c2d2.h>
+#include <gst/video/c2d-video-converter.h>
+#include <gst/video/gstimagepool.h>
 #include <fastcv/fastcv.h>
 #include <ml-meta/ml_meta.h>
 #include "common_utils.h"
@@ -90,10 +93,9 @@ enum class PreprocessingMode {
 };
 
 enum class PreprocessingAccel {
-  lowPower = 0,
-  cpuPerf,
-  cpuOffload,
-  performance
+  cpu = 0,
+  dsp,
+  gpu
 };
 
 enum class DelegateType {
@@ -125,11 +127,6 @@ struct MLEInputParams {
   uint32_t width;
   uint32_t height;
   MLEImageFormat format;
-};
-
-struct SourceFrame {
-  uint8_t *frame_data[2];
-  uint32_t stride;
 };
 
 struct MLConfig {
@@ -175,9 +172,8 @@ class MLEngine {
   virtual ~MLEngine(){};
   int32_t Init(const MLEInputParams* source_info);
   virtual void Deinit();
-  int32_t PreProcess(const struct SourceFrame* frame_info);
-  int32_t Process(struct SourceFrame* frame_info,
-                          GstBuffer* buffer);
+  int32_t PreProcess(GstVideoFrame *frame);
+  int32_t Process(GstVideoFrame *frame);
  private:
   virtual int32_t LoadModel(std::string& model_path) = 0;
   virtual int32_t InitFramework() = 0;
@@ -187,13 +183,14 @@ class MLEngine {
   int32_t ReadLabelsFile(const std::string& file_name,
                         std::vector<std::string>& result,
                         size_t& found_label_count);
-  virtual int32_t AllocateInternalBuffers();
-  virtual void FreeInternalBuffers();
   void PreProcessAccelerator();
   static bool fastcv_mode_is_set_;
   static std::mutex fastcv_process_lock_;
 
  protected:
+
+  virtual int32_t AllocateInternalBuffers();
+  virtual void FreeInternalBuffers();
 
   void DumpFrame(const uint8_t* buffer, const uint32_t& width,
       const uint32_t& height, const uint32_t& size, const std::string& suffix);
@@ -246,7 +243,11 @@ class MLEngine {
   bool need_labels_;
   std::vector<std::string> labels_;
   size_t label_count_;
-
+  GstC2dVideoConverter *c2dconvert_;
+  GstBufferPool *outpool_;
+  static bool use_c2d_preprocess_;
+  GstVideoFrame *scale_buf_outframe_;
+  GstBuffer *gst_scale_buf_;
 };
 
 class Timer {
