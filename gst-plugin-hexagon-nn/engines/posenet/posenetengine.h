@@ -45,72 +45,87 @@ static inline int min(int a, int b) { return ((a < b) ? a : b); }
 
 static char PartNames[TotalKeypointNum][MaxKeypointNameLen] =
 {
-    "nose", "leftEye", "rightEye", "leftEar", "rightEar", "leftShoulder",
-    "rightShoulder", "leftElbow", "rightElbow", "leftWrist", "rightWrist",
-    "leftHip", "rightHip", "leftKnee", "rightKnee", "leftAnkle", "rightAnkle"
+  "nose", "leftEye", "rightEye", "leftEar", "rightEar", "leftShoulder",
+  "rightShoulder", "leftElbow", "rightElbow", "leftWrist", "rightWrist",
+  "leftHip", "rightHip", "leftKnee", "rightKnee", "leftAnkle", "rightAnkle"
 };
 
 static char PoseChain[32][MaxKeypointNameLen] =
 {
-    "nose", "leftEye", "leftEye", "leftEar", "nose", "rightEye", "rightEye",
-    "rightEar", "nose", "leftShoulder","leftShoulder", "leftElbow",
-    "leftElbow", "leftWrist", "leftShoulder", "leftHip", "leftHip", "leftKnee",
-    "leftKnee", "leftAnkle", "nose", "rightShoulder", "rightShoulder",
-    "rightElbow", "rightElbow", "rightWrist", "rightShoulder", "rightHip",
-    "rightHip", "rightKnee", "rightKnee", "rightAnkle"
+  "nose", "leftEye", "leftEye", "leftEar", "nose", "rightEye", "rightEye",
+  "rightEar", "nose", "leftShoulder","leftShoulder", "leftElbow",
+  "leftElbow", "leftWrist", "leftShoulder", "leftHip", "leftHip", "leftKnee",
+  "leftKnee", "leftAnkle", "nose", "rightShoulder", "rightShoulder",
+  "rightElbow", "rightElbow", "rightWrist", "rightShoulder", "rightHip",
+  "rightHip", "rightKnee", "rightKnee", "rightAnkle"
 };
+
+typedef enum {
+  Float,
+  Int32,
+  Uint8,
+  Invalid
+} TensorDataType;
 
 typedef struct
 {
-    float val;
-    int   index;
+  float val;
+  int   index;
 } Score;
 
 typedef struct
 {
-    int   outputStride;
-    int   maxPoseDetections;
-    float minPoseScore;
-    float heatmapScoreThreshold;
-    int   nmsRadius;
-    int   featureHeight;
-    int   featureWidth;
-    int   numKeypoint;
-    int   localMaximumRadius;
+  int   outputStride;
+  int   maxPoseDetections;
+  float minPoseScore;
+  float heatmapScoreThreshold;
+  int   nmsRadius;
+  int   featureHeight;
+  int   featureWidth;
+  int   numKeypoint;
+  int   localMaximumRadius;
 } PosePPConfig;
 
 typedef struct
 {
-    float poseScore;
-    float keypointScore[TotalKeypointNum];
-    float keypointCoord[TotalKeypointNum * 2];
+  float poseScore;
+  float keypointScore[TotalKeypointNum];
+  float keypointCoord[TotalKeypointNum * 2];
 } PoseResult;
 
 typedef struct
 {
-    float partScore;
-    int   keypointId;
-    int   coord[2];
+  float partScore;
+  int   keypointId;
+  int   coord[2];
 } Part;
 
 typedef struct
 {
-    float partScore;
-    int   keypointId;
-    float coord[2];
+  float partScore;
+  int   keypointId;
+  float coord[2];
 } PartWithFloatCoord;
 
 typedef struct
 {
-    int  pId;
-    char pName[MaxKeypointNameLen];
+  int  pId;
+  char pName[MaxKeypointNameLen];
 } PartId;
 
 typedef struct
 {
-    int parent;
-    int child;
+  int parent;
+  int child;
 } ParentChildTurple;
+
+typedef struct
+{
+  TensorDataType outputType;
+  void* pOuts;
+  float min = 0.0;
+  float max = 0.0;
+} PPOutputElement;
 
 class PoseNetEngine : public NNEngine {
 public:
@@ -132,31 +147,9 @@ private:
 
   int32_t FillMLMeta(GstBuffer * gst_buffer) override;
 
-  static int ScoreSort(
-      const void* pVal1,
-      const void* pVal2);
-
   static int SortPartScore(
       const void* pVal1,
       const void* pVal2);
-
-  void SortTopN(
-      Score* pScores,
-      int numClasses,
-      int topNum,
-      Score* pTopNScores);
-
-  void ListTopN(
-      float* pClassPred,
-      int    topNum,
-      char   labels[][128],
-      FILE*  pMetaFile);
-
-  void CalculateLabel(
-      int*   pLabelMap,
-      char   labels[][128],
-      int    inHeight,
-      int    inWidth);
 
   void DoHeatmapNormalize(
       float* pRawScores,
@@ -232,12 +225,14 @@ private:
       PoseResult*        pPoseResult,
       ParentChildTurple* pParentChildTurples);
 
-  float CalculatePoseInstanceScore(
+  int32_t CalculatePoseInstanceScore(
       PoseResult*   pPoseResults,
       int           poseCount,
       int           squaredNmsRadius,
       PoseResult*   pCurPoseResult,
-      PosePPConfig* pPosePPConfig);
+      PosePPConfig* pPosePPConfig,
+      float         &notOverlappedScores
+      );
 
   static const std::string    kModelLib;
 
@@ -260,6 +255,10 @@ private:
   PoseResult                  pose_results_[PoseMaxNumDetect];
   int                         pose_count_;
   std::mutex                  lock_;
+
+  float* pOffsets;
+  float* pDisplacementsFwd;
+  float* pDisplacementsBwd;
 };
 
 #endif // POSENETENGINE_H
