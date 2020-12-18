@@ -58,7 +58,7 @@ G_DEFINE_TYPE (GstOverlay, gst_overlay, GST_TYPE_VIDEO_FILTER);
 #define DEFAULT_PROP_DEST_RECT_X      40
 #define DEFAULT_PROP_DEST_RECT_Y      40
 #define DEFAULT_PROP_DEST_RECT_WIDTH  200
-#define DEFAULT_PROP_DEST_RECT_HEIGHT 40
+#define DEFAULT_PROP_DEST_RECT_HEIGHT 48
 
 
 /* This is initial value. Size is recalculated runtime and buffer is
