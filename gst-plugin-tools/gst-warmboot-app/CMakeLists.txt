@@ -1,0 +1,22 @@
+# GStreamer plugins pipeline test application.
+set(GST_WARMBOOT_EXECUTABLE gst-warmboot-app)
+
+add_executable(${GST_WARMBOOT_EXECUTABLE}
+  main.c
+)
+
+target_include_directories(${GST_WARMBOOT_EXECUTABLE} PRIVATE
+  ${GST_INCLUDE_DIRS}
+)
+
+target_link_libraries(${GST_WARMBOOT_EXECUTABLE} PRIVATE
+  ${GST_LIBRARIES}
+)
+
+install(
+  TARGETS ${GST_WARMBOOT_EXECUTABLE}
+  RUNTIME DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_BINDIR}
+  PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
+              GROUP_EXECUTE GROUP_READ
+              GROUP_EXECUTE GROUP_READ
+)

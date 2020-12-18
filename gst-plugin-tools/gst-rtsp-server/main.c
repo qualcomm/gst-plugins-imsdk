@@ -34,6 +34,31 @@
 #define DEFAULT_RTSP_PORT    "8900"
 #define DEFAULT_RTSP_POINT   "/live"
 
+/// Command line option variables.
+static gchar *address  = DEFAULT_RTSP_ADDRESS;
+static gchar *port     = DEFAULT_RTSP_PORT;
+static gchar *mpoint   = DEFAULT_RTSP_POINT;
+static gboolean record = FALSE;
+
+static const GOptionEntry entries[] = {
+    { "address", 'a', 0, G_OPTION_ARG_STRING, &address,
+      "Server IP address (default: " DEFAULT_RTSP_ADDRESS ")",
+      "ADDRESS"
+    },
+    { "port", 'p', 0, G_OPTION_ARG_STRING, &port,
+      "Port on which to stream the payload (default: " DEFAULT_RTSP_PORT ")",
+      "PORT"
+    },
+    { "mount", 'm', 0, G_OPTION_ARG_STRING, &mpoint,
+      "Mount point for the payload (default: " DEFAULT_RTSP_POINT ")",
+      "POINT"
+    },
+    { "record", 'r', 0, G_OPTION_ARG_NONE, &record,
+      "Use RECORD transport mode instead of PLAY", NULL
+    },
+    { NULL }
+};
+
 // This timeout is periodically run to clean up the expired sessions from the
 // pool. This needs to be run explicitly currently but might be done
 // automatically as part of the mainloop.
@@ -49,38 +74,25 @@ timeout (GstRTSPServer * server)
   return TRUE;
 }
 
+static gboolean
+handle_interrupt_signal (gpointer userdata)
+{
+  GMainLoop *mloop = (GMainLoop*) userdata;
+
+  g_print ("\n\nReceived an interrupt signal, quit main loop ...\n");
+  g_main_loop_quit (mloop);
+
+  return FALSE;
+}
+
 gint
 main (gint argc, gchar *argv[])
 {
-  GMainLoop *loop = NULL;
-  GstRTSPServer *server = NULL;
-  GstRTSPMountPoints *mounts = NULL;
-  GstRTSPMediaFactory *factory = NULL;
   GOptionContext *ctx = NULL;
-
-  gchar *address = DEFAULT_RTSP_ADDRESS;
-  gchar *port = DEFAULT_RTSP_PORT;
-  gchar *mpoint = DEFAULT_RTSP_POINT;
-  gboolean record = FALSE;
-
-  GOptionEntry entries[] = {
-      { "address", 'a', 0, G_OPTION_ARG_STRING, &address,
-        "Server IP address (default: " DEFAULT_RTSP_ADDRESS ")",
-        "ADDRESS"
-      },
-      { "port", 'p', 0, G_OPTION_ARG_STRING, &port,
-        "Port on which to stream the payload (default: " DEFAULT_RTSP_PORT ")",
-        "PORT"
-      },
-      { "mount", 'm', 0, G_OPTION_ARG_STRING, &mpoint,
-        "Mount point for the payload (default: " DEFAULT_RTSP_POINT ")",
-        "POINT"
-      },
-      { "record", 'r', 0, G_OPTION_ARG_NONE, &record,
-        "Use RECORD transport mode instead of PLAY", NULL
-      },
-      { NULL }
-  };
+  GstRTSPServer *server = NULL;
+  GstRTSPMediaFactory *factory = NULL;
+  GstRTSPMountPoints *mounts = NULL;
+  GMainLoop *mloop = NULL;
 
   g_set_prgname ("gst-rtsp-server");
 
@@ -113,8 +125,8 @@ main (gint argc, gchar *argv[])
   gst_init (&argc, &argv);
 
   // Initialize main loop.
-  loop = g_main_loop_new (NULL, FALSE);
-  g_return_val_if_fail (loop != NULL, -ENODEV);
+  mloop = g_main_loop_new (NULL, FALSE);
+  g_return_val_if_fail (mloop != NULL, -ENODEV);
 
   // Initialize RTSP server.
   server = gst_rtsp_server_new ();
@@ -139,6 +151,9 @@ main (gint argc, gchar *argv[])
   // Add the factory with given path to the mount points.
   gst_rtsp_mount_points_add_factory (mounts, mpoint, factory);
 
+  // No need to keep reference for below objects.
+  g_object_unref (mounts);
+
   gst_rtsp_media_factory_set_transport_mode (factory,
       record ? GST_RTSP_TRANSPORT_MODE_RECORD : GST_RTSP_TRANSPORT_MODE_PLAY);
   gst_rtsp_media_factory_set_launch (factory, argv[1]);
@@ -147,21 +162,27 @@ main (gint argc, gchar *argv[])
   g_timeout_add_seconds (5, (GSourceFunc) timeout, server);
 
   // Attach the RTSP server to the main context.
-  if (0 == gst_rtsp_server_attach (server, NULL))
+  if (0 == gst_rtsp_server_attach (server, NULL)) {
     g_printerr ("Failed to attach RTSP server to main loop context!\n");
 
-  // No need to keep reference for below objects.
-  g_object_unref (mounts);
+    g_object_unref (factory);
+    g_object_unref (server);
+    g_main_loop_unref (mloop);
+
+    return -ENODEV;
+  }
+
+  // Register function for handling interrupt signals with the main loop.
+  g_unix_signal_add (SIGINT, handle_interrupt_signal, mloop);
 
   g_print ("Stream ready at rtsp://%s:%s%s\n", address, port, mpoint);
 
   // Run main loop.
-  g_main_loop_run (loop);
+  g_main_loop_run (mloop);
 
-  // Cleanup.
   g_object_unref (factory);
   g_object_unref (server);
-  g_main_loop_unref (loop);
+  g_main_loop_unref (mloop);
 
   gst_deinit ();
 
