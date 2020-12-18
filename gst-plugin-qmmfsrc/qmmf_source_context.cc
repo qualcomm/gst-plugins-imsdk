@@ -102,14 +102,14 @@ struct _GstQmmfContext {
   guchar            scene;
   /// Camera antibanding mode property.
   guchar            antibanding;
-  /// Camera Auto Exposure compensation property.
-  gint              aecompensation;
+  /// Camera Exposure mode property.
+  guchar            expmode;
+  /// Camera Exposure routine lock property.
+  gboolean          explock;
   /// Camera Exposure metering mode property.
   gint              expmetering;
-  /// Camera Auto Exposure mode property.
-  guchar            aemode;
-  /// Camera Auto Exposure Compensation lock property.
-  gboolean          aelock;
+  /// Camera Exposure compensation property.
+  gint              expcompensation;
   /// Camera Manual Exposure time property.
   gint64            exptime;
   /// Camera Exposure table property.
@@ -501,27 +501,27 @@ initialize_camera_param (GstQmmfContext * context)
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
       "QMMF Recorder GetCameraParam Failed!");
 
-  numvalue = gst_qmmfsrc_effect_mode_android_value(context->effect);
+  numvalue = gst_qmmfsrc_effect_mode_android_value (context->effect);
   meta.update(ANDROID_CONTROL_EFFECT_MODE, &numvalue, 1);
 
-  numvalue = gst_qmmfsrc_scene_mode_android_value(context->scene);
+  numvalue = gst_qmmfsrc_scene_mode_android_value (context->scene);
   meta.update(ANDROID_CONTROL_SCENE_MODE, &numvalue, 1);
 
-  numvalue = gst_qmmfsrc_antibanding_android_value(context->antibanding);
+  numvalue = gst_qmmfsrc_antibanding_android_value (context->antibanding);
   meta.update(ANDROID_CONTROL_AE_ANTIBANDING_MODE, &numvalue, 1);
 
   meta.update(ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION,
-              &(context)->aecompensation, 1);
+              &(context)->expcompensation, 1);
 
-  numvalue = gst_qmmfsrc_ae_mode_android_value(context->aemode);
+  numvalue = gst_qmmfsrc_exposure_mode_android_value (context->expmode);
   meta.update(ANDROID_CONTROL_AE_MODE, &numvalue, 1);
 
-  numvalue = context->aelock;
+  numvalue = context->explock;
   meta.update(ANDROID_CONTROL_AE_LOCK, &numvalue, 1);
 
   meta.update(ANDROID_SENSOR_EXPOSURE_TIME, &(context)->exptime, 1);
 
-  numvalue = gst_qmmfsrc_wb_mode_android_value(context->wbmode);
+  numvalue = gst_qmmfsrc_white_balance_mode_android_value (context->wbmode);
 
   // If the returned value is not UCHAR_MAX then we have an Android enum.
   if (numvalue != UCHAR_MAX)
@@ -538,10 +538,10 @@ initialize_camera_param (GstQmmfContext * context)
   numvalue = context->wblock;
   meta.update(ANDROID_CONTROL_AWB_LOCK, &numvalue, 1);
 
-  numvalue = gst_qmmfsrc_af_mode_android_value(context->afmode);
+  numvalue = gst_qmmfsrc_focus_mode_android_value (context->afmode);
   meta.update(ANDROID_CONTROL_AF_MODE, &numvalue, 1);
 
-  numvalue = gst_qmmfsrc_noise_reduction_android_value(context->nrmode);
+  numvalue = gst_qmmfsrc_noise_reduction_android_value (context->nrmode);
   meta.update(ANDROID_NOISE_REDUCTION_MODE, &numvalue, 1);
 
   numvalue = context->adrc;
@@ -556,7 +556,7 @@ initialize_camera_param (GstQmmfContext * context)
     meta.update(ANDROID_SCALER_CROP_REGION, crop, 4);
   }
 
-  tag_id = get_vendor_tag_by_name("org.codeaurora.qcamera3.ir_led", "mode");
+  tag_id = get_vendor_tag_by_name ("org.codeaurora.qcamera3.ir_led", "mode");
   if (tag_id != 0)
     meta.update(tag_id, &(context)->irmode, 1);
 
@@ -572,7 +572,7 @@ initialize_camera_param (GstQmmfContext * context)
     if (tag_id != 0)
       meta.update(tag_id, &(context)->isomode, 1);
 
-  tag_id = get_vendor_tag_by_name("org.codeaurora.qcamera3.exposure_metering",
+  tag_id = get_vendor_tag_by_name ("org.codeaurora.qcamera3.exposure_metering",
                                   "exposure_metering_mode");
   if (tag_id != 0)
     meta.update(tag_id, &(context)->expmetering, 1);
@@ -1778,39 +1778,49 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       meta.update(ANDROID_CONTROL_AE_ANTIBANDING_MODE, &mode, 1);
       break;
     }
-    case PARAM_CAMERA_AE_COMPENSATION:
-    {
-      gint compensation;
-      context->aecompensation = g_value_get_int (value);
-
-      compensation = context->aecompensation;
-      meta.update(ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION, &compensation, 1);
-      break;
-    }
-    case PARAM_CAMERA_AE_MODE:
+    case PARAM_CAMERA_EXPOSURE_MODE:
     {
       guchar mode;
-      context->aemode = g_value_get_enum (value);
+      context->expmode = g_value_get_enum (value);
 
-      mode = gst_qmmfsrc_ae_mode_android_value (context->aemode);
+      mode = gst_qmmfsrc_exposure_mode_android_value (context->expmode);
       meta.update(ANDROID_CONTROL_AE_MODE, &mode, 1);
       break;
     }
-    case PARAM_CAMERA_AE_LOCK:
+    case PARAM_CAMERA_EXPOSURE_LOCK:
     {
       guchar lock;
-      context->aelock = g_value_get_boolean (value);
+      context->explock = g_value_get_boolean (value);
 
-      lock = context->aelock;
+      lock = context->explock;
       meta.update(ANDROID_CONTROL_AE_LOCK, &lock, 1);
+      break;
+    }
+    case PARAM_CAMERA_EXPOSURE_METERING:
+    {
+      guint tag_id = get_vendor_tag_by_name (
+          "org.codeaurora.qcamera3.exposure_metering", "exposure_metering_mode");
+
+      context->expmetering = g_value_get_enum (value);
+      meta.update(tag_id, &(context)->expmetering, 1);
+      break;
+    }
+    case PARAM_CAMERA_EXPOSURE_COMPENSATION:
+    {
+      gint compensation;
+      context->expcompensation = g_value_get_int (value);
+
+      compensation = context->expcompensation;
+      meta.update(ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION, &compensation, 1);
       break;
     }
     case PARAM_CAMERA_EXPOSURE_TIME:
     {
       gint64 time;
-      context->exptime = g_value_get_int64 (value);
 
+      context->exptime = g_value_get_int64 (value);
       time = context->exptime;
+
       meta.update(ANDROID_SENSOR_EXPOSURE_TIME, &time, 1);
       break;
     }
@@ -1820,7 +1830,7 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       gint mode = UCHAR_MAX;
 
       context->wbmode = g_value_get_enum (value);
-      mode = gst_qmmfsrc_wb_mode_android_value (context->wbmode);
+      mode = gst_qmmfsrc_white_balance_mode_android_value (context->wbmode);
 
       // If the returned value is not UCHAR_MAX then we have an Android enum.
       if (mode != UCHAR_MAX)
@@ -1889,12 +1899,12 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       set_vendor_tags (context->mwbsettings, &meta);
       break;
     }
-    case PARAM_CAMERA_AF_MODE:
+    case PARAM_CAMERA_FOCUS_MODE:
     {
       guchar mode;
       context->afmode = g_value_get_enum (value);
 
-      mode = gst_qmmfsrc_af_mode_android_value (context->afmode);
+      mode = gst_qmmfsrc_focus_mode_android_value (context->afmode);
       meta.update(ANDROID_CONTROL_AF_MODE, &mode, 1);
       break;
     }
@@ -1921,15 +1931,6 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
 
       context->isomode = g_value_get_enum (value);
       meta.update(tag_id, &(context)->isomode, 1);
-      break;
-    }
-    case PARAM_CAMERA_AE_METERING_MODE:
-    {
-      guint tag_id = get_vendor_tag_by_name (
-          "org.codeaurora.qcamera3.exposure_metering", "exposure_metering_mode");
-
-      context->expmetering = g_value_get_enum (value);
-      meta.update(tag_id, &(context)->expmetering, 1);
       break;
     }
     case PARAM_CAMERA_NOISE_REDUCTION:
@@ -2143,14 +2144,17 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_ANTIBANDING_MODE:
       g_value_set_enum (value, context->antibanding);
       break;
-    case PARAM_CAMERA_AE_COMPENSATION:
-      g_value_set_int (value, context->aecompensation);
+    case PARAM_CAMERA_EXPOSURE_MODE:
+      g_value_set_enum (value, context->expmode);
       break;
-    case PARAM_CAMERA_AE_MODE:
-      g_value_set_enum (value, context->aemode);
+    case PARAM_CAMERA_EXPOSURE_LOCK:
+      g_value_set_boolean (value, context->explock);
       break;
-    case PARAM_CAMERA_AE_LOCK:
-      g_value_set_boolean (value, context->aelock);
+    case PARAM_CAMERA_EXPOSURE_METERING:
+      g_value_set_enum (value, context->expmetering);
+      break;
+    case PARAM_CAMERA_EXPOSURE_COMPENSATION:
+      g_value_set_int (value, context->expcompensation);
       break;
     case PARAM_CAMERA_EXPOSURE_TIME:
       g_value_set_int64 (value, context->exptime);
@@ -2175,7 +2179,7 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       g_free (string);
       break;
     }
-    case PARAM_CAMERA_AF_MODE:
+    case PARAM_CAMERA_FOCUS_MODE:
       g_value_set_enum (value, context->afmode);
       break;
     case PARAM_CAMERA_IR_MODE:
@@ -2183,9 +2187,6 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       break;
     case PARAM_CAMERA_ISO_MODE:
       g_value_set_enum (value, context->isomode);
-      break;
-    case PARAM_CAMERA_AE_METERING_MODE:
-      g_value_set_enum (value, context->expmetering);
       break;
     case PARAM_CAMERA_NOISE_REDUCTION:
       g_value_set_enum (value, context->nrmode);
