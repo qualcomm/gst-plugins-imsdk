@@ -31,6 +31,7 @@
 #define POSENETENGINE_H
 
 #include "nnengine.h"
+#include "engines/common_utils.h"
 
 static const int TotalKeypointNum   = 17;
 static const int MaxKeypointNameLen = 20;

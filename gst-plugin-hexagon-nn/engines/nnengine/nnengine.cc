@@ -45,7 +45,7 @@ int32_t NNEngine::EngineInit(const NNSourceInfo* source_info,
   scale_width_ = (uint32_t)(in_width_ * ratio);
   scale_height_ = (uint32_t)(in_height_ * ratio);
 
-  ALOGD("%s:%d: in: %dx%d scaled: %dx%d nn: %dx%d ", __func__, __LINE__,
+  NN_LOGD("%s:%d: in: %dx%d scaled: %dx%d nn: %dx%d ", __func__, __LINE__,
     in_width_, in_height_, scale_width_, scale_height_,
     pad_width_, pad_height_);
 
@@ -56,7 +56,7 @@ int32_t NNEngine::EngineInit(const NNSourceInfo* source_info,
 
   if ((nullptr == rgb_buf_) ||
       (nullptr == scale_buf_)) {
-    ALOGE(" Buffer allocation failed");
+    NN_LOGE(" Buffer allocation failed");
     return NN_FAIL;
   }
 
@@ -66,7 +66,7 @@ int32_t NNEngine::EngineInit(const NNSourceInfo* source_info,
   int ret = nn_driver_->Init(&nn_input_buf_, pad_width_, pad_height_,
       num_outputs_, out_sizes, lib);
   if (ret) {
-    ALOGE(" NNDriver Init failed");
+    NN_LOGE(" NNDriver Init failed");
     nn_driver_ = nullptr;
     return NN_FAIL;
   }
@@ -85,9 +85,9 @@ int32_t NNEngine::EngineDeInit()
     do {
       status = future_.wait_for(std::chrono::milliseconds(kTimeOut));
       if (status == std::future_status::deferred) {
-          ALOGE("%s: Future wait deferred", __func__);
+          NN_LOGE("%s: Future wait deferred", __func__);
       } else if (status == std::future_status::timeout) {
-          ALOGE("%s: Future wait timeout %d ms", __func__, kTimeOut);
+          NN_LOGE("%s: Future wait timeout %d ms", __func__, kTimeOut);
       }
     } while (status != std::future_status::ready);
   }
@@ -112,7 +112,7 @@ int32_t NNEngine::PreProcess(NNFrameInfo* pFrameInfo)
 {
   if (NN_FORMAT_NV12 != in_format_ &&
       NN_FORMAT_NV21 != in_format_) {
-    ALOGE("%s: Format %d not supported", __func__, in_format_);
+    NN_LOGE("%s: Format %d not supported", __func__, in_format_);
     return NN_FAIL;
   }
 
@@ -140,7 +140,7 @@ int32_t NNEngine::PreProcess(NNFrameInfo* pFrameInfo)
                           scale_height_,
                           in_format_);
     if (NN_OK != res) {
-      ALOGE("PreProcessScale failed due to unsupported image format");
+      NN_LOGE("PreProcessScale failed due to unsupported image format");
       return res;
     }
 
@@ -193,7 +193,7 @@ int32_t NNEngine::Process(
       Timer t("Pre-process time");
       int ret = PreProcess(frame_info);
       if (ret) {
-        ALOGE(" Pre-process failed");
+        NN_LOGE(" Pre-process failed");
         return NN_FAIL;
       }
     }
@@ -203,7 +203,7 @@ int32_t NNEngine::Process(
       Timer t("Inference time");
       int ret = nn_driver_->Process(nn_input_buf_, outputs_);
       if (ret) {
-        ALOGE(" Inference failed");
+        NN_LOGE(" Inference failed");
         return NN_FAIL;
       }
     }
@@ -213,7 +213,7 @@ int32_t NNEngine::Process(
       Timer t("Post-process time");
       int ret = PostProcess(outputs_);
       if (ret) {
-        ALOGE(" Postprocess failed");
+        NN_LOGE(" Postprocess failed");
         return NN_FAIL;
       }
     }
@@ -224,7 +224,7 @@ int32_t NNEngine::Process(
     Timer t("Fill ML Metadata time");
     int ret = FillMLMeta(gst_buffer);
     if (ret) {
-      ALOGE("Fill ML Metadata failed");
+      NN_LOGE("Fill ML Metadata failed");
       return NN_FAIL;
     }
   }
@@ -256,7 +256,7 @@ int32_t NNEngine::ProcessOnline(
     Timer t("Pre-process time");
     int ret = PreProcess(frame_info);
     if (ret) {
-      ALOGE(" Pre-process failed");
+      NN_LOGE(" Pre-process failed");
       return NN_FAIL;
     }
   }
@@ -266,7 +266,7 @@ int32_t NNEngine::ProcessOnline(
     Timer t("Inference time");
     int ret = nn_driver_->Process(nn_input_buf_, outputs_);
     if (ret) {
-      ALOGE(" Inference failed");
+      NN_LOGE(" Inference failed");
       return NN_FAIL;
     }
   }
@@ -276,7 +276,7 @@ int32_t NNEngine::ProcessOnline(
     Timer t("Post-process time");
     int ret = PostProcess(outputs_, gst_buffer);
     if (ret) {
-      ALOGE(" Postprocess failed");
+      NN_LOGE(" Postprocess failed");
       return NN_FAIL;
     }
   }
@@ -297,7 +297,7 @@ int32_t NNEngine::ProcessPerFrame(
       Timer t("Pre-process time");
       int ret = PreProcess(frame_info);
       if (ret) {
-        ALOGE(" Pre-process failed");
+        NN_LOGE(" Pre-process failed");
         return NN_FAIL;
       }
     }
@@ -309,7 +309,7 @@ int32_t NNEngine::ProcessPerFrame(
         Timer t("Inference time");
         int ret = nn_driver_->Process(nn_input_buf_, outputs_);
         if (ret) {
-          ALOGE(" Inference failed");
+          NN_LOGE(" Inference failed");
         }
       }
 
@@ -319,7 +319,7 @@ int32_t NNEngine::ProcessPerFrame(
         Timer t("Post-process time");
         int ret = PostProcess(outputs_);
         if (ret) {
-          ALOGE(" Postprocess failed");
+          NN_LOGE(" Postprocess failed");
         }
       }
     });
@@ -331,7 +331,7 @@ int32_t NNEngine::ProcessPerFrame(
     Timer t("Fill ML Metadata time");
     int ret = FillMLMeta(gst_buffer);
     if (ret) {
-      ALOGE("Fill ML Metadata failed");
+      NN_LOGE("Fill ML Metadata failed");
       return NN_FAIL;
     }
   }
@@ -389,7 +389,7 @@ int32_t NNEngine::PreProcessScale(
                      scaleHeight/2,
                      0);
   } else {
-    ALOGE("Unsupported format %d", (int)format);
+    NN_LOGE("Unsupported format %d", (int)format);
     rc = NN_FAIL;
   }
   return rc;
@@ -433,7 +433,7 @@ uint8_t NNEngine::ReadLabelsFiles(const std::string& file_name,
                                   std::vector<std::string>& result) {
   std::ifstream file(file_name);
   if (!file) {
-    ALOGE("%s: Labels file %s not found!", __func__, file_name.c_str());
+    NN_LOGE("%s: Labels file %s not found!", __func__, file_name.c_str());
     return NN_FAIL;
   }
   result.clear();

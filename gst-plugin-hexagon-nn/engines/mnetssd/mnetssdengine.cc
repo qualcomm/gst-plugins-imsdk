@@ -48,14 +48,14 @@ int32_t MnetSSDEngine::Init(const NNSourceInfo* source_info)
   labels_file_name += "/coco_labels.txt";
   uint8_t ret = ReadLabelsFiles(labels_file_name, labels_);
   if (ret) {
-      ALOGE("Failed to read labels file");
+      NN_LOGE("Failed to read labels file");
       return ret;
   }
 
   scale_back_x_ = (float)in_width_ / scale_width_;
   scale_back_y_ = (float)in_height_ / scale_height_;
 
-  ALOGD("%s:%d: scale_back: %.2fx%.2f in: %dx%d scaled: %dx%d", __func__,
+  NN_LOGV("%s:%d: scale_back: %.2fx%.2f in: %dx%d scaled: %dx%d", __func__,
       __LINE__, scale_back_x_, scale_back_y_, in_width_, in_height_,
       scale_width_, scale_height_);
 
@@ -320,7 +320,7 @@ int DoNMSMultiThread(
     }
     else
     {
-        ALOGE(" Failed in DoNMSMultiThread\n");
+        NN_LOGE(" Failed in DoNMSMultiThread\n");
     }
 
     return finalCandidateIdx;
@@ -353,7 +353,7 @@ int32_t MnetSSDEngine::PostProcess(void* outputs[], GstBuffer* gst_buffer)
   float* pTempBoxEncBuf =
       static_cast<float*>(malloc(detectPPConfig.numOutputs * detectPPConfig.numCoordBox * sizeof(float)));
   if (!pTempBoxEncBuf) {
-    ALOGE("%s: Failed to allocate memory", __func__);
+    NN_LOGE("%s: Failed to allocate memory", __func__);
     return NN_FAIL;
   }
 
@@ -373,7 +373,7 @@ int32_t MnetSSDEngine::PostProcess(void* outputs[], GstBuffer* gst_buffer)
   if (gst_buffer) {
     for (int i = 0; i < num_detect_; i++) {
       if (detections_[i].score < 0.6) continue;
-      ALOGI("Object class %s prob %f box %d %d %d %d",
+      NN_LOGI("Object class %s prob %f box %d %d %d %d",
             labels_[detections_[i].classIdx].c_str(),
             detections_[i].score,
             detections_[i].bbox[0],
@@ -383,7 +383,7 @@ int32_t MnetSSDEngine::PostProcess(void* outputs[], GstBuffer* gst_buffer)
 
       GstMLDetectionMeta *meta = gst_buffer_add_detection_meta(gst_buffer);
       if (!meta) {
-        ALOGE("%s: Failed to create metadata", __func__);
+        NN_LOGE("%s: Failed to create metadata", __func__);
         return NN_FAIL;
       }
 
@@ -395,7 +395,7 @@ int32_t MnetSSDEngine::PostProcess(void* outputs[], GstBuffer* gst_buffer)
       snprintf(box_info->name, label_size, "%s",
               labels_[detections_[i].classIdx].c_str());
       if (!box_info->name) {
-        ALOGE("%s: Failed to create metadata", __func__);
+        NN_LOGE("%s: Failed to create metadata", __func__);
         return NN_FAIL;
       }
 
@@ -422,7 +422,7 @@ int32_t MnetSSDEngine::FillMLMeta(GstBuffer * gst_buffer)
 
     GstMLDetectionMeta *meta = gst_buffer_add_detection_meta(gst_buffer);
     if (!meta) {
-      ALOGE("%s: Failed to create metadata", __func__);
+      NN_LOGE("%s: Failed to create metadata", __func__);
       return NN_FAIL;
     }
 
@@ -432,7 +432,7 @@ int32_t MnetSSDEngine::FillMLMeta(GstBuffer * gst_buffer)
     guint label_size = labels_[detections_[i].classIdx].size() + 1;
     box_info->name = (gchar *)malloc(label_size);
     if (!box_info->name) {
-      ALOGE("%s: Failed to create metadata", __func__);
+      NN_LOGE("%s: Failed to create metadata", __func__);
       return NN_FAIL;
     }
 

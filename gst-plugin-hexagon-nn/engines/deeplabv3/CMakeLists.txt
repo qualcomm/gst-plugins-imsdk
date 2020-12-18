@@ -6,6 +6,7 @@ add_library(${DEEP_LAB_V3} SHARED
 
 target_include_directories(${DEEP_LAB_V3} PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_SOURCE_DIR}
 )
 
 target_link_libraries(${DEEP_LAB_V3} PUBLIC

@@ -187,7 +187,7 @@ int32_t DeepLabv3Engine::Init(const NNSourceInfo* source_info)
       (scale_width_ * scale_height_ * kOutBytesPerPixel));
 
   if (nullptr == result_buff_) {
-    ALOGE(" Buffer allocation failed");
+    NN_LOGE(" Buffer allocation failed");
     return NN_FAIL;
   }
 
@@ -216,7 +216,7 @@ void * DeepLabv3Engine::GenerateMeta(GstBuffer * gst_buffer)
 {
   GstMLSegmentationMeta *img_meta = gst_buffer_add_segmentation_meta (gst_buffer);
   if (!img_meta) {
-    ALOGE ("Failed to add overlay image meta");
+    NN_LOGE ("Failed to add overlay image meta");
     return nullptr;
   }
 
@@ -225,7 +225,7 @@ void * DeepLabv3Engine::GenerateMeta(GstBuffer * gst_buffer)
   if (img_meta->img_buffer == nullptr) {
     img_meta->img_buffer = (gpointer) calloc (1, image_size);
     if (!img_meta->img_buffer) {
-      ALOGE(" Failed to allocate image buffer");
+      NN_LOGE(" Failed to allocate image buffer");
       return nullptr;
     }
   }
@@ -264,7 +264,7 @@ int32_t DeepLabv3Engine::PostProcess(void* outputs[], GstBuffer * gst_buffer)
     buff = result_buff_;
   }
   if (!buff) {
-    ALOGE("%s: Output buffer is null", __func__);
+    NN_LOGE("%s: Output buffer is null", __func__);
     return NN_FAIL;
   }
 
@@ -278,7 +278,7 @@ int32_t DeepLabv3Engine::FillMLMeta(GstBuffer * gst_buffer)
 {
   void * buff = GenerateMeta(gst_buffer);
   if (!buff) {
-    ALOGE("%s: Output buffer is null", __func__);
+    NN_LOGE("%s: Output buffer is null", __func__);
     return NN_FAIL;
   }
 

@@ -34,7 +34,7 @@
 #include <gst/video/video.h>
 
 #include <ml-meta/ml_meta.h>
-
+#include "engines/common_utils.h"
 #include "deeplabengine.h"
 #include "posenetengine.h"
 #include "mnetssdengine.h"
