@@ -1126,7 +1126,7 @@ int32_t Overlay::ApplyOverlay (const OverlayTargetBuffer& buffer)
     }
   }
 
-  OVDBG_VERBOSE ("%s: numActiveOverlays=%lu", __func__,
+  OVDBG_VERBOSE ("%s: numActiveOverlays=%zu", __func__,
       numActiveOverlays);
   for (size_t i = 0; i < (numActiveOverlays - 1); i++) {
     c2d_objects.objects[i].next = &c2d_objects.objects[i + 1];
