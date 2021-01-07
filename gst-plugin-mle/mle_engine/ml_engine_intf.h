@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -227,8 +227,12 @@ class MLEngine {
       const uint32_t scaleHeight,
       MLEImageFormat format);
 
-  void MeanSubtract(uint8_t* input_buf, const uint32_t width,
-                    const uint32_t height, float* processed_buf);
+  void MeanSubtract(uint8_t* input_buf,
+                    const uint32_t width,
+                    const uint32_t height,
+                    const uint32_t pad_width,
+                    const uint32_t pad_height,
+                    float* processed_buf);
 
   MLConfig config_;
   MLEInputParams source_params_;
@@ -245,8 +249,8 @@ class MLEngine {
   GstC2dVideoConverter *c2dconvert_;
   GstBufferPool *outpool_;
   static bool use_c2d_preprocess_;
-  GstVideoFrame *scale_buf_outframe_;
-  GstBuffer *gst_scale_buf_;
+  GstVideoFrame *c2d_buf_outframe_;
+  GstBuffer *gst_c2d_buf_;
 };
 
 }; // namespace mle
