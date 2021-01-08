@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -47,8 +47,30 @@ int32_t TFLSegmentation::PostProcess(GstBuffer* buffer) {
     return MLE_FAIL;
   }
 
-  uint32_t image_size = scale_width_ * scale_height_ * kOutBytesPerPixel;
+  int output = tflite_params_.interpreter->outputs()[0];
+  TfLiteIntArray* output_dims = tflite_params_.interpreter->tensor(output)->dims;
+  int batch_size = output_dims->data[0];
+  if (batch_size != 1) {
+    MLE_LOGE("%s: No support for %d batch size", __func__, batch_size);
+    return MLE_FAIL;
+  }
+  uint32_t output_tensor_width = output_dims->data[2];
+  uint32_t output_tensor_height = output_dims->data[1];
+  uint32_t rgb_width = 0;
+  uint32_t rgb_height = 0;
 
+  if ((engine_input_params_.width != output_tensor_width) ||
+      (engine_input_params_.height != output_tensor_height)) {
+    float ratio = (output_tensor_width & ~0x1) * 1.0 /
+                  fmax(scale_width_, scale_width_);
+    rgb_width = (uint32_t)(scale_width_ * ratio) & ~0x1;
+    rgb_height = (uint32_t)(scale_height_ * ratio) & ~0x1;
+  } else {
+    rgb_width = scale_width_;
+    rgb_height = scale_height_;
+  }
+
+  uint32_t image_size = rgb_width * rgb_height * kOutBytesPerPixel;
   if (img_meta->img_buffer == nullptr) {
     img_meta->img_buffer = (gpointer) calloc (1, image_size);
     if (!img_meta->img_buffer) {
@@ -57,19 +79,43 @@ int32_t TFLSegmentation::PostProcess(GstBuffer* buffer) {
     }
   }
 
-  img_meta->img_width  = scale_width_;
-  img_meta->img_height = scale_height_;
+  img_meta->img_width  = rgb_width;
+  img_meta->img_height = rgb_height;
   img_meta->img_size   = image_size;
   img_meta->img_format = GST_VIDEO_FORMAT_RGBA;
-  img_meta->img_stride = scale_width_ * kOutBytesPerPixel;
+  img_meta->img_stride = rgb_width * kOutBytesPerPixel;
 
+  float *float_temp_output =
+      tflite_params_.interpreter->typed_output_tensor<float>(0);
+  if (float_temp_output) {
+    for (uint32_t y = 0; y < rgb_height; y++) {
+      for (uint32_t x = 0; x < rgb_width; x++) {
+        uint32_t offset = (y * output_tensor_width + x) * 21;
+        int pos = 0;
+        float *array = &float_temp_output[offset];
+        float max = array[0];
+        for (int i = 1; i < 21; i++) {
+            if (max < array[i]) {
+                pos = i;
+                max = array[i];
+            }
+        }
+        ((uint32_t*)img_meta->img_buffer)[y * rgb_width + x] =
+            static_cast<uint32_t>(color_table[pos].red)  |
+            static_cast<uint32_t>(color_table[pos].green) << 8 |
+            static_cast<uint32_t>(color_table[pos].blue) << 16 |
+            static_cast<uint32_t>(color_table[pos].alpha) << 24;
+      }
+    }
+  }
 
-  int32_t* temp_output = tflite_params_.interpreter->typed_output_tensor<int32_t>(0);
-  if (temp_output) {
-    for (uint32_t y = 0; y < scale_height_; y++) {
-      for (uint32_t x = 0; x < scale_width_; x++) {
-        uint32_t label = temp_output[y * engine_input_params_.width + x];
-        ((uint32_t*)img_meta->img_buffer)[y * scale_width_ + x] =
+  int32_t* int32_temp_output =
+      tflite_params_.interpreter->typed_output_tensor<int32_t>(0);
+  if (int32_temp_output) {
+    for (uint32_t y = 0; y < rgb_height; y++) {
+      for (uint32_t x = 0; x < rgb_width; x++) {
+        uint32_t label = int32_temp_output[y * output_tensor_width + x];
+        ((uint32_t*)img_meta->img_buffer)[y * rgb_width + x] =
             static_cast<uint32_t>(color_table[label].red)  |
             static_cast<uint32_t>(color_table[label].green) << 8 |
             static_cast<uint32_t>(color_table[label].blue) << 16 |
