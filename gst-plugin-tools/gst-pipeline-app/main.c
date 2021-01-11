@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -82,6 +82,7 @@
 
 #define PLUGIN_MODE_OPTION     "p"
 #define MENU_BACK_OPTION       "b"
+#define QUIT_OPTION            "q"
 
 #define GST_APP_CONTEXT_CAST(obj)           ((GstAppContext*)(obj))
 
@@ -618,6 +619,8 @@ print_pipeline_options (GstElement * pipeline)
   APPEND_OTHER_OPTS_SECTION (options);
   g_string_append_printf (options, "   (%s) %-25s: %s\n", PLUGIN_MODE_OPTION,
       "Plugin Mode", "Choose a plugin which to control");
+  g_string_append_printf (options, "   (%s) %-25s: %s\n", QUIT_OPTION,
+      "Quit", "Exit the application");
 
   g_print ("%s", options->str);
   g_string_free (options, TRUE);
@@ -964,6 +967,12 @@ gst_pipeline_menu (GstElement * pipeline, GAsyncQueue * messages,
     }
 
     gst_structure_free (plugins);
+  } else if (g_str_equal (input, QUIT_OPTION)) {
+    g_print ("\nQuit pressed!!\n");
+
+    update_pipeline_state (pipeline, messages, GST_STATE_NULL);
+    g_free (input);
+    return FALSE;
   }
 
   g_free (input);
@@ -1079,6 +1088,7 @@ main_menu (gpointer userdata)
   if (element != NULL)
     gst_object_unref (element);
 
+  g_main_loop_quit (appctx->mloop);
   return NULL;
 }
 
