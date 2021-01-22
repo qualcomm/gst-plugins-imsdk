@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -73,6 +73,10 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
 #define DEFAULT_PROP_MIN_QP_B_FRAMES 10
 #define DEFAULT_PROP_MAX_QP_B_FRAMES 51
 #define DEFAULT_PROP_IDR_INTERVAL    1
+#define DEFAULT_PROP_CROP_X          0
+#define DEFAULT_PROP_CROP_Y          0
+#define DEFAULT_PROP_CROP_WIDTH      0
+#define DEFAULT_PROP_CROP_HEIGHT     0
 
 GType
 gst_video_pad_control_rate_get_type (void)
@@ -128,6 +132,7 @@ enum
   PROP_VIDEO_MIN_QP_B_FRAMES,
   PROP_VIDEO_MAX_QP_B_FRAMES,
   PROP_VIDEO_IDR_INTERVAL,
+  PROP_VIDEO_CROP,
 };
 
 static void
@@ -314,6 +319,8 @@ video_pad_update_params (GstPad * pad, GstStructure * structure)
       vpad->codec = GST_VIDEO_CODEC_H264;
     else if (gst_structure_has_name (structure, "video/x-h265"))
       vpad->codec = GST_VIDEO_CODEC_H265;
+    else if (gst_structure_has_name (structure, "image/jpeg"))
+      vpad->codec = GST_VIDEO_CODEC_JPEG;
   }
 
   if (gst_structure_has_field (structure, "compression")) {
@@ -557,6 +564,16 @@ video_pad_set_property (GObject * object, guint property_id,
     case PROP_VIDEO_IDR_INTERVAL:
       gst_structure_set_value (pad->params, propname, value);
       break;
+    case PROP_VIDEO_CROP:
+    {
+      g_return_if_fail (gst_value_array_get_size (value) == 4);
+
+      pad->crop.x = g_value_get_int (gst_value_array_get_value (value, 0));
+      pad->crop.y = g_value_get_int (gst_value_array_get_value (value, 1));
+      pad->crop.w = g_value_get_int (gst_value_array_get_value (value, 2));
+      pad->crop.h = g_value_get_int (gst_value_array_get_value (value, 3));
+      break;
+    }
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (pad, property_id, pspec);
       break;
@@ -600,6 +617,24 @@ video_pad_get_property (GObject * object, guint property_id, GValue * value,
       g_value_copy (gst_structure_get_value (pad->params,
            g_param_spec_get_name (pspec)), value);
       break;
+    case PROP_VIDEO_CROP:
+    {
+      GValue val = G_VALUE_INIT;
+      g_value_init (&val, G_TYPE_INT);
+
+      g_value_set_int (&val, pad->crop.x);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, pad->crop.y);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, pad->crop.w);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, pad->crop.h);
+      gst_value_array_append_value (value, &val);
+      break;
+    }
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (pad, property_id, pspec);
       break;
@@ -750,6 +785,15 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
           0, G_MAXUINT, DEFAULT_PROP_IDR_INTERVAL,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_VIDEO_CROP,
+      gst_param_spec_array ("crop", "Crop rectangle",
+          "Crop rectangle ('<X, Y, WIDTH, HEIGHT>'). Applicable only for "
+          "JPEG and YUY2 formats",
+          g_param_spec_int ("value", "Crop Value",
+              "One of X, Y, WIDTH or HEIGHT value.", 0, G_MAXINT, 0,
+              G_PARAM_WRITABLE | G_PARAM_STATIC_STRINGS),
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
 
   GST_DEBUG_CATEGORY_INIT (qmmfsrc_video_pad_debug, "qtiqmmfsrc", 0,
       "QTI QMMF Source video pad");
@@ -771,6 +815,10 @@ qmmfsrc_video_pad_init (GstQmmfSrcVideoPad * pad)
   pad->compression  = GST_VIDEO_COMPRESSION_NONE;
   pad->codec        = GST_VIDEO_CODEC_UNKNOWN;
   pad->params       = gst_structure_new_empty ("codec-params");
+  pad->crop.x       = DEFAULT_PROP_CROP_X;
+  pad->crop.y       = DEFAULT_PROP_CROP_Y;
+  pad->crop.w       = DEFAULT_PROP_CROP_WIDTH;
+  pad->crop.h       = DEFAULT_PROP_CROP_HEIGHT;
 
   pad->duration  = GST_CLOCK_TIME_NONE;
 

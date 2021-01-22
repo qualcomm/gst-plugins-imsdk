@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -65,6 +65,10 @@ G_BEGIN_DECLS
     "level = (string) { " QMMFSRC_VIDEO_H265_LEVELS " }, "     \
     QMMFSRC_COMMON_VIDEO_CAPS
 
+#define QMMFSRC_VIDEO_JPEG_CAPS \
+    "image/jpeg, "              \
+    QMMFSRC_COMMON_VIDEO_CAPS
+
 #define QMMFSRC_VIDEO_RAW_CAPS(formats) \
     "video/x-raw, "                     \
     "format = (string) " formats ", "   \
@@ -107,6 +111,7 @@ typedef enum {
   GST_VIDEO_CODEC_NONE,
   GST_VIDEO_CODEC_H264,
   GST_VIDEO_CODEC_H265,
+  GST_VIDEO_CODEC_JPEG,
 } GstVideoCodec;
 
 typedef enum {
@@ -162,6 +167,8 @@ struct _GstQmmfSrcVideoPad {
   GstVideoCodec       codec;
   /// Agnostic structure containing codec specific parameters.
   GstStructure        *params;
+  /// Crop region.
+  GstVideoRectangle   crop;
 
   /// QMMF Recorder track buffers duration, calculated from framerate.
   GstClockTime        duration;

@@ -1103,6 +1103,9 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
     case GST_VIDEO_CODEC_H265:
       format = ::qmmf::VideoFormat::kHEVC;
       break;
+    case GST_VIDEO_CODEC_JPEG:
+      format = ::qmmf::VideoFormat::kJPEG;
+      break;
     case GST_VIDEO_CODEC_NONE:
       // Not an encoded stream.
       break;
@@ -1407,6 +1410,55 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
       "QMMF Recorder CreateVideoTrack Failed!");
 
   GST_TRACE ("QMMF context video stream created");
+
+  // Update crop metadata parameters.
+  if (vpad->crop.x < 0 || vpad->crop.x > vpad->width) {
+    GST_WARNING ("Cannot apply crop, X axis value outside stream width!");
+  } else if (vpad->crop.y < 0 || vpad->crop.y > vpad->height) {
+    GST_WARNING ("Cannot apply crop, Y axis value outside stream height!");
+  } else if (vpad->crop.w < 0 || vpad->crop.w > (vpad->width - vpad->crop.x)) {
+    GST_WARNING ("Cannot apply crop, width value outside stream width!");
+  } else if (vpad->crop.h < 0 || vpad->crop.h > (vpad->height - vpad->crop.y)) {
+    GST_WARNING ("Cannot apply crop, height value outside stream height!");
+  } else if ((vpad->crop.w == 0 && vpad->crop.h != 0) ||
+      (vpad->crop.w != 0 && vpad->crop.h == 0)) {
+    GST_WARNING ("Cannot apply crop, width and height must either both be 0 "
+        "or both be positive values !");
+  } else if ((vpad->crop.w == 0 && vpad->crop.h == 0) &&
+      (vpad->crop.x != 0 || vpad->crop.y != 0)) {
+    GST_WARNING ("Cannot apply crop, width and height values are 0 but "
+        "X and/or Y are not 0!");
+  } else {
+    ::android::CameraMetadata meta;
+    guint tag_id = 0;
+    gint32 ivalue = 0;
+
+    recorder->GetCameraParam (context->camera_id, meta);
+
+    tag_id = get_vendor_tag_by_name (
+        "org.codeaurora.qcamera3.c2dCropParam", "c2dCropX");
+    ivalue = vpad->crop.x;
+
+    if (meta.update (tag_id, &ivalue, 1) != 0)
+      GST_WARNING ("Failed to update X axis crop value");
+
+    tag_id = get_vendor_tag_by_name (
+        "org.codeaurora.qcamera3.c2dCropParam", "c2dCropY");
+    if (meta.update (tag_id, &vpad->crop.y, 1) != 0)
+      GST_WARNING ("Failed to update Y axis crop value");
+
+    tag_id = get_vendor_tag_by_name (
+        "org.codeaurora.qcamera3.c2dCropParam", "c2dCropWidth");
+    if (meta.update (tag_id, &vpad->crop.w, 1) != 0)
+      GST_WARNING ("Failed to update crop width");
+
+    tag_id = get_vendor_tag_by_name (
+        "org.codeaurora.qcamera3.c2dCropParam", "c2dCropHeight");
+    if (meta.update (tag_id, &vpad->crop.h, 1) != 0)
+      GST_WARNING ("Failed to update crop height");
+
+    recorder->SetCameraParam (context->camera_id, meta);
+  }
 
   context->pads = g_list_append (context->pads, pad);
   return TRUE;
@@ -1957,13 +2009,13 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
         break;
       }
 
-      structure = GST_STRUCTURE(g_value_dup_boxed(&gvalue));
-      g_value_unset(&gvalue);
+      structure = GST_STRUCTURE (g_value_dup_boxed(&gvalue));
+      g_value_unset (&gvalue);
 
-      gst_structure_foreach(structure, update_structure, context->nrtuning);
-      gst_structure_free(structure);
+      gst_structure_foreach (structure, update_structure, context->nrtuning);
+      gst_structure_free (structure);
 
-      set_vendor_tags(context->nrtuning, &meta);
+      set_vendor_tags (context->nrtuning, &meta);
       break;
     }
     case PARAM_CAMERA_ZOOM:
@@ -2085,11 +2137,11 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
         break;
       }
 
-      structure = GST_STRUCTURE(g_value_dup_boxed(&gvalue));
-      g_value_unset(&gvalue);
+      structure = GST_STRUCTURE (g_value_dup_boxed(&gvalue));
+      g_value_unset (&gvalue);
 
-      gst_structure_foreach(structure, update_structure, context->ltmdata);
-      gst_structure_free(structure);
+      gst_structure_foreach (structure, update_structure, context->ltmdata);
+      gst_structure_free (structure);
 
       set_vendor_tags(context->ltmdata, &meta);
       break;
@@ -2283,6 +2335,11 @@ gst_qmmf_context_update_video_param (GstPad * pad, GParamSpec * pspec,
 
   GST_DEBUG ("Received update for %s property", pname);
 
+  if (context->state < GST_STATE_PAUSED) {
+    GST_DEBUG ("Stream not yet created, skip property update.");
+    return;
+  }
+
   g_value_init (&value, pspec->value_type);
   g_object_get_property (G_OBJECT (vpad), pname, &value);
 
@@ -2307,11 +2364,70 @@ gst_qmmf_context_update_video_param (GstPad * pad, GParamSpec * pspec,
     status = recorder->SetVideoTrackParam (session_id, track_id,
         ::qmmf::CodecParamType::kIDRIntervalType, &param, sizeof (param)
     );
+  } else if (g_strcmp0 (pname, "crop") == 0) {
+    ::android::CameraMetadata meta;
+    gint32 x = -1, y = -1, width = -1, height = -1;
+    guint tag_id = 0;
+
+    g_return_if_fail (gst_value_array_get_size (&value) == 4);
+
+    x = g_value_get_int (gst_value_array_get_value (&value, 0));
+    y = g_value_get_int (gst_value_array_get_value (&value, 1));
+    width = g_value_get_int (gst_value_array_get_value (&value, 2));
+    height = g_value_get_int (gst_value_array_get_value (&value, 3));
+
+    if (x < 0 || x > vpad->width) {
+      GST_WARNING ("Cannot apply crop, X axis value outside stream width!");
+      return;
+    } else if (y < 0 || y > vpad->height) {
+      GST_WARNING ("Cannot apply crop, Y axis value outside stream height!");
+      return;
+    } else if (width < 0 || width > (vpad->width - x)) {
+      GST_WARNING ("Cannot apply crop, width value outside stream width!");
+      return;
+    } else if (height < 0 || height > (vpad->height - y)) {
+      GST_WARNING ("Cannot apply crop, height value outside stream height!");
+      return;
+    } else if ((vpad->crop.w == 0 && vpad->crop.h != 0) ||
+        (vpad->crop.w != 0 && vpad->crop.h == 0)) {
+      GST_WARNING ("Cannot apply crop, width and height must either both be 0 "
+          "or both be positive values!");
+      return;
+    } else if ((vpad->crop.w == 0 && vpad->crop.h == 0) &&
+        (vpad->crop.x != 0 || vpad->crop.y != 0)) {
+      GST_WARNING ("Cannot apply crop, width and height values are 0 but "
+          "X and/or Y are not 0!");
+      return;
+    }
+
+    recorder->GetCameraParam (context->camera_id, meta);
+
+    tag_id = get_vendor_tag_by_name (
+        "org.codeaurora.qcamera3.c2dCropParam", "c2dCropX");
+    if (meta.update (tag_id, &x, 1) != 0)
+      GST_WARNING ("Failed to update X axis crop value");
+
+    tag_id = get_vendor_tag_by_name (
+        "org.codeaurora.qcamera3.c2dCropParam", "c2dCropY");
+    if (meta.update (tag_id, &y, 1) != 0)
+      GST_WARNING ("Failed to update Y axis crop value");
+
+    tag_id = get_vendor_tag_by_name (
+        "org.codeaurora.qcamera3.c2dCropParam", "c2dCropWidth");
+    if (meta.update (tag_id, &width, 1) != 0)
+      GST_WARNING ("Failed to update crop width");
+
+    tag_id = get_vendor_tag_by_name (
+        "org.codeaurora.qcamera3.c2dCropParam", "c2dCropHeight");
+    if (meta.update (tag_id, &height, 1) != 0)
+      GST_WARNING ("Failed to update crop height");
+
+    status = recorder->SetCameraParam (context->camera_id, meta);
   } else {
     GST_WARNING ("Unsupported parameter '%s'!", pname);
     status = -1;
   }
 
   QMMFSRC_RETURN_IF_FAIL (NULL, status == 0,
-      "QMMF Recorder SetVideoTrackParam Failed!");
+      "QMMF Recorder SetVideoTrackParam/SetCameraParam Failed!");
 }
