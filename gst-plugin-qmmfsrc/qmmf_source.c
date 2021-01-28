@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -61,7 +61,7 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
 #define DEFAULT_PROP_CAMERA_EXPOSURE_METERING         EXPOSURE_METERING_AVERAGE
 #define DEFAULT_PROP_CAMERA_EXPOSURE_COMPENSATION     0
 #define DEFAULT_PROP_CAMERA_EXPOSURE_TABLE            NULL
-#define DEFAULT_PROP_CAMERA_EXPOSURE_TIME             0
+#define DEFAULT_PROP_CAMERA_EXPOSURE_TIME             30000000
 #define DEFAULT_PROP_CAMERA_WHITE_BALANCE_MODE        WHITE_BALANCE_MODE_AUTO
 #define DEFAULT_PROP_CAMERA_WHITE_BALANCE_LOCK        FALSE
 #define DEFAULT_PROP_CAMERA_MANUAL_WB_SETTINGS        NULL
