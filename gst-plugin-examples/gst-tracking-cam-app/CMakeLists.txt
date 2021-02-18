@@ -12,7 +12,7 @@ pkg_check_modules(GST_VIDEO
 set(GST_EXAMPLE_BIN gst-tracking-cam-app)
 
 add_executable(${GST_EXAMPLE_BIN}
-  tracking_camera.c
+  tracking_camera.cc
 )
 
 target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
@@ -25,6 +25,7 @@ target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_VIDEO_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   qtimlmeta
+  qtiafralgo
 )
 
 install(

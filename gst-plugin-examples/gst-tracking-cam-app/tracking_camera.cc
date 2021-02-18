@@ -54,22 +54,19 @@
  * -h - Main stream height
  * -f - Format
  * -c - Crop type
+ * -y - Sync enable
  *
  */
 #include <stdio.h>
-#include <math.h>
 #include <glib-unix.h>
 #include <gst/gst.h>
 #include <ml-meta/ml_meta.h>
 #include <gst/base/gstdataqueue.h>
+#include <iot-core-algs/auto-framing-alg.h>
 
 #define MP4_FILE_LOCATION "/data/mux.mp4"
 #define MJPEG_FILE_LOCATION "/data/mjpeg.avi"
 
-#define DEFAULT_POS_PERCENT 6
-#define DEFAULT_SIZE_PERCENT 13
-#define DEFAULT_MARGIN_PERCENT 5
-#define DEFAULT_SEED_PERCENT 15
 #define DEFAULT_MAIN_STREAM_WIDTH 3840
 #define DEFAULT_MAIN_STREAM_HEIGHT 2160
 #define DEFAULT_MLE_STREAM_WIDTH 640
@@ -78,64 +75,41 @@
 #define DEFAULT_CROP_TYPE CROP_GST
 
 // Main stream format
-typedef enum {
+typedef enum
+{
   FORMAT_YUY2,
   FORMAT_MJPEG,
   FORMAT_NV12,
 } GstMainStreamFormat;
 
 // Crop type
-typedef enum {
+typedef enum
+{
   CROP_GST,
   CROP_CAMERA,
 } GstCropType;
 
-// Contains tracking camera process parameters
-typedef struct _GstTrackingCameraProcess GstTrackingCameraProcess;
-struct _GstTrackingCameraProcess
+typedef struct _GstTrackingCamera GstTrackingCamera;
+struct _GstTrackingCamera
 {
+  // Pointer to the pipeline
+  GstElement *pipeline;
+  // Pointer to the mainloop
+  GMainLoop *mloop;
+  // Instance of auto framing algorithm
+  AutoFramingAlgo *framing_alg_inst;
+  GstDataQueue *set_crop_queue;
   GstDataQueue *mle_data_queue;
   GMutex process_lock;
   GCond process_signal;
-  gint finish;
-  // Store the last received bounding box from the mle
-  GstVideoRectangle last_rect;
-  // Store the next crop which should be applied
-  GstVideoRectangle next_rect;
-};
-
-// Contains tracking camera configuration parameters
-typedef struct _GstTrackingCameraConfig GstTrackingCameraConfig;
-struct _GstTrackingCameraConfig
-{
-  // Main stream dimensions
-  gint stream_w;
-  gint stream_h;
-
-  // MLE stream dimensions
-  gint stream_mle_w;
-  gint stream_mle_h;
-
-  // Parameter for the position threshold of the crop
-  gint diff_pos_percent;
-  // Parameter for the dimensions threshold of the crop
-  gint diff_size_percent;
-  // Parameter for the dimensions margin added to the calculated crop
-  gint crop_margin_percent;
-  // Parameter for the speed of movement to the final crop rectangle
-  gint speed_move_percent;
   // Parameter for the format selected
   GstMainStreamFormat format;
   // Parameter for the crop type selected
   GstCropType crop_type;
-};
+  // Parameter for enable synchronization
+  gboolean sync_enable;
 
-typedef struct _GstTrackingCamera GstTrackingCamera;
-struct _GstTrackingCamera
-{
-  GstElement *pipeline;
-  GstTrackingCameraConfig config;
-  GstTrackingCameraProcess process;
+  gint finish;
 };
 
 // Contains MLE bounding box data
@@ -144,55 +118,26 @@ struct _GstMleData
 {
   GstElement *pipeline;
   GstVideoRectangle rect;
-  gboolean dataValid;
+  gboolean data_valid;
 };
 
-// Process thread functions which takes all MLE data from the queue
-// and calculate the next crop window movement
-static gpointer
-mle_samples_process_thread (void *data)
+static void
+gst_free_queue_item (gpointer data)
+{
+  GstDataQueueItem *item = (GstDataQueueItem *) data;
+  g_free (item->object);
+  g_slice_free (GstDataQueueItem, item);
+}
+
+void
+apply_crop (GstMleData * mle_data, GstTrackingCamera * tracking_camera)
 {
   GstElement *crop_element = NULL;
   GstPad *element_pad = NULL;
-  GstTrackingCamera *tracking_camera = (GstTrackingCamera *) data;
-  GstTrackingCameraConfig *config = &tracking_camera->config;
-  GstTrackingCameraProcess *process = &tracking_camera->process;
-  float aspect_ratio = (float) config->stream_w / (float) config->stream_h;
+  VideoRectangle output;
 
-  GstDataQueueItem *item = NULL;
-
-  while (1) {
-    g_mutex_lock (&process->process_lock);
-    while (!process->finish &&
-        gst_data_queue_is_empty (process->mle_data_queue)) {
-      gint64 wait_time = g_get_monotonic_time () + G_GINT64_CONSTANT (10000000);
-      gboolean timeout = g_cond_wait_until (&process->process_signal,
-          &process->process_lock, wait_time);
-      if (!timeout) {
-        g_print ("Timeout on wait for data\n");
-      }
-    }
-
-    if (process->finish) {
-      g_mutex_unlock (&process->process_lock);
-      return NULL;
-    }
-
-    // Get the bounding box data from the queue
-    gst_data_queue_pop (process->mle_data_queue, &item);
-    g_mutex_unlock (&process->process_lock);
-
-    GstMleData *mle_data = (GstMleData *) item->object;
-    GValue crop = G_VALUE_INIT;
-    g_value_init (&crop, GST_TYPE_ARRAY);
-    GValue value = G_VALUE_INIT;
-    g_value_init (&value, G_TYPE_INT);
-    gint x = 0;
-    gint y = 0;
-    gint width = 0;
-    gint height = 0;
-
-    switch (config->crop_type) {
+  if (!tracking_camera->sync_enable) {
+    switch (tracking_camera->crop_type) {
       case CROP_CAMERA:
         // Get the qmmfsrc element which is used to apply the crop property
         crop_element =
@@ -210,179 +155,106 @@ mle_samples_process_thread (void *data)
             gst_bin_get_by_name (GST_BIN (mle_data->pipeline), "transform");
         break;
     }
+  }
 
-    // Check if there is received a valid mle data
-    // Otherwise move smoothly to the
-    // last bounding box received (if not already done)
-    if (mle_data->dataValid) {
-      // Apply new position if reached the position threshold
-      if (abs (process->last_rect.x - mle_data->rect.x) >
-          ((mle_data->rect.w + mle_data->rect.h) / 2 *
-              config->diff_pos_percent / 100) ||
-          abs (process->last_rect.y - mle_data->rect.y) >
-          ((mle_data->rect.w + mle_data->rect.h) / 2 *
-              config->diff_pos_percent / 100)) {
+  // Check if there is received a valid mle data
+  if (mle_data->data_valid) {
+    VideoRectangle rect;
+    rect.x = mle_data->rect.x;
+    rect.y = mle_data->rect.y;
+    rect.w = mle_data->rect.w;
+    rect.h = mle_data->rect.h;
 
-        process->last_rect.x = mle_data->rect.x;
-        process->last_rect.y = mle_data->rect.y;
-      }
+    // Execute the process of the Auto Framing algorithm
+    output = auto_framing_algo_process (
+        tracking_camera->framing_alg_inst, &rect);
+  } else {
+    // Execute the process of the Auto Framing algorithm
+    output = auto_framing_algo_process (
+        tracking_camera->framing_alg_inst, NULL);
+  }
 
-      // Apply new size if reached the dimensions threshold
-      if (abs (process->last_rect.w - mle_data->rect.w) >
-          (mle_data->rect.w * config->diff_size_percent / 100) ||
-          abs (process->last_rect.h - mle_data->rect.h) >
-          (mle_data->rect.h * config->diff_size_percent / 100)) {
+  GValue *crop = g_new0 (GValue, 1);
+  g_value_init (crop, GST_TYPE_ARRAY);
+  GValue value = G_VALUE_INIT;
+  g_value_init (&value, G_TYPE_INT);
 
-        process->last_rect.w = mle_data->rect.w;
-        process->last_rect.h = mle_data->rect.h;
-      }
+  g_value_set_int (&value, output.x);
+  gst_value_array_append_value (crop, &value);
+  g_value_set_int (&value, output.y);
+  gst_value_array_append_value (crop, &value);
+  g_value_set_int (&value, output.w);
+  gst_value_array_append_value (crop, &value);
+  g_value_set_int (&value, output.h);
+  gst_value_array_append_value (crop, &value);
+
+  if (tracking_camera->sync_enable) {
+    // Put the next rect data to queue
+    GstDataQueueItem *item = NULL;
+    item = g_slice_new0 (GstDataQueueItem);
+    item->object = GST_MINI_OBJECT (crop);
+    item->visible = TRUE;
+    item->destroy = gst_free_queue_item;
+    if (!gst_data_queue_push (tracking_camera->set_crop_queue, item)) {
+      g_printerr ("ERROR: Cannot push data to the queue!\n");
+      item->destroy (item);
     }
-
-    // Calculate the next X movement of the crop based on
-    // the speed movement parameter
-    gint move_val = ceil (abs (process->last_rect.x - process->next_rect.x) *
-        config->speed_move_percent / 100.0);
-    if (process->last_rect.x > process->next_rect.x) {
-      process->next_rect.x += move_val;
-    } else {
-      process->next_rect.x -= move_val;
-    }
-
-    // Calculate the next Y movement of the crop based on
-    // the speed movement parameter
-    move_val = ceil (abs (process->last_rect.y - process->next_rect.y) *
-        config->speed_move_percent / 100.0);
-    if (process->last_rect.y > process->next_rect.y) {
-      process->next_rect.y += move_val;
-    } else {
-      process->next_rect.y -= move_val;
-    }
-
-    // Calculate the next WIDTH movement of the crop based on
-    // the speed movement parameter
-    move_val = ceil (abs (process->last_rect.w - process->next_rect.w) *
-        config->speed_move_percent / 100.0);
-    if (process->last_rect.w > process->next_rect.w) {
-      process->next_rect.w += move_val;
-    } else {
-      process->next_rect.w -= move_val;
-    }
-
-    // Calculate the next HEIGHT movement of the crop based on
-    // the speed movement parameter
-    move_val = ceil (abs (process->last_rect.h - process->next_rect.h) *
-        config->speed_move_percent / 100.0);
-    if (process->last_rect.h > process->next_rect.h) {
-      process->next_rect.h += move_val;
-    } else {
-      process->next_rect.h -= move_val;
-    }
-
-    // Calculate the aspect ratio to follow the original aspect ratio
-    if ((process->next_rect.w / process->next_rect.h) < aspect_ratio) {
-      width = process->next_rect.h * aspect_ratio;
-      height = process->next_rect.h;
-    } else {
-      width = process->next_rect.w;
-      height = process->next_rect.w / aspect_ratio;
-    }
-
-    // Center the detected object to the middle of the crop rectangle
-    if (width >= height) {
-      x = process->next_rect.x - ((width-height) * 0.75);
-      y = process->next_rect.y;
-    } else {
-      x = process->next_rect.x;
-      y = process->next_rect.y - ((height-width) * 0.75);
-    }
-
-    // Apply the margin of the final crop window
-    // It is used to increase additionally the final size of the
-    // crop rectangle by given percent of the size as a parameter
-    gint crop_w_diff = width * config->crop_margin_percent / 100;
-    gint crop_h_diff = height * config->crop_margin_percent / 100;
-    x -= crop_w_diff;
-    y -= crop_h_diff;
-    width += crop_w_diff*2;
-    height += crop_h_diff*2;
-
-    // Do not allow negative position value
-    if (x < 0) {
-      x = 0;
-    }
-    if (y < 0) {
-      y = 0;
-    }
-
-    // Do not go outside of the width of the rectangle
-    if (x + width > config->stream_mle_w) {
-      x -= x + width - config->stream_mle_w;
-      if (x < 0) {
-        width -= abs(x);
-        x = 0;
-        height = width / aspect_ratio;
-      }
-    }
-
-    // Do not go outside of the height of the rectangle
-    if (y + height > config->stream_mle_h) {
-      y -= y + height - config->stream_mle_h;
-      if (y < 0) {
-        height -= abs(y);
-        y = 0;
-        width = height * aspect_ratio;
-      }
-    }
-
-    // Align the crop dimensions based on the input size of the mle plugin
-    gfloat w_coef = config->stream_w / config->stream_mle_w;
-    gfloat h_coef = config->stream_h / config->stream_mle_h;
-    x *= w_coef;
-    y *= h_coef;
-    width *= w_coef;
-    height *= h_coef;
-
-    // Apply the crop to the camera
-    g_value_set_int (&value, x);
-    gst_value_array_append_value (&crop, &value);
-    g_value_set_int (&value, y);
-    gst_value_array_append_value (&crop, &value);
-    g_value_set_int (&value, width);
-    gst_value_array_append_value (&crop, &value);
-    g_value_set_int (&value, height);
-    gst_value_array_append_value (&crop, &value);
-
-    switch (config->crop_type) {
+  } else {
+    switch (tracking_camera->crop_type) {
       case CROP_CAMERA:
-        g_object_set_property (G_OBJECT (element_pad), "crop", &crop);
+        g_object_set_property (G_OBJECT (element_pad), "crop", crop);
         gst_object_unref (element_pad);
         break;
       case CROP_GST:
       default:
-        g_object_set_property (G_OBJECT (crop_element), "crop", &crop);
+        g_object_set_property (G_OBJECT (crop_element), "crop", crop);
         break;
     }
-
     gst_object_unref (crop_element);
-    g_free (mle_data);
+    g_free (crop);
+  }
+}
+
+// Process thread functions which takes all MLE data from the queue
+// and calculate the next crop window movement
+static gpointer
+mle_samples_process_thread (void * data)
+{
+  GstTrackingCamera *tracking_camera = (GstTrackingCamera *) data;
+  while (1) {
+    g_mutex_lock (&tracking_camera->process_lock);
+    while (!tracking_camera->finish &&
+        gst_data_queue_is_empty (tracking_camera->mle_data_queue)) {
+      gint64 wait_time = g_get_monotonic_time () + G_GINT64_CONSTANT (10000000);
+      gboolean timeout = g_cond_wait_until (&tracking_camera->process_signal,
+          &tracking_camera->process_lock, wait_time);
+      if (!timeout) {
+        g_print ("Timeout on wait for data\n");
+      }
+    }
+
+    if (tracking_camera->finish) {
+      g_mutex_unlock (&tracking_camera->process_lock);
+      return NULL;
+    }
+
+    // Get the bounding box data from the queue
+    GstDataQueueItem *item = NULL;
+    gst_data_queue_pop (tracking_camera->mle_data_queue, &item);
+    g_mutex_unlock (&tracking_camera->process_lock);
+
+    GstMleData *mle_data = (GstMleData *) item->object;
+    apply_crop (mle_data, tracking_camera);
     g_slice_free (GstDataQueueItem, item);
+    g_free (mle_data);
   }
 
   return NULL;
 }
 
-static void
-gst_free_queue_item (gpointer data)
-{
-  GstDataQueueItem *item = data;
-  GstMleData *mle_data = (GstMleData *) item->object;
-  g_free (mle_data);
-  g_slice_free (GstDataQueueItem, item);
-}
-
 // Event handler for all data received from the MLE
 static GstFlowReturn
-mle_detect_new_sample (GstElement *sink, gpointer userdata)
+mle_detect_new_sample (GstElement * sink, gpointer userdata)
 {
   GstTrackingCamera *tracking_camera = (GstTrackingCamera *) userdata;
   GstElement *pipeline = GST_ELEMENT (tracking_camera->pipeline);
@@ -405,8 +277,8 @@ mle_detect_new_sample (GstElement *sink, gpointer userdata)
     return GST_FLOW_ERROR;
   }
 
-  if (!gst_buffer_map (buffer, &info, GST_MAP_READ |
-      GST_VIDEO_FRAME_MAP_FLAG_NO_REF)) {
+  if (!gst_buffer_map (buffer, &info, (GstMapFlags) (GST_MAP_READ |
+      GST_VIDEO_FRAME_MAP_FLAG_NO_REF))) {
     g_printerr ("ERROR: Failed to map the pulled buffer!\n");
     gst_sample_unref (sample);
     return GST_FLOW_ERROR;
@@ -450,26 +322,31 @@ mle_detect_new_sample (GstElement *sink, gpointer userdata)
       mle_data->rect.y = meta->bounding_box.y;
       mle_data->rect.w = meta->bounding_box.width;
       mle_data->rect.h = meta->bounding_box.height;
-      mle_data->dataValid = TRUE;
+      mle_data->data_valid = TRUE;
 
-      // Put the detected bounding box in a queue
-      GstDataQueueItem *item = NULL;
-      item = g_slice_new0 (GstDataQueueItem);
-      item->object = GST_MINI_OBJECT (mle_data);
-      item->visible = TRUE;
-      item->destroy = gst_free_queue_item;
-      g_mutex_lock (&tracking_camera->process.process_lock);
-      if (!gst_data_queue_push (
-          tracking_camera->process.mle_data_queue, item)) {
-        g_printerr ("ERROR: Cannot push data to the queue!\n");
-        item->destroy (item);
-        g_mutex_unlock (&tracking_camera->process.process_lock);
-        gst_buffer_unmap (buffer, &info);
-        gst_sample_unref (sample);
-        return GST_FLOW_ERROR;
+      if (tracking_camera->sync_enable) {
+        apply_crop (mle_data, tracking_camera);
+        g_free (mle_data);
+      } else {
+        // Put the detected bounding box in a queue
+        GstDataQueueItem *item = NULL;
+        item = g_slice_new0 (GstDataQueueItem);
+        item->object = GST_MINI_OBJECT (mle_data);
+        item->visible = TRUE;
+        item->destroy = gst_free_queue_item;
+        g_mutex_lock (&tracking_camera->process_lock);
+        if (!gst_data_queue_push (
+            tracking_camera->mle_data_queue, item)) {
+          g_printerr ("ERROR: Cannot push data to the queue!\n");
+          item->destroy (item);
+          g_mutex_unlock (&tracking_camera->process_lock);
+          gst_buffer_unmap (buffer, &info);
+          gst_sample_unref (sample);
+          return GST_FLOW_ERROR;
+        }
+        g_cond_signal (&tracking_camera->process_signal);
+        g_mutex_unlock (&tracking_camera->process_lock);
       }
-      g_cond_signal (&tracking_camera->process.process_signal);
-      g_mutex_unlock (&tracking_camera->process.process_lock);
       is_meta_queued = TRUE;
     }
   }
@@ -477,25 +354,30 @@ mle_detect_new_sample (GstElement *sink, gpointer userdata)
   if (!is_meta_queued) {
     GstMleData *mle_data = g_new0 (GstMleData, 1);
     mle_data->pipeline = pipeline;
-    mle_data->dataValid = FALSE;
+    mle_data->data_valid = FALSE;
 
-    GstDataQueueItem *item = NULL;
-    item = g_slice_new0 (GstDataQueueItem);
-    item->object = GST_MINI_OBJECT (mle_data);
-    item->visible = TRUE;
-    item->destroy = gst_free_queue_item;
-    g_mutex_lock (&tracking_camera->process.process_lock);
-    if (!gst_data_queue_push (
-        tracking_camera->process.mle_data_queue, item)) {
-      g_printerr ("ERROR: Cannot push data to the queue!\n");
-      item->destroy (item);
-      g_mutex_unlock (&tracking_camera->process.process_lock);
-      gst_buffer_unmap (buffer, &info);
-      gst_sample_unref (sample);
-      return GST_FLOW_ERROR;
+    if (tracking_camera->sync_enable) {
+      apply_crop (mle_data, tracking_camera);
+      g_free (mle_data);
+    } else {
+      GstDataQueueItem *item = NULL;
+      item = g_slice_new0 (GstDataQueueItem);
+      item->object = GST_MINI_OBJECT (mle_data);
+      item->visible = TRUE;
+      item->destroy = gst_free_queue_item;
+      g_mutex_lock (&tracking_camera->process_lock);
+      if (!gst_data_queue_push (
+          tracking_camera->mle_data_queue, item)) {
+        g_printerr ("ERROR: Cannot push data to the queue!\n");
+        item->destroy (item);
+        g_mutex_unlock (&tracking_camera->process_lock);
+        gst_buffer_unmap (buffer, &info);
+        gst_sample_unref (sample);
+        return GST_FLOW_ERROR;
+      }
+      g_cond_signal (&tracking_camera->process_signal);
+      g_mutex_unlock (&tracking_camera->process_lock);
     }
-    g_cond_signal (&tracking_camera->process.process_signal);
-    g_mutex_unlock (&tracking_camera->process.process_lock);
   }
 
   gst_buffer_unmap (buffer, &info);
@@ -504,14 +386,77 @@ mle_detect_new_sample (GstElement *sink, gpointer userdata)
   return GST_FLOW_OK;
 }
 
+static void
+submit_frame_signal (gpointer * data1, gpointer * data2)
+{
+  GstTrackingCamera *tracking_camera = (GstTrackingCamera *) data2;
+  GstElement *crop_element = NULL;
+  GstPad *element_pad = NULL;
+  GstDataQueueItem *item = NULL;
+
+  if (!gst_data_queue_is_empty (tracking_camera->set_crop_queue)) {
+    gst_data_queue_pop (tracking_camera->set_crop_queue, &item);
+
+    GValue *crop = (GValue *) item->object;
+    switch (tracking_camera->crop_type) {
+      case CROP_CAMERA:
+        // Get the qmmfsrc element which is used to apply the crop property
+        crop_element =
+            gst_bin_get_by_name (GST_BIN (tracking_camera->pipeline), "qmmf");
+        // Get the second pad of the qmmfsrc element
+        // in oder to apply the crop property
+        element_pad =
+            gst_element_get_static_pad (crop_element, "video_1");
+        break;
+      case CROP_GST:
+      default:
+        // Get the qtivtransform element which is used to
+        // apply the crop property
+        crop_element =
+            gst_bin_get_by_name (
+                GST_BIN (tracking_camera->pipeline), "transform");
+        break;
+    }
+
+    switch (tracking_camera->crop_type) {
+     case CROP_CAMERA:
+       g_object_set_property (G_OBJECT (element_pad), "crop", crop);
+       gst_object_unref (element_pad);
+       break;
+     case CROP_GST:
+     default:
+       g_object_set_property (G_OBJECT (crop_element), "crop", crop);
+       break;
+    }
+
+    gst_object_unref (crop_element);
+    g_free (crop);
+    g_slice_free (GstDataQueueItem, item);
+  }
+}
+
 static gboolean
 handle_interrupt_signal (gpointer userdata)
 {
-  GstElement *pipeline = userdata;
+  GstTrackingCamera *tracking_camera = (GstTrackingCamera *) userdata;
   guint idx = 0;
+  GstState state, pending;
 
   g_print ("\n\nReceived an interrupt signal, send EOS ...\n");
-  gst_element_send_event (pipeline, gst_event_new_eos ());
+
+  if (!gst_element_get_state (
+      tracking_camera->pipeline, &state, &pending, GST_CLOCK_TIME_NONE)) {
+    gst_printerr ("ERROR: get current state!\n");
+    gst_element_send_event (tracking_camera->pipeline, gst_event_new_eos ());
+    return TRUE;
+  }
+
+  if (state == GST_STATE_PLAYING) {
+    gst_element_send_event (tracking_camera->pipeline, gst_event_new_eos ());
+  } else {
+    g_main_loop_quit (tracking_camera->mloop);
+  }
+
   return TRUE;
 }
 
@@ -519,18 +464,18 @@ static void
 state_changed_cb (GstBus * bus, GstMessage * message, gpointer userdata)
 {
   GstElement *pipeline = GST_ELEMENT (userdata);
-  GstState old, new, pending;
+  GstState old, new_st, pending;
 
   // Handle state changes only for the pipeline.
   if (GST_MESSAGE_SRC (message) != GST_OBJECT_CAST (pipeline))
     return;
 
-  gst_message_parse_state_changed (message, &old, &new, &pending);
+  gst_message_parse_state_changed (message, &old, &new_st, &pending);
   g_print ("\nPipeline state changed from %s to %s, pending: %s\n",
-      gst_element_state_get_name (old), gst_element_state_get_name (new),
+      gst_element_state_get_name (old), gst_element_state_get_name (new_st),
       gst_element_state_get_name (pending));
 
-  if ((new == GST_STATE_PAUSED) && (old == GST_STATE_READY) &&
+  if ((new_st == GST_STATE_PAUSED) && (old == GST_STATE_READY) &&
       (pending == GST_STATE_VOID_PENDING)) {
     g_print ("\nSetting pipeline to PLAYING state ...\n");
 
@@ -592,7 +537,7 @@ queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
 }
 
 gint
-main (gint argc, gchar *argv[])
+main (gint argc, gchar * argv[])
 {
   GOptionContext *ctx = NULL;
   GMainLoop *mloop = NULL;
@@ -604,59 +549,67 @@ main (gint argc, gchar *argv[])
   GstElement *pipeline = NULL;
   gboolean ret = FALSE;
   GstTrackingCamera tracking_camera = {};
+  AutoFramingConfig auto_framing_config = {};
+  gint diff_pos_threshold, diff_size_threshold, crop_margin, speed_movement = 0;
 
   // Set default settings
-  tracking_camera.config.diff_pos_percent = DEFAULT_POS_PERCENT;
-  tracking_camera.config.diff_size_percent = DEFAULT_SIZE_PERCENT;
-  tracking_camera.config.crop_margin_percent = DEFAULT_MARGIN_PERCENT;
-  tracking_camera.config.speed_move_percent = DEFAULT_SEED_PERCENT;
-  tracking_camera.config.stream_w = DEFAULT_MAIN_STREAM_WIDTH;
-  tracking_camera.config.stream_h = DEFAULT_MAIN_STREAM_HEIGHT;
-  tracking_camera.config.stream_mle_w = DEFAULT_MLE_STREAM_WIDTH;
-  tracking_camera.config.stream_mle_h = DEFAULT_MLE_STREAM_HEIGHT;
-  tracking_camera.config.format = DEFAULT_FORMAT;
-  tracking_camera.config.crop_type = DEFAULT_CROP_TYPE;
+  auto_framing_config.out_width = DEFAULT_MAIN_STREAM_WIDTH;
+  auto_framing_config.out_height = DEFAULT_MAIN_STREAM_HEIGHT;
+  auto_framing_config.in_width = DEFAULT_MLE_STREAM_WIDTH;
+  auto_framing_config.in_height = DEFAULT_MLE_STREAM_HEIGHT;
+  tracking_camera.format = DEFAULT_FORMAT;
+  tracking_camera.crop_type = DEFAULT_CROP_TYPE;
+  tracking_camera.sync_enable = FALSE;
+  diff_pos_threshold = DEFAULT_POS_THRESHOLD;
+  diff_size_threshold = DEFAULT_SIZE_THRESHOLD;
+  crop_margin = DEFAULT_MARGIN;
+  speed_movement = DEFAULT_SEED_MOVEMENT;
 
   GOptionEntry entries[] = {
       { "pos-percent", 'p', 0, G_OPTION_ARG_INT,
-        &tracking_camera.config.diff_pos_percent,
+        &diff_pos_threshold,
         "Position threshold",
         "Parameter for the position threshold of the crop"
       },
       { "dim-percent", 'd', 0, G_OPTION_ARG_INT,
-        &tracking_camera.config.diff_size_percent,
+        &diff_size_threshold,
         "Dimensions threshold",
         "Parameter for the dimensions threshold of the crop"
       },
       { "margin-percent", 'm', 0, G_OPTION_ARG_INT,
-        &tracking_camera.config.crop_margin_percent,
+        &crop_margin,
         "Dimensions margin",
         "Parameter for the dimensions margin added to the calculated crop"
       },
       { "speed-percent", 's', 0, G_OPTION_ARG_INT,
-        &tracking_camera.config.speed_move_percent,
+        &speed_movement,
         "Speed of movement",
         "Parameter for the speed of movement to the final crop rectangle"
       },
       { "stream-width", 'w', 0, G_OPTION_ARG_INT,
-        &tracking_camera.config.stream_w,
+        &auto_framing_config.out_width,
         "Main stream width",
         "Main stream width"
       },
       { "stream-height", 'h', 0, G_OPTION_ARG_INT,
-        &tracking_camera.config.stream_h,
+        &auto_framing_config.out_height,
         "Main stream height",
         "Main stream height"
       },
       { "format", 'f', 0, G_OPTION_ARG_INT,
-        &tracking_camera.config.format,
+        &tracking_camera.format,
         "Format",
         "Parameter for the format selected"
       },
       { "crop-type", 'c', 0, G_OPTION_ARG_INT,
-        &tracking_camera.config.crop_type,
+        &tracking_camera.crop_type,
         "Crop type",
         "Parameter for the crop type selected"
+      },
+      { "sync", 'y', 0, G_OPTION_ARG_NONE,
+        &tracking_camera.sync_enable,
+        "Synchronization enabled",
+        "Parameter for enable synchronization"
       },
       { NULL }
   };
@@ -687,36 +640,52 @@ main (gint argc, gchar *argv[])
   }
 
   // Check whether the parameters are correct
-  if (tracking_camera.config.diff_pos_percent < 0 ||
-      tracking_camera.config.diff_size_percent < 0 ||
-      tracking_camera.config.crop_margin_percent < 0 ||
-      tracking_camera.config.speed_move_percent < 0 ||
-      tracking_camera.config.diff_pos_percent > 100 ||
-      tracking_camera.config.diff_size_percent > 100 ||
-      tracking_camera.config.crop_margin_percent > 100 ||
-      tracking_camera.config.speed_move_percent > 100 ||
-      tracking_camera.config.stream_w <= 0 ||
-      tracking_camera.config.stream_h <= 0 ||
-      tracking_camera.config.stream_mle_w <= 0 ||
-      tracking_camera.config.stream_mle_h <= 0) {
+  if (diff_pos_threshold < 0 ||
+      diff_size_threshold < 0 ||
+      crop_margin < 0 ||
+      speed_movement < 0 ||
+      diff_pos_threshold > 100 ||
+      diff_size_threshold > 100 ||
+      crop_margin > 100 ||
+      speed_movement > 100 ||
+      auto_framing_config.out_width <= 0 ||
+      auto_framing_config.out_height <= 0 ||
+      auto_framing_config.in_width <= 0 ||
+      auto_framing_config.in_height <= 0) {
 
     g_print ("Incorrect configuration\n");
     return -1;
   }
 
+  // Initialization of the Auto Framing algorithm
+  tracking_camera.framing_alg_inst =
+      auto_framing_algo_new (auto_framing_config);
+  if (!tracking_camera.framing_alg_inst) {
+    g_printerr ("ERROR: Cannot create instance to Framing algorithm\n");
+    return -1;
+  }
+
+  // Set Auto Framing algorithm parameters
+  auto_framing_algo_set_position_threshold (tracking_camera.framing_alg_inst,
+      diff_pos_threshold);
+  auto_framing_algo_set_dims_threshold (tracking_camera.framing_alg_inst,
+      diff_size_threshold);
+  auto_framing_algo_set_margins (tracking_camera.framing_alg_inst,
+      crop_margin);
+  auto_framing_algo_set_movement_speed (tracking_camera.framing_alg_inst,
+      speed_movement);
+
   // Print the current parameters configuration
   g_print ("\nParameters:\n");
-  g_print ("Position threshold - %d\n",
-      tracking_camera.config.diff_pos_percent);
-  g_print ("Dimensions threshold - %d\n",
-      tracking_camera.config.diff_size_percent);
-  g_print ("Dimensions margin - %d\n",
-      tracking_camera.config.crop_margin_percent);
-  g_print ("Speed - %d\n", tracking_camera.config.speed_move_percent);
-  g_print ("Format - %d\n", tracking_camera.config.format);
-  g_print ("Crop type - %d\n", tracking_camera.config.crop_type);
-  g_print ("Main stream width - %d\n", tracking_camera.config.stream_w);
-  g_print ("Main stream height - %d\n", tracking_camera.config.stream_h);
+  g_print ("Position threshold - %d\n", diff_pos_threshold);
+  g_print ("Dimensions threshold - %d\n", diff_size_threshold);
+  g_print ("Dimensions margin - %d\n", crop_margin);
+  g_print ("Speed - %d\n", speed_movement);
+  g_print ("Format - %d\n", tracking_camera.format);
+  g_print ("Crop type - %d\n", tracking_camera.crop_type);
+  g_print ("Sync enable - %d\n", tracking_camera.sync_enable);
+  g_print ("Main stream width - %d\n", auto_framing_config.out_width);
+  g_print ("Main stream height - %d\n", auto_framing_config.out_height);
 
   // Initialize GST library.
   gst_init (&argc, &argv);
@@ -761,19 +730,19 @@ main (gint argc, gchar *argv[])
   snprintf (temp_str, sizeof (temp_str),
       "video/x-raw(memory:GBM), format=NV12,"
       "width=(int)%d, height=(int)%d, framerate=30/1",
-      tracking_camera.config.stream_mle_w, tracking_camera.config.stream_mle_h);
+      auto_framing_config.in_width, auto_framing_config.in_height);
   filtercaps = gst_caps_from_string (temp_str);
   g_object_set (G_OBJECT (mle_capsfilter), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
   // Configure the Main stream caps
-  switch (tracking_camera.config.format) {
+  switch (tracking_camera.format) {
     case FORMAT_YUY2:
       // Set YUY2 format
       snprintf (temp_str, sizeof (temp_str),
           "video/x-raw(memory:GBM), format=YUY2,"
           "width=(int)%d, height=(int)%d, framerate=30/1",
-          tracking_camera.config.stream_w, tracking_camera.config.stream_h);
+          auto_framing_config.out_width, auto_framing_config.out_height);
       filtercaps = gst_caps_from_string (temp_str);
       g_object_set (G_OBJECT (main_capsfilter), "caps", filtercaps, NULL);
       gst_caps_unref (filtercaps);
@@ -782,7 +751,7 @@ main (gint argc, gchar *argv[])
       // Set MJPEG format
       snprintf (temp_str, sizeof (temp_str),
           "image/jpeg, width=(int)%d, height=(int)%d, framerate=30/1",
-          tracking_camera.config.stream_w, tracking_camera.config.stream_h);
+          auto_framing_config.out_width, auto_framing_config.out_height);
       filtercaps = gst_caps_from_string (temp_str);
       g_object_set (G_OBJECT (main_capsfilter), "caps", filtercaps, NULL);
       gst_caps_unref (filtercaps);
@@ -793,7 +762,7 @@ main (gint argc, gchar *argv[])
       snprintf (temp_str, sizeof (temp_str),
           "video/x-raw(memory:GBM), format=NV12,"
           "width=(int)%d, height=(int)%d, framerate=30/1",
-          tracking_camera.config.stream_w, tracking_camera.config.stream_h);
+          auto_framing_config.out_width, auto_framing_config.out_height);
       filtercaps = gst_caps_from_string (temp_str);
       g_object_set (G_OBJECT (main_capsfilter), "caps", filtercaps, NULL);
       gst_caps_unref (filtercaps);
@@ -804,7 +773,7 @@ main (gint argc, gchar *argv[])
   snprintf (temp_str, sizeof (temp_str),
       "video/x-raw(memory:GBM), format=NV12,"
       "width=(int)%d, height=(int)%d, framerate=30/1",
-      tracking_camera.config.stream_w, tracking_camera.config.stream_h);
+      auto_framing_config.out_width, auto_framing_config.out_height);
   filtercaps = gst_caps_from_string (temp_str);
   g_object_set (G_OBJECT (out_capsfilter), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
@@ -823,6 +792,8 @@ main (gint argc, gchar *argv[])
       "labels", "/data/misc/camera/labelmap.txt", NULL);
   g_object_set (G_OBJECT (qtimletflite),
       "postprocessing", "detection", NULL);
+  g_object_set (G_OBJECT (qtimletflite),
+      "preprocess-accel", 1, NULL);
 
   // Set appsink properties
   g_object_set (G_OBJECT (appsink), "name", "sink_mle_detect", NULL);
@@ -835,13 +806,21 @@ main (gint argc, gchar *argv[])
   g_object_set (G_OBJECT (waylandsink), "enable-last-sample", 0, NULL);
 
   // Set encoder properties
-  g_object_set (G_OBJECT (omxh264enc), "target-bitrate", 20000000, NULL);
+  g_object_set (G_OBJECT (omxh264enc), "target-bitrate", 10000000, NULL);
+  g_object_set (G_OBJECT (omxh264enc), "periodicity-idr", 1, NULL);
+  g_object_set (G_OBJECT (omxh264enc), "interval-intraframes", 59, NULL);
+  g_object_set (G_OBJECT (omxh264enc), "control-rate", 2, NULL);
 
   // Set qtivtransform properties
   g_object_set (G_OBJECT (qtivtransform), "name", "transform", NULL);
+  if (tracking_camera.sync_enable) {
+    g_signal_connect (
+        qtivtransform, "submit-frame",
+        G_CALLBACK (submit_frame_signal), &tracking_camera);
+  }
 
   // Set filesink properties
-  switch (tracking_camera.config.format) {
+  switch (tracking_camera.format) {
     case FORMAT_MJPEG:
       g_object_set (G_OBJECT (filesink), "location", MJPEG_FILE_LOCATION, NULL);
       break;
@@ -858,7 +837,7 @@ main (gint argc, gchar *argv[])
       qtiqmmfsrc, mle_capsfilter, main_capsfilter, out_capsfilter,
       qtimletflite, queue1, queue2, appsink, filesink, NULL);
 
-  switch (tracking_camera.config.format) {
+  switch (tracking_camera.format) {
     case FORMAT_MJPEG:
       gst_bin_add_many (GST_BIN (pipeline),
           avimux, NULL);
@@ -881,7 +860,7 @@ main (gint argc, gchar *argv[])
     return -1;
   }
 
-  switch (tracking_camera.config.format) {
+  switch (tracking_camera.format) {
     case FORMAT_MJPEG:
       // Linking the Main stream to filesink
       ret = gst_element_link_many (
@@ -918,6 +897,7 @@ main (gint argc, gchar *argv[])
     g_printerr ("ERROR: Failed to create Main loop!\n");
     return -1;
   }
+  tracking_camera.mloop = mloop;
 
   // Retrieve reference to the pipeline's bus.
   if ((bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline))) == NULL) {
@@ -942,7 +922,7 @@ main (gint argc, gchar *argv[])
 
   // Register function for handling interrupt signals with the main loop.
   intrpt_watch_id =
-      g_unix_signal_add (SIGINT, handle_interrupt_signal, pipeline);
+      g_unix_signal_add (SIGINT, handle_interrupt_signal, &tracking_camera);
 
   g_print ("Setting pipeline to PAUSED state ...\n");
   switch (gst_element_set_state (pipeline, GST_STATE_PAUSED)) {
@@ -960,15 +940,23 @@ main (gint argc, gchar *argv[])
       break;
   }
 
-  tracking_camera.process.mle_data_queue =
+  tracking_camera.mle_data_queue =
       gst_data_queue_new (queue_is_full_cb, NULL, NULL, mloop);
-  g_mutex_init (&tracking_camera.process.process_lock);
-  g_cond_init (&tracking_camera.process.process_signal);
+  gst_data_queue_set_flushing (tracking_camera.mle_data_queue, FALSE);
 
-  // Create the process thread the new queued data
-  GThread *thread = g_thread_new ("MleProcessThread",
-      mle_samples_process_thread, &tracking_camera);
-  gst_data_queue_set_flushing (tracking_camera.process.mle_data_queue, FALSE);
+  tracking_camera.set_crop_queue =
+      gst_data_queue_new (queue_is_full_cb, NULL, NULL, mloop);
+  gst_data_queue_set_flushing (tracking_camera.set_crop_queue, FALSE);
+
+  g_mutex_init (&tracking_camera.process_lock);
+  g_cond_init (&tracking_camera.process_signal);
+
+  GThread *thread = NULL;
+  if (!tracking_camera.sync_enable) {
+    // Create the process thread the new queued data
+    thread = g_thread_new ("MleProcessThread",
+        mle_samples_process_thread, &tracking_camera);
+  }
 
   g_print ("g_main_loop_run\n");
   // Run main loop.
@@ -976,19 +964,27 @@ main (gint argc, gchar *argv[])
   g_print ("g_main_loop_run ends\n");
 
   // Set the finish flag in order to terminate the process thread
-  g_mutex_lock (&tracking_camera.process.process_lock);
-  tracking_camera.process.finish = 1;
-  g_cond_signal (&tracking_camera.process.process_signal);
-  g_mutex_unlock (&tracking_camera.process.process_lock);
+  g_mutex_lock (&tracking_camera.process_lock);
+  tracking_camera.finish = 1;
+  g_cond_signal (&tracking_camera.process_signal);
+  g_mutex_unlock (&tracking_camera.process_lock);
 
-  // Wait for process thread termination
-  g_thread_join (thread);
+  if (!tracking_camera.sync_enable) {
+    // Wait for process thread termination
+    g_thread_join (thread);
+  }
 
   g_print ("Setting pipeline to NULL state ...\n");
   gst_element_set_state (pipeline, GST_STATE_NULL);
 
-  g_cond_clear (&tracking_camera.process.process_signal);
-  g_mutex_clear (&tracking_camera.process.process_lock);
+  // Deinitialization of the Auto Framing algorithm
+  if (tracking_camera.framing_alg_inst)
+    auto_framing_algo_free (tracking_camera.framing_alg_inst);
+
+  g_cond_clear (&tracking_camera.process_signal);
+  g_mutex_clear (&tracking_camera.process_lock);
+  gst_data_queue_flush (tracking_camera.set_crop_queue);
+  gst_data_queue_flush (tracking_camera.mle_data_queue);
   g_source_remove (intrpt_watch_id);
   g_main_loop_unref (mloop);
   gst_deinit ();

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8.2)
-project(GST_PLUGIN_EXAMPLES LANGUAGES C)
+project(GST_PLUGIN_EXAMPLES LANGUAGES C CXX)
 
 include_directories(${SYSROOT_INCDIR})
 link_directories(${SYSROOT_LIBDIR})
