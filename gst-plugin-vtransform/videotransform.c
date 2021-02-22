@@ -454,6 +454,7 @@ gst_video_transform_set_caps (GstBaseTransform * trans, GstCaps * incaps,
     GstCaps * outcaps)
 {
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM (trans);
+  GstStructure *inopts = NULL, *outopts = NULL;
   GstVideoInfo ininfo, outinfo;
   gint from_dar_n, from_dar_d, to_dar_n, to_dar_d;
 
@@ -479,73 +480,63 @@ gst_video_transform_set_caps (GstBaseTransform * trans, GstCaps * incaps,
     to_dar_n = to_dar_d = -1;
   }
 
-  if (ininfo.width == outinfo.width && ininfo.height == outinfo.height &&
-      ininfo.finfo->format == outinfo.finfo->format && !vtrans->flip_h &&
-      !vtrans->flip_v && vtrans->crop.w == 0 && vtrans->crop.h == 0 &&
-      vtrans->destination.w == 0 && vtrans->destination.h == 0 &&
-      vtrans->rotation == GST_VIDEO_TRANSFORM_ROTATE_NONE) {
-    gst_base_transform_set_passthrough (trans, TRUE);
-  } else {
-    GstStructure *inopts = NULL, *outopts = NULL;
+  // Fill the converter input options structure.
+  inopts = gst_structure_new ("qtivtransform",
+      GST_C2D_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL, G_TYPE_BOOLEAN,
+      vtrans->flip_h,
+      GST_C2D_VIDEO_CONVERTER_OPT_FLIP_VERTICAL, G_TYPE_BOOLEAN,
+      vtrans->flip_v,
+      GST_C2D_VIDEO_CONVERTER_OPT_ROTATION, GST_TYPE_C2D_VIDEO_ROTATION,
+      gst_video_transform_rotation_to_c2d_rotate (vtrans->rotation),
+      GST_C2D_VIDEO_CONVERTER_OPT_SRC_X, G_TYPE_INT,
+      vtrans->crop.x,
+      GST_C2D_VIDEO_CONVERTER_OPT_SRC_Y, G_TYPE_INT,
+      vtrans->crop.y,
+      GST_C2D_VIDEO_CONVERTER_OPT_SRC_WIDTH, G_TYPE_INT,
+      vtrans->crop.w,
+      GST_C2D_VIDEO_CONVERTER_OPT_SRC_HEIGHT, G_TYPE_INT,
+      vtrans->crop.h,
+      GST_C2D_VIDEO_CONVERTER_OPT_DEST_WIDTH, G_TYPE_INT,
+      GST_VIDEO_INFO_WIDTH (&outinfo),
+      GST_C2D_VIDEO_CONVERTER_OPT_DEST_HEIGHT, G_TYPE_INT,
+      GST_VIDEO_INFO_HEIGHT (&outinfo),
+      NULL);
 
-    // Fill the converter input options structure.
-    inopts = gst_structure_new ("qtivtransform",
-        GST_C2D_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL, G_TYPE_BOOLEAN,
-        vtrans->flip_h,
-        GST_C2D_VIDEO_CONVERTER_OPT_FLIP_VERTICAL, G_TYPE_BOOLEAN,
-        vtrans->flip_v,
-        GST_C2D_VIDEO_CONVERTER_OPT_ROTATION, GST_TYPE_C2D_VIDEO_ROTATION,
-        gst_video_transform_rotation_to_c2d_rotate (vtrans->rotation),
-        GST_C2D_VIDEO_CONVERTER_OPT_SRC_X, G_TYPE_INT,
-        vtrans->crop.x,
-        GST_C2D_VIDEO_CONVERTER_OPT_SRC_Y, G_TYPE_INT,
-        vtrans->crop.y,
-        GST_C2D_VIDEO_CONVERTER_OPT_SRC_WIDTH, G_TYPE_INT,
-        vtrans->crop.w,
-        GST_C2D_VIDEO_CONVERTER_OPT_SRC_HEIGHT, G_TYPE_INT,
-        vtrans->crop.h,
-        GST_C2D_VIDEO_CONVERTER_OPT_DEST_WIDTH, G_TYPE_INT,
-        GST_VIDEO_INFO_WIDTH (&outinfo),
-        GST_C2D_VIDEO_CONVERTER_OPT_DEST_HEIGHT, G_TYPE_INT,
-        GST_VIDEO_INFO_HEIGHT (&outinfo),
-        NULL);
-
-    // In case destination rectangle was set use its values.
-    if (vtrans->destination.w != 0 && vtrans->destination.h != 0) {
-      gst_structure_set (inopts,
-        GST_C2D_VIDEO_CONVERTER_OPT_DEST_X, G_TYPE_INT,
-        vtrans->destination.x,
-        GST_C2D_VIDEO_CONVERTER_OPT_DEST_Y, G_TYPE_INT,
-        vtrans->destination.y,
-        GST_C2D_VIDEO_CONVERTER_OPT_DEST_WIDTH, G_TYPE_INT,
-        vtrans->destination.w,
-        GST_C2D_VIDEO_CONVERTER_OPT_DEST_HEIGHT, G_TYPE_INT,
-        vtrans->destination.h,
-        NULL);
-    }
-
-    // Check whether the input caps have ubwc compression.
-    if (gst_video_transform_caps_has_compression (incaps, "ubwc")) {
-      gst_structure_set (inopts,
-          GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN, TRUE,
-          NULL);
-    }
-
-    // Fill the converter output options structure.
-    outopts = gst_structure_new_empty ("qtivtransform");
-
-    // Check whether the output caps have ubwc compression.
-    if (gst_video_transform_caps_has_compression (outcaps, "ubwc")) {
-      gst_structure_set (outopts,
-          GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN, TRUE,
-          NULL);
-    }
-
-    gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
-    gst_c2d_video_converter_set_output_opts (vtrans->c2dconvert, outopts);
-
-    gst_base_transform_set_passthrough (trans, FALSE);
+  // In case destination rectangle was set use its values.
+  if (vtrans->destination.w != 0 && vtrans->destination.h != 0) {
+    gst_structure_set (inopts,
+      GST_C2D_VIDEO_CONVERTER_OPT_DEST_X, G_TYPE_INT,
+      vtrans->destination.x,
+      GST_C2D_VIDEO_CONVERTER_OPT_DEST_Y, G_TYPE_INT,
+      vtrans->destination.y,
+      GST_C2D_VIDEO_CONVERTER_OPT_DEST_WIDTH, G_TYPE_INT,
+      vtrans->destination.w,
+      GST_C2D_VIDEO_CONVERTER_OPT_DEST_HEIGHT, G_TYPE_INT,
+      vtrans->destination.h,
+      NULL);
   }
+
+  // Check whether the input caps have ubwc compression.
+  if (gst_video_transform_caps_has_compression (incaps, "ubwc")) {
+    gst_structure_set (inopts,
+        GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN, TRUE,
+        NULL);
+  }
+
+  // Fill the converter output options structure.
+  outopts = gst_structure_new_empty ("qtivtransform");
+
+  // Check whether the output caps have ubwc compression.
+  if (gst_video_transform_caps_has_compression (outcaps, "ubwc")) {
+    gst_structure_set (outopts,
+        GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN, TRUE,
+        NULL);
+  }
+
+  gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
+  gst_c2d_video_converter_set_output_opts (vtrans->c2dconvert, outopts);
+
+  gst_base_transform_set_passthrough (trans, FALSE);
 
   GST_DEBUG_OBJECT (vtrans, "From %dx%d (PAR: %d/%d, DAR: %d/%d), size %"
       G_GSIZE_FORMAT " -> To %dx%d (PAR: %d/%d, DAR: %d/%d), size %"
