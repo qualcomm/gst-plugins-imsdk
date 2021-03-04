@@ -134,10 +134,18 @@ static GstStaticPadTemplate qmmfsrc_video_src_template =
             QMMFSRC_VIDEO_H265_CAPS "; "
 #endif
             QMMFSRC_VIDEO_RAW_CAPS(
+#if defined(GST_VIDEO_YUY2_FORMAT_ENABLE)
+                "{ NV12, YUY2 }") "; "
+#else
                 "{ NV12 }") "; "
+#endif
             QMMFSRC_VIDEO_RAW_CAPS_WITH_FEATURES(
                 GST_CAPS_FEATURE_MEMORY_GBM,
+#if defined(GST_VIDEO_YUY2_FORMAT_ENABLE)
+                "{ NV12, YUY2 }") "; "
+#else
                 "{ NV12 }") "; "
+#endif
             QMMFSRC_VIDEO_BAYER_CAPS(
                 "{ bggr, rggb, gbrg, grbg, mono }",
                 "{ 8, 10, 12, 16 }")
