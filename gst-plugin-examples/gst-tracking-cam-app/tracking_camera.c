@@ -52,7 +52,8 @@
  * -s - Speed
  * -w - Main stream width
  * -h - Main stream height
- * -j - Format
+ * -f - Format
+ * -c - Crop type
  *
  */
 #include <stdio.h>
@@ -73,6 +74,21 @@
 #define DEFAULT_MAIN_STREAM_HEIGHT 2160
 #define DEFAULT_MLE_STREAM_WIDTH 640
 #define DEFAULT_MLE_STREAM_HEIGHT 360
+#define DEFAULT_FORMAT FORMAT_NV12
+#define DEFAULT_CROP_TYPE CROP_GST
+
+// Main stream format
+typedef enum {
+  FORMAT_YUY2,
+  FORMAT_MJPEG,
+  FORMAT_NV12,
+} GstMainStreamFormat;
+
+// Crop type
+typedef enum {
+  CROP_GST,
+  CROP_CAMERA,
+} GstCropType;
 
 // Contains tracking camera process parameters
 typedef struct _GstTrackingCameraProcess GstTrackingCameraProcess;
@@ -108,6 +124,10 @@ struct _GstTrackingCameraConfig
   gint crop_margin_percent;
   // Parameter for the speed of movement to the final crop rectangle
   gint speed_move_percent;
+  // Parameter for the format selected
+  GstMainStreamFormat format;
+  // Parameter for the crop type selected
+  GstCropType crop_type;
 };
 
 typedef struct _GstTrackingCamera GstTrackingCamera;
@@ -132,7 +152,7 @@ struct _GstMleData
 static gpointer
 mle_samples_process_thread (void *data)
 {
-  GstElement *element_qmmfsrc = NULL;
+  GstElement *crop_element = NULL;
   GstPad *element_pad = NULL;
   GstTrackingCamera *tracking_camera = (GstTrackingCamera *) data;
   GstTrackingCameraConfig *config = &tracking_camera->config;
@@ -172,13 +192,24 @@ mle_samples_process_thread (void *data)
     gint width = 0;
     gint height = 0;
 
-    // Get the qmmfsrc element which is used to apply the crop property
-    element_qmmfsrc =
-        gst_bin_get_by_name (GST_BIN (mle_data->pipeline), "qmmf");
-    // Get the second pad of the qmmfsrc element
-    // in oder to apply the crop property
-    element_pad =
-        gst_element_get_static_pad (element_qmmfsrc, "video_1");
+    switch (config->crop_type) {
+      case CROP_CAMERA:
+        // Get the qmmfsrc element which is used to apply the crop property
+        crop_element =
+            gst_bin_get_by_name (GST_BIN (mle_data->pipeline), "qmmf");
+        // Get the second pad of the qmmfsrc element
+        // in oder to apply the crop property
+        element_pad =
+            gst_element_get_static_pad (crop_element, "video_1");
+        break;
+      case CROP_GST:
+      default:
+        // Get the qtivtransform element which is used to
+        // apply the crop property
+        crop_element =
+            gst_bin_get_by_name (GST_BIN (mle_data->pipeline), "transform");
+        break;
+    }
 
     // Check if there is received a valid mle data
     // Otherwise move smoothly to the
@@ -320,14 +351,22 @@ mle_samples_process_thread (void *data)
     gst_value_array_append_value (&crop, &value);
     g_value_set_int (&value, height);
     gst_value_array_append_value (&crop, &value);
-    g_object_set_property (G_OBJECT (element_pad), "crop", &crop);
 
-    gst_object_unref (element_pad);
-    gst_object_unref (element_qmmfsrc);
+    switch (config->crop_type) {
+      case CROP_CAMERA:
+        g_object_set_property (G_OBJECT (element_pad), "crop", &crop);
+        gst_object_unref (element_pad);
+        break;
+      case CROP_GST:
+      default:
+        g_object_set_property (G_OBJECT (crop_element), "crop", &crop);
+        break;
+    }
+
+    gst_object_unref (crop_element);
     g_free (mle_data);
     g_slice_free (GstDataQueueItem, item);
   }
-
 
   return NULL;
 }
@@ -564,7 +603,6 @@ main (gint argc, gchar *argv[])
   GstCaps *filtercaps;
   GstElement *pipeline = NULL;
   gboolean ret = FALSE;
-  gboolean use_mjpeg = FALSE;
   GstTrackingCamera tracking_camera = {};
 
   // Set default settings
@@ -576,6 +614,8 @@ main (gint argc, gchar *argv[])
   tracking_camera.config.stream_h = DEFAULT_MAIN_STREAM_HEIGHT;
   tracking_camera.config.stream_mle_w = DEFAULT_MLE_STREAM_WIDTH;
   tracking_camera.config.stream_mle_h = DEFAULT_MLE_STREAM_HEIGHT;
+  tracking_camera.config.format = DEFAULT_FORMAT;
+  tracking_camera.config.crop_type = DEFAULT_CROP_TYPE;
 
   GOptionEntry entries[] = {
       { "pos-percent", 'p', 0, G_OPTION_ARG_INT,
@@ -608,10 +648,15 @@ main (gint argc, gchar *argv[])
         "Main stream height",
         "Main stream height"
       },
-      { "use-mjpeg", 'j', 0, G_OPTION_ARG_INT,
-        &use_mjpeg,
-        "Use MJPEG",
-        "Use MJPEG"
+      { "format", 'f', 0, G_OPTION_ARG_INT,
+        &tracking_camera.config.format,
+        "Format",
+        "Parameter for the format selected"
+      },
+      { "crop-type", 'c', 0, G_OPTION_ARG_INT,
+        &tracking_camera.config.crop_type,
+        "Crop type",
+        "Parameter for the crop type selected"
       },
       { NULL }
   };
@@ -668,7 +713,8 @@ main (gint argc, gchar *argv[])
   g_print ("Dimensions margin - %d\n",
       tracking_camera.config.crop_margin_percent);
   g_print ("Speed - %d\n", tracking_camera.config.speed_move_percent);
-  g_print ("Use MJPEG - %d\n", use_mjpeg);
+  g_print ("Format - %d\n", tracking_camera.config.format);
+  g_print ("Crop type - %d\n", tracking_camera.config.crop_type);
   g_print ("Main stream width - %d\n", tracking_camera.config.stream_w);
   g_print ("Main stream height - %d\n", tracking_camera.config.stream_h);
 
@@ -721,23 +767,37 @@ main (gint argc, gchar *argv[])
   gst_caps_unref (filtercaps);
 
   // Configure the Main stream caps
-  if (!use_mjpeg) {
-    // Set YUY2 format
-    snprintf (temp_str, sizeof (temp_str),
-        "video/x-raw(memory:GBM), format=YUY2,"
-        "width=(int)%d, height=(int)%d, framerate=30/1",
-        tracking_camera.config.stream_w, tracking_camera.config.stream_h);
-    filtercaps = gst_caps_from_string (temp_str);
-    g_object_set (G_OBJECT (main_capsfilter), "caps", filtercaps, NULL);
-    gst_caps_unref (filtercaps);
-  } else {
-    // Set MJPEG format
-    snprintf (temp_str, sizeof (temp_str),
-        "image/jpeg, width=(int)%d, height=(int)%d, framerate=30/1",
-        tracking_camera.config.stream_w, tracking_camera.config.stream_h);
-    filtercaps = gst_caps_from_string (temp_str);
-    g_object_set (G_OBJECT (main_capsfilter), "caps", filtercaps, NULL);
-    gst_caps_unref (filtercaps);
+  switch (tracking_camera.config.format) {
+    case FORMAT_YUY2:
+      // Set YUY2 format
+      snprintf (temp_str, sizeof (temp_str),
+          "video/x-raw(memory:GBM), format=YUY2,"
+          "width=(int)%d, height=(int)%d, framerate=30/1",
+          tracking_camera.config.stream_w, tracking_camera.config.stream_h);
+      filtercaps = gst_caps_from_string (temp_str);
+      g_object_set (G_OBJECT (main_capsfilter), "caps", filtercaps, NULL);
+      gst_caps_unref (filtercaps);
+      break;
+    case FORMAT_MJPEG:
+      // Set MJPEG format
+      snprintf (temp_str, sizeof (temp_str),
+          "image/jpeg, width=(int)%d, height=(int)%d, framerate=30/1",
+          tracking_camera.config.stream_w, tracking_camera.config.stream_h);
+      filtercaps = gst_caps_from_string (temp_str);
+      g_object_set (G_OBJECT (main_capsfilter), "caps", filtercaps, NULL);
+      gst_caps_unref (filtercaps);
+      break;
+    case FORMAT_NV12:
+    default:
+      // Set NV12 format
+      snprintf (temp_str, sizeof (temp_str),
+          "video/x-raw(memory:GBM), format=NV12,"
+          "width=(int)%d, height=(int)%d, framerate=30/1",
+          tracking_camera.config.stream_w, tracking_camera.config.stream_h);
+      filtercaps = gst_caps_from_string (temp_str);
+      g_object_set (G_OBJECT (main_capsfilter), "caps", filtercaps, NULL);
+      gst_caps_unref (filtercaps);
+      break;
   }
 
   // Configure the Output stream caps
@@ -777,11 +837,19 @@ main (gint argc, gchar *argv[])
   // Set encoder properties
   g_object_set (G_OBJECT (omxh264enc), "target-bitrate", 20000000, NULL);
 
+  // Set qtivtransform properties
+  g_object_set (G_OBJECT (qtivtransform), "name", "transform", NULL);
+
   // Set filesink properties
-  if (!use_mjpeg) {
-    g_object_set (G_OBJECT (filesink), "location", MP4_FILE_LOCATION, NULL);
-  } else {
-    g_object_set (G_OBJECT (filesink), "location", MJPEG_FILE_LOCATION, NULL);
+  switch (tracking_camera.config.format) {
+    case FORMAT_MJPEG:
+      g_object_set (G_OBJECT (filesink), "location", MJPEG_FILE_LOCATION, NULL);
+      break;
+    case FORMAT_YUY2:
+    case FORMAT_NV12:
+    default:
+      g_object_set (G_OBJECT (filesink), "location", MP4_FILE_LOCATION, NULL);
+      break;
   }
 
   // Add elements to the pipeline and link them
@@ -790,13 +858,18 @@ main (gint argc, gchar *argv[])
       qtiqmmfsrc, mle_capsfilter, main_capsfilter, out_capsfilter,
       qtimletflite, queue1, queue2, appsink, filesink, NULL);
 
-  if (!use_mjpeg) {
-    gst_bin_add_many (GST_BIN (pipeline),
+  switch (tracking_camera.config.format) {
+    case FORMAT_MJPEG:
+      gst_bin_add_many (GST_BIN (pipeline),
+          avimux, NULL);
+      break;
+    case FORMAT_YUY2:
+    case FORMAT_NV12:
+    default:
+      gst_bin_add_many (GST_BIN (pipeline),
           qtivtransform, tee, waylandsink, omxh264enc,
           h264parse, mp4mux, NULL);
-  } else {
-    gst_bin_add_many (GST_BIN (pipeline),
-        avimux, NULL);
+      break;
   }
 
   g_print ("Linking elements...\n");
@@ -808,30 +881,35 @@ main (gint argc, gchar *argv[])
     return -1;
   }
 
-  if (!use_mjpeg) {
-    // Linking the Main stream to the Wayland
-    ret = gst_element_link_many (
-        qtiqmmfsrc, main_capsfilter, qtivtransform, out_capsfilter, tee,
-        queue2, waylandsink, NULL);
-    if (!ret) {
-      g_printerr ("Pipeline elements cannot be linked. Exiting.\n");
-      return -1;
-    }
-    // Linking the Main stream to the encoder
-    ret = gst_element_link_many (
-        tee, omxh264enc, h264parse, mp4mux, filesink, NULL);
-    if (!ret) {
-      g_printerr ("Pipeline elements cannot be linked. Exiting.\n");
-      return -1;
-    }
-  } else {
-    // Linking the Main stream to filesink
-    ret = gst_element_link_many (
-        qtiqmmfsrc, main_capsfilter, queue2, avimux, filesink, NULL);
-    if (!ret) {
-      g_printerr ("Pipeline elements cannot be linked. Exiting.\n");
-      return -1;
-    }
+  switch (tracking_camera.config.format) {
+    case FORMAT_MJPEG:
+      // Linking the Main stream to filesink
+      ret = gst_element_link_many (
+          qtiqmmfsrc, main_capsfilter, queue2, avimux, filesink, NULL);
+      if (!ret) {
+        g_printerr ("Pipeline elements cannot be linked. Exiting.\n");
+        return -1;
+      }
+      break;
+    case FORMAT_YUY2:
+    case FORMAT_NV12:
+    default:
+      // Linking the Main stream to the Wayland
+      ret = gst_element_link_many (
+          qtiqmmfsrc, main_capsfilter, qtivtransform, out_capsfilter, tee,
+          queue2, waylandsink, NULL);
+      if (!ret) {
+        g_printerr ("Pipeline elements cannot be linked. Exiting.\n");
+        return -1;
+      }
+      // Linking the Main stream to the encoder
+      ret = gst_element_link_many (
+          tee, omxh264enc, h264parse, mp4mux, filesink, NULL);
+      if (!ret) {
+        g_printerr ("Pipeline elements cannot be linked. Exiting.\n");
+        return -1;
+      }
+      break;
   }
   g_print ("All elements are linked successfully\n");
 
