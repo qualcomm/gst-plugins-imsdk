@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -51,9 +51,9 @@ MLEngine::MLEngine(MLConfig &config) : config_(config) {
 
   buffers_.scale_buf = nullptr;
   buffers_.rgb_buf = nullptr;
-  gst_scale_buf_ = nullptr;
+  gst_c2d_buf_ = nullptr;
   outpool_ = nullptr;
-  scale_buf_outframe_ = nullptr;
+  c2d_buf_outframe_ = nullptr;
 }
 
 void MLEngine::PreProcessAccelerator() {
@@ -62,8 +62,7 @@ void MLEngine::PreProcessAccelerator() {
 
   switch(config_.preprocess_accel) {
     case PreprocessingAccel::gpu:
-      MLE_LOGI("%s FastCV operation is PERFORMANCE, using C2D for rescale", __func__);
-      mode = FASTCV_OP_PERFORMANCE;
+      MLE_LOGI("%s preprocessing is enabled on GPU", __func__);
       use_c2d_preprocess_ = true;
       break;
     case PreprocessingAccel::dsp:
@@ -117,11 +116,11 @@ int32_t MLEngine::AllocateInternalBuffers() {
     GstStructure *config = NULL;
     GstAllocator *allocator = NULL;
     GstVideoInfo vinfo;
-    uint32_t size = ((scale_width_ * scale_height_ * 3) / 2);
+    uint32_t size = ((scale_width_ * scale_height_ * 4));
     uint32_t size_aligned = (size + 4096-1) & ~(4096-1);
 
     GstCaps *caps = gst_caps_new_simple ("video/x-raw",
-          "format", G_TYPE_STRING, "NV12",
+          "format", G_TYPE_STRING, "RGBA",
           "framerate", GST_TYPE_FRACTION, 25, 1,
           "width", G_TYPE_INT, scale_width_,
           "height", G_TYPE_INT, scale_height_,
@@ -164,23 +163,23 @@ int32_t MLEngine::AllocateInternalBuffers() {
     }
 
     if (GST_FLOW_OK != gst_buffer_pool_acquire_buffer (pool,
-        &gst_scale_buf_, NULL)) {
+        &gst_c2d_buf_, NULL)) {
       MLE_LOGE("%s: Failed to create output buffer", __func__);
       g_object_unref (outpool_);
       outpool_ = nullptr;
       return MLE_FAIL;
     }
 
-    scale_buf_outframe_ = g_slice_new (GstVideoFrame);
+    c2d_buf_outframe_ = g_slice_new (GstVideoFrame);
 
-    GstVideoFormat format = GST_VIDEO_FORMAT_NV12;
-    if (source_params_.format == mle_format_nv21) {
-      format = GST_VIDEO_FORMAT_NV21;
+    GstVideoFormat format = GST_VIDEO_FORMAT_RGB;
+    if (config_.input_format == InputFormat::kBgr ||
+        config_.input_format == InputFormat::kBgrFloat) {
+      format = GST_VIDEO_FORMAT_BGR;
     }
-
     gst_video_info_set_format (&vinfo, format, scale_width_, scale_height_);
 
-    if (!gst_video_frame_map (scale_buf_outframe_, &vinfo, gst_scale_buf_,
+    if (!gst_video_frame_map (c2d_buf_outframe_, &vinfo, gst_c2d_buf_,
             (GstMapFlags)(GST_MAP_READWRITE |
             GST_VIDEO_FRAME_MAP_FLAG_NO_REF))) {
       MLE_LOGE("Failed to map buffer");
@@ -188,54 +187,61 @@ int32_t MLEngine::AllocateInternalBuffers() {
       return MLE_FAIL;
     }
 
-    buffers_.scale_buf =
-        (uint8_t*) GST_VIDEO_FRAME_PLANE_DATA (scale_buf_outframe_, 0);
-
+    buffers_.rgb_buf =
+        (uint8_t*) GST_VIDEO_FRAME_PLANE_DATA (c2d_buf_outframe_, 0);
   }
 
-  posix_memalign(reinterpret_cast<void**>(&buffers_.rgb_buf),
-                                  128,
-                                  ((scale_width_ *
-                                        scale_height_ * 3)));
-  if (nullptr == buffers_.rgb_buf) {
-    MLE_LOGE("%s: RGB buf allocation failed", __func__);
-    FreeInternalBuffers();
-    return MLE_FAIL;
+  if (!use_c2d_preprocess_) {
+    posix_memalign(reinterpret_cast<void**>(&buffers_.scale_buf),
+                                    128,
+                                    ((scale_width_ *
+                                          scale_height_ * 3 / 2)));
+    if (nullptr == buffers_.scale_buf) {
+      MLE_LOGE("%s: Scale buf allocation failed", __func__);
+      FreeInternalBuffers();
+      return MLE_FAIL;
+    }
   }
   return MLE_OK;
 }
 
 void MLEngine::FreeInternalBuffers() {
-  if (nullptr != scale_buf_outframe_) {
-    gst_video_frame_unmap (scale_buf_outframe_);
-    g_slice_free (GstVideoFrame, scale_buf_outframe_);
-    scale_buf_outframe_ = nullptr;
+  if (nullptr != c2d_buf_outframe_) {
+    gst_video_frame_unmap (c2d_buf_outframe_);
+    g_slice_free (GstVideoFrame, c2d_buf_outframe_);
+    c2d_buf_outframe_ = nullptr;
   }
   if (nullptr != outpool_ &&
-      nullptr != gst_scale_buf_) {
-    gst_buffer_pool_release_buffer (outpool_, gst_scale_buf_);
+      nullptr != gst_c2d_buf_) {
+    gst_buffer_pool_release_buffer (outpool_, gst_c2d_buf_);
     gst_buffer_pool_set_active (outpool_, FALSE);
     gst_object_unref (outpool_);
-    gst_scale_buf_ = nullptr;
+    gst_c2d_buf_ = nullptr;
     outpool_ = nullptr;
   }
-  if (nullptr != buffers_.rgb_buf) {
-    free(buffers_.rgb_buf);
-    buffers_.rgb_buf = nullptr;
+  if (nullptr != buffers_.scale_buf && !use_c2d_preprocess_) {
+    free(buffers_.scale_buf);
+    buffers_.scale_buf = nullptr;
   }
 }
 
-void MLEngine::MeanSubtract(uint8_t* input_buf, const uint32_t width,
-                            const uint32_t height, float* processed_buf) {
+void MLEngine::MeanSubtract(uint8_t* input_buf,
+                            const uint32_t width,
+                            const uint32_t height,
+                            const uint32_t pad_width,
+                            const uint32_t pad_height,
+                            float* processed_buf) {
 
+  MLE_UNUSED(pad_height);
   uint8_t* src = input_buf;
   float* dest = processed_buf;
 
   float divisor = config_.use_norm ? config_.blue_sigma : 1;
   for (uint32_t y = 0; y < height; y++) {
     for (uint32_t x = 0; x < width; x++) {
-      uint32_t index = y * width + x;
-      dest[index] = (static_cast<float>(src[index]) -
+      uint32_t index_src = y * width + x;
+      uint32_t index_dst = y * pad_width + x;
+      dest[index_dst] = (static_cast<float>(src[index_src]) -
           config_.blue_mean) / divisor;
     }
   }
@@ -244,8 +250,9 @@ void MLEngine::MeanSubtract(uint8_t* input_buf, const uint32_t width,
   divisor = config_.use_norm ? config_.green_sigma : 1;
   for (uint32_t y = 0; y < height; y++) {
     for (uint32_t x = 0; x < width; x++) {
-      uint32_t index = y * width + x;
-      dest[index] = (static_cast<float>(src[index]) -
+      uint32_t index_src = y * width + x;
+      uint32_t index_dst = y * pad_width + x;
+      dest[index_dst] = (static_cast<float>(src[index_src]) -
           config_.green_mean) / divisor;
     }
   }
@@ -254,8 +261,9 @@ void MLEngine::MeanSubtract(uint8_t* input_buf, const uint32_t width,
   divisor = config_.use_norm ? config_.red_sigma : 1;
   for (uint32_t y = 0; y < height; y++) {
     for (uint32_t x = 0; x < width; x++) {
-      uint32_t index = y * width + x;
-      dest[index] = (static_cast<float>(src[index]) -
+      uint32_t index_src = y * width + x;
+      uint32_t index_dst = y * pad_width + x;
+      dest[index_dst] = (static_cast<float>(src[index_src]) -
           config_.red_mean) / divisor;
     }
   }
@@ -585,36 +593,13 @@ int32_t MLEngine::PreProcess(GstVideoFrame *frame) {
     return MLE_NULLPTR;
   }
 
-  uint8_t* rgb_buf = nullptr;
-  bool padding, float_input;
-  if (config_.input_format == InputFormat::kRgbFloat ||
-      config_.input_format == InputFormat::kBgrFloat) {
-    float_input = true;
+  if (use_c2d_preprocess_) {
+    gpointer request_id = NULL;
+    request_id = gst_c2d_video_converter_submit_request (c2dconvert_,
+        frame, 1, c2d_buf_outframe_);
+    gst_c2d_video_converter_wait_request (c2dconvert_, request_id);
   } else {
-    float_input = false;
-  }
-  if (config_.preprocess_mode == PreprocessingMode::kKeepARPad) {
-    padding = true;
-    rgb_buf = buffers_.rgb_buf;
-  } else {
-    padding = false;
-    if (float_input) {
-      rgb_buf = buffers_.rgb_buf;
-    } else {
-      rgb_buf = (uint8_t*)engine_input_buf;
-    }
-  }
-
-  MLE_LOGV("%s: padding: %d float_input: %d do_rescale: %d ", __func__, padding,
-      float_input, do_rescale_);
-
-  if (do_rescale_) {
-    if (use_c2d_preprocess_) {
-      gpointer request_id = NULL;
-      request_id = gst_c2d_video_converter_submit_request (c2dconvert_,
-          frame, 1, scale_buf_outframe_);
-      gst_c2d_video_converter_wait_request (c2dconvert_, request_id);
-    } else {
+    if (do_rescale_) {
       uint32_t stride = GST_VIDEO_FRAME_PLANE_STRIDE(frame, 0);
       res = PreProcessScale(frame_data_plane0,
                             frame_data_plane1,
@@ -629,56 +614,48 @@ int32_t MLEngine::PreProcess(GstVideoFrame *frame) {
         MLE_LOGE("PreProcessScale failed due to unsupported image format");
         return res;
       }
-    }
 
-    PreProcessColorConvertRGB(buffers_.scale_buf,
-                              buffers_.scale_buf +
-                                  (scale_width_ * scale_height_),
-                              rgb_buf,
-                              scale_width_,
-                              scale_height_,
-                              source_params_.format);
-
-    if (config_.input_format == InputFormat::kBgr ||
-        config_.input_format == InputFormat::kBgrFloat) {
-      PreProcessColorConvertBGR(rgb_buf,
-                                rgb_buf,
+      PreProcessColorConvertRGB(buffers_.scale_buf,
+                                buffers_.scale_buf +
+                                    (scale_width_ * scale_height_),
+                                buffers_.rgb_buf,
                                 scale_width_,
-                                scale_height_);
+                                scale_height_,
+                                source_params_.format);
+    } else {
+      PreProcessColorConvertRGB(frame_data_plane0,
+                                frame_data_plane1,
+                                buffers_.rgb_buf,
+                                scale_width_,
+                                scale_height_,
+                                source_params_.format);
     }
-
-    if (!float_input && padding) {
-      Pad(rgb_buf,
-          scale_width_,
-          scale_height_,
-          engine_input_params_.width,
-          engine_input_params_.height,
-          (uint8_t*)engine_input_buf);
-    }
-  } else {
-    //no rescale
-    PreProcessColorConvertRGB(frame_data_plane0,
-                              frame_data_plane1,
-                              rgb_buf,
-                              scale_width_,
-                              scale_height_,
-                              source_params_.format);
 
     if (config_.input_format == InputFormat::kBgr ||
         config_.input_format == InputFormat::kBgrFloat) {
-      PreProcessColorConvertBGR(rgb_buf,
-                                rgb_buf,
+      PreProcessColorConvertBGR(buffers_.rgb_buf,
+                                buffers_.rgb_buf,
                                 scale_width_,
                                 scale_height_);
     }
   }
 
   // MLE assumes mean subtract will be needed only if engine's input is float
-  if (float_input) {
+  if (config_.input_format == InputFormat::kRgbFloat ||
+      config_.input_format == InputFormat::kBgrFloat) {
     MeanSubtract(buffers_.rgb_buf,
                  scale_width_,
                  scale_height_,
+                 engine_input_params_.width,
+                 engine_input_params_.height,
                  (float*)engine_input_buf);
+  } else {
+    Pad(buffers_.rgb_buf,
+        scale_width_,
+        scale_height_,
+        engine_input_params_.width,
+        engine_input_params_.height,
+        (uint8_t*)engine_input_buf);
   }
 
   MLE_LOGI("%s: Exit", __func__);
