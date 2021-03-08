@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -199,6 +199,9 @@ image_pad_activate_mode (GstPad * pad, GstObject * parent, GstPadMode mode,
       } else {
         qmmfsrc_image_pad_flush_buffers_queue (pad, TRUE);
         success = gst_pad_stop_task (pad);
+
+        gst_segment_init (&GST_QMMFSRC_IMAGE_PAD (pad)->segment,
+            GST_FORMAT_UNDEFINED);
       }
       break;
     default:
@@ -300,15 +303,12 @@ qmmfsrc_request_image_pad (GstPadTemplate * templ, const gchar * name,
 void
 qmmfsrc_release_image_pad (GstElement * element, GstPad * pad)
 {
-  gchar *padname = GST_PAD_NAME (pad);
-  guint index = GST_QMMFSRC_IMAGE_PAD (pad)->index;
-
   gst_object_ref (pad);
 
+  gst_pad_set_active (pad, FALSE);
   gst_child_proxy_child_removed (GST_CHILD_PROXY (element), G_OBJECT (pad),
       GST_OBJECT_NAME (pad));
   gst_element_remove_pad (element, pad);
-  gst_pad_set_active (pad, FALSE);
 
   gst_object_unref (pad);
 }

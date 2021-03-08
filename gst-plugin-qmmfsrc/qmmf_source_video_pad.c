@@ -241,6 +241,9 @@ video_pad_activate_mode (GstPad * pad, GstObject * parent, GstPadMode mode,
       } else {
         qmmfsrc_video_pad_flush_buffers_queue (pad, TRUE);
         success = gst_pad_stop_task (pad);
+
+        gst_segment_init (&GST_QMMFSRC_VIDEO_PAD (pad)->segment,
+            GST_FORMAT_UNDEFINED);
       }
       break;
     default:
@@ -363,15 +366,12 @@ qmmfsrc_request_video_pad (GstPadTemplate * templ, const gchar * name,
 void
 qmmfsrc_release_video_pad (GstElement * element, GstPad * pad)
 {
-  gchar *padname = GST_PAD_NAME (pad);
-  guint index = GST_QMMFSRC_VIDEO_PAD (pad)->index;
-
   gst_object_ref (pad);
 
+  gst_pad_set_active (pad, FALSE);
   gst_child_proxy_child_removed (GST_CHILD_PROXY (element), G_OBJECT (pad),
       GST_OBJECT_NAME (pad));
   gst_element_remove_pad (element, pad);
-  gst_pad_set_active (pad, FALSE);
 
   gst_object_unref (pad);
 }
@@ -391,7 +391,10 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
   // Immediately return the fetched caps if they are fixed.
   if (gst_caps_is_fixed (caps)) {
     gst_pad_set_caps (pad, caps);
+
+    GST_DEBUG_OBJECT (pad, "Caps fixated to: %" GST_PTR_FORMAT, caps);
     video_pad_update_params (pad, gst_caps_get_structure (caps, 0));
+
     return TRUE;
   }
 
@@ -504,6 +507,7 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
   caps = gst_caps_fixate (caps);
   gst_pad_set_caps (pad, caps);
 
+  GST_DEBUG_OBJECT (pad, "Caps fixated to: %" GST_PTR_FORMAT, caps);
   video_pad_update_params (pad, structure);
   return TRUE;
 }
