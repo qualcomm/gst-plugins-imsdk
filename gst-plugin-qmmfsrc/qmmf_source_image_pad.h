@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -37,8 +37,8 @@
 G_BEGIN_DECLS
 
 #define QMMFSRC_COMMON_IMAGE_CAPS          \
-    "width = (int) [ 16, 4000 ], "         \
-    "height = (int) [ 16, 4000 ], "        \
+    "width = (int) [ 16, " GST_IMAGE_MAX_WIDTH " ], "         \
+    "height = (int) [ 16," GST_IMAGE_MAX_HEIGHT " ], "        \
     "framerate = (fraction) [ 0/1, 30/1 ]"
 
 #define QMMFSRC_IMAGE_JPEG_CAPS \
