@@ -360,7 +360,7 @@ gst_video_transform_prepare_output_buffer (GstBaseTransform * trans,
   GstFlowReturn ret = GST_FLOW_OK;
 
   if (gst_base_transform_is_passthrough (trans)) {
-    GST_DEBUG_OBJECT (vtrans, "Passthrough, no need to do anything");
+    GST_LOG_OBJECT (vtrans, "Passthrough, no need to do anything");
     *outbuffer = inbuffer;
     return GST_FLOW_OK;
   }
@@ -479,6 +479,11 @@ gst_video_transform_set_caps (GstBaseTransform * trans, GstCaps * incaps,
     GST_WARNING_OBJECT (vtrans, "Failed to calculate output DAR!");
     to_dar_n = to_dar_d = -1;
   }
+
+  if (vtrans->c2dconvert != NULL)
+    gst_c2d_video_converter_free (vtrans->c2dconvert);
+
+  vtrans->c2dconvert = gst_c2d_video_converter_new ();
 
   // Fill the converter input options structure.
   inopts = gst_structure_new ("qtivtransform",
@@ -1654,7 +1659,7 @@ gst_video_transform_finalize (GObject * object)
 {
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM (object);
 
-  if (vtrans->c2dconvert)
+  if (vtrans->c2dconvert != NULL)
     gst_c2d_video_converter_free (vtrans->c2dconvert);
 
   if (vtrans->ininfo != NULL)
@@ -1753,7 +1758,7 @@ gst_video_transform_init (GstVideoTransform * vtrans)
 
   vtrans->outpool = NULL;
 
-  vtrans->c2dconvert = gst_c2d_video_converter_new ();
+  vtrans->c2dconvert = NULL;
 
   GST_DEBUG_CATEGORY_INIT (video_transform_debug, "qtivtransform", 0,
       "QTI video transform");
