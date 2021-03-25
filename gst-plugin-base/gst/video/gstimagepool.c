@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -97,6 +97,8 @@ gst_video_format_to_gbm_format (GstVideoFormat format)
       return GBM_FORMAT_NV12;
     case GST_VIDEO_FORMAT_NV21:
       return GBM_FORMAT_NV21_ZSL;
+    case GST_VIDEO_FORMAT_YUY2:
+      return GBM_FORMAT_YCrCb_422_I;
     case GST_VIDEO_FORMAT_BGRx:
       return GBM_FORMAT_XRGB8888;
     case GST_VIDEO_FORMAT_BGRA:

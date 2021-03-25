@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -429,10 +429,11 @@ create_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
     // Y plane stride.
     surface.stride0 = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0);
     // UV plane (U plane in planar format) plane stride.
-    surface.stride1 = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1);
+    surface.stride1 = (GST_VIDEO_FRAME_N_PLANES (frame) >= 2) ?
+        GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1) : 0;
     // V plane (planar format, ignored in other formats) plane stride.
-    surface.stride2 = (GST_VIDEO_FRAME_N_PLANES (frame) != 3) ?
-        0 : GST_VIDEO_FRAME_PLANE_STRIDE (frame, 2);
+    surface.stride2 = (GST_VIDEO_FRAME_N_PLANES (frame) >= 3) ?
+        GST_VIDEO_FRAME_PLANE_STRIDE (frame, 2) : 0;
 
     GST_DEBUG ("%s %s%s surface - stride0(%d) stride1(%d) stride2(%d)",
         (bits & C2D_SOURCE) ? "Input" : "Output", format, compression,
@@ -441,10 +442,11 @@ create_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
     // Y plane virtual address.
     surface.plane0 = GST_VIDEO_FRAME_PLANE_DATA (frame, 0);
     // UV plane (U plane in planar format) plane virtual address.
-    surface.plane1 = GST_VIDEO_FRAME_PLANE_DATA (frame, 1);
+    surface.plane1 = (GST_VIDEO_FRAME_N_PLANES (frame) >= 2) ?
+        GST_VIDEO_FRAME_PLANE_DATA (frame, 1) : NULL;
     // V plane (planar format, ignored in other formats) plane virtual address.
-    surface.plane2 = (GST_VIDEO_FRAME_N_PLANES (frame) != 3) ?
-        NULL : GST_VIDEO_FRAME_PLANE_DATA (frame, 2);
+    surface.plane2 = (GST_VIDEO_FRAME_N_PLANES (frame) >= 3) ?
+        GST_VIDEO_FRAME_PLANE_DATA (frame, 2) : NULL;
 
     GST_DEBUG ("%s %s%s surface - plane0(%p) plane1(%p) plane2(%p)",
         (bits & C2D_SOURCE) ? "Input" : "Output", format, compression,
@@ -453,12 +455,13 @@ create_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
     // Y plane GPU address.
     surface.phys0 = gpuaddress;
     // UV plane (U plane in planar format)  GPU address.
-    surface.phys1 = GSIZE_TO_POINTER (GPOINTER_TO_SIZE (gpuaddress) +
-        GST_VIDEO_FRAME_PLANE_OFFSET (frame, 1));
+    surface.phys1 = (GST_VIDEO_FRAME_N_PLANES (frame) >= 2) ?
+        GSIZE_TO_POINTER (GPOINTER_TO_SIZE (gpuaddress) +
+        GST_VIDEO_FRAME_PLANE_OFFSET (frame, 1)) : NULL;
     // V plane (planar format, ignored in other formats) GPU address.
-    surface.phys2 = (GST_VIDEO_FRAME_N_PLANES (frame) != 3) ?
-        NULL : GSIZE_TO_POINTER (GPOINTER_TO_SIZE (gpuaddress) +
-        GST_VIDEO_FRAME_PLANE_OFFSET (frame, 2));
+    surface.phys2 = (GST_VIDEO_FRAME_N_PLANES (frame) >= 3) ?
+        GSIZE_TO_POINTER (GPOINTER_TO_SIZE (gpuaddress) +
+        GST_VIDEO_FRAME_PLANE_OFFSET (frame, 2)) : NULL;
 
     GST_DEBUG ("%s %s%s surface - phys0(%p) phys1(%p) phys2(%p)",
          (bits & C2D_SOURCE) ? "Input" : "Output", format, compression,
