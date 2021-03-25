@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -380,12 +380,12 @@ int32_t NNEngine::PreProcessScale(
                      scaleWidth,
                      scaleHeight,
                      0);
-    fcvScaleDownMNu8(pSrcChroma,
-                     srcWidth,
+    fcvScaleDownMNInterleaveu8(pSrcChroma,
+                     srcWidth/2,
                      srcHeight/2,
                      srcStride,
                      pDst + (scaleWidth*scaleHeight),
-                     scaleWidth,
+                     scaleWidth/2,
                      scaleHeight/2,
                      0);
   } else {
