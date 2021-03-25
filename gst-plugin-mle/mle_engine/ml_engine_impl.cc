@@ -361,13 +361,13 @@ int32_t MLEngine::PreProcessScale(
 
     MLE_LOGV("%s: Scale Croma plane", __func__);
 
-    fcvScaleDownMNu8(src_buffer_uv,
-                     width,
+    fcvScaleDownMNInterleaveu8(src_buffer_uv,
+                     width/2,
                      height/2,
                      srcStride,
-                     pDst + (scaleWidth * scaleHeight),
-                     scaleWidth,
-                     scaleHeight / 2,
+                     pDst + (scaleWidth*scaleHeight),
+                     scaleWidth/2,
+                     scaleHeight/2,
                      0);
   } else {
     MLE_LOGE("Unsupported format %d", (int)format);
