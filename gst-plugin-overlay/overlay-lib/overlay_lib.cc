@@ -1900,7 +1900,7 @@ int32_t OverlayItemDateAndTime::CreateSurface ()
 {
   OVDBG_VERBOSE ("%s: Enter", __func__);
   int32_t ret = 0;
-  int32_t size = width_ * height_ * 4;
+  int32_t size = surface_.width_ * surface_.height_ * 4;
   IonMemInfo mem_info;
   memset (&mem_info, 0x0, sizeof(IonMemInfo));
 
@@ -2475,7 +2475,7 @@ int32_t OverlayItemText::UpdateParameters (OverlayParam& param)
 int32_t OverlayItemText::CreateSurface ()
 {
   OVDBG_VERBOSE ("%s: Enter", __func__);
-  int32_t size = width_ * height_ * 4;
+  int32_t size = surface_.width_ * surface_.height_ * 4;
   IonMemInfo mem_info;
   memset (&mem_info, 0x0, sizeof(IonMemInfo));
 
