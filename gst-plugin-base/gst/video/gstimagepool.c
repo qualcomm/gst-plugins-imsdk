@@ -100,23 +100,25 @@ gst_video_format_to_gbm_format (GstVideoFormat format)
     case GST_VIDEO_FORMAT_YUY2:
       return GBM_FORMAT_YCrCb_422_I;
     case GST_VIDEO_FORMAT_BGRx:
-      return GBM_FORMAT_XRGB8888;
+      return GBM_FORMAT_BGRX8888;
     case GST_VIDEO_FORMAT_BGRA:
-      return GBM_FORMAT_ARGB8888;
+      return GBM_FORMAT_BGRA8888;
     case GST_VIDEO_FORMAT_RGBx:
-      return GBM_FORMAT_XBGR8888;
-    case GST_VIDEO_FORMAT_xBGR:
       return GBM_FORMAT_RGBX8888;
+    case GST_VIDEO_FORMAT_xBGR:
+      return GBM_FORMAT_XBGR8888;
     case GST_VIDEO_FORMAT_RGBA:
-      return GBM_FORMAT_ABGR8888;
-    case GST_VIDEO_FORMAT_ABGR:
       return GBM_FORMAT_RGBA8888;
-    case GST_VIDEO_FORMAT_BGR:
+    case GST_VIDEO_FORMAT_ABGR:
+      return GBM_FORMAT_ABGR8888;
+    case GST_VIDEO_FORMAT_RGB:
       return GBM_FORMAT_RGB888;
+    case GST_VIDEO_FORMAT_BGR:
+      return GBM_FORMAT_BGR888;
     case GST_VIDEO_FORMAT_BGR16:
-      return GBM_FORMAT_RGB565;
-    case GST_VIDEO_FORMAT_RGB16:
       return GBM_FORMAT_BGR565;
+    case GST_VIDEO_FORMAT_RGB16:
+      return GBM_FORMAT_RGB565;
     default:
       GST_ERROR ("Unsupported format %s!", gst_video_format_to_string (format));
   }
