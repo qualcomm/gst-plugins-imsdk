@@ -24,8 +24,8 @@ target_include_directories(${GST_DAEMON_BIN} PRIVATE
 target_link_libraries(${GST_DAEMON_BIN} PRIVATE
   ${GST_LIBRARIES}
   qtiumd
-  qtiafralgo
   qtimlmeta
+  dl
 )
 
 install(

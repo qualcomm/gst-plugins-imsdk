@@ -29,12 +29,12 @@
 
 #include <errno.h>
 
+#include <dlfcn.h>
 #include <glib-unix.h>
 #include <gst/gst.h>
 
 #include <ml-meta/ml_meta.h>
 #include <iot-core-algs/umd-gadget.h>
-#include <iot-core-algs/auto-framing-alg.h>
 
 #define HASH_LINE  "##################################################"
 #define EQUAL_LINE "=================================================="
@@ -66,6 +66,8 @@
 #define GST_SERVICE_CONTEXT_CAST(obj)  ((GstServiceContext*)(obj))
 
 typedef struct _AutoFrmOps AutoFrmOps;
+typedef struct _AutoFramingConfig AutoFramingConfig;
+typedef struct _AutoFraming AutoFraming;
 
 enum
 {
@@ -84,8 +86,37 @@ struct _AutoFrmOps
   gint     croptype;
 };
 
+// Contains tracking camera configuration parameters
+struct _AutoFramingConfig
+{
+  // Output stream dimensions
+  gint out_width;
+  gint out_height;
+  // Input stream dimensions
+  gint in_width;
+  gint in_height;
+};
+
 static AutoFrmOps afrmops = {
   FALSE, 8, 16, 10, 10, ML_CROP_INTERNAL
+};
+
+struct _AutoFraming
+{
+  // Auto Framing Algorithm.
+  gpointer afrmalgo_handle;
+  gpointer afrmalgo_inst;
+
+  // Auto Framing Algorithm APIs.
+  GstVideoRectangle (*auto_framing_algo_process) (gpointer inst,
+      GstVideoRectangle * rect);
+  void (*auto_framing_algo_set_position_threshold) (gpointer inst,
+      gint threshold);
+  void (*auto_framing_algo_set_dims_threshold) (gpointer inst, gint threshold);
+  void (*auto_framing_algo_set_margins) (gpointer inst, gint margins);
+  void (*auto_framing_algo_set_movement_speed) (gpointer inst, gint speed);
+  gpointer (*auto_framing_algo_new) (AutoFramingConfig config);
+  void (*auto_framing_algo_free) (gpointer inst);
 };
 
 static const GOptionEntry entries[] = {
@@ -140,14 +171,14 @@ struct _GstServiceContext
   // GStreamer pipeline instance.
   GstElement      *pipeline;
 
-  // Auto Framing Algorithm.
-  AutoFramingAlgo *afrmalgo;
-
   // Asynchronous queue for signaling pipeline EOS and state changes.
   GAsyncQueue     *pipemsgs;
 
   // Asynchronous queue for signaling menu thread messages from stdin.
   GAsyncQueue     *menumsgs;
+
+  // Auto framing handle and APIs
+  AutoFraming autoframing;
 };
 
 static GstServiceContext *
@@ -160,7 +191,8 @@ gst_service_context_new ()
 
   ctx->pipeline = NULL;
   ctx->gadget = NULL;
-  ctx->afrmalgo = NULL;
+  ctx->autoframing.afrmalgo_handle = NULL;
+  ctx->autoframing.afrmalgo_inst = NULL;
 
   return ctx;
 }
@@ -176,11 +208,18 @@ gst_service_context_free (GstServiceContext * ctx)
     gst_object_unref (ctx->pipeline);
   }
 
-  if (ctx->afrmalgo != NULL)
-    auto_framing_algo_free (ctx->afrmalgo);
+  if (ctx->autoframing.afrmalgo_handle != NULL &&
+      ctx->autoframing.afrmalgo_inst != NULL)
+    ctx->autoframing.auto_framing_algo_free (ctx->autoframing.afrmalgo_inst);
 
   g_async_queue_unref (ctx->menumsgs);
   g_async_queue_unref (ctx->pipemsgs);
+
+  if (ctx->autoframing.afrmalgo_handle != NULL) {
+    dlclose (ctx->autoframing.afrmalgo_handle);
+    ctx->autoframing.afrmalgo_handle = NULL;
+    ctx->autoframing.afrmalgo_inst = NULL;
+  }
 
   g_free (ctx);
 }
@@ -405,7 +444,7 @@ mle_new_sample (GstElement *sink, gpointer userdata)
 
   {
     GSList *metalist = NULL;
-    VideoRectangle rectangle = {0};
+    GstVideoRectangle rectangle = {0};
     gfloat confidence = 0.0;
 
     metalist = gst_buffer_get_detection_meta (buffer);
@@ -433,12 +472,16 @@ mle_new_sample (GstElement *sink, gpointer userdata)
 
     g_slist_free (metalist);
 
-    // Execute the process of the Auto Framing algorithm.
-    rectangle = auto_framing_algo_process (
-      srvctx->afrmalgo, (confidence > 0.0) ? &rectangle : NULL);
+    if (srvctx->autoframing.afrmalgo_handle != NULL &&
+        srvctx->autoframing.afrmalgo_inst != NULL) {
+      // Execute the process of the Auto Framing algorithm.
+      rectangle = srvctx->autoframing.auto_framing_algo_process (
+        srvctx->autoframing.afrmalgo_inst,
+        (confidence > 0.0) ? &rectangle : NULL);
 
-    set_crop_rectangle (srvctx->pipeline, rectangle.x, rectangle.y,
-        rectangle.w, rectangle.h);
+      set_crop_rectangle (srvctx->pipeline, rectangle.x, rectangle.y,
+          rectangle.w, rectangle.h);
+    }
   }
 
   gst_buffer_unmap (buffer, &info);
@@ -1019,24 +1062,41 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
   // Reset the crop parameters.
   set_crop_rectangle (srvctx->pipeline, 0, 0, 0, 0);
 
+  // Return if Auto Framing library is missing
+  if (!srvctx->autoframing.afrmalgo_handle) {
+    g_printerr ("Auto Framing library doesn't exist!\n");
+    return true;
+  }
+
   // Initialization of the Auto Framing algorithm.
-  configuration.stream_w = stmsetup->width;
-  configuration.stream_h = stmsetup->height;
+  configuration.out_width = stmsetup->width;
+  configuration.out_height = stmsetup->height;
 
-  configuration.stream_mle_w = 640;
-  configuration.stream_mle_h = 360;
+  configuration.in_width = 640;
+  configuration.in_height = 360;
 
-  if (srvctx->afrmalgo != NULL)
-    auto_framing_algo_free (srvctx->afrmalgo);
+  if (srvctx->autoframing.afrmalgo_handle != NULL &&
+      srvctx->autoframing.afrmalgo_inst != NULL)
+    srvctx->autoframing.auto_framing_algo_free (
+        srvctx->autoframing.afrmalgo_inst);
 
-  srvctx->afrmalgo = auto_framing_algo_new (configuration);
+  if (srvctx->autoframing.afrmalgo_handle)
+    srvctx->autoframing.afrmalgo_inst =
+        srvctx->autoframing.auto_framing_algo_new (configuration);
 
-  auto_framing_algo_set_position_threshold (srvctx->afrmalgo, afrmops.posthold);
-  auto_framing_algo_set_dims_threshold (srvctx->afrmalgo, afrmops.dimsthold);
-  auto_framing_algo_set_margins (srvctx->afrmalgo, afrmops.margins);
-  auto_framing_algo_set_movement_speed (srvctx->afrmalgo, afrmops.speed);
+  if (srvctx->autoframing.afrmalgo_handle != NULL &&
+      srvctx->autoframing.afrmalgo_inst != NULL) {
+    srvctx->autoframing.auto_framing_algo_set_position_threshold (
+        srvctx->autoframing.afrmalgo_inst, afrmops.posthold);
+    srvctx->autoframing.auto_framing_algo_set_dims_threshold (
+        srvctx->autoframing.afrmalgo_inst, afrmops.dimsthold);
+    srvctx->autoframing.auto_framing_algo_set_margins (
+        srvctx->autoframing.afrmalgo_inst, afrmops.margins);
+    srvctx->autoframing.auto_framing_algo_set_movement_speed (
+        srvctx->autoframing.afrmalgo_inst, afrmops.speed);
+  }
 
-  if (NULL == srvctx->afrmalgo) {
+  if (NULL == srvctx->autoframing.afrmalgo_inst) {
     g_printerr ("\nFailed to create Framing algorithm!\n");
     return false;
   }
@@ -1492,10 +1552,25 @@ main_menu (gpointer userdata)
   GstServiceContext *srvctx = GST_SERVICE_CONTEXT_CAST (userdata);
   gboolean active = TRUE;
 
+  // Do now show main menu if Auto Framing Algorithm doesn't exist
+  if (!srvctx->autoframing.afrmalgo_handle)
+    return NULL;
+
   while (active)
     active = mle_ops_menu (srvctx->menumsgs);
 
   return NULL;
+}
+
+static gboolean
+load_symbol (gpointer * method, gpointer handle, const gchar * name)
+{
+  *(method) = dlsym (handle, name);
+  if (NULL == *(method)) {
+    g_printerr ("Failed to link library method %s, error: %s!", name, dlerror());
+    return FALSE;
+  }
+  return TRUE;
 }
 
 gint
@@ -1506,6 +1581,49 @@ main (gint argc, gchar *argv[])
   GMainLoop *mloop = NULL;
   GIOChannel *iostdin = NULL;
   GThread *mthread = NULL;
+  gboolean success = TRUE;
+
+  // Load Auto Framing Algorithm.
+  srvctx->autoframing.afrmalgo_handle = dlopen ("libqtiafralgo.so", RTLD_NOW);
+  if (srvctx->autoframing.afrmalgo_handle) {
+    // Load Auto Framing Algorithm library symbols.
+    success &= load_symbol (
+        (gpointer*)&srvctx->autoframing.auto_framing_algo_process,
+        srvctx->autoframing.afrmalgo_handle,
+        "auto_framing_algo_process");
+    success &= load_symbol (
+        (gpointer*)&srvctx->autoframing.auto_framing_algo_set_position_threshold,
+        srvctx->autoframing.afrmalgo_handle,
+        "auto_framing_algo_set_position_threshold");
+    success &= load_symbol (
+        (gpointer*)&srvctx->autoframing.auto_framing_algo_set_dims_threshold,
+        srvctx->autoframing.afrmalgo_handle,
+        "auto_framing_algo_set_dims_threshold");
+    success &= load_symbol (
+        (gpointer*)&srvctx->autoframing.auto_framing_algo_set_margins,
+        srvctx->autoframing.afrmalgo_handle,
+        "auto_framing_algo_set_margins");
+    success &= load_symbol (
+        (gpointer*)&srvctx->autoframing.auto_framing_algo_set_movement_speed,
+        srvctx->autoframing.afrmalgo_handle,
+        "auto_framing_algo_set_movement_speed");
+    success &= load_symbol (
+        (gpointer*)&srvctx->autoframing.auto_framing_algo_new,
+        srvctx->autoframing.afrmalgo_handle,
+        "auto_framing_algo_new");
+    success &= load_symbol (
+        (gpointer*)&srvctx->autoframing.auto_framing_algo_free,
+        srvctx->autoframing.afrmalgo_handle,
+        "auto_framing_algo_free");
+
+    if (!success) {
+      g_printerr ("Failed to get Auto Framing Algorithm symbols\n");
+      dlclose (srvctx->autoframing.afrmalgo_handle);
+      srvctx->autoframing.afrmalgo_handle = NULL;
+    }
+  } else {
+    g_printerr ("Failed to open Auto Framing Algorithm library\n");
+  }
 
   UmdVideoCallbacks callbacks = {
     &setup_camera_stream, &enable_camera_stream,
