@@ -301,7 +301,6 @@ private:
   std::map<uint32_t, OverlayItem*> overlay_items_;
 
   uint32_t target_c2dsurface_id_;
-  std::shared_ptr<OpenClKernel> blit_instance_;
 
   int32_t ion_device_;
   uint32_t id_;

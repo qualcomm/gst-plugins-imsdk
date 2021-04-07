@@ -33,6 +33,8 @@ file(GLOB_RECURSE RGB_FILES ${CMAKE_CURRENT_LIST_DIR}/raw_image/*.rgba)
 install(FILES ${RGB_FILES} DESTINATION /data/misc)
 
 install(
-    FILES ${CMAKE_CURRENT_SOURCE_DIR}/overlay_blit_kernel.cl
+    FILES ${CMAKE_CURRENT_SOURCE_DIR}/overlay_blit_rgba_kernel.cl
+          ${CMAKE_CURRENT_SOURCE_DIR}/overlay_blit_bgra_kernel.cl
+          ${CMAKE_CURRENT_SOURCE_DIR}/overlay_mask_kernel.cl
     DESTINATION /usr/lib
 )
