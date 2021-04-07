@@ -32,11 +32,11 @@
 #include <adreno/c2d2.h>
 #include <cutils/properties.h>
 #include <ion/ion.h>
-#include <linux/dma-buf.h>
 #include <linux/msm_ion.h>
 #include <linux/msm_kgsl.h>
 #include <gst/gst.h>
 #include <cairo/cairo.h>
+#include <sys/time.h>
 
 #include <CL/cl.h>
 #include <CL/cl_ext.h>
@@ -196,23 +196,33 @@ struct C2dObjects {
   C2D_OBJECT objects[MAX_OVERLAYS * 2];
 };
 
+enum class SurfaceFormat {
+  kARGB,
+  kABGR,
+  kRGB,
+  kA8,
+  kA1
+};
+
 class OverlaySurface {
  public:
   OverlaySurface () :
           width_ (0),
           height_ (0),
+          stride_ (0),
+          format_ (SurfaceFormat::kARGB),
           gpu_addr_ (nullptr),
           vaddr_ (nullptr),
           ion_fd_ (0),
-          size_ (0)
-  {
-    cl_buffer_ = nullptr;
-    blit_inst_ = nullptr;
-    c2dsurface_id_ = -1;
-  }
+          size_ (0),
+          cl_buffer_ (nullptr),
+          blit_inst_ (nullptr),
+          c2dsurface_id_ (-1) {}
 
   uint32_t width_;
   uint32_t height_;
+  uint32_t stride_;
+  SurfaceFormat format_;
   void * gpu_addr_;
   void * vaddr_;
   int32_t ion_fd_;
@@ -262,6 +272,12 @@ class OverlayItem {
     return is_active_;
   }
 
+  uint32_t CalcStride (uint32_t width, SurfaceFormat format);
+
+  uint32_t GetC2DFormat (SurfaceFormat format);
+
+  cairo_format_t GetCairoFormat (SurfaceFormat format);
+
 protected:
 
   struct IonMemInfo {
@@ -274,8 +290,7 @@ protected:
 
   void FreeIonMemory (void *&vaddr, int32_t &ion_fd, uint32_t size);
 
-  int32_t MapOverlaySurface (OverlaySurface &surface, IonMemInfo &mem_info,
-      int32_t format);
+  int32_t MapOverlaySurface (OverlaySurface &surface, IonMemInfo &mem_info);
 
   void UnMapOverlaySurface (OverlaySurface &surface);
 
@@ -508,5 +523,50 @@ class OverlayItemGraph : public OverlayItem {
   float downscale_ratio_;
   OverlayGraph graph_;
 };
+
+
+#ifdef DEBUG_BLIT_TIME
+class Timer {
+  std::string str;
+  uint64_t begin;
+  uint64_t *avr_time;
+
+public:
+
+  Timer (std::string s) : str(s), avr_time(nullptr) {
+    begin = GetMicroSeconds();
+  }
+
+  Timer (std::string s, uint64_t * avrg) : str(s), avr_time(avrg) {
+    begin = GetMicroSeconds();
+  }
+
+  ~Timer () {
+    uint64_t diff = GetMicroSeconds() - begin;
+
+    if (avr_time) {
+      if (!(*avr_time)) {
+        *avr_time = diff;
+      }
+      *avr_time = (15 * (*avr_time) + diff) / 16;
+      OVDBG_INFO ("%s: Current: %.2f ms Avrg: %.2f ms", str.c_str(),
+          diff / 1000.0, (*avr_time) / 1000.0);
+    } else {
+      OVDBG_INFO ("%s: %.2f ms", str.c_str(), diff / 1000.0);
+    }
+  }
+
+  uint64_t GetMicroSeconds() {
+    timespec time;
+
+    clock_gettime(CLOCK_MONOTONIC, &time);
+
+    uint64_t microSeconds = (static_cast<uint32_t>(time.tv_sec) * 1000000ULL) +
+                            (static_cast<uint32_t>(time.tv_nsec)) / 1000;
+
+    return microSeconds;
+  }
+};
+#endif // DEBUG_BLIT_TIME
 
 }; // namespace overlay
