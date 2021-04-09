@@ -77,6 +77,7 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
 #define DEFAULT_PROP_CROP_Y          0
 #define DEFAULT_PROP_CROP_WIDTH      0
 #define DEFAULT_PROP_CROP_HEIGHT     0
+#define DEFAULT_PROP_EXTRA_BUFFERS   0
 
 GType
 gst_video_pad_control_rate_get_type (void)
@@ -133,6 +134,7 @@ enum
   PROP_VIDEO_MAX_QP_B_FRAMES,
   PROP_VIDEO_IDR_INTERVAL,
   PROP_VIDEO_CROP,
+  PROP_VIDEO_EXTRA_BUFFERS,
 };
 
 static void
@@ -578,6 +580,9 @@ video_pad_set_property (GObject * object, guint property_id,
       pad->crop.h = g_value_get_int (gst_value_array_get_value (value, 3));
       break;
     }
+    case PROP_VIDEO_EXTRA_BUFFERS:
+      pad->xtrabufs = g_value_get_uint (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (pad, property_id, pspec);
       break;
@@ -639,6 +644,9 @@ video_pad_get_property (GObject * object, guint property_id, GValue * value,
       gst_value_array_append_value (value, &val);
       break;
     }
+    case PROP_VIDEO_EXTRA_BUFFERS:
+      g_value_set_uint (value, pad->xtrabufs);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (pad, property_id, pspec);
       break;
@@ -798,6 +806,12 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
               G_PARAM_WRITABLE | G_PARAM_STATIC_STRINGS),
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_VIDEO_EXTRA_BUFFERS,
+      g_param_spec_uint ("extra-buffers", "extra buffers count",
+          "Number of additional buffers that will be allocated.",
+          0, G_MAXUINT, DEFAULT_PROP_EXTRA_BUFFERS,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
 
   GST_DEBUG_CATEGORY_INIT (qmmfsrc_video_pad_debug, "qtiqmmfsrc", 0,
       "QTI QMMF Source video pad");
@@ -811,6 +825,7 @@ qmmfsrc_video_pad_init (GstQmmfSrcVideoPad * pad)
 
   pad->index        = -1;
   pad->srcidx       = -1;
+  pad->xtrabufs     = 0;
 
   pad->width        = -1;
   pad->height       = -1;

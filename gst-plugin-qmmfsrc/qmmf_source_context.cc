@@ -1154,7 +1154,8 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
   }
 
   ::qmmf::recorder::VideoTrackCreateParam params (
-    context->camera_id, format, vpad->width, vpad->height, vpad->framerate
+    context->camera_id, format, vpad->width, vpad->height, vpad->framerate,
+    vpad->xtrabufs
   );
 
   if (format == ::qmmf::VideoFormat::kAVC) {

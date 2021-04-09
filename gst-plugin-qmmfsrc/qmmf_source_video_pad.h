@@ -157,6 +157,8 @@ struct _GstQmmfSrcVideoPad {
   gint                height;
   /// QMMF Recorder track framerate, set by the pad capabilities.
   gdouble             framerate;
+  /// QMMF Recorder track extra buffers count.
+  guint               xtrabufs;
   /// GStreamer video pad output buffers format.
   gint                format;
   /// GStreamer video pad output bayer format bits per pixel.
