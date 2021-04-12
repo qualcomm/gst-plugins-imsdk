@@ -532,7 +532,6 @@ gst_mle_tflite_set_info(GstVideoFilter *filter, GstCaps *in,
   GST_MLE_UNUSED(out);
   GST_MLE_UNUSED(outinfo);
 
-  gboolean rc = TRUE;
   GstMLETFLite *mle = GST_MLE_TFLITE (filter);
   GstVideoFormat video_format = GST_VIDEO_INFO_FORMAT(ininfo);
 
@@ -562,24 +561,26 @@ gst_mle_tflite_set_info(GstVideoFilter *filter, GstCaps *in,
     return FALSE;
   }
 
-  rc = gst_mle_create_engine(mle);
-  if (FALSE == rc) {
-    GST_ERROR_OBJECT (mle, "Failed to create MLE instance.");
-    return rc;
+  if (!gst_mle_create_engine (mle)) {
+    GST_ELEMENT_ERROR (mle, RESOURCE, SETTINGS, (NULL),
+        ("Failed to create MLE instance!"));
+    return FALSE;
   }
 
-  gint ret = mle->engine->Init(&mle->source_info);
-  if (ret) {
-    GST_ERROR_OBJECT (mle, "MLE init failed.");
+  if (mle->engine->Init (&mle->source_info) > 0) {
+    GST_ELEMENT_ERROR (mle, RESOURCE, SETTINGS, (NULL),
+        ("Failed to initilize engine!"));
+
     delete (mle->engine);
     mle->engine = nullptr;
-    rc = FALSE;
-  } else {
-    GST_DEBUG_OBJECT (mle, "MLE instance created addr %p", mle->engine);
-    mle->is_init = TRUE;
+
+    return FALSE;
   }
 
-  return rc;
+  GST_DEBUG_OBJECT (mle, "MLE instance created addr %p", mle->engine);
+  mle->is_init = TRUE;
+
+  return TRUE;
 }
 
 static GstFlowReturn gst_mle_tflite_transform_frame_ip(GstVideoFilter *filter,
