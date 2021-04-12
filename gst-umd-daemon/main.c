@@ -62,12 +62,15 @@
 #define TERMINATE_MESSAGE      "TERMINATE_MSG"
 #define PIPELINE_STATE_MESSAGE "PIPELINE_STATE_MSG"
 #define PIPELINE_EOS_MESSAGE   "PIPELINE_EOS_MSG"
+#define PIPELINE_ERROR_MESSAGE "PIPELINE_ERROR_MSG"
 
 #define GST_SERVICE_CONTEXT_CAST(obj)  ((GstServiceContext*)(obj))
 
-typedef struct _AutoFrmOps AutoFrmOps;
+typedef struct _GstServiceContext GstServiceContext;
 typedef struct _AutoFramingConfig AutoFramingConfig;
-typedef struct _AutoFraming AutoFraming;
+typedef struct _VideoRectangle VideoRectangle;
+typedef struct _AutoFrmLib AutoFrmLib;
+typedef struct _AutoFrmOps AutoFrmOps;
 
 enum
 {
@@ -86,37 +89,8 @@ struct _AutoFrmOps
   gint     croptype;
 };
 
-// Contains tracking camera configuration parameters
-struct _AutoFramingConfig
-{
-  // Output stream dimensions
-  gint out_width;
-  gint out_height;
-  // Input stream dimensions
-  gint in_width;
-  gint in_height;
-};
-
 static AutoFrmOps afrmops = {
   FALSE, 8, 16, 10, 10, ML_CROP_INTERNAL
-};
-
-struct _AutoFraming
-{
-  // Auto Framing Algorithm.
-  gpointer afrmalgo_handle;
-  gpointer afrmalgo_inst;
-
-  // Auto Framing Algorithm APIs.
-  GstVideoRectangle (*auto_framing_algo_process) (gpointer inst,
-      GstVideoRectangle * rect);
-  void (*auto_framing_algo_set_position_threshold) (gpointer inst,
-      gint threshold);
-  void (*auto_framing_algo_set_dims_threshold) (gpointer inst, gint threshold);
-  void (*auto_framing_algo_set_margins) (gpointer inst, gint margins);
-  void (*auto_framing_algo_set_movement_speed) (gpointer inst, gint speed);
-  gpointer (*auto_framing_algo_new) (AutoFramingConfig config);
-  void (*auto_framing_algo_free) (gpointer inst);
 };
 
 static const GOptionEntry entries[] = {
@@ -161,7 +135,46 @@ static const GOptionEntry entries[] = {
     {NULL}
 };
 
-typedef struct _GstServiceContext GstServiceContext;
+// TODO: These AFA structs need to be removed once HY11 rules are properly set.
+struct _AutoFramingConfig
+{
+  // Output stream dimensions
+  gint out_width;
+  gint out_height;
+
+  // Input stream dimensions
+  gint in_width;
+  gint in_height;
+};
+
+// TODO: These AFA structs need to be removed once HY11 rules are properly set.
+struct _VideoRectangle
+{
+  gint x;
+  gint y;
+  gint w;
+  gint h;
+};
+
+// TODO: These AFA structs need to be modified once HY11 rules are properly set.
+struct _AutoFrmLib
+{
+  // Library handle.
+  gpointer       handle;
+  //Auto Framing Algorithm instance.
+  gpointer       instance;
+
+  // Library APIs.
+  gpointer       (*new) (AutoFramingConfig configuration);
+  void           (*free) (gpointer instance);
+
+  VideoRectangle (*process) (gpointer instance, VideoRectangle * rectangle);
+
+  void           (*set_position_threshold) (gpointer instance, gint threshold);
+  void           (*set_dims_threshold) (gpointer instance, gint threshold);
+  void           (*set_margins) (gpointer instance, gint margins);
+  void           (*set_movement_speed) (gpointer instance, gint speed);
+};
 
 struct _GstServiceContext
 {
@@ -171,30 +184,26 @@ struct _GstServiceContext
   // GStreamer pipeline instance.
   GstElement      *pipeline;
 
+  // Auto Framing Algorithm library instance.
+  AutoFrmLib      *afrmalgo;
+
   // Asynchronous queue for signaling pipeline EOS and state changes.
   GAsyncQueue     *pipemsgs;
 
   // Asynchronous queue for signaling menu thread messages from stdin.
   GAsyncQueue     *menumsgs;
-
-  // Auto framing handle and APIs
-  AutoFraming autoframing;
 };
 
-static GstServiceContext *
-gst_service_context_new ()
+static gboolean
+load_symbol (gpointer * method, gpointer handle, const gchar * name)
 {
-  GstServiceContext *ctx = g_new0 (GstServiceContext, 1);
-
-  ctx->pipemsgs = g_async_queue_new_full ((GDestroyNotify) gst_structure_free);
-  ctx->menumsgs = g_async_queue_new_full ((GDestroyNotify) gst_structure_free);
-
-  ctx->pipeline = NULL;
-  ctx->gadget = NULL;
-  ctx->autoframing.afrmalgo_handle = NULL;
-  ctx->autoframing.afrmalgo_inst = NULL;
-
-  return ctx;
+  *(method) = dlsym (handle, name);
+  if (NULL == *(method)) {
+    g_printerr ("\nFailed to link library method %s, error: '%s'!\n",
+        name, dlerror());
+    return FALSE;
+  }
+  return TRUE;
 }
 
 static void
@@ -208,20 +217,89 @@ gst_service_context_free (GstServiceContext * ctx)
     gst_object_unref (ctx->pipeline);
   }
 
-  if (ctx->autoframing.afrmalgo_handle != NULL &&
-      ctx->autoframing.afrmalgo_inst != NULL)
-    ctx->autoframing.auto_framing_algo_free (ctx->autoframing.afrmalgo_inst);
+  if ((ctx->afrmalgo != NULL) && (ctx->afrmalgo->instance != NULL))
+    ctx->afrmalgo->free (ctx->afrmalgo->instance);
 
-  g_async_queue_unref (ctx->menumsgs);
-  g_async_queue_unref (ctx->pipemsgs);
+  if ((ctx->afrmalgo != NULL) && (ctx->afrmalgo->handle != NULL))
+    dlclose (ctx->afrmalgo->handle);
 
-  if (ctx->autoframing.afrmalgo_handle != NULL) {
-    dlclose (ctx->autoframing.afrmalgo_handle);
-    ctx->autoframing.afrmalgo_handle = NULL;
-    ctx->autoframing.afrmalgo_inst = NULL;
-  }
+  g_free (ctx->afrmalgo);
+
+  if (ctx->menumsgs != NULL)
+    g_async_queue_unref (ctx->menumsgs);
+
+  if (ctx->pipemsgs != NULL)
+    g_async_queue_unref (ctx->pipemsgs);
 
   g_free (ctx);
+}
+
+static GstServiceContext *
+gst_service_context_new ()
+{
+  GstServiceContext *ctx = g_new0 (GstServiceContext, 1);
+  if (NULL == ctx) {
+    g_printerr ("\nFailed to allocate memory for service context!\n");
+    return NULL;
+  }
+
+  ctx->pipeline = NULL;
+  ctx->gadget = NULL;
+
+  if ((ctx->afrmalgo = g_new0 (AutoFrmLib, 1)) == NULL) {
+    g_printerr ("\nFailed to allocate memory for Auto Framing interface!\n");
+    gst_service_context_free (ctx);
+    return NULL;
+  }
+
+  // Open Auto Framing Algorithm library and load its symbols.
+  ctx->afrmalgo->handle = dlopen ("libqtiafralgo.so", RTLD_NOW);
+
+  if (ctx->afrmalgo->handle != NULL) {
+    gboolean success = TRUE;
+
+    success &= load_symbol (
+        (gpointer*) &ctx->afrmalgo->new,
+        ctx->afrmalgo->handle, "auto_framing_algo_new");
+    success &= load_symbol (
+        (gpointer*) &ctx->afrmalgo->free,
+        ctx->afrmalgo->handle, "auto_framing_algo_free");
+    success &= load_symbol (
+        (gpointer*) &ctx->afrmalgo->process,
+        ctx->afrmalgo->handle, "auto_framing_algo_process");
+    success &= load_symbol (
+        (gpointer*) &ctx->afrmalgo->set_position_threshold,
+        ctx->afrmalgo->handle, "auto_framing_algo_set_position_threshold");
+    success &= load_symbol (
+        (gpointer*) &ctx->afrmalgo->set_dims_threshold,
+        ctx->afrmalgo->handle, "auto_framing_algo_set_dims_threshold");
+    success &= load_symbol (
+        (gpointer*) &ctx->afrmalgo->set_margins,
+        ctx->afrmalgo->handle, "auto_framing_algo_set_margins");
+    success &= load_symbol (
+        (gpointer*) &ctx->afrmalgo->set_movement_speed,
+        ctx->afrmalgo->handle, "auto_framing_algo_set_movement_speed");
+
+    if (!success) {
+      g_printerr ("\nFailed to load Auto Framing Algorithm symbols\n");
+      dlclose (ctx->afrmalgo->handle);
+      g_clear_pointer (&ctx->afrmalgo, g_free);
+    }
+  } else {
+    g_printerr ("\nFailed to open Auto Framing Algorithm library\n");
+    g_clear_pointer (&ctx->afrmalgo, g_free);
+  }
+
+  ctx->pipemsgs = g_async_queue_new_full ((GDestroyNotify) gst_structure_free);
+  ctx->menumsgs = g_async_queue_new_full ((GDestroyNotify) gst_structure_free);
+
+  if ((NULL == ctx->pipemsgs) || (NULL == ctx->menumsgs)) {
+    g_printerr ("\nFailed to allocate memory for message queues!\n");
+    gst_service_context_free (ctx);
+    return NULL;
+  }
+
+  return ctx;
 }
 
 static gboolean
@@ -275,8 +353,7 @@ wait_stdin_message (GAsyncQueue * messages, gchar ** input)
   GstStructure *message = NULL;
 
   // Cleanup input variable from previous uses.
-  g_free (*input);
-  *input = NULL;
+  g_clear_pointer (input, g_free);
 
   // Wait for either a STDIN or TERMINATE message.
   while ((message = g_async_queue_pop (messages)) != NULL) {
@@ -313,6 +390,9 @@ handle_bus_message (GstBus * bus, GstMessage * message, gpointer userdata)
 
       g_free (debug);
       g_error_free (error);
+
+      g_async_queue_push (srvctx->pipemsgs,
+          gst_structure_new_empty (PIPELINE_ERROR_MESSAGE));
 
       g_print ("\nSetting pipeline to NULL ...\n");
       gst_element_set_state (srvctx->pipeline, GST_STATE_NULL);
@@ -444,7 +524,7 @@ mle_new_sample (GstElement *sink, gpointer userdata)
 
   {
     GSList *metalist = NULL;
-    GstVideoRectangle rectangle = {0};
+    VideoRectangle rectangle = {0};
     gfloat confidence = 0.0;
 
     metalist = gst_buffer_get_detection_meta (buffer);
@@ -472,16 +552,11 @@ mle_new_sample (GstElement *sink, gpointer userdata)
 
     g_slist_free (metalist);
 
-    if (srvctx->autoframing.afrmalgo_handle != NULL &&
-        srvctx->autoframing.afrmalgo_inst != NULL) {
-      // Execute the process of the Auto Framing algorithm.
-      rectangle = srvctx->autoframing.auto_framing_algo_process (
-        srvctx->autoframing.afrmalgo_inst,
-        (confidence > 0.0) ? &rectangle : NULL);
+    rectangle = srvctx->afrmalgo->process (
+        srvctx->afrmalgo->instance, (confidence > 0.0) ? &rectangle : NULL);
 
-      set_crop_rectangle (srvctx->pipeline, rectangle.x, rectangle.y,
-          rectangle.w, rectangle.h);
-    }
+    set_crop_rectangle (srvctx->pipeline, rectangle.x, rectangle.y,
+        rectangle.w, rectangle.h);
   }
 
   gst_buffer_unmap (buffer, &info);
@@ -542,6 +617,11 @@ wait_pipeline_eos_message (GAsyncQueue * messages)
       return FALSE;
     }
 
+    if (gst_structure_has_name (message, PIPELINE_ERROR_MESSAGE)) {
+      gst_structure_free (message);
+      return FALSE;
+    }
+
     if (gst_structure_has_name (message, PIPELINE_EOS_MESSAGE))
       break;
 
@@ -564,6 +644,11 @@ wait_pipeline_state_message (GAsyncQueue * messages, GstState state)
   // Wait for either a PIPELINE_STATE or TERMINATE message.
   while ((message = g_async_queue_pop (messages)) != NULL) {
     if (gst_structure_has_name (message, TERMINATE_MESSAGE)) {
+      gst_structure_free (message);
+      return FALSE;
+    }
+
+    if (gst_structure_has_name (message, PIPELINE_ERROR_MESSAGE)) {
       gst_structure_free (message);
       return FALSE;
     }
@@ -595,7 +680,7 @@ update_pipeline_state (GstElement * pipeline, GAsyncQueue * messages,
 
   if (ret != GST_STATE_CHANGE_SUCCESS) {
     g_printerr ("Failed to retrieve pipeline state!\n");
-    return TRUE;
+    return FALSE;
   }
 
   if (state == current) {
@@ -612,7 +697,7 @@ update_pipeline_state (GstElement * pipeline, GAsyncQueue * messages,
 
     if (!gst_element_send_event (pipeline, gst_event_new_eos ())) {
       g_printerr ("Failed to send EOS event!");
-      return TRUE;
+      return FALSE;
     }
 
     if (!wait_pipeline_eos_message (messages))
@@ -626,7 +711,7 @@ update_pipeline_state (GstElement * pipeline, GAsyncQueue * messages,
     case GST_STATE_CHANGE_FAILURE:
       g_printerr ("ERROR: Failed to transition to %s state!\n",
           gst_element_state_get_name (state));
-      return TRUE;
+      return FALSE;
     case GST_STATE_CHANGE_NO_PREROLL:
       g_print ("Pipeline is live and does not need PREROLL.\n");
       break;
@@ -637,7 +722,7 @@ update_pipeline_state (GstElement * pipeline, GAsyncQueue * messages,
 
       if (ret != GST_STATE_CHANGE_SUCCESS) {
         g_printerr ("Pipeline failed to PREROLL!\n");
-        return TRUE;
+        return FALSE;
       }
       break;
     case GST_STATE_CHANGE_SUCCESS:
@@ -775,6 +860,9 @@ create_main_pipeline (GstServiceContext * srvctx)
   g_object_set (G_OBJECT(umdsink), "emit-signals", TRUE, NULL);
   g_signal_connect (umdsink, "new-sample", G_CALLBACK (umd_new_sample), srvctx);
 
+  g_object_set (G_OBJECT(umdsink), "wait-on-eos", FALSE, NULL);
+  g_object_set (G_OBJECT(umdsink), "enable-last-sample", FALSE, NULL);
+
   // Retrieve reference to the pipeline's bus.
   if ((bus = gst_pipeline_get_bus (GST_PIPELINE (srvctx->pipeline))) == NULL) {
     g_printerr ("\nFailed to retrieve pipeline bus!\n");
@@ -862,6 +950,9 @@ mle_reconfigure_pipeline (GstServiceContext * srvctx, gboolean enable)
     g_object_set (G_OBJECT(mlesink), "emit-signals", TRUE, NULL);
     g_signal_connect (mlesink, "new-sample", G_CALLBACK (mle_new_sample), srvctx);
 
+    g_object_set (G_OBJECT(mlesink), "wait-on-eos", FALSE, NULL);
+    g_object_set (G_OBJECT(mlesink), "enable-last-sample", FALSE, NULL);
+
     // Retrieve MLE filter plugin in order to link the new elements.
     mlefilter = gst_bin_get_by_name (GST_BIN (pipeline), "mlefilter");
 
@@ -919,13 +1010,24 @@ static bool
 setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
 {
   GstServiceContext *srvctx = GST_SERVICE_CONTEXT_CAST (userdata);
-  AutoFramingConfig configuration = {0};
-  gint fps_n = 0, fps_d = 0;
+  gint idx = 0, fps_n = 0, fps_d = 0;
 
   g_print ("\nStream setup: %ux%u@%.2f - %c%c%c%c\n", stmsetup->width,
       stmsetup->height, stmsetup->fps, UMD_FMT_NAME (stmsetup->format));
 
   gst_util_double_to_fraction (stmsetup->fps, &fps_n, &fps_d);
+
+  // In case Auto Framing library is missing forcefully disable ML stream.
+  if (NULL == srvctx->afrmalgo) {
+    g_printerr ("\nAuto Framing library doesn't exist, disabling ML!\n");
+    afrmops.enable = FALSE;
+  }
+
+  // Cleanup pipeline queue from stale messages.
+  while (g_async_queue_length (srvctx->pipemsgs) > 0) {
+    GstStructure *message = g_async_queue_pop (srvctx->pipemsgs);
+    gst_structure_free (message);
+  }
 
   switch (stmsetup->format) {
     case UMD_VIDEO_FMT_YUYV:
@@ -954,7 +1056,9 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
       gst_caps_unref (filtercaps);
 
       // Unlink and link pipeline only if elements are not already present.
-      if ((afrmops.croptype == ML_CROP_EXTERNAL) && !vtrans && !vqueue) {
+      // Add vtransform plugin only if ML is enabled and crop is external.
+      if (afrmops.enable && (afrmops.croptype == ML_CROP_EXTERNAL) &&
+          (NULL == vtrans) && (NULL == vqueue)) {
         vtrans = gst_element_factory_make ("qtivtransform", "vtransform");
         vqueue = gst_element_factory_make ("queue", "vqueue");
 
@@ -970,7 +1074,8 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
 
         success =
             gst_element_link_many (umdfilter, vqueue, vtrans, umdqueue, NULL);
-      } else if ((afrmops.croptype == ML_CROP_INTERNAL) && vtrans && vqueue) {
+      } else if ((!afrmops.enable || (afrmops.croptype == ML_CROP_INTERNAL)) &&
+                 (vtrans != NULL) && (vqueue != NULL)) {
         gst_bin_remove (GST_BIN (srvctx->pipeline), vtrans);
         gst_bin_remove (GST_BIN (srvctx->pipeline), vqueue);
 
@@ -1043,7 +1148,7 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
 
       if (afrmops.croptype == ML_CROP_EXTERNAL) {
         g_print ("\nExternal crop not supported for MJPEG stream, "
-            "swritching to internal crop mechanism!\n");
+            "switching to internal crop mechanism!\n");
         afrmops.croptype = ML_CROP_INTERNAL;
       }
       break;
@@ -1054,51 +1159,44 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
       return false;
   }
 
+  // Reset the crop parameters.
+  set_crop_rectangle (srvctx->pipeline, 0, 0, 0, 0);
+
   if (!mle_reconfigure_pipeline (srvctx, afrmops.enable)) {
     g_printerr ("\nFailed to reconfigure pipeline MLE elements!\n");
     return false;
   }
 
-  // Reset the crop parameters.
-  set_crop_rectangle (srvctx->pipeline, 0, 0, 0, 0);
+  if (srvctx->afrmalgo != NULL) {
+    AutoFramingConfig configuration = {0};
 
-  // Return if Auto Framing library is missing
-  if (!srvctx->autoframing.afrmalgo_handle) {
-    g_printerr ("Auto Framing library doesn't exist!\n");
-    return true;
-  }
+    // Initialization of the Auto Framing algorithm.
+    configuration.out_width = stmsetup->width;
+    configuration.out_height = stmsetup->height;
 
-  // Initialization of the Auto Framing algorithm.
-  configuration.out_width = stmsetup->width;
-  configuration.out_height = stmsetup->height;
+    configuration.in_width = 640;
+    configuration.in_height = 360;
 
-  configuration.in_width = 640;
-  configuration.in_height = 360;
+    // Destroy the previous instance and create a new one.
+    if (srvctx->afrmalgo->instance != NULL)
+      srvctx->afrmalgo->free (srvctx->afrmalgo->instance);
 
-  if (srvctx->autoframing.afrmalgo_handle != NULL &&
-      srvctx->autoframing.afrmalgo_inst != NULL)
-    srvctx->autoframing.auto_framing_algo_free (
-        srvctx->autoframing.afrmalgo_inst);
+    srvctx->afrmalgo->instance = srvctx->afrmalgo->new (configuration);
 
-  if (srvctx->autoframing.afrmalgo_handle)
-    srvctx->autoframing.afrmalgo_inst =
-        srvctx->autoframing.auto_framing_algo_new (configuration);
+    if (NULL == srvctx->afrmalgo->instance) {
+      g_printerr ("\nFailed to create Auto Framing algorithm!\n");
+      return false;
+    }
 
-  if (srvctx->autoframing.afrmalgo_handle != NULL &&
-      srvctx->autoframing.afrmalgo_inst != NULL) {
-    srvctx->autoframing.auto_framing_algo_set_position_threshold (
-        srvctx->autoframing.afrmalgo_inst, afrmops.posthold);
-    srvctx->autoframing.auto_framing_algo_set_dims_threshold (
-        srvctx->autoframing.afrmalgo_inst, afrmops.dimsthold);
-    srvctx->autoframing.auto_framing_algo_set_margins (
-        srvctx->autoframing.afrmalgo_inst, afrmops.margins);
-    srvctx->autoframing.auto_framing_algo_set_movement_speed (
-        srvctx->autoframing.afrmalgo_inst, afrmops.speed);
-  }
-
-  if (NULL == srvctx->autoframing.afrmalgo_inst) {
-    g_printerr ("\nFailed to create Framing algorithm!\n");
-    return false;
+    // Set the framing thresholds.
+    srvctx->afrmalgo->set_position_threshold (
+        srvctx->afrmalgo->instance, afrmops.posthold);
+    srvctx->afrmalgo->set_dims_threshold (
+        srvctx->afrmalgo->instance, afrmops.dimsthold);
+    srvctx->afrmalgo->set_margins (
+        srvctx->afrmalgo->instance, afrmops.margins);
+    srvctx->afrmalgo->set_movement_speed (
+        srvctx->afrmalgo->instance, afrmops.speed);
   }
 
   return true;
@@ -1430,7 +1528,7 @@ mle_ops_menu (GAsyncQueue * messages)
 
   APPEND_CONTROLS_SECTION (options);
   g_string_append_printf (options, "   (%s) %-35s: %s\n",
-      ML_FRAMING_ENABLE_OPTION, "ML Auro Framing",
+      ML_FRAMING_ENABLE_OPTION, "ML Auto Framing",
       "Enable/Disable Machine Learning based auto framing algorithm");
   g_string_append_printf (options, "   (%s) %-35s: %s\n",
       ML_FRAMING_POS_THOLD_OPTION, "Auto Framing Position Threshold",
@@ -1484,7 +1582,7 @@ mle_ops_menu (GAsyncQueue * messages)
       return FALSE;
 
     if (!g_str_equal (input, ""))
-      extract_integer_value (input, 0, 1, &value);
+      extract_integer_value (input, 0, 100, &value);
 
     afrmops.posthold = value;
   } else if (g_str_equal (input, ML_FRAMING_DIMS_THOLD_OPTION)) {
@@ -1497,7 +1595,7 @@ mle_ops_menu (GAsyncQueue * messages)
       return FALSE;
 
     if (!g_str_equal (input, ""))
-      extract_integer_value (input, 0, 1, &value);
+      extract_integer_value (input, 0, 100, &value);
 
     afrmops.dimsthold = value;
   } else if (g_str_equal (input, ML_FRAMING_MARGINS_OPTION)) {
@@ -1510,7 +1608,7 @@ mle_ops_menu (GAsyncQueue * messages)
       return FALSE;
 
     if (!g_str_equal (input, ""))
-      extract_integer_value (input, 0, 1, &value);
+      extract_integer_value (input, 0, 100, &value);
 
     afrmops.margins = value;
   } else if (g_str_equal (input, ML_FRAMING_SPEED_OPTION)) {
@@ -1523,7 +1621,7 @@ mle_ops_menu (GAsyncQueue * messages)
       return FALSE;
 
     if (!g_str_equal (input, ""))
-      extract_integer_value (input, 0, 1, &value);
+      extract_integer_value (input, 0, 100, &value);
 
     afrmops.speed = value;
   } else if (g_str_equal (input, ML_FRAMING_CROPTYPE_OPTION)) {
@@ -1553,24 +1651,14 @@ main_menu (gpointer userdata)
   gboolean active = TRUE;
 
   // Do now show main menu if Auto Framing Algorithm doesn't exist
-  if (!srvctx->autoframing.afrmalgo_handle)
-    return NULL;
+  // TODO: needs rework if non-MLE options are added.
+  if (NULL == srvctx->afrmalgo)
+    active = FALSE;
 
   while (active)
     active = mle_ops_menu (srvctx->menumsgs);
 
   return NULL;
-}
-
-static gboolean
-load_symbol (gpointer * method, gpointer handle, const gchar * name)
-{
-  *(method) = dlsym (handle, name);
-  if (NULL == *(method)) {
-    g_printerr ("Failed to link library method %s, error: %s!", name, dlerror());
-    return FALSE;
-  }
-  return TRUE;
 }
 
 gint
@@ -1581,49 +1669,6 @@ main (gint argc, gchar *argv[])
   GMainLoop *mloop = NULL;
   GIOChannel *iostdin = NULL;
   GThread *mthread = NULL;
-  gboolean success = TRUE;
-
-  // Load Auto Framing Algorithm.
-  srvctx->autoframing.afrmalgo_handle = dlopen ("libqtiafralgo.so", RTLD_NOW);
-  if (srvctx->autoframing.afrmalgo_handle) {
-    // Load Auto Framing Algorithm library symbols.
-    success &= load_symbol (
-        (gpointer*)&srvctx->autoframing.auto_framing_algo_process,
-        srvctx->autoframing.afrmalgo_handle,
-        "auto_framing_algo_process");
-    success &= load_symbol (
-        (gpointer*)&srvctx->autoframing.auto_framing_algo_set_position_threshold,
-        srvctx->autoframing.afrmalgo_handle,
-        "auto_framing_algo_set_position_threshold");
-    success &= load_symbol (
-        (gpointer*)&srvctx->autoframing.auto_framing_algo_set_dims_threshold,
-        srvctx->autoframing.afrmalgo_handle,
-        "auto_framing_algo_set_dims_threshold");
-    success &= load_symbol (
-        (gpointer*)&srvctx->autoframing.auto_framing_algo_set_margins,
-        srvctx->autoframing.afrmalgo_handle,
-        "auto_framing_algo_set_margins");
-    success &= load_symbol (
-        (gpointer*)&srvctx->autoframing.auto_framing_algo_set_movement_speed,
-        srvctx->autoframing.afrmalgo_handle,
-        "auto_framing_algo_set_movement_speed");
-    success &= load_symbol (
-        (gpointer*)&srvctx->autoframing.auto_framing_algo_new,
-        srvctx->autoframing.afrmalgo_handle,
-        "auto_framing_algo_new");
-    success &= load_symbol (
-        (gpointer*)&srvctx->autoframing.auto_framing_algo_free,
-        srvctx->autoframing.afrmalgo_handle,
-        "auto_framing_algo_free");
-
-    if (!success) {
-      g_printerr ("Failed to get Auto Framing Algorithm symbols\n");
-      dlclose (srvctx->autoframing.afrmalgo_handle);
-      srvctx->autoframing.afrmalgo_handle = NULL;
-    }
-  } else {
-    g_printerr ("Failed to open Auto Framing Algorithm library\n");
-  }
 
   UmdVideoCallbacks callbacks = {
     &setup_camera_stream, &enable_camera_stream,
@@ -1693,7 +1738,7 @@ main (gint argc, gchar *argv[])
     return -1;
   }
 
-  // Register handing function with the main loop for stdin channel data.
+  // Register handling function with the main loop for stdin channel data.
   g_io_add_watch (iostdin, G_IO_IN | G_IO_PRI, handle_stdin_source, srvctx);
   g_io_channel_unref (iostdin);
 
