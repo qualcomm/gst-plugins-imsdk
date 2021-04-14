@@ -68,6 +68,11 @@ struct _GstQmmfContext {
   /// Global mutex lock.
   GMutex            lock;
 
+  /// User provided callback for signalling events.
+  GstQmmfCallback   callback;
+  /// User provided private data to be called with the callback.
+  gpointer          userdata;
+
   /// QMMF Recorder camera device opened by this source.
   guint             camera_id;
   /// QMMF Recorder multimedia session ID.
@@ -79,9 +84,6 @@ struct _GstQmmfContext {
   /// @GST_STATE_PAUSED - Session created but it is not yet active.
   /// @GST_STATE_PLAYING - Session is active/running.
   GstState          state;
-
-  /// List with video and image pads which have active streams.
-  GList             *pads;
 
   /// Video and image pads timestamp base.
   GstClockTime      tsbase;
@@ -857,68 +859,96 @@ image_data_callback (GstQmmfContext * context, GstPad * pad,
 
 static void
 camera_event_callback (GstQmmfContext * context,
-    ::qmmf::recorder::EventType type, void *data, size_t size)
+    ::qmmf::recorder::EventType type, void * payload, size_t size)
 {
-  gboolean eos = FALSE;
+  gint event = EVENT_UNKNOWN;
 
   switch (type) {
     case ::qmmf::recorder::EventType::kServerDied:
-      GST_ERROR ("Camera server has died !");
-      eos = TRUE;
+      event = EVENT_SERVICE_DIED;
       break;
     case ::qmmf::recorder::EventType::kCameraError:
     {
-      ::qmmf::recorder::RecorderErrorData *error =
-          static_cast<::qmmf::recorder::RecorderErrorData *>(data);
+      g_assert (size == sizeof (guint));
+      uint32_t camera_id = *(static_cast<uint32_t*>(payload));
 
-      GST_ERROR ("Camera %u encountered an error with code %d !",
-          error->camera_id, error->error_code);
+      // Ignore event if it is not for this camera id.
+      if (camera_id == context->camera_id)
+        return;
 
-      switch ((GstCameraError) error->error_code) {
-        case GST_ERROR_CAMERA_INVALID_ERROR:
-        case GST_ERROR_CAMERA_DISCONNECTED:
-        case GST_ERROR_CAMERA_DEVICE:
-        case GST_ERROR_CAMERA_SERVICE:
-          eos = (context->camera_id == error->camera_id) ? TRUE : FALSE;
-          break;
-        default:
-          GST_WARNING ("Camera has encounter a non-fatal error");
-      }
-    }
+      event = EVENT_CAMERA_ERROR;
       break;
+    }
     case ::qmmf::recorder::EventType::kCameraOpened:
     {
-      guint camera_id = *(static_cast<guint*>(data));
-      GST_LOG ("Camera %u has been opened", camera_id);
-    }
+      g_assert (size == sizeof (guint));
+      uint32_t camera_id = *(static_cast<uint32_t*>(payload));
+
+      // Ignore event if it is not for this camera id.
+      if (camera_id == context->camera_id)
+        return;
+
+      event = EVENT_CAMERA_OPENED;
       break;
+    }
     case ::qmmf::recorder::EventType::kCameraClosing:
     {
-      guint camera_id = *(static_cast<guint*>(data));
-      GST_LOG ("Closing camera %u ...", camera_id);
+      g_assert (size == sizeof (guint));
+      uint32_t camera_id = *(static_cast<uint32_t*>(payload));
 
-      eos = (context->camera_id == camera_id) ? TRUE : FALSE;
-    }
+      // Ignore event if it's not for this camera id or it's in master mode.
+      if ((camera_id != context->camera_id) || !context->slave)
+        return;
+
+      event = EVENT_CAMERA_CLOSING;
       break;
+    }
     case ::qmmf::recorder::EventType::kCameraClosed:
     {
-      guint camera_id = *(static_cast<guint*>(data));
-      GST_LOG ("Camera %u has been closed", camera_id);
+      g_assert (size == sizeof (guint));
+      uint32_t camera_id = *(static_cast<uint32_t*>(payload));
+
+      // Ignore event if it is not for this camera id.
+      if (camera_id == context->camera_id)
+        return;
+
+      event = EVENT_CAMERA_CLOSED;
+      break;
     }
+    case  ::qmmf::recorder::EventType::kFrameError:
+    {
+      g_assert (size == sizeof (guint));
+
+      uint32_t camera_id = *(static_cast<uint32_t*>(payload));
+      // Ignore event if it is not for this camera id.
+      if (camera_id == context->camera_id)
+        return;
+
+      event = EVENT_CAMERA_CLOSED;
+      break;
+    }
+    case  ::qmmf::recorder::EventType::kMetadataError:
+    {
+      g_assert (size == sizeof (guint));
+      uint32_t camera_id = *(static_cast<uint32_t*>(payload));
+
+      // Ignore event if it is not for this camera id.
+      if (camera_id == context->camera_id)
+        return;
+
+      event = EVENT_CAMERA_CLOSED;
+      break;
+    }
+    default:
+      event = EVENT_UNKNOWN;
       break;
   }
 
-  if (eos && (context->state == GST_STATE_PLAYING)) {
-    GList *list = NULL;
-
-    // Send EOS event for all pads which have active streams.
-    for (list = context->pads; list != NULL; list = list->next)
-      gst_pad_push_event (GST_PAD (list->data), gst_event_new_eos ());
-  }
+  context->callback (event, context->userdata);
 }
 
 GstQmmfContext *
-gst_qmmf_context_new ()
+gst_qmmf_context_new (GstQmmfCallback callback, gpointer userdata)
 {
   GstQmmfContext *context = NULL;
   ::qmmf::recorder::RecorderCb cbs;
@@ -953,6 +983,9 @@ gst_qmmf_context_new ()
       gst_structure_new_empty ("org.codeaurora.qcamera3.manualWB");
 
   context->state = GST_STATE_NULL;
+
+  context->callback = callback;
+  context->userdata = userdata;
 
   GST_INFO ("Created QMMF context: %p", context);
   return context;
@@ -1466,7 +1499,6 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
     recorder->SetCameraParam (context->camera_id, meta);
   }
 
-  context->pads = g_list_append (context->pads, pad);
   return TRUE;
 }
 
@@ -1484,8 +1516,6 @@ gst_qmmf_context_delete_video_stream (GstQmmfContext * context, GstPad * pad)
       "QMMF Recorder DeleteVideoTrack Failed!");
 
   GST_TRACE ("QMMF context video stream deleted");
-
-  context->pads = g_list_remove (context->pads, pad);
   return TRUE;
 }
 
@@ -1644,8 +1674,6 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad,
       "QMMF Recorder ConfigImageCapture Failed!");
 
   GST_TRACE ("QMMF context image stream created");
-
-  context->pads = g_list_append (context->pads, pad);
   return TRUE;
 }
 
@@ -1662,8 +1690,6 @@ gst_qmmf_context_delete_image_stream (GstQmmfContext * context, GstPad * pad)
       "QMMF Recorder CancelCaptureImage Failed!");
 
   GST_TRACE ("QMMF context image stream deleted");
-
-  context->pads = g_list_remove (context->pads, pad);
   return TRUE;
 }
 

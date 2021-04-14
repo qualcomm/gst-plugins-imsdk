@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -38,6 +38,19 @@ G_BEGIN_DECLS
 
 typedef struct _GstQmmfContext GstQmmfContext;
 
+typedef void (*GstQmmfCallback) (guint event, gpointer userdata);
+
+enum {
+  EVENT_UNKNOWN,
+  EVENT_SERVICE_DIED,
+  EVENT_CAMERA_ERROR,
+  EVENT_CAMERA_OPENED,
+  EVENT_CAMERA_CLOSING,
+  EVENT_CAMERA_CLOSED,
+  EVENT_FRAME_ERROR,
+  EVENT_METADATA_ERROR,
+};
+
 enum
 {
   PARAM_CAMERA_ID,
@@ -70,7 +83,7 @@ enum
 };
 
 GST_API GstQmmfContext *
-gst_qmmf_context_new (void);
+gst_qmmf_context_new (GstQmmfCallback callback, gpointer userdata);
 
 GST_API void
 gst_qmmf_context_free (GstQmmfContext * context);
