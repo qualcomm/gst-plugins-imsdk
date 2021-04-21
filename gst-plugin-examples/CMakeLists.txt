@@ -10,6 +10,8 @@ find_package(PkgConfig)
 pkg_check_modules(GST
   REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
 
-add_subdirectory(gst-tracking-cam-app)
+if (ENABLE_TRACKING_CAM)
+  add_subdirectory(gst-tracking-cam-app)
+endif()
 add_subdirectory(gst-weston-composition)
 add_subdirectory(gst-appsink)
