@@ -454,6 +454,10 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
     GST_VIDEO_INFO_PLANE_STRIDE (&priv->info, 0) = stride;
     GST_VIDEO_INFO_PLANE_OFFSET (&priv->info, 0) = 0;
 
+    // TODO: Workaroud for GBM incorect stride
+    if (bufinfo.format == GBM_FORMAT_RGB888)
+      GST_VIDEO_INFO_PLANE_STRIDE (&priv->info, 0) *= 3;
+
     // Check for a second plane and fill its stride and offset.
     if (GST_VIDEO_INFO_N_PLANES (&priv->info) >= 2) {
       GST_VIDEO_INFO_PLANE_STRIDE (&priv->info, 1) = stride;
