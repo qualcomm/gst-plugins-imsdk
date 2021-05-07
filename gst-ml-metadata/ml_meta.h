@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -45,6 +45,9 @@ typedef struct _GstMLKeyPoint GstMLKeyPoint;
 typedef struct _GstMLPose GstMLPose;
 typedef struct _GstMLPoseNetMeta GstMLPoseNetMeta;
 
+typedef struct _GstCvpMotionVector GstCvpMotionVector;
+typedef struct _GstCvpOpticalFlowMeta GstCvpOpticalFlowMeta;
+
 #define GST_ML_DETECTION_API_TYPE (gst_ml_detection_get_type())
 #define GST_ML_DETECTION_INFO (gst_ml_detection_get_info())
 
@@ -56,6 +59,9 @@ typedef struct _GstMLPoseNetMeta GstMLPoseNetMeta;
 
 #define GST_ML_POSENET_API_TYPE (gst_ml_posenet_get_type())
 #define GST_ML_POSENET_INFO (gst_ml_posenet_get_info())
+
+#define GST_CVP_OPTCLFLOW_API_TYPE (gst_cvp_optclflow_get_type())
+#define GST_CVP_OPTCLFLOW_INFO (gst_cvp_optclflow_get_info())
 
 
 /**
@@ -190,6 +196,44 @@ struct _GstMLPoseNetMeta {
   gfloat            score;
 };
 
+/**
+ * GstCvpMotionVector:
+ * @x          : x for motion vector
+ * @y          : y for motion vector
+ * @confidence : confidence of the motion vector
+ * @variance   : variance of the motion vector
+ * @mean       : mean of the motion vector
+ * @bestsad    : the best SAD (sum of absolute difference) of the motion vector
+ * @sad        : SAD of the motion vector
+ *
+ * CVP Motion vector properties for optical flow
+ * variance, mean, best SAD, and SAD are filled only if stats is enable
+ */
+struct _GstCvpMotionVector {
+  gint                   x;
+  gint                   y;
+  gint                   confidence;
+  guint                  variance;
+  guint                  mean;
+  guint                  bestsad;
+  guint                  sad;
+};
+
+/**
+ * GstCvpOpticalFlowMeta:
+ * @parent: parent #GstMeta
+ * @mvectors: motion vector for each 8x8 block
+ * @n_vectors: motion vector count
+ *
+ * CVP Optical flow output properties
+ */
+struct _GstCvpOpticalFlowMeta {
+  GstMeta            parent;
+
+  GstCvpMotionVector *mvectors;
+  gint               n_vectors;
+};
+
 
 GType gst_ml_detection_get_type (void);
 const GstMetaInfo * gst_ml_detection_get_info (void);
@@ -199,6 +243,8 @@ GType gst_ml_classification_get_type (void);
 const GstMetaInfo * gst_ml_classification_get_info (void);
 GType gst_ml_posenet_get_type (void);
 const GstMetaInfo * gst_ml_posenet_get_info (void);
+GType gst_cvp_optclflow_get_type (void);
+const GstMetaInfo * gst_cvp_optclflow_get_info (void);
 
 /**
  * gst_buffer_add_detection_meta:
@@ -292,6 +338,28 @@ GstMLPoseNetMeta * gst_buffer_add_posenet_meta (GstBuffer * buffer);
 GST_EXPORT
 GSList * gst_buffer_get_posenet_meta (GstBuffer * buffer);
 
+/**
+ * gst_buffer_add_optclflow_meta:
+ * @buffer: the buffer new meta belongs to
+ *
+ * Creates new optical flow meta entry and returns pointer to new
+ * entry. Metadata payload is not input parameter in order to avoid
+ * unnecessary copy of data.
+ *
+ */
+GST_EXPORT
+GstCvpOpticalFlowMeta * gst_buffer_add_optclflow_meta (GstBuffer * buffer);
+
+/**
+ * gst_buffer_get_optclflow_meta:
+ * @buffer: the buffer metadata comes from
+ *
+ * Returns list of optical flow metadata entries. List payload should be
+ * considered as GstCvpOpticalFlowMeta. Caller is supposed to free the list.
+ *
+ */
+GST_EXPORT
+GSList * gst_buffer_get_optclflow_meta (GstBuffer * buffer);
 G_END_DECLS
 
 #endif /* __GST_ML_META_H__ */

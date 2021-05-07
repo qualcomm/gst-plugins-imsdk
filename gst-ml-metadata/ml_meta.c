@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -248,6 +248,57 @@ gst_ml_posenet_get_info (void)
   return ml_meta_info;
 }
 
+static gboolean
+gst_cvp_optclflow_init (GstMeta * meta, gpointer params, GstBuffer * buffer)
+{
+  GstCvpOpticalFlowMeta *optclflow_meta = (GstCvpOpticalFlowMeta *) meta;
+  optclflow_meta->n_vectors = 0;
+  optclflow_meta->mvectors = NULL;
+  return TRUE;
+}
+
+static void
+gst_cvp_optclflow_free (GstMeta *meta, GstBuffer *buffer)
+{
+  GstCvpOpticalFlowMeta *optclflow_meta = (GstCvpOpticalFlowMeta *) meta;
+  if (optclflow_meta->mvectors) {
+    free(optclflow_meta->mvectors);
+    optclflow_meta->mvectors = NULL;
+  }
+  GST_DEBUG ("free detection meta ts: %llu ", buffer->pts);
+}
+
+GType
+gst_cvp_optclflow_get_type (void)
+{
+  static volatile GType type = 0;
+  static const gchar *tags[] = { NULL };
+
+  if (g_once_init_enter (&type)) {
+      GType _type =
+          gst_meta_api_type_register ("GstCvpOpticalFlowMetaAPI", tags);
+      g_once_init_leave (&type, _type);
+  }
+  return type;
+}
+
+const GstMetaInfo *
+gst_cvp_optclflow_get_info (void)
+{
+  static const GstMetaInfo *cvp_meta_info = NULL;
+
+  if (g_once_init_enter ((GstMetaInfo **) & cvp_meta_info)) {
+    const GstMetaInfo *meta =
+        gst_meta_register (GST_CVP_OPTCLFLOW_API_TYPE,
+            "GstCvpOpticalFlowMeta", (gsize) sizeof (GstCvpOpticalFlowMeta),
+            (GstMetaInitFunction) gst_cvp_optclflow_init,
+            (GstMetaFreeFunction) gst_cvp_optclflow_free,
+            (GstMetaTransformFunction) NULL);
+    g_once_init_leave ((GstMetaInfo **) & cvp_meta_info, (GstMetaInfo *) meta);
+  }
+  return cvp_meta_info;
+}
+
 GstMLDetectionMeta *
 gst_buffer_add_detection_meta (GstBuffer * buffer)
 {
@@ -356,6 +407,36 @@ gst_buffer_get_posenet_meta (GstBuffer * buffer)
   gpointer state = NULL;
   GstMeta *meta = NULL;
   const GstMetaInfo *info = GST_ML_POSENET_INFO;
+
+  g_return_val_if_fail (buffer != NULL, NULL);
+
+  GSList *meta_list = NULL;
+  while ((meta = gst_buffer_iterate_meta (buffer, &state))) {
+    if (meta->info->api == info->api) {
+      meta_list = g_slist_prepend(meta_list, meta);
+    }
+  }
+  return meta_list;
+}
+
+GstCvpOpticalFlowMeta *
+gst_buffer_add_optclflow_meta (GstBuffer * buffer)
+{
+  g_return_val_if_fail (buffer != NULL, NULL);
+
+  GstCvpOpticalFlowMeta *meta =
+      (GstCvpOpticalFlowMeta *) gst_buffer_add_meta (buffer,
+          GST_CVP_OPTCLFLOW_INFO, NULL);
+
+  return meta;
+}
+
+GSList *
+gst_buffer_get_optclflow_meta (GstBuffer * buffer)
+{
+  gpointer state = NULL;
+  GstMeta *meta = NULL;
+  const GstMetaInfo *info = GST_CVP_OPTCLFLOW_INFO;
 
   g_return_val_if_fail (buffer != NULL, NULL);
 
