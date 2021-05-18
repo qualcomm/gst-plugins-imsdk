@@ -353,6 +353,10 @@ gst_qmmfsrc_iso_mode_get_type (void)
     { ISO_MODE_3200,
         "The ISO exposure sensitivity set to prioritize level 3200.", "3200"
     },
+    { ISO_MODE_MANUAL,
+        "The ISO exposure value provided by manual-iso-value will be used.",
+        "manual"
+    },
     {0, NULL, NULL},
   };
 
