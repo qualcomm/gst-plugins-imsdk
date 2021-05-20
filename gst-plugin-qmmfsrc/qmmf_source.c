@@ -74,6 +74,7 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
 #define DEFAULT_PROP_CAMERA_LOCAL_TONE_MAPPING        NULL
 #define DEFAULT_PROP_CAMERA_NOISE_REDUCTION_TUNING    NULL
 #define DEFAULT_PROP_CAMERA_SHARPNESS_STRENGTH        2
+#define DEFAULT_PROP_CAMERA_SATURATION                5
 
 static void gst_qmmfsrc_child_proxy_init (gpointer g_iface, gpointer data);
 
@@ -122,6 +123,7 @@ enum
   PROP_CAMERA_DEFOG_TABLE,
   PROP_CAMERA_LOCAL_TONE_MAPPING,
   PROP_CAMERA_SHARPNESS_STRENGTH,
+  PROP_CAMERA_SATURATION,
 };
 
 static GstStaticPadTemplate qmmfsrc_video_src_template =
@@ -798,6 +800,10 @@ qmmfsrc_set_property (GObject * object, guint property_id,
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_SHARPNESS_STRENGTH, value);
       break;
+    case PROP_CAMERA_SATURATION:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_SATURATION, value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -919,6 +925,10 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
     case PROP_CAMERA_SHARPNESS_STRENGTH:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_SHARPNESS_STRENGTH, value);
+      break;
+    case PROP_CAMERA_SATURATION:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_SATURATION, value);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -1136,6 +1146,12 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
       g_param_spec_int ("sharpness", "Sharpness Strength",
           "Image Sharpness Strength",
           0, 6, DEFAULT_PROP_CAMERA_SHARPNESS_STRENGTH,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_CAMERA_SATURATION,
+      g_param_spec_int ("saturation", "Use Saturation",
+          "Saturation Control",
+          0, 10, DEFAULT_PROP_CAMERA_SATURATION,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
 

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -67,6 +67,7 @@ enum
   PARAM_CAMERA_DEFOG_TABLE,
   PARAM_CAMERA_LOCAL_TONE_MAPPING,
   PARAM_CAMERA_SHARPNESS_STRENGTH,
+  PARAM_CAMERA_SATURATION,
 };
 
 GST_API GstQmmfContext *
