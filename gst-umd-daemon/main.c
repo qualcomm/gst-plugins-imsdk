@@ -862,6 +862,7 @@ create_main_pipeline (GstServiceContext * srvctx)
 
   g_object_set (G_OBJECT(umdsink), "wait-on-eos", FALSE, NULL);
   g_object_set (G_OBJECT(umdsink), "enable-last-sample", FALSE, NULL);
+  g_object_set (G_OBJECT(umdsink), "sync", FALSE, NULL);
 
   // Retrieve reference to the pipeline's bus.
   if ((bus = gst_pipeline_get_bus (GST_PIPELINE (srvctx->pipeline))) == NULL) {
@@ -952,6 +953,7 @@ mle_reconfigure_pipeline (GstServiceContext * srvctx, gboolean enable)
 
     g_object_set (G_OBJECT(mlesink), "wait-on-eos", FALSE, NULL);
     g_object_set (G_OBJECT(mlesink), "enable-last-sample", FALSE, NULL);
+    g_object_set (G_OBJECT(mlesink), "sync", FALSE, NULL);
 
     // Retrieve MLE filter plugin in order to link the new elements.
     mlefilter = gst_bin_get_by_name (GST_BIN (pipeline), "mlefilter");
