@@ -236,35 +236,23 @@ void MLEngine::MeanSubtract(uint8_t* input_buf,
   uint8_t* src = input_buf;
   float* dest = processed_buf;
 
-  float divisor = config_.use_norm ? config_.blue_sigma : 1;
+  float std_blue = config_.use_norm ? config_.blue_sigma : 1;
+  float std_green = config_.use_norm ? config_.green_sigma : 1;
+  float std_red = config_.use_norm ? config_.red_sigma : 1;
+
   for (uint32_t y = 0; y < height; y++) {
     for (uint32_t x = 0; x < width; x++) {
-      uint32_t index_src = y * width + x;
-      uint32_t index_dst = y * pad_width + x;
-      dest[index_dst] = (static_cast<float>(src[index_src]) -
-          config_.blue_mean) / divisor;
-    }
-  }
-  src += height * width;
-  dest += height * width;
-  divisor = config_.use_norm ? config_.green_sigma : 1;
-  for (uint32_t y = 0; y < height; y++) {
-    for (uint32_t x = 0; x < width; x++) {
-      uint32_t index_src = y * width + x;
-      uint32_t index_dst = y * pad_width + x;
-      dest[index_dst] = (static_cast<float>(src[index_src]) -
-          config_.green_mean) / divisor;
-    }
-  }
-  src += height * width;
-  dest += height * width;
-  divisor = config_.use_norm ? config_.red_sigma : 1;
-  for (uint32_t y = 0; y < height; y++) {
-    for (uint32_t x = 0; x < width; x++) {
-      uint32_t index_src = y * width + x;
-      uint32_t index_dst = y * pad_width + x;
-      dest[index_dst] = (static_cast<float>(src[index_src]) -
-          config_.red_mean) / divisor;
+      dest[((y * pad_width + x) * 3)] =
+          (static_cast<float>(src[((y * width + x) * 3)]) -
+              config_.red_mean) / std_red;
+
+      dest[((y * pad_width + x) * 3) + 1] =
+          (static_cast<float>(src[((y * width + x) * 3) + 1]) -
+              config_.green_mean) / std_green;
+
+      dest[((y * pad_width + x) * 3) + 2] =
+          (static_cast<float>(src[((y * width + x) * 3) + 2]) -
+              config_.blue_mean) / std_blue;
     }
   }
 }
