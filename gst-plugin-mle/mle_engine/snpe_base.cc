@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -44,7 +44,7 @@ SNPEBase::SNPEBase(MLConfig &config) : MLEngine(config) {
 
 int32_t SNPEBase::ConfigureRuntime(MLConfig &config) {
   switch (config.runtime) {
-    case RuntimeType::DSP: {
+    case kSnpeDsp: {
       if (zdl::SNPE::SNPEFactory::isRuntimeAvailable(
           zdl::DlSystem::Runtime_t::DSP)) {
         runtime_ = zdl::DlSystem::Runtime_t::DSP;
@@ -55,7 +55,7 @@ int32_t SNPEBase::ConfigureRuntime(MLConfig &config) {
       }
       break;
     }
-    case RuntimeType::GPU: {
+    case kSnpeGpu: {
       if (zdl::SNPE::SNPEFactory::isRuntimeAvailable(
           zdl::DlSystem::Runtime_t::GPU)) {
         runtime_ = zdl::DlSystem::Runtime_t::GPU;
@@ -66,7 +66,7 @@ int32_t SNPEBase::ConfigureRuntime(MLConfig &config) {
       }
       break;
     }
-    case RuntimeType::AIP: {
+    case kSnpeAip: {
       if (zdl::SNPE::SNPEFactory::isRuntimeAvailable(
           zdl::DlSystem::Runtime_t::AIP_FIXED8_TF)) {
         runtime_ = zdl::DlSystem::Runtime_t::AIP_FIXED8_TF;
@@ -77,7 +77,7 @@ int32_t SNPEBase::ConfigureRuntime(MLConfig &config) {
       }
       break;
     }
-    case RuntimeType::CPU: {
+    case kSnpeCpu: {
       runtime_ = zdl::DlSystem::Runtime_t::CPU;
       MLE_LOGI("CPU runtime selected");
       break;

@@ -72,7 +72,7 @@ TfLiteDelegatePtrMap TFLBase::GetDelegates() {
 
 #ifdef DELEGATE_SUPPORT
   switch (config_.delegate) {
-    case DelegateType::nnapi:
+    case kTfliteNnapi:
     {
       MLE_LOGI("%s: Using NNAPI delegate", __func__);
       uint32_t delegate_preferences_dsp = 00100000;
@@ -95,7 +95,7 @@ TfLiteDelegatePtrMap TFLBase::GetDelegates() {
       }
       break;
     }
-    case DelegateType::nnapi_npu:
+    case kTfliteNnapiNpu:
     {
       MLE_LOGI("%s: Using NNAPI-NPU delegate", __func__);
       uint32_t delegate_preferences_npu = 00300000;
@@ -118,7 +118,7 @@ TfLiteDelegatePtrMap TFLBase::GetDelegates() {
       }
       break;
     }
-    case DelegateType::hexagon_nn:
+    case kTfliteHexagonNn:
     {
       MLE_LOGI("%s: Using hexagon delegate", __func__);
       TfLiteHexagonInit();
@@ -145,7 +145,7 @@ TfLiteDelegatePtrMap TFLBase::GetDelegates() {
       }
       break;
     }
-    case DelegateType::gpu:
+    case kTfliteGpu:
     {
       MLE_LOGI("%s: Using GPU delegate", __func__);
 
@@ -161,7 +161,7 @@ TfLiteDelegatePtrMap TFLBase::GetDelegates() {
       }
       break;
     }
-    case DelegateType::xnnpack:
+    case kTfliteXnnpack:
     {
       MLE_LOGI("%s: Using xnnpack delegate", __func__);
 
@@ -177,7 +177,7 @@ TfLiteDelegatePtrMap TFLBase::GetDelegates() {
       }
       break;
     }
-    case DelegateType::cpu:
+    case kTfliteCpu:
     default:
     {
       MLE_LOGD("%s: Fallback to CPU runtime", __func__);
@@ -485,7 +485,7 @@ int32_t TFLBase::PostProcessMultiOutput(GstBuffer* buffer) {
     float scale_ratio_x = (float)engine_input_params_.width / scale_width_;
     float scale_ratio_y = (float)engine_input_params_.height / scale_height_;
 
-    if (config_.preprocess_mode == PreprocessingMode::kKeepARCrop) {
+    if (config_.preprocess_mode == kKeepARCrop) {
       width = po_.width;
       height = po_.height;
     }
