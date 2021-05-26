@@ -1141,6 +1141,8 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
         format = ::qmmf::VideoFormat::kBayerRDI10BIT;
       } else if (vpad->bpp == 12) {
         format = ::qmmf::VideoFormat::kBayerRDI12BIT;
+      } else if (vpad->bpp == 16) {
+        format = ::qmmf::VideoFormat::kBayerRDI16BIT;
       } else {
         GST_ERROR ("Unsupported bits per pixel for bayer format!");
         GST_QMMFSRC_VIDEO_PAD_UNLOCK (vpad);
