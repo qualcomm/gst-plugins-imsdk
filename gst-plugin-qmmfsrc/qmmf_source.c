@@ -136,9 +136,9 @@ static GstStaticPadTemplate qmmfsrc_video_src_template =
             QMMFSRC_VIDEO_JPEG_CAPS "; "
             QMMFSRC_VIDEO_RAW_CAPS(
 #if defined(GST_VIDEO_YUY2_FORMAT_ENABLE)
-                "{ NV12, YUY2 }") "; "
+                "{ NV12, NV16, YUY2 }") "; "
 #else
-                "{ NV12 }") "; "
+                "{ NV12, NV16 }") "; "
 #endif
             QMMFSRC_VIDEO_RAW_CAPS_WITH_FEATURES(
                 GST_CAPS_FEATURE_MEMORY_GBM,
