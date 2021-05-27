@@ -1218,6 +1218,10 @@ main (gint argc, gchar *argv[])
   // Run main loop.
   g_main_loop_run (appctx->mloop);
 
+  // Signal menu thread to quit.
+  g_async_queue_push (appctx->messages,
+      gst_structure_new_empty (TERMINATE_MESSAGE));
+
   // Waits until main menu thread finishes.
   g_thread_join (mthread);
 
