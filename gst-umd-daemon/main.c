@@ -178,11 +178,14 @@ struct _AutoFrmLib
 
 struct _GstServiceContext
 {
-  // UVC Gadget instance.
+  // UMD Gadget instance.
   UmdGadget       *gadget;
 
-  // GStreamer pipeline instance.
-  GstElement      *pipeline;
+  // GStreamer video pipeline instance.
+  GstElement      *vpipeline;
+
+  // GStreamer audio pipeline instance.
+  GstElement      *apipeline;
 
   // Auto Framing Algorithm library instance.
   AutoFrmLib      *afrmalgo;
@@ -212,9 +215,14 @@ gst_service_context_free (GstServiceContext * ctx)
   if (ctx->gadget != NULL)
     umd_gadget_free (ctx->gadget);
 
-  if (ctx->pipeline != NULL) {
-    gst_element_set_state (ctx->pipeline, GST_STATE_NULL);
-    gst_object_unref (ctx->pipeline);
+  if (ctx->vpipeline != NULL) {
+    gst_element_set_state (ctx->vpipeline, GST_STATE_NULL);
+    gst_object_unref (ctx->vpipeline);
+  }
+
+  if (ctx->apipeline != NULL) {
+    gst_element_set_state (ctx->apipeline, GST_STATE_NULL);
+    gst_object_unref (ctx->apipeline);
   }
 
   if ((ctx->afrmalgo != NULL) && (ctx->afrmalgo->instance != NULL))
@@ -243,7 +251,8 @@ gst_service_context_new ()
     return NULL;
   }
 
-  ctx->pipeline = NULL;
+  ctx->apipeline = NULL;
+  ctx->vpipeline = NULL;
   ctx->gadget = NULL;
 
   if ((ctx->afrmalgo = g_new0 (AutoFrmLib, 1)) == NULL) {
@@ -378,6 +387,10 @@ static gboolean
 handle_bus_message (GstBus * bus, GstMessage * message, gpointer userdata)
 {
   GstServiceContext *srvctx = GST_SERVICE_CONTEXT_CAST (userdata);
+  GstElement *pipeline = srvctx->vpipeline;
+
+  if (GST_MESSAGE_SRC (message) == GST_OBJECT_CAST (srvctx->apipeline))
+    pipeline = srvctx->apipeline;
 
   switch (GST_MESSAGE_TYPE (message)) {
     case GST_MESSAGE_ERROR:
@@ -391,11 +404,13 @@ handle_bus_message (GstBus * bus, GstMessage * message, gpointer userdata)
       g_free (debug);
       g_error_free (error);
 
-      g_async_queue_push (srvctx->pipemsgs,
-          gst_structure_new_empty (PIPELINE_ERROR_MESSAGE));
+      if (GST_MESSAGE_SRC (message) == GST_OBJECT_CAST (srvctx->vpipeline))
+        g_async_queue_push (srvctx->pipemsgs,
+            gst_structure_new_empty (PIPELINE_ERROR_MESSAGE));
 
-      g_print ("\nSetting pipeline to NULL ...\n");
-      gst_element_set_state (srvctx->pipeline, GST_STATE_NULL);
+      g_print ("\nSetting %s pipeline to NULL ...\n",
+          GST_MESSAGE_SRC_NAME (message));
+      gst_element_set_state (pipeline, GST_STATE_NULL);
       break;
     }
     case GST_MESSAGE_WARNING:
@@ -414,8 +429,9 @@ handle_bus_message (GstBus * bus, GstMessage * message, gpointer userdata)
       g_print ("\nReceived End-of-Stream from '%s' ...\n",
           GST_MESSAGE_SRC_NAME (message));
 
-      g_async_queue_push (srvctx->pipemsgs,
-          gst_structure_new_empty (PIPELINE_EOS_MESSAGE));
+      if (GST_MESSAGE_SRC (message) == GST_OBJECT_CAST (srvctx->vpipeline))
+        g_async_queue_push (srvctx->pipemsgs,
+            gst_structure_new_empty (PIPELINE_EOS_MESSAGE));
       break;
     case GST_MESSAGE_REQUEST_STATE:
     {
@@ -423,29 +439,43 @@ handle_bus_message (GstBus * bus, GstMessage * message, gpointer userdata)
       GstState state;
 
       gst_message_parse_request_state (message, &state);
-      g_print ("\nSetting pipeline state to %s as requested by %s...\n",
+      g_print ("\nSetting %s state to %s as requested by %s...\n",
+          GST_MESSAGE_SRC_NAME (message),
           gst_element_state_get_name (state), name);
 
-      gst_element_set_state (srvctx->pipeline, state);
+      gst_element_set_state (pipeline, state);
       g_free (name);
       break;
     }
     case GST_MESSAGE_STATE_CHANGED:
     {
       GstState old, new, pending;
-
-      // Handle state changes only for the pipeline.
-      if (GST_MESSAGE_SRC (message) != GST_OBJECT_CAST (srvctx->pipeline))
-        break;
+      if (GST_MESSAGE_SRC (message) != GST_OBJECT_CAST (pipeline))
+          break;
 
       gst_message_parse_state_changed (message, &old, &new, &pending);
-      g_print ("\nPipeline state changed from %s to %s, pending: %s\n",
-          gst_element_state_get_name (old), gst_element_state_get_name (new),
+      g_print ("\n%s state changed from %s to %s, pending: %s\n",
+          GST_MESSAGE_SRC_NAME (message), gst_element_state_get_name (old),
+          gst_element_state_get_name (new),
           gst_element_state_get_name (pending));
 
-      g_async_queue_push (srvctx->pipemsgs, gst_structure_new (
-          PIPELINE_STATE_MESSAGE, "new", G_TYPE_UINT, new,
-          "pending", G_TYPE_UINT, pending, NULL));
+      if (pipeline == srvctx->vpipeline) {
+        g_async_queue_push (srvctx->pipemsgs, gst_structure_new (
+            PIPELINE_STATE_MESSAGE, "new", G_TYPE_UINT, new,
+            "pending", G_TYPE_UINT, pending, NULL));
+      } else if (pipeline == srvctx->apipeline) {
+        if ((new == GST_STATE_PAUSED) && (old == GST_STATE_READY) &&
+            (pending == GST_STATE_VOID_PENDING)) {
+          g_print ("\nSetting %s to PLAYING state ...\n",
+              GST_MESSAGE_SRC_NAME (message));
+          if (gst_element_set_state (pipeline, GST_STATE_PLAYING) ==
+              GST_STATE_CHANGE_FAILURE) {
+            gst_printerr ("\n%s doesn't want to transition to PLAYING state!\n",
+                GST_MESSAGE_SRC_NAME (message));
+            return FALSE;
+          }
+        }
+      }
       break;
     }
     default:
@@ -555,7 +585,7 @@ mle_new_sample (GstElement *sink, gpointer userdata)
     rectangle = srvctx->afrmalgo->process (
         srvctx->afrmalgo->instance, (confidence > 0.0) ? &rectangle : NULL);
 
-    set_crop_rectangle (srvctx->pipeline, rectangle.x, rectangle.y,
+    set_crop_rectangle (srvctx->vpipeline, rectangle.x, rectangle.y,
         rectangle.w, rectangle.h);
   }
 
@@ -573,6 +603,14 @@ umd_new_sample (GstElement *sink, gpointer userdata)
   GstBuffer *buffer = NULL;
   GstMapInfo info;
   gint bufidx = UMD_BUFFER_NOT_SUBMITTED;
+  gint stream_id = -1;
+
+  if (!g_strcmp0 ("umdvsink", gst_element_get_name (sink)))
+    stream_id = VIDEO_STREAM_ID;
+  else if (!g_strcmp0 ("umdasink", gst_element_get_name (sink)))
+    stream_id = AUDIO_STREAM_ID;
+  else
+    return GST_FLOW_ERROR;
 
   // New sample is available, retrieve the buffer from the sink.
   g_signal_emit_by_name (sink, "pull-sample", &sample);
@@ -594,9 +632,10 @@ umd_new_sample (GstElement *sink, gpointer userdata)
     return GST_FLOW_ERROR;
   }
 
-  bufidx = umd_gadget_submit_buffer (srvctx->gadget, info.data,
-      info.size, info.maxsize, GST_BUFFER_TIMESTAMP (buffer) / 1000);
-  umd_gadget_wait_buffer (srvctx->gadget, bufidx);
+  bufidx = umd_gadget_submit_buffer (srvctx->gadget, stream_id,
+      info.data, info.size, info.maxsize,
+      GST_BUFFER_TIMESTAMP (buffer) / 1000);
+  umd_gadget_wait_buffer (srvctx->gadget, stream_id, bufidx);
 
   gst_buffer_unmap (buffer, &info);
   gst_sample_unref (sample);
@@ -679,7 +718,8 @@ update_pipeline_state (GstElement * pipeline, GAsyncQueue * messages,
   ret = gst_element_get_state (pipeline, &current, &pending, 0);
 
   if (ret != GST_STATE_CHANGE_SUCCESS) {
-    g_printerr ("Failed to retrieve pipeline state!\n");
+    g_printerr ("Failed to retrieve %s state!\n",
+        gst_element_get_name (pipeline));
     return FALSE;
   }
 
@@ -693,10 +733,12 @@ update_pipeline_state (GstElement * pipeline, GAsyncQueue * messages,
 
   // Check whether to send an EOS event on the pipeline.
   if ((current == GST_STATE_PLAYING) && (state < GST_STATE_PLAYING)) {
-    g_print ("EOS enabled -- Sending EOS on the pipeline\n");
+    g_print ("EOS enabled -- Sending EOS on %s\n",
+        gst_element_get_name (pipeline));
 
     if (!gst_element_send_event (pipeline, gst_event_new_eos ())) {
-      g_printerr ("Failed to send EOS event!");
+      g_printerr ("Failed to send EOS event on %s!\n",
+          gst_element_get_name (pipeline));
       return FALSE;
     }
 
@@ -704,7 +746,8 @@ update_pipeline_state (GstElement * pipeline, GAsyncQueue * messages,
       return FALSE;
   }
 
-  g_print ("Setting pipeline to %s\n", gst_element_state_get_name (state));
+  g_print ("Setting %s to %s\n", gst_element_get_name (pipeline),
+      gst_element_state_get_name (state));
   ret = gst_element_set_state (pipeline, state);
 
   switch (ret) {
@@ -713,20 +756,22 @@ update_pipeline_state (GstElement * pipeline, GAsyncQueue * messages,
           gst_element_state_get_name (state));
       return FALSE;
     case GST_STATE_CHANGE_NO_PREROLL:
-      g_print ("Pipeline is live and does not need PREROLL.\n");
+      g_print ("%s is live and does not need PREROLL.\n",
+          gst_element_get_name (pipeline));
       break;
     case GST_STATE_CHANGE_ASYNC:
-      g_print ("Pipeline is PREROLLING ...\n");
+      g_print ("%s is PREROLLING ...\n", gst_element_get_name (pipeline));
 
       ret = gst_element_get_state (pipeline, NULL, NULL, GST_CLOCK_TIME_NONE);
 
       if (ret != GST_STATE_CHANGE_SUCCESS) {
-        g_printerr ("Pipeline failed to PREROLL!\n");
+        g_printerr ("%s failed to PREROLL!\n", gst_element_get_name (pipeline));
         return FALSE;
       }
       break;
     case GST_STATE_CHANGE_SUCCESS:
-      g_print ("Pipeline state change was successful\n");
+      g_print ("%s state change was successful\n",
+          gst_element_get_name (pipeline));
       break;
   }
 
@@ -737,18 +782,123 @@ update_pipeline_state (GstElement * pipeline, GAsyncQueue * messages,
 }
 
 static gboolean
-create_main_pipeline (GstServiceContext * srvctx)
+create_audio_pipeline (GstServiceContext * srvctx)
+{
+  GstElement *pcmsrc = NULL, *afilter = NULL;
+  GstElement *abufsplit = NULL, *umdasink = NULL;
+  GstCaps *filtercaps = NULL;
+  GstBus *bus = NULL;
+
+  // Create the empty audio pipeline.
+  if ((srvctx->apipeline = gst_pipeline_new ("audio-pipeline")) == NULL) {
+    g_printerr ("\nFailed to create empty audio pipeline.\n");
+    return FALSE;
+  }
+  pcmsrc    = gst_element_factory_make ("pulsesrc", "pcmsrc");
+  afilter   = gst_element_factory_make ("capsfilter", "afilter");
+  abufsplit = gst_element_factory_make ("audiobuffersplit", "abufsplit");
+  umdasink  = gst_element_factory_make ("appsink", "umdasink");
+
+  if (!pcmsrc || !afilter || !abufsplit || !umdasink) {
+    g_printerr ("\nOne audio element could not be created. Exiting.\n");
+
+    if (pcmsrc)
+      gst_object_unref (pcmsrc);
+
+    if (afilter)
+      gst_object_unref (afilter);
+
+    if (abufsplit)
+      gst_object_unref (abufsplit);
+
+    if (umdasink)
+      gst_object_unref (umdasink);
+
+    return FALSE;
+  }
+
+  // Add the elements to the pipeline.
+  gst_bin_add_many (GST_BIN (srvctx->apipeline), pcmsrc, afilter, abufsplit,
+      umdasink, NULL);
+
+  g_object_set (G_OBJECT (pcmsrc), "volume", 10.0, NULL);
+
+  // Set caps for the pulsesrc audio pad.
+  filtercaps = gst_caps_new_simple ("audio/x-raw",
+      "format", G_TYPE_STRING, "S16LE",
+      "channels", G_TYPE_INT, 2,
+      "rate", G_TYPE_INT, 48000,
+      NULL);
+  g_object_set (G_OBJECT (afilter), "caps", filtercaps, NULL);
+  gst_caps_unref (filtercaps);
+
+  g_object_set (G_OBJECT (abufsplit), "output-buffer-duration", 3, 100, NULL);
+
+  // Connect a callback to the new-sample signal.
+  g_object_set (G_OBJECT (umdasink), "emit-signals", TRUE, NULL);
+  g_signal_connect (umdasink, "new-sample", G_CALLBACK (umd_new_sample), srvctx);
+
+  g_object_set (G_OBJECT(umdasink), "wait-on-eos", FALSE, NULL);
+  g_object_set (G_OBJECT(umdasink), "enable-last-sample", FALSE, NULL);
+  g_object_set (G_OBJECT(umdasink), "sync", FALSE, NULL);
+
+  if (!gst_element_link_many (pcmsrc, afilter, abufsplit, umdasink, NULL)) {
+    g_printerr ("\nFailed to link audio pipeline elements.\n");
+    gst_object_unref (srvctx->apipeline);
+    return FALSE;
+  }
+    // Retrieve reference to the pipeline's bus.
+  if ((bus = gst_pipeline_get_bus (GST_PIPELINE (srvctx->apipeline))) == NULL) {
+    g_printerr ("\nERROR: Failed to retrieve audio pipeline bus!\n");
+    gst_object_unref (srvctx->apipeline);
+    return FALSE;
+  }
+
+  // Watch for messages on the pipeline's bus.
+  gst_bus_add_watch (bus, handle_bus_message, srvctx);
+  gst_object_unref (bus);
+
+  switch (gst_element_set_state (srvctx->apipeline, GST_STATE_PAUSED)) {
+    case GST_STATE_CHANGE_FAILURE:
+      g_printerr ("\nAudio pipeline failed to transition to PAUSED state!\n");
+      break;
+    case GST_STATE_CHANGE_NO_PREROLL:
+      g_print ("\nAudio pipeline is live and does not need PREROLL.\n");
+      break;
+    case GST_STATE_CHANGE_ASYNC:
+      g_print ("\nAudio pipeline is PREROLLING ...\n");
+
+      GstStateChangeReturn ret = GST_STATE_CHANGE_FAILURE;
+      ret = gst_element_get_state (srvctx->apipeline, NULL, NULL,
+                GST_CLOCK_TIME_NONE);
+
+      if (ret != GST_STATE_CHANGE_SUCCESS) {
+        g_printerr ("nAudio pipeline failed to PREROLL!\n");
+        return FALSE;
+      }
+      break;
+    case GST_STATE_CHANGE_SUCCESS:
+      g_print ("\nAudio pipeline state change was successful\n");
+      break;
+  }
+
+  return TRUE;
+}
+
+static gboolean
+create_video_pipeline (GstServiceContext * srvctx)
 {
   GstElement *camsrc = NULL, *vtransform = NULL;
   GstElement *mlefilter = NULL, *mletflite = NULL, *mlesink = NULL;
   GstElement *in_mlequeue = NULL, *out_mlequeue = NULL, *vqueue = NULL;
-  GstElement *umdqueue = NULL, *umdfilter = NULL, *umdsink = NULL;
+  GstElement *umdvqueue = NULL, *umdvfilter = NULL, *umdvsink = NULL;
+
   GstCaps *filtercaps = NULL;
   GstBus *bus = NULL;
 
-  // Create the empty pipeline.
-  if ((srvctx->pipeline = gst_pipeline_new ("main-pipeline")) == NULL) {
-    g_printerr ("\nFailed to create empty pipeline.\n");
+  // Create the empty video pipeline.
+  if ((srvctx->vpipeline = gst_pipeline_new ("video-pipeline")) == NULL) {
+    g_printerr ("\nFailed to create empty video pipeline.\n");
     return FALSE;
   }
 
@@ -761,13 +911,13 @@ create_main_pipeline (GstServiceContext * srvctx)
   mletflite = gst_element_factory_make ("qtimletflite", "mletflite");
   out_mlequeue = gst_element_factory_make ("queue", "outmlequeue");
   mlesink  = gst_element_factory_make ("appsink", "mlesink");
-  umdfilter = gst_element_factory_make ("capsfilter", "umdfilter");
-  umdqueue = gst_element_factory_make ("queue", "umdqueue");
-  umdsink = gst_element_factory_make ("appsink", "umdsink");
+  umdvfilter = gst_element_factory_make ("capsfilter", "umdvfilter");
+  umdvqueue = gst_element_factory_make ("queue", "umdvqueue");
+  umdvsink = gst_element_factory_make ("appsink", "umdvsink");
 
   if (!camsrc || !vtransform || !vqueue || !in_mlequeue || !out_mlequeue ||
-      !mlefilter || !mletflite || !mlesink || !umdfilter || !umdqueue ||
-      !umdsink) {
+      !mlefilter || !mletflite || !mlesink || !umdvfilter || !umdvqueue ||
+      !umdvsink) {
     g_printerr ("\nNot all elements could be created.\n");
 
     if (camsrc)
@@ -794,22 +944,22 @@ create_main_pipeline (GstServiceContext * srvctx)
     if (mlesink)
       gst_object_unref (mlesink);
 
-    if (umdfilter)
-      gst_object_unref (umdfilter);
+    if (umdvfilter)
+      gst_object_unref (umdvfilter);
 
-    if (umdqueue)
-      gst_object_unref (umdqueue);
+    if (umdvqueue)
+      gst_object_unref (umdvqueue);
 
-    if (umdsink)
-      gst_object_unref (umdsink);
+    if (umdvsink)
+      gst_object_unref (umdvsink);
 
     return FALSE;
   }
 
   // Add the elements to the pipeline.
-  gst_bin_add_many (GST_BIN (srvctx->pipeline), camsrc, vtransform, vqueue,
-      mlefilter, in_mlequeue, out_mlequeue, mletflite, mlesink, umdfilter,
-      umdqueue, umdsink, NULL);
+  gst_bin_add_many (GST_BIN (srvctx->vpipeline), camsrc, vtransform, vqueue,
+      mlefilter, in_mlequeue, out_mlequeue, mletflite, mlesink, umdvfilter,
+      umdvqueue, umdvsink, NULL);
 
   // Link the plugins in the MLE portion of the pipeline.
   if (!gst_element_link_many (camsrc, mlefilter, in_mlequeue, mletflite,
@@ -850,22 +1000,22 @@ create_main_pipeline (GstServiceContext * srvctx)
   g_signal_connect (mlesink, "new-sample", G_CALLBACK (mle_new_sample), srvctx);
 
   // Link the plugins in the UMD portion of the pipeline.
-  if (!gst_element_link_many (camsrc, umdfilter, vqueue, vtransform, umdqueue,
-          umdsink, NULL)) {
+  if (!gst_element_link_many (camsrc, umdvfilter, vqueue, vtransform, umdvqueue,
+          umdvsink, NULL)) {
     g_printerr ("\nFailed to link pipeline UMD elements.\n");
     return FALSE;
   }
 
   // Set emit-signals property and connect a callback to the new-sample signal.
-  g_object_set (G_OBJECT(umdsink), "emit-signals", TRUE, NULL);
-  g_signal_connect (umdsink, "new-sample", G_CALLBACK (umd_new_sample), srvctx);
+  g_object_set (G_OBJECT(umdvsink), "emit-signals", TRUE, NULL);
+  g_signal_connect (umdvsink, "new-sample", G_CALLBACK (umd_new_sample), srvctx);
 
-  g_object_set (G_OBJECT(umdsink), "wait-on-eos", FALSE, NULL);
-  g_object_set (G_OBJECT(umdsink), "enable-last-sample", FALSE, NULL);
-  g_object_set (G_OBJECT(umdsink), "sync", FALSE, NULL);
+  g_object_set (G_OBJECT(umdvsink), "wait-on-eos", FALSE, NULL);
+  g_object_set (G_OBJECT(umdvsink), "enable-last-sample", FALSE, NULL);
+  g_object_set (G_OBJECT(umdvsink), "sync", FALSE, NULL);
 
   // Retrieve reference to the pipeline's bus.
-  if ((bus = gst_pipeline_get_bus (GST_PIPELINE (srvctx->pipeline))) == NULL) {
+  if ((bus = gst_pipeline_get_bus (GST_PIPELINE (srvctx->vpipeline))) == NULL) {
     g_printerr ("\nFailed to retrieve pipeline bus!\n");
     return FALSE;
   }
@@ -880,7 +1030,7 @@ create_main_pipeline (GstServiceContext * srvctx)
 static gboolean
 mle_reconfigure_pipeline (GstServiceContext * srvctx, gboolean enable)
 {
-  GstElement *pipeline = srvctx->pipeline;
+  GstElement *pipeline = srvctx->vpipeline;
   GstElement *mlefilter = NULL, *mletflite = NULL, *mlesink = NULL;
   GstElement *in_mlequeue = NULL, *out_mlequeue = NULL, *fakesink = NULL;
   gboolean success = TRUE;
@@ -1035,14 +1185,14 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
     case UMD_VIDEO_FMT_YUYV:
     {
       GstElement *vqueue = NULL, *vtrans = NULL;
-      GstElement  *umdfilter = NULL, *umdqueue = NULL;
+      GstElement  *umdvfilter = NULL, *umdvqueue = NULL;
       GstCaps *filtercaps = NULL;
       gboolean success = TRUE;
 
-      umdfilter = gst_bin_get_by_name (GST_BIN (srvctx->pipeline), "umdfilter");
-      umdqueue = gst_bin_get_by_name (GST_BIN (srvctx->pipeline), "umdqueue");
-      vtrans = gst_bin_get_by_name (GST_BIN (srvctx->pipeline), "vtransform");
-      vqueue = gst_bin_get_by_name (GST_BIN (srvctx->pipeline), "vqueue");
+      umdvfilter = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "umdvfilter");
+      umdvqueue = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "umdvqueue");
+      vtrans = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "vtransform");
+      vqueue = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "vqueue");
 
       // Update and set the UMD filter caps.
       filtercaps = gst_caps_new_simple ("video/x-raw",
@@ -1054,7 +1204,7 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
       gst_caps_set_features (filtercaps, 0,
           gst_caps_features_new ("memory:GBM", NULL));
 
-      g_object_set (G_OBJECT (umdfilter), "caps", filtercaps, NULL);
+      g_object_set (G_OBJECT (umdvfilter), "caps", filtercaps, NULL);
       gst_caps_unref (filtercaps);
 
       // Unlink and link pipeline only if elements are not already present.
@@ -1065,21 +1215,21 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
         vqueue = gst_element_factory_make ("queue", "vqueue");
 
         // Add the new elements to the pipeline.
-        gst_bin_add_many (GST_BIN (srvctx->pipeline), vtrans, vqueue, NULL);
+        gst_bin_add_many (GST_BIN (srvctx->vpipeline), vtrans, vqueue, NULL);
 
         // New elements need to be in the same state as the pipeline.
         gst_element_sync_state_with_parent (vqueue);
         gst_element_sync_state_with_parent (vtrans);
 
         // Unlink the plugins where we want to add our new elements.
-        gst_element_unlink (umdfilter, umdqueue);
+        gst_element_unlink (umdvfilter, umdvqueue);
 
         success =
-            gst_element_link_many (umdfilter, vqueue, vtrans, umdqueue, NULL);
+            gst_element_link_many (umdvfilter, vqueue, vtrans, umdvqueue, NULL);
       } else if ((!afrmops.enable || (afrmops.croptype == ML_CROP_INTERNAL)) &&
                  (vtrans != NULL) && (vqueue != NULL)) {
-        gst_bin_remove (GST_BIN (srvctx->pipeline), vtrans);
-        gst_bin_remove (GST_BIN (srvctx->pipeline), vqueue);
+        gst_bin_remove (GST_BIN (srvctx->vpipeline), vtrans);
+        gst_bin_remove (GST_BIN (srvctx->vpipeline), vqueue);
 
         // Removed elements need to be in NULL state before deletion.
         gst_element_set_state (vtrans, GST_STATE_NULL);
@@ -1088,14 +1238,14 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
         gst_object_unref (vqueue);
         gst_object_unref (vtrans);
 
-        success = gst_element_link (umdfilter, umdqueue);
+        success = gst_element_link (umdvfilter, umdvqueue);
       } else if (vtrans && vqueue) {
         gst_object_unref (vqueue);
         gst_object_unref (vtrans);
       }
 
-      gst_object_unref (umdqueue);
-      gst_object_unref (umdfilter);
+      gst_object_unref (umdvqueue);
+      gst_object_unref (umdvfilter);
 
       if (!success) {
         g_printerr ("\nFailed to link pipeline UMD elements.\n");
@@ -1106,14 +1256,14 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
     case UMD_VIDEO_FMT_MJPEG:
     {
       GstElement *vqueue = NULL, *vtrans = NULL;
-      GstElement  *umdfilter = NULL, *umdqueue = NULL;
+      GstElement  *umdvfilter = NULL, *umdvqueue = NULL;
       GstCaps *filtercaps = NULL;
       gboolean success = TRUE;
 
-      vtrans = gst_bin_get_by_name (GST_BIN (srvctx->pipeline), "vtransform");
-      vqueue = gst_bin_get_by_name (GST_BIN (srvctx->pipeline), "vqueue");
-      umdfilter = gst_bin_get_by_name (GST_BIN (srvctx->pipeline), "umdfilter");
-      umdqueue = gst_bin_get_by_name (GST_BIN (srvctx->pipeline), "umdqueue");
+      vtrans = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "vtransform");
+      vqueue = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "vqueue");
+      umdvfilter = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "umdvfilter");
+      umdvqueue = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "umdvqueue");
 
       // Update and set the UMD filter caps.
       filtercaps = gst_caps_new_simple ("image/jpeg",
@@ -1122,13 +1272,13 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
           "framerate", GST_TYPE_FRACTION, fps_n, fps_d,
           NULL);
 
-      g_object_set (G_OBJECT (umdfilter), "caps", filtercaps, NULL);
+      g_object_set (G_OBJECT (umdvfilter), "caps", filtercaps, NULL);
       gst_caps_unref (filtercaps);
 
       // Unlink and link pipeline only if elements are already present.
       if ((vtrans != NULL) && (vqueue != NULL)) {
-        gst_bin_remove (GST_BIN (srvctx->pipeline), vtrans);
-        gst_bin_remove (GST_BIN (srvctx->pipeline), vqueue);
+        gst_bin_remove (GST_BIN (srvctx->vpipeline), vtrans);
+        gst_bin_remove (GST_BIN (srvctx->vpipeline), vqueue);
 
         // Removed elements need to be in NULL state before deletion.
         gst_element_set_state (vtrans, GST_STATE_NULL);
@@ -1137,11 +1287,11 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
         gst_object_unref (vqueue);
         gst_object_unref (vtrans);
 
-        success = gst_element_link (umdfilter, umdqueue);
+        success = gst_element_link (umdvfilter, umdvqueue);
       }
 
-      gst_object_unref (umdqueue);
-      gst_object_unref (umdfilter);
+      gst_object_unref (umdvqueue);
+      gst_object_unref (umdvfilter);
 
       if (!success) {
         g_printerr ("\nFailed to link pipeline UMD elements.\n");
@@ -1162,7 +1312,7 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
   }
 
   // Reset the crop parameters.
-  set_crop_rectangle (srvctx->pipeline, 0, 0, 0, 0);
+  set_crop_rectangle (srvctx->vpipeline, 0, 0, 0, 0);
 
   if (!mle_reconfigure_pipeline (srvctx, afrmops.enable)) {
     g_printerr ("\nFailed to reconfigure pipeline MLE elements!\n");
@@ -1210,8 +1360,8 @@ enable_camera_stream (void * userdata)
   GstServiceContext *srvctx = GST_SERVICE_CONTEXT_CAST (userdata);
   GstState state = GST_STATE_PLAYING;
 
-  if (!update_pipeline_state (srvctx->pipeline, srvctx->pipemsgs, state)) {
-    g_printerr ("\nFailed to update pipeline state!\n");
+  if (!update_pipeline_state (srvctx->vpipeline, srvctx->pipemsgs, state)) {
+    g_printerr ("\nFailed to update video pipeline state!\n");
     return false;
   }
 
@@ -1229,8 +1379,8 @@ disable_camera_stream (void * userdata)
   GstServiceContext *srvctx = GST_SERVICE_CONTEXT_CAST (userdata);
   GstState state = GST_STATE_READY;
 
-  if (!update_pipeline_state (srvctx->pipeline, srvctx->pipemsgs, state)) {
-    g_printerr ("\nFailed to update pipeline state!\n");
+  if (!update_pipeline_state (srvctx->vpipeline, srvctx->pipemsgs, state)) {
+    g_printerr ("\nFailed to update video pipeline state!\n");
     return false;
   }
 
@@ -1476,7 +1626,7 @@ handle_camera_control (uint32_t id, uint32_t request, void * payload,
       return false;
   }
 
-  element = gst_bin_get_by_name (GST_BIN (srvctx->pipeline), "camsrc");
+  element = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "camsrc");
 
   // Get the property specs and initialize the GValue type.
   propspecs = g_object_class_find_property (
@@ -1709,16 +1859,21 @@ main (gint argc, gchar *argv[])
   // Initialize GST library.
   gst_init (&argc, &argv);
 
-  if (!create_main_pipeline (srvctx)) {
-    g_printerr ("\nFailed to create main pipeline!\n");
+  if (!create_audio_pipeline (srvctx)) {
+    g_printerr ("\nFailed to create audio pipeline!\n");
     gst_service_context_free (srvctx);
     return -1;
   }
 
-  srvctx->gadget = umd_gadget_new ("/dev/video3", &callbacks, srvctx);
+  if (!create_video_pipeline (srvctx)) {
+    g_printerr ("\nFailed to create video pipeline!\n");
+    gst_service_context_free (srvctx);
+    return -1;
+  }
 
+  srvctx->gadget = umd_gadget_new ("/dev/video3", "hw:1,0", &callbacks, srvctx);
   if (NULL == srvctx->gadget) {
-    g_printerr ("\nFailed to create UVC gadget!\n");
+    g_printerr ("\nFailed to create UMD gadget!\n");
     gst_service_context_free (srvctx);
     return -1;
   }
