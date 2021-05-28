@@ -336,6 +336,53 @@ qmmfsrc_release_pad (GstElement * element, GstPad * pad)
   GST_QMMFSRC_UNLOCK (qmmfsrc);
 }
 
+static void
+qmmfsrc_event_callback (guint event, gpointer userdata)
+{
+  GstQmmfSrc *qmmfsrc = GST_QMMFSRC (userdata);
+
+  switch (event) {
+    case EVENT_SERVICE_DIED:
+      GST_ELEMENT_ERROR (qmmfsrc, RESOURCE, NOT_FOUND,
+          ("Camera service has died !"), (NULL));
+      break;
+    case EVENT_CAMERA_ERROR:
+      GST_ELEMENT_ERROR (qmmfsrc, RESOURCE, FAILED,
+          ("Camera device encountered an un-recovarable error !"), (NULL));
+      break;
+    case EVENT_CAMERA_OPENED:
+      GST_LOG_OBJECT (qmmfsrc, "Camera device has been opened");
+      break;
+    case EVENT_CAMERA_CLOSING:
+      GST_LOG_OBJECT (qmmfsrc, "Closing camera device");
+
+      if (GST_STATE (qmmfsrc) == GST_STATE_PLAYING) {
+        gboolean success = gst_element_foreach_src_pad (
+            GST_ELEMENT (qmmfsrc), qmmfsrc_pad_push_event, gst_event_new_eos ()
+        );
+
+        if (!success)
+          GST_ELEMENT_ERROR (qmmfsrc, CORE, EVENT,
+              ("Failed to send EOS to source pads !"), (NULL));
+      }
+      break;
+    case EVENT_CAMERA_CLOSED:
+      GST_LOG_OBJECT (qmmfsrc, "Camera device has been closed");
+      break;
+    case EVENT_FRAME_ERROR:
+      GST_WARNING_OBJECT (qmmfsrc, "Camera device has encountered non-fatal "
+          "frame drop error !");
+      break;
+    case EVENT_METADATA_ERROR:
+      GST_WARNING_OBJECT (qmmfsrc, "Camera device has encountered non-fatal "
+          "metadata drop error !");
+      break;
+    default:
+      GST_WARNING_OBJECT (qmmfsrc, "Unknown camera device event");
+      break;
+  }
+}
+
 static gboolean
 qmmfsrc_create_session (GstQmmfSrc * qmmfsrc)
 {
@@ -1184,7 +1231,8 @@ qmmfsrc_init (GstQmmfSrc * qmmfsrc)
   qmmfsrc->vidindexes = NULL;
   qmmfsrc->imgindexes = NULL;
 
-  qmmfsrc->context = gst_qmmf_context_new ();
+  qmmfsrc->context = gst_qmmf_context_new (
+      G_CALLBACK (qmmfsrc_event_callback), qmmfsrc);
   g_return_if_fail (qmmfsrc->context != NULL);
 
   GST_OBJECT_FLAG_SET (qmmfsrc, GST_ELEMENT_FLAG_SOURCE);
