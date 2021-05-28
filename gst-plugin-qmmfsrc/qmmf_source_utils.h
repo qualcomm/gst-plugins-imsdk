@@ -200,6 +200,7 @@ enum
   ISO_MODE_800,
   ISO_MODE_1600,
   ISO_MODE_3200,
+  ISO_MODE_MANUAL,
 };
 
 enum
