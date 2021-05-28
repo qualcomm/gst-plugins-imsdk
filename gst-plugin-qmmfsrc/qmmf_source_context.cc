@@ -138,6 +138,8 @@ struct _GstQmmfContext {
   GstStructure      *ltmdata;
   /// Camera Sharpness property.
   gint              sharpness;
+  /// Camera Saturation property.
+  gint              saturation;
 
   /// QMMF Recorder instance.
   ::qmmf::recorder::Recorder *recorder;
@@ -582,6 +584,12 @@ initialize_camera_param (GstQmmfContext * context)
 
   if (tag_id != 0)
     meta.update (tag_id, &(context)->sharpness, 1);
+
+  tag_id = get_vendor_tag_by_name ("org.codeaurora.qcamera3.saturation",
+      "use_saturation");
+
+  if (tag_id != 0)
+    meta.update (tag_id, &(context)->saturation, 1);
 
   set_vendor_tags (context->defogtable, &meta);
   set_vendor_tags (context->exptable, &meta);
@@ -2161,6 +2169,15 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       meta.update(tag_id, &(context)->sharpness, 1);
       break;
     }
+    case PARAM_CAMERA_SATURATION:
+    {
+      guint tag_id = get_vendor_tag_by_name (
+          "org.codeaurora.qcamera3.saturation", "use_saturation");
+
+      context->saturation = g_value_get_int (value);
+      meta.update(tag_id, &(context)->saturation, 1);
+      break;
+    }
   }
 
   if (!context->slave && (context->state >= GST_STATE_READY))
@@ -2324,6 +2341,9 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
     }
     case PARAM_CAMERA_SHARPNESS_STRENGTH:
       g_value_set_int (value, context->sharpness);
+      break;
+    case PARAM_CAMERA_SATURATION:
+      g_value_set_int (value, context->saturation);
       break;
   }
 }
