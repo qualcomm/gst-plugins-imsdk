@@ -455,26 +455,24 @@ handle_bus_message (GstBus * bus, GstMessage * message, gpointer userdata)
 
       gst_message_parse_state_changed (message, &old, &new, &pending);
       g_print ("\n%s state changed from %s to %s, pending: %s\n",
-          GST_MESSAGE_SRC_NAME (message), gst_element_state_get_name (old),
+          gst_element_get_name (pipeline), gst_element_state_get_name (old),
           gst_element_state_get_name (new),
           gst_element_state_get_name (pending));
 
-      if (pipeline == srvctx->vpipeline) {
+      if (pipeline == srvctx->vpipeline)
         g_async_queue_push (srvctx->pipemsgs, gst_structure_new (
             PIPELINE_STATE_MESSAGE, "new", G_TYPE_UINT, new,
             "pending", G_TYPE_UINT, pending, NULL));
-      } else if (pipeline == srvctx->apipeline) {
-        if ((new == GST_STATE_PAUSED) && (old == GST_STATE_READY) &&
-            (pending == GST_STATE_VOID_PENDING)) {
-          g_print ("\nSetting %s to PLAYING state ...\n",
-              GST_MESSAGE_SRC_NAME (message));
-          if (gst_element_set_state (pipeline, GST_STATE_PLAYING) ==
-              GST_STATE_CHANGE_FAILURE) {
-            gst_printerr ("\n%s doesn't want to transition to PLAYING state!\n",
-                GST_MESSAGE_SRC_NAME (message));
-            return FALSE;
-          }
-        }
+
+      if (pipeline == srvctx->apipeline && (new == GST_STATE_PAUSED) &&
+          (old == GST_STATE_READY) && (pending == GST_STATE_VOID_PENDING)) {
+        g_print ("\nSetting %s to PLAYING state ...\n",
+            gst_element_get_name (pipeline));
+
+        if (gst_element_set_state (pipeline, GST_STATE_PLAYING) ==
+                GST_STATE_CHANGE_FAILURE)
+          g_printerr ("\n%s doesn't want to transition to PLAYING state!\n",
+              gst_element_get_name (pipeline));
       }
       break;
     }
@@ -858,25 +856,29 @@ create_audio_pipeline (GstServiceContext * srvctx)
   gst_bus_add_watch (bus, handle_bus_message, srvctx);
   gst_object_unref (bus);
 
+  // Set pipeline into PAUSED state.
   switch (gst_element_set_state (srvctx->apipeline, GST_STATE_PAUSED)) {
     case GST_STATE_CHANGE_FAILURE:
       g_printerr ("\nAudio pipeline failed to transition to PAUSED state!\n");
-      break;
+      return FALSE;
     case GST_STATE_CHANGE_NO_PREROLL:
       g_print ("\nAudio pipeline is live and does not need PREROLL.\n");
       break;
     case GST_STATE_CHANGE_ASYNC:
+    {
+      GstStateChangeReturn ret = GST_STATE_CHANGE_FAILURE;
+
       g_print ("\nAudio pipeline is PREROLLING ...\n");
 
-      GstStateChangeReturn ret = GST_STATE_CHANGE_FAILURE;
       ret = gst_element_get_state (srvctx->apipeline, NULL, NULL,
-                GST_CLOCK_TIME_NONE);
+          GST_CLOCK_TIME_NONE);
 
       if (ret != GST_STATE_CHANGE_SUCCESS) {
-        g_printerr ("nAudio pipeline failed to PREROLL!\n");
+        g_printerr ("\nAudio pipeline failed to PREROLL!\n");
         return FALSE;
       }
       break;
+    }
     case GST_STATE_CHANGE_SUCCESS:
       g_print ("\nAudio pipeline state change was successful\n");
       break;
@@ -996,7 +998,7 @@ create_video_pipeline (GstServiceContext * srvctx)
       "preprocess-accel", 1, NULL);
 
   // Set emit-signals property and connect a callback to the new-sample signal.
-  g_object_set (G_OBJECT(mlesink), "emit-signals", TRUE, NULL);
+  g_object_set (G_OBJECT (mlesink), "emit-signals", TRUE, NULL);
   g_signal_connect (mlesink, "new-sample", G_CALLBACK (mle_new_sample), srvctx);
 
   // Link the plugins in the UMD portion of the pipeline.
@@ -1006,13 +1008,27 @@ create_video_pipeline (GstServiceContext * srvctx)
     return FALSE;
   }
 
+  {
+    // Set the camera ISO mode to manual.
+    GParamSpec *propspecs = NULL;
+    GValue value = G_VALUE_INIT;
+
+    // Get the property specs to initialize the GValue type.
+    propspecs = g_object_class_find_property (
+        G_OBJECT_GET_CLASS (camsrc), "iso-mode");
+    g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+
+    gst_value_deserialize (&value, "manual");
+    g_object_set_property (G_OBJECT (camsrc), "iso-mode", &value);
+  }
+
   // Set emit-signals property and connect a callback to the new-sample signal.
-  g_object_set (G_OBJECT(umdvsink), "emit-signals", TRUE, NULL);
+  g_object_set (G_OBJECT (umdvsink), "emit-signals", TRUE, NULL);
   g_signal_connect (umdvsink, "new-sample", G_CALLBACK (umd_new_sample), srvctx);
 
-  g_object_set (G_OBJECT(umdvsink), "wait-on-eos", FALSE, NULL);
-  g_object_set (G_OBJECT(umdvsink), "enable-last-sample", FALSE, NULL);
-  g_object_set (G_OBJECT(umdvsink), "sync", FALSE, NULL);
+  g_object_set (G_OBJECT (umdvsink), "wait-on-eos", FALSE, NULL);
+  g_object_set (G_OBJECT (umdvsink), "enable-last-sample", FALSE, NULL);
+  g_object_set (G_OBJECT (umdvsink), "sync", FALSE, NULL);
 
   // Retrieve reference to the pipeline's bus.
   if ((bus = gst_pipeline_get_bus (GST_PIPELINE (srvctx->vpipeline))) == NULL) {
@@ -1023,6 +1039,34 @@ create_video_pipeline (GstServiceContext * srvctx)
   // Watch for pipemsgs on the pipeline's bus.
   gst_bus_add_watch (bus, handle_bus_message, srvctx);
   gst_object_unref (bus);
+
+  // Set pipeline into READY state.
+  switch (gst_element_set_state (srvctx->apipeline, GST_STATE_READY)) {
+    case GST_STATE_CHANGE_FAILURE:
+      g_printerr ("\nVideo pipeline failed to transition to READY state!\n");
+      return FALSE;
+    case GST_STATE_CHANGE_NO_PREROLL:
+      g_print ("\nVideo pipeline is live and does not need PREROLL.\n");
+      break;
+    case GST_STATE_CHANGE_ASYNC:
+    {
+      GstStateChangeReturn ret = GST_STATE_CHANGE_FAILURE;
+
+      g_print ("\nVideo pipeline is PREROLLING ...\n");
+
+      ret = gst_element_get_state (srvctx->apipeline, NULL, NULL,
+          GST_CLOCK_TIME_NONE);
+
+      if (ret != GST_STATE_CHANGE_SUCCESS) {
+        g_printerr ("\nVideo pipeline failed to PREROLL!\n");
+        return FALSE;
+      }
+      break;
+    }
+    case GST_STATE_CHANGE_SUCCESS:
+      g_print ("\nVideo pipeline state change was successful\n");
+      break;
+  }
 
   return TRUE;
 }
@@ -1392,262 +1436,716 @@ disable_camera_stream (void * userdata)
   return true;
 }
 
-static gboolean
-set_control_value (uint32_t id, void * payload, GValue * value)
+static void
+set_exposure_compensation_property (GstElement * element, gint16 compensation)
 {
-  switch (id) {
-    case UMD_VIDEO_CTRL_SHARPNESS:
-      g_value_set_int (value, *((guint32*) payload));
-      break;
-    case UMD_VIDEO_CTRL_WB_TEMPERTURE:
-    {
-      gchar *string = NULL;
+  GValue value = G_VALUE_INIT;
 
-      string = g_strdup_printf ("org.codeaurora.qcamera3.manualWB,"
-          "color_temperature=%d;", *((guint32*) payload));
-      g_value_set_string (value, string);
+  g_value_init (&value, G_TYPE_INT);
+  g_value_set_int (&value, compensation);
 
-      g_free (string);
-      break;
-    }
-    case UMD_VIDEO_CTRL_WB_MODE:
-    {
-      const gchar *mode = NULL;
-
-      switch (*((guint32*) payload)) {
-        case UMD_VIDEO_WB_MODE_AUTO:
-          mode = "auto";
-          break;
-        case UMD_VIDEO_WB_MODE_MANUAL:
-          mode = "manual-cc-temp";
-          break;
-        default:
-          g_printerr ("\nUnsupported WB mode: %d!\n",
-              *((guint32*) payload));
-          return FALSE;
-      }
-
-      gst_value_deserialize (value, mode);
-      break;
-    }
-    case UMD_VIDEO_CTRL_EXPOSURE_TIME:
-      g_value_set_int64 (value, (*((guint32*) payload) * 100000));
-      break;
-    case UMD_VIDEO_CTRL_EXPOSURE_MODE:
-    {
-      const gchar *mode = NULL;
-
-      switch (*((guint32*) payload)) {
-        case UMD_VIDEO_EXPOSURE_MODE_AUTO:
-          mode = "auto";
-          break;
-        case UMD_VIDEO_EXPOSURE_MODE_SHUTTER:
-          mode = "off";
-          break;
-        default:
-          g_printerr ("\nUnsupported Exposure mode: %d!\n",
-              *((guint32*) payload));
-          return FALSE;
-      }
-
-      gst_value_deserialize (value, mode);
-      break;
-    }
-    case UMD_VIDEO_CTRL_FOCUS_MODE:
-    {
-      const gchar *mode = NULL;
-
-      switch (*((guint32*) payload)) {
-        case UMD_VIDEO_FOCUS_MODE_AUTO:
-          mode = "auto";
-          break;
-        case UMD_VIDEO_FOCUS_MODE_MANUAL:
-          mode = "off";
-          break;
-        default:
-          g_printerr ("\nUnsupported Focus mode: %d!\n",
-              *((guint32*) payload));
-          return FALSE;
-      }
-
-      gst_value_deserialize (value, mode);
-      break;
-    }
-    case UMD_VIDEO_CTRL_ANTIBANDING:
-    {
-      const gchar *mode = NULL;
-
-      switch (*((guint32*) payload)) {
-        case UMD_VIDEO_ANTIBANDING_DISABLED:
-          mode = "off";
-          break;
-        case UMD_VIDEO_ANTIBANDING_50HZ:
-          mode = "50hz";
-          break;
-        case UMD_VIDEO_ANTIBANDING_60HZ:
-          mode = "60hz";
-          break;
-        case UMD_VIDEO_ANTIBANDING_AUTO:
-          mode = "auto";
-          break;
-        default:
-          g_printerr ("\nUnsupported Antibanding mode: %d!\n",
-              *((guint32*) payload));
-          return FALSE;
-      }
-
-      gst_value_deserialize (value, mode);
-      break;
-    }
-    default:
-      g_printerr ("\nUnknown control ID 0x%X!\n", id);
-      return FALSE;
-  }
-
-  return TRUE;
+  g_object_set_property (G_OBJECT (element), "exposure-compensation", &value);
 }
 
-static gboolean
-get_control_value (uint32_t id, void * payload, const GValue * value)
+static void
+get_exposure_compensation_property (GstElement * element, gint16 * compensation)
 {
-  switch (id) {
-    case UMD_VIDEO_CTRL_SHARPNESS:
-      *((guint32*) payload) = g_value_get_int (value);
-      break;
-    case UMD_VIDEO_CTRL_WB_TEMPERTURE:
-    {
-      GstStructure *structure =
-          gst_structure_new_from_string (g_value_get_string (value));
+  GValue value = G_VALUE_INIT;
 
-      if (gst_structure_has_field (structure, "color_temperature"))
-        gst_structure_get_int (structure, "color_temperature", (guint32*) payload);
+  g_value_init (&value, G_TYPE_INT);
+  g_object_get_property (G_OBJECT (element), "exposure-compensation", &value);
 
-      gst_structure_free (structure);
-      break;
-    }
-    case UMD_VIDEO_CTRL_WB_MODE:
-    {
-      gchar *mode = gst_value_serialize (value);
+  *compensation = g_value_get_int (&value);
+}
 
-      if (g_strcmp0 (mode, "manual-cc-temp") == 0)
-        *((guint32*) payload) = UMD_VIDEO_WB_MODE_MANUAL;
-      else if (g_strcmp0 (mode, "auto") == 0)
-        *((guint32*) payload) = UMD_VIDEO_WB_MODE_AUTO;
+static void
+set_contrast_property (GstElement * element, guint16 contrast)
+{
+  GValue value = G_VALUE_INIT;
 
-      g_free (mode);
-      break;
-    }
-    case UMD_VIDEO_CTRL_EXPOSURE_TIME:
-      *((guint32*) payload) = g_value_get_int64 (value) / 100000;
-      break;
-    case UMD_VIDEO_CTRL_EXPOSURE_MODE:
-    {
-      gchar *mode = gst_value_serialize (value);
+  g_value_init (&value, G_TYPE_INT);
+  g_value_set_int (&value, ((contrast * 2) - 100));
 
-      if (g_strcmp0 (mode, "off") == 0)
-        *((guint32*) payload) = UMD_VIDEO_EXPOSURE_MODE_SHUTTER;
-      else if (g_strcmp0 (mode, "auto") == 0)
-        *((guint32*) payload) = UMD_VIDEO_EXPOSURE_MODE_AUTO;
+  g_object_set_property (G_OBJECT (element), "contrast", &value);
+}
 
-      g_free (mode);
-      break;
-    }
-    case UMD_VIDEO_CTRL_FOCUS_MODE:
-    {
-      gchar *mode = gst_value_serialize (value);
+static void
+get_contrast_property (GstElement * element, guint16 * contrast)
+{
+  GValue value = G_VALUE_INIT;
 
-      if (g_strcmp0 (mode, "off") == 0)
-        *((guint32*) payload) = UMD_VIDEO_FOCUS_MODE_MANUAL;
-      else if (g_strcmp0 (mode, "auto") == 0)
-        *((guint32*) payload) = UMD_VIDEO_FOCUS_MODE_AUTO;
+  g_value_init (&value, G_TYPE_INT);
+  g_object_get_property (G_OBJECT (element), "contrast", &value);
 
-      g_free (mode);
-      break;
-    }
-    case UMD_VIDEO_CTRL_ANTIBANDING:
-    {
-      gchar *mode = gst_value_serialize (value);
+  *contrast = (g_value_get_int (&value) + 100) / 2;
+}
 
-      if (g_strcmp0 (mode, "off") == 0)
-        *((guint32*) payload) = UMD_VIDEO_ANTIBANDING_DISABLED;
-      else if (g_strcmp0 (mode, "50hz") == 0)
-        *((guint32*) payload) = UMD_VIDEO_ANTIBANDING_50HZ;
-      else if (g_strcmp0 (mode, "60hz") == 0)
-        *((guint32*) payload) = UMD_VIDEO_ANTIBANDING_60HZ;
-      else if (g_strcmp0 (mode, "auto") == 0)
-        *((guint32*) payload) = UMD_VIDEO_ANTIBANDING_AUTO;
+static void
+set_saturation_property (GstElement * element, guint16 saturation)
+{
+  GValue value = G_VALUE_INIT;
 
-      g_free (mode);
-      break;
-    }
-    default:
-      g_printerr ("\nUnknown control ID 0x%X!\n", id);
-      return FALSE;
+  g_value_init (&value, G_TYPE_INT);
+  g_value_set_int (&value, saturation);
+
+  g_object_set_property (G_OBJECT (element), "saturation", &value);
+}
+
+static void
+get_saturation_property (GstElement * element, guint16 * saturation)
+{
+  GValue value = G_VALUE_INIT;
+
+  g_value_init (&value, G_TYPE_INT);
+  g_object_get_property (G_OBJECT (element), "saturation", &value);
+
+  *saturation = g_value_get_int (&value);
+}
+
+static void
+set_sharpness_property (GstElement * element, guint16 sharpness)
+{
+  GValue value = G_VALUE_INIT;
+
+  g_value_init (&value, G_TYPE_INT);
+  g_value_set_int (&value, sharpness);
+
+  g_object_set_property (G_OBJECT (element), "sharpness", &value);
+}
+
+static void
+get_sharpness_property (GstElement * element, guint16 * sharpness)
+{
+  GValue value = G_VALUE_INIT;
+
+  g_value_init (&value, G_TYPE_INT);
+  g_object_get_property (G_OBJECT (element), "sharpness", &value);
+
+  *sharpness = g_value_get_int (&value);
+}
+
+static void
+set_adrc_property (GstElement * element, guint16 adrc)
+{
+  GValue value = G_VALUE_INIT;
+
+  g_value_init (&value, G_TYPE_BOOLEAN);
+  g_value_set_boolean (&value, adrc);
+
+  g_object_set_property (G_OBJECT (element), "adrc", &value);
+}
+
+static void
+get_adrc_property (GstElement * element, guint16 * adrc)
+{
+  GValue value = G_VALUE_INIT;
+
+  g_value_init (&value, G_TYPE_BOOLEAN);
+  g_object_get_property (G_OBJECT (element), "adrc", &value);
+
+  *adrc = g_value_get_boolean (&value);
+}
+
+static void
+set_wb_temperature_property (GstElement * element, guint16 temperature)
+{
+  GValue value = G_VALUE_INIT;
+  gchar *string = NULL;
+
+  g_value_init (&value, G_TYPE_STRING);
+  string = g_strdup_printf ("org.codeaurora.qcamera3.manualWB,"
+      "color_temperature=%u;", temperature);
+
+  g_value_set_string (&value, string);
+  g_free (string);
+
+  g_object_set_property (G_OBJECT (element), "manual-wb-settings", &value);
+}
+
+static void
+get_wb_temperature_property (GstElement * element, guint16 * temperature)
+{
+  GValue value = G_VALUE_INIT;
+  GstStructure *structure = NULL;
+
+  g_value_init (&value, G_TYPE_STRING);
+  g_object_get_property (G_OBJECT (element), "manual-wb-settings", &value);
+
+  structure = gst_structure_new_from_string (g_value_get_string (&value));
+
+  if (gst_structure_has_field (structure, "color_temperature")) {
+    guint32 wbtemp = 4600;
+    gst_structure_get_uint (structure, "color_temperature", &wbtemp);
+    *temperature = wbtemp;
   }
 
-  return TRUE;
+  gst_structure_free (structure);
+}
+
+static void
+set_wb_mode_property (GstElement * element, guint8 mode)
+{
+  GParamSpec *propspecs = NULL;
+  GValue value = G_VALUE_INIT;
+
+  // Get the property specs to initialize the GValue type.
+  propspecs = g_object_class_find_property (
+      G_OBJECT_GET_CLASS (element), "white-balance-mode");
+  g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+
+  switch (mode) {
+    case UMD_VIDEO_WB_MODE_AUTO:
+      gst_value_deserialize (&value, "auto");
+      break;
+    case UMD_VIDEO_WB_MODE_MANUAL:
+      gst_value_deserialize (&value, "manual-cc-temp");
+      break;
+    default:
+      g_printerr ("\nUnsupported WB mode: %d!\n", mode);
+      return;
+  }
+
+  g_object_set_property (G_OBJECT (element), "white-balance-mode", &value);
+}
+
+static void
+get_wb_mode_property (GstElement * element, guint8 * mode)
+{
+  GParamSpec *propspecs = NULL;
+  GValue value = G_VALUE_INIT;
+  gchar *string = NULL;
+
+  // Get the property specs to initialize the GValue type.
+  propspecs = g_object_class_find_property (
+      G_OBJECT_GET_CLASS (element), "white-balance-mode");
+  g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+
+  g_object_get_property (G_OBJECT (element), "white-balance-mode", &value);
+
+  string = gst_value_serialize (&value);
+
+  if (g_strcmp0 (string, "manual-cc-temp") == 0)
+    *mode = UMD_VIDEO_WB_MODE_MANUAL;
+  else if (g_strcmp0 (string, "auto") == 0)
+    *mode = UMD_VIDEO_WB_MODE_AUTO;
+
+  g_free (string);
+}
+
+static void
+set_exposure_time_property (GstElement * element, guint32 time)
+{
+  GValue value = G_VALUE_INIT;
+
+  g_value_init (&value, G_TYPE_INT64);
+  g_value_set_int64 (&value, (guint64) time * 100000);
+
+  g_object_set_property (G_OBJECT (element), "manual-exposure-time", &value);
+}
+
+static void
+get_exposure_time_property (GstElement * element, guint32 * time)
+{
+  GValue value = G_VALUE_INIT;
+
+  g_value_init (&value, G_TYPE_INT64);
+  g_object_get_property (G_OBJECT (element), "manual-exposure-time", &value);
+
+  *time = g_value_get_int64 (&value) / 100000;
+}
+
+static void
+set_exposure_mode_property (GstElement * element, guint8 mode)
+{
+  GParamSpec *propspecs = NULL;
+  GValue value = G_VALUE_INIT;
+
+  // Get the property specs to initialize the GValue type.
+  propspecs = g_object_class_find_property (
+      G_OBJECT_GET_CLASS (element), "exposure-mode");
+  g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+
+  switch (mode) {
+    case UMD_VIDEO_EXPOSURE_MODE_AUTO:
+      gst_value_deserialize (&value, "auto");
+      break;
+    case UMD_VIDEO_EXPOSURE_MODE_SHUTTER:
+      gst_value_deserialize (&value, "off");
+      break;
+    default:
+      g_printerr ("\nUnsupported Exposure mode: %d!\n", mode);
+      return;
+  }
+
+  g_object_set_property (G_OBJECT (element), "exposure-mode", &value);
+}
+
+static void
+get_exposure_mode_property (GstElement * element, guint8 * mode)
+{
+  GParamSpec *propspecs = NULL;
+  GValue value = G_VALUE_INIT;
+  gchar *string = NULL;
+
+  // Get the property specs to initialize the GValue type.
+  propspecs = g_object_class_find_property (
+      G_OBJECT_GET_CLASS (element), "exposure-mode");
+  g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+
+  g_object_get_property (G_OBJECT (element), "exposure-mode", &value);
+
+  string = gst_value_serialize (&value);
+
+  if (g_strcmp0 (string, "auto") == 0)
+    *mode = UMD_VIDEO_EXPOSURE_MODE_AUTO;
+  else if (g_strcmp0 (string, "off") == 0)
+    *mode = UMD_VIDEO_EXPOSURE_MODE_SHUTTER;
+
+  g_free (string);
+}
+
+static void
+set_focus_mode_property (GstElement * element, guint8 mode)
+{
+  GParamSpec *propspecs = NULL;
+  GValue value = G_VALUE_INIT;
+
+  // Get the property specs to initialize the GValue type.
+  propspecs = g_object_class_find_property (
+      G_OBJECT_GET_CLASS (element), "focus-mode");
+  g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+
+  switch (mode) {
+    case UMD_VIDEO_FOCUS_MODE_AUTO:
+      gst_value_deserialize (&value, "auto");
+      break;
+    case UMD_VIDEO_FOCUS_MODE_MANUAL:
+      gst_value_deserialize (&value, "off");
+      break;
+    default:
+      g_printerr ("\nUnsupported Focus mode: %d!\n", mode);
+      return;
+  }
+
+  g_object_set_property (G_OBJECT (element), "focus-mode", &value);
+}
+
+static void
+get_focus_mode_property (GstElement * element, guint8 * mode)
+{
+  GParamSpec *propspecs = NULL;
+  GValue value = G_VALUE_INIT;
+  gchar *string = NULL;
+
+  // Get the property specs to initialize the GValue type.
+  propspecs = g_object_class_find_property (
+      G_OBJECT_GET_CLASS (element), "focus-mode");
+  g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+
+  g_object_get_property (G_OBJECT (element), "focus-mode", &value);
+
+  string = gst_value_serialize (&value);
+
+  if (g_strcmp0 (string, "auto") == 0)
+    *mode = UMD_VIDEO_FOCUS_MODE_AUTO;
+  else if (g_strcmp0 (string, "off") == 0)
+    *mode = UMD_VIDEO_FOCUS_MODE_MANUAL;
+
+  g_free (string);
+}
+
+static void
+set_antibanding_property (GstElement * element, guint8 mode)
+{
+  GParamSpec *propspecs = NULL;
+  GValue value = G_VALUE_INIT;
+
+  // Get the property specs to initialize the GValue type.
+  propspecs = g_object_class_find_property (
+      G_OBJECT_GET_CLASS (element), "antibanding");
+  g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+
+  switch (mode) {
+    case UMD_VIDEO_ANTIBANDING_AUTO:
+      gst_value_deserialize (&value, "auto");
+      break;
+    case UMD_VIDEO_ANTIBANDING_DISABLED:
+      gst_value_deserialize (&value, "off");
+      break;
+    case UMD_VIDEO_ANTIBANDING_60HZ:
+      gst_value_deserialize (&value, "60hz");
+      break;
+    case UMD_VIDEO_ANTIBANDING_50HZ:
+      gst_value_deserialize (&value, "50hz");
+      break;
+    default:
+      g_printerr ("\nUnsupported Antibanding mode: %d!\n", mode);
+      return;
+  }
+
+  g_object_set_property (G_OBJECT (element), "antibanding", &value);
+}
+
+static void
+get_antibanding_property (GstElement * element, guint8 * mode)
+{
+  GParamSpec *propspecs = NULL;
+  GValue value = G_VALUE_INIT;
+  gchar *string = NULL;
+
+  // Get the property specs to initialize the GValue type.
+  propspecs = g_object_class_find_property (
+      G_OBJECT_GET_CLASS (element), "antibanding");
+  g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+
+  g_object_get_property (G_OBJECT (element), "antibanding", &value);
+
+  string = gst_value_serialize (&value);
+
+  if (g_strcmp0 (string, "off") == 0)
+    *mode = UMD_VIDEO_ANTIBANDING_DISABLED;
+  else if (g_strcmp0 (string, "50hz") == 0)
+    *mode = UMD_VIDEO_ANTIBANDING_50HZ;
+  else if (g_strcmp0 (string, "60hz") == 0)
+    *mode = UMD_VIDEO_ANTIBANDING_60HZ;
+  else if (g_strcmp0 (string, "auto") == 0)
+    *mode = UMD_VIDEO_ANTIBANDING_AUTO;
+
+  g_free (string);
+}
+
+static void
+set_iso_property (GstElement * element, guint16 isovalue)
+{
+  GValue value = G_VALUE_INIT;
+
+  g_value_init (&value, G_TYPE_INT);
+  g_value_set_int (&value, isovalue);
+
+  g_object_set_property (G_OBJECT (element), "manual-iso-value", &value);
+}
+
+static void
+get_iso_property (GstElement * element, guint16 * isovalue)
+{
+  GValue value = G_VALUE_INIT;
+
+  g_value_init (&value, G_TYPE_INT);
+  g_object_get_property (G_OBJECT (element), "manual-iso-value", &value);
+
+  *isovalue = g_value_get_int (&value);
+}
+
+static void
+set_zoom_property (GstElement * element, guint16 magnification,
+    gint32 pan, gint32 tilt)
+{
+  GValue value = G_VALUE_INIT, v = G_VALUE_INIT;
+  GstVideoRectangle sensor = {}, zoom = {};
+
+  g_value_init (&value, GST_TYPE_ARRAY);
+  g_object_get_property (G_OBJECT (element), "active-sensor-size", &value);
+
+  sensor.x = g_value_get_int (gst_value_array_get_value (&value, 0));
+  sensor.y = g_value_get_int (gst_value_array_get_value (&value, 1));
+  sensor.w = g_value_get_int (gst_value_array_get_value (&value, 2));
+  sensor.h = g_value_get_int (gst_value_array_get_value (&value, 3));
+
+  g_value_unset (&value);
+  g_value_init (&value, GST_TYPE_ARRAY);
+
+  g_object_get_property (G_OBJECT (element), "zoom", &value);
+
+  zoom.x = g_value_get_int (gst_value_array_get_value (&value, 0));
+  zoom.y = g_value_get_int (gst_value_array_get_value (&value, 1));
+  zoom.w = g_value_get_int (gst_value_array_get_value (&value, 2));
+  zoom.h = g_value_get_int (gst_value_array_get_value (&value, 3));
+
+  zoom.w = (sensor.w - sensor.x) / (magnification / 100.0);
+  zoom.h = (sensor.h - sensor.y) / (magnification / 100.0);
+
+  zoom.x = ((sensor.w - sensor.x) - zoom.w) / 2;
+  zoom.x += zoom.x * pan / (100.0 * 3600);
+
+  zoom.y = ((sensor.h - sensor.y) - zoom.h) / 2;
+  zoom.y += zoom.y * tilt / (100.0 * 3600);
+
+  g_value_unset (&value);
+  g_value_init (&value, GST_TYPE_ARRAY);
+
+  g_value_init (&v, G_TYPE_INT);
+
+  g_value_set_int (&v, zoom.x);
+  gst_value_array_append_value (&value, &v);
+
+  g_value_set_int (&v, zoom.y);
+  gst_value_array_append_value (&value, &v);
+
+  g_value_set_int (&v, zoom.w);
+  gst_value_array_append_value (&value, &v);
+
+  g_value_set_int (&v, zoom.h);
+  gst_value_array_append_value (&value, &v);
+
+  g_object_set_property (G_OBJECT (element), "zoom", &value);
+}
+
+static void
+get_zoom_property (GstElement * element, guint16 * magnification)
+{
+  GValue value = G_VALUE_INIT;
+  GstVideoRectangle sensor = {}, zoom = {};
+
+  g_value_init (&value, GST_TYPE_ARRAY);
+  g_object_get_property (G_OBJECT (element), "zoom", &value);
+
+  zoom.x = g_value_get_int (gst_value_array_get_value (&value, 0));
+  zoom.y = g_value_get_int (gst_value_array_get_value (&value, 1));
+  zoom.w = g_value_get_int (gst_value_array_get_value (&value, 2));
+  zoom.h = g_value_get_int (gst_value_array_get_value (&value, 3));
+
+  g_value_unset (&value);
+  g_value_init (&value, GST_TYPE_ARRAY);
+
+  // Get the active sensor size in order to determine the magnification.
+  g_object_get_property (G_OBJECT (element), "active-sensor-size", &value);
+
+  sensor.x = g_value_get_int (gst_value_array_get_value (&value, 0));
+  sensor.y = g_value_get_int (gst_value_array_get_value (&value, 1));
+  sensor.w = g_value_get_int (gst_value_array_get_value (&value, 2));
+  sensor.h = g_value_get_int (gst_value_array_get_value (&value, 3));
+
+  // Zoom width and height of 0 means it is equal to the sensor size.
+  zoom.w = (zoom.w == 0) ? sensor.w : zoom.w;
+  zoom.h = (zoom.h == 0) ? sensor.h : zoom.h;
+
+  *magnification = ((((gfloat) sensor.w / zoom.w) +
+      ((gfloat) sensor.h / zoom.h)) / 2) * 100;
 }
 
 static bool
-handle_camera_control (uint32_t id, uint32_t request, void * payload,
+handle_camera_control (uint32_t ctrl, uint32_t request, void * payload,
     void * userdata)
 {
   GstServiceContext *srvctx = GST_SERVICE_CONTEXT_CAST (userdata);
   GstElement *element = NULL;
-  GParamSpec *propspecs = NULL;
-  GValue value = G_VALUE_INIT;
-  const gchar *propname = NULL;
-
-  // Retrieve the property name corresponding the to control ID.
-  switch (id) {
-    case UMD_VIDEO_CTRL_SHARPNESS:
-      propname = "sharpness";
-      break;
-    case UMD_VIDEO_CTRL_WB_TEMPERTURE:
-      propname = "manual-wb-settings";
-      break;
-    case UMD_VIDEO_CTRL_WB_MODE:
-      propname = "white-balance-mode";
-      break;
-    case UMD_VIDEO_CTRL_EXPOSURE_TIME:
-      propname = "manual-exposure-time";
-      break;
-    case UMD_VIDEO_CTRL_EXPOSURE_MODE:
-      propname = "exposure-mode";
-      break;
-    case UMD_VIDEO_CTRL_FOCUS_MODE:
-      propname = "focus-mode";
-      break;
-    case UMD_VIDEO_CTRL_ANTIBANDING:
-      propname = "antibanding";
-      break;
-    default:
-      g_printerr ("\nUnknown control request 0x%X!\n", id);
-      return false;
-  }
 
   element = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "camsrc");
 
-  // Get the property specs and initialize the GValue type.
-  propspecs = g_object_class_find_property (
-      G_OBJECT_GET_CLASS (element), propname);
-  g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+  // Retrieve the property name corresponding the to control ID.
+  switch (ctrl) {
+    case UMD_VIDEO_CTRL_BRIGHTNESS:
+      switch (request) {
+        case UMD_CTRL_SET_REQUEST:
+          set_exposure_compensation_property (element, *((gint16*) payload));
+          break;
+        case UMD_CTRL_GET_REQUEST:
+          get_exposure_compensation_property (element, (gint16*) payload);
+          break;
+        default:
+          g_printerr ("\nUnknown control request 0x%X!\n", request);
+          break;
+      }
+      break;
+    case UMD_VIDEO_CTRL_CONTRAST:
+      switch (request) {
+        case UMD_CTRL_SET_REQUEST:
+          set_contrast_property (element, *((guint16*) payload));
+          break;
+        case UMD_CTRL_GET_REQUEST:
+          get_contrast_property (element, (guint16*) payload);
+          break;
+        default:
+          g_printerr ("\nUnknown control request 0x%X!\n", request);
+          break;
+      }
+      break;
+    case UMD_VIDEO_CTRL_SATURATION:
+      switch (request) {
+        case UMD_CTRL_SET_REQUEST:
+          set_saturation_property (element, *((guint16*) payload));
+          break;
+        case UMD_CTRL_GET_REQUEST:
+          get_saturation_property (element, (guint16*) payload);
+          break;
+        default:
+          g_printerr ("\nUnknown control request 0x%X!\n", request);
+          break;
+      }
+      break;
+    case UMD_VIDEO_CTRL_SHARPNESS:
+      switch (request) {
+        case UMD_CTRL_SET_REQUEST:
+          set_sharpness_property (element, *((guint16*) payload));
+          break;
+        case UMD_CTRL_GET_REQUEST:
+          get_sharpness_property (element, (guint16*) payload);
+          break;
+        default:
+          g_printerr ("\nUnknown control request 0x%X!\n", request);
+          break;
+      }
+      break;
+    case UMD_VIDEO_CTRL_BACKLIGHT_COMPENSATION:
+      switch (request) {
+        case UMD_CTRL_SET_REQUEST:
+          set_adrc_property (element, *((guint16*) payload));
+          break;
+        case UMD_CTRL_GET_REQUEST:
+          get_adrc_property (element, (guint16*) payload);
+          break;
+        default:
+          g_printerr ("\nUnknown control request 0x%X!\n", request);
+          break;
+      }
+      break;
+    case UMD_VIDEO_CTRL_ANTIBANDING:
+      switch (request) {
+        case UMD_CTRL_SET_REQUEST:
+          set_antibanding_property (element, *((guint8*) payload));
+          break;
+        case UMD_CTRL_GET_REQUEST:
+          get_antibanding_property (element, (guint8*) payload);
+          break;
+        default:
+          g_printerr ("\nUnknown control request 0x%X!\n", request);
+          break;
+      }
+      break;
+    case UMD_VIDEO_CTRL_GAIN:
+      switch (request) {
+        case UMD_CTRL_SET_REQUEST:
+          set_iso_property (element, *((guint16*) payload));
+          break;
+        case UMD_CTRL_GET_REQUEST:
+          get_iso_property (element, (guint16*) payload);
+          break;
+        default:
+          g_printerr ("\nUnknown control request 0x%X!\n", request);
+          break;
+      }
+      break;
+    case UMD_VIDEO_CTRL_WB_TEMPERTURE:
+      switch (request) {
+        case UMD_CTRL_SET_REQUEST:
+          set_wb_temperature_property (element, *((guint16*) payload));
+          break;
+        case UMD_CTRL_GET_REQUEST:
+          get_wb_temperature_property (element, (guint16*) payload);
+          break;
+        default:
+          g_printerr ("\nUnknown control request 0x%X!\n", request);
+          break;
+      }
+      break;
+    case UMD_VIDEO_CTRL_WB_MODE:
+      switch (request) {
+        case UMD_CTRL_SET_REQUEST:
+          set_wb_mode_property (element, *((guint8*) payload));
+          break;
+        case UMD_CTRL_GET_REQUEST:
+          get_wb_mode_property (element, (guint8*) payload);
+          break;
+        default:
+          g_printerr ("\nUnknown control request 0x%X!\n", request);
+          break;
+      }
+      break;
+    case UMD_VIDEO_CTRL_EXPOSURE_TIME:
+      switch (request) {
+        case UMD_CTRL_SET_REQUEST:
+          set_exposure_time_property (element, *((guint32*) payload));
+          break;
+        case UMD_CTRL_GET_REQUEST:
+          get_exposure_time_property (element, (guint32*) payload);
+          break;
+        default:
+          g_printerr ("\nUnknown control request 0x%X!\n", request);
+          break;
+      }
+      break;
+    case UMD_VIDEO_CTRL_EXPOSURE_MODE:
+      switch (request) {
+        case UMD_CTRL_SET_REQUEST:
+          set_exposure_mode_property (element, *((guint8*) payload));
+          break;
+        case UMD_CTRL_GET_REQUEST:
+          get_exposure_mode_property (element, (guint8*) payload);
+          break;
+        default:
+          g_printerr ("\nUnknown control request 0x%X!\n", request);
+          break;
+      }
+      break;
+    case UMD_VIDEO_CTRL_EXPOSURE_PRIORITY:
+      break;
+    case UMD_VIDEO_CTRL_FOCUS_MODE:
+      switch (request) {
+        case UMD_CTRL_SET_REQUEST:
+          set_focus_mode_property (element, *((guint8*) payload));
+          break;
+        case UMD_CTRL_GET_REQUEST:
+          get_focus_mode_property (element, (guint8*) payload);
+          break;
+        default:
+          g_printerr ("\nUnknown control request 0x%X!\n", request);
+          break;
+      }
+      break;
+    case UMD_VIDEO_CTRL_ZOOM:
+    case UMD_VIDEO_CTRL_PANTILT:
+    {
+      // We need to cache the values.
+      static gint32 pan = 0, tilt = 0;
+      static guint16 magnification = 100;
 
-  switch (request) {
-    case UMD_CTRL_SET_REQUEST:
-      set_control_value (id, payload, &value);
-      g_object_set_property (G_OBJECT (element), propname, &value);
+      switch (request) {
+        case UMD_CTRL_SET_REQUEST:
+          if (ctrl == UMD_VIDEO_CTRL_ZOOM)
+            magnification = *((guint16*) payload);
+
+          if (ctrl == UMD_VIDEO_CTRL_PANTILT) {
+            guint8 *data = (guint8*) payload;
+
+            pan = (gint32) data[0] | (data[1] << 8) | (data[2] << 16) |
+                (data[3] << 24);
+            tilt = (gint32) data[4] | (data[5] << 8) | (data[6] << 16) |
+                (data[7] << 24);
+          }
+
+          set_zoom_property (element, magnification, pan, tilt);
+          break;
+        case UMD_CTRL_GET_REQUEST:
+          get_zoom_property (element, &magnification);
+
+          if (ctrl == UMD_VIDEO_CTRL_ZOOM)
+            *((guint16*) payload) = magnification;
+
+          if (ctrl == UMD_VIDEO_CTRL_PANTILT) {
+            guint8 *data = (guint8*) payload;
+
+            data[0] = pan & 0xFF;
+            data[1] = (pan >> 8) & 0xFF;
+            data[2] = (pan >> 16) & 0xFF;
+            data[3] = (pan >> 24) & 0xFF;
+
+            data[4] = tilt & 0xFF;
+            data[5] = (tilt >> 8) & 0xFF;
+            data[6] = (tilt >> 16) & 0xFF;
+            data[7] = (tilt >> 24) & 0xFF;
+          }
+          break;
+        default:
+          g_printerr ("\nUnknown control request 0x%X!\n", request);
+          break;
+      }
       break;
-    case UMD_CTRL_GET_REQUEST:
-      g_object_get_property (G_OBJECT (element), propname, &value);
-      get_control_value (id, payload, &value);
-      break;
+    }
     default:
-      g_printerr ("\nUnknown control request 0x%X!\n", request);
+      g_printerr ("\nUnknown control request 0x%X!\n", ctrl);
       break;
   }
 
-  g_value_unset (&value);
   gst_object_unref (element);
 
   return true;
