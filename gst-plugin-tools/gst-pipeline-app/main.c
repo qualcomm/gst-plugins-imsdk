@@ -447,7 +447,7 @@ update_pipeline_state (GstElement * pipeline, GAsyncQueue * messages,
   // First check current and pending states of the pipeline.
   ret = gst_element_get_state (pipeline, &current, &pending, 0);
 
-  if (ret != GST_STATE_CHANGE_SUCCESS) {
+  if (ret == GST_STATE_CHANGE_FAILURE) {
     g_printerr ("Failed to retrieve pipeline state!\n");
     return TRUE;
   }
@@ -490,7 +490,7 @@ update_pipeline_state (GstElement * pipeline, GAsyncQueue * messages,
 
       ret = gst_element_get_state (pipeline, NULL, NULL, GST_CLOCK_TIME_NONE);
 
-      if (ret != GST_STATE_CHANGE_SUCCESS) {
+      if (ret == GST_STATE_CHANGE_FAILURE) {
         g_printerr ("Pipeline failed to PREROLL!\n");
         return TRUE;
       }
