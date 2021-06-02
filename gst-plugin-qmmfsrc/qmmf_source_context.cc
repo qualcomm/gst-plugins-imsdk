@@ -92,6 +92,8 @@ struct _GstQmmfContext {
   gboolean          slave;
   /// Camera property to Enable or Disable Lens Distortion Correction.
   gboolean          ldc;
+  /// Camera property to Enable or Disable Lateral Chromatic Aberration Correction.
+  gboolean          lcac;
   /// Camera property to Enable or Disable Electronic Image Stabilization.
   gboolean          eis;
   /// Camera property to Enable or Disable Super High Dynamic Range.
@@ -1056,6 +1058,11 @@ gst_qmmf_context_open (GstQmmfContext * context)
   ldc.enable = context->ldc;
   xtraparam.Update(::qmmf::recorder::QMMF_LDC, ldc);
 
+  // LCAC
+  ::qmmf::recorder::LCACMode lcac;
+  lcac.enable = context->lcac;
+  xtraparam.Update(::qmmf::recorder::QMMF_LCAC, lcac);
+
   // EIS
   ::qmmf::recorder::EISSetup eis;
   eis.enable = context->eis;
@@ -1861,6 +1868,9 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_LDC:
       context->ldc = g_value_get_boolean (value);
       break;
+    case PARAM_CAMERA_LCAC:
+      context->lcac = g_value_get_boolean (value);
+      break;
     case PARAM_CAMERA_EIS:
       context->eis = g_value_get_boolean (value);
       break;
@@ -2294,6 +2304,9 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       break;
     case PARAM_CAMERA_LDC:
       g_value_set_boolean (value, context->ldc);
+      break;
+    case PARAM_CAMERA_LCAC:
+      g_value_set_boolean (value, context->lcac);
       break;
     case PARAM_CAMERA_EIS:
       g_value_set_boolean (value, context->eis);
