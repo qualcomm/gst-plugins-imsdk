@@ -26,16 +26,19 @@
 * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
+#include <gst/video/gstvideometa.h> // to get buffer frame meta
 
 #include "opticalflow.h"
 
 namespace cvp {
 
 OFEngine::OFEngine(CVPConfig &config) : config_(config) {
-  is_start = true;
-  frameid = 0;
+  is_start    = true;
+  frameid     = 0;
+  buffersize  = 0;
   Init_Handle = NULL;
-  pSessH = NULL;
+  pSessH      = NULL;
+  savebuffer  = NULL;
 }
 
 int32_t OFEngine::Init() {
@@ -218,16 +221,64 @@ int32_t OFEngine::Process(GstVideoFrame *frame) {
     return CVP_FAIL;
   }
 
-  uint8_t *frame_data_plane0 = (uint8_t*) GST_VIDEO_FRAME_PLANE_DATA (frame, 0);
+  void *cur_plane0 = GST_VIDEO_FRAME_PLANE_DATA (frame, 0);
+  CVP_LOGI("%s: This frame data address %p", __func__, cur_plane0);
 
-  // always assign frame to current buffer
-  uint8_t *curimage = (uint8_t*) pCurImage.pBuffer->pAddress;
+  cvpMem curMem;
+  curMem.nSize = buffersize;
+  curMem.eType = CVP_MEM_NON_SECURE;
+  curMem.pAddress = cur_plane0;
+  pCurImage.pBuffer = &curMem;
+  if (cvpMemRegister(pSessH, pCurImage.pBuffer) != CVP_SUCCESS) {
+    CVP_LOGI("%s: Register Cur image failed", __func__);
+    return CVP_FAIL;
+  }
+  CVP_LOGI("%s: Register cur image success", __func__);
+  CVP_LOGI("%s: Cur Image size in imageinfo: %d", __func__, pCurImage.sImageInfo.nTotalSize);
+
+  CVP_LOGI("%s:              size in buffer: %d", __func__, pCurImage.pBuffer->nSize);
+  CVP_LOGI("%s:              buffer address: %p", __func__, pCurImage.pBuffer->pAddress);
+
   // copy frame pixel to image buffer
-  memcpy(curimage, frame_data_plane0, pConfig.sImageInfo.nAlignedSize[0]);
-  CVP_LOGI("%s: Copy %d to cur image buffer", __func__,
-           pConfig.sImageInfo.nAlignedSize[0]);
+//  uint8_t *curimage = (uint8_t*) pCurImage.pBuffer->pAddress;
+//  memcpy(curimage, cur_plane0, buffersize);
+//  CVP_LOGI("%s: Copy %d to cur image buffer", __func__, buffersize);
 
-  if (!is_start) {
+if (!is_start) {
+    CVP_LOGI("%s: Last saved buffer address %p", __func__, savebuffer);
+
+    // access old plane info
+    GstVideoFrame oldframe;
+    GstMapFlags flags = GST_MAP_READ;
+    void *ref_plane0 = NULL;
+
+    if (!gst_video_frame_map(&oldframe, &frame->info, savebuffer, flags)) {
+      CVP_LOGI("%s: Get old frame info failed", __func__);
+      return CVP_FAIL;
+    }
+    else {
+      ref_plane0 = GST_VIDEO_FRAME_PLANE_DATA (&oldframe, 0);
+      CVP_LOGI("%s: Old frame data address %x", __func__, ref_plane0);
+    }
+
+//    uint8_t *refimage = (uint8_t*) pRefImage.pBuffer->pAddress;
+//    memcpy(refimage, ref_plane0, buffersize);
+//    CVP_LOGI("%s: Copy %d to ref image buffer", __func__, buffersize);
+
+    cvpMem refMem;
+    refMem.nSize = buffersize;
+    refMem.eType = CVP_MEM_NON_SECURE;
+    refMem.pAddress = ref_plane0;
+    if (cvpMemRegister(pSessH, &refMem) != CVP_SUCCESS) {
+      CVP_LOGI("%s: Register Ref image failed", __func__);
+      return CVP_FAIL;
+    }
+    CVP_LOGI("%s: Register ref image success", __func__);
+    pRefImage.pBuffer = &refMem;
+    CVP_LOGI("%s: Ref Image size in imageinfo: %d", __func__, pRefImage.sImageInfo.nTotalSize);
+    CVP_LOGI("%s:           size in buffer: %d", __func__, pRefImage.pBuffer->nSize);
+    CVP_LOGI("%s:           buffer address: %x", __func__, pRefImage.pBuffer->pAddress);
+
     // register current image
     res = cvpRegisterOpticalFlowImageBuf(Init_Handle, &pRefImage);
     if (res != CVP_SUCCESS) {
@@ -240,6 +291,13 @@ int32_t OFEngine::Process(GstVideoFrame *frame) {
       return res;
     }
     CVP_LOGI("%s: Register image buffers to optical flow", __func__);
+
+    CVP_LOGI("%s: This frame buffer %x has ref count %d", __func__,
+             frame->buffer,
+             GST_MINI_OBJECT_REFCOUNT_VALUE(frame->buffer));
+    CVP_LOGI("%s: Last frame buffer %x has ref count %d", __func__,
+             savebuffer,
+             GST_MINI_OBJECT_REFCOUNT_VALUE(savebuffer));
 
     // optical flow sync
     {
@@ -275,25 +333,56 @@ int32_t OFEngine::Process(GstVideoFrame *frame) {
     if (OutputProcess(frame->buffer) != CVP_SUCCESS) {
       CVP_LOGE("%s: Output motion vector process failed", __func__);
     }
+    CVP_LOGI("%s: Output process successful", __func__);
 
     // DeRegister Reference Image
+    CVP_LOGI("%s: Deregister image from optical flow", __func__);
     cvpDeregisterOpticalFlowImageBuf(Init_Handle, &pRefImage);
     cvpDeregisterOpticalFlowImageBuf(Init_Handle, &pCurImage);
 
-    memset (pRefImage.pBuffer->pAddress, 0, pRefImage.pBuffer->nSize);
-  }
+//    memset (pRefImage.pBuffer->pAddress, 0, pRefImage.pBuffer->nSize);
+
+    if (cvpMemDeregister (pSessH, pRefImage.pBuffer) != CVP_SUCCESS ||
+        cvpMemDeregister (pSessH, pCurImage.pBuffer != CVP_SUCCESS)) {
+      CVP_LOGE("%s: Memory deregister fail", __func__);
+      return CVP_FAIL;
+    }
+    CVP_LOGI("%s: Memory deregister successful", __func__);
+
+    // previous buffer cleanup
+    CVP_LOGI("%s: Last frame buffer %x has ref count %d", __func__,
+                 savebuffer,
+                 GST_MINI_OBJECT_REFCOUNT_VALUE(savebuffer));
+    gst_video_frame_unmap(&oldframe);
+    gst_buffer_unref(savebuffer);
+    CVP_LOGI("%s: This frame buffer %x has ref count %d", __func__,
+             frame->buffer,
+             GST_MINI_OBJECT_REFCOUNT_VALUE(frame->buffer));
+    CVP_LOGI("%s: Last frame buffer %x has ref count %d", __func__,
+             savebuffer,
+             GST_MINI_OBJECT_REFCOUNT_VALUE(savebuffer));
+    savebuffer = NULL;
+}
 
   // swap ref and cur pointer, clean old ref pointer
   is_start = false;
 
-  CVP_LOGI("%s: Before switch, ref image address %p, cur image address %p",
-           __func__, pRefImage.pBuffer->pAddress, pCurImage.pBuffer->pAddress);
-  cvpImage tmpimage;
-  tmpimage.pBuffer = pRefImage.pBuffer;
-  pRefImage.pBuffer = pCurImage.pBuffer;
-  pCurImage.pBuffer = tmpimage.pBuffer;
-  CVP_LOGI("%s: After switch, ref image address %p, cur image address %p",
-           __func__, pRefImage.pBuffer->pAddress, pCurImage.pBuffer->pAddress);
+  // increase ref count
+  gst_buffer_ref(frame->buffer);
+  savebuffer = frame->buffer;
+  CVP_LOGI("%s: New save buffer address %x has ref count %d",
+             __func__, savebuffer, GST_MINI_OBJECT_REFCOUNT_VALUE(savebuffer));
+
+  // buffer exchange
+//  CVP_LOGI("%s: Before switch, ref image address %p, cur image address %p",
+//           __func__, pRefImage.pBuffer->pAddress, pCurImage.pBuffer->pAddress);
+//  cvpImage tmpimage;
+//  tmpimage.pBuffer = pRefImage.pBuffer;
+//  pRefImage.pBuffer = pCurImage.pBuffer;
+//  pCurImage.pBuffer = tmpimage.pBuffer;
+//  CVP_LOGI("%s: After switch, ref image address %p, cur image address %p",
+//           __func__, pRefImage.pBuffer->pAddress, pCurImage.pBuffer->pAddress);
+//  memset (pRefImage.pBuffer->pAddress, 0, pRefImage.pBuffer->nSize);
 
   CVP_LOGI("%s: Exit", __func__);
   return res;
@@ -332,7 +421,7 @@ int32_t OFEngine::AllocateBuffer() {
   }
 
   // allocate image buffer
-  int numbytes = 0;
+  int32_t numbytes = 0;
 
   //Ref Image
   pRefImage.sImageInfo.nWidth = pConfig.sImageInfo.nWidth;
@@ -340,14 +429,14 @@ int32_t OFEngine::AllocateBuffer() {
   pRefImage.sImageInfo.eFormat = pConfig.sImageInfo.eFormat;
   pRefImage.sImageInfo.nPlane = pConfig.sImageInfo.nPlane;
   pRefImage.sImageInfo.nTotalSize = pConfig.sImageInfo.nTotalSize;
-  for (unsigned int i = 0; i < pConfig.sImageInfo.nPlane; i++) {
+  for (unsigned int i = 0; i < pRefImage.sImageInfo.nPlane; i++) {
     pRefImage.sImageInfo.nWidthStride[i] = pConfig.sImageInfo.nWidthStride[i];
     pRefImage.sImageInfo.nAlignedSize[i] = pConfig.sImageInfo.nAlignedSize[i];
     numbytes += pRefImage.sImageInfo.nAlignedSize[i];
   }
-  cvpMemAlloc(pSessH, numbytes, allocMemType, &pRefImage.pBuffer);
-  CVP_LOGI("%s: Allocate %d of bytes for ref image buffer",
-           __func__, numbytes);
+  // cvpMemAlloc(pSessH, numbytes, allocMemType, &pRefImage.pBuffer);
+  // CVP_LOGI("%s: Allocate %d of bytes for ref image buffer",
+  //          __func__, numbytes);
   buffersize = numbytes;
 
   //Cur Image
@@ -357,17 +446,17 @@ int32_t OFEngine::AllocateBuffer() {
   pCurImage.sImageInfo.eFormat = pConfig.sImageInfo.eFormat;
   pCurImage.sImageInfo.nPlane = pConfig.sImageInfo.nPlane;
   pCurImage.sImageInfo.nTotalSize = pConfig.sImageInfo.nTotalSize;
-  for (unsigned int i = 0; i < pConfig.sImageInfo.nPlane; i++) {
+  for (unsigned int i = 0; i < pCurImage.sImageInfo.nPlane; i++) {
     pCurImage.sImageInfo.nWidthStride[i] = pConfig.sImageInfo.nWidthStride[i];
     pCurImage.sImageInfo.nAlignedSize[i] = pConfig.sImageInfo.nAlignedSize[i];
     numbytes += pCurImage.sImageInfo.nAlignedSize[i];
   }
-  cvpMemAlloc(pSessH, numbytes, allocMemType, &pCurImage.pBuffer);
-  CVP_LOGI("%s: Allocate %d of bytes for cur image buffer",
-           __func__, numbytes);
+  // cvpMemAlloc(pSessH, numbytes, allocMemType, &pCurImage.pBuffer);
+  // CVP_LOGI("%s: Allocate %d of bytes for cur image buffer",
+  //         __func__, numbytes);
   if (numbytes != buffersize) {
-    CVP_LOGE("%s: RefImage buffer size %d is different from CurImage buffer size %d",
-             __func__, buffersize, numbytes);
+    CVP_LOGE("%s: Ref buffer %d and cur buffer %d mismatch", __func__,
+             buffersize, numbytes);
     return CVP_FAIL;
   }
 
@@ -401,8 +490,13 @@ int32_t OFEngine::FreeBuffer() {
   }
 
   // free image buffer
-  cvpMemFree(pSessH, pRefImage.pBuffer);
-  cvpMemFree(pSessH, pCurImage.pBuffer);
+  if (cvpMemDeregister (pSessH, pCurImage.pBuffer) != CVP_SUCCESS) {
+    CVP_LOGE("%s: Memory deregister fail", __func__);
+  }
+  CVP_LOGI("%s: CurImage memory deregister successful", __func__);
+  // uncomment below if cvpMemAlloc is used
+  // cvpMemFree(pSessH, pRefImage.pBuffer);
+  // cvpMemFree(pSessH, pCurImage.pBuffer);
 
   CVP_LOGI("%s: Exit", __func__);
   return res;

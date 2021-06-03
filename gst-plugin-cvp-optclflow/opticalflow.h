@@ -32,8 +32,6 @@
 #include <string>
 
 #include <utils/Log.h>
-
-#include <gst/video/gstimagepool.h>
 #include <ml-meta/ml_meta.h>
 
 #include "cvpOpticalFlow.h"
@@ -114,6 +112,10 @@ private:
 protected:
 
   CVPConfig config_;
+
+  // gst specific
+  GstBuffer* savebuffer;
+  int32_t buffersize;
 
   // optical flow process specific
   cvpConfigOpticalFlow pConfig;
