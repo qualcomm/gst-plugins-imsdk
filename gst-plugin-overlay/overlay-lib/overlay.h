@@ -113,7 +113,8 @@ enum class OverlayType {
   kStaticImage,
   kBoundingBox,
   kPrivacyMask,
-  kGraph
+  kGraph,
+  kArrow,
 };
 
 enum class OverlayTimeFormatType {
@@ -184,10 +185,18 @@ struct OverlayGraph {
   int32_t chain[OVERLAY_GRAPH_CHAIN_MAX_COUNT][2];
 };
 
+struct OverlayArrow {
+  uint32_t start_x;
+  uint32_t start_y;
+  uint32_t end_x;
+  uint32_t end_y;
+};
+
 struct OverlayParam {
   OverlayType type;
   uint32_t color;
   OverlayRect dst_rect;
+  uint32_t arrows_count;
   union {
     OverlayDateTimeType date_time;
     char user_text[MAX_STRING_LENGTH];
@@ -195,6 +204,7 @@ struct OverlayParam {
     BoundingBox bounding_box;
     OverlayPrivacyMask privacy_mask;
     OverlayGraph graph;
+    OverlayArrow *arrows;
   };
 };
 

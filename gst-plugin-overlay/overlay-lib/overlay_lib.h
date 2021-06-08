@@ -537,6 +537,36 @@ class OverlayItemGraph : public OverlayItem {
   OverlayGraph graph_;
 };
 
+class OverlayItemArrow : public OverlayItem {
+ public:
+
+  OverlayItemArrow (int32_t ion_device, CLKernelIds kernel_id);
+
+  virtual ~OverlayItemArrow ();
+
+  int32_t Init (OverlayParam& param) override;
+
+  int32_t UpdateAndDraw () override;
+
+  void GetDrawInfo (uint32_t target_width, uint32_t target_height,
+      std::vector<DrawInfo>& draw_infos) override;
+
+  void GetParameters (OverlayParam& param) override;
+
+  int32_t UpdateParameters (OverlayParam& param) override;
+
+ private:
+  static const int32_t kStrokeWidth = 4;
+  static const uint32_t kBufferDiv = 2;
+  int32_t CreateSurface ();
+  void calcVertexes(int32_t start_x, int32_t start_y, int32_t end_x,
+      int32_t end_y, double& x1, double& y1, double& x2, double& y2);
+
+  uint32_t arrow_color_;
+  OverlayArrow *arrows_;
+  uint32_t arrows_count_ = 0;
+};
+
 
 #ifdef DEBUG_BLIT_TIME
 class Timer {
