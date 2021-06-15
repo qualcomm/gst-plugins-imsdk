@@ -32,18 +32,22 @@
 #endif
 
 #include "cvp-optclflow.h"
+#include <gst/memory/gstionpool.h>
 
 #define GST_CAT_DEFAULT cvp_optclflow_debug
 GST_DEBUG_CATEGORY_STATIC (cvp_optclflow_debug);
 
 #define gst_cvp_optclflow_parent_class parent_class
-G_DEFINE_TYPE (GstCVPOPTCLFLOW, gst_cvp_optclflow, GST_TYPE_VIDEO_FILTER);
+G_DEFINE_TYPE (GstCVPOPTCLFLOW, gst_cvp_optclflow, GST_TYPE_BASE_TRANSFORM);
 
 #define GST_ML_VIDEO_FORMATS "{ GRAT8BIT, NV12, NV21 }"
 
 #define DEFAULT_PROP_CVP_FPS 30
 
 #define GST_CVP_UNUSED(var) ((void)var)
+
+#define DEFAULT_MIN_BUFFERS 2
+#define DEFAULT_MAX_BUFFERS 10
 
 enum {
   PROP_0,
@@ -56,6 +60,10 @@ enum {
 static GstStaticCaps gst_cvp_optclflow_format_caps =
     GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_ML_VIDEO_FORMATS) ";"
     GST_VIDEO_CAPS_MAKE_WITH_FEATURES ("ANY", GST_ML_VIDEO_FORMATS));
+
+
+static GstStaticCaps gst_cvp_optclflow_format_caps_src =
+    GST_STATIC_CAPS ("cvp/optiflow");
 
 static void
 gst_cvp_optclflow_set_property_mask(guint &mask, guint property_id)
@@ -125,9 +133,17 @@ gst_cvp_optclflow_finalize(GObject * object)
     cvp->engine = nullptr;
   }
 
-  if (cvp->output_location) {
+  if (cvp->output_location)
     g_free(cvp->output_location);
-  }
+
+  if (cvp->ininfo != NULL)
+    gst_video_info_free (cvp->ininfo);
+
+  if (cvp->outinfo != NULL)
+    gst_video_info_free (cvp->outinfo);
+
+  if (cvp->outpool != NULL)
+    gst_object_unref (cvp->outpool);
 
   G_OBJECT_CLASS(parent_class)->finalize(G_OBJECT(cvp));
 }
@@ -144,11 +160,23 @@ gst_cvp_optclflow_caps(void)
   return caps;
 }
 
+static GstCaps *
+gst_cvp_optclflow_caps_src(void)
+{
+  static GstCaps *caps = NULL;
+  static volatile gsize inited = 0;
+  if (g_once_init_enter(&inited)) {
+    caps = gst_static_caps_get(&gst_cvp_optclflow_format_caps_src);
+    g_once_init_leave(&inited, 1);
+  }
+  return caps;
+}
+
 static GstPadTemplate *
 gst_cvp_src_template(void)
 {
   return gst_pad_template_new("src", GST_PAD_SRC, GST_PAD_ALWAYS,
-      gst_cvp_optclflow_caps());
+      gst_cvp_optclflow_caps_src ());
 }
 
 static GstPadTemplate *
@@ -236,35 +264,276 @@ gst_cvp_create_engine(GstCVPOPTCLFLOW *cvp) {
   return rc;
 }
 
-static gboolean
-gst_cvp_optclflow_set_info(GstVideoFilter *filter, GstCaps *in,
-                        GstVideoInfo *ininfo, GstCaps *out,
-                        GstVideoInfo *outinfo)
+static GstBufferPool *
+gst_cvp_optclflow_create_pool (GstCVPOPTCLFLOW * cvp, GstCaps * caps)
 {
-  GST_CVP_UNUSED(in);
-  GST_CVP_UNUSED(out);
-  GST_CVP_UNUSED(outinfo);
+  GstBufferPool *pool = NULL;
+  GstStructure *config = NULL;
+  GstAllocator *allocator = NULL;
+  GValue memoryblocks = G_VALUE_INIT;
+  GValue value = G_VALUE_INIT;
 
-  gboolean rc = TRUE;
+  gint width_alligned = (cvp->source_info.width + 64-1) & ~(64-1);
+  gint height_alligned = (cvp->source_info.height + 64-1) & ~(64-1);
+  gint size = width_alligned * height_alligned / 64;
 
-  GstCVPOPTCLFLOW *cvp = GST_CVP_OPTCLFLOW (filter);
-  GstVideoFormat video_format = GST_VIDEO_INFO_FORMAT(ininfo);
+  // If downstream allocation query supports GBM, allocate gbm memory.
+  pool = gst_ion_buffer_pool_new ();
+  config = gst_buffer_pool_get_config (pool);
+  gst_buffer_pool_config_set_params (config, caps,
+      sizeof (cvpMotionVector) * size +
+      sizeof (cvpOFStats) * size, DEFAULT_MIN_BUFFERS, DEFAULT_MAX_BUFFERS);
 
-  cvp->source_info.width = GST_VIDEO_INFO_WIDTH(ininfo);
-  cvp->source_info.height = GST_VIDEO_INFO_HEIGHT(ininfo);
-  cvp->source_info.format = gst_cvp_get_video_format(video_format);
+  g_value_init (&memoryblocks, GST_TYPE_ARRAY);
+  g_value_init (&value, G_TYPE_UINT);
+
+  // Set memory block 1
+  g_value_set_uint (&value, sizeof (cvpMotionVector) * size);
+  gst_value_array_append_value (&memoryblocks, &value);
+  // Set memory block 2
+  g_value_set_uint (&value, sizeof (cvpOFStats) * size);
+  gst_value_array_append_value (&memoryblocks, &value);
+
+  gst_structure_set_value (config, "memory-blocks", &memoryblocks);
+
+  allocator = gst_fd_allocator_new ();
+  gst_buffer_pool_config_set_allocator (config, allocator, NULL);
+
+  if (!gst_buffer_pool_set_config (pool, config)) {
+    GST_WARNING_OBJECT (cvp, "Failed to set pool configuration!");
+    gst_structure_free (config);
+    g_object_unref (pool);
+    pool = NULL;
+  }
+
+  g_object_unref (allocator);
+
+  return pool;
+}
+
+static gboolean
+gst_cvp_optclflow_propose_allocation (GstBaseTransform * trans,
+    GstQuery * inquery, GstQuery * outquery)
+{
+  GstCVPOPTCLFLOW *cvp = GST_CVP_OPTCLFLOW_CAST (trans);
+
+  GstCaps *caps = NULL;
+  GstBufferPool *pool = NULL;
+  GstVideoInfo info;
+  guint size = 0;
+  gboolean needpool = FALSE;
+
+  if (!GST_BASE_TRANSFORM_CLASS (parent_class)->propose_allocation (
+        trans, inquery, outquery))
+    return FALSE;
+
+  // No input query, nothing to do.
+  if (NULL == inquery)
+    return TRUE;
+
+  // Extract caps from the query.
+  gst_query_parse_allocation (outquery, &caps, &needpool);
+
+  if (NULL == caps) {
+    GST_ERROR_OBJECT (cvp, "Failed to extract caps from query!");
+    return FALSE;
+  }
+
+  if (!gst_video_info_from_caps (&info, caps)) {
+    GST_ERROR_OBJECT (cvp, "Failed to get video info!");
+    return FALSE;
+  }
+
+  // Get the size from video info.
+  size = GST_VIDEO_INFO_SIZE (&info);
+
+  if (needpool) {
+    GstStructure *structure = NULL;
+
+    pool = gst_cvp_optclflow_create_pool (cvp, caps);
+    structure = gst_buffer_pool_get_config (pool);
+
+    // Set caps and size in query.
+    gst_buffer_pool_config_set_params (structure, caps, size, 0, 0);
+
+    if (!gst_buffer_pool_set_config (pool, structure)) {
+      GST_ERROR_OBJECT (cvp, "Failed to set buffer pool configuration!");
+      gst_object_unref (pool);
+      return FALSE;
+    }
+  }
+
+  // If upstream does't have a pool requirement, set only size in query.
+  gst_query_add_allocation_pool (outquery, needpool ? pool : NULL, size, 0, 0);
+
+  if (pool != NULL)
+    gst_object_unref (pool);
+
+  gst_query_add_allocation_meta (outquery, GST_VIDEO_META_API_TYPE, NULL);
+  return TRUE;
+}
+
+static gboolean
+gst_cvp_optclflow_decide_allocation (GstBaseTransform * trans,
+    GstQuery * query)
+{
+  GstCVPOPTCLFLOW *cvp = GST_CVP_OPTCLFLOW_CAST (trans);
+  GstCaps *caps = NULL;
+  GstBufferPool *pool = NULL;
+  GstStructure *config = NULL;
+  GstAllocator *allocator = NULL;
+  guint size, minbuffers, maxbuffers;
+  GstAllocationParams params;
+
+  gst_query_parse_allocation (query, &caps, NULL);
+  if (!caps) {
+    GST_ERROR_OBJECT (cvp, "Failed to parse the decide_allocation caps!");
+    return FALSE;
+  }
+
+  // Invalidate the cached pool if there is an allocation_query.
+  if (cvp->outpool) {
+    gst_buffer_pool_set_active (cvp->outpool, FALSE);
+    gst_object_unref (cvp->outpool);
+  }
+
+  // Create a new buffer pool.
+  pool = gst_cvp_optclflow_create_pool (cvp, caps);
+  cvp->outpool = pool;
+
+  // Get the configured pool properties in order to set in query.
+  config = gst_buffer_pool_get_config (pool);
+  gst_buffer_pool_config_get_params (config, &caps, &size, &minbuffers,
+      &maxbuffers);
+
+  if (gst_buffer_pool_config_get_allocator (config, &allocator, &params))
+    gst_query_add_allocation_param (query, allocator, &params);
+
+  gst_structure_free (config);
+
+  // Check whether the query has pool.
+  if (gst_query_get_n_allocation_pools (query) > 0)
+    gst_query_set_nth_allocation_pool (query, 0, pool, size, minbuffers,
+        maxbuffers);
+  else
+    gst_query_add_allocation_pool (query, pool, size, minbuffers,
+        maxbuffers);
+
+  return TRUE;
+}
+
+static GstFlowReturn
+gst_cvp_optclflow_prepare_output_buffer (GstBaseTransform * trans,
+    GstBuffer * inbuffer, GstBuffer ** outbuffer)
+{
+  GstCVPOPTCLFLOW *cvp = GST_CVP_OPTCLFLOW_CAST (trans);
+  GstBufferPool *pool = cvp->outpool;
+  GstFlowReturn ret = GST_FLOW_OK;
+
+  if (gst_base_transform_is_passthrough (trans)) {
+    GST_LOG_OBJECT (cvp, "Passthrough, no need to do anything");
+    *outbuffer = inbuffer;
+    return GST_FLOW_OK;
+  }
+
+  g_return_val_if_fail (pool != NULL, GST_FLOW_ERROR);
+
+  if (!gst_buffer_pool_is_active (pool) &&
+      !gst_buffer_pool_set_active (pool, TRUE)) {
+    GST_ERROR_OBJECT (cvp, "Failed to activate output video buffer pool!");
+    return GST_FLOW_ERROR;
+  }
+
+  ret = gst_buffer_pool_acquire_buffer (pool, outbuffer, NULL);
+  if (ret != GST_FLOW_OK) {
+    GST_ERROR_OBJECT (cvp, "Failed to create output video buffer!");
+    return GST_FLOW_ERROR;
+  }
+
+  // Copy the flags and timestamps from the input buffer.
+  gst_buffer_copy_into (*outbuffer, inbuffer,
+      (GstBufferCopyFlags) (GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS),
+      0, -1);
+
+  return GST_FLOW_OK;
+}
+
+static GstCaps *
+gst_cvp_optclflow_transform_caps (GstBaseTransform * trans,
+    GstPadDirection direction, GstCaps * caps, GstCaps * filter)
+{
+  GstCVPOPTCLFLOW *cvp = GST_CVP_OPTCLFLOW_CAST (trans);
+  GstCaps *result = NULL;
+
+  GST_DEBUG_OBJECT (cvp, "Transforming caps: %" GST_PTR_FORMAT
+      " in direction %s", caps, (direction == GST_PAD_SINK) ? "sink" : "src");
+  GST_DEBUG_OBJECT (cvp, "Filter caps: %" GST_PTR_FORMAT, filter);
+
+  if (direction == GST_PAD_SRC) {
+    GstPad *pad = GST_BASE_TRANSFORM_SINK_PAD (trans);
+    result = gst_pad_get_pad_template_caps (pad);
+  } else if (direction == GST_PAD_SINK) {
+    GstPad *pad = GST_BASE_TRANSFORM_SRC_PAD (trans);
+    result = gst_pad_get_pad_template_caps (pad);
+  }
+
+  if (filter != NULL) {
+    GstCaps *intersection  =
+        gst_caps_intersect_full (filter, result, GST_CAPS_INTERSECT_FIRST);
+    gst_caps_unref (result);
+    result = intersection;
+  }
+
+  GST_DEBUG_OBJECT (cvp, "Returning caps: %" GST_PTR_FORMAT, result);
+
+  return result;
+}
+
+static gboolean
+gst_cvp_optclflow_set_caps (GstBaseTransform * trans, GstCaps * incaps,
+    GstCaps * outcaps)
+{
+  (void)outcaps;
+  GstCVPOPTCLFLOW *cvp = GST_CVP_OPTCLFLOW_CAST (trans);
+  GstVideoInfo ininfo, outinfo;
+
+  if (!gst_video_info_from_caps (&ininfo, incaps)) {
+    GST_ERROR_OBJECT (cvp, "Failed to get input video info from caps!");
+    return FALSE;
+  }
+
+  gst_base_transform_set_passthrough (trans, FALSE);
+
+  if (cvp->ininfo != NULL)
+    gst_video_info_free (cvp->ininfo);
+
+  cvp->ininfo = gst_video_info_copy (&ininfo);
+
+  if (cvp->outinfo != NULL)
+    gst_video_info_free (cvp->outinfo);
+
+  cvp->outinfo = gst_video_info_copy (&outinfo);
+
+  GstVideoFormat video_format = GST_VIDEO_INFO_FORMAT (&ininfo);
+
+
+  cvp->source_info.width = GST_VIDEO_INFO_WIDTH (&ininfo);
+  cvp->source_info.height = GST_VIDEO_INFO_HEIGHT (&ininfo);
+  cvp->source_info.format = gst_cvp_get_video_format (video_format);
+  cvp->source_info.stride = GST_VIDEO_INFO_PLANE_STRIDE (cvp->ininfo, 0);
+  cvp->source_info.ininfo = cvp->ininfo;
 
   if (cvp->engine && cvp->is_init) {
-    if ((gint)cvp->source_info.width != GST_VIDEO_INFO_WIDTH(ininfo) ||
-        (gint)cvp->source_info.height != GST_VIDEO_INFO_HEIGHT(ininfo) ||
-        cvp->source_info.format != gst_cvp_get_video_format(video_format)) {
+    if ((gint)cvp->source_info.width != GST_VIDEO_INFO_WIDTH (&ininfo) ||
+        (gint)cvp->source_info.height != GST_VIDEO_INFO_HEIGHT (&ininfo) ||
+        cvp->source_info.format != gst_cvp_get_video_format (video_format)) {
       GST_DEBUG_OBJECT(cvp, "Reinitializing due to source change.");
-      cvp->engine->Deinit();
+      cvp->engine->Deinit ();
       delete (cvp->engine);
       cvp->engine = nullptr;
       cvp->is_init = FALSE;
     } else {
-      GST_DEBUG_OBJECT(cvp, "Already initialized.");
+      GST_DEBUG_OBJECT (cvp, "Already initialized.");
       return TRUE;
     }
   }
@@ -275,39 +544,112 @@ gst_cvp_optclflow_set_info(GstVideoFilter *filter, GstCaps *in,
     return FALSE;
   }
 
-  rc = gst_cvp_create_engine(cvp);
-  if (FALSE == rc) {
+  if (!gst_cvp_create_engine (cvp)) {
     GST_ERROR_OBJECT (cvp, "Failed to create CVP instance.");
-    return rc;
+    return FALSE;
   }
 
-  gst_base_transform_set_passthrough (GST_BASE_TRANSFORM (filter), FALSE);
-
-  gint ret = cvp->engine->Init();
-  if (ret) {
+  if (cvp->engine->Init ()) {
     GST_ERROR_OBJECT  (cvp, "CVP init failed.");
     delete (cvp->engine);
     cvp->engine = nullptr;
-    rc = FALSE;
+    return FALSE;
   } else {
     GST_DEBUG_OBJECT (cvp, "CVP instance created addr %p", cvp->engine);
     cvp->is_init = TRUE;
   }
 
-  return rc;
+  return TRUE;
 }
 
-static GstFlowReturn gst_cvp_optclflow_transform_frame_ip(GstVideoFilter *filter,
-                                                       GstVideoFrame *frame)
+static GstCaps *
+gst_cvp_optclflow_fixate_caps (GstBaseTransform * trans,
+    GstPadDirection direction, GstCaps * incaps, GstCaps * outcaps)
 {
-  GstCVPOPTCLFLOW *cvp = GST_CVP_OPTCLFLOW (filter);
-  gint ret = cvp->engine->Process(frame);
+  GstCVPOPTCLFLOW *cvp = GST_CVP_OPTCLFLOW_CAST (trans);
+  (void)direction;
+
+  // Truncate and make the output caps writable.
+  outcaps = gst_caps_truncate (outcaps);
+  outcaps = gst_caps_make_writable (outcaps);
+
+  GST_DEBUG_OBJECT (cvp, "Trying to fixate output caps %" GST_PTR_FORMAT
+      " based on caps %" GST_PTR_FORMAT, outcaps, incaps);
+
+  GST_DEBUG_OBJECT (cvp, "Fixated caps to %" GST_PTR_FORMAT, outcaps);
+
+  return outcaps;
+}
+
+static GstFlowReturn
+gst_cvp_optclflow_transform (GstBaseTransform * trans, GstBuffer * inbuffer,
+    GstBuffer * outbuffer)
+{
+  GstCVPOPTCLFLOW *cvp = GST_CVP_OPTCLFLOW_CAST (trans);
+
+  GstVideoFrame frame;
+  guint instride = 0;
+  gst_video_frame_map (&frame, cvp->source_info.ininfo, inbuffer, GST_MAP_READ);
+  instride = GST_VIDEO_FRAME_PLANE_STRIDE(&frame, 0);
+  gst_video_frame_unmap (&frame);
+
+  // Needed when is using GBM.
+  // The stride is not available before start stream.
+  if (instride != cvp->source_info.stride) {
+    CVP_LOGI("%s: Stride is different (%d), reinit CVP", __func__, instride);
+    cvp->source_info.stride = instride;
+
+    cvp->engine->Deinit ();
+    delete (cvp->engine);
+    cvp->engine = nullptr;
+    cvp->is_init = FALSE;
+
+    if (!gst_cvp_create_engine (cvp)) {
+      GST_ERROR_OBJECT (cvp, "Failed to create CVP instance.");
+      return GST_FLOW_ERROR;
+    }
+
+    if (cvp->engine->Init ()) {
+      GST_ERROR_OBJECT  (cvp, "CVP init failed.");
+      delete (cvp->engine);
+      cvp->engine = nullptr;
+      return GST_FLOW_ERROR;
+    } else {
+      GST_DEBUG_OBJECT (cvp, "CVP instance created addr %p", cvp->engine);
+      cvp->is_init = TRUE;
+    }
+  }
+
+  gint ret = cvp->engine->Process (inbuffer, outbuffer);
   if (ret) {
     GST_ERROR_OBJECT (cvp, "CVP Process failed.");
     return GST_FLOW_ERROR;
   }
-
   return GST_FLOW_OK;
+}
+
+static GstStateChangeReturn
+gst_cvp_optclflow_change_state (GstElement * element, GstStateChange transition)
+{
+  GstCVPOPTCLFLOW *cvp = GST_CVP_OPTCLFLOW_CAST (element);
+  GstStateChangeReturn ret = GST_STATE_CHANGE_SUCCESS;
+
+  ret = GST_ELEMENT_CLASS (parent_class)->change_state (element, transition);
+  if (ret == GST_STATE_CHANGE_FAILURE) {
+    GST_ERROR_OBJECT (cvp, "Failure");
+    return ret;
+  }
+
+  switch (transition) {
+    case GST_STATE_CHANGE_PAUSED_TO_READY:
+      // Flush cvp engine
+      cvp->engine->Flush ();
+      break;
+    default:
+      break;
+  }
+
+  return ret;
 }
 
 static void
@@ -315,7 +657,7 @@ gst_cvp_optclflow_class_init (GstCVPOPTCLFLOWClass * klass)
 {
   GObjectClass *gobject            = G_OBJECT_CLASS (klass);
   GstElementClass *element         = GST_ELEMENT_CLASS (klass);
-  GstVideoFilterClass *filter      = GST_VIDEO_FILTER_CLASS (klass);
+  GstBaseTransformClass *trans = GST_BASE_TRANSFORM_CLASS (klass);
 
   gobject->set_property = GST_DEBUG_FUNCPTR(gst_cvp_optclflow_set_property);
   gobject->get_property = GST_DEBUG_FUNCPTR(gst_cvp_optclflow_get_property);
@@ -364,9 +706,18 @@ gst_cvp_optclflow_class_init (GstCVPOPTCLFLOWClass * klass)
   gst_element_class_add_pad_template(element,
                                      gst_cvp_src_template());
 
-  filter->set_info = GST_DEBUG_FUNCPTR (gst_cvp_optclflow_set_info);
-  filter->transform_frame_ip =
-      GST_DEBUG_FUNCPTR (gst_cvp_optclflow_transform_frame_ip);
+  element->change_state = GST_DEBUG_FUNCPTR (gst_cvp_optclflow_change_state);
+  trans->propose_allocation =
+      GST_DEBUG_FUNCPTR (gst_cvp_optclflow_propose_allocation);
+  trans->decide_allocation =
+      GST_DEBUG_FUNCPTR (gst_cvp_optclflow_decide_allocation);
+  trans->prepare_output_buffer =
+      GST_DEBUG_FUNCPTR (gst_cvp_optclflow_prepare_output_buffer);
+  trans->transform_caps =
+      GST_DEBUG_FUNCPTR (gst_cvp_optclflow_transform_caps);
+  trans->fixate_caps = GST_DEBUG_FUNCPTR (gst_cvp_optclflow_fixate_caps);
+  trans->set_caps = GST_DEBUG_FUNCPTR (gst_cvp_optclflow_set_caps);
+  trans->transform = GST_DEBUG_FUNCPTR (gst_cvp_optclflow_transform);
 }
 
 static void

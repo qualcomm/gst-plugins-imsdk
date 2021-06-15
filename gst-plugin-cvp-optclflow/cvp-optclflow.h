@@ -31,7 +31,7 @@
 #define __GST_CVP_OPTCLFLOW_H__
 
 #include <gst/gst.h>
-#include <gst/video/gstvideofilter.h>
+#include <gst/base/gstbasetransform.h>
 #include <gst/allocators/allocators.h>
 #include <ml-meta/ml_meta.h>
 
@@ -65,6 +65,12 @@ struct _GstCVPOPTCLFLOW {
     gchar *output_location;
     gboolean stats_enable;
     guint fps;
+
+    GstVideoInfo            *ininfo;
+    GstVideoInfo            *outinfo;
+
+    // Output buffer pool
+    GstBufferPool           *outpool;
 };
 
 struct _GstCVPOPTCLFLOWClass {

@@ -52,7 +52,7 @@ target_link_libraries(${GST_CVP_OPTCLFLOW} PRIVATE
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
   qtimlmeta
-  gstqtivideobase
+  gstqtimemorybase
   cvp2
 )
 

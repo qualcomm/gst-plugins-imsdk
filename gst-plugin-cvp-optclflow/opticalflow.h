@@ -79,6 +79,8 @@ enum CVPImageFormat {
 struct CVPInputParams {
   uint32_t width;
   uint32_t height;
+  uint32_t stride;
+  GstVideoInfo *ininfo;
   CVPImageFormat format;
 };
 
@@ -95,19 +97,19 @@ struct CVPConfig {
 class OFEngine {
 public:
   OFEngine(CVPConfig &config);
-  ~OFEngine() {};
+  ~OFEngine();
   int32_t Init();
   void Deinit();
-  int32_t Process(GstVideoFrame *frame);
+  void Flush ();
+  int32_t Process(GstBuffer * inbuffer, GstBuffer * outbuffer);
   int32_t AllocateBuffer();
   int32_t FreeBuffer();
-  int32_t OutputProcess(GstBuffer* buffer);
 
 private:
   // process
   bool is_start; // to mark if this is the start of stream
   uint32_t frameid;
-  int32_t buffersize;
+  GMutex lock_;
 
 protected:
 
