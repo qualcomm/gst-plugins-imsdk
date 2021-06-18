@@ -26,3 +26,4 @@ include_directories(
 )
 
 add_subdirectory(gst/video)
+add_subdirectory(gst/memory)
