@@ -45,12 +45,14 @@
 #define DEFAULT_PROP_CROP_WIDTH         0
 #define DEFAULT_PROP_CROP_HEIGHT        0
 #define DEFAULT_PROP_CROP_TYPE          GST_VIDEO_CROP_TYPE_C2D
+#define DEFAULT_PROP_MAX_BUFFERS        10
 
 enum
 {
   PROP_0,
   PROP_CROP,
   PROP_CROP_TYPE,
+  PROP_MAX_BUFFERS,
 };
 
 static GType
@@ -122,6 +124,9 @@ gst_video_crop_set_property (GObject * object, guint prop_id,
     case PROP_CROP_TYPE:
       vcrop->crop_type = (GstVideoCropType) g_value_get_enum (value);
       break;
+    case PROP_MAX_BUFFERS:
+      vcrop->maxbuffers = g_value_get_uint (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -159,6 +164,9 @@ gst_video_crop_get_property (GObject * object, guint prop_id,
       }
     case PROP_CROP_TYPE:
       g_value_set_enum (value, vcrop->crop_type);
+      break;
+    case PROP_MAX_BUFFERS:
+      g_value_set_uint (value, vcrop->maxbuffers);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -517,7 +525,8 @@ video_crop_request_pad (GstElement * element, GstPadTemplate * templ,
   GST_DEBUG_OBJECT (vcrop, "Create process instance");
   vcrop->pads_process =
       g_list_append (vcrop->pads_process,
-          new VideoCropPadProcess (srcpad, index, vcrop->crop_type));
+          new VideoCropPadProcess (srcpad, index, vcrop->crop_type,
+              vcrop->maxbuffers));
 
   return srcpad;
 }
@@ -585,7 +594,14 @@ gst_video_crop_class_init (GstVideoCropClass * klass)
   g_object_class_install_property (gobject, PROP_CROP_TYPE,
       g_param_spec_enum ("crop-type", "Crop type", "Crop Type",
           GST_TYPE_VIDEO_CROP_TYPE, DEFAULT_PROP_CROP_TYPE,
-          (GParamFlags) (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+          (GParamFlags) (G_PARAM_CONSTRUCT | G_PARAM_READWRITE |
+              G_PARAM_STATIC_STRINGS)));
+  g_object_class_install_property (gobject, PROP_MAX_BUFFERS,
+        g_param_spec_uint ("max-buffers", "Maximum output buffers count",
+            "The maximum count of the output buffers",
+            3, 50, DEFAULT_PROP_MAX_BUFFERS,
+            (GParamFlags) (G_PARAM_CONSTRUCT | G_PARAM_READWRITE |
+                G_PARAM_STATIC_STRINGS)));
 
   gst_element_class_set_static_metadata (element,
       "Video crop", "Video/crop",

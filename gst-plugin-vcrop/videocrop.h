@@ -82,6 +82,8 @@ struct _GstVideoCrop {
   gboolean          have_segment;
   /// List contains pad process instances
   GList             *pads_process;
+  /// Number of maximum output buffers
+  guint             maxbuffers;
 };
 
 struct _GstVideoCropClass {

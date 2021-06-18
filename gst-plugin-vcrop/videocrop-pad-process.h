@@ -36,8 +36,6 @@
 #include <gst/video/c2d-video-converter.h>
 #include <fastcv/fastcv.h>
 
-#define OUTPUT_BUFFERS_COUNT 3
-
 typedef enum {
   GST_VIDEO_CROP_TYPE_C2D,
   GST_VIDEO_CROP_TYPE_FASTCV,
@@ -50,7 +48,8 @@ struct PreprocessingBuffers {
 
 class VideoCropPadProcess {
  public:
-  VideoCropPadProcess (GstPad * pad, gint index, GstVideoCropType crop_type) :
+  VideoCropPadProcess (GstPad * pad, gint index, GstVideoCropType crop_type,
+      guint buffers_count) :
     pad_ (pad),
     index_ (index),
     crop_type_ (crop_type),
@@ -59,6 +58,7 @@ class VideoCropPadProcess {
     proc_buffers_ {},
     c2dconvert_ (NULL),
     crop_ {},
+    buffers_count_ (buffers_count),
     next_process_ (NULL) {};
   ~VideoCropPadProcess () {};
 
@@ -82,6 +82,7 @@ class VideoCropPadProcess {
 
   GstPad *pad_;
   gint index_;
+  guint buffers_count_;
   PreprocessingBuffers proc_buffers_;
   GstC2dVideoConverter    *c2dconvert_;
   GstVideoInfo in_video_info_;

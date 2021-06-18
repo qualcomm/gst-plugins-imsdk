@@ -68,7 +68,7 @@ VideoCropPadProcess::AllocateBuffers (GstVideoFormat format)
   }
 
   gst_buffer_pool_config_set_params (
-      config, caps, size_aligned, 1, OUTPUT_BUFFERS_COUNT);
+      config, caps, size_aligned, 3, buffers_count_);
 
   allocator = gst_fd_allocator_new ();
   gst_buffer_pool_config_set_allocator (config, allocator, NULL);
