@@ -604,9 +604,9 @@ umd_new_sample (GstElement *sink, gpointer userdata)
   gint stream_id = -1;
 
   if (!g_strcmp0 ("umdvsink", gst_element_get_name (sink)))
-    stream_id = VIDEO_STREAM_ID;
+    stream_id = UMD_VIDEO_STREAM_ID;
   else if (!g_strcmp0 ("umdasink", gst_element_get_name (sink)))
-    stream_id = AUDIO_STREAM_ID;
+    stream_id = UMD_AUDIO_STREAM_ID;
   else
     return GST_FLOW_ERROR;
 
