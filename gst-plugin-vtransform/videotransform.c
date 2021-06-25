@@ -54,6 +54,7 @@ G_DEFINE_TYPE (GstVideoTransform, gst_video_transform, GST_TYPE_BASE_TRANSFORM);
 #define DEFAULT_PROP_DESTINATION_Y      0
 #define DEFAULT_PROP_DESTINATION_WIDTH  0
 #define DEFAULT_PROP_DESTINATION_HEIGHT 0
+#define DEFAULT_PROP_BACKGROUND         0xFF808080
 
 #define DEFAULT_PROP_MIN_BUFFERS      2
 #define DEFAULT_PROP_MAX_BUFFERS      10
@@ -82,6 +83,7 @@ enum
   PROP_ROTATE,
   PROP_CROP,
   PROP_DESTINATION,
+  PROP_BACKGROUND,
 };
 
 static GstStaticCaps gst_video_transform_format_caps =
@@ -189,6 +191,41 @@ gst_video_transform_caps_has_compression (const GstCaps * caps,
       gst_structure_get_string (structure, "compression") : NULL;
 
   return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
+}
+
+static void
+gst_video_transform_determine_passthrough (GstVideoTransform * vtrans)
+{
+  gboolean passthrough = TRUE;
+
+  // Determine whether we are going to operate in passthrough mode.
+  if (vtrans->ininfo != NULL && vtrans->outinfo != NULL) {
+    passthrough &= vtrans->ininfo->width == vtrans->outinfo->width &&
+        vtrans->ininfo->height == vtrans->outinfo->height;
+    passthrough &=
+        vtrans->ininfo->finfo->format == vtrans->outinfo->finfo->format;
+    passthrough &= (vtrans->crop.w == 0 || vtrans->crop.h == 0) ||
+        (vtrans->crop.x == 0 && vtrans->crop.y == 0 &&
+        vtrans->crop.w == vtrans->ininfo->width &&
+        vtrans->crop.h == vtrans->ininfo->height);
+    passthrough &= (vtrans->destination.w == 0 || vtrans->destination.h == 0) ||
+        (vtrans->destination.x == 0 && vtrans->destination.y == 0 &&
+        vtrans->destination.w == vtrans->outinfo->width &&
+        vtrans->destination.h == vtrans->outinfo->height);
+  } else {
+    passthrough &= vtrans->crop.w == 0 || vtrans->crop.h == 0;
+    passthrough &= vtrans->destination.w == 0 || vtrans->destination.h == 0;
+    passthrough &= vtrans->crop.w == 0 || vtrans->crop.h == 0;
+    passthrough &= vtrans->destination.w == 0 || vtrans->destination.h == 0;
+  }
+
+  passthrough &= !vtrans->flip_h && !vtrans->flip_v;
+  passthrough &= vtrans->rotation == GST_VIDEO_TRANSFORM_ROTATE_NONE;
+
+  GST_DEBUG_OBJECT (vtrans, "Passthrough has been %s",
+      passthrough ? "enabled" : "disabled");
+
+  gst_base_transform_set_passthrough (GST_BASE_TRANSFORM (vtrans), passthrough);
 }
 
 static GstBufferPool *
@@ -348,6 +385,7 @@ gst_video_transform_decide_allocation (GstBaseTransform * trans,
 
   gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL);
 
+  gst_video_transform_determine_passthrough (vtrans);
   return TRUE;
 }
 
@@ -494,17 +532,13 @@ gst_video_transform_set_caps (GstBaseTransform * trans, GstCaps * incaps,
       GST_C2D_VIDEO_CONVERTER_OPT_ROTATION, GST_TYPE_C2D_VIDEO_ROTATION,
       gst_video_transform_rotation_to_c2d_rotate (vtrans->rotation),
       GST_C2D_VIDEO_CONVERTER_OPT_SRC_X, G_TYPE_INT,
-      vtrans->crop.x,
+      (vtrans->crop.w != 0 && vtrans->crop.h != 0) ? vtrans->crop.x : 0,
       GST_C2D_VIDEO_CONVERTER_OPT_SRC_Y, G_TYPE_INT,
-      vtrans->crop.y,
+      (vtrans->crop.w != 0 && vtrans->crop.h != 0) ? vtrans->crop.y : 0,
       GST_C2D_VIDEO_CONVERTER_OPT_SRC_WIDTH, G_TYPE_INT,
-      vtrans->crop.w,
+      (vtrans->crop.w != 0 && vtrans->crop.h != 0) ? vtrans->crop.w : 0,
       GST_C2D_VIDEO_CONVERTER_OPT_SRC_HEIGHT, G_TYPE_INT,
-      vtrans->crop.h,
-      GST_C2D_VIDEO_CONVERTER_OPT_DEST_WIDTH, G_TYPE_INT,
-      GST_VIDEO_INFO_WIDTH (&outinfo),
-      GST_C2D_VIDEO_CONVERTER_OPT_DEST_HEIGHT, G_TYPE_INT,
-      GST_VIDEO_INFO_HEIGHT (&outinfo),
+      (vtrans->crop.w != 0 && vtrans->crop.h != 0) ? vtrans->crop.h : 0,
       NULL);
 
   // In case destination rectangle was set use its values.
@@ -529,7 +563,9 @@ gst_video_transform_set_caps (GstBaseTransform * trans, GstCaps * incaps,
   }
 
   // Fill the converter output options structure.
-  outopts = gst_structure_new_empty ("qtivtransform");
+  outopts = gst_structure_new ("qtivtransform",
+      GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT,
+      vtrans->background, NULL);
 
   // Check whether the output caps have ubwc compression.
   if (gst_video_transform_caps_has_compression (outcaps, "ubwc")) {
@@ -540,8 +576,6 @@ gst_video_transform_set_caps (GstBaseTransform * trans, GstCaps * incaps,
 
   gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
   gst_c2d_video_converter_set_output_opts (vtrans->c2dconvert, outopts);
-
-  gst_base_transform_set_passthrough (trans, FALSE);
 
   GST_DEBUG_OBJECT (vtrans, "From %dx%d (PAR: %d/%d, DAR: %d/%d), size %"
       G_GSIZE_FORMAT " -> To %dx%d (PAR: %d/%d, DAR: %d/%d), size %"
@@ -560,6 +594,8 @@ gst_video_transform_set_caps (GstBaseTransform * trans, GstCaps * incaps,
 
   vtrans->outinfo = gst_video_info_copy (&outinfo);
 
+  // Disable passthrough in order to decide output allocation.
+  gst_base_transform_set_passthrough (trans, FALSE);
   return TRUE;
 }
 
@@ -1508,11 +1544,11 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
     return;
   }
 
-  GST_OBJECT_LOCK (vtrans);
-
   switch (prop_id) {
     case PROP_FLIP_HORIZONTAL:
       vtrans->flip_h = g_value_get_boolean (value);
+
+      gst_video_transform_determine_passthrough (vtrans);
 
       if (vtrans->c2dconvert != NULL) {
         GstStructure *inopts = gst_structure_new ("qtivtransform",
@@ -1525,6 +1561,8 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
     case PROP_FLIP_VERTICAL:
       vtrans->flip_v = g_value_get_boolean (value);
 
+      gst_video_transform_determine_passthrough (vtrans);
+
       if (vtrans->c2dconvert != NULL) {
         GstStructure *inopts = gst_structure_new ("qtivtransform",
           GST_C2D_VIDEO_CONVERTER_OPT_FLIP_VERTICAL, G_TYPE_BOOLEAN,
@@ -1535,6 +1573,16 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
       break;
     case PROP_ROTATE:
       vtrans->rotation = g_value_get_enum (value);
+
+      gst_video_transform_determine_passthrough (vtrans);
+
+      if (vtrans->c2dconvert != NULL) {
+        GstStructure *inopts = gst_structure_new ("qtivtransform",
+          GST_C2D_VIDEO_CONVERTER_OPT_ROTATION, GST_TYPE_C2D_VIDEO_ROTATION,
+          gst_video_transform_rotation_to_c2d_rotate (vtrans->rotation),
+          NULL);
+        gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
+      }
       break;
     case PROP_CROP:
       g_return_if_fail (gst_value_array_get_size (value) == 4);
@@ -1544,7 +1592,10 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
       vtrans->crop.w = g_value_get_int (gst_value_array_get_value (value, 2));
       vtrans->crop.h = g_value_get_int (gst_value_array_get_value (value, 3));
 
-      if (vtrans->c2dconvert != NULL) {
+      gst_video_transform_determine_passthrough (vtrans);
+
+      if (vtrans->c2dconvert != NULL &&
+          vtrans->crop.w != 0 && vtrans->crop.h != 0) {
         GstStructure *inopts = gst_structure_new ("qtivtransform",
           GST_C2D_VIDEO_CONVERTER_OPT_SRC_X, G_TYPE_INT,
           vtrans->crop.x,
@@ -1570,7 +1621,10 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
       vtrans->destination.h =
           g_value_get_int (gst_value_array_get_value (value, 3));
 
-      if (vtrans->c2dconvert != NULL) {
+      gst_video_transform_determine_passthrough (vtrans);
+
+      if (vtrans->c2dconvert != NULL &&
+          vtrans->destination.w != 0 && vtrans->destination.h != 0) {
         GstStructure *inopts = gst_structure_new ("qtivtransform",
           GST_C2D_VIDEO_CONVERTER_OPT_DEST_X, G_TYPE_INT,
           vtrans->destination.x,
@@ -1584,12 +1638,21 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
         gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
       }
       break;
+    case PROP_BACKGROUND:
+      vtrans->background = g_value_get_uint (value);
+
+      if (vtrans->c2dconvert != NULL) {
+        GstStructure *opts = gst_structure_new ("qtivtransform",
+            GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT,
+            vtrans->background,
+            NULL);
+        gst_c2d_video_converter_set_output_opts (vtrans->c2dconvert, opts);
+      }
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
   }
-
-  GST_OBJECT_UNLOCK (vtrans);
 }
 
 static void
@@ -1597,8 +1660,6 @@ gst_video_transform_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec)
 {
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM (object);
-
-  GST_OBJECT_LOCK (vtrans);
 
   switch (prop_id) {
     case PROP_FLIP_HORIZONTAL:
@@ -1646,12 +1707,13 @@ gst_video_transform_get_property (GObject * object, guint prop_id,
       gst_value_array_append_value (value, &val);
       break;
     }
+    case PROP_BACKGROUND:
+      g_value_set_uint (value, vtrans->background);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
   }
-
-  GST_OBJECT_UNLOCK (vtrans);
 }
 
 static void
@@ -1698,7 +1760,8 @@ gst_video_transform_class_init (GstVideoTransformClass * klass)
   g_object_class_install_property (gobject, PROP_ROTATE,
       g_param_spec_enum ("rotate", "Rotate", "Rotate video image",
           GST_TYPE_VIDEO_TRANSFORM_ROTATE, DEFAULT_PROP_ROTATE,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_CROP,
       gst_param_spec_array ("crop", "Crop rectangle",
           "The crop rectangle inside the input ('<X, Y, WIDTH, HEIGHT >')",
@@ -1714,6 +1777,11 @@ gst_video_transform_class_init (GstVideoTransformClass * klass)
               "One of X, Y, WIDTH or HEIGHT value.", 0, G_MAXINT, 0,
               G_PARAM_WRITABLE | G_PARAM_STATIC_STRINGS),
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_BACKGROUND,
+      g_param_spec_uint ("background", "Background",
+          "Background color", 0, 0xFFFFFFFF, DEFAULT_PROP_BACKGROUND,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
 
   gst_element_class_set_static_metadata (element,

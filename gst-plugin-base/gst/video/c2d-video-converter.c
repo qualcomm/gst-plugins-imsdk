@@ -563,13 +563,27 @@ update_object (C2D_OBJECT * object, guint surface_id, const GstStructure * opts,
   // Setup rotation angle and adjustments.
   switch (GET_OPT_ROTATION (opts)) {
     case GST_C2D_VIDEO_ROTATE_90_CW:
+    {
+      gint dar_n = 0, dar_d = 0;
+
+      gst_util_fraction_multiply (
+          GST_VIDEO_FRAME_WIDTH (inframe), GST_VIDEO_FRAME_HEIGHT (inframe),
+          GST_VIDEO_INFO_PAR_N (&(inframe)->info),
+          GST_VIDEO_INFO_PAR_D (&(inframe)->info),
+          &dar_n, &dar_d
+      );
+
       object->config_mask |= (C2D_OVERRIDE_GLOBAL_TARGET_ROTATE_CONFIG |
           C2D_OVERRIDE_TARGET_ROTATE_270);
       GST_LOG ("Input surface %x - rotate 90° clockwise", surface_id);
 
       // Adjust the target rectangle dimensions.
-      width = (width == 0) ? GST_VIDEO_FRAME_HEIGHT (inframe) : width;
-      height = (height == 0) ? GST_VIDEO_FRAME_WIDTH (inframe) : height;
+      width = (width != 0) ? width :
+          GST_VIDEO_FRAME_HEIGHT (outframe) * dar_d / dar_n;
+      height = (height != 0) ? height : GST_VIDEO_FRAME_HEIGHT (outframe);
+
+      x = (GET_OPT_DEST_WIDTH (opts, 0) && GET_OPT_DEST_HEIGHT (opts, 0)) ?
+          x : (GST_VIDEO_FRAME_WIDTH (outframe) - width) / 2;
 
       object->target_rect.width = height << 16;
       object->target_rect.height = width << 16;
@@ -579,14 +593,15 @@ update_object (C2D_OBJECT * object, guint surface_id, const GstStructure * opts,
           (GST_VIDEO_FRAME_WIDTH (outframe) - (x + width)) << 16;
       object->target_rect.x = y << 16;
       break;
+    }
     case GST_C2D_VIDEO_ROTATE_180:
       object->config_mask |= (C2D_OVERRIDE_GLOBAL_TARGET_ROTATE_CONFIG |
           C2D_OVERRIDE_TARGET_ROTATE_180);
       GST_LOG ("Input surface %x - rotate 180°", surface_id);
 
       // Adjust the target rectangle dimensions.
-      width = (width == 0) ? GST_VIDEO_FRAME_WIDTH (inframe) : width;
-      height = (height == 0) ? GST_VIDEO_FRAME_HEIGHT (inframe) : height;
+      width = (width == 0) ? GST_VIDEO_FRAME_WIDTH (outframe) : width;
+      height = (height == 0) ? GST_VIDEO_FRAME_HEIGHT (outframe) : height;
 
       object->target_rect.width = width << 16;
       object->target_rect.height = height << 16;
@@ -598,25 +613,40 @@ update_object (C2D_OBJECT * object, guint surface_id, const GstStructure * opts,
           (GST_VIDEO_FRAME_HEIGHT (outframe) - (y + height)) << 16;
       break;
     case GST_C2D_VIDEO_ROTATE_90_CCW:
+    {
+      gint dar_n = 0, dar_d = 0;
+
+      gst_util_fraction_multiply (
+          GST_VIDEO_FRAME_WIDTH (inframe), GST_VIDEO_FRAME_HEIGHT (inframe),
+          GST_VIDEO_INFO_PAR_N (&(inframe)->info),
+          GST_VIDEO_INFO_PAR_D (&(inframe)->info),
+          &dar_n, &dar_d
+      );
+
       object->config_mask |= (C2D_OVERRIDE_GLOBAL_TARGET_ROTATE_CONFIG |
           C2D_OVERRIDE_TARGET_ROTATE_90);
       GST_LOG ("Input surface %x - rotate 90° counter-clockwise", surface_id);
 
       // Adjust the target rectangle dimensions.
-      width = (width == 0) ? GST_VIDEO_FRAME_HEIGHT (inframe) : width;
-      height = (height == 0) ? GST_VIDEO_FRAME_WIDTH (inframe) : height;
+      width = (width != 0) ? width :
+          GST_VIDEO_FRAME_HEIGHT (outframe) * dar_d / dar_n;
+      height = (height != 0) ? height : GST_VIDEO_FRAME_HEIGHT (outframe);
 
       object->target_rect.width = height << 16;
       object->target_rect.height = width << 16;
+
+      x = (GET_OPT_DEST_WIDTH (opts, 0) && GET_OPT_DEST_HEIGHT (opts, 0)) ?
+          x : (GST_VIDEO_FRAME_WIDTH (outframe) - width) / 2;
 
       // Adjust the target rectangle coordinates.
       object->target_rect.x =
           (GST_VIDEO_FRAME_HEIGHT (outframe) - (y + height)) << 16;
       object->target_rect.y = x << 16;
       break;
+    }
     default:
-      width = (width == 0) ? GST_VIDEO_FRAME_WIDTH (inframe) : width;
-      height = (height == 0) ? GST_VIDEO_FRAME_HEIGHT (inframe) : height;
+      width = (width == 0) ? GST_VIDEO_FRAME_WIDTH (outframe) : width;
+      height = (height == 0) ? GST_VIDEO_FRAME_HEIGHT (outframe) : height;
 
       object->target_rect.width = width << 16;
       object->target_rect.height = height << 16;
