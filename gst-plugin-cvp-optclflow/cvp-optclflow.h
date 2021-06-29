@@ -57,20 +57,20 @@ typedef struct _GstCVPOPTCLFLOWClass GstCVPOPTCLFLOWClass;
 struct _GstCVPOPTCLFLOW {
   GstVideoFilter      parent;
 
-    cvp::CVPInputParams source_info;
-    cvp::OFEngine* engine;
-    gboolean is_init;
-    guint property_mask;
+  cvp::CVPInputParams source_info;
+  cvp::OFEngine *engine;
+  gboolean is_init;
+  guint property_mask;
 
-    gchar *output_location;
-    gboolean stats_enable;
-    guint fps;
+  gchar *output_location;
+  gboolean stats_enable;
+  guint fps;
 
-    GstVideoInfo            *ininfo;
-    GstVideoInfo            *outinfo;
+  GstVideoInfo            *ininfo;
+  GstVideoInfo            *outinfo;
 
-    // Output buffer pool
-    GstBufferPool           *outpool;
+  // Output buffer pool
+  GstBufferPool           *outpool;
 };
 
 struct _GstCVPOPTCLFLOWClass {

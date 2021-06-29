@@ -34,11 +34,11 @@
 #include <utils/Log.h>
 #include <ml-meta/ml_meta.h>
 
-#include "cvpOpticalFlow.h"
-#include "cvpMem.h"
-#include "cvpUtils.h"
-#include "cvpSession.h"
-#include "cvpTypes.h"
+#include <cvp/v2.0/cvpOpticalFlow.h>
+#include <cvp/v2.0/cvpMem.h>
+#include <cvp/v2.0/cvpUtils.h>
+#include <cvp/v2.0/cvpSession.h>
+#include <cvp/v2.0/cvpTypes.h>
 
 #define CVP_LOGI(...) ALOGI("CVP: " __VA_ARGS__)
 #define CVP_LOGE(...) ALOGE("CVP: " __VA_ARGS__)
@@ -74,19 +74,22 @@ enum CVPImageFormat {
 /* Image input parameters
  * Width:          image width
  * Height:         image height
+ * Stride:         image stride
+ * FPS:            Frame per second
+ * ininfo:         Video info from Gstreamer
  * CVPImageFormat: NV12 or NV21
  */
 struct CVPInputParams {
   uint32_t width;
   uint32_t height;
   uint32_t stride;
+  uint32_t fps;
   GstVideoInfo *ininfo;
   CVPImageFormat format;
 };
 
 struct CVPConfig {
   CVPInputParams source_info;
-  uint32_t fps;
 
   // Optical flow specific
   bool stats_enable;
@@ -96,38 +99,40 @@ struct CVPConfig {
 
 class OFEngine {
 public:
-  OFEngine(CVPConfig &config);
-  ~OFEngine();
-  int32_t Init();
-  void Deinit();
+  OFEngine (CVPConfig &config);
+  ~OFEngine ();
+  int32_t Init ();
+  int32_t Deinit ();
   void Flush ();
-  int32_t Process(GstBuffer * inbuffer, GstBuffer * outbuffer);
-  int32_t AllocateBuffer();
-  int32_t FreeBuffer();
+  int32_t Process (GstBuffer * inbuffer, GstBuffer * outbuffer);
 
 private:
   // process
-  bool is_start; // to mark if this is the start of stream
   uint32_t frameid;
-  GMutex lock_;
+  GMutex lock;
+
+  int32_t FreeCurImageBuffer ();
+  int32_t FreeRefImageBuffer ();
+  int32_t FreeMVBuffer ();
+  int32_t FreeStatsBuffer ();
 
 protected:
 
-  CVPConfig config_;
+  CVPConfig cvpConfig;
 
   // gst specific
   GstBuffer* savebuffer;
   int32_t buffersize;
 
   // optical flow process specific
-  cvpConfigOpticalFlow pConfig;
-  cvpAdvConfigOpticalFlow pAdvConfig;
-  cvpOpticalFlowOutBuffReq pOutMemReq;
-  cvpOpticalFlowOutput pOutput[2];
-  cvpHandle Init_Handle;
+  cvpConfigOpticalFlow config;
+  cvpAdvConfigOpticalFlow advConfig;
+  cvpOpticalFlowOutBuffReq outMemReq;
+  cvpOpticalFlowOutput outputBuf[2];
+  cvpHandle pInitHandle;
   cvpSession pSessH;
-  cvpImage  pRefImage, pCurImage;
-  bool pNewRef = true, pNewCur = true;
+  cvpImage  refImage, curImage;
+  bool newRef = true, newCur = true;
 }; // OFEngine
 
 class Timer {
@@ -137,25 +142,24 @@ class Timer {
 public:
 
   Timer (std::string s) : str(s) {
-    begin = GetMicroSeconds();
+    begin = GetMicroSeconds ();
   }
 
   ~Timer () {
-    uint64_t end = GetMicroSeconds();
+    uint64_t end = GetMicroSeconds ();
     CVP_LOGD("%s: %llu us", str.c_str(),
         static_cast<long long unsigned>(end - begin));
   }
 
-  uint64_t GetMicroSeconds()
-{
-  timespec time;
+  uint64_t GetMicroSeconds() {
+    timespec time;
 
-  clock_gettime(CLOCK_MONOTONIC, &time);
+    clock_gettime (CLOCK_MONOTONIC, &time);
 
-  uint64_t microSeconds = (static_cast<uint32_t>(time.tv_sec) * 1000000ULL) +
-                          (static_cast<uint32_t>(time.tv_nsec)) / 1000;
+    uint64_t microSeconds = (static_cast<uint32_t>(time.tv_sec) * 1000000ULL) +
+                            (static_cast<uint32_t>(time.tv_nsec)) / 1000;
 
-  return microSeconds;
-}
+    return microSeconds;
+  }
 };
 };

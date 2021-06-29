@@ -42,8 +42,6 @@ G_DEFINE_TYPE (GstCVPOPTCLFLOW, gst_cvp_optclflow, GST_TYPE_BASE_TRANSFORM);
 
 #define GST_ML_VIDEO_FORMATS "{ GRAT8BIT, NV12, NV21 }"
 
-#define DEFAULT_PROP_CVP_FPS 30
-
 #define GST_CVP_UNUSED(var) ((void)var)
 
 #define DEFAULT_MIN_BUFFERS 2
@@ -52,8 +50,7 @@ G_DEFINE_TYPE (GstCVPOPTCLFLOW, gst_cvp_optclflow, GST_TYPE_BASE_TRANSFORM);
 enum {
   PROP_0,
   PROP_CVP_SET_OUTPUT,
-  PROP_CVP_STATS_ENABLE,
-  PROP_CVP_FPS
+  PROP_CVP_STATS_ENABLE
 };
 
 
@@ -66,30 +63,26 @@ static GstStaticCaps gst_cvp_optclflow_format_caps_src =
     GST_STATIC_CAPS ("cvp/optiflow");
 
 static void
-gst_cvp_optclflow_set_property_mask(guint &mask, guint property_id)
+gst_cvp_optclflow_set_property_mask (guint &mask, guint property_id)
 {
   mask |= 1 << property_id;
 }
 
 static void
-gst_cvp_optclflow_set_property(GObject *object, guint property_id,
-                            const GValue *value, GParamSpec *pspec)
+gst_cvp_optclflow_set_property (GObject * object, guint property_id,
+    const GValue * value, GParamSpec *pspec)
 {
-  GstCVPOPTCLFLOW *cvp = GST_CVP_OPTCLFLOW(object);
+  GstCVPOPTCLFLOW *cvp = GST_CVP_OPTCLFLOW (object);
 
   GST_OBJECT_LOCK (cvp);
   switch (property_id) {
     case PROP_CVP_SET_OUTPUT:
-      gst_cvp_optclflow_set_property_mask(cvp->property_mask, property_id);
-      cvp->output_location = g_strdup(g_value_get_string (value));
+      gst_cvp_optclflow_set_property_mask (cvp->property_mask, property_id);
+      cvp->output_location = g_strdup (g_value_get_string (value));
       break;
     case PROP_CVP_STATS_ENABLE:
-      gst_cvp_optclflow_set_property_mask(cvp->property_mask, property_id);
+      gst_cvp_optclflow_set_property_mask (cvp->property_mask, property_id);
       cvp->stats_enable = g_value_get_boolean (value);
-      break;
-    case PROP_CVP_FPS:
-      gst_cvp_optclflow_set_property_mask(cvp->property_mask, property_id);
-      cvp->fps = g_value_get_uint (value);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -99,8 +92,8 @@ gst_cvp_optclflow_set_property(GObject *object, guint property_id,
 }
 
 static void
-gst_cvp_optclflow_get_property(GObject *object, guint property_id,
-                            GValue *value, GParamSpec *pspec)
+gst_cvp_optclflow_get_property (GObject * object, guint property_id,
+                            GValue * value, GParamSpec * pspec)
 {
   GstCVPOPTCLFLOW *cvp = GST_CVP_OPTCLFLOW (object);
 
@@ -112,9 +105,6 @@ gst_cvp_optclflow_get_property(GObject *object, guint property_id,
     case PROP_CVP_STATS_ENABLE:
       g_value_set_boolean (value, cvp->stats_enable);
       break;
-    case PROP_CVP_FPS:
-      g_value_set_uint (value, cvp->fps);
-      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -123,12 +113,14 @@ gst_cvp_optclflow_get_property(GObject *object, guint property_id,
 }
 
 static void
-gst_cvp_optclflow_finalize(GObject * object)
+gst_cvp_optclflow_finalize (GObject * object)
 {
   GstCVPOPTCLFLOW *cvp = GST_CVP_OPTCLFLOW (object);
 
   if (cvp->engine) {
-    cvp->engine->Deinit();
+    if (cvp->engine->Deinit ())
+      GST_ERROR_OBJECT (cvp, "Optical flow engine deinit failed");
+
     delete (cvp->engine);
     cvp->engine = nullptr;
   }
@@ -145,49 +137,49 @@ gst_cvp_optclflow_finalize(GObject * object)
   if (cvp->outpool != NULL)
     gst_object_unref (cvp->outpool);
 
-  G_OBJECT_CLASS(parent_class)->finalize(G_OBJECT(cvp));
+  G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT(cvp));
 }
 
 static GstCaps *
-gst_cvp_optclflow_caps(void)
+gst_cvp_optclflow_caps (void)
 {
   static GstCaps *caps = NULL;
   static volatile gsize inited = 0;
-  if (g_once_init_enter(&inited)) {
-    caps = gst_static_caps_get(&gst_cvp_optclflow_format_caps);
-    g_once_init_leave(&inited, 1);
+  if (g_once_init_enter (&inited)) {
+    caps = gst_static_caps_get (&gst_cvp_optclflow_format_caps);
+    g_once_init_leave (&inited, 1);
   }
   return caps;
 }
 
 static GstCaps *
-gst_cvp_optclflow_caps_src(void)
+gst_cvp_optclflow_caps_src (void)
 {
   static GstCaps *caps = NULL;
   static volatile gsize inited = 0;
-  if (g_once_init_enter(&inited)) {
-    caps = gst_static_caps_get(&gst_cvp_optclflow_format_caps_src);
-    g_once_init_leave(&inited, 1);
+  if (g_once_init_enter (&inited)) {
+    caps = gst_static_caps_get (&gst_cvp_optclflow_format_caps_src);
+    g_once_init_leave (&inited, 1);
   }
   return caps;
 }
 
 static GstPadTemplate *
-gst_cvp_src_template(void)
+gst_cvp_src_template (void)
 {
-  return gst_pad_template_new("src", GST_PAD_SRC, GST_PAD_ALWAYS,
+  return gst_pad_template_new ("src", GST_PAD_SRC, GST_PAD_ALWAYS,
       gst_cvp_optclflow_caps_src ());
 }
 
 static GstPadTemplate *
 gst_cvp_sink_template (void)
 {
-  return gst_pad_template_new("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
+  return gst_pad_template_new ("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
       gst_cvp_optclflow_caps ());
 }
 
 static cvp::CVPImageFormat
-gst_cvp_get_video_format(GstVideoFormat &format)
+gst_cvp_get_video_format (GstCVPOPTCLFLOW *cvp, GstVideoFormat &format)
 {
   cvp::CVPImageFormat cvp_format = cvp::CVPImageFormat::cvp_format_invalid;
   switch (format) {
@@ -202,60 +194,51 @@ gst_cvp_get_video_format(GstVideoFormat &format)
       break;
     default:
       cvp_format = cvp::CVPImageFormat::cvp_format_invalid;
+      GST_WARNING_OBJECT (cvp, "Invalid image format");
   }
   return cvp_format;
 }
 
 static gboolean
-gst_cvp_check_is_set(guint &mask, guint property_id)
+gst_cvp_check_is_set (guint &mask, guint property_id)
 {
   return (mask & 1 << property_id) ? true:false;
 }
 
 static gboolean
-gst_cvp_create_engine(GstCVPOPTCLFLOW *cvp) {
+gst_cvp_create_engine (GstCVPOPTCLFLOW *cvp) {
   gboolean rc = TRUE;
   cvp::CVPConfig configuration {};
 
   // Set default configuration values
-  configuration.fps = DEFAULT_PROP_CVP_FPS;
   configuration.stats_enable = false;
   configuration.output_location = nullptr;
   configuration.source_info = cvp->source_info;
-  configuration.source_info.format = cvp::  cvp_format_gray8bit;
+  configuration.source_info.format = cvp::cvp_format_gray8bit;
 
   // Set configuration values only if property is set
-  if (gst_cvp_check_is_set(cvp->property_mask, PROP_CVP_SET_OUTPUT)) {
+  if (gst_cvp_check_is_set (cvp->property_mask, PROP_CVP_SET_OUTPUT))
     configuration.output_location = cvp->output_location;
-  }
-  if (gst_cvp_check_is_set(cvp->property_mask, PROP_CVP_STATS_ENABLE)) {
+
+  if (gst_cvp_check_is_set (cvp->property_mask, PROP_CVP_STATS_ENABLE))
     configuration.stats_enable = cvp->stats_enable;
-  }
-  if (gst_cvp_check_is_set(cvp->property_mask, PROP_CVP_FPS)) {
-     configuration.fps = cvp->fps;
-  }
 
   // Print config
-  GST_DEBUG_OBJECT(cvp, "==== Configuration Begin ====");
-  GST_DEBUG_OBJECT(cvp, "Width  %d", configuration.source_info.width);
-  GST_DEBUG_OBJECT(cvp, "Height %d", configuration.source_info.height);
-  GST_DEBUG_OBJECT(cvp, "Format %d", configuration.source_info.format);
-  GST_DEBUG_OBJECT(cvp, "FPS    %d", configuration.fps);
-  if (configuration.output_location != nullptr) {
-    GST_DEBUG_OBJECT(cvp, "Output %s", configuration.output_location);
-  }
-  else {
-    GST_DEBUG_OBJECT(cvp, "No output location");
-  }
-  if (configuration.stats_enable) {
-    GST_DEBUG_OBJECT(cvp, "Enable stats");
-  }
-  else {
-    GST_DEBUG_OBJECT(cvp, "Disable stats");
-  }
+  GST_DEBUG_OBJECT (cvp, "==== Configuration Begin ====");
+  GST_DEBUG_OBJECT (cvp, "Width  %d", configuration.source_info.width);
+  GST_DEBUG_OBJECT (cvp, "Height %d", configuration.source_info.height);
+  GST_DEBUG_OBJECT (cvp, "Format %d", configuration.source_info.format);
+  GST_DEBUG_OBJECT (cvp, "FPS    %d", configuration.source_info.fps);
+  if (configuration.output_location != nullptr)
+    GST_DEBUG_OBJECT (cvp, "Output %s", configuration.output_location);
+  else
+    GST_DEBUG_OBJECT (cvp, "No output location");
+
+  GST_DEBUG_OBJECT (cvp, "Stats %s",
+      configuration.stats_enable ? "enabled" : "disabled");
 
   // Set engine
-  cvp->engine = new cvp::OFEngine(configuration);
+  cvp->engine = new cvp::OFEngine (configuration);
   if (nullptr == cvp->engine) {
     GST_ERROR_OBJECT (cvp, "Failed to create CVP instance");
     rc = FALSE;
@@ -519,15 +502,17 @@ gst_cvp_optclflow_set_caps (GstBaseTransform * trans, GstCaps * incaps,
 
   cvp->source_info.width = GST_VIDEO_INFO_WIDTH (&ininfo);
   cvp->source_info.height = GST_VIDEO_INFO_HEIGHT (&ininfo);
-  cvp->source_info.format = gst_cvp_get_video_format (video_format);
+  cvp->source_info.format = gst_cvp_get_video_format (cvp, video_format);
   cvp->source_info.stride = GST_VIDEO_INFO_PLANE_STRIDE (cvp->ininfo, 0);
   cvp->source_info.ininfo = cvp->ininfo;
+  cvp->source_info.fps =
+      GST_VIDEO_INFO_FPS_N (cvp->ininfo)/GST_VIDEO_INFO_FPS_D (cvp->ininfo);
 
   if (cvp->engine && cvp->is_init) {
-    if ((gint)cvp->source_info.width != GST_VIDEO_INFO_WIDTH (&ininfo) ||
-        (gint)cvp->source_info.height != GST_VIDEO_INFO_HEIGHT (&ininfo) ||
-        cvp->source_info.format != gst_cvp_get_video_format (video_format)) {
-      GST_DEBUG_OBJECT(cvp, "Reinitializing due to source change.");
+    if ((gint) cvp->source_info.width != GST_VIDEO_INFO_WIDTH (&ininfo) ||
+        (gint) cvp->source_info.height != GST_VIDEO_INFO_HEIGHT (&ininfo) ||
+        cvp->source_info.format != gst_cvp_get_video_format (cvp, video_format)) {
+      GST_DEBUG_OBJECT (cvp, "Reinitializing due to source change.");
       cvp->engine->Deinit ();
       delete (cvp->engine);
       cvp->engine = nullptr;
@@ -550,7 +535,7 @@ gst_cvp_optclflow_set_caps (GstBaseTransform * trans, GstCaps * incaps,
   }
 
   if (cvp->engine->Init ()) {
-    GST_ERROR_OBJECT  (cvp, "CVP init failed.");
+    GST_ERROR_OBJECT (cvp, "CVP init failed.");
     delete (cvp->engine);
     cvp->engine = nullptr;
     return FALSE;
@@ -590,13 +575,13 @@ gst_cvp_optclflow_transform (GstBaseTransform * trans, GstBuffer * inbuffer,
   GstVideoFrame frame;
   guint instride = 0;
   gst_video_frame_map (&frame, cvp->source_info.ininfo, inbuffer, GST_MAP_READ);
-  instride = GST_VIDEO_FRAME_PLANE_STRIDE(&frame, 0);
+  instride = GST_VIDEO_FRAME_PLANE_STRIDE (&frame, 0);
   gst_video_frame_unmap (&frame);
 
   // Needed when is using GBM.
   // The stride is not available before start stream.
   if (instride != cvp->source_info.stride) {
-    CVP_LOGI("%s: Stride is different (%d), reinit CVP", __func__, instride);
+    CVP_LOGI ("%s: Stride is different (%d), reinit CVP", __func__, instride);
     cvp->source_info.stride = instride;
 
     cvp->engine->Deinit ();
@@ -610,7 +595,7 @@ gst_cvp_optclflow_transform (GstBaseTransform * trans, GstBuffer * inbuffer,
     }
 
     if (cvp->engine->Init ()) {
-      GST_ERROR_OBJECT  (cvp, "CVP init failed.");
+      GST_ERROR_OBJECT (cvp, "CVP init failed.");
       delete (cvp->engine);
       cvp->engine = nullptr;
       return GST_FLOW_ERROR;
@@ -659,24 +644,24 @@ gst_cvp_optclflow_class_init (GstCVPOPTCLFLOWClass * klass)
   GstElementClass *element         = GST_ELEMENT_CLASS (klass);
   GstBaseTransformClass *trans = GST_BASE_TRANSFORM_CLASS (klass);
 
-  gobject->set_property = GST_DEBUG_FUNCPTR(gst_cvp_optclflow_set_property);
-  gobject->get_property = GST_DEBUG_FUNCPTR(gst_cvp_optclflow_get_property);
-  gobject->finalize     = GST_DEBUG_FUNCPTR(gst_cvp_optclflow_finalize);
+  gobject->set_property = GST_DEBUG_FUNCPTR (gst_cvp_optclflow_set_property);
+  gobject->get_property = GST_DEBUG_FUNCPTR (gst_cvp_optclflow_get_property);
+  gobject->finalize     = GST_DEBUG_FUNCPTR (gst_cvp_optclflow_finalize);
 
-  g_object_class_install_property(
+  g_object_class_install_property (
       gobject,
       PROP_CVP_SET_OUTPUT,
-      g_param_spec_string(
+      g_param_spec_string (
           "output",
           "Path to store output file",
           "An existing Path to store output file. Eg.: /data/output",
           NULL,
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS )));
-  g_object_class_install_property(
+  g_object_class_install_property (
       gobject,
       PROP_CVP_STATS_ENABLE,
-      g_param_spec_boolean(
+      g_param_spec_boolean (
           "stats-enable",
           "Enable stats",
           "Enable stats for additional motion vector info",
@@ -684,27 +669,12 @@ gst_cvp_optclflow_class_init (GstCVPOPTCLFLOWClass * klass)
           static_cast<GParamFlags>(G_PARAM_READWRITE |
                                    G_PARAM_STATIC_STRINGS)));
 
-  g_object_class_install_property(
-      gobject,
-      PROP_CVP_FPS,
-      g_param_spec_uint(
-          "fps",
-          "Frame per second",
-          "Input frame per second for video",
-          1,
-          60,
-          DEFAULT_PROP_CVP_FPS,
-          static_cast<GParamFlags>(G_PARAM_READWRITE |
-                                   G_PARAM_STATIC_STRINGS)));
-
-  gst_element_class_set_static_metadata(
+  gst_element_class_set_static_metadata (
       element, "CVP Optical Flow", "Runs optical flow from CVP",
       "Calculate motion vector from current image and previous image", "QTI");
 
-  gst_element_class_add_pad_template(element,
-                                     gst_cvp_sink_template());
-  gst_element_class_add_pad_template(element,
-                                     gst_cvp_src_template());
+  gst_element_class_add_pad_template (element, gst_cvp_sink_template());
+  gst_element_class_add_pad_template (element, gst_cvp_src_template());
 
   element->change_state = GST_DEBUG_FUNCPTR (gst_cvp_optclflow_change_state);
   trans->propose_allocation =
