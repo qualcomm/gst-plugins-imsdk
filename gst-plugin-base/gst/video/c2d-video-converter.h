@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -89,7 +89,7 @@ GST_VIDEO_API GType gst_c2d_video_rotation_get_type (void);
  * GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND:
  *
  * #G_TYPE_UINT, background color
- * Default: 0xFF808080
+ * Default: 0x00000000
  *
  * Not applicable for input
  */
