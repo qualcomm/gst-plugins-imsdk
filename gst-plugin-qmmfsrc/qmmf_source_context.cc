@@ -662,7 +662,8 @@ qmmfsrc_gst_buffer_release (GstStructure * structure)
   gst_structure_get_uint (structure, "capacity", &buffer.capacity);
   gst_structure_get_uint (structure, "offset", &buffer.offset);
   gst_structure_get_uint64 (structure, "timestamp", &buffer.timestamp);
-  gst_structure_get_uint (structure, "flags", &buffer.flags);
+  gst_structure_get_uint64 (structure, "seqnum", &buffer.seqnum);
+  gst_structure_get_uint64 (structure, "flags", &buffer.flags);
 
   buffers.push_back (buffer);
 
@@ -736,7 +737,8 @@ qmmfsrc_gst_buffer_new_wrapped (GstQmmfContext * context, GstPad * pad,
       "capacity", G_TYPE_UINT, buffer->capacity,
       "offset", G_TYPE_UINT, buffer->offset,
       "timestamp", G_TYPE_UINT64, buffer->timestamp,
-      "flags", G_TYPE_UINT, buffer->flags,
+      "seqnum", G_TYPE_UINT64, buffer->seqnum,
+      "flags", G_TYPE_UINT64, buffer->flags,
       NULL
   );
 
@@ -760,7 +762,7 @@ video_event_callback (uint32_t track_id, ::qmmf::recorder::EventType type,
 static void
 video_data_callback (GstQmmfContext * context, GstPad * pad,
     std::vector<::qmmf::BufferDescriptor> buffers,
-    std::vector<::qmmf::recorder::MetaData> metabufs)
+    std::vector<::qmmf::BufferMeta> metas)
 {
   GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
   ::qmmf::recorder::Recorder *recorder = context->recorder;
@@ -774,7 +776,7 @@ video_data_callback (GstQmmfContext * context, GstPad * pad,
 
   for (idx = 0; idx < buffers.size(); ++idx) {
     ::qmmf::BufferDescriptor& buffer = buffers[idx];
-    ::qmmf::recorder::MetaData& meta = metabufs[idx];
+    ::qmmf::BufferMeta& meta = metas[idx];
 
     gstbuffer = qmmfsrc_gst_buffer_new_wrapped (context, pad, &buffer);
     QMMFSRC_RETURN_IF_FAIL_WITH_CLEAN (NULL, gstbuffer != NULL,
@@ -783,16 +785,10 @@ video_data_callback (GstQmmfContext * context, GstPad * pad,
 
     GST_BUFFER_FLAG_SET (gstbuffer, GST_BUFFER_FLAG_LIVE);
 
-    if (buffer.flags & (guint)::qmmf::BufferFlags::kFlagCodecConfig)
-      GST_BUFFER_FLAG_SET (gstbuffer, GST_BUFFER_FLAG_HEADER);
-
-    if (meta.meta_flag &
-        static_cast<uint32_t>(::qmmf::recorder::MetaParamType::kCamBufMetaData)) {
-      for (size_t i = 0; i < meta.cam_buffer_meta_data.num_planes; ++i) {
-        stride[i] = meta.cam_buffer_meta_data.plane_info[i].stride;
-        offset[i] = meta.cam_buffer_meta_data.plane_info[i].offset;
-        numplanes++;
-      }
+    for (size_t i = 0; i < meta.n_planes; ++i) {
+      stride[i] = meta.planes[i].stride;
+      offset[i] = meta.planes[i].offset;
+      numplanes++;
     }
 
     // Set GStreamer buffer video metadata.
@@ -837,7 +833,7 @@ video_data_callback (GstQmmfContext * context, GstPad * pad,
 
 static void
 image_data_callback (GstQmmfContext * context, GstPad * pad,
-    ::qmmf::BufferDescriptor buffer, ::qmmf::recorder::MetaData meta)
+    ::qmmf::BufferDescriptor buffer, ::qmmf::BufferMeta meta)
 {
   GstQmmfSrcImagePad *ipad = GST_QMMFSRC_IMAGE_PAD (pad);
   ::qmmf::recorder::Recorder *recorder = context->recorder;
@@ -851,9 +847,6 @@ image_data_callback (GstQmmfContext * context, GstPad * pad,
       "Failed to create GST buffer!");
 
   GST_BUFFER_FLAG_SET (gstbuffer, GST_BUFFER_FLAG_LIVE);
-
-  if (buffer.flags & (guint)::qmmf::BufferFlags::kFlagCodecConfig)
-    GST_BUFFER_FLAG_SET (gstbuffer, GST_BUFFER_FLAG_HEADER);
 
   GST_QMMF_CONTEXT_LOCK (context);
   // Initialize the timestamp base value for buffer synchronization.
@@ -1252,8 +1245,8 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
   track_cbs.data_cb =
       [&, context, pad] (uint32_t track_id,
           std::vector<::qmmf::BufferDescriptor> buffers,
-          std::vector<::qmmf::recorder::MetaData> metabufs)
-      { video_data_callback (context, pad, buffers, metabufs); };
+          std::vector<::qmmf::BufferMeta> metas)
+      { video_data_callback (context, pad, buffers, metas); };
 
   vpad->id = vpad->index + VIDEO_TRACK_ID_OFFSET;
 
@@ -1399,7 +1392,7 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad,
 
   GST_QMMFSRC_IMAGE_PAD_LOCK (ipad);
 
-  ::qmmf::recorder::ImageConfigParam config;
+  ::qmmf::recorder::ImageExtraParam xtraparam;
   ::qmmf::recorder::ImageParam imgparam;
 
   imgparam.width = ipad->width;
@@ -1409,37 +1402,8 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad,
     imgparam.format = ::qmmf::recorder::ImageFormat::kJPEG;
     gst_structure_get_uint (ipad->params, "quality", &imgparam.quality);
 
-    ::qmmf::recorder::ImageThumbnail thumbnail;
-    ::qmmf::recorder::ImageExif exif;
-    guint width, height, quality;
-
-    gst_structure_get_uint (ipad->params, "thumbnail-width", &width);
-    gst_structure_get_uint (ipad->params, "thumbnail-height", &height);
-    gst_structure_get_uint (ipad->params, "thumbnail-quality", &quality);
-
-    if (width > 0 && height > 0) {
-      thumbnail.width = width;
-      thumbnail.height = height;
-      thumbnail.quality = quality;
-      config.Update (::qmmf::recorder::QMMF_IMAGE_THUMBNAIL, thumbnail, 0);
-    }
-
-    gst_structure_get_uint (ipad->params, "screennail-width", &width);
-    gst_structure_get_uint (ipad->params, "screennail-height", &height);
-    gst_structure_get_uint (ipad->params, "screennail-quality", &quality);
-
-    if (width > 0 && height > 0) {
-      thumbnail.width = width;
-      thumbnail.height = height;
-      thumbnail.quality = quality;
-      config.Update (::qmmf::recorder::QMMF_IMAGE_THUMBNAIL, thumbnail, 1);
-    }
-
-    exif.enable = true;
-    config.Update (::qmmf::recorder::QMMF_EXIF, exif, 0);
-
     if (bayerpad != NULL) {
-      config.Update (::qmmf::recorder::QMMF_SNAPSHOT_TYPE, snapshotparam, 0);
+      xtraparam.Update (::qmmf::recorder::QMMF_SNAPSHOT_TYPE, snapshotparam, 0);
       GST_WARNING ("JPEG and RAW has enabled. Image Mode is ignored.");
     } else {
       switch (ipad->mode) {
@@ -1454,7 +1418,7 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad,
           GST_QMMFSRC_IMAGE_PAD_UNLOCK(ipad);
           return FALSE;
       }
-      config.Update (::qmmf::recorder::QMMF_SNAPSHOT_TYPE, snapshotparam, 0);
+      xtraparam.Update (::qmmf::recorder::QMMF_SNAPSHOT_TYPE, snapshotparam, 0);
     }
   } else if (ipad->codec == GST_IMAGE_CODEC_NONE) {
     switch (ipad->format) {
@@ -1494,7 +1458,7 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad,
     }
   }
 
-  status = recorder->ConfigImageCapture (context->camera_id, imgparam, config);
+  status = recorder->ConfigImageCapture (context->camera_id, imgparam, xtraparam);
 
   GST_QMMFSRC_IMAGE_PAD_UNLOCK (ipad);
 
@@ -1600,13 +1564,12 @@ gst_qmmf_context_capture_image (GstQmmfContext * context, GstPad * pad,
   GST_QMMFSRC_IMAGE_PAD_LOCK (ipad);
 
   imagecb = [&, context, pad, bayerpad] (uint32_t camera_id, uint32_t imgcount,
-      ::qmmf::BufferDescriptor buffer, ::qmmf::recorder::MetaData meta)
+      ::qmmf::BufferDescriptor buffer, ::qmmf::BufferMeta meta)
       {
         if (bayerpad == NULL)
           image_data_callback (context, pad, buffer, meta);
         else {
-          qmmf::CameraBufferMetaData &cam_buf_meta = meta.cam_buffer_meta_data;
-          if (cam_buf_meta.format == qmmf::BufferFormat::kBLOB)
+          if (meta.format == ::qmmf::BufferFormat::kBLOB)
             image_data_callback (context, pad, buffer, meta);
           else
             image_data_callback (context, bayerpad, buffer, meta);
