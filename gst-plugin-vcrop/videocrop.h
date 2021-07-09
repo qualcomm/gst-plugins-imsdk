@@ -40,14 +40,14 @@ G_BEGIN_DECLS
 #define GST_TYPE_VIDEO_CROP \
   (gst_video_crop_get_type())
 #define GST_VIDEO_CROP(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_VIDEO_CROP,GstVideoCrop))
+  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_VIDEO_CROP,GstRoiVideoCrop))
 #define GST_VIDEO_CROP_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_VIDEO_CROP,GstVideoCropClass))
+  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_VIDEO_CROP,GstRoiVideoCropClass))
 #define GST_IS_VIDEO_CROP(obj) \
   (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_VIDEO_CROP))
 #define GST_IS_VIDEO_CROP_CLASS(klass) \
   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_VIDEO_CROP))
-#define GST_VIDEO_CROP_CAST(obj)       ((GstVideoCrop *)(obj))
+#define GST_VIDEO_CROP_CAST(obj)       ((GstRoiVideoCrop *)(obj))
 
 #define GST_VIDEO_CROP_GET_LOCK(obj)   (&GST_VIDEO_CROP(obj)->lock)
 #define GST_VIDEO_CROP_LOCK(obj)       g_mutex_lock(GST_VIDEO_CROP_GET_LOCK(obj))
@@ -59,10 +59,10 @@ G_BEGIN_DECLS
           : ((pspec->flags & GST_PARAM_MUTABLE_READY) ? (state <= GST_STATE_READY) \
               : (state <= GST_STATE_NULL))))
 
-typedef struct _GstVideoCrop GstVideoCrop;
-typedef struct _GstVideoCropClass GstVideoCropClass;
+typedef struct _GstRoiVideoCrop GstRoiVideoCrop;
+typedef struct _GstRoiVideoCropClass GstRoiVideoCropClass;
 
-struct _GstVideoCrop {
+struct _GstRoiVideoCrop {
   GstElement element;
   /// Sink pad
   GstPad         *sinkpad;
@@ -86,7 +86,7 @@ struct _GstVideoCrop {
   guint             maxbuffers;
 };
 
-struct _GstVideoCropClass {
+struct _GstRoiVideoCropClass {
   GstBaseTransformClass parent;
 };
 
