@@ -48,10 +48,6 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
 #define DEFAULT_VIDEO_STREAM_HEIGHT   480
 #define DEFAULT_VIDEO_STREAM_FPS_NUM  30
 #define DEFAULT_VIDEO_STREAM_FPS_DEN  1
-#define DEFAULT_VIDEO_H264_PROFILE    "high"
-#define DEFAULT_VIDEO_H265_PROFILE    "main"
-#define DEFAULT_VIDEO_H264_LEVEL      "5.1"
-#define DEFAULT_VIDEO_H265_LEVEL      "5.1"
 #define DEFAULT_VIDEO_RAW_FORMAT      "NV12"
 #define DEFAULT_VIDEO_RAW_COMPRESSION "none"
 #define DEFAULT_VIDEO_BAYER_FORMAT    "bggr"
@@ -59,80 +55,17 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
 
 #define DEFAULT_PROP_SOURCE_INDEX    (-1)
 #define DEFAULT_PROP_FRAMERATE       30.0
-#define DEFAULT_PROP_BITRATE         6000000
-#define DEFAULT_PROP_BITRATE_CONTROL GST_VIDEO_CONTROL_RATE_MAXBITRATE
-#define DEFAULT_PROP_QUANT_I_FRAMES  27
-#define DEFAULT_PROP_QUANT_P_FRAMES  28
-#define DEFAULT_PROP_QUANT_B_FRAMES  28
-#define DEFAULT_PROP_MIN_QP          10
-#define DEFAULT_PROP_MAX_QP          51
-#define DEFAULT_PROP_MIN_QP_I_FRAMES 10
-#define DEFAULT_PROP_MAX_QP_I_FRAMES 51
-#define DEFAULT_PROP_MIN_QP_P_FRAMES 10
-#define DEFAULT_PROP_MAX_QP_P_FRAMES 51
-#define DEFAULT_PROP_MIN_QP_B_FRAMES 10
-#define DEFAULT_PROP_MAX_QP_B_FRAMES 51
-#define DEFAULT_PROP_IDR_INTERVAL    1
 #define DEFAULT_PROP_CROP_X          0
 #define DEFAULT_PROP_CROP_Y          0
 #define DEFAULT_PROP_CROP_WIDTH      0
 #define DEFAULT_PROP_CROP_HEIGHT     0
 #define DEFAULT_PROP_EXTRA_BUFFERS   0
 
-GType
-gst_video_pad_control_rate_get_type (void)
-{
-  static GType gtype = 0;
-  static const GEnumValue variants[] = {
-    { GST_VIDEO_CONTROL_RATE_DISABLE,
-        "Disable", "disable"
-    },
-    { GST_VIDEO_CONTROL_RATE_VARIABLE,
-        "Variable", "variable"
-    },
-    { GST_VIDEO_CONTROL_RATE_CONSTANT,
-        "Constant", "constant"
-    },
-    { GST_VIDEO_CONTROL_RATE_MAXBITRATE,
-        "Max Bitrate", "maxbitrate"
-    },
-    { GST_VIDEO_CONTROL_RATE_VARIABLE_SKIP_FRAMES,
-        "Variable Skip Frames", "constant-skip-frames"
-    },
-    { GST_VIDEO_CONTROL_RATE_CONSTANT_SKIP_FRAMES,
-        "Constant Skip Frames", "variable-skip-frames"
-    },
-    { GST_VIDEO_CONTROL_RATE_MAXBITRATE_SKIP_FRAMES,
-        "Max Bitrate Skip Frames", "maxbitrate-skip-frames"
-    },
-    {0, NULL, NULL}
-  };
-
-  if (!gtype)
-    gtype = g_enum_register_static ("GstVideoControlRate", variants);
-
-  return gtype;
-}
-
 enum
 {
   PROP_0,
   PROP_VIDEO_SOURCE_INDEX,
   PROP_VIDEO_FRAMERATE,
-  PROP_VIDEO_BITRATE,
-  PROP_VIDEO_BITRATE_CONTROL,
-  PROP_VIDEO_QUANT_I_FRAMES,
-  PROP_VIDEO_QUANT_P_FRAMES,
-  PROP_VIDEO_QUANT_B_FRAMES,
-  PROP_VIDEO_MIN_QP,
-  PROP_VIDEO_MAX_QP,
-  PROP_VIDEO_MIN_QP_I_FRAMES,
-  PROP_VIDEO_MAX_QP_I_FRAMES,
-  PROP_VIDEO_MIN_QP_P_FRAMES,
-  PROP_VIDEO_MAX_QP_P_FRAMES,
-  PROP_VIDEO_MIN_QP_B_FRAMES,
-  PROP_VIDEO_MAX_QP_B_FRAMES,
-  PROP_VIDEO_IDR_INTERVAL,
   PROP_VIDEO_CROP,
   PROP_VIDEO_EXTRA_BUFFERS,
 };
@@ -281,14 +214,12 @@ video_pad_update_params (GstPad * pad, GstStructure * structure)
       gst_guint64_to_gdouble (vpad->duration));
 
   if (gst_structure_has_name (structure, "video/x-raw")) {
-    vpad->codec = GST_VIDEO_CODEC_NONE;
     vpad->format = gst_video_format_from_string (
         gst_structure_get_string (structure, "format"));
+    vpad->codec = GST_VIDEO_CODEC_NONE;
   } else if (gst_structure_has_name (structure, "video/x-bayer")) {
     const gchar *format = gst_structure_get_string (structure, "format");
     const gchar *bpp = gst_structure_get_string (structure, "bpp");
-
-    vpad->codec = GST_VIDEO_CODEC_NONE;
 
     if (g_strcmp0 (bpp, "8") == 0)
       vpad->bpp = 8;
@@ -309,23 +240,11 @@ video_pad_update_params (GstPad * pad, GstStructure * structure)
       vpad->format = GST_BAYER_FORMAT_GRBG;
     else if (g_strcmp0 (format, "mono") == 0)
       vpad->format = GST_BAYER_FORMAT_MONO;
+
+    vpad->codec = GST_VIDEO_CODEC_NONE;
   } else {
-    const gchar *profile, *level;
-
-    profile = gst_structure_get_string (structure, "profile");
-    gst_structure_set (vpad->params, "profile", G_TYPE_STRING, profile, NULL);
-
-    level = gst_structure_get_string (structure, "level");
-    gst_structure_set (vpad->params, "level", G_TYPE_STRING, level, NULL);
-
     vpad->format = GST_VIDEO_FORMAT_ENCODED;
-
-    if (gst_structure_has_name (structure, "video/x-h264"))
-      vpad->codec = GST_VIDEO_CODEC_H264;
-    else if (gst_structure_has_name (structure, "video/x-h265"))
-      vpad->codec = GST_VIDEO_CODEC_H265;
-    else if (gst_structure_has_name (structure, "image/jpeg"))
-      vpad->codec = GST_VIDEO_CODEC_JPEG;
+    vpad->codec = GST_VIDEO_CODEC_JPEG;
   }
 
   if (gst_structure_has_field (structure, "compression")) {
@@ -464,48 +383,6 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
     }
   }
 
-  if (gst_structure_has_field (structure, "profile")) {
-    const gchar *profile = gst_structure_get_string (structure, "profile");
-
-    if (!profile) {
-      if (gst_structure_has_name (structure, "video/x-h264")) {
-        gst_structure_fixate_field_string (structure, "profile",
-            DEFAULT_VIDEO_H264_PROFILE);
-        GST_DEBUG_OBJECT (pad, "Codec profile not set, using default value: %s",
-            DEFAULT_VIDEO_H264_PROFILE);
-      } else if (gst_structure_has_name (structure, "video/x-h265")) {
-        gst_structure_fixate_field_string (structure, "profile",
-            DEFAULT_VIDEO_H265_PROFILE);
-        GST_DEBUG_OBJECT (pad, "Codec profile not set, using default value: %s",
-            DEFAULT_VIDEO_H265_PROFILE);
-      } else {
-        GST_DEBUG_OBJECT (pad, "Codec profile not required");
-      }
-    }
-  }
-
-  if (gst_structure_has_field (structure, "level")) {
-    const gchar *level = gst_structure_get_string (structure, "level");
-
-    if (!level) {
-      if (gst_structure_has_name (structure, "video/x-h264")) {
-        gst_structure_fixate_field_string (structure, "level",
-            DEFAULT_VIDEO_H264_LEVEL);
-        GST_DEBUG_OBJECT (pad, "Codec level not set, using default value: %s",
-            DEFAULT_VIDEO_H264_LEVEL);
-      } else if (gst_structure_has_name (structure, "video/x-h265")) {
-        gst_structure_fixate_field_string (structure, "level",
-            DEFAULT_VIDEO_H265_LEVEL);
-        GST_DEBUG_OBJECT (pad, "Codec level not set, using default value: %s",
-            DEFAULT_VIDEO_H265_LEVEL);
-      } else {
-        GST_DEBUG_OBJECT (pad, "Codec level not required");
-      }
-    }
-  }
-
-  gst_structure_remove_fields (structure, "stream-format", "alignment", NULL);
-
   caps = gst_caps_fixate (caps);
   gst_pad_set_caps (pad, caps);
 
@@ -554,22 +431,6 @@ video_pad_set_property (GObject * object, guint property_id,
     case PROP_VIDEO_FRAMERATE:
       pad->framerate = g_value_get_double (value);
       break;
-    case PROP_VIDEO_BITRATE:
-    case PROP_VIDEO_BITRATE_CONTROL:
-    case PROP_VIDEO_QUANT_I_FRAMES:
-    case PROP_VIDEO_QUANT_P_FRAMES:
-    case PROP_VIDEO_QUANT_B_FRAMES:
-    case PROP_VIDEO_MIN_QP:
-    case PROP_VIDEO_MAX_QP:
-    case PROP_VIDEO_MIN_QP_I_FRAMES:
-    case PROP_VIDEO_MAX_QP_I_FRAMES:
-    case PROP_VIDEO_MIN_QP_P_FRAMES:
-    case PROP_VIDEO_MAX_QP_P_FRAMES:
-    case PROP_VIDEO_MIN_QP_B_FRAMES:
-    case PROP_VIDEO_MAX_QP_B_FRAMES:
-    case PROP_VIDEO_IDR_INTERVAL:
-      gst_structure_set_value (pad->params, propname, value);
-      break;
     case PROP_VIDEO_CROP:
     {
       g_return_if_fail (gst_value_array_get_size (value) == 4);
@@ -608,23 +469,6 @@ video_pad_get_property (GObject * object, guint property_id, GValue * value,
       break;
     case PROP_VIDEO_FRAMERATE:
       g_value_set_double (value, pad->framerate);
-      break;
-    case PROP_VIDEO_BITRATE:
-    case PROP_VIDEO_BITRATE_CONTROL:
-    case PROP_VIDEO_QUANT_I_FRAMES:
-    case PROP_VIDEO_QUANT_P_FRAMES:
-    case PROP_VIDEO_QUANT_B_FRAMES:
-    case PROP_VIDEO_MIN_QP:
-    case PROP_VIDEO_MAX_QP:
-    case PROP_VIDEO_MIN_QP_I_FRAMES:
-    case PROP_VIDEO_MAX_QP_I_FRAMES:
-    case PROP_VIDEO_MIN_QP_P_FRAMES:
-    case PROP_VIDEO_MAX_QP_P_FRAMES:
-    case PROP_VIDEO_MIN_QP_B_FRAMES:
-    case PROP_VIDEO_MAX_QP_B_FRAMES:
-    case PROP_VIDEO_IDR_INTERVAL:
-      g_value_copy (gst_structure_get_value (pad->params,
-           g_param_spec_get_name (pspec)), value);
       break;
     case PROP_VIDEO_CROP:
     {
@@ -667,11 +511,6 @@ video_pad_finalize (GObject * object)
     pad->buffers = NULL;
   }
 
-  if (pad->params != NULL) {
-    gst_structure_free (pad->params);
-    pad->params = NULL;
-  }
-
   G_OBJECT_CLASS (qmmfsrc_video_pad_parent_class)->finalize(object);
 }
 
@@ -705,98 +544,6 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
           0.0, 30.0, DEFAULT_PROP_FRAMERATE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
-  g_object_class_install_property (gobject, PROP_VIDEO_BITRATE,
-      g_param_spec_uint ("bitrate", "Bitrate",
-          "Target bitrate in bits per second for compressed streams",
-          0, G_MAXUINT, DEFAULT_PROP_BITRATE,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_PLAYING));
-  g_object_class_install_property (gobject, PROP_VIDEO_BITRATE_CONTROL,
-      g_param_spec_enum ("bitrate-control", "Bitrate Control",
-          "Bitrate control method for compressed streams",
-          GST_TYPE_VIDEO_PAD_CONTROL_RATE, DEFAULT_PROP_BITRATE_CONTROL,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_READY));
-  g_object_class_install_property (gobject, PROP_VIDEO_QUANT_I_FRAMES,
-      g_param_spec_uint ("quant-i-frames", "I-Frame Quantization",
-          "Quantization parameter on I-frames for compressed streams",
-          0, G_MAXUINT, DEFAULT_PROP_QUANT_I_FRAMES,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_READY));
-  g_object_class_install_property (gobject, PROP_VIDEO_QUANT_P_FRAMES,
-      g_param_spec_uint ("quant-p-frames", "P-Frame Quantization",
-          "Quantization parameter on P-frames for compressed streams",
-          0, G_MAXUINT, DEFAULT_PROP_QUANT_P_FRAMES,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_READY));
-  g_object_class_install_property (gobject, PROP_VIDEO_QUANT_B_FRAMES,
-      g_param_spec_uint ("quant-b-frames", "B-Frame Quantization",
-          "Quantization parameter on B-frames for compressed streams",
-          0, G_MAXUINT, DEFAULT_PROP_QUANT_B_FRAMES,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_READY));
-  g_object_class_install_property (gobject, PROP_VIDEO_MIN_QP,
-      g_param_spec_uint ("min-qp", "Min Quantization value",
-          "Minimum QP value allowed during rate control for compressed "
-          "streams",
-          0, 51, DEFAULT_PROP_MIN_QP,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_READY));
-  g_object_class_install_property (gobject, PROP_VIDEO_MAX_QP,
-      g_param_spec_uint ("max-qp", "Max Quantization value",
-          "Maximum QP value allowed during rate control for compressed "
-          "streams",
-          0, 51, DEFAULT_PROP_MAX_QP,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_READY));
-  g_object_class_install_property (gobject, PROP_VIDEO_MIN_QP_I_FRAMES,
-      g_param_spec_uint ("min-qp-i-frames", "I-Frame Min Quantization value",
-          "Minimum QP value allowed on I-Frames during rate control for "
-          "compressed streams",
-          0, 51, DEFAULT_PROP_MIN_QP_I_FRAMES,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_READY));
-  g_object_class_install_property (gobject, PROP_VIDEO_MAX_QP_I_FRAMES,
-      g_param_spec_uint ("max-qp-i-frames", "I-Frame Max Quantization value",
-          "Maximum QP value allowed on I-Frames during rate control for "
-          "compressed streams",
-          0, 51, DEFAULT_PROP_MAX_QP_I_FRAMES,
-          (GParamFlags)(G_PARAM_CONSTRUCT | G_PARAM_READWRITE |
-              G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY)));
-  g_object_class_install_property (gobject, PROP_VIDEO_MIN_QP_P_FRAMES,
-      g_param_spec_uint ("min-qp-p-frames", "P-Frame Min Quantization value",
-          "Minimum QP value allowed on for P-Frames during rate control for "
-          "compressed streams",
-          0, 51, DEFAULT_PROP_MIN_QP_P_FRAMES,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_READY));
-  g_object_class_install_property (gobject, PROP_VIDEO_MAX_QP_P_FRAMES,
-      g_param_spec_uint ("max-qp-p-frames", "P-Frame Max Quantization value",
-          "Maximum QP value allowed on P-Frames during rate control for "
-          "compressed streams",
-          0, 51, DEFAULT_PROP_MAX_QP_P_FRAMES,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_READY));
-  g_object_class_install_property (gobject, PROP_VIDEO_MIN_QP_B_FRAMES,
-      g_param_spec_uint ("min-qp-b-frames", "B-Frame Min Quantization value",
-          "Minimum QP value allowed on B-Frames during rate control for "
-          "compressed streams",
-          0, 51, DEFAULT_PROP_MIN_QP_B_FRAMES,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_READY));
-  g_object_class_install_property (gobject, PROP_VIDEO_MAX_QP_B_FRAMES,
-      g_param_spec_uint ("max-qp-b-frames", "B-Frame Max Quantization value",
-          "Maximum QP value allowed on B-Frames during rate control for "
-          "compressed streams",
-          0, 51, DEFAULT_PROP_MAX_QP_B_FRAMES,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_READY));
-  g_object_class_install_property (gobject, PROP_VIDEO_IDR_INTERVAL,
-      g_param_spec_uint ("idr-interval", "Instantaneous Decoder Refresh "
-          "interval", "IDR interval for compressed streams",
-          0, G_MAXUINT, DEFAULT_PROP_IDR_INTERVAL,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_VIDEO_CROP,
       gst_param_spec_array ("crop", "Crop rectangle",
           "Crop rectangle ('<X, Y, WIDTH, HEIGHT>'). Applicable only for "
@@ -825,7 +572,6 @@ qmmfsrc_video_pad_init (GstQmmfSrcVideoPad * pad)
 
   pad->index        = -1;
   pad->srcidx       = -1;
-  pad->xtrabufs     = 0;
 
   pad->width        = -1;
   pad->height       = -1;
@@ -833,11 +579,12 @@ qmmfsrc_video_pad_init (GstQmmfSrcVideoPad * pad)
   pad->format       = GST_VIDEO_FORMAT_UNKNOWN;
   pad->compression  = GST_VIDEO_COMPRESSION_NONE;
   pad->codec        = GST_VIDEO_CODEC_UNKNOWN;
-  pad->params       = gst_structure_new_empty ("codec-params");
+
   pad->crop.x       = DEFAULT_PROP_CROP_X;
   pad->crop.y       = DEFAULT_PROP_CROP_Y;
   pad->crop.w       = DEFAULT_PROP_CROP_WIDTH;
   pad->crop.h       = DEFAULT_PROP_CROP_HEIGHT;
+  pad->xtrabufs     = DEFAULT_PROP_EXTRA_BUFFERS;
 
   pad->duration  = GST_CLOCK_TIME_NONE;
 

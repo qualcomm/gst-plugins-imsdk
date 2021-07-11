@@ -41,30 +41,6 @@ G_BEGIN_DECLS
     "height = (int) [ 16," GST_VIDEO_MAX_HEIGHT " ], "      \
     "framerate = (fraction) [ 0/1, " GST_VIDEO_MAX_FPS " ]"
 
-#define QMMFSRC_VIDEO_H264_PROFILES \
-    "baseline, main, high"
-
-#define QMMFSRC_VIDEO_H264_LEVELS \
-    "1, 1.3, 2, 2.1, 2.2, 3, 3.1, 3.2, 4, 4.1, 4.2, 5, 5.1, 5.2"
-
-#define QMMFSRC_VIDEO_H265_PROFILES \
-    "main"
-
-#define QMMFSRC_VIDEO_H265_LEVELS \
-    "3, 4, 5, 5.1, 5.2"
-
-#define QMMFSRC_VIDEO_H264_CAPS                                \
-    "video/x-h264, "                                           \
-    "profile = (string) { " QMMFSRC_VIDEO_H264_PROFILES " }, " \
-    "level = (string) { " QMMFSRC_VIDEO_H264_LEVELS " }, "     \
-    QMMFSRC_COMMON_VIDEO_CAPS
-
-#define QMMFSRC_VIDEO_H265_CAPS                                \
-    "video/x-h265, "                                           \
-    "profile = (string) { " QMMFSRC_VIDEO_H265_PROFILES " }, " \
-    "level = (string) { " QMMFSRC_VIDEO_H265_LEVELS " }, "     \
-    QMMFSRC_COMMON_VIDEO_CAPS
-
 #define QMMFSRC_VIDEO_JPEG_CAPS \
     "image/jpeg, "              \
     QMMFSRC_COMMON_VIDEO_CAPS
@@ -104,13 +80,9 @@ G_BEGIN_DECLS
 
 #define VIDEO_TRACK_ID_OFFSET (0x01)
 
-#define GST_TYPE_VIDEO_PAD_CONTROL_RATE (gst_video_pad_control_rate_get_type ())
-
 typedef enum {
   GST_VIDEO_CODEC_UNKNOWN,
   GST_VIDEO_CODEC_NONE,
-  GST_VIDEO_CODEC_H264,
-  GST_VIDEO_CODEC_H265,
   GST_VIDEO_CODEC_JPEG,
 } GstVideoCodec;
 
@@ -118,17 +90,6 @@ typedef enum {
   GST_VIDEO_COMPRESSION_NONE,
   GST_VIDEO_COMPRESSION_UBWC,
 } GstVideoCompression;
-
-enum
-{
-  GST_VIDEO_CONTROL_RATE_DISABLE,
-  GST_VIDEO_CONTROL_RATE_VARIABLE,
-  GST_VIDEO_CONTROL_RATE_CONSTANT,
-  GST_VIDEO_CONTROL_RATE_MAXBITRATE,
-  GST_VIDEO_CONTROL_RATE_VARIABLE_SKIP_FRAMES,
-  GST_VIDEO_CONTROL_RATE_CONSTANT_SKIP_FRAMES,
-  GST_VIDEO_CONTROL_RATE_MAXBITRATE_SKIP_FRAMES,
-};
 
 typedef void (*GstVideoParamCb) (GstPad * pad, guint param_id, gpointer data);
 
@@ -157,8 +118,6 @@ struct _GstQmmfSrcVideoPad {
   gint                height;
   /// QMMF Recorder track framerate, set by the pad capabilities.
   gdouble             framerate;
-  /// QMMF Recorder track extra buffers count.
-  guint               xtrabufs;
   /// GStreamer video pad output buffers format.
   gint                format;
   /// GStreamer video pad output bayer format bits per pixel.
@@ -167,10 +126,11 @@ struct _GstQmmfSrcVideoPad {
   GstVideoCompression compression;
   /// Whether the GStreamer stream is uncompressed or compressed and its type.
   GstVideoCodec       codec;
-  /// Agnostic structure containing codec specific parameters.
-  GstStructure        *params;
+
   /// Crop region.
   GstVideoRectangle   crop;
+  /// Additional buffers that are going to be allocated.
+  guint               xtrabufs;
 
   /// QMMF Recorder track buffers duration, calculated from framerate.
   GstClockTime        duration;
@@ -200,8 +160,6 @@ void qmmfsrc_video_pad_flush_buffers_queue (GstPad * pad, gboolean flush);
 
 /// Modifies the pad capabilities into a representation with only fixed values.
 gboolean qmmfsrc_video_pad_fixate_caps (GstPad * pad);
-
-GType gst_video_pad_control_rate_get_type (void);
 
 G_END_DECLS
 
