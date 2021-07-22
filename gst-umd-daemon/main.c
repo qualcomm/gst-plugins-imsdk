@@ -574,17 +574,17 @@ mle_new_sample (GstElement *sink, gpointer userdata)
   }
 
   {
-    GSList *metalist = NULL;
+    GSList *metalist = NULL, *list = NULL;
     VideoRectangle rectangle = {0};
     gfloat confidence = 0.0;
 
-    metalist = gst_buffer_get_detection_meta (buffer);
+    metalist = list = gst_buffer_get_detection_meta (buffer);
 
-    while (metalist != NULL) {
+    while (list != NULL) {
       GstMLDetectionMeta *meta = NULL;
       GstMLClassificationResult *classification = NULL;
 
-      meta = (GstMLDetectionMeta *) metalist->data;
+      meta = (GstMLDetectionMeta *) list->data;
       classification =
           (GstMLClassificationResult *) g_slist_nth_data (meta->box_info, 0);
 
@@ -598,7 +598,7 @@ mle_new_sample (GstElement *sink, gpointer userdata)
         confidence = classification->confidence;
       }
 
-      metalist = g_slist_next (metalist);
+      list = g_slist_next (list);
     }
 
     g_slist_free (metalist);
