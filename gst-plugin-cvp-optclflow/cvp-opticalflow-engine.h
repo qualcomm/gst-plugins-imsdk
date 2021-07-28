@@ -61,54 +61,105 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __GST_CVP_OPTCLFLOW_H__
-#define __GST_CVP_OPTCLFLOW_H__
+#ifndef __GST_CVP_OPTCLFLOW_ENGINE_H__
+#define __GST_CVP_OPTCLFLOW_ENGINE_H__
 
 #include <gst/gst.h>
-#include <gst/base/gstbasetransform.h>
+#include <gst/video/video.h>
+#include <gst/allocators/allocators.h>
 
-#include "cvp-opticalflow-engine.h"
+#include <ml-meta/ml_meta.h>
 
 G_BEGIN_DECLS
 
-#define GST_TYPE_CVP_OPTCLFLOW \
-  (gst_cvp_optclflow_get_type())
-#define GST_CVP_OPTCLFLOW(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_CVP_OPTCLFLOW,GstCvpOptclFlow))
-#define GST_CVP_OPTCLFLOW_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_CVP_OPTCLFLOW,GstCvpOptclFlowClass))
-#define GST_IS_CVP_OPTCLFLOW(obj) \
-  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_CVP_OPTCLFLOW))
-#define GST_IS_CVP_OPTCLFLOW_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_CVP_OPTCLFLOW))
-#define GST_CVP_OPTCLFLOW_CAST(obj)       ((GstCvpOptclFlow *)(obj))
+/**
+ * GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_WIDTH:
+ *
+ * #G_TYPE_UINT, video source width
+ * Default: 0
+ */
+#define GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_WIDTH \
+    "GstCvpOptclFlowEngine.video-width"
 
-typedef struct _GstCvpOptclFlow      GstCvpOptclFlow;
-typedef struct _GstCvpOptclFlowClass GstCvpOptclFlowClass;
+/**
+ * GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_HEIGHT:
+ *
+ * #G_TYPE_UINT, video source height
+ * Default: 0
+ *
+ * Not applicable for output
+ */
+#define GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_HEIGHT \
+    "GstCvpOptclFlowEngine.video-height"
 
-struct _GstCvpOptclFlow {
-  GstBaseTransform        parent;
+/**
+ * GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_STRIDE:
+ *
+ * #G_TYPE_UINT, video source aligned width
+ * Default: 0
+ */
+#define GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_STRIDE \
+    "GstCvpOptclFlowEngine.video-stride"
 
-  GstVideoInfo            *ininfo;
+/**
+ * GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_SCANLINE:
+ *
+ * #G_TYPE_UINT, video source aligned height
+ * Default: 0
+ *
+ * Not applicable for output
+ */
+#define GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_SCANLINE \
+    "GstCvpOptclFlowEngine.video-scanline"
 
-  // Output buffer pool
-  GstBufferPool           *outpool;
+/**
+ * GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_FORMAT:
+ *
+ * #GST_TYPE_VIDEO_SOURCE_FORMAT, set the video source format
+ * Default: #GST_VIDEO_FORMAT_UNKNOWN.
+ */
+#define GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_FORMAT \
+    "GstCvpOptclFlowEngine.video-format"
 
-  /// Supported converters.
-  GstCvpOptclFlowEngine   *engine;
-  /// List of buffers for processing.
-  GList                   *buffers;
+/**
+ * GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_FPS:
+ *
+ * #G_TYPE_UINT, video source frame rate in frames per second
+ * Default: 0
+ *
+ * Not applicable for output
+ */
+#define GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_FPS \
+    "GstCvpOptclFlowEngine.video-fps"
 
-  /// Properties.
-  gboolean                stats;
-};
+/**
+ * GST_CVP_OPTCLFLOW_ENGINE_OPT_ENABLE_STATS:
+ *
+ * #G_TYPE_BOOLEAN, Enable/disable additional motion vector statistics
+ * Default: TRUE
+ */
+#define GST_CVP_OPTCLFLOW_ENGINE_OPT_ENABLE_STATS \
+    "GstCvpOptclFlowEngine.enable-stats"
 
-struct _GstCvpOptclFlowClass {
-  GstBaseTransformClass parent;
-};
 
-G_GNUC_INTERNAL GType gst_cvp_optclflow_get_type(void);
+typedef struct _GstCvpOptclFlowEngine GstCvpOptclFlowEngine;
+
+GST_API GstCvpOptclFlowEngine *
+gst_cvp_optclflow_engine_new     (GstStructure * settings);
+
+GST_API void
+gst_cvp_optclflow_engine_free    (GstCvpOptclFlowEngine * engine);
+
+GST_API gboolean
+gst_cvp_optclflow_engine_sizes   (GstCvpOptclFlowEngine * engine,
+                                  guint * mvsize, guint * statsize,
+                                  guint * metasize);
+
+GST_API gboolean
+gst_cvp_optclflow_engine_execute (GstCvpOptclFlowEngine * engine,
+                                  const GstVideoFrame * inframes, guint n_inputs,
+                                  GstBuffer * outbuffer);
 
 G_END_DECLS
 
-#endif // __GST_CVP_OPTCLFLOW_H__
+#endif /* __GST_CVP_OPTCLFLOW_ENGINE_H__ */
