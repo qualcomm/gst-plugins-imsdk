@@ -45,6 +45,7 @@ target_link_libraries(${GST_QTI_ROIMUX} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
+  qtimlmeta
 )
 
 install(

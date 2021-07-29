@@ -33,6 +33,12 @@
 #include <gst/gst.h>
 #include <gst/base/gstbasetransform.h>
 #include <gst/video/video.h>
+#include <gst/base/gstdataqueue.h>
+
+typedef enum {
+  GST_DATA_FORMAT_TEXT,
+  GST_DATA_FORMAT_OPTICAL_FLOW,
+} GstDataPadFormat;
 
 G_BEGIN_DECLS
 
@@ -67,22 +73,18 @@ struct _GstRoiMux {
   GstPad *srcpad;
   /// Video sink pad
   GstPad *vidsinkpad;
-  /// Text sink pad
-  GstPad *textsinkpad;
+  /// Data sink pad
+  GstPad *datasinkpad;
   /// Video sink EOS flag
   gboolean vidsink_eos;
   /// Text sink EOS flag
-  gboolean textsink_eos;
+  gboolean datasink_eos;
   /// Global mutex lock.
   GMutex lock;
-  /// Caps received flag
-  gboolean  have_caps;
-  /// Segment received flag
-  gboolean  have_segment;
-  /// Incoming caps
-  GstCaps *caps;
+  /// Incoming vcaps
+  GstVideoInfo  *vinfo;
   /// Src segment
-  GstSegment src_segment;
+  GstSegment segment;
   /// ROI data list
   GList *roi_data_list;
   /// Incoming text
@@ -91,6 +93,12 @@ struct _GstRoiMux {
   gsize config_size;
   /// Config parsed flag
   gboolean is_config_parsed;
+  /// The format of the data pad
+  GstDataPadFormat datapad_format;
+  /// The input video buffer queue
+  GstDataQueue *vidpad_queue;
+  /// The input data buffer queue
+  GstDataQueue *datapad_queue;
 };
 
 struct _GstRoiMuxClass {
