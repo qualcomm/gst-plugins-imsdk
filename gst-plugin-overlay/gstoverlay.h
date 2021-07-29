@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -75,11 +75,16 @@ struct _GstOverlay {
   GSequence           *simg_id;
   GSequence           *text_id;
   GSequence           *pose_id;
+  GSequence           *optclflow_id;
 
   guint               bbox_color;
   guint               date_color;
   guint               text_color;
   guint               pose_color;
+  guint               arrows_color;
+  guint               arrows_filter_mv;
+  guint               arrows_filter_sad;
+  guint               arrows_filter_var;
 
   GstVideoRectangle   text_dest_rect;
 

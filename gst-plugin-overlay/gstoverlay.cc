@@ -53,6 +53,7 @@ G_DEFINE_TYPE (GstOverlay, gst_overlay, GST_TYPE_VIDEO_FILTER);
 #define DEFAULT_PROP_OVERLAY_DATE_COLOR  kColorRed
 #define DEFAULT_PROP_OVERLAY_TEXT_COLOR  kColorYellow
 #define DEFAULT_PROP_OVERLAY_POSE_COLOR  kColorLightGreen
+#define DEFAULT_PROP_OVERLAY_ARROWS_COLOR kColorRed
 #define DEFAULT_PROP_OVERLAY_MASK_COLOR  kColorDarkGray
 
 #define DEFAULT_PROP_DEST_RECT_X      40
@@ -94,11 +95,15 @@ static GstMLKeyPointsType PoseChain [][2] {
  * PROP_OVERLAY_SIMG - overlays static image
  * PROP_OVERLAY_BBOX - overlays bounding box
  * PROP_OVERLAY_MASK - overlays privacy mask
- * PROP_OVERLAY_BBOX_COLOR - ML Detection color
- * PROP_OVERLAY_DATE_COLOR - ML Time and Date color
- * PROP_OVERLAY_TEXT_COLOR - ML Classification color
- * PROP_OVERLAY_POSE_COLOR - ML PoseNet color
+ * PROP_OVERLAY_BBOX_COLOR   - ML Detection color
+ * PROP_OVERLAY_DATE_COLOR   - ML Time and Date color
+ * PROP_OVERLAY_TEXT_COLOR   - ML Classification color
+ * PROP_OVERLAY_POSE_COLOR   - ML PoseNet color
+ * PROP_OVERLAY_ARROWS_COLOR - Optical flow arrows color
  * PROP_OVERLAY_TEXT_DEST_RECT - ML Classification destination rectangle
+ * PROP_OVERLAY_OPTIFLOW_FT_MV - Optical flow MV filter
+ * PROP_OVERLAY_OPTIFLOW_FT_SAD - Optical flow SAD filter
+ * PROP_OVERLAY_OPTIFLOW_FT_VAR - Optical flow VAR filter
  */
 enum {
   PROP_0,
@@ -111,7 +116,11 @@ enum {
   PROP_OVERLAY_DATE_COLOR,
   PROP_OVERLAY_TEXT_COLOR,
   PROP_OVERLAY_POSE_COLOR,
-  PROP_OVERLAY_TEXT_DEST_RECT
+  PROP_OVERLAY_ARROWS_COLOR,
+  PROP_OVERLAY_TEXT_DEST_RECT,
+  PROP_OVERLAY_OPTIFLOW_FT_MV,
+  PROP_OVERLAY_OPTIFLOW_FT_SAD,
+  PROP_OVERLAY_OPTIFLOW_FT_VAR,
 };
 
 static GstStaticCaps gst_overlay_format_caps =
@@ -876,6 +885,113 @@ gst_overlay_apply_ml_pose_item (GstOverlay *gst_overlay, gpointer metadata,
       GST_ERROR_OBJECT (gst_overlay, "Overlay set param failed! ret: %d", ret);
       return FALSE;
     }
+  }
+
+  return TRUE;
+}
+
+/**
+ * gst_overlay_apply_optclflow_item:
+ * @gst_overlay: context
+ * @metadata: optical flow metadata entry
+ * @item_id: pointer to overlay item instance id
+ *
+ * Converts GstCvpOpticalFlowMeta metadata to overlay
+ * configuration and applies it as arrows overlay.
+ *
+ * Return true if succeed.
+ */
+static gboolean
+gst_overlay_apply_optclflow_item (GstOverlay * gst_overlay, gpointer metadata,
+    uint32_t * item_id)
+{
+  g_return_val_if_fail (gst_overlay != NULL, FALSE);
+  g_return_val_if_fail (metadata != NULL, FALSE);
+  g_return_val_if_fail (item_id != NULL, FALSE);
+
+  OverlayParam ov_param;
+  int32_t ret = 0;
+
+  if (!(*item_id)) {
+    ov_param = {};
+    ov_param.type = OverlayType::kArrow;
+  } else {
+    ret = gst_overlay->overlay->GetOverlayParams (*item_id, ov_param);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay get param failed! ret: %d", ret);
+      return FALSE;
+    }
+  }
+
+  ov_param.color = gst_overlay->arrows_color;
+  ov_param.dst_rect.start_x = 0;
+  ov_param.dst_rect.start_y = 0;
+  ov_param.dst_rect.width = gst_overlay->width;
+  ov_param.dst_rect.height = gst_overlay->height;
+
+  if (!(*item_id)) {
+    ret = gst_overlay->overlay->CreateOverlayItem (ov_param, item_id);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay create failed! ret: %d", ret);
+      return FALSE;
+    }
+
+    ret = gst_overlay->overlay->EnableOverlayItem (*item_id);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay enable failed! ret: %d", ret);
+      return FALSE;
+    }
+  }
+
+  GstCvpOpticalFlowMeta * meta = (GstCvpOpticalFlowMeta *) metadata;
+  gint paxel_width = (gst_overlay->width / 8);
+  gint arrows_cnt = 0;
+
+  // Read each 4th mv in order to skip each 2nd paxel due arrows density
+  for (gint x = 0; x < meta->n_vectors; x+=4) {
+    gint mv_x = meta->mvectors[x].x;
+    gint mv_y = meta->mvectors[x].y;
+
+    // Filter by motion vectors
+    if (mv_x < (gint) gst_overlay->arrows_filter_mv &&
+        mv_x > -((gint) gst_overlay->arrows_filter_mv) &&
+        mv_y < (gint) gst_overlay->arrows_filter_mv &&
+        mv_y > -((gint) gst_overlay->arrows_filter_mv)) {
+      continue;
+    }
+
+    // Filter by variance
+    if (meta->mvectors[x].variance < gst_overlay->arrows_filter_var) {
+      continue;
+    }
+
+    // Filter by SAD
+    if (meta->mvectors[x].sad < gst_overlay->arrows_filter_sad) {
+      continue;
+    }
+
+    gint row = (gint) (x / (paxel_width * 2) * 2);
+    gint pos = x - row * paxel_width;
+    gint pos_real = (gint) (pos / 2);
+
+    ov_param.arrows[arrows_cnt].end_x = pos_real * 8 + 4;
+    if (pos % 2)
+      ov_param.arrows[arrows_cnt].end_y = (row + 1) * 8;
+    else
+      ov_param.arrows[arrows_cnt].end_y = row * 8 + 4;
+
+    ov_param.arrows[arrows_cnt].start_x =
+        ov_param.arrows[arrows_cnt].end_x + mv_x;
+    ov_param.arrows[arrows_cnt].start_y =
+        ov_param.arrows[arrows_cnt].end_y + mv_y;
+    arrows_cnt++;
+  }
+  ov_param.arrows_count = arrows_cnt;
+
+  ret = gst_overlay->overlay->UpdateOverlayParams (*item_id, ov_param);
+  if (ret != 0) {
+    GST_ERROR_OBJECT (gst_overlay, "Overlay set param failed! ret: %d", ret);
+    return FALSE;
   }
 
   return TRUE;
@@ -2035,6 +2151,9 @@ gst_overlay_set_property (GObject * object, guint prop_id,
     case PROP_OVERLAY_POSE_COLOR:
       gst_overlay->pose_color = g_value_get_uint (value);
       break;
+    case PROP_OVERLAY_ARROWS_COLOR:
+      gst_overlay->arrows_color = g_value_get_uint (value);
+      break;
     case PROP_OVERLAY_TEXT_DEST_RECT:
       if (gst_value_array_get_size(value) != 4) {
         GST_DEBUG_OBJECT(gst_overlay,
@@ -2049,6 +2168,15 @@ gst_overlay_set_property (GObject * object, guint prop_id,
           g_value_get_int(gst_value_array_get_value(value, 2));
       gst_overlay->text_dest_rect.h =
           g_value_get_int(gst_value_array_get_value(value, 3));
+      break;
+    case PROP_OVERLAY_OPTIFLOW_FT_MV:
+      gst_overlay->arrows_filter_mv = g_value_get_uint (value);
+      break;
+    case PROP_OVERLAY_OPTIFLOW_FT_SAD:
+      gst_overlay->arrows_filter_sad = g_value_get_uint (value);
+      break;
+    case PROP_OVERLAY_OPTIFLOW_FT_VAR:
+      gst_overlay->arrows_filter_var = g_value_get_uint (value);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -2106,6 +2234,9 @@ gst_overlay_get_property (GObject * object, guint prop_id, GValue * value,
     case PROP_OVERLAY_POSE_COLOR:
       g_value_set_uint (value, gst_overlay->pose_color);
       break;
+    case PROP_OVERLAY_ARROWS_COLOR:
+      g_value_set_uint (value, gst_overlay->arrows_color);
+      break;
     case PROP_OVERLAY_TEXT_DEST_RECT:
     {
       GValue val = G_VALUE_INIT;
@@ -2124,6 +2255,15 @@ gst_overlay_get_property (GObject * object, guint prop_id, GValue * value,
       gst_value_array_append_value (value, &val);
       break;
     }
+    case PROP_OVERLAY_OPTIFLOW_FT_MV:
+      g_value_set_uint (value, gst_overlay->arrows_filter_mv);
+      break;
+    case PROP_OVERLAY_OPTIFLOW_FT_SAD:
+      g_value_set_uint (value, gst_overlay->arrows_filter_sad);
+      break;
+    case PROP_OVERLAY_OPTIFLOW_FT_VAR:
+      g_value_set_uint (value, gst_overlay->arrows_filter_var);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -2158,6 +2298,11 @@ gst_overlay_finalize (GObject * object)
     g_sequence_foreach (gst_overlay->pose_id, gst_overlay_destroy_overlay_item,
         gst_overlay->overlay);
     g_sequence_free (gst_overlay->pose_id);
+
+    g_sequence_foreach (gst_overlay->optclflow_id,
+        gst_overlay_destroy_overlay_item,
+        gst_overlay->overlay);
+    g_sequence_free (gst_overlay->optclflow_id);
 
     g_sequence_free (gst_overlay->usr_text);
     g_sequence_free (gst_overlay->usr_date);
@@ -2297,6 +2442,15 @@ gst_overlay_transform_frame_ip (GstVideoFilter *filter, GstVideoFrame *frame)
     return GST_FLOW_ERROR;
   }
 
+  res = gst_overlay_apply_item_list (gst_overlay,
+                            gst_buffer_get_optclflow_meta (frame->buffer),
+                            gst_overlay_apply_optclflow_item,
+                            gst_overlay->optclflow_id);
+  if (!res) {
+    GST_ERROR_OBJECT (gst_overlay, "Overlay apply optclflow item list failed!");
+    return GST_FLOW_ERROR;
+  }
+
   g_mutex_lock (&gst_overlay->lock);
 
   g_sequence_foreach (gst_overlay->usr_text,
@@ -2325,6 +2479,7 @@ gst_overlay_transform_frame_ip (GstVideoFilter *filter, GstVideoFrame *frame)
       !g_sequence_is_empty (gst_overlay->simg_id) ||
       !g_sequence_is_empty (gst_overlay->text_id) ||
       !g_sequence_is_empty (gst_overlay->pose_id) ||
+      !g_sequence_is_empty (gst_overlay->optclflow_id) ||
       !g_sequence_is_empty (gst_overlay->usr_text) ||
       !g_sequence_is_empty (gst_overlay->usr_date) ||
       !g_sequence_is_empty (gst_overlay->usr_simg) ||
@@ -2419,6 +2574,7 @@ gst_overlay_init (GstOverlay * gst_overlay)
   gst_overlay->simg_id = g_sequence_new (free);
   gst_overlay->text_id = g_sequence_new (free);
   gst_overlay->pose_id = g_sequence_new (free);
+  gst_overlay->optclflow_id = g_sequence_new (free);
 
   gst_overlay->usr_text = g_sequence_new (gst_overlay_free_user_text_entry);
   gst_overlay->usr_date = g_sequence_new (gst_overlay_free_user_overlay_entry);
@@ -2430,6 +2586,7 @@ gst_overlay_init (GstOverlay * gst_overlay)
   gst_overlay->date_color = DEFAULT_PROP_OVERLAY_DATE_COLOR;
   gst_overlay->text_color = DEFAULT_PROP_OVERLAY_TEXT_COLOR;
   gst_overlay->pose_color = DEFAULT_PROP_OVERLAY_POSE_COLOR;
+  gst_overlay->arrows_color = DEFAULT_PROP_OVERLAY_ARROWS_COLOR;
   gst_overlay->text_dest_rect.x = DEFAULT_PROP_DEST_RECT_X;
   gst_overlay->text_dest_rect.y = DEFAULT_PROP_DEST_RECT_Y;
   gst_overlay->text_dest_rect.w = DEFAULT_PROP_DEST_RECT_WIDTH;
@@ -2504,6 +2661,11 @@ gst_overlay_class_init (GstOverlayClass * klass)
       0, G_MAXUINT, DEFAULT_PROP_OVERLAY_POSE_COLOR, static_cast<GParamFlags>(
         G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
+  g_object_class_install_property (gobject, PROP_OVERLAY_ARROWS_COLOR,
+    g_param_spec_uint ("arrows-color", "Arrows color", "Arrows overlay color",
+      0, G_MAXUINT, DEFAULT_PROP_OVERLAY_ARROWS_COLOR, static_cast<GParamFlags>(
+        G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
   g_object_class_install_property (gobject, PROP_OVERLAY_TEXT_DEST_RECT,
       gst_param_spec_array ("dest-rect-ml-text",
           "Destination Rectangle for ML Detection overlay",
@@ -2517,6 +2679,21 @@ gst_overlay_class_init (GstOverlayClass * klass)
           static_cast <GParamFlags> (G_PARAM_CONSTRUCT |
                                      G_PARAM_READWRITE |
                                      G_PARAM_STATIC_STRINGS)));
+
+  g_object_class_install_property (gobject, PROP_OVERLAY_OPTIFLOW_FT_MV,
+    g_param_spec_uint ("arrows-ft-mv", "MV filter", "Arrows mv filter",
+      0, G_MAXUINT, 0, static_cast<GParamFlags>(
+        G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
+  g_object_class_install_property (gobject, PROP_OVERLAY_OPTIFLOW_FT_SAD,
+    g_param_spec_uint ("arrows-ft-sad", "SAD filter", "Arrows sad filter",
+      0, G_MAXUINT, 0, static_cast<GParamFlags>(
+        G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
+  g_object_class_install_property (gobject, PROP_OVERLAY_OPTIFLOW_FT_VAR,
+    g_param_spec_uint ("arrows-ft-var", "VAR filter", "Arrows var filter",
+      0, G_MAXUINT, 0, static_cast<GParamFlags>(
+        G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
   gst_element_class_set_static_metadata (element, "QTI Overlay", "Overlay",
       "This plugin renders text, image, bounding box or graph on top of a "
