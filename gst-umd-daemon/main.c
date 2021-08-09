@@ -1031,6 +1031,20 @@ create_video_pipeline (GstServiceContext * srvctx)
     return FALSE;
   }
 
+  {
+    // Set the camera ISO mode to manual.
+    GParamSpec *propspecs = NULL;
+    GValue value = G_VALUE_INIT;
+
+    // Get the property specs to initialize the GValue type.
+    propspecs = g_object_class_find_property (
+        G_OBJECT_GET_CLASS (camsrc), "iso-mode");
+    g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+
+    gst_value_deserialize (&value, "manual");
+    g_object_set_property (G_OBJECT (camsrc), "iso-mode", &value);
+  }
+
   // Set emit-signals property and connect a callback to the new-sample signal.
   g_object_set (G_OBJECT (umdvsink), "emit-signals", TRUE, NULL);
   g_signal_connect (umdvsink, "new-sample", G_CALLBACK (umd_new_sample), srvctx);
@@ -1832,6 +1846,28 @@ get_antibanding_property (GstElement * element, guint8 * mode)
 }
 
 static void
+set_iso_property (GstElement * element, guint16 isovalue)
+{
+  GValue value = G_VALUE_INIT;
+
+  g_value_init (&value, G_TYPE_INT);
+  g_value_set_int (&value, isovalue);
+
+  g_object_set_property (G_OBJECT (element), "manual-iso-value", &value);
+}
+
+static void
+get_iso_property (GstElement * element, guint16 * isovalue)
+{
+  GValue value = G_VALUE_INIT;
+
+  g_value_init (&value, G_TYPE_INT);
+  g_object_get_property (G_OBJECT (element), "manual-iso-value", &value);
+
+  *isovalue = g_value_get_int (&value);
+}
+
+static void
 set_zoom_property (GstElement * element, guint16 magnification,
     gint32 pan, gint32 tilt)
 {
@@ -2001,6 +2037,19 @@ handle_camera_control (uint32_t ctrl, uint32_t request, void * payload,
           break;
         case UMD_CTRL_GET_REQUEST:
           get_antibanding_property (element, (guint8*) payload);
+          break;
+        default:
+          g_printerr ("\nUnknown control request 0x%X!\n", request);
+          break;
+      }
+      break;
+    case UMD_VIDEO_CTRL_GAIN:
+      switch (request) {
+        case UMD_CTRL_SET_REQUEST:
+          set_iso_property (element, *((guint16*) payload));
+          break;
+        case UMD_CTRL_GET_REQUEST:
+          get_iso_property (element, (guint16*) payload);
           break;
         default:
           g_printerr ("\nUnknown control request 0x%X!\n", request);
