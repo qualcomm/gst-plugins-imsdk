@@ -392,6 +392,10 @@ qmmfsrc_image_pad_fixate_caps (GstPad * pad)
     }
   }
 
+  // Always fixate pixel aspect ratio to 1/1.
+  gst_structure_set (structure, "pixel-aspect-ratio", GST_TYPE_FRACTION,
+        1, 1, NULL);
+
   caps = gst_caps_fixate (caps);
   gst_pad_set_caps (pad, caps);
 
