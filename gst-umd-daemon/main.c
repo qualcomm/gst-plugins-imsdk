@@ -71,6 +71,7 @@ typedef struct _AutoFramingConfig AutoFramingConfig;
 typedef struct _VideoRectangle VideoRectangle;
 typedef struct _AutoFrmLib AutoFrmLib;
 typedef struct _AutoFrmOps AutoFrmOps;
+typedef struct _MainOps MainOps;
 
 enum
 {
@@ -93,7 +94,29 @@ static AutoFrmOps afrmops = {
   FALSE, 8, 16, 10, 10, ML_CROP_INTERNAL
 };
 
+struct _MainOps
+{
+  gchar * video;
+  gchar * audio;
+};
+
+static MainOps mainops = {
+  NULL, NULL
+};
+
 static const GOptionEntry entries[] = {
+    { "uvc", 'v', 0, G_OPTION_ARG_STRING,
+      &mainops.video,
+      "UVC device "
+      "(default: NULL)",
+      "USB-VIDEO-DEVICE"
+    },
+    { "uac", 'a', 0, G_OPTION_ARG_STRING,
+      &mainops.audio,
+      "UAC device "
+      "(default: NULL)",
+      "USB-AUDIO-DEVICE"
+    },
     { "ml-auto-framing-enable", 'f', 0, G_OPTION_ARG_NONE,
       &afrmops.enable,
       "Enable Machine Learning based auto framing algorithm "
@@ -1027,7 +1050,7 @@ create_video_pipeline (GstServiceContext * srvctx)
   gst_object_unref (bus);
 
   // Set pipeline into READY state.
-  switch (gst_element_set_state (srvctx->apipeline, GST_STATE_READY)) {
+  switch (gst_element_set_state (srvctx->vpipeline, GST_STATE_READY)) {
     case GST_STATE_CHANGE_FAILURE:
       g_printerr ("\nVideo pipeline failed to transition to READY state!\n");
       return FALSE;
@@ -1040,7 +1063,7 @@ create_video_pipeline (GstServiceContext * srvctx)
 
       g_print ("\nVideo pipeline is PREROLLING ...\n");
 
-      ret = gst_element_get_state (srvctx->apipeline, NULL, NULL,
+      ret = gst_element_get_state (srvctx->vpipeline, NULL, NULL,
           GST_CLOCK_TIME_NONE);
 
       if (ret != GST_STATE_CHANGE_SUCCESS) {
@@ -2316,19 +2339,20 @@ main (gint argc, gchar *argv[])
   // Initialize GST library.
   gst_init (&argc, &argv);
 
-  if (!create_audio_pipeline (srvctx)) {
+  if (mainops.audio && !create_audio_pipeline (srvctx)) {
     g_printerr ("\nFailed to create audio pipeline!\n");
     gst_service_context_free (srvctx);
     return -1;
   }
 
-  if (!create_video_pipeline (srvctx)) {
+  if (mainops.video && !create_video_pipeline (srvctx)) {
     g_printerr ("\nFailed to create video pipeline!\n");
     gst_service_context_free (srvctx);
     return -1;
   }
 
-  srvctx->gadget = umd_gadget_new ("/dev/video3", "hw:1,0", &callbacks, srvctx);
+  // If a device is not to be initialized, NULL is passed for respective device
+  srvctx->gadget = umd_gadget_new (mainops.video, mainops.audio, &callbacks, srvctx);
   if (NULL == srvctx->gadget) {
     g_printerr ("\nFailed to create UMD gadget!\n");
     gst_service_context_free (srvctx);
