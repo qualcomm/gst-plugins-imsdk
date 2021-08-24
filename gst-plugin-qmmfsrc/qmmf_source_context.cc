@@ -150,6 +150,8 @@ struct _GstQmmfContext {
   gint              irmode;
   /// Camera sensor active pixels property.
   GstVideoRectangle sensorsize;
+  /// Camera Sensor Mode.
+  gint               sensormode;
 
   /// QMMF Recorder instance.
   ::qmmf::recorder::Recorder *recorder;
@@ -1073,6 +1075,11 @@ gst_qmmf_context_open (GstQmmfContext * context)
   hdr.enable = context->shdr;
   xtraparam.Update(::qmmf::recorder::QMMF_VIDEO_HDR_MODE, hdr);
 
+  // ForceSensorMode
+  ::qmmf::recorder::ForceSensorMode forcesensormode;
+  forcesensormode.mode = context->sensormode;
+  xtraparam.Update(::qmmf::recorder::QMMF_FORCE_SENSOR_MODE, forcesensormode);
+
   status = recorder->StartCamera (context->camera_id, 30, xtraparam);
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
       "QMMF Recorder StartCamera Failed!");
@@ -1651,6 +1658,9 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_SHDR:
       context->shdr = g_value_get_boolean (value);
       break;
+    case PARAM_CAMERA_SENSOR_MODE:
+      context->sensormode = g_value_get_int (value);
+      break;
     case PARAM_CAMERA_ADRC:
     {
       guint8 disable;
@@ -2135,6 +2145,9 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       break;
     case PARAM_CAMERA_WHITE_BALANCE_LOCK:
       g_value_set_boolean (value, context->wblock);
+      break;
+    case PARAM_CAMERA_SENSOR_MODE:
+      g_value_set_int (value, context->sensormode);
       break;
     case PARAM_CAMERA_MANUAL_WB_SETTINGS:
     {
