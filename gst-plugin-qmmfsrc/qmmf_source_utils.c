@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
+* Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -305,14 +305,25 @@ gst_qmmfsrc_ir_mode_get_type (void)
   static GType gtype = 0;
   static const GEnumValue variants[] = {
     { IR_MODE_OFF,
-        "The infrared LED is disabled.", "off"
+        "The infrared LED is OFF and cut filter is applied i.e. infrared light"
+        " is blocked.", "off"
     },
     { IR_MODE_ON,
-        "The infrared LED is active until canceled.", "on"
+        "The infrared LED is ON and cut filter is removed i.e. infrared light "
+        "is allowed.", "on"
     },
     { IR_MODE_AUTO,
-        "The infrared LED is turned OFF or ON depending on the conditions.",
-        "auto"
+        "The infrared LED and cut filter are turned ON or OFF depending"
+        "on the conditions.", "auto"
+    },
+    { IR_MODE_FILTER_ONLY,
+        "The infrared LED is turned OFF and cut filter is applied i.e. "
+        "IR light is blocked.", "cut-filter-only"
+    },
+    { IR_MODE_FILTER_DISABLE,
+        "Infrared cut filter is removed allowing IR light to pass. This mode is"
+        " used for transitioning from 'cut-filter-only' mode i.e. disabling only"
+        " the cut filter.", "cut-filter-disable"
     },
     {0, NULL, NULL},
   };
