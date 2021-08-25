@@ -18,6 +18,11 @@ target_include_directories(${GST_QTI_VIDEO_BASE} PRIVATE
   ${KERNEL_BUILDDIR}/usr/include
 )
 
+# Headers path for msm-5.4 media on qrbx210 targets.
+target_include_directories(${GST_QTI_VIDEO_BASE} PRIVATE
+  ${KERNEL_BUILDDIR}/usr/include/vidc
+)
+
 target_link_libraries(${GST_QTI_VIDEO_BASE} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}

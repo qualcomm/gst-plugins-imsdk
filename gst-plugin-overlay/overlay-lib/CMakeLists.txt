@@ -19,6 +19,10 @@ target_include_directories(overlay_lib
 target_include_directories(overlay_lib
  PRIVATE $<BUILD_INTERFACE:${KERNEL_BUILDDIR}/usr/include>)
 
+# Headers path for msm-5.4 media on qrbx210 targets.
+target_include_directories(overlay_lib
+ PRIVATE $<BUILD_INTERFACE:${KERNEL_BUILDDIR}/usr/include/vidc>)
+
 # TODO remove this hack when camx issue with propagating c and cpp flags is solved
 target_include_directories(overlay_lib
  PRIVATE ${PKG_CONFIG_SYSROOT_DIR}/usr/include/ion_headers)
