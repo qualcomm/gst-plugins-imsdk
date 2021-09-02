@@ -68,13 +68,6 @@ typedef struct _GstVideoTransformClass GstVideoTransformClass;
 struct _GstVideoTransform {
   GstBaseTransform        parent;
 
-  /// Properties.
-  gboolean                flip_v;
-  gboolean                flip_h;
-  GstVideoTransformRotate rotation;
-  GstVideoRectangle       crop;
-  GstVideoRectangle       destination;
-
   GstVideoInfo            *ininfo;
   GstVideoInfo            *outinfo;
 
@@ -83,6 +76,14 @@ struct _GstVideoTransform {
 
   /// Supported converters.
   GstC2dVideoConverter    *c2dconvert;
+
+  /// Properties.
+  gboolean                flip_v;
+  gboolean                flip_h;
+  GstVideoTransformRotate rotation;
+  GstVideoRectangle       crop;
+  GstVideoRectangle       destination;
+  guint                   background;
 };
 
 struct _GstVideoTransformClass {
