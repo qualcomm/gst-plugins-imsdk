@@ -71,7 +71,7 @@
 #define DEFAULT_OPT_FLIP_HORIZONTAL FALSE
 #define DEFAULT_OPT_FLIP_VERTICAL   FALSE
 #define DEFAULT_OPT_ROTATION        GST_C2D_VIDEO_ROTATE_NONE
-#define DEFAULT_OPT_BACKGROUND      0xFF808080
+#define DEFAULT_OPT_BACKGROUND      0x00000000
 #define DEFAULT_OPT_UBWC_FORMAT     FALSE
 
 #define GET_OPT_FLIP_HORIZONTAL(s) get_opt_bool (s, \
@@ -239,6 +239,36 @@ update_options (GQuark field, const GValue * value, gpointer userdata)
 {
   gst_structure_id_set_value (GST_STRUCTURE_CAST (userdata), field, value);
   return TRUE;
+}
+
+static guint
+rectangles_overlapping_area (C2D_RECT * l_rect, C2D_RECT * r_rect)
+{
+  gint width = 0, height = 0;
+
+  // Figure out the width of the intersecting rectangle.
+  // 1st: Find out the X axis coordinate of left most Top-Right point.
+  width = MIN ((l_rect->x >> 16) + (l_rect->width >> 16),
+      (r_rect->x >> 16) + (r_rect->width >> 16));
+  // 2nd: Find out the X axis coordinate of right most Top-Left point
+  // and substract from the previously found value.
+  width -= MAX ((l_rect->x >> 16), (r_rect->x >> 16));
+
+  // Negative width means that there is no overlapping, zero the value.
+  width = (width < 0) ? 0 : width;
+
+  // Figure out the height of the intersecting rectangle.
+  // 1st: Find out the Y axis coordinate of bottom most Left-Top point.
+  height = MIN ((l_rect->y >> 16) + (l_rect->height >> 16),
+      (r_rect->y >> 16) + (r_rect->height >> 16));
+  // 2nd: Find out the Y axis coordinate of top most Left-Bottom point
+  // and substract from the previously found value.
+  height -= MAX ((l_rect->y >> 16), (r_rect->y >> 16));
+
+  // Negative height means that there is no overlapping, zero the value.
+  height = (height < 0) ? 0 : height;
+
+  return (width * height);
 }
 
 static gpointer
@@ -898,7 +928,7 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
     const GstVideoFrame * inframes, guint n_inputs, GstVideoFrame * outframe)
 {
   GstMemory *memory = NULL;
-  guint id = 0, idx = 0, fd = 0, surface_id = 0;
+  guint id = 0, idx = 0, fd = 0, surface_id = 0, area = 0;
   C2D_STATUS status = C2D_STATUS_OK;
   C2D_OBJECT *objects = NULL;
   c2d_ts_handle timestamp;
@@ -909,6 +939,10 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
 
   // Allocate memory for the C2D draw objects.
   objects = g_new0 (C2D_OBJECT, n_inputs);
+
+  // Total area of the output frame that is to be used in later calculations
+  // to determine whether there are unoccupied background pixels to be filled.
+  area = GST_VIDEO_FRAME_WIDTH (outframe) * GST_VIDEO_FRAME_HEIGHT (outframe);
 
   GST_C2D_LOCK (convert);
 
@@ -957,6 +991,21 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
     // Update the input C2D object.
     update_object (&objects[id], surface_id, opts, inframe, outframe);
 
+    // Calculate the output area filled with frame content.
+    {
+      C2D_RECT *l_rect = &objects[id].target_rect;
+      guint num = 0;
+
+      // Subtract the rectangle area of current C2D object to the total area.
+      area -= (l_rect->width >> 16) * (l_rect->height >> 16);
+
+      // Add overlapping area from the total rectangle area.
+      for (num = 0; num < id; num++) {
+        C2D_RECT *r_rect = &objects[num].target_rect;
+        area += rectangles_overlapping_area (l_rect, r_rect);
+      }
+    }
+
     // Set the previous object to point to current one (linked list).
     if (id >= 1)
       objects[(id - 1)].next = &objects[id];
@@ -989,14 +1038,19 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
         g_hash_table_lookup (convert->outsurfaces, GUINT_TO_POINTER (fd)));
   }
 
+  // Fill the surface if there is visible background area.
+  if ((GET_OPT_BACKGROUND (convert->outopts) != 0x00000000) && (area > 0)) {
+    GST_LOG ("Fill output surface %x", surface_id);
+
+    status = convert->FillSurface (surface_id,
+        GET_OPT_BACKGROUND (convert->outopts), NULL);
+
+    C2D_RETURN_NULL_IF_FAIL_WITH_MSG (C2D_STATUS_OK == status,
+        GST_C2D_UNLOCK (convert); g_free (objects), "c2dFillSurface failed"
+        " for target surface %x, error: %d!", surface_id, status);
+  }
+
   GST_LOG ("Draw output surface %x", surface_id);
-
-  status = convert->FillSurface (surface_id,
-      GET_OPT_BACKGROUND (convert->outopts), NULL);
-
-  C2D_RETURN_NULL_IF_FAIL_WITH_MSG (C2D_STATUS_OK == status,
-      GST_C2D_UNLOCK (convert); g_free (objects), "c2dFillSurface failed for"
-      " target surface %x, error: %d!", surface_id, status);
 
   status = convert->Draw (surface_id, 0, NULL, 0, 0, objects, 0);
 
