@@ -313,7 +313,7 @@ ion_device_alloc (GstImageBufferPool * vpool)
   alloc_data.align = DEFAULT_PAGE_ALIGNMENT;
 #endif
   alloc_data.heap_id_mask = ION_HEAP(ION_SYSTEM_HEAP_ID);
-  alloc_data.flags = 0;
+  alloc_data.flags = ION_FLAG_CACHED;
 
   result = ioctl (priv->devfd, ION_IOC_ALLOC, &alloc_data);
   if (result != 0) {
