@@ -460,10 +460,8 @@ gst_ml_snpe_engine_execute (GstMLSnpeEngine * engine,
       GST_ERROR ("Input memory at idx %u, size mismatch! Expected %u or higher"
           " but received %" G_GSIZE_FORMAT "!", idx, size, inmap[idx].size);
 
-      for (num = 0; num < idx; ++num)
+      for (num = 0; num <= idx; ++num)
         gst_buffer_unmap (inbuffer, &inmap[num]);
-
-      gst_buffer_unmap (inbuffer, &inmap[idx]);
 
       g_free (outmap);
       g_free (inmap);
@@ -502,10 +500,8 @@ gst_ml_snpe_engine_execute (GstMLSnpeEngine * engine,
       for (num = 0; num < engine->ininfo->n_tensors; ++num)
         gst_buffer_unmap (inbuffer, &inmap[num]);
 
-      for (num = 0; num < idx; ++num)
+      for (num = 0; num <= idx; ++num)
         gst_buffer_unmap (outbuffer, &outmap[num]);
-
-      gst_buffer_unmap (outbuffer, &outmap[idx]);
 
       g_free (outmap);
       g_free (inmap);

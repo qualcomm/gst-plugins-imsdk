@@ -55,7 +55,6 @@ typedef struct _GstMLTensorMeta GstMLTensorMeta;
 struct _GstMLTensorMeta {
   GstMeta   meta;
 
-  // ID corresponding to the memory index inside GstBuffer.
   guint     id;
 
   // Tensor parameters.

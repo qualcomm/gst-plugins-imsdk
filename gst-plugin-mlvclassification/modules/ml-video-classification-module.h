@@ -56,7 +56,7 @@ struct _GstMLPrediction {
  *
  * Initilize instance of the image classification module.
  *
- * return: pointer to a privatre module struct on success or NULL on failure
+ * return: pointer to a private module struct on success or NULL on failure
  */
 GST_API gpointer
 gst_ml_module_init (const gchar * labels);

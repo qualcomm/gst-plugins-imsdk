@@ -40,7 +40,7 @@ G_BEGIN_DECLS
  *
  * Initilize instance of the image segmentation module.
  *
- * return: pointer to a privatre module struct on success or NULL on failure
+ * return: pointer to a private module struct on success or NULL on failure
  */
 GST_API gpointer
 gst_ml_video_segmentation_module_init (const gchar * labels);

@@ -184,7 +184,11 @@ gst_ml_tflite_propose_allocation (GstBaseTransform * base,
   if (needpool) {
     GstStructure *structure = NULL;
 
-    pool = gst_ml_tflite_create_pool (tflite, caps);
+    if ((pool = gst_ml_tflite_create_pool (tflite, caps)) == NULL) {
+      GST_ERROR_OBJECT (tflite, "Failed to create buffer pool!");
+      return FALSE;
+    }
+
     structure = gst_buffer_pool_get_config (pool);
 
     // Set caps and size in query.
@@ -230,7 +234,11 @@ gst_ml_tflite_decide_allocation (GstBaseTransform * base, GstQuery * query)
     gst_object_unref (tflite->outpool);
 
   // Create a new buffer pool.
-  pool = gst_ml_tflite_create_pool (tflite, caps);
+  if ((pool = gst_ml_tflite_create_pool (tflite, caps)) == NULL) {
+    GST_ERROR_OBJECT (tflite, "Failed to create buffer pool!");
+    return FALSE;
+  }
+
   tflite->outpool = pool;
 
   // Get the configured pool properties in order to set in query.

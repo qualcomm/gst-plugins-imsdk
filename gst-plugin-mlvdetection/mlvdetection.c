@@ -122,7 +122,7 @@ static GstStaticCaps gst_ml_video_detection_static_src_caps =
  * @deinit: Deinitilizes the instance of the module.
  * @process: Decode the tensors inside the buffer into prediction results.
  *
- * Machine leaning interface for post-processing module.
+ * Machine learning interface for post-processing module.
  */
 struct _GstMLModule
 {
@@ -624,7 +624,11 @@ gst_ml_video_detection_decide_allocation (GstBaseTransform * base,
     gst_object_unref (detection->outpool);
 
   // Create a new buffer pool.
-  pool = gst_ml_video_detection_create_pool (detection, caps);
+  if ((pool = gst_ml_video_detection_create_pool (detection, caps)) == NULL) {
+    GST_ERROR_OBJECT (detection, "Failed to create buffer pool!");
+    return FALSE;
+  }
+
   detection->outpool = pool;
 
   // Get the configured pool properties in order to set in query.
@@ -1098,7 +1102,7 @@ GST_PLUGIN_DEFINE (
     GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
     qtimlvdetection,
-    "QTI Machne Learning plugin for image object detection post processing",
+    "QTI Machine Learning plugin for image object detection post processing",
     plugin_init,
     PACKAGE_VERSION,
     PACKAGE_LICENSE,

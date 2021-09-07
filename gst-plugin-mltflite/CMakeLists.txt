@@ -29,6 +29,7 @@ add_definitions(-DHAVE_CONFIG_H)
 # Common compiler flags.
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
+set(CMAKE_CXX_STANDARD 11)
 
 # GStreamer ML TFLite plugin.
 set(GST_QTI_ML_TFLITE gstqtimltflite)
@@ -56,5 +57,5 @@ install(
   LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0
   PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
               GROUP_EXECUTE GROUP_READ
-              GROUP_EXECUTE GROUP_READ
+              WORLD_EXECUTE WORLD_READ
 )

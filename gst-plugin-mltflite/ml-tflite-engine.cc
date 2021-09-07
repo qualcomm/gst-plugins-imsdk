@@ -205,19 +205,16 @@ gst_ml_tflite_engine_new (GstStructure * settings)
       tflite::StatefulNnApiDelegate::Options options;
       TfLiteStatus status = TfLiteStatus::kTfLiteOk;
 
-      tflite::Interpreter::TfLiteDelegatePtr delegate =
-        tflite::Interpreter::TfLiteDelegatePtr (
-          new tflite::StatefulNnApiDelegate(options), [](TfLiteDelegate* dlg) {
-            delete reinterpret_cast<tflite::StatefulNnApiDelegate*>(dlg);
-          }
-        );
+      auto delegate = tflite::Interpreter::TfLiteDelegatePtr (
+        new tflite::StatefulNnApiDelegate(options), [](TfLiteDelegate* dlg) {
+          delete reinterpret_cast<tflite::StatefulNnApiDelegate*>(dlg);
+        }
+      );
 
       if (!delegate) {
         GST_WARNING ("Failed to create NN Framework delegate!");
         break;
       }
-
-      //delegate->flags |= kTfLiteDelegateFlagsAllowDynamicTensors;
 
       status = engine->interpreter->ModifyGraphWithDelegate(delegate.get());
       if (status != TfLiteStatus::kTfLiteOk)
@@ -238,13 +235,12 @@ gst_ml_tflite_engine_new (GstStructure * settings)
       options.print_graph_profile = false;
       options.print_graph_debug = false;
 
-      tflite::Interpreter::TfLiteDelegatePtr delegate =
-        tflite::Interpreter::TfLiteDelegatePtr (
-          TfLiteHexagonDelegateCreate(&options), [](TfLiteDelegate* dlg) {
-            TfLiteHexagonDelegateDelete(dlg);
-            TfLiteHexagonTearDown();
-          }
-        );
+      auto delegate = tflite::Interpreter::TfLiteDelegatePtr (
+        TfLiteHexagonDelegateCreate(&options), [](TfLiteDelegate* dlg) {
+          TfLiteHexagonDelegateDelete(dlg);
+          TfLiteHexagonTearDown();
+        }
+      );
 
       if (!delegate) {
         GST_WARNING ("Failed to create NN Framework delegate!");
@@ -262,15 +258,15 @@ gst_ml_tflite_engine_new (GstStructure * settings)
       tflite::StatefulNnApiDelegate::Options options;
       TfLiteStatus status = TfLiteStatus::kTfLiteOk;
 
+      // Set the higher ExecutionPreference bits so that the NPU is chosen.
       options.execution_preference = static_cast<
-          tflite::StatefulNnApiDelegate::Options::ExecutionPreference>(00300000);
+          tflite::StatefulNnApiDelegate::Options::ExecutionPreference>(0x00300000);
 
-      tflite::Interpreter::TfLiteDelegatePtr delegate =
-        tflite::Interpreter::TfLiteDelegatePtr (
-          new tflite::StatefulNnApiDelegate(options), [](TfLiteDelegate* dlg) {
-            delete reinterpret_cast<tflite::StatefulNnApiDelegate*>(dlg);
-          }
-        );
+      auto delegate = tflite::Interpreter::TfLiteDelegatePtr (
+        new tflite::StatefulNnApiDelegate(options), [](TfLiteDelegate* dlg) {
+          delete reinterpret_cast<tflite::StatefulNnApiDelegate*>(dlg);
+        }
+      );
 
       if (!delegate) {
         GST_WARNING ("Failed to create NN Framework delegate!");
@@ -315,7 +311,7 @@ gst_ml_tflite_engine_new (GstStructure * settings)
     default:
       GST_ERROR ("Unsupported input tensors format!");
       gst_ml_tflite_engine_free (engine);
-      break;
+      return NULL;
   }
 
   idx = engine->interpreter->outputs()[0];
@@ -333,7 +329,7 @@ gst_ml_tflite_engine_new (GstStructure * settings)
     default:
       GST_ERROR ("Unsupported output tensors format!");
       gst_ml_tflite_engine_free (engine);
-      break;
+      return NULL;
   }
 
   GST_DEBUG ("Number of input tensors: %u", engine->ininfo->n_tensors);
@@ -453,13 +449,7 @@ gst_ml_tflite_engine_execute (GstMLTFLiteEngine * engine,
       return FALSE;
     }
 
-    //memcpy (tensor->data.uint8, inmap[idx].data, inmap[idx].size);
-
     tensor->data.raw = reinterpret_cast<char*>(inmap[idx].data);
-    // Assign the externally allocated buffer to the input tensor.
-    // engine->interpreter->SetTensorParametersReadOnly(input, tensor->type,
-    //     tensor->name, tensor->dims->size, tensor->dims->data, tensor->params,
-    //     reinterpret_cast<const char*>(inmap[idx].data), inmap[idx].size);
   }
 
   for (idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
@@ -487,10 +477,6 @@ gst_ml_tflite_engine_execute (GstMLTFLiteEngine * engine,
     }
 
     tensor->data.raw = reinterpret_cast<char*>(outmap[idx].data);
-    // Assign the externally allocated buffer to the output tensor.
-    // engine->interpreter->SetTensorParametersReadOnly(output, tensor->type,
-    //     tensor->name, tensor->dims->size, tensor->dims->data, tensor->params,
-    //     reinterpret_cast<const char*>(outmap[idx].data), outmap[idx].size);
   }
 
   if (!(success = (engine->interpreter->Invoke() == 0)))
@@ -499,13 +485,8 @@ gst_ml_tflite_engine_execute (GstMLTFLiteEngine * engine,
   for (idx = 0; idx < engine->ininfo->n_tensors; ++idx)
     gst_buffer_unmap (inbuffer, &inmap[idx]);
 
-  for (idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
-    //gint output = engine->interpreter->outputs()[idx];
-    //const TfLiteTensor *tensor = engine->interpreter->tensor(output);
-
-    //memcpy (outmap[idx].data, tensor->data.uint8, outmap[idx].size);
+  for (idx = 0; idx < engine->outinfo->n_tensors; ++idx)
     gst_buffer_unmap (outbuffer, &outmap[idx]);
-  }
 
   g_free (inmap);
   g_free (outmap);

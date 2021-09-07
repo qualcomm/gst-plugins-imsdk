@@ -96,7 +96,7 @@ static GstStaticCaps gst_ml_video_segmentation_static_src_caps =
  * @deinit: Deinitilizes the instance of the module.
  * @process: Decode the tensors inside the buffer into prediction results.
  *
- * Machine leaning interface for post-processing module.
+ * Machine learning interface for post-processing module.
  */
 struct _GstMLModule
 {
@@ -306,6 +306,11 @@ gst_ml_video_segmentation_decide_allocation (GstBaseTransform * base,
 
   // Create a new buffer pool.
   pool = gst_ml_video_segmentation_create_pool (segmentation, caps);
+  if (pool == NULL) {
+    GST_ERROR_OBJECT (segmentation, "Failed to create buffer pool!");
+    return FALSE;
+  }
+
   segmentation->outpool = pool;
 
   // Get the configured pool properties in order to set in query.
@@ -772,7 +777,7 @@ GST_PLUGIN_DEFINE (
     GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
     qtimlvsegmentation,
-    "QTI Machne Learning plugin for image segmentation post processing",
+    "QTI Machine Learning plugin for image segmentation post processing",
     plugin_init,
     PACKAGE_VERSION,
     PACKAGE_LICENSE,

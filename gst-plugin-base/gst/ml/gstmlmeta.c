@@ -120,7 +120,7 @@ gst_buffer_add_ml_tensor_meta (GstBuffer * buffer, GstMLType type,
 
   if (NULL == meta) {
     GST_ERROR ("Failed to add ML Tensor meta to buffer %p!", buffer);
-    return FALSE;
+    return NULL;
   }
 
   meta->type = type;

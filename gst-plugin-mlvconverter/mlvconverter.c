@@ -631,7 +631,11 @@ gst_ml_video_converter_decide_allocation (GstBaseTransform * base,
     gst_object_unref (mlconverter->outpool);
 
   // Create a new buffer pool.
-  pool = gst_ml_video_converter_create_pool (mlconverter, caps);
+  if ((pool = gst_ml_video_converter_create_pool (mlconverter, caps)) == NULL) {
+    GST_ERROR_OBJECT (mlconverter, "Failed to create buffer pool!");
+    return FALSE;
+  }
+
   mlconverter->outpool = pool;
 
   // Get the configured pool properties in order to set in query.
@@ -1166,7 +1170,7 @@ GST_PLUGIN_DEFINE (
     GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
     qtimlvconverter,
-    "QTI Machne Learning plugin for converting video strem into ML stream",
+    "QTI Machine Learning plugin for converting video stream into ML stream",
     plugin_init,
     PACKAGE_VERSION,
     PACKAGE_LICENSE,

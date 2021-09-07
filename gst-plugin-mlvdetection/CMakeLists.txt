@@ -11,6 +11,8 @@ link_directories(${SYSROOT_LIBDIR})
 
 find_package(PkgConfig)
 
+set(ENV{PKG_CONFIG_PATH} "$ENV{PKG_CONFIG_PATH}:${SYSROOT_LIBDIR}/pkgconfig")
+
 # Get the pkgconfigs exported by the automake tools
 pkg_check_modules(GST
   REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
@@ -63,7 +65,7 @@ install(
   LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0
   PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
               GROUP_EXECUTE GROUP_READ
-              GROUP_EXECUTE GROUP_READ
+              WORLD_EXECUTE WORLD_READ
   PUBLIC_HEADER DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_INCDIR}/gstreamer-1.0/gst/ml/
 )
 

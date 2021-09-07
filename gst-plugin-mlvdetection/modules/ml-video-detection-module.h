@@ -64,7 +64,7 @@ struct _GstMLPrediction {
  *
  * Initilize instance of the image object detection module.
  *
- * return: pointer to a privatre module struct on success or NULL on failure
+ * return: pointer to a private module struct on success or NULL on failure
  */
 GST_API gpointer
 gst_ml_video_detection_module_init (const gchar * labels);
