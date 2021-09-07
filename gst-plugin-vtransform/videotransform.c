@@ -73,7 +73,7 @@ G_DEFINE_TYPE (GstVideoTransform, gst_video_transform, GST_TYPE_BASE_TRANSFORM);
 #undef GST_VIDEO_FPS_RANGE
 #define GST_VIDEO_FPS_RANGE "(fraction) [ 0, 255 ]"
 
-#define GST_VIDEO_FORMATS "{ BGRA, RGBA, BGR, RGB, NV12, NV21, YUY2 }"
+#define GST_VIDEO_FORMATS "{ BGRA, RGBA, BGR, RGB, NV12, NV21, YUY2, GRAY8 }"
 
 enum
 {
