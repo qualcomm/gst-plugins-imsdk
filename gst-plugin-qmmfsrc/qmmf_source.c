@@ -1261,10 +1261,9 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_CAMERA_SENSOR_MODE,
       g_param_spec_int ("sensor-mode", "Sensor Mode",
-          "Force set Sensor Mode index (0-255). -1 for Auto selection",
-          -1, 255, DEFAULT_PROP_CAMERA_SENSOR_MODE,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_READY));
+          "Force set Sensor Mode index (0-15). -1 for Auto selection",
+          -1, 15, DEFAULT_PROP_CAMERA_SENSOR_MODE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
 
   signals[SIGNAL_CAPTURE_IMAGE] =
