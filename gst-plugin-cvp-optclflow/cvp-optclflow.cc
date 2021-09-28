@@ -276,6 +276,9 @@ gst_cvp_optclflow_create_pool (GstCVPOPTCLFLOW * cvp, GstCaps * caps)
   // Set memory block 2
   g_value_set_uint (&value, sizeof (cvpOFStats) * size);
   gst_value_array_append_value (&memoryblocks, &value);
+  // Set memory block 3
+  g_value_set_uint (&value, sizeof (GstCvpMotionVector) * size);
+  gst_value_array_append_value (&memoryblocks, &value);
 
   gst_structure_set_value (config, "memory-blocks", &memoryblocks);
 

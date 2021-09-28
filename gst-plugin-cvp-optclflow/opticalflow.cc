@@ -357,6 +357,7 @@ int32_t OFEngine::Process (GstBuffer * inbuffer, GstBuffer * outbuffer) {
 
     GstMapInfo out_info0;
     GstMapInfo out_info1;
+    GstMapInfo out_info2;
     gint outMemFd0 =
         gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
     gint outMemFd1 =
@@ -377,6 +378,18 @@ int32_t OFEngine::Process (GstBuffer * inbuffer, GstBuffer * outbuffer) {
     if (config.bStatsEnable &&
         !gst_buffer_map_range (outbuffer, 1, 1, &out_info1, GST_MAP_READWRITE)) {
       CVP_LOGE ("%s Failed to map the mv buffer!!", __func__);
+      FreeCurImageBuffer ();
+      FreeRefImageBuffer ();
+      gst_buffer_unmap (savebuffer, &ref_info);
+      gst_buffer_unmap (inbuffer, &cur_info);
+      gst_buffer_unref (savebuffer);
+      savebuffer = NULL;
+      g_mutex_unlock (&lock);
+      return CVP_FAIL;
+    }
+
+    if (!gst_buffer_map_range (outbuffer, 2, 1, &out_info2, GST_MAP_READWRITE)) {
+      CVP_LOGE ("%s Failed to map the meta buffer!!", __func__);
       FreeCurImageBuffer ();
       FreeRefImageBuffer ();
       gst_buffer_unmap (savebuffer, &ref_info);
@@ -494,11 +507,38 @@ int32_t OFEngine::Process (GstBuffer * inbuffer, GstBuffer * outbuffer) {
 
     CVP_LOGI ("%s: Memory deregister successful", __func__);
 
+    // Parse mv and stats in separate metadata buffer
+    cvpOFStats *stats_data = NULL;
+    if (config.bStatsEnable)
+        stats_data = (cvpOFStats *) out_info1.data;
+    cvpMotionVector *mv_data = (cvpMotionVector *) out_info0.data;
+    GstCvpMotionVector* meta_data = (GstCvpMotionVector *) out_info2.data;
+    gint n_vectors = config.sImageInfo.nWidth * config.sImageInfo.nHeight / 64;
+
+    for (int i = 0; i < n_vectors; i++) {
+      meta_data[i].x = mv_data[i].nMVX_L0;
+      meta_data[i].y = mv_data[i].nMVY_L0;
+      meta_data[i].confidence = mv_data[i].nConf;
+
+      if (config.bStatsEnable) {
+        meta_data[i].variance = stats_data[i].nVariance;
+        meta_data[i].mean     = stats_data[i].nMean;
+        meta_data[i].bestsad  = stats_data[i].nBestMVSad;
+        meta_data[i].sad      = stats_data[i].nSad;
+      } else {
+        meta_data[i].variance = 0;
+        meta_data[i].mean     = 0;
+        meta_data[i].bestsad  = 0;
+        meta_data[i].sad      = 0;
+      }
+    }
+
     // previous buffer cleanup
     CVP_LOGI ("%s: Last frame buffer %p has ref count %d",
         __func__, savebuffer,  GST_MINI_OBJECT_REFCOUNT_VALUE(savebuffer));
     gst_buffer_unmap (inbuffer, &cur_info);
     gst_buffer_unmap (savebuffer, &ref_info);
+    gst_buffer_unmap (outbuffer, &out_info2);
     if (config.bStatsEnable)
       gst_buffer_unmap (outbuffer, &out_info1);
     gst_buffer_unmap (outbuffer, &out_info0);
