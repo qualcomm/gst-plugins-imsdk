@@ -36,7 +36,6 @@
 #include <stdio.h>
 
 #include <ml-meta/ml_meta.h>
-#include <cvp/v2.0/cvpOpticalFlow.h>
 
 #define GST_INPUT_VIDEO_FORMATS "{ NV12 }"
 #define GST_OUTPUT_VIDEO_FORMATS "{ NV12 }"
@@ -342,23 +341,15 @@ gst_roimux_timestamp_compare (GstRoiMux * roimux)
 
     GstCvpOpticalFlowMeta *meta = gst_buffer_add_optclflow_meta (videobuffer);
 
-    GstMapInfo map_info0;
-    GstMapInfo map_info1;
+    GstMapInfo map_info;
     if (!gst_buffer_map_range (
-        metabuffer, 0, 1, &map_info0, GST_MAP_READWRITE)) {
-      GST_ERROR_OBJECT (roimux, "%s Failed to map the mv buffer!!", __func__);
-      g_mutex_unlock (&roimux->lock);
-      return;
-    }
-    if (!gst_buffer_map_range (
-        metabuffer, 1, 1, &map_info1, GST_MAP_READWRITE)) {
-      GST_ERROR_OBJECT (roimux, "%s Failed to map the stats buffer!!", __func__);
+        metabuffer, 2, 1, &map_info, GST_MAP_READWRITE)) {
+      GST_ERROR_OBJECT (roimux, "%s Failed to map the meta buffer!!", __func__);
       g_mutex_unlock (&roimux->lock);
       return;
     }
 
-    cvpMotionVector *mv_data = (cvpMotionVector *) map_info0.data;
-    cvpOFStats *stats_data = (cvpOFStats *) map_info1.data;
+    GstCvpMotionVector *mv_data = (GstCvpMotionVector *) map_info.data;
     gint n_vectors = GST_VIDEO_INFO_WIDTH (roimux->vinfo) *
         GST_VIDEO_INFO_HEIGHT (roimux->vinfo) / 64;
 
@@ -370,20 +361,9 @@ gst_roimux_timestamp_compare (GstRoiMux * roimux)
       return;
     }
     meta->n_vectors = n_vectors;
+    memcpy (meta->mvectors, mv_data, sizeof (GstCvpMotionVector) * n_vectors);
 
-    for (int i = 0; i < n_vectors; i++) {
-      meta->mvectors[i].x = mv_data[i].nMVX_L0;
-      meta->mvectors[i].y = mv_data[i].nMVY_L0;
-      meta->mvectors[i].confidence = mv_data[i].nConf;
-
-      meta->mvectors[i].variance = stats_data[i].nVariance;
-      meta->mvectors[i].mean     = stats_data[i].nMean;
-      meta->mvectors[i].bestsad  = stats_data[i].nBestMVSad;
-      meta->mvectors[i].sad      = stats_data[i].nSad;
-    }
-
-    gst_buffer_unmap (metabuffer, &map_info1);
-    gst_buffer_unmap (metabuffer, &map_info0);
+    gst_buffer_unmap (metabuffer, &map_info);
     gst_buffer_unref (metabuffer);
 
     // Send buffer
