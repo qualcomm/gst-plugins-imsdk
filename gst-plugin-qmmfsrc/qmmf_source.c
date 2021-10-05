@@ -1126,7 +1126,7 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_CAMERA_CONTRAST,
       g_param_spec_int ("contrast", "Contrast",
-          "Image Contrast Strength", -100, 100, DEFAULT_PROP_CAMERA_CONTRAST,
+          "Image Contrast Strength", 1, 10, DEFAULT_PROP_CAMERA_CONTRAST,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_CAMERA_SATURATION,
