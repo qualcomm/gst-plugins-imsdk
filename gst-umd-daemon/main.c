@@ -1487,7 +1487,7 @@ set_contrast_property (GstElement * element, guint16 contrast)
   GValue value = G_VALUE_INIT;
 
   g_value_init (&value, G_TYPE_INT);
-  g_value_set_int (&value, ((contrast * 2) - 100));
+  g_value_set_int (&value, contrast);
 
   g_object_set_property (G_OBJECT (element), "contrast", &value);
 }
@@ -1500,7 +1500,7 @@ get_contrast_property (GstElement * element, guint16 * contrast)
   g_value_init (&value, G_TYPE_INT);
   g_object_get_property (G_OBJECT (element), "contrast", &value);
 
-  *contrast = (g_value_get_int (&value) + 100) / 2;
+  *contrast = g_value_get_int (&value);
 }
 
 static void
