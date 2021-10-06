@@ -1444,7 +1444,7 @@ static bool
 disable_camera_stream (void * userdata)
 {
   GstServiceContext *srvctx = GST_SERVICE_CONTEXT_CAST (userdata);
-  GstState state = GST_STATE_READY;
+  GstState state = GST_STATE_NULL;
 
   if (!update_pipeline_state (srvctx->vpipeline, srvctx->pipemsgs, state)) {
     g_printerr ("\nFailed to update video pipeline state!\n");
