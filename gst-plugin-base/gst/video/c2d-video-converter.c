@@ -1105,6 +1105,8 @@ gst_c2d_video_converter_flush (GstC2dVideoConverter *convert)
   GHashTableIter iter;
   gpointer key, value;
 
+  g_return_if_fail (convert != NULL);
+
   GST_LOG ("Forcing pending requests to complete");
 
   g_hash_table_iter_init (&iter, convert->outsurfaces);
@@ -1119,5 +1121,24 @@ gst_c2d_video_converter_flush (GstC2dVideoConverter *convert)
   }
 
   GST_LOG ("Finished pending requests");
+
+  GST_C2D_LOCK (convert);
+
+  if (convert->insurfaces != NULL) {
+    g_hash_table_foreach (convert->insurfaces, destroy_surface, convert);
+    g_hash_table_remove_all (convert->insurfaces);
+  }
+
+  if (convert->outsurfaces != NULL) {
+    g_hash_table_foreach (convert->outsurfaces, destroy_surface, convert);
+    g_hash_table_remove_all (convert->outsurfaces);
+  }
+
+  if (convert->gpulist != NULL) {
+    g_hash_table_foreach (convert->gpulist, unmap_gpu_address, convert);
+    g_hash_table_remove_all (convert->gpulist);
+  }
+
+  GST_C2D_UNLOCK (convert);
   return;
 }
