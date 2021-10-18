@@ -1895,11 +1895,15 @@ set_zoom_property (GstElement * element, guint16 magnification,
   zoom.w = (sensor.w - sensor.x) / (magnification / 100.0);
   zoom.h = (sensor.h - sensor.y) / (magnification / 100.0);
 
+  // Normalize to degrees and shift range from 0-49 (25 is 0) to (-25)-24.
+  pan = (pan / 3600) - 25;
+  tilt = (tilt / 3600) - 25;
+
   zoom.x = ((sensor.w - sensor.x) - zoom.w) / 2;
-  zoom.x += zoom.x * pan / (100.0 * 3600);
+  zoom.x += zoom.x * ((pan > 0) ? (pan / 24.0) : (pan / 25.0));
 
   zoom.y = ((sensor.h - sensor.y) - zoom.h) / 2;
-  zoom.y += zoom.y * tilt / (100.0 * 3600);
+  zoom.y += zoom.y * ((tilt > 0) ? (tilt / 24.0) : (tilt / 25.0));
 
   g_value_unset (&value);
   g_value_init (&value, GST_TYPE_ARRAY);
