@@ -42,43 +42,52 @@
 #include <dlfcn.h>
 #include <stdint.h>
 
+#include <gst/allocators/gstfdmemory.h>
 #include <adreno/image_convert.h>
 #include <drm/drm_fourcc.h>
-#include <gbm.h>
 #include <gbm_priv.h>
-#include <gst/allocators/gstfdmemory.h>
 
-#define RETURN_NULL_IF_FAIL_WITH_MSG(expr, cleanup, ...) \
-    if (!(expr)) { \
-        GST_ERROR(__VA_ARGS__); \
-        cleanup; \
-        return NULL; \
-    }
+#define GST_GLES_RETURN_VAL_IF_FAIL(expression, value, ...) \
+{ \
+  if (!(expression)) { \
+    GST_ERROR (__VA_ARGS__); \
+    return (value); \
+  } \
+}
+
+#define GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN(expression, value, cleanup, ...) \
+{ \
+  if (!(expression)) { \
+    GST_ERROR (__VA_ARGS__); \
+    cleanup; \
+    return (value); \
+  } \
+}
+
+#define DRM_FMT_STRING(x) \
+    (x) & 0xFF, ((x) >> 8) & 0xFF, ((x) >> 16) & 0xFF, ((x) >> 24) & 0xFF
 
 #define DEFAULT_OPT_RESIZE_WIDTH  0
 #define DEFAULT_OPT_RESIZE_HEIGHT 0
-#define DEFAULT_OPT_RSCALE      1.0/255.0
-#define DEFAULT_OPT_GSCALE      1.0/255.0
-#define DEFAULT_OPT_BSCALE      1.0/255.0
-#define DEFAULT_OPT_ASCALE      1.0/255.0
-#define DEFAULT_OPT_QSCALE      1.0/255.0
-#define DEFAULT_OPT_ROFFSET     0.0
-#define DEFAULT_OPT_GOFFSET     0.0
-#define DEFAULT_OPT_BOFFSET     0.0
-#define DEFAULT_OPT_AOFFSET     0.0
-#define DEFAULT_OPT_QOFFSET    -128.0
-#define DEFAULT_OPT_DEST_WIDTH  0
-#define DEFAULT_OPT_DEST_HEIGHT 0
-#define DEFAULT_OPT_DEST_X      0
-#define DEFAULT_OPT_DEST_Y      0
+#define DEFAULT_OPT_DEST_X        0
+#define DEFAULT_OPT_DEST_Y        0
+#define DEFAULT_OPT_DEST_WIDTH    0
+#define DEFAULT_OPT_DEST_HEIGHT   0
+#define DEFAULT_OPT_RSCALE        1.0
+#define DEFAULT_OPT_GSCALE        1.0
+#define DEFAULT_OPT_BSCALE        1.0
+#define DEFAULT_OPT_ASCALE        1.0
+#define DEFAULT_OPT_QSCALE        1.0
+#define DEFAULT_OPT_ROFFSET       0.0
+#define DEFAULT_OPT_GOFFSET       0.0
+#define DEFAULT_OPT_BOFFSET       0.0
+#define DEFAULT_OPT_AOFFSET       0.0
+#define DEFAULT_OPT_QOFFSET       0.0
 
-#define DEFAULT_OPT_RESIZE      FALSE
-#define DEFAULT_OPT_NORMALIZE   FALSE
-#define DEFAULT_OPT_QUANTIZE    FALSE
+#define DEFAULT_OPT_RESIZE           FALSE
+#define DEFAULT_OPT_NORMALIZE        FALSE
+#define DEFAULT_OPT_QUANTIZE         FALSE
 #define DEFAULT_OPT_CONVERT_TO_UINT8 FALSE
-#define DEFAULT_OPT_DEST   FALSE
-
-#define GST_CAT_DEFAULT ensure_debug_category()
 
 #define GET_OPT_RESIZE_WIDTH(s, v) get_opt_int (s, \
     GST_GLES_VIDEO_CONVERTER_OPT_RESIZE_WIDTH, v)
@@ -112,8 +121,6 @@
     GST_GLES_VIDEO_CONVERTER_OPT_QUANTIZE, v)
 #define GET_OPT_CONVERT_TO_UINT8(s, v) get_opt_boolean (s, \
     GST_GLES_VIDEO_CONVERTER_OPT_CONVERT_TO_UINT8, v)
-#define GET_OPT_DEST(s, v) get_opt_boolean (s, \
-    GST_GLES_VIDEO_CONVERTER_OPT_DEST, v)
 #define GET_OPT_DEST_X(s, v) get_opt_int (s, \
     GST_GLES_VIDEO_CONVERTER_OPT_DEST_X, v)
 #define GET_OPT_DEST_Y(s, v) get_opt_int (s, \
@@ -123,18 +130,20 @@
 #define GET_OPT_DEST_HEIGHT(s, v) get_opt_int (s, \
     GST_GLES_VIDEO_CONVERTER_OPT_DEST_HEIGHT, v)
 
-#define GST_GLES_CONVERTER_GET_LOCK(obj) (&((GstGlesConverter *)obj)->lock)
-#define GST_GLES_CONVERTER_LOCK(obj) \
-    g_mutex_lock (GST_GLES_CONVERTER_GET_LOCK(obj))
-#define GST_GLES_CONVERTER_UNLOCK(obj) \
-    g_mutex_unlock (GST_GLES_CONVERTER_GET_LOCK(obj))
+#define GST_GLES_GET_LOCK(obj) (&((GstGlesConverter *)obj)->lock)
+#define GST_GLES_LOCK(obj)     g_mutex_lock (GST_GLES_GET_LOCK(obj))
+#define GST_GLES_UNLOCK(obj)   g_mutex_unlock (GST_GLES_GET_LOCK(obj))
+
+#define GST_CAT_DEFAULT ensure_debug_category()
 
 struct _GstGlesConverter
 {
   // Mutex lock synchronizing between threads
   GMutex lock;
+
   // options for the output frame
   GstStructure *options;
+
   // DataConverter to construct the converter pipeline
   ::QImgConv::DataConverter *engine;
 };
@@ -143,11 +152,13 @@ static GstDebugCategory *
 ensure_debug_category (void)
 {
   static gsize catonce = 0;
+
   if (g_once_init_enter (&catonce)) {
     gsize catdone = (gsize) _gst_debug_category_new ("gles-video-converter",
         0, "GLES video converter");
     g_once_init_leave (&catonce, catdone);
   }
+
   return (GstDebugCategory *) catonce;
 }
 
@@ -176,128 +187,6 @@ static gboolean
 update_options (GQuark field, const GValue * value, gpointer userdata)
 {
   gst_structure_id_set_value (GST_STRUCTURE_CAST (userdata), field, value);
-  return TRUE;
-}
-
-//Instantiate the DataConverter object for the pipeline
-GstGlesConverter *
-gst_gles_converter_new ()
-{
-  GstGlesConverter* convert = NULL;
-  convert = g_slice_new0(GstGlesConverter);
-  g_return_val_if_fail (convert != NULL, NULL);
-
-  if ((convert->options = gst_structure_new_empty ("GlesConverterOpts"))
-        == NULL) {
-    g_slice_free (GstGlesConverter, convert);
-    GST_ERROR ("Failed to create Gles Converter options!");
-    return NULL;
-  }
-
-  GST_INFO ("Created Gles Converter object %p", convert);
-  return convert;
-}
-
-//gst_gles_converter_set_ops: configure the conversion pipeline with the
-//parameter settings passed through opts structure.
-gboolean
-gst_gles_converter_set_ops (GstGlesConverter * convert, GstStructure * opts)
-{
-  ::QImgConv::Rec rectangle;
-  ::QImgConv::Color color = {0.0,0.0,0.0,0.0};
-  std::vector<std::string> composition;
-  gint width, height, rect_width, rect_height;
-  gint rect_x, rect_y;
-  gfloat rscale, gscale, bscale, ascale, qscale;
-  gfloat roffset, goffset, boffset, aoffset, qoffset;
-
-  g_return_val_if_fail (convert != NULL, FALSE);
-  g_return_val_if_fail (opts != NULL, FALSE);
-
-  // locking the converter to set the opts and composition pipeline
-  GST_GLES_CONVERTER_LOCK(convert);
-
-  // Iterate over the fields in the new opts structure and update them.
-  gst_structure_foreach (opts, update_options, convert->options);
-  gst_structure_free (opts);
-
-  width  = GET_OPT_RESIZE_WIDTH (convert->options, DEFAULT_OPT_RESIZE_WIDTH);
-  height = GET_OPT_RESIZE_HEIGHT (convert->options, DEFAULT_OPT_RESIZE_HEIGHT);
-  rect_x =
-    GET_OPT_DEST_X (convert->options, DEFAULT_OPT_DEST_X);
-  rect_y =
-    GET_OPT_DEST_Y (convert->options, DEFAULT_OPT_DEST_Y);
-  rect_width  =
-    GET_OPT_DEST_WIDTH (convert->options, DEFAULT_OPT_DEST_WIDTH);
-  rect_height =
-    GET_OPT_DEST_HEIGHT (convert->options, DEFAULT_OPT_DEST_HEIGHT);
-
-  if (width == 0 || height == 0) {
-    GST_ERROR ("Failed to set valid opts. Found Width:%d Height:%d",
-        width, height);
-    GST_GLES_CONVERTER_UNLOCK (convert);
-    return FALSE;
-  }
-
-  if (rect_width == 0 || rect_height == 0) {
-    GST_ERROR ("Failed to set valid opts. Found destination Width:%d Height:%d",
-        rect_width, rect_height);
-    GST_GLES_CONVERTER_UNLOCK (convert);
-    return FALSE;
-  }
-
-  // Create DataConverter here to retain thread context for Compose and
-  // DoPreProcess call
-  if ((convert->engine = new ::QImgConv::DataConverter()) == NULL) {
-    GST_ERROR ("Failed to create Gles DataConverter!");
-    GST_GLES_CONVERTER_UNLOCK (convert);
-    return FALSE;
-  }
-
-  GST_DEBUG ("Created Gles DataConverter object %p", convert->engine);
-
-  rscale    = GET_OPT_RSCALE (convert->options, DEFAULT_OPT_RSCALE);
-  gscale    = GET_OPT_GSCALE (convert->options, DEFAULT_OPT_RSCALE);
-  bscale    = GET_OPT_BSCALE (convert->options, DEFAULT_OPT_RSCALE);
-  ascale    = GET_OPT_ASCALE (convert->options, DEFAULT_OPT_ASCALE);
-  qscale    = GET_OPT_QSCALE (convert->options, DEFAULT_OPT_QSCALE);
-  roffset   = GET_OPT_ROFFSET (convert->options, DEFAULT_OPT_ROFFSET);
-  goffset   = GET_OPT_GOFFSET (convert->options, DEFAULT_OPT_GOFFSET);
-  boffset   = GET_OPT_BOFFSET (convert->options, DEFAULT_OPT_BOFFSET);
-  aoffset   = GET_OPT_AOFFSET (convert->options, DEFAULT_OPT_AOFFSET);
-  qoffset   = GET_OPT_ROFFSET (convert->options, DEFAULT_OPT_QOFFSET);
-
-  if (GET_OPT_RESIZE (convert->options, DEFAULT_OPT_RESIZE))
-    composition.push_back (convert->engine->Resize (width, height));
-
-  if (GET_OPT_NORMALIZE (convert->options, DEFAULT_OPT_NORMALIZE))
-    composition.push_back (convert->engine->Normalize (rscale, gscale, bscale,
-        ascale, roffset, goffset, boffset, aoffset));
-
-  if (GET_OPT_DEST (convert->options, DEFAULT_OPT_DEST)) {
-    rectangle.x = rect_x;
-    rectangle.y = rect_y;
-    rectangle.width  = rect_width;
-    rectangle.height = rect_height;
-    composition.push_back (convert->engine->Letterbox (rectangle, color));
-  }
-
-  if (GET_OPT_QUANTIZE (convert->options, DEFAULT_OPT_QUANTIZE))
-    composition.push_back (convert->engine->Quantize (qscale, qoffset));
-
-  if (GET_OPT_CONVERT_TO_UINT8 (convert->options, DEFAULT_OPT_CONVERT_TO_UINT8))
-    composition.push_back (convert->engine->ConverttoUINT8());
-
-  for (auto op = composition.begin(); op != composition.end(); op++)
-    GST_DEBUG ("Composing DataConverter with %s", (*op).c_str());
-
-  if (convert->engine->Compose(composition) != ::QImgConv::STATUS_OK) {
-    GST_ERROR ("Failed to compose the Gles engine operations!");
-    GST_GLES_CONVERTER_UNLOCK (convert);
-    return FALSE;
-  }
-
-  GST_GLES_CONVERTER_UNLOCK (convert);
   return TRUE;
 }
 
@@ -357,100 +246,205 @@ gst_video_format_to_drm_format (GstVideoFormat format)
     return 0;
 }
 
-//gst_gles_converter_process: Use convert and perform the preprocessing on the
-//input images in batches. Each output Image is result of preprocessing
+GstGlesConverter *
+gst_gles_video_converter_new ()
+{
+  GstGlesConverter *convert = NULL;
+
+  convert = g_slice_new0 (GstGlesConverter);
+  g_return_val_if_fail (convert != NULL, NULL);
+
+  convert->engine = new (std::nothrow) ::QImgConv::DataConverter();
+  GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (convert->engine != NULL, NULL,
+      gst_gles_video_converter_free (convert), "Failed to create GLES engine!");
+
+  convert->options = gst_structure_new_empty ("options");
+  GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (convert->options != NULL, NULL,
+      gst_gles_video_converter_free (convert), "Failed to create OPTS struct!");
+
+  GST_INFO ("Created GLES Converter %p", convert);
+  return convert;
+}
+
+void
+gst_gles_video_converter_free (GstGlesConverter * convert)
+{
+  if (convert == NULL)
+    return;
+
+  if (convert->options != NULL)
+    gst_structure_free (convert->options);
+
+  if (convert->engine != NULL)
+    delete convert->engine;
+
+  GST_INFO ("Destroyed GLES converter: %p", convert);
+  g_slice_free (GstGlesConverter, convert);
+}
+
 gboolean
-gst_gles_converter_process (GstGlesConverter * convert,
+gst_gles_video_converter_set_ops (GstGlesConverter * convert, GstStructure * opts)
+{
+  GstVideoRectangle destination;
+  gint width, height;
+  gfloat rscale, gscale, bscale, ascale, qscale;
+  gfloat roffset, goffset, boffset, aoffset, qoffset;
+
+  g_return_val_if_fail (convert != NULL, FALSE);
+  g_return_val_if_fail (opts != NULL, FALSE);
+
+  // Locking the converter to set the opts and composition pipeline
+  GST_GLES_LOCK(convert);
+
+  // Iterate over the fields in the new opts structure and update them.
+  gst_structure_foreach (opts, update_options, convert->options);
+  gst_structure_free (opts);
+
+  width  = GET_OPT_RESIZE_WIDTH (convert->options, DEFAULT_OPT_RESIZE_WIDTH);
+  height = GET_OPT_RESIZE_HEIGHT (convert->options, DEFAULT_OPT_RESIZE_HEIGHT);
+
+  destination.x = GET_OPT_DEST_X (convert->options, DEFAULT_OPT_DEST_X);
+  destination.y = GET_OPT_DEST_Y (convert->options, DEFAULT_OPT_DEST_Y);
+  destination.w = GET_OPT_DEST_WIDTH (convert->options, DEFAULT_OPT_DEST_WIDTH);
+  destination.h = GET_OPT_DEST_HEIGHT (convert->options, DEFAULT_OPT_DEST_HEIGHT);
+
+  rscale  = GET_OPT_RSCALE (convert->options, DEFAULT_OPT_RSCALE);
+  gscale  = GET_OPT_GSCALE (convert->options, DEFAULT_OPT_GSCALE);
+  bscale  = GET_OPT_BSCALE (convert->options, DEFAULT_OPT_BSCALE);
+  ascale  = GET_OPT_ASCALE (convert->options, DEFAULT_OPT_ASCALE);
+  qscale  = GET_OPT_QSCALE (convert->options, DEFAULT_OPT_QSCALE);
+  roffset = GET_OPT_ROFFSET (convert->options, DEFAULT_OPT_ROFFSET);
+  goffset = GET_OPT_GOFFSET (convert->options, DEFAULT_OPT_GOFFSET);
+  boffset = GET_OPT_BOFFSET (convert->options, DEFAULT_OPT_BOFFSET);
+  aoffset = GET_OPT_AOFFSET (convert->options, DEFAULT_OPT_AOFFSET);
+  qoffset = GET_OPT_QOFFSET (convert->options, DEFAULT_OPT_QOFFSET);
+
+  GST_GLES_UNLOCK (convert);
+
+  std::vector<std::string> composition;
+
+  if (width == 0 || height == 0) {
+    GST_ERROR ("Invalid rezise dimensions: %dx%d!", width, height);
+    return FALSE;
+  }
+
+  if (GET_OPT_RESIZE (convert->options, DEFAULT_OPT_RESIZE))
+    composition.push_back (convert->engine->Resize (width, height));
+
+  if (GET_OPT_NORMALIZE (convert->options, DEFAULT_OPT_NORMALIZE))
+    composition.push_back (convert->engine->Normalize (rscale, gscale, bscale,
+        ascale, roffset, goffset, boffset, aoffset));
+
+  // Apply destination rectangle only if necessary.
+  if ((destination.w != 0) && (destination.h != 0) &&
+      !(destination.y == 0 && destination.x == 0 &&
+          destination.w == width && destination.h == height)) {
+    ::QImgConv::Rec rectangle;
+    ::QImgConv::Color color = {0.0,0.0,0.0,0.0};
+
+    if (((destination.x + destination.w) > width) ||
+        ((destination.y + destination.h) > height)) {
+      GST_ERROR ("Destination rectangle [%d %d %d %d] is outside the output "
+          "dimensions %dx%d!", destination.x, destination.y, destination.w,
+          destination.h, width , height);
+      return FALSE;
+    }
+
+    rectangle.x = destination.x;
+    rectangle.y = destination.y;
+    rectangle.width  = destination.w;
+    rectangle.height = destination.h;
+
+    composition.push_back (convert->engine->Letterbox (rectangle, color));
+  }
+
+  if (GET_OPT_QUANTIZE (convert->options, DEFAULT_OPT_QUANTIZE))
+    composition.push_back (convert->engine->Quantize (qscale, qoffset));
+
+  if (GET_OPT_CONVERT_TO_UINT8 (convert->options, DEFAULT_OPT_CONVERT_TO_UINT8))
+    composition.push_back (convert->engine->ConverttoUINT8());
+
+  for (auto const& op : composition)
+    GST_DEBUG ("Composing DataConverter with %s", op.c_str());
+
+  if (convert->engine->Compose(composition) != ::QImgConv::STATUS_OK) {
+    GST_ERROR ("Failed to compose the GLES engine operations!");
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+gboolean
+gst_gles_video_converter_process (GstGlesConverter * convert,
     GstVideoFrame * inframes, guint n_inframes, GstVideoFrame * outframe)
 {
-  ::QImgConv::Image *inimages, *outimage;
-  ::QImgConv::STATUS status = ::QImgConv::STATUS_OK;
   GstMemory *memory = NULL;
+  ::QImgConv::Image *inimages = NULL, *outimage = NULL;
+  ::QImgConv::STATUS status = ::QImgConv::STATUS_OK;
 
   g_return_val_if_fail (convert != NULL, FALSE);
   g_return_val_if_fail ((inframes != NULL) && (n_inframes != 0), FALSE);
   g_return_val_if_fail (outframe != NULL, FALSE);
 
-  inimages = g_new0 (::QImgConv::Image, n_inframes);
-
-  if (inimages == NULL) {
-    GST_ERROR ("Couldn't allocate image objs for inframes. End of processing");
-    return FALSE;
-  }
+  inimages = new (std::nothrow) QImgConv::Image[n_inframes];
+  GST_GLES_RETURN_VAL_IF_FAIL (inimages != NULL, FALSE,
+      "Failed to allocate memory for input QImgConv::Image!");
 
   for (guint idx = 0; idx < n_inframes; idx++) {
-    GST_INFO ("Conversion on Frame %p", &inframes[idx]);
     memory = gst_buffer_peek_memory (inframes[idx].buffer, 0);
 
-    if (!gst_is_fd_memory (memory)) {
-      GST_ERROR ("In Buffer memory not fd backed memory");
-      g_free (inimages);
-      return FALSE;
-    }
+    GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (gst_is_fd_memory (memory), FALSE,
+        delete inimages, "Input buffer memory is not FD backed!");
 
     inimages[idx].fd = gst_fd_memory_get_fd (memory);
     inimages[idx].width = GST_VIDEO_FRAME_WIDTH (&inframes[idx]);
     inimages[idx].height = GST_VIDEO_FRAME_HEIGHT (&inframes[idx]);
+
     inimages[idx].format =
         gst_video_format_to_drm_format (GST_VIDEO_FRAME_FORMAT (&inframes[idx]));
+    inimages[idx].isLinear = (inimages[idx].width % 128 != 0) ? true : false;
+
+    GST_TRACE ("Input image[%u] with FD %d, dimensions %ux%u and format "
+        "%c%c%c%c", idx, inimages[idx].fd, inimages[idx].width,
+        inimages[idx].height, DRM_FMT_STRING (inimages[idx].format));
   }
 
-  outimage = g_new0 (::QImgConv::Image, 1);
-
-  if (outimage == NULL) {
-    GST_ERROR ("Unable to create Engine output Image objects");
-    g_free (inimages);
-    return FALSE;
-  }
+  outimage = new (std::nothrow) ::QImgConv::Image();
+  GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (outimage != NULL, FALSE,
+      delete inimages, "Failed to allocate memory for output QImgConv::Image!");
 
   memory = gst_buffer_peek_memory (outframe->buffer, 0);
-
-  if (!gst_is_fd_memory (memory)) {
-    GST_ERROR ("Out Buffer memory not fd backed memory");
-    g_free (inimages);
-    g_free (outimage);
-    return FALSE;
-    }
+  GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (gst_is_fd_memory (memory), FALSE,
+      delete inimages; delete outimage, "Output buffer memory is not FD backed!");
 
   outimage->fd = gst_fd_memory_get_fd (memory);
   outimage->width = GST_VIDEO_FRAME_WIDTH (outframe);
   outimage->height = GST_VIDEO_FRAME_HEIGHT (outframe);
+
   outimage->format =
       gst_video_format_to_drm_format (GST_VIDEO_FRAME_FORMAT (outframe));
+  outimage->isLinear = (outimage->width % 128 != 0) ? true : false;
 
-  GST_GLES_CONVERTER_LOCK (convert);
-  GST_DEBUG ("Using Gles DataConverter object %p for preprocessing",
-     convert->engine);
-  // Pass down batch size the same as number of inframes to DoPreProcess call
+  GST_TRACE ("Output image with FD %d, dimensions %ux%u and format %c%c%c%c",
+      outimage->fd, outimage->width, outimage->height,
+      DRM_FMT_STRING (outimage->format));
+
+  GST_GLES_LOCK (convert);
+
+  // Pass down batch size the same as number of inframes to DoPreProcess call.
   status = convert->engine->DoPreProcess (inimages, outimage, n_inframes,
       n_inframes);
-  GST_GLES_CONVERTER_UNLOCK (convert);
 
-  if (status != ::QImgConv::STATUS_OK) {
-    GST_ERROR ("Unsuccessful processing operation");
-    g_free (inimages);
-    g_free (outimage);
-    return FALSE;
-  }
+  GST_GLES_UNLOCK (convert);
 
-  GST_INFO ("Transformed to Outframe %p", outframe);
+  GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (status == ::QImgConv::STATUS_OK,
+      FALSE, delete inimages; delete outimage, "Failed to process frames!");
+
+  GST_LOG ("Processed output image with FD %d", outimage->fd);
+
+  delete inimages;
+  delete outimage;
+
   return TRUE;
-}
-
-//gst_gles_converter_free: Cleanup the gles_convert handle
-void
-gst_gles_converter_free (GstGlesConverter * convert)
-{
-  GST_LOG("Cleaning up GstGlesConverter");
-
-  if (convert == NULL)
-    return;
-
-  gst_structure_free (convert->options);
-
-  if (convert->engine != NULL)
-    delete convert->engine;
-
-  GST_LOG ("Freed Gles Converter %p", convert);
-  g_slice_free (GstGlesConverter, convert);
 }

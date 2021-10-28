@@ -36,7 +36,7 @@
 #define __GST_GLES_VIDEO_CONVERTER_H__
 
 #include <gst/video/video.h>
-#include <gst/gst.h>
+#include <gst/allocators/allocators.h>
 
 G_BEGIN_DECLS
 
@@ -59,6 +59,42 @@ typedef struct _GstGlesConverter GstGlesConverter;
  */
 #define GST_GLES_VIDEO_CONVERTER_OPT_RESIZE_HEIGHT \
     "GstGlesVideoConverter.resize-height"
+
+/**
+ * GST_GLES_VIDEO_CONVERTER_OPT_DEST_X
+ *
+ * #G_TYPE_INT: destination rectangle x axis start coordinate
+ * Default:0
+ */
+#define GST_GLES_VIDEO_CONVERTER_OPT_DEST_X \
+    "GstGlesVideoConverter.destination-x"
+
+/**
+ * GST_GLES_VIDEO_CONVERTER_OPT_DEST_Y
+ *
+ * #G_TYPE_INT: destination rectangle y axis start coordinate
+ * Default:0
+ */
+#define GST_GLES_VIDEO_CONVERTER_OPT_DEST_Y \
+    "GstGlesVideoConverter.destination-y"
+
+/**
+ * GST_GLES_VIDEO_CONVERTER_OPT_DEST_WIDTH
+ *
+ * #G_TYPE_INT: destination rectangle width
+ * Default:0
+ */
+#define GST_GLES_VIDEO_CONVERTER_OPT_DEST_WIDTH \
+    "GstGlesVideoConverter.destination-width"
+
+/**
+ * GST_GLES_VIDEO_CONVERTER_OPT_DEST_HEIGHT
+ *
+ * #G_TYPE_INT: destination rectangle height
+ * Default:0
+ */
+#define GST_GLES_VIDEO_CONVERTER_OPT_DEST_HEIGHT \
+    "GstGlesVideoConverter.destination-height"
 
 /**
  * GST_GLES_VIDEO_CONVERTER_OPT_RSCALE:
@@ -188,52 +224,6 @@ typedef struct _GstGlesConverter GstGlesConverter;
     "GstGlesVideoConverter.convert_to_uint8"
 
 /**
- * GST_GLES_VIDEO_CONVERTER_OPT_DEST
- *
- * #G_TYPE_BOOLEAN: operation to correlate the aspect ratio
- * with the source image.
- * Default: FALSE
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_DEST \
-    "GstGlesVideoConverter.destination"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_DEST_X
- *
- * #G_TYPE_INT: dest x axis start position
- * Default:0
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_DEST_X \
-    "GstGlesVideoConverter.destination-x"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_DEST_Y
- *
- * #G_TYPE_INT: dest y axis start position
- * Default:0
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_DEST_Y \
-    "GstGlesVideoConverter.destination-y"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_DEST_WIDTH
- *
- * #G_TYPE_INT: destination rectangle width
- * Default:0
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_DEST_WIDTH \
-    "GstGlesVideoConverter.destination-width"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_DEST_HEIGHT
- *
- * #G_TYPE_INT: destination rectangle height
- * Default:0
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_DEST_HEIGHT \
-    "GstGlesVideoConverter.destination-height"
-
-/**
  * gst_gles_converter_new:
  *
  * Initialise instance of Gles converter module
@@ -241,7 +231,7 @@ typedef struct _GstGlesConverter GstGlesConverter;
  * return: pointer to Gles converter module on success or NULL on failure
  */
 GST_VIDEO_API GstGlesConverter *
-gst_gles_converter_new             (void);
+gst_gles_video_converter_new     (void);
 
 /**
  * gst_gles_converter_free:
@@ -252,7 +242,7 @@ gst_gles_converter_new             (void);
  * return: NONE
  */
 GST_VIDEO_API void
-gst_gles_converter_free            (GstGlesConverter * convert);
+gst_gles_video_converter_free    (GstGlesConverter * convert);
 
 /**
  * gst_gles_converter_set_ops:
@@ -265,8 +255,8 @@ gst_gles_converter_free            (GstGlesConverter * convert);
  * return: TRUE if successfully configures else FALSE
  */
 GST_VIDEO_API gboolean
-gst_gles_converter_set_ops       (GstGlesConverter * convert,
-                                    GstStructure * opts);
+gst_gles_video_converter_set_ops (GstGlesConverter * convert,
+                                  GstStructure * opts);
 /**
  * gst_gles_converter_process:
  * @convert: pointer to Gles converter instance
@@ -280,10 +270,10 @@ gst_gles_converter_set_ops       (GstGlesConverter * convert,
  * return TRUE if successfully preprocessed else FALSE
  */
 GST_VIDEO_API gboolean
-gst_gles_converter_process         (GstGlesConverter * convert,
-                                    GstVideoFrame * inframes,
-                                    guint n_inframes,
-                                    GstVideoFrame * outframe);
+gst_gles_video_converter_process (GstGlesConverter * convert,
+                                  GstVideoFrame * inframes, guint n_inframes,
+                                  GstVideoFrame * outframe);
+
 G_END_DECLS
 
 #endif // __GST_GLES_VIDEO_CONVERTER_H__
