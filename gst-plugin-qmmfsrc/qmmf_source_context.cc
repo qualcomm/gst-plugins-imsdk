@@ -100,6 +100,8 @@ struct _GstQmmfContext {
   gboolean          shdr;
   /// Camera property to Enable or Disable Auto Dynamic Range Compression.
   gboolean          adrc;
+  /// Overall mode of 3A
+  guchar            controlmode;
   /// Camera frame effect property.
   guchar            effect;
   /// Camera scene optimization property.
@@ -514,6 +516,9 @@ initialize_camera_param (GstQmmfContext * context)
   status = recorder->GetCameraParam (context->camera_id, meta);
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
       "QMMF Recorder GetCameraParam Failed!");
+
+  numvalue = gst_qmmfsrc_control_mode_android_value (context->controlmode);
+  meta.update(ANDROID_CONTROL_MODE, &numvalue, 1);
 
   numvalue = gst_qmmfsrc_effect_mode_android_value (context->effect);
   meta.update(ANDROID_CONTROL_EFFECT_MODE, &numvalue, 1);
@@ -1635,6 +1640,15 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       meta.update(tag_id, &disable, 1);
       break;
     }
+    case PARAM_CAMERA_CONTROL_MODE:
+    {
+      guchar mode;
+      context->controlmode = g_value_get_enum (value);
+
+      mode = gst_qmmfsrc_control_mode_android_value (context->controlmode);
+      meta.update(ANDROID_CONTROL_MODE, &mode, 1);
+      break;
+    }
     case PARAM_CAMERA_EFFECT_MODE:
     {
       guchar mode;
@@ -2063,6 +2077,9 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       break;
     case PARAM_CAMERA_ADRC:
       g_value_set_boolean (value, context->adrc);
+      break;
+    case PARAM_CAMERA_CONTROL_MODE:
+      g_value_set_enum (value, context->controlmode);
       break;
     case PARAM_CAMERA_EFFECT_MODE:
       g_value_set_enum (value, context->effect);

@@ -55,6 +55,7 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
 #define DEFAULT_PROP_CAMERA_EIS_MODE                  FALSE
 #define DEFAULT_PROP_CAMERA_SHDR_MODE                 FALSE
 #define DEFAULT_PROP_CAMERA_ADRC                      FALSE
+#define DEFAULT_PROP_CAMERA_CONTROL_MODE              CONTROL_MODE_AUTO
 #define DEFAULT_PROP_CAMERA_EFFECT_MODE               EFFECT_MODE_OFF
 #define DEFAULT_PROP_CAMERA_SCENE_MODE                SCENE_MODE_FACE_PRIORITY
 #define DEFAULT_PROP_CAMERA_ANTIBANDING               ANTIBANDING_MODE_AUTO
@@ -107,6 +108,7 @@ enum
   PROP_CAMERA_EIS,
   PROP_CAMERA_SHDR,
   PROP_CAMERA_ADRC,
+  PROP_CAMERA_CONTROL_MODE,
   PROP_CAMERA_EFFECT_MODE,
   PROP_CAMERA_SCENE_MODE,
   PROP_CAMERA_ANTIBANDING_MODE,
@@ -767,6 +769,10 @@ qmmfsrc_set_property (GObject * object, guint property_id,
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_ADRC, value);
       break;
+    case PROP_CAMERA_CONTROL_MODE:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_CONTROL_MODE, value);
+      break;
     case PROP_CAMERA_EFFECT_MODE:
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_EFFECT_MODE, value);
@@ -908,6 +914,10 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
     case PROP_CAMERA_ADRC:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_ADRC, value);
+      break;
+    case PROP_CAMERA_CONTROL_MODE:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_CONTROL_MODE, value);
       break;
     case PROP_CAMERA_EFFECT_MODE:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
@@ -1101,6 +1111,14 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           "Automatic Dynamic Range Compression", DEFAULT_PROP_CAMERA_ADRC,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_CAMERA_CONTROL_MODE,
+      g_param_spec_enum ("control-mode", "Control Mode",
+           "Overall mode of 3A (auto-exposure, auto-white-balance, auto-focus) "
+           "control routines. This is a top-level 3A control switch. When set "
+           "to OFF, all 3A control by the camera device is disabled.",
+           GST_TYPE_QMMFSRC_CONTROL_MODE, DEFAULT_PROP_CAMERA_CONTROL_MODE,
+           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+           GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_CAMERA_EFFECT_MODE,
       g_param_spec_enum ("effect", "Effect",
            "Effect applied on the camera frames",
