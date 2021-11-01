@@ -28,6 +28,10 @@ pkg_check_modules(CAIRO REQUIRED cairo)
 configure_file(config.h.in config.h @ONLY)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
+# Check whether DMA header is present.
+include(CheckIncludeFile)
+check_include_file("linux/dma-buf.h" HAVE_LINUX_DMA_BUF_H)
+
 # Precompiler definitions.
 add_definitions(-DHAVE_CONFIG_H)
 
@@ -46,8 +50,13 @@ set_target_properties(${GST_QTI_ML_VIDEO_DETECTION} PROPERTIES PUBLIC_HEADER
   "modules/ml-video-detection-module.h"
 )
 
+target_compile_definitions(${GST_QTI_ML_VIDEO_DETECTION} PRIVATE
+  $<$<BOOL:${HAVE_LINUX_DMA_BUF_H}>:HAVE_LINUX_DMA_BUF_H>
+)
+
 target_include_directories(${GST_QTI_ML_VIDEO_DETECTION} PUBLIC
   ${GST_INCLUDE_DIRS}
+  ${KERNEL_BUILDDIR}/usr/include
 )
 
 target_link_libraries(${GST_QTI_ML_VIDEO_DETECTION} PRIVATE

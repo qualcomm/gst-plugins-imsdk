@@ -43,6 +43,11 @@
 #include <gst/video/gstimagepool.h>
 #include <cairo/cairo.h>
 
+#ifdef HAVE_LINUX_DMA_BUF_H
+#include <sys/ioctl.h>
+#include <linux/dma-buf.h>
+#endif // HAVE_LINUX_DMA_BUF_H
+
 #include "modules/ml-video-detection-module.h"
 
 #define GST_CAT_DEFAULT gst_ml_video_detection_debug
@@ -374,6 +379,18 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
     return FALSE;
   }
 
+#ifdef HAVE_LINUX_DMA_BUF_H
+  if (gst_is_fd_memory (gst_buffer_peek_memory (buffer, 0))) {
+    struct dma_buf_sync bufsync;
+    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (buffer, 0));
+
+    bufsync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
+
+    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
+      GST_WARNING_OBJECT (detection, "DMA IOCTL SYNC START failed!");
+  }
+#endif // HAVE_LINUX_DMA_BUF_H
+
   surface = cairo_image_surface_create_for_data (memmap.data, format,
       vmeta->width, vmeta->height, vmeta->stride[0]);
   g_return_val_if_fail (surface, FALSE);
@@ -397,11 +414,12 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
   // Select font.
   cairo_select_font_face (context, "@cairo:Georgia",
       CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+  cairo_set_antialias (context, CAIRO_ANTIALIAS_BEST);
 
   {
     // Set font options.
     cairo_font_options_t *options = cairo_font_options_create ();
-    cairo_font_options_set_antialias (options, CAIRO_ANTIALIAS_DEFAULT);
+    cairo_font_options_set_antialias (options, CAIRO_ANTIALIAS_BEST);
     cairo_set_font_options (context, options);
     cairo_font_options_destroy (options);
   }
@@ -493,6 +511,18 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
 
   cairo_destroy (context);
   cairo_surface_destroy (surface);
+
+#ifdef HAVE_LINUX_DMA_BUF_H
+  if (gst_is_fd_memory (gst_buffer_peek_memory (buffer, 0))) {
+    struct dma_buf_sync bufsync;
+    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (buffer, 0));
+
+    bufsync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
+
+    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
+      GST_WARNING_OBJECT (detection, "DMA IOCTL SYNC END failed!");
+  }
+#endif // HAVE_LINUX_DMA_BUF_H
 
   // Unmap buffer memory blocks.
   gst_buffer_unmap (buffer, &memmap);

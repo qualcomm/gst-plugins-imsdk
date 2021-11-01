@@ -31,6 +31,12 @@
 
 #include <gst/video/video.h>
 #include <gst/ml/gstmlmeta.h>
+#include <gst/allocators/allocators.h>
+
+#ifdef HAVE_LINUX_DMA_BUF_H
+#include <sys/ioctl.h>
+#include <linux/dma-buf.h>
+#endif // HAVE_LINUX_DMA_BUF_H
 
 
 #define CAST_TO_GFLOAT(data) ((gfloat*)data)
@@ -239,6 +245,18 @@ gst_ml_video_segmentation_module_process (gpointer instance,
     return FALSE;
   }
 
+#ifdef HAVE_LINUX_DMA_BUF_H
+  if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
+    struct dma_buf_sync bufsync;
+    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
+
+    bufsync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
+
+    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
+      GST_WARNING ("DMA IOCTL SYNC START failed!");
+  }
+#endif // HAVE_LINUX_DMA_BUF_H
+
   switch (mlmeta->type) {
     case GST_ML_TYPE_INT32:
       for (row = 0; row < vmeta->height; row++) {
@@ -292,6 +310,18 @@ gst_ml_video_segmentation_module_process (gpointer instance,
 
       return FALSE;
   }
+
+#ifdef HAVE_LINUX_DMA_BUF_H
+  if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
+    struct dma_buf_sync bufsync;
+    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
+
+    bufsync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
+
+    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
+      GST_WARNING ("DMA IOCTL SYNC END failed!");
+  }
+#endif // HAVE_LINUX_DMA_BUF_H
 
   gst_buffer_unmap (outbuffer, &outmap);
   gst_buffer_unmap (inbuffer, &inmap);
