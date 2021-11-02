@@ -1026,7 +1026,7 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
   if (is_conversion_required (inframes, n_inputs, &outframe) ||
       (mlconverter->mlinfo->type == GST_ML_TYPE_FLOAT32))
     success = gst_gles_video_converter_process (mlconverter->glesconvert,
-        inframes, n_inputs, &outframe);
+        inframes, n_inputs, NULL, &outframe);
 #endif // USE_GLES_CONVERTER
 
   ts_end = gst_util_get_timestamp ();
