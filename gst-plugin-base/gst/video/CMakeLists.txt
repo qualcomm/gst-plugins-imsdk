@@ -3,11 +3,12 @@ set(GST_QTI_VIDEO_BASE gstqtivideobase)
 
 add_library(${GST_QTI_VIDEO_BASE} SHARED
   gstimagepool.c
-  c2d-video-converter.c
+  $<$<BOOL:${ENABLE_C2D_CONVERTER}>:c2d-video-converter.c>
+  $<$<BOOL:${ENABLE_GLES_CONVERTER}>:gles-video-converter.cc>
 )
 
 set_target_properties(${GST_QTI_VIDEO_BASE} PROPERTIES PUBLIC_HEADER
-  "gstimagepool.h;c2d-video-converter.h"
+  "gstimagepool.h;c2d-video-converter.h;gles-video-converter.h"
 )
 
 target_include_directories(${GST_QTI_VIDEO_BASE} PUBLIC
@@ -27,6 +28,7 @@ target_link_libraries(${GST_QTI_VIDEO_BASE} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
+  $<$<BOOL:${ENABLE_GLES_CONVERTER}>:QImgConv>
 )
 
 install(
