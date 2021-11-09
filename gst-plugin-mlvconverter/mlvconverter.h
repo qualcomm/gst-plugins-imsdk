@@ -86,11 +86,11 @@ struct _GstMLVideoConverter {
   /// Supported converters.
 #ifdef USE_C2D_CONVERTER
   GstC2dVideoConverter *c2dconvert;
-#endif //USE_C2D_CONVERTER
+#endif // USE_C2D_CONVERTER
 
 #ifdef USE_GLES_CONVERTER
-  GstGlesConverter *glesconvert;
-#endif //USE_GLES_CONVERTER
+  GstGlesConverter     *glesconvert;
+#endif // USE_GLES_CONVERTER
 
   /// Properties.
   GstVideoPixelLayout  pixlayout;

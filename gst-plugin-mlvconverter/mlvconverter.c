@@ -449,9 +449,6 @@ gst_ml_video_converter_update_configuration (GstMLVideoConverter * mlconverter,
     to_dar_n = to_dar_d = -1;
   }
 
-  if (from_dar_n == to_dar_n && from_dar_d == to_dar_d)
-    return;
-
   gst_util_fraction_multiply (from_dar_n, from_dar_d,
       outinfo->par_d, outinfo->par_n, &num, &den);
 
@@ -475,19 +472,28 @@ gst_ml_video_converter_update_configuration (GstMLVideoConverter * mlconverter,
       GST_C2D_VIDEO_CONVERTER_OPT_DEST_HEIGHT, G_TYPE_INT, height,
       NULL);
   gst_c2d_video_converter_set_input_opts (mlconverter->c2dconvert, 0, opts);
-#endif //USE_C2D_CONVERTER
+#endif // USE_C2D_CONVERTER
 
 #ifdef USE_GLES_CONVERTER
   {
-    gboolean quantize = (mlconverter->mlinfo->type == GST_ML_TYPE_UINT8) ||
-        (mlconverter->mlinfo->type == GST_ML_TYPE_INT32);
-    gboolean uint8convert = (mlconverter->mlinfo->type == GST_ML_TYPE_UINT8);
+    gboolean resize = FALSE, normalize = FALSE;
+
+    // TODO Workaround due to single thread limitation in GLES.
+    if (mlconverter->glesconvert != NULL)
+      gst_gles_video_converter_free (mlconverter->glesconvert);
+
+    mlconverter->glesconvert = gst_gles_video_converter_new ();
+
+    // None of the other operation are supported unless the resize is set.
+    resize = TRUE; // TODO Workaround
+//    resize = (GST_VIDEO_INFO_WIDTH (ininfo) != GST_VIDEO_INFO_WIDTH (outinfo)) ||
+//        (GST_VIDEO_INFO_HEIGHT (ininfo) != GST_VIDEO_INFO_HEIGHT (outinfo));
+    normalize = (mlconverter->mlinfo->type == GST_ML_TYPE_FLOAT32);
 
     gst_structure_set (opts,
-        GST_GLES_VIDEO_CONVERTER_OPT_QUANTIZE, G_TYPE_BOOLEAN, quantize,
-        GST_GLES_VIDEO_CONVERTER_OPT_CONVERT_TO_UINT8, G_TYPE_BOOLEAN,
-            uint8convert,
-        GST_GLES_VIDEO_CONVERTER_OPT_NORMALIZE, G_TYPE_BOOLEAN, TRUE,
+        GST_GLES_VIDEO_CONVERTER_OPT_QUANTIZE, G_TYPE_BOOLEAN, FALSE,
+        GST_GLES_VIDEO_CONVERTER_OPT_CONVERT_TO_UINT8, G_TYPE_BOOLEAN, FALSE,
+        GST_GLES_VIDEO_CONVERTER_OPT_NORMALIZE, G_TYPE_BOOLEAN, normalize,
         GST_GLES_VIDEO_CONVERTER_OPT_ROFFSET, G_TYPE_FLOAT,
         (mlconverter->mean->len >= 1) ?
             g_array_index (mlconverter->mean, gfloat, 0) : DEFAULT_PROP_MEAN,
@@ -512,19 +518,21 @@ gst_ml_video_converter_update_configuration (GstMLVideoConverter * mlconverter,
         GST_GLES_VIDEO_CONVERTER_OPT_ASCALE, G_TYPE_FLOAT,
         (mlconverter->mean->len >= 4) ?
             g_array_index (mlconverter->sigma, gfloat, 3) : DEFAULT_PROP_SIGMA,
-        GST_GLES_VIDEO_CONVERTER_OPT_RESIZE, G_TYPE_BOOLEAN, TRUE,
-        GST_GLES_VIDEO_CONVERTER_OPT_RESIZE_WIDTH, G_TYPE_INT, outinfo->width,
-        GST_GLES_VIDEO_CONVERTER_OPT_RESIZE_HEIGHT, G_TYPE_INT, outinfo->height,
-        GST_GLES_VIDEO_CONVERTER_OPT_DEST, G_TYPE_BOOLEAN, TRUE,
+        GST_GLES_VIDEO_CONVERTER_OPT_RESIZE, G_TYPE_BOOLEAN, resize,
+        GST_GLES_VIDEO_CONVERTER_OPT_RESIZE_WIDTH, G_TYPE_INT,
+        GST_VIDEO_INFO_WIDTH (outinfo),
+        GST_GLES_VIDEO_CONVERTER_OPT_RESIZE_HEIGHT, G_TYPE_INT,
+        GST_VIDEO_INFO_HEIGHT (outinfo),
         GST_GLES_VIDEO_CONVERTER_OPT_DEST_X, G_TYPE_INT, 0,
         GST_GLES_VIDEO_CONVERTER_OPT_DEST_Y, G_TYPE_INT, 0,
         GST_GLES_VIDEO_CONVERTER_OPT_DEST_WIDTH, G_TYPE_INT, width,
         GST_GLES_VIDEO_CONVERTER_OPT_DEST_HEIGHT, G_TYPE_INT, height,
         NULL);
   }
-  if (gst_gles_converter_set_ops (mlconverter->glesconvert, opts) != TRUE)
+
+  if (gst_gles_video_converter_set_ops (mlconverter->glesconvert, opts) != TRUE)
     GST_ERROR ("Configuration of gles converter failed!");
-#endif
+#endif // USE_GLES_CONVERTER
   return;
 }
 
@@ -577,9 +585,7 @@ gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
 
   return TRUE;
 }
-#endif //WITH_C2D_CONVERTER
 
-#ifdef USE_C2D_CONVERTER
 static gboolean
 gst_ml_video_converter_normalize (GstMLVideoConverter * mlconverter,
     GstVideoFrame * inframe, GstVideoFrame * outframe)
@@ -626,7 +632,7 @@ gst_ml_video_converter_normalize (GstMLVideoConverter * mlconverter,
 
   return TRUE;
 }
-#endif //USE_C2D_CONVERTER
+#endif // USE_C2D_CONVERTER
 
 static GstBufferPool *
 gst_ml_video_converter_create_pool (GstMLVideoConverter * mlconverter,
@@ -1014,13 +1020,14 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
     success = gst_ml_video_converter_normalize (mlconverter,
         &inframes[0], &outframe);
   }
-#endif //USE_C2D_CONVERTER
+#endif // USE_C2D_CONVERTER
 
 #ifdef USE_GLES_CONVERTER
-  if (is_conversion_required (inframes, n_inputs, &outframe))
-    success = gst_gles_converter_process (mlconverter->glesconvert,
+  if (is_conversion_required (inframes, n_inputs, &outframe) ||
+      (mlconverter->mlinfo->type == GST_ML_TYPE_FLOAT32))
+    success = gst_gles_video_converter_process (mlconverter->glesconvert,
         inframes, n_inputs, &outframe);
-#endif //USE_GLES_CONVERTER
+#endif // USE_GLES_CONVERTER
 
   ts_end = gst_util_get_timestamp ();
 
@@ -1134,12 +1141,12 @@ gst_ml_video_converter_finalize (GObject * object)
 #ifdef USE_C2D_CONVERTER
   if (mlconverter->c2dconvert != NULL)
     gst_c2d_video_converter_free (mlconverter->c2dconvert);
-#endif
+#endif // USE_C2D_CONVERTER
 
 #ifdef USE_GLES_CONVERTER
   if (mlconverter->glesconvert != NULL)
-    gst_gles_converter_free (mlconverter->glesconvert);
-#endif
+    gst_gles_video_converter_free (mlconverter->glesconvert);
+#endif // USE_GLES_CONVERTER
 
   if (mlconverter->mlinfo != NULL)
     gst_ml_info_free (mlconverter->mlinfo);
@@ -1221,12 +1228,15 @@ gst_ml_video_converter_init (GstMLVideoConverter * mlconverter)
   mlconverter->vinfo = NULL;
   mlconverter->mlinfo = NULL;
   mlconverter->outpool = NULL;
+
 #ifdef USE_C2D_CONVERTER
   mlconverter->c2dconvert = gst_c2d_video_converter_new ();
-#endif
+#endif // USE_C2D_CONVERTER
+
 #ifdef USE_GLES_CONVERTER
-  mlconverter->glesconvert = gst_gles_converter_new ();
-#endif
+  mlconverter->glesconvert = NULL;
+#endif // USE_GLES_CONVERTER
+
   mlconverter->pixlayout = DEFAULT_PROP_SUBPIXEL_LAYOUT;
   mlconverter->mean = g_array_new (FALSE, FALSE, sizeof (gfloat));
   mlconverter->sigma = g_array_new (FALSE, FALSE, sizeof (gfloat));
