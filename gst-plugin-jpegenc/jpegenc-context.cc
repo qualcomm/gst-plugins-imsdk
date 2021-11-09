@@ -169,7 +169,7 @@ gst_jpeg_enc_context_config (GstJPEGEncoderContext * context,
       [&, context] (guint request_id, guint encoded_size)
       { gst_jpeg_enc_callback (context, request_id, encoded_size); };
 
-  if (context->recorder->ConfigureOfflineJPEG(jpeg_params, callback) != 0) {
+  if (context->recorder->CreateOfflineJPEG(jpeg_params, callback) != 0) {
     GST_ERROR ("Cannot configure the JPEG encoder");
     return FALSE;
   }
