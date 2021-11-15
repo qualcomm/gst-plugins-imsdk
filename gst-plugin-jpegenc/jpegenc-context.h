@@ -44,7 +44,7 @@ G_BEGIN_DECLS
 
 typedef struct _GstJPEGEncoderContext GstJPEGEncoderContext;
 
-typedef void (*GstJPEGEncoderCallback) (gint buf_fd, guint encoded_size,
+typedef void (*GstJPEGEncoderCallback) (GstVideoCodecFrame * frame,
     gpointer userdata);
 
 /**
@@ -131,12 +131,15 @@ GST_API void
 gst_jpeg_enc_context_free (GstJPEGEncoderContext * context);
 
 GST_API gboolean
-gst_jpeg_enc_context_config (GstJPEGEncoderContext * context,
+gst_jpeg_enc_context_create (GstJPEGEncoderContext * context,
     GstStructure * params);
 
-GST_API gint
+GST_API gboolean
+gst_jpeg_enc_context_destroy (GstJPEGEncoderContext * context);
+
+GST_API gboolean
 gst_jpeg_enc_context_execute (GstJPEGEncoderContext * context,
-    GstBuffer * inbuff, GstBuffer * outbuff);
+    GstVideoCodecFrame * frame);
 
 G_END_DECLS
 

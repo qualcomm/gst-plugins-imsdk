@@ -56,10 +56,6 @@ G_DEFINE_TYPE (GstJPEGEncoder, gst_jpeg_enc, GST_TYPE_VIDEO_ENCODER);
 #define DEFAULT_PROP_JPEG_QUALITY   85
 #define DEFAULT_PROP_ORIENTATION    GST_JPEG_ENC_ORIENTATION_0
 
-#ifndef GST_CAPS_FEATURE_MEMORY_GBM
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
-#endif
-
 #define DEFAULT_PROP_MIN_BUFFERS    2
 #define DEFAULT_PROP_MAX_BUFFERS    10
 
@@ -97,6 +93,11 @@ enum
   PROP_ORIENTATION,
 };
 
+struct _GstVideoFrameData {
+  GstJPEGEncoder *jpegenc;
+  GstVideoCodecFrame *frame;
+};
+
 static GType
 gst_jpeg_enc_orientation_get_type (void)
 {
@@ -123,24 +124,6 @@ gst_jpeg_enc_orientation_get_type (void)
   return type;
 }
 
-static gboolean
-gst_jpeg_enc_caps_has_feature (const GstCaps * caps, const gchar * feature)
-{
-  guint idx = 0;
-
-  while (idx != gst_caps_get_size (caps)) {
-    GstCapsFeatures *const features = gst_caps_get_features (caps, idx);
-
-    // Skip ANY caps and return immediately if feature is present.
-    if (!gst_caps_features_is_any (features) &&
-        gst_caps_features_contains (features, feature))
-      return TRUE;
-
-    idx++;
-  }
-  return FALSE;
-}
-
 static GstBufferPool *
 gst_jpeg_enc_create_pool (GstJPEGEncoder * jpegenc, GstCaps * caps)
 {
@@ -154,18 +137,16 @@ gst_jpeg_enc_create_pool (GstJPEGEncoder * jpegenc, GstCaps * caps)
     return NULL;
   }
 
-  // If downstream allocation query supports GBM, allocate gbm memory.
-  if (gst_jpeg_enc_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
-    GST_INFO_OBJECT (jpegenc, "Jpeg encoder uses GBM memory");
-    pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
-  } else {
-    GST_INFO_OBJECT (jpegenc, "Jpeg encoder uses ION memory");
-    pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
-  }
+  GST_INFO_OBJECT (jpegenc, "Jpeg encoder uses ION memory");
+  pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
+
+  // Align size to 64 lines
+  gint alignedw = (GST_VIDEO_INFO_WIDTH (&info) + 64-1) & ~(64-1);
+  gint alignedh = (GST_VIDEO_INFO_HEIGHT (&info) + 64-1) & ~(64-1);
+  gsize aligned_size = alignedw * alignedh * 4;
 
   config = gst_buffer_pool_get_config (pool);
-  gst_buffer_pool_config_set_params (config, caps,
-      GST_VIDEO_INFO_WIDTH (&info) * GST_VIDEO_INFO_HEIGHT (&info) * 4,
+  gst_buffer_pool_config_set_params (config, caps, aligned_size,
       DEFAULT_PROP_MIN_BUFFERS, DEFAULT_PROP_MAX_BUFFERS);
 
   allocator = gst_fd_allocator_new ();
@@ -183,35 +164,53 @@ gst_jpeg_enc_create_pool (GstJPEGEncoder * jpegenc, GstCaps * caps)
 }
 
 static void
-gst_jpeg_enc_callback (gint buf_fd, guint encoded_size, gpointer userdata)
+gst_jpeg_enc_callback (GstVideoCodecFrame * frame, gpointer userdata)
 {
   GstJPEGEncoder *jpegenc = GST_JPEG_ENC (userdata);
-  if (!encoded_size) {
-    GST_ERROR_OBJECT (jpegenc, "Failed: Encoded size is 0");
-    return;
-  }
-
-  if (buf_fd == -1) {
-    GST_ERROR_OBJECT (jpegenc, "Failed: Invalid request id");
-    return;
-  }
-
-  GstVideoCodecFrame *frame =
-      g_hash_table_lookup (jpegenc->requests, GINT_TO_POINTER (buf_fd));
-  g_hash_table_remove (jpegenc->requests, GINT_TO_POINTER (buf_fd));
 
   if (frame) {
-    GstMemory *memory = gst_buffer_peek_memory (frame->output_buffer, 0);
-    gsize maxsize = 0;
-    gst_memory_get_sizes (memory, 0, &maxsize);
-    if (encoded_size < maxsize)
-      gst_memory_resize (memory, 0, encoded_size);
     GST_VIDEO_CODEC_FRAME_SET_SYNC_POINT (frame);
     gst_video_encoder_finish_frame (GST_VIDEO_ENCODER (jpegenc), frame);
-    GST_DEBUG_OBJECT (jpegenc,
-        "End compressing, encoded_size: %d", encoded_size);
   } else {
-    GST_ERROR_OBJECT (jpegenc, "Failed to a request with fd %d", buf_fd);
+    GST_ERROR_OBJECT (jpegenc, "The received frame is NULL");
+  }
+}
+
+static void
+gst_jpeg_enc_process_task_loop (gpointer userdata)
+{
+  GstJPEGEncoder *jpegenc = GST_JPEG_ENC (userdata);
+  GstDataQueueItem *item = NULL;
+
+  if (gst_data_queue_pop (jpegenc->inframes, &item)) {
+    GstVideoFrameData *framedata = (GstVideoFrameData *) item->object;
+    GstVideoCodecFrame *frame = framedata->frame;
+
+    // Get new buffer from the pool
+    if (GST_FLOW_OK == gst_buffer_pool_acquire_buffer (jpegenc->outpool,
+        &frame->output_buffer, NULL)) {
+
+      // Copy the flags and timestamps from the input buffer.
+      gst_buffer_copy_into (frame->output_buffer, frame->input_buffer,
+          GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
+
+      GST_DEBUG_OBJECT (jpegenc, "Start compressing");
+      // Process the JPEG
+      if (!gst_jpeg_enc_context_execute (jpegenc->context, frame)) {
+        GST_ERROR_OBJECT (jpegenc, "Failed to execute Jpeg encoder!");
+        gst_buffer_unref (frame->output_buffer);
+        frame->output_buffer = NULL;
+        gst_video_encoder_finish_frame (GST_VIDEO_ENCODER (jpegenc), frame);
+      }
+    } else {
+      GST_ERROR_OBJECT (jpegenc, "Failed to acquire output buffer!");
+      gst_video_encoder_finish_frame (GST_VIDEO_ENCODER (jpegenc), frame);
+    }
+
+    g_slice_free (GstVideoFrameData, framedata);
+    g_slice_free (GstDataQueueItem, item);
+  } else {
+    GST_DEBUG_OBJECT (jpegenc, "The queue is in flushing state");
   }
 }
 
@@ -226,9 +225,9 @@ gst_jpeg_enc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
 
   // Set output caps
   outcaps = gst_caps_new_simple ("image/jpeg",
-    "width", G_TYPE_INT, GST_VIDEO_INFO_WIDTH (info),
-    "height", G_TYPE_INT, GST_VIDEO_INFO_HEIGHT (info),
-    NULL);
+      "width", G_TYPE_INT, GST_VIDEO_INFO_WIDTH (info),
+      "height", G_TYPE_INT, GST_VIDEO_INFO_HEIGHT (info),
+      NULL);
 
   // Unref previouly created pool
   if (jpegenc->outpool) {
@@ -253,21 +252,24 @@ gst_jpeg_enc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   params = gst_structure_new ("qtijpegenc",
       GST_JPEG_ENC_INPUT_WIDTH, G_TYPE_UINT, GST_VIDEO_INFO_WIDTH (info),
       GST_JPEG_ENC_INPUT_HEIGHT, G_TYPE_UINT, GST_VIDEO_INFO_HEIGHT (info),
-      GST_JPEG_ENC_INPUT_FORMAT, G_TYPE_UINT, 0x00000023,
+      GST_JPEG_ENC_INPUT_FORMAT, G_TYPE_UINT, HAL_PIXEL_FORMAT_YCBCR_420_888,
       GST_JPEG_ENC_OUTPUT_WIDTH, G_TYPE_UINT, GST_VIDEO_INFO_WIDTH (info),
       GST_JPEG_ENC_OUTPUT_HEIGHT, G_TYPE_UINT, GST_VIDEO_INFO_HEIGHT (info),
-      GST_JPEG_ENC_OUTPUT_FORMAT, G_TYPE_UINT, 0x00000021,
+      GST_JPEG_ENC_OUTPUT_FORMAT, G_TYPE_UINT, HAL_PIXEL_FORMAT_BLOB,
       GST_JPEG_ENC_QUALITY, G_TYPE_UINT, jpegenc->quality,
       GST_JPEG_ENC_ORIENTATION, GST_TYPE_JPEG_ENC_ORIENTATION,
           jpegenc->orientation,
       NULL);
 
-  if (!gst_jpeg_enc_context_config (jpegenc->context, params)) {
-    GST_ERROR_OBJECT (jpegenc, "Failed to configure the encoder!");
+  if (!gst_jpeg_enc_context_create (jpegenc->context, params)) {
+    GST_ERROR_OBJECT (jpegenc, "Failed to create the encoder!");
     gst_buffer_pool_set_active (jpegenc->outpool, FALSE);
     gst_object_unref (jpegenc->outpool);
     return FALSE;
   }
+
+  GST_DEBUG_OBJECT (jpegenc, "Encoder configured: width - %d, height - %d",
+      GST_VIDEO_INFO_WIDTH (info), GST_VIDEO_INFO_HEIGHT (info));
 
   output_state =
       gst_video_encoder_set_output_state (GST_VIDEO_ENCODER (jpegenc),
@@ -277,56 +279,103 @@ gst_jpeg_enc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   return TRUE;
 }
 
+static void
+gst_free_queue_item (gpointer data)
+{
+  GstDataQueueItem *item = (GstDataQueueItem *) data;
+  GstVideoFrameData *framedata = (GstVideoFrameData *) item->object;
+  gst_video_encoder_finish_frame (
+      GST_VIDEO_ENCODER (framedata->jpegenc), framedata->frame);
+  g_slice_free (GstVideoFrameData, framedata);
+  g_slice_free (GstDataQueueItem, item);
+}
+
 static GstFlowReturn
 gst_jpeg_enc_handle_frame (GstVideoEncoder * encoder,
     GstVideoCodecFrame * frame)
 {
   GstJPEGEncoder *jpegenc = GST_JPEG_ENC (encoder);
 
-  GST_DEBUG_OBJECT (jpegenc, "Start compressing");
+  GstVideoFrameData *framedata = g_slice_new0 (GstVideoFrameData);
+  framedata->jpegenc = jpegenc;
+  framedata->frame = frame;
 
-  // Get new buffer from the pool
-  if (GST_FLOW_OK !=
-      gst_buffer_pool_acquire_buffer (
-          jpegenc->outpool, &frame->output_buffer, NULL)) {
-    GST_ERROR_OBJECT (jpegenc, "Failed to create output video buffer!");
-    gst_video_encoder_finish_frame (GST_VIDEO_ENCODER (jpegenc), frame);
-    return GST_FLOW_ERROR;
+  // Put the new frame in a queue for processing
+  GstDataQueueItem *item = NULL;
+  item = g_slice_new0 (GstDataQueueItem);
+  item->object = GST_MINI_OBJECT (framedata);
+  item->visible = TRUE;
+  item->destroy = gst_free_queue_item;
+  if (!gst_data_queue_push (jpegenc->inframes, item)) {
+    GST_ERROR_OBJECT (jpegenc, "ERROR: Cannot push data to the queue!\n");
+    item->destroy (item);
+    return GST_FLOW_OK;
   }
-
-  // Process the JPEG
-  gint buf_fd = gst_jpeg_enc_context_execute (
-      jpegenc->context, frame->input_buffer, frame->output_buffer);
-  if (buf_fd == -1) {
-    GST_ERROR_OBJECT (jpegenc, "Failed to execute Jpeg encoder!");
-    gst_video_encoder_finish_frame (GST_VIDEO_ENCODER (jpegenc), frame);
-    return GST_FLOW_ERROR;
-  }
-
-  g_hash_table_insert (jpegenc->requests, GINT_TO_POINTER (buf_fd), frame);
+  GST_DEBUG_OBJECT (jpegenc, "Handle a new frame, put in the queue");
 
   return GST_FLOW_OK;
 }
 
 static gboolean
-gst_jpeg_enc_start (GstVideoEncoder * benc)
+gst_jpeg_enc_start (GstVideoEncoder * encoder)
 {
-  GstJPEGEncoder *jpegenc = (GstJPEGEncoder *) benc;
+  GstJPEGEncoder *jpegenc = GST_JPEG_ENC (encoder);
   GST_DEBUG_OBJECT (jpegenc, "Encoder start");
+
+  if (jpegenc->worktask != NULL)
+    return TRUE;
+
+  // Create process task
+  jpegenc->worktask =
+      gst_task_new (gst_jpeg_enc_process_task_loop, jpegenc, NULL);
+  GST_INFO_OBJECT (jpegenc, "Created task %p", jpegenc->worktask);
+
+  gst_task_set_lock (jpegenc->worktask, &jpegenc->worklock);
+
+  if (!gst_task_start (jpegenc->worktask)) {
+    GST_ERROR_OBJECT (jpegenc, "Failed to start worker task!");
+    return FALSE;
+  }
+
+  // Disable requests queue in flushing state to enable normal work.
+  gst_data_queue_set_flushing (jpegenc->inframes, FALSE);
 
   return TRUE;
 }
 
 static gboolean
-gst_jpeg_enc_stop (GstVideoEncoder * benc)
+gst_jpeg_enc_stop (GstVideoEncoder * encoder)
 {
-  GstJPEGEncoder *jpegenc = (GstJPEGEncoder *) benc;
+  GstJPEGEncoder *jpegenc = GST_JPEG_ENC (encoder);
   GST_DEBUG_OBJECT (jpegenc, "Encoder stop");
+
+  if (NULL == jpegenc->worktask)
+    return TRUE;
+
+  // Set the inframes queue in flushing state.
+  gst_data_queue_set_flushing (jpegenc->inframes, TRUE);
+
+  if (!gst_task_join (jpegenc->worktask)) {
+    GST_ERROR_OBJECT (jpegenc, "Failed to join worker task!");
+    return FALSE;
+  }
+
+  gst_data_queue_flush (jpegenc->inframes);
+
+  GST_INFO_OBJECT (jpegenc, "Removing task %p", jpegenc->worktask);
+
+  gst_object_unref (jpegenc->worktask);
+  jpegenc->worktask = NULL;
 
   if (gst_buffer_pool_is_active (jpegenc->outpool) &&
       !gst_buffer_pool_set_active (jpegenc->outpool, FALSE)) {
     GST_ERROR_OBJECT (jpegenc, "Failed to deactivate output buffer pool!");
     return GST_FLOW_ERROR;
+  }
+
+  if (!gst_jpeg_enc_context_destroy (jpegenc->context)) {
+    GST_ERROR_OBJECT (jpegenc, "Failed to destroy the encoder!");
+    return FALSE;
   }
 
   return TRUE;
@@ -399,11 +448,13 @@ gst_jpeg_enc_finalize (GObject * object)
     jpegenc->context = NULL;
   }
 
-  if (jpegenc->requests != NULL) {
-    g_hash_table_remove_all (jpegenc->requests);
-    g_hash_table_destroy (jpegenc->requests);
-    jpegenc->requests = NULL;
+  if (jpegenc->inframes != NULL) {
+    gst_data_queue_set_flushing (jpegenc->inframes, TRUE);
+    gst_data_queue_flush (jpegenc->inframes);
+    gst_object_unref (GST_OBJECT_CAST(jpegenc->inframes));
   }
+
+  g_rec_mutex_clear (&jpegenc->worklock);
 
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (jpegenc));
 }
@@ -444,16 +495,28 @@ gst_jpeg_enc_class_init (GstJPEGEncoderClass * klass)
   venc_class->handle_frame = gst_jpeg_enc_handle_frame;
 }
 
+static gboolean
+queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
+    guint64 time, gpointer checkdata)
+{
+  // There won't be any condition limiting for the buffer queue size.
+  return FALSE;
+}
+
 static void
 gst_jpeg_enc_init (GstJPEGEncoder * jpegenc)
 {
-  /* init properties */
+  g_rec_mutex_init (&jpegenc->worklock);
+
   jpegenc->quality = DEFAULT_PROP_JPEG_QUALITY;
   jpegenc->outpool = NULL;
-  jpegenc->requests = g_hash_table_new (NULL, NULL);
+  jpegenc->worktask = NULL;
+
+  jpegenc->inframes =
+      gst_data_queue_new (queue_is_full_cb, NULL, NULL, NULL);
+  gst_data_queue_set_flushing (jpegenc->inframes, FALSE);
 
   GST_LOG_OBJECT (jpegenc, "Create Jpeg encoder context");
-
   jpegenc->context = gst_jpeg_enc_context_new (
       (GstJPEGEncoderCallback) G_CALLBACK (gst_jpeg_enc_callback), jpegenc);
   g_return_if_fail (jpegenc->context != NULL);
