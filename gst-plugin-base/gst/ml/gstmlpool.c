@@ -60,6 +60,7 @@ struct _GstMLBufferPoolPrivate
   GstMLInfo info;
 
   gboolean addmeta;
+  gboolean continuous;
 
   // ION device FD.
   gint devfd;
@@ -186,6 +187,7 @@ gst_ml_buffer_pool_get_options (GstBufferPool * pool)
 {
   static const gchar *options[] = {
     GST_ML_BUFFER_POOL_OPTION_TENSOR_META,
+    GST_ML_BUFFER_POOL_OPTION_CONTINUOUS,
     NULL
   };
   return options;
@@ -254,6 +256,9 @@ gst_ml_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
   // Enable metadata based on configuration of the pool.
   priv->addmeta = gst_buffer_pool_config_has_option (config,
       GST_ML_BUFFER_POOL_OPTION_TENSOR_META);
+  // Enable allocation of continuous memory based on configuration of the pool.
+  priv->continuous = gst_buffer_pool_config_has_option (config,
+      GST_ML_BUFFER_POOL_OPTION_CONTINUOUS);
 
   gst_buffer_pool_config_set_params (config, caps, maxsize, minbuffers,
       maxbuffers);
@@ -270,13 +275,15 @@ gst_ml_buffer_pool_alloc (GstBufferPool * pool, GstBuffer ** buffer,
   GstMemory *mem = NULL;
   GstBuffer *newbuffer = NULL;
   GstMLTensorMeta *meta = NULL;
-  guint idx = 0, dim = 0, size = 0;
+  guint idx = 0, size = 0;
 
   // Create a GstBuffer.
   newbuffer = gst_buffer_new ();
 
   for (idx = 0; idx < priv->info.n_tensors; idx++) {
-    size = gst_ml_info_tensor_size (&priv->info, idx);
+    // Check if a single continuous memory block is requested for all tensors.
+    size = priv->continuous ? gst_ml_info_size (&priv->info) :
+        gst_ml_info_tensor_size (&priv->info, idx);
 
     if (GST_IS_SYSTEM_MEMORY_TYPE (priv->memtype))
       mem = gst_allocator_alloc (priv->allocator, size, NULL);
@@ -288,21 +295,25 @@ gst_ml_buffer_pool_alloc (GstBufferPool * pool, GstBuffer ** buffer,
       gst_buffer_unref (newbuffer);
       return GST_FLOW_ERROR;
     }
-    // Append the FD backed memory to the newly created GstBuffer.
-    gst_buffer_append_memory(newbuffer, mem);
+    // Append the memory block to the newly created GstBuffer.
+    gst_buffer_append_memory (newbuffer, mem);
 
-    if (priv->addmeta) {
-      guint n_dimensions = 0;
+    // Break the loop as only one memory block is going to be allocated.
+    if (priv->continuous) break;
+  }
 
-      GST_DEBUG_OBJECT (mlpool, "Adding GstMLTensorMeta");
+  // Reset the index counter.
+  idx = 0;
 
-      for (dim = 0; dim < GST_ML_TENSOR_MAX_DIMENSIONS; ++dim)
-        n_dimensions += (priv->info.tensors[idx][dim] != 0) ? 1 : 0;
+  // Add tensor meta.
+  while (priv->addmeta && (idx < priv->info.n_tensors)) {
+    GST_DEBUG_OBJECT (mlpool, "Adding GstMLTensorMeta");
 
-      meta = gst_buffer_add_ml_tensor_meta (newbuffer, priv->info.type,
-          n_dimensions, priv->info.tensors[idx]);
-      meta->id = idx;
-    }
+    meta = gst_buffer_add_ml_tensor_meta (newbuffer, priv->info.type,
+        priv->info.n_dimensions[idx], priv->info.tensors[idx]);
+    meta->id = idx;
+
+    idx++;
   }
 
   *buffer = newbuffer;
@@ -381,6 +392,7 @@ gst_ml_buffer_pool_new (const gchar * memtype)
   mlpool->priv->memtype = g_quark_from_static_string (memtype);
   mlpool->priv->devfd = -1;
   mlpool->priv->addmeta = FALSE;
+  mlpool->priv->continuous = FALSE;
 
   if (GST_IS_ION_MEMORY_TYPE (mlpool->priv->memtype)) {
     GST_INFO_OBJECT (mlpool, "Using ION memory");
@@ -401,10 +413,4 @@ gst_ml_buffer_pool_new (const gchar * memtype)
 
   GST_INFO_OBJECT (mlpool, "New ML buffer pool %p", mlpool);
   return GST_BUFFER_POOL_CAST (mlpool);
-}
-
-const GstMLInfo *
-gst_ml_buffer_pool_get_info (GstBufferPool * pool)
-{
-  return &(GST_ML_POOL_CAST (pool)->priv->info);
 }

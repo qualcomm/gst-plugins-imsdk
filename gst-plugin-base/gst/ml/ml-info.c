@@ -82,7 +82,7 @@ gst_ml_info_from_caps (GstMLInfo * info, const GstCaps * caps)
   GstStructure *structure;
   GstMLType type = GST_ML_TYPE_UNKNOWN;
   guint tensors[GST_ML_MAX_TENSORS][GST_ML_TENSOR_MAX_DIMENSIONS];
-  guint idx, dim, n_tensors = 0;
+  guint idx = 0, dim = 0, n_tensors = 0, n_dimensions[GST_ML_MAX_TENSORS];
   const GValue *value;
 
   g_return_val_if_fail (info != NULL, FALSE);
@@ -125,6 +125,8 @@ gst_ml_info_from_caps (GstMLInfo * info, const GstCaps * caps)
 
       GST_LOG ("Tensor[%u]: Dimension[%u] = %u", idx, dim, tensors[idx][dim]);
     }
+
+    n_dimensions[idx] = gst_value_array_get_size (tensor);
     n_tensors++;
   }
 
@@ -133,9 +135,12 @@ gst_ml_info_from_caps (GstMLInfo * info, const GstCaps * caps)
   info->type = type;
   info->n_tensors = n_tensors;
 
-  for (idx = 0; idx < n_tensors; idx++)
-    for (dim = 0; dim < GST_ML_TENSOR_MAX_DIMENSIONS; dim++)
+  for (idx = 0; idx < n_tensors; idx++) {
+    info->n_dimensions[idx] = n_dimensions[idx];
+
+    for (dim = 0; dim < n_dimensions[idx]; dim++)
       info->tensors[idx][dim] = tensors[idx][dim];
+  }
 
   return TRUE;
 }
@@ -163,8 +168,9 @@ gst_ml_info_to_caps (const GstMLInfo * info)
     GValue dimensions = G_VALUE_INIT;
     g_value_init (&dimensions, GST_TYPE_ARRAY);
 
-    for (dim = 0; dim < GST_ML_TENSOR_MAX_DIMENSIONS; dim++) {
+    for (dim = 0; dim < info->n_dimensions[idx]; dim++) {
       GValue dimension = G_VALUE_INIT;
+
       g_value_init (&dimension, G_TYPE_INT);
 
       g_value_set_int (&dimension, info->tensors[idx][dim]);
@@ -179,6 +185,7 @@ gst_ml_info_to_caps (const GstMLInfo * info)
   gst_caps_set_value (caps, "dimensions", &tensors);
   g_value_unset (&tensors);
 
+  GST_DEBUG ("Returning caps %" GST_PTR_FORMAT, caps);
   return caps;
 }
 
@@ -193,10 +200,14 @@ gst_ml_info_is_equal (const GstMLInfo * info, const GstMLInfo * other)
   if (info->type != other->type)
     return FALSE;
 
-  for (idx = 0; idx < info->n_tensors; idx++)
-    for (dim = 0; dim < GST_ML_TENSOR_MAX_DIMENSIONS; dim++)
+  for (idx = 0; idx < info->n_tensors; idx++) {
+    if (info->n_dimensions[idx] != other->n_dimensions[idx])
+      return FALSE;
+
+    for (dim = 0; dim < info->n_dimensions[idx]; dim++)
       if (info->tensors[idx][dim] != other->tensors[idx][dim])
         return FALSE;
+  }
 
   return TRUE;
 }
@@ -212,7 +223,7 @@ gst_ml_info_tensor_size  (const GstMLInfo * info, guint index)
     return 0;
   }
 
-  for (dim = 0; dim < GST_ML_TENSOR_MAX_DIMENSIONS; dim++) {
+  for (dim = 0; dim < info->n_dimensions[index]; dim++) {
     value = (info->tensors[index][dim] != 0) ? info->tensors[index][dim] : 1;
     size = (size != 0) ? (size * value) : value;
   }
