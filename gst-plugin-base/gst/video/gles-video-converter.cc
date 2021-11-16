@@ -67,33 +67,31 @@
 #define DRM_FMT_STRING(x) \
     (x) & 0xFF, ((x) >> 8) & 0xFF, ((x) >> 16) & 0xFF, ((x) >> 24) & 0xFF
 
-#define DEFAULT_OPT_RESIZE_WIDTH  0
-#define DEFAULT_OPT_RESIZE_HEIGHT 0
-#define DEFAULT_OPT_DEST_X        0
-#define DEFAULT_OPT_DEST_Y        0
-#define DEFAULT_OPT_DEST_WIDTH    0
-#define DEFAULT_OPT_DEST_HEIGHT   0
-#define DEFAULT_OPT_RSCALE        1.0
-#define DEFAULT_OPT_GSCALE        1.0
-#define DEFAULT_OPT_BSCALE        1.0
-#define DEFAULT_OPT_ASCALE        1.0
-#define DEFAULT_OPT_QSCALE        1.0
-#define DEFAULT_OPT_ROFFSET       0.0
-#define DEFAULT_OPT_GOFFSET       0.0
-#define DEFAULT_OPT_BOFFSET       0.0
-#define DEFAULT_OPT_AOFFSET       0.0
-#define DEFAULT_OPT_QOFFSET       0.0
+#define DEFAULT_OPT_OUTPUT_WIDTH     0
+#define DEFAULT_OPT_OUTPUT_HEIGHT    0
+#define DEFAULT_OPT_DEST_X           0
+#define DEFAULT_OPT_DEST_Y           0
+#define DEFAULT_OPT_DEST_WIDTH       0
+#define DEFAULT_OPT_DEST_HEIGHT      0
+#define DEFAULT_OPT_RSCALE           (1.0 / 255.0)
+#define DEFAULT_OPT_GSCALE           (1.0 / 255.0)
+#define DEFAULT_OPT_BSCALE           (1.0 / 255.0)
+#define DEFAULT_OPT_ASCALE           (1.0 / 255.0)
+#define DEFAULT_OPT_QSCALE           (1.0 / 255.0)
+#define DEFAULT_OPT_ROFFSET          0.0
+#define DEFAULT_OPT_GOFFSET          0.0
+#define DEFAULT_OPT_BOFFSET          0.0
+#define DEFAULT_OPT_AOFFSET          0.0
+#define DEFAULT_OPT_QOFFSET          0.0
 
-#define DEFAULT_OPT_RESIZE           FALSE
 #define DEFAULT_OPT_NORMALIZE        FALSE
 #define DEFAULT_OPT_QUANTIZE         FALSE
 #define DEFAULT_OPT_CONVERT_TO_UINT8 FALSE
-#define DEFAULT_OPT_CROP             NULL
 
-#define GET_OPT_RESIZE_WIDTH(s, v) get_opt_int (s, \
-    GST_GLES_VIDEO_CONVERTER_OPT_RESIZE_WIDTH, v)
-#define GET_OPT_RESIZE_HEIGHT(s, v) get_opt_int (s, \
-    GST_GLES_VIDEO_CONVERTER_OPT_RESIZE_HEIGHT, v)
+#define GET_OPT_OUTPUT_WIDTH(s, v) get_opt_int (s, \
+    GST_GLES_VIDEO_CONVERTER_OPT_OUTPUT_WIDTH, v)
+#define GET_OPT_OUTPUT_HEIGHT(s, v) get_opt_int (s, \
+    GST_GLES_VIDEO_CONVERTER_OPT_OUTPUT_HEIGHT, v)
 #define GET_OPT_RSCALE(s, v) get_opt_double (s, \
     GST_GLES_VIDEO_CONVERTER_OPT_RSCALE, v)
 #define GET_OPT_GSCALE(s, v) get_opt_double (s, \
@@ -114,14 +112,10 @@
     GST_GLES_VIDEO_CONVERTER_OPT_AOFFSET, v)
 #define GET_OPT_QOFFSET(s, v) get_opt_double (s, \
     GST_GLES_VIDEO_CONVERTER_OPT_QOFFSET, v)
-#define GET_OPT_RESIZE(s, v) get_opt_boolean (s, \
-    GST_GLES_VIDEO_CONVERTER_OPT_RESIZE, v)
 #define GET_OPT_NORMALIZE(s, v) get_opt_boolean (s, \
     GST_GLES_VIDEO_CONVERTER_OPT_NORMALIZE, v)
 #define GET_OPT_QUANTIZE(s, v) get_opt_boolean (s, \
     GST_GLES_VIDEO_CONVERTER_OPT_QUANTIZE, v)
-#define GET_OPT_CROP(s, v) get_opt_value (s, \
-    GST_GLES_VIDEO_CONVERTER_OPT_CROP, v)
 #define GET_OPT_CONVERT_TO_UINT8(s, v) get_opt_boolean (s, \
     GST_GLES_VIDEO_CONVERTER_OPT_CONVERT_TO_UINT8, v)
 #define GET_OPT_DEST_X(s, v) get_opt_int (s, \
@@ -184,13 +178,6 @@ get_opt_boolean (const GstStructure * options, const gchar * opt, gboolean value
 {
   gboolean result;
   return gst_structure_get_boolean (options, opt, &result) ? result : value;
-}
-
-static const void *
-get_opt_value (const GstStructure * options, const gchar* opt, gpointer userdata)
-{
-  return (gst_structure_get_field_type (options, opt) == GST_TYPE_LIST) ?
-      gst_structure_get_value (options, opt) : userdata;
 }
 
 static gboolean
@@ -256,6 +243,7 @@ gst_video_format_to_drm_format (GstVideoFormat format)
     return 0;
 }
 
+
 GstGlesConverter *
 gst_gles_video_converter_new ()
 {
@@ -263,6 +251,8 @@ gst_gles_video_converter_new ()
 
   convert = g_slice_new0 (GstGlesConverter);
   g_return_val_if_fail (convert != NULL, NULL);
+
+  g_mutex_init (&convert->lock);
 
   convert->engine = new (std::nothrow) ::QImgConv::DataConverter();
   GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (convert->engine != NULL, NULL,
@@ -288,6 +278,8 @@ gst_gles_video_converter_free (GstGlesConverter * convert)
   if (convert->engine != NULL)
     delete convert->engine;
 
+  g_mutex_clear (&convert->lock);
+
   GST_INFO ("Destroyed GLES converter: %p", convert);
   g_slice_free (GstGlesConverter, convert);
 }
@@ -310,8 +302,8 @@ gst_gles_video_converter_set_ops (GstGlesConverter * convert, GstStructure * opt
   gst_structure_foreach (opts, update_options, convert->options);
   gst_structure_free (opts);
 
-  width  = GET_OPT_RESIZE_WIDTH (convert->options, DEFAULT_OPT_RESIZE_WIDTH);
-  height = GET_OPT_RESIZE_HEIGHT (convert->options, DEFAULT_OPT_RESIZE_HEIGHT);
+  width  = GET_OPT_OUTPUT_WIDTH (convert->options, DEFAULT_OPT_OUTPUT_WIDTH);
+  height = GET_OPT_OUTPUT_HEIGHT (convert->options, DEFAULT_OPT_OUTPUT_HEIGHT);
 
   destination.x = GET_OPT_DEST_X (convert->options, DEFAULT_OPT_DEST_X);
   destination.y = GET_OPT_DEST_Y (convert->options, DEFAULT_OPT_DEST_Y);
@@ -338,8 +330,7 @@ gst_gles_video_converter_set_ops (GstGlesConverter * convert, GstStructure * opt
     return FALSE;
   }
 
-  if (GET_OPT_RESIZE (convert->options, DEFAULT_OPT_RESIZE))
-    composition.push_back (convert->engine->Resize (width, height));
+  composition.push_back (convert->engine->Resize (width, height));
 
   if (GET_OPT_NORMALIZE (convert->options, DEFAULT_OPT_NORMALIZE))
     composition.push_back (convert->engine->Normalize (rscale, gscale, bscale,
@@ -386,60 +377,59 @@ gst_gles_video_converter_set_ops (GstGlesConverter * convert, GstStructure * opt
 }
 
 gboolean
-gst_gles_video_converter_set_crop_ops (GstGlesConverter * convert,
-    GstStructure * crop_opts)
-{
-  g_return_val_if_fail (convert != NULL, FALSE);
-  g_return_val_if_fail (crop_opts != NULL, FALSE);
-
-  // Locking the converter to set the opts and composition pipeline
-  GST_GLES_LOCK(convert);
-
-  // Iterate over the fields in the crop opts structure and update them.
-  gst_structure_foreach (crop_opts, update_options, convert->options);
-  gst_structure_free (crop_opts);
-
-  GST_DEBUG_OBJECT (convert, "Cropping Enabled with Gles Converter");
-  GST_GLES_UNLOCK(convert);
-  return TRUE;
-}
-
-gboolean
 gst_gles_video_converter_process (GstGlesConverter * convert,
-    GstVideoFrame * inframes, guint n_inframes, GstVideoFrame * cropframe,
-    GstVideoFrame * outframe)
+    GstVideoFrame * inframes, guint n_inputs, GstVideoFrame * outframe)
 {
   GstMemory *memory = NULL;
-  ::QImgConv::Image *inimages = NULL, *cropimage = NULL, *outimage = NULL;
-  ::QImgConv::Rec *src_viewports = NULL, *dst_viewports = NULL;
-  ::QImgConv::STATUS status = ::QImgConv::STATUS_OK;
-  guint n_clips = 0;
+  ::QImgConv::Image *inimages = NULL, *outimage = NULL;
+  guint idx = 0;
 
   g_return_val_if_fail (convert != NULL, FALSE);
-  g_return_val_if_fail ((inframes != NULL) && (n_inframes != 0), FALSE);
+  g_return_val_if_fail ((inframes != NULL) && (n_inputs != 0), FALSE);
   g_return_val_if_fail (outframe != NULL, FALSE);
 
-  inimages = new (std::nothrow) QImgConv::Image[n_inframes];
+  inimages = new (std::nothrow) QImgConv::Image[n_inputs];
   GST_GLES_RETURN_VAL_IF_FAIL (inimages != NULL, FALSE,
       "Failed to allocate memory for input QImgConv::Image!");
 
-  for (guint idx = 0; idx < n_inframes; idx++) {
-    memory = gst_buffer_peek_memory (inframes[idx].buffer, 0);
+  for (idx = 0; idx < n_inputs; idx++) {
+    const GstVideoFrame *frame = &inframes[idx];
+
+    memory = gst_buffer_peek_memory (frame->buffer, 0);
 
     GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (gst_is_fd_memory (memory), FALSE,
         delete inimages, "Input buffer memory is not FD backed!");
 
     inimages[idx].fd = gst_fd_memory_get_fd (memory);
-    inimages[idx].width = GST_VIDEO_FRAME_WIDTH (&inframes[idx]);
-    inimages[idx].height = GST_VIDEO_FRAME_HEIGHT (&inframes[idx]);
+    inimages[idx].width = GST_VIDEO_FRAME_WIDTH (frame);
+    inimages[idx].height = GST_VIDEO_FRAME_HEIGHT (frame);
+    inimages[idx].format = gst_video_format_to_drm_format (
+        GST_VIDEO_FRAME_FORMAT (frame));
+    inimages[idx].numPlane = GST_VIDEO_FRAME_N_PLANES (frame);
 
-    inimages[idx].format =
-        gst_video_format_to_drm_format (GST_VIDEO_FRAME_FORMAT (&inframes[idx]));
-    inimages[idx].isLinear = (inimages[idx].width % 128 != 0) ? true : false;
+    GST_TRACE ("Input image[%u] FD[%d] - Width[%u] Height[%u] Format[%c%c%c%c]"
+        " Planes[%u]", idx, inimages[idx].fd, inimages[idx].width,
+        inimages[idx].height, DRM_FMT_STRING (inimages[idx].format),
+        inimages[idx].numPlane);
 
-    GST_TRACE ("Input image[%u] with FD %d, dimensions %ux%u and format "
-        "%c%c%c%c", idx, inimages[idx].fd, inimages[idx].width,
-        inimages[idx].height, DRM_FMT_STRING (inimages[idx].format));
+    inimages[idx].plane0Stride =
+        GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0);
+    inimages[idx].plane0Offset =
+        GST_VIDEO_FRAME_PLANE_OFFSET (frame, 0);
+
+    GST_TRACE ("Input image[%u] FD[%d] - Stride0[%u] Offset0[%u]", idx,
+        inimages[idx].fd, inimages[idx].plane0Stride, inimages[idx].plane0Offset);
+
+    inimages[idx].plane1Stride = (inimages[idx].numPlane >= 2) ?
+        GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1) : 0;
+    inimages[idx].plane1Offset = (inimages[idx].numPlane >= 2) ?
+        GST_VIDEO_FRAME_PLANE_OFFSET (frame, 1) : 0;
+
+    GST_TRACE ("Input image[%u] FD[%d] - Stride1[%u] Offset1[%u]", idx,
+        inimages[idx].fd, inimages[idx].plane1Stride, inimages[idx].plane1Offset);
+
+    inimages[idx].isLinear =
+        (inimages[idx].plane0Stride % 128 != 0) ? true : false;
   }
 
   outimage = new (std::nothrow) ::QImgConv::Image();
@@ -453,97 +443,34 @@ gst_gles_video_converter_process (GstGlesConverter * convert,
   outimage->fd = gst_fd_memory_get_fd (memory);
   outimage->width = GST_VIDEO_FRAME_WIDTH (outframe);
   outimage->height = GST_VIDEO_FRAME_HEIGHT (outframe);
+  outimage->format = gst_video_format_to_drm_format (
+      GST_VIDEO_FRAME_FORMAT (outframe));
+  outimage->numPlane = GST_VIDEO_FRAME_N_PLANES (outframe);
 
-  outimage->format =
-      gst_video_format_to_drm_format (GST_VIDEO_FRAME_FORMAT (outframe));
-  outimage->isLinear = (outimage->width % 128 != 0) ? true : false;
+  GST_TRACE ("Output image FD[%d] - Width[%u] Height[%u] Format[%c%c%c%c] "
+      "Planes[%u]", outimage->fd, outimage->width, outimage->height,
+      DRM_FMT_STRING (outimage->format), outimage->numPlane);
 
-  GST_TRACE ("Output image with FD %d, dimensions %ux%u and format %c%c%c%c",
-      outimage->fd, outimage->width, outimage->height,
-      DRM_FMT_STRING (outimage->format));
+  outimage->plane0Stride = GST_VIDEO_FRAME_PLANE_STRIDE (outframe, 0);
+  outimage->plane0Offset = GST_VIDEO_FRAME_PLANE_OFFSET (outframe, 0);
 
-  if ((cropframe != NULL) &&
-      (GET_OPT_CROP(convert->options, DEFAULT_OPT_CROP) != NULL)) {
+  GST_TRACE ("Output image FD[%d] - Stride0[%u] Offset0[%u]",
+      outimage->fd, outimage->plane0Stride, outimage->plane0Offset);
 
-    const GValue *rects = (const GValue *)GET_OPT_CROP(convert->options,
-        DEFAULT_OPT_CROP);
-    n_clips = gst_value_list_get_size(rects);
+  outimage->plane1Stride = (outimage->numPlane >= 2) ?
+      GST_VIDEO_FRAME_PLANE_STRIDE (outframe, 1) : 0;
+  outimage->plane1Offset = (outimage->numPlane >= 2) ?
+      GST_VIDEO_FRAME_PLANE_OFFSET (outframe, 1) : 0;
 
-    cropimage = new (std::nothrow) ::QImgConv::Image();
-    GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (cropimage != NULL, FALSE,
-        delete inimages; delete outimage, "Failed to allocate memory for"
-        "crop QImgConv::Image!");
+  GST_TRACE ("Output image FD[%d] - Stride1[%u] Offset1[%u]",
+      outimage->fd, outimage->plane1Stride, outimage->plane1Offset);
 
-    memory = gst_buffer_peek_memory (cropframe->buffer, 0);
-    GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (gst_is_fd_memory (memory), FALSE,
-        delete inimages; delete outimage; delete cropimage, "Crop buffer"
-        "memory is not FD backed!");
-
-    cropimage->fd = gst_fd_memory_get_fd (memory);
-    cropimage->width = GST_VIDEO_FRAME_WIDTH (cropframe);
-    cropimage->height = GST_VIDEO_FRAME_HEIGHT (cropframe);
-
-    cropimage->format =
-        gst_video_format_to_drm_format (GST_VIDEO_FRAME_FORMAT (cropframe));
-    cropimage->isLinear = (cropimage->width % 128 != 0) ? true : false;
-
-    GST_TRACE ("Crop image with FD %d, dimensions %ux%u and format %c%c%c%c",
-        cropimage->fd, cropimage->width, cropimage->height,
-        DRM_FMT_STRING (cropimage->format));
-
-    src_viewports = new (std::nothrow) QImgConv::Rec[n_clips];
-
-    GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (src_viewports != NULL, FALSE,
-        delete inimages; delete outimage; delete cropimage, "Failed to"
-        " allocate memory for src viewports QImgConv::Rec!");
-
-    dst_viewports = new (std::nothrow) QImgConv::Rec[n_clips];
-
-    GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (dst_viewports != NULL, FALSE,
-        delete inimages; delete outimage; delete cropimage;
-        delete src_viewports, "Failed to allocate memory for dst viewports"
-        " QImgConv::Rec!");
-
-    for (uint idx = 0; idx < n_clips; idx++) {
-        const GValue *rect = gst_value_list_get_value (rects, idx);
-
-        src_viewports[idx].x =
-            g_value_get_int (gst_value_array_get_value (rect, 0));
-        src_viewports[idx].y =
-            g_value_get_int (gst_value_array_get_value (rect, 1));
-        src_viewports[idx].width =
-            g_value_get_int (gst_value_array_get_value (rect, 2));
-        src_viewports[idx].height =
-            g_value_get_int (gst_value_array_get_value (rect, 3));
-
-        dst_viewports[idx].x = 0;
-        dst_viewports[idx].y = (GST_VIDEO_FRAME_HEIGHT (cropframe)*idx)/n_clips;
-        dst_viewports[idx].width = GST_VIDEO_FRAME_WIDTH (cropframe);
-        dst_viewports[idx].height = GST_VIDEO_FRAME_HEIGHT (cropframe)/n_clips;
-    }
-  }
+  outimage->isLinear = (outimage->plane0Stride % 128 != 0) ? true : false;
 
   GST_GLES_LOCK (convert);
 
-  if ((cropimage!= NULL) &&
-      (GET_OPT_CROP(convert->options, DEFAULT_OPT_CROP)!= NULL)) {
-  // When Crop operation is set, always a single inframe is passed
-    status = convert->engine->Clip (inimages[0], src_viewports, dst_viewports,
-        cropimage, n_clips, true);
-
-    if (status == ::QImgConv::STATUS_OK)
-    // When cropping n_inframes is 1
-      status =  convert->engine->DoPreProcess (cropimage, outimage, 1, 1);
-
-    delete cropimage;
-    delete src_viewports;
-    delete dst_viewports;
-
-  } else {
-  // Pass down batch size the same as number of inframes to DoPreProcess call.
-    status = convert->engine->DoPreProcess (inimages, outimage, n_inframes,
-        n_inframes);
-  }
+  ::QImgConv::STATUS status = convert->engine->DoPreProcess (
+      inimages, outimage, n_inputs, n_inputs);
 
   GST_GLES_UNLOCK (convert);
 
