@@ -216,6 +216,63 @@ qmmfsrc_pad_flush_buffers (GstElement * element, GstPad * pad, gpointer data)
   return TRUE;
 }
 
+static void
+qmmfsrc_pad_reconfigure (GstPad * pad, GstElement * element)
+{
+  GstQmmfSrc *qmmfsrc = GST_QMMFSRC (element);
+  GstState state = GST_STATE_VOID_PENDING;
+  gboolean success = FALSE;
+
+  if (gst_element_get_state (element, &state, NULL, 0) ==
+      GST_STATE_CHANGE_FAILURE) {
+    GST_ERROR_OBJECT (element, "Failed to retrieve pipeline state!");
+    return;
+  }
+
+  GST_INFO_OBJECT (qmmfsrc, "Reconfiguration for pad %s in %s state",
+      GST_PAD_NAME (pad), gst_element_state_get_name (state));
+
+  if (GST_IS_QMMFSRC_VIDEO_PAD (pad)) {
+    GST_INFO_OBJECT (qmmfsrc, "Reconfigure video pad");
+
+    if (state == GST_STATE_PLAYING || state == GST_STATE_PAUSED) {
+      // First delete the previous camera stream associated with this pad.
+      if (GST_QMMFSRC_VIDEO_PAD (pad)->id != 0) {
+        if (state == GST_STATE_PLAYING) {
+          success = gst_qmmf_context_pause_video_stream (qmmfsrc->context, pad);
+          QMMFSRC_RETURN_IF_FAIL (qmmfsrc, success, "Stream pause failed!");
+        }
+
+        success = gst_qmmf_context_stop_video_stream (qmmfsrc->context, pad);
+        QMMFSRC_RETURN_IF_FAIL (qmmfsrc, success, "Stream stop failed!");
+        success = gst_qmmf_context_delete_video_stream (qmmfsrc->context, pad);
+        QMMFSRC_RETURN_IF_FAIL (
+            qmmfsrc, success, "Video stream deletion failed!");
+      }
+
+      GST_INFO_OBJECT (element, "Create new stream");
+      success = gst_qmmf_context_create_video_stream (qmmfsrc->context, pad);
+      QMMFSRC_RETURN_IF_FAIL (
+          qmmfsrc, success, "Video stream creation failed!");
+
+      if (state == GST_STATE_PLAYING) {
+        success = gst_qmmf_context_start_video_stream (qmmfsrc->context, pad);
+        QMMFSRC_RETURN_IF_FAIL (qmmfsrc, success, "Stream start failed!");
+      }
+    }
+  } else if (GST_IS_QMMFSRC_IMAGE_PAD (pad)) {
+    GST_INFO_OBJECT (qmmfsrc, "Reconfigure image pad");
+
+    if (state == GST_STATE_PLAYING || state == GST_STATE_PAUSED) {
+      GST_INFO_OBJECT (element, "Create new image stream");
+      success = gst_qmmf_context_create_image_stream (
+          qmmfsrc->context, pad, NULL);
+      QMMFSRC_RETURN_IF_FAIL (
+          qmmfsrc, success, "Image stream creation failed!");
+    }
+  }
+}
+
 static GstPad*
 qmmfsrc_request_pad (GstElement * element, GstPadTemplate * templ,
     const gchar * reqname, const GstCaps * caps)
@@ -305,6 +362,10 @@ qmmfsrc_request_pad (GstElement * element, GstPadTemplate * templ,
       G_CALLBACK (gst_qmmf_context_update_video_param), qmmfsrc->context);
   g_signal_connect (srcpad, "notify::crop",
       G_CALLBACK (gst_qmmf_context_update_video_param), qmmfsrc->context);
+
+  // Connect a callback to the pad reconfigure signal.
+  g_signal_connect (srcpad, "reconfigure",
+      G_CALLBACK (qmmfsrc_pad_reconfigure), GST_ELEMENT (qmmfsrc));
   return srcpad;
 }
 
@@ -312,13 +373,34 @@ static void
 qmmfsrc_release_pad (GstElement * element, GstPad * pad)
 {
   GstQmmfSrc *qmmfsrc = GST_QMMFSRC (element);
+  GstState state = GST_STATE_VOID_PENDING;
   guint index = 0;
+  gboolean success = FALSE;
 
   GST_QMMFSRC_LOCK (qmmfsrc);
+
+  if (gst_element_get_state (element, &state, NULL, 0) ==
+      GST_STATE_CHANGE_FAILURE) {
+    GST_ERROR_OBJECT (element, "Failed to retrieve pipeline state!");
+    return;
+  }
 
   if (GST_IS_QMMFSRC_VIDEO_PAD (pad)) {
     index = GST_QMMFSRC_VIDEO_PAD (pad)->index;
     GST_DEBUG_OBJECT (element, "Releasing video pad %d", index);
+
+    if (state == GST_STATE_PLAYING || state == GST_STATE_PAUSED) {
+      GST_DEBUG_OBJECT (element, "Delete stream");
+      if (state == GST_STATE_PLAYING) {
+        success = gst_qmmf_context_pause_video_stream (qmmfsrc->context, pad);
+        QMMFSRC_RETURN_IF_FAIL (qmmfsrc, success, "Stream pause failed!");
+      }
+      success = gst_qmmf_context_stop_video_stream (qmmfsrc->context, pad);
+      QMMFSRC_RETURN_IF_FAIL (qmmfsrc, success, "Stream stop failed!");
+      success = gst_qmmf_context_delete_video_stream (qmmfsrc->context, pad);
+      QMMFSRC_RETURN_IF_FAIL (
+          qmmfsrc, success, "Video stream deletion failed!");
+    }
 
     qmmfsrc_release_video_pad (element, pad);
     qmmfsrc->vidindexes =
@@ -326,6 +408,13 @@ qmmfsrc_release_pad (GstElement * element, GstPad * pad)
   } else if (GST_IS_QMMFSRC_IMAGE_PAD (pad)) {
     index = GST_QMMFSRC_IMAGE_PAD (pad)->index;
     GST_DEBUG_OBJECT (element, "Releasing image pad %d", index);
+
+    if (state == GST_STATE_PLAYING || state == GST_STATE_PAUSED) {
+      GST_DEBUG_OBJECT (element, "Delete image stream");
+      success = gst_qmmf_context_delete_image_stream (qmmfsrc->context, pad);
+      QMMFSRC_RETURN_IF_FAIL (
+          qmmfsrc, success, "Image stream deletion failed!");
+    }
 
     qmmfsrc_release_image_pad (element, pad);
     qmmfsrc->imgindexes =
@@ -386,18 +475,14 @@ qmmfsrc_event_callback (guint event, gpointer userdata)
 }
 
 static gboolean
-qmmfsrc_create_session (GstQmmfSrc * qmmfsrc)
+qmmfsrc_create_stream (GstQmmfSrc * qmmfsrc)
 {
   gboolean success = FALSE;
   gpointer key;
   GstPad *pad = NULL, *jpegpad = NULL, *bayerpad = NULL;
   GList *list = NULL;
 
-  GST_TRACE_OBJECT (qmmfsrc, "Create session");
-
-  success = gst_qmmf_context_create_session (qmmfsrc->context);
-  QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
-      "Session creation failed!");
+  GST_TRACE_OBJECT (qmmfsrc, "Create stream");
 
   // Iterate over the video pads, fixate caps and create streams.
   for (list = qmmfsrc->vidindexes; list != NULL; list = list->next) {
@@ -455,20 +540,20 @@ qmmfsrc_create_session (GstQmmfSrc * qmmfsrc)
     }
   }
 
-  GST_TRACE_OBJECT (qmmfsrc, "Session created");
+  GST_TRACE_OBJECT (qmmfsrc, "Stream created");
 
   return TRUE;
 }
 
 static gboolean
-qmmfsrc_delete_session (GstQmmfSrc * qmmfsrc)
+qmmfsrc_delete_stream (GstQmmfSrc * qmmfsrc)
 {
   gboolean success = FALSE;
   gpointer key;
   GstPad *pad;
   GList *list = NULL;
 
-  GST_TRACE_OBJECT (qmmfsrc, "Delete session");
+  GST_TRACE_OBJECT (qmmfsrc, "Delete stream");
 
   if (g_list_length (qmmfsrc->imgindexes) > 0) {
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads,
@@ -488,69 +573,92 @@ qmmfsrc_delete_session (GstQmmfSrc * qmmfsrc)
         "Video stream deletion failed!");
   }
 
-  success = gst_qmmf_context_delete_session (qmmfsrc->context);
-  QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
-      "Session deletion failed!");
-
-  GST_TRACE_OBJECT (qmmfsrc, "Session deleted");
+  GST_TRACE_OBJECT (qmmfsrc, "Stream deleted");
 
   return TRUE;
 }
 
 static gboolean
-qmmfsrc_start_session (GstQmmfSrc * qmmfsrc)
+qmmfsrc_start_stream (GstQmmfSrc * qmmfsrc)
 {
   gboolean success = FALSE;
+  gpointer key;
+  GstPad *pad = NULL;
+  GList *list = NULL;
 
-  GST_TRACE_OBJECT (qmmfsrc, "Starting session");
+  GST_TRACE_OBJECT (qmmfsrc, "Starting stream");
 
   success = gst_element_foreach_src_pad (GST_ELEMENT (qmmfsrc),
       qmmfsrc_pad_flush_buffers, GUINT_TO_POINTER (FALSE));
-  QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
-      "Failed to flush source pads!");
+  if (!success)
+    GST_WARNING ("There are no src pads!");
 
-  success = gst_qmmf_context_start_session (qmmfsrc->context);
-  QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
-      "Session start failed!");
+  // Iterate over the video pads, fixate caps and create streams.
+  for (list = qmmfsrc->vidindexes; list != NULL; list = list->next) {
+    key = list->data;
+    pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
 
-  GST_TRACE_OBJECT (qmmfsrc, "Session started");
+    success = gst_qmmf_context_start_video_stream (qmmfsrc->context, pad);
+    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
+        "Stream start failed!");
+  }
+
+  GST_TRACE_OBJECT (qmmfsrc, "Stream started");
 
   return TRUE;
 }
 
 static gboolean
-qmmfsrc_stop_session (GstQmmfSrc * qmmfsrc)
+qmmfsrc_stop_stream (GstQmmfSrc * qmmfsrc)
 {
   gboolean success = FALSE;
+  gpointer key;
+  GstPad *pad = NULL;
+  GList *list = NULL;
 
-  GST_TRACE_OBJECT (qmmfsrc, "Stopping session");
+  GST_TRACE_OBJECT (qmmfsrc, "Stopping stream");
 
   success = gst_element_foreach_src_pad (GST_ELEMENT (qmmfsrc),
       qmmfsrc_pad_flush_buffers, GUINT_TO_POINTER (TRUE));
-  QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
-      "Failed to flush source pads!");
+  if (!success)
+    GST_WARNING ("There are no src pads!");
 
-  success = gst_qmmf_context_stop_session (qmmfsrc->context);
-  QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
-      "Session stop failed!");
+  // Iterate over the video pads, fixate caps and create streams.
+  for (list = qmmfsrc->vidindexes; list != NULL; list = list->next) {
+    key = list->data;
+    pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
 
-  GST_TRACE_OBJECT (qmmfsrc, "Session stopped");
+    success = gst_qmmf_context_stop_video_stream (qmmfsrc->context, pad);
+    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
+        "Stream stop failed!");
+  }
+
+  GST_TRACE_OBJECT (qmmfsrc, "Stream stopped");
 
   return TRUE;
 }
 
 static gboolean
-qmmfsrc_pause_session (GstQmmfSrc * qmmfsrc)
+qmmfsrc_pause_stream (GstQmmfSrc * qmmfsrc)
 {
-  gboolean success = FALSE, flush = TRUE;
+  gboolean success = FALSE;
+  gpointer key;
+  GstPad *pad = NULL;
+  GList *list = NULL;
 
-  GST_TRACE_OBJECT (qmmfsrc, "Pausing session");
+  GST_TRACE_OBJECT (qmmfsrc, "Pausing stream");
 
-  success = gst_qmmf_context_pause_session (qmmfsrc->context);
-  QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
-      "Session pause failed!");
+  // Iterate over the video pads, fixate caps and create streams.
+  for (list = qmmfsrc->vidindexes; list != NULL; list = list->next) {
+    key = list->data;
+    pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
 
-  GST_TRACE_OBJECT (qmmfsrc, "Session paused");
+    success = gst_qmmf_context_pause_video_stream (qmmfsrc->context, pad);
+    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
+        "Stream pause failed!");
+  }
+
+  GST_TRACE_OBJECT (qmmfsrc, "Stream paused");
 
   return TRUE;
 }
@@ -611,14 +719,14 @@ qmmfsrc_change_state (GstElement * element, GstStateChange transition)
       }
       break;
     case GST_STATE_CHANGE_READY_TO_PAUSED:
-      if (!qmmfsrc_create_session (qmmfsrc)) {
-        GST_ERROR_OBJECT (qmmfsrc, "Failed to create session!");
+      if (!qmmfsrc_create_stream (qmmfsrc)) {
+        GST_ERROR_OBJECT (qmmfsrc, "Failed to create stream!");
         return GST_STATE_CHANGE_FAILURE;
       }
       break;
     case GST_STATE_CHANGE_PAUSED_TO_PLAYING:
-      if (!qmmfsrc_start_session (qmmfsrc)) {
-        GST_ERROR_OBJECT (qmmfsrc, "Failed to start session!");
+      if (!qmmfsrc_start_stream (qmmfsrc)) {
+        GST_ERROR_OBJECT (qmmfsrc, "Failed to start stream!");
         return GST_STATE_CHANGE_FAILURE;
       }
       break;
@@ -645,8 +753,8 @@ qmmfsrc_change_state (GstElement * element, GstStateChange transition)
       ret = GST_STATE_CHANGE_SUCCESS;
       break;
     case GST_STATE_CHANGE_PLAYING_TO_PAUSED:
-      if (!qmmfsrc_pause_session (qmmfsrc)) {
-        GST_ERROR_OBJECT(qmmfsrc, "Failed to pause session!");
+      if (!qmmfsrc_pause_stream (qmmfsrc)) {
+        GST_ERROR_OBJECT(qmmfsrc, "Failed to pause stream!");
         return GST_STATE_CHANGE_FAILURE;
       }
       // Return NO_PREROLL to inform bin/pipeline we won't be able to
@@ -654,12 +762,12 @@ qmmfsrc_change_state (GstElement * element, GstStateChange transition)
       ret = GST_STATE_CHANGE_NO_PREROLL;
       break;
     case GST_STATE_CHANGE_PAUSED_TO_READY:
-      if (!qmmfsrc_stop_session (qmmfsrc)) {
-        GST_ERROR_OBJECT(qmmfsrc, "Failed to stop session!");
+      if (!qmmfsrc_stop_stream (qmmfsrc)) {
+        GST_ERROR_OBJECT(qmmfsrc, "Failed to stop stream!");
         return GST_STATE_CHANGE_FAILURE;
       }
-      if (!qmmfsrc_delete_session (qmmfsrc)) {
-        GST_ERROR_OBJECT (qmmfsrc, "Failed to delete session!");
+      if (!qmmfsrc_delete_stream (qmmfsrc)) {
+        GST_ERROR_OBJECT (qmmfsrc, "Failed to delete stream!");
         return GST_STATE_CHANGE_FAILURE;
       }
       break;
