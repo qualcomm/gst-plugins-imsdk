@@ -163,8 +163,7 @@ gst_ml_module_new (const gchar * libname, const gchar * labels)
   GstMLModule *module = NULL;
   gchar *location = NULL;
 
-  location = g_strdup_printf ("/usr/lib/gstreamer-1.0/ml/modules/lib%s.so",
-      libname);
+  location = g_strdup_printf ("%s/lib%s.so", GST_ML_MODULES_DIR, libname);
 
   module = g_slice_new0 (GstMLModule);
   g_return_val_if_fail (module != NULL, NULL);
@@ -467,6 +466,10 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
       width *= coeficient;
     }
 
+    // Clip width and height if it outside the frame limits.
+    width = ((x + width) > vmeta->width) ? (vmeta->width - x) : width;
+    height = ((y + height) > vmeta->height) ? (vmeta->height - y) : height;
+
     // TODO: Set the most appropriate border size based on the bbox dimensions.
     borderwidth = 3.0;
 
@@ -538,6 +541,7 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
   GValue entries = G_VALUE_INIT;
   gchar *string = NULL;
   guint idx = 0, n_predictions = 0;
+  gsize length = 0;
 
   g_value_init (&entries, GST_TYPE_LIST);
 
@@ -562,9 +566,11 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
 
     prediction->label = g_strdelimit (prediction->label, " ", '-');
 
-    entry = gst_structure_new (prediction->label,
+    entry = gst_structure_new ("ObjectDetection",
+        "label", G_TYPE_STRING, prediction->label,
         "confidence", G_TYPE_FLOAT, prediction->confidence,
         "color", G_TYPE_UINT, prediction->color,
+        "aspect-ratio", GST_TYPE_FRACTION, detection->sar_n, detection->sar_d,
         NULL);
 
     prediction->label = g_strdelimit (prediction->label, "-", ' ');
@@ -605,14 +611,21 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
     return FALSE;
   }
 
-  // Serialize the predictions.
-  if ((string = gst_value_serialize (&entries)) == NULL) {
+  // Serialize the predictions into string format.
+  string = gst_value_serialize (&entries);
+  g_value_unset (&entries);
+
+  if (string == NULL) {
     GST_ERROR_OBJECT (detection, "Failed serialize predictions structure!");
     gst_buffer_unmap (buffer, &memmap);
     return FALSE;
   }
 
-  if (g_strv_length (&string) > memmap.maxsize) {
+  // Increase the length by 1 byte for the '\0' character.
+  length = strlen (string) + 1;
+
+  // Check whether the length +1 byte for the additional '\n' is within maxsize.
+  if ((length + 1) > memmap.maxsize) {
     GST_ERROR_OBJECT (detection, "String size exceeds max buffer size!");
 
     gst_buffer_unmap (buffer, &memmap);
@@ -621,11 +634,12 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
     return FALSE;
   }
 
-  g_stpcpy ((gchar*) memmap.data, string);
-  gst_buffer_unmap (buffer, &memmap);
-
-  gst_buffer_resize (buffer, 0, g_strv_length (&string));
+  // Copy the serialized GValue into the output buffer with '\n' termination.
+  length = g_snprintf ((gchar *) memmap.data, (length + 1), "%s\n", string);
   g_free (string);
+
+  gst_buffer_unmap (buffer, &memmap);
+  gst_buffer_resize (buffer, 0, length);
 
   return TRUE;
 }
