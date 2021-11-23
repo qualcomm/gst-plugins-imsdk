@@ -247,7 +247,7 @@ gbm_device_alloc (GstImageBufferPool * vpool)
   GST_DEBUG_OBJECT (vpool, "Allocated GBM memory FD %d", fd);
 
   return gst_fd_allocator_alloc (priv->allocator, fd, priv->info.size,
-      GST_FD_MEMORY_FLAG_DONT_CLOSE | GST_FD_MEMORY_FLAG_KEEP_MAPPED);
+      GST_FD_MEMORY_FLAG_DONT_CLOSE);
 }
 
 static void
@@ -343,7 +343,7 @@ ion_device_alloc (GstImageBufferPool * vpool)
 
   // Wrap the allocated FD in FD backed allocator.
   return gst_fd_allocator_alloc (priv->allocator, fd, priv->info.size,
-      GST_FD_MEMORY_FLAG_DONT_CLOSE | GST_FD_MEMORY_FLAG_KEEP_MAPPED);
+      GST_FD_MEMORY_FLAG_DONT_CLOSE);
 }
 
 static void
