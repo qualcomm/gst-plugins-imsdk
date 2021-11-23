@@ -742,6 +742,7 @@ qmmfsrc_change_state (GstElement * element, GstStateChange transition)
         GST_ERROR_OBJECT (qmmfsrc, "Failed to Open!");
         return GST_STATE_CHANGE_FAILURE;
       }
+      qmmfsrc->isplugged = TRUE;
       break;
     case GST_STATE_CHANGE_READY_TO_PAUSED:
       if (!qmmfsrc_create_stream (qmmfsrc)) {
@@ -787,7 +788,11 @@ qmmfsrc_change_state (GstElement * element, GstStateChange transition)
       ret = GST_STATE_CHANGE_NO_PREROLL;
       break;
     case GST_STATE_CHANGE_PAUSED_TO_READY:
-      if (!qmmfsrc_stop_stream (qmmfsrc)) {
+      // We will call stop_stream only if the camera is plugged, which
+      // is always true for BWC while for PoV it may or may not be true.
+      // When PoV is plugged stop_stream will be called from here,
+      // otherwise it will be called from camera-plug event handling.
+      if (qmmfsrc->isplugged && !qmmfsrc_stop_stream (qmmfsrc)) {
         GST_ERROR_OBJECT(qmmfsrc, "Failed to stop stream!");
         return GST_STATE_CHANGE_FAILURE;
       }
@@ -848,6 +853,20 @@ qmmfsrc_send_event (GstElement * element, GstEvent * event)
           element, (GstElementForeachPadFunc) qmmfsrc_pad_flush_buffers,
           GUINT_TO_POINTER (TRUE)
       );
+      gst_event_unref (event);
+      break;
+    case GST_EVENT_CUSTOM_DOWNSTREAM:
+      GST_DEBUG_OBJECT (qmmfsrc, "Received custom downstream event");
+      if (gst_event_has_name (event, "camera-plug")) {
+        // Toggle on camera-plug event
+        qmmfsrc->isplugged = qmmfsrc->isplugged ? FALSE: TRUE;
+        if(!qmmfsrc->isplugged) {
+          // If the camera is unplugged stop stream.
+          if (!qmmfsrc_stop_stream(qmmfsrc)) {
+            GST_ERROR_OBJECT(qmmfsrc, "Failed to stop stream!");
+          }
+        }
+      }
       gst_event_unref (event);
       break;
     default:
@@ -1444,6 +1463,7 @@ qmmfsrc_init (GstQmmfSrc * qmmfsrc)
 
   qmmfsrc->vidindexes = NULL;
   qmmfsrc->imgindexes = NULL;
+  qmmfsrc->isplugged = FALSE;
 
   qmmfsrc->context = gst_qmmf_context_new (
       G_CALLBACK (qmmfsrc_event_callback), qmmfsrc);
