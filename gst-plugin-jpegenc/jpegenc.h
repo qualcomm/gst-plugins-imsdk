@@ -38,6 +38,8 @@
 #include <gst/gst.h>
 #include <gst/video/video.h>
 #include <gst/video/gstvideoencoder.h>
+#include <gst/base/gstdataqueue.h>
+#include <system/graphics.h>
 
 #include "jpegenc-context.h"
 
@@ -57,21 +59,23 @@ G_BEGIN_DECLS
 
 typedef struct _GstJPEGEncoder GstJPEGEncoder;
 typedef struct _GstJPEGEncoderClass GstJPEGEncoderClass;
+typedef struct _GstVideoFrameData GstVideoFrameData;
 
 struct _GstJPEGEncoder {
   GstVideoEncoderClass     parent;
-
   /// Properties.
   gint                     quality;
   GstJpegEncodeOrientation orientation;
-
-  GHashTable               *requests;
-
   // Output buffer pool
   GstBufferPool            *outpool;
-
-  /// Jpeg encoder context.
+  /// Jpeg encoder context
   GstJPEGEncoderContext    *context;
+  /// Jpeg encoder input frames queue
+  GstDataQueue             *inframes;
+  /// Worker task.
+  GstTask                  *worktask;
+  /// Worker task mutex.
+  GRecMutex                worklock;
 };
 
 struct _GstJPEGEncoderClass {
