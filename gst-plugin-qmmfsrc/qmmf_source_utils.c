@@ -42,6 +42,34 @@ struct _PropAndroidEnum
 };
 
 GType
+gst_qmmfsrc_control_mode_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { CONTROL_MODE_OFF,
+        "Full application control of pipeline.", "off"
+    },
+    { CONTROL_MODE_AUTO,
+        "Manual control of capture parameters is disabled.", "auto"
+    },
+    { CONTROL_MODE_USE_SCENE_MODE,
+        "Use a specific scene mode.", "use_scene_mode"
+    },
+    { CONTROL_MODE_OFF_KEEP_STATE,
+        "Same as OFF mode, except that this capture will not be used by camera "
+        "device background auto-exposure, auto-white balance and auto-focus "
+        "algorithms (3A) to update their statistics.", "off_keep_state"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstCameraControlMode", variants);
+
+  return gtype;
+}
+
+GType
 gst_qmmfsrc_effect_mode_get_type (void)
 {
   static GType gtype = 0;
@@ -53,7 +81,7 @@ gst_qmmfsrc_effect_mode_get_type (void)
         "A 'monocolor' effect where the image is mapped into a single color.",
         "mono"
     },
-    {EFFECT_MODE_NEGATIVE,
+    { EFFECT_MODE_NEGATIVE,
         "A 'photo-negative' effect where the image's colors are inverted.",
         "negative"
     },
@@ -428,6 +456,24 @@ gst_qmmfsrc_noise_reduction_get_type (void)
     gtype = g_enum_register_static ("GstCameraNoiseReduction", variants);
 
   return gtype;
+}
+
+guchar
+gst_qmmfsrc_control_mode_android_value (const guint value)
+{
+  static guint idx = 0;
+  static const PropAndroidEnum map[] = {
+      {CONTROL_MODE_OFF, ANDROID_CONTROL_MODE_OFF},
+      {CONTROL_MODE_AUTO, ANDROID_CONTROL_MODE_AUTO},
+      {CONTROL_MODE_USE_SCENE_MODE, ANDROID_CONTROL_MODE_USE_SCENE_MODE},
+      {CONTROL_MODE_OFF_KEEP_STATE, ANDROID_CONTROL_MODE_OFF_KEEP_STATE},
+  };
+
+  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(map); ++idx) {
+    if (map[idx].value == value)
+      return map[idx].venum;
+  }
+  return (-1);
 }
 
 guchar

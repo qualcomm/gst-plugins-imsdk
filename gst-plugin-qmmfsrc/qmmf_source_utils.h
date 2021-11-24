@@ -75,6 +75,7 @@ G_BEGIN_DECLS
             : ((pspec->flags & GST_PARAM_MUTABLE_READY) ? (state <= GST_STATE_READY) \
                 : (state <= GST_STATE_NULL))))
 
+#define GST_TYPE_QMMFSRC_CONTROL_MODE (gst_qmmfsrc_control_mode_get_type())
 #define GST_TYPE_QMMFSRC_EFFECT_MODE (gst_qmmfsrc_effect_mode_get_type())
 #define GST_TYPE_QMMFSRC_SCENE_MODE (gst_qmmfsrc_scene_mode_get_type())
 #define GST_TYPE_QMMFSRC_ANTIBANDING (gst_qmmfsrc_antibanding_get_type())
@@ -99,6 +100,14 @@ typedef enum {
   GST_BAYER_FORMAT_GRBG,
   GST_BAYER_FORMAT_MONO,
 } GstBayerFormat;
+
+enum
+{
+  CONTROL_MODE_OFF,
+  CONTROL_MODE_AUTO,
+  CONTROL_MODE_USE_SCENE_MODE,
+  CONTROL_MODE_OFF_KEEP_STATE,
+};
 
 enum
 {
@@ -212,6 +221,8 @@ enum
   NOISE_REDUCTION_HIGH_QUALITY,
 };
 
+GType gst_qmmfsrc_control_mode_get_type (void);
+
 GType gst_qmmfsrc_effect_mode_get_type (void);
 
 GType gst_qmmfsrc_scene_mode_get_type (void);
@@ -231,6 +242,8 @@ GType gst_qmmfsrc_ir_mode_get_type (void);
 GType gst_qmmfsrc_iso_mode_get_type (void);
 
 GType gst_qmmfsrc_noise_reduction_get_type (void);
+
+guchar gst_qmmfsrc_control_mode_android_value (const guint value);
 
 guchar gst_qmmfsrc_effect_mode_android_value (const guint value);
 
