@@ -996,8 +996,8 @@ create_video_pipeline (GstServiceContext * srvctx)
   // Set caps for the MLE camera pad.
   filtercaps = gst_caps_new_simple ("video/x-raw",
       "format", G_TYPE_STRING, "NV12",
-      "width", G_TYPE_INT, 640,
-      "height", G_TYPE_INT, 360,
+      "width", G_TYPE_INT, 1280,
+      "height", G_TYPE_INT, 720,
       "framerate", GST_TYPE_FRACTION, 30, 1,
       NULL);
   gst_caps_set_features (filtercaps, 0,
@@ -1393,8 +1393,8 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
     configuration.out_width = stmsetup->width;
     configuration.out_height = stmsetup->height;
 
-    configuration.in_width = 640;
-    configuration.in_height = 360;
+    configuration.in_width = 1280;
+    configuration.in_height = 720;
 
     // Destroy the previous instance and create a new one.
     if (srvctx->afrmalgo->instance != NULL)
