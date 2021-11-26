@@ -88,6 +88,7 @@
 #define DEFAULT_OPT_NORMALIZE        FALSE
 #define DEFAULT_OPT_QUANTIZE         FALSE
 #define DEFAULT_OPT_CONVERT_TO_UINT8 FALSE
+#define DEFAULT_OPT_CROP             NULL
 
 #define GET_OPT_RESIZE_WIDTH(s, v) get_opt_int (s, \
     GST_GLES_VIDEO_CONVERTER_OPT_RESIZE_WIDTH, v)
@@ -119,6 +120,8 @@
     GST_GLES_VIDEO_CONVERTER_OPT_NORMALIZE, v)
 #define GET_OPT_QUANTIZE(s, v) get_opt_boolean (s, \
     GST_GLES_VIDEO_CONVERTER_OPT_QUANTIZE, v)
+#define GET_OPT_CROP(s, v) get_opt_value (s, \
+    GST_GLES_VIDEO_CONVERTER_OPT_CROP, v)
 #define GET_OPT_CONVERT_TO_UINT8(s, v) get_opt_boolean (s, \
     GST_GLES_VIDEO_CONVERTER_OPT_CONVERT_TO_UINT8, v)
 #define GET_OPT_DEST_X(s, v) get_opt_int (s, \
@@ -181,6 +184,13 @@ get_opt_boolean (const GstStructure * options, const gchar * opt, gboolean value
 {
   gboolean result;
   return gst_structure_get_boolean (options, opt, &result) ? result : value;
+}
+
+static const void *
+get_opt_value (const GstStructure * options, const gchar* opt, gpointer userdata)
+{
+  return (gst_structure_get_field_type (options, opt) == GST_TYPE_LIST) ?
+      gst_structure_get_value (options, opt) : userdata;
 }
 
 static gboolean
@@ -376,12 +386,34 @@ gst_gles_video_converter_set_ops (GstGlesConverter * convert, GstStructure * opt
 }
 
 gboolean
+gst_gles_video_converter_set_crop_ops (GstGlesConverter * convert,
+    GstStructure * crop_opts)
+{
+  g_return_val_if_fail (convert != NULL, FALSE);
+  g_return_val_if_fail (crop_opts != NULL, FALSE);
+
+  // Locking the converter to set the opts and composition pipeline
+  GST_GLES_LOCK(convert);
+
+  // Iterate over the fields in the crop opts structure and update them.
+  gst_structure_foreach (crop_opts, update_options, convert->options);
+  gst_structure_free (crop_opts);
+
+  GST_DEBUG_OBJECT (convert, "Cropping Enabled with Gles Converter");
+  GST_GLES_UNLOCK(convert);
+  return TRUE;
+}
+
+gboolean
 gst_gles_video_converter_process (GstGlesConverter * convert,
-    GstVideoFrame * inframes, guint n_inframes, GstVideoFrame * outframe)
+    GstVideoFrame * inframes, guint n_inframes, GstVideoFrame * cropframe,
+    GstVideoFrame * outframe)
 {
   GstMemory *memory = NULL;
-  ::QImgConv::Image *inimages = NULL, *outimage = NULL;
+  ::QImgConv::Image *inimages = NULL, *cropimage = NULL, *outimage = NULL;
+  ::QImgConv::Rec *src_viewports = NULL, *dst_viewports = NULL;
   ::QImgConv::STATUS status = ::QImgConv::STATUS_OK;
+  guint n_clips = 0;
 
   g_return_val_if_fail (convert != NULL, FALSE);
   g_return_val_if_fail ((inframes != NULL) && (n_inframes != 0), FALSE);
@@ -430,11 +462,88 @@ gst_gles_video_converter_process (GstGlesConverter * convert,
       outimage->fd, outimage->width, outimage->height,
       DRM_FMT_STRING (outimage->format));
 
+  if ((cropframe != NULL) &&
+      (GET_OPT_CROP(convert->options, DEFAULT_OPT_CROP) != NULL)) {
+
+    const GValue *rects = (const GValue *)GET_OPT_CROP(convert->options,
+        DEFAULT_OPT_CROP);
+    n_clips = gst_value_list_get_size(rects);
+
+    cropimage = new (std::nothrow) ::QImgConv::Image();
+    GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (cropimage != NULL, FALSE,
+        delete inimages; delete outimage, "Failed to allocate memory for"
+        "crop QImgConv::Image!");
+
+    memory = gst_buffer_peek_memory (cropframe->buffer, 0);
+    GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (gst_is_fd_memory (memory), FALSE,
+        delete inimages; delete outimage; delete cropimage, "Crop buffer"
+        "memory is not FD backed!");
+
+    cropimage->fd = gst_fd_memory_get_fd (memory);
+    cropimage->width = GST_VIDEO_FRAME_WIDTH (cropframe);
+    cropimage->height = GST_VIDEO_FRAME_HEIGHT (cropframe);
+
+    cropimage->format =
+        gst_video_format_to_drm_format (GST_VIDEO_FRAME_FORMAT (cropframe));
+    cropimage->isLinear = (cropimage->width % 128 != 0) ? true : false;
+
+    GST_TRACE ("Crop image with FD %d, dimensions %ux%u and format %c%c%c%c",
+        cropimage->fd, cropimage->width, cropimage->height,
+        DRM_FMT_STRING (cropimage->format));
+
+    src_viewports = new (std::nothrow) QImgConv::Rec[n_clips];
+
+    GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (src_viewports != NULL, FALSE,
+        delete inimages; delete outimage; delete cropimage, "Failed to"
+        " allocate memory for src viewports QImgConv::Rec!");
+
+    dst_viewports = new (std::nothrow) QImgConv::Rec[n_clips];
+
+    GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (dst_viewports != NULL, FALSE,
+        delete inimages; delete outimage; delete cropimage;
+        delete src_viewports, "Failed to allocate memory for dst viewports"
+        " QImgConv::Rec!");
+
+    for (uint idx = 0; idx < n_clips; idx++) {
+        const GValue *rect = gst_value_list_get_value (rects, idx);
+
+        src_viewports[idx].x =
+            g_value_get_int (gst_value_array_get_value (rect, 0));
+        src_viewports[idx].y =
+            g_value_get_int (gst_value_array_get_value (rect, 1));
+        src_viewports[idx].width =
+            g_value_get_int (gst_value_array_get_value (rect, 2));
+        src_viewports[idx].height =
+            g_value_get_int (gst_value_array_get_value (rect, 3));
+
+        dst_viewports[idx].x = 0;
+        dst_viewports[idx].y = (GST_VIDEO_FRAME_HEIGHT (cropframe)*idx)/n_clips;
+        dst_viewports[idx].width = GST_VIDEO_FRAME_WIDTH (cropframe);
+        dst_viewports[idx].height = GST_VIDEO_FRAME_HEIGHT (cropframe)/n_clips;
+    }
+  }
+
   GST_GLES_LOCK (convert);
 
+  if ((cropimage!= NULL) &&
+      (GET_OPT_CROP(convert->options, DEFAULT_OPT_CROP)!= NULL)) {
+  // When Crop operation is set, always a single inframe is passed
+    status = convert->engine->Clip (inimages[0], src_viewports, dst_viewports,
+        cropimage, n_clips, true);
+
+    if (status == ::QImgConv::STATUS_OK)
+    // When cropping n_inframes is 1
+      status =  convert->engine->DoPreProcess (cropimage, outimage, 1, 1);
+
+    delete cropimage;
+    delete src_viewports;
+    delete dst_viewports;
+
+  } else {
   // Pass down batch size the same as number of inframes to DoPreProcess call.
-  status = convert->engine->DoPreProcess (inimages, outimage, n_inframes,
-      n_inframes);
+    status = convert->engine->DoPreProcess (inimages, outimage, n_inframes,
+        n_inframes);
+  }
 
   GST_GLES_UNLOCK (convert);
 

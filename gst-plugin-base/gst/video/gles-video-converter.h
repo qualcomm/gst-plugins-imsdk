@@ -224,6 +224,20 @@ typedef struct _GstGlesConverter GstGlesConverter;
     "GstGlesVideoConverter.convert_to_uint8"
 
 /**
+ * GST_GLES_VIDEO_CONVERTER_OPT_CROP
+ *
+ * #GST_TYPE_LIST: list of GstValueArray-A, encapsulating x, y, width and height
+ * of clips identified by
+ *            x - - A[0],
+ *            y - - A[1],
+ *        width - - A[2],
+ *       height - - A[3] respectively
+ * Default: NULL
+ */
+#define GST_GLES_VIDEO_CONVERTER_OPT_CROP \
+    "GstGlesVideoConverter.crop"
+
+/**
  * gst_gles_converter_new:
  *
  * Initialise instance of Gles converter module
@@ -258,10 +272,27 @@ GST_VIDEO_API gboolean
 gst_gles_video_converter_set_ops (GstGlesConverter * convert,
                                   GstStructure * opts);
 /**
+ * gst_gles_video_converter_set_crop_ops:
+ * @convert: pointer to Gles converter instance
+ * @crop_opts: pointer to structure containing List of crop arrays
+ *
+ * everytime caller gets new ROI list, use this API to set them and
+ * let gles converter use them when clipping
+ *
+ * return: TRUE if the list of crop arrays is properly set
+ */
+GST_VIDEO_API gboolean
+gst_gles_video_converter_set_crop_ops (GstGlesConverter * convert,
+    GstStructure * crop_opts);
+
+/**
  * gst_gles_converter_process:
  * @convert: pointer to Gles converter instance
  * @inframes: Array of input videoframes
- * @n_inframes: number of input frames
+ * @n_inframes: number of input frames. In case of cropping, value is 1
+ * @cropframe: Intermediate frame to hold output of Clip API, NULL when
+ * cropping is disabled. Caller has to allocate memory properly. The
+ * cropframe has the same meta and videoinfo like outframe.
  * @outframe: output video frame
  *
  * call DoPreprocess API from QImgConv Library to processs the
@@ -272,6 +303,7 @@ gst_gles_video_converter_set_ops (GstGlesConverter * convert,
 GST_VIDEO_API gboolean
 gst_gles_video_converter_process (GstGlesConverter * convert,
                                   GstVideoFrame * inframes, guint n_inframes,
+                                  GstVideoFrame * cropframe,
                                   GstVideoFrame * outframe);
 
 G_END_DECLS
