@@ -64,6 +64,7 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
 enum
 {
   SIGNAL_PAD_RECONFIGURE,
+  SIGNAL_PAD_ACTIVATION,
   LAST_SIGNAL
 };
 
@@ -212,12 +213,14 @@ video_pad_activate_mode (GstPad * pad, GstObject * parent, GstPadMode mode,
         qmmfsrc_video_pad_flush_buffers_queue (pad, FALSE);
         success = gst_pad_start_task (
             pad, (GstTaskFunction) video_pad_worker_task, pad, NULL);
+        g_signal_emit (pad, signals[SIGNAL_PAD_ACTIVATION], 0, TRUE);
       } else {
         qmmfsrc_video_pad_flush_buffers_queue (pad, TRUE);
         success = gst_pad_stop_task (pad);
 
         gst_segment_init (&GST_QMMFSRC_VIDEO_PAD (pad)->segment,
             GST_FORMAT_UNDEFINED);
+        g_signal_emit (pad, signals[SIGNAL_PAD_ACTIVATION], 0, FALSE);
       }
       break;
     default:
@@ -640,6 +643,10 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
   signals[SIGNAL_PAD_RECONFIGURE] =
       g_signal_new ("reconfigure", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0, G_TYPE_NONE);
+
+  signals[SIGNAL_PAD_ACTIVATION] =
+      g_signal_new ("activation", G_TYPE_FROM_CLASS (klass),
+      G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 1, G_TYPE_BOOLEAN);
 
   GST_DEBUG_CATEGORY_INIT (qmmfsrc_video_pad_debug, "qtiqmmfsrc", 0,
       "QTI QMMF Source video pad");
