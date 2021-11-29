@@ -63,9 +63,17 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_image_pad_debug);
 
 enum
 {
+  SIGNAL_PAD_RECONFIGURE,
+  LAST_SIGNAL
+};
+
+enum
+{
   PROP_0,
   PROP_IMAGE_MODE,
 };
+
+static guint signals[LAST_SIGNAL];
 
 GType
 gst_qmmfsrc_image_pad_mode_get_type (void)
@@ -116,6 +124,29 @@ image_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
   GST_DEBUG_OBJECT (pad, "Received QUERY %s", GST_QUERY_TYPE_NAME (query));
 
   switch (GST_QUERY_TYPE (query)) {
+    case GST_QUERY_CAPS:
+    {
+      GstCaps *caps = NULL, *filter = NULL;
+
+      if (!(caps = gst_pad_get_current_caps (pad)))
+        caps = gst_pad_get_pad_template_caps (pad);
+
+      GST_DEBUG_OBJECT (pad, "Current caps: %" GST_PTR_FORMAT, caps);
+
+      gst_query_parse_caps (query, &filter);
+      GST_DEBUG_OBJECT (pad, "Filter caps: %" GST_PTR_FORMAT, caps);
+
+      if (filter != NULL) {
+        GstCaps *intersection  =
+            gst_caps_intersect_full (filter, caps, GST_CAPS_INTERSECT_FIRST);
+        gst_caps_unref (caps);
+        caps = intersection;
+      }
+
+      gst_query_set_caps_result (query, caps);
+      gst_caps_unref (caps);
+      break;
+    }
     case GST_QUERY_LATENCY:
     {
       GstClockTime min_latency, max_latency;
@@ -173,6 +204,13 @@ image_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
       gst_segment_init (&GST_QMMFSRC_IMAGE_PAD (pad)->segment,
           GST_FORMAT_UNDEFINED);
       break;
+    case GST_EVENT_RECONFIGURE:
+      success = qmmfsrc_image_pad_fixate_caps (pad);
+
+      // Clear the RECONFIGURE flag on success.
+      if (success)
+        GST_OBJECT_FLAG_UNSET (pad, GST_PAD_FLAG_NEED_RECONFIGURE);
+      break;
     case GST_EVENT_CUSTOM_UPSTREAM:
     case GST_EVENT_CUSTOM_DOWNSTREAM:
     case GST_EVENT_CUSTOM_BOTH:
@@ -224,53 +262,82 @@ static void
 image_pad_update_params (GstPad * pad, GstStructure *structure)
 {
   GstQmmfSrcImagePad *ipad = GST_QMMFSRC_IMAGE_PAD (pad);
-  gint fps_n = 0, fps_d = 0;
+  gint width = 0, height = 0, fps_n = 0, fps_d = 0;
+  gint format = GST_VIDEO_FORMAT_UNKNOWN, codec = GST_IMAGE_CODEC_NONE;
+  gdouble framerate = 0.0;
+  gboolean reconfigure = FALSE;
 
   GST_QMMFSRC_IMAGE_PAD_LOCK (pad);
 
-  gst_structure_get_int (structure, "width", &ipad->width);
-  gst_structure_get_int (structure, "height", &ipad->height);
+  gst_structure_get_int (structure, "width", &width);
+  gst_structure_get_int (structure, "height", &height);
   gst_structure_get_fraction (structure, "framerate", &fps_n, &fps_d);
 
   ipad->duration = gst_util_uint64_scale_int (GST_SECOND, fps_d, fps_n);
-  ipad->framerate = 1 / GST_TIME_AS_SECONDS (
-      gst_guint64_to_gdouble (ipad->duration));
+  framerate = 1 / GST_TIME_AS_SECONDS (gst_guint64_to_gdouble (ipad->duration));
+
+  // Raise the reconfiguation flag if dimensions and/or frame rate changed.
+  reconfigure |= (width != ipad->width) || (height != ipad->height) ||
+      (framerate != ipad->framerate);
+
+  ipad->width = width;
+  ipad->height = height;
+  ipad->framerate = framerate;
 
   if (gst_structure_has_name (structure, "image/jpeg")) {
-    ipad->codec = GST_IMAGE_CODEC_JPEG;
-    ipad->format = GST_VIDEO_FORMAT_ENCODED;
+    codec = GST_IMAGE_CODEC_JPEG;
+    format = GST_VIDEO_FORMAT_ENCODED;
   } else if (gst_structure_has_name (structure, "video/x-raw")) {
-    ipad->codec = GST_IMAGE_CODEC_NONE;
-    ipad->format = gst_video_format_from_string (
+    codec = GST_IMAGE_CODEC_NONE;
+    format = gst_video_format_from_string (
         gst_structure_get_string (structure, "format"));
   } else if (gst_structure_has_name (structure, "video/x-bayer")) {
-    const gchar *format = gst_structure_get_string (structure, "format");
-    const gchar *bpp = gst_structure_get_string (structure, "bpp");
+    const gchar *string = NULL;
+    guint bpp = 0;
 
-    ipad->codec = GST_IMAGE_CODEC_NONE;
+    string = gst_structure_get_string (structure, "bpp");
 
-    if (g_strcmp0 (bpp, "8") == 0)
-      ipad->bpp = 8;
-    else if (g_strcmp0 (bpp, "10") == 0)
-      ipad->bpp = 10;
-    else if (g_strcmp0 (bpp, "12") == 0)
-      ipad->bpp = 12;
-    else if (g_strcmp0 (bpp, "16") == 0)
-      ipad->bpp = 16;
+    if (g_strcmp0 (string, "8") == 0)
+      bpp = 8;
+    else if (g_strcmp0 (string, "10") == 0)
+      bpp = 10;
+    else if (g_strcmp0 (string, "12") == 0)
+      bpp = 12;
+    else if (g_strcmp0 (string, "16") == 0)
+      bpp = 16;
 
-    if (g_strcmp0 (format, "bggr") == 0)
-      ipad->format = GST_BAYER_FORMAT_BGGR;
-    else if (g_strcmp0 (format, "rggb") == 0)
-      ipad->format = GST_BAYER_FORMAT_RGGB;
-    else if (g_strcmp0 (format, "gbrg") == 0)
-      ipad->format = GST_BAYER_FORMAT_GBRG;
-    else if (g_strcmp0 (format, "grbg") == 0)
-      ipad->format = GST_BAYER_FORMAT_GRBG;
-    else if (g_strcmp0 (format, "mono") == 0)
-      ipad->format = GST_BAYER_FORMAT_MONO;
+    // Raise the reconfiguation flag if bayer format BPP changed.
+    reconfigure |= (bpp != ipad->bpp);
+
+    ipad->bpp = bpp;
+
+    string = gst_structure_get_string (structure, "format");
+
+    if (g_strcmp0 (string, "bggr") == 0)
+      format = GST_BAYER_FORMAT_BGGR;
+    else if (g_strcmp0 (string, "rggb") == 0)
+      format = GST_BAYER_FORMAT_RGGB;
+    else if (g_strcmp0 (string, "gbrg") == 0)
+      format = GST_BAYER_FORMAT_GBRG;
+    else if (g_strcmp0 (string, "grbg") == 0)
+      format = GST_BAYER_FORMAT_GRBG;
+    else if (g_strcmp0 (string, "mono") == 0)
+      format = GST_BAYER_FORMAT_MONO;
+
+    codec = GST_IMAGE_CODEC_NONE;
   }
 
+  // Raise the reconfiguation flag if format or codec changed.
+  reconfigure |= (format != ipad->format) || (codec != ipad->codec);
+
+  ipad->format = format;
+  ipad->codec = codec;
+
   GST_QMMFSRC_IMAGE_PAD_UNLOCK (pad);
+
+  // Send reconfigurtion signal only when paramters have changed.
+  if (reconfigure)
+    g_signal_emit (pad, signals[SIGNAL_PAD_RECONFIGURE], 0);
 }
 
 
@@ -336,9 +403,15 @@ qmmfsrc_image_pad_fixate_caps (GstPad * pad)
 
   // Immediately return the fetched caps if they are fixed.
   if (gst_caps_is_fixed (caps)) {
+    gst_pad_set_caps (pad, caps);
+
+    GST_DEBUG_OBJECT (pad, "Caps already fixated to: %" GST_PTR_FORMAT, caps);
     image_pad_update_params (pad, gst_caps_get_structure (caps, 0));
+
     return TRUE;
   }
+
+  GST_DEBUG_OBJECT (pad, "Trying to fixate caps: %" GST_PTR_FORMAT, caps);
 
   // Capabilities are not fixated, fixate them.
   caps = gst_caps_make_writable (caps);
@@ -399,6 +472,7 @@ qmmfsrc_image_pad_fixate_caps (GstPad * pad)
   caps = gst_caps_fixate (caps);
   gst_pad_set_caps (pad, caps);
 
+  GST_DEBUG_OBJECT (pad, "Caps fixated to: %" GST_PTR_FORMAT, caps);
   image_pad_update_params (pad, structure);
   return TRUE;
 }
@@ -506,6 +580,10 @@ qmmfsrc_image_pad_class_init (GstQmmfSrcImagePadClass * klass)
           GST_TYPE_QMMFSRC_IMAGE_PAD_MODE, DEFAULT_PROP_IMAGE_MODE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
+
+  signals[SIGNAL_PAD_RECONFIGURE] =
+      g_signal_new ("reconfigure", G_TYPE_FROM_CLASS (klass),
+      G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0, G_TYPE_NONE);
 
   GST_DEBUG_CATEGORY_INIT (qmmfsrc_image_pad_debug, "qtiqmmfsrc", 0,
       "QTI QMMF Source image pad");

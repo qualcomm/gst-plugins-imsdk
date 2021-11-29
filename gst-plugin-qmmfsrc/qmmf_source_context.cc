@@ -75,8 +75,6 @@ struct _GstQmmfContext {
 
   /// QMMF Recorder camera device opened by this source.
   guint             camera_id;
-  /// QMMF Recorder multimedia session ID.
-  guint             session_id;
 
   /// Keep track of internal states by reusing the GstState enum:
   /// @GST_STATE_NULL - Context created.
@@ -656,7 +654,6 @@ qmmfsrc_gst_buffer_release (GstStructure * structure)
       reinterpret_cast<::qmmf::recorder::Recorder*>(GSIZE_TO_POINTER (value));
 
   gst_structure_get_uint (structure, "camera", &camera_id);
-  gst_structure_get_uint (structure, "session", &session_id);
 
   gst_structure_get (structure, "data", G_TYPE_ULONG, &value, NULL);
   buffer.data = GSIZE_TO_POINTER (value);
@@ -673,6 +670,7 @@ qmmfsrc_gst_buffer_release (GstStructure * structure)
   buffers.push_back (buffer);
 
   if (gst_structure_has_field (structure, "track")) {
+    gst_structure_get_uint (structure, "session", &session_id);
     gst_structure_get_uint (structure, "track", &track_id);
     recorder->ReturnTrackBuffer (session_id, track_id, buffers);
   } else {
@@ -726,13 +724,16 @@ qmmfsrc_gst_buffer_new_wrapped (GstQmmfContext * context, GstPad * pad,
   gst_structure_set (structure,
       "recorder", G_TYPE_ULONG, GPOINTER_TO_SIZE (context->recorder),
       "camera", G_TYPE_UINT, context->camera_id,
-      "session", G_TYPE_UINT, context->session_id,
       NULL
   );
 
-  if (GST_IS_QMMFSRC_VIDEO_PAD (pad))
-    gst_structure_set (structure, "track", G_TYPE_UINT,
-        GST_QMMFSRC_VIDEO_PAD (pad)->id, NULL);
+  if (GST_IS_QMMFSRC_VIDEO_PAD (pad)) {
+    gst_structure_set (structure,
+      "session", G_TYPE_UINT, GST_QMMFSRC_VIDEO_PAD (pad)->session_id,
+      "track", G_TYPE_UINT, GST_QMMFSRC_VIDEO_PAD (pad)->id,
+      NULL
+    );
+  }
 
   gst_structure_set (structure,
       "data", G_TYPE_ULONG, GPOINTER_TO_SIZE (buffer->data),
@@ -785,7 +786,7 @@ video_data_callback (GstQmmfContext * context, GstPad * pad,
 
     gstbuffer = qmmfsrc_gst_buffer_new_wrapped (context, pad, &buffer);
     QMMFSRC_RETURN_IF_FAIL_WITH_CLEAN (NULL, gstbuffer != NULL,
-        recorder->ReturnTrackBuffer (context->session_id, vpad->id, buffers),
+        recorder->ReturnTrackBuffer (vpad->session_id, vpad->id, buffers),
         "Failed to create GST buffer!");
 
     GST_BUFFER_FLAG_SET (gstbuffer, GST_BUFFER_FLAG_LIVE);
@@ -1123,11 +1124,13 @@ gst_qmmf_context_close (GstQmmfContext * context)
 }
 
 gboolean
-gst_qmmf_context_create_session (GstQmmfContext * context)
+gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
 {
+  GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
   ::qmmf::recorder::Recorder *recorder = context->recorder;
+  ::qmmf::recorder::TrackCb track_cbs;
+  ::qmmf::recorder::VideoExtraParam extraparam;
   ::qmmf::recorder::SessionCb session_cbs;
-  guint session_id = -1;
   gint status = 0;
 
   GST_TRACE ("Create QMMF context session");
@@ -1135,46 +1138,13 @@ gst_qmmf_context_create_session (GstQmmfContext * context)
   session_cbs.event_cb =
       [] (::qmmf::recorder::EventType type, void *data, size_t size) { };
 
-  status = recorder->CreateSession (session_cbs, &session_id);
+  status = recorder->CreateSession (session_cbs, &vpad->session_id);
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
       "QMMF Recorder CreateSession Failed!");
 
-  context->session_id = session_id;
-  context->state = GST_STATE_PAUSED;
-
   GST_TRACE ("QMMF context session created");
 
-  return TRUE;
-}
-
-gboolean
-gst_qmmf_context_delete_session (GstQmmfContext * context)
-{
-  ::qmmf::recorder::Recorder *recorder = context->recorder;
-  gint status = 0;
-
-  GST_TRACE ("Delete QMMF context session");
-
-  status = recorder->DeleteSession (context->session_id);
-  QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
-      "QMMF Recorder DeleteSession Failed!");
-
-  context->session_id = 0;
-  context->state = GST_STATE_READY;
-
-  GST_TRACE ("QMMF context session deleted");
-
-  return TRUE;
-}
-
-gboolean
-gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
-{
-  GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
-  ::qmmf::recorder::Recorder *recorder = context->recorder;
-  ::qmmf::recorder::TrackCb track_cbs;
-  ::qmmf::recorder::VideoExtraParam extraparam;
-  gint status = 0;
+  context->state = GST_STATE_PAUSED;
 
   GST_TRACE ("Create QMMF context video stream");
 
@@ -1267,7 +1237,7 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
   }
 
   status = recorder->CreateVideoTrack (
-      context->session_id, vpad->id, params, extraparam, track_cbs);
+      vpad->session_id, vpad->id, params, extraparam, track_cbs);
 
   GST_QMMFSRC_VIDEO_PAD_UNLOCK (vpad);
 
@@ -1337,11 +1307,23 @@ gst_qmmf_context_delete_video_stream (GstQmmfContext * context, GstPad * pad)
 
   GST_TRACE ("Delete QMMF context video stream");
 
-  status = recorder->DeleteVideoTrack (context->session_id, vpad->id);
+  status = recorder->DeleteVideoTrack (vpad->session_id, vpad->id);
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
       "QMMF Recorder DeleteVideoTrack Failed!");
 
+  vpad->id = 0;
+
   GST_TRACE ("QMMF context video stream deleted");
+
+  GST_TRACE ("Delete QMMF context session");
+  status = recorder->DeleteSession (vpad->session_id);
+  QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
+      "QMMF Recorder DeleteSession Failed!");
+
+  context->state = GST_STATE_READY;
+
+  GST_TRACE ("QMMF context session deleted");
+
   return TRUE;
 }
 
@@ -1491,10 +1473,11 @@ gst_qmmf_context_delete_image_stream (GstQmmfContext * context, GstPad * pad)
 }
 
 gboolean
-gst_qmmf_context_start_session (GstQmmfContext * context)
+gst_qmmf_context_start_video_stream (GstQmmfContext * context, GstPad * pad)
 {
   ::qmmf::recorder::Recorder *recorder = context->recorder;
   gint status = 0;
+  GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
 
   context->tsbase = GST_CLOCK_TIME_NONE;
 
@@ -1506,7 +1489,7 @@ gst_qmmf_context_start_session (GstQmmfContext * context)
 
   GST_TRACE ("Starting QMMF context session");
 
-  status = recorder->StartSession (context->session_id);
+  status = recorder->StartSession (vpad->session_id);
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
       "QMMF Recorder StartSession Failed!");
 
@@ -1518,14 +1501,15 @@ gst_qmmf_context_start_session (GstQmmfContext * context)
 }
 
 gboolean
-gst_qmmf_context_stop_session (GstQmmfContext * context)
+gst_qmmf_context_stop_video_stream (GstQmmfContext * context, GstPad * pad)
 {
   ::qmmf::recorder::Recorder *recorder = context->recorder;
   gint status = 0;
+  GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
 
   GST_TRACE ("Stopping QMMF context session");
 
-  status = recorder->StopSession (context->session_id, false);
+  status = recorder->StopSession (vpad->session_id, false);
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
       "QMMF Recorder StopSession Failed!");
 
@@ -1538,14 +1522,15 @@ gst_qmmf_context_stop_session (GstQmmfContext * context)
 }
 
 gboolean
-gst_qmmf_context_pause_session (GstQmmfContext * context)
+gst_qmmf_context_pause_video_stream (GstQmmfContext * context, GstPad * pad)
 {
   ::qmmf::recorder::Recorder *recorder = context->recorder;
   gint status = 0;
+  GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
 
   GST_TRACE ("Pausing QMMF context session");
 
-  status = recorder->PauseSession (context->session_id);
+  status = recorder->PauseSession (vpad->session_id);
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
       "QMMF Recorder PauseSession Failed!");
 
@@ -2249,7 +2234,6 @@ gst_qmmf_context_update_video_param (GstPad * pad, GParamSpec * pspec,
 {
   GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
   const gchar *pname = g_param_spec_get_name (pspec);
-  guint track_id = vpad->id, session_id = context->session_id;
   ::qmmf::recorder::Recorder *recorder = context->recorder;
   GValue value = G_VALUE_INIT;
   gint status = 0;
@@ -2266,7 +2250,7 @@ gst_qmmf_context_update_video_param (GstPad * pad, GParamSpec * pspec,
 
   if (g_strcmp0 (pname, "framerate") == 0) {
     gfloat fps = g_value_get_double (&value);
-    status = recorder->SetVideoTrackParam (session_id, track_id,
+    status = recorder->SetVideoTrackParam (vpad->session_id, vpad->id,
         ::qmmf::recorder::VideoParam::kFrameRate, &fps, sizeof (fps)
     );
   } else if (g_strcmp0 (pname, "crop") == 0) {
