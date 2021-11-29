@@ -207,6 +207,30 @@ gst_unmap_input_video_frames (GstVideoFrame * inframes, guint n_inputs)
   g_free (inframes);
 }
 
+static void
+calculate_dimensions (gint outwidth, gint outheight, gint out_par_n,
+    gint out_par_d, gint sar_n, gint sar_d, gint * width, gint * height)
+{
+  gint num = 0, den = 0;
+
+  gst_util_fraction_multiply (sar_n, sar_d, out_par_d, out_par_n,
+      &num, &den);
+
+  if (num > den) {
+    *width = outwidth;
+    *height = gst_util_uint64_scale_int (outwidth, den, num);
+
+    GST_DEBUG ("Adding border on the bottom with height %d px",
+        outheight - *height);
+  } else if (num < den) {
+    *width = gst_util_uint64_scale_int (outheight, num, den);
+    *height = outheight;
+
+    GST_DEBUG ("Adding border at the right side with width %d px",
+        outwidth - *width);
+  }
+}
+
 static gboolean
 gst_map_input_video_frames (GstMLVideoConverter * mlconverter,
     GstBuffer * inbuffer, GstVideoFrame ** inframes, guint * n_inputs)
@@ -355,10 +379,10 @@ gst_ml_video_converter_translate_ml_caps (GstMLVideoConverter * mlconverter,
     // Make a copy that will be modified.
     structure = gst_structure_copy (structure);
 
-    // 2nd and 3rd dimensions correspond to width and height respectively.
+    // 2nd and 3rd dimensions correspond to height and width respectively.
     gst_structure_set (structure,
-        "width", G_TYPE_INT, mlinfo.tensors[0][1],
-        "height", G_TYPE_INT, mlinfo.tensors[0][2],
+        "height", G_TYPE_INT, mlinfo.tensors[0][1],
+        "width", G_TYPE_INT, mlinfo.tensors[0][2],
         NULL);
 
     // 4th dimension corresponds to the bit depth.
@@ -443,17 +467,17 @@ gst_ml_video_converter_translate_video_caps (GstMLVideoConverter * mlconverter,
 
   gst_value_array_append_value (&dimensions, value);
 
-  // 2nd dimension is video width.
-  gst_value_array_append_value (&dimensions,
-      gst_structure_get_value (structure, "width"));
-
-  // 3rd dimension is video height.
+  // 2nd dimension is video height.
   gst_value_array_append_value (&dimensions,
       gst_structure_get_value (structure, "height"));
 
+  // 3rd dimension is video width.
+  gst_value_array_append_value (&dimensions,
+      gst_structure_get_value (structure, "width"));
+
   value = gst_structure_get_value (structure, "format");
 
-  // 4th dimension is video chanels number.
+  // 4th dimension is video channels number.
   switch (gst_video_format_from_string (g_value_get_string (value))) {
     case GST_VIDEO_FORMAT_RGBx:
     case GST_VIDEO_FORMAT_BGRx:
@@ -498,43 +522,37 @@ gst_ml_video_converter_translate_video_caps (GstMLVideoConverter * mlconverter,
 }
 
 static void
-gst_ml_video_converter_update_configuration (GstMLVideoConverter * mlconverter,
-    GstVideoInfo * ininfo, GstVideoInfo * outinfo)
+gst_ml_video_converter_update_configuration (GstMLVideoConverter * mlconverter)
 {
   GstStructure *opts = NULL;
-  gint num = 0, den = 0, from_dar_n, from_dar_d, to_dar_n, to_dar_d;
+  gint par_n = 0, par_d = 0, sar_n, sar_d;
   gint width = 0, height = 0;
 
   opts = gst_structure_new_empty ("options");
 
-  if (!gst_util_fraction_multiply (ininfo->width, ininfo->height,
-          ininfo->par_n, ininfo->par_d, &from_dar_n, &from_dar_d)) {
-    GST_WARNING_OBJECT (mlconverter, "Failed to calculate input DAR!");
-    from_dar_n = from_dar_d = -1;
-  }
+  // Retrieve the input PAR (Pixel Aspect Ratio) value.
+  par_n = GST_VIDEO_INFO_PAR_N (mlconverter->ininfo);
+  par_d = GST_VIDEO_INFO_PAR_D (mlconverter->ininfo);
 
-  if (!gst_util_fraction_multiply (outinfo->width, outinfo->height,
-          outinfo->par_n, outinfo->par_d, &to_dar_n, &to_dar_d)) {
-    GST_WARNING_OBJECT (mlconverter, "Failed to calculate output DAR!");
-    to_dar_n = to_dar_d = -1;
-  }
+  // Retrieve the input width and height.
+  width = GST_VIDEO_INFO_WIDTH (mlconverter->ininfo);
+  height = GST_VIDEO_INFO_HEIGHT (mlconverter->ininfo);
 
-  gst_util_fraction_multiply (from_dar_n, from_dar_d,
-      outinfo->par_d, outinfo->par_n, &num, &den);
+  // Calculate input SAR (Source Aspect Ratio) value.
+  if (!gst_util_fraction_multiply (width, height, par_n, par_d, &sar_n, &sar_d))
+    sar_n = sar_d = 1;
 
-  if (num > den) {
-    width = outinfo->width;
-    height = gst_util_uint64_scale_int (outinfo->width, den, num);
+  // Retrieve the output PAR (Pixel Aspect Ratio) value.
+  par_n = GST_VIDEO_INFO_PAR_N (mlconverter->vinfo);
+  par_d = GST_VIDEO_INFO_PAR_D (mlconverter->vinfo);
 
-    GST_DEBUG_OBJECT (mlconverter, "Adding border on the bottom with "
-        "height %d px", outinfo->height - height);
-  } else if (num < den) {
-    width = gst_util_uint64_scale_int (outinfo->height, num, den);
-    height = outinfo->height;
+  // Retrieve the output width and height.
+  width = GST_VIDEO_INFO_WIDTH (mlconverter->vinfo);
+  height = GST_VIDEO_INFO_HEIGHT (mlconverter->vinfo);
 
-    GST_DEBUG_OBJECT (mlconverter, "Adding border at the right side with "
-        "width %d px", outinfo->width - width);
-  }
+  // Calculate destination dimensions adjusted to preserve SAR.
+  calculate_dimensions (width, height, par_n, par_d, sar_n, sar_d,
+      &width, &height);
 
 #ifdef USE_C2D_CONVERTER
   gst_structure_set (opts,
@@ -546,7 +564,7 @@ gst_ml_video_converter_update_configuration (GstMLVideoConverter * mlconverter,
 
 #ifdef USE_GLES_CONVERTER
   {
-    gboolean normalize = FALSE;
+    gboolean normalize = FALSE, quantize = FALSE;
 
     // TODO Workaround due to single thread limitation in GLES.
     if (mlconverter->glesconvert != NULL)
@@ -557,37 +575,43 @@ gst_ml_video_converter_update_configuration (GstMLVideoConverter * mlconverter,
     normalize = (mlconverter->mlinfo->type == GST_ML_TYPE_FLOAT32);
 
     gst_structure_set (opts,
-        GST_GLES_VIDEO_CONVERTER_OPT_QUANTIZE, G_TYPE_BOOLEAN, FALSE,
-        GST_GLES_VIDEO_CONVERTER_OPT_CONVERT_TO_UINT8, G_TYPE_BOOLEAN, FALSE,
         GST_GLES_VIDEO_CONVERTER_OPT_NORMALIZE, G_TYPE_BOOLEAN, normalize,
-        GST_GLES_VIDEO_CONVERTER_OPT_ROFFSET, G_TYPE_FLOAT,
+        GST_GLES_VIDEO_CONVERTER_OPT_ROFFSET, G_TYPE_DOUBLE,
         (mlconverter->mean->len >= 1) ?
-            g_array_index (mlconverter->mean, gfloat, 0) : DEFAULT_PROP_MEAN,
-        GST_GLES_VIDEO_CONVERTER_OPT_GOFFSET, G_TYPE_FLOAT,
+            g_array_index (mlconverter->mean, gdouble, 0) : DEFAULT_PROP_MEAN,
+        GST_GLES_VIDEO_CONVERTER_OPT_GOFFSET, G_TYPE_DOUBLE,
         (mlconverter->mean->len >= 2) ?
-            g_array_index (mlconverter->mean, gfloat, 1) : DEFAULT_PROP_MEAN,
-        GST_GLES_VIDEO_CONVERTER_OPT_BOFFSET, G_TYPE_FLOAT,
+            g_array_index (mlconverter->mean, gdouble, 1) : DEFAULT_PROP_MEAN,
+        GST_GLES_VIDEO_CONVERTER_OPT_BOFFSET, G_TYPE_DOUBLE,
         (mlconverter->mean->len >= 3) ?
-            g_array_index (mlconverter->mean, gfloat, 2) : DEFAULT_PROP_MEAN,
-        GST_GLES_VIDEO_CONVERTER_OPT_AOFFSET, G_TYPE_FLOAT,
+            g_array_index (mlconverter->mean, gdouble, 2) : DEFAULT_PROP_MEAN,
+        GST_GLES_VIDEO_CONVERTER_OPT_AOFFSET, G_TYPE_DOUBLE,
         (mlconverter->mean->len >= 4) ?
-            g_array_index (mlconverter->mean, gfloat, 3) : DEFAULT_PROP_MEAN,
-        GST_GLES_VIDEO_CONVERTER_OPT_RSCALE, G_TYPE_FLOAT,
+            g_array_index (mlconverter->mean, gdouble, 3) : DEFAULT_PROP_MEAN,
+        GST_GLES_VIDEO_CONVERTER_OPT_RSCALE, G_TYPE_DOUBLE,
         (mlconverter->mean->len >= 1) ?
-            g_array_index (mlconverter->sigma, gfloat, 0) : DEFAULT_PROP_SIGMA,
-        GST_GLES_VIDEO_CONVERTER_OPT_GSCALE, G_TYPE_FLOAT,
+            g_array_index (mlconverter->sigma, gdouble, 0) : DEFAULT_PROP_SIGMA,
+        GST_GLES_VIDEO_CONVERTER_OPT_GSCALE, G_TYPE_DOUBLE,
         (mlconverter->mean->len >= 2) ?
-            g_array_index (mlconverter->sigma, gfloat, 1) : DEFAULT_PROP_SIGMA,
-        GST_GLES_VIDEO_CONVERTER_OPT_BSCALE, G_TYPE_FLOAT,
+            g_array_index (mlconverter->sigma, gdouble, 1) : DEFAULT_PROP_SIGMA,
+        GST_GLES_VIDEO_CONVERTER_OPT_BSCALE, G_TYPE_DOUBLE,
         (mlconverter->mean->len >= 3) ?
-            g_array_index (mlconverter->sigma, gfloat, 2) : DEFAULT_PROP_SIGMA,
-        GST_GLES_VIDEO_CONVERTER_OPT_ASCALE, G_TYPE_FLOAT,
+            g_array_index (mlconverter->sigma, gdouble, 2) : DEFAULT_PROP_SIGMA,
+        GST_GLES_VIDEO_CONVERTER_OPT_ASCALE, G_TYPE_DOUBLE,
         (mlconverter->mean->len >= 4) ?
-            g_array_index (mlconverter->sigma, gfloat, 3) : DEFAULT_PROP_SIGMA,
+            g_array_index (mlconverter->sigma, gdouble, 3) : DEFAULT_PROP_SIGMA,
+        GST_GLES_VIDEO_CONVERTER_OPT_QUANTIZE, G_TYPE_BOOLEAN, quantize,
+        GST_GLES_VIDEO_CONVERTER_OPT_QOFFSET, G_TYPE_DOUBLE,
+        (mlconverter->mean->len >= 1) ?
+            g_array_index (mlconverter->mean, gdouble, 0) : DEFAULT_PROP_MEAN,
+        GST_GLES_VIDEO_CONVERTER_OPT_QSCALE, G_TYPE_DOUBLE,
+        (mlconverter->sigma->len >= 1) ?
+            g_array_index (mlconverter->sigma, gdouble, 0) : DEFAULT_PROP_SIGMA,
+        GST_GLES_VIDEO_CONVERTER_OPT_CONVERT_TO_UINT8, G_TYPE_BOOLEAN, FALSE,
         GST_GLES_VIDEO_CONVERTER_OPT_OUTPUT_WIDTH, G_TYPE_INT,
-        GST_VIDEO_INFO_WIDTH (outinfo),
+        GST_VIDEO_INFO_WIDTH (mlconverter->vinfo),
         GST_GLES_VIDEO_CONVERTER_OPT_OUTPUT_HEIGHT, G_TYPE_INT,
-        GST_VIDEO_INFO_HEIGHT (outinfo),
+        GST_VIDEO_INFO_HEIGHT (mlconverter->vinfo),
         GST_GLES_VIDEO_CONVERTER_OPT_DEST_X, G_TYPE_INT, 0,
         GST_GLES_VIDEO_CONVERTER_OPT_DEST_Y, G_TYPE_INT, 0,
         GST_GLES_VIDEO_CONVERTER_OPT_DEST_WIDTH, G_TYPE_INT, width,
@@ -595,8 +619,8 @@ gst_ml_video_converter_update_configuration (GstMLVideoConverter * mlconverter,
         NULL);
   }
 
-  if (gst_gles_video_converter_set_ops (mlconverter->glesconvert, opts) != TRUE)
-    GST_ERROR ("Configuration of gles converter failed!");
+  if (!gst_gles_video_converter_set_process_opts (mlconverter->glesconvert, opts))
+    GST_ERROR_OBJECT (mlconverter, "Configuration of GLES converter failed!");
 #endif // USE_GLES_CONVERTER
   return;
 }
@@ -608,7 +632,7 @@ gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
 {
   guint8 *source = NULL;
   gfloat *destination = NULL;
-  gfloat mean[4] = {0}, sigma[4] = {0};
+  gdouble mean[4] = {0}, sigma[4] = {0};
   gint idx = 0, row = 0, column = 0, width = 0, height = 0, bpp = 0;
 
   // Retrive the video frame Bytes Per Pixel for later calculations.
@@ -619,10 +643,10 @@ gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
   // Convinient local variables for per channel mean and sigma values.
   for (idx = 0; idx < bpp; idx++) {
     mean[idx] = (mlconverter->mean->len > (guint) idx) ?
-        g_array_index (mlconverter->mean, gfloat, 0) : DEFAULT_PROP_MEAN;
+        g_array_index (mlconverter->mean, gdouble, 0) : DEFAULT_PROP_MEAN;
 
     sigma[idx] = (mlconverter->sigma->len > (guint) idx) ?
-        g_array_index (mlconverter->sigma, gfloat, 0) : DEFAULT_PROP_SIGMA;
+        g_array_index (mlconverter->sigma, gdouble, 0) : DEFAULT_PROP_SIGMA;
   }
 
   source = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
@@ -657,7 +681,7 @@ gst_ml_video_converter_normalize (GstMLVideoConverter * mlconverter,
 {
   guint8 *source = NULL;
   gfloat *destination = NULL;
-  gfloat mean[4] = {0}, sigma[4] = {0};
+  gdouble mean[4] = {0}, sigma[4] = {0};
   guint idx = 0, size = 0, bpp = 0;
 
   // Sanity checks, input and output frame must differ only in type.
@@ -683,10 +707,10 @@ gst_ml_video_converter_normalize (GstMLVideoConverter * mlconverter,
   // Convinient local variables for per channel mean and sigma values.
   for (idx = 0; idx < bpp; idx++) {
     mean[idx] = (mlconverter->mean->len > idx) ?
-        g_array_index (mlconverter->mean, gfloat, 0) : DEFAULT_PROP_MEAN;
+        g_array_index (mlconverter->mean, gdouble, 0) : DEFAULT_PROP_MEAN;
 
     sigma[idx] = (mlconverter->sigma->len > idx) ?
-        g_array_index (mlconverter->sigma, gfloat, 0) : DEFAULT_PROP_SIGMA;
+        g_array_index (mlconverter->sigma, gdouble, 0) : DEFAULT_PROP_SIGMA;
   }
 
   source = GST_VIDEO_FRAME_PLANE_DATA (inframe, 0);
@@ -977,16 +1001,6 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
     return FALSE;
   }
 
-  if (mlconverter->ininfo != NULL)
-    gst_video_info_free (mlconverter->ininfo);
-
-  mlconverter->ininfo = gst_video_info_copy (&ininfo);
-
-  if (mlconverter->mlinfo != NULL)
-    gst_ml_info_free (mlconverter->mlinfo);
-
-  mlconverter->mlinfo = gst_ml_info_copy (&mlinfo);
-
   othercaps = gst_ml_video_converter_translate_ml_caps (mlconverter, outcaps);
   othercaps = gst_caps_fixate (othercaps);
 
@@ -1014,16 +1028,13 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
   GST_VIDEO_INFO_SIZE (&outinfo) -= padding * GST_VIDEO_INFO_HEIGHT (&outinfo);
 
   // Additionally adjust the total size depending on the ML type.
-  GST_VIDEO_INFO_SIZE (&outinfo) *=
-      gst_ml_type_get_size (mlconverter->mlinfo->type);
+  GST_VIDEO_INFO_SIZE (&outinfo) *= gst_ml_type_get_size (mlinfo.type);
+
+  // Additionally adjust the total size depending on the batch size.
+  GST_VIDEO_INFO_SIZE (&outinfo) *= mlinfo.tensors[0][0];
 
   // Adjust height with the batch number of the tensor (1st dimension).
-  GST_VIDEO_INFO_HEIGHT (&outinfo) *= mlconverter->mlinfo->tensors[0][0];
-
-  if (mlconverter->vinfo != NULL)
-    gst_video_info_free (mlconverter->vinfo);
-
-  mlconverter->vinfo = gst_video_info_copy (&outinfo);
+  GST_VIDEO_INFO_HEIGHT (&outinfo) *= mlinfo.tensors[0][0];
 
   passthrough =
       GST_VIDEO_INFO_SIZE (&ininfo) == GST_VIDEO_INFO_SIZE (&outinfo) &&
@@ -1034,8 +1045,23 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
   gst_base_transform_set_passthrough (base, passthrough);
   gst_base_transform_set_in_place (base, FALSE);
 
+  if (mlconverter->ininfo != NULL)
+    gst_video_info_free (mlconverter->ininfo);
+
+  mlconverter->ininfo = gst_video_info_copy (&ininfo);
+
+  if (mlconverter->vinfo != NULL)
+    gst_video_info_free (mlconverter->vinfo);
+
+  mlconverter->vinfo = gst_video_info_copy (&outinfo);
+
+  if (mlconverter->mlinfo != NULL)
+    gst_ml_info_free (mlconverter->mlinfo);
+
+  mlconverter->mlinfo = gst_ml_info_copy (&mlinfo);
+
   // Add borders to the output tensor in order to keep input aspect ratio.
-  gst_ml_video_converter_update_configuration (mlconverter, &ininfo, &outinfo);
+  gst_ml_video_converter_update_configuration (mlconverter);
 
   GST_DEBUG_OBJECT (mlconverter, "Input caps: %" GST_PTR_FORMAT, incaps);
   GST_DEBUG_OBJECT (mlconverter, "Output caps: %" GST_PTR_FORMAT, outcaps);
@@ -1055,19 +1081,18 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
   GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
   GstClockTimeDiff tsdelta = GST_CLOCK_TIME_NONE;
 
-  // Set the initial number of inputs to the number of negotiated tensors.
-  // It will be updated during mapping of the input buffer frames.
-  n_inputs = mlconverter->mlinfo->n_tensors;
+  success = gst_map_input_video_frames (mlconverter, inbuffer, &inframes, &n_inputs);
 
-  if (!gst_map_input_video_frames (mlconverter, inbuffer, &inframes, &n_inputs)) {
+  if (!success) {
     GST_ERROR_OBJECT (mlconverter, "Failed to create input frames!");
     return GST_FLOW_ERROR;
   }
 
-  if (!gst_video_frame_map (&outframe, mlconverter->vinfo, outbuffer,
-          GST_MAP_READWRITE | GST_VIDEO_FRAME_MAP_FLAG_NO_REF)) {
-    GST_ERROR_OBJECT (mlconverter, "Failed to map output buffer!");
+  success = gst_video_frame_map (&outframe, mlconverter->vinfo, outbuffer,
+      GST_MAP_READWRITE | GST_VIDEO_FRAME_MAP_FLAG_NO_REF);
 
+  if (!success) {
+    GST_ERROR_OBJECT (mlconverter, "Failed to map output buffer!");
     gst_unmap_input_video_frames (inframes, n_inputs);
     return GST_FLOW_ERROR;
   }
@@ -1098,7 +1123,7 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
   if ((n_inputs > 1) || is_conversion_required (&inframes[0], &outframe) ||
       (mlconverter->mlinfo->type == GST_ML_TYPE_FLOAT32))
     success = gst_gles_video_converter_process (mlconverter->glesconvert,
-        inframes, n_inputs, &outframe);
+        inframes, n_inputs, &outframe, 1);
 #endif // USE_GLES_CONVERTER
 
   ts_end = gst_util_get_timestamp ();
@@ -1130,7 +1155,7 @@ gst_ml_video_converter_set_property (GObject * object, guint prop_id,
       guint idx = 0;
 
       for (idx = 0; idx < gst_value_array_get_size (value); idx++) {
-        gfloat val = g_value_get_double (gst_value_array_get_value (value, idx));
+        gdouble val = g_value_get_double (gst_value_array_get_value (value, idx));
         g_array_append_val (mlconverter->mean, val);
       }
       break;
@@ -1140,7 +1165,7 @@ gst_ml_video_converter_set_property (GObject * object, guint prop_id,
       guint idx = 0;
 
       for (idx = 0; idx < gst_value_array_get_size (value); idx++) {
-        gfloat val = g_value_get_double (gst_value_array_get_value (value, idx));
+        gdouble val = g_value_get_double (gst_value_array_get_value (value, idx));
         g_array_append_val (mlconverter->sigma, val);
       }
       break;
@@ -1170,7 +1195,7 @@ gst_ml_video_converter_get_property (GObject * object, guint prop_id,
 
       for (idx = 0; idx < mlconverter->mean->len; idx++) {
         g_value_set_double (&val,
-            g_array_index (mlconverter->mean, gfloat, idx));
+            g_array_index (mlconverter->mean, gdouble, idx));
         gst_value_array_append_value (value, &val);
       }
 
@@ -1186,7 +1211,7 @@ gst_ml_video_converter_get_property (GObject * object, guint prop_id,
 
       for (idx = 0; idx < mlconverter->sigma->len; idx++) {
         g_value_set_double (&val,
-            g_array_index (mlconverter->sigma, gfloat, idx));
+            g_array_index (mlconverter->sigma, gdouble, idx));
         gst_value_array_append_value (value, &val);
       }
 
@@ -1310,8 +1335,8 @@ gst_ml_video_converter_init (GstMLVideoConverter * mlconverter)
 #endif // USE_GLES_CONVERTER
 
   mlconverter->pixlayout = DEFAULT_PROP_SUBPIXEL_LAYOUT;
-  mlconverter->mean = g_array_new (FALSE, FALSE, sizeof (gfloat));
-  mlconverter->sigma = g_array_new (FALSE, FALSE, sizeof (gfloat));
+  mlconverter->mean = g_array_new (FALSE, FALSE, sizeof (gdouble));
+  mlconverter->sigma = g_array_new (FALSE, FALSE, sizeof (gdouble));
 
   GST_DEBUG_CATEGORY_INIT (gst_ml_video_converter_debug, "qtimlvconverter",
       0, "QTI ML video converter plugin");

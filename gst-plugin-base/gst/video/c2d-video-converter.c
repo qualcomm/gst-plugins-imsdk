@@ -889,7 +889,7 @@ gst_c2d_video_converter_set_input_opts (GstC2dVideoConverter * convert,
   }
 
   if (index == g_list_length (convert->inopts)) {
-    GST_LOG ("Add a new opts structure in the options list");
+    GST_LOG ("Add a new opts structure in the list at index %u", index);
 
     convert->inopts = g_list_append (convert->inopts,
         gst_structure_new_empty ("Input"));

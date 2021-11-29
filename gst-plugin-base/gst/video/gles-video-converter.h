@@ -43,6 +43,24 @@ G_BEGIN_DECLS
 typedef struct _GstGlesConverter GstGlesConverter;
 
 /**
+ * GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES
+ *
+ * #GST_TYPE_ARRAY: Array of source rectangles.
+ * Default: NULL
+ */
+#define GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES \
+    "GstGlesVideoConverter.source-rectangles"
+
+/**
+ * GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES
+ *
+ * #GST_TYPE_ARRAY: Array of destination rectangles.
+ * Default: NULL
+ */
+#define GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES \
+    "GstGlesVideoConverter.destination-rectangles"
+
+/**
  * GST_GLES_VIDEO_CONVERTER_OPT_OUTPUT_WIDTH
  *
  * #G_TYPE_INT, Output width.
@@ -63,7 +81,7 @@ typedef struct _GstGlesConverter GstGlesConverter;
 /**
  * GST_GLES_VIDEO_CONVERTER_OPT_DEST_X
  *
- * #G_TYPE_INT: Destination rectangle x axis start coordinate.
+ * #G_TYPE_INT: Output destination rectangle x axis start coordinate.
  * Default:0
  */
 #define GST_GLES_VIDEO_CONVERTER_OPT_DEST_X \
@@ -72,7 +90,7 @@ typedef struct _GstGlesConverter GstGlesConverter;
 /**
  * GST_GLES_VIDEO_CONVERTER_OPT_DEST_Y
  *
- * #G_TYPE_INT: Destination rectangle y axis start coordinate.
+ * #G_TYPE_INT: Output destination rectangle y axis start coordinate.
  * Default:0
  */
 #define GST_GLES_VIDEO_CONVERTER_OPT_DEST_Y \
@@ -81,7 +99,7 @@ typedef struct _GstGlesConverter GstGlesConverter;
 /**
  * GST_GLES_VIDEO_CONVERTER_OPT_DEST_WIDTH
  *
- * #G_TYPE_INT: Destination rectangle width.
+ * #G_TYPE_INT: Output destination rectangle width.
  * Default:0
  */
 #define GST_GLES_VIDEO_CONVERTER_OPT_DEST_WIDTH \
@@ -90,7 +108,7 @@ typedef struct _GstGlesConverter GstGlesConverter;
 /**
  * GST_GLES_VIDEO_CONVERTER_OPT_DEST_HEIGHT
  *
- * #G_TYPE_INT: Destination rectangle height.
+ * #G_TYPE_INT: Output destination rectangle height.
  * Default:0
  */
 #define GST_GLES_VIDEO_CONVERTER_OPT_DEST_HEIGHT \
@@ -100,7 +118,7 @@ typedef struct _GstGlesConverter GstGlesConverter;
  * GST_GLES_VIDEO_CONVERTER_OPT_RSCALE:
  *
  * #G_TYPE_FLOAT, Red color channel scale factor, used in normalize operation.
- * Default: 1.0/255.0
+ * Default: 128.0
  */
 #define GST_GLES_VIDEO_CONVERTER_OPT_RSCALE \
     "GstGlesVideoConverter.rscale"
@@ -109,7 +127,7 @@ typedef struct _GstGlesConverter GstGlesConverter;
  * GST_GLES_VIDEO_CONVERTER_OPT_GSCALE:
  *
  * #G_TYPE_FLOAT, Green color channel scale factor, used in normalize operation.
- * Default: 1.0/255.0
+ * Default: 128.0
  */
 #define GST_GLES_VIDEO_CONVERTER_OPT_GSCALE \
     "GstGlesVideoConverter.gscale"
@@ -118,7 +136,7 @@ typedef struct _GstGlesConverter GstGlesConverter;
  * GST_GLES_VIDEO_CONVERTER_OPT_BSCALE
  *
  * #G_TYPE_FLOAT, Blue color channel scale factor, used in normalize operation.
- * Default: 1.0/255.0
+ * Default: 128.0
  */
 #define GST_GLES_VIDEO_CONVERTER_OPT_BSCALE \
     "GstGlesVideoConverter.bscale"
@@ -127,10 +145,19 @@ typedef struct _GstGlesConverter GstGlesConverter;
  * GST_GLES_VIDEO_CONVERTER_OPT_ASCALE:
  *
  * #G_TYPE_FLOAT, Alpha channel scale factor, used in normalize operation.
- * Default: 1.0/255.0
+ * Default: 128.0
  */
 #define GST_GLES_VIDEO_CONVERTER_OPT_ASCALE \
     "GstGlesVideoConverter.ascale"
+
+/**
+ * GST_GLES_VIDEO_CONVERTER_OPT_QSCALE:
+ *
+ * #G_TYPE_FLOAT, Quantization scale factor, used in quantize operation.
+ * Default: 128.0
+ */
+#define GST_GLES_VIDEO_CONVERTER_OPT_QSCALE \
+    "GstGlesVideoConverter.qscale"
 
 /**
  * GST_GLES_VIDEO_CONVERTER_OPT_ROFFSET
@@ -169,15 +196,6 @@ typedef struct _GstGlesConverter GstGlesConverter;
     "GstGlesVideoConverter.ascale"
 
 /**
- * GST_GLES_VIDEO_CONVERTER_OPT_QSCALE:
- *
- * #G_TYPE_FLOAT, Quantization scale factor, used in quantize operation.
- * Default: 1.0/255.0
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_QSCALE \
-    "GstGlesVideoConverter.qscale"
-
-/**
  * GST_GLES_VIDEO_CONVERTER_OPT_QOFFSET
  *
  * #G_TYPE_FLOAT, Quantization offset, used in quantize operation.
@@ -214,7 +232,7 @@ typedef struct _GstGlesConverter GstGlesConverter;
     "GstGlesVideoConverter.convert_to_uint8"
 
 /**
- * gst_gles_converter_new:
+ * gst_gles_video_converter_new:
  *
  * Initialize instance of GLES converter module.
  *
@@ -224,8 +242,8 @@ GST_VIDEO_API GstGlesConverter *
 gst_gles_video_converter_new     (void);
 
 /**
- * gst_gles_converter_free:
- * @convert: pointer to GLES converter module
+ * gst_gles_video_converter_free:
+ * @convert: Pointer to GLES converter module
  *
  * Deinitialise the GLES converter instance.
  *
@@ -235,34 +253,69 @@ GST_VIDEO_API void
 gst_gles_video_converter_free    (GstGlesConverter * convert);
 
 /**
- * gst_gles_converter_set_ops:
- * @convert: pointer to GLES converter instance
- * @opts: pointer to structure containing options
+ * gst_gles_video_converter_set_clip_opts:
+ * @convert: Pointer to GLES converter instance
+ * @index: Input frame index
+ * @opts: Pointer to structure containing options
  *
- * Configure the converter with the operations specified in opts structure.
+ * Configure source and destination rectangles that are going to be used on
+ * the input frame with given index during the clip API.
  *
  * return: TRUE on success or FALSE on failure
  */
 GST_VIDEO_API gboolean
-gst_gles_video_converter_set_ops (GstGlesConverter * convert,
-                                  GstStructure * opts);
+gst_gles_video_converter_set_clip_opts (GstGlesConverter * convert,
+                                        guint index, GstStructure * opts);
 
 /**
- * gst_gles_converter_process:
+ * gst_gles_video_converter_set_process_opts:
+ * @convert: Pointer to GLES converter instance
+ * @opts: Pointer to structure containing options
+ *
+ * Configure the set of operations that will be performed on the input frames
+ * during the process API.
+ *
+ * return: TRUE on success or FALSE on failure
+ */
+GST_VIDEO_API gboolean
+gst_gles_video_converter_set_process_opts (GstGlesConverter * convert,
+                                           GstStructure * opts);
+
+/**
+ * gst_gles_video_converter_clip:
  * @convert: pointer to GLES converter instance
  * @inframes: Array of input video frames
- * @n_inputs: number of input frames
- * @outframe: output video frame
+ * @n_inputs: Number of input frames
+ * @outframes: Array of output video frames
+ * @n_outputs: Number of output frames
  *
- * Process input frames with the given options and place the result
- * into the provided output frame.
+ * Crop one or more rectangles from each input frame and place them in one
+ * or more output frames at destination coordinates and dimensions.
+ *
+ * return: TRUE on success or FALSE on failure
+ */
+GST_VIDEO_API gboolean
+gst_gles_video_converter_clip (GstGlesConverter * convert,
+                               GstVideoFrame * inframes, guint n_inputs,
+                               GstVideoFrame * outframes, guint n_outputs);
+
+/**
+ * gst_gles_video_converter_process:
+ * @convert: pointer to GLES converter instance
+ * @inframes: Array of input video frames
+ * @n_inputs: Number of input frames
+ * @outframes: Array of output video frames
+ * @n_outputs: Number of output frames
+ *
+ * Perform a set of operations, configured beforehand, on the input frames and
+ * place the results into the provided outputs frames.
  *
  * return: TRUE on success or FALSE on failure
  */
 GST_VIDEO_API gboolean
 gst_gles_video_converter_process (GstGlesConverter * convert,
                                   GstVideoFrame * inframes, guint n_inputs,
-                                  GstVideoFrame * outframe);
+                                  GstVideoFrame * outframes, guint n_outputs);
 
 G_END_DECLS
 
