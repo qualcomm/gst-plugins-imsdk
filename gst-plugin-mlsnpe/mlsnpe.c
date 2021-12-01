@@ -224,7 +224,7 @@ gst_ml_snpe_decide_allocation (GstBaseTransform * base, GstQuery * query)
 
   gst_query_parse_allocation (query, &caps, NULL);
   if (!caps) {
-    GST_ERROR_OBJECT (snpe, "Failed to parse the decide_allocation caps!");
+    GST_ERROR_OBJECT (snpe, "Failed to parse the allocation caps!");
     return FALSE;
   }
 

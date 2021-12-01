@@ -289,6 +289,8 @@ gst_ml_snpe_engine_new (GstStructure * settings)
     const zdl::DlSystem::TensorShape& shape = (*optattributes)->getDims();
     const zdl::DlSystem::Dimension *dimensions = shape.getDimensions();
 
+    engine->ininfo->n_dimensions[idx] = shape.rank();
+
     for (num = 0; num < shape.rank(); ++num) {
       engine->ininfo->tensors[idx][num] = dimensions[num];
       GST_DEBUG ("Input tensor[%u] Dimension[%u]: %u", idx, num,
@@ -339,6 +341,8 @@ gst_ml_snpe_engine_new (GstStructure * settings)
 
     const zdl::DlSystem::TensorShape& shape = (*optattributes)->getDims();
     const zdl::DlSystem::Dimension *dimensions = shape.getDimensions();
+
+    engine->outinfo->n_dimensions[idx] = shape.rank();
 
     for (num = 0; num < shape.rank(); ++num) {
       engine->outinfo->tensors[idx][num] = dimensions[num];

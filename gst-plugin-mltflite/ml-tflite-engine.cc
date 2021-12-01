@@ -340,6 +340,8 @@ gst_ml_tflite_engine_new (GstStructure * settings)
     gint input = engine->interpreter->inputs()[idx];
     TfLiteIntArray* dimensions = engine->interpreter->tensor(input)->dims;
 
+    engine->ininfo->n_dimensions[idx] = dimensions->size;
+
     for (num = 0; num < dimensions->size; ++num) {
       engine->ininfo->tensors[idx][num] = dimensions->data[num];
       GST_DEBUG ("Input tensor[%u] Dimension[%u]: %u", idx, num,
@@ -354,6 +356,8 @@ gst_ml_tflite_engine_new (GstStructure * settings)
   for (idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
     gint output = engine->interpreter->outputs()[idx];
     TfLiteIntArray* dimensions = engine->interpreter->tensor(output)->dims;
+
+    engine->outinfo->n_dimensions[idx] = dimensions->size;
 
     for (num = 0; num < dimensions->size; ++num) {
       engine->outinfo->tensors[idx][num] = dimensions->data[num];

@@ -4,12 +4,13 @@ set(GST_QTI_ML_BASE gstqtimlbase)
 add_library(${GST_QTI_ML_BASE} SHARED
   ml-type.c
   ml-info.c
+  ml-frame.c
   gstmlmeta.c
   gstmlpool.c
 )
 
 set_target_properties(${GST_QTI_ML_BASE} PROPERTIES PUBLIC_HEADER
-  "ml-type.h;ml-info.h;gstmlmeta.h;gstmlpool.h"
+  "ml-type.h;ml-info.h;ml-frame.h;gstmlmeta.h;gstmlpool.h"
 )
 
 target_include_directories(${GST_QTI_ML_BASE} PUBLIC

@@ -43,7 +43,8 @@ typedef struct _GstMLInfo GstMLInfo;
  * GstMLInfo:
  * @type: type of the tensors
  * @n_tensors: number of tensors
- * @tensors: array with tensors dimensions
+ * @n_dimensions: number of dimensions for each tensor
+ * @tensors: array with tensor dimensions
  *
  * Info describing ML properties. This info can be filled
  * in from GstCaps with gst_ml_info_from_caps().
@@ -53,6 +54,7 @@ typedef struct _GstMLInfo GstMLInfo;
 struct _GstMLInfo {
   GstMLType type;
   guint     n_tensors;
+  guint     n_dimensions[GST_ML_MAX_TENSORS];
   guint     tensors[GST_ML_MAX_TENSORS][GST_ML_TENSOR_MAX_DIMENSIONS];
 };
 
@@ -60,22 +62,22 @@ GST_API
 GType gst_ml_info_get_type     (void);
 
 GST_API
-void gst_ml_info_init          (GstMLInfo *info);
+void gst_ml_info_init          (GstMLInfo * info);
 
 GST_API
 GstMLInfo * gst_ml_info_new    (void);
 
 GST_API
-GstMLInfo * gst_ml_info_copy   (const GstMLInfo *info);
+GstMLInfo * gst_ml_info_copy   (const GstMLInfo * info);
 
 GST_API
-void gst_ml_info_free          (GstMLInfo *info);
+void gst_ml_info_free          (GstMLInfo * info);
 
 GST_API
-gboolean gst_ml_info_from_caps (GstMLInfo *info, const GstCaps  * caps);
+gboolean gst_ml_info_from_caps (GstMLInfo * info, const GstCaps  * caps);
 
 GST_API
-GstCaps * gst_ml_info_to_caps  (const GstMLInfo *info);
+GstCaps * gst_ml_info_to_caps  (const GstMLInfo * info);
 
 GST_API
 gboolean gst_ml_info_is_equal  (const GstMLInfo * info, const GstMLInfo * other);
@@ -85,6 +87,10 @@ gsize gst_ml_info_tensor_size  (const GstMLInfo * info, guint index);
 
 GST_API
 gsize gst_ml_info_size         (const GstMLInfo * info);
+
+
+#define GST_ML_INFO_TYPE(i)           ((i)->type)
+#define GST_ML_INFO_N_TENSORS(i)      ((i)->n_tensors)
 
 G_END_DECLS
 
