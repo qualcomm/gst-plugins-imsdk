@@ -173,23 +173,18 @@ init_formats (GValue * formats, ...)
 }
 
 static gboolean
-is_conversion_required (GstVideoFrame * inframes, guint n_inputs,
-    GstVideoFrame * outframe)
+is_conversion_required (GstVideoFrame * inframe, GstVideoFrame * outframe)
 {
   gboolean conversion = FALSE;
 
-  // When there is more than 1 input frame we must always do conversion.
-  if (n_inputs > 1)
-    return TRUE;
-
   // Conversion is required if input and output formats are different.
-  conversion |=  GST_VIDEO_FRAME_FORMAT (&inframes[0]) !=
+  conversion |=  GST_VIDEO_FRAME_FORMAT (inframe) !=
       GST_VIDEO_FRAME_FORMAT (outframe);
   // Conversion is required if input and output strides are different.
-  conversion |= GST_VIDEO_FRAME_PLANE_STRIDE (&inframes[0], 0) !=
+  conversion |= GST_VIDEO_FRAME_PLANE_STRIDE (inframe, 0) !=
       GST_VIDEO_FRAME_PLANE_STRIDE (outframe, 0);
   // Conversion is required if input and output heights are different.
-  conversion |= GST_VIDEO_FRAME_HEIGHT (&inframes[0]) !=
+  conversion |= GST_VIDEO_FRAME_HEIGHT (inframe) !=
       GST_VIDEO_FRAME_HEIGHT (outframe);
 
   return conversion;
@@ -213,45 +208,110 @@ gst_unmap_input_video_frames (GstVideoFrame * inframes, guint n_inputs)
 }
 
 static gboolean
-gst_map_input_video_frames (GstBuffer * inbuffer, GstVideoInfo * info,
-    GstVideoFrame ** inframes, guint * n_inputs)
+gst_map_input_video_frames (GstMLVideoConverter * mlconverter,
+    GstBuffer * inbuffer, GstVideoFrame ** inframes, guint * n_inputs)
 {
-  GstVideoMeta *vmeta = NULL;
-  guint idx = 0;
+  GstVideoInfo *info = mlconverter->ininfo;
+  GstVideoFrame *frames = NULL;
+  guint idx = 0, num = 0, n_memory = 0, n_roimeta = 0, n_frames = 0;
 
-  *n_inputs = gst_buffer_n_memory (inbuffer);
-  *inframes = g_new0 (GstVideoFrame, *n_inputs);
+  n_roimeta = gst_buffer_get_n_meta (inbuffer,
+      GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE);
+  n_memory = gst_buffer_n_memory (inbuffer);
 
-  for (idx = 0; idx < *n_inputs; idx++) {
+  if ((n_memory > 1) && (n_roimeta != 0)) {
+    GST_ERROR ("ROI meta not supported with multiple memory blocks!");
+    return FALSE;
+  }
+
+  n_frames = (n_roimeta != 0) ? n_roimeta : n_memory;
+
+  // Verify that set number of frames does not exceed the max number of tensors.
+  if (n_frames > mlconverter->mlinfo->tensors[0][0]) {
+    GST_WARNING_OBJECT (mlconverter, "Number of ROI or memory blocks (%u) "
+        "exceeds the maximum allowed batch size (%u), clipping!", n_frames,
+        mlconverter->mlinfo->tensors[0][0]);
+    n_frames = mlconverter->mlinfo->tensors[0][0];
+  }
+
+  frames = g_new0 (GstVideoFrame, n_frames);
+
+  for (idx = 0; idx < n_frames; idx++) {
+    GstBuffer *buffer = NULL;
+    GstVideoMeta *vmeta = NULL;
+    GstVideoInfo vinfo;
+
     // Create a new buffer to placehold a reference to a single GstMemory block.
-    GstBuffer *buffer = gst_buffer_new ();
+    buffer = gst_buffer_new ();
+
+    // Input buffer memory block index, always 0 in case there is ROI meta.
+    num = (n_roimeta != 0) ? 0 : idx;
 
     // Append the memory block from input buffer into the new buffer.
-    gst_buffer_append_memory (buffer, gst_buffer_get_memory (inbuffer, idx));
+    gst_buffer_append_memory (buffer, gst_buffer_get_memory (inbuffer, num));
 
     // Add parent meta, input buffer won't be released until new buffer is freed.
     gst_buffer_add_parent_buffer_meta (buffer, inbuffer);
 
-    // Copy video metadata assigned to current memory block into the new buffer.
-    if ((vmeta = gst_buffer_get_video_meta_id (inbuffer, idx)) != NULL)
-      gst_buffer_add_video_meta_full (buffer, GST_VIDEO_FRAME_FLAG_NONE,
-          vmeta->format, vmeta->width, vmeta->height, vmeta->n_planes,
-          vmeta->offset, vmeta->stride);
+    if ((n_memory >= 1) && (n_roimeta == 0)) {
+      // Video info for the new buffer is same as the negotiated one from caps.
+      gst_video_info_set_format (&vinfo, GST_VIDEO_INFO_FORMAT (info),
+          GST_VIDEO_INFO_WIDTH (info), GST_VIDEO_INFO_HEIGHT (info));
 
-    // Create a video frame from the new input buffer.
-    if (!gst_video_frame_map (inframes[idx], info, buffer,
+      // Copy video metadata for current memory block into the new buffer.
+      if ((vmeta = gst_buffer_get_video_meta_id (inbuffer, idx)) != NULL)
+        gst_buffer_add_video_meta_full (buffer, GST_VIDEO_FRAME_FLAG_NONE,
+            vmeta->format, vmeta->width, vmeta->height, vmeta->n_planes,
+            vmeta->offset, vmeta->stride);
+    } else { // (n_roimeta != 0)
+      GstVideoRegionOfInterestMeta *roimeta = NULL;
+
+      // Extract ROI meta from main input buffer.
+      roimeta = gst_buffer_get_video_region_of_interest_meta_id (inbuffer, idx);
+      // In case there is attached video meta extract it for later usage.
+      vmeta = gst_buffer_get_video_meta (inbuffer);
+
+      // Video info for the new buffer is based on ROI and negotiated format.
+      gst_video_info_set_format (&vinfo, GST_VIDEO_INFO_FORMAT (info),
+          roimeta->w, roimeta->h);
+
+      // Adjust planes stride and offset with data from ROI meta.
+      for (num = 0; num < GST_VIDEO_INFO_N_PLANES (&vinfo); num++) {
+        // Extract stride value either from video meta or info.
+        GST_VIDEO_INFO_PLANE_STRIDE (&vinfo, num) = (vmeta != NULL) ?
+            vmeta->stride[num] : GST_VIDEO_INFO_PLANE_STRIDE (info, num);
+
+        // Base offset value would be taken either from video meta or info.
+        GST_VIDEO_INFO_PLANE_OFFSET (&vinfo, num) = (vmeta != NULL) ?
+            vmeta->offset[num] : GST_VIDEO_INFO_PLANE_OFFSET (info, num);
+
+        // Adjust the UV plane offset depending on the ROI coordinates.
+        // TODO Needs to be improved and tested with formats other than NV12.
+        if (num == 0) {
+          // Y plane offset adjustment.
+          GST_VIDEO_INFO_PLANE_OFFSET (&vinfo, num) += GST_ROUND_UP_2 (roimeta->x) +
+              GST_ROUND_UP_2 (roimeta->y) * GST_VIDEO_INFO_PLANE_STRIDE (&vinfo, num);
+        } else if (num >= 1) {
+          // UV plane offset adjustment.
+          GST_VIDEO_INFO_PLANE_OFFSET (&vinfo, num) -= GST_ROUND_UP_2 (roimeta->y) *
+              GST_VIDEO_INFO_PLANE_STRIDE (&vinfo, num) / 2;
+        }
+      }
+    }
+
+    if (!gst_video_frame_map (&frames[idx], &vinfo, buffer,
             GST_MAP_READ | GST_VIDEO_FRAME_MAP_FLAG_NO_REF)) {
-      GST_ERROR ("Failed to map memory at idx %u!", idx);
+      GST_ERROR_OBJECT (mlconverter, "Failed to map frame at idx %u!", idx);
 
       gst_buffer_unref (buffer);
-      gst_unmap_input_video_frames (*inframes, *n_inputs);
-
-      *inframes = NULL;
-      *n_inputs = 0;
+      gst_unmap_input_video_frames (frames, n_frames);
 
       return FALSE;
     }
   }
+
+  *n_inputs = n_frames;
+  *inframes = frames;
 
   return TRUE;
 }
@@ -295,13 +355,13 @@ gst_ml_video_converter_translate_ml_caps (GstMLVideoConverter * mlconverter,
     // Make a copy that will be modified.
     structure = gst_structure_copy (structure);
 
-    // The 2nd and 3rd dimensions correspond to width and height respectively.
+    // 2nd and 3rd dimensions correspond to width and height respectively.
     gst_structure_set (structure,
         "width", G_TYPE_INT, mlinfo.tensors[0][1],
         "height", G_TYPE_INT, mlinfo.tensors[0][2],
         NULL);
 
-    // The 4th dimension corresponds to the bit depth.
+    // 4th dimension corresponds to the bit depth.
     if (mlinfo.tensors[0][3] == 1) {
       init_formats (&formats, "GRAY8", NULL);
     } else if (mlinfo.tensors[0][3] == 3) {
@@ -316,7 +376,6 @@ gst_ml_video_converter_translate_ml_caps (GstMLVideoConverter * mlconverter,
         init_formats (&formats, "BGRA", "BGRx", "ABGR", "xBGR", NULL);
     }
 
-
     gst_structure_set_value (structure, "format", &formats);
     g_value_unset (&formats);
 
@@ -328,6 +387,11 @@ gst_ml_video_converter_translate_ml_caps (GstMLVideoConverter * mlconverter,
 
     gst_caps_append_structure_full (result, structure,
         gst_caps_features_copy (features));
+
+    // 1st dimension contains the batch size.
+    gst_structure_set (structure,
+        "batch-size", G_TYPE_INT, mlinfo.tensors[0][0],
+        NULL);
   }
 
   gst_caps_unref (tmplcaps);
@@ -370,8 +434,14 @@ gst_ml_video_converter_translate_video_caps (GstMLVideoConverter * mlconverter,
   g_value_init (&dimension, G_TYPE_INT);
 
   // 1st dimension is batch size.
-  g_value_set_int (&dimension, 1);
-  gst_value_array_append_value (&dimensions, &dimension);
+  value = gst_structure_get_value (structure, "batch-size");
+
+  if (NULL == value || !gst_value_is_fixed (value)) {
+    g_value_set_int (&dimension, 1);
+    value = &dimension;
+  }
+
+  gst_value_array_append_value (&dimensions, value);
 
   // 2nd dimension is video width.
   gst_value_array_append_value (&dimensions,
@@ -476,7 +546,7 @@ gst_ml_video_converter_update_configuration (GstMLVideoConverter * mlconverter,
 
 #ifdef USE_GLES_CONVERTER
   {
-    gboolean resize = FALSE, normalize = FALSE;
+    gboolean normalize = FALSE;
 
     // TODO Workaround due to single thread limitation in GLES.
     if (mlconverter->glesconvert != NULL)
@@ -484,10 +554,6 @@ gst_ml_video_converter_update_configuration (GstMLVideoConverter * mlconverter,
 
     mlconverter->glesconvert = gst_gles_video_converter_new ();
 
-    // None of the other operation are supported unless the resize is set.
-    resize = TRUE; // TODO Workaround
-//    resize = (GST_VIDEO_INFO_WIDTH (ininfo) != GST_VIDEO_INFO_WIDTH (outinfo)) ||
-//        (GST_VIDEO_INFO_HEIGHT (ininfo) != GST_VIDEO_INFO_HEIGHT (outinfo));
     normalize = (mlconverter->mlinfo->type == GST_ML_TYPE_FLOAT32);
 
     gst_structure_set (opts,
@@ -518,10 +584,9 @@ gst_ml_video_converter_update_configuration (GstMLVideoConverter * mlconverter,
         GST_GLES_VIDEO_CONVERTER_OPT_ASCALE, G_TYPE_FLOAT,
         (mlconverter->mean->len >= 4) ?
             g_array_index (mlconverter->sigma, gfloat, 3) : DEFAULT_PROP_SIGMA,
-        GST_GLES_VIDEO_CONVERTER_OPT_RESIZE, G_TYPE_BOOLEAN, resize,
-        GST_GLES_VIDEO_CONVERTER_OPT_RESIZE_WIDTH, G_TYPE_INT,
+        GST_GLES_VIDEO_CONVERTER_OPT_OUTPUT_WIDTH, G_TYPE_INT,
         GST_VIDEO_INFO_WIDTH (outinfo),
-        GST_GLES_VIDEO_CONVERTER_OPT_RESIZE_HEIGHT, G_TYPE_INT,
+        GST_GLES_VIDEO_CONVERTER_OPT_OUTPUT_HEIGHT, G_TYPE_INT,
         GST_VIDEO_INFO_HEIGHT (outinfo),
         GST_GLES_VIDEO_CONVERTER_OPT_DEST_X, G_TYPE_INT, 0,
         GST_GLES_VIDEO_CONVERTER_OPT_DEST_Y, G_TYPE_INT, 0,
@@ -790,8 +855,9 @@ gst_ml_video_converter_transform_caps (GstBaseTransform * base,
   }
 
   // Extract the framerate and propagate it to result caps.
-  value = gst_structure_get_value (gst_caps_get_structure (caps, 0),
-      (direction == GST_PAD_SRC) ? "rate" : "framerate");
+  if (!gst_caps_is_empty (caps))
+    value = gst_structure_get_value (gst_caps_get_structure (caps, 0),
+        (direction == GST_PAD_SRC) ? "rate" : "framerate");
 
   if (value != NULL) {
     gint idx = 0, length = 0;
@@ -951,6 +1017,9 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
   GST_VIDEO_INFO_SIZE (&outinfo) *=
       gst_ml_type_get_size (mlconverter->mlinfo->type);
 
+  // Adjust height with the batch number of the tensor (1st dimension).
+  GST_VIDEO_INFO_HEIGHT (&outinfo) *= mlconverter->mlinfo->tensors[0][0];
+
   if (mlconverter->vinfo != NULL)
     gst_video_info_free (mlconverter->vinfo);
 
@@ -986,8 +1055,11 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
   GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
   GstClockTimeDiff tsdelta = GST_CLOCK_TIME_NONE;
 
-  if (!gst_map_input_video_frames (inbuffer, mlconverter->ininfo,
-          &inframes, &n_inputs)) {
+  // Set the initial number of inputs to the number of negotiated tensors.
+  // It will be updated during mapping of the input buffer frames.
+  n_inputs = mlconverter->mlinfo->n_tensors;
+
+  if (!gst_map_input_video_frames (mlconverter, inbuffer, &inframes, &n_inputs)) {
     GST_ERROR_OBJECT (mlconverter, "Failed to create input frames!");
     return GST_FLOW_ERROR;
   }
@@ -1003,7 +1075,7 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
   ts_begin = gst_util_get_timestamp ();
 
 #ifdef USE_C2D_CONVERTER
-  if (is_conversion_required (inframes, n_inputs, &outframe)) {
+  if ((n_inputs > 1) || is_conversion_required (&inframes[0], &outframe)) {
     // Submit conversion request to the C2D converter.
     gpointer request_id = gst_c2d_video_converter_submit_request (
         mlconverter->c2dconvert, inframes, n_inputs, &outframe);
@@ -1023,10 +1095,10 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
 #endif // USE_C2D_CONVERTER
 
 #ifdef USE_GLES_CONVERTER
-  if (is_conversion_required (inframes, n_inputs, &outframe) ||
+  if ((n_inputs > 1) || is_conversion_required (&inframes[0], &outframe) ||
       (mlconverter->mlinfo->type == GST_ML_TYPE_FLOAT32))
     success = gst_gles_video_converter_process (mlconverter->glesconvert,
-        inframes, n_inputs, NULL, &outframe);
+        inframes, n_inputs, &outframe);
 #endif // USE_GLES_CONVERTER
 
   ts_end = gst_util_get_timestamp ();
