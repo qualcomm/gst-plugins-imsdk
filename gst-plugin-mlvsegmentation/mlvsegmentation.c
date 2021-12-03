@@ -491,9 +491,9 @@ gst_ml_video_segmentation_fixate_caps (GstBaseTransform * base,
   value = gst_structure_get_value (output, "width");
 
   if ((NULL == value) || !gst_value_is_fixed (value)) {
-    // 2nd dimension correspond to width, 3rd dimension correspond to height.
-    width = (num >= den) ? mlinfo.tensors[0][1] :
-        gst_util_uint64_scale_int (mlinfo.tensors[0][2], num, den);
+    // 2nd dimension correspond to height, 3rd dimension correspond to width.
+    width = (num >= den) ? mlinfo.tensors[0][2] :
+        gst_util_uint64_scale_int (mlinfo.tensors[0][1], num, den);
     width = GST_ROUND_DOWN_16 (width);
 
     gst_structure_set (output, "width", G_TYPE_INT, width, NULL);
@@ -501,9 +501,9 @@ gst_ml_video_segmentation_fixate_caps (GstBaseTransform * base,
   } else {
     gst_structure_get_int (output, "width", &width);
 
-    if (((guint) width) > mlinfo.tensors[0][1]) {
+    if (((guint) width) > mlinfo.tensors[0][2]) {
       GST_ERROR_OBJECT (segmentation, "Fixated width is above the allowed "
-          "max width of %u !", mlinfo.tensors[0][1]);
+          "max width of %u !", mlinfo.tensors[0][2]);
       return NULL;
     }
   }
@@ -511,19 +511,19 @@ gst_ml_video_segmentation_fixate_caps (GstBaseTransform * base,
   value = gst_structure_get_value (output, "height");
 
   if ((NULL == value) || !gst_value_is_fixed (value)) {
-    // 2nd dimension correspond to width, 3rd dimension correspond to height.
-    height = (num <= den) ? mlinfo.tensors[0][2] :
+    // 2nd dimension correspond to height, 3rd dimension correspond to width.
+    height = (num <= den) ? mlinfo.tensors[0][1] :
         gst_util_uint64_scale_int (
-              GST_ROUND_DOWN_16 (mlinfo.tensors[0][1]), den, num);
+              GST_ROUND_DOWN_16 (mlinfo.tensors[0][2]), den, num);
 
     gst_structure_set (output, "height", G_TYPE_INT, height, NULL);
     gst_structure_get_int (output, "height", &height);
   } else {
     gst_structure_get_int (output, "height", &height);
 
-    if (((guint) height) > mlinfo.tensors[0][2]) {
+    if (((guint) height) > mlinfo.tensors[0][1]) {
       GST_ERROR_OBJECT (segmentation, "Fixated height is above the allowed "
-          "max height of %u !", mlinfo.tensors[0][2]);
+          "max height of %u !", mlinfo.tensors[0][1]);
       return NULL;
     }
   }
@@ -606,10 +606,16 @@ gst_ml_video_segmentation_transform (GstBaseTransform * base,
   g_return_val_if_fail (segmentation->module != NULL, GST_FLOW_ERROR);
 
   n_blocks = gst_buffer_n_memory (inbuffer);
-  if (n_blocks != segmentation->mlinfo->n_tensors) {
-    GST_ERROR_OBJECT (segmentation, "Input buffer has %u memory blocks but "
-        "negotiated caps require %u!", n_blocks, segmentation->mlinfo->n_tensors);
-    return GST_FLOW_ERROR;
+
+  if (gst_buffer_get_size (inbuffer) != gst_ml_info_size (segmentation->mlinfo)) {
+    GST_ERROR_OBJECT (segmentation, "Mismatch, expected buffer size %"
+        G_GSIZE_FORMAT " but actual size is %" G_GSIZE_FORMAT "!",
+        gst_ml_info_size (segmentation->mlinfo), gst_buffer_get_size (inbuffer));
+    return FALSE;
+  } else if ((n_blocks > 1) && n_blocks != segmentation->mlinfo->n_tensors) {
+    GST_ERROR_OBJECT (segmentation, "Mismatch, expected %u memory blocks "
+        "but buffer has %u!", segmentation->mlinfo->n_tensors, n_blocks);
+    return FALSE;
   }
 
   n_blocks = gst_buffer_get_n_meta (inbuffer, GST_ML_TENSOR_META_API_TYPE);

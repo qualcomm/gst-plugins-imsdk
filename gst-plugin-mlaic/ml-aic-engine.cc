@@ -43,7 +43,6 @@
 #include <algorithm>
 
 #include <QAicApi.hpp>
-#include <qaicapihpp/QAicApiMain.hpp>
 #include <QAicApi.pb.h>
 
 #define GST_ML_RETURN_VAL_IF_FAIL(expression, value, ...) \
@@ -96,17 +95,21 @@
 struct _GstMLAicEngine
 {
   // Mutex lock synchronizing between threads
-  GMutex lock;
+  GMutex       lock;
 
-  GstMLInfo *ininfo;
-  GstMLInfo *outinfo;
+  GstMLInfo    *ininfo;
+  GstMLInfo    *outinfo;
 
   GstStructure *settings;
+
+  // List containing the order in which in/out buffers need to be filled.
+  std::vector<::aicapi::bufferIoDirectionEnum> buforder;
 
   // AIC100 Primary object that links all other core objects.
   ::qaic::rt::shContext context;
   // AIC100 Program Container object containing the loaded model.
   ::qaic::rt::shQpc qpc;
+
   // List of programs on a AIC100 device.
   std::vector<::qaic::rt::shProgram> programs;
   // List of user-level queue for enqueuing ExecObj for execution.
@@ -116,7 +119,7 @@ struct _GstMLAicEngine
   // Used to spread the load across multiple programs and queues.
   std::map<uint32_t, uint32_t> activations;
   // Map of ExecObj and the activation index used to enqueue that object.
-  std::map<::qaic::rt::shExecObj, uint32_t> objects;
+  std::map<::qaic::rt::shExecObj, int32_t> objects;
 };
 
 static GstDebugCategory *
@@ -168,32 +171,6 @@ get_opt_uint_list (GstStructure * settings, const gchar * opt)
   return list;
 }
 
-// Helper function for AIC context.
-static void
-gst_ml_aic_log_callback (QLogLevel level, const char * message)
-{
-  if (level == QL_DEBUG)
-    GST_TRACE ("AIC: %s", message);
-  else if (level == QL_INFO)
-    GST_INFO ("AIC: %s", message);
-  else if (level == QL_WARN)
-    GST_WARNING ("AIC: %s", message);
-  else if (level == QL_ERROR)
-    GST_ERROR ("AIC: %s", message);
-}
-
-static void
-gst_ml_aic_error_handler (QAicContextID ctxid, const char * message,
-    QAicErrorType type, const void * data, size_t size, void * userdata)
-{
-  std::ignore = data;
-  std::ignore = size;
-  std::ignore = userdata;
-
-  GST_ERROR ("Received Error for context ID: %d, type: %d, message: '%s'",
-      ctxid, type, message);
-}
-
 static GstMLType
 gst_ml_aic_to_ml_type (::aicapi::bufferIoDataTypeEnum type)
 {
@@ -210,6 +187,61 @@ gst_ml_aic_to_ml_type (::aicapi::bufferIoDataTypeEnum type)
   }
 
   return GST_ML_TYPE_UNKNOWN;
+}
+
+static gboolean
+gst_ml_aic_set_qbuffer (const GstMLFrame * frame, guint idx, QBuffer& qbuffer)
+{
+  GstMemory *memory = gst_buffer_peek_memory (frame->buffer, idx);
+
+  g_return_val_if_fail (gst_is_fd_memory (memory), FALSE);
+
+  qbuffer.type = QBUFFER_TYPE_DMABUF;
+  qbuffer.buf = GST_ML_FRAME_BLOCK_DATA (frame, idx);
+  qbuffer.size = GST_ML_FRAME_BLOCK_SIZE (frame, idx);
+
+  qbuffer.handle = gst_fd_memory_get_fd (memory);
+  qbuffer.offset = memory->offset;
+
+  return TRUE;
+}
+
+static void
+gst_ml_aic_internal_maps_cleanup (GstMLAicEngine * engine,
+    ::qaic::rt::shExecObj object, guint index)
+{
+  GST_AIC_LOCK (engine);
+
+  // Decrease the usage count for the activation associated with the object.
+  engine->activations[index] -= 1;
+  // Erase the ExecObj associated with the give index.
+  engine->objects.erase(object);
+
+  GST_AIC_UNLOCK (engine);
+}
+
+// Helper function for AIC context.
+static void
+gst_ml_aic_log_callback (QLogLevel level, const char * message)
+{
+  if (level == QL_DEBUG || level == QL_INFO)
+    GST_TRACE ("AIC: %s", message);
+  else if (level == QL_WARN)
+    GST_WARNING ("AIC: %s", message);
+  else if (level == QL_ERROR)
+    GST_ERROR ("AIC: %s", message);
+}
+
+static void
+gst_ml_aic_error_handler (QAicContextID ctxid, const char * message,
+    QAicErrorType type, const void * data, size_t size, void * userdata)
+{
+  std::ignore = data;
+  std::ignore = size;
+  std::ignore = userdata;
+
+  GST_ERROR ("Received Error for context ID: %d, type: %d, message: '%s'",
+      ctxid, type, message);
 }
 
 GstMLAicEngine *
@@ -254,7 +286,7 @@ gst_ml_aic_engine_new (GstStructure * settings)
     // Vector which will contain the devices IDs from which we create a context.
     std::vector<QID> device_ids;
 
-    for (idx = 0; idx < devices->len; idx++) {
+    for (idx = 0; idx < (gint) devices->len; idx++) {
       QID id = g_array_index (devices, guint, idx);
 
       // Verify that a device with the given ID exists.
@@ -300,10 +332,11 @@ gst_ml_aic_engine_new (GstStructure * settings)
         gst_ml_aic_engine_free (engine), "No model file name!");
 
     engine->qpc = ::qaic::rt::Qpc::Factory(dirname, filename);
-    GST_INFO ("Loaded model file '%s'", filename);
+    GST_INFO ("Loaded model file '%s'", filename.c_str());
 
     // Get the chosen number of activations to utilize in this engine.
     n_activations = GET_OPT_NUM_ACTIVATIONS (engine->settings);
+    GST_INFO ("Number of activations: %d", n_activations);
 
     QAicProgramProperties_t pprops;
     ::qaic::rt::Program::initProperties(pprops);
@@ -389,13 +422,16 @@ gst_ml_aic_engine_new (GstStructure * settings)
     // Iterate through all bindings and fill input and output ML info.
     for (idx = 0; idx < ioset.bindings_size(); idx++) {
       const ::aicapi::IoBinding &binding = ioset.bindings(idx);
-      guint num = 0, dim = 0;
+      const ::aicapi::DmaBufInfo &info = binding.dma_buf_info(0);
+      gint num = 0, dim = 0;
 
       if (::aicapi::BUFFER_IO_TYPE_INPUT == binding.dir()) {
         num = engine->ininfo->n_tensors;
 
-        GST_INFO ("Input tensor[%u] at index %u, name: %s and size %u", num,
-            binding.index(), binding.name().c_str(), binding.size());
+        GST_INFO ("Input tensor[%u] at index %u, name: %s, size %u, DMA "
+            "index: %u, DMA offset: %u and DMA size: %u", num, binding.index(),
+            binding.name().c_str(), binding.size(), info.dma_buf_index(),
+            info.dma_offset(), info.dma_size());
 
         engine->ininfo->n_dimensions[num] = binding.dims_size();
 
@@ -410,8 +446,10 @@ gst_ml_aic_engine_new (GstStructure * settings)
       } else if (::aicapi::BUFFER_IO_TYPE_OUTPUT == binding.dir()) {
         num = engine->outinfo->n_tensors;
 
-        GST_INFO ("Output tensor[%u] at index %u, name: %s and size %u", num,
-            binding.index(), binding.name().c_str(), binding.size());
+        GST_INFO ("Output tensor[%u] at index %u, name: %s, size %u, DMA "
+            "index: %u, DMA offset: %u and DMA size: %u", num, binding.index(),
+            binding.name().c_str(), binding.size(), info.dma_buf_index(),
+            info.dma_offset(), info.dma_size());
 
         engine->outinfo->n_dimensions[num] = binding.dims_size();
 
@@ -425,6 +463,11 @@ gst_ml_aic_engine_new (GstStructure * settings)
         engine->outinfo->n_tensors++;
       }
     }
+
+    // Fill the order (in/out) in which the buffers are expected to be set.
+    for (idx = 0; idx < iodesc->dma_buf_size(); idx++)
+      engine->buforder.push_back(iodesc->dma_buf(idx).dir());
+
   } catch (const ::qaic::rt::CoreExceptionInit &e) {
     GST_ERROR ("Caught exception during initialization: %s", e.what());
     gst_ml_aic_engine_free (engine);
@@ -486,45 +529,31 @@ gint
 gst_ml_aic_engine_submit_request (GstMLAicEngine * engine,
     GstMLFrame * inframe, GstMLFrame * outframe)
 {
-  gint request_id = -1;
-  guint idx = 0, n_usage = 0;
+  guint idx = 0, num = 0, n_usage = 0;
 
-  g_return_val_if_fail (engine != NULL, NULL);
-  g_return_val_if_fail (inframe != NULL, NULL);
-  g_return_val_if_fail (outframe != NULL, NULL);
+  g_return_val_if_fail (engine != NULL, GST_ML_AIC_INVALID_ID);
+  g_return_val_if_fail (inframe != NULL, GST_ML_AIC_INVALID_ID);
+  g_return_val_if_fail (outframe != NULL, GST_ML_AIC_INVALID_ID);
 
   // Set of both input and output buffers used in the AIC ExecObj.
   std::vector<QBuffer> qbuffers;
 
-  // TODO
-  for (idx = 0; idx < GST_ML_FRAME_N_BLOCKS (outframe); ++idx) {
-    GstMemory *memory = NULL;
+  for (auto const& direction : engine->buforder) {
+    gboolean success = FALSE;
 
     qbuffers.emplace_back();
 
-    qbuffers.back().type = QBUFFER_TYPE_DMABUF;
-    qbuffers.back().buf = GST_ML_FRAME_TENSOR_DATA (outframe, idx);
-    qbuffers.back().size = GST_ML_FRAME_TENSOR_SIZE (outframe, idx);
+    if (::aicapi::BUFFER_IO_TYPE_INPUT == direction)
+      success = gst_ml_aic_set_qbuffer (inframe, idx++, qbuffers.back());
+    else // (::aicapi::BUFFER_IO_TYPE_OUTPUT == direction)
+      success = gst_ml_aic_set_qbuffer (outframe, num++, qbuffers.back());
 
-    memory = gst_buffer_peek_memory (outframe->buffer, idx);
-    qbuffers.back().handle = gst_fd_memory_get_fd (memory);
-    qbuffers.back().offset = memory->offset;
+    GST_ML_RETURN_VAL_IF_FAIL (success, GST_ML_AIC_INVALID_ID,
+        "Failed to fill QBuffer!");
   }
 
-  // TODO
-  for (idx = 0; idx < GST_ML_FRAME_N_BLOCKS (inframe); idx++) {
-    GstMemory *memory = NULL;
-
-    qbuffers.emplace_back();
-
-    qbuffers.back().type = QBUFFER_TYPE_DMABUF;
-    qbuffers.back().buf = GST_ML_FRAME_TENSOR_DATA (inframe, idx);
-    qbuffers.back().size = GST_ML_FRAME_TENSOR_SIZE (inframe, idx);
-
-    memory = gst_buffer_peek_memory (inframe->buffer, idx);
-    qbuffers.back().handle = gst_fd_memory_get_fd (memory);
-    qbuffers.back().offset = memory->offset;
-  }
+  // Execution object.
+  ::qaic::rt::shExecObj object;
 
   GST_AIC_LOCK (engine);
 
@@ -538,58 +567,58 @@ gst_ml_aic_engine_submit_request (GstMLAicEngine * engine,
     n_usage = (activation.second < n_usage) ? activation.second : n_usage;
   }
 
-  GST_AIC_UNLOCK (engine);
-
   GST_LOG ("Using activation at index %u with usage %u", idx, n_usage);
 
-  // Execution object.
-  ::qaic::rt::shExecObj obj;
-
-  try {
-    // Create execution object from the DMA buffers.
-    obj = ::qaic::rt::ExecObj::Factory(engine->context,
-        engine->programs[idx], qbuffers);
-  } catch (const ::qaic::rt::CoreExceptionInit &e) {
-    GST_ERROR ("Caught exception during execution: %s", e.what());
-    return -1;
-  }
-
-  try {
-    QStatus status = engine->queues[idx]->enqueue(obj);
-    if (status != QS_SUCCESS) {
-      GST_ERROR ("Failed to enqueue AIC ExecObj with ID %u, status %d!",
-          obj->getId(), status);
-      return -1;
-    }
-
-    GST_LOG ("Enqueued AIC ExecObj with ID: %u with activation at index %u",
-        obj->getId(), idx);
-  } catch (const ::qaic::rt::CoreExceptionRuntime &e) {
-    GST_ERROR ("Caught exception during execution: %s", e.what());
-    return -1;
-  }
-
-  GST_AIC_LOCK (engine);
-
-  // Add the pair from the ExecObj map.
-  engine->objects.emplace(obj, idx);
   // Increase the usage count for this activation.
   engine->activations[idx] += 1;
 
   GST_AIC_UNLOCK (engine);
 
-  request_id = obj->getId();
+  try {
+    object = ::qaic::rt::ExecObj::Factory(engine->context,
+        engine->programs[idx], qbuffers);
 
-  return request_id;
+    GST_AIC_LOCK (engine);
+    engine->objects.emplace(object, idx);
+    GST_AIC_UNLOCK (engine);
+
+    GST_LOG ("Created execution object for program at index %u", idx);
+  } catch (const ::qaic::rt::CoreExceptionInit &e) {
+    GST_ERROR ("Caught exception during object creation: %s", e.what());
+    gst_ml_aic_internal_maps_cleanup (engine, object, idx);
+    return GST_ML_AIC_INVALID_ID;
+  }
+
+  try {
+    QStatus status = engine->queues[idx]->enqueue(object);
+
+    if (status != QS_SUCCESS) {
+      GST_ERROR ("Failed to enqueue AIC ExecObj with ID %u, status %d!",
+          object->getId(), status);
+      gst_ml_aic_internal_maps_cleanup (engine, object, idx);
+      return GST_ML_AIC_INVALID_ID;
+    }
+
+    GST_LOG ("Enqueued AIC ExecObj with ID: %u with activation at index %u",
+        object->getId(), idx);
+  } catch (const ::qaic::rt::CoreExceptionRuntime &e) {
+    GST_ERROR ("Caught exception during execution: %s", e.what());
+    gst_ml_aic_internal_maps_cleanup (engine, object, idx);
+    return GST_ML_AIC_INVALID_ID;
+  }
+
+  return object->getId();
 }
 
 gboolean
-gst_ml_aic_engine_wait_request (GstMLAicEngine * engine, gint request_id)
+gst_ml_aic_engine_wait_request (GstMLAicEngine * engine, guint request_id)
 {
   gboolean success = TRUE;
 
+  GST_AIC_LOCK (engine);
+
   auto it = std::find_if(engine->objects.begin(), engine->objects.end(),
-      [&] (const std::pair<::qaic::rt::shExecObj, uint32_t> &pair)
+      [&] (const std::pair<::qaic::rt::shExecObj, int32_t> &pair)
       { return pair.first->getId() == request_id; } );
 
   if (it == engine->objects.end()) {
@@ -598,17 +627,19 @@ gst_ml_aic_engine_wait_request (GstMLAicEngine * engine, gint request_id)
   }
 
   // Get the reference to ExecObj and the activation index used to enqueue it.
-  ::qaic::rt::shExecObj obj = it->first;
+  ::qaic::rt::shExecObj object = it->first;
   guint index = it->second;
 
-  GST_LOG ("Waiting ExecObj with ID %u", obj->getId());
+  GST_AIC_UNLOCK (engine);
+
+  GST_LOG ("Waiting ExecObj with ID %u", object->getId());
 
   try {
-    QStatus status = obj->waitForCompletion();
+    QStatus status = object->waitForCompletion();
 
     if (status != QS_SUCCESS) {
       GST_ERROR ("Wait for ExecObj with ID %u failed, status: %d!",
-          obj->getId(), status);
+          object->getId(), status);
       success = FALSE;
     }
   } catch (const ::qaic::rt::CoreExceptionRuntime &e) {
@@ -616,16 +647,8 @@ gst_ml_aic_engine_wait_request (GstMLAicEngine * engine, gint request_id)
     success = FALSE;
   }
 
-  GST_LOG ("Finished waiting ExecObj with ID %u", obj->getId());
-
-  GST_AIC_LOCK (engine);
-
-  // Erase the pair from the ExecObj map.
-  engine->objects.erase(obj);
-  // Decrease the usage count for this activation.
-  engine->activations[index] -= 1;
-
-  GST_AIC_UNLOCK (engine);
+  GST_LOG ("Finished waiting ExecObj with ID %u", object->getId());
+  gst_ml_aic_internal_maps_cleanup (engine, object, index);
 
   return success;
 }

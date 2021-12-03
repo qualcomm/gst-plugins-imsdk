@@ -42,6 +42,8 @@
 
 G_BEGIN_DECLS
 
+#define GST_ML_AIC_INVALID_ID  (-1)
+
 /**
  * GST_ML_AIC_ENGINE_OPT_MODEL:
  *
@@ -90,7 +92,7 @@ gst_ml_aic_engine_submit_request   (GstMLAicEngine * engine,
 
 GST_API gboolean
 gst_ml_aic_engine_wait_request     (GstMLAicEngine * engine,
-                                    gint request_id);
+                                    guint request_id);
 
 G_END_DECLS
 

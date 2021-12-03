@@ -51,6 +51,10 @@ GST_DEBUG_CATEGORY_STATIC (gst_meta_mux_debug);
 
 #define gst_meta_mux_parent_class parent_class
 
+#ifndef GST_CAPS_FEATURE_META_GST_VIDEO_ROI_META
+#define GST_CAPS_FEATURE_META_GST_VIDEO_ROI_META "meta:GstVideoRegionOfInterestMeta"
+#endif
+
 #define GST_METAMUX_MEDIA_CAPS \
     "video/x-raw(ANY); "      \
     "audio/x-raw(ANY)"
@@ -128,9 +132,9 @@ gst_meta_mux_flush_queues (GstMetaMux * muxer)
     g_clear_pointer (&(dpad)->stash, g_free);
   }
 
-  GST_METAMUX_UNLOCK (muxer);
-
   g_cond_signal (&(muxer)->wakeup);
+
+  GST_METAMUX_UNLOCK (muxer);
 }
 
 static void
@@ -164,29 +168,6 @@ gst_meta_mux_process_metadata_entry (GstMetaMux * muxer, GstBuffer * buffer,
     width  = ABS (right - left) * GST_VIDEO_INFO_WIDTH (muxer->vinfo);
     height = ABS (bottom - top) * GST_VIDEO_INFO_HEIGHT (muxer->vinfo);
 
-    // Adjust bounding box dimensions with extracted source aspect ratio.
-    if (gst_structure_has_field (structure, "aspect-ratio")) {
-      gint sar_n = 1, sar_d = 1;
-      gdouble coeficient = 0.0;
-
-      sar_n = gst_value_get_fraction_numerator (
-          gst_structure_get_value (structure, "aspect-ratio"));
-      sar_d = gst_value_get_fraction_denominator (
-          gst_structure_get_value (structure, "aspect-ratio"));
-
-      if (sar_n > sar_d) {
-        gst_util_fraction_to_double (sar_n, sar_d, &coeficient);
-
-        y *= coeficient;
-        height *= coeficient;
-      } else if (sar_n < sar_d) {
-        gst_util_fraction_to_double (sar_d, sar_n, &coeficient);
-
-        x *= coeficient;
-        width *= coeficient;
-      }
-    }
-
     // Clip width and height if it outside the frame limits.
     width = ((x + width) > GST_VIDEO_INFO_WIDTH (muxer->vinfo)) ?
         (GST_VIDEO_INFO_WIDTH (muxer->vinfo) - x) : width;
@@ -196,7 +177,6 @@ gst_meta_mux_process_metadata_entry (GstMetaMux * muxer, GstBuffer * buffer,
 
   // Remove the rectangle & aspect-ratio fields as that data is no longer needed.
   gst_structure_remove_field (structure, "rectangle");
-  gst_structure_remove_field (structure, "aspect-ratio");
 
   meta = gst_buffer_add_video_region_of_interest_meta (buffer,
       gst_structure_get_name (structure), x, y, width, height);
@@ -245,6 +225,7 @@ gst_meta_mux_main_sink_setcaps (GstMetaMux * muxer, GstPad * pad,
     GstCaps * caps)
 {
   GstCaps *srccaps = NULL, *intersect = NULL;
+  guint idx = 0;
 
   GST_DEBUG_OBJECT (muxer, "Setting caps %" GST_PTR_FORMAT, caps);
 
@@ -275,16 +256,41 @@ gst_meta_mux_main_sink_setcaps (GstMetaMux * muxer, GstPad * pad,
     gst_caps_unref (srccaps);
   }
 
-  gst_caps_unref (intersect);
+  // Get the filter caps between the source pad and its peer.
+  srccaps = gst_pad_get_allowed_caps (muxer->srcpad);
 
-  if (gst_caps_is_media_type (caps, "video/x-raw")) {
+  // Check caps structures for meta:GstVideoregionOfInterestMeta feature.
+  for (idx = 0; idx < gst_caps_get_size (srccaps); idx++) {
+    GstCapsFeatures *features = gst_caps_get_features (srccaps, idx);
+
+    if (!gst_caps_features_is_any (features) &&
+        gst_caps_features_contains (features,
+            GST_CAPS_FEATURE_META_GST_VIDEO_ROI_META)) {
+      // Found caps structure with feature, remove all others.
+      GstStructure *structure = gst_caps_steal_structure (intersect, 0);
+
+      gst_caps_unref (intersect);
+      intersect = gst_caps_new_empty ();
+
+      gst_caps_append_structure_full (intersect, structure,
+          gst_caps_features_new (GST_CAPS_FEATURE_META_GST_VIDEO_ROI_META, NULL));
+      break;
+    }
+  }
+
+  gst_caps_unref (srccaps);
+  srccaps = intersect;
+
+  // Extract audio/video information from caps.
+  if (gst_caps_is_media_type (srccaps, "video/x-raw")) {
     if (muxer->vinfo != NULL)
       gst_video_info_free (muxer->vinfo);
 
     muxer->vinfo = gst_video_info_new ();
 
-    if (!gst_video_info_from_caps (muxer->vinfo, caps)) {
+    if (!gst_video_info_from_caps (muxer->vinfo, srccaps)) {
       GST_ERROR_OBJECT (muxer, "Invalid caps %" GST_PTR_FORMAT, caps);
+      gst_caps_unref (srccaps);
       return FALSE;
     }
   } else {
@@ -293,13 +299,15 @@ gst_meta_mux_main_sink_setcaps (GstMetaMux * muxer, GstPad * pad,
 
     muxer->ainfo = gst_audio_info_new ();
 
-    if (!gst_audio_info_from_caps (muxer->ainfo, caps)) {
+    if (!gst_audio_info_from_caps (muxer->ainfo, srccaps)) {
       GST_ERROR_OBJECT (muxer, "Invalid caps %" GST_PTR_FORMAT, caps);
+      gst_caps_unref (srccaps);
       return FALSE;
     }
   }
 
-  return TRUE;
+  GST_DEBUG_OBJECT (muxer, "Negotiated caps %" GST_PTR_FORMAT, srccaps);
+  return gst_pad_push_event (muxer->srcpad, gst_event_new_caps (srccaps));
 }
 
 static gboolean
@@ -317,12 +325,9 @@ gst_meta_mux_main_sink_event (GstPad * pad, GstObject * parent, GstEvent * event
       gboolean success = FALSE;
 
       gst_event_parse_caps (event, &caps);
+      success = gst_meta_mux_main_sink_setcaps (muxer, pad, caps);
 
-      if ((success = gst_meta_mux_main_sink_setcaps (muxer, pad, caps)))
-        success = gst_pad_push_event (muxer->srcpad, event);
-      else
-        gst_event_unref (event);
-
+      gst_event_unref (event);
       return success;
     }
     case GST_EVENT_SEGMENT:
@@ -426,8 +431,10 @@ gst_meta_mux_main_sink_chain (GstPad * pad, GstObject * parent,
   GList *list = NULL;
 
   if (!gst_pad_has_current_caps (muxer->srcpad)) {
-    if (GST_PAD_IS_FLUSHING (muxer->srcpad))
+    if (GST_PAD_IS_FLUSHING (muxer->srcpad)) {
+      gst_buffer_unref (buffer);
       return GST_FLOW_FLUSHING;
+    }
 
     GST_ELEMENT_ERROR (muxer, STREAM, DECODE, ("No caps set!"), (NULL));
     return GST_FLOW_ERROR;
@@ -441,8 +448,15 @@ gst_meta_mux_main_sink_chain (GstPad * pad, GstObject * parent,
 
   GST_METAMUX_LOCK (muxer);
 
-  while (muxer->metapads && !gst_meta_mux_data_available (muxer))
+  while (muxer->active && !gst_meta_mux_data_available (muxer))
     g_cond_wait (&muxer->wakeup, GST_METAMUX_GET_LOCK (muxer));
+
+  if (!muxer->active) {
+    gst_buffer_unref (buffer);
+
+    GST_METAMUX_UNLOCK (muxer);
+    return GST_FLOW_FLUSHING;
+  }
 
   // Iterate over all of the data pad queues and extract available data.
   for (list = muxer->metapads; list != NULL; list = g_list_next (list)) {
@@ -673,6 +687,29 @@ gst_meta_mux_src_query (GstPad * pad, GstObject * parent, GstQuery * query)
   return gst_pad_query_default (pad, parent, query);
 }
 
+gboolean
+gst_meta_mux_src_activate_mode (GstPad * pad, GstObject * parent,
+    GstPadMode mode, gboolean active)
+{
+  GstMetaMux *muxer = GST_METAMUX (parent);
+
+  GST_METAMUX_LOCK (muxer);
+
+  switch (mode) {
+    case GST_PAD_MODE_PUSH:
+      muxer->active = active;
+      g_cond_signal (&(muxer)->wakeup);
+      break;
+    default:
+      break;
+  }
+
+  GST_METAMUX_UNLOCK (muxer);
+
+  // Call the default pad handler for activate mode.
+  return gst_pad_activate_mode (pad, mode, active);
+}
+
 static GstPad*
 gst_meta_mux_request_pad (GstElement * element, GstPadTemplate * templ,
     const gchar * reqname, const GstCaps * caps)
@@ -749,8 +786,6 @@ gst_meta_mux_change_state (GstElement * element, GstStateChange transition)
   switch (transition) {
     case GST_STATE_CHANGE_READY_TO_PAUSED:
       gst_meta_mux_flush_queues (muxer);
-      break;
-    case GST_STATE_CHANGE_PAUSED_TO_READY:
       break;
     default:
       break;
@@ -850,6 +885,8 @@ gst_meta_mux_init (GstMetaMux * muxer)
   muxer->vinfo = NULL;
   muxer->ainfo = NULL;
 
+  muxer->active = FALSE;
+
   gst_segment_init (&muxer->segment, GST_FORMAT_UNDEFINED);
 
   muxer->sinkpad = gst_pad_new_from_static_template (
@@ -872,6 +909,8 @@ gst_meta_mux_init (GstMetaMux * muxer)
       GST_DEBUG_FUNCPTR (gst_meta_mux_src_event));
   gst_pad_set_query_function (muxer->srcpad,
       GST_DEBUG_FUNCPTR (gst_meta_mux_src_query));
+  gst_pad_set_activatemode_function (muxer->srcpad,
+      GST_DEBUG_FUNCPTR (gst_meta_mux_src_activate_mode));
   gst_element_add_pad (GST_ELEMENT (muxer), muxer->srcpad);
 }
 

@@ -418,118 +418,44 @@ gst_ml_snpe_engine_get_output_info  (GstMLSnpeEngine * engine)
 
 gboolean
 gst_ml_snpe_engine_execute (GstMLSnpeEngine * engine,
-    GstBuffer * inbuffer, GstBuffer * outbuffer)
+    GstMLFrame * inframe, GstMLFrame * outframe)
 {
-  GstMapInfo *inmap = NULL, *outmap = NULL;
   gboolean success = FALSE;
-  guint idx = 0, num = 0;
+  guint idx = 0;
 
   g_return_val_if_fail (engine != NULL, FALSE);
 
-  if (gst_buffer_n_memory (inbuffer) != engine->ininfo->n_tensors) {
+  if (GST_ML_FRAME_N_BLOCKS (inframe) != engine->ininfo->n_tensors) {
     GST_WARNING ("Input buffer has %u memory blocks but engine requires %u!",
-        gst_buffer_n_memory (inbuffer), engine->ininfo->n_tensors);
+        GST_ML_FRAME_N_BLOCKS (inframe), engine->ininfo->n_tensors);
     return FALSE;
   }
 
-  if (gst_buffer_n_memory (outbuffer) != engine->outinfo->n_tensors) {
+  if (GST_ML_FRAME_N_BLOCKS (outframe) != engine->outinfo->n_tensors) {
     GST_WARNING ("Output buffer has %u memory blocks but engine requires %u!",
-        gst_buffer_n_memory (outbuffer), engine->outinfo->n_tensors);
+        GST_ML_FRAME_N_BLOCKS (outframe), engine->outinfo->n_tensors);
     return FALSE;
   }
-
-  inmap = g_new0 (GstMapInfo, engine->ininfo->n_tensors);
-  outmap = g_new0 (GstMapInfo, engine->outinfo->n_tensors);
 
   zdl::DlSystem::Optional <zdl::DlSystem::StringList> optnames =
       engine->interpreter->getInputTensorNames();
 
   for (idx = 0; idx < engine->ininfo->n_tensors; ++idx) {
-    gsize size = gst_ml_info_tensor_size (engine->ininfo, idx);
-
-    success = gst_buffer_map_range (inbuffer, idx, 1, &inmap[idx],
-        GST_MAP_READ);
-
-    if (!success) {
-      GST_ERROR ("Failed to map input memory at idx %u!", idx);
-
-      for (num = 0; num < idx; ++num)
-        gst_buffer_unmap (inbuffer, &inmap[num]);
-
-      g_free (outmap);
-      g_free (inmap);
-
-      return FALSE;
-    } else if (inmap[idx].size < size) {
-      GST_ERROR ("Input memory at idx %u, size mismatch! Expected %u or higher"
-          " but received %" G_GSIZE_FORMAT "!", idx, size, inmap[idx].size);
-
-      for (num = 0; num <= idx; ++num)
-        gst_buffer_unmap (inbuffer, &inmap[num]);
-
-      g_free (outmap);
-      g_free (inmap);
-
-      return FALSE;
-    }
-
-    // Update SNPE User Buffer data pointers.
     zdl::DlSystem::IUserBuffer *usrbuffer =
         engine->inputs.getUserBuffer((*optnames).at(idx));
-    usrbuffer->setBufferAddress(inmap[idx].data);
+    usrbuffer->setBufferAddress(GST_ML_FRAME_BLOCK_DATA (inframe, idx));
   }
 
   optnames = engine->interpreter->getOutputTensorNames();
 
   for (idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
-    gsize size = gst_ml_info_tensor_size (engine->outinfo, idx);
-
-    success = gst_buffer_map_range (outbuffer, idx, 1, &outmap[idx],
-        GST_MAP_READWRITE);
-
-    if (!success) {
-      GST_ERROR ("Failed to map output memory at idx %u!", idx);
-
-      for (num = 0; num < idx; ++num)
-        gst_buffer_unmap (outbuffer, &outmap[num]);
-
-      g_free (outmap);
-      g_free (inmap);
-
-      return FALSE;
-    } else if (outmap[idx].size < size) {
-      GST_ERROR ("Output memory at idx %u, size mismatch! Expected %u or higher"
-          " but received %" G_GSIZE_FORMAT "!", idx, size, outmap[idx].size);
-
-      for (num = 0; num < engine->ininfo->n_tensors; ++num)
-        gst_buffer_unmap (inbuffer, &inmap[num]);
-
-      for (num = 0; num <= idx; ++num)
-        gst_buffer_unmap (outbuffer, &outmap[num]);
-
-      g_free (outmap);
-      g_free (inmap);
-
-      return FALSE;
-    }
-
-    // Update SNPE User Buffer data pointers.
     zdl::DlSystem::IUserBuffer *usrbuffer =
         engine->outputs.getUserBuffer((*optnames).at(idx));
-    usrbuffer->setBufferAddress(outmap[idx].data);
+    usrbuffer->setBufferAddress(GST_ML_FRAME_BLOCK_DATA (outframe, idx));
   }
 
   if (!(success = engine->interpreter->execute(engine->inputs, engine->outputs)))
     GST_ERROR ("Model execution failed!");
-
-  for (idx = 0; idx < engine->outinfo->n_tensors; ++idx)
-    gst_buffer_unmap (outbuffer, &outmap[idx]);
-
-  for (idx = 0; idx < engine->ininfo->n_tensors; ++idx)
-    gst_buffer_unmap (inbuffer, &inmap[idx]);
-
-  g_free (inmap);
-  g_free (outmap);
 
   return success;
 }

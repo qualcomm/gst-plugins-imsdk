@@ -33,6 +33,7 @@
 #include <gst/gst.h>
 #include <gst/allocators/allocators.h>
 #include <gst/ml/ml-info.h>
+#include <gst/ml/ml-frame.h>
 
 G_BEGIN_DECLS
 
@@ -98,8 +99,8 @@ gst_ml_snpe_engine_get_output_info  (GstMLSnpeEngine * engine);
 
 GST_API gboolean
 gst_ml_snpe_engine_execute          (GstMLSnpeEngine * engine,
-                                     GstBuffer * inbuffer,
-                                     GstBuffer * outbuffer);
+                                     GstMLFrame * inframe,
+                                     GstMLFrame * outframe);
 
 G_END_DECLS
 

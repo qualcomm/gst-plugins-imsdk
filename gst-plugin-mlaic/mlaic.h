@@ -58,18 +58,15 @@ typedef struct _GstMLAic GstMLAic;
 typedef struct _GstMLAicClass GstMLAicClass;
 
 struct _GstMLAic {
-  GstElement       parent;
-
-  /// Buffer pools.
-  GstBufferPool    *outpool;
+  GstElement     parent;
 
   /// Machine learning engine.
-  GstMLAicEngine   *engine;
+  GstMLAicEngine *engine;
 
   /// Properties.
-  gchar             *model;
-  GArray            *devices;
-  guint             n_activations;
+  gchar          *model;
+  GArray         *devices;
+  guint          n_activations;
 };
 
 struct _GstMLAicClass {

@@ -90,6 +90,8 @@ struct _GstMetaMux
 
   /// Condition for push/pop buffers from the queues.
   GCond          wakeup;
+  /// Indicates whether we should continue processing input buffers.
+  gboolean       active;
 };
 
 struct _GstMetaMuxClass {

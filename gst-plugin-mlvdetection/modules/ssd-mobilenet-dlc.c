@@ -192,7 +192,8 @@ gst_ml_video_detection_module_process (gpointer instance, GstBuffer * buffer,
 {
   GstPrivateModule *module = instance;
   GstMapInfo bboxes, classes, scores;
-  guint idx = 0, n_entries = 0;
+  GstProtectionMeta *pmeta = NULL;
+  guint idx = 0, n_entries = 0, sar_n = 0, sar_d = 0;
 
   g_return_val_if_fail (module != NULL, FALSE);
   g_return_val_if_fail (buffer != NULL, FALSE);
@@ -237,6 +238,13 @@ gst_ml_video_detection_module_process (gpointer instance, GstBuffer * buffer,
     return FALSE;
   }
 
+  // Extract the SAR (Source Aspect Ratio).
+  if ((pmeta = gst_buffer_get_protection_meta (buffer)) != NULL) {
+    sar_n = gst_value_get_fraction_numerator (
+        gst_structure_get_value (pmeta->info, g_quark_to_string (1)));
+    sar_d = gst_value_get_fraction_denominator (
+        gst_structure_get_value (pmeta->info, g_quark_to_string (1)));
+  }
 
   n_entries = scores.size / gst_ml_type_get_size (GST_ML_TYPE_FLOAT32);
 
@@ -262,6 +270,23 @@ gst_ml_video_detection_module_process (gpointer instance, GstBuffer * buffer,
     prediction->left = CAST_TO_GFLOAT (bboxes.data)[(idx * 4)  + 1];
     prediction->bottom = CAST_TO_GFLOAT (bboxes.data)[(idx * 4) + 2];
     prediction->right = CAST_TO_GFLOAT (bboxes.data)[(idx * 4) + 3];
+
+    // Adjust bounding box dimensions with extracted source aspect ratio.
+    if (sar_n > sar_d) {
+      gdouble coeficient = 0.0;
+
+      gst_util_fraction_to_double (sar_n, sar_d, &coeficient);
+
+      prediction->top *= coeficient;
+      prediction->bottom *= coeficient;
+    } else if (sar_n < sar_d) {
+      gdouble coeficient = 0.0;
+
+      gst_util_fraction_to_double (sar_d, sar_n, &coeficient);
+
+      prediction->left *= coeficient;
+      prediction->right *= coeficient;
+    }
 
     *predictions = g_list_insert_sorted (
         *predictions, prediction, gst_ml_compare_predictions);

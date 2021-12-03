@@ -77,12 +77,11 @@ struct _GstMLVideoConverter {
   GstVideoInfo         *vinfo;
   GstMLInfo            *mlinfo;
 
+  // Internal operational mode.
+  guint                mode;
+
   /// Buffer pools.
   GstBufferPool        *outpool;
-
-  /// Source aspect ratio, extracted from input caps.
-  gint                 sar_n;
-  gint                 sar_d;
 
   /// Supported converters.
 #ifdef USE_C2D_CONVERTER

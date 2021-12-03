@@ -62,6 +62,12 @@ G_BEGIN_DECLS
   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_ML_AIC_SRCPAD))
 #define GST_ML_AIC_SRCPAD_CAST(obj) ((GstMLAicSrcPad *)(obj))
 
+#define GST_ML_AIC_SINKPAD_GET_LOCK(obj) (&GST_ML_AIC_SINKPAD(obj)->lock)
+#define GST_ML_AIC_SINKPAD_LOCK(obj) \
+  g_mutex_lock(GST_ML_AIC_SINKPAD_GET_LOCK(obj))
+#define GST_ML_AIC_SINKPAD_UNLOCK(obj) \
+  g_mutex_unlock(GST_ML_AIC_SINKPAD_GET_LOCK(obj))
+
 typedef struct _GstMLAicSinkPad GstMLAicSinkPad;
 typedef struct _GstMLAicSinkPadClass GstMLAicSinkPadClass;
 typedef struct _GstMLAicSrcPad GstMLAicSrcPad;
@@ -69,9 +75,16 @@ typedef struct _GstMLAicSrcPadClass GstMLAicSrcPadClass;
 
 struct _GstMLAicSinkPad {
   /// Inherited parent structure.
-  GstPad     parent;
+  GstPad        parent;
 
-  GstSegment segment;
+  /// Global mutex lock.
+  GMutex        lock;
+
+  /// Segment.
+  GstSegment    segment;
+
+  /// Buffer pool.
+  GstBufferPool *pool;
 };
 
 struct _GstMLAicSinkPadClass {

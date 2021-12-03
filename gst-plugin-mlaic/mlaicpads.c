@@ -51,6 +51,13 @@ queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
 static void
 gst_ml_aic_sinkpad_finalize (GObject * object)
 {
+  GstMLAicSinkPad *pad = GST_ML_AIC_SINKPAD (object);
+
+  if (pad->pool != NULL)
+    gst_object_unref (pad->pool);
+
+  g_mutex_clear (&pad->lock);
+
   G_OBJECT_CLASS (gst_ml_aic_sinkpad_parent_class)->finalize(object);
 }
 
@@ -68,7 +75,9 @@ gst_ml_aic_sinkpad_class_init (GstMLAicSinkPadClass * klass)
 void
 gst_ml_aic_sinkpad_init (GstMLAicSinkPad * pad)
 {
+  g_mutex_init (&pad->lock);
   gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
+  pad->pool = NULL;
 }
 
 static void

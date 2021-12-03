@@ -46,7 +46,7 @@
 #define DEFAULT_PROP_N_ACTIVATIONS 1
 
 #define DEFAULT_PROP_MIN_BUFFERS   2
-#define DEFAULT_PROP_MAX_BUFFERS   30
+#define DEFAULT_PROP_MAX_BUFFERS   15
 
 #define GST_ML_AIC_TENSOR_TYPES "{ UINT8, INT32, FLOAT32 }"
 
@@ -210,7 +210,7 @@ gst_ml_aic_other_pad (GstPad * pad)
 }
 
 static GstBufferPool *
-gst_ml_aic_create_pool (GstMLAic * mlaic, GstCaps * caps)
+gst_ml_aic_create_pool (GstPad * pad, GstCaps * caps)
 {
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
@@ -218,11 +218,11 @@ gst_ml_aic_create_pool (GstMLAic * mlaic, GstCaps * caps)
   GstMLInfo info;
 
   if (!gst_ml_info_from_caps (&info, caps)) {
-    GST_ERROR_OBJECT (mlaic, "Invalid caps %" GST_PTR_FORMAT, caps);
+    GST_ERROR_OBJECT (pad, "Invalid caps %" GST_PTR_FORMAT, caps);
     return NULL;
   }
 
-   GST_INFO_OBJECT (mlaic, "Uses ION memory");
+   GST_INFO_OBJECT (pad, "Uses ION memory");
    pool = gst_ml_buffer_pool_new (GST_ML_BUFFER_POOL_TYPE_ION);
 
   config = gst_buffer_pool_get_config (pool);
@@ -238,7 +238,7 @@ gst_ml_aic_create_pool (GstMLAic * mlaic, GstCaps * caps)
       config, GST_ML_BUFFER_POOL_OPTION_CONTINUOUS);
 
   if (!gst_buffer_pool_set_config (pool, config)) {
-    GST_WARNING_OBJECT (mlaic, "Failed to set pool configuration!");
+    GST_WARNING_OBJECT (pad, "Failed to set pool configuration!");
     g_object_unref (pool);
     pool = NULL;
   }
@@ -247,8 +247,66 @@ gst_ml_aic_create_pool (GstMLAic * mlaic, GstCaps * caps)
   return pool;
 }
 
+
 static gboolean
-gst_ml_aic_decide_allocation (GstMLAic * mlaic, GstQuery * query)
+gst_ml_aic_propose_allocation (GstPad * pad, GstQuery * query)
+{
+  GstCaps *caps = NULL;
+  GstBufferPool *pool = NULL;
+  GstMLInfo info;
+  guint size = 0;
+  gboolean needpool = FALSE;
+
+  // Extract caps from the query.
+  gst_query_parse_allocation (query, &caps, &needpool);
+
+  if (NULL == caps) {
+    GST_ERROR_OBJECT (pad, "Failed to extract caps from query!");
+    return FALSE;
+  }
+
+  if (!gst_ml_info_from_caps (&info, caps)) {
+    GST_ERROR_OBJECT (pad, "Failed to get ML info!");
+    return FALSE;
+  }
+
+  // Get the size from ML info.
+  size = gst_ml_info_size (&info);
+
+  if (needpool) {
+    GstStructure *structure = NULL;
+
+    if ((pool = gst_ml_aic_create_pool (pad, caps)) == NULL) {
+      GST_ERROR_OBJECT (pad, "Failed to create buffer pool!");
+      return FALSE;
+    }
+
+    structure = gst_buffer_pool_get_config (pool);
+
+    // Set caps and size in query.
+    gst_buffer_pool_config_set_params (structure, caps, size,
+        DEFAULT_PROP_MIN_BUFFERS, DEFAULT_PROP_MAX_BUFFERS);
+
+    if (!gst_buffer_pool_set_config (pool, structure)) {
+      GST_ERROR_OBJECT (pad, "Failed to set buffer pool configuration!");
+      gst_object_unref (pool);
+      return FALSE;
+    }
+  }
+
+  // If upstream does't have a pool requirement, set only size in query.
+  gst_query_add_allocation_pool (query, needpool ? pool : NULL, size, 0, 0);
+
+  // Invalidate the cached pool.
+  if (pool != NULL)
+    gst_object_unref (pool);
+
+  gst_query_add_allocation_meta (query, GST_ML_TENSOR_META_API_TYPE, NULL);
+  return TRUE;
+}
+
+static gboolean
+gst_ml_aic_decide_allocation (GstPad * pad, GstQuery * query)
 {
   GstCaps *caps = NULL;
   GstBufferPool *pool = NULL;
@@ -258,25 +316,26 @@ gst_ml_aic_decide_allocation (GstMLAic * mlaic, GstQuery * query)
   guint size, minbuffers, maxbuffers;
 
   gst_query_parse_allocation (query, &caps, NULL);
-  if (!caps) {
-    GST_ERROR_OBJECT (mlaic, "Failed to parse the allocation caps!");
+
+  if (NULL == caps) {
+    GST_ERROR_OBJECT (pad, "Failed to parse the allocation caps!");
     return FALSE;
   }
 
   // Invalidate the cached pool if there is an allocation_query.
-  if (mlaic->outpool) {
-    gst_buffer_pool_set_active (mlaic->outpool, FALSE);
-    gst_object_unref (mlaic->outpool);
+  if (GST_ML_AIC_SINKPAD (pad)->pool != NULL) {
+    gst_buffer_pool_set_active (GST_ML_AIC_SINKPAD (pad)->pool, FALSE);
+    gst_object_unref (GST_ML_AIC_SINKPAD (pad)->pool);
   }
 
   // Create a new buffer pool.
-  if ((pool = gst_ml_aic_create_pool (mlaic, caps)) == NULL) {
-    GST_ERROR_OBJECT (mlaic, "Failed to create buffer pool!");
+  if ((pool = gst_ml_aic_create_pool (pad, caps)) == NULL) {
+    GST_ERROR_OBJECT (pad, "Failed to create buffer pool!");
     return FALSE;
   }
 
-  mlaic->outpool = pool;
-  gst_buffer_pool_set_active (mlaic->outpool, TRUE);
+  GST_ML_AIC_SINKPAD (pad)->pool = pool;
+  gst_buffer_pool_set_active (GST_ML_AIC_SINKPAD (pad)->pool, TRUE);
 
   // Get the configured pool properties in order to set in query.
   config = gst_buffer_pool_get_config (pool);
@@ -316,11 +375,11 @@ gst_ml_aic_src_worker_task (gpointer userdata)
     request = GST_ENGINE_REQUEST (gst_mini_object_ref (item->object));
     item->destroy (item);
 
-    GST_TRACE_OBJECT (mlaic, "Waiting request %d", request->id);
+    GST_TRACE_OBJECT (pad, "Waiting request %d", request->id);
     success = gst_ml_aic_engine_wait_request (mlaic->engine, request->id);
 
     if (!success) {
-      GST_DEBUG_OBJECT (mlaic, " Waiting request %d failed!", request->id);
+      GST_DEBUG_OBJECT (pad, " Waiting request %d failed!", request->id);
       gst_engine_request_unref (request);
       return;
     }
@@ -328,7 +387,7 @@ gst_ml_aic_src_worker_task (gpointer userdata)
     // Get time difference between current time and start.
     request->time = GST_CLOCK_DIFF (request->time, gst_util_get_timestamp ());
 
-    GST_LOG_OBJECT (mlaic, "Request %d took %" G_GINT64_FORMAT ".%03"
+    GST_LOG_OBJECT (pad, "Request %d took %" G_GINT64_FORMAT ".%03"
         G_GINT64_FORMAT " ms", request->id, GST_TIME_AS_MSECONDS (request->time),
         (GST_TIME_AS_USECONDS (request->time) % 1000));
 
@@ -338,7 +397,7 @@ gst_ml_aic_src_worker_task (gpointer userdata)
 
     gst_pad_push (pad, buffer);
   } else {
-    GST_DEBUG_OBJECT (mlaic, "Paused worker thread");
+    GST_DEBUG_OBJECT (pad, "Paused worker thread");
     gst_pad_pause_task (pad);
   }
 }
@@ -350,13 +409,13 @@ gst_ml_aic_query_caps (GstMLAic * mlaic, GstPad * pad, GstCaps * filter)
   GstCaps *caps = NULL, *othercaps = NULL;
 
   if (GST_PAD_DIRECTION (pad) == GST_PAD_UNKNOWN) {
-    GST_ERROR_OBJECT (mlaic, "Unknown pad direction!");
+    GST_ERROR_OBJECT (pad, "Unknown pad direction!");
     return NULL;
   }
 
-  GST_DEBUG_OBJECT (mlaic, "Query caps: %" GST_PTR_FORMAT " in direction %s",
+  GST_DEBUG_OBJECT (pad, "Query caps: %" GST_PTR_FORMAT " in direction %s",
       caps, (GST_PAD_DIRECTION (pad) == GST_PAD_SINK) ? "sink" : "src");
-  GST_DEBUG_OBJECT (mlaic, "Filter caps: %" GST_PTR_FORMAT, filter);
+  GST_DEBUG_OBJECT (pad, "Filter caps: %" GST_PTR_FORMAT, filter);
 
   otherpad = gst_ml_aic_other_pad (pad);
 
@@ -398,7 +457,7 @@ gst_ml_aic_query_caps (GstMLAic * mlaic, GstPad * pad, GstCaps * filter)
     gst_caps_unref (othercaps);
   }
 
-  GST_DEBUG_OBJECT (mlaic, "ML caps: %" GST_PTR_FORMAT, caps);
+  GST_DEBUG_OBJECT (pad, "ML caps: %" GST_PTR_FORMAT, caps);
 
   if (filter) {
     GstCaps *intersection  =
@@ -410,7 +469,7 @@ gst_ml_aic_query_caps (GstMLAic * mlaic, GstPad * pad, GstCaps * filter)
   if (otherpad != NULL)
     gst_object_unref (otherpad);
 
-  GST_DEBUG_OBJECT (mlaic, "Returning caps: %" GST_PTR_FORMAT, caps);
+  GST_DEBUG_OBJECT (pad, "Returning caps: %" GST_PTR_FORMAT, caps);
   return caps;
 }
 
@@ -420,7 +479,7 @@ gst_ml_aic_accept_caps (GstMLAic * mlaic, GstPad * pad, GstCaps * caps)
   GstCaps *mlcaps = NULL;
   const GstMLInfo *mlinfo = NULL;
 
-  GST_DEBUG_OBJECT (mlaic, "Accept caps: %" GST_PTR_FORMAT " in direction %s",
+  GST_DEBUG_OBJECT (pad, "Accept caps: %" GST_PTR_FORMAT " in direction %s",
       caps, (GST_PAD_DIRECTION (pad) == GST_PAD_SINK) ? "sink" : "src");
 
   if (NULL == mlaic->engine) {
@@ -435,14 +494,14 @@ gst_ml_aic_accept_caps (GstMLAic * mlaic, GstPad * pad, GstCaps * caps)
     mlcaps = gst_ml_info_to_caps (mlinfo);
 
   if (NULL == mlcaps) {
-    GST_ERROR_OBJECT (mlaic, "Failed to get ML caps!");
+    GST_ERROR_OBJECT (pad, "Failed to get ML caps!");
     return FALSE;
   }
 
-  GST_DEBUG_OBJECT (mlaic, "ML caps: %" GST_PTR_FORMAT, mlcaps);
+  GST_DEBUG_OBJECT (pad, "ML caps: %" GST_PTR_FORMAT, mlcaps);
 
   if (!gst_caps_can_intersect (caps, mlcaps)) {
-    GST_WARNING_OBJECT (mlaic, "Caps can't intersect!");
+    GST_WARNING_OBJECT (pad, "Caps can't intersect!");
 
     gst_caps_unref (mlcaps);
     return FALSE;
@@ -457,10 +516,12 @@ gst_ml_aic_sink_query (GstPad * pad, GstObject * parent, GstQuery * query)
 {
   GstMLAic *mlaic = GST_ML_AIC (parent);
 
-  GST_LOG_OBJECT (mlaic, "Received %s query: %" GST_PTR_FORMAT,
+  GST_LOG_OBJECT (pad, "Received %s query: %" GST_PTR_FORMAT,
       GST_QUERY_TYPE_NAME (query), query);
 
   switch (GST_QUERY_TYPE (query)) {
+    case GST_QUERY_ALLOCATION:
+      return gst_ml_aic_propose_allocation (pad, query);
     case GST_QUERY_CAPS:
     {
       GstCaps *caps = NULL, *filter = NULL;
@@ -483,6 +544,31 @@ gst_ml_aic_sink_query (GstPad * pad, GstObject * parent, GstQuery * query)
       gst_query_set_accept_caps_result (query, success);
       return TRUE;
     }
+    case GST_QUERY_POSITION:
+      {
+        GstSegment *segment = NULL;
+        GstFormat format = GST_FORMAT_UNDEFINED;
+        gboolean success = TRUE;
+
+        gst_query_parse_position (query, &format, NULL);
+
+        GST_ML_AIC_SINKPAD_LOCK (pad);
+        segment = &(GST_ML_AIC_SINKPAD (pad))->segment;
+
+        if (format == GST_FORMAT_TIME && segment->format == GST_FORMAT_TIME) {
+          gint64 position = gst_segment_to_stream_time (segment,
+              GST_FORMAT_TIME, segment->position);
+          gst_query_set_position (query, format, position);
+        } else {
+          GstPad *srcpad = gst_ml_aic_other_pad (pad);
+
+          success = gst_pad_peer_query (srcpad, query);
+          gst_object_unref (srcpad);
+        }
+
+        GST_ML_AIC_SINKPAD_UNLOCK (pad);
+        return success;
+      }
     default:
       break;
   }
@@ -494,22 +580,22 @@ static gboolean
 gst_ml_aic_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
 {
   GstMLAic *mlaic = GST_ML_AIC (parent);
+  GstPad *srcpad = NULL;
 
-  GST_LOG_OBJECT (mlaic, "Received %s event: %" GST_PTR_FORMAT,
+  GST_LOG_OBJECT (pad, "Received %s event: %" GST_PTR_FORMAT,
       GST_EVENT_TYPE_NAME (event), event);
+
+  // Retrieve the corresponding source pad.
+  srcpad = gst_ml_aic_other_pad (pad);
 
   switch (GST_EVENT_TYPE (event)) {
     case GST_EVENT_CAPS:
     {
-      GstPad *srcpad = NULL;
-      GstCaps *incaps = NULL, *outcaps = NULL;
+      GstCaps *incaps = NULL, *outcaps = NULL, *peercaps = NULL, *intersect = NULL;
       GstQuery *query = NULL;
+      const GValue *value = NULL;
 
       gst_event_parse_caps (event, &incaps);
-      GST_DEBUG_OBJECT (mlaic, "Received caps: %" GST_PTR_FORMAT, incaps);
-
-      // Retrieve the corresponding source pad.
-      srcpad = gst_ml_aic_other_pad (pad);
 
       // Clear any pending reconfigure flag on corresponding source pad.
       gst_pad_check_reconfigure (srcpad);
@@ -523,6 +609,41 @@ gst_ml_aic_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
         outcaps = gst_pad_get_pad_template_caps (srcpad);
       }
 
+      // Extract the rate.
+      value = gst_structure_get_value (gst_caps_get_structure (incaps, 0),
+          "rate");
+
+      // Propagate rate to the result caps if it exists.
+      if (value != NULL)
+        gst_caps_set_value (outcaps, "rate", value);
+
+      // Query the source pad peer with its out caps as filter.
+      peercaps = gst_pad_get_allowed_caps (srcpad);
+      GST_DEBUG_OBJECT (pad, "Peer caps: %" GST_PTR_FORMAT, peercaps);
+
+      intersect = gst_caps_intersect (peercaps, outcaps);
+      GST_DEBUG_OBJECT (pad, "Intersected caps: %" GST_PTR_FORMAT, intersect);
+
+      gst_caps_unref (peercaps);
+      gst_caps_unref (outcaps);
+
+      if (gst_caps_is_empty (intersect)) {
+        GST_ERROR_OBJECT (pad, "Source and peer caps do not intersect!");
+        gst_caps_unref (intersect);
+        return FALSE;
+      }
+
+      // Extract the aspect ratio.
+      value = gst_structure_get_value (gst_caps_get_structure (incaps, 0),
+          "aspect-ratio");
+
+      // Propagate aspect ratio to the result caps if it exists.
+      if (value != NULL)
+        gst_caps_set_value (outcaps, "aspect-ratio", value);
+
+      outcaps = intersect;
+      GST_DEBUG_OBJECT (pad, "Setting caps: %" GST_PTR_FORMAT, outcaps);
+
       if (!gst_pad_set_caps (srcpad, outcaps))
         gst_pad_mark_reconfigure (srcpad);
 
@@ -530,33 +651,99 @@ gst_ml_aic_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
       query = gst_query_new_allocation (outcaps, TRUE);
 
       if (!gst_pad_peer_query (srcpad, query))
-        GST_DEBUG_OBJECT (mlaic, "Failed to query peer allocation!");
+        GST_DEBUG_OBJECT (pad, "Failed to query peer allocation!");
 
       gst_object_unref (srcpad);
 
-      if (!gst_ml_aic_decide_allocation (mlaic, query)) {
-        GST_ERROR_OBJECT (mlaic, "Failed to decide allocation!");
+      if (!gst_ml_aic_decide_allocation (pad, query)) {
+        GST_ERROR_OBJECT (pad, "Failed to decide allocation!");
 
         gst_query_unref (query);
         return FALSE;
       }
 
       gst_query_unref (query);
-
       return TRUE;
     }
     case GST_EVENT_SEGMENT:
     {
-      GstSegment *segment = &(GST_ML_AIC_SINKPAD (pad))->segment;
+      GstSegment segment;
+      gboolean success = FALSE;
 
-      gst_event_copy_segment (event, segment);
+      gst_event_copy_segment (event, &segment);
 
-      GST_DEBUG_OBJECT (mlaic, "Received SEGMENT %" GST_SEGMENT_FORMAT, segment);
-      break;
+      GST_DEBUG_OBJECT (pad, "Got segment: %" GST_SEGMENT_FORMAT, &segment);
+
+      if (segment.format == GST_FORMAT_TIME) {
+        GST_DEBUG_OBJECT (pad, "Replacing previous segment: %"
+            GST_SEGMENT_FORMAT, &(GST_ML_AIC_SINKPAD (pad))->segment);
+        gst_segment_copy_into (&segment, &(GST_ML_AIC_SINKPAD (pad))->segment);
+      } else {
+        GST_ERROR_OBJECT (pad, "Unsupported SEGMENT format: %s!",
+            gst_format_get_name (segment.format));
+        return FALSE;
+      }
+
+      success = gst_pad_push_event (srcpad, event);
+      gst_object_unref (srcpad);
+
+      return success;
+    }
+    case GST_EVENT_FLUSH_START:
+    {
+      gboolean success = FALSE;
+
+      gst_data_queue_set_flushing (GST_ML_AIC_SRCPAD (srcpad)->requests, TRUE);
+      // TODO wait for all requests.
+
+      success = gst_pad_push_event (srcpad, event);
+      gst_object_unref (srcpad);
+
+      return success;
+    }
+    case GST_EVENT_FLUSH_STOP:
+    {
+      gboolean success = FALSE;
+
+      gst_data_queue_set_flushing (GST_ML_AIC_SRCPAD (srcpad)->requests, FALSE);
+      gst_segment_init (&(GST_ML_AIC_SINKPAD (pad))->segment,
+          GST_FORMAT_UNDEFINED);
+
+      success = gst_pad_push_event (srcpad, event);
+      gst_object_unref (srcpad);
+
+      return success;
+    }
+    case GST_EVENT_EOS:
+    {
+      gboolean success = FALSE;
+
+      gst_data_queue_set_flushing (GST_ML_AIC_SRCPAD (srcpad)->requests, TRUE);
+      // TODO wait for all requests.
+
+      gst_segment_init (&(GST_ML_AIC_SINKPAD (pad))->segment,
+          GST_FORMAT_UNDEFINED);
+
+      success = gst_pad_push_event (srcpad, event);
+      gst_object_unref (srcpad);
+
+      return success;
+    }
+    case GST_EVENT_TAG:
+    {
+      gboolean success = FALSE;
+
+      success = gst_pad_push_event (srcpad, event);
+      gst_object_unref (srcpad);
+
+      return success;
     }
     default:
       break;
   }
+
+  // Release the reference to the corresponding source pad.
+  gst_object_unref (srcpad);
 
   return gst_pad_event_default (pad, parent, event);
 }
@@ -565,24 +752,19 @@ static GstFlowReturn
 gst_ml_aic_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
 {
   GstMLAic *mlaic = GST_ML_AIC (parent);
+  GstBufferPool *pool = GST_ML_AIC_SINKPAD (pad)->pool;
   GstEngineRequest *request = NULL;
   GstBuffer *outbuffer = NULL;
-  GstPad *srcpad = NULL;
-  GstDataQueueItem *item = NULL;
   const GstMLInfo * info = NULL;
-  GstFlowReturn ret = GST_FLOW_OK;
-
 
   //Retrieve output buffer from the pool.
-  ret = gst_buffer_pool_acquire_buffer (mlaic->outpool, &outbuffer, NULL);
-  if (ret != GST_FLOW_OK) {
-    GST_ERROR_OBJECT (mlaic, "Failed to acquire output buffer!");
+  if (gst_buffer_pool_acquire_buffer (pool, &outbuffer, NULL) != GST_FLOW_OK) {
+    GST_ERROR_OBJECT (pad, "Failed to acquire output buffer!");
     return GST_FLOW_ERROR;
   }
 
   // Copy the flags and timestamps from the input buffer.
-  gst_buffer_copy_into (outbuffer, inbuffer,
-      GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
+  gst_buffer_copy_into (outbuffer, inbuffer, GST_BUFFER_COPY_METADATA, 0, -1);
 
   // Create new engine request.
   request = gst_engine_request_new ();
@@ -591,7 +773,7 @@ gst_ml_aic_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
 
   // Create ML frame from input buffer.
   if (!gst_ml_frame_map (&(request)->inframe, info, inbuffer, GST_MAP_READ)) {
-    GST_ERROR_OBJECT (mlaic, "Failed to map input buffer!");
+    GST_ERROR_OBJECT (pad, "Failed to map input buffer!");
 
     gst_engine_request_unref (request);
     return GST_FLOW_ERROR;
@@ -601,7 +783,7 @@ gst_ml_aic_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
 
   // Create ML frame from output buffer.
   if (!gst_ml_frame_map (&(request)->outframe, info, outbuffer, GST_MAP_READWRITE)) {
-    GST_ERROR_OBJECT (mlaic, "Failed to map output buffer!");
+    GST_ERROR_OBJECT (pad, "Failed to map output buffer!");
 
     gst_engine_request_unref (request);
     return GST_FLOW_ERROR;
@@ -614,26 +796,36 @@ gst_ml_aic_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
       &(request)->inframe, &(request)->outframe);
 
   if (request->id == (-1)) {
-    GST_WARNING_OBJECT (mlaic, "Failed to submit request to engine!");
+    GST_WARNING_OBJECT (pad, "Failed to submit request to engine!");
 
     gst_engine_request_unref (request);
     return GST_FLOW_ERROR;
   }
 
-  item = g_slice_new0 (GstDataQueueItem);
-  item->object = GST_MINI_OBJECT (request);
-  item->visible = TRUE;
-  item->destroy = gst_ml_aic_free_queue_item;
+  GST_TRACE_OBJECT (pad, "Submitted request %d", request->id);
 
-  // Retrieve the corresponding source pad.
-  srcpad = gst_ml_aic_other_pad (pad);
+  GST_ML_AIC_SINKPAD_LOCK (pad);
+  GST_ML_AIC_SINKPAD (pad)->segment.position = GST_BUFFER_TIMESTAMP (outbuffer);
+  GST_ML_AIC_SINKPAD_UNLOCK (pad);
 
-  // Push the request into the queue or free it on failure.
-  if (!gst_data_queue_push (GST_ML_AIC_SRCPAD (srcpad)->requests, item))
-    item->destroy (item);
+  {
+    GstPad *srcpad = NULL;
+    GstDataQueueItem *item = NULL;
 
-  if (srcpad != NULL)
+    item = g_slice_new0 (GstDataQueueItem);
+    item->object = GST_MINI_OBJECT (request);
+    item->visible = TRUE;
+    item->destroy = gst_ml_aic_free_queue_item;
+
+    // Retrieve the corresponding source pad.
+    srcpad = gst_ml_aic_other_pad (pad);
+
+    // Push the request into the queue or free it on failure.
+    if (!gst_data_queue_push (GST_ML_AIC_SRCPAD (srcpad)->requests, item))
+      item->destroy (item);
+
     gst_object_unref (srcpad);
+  }
 
   return GST_FLOW_OK;
 }
@@ -642,7 +834,6 @@ static gboolean
 gst_ml_aic_src_activate_mode (GstPad * pad, GstObject * parent,
     GstPadMode mode, gboolean active)
 {
-  GstMLAic *mlaic = GST_ML_AIC (parent);
   gboolean success = FALSE;
 
   switch (mode) {
@@ -656,6 +847,7 @@ gst_ml_aic_src_activate_mode (GstPad * pad, GstObject * parent,
             NULL);
       } else {
         gst_data_queue_set_flushing (GST_ML_AIC_SRCPAD (pad)->requests, TRUE);
+        // TODO wait for all requests.
         success = gst_pad_stop_task (pad);
       }
       break;
@@ -664,13 +856,11 @@ gst_ml_aic_src_activate_mode (GstPad * pad, GstObject * parent,
   }
 
   if (!success) {
-    GST_ERROR_OBJECT (mlaic, "Failed to activate %s:%s pad!",
-        GST_DEBUG_PAD_NAME (pad));
+    GST_ERROR_OBJECT (pad, "Failed to activate worker task!");
     return success;
   }
 
-  GST_DEBUG_OBJECT (mlaic, "Pad %s:%s mode: %s", GST_DEBUG_PAD_NAME (pad),
-      active ? "ACTIVE" : "STOPED");
+  GST_DEBUG_OBJECT (pad, "Mode: %s", active ? "ACTIVE" : "STOPED");
 
   // Call the default pad handler for activate mode.
   return gst_pad_activate_mode (pad, mode, active);
@@ -681,7 +871,7 @@ gst_ml_aic_src_query (GstPad * pad, GstObject * parent, GstQuery * query)
 {
   GstMLAic *mlaic = GST_ML_AIC (parent);
 
-  GST_LOG_OBJECT (mlaic, "Received %s query: %" GST_PTR_FORMAT,
+  GST_LOG_OBJECT (pad, "Received %s query: %" GST_PTR_FORMAT,
       GST_QUERY_TYPE_NAME (query), query);
 
   switch (GST_QUERY_TYPE (query)) {
@@ -717,9 +907,7 @@ gst_ml_aic_src_query (GstPad * pad, GstObject * parent, GstQuery * query)
 static gboolean
 gst_ml_aic_src_event (GstPad * pad, GstObject * parent, GstEvent * event)
 {
-  GstMLAic *mlaic = GST_ML_AIC (parent);
-
-  GST_LOG_OBJECT (mlaic, "Received %s event: %" GST_PTR_FORMAT,
+  GST_LOG_OBJECT (pad, "Received %s event: %" GST_PTR_FORMAT,
       GST_EVENT_TYPE_NAME (event), event);
 
   return gst_pad_event_default (pad, parent, event);
@@ -750,7 +938,7 @@ gst_ml_aic_request_pad (GstElement * element, GstPadTemplate * templ,
 
   GST_OBJECT_UNLOCK (element);
 
-  newpad =  GST_PAD (g_object_new (
+  newpad = GST_PAD (g_object_new (
       type, "name", name,
       "direction", templ->direction,
       "template", templ,
@@ -945,9 +1133,6 @@ gst_ml_aic_finalize (GObject * object)
 
   g_free (mlaic->model);
 
-  if (mlaic->outpool != NULL)
-    gst_object_unref (mlaic->outpool);
-
   gst_ml_aic_engine_free (mlaic->engine);
 
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (mlaic));
@@ -977,7 +1162,7 @@ gst_ml_aic_class_init (GstMLAicClass * klass)
   g_object_class_install_property (gobject, PROP_N_ACTIVATIONS,
       g_param_spec_uint ("activations", "Activations",
           "Number of activations (AIC programs and queues).",
-          1, 8, DEFAULT_PROP_N_ACTIVATIONS,
+          1, 10, DEFAULT_PROP_N_ACTIVATIONS,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_set_static_metadata (element,
@@ -997,7 +1182,6 @@ gst_ml_aic_class_init (GstMLAicClass * klass)
 static void
 gst_ml_aic_init (GstMLAic * mlaic)
 {
-  mlaic->outpool = NULL;
   mlaic->engine = NULL;
 
   mlaic->model = DEFAULT_PROP_MODEL;

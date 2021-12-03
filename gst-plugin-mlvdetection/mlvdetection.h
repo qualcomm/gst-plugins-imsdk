@@ -62,10 +62,6 @@ struct _GstMLVideoDetection {
   /// Output mode (video or text)
   guint             mode;
 
-  /// Source aspect ratio, extracted from input caps.
-  gint              sar_n;
-  gint              sar_d;
-
   /// Buffer pools.
   GstBufferPool     *outpool;
 

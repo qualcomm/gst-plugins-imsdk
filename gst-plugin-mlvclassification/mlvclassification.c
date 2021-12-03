@@ -852,10 +852,16 @@ gst_ml_video_classification_transform (GstBaseTransform * base,
   g_return_val_if_fail (classification->module != NULL, GST_FLOW_ERROR);
 
   n_blocks = gst_buffer_n_memory (inbuffer);
-  if (n_blocks != classification->mlinfo->n_tensors) {
-    GST_ERROR_OBJECT (classification, "Input buffer has %u memory blocks but "
-        "negotiated caps require %u!", n_blocks, classification->mlinfo->n_tensors);
-    return GST_FLOW_ERROR;
+
+  if (gst_buffer_get_size (inbuffer) != gst_ml_info_size (classification->mlinfo)) {
+    GST_ERROR_OBJECT (classification, "Mismatch, expected buffer size %"
+        G_GSIZE_FORMAT " but actual size is %" G_GSIZE_FORMAT "!",
+        gst_ml_info_size (classification->mlinfo), gst_buffer_get_size (inbuffer));
+    return FALSE;
+  } else if ((n_blocks > 1) && n_blocks != classification->mlinfo->n_tensors) {
+    GST_ERROR_OBJECT (classification, "Mismatch, expected %u memory blocks "
+        "but buffer has %u!", classification->mlinfo->n_tensors, n_blocks);
+    return FALSE;
   }
 
   n_blocks = gst_buffer_get_n_meta (inbuffer, GST_ML_TENSOR_META_API_TYPE);

@@ -68,9 +68,11 @@ void      gst_ml_frame_unmap (GstMLFrame * frame);
 
 #define GST_ML_FRAME_TYPE(f)           (GST_ML_INFO_TYPE(&(f)->info))
 #define GST_ML_FRAME_N_TENSORS(f)      (GST_ML_INFO_N_TENSORS(&(f)->info))
+#define GST_ML_FRAME_N_DIMENSIONS(f,n) (GST_ML_INFO_N_DIMENSIONS(&(f)->info,n))
+
 #define GST_ML_FRAME_N_BLOCKS(f)       (gst_buffer_n_memory ((f)->buffer))
-#define GST_ML_FRAME_TENSOR_DATA(f,n)  ((f)->map[n].data)
-#define GST_ML_FRAME_TENSOR_SIZE(f,n)  ((f)->map[n].size)
+#define GST_ML_FRAME_BLOCK_DATA(f,n)   ((f)->map[n].data)
+#define GST_ML_FRAME_BLOCK_SIZE(f,n)   ((f)->map[n].size)
 
 G_END_DECLS
 

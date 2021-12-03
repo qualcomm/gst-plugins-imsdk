@@ -447,25 +447,6 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
     width  = ABS (prediction->left - prediction->right) * vmeta->width;
     height = ABS (prediction->top - prediction->bottom) * vmeta->height;
 
-    // Adjust bounding box dimensions with extracted source aspect ratio.
-    if (detection->sar_n > detection->sar_d) {
-      gdouble coeficient = 0.0;
-
-      gst_util_fraction_to_double (detection->sar_n, detection->sar_d,
-          &coeficient);
-
-      y *= coeficient;
-      height *= coeficient;
-    } else if (detection->sar_n < detection->sar_d) {
-      gdouble coeficient = 0.0;
-
-      gst_util_fraction_to_double (detection->sar_d, detection->sar_n,
-          &coeficient);
-
-      x *= coeficient;
-      width *= coeficient;
-    }
-
     // Clip width and height if it outside the frame limits.
     width = ((x + width) > vmeta->width) ? (vmeta->width - x) : width;
     height = ((y + height) > vmeta->height) ? (vmeta->height - y) : height;
@@ -570,7 +551,6 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
         "label", G_TYPE_STRING, prediction->label,
         "confidence", G_TYPE_FLOAT, prediction->confidence,
         "color", G_TYPE_UINT, prediction->color,
-        "aspect-ratio", GST_TYPE_FRACTION, detection->sar_n, detection->sar_d,
         NULL);
 
     prediction->label = g_strdelimit (prediction->label, "-", ' ');
@@ -902,18 +882,6 @@ gst_ml_video_detection_set_caps (GstBaseTransform * base, GstCaps * incaps,
   else if (gst_structure_has_name (structure, "text/x-raw"))
     detection->mode = OUTPUT_MODE_TEXT;
 
-  // Get the input caps structure in order to extract source aspect ratio.
-  structure = gst_caps_get_structure (incaps, 0);
-
-  if (gst_structure_has_field (structure, "aspect-ratio")) {
-    const GValue *value = gst_structure_get_value (structure, "aspect-ratio");
-
-    detection->sar_n = gst_value_get_fraction_numerator (value);
-    detection->sar_d = gst_value_get_fraction_denominator (value);
-  } else {
-    detection->sar_n = detection->sar_d = 1;
-  }
-
   gst_base_transform_set_passthrough (base, FALSE);
 
   GST_DEBUG_OBJECT (detection, "Input caps: %" GST_PTR_FORMAT, incaps);
@@ -930,16 +898,22 @@ gst_ml_video_detection_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   GList *predictions = NULL;
   GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
   GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
-  gboolean success = FALSE;
   guint n_blocks = 0;
+  gboolean success = FALSE;
 
   g_return_val_if_fail (detection->module != NULL, GST_FLOW_ERROR);
 
   n_blocks = gst_buffer_n_memory (inbuffer);
-  if (n_blocks != detection->mlinfo->n_tensors) {
-    GST_ERROR_OBJECT (detection, "Input buffer has %u memory blocks but "
-        "negotiated caps require %u!", n_blocks, detection->mlinfo->n_tensors);
-    return GST_FLOW_ERROR;
+
+  if (gst_buffer_get_size (inbuffer) != gst_ml_info_size (detection->mlinfo)) {
+    GST_ERROR_OBJECT (detection, "Mismatch, expected buffer size %"
+        G_GSIZE_FORMAT " but actual size is %" G_GSIZE_FORMAT "!",
+        gst_ml_info_size (detection->mlinfo), gst_buffer_get_size (inbuffer));
+    return FALSE;
+  } else if ((n_blocks > 1) && n_blocks != detection->mlinfo->n_tensors) {
+    GST_ERROR_OBJECT (detection, "Mismatch, expected %u memory blocks "
+        "but buffer has %u!", detection->mlinfo->n_tensors, n_blocks);
+    return FALSE;
   }
 
   n_blocks = gst_buffer_get_n_meta (inbuffer, GST_ML_TENSOR_META_API_TYPE);
@@ -1120,8 +1094,6 @@ static void
 gst_ml_video_detection_init (GstMLVideoDetection * detection)
 {
   detection->mode = OUTPUT_MODE_VIDEO;
-  detection->sar_n = 0;
-  detection->sar_d = 0;
 
   detection->outpool = NULL;
   detection->module = NULL;

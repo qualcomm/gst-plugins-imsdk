@@ -91,6 +91,7 @@ gsize gst_ml_info_size         (const GstMLInfo * info);
 
 #define GST_ML_INFO_TYPE(i)           ((i)->type)
 #define GST_ML_INFO_N_TENSORS(i)      ((i)->n_tensors)
+#define GST_ML_INFO_N_DIMENSIONS(i,n) ((i)->n_dimensions[n])
 
 G_END_DECLS
 
