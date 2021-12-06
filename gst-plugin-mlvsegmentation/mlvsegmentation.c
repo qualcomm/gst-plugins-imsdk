@@ -132,8 +132,7 @@ gst_ml_module_new (const gchar * libname, const gchar * labels)
   GstMLModule *module = NULL;
   gchar *location = NULL;
 
-  location = g_strdup_printf ("/usr/lib/gstreamer-1.0/ml/modules/lib%s.so",
-      libname);
+  location = g_strdup_printf ("%s/lib%s.so", GST_ML_MODULES_DIR, libname);
 
   module = g_slice_new0 (GstMLModule);
   g_return_val_if_fail (module != NULL, NULL);

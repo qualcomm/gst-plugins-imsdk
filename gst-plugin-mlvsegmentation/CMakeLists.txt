@@ -51,6 +51,11 @@ set_target_properties(${GST_QTI_ML_VIDEO_SEGMENTATION} PROPERTIES PUBLIC_HEADER
   "modules/ml-video-segmentation-module.h"
 )
 
+# Add target specific precompiler defintions.
+target_compile_definitions(${GST_QTI_ML_VIDEO_SEGMENTATION} PRIVATE
+  GST_ML_MODULES_DIR="${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0/ml/modules"
+)
+
 target_link_libraries(${GST_QTI_ML_VIDEO_SEGMENTATION} PRIVATE
   ${GST_LIBRARIES}
   ${GST_BASE_LIBRARIES}
