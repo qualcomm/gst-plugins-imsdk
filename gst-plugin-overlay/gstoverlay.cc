@@ -290,7 +290,7 @@ gst_overlay_apply_item_list (GstOverlay *gst_overlay,
  */
 static gboolean
 gst_overlay_apply_bbox_item (GstOverlay * gst_overlay, GstVideoRectangle * bbox,
-    gchar * label, guint color, uint32_t * item_id)
+    const gchar * label, guint color, uint32_t * item_id)
 {
   OverlayParam ov_param;
   int32_t ret = 0;
@@ -379,6 +379,45 @@ gst_overlay_apply_ml_bbox_item (GstOverlay * gst_overlay, gpointer metadata,
 
   return gst_overlay_apply_bbox_item (gst_overlay, &bbox, result->name,
       gst_overlay->bbox_color, item_id);
+}
+
+/**
+ * gst_overlay_apply_roi_bbox_item:
+ * @gst_overlay: context
+ * @metadata: machine learning metadata entry
+ * @item_id: pointer to overlay item instance id
+ *
+ * Converts GstVideoRegionOfInterestMeta to overlay configuration and applies
+ * it as bounding box overlay.
+ *
+ * Return true if succeed.
+ */
+static gboolean
+gst_overlay_apply_roi_bbox_item (GstOverlay * gst_overlay, gpointer meta,
+    uint32_t * item_id)
+{
+  GstVideoRegionOfInterestMeta *roimeta = (GstVideoRegionOfInterestMeta*) meta;
+  GstStructure *structure = NULL;
+  const gchar *label = NULL;
+  guint color = 0x00000000;
+  GstVideoRectangle bbox;
+
+  g_return_val_if_fail (gst_overlay != NULL, FALSE);
+  g_return_val_if_fail (meta != NULL, FALSE);
+  g_return_val_if_fail (item_id != NULL, FALSE);
+
+  structure =
+      gst_video_region_of_interest_meta_get_param (roimeta, "ObjectDetection");
+
+  label = gst_structure_get_string (structure, "label");
+  gst_structure_get_uint (structure, "color", &color);
+
+  bbox.x = roimeta->x;
+  bbox.y = roimeta->y;
+  bbox.w = roimeta->w;
+  bbox.h = roimeta->h;
+
+  return gst_overlay_apply_bbox_item (gst_overlay, &bbox, label, color, item_id);
 }
 
 /**
@@ -1229,6 +1268,22 @@ gst_overlay_apply_overlay (GstOverlay *gst_overlay, GstVideoFrame *frame)
     return FALSE;
   }
   return TRUE;
+}
+
+static GSList *
+gst_buffer_get_roi_meta (GstBuffer * buffer)
+{
+  GSList *list = NULL;
+  GstMeta *meta = NULL;
+  gpointer state = NULL;
+
+  g_return_val_if_fail (buffer != NULL, NULL);
+
+  while ((meta = gst_buffer_iterate_meta_filtered (buffer, &state,
+      GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE)) != NULL)
+    list = g_slist_prepend (list, meta);
+
+  return list;
 }
 
 /**
@@ -2408,6 +2463,15 @@ gst_overlay_transform_frame_ip (GstVideoFilter *filter, GstVideoFrame *frame)
   res = gst_overlay_apply_item_list (gst_overlay,
                             gst_buffer_get_detection_meta (frame->buffer),
                             gst_overlay_apply_ml_bbox_item,
+                            gst_overlay->bbox_id);
+  if (!res) {
+    GST_ERROR_OBJECT (gst_overlay, "Overlay apply bbox item list failed!");
+    return GST_FLOW_ERROR;
+  }
+
+  res = gst_overlay_apply_item_list (gst_overlay,
+                            gst_buffer_get_roi_meta (frame->buffer),
+                            gst_overlay_apply_roi_bbox_item,
                             gst_overlay->bbox_id);
   if (!res) {
     GST_ERROR_OBJECT (gst_overlay, "Overlay apply bbox item list failed!");
