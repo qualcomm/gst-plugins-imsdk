@@ -160,7 +160,7 @@ ion_device_alloc (GstMLBufferPool * mlpool, gsize size)
 
   // Wrap the allocated FD in FD backed allocator.
   return gst_fd_allocator_alloc (priv->allocator, fd, size,
-      GST_FD_MEMORY_FLAG_DONT_CLOSE | GST_FD_MEMORY_FLAG_KEEP_MAPPED);
+      GST_FD_MEMORY_FLAG_DONT_CLOSE);
 }
 
 static void
