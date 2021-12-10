@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -53,6 +53,9 @@ gst_ml_aic_sinkpad_finalize (GObject * object)
 {
   GstMLAicSinkPad *pad = GST_ML_AIC_SINKPAD (object);
 
+  if (pad->bufpairs != NULL)
+    g_hash_table_destroy(pad->bufpairs);
+
   if (pad->pool != NULL)
     gst_object_unref (pad->pool);
 
@@ -77,7 +80,9 @@ gst_ml_aic_sinkpad_init (GstMLAicSinkPad * pad)
 {
   g_mutex_init (&pad->lock);
   gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
+
   pad->pool = NULL;
+  pad->bufpairs = g_hash_table_new (NULL, NULL);
 }
 
 static void
