@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -45,8 +45,8 @@
 #define DEFAULT_PROP_MODEL         NULL
 #define DEFAULT_PROP_N_ACTIVATIONS 1
 
-#define DEFAULT_PROP_MIN_BUFFERS   2
-#define DEFAULT_PROP_MAX_BUFFERS   15
+#define DEFAULT_PROP_MIN_BUFFERS   48
+#define DEFAULT_PROP_MAX_BUFFERS   48
 
 #define GST_ML_AIC_TENSOR_TYPES "{ UINT8, INT32, FLOAT32 }"
 
@@ -359,6 +359,62 @@ gst_ml_aic_decide_allocation (GstPad * pad, GstQuery * query)
   return TRUE;
 }
 
+static gboolean
+gst_ml_aic_prepare_output_buffer (GstPad * pad, GstBuffer * inbuffer,
+    GstBuffer ** outbuffer)
+{
+  GstBufferPool *pool = GST_ML_AIC_SINKPAD (pad)->pool;
+  GHashTable *bufpairs = GST_ML_AIC_SINKPAD (pad)->bufpairs;
+  GstProtectionMeta *pmeta = NULL;
+
+  if (!gst_buffer_pool_is_active (pool) &&
+      !gst_buffer_pool_set_active (pool, TRUE)) {
+    GST_ERROR_OBJECT (pad, "Failed to activate output video buffer pool!");
+    return FALSE;
+  }
+
+  if (!g_hash_table_contains (bufpairs, inbuffer)) {
+    // Retrieve new output buffer from the pool.
+    if (gst_buffer_pool_acquire_buffer (pool, outbuffer, NULL) != GST_FLOW_OK) {
+      GST_ERROR_OBJECT (pad, "Failed to acquire output buffer!");
+      return FALSE;
+    }
+
+    g_hash_table_insert (bufpairs, inbuffer, *outbuffer);
+  } else {
+    GstBufferList *blist = gst_buffer_list_new ();
+    GstBuffer *buffer = NULL;
+
+    // Get the corresponding output buffer from the buffer pair hash table.
+    buffer =  g_hash_table_lookup (bufpairs, inbuffer);
+
+    // Retrieve output buffer from the pool until the right one is found.
+    while (buffer != *outbuffer) {
+      if (gst_buffer_pool_acquire_buffer (pool, outbuffer, NULL) != GST_FLOW_OK) {
+        GST_ERROR_OBJECT (pad, "Failed to acquire output buffer!");
+
+        gst_buffer_list_unref (blist);
+        return FALSE;
+      }
+
+      gst_buffer_list_insert (blist, -1, *outbuffer);
+    }
+
+    // Increase the reference count of the found buffer.
+    *outbuffer = gst_buffer_ref (buffer);
+    gst_buffer_list_unref (blist);
+  }
+
+  // Copy the flags and timestamps from the input buffer.
+  gst_buffer_copy_into (*outbuffer, inbuffer,
+      GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
+
+  if ((pmeta = gst_buffer_get_protection_meta (inbuffer)) != NULL)
+    gst_buffer_add_protection_meta (*outbuffer, gst_structure_copy (pmeta->info));
+
+  return TRUE;
+}
+
 static void
 gst_ml_aic_src_worker_task (gpointer userdata)
 {
@@ -412,7 +468,7 @@ gst_ml_aic_src_worker_task (gpointer userdata)
       size = gst_ml_info_tensor_size (mlinfo, idx);
 
       gst_buffer_append_memory (outbuffer,
-          gst_memory_share (memory, offset, size));
+          gst_memory_copy (memory, offset, size));
 
       // Set the offset to the next piece of memory that needs to be shared.
       offset += size;
@@ -433,6 +489,9 @@ gst_ml_aic_src_worker_task (gpointer userdata)
     // Add parent meta, input buffer won't be released until new buffer is freed.
     gst_buffer_add_parent_buffer_meta (outbuffer, buffer);
     gst_buffer_unref (buffer);
+
+    GST_TRACE_OBJECT (pad, "Send buffer %p of size %" G_GSIZE_FORMAT,
+        outbuffer, gst_buffer_get_size (outbuffer));
 
     gst_pad_push (pad, outbuffer);
   } else {
@@ -792,24 +851,14 @@ static GstFlowReturn
 gst_ml_aic_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
 {
   GstMLAic *mlaic = GST_ML_AIC (parent);
-  GstBufferPool *pool = GST_ML_AIC_SINKPAD (pad)->pool;
   GstEngineRequest *request = NULL;
   GstBuffer *outbuffer = NULL;
-  GstProtectionMeta *pmeta = NULL;
   const GstMLInfo * info = NULL;
 
-  //Retrieve output buffer from the pool.
-  if (gst_buffer_pool_acquire_buffer (pool, &outbuffer, NULL) != GST_FLOW_OK) {
-    GST_ERROR_OBJECT (pad, "Failed to acquire output buffer!");
+  if (!gst_ml_aic_prepare_output_buffer (pad, inbuffer, &outbuffer)) {
+    GST_ERROR_OBJECT (pad, "Failed to prepare output buffer!");
     return GST_FLOW_ERROR;
   }
-
-  // Copy the flags and timestamps from the input buffer.
-  gst_buffer_copy_into (outbuffer, inbuffer, GST_BUFFER_COPY_FLAGS |
-      GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
-
-  if ((pmeta = gst_buffer_get_protection_meta (inbuffer)) != NULL)
-    gst_buffer_add_protection_meta (outbuffer, gst_structure_copy (pmeta->info));
 
   // Create new engine request.
   request = gst_engine_request_new ();
