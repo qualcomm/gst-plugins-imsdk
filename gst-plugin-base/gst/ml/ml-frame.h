@@ -44,9 +44,9 @@ typedef struct _GstMLFrame GstMLFrame;
 
 /**
  * _GstMLFrame:
- * @info: the #GstMLInfo
- * @buffer: the mapped buffer containing the tensor memory blocks
- * @map: mappings of the tensor memory blocks
+ * @info: The #GstMLInfo
+ * @buffer: Mapped buffer containing the tensor memory blocks
+ * @map: Mappings of the tensor memory blocks
  *
  * A ML frame obtained from gst_ml_frame_map()
  */

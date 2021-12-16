@@ -41,10 +41,10 @@ typedef struct _GstMLInfo GstMLInfo;
 
 /**
  * GstMLInfo:
- * @type: type of the tensors
- * @n_tensors: number of tensors
- * @n_dimensions: number of dimensions for each tensor
- * @tensors: array with tensor dimensions
+ * @type: Type of the tensors
+ * @n_tensors: Number of tensors
+ * @n_dimensions: Number of dimensions for each tensor
+ * @tensors: Array with tensor dimensions
  *
  * Info describing ML properties. This info can be filled
  * in from GstCaps with gst_ml_info_from_caps().
@@ -55,7 +55,7 @@ struct _GstMLInfo {
   GstMLType type;
   guint     n_tensors;
   guint     n_dimensions[GST_ML_MAX_TENSORS];
-  guint     tensors[GST_ML_MAX_TENSORS][GST_ML_TENSOR_MAX_DIMENSIONS];
+  guint     tensors[GST_ML_MAX_TENSORS][GST_ML_TENSOR_MAX_DIMS];
 };
 
 GST_API
@@ -92,6 +92,7 @@ gsize gst_ml_info_size         (const GstMLInfo * info);
 #define GST_ML_INFO_TYPE(i)           ((i)->type)
 #define GST_ML_INFO_N_TENSORS(i)      ((i)->n_tensors)
 #define GST_ML_INFO_N_DIMENSIONS(i,n) ((i)->n_dimensions[n])
+#define GST_ML_INFO_TENSOR_DIM(i,n,m) ((i)->tensors[n][m])
 
 G_END_DECLS
 

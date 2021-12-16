@@ -44,11 +44,11 @@ typedef struct _GstMLTensorMeta GstMLTensorMeta;
 
 /**
  * GstMLTensorMeta:
- * @meta: parent #GstMeta
+ * @meta: Parent #GstMeta
  * @id: ID corresponding to the memory index inside GstBuffer.
- * @n_dimensions: the number of tensor dimensions
- * @dimensions: the tensor dimensions values
- * @type: the tensor type
+ * @type: Tensor type
+ * @n_dimensions: Number of tensor dimensions
+ * @dimensions: Tensor dimensions values
  *
  * Extra buffer metadata describing ML tensor properties
  */
@@ -60,7 +60,7 @@ struct _GstMLTensorMeta {
   // Tensor parameters.
   GstMLType type;
   guint     n_dimensions;
-  guint     dimensions[GST_ML_TENSOR_MAX_DIMENSIONS];
+  guint     dimensions[GST_ML_TENSOR_MAX_DIMS];
 };
 
 GST_API
@@ -71,8 +71,8 @@ const GstMetaInfo * gst_ml_tensor_meta_get_info (void);
 
 GST_API
 GstMLTensorMeta * gst_buffer_add_ml_tensor_meta (GstBuffer * buffer,
-    GstMLType type, guint n_dimensions,
-    guint dimensions[GST_ML_TENSOR_MAX_DIMENSIONS]);
+    const GstMLType type, const guint n_dimensions,
+    const guint dimensions[GST_ML_TENSOR_MAX_DIMS]);
 
 GST_API
 GstMLTensorMeta * gst_buffer_get_ml_tensor_meta (GstBuffer * buffer);

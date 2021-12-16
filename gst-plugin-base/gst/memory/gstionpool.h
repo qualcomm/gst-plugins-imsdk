@@ -34,8 +34,7 @@
 
 G_BEGIN_DECLS
 
-#define GST_TYPE_ION_BUFFER_POOL \
-  (gst_ion_buffer_pool_get_type ())
+#define GST_TYPE_ION_BUFFER_POOL (gst_ion_buffer_pool_get_type ())
 #define GST_ION_BUFFER_POOL(obj) \
   (G_TYPE_CHECK_INSTANCE_CAST ((obj), GST_TYPE_ION_BUFFER_POOL, \
       GstIonBufferPool))

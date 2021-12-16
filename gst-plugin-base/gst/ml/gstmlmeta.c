@@ -109,8 +109,8 @@ gst_ml_tensor_meta_get_info (void)
 }
 
 GstMLTensorMeta *
-gst_buffer_add_ml_tensor_meta (GstBuffer * buffer, GstMLType type,
-    guint n_dimensions, guint dimensions[GST_ML_TENSOR_MAX_DIMENSIONS])
+gst_buffer_add_ml_tensor_meta (GstBuffer * buffer, const GstMLType type,
+    const guint n_dimensions, const guint dimensions[GST_ML_TENSOR_MAX_DIMS])
 {
   GstMLTensorMeta *meta;
   guint idx;

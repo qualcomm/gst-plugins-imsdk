@@ -41,8 +41,6 @@
 
 #define NMS_CONFIG_PATH "/data/misc/camera/user-config-yolov5m.yml"
 
-#define CAST_TO_GFLOAT(data) ((gfloat*)data)
-
 typedef struct _GstPrivateModule GstPrivateModule;
 typedef struct _GstLabel GstLabel;
 
@@ -75,7 +73,7 @@ gst_ml_label_free (GstLabel * label)
   g_free (label);
 }
 
- gint
+static gint
 gst_ml_compare_predictions (gconstpointer a, gconstpointer b)
 {
   const GstMLPrediction *l_prediction, *r_prediction;
@@ -201,24 +199,20 @@ gst_ml_video_detection_module_process (gpointer instance, GstBuffer * buffer,
 {
   GstPrivateModule *module = (GstPrivateModule *) instance;
   GstProtectionMeta *pmeta = NULL;
-  GstMapInfo bboxes;
+  GstMapInfo memmap[3];
   guint idx = 0, sar_n = 1, sar_d = 1;
-  gsize output_tensors_sizes[3];
-  uint8_t *output_tensors[3];
 
   g_return_val_if_fail (module != NULL, FALSE);
   g_return_val_if_fail (buffer != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  if (gst_buffer_n_memory (buffer) != 1) {
-    GST_ERROR ("Expecting 1 tensor memory blocks but received %u!",
+  if (gst_buffer_n_memory (buffer) != 3) {
+    GST_ERROR ("Expecting 3 tensor memory blocks but received %u!",
         gst_buffer_n_memory (buffer));
     return FALSE;
   }
 
-  // Harcoded to 3 because all 3 tensors are stored in one memory block
-  //for (idx = 0; idx < gst_buffer_n_memory (buffer); idx++) {
-  for (idx = 0; idx < 3; idx++) {
+  for (idx = 0; idx < gst_buffer_n_memory (buffer); idx++) {
     GstMLTensorMeta *mlmeta = NULL;
 
     if (!(mlmeta = gst_buffer_get_ml_tensor_meta_id (buffer, idx))) {
@@ -227,19 +221,30 @@ gst_ml_video_detection_module_process (gpointer instance, GstBuffer * buffer,
     } else if (mlmeta->type != GST_ML_TYPE_UINT8) {
       GST_ERROR ("Buffer has unsupported type for tensor %u!", idx);
       return FALSE;
-    } else {
-      if (mlmeta->n_dimensions != 5) {
-        GST_ERROR ("Incorrect dimensions size!");
-        return FALSE;
-      }
-      output_tensors_sizes[idx] =
-          mlmeta->dimensions[2] * mlmeta->dimensions[3] * 255;
+    } else if (mlmeta->n_dimensions != 5) {
+      GST_ERROR ("Incorrect dimensions size!");
+      return FALSE;
     }
   }
 
   // Map buffer memory blocks.
-  if (!gst_buffer_map_range (buffer, 0, 1, &bboxes, GST_MAP_READ)) {
+  if (!gst_buffer_map_range (buffer, 0, 1, &memmap[0], GST_MAP_READ)) {
     GST_ERROR ("Failed to map bboxes memory block!");
+    return FALSE;
+  }
+
+  if (!gst_buffer_map_range (buffer, 1, 1, &memmap[1], GST_MAP_READ)) {
+    GST_ERROR ("Failed to map classes memory block!");
+
+    gst_buffer_unmap (buffer, &memmap[0]);
+    return FALSE;
+  }
+
+  if (!gst_buffer_map_range (buffer, 2, 1, &memmap[2], GST_MAP_READ)) {
+    GST_ERROR ("Failed to map scores memory block!");
+
+    gst_buffer_unmap (buffer, &memmap[1]);
+    gst_buffer_unmap (buffer, &memmap[0]);
     return FALSE;
   }
 
@@ -250,11 +255,6 @@ gst_ml_video_detection_module_process (gpointer instance, GstBuffer * buffer,
     sar_d = gst_value_get_fraction_denominator (
         gst_structure_get_value (pmeta->info, g_quark_to_string (1)));
   }
-
-  // Separate the memory block to 3 tensors
-  output_tensors[2] = (uint8_t *) bboxes.data;
-  output_tensors[1] = output_tensors[2] + output_tensors_sizes[2];
-  output_tensors[0] = output_tensors[1] + output_tensors_sizes[1];
 
   std::string configfilepath = NMS_CONFIG_PATH;
   InitParameters params (configfilepath);
@@ -291,15 +291,15 @@ gst_ml_video_detection_module_process (gpointer instance, GstBuffer * buffer,
     auto det_shape = params.outputShapesMap_[det_name];
     if (strcmp (det_name.c_str(), "A524") == 0) {
       anchor::uTensor det_tensor =
-          anchor::uTensor ({det_name , det_shape, output_tensors[0]});
+          anchor::uTensor ({det_name , det_shape, memmap[2].data});
       detections1.push_back (det_tensor);
     } else if (strcmp (det_name.c_str(), "A544") == 0) {
       anchor::uTensor det_tensor =
-          anchor::uTensor ({det_name , det_shape, output_tensors[1]});
+          anchor::uTensor ({det_name , det_shape, memmap[1].data});
       detections1.push_back (det_tensor);
     } else if (strcmp (det_name.c_str(), "A564") == 0) {
       anchor::uTensor det_tensor =
-          anchor::uTensor ({det_name , det_shape, output_tensors[2]});
+          anchor::uTensor ({det_name , det_shape, memmap[0].data});
       detections1.push_back (det_tensor);
     }
   }
@@ -355,7 +355,9 @@ gst_ml_video_detection_module_process (gpointer instance, GstBuffer * buffer,
           *predictions, prediction, gst_ml_compare_predictions);
   }
 
-  gst_buffer_unmap (buffer, &bboxes);
+  gst_buffer_unmap (buffer, &memmap[2]);
+  gst_buffer_unmap (buffer, &memmap[1]);
+  gst_buffer_unmap (buffer, &memmap[0]);
 
   return TRUE;
 }
