@@ -63,8 +63,6 @@ G_DEFINE_TYPE (GstVideoTransform, gst_video_transform, GST_TYPE_BASE_TRANSFORM);
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
 #endif
 
-#define ALIGN(value, alignment) (((value) + alignment - 1) & (~(alignment - 1)))
-
 // Caps video size range.
 #undef GST_VIDEO_SIZE_RANGE
 #define GST_VIDEO_SIZE_RANGE "(int) [ 1, 32767 ]"
@@ -655,6 +653,7 @@ gst_video_transform_fixate_format (GstVideoTransform *vtrans,
   const GValue *format = NULL, *value = NULL;
   gint idx, length, score = G_MININT;
   const gchar *infmt = NULL;
+  gboolean sametype = FALSE;
 
   infmt = gst_structure_get_string (input, "format");
   g_return_if_fail (infmt != NULL);
@@ -689,12 +688,18 @@ gst_video_transform_fixate_format (GstVideoTransform *vtrans,
     GST_WARNING_OBJECT (vtrans, "Format field has invalid type!");
   }
 
-  if (outinfo != NULL) {
+  if (outinfo != NULL)
     gst_structure_fixate_field_string (output, "format",
         GST_VIDEO_FORMAT_INFO_NAME (outinfo));
-  }
 
-  if (gst_structure_has_field (input, "colorimetry")) {
+  sametype |= GST_VIDEO_FORMAT_INFO_IS_YUV (ininfo) &&
+      GST_VIDEO_FORMAT_INFO_IS_YUV (outinfo);
+  sametype |= GST_VIDEO_FORMAT_INFO_IS_RGB (ininfo) &&
+      GST_VIDEO_FORMAT_INFO_IS_RGB (outinfo);
+  sametype |= GST_VIDEO_FORMAT_INFO_IS_GRAY (ininfo) &&
+      GST_VIDEO_FORMAT_INFO_IS_GRAY (outinfo);
+
+  if (gst_structure_has_field (input, "colorimetry") && sametype) {
     const gchar *string = gst_structure_get_string (input, "colorimetry");
 
     if (gst_structure_has_field (output, "colorimetry"))
@@ -703,7 +708,7 @@ gst_video_transform_fixate_format (GstVideoTransform *vtrans,
       gst_structure_set (output, "colorimetry", G_TYPE_STRING, string, NULL);
   }
 
-  if (gst_structure_has_field (input, "chroma-site")) {
+  if (gst_structure_has_field (input, "chroma-site") && sametype) {
     const gchar *string = gst_structure_get_string (input, "chroma-site");
 
     if (gst_structure_has_field (output, "chroma-site"))
@@ -712,7 +717,7 @@ gst_video_transform_fixate_format (GstVideoTransform *vtrans,
       gst_structure_set (output, "chroma-site", G_TYPE_STRING, string, NULL);
   }
 
-  if (gst_structure_has_field (input, "compression")) {
+  if (gst_structure_has_field (input, "compression") && sametype) {
     const gchar *string = gst_structure_get_string (input, "compression");
 
     if (gst_structure_has_field (output, "compression"))
@@ -875,11 +880,13 @@ gst_video_transform_fixate_width (GstVideoTransform * vtrans,
     switch (vtrans->rotation) {
       case GST_VIDEO_TRANSFORM_ROTATE_90_CW:
       case GST_VIDEO_TRANSFORM_ROTATE_90_CCW:
-        out_width = ALIGN (gst_util_uint64_scale_int (out_height, den, num), 4);
+        out_width = GST_ROUND_UP_4 (
+            gst_util_uint64_scale_int (out_height, den, num));
         break;
       case GST_VIDEO_TRANSFORM_ROTATE_NONE:
       case GST_VIDEO_TRANSFORM_ROTATE_180:
-        out_width = ALIGN (gst_util_uint64_scale_int (out_height, num, den), 4);
+        out_width = GST_ROUND_UP_4 (
+            gst_util_uint64_scale_int (out_height, num, den));
         break;
     }
 
@@ -907,7 +914,8 @@ gst_video_transform_fixate_width (GstVideoTransform * vtrans,
     switch (vtrans->rotation) {
       case GST_VIDEO_TRANSFORM_ROTATE_90_CW:
       case GST_VIDEO_TRANSFORM_ROTATE_90_CCW:
-        out_width = ALIGN (gst_util_uint64_scale_int (out_height, den, num), 4);
+        out_width = GST_ROUND_UP_4 (
+            gst_util_uint64_scale_int (out_height, den, num));
 
         gst_structure_fixate_field_nearest_int (structure, "width", out_width);
         gst_structure_get_int (structure, "width", &out_width);
@@ -917,7 +925,8 @@ gst_video_transform_fixate_width (GstVideoTransform * vtrans,
         break;
       case GST_VIDEO_TRANSFORM_ROTATE_NONE:
       case GST_VIDEO_TRANSFORM_ROTATE_180:
-        out_width = ALIGN (gst_util_uint64_scale_int (out_height, num, den), 4);
+        out_width = GST_ROUND_UP_4 (
+            gst_util_uint64_scale_int (out_height, num, den));
 
         gst_structure_fixate_field_nearest_int (structure, "width", out_width);
         gst_structure_get_int (structure, "width", &out_width);
@@ -961,7 +970,7 @@ gst_video_transform_fixate_width (GstVideoTransform * vtrans,
       return;
     }
 
-    out_width = ALIGN (gst_util_uint64_scale_int (out_height, num, den), 4);
+    out_width = GST_ROUND_UP_4 (gst_util_uint64_scale_int (out_height, num, den));
     gst_structure_fixate_field_nearest_int (output, "width", out_width);
     gst_structure_get_int (structure, "width", &out_width);
 
@@ -1031,11 +1040,13 @@ gst_video_transform_fixate_height (GstVideoTransform * vtrans,
     switch (vtrans->rotation) {
       case GST_VIDEO_TRANSFORM_ROTATE_90_CW:
       case GST_VIDEO_TRANSFORM_ROTATE_90_CCW:
-        out_height = ALIGN (gst_util_uint64_scale_int (out_width, num, den), 4);
+        out_height = GST_ROUND_UP_4 (
+            gst_util_uint64_scale_int (out_width, num, den));
         break;
       case GST_VIDEO_TRANSFORM_ROTATE_NONE:
       case GST_VIDEO_TRANSFORM_ROTATE_180:
-        out_height = ALIGN (gst_util_uint64_scale_int (out_width, den, num), 4);
+        out_height = GST_ROUND_UP_4 (
+            gst_util_uint64_scale_int (out_width, den, num));
         break;
     }
 
@@ -1063,7 +1074,8 @@ gst_video_transform_fixate_height (GstVideoTransform * vtrans,
     switch (vtrans->rotation) {
       case GST_VIDEO_TRANSFORM_ROTATE_90_CW:
       case GST_VIDEO_TRANSFORM_ROTATE_90_CCW:
-        out_height = ALIGN (gst_util_uint64_scale_int (out_width, num, den), 4);
+        out_height = GST_ROUND_UP_4 (
+            gst_util_uint64_scale_int (out_width, num, den));
 
         gst_structure_fixate_field_nearest_int (structure, "height", out_height);
         gst_structure_get_int (structure, "height", &out_height);
@@ -1073,7 +1085,8 @@ gst_video_transform_fixate_height (GstVideoTransform * vtrans,
         break;
       case GST_VIDEO_TRANSFORM_ROTATE_NONE:
       case GST_VIDEO_TRANSFORM_ROTATE_180:
-        out_height = ALIGN (gst_util_uint64_scale_int (out_width, den, num), 4);
+        out_height = GST_ROUND_UP_4 (
+            gst_util_uint64_scale_int (out_width, den, num));
 
         gst_structure_fixate_field_nearest_int (structure, "height", out_height);
         gst_structure_get_int (structure, "height", &out_height);
@@ -1117,7 +1130,7 @@ gst_video_transform_fixate_height (GstVideoTransform * vtrans,
       return;
     }
 
-    out_height = ALIGN (gst_util_uint64_scale_int (out_width, den, num), 4);
+    out_height = GST_ROUND_UP_4 (gst_util_uint64_scale_int (out_width, den, num));
     gst_structure_fixate_field_nearest_int (output, "height", out_height);
     gst_structure_get_int (output, "height", &out_height);
 
@@ -1193,7 +1206,7 @@ gst_video_transform_fixate_width_and_height (GstVideoTransform * vtrans,
         gst_structure_get_int (structure, "height", &set_h);
 
         // Scale width in order to keep DAR.
-        set_w = ALIGN (gst_util_uint64_scale_int (set_h, den, num), 4);
+        set_w = GST_ROUND_UP_4 (gst_util_uint64_scale_int (set_h, den, num));
         break;
       case GST_VIDEO_TRANSFORM_ROTATE_NONE:
       case GST_VIDEO_TRANSFORM_ROTATE_180:
@@ -1201,7 +1214,7 @@ gst_video_transform_fixate_width_and_height (GstVideoTransform * vtrans,
         gst_structure_get_int (structure, "height", &set_h);
 
         // Scale width in order to keep DAR.
-        set_w = ALIGN (gst_util_uint64_scale_int (set_h, num, den), 4);
+        set_w = GST_ROUND_UP_4 (gst_util_uint64_scale_int (set_h, num, den));
         break;
     }
 
@@ -1231,7 +1244,7 @@ gst_video_transform_fixate_width_and_height (GstVideoTransform * vtrans,
         gst_structure_get_int (structure, "width", &set_w);
 
         // Scale height in order to keep DAR.
-        set_h = ALIGN (gst_util_uint64_scale_int (set_w, num, den), 4);
+        set_h = GST_ROUND_UP_4 (gst_util_uint64_scale_int (set_w, num, den));
         break;
       case GST_VIDEO_TRANSFORM_ROTATE_NONE:
       case GST_VIDEO_TRANSFORM_ROTATE_180:
@@ -1239,7 +1252,7 @@ gst_video_transform_fixate_width_and_height (GstVideoTransform * vtrans,
         gst_structure_get_int (structure, "width", &set_w);
 
         // Scale height in order to keep DAR.
-        set_h = ALIGN (gst_util_uint64_scale_int (set_w, den, num), 4);
+        set_h = GST_ROUND_UP_4 (gst_util_uint64_scale_int (set_w, den, num));
         break;
     }
 

@@ -65,8 +65,8 @@
     GST_DEBUG ("    %-30s [%c]", #name, \
         info.capabilities_mask & C2D_DRIVER_SUPPORTS_##name ? 'x' : ' ');
 
-#define DEFAULT_C2D_INIT_MAX_OBJECT    4
-#define DEFAULT_C2D_INIT_MAX_TEMPLATE  4
+#define DEFAULT_C2D_INIT_MAX_OBJECT    12
+#define DEFAULT_C2D_INIT_MAX_TEMPLATE  20
 
 #define DEFAULT_OPT_FLIP_HORIZONTAL FALSE
 #define DEFAULT_OPT_FLIP_VERTICAL   FALSE
@@ -109,6 +109,11 @@
 #define GST_C2D_UNLOCK(obj)   g_mutex_unlock(GST_C2D_GET_LOCK(obj))
 
 #define GST_CAT_DEFAULT ensure_debug_category()
+
+/// Mutex for protecting the static reference counter.
+G_LOCK_DEFINE_STATIC (c2d);
+// Reference counter as C2D is singleton.
+static gint refcount = 0;
 
 static GstDebugCategory *
 ensure_debug_category (void)
@@ -787,7 +792,13 @@ gst_c2d_video_converter_new ()
   setup.max_object_list_needed = DEFAULT_C2D_INIT_MAX_OBJECT;
   setup.max_surface_template_needed = DEFAULT_C2D_INIT_MAX_TEMPLATE;
 
-  status = convert->DriverInit (&setup);
+  G_LOCK (c2d);
+
+  if (refcount++ == 0)
+    status = convert->DriverInit (&setup);
+
+  G_UNLOCK (c2d);
+
   C2D_RETURN_NULL_IF_FAIL_WITH_MSG (C2D_STATUS_OK == status,
       gst_c2d_video_converter_free (convert), "Failed to initialize driver!");
 
@@ -836,29 +847,27 @@ gst_c2d_video_converter_free (GstC2dVideoConverter * convert)
   if (convert->insurfaces != NULL) {
     g_hash_table_foreach (convert->insurfaces, destroy_surface, convert);
     g_hash_table_destroy(convert->insurfaces);
-    convert->insurfaces = NULL;
   }
 
   if (convert->outsurfaces != NULL) {
     g_hash_table_foreach (convert->outsurfaces, destroy_surface, convert);
     g_hash_table_destroy (convert->outsurfaces);
-    convert->outsurfaces = NULL;
   }
 
   if (convert->gpulist != NULL) {
     g_hash_table_foreach (convert->gpulist, unmap_gpu_address, convert);
     g_hash_table_destroy (convert->gpulist);
-    convert->gpulist = NULL;
   }
 
-  if (convert->DriverDeInit != NULL) {
+  G_LOCK (c2d);
+
+  if (convert->DriverDeInit != NULL && ((--refcount) == 0))
     convert->DriverDeInit ();
-  }
 
-  if (convert->c2dhandle != NULL) {
+  G_UNLOCK (c2d);
+
+  if (convert->c2dhandle != NULL)
     dlclose (convert->c2dhandle);
-    convert->c2dhandle = NULL;
-  }
 
   GST_INFO ("Destroyed C2D converter: %p", convert);
   g_slice_free (GstC2dVideoConverter, convert);
