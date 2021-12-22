@@ -74,6 +74,8 @@ struct _GstImageBufferPoolPrivate
   // Map of data FDs and ION handles on case ION memory is used OR
   // map of data FDs and GBM buffer objects if GBM memory is used.
   GHashTable          *datamap;
+  // Mutex for protecting insert/remove from the data map.
+  GMutex              lock;
 
   // GBM library APIs
   struct gbm_device * (*gbm_create_device) (gint fd);
@@ -242,7 +244,9 @@ gbm_device_alloc (GstImageBufferPool * vpool)
 
   fd = priv->gbm_bo_get_fd (bo);
 
+  g_mutex_lock (&priv->lock);
   g_hash_table_insert (priv->datamap, GINT_TO_POINTER (fd), bo);
+  g_mutex_unlock (&priv->lock);
 
   GST_DEBUG_OBJECT (vpool, "Allocated GBM memory FD %d", fd);
 
@@ -257,10 +261,14 @@ gbm_device_free (GstImageBufferPool * vpool, gint fd)
 
   GST_DEBUG_OBJECT (vpool, "Closing GBM memory FD %d", fd);
 
-  struct gbm_bo *bo = g_hash_table_lookup (priv->datamap, GINT_TO_POINTER (fd));
-  priv->gbm_bo_destroy (bo);
+  g_mutex_lock (&priv->lock);
 
+  struct gbm_bo *bo = g_hash_table_lookup (priv->datamap, GINT_TO_POINTER (fd));
   g_hash_table_remove (priv->datamap, GINT_TO_POINTER (fd));
+
+  g_mutex_unlock (&priv->lock);
+
+  priv->gbm_bo_destroy (bo);
 }
 
 static gboolean
@@ -573,6 +581,8 @@ gst_image_buffer_pool_finalize (GObject * object)
     close_ion_device (vpool);
   }
 
+  g_mutex_clear (&priv->lock);
+
   G_OBJECT_CLASS (parent_class)->finalize (object);
 }
 
@@ -598,6 +608,8 @@ gst_image_buffer_pool_init (GstImageBufferPool * vpool)
 {
   vpool->priv = gst_image_buffer_pool_get_instance_private (vpool);
   vpool->priv->devfd = -1;
+
+  g_mutex_init (&vpool->priv->lock);
 }
 
 

@@ -274,8 +274,11 @@ gst_batch_update_src_caps (GstBatch * batch)
 
   srccaps = intersect;
 
-  if (srccaps == NULL || gst_caps_is_empty (srccaps))
+  if (srccaps == NULL || gst_caps_is_empty (srccaps)) {
+    GST_ELEMENT_ERROR (batch, CORE, NEGOTIATION, (NULL),
+        ("The sink and source caps do not intersect!"));
     return FALSE;
+  }
 
   // Update the framerate field for video caps.
   for (idx = 0; idx < length; idx++) {

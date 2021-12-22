@@ -106,8 +106,15 @@ gst_meta_mux_data_available (GstMetaMux * muxer)
   GList *list = NULL;
   gboolean available = TRUE;
 
-  for (list = muxer->metapads; list != NULL; list = g_list_next (list))
-    available &= !g_queue_is_empty (GST_META_MUX_DATA_PAD (list->data)->queue);
+  for (list = muxer->metapads; list != NULL; list = g_list_next (list)) {
+    GST_OBJECT_LOCK (list->data);
+
+    // Pads which are in EOS or FLUSHING state are not included in the checks.
+    if (!GST_PAD_IS_EOS (list->data) && !GST_PAD_IS_FLUSHING (list->data))
+      available &= !g_queue_is_empty (GST_META_MUX_DATA_PAD (list->data)->queue);
+
+    GST_OBJECT_UNLOCK (list->data);
+  }
 
   return available;
 }
