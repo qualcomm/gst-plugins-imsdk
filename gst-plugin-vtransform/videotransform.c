@@ -1,31 +1,65 @@
 /*
-* Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted provided that the following conditions are
-* met:
-*     * Redistributions of source code must retain the above copyright
-*       notice, this list of conditions and the following disclaimer.
-*     * Redistributions in binary form must reproduce the above
-*       copyright notice, this list of conditions and the following
-*       disclaimer in the documentation and/or other materials provided
-*       with the distribution.
-*     * Neither the name of The Linux Foundation nor the names of its
-*       contributors may be used to endorse or promote products derived
-*       from this software without specific prior written permission.
-*
-* THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
-* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
-* ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
-* BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-* CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-* SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
-* BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-* WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
-* OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
-* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *     * Neither the name of The Linux Foundation nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted (subject to the limitations in the
+ * disclaimer below) provided that the following conditions are met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *
+ *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ *
+ * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+ * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+ * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+ * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -86,7 +120,7 @@ enum
 
 static GstStaticCaps gst_video_transform_format_caps =
     GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS) ";"
-    GST_VIDEO_CAPS_MAKE_WITH_FEATURES ("ANY", GST_VIDEO_FORMATS));
+    GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM, GST_VIDEO_FORMATS));
 
 static GType
 gst_video_trasform_rotate_get_type (void)
@@ -167,8 +201,12 @@ gst_video_transform_caps_has_feature (const GstCaps * caps,
   while (idx != gst_caps_get_size (caps)) {
     GstCapsFeatures *const features = gst_caps_get_features (caps, idx);
 
+    if (feature == NULL && ((gst_caps_features_get_size (features) == 0) ||
+            gst_caps_features_is_any (features)))
+      return TRUE;
+
     // Skip ANY caps and return immediately if feature is present.
-    if (!gst_caps_features_is_any (features) &&
+    if ((feature != NULL) && !gst_caps_features_is_any (features) &&
         gst_caps_features_contains (features, feature))
       return TRUE;
 
@@ -432,16 +470,64 @@ gst_video_transform_transform_caps (GstBaseTransform * trans,
     GstPadDirection direction, GstCaps * caps, GstCaps * filter)
 {
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM (trans);
-  GstCaps *result;
-  GstStructure *structure;
-  GstCapsFeatures *features;
-  gint idx, length;
+  GstCaps *result = NULL;
+  GstStructure *structure = NULL;
+  GstCapsFeatures *features = NULL;
+  gint idx = 0, length = 0;
 
   GST_DEBUG_OBJECT (vtrans, "Transforming caps %" GST_PTR_FORMAT
       " in direction %s", caps, (direction == GST_PAD_SINK) ? "sink" : "src");
   GST_DEBUG_OBJECT (vtrans, "Filter caps %" GST_PTR_FORMAT, filter);
 
+
   result = gst_caps_new_empty ();
+
+  // In case there is no featureless or memory:GBM caps structure add one.
+  if (!gst_video_transform_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
+    structure = gst_caps_get_structure (caps, 0);
+    features = gst_caps_features_new (GST_CAPS_FEATURE_MEMORY_GBM, NULL);
+
+    // Make a copy that will be modified.
+    structure = gst_structure_copy (structure);
+
+    // Set width and height to a range instead of fixed value.
+    gst_structure_set (structure, "width", GST_TYPE_INT_RANGE, 1, G_MAXINT,
+        "height", GST_TYPE_INT_RANGE, 1, G_MAXINT, NULL);
+
+    // If pixel aspect ratio, make a range of it.
+    if (gst_structure_has_field (structure, "pixel-aspect-ratio")) {
+      gst_structure_set (structure, "pixel-aspect-ratio",
+          GST_TYPE_FRACTION_RANGE, 1, G_MAXINT, G_MAXINT, 1, NULL);
+    }
+
+    // Remove the format/color/compression related fields.
+    gst_structure_remove_fields (structure, "format", "colorimetry",
+        "chroma-site", "compression", NULL);
+
+    gst_caps_append_structure_full (result, structure, features);
+  } else if (!gst_video_transform_caps_has_feature (caps, NULL)) {
+    structure = gst_caps_get_structure (caps, 0);
+
+    // Make a copy that will be modified.
+    structure = gst_structure_copy (structure);
+
+    // Set width and height to a range instead of fixed value.
+    gst_structure_set (structure, "width", GST_TYPE_INT_RANGE, 1, G_MAXINT,
+        "height", GST_TYPE_INT_RANGE, 1, G_MAXINT, NULL);
+
+    // If pixel aspect ratio, make a range of it.
+    if (gst_structure_has_field (structure, "pixel-aspect-ratio")) {
+      gst_structure_set (structure, "pixel-aspect-ratio",
+          GST_TYPE_FRACTION_RANGE, 1, G_MAXINT, G_MAXINT, 1, NULL);
+    }
+
+    // Remove the format/color/compression related fields.
+    gst_structure_remove_fields (structure, "format", "colorimetry",
+        "chroma-site", "compression", NULL);
+
+    gst_caps_append_structure (result, structure);
+  }
+
   length = gst_caps_get_size (caps);
 
   for (idx = 0; idx < length; idx++) {
