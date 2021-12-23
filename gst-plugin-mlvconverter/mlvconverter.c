@@ -42,6 +42,11 @@
 #include <gst/ml/gstmlmeta.h>
 #include <gst/video/gstimagepool.h>
 
+#ifdef HAVE_LINUX_DMA_BUF_H
+#include <sys/ioctl.h>
+#include <linux/dma-buf.h>
+#endif // HAVE_LINUX_DMA_BUF_H
+
 #define GST_CAT_DEFAULT gst_ml_video_converter_debug
 GST_DEBUG_CATEGORY_STATIC (gst_ml_video_converter_debug);
 
@@ -187,6 +192,19 @@ init_formats (GValue * formats, ...)
   }
 
   va_end (args);
+}
+
+static gboolean
+gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
+{
+  GstStructure *structure = NULL;
+  const gchar *string = NULL;
+
+  structure = gst_caps_get_structure (caps, 0);
+  string = gst_structure_has_field (structure, "compression") ?
+      gst_structure_get_string (structure, "compression") : NULL;
+
+  return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
 }
 
 static gboolean
@@ -669,7 +687,7 @@ gst_ml_video_converter_translate_video_caps (GstMLVideoConverter * mlconverter,
 {
   GstCaps *result = NULL;
   GstStructure *structure = NULL;
-  GValue dimensions = G_VALUE_INIT, dimension = G_VALUE_INIT;
+  GValue dimensions = G_VALUE_INIT, entry = G_VALUE_INIT, dimension = G_VALUE_INIT;
   const GValue *value;
 
   if (gst_caps_is_empty (caps) || gst_caps_is_any (caps))
@@ -694,24 +712,18 @@ gst_ml_video_converter_translate_video_caps (GstMLVideoConverter * mlconverter,
     return result;
 
   g_value_init (&dimensions, GST_TYPE_ARRAY);
+  g_value_init (&entry, GST_TYPE_ARRAY);
   g_value_init (&dimension, G_TYPE_INT);
 
-  // 1st dimension is batch size.
-  value = gst_structure_get_value (structure, "batch-size");
-
-  if (NULL == value || !gst_value_is_fixed (value)) {
-    g_value_set_int (&dimension, 1);
-    value = &dimension;
-  }
-
-  gst_value_array_append_value (&dimensions, value);
+  g_value_set_int (&dimension, 1);
+  gst_value_array_append_value (&entry, &dimension);
 
   // 2nd dimension is video height.
-  gst_value_array_append_value (&dimensions,
+  gst_value_array_append_value (&entry,
       gst_structure_get_value (structure, "height"));
 
   // 3rd dimension is video width.
-  gst_value_array_append_value (&dimensions,
+  gst_value_array_append_value (&entry,
       gst_structure_get_value (structure, "width"));
 
   value = gst_structure_get_value (structure, "format");
@@ -742,11 +754,13 @@ gst_ml_video_converter_translate_video_caps (GstMLVideoConverter * mlconverter,
       break;
   }
 
-  gst_value_array_append_value (&dimensions, &dimension);
+  gst_value_array_append_value (&entry, &dimension);
   g_value_unset (&dimension);
 
-  gst_caps_set_value (result, "dimensions", &dimensions);
+  gst_value_array_append_value (&dimensions, &entry);
+  g_value_unset (&entry);
 
+  gst_caps_set_value (result, "dimensions", &dimensions);
   g_value_unset (&dimensions);
 
   // Extract the frame rate from video and propagate it to the ML caps.
@@ -1125,6 +1139,8 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
   gst_structure_set (opts,
       GST_C2D_VIDEO_CONVERTER_OPT_DEST_WIDTH, G_TYPE_INT, width,
       GST_C2D_VIDEO_CONVERTER_OPT_DEST_HEIGHT, G_TYPE_INT, height,
+      GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
+          gst_caps_has_compression (incaps, "ubwc"),
       NULL);
   gst_c2d_video_converter_set_input_opts (mlconverter->c2dconvert, 0, opts);
 #endif // USE_C2D_CONVERTER
@@ -1159,6 +1175,8 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
           GST_VIDEO_INFO_WIDTH (mlconverter->vinfo),
       GST_GLES_VIDEO_CONVERTER_OPT_OUTPUT_HEIGHT, G_TYPE_INT,
           GST_VIDEO_INFO_HEIGHT (mlconverter->vinfo),
+      GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
+          gst_caps_has_compression (incaps, "ubwc"),
       NULL);
 
   // In batch mode use only the GLES converter process APIs.
@@ -1168,8 +1186,18 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
         GST_GLES_VIDEO_CONVERTER_OPT_DEST_HEIGHT, G_TYPE_INT, height,
         NULL);
 
-  if (!gst_gles_video_converter_set_process_opts (mlconverter->glesconvert, opts))
-    GST_ERROR_OBJECT (mlconverter, "Configuration of GLES converter failed!");
+  // Configure the processing pipeline of the GLES converter.
+  gst_gles_video_converter_set_process_opts (mlconverter->glesconvert, opts);
+
+  // New options structure for GLES clip pipeline as previous one was consumed.
+  opts = gst_structure_new_empty ("options");
+
+  gst_structure_set (opts,
+      GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
+          gst_caps_has_compression (incaps, "ubwc"),
+      NULL);
+
+  gst_gles_video_converter_set_clip_opts (mlconverter->glesconvert, 0, opts);
 #endif // USE_GLES_CONVERTER
 
   GST_DEBUG_OBJECT (mlconverter, "Input caps: %" GST_PTR_FORMAT, incaps);
@@ -1189,6 +1217,18 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
 
   GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
   GstClockTimeDiff tsdelta = GST_CLOCK_TIME_NONE;
+
+#ifdef HAVE_LINUX_DMA_BUF_H
+  if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
+    struct dma_buf_sync bufsync;
+    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
+
+    bufsync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
+
+    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
+      GST_WARNING_OBJECT (mlconverter, "DMA IOCTL SYNC START failed!");
+  }
+#endif // HAVE_LINUX_DMA_BUF_H
 
   // Set the maximum allowed input to the size of the tensor batch.
   n_inputs = mlconverter->mlinfo->tensors[0][0];
@@ -1259,6 +1299,18 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
 
   gst_video_frame_unmap (&outframe);
   gst_unmap_input_video_frames (inframes, n_inputs);
+
+#ifdef HAVE_LINUX_DMA_BUF_H
+  if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
+    struct dma_buf_sync bufsync;
+    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
+
+    bufsync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
+
+    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
+      GST_WARNING_OBJECT (mlconverter, "DMA IOCTL SYNC END failed!");
+  }
+#endif // HAVE_LINUX_DMA_BUF_H
 
   return success ? GST_FLOW_OK : GST_FLOW_ERROR;
 }
