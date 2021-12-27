@@ -29,16 +29,13 @@
 
 #include "gstionpool.h"
 
-#include <dlfcn.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
-#include <stdio.h>
 
 #include <linux/ion.h>
 #include <linux/msm_ion.h>
-#include <media/msm_media_info.h>
 
 #define DEFAULT_PAGE_ALIGNMENT 4096
 
@@ -55,8 +52,10 @@ struct _GstIonBufferPoolPrivate
   // Either ION device FD.
   gint                devfd;
 
+#ifndef TARGET_ION_ABI_VERSION
   // Map of data FDs and ION handles on case ION memory is used OR
   GHashTable          *datamap;
+#endif
 };
 
 #define gst_ion_buffer_pool_parent_class parent_class
@@ -113,7 +112,7 @@ ion_device_alloc (GstIonBufferPool * ionpool, gint size)
   alloc_data.align = DEFAULT_PAGE_ALIGNMENT;
 #endif
   alloc_data.heap_id_mask = ION_HEAP(ION_SYSTEM_HEAP_ID);
-  alloc_data.flags = 0;
+  alloc_data.flags = ION_FLAG_CACHED;
 
   result = ioctl (priv->devfd, ION_IOC_ALLOC, &alloc_data);
   if (result != 0) {
@@ -168,9 +167,7 @@ ion_device_free (GstIonBufferPool * ionpool, gint fd)
 static const gchar **
 gst_ion_buffer_pool_get_options (GstBufferPool * pool)
 {
-  static const gchar *options[] = {
-    NULL
-  };
+  static const gchar *options[] = { NULL };
   return options;
 }
 
@@ -179,11 +176,10 @@ gst_ion_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
 {
   GstIonBufferPool *ionpool = GST_ION_BUFFER_POOL_CAST (pool);
   GstIonBufferPoolPrivate *priv = ionpool->priv;
-
-  guint size;
-  GstAllocator *allocator;
-  GstAllocationParams params;
+  GstAllocator *allocator = NULL;
   const GValue *memblocks = NULL;
+  GstAllocationParams params = { 0, };
+  guint size = 0;
 
   if (!gst_buffer_pool_config_get_params (config, NULL, &size, NULL, NULL)) {
     GST_ERROR_OBJECT (ionpool, "Invalid configuration!");

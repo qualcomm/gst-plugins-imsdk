@@ -365,20 +365,22 @@ gst_ml_aic_src_worker_task (gpointer userdata)
   GstPad *pad = GST_PAD (userdata);
   GstMLAic *mlaic = GST_ML_AIC (gst_pad_get_parent (pad));
   GstDataQueueItem *item = NULL;
+  GstEngineRequest *request = NULL;
+  GstBuffer *buffer = NULL, *outbuffer = NULL;
 
   if (gst_data_queue_pop (GST_ML_AIC_SRCPAD (pad)->requests, &item)) {
-    GstEngineRequest *request = NULL;
-    GstBuffer *buffer = NULL;
-    gboolean success = FALSE;
+    const GstMLInfo *mlinfo = NULL;
+    GstMemory *memory = NULL;
+    GstProtectionMeta *pmeta = NULL;
+    guint idx = 0, offset = 0, size = 0;
 
     // Increase the request reference count to indicate that it is in use.
     request = GST_ENGINE_REQUEST (gst_mini_object_ref (item->object));
     item->destroy (item);
 
     GST_TRACE_OBJECT (pad, "Waiting request %d", request->id);
-    success = gst_ml_aic_engine_wait_request (mlaic->engine, request->id);
 
-    if (!success) {
+    if (!gst_ml_aic_engine_wait_request (mlaic->engine, request->id)) {
       GST_DEBUG_OBJECT (pad, " Waiting request %d failed!", request->id);
       gst_engine_request_unref (request);
       return;
@@ -391,11 +393,48 @@ gst_ml_aic_src_worker_task (gpointer userdata)
         G_GINT64_FORMAT " ms", request->id, GST_TIME_AS_MSECONDS (request->time),
         (GST_TIME_AS_USECONDS (request->time) % 1000));
 
-    // Increase the buffer reference count to indicate that it is in use.
+    // Take a reference to the processed buffer for later use.
     buffer = gst_buffer_ref (request->outframe.buffer);
+    // Decrease the request reference count as it is no longer needed.
     gst_engine_request_unref (request);
 
-    gst_pad_push (pad, buffer);
+    // Create a new buffer wrapper to hold a reference to processed buffer.
+    outbuffer = gst_buffer_new ();
+
+    mlinfo = gst_ml_aic_engine_get_output_info (mlaic->engine);
+    memory = gst_buffer_peek_memory (buffer, 0);
+
+    // Share memory blocks from processed buffer with the new buffer.
+    for (idx = 0; idx < GST_ML_INFO_N_TENSORS (mlinfo); idx++) {
+      GstMLTensorMeta *mlmeta = NULL;
+
+      // Set the size of memory that needs to be shared.
+      size = gst_ml_info_tensor_size (mlinfo, idx);
+
+      gst_buffer_append_memory (outbuffer,
+          gst_memory_share (memory, offset, size));
+
+      // Set the offset to the next piece of memory that needs to be shared.
+      offset += size;
+
+      mlmeta = gst_buffer_add_ml_tensor_meta (outbuffer, mlinfo->type,
+          mlinfo->n_dimensions[idx], mlinfo->tensors[idx]);
+      mlmeta->id = idx;
+    }
+
+    // Copy the flags and timestamps from the processed buffer.
+    gst_buffer_copy_into (outbuffer, buffer, GST_BUFFER_COPY_FLAGS |
+        GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
+
+    // Transfer the GstProtectionMeta into the new buffer.
+    if ((pmeta = gst_buffer_get_protection_meta (buffer)) != NULL)
+      gst_buffer_add_protection_meta (outbuffer, gst_structure_copy (pmeta->info));
+
+    // Add parent meta, input buffer won't be released until new buffer is freed.
+    gst_buffer_add_parent_buffer_meta (outbuffer, buffer);
+    gst_buffer_unref (buffer);
+
+    gst_pad_push (pad, outbuffer);
   } else {
     GST_DEBUG_OBJECT (pad, "Paused worker thread");
     gst_pad_pause_task (pad);
@@ -633,6 +672,8 @@ gst_ml_aic_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
         return FALSE;
       }
 
+      outcaps = intersect;
+
       // Extract the aspect ratio.
       value = gst_structure_get_value (gst_caps_get_structure (incaps, 0),
           "aspect-ratio");
@@ -641,7 +682,6 @@ gst_ml_aic_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
       if (value != NULL)
         gst_caps_set_value (outcaps, "aspect-ratio", value);
 
-      outcaps = intersect;
       GST_DEBUG_OBJECT (pad, "Setting caps: %" GST_PTR_FORMAT, outcaps);
 
       if (!gst_pad_set_caps (srcpad, outcaps))
@@ -755,6 +795,7 @@ gst_ml_aic_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
   GstBufferPool *pool = GST_ML_AIC_SINKPAD (pad)->pool;
   GstEngineRequest *request = NULL;
   GstBuffer *outbuffer = NULL;
+  GstProtectionMeta *pmeta = NULL;
   const GstMLInfo * info = NULL;
 
   //Retrieve output buffer from the pool.
@@ -764,7 +805,11 @@ gst_ml_aic_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
   }
 
   // Copy the flags and timestamps from the input buffer.
-  gst_buffer_copy_into (outbuffer, inbuffer, GST_BUFFER_COPY_METADATA, 0, -1);
+  gst_buffer_copy_into (outbuffer, inbuffer, GST_BUFFER_COPY_FLAGS |
+      GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
+
+  if ((pmeta = gst_buffer_get_protection_meta (inbuffer)) != NULL)
+    gst_buffer_add_protection_meta (outbuffer, gst_structure_copy (pmeta->info));
 
   // Create new engine request.
   request = gst_engine_request_new ();

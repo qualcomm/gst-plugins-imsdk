@@ -266,6 +266,7 @@ gst_ml_tflite_prepare_output_buffer (GstBaseTransform * base,
 {
   GstMLTFLite *tflite = GST_ML_TFLITE (base);
   GstBufferPool *pool = tflite->outpool;
+  GstProtectionMeta *pmeta = NULL;
   GstFlowReturn ret = GST_FLOW_OK;
 
   if (gst_base_transform_is_passthrough (base)) {
@@ -294,7 +295,11 @@ gst_ml_tflite_prepare_output_buffer (GstBaseTransform * base,
   }
 
   // Copy the flags and timestamps from the input buffer.
-  gst_buffer_copy_into (*outbuffer, inbuffer, GST_BUFFER_COPY_METADATA, 0, -1);
+  gst_buffer_copy_into (*outbuffer, inbuffer, GST_BUFFER_COPY_FLAGS |
+      GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
+
+  if ((pmeta = gst_buffer_get_protection_meta (inbuffer)) != NULL)
+    gst_buffer_add_protection_meta (*outbuffer, gst_structure_copy (pmeta->info));
 
   return GST_FLOW_OK;
 }

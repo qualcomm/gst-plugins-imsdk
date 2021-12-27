@@ -433,7 +433,7 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
   info.size = MAX (size, info.size);
   priv->info = info;
 
-  // Check wthether we should allocate ubwc buffers.
+  // Check whether we should allocate ubwc buffers.
   priv->isubwc = gst_buffer_pool_config_has_option (config,
       GST_IMAGE_BUFFER_POOL_OPTION_UBWC_MODE);
 

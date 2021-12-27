@@ -81,7 +81,7 @@ gst_ml_info_from_caps (GstMLInfo * info, const GstCaps * caps)
 {
   GstStructure *structure;
   GstMLType type = GST_ML_TYPE_UNKNOWN;
-  guint tensors[GST_ML_MAX_TENSORS][GST_ML_TENSOR_MAX_DIMENSIONS];
+  guint tensors[GST_ML_MAX_TENSORS][GST_ML_TENSOR_MAX_DIMS];
   guint idx = 0, dim = 0, n_tensors = 0, n_dimensions[GST_ML_MAX_TENSORS];
   const GValue *value;
 

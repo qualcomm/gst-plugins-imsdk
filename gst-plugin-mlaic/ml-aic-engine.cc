@@ -189,6 +189,74 @@ gst_ml_aic_to_ml_type (::aicapi::bufferIoDataTypeEnum type)
   return GST_ML_TYPE_UNKNOWN;
 }
 
+static void
+gst_ml_aic_populate_info (GstMLAicEngine * engine, gint idx,
+    const ::aicapi::IoSet &ioset)
+{
+  GstMLInfo *mlinfo = NULL;
+  const ::aicapi::IoBinding *binding = NULL;
+  const ::aicapi::DmaBufInfo *info = NULL, *previnfo = NULL;
+  gboolean input = FALSE;
+  gint num = 0, dim = 0;
+
+  binding = &ioset.bindings(idx);
+
+  if (::aicapi::BUFFER_IO_TYPE_INPUT == binding->dir()) {
+    mlinfo = engine->ininfo;
+    input = TRUE;
+  } else if (::aicapi::BUFFER_IO_TYPE_OUTPUT == binding->dir()) {
+    mlinfo = engine->outinfo;
+    input = FALSE;
+  }
+
+  info = &binding->dma_buf_info(0);
+
+  GST_INFO ("%s tensor at index %u, name: %s, size %u, DMA index: %u, DMA "
+      "offset: %u and DMA size: %u", input ? "Input" : "Output",
+      binding->index(), binding->name().c_str(), binding->size(),
+      info->dma_buf_index(), info->dma_offset(), info->dma_size());
+
+  // Fill information about current tensor.
+  num = mlinfo->n_tensors;
+  mlinfo->n_dimensions[num] = binding->dims_size();
+
+  for (dim = 0; dim < binding->dims_size(); ++dim)
+    mlinfo->tensors[num][dim] = binding->dims(dim);
+
+  mlinfo->type = gst_ml_aic_to_ml_type (binding->type());
+  mlinfo->n_tensors++;
+
+  // Reorder tensors in case they are not sorted by DMA offset values.
+  while (--idx >= 0) {
+    binding = &ioset.bindings(idx);
+    previnfo = &binding->dma_buf_info(0);
+
+    if (previnfo->dma_buf_index() == info->dma_buf_index() &&
+        previnfo->dma_offset() > info->dma_offset()) {
+      gint n_dimensions, dimensions[GST_ML_TENSOR_MAX_DIMS];
+
+      n_dimensions = mlinfo->n_dimensions[num];
+      mlinfo->n_dimensions[num] = mlinfo->n_dimensions[num - 1];
+      mlinfo->n_dimensions[num - 1] = n_dimensions;
+
+      for (dim = 0; dim < n_dimensions; ++dim)
+        dimensions[dim] = mlinfo->tensors[num][dim];
+
+      for (dim = 0; dim < (gint) mlinfo->n_dimensions[num]; ++dim)
+        mlinfo->tensors[num][dim] = mlinfo->tensors[num - 1][dim];
+
+      for (dim = 0; dim < (gint) mlinfo->n_dimensions[num - 1]; ++dim)
+        mlinfo->tensors[num - 1][dim] = dimensions[dim];
+    }
+
+    if ((input && (::aicapi::BUFFER_IO_TYPE_INPUT == binding->dir())) ||
+        (!input && (::aicapi::BUFFER_IO_TYPE_OUTPUT == binding->dir())))
+      num--;
+
+    info = previnfo;
+  }
+}
+
 static gboolean
 gst_ml_aic_set_qbuffer (const GstMLFrame * frame, guint idx, QBuffer& qbuffer)
 {
@@ -249,7 +317,7 @@ gst_ml_aic_engine_new (GstStructure * settings)
 {
   GstMLAicEngine *engine = NULL;
   GArray *devices = NULL;
-  gint idx = 0, n_activations = 0;
+  guint idx = 0, num = 0, n_activations = 0;
 
   engine = new GstMLAicEngine;
   g_return_val_if_fail (engine != NULL, NULL);
@@ -286,7 +354,7 @@ gst_ml_aic_engine_new (GstStructure * settings)
     // Vector which will contain the devices IDs from which we create a context.
     std::vector<QID> device_ids;
 
-    for (idx = 0; idx < (gint) devices->len; idx++) {
+    for (idx = 0; idx < devices->len; idx++) {
       QID id = g_array_index (devices, guint, idx);
 
       // Verify that a device with the given ID exists.
@@ -419,53 +487,12 @@ gst_ml_aic_engine_new (GstStructure * settings)
 
     const ::aicapi::IoSet &ioset = *it;
 
-    // Iterate through all bindings and fill input and output ML info.
-    for (idx = 0; idx < ioset.bindings_size(); idx++) {
-      const ::aicapi::IoBinding &binding = ioset.bindings(idx);
-      const ::aicapi::DmaBufInfo &info = binding.dma_buf_info(0);
-      gint num = 0, dim = 0;
-
-      if (::aicapi::BUFFER_IO_TYPE_INPUT == binding.dir()) {
-        num = engine->ininfo->n_tensors;
-
-        GST_INFO ("Input tensor[%u] at index %u, name: %s, size %u, DMA "
-            "index: %u, DMA offset: %u and DMA size: %u", num, binding.index(),
-            binding.name().c_str(), binding.size(), info.dma_buf_index(),
-            info.dma_offset(), info.dma_size());
-
-        engine->ininfo->n_dimensions[num] = binding.dims_size();
-
-        for (dim = 0; dim < binding.dims_size(); ++dim) {
-          engine->ininfo->tensors[num][dim] = binding.dims(dim);
-          GST_INFO ("Input tensor[%u] Dimension[%u]: %u", num, dim,
-              engine->ininfo->tensors[num][dim]);
-        }
-
-        engine->ininfo->type = gst_ml_aic_to_ml_type (binding.type());
-        engine->ininfo->n_tensors++;
-      } else if (::aicapi::BUFFER_IO_TYPE_OUTPUT == binding.dir()) {
-        num = engine->outinfo->n_tensors;
-
-        GST_INFO ("Output tensor[%u] at index %u, name: %s, size %u, DMA "
-            "index: %u, DMA offset: %u and DMA size: %u", num, binding.index(),
-            binding.name().c_str(), binding.size(), info.dma_buf_index(),
-            info.dma_offset(), info.dma_size());
-
-        engine->outinfo->n_dimensions[num] = binding.dims_size();
-
-        for (dim = 0; dim < binding.dims_size(); ++dim) {
-          engine->outinfo->tensors[num][dim] = binding.dims(dim);
-          GST_INFO ("Output tensor[%u] Dimension[%u]: %u", num, dim,
-              engine->outinfo->tensors[num][dim]);
-        }
-
-        engine->outinfo->type = gst_ml_aic_to_ml_type (binding.type());
-        engine->outinfo->n_tensors++;
-      }
-    }
+    // Iterate through all bindings and populate input and output ML info.
+    for (idx = 0; idx < (guint) ioset.bindings_size(); idx++)
+      gst_ml_aic_populate_info (engine, idx, ioset);
 
     // Fill the order (in/out) in which the buffers are expected to be set.
-    for (idx = 0; idx < iodesc->dma_buf_size(); idx++)
+    for (idx = 0; idx < (guint) iodesc->dma_buf_size(); idx++)
       engine->buforder.push_back(iodesc->dma_buf(idx).dir());
 
   } catch (const ::qaic::rt::CoreExceptionInit &e) {
@@ -478,9 +505,21 @@ gst_ml_aic_engine_new (GstStructure * settings)
   GST_DEBUG ("Input tensors type: %s",
       gst_ml_type_to_string (engine->ininfo->type));
 
+  for (idx = 0; idx < GST_ML_INFO_N_TENSORS (engine->ininfo); idx++) {
+    for (num = 0; num < GST_ML_INFO_N_DIMENSIONS (engine->ininfo, idx); ++num)
+      GST_DEBUG ("Input tensor[%u] Dimension[%u]: %u", idx, num,
+          engine->ininfo->tensors[idx][num]);
+  }
+
   GST_DEBUG ("Number of output tensors: %u", engine->outinfo->n_tensors);
   GST_DEBUG ("Output tensors type: %s",
       gst_ml_type_to_string (engine->outinfo->type));
+
+  for (idx = 0; idx < GST_ML_INFO_N_TENSORS (engine->outinfo); idx++) {
+    for (num = 0; num < GST_ML_INFO_N_DIMENSIONS (engine->outinfo, idx); ++num)
+      GST_DEBUG ("Output tensor[%u] Dimension[%u]: %u", idx, num,
+          engine->outinfo->tensors[idx][num]);
+  }
 
   GST_INFO ("Created ML AIC engine: %p", engine);
   return engine;

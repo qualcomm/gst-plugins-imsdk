@@ -34,17 +34,17 @@
 
 G_BEGIN_DECLS
 
-#define GST_ML_MAX_TENSORS           8
-#define GST_ML_TENSOR_MAX_DIMENSIONS 8
+#define GST_ML_MAX_TENSORS     8
+#define GST_ML_TENSOR_MAX_DIMS 8
 
 /**
  * GstMLType:
- * @GST_ML_TYPE_UNKNOWN:
- * @GST_ML_TYPE_INT8: data is represented as 1 byte of signed integer value.
- * @GST_ML_TYPE_UINT8: data is represented as 1 byte of unsigned integer value.
- * @GST_ML_TYPE_INT32: data is represented as 4 byte of signed integer value.
- * @GST_ML_TYPE_UINT32: data is represented as 4 byte of unsigned integer value.
- * @GST_ML_TYPE_FLOAT32: data is represented as 4 bytes of floating point value.
+ * @GST_ML_TYPE_UNKNOWN: Invalid data.
+ * @GST_ML_TYPE_INT8: Data is represented as 1 byte of signed integer value.
+ * @GST_ML_TYPE_UINT8: Data is represented as 1 byte of unsigned integer value.
+ * @GST_ML_TYPE_INT32: Data is represented as 4 byte of signed integer value.
+ * @GST_ML_TYPE_UINT32: Data is represented as 4 byte of unsigned integer value.
+ * @GST_ML_TYPE_FLOAT32: Data is represented as 4 bytes of floating point value.
  *
  * The possible values of the #GstMLType describing the tensor format.
  */
