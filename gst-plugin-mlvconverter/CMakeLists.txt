@@ -25,6 +25,10 @@ pkg_check_modules(GST_VIDEO
 configure_file(config.h.in config.h @ONLY)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
+# Check whether DMA header is present.
+include(CheckIncludeFile)
+check_include_file("linux/dma-buf.h" HAVE_LINUX_DMA_BUF_H)
+
 # Precompiler definitions.
 add_definitions(-DHAVE_CONFIG_H)
 
@@ -42,6 +46,10 @@ add_library(${GST_QTI_ML_VIDEO_CONVERTER} SHARED
 target_compile_definitions(${GST_QTI_ML_VIDEO_CONVERTER} PRIVATE
   $<$<STREQUAL:${VIDEO_CONVERTER_ENGINE},C2D>:USE_C2D_CONVERTER>
   $<$<STREQUAL:${VIDEO_CONVERTER_ENGINE},GLES>:USE_GLES_CONVERTER>
+)
+
+target_compile_definitions(${GST_QTI_ML_VIDEO_CONVERTER} PRIVATE
+  $<$<BOOL:${HAVE_LINUX_DMA_BUF_H}>:HAVE_LINUX_DMA_BUF_H>
 )
 
 target_include_directories(${GST_QTI_ML_VIDEO_CONVERTER} PUBLIC

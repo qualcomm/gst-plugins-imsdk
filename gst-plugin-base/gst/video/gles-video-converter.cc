@@ -87,6 +87,7 @@
 #define DEFAULT_OPT_NORMALIZE        FALSE
 #define DEFAULT_OPT_QUANTIZE         FALSE
 #define DEFAULT_OPT_CONVERT_TO_UINT8 FALSE
+#define DEFAULT_OPT_UBWC_FORMAT      FALSE
 
 #define GET_OPT_OUTPUT_WIDTH(s, v) get_opt_int (s, \
     GST_GLES_VIDEO_CONVERTER_OPT_OUTPUT_WIDTH, v)
@@ -126,6 +127,8 @@
     GST_GLES_VIDEO_CONVERTER_OPT_DEST_WIDTH, v)
 #define GET_OPT_DEST_HEIGHT(s, v) get_opt_int (s, \
     GST_GLES_VIDEO_CONVERTER_OPT_DEST_HEIGHT, v)
+#define GET_OPT_UBWC_FORMAT(s) get_opt_boolean(s, \
+    GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT, DEFAULT_OPT_UBWC_FORMAT)
 
 #define GST_GLES_GET_LOCK(obj) (&((GstGlesConverter *)obj)->lock)
 #define GST_GLES_LOCK(obj)     g_mutex_lock (GST_GLES_GET_LOCK(obj))
@@ -331,8 +334,7 @@ gst_video_converter_update_image (::QImgConv::Image * image, gboolean input,
   image->fd = gst_fd_memory_get_fd (memory);
   image->width = GST_VIDEO_FRAME_WIDTH (frame);
   image->height = GST_VIDEO_FRAME_HEIGHT (frame);
-  image->format = gst_video_format_to_drm_format (
-      GST_VIDEO_FRAME_FORMAT (frame));
+  image->format = gst_video_format_to_drm_format (GST_VIDEO_FRAME_FORMAT (frame));
   image->numPlane = GST_VIDEO_FRAME_N_PLANES (frame);
 
   GST_TRACE ("%s image FD[%d] - Width[%u] Height[%u] Format[%c%c%c%c]"
@@ -602,6 +604,10 @@ gst_gles_video_converter_clip (GstGlesConverter * convert,
     // Get the options for current input buffer.
     opts = GST_STRUCTURE (g_list_nth_data (convert->clipopts, idx));
 
+    // In case the UBWC format option is set override the format.
+    if (GET_OPT_UBWC_FORMAT (opts) && (inimages[idx].format == DRM_FORMAT_NV12))
+      inimages[idx].format = GBM_FORMAT_YCbCr_420_SP_VENUS_UBWC;
+
     gst_extract_rectangles (opts, GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES,
         &inframes[idx], &inrects, &n_inrects);
     gst_extract_rectangles (opts, GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES,
@@ -655,15 +661,14 @@ gst_gles_video_converter_process (GstGlesConverter * convert,
     if (NULL == frame->buffer)
       continue;
 
-    // Initialize empty options structure in case none have been set.
-    if (idx >= g_list_length (convert->clipopts)) {
-      convert->clipopts = g_list_append (convert->clipopts,
-          gst_structure_new_empty ("Input"));
-    }
-
     success = gst_video_converter_update_image (&inimages[idx], true, frame);
     GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (success, FALSE, delete[] inimages,
         "Failed to update QImgConv image at index %u !", idx);
+
+    // In case the UBWC format option is set override the format.
+    if (GET_OPT_UBWC_FORMAT (convert->procopts) &&
+        (inimages[idx].format == DRM_FORMAT_NV12))
+      inimages[idx].format = GBM_FORMAT_YCbCr_420_SP_VENUS_UBWC;
   }
 
   outimages = new (std::nothrow) QImgConv::Image[n_outputs];

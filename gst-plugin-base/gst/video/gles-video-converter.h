@@ -229,7 +229,16 @@ typedef struct _GstGlesConverter GstGlesConverter;
  * Default: FALSE
  */
 #define GST_GLES_VIDEO_CONVERTER_OPT_CONVERT_TO_UINT8 \
-    "GstGlesVideoConverter.convert_to_uint8"
+    "GstGlesVideoConverter.convert-to-uint8"
+
+/**
+ * GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT:
+ *
+ * #G_TYPE_BOOLEAN, whether buffers have UBWC (Universal Bandwidth Compression)
+ * Default: FALSE
+ */
+#define GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT \
+    "GstGlesVideoConverter.ubwc-format"
 
 /**
  * gst_gles_video_converter_new:
