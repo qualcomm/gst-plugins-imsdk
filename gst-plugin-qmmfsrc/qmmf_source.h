@@ -83,6 +83,9 @@ struct _GstQmmfSrc {
 
   /// Jpeg and Bayer feature is enabled.
   gboolean       jpegbayerenabled;
+
+  /// Camera device state
+  gboolean       isplugged;
 };
 
 struct _GstQmmfSrcClass {
