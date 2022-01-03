@@ -89,6 +89,8 @@ G_DEFINE_TYPE (GstMLVideoClassification, gst_ml_video_classification,
 #define DEFAULT_TEXT_BUFFER_SIZE   4096
 #define DEFAULT_FONT_SIZE          20
 
+#define MAX_TEXT_LENGTH            25
+
 #define EXTRACT_RED_COLOR(color)   (((color >> 24) & 0xFF) / 255.0)
 #define EXTRACT_GREEN_COLOR(color) (((color >> 16) & 0xFF) / 255.0)
 #define EXTRACT_BLUE_COLOR(color)  (((color >> 8) & 0xFF) / 255.0)
@@ -413,7 +415,8 @@ gst_ml_video_classification_fill_video_output (
   cairo_set_antialias (context, CAIRO_ANTIALIAS_BEST);
 
   // Set the most appropriate font size based on number of results.
-  fontsize = vmeta->height / classification->n_results;
+  fontsize = ((gdouble) vmeta->width / MAX_TEXT_LENGTH) * (5.0F / 3.0F);
+  fontsize = MIN (fontsize, vmeta->height / classification->n_results);
   cairo_set_font_size (context, fontsize);
 
   {
@@ -761,7 +764,7 @@ gst_ml_video_classification_fixate_caps (GstBaseTransform * base,
     value = gst_structure_get_value (output, "width");
 
     if ((NULL == value) || !gst_value_is_fixed (value)) {
-      width = GST_ROUND_UP_4 (DEFAULT_FONT_SIZE * 20 * 3 / 5);
+      width = GST_ROUND_UP_4 (DEFAULT_FONT_SIZE * MAX_TEXT_LENGTH * 3 / 5);
       gst_structure_set (output, "width", G_TYPE_INT, width, NULL);
       value = gst_structure_get_value (output, "width");
     }
