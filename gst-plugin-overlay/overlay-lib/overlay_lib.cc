@@ -1849,6 +1849,7 @@ int32_t OverlayItemDateAndTime::Init (OverlayParam& param)
   }
 
   text_color_ = param.color;
+  font_size_ = param.font_size;
   x_ = param.dst_rect.start_x;
   y_ = param.dst_rect.start_y;
   width_ = param.dst_rect.width;
@@ -1859,13 +1860,13 @@ int32_t OverlayItemDateAndTime::Init (OverlayParam& param)
   date_time_type_.time_format = param.date_time.time_format;
 
   // Create surface with the same aspect ratio
-  surface_.width_ = ROUND_TO(kCairoBufferMinWidth, 16);
-  surface_.height_ = kCairoBufferMinWidth * height_ / width_;
+  surface_.width_ = ROUND_TO(font_size_ * 6, 16);
+  surface_.height_ = font_size_ * 6 * height_ / width_;
 
   // Recalculate if surface height is less than minimum
-  if (surface_.height_ < kCairoBufferMinHeight) {
-    surface_.height_ = kCairoBufferMinHeight;
-    surface_.width_ = ROUND_TO(kCairoBufferMinHeight * width_ / height_, 16);
+  if (surface_.height_ < font_size_ * 2) {
+    surface_.height_ = font_size_ * 2;
+    surface_.width_ = ROUND_TO(font_size_ * 2 * width_ / height_, 16);
     // recalculated height according to aligned width
     surface_.height_ = surface_.width_ * height_ / width_;
   }
@@ -1950,7 +1951,7 @@ int32_t OverlayItemDateAndTime::UpdateAndDraw ()
   ClearSurface ();
   cairo_select_font_face (cr_context_, "@cairo:Georgia",
       CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
-  cairo_set_font_size (cr_context_, kTextSize);
+  cairo_set_font_size (cr_context_, font_size_);
   cairo_set_antialias (cr_context_, CAIRO_ANTIALIAS_BEST);
   assert (CAIRO_STATUS_SUCCESS == cairo_status (cr_context_));
 
@@ -2049,6 +2050,7 @@ void OverlayItemDateAndTime::GetParameters (OverlayParam& param)
   OVDBG_VERBOSE ("%s:Enter ", __func__);
   param.type = OverlayType::kDateType;
   param.color = text_color_;
+  param.font_size = font_size_;
   param.dst_rect.start_x = x_;
   param.dst_rect.start_y = y_;
   param.dst_rect.width = width_;
@@ -2069,6 +2071,7 @@ int32_t OverlayItemDateAndTime::UpdateParameters (OverlayParam& param)
   }
 
   text_color_ = param.color;
+  font_size_ = param.font_size;
   x_ = param.dst_rect.start_x;
   y_ = param.dst_rect.start_y;
 
@@ -2081,13 +2084,13 @@ int32_t OverlayItemDateAndTime::UpdateParameters (OverlayParam& param)
     prev_time_ = 0;
 
     // Create surface with the same aspect ratio
-    surface_.width_ = ROUND_TO(kCairoBufferMinWidth, 16);
-    surface_.height_ = kCairoBufferMinWidth * height_ / width_;
+    surface_.width_ = ROUND_TO(font_size_ * 6, 16);
+    surface_.height_ = font_size_ * 6 * height_ / width_;
 
     // Recalculate if surface height is less than minimum
-    if (surface_.height_ < kCairoBufferMinHeight) {
-      surface_.height_ = kCairoBufferMinHeight;
-      surface_.width_ = ROUND_TO(kCairoBufferMinHeight * width_ / height_, 16);
+    if (surface_.height_ < font_size_ * 2) {
+      surface_.height_ = font_size_ * 2;
+      surface_.width_ = ROUND_TO(font_size_ * 2 * width_ / height_, 16);
       // recalculated height according to aligned width
       surface_.height_ = surface_.width_ * height_ / width_;
     }
@@ -2175,6 +2178,7 @@ int32_t OverlayItemBoundingBox::Init (OverlayParam& param)
   width_ = param.dst_rect.width;
   height_ = param.dst_rect.height;
   bbox_color_ = param.color;
+  font_size_ = param.font_size;
 
   surface_.width_ = kBoxBuffWidth;
   surface_.height_ = ROUND_TO( (surface_.width_ * height_) / width_, 2);
@@ -2248,7 +2252,7 @@ int32_t OverlayItemBoundingBox::UpdateAndDraw ()
   cairo_select_font_face (text_cr_context_, "@cairo:Georgia",
       CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
 
-  cairo_set_font_size (text_cr_context_, kTextSize);
+  cairo_set_font_size (text_cr_context_, font_size_);
   cairo_set_antialias (text_cr_context_, CAIRO_ANTIALIAS_BEST);
 
   cairo_font_extents_t font_extents;
@@ -2351,6 +2355,7 @@ void OverlayItemBoundingBox::GetParameters (OverlayParam& param)
   OVDBG_VERBOSE ("%s:Enter ", __func__);
   param.type = OverlayType::kBoundingBox;
   param.color = bbox_color_;
+  param.font_size = font_size_;
   param.dst_rect.start_x = x_;
   param.dst_rect.start_y = y_;
   param.dst_rect.width = width_;
@@ -2420,6 +2425,11 @@ int32_t OverlayItemBoundingBox::UpdateParameters (OverlayParam& param)
 
   if (bbox_color_ != param.color) {
     bbox_color_ = param.color;
+    MarkDirty (true);
+  }
+
+  if (font_size_ != param.font_size) {
+    font_size_ = param.font_size;
     MarkDirty (true);
   }
 
@@ -2524,15 +2534,16 @@ int32_t OverlayItemText::Init (OverlayParam& param)
   }
 
   text_color_ = param.color;
+  font_size_ = param.font_size;
   x_ = param.dst_rect.start_x;
   y_ = param.dst_rect.start_y;
   width_ = param.dst_rect.width;
   height_ = param.dst_rect.height;
   text_ = param.user_text;
 
-  surface_.width_ = std::max (kCairoBufferMinWidth, width_);
+  surface_.width_ = std::max (font_size_ * 4, width_);
   surface_.width_ = ROUND_TO(surface_.width_, 16);
-  surface_.height_ = std::max (kCairoBufferMinHeight, height_);
+  surface_.height_ = std::max (font_size_, height_);
   surface_.format_ = SurfaceFormat::kARGB;
   if (use_alpha_only_) {
     surface_.format_ = SurfaceFormat::kA8;
@@ -2576,7 +2587,7 @@ int32_t OverlayItemText::UpdateAndDraw ()
   ClearSurface ();
   cairo_select_font_face (cr_context_, "@cairo:Georgia",
       CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
-  cairo_set_font_size (cr_context_, kTextSize);
+  cairo_set_font_size (cr_context_, font_size_);
   cairo_set_antialias (cr_context_, CAIRO_ANTIALIAS_BEST);
   assert (CAIRO_STATUS_SUCCESS == cairo_status (cr_context_));
 
@@ -2659,6 +2670,7 @@ void OverlayItemText::GetParameters (OverlayParam& param)
   OVDBG_VERBOSE ("%s:Enter ", __func__);
   param.type = OverlayType::kUserText;
   param.color = text_color_;
+  param.font_size = font_size_;
   param.dst_rect.start_x = x_;
   param.dst_rect.start_y = y_;
   param.dst_rect.width = width_;
@@ -2686,9 +2698,9 @@ int32_t OverlayItemText::UpdateParameters (OverlayParam& param)
     width_ = param.dst_rect.width;
     height_ = param.dst_rect.height;
 
-    surface_.width_ = std::max (kCairoBufferMinWidth, width_);
+    surface_.width_ = std::max (font_size_ * 4, width_);
     surface_.width_ = ROUND_TO(surface_.width_, 16);
-    surface_.height_ = std::max (kCairoBufferMinHeight, height_);
+    surface_.height_ = std::max (font_size_, height_);
     surface_.stride_ = CalcStride (surface_.width_, surface_.format_);
 
     OVDBG_INFO ("%s: New Offscreen buffer:(%dx%d)", __func__, surface_.width_,
@@ -2704,6 +2716,11 @@ int32_t OverlayItemText::UpdateParameters (OverlayParam& param)
 
   if (text_color_ != param.color) {
     text_color_ = param.color;
+    MarkDirty (true);
+  }
+
+  if (font_size_ != param.font_size) {
+    font_size_ = param.font_size;
     MarkDirty (true);
   }
 

@@ -116,11 +116,17 @@ struct _GstOverlay {
   guint               text_color;
   guint               pose_color;
   guint               arrows_color;
+
+  guint               bbox_font_size;
+  guint               date_font_size;
+  guint               text_font_size;
+
   guint               arrows_filter_mv;
   guint               arrows_filter_sad;
   guint               arrows_filter_var;
 
   GstVideoRectangle   text_dest_rect;
+  guint               last_ov_y;
 
   /* User overlay */
   GSequence           *usr_text;
@@ -158,6 +164,7 @@ struct _GstOverlayUsrText {
   GstOverlayUser        base;
   gchar                 *text;
   guint                 color;
+  guint                 font_size;
   GstVideoRectangle     dest_rect;
 };
 
@@ -173,6 +180,7 @@ struct _GstOverlayUsrDate {
   OverlayDateFormatType date_format;
   OverlayTimeFormatType time_format;
   guint                 color;
+  guint                 font_size;
   GstVideoRectangle     dest_rect;
 };
 
@@ -206,6 +214,7 @@ struct _GstOverlayUsrBBox {
   gchar                 *label;
   GstVideoRectangle     boundind_box;
   guint                 color;
+  guint                 font_size;
 };
 
 /* GstOverlayUsrMask - parameters for privacy mask overlay

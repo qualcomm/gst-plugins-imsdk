@@ -363,6 +363,7 @@ protected:
   size_t global_devider_h_;
   size_t local_size_w_;
   size_t local_size_h_;
+  uint32_t font_size_;
 
  private:
 
@@ -424,10 +425,6 @@ class OverlayItemDateAndTime : public OverlayItem {
 
 private:
 
-  static const int kTextSize = 20;
-  static const int kCairoBufferMinWidth = kTextSize * 6;
-  static const int kCairoBufferMinHeight = kTextSize * 2;
-
   int32_t CreateSurface ();
 
   OverlayDateTimeType date_time_type_;
@@ -458,7 +455,6 @@ class OverlayItemBoundingBox : public OverlayItem {
   static const int32_t kBoxBuffWidth = 320;
   static const int32_t kStrokeWidth = 4;
   static const int32_t kTextLimit = 20;
-  static const int32_t kTextSize = 25;
   static const int32_t kTextPercent = 20;
   static const int32_t kTextMargin = kStrokeWidth + 4;
 
@@ -498,10 +494,6 @@ class OverlayItemText : public OverlayItem {
   int32_t UpdateParameters (OverlayParam& param) override;
 
  private:
-
-  static const uint32_t kTextSize = 40;
-  static const uint32_t kCairoBufferMinWidth = kTextSize * 4;
-  static const uint32_t kCairoBufferMinHeight = kTextSize;
 
   int32_t CreateSurface ();
 

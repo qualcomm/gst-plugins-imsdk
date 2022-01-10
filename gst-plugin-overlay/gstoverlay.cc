@@ -91,6 +91,10 @@ G_DEFINE_TYPE (GstOverlay, gst_overlay, GST_TYPE_VIDEO_FILTER);
 #define DEFAULT_PROP_OVERLAY_ARROWS_COLOR kColorRed
 #define DEFAULT_PROP_OVERLAY_MASK_COLOR  kColorDarkGray
 
+#define DEFAULT_PROP_OVERLAY_BBOX_FONT_SIZE 25
+#define DEFAULT_PROP_OVERLAY_DATE_FONT_SIZE 20
+#define DEFAULT_PROP_OVERLAY_TEXT_FONT_SIZE 40
+
 #define DEFAULT_PROP_DEST_RECT_X      40
 #define DEFAULT_PROP_DEST_RECT_Y      40
 #define DEFAULT_PROP_DEST_RECT_WIDTH  200
@@ -135,6 +139,9 @@ static GstMLKeyPointsType PoseChain [][2] {
  * PROP_OVERLAY_TEXT_COLOR   - ML Classification color
  * PROP_OVERLAY_POSE_COLOR   - ML PoseNet color
  * PROP_OVERLAY_ARROWS_COLOR - Optical flow arrows color
+ * PROP_OVERLAY_BBOX_FONT_SIZE - ML Detection font size
+ * PROP_OVERLAY_DATE_FONT_SIZE - ML Time and Date font size
+ * PROP_OVERLAY_TEXT_FONT_SIZE - ML Classification font size
  * PROP_OVERLAY_TEXT_DEST_RECT - ML Classification destination rectangle
  * PROP_OVERLAY_OPTIFLOW_FT_MV - Optical flow MV filter
  * PROP_OVERLAY_OPTIFLOW_FT_SAD - Optical flow SAD filter
@@ -152,6 +159,9 @@ enum {
   PROP_OVERLAY_TEXT_COLOR,
   PROP_OVERLAY_POSE_COLOR,
   PROP_OVERLAY_ARROWS_COLOR,
+  PROP_OVERLAY_BBOX_FONT_SIZE,
+  PROP_OVERLAY_DATE_FONT_SIZE,
+  PROP_OVERLAY_TEXT_FONT_SIZE,
   PROP_OVERLAY_TEXT_DEST_RECT,
   PROP_OVERLAY_OPTIFLOW_FT_MV,
   PROP_OVERLAY_OPTIFLOW_FT_SAD,
@@ -330,7 +340,7 @@ gst_overlay_apply_item_list (GstOverlay *gst_overlay,
  */
 static gboolean
 gst_overlay_apply_bbox_item (GstOverlay * gst_overlay, GstVideoRectangle * bbox,
-    const gchar * label, guint color, uint32_t * item_id)
+    const char * label, guint color, guint font_size, uint32_t * item_id)
 {
   OverlayParam ov_param;
   int32_t ret = 0;
@@ -352,6 +362,7 @@ gst_overlay_apply_bbox_item (GstOverlay * gst_overlay, GstVideoRectangle * bbox,
   }
 
   ov_param.color = color;
+  ov_param.font_size = font_size;
   ov_param.dst_rect.start_x = bbox->x;
   ov_param.dst_rect.start_y = bbox->y;
   ov_param.dst_rect.width = bbox->w;
@@ -418,46 +429,7 @@ gst_overlay_apply_ml_bbox_item (GstOverlay * gst_overlay, gpointer metadata,
   bbox.h = meta->bounding_box.height;
 
   return gst_overlay_apply_bbox_item (gst_overlay, &bbox, result->name,
-      gst_overlay->bbox_color, item_id);
-}
-
-/**
- * gst_overlay_apply_roi_bbox_item:
- * @gst_overlay: context
- * @metadata: machine learning metadata entry
- * @item_id: pointer to overlay item instance id
- *
- * Converts GstVideoRegionOfInterestMeta to overlay configuration and applies
- * it as bounding box overlay.
- *
- * Return true if succeed.
- */
-static gboolean
-gst_overlay_apply_roi_bbox_item (GstOverlay * gst_overlay, gpointer meta,
-    uint32_t * item_id)
-{
-  GstVideoRegionOfInterestMeta *roimeta = (GstVideoRegionOfInterestMeta*) meta;
-  GstStructure *structure = NULL;
-  const gchar *label = NULL;
-  guint color = 0x00000000;
-  GstVideoRectangle bbox;
-
-  g_return_val_if_fail (gst_overlay != NULL, FALSE);
-  g_return_val_if_fail (meta != NULL, FALSE);
-  g_return_val_if_fail (item_id != NULL, FALSE);
-
-  structure =
-      gst_video_region_of_interest_meta_get_param (roimeta, "ObjectDetection");
-
-  label = gst_structure_get_string (structure, "label");
-  gst_structure_get_uint (structure, "color", &color);
-
-  bbox.x = roimeta->x;
-  bbox.y = roimeta->y;
-  bbox.w = roimeta->w;
-  bbox.h = roimeta->h;
-
-  return gst_overlay_apply_bbox_item (gst_overlay, &bbox, label, color, item_id);
+      gst_overlay->bbox_color, gst_overlay->bbox_font_size, item_id);
 }
 
 /**
@@ -480,7 +452,7 @@ gst_overlay_apply_user_bbox_item (gpointer data, gpointer user_data)
   if (!ov_data->base.is_applied) {
     gboolean res = gst_overlay_apply_bbox_item (gst_overlay,
         &ov_data->boundind_box, ov_data->label, ov_data->color,
-        &ov_data->base.item_id);
+        ov_data->font_size, &ov_data->base.item_id);
     if (!res) {
       GST_ERROR_OBJECT (gst_overlay, "User overlay apply failed!");
       return;
@@ -655,8 +627,8 @@ gst_overlay_apply_user_simg_item (gpointer data, gpointer user_data)
  * Return true if succeed.
  */
 static gboolean
-gst_overlay_apply_text_item (GstOverlay * gst_overlay, gchar * name,
-    guint color, GstVideoRectangle * dest_rect, uint32_t * item_id)
+gst_overlay_apply_text_item (GstOverlay * gst_overlay, const gchar * name,
+    guint color, guint font_size, GstVideoRectangle * dest_rect, uint32_t * item_id)
 {
   OverlayParam ov_param;
   int32_t ret = 0;
@@ -678,6 +650,7 @@ gst_overlay_apply_text_item (GstOverlay * gst_overlay, gchar * name,
   }
 
   ov_param.color = color;
+  ov_param.font_size = font_size;
   ov_param.dst_rect.start_x = dest_rect->x;
   ov_param.dst_rect.start_y = dest_rect->y;
   ov_param.dst_rect.width = dest_rect->w;
@@ -714,6 +687,66 @@ gst_overlay_apply_text_item (GstOverlay * gst_overlay, gchar * name,
 }
 
 /**
+ * gst_overlay_apply_roi_item:
+ * @gst_overlay: context
+ * @metadata: machine learning metadata entry
+ * @item_id: pointer to overlay item instance id
+ *
+ * Converts GstVideoRegionOfInterestMeta to overlay configuration and applies
+ * it as overlay.
+ *
+ * Return true if succeed.
+ */
+static gboolean
+gst_overlay_apply_roi_item (GstOverlay * gst_overlay, gpointer meta,
+    uint32_t * item_id)
+{
+  GstVideoRegionOfInterestMeta *roimeta = (GstVideoRegionOfInterestMeta*) meta;
+  GstStructure *structure = NULL;
+  const gchar *label = NULL;
+  guint color = 0x00000000;
+  GstVideoRectangle bbox;
+
+  g_return_val_if_fail (gst_overlay != NULL, FALSE);
+  g_return_val_if_fail (meta != NULL, FALSE);
+  g_return_val_if_fail (item_id != NULL, FALSE);
+
+  structure = gst_video_region_of_interest_meta_get_param (roimeta,
+      "ObjectDetection");
+  if (structure) {
+    label = gst_structure_get_string (structure, "label");
+    gst_structure_get_uint (structure, "color", &color);
+
+    bbox.x = roimeta->x;
+    bbox.y = roimeta->y;
+    bbox.w = roimeta->w;
+    bbox.h = roimeta->h;
+
+    return gst_overlay_apply_bbox_item (gst_overlay, &bbox, label, color,
+        gst_overlay->bbox_font_size, item_id);
+  }
+
+  structure = gst_video_region_of_interest_meta_get_param (roimeta,
+      "ImageClassification");
+  if (structure) {
+    label = gst_structure_get_string (structure, "label");
+    gst_structure_get_uint (structure, "color", &color);
+
+    GstVideoRectangle rect = gst_overlay->text_dest_rect;
+    // Calculate the Y possition in case of multiple lines
+    if (gst_overlay->last_ov_y > 0) {
+      rect.y += gst_overlay->last_ov_y + rect.h - rect.y;
+    }
+    gst_overlay->last_ov_y = rect.y;
+
+    return gst_overlay_apply_text_item (gst_overlay, label, color,
+        gst_overlay->text_font_size, &rect, item_id);
+  }
+
+  return FALSE;
+}
+
+/**
  * gst_overlay_apply_ml_text_item:
  * @gst_overlay: context
  * @metadata: machine learning metadata entry
@@ -733,9 +766,15 @@ gst_overlay_apply_ml_text_item (GstOverlay *gst_overlay, gpointer metadata,
   g_return_val_if_fail (item_id != NULL, FALSE);
 
   GstMLClassificationMeta * meta = (GstMLClassificationMeta *) metadata;
+  GstVideoRectangle rect = gst_overlay->text_dest_rect;
+  // Calculate the Y possition in case of multiple lines
+  if (gst_overlay->last_ov_y > 0) {
+    rect.y += gst_overlay->last_ov_y + rect.h - rect.y;
+  }
+  gst_overlay->last_ov_y = rect.y;
 
   return gst_overlay_apply_text_item (gst_overlay, meta->result.name,
-    gst_overlay->text_color, &gst_overlay->text_dest_rect, item_id);
+    gst_overlay->text_color, gst_overlay->text_font_size, &rect, item_id);
 }
 
 /**
@@ -757,7 +796,8 @@ gst_overlay_apply_user_text_item (gpointer data, gpointer user_data)
 
   if (!ov_data->base.is_applied) {
     gboolean res = gst_overlay_apply_text_item (gst_overlay, ov_data->text,
-      ov_data->color, &ov_data->dest_rect, &ov_data->base.item_id);
+      ov_data->color, ov_data->font_size, &ov_data->dest_rect,
+      &ov_data->base.item_id);
     if (!res) {
       GST_ERROR_OBJECT (gst_overlay, "User overlay apply failed!");
       return;
@@ -1097,7 +1137,7 @@ gst_overlay_apply_optclflow_item (GstOverlay * gst_overlay, gpointer metadata,
 static gboolean
 gst_overlay_apply_date_item (GstOverlay *gst_overlay,
     OverlayTimeFormatType time_format, OverlayDateFormatType date_format,
-    guint color, GstVideoRectangle * dest_rect, uint32_t * item_id)
+    guint color, guint font_size, GstVideoRectangle * dest_rect, uint32_t * item_id)
 {
   OverlayParam ov_param;
   int32_t ret = 0;
@@ -1117,6 +1157,7 @@ gst_overlay_apply_date_item (GstOverlay *gst_overlay,
   }
 
   ov_param.color = color;
+  ov_param.font_size = font_size;
   ov_param.dst_rect.start_x = dest_rect->x;
   ov_param.dst_rect.start_y = dest_rect->y;
   ov_param.dst_rect.width = dest_rect->w;
@@ -1167,7 +1208,7 @@ gst_overlay_apply_user_date_item (gpointer data, gpointer user_data)
   if (!ov_data->base.is_applied) {
     gboolean res = gst_overlay_apply_date_item (gst_overlay,
       ov_data->time_format, ov_data->date_format, ov_data->color,
-      &ov_data->dest_rect, &ov_data->base.item_id);
+      ov_data->font_size, &ov_data->dest_rect, &ov_data->base.item_id);
     if (!res) {
       GST_ERROR_OBJECT (gst_overlay, "User overlay apply failed!");
       return;
@@ -1365,6 +1406,7 @@ gst_overlay_set_text_overlay (GstOverlayUser * entry, GstStructure * structure,
 {
   GstOverlayUsrText * text_entry = (GstOverlayUsrText *) entry;
   gboolean color_set = FALSE;
+  gboolean font_size_set = FALSE;
   gboolean entry_valid = FALSE;
 
   for (gint idx = 0; idx < gst_structure_n_fields (structure); ++idx) {
@@ -1395,6 +1437,17 @@ gst_overlay_set_text_overlay (GstOverlayUser * entry, GstStructure * structure,
       }
     }
 
+    if (!g_strcmp0 (name, "font-size")) {
+      if (G_VALUE_HOLDS (value, G_TYPE_UINT)) {
+        text_entry->font_size = g_value_get_uint (value);
+        font_size_set = TRUE;
+      }
+      if (G_VALUE_HOLDS (value, G_TYPE_INT)) {
+        text_entry->font_size = (guint)g_value_get_int (value);
+        font_size_set = TRUE;
+      }
+    }
+
     if (!g_strcmp0 (name, "dest-rect") && G_VALUE_HOLDS (value, GST_TYPE_ARRAY)
          && gst_value_array_get_size (value) == 4) {
       text_entry->dest_rect.x =
@@ -1410,6 +1463,10 @@ gst_overlay_set_text_overlay (GstOverlayUser * entry, GstStructure * structure,
 
   if (!color_set && entry_valid && !entry_exist) {
     text_entry->color = DEFAULT_PROP_OVERLAY_TEXT_COLOR;
+  }
+
+  if (!font_size_set && entry_valid && !entry_exist) {
+    text_entry->font_size = DEFAULT_PROP_OVERLAY_TEXT_FONT_SIZE;
   }
 
   return entry_valid;
@@ -1433,6 +1490,7 @@ gst_overlay_set_date_overlay (GstOverlayUser * entry, GstStructure * structure,
 {
   GstOverlayUsrDate * date_entry = (GstOverlayUsrDate *) entry;
   gboolean color_set = FALSE;
+  gboolean font_size_set = FALSE;
   gboolean entry_valid = FALSE;
   gboolean date_valid = FALSE;
   gboolean time_valid = FALSE;
@@ -1482,6 +1540,17 @@ gst_overlay_set_date_overlay (GstOverlayUser * entry, GstStructure * structure,
       }
     }
 
+    if (!g_strcmp0 (name, "font-size")) {
+      if (G_VALUE_HOLDS (value, G_TYPE_UINT)) {
+        date_entry->font_size = g_value_get_uint (value);
+        font_size_set = TRUE;
+      }
+      if (G_VALUE_HOLDS (value, G_TYPE_INT)) {
+        date_entry->font_size = (guint)g_value_get_int (value);
+        font_size_set = TRUE;
+      }
+    }
+
     if (!g_strcmp0 (name, "dest-rect") && G_VALUE_HOLDS (value, GST_TYPE_ARRAY)
          && gst_value_array_get_size (value) == 4) {
       date_entry->dest_rect.x =
@@ -1499,6 +1568,10 @@ gst_overlay_set_date_overlay (GstOverlayUser * entry, GstStructure * structure,
 
   if (!color_set && entry_valid && !entry_exist) {
     date_entry->color = DEFAULT_PROP_OVERLAY_DATE_COLOR;
+  }
+
+  if (!font_size_set && entry_valid && !entry_exist) {
+    date_entry->font_size = DEFAULT_PROP_OVERLAY_DATE_FONT_SIZE;
   }
 
   return entry_valid;
@@ -1624,6 +1697,7 @@ gst_overlay_set_bbox_overlay (GstOverlayUser * entry, GstStructure * structure,
 {
   GstOverlayUsrBBox * bbox_entry = (GstOverlayUsrBBox *) entry;
   gboolean color_set = FALSE;
+  gboolean font_size_set = FALSE;
   gboolean entry_valid = FALSE;
   gboolean bbox_valid = FALSE;
   gboolean label_valid = FALSE;
@@ -1668,12 +1742,27 @@ gst_overlay_set_bbox_overlay (GstOverlayUser * entry, GstStructure * structure,
         color_set = TRUE;
       }
     }
+
+    if (!g_strcmp0 (name, "font-size")) {
+      if (G_VALUE_HOLDS (value, G_TYPE_UINT)) {
+        bbox_entry->font_size = g_value_get_uint (value);
+        font_size_set = TRUE;
+      }
+      if (G_VALUE_HOLDS (value, G_TYPE_INT)) {
+        bbox_entry->font_size = (guint)g_value_get_int (value);
+        font_size_set = TRUE;
+      }
+    }
   }
 
   entry_valid = bbox_valid && label_valid;
 
   if (!color_set && entry_valid && !entry_exist) {
     bbox_entry->color = DEFAULT_PROP_OVERLAY_BBOX_COLOR;
+  }
+
+  if (!font_size_set && entry_valid && !entry_exist) {
+    bbox_entry->font_size = DEFAULT_PROP_OVERLAY_BBOX_FONT_SIZE;
   }
 
   return entry_valid;
@@ -1911,9 +2000,10 @@ gst_overlay_text_overlay_to_string (gpointer data, gpointer user_data)
   }
 
   gint ret = snprintf (tmp, size,
-    "%s, text=\"%s\", color=0x%x, dest-rect=<%d, %d, %d, %d>; ",
-    ov_data->base.user_id, ov_data->text, ov_data->color, ov_data->dest_rect.x,
-    ov_data->dest_rect.y, ov_data->dest_rect.w, ov_data->dest_rect.h);
+    "%s, text=\"%s\", color=0x%x, , font-size=%d, dest-rect=<%d, %d, %d, %d>; ",
+    ov_data->base.user_id, ov_data->text, ov_data->color, ov_data->font_size,
+    ov_data->dest_rect.x, ov_data->dest_rect.y,
+    ov_data->dest_rect.w, ov_data->dest_rect.h);
   if (ret < 0 || ret >= size) {
     GST_ERROR ("%s: String size %d exceed size %d", __func__, ret, size);
     free (tmp);
@@ -1991,10 +2081,10 @@ gst_overlay_date_overlay_to_string (gpointer data, gpointer user_data)
   }
 
   gint ret = snprintf (tmp, size,
-    "%s, date-format=%s, time-format=%s, color=0x%x, dest-rect=<%d, %d, %d, %d>; ",
+    "%s, date-format=%s, time-format=%s, color=0x%x, font-size=%d, dest-rect=<%d, %d, %d, %d>; ",
     ov_data->base.user_id, date_format, time_format, ov_data->color,
-    ov_data->dest_rect.x, ov_data->dest_rect.y, ov_data->dest_rect.w,
-    ov_data->dest_rect.h);
+    ov_data->font_size, ov_data->dest_rect.x, ov_data->dest_rect.y,
+    ov_data->dest_rect.w, ov_data->dest_rect.h);
   if (ret < 0 || ret >= size) {
     GST_ERROR ("%s: String size %d exceed size %d", __func__, ret, size);
     free (tmp);
@@ -2087,10 +2177,10 @@ gst_overlay_bbox_overlay_to_string (gpointer data, gpointer user_data)
   }
 
   gint ret = snprintf (tmp, size,
-    "%s, bbox=<%d, %d, %d, %d>, label=\"%s\", color=0x%x; ",
+    "%s, bbox=<%d, %d, %d, %d>, label=\"%s\", color=0x%x, font-size=%d; ",
     ov_data->base.user_id, ov_data->boundind_box.x, ov_data->boundind_box.y,
     ov_data->boundind_box.w, ov_data->boundind_box.h, ov_data->label,
-    ov_data->color);
+    ov_data->color, ov_data->font_size);
   if (ret < 0 || ret >= size) {
     GST_ERROR ("%s: String size %d exceed size %d", __func__, ret, size);
     free (tmp);
@@ -2142,16 +2232,16 @@ gst_overlay_mask_overlay_to_string (gpointer data, gpointer user_data)
         ov_data->rectangle.start_y, ov_data->rectangle.width,
         ov_data->rectangle.height,
         ov_data->type == OverlayPrivacyMaskType::kRectangle ? "false" : "true",
-        ov_data->color, ov_data->dest_rect.x, ov_data->dest_rect.y,
-        ov_data->dest_rect.w, ov_data->dest_rect.h);
+        ov_data->color, ov_data->dest_rect.x,
+        ov_data->dest_rect.y, ov_data->dest_rect.w, ov_data->dest_rect.h);
   } else {
     ret = snprintf (tmp, size,
         "%s, circle=<%d, %d, %d>, inverse=%s, color=0x%x, dest-rect=<%d, %d, %d, %d>; ",
         ov_data->base.user_id, ov_data->circle.center_x,
         ov_data->circle.center_y, ov_data->circle.radius,
         ov_data->type == OverlayPrivacyMaskType::kRectangle ? "false" : "true",
-        ov_data->color, ov_data->dest_rect.x, ov_data->dest_rect.y,
-        ov_data->dest_rect.w, ov_data->dest_rect.h);
+        ov_data->color, ov_data->dest_rect.x,
+        ov_data->dest_rect.y, ov_data->dest_rect.w, ov_data->dest_rect.h);
   }
 
   if (ret < 0 || ret >= size) {
@@ -2270,6 +2360,15 @@ gst_overlay_set_property (GObject * object, guint prop_id,
     case PROP_OVERLAY_ARROWS_COLOR:
       gst_overlay->arrows_color = g_value_get_uint (value);
       break;
+    case PROP_OVERLAY_BBOX_FONT_SIZE:
+      gst_overlay->bbox_font_size = g_value_get_uint (value);
+      break;
+    case PROP_OVERLAY_DATE_FONT_SIZE:
+      gst_overlay->date_font_size = g_value_get_uint (value);
+      break;
+    case PROP_OVERLAY_TEXT_FONT_SIZE:
+      gst_overlay->text_font_size = g_value_get_uint (value);
+      break;
     case PROP_OVERLAY_TEXT_DEST_RECT:
       if (gst_value_array_get_size(value) != 4) {
         GST_DEBUG_OBJECT(gst_overlay,
@@ -2352,6 +2451,15 @@ gst_overlay_get_property (GObject * object, guint prop_id, GValue * value,
       break;
     case PROP_OVERLAY_ARROWS_COLOR:
       g_value_set_uint (value, gst_overlay->arrows_color);
+      break;
+    case PROP_OVERLAY_BBOX_FONT_SIZE:
+      g_value_set_uint (value, gst_overlay->bbox_font_size);
+      break;
+    case PROP_OVERLAY_DATE_FONT_SIZE:
+      g_value_set_uint (value, gst_overlay->date_font_size);
+      break;
+    case PROP_OVERLAY_TEXT_FONT_SIZE:
+      g_value_set_uint (value, gst_overlay->text_font_size);
       break;
     case PROP_OVERLAY_TEXT_DEST_RECT:
     {
@@ -2519,6 +2627,7 @@ gst_overlay_transform_frame_ip (GstVideoFilter *filter, GstVideoFrame *frame)
 {
   GstOverlay *gst_overlay = GST_OVERLAY_CAST (filter);
   gboolean res = TRUE;
+  gst_overlay->last_ov_y = 0;
 
   if (!gst_overlay->overlay) {
     GST_ERROR_OBJECT (gst_overlay, "failed: overlay not initialized");
@@ -2536,7 +2645,7 @@ gst_overlay_transform_frame_ip (GstVideoFilter *filter, GstVideoFrame *frame)
 
   res = gst_overlay_apply_item_list (gst_overlay,
                             gst_buffer_get_roi_meta (frame->buffer),
-                            gst_overlay_apply_roi_bbox_item,
+                            gst_overlay_apply_roi_item,
                             gst_overlay->roi_id);
   if (!res) {
     GST_ERROR_OBJECT (gst_overlay, "Overlay apply bbox item list failed!");
@@ -2718,6 +2827,9 @@ gst_overlay_init (GstOverlay * gst_overlay)
   gst_overlay->text_color = DEFAULT_PROP_OVERLAY_TEXT_COLOR;
   gst_overlay->pose_color = DEFAULT_PROP_OVERLAY_POSE_COLOR;
   gst_overlay->arrows_color = DEFAULT_PROP_OVERLAY_ARROWS_COLOR;
+  gst_overlay->bbox_font_size = DEFAULT_PROP_OVERLAY_BBOX_FONT_SIZE;
+  gst_overlay->date_font_size = DEFAULT_PROP_OVERLAY_DATE_FONT_SIZE;
+  gst_overlay->text_font_size = DEFAULT_PROP_OVERLAY_TEXT_FONT_SIZE;
   gst_overlay->text_dest_rect.x = DEFAULT_PROP_DEST_RECT_X;
   gst_overlay->text_dest_rect.y = DEFAULT_PROP_DEST_RECT_Y;
   gst_overlay->text_dest_rect.w = DEFAULT_PROP_DEST_RECT_WIDTH;
@@ -2795,6 +2907,27 @@ gst_overlay_class_init (GstOverlayClass * klass)
   g_object_class_install_property (gobject, PROP_OVERLAY_ARROWS_COLOR,
     g_param_spec_uint ("arrows-color", "Arrows color", "Arrows overlay color",
       0, G_MAXUINT, DEFAULT_PROP_OVERLAY_ARROWS_COLOR, static_cast<GParamFlags>(
+        G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
+  g_object_class_install_property (gobject, PROP_OVERLAY_BBOX_FONT_SIZE,
+    g_param_spec_uint ("bbox-font-size", "BBox font size",
+      "Bounding box overlay font size",
+      1, G_MAXUINT, DEFAULT_PROP_OVERLAY_BBOX_FONT_SIZE,
+      static_cast<GParamFlags>(
+        G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
+  g_object_class_install_property (gobject, PROP_OVERLAY_DATE_FONT_SIZE,
+    g_param_spec_uint ("date-font-size", "Date font size",
+      "Date overlay font size",
+      1, G_MAXUINT, DEFAULT_PROP_OVERLAY_DATE_FONT_SIZE,
+      static_cast<GParamFlags>(
+        G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
+  g_object_class_install_property (gobject, PROP_OVERLAY_TEXT_FONT_SIZE,
+    g_param_spec_uint ("text-font-size", "Text font size",
+      "Text overlay font size",
+      1, G_MAXUINT, DEFAULT_PROP_OVERLAY_TEXT_FONT_SIZE,
+      static_cast<GParamFlags>(
         G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
   g_object_class_install_property (gobject, PROP_OVERLAY_TEXT_DEST_RECT,
