@@ -407,6 +407,7 @@ qmmfsrc_image_pad_fixate_caps (GstPad * pad)
 
     GST_DEBUG_OBJECT (pad, "Caps already fixated to: %" GST_PTR_FORMAT, caps);
     image_pad_update_params (pad, gst_caps_get_structure (caps, 0));
+    gst_caps_unref (caps);
 
     return TRUE;
   }
@@ -474,6 +475,7 @@ qmmfsrc_image_pad_fixate_caps (GstPad * pad)
 
   GST_DEBUG_OBJECT (pad, "Caps fixated to: %" GST_PTR_FORMAT, caps);
   image_pad_update_params (pad, structure);
+  gst_caps_unref (caps);
   return TRUE;
 }
 

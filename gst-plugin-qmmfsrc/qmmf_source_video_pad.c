@@ -389,6 +389,7 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
 
     GST_DEBUG_OBJECT (pad, "Caps already fixated to: %" GST_PTR_FORMAT, caps);
     video_pad_update_params (pad, gst_caps_get_structure (caps, 0));
+    gst_caps_unref (caps);
 
     return TRUE;
   }
@@ -467,6 +468,7 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
   gst_pad_set_caps (pad, caps);
 
   GST_DEBUG_OBJECT (pad, "Caps fixated to: %" GST_PTR_FORMAT, caps);
+  gst_caps_unref (caps);
   video_pad_update_params (pad, structure);
   return TRUE;
 }
