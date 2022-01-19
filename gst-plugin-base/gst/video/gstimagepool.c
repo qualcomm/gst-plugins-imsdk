@@ -562,6 +562,37 @@ gst_image_buffer_pool_free (GstBufferPool * pool, GstBuffer * buffer)
   gst_buffer_unref (buffer);
 }
 
+static gboolean
+remove_buffer_meta (GstBuffer * buffer, GstMeta ** meta, gpointer user_data)
+{
+  if (!GST_META_FLAG_IS_SET (*meta, GST_META_FLAG_POOLED)) {
+    GST_META_FLAG_UNSET (*meta, GST_META_FLAG_LOCKED);
+    *meta = NULL;
+  }
+
+  return TRUE;
+}
+
+static void
+gst_image_buffer_pool_reset (GstBufferPool * pool, GstBuffer * buffer)
+{
+  GstImageBufferPoolPrivate *priv = GST_IMAGE_BUFFER_POOL_CAST (pool)->priv;
+
+  // Resize the buffer to the original size because it will be discarded in
+  // default_release_buffer
+  gst_buffer_resize (buffer, 0, priv->info.size);
+
+  GST_BUFFER_OFFSET (buffer) = GST_BUFFER_OFFSET_NONE;
+  GST_BUFFER_OFFSET_END (buffer) = GST_BUFFER_OFFSET_NONE;
+  GST_BUFFER_DURATION (buffer) = GST_CLOCK_TIME_NONE;
+  GST_BUFFER_PTS (buffer) = GST_CLOCK_TIME_NONE;
+  GST_BUFFER_DTS (buffer) = GST_CLOCK_TIME_NONE;
+  GST_BUFFER_FLAGS (buffer) &= GST_BUFFER_FLAG_TAG_MEMORY;
+
+  // Remove metadata
+  gst_buffer_foreach_meta (buffer, remove_buffer_meta, pool);
+}
+
 static void
 gst_image_buffer_pool_finalize (GObject * object)
 {
@@ -598,6 +629,7 @@ gst_image_buffer_pool_class_init (GstImageBufferPoolClass * klass)
   pool->set_config = gst_image_buffer_pool_set_config;
   pool->alloc_buffer = gst_image_buffer_pool_alloc;
   pool->free_buffer = gst_image_buffer_pool_free;
+  pool->reset_buffer = gst_image_buffer_pool_reset;
 
   GST_DEBUG_CATEGORY_INIT (gst_image_pool_debug, "image-pool", 0,
       "image-pool object");
