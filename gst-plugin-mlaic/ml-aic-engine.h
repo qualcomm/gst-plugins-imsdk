@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -51,7 +51,7 @@ G_BEGIN_DECLS
  * Default: NULL
  */
 #define GST_ML_AIC_ENGINE_OPT_MODEL \
-    "GstMlAicEngine.model"
+    "GstMLAicEngine.model"
 
 /**
  * GST_ML_AIC_ENGINE_OPT_DEVICES:
@@ -60,7 +60,7 @@ G_BEGIN_DECLS
  * Default: NULL
  */
 #define GST_ML_AIC_ENGINE_OPT_DEVICES \
-    "GstMlAicEngine.devices"
+    "GstMLAicEngine.devices"
 
 /**
  * GST_ML_AIC_ENGINE_OPT_NUM_ACTIVATIONS:
@@ -69,7 +69,7 @@ G_BEGIN_DECLS
  * Default: 1
  */
 #define GST_ML_AIC_ENGINE_OPT_NUM_ACTIVATIONS \
-    "GstMlAicEngine.num-activations"
+    "GstMLAicEngine.num-activations"
 
 typedef struct _GstMLAicEngine GstMLAicEngine;
 

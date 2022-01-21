@@ -1,65 +1,65 @@
 /*
-* Copyright (c) 2020, The Linux Foundation. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted provided that the following conditions are
-* met:
-*     * Redistributions of source code must retain the above copyright
-*       notice, this list of conditions and the following disclaimer.
-*     * Redistributions in binary form must reproduce the above
-*       copyright notice, this list of conditions and the following
-*       disclaimer in the documentation and/or other materials provided
-*       with the distribution.
-*     * Neither the name of The Linux Foundation nor the names of its
-*       contributors may be used to endorse or promote products derived
-*       from this software without specific prior written permission.
-*
-* THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
-* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
-* ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
-* BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-* CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-* SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
-* BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-* WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
-* OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
-* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*
-* Changes from Qualcomm Innovation Center are provided under the following license:
-*
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted (subject to the limitations in the
-* disclaimer below) provided that the following conditions are met:
-*
-*     * Redistributions of source code must retain the above copyright
-*       notice, this list of conditions and the following disclaimer.
-*
-*     * Redistributions in binary form must reproduce the above
-*       copyright notice, this list of conditions and the following
-*       disclaimer in the documentation and/or other materials provided
-*       with the distribution.
-*
-*     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
-*       contributors may be used to endorse or promote products derived
-*       from this software without specific prior written permission.
-*
-* NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
-* GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
-* HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
-* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-* MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-* IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
-* ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-* DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
-* GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-* INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
-* IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-* OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
-* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ * Copyright (c) 2020, The Linux Foundation. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *     * Neither the name of The Linux Foundation nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted (subject to the limitations in the
+ * disclaimer below) provided that the following conditions are met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *
+ *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ *
+ * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+ * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+ * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+ * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -74,7 +74,12 @@
 #define GST_CAT_DEFAULT gst_video_composer_debug
 GST_DEBUG_CATEGORY_STATIC (gst_video_composer_debug);
 
+static void gst_video_composer_child_proxy_init (gpointer g_iface, gpointer data);
+
 #define gst_video_composer_parent_class parent_class
+G_DEFINE_TYPE_WITH_CODE (GstVideoComposer, gst_video_composer,
+     GST_TYPE_AGGREGATOR, G_IMPLEMENT_INTERFACE (GST_TYPE_CHILD_PROXY,
+         gst_video_composer_child_proxy_init));
 
 #define DEFAULT_VIDEO_WIDTH       640
 #define DEFAULT_VIDEO_HEIGHT      480
@@ -110,6 +115,22 @@ enum
   PROP_0,
   PROP_BACKGROUND,
 };
+
+static GstStaticPadTemplate gst_video_composer_sink_template =
+    GST_STATIC_PAD_TEMPLATE("sink_%u",
+        GST_PAD_SINK,
+        GST_PAD_REQUEST,
+        GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS) ";"
+            GST_VIDEO_CAPS_MAKE_WITH_FEATURES ("ANY", GST_VIDEO_FORMATS))
+    );
+
+static GstStaticPadTemplate gst_video_composer_src_template =
+    GST_STATIC_PAD_TEMPLATE("src",
+        GST_PAD_SRC,
+        GST_PAD_ALWAYS,
+        GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS) ";"
+            GST_VIDEO_CAPS_MAKE_WITH_FEATURES ("ANY", GST_VIDEO_FORMATS))
+    );
 
 typedef struct _GstConverterRequest GstConverterRequest;
 
@@ -200,29 +221,6 @@ gst_video_composer_free_queue_item (gpointer data)
   gst_converter_request_unref (GST_CONVERTER_REQUEST (item->object));
   g_slice_free (GstDataQueueItem, item);
 }
-
-static void
-gst_video_composer_child_proxy_init (gpointer g_iface, gpointer data);
-
-G_DEFINE_TYPE_WITH_CODE (GstVideoComposer, gst_video_composer,
-     GST_TYPE_AGGREGATOR, G_IMPLEMENT_INTERFACE (GST_TYPE_CHILD_PROXY,
-         gst_video_composer_child_proxy_init));
-
-static GstStaticPadTemplate gst_video_composer_sink_template =
-    GST_STATIC_PAD_TEMPLATE("sink_%u",
-        GST_PAD_SINK,
-        GST_PAD_REQUEST,
-        GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS) ";"
-            GST_VIDEO_CAPS_MAKE_WITH_FEATURES ("ANY", GST_VIDEO_FORMATS))
-    );
-
-static GstStaticPadTemplate gst_video_composer_src_template =
-    GST_STATIC_PAD_TEMPLATE("src",
-        GST_PAD_SRC,
-        GST_PAD_ALWAYS,
-        GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS) ";"
-            GST_VIDEO_CAPS_MAKE_WITH_FEATURES ("ANY", GST_VIDEO_FORMATS))
-    );
 
 static GstC2dVideoRotate
 gst_video_composer_rotation_to_c2d_rotate (GstVideoComposerRotate rotation)
@@ -708,18 +706,17 @@ gst_video_composer_prepare_input_frame (GstElement * element, GstPad * pad,
   if (gst_aggregator_pad_is_eos (GST_AGGREGATOR_PAD (pad)))
     return TRUE;
 
-  if (!gst_aggregator_pad_has_buffer (GST_AGGREGATOR_PAD (pad))) {
-    GST_TRACE_OBJECT (vcomposer, "Pad %s does not have a buffer!",
-        GST_PAD_NAME (pad));
+  buffer = gst_aggregator_pad_peek_buffer (GST_AGGREGATOR_PAD (pad));
+
+  if (buffer == NULL) {
+    GST_TRACE_OBJECT (pad, "No buffer available!");
     return FALSE;
   }
-
-  buffer = gst_aggregator_pad_peek_buffer (GST_AGGREGATOR_PAD (pad));
 
   // GAP buffer, nothing to do.
   if (gst_buffer_get_size (buffer) == 0 &&
       GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP)) {
-    GST_TRACE_OBJECT (vcomposer, "Pad %s GAP buffer!", GST_PAD_NAME (pad));
+    GST_TRACE_OBJECT (pad, "GAP buffer!");
     return TRUE;
   }
 
@@ -738,8 +735,8 @@ gst_video_composer_prepare_input_frame (GstElement * element, GstPad * pad,
         segment->position) + vcomposer->duration;
 
     if (timestamp > position)
-      GST_TRACE_OBJECT (vcomposer, "Pad %s keeping buffer at least until %"
-          GST_TIME_FORMAT, GST_PAD_NAME (pad), GST_TIME_ARGS (timestamp));
+      GST_TRACE_OBJECT (pad, "Keeping buffer at least until %"
+          GST_TIME_FORMAT, GST_TIME_ARGS (timestamp));
     else
       gst_aggregator_pad_drop_buffer (GST_AGGREGATOR_PAD (pad));
 
@@ -749,13 +746,11 @@ gst_video_composer_prepare_input_frame (GstElement * element, GstPad * pad,
 
   if (!gst_video_frame_map (&frames[idx], sinkpad->info, buffer,
           GST_MAP_READ | GST_VIDEO_FRAME_MAP_FLAG_NO_REF)) {
-    GST_ERROR_OBJECT (vcomposer, "Failed to map input buffer!");
+    GST_ERROR_OBJECT (pad, "Failed to map input buffer!");
     return FALSE;
   }
 
-  GST_TRACE_OBJECT (vcomposer, "Pad %s %" GST_PTR_FORMAT, GST_PAD_NAME (pad),
-      buffer);
-
+  GST_TRACE_OBJECT (pad, "Buffer: %" GST_PTR_FORMAT, buffer);
   return TRUE;
 }
 
@@ -1682,10 +1677,8 @@ gst_video_composer_child_proxy_get_child_by_index (GstChildProxy * proxy,
   list = g_list_find_custom (GST_ELEMENT_CAST (vcomposer)->sinkpads, &index,
       (GCompareFunc) gst_video_composer_index_compare);
 
-  if (list != NULL) {
+  if (list != NULL)
     gobject = gst_object_ref (list->data);
-    GST_INFO_OBJECT (vcomposer, "Pad: '%s'", GST_PAD_NAME (gobject));
-  }
 
   GST_OBJECT_UNLOCK (vcomposer);
 
@@ -1701,8 +1694,6 @@ gst_video_composer_child_proxy_get_children_count (GstChildProxy * proxy)
   GST_OBJECT_LOCK (vcomposer);
   count = GST_ELEMENT_CAST (vcomposer)->numsinkpads;
   GST_OBJECT_UNLOCK (vcomposer);
-
-  GST_INFO_OBJECT (vcomposer, "Children Count: %d", count);
 
   return count;
 }
