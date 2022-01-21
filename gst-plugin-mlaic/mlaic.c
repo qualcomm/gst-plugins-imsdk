@@ -42,6 +42,12 @@
 #include <gst/ml/gstmlmeta.h>
 
 
+#define GST_CAT_DEFAULT gst_ml_aic_debug
+GST_DEBUG_CATEGORY_STATIC (gst_ml_aic_debug);
+
+#define gst_ml_aic_parent_class parent_class
+G_DEFINE_TYPE (GstMLAic, gst_ml_aic, GST_TYPE_ELEMENT);
+
 #define DEFAULT_PROP_MODEL         NULL
 #define DEFAULT_PROP_N_ACTIVATIONS 1
 
@@ -51,18 +57,13 @@
 #define GST_ML_AIC_TENSOR_TYPES "{ UINT8, INT32, FLOAT32 }"
 
 #define GST_ML_AIC_CAPS                        \
-    "neural-network/tensors, "                    \
+    "neural-network/tensors, "                 \
     "type = (string) " GST_ML_AIC_TENSOR_TYPES
-
-#define GST_CAT_DEFAULT gst_ml_aic_debug
-GST_DEBUG_CATEGORY_STATIC (gst_ml_aic_debug);
-
-#define gst_ml_aic_parent_class parent_class
-G_DEFINE_TYPE (GstMLAic, gst_ml_aic, GST_TYPE_ELEMENT);
 
 static GType gst_engine_request_get_type(void);
 #define GST_TYPE_ENGINE_REQUEST  (gst_engine_request_get_type())
 #define GST_ENGINE_REQUEST(obj) ((GstEngineRequest *) obj)
+
 
 enum
 {

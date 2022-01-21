@@ -50,15 +50,14 @@
 GST_DEBUG_CATEGORY_STATIC (gst_meta_mux_debug);
 
 #define gst_meta_mux_parent_class parent_class
+G_DEFINE_TYPE (GstMetaMux, gst_meta_mux, GST_TYPE_ELEMENT);
 
 #define GST_METAMUX_MEDIA_CAPS \
-    "video/x-raw(ANY); "      \
+    "video/x-raw(ANY); "       \
     "audio/x-raw(ANY)"
 
-#define GST_METAMUX_DATA_CAPS \
-    "text/x-raw"
-
-G_DEFINE_TYPE (GstMetaMux, gst_meta_mux, GST_TYPE_ELEMENT);
+#define GST_METAMUX_DATA_CAPS   \
+    "text/x-raw, format = utf8" \
 
 enum
 {
@@ -253,7 +252,7 @@ gst_meta_mux_main_sink_setcaps (GstMetaMux * muxer, GstPad * pad,
     srccaps = gst_pad_get_current_caps (muxer->srcpad);
 
     if (!gst_caps_is_equal (srccaps, intersect))
-      gst_pad_push_event (muxer->srcpad, gst_event_new_reconfigure ());
+      gst_pad_mark_reconfigure (muxer->srcpad);
 
     gst_caps_unref (srccaps);
   }

@@ -1,65 +1,65 @@
 /*
-* Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted provided that the following conditions are
-* met:
-*     * Redistributions of source code must retain the above copyright
-*       notice, this list of conditions and the following disclaimer.
-*     * Redistributions in binary form must reproduce the above
-*       copyright notice, this list of conditions and the following
-*       disclaimer in the documentation and/or other materials provided
-*       with the distribution.
-*     * Neither the name of The Linux Foundation nor the names of its
-*       contributors may be used to endorse or promote products derived
-*       from this software without specific prior written permission.
-*
-* THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
-* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
-* ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
-* BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-* CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-* SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
-* BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-* WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
-* OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
-* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*
-* Changes from Qualcomm Innovation Center are provided under the following license:
-*
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted (subject to the limitations in the
-* disclaimer below) provided that the following conditions are met:
-*
-*     * Redistributions of source code must retain the above copyright
-*       notice, this list of conditions and the following disclaimer.
-*
-*     * Redistributions in binary form must reproduce the above
-*       copyright notice, this list of conditions and the following
-*       disclaimer in the documentation and/or other materials provided
-*       with the distribution.
-*
-*     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
-*       contributors may be used to endorse or promote products derived
-*       from this software without specific prior written permission.
-*
-* NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
-* GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
-* HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
-* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-* MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-* IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
-* ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-* DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
-* GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-* INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
-* IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-* OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
-* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *     * Neither the name of The Linux Foundation nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted (subject to the limitations in the
+ * disclaimer below) provided that the following conditions are met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *
+ *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ *
+ * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+ * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+ * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+ * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #include "gstimagepool.h"
 
@@ -76,16 +76,15 @@
 #include <media/msm_media_info.h>
 
 
+GST_DEBUG_CATEGORY_STATIC (gst_image_pool_debug);
+#define GST_CAT_DEFAULT gst_image_pool_debug
+
 #define GST_IS_GBM_MEMORY_TYPE(type) \
     (type == g_quark_from_static_string (GST_IMAGE_BUFFER_POOL_TYPE_GBM))
-
 #define GST_IS_ION_MEMORY_TYPE(type) \
     (type == g_quark_from_static_string (GST_IMAGE_BUFFER_POOL_TYPE_ION))
 
 #define DEFAULT_PAGE_ALIGNMENT 4096
-
-GST_DEBUG_CATEGORY_STATIC (gst_image_pool_debug);
-#define GST_CAT_DEFAULT gst_image_pool_debug
 
 struct _GstImageBufferPoolPrivate
 {
@@ -122,8 +121,8 @@ struct _GstImageBufferPoolPrivate
 };
 
 #define gst_image_buffer_pool_parent_class parent_class
-G_DEFINE_TYPE_WITH_PRIVATE (GstImageBufferPool,
-    gst_image_buffer_pool, GST_TYPE_BUFFER_POOL);
+G_DEFINE_TYPE_WITH_PRIVATE (GstImageBufferPool, gst_image_buffer_pool,
+    GST_TYPE_BUFFER_POOL);
 
 static gint
 gst_video_format_to_gbm_format (GstVideoFormat format)
@@ -422,7 +421,7 @@ gst_image_buffer_pool_get_options (GstBufferPool * pool)
 static gboolean
 gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
 {
-  GstImageBufferPool *vpool = GST_IMAGE_BUFFER_POOL_CAST (pool);
+  GstImageBufferPool *vpool = GST_IMAGE_BUFFER_POOL (pool);
   GstImageBufferPoolPrivate *priv = vpool->priv;
 
   gboolean success;
@@ -546,7 +545,7 @@ static GstFlowReturn
 gst_image_buffer_pool_alloc (GstBufferPool * pool, GstBuffer ** buffer,
     GstBufferPoolAcquireParams * params)
 {
-  GstImageBufferPool *vpool = GST_IMAGE_BUFFER_POOL_CAST (pool);
+  GstImageBufferPool *vpool = GST_IMAGE_BUFFER_POOL (pool);
   GstImageBufferPoolPrivate *priv = vpool->priv;
   GstVideoInfo *info = &priv->info;
   GstMemory *memory = NULL;
@@ -587,7 +586,7 @@ gst_image_buffer_pool_alloc (GstBufferPool * pool, GstBuffer ** buffer,
 static void
 gst_image_buffer_pool_free (GstBufferPool * pool, GstBuffer * buffer)
 {
-  GstImageBufferPool *vpool = GST_IMAGE_BUFFER_POOL_CAST (pool);
+  GstImageBufferPool *vpool = GST_IMAGE_BUFFER_POOL (pool);
   gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (buffer, 0));
 
   if (GST_IS_GBM_MEMORY_TYPE (vpool->priv->memtype)) {
@@ -598,41 +597,22 @@ gst_image_buffer_pool_free (GstBufferPool * pool, GstBuffer * buffer)
   gst_buffer_unref (buffer);
 }
 
-static gboolean
-remove_buffer_meta (GstBuffer * buffer, GstMeta ** meta, gpointer user_data)
-{
-  if (!GST_META_FLAG_IS_SET (*meta, GST_META_FLAG_POOLED)) {
-    GST_META_FLAG_UNSET (*meta, GST_META_FLAG_LOCKED);
-    *meta = NULL;
-  }
-
-  return TRUE;
-}
-
 static void
 gst_image_buffer_pool_reset (GstBufferPool * pool, GstBuffer * buffer)
 {
-  GstImageBufferPoolPrivate *priv = GST_IMAGE_BUFFER_POOL_CAST (pool)->priv;
+  GstImageBufferPoolPrivate *priv = GST_IMAGE_BUFFER_POOL (pool)->priv;
 
-  // Resize the buffer to the original size because it will be discarded in
-  // default_release_buffer
+  // Resize the buffer to the original size otherwise it will be discarded
+  // due to the mismatch during the default implementation of release_buffer.
   gst_buffer_resize (buffer, 0, priv->info.size);
 
-  GST_BUFFER_OFFSET (buffer) = GST_BUFFER_OFFSET_NONE;
-  GST_BUFFER_OFFSET_END (buffer) = GST_BUFFER_OFFSET_NONE;
-  GST_BUFFER_DURATION (buffer) = GST_CLOCK_TIME_NONE;
-  GST_BUFFER_PTS (buffer) = GST_CLOCK_TIME_NONE;
-  GST_BUFFER_DTS (buffer) = GST_CLOCK_TIME_NONE;
-  GST_BUFFER_FLAGS (buffer) &= GST_BUFFER_FLAG_TAG_MEMORY;
-
-  // Remove metadata
-  gst_buffer_foreach_meta (buffer, remove_buffer_meta, pool);
+  GST_BUFFER_POOL_CLASS (parent_class)->reset_buffer (pool, buffer);
 }
 
 static void
 gst_image_buffer_pool_finalize (GObject * object)
 {
-  GstImageBufferPool *vpool = GST_IMAGE_BUFFER_POOL_CAST (object);
+  GstImageBufferPool *vpool = GST_IMAGE_BUFFER_POOL (object);
   GstImageBufferPoolPrivate *priv = vpool->priv;
 
   GST_INFO_OBJECT (vpool, "Finalize video buffer pool %p", vpool);
@@ -715,7 +695,7 @@ gst_image_buffer_pool_new (const gchar * type)
 const GstVideoInfo *
 gst_image_buffer_pool_get_info (GstBufferPool * pool)
 {
-  GstImageBufferPool *vpool = GST_IMAGE_BUFFER_POOL_CAST (pool);
+  GstImageBufferPool *vpool = GST_IMAGE_BUFFER_POOL (pool);
 
   g_return_val_if_fail (vpool != NULL, NULL);
 

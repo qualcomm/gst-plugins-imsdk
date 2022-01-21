@@ -1,31 +1,65 @@
 /*
-* Copyright (c) 2021, The Linux Foundation. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted provided that the following conditions are
-* met:
-*     * Redistributions of source code must retain the above copyright
-*       notice, this list of conditions and the following disclaimer.
-*     * Redistributions in binary form must reproduce the above
-*       copyright notice, this list of conditions and the following
-*       disclaimer in the documentation and/or other materials provided
-*       with the distribution.
-*     * Neither the name of The Linux Foundation nor the names of its
-*       contributors may be used to endorse or promote products derived
-*       from this software without specific prior written permission.
-*
-* THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
-* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
-* ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
-* BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-* CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-* SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
-* BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-* WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
-* OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
-* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ * Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *     * Neither the name of The Linux Foundation nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted (subject to the limitations in the
+ * disclaimer below) provided that the following conditions are met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *
+ *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ *
+ * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+ * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+ * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+ * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #include "gstmlpool.h"
 
@@ -39,16 +73,16 @@
 
 #include "gstmlmeta.h"
 
+
+GST_DEBUG_CATEGORY_STATIC (gst_ml_pool_debug);
+#define GST_CAT_DEFAULT gst_ml_pool_debug
+
 #define GST_IS_ION_MEMORY_TYPE(type) \
     (type == g_quark_from_static_string (GST_ML_BUFFER_POOL_TYPE_ION))
-
 #define GST_IS_SYSTEM_MEMORY_TYPE(type) \
     (type == g_quark_from_static_string (GST_ML_BUFFER_POOL_TYPE_SYSTEM))
 
 #define DEFAULT_ION_ALIGNMENT 4096
-
-GST_DEBUG_CATEGORY_STATIC (gst_ml_pool_debug);
-#define GST_CAT_DEFAULT gst_ml_pool_debug
 
 struct _GstMLBufferPoolPrivate
 {
@@ -72,8 +106,8 @@ struct _GstMLBufferPoolPrivate
 };
 
 #define gst_ml_buffer_pool_parent_class parent_class
-G_DEFINE_TYPE_WITH_PRIVATE (GstMLBufferPool,
-    gst_ml_buffer_pool, GST_TYPE_BUFFER_POOL);
+G_DEFINE_TYPE_WITH_PRIVATE (GstMLBufferPool, gst_ml_buffer_pool,
+    GST_TYPE_BUFFER_POOL);
 
 static gboolean
 open_ion_device (GstMLBufferPool * mlpool)
@@ -196,7 +230,7 @@ gst_ml_buffer_pool_get_options (GstBufferPool * pool)
 static gboolean
 gst_ml_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
 {
-  GstMLBufferPool *mlpool = GST_ML_POOL_CAST (pool);
+  GstMLBufferPool *mlpool = GST_ML_POOL (pool);
   GstMLBufferPoolPrivate *priv = mlpool->priv;
 
   GstCaps *caps;
@@ -270,7 +304,7 @@ static GstFlowReturn
 gst_ml_buffer_pool_alloc (GstBufferPool * pool, GstBuffer ** buffer,
     GstBufferPoolAcquireParams * params)
 {
-  GstMLBufferPool *mlpool = GST_ML_POOL_CAST (pool);
+  GstMLBufferPool *mlpool = GST_ML_POOL (pool);
   GstMLBufferPoolPrivate *priv = mlpool->priv;
   GstMemory *mem = NULL;
   GstBuffer *newbuffer = NULL;
@@ -323,7 +357,7 @@ gst_ml_buffer_pool_alloc (GstBufferPool * pool, GstBuffer ** buffer,
 static void
 gst_ml_buffer_pool_free (GstBufferPool * pool, GstBuffer * buffer)
 {
-  GstMLBufferPool *mlpool = GST_ML_POOL_CAST (pool);
+  GstMLBufferPool *mlpool = GST_ML_POOL (pool);
   guint idx = 0;
 
   for (idx = 0; idx < gst_buffer_n_memory (buffer); idx++) {
@@ -341,7 +375,7 @@ gst_ml_buffer_pool_free (GstBufferPool * pool, GstBuffer * buffer)
 static void
 gst_ml_buffer_pool_finalize (GObject * object)
 {
-  GstMLBufferPool *mlpool = GST_ML_POOL_CAST (object);
+  GstMLBufferPool *mlpool = GST_ML_POOL (object);
   GstMLBufferPoolPrivate *priv = mlpool->priv;
 
   GST_INFO_OBJECT (mlpool, "Finalize ML buffer pool %p", mlpool);

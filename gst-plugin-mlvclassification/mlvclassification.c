@@ -89,24 +89,24 @@ GST_DEBUG_CATEGORY_STATIC (gst_ml_video_classification_debug);
 
 #define gst_ml_video_classification_parent_class parent_class
 G_DEFINE_TYPE (GstMLVideoClassification, gst_ml_video_classification,
-               GST_TYPE_BASE_TRANSFORM);
+    GST_TYPE_BASE_TRANSFORM);
 
 #ifndef GST_CAPS_FEATURE_MEMORY_GBM
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
 #endif
 
 #define GST_ML_VIDEO_CLASSIFICATION_VIDEO_FORMATS \
-    "{ BGRA, RGBA, BGRx, xRGB, BGR16 }"
+    "{ BGRA, BGRx, BGR16 }"
 
 #define GST_ML_VIDEO_CLASSIFICATION_TEXT_FORMATS \
     "{ utf8 }"
 
 #define GST_ML_VIDEO_CLASSIFICATION_SRC_CAPS                            \
-    "video/x-raw, "                                                 \
+    "video/x-raw, "                                                     \
     "format = (string) " GST_ML_VIDEO_CLASSIFICATION_VIDEO_FORMATS "; " \
-    "video/x-raw(" GST_CAPS_FEATURE_MEMORY_GBM "), "                \
+    "video/x-raw(" GST_CAPS_FEATURE_MEMORY_GBM "), "                    \
     "format = (string) " GST_ML_VIDEO_CLASSIFICATION_VIDEO_FORMATS "; " \
-    "text/x-raw, "                                                  \
+    "text/x-raw, "                                                      \
     "format = (string) " GST_ML_VIDEO_CLASSIFICATION_TEXT_FORMATS
 
 #define GST_ML_VIDEO_CLASSIFICATION_SINK_CAPS \
@@ -374,8 +374,9 @@ gst_ml_video_classification_fill_video_output (
     GstBuffer *buffer)
 {
   GstVideoMeta *vmeta = NULL;
+  GList *list = NULL;
   GstMapInfo memmap;
-  guint idx = 0, n_predictions = 0;
+  guint n_predictions = 0;
   gdouble fontsize = 0.0;
 
   cairo_format_t format;
@@ -389,11 +390,9 @@ gst_ml_video_classification_fill_video_output (
 
   switch (vmeta->format) {
     case GST_VIDEO_FORMAT_BGRA:
-    case GST_VIDEO_FORMAT_ARGB:
       format = CAIRO_FORMAT_ARGB32;
       break;
     case GST_VIDEO_FORMAT_BGRx:
-    case GST_VIDEO_FORMAT_xRGB:
       format = CAIRO_FORMAT_RGB24;
       break;
     case GST_VIDEO_FORMAT_BGR16:
@@ -443,6 +442,10 @@ gst_ml_video_classification_fill_video_output (
   // Mark the surface dirty so Cairo clears its caches.
   cairo_surface_mark_dirty (surface);
 
+  // Fill a semi-transperant black background.
+  cairo_set_source_rgba (context, 0.0, 0.0, 0.0, 0.5);
+  cairo_paint (context);
+
   // Select font.
   cairo_select_font_face (context, "@cairo:Georgia",
       CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
@@ -461,16 +464,13 @@ gst_ml_video_classification_fill_video_output (
     cairo_font_options_destroy (options);
   }
 
-  for (idx = 0; idx < g_list_length (predictions); ++idx) {
-    const GstMLPrediction *prediction = NULL;
+  for (list = predictions; list != NULL; list = list->next) {
+    const GstMLPrediction *prediction = (const GstMLPrediction*) list->data;
     gchar *string = NULL;
 
     // Break immediately if we reach the number of results limit.
     if (n_predictions >= classification->n_results)
       break;
-
-    // Extract the prediction data.
-    prediction = g_list_nth_data (predictions, idx);
 
     // Break immediately if sorted prediction confidence is below the threshold.
     if (prediction->confidence < classification->threshold)
@@ -480,8 +480,8 @@ gst_ml_video_classification_fill_video_output (
     string = g_strdup_printf ("%s: %.1f%%", prediction->label,
         prediction->confidence);
 
-    GST_TRACE_OBJECT (classification, "idx: %u, label: %s, confidence: %.1f%%",
-        idx, prediction->label, prediction->confidence);
+    GST_TRACE_OBJECT (classification, "label: %s, confidence: %.1f%%",
+        prediction->label, prediction->confidence);
 
     // Set text color.
     cairo_set_source_rgba (context,
@@ -491,7 +491,7 @@ gst_ml_video_classification_fill_video_output (
         EXTRACT_ALPHA_COLOR (prediction->color));
 
     // (0,0) is at top left corner of the buffer.
-    cairo_move_to (context, 0.0, fontsize * (idx + 1));
+    cairo_move_to (context, 0.0, (fontsize * (n_predictions + 1)) - 6);
 
     // Draw text string.
     cairo_show_text (context, string);
@@ -530,16 +530,17 @@ gst_ml_video_classification_fill_text_output (
     GstMLVideoClassification * classification, GList * predictions,
     GstBuffer *buffer)
 {
+  GList *list = NULL;
   GstMapInfo memmap = {};
   GValue entries = G_VALUE_INIT;
   gchar *string = NULL;
-  guint idx = 0, n_predictions = 0;
+  guint n_predictions = 0;
   gsize length = 0;
 
   g_value_init (&entries, GST_TYPE_LIST);
 
-  for (idx = 0; idx < g_list_length (predictions); ++idx) {
-    GstMLPrediction *prediction = NULL;
+  for (list = predictions; list != NULL; list = list->next) {
+    GstMLPrediction *prediction = (GstMLPrediction*) list->data;
     GstStructure *entry = NULL;
     GValue value = G_VALUE_INIT;
 
@@ -547,11 +548,12 @@ gst_ml_video_classification_fill_text_output (
     if (n_predictions >= classification->n_results)
       break;
 
-    // Extract the prediction data.
-    prediction = g_list_nth_data (predictions, idx);
+    // Break immediately if sorted prediction confidence is below the threshold.
+    if (prediction->confidence < classification->threshold)
+      break;
 
-    GST_TRACE_OBJECT (classification, "idx: %u, label: %s, confidence: %.1f%%",
-        idx, prediction->label, prediction->confidence);
+    GST_TRACE_OBJECT (classification, "label: %s, confidence: %.1f%%",
+        prediction->label, prediction->confidence);
 
     prediction->label = g_strdelimit (prediction->label, " ", '-');
 
