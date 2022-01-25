@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -319,7 +319,7 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
       offset = size * g_list_index (demux->srcpads, srcpad);
 
       gst_buffer_append_memory (outbuffer,
-          gst_memory_share (memory, offset, size));
+          gst_memory_copy (memory, offset, size));
 
       mlmeta = gst_buffer_add_ml_tensor_meta (outbuffer, srcpad->mlinfo->type,
           srcpad->mlinfo->n_dimensions[idx], srcpad->mlinfo->tensors[idx]);
@@ -333,9 +333,6 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
     // Transfer the GstProtectionMeta into the new buffer.
     if ((pmeta = gst_buffer_get_protection_meta (inbuffer)) != NULL)
       gst_buffer_add_protection_meta (outbuffer, gst_structure_copy (pmeta->info));
-
-    // Add parent meta, input buffer won't be released until new buffer is freed.
-    gst_buffer_add_parent_buffer_meta (outbuffer, inbuffer);
 
     item = g_slice_new0 (GstDataQueueItem);
     item->object = GST_MINI_OBJECT (outbuffer);
