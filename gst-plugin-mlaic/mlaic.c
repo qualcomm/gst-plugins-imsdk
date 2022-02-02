@@ -183,6 +183,19 @@ gst_ml_aic_sink_template (void)
       gst_ml_aic_sink_caps ());
 }
 
+static void
+gst_buffer_copy_protection_meta (GstBuffer * outbuffer, GstBuffer * inbuffer)
+{
+  gpointer state = NULL;
+  GstMeta *meta = NULL;
+
+  while ((meta = gst_buffer_iterate_meta_filtered (inbuffer, &state,
+              GST_PROTECTION_META_API_TYPE))) {
+    gst_buffer_add_protection_meta (outbuffer,
+        gst_structure_copy (((GstProtectionMeta *) meta)->info));
+  }
+}
+
 static GstPad *
 gst_ml_aic_other_pad (GstPad * pad)
 {
@@ -365,7 +378,6 @@ gst_ml_aic_prepare_output_buffer (GstPad * pad, GstBuffer * inbuffer,
 {
   GstBufferPool *pool = GST_ML_AIC_SINKPAD (pad)->pool;
   GHashTable *bufpairs = GST_ML_AIC_SINKPAD (pad)->bufpairs;
-  GstProtectionMeta *pmeta = NULL;
 
   if (!gst_buffer_pool_is_active (pool) &&
       !gst_buffer_pool_set_active (pool, TRUE)) {
@@ -409,8 +421,8 @@ gst_ml_aic_prepare_output_buffer (GstPad * pad, GstBuffer * inbuffer,
   gst_buffer_copy_into (*outbuffer, inbuffer,
       GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
 
-  if ((pmeta = gst_buffer_get_protection_meta (inbuffer)) != NULL)
-    gst_buffer_add_protection_meta (*outbuffer, gst_structure_copy (pmeta->info));
+  // Transfer GstProtectionMeta entries from input to the output buffer.
+  gst_buffer_copy_protection_meta (*outbuffer, inbuffer);
 
   return TRUE;
 }
@@ -427,7 +439,6 @@ gst_ml_aic_src_worker_task (gpointer userdata)
   if (gst_data_queue_pop (GST_ML_AIC_SRCPAD (pad)->requests, &item)) {
     const GstMLInfo *mlinfo = NULL;
     GstMemory *memory = NULL;
-    GstProtectionMeta *pmeta = NULL;
     guint idx = 0, offset = 0, size = 0;
 
     // Increase the request reference count to indicate that it is in use.
@@ -483,8 +494,7 @@ gst_ml_aic_src_worker_task (gpointer userdata)
         GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
 
     // Transfer the GstProtectionMeta into the new buffer.
-    if ((pmeta = gst_buffer_get_protection_meta (buffer)) != NULL)
-      gst_buffer_add_protection_meta (outbuffer, gst_structure_copy (pmeta->info));
+    gst_buffer_copy_protection_meta (outbuffer, buffer);
 
     // Reduce the reference count of the main buffer, it is no longer needed.
     gst_buffer_unref (buffer);

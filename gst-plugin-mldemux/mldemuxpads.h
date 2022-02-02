@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -63,12 +63,6 @@ G_BEGIN_DECLS
   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_ML_DEMUX_SRCPAD))
 #define GST_ML_DEMUX_SRCPAD_CAST(obj) ((GstMLDemuxSrcPad *)(obj))
 
-#define GST_ML_DEMUX_SINKPAD_GET_LOCK(obj) (&GST_ML_DEMUX_SINKPAD(obj)->lock)
-#define GST_ML_DEMUX_SINKPAD_LOCK(obj) \
-  g_mutex_lock(GST_ML_DEMUX_SINKPAD_GET_LOCK(obj))
-#define GST_ML_DEMUX_SINKPAD_UNLOCK(obj) \
-  g_mutex_unlock(GST_ML_DEMUX_SINKPAD_GET_LOCK(obj))
-
 typedef struct _GstMLDemuxSinkPad GstMLDemuxSinkPad;
 typedef struct _GstMLDemuxSinkPadClass GstMLDemuxSinkPadClass;
 typedef struct _GstMLDemuxSrcPad GstMLDemuxSrcPad;
@@ -77,9 +71,6 @@ typedef struct _GstMLDemuxSrcPadClass GstMLDemuxSrcPadClass;
 struct _GstMLDemuxSinkPad {
   /// Inherited parent structure.
   GstPad     parent;
-
-  /// Global mutex lock.
-  GMutex     lock;
 
   /// Segment.
   GstSegment segment;
@@ -96,6 +87,9 @@ struct _GstMLDemuxSrcPad {
 
   // Output ML tensors info from caps..
   GstMLInfo    *mlinfo;
+
+  /// Segment.
+  GstSegment   segment;
 
   /// Worker queue.
   GstDataQueue *buffers;

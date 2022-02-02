@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -50,10 +50,6 @@
 GST_DEBUG_CATEGORY_STATIC (gst_meta_mux_debug);
 
 #define gst_meta_mux_parent_class parent_class
-
-#ifndef GST_CAPS_FEATURE_META_GST_VIDEO_ROI_META
-#define GST_CAPS_FEATURE_META_GST_VIDEO_ROI_META "meta:GstVideoRegionOfInterestMeta"
-#endif
 
 #define GST_METAMUX_MEDIA_CAPS \
     "video/x-raw(ANY); "      \
@@ -232,7 +228,6 @@ gst_meta_mux_main_sink_setcaps (GstMetaMux * muxer, GstPad * pad,
     GstCaps * caps)
 {
   GstCaps *srccaps = NULL, *intersect = NULL;
-  guint idx = 0;
 
   GST_DEBUG_OBJECT (muxer, "Setting caps %" GST_PTR_FORMAT, caps);
 
@@ -263,30 +258,7 @@ gst_meta_mux_main_sink_setcaps (GstMetaMux * muxer, GstPad * pad,
     gst_caps_unref (srccaps);
   }
 
-  // Get the filter caps between the source pad and its peer.
-  srccaps = gst_pad_get_allowed_caps (muxer->srcpad);
-
-  // Check caps structures for meta:GstVideoregionOfInterestMeta feature.
-  for (idx = 0; idx < gst_caps_get_size (srccaps); idx++) {
-    GstCapsFeatures *features = gst_caps_get_features (srccaps, idx);
-
-    if (!gst_caps_features_is_any (features) &&
-        gst_caps_features_contains (features,
-            GST_CAPS_FEATURE_META_GST_VIDEO_ROI_META)) {
-      // Found caps structure with feature, remove all others.
-      GstStructure *structure = gst_caps_steal_structure (intersect, 0);
-
-      gst_caps_unref (intersect);
-      intersect = gst_caps_new_empty ();
-
-      gst_caps_append_structure_full (intersect, structure,
-          gst_caps_features_new (GST_CAPS_FEATURE_META_GST_VIDEO_ROI_META, NULL));
-      break;
-    }
-  }
-
-  gst_caps_unref (srccaps);
-  srccaps = intersect;
+  gst_caps_unref (intersect);
 
   // Extract audio/video information from caps.
   if (gst_caps_is_media_type (srccaps, "video/x-raw")) {
