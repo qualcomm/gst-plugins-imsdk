@@ -18,6 +18,7 @@ pkg_check_modules(GST_ALLOC
   REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_VIDEO
   REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GBM REQUIRED gbm)
 
 # Generate configuration header file.
 configure_file(config.h.in config.h @ONLY)
@@ -46,10 +47,9 @@ target_link_libraries(${GST_CVP_OPTCLFLOW} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
-  qtimlmeta
+  ${GBM_LIBRARIES}
   gstqtimemorybase
   cvp2
-  gbm
 )
 
 install(

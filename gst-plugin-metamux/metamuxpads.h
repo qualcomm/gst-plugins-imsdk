@@ -58,6 +58,7 @@ typedef struct _GstMetaMuxDataPadClass GstMetaMuxDataPadClass;
 typedef enum {
   GST_DATA_TYPE_UNKNOWN,
   GST_DATA_TYPE_TEXT,
+  GST_DATA_TYPE_OPTICAL_FLOW,
 } GstDataType;
 
 struct _GstMetaMuxDataPad {

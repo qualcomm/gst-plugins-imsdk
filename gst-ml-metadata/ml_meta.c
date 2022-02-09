@@ -1,31 +1,65 @@
 /*
-* Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted provided that the following conditions are
-* met:
-*     * Redistributions of source code must retain the above copyright
-*       notice, this list of conditions and the following disclaimer.
-*     * Redistributions in binary form must reproduce the above
-*       copyright notice, this list of conditions and the following
-*       disclaimer in the documentation and/or other materials provided
-*       with the distribution.
-*     * Neither the name of The Linux Foundation nor the names of its
-*       contributors may be used to endorse or promote products derived
-*       from this software without specific prior written permission.
-*
-* THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
-* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
-* ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
-* BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-* CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-* SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
-* BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-* WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
-* OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
-* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *     * Neither the name of The Linux Foundation nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted (subject to the limitations in the
+ * disclaimer below) provided that the following conditions are met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *
+ *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ *
+ * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+ * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+ * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+ * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #include "ml_meta.h"
 
@@ -248,57 +282,6 @@ gst_ml_posenet_get_info (void)
   return ml_meta_info;
 }
 
-static gboolean
-gst_cvp_optclflow_init (GstMeta * meta, gpointer params, GstBuffer * buffer)
-{
-  GstCvpOpticalFlowMeta *optclflow_meta = (GstCvpOpticalFlowMeta *) meta;
-  optclflow_meta->n_vectors = 0;
-  optclflow_meta->mvectors = NULL;
-  return TRUE;
-}
-
-static void
-gst_cvp_optclflow_free (GstMeta *meta, GstBuffer *buffer)
-{
-  GstCvpOpticalFlowMeta *optclflow_meta = (GstCvpOpticalFlowMeta *) meta;
-  if (optclflow_meta->mvectors) {
-    free(optclflow_meta->mvectors);
-    optclflow_meta->mvectors = NULL;
-  }
-  GST_DEBUG ("free detection meta ts: %llu ", buffer->pts);
-}
-
-GType
-gst_cvp_optclflow_get_type (void)
-{
-  static volatile GType type = 0;
-  static const gchar *tags[] = { NULL };
-
-  if (g_once_init_enter (&type)) {
-      GType _type =
-          gst_meta_api_type_register ("GstCvpOpticalFlowMetaAPI", tags);
-      g_once_init_leave (&type, _type);
-  }
-  return type;
-}
-
-const GstMetaInfo *
-gst_cvp_optclflow_get_info (void)
-{
-  static const GstMetaInfo *cvp_meta_info = NULL;
-
-  if (g_once_init_enter ((GstMetaInfo **) & cvp_meta_info)) {
-    const GstMetaInfo *meta =
-        gst_meta_register (GST_CVP_OPTCLFLOW_API_TYPE,
-            "GstCvpOpticalFlowMeta", (gsize) sizeof (GstCvpOpticalFlowMeta),
-            (GstMetaInitFunction) gst_cvp_optclflow_init,
-            (GstMetaFreeFunction) gst_cvp_optclflow_free,
-            (GstMetaTransformFunction) NULL);
-    g_once_init_leave ((GstMetaInfo **) & cvp_meta_info, (GstMetaInfo *) meta);
-  }
-  return cvp_meta_info;
-}
-
 GstMLDetectionMeta *
 gst_buffer_add_detection_meta (GstBuffer * buffer)
 {
@@ -407,36 +390,6 @@ gst_buffer_get_posenet_meta (GstBuffer * buffer)
   gpointer state = NULL;
   GstMeta *meta = NULL;
   const GstMetaInfo *info = GST_ML_POSENET_INFO;
-
-  g_return_val_if_fail (buffer != NULL, NULL);
-
-  GSList *meta_list = NULL;
-  while ((meta = gst_buffer_iterate_meta (buffer, &state))) {
-    if (meta->info->api == info->api) {
-      meta_list = g_slist_prepend(meta_list, meta);
-    }
-  }
-  return meta_list;
-}
-
-GstCvpOpticalFlowMeta *
-gst_buffer_add_optclflow_meta (GstBuffer * buffer)
-{
-  g_return_val_if_fail (buffer != NULL, NULL);
-
-  GstCvpOpticalFlowMeta *meta =
-      (GstCvpOpticalFlowMeta *) gst_buffer_add_meta (buffer,
-          GST_CVP_OPTCLFLOW_INFO, NULL);
-
-  return meta;
-}
-
-GSList *
-gst_buffer_get_optclflow_meta (GstBuffer * buffer)
-{
-  gpointer state = NULL;
-  GstMeta *meta = NULL;
-  const GstMetaInfo *info = GST_CVP_OPTCLFLOW_INFO;
 
   g_return_val_if_fail (buffer != NULL, NULL);
 

@@ -33,3 +33,4 @@ include_directories(
 add_subdirectory(gst/video)
 add_subdirectory(gst/memory)
 add_subdirectory(gst/ml)
+add_subdirectory(gst/cvp)

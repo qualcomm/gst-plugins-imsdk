@@ -43,6 +43,7 @@
 #include <gst/allocators/allocators.h>
 #include <gst/video/video.h>
 #include <gst/audio/audio.h>
+#include <gst/cvp/gstcvpmeta.h>
 
 #include "metamuxpads.h"
 
@@ -52,6 +53,20 @@ GST_DEBUG_CATEGORY_STATIC (gst_meta_mux_debug);
 #define gst_meta_mux_parent_class parent_class
 G_DEFINE_TYPE (GstMetaMux, gst_meta_mux, GST_TYPE_ELEMENT);
 
+#define CAST_TO_GUINT32(data) ((guint32*) data)
+#define EXTRACT_DATA_VALUE(data, offset, bits) \
+    (CAST_TO_GUINT32 (data)[offset / 32] >> (offset - ((offset / 32) * 32))) & ((1 << bits) - 1)
+
+#define EXTRACT_FIELD_PARAMS(structure, name, offset, size, isunsigned) \
+{\
+  const GValue *value = gst_structure_get_value (structure, name);       \
+  g_return_val_if_fail (value != NULL, FALSE);                           \
+                                                                         \
+  offset = g_value_get_uchar (gst_value_array_get_value (value, 0));     \
+  size = g_value_get_uchar (gst_value_array_get_value (value, 1));       \
+  isunsigned = g_value_get_uchar (gst_value_array_get_value (value, 2)); \
+}
+
 #define GARBAGE_SYMBOLS "\x10\xA0"
 
 #define GST_METAMUX_MEDIA_CAPS \
@@ -59,7 +74,8 @@ G_DEFINE_TYPE (GstMetaMux, gst_meta_mux, GST_TYPE_ELEMENT);
     "audio/x-raw(ANY)"
 
 #define GST_METAMUX_DATA_CAPS     \
-    "text/x-raw, format = utf8"
+    "text/x-raw, format = utf8; " \
+    "cvp/x-optical-flow"
 
 enum
 {
@@ -215,12 +231,195 @@ gst_meta_mux_parse_string_metadata (GstMetaMux * muxer,
   return TRUE;
 }
 
+static gboolean
+gst_meta_mux_parse_optical_flow_metadata (GstMetaMux * muxer,
+    GstMetaMuxDataPad * dpad, GstBuffer * buffer)
+{
+  GstProtectionMeta *pmeta = NULL;
+  GstStructure *structure = NULL;
+  GArray *mvectors = NULL, *mvstats = NULL;
+  GstMapInfo memmap = { 0, };
+  gint idx = 0, length = 0, n_vectors = 0, n_stats = 0;
+  guchar offsets[3] = { 0, }, sizes[3] = { 0, }, isunsigned[3] = { 0, };
+
+  if ((pmeta = gst_buffer_get_protection_meta (buffer)) == NULL) {
+    GST_ERROR_OBJECT (dpad, "Buffer %p does not contain CVP meta!", buffer);
+    return FALSE;
+  } else if (!gst_structure_has_name (pmeta->info, "CvpOpticalFlow")) {
+    GST_ERROR_OBJECT (dpad, "Invalid CVP meta in buffer %p!", buffer);
+    return FALSE;
+  }
+
+  gst_structure_get (pmeta->info, "motion-vector-params", GST_TYPE_STRUCTURE,
+      &structure, NULL);
+
+  if (structure == NULL) {
+    GST_ERROR_OBJECT (dpad, "CVP protection meta in buffer %p does not contain"
+        " the CVP motion vector information necessary for decryption!", buffer);
+    return FALSE;
+  }
+
+  // Map the 1st memory block which will contain raw motion vector data.
+  if (!gst_buffer_map_range (buffer, 0, 1, &memmap, GST_MAP_READ)) {
+    GST_ERROR_OBJECT (dpad, "Failed to map buffer %p!", buffer);
+
+    gst_structure_free (structure);
+    return FALSE;
+  }
+
+  // Fill the X field offsets and sizes in arrays for faster access.
+  EXTRACT_FIELD_PARAMS (structure, "X", offsets[0], sizes[0], isunsigned[0]);
+  // Fill the Y field offsets and sizes in arrays for faster access.
+  EXTRACT_FIELD_PARAMS (structure, "Y", offsets[1], sizes[1], isunsigned[1]);
+  // Fill the confidence field offsets and sizes in arrays for faster access.
+  EXTRACT_FIELD_PARAMS (structure, "confidence", offsets[2], sizes[2], isunsigned[2]);
+
+  // Calculate the length of one motion vector entry in bits.
+  for (idx = 0; idx < gst_structure_n_fields (structure); idx++) {
+    const gchar *name = gst_structure_nth_field_name (structure, idx);
+    const GValue *value = gst_structure_get_value (structure, name);
+
+    // Size in bits is given as the 2nd value in the list.
+    length += g_value_get_uchar (gst_value_array_get_value (value, 1));
+  }
+
+  // Convert length from bits to bytes.
+  length = length / CHAR_BIT;
+  // Number of motion vector entries.
+  n_vectors = memmap.size / length;
+
+  // Iterate over the raw data in reverse, parse and add it to the list.
+  mvectors = g_array_sized_new (FALSE, FALSE, sizeof (GstCvpMotionVector),
+      n_vectors);
+
+  for (idx = 0; idx < n_vectors; idx++) {
+    guint32 *data = CAST_TO_GUINT32 (&(memmap).data[idx * length]);
+    GstCvpMotionVector *mvector =
+        &g_array_index (mvectors, GstCvpMotionVector, idx);
+
+    mvector->x = EXTRACT_DATA_VALUE (data, offsets[0], sizes[0]);
+    mvector->y = EXTRACT_DATA_VALUE (data, offsets[1], sizes[1]);
+    mvector->confidence = EXTRACT_DATA_VALUE (data, offsets[2], sizes[2]);
+
+    if (!isunsigned[0] && (mvector->x & (1 << (sizes[0] - 1))))
+      mvector->x |= ~((1 << sizes[0]) - 1) & 0xFFFF;
+
+    if (!isunsigned[1] && (mvector->y & (1 << (sizes[1] - 1))))
+      mvector->y |= ~((1 << sizes[1]) - 1) & 0xFFFF;
+
+    if (!isunsigned[2] && (mvector->confidence & (1 << (sizes[2] - 1))))
+      mvector->confidence |= ~((1 << sizes[2]) - 1) & 0xFFFF;
+  }
+
+  gst_structure_free (structure);
+  gst_buffer_unmap (buffer, &memmap);
+
+  // A 2nd memory block indicates the presents of statistics information.
+  if (gst_buffer_n_memory (buffer) == 2) {
+    gst_structure_get (pmeta->info, "statistics-params", GST_TYPE_STRUCTURE,
+        &structure, NULL);
+
+    if (structure == NULL) {
+      GST_ERROR_OBJECT (dpad, "CVP protection meta in buffer %p does not contain"
+          " the CVP statistics information necessary for decryption!", buffer);
+
+      g_array_free (mvectors, TRUE);
+      return FALSE;
+    }
+
+    // Map the 2nd memory block which will contain raw statistics data.
+    if (!gst_buffer_map_range (buffer, 1, 1, &memmap, GST_MAP_READ)) {
+      GST_ERROR_OBJECT (dpad, "Failed to map buffer %p!", buffer);
+
+      gst_structure_free (structure);
+      g_array_free (mvectors, TRUE);
+
+      return FALSE;
+    }
+
+    // Fill the variance field offsets and sizes in arrays for faster access.
+    EXTRACT_FIELD_PARAMS (structure, "variance", offsets[0], sizes[0], isunsigned[0]);
+    // Fill the mean field offsets and sizes in arrays for faster access.
+    EXTRACT_FIELD_PARAMS (structure, "mean", offsets[1], sizes[1], isunsigned[1]);
+    // Fill the SAD field offsets and sizes in arrays for faster access.
+    EXTRACT_FIELD_PARAMS (structure, "SAD", offsets[2], sizes[2], isunsigned[2]);
+
+    length = 0;
+
+    // Calculate the length of one entry in bits.
+    for (idx = 0; idx < gst_structure_n_fields (structure); idx++) {
+      const gchar *name = gst_structure_nth_field_name (structure, idx);
+      const GValue *value = gst_structure_get_value (structure, name);
+
+      // Size in bits is given as the 2nd value in the list.
+      length += g_value_get_uchar (gst_value_array_get_value (value, 1));
+    }
+
+    // Convert length from bits to bytes.
+    length = length / CHAR_BIT;
+    // Number of statistics entries.
+    n_stats = memmap.size / length;
+
+    // Iterate over the raw data in reverse, parse and add it to the list.
+    mvstats = g_array_sized_new (FALSE, FALSE, sizeof (GstCvpOptclFlowStats),
+        n_vectors);
+
+    for (idx = 0; idx < n_stats; idx++) {
+      guint32 *data = CAST_TO_GUINT32 (&(memmap).data[idx * length]);
+      GstCvpOptclFlowStats *stats =
+          &g_array_index (mvstats, GstCvpOptclFlowStats, idx);
+
+      stats->variance = EXTRACT_DATA_VALUE (data, offsets[0], sizes[0]);
+      stats->mean = EXTRACT_DATA_VALUE (data, offsets[1], sizes[1]);
+      stats->sad = EXTRACT_DATA_VALUE (data, offsets[2], sizes[2]);
+
+      if (!isunsigned[0] && (stats->variance & (1 << (sizes[0] - 1))))
+        stats->variance |= ~((1 << sizes[0]) - 1) & 0xFFFF;
+
+      if (!isunsigned[1] && (stats->mean & (1 << (sizes[1] - 1))))
+        stats->mean |= ~((1 << sizes[1]) - 1) & 0xFFFF;
+
+      if (!isunsigned[2] && (stats->sad & (1 << (sizes[2] - 1))))
+        stats->sad |= ~((1 << sizes[2]) - 1) & 0xFFFF;
+    }
+
+    gst_structure_free (structure);
+    gst_buffer_unmap (buffer, &memmap);
+  }
+
+  {
+    // Add the parsed information to a GValue container.
+    GValue *entries = NULL, value = G_VALUE_INIT;
+    entries = g_value_init (g_new0 (GValue, 1), GST_TYPE_LIST);
+    g_value_init (&value, GST_TYPE_STRUCTURE);
+
+    structure = gst_structure_new ("OpticalFlow",
+        "mvectors", G_TYPE_ARRAY, mvectors,
+        "n_vectors", G_TYPE_INT, n_vectors,
+        "mvstats", G_TYPE_ARRAY, mvstats,
+        "n_stats", G_TYPE_INT, n_stats,
+        NULL);
+
+    g_value_take_boxed (&value, structure);
+    gst_value_list_append_value (entries, &value);
+    g_value_unset (&value);
+
+    GST_METAMUX_LOCK (muxer);
+
+    g_queue_push_tail (dpad->queue, entries);
+    g_cond_signal (&(muxer)->wakeup);
+
+    GST_METAMUX_UNLOCK (muxer);
+  }
+
+  return TRUE;
+}
+
 static void
 gst_meta_mux_process_metadata_entry (GstMetaMux * muxer, GstBuffer * buffer,
     const GValue * value, const guint index)
 {
   GstStructure *structure = NULL;
-  GstVideoRegionOfInterestMeta *meta = NULL;
   const GValue *entry = NULL;
   gint x = 0, y = 0, width = 0, height = 0;
 
@@ -256,11 +455,30 @@ gst_meta_mux_process_metadata_entry (GstMetaMux * muxer, GstBuffer * buffer,
   // Remove the rectangle field if it exists as that data is no longer needed.
   gst_structure_remove_field (structure, "rectangle");
 
-  meta = gst_buffer_add_video_region_of_interest_meta (buffer,
-      gst_structure_get_name (structure), x, y, width, height);
-  meta->id = index;
+  if (gst_structure_has_name (structure, "OpticalFlow")) {
+    GArray *mvectors = NULL, *mvstats = NULL;
+    GstCvpOptclFlowMeta *meta = NULL;
+    gint n_vectors = 0, n_stats = 0;
 
-  gst_video_region_of_interest_meta_add_param (meta, structure);
+    gst_structure_get (structure,
+        "mvectors", G_TYPE_ARRAY, &mvectors,
+        "n_vectors", G_TYPE_INT, &n_vectors,
+        "mvstats", G_TYPE_ARRAY, &mvstats,
+        "n_stats", G_TYPE_INT, &n_stats,
+        NULL);
+
+    meta = gst_buffer_add_cvp_optclflow_meta (buffer, mvectors, n_vectors,
+        mvstats, n_stats);
+    meta->id = index;
+  } else {
+    GstVideoRegionOfInterestMeta *meta = NULL;
+
+    meta = gst_buffer_add_video_region_of_interest_meta (buffer,
+        gst_structure_get_name (structure), x, y, width, height);
+    meta->id = index;
+
+    gst_video_region_of_interest_meta_add_param (meta, structure);
+  }
 }
 
 static GstCaps *
@@ -586,6 +804,8 @@ gst_meta_mux_data_sink_event (GstPad * pad, GstObject * parent,
 
       if (gst_caps_is_media_type (caps, "text/x-raw"))
         GST_META_MUX_DATA_PAD (pad)->type = GST_DATA_TYPE_TEXT;
+      else if (gst_caps_is_media_type (caps, "cvp/x-optical-flow"))
+        GST_META_MUX_DATA_PAD (pad)->type = GST_DATA_TYPE_OPTICAL_FLOW;
       else
         GST_META_MUX_DATA_PAD (pad)->type = GST_DATA_TYPE_UNKNOWN;
 
@@ -664,6 +884,8 @@ gst_meta_mux_data_sink_chain (GstPad * pad, GstObject * parent,
 
   if (dpad->type == GST_DATA_TYPE_TEXT)
     success = gst_meta_mux_parse_string_metadata (muxer, dpad, buffer);
+  else if (dpad->type == GST_DATA_TYPE_OPTICAL_FLOW)
+    success = gst_meta_mux_parse_optical_flow_metadata (muxer, dpad, buffer);
 
   ts_end = gst_util_get_timestamp ();
   tsdelta = GST_CLOCK_DIFF (ts_begin, ts_end);

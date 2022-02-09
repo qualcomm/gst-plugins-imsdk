@@ -1,31 +1,65 @@
 /*
-* Copyright (c) 2021, The Linux Foundation. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted provided that the following conditions are
-* met:
-*     * Redistributions of source code must retain the above copyright
-*       notice, this list of conditions and the following disclaimer.
-*     * Redistributions in binary form must reproduce the above
-*       copyright notice, this list of conditions and the following
-*       disclaimer in the documentation and/or other materials provided
-*       with the distribution.
-*     * Neither the name of The Linux Foundation nor the names of its
-*       contributors may be used to endorse or promote products derived
-*       from this software without specific prior written permission.
-*
-* THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
-* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
-* ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
-* BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-* CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-* SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
-* BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-* WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
-* OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
-* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ * Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *     * Neither the name of The Linux Foundation nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted (subject to the limitations in the
+ * disclaimer below) provided that the following conditions are met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *
+ *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ *
+ * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+ * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+ * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+ * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -179,14 +213,6 @@ gst_roimux_sink_event (GstPad * pad, GstObject * object, GstEvent * event)
         gst_pad_set_caps (roimux->srcpad, caps);
       }
 
-      if (pad == roimux->datasinkpad) {
-        GstStructure *structure =
-            gst_caps_get_structure (caps, 0);
-        if (gst_structure_has_name (structure, "cvp/optiflow")) {
-          roimux->datapad_format = GST_DATA_FORMAT_OPTICAL_FLOW;
-          GST_INFO_OBJECT (pad, "Set input format cvp/optiflow");
-        }
-      }
       break;
     }
     default:
@@ -285,105 +311,6 @@ gst_roimux_finalize (GObject * object)
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (roimux));
 }
 
-static void
-gst_free_queue_item (gpointer data)
-{
-  GstDataQueueItem *item = (GstDataQueueItem *) data;
-  gst_buffer_unref (GST_BUFFER (item->object));
-  g_slice_free (GstDataQueueItem, item);
-}
-
-static void
-gst_roimux_timestamp_compare (GstRoiMux * roimux)
-{
-  GstBuffer *videobuffer = NULL;
-  GstBuffer *metabuffer = NULL;
-  GstDataQueueItem *item = NULL;
-  g_mutex_lock (&roimux->lock);
-
-  if (GST_FORMAT_UNDEFINED == roimux->segment.format) {
-    gst_segment_init (&roimux->segment, GST_FORMAT_TIME);
-    gst_pad_push_event (
-        roimux->srcpad, gst_event_new_segment (&roimux->segment));
-  }
-
-  // Check if video queue is empty
-  if (!gst_data_queue_is_empty (roimux->vidpad_queue)) {
-    // Get the item without remove from the queue
-    gst_data_queue_peek (roimux->vidpad_queue, &item);
-    videobuffer = (GstBuffer *) item->object;
-  } else {
-    g_mutex_unlock (&roimux->lock);
-    return;
-  }
-
-  // Check if video queue is empty
-  if (!gst_data_queue_is_empty (roimux->datapad_queue)) {
-    // Get the item without remove from the queue
-    gst_data_queue_peek (roimux->datapad_queue, &item);
-    metabuffer = (GstBuffer *) item->object;
-  } else {
-    g_mutex_unlock (&roimux->lock);
-    return;
-  }
-
-  GstClockTimeDiff timedelta = GST_CLOCK_DIFF (GST_BUFFER_PTS (videobuffer),
-      GST_BUFFER_PTS (metabuffer));
-
-  // Check the timestamp delta
-  if (GST_TIME_AS_MSECONDS (timedelta) == 0) {
-    // Remove both buffer from the queue
-    gst_data_queue_pop (roimux->vidpad_queue, &item);
-    videobuffer = (GstBuffer *) item->object;
-
-    gst_data_queue_pop (roimux->datapad_queue, &item);
-    metabuffer = (GstBuffer *) item->object;
-
-    GstCvpOpticalFlowMeta *meta = gst_buffer_add_optclflow_meta (videobuffer);
-
-    GstMapInfo map_info;
-    if (!gst_buffer_map_range (
-        metabuffer, 2, 1, &map_info, GST_MAP_READWRITE)) {
-      GST_ERROR_OBJECT (roimux, "%s Failed to map the meta buffer!!", __func__);
-      g_mutex_unlock (&roimux->lock);
-      return;
-    }
-
-    GstCvpMotionVector *mv_data = (GstCvpMotionVector *) map_info.data;
-    gint n_vectors = GST_VIDEO_INFO_WIDTH (roimux->vinfo) *
-        GST_VIDEO_INFO_HEIGHT (roimux->vinfo) / 64;
-
-    meta->mvectors =
-          (GstCvpMotionVector*) malloc (sizeof (GstCvpMotionVector) * n_vectors);
-    if (!meta) {
-      GST_ERROR_OBJECT (roimux, "Failed to allocate meta buffer");
-      g_mutex_unlock (&roimux->lock);
-      return;
-    }
-    meta->n_vectors = n_vectors;
-    memcpy (meta->mvectors, mv_data, sizeof (GstCvpMotionVector) * n_vectors);
-
-    gst_buffer_unmap (metabuffer, &map_info);
-    gst_buffer_unref (metabuffer);
-
-    // Send buffer
-    gst_pad_push (roimux->srcpad, videobuffer);
-  } else if (GST_TIME_AS_MSECONDS (timedelta) < 0) {
-    // Drop meta
-    // Remove data buffer from the queue
-    gst_data_queue_pop (roimux->datapad_queue, &item);
-    metabuffer = (GstBuffer *) item->object;
-    gst_buffer_unref (metabuffer);
-  } else if (GST_TIME_AS_MSECONDS (timedelta) > 0) {
-    // Drop buffer
-    // Remove video buffer from the queue
-    gst_data_queue_pop (roimux->vidpad_queue, &item);
-    videobuffer = (GstBuffer *) item->object;
-    gst_buffer_unref (videobuffer);
-  }
-  g_mutex_unlock (&roimux->lock);
-}
-
 static GstFlowReturn
 gst_roimux_chain_sink_data (GstPad * pad, GstObject * object,
     GstBuffer * buffer)
@@ -391,20 +318,7 @@ gst_roimux_chain_sink_data (GstPad * pad, GstObject * object,
   GstRoiMux *roimux = GST_ROIMUX (object);
   GstMapInfo map_info;
 
-  if (roimux->datapad_format == GST_DATA_FORMAT_OPTICAL_FLOW) {
-    // Push buffer to queue
-    GstDataQueueItem *item = NULL;
-    item = g_slice_new0 (GstDataQueueItem);
-    item->object = GST_MINI_OBJECT (buffer);
-    item->visible = TRUE;
-    item->destroy = gst_free_queue_item;
-    if (!gst_data_queue_push (roimux->datapad_queue, item)) {
-      GST_ERROR_OBJECT (roimux, "ERROR: Cannot push data to the queue!");
-      item->destroy (item);
-      return GST_FLOW_ERROR;
-    }
-    gst_roimux_timestamp_compare (roimux);
-  } else if (roimux->datapad_format == GST_DATA_FORMAT_TEXT) {
+  if (roimux->datapad_format == GST_DATA_FORMAT_TEXT) {
     gst_buffer_map (buffer, &map_info, GST_MAP_READ);
     gchar *data = NULL;
     if (!roimux->config_data) {
@@ -435,20 +349,7 @@ gst_roimux_chain_sink_video (GstPad * pad, GstObject * object,
   GstRoiMux *roimux = GST_ROIMUX (object);
   GList *list = NULL;
 
-  if (roimux->datapad_format == GST_DATA_FORMAT_OPTICAL_FLOW) {
-    // Push buffer to queue
-    GstDataQueueItem *item = NULL;
-    item = g_slice_new0 (GstDataQueueItem);
-    item->object = GST_MINI_OBJECT (buffer);
-    item->visible = TRUE;
-    item->destroy = gst_free_queue_item;
-    if (!gst_data_queue_push (roimux->vidpad_queue, item)) {
-      GST_ERROR_OBJECT (roimux, "ERROR: Cannot push data to the queue!");
-      item->destroy (item);
-      return GST_FLOW_ERROR;
-    }
-    gst_roimux_timestamp_compare (roimux);
-  } else if (roimux->datapad_format == GST_DATA_FORMAT_TEXT) {
+  if (roimux->datapad_format == GST_DATA_FORMAT_TEXT) {
     GstClockTime timestamp = gst_segment_to_running_time (
         &roimux->segment, GST_FORMAT_TIME,
         GST_BUFFER_PTS (buffer)) + GST_BUFFER_DURATION (buffer);

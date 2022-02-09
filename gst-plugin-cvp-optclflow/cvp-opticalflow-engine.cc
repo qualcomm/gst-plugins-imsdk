@@ -107,15 +107,44 @@
   } \
 }
 
-#define REQUIRED_N_INPUTS          2
+#define ADD_FIELD_PARAMS(params, entries, value, name, offset, size, isunsigned) \
+{ \
+  g_value_set_uchar (value, offset);               \
+  gst_value_array_append_value (entries, value);   \
+                                                   \
+  g_value_set_uchar (value, size);                 \
+  gst_value_array_append_value (entries, value);   \
+                                                   \
+  g_value_set_uchar (value, isunsigned);           \
+  gst_value_array_append_value (entries, value);   \
+                                                   \
+  gst_structure_set_value (params, name, entries); \
+  g_value_reset (entries);                         \
+}
 
-#define DEFAULT_OPT_VIDEO_WIDTH    0
-#define DEFAULT_OPT_VIDEO_HEIGHT   0
-#define DEFAULT_OPT_VIDEO_STRIDE   0
-#define DEFAULT_OPT_VIDEO_SCANLINE 0
-#define DEFAULT_OPT_VIDEO_FORMAT   GST_VIDEO_FORMAT_UNKNOWN
-#define DEFAULT_OPT_VIDEO_FPS      0
-#define DEFAULT_OPT_ENABLE_STATS   TRUE
+#define EXTRACT_DATA_VALUE(data, offset, bits) \
+    (data[offset / 32] >> (offset - ((offset / 32) * 32))) & ((1 << bits) - 1)
+
+#define REQUIRED_N_INPUTS             2
+
+#define CVP_MV_X_FIELD_SIZE           9
+#define CVP_MV_Y_FIELD_SIZE           7
+#define CVP_MV_RESERVED_FIELD_SIZE    12
+#define CVP_MV_CONFIDENCE_FIELD_SIZE  4
+
+#define CVP_STATS_VARIANCE_FIELD_SIZE 16
+#define CVP_STATS_MEAN_FIELD_SIZE     8
+#define CVP_STATS_RESERVED_FIELD_SIZE 8
+#define CVP_STATS_BEST_SAD_FIELD_SIZE 16
+#define CVP_STATS_SAD_FIELD_SIZE      16
+
+#define DEFAULT_OPT_VIDEO_WIDTH       0
+#define DEFAULT_OPT_VIDEO_HEIGHT      0
+#define DEFAULT_OPT_VIDEO_STRIDE      0
+#define DEFAULT_OPT_VIDEO_SCANLINE    0
+#define DEFAULT_OPT_VIDEO_FORMAT      GST_VIDEO_FORMAT_UNKNOWN
+#define DEFAULT_OPT_VIDEO_FPS         0
+#define DEFAULT_OPT_ENABLE_STATS      TRUE
 
 #define GET_OPT_FORMAT(s) ((GstVideoFormat) get_opt_enum (s, \
     GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_FORMAT, GST_TYPE_VIDEO_FORMAT, \
@@ -190,8 +219,126 @@ get_opt_bool (const GstStructure * settings, const gchar * opt, gboolean value)
   return gst_structure_get_boolean (settings, opt, &result) ? result : value;
 }
 
+static void
+gst_buffer_append_cvp_custom_meta (GstBuffer * buffer)
+{
+  GstStructure *info = NULL, *params = NULL;
+  GValue entries = G_VALUE_INIT, value = G_VALUE_INIT;
+  guchar offset = 0, size = 0;
+
+  g_value_init (&entries, GST_TYPE_ARRAY);
+  g_value_init (&value, G_TYPE_UCHAR);
+
+  // Create a structure that will contain information for data decryption.
+  info = gst_structure_new_empty ("CvpOpticalFlow");
+
+  // Names, offsets and sizes in bits of the fields in the motion vector.
+  params = gst_structure_new_empty ("MotionVector");
+
+  offset = 0;
+  size = CVP_MV_X_FIELD_SIZE;
+
+  // Fill offset and size of the motion vector X field in bits.
+  ADD_FIELD_PARAMS (params, &entries, &value, "X", offset, size, false);
+
+  offset += size;
+  size = CVP_MV_Y_FIELD_SIZE;
+
+  // Fill offset and size of the motion vector Y field in bits.
+  ADD_FIELD_PARAMS (params, &entries, &value, "Y", offset, size, false);
+
+  offset += size;
+  size = CVP_MV_RESERVED_FIELD_SIZE;
+
+  // Fill offset and size of the motion vector reserved field in bits.
+  ADD_FIELD_PARAMS (params, &entries, &value, "reserved", offset, size, false);
+
+  offset += size;
+  size = CVP_MV_CONFIDENCE_FIELD_SIZE;
+
+  // Fill offset and size of the motion vector confidence field in bits.
+  ADD_FIELD_PARAMS (params, &entries, &value, "confidence", offset, size, false);
+
+  // The motion vector parameters to the main info structure.
+  gst_structure_set (info,
+      "motion-vector-params", GST_TYPE_STRUCTURE, params, NULL);
+  gst_structure_free (params);
+
+  // Sanity checks for errors that should not occur.
+  size = CVP_MV_X_FIELD_SIZE + CVP_MV_Y_FIELD_SIZE +
+      CVP_MV_RESERVED_FIELD_SIZE + CVP_MV_CONFIDENCE_FIELD_SIZE;
+  g_return_if_fail (size == (sizeof (cvpMotionVector) * CHAR_BIT));
+
+  // In case there is a 2nd memory block add statistics information as well.
+  if (gst_buffer_n_memory (buffer) == 2) {
+    // Names, offsets and sizes in bits of the fields in the statistics.
+    params = gst_structure_new_empty ("Statistics");
+
+    offset = 0;
+    size = CVP_STATS_VARIANCE_FIELD_SIZE;
+
+    // Fill offset and size of the statistics variance field in bits.
+    ADD_FIELD_PARAMS (params, &entries, &value, "variance", offset, size, true);
+
+    offset += size;
+    size = CVP_STATS_MEAN_FIELD_SIZE;
+
+    // Fill offset and size of the statistics mean field in bits.
+    ADD_FIELD_PARAMS (params, &entries, &value, "mean", offset, size, true);
+
+    offset += size;
+    size = CVP_STATS_RESERVED_FIELD_SIZE;
+
+    // Fill offset and size of the statistics reserved field in bits.
+    ADD_FIELD_PARAMS (params, &entries, &value, "reserved", offset, size, true);
+
+    offset += size;
+    size = CVP_STATS_BEST_SAD_FIELD_SIZE;
+
+    // Fill offset and size of the statistics best-SAD field in bits.
+    ADD_FIELD_PARAMS (params, &entries, &value, "best-SAD", offset, size, true);
+
+    offset += size;
+    size = CVP_STATS_SAD_FIELD_SIZE;
+
+    // Fill offset and size of the statistics SAD field in bits.
+    ADD_FIELD_PARAMS (params, &entries, &value, "SAD", offset, size, true);
+
+    gst_structure_set (info,
+        "statistics-params", GST_TYPE_STRUCTURE, params, NULL);
+    gst_structure_free (params);
+
+    // Sanity checks for errors that should not occur.
+    size = (sizeof cvpOFStats().nVariance) * CHAR_BIT;
+    g_return_if_fail (size == CVP_STATS_VARIANCE_FIELD_SIZE);
+
+    size = (sizeof cvpOFStats().nMean) * CHAR_BIT;
+    g_return_if_fail (size == CVP_STATS_MEAN_FIELD_SIZE);
+
+    size = (sizeof cvpOFStats().nReserved) * CHAR_BIT;
+    g_return_if_fail (size == CVP_STATS_RESERVED_FIELD_SIZE);
+
+    size = (sizeof cvpOFStats().nBestMVSad) * CHAR_BIT;
+    g_return_if_fail (size == CVP_STATS_BEST_SAD_FIELD_SIZE);
+
+    size = (sizeof cvpOFStats().nSad) * CHAR_BIT;
+    g_return_if_fail (size == CVP_STATS_SAD_FIELD_SIZE);
+
+    size = CVP_STATS_VARIANCE_FIELD_SIZE + CVP_STATS_MEAN_FIELD_SIZE +
+        CVP_STATS_RESERVED_FIELD_SIZE + CVP_STATS_BEST_SAD_FIELD_SIZE +
+        CVP_STATS_SAD_FIELD_SIZE;
+    g_return_if_fail (size == (sizeof (cvpOFStats) * CHAR_BIT));
+  }
+
+  g_value_unset (&value);
+  g_value_unset (&entries);
+
+  // Append custom meta to the output buffer for data decryption.
+  gst_buffer_add_protection_meta (buffer, info);
+}
+
 static cvpImage *
-create_cvp_image (GstCvpOptclFlowEngine * engine, const GstVideoFrame * frame)
+gst_cvp_create_image (GstCvpOptclFlowEngine * engine, const GstVideoFrame * frame)
 {
   GstMemory *memory = NULL;
   cvpImage *cvpimage = NULL;
@@ -280,7 +427,7 @@ create_cvp_image (GstCvpOptclFlowEngine * engine, const GstVideoFrame * frame)
 }
 
 static void
-delete_cvp_image (gpointer key, gpointer value, gpointer userdata)
+gst_cvp_delete_image (gpointer key, gpointer value, gpointer userdata)
 {
   GstCvpOptclFlowEngine *engine = (GstCvpOptclFlowEngine*) userdata;
   cvpImage *cvpimage = (cvpImage*) value;
@@ -400,7 +547,7 @@ gst_cvp_optclflow_engine_free (GstCvpOptclFlowEngine * engine)
     return;
 
   if (engine->cvpimages != NULL) {
-    g_hash_table_foreach (engine->cvpimages, delete_cvp_image, engine);
+    g_hash_table_foreach (engine->cvpimages, gst_cvp_delete_image, engine);
     g_hash_table_destroy (engine->cvpimages);
   }
 
@@ -422,14 +569,12 @@ gst_cvp_optclflow_engine_free (GstCvpOptclFlowEngine * engine)
 
 gboolean
 gst_cvp_optclflow_engine_sizes (GstCvpOptclFlowEngine * engine, guint * mvsize,
-    guint * statsize, guint * metasize)
+    guint * statsize)
 {
   g_return_val_if_fail (engine != NULL, FALSE);
 
   *mvsize = engine->mvsize;
   *statsize = engine->statsize;
-  *metasize = (engine->mvsize / sizeof (cvpMotionVector)) *
-      sizeof (GstCvpMotionVector);
 
   GST_INFO ("MV size: %d, Stats size: %d", engine->mvsize, engine->statsize);
   return TRUE;
@@ -441,9 +586,6 @@ gst_cvp_optclflow_engine_execute (GstCvpOptclFlowEngine * engine,
 {
   GstMapInfo *outmap = NULL;
   cvpImage *cvpimages[REQUIRED_N_INPUTS];
-  cvpMotionVector *mvector = NULL;
-  cvpOFStats *stats = NULL;
-  GstCvpMotionVector *mvmeta = NULL;
   cvpOpticalFlowOutput optcloutput;
   guint idx = 0, n_blocks = 0;
   cvpStatus status = CVP_SUCCESS;
@@ -452,8 +594,8 @@ gst_cvp_optclflow_engine_execute (GstCvpOptclFlowEngine * engine,
   g_return_val_if_fail ((inframes != NULL) && (n_inputs == REQUIRED_N_INPUTS), FALSE);
   g_return_val_if_fail (outbuffer != NULL, FALSE);
 
-  // Expecting 3 memory blocks if stats is enabled.
-  n_blocks = GET_OPT_STATS (engine->settings) ? 3 : 2;
+  // Expecting 2 memory blocks if stats is enabled.
+  n_blocks = GET_OPT_STATS (engine->settings) ? 2 : 1;
 
   if (gst_buffer_n_memory (outbuffer) != n_blocks) {
     GST_WARNING ("Output buffer has %u memory blocks but engine requires %u!",
@@ -475,7 +617,7 @@ gst_cvp_optclflow_engine_execute (GstCvpOptclFlowEngine * engine,
     fd = gst_fd_memory_get_fd (memory);
 
     if (!g_hash_table_contains (engine->cvpimages, GUINT_TO_POINTER (fd))) {
-      cvpimages[idx] = create_cvp_image (engine, frame);
+      cvpimages[idx] = gst_cvp_create_image (engine, frame);
       GST_RETURN_VAL_IF_FAIL (cvpimages[idx] != NULL, FALSE,
           "Failed to create CVP image!");
 
@@ -491,7 +633,7 @@ gst_cvp_optclflow_engine_execute (GstCvpOptclFlowEngine * engine,
   outmap = g_new0 (GstMapInfo, n_blocks);
 
   optcloutput.pMotionVector = g_new0 (cvpMem, 1);
-  optcloutput.pStats = (n_blocks == 3) ? g_new0 (cvpMem, 1) : NULL;
+  optcloutput.pStats = (n_blocks == 2) ? g_new0 (cvpMem, 1) : NULL;
 
   for (idx = 0; idx < n_blocks; ++idx) {
     GstMemory *memory = NULL;
@@ -503,16 +645,14 @@ gst_cvp_optclflow_engine_execute (GstCvpOptclFlowEngine * engine,
     if (!gst_memory_map (memory, &outmap[idx], GST_MAP_READWRITE)) {
       GST_ERROR ("Failed to map output memory block at idx %u!", idx);
 
-      if (optcloutput.pMotionVector != NULL)
-        g_free (optcloutput.pMotionVector);
+      g_free (optcloutput.pMotionVector);
+      g_free (optcloutput.pStats);
 
-      if (optcloutput.pStats != NULL)
-        g_free (optcloutput.pStats);
-
-      while (idx != 0) {
+      for (n_blocks = idx, idx = 0; idx < n_blocks; idx++) {
         memory = gst_buffer_peek_memory (outbuffer, idx);
-        gst_memory_unmap (memory, &outmap[idx++]);
+        gst_memory_unmap (memory, &outmap[idx]);
       }
+
       g_free (outmap);
       return FALSE;
     }
@@ -524,8 +664,6 @@ gst_cvp_optclflow_engine_execute (GstCvpOptclFlowEngine * engine,
       optcloutput.pMotionVector->pAddress = outmap[idx].data;
       optcloutput.pMotionVector->nOffset = 0;
       optcloutput.nMVSize = outmap[idx].size;
-
-      mvector = (cvpMotionVector *) optcloutput.pMotionVector->pAddress;
     } else if (GET_OPT_STATS (engine->settings) && idx == 1) {
       optcloutput.pStats->eType = CVP_MEM_NON_SECURE;
       optcloutput.pStats->nFD = gst_fd_memory_get_fd (memory);
@@ -533,50 +671,27 @@ gst_cvp_optclflow_engine_execute (GstCvpOptclFlowEngine * engine,
       optcloutput.pStats->pAddress = outmap[idx].data;
       optcloutput.pStats->nOffset = 0;
       optcloutput.nStatsSize = outmap[idx].size;
-
-      stats = (cvpOFStats *) optcloutput.pStats->pAddress;
-    } else {
-      mvmeta = (GstCvpMotionVector *) outmap[idx].data;
     }
   }
 
   status = cvpOpticalFlow_Sync (engine->handle, cvpimages[0], cvpimages[1],
-        true, true, &optcloutput);
+      true, true, &optcloutput);
+
+  g_free (optcloutput.pMotionVector);
+  g_free (optcloutput.pStats);
+
+  for (idx = 0; idx < n_blocks; ++idx) {
+    GstMemory *memory = gst_buffer_peek_memory (outbuffer, idx);
+    gst_memory_unmap (memory, &outmap[idx]);
+  }
+
+  g_free (outmap);
 
   if (status != CVP_SUCCESS) {
     GST_ERROR ("Failed to process input images!");
     return FALSE;
   }
 
-  for (idx = 0; idx < optcloutput.nMVSize; ++idx) {
-    mvmeta[idx].x = mvector[idx].nMVX_L0;
-    mvmeta[idx].y = mvector[idx].nMVY_L0;
-    mvmeta[idx].confidence = mvector[idx].nConf;
-
-    if (GET_OPT_STATS (engine->settings)) {
-      mvmeta[idx].variance = stats[idx].nVariance;
-      mvmeta[idx].mean = stats[idx].nMean;
-      mvmeta[idx].bestsad = stats[idx].nBestMVSad;
-      mvmeta[idx].sad = stats[idx].nSad;
-    } else {
-      mvmeta[idx].variance = 0;
-      mvmeta[idx].mean = 0;
-      mvmeta[idx].bestsad = 0;
-      mvmeta[idx].sad = 0;
-    }
-  }
-
-  if (optcloutput.pMotionVector != NULL)
-    g_free (optcloutput.pMotionVector);
-
-  if (optcloutput.pStats != NULL)
-    g_free (optcloutput.pStats);
-
-  for (idx = 0; idx < n_blocks; ++idx) {
-    GstMemory *memory = gst_buffer_peek_memory (outbuffer, idx);
-    gst_memory_unmap (memory, &outmap[idx]);
-  }
-  g_free (outmap);
-
+  gst_buffer_append_cvp_custom_meta (outbuffer);
   return TRUE;
 }

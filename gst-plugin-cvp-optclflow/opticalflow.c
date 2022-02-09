@@ -102,7 +102,7 @@ static GstStaticCaps gst_cvp_optclflow_static_sink_caps =
 
 
 static GstStaticCaps gst_cvp_optclflow_static_src_caps =
-    GST_STATIC_CAPS ("cvp/optiflow");
+    GST_STATIC_CAPS ("cvp/x-optical-flow");
 
 
 static GstCaps *
@@ -152,15 +152,15 @@ gst_cvp_optclflow_create_pool (GstCvpOptclFlow * optclflow)
   GstStructure *config = NULL;
   GstAllocator *allocator = NULL;
   GValue memblocks = G_VALUE_INIT, value = G_VALUE_INIT;
-  guint mvsize = 0, statsize = 0, metasize = 0;
+  guint mvsize = 0, statsize = 0;
 
-  gst_cvp_optclflow_engine_sizes (optclflow->engine, &mvsize, &statsize, &metasize);
+  gst_cvp_optclflow_engine_sizes (optclflow->engine, &mvsize, &statsize);
 
   GST_INFO_OBJECT (optclflow, "Uses ION memory");
   pool = gst_ion_buffer_pool_new ();
 
   config = gst_buffer_pool_get_config (pool);
-  gst_buffer_pool_config_set_params (config, NULL, (mvsize + statsize + metasize),
+  gst_buffer_pool_config_set_params (config, NULL, (mvsize + statsize),
       DEFAULT_MIN_BUFFERS, DEFAULT_MAX_BUFFERS);
 
   g_value_init (&memblocks, GST_TYPE_ARRAY);
@@ -169,12 +169,11 @@ gst_cvp_optclflow_create_pool (GstCvpOptclFlow * optclflow)
   // Set memory block 1
   g_value_set_uint (&value, mvsize);
   gst_value_array_append_value (&memblocks, &value);
+
   // Set memory block 2
   g_value_set_uint (&value, statsize);
   gst_value_array_append_value (&memblocks, &value);
-  // Set memory block 3
-  g_value_set_uint (&value, metasize);
-  gst_value_array_append_value (&memblocks, &value);
+
   gst_structure_set_value (config, "memory-blocks", &memblocks);
 
   allocator = gst_fd_allocator_new ();

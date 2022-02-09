@@ -68,8 +68,6 @@
 #include <gst/video/video.h>
 #include <gst/allocators/allocators.h>
 
-#include <ml-meta/ml_meta.h>
-
 G_BEGIN_DECLS
 
 /**
@@ -152,8 +150,7 @@ gst_cvp_optclflow_engine_free    (GstCvpOptclFlowEngine * engine);
 
 GST_API gboolean
 gst_cvp_optclflow_engine_sizes   (GstCvpOptclFlowEngine * engine,
-                                  guint * mvsize, guint * statsize,
-                                  guint * metasize);
+                                  guint * mvsize, guint * statsize);
 
 GST_API gboolean
 gst_cvp_optclflow_engine_execute (GstCvpOptclFlowEngine * engine,
