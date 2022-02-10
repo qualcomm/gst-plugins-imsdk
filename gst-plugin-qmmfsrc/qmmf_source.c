@@ -178,15 +178,23 @@ static GstStaticPadTemplate qmmfsrc_video_src_template =
         GST_STATIC_CAPS (
             QMMFSRC_VIDEO_JPEG_CAPS "; "
             QMMFSRC_VIDEO_RAW_CAPS(
-#if defined(GST_VIDEO_YUY2_FORMAT_ENABLE)
+#if defined(GST_VIDEO_UYVY_FORMAT_ENABLE) && defined(GST_VIDEO_YUY2_FORMAT_ENABLE)
+                "{ NV12, NV16, YUY2, UYVY }") "; "
+#elif defined(GST_VIDEO_YUY2_FORMAT_ENABLE)
                 "{ NV12, NV16, YUY2 }") "; "
+#elif defined(GST_VIDEO_UYVY_FORMAT_ENABLE)
+                "{ NV12, NV16, UYVY }") "; "
 #else
                 "{ NV12, NV16 }") "; "
 #endif
             QMMFSRC_VIDEO_RAW_CAPS_WITH_FEATURES(
                 GST_CAPS_FEATURE_MEMORY_GBM,
-#if defined(GST_VIDEO_YUY2_FORMAT_ENABLE)
+#if defined(GST_VIDEO_UYVY_FORMAT_ENABLE) && defined(GST_VIDEO_YUY2_FORMAT_ENABLE)
+                "{ NV12, NV16, YUY2, UYVY }") "; "
+#elif defined(GST_VIDEO_YUY2_FORMAT_ENABLE)
                 "{ NV12, YUY2 }") "; "
+#elif defined(GST_VIDEO_UYVY_FORMAT_ENABLE)
+                "{ NV12, UYVY }") "; "
 #else
                 "{ NV12 }") "; "
 #endif
