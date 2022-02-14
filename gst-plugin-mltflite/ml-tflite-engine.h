@@ -83,17 +83,21 @@ G_BEGIN_DECLS
 /**
  * GstMLTFLiteDelegate:
  * @GST_ML_TFLITE_DELEGATE_NONE: CPU is used for all operations
- * @GST_ML_TFLITE_DELEGATE_DSP: Hexagon DSP through Android NN API
- * @GST_ML_TFLITE_DELEGATE_HEXAGON: Hexagon DSP
- * @GST_ML_TFLITE_DELEGATE_NPU: Neural Processing Unit through Android NN API
+ * @GST_ML_TFLITE_DELEGATE_NNAPI_DSP: DSP through Android NN API
+ * @GST_ML_TFLITE_DELEGATE_NNAPI_GPU: GPU through Android NN API
+ * @GST_ML_TFLITE_DELEGATE_NNAPI_NPU: NPU through Android NN API
+ * @GST_ML_TFLITE_DELEGATE_HEXAGON: Hexagon DSP is used for all operations
+ * @GST_ML_TFLITE_DELEGATE_GPU: GPU is used for all operations
  *
- * Different delegates for transfering part of all of the work
+ * Different delegates for transferring part or all of the model execution.
  */
 typedef enum {
   GST_ML_TFLITE_DELEGATE_NONE,
-  GST_ML_TFLITE_DELEGATE_DSP,
+  GST_ML_TFLITE_DELEGATE_NNAPI_DSP,
+  GST_ML_TFLITE_DELEGATE_NNAPI_GPU,
+  GST_ML_TFLITE_DELEGATE_NNAPI_NPU,
   GST_ML_TFLITE_DELEGATE_HEXAGON,
-  GST_ML_TFLITE_DELEGATE_NPU,
+  GST_ML_TFLITE_DELEGATE_GPU,
 } GstMLTFLiteDelegate;
 
 GST_API GType gst_ml_tflite_delegate_get_type (void);

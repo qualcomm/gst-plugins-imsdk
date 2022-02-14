@@ -27,9 +27,9 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 add_definitions(-DHAVE_CONFIG_H)
 
 # Common compiler flags.
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
-set(CMAKE_CXX_STANDARD 11)
 
 # GStreamer ML TFLite plugin.
 set(GST_QTI_ML_TFLITE gstqtimltflite)
@@ -50,6 +50,7 @@ target_link_libraries(${GST_QTI_ML_TFLITE} PRIVATE
   ${GST_ALLOC_LIBRARIES}
   gstqtimlbase
   tensorflow-lite
+  gpu_delegate
 )
 
 install(
