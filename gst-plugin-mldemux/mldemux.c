@@ -213,14 +213,6 @@ gst_ml_demux_sink_setcaps (GstMLDemux * demux, GstPad * pad, GstCaps * caps)
   // Create new filter caps for source pads from the modified ML info.
   filter = gst_ml_info_to_caps (&mlinfo);
 
-  // Extract the aspect ratio.
-  value = gst_structure_get_value (gst_caps_get_structure (caps, 0),
-      "aspect-ratio");
-
-  // Propagate aspect ratio to the result caps if it exists.
-  if (value != NULL)
-    gst_caps_set_value (filter, "aspect-ratio", value);
-
   // Extract the rate.
   value = gst_structure_get_value (gst_caps_get_structure (caps, 0),
       "rate");
