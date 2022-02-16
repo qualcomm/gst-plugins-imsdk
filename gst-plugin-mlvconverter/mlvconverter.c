@@ -366,6 +366,7 @@ gst_ml_video_converter_update_params (GstMLVideoConverter * mlconverter,
     GstVideoFrame * inframes, guint n_inputs, GstVideoFrame * outframe)
 {
   GstStructure *structure = NULL;
+
   GValue srcrects = G_VALUE_INIT, dstrects = G_VALUE_INIT;
   GValue entry = G_VALUE_INIT, value = G_VALUE_INIT;
   GstVideoRectangle inrect = {0,0,0,0}, outrect = {0,0,0,0};
@@ -466,18 +467,28 @@ gst_ml_video_converter_update_params (GstMLVideoConverter * mlconverter,
     // Increase the ID variable tracking the channels with the number of entries.
     id += (n_entries - 1);
 
+#ifdef USE_C2D_CONVERTER
+    structure = gst_structure_new_empty ("options");
+
+    gst_structure_set_value (structure,
+        GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, &srcrects);
+    gst_structure_set_value (structure,
+        GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, &dstrects);
+
+    gst_c2d_video_converter_set_input_opts (mlconverter->c2dconvert, idx,
+        structure);
+#endif // USE_C2D_CONVERTER
+
 #ifdef USE_GLES_CONVERTER
-    {
-      GstStructure *options = gst_structure_new_empty ("options");
+    structure = gst_structure_new_empty ("options");
 
-      gst_structure_set_value (options,
-          GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, &srcrects);
-      gst_structure_set_value (options,
-          GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, &dstrects);
+    gst_structure_set_value (structure,
+        GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, &srcrects);
+    gst_structure_set_value (structure,
+        GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, &dstrects);
 
-      gst_gles_video_converter_set_input_opts (mlconverter->glesconvert,
-          idx, options);
-    }
+    gst_gles_video_converter_set_input_opts (mlconverter->glesconvert, idx,
+        structure);
 #endif // USE_GLES_CONVERTER
 
     g_value_reset (&dstrects);
@@ -1030,7 +1041,6 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
   GstVideoInfo ininfo, outinfo;
   GstMLInfo mlinfo;
   guint idx = 0, bpp = 0, padding = 0;
-  gint sar_n = 0, sar_d = 0, width = 0, height = 0;
   gboolean passthrough = FALSE;
 
   if (!gst_video_info_from_caps (&ininfo, incaps)) {
@@ -1095,28 +1105,25 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
   mlconverter->vinfo = gst_video_info_copy (&outinfo);
   mlconverter->mlinfo = gst_ml_info_copy (&mlinfo);
 
-  // Calculate input SAR (Source Aspect Ratio) value.
-  if (!gst_util_fraction_multiply (GST_VIDEO_INFO_WIDTH (&ininfo),
-          GST_VIDEO_INFO_HEIGHT (&ininfo), GST_VIDEO_INFO_PAR_N (&ininfo),
-          GST_VIDEO_INFO_PAR_D (&ininfo), &sar_n, &sar_d))
-    sar_n = sar_d = 1;
-
-  // Calculate destination dimensions adjusted to preserve SAR.
-  calculate_dimensions (GST_VIDEO_INFO_WIDTH (&outinfo),
-      GST_VIDEO_INFO_HEIGHT (&outinfo), GST_VIDEO_INFO_PAR_N (&outinfo),
-      GST_VIDEO_INFO_PAR_D (&outinfo), sar_n, sar_d, &width, &height);
-
-  // Add borders to the output tensor in order to keep input aspect ratio.
   opts = gst_structure_new_empty ("options");
 
 #ifdef USE_C2D_CONVERTER
   gst_structure_set (opts,
-      GST_C2D_VIDEO_CONVERTER_OPT_DEST_WIDTH, G_TYPE_INT, width,
-      GST_C2D_VIDEO_CONVERTER_OPT_DEST_HEIGHT, G_TYPE_INT, height,
-      GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
-          gst_caps_has_compression (incaps, "ubwc"),
+      GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT, 0x00000000,
       NULL);
-  gst_c2d_video_converter_set_input_opts (mlconverter->c2dconvert, 0, opts);
+
+  // Configure the C2D converter output parameters.
+  gst_c2d_video_converter_set_output_opts (mlconverter->c2dconvert, opts);
+
+  for (idx = 0; idx < GST_ML_INFO_TENSOR_DIM (&mlinfo, 0, 0); idx++) {
+    opts = gst_structure_new ("options",
+        GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
+            gst_caps_has_compression (incaps, "ubwc"),
+        NULL);
+
+    // Configure the input parameters of the C2D converter.
+    gst_c2d_video_converter_set_input_opts (mlconverter->c2dconvert, idx, opts);
+  }
 #endif // USE_C2D_CONVERTER
 
 #ifdef USE_GLES_CONVERTER
@@ -1196,7 +1203,7 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
 #endif // HAVE_LINUX_DMA_BUF_H
 
   // Set the maximum allowed inputs to the size of the tensor batch.
-  n_inputs = mlconverter->mlinfo->tensors[0][0];
+  n_inputs = GST_ML_INFO_TENSOR_DIM (mlconverter->mlinfo, 0, 0);
 
   success = gst_map_input_video_frames (&inframes, n_inputs, mlconverter->ininfo,
       inbuffer, GST_MAP_READ | GST_VIDEO_FRAME_MAP_FLAG_NO_REF);

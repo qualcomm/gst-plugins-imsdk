@@ -148,20 +148,47 @@ VideoCropPadProcess::Init (GstVideoInfo video_info)
   }
 
   if (GST_VIDEO_CROP_TYPE_C2D == crop_type_ && c2dconvert_) {
-    GstStructure *inopts = gst_structure_new ("videocrop",
-      GST_C2D_VIDEO_CONVERTER_OPT_SRC_X, G_TYPE_INT,
-      0,
-      GST_C2D_VIDEO_CONVERTER_OPT_SRC_Y, G_TYPE_INT,
-      0,
-      GST_C2D_VIDEO_CONVERTER_OPT_SRC_WIDTH, G_TYPE_INT,
-      input_width,
-      GST_C2D_VIDEO_CONVERTER_OPT_SRC_HEIGHT, G_TYPE_INT,
-      input_height,
-      GST_C2D_VIDEO_CONVERTER_OPT_DEST_WIDTH, G_TYPE_INT,
-      vpad->width,
-      GST_C2D_VIDEO_CONVERTER_OPT_DEST_HEIGHT, G_TYPE_INT,
-      vpad->height,
-      NULL);
+    GstStructure *inopts = gst_structure_new_empty ("options");
+    GValue rects = G_VALUE_INIT, entry = G_VALUE_INIT, value = G_VALUE_INIT;
+
+    g_value_init (&rects, GST_TYPE_ARRAY);
+    g_value_init (&entry, GST_TYPE_ARRAY);
+    g_value_init (&value, G_TYPE_INT);
+
+    g_value_set_int (&value, 0);
+    gst_value_array_append_value (&entry, &value);
+    g_value_set_int (&value, 0);
+    gst_value_array_append_value (&entry, &value);
+    g_value_set_int (&value, input_width);
+    gst_value_array_append_value (&entry, &value);
+    g_value_set_int (&value, input_height);
+    gst_value_array_append_value (&entry, &value);
+
+    gst_value_array_append_value (&rects, &entry);
+    g_value_reset (&entry);
+
+    gst_structure_set_value (inopts,
+        GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, &rects);
+    g_value_reset (&rects);
+
+    g_value_set_int (&value, 0);
+    gst_value_array_append_value (&entry, &value);
+    g_value_set_int (&value, 0);
+    gst_value_array_append_value (&entry, &value);
+    g_value_set_int (&value, vpad->width);
+    gst_value_array_append_value (&entry, &value);
+    g_value_set_int (&value, vpad->height);
+    gst_value_array_append_value (&entry, &value);
+
+    gst_value_array_append_value (&rects, &entry);
+
+    gst_structure_set_value (inopts,
+        GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, &rects);
+
+    g_value_unset (&value);
+    g_value_unset (&entry);
+    g_value_unset (&rects);
+
     gst_c2d_video_converter_set_input_opts (c2dconvert_, 0, inopts);
   }
 
@@ -216,20 +243,47 @@ VideoCropPadProcess::SetCrop (GstVideoRectangle * crop)
   }
 
   if (GST_VIDEO_CROP_TYPE_C2D == crop_type_ && c2dconvert_) {
-    GstStructure *inopts = gst_structure_new ("videocrop",
-      GST_C2D_VIDEO_CONVERTER_OPT_SRC_X, G_TYPE_INT,
-      crop_.x,
-      GST_C2D_VIDEO_CONVERTER_OPT_SRC_Y, G_TYPE_INT,
-      crop_.y,
-      GST_C2D_VIDEO_CONVERTER_OPT_SRC_WIDTH, G_TYPE_INT,
-      crop_.w,
-      GST_C2D_VIDEO_CONVERTER_OPT_SRC_HEIGHT, G_TYPE_INT,
-      crop_.h,
-      GST_C2D_VIDEO_CONVERTER_OPT_DEST_WIDTH, G_TYPE_INT,
-      vpad->width,
-      GST_C2D_VIDEO_CONVERTER_OPT_DEST_HEIGHT, G_TYPE_INT,
-      vpad->height,
-      NULL);
+    GstStructure *inopts = gst_structure_new_empty ("options");
+    GValue rects = G_VALUE_INIT, entry = G_VALUE_INIT, value = G_VALUE_INIT;
+
+    g_value_init (&rects, GST_TYPE_ARRAY);
+    g_value_init (&entry, GST_TYPE_ARRAY);
+    g_value_init (&value, G_TYPE_INT);
+
+    g_value_set_int (&value, crop_.x);
+    gst_value_array_append_value (&entry, &value);
+    g_value_set_int (&value, crop_.y);
+    gst_value_array_append_value (&entry, &value);
+    g_value_set_int (&value, crop_.w);
+    gst_value_array_append_value (&entry, &value);
+    g_value_set_int (&value, crop_.h);
+    gst_value_array_append_value (&entry, &value);
+
+    gst_value_array_append_value (&rects, &entry);
+    g_value_reset (&entry);
+
+    gst_structure_set_value (inopts,
+        GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, &rects);
+    g_value_reset (&rects);
+
+    g_value_set_int (&value, 0);
+    gst_value_array_append_value (&entry, &value);
+    g_value_set_int (&value, 0);
+    gst_value_array_append_value (&entry, &value);
+    g_value_set_int (&value, vpad->width);
+    gst_value_array_append_value (&entry, &value);
+    g_value_set_int (&value, vpad->height);
+    gst_value_array_append_value (&entry, &value);
+
+    gst_value_array_append_value (&rects, &entry);
+
+    gst_structure_set_value (inopts,
+        GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, &rects);
+
+    g_value_unset (&value);
+    g_value_unset (&entry);
+    g_value_unset (&rects);
+
     gst_c2d_video_converter_set_input_opts (c2dconvert_, 0, inopts);
   }
 }

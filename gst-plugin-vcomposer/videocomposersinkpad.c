@@ -1,31 +1,65 @@
 /*
-* Copyright (c) 2020, The Linux Foundation. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted provided that the following conditions are
-* met:
-*     * Redistributions of source code must retain the above copyright
-*       notice, this list of conditions and the following disclaimer.
-*     * Redistributions in binary form must reproduce the above
-*       copyright notice, this list of conditions and the following
-*       disclaimer in the documentation and/or other materials provided
-*       with the distribution.
-*     * Neither the name of The Linux Foundation nor the names of its
-*       contributors may be used to endorse or promote products derived
-*       from this software without specific prior written permission.
-*
-* THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
-* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
-* ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
-* BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-* CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-* SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
-* BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-* WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
-* OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
-* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ * Copyright (c) 2020, The Linux Foundation. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *     * Neither the name of The Linux Foundation nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted (subject to the limitations in the
+ * disclaimer below) provided that the following conditions are met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *
+ *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ *
+ * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+ * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+ * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+ * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #include "videocomposersinkpad.h"
 
@@ -46,6 +80,10 @@ GST_DEBUG_CATEGORY_STATIC (gst_video_composer_sinkpad_debug);
 #define DEFAULT_PROP_FLIP_VERTICAL      FALSE
 #define DEFAULT_PROP_ROTATE             GST_VIDEO_COMPOSER_ROTATE_NONE
 
+#ifndef GST_CAPS_FEATURE_MEMORY_GBM
+#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
+#endif
+
 G_DEFINE_TYPE (GstVideoComposerSinkPad, gst_video_composer_sinkpad,
                GST_TYPE_AGGREGATOR_PAD);
 
@@ -62,22 +100,92 @@ enum
   PROP_ROTATE,
 };
 
+static gboolean
+gst_caps_has_feature (const GstCaps * caps, const gchar * feature)
+{
+  guint idx = 0;
+
+  for (idx = 0; idx < gst_caps_get_size (caps); idx++) {
+    GstCapsFeatures *const features = gst_caps_get_features (caps, idx);
+
+    if (feature == NULL && ((gst_caps_features_get_size (features) == 0) ||
+            gst_caps_features_is_any (features)))
+      return TRUE;
+
+    // Skip ANY caps and return immediately if feature is present.
+    if ((feature != NULL) && !gst_caps_features_is_any (features) &&
+        gst_caps_features_contains (features, feature))
+      return TRUE;
+  }
+
+  return FALSE;
+}
+
 static GstCaps *
 gst_video_composer_sinkpad_transform_caps (GstAggregatorPad * pad,
     GstCaps * caps, GstCaps * filter)
 {
   GstCaps *result = NULL;
+  GstStructure *structure = NULL;
+  GstCapsFeatures *features = NULL;
   gint idx = 0, length = 0;
 
   GST_DEBUG_OBJECT (pad, "Transforming caps %" GST_PTR_FORMAT, caps);
   GST_DEBUG_OBJECT (pad, "Filter caps %" GST_PTR_FORMAT, filter);
 
   result = gst_caps_new_empty ();
+
+  // In case there is no featureless or memory:GBM caps structure add one.
+  if (!gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
+    structure = gst_caps_get_structure (caps, 0);
+    features = gst_caps_features_new (GST_CAPS_FEATURE_MEMORY_GBM, NULL);
+
+    // Make a copy that will be modified.
+    structure = gst_structure_copy (structure);
+
+    // Set width and height to a range instead of fixed value.
+    gst_structure_set (structure, "width", GST_TYPE_INT_RANGE, 1, G_MAXINT,
+        "height", GST_TYPE_INT_RANGE, 1, G_MAXINT, NULL);
+
+    // If pixel aspect ratio, make a range of it.
+    if (gst_structure_has_field (structure, "pixel-aspect-ratio")) {
+      gst_structure_set (structure, "pixel-aspect-ratio",
+          GST_TYPE_FRACTION_RANGE, 1, G_MAXINT, G_MAXINT, 1, NULL);
+    }
+
+    // Remove the format/color/compression related fields.
+    gst_structure_remove_fields (structure, "format", "colorimetry",
+        "chroma-site", "compression", NULL);
+
+    gst_caps_append_structure_full (result, structure, features);
+  } else if (!gst_caps_has_feature (caps, NULL)) {
+    structure = gst_caps_get_structure (caps, 0);
+
+    // Make a copy that will be modified.
+    structure = gst_structure_copy (structure);
+
+    // Set width and height to a range instead of fixed value.
+    gst_structure_set (structure, "width", GST_TYPE_INT_RANGE, 1, G_MAXINT,
+        "height", GST_TYPE_INT_RANGE, 1, G_MAXINT, NULL);
+
+    // If pixel aspect ratio, make a range of it.
+    if (gst_structure_has_field (structure, "pixel-aspect-ratio")) {
+      gst_structure_set (structure, "pixel-aspect-ratio",
+          GST_TYPE_FRACTION_RANGE, 1, G_MAXINT, G_MAXINT, 1, NULL);
+    }
+
+    // Remove the format/color/compression related fields.
+    gst_structure_remove_fields (structure, "format", "colorimetry",
+        "chroma-site", "compression", NULL);
+
+    gst_caps_append_structure (result, structure);
+  }
+
   length = gst_caps_get_size (caps);
 
   for (idx = 0; idx < length; idx++) {
-    GstStructure *structure = gst_caps_get_structure (caps, idx);
-    GstCapsFeatures *features = gst_caps_get_features (caps, idx);
+    structure = gst_caps_get_structure (caps, idx);
+    features = gst_caps_get_features (caps, idx);
 
     // If this is already expressed by the existing caps skip this structure.
     if (idx > 0 && gst_caps_is_subset_structure_full (result, structure, features))
@@ -122,16 +230,16 @@ gst_video_composer_sinkpad_acceptcaps (GstAggregatorPad * pad,
     GstAggregator * aggregator, GstCaps * caps)
 {
   GstPad *srcpad = GST_AGGREGATOR_SRC_PAD (aggregator);
-  GstCaps *templ = NULL, *sinkcaps = NULL;
+  GstCaps *tmplcaps = NULL, *sinkcaps = NULL;
   gboolean success = FALSE;
 
   GST_DEBUG_OBJECT (pad, "Caps %" GST_PTR_FORMAT, caps);
 
-  templ = gst_pad_get_pad_template_caps (GST_PAD (pad));
-  GST_DEBUG_OBJECT (pad, "Template: %" GST_PTR_FORMAT, templ);
+  tmplcaps = gst_pad_get_pad_template_caps (GST_PAD (pad));
+  GST_DEBUG_OBJECT (pad, "Template: %" GST_PTR_FORMAT, tmplcaps);
 
-  success = gst_caps_can_intersect (caps, templ);
-  gst_caps_unref (templ);
+  success = gst_caps_can_intersect (caps, tmplcaps);
+  gst_caps_unref (tmplcaps);
 
   if (!success) {
     GST_WARNING_OBJECT (pad, "Caps can't intersect with pad template!");
@@ -139,13 +247,13 @@ gst_video_composer_sinkpad_acceptcaps (GstAggregatorPad * pad,
   }
 
   // Use currently set caps if they are set otherwise use template caps.
-  templ = gst_pad_get_pad_template_caps (srcpad);
+  tmplcaps = gst_pad_get_pad_template_caps (srcpad);
 
   GST_DEBUG_OBJECT (pad, "Trying to transform with source template as filter:"
-      " %" GST_PTR_FORMAT, templ);
+      " %" GST_PTR_FORMAT, tmplcaps);
 
-  sinkcaps = gst_video_composer_sinkpad_transform_caps (pad, caps, templ);
-  gst_caps_unref (templ);
+  sinkcaps = gst_video_composer_sinkpad_transform_caps (pad, caps, tmplcaps);
+  gst_caps_unref (tmplcaps);
 
   success = (sinkcaps != NULL) && !gst_caps_is_empty (sinkcaps);
 
@@ -167,25 +275,23 @@ gst_video_composer_sinkpad_getcaps (GstAggregatorPad * pad,
 {
   GstPad *srcpad = GST_AGGREGATOR_SRC_PAD (aggregator);
   GstCaps *srccaps = NULL, *sinkcaps = NULL, *peercaps = NULL;
-  GstCaps *tmpcaps = NULL, *templ = NULL, *intersect = NULL;
+  GstCaps *tmpcaps = NULL, *tmplcaps = NULL, *intersect = NULL;
 
   // Use currently set caps if they are set otherwise use template caps.
-  srccaps = gst_pad_has_current_caps (srcpad) ?
-      gst_pad_get_current_caps (srcpad) :
-      gst_pad_get_pad_template_caps (srcpad);
-
-  templ = gst_pad_get_pad_template_caps (GST_PAD (pad));
-  GST_DEBUG_OBJECT (pad, "Sink template caps %" GST_PTR_FORMAT, templ);
+  srccaps = gst_pad_get_pad_template_caps (srcpad);
 
   if (filter != NULL) {
     GST_DEBUG_OBJECT (pad, "Filter caps  %" GST_PTR_FORMAT, filter);
 
+    tmplcaps = gst_pad_get_pad_template_caps (GST_PAD (pad));
+    GST_DEBUG_OBJECT (pad, "Sink template caps %" GST_PTR_FORMAT, tmplcaps);
+
     // Intersect filter caps with the sink pad template.
     intersect =
-        gst_caps_intersect_full (filter, templ, GST_CAPS_INTERSECT_FIRST);
+        gst_caps_intersect_full (filter, tmplcaps, GST_CAPS_INTERSECT_FIRST);
     GST_DEBUG_OBJECT (pad, "Intersected caps %" GST_PTR_FORMAT, intersect);
 
-    gst_caps_unref (templ);
+    gst_caps_unref (tmplcaps);
 
     // Check whether the intersected caps can be transformed.
     tmpcaps =
@@ -227,52 +333,17 @@ gst_video_composer_sinkpad_getcaps (GstAggregatorPad * pad,
     tmpcaps =
         gst_caps_intersect_full (peercaps, srccaps, GST_CAPS_INTERSECT_FIRST);
     GST_DEBUG_OBJECT (pad, "Intersected caps %" GST_PTR_FORMAT, tmpcaps);
+
+    gst_caps_unref (peercaps);
   } else {
     tmpcaps = gst_caps_ref (srccaps);
   }
 
   // Check whether the intersected sink caps can be transformed.
-  sinkcaps =
-      gst_video_composer_sinkpad_transform_caps (pad, tmpcaps, filter);
-  GST_DEBUG_OBJECT (pad, "Transformed caps %" GST_PTR_FORMAT, sinkcaps);
-
+  sinkcaps = gst_video_composer_sinkpad_transform_caps (pad, tmpcaps, filter);
   gst_caps_unref (tmpcaps);
 
-  if ((sinkcaps == NULL) || gst_caps_is_empty (sinkcaps)) {
-    GST_WARNING_OBJECT (pad, "Failed to transform %" GST_PTR_FORMAT
-        " in anything supported by the pad!", sinkcaps);
-    return sinkcaps;
-  }
-
-  if (peercaps != NULL) {
-    // First filter set sink caps against the sink pad template.
-    intersect =
-        gst_caps_intersect_full (sinkcaps, templ, GST_CAPS_INTERSECT_FIRST);
-
-    gst_caps_unref (sinkcaps);
-    sinkcaps = intersect;
-
-    // Now try to filter the sink caps against the downstream peer caps.
-    tmpcaps =
-        gst_caps_intersect_full (peercaps, sinkcaps, GST_CAPS_INTERSECT_FIRST);
-    GST_DEBUG_OBJECT (pad, "Intersected caps %" GST_PTR_FORMAT, tmpcaps);
-
-    // Add the intersected caps in order to prefer passthrough.
-    if ((tmpcaps != NULL) && !gst_caps_is_empty (tmpcaps))
-      sinkcaps = gst_caps_merge (tmpcaps, sinkcaps);
-    else if (tmpcaps != NULL)
-      gst_caps_unref (tmpcaps);
-
-  } else {
-    gst_caps_unref (sinkcaps);
-
-    // Failed to negotiate caps with peer, use the pad template.
-    sinkcaps = (NULL == filter) ? gst_caps_ref (templ) :
-        gst_caps_intersect_full (filter, templ, GST_CAPS_INTERSECT_FIRST);
-  }
-
   GST_DEBUG_OBJECT (pad, "Returning caps: %" GST_PTR_FORMAT, sinkcaps);
-
   return sinkcaps;
 }
 
@@ -349,13 +420,27 @@ gst_video_composer_sinkpad_set_property (GObject * object, guint property_id,
       sinkpad->zorder = g_value_get_int (value);
       break;
     case PROP_CROP:
+    {
+      guint x = 0, y = 0, width = 0, height = 0;
+
       g_return_if_fail (gst_value_array_get_size (value) == 4);
 
-      sinkpad->crop.x = g_value_get_int (gst_value_array_get_value (value, 0));
-      sinkpad->crop.y = g_value_get_int (gst_value_array_get_value (value, 1));
-      sinkpad->crop.w = g_value_get_int (gst_value_array_get_value (value, 2));
-      sinkpad->crop.h = g_value_get_int (gst_value_array_get_value (value, 3));
+      x = g_value_get_int (gst_value_array_get_value (value, 0));
+      y = g_value_get_int (gst_value_array_get_value (value, 1));
+      width = g_value_get_int (gst_value_array_get_value (value, 2));
+      height = g_value_get_int (gst_value_array_get_value (value, 3));
+
+      if ((width == 0 && height != 0) || (width != 0 && height == 0)) {
+        GST_WARNING_OBJECT (sinkpad, "Invalid crop parameters!");
+        break;
+      }
+
+      sinkpad->crop.x = x;
+      sinkpad->crop.y = y;
+      sinkpad->crop.w = width;
+      sinkpad->crop.h = height;
       break;
+    }
     case PROP_POSITION:
       g_return_if_fail (gst_value_array_get_size (value) == 2);
 
@@ -365,13 +450,23 @@ gst_video_composer_sinkpad_set_property (GObject * object, guint property_id,
           g_value_get_int (gst_value_array_get_value (value, 1));
       break;
     case PROP_DIMENSIONS:
+    {
+      guint width = 0, height = 0;
+
       g_return_if_fail (gst_value_array_get_size (value) == 2);
 
-      sinkpad->destination.w =
-          g_value_get_int (gst_value_array_get_value (value, 0));
-      sinkpad->destination.h =
-          g_value_get_int (gst_value_array_get_value (value, 1));
+      width = g_value_get_int (gst_value_array_get_value (value, 0));
+      height = g_value_get_int (gst_value_array_get_value (value, 1));
+
+      if ((width == 0 && height != 0) || (width != 0 && height == 0)) {
+        GST_WARNING_OBJECT (sinkpad, "Invalid dimensions!");
+        break;
+      }
+
+      sinkpad->destination.w = width;
+      sinkpad->destination.h = height;
       break;
+    }
     case PROP_ALPHA:
       sinkpad->alpha = g_value_get_double (value);
       break;

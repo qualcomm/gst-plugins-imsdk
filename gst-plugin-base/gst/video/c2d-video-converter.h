@@ -1,31 +1,65 @@
 /*
-* Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted provided that the following conditions are
-* met:
-*     * Redistributions of source code must retain the above copyright
-*       notice, this list of conditions and the following disclaimer.
-*     * Redistributions in binary form must reproduce the above
-*       copyright notice, this list of conditions and the following
-*       disclaimer in the documentation and/or other materials provided
-*       with the distribution.
-*     * Neither the name of The Linux Foundation nor the names of its
-*       contributors may be used to endorse or promote products derived
-*       from this software without specific prior written permission.
-*
-* THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
-* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
-* ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
-* BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-* CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-* SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
-* BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-* WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
-* OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
-* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *     * Neither the name of The Linux Foundation nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted (subject to the limitations in the
+ * disclaimer below) provided that the following conditions are met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *
+ *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ *
+ * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+ * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+ * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+ * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #ifndef __GST_C2D_VIDEO_CONVERTER_H__
 #define __GST_C2D_VIDEO_CONVERTER_H__
@@ -38,10 +72,34 @@ G_BEGIN_DECLS
 typedef struct _GstC2dRequest GstC2dRequest;
 
 /**
+ * GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES
+ *
+ * #GST_TYPE_ARRAY: Array of source rectangles.
+ * Default: NULL
+ *
+ * Not applicable for output.
+ */
+#define GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES \
+    "GstC2dVideoConverter.source-rectangles"
+
+/**
+ * GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES
+ *
+ * #GST_TYPE_ARRAY: Array of destination rectangles.
+ * Default: NULL
+ *
+ * Not applicable for output.
+ */
+#define GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES \
+    "GstC2dVideoConverter.destination-rectangles"
+
+/**
  * GST_C2D_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL:
  *
  * #G_TYPE_BOOLEAN, flip output horizontally
  * Default: FALSE
+ *
+ * Not applicable for output
  */
 #define GST_C2D_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL \
     "GstC2dVideoConverter.flip-horizontal"
@@ -51,6 +109,8 @@ typedef struct _GstC2dRequest GstC2dRequest;
  *
  * #G_TYPE_BOOLEAN, flip output horizontally
  * Default: FALSE
+ *
+ * Not applicable for output
  */
 #define GST_C2D_VIDEO_CONVERTER_OPT_FLIP_VERTICAL \
     "GstC2dVideoConverter.flip-vertical"
@@ -63,8 +123,6 @@ typedef struct _GstC2dRequest GstC2dRequest;
  * @GST_C2D_VIDEO_ROTATE_180: rotate output 180 degrees
  *
  * Different output rotation modes
- *
- * Default: GST_C2D_VIDEO_ROTATE_NONE
  */
 typedef enum {
   GST_C2D_VIDEO_ROTATE_NONE,
@@ -81,20 +139,11 @@ GST_VIDEO_API GType gst_c2d_video_rotation_get_type (void);
  *
  * #GST_TYPE_C2D_VIDEO_ROTATION, set the output rotation flags
  * Default: #GST_C2D_VIDEO_ROTATE_NONE.
+ *
+ * Not applicable for output
  */
 #define GST_C2D_VIDEO_CONVERTER_OPT_ROTATION \
     "GstC2dVideoConverter.rotation"
-
-/**
- * GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND:
- *
- * #G_TYPE_UINT, background color
- * Default: 0x00000000
- *
- * Not applicable for input
- */
-#define GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND \
-    "GstC2dVideoConverter.background"
 
 /**
  * GST_C2D_VIDEO_CONVERTER_OPT_ALPHA:
@@ -108,87 +157,15 @@ GST_VIDEO_API GType gst_c2d_video_rotation_get_type (void);
     "GstC2dVideoConverter.alpha"
 
 /**
- * GST_C2D_VIDEO_CONVERTER_OPT_SRC_X:
+ * GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND:
  *
- * #G_TYPE_INT, source rectangle X axis start position
- * Default: 0
+ * #G_TYPE_UINT, background color
+ * Default: 0x00000000
  *
- * Not applicable for output
+ * Not applicable for input
  */
-#define GST_C2D_VIDEO_CONVERTER_OPT_SRC_X \
-    "GstC2dVideoConverter.source-x"
-
-/**
- * GST_C2D_VIDEO_CONVERTER_OPT_SRC_Y:
- *
- * #G_TYPE_INT, source rectangle Y axis start position
- * Default: 0
- *
- * Not applicable for output
- */
-#define GST_C2D_VIDEO_CONVERTER_OPT_SRC_Y \
-    "GstC2dVideoConverter.source-y"
-
-/**
- * GST_C2D_VIDEO_CONVERTER_OPT_SRC_WIDTH:
- *
- * #G_TYPE_INT, source rectangle width
- * Default: input frame width
- */
-#define GST_C2D_VIDEO_CONVERTER_OPT_SRC_WIDTH \
-    "GstC2dVideoConverter.source-width"
-
-/**
- * GST_C2D_VIDEO_CONVERTER_OPT_SRC_HEIGHT:
- *
- * #G_TYPE_INT, source rectangle height
- * Default: input frame height
- *
- * Not applicable for output
- */
-#define GST_C2D_VIDEO_CONVERTER_OPT_SRC_HEIGHT \
-    "GstC2dVideoConverter.src-height"
-
-/**
- * GST_C2D_VIDEO_CONVERTER_OPT_DEST_X:
- *
- * #G_TYPE_INT, destination rectangle X axis start position
- * Default: 0
- *
- * Not applicable for output
- */
-#define GST_C2D_VIDEO_CONVERTER_OPT_DEST_X \
-    "GstC2dVideoConverter.destination-x"
-/**
- * GST_C2D_VIDEO_CONVERTER_OPT_DEST_Y:
- *
- * #G_TYPE_INT, destination rectangle Y axis start position
- * Default: 0
- *
- * Not applicable for output
- */
-#define GST_C2D_VIDEO_CONVERTER_OPT_DEST_Y \
-    "GstC2dVideoConverter.destination-y"
-/**
- * GST_C2D_VIDEO_CONVERTER_OPT_DEST_WIDTH:
- *
- * #G_TYPE_INT, destination rectangle width
- * Default: input frame width
- *
- * Not applicable for output
- */
-#define GST_C2D_VIDEO_CONVERTER_OPT_DEST_WIDTH \
-    "GstC2dVideoConverter.destination-width"
-/**
- * GST_C2D_VIDEO_CONVERTER_OPT_DEST_HEIGHT:
- *
- * #G_TYPE_INT, destination rectangle height
- * Default: input frame height
- *
- * Not applicable for output
- */
-#define GST_C2D_VIDEO_CONVERTER_OPT_DEST_HEIGHT \
-    "GstC2dVideoConverter.destination-height"
+#define GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND \
+    "GstC2dVideoConverter.background"
 
 /**
  * GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT:
