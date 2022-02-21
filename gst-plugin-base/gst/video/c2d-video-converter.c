@@ -385,7 +385,8 @@ create_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
 
   format = gst_video_format_to_string (GST_VIDEO_FRAME_FORMAT (frame));
 
-  if (GST_VIDEO_INFO_IS_RGB (&frame->info)) {
+  if (GST_VIDEO_INFO_IS_RGB (&frame->info) ||
+      GST_VIDEO_INFO_IS_GRAY (&frame->info)) {
     C2D_RGB_SURFACE_DEF surface = { 0, };
     C2D_SURFACE_TYPE type;
 
@@ -493,10 +494,13 @@ create_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
 
     // Create YUV surface.
     status = convert->CreateSurface(&surface_id, bits, type, &surface);
+  } else {
+    GST_ERROR ("Unsupported format %s !", format);
   }
 
   if (status != C2D_STATUS_OK) {
-    GST_ERROR ("Failed to create C2D surface, error: %d!", status);
+    GST_ERROR ("Failed to create %s C2D surface, error: %d!",
+        (bits & C2D_SOURCE) ? "Input" : "Output", status);
     unmap_gpu_address (NULL, gpuaddress, convert);
     return 0;
   }
