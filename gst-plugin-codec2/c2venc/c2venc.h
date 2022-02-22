@@ -92,6 +92,12 @@ struct _GstC2_VENCEncoder {
   SLICE_MODE slice_mode;
   guint32 slice_size;
 
+  guint32 max_qp_b_frames;
+  guint32 max_qp_i_frames;
+  guint32 max_qp_p_frames;
+  guint32 min_qp_b_frames;
+  guint32 min_qp_i_frames;
+  guint32 min_qp_p_frames;
 };
 
 struct _GstC2_VENCEncoderClass {

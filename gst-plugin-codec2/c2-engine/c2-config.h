@@ -54,6 +54,7 @@
 #define CONFIG_FUNCTION_KEY_SLICE_MODE "slice_mode"
 #define CONFIG_FUNCTION_KEY_BLUR_MODE "blur_mode"
 #define CONFIG_FUNCTION_KEY_BLUR_RESOLUTION "blur_resolution"
+#define CONFIG_FUNCTION_KEY_QP_RANGES "qp_ranges"
 
 typedef enum {
   INTERLACE_MODE_PROGRESSIVE = 0,
@@ -195,6 +196,15 @@ typedef struct {
     guint32 width;
     guint32 height;
   } resolution;
+
+  struct {
+    guint32 miniqp;
+    guint32 maxiqp;
+    guint32 minpqp;
+    guint32 maxpqp;
+    guint32 minbqp;
+    guint32 maxbqp;
+  } qp_ranges;
 
   union {
     PIXEL_FORMAT_TYPE fmt;

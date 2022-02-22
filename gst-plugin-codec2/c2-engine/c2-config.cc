@@ -80,6 +80,7 @@ std::unique_ptr<C2Param> setIntraRefresh(gpointer param);
 std::unique_ptr<C2Param> setSliceMode(gpointer param);
 std::unique_ptr<C2Param> setBlurMode(gpointer param);
 std::unique_ptr<C2Param> setBlurResolution(gpointer param);
+std::unique_ptr<C2Param> setQPRanges(gpointer param);
 
 // Function map for parameter configuration
 static configFunctionMap sConfigFunctionMap = {
@@ -99,6 +100,7 @@ static configFunctionMap sConfigFunctionMap = {
   { CONFIG_FUNCTION_KEY_SLICE_MODE, setSliceMode },
   { CONFIG_FUNCTION_KEY_BLUR_MODE, setBlurMode },
   { CONFIG_FUNCTION_KEY_BLUR_RESOLUTION, setBlurResolution },
+  { CONFIG_FUNCTION_KEY_QP_RANGES, setQPRanges },
 };
 
 uint32_t toC2PixelFormat(PIXEL_FORMAT_TYPE pixel)
@@ -468,6 +470,23 @@ std::unique_ptr<C2Param> setSliceMode(gpointer param)
   } else {
     return nullptr;
   }
+}
+
+std::unique_ptr<C2Param> setQPRanges(gpointer param)
+{
+  if (param == NULL)
+    return nullptr;
+
+  ConfigParams* config = (ConfigParams*)param;
+  qc2::C2VideoQPRangeSetting::output qp_ranges;
+  qp_ranges.miniqp = config->qp_ranges.miniqp;
+  qp_ranges.maxiqp = config->qp_ranges.maxiqp;
+  qp_ranges.minpqp = config->qp_ranges.minpqp;
+  qp_ranges.maxpqp = config->qp_ranges.maxpqp;
+  qp_ranges.minbqp = config->qp_ranges.minbqp;
+  qp_ranges.maxbqp = config->qp_ranges.maxbqp;
+
+  return C2Param::Copy(qp_ranges);
 }
 
 std::unique_ptr<C2Param> setDecLowLatency(gpointer param)

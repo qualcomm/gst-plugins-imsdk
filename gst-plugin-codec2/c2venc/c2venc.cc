@@ -97,6 +97,12 @@ enum
   PROP_TARGET_BITRATE,
   PROP_SLICE_MODE,
   PROP_SLICE_SIZE,
+  PROP_MAX_QP_B_FRAMES,
+  PROP_MAX_QP_I_FRAMES,
+  PROP_MAX_QP_P_FRAMES,
+  PROP_MIN_QP_B_FRAMES,
+  PROP_MIN_QP_I_FRAMES,
+  PROP_MIN_QP_P_FRAMES,
 };
 
 static guint32
@@ -196,6 +202,25 @@ make_resolution_param (guint32 width, guint32 height, gboolean isInput)
   param.isInput = isInput;
   param.resolution.width = width;
   param.resolution.height = height;
+
+  return param;
+}
+
+static ConfigParams
+make_qp_ranges_param (guint32 miniqp, guint32 maxiqp, guint32 minpqp,
+    guint32 maxpqp, guint32 minbqp, guint32 maxbqp)
+{
+  ConfigParams param;
+
+  memset (&param, 0, sizeof (ConfigParams));
+
+  param.config_name = CONFIG_FUNCTION_KEY_QP_RANGES;
+  param.qp_ranges.miniqp = miniqp;
+  param.qp_ranges.maxiqp = maxiqp;
+  param.qp_ranges.minpqp = minpqp;
+  param.qp_ranges.maxpqp = maxpqp;
+  param.qp_ranges.minbqp = minbqp;
+  param.qp_ranges.maxbqp = maxbqp;
 
   return param;
 }
@@ -552,6 +577,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   ConfigParams intra_refresh;
   ConfigParams bitrate;
   ConfigParams slice_mode;
+  ConfigParams qp_ranges;
 
   structure = gst_caps_get_structure (state->caps, 0);
   retval = gst_structure_get_int (structure, "width", &width);
@@ -636,6 +662,12 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     slice_mode = make_slicemode_param (c2venc->slice_size, c2venc->slice_mode);
     g_ptr_array_add (config, &slice_mode);
   }
+
+  qp_ranges = make_qp_ranges_param (
+      c2venc->min_qp_i_frames,c2venc->max_qp_i_frames,
+      c2venc->min_qp_p_frames, c2venc->max_qp_p_frames,
+      c2venc->min_qp_b_frames, c2venc->max_qp_b_frames);
+  g_ptr_array_add (config, &qp_ranges);
 
   if (c2venc->intra_refresh_mode && c2venc->intra_refresh_mbs) {
     GST_DEBUG_OBJECT (c2venc, "set intra refresh mode: %d, mbs:%d",
@@ -860,6 +892,24 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
     case PROP_SLICE_MODE:
       c2venc->slice_mode = (SLICE_MODE) g_value_get_enum (value);
       break;
+    case PROP_MAX_QP_B_FRAMES:
+      c2venc->max_qp_b_frames = g_value_get_uint (value);
+      break;
+    case PROP_MAX_QP_I_FRAMES:
+      c2venc->max_qp_i_frames = g_value_get_uint (value);
+      break;
+    case PROP_MAX_QP_P_FRAMES:
+      c2venc->max_qp_p_frames = g_value_get_uint (value);
+      break;
+    case PROP_MIN_QP_B_FRAMES:
+      c2venc->min_qp_b_frames = g_value_get_uint (value);
+      break;
+    case PROP_MIN_QP_I_FRAMES:
+      c2venc->min_qp_i_frames = g_value_get_uint (value);
+      break;
+    case PROP_MIN_QP_P_FRAMES:
+      c2venc->min_qp_p_frames = g_value_get_uint (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -894,6 +944,24 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
       break;
     case PROP_SLICE_MODE:
       g_value_set_enum (value, c2venc->slice_mode);
+      break;
+    case PROP_MAX_QP_B_FRAMES:
+      g_value_set_uint (value, c2venc->max_qp_b_frames);
+      break;
+    case PROP_MAX_QP_I_FRAMES:
+      g_value_set_uint (value, c2venc->max_qp_i_frames);
+      break;
+    case PROP_MAX_QP_P_FRAMES:
+      g_value_set_uint (value, c2venc->max_qp_p_frames);
+      break;
+    case PROP_MIN_QP_B_FRAMES:
+      g_value_set_uint (value, c2venc->min_qp_b_frames);
+      break;
+    case PROP_MIN_QP_I_FRAMES:
+      g_value_set_uint (value, c2venc->min_qp_i_frames);
+      break;
+    case PROP_MIN_QP_P_FRAMES:
+      g_value_set_uint (value, c2venc->min_qp_p_frames);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -982,6 +1050,48 @@ gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
+  g_object_class_install_property (gobject, PROP_MAX_QP_B_FRAMES,
+      g_param_spec_uint ("max-quant-b-frames", "Max quant B frames",
+          "Maximum quantization parameter allowed for B-frames",
+          0, G_MAXUINT, 0,
+          static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY)));
+
+  g_object_class_install_property (gobject, PROP_MAX_QP_I_FRAMES,
+      g_param_spec_uint ("max-quant-i-frames", "Max quant I frames",
+          "Maximum quantization parameter allowed for I-frames",
+          0, G_MAXUINT, 0,
+          static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY)));
+
+  g_object_class_install_property (gobject, PROP_MAX_QP_P_FRAMES,
+      g_param_spec_uint ("max-quant-p-frames", "Max quant P frames",
+          "Maximum quantization parameter allowed for P-frames",
+          0, G_MAXUINT, 0,
+          static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY)));
+
+  g_object_class_install_property (gobject, PROP_MIN_QP_B_FRAMES,
+      g_param_spec_uint ("min-quant-b-frames", "Min quant B frames",
+          "Minimum quantization parameter allowed for B-frames",
+          0, G_MAXUINT, 0,
+          static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY)));
+
+  g_object_class_install_property (gobject, PROP_MIN_QP_I_FRAMES,
+      g_param_spec_uint ("min-quant-i-frames", "Min quant I frames",
+          "Minimum quantization parameter allowed for I-frames",
+          0, G_MAXUINT, 0,
+          static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY)));
+
+  g_object_class_install_property (gobject, PROP_MIN_QP_P_FRAMES,
+      g_param_spec_uint ("min-quant-p-frames", "Min quant P frames",
+          "Minimum quantization parameter allowed for P-frames",
+          0, G_MAXUINT, 0,
+          static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY)));
+
   gst_element_class_set_static_metadata (element,
       "C2Venc encoder", "C2_VENC/Encoder",
       "C2Venc encoding", "QTI");
@@ -1013,6 +1123,14 @@ gst_c2_venc_init (GstC2_VENCEncoder * c2venc)
 
   c2venc->rcMode = RC_OFF;
   c2venc->target_bitrate = 0;
+  c2venc->slice_size = 0;
+
+  c2venc->max_qp_b_frames = 0;
+  c2venc->max_qp_i_frames = 0;
+  c2venc->max_qp_p_frames = 0;
+  c2venc->min_qp_b_frames = 0;
+  c2venc->min_qp_i_frames = 0;
+  c2venc->min_qp_p_frames = 0;
 
   memset (c2venc->queued_frame, 0, sizeof (c2venc->queued_frame));
 
