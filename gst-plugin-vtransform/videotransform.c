@@ -276,10 +276,10 @@ gst_video_transform_create_pool (GstVideoTransform * vtrans, GstCaps * caps)
 
   // If downstream allocation query supports GBM, allocate gbm memory.
   if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
-    GST_INFO_OBJECT (vtrans, "Video transform uses GBM memory");
+    GST_INFO_OBJECT (vtrans, "Uses GBM memory");
     pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
   } else {
-    GST_INFO_OBJECT (vtrans, "Video transform uses ION memory");
+    GST_INFO_OBJECT (vtrans, "Uses ION memory");
     pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
   }
 
@@ -430,7 +430,14 @@ gst_video_transform_prepare_output_buffer (GstBaseTransform * trans,
   GstBufferPool *pool = vtrans->outpool;
   GstFlowReturn ret = GST_FLOW_OK;
 
-  if (gst_base_transform_is_passthrough (trans)) {
+  // Check whether passthrough should be true/false based on parameters.
+  gst_video_transform_determine_passthrough (vtrans);
+
+  // Force a copy when the buffer is not writable.
+  if (gst_base_transform_is_passthrough (trans) && !gst_buffer_is_writable (inbuffer)) {
+    GST_TRACE_OBJECT (vtrans, "Input buffer not writable, disabling passthrough");
+    gst_base_transform_set_passthrough (trans, FALSE);
+  } else if (gst_base_transform_is_passthrough (trans)) {
     GST_LOG_OBJECT (vtrans, "Passthrough, no need to do anything");
     *outbuffer = inbuffer;
     return GST_FLOW_OK;
@@ -479,7 +486,7 @@ gst_video_transform_transform_caps (GstBaseTransform * trans,
 
   result = gst_caps_new_empty ();
 
-  // In case there is no featureless or memory:GBM caps structure add one.
+  // In case there is no memory:GBM caps structure prepend one.
   if (!gst_caps_is_empty (caps) &&
       !gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
     structure = gst_caps_get_structure (caps, 0);
@@ -503,27 +510,6 @@ gst_video_transform_transform_caps (GstBaseTransform * trans,
         "chroma-site", "compression", NULL);
 
     gst_caps_append_structure_full (result, structure, features);
-  } else if (!gst_caps_is_empty (caps) && !gst_caps_has_feature (caps, NULL)) {
-    structure = gst_caps_get_structure (caps, 0);
-
-    // Make a copy that will be modified.
-    structure = gst_structure_copy (structure);
-
-    // Set width and height to a range instead of fixed value.
-    gst_structure_set (structure, "width", GST_TYPE_INT_RANGE, 1, G_MAXINT,
-        "height", GST_TYPE_INT_RANGE, 1, G_MAXINT, NULL);
-
-    // If pixel aspect ratio, make a range of it.
-    if (gst_structure_has_field (structure, "pixel-aspect-ratio")) {
-      gst_structure_set (structure, "pixel-aspect-ratio",
-          GST_TYPE_FRACTION_RANGE, 1, G_MAXINT, G_MAXINT, 1, NULL);
-    }
-
-    // Remove the format/color/compression related fields.
-    gst_structure_remove_fields (structure, "format", "colorimetry",
-        "chroma-site", "compression", NULL);
-
-    gst_caps_append_structure (result, structure);
   }
 
   length = gst_caps_get_size (caps);
@@ -557,6 +543,30 @@ gst_video_transform_transform_caps (GstBaseTransform * trans,
         gst_caps_features_copy (features));
   }
 
+  // In case there is no featureless caps structure append one.
+  if (!gst_caps_is_empty (caps) && !gst_caps_has_feature (caps, NULL)) {
+    structure = gst_caps_get_structure (caps, 0);
+
+    // Make a copy that will be modified.
+    structure = gst_structure_copy (structure);
+
+    // Set width and height to a range instead of fixed value.
+    gst_structure_set (structure, "width", GST_TYPE_INT_RANGE, 1, G_MAXINT,
+        "height", GST_TYPE_INT_RANGE, 1, G_MAXINT, NULL);
+
+    // If pixel aspect ratio, make a range of it.
+    if (gst_structure_has_field (structure, "pixel-aspect-ratio")) {
+      gst_structure_set (structure, "pixel-aspect-ratio",
+          GST_TYPE_FRACTION_RANGE, 1, G_MAXINT, G_MAXINT, 1, NULL);
+    }
+
+    // Remove the format/color/compression related fields.
+    gst_structure_remove_fields (structure, "format", "colorimetry",
+        "chroma-site", "compression", NULL);
+
+    gst_caps_append_structure (result, structure);
+  }
+
   if (filter) {
     GstCaps *intersection  =
         gst_caps_intersect_full (filter, result, GST_CAPS_INTERSECT_FIRST);
@@ -565,7 +575,6 @@ gst_video_transform_transform_caps (GstBaseTransform * trans,
   }
 
   GST_DEBUG_OBJECT (vtrans, "Returning caps: %" GST_PTR_FORMAT, result);
-
   return result;
 }
 
@@ -997,6 +1006,7 @@ gst_video_transform_fixate_width (GstVideoTransform * vtrans,
     if (!success) {
       GST_ELEMENT_ERROR (vtrans, CORE, NEGOTIATION, (NULL),
           ("Error calculating the output width scale factor!"));
+      gst_structure_free (structure);
       return;
     }
 
@@ -1157,6 +1167,7 @@ gst_video_transform_fixate_height (GstVideoTransform * vtrans,
     if (!success) {
       GST_ELEMENT_ERROR (vtrans, CORE, NEGOTIATION, (NULL),
           ("Error calculating the output height scale factor!"));
+      gst_structure_free (structure);
       return;
     }
 
@@ -1506,6 +1517,9 @@ gst_video_transform_fixate_dimensions (GstVideoTransform * vtrans,
 
       gst_structure_set (output, "pixel-aspect-ratio", GST_TYPE_FRACTION,
           set_par_n, set_par_d, NULL);
+
+      GST_DEBUG_OBJECT (vtrans, "Output dimensions fixated to: %dx%d, and PAR"
+          " fixated to: %d/%d", out_width, out_height, set_par_n, set_par_d);
       return;
     }
 
@@ -1583,8 +1597,10 @@ gst_video_transform_fixate_caps (GstBaseTransform * trans,
     }
   }
 
-  GST_DEBUG_OBJECT (vtrans, "Fixated caps to %" GST_PTR_FORMAT, outcaps);
+  // Free the local copy of the input caps structure.
+  gst_structure_free (input);
 
+  GST_DEBUG_OBJECT (vtrans, "Fixated caps to %" GST_PTR_FORMAT, outcaps);
   return outcaps;
 }
 
