@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -156,7 +156,7 @@ gst_batch_src_pad_activate_task (GstPad * pad, gboolean active)
     GST_BATCH_SRC_UNLOCK (srcpad);
   }
 
-  GST_DEBUG_OBJECT (srcpad, "%s task", active ? "Activated" : "Deactivated");
+  GST_DEBUG_OBJECT (srcpad, "Task %s", active ? "activated" : "deactivated");
   return success;
 }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -51,6 +51,7 @@
 GST_DEBUG_CATEGORY_STATIC (gst_batch_debug);
 
 #define gst_batch_parent_class parent_class
+G_DEFINE_TYPE (GstBatch, gst_batch, GST_TYPE_ELEMENT);
 
 #define GST_BATCH_SINK_CAPS \
     "video/x-raw(ANY); "    \
@@ -64,8 +65,6 @@ enum
 {
   PROP_0,
 };
-
-G_DEFINE_TYPE (GstBatch, gst_batch, GST_TYPE_ELEMENT);
 
 static GstStaticPadTemplate gst_batch_sink_template =
     GST_STATIC_PAD_TEMPLATE("sink_%u",
@@ -202,6 +201,30 @@ gst_batch_sink_caps_negotiated (GstBatch * batch)
 }
 
 static gboolean
+gst_batch_sink_buffers_available (GstBatch * batch)
+{
+  GList *list = NULL;
+  gboolean available = TRUE;
+
+  for (list = batch->sinkpads; list != NULL; list = g_list_next (list)) {
+    GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (list->data);
+
+    GST_OBJECT_LOCK (sinkpad);
+
+    // Pads which are in EOS or FLUSHING state are not included in the checks.
+    if (!GST_PAD_IS_EOS (list->data) && !GST_PAD_IS_FLUSHING (list->data)) {
+      GST_BATCH_SINK_LOCK (sinkpad);
+      available &= !g_queue_is_empty (sinkpad->queue);
+      GST_BATCH_SINK_UNLOCK (sinkpad);
+    }
+
+    GST_OBJECT_UNLOCK (sinkpad);
+  }
+
+  return available;
+}
+
+static gboolean
 gst_batch_update_src_caps (GstBatch * batch)
 {
   GstCaps *srccaps = NULL, *sinkcaps = NULL, *filter = NULL, *intersect = NULL;
@@ -236,6 +259,8 @@ gst_batch_update_src_caps (GstBatch * batch)
     // Use currently set caps if they are set otherwise use template caps.
     sinkcaps = gst_pad_has_current_caps (pad) ?
         gst_pad_get_current_caps (pad) : gst_pad_get_pad_template_caps (pad);
+
+    GST_DEBUG_OBJECT (batch, "Sink caps %" GST_PTR_FORMAT, sinkcaps);
 
     sinkcaps = gst_caps_make_writable (sinkcaps);
     length = gst_caps_get_size (sinkcaps);
@@ -330,30 +355,6 @@ gst_batch_update_src_caps (GstBatch * batch)
 }
 
 static gboolean
-gst_batch_buffers_available (GstBatch * batch)
-{
-  GList *list = NULL;
-  gboolean available = TRUE;
-
-  for (list = batch->sinkpads; list != NULL; list = g_list_next (list)) {
-    GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (list->data);
-
-    GST_OBJECT_LOCK (sinkpad);
-
-    // Pads which are in EOS or FLUSHING state are not included in the checks.
-    if (!GST_PAD_IS_EOS (list->data) && !GST_PAD_IS_FLUSHING (list->data)) {
-      GST_BATCH_SINK_LOCK (sinkpad);
-      available &= !g_queue_is_empty (sinkpad->queue);
-      GST_BATCH_SINK_UNLOCK (sinkpad);
-    }
-
-    GST_OBJECT_UNLOCK (sinkpad);
-  }
-
-  return available;
-}
-
-static gboolean
 gst_batch_extract_sink_buffer (GstElement * element, GstPad * pad,
     gpointer userdata)
 {
@@ -416,8 +417,9 @@ gst_batch_worker_task (gpointer userdata)
   GST_BATCH_LOCK (batch);
 
   // Initial block until all sink pads have negotiated their caps and
-  // 1st buffer has arrived or signaled to stop.
-  while (batch->active && !gst_batch_sink_caps_negotiated (batch))
+  // 1st buffers have arrived on all sink pads or until signaled to stop.
+  while (batch->active && (!gst_batch_sink_caps_negotiated (batch) ||
+      !gst_batch_sink_buffers_available (batch)) && !srcpad->stmstart)
     g_cond_wait (&batch->wakeup, &(batch)->lock);
 
   GST_BATCH_UNLOCK (batch);
@@ -449,7 +451,7 @@ gst_batch_worker_task (gpointer userdata)
   GST_BATCH_LOCK (batch);
 
   // Wait for data from all pads a maximum of average duration seconds.
-  while (batch->active && !gst_batch_buffers_available (batch)) {
+  while (batch->active && !gst_batch_sink_buffers_available (batch)) {
     if (!g_cond_wait_until (&batch->wakeup, &(batch)->lock, endtime)) {
       GST_DEBUG_OBJECT (batch, "Clock to reached %" GST_TIME_FORMAT
           ", not all pads have buffers!", GST_TIME_ARGS (endtime));
@@ -475,7 +477,7 @@ gst_batch_worker_task (gpointer userdata)
 
   GST_BATCH_SRC_LOCK (srcpad);
 
-  // Set buffer duraton and timestamp.
+  // Set buffer duration and timestamp.
   GST_BUFFER_DURATION (buffer) = srcpad->duration;
   GST_BUFFER_TIMESTAMP (buffer) = srcpad->segment.position;
 
@@ -568,14 +570,14 @@ gst_batch_stop_worker_task (GstBatch * batch)
 static GstCaps *
 gst_batch_sink_getcaps (GstBatch * batch, GstPad * pad, GstCaps * filter)
 {
-  GstCaps *srccaps = NULL, *tmpcaps = NULL, *sinkcaps = NULL, *intersect = NULL;
+  GstCaps *srccaps = NULL, *tmplcaps = NULL, *sinkcaps = NULL, *intersect = NULL;
   guint idx = 0, length = 0;
 
-  tmpcaps = gst_pad_get_pad_template_caps (batch->srcpad);
+  tmplcaps = gst_pad_get_pad_template_caps (batch->srcpad);
 
   // Query the source pad peer with its template caps as filter.
-  srccaps = gst_pad_peer_query_caps (batch->srcpad, tmpcaps);
-  gst_caps_unref (tmpcaps);
+  srccaps = gst_pad_peer_query_caps (batch->srcpad, tmplcaps);
+  gst_caps_unref (tmplcaps);
 
   GST_DEBUG_OBJECT (pad, "Source caps %" GST_PTR_FORMAT, srccaps);
 
@@ -601,13 +603,13 @@ gst_batch_sink_getcaps (GstBatch * batch, GstPad * pad, GstCaps * filter)
     }
   }
 
-  tmpcaps = gst_pad_get_pad_template_caps (pad);
-  sinkcaps = gst_caps_intersect (tmpcaps, srccaps);
+  tmplcaps = gst_pad_get_pad_template_caps (pad);
+  sinkcaps = gst_caps_intersect (tmplcaps, srccaps);
 
   GST_DEBUG_OBJECT (pad, "Sink caps %" GST_PTR_FORMAT, sinkcaps);
 
   gst_caps_unref (srccaps);
-  gst_caps_unref (tmpcaps);
+  gst_caps_unref (tmplcaps);
 
   if (filter != NULL) {
     GST_DEBUG_OBJECT (pad, "Filter caps %" GST_PTR_FORMAT, filter);
@@ -625,21 +627,34 @@ gst_batch_sink_getcaps (GstBatch * batch, GstPad * pad, GstCaps * filter)
 }
 
 static gboolean
-gst_batch_sink_acceptcaps (GstPad * pad, GstCaps * caps)
+gst_batch_sink_acceptcaps (GstBatch * batch, GstPad * pad, GstCaps * caps)
 {
-  GstCaps *tmplcaps = NULL;
+  GstCaps *tmplcaps = NULL, *srccaps = NULL;
+  guint idx = 0, length = 0;
   gboolean success = TRUE;
 
   GST_DEBUG_OBJECT (pad, "Caps %" GST_PTR_FORMAT, caps);
 
-  tmplcaps = gst_pad_get_pad_template_caps (GST_PAD (pad));
-  GST_DEBUG_OBJECT (pad, "Template: %" GST_PTR_FORMAT, tmplcaps);
+  tmplcaps = gst_pad_get_pad_template_caps (pad);
 
-  success &= gst_caps_can_intersect (caps, tmplcaps);
+  // Query the source pad peer with its template caps as filter.
+  srccaps = gst_pad_peer_query_caps (batch->srcpad, tmplcaps);
   gst_caps_unref (tmplcaps);
 
+  GST_DEBUG_OBJECT (pad, "Source caps %" GST_PTR_FORMAT, srccaps);
+
+  length = gst_caps_get_size (srccaps);
+  srccaps = gst_caps_make_writable (srccaps);
+
+  // Remove all fields and leave only the caps type and features.
+  for (idx = 0; idx < length; idx++)
+    gst_structure_remove_all_fields (gst_caps_get_structure (srccaps, idx));
+
+  success &= gst_caps_can_intersect (caps, srccaps);
+  gst_caps_unref (srccaps);
+
   if (!success) {
-    GST_WARNING_OBJECT (pad, "Caps can't intersect with template!");
+    GST_WARNING_OBJECT (pad, "Caps can't intersect with source!");
     return FALSE;
   }
 
@@ -712,7 +727,7 @@ gst_batch_sink_query (GstPad * pad, GstObject * parent, GstQuery * query)
       gboolean success = FALSE;
 
       gst_query_parse_accept_caps (query, &caps);
-      success = gst_batch_sink_acceptcaps (pad, caps);
+      success = gst_batch_sink_acceptcaps (batch, pad, caps);
 
       gst_query_set_accept_caps_result (query, success);
       return TRUE;
