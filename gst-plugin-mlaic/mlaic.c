@@ -486,8 +486,7 @@ gst_ml_aic_src_worker_task (gpointer userdata)
     if ((pmeta = gst_buffer_get_protection_meta (buffer)) != NULL)
       gst_buffer_add_protection_meta (outbuffer, gst_structure_copy (pmeta->info));
 
-    // Add parent meta, input buffer won't be released until new buffer is freed.
-    gst_buffer_add_parent_buffer_meta (outbuffer, buffer);
+    // Reduce the reference count of the main buffer, it is no longer needed.
     gst_buffer_unref (buffer);
 
     GST_TRACE_OBJECT (pad, "Send buffer %p of size %" G_GSIZE_FORMAT,
