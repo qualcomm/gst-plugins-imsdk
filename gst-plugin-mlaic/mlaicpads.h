@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -85,6 +85,8 @@ struct _GstMLAicSinkPad {
 
   /// Buffer pool.
   GstBufferPool *pool;
+  /// Map of input and output buffers that are paired together.
+  GHashTable    *bufpairs;
 };
 
 struct _GstMLAicSinkPadClass {
