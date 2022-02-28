@@ -191,7 +191,8 @@ gst_ml_demux_sink_setcaps (GstMLDemux * demux, GstPad * pad, GstCaps * caps)
   // Parsing happens by batch size, so all tensors must have the same batch size.
   for (idx = 0; idx < GST_ML_INFO_N_TENSORS (&mlinfo); idx++) {
     if (n_batch != GST_ML_INFO_TENSOR_DIM (&mlinfo, idx, 0)) {
-      GST_ERROR_OBJECT (pad, "Mismatch between the tensor batch sizes!");
+      GST_ELEMENT_ERROR (demux, CORE, NEGOTIATION, (NULL),
+          ("Mismatch between the tensor batch sizes!"));
       return FALSE;
     }
 
@@ -203,7 +204,8 @@ gst_ml_demux_sink_setcaps (GstMLDemux * demux, GstPad * pad, GstCaps * caps)
 
   // Source pads must be less or equal to the batch size.
   if (g_list_length (demux->srcpads) > n_batch) {
-    GST_ERROR_OBJECT (pad, "Number of source pads is greater then batch size!");
+    GST_ELEMENT_ERROR (demux, CORE, NEGOTIATION, (NULL),
+        ("Number of source pads is greater then batch size!"));
     GST_ML_DEMUX_UNLOCK (demux);
     return FALSE;
   }
@@ -241,7 +243,8 @@ gst_ml_demux_sink_setcaps (GstMLDemux * demux, GstPad * pad, GstCaps * caps)
     srccaps = intersect;
 
     if ((intersect == NULL) || gst_caps_is_empty (intersect)) {
-      GST_ERROR_OBJECT (pad, "Source and sink caps do not intersect!");
+      GST_ELEMENT_ERROR (demux, CORE, NEGOTIATION, (NULL),
+          ("Source %s and sink caps do not intersect!", GST_PAD_NAME (srcpad)));
 
       if (intersect != NULL)
         gst_caps_unref (intersect);
@@ -304,7 +307,6 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
   GstMLDemux *demux = GST_ML_DEMUX (parent);
   GList *list = NULL;
   guint idx = 0, channel = 0, n_memory = 0, offset = 0, size = 0;
-  gchar *name = NULL;
 
   n_memory = gst_buffer_n_memory (inbuffer);
   size = gst_buffer_get_size (inbuffer);
@@ -323,6 +325,7 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
     GstBuffer *outbuffer = NULL;
     GstDataQueueItem *item = NULL;
     GstProtectionMeta *pmeta = NULL;
+    gchar *name = NULL;
 
     if ((n_memory != GST_ML_INFO_N_TENSORS (srcpad->mlinfo))) {
       GST_ERROR_OBJECT (pad, "Incompatible number of memory blocks (%u) and "
@@ -365,12 +368,25 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
 
     g_free (name);
 
-    // Set buffer duration and timestamp.
-    GST_BUFFER_DURATION (outbuffer) = GST_BUFFER_DURATION (inbuffer);
-    GST_BUFFER_TIMESTAMP (outbuffer) = srcpad->segment.position;
+    // Set buffer timestamp and duration from protection meta if available.
+    if (pmeta != NULL) {
+      GstClockTime timestamp = GST_CLOCK_TIME_NONE, duration = GST_CLOCK_TIME_NONE;
+
+      gst_structure_get_uint64 (pmeta->info, "timestamp", &timestamp);
+      gst_structure_get_uint64 (pmeta->info, "duration", &duration);
+
+      GST_BUFFER_TIMESTAMP (outbuffer) = (timestamp != GST_CLOCK_TIME_NONE) ?
+          timestamp : GST_BUFFER_TIMESTAMP (inbuffer);
+      GST_BUFFER_DURATION (outbuffer) = (duration != GST_CLOCK_TIME_NONE) ?
+          duration : GST_BUFFER_DURATION (inbuffer);
+    } else {
+      GST_BUFFER_TIMESTAMP (outbuffer) = GST_BUFFER_TIMESTAMP (inbuffer);
+      GST_BUFFER_DURATION (outbuffer) = GST_BUFFER_DURATION (inbuffer);
+    }
 
     // Adjust the source pad segment position.
-    srcpad->segment.position += GST_BUFFER_DURATION (outbuffer);
+    srcpad->segment.position = GST_BUFFER_TIMESTAMP (outbuffer) +
+        GST_BUFFER_DURATION (outbuffer);
 
     item = g_slice_new0 (GstDataQueueItem);
     item->object = GST_MINI_OBJECT (outbuffer);
@@ -557,11 +573,10 @@ gst_ml_demux_src_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
       GstCaps *caps = NULL, *filter = NULL;
 
       caps = gst_pad_get_pad_template_caps (pad);
-
       GST_DEBUG_OBJECT (srcpad, "Current caps: %" GST_PTR_FORMAT, caps);
 
       gst_query_parse_caps (query, &filter);
-      GST_DEBUG_OBJECT (srcpad, "Filter caps: %" GST_PTR_FORMAT, caps);
+      GST_DEBUG_OBJECT (srcpad, "Filter caps: %" GST_PTR_FORMAT, filter);
 
       if (filter != NULL) {
         GstCaps *intersection  =

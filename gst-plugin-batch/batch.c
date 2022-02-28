@@ -362,6 +362,8 @@ gst_batch_extract_sink_buffer (GstElement * element, GstPad * pad,
   GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (pad);
   GstBuffer *outbuffer = NULL, *inbuffer = NULL;
   GstVideoMeta *vmeta = NULL;
+  GstStructure *structure = NULL;
+  gchar *name = NULL;
 
   outbuffer = GST_BUFFER (userdata);
 
@@ -394,6 +396,18 @@ gst_batch_extract_sink_buffer (GstElement * element, GstPad * pad,
   }
 
   // TODO add equivalent operation for GstAudioMeta.
+
+  // Construct the name for the protection meta structure.
+  name = g_strdup_printf ("channel-%u", g_list_index (element->sinkpads, sinkpad));
+
+  // Create a structure that will contain information for decryption.
+  structure = gst_structure_new (name,
+    "timestamp", G_TYPE_UINT64, GST_BUFFER_TIMESTAMP (inbuffer),
+    "duration", G_TYPE_UINT64, GST_BUFFER_DURATION (inbuffer), NULL);
+  g_free (name);
+
+  // Add meta containing information for tensor decryption downstream.
+  gst_buffer_add_protection_meta (outbuffer, structure);
 
   // Set the corresponding channel bit in the buffer universal offset field.
   GST_BUFFER_OFFSET (outbuffer) |=
