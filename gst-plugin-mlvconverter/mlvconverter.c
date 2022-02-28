@@ -102,6 +102,8 @@ G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
 #define GET_SIGMA_VALUE(sigma, idx) (sigma->len >= (guint) (idx + 1)) ? \
     g_array_index (sigma, gdouble, idx) : DEFAULT_PROP_SIGMA
 
+#define GST_PROTECTION_META_CAST(obj) ((GstProtectionMeta *) obj)
+
 #ifndef GST_CAPS_FEATURE_MEMORY_GBM
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
 #endif
@@ -273,6 +275,21 @@ calculate_dimensions (gint outwidth, gint outheight, gint out_par_n,
   }
 }
 
+static GstProtectionMeta *
+gst_buffer_get_protection_meta_id (GstBuffer * buffer, const gchar * name)
+{
+  gpointer state = NULL;
+  GstMeta *meta = NULL;
+
+  while ((meta = gst_buffer_iterate_meta_filtered (buffer, &state,
+              GST_PROTECTION_META_API_TYPE))) {
+    if (gst_structure_has_name (GST_PROTECTION_META_CAST (meta)->info, name))
+      return GST_PROTECTION_META_CAST (meta);
+  }
+
+  return NULL;
+}
+
 static void
 gst_unmap_input_video_frames (GstVideoFrame * inframes, guint n_inputs)
 {
@@ -307,8 +324,10 @@ gst_map_input_video_frames (GstVideoFrame ** inframes, guint n_inputs,
 
   for (idx = 0, num = 0; idx < n_inputs; idx++) {
     GstBuffer *buffer = NULL;
-    GstVideoRegionOfInterestMeta *roimeta = NULL;
     GstVideoMeta *vmeta = NULL;
+    GstVideoRegionOfInterestMeta *roimeta = NULL;
+    GstProtectionMeta *pmeta = NULL;
+    gchar *name = NULL;
 
     // Check if a bitwise mask was set for this channel/batch input.
     if ((GST_BUFFER_OFFSET (inbuffer) != GST_BUFFER_OFFSET_NONE) &&
@@ -317,7 +336,7 @@ gst_map_input_video_frames (GstVideoFrame ** inframes, guint n_inputs,
 
     // Check if there is memory block for this index.
     if (num >= n_memory)
-      continue;
+      break;
 
     // Create a new buffer to placehold a reference to a single GstMemory block.
     buffer = gst_buffer_new ();
@@ -337,6 +356,7 @@ gst_map_input_video_frames (GstVideoFrame ** inframes, guint n_inputs,
     id = idx * GST_BATCH_CHANNEL_OFFSET;
     roimeta = gst_buffer_get_video_region_of_interest_meta_id (inbuffer, id);
 
+    // Copy ROI metadata for current memory block into the new buffer.
     while (roimeta != NULL) {
       roimeta = gst_buffer_add_video_region_of_interest_meta_id (buffer,
           roimeta->roi_type, roimeta->x, roimeta->y, roimeta->w, roimeta->h);
@@ -344,6 +364,14 @@ gst_map_input_video_frames (GstVideoFrame ** inframes, guint n_inputs,
 
       roimeta = gst_buffer_get_video_region_of_interest_meta_id (inbuffer, ++id);
     }
+
+    name = g_strdup_printf ("channel-%u", idx);
+
+    // Copy protection metadata for current memory block into the new buffer.
+    if ((pmeta = gst_buffer_get_protection_meta_id (inbuffer, name)) != NULL)
+      gst_buffer_add_protection_meta (buffer, gst_structure_copy (pmeta->info));
+
+    g_free (name);
 
     if (!gst_video_frame_map (&frames[idx], info, buffer, flags)) {
       GST_ERROR ("Failed to map frame at idx %u!", idx);
@@ -390,6 +418,7 @@ gst_ml_video_converter_update_params (GstMLVideoConverter * mlconverter,
   // Iterate over all input frames.
   for (idx = 0, id = 0; idx < n_inputs; idx++, id++) {
     GstVideoFrame *inframe = &inframes[idx];
+    GstProtectionMeta *pmeta = NULL;
     gchar *name = NULL;
 
     // There is no buffer for this frame, no need to update params for it.
@@ -449,15 +478,20 @@ gst_ml_video_converter_update_params (GstMLVideoConverter * mlconverter,
       gst_value_array_append_value (&dstrects, &entry);
       g_value_reset (&entry);
 
+      // Construct the name for the protection meta structure.
       name = g_strdup_printf ("channel-%u", (id + num));
 
-      // Create a structure that will contain information for tensor decryption.
-      structure = gst_structure_new (name,
-        "source-aspect-ratio", GST_TYPE_FRACTION, sar_n, sar_d, NULL);
-      g_free (name);
+      // Transfer protection data from input to the output if available.
+      pmeta = gst_buffer_get_protection_meta_id (inframe->buffer, name);
 
-      // Add meta containing information for tensor decryption downstream.
-      gst_buffer_add_protection_meta (outframe->buffer, structure);
+      // Add channel protection meta to the output buffer.
+      pmeta = gst_buffer_add_protection_meta (outframe->buffer, (pmeta != NULL) ?
+          gst_structure_copy (pmeta->info) : gst_structure_new_empty (name));
+
+      // Add SAR information for tensor decryption downstream.
+      gst_structure_set (pmeta->info,
+          "source-aspect-ratio", GST_TYPE_FRACTION, sar_n, sar_d, NULL);
+      g_free (name);
 
       GST_TRACE_OBJECT (mlconverter, "Rectangles [%u] SAR[%d/%d]: [%d %d %d %d]"
           " -> [%d %d %d %d]", idx, sar_n, sar_d, inrect.x, inrect.y, inrect.w,

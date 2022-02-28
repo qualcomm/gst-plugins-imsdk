@@ -749,8 +749,8 @@ gst_ml_video_detection_transform_caps (GstBaseTransform * base,
     GstPadDirection direction, GstCaps * caps, GstCaps * filter)
 {
   GstMLVideoDetection *detection = GST_ML_VIDEO_DETECTION (base);
-  GstCaps *result = NULL;
-  const GValue *value = NULL;
+  GstCaps *tmplcaps = NULL, *result = NULL;
+  guint idx = 0, num = 0, length = 0;
 
   GST_DEBUG_OBJECT (detection, "Transforming caps: %" GST_PTR_FORMAT
       " in direction %s", caps, (direction == GST_PAD_SINK) ? "sink" : "src");
@@ -758,26 +758,46 @@ gst_ml_video_detection_transform_caps (GstBaseTransform * base,
 
   if (direction == GST_PAD_SRC) {
     GstPad *pad = GST_BASE_TRANSFORM_SINK_PAD (base);
-    result = gst_pad_get_pad_template_caps (pad);
+    tmplcaps = gst_pad_get_pad_template_caps (pad);
   } else if (direction == GST_PAD_SINK) {
     GstPad *pad = GST_BASE_TRANSFORM_SRC_PAD (base);
-    result = gst_pad_get_pad_template_caps (pad);
+    tmplcaps = gst_pad_get_pad_template_caps (pad);
   }
 
-  // Extract the rate and propagate it to result caps.
-  value = gst_structure_get_value (gst_caps_get_structure (caps, 0),
-      (direction == GST_PAD_SRC) ? "framerate" : "rate");
+  result = gst_caps_new_empty ();
+  length = gst_caps_get_size (tmplcaps);
 
-  if (value != NULL) {
-    gint idx = 0, length = 0;
+  for (idx = 0; idx < length; idx++) {
+    GstStructure *structure = NULL;
+    GstCapsFeatures *features = NULL;
 
-    result = gst_caps_make_writable (result);
-    length = gst_caps_get_size (result);
+    for (num = 0; num < gst_caps_get_size (caps); num++) {
+      const GValue *value = NULL;
 
-    for (idx = 0; idx < length; idx++) {
-      GstStructure *structure = gst_caps_get_structure (result, idx);
-      gst_structure_set_value (structure,
-          (direction == GST_PAD_SRC) ? "rate" : "framerate", value);
+      structure = gst_caps_get_structure (tmplcaps, idx);
+      features = gst_caps_get_features (tmplcaps, idx);
+
+      // Make a copy that will be modified.
+      structure = gst_structure_copy (structure);
+
+      // Extract the rate from incoming caps and propagate it to result caps.
+      value = gst_structure_get_value (gst_caps_get_structure (caps, num),
+          (direction == GST_PAD_SRC) ? "framerate" : "rate");
+
+      // Skip if there is no value or if current caps structure is text.
+      if (value != NULL && !gst_structure_has_name (structure, "text/x-raw")) {
+        gst_structure_set_value (structure,
+            (direction == GST_PAD_SRC) ? "rate" : "framerate", value);
+      }
+
+      // If this is already expressed by the existing caps skip this structure.
+      if (gst_caps_is_subset_structure_full (result, structure, features)) {
+        gst_structure_free (structure);
+        continue;
+      }
+
+      gst_caps_append_structure_full (result, structure,
+          gst_caps_features_copy (features));
     }
   }
 
@@ -877,10 +897,12 @@ gst_ml_video_detection_set_caps (GstBaseTransform * base, GstCaps * incaps,
   GstMLInfo ininfo;
 
   if (NULL == detection->labels) {
-    GST_ERROR_OBJECT (detection, "Labels not set!");
+    GST_ELEMENT_ERROR (detection, RESOURCE, NOT_FOUND, (NULL),
+        ("Labels not set!"));
     return FALSE;
   } else if (NULL == detection->modname) {
-    GST_ERROR_OBJECT (detection, "Module not set!");
+    GST_ELEMENT_ERROR (detection, RESOURCE, NOT_FOUND, (NULL),
+        ("Module not set!"));
     return FALSE;
   }
 
