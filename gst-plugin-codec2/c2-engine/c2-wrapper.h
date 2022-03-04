@@ -57,7 +57,7 @@ gst_c2_venc_wrapper_delete_component (GstC2Wrapper * wrapper);
 
 GST_API gboolean
 gst_c2_venc_wrapper_config_component (GstC2Wrapper * wrapper,
-    GPtrArray* config);
+    GPtrArray * config);
 
 GST_API gboolean
 gst_c2_venc_wrapper_component_start (GstC2Wrapper * wrapper);

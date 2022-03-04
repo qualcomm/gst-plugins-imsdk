@@ -146,12 +146,12 @@ gst_c2_venc_rate_control_get_type (void)
 
   if (qtype == 0) {
     static const GEnumValue values[] = {
-      {RC_OFF, "Disable RC", "disable"},
-      {RC_CONST, "Constant", "constant"},
-      {RC_CBR_VFR, "Constant bitrate, variable framerate", "CBR-VFR"},
-      {RC_VBR_CFR, "Variable bitrate, constant framerate", "VBR-CFR"},
-      {RC_VBR_VFR, "Variable bitrate, variable framerate", "VBR-VFR"},
-      {RC_CQ, "Constant quality", "CQ"},
+      {RC_MODE_OFF, "Disable RC", "disable"},
+      {RC_MODE_CONST, "Constant", "constant"},
+      {RC_MODE_CBR_VFR, "Constant bitrate, variable framerate", "CBR-VFR"},
+      {RC_MODE_VBR_CFR, "Variable bitrate, constant framerate", "VBR-CFR"},
+      {RC_MODE_VBR_VFR, "Variable bitrate, variable framerate", "VBR-VFR"},
+      {RC_MODE_CQ, "Constant quality", "CQ"},
       {0, NULL, NULL}
     };
 
@@ -167,8 +167,8 @@ gst_c2_venc_intra_refresh_mode_get_type (void)
 
   if (qtype == 0) {
     static const GEnumValue values[] = {
-      {IR_NONE, "None", "none"},
-      {IR_RANDOM, "Random", "random"},
+      {IR_MODE_NONE, "None", "none"},
+      {IR_MODE_RANDOM, "Random", "random"},
       {0, NULL, NULL}
     };
 
@@ -177,42 +177,42 @@ gst_c2_venc_intra_refresh_mode_get_type (void)
   return qtype;
 }
 
-static ConfigParams
-make_bitrate_param (guint32 bitrate, gboolean isInput)
+static config_params_t
+make_bitrate_param (guint32 bitrate, gboolean is_input)
 {
-  ConfigParams param;
+  config_params_t param;
 
-  memset (&param, 0, sizeof (ConfigParams));
+  memset (&param, 0, sizeof (config_params_t));
 
   param.config_name = CONFIG_FUNCTION_KEY_BITRATE;
-  param.isInput = isInput;
+  param.is_input = is_input;
   param.val.u32 = bitrate;
 
   return param;
 }
 
-static ConfigParams
-make_resolution_param (guint32 width, guint32 height, gboolean isInput)
+static config_params_t
+make_resolution_param (guint32 width, guint32 height, gboolean is_input)
 {
-  ConfigParams param;
+  config_params_t param;
 
-  memset (&param, 0, sizeof (ConfigParams));
+  memset (&param, 0, sizeof (config_params_t));
 
   param.config_name = CONFIG_FUNCTION_KEY_RESOLUTION;
-  param.isInput = isInput;
+  param.is_input = is_input;
   param.resolution.width = width;
   param.resolution.height = height;
 
   return param;
 }
 
-static ConfigParams
+static config_params_t
 make_qp_ranges_param (guint32 miniqp, guint32 maxiqp, guint32 minpqp,
     guint32 maxpqp, guint32 minbqp, guint32 maxbqp)
 {
-  ConfigParams param;
+  config_params_t param;
 
-  memset (&param, 0, sizeof (ConfigParams));
+  memset (&param, 0, sizeof (config_params_t));
 
   param.config_name = CONFIG_FUNCTION_KEY_QP_RANGES;
   param.qp_ranges.miniqp = miniqp;
@@ -225,57 +225,57 @@ make_qp_ranges_param (guint32 miniqp, guint32 maxiqp, guint32 minpqp,
   return param;
 }
 
-static ConfigParams
-make_pixelFormat_param (guint32 fmt, gboolean isInput)
+static config_params_t
+make_pixelFormat_param (guint32 fmt, gboolean is_input)
 {
-  ConfigParams param;
+  config_params_t param;
 
-  memset (&param, 0, sizeof (ConfigParams));
+  memset (&param, 0, sizeof (config_params_t));
 
   param.config_name = CONFIG_FUNCTION_KEY_PIXELFORMAT;
-  param.isInput = isInput;
-  param.pixelFormat.fmt = (PIXEL_FORMAT_TYPE) fmt;
+  param.is_input = is_input;
+  param.pixel_fmt = (pixel_format_t) fmt;
 
   return param;
 }
 
-static ConfigParams
-make_rateControl_param (RC_MODE_TYPE mode)
+static config_params_t
+make_rateControl_param (rc_mode_t mode)
 {
-  ConfigParams param;
+  config_params_t param;
 
-  memset (&param, 0, sizeof (ConfigParams));
+  memset (&param, 0, sizeof (config_params_t));
 
   param.config_name = CONFIG_FUNCTION_KEY_RATECONTROL;
-  param.rcMode.type = mode;
+  param.rc_mode = mode;
 
   return param;
 }
 
-static ConfigParams
-make_slicemode_param (guint32 size, SLICE_MODE mode)
+static config_params_t
+make_slicemode_param (guint32 size, slice_mode_t mode)
 {
-  ConfigParams param;
+  config_params_t param;
 
-  memset (&param, 0, sizeof (ConfigParams));
+  memset (&param, 0, sizeof (config_params_t));
 
   param.config_name = CONFIG_FUNCTION_KEY_SLICE_MODE;
   param.val.u32 = size;
-  param.SliceMode.type = mode;
+  param.slice_mode = mode;
 
   return param;
 }
 
-static ConfigParams
-make_intraRefresh_param (IR_MODE_TYPE mode, guint32 intra_refresh_mbs)
+static config_params_t
+make_intraRefresh_param (ir_mode_t mode, guint32 intra_refresh_mbs)
 {
-  ConfigParams param;
+  config_params_t param;
 
-  memset (&param, 0, sizeof (ConfigParams));
+  memset (&param, 0, sizeof (config_params_t));
 
   param.config_name = CONFIG_FUNCTION_KEY_INTRAREFRESH;
-  param.irMode.type = mode;
-  param.irMode.intra_refresh_mbs = (float) intra_refresh_mbs;
+  param.ir_mode.type = mode;
+  param.ir_mode.intra_refresh_mbs = (float) intra_refresh_mbs;
 
   return param;
 }
@@ -513,7 +513,7 @@ push_frame_downstream (GstVideoEncoder * encoder, BufferDescriptor * encode_buf)
 }
 
 static void
-handle_video_event (EVENT_TYPE type, void *userdata, void *userdata2)
+handle_video_event (EVENT_TYPE type, void * userdata, void * userdata2)
 {
   GstVideoEncoder *encoder = (GstVideoEncoder *) userdata2;
   GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
@@ -569,15 +569,15 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   gint height = 0;
   GstVideoFormat input_format = GST_VIDEO_FORMAT_UNKNOWN;
   GPtrArray *config = NULL;
-  ConfigParams resolution;
-  ConfigParams pixelformat;
-  ConfigParams rate_control;
-  ConfigParams downscale;
-  ConfigParams color_aspects;
-  ConfigParams intra_refresh;
-  ConfigParams bitrate;
-  ConfigParams slice_mode;
-  ConfigParams qp_ranges;
+  config_params_t resolution;
+  config_params_t pixelformat;
+  config_params_t rate_control;
+  config_params_t downscale;
+  config_params_t color_aspects;
+  config_params_t intra_refresh;
+  config_params_t bitrate;
+  config_params_t slice_mode;
+  config_params_t qp_ranges;
 
   structure = gst_caps_get_structure (state->caps, 0);
   retval = gst_structure_get_int (structure, "width", &width);
@@ -875,10 +875,10 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
 
   switch (prop_id) {
     case PROP_RATE_CONTROL:
-      c2venc->rcMode = (RC_MODE_TYPE) g_value_get_enum (value);
+      c2venc->rcMode = (rc_mode_t) g_value_get_enum (value);
       break;
     case PROP_INTRA_REFRESH_MODE:
-      c2venc->intra_refresh_mode = (IR_MODE_TYPE) g_value_get_enum (value);
+      c2venc->intra_refresh_mode = (ir_mode_t) g_value_get_enum (value);
       break;
     case PROP_INTRA_REFRESH_MBS:
       c2venc->intra_refresh_mbs = g_value_get_uint (value);
@@ -890,7 +890,7 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
       c2venc->slice_size = g_value_get_uint (value);
       break;
     case PROP_SLICE_MODE:
-      c2venc->slice_mode = (SLICE_MODE) g_value_get_enum (value);
+      c2venc->slice_mode = (slice_mode_t) g_value_get_enum (value);
       break;
     case PROP_MAX_QP_B_FRAMES:
       c2venc->max_qp_b_frames = g_value_get_uint (value);
@@ -1009,7 +1009,7 @@ gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
       g_param_spec_enum ("control-rate", "Rate Control",
           "Bitrate control method",
           GST_TYPE_CODEC2_ENC_RATE_CONTROL,
-          RC_OFF,
+          RC_MODE_OFF,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
@@ -1017,7 +1017,7 @@ gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
       g_param_spec_enum ("intra-refresh-mode", "Intra refresh mode",
           "Intra refresh mode, only support random mode. Allow IR only for CBR(_CFR/VFR) RC modes",
           GST_TYPE_CODEC2_ENC_INTRA_REFRESH_MODE,
-          IR_NONE,
+          IR_MODE_NONE,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
@@ -1121,7 +1121,7 @@ gst_c2_venc_init (GstC2_VENCEncoder * c2venc)
   c2venc->frame_index = 0;
   c2venc->eos_reached = FALSE;
 
-  c2venc->rcMode = RC_OFF;
+  c2venc->rcMode = RC_MODE_OFF;
   c2venc->target_bitrate = 0;
   c2venc->slice_size = 0;
 
