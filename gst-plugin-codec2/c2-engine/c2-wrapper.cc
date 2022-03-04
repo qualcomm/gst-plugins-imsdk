@@ -57,8 +57,8 @@ struct _GstC2Wrapper {
 };
 
 struct QC2ComponentStoreFactory {
-    virtual ~QC2ComponentStoreFactory() = default;
-    virtual std::shared_ptr<C2ComponentStore> getInstance() = 0;
+    virtual ~QC2ComponentStoreFactory () = default;
+    virtual std::shared_ptr<C2ComponentStore> getInstance () = 0;
 };
 
 using QC2ComponentStoreFactoryGetter_t
@@ -71,7 +71,7 @@ gst_c2_wrapper_new ()
   wrapper = g_new0 (GstC2Wrapper, 1);
   g_return_val_if_fail (wrapper != NULL, NULL);
 
-  wrapper->dlhandle = dlopen("libqcodec2_core.so", RTLD_NOW);
+  wrapper->dlhandle = dlopen ("libqcodec2_core.so", RTLD_NOW);
   if (wrapper->dlhandle == NULL) {
     g_slice_free (GstC2Wrapper, wrapper);
     GST_ERROR("failed to open %s: %s", "libqcodec2_core.so", dlerror());
@@ -85,14 +85,14 @@ gst_c2_wrapper_new ()
   if (factoryGetter == NULL) {
     GST_ERROR("failed to load symbol QC2ComponentStoreFactoryGetter: %s",
         dlerror());
-    dlclose(wrapper->dlhandle);
+    dlclose (wrapper->dlhandle);
     return NULL;
   }
 
   auto c2StoreFactory = (*factoryGetter) (1, 0); // get version 1.0
   if (c2StoreFactory == NULL) {
     GST_ERROR("failed to get Store factory !");
-    dlclose(wrapper->dlhandle);
+    dlclose (wrapper->dlhandle);
     return NULL;
   } else {
     GST_INFO ("Successfully get store factory");
@@ -101,7 +101,7 @@ gst_c2_wrapper_new ()
   wrapper->compstore = c2StoreFactory->getInstance();
   if (wrapper->compstore == NULL) {
     GST_ERROR("failed to get Component Store instance!");
-    dlclose(wrapper->dlhandle);
+    dlclose (wrapper->dlhandle);
     return NULL;
   }
 
@@ -112,7 +112,7 @@ gst_c2_wrapper_new ()
 void
 gst_c2_wrapper_free (GstC2Wrapper * wrapper)
 {
-  dlclose(wrapper->dlhandle);
+  dlclose (wrapper->dlhandle);
   GST_INFO ("Destroyed C2 wrapper: %p", wrapper);
   g_slice_free (GstC2Wrapper, wrapper);
 }
@@ -147,10 +147,10 @@ gst_c2_venc_wrapper_delete_component (GstC2Wrapper * wrapper) {
 
 gboolean
 gst_c2_venc_wrapper_config_component (GstC2Wrapper * wrapper,
-    GPtrArray* config) {
+    GPtrArray * config) {
 
   if (wrapper->component) {
-    wrapper->component->Config(config);
+    wrapper->component->Config (config);
   }
 
   GST_INFO ("C2venc component start");
@@ -161,7 +161,7 @@ gboolean
 gst_c2_venc_wrapper_component_start (GstC2Wrapper * wrapper) {
 
   if (wrapper->component) {
-    wrapper->component->Start();
+    wrapper->component->Start ();
   }
 
   GST_INFO ("C2venc component start");
@@ -172,7 +172,7 @@ gboolean
 gst_c2_venc_wrapper_component_stop (GstC2Wrapper * wrapper) {
 
   if (wrapper->component) {
-    wrapper->component->Stop();
+    wrapper->component->Stop ();
   }
 
   GST_INFO ("C2venc component start");
@@ -184,7 +184,7 @@ gst_c2_venc_wrapper_component_queue (GstC2Wrapper * wrapper,
     BufferDescriptor * buffer) {
 
   if (wrapper->component) {
-    wrapper->component->Queue(buffer);
+    wrapper->component->Queue (buffer);
   }
 
   return TRUE;
@@ -193,9 +193,9 @@ gst_c2_venc_wrapper_component_queue (GstC2Wrapper * wrapper,
 gboolean
 gst_c2_venc_wrapper_free_output_buffer (GstC2Wrapper * wrapper,
     uint64_t bufferIdx) {
-
+  gboolean ret = FALSE;
   if (wrapper->component) {
-    wrapper->component->FreeOutputBuffer(bufferIdx);
+    ret = wrapper->component->FreeOutputBuffer (bufferIdx);
   }
-  return TRUE;
+  return ret;
 }

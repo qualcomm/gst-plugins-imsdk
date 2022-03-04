@@ -32,7 +32,8 @@
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#pragma once
+#ifndef __GST_C2_COMPONENT_H__
+#define __GST_C2_COMPONENT_H__
 
 #include "common.h"
 
@@ -49,50 +50,45 @@
 #include <condition_variable>
 
 typedef void (*event_handler_cb)(
-    EVENT_TYPE type, void* userdata, void* userdata2);
+    EVENT_TYPE type, void *userdata, void *userdata2);
 
 class C2ComponentWrapper {
-
 public:
-  C2ComponentWrapper(std::shared_ptr<C2ComponentStore> compstore,
-    const char* name);
-  ~C2ComponentWrapper();
+  C2ComponentWrapper (std::shared_ptr<C2ComponentStore> compstore,
+      const char * name);
+  ~C2ComponentWrapper ();
 
-  bool SetHandler(event_handler_cb callback, gpointer userdata);
-  bool Config(GPtrArray* config);
-  bool Start();
-  bool Stop();
-  bool Queue(BufferDescriptor * buffer);
-  bool FreeOutputBuffer(uint64_t bufferIdx);
+  bool SetHandler (event_handler_cb callback, gpointer userdata);
+  bool Config (GPtrArray * config);
+  bool Start ();
+  bool Stop ();
+  bool Queue (BufferDescriptor * buffer);
+  bool FreeOutputBuffer (uint64_t bufferIdx);
 
+private:
+  C2FrameData::flags_t toC2Flag (FLAG_TYPE flag);
+  guint32 gst_to_c2_gbmformat (GstVideoFormat format);
+  c2_status_t CheckMaxAvailableQueues ();
+
+  std::shared_ptr<C2ComponentStore> compstore_;
+  std::shared_ptr<C2Component> component_;
+  std::shared_ptr<C2ComponentInterface> compintf_;
   std::map<uint64_t, std::shared_ptr<C2Buffer>> out_pending_buffers_;
   uint32_t numpendingworks_;
   std::mutex lock_;
   std::condition_variable workcondition_;
-private:
-  C2FrameData::flags_t toC2Flag (FLAG_TYPE flag);
-  guint32 gst_to_c2_gbmformat (GstVideoFormat format);
-  c2_status_t CheckMaxAvailableQueues();
 
-  std::shared_ptr<C2ComponentStore> compstore_;
-  std::shared_ptr<C2Component> *component_;
-  std::shared_ptr<C2ComponentInterface> *compintf_;
+  friend class C2ComponentListener;
 };
 
 class EventCallback {
 public:
-  EventCallback(const gpointer userdata, event_handler_cb cb):
-    userdata_(userdata), callback_(cb) {};
-  ~EventCallback() {};
-
-  void onOutputBufferAvailable(
-      const std::shared_ptr<C2Buffer>& buffer,
-      guint64 index,
-      guint64 timestamp,
-      C2FrameData::flags_t flag,
+  EventCallback (const gpointer userdata, event_handler_cb cb);
+  void onOutputBufferAvailable (const std::shared_ptr<C2Buffer> buffer,
+      guint64 index, guint64 timestamp, C2FrameData::flags_t flag,
       gpointer userdata);
-  void onTripped(guint errorCode, gpointer userdata);
-  void onError(guint errorCode, gpointer userdata);
+  void onTripped (guint errorCode, gpointer userdata);
+  void onError (guint errorCode, gpointer userdata);
 
 private:
   event_handler_cb callback_;
@@ -101,52 +97,32 @@ private:
 
 class C2ComponentListener : public C2Component::Listener {
 public:
-    C2ComponentListener(std::shared_ptr<C2Component> * comp,
-        EventCallback *callback, void *userdata) :
-      comp_(comp), callback_(callback), userdata_(userdata) {};
-    ~C2ComponentListener() {};
-
-    // Methods implementing C2Component::Listener
-    void onWorkDone_nb(std::weak_ptr<C2Component> component,
-        std::list<std::unique_ptr<C2Work> > workItems) override;
-    void onTripped_nb(std::weak_ptr<C2Component> component,
-        std::vector<std::shared_ptr<C2SettingResult> > settingResult) override;
-    void onError_nb(std::weak_ptr<C2Component> component,
-        uint32_t errorCode) override;
+  C2ComponentListener (std::shared_ptr<C2Component> comp,
+      EventCallback * callback, void * userdata);
+  void onWorkDone_nb (std::weak_ptr<C2Component> component,
+      std::list<std::unique_ptr<C2Work>> workItems) override;
+  void onTripped_nb (std::weak_ptr<C2Component> component,
+      std::vector<std::shared_ptr<C2SettingResult>> settingResult) override;
+  void onError_nb (std::weak_ptr<C2Component> component,
+      uint32_t errorCode) override;
 
 private:
-    std::shared_ptr<C2Component> *comp_;
-    EventCallback *callback_;
-    void *userdata_;
+  std::shared_ptr<C2Component> comp_;
+  EventCallback *callback_;
+  void *userdata_;
 };
 
 class C2VencBuffWrapper : public C2GraphicAllocation {
 public:
-  // Interface methods
-  virtual c2_status_t map(C2Rect rect, C2MemoryUsage usage, C2Fence *fence,
-      C2PlanarLayout *layout, uint8_t **addr) override {return C2_OK;};
-
-  virtual c2_status_t unmap(uint8_t **addr, C2Rect rect,
-      C2Fence *fence) override {return C2_OK;};
-
-  virtual ~C2VencBuffWrapper() override {};
-
-  virtual const C2Handle *handle() const override {
-    return reinterpret_cast<const C2Handle*>(handle_);
-  };
-
-  virtual id_t getAllocatorId() const override {return allocator_id_;};
-
-  virtual bool equals (
-    const std::shared_ptr<const C2GraphicAllocation> &other) const override {
-    return other && other->handle() == handle();
-  };
-
-  C2VencBuffWrapper(uint32_t width, uint32_t height,
-    C2Allocator::id_t allocator_id, android::C2HandleGBM *handle) :
-    C2GraphicAllocation(width, height), base_(nullptr), mapsize_(0),
-    allocator_id_(allocator_id), handle_(handle) {}
-  c2_status_t status() const { return C2_OK; };
+  C2VencBuffWrapper (uint32_t width, uint32_t height,
+      C2Allocator::id_t allocator_id, android::C2HandleGBM * handle);
+  c2_status_t map (C2Rect rect, C2MemoryUsage usage, C2Fence * fence,
+      C2PlanarLayout * layout, uint8_t ** addr) override;
+  c2_status_t unmap (uint8_t ** addr, C2Rect rect, C2Fence * fence) override;
+  const C2Handle *handle () const override;
+  id_t getAllocatorId () const override;
+  bool equals (
+      const std::shared_ptr<const C2GraphicAllocation> &other) const override;
 
 private:
   android::C2HandleGBM *handle_;
@@ -155,3 +131,5 @@ private:
   struct gbm_bo *bo_;
   C2Allocator::id_t allocator_id_;
 };
+
+#endif // __GST_C2_COMPONENT_H__
