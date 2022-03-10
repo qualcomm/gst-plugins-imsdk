@@ -48,8 +48,9 @@ G_DEFINE_TYPE (GstDfs, gst_dfs, GST_TYPE_BASE_TRANSFORM);
 
 #define DEFAULT_MIN_BUFFERS        2
 #define DEFAULT_MAX_BUFFERS        10
+#define DEFAULT_CONFIG_PATH "/data/stereo.config"
 
-#define DEFAULT_PROP_MODE MODE_GPU
+#define DEFAULT_PROP_MODE MODE_SPEED_GPU
 #define DEFAULT_PROP_MIN_DISPARITY 1
 #define DEFAULT_PROP_NUM_DISPARITY_LEVELS 32
 #define DEFAULT_PROP_FILTER_WIDTH 11
@@ -66,6 +67,7 @@ enum
   PROP_FILTER_WIDTH,
   PROP_FILTER_HEIGHT,
   PROP_RECTIFICATION,
+  PROP_CONFIG_PATH,
 };
 
 #ifndef GST_CAPS_FEATURE_MEMORY_GBM
@@ -88,8 +90,7 @@ static GstStaticCaps gst_dfs_static_sink_caps =
     GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_SINK_VIDEO_FORMATS) ";"
     GST_VIDEO_CAPS_MAKE_WITH_FEATURES ("ANY", GST_SINK_VIDEO_FORMATS));
 
-static GstStaticCaps gst_dfs_static_src_caps =
-    GST_STATIC_CAPS (GST_DFS_SRC_CAPS);
+static GstStaticCaps gst_dfs_static_src_caps = GST_STATIC_CAPS (GST_DFS_SRC_CAPS);
 
 static GstCaps *
 gst_dfs_sink_caps (void)
@@ -149,32 +150,146 @@ caps_has_feature (const GstCaps * caps, const gchar * feature)
   return FALSE;
 }
 
+static gboolean
+gst_dfs_parse_config (gchar * config_location,
+    stereoConfiguration * configuration)
+{
+  gboolean rc = FALSE;
+  GstStructure *structure = NULL;
+  GValueArray *arrvalue;
+  gint intvalue;
+
+  GValue gvalue = G_VALUE_INIT;
+  g_value_init (&gvalue, GST_TYPE_STRUCTURE);
+
+  if (!g_file_test (config_location, G_FILE_TEST_EXISTS)) {
+    g_print("Failed to find config file\n");
+    GST_WARNING ("Failed to find config file");
+    return FALSE;
+  }
+
+  if (g_file_test (config_location, G_FILE_TEST_IS_REGULAR)) {
+    gchar *contents = NULL;
+    GError *error = NULL;
+
+    if (!g_file_get_contents (config_location, &contents, NULL, &error)) {
+      GST_WARNING ("Failed to get config file contents, error: %s!",
+          GST_STR_NULL (error->message));
+      g_clear_error (&error);
+      return FALSE;
+    }
+    // Remove trailing space and replace new lines with a coma delimeter.
+    contents = g_strstrip (contents);
+    contents = g_strdelimit (contents, "\n", ',');
+
+    rc = gst_value_deserialize (&gvalue, contents);
+    g_free (contents);
+
+    if (!rc) {
+      GST_WARNING ("Failed to deserialize config file contents!");
+      return rc;
+    }
+  } else if (!gst_value_deserialize (&gvalue, config_location)) {
+    GST_WARNING ("Failed to deserialize the config!");
+    return FALSE;
+  }
+
+  structure = GST_STRUCTURE (g_value_dup_boxed (&gvalue));
+  g_value_unset (&gvalue);
+
+  if ((rc = gst_structure_get_array (structure, "translation", &arrvalue))) {
+    for (uint i = 0; i < arrvalue->n_values; i++) {
+      configuration->translation[i] = g_value_get_double (arrvalue->values + i);
+    }
+  }
+
+  if ((rc &= gst_structure_get_array (structure, "rotation", &arrvalue))) {
+    for (uint i = 0; i < arrvalue->n_values; i++) {
+      configuration->rotation[i] = g_value_get_double (arrvalue->values + i);
+    }
+  }
+
+  if ((rc &=
+          gst_structure_get_array (structure, "camera0_principalPoint",
+              &arrvalue))) {
+    for (uint i = 0; i < arrvalue->n_values; i++) {
+      configuration->camera[0].principalPoint[i] =
+          g_value_get_double (arrvalue->values + i);
+    }
+  }
+
+  if ((rc &=
+          gst_structure_get_array (structure, "camera1_principalPoint",
+              &arrvalue))) {
+    for (uint i = 0; i < arrvalue->n_values; i++) {
+      configuration->camera[1].principalPoint[i] =
+          g_value_get_double (arrvalue->values + i);
+    }
+  }
+
+  if ((rc &=
+          gst_structure_get_array (structure, "camera0_focalLength",
+              &arrvalue))) {
+    for (uint i = 0; i < arrvalue->n_values; i++) {
+      configuration->camera[0].focalLength[i] =
+          g_value_get_double (arrvalue->values + i);
+    }
+  }
+
+  if ((rc &=
+          gst_structure_get_array (structure, "camera1_focalLength",
+              &arrvalue))) {
+    for (uint i = 0; i < arrvalue->n_values; i++) {
+      configuration->camera[1].focalLength[i] =
+          g_value_get_double (arrvalue->values + i);
+    }
+  }
+
+  if ((rc &=
+          gst_structure_get_array (structure, "camera0_distortion_coefficient",
+              &arrvalue))) {
+    for (uint i = 0; i < arrvalue->n_values; i++) {
+      configuration->camera[0].distortion[i] =
+          g_value_get_double (arrvalue->values + i);
+    }
+  }
+
+  if ((rc &=
+          gst_structure_get_array (structure, "camera1_distortion_coefficient",
+              &arrvalue))) {
+    for (uint i = 0; i < arrvalue->n_values; i++) {
+      configuration->camera[1].distortion[i] =
+          g_value_get_double (arrvalue->values + i);
+    }
+  }
+
+  if ((rc &= gst_structure_get_int (structure, "distortion_model", &intvalue))) {
+    configuration->camera[0].distortionModel = intvalue;
+    configuration->camera[1].distortionModel = intvalue;
+  }
+
+  gst_structure_free (structure);
+
+  return rc;
+}
+
 GType
 gst_dfs_mode_get_type (void)
 {
   static GType type = 0;
   static const GEnumValue mode[] = {
-    { MODE_CVP,
-        "CVP hardware mode", "cvp"
-    },
-    { MODE_BOX,
-        "Software solution, Box filter", "box"
-    },
-    { MODE_GPU,
-        "OpenCL solution, box filter", "gpu"
-    },
-    { MODE_BILATERAL,
-        "Software solution, bilateral filter", "bilateral"
-    },
-    { MODE_FASTGUIDED,
-        "Fast guided filter", "fast-guided"
-    },
-    { MODE_GPU_GUIDED,
-        "OpenCL solution, guided filter", "gpu-guided"
-    },
-    { MODE_DOWNSAMPLE,
-        "Down sample the input images and up sample the output", "downsample"
-    },
+    {MODE_CVP,
+        "CVP hardware mode", "cvp"},
+    {MODE_SPEED_CPU,
+        "CPU solution, speed mode", "speed-cpu"},
+    {MODE_SPEED_GPU,
+        "OpenCL solution, speed mode", "speed-gpu"},
+    {MODE_ACCURACY_CPU,
+        "CPU solution, accuracy mode", "accuracy-cpu"},
+    {MODE_COVERAGE_CPU,
+        "CPU solution, coverage mode", "coverage-cpu"},
+    {MODE_COVERAGE_GPU,
+        "OpenCL solution, coverage mode", "coverage-gpu"},
     {0, NULL, NULL},
   };
   if (!type)
@@ -197,8 +312,7 @@ gst_dfs_create_pool (GstDfs * dfs, GstCaps * caps)
       GST_ERROR_OBJECT (dfs, "Invalid caps %" GST_PTR_FORMAT, caps);
       return NULL;
     }
-
-// If downstream allocation query supports GBM, allocate gbm memory.
+    // If downstream allocation query supports GBM, allocate gbm memory.
     if (caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
       GST_INFO_OBJECT (dfs, "Uses GBM memory");
       pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
@@ -254,13 +368,11 @@ gst_dfs_decide_allocation (GstBaseTransform * trans, GstQuery * query)
     GST_ERROR_OBJECT (dfs, "Failed to parse the decide_allocation caps!");
     return FALSE;
   }
-
   // Invalidate the cached pool if there is an allocation_query.
   if (dfs->outpool) {
     gst_buffer_pool_set_active (dfs->outpool, FALSE);
     gst_object_unref (dfs->outpool);
   }
-
   // Create a new buffer pool.
   pool = gst_dfs_create_pool (dfs, caps);
   dfs->outpool = pool;
@@ -280,8 +392,7 @@ gst_dfs_decide_allocation (GstBaseTransform * trans, GstQuery * query)
     gst_query_set_nth_allocation_pool (query, 0, pool, size, minbuffers,
         maxbuffers);
   else
-    gst_query_add_allocation_pool (query, pool, size, minbuffers,
-        maxbuffers);
+    gst_query_add_allocation_pool (query, pool, size, minbuffers, maxbuffers);
 
   return TRUE;
 }
@@ -313,10 +424,9 @@ gst_dfs_prepare_output_buffer (GstBaseTransform * trans,
     GST_ERROR_OBJECT (dfs, "Failed to create output buffer!");
     return GST_FLOW_ERROR;
   }
-
   // Copy the flags and timestamps from the input buffer.
   gst_buffer_copy_into (*outbuffer, inbuffer,
-      (GstBufferCopyFlags)(GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS),
+      (GstBufferCopyFlags) (GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS),
       0, -1);
 
   return GST_FLOW_OK;
@@ -342,7 +452,7 @@ gst_dfs_transform_caps (GstBaseTransform * trans,
   }
 
   if (filter != NULL) {
-    GstCaps *intersection  =
+    GstCaps *intersection =
         gst_caps_intersect_full (filter, result, GST_CAPS_INTERSECT_FIRST);
     gst_caps_unref (result);
     result = intersection;
@@ -419,13 +529,48 @@ gst_dfs_transform (GstBaseTransform * trans, GstBuffer * inbuffer,
     GstBuffer * outbuffer)
 {
   GstDfs *dfs = GST_DFS_CAST (trans);
+  GstVideoMeta *vmeta = NULL;
+  DfsInitSettings settings;
   GstVideoFrame inframe;
   GstMapInfo out_info0;
   GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
   GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
 
+  vmeta = gst_buffer_get_video_meta (inbuffer);
+
+  //Check if Engine has been init already
+  if (dfs->engine == NULL) {
+    settings.format = dfs->format;
+    settings.stereo_frame_width = vmeta->width;
+    settings.stereo_frame_height = vmeta->height;
+    settings.stride = vmeta->stride[0]; //Only need Y-plane
+    settings.dfs_mode = dfs->dfs_mode;
+    settings.min_disparity = dfs->min_disparity;
+    settings.num_disparity_levels = dfs->num_disparity_levels;
+    settings.filter_width = dfs->filter_width;
+    settings.filter_height = dfs->filter_height;
+    settings.rectification = dfs->rectification;
+    settings.gpu_rect = dfs->gpu_rect;
+    settings.stereo_parameter = dfs->stereo_parameter;
+
+    ts_begin = gst_util_get_timestamp ();
+
+    dfs->engine = gst_dfs_engine_new (&settings);
+    if (dfs->engine == NULL) {
+      GST_ERROR_OBJECT (dfs, "Failed to create DFS engine!");
+      return GST_FLOW_ERROR;
+    }
+
+    ts_end = gst_util_get_timestamp ();
+    tsdelta = GST_CLOCK_DIFF (ts_begin, ts_end);
+
+    GST_INFO ("DFS init time: %" G_GINT64_FORMAT ".%03"
+        G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (tsdelta),
+        (GST_TIME_AS_USECONDS (tsdelta) % 1000));
+  }
+
   if (!gst_video_frame_map (&inframe, dfs->ininfo, inbuffer,
-          (GstMapFlags)(GST_MAP_READ | GST_VIDEO_FRAME_MAP_FLAG_NO_REF))) {
+          (GstMapFlags) (GST_MAP_READ | GST_VIDEO_FRAME_MAP_FLAG_NO_REF))) {
     GST_ERROR_OBJECT (dfs, "Failed to map input buffer!");
     return GST_FLOW_ERROR;
   }
@@ -438,8 +583,7 @@ gst_dfs_transform (GstBaseTransform * trans, GstBuffer * inbuffer,
 
   ts_begin = gst_util_get_timestamp ();
 
-  if (!gst_dfs_engine_execute (dfs->engine, &inframe,
-                               out_info0.data)) {
+  if (!gst_dfs_engine_execute (dfs->engine, &inframe, out_info0.data)) {
     GST_ERROR_OBJECT (dfs, "Failed to execute engine");;
   }
 
@@ -474,15 +618,14 @@ gst_dfs_change_state (GstElement * element, GstStateChange transition)
 
 static void
 gst_dfs_set_property (GObject * object, guint property_id,
-    const GValue * value, GParamSpec *pspec)
+    const GValue * value, GParamSpec * pspec)
 {
   GstDfs *dfs = GST_DFS (object);
-  //rvDFS* dfs_handle;
 
   GST_OBJECT_LOCK (dfs);
   switch (property_id) {
     case PROP_MODE:
-      dfs->dfs_mode = (DFSMode)g_value_get_enum (value);
+      dfs->dfs_mode = (DFSMode) g_value_get_enum (value);
       break;
     case PROP_MIN_DISPARITY:
       dfs->min_disparity = g_value_get_int (value);
@@ -498,6 +641,9 @@ gst_dfs_set_property (GObject * object, guint property_id,
       break;
     case PROP_RECTIFICATION:
       dfs->rectification = g_value_get_boolean (value);
+      break;
+    case PROP_CONFIG_PATH:
+      dfs->config_location = g_strdup(g_value_get_string (value));
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -532,6 +678,9 @@ gst_dfs_get_property (GObject * object, guint property_id,
     case PROP_RECTIFICATION:
       g_value_set_boolean (value, dfs->rectification);
       break;
+    case PROP_CONFIG_PATH:
+       g_value_set_string (value, dfs->config_location);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -540,60 +689,43 @@ gst_dfs_get_property (GObject * object, guint property_id,
 }
 
 static gboolean
-gst_dfs_set_caps (GstBaseTransform * trans, GstCaps * incaps,
-    GstCaps * outcaps)
+gst_dfs_set_caps (GstBaseTransform * trans, GstCaps * incaps, GstCaps * outcaps)
 {
   GstDfs *dfs = GST_DFS_CAST (trans);
   GstVideoInfo ininfo;
-  DfsInitSettings settings;
   GstStructure *structure = NULL;
-
-  GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
-  GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
 
   if (!gst_video_info_from_caps (&ininfo, incaps)) {
     GST_ERROR_OBJECT (dfs, "Failed to get input video info from caps!");
     return FALSE;
   }
-
   // Get the output caps structure in order to determine the mode.
   structure = gst_caps_get_structure (outcaps, 0);
 
   if (gst_structure_has_name (structure, "video/x-raw")) {
-    settings.mode = OUTPUT_MODE_VIDEO;
-    settings.format = gst_video_format_from_string (
-        gst_structure_get_string (structure, "format"));
+    dfs->format =
+        gst_video_format_from_string (gst_structure_get_string (structure,
+            "format"));
   }
 
-  if(dfs->rectification == TRUE && dfs->dfs_mode == MODE_GPU)
+  if (dfs->rectification == TRUE && dfs->dfs_mode == MODE_SPEED_GPU)
     dfs->gpu_rect = TRUE;
 
-  settings.stereo_frame_widht = GST_VIDEO_INFO_WIDTH (&ininfo);
-  settings.stereo_frame_height = GST_VIDEO_INFO_HEIGHT (&ininfo);
-  settings.stride = GST_VIDEO_INFO_PLANE_STRIDE (&ininfo, 0);
-  settings.dfs_mode = dfs->dfs_mode;
-  settings.min_disparity = dfs->min_disparity;
-  settings.num_disparity_levels = dfs->num_disparity_levels;
-  settings.filter_width = dfs->filter_width;
-  settings.filter_height = dfs->filter_height;
-  settings.rectification = dfs->rectification;
-  settings.gpu_rect = dfs->gpu_rect;
-  settings.do_copy = TRUE;
-
-  ts_begin = gst_util_get_timestamp ();
-
-  dfs->engine = gst_dfs_engine_new (&settings);
-  if (dfs->engine == NULL) {
-    GST_ERROR_OBJECT (dfs, "Failed to create DFS engine!");
-    return FALSE;
+  //Populate stereo parameter values
+  dfs->stereo_parameter.camera[0].pixelWidth =
+      GST_VIDEO_INFO_WIDTH (&ininfo) / 2;
+  dfs->stereo_parameter.camera[0].pixelHeight = GST_VIDEO_INFO_HEIGHT (&ininfo);
+  dfs->stereo_parameter.camera[1].pixelWidth =
+      GST_VIDEO_INFO_WIDTH (&ininfo) / 2;
+  dfs->stereo_parameter.camera[1].pixelHeight = GST_VIDEO_INFO_HEIGHT (&ininfo);
+  if (dfs->rectification) {
+    if (!gst_dfs_parse_config (dfs->config_location, &dfs->stereo_parameter)) {
+      GST_ERROR_OBJECT (dfs, "Error parsing config file");
+      return FALSE;
+    }
+  } else {
+    GST_INFO_OBJECT (dfs, "rectification=false. Config file not parsed.");
   }
-
-  ts_end = gst_util_get_timestamp ();
-  tsdelta = GST_CLOCK_DIFF (ts_begin, ts_end);
-
-  GST_INFO ("DFS init time: %" G_GINT64_FORMAT ".%03"
-      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (tsdelta),
-      (GST_TIME_AS_USECONDS (tsdelta) % 1000));
 
   dfs->ininfo = gst_video_info_copy (&ininfo);
 
@@ -622,53 +754,58 @@ gst_dfs_finalize (GObject * object)
 static void
 gst_dfs_class_init (GstDfsClass * klass)
 {
-  GObjectClass *gobject        = G_OBJECT_CLASS (klass);
-  GstElementClass *element     = GST_ELEMENT_CLASS (klass);
+  GObjectClass *gobject = G_OBJECT_CLASS (klass);
+  GstElementClass *element = GST_ELEMENT_CLASS (klass);
   GstBaseTransformClass *trans = GST_BASE_TRANSFORM_CLASS (klass);
 
   gobject->set_property = GST_DEBUG_FUNCPTR (gst_dfs_set_property);
   gobject->get_property = GST_DEBUG_FUNCPTR (gst_dfs_get_property);
-  gobject->finalize     = GST_DEBUG_FUNCPTR (gst_dfs_finalize);
+  gobject->finalize = GST_DEBUG_FUNCPTR (gst_dfs_finalize);
 
 
   g_object_class_install_property (gobject, PROP_MODE,
       g_param_spec_enum ("dfs-mode", "dfs-mode",
           "Select DFS mode", GST_TYPE_DFS_MODE, DEFAULT_PROP_MODE,
-          (GParamFlags) (G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+          (G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
   g_object_class_install_property (gobject, PROP_MIN_DISPARITY,
       g_param_spec_int ("min-disparity", "min-disparity",
           "Set min disparity", 0, 240, DEFAULT_PROP_MIN_DISPARITY,
-          (GParamFlags) (G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+          (G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
   g_object_class_install_property (gobject, PROP_NUM_DISPARITY_LEVELS,
       g_param_spec_int ("num-disparity-level", "num-disparity-level",
           "Set disparirty level. Distinct disparity levels between"
           "neighboring pixels. Multiples of 16",
           16, 256, DEFAULT_PROP_NUM_DISPARITY_LEVELS,
-          (GParamFlags) (G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+          (G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
   g_object_class_install_property (gobject, PROP_FILTER_WIDTH,
       g_param_spec_int ("filter-width", "filter-width",
           "Set filter width. Controls window size for guided filter"
           "used in DFS implementation. Must be odd number. Max value"
           "should be < image width", 1, INT_MAX, DEFAULT_PROP_FILTER_WIDTH,
-          (GParamFlags) (G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+          (G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
   g_object_class_install_property (gobject, PROP_FILTER_HEIGHT,
       g_param_spec_int ("filter-height", "filter-height",
           "Set filter height. Controls window size for guided filter"
           "used in DFS implementation. Must be odd number. Max value"
           "should be < image height", 1, INT_MAX, DEFAULT_PROP_FILTER_HEIGHT,
-          (GParamFlags) (G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+          (G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
   g_object_class_install_property (gobject, PROP_RECTIFICATION,
       g_param_spec_boolean ("rectification", "rectification",
           "Perform rectification on input frames.", DEFAULT_PROP_RECTIFICATION,
-          (GParamFlags) (G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+          (G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
-  gst_element_class_set_static_metadata (
-      element, "Depth From Stereo", "Runs Depth From Stereo (DFS) algorithm",
+  g_object_class_install_property (gobject, PROP_CONFIG_PATH,
+      g_param_spec_string("config", "Path to stereo config file",
+          "Path to config file. Eg.: /data/stereo.config", DEFAULT_CONFIG_PATH,
+          (G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
+  gst_element_class_set_static_metadata (element, "Depth From Stereo",
+      "Runs Depth From Stereo (DFS) algorithm",
       "Calculates disparity map a pair of stereo images", "QTI");
 
   gst_element_class_add_pad_template (element, gst_dfs_sink_template ());
@@ -692,14 +829,15 @@ gst_dfs_init (GstDfs * dfs)
   dfs->ininfo = NULL;
   dfs->outpool = NULL;
   dfs->engine = NULL;
+  dfs->config_location = DEFAULT_CONFIG_PATH;
 
-  dfs->dfs_mode =             DEFAULT_PROP_MODE;
-  dfs->min_disparity =        DEFAULT_PROP_MIN_DISPARITY;
+  dfs->dfs_mode = DEFAULT_PROP_MODE;
+  dfs->min_disparity = DEFAULT_PROP_MIN_DISPARITY;
   dfs->num_disparity_levels = DEFAULT_PROP_NUM_DISPARITY_LEVELS;
-  dfs->filter_width =         DEFAULT_PROP_FILTER_WIDTH;
-  dfs->filter_height =        DEFAULT_PROP_FILTER_HEIGHT;
-  dfs->rectification =        DEFAULT_PROP_RECTIFICATION;
-  dfs->gpu_rect =             DEFAULT_PROP_GPU_RECT;
+  dfs->filter_width = DEFAULT_PROP_FILTER_WIDTH;
+  dfs->filter_height = DEFAULT_PROP_FILTER_HEIGHT;
+  dfs->rectification = DEFAULT_PROP_RECTIFICATION;
+  dfs->gpu_rect = DEFAULT_PROP_GPU_RECT;
 
   GST_DEBUG_CATEGORY_INIT (gst_dfs_debug, "qtidfs", 0, "DFS");
 }
@@ -711,14 +849,9 @@ plugin_init (GstPlugin * plugin)
       GST_TYPE_DFS);
 }
 
-GST_PLUGIN_DEFINE (
-  GST_VERSION_MAJOR,
-  GST_VERSION_MINOR,
-  qtidfs,
-  "DFS",
-  plugin_init,
-  PACKAGE_VERSION,
-  PACKAGE_LICENSE,
-  PACKAGE_SUMMARY,
-  PACKAGE_ORIGIN
-)
+GST_PLUGIN_DEFINE (GST_VERSION_MAJOR,
+    GST_VERSION_MINOR,
+    qtidfs,
+    "DFS",
+    plugin_init,
+    PACKAGE_VERSION, PACKAGE_LICENSE, PACKAGE_SUMMARY, PACKAGE_ORIGIN)

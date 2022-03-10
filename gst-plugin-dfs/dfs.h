@@ -62,7 +62,7 @@ typedef struct _GstDfs GstDfs;
 typedef struct _GstDfsClass GstDfsClass;
 
 struct _GstDfs {
-  GstBaseTransform        parent;
+  GstBaseTransform         parent;
 
   GstVideoInfo            *ininfo;
 
@@ -70,21 +70,25 @@ struct _GstDfs {
 
   GstDfsEngine            *engine;
 
-  DFSMode                dfs_mode;
+  GstVideoFormat          format;
 
-  gint                     min_disparity;
+  gchar                   *config_location;
 
-  gint                     num_disparity_levels;
+  stereoConfiguration     stereo_parameter;
 
-  gint                     filter_width;
+  DFSMode                 dfs_mode;
 
-  gint                     filter_height;
+  gint                    min_disparity;
 
-  gboolean                 rectification;
+  gint                    num_disparity_levels;
 
-  gboolean                 gpu_rect;
+  gint                    filter_width;
 
-  stereoConfiguration   stereo_parameter;
+  gint                    filter_height;
+
+  gboolean                rectification;
+
+  gboolean                gpu_rect;
 };
 
 struct _GstDfsClass {

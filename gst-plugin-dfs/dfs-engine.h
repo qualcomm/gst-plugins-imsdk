@@ -32,8 +32,8 @@
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __GST_DFS_ENGINE_H__
-#define __GST_DFS_ENGINE_H__
+#ifndef __DFS_ENGINE_H__
+#define __DFS_ENGINE_H__
 
 #include <gst/gst.h>
 #include <gst/video/video.h>
@@ -48,56 +48,50 @@ enum {
   OUTPUT_MODE_VIDEO
 };
 
-typedef enum{
+typedef enum {
   MODE_CVP = 0,         //CVP hardware mode
-  MODE_BOX,             //Software solution, Box filter
-  MODE_GPU,             //OpenCL solution, box filter
-  MODE_BILATERAL,       //Software solution, bilateral filter
-  MODE_FASTGUIDED,      //Fast guided filter
-  MODE_GPU_GUIDED,      //OpenCL solution, guided filter
-  MODE_DOWNSAMPLE       //Down sample the input images and up sample the output
-}DFSMode;
+  MODE_SPEED_CPU,       //CPU solution, speed mode
+  MODE_SPEED_GPU,       //OpenCL solution, speed mode, fastest mode
+  MODE_ACCURACY_CPU,    //CPU solution, accuracy mode
+  MODE_COVERAGE_CPU,    //CPU solution, coverage mode
+  MODE_COVERAGE_GPU,    //OpenCL solution, coverage mode
+} DFSMode;
 
 typedef struct{
-   // Image:
-   uint32_t pixelWidth, pixelHeight;
-   // Image Memory:
-   uint32_t memoryStride;
-   uint32_t uvOffset;
-   // Calibration:
-   double principalPoint[2];
-   double focalLength[2];
-   double distortion[8];
-   int32_t   distortionModel;
+  // Image:
+  guint32 pixelWidth, pixelHeight;
+  // Image Memory:
+  guint32 memoryStride;
+  guint32 uvOffset;
+  // Calibration:
+  gdouble principalPoint[2];
+  gdouble focalLength[2];
+  gdouble distortion[8];
+  gint32   distortionModel;
 } cameraConfiguration;
 
 typedef struct{
-   float translation[3], rotation[3];  // Relative between cameras
-   cameraConfiguration camera[2];        // Left/right camera calibrations
-   float correctionFactors[4];         // Distance correction
+  gfloat translation[3], rotation[3];  // Relative between cameras
+  cameraConfiguration camera[2];        // Left/right camera calibrations
+  gfloat correctionFactors[4];         // Distance correction
 } stereoConfiguration;
 
 
 
 struct _DfsInitSettings {
-  guint          stereo_frame_widht;
-  guint          stereo_frame_height;
-  guint          stride;
-  DFSMode        dfs_mode;
-  gint           min_disparity;
-  guint          num_disparity_levels;
-  gint           filter_width;
-  gint           filter_height;
-  gboolean       rectification;
-  gboolean       gpu_rect;
-  gint           mode;
-  GstVideoFormat format;
-  gboolean       do_copy;
+  guint                 stereo_frame_width;
+  guint                 stereo_frame_height;
+  guint                 stride;
+  GstVideoFormat        format;
+  DFSMode               dfs_mode;
+  gint                  min_disparity;
+  guint                 num_disparity_levels;
+  gint                  filter_width;
+  gint                  filter_height;
+  gboolean              rectification;
+  gboolean              gpu_rect;
+  stereoConfiguration   stereo_parameter;
 };
-
-GST_API gboolean
-gst_dfs_engine_execute (GstDfsEngine *engine,
-    const GstVideoFrame *inframe, gpointer disparity_map);
 
 GST_API GstDfsEngine *
 gst_dfs_engine_new          (DfsInitSettings  *settings);
@@ -105,6 +99,10 @@ gst_dfs_engine_new          (DfsInitSettings  *settings);
 GST_API void
 gst_dfs_engine_free         (GstDfsEngine *engine);
 
+GST_API gboolean
+gst_dfs_engine_execute (GstDfsEngine *engine,
+    const GstVideoFrame *inframe, gpointer disparity_map);
+
 G_END_DECLS
 
-#endif // __GST_DFS_ENGINE_H__
+#endif // __DFS_ENGINE_H__
