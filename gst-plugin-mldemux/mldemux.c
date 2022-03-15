@@ -384,6 +384,17 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
       GST_BUFFER_DURATION (outbuffer) = GST_BUFFER_DURATION (inbuffer);
     }
 
+    // Initialize and send the source segment for synchronization.
+    if (GST_FORMAT_UNDEFINED == srcpad->segment.format) {
+      gst_segment_init (&(srcpad)->segment, GST_FORMAT_TIME);
+
+      srcpad->segment.start = GST_BUFFER_TIMESTAMP (outbuffer);
+      srcpad->segment.position = GST_BUFFER_TIMESTAMP (outbuffer);
+
+      gst_pad_push_event (GST_PAD (srcpad),
+          gst_event_new_segment (&(srcpad)->segment));
+    }
+
     // Adjust the source pad segment position.
     srcpad->segment.position = GST_BUFFER_TIMESTAMP (outbuffer) +
         GST_BUFFER_DURATION (outbuffer);
@@ -468,7 +479,6 @@ gst_ml_demux_sink_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
     case GST_EVENT_SEGMENT:
     {
       GstMLDemuxSinkPad *sinkpad = GST_ML_DEMUX_SINKPAD (pad);
-      GList *list = NULL;
       GstSegment segment;
 
       gst_event_copy_segment (event, &segment);
@@ -490,23 +500,7 @@ gst_ml_demux_sink_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
         return FALSE;
       }
 
-      GST_OBJECT_LOCK (demux);
-
-      for (list = GST_ELEMENT (demux)->srcpads; list; list = list->next) {
-        GstMLDemuxSrcPad *srcpad = GST_ML_DEMUX_SRCPAD (list->data);
-        gst_segment_copy_into (&(sinkpad)->segment, &(srcpad)->segment);
-      }
-
-      GST_OBJECT_UNLOCK (demux);
-
-      gst_event_unref (event);
-      event = gst_event_new_segment (&(sinkpad)->segment);
-
-      success = gst_element_foreach_src_pad (GST_ELEMENT (demux),
-          gst_ml_demux_src_pad_push_event, event);
-      gst_event_unref (event);
-
-      return success;
+      return TRUE;
     }
     case GST_EVENT_STREAM_START:
       success = gst_element_foreach_src_pad (GST_ELEMENT (demux),
