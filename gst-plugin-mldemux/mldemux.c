@@ -288,12 +288,7 @@ gst_ml_demux_src_pad_worker_task (gpointer userdata)
     GstBuffer *buffer = gst_buffer_ref (GST_BUFFER (item->object));
     item->destroy (item);
 
-    GST_TRACE_OBJECT (srcpad, "Submitting buffer %p of size %" G_GSIZE_FORMAT
-        " with %u memory blocks, timestamp %" GST_TIME_FORMAT ", duration %"
-        GST_TIME_FORMAT, buffer, gst_buffer_get_size (buffer),
-        gst_buffer_n_memory (buffer), GST_TIME_ARGS (GST_BUFFER_PTS (buffer)),
-        GST_TIME_ARGS (GST_BUFFER_DURATION (buffer)));
-
+    GST_TRACE_OBJECT (srcpad, "Submitting %" GST_PTR_FORMAT, buffer);
     gst_pad_push (GST_PAD (srcpad), buffer);
   } else {
     GST_INFO_OBJECT (srcpad, "Pause worker task!");
@@ -306,6 +301,10 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
 {
   GstMLDemux *demux = GST_ML_DEMUX (parent);
   GList *list = NULL;
+  GstBuffer *outbuffer = NULL;
+  GstDataQueueItem *item = NULL;
+  GstProtectionMeta *pmeta = NULL;
+  gchar *name = NULL;
   guint idx = 0, channel = 0, n_memory = 0, offset = 0, size = 0;
 
   n_memory = gst_buffer_n_memory (inbuffer);
@@ -313,21 +312,21 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
 
   GST_TRACE_OBJECT (pad, "Received buffer %p of size %u with %u memory blocks,"
       " channels mask " GST_BINARY_8BIT_FORMAT ", timestamp %" GST_TIME_FORMAT
-      ", duration %" GST_TIME_FORMAT, inbuffer, size, n_memory,
+      ", duration %" GST_TIME_FORMAT " flags 0x%X", inbuffer, size, n_memory,
       GST_BINARY_8BIT_STRING (GST_BUFFER_OFFSET (inbuffer)),
       GST_TIME_ARGS (GST_BUFFER_TIMESTAMP (inbuffer)),
-      GST_TIME_ARGS (GST_BUFFER_DURATION (inbuffer)));
+      GST_TIME_ARGS (GST_BUFFER_DURATION (inbuffer)),
+      GST_BUFFER_FLAGS (inbuffer));
 
   GST_ML_DEMUX_LOCK (demux);
 
   for (list = demux->srcpads; list != NULL; list = g_list_next (list)) {
     GstMLDemuxSrcPad *srcpad = GST_ML_DEMUX_SRCPAD (list->data);
-    GstBuffer *outbuffer = NULL;
-    GstDataQueueItem *item = NULL;
-    GstProtectionMeta *pmeta = NULL;
-    gchar *name = NULL;
+    GstClockTime timestamp = GST_CLOCK_TIME_NONE, duration = GST_CLOCK_TIME_NONE;
+    guint flags = 0;
 
-    if ((n_memory != GST_ML_INFO_N_TENSORS (srcpad->mlinfo))) {
+    if (!GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP) &&
+        (n_memory != 0) && (n_memory != GST_ML_INFO_N_TENSORS (srcpad->mlinfo))) {
       GST_ERROR_OBJECT (pad, "Incompatible number of memory blocks (%u) and "
           "tensors (%u)!", n_memory, GST_ML_INFO_N_TENSORS (srcpad->mlinfo));
       continue;
@@ -342,10 +341,47 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
     // Create a new buffer wrapper to hold a reference to input buffer.
     outbuffer = gst_buffer_new ();
 
+    name = g_strdup_printf ("channel-%u", channel);
+
+    // Transfer the proper GstProtectionMeta into the new buffer if available.
+    if ((pmeta = gst_buffer_get_protection_meta_id (inbuffer, name)) != NULL)
+      pmeta = gst_buffer_add_protection_meta (outbuffer,
+          gst_structure_copy (pmeta->info));
+
+    g_free (name);
+
+    if ((pmeta != NULL) && gst_structure_has_field (pmeta->info, "timestamp")) {
+      gst_structure_get_uint64 (pmeta->info, "timestamp", &timestamp);
+      gst_structure_remove_field (pmeta->info, "timestamp");
+    }
+
+    if ((pmeta != NULL) && gst_structure_has_field (pmeta->info, "duration")) {
+      gst_structure_get_uint64 (pmeta->info, "duration", &duration);
+      gst_structure_remove_field (pmeta->info, "duration");
+    }
+
+    if ((pmeta != NULL) && gst_structure_has_field (pmeta->info, "flags")) {
+      gst_structure_get_uint (pmeta->info, "flags", &flags);
+      gst_structure_remove_field (pmeta->info, "flags");
+    } else {
+      flags = GST_BUFFER_FLAGS (inbuffer);
+    }
+
+    GST_BUFFER_TIMESTAMP (outbuffer) = (timestamp != GST_CLOCK_TIME_NONE) ?
+        timestamp : GST_BUFFER_TIMESTAMP (inbuffer);
+    GST_BUFFER_DURATION (outbuffer) = (duration != GST_CLOCK_TIME_NONE) ?
+        duration : GST_BUFFER_DURATION (inbuffer);
+
+    gst_buffer_set_flags (outbuffer, flags);
+
     // Share memory blocks from input buffer with the new buffer.
     for (idx = 0; idx < n_memory; idx++) {
       GstMemory *memory = gst_buffer_peek_memory (inbuffer, idx);
       GstMLTensorMeta *mlmeta = NULL;
+
+      // In case the GAP flag is set then do not transfer any memory blocks.
+      if (GST_BUFFER_FLAG_IS_SET (outbuffer, GST_BUFFER_FLAG_GAP))
+        break;
 
       // Set the size of memory that needs to be shared.
       size = gst_ml_info_tensor_size (srcpad->mlinfo, idx);
@@ -358,30 +394,6 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
       mlmeta = gst_buffer_add_ml_tensor_meta (outbuffer, srcpad->mlinfo->type,
           srcpad->mlinfo->n_dimensions[idx], srcpad->mlinfo->tensors[idx]);
       mlmeta->id = idx;
-    }
-
-    name = g_strdup_printf ("channel-%u", channel);
-
-    // Transfer the proper GstProtectionMeta into the new buffer.
-    if ((pmeta = gst_buffer_get_protection_meta_id (inbuffer, name)) != NULL)
-      gst_buffer_add_protection_meta (outbuffer, gst_structure_copy (pmeta->info));
-
-    g_free (name);
-
-    // Set buffer timestamp and duration from protection meta if available.
-    if (pmeta != NULL) {
-      GstClockTime timestamp = GST_CLOCK_TIME_NONE, duration = GST_CLOCK_TIME_NONE;
-
-      gst_structure_get_uint64 (pmeta->info, "timestamp", &timestamp);
-      gst_structure_get_uint64 (pmeta->info, "duration", &duration);
-
-      GST_BUFFER_TIMESTAMP (outbuffer) = (timestamp != GST_CLOCK_TIME_NONE) ?
-          timestamp : GST_BUFFER_TIMESTAMP (inbuffer);
-      GST_BUFFER_DURATION (outbuffer) = (duration != GST_CLOCK_TIME_NONE) ?
-          duration : GST_BUFFER_DURATION (inbuffer);
-    } else {
-      GST_BUFFER_TIMESTAMP (outbuffer) = GST_BUFFER_TIMESTAMP (inbuffer);
-      GST_BUFFER_DURATION (outbuffer) = GST_BUFFER_DURATION (inbuffer);
     }
 
     // Initialize and send the source segment for synchronization.

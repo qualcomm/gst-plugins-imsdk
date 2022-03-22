@@ -114,11 +114,13 @@ gst_batch_src_pad_worker_task (gpointer userdata)
 
     GST_TRACE_OBJECT (srcpad, "Submitting buffer %p of size %" G_GSIZE_FORMAT
         " with %u memory blocks, channels mask " GST_BINARY_8BIT_FORMAT
-        ", timestamp %" GST_TIME_FORMAT ", duration %" GST_TIME_FORMAT, buffer,
-        gst_buffer_get_size (buffer), gst_buffer_n_memory (buffer),
+        ", timestamp %" GST_TIME_FORMAT ", duration %" GST_TIME_FORMAT
+        " flags 0x%X", buffer, gst_buffer_get_size (buffer),
+        gst_buffer_n_memory (buffer),
         GST_BINARY_8BIT_STRING (GST_BUFFER_OFFSET (buffer)),
         GST_TIME_ARGS (GST_BUFFER_PTS (buffer)),
-        GST_TIME_ARGS (GST_BUFFER_DURATION (buffer)));
+        GST_TIME_ARGS (GST_BUFFER_DURATION (buffer)),
+        GST_BUFFER_FLAGS (buffer));
 
     gst_pad_push (GST_PAD (srcpad), buffer);
   } else {

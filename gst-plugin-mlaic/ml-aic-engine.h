@@ -92,7 +92,7 @@ gst_ml_aic_engine_submit_request   (GstMLAicEngine * engine,
 
 GST_API gboolean
 gst_ml_aic_engine_wait_request     (GstMLAicEngine * engine,
-                                    guint request_id);
+                                    gint request_id);
 
 G_END_DECLS
 
