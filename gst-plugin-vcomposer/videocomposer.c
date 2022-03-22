@@ -752,12 +752,7 @@ gst_video_composer_prepare_input_frame (GstElement * element, GstPad * pad,
     return FALSE;
   }
 
-  // GAP buffer, nothing to do.
-  if (gst_buffer_get_size (buffer) == 0 &&
-      GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP)) {
-    GST_TRACE_OBJECT (pad, "GAP buffer!");
-    return TRUE;
-  }
+  GST_TRACE_OBJECT (pad, "Taking %" GST_PTR_FORMAT, buffer);
 
   {
     GstSegment *segment = NULL;
@@ -783,13 +778,19 @@ gst_video_composer_prepare_input_frame (GstElement * element, GstPad * pad,
     GST_OBJECT_UNLOCK (vcomposer);
   }
 
+  // GAP buffer, nothing further to do.
+  if (gst_buffer_get_size (buffer) == 0 ||
+      GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP)) {
+    gst_buffer_unref (buffer);
+    return TRUE;
+  }
+
   if (!gst_video_frame_map (&frames[idx], sinkpad->info, buffer,
           GST_MAP_READ | GST_VIDEO_FRAME_MAP_FLAG_NO_REF)) {
     GST_ERROR_OBJECT (pad, "Failed to map input buffer!");
     return FALSE;
   }
 
-  GST_TRACE_OBJECT (pad, "Buffer: %" GST_PTR_FORMAT, buffer);
   return TRUE;
 }
 
