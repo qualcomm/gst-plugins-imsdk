@@ -239,6 +239,8 @@ gst_video_format_to_drm_format (GstVideoFormat format)
       return DRM_FORMAT_BGRA8888;
     case GST_VIDEO_FORMAT_ABGR:
       return DRM_FORMAT_ABGR8888;
+    case GST_VIDEO_FORMAT_ARGB:
+      return DRM_FORMAT_ARGB8888;
     case GST_VIDEO_FORMAT_BGR:
       return DRM_FORMAT_BGR888;
     case GST_VIDEO_FORMAT_RGB:
@@ -262,9 +264,17 @@ gst_video_normalization_format (const GstVideoFrame * frame)
 
   switch (format) {
     case GST_VIDEO_FORMAT_RGB:
+    case GST_VIDEO_FORMAT_BGR:
       return ((bpp / 3) == 4) ?
           GBM_FORMAT_RGB323232F : GBM_FORMAT_RGB161616F;
     case GST_VIDEO_FORMAT_RGBA:
+    case GST_VIDEO_FORMAT_BGRA:
+    case GST_VIDEO_FORMAT_ABGR:
+    case GST_VIDEO_FORMAT_ARGB:
+    case GST_VIDEO_FORMAT_BGRx:
+    case GST_VIDEO_FORMAT_RGBx:
+    case GST_VIDEO_FORMAT_xBGR:
+    case GST_VIDEO_FORMAT_xRGB:
       return ((bpp / 4) == 4) ?
           GBM_FORMAT_RGBA32323232F : GBM_FORMAT_RGBA16161616F;
     default:
@@ -404,7 +414,7 @@ gst_gles_video_converter_set_input_opts (GstGlesConverter * convert,
   g_return_val_if_fail (opts != NULL, FALSE);
 
   // Locking the converter to set the opts and composition pipeline
-  GST_GLES_LOCK(convert);
+  GST_GLES_LOCK (convert);
 
   if (index > g_list_length (convert->inopts)) {
     GST_ERROR ("Provided index %u is not sequential!", index);
@@ -619,6 +629,9 @@ gst_gles_video_converter_process (GstGlesConverter * convert,
   for (idx = 0; idx < n_outputs; idx++) {
     const GstVideoFrame *frame = &outframes[idx];
     ::QImgConv::Image image;
+
+    if (NULL == frame->buffer)
+      continue;
 
     success = gst_gles_video_converter_update_image (&image, GST_GLES_OUTPUT,
         frame);
