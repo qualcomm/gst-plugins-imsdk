@@ -1117,7 +1117,7 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
 
   for (idx = 0; idx < GST_ML_INFO_TENSOR_DIM (&mlinfo, 0, 0); idx++) {
     opts = gst_structure_new ("options",
-        GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
+        GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
             gst_caps_has_compression (incaps, "ubwc"),
         NULL);
 
