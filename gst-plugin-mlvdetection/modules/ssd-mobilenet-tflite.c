@@ -221,96 +221,53 @@ gst_ml_video_detection_module_deinit (gpointer instance)
 }
 
 gboolean
-gst_ml_video_detection_module_process (gpointer instance, GstBuffer * buffer,
+gst_ml_video_detection_module_process (gpointer instance, GstMLFrame * frame,
     GList ** predictions)
 {
   GstPrivateModule *module = instance;
   GstProtectionMeta *pmeta = NULL;
-  GstMapInfo bboxes, classes, scores, n_boxes;
+  gfloat *bboxes = NULL, *classes = NULL, *scores = NULL, *n_boxes = NULL;
   guint idx = 0, sar_n = 1, sar_d = 1;
 
   g_return_val_if_fail (module != NULL, FALSE);
-  g_return_val_if_fail (buffer != NULL, FALSE);
+  g_return_val_if_fail (frame != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  if (gst_buffer_n_memory (buffer) != 4) {
-    GST_ERROR ("Expecting 4 tensor memory blocks but received %u!",
-        gst_buffer_n_memory (buffer));
-    return FALSE;
-  }
-
-  for (idx = 0; idx < gst_buffer_n_memory (buffer); idx++) {
-    GstMLTensorMeta *mlmeta = NULL;
-
-    if (!(mlmeta = gst_buffer_get_ml_tensor_meta_id (buffer, idx))) {
-      GST_ERROR ("Buffer has no ML meta for tensor %u!", idx);
-      return FALSE;
-    } else if (mlmeta->type != GST_ML_TYPE_FLOAT32) {
-      GST_ERROR ("Buffer has unsupported type for tensor %u!", idx);
-      return FALSE;
-    }
-  }
-
-  // Map buffer memory blocks.
-  if (!gst_buffer_map_range (buffer, 0, 1, &bboxes, GST_MAP_READ)) {
-    GST_ERROR ("Failed to map bboxes memory block!");
-    return FALSE;
-  }
-
-  if (!gst_buffer_map_range (buffer, 1, 1, &classes, GST_MAP_READ)) {
-    GST_ERROR ("Failed to map classes memory block!");
-
-    gst_buffer_unmap (buffer, &bboxes);
-    return FALSE;
-  }
-
-  if (!gst_buffer_map_range (buffer, 2, 1, &scores, GST_MAP_READ)) {
-    GST_ERROR ("Failed to map scores memory block!");
-
-    gst_buffer_unmap (buffer, &classes);
-    gst_buffer_unmap (buffer, &bboxes);
-    return FALSE;
-  }
-
-  if (!gst_buffer_map_range (buffer, 3, 1, &n_boxes, GST_MAP_READ)) {
-    GST_ERROR ("Failed to map n_boxes memory block!");
-
-    gst_buffer_unmap (buffer, &scores);
-    gst_buffer_unmap (buffer, &classes);
-    gst_buffer_unmap (buffer, &bboxes);
-    return FALSE;
-  }
+  bboxes = CAST_TO_GFLOAT (GST_ML_FRAME_BLOCK_DATA (frame, 0));
+  classes = CAST_TO_GFLOAT (GST_ML_FRAME_BLOCK_DATA (frame, 1));
+  scores = CAST_TO_GFLOAT (GST_ML_FRAME_BLOCK_DATA (frame, 2));
+  n_boxes = CAST_TO_GFLOAT (GST_ML_FRAME_BLOCK_DATA (frame, 3));
 
   // Extract the SAR (Source Aspect Ratio).
-  if ((pmeta = gst_buffer_get_protection_meta (buffer)) != NULL) {
+  if ((pmeta = gst_buffer_get_protection_meta (frame->buffer)) != NULL) {
     sar_n = gst_value_get_fraction_numerator (
         gst_structure_get_value (pmeta->info, "source-aspect-ratio"));
     sar_d = gst_value_get_fraction_denominator (
         gst_structure_get_value (pmeta->info, "source-aspect-ratio"));
   }
 
-  for (idx = 0; idx < CAST_TO_GFLOAT (n_boxes.data)[0]; idx++) {
+  for (idx = 0; idx < n_boxes[0]; idx++) {
     GstMLPrediction *prediction = NULL;
     GstLabel *label = NULL;
-    gdouble value = CAST_TO_GFLOAT (scores.data)[idx] * 100;
+    gfloat confidence = scores[idx] * 100;
 
     // Discard results below 1% confidence.
-    if (value <= 1.0)
+    if (confidence <= 1.0)
       continue;
 
     label = g_hash_table_lookup (module->labels,
-        GUINT_TO_POINTER (CAST_TO_GFLOAT (classes.data)[idx] + 1));
+        GUINT_TO_POINTER (classes[idx] + 1));
 
     prediction = g_new0 (GstMLPrediction, 1);
 
-    prediction->confidence = value;
+    prediction->confidence = confidence;
     prediction->label = g_strdup (label ? label->name : "unknown");
     prediction->color = label ? label->color : 0x000000FF;
 
-    prediction->top = CAST_TO_GFLOAT (bboxes.data)[(idx * 4)];
-    prediction->left = CAST_TO_GFLOAT (bboxes.data)[(idx * 4)  + 1];
-    prediction->bottom = CAST_TO_GFLOAT (bboxes.data)[(idx * 4) + 2];
-    prediction->right = CAST_TO_GFLOAT (bboxes.data)[(idx * 4) + 3];
+    prediction->top = bboxes[(idx * 4)];
+    prediction->left = bboxes[(idx * 4)  + 1];
+    prediction->bottom = bboxes[(idx * 4) + 2];
+    prediction->right = bboxes[(idx * 4) + 3];
 
     // Adjust bounding box dimensions with extracted source aspect ratio.
     if (sar_n > sar_d) {
@@ -332,11 +289,6 @@ gst_ml_video_detection_module_process (gpointer instance, GstBuffer * buffer,
     *predictions = g_list_insert_sorted (
         *predictions, prediction, gst_ml_compare_predictions);
   }
-
-  gst_buffer_unmap (buffer, &n_boxes);
-  gst_buffer_unmap (buffer, &scores);
-  gst_buffer_unmap (buffer, &classes);
-  gst_buffer_unmap (buffer, &bboxes);
 
   return TRUE;
 }

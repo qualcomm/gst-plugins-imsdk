@@ -67,11 +67,6 @@
 #include <gst/ml/gstmlmeta.h>
 #include <gst/allocators/allocators.h>
 
-#ifdef HAVE_LINUX_DMA_BUF_H
-#include <sys/ioctl.h>
-#include <linux/dma-buf.h>
-#endif // HAVE_LINUX_DMA_BUF_H
-
 
 #define CAST_TO_GFLOAT(data) ((gfloat*)data)
 #define CAST_TO_GUINT32(data) ((guint32*)data)
@@ -219,80 +214,35 @@ gst_ml_video_segmentation_module_deinit (gpointer instance)
 
 gboolean
 gst_ml_video_segmentation_module_process (gpointer instance,
-    GstBuffer * inbuffer, GstBuffer * outbuffer)
+    GstMLFrame * mlframe, GstVideoFrame * vframe)
 {
   GstPrivateModule *module = instance;
-  GstMLTensorMeta *mlmeta = NULL;
-  GstVideoMeta *vmeta = NULL;
   GstProtectionMeta *pmeta = NULL;
-  GstMapInfo inmap, outmap;
-  guint idx = 0, row = 0, column = 0, bpp = 0, padding = 0;
-  guint inwidth = 0, inheight = 0, color = 0;
+  guint8 *indata = NULL, *outdata = NULL;
+  guint idx = 0, id = 0, bpp = 0, padding = 0, color = 0;
+  gint row = 0, column = 0, inwidth = 0, inheight = 0;
 
   g_return_val_if_fail (module != NULL, FALSE);
-  g_return_val_if_fail (inbuffer != NULL, FALSE);
-  g_return_val_if_fail (outbuffer != NULL, FALSE);
+  g_return_val_if_fail (mlframe != NULL, FALSE);
+  g_return_val_if_fail (vframe != NULL, FALSE);
 
-  if (gst_buffer_n_memory (inbuffer) != 1) {
-    GST_ERROR ("Expecting 1 tensor memory block but received %u!",
-        gst_buffer_n_memory (inbuffer));
-    return FALSE;
-  } else if (gst_buffer_n_memory (outbuffer) != 1) {
-    GST_ERROR ("Expecting 1 output memory block but received %u!",
-        gst_buffer_n_memory (outbuffer));
-    return FALSE;
-  }
-
-  if (!(mlmeta = gst_buffer_get_ml_tensor_meta (inbuffer))) {
-    GST_ERROR ("Input buffer has no ML meta!");
-    return FALSE;
-  }
-
-  if (mlmeta->type != GST_ML_TYPE_INT32 && mlmeta->type != GST_ML_TYPE_FLOAT32) {
-    GST_ERROR ("Unsupported tensor type!");
-    return FALSE;
-  }
-
-  if (!(vmeta = gst_buffer_get_video_meta (outbuffer))) {
-    GST_ERROR ("Output buffer has no video meta!");
-    return FALSE;
-  }
-
-  {
-    const GstVideoFormatInfo *vfinfo = gst_video_format_get_info (vmeta->format);
-
-    if (!GST_VIDEO_FORMAT_INFO_IS_RGB (vfinfo)) {
-      GST_ERROR ("Output buffer formats other than RGB based are not supported!");
-      return FALSE;
-    }
-
-    // Retrive the video frame Bytes Per Pixel for later calculations.
-    bpp = GST_VIDEO_FORMAT_INFO_BITS (vfinfo) *
-        GST_VIDEO_FORMAT_INFO_N_COMPONENTS (vfinfo) / CHAR_BIT;
-  }
-
-  // Map input buffer memory blocks.
-  if (!gst_buffer_map_range (inbuffer, 0, 1, &inmap, GST_MAP_READ)) {
-    GST_ERROR ("Failed to map input buffer memory block!");
-    return FALSE;
-  }
-
-  // Map output buffer memory blocks.
-  if (!gst_buffer_map_range (outbuffer, 0, 1, &outmap, GST_MAP_READWRITE)) {
-    GST_ERROR ("Failed to map output buffer memory block!");
-    gst_buffer_unmap (inbuffer, &inmap);
-    return FALSE;
-  }
+  // Retrive the video frame Bytes Per Pixel for later calculations.
+  bpp = GST_VIDEO_FORMAT_INFO_BITS (vframe->info.finfo) *
+      GST_VIDEO_FRAME_N_COMPONENTS (vframe) / CHAR_BIT;
 
   // Calculate the row padding in bytes.
-  padding = vmeta->stride[0] - (vmeta->width * bpp);
+  padding = GST_VIDEO_FRAME_PLANE_STRIDE (vframe, 0) -
+      (GST_VIDEO_FRAME_WIDTH (vframe) * bpp);
 
   // Set the initial width and height of the source mask.
-  inwidth = mlmeta->dimensions[2];
-  inheight = mlmeta->dimensions[1];
+  inwidth = GST_ML_FRAME_DIM (mlframe, 0, 2);
+  inheight = GST_ML_FRAME_DIM (mlframe, 0, 1);
+
+  indata = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
+  outdata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
 
   // Extract the SAR (Source Aspect Ratio) and adjust mask dimensions.
-  if ((pmeta = gst_buffer_get_protection_meta (inbuffer)) != NULL) {
+  if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL) {
     guint sar_n = 1, sar_d = 1;
 
     sar_n = gst_value_get_fraction_numerator (
@@ -306,61 +256,36 @@ gst_ml_video_segmentation_module_process (gpointer instance,
       inwidth = gst_util_uint64_scale_int (inheight, sar_n, sar_d);
   }
 
-#ifdef HAVE_LINUX_DMA_BUF_H
-  if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
-    struct dma_buf_sync bufsync;
-    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
-
-    bufsync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
-
-    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
-      GST_WARNING ("DMA IOCTL SYNC START failed!");
-  }
-#endif // HAVE_LINUX_DMA_BUF_H
-
-  for (row = 0; row < vmeta->height; row++) {
-    for (column = 0; column < vmeta->width; column++) {
+  for (row = 0; row < GST_VIDEO_FRAME_HEIGHT (vframe); row++) {
+    for (column = 0; column < GST_VIDEO_FRAME_WIDTH (vframe); column++) {
       GstLabel *label = NULL;
-      guint id = 0;
 
       // Calculate the source index.
-      idx = inwidth * gst_util_uint64_scale_int (row, inheight, vmeta->height);
-      idx += gst_util_uint64_scale_int (column, inwidth, vmeta->width);
+      idx = inwidth * gst_util_uint64_scale_int (row, inheight,
+          GST_VIDEO_FRAME_HEIGHT (vframe));
+      idx += gst_util_uint64_scale_int (column, inwidth,
+          GST_VIDEO_FRAME_WIDTH (vframe));
 
-      if (mlmeta->type == GST_ML_TYPE_FLOAT32)
-        id = CAST_TO_GFLOAT (inmap.data)[idx];
-      else if (mlmeta->type == GST_ML_TYPE_INT32)
-        id = CAST_TO_GUINT32 (inmap.data)[idx];
+      if (GST_ML_FRAME_TYPE (mlframe) == GST_ML_TYPE_FLOAT32)
+        id = CAST_TO_GFLOAT (indata)[idx];
+      else if (GST_ML_FRAME_TYPE (mlframe) == GST_ML_TYPE_INT32)
+        id = CAST_TO_GUINT32 (indata)[idx];
 
       label = g_hash_table_lookup (module->labels, GUINT_TO_POINTER (id));
       color = (label != NULL) ? label->color : 0x000000FF;
 
       // Calculate the destination index.
-      idx = (((row * vmeta->width) + column) * bpp) + (row * padding);
+      idx = (((row * GST_VIDEO_FRAME_WIDTH (vframe)) + column) * bpp) +
+          (row * padding);
 
-      outmap.data[idx] = EXTRACT_RED_COLOR (color);
-      outmap.data[idx + 1] = EXTRACT_GREEN_COLOR (color);
-      outmap.data[idx + 2] = EXTRACT_BLUE_COLOR (color);
+      outdata[idx] = EXTRACT_RED_COLOR (color);
+      outdata[idx + 1] = EXTRACT_GREEN_COLOR (color);
+      outdata[idx + 2] = EXTRACT_BLUE_COLOR (color);
 
       if (bpp == 4)
-        outmap.data[idx + 3] = EXTRACT_ALPHA_COLOR (color);
+        outdata[idx + 3] = EXTRACT_ALPHA_COLOR (color);
     }
   }
-
-#ifdef HAVE_LINUX_DMA_BUF_H
-  if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
-    struct dma_buf_sync bufsync;
-    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
-
-    bufsync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
-
-    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
-      GST_WARNING ("DMA IOCTL SYNC END failed!");
-  }
-#endif // HAVE_LINUX_DMA_BUF_H
-
-  gst_buffer_unmap (outbuffer, &outmap);
-  gst_buffer_unmap (inbuffer, &inmap);
 
   return TRUE;
 }

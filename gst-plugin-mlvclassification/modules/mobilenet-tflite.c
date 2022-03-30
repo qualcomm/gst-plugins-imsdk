@@ -223,70 +223,47 @@ gst_ml_video_classification_module_deinit (gpointer instance)
 
 gboolean
 gst_ml_video_classification_module_process (gpointer instance,
-    GstBuffer * buffer, GList ** predictions)
+    GstMLFrame * frame, GList ** predictions)
 {
   GstPrivateModule *module = instance;
-  GstMLTensorMeta *mlmeta = NULL;
-  GstMapInfo memmap;
+  guint8 *data = NULL;
   guint idx = 0, n_inferences = 0;
+  gdouble value = 0.0;
 
   g_return_val_if_fail (module != NULL, FALSE);
-  g_return_val_if_fail (buffer != NULL, FALSE);
+  g_return_val_if_fail (frame != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  if (!(mlmeta = gst_buffer_get_ml_tensor_meta (buffer))) {
-    GST_ERROR ("Input buffer has no ML meta!");
-    return FALSE;
-  }
-
-  for (idx = 0; idx < mlmeta->n_dimensions; ++idx) {
-    if (mlmeta->dimensions[idx] == g_hash_table_size (module->labels)) {
-      n_inferences = mlmeta->dimensions[idx];
-      break;
-    }
-  }
-
-  if (0 == n_inferences) {
-    GST_ERROR ("None of the tensor dimensions corresponds to the labels "
-        "count in the loaded file!");
-    return FALSE;
-  }
-
-  // Map buffer memory blocks.
-  if (!gst_buffer_map_range (buffer, 0, 1, &memmap, GST_MAP_READ)) {
-    GST_ERROR ("Failed to map buffer memory block!");
-    return FALSE;
-  }
+  n_inferences = GST_ML_FRAME_DIM (frame, 0, 1);
+  data = GST_ML_FRAME_BLOCK_DATA (frame, 0);
 
   // Fill the prediction table.
   for (idx = 0; idx < n_inferences; ++idx) {
     GstMLPrediction *prediction = NULL;
     GstLabel *label = NULL;
-    gdouble value = 0.0;
 
-    switch (mlmeta->type) {
+    switch (GST_ML_FRAME_TYPE (frame)) {
       case GST_ML_TYPE_UINT8:
-        value = memmap.data[idx] * (100.0 / G_MAXUINT8);
+        value = data[idx] * (100.0 / G_MAXUINT8);
         break;
       case GST_ML_TYPE_INT32:
-        value = CAST_TO_GINT32 (memmap.data)[idx];
+        value = CAST_TO_GINT32 (data)[idx];
         break;
       case GST_ML_TYPE_FLOAT32:
-        value = CAST_TO_GFLOAT (memmap.data)[idx] * 100;
+        value = CAST_TO_GFLOAT (data)[idx] * 100;
         break;
       default:
         GST_ERROR ("Unsupported tensor type!");
-        gst_buffer_unmap (buffer, &memmap);
         return FALSE;
     }
 
-    // Discard results below 1% confidence.
-    if (value <= 1.0)
+    // Discard results below 10% confidence.
+    if (value <= 10.0)
       continue;
 
     label = g_hash_table_lookup (module->labels, GUINT_TO_POINTER (idx + 1));
 
-    prediction = g_new0 (GstMLPrediction, 1);
+    prediction = gst_ml_prediction_new ();
 
     prediction->confidence = value;
     prediction->label = g_strdup (label ? label->name : "unknown");
@@ -296,7 +273,5 @@ gst_ml_video_classification_module_process (gpointer instance,
         *predictions, prediction, gst_ml_compare_predictions);
   }
 
-  // Unmap buffer memory blocks.
-  gst_buffer_unmap (buffer, &memmap);
   return TRUE;
 }
