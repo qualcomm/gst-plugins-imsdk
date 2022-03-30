@@ -746,6 +746,13 @@ gst_batch_sink_query (GstPad * pad, GstObject * parent, GstQuery * query)
       gst_query_set_accept_caps_result (query, success);
       return TRUE;
     }
+    case GST_QUERY_DRAIN:
+    {
+      // When upstream elements query for drain state
+      // let sinkpad flush the buffers in internal queue
+      gst_batch_sink_pad_flush_queue (pad);
+      return TRUE;
+    }
     default:
       break;
   }
