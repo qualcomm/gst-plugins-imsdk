@@ -172,7 +172,7 @@ struct _GstMLModule
   gpointer (*init)    (const gchar * labels);
   void     (*deinit)  (gpointer instance);
 
-  gboolean (*process) (gpointer instance, GstBuffer * buffer,
+  gboolean (*process) (gpointer instance, GstMLFrame * frame,
                        GList ** predictions);
 };
 
@@ -235,15 +235,6 @@ gst_ml_module_new (const gchar * libname, const gchar * labels)
   }
 
   return module;
-}
-
-static void
-gst_ml_prediction_free (GstMLPrediction * prediction)
-{
-  if (prediction->label != NULL)
-    g_free (prediction->label);
-
-  g_free (prediction);
 }
 
 static GstCaps *
@@ -475,8 +466,8 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
     // Set the bounding box parameters based on the output buffer dimensions.
     x      = ABS (prediction->left) * vmeta->width;
     y      = ABS (prediction->top) * vmeta->height;
-    width  = ABS (prediction->left - prediction->right) * vmeta->width;
-    height = ABS (prediction->top - prediction->bottom) * vmeta->height;
+    width  = ABS (prediction->right - prediction->left) * vmeta->width;
+    height = ABS (prediction->bottom - prediction->top) * vmeta->height;
 
     // Clip width and height if it outside the frame limits.
     width = ((x + width) > vmeta->width) ? (vmeta->width - x) : width;
@@ -952,10 +943,12 @@ gst_ml_video_detection_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 {
   GstMLVideoDetection *detection = GST_ML_VIDEO_DETECTION (base);
   GList *predictions = NULL;
-  GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
-  GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
+  GstMLFrame mlframe = { 0, };
   guint n_blocks = 0;
   gboolean success = FALSE;
+
+  GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
+  GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
 
   g_return_val_if_fail (detection->module != NULL, GST_FLOW_ERROR);
 
@@ -970,11 +963,11 @@ gst_ml_video_detection_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     GST_ERROR_OBJECT (detection, "Mismatch, expected buffer size %"
         G_GSIZE_FORMAT " but actual size is %" G_GSIZE_FORMAT "!",
         gst_ml_info_size (detection->mlinfo), gst_buffer_get_size (inbuffer));
-    return FALSE;
+    return GST_FLOW_ERROR;
   } else if ((n_blocks > 1) && n_blocks != detection->mlinfo->n_tensors) {
     GST_ERROR_OBJECT (detection, "Mismatch, expected %u memory blocks "
         "but buffer has %u!", detection->mlinfo->n_tensors, n_blocks);
-    return FALSE;
+    return GST_FLOW_ERROR;
   }
 
   n_blocks = gst_buffer_get_n_meta (inbuffer, GST_ML_TENSOR_META_API_TYPE);
@@ -991,9 +984,16 @@ gst_ml_video_detection_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 
   ts_begin = gst_util_get_timestamp ();
 
+  if (!gst_ml_frame_map (&mlframe, detection->mlinfo, inbuffer, GST_MAP_READ)) {
+    GST_ERROR_OBJECT (detection, "Failed to map input buffer!");
+    return GST_FLOW_ERROR;
+  }
+
   // Call the submodule process funtion.
   success = detection->module->process (detection->module->instance,
-      inbuffer, &predictions);
+      &mlframe, &predictions);
+
+  gst_ml_frame_unmap (&mlframe);
 
   if (!success) {
     GST_ERROR_OBJECT (detection, "Failed to process tensors!");
@@ -1126,7 +1126,7 @@ gst_ml_video_detection_class_init (GstMLVideoDetectionClass * klass)
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_THRESHOLD,
       g_param_spec_double ("threshold", "Threshold",
-          "Confidence threshold", 1.0F, 100.0F, DEFAULT_PROP_THRESHOLD,
+          "Confidence threshold", 10.0F, 100.0F, DEFAULT_PROP_THRESHOLD,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_set_static_metadata (element,

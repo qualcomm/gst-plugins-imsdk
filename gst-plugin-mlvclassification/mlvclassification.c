@@ -171,7 +171,7 @@ struct _GstMLModule
   gpointer (*init)    (const gchar * labels);
   void     (*deinit)  (gpointer instance);
 
-  gboolean (*process) (gpointer instance, GstBuffer * buffer,
+  gboolean (*process) (gpointer instance, GstMLFrame * frame,
                        GList ** predictions);
 };
 
@@ -234,15 +234,6 @@ gst_ml_module_new (const gchar * libname, const gchar * labels)
   }
 
   return module;
-}
-
-static void
-gst_ml_prediction_free (GstMLPrediction * prediction)
-{
-  if (prediction->label != NULL)
-    g_free (prediction->label);
-
-  g_free (prediction);
 }
 
 static GstCaps *
@@ -912,10 +903,12 @@ gst_ml_video_classification_transform (GstBaseTransform * base,
 {
   GstMLVideoClassification *classification = GST_ML_VIDEO_CLASSIFICATION (base);
   GList *predictions = NULL;
-  GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
-  GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
+  GstMLFrame mlframe = { 0, };
   gboolean success = FALSE;
   guint n_blocks = 0;
+
+  GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
+  GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
 
   g_return_val_if_fail (classification->module != NULL, GST_FLOW_ERROR);
 
@@ -930,11 +923,11 @@ gst_ml_video_classification_transform (GstBaseTransform * base,
     GST_ERROR_OBJECT (classification, "Mismatch, expected buffer size %"
         G_GSIZE_FORMAT " but actual size is %" G_GSIZE_FORMAT "!",
         gst_ml_info_size (classification->mlinfo), gst_buffer_get_size (inbuffer));
-    return FALSE;
+    return GST_FLOW_ERROR;
   } else if ((n_blocks > 1) && n_blocks != classification->mlinfo->n_tensors) {
     GST_ERROR_OBJECT (classification, "Mismatch, expected %u memory blocks "
         "but buffer has %u!", classification->mlinfo->n_tensors, n_blocks);
-    return FALSE;
+    return GST_FLOW_ERROR;
   }
 
   n_blocks = gst_buffer_get_n_meta (inbuffer, GST_ML_TENSOR_META_API_TYPE);
@@ -951,9 +944,16 @@ gst_ml_video_classification_transform (GstBaseTransform * base,
 
   ts_begin = gst_util_get_timestamp ();
 
+  if (!gst_ml_frame_map (&mlframe, classification->mlinfo, inbuffer, GST_MAP_READ)) {
+    GST_ERROR_OBJECT (classification, "Failed to map input buffer!");
+    return GST_FLOW_ERROR;
+  }
+
   // Call the submodule process funtion.
   success = classification->module->process (classification->module->instance,
-      inbuffer, &predictions);
+      &mlframe, &predictions);
+
+  gst_ml_frame_unmap (&mlframe);
 
   if (!success) {
     GST_ERROR_OBJECT (classification, "Failed to process tensors!");
@@ -1086,7 +1086,7 @@ gst_ml_video_classification_class_init (GstMLVideoClassificationClass * klass)
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_THRESHOLD,
       g_param_spec_double ("threshold", "Threshold",
-          "Confidence threshold in %", 1.0F, 100.0F, DEFAULT_PROP_THRESHOLD,
+          "Confidence threshold in %", 10.0F, 100.0F, DEFAULT_PROP_THRESHOLD,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_set_static_metadata (element,

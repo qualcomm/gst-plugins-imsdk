@@ -194,62 +194,19 @@ gst_ml_video_detection_module_deinit (gpointer instance)
 }
 
 gboolean
-gst_ml_video_detection_module_process (gpointer instance, GstBuffer * buffer,
+gst_ml_video_detection_module_process (gpointer instance, GstMLFrame * frame,
     GList ** predictions)
 {
   GstPrivateModule *module = (GstPrivateModule *) instance;
   GstProtectionMeta *pmeta = NULL;
-  GstMapInfo memmap[3];
   guint idx = 0, sar_n = 1, sar_d = 1;
 
   g_return_val_if_fail (module != NULL, FALSE);
-  g_return_val_if_fail (buffer != NULL, FALSE);
+  g_return_val_if_fail (frame != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  if (gst_buffer_n_memory (buffer) != 3) {
-    GST_ERROR ("Expecting 3 tensor memory blocks but received %u!",
-        gst_buffer_n_memory (buffer));
-    return FALSE;
-  }
-
-  for (idx = 0; idx < gst_buffer_n_memory (buffer); idx++) {
-    GstMLTensorMeta *mlmeta = NULL;
-
-    if (!(mlmeta = gst_buffer_get_ml_tensor_meta_id (buffer, idx))) {
-      GST_ERROR ("Buffer has no ML meta for tensor %u!", idx);
-      return FALSE;
-    } else if (mlmeta->type != GST_ML_TYPE_UINT8) {
-      GST_ERROR ("Buffer has unsupported type for tensor %u!", idx);
-      return FALSE;
-    } else if (mlmeta->n_dimensions != 5) {
-      GST_ERROR ("Incorrect dimensions size!");
-      return FALSE;
-    }
-  }
-
-  // Map buffer memory blocks.
-  if (!gst_buffer_map_range (buffer, 0, 1, &memmap[0], GST_MAP_READ)) {
-    GST_ERROR ("Failed to map bboxes memory block!");
-    return FALSE;
-  }
-
-  if (!gst_buffer_map_range (buffer, 1, 1, &memmap[1], GST_MAP_READ)) {
-    GST_ERROR ("Failed to map classes memory block!");
-
-    gst_buffer_unmap (buffer, &memmap[0]);
-    return FALSE;
-  }
-
-  if (!gst_buffer_map_range (buffer, 2, 1, &memmap[2], GST_MAP_READ)) {
-    GST_ERROR ("Failed to map scores memory block!");
-
-    gst_buffer_unmap (buffer, &memmap[1]);
-    gst_buffer_unmap (buffer, &memmap[0]);
-    return FALSE;
-  }
-
   // Extract the SAR (Source Aspect Ratio).
-  if ((pmeta = gst_buffer_get_protection_meta (buffer)) != NULL) {
+  if ((pmeta = gst_buffer_get_protection_meta (frame->buffer)) != NULL) {
     sar_n = gst_value_get_fraction_numerator (
         gst_structure_get_value (pmeta->info, "source-aspect-ratio"));
     sar_d = gst_value_get_fraction_denominator (
@@ -289,17 +246,18 @@ gst_ml_video_detection_module_process (gpointer instance, GstBuffer * buffer,
 
   for(auto det_name : params.bbox_output_names) {
     auto det_shape = params.outputShapesMap_[det_name];
+
     if (strcmp (det_name.c_str(), "A524") == 0) {
       anchor::uTensor det_tensor =
-          anchor::uTensor ({det_name , det_shape, memmap[2].data});
+          anchor::uTensor ({det_name , det_shape, GST_ML_FRAME_BLOCK_DATA (frame, 2)});
       detections1.push_back (det_tensor);
     } else if (strcmp (det_name.c_str(), "A544") == 0) {
       anchor::uTensor det_tensor =
-          anchor::uTensor ({det_name , det_shape, memmap[1].data});
+          anchor::uTensor ({det_name , det_shape, GST_ML_FRAME_BLOCK_DATA (frame, 1)});
       detections1.push_back (det_tensor);
     } else if (strcmp (det_name.c_str(), "A564") == 0) {
       anchor::uTensor det_tensor =
-          anchor::uTensor ({det_name , det_shape, memmap[0].data});
+          anchor::uTensor ({det_name , det_shape, GST_ML_FRAME_BLOCK_DATA (frame, 0)});
       detections1.push_back (det_tensor);
     }
   }
@@ -354,10 +312,6 @@ gst_ml_video_detection_module_process (gpointer instance, GstBuffer * buffer,
       *predictions = g_list_insert_sorted (
           *predictions, prediction, gst_ml_compare_predictions);
   }
-
-  gst_buffer_unmap (buffer, &memmap[2]);
-  gst_buffer_unmap (buffer, &memmap[1]);
-  gst_buffer_unmap (buffer, &memmap[0]);
 
   return TRUE;
 }

@@ -76,6 +76,11 @@
 #include <gst/ml/gstmlmeta.h>
 #include <gst/video/gstimagepool.h>
 
+#ifdef HAVE_LINUX_DMA_BUF_H
+#include <sys/ioctl.h>
+#include <linux/dma-buf.h>
+#endif // HAVE_LINUX_DMA_BUF_H
+
 #include "modules/ml-video-segmentation-module.h"
 
 #define GST_CAT_DEFAULT gst_ml_video_segmentation_debug
@@ -141,8 +146,8 @@ struct _GstMLModule
   gpointer (*init)    (const gchar * labels);
   void     (*deinit)  (gpointer instance);
 
-  gboolean (*process) (gpointer instance, GstBuffer * inbuffer,
-                       GstBuffer * outbuffer);
+  gboolean (*process) (gpointer instance, GstMLFrame * mlframe,
+                       GstVideoFrame * vframe);
 };
 
 static void
@@ -628,10 +633,13 @@ gst_ml_video_segmentation_transform (GstBaseTransform * base,
     GstBuffer * inbuffer, GstBuffer * outbuffer)
 {
   GstMLVideoSegmentation *segmentation = GST_ML_VIDEO_SEGMENTATION (base);
-  GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
-  GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
+  GstMLFrame mlframe = { 0 };
+  GstVideoFrame vframe = { 0 };
   gboolean success = FALSE;
   guint n_blocks = 0;
+
+  GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
+  GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
 
   g_return_val_if_fail (segmentation->module != NULL, GST_FLOW_ERROR);
 
@@ -646,11 +654,11 @@ gst_ml_video_segmentation_transform (GstBaseTransform * base,
     GST_ERROR_OBJECT (segmentation, "Mismatch, expected buffer size %"
         G_GSIZE_FORMAT " but actual size is %" G_GSIZE_FORMAT "!",
         gst_ml_info_size (segmentation->mlinfo), gst_buffer_get_size (inbuffer));
-    return FALSE;
+    return GST_FLOW_ERROR;
   } else if ((n_blocks > 1) && n_blocks != segmentation->mlinfo->n_tensors) {
     GST_ERROR_OBJECT (segmentation, "Mismatch, expected %u memory blocks "
         "but buffer has %u!", segmentation->mlinfo->n_tensors, n_blocks);
-    return FALSE;
+    return GST_FLOW_ERROR;
   }
 
   n_blocks = gst_buffer_get_n_meta (inbuffer, GST_ML_TENSOR_META_API_TYPE);
@@ -667,9 +675,48 @@ gst_ml_video_segmentation_transform (GstBaseTransform * base,
 
   ts_begin = gst_util_get_timestamp ();
 
+  if (!gst_ml_frame_map (&mlframe, segmentation->mlinfo, inbuffer, GST_MAP_READ)) {
+    GST_ERROR_OBJECT (segmentation, "Failed to map input buffer!");
+    return GST_FLOW_ERROR;
+  }
+
+  if (!gst_video_frame_map (&vframe, segmentation->vinfo, outbuffer,
+          GST_MAP_READWRITE | GST_VIDEO_FRAME_MAP_FLAG_NO_REF)) {
+    GST_ERROR_OBJECT (segmentation, "Failed to map output buffer!");
+    gst_ml_frame_unmap (&mlframe);
+    return GST_FLOW_ERROR;
+  }
+
+#ifdef HAVE_LINUX_DMA_BUF_H
+  if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
+    struct dma_buf_sync bufsync;
+    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
+
+    bufsync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
+
+    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
+      GST_WARNING_OBJECT (segmentation, "DMA IOCTL SYNC START failed!");
+  }
+#endif // HAVE_LINUX_DMA_BUF_H
+
   // Call the submodule process funtion.
   success = segmentation->module->process (
-      segmentation->module->instance, inbuffer, outbuffer);
+      segmentation->module->instance, &mlframe, &vframe);
+
+#ifdef HAVE_LINUX_DMA_BUF_H
+  if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
+    struct dma_buf_sync bufsync;
+    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
+
+    bufsync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
+
+    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
+      GST_WARNING_OBJECT (segmentation, "DMA IOCTL SYNC END failed!");
+  }
+#endif // HAVE_LINUX_DMA_BUF_H
+
+  gst_video_frame_unmap (&vframe);
+  gst_ml_frame_unmap (&mlframe);
 
   if (!success) {
     GST_ERROR_OBJECT (segmentation, "Failed to process tensors!");
