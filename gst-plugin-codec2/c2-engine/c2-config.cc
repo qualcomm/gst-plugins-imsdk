@@ -71,6 +71,7 @@ std::unique_ptr<C2Param> setVideoFramerate (gpointer param);
 std::unique_ptr<C2Param> setRotation (gpointer param);
 std::unique_ptr<C2Param> setMirrorType (gpointer param);
 std::unique_ptr<C2Param> setRateControl (gpointer param);
+std::unique_ptr<C2Param> setSyncFrameInterval (gpointer param);
 std::unique_ptr<C2Param> setOutputPictureOrderMode (gpointer param);
 std::unique_ptr<C2Param> setDecLowLatency (gpointer param);
 std::unique_ptr<C2Param> setDownscale (gpointer param);
@@ -91,6 +92,7 @@ static configFunctionMap sConfigFunctionMap = {
   { CONFIG_FUNCTION_KEY_ROTATION, setRotation },
   { CONFIG_FUNCTION_KEY_MIRROR, setMirrorType },
   { CONFIG_FUNCTION_KEY_RATECONTROL, setRateControl },
+  { CONFIG_FUNCTION_KEY_SYNC_FRAME_INT, setSyncFrameInterval },
   { CONFIG_FUNCTION_KEY_OUTPUT_PICTURE_ORDER_MODE, setOutputPictureOrderMode },
   { CONFIG_FUNCTION_KEY_DEC_LOW_LATENCY, setDecLowLatency },
   { CONFIG_FUNCTION_KEY_DOWNSCALE, setDownscale },
@@ -452,6 +454,19 @@ setRateControl (gpointer param)
   bitrateMode.value =
       (C2Config::bitrate_mode_t) toC2RateControlMode (config->rc_mode);
   return C2Param::Copy (bitrateMode);
+}
+
+std::unique_ptr<C2Param>
+setSyncFrameInterval (gpointer param)
+{
+  if (param == NULL)
+    return nullptr;
+
+  config_params_t *config = (config_params_t*) param;
+
+  C2StreamSyncFrameIntervalTuning::output syncFrameInterval;
+  syncFrameInterval.value = config->val.i64;
+  return C2Param::Copy (syncFrameInterval);
 }
 
 std::unique_ptr<C2Param>
