@@ -45,6 +45,7 @@
 #define CONFIG_FUNCTION_KEY_MIRROR "mirror"
 #define CONFIG_FUNCTION_KEY_ROTATION "rotation"
 #define CONFIG_FUNCTION_KEY_RATECONTROL "ratecontrol"
+#define CONFIG_FUNCTION_KEY_SYNC_FRAME_INT "syncframeint"
 #define CONFIG_FUNCTION_KEY_DEC_LOW_LATENCY "dec_low_latency"
 #define CONFIG_FUNCTION_KEY_INTRAREFRESH "intra_refresh"
 #define CONFIG_FUNCTION_KEY_OUTPUT_PICTURE_ORDER_MODE "output_picture_order_mode"
