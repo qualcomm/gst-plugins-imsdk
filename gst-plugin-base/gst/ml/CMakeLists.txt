@@ -6,11 +6,12 @@ add_library(${GST_QTI_ML_BASE} SHARED
   ml-info.c
   ml-frame.c
   gstmlmeta.c
+  gstmlmodule.c
   gstmlpool.c
 )
 
 set_target_properties(${GST_QTI_ML_BASE} PROPERTIES PUBLIC_HEADER
-  "ml-type.h;ml-info.h;ml-frame.h;gstmlmeta.h;gstmlpool.h"
+  "ml-type.h;ml-info.h;ml-frame.h;gstmlmeta.h;gstmlmodule.h;gstmlpool.h"
 )
 
 target_include_directories(${GST_QTI_ML_BASE} PUBLIC
@@ -19,6 +20,10 @@ target_include_directories(${GST_QTI_ML_BASE} PUBLIC
 
 target_include_directories(${GST_QTI_ML_BASE} PRIVATE
   ${KERNEL_BUILDDIR}/usr/include
+)
+
+target_compile_definitions(${GST_QTI_ML_BASE} PRIVATE
+  GST_ML_MODULES_DIR="${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0/ml/modules"
 )
 
 target_link_libraries(${GST_QTI_ML_BASE} PRIVATE

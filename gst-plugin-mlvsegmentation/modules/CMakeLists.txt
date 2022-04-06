@@ -1,12 +1,8 @@
 # GStreamer ML video segmentation plugin modules.
-set(GST_QTI_ML_MODULE deeplab-argmax-tflite)
+set(GST_QTI_ML_MODULE ml-vsegmentation-deeplab-argmax)
 
 add_library(${GST_QTI_ML_MODULE} SHARED
-  deeplab-argmax-tflite.c
-)
-
-target_compile_definitions(${GST_QTI_ML_MODULE} PRIVATE
-  $<$<BOOL:${HAVE_LINUX_DMA_BUF_H}>:HAVE_LINUX_DMA_BUF_H>
+  ml-vsegmentation-deeplab-argmax.c
 )
 
 target_include_directories(${GST_QTI_ML_MODULE} PUBLIC
@@ -28,14 +24,10 @@ install(
               WORLD_EXECUTE WORLD_READ
 )
 
-set(GST_QTI_ML_MODULE mono-depth-tflite)
+set(GST_QTI_ML_MODULE ml-vsegmentation-midas-v2)
 
 add_library(${GST_QTI_ML_MODULE} SHARED
-  mono-depth-tflite.c
-)
-
-target_compile_definitions(${GST_QTI_ML_MODULE} PRIVATE
-  $<$<BOOL:${HAVE_LINUX_DMA_BUF_H}>:HAVE_LINUX_DMA_BUF_H>
+  ml-vsegmentation-midas-v2.c
 )
 
 target_include_directories(${GST_QTI_ML_MODULE} PUBLIC

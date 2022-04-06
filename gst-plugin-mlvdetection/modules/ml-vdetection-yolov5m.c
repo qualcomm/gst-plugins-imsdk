@@ -37,8 +37,9 @@
 #include <stdio.h>
 #include <math.h>
 
-#include <gst/ml/gstmlmeta.h>
 
+// Set the default debug category.
+#define GST_CAT_DEFAULT gst_ml_module_debug
 
 // Layer index at which the object score resides.
 #define SCORE_IDX              4
@@ -51,19 +52,7 @@
 // Non-maximum Suppression (NMS) threshold (50%).
 #define INTERSECTION_THRESHOLD 0.5F
 
-#define CAST_TO_GFLOAT(data)    ((gfloat*)data)
-
-typedef struct _GstPrivateModule GstPrivateModule;
-typedef struct _GstLabel GstLabel;
-
-struct _GstPrivateModule {
-  GHashTable *labels;
-};
-
-struct _GstLabel {
-  gchar *name;
-  guint color;
-};
+#define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
 
 // Offset values for each of the 3 tensors needed for dequantization.
 static const gint32 qoffsets[3] = { 128, 128, 128 };
@@ -78,25 +67,22 @@ static const gint32 gains[3][3][2] = {
     { {10,  13}, {16,   30}, {33,   23} },
 };
 
-static GstLabel *
-gst_ml_label_new ()
-{
-  GstLabel *label = g_new (GstLabel, 1);
+#define GST_ML_MODULE_TENSOR_DIMS \
+    "< < 1, 3, 20, 12, 85 >, < 1, 3, 40, 24, 85 >, < 1, 3, 80, 48, 85 > >"
 
-  label->name = NULL;
-  label->color = 0x00000000;
+#define GST_ML_MODULE_CAPS \
+    "neural-network/tensors, " \
+    "type = (string) { UINT8 }, " \
+    "dimensions = (int) " GST_ML_MODULE_TENSOR_DIMS
 
-  return label;
-}
+// Module caps instance
+static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
 
-static void
-gst_ml_label_free (GstLabel * label)
-{
-  if (label->name != NULL)
-    g_free (label->name);
+typedef struct _GstMLSubModule GstMLSubModule;
 
-  g_free (label);
-}
+struct _GstMLSubModule {
+  GHashTable *labels;
+};
 
 static gint
 gst_ml_compare_predictions (gconstpointer a, gconstpointer b)
@@ -154,13 +140,14 @@ gst_ml_predictions_intersection_score (GstMLPrediction * l_prediction,
 }
 
 static gint
-gst_ml_non_max_suppression (GstMLPrediction * l_prediction, GList * predictions)
+gst_ml_non_max_suppression (GstMLPrediction * l_prediction, GArray * predictions)
 {
-  GList *list = NULL;
   gdouble score = 0.0;
+  guint idx = 0;
 
-  for (list = predictions; list != NULL; list = g_list_next (list)) {
-    GstMLPrediction *r_prediction = (GstMLPrediction *) list->data;
+  for (idx = 0; idx < predictions->len;  idx++) {
+    GstMLPrediction *r_prediction =
+        &(g_array_index (predictions, GstMLPrediction, idx));
 
     score = gst_ml_predictions_intersection_score (l_prediction, r_prediction);
 
@@ -174,7 +161,7 @@ gst_ml_non_max_suppression (GstMLPrediction * l_prediction, GList * predictions)
 
     // If confidence of current prediction is higher, remove the old entry.
     if (l_prediction->confidence > r_prediction->confidence)
-      return g_list_index (predictions, r_prediction);
+      return idx;
 
     // If confidence of current prediction is lower, don't add it to the list.
     if (l_prediction->confidence <= r_prediction->confidence)
@@ -186,151 +173,106 @@ gst_ml_non_max_suppression (GstMLPrediction * l_prediction, GList * predictions)
 }
 
 gpointer
-gst_ml_video_detection_module_init (const gchar * labels)
+gst_ml_module_open (void)
 {
-  GstPrivateModule *module = NULL;
-  GValue list = G_VALUE_INIT;
-  guint idx = 0;
+  GstMLSubModule *submodule = NULL;
 
-  g_value_init (&list, GST_TYPE_LIST);
+  submodule = g_slice_new0 (GstMLSubModule);
+  g_return_val_if_fail (submodule != NULL, NULL);
 
-  if (g_file_test (labels, G_FILE_TEST_IS_REGULAR)) {
-    GString *string = NULL;
-    GError *error = NULL;
-    gchar *contents = NULL;
-    gboolean success = FALSE;
-
-    if (!g_file_get_contents (labels, &contents, NULL, &error)) {
-      GST_ERROR ("Failed to get labels file contents, error: %s!",
-          GST_STR_NULL (error->message));
-      g_clear_error (&error);
-      return NULL;
-    }
-
-    // Remove trailing space and replace new lines with a comma delimiter.
-    contents = g_strstrip (contents);
-    contents = g_strdelimit (contents, "\n", ',');
-
-    string = g_string_new (contents);
-    g_free (contents);
-
-    // Add opening and closing brackets.
-    string = g_string_prepend (string, "{ ");
-    string = g_string_append (string, " }");
-
-    // Get the raw character data.
-    contents = g_string_free (string, FALSE);
-
-    success = gst_value_deserialize (&list, contents);
-    g_free (contents);
-
-    if (!success) {
-      GST_ERROR ("Failed to deserialize labels file contents!");
-      return NULL;
-    }
-  } else if (!gst_value_deserialize (&list, labels)) {
-    GST_ERROR ("Failed to deserialize labels!");
-    return NULL;
-  }
-
-  module = g_slice_new0 (GstPrivateModule);
-  g_return_val_if_fail (module != NULL, NULL);
-
-  module->labels = g_hash_table_new_full (NULL, NULL, NULL,
-        (GDestroyNotify) gst_ml_label_free);
-
-  for (idx = 0; idx < gst_value_list_get_size (&list); idx++) {
-    GstStructure *structure = NULL;
-    GstLabel *label = NULL;
-    guint id = 0;
-
-    structure = GST_STRUCTURE (
-        g_value_dup_boxed (gst_value_list_get_value (&list, idx)));
-
-    if (structure == NULL) {
-      GST_WARNING ("Failed to extract structure!");
-      continue;
-    } else if (!gst_structure_has_field (structure, "id") ||
-        !gst_structure_has_field (structure, "color")) {
-      GST_WARNING ("Structure does not contain 'id' and/or 'color' fields!");
-      gst_structure_free (structure);
-      continue;
-    }
-
-    if ((label = gst_ml_label_new ()) == NULL) {
-      GST_ERROR ("Failed to allocate label memory!");
-      gst_structure_free (structure);
-      continue;
-    }
-
-    label->name = g_strdup (gst_structure_get_name (structure));
-    label->name = g_strdelimit (label->name, "-", ' ');
-
-    gst_structure_get_uint (structure, "color", &label->color);
-    gst_structure_get_uint (structure, "id", &id);
-
-    g_hash_table_insert (module->labels, GUINT_TO_POINTER (id), label);
-    gst_structure_free (structure);
-  }
-
-  g_value_unset (&list);
-  return module;
+  return (gpointer) submodule;
 }
 
 void
-gst_ml_video_detection_module_deinit (gpointer instance)
+gst_ml_module_close (gpointer instance)
 {
-  GstPrivateModule *module = (GstPrivateModule*) instance;
+  GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
 
-  if (NULL == module)
+  if (NULL == submodule)
     return;
 
-  g_hash_table_destroy (module->labels);
-  g_slice_free (GstPrivateModule, module);
+  if (submodule->labels != NULL)
+    g_hash_table_destroy (submodule->labels);
+
+  g_slice_free (GstMLSubModule, submodule);
+}
+
+GstCaps *
+gst_ml_module_caps (void)
+{
+  static GstCaps *caps = NULL;
+  static volatile gsize inited = 0;
+
+  if (g_once_init_enter (&inited)) {
+    caps = gst_static_caps_get (&modulecaps);
+    g_once_init_leave (&inited, 1);
+  }
+
+  return caps;
 }
 
 gboolean
-gst_ml_video_detection_module_process (gpointer instance, GstMLFrame * frame,
-    GList ** predictions)
+gst_ml_module_configure (gpointer instance, GstStructure * settings)
 {
-  GstPrivateModule *module = (GstPrivateModule*) instance;
+  GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
+  const gchar *input = NULL;
+
+  g_return_val_if_fail (submodule != NULL, FALSE);
+  g_return_val_if_fail (settings != NULL, FALSE);
+
+  input = gst_structure_get_string (settings, GST_ML_MODULE_OPT_LABELS);
+
+  submodule->labels = gst_ml_load_labels (input);
+  g_return_val_if_fail (submodule->labels != NULL, FALSE);
+
+  gst_structure_free (settings);
+  return TRUE;
+}
+
+gboolean
+gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
+{
+  GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
+  GArray *predictions = (GArray *) output;
+
   GstProtectionMeta *pmeta = NULL;
   gint sar_n = 1, sar_d = 1, result = -1;
   guint idx = 0, num = 0, anchor = 0, x = 0, y = 0, m = 0, id = 0;
   guint n_layers = 0, n_anchors = 0, maxwidth = 0, maxheight = 0;
   gfloat confidence = 0.0, score = 0.0, bbox[4] = { 0, };
 
-  g_return_val_if_fail (module != NULL, FALSE);
-  g_return_val_if_fail (frame != NULL, FALSE);
+  g_return_val_if_fail (submodule != NULL, FALSE);
+  g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
   // Extract the SAR (Source Aspect Ratio).
-  if ((pmeta = gst_buffer_get_protection_meta (frame->buffer)) != NULL) {
+  if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL) {
     sar_n = gst_value_get_fraction_numerator (
         gst_structure_get_value (pmeta->info, "source-aspect-ratio"));
     sar_d = gst_value_get_fraction_denominator (
         gst_structure_get_value (pmeta->info, "source-aspect-ratio"));
   }
 
-  for (idx = 0; idx < GST_ML_FRAME_N_BLOCKS (frame); idx++, num = 0) {
+  for (idx = 0; idx < GST_ML_FRAME_N_BLOCKS (mlframe); idx++, num = 0) {
     GstLabel *label = NULL;
-    GstMLPrediction *prediction = NULL;
     guint8 *data = NULL;
 
-    data = GST_ML_FRAME_BLOCK_DATA (frame, idx);
+    data = GST_ML_FRAME_BLOCK_DATA (mlframe, idx);
 
     // The 2nd dimension represents number of anchors.
-    n_anchors = GST_ML_FRAME_DIM (frame, idx, 1);
+    n_anchors = GST_ML_FRAME_DIM (mlframe, idx, 1);
     // The 3rd dimension represents the object matrix height.
-    maxheight = GST_ML_FRAME_DIM (frame, idx, 2);
+    maxheight = GST_ML_FRAME_DIM (mlframe, idx, 2);
     // The 4th dimension represents the object matrix width.
-    maxwidth = GST_ML_FRAME_DIM (frame, idx, 3);
+    maxwidth = GST_ML_FRAME_DIM (mlframe, idx, 3);
     // The 5th dimension represents number of layers.
-    n_layers = GST_ML_FRAME_DIM (frame, idx, 4);
+    n_layers = GST_ML_FRAME_DIM (mlframe, idx, 4);
 
     for (anchor = 0; anchor < n_anchors; anchor++) {
       for (y = 0; y < maxheight; y++) {
         for (x = 0; x < maxwidth; x++, num += n_layers) {
+          GstMLPrediction prediction = { 0, };
+
           // Dequantize the object score.
           // Represented as an exponent 'x' in sigmoid function: 1 / (1 + exp(x)).
           score = (data[num + SCORE_IDX] - qoffsets[idx]) * qscales[idx];
@@ -375,61 +317,56 @@ gst_ml_video_detection_module_process (gpointer instance, GstMLFrame * frame,
           bbox[2] = pow ((bbox[2] * 2), 2) * gains[idx][anchor][0];
           bbox[3] = pow ((bbox[3] * 2), 2) * gains[idx][anchor][1];
 
-          label = (GstLabel*) g_hash_table_lookup (module->labels,
+          label = g_hash_table_lookup (submodule->labels,
               GUINT_TO_POINTER ((id - (num + CLASSES_IDX)) + 1));
 
-          prediction = gst_ml_prediction_new ();
+          prediction.confidence = confidence * 100.0F;
+          prediction.label = g_strdup (label ? label->name : "unknown");
+          prediction.color = label ? label->color : 0x000000FF;
 
-          prediction->confidence = confidence * 100.0F;
-          prediction->label = g_strdup (label ? label->name : "unknown");
-          prediction->color = label ? label->color : 0x000000FF;
-
-          prediction->top = bbox[1] - (bbox[3] / 2);
-          prediction->left = bbox[0] - (bbox[2] / 2);
-          prediction->bottom = bbox[1] + (bbox[3] / 2);
-          prediction->right = bbox[0] + (bbox[2] / 2);
+          prediction.top = bbox[1] - (bbox[3] / 2);
+          prediction.left = bbox[0] - (bbox[2] / 2);
+          prediction.bottom = bbox[1] + (bbox[3] / 2);
+          prediction.right = bbox[0] + (bbox[2] / 2);
 
           // Adjust bounding box dimensions with extracted source aspect ratio.
           if (sar_n > sar_d) {
             gdouble coeficient = 0.0;
             gst_util_fraction_to_double (sar_n, sar_d, &coeficient);
 
-            prediction->top /= 384.0 / coeficient;
-            prediction->bottom /= 384.0 / coeficient;
-            prediction->left /= 384.0;
-            prediction->right /= 384.0;
+            prediction.top /= 384.0 / coeficient;
+            prediction.bottom /= 384.0 / coeficient;
+            prediction.left /= 384.0;
+            prediction.right /= 384.0;
           } else if (sar_n < sar_d) {
             gdouble coeficient = 0.0;
             gst_util_fraction_to_double (sar_d, sar_n, &coeficient);
 
-            prediction->top /= 640.0;
-            prediction->bottom /= 640.0;
-            prediction->left /= 640.0 / coeficient;
-            prediction->right /= 640.0 / coeficient;
+            prediction.top /= 640.0;
+            prediction.bottom /= 640.0;
+            prediction.left /= 640.0 / coeficient;
+            prediction.right /= 640.0 / coeficient;
           }
 
           // Non-Max Suppression (NMS) algorithm.
-          result = gst_ml_non_max_suppression (prediction, *predictions);
+          result = gst_ml_non_max_suppression (&prediction, predictions);
 
           // If the NMS result is -2 don't add the prediction to the list.
-          if (result == (-2)) {
-            gst_ml_prediction_free (prediction);
+          if (result == (-2)){
+            g_free (prediction.label);
             continue;
           }
 
           // If the NMS result is above -1 remove the entry with the result index.
-          if (result >= 0) {
-            GList *link = g_list_nth (*predictions, result);
-            *predictions = g_list_remove_link (*predictions, link);
-            g_list_free_full (link, (GDestroyNotify) gst_ml_prediction_free);
-          }
+          if (result >= 0)
+            predictions = g_array_remove_index (predictions, result);
 
-          *predictions = g_list_insert_sorted (
-              *predictions, prediction, gst_ml_compare_predictions);
+          predictions = g_array_append_val (predictions, prediction);
         }
       }
     }
   }
 
+  g_array_sort (predictions, gst_ml_compare_predictions);
   return TRUE;
 }

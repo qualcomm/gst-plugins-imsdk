@@ -69,8 +69,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <dlfcn.h>
-#include <unistd.h>
 
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
@@ -82,14 +80,14 @@
 #include <linux/dma-buf.h>
 #endif // HAVE_LINUX_DMA_BUF_H
 
-#include "modules/ml-video-detection-module.h"
-
 #define GST_CAT_DEFAULT gst_ml_video_detection_debug
 GST_DEBUG_CATEGORY_STATIC (gst_ml_video_detection_debug);
 
 #define gst_ml_video_detection_parent_class parent_class
 G_DEFINE_TYPE (GstMLVideoDetection, gst_ml_video_detection,
     GST_TYPE_BASE_TRANSFORM);
+
+#define GST_TYPE_ML_MODULES (gst_ml_modules_get_type())
 
 #ifndef GST_CAPS_FEATURE_MEMORY_GBM
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
@@ -112,7 +110,7 @@ G_DEFINE_TYPE (GstMLVideoDetection, gst_ml_video_detection,
 #define GST_ML_VIDEO_DETECTION_SINK_CAPS \
     "neural-network/tensors"
 
-#define DEFAULT_PROP_MODULE      NULL
+#define DEFAULT_PROP_MODULE      0
 #define DEFAULT_PROP_LABELS      NULL
 #define DEFAULT_PROP_NUM_RESULTS 5
 #define DEFAULT_PROP_THRESHOLD   10.0F
@@ -152,91 +150,6 @@ static GstStaticCaps gst_ml_video_detection_static_src_caps =
     GST_STATIC_CAPS (GST_ML_VIDEO_DETECTION_SRC_CAPS);
 
 
-/**
- * GstMLModule:
- * @libhandle: the library handle
- * @instance: instance of the tensor processing module
- *
- * @init: Initilizes an instance of the module.
- * @deinit: Deinitilizes the instance of the module.
- * @process: Decode the tensors inside the buffer into prediction results.
- *
- * Machine learning interface for post-processing module.
- */
-struct _GstMLModule
-{
-  gpointer libhandle;
-  gpointer instance;
-
-  /// Virtual functions.
-  gpointer (*init)    (const gchar * labels);
-  void     (*deinit)  (gpointer instance);
-
-  gboolean (*process) (gpointer instance, GstMLFrame * frame,
-                       GList ** predictions);
-};
-
-static void
-gst_ml_module_free (GstMLModule * module)
-{
-  if (NULL == module)
-    return;
-
-  if (module->instance != NULL)
-    module->deinit (module->instance);
-
-  if (module->libhandle != NULL)
-    dlclose (module->libhandle);
-
-  g_slice_free (GstMLModule, module);
-}
-
-static GstMLModule *
-gst_ml_module_new (const gchar * libname, const gchar * labels)
-{
-  GstMLModule *module = NULL;
-  gchar *location = NULL;
-
-  location = g_strdup_printf ("%s/lib%s.so", GST_ML_MODULES_DIR, libname);
-
-  module = g_slice_new0 (GstMLModule);
-  g_return_val_if_fail (module != NULL, NULL);
-
-  if ((module->libhandle = dlopen (location, RTLD_NOW)) == NULL) {
-    GST_ERROR ("Failed to open %s module library, error: %s!",
-        libname, dlerror());
-
-    g_free (location);
-    gst_ml_module_free (module);
-
-    return NULL;
-  }
-
-  g_free (location);
-
-  module->init = dlsym (module->libhandle,
-      "gst_ml_video_detection_module_init");
-  module->deinit = dlsym (module->libhandle,
-      "gst_ml_video_detection_module_deinit");
-  module->process = dlsym (module->libhandle,
-      "gst_ml_video_detection_module_process");
-
-  if (!module->init || !module->deinit || !module->process) {
-    GST_ERROR ("Failed to load %s library symbols, error: %s!",
-        libname, dlerror());
-    gst_ml_module_free (module);
-    return NULL;
-  }
-
-  if ((module->instance = module->init (labels)) == NULL) {
-    GST_ERROR ("Failed to initilize %s module library!", libname);
-    gst_ml_module_free (module);
-    return NULL;
-  }
-
-  return module;
-}
-
 static GstCaps *
 gst_ml_video_detection_sink_caps (void)
 {
@@ -275,6 +188,28 @@ gst_ml_video_detection_src_template (void)
 {
   return gst_pad_template_new ("src", GST_PAD_SRC, GST_PAD_ALWAYS,
       gst_ml_video_detection_src_caps ());
+}
+
+static GType
+gst_ml_modules_get_type (void)
+{
+  static GType gtype = 0;
+  static GEnumValue *variants = NULL;
+
+  if (gtype)
+    return gtype;
+
+  variants = gst_ml_enumarate_modules ("ml-vdetection-");
+  gtype = g_enum_register_static ("GstMLVideoDetectionModules", variants);
+
+  return gtype;
+}
+
+static void
+gst_ml_prediction_free (GstMLPrediction * prediction)
+{
+  if (prediction->label != NULL)
+    g_free (prediction->label);
 }
 
 static gboolean
@@ -362,14 +297,13 @@ gst_ml_video_detection_create_pool (GstMLVideoDetection * detection,
 
 static gboolean
 gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
-    GList * predictions, GstBuffer * buffer)
+    GArray * predictions, GstBuffer * buffer)
 {
   GstVideoMeta *vmeta = NULL;
-  GList *list = NULL;
   GstMapInfo memmap;
   gdouble x = 0.0, y = 0.0, width = 0.0, height = 0.0;
   gdouble fontsize = 0.0, borderwidth = 0.0;
-  guint n_predictions = 0;
+  guint idx = 0, n_predictions = 0;
 
   cairo_format_t format;
   cairo_surface_t* surface = NULL;
@@ -447,13 +381,15 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
     cairo_font_options_destroy (options);
   }
 
-  for (list = predictions; list != NULL; list = list->next) {
-    const GstMLPrediction *prediction = (const GstMLPrediction *) list->data;
+  for (idx = 0; idx < predictions->len; idx++) {
+    GstMLPrediction *prediction = NULL;
     gchar *string = NULL;
 
     // Break immediately if we reach the number of results limit.
     if (n_predictions >= detection->n_results)
       break;
+
+    prediction = &(g_array_index (predictions, GstMLPrediction, idx));
 
     // Break immediately if sorted prediction confidence is below the threshold.
     if (prediction->confidence < detection->threshold)
@@ -538,25 +474,26 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
 
 static gboolean
 gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
-    GList * predictions, GstBuffer * buffer)
+    GArray * predictions, GstBuffer * buffer)
 {
-  GList *list = NULL;
   GstMapInfo memmap = {};
   GValue entries = G_VALUE_INIT;
   gchar *string = NULL;
-  guint n_predictions = 0;
+  guint idx = 0, n_predictions = 0;
   gsize length = 0;
 
   g_value_init (&entries, GST_TYPE_LIST);
 
-  for (list = predictions; list != NULL; list = list->next) {
-    GstMLPrediction *prediction = (GstMLPrediction*) list->data;
+  for (idx = 0; idx < predictions->len; idx++) {
+    GstMLPrediction *prediction = NULL;
     GstStructure *entry = NULL;
     GValue value = G_VALUE_INIT, rectangle = G_VALUE_INIT;
 
     // Break immediately if we reach the number of results limit.
     if (n_predictions >= detection->n_results)
       break;
+
+    prediction = &(g_array_index (predictions, GstMLPrediction, idx));
 
     // Break immediately if sorted prediction confidence is below the threshold.
     if (prediction->confidence < detection->threshold)
@@ -887,28 +824,56 @@ gst_ml_video_detection_set_caps (GstBaseTransform * base, GstCaps * incaps,
     GstCaps * outcaps)
 {
   GstMLVideoDetection *detection = GST_ML_VIDEO_DETECTION (base);
-  GstMLModule *module = NULL;
+  GstCaps *modulecaps = NULL;
   GstStructure *structure = NULL;
+  GEnumClass *eclass = NULL;
+  GEnumValue *evalue = NULL;
   GstMLInfo ininfo;
 
   if (NULL == detection->labels) {
     GST_ELEMENT_ERROR (detection, RESOURCE, NOT_FOUND, (NULL),
-        ("Labels not set!"));
+        ("Labels file not set!"));
     return FALSE;
-  } else if (NULL == detection->modname) {
+  } else if (DEFAULT_PROP_MODULE == detection->mdlenum) {
     GST_ELEMENT_ERROR (detection, RESOURCE, NOT_FOUND, (NULL),
-        ("Module not set!"));
+        ("Module name not set, automatic module pick up not supported!"));
     return FALSE;
   }
 
-  module = gst_ml_module_new (detection->modname, detection->labels);
-  if (NULL == module) {
-    GST_ERROR_OBJECT (detection, "Failed to create processing module!");
-    return FALSE;
-  }
+  eclass = G_ENUM_CLASS (g_type_class_peek (GST_TYPE_ML_MODULES));
+  evalue = g_enum_get_value (eclass, detection->mdlenum);
 
   gst_ml_module_free (detection->module);
-  detection->module = module;
+  detection->module = gst_ml_module_new (evalue->value_name);
+
+  if (NULL == detection->module) {
+    GST_ELEMENT_ERROR (detection, RESOURCE, FAILED, (NULL),
+        ("Module creation failed!"));
+    return FALSE;
+  }
+
+  modulecaps = gst_ml_module_get_caps (detection->module);
+
+  if (!gst_caps_can_intersect (incaps, modulecaps)) {
+    GST_ELEMENT_ERROR (detection, RESOURCE, FAILED, (NULL),
+        ("Module caps do not intersect with the negotiated caps!"));
+    return FALSE;
+  }
+
+  if (!gst_ml_module_init (detection->module)) {
+    GST_ELEMENT_ERROR (detection, RESOURCE, FAILED, (NULL),
+        ("Module initialization failed!"));
+    return FALSE;
+  }
+
+  structure = gst_structure_new ("options",
+      GST_ML_MODULE_OPT_LABELS, G_TYPE_STRING, detection->labels, NULL);
+
+  if (!gst_ml_module_set_opts (detection->module, structure)) {
+    GST_ELEMENT_ERROR (detection, RESOURCE, FAILED, (NULL),
+        ("Failed to set module options!"));
+    return FALSE;
+  }
 
   if (!gst_ml_info_from_caps (&ininfo, incaps)) {
     GST_ERROR_OBJECT (detection, "Failed to get input ML info from caps %"
@@ -942,9 +907,8 @@ gst_ml_video_detection_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     GstBuffer * outbuffer)
 {
   GstMLVideoDetection *detection = GST_ML_VIDEO_DETECTION (base);
-  GList *predictions = NULL;
+  GArray *predictions = NULL;
   GstMLFrame mlframe = { 0, };
-  guint n_blocks = 0;
   gboolean success = FALSE;
 
   GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
@@ -957,30 +921,12 @@ gst_ml_video_detection_transform (GstBaseTransform * base, GstBuffer * inbuffer,
       GST_BUFFER_FLAG_IS_SET (outbuffer, GST_BUFFER_FLAG_GAP))
     return GST_FLOW_OK;
 
-  n_blocks = gst_buffer_n_memory (inbuffer);
+  // Initialize the array which will contain the predictions, must not fail.
+  predictions = g_array_new (FALSE, FALSE, sizeof (GstMLPrediction));
+  g_return_val_if_fail (predictions != NULL, GST_FLOW_ERROR);
 
-  if (gst_buffer_get_size (inbuffer) != gst_ml_info_size (detection->mlinfo)) {
-    GST_ERROR_OBJECT (detection, "Mismatch, expected buffer size %"
-        G_GSIZE_FORMAT " but actual size is %" G_GSIZE_FORMAT "!",
-        gst_ml_info_size (detection->mlinfo), gst_buffer_get_size (inbuffer));
-    return GST_FLOW_ERROR;
-  } else if ((n_blocks > 1) && n_blocks != detection->mlinfo->n_tensors) {
-    GST_ERROR_OBJECT (detection, "Mismatch, expected %u memory blocks "
-        "but buffer has %u!", detection->mlinfo->n_tensors, n_blocks);
-    return GST_FLOW_ERROR;
-  }
-
-  n_blocks = gst_buffer_get_n_meta (inbuffer, GST_ML_TENSOR_META_API_TYPE);
-  if (n_blocks != detection->mlinfo->n_tensors) {
-    GST_ERROR_OBJECT (detection, "Input buffer has %u tensor metas but "
-        "negotiated caps require %u!", n_blocks, detection->mlinfo->n_tensors);
-    return GST_FLOW_ERROR;
-  }
-
-  if (gst_buffer_n_memory (outbuffer) == 0) {
-    GST_ERROR_OBJECT (detection, "Output buffer has no memory blocks!");
-    return GST_FLOW_ERROR;
-  }
+  // Set element clearing function.
+  g_array_set_clear_func (predictions, (GDestroyNotify) gst_ml_prediction_free);
 
   ts_begin = gst_util_get_timestamp ();
 
@@ -990,14 +936,14 @@ gst_ml_video_detection_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   }
 
   // Call the submodule process funtion.
-  success = detection->module->process (detection->module->instance,
-      &mlframe, &predictions);
+  success = gst_ml_video_detection_module_execute (detection->module, &mlframe,
+      predictions);
 
   gst_ml_frame_unmap (&mlframe);
 
   if (!success) {
     GST_ERROR_OBJECT (detection, "Failed to process tensors!");
-    g_list_free_full (predictions, (GDestroyNotify) gst_ml_prediction_free);
+    g_array_free (predictions, TRUE);
     return GST_FLOW_ERROR;
   }
 
@@ -1010,7 +956,7 @@ gst_ml_video_detection_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   else
     success = FALSE;
 
-  g_list_free_full (predictions, (GDestroyNotify) gst_ml_prediction_free);
+  g_array_free (predictions, TRUE);
 
   if (!success) {
     GST_ERROR_OBJECT (detection, "Failed to fill output buffer!");
@@ -1036,8 +982,7 @@ gst_ml_video_detection_set_property (GObject * object, guint prop_id,
 
   switch (prop_id) {
     case PROP_MODULE:
-      g_free (detection->modname);
-      detection->modname = g_strdup (g_value_get_string (value));
+      detection->mdlenum = g_value_get_enum (value);
       break;
     case PROP_LABELS:
       g_free (detection->labels);
@@ -1063,7 +1008,7 @@ gst_ml_video_detection_get_property (GObject * object, guint prop_id,
 
   switch (prop_id) {
      case PROP_MODULE:
-      g_value_set_string (value, detection->modname);
+      g_value_set_enum (value, detection->mdlenum);
       break;
     case PROP_LABELS:
       g_value_set_string (value, detection->labels);
@@ -1093,7 +1038,6 @@ gst_ml_video_detection_finalize (GObject * object)
   if (detection->outpool != NULL)
     gst_object_unref (detection->outpool);
 
-  g_free (detection->modname);
   g_free (detection->labels);
 
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (detection));
@@ -1113,9 +1057,10 @@ gst_ml_video_detection_class_init (GstMLVideoDetectionClass * klass)
   gobject->finalize     = GST_DEBUG_FUNCPTR (gst_ml_video_detection_finalize);
 
   g_object_class_install_property (gobject, PROP_MODULE,
-      g_param_spec_string ("module", "Module",
+      g_param_spec_enum ("module", "Module",
           "Module name that is going to be used for processing the tensors",
-          DEFAULT_PROP_MODULE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+          GST_TYPE_ML_MODULES, DEFAULT_PROP_MODULE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_LABELS,
       g_param_spec_string ("labels", "Labels",
           "Labels filename", DEFAULT_PROP_LABELS,
@@ -1159,7 +1104,7 @@ gst_ml_video_detection_init (GstMLVideoDetection * detection)
   detection->outpool = NULL;
   detection->module = NULL;
 
-  detection->modname = DEFAULT_PROP_MODULE;
+  detection->mdlenum = DEFAULT_PROP_MODULE;
   detection->labels = DEFAULT_PROP_LABELS;
   detection->n_results = DEFAULT_PROP_NUM_RESULTS;
   detection->threshold = DEFAULT_PROP_THRESHOLD;

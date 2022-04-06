@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.8.2)
 project(GST_PLUGIN_QTI_OSS_ML_VIDEO_DETECTION
   VERSION ${GST_PLUGINS_QTI_OSS_VERSION}
-  LANGUAGES C CXX
+  LANGUAGES C
 )
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -48,11 +48,6 @@ add_library(${GST_QTI_ML_VIDEO_DETECTION} SHARED
 
 set_target_properties(${GST_QTI_ML_VIDEO_DETECTION} PROPERTIES PUBLIC_HEADER
   "modules/ml-video-detection-module.h"
-)
-
-# Add target specific precompiler defintions.
-target_compile_definitions(${GST_QTI_ML_VIDEO_DETECTION} PRIVATE
-  GST_ML_MODULES_DIR="${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0/ml/modules"
 )
 
 target_compile_definitions(${GST_QTI_ML_VIDEO_DETECTION} PRIVATE

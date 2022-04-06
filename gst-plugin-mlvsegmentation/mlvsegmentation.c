@@ -81,8 +81,6 @@
 #include <linux/dma-buf.h>
 #endif // HAVE_LINUX_DMA_BUF_H
 
-#include "modules/ml-video-segmentation-module.h"
-
 #define GST_CAT_DEFAULT gst_ml_video_segmentation_debug
 GST_DEBUG_CATEGORY_STATIC (gst_ml_video_segmentation_debug);
 
@@ -90,11 +88,7 @@ GST_DEBUG_CATEGORY_STATIC (gst_ml_video_segmentation_debug);
 G_DEFINE_TYPE (GstMLVideoSegmentation, gst_ml_video_segmentation,
     GST_TYPE_BASE_TRANSFORM);
 
-#define DEFAULT_PROP_MODULE         NULL
-#define DEFAULT_PROP_LABELS         NULL
-
-#define DEFAULT_MIN_BUFFERS         2
-#define DEFAULT_MAX_BUFFERS         10
+#define GST_TYPE_ML_MODULES (gst_ml_modules_get_type())
 
 #ifndef GST_CAPS_FEATURE_MEMORY_GBM
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
@@ -112,6 +106,12 @@ G_DEFINE_TYPE (GstMLVideoSegmentation, gst_ml_video_segmentation,
 #define GST_ML_VIDEO_SEGMENTATION_SINK_CAPS \
     "neural-network/tensors"
 
+#define DEFAULT_PROP_MODULE         0
+#define DEFAULT_PROP_LABELS         NULL
+
+#define DEFAULT_MIN_BUFFERS         2
+#define DEFAULT_MAX_BUFFERS         10
+
 enum
 {
   PROP_0,
@@ -124,92 +124,6 @@ static GstStaticCaps gst_ml_video_segmentation_static_sink_caps =
 
 static GstStaticCaps gst_ml_video_segmentation_static_src_caps =
     GST_STATIC_CAPS (GST_ML_VIDEO_SEGMENTATION_SRC_CAPS);
-
-
-/**
- * GstMLModule:
- * @libhandle: the library handle
- * @instance: instance of the tensor processing module
- *
- * @init: Initilizes an instance of the module.
- * @deinit: Deinitilizes the instance of the module.
- * @process: Decode the tensors inside the buffer into prediction results.
- *
- * Machine learning interface for post-processing module.
- */
-struct _GstMLModule
-{
-  gpointer libhandle;
-  gpointer instance;
-
-  /// Virtual functions.
-  gpointer (*init)    (const gchar * labels);
-  void     (*deinit)  (gpointer instance);
-
-  gboolean (*process) (gpointer instance, GstMLFrame * mlframe,
-                       GstVideoFrame * vframe);
-};
-
-static void
-gst_ml_module_free (GstMLModule * module)
-{
-  if (NULL == module)
-    return;
-
-  if (module->instance != NULL)
-    module->deinit (module->instance);
-
-  if (module->libhandle != NULL)
-    dlclose (module->libhandle);
-
-  g_slice_free (GstMLModule, module);
-}
-
-static GstMLModule *
-gst_ml_module_new (const gchar * libname, const gchar * labels)
-{
-  GstMLModule *module = NULL;
-  gchar *location = NULL;
-
-  location = g_strdup_printf ("%s/lib%s.so", GST_ML_MODULES_DIR, libname);
-
-  module = g_slice_new0 (GstMLModule);
-  g_return_val_if_fail (module != NULL, NULL);
-
-  if ((module->libhandle = dlopen (location, RTLD_NOW)) == NULL) {
-    GST_ERROR ("Failed to open %s module library, error: %s!",
-        libname, dlerror());
-
-    g_free (location);
-    gst_ml_module_free (module);
-
-    return NULL;
-  }
-
-  g_free (location);
-
-  module->init = dlsym (module->libhandle,
-      "gst_ml_video_segmentation_module_init");
-  module->deinit = dlsym (module->libhandle,
-      "gst_ml_video_segmentation_module_deinit");
-  module->process = dlsym (module->libhandle,
-      "gst_ml_video_segmentation_module_process");
-
-  if (!module->init || !module->deinit || !module->process) {
-    GST_ERROR ("Failed to load %s library symbols, error: %s!",
-        libname, dlerror());
-    gst_ml_module_free (module);
-    return NULL;
-  }
-
-  if ((module->instance = module->init (labels)) == NULL) {
-    GST_ERROR ("Failed to initilize %s module library!", libname);
-    gst_ml_module_free (module);
-    return NULL;
-  }
-
-  return module;
-}
 
 static GstCaps *
 gst_ml_video_segmentation_sink_caps (void)
@@ -249,6 +163,21 @@ gst_ml_video_segmentation_src_template (void)
 {
   return gst_pad_template_new ("src", GST_PAD_SRC, GST_PAD_ALWAYS,
       gst_ml_video_segmentation_src_caps ());
+}
+
+static GType
+gst_ml_modules_get_type (void)
+{
+  static GType gtype = 0;
+  static GEnumValue *variants = NULL;
+
+  if (gtype)
+    return gtype;
+
+  variants = gst_ml_enumarate_modules ("ml-vsegmentation-");
+  gtype = g_enum_register_static ("GstMLVideoSegmentationModules", variants);
+
+  return gtype;
 }
 
 static gboolean
@@ -574,7 +503,10 @@ gst_ml_video_segmentation_set_caps (GstBaseTransform * base, GstCaps * incaps,
     GstCaps * outcaps)
 {
   GstMLVideoSegmentation *segmentation = GST_ML_VIDEO_SEGMENTATION (base);
-  GstMLModule *module = NULL;
+  GstCaps *modulecaps = NULL;
+  GstStructure *structure = NULL;
+  GEnumClass *eclass = NULL;
+  GEnumValue *evalue = NULL;
   GstMLInfo ininfo;
   GstVideoInfo outinfo;
 
@@ -582,20 +514,46 @@ gst_ml_video_segmentation_set_caps (GstBaseTransform * base, GstCaps * incaps,
     GST_ELEMENT_ERROR (segmentation, RESOURCE, NOT_FOUND, (NULL),
         ("Labels not set!"));
     return FALSE;
-  } else if (NULL == segmentation->modname) {
+  } else if (DEFAULT_PROP_MODULE == segmentation->mdlenum) {
     GST_ELEMENT_ERROR (segmentation, RESOURCE, NOT_FOUND, (NULL),
-        ("Module not set!"));
+        ("Module name not set, automatic module pick up not supported!"));
     return FALSE;
   }
 
-  module = gst_ml_module_new (segmentation->modname, segmentation->labels);
-  if (NULL == module) {
-    GST_ERROR_OBJECT (segmentation, "Failed to create processing module!");
-    return FALSE;
-  }
+  eclass = G_ENUM_CLASS (g_type_class_peek (GST_TYPE_ML_MODULES));
+  evalue = g_enum_get_value (eclass, segmentation->mdlenum);
 
   gst_ml_module_free (segmentation->module);
-  segmentation->module = module;
+  segmentation->module = gst_ml_module_new (evalue->value_name);
+
+  if (NULL == segmentation->module) {
+    GST_ELEMENT_ERROR (segmentation, RESOURCE, FAILED, (NULL),
+        ("Module creation failed!"));
+    return FALSE;
+  }
+
+  modulecaps = gst_ml_module_get_caps (segmentation->module);
+
+  if (!gst_caps_can_intersect (incaps, modulecaps)) {
+    GST_ELEMENT_ERROR (segmentation, RESOURCE, FAILED, (NULL),
+        ("Module caps do not intersect with the negotiated caps!"));
+    return FALSE;
+  }
+
+  if (!gst_ml_module_init (segmentation->module)) {
+    GST_ELEMENT_ERROR (segmentation, RESOURCE, FAILED, (NULL),
+        ("Module initialization failed!"));
+    return FALSE;
+  }
+
+  structure = gst_structure_new ("options",
+      GST_ML_MODULE_OPT_LABELS, G_TYPE_STRING, segmentation->labels, NULL);
+
+  if (!gst_ml_module_set_opts (segmentation->module, structure)) {
+    GST_ELEMENT_ERROR (segmentation, RESOURCE, FAILED, (NULL),
+        ("Failed to set module options!"));
+    return FALSE;
+  }
 
   if (!gst_ml_info_from_caps (&ininfo, incaps)) {
     GST_ERROR_OBJECT (segmentation, "Failed to get input ML info from caps %"
@@ -633,10 +591,9 @@ gst_ml_video_segmentation_transform (GstBaseTransform * base,
     GstBuffer * inbuffer, GstBuffer * outbuffer)
 {
   GstMLVideoSegmentation *segmentation = GST_ML_VIDEO_SEGMENTATION (base);
-  GstMLFrame mlframe = { 0 };
-  GstVideoFrame vframe = { 0 };
+  GstMLFrame mlframe = { 0, };
+  GstVideoFrame vframe = { 0, };
   gboolean success = FALSE;
-  guint n_blocks = 0;
 
   GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
   GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
@@ -647,31 +604,6 @@ gst_ml_video_segmentation_transform (GstBaseTransform * base,
   if (gst_buffer_get_size (outbuffer) == 0 &&
       GST_BUFFER_FLAG_IS_SET (outbuffer, GST_BUFFER_FLAG_GAP))
     return GST_FLOW_OK;
-
-  n_blocks = gst_buffer_n_memory (inbuffer);
-
-  if (gst_buffer_get_size (inbuffer) != gst_ml_info_size (segmentation->mlinfo)) {
-    GST_ERROR_OBJECT (segmentation, "Mismatch, expected buffer size %"
-        G_GSIZE_FORMAT " but actual size is %" G_GSIZE_FORMAT "!",
-        gst_ml_info_size (segmentation->mlinfo), gst_buffer_get_size (inbuffer));
-    return GST_FLOW_ERROR;
-  } else if ((n_blocks > 1) && n_blocks != segmentation->mlinfo->n_tensors) {
-    GST_ERROR_OBJECT (segmentation, "Mismatch, expected %u memory blocks "
-        "but buffer has %u!", segmentation->mlinfo->n_tensors, n_blocks);
-    return GST_FLOW_ERROR;
-  }
-
-  n_blocks = gst_buffer_get_n_meta (inbuffer, GST_ML_TENSOR_META_API_TYPE);
-  if (n_blocks != segmentation->mlinfo->n_tensors) {
-    GST_ERROR_OBJECT (segmentation, "Input buffer has %u tensor metas but "
-        "negotiated caps require %u!", n_blocks, segmentation->mlinfo->n_tensors);
-    return GST_FLOW_ERROR;
-  }
-
-  if (gst_buffer_n_memory (outbuffer) == 0) {
-    GST_ERROR_OBJECT (segmentation, "Output buffer has no memory blocks!");
-    return GST_FLOW_ERROR;
-  }
 
   ts_begin = gst_util_get_timestamp ();
 
@@ -700,8 +632,8 @@ gst_ml_video_segmentation_transform (GstBaseTransform * base,
 #endif // HAVE_LINUX_DMA_BUF_H
 
   // Call the submodule process funtion.
-  success = segmentation->module->process (
-      segmentation->module->instance, &mlframe, &vframe);
+  success = gst_ml_video_segmentation_module_execute (segmentation->module,
+      &mlframe, &vframe);
 
 #ifdef HAVE_LINUX_DMA_BUF_H
   if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
@@ -742,8 +674,7 @@ gst_ml_video_segmentation_set_property (GObject * object, guint prop_id,
 
   switch (prop_id) {
     case PROP_MODULE:
-      g_free (segmentation->modname);
-      segmentation->modname = g_strdup (g_value_get_string (value));
+      segmentation->mdlenum = g_value_get_enum (value);
       break;
     case PROP_LABELS:
       g_free (segmentation->labels);
@@ -763,7 +694,7 @@ gst_ml_video_segmentation_get_property (GObject * object, guint prop_id,
 
   switch (prop_id) {
     case PROP_MODULE:
-      g_value_set_string (value, segmentation->modname);
+      g_value_set_enum (value, segmentation->mdlenum);
       break;
     case PROP_LABELS:
       g_value_set_string (value, segmentation->labels);
@@ -790,7 +721,6 @@ gst_ml_video_segmentation_finalize (GObject * object)
   if (segmentation->outpool != NULL)
     gst_object_unref (segmentation->outpool);
 
-  g_free (segmentation->modname);
   g_free (segmentation->labels);
 
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (segmentation));
@@ -810,9 +740,10 @@ gst_ml_video_segmentation_class_init (GstMLVideoSegmentationClass * klass)
   gobject->finalize = GST_DEBUG_FUNCPTR (gst_ml_video_segmentation_finalize);
 
   g_object_class_install_property (gobject, PROP_MODULE,
-      g_param_spec_string ("module", "Module",
+      g_param_spec_enum ("module", "Module",
           "Module name that is going to be used for processing the tensors",
-          DEFAULT_PROP_MODULE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+          GST_TYPE_ML_MODULES, DEFAULT_PROP_MODULE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_LABELS,
       g_param_spec_string ("labels", "Labels",
           "Labels filename", DEFAULT_PROP_LABELS,
@@ -846,7 +777,7 @@ gst_ml_video_segmentation_init (GstMLVideoSegmentation * segmentation)
   segmentation->outpool = NULL;
   segmentation->module = NULL;
 
-  segmentation->modname = DEFAULT_PROP_MODULE;
+  segmentation->mdlenum = DEFAULT_PROP_MODULE;
   segmentation->labels = DEFAULT_PROP_LABELS;
 
   // Handle buffers with GAP flag internally.

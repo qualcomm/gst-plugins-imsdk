@@ -63,43 +63,27 @@
 
 #include "ml-video-classification-module.h"
 
-#include <gst/ml/gstmlmeta.h>
 
+// Set the default debug category.
+#define GST_CAT_DEFAULT gst_ml_module_debug
 
-#define CAST_TO_GINT32(data) ((gint32*) data)
-#define CAST_TO_GFLOAT(data) ((gfloat*) data)
+#define GINT32_PTR_CAST(data)       ((gint32*) data)
+#define GFLOAT_PTR_CAST(data)       ((gfloat*) data)
+#define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
 
-typedef struct _GstPrivateModule GstPrivateModule;
-typedef struct _GstLabel GstLabel;
+#define GST_ML_MODULE_CAPS \
+    "neural-network/tensors, " \
+    "type = (string) { UINT8, INT32, FLOAT32 }, " \
+    "dimensions = (int) < < 1, [ 1000, 1001 ] > >"
 
-struct _GstPrivateModule {
+// Module caps instance
+static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
+
+typedef struct _GstMLSubModule GstMLSubModule;
+
+struct _GstMLSubModule {
   GHashTable *labels;
 };
-
-struct _GstLabel {
-  gchar *name;
-  guint color;
-};
-
-static GstLabel *
-gst_ml_label_new ()
-{
-  GstLabel *label = g_new (GstLabel, 1);
-
-  label->name = NULL;
-  label->color = 0x00000000;
-
-  return label;
-}
-
-static void
-gst_ml_label_free (GstLabel * label)
-{
-  if (label->name != NULL)
-    g_free (label->name);
-
-  g_free (label);
-}
 
 static gint
 gst_ml_compare_predictions (gconstpointer a, gconstpointer b)
@@ -118,139 +102,92 @@ gst_ml_compare_predictions (gconstpointer a, gconstpointer b)
 }
 
 gpointer
-gst_ml_video_classification_module_init (const gchar * labels)
+gst_ml_module_open (void)
 {
-  GstPrivateModule *module = NULL;
-  GValue list = G_VALUE_INIT;
-  guint idx = 0;
+  GstMLSubModule *submodule = NULL;
 
-  g_value_init (&list, GST_TYPE_LIST);
+  submodule = g_slice_new0 (GstMLSubModule);
+  g_return_val_if_fail (submodule != NULL, NULL);
 
-  if (g_file_test (labels, G_FILE_TEST_IS_REGULAR)) {
-    GString *string = NULL;
-    GError *error = NULL;
-    gchar *contents = NULL;
-    gboolean success = FALSE;
-
-    if (!g_file_get_contents (labels, &contents, NULL, &error)) {
-      GST_ERROR ("Failed to get labels file contents, error: %s!",
-          GST_STR_NULL (error->message));
-      g_clear_error (&error);
-      return NULL;
-    }
-
-    // Remove trailing space and replace new lines with a comma delimiter.
-    contents = g_strstrip (contents);
-    contents = g_strdelimit (contents, "\n", ',');
-
-    string = g_string_new (contents);
-    g_free (contents);
-
-    // Add opening and closing brackets.
-    string = g_string_prepend (string, "{ ");
-    string = g_string_append (string, " }");
-
-    // Get the raw character data.
-    contents = g_string_free (string, FALSE);
-
-    success = gst_value_deserialize (&list, contents);
-    g_free (contents);
-
-    if (!success) {
-      GST_ERROR ("Failed to deserialize labels file contents!");
-      return NULL;
-    }
-  } else if (!gst_value_deserialize (&list, labels)) {
-    GST_ERROR ("Failed to deserialize labels!");
-    return NULL;
-  }
-
-  module = g_slice_new0 (GstPrivateModule);
-  g_return_val_if_fail (module != NULL, NULL);
-
-  module->labels = g_hash_table_new_full (NULL, NULL, NULL,
-        (GDestroyNotify) gst_ml_label_free);
-
-  for (idx = 0; idx < gst_value_list_get_size (&list); idx++) {
-    GstStructure *structure = NULL;
-    GstLabel *label = NULL;
-    guint id = 0;
-
-    structure = GST_STRUCTURE (
-        g_value_dup_boxed (gst_value_list_get_value (&list, idx)));
-
-    if (structure == NULL) {
-      GST_WARNING ("Failed to extract structure!");
-      continue;
-    } else if (!gst_structure_has_field (structure, "id") ||
-        !gst_structure_has_field (structure, "color")) {
-      GST_WARNING ("Structure does not contain 'id' and/or 'color' fields!");
-      gst_structure_free (structure);
-      continue;
-    }
-
-    if ((label = gst_ml_label_new ()) == NULL) {
-      GST_ERROR ("Failed to allocate label memory!");
-      gst_structure_free (structure);
-      continue;
-    }
-
-    label->name = g_strdup (gst_structure_get_name (structure));
-    label->name = g_strdelimit (label->name, "-", ' ');
-
-    gst_structure_get_uint (structure, "color", &label->color);
-    gst_structure_get_uint (structure, "id", &id);
-
-    g_hash_table_insert (module->labels, GUINT_TO_POINTER (id), label);
-    gst_structure_free (structure);
-  }
-
-  g_value_unset (&list);
-  return module;
+  return (gpointer) submodule;
 }
 
 void
-gst_ml_video_classification_module_deinit (gpointer instance)
+gst_ml_module_close (gpointer instance)
 {
-  GstPrivateModule *module = instance;
+  GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
 
-  if (NULL == module)
+  if (NULL == submodule)
     return;
 
-  g_hash_table_destroy (module->labels);
-  g_slice_free (GstPrivateModule, module);
+  if (submodule->labels != NULL)
+    g_hash_table_destroy (submodule->labels);
+
+  g_slice_free (GstMLSubModule, submodule);
+}
+
+GstCaps *
+gst_ml_module_caps (void)
+{
+  static GstCaps *caps = NULL;
+  static volatile gsize inited = 0;
+
+  if (g_once_init_enter (&inited)) {
+    caps = gst_static_caps_get (&modulecaps);
+    g_once_init_leave (&inited, 1);
+  }
+
+  return caps;
 }
 
 gboolean
-gst_ml_video_classification_module_process (gpointer instance,
-    GstMLFrame * frame, GList ** predictions)
+gst_ml_module_configure (gpointer instance, GstStructure * settings)
 {
-  GstPrivateModule *module = instance;
+  GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
+  const gchar *input = NULL;
+
+  g_return_val_if_fail (submodule != NULL, FALSE);
+  g_return_val_if_fail (settings != NULL, FALSE);
+
+  input = gst_structure_get_string (settings, GST_ML_MODULE_OPT_LABELS);
+
+  submodule->labels = gst_ml_load_labels (input);
+  g_return_val_if_fail (submodule->labels != NULL, FALSE);
+
+  gst_structure_free (settings);
+  return TRUE;
+}
+
+gboolean
+gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
+{
+  GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
+  GArray *predictions = (GArray *) output;
   guint8 *data = NULL;
   guint idx = 0, n_inferences = 0;
   gdouble value = 0.0;
 
-  g_return_val_if_fail (module != NULL, FALSE);
-  g_return_val_if_fail (frame != NULL, FALSE);
+  g_return_val_if_fail (submodule != NULL, FALSE);
+  g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  n_inferences = GST_ML_FRAME_DIM (frame, 0, 1);
-  data = GST_ML_FRAME_BLOCK_DATA (frame, 0);
+  n_inferences = GST_ML_FRAME_DIM (mlframe, 0, 1);
+  data = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
 
   // Fill the prediction table.
   for (idx = 0; idx < n_inferences; ++idx) {
-    GstMLPrediction *prediction = NULL;
     GstLabel *label = NULL;
+    GstMLPrediction prediction = { 0 };
 
-    switch (GST_ML_FRAME_TYPE (frame)) {
+    switch (GST_ML_FRAME_TYPE (mlframe)) {
       case GST_ML_TYPE_UINT8:
         value = data[idx] * (100.0 / G_MAXUINT8);
         break;
       case GST_ML_TYPE_INT32:
-        value = CAST_TO_GINT32 (data)[idx];
+        value = GINT32_PTR_CAST (data)[idx];
         break;
       case GST_ML_TYPE_FLOAT32:
-        value = CAST_TO_GFLOAT (data)[idx] * 100;
+        value = GFLOAT_PTR_CAST (data)[idx] * 100;
         break;
       default:
         GST_ERROR ("Unsupported tensor type!");
@@ -261,17 +198,15 @@ gst_ml_video_classification_module_process (gpointer instance,
     if (value <= 10.0)
       continue;
 
-    label = g_hash_table_lookup (module->labels, GUINT_TO_POINTER (idx + 1));
+    label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (idx + 1));
 
-    prediction = gst_ml_prediction_new ();
+    prediction.confidence = value;
+    prediction.label = g_strdup (label ? label->name : "unknown");
+    prediction.color = label ? label->color : 0x000000FF;
 
-    prediction->confidence = value;
-    prediction->label = g_strdup (label ? label->name : "unknown");
-    prediction->color = label ? label->color : 0x000000FF;
-
-    *predictions = g_list_insert_sorted (
-        *predictions, prediction, gst_ml_compare_predictions);
+    predictions = g_array_append_val (predictions, prediction);
   }
 
+  g_array_sort (predictions, gst_ml_compare_predictions);
   return TRUE;
 }

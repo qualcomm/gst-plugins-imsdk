@@ -63,172 +63,107 @@
 
 #include "ml-video-segmentation-module.h"
 
-#include <gst/video/video.h>
-#include <gst/ml/gstmlmeta.h>
-#include <gst/allocators/allocators.h>
 
-
-#define CAST_TO_GFLOAT(data) ((gfloat*)data)
-#define CAST_TO_GUINT32(data) ((guint32*)data)
+// Set the default debug category.
+#define GST_CAT_DEFAULT gst_ml_module_debug
 
 #define EXTRACT_RED_COLOR(color)   ((color >> 24) & 0xFF)
 #define EXTRACT_GREEN_COLOR(color) ((color >> 16) & 0xFF)
 #define EXTRACT_BLUE_COLOR(color)  ((color >> 8) & 0xFF)
 #define EXTRACT_ALPHA_COLOR(color) ((color) & 0xFF)
 
-typedef struct _GstPrivateModule GstPrivateModule;
-typedef struct _GstLabel GstLabel;
+#define GFLOAT_PTR_CAST(data)       ((gfloat*)data)
+#define GINT32_PTR_CAST(data)       ((gint32*)data)
+#define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
 
-struct _GstPrivateModule {
+#define GST_ML_MODULE_CAPS \
+    "neural-network/tensors, " \
+    "type = (string) { INT32, FLOAT32 }, " \
+    "dimensions = (int) < < 1, 513, 513 > >"
+
+// Module caps instance
+static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
+
+typedef struct _GstMLSubModule GstMLSubModule;
+
+struct _GstMLSubModule {
   GHashTable *labels;
 };
 
-struct _GstLabel {
-  gchar *name;
-  guint color;
-};
-
-static GstLabel *
-gst_ml_label_new ()
-{
-  GstLabel *label = g_new (GstLabel, 1);
-
-  label->name = NULL;
-  label->color = 0x00000000;
-
-  return label;
-}
-
-static void
-gst_ml_label_free (GstLabel * label)
-{
-  if (label->name != NULL)
-    g_free (label->name);
-
-  g_free (label);
-}
-
 gpointer
-gst_ml_video_segmentation_module_init (const gchar * labels)
+gst_ml_module_open (void)
 {
-  GstPrivateModule *module = NULL;
-  GValue list = G_VALUE_INIT;
-  guint idx = 0;
+  GstMLSubModule *submodule = NULL;
 
-  g_value_init (&list, GST_TYPE_LIST);
+  submodule = g_slice_new0 (GstMLSubModule);
+  g_return_val_if_fail (submodule != NULL, NULL);
 
-  if (g_file_test (labels, G_FILE_TEST_IS_REGULAR)) {
-    GString *string = NULL;
-    GError *error = NULL;
-    gchar *contents = NULL;
-    gboolean success = FALSE;
-
-    if (!g_file_get_contents (labels, &contents, NULL, &error)) {
-      GST_ERROR ("Failed to get labels file contents, error: %s!",
-          GST_STR_NULL (error->message));
-      g_clear_error (&error);
-      return NULL;
-    }
-
-    // Remove trailing space and replace new lines with a comma delimiter.
-    contents = g_strstrip (contents);
-    contents = g_strdelimit (contents, "\n", ',');
-
-    string = g_string_new (contents);
-    g_free (contents);
-
-    // Add opening and closing brackets.
-    string = g_string_prepend (string, "{ ");
-    string = g_string_append (string, " }");
-
-    // Get the raw character data.
-    contents = g_string_free (string, FALSE);
-
-    success = gst_value_deserialize (&list, contents);
-    g_free (contents);
-
-    if (!success) {
-      GST_ERROR ("Failed to deserialize labels file contents!");
-      return NULL;
-    }
-  } else if (!gst_value_deserialize (&list, labels)) {
-    GST_ERROR ("Failed to deserialize labels!");
-    return NULL;
-  }
-
-  module = g_slice_new0 (GstPrivateModule);
-  g_return_val_if_fail (module != NULL, NULL);
-
-  module->labels = g_hash_table_new_full (NULL, NULL, NULL,
-        (GDestroyNotify) gst_ml_label_free);
-
-  for (idx = 0; idx < gst_value_list_get_size (&list); idx++) {
-    GstStructure *structure = NULL;
-    GstLabel *label = NULL;
-    guint id = 0;
-
-    structure = GST_STRUCTURE (
-        g_value_dup_boxed (gst_value_list_get_value (&list, idx)));
-
-    if (structure == NULL) {
-      GST_WARNING ("Failed to extract structure!");
-      continue;
-    } else if (!gst_structure_has_field (structure, "id") ||
-        !gst_structure_has_field (structure, "color")) {
-      GST_WARNING ("Structure does not contain 'id' and/or 'color' fields!");
-      gst_structure_free (structure);
-      continue;
-    }
-
-    if ((label = gst_ml_label_new ()) == NULL) {
-      GST_ERROR ("Failed to allocate label memory!");
-      gst_structure_free (structure);
-      continue;
-    }
-
-    label->name = g_strdup (gst_structure_get_name (structure));
-    label->name = g_strdelimit (label->name, "-", ' ');
-
-    gst_structure_get_uint (structure, "color", &label->color);
-    gst_structure_get_uint (structure, "id", &id);
-
-    g_hash_table_insert (module->labels, GUINT_TO_POINTER (id), label);
-    gst_structure_free (structure);
-  }
-
-  g_value_unset (&list);
-  return module;
+  return (gpointer) submodule;
 }
 
 void
-gst_ml_video_segmentation_module_deinit (gpointer instance)
+gst_ml_module_close (gpointer instance)
 {
-  GstPrivateModule *module = instance;
+  GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
 
-  if (NULL == module)
+  if (NULL == submodule)
     return;
 
-  g_hash_table_destroy (module->labels);
-  g_slice_free (GstPrivateModule, module);
+  if (submodule->labels != NULL)
+    g_hash_table_destroy (submodule->labels);
+
+  g_slice_free (GstMLSubModule, submodule);
+}
+
+GstCaps *
+gst_ml_module_caps (void)
+{
+  static GstCaps *caps = NULL;
+  static volatile gsize inited = 0;
+
+  if (g_once_init_enter (&inited)) {
+    caps = gst_static_caps_get (&modulecaps);
+    g_once_init_leave (&inited, 1);
+  }
+
+  return caps;
 }
 
 gboolean
-gst_ml_video_segmentation_module_process (gpointer instance,
-    GstMLFrame * mlframe, GstVideoFrame * vframe)
+gst_ml_module_configure (gpointer instance, GstStructure * settings)
 {
-  GstPrivateModule *module = instance;
+  GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
+  const gchar *input = NULL;
+
+  g_return_val_if_fail (submodule != NULL, FALSE);
+  g_return_val_if_fail (settings != NULL, FALSE);
+
+  input = gst_structure_get_string (settings, GST_ML_MODULE_OPT_LABELS);
+
+  submodule->labels = gst_ml_load_labels (input);
+  g_return_val_if_fail (submodule->labels != NULL, FALSE);
+
+  gst_structure_free (settings);
+  return TRUE;
+}
+
+gboolean
+gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
+{
+  GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
+  GstVideoFrame *vframe = (GstVideoFrame *) output;
   GstProtectionMeta *pmeta = NULL;
   guint8 *indata = NULL, *outdata = NULL;
   guint idx = 0, id = 0, bpp = 0, padding = 0, color = 0;
   gint row = 0, column = 0, inwidth = 0, inheight = 0;
 
-  g_return_val_if_fail (module != NULL, FALSE);
+  g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (vframe != NULL, FALSE);
 
   // Retrive the video frame Bytes Per Pixel for later calculations.
   bpp = GST_VIDEO_FORMAT_INFO_BITS (vframe->info.finfo) *
-      GST_VIDEO_FRAME_N_COMPONENTS (vframe) / CHAR_BIT;
+      GST_VIDEO_INFO_N_COMPONENTS (&(vframe)->info) / CHAR_BIT;
 
   // Calculate the row padding in bytes.
   padding = GST_VIDEO_FRAME_PLANE_STRIDE (vframe, 0) -
@@ -267,11 +202,11 @@ gst_ml_video_segmentation_module_process (gpointer instance,
           GST_VIDEO_FRAME_WIDTH (vframe));
 
       if (GST_ML_FRAME_TYPE (mlframe) == GST_ML_TYPE_FLOAT32)
-        id = CAST_TO_GFLOAT (indata)[idx];
+        id = GFLOAT_PTR_CAST (indata)[idx];
       else if (GST_ML_FRAME_TYPE (mlframe) == GST_ML_TYPE_INT32)
-        id = CAST_TO_GUINT32 (indata)[idx];
+        id = GINT32_PTR_CAST (indata)[idx];
 
-      label = g_hash_table_lookup (module->labels, GUINT_TO_POINTER (id));
+      label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (id));
       color = (label != NULL) ? label->color : 0x000000FF;
 
       // Calculate the destination index.

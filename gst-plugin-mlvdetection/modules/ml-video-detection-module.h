@@ -65,7 +65,7 @@
 #define __GST_QTI_ML_VIDEO_DETECTION_MODULE_H__
 
 #include <gst/gst.h>
-#include <gst/ml/ml-frame.h>
+#include <gst/ml/gstmlmodule.h>
 
 G_BEGIN_DECLS
 
@@ -94,74 +94,26 @@ struct _GstMLPrediction {
 };
 
 /**
- * gst_ml_prediction_new:
+ * gst_ml_video_detection_module_execute:
+ * @module: Pointer to ML post-processing module.
+ * @mlframe: Frame containing mapped tensor memory blocks that need processing.
+ * @predictions: Sorted GArray of #GstMLPrediction.
  *
- * Create new instance of GstMLPrediction.
+ * Convenient wrapper function used on plugin level to call the module
+ * 'gst_ml_module_process' API via 'gst_ml_module_execute' wrapper in order
+ * to process input tensors.
  *
- * return: pointer to GstMLPrediction structure on success or NULL on failure
- */
-GST_API GstMLPrediction *
-gst_ml_prediction_new (void)
-{
-  return g_new0 (GstMLPrediction, 1);
-}
-
-/**
- * gst_ml_prediction_free:
- * @prediction: pointer to GstMLPrediction structure
- *
- * Free memory associated with GstMLPrediction structure.
- *
- * return: NONE
- */
-GST_API void
-gst_ml_prediction_free (GstMLPrediction * prediction)
-{
-  if (NULL == prediction)
-    return;
-
-  if (prediction->label != NULL)
-    g_free (prediction->label);
-
-  g_free (prediction);
-}
-
-/**
- * gst_ml_video_detection_module_init:
- * @labels: filename or a GST string containing labels information
- *
- * Initilize instance of the image object detection module.
- *
- * return: pointer to a private module struct on success or NULL on failure
- */
-GST_API gpointer
-gst_ml_video_detection_module_init (const gchar * labels);
-
-/**
- * gst_ml_video_detection_module_deinit:
- * @instance: pointer to the private module structure
- *
- * Deinitialize the instance of the image object detection module.
- *
- * return: NONE
- */
-GST_API void
-gst_ml_video_detection_module_deinit (gpointer instance);
-
-/**
- * gst_ml_video_detection_module_process:
- * @instance: pointer to the private module structure
- * @frame: frame containing mapped tensor memory blocks that need processing
- * @predictions: linked list of #GstMLPrediction
- *
- * Parses incoming buffer containing result tensors from a image object
- * detection model and converts that information into a list of predictions.
+ * Post-processing module must define the 3rd argument of the implemented
+ * 'gst_ml_module_process' API as 'GArray *'.
  *
  * return: TRUE on success or FALSE on failure
  */
 GST_API gboolean
-gst_ml_video_detection_module_process (gpointer instance, GstMLFrame * frame,
-                                       GList ** predictions);
+gst_ml_video_detection_module_execute (GstMLModule * module,
+    GstMLFrame * mlframe, GArray * predictions)
+{
+  return gst_ml_module_execute (module, mlframe, (gpointer) predictions);
+}
 
 G_END_DECLS
 

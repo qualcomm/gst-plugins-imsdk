@@ -65,47 +65,32 @@
 #define __GST_QTI_ML_VIDEO_SEGMENTATION_MODULE_H__
 
 #include <gst/gst.h>
-#include <gst/ml/ml-frame.h>
+#include <gst/ml/gstmlmodule.h>
 #include <gst/video/video.h>
 
 G_BEGIN_DECLS
 
 /**
- * gst_ml_video_segmentation_module_init:
- * @labels: filename or a GST string containing labels information
+ * gst_ml_video_segmentation_module_execute:
+ * @module: Pointer to ML post-processing module.
+ * @mlframe: Frame containing mapped tensor memory blocks that need processing.
+ * @vframe: Frame containing mask/image.
  *
- * Initilize instance of the image segmentation module.
+ * Convenient wrapper function used on plugin level to call the module
+ * 'gst_ml_module_process' API via 'gst_ml_module_execute' wrapper in order
+ * to process input tensors.
  *
- * return: pointer to a private module struct on success or NULL on failure
- */
-GST_API gpointer
-gst_ml_video_segmentation_module_init (const gchar * labels);
-
-/**
- * gst_ml_video_segmentation_module_deinit:
- * @instance: pointer to the private module structure
- *
- * Deinitialize the instance of the image segmentation module.
- *
- * return: NONE
- */
-GST_API void
-gst_ml_video_segmentation_module_deinit (gpointer instance);
-
-/**
- * gst_ml_video_segmentation_module_process:
- * @instance: pointer to the private module structure
- * @mlframe: frame containing mapped tensor memory blocks that need processing
- * @vframe: frame containing decode tensor mask/image
- *
- * Parses incoming buffer containing result tensors from a image segmentation
- * model and converts that information into an output image mask.
+ * Post-processing module must define the 3rd argument of the implemented
+ * 'gst_ml_module_process' API as 'GstVideoFrame *'.
  *
  * return: TRUE on success or FALSE on failure
  */
 GST_API gboolean
-gst_ml_video_segmentation_module_process (gpointer instance, GstMLFrame * mlframe,
-                                          GstVideoFrame * vframe);
+gst_ml_video_segmentation_module_execute (GstMLModule * module,
+    GstMLFrame * mlframe, GstVideoFrame * vframe)
+{
+  return gst_ml_module_execute (module, mlframe, (gpointer) vframe);
+}
 
 G_END_DECLS
 
