@@ -2049,7 +2049,7 @@ set_zoom_property (GstElement * element, guint16 * in_magnification,
   gfloat tilt_steps = (pan_max - pan_min) / 2.0;
 
   zoom.y = ((sensor.h - sensor.y) - zoom.h) / 2;
-  zoom.y += (zoom.y * tilt) / tilt_steps;
+  zoom.y -= (zoom.y * tilt) / tilt_steps;
 
   g_value_unset (&value);
   g_value_init (&value, GST_TYPE_ARRAY);
