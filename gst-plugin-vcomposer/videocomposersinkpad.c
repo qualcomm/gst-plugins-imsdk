@@ -136,7 +136,8 @@ gst_video_composer_sinkpad_transform_caps (GstAggregatorPad * pad,
   result = gst_caps_new_empty ();
 
   // In case there is no featureless or memory:GBM caps structure add one.
-  if (!gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
+  if (!gst_caps_is_empty (caps) &&
+      !gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
     structure = gst_caps_get_structure (caps, 0);
     features = gst_caps_features_new (GST_CAPS_FEATURE_MEMORY_GBM, NULL);
 
@@ -158,7 +159,7 @@ gst_video_composer_sinkpad_transform_caps (GstAggregatorPad * pad,
         "chroma-site", "compression", NULL);
 
     gst_caps_append_structure_full (result, structure, features);
-  } else if (!gst_caps_has_feature (caps, NULL)) {
+  } else if (!gst_caps_is_empty (caps) && !gst_caps_has_feature (caps, NULL)) {
     structure = gst_caps_get_structure (caps, 0);
 
     // Make a copy that will be modified.
