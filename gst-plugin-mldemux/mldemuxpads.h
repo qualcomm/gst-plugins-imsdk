@@ -85,7 +85,7 @@ struct _GstMLDemuxSrcPad {
   /// Inherited parent structure.
   GstPad       parent;
 
-  // Output ML tensors info from caps..
+  /// ML tensors info from caps.
   GstMLInfo    *mlinfo;
 
   /// Segment.
