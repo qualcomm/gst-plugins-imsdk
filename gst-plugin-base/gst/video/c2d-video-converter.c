@@ -217,8 +217,12 @@ gst_c2d_video_rotation_get_type (void)
     { 0, NULL, NULL },
   };
 
+  G_LOCK (c2d);
+
   if (!gtype)
     gtype = g_enum_register_static ("GstC2dVideoRotation", variants);
+
+  G_UNLOCK (c2d);
 
   return gtype;
 }
