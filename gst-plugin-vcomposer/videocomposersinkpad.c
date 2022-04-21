@@ -318,6 +318,7 @@ gst_video_composer_sinkpad_getcaps (GstAggregatorPad * pad,
 
   if ((tmpcaps != NULL) && gst_caps_is_empty (tmpcaps)) {
     GST_WARNING_OBJECT (pad, "Peer filter caps are empty!");
+    gst_caps_unref (srccaps);
     return tmpcaps;
   }
 
@@ -335,9 +336,10 @@ gst_video_composer_sinkpad_getcaps (GstAggregatorPad * pad,
         gst_caps_intersect_full (peercaps, srccaps, GST_CAPS_INTERSECT_FIRST);
     GST_DEBUG_OBJECT (pad, "Intersected caps %" GST_PTR_FORMAT, tmpcaps);
 
+    gst_caps_unref (srccaps);
     gst_caps_unref (peercaps);
   } else {
-    tmpcaps = gst_caps_ref (srccaps);
+    tmpcaps = srccaps;
   }
 
   // Check whether the intersected sink caps can be transformed.
