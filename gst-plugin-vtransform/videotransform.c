@@ -1597,6 +1597,10 @@ gst_video_transform_fixate_caps (GstBaseTransform * trans,
     }
   }
 
+  // Remove compression field if caps do not contain memory:GBM feature.
+  if (!gst_caps_has_feature (outcaps, GST_CAPS_FEATURE_MEMORY_GBM))
+    gst_structure_remove_field (output, "compression");
+
   // Free the local copy of the input caps structure.
   gst_structure_free (input);
 
