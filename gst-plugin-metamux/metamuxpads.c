@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -63,8 +63,9 @@ gst_meta_mux_data_pad_class_init (GstMetaMuxDataPadClass * klass)
 void
 gst_meta_mux_data_pad_init (GstMetaMuxDataPad * pad)
 {
+  pad->type = GST_DATA_TYPE_UNKNOWN;
   gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
-  pad->queue = g_queue_new ();
   pad->stash = NULL;
+  pad->queue = g_queue_new ();
 }
 

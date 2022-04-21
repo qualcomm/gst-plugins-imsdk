@@ -52,17 +52,20 @@ GST_DEBUG_CATEGORY_STATIC (gst_meta_mux_debug);
 #define gst_meta_mux_parent_class parent_class
 G_DEFINE_TYPE (GstMetaMux, gst_meta_mux, GST_TYPE_ELEMENT);
 
+#define GARBAGE_SYMBOLS "\x10\xA0"
+
 #define GST_METAMUX_MEDIA_CAPS \
     "video/x-raw(ANY); "       \
     "audio/x-raw(ANY)"
 
-#define GST_METAMUX_DATA_CAPS   \
-    "text/x-raw, format = utf8" \
+#define GST_METAMUX_DATA_CAPS     \
+    "text/x-raw, format = utf8"
 
 enum
 {
   PROP_0,
 };
+
 
 static GstStaticPadTemplate gst_meta_mux_media_sink_template =
     GST_STATIC_PAD_TEMPLATE("sink",
@@ -139,6 +142,79 @@ gst_meta_mux_flush_queues (GstMetaMux * muxer)
   GST_METAMUX_UNLOCK (muxer);
 }
 
+static gboolean
+gst_meta_mux_parse_string_metadata (GstMetaMux * muxer,
+    GstMetaMuxDataPad * dpad, GstBuffer * buffer)
+{
+  GstMapInfo memmap = {};
+  gchar **strings = NULL, *string = NULL;
+  guint idx = 0;
+
+  if (!gst_buffer_map (buffer, &memmap, GST_MAP_READ)) {
+    GST_ERROR_OBJECT (dpad, "Failed to map buffer %p!", buffer);
+    return FALSE;
+  }
+
+  // Split the data into separate serialized GValue-s for parsing.
+  strings = g_strsplit ((const gchar *) memmap.data, "\n", -1);
+
+  // Iterate over the serialized strings and turn them into GstValueList.
+  for (idx = 0; strings[idx] != NULL; idx++) {
+    GValue *value = NULL;
+
+    // Check for empty string and skip it.
+    if (g_strcmp0 (strings[idx], "") == 0)
+      continue;
+
+    value = g_value_init (g_new0 (GValue, 1), GST_TYPE_LIST);
+
+    // If deserialize fails it mangles the string so work with local copy.
+    string = (dpad->stash != NULL) ?
+        g_strconcat (dpad->stash, strings[idx], NULL) : g_strdup (strings[idx]);
+
+    // Splitting data sometimes adds garbage symbols at the end, so remove them.
+    string = g_strdelimit (string, GARBAGE_SYMBOLS, '\0');
+
+    if (!gst_value_deserialize (value, string)) {
+      GST_TRACE_OBJECT (dpad, "Failed to deserialize data!");
+
+      g_free (string);
+
+      // Could be a partial string (e.g. when reading from a file). Stash the
+      // string, combine it with the 1st string from next buffer and try again.
+      if (dpad->stash != NULL) {
+        string = g_strconcat (dpad->stash, strings[idx], NULL);
+        g_free (dpad->stash);
+      } else {
+        string = g_strdup (strings[idx]);
+      }
+
+      // Splitting data sometimes adds garbage symbols at the end, so remove them.
+      dpad->stash = g_strdelimit (string, GARBAGE_SYMBOLS, '\0');
+
+      g_value_unset (value);
+      g_free (value);
+
+      continue;
+    }
+
+    g_clear_pointer (&(dpad)->stash, g_free);
+    g_free (string);
+
+    GST_METAMUX_LOCK (muxer);
+
+    g_queue_push_tail (dpad->queue, value);
+    g_cond_signal (&(muxer)->wakeup);
+
+    GST_METAMUX_UNLOCK (muxer);
+  }
+
+  g_strfreev (strings);
+  gst_buffer_unmap (buffer, &memmap);
+
+  return TRUE;
+}
+
 static void
 gst_meta_mux_process_metadata_entry (GstMetaMux * muxer, GstBuffer * buffer,
     const GValue * value, const guint index)
@@ -151,7 +227,7 @@ gst_meta_mux_process_metadata_entry (GstMetaMux * muxer, GstBuffer * buffer,
   entry = gst_value_list_get_value (value, index);
   structure = GST_STRUCTURE (g_value_dup_boxed (entry));
 
-  // Fetch bounding box rectangle and fill ROI coordinates it it exists.
+  // Fetch bounding box rectangle if it exists and fill ROI coordinates.
   entry = gst_structure_get_value (structure, "rectangle");
 
   if ((entry != NULL) && (gst_value_array_get_size (entry) != 4)) {
@@ -177,7 +253,7 @@ gst_meta_mux_process_metadata_entry (GstMetaMux * muxer, GstBuffer * buffer,
         (GST_VIDEO_INFO_HEIGHT (muxer->vinfo) - y) : height;
   }
 
-  // Remove the rectangle & aspect-ratio fields as that data is no longer needed.
+  // Remove the rectangle field if it exists as that data is no longer needed.
   gst_structure_remove_field (structure, "rectangle");
 
   meta = gst_buffer_add_video_region_of_interest_meta (buffer,
@@ -228,19 +304,19 @@ gst_meta_mux_main_sink_setcaps (GstMetaMux * muxer, GstPad * pad,
 {
   GstCaps *srccaps = NULL, *intersect = NULL;
 
-  GST_DEBUG_OBJECT (muxer, "Setting caps %" GST_PTR_FORMAT, caps);
+  GST_DEBUG_OBJECT (pad, "Setting caps %" GST_PTR_FORMAT, caps);
 
   // Get the negotiated caps between the srcpad and its peer.
   srccaps = gst_pad_get_allowed_caps (muxer->srcpad);
-  GST_DEBUG_OBJECT (muxer, "Source caps %" GST_PTR_FORMAT, srccaps);
+  GST_DEBUG_OBJECT (pad, "Source caps %" GST_PTR_FORMAT, srccaps);
 
   intersect = gst_caps_intersect (srccaps, caps);
-  GST_DEBUG_OBJECT (muxer, "Intersected caps %" GST_PTR_FORMAT, intersect);
+  GST_DEBUG_OBJECT (pad, "Intersected caps %" GST_PTR_FORMAT, intersect);
 
   gst_caps_unref (srccaps);
 
   if ((intersect == NULL) || gst_caps_is_empty (intersect)) {
-    GST_ERROR_OBJECT (muxer, "Source and sink caps do not intersect!");
+    GST_ERROR_OBJECT (pad, "Source and sink caps do not intersect!");
 
     if (intersect != NULL)
       gst_caps_unref (intersect);
@@ -260,15 +336,15 @@ gst_meta_mux_main_sink_setcaps (GstMetaMux * muxer, GstPad * pad,
   gst_caps_unref (intersect);
 
   // Extract audio/video information from caps.
-  if (gst_caps_is_media_type (srccaps, "video/x-raw")) {
+  if (gst_caps_is_media_type (caps, "video/x-raw")) {
     if (muxer->vinfo != NULL)
       gst_video_info_free (muxer->vinfo);
 
     muxer->vinfo = gst_video_info_new ();
 
-    if (!gst_video_info_from_caps (muxer->vinfo, srccaps)) {
-      GST_ERROR_OBJECT (muxer, "Invalid caps %" GST_PTR_FORMAT, caps);
-      gst_caps_unref (srccaps);
+    if (!gst_video_info_from_caps (muxer->vinfo, caps)) {
+      GST_ERROR_OBJECT (pad, "Invalid caps %" GST_PTR_FORMAT, caps);
+      gst_caps_unref (caps);
       return FALSE;
     }
   } else {
@@ -277,15 +353,15 @@ gst_meta_mux_main_sink_setcaps (GstMetaMux * muxer, GstPad * pad,
 
     muxer->ainfo = gst_audio_info_new ();
 
-    if (!gst_audio_info_from_caps (muxer->ainfo, srccaps)) {
-      GST_ERROR_OBJECT (muxer, "Invalid caps %" GST_PTR_FORMAT, caps);
-      gst_caps_unref (srccaps);
+    if (!gst_audio_info_from_caps (muxer->ainfo, caps)) {
+      GST_ERROR_OBJECT (pad, "Invalid caps %" GST_PTR_FORMAT, caps);
+      gst_caps_unref (caps);
       return FALSE;
     }
   }
 
-  GST_DEBUG_OBJECT (muxer, "Negotiated caps %" GST_PTR_FORMAT, srccaps);
-  return gst_pad_push_event (muxer->srcpad, gst_event_new_caps (srccaps));
+  GST_DEBUG_OBJECT (pad, "Negotiated caps %" GST_PTR_FORMAT, caps);
+  return gst_pad_push_event (muxer->srcpad, gst_event_new_caps (caps));
 }
 
 static gboolean
@@ -314,21 +390,21 @@ gst_meta_mux_main_sink_event (GstPad * pad, GstObject * parent, GstEvent * event
 
       gst_event_copy_segment (event, &segment);
 
-      GST_DEBUG_OBJECT (muxer, "Got segment: %" GST_SEGMENT_FORMAT, &segment);
+      GST_DEBUG_OBJECT (pad, "Got segment: %" GST_SEGMENT_FORMAT, &segment);
 
       if (segment.format == GST_FORMAT_BYTES) {
         gst_segment_init (&muxer->segment, GST_FORMAT_TIME);
 
         muxer->segment.start = segment.start;
 
-        GST_DEBUG_OBJECT (muxer, "Converted incoming segment to TIME: %"
+        GST_DEBUG_OBJECT (pad, "Converted incoming segment to TIME: %"
             GST_SEGMENT_FORMAT, &muxer->segment);
       } else if (segment.format == GST_FORMAT_TIME) {
-        GST_DEBUG_OBJECT (muxer, "Replacing previous segment: %"
+        GST_DEBUG_OBJECT (pad, "Replacing previous segment: %"
             GST_SEGMENT_FORMAT, &muxer->segment);
         gst_segment_copy_into (&segment, &muxer->segment);
       } else {
-        GST_ERROR_OBJECT (muxer, "Unsupported SEGMENT format: %s!",
+        GST_ERROR_OBJECT (pad, "Unsupported SEGMENT format: %s!",
             gst_format_get_name (segment.format));
         return FALSE;
       }
@@ -477,17 +553,73 @@ static gboolean
 gst_meta_mux_data_sink_event (GstPad * pad, GstObject * parent,
     GstEvent * event)
 {
-  GstMetaMux *muxer = GST_METAMUX (parent);
-
-  GST_LOG_OBJECT (muxer, "Received %s event: %" GST_PTR_FORMAT,
+  GST_LOG_OBJECT (pad, "Received %s event: %" GST_PTR_FORMAT,
       GST_EVENT_TYPE_NAME (event), event);
 
   switch (GST_EVENT_TYPE (event)) {
     case GST_EVENT_CAPS:
-    case GST_EVENT_SEGMENT:
+    {
+      GstCaps *caps = NULL, *tmplcaps = NULL, *intersect = NULL;
+
+      gst_event_parse_caps (event, &caps);
+      gst_event_unref (event);
+
+      GST_DEBUG_OBJECT (pad, "Setting caps %" GST_PTR_FORMAT, caps);
+
+      // Get the negotiated caps between the srcpad and its peer.
+      tmplcaps = gst_pad_get_pad_template_caps (pad);
+      GST_DEBUG_OBJECT (pad, "Template caps %" GST_PTR_FORMAT, tmplcaps);
+
+      intersect = gst_caps_intersect (tmplcaps, caps);
+      GST_DEBUG_OBJECT (pad, "Intersected caps %" GST_PTR_FORMAT, intersect);
+
+      gst_caps_unref (tmplcaps);
+
+      if ((intersect == NULL) || gst_caps_is_empty (intersect)) {
+        GST_ERROR_OBJECT (pad, "Template and sink caps do not intersect!");
+
+        if (intersect != NULL)
+          gst_caps_unref (intersect);
+
+        return FALSE;
+      }
+
+      if (gst_caps_is_media_type (caps, "text/x-raw"))
+        GST_META_MUX_DATA_PAD (pad)->type = GST_DATA_TYPE_TEXT;
+      else
+        GST_META_MUX_DATA_PAD (pad)->type = GST_DATA_TYPE_UNKNOWN;
+
+      return TRUE;
+    }
     case GST_EVENT_FLUSH_START:
-    case GST_EVENT_FLUSH_STOP:
+    {
+      GstMetaMux *muxer = GST_METAMUX (parent);
+
+      GST_METAMUX_LOCK (muxer);
+      // Flushing flag has been already set, just notify the thread.
+      g_cond_signal (&(muxer)->wakeup);
+      GST_METAMUX_UNLOCK (muxer);
+
+      gst_event_unref (event);
+      return TRUE;
+    }
     case GST_EVENT_EOS:
+    {
+      GstMetaMux *muxer = GST_METAMUX (parent);
+
+      GST_OBJECT_LOCK (pad);
+      GST_OBJECT_FLAG_SET (pad, GST_PAD_FLAG_EOS);
+      GST_OBJECT_UNLOCK (pad);
+
+      GST_METAMUX_LOCK (muxer);
+      g_cond_signal (&(muxer)->wakeup);
+      GST_METAMUX_UNLOCK (muxer);
+
+      gst_event_unref (event);
+      return TRUE;
+    }
+    case GST_EVENT_FLUSH_STOP:
+    case GST_EVENT_SEGMENT:
     case GST_EVENT_GAP:
     case GST_EVENT_STREAM_START:
       // Drop the event, those events are forwarded by the main sink pad.
@@ -506,9 +638,9 @@ gst_meta_mux_data_sink_chain (GstPad * pad, GstObject * parent,
 {
   GstMetaMux *muxer = GST_METAMUX (parent);
   GstMetaMuxDataPad *dpad = GST_META_MUX_DATA_PAD (pad);
-  GstMapInfo memmap = {};
-  gchar **strings = NULL, *string = NULL;
-  guint idx = 0;
+  GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
+  GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
+  gboolean success = FALSE;
 
   if (GST_PAD_IS_FLUSHING (muxer->srcpad)) {
     gst_buffer_unref (buffer);
@@ -521,82 +653,27 @@ gst_meta_mux_data_sink_chain (GstPad * pad, GstObject * parent,
     return GST_FLOW_EOS;
   }
 
-  GST_TRACE_OBJECT (muxer, "Received buffer at %s pad of size %"
+  GST_TRACE_OBJECT (pad, "Received buffer at %s pad of size %"
       G_GSIZE_FORMAT " with pts %" GST_TIME_FORMAT ", dts %" GST_TIME_FORMAT
       ", duration %" GST_TIME_FORMAT, GST_PAD_NAME (pad),
       gst_buffer_get_size (buffer), GST_TIME_ARGS (GST_BUFFER_PTS (buffer)),
       GST_TIME_ARGS (GST_BUFFER_DTS (buffer)),
       GST_TIME_ARGS (GST_BUFFER_DURATION (buffer)));
 
-  if (!gst_buffer_map (buffer, &memmap, GST_MAP_READ)) {
-    GST_ERROR_OBJECT (muxer, "Failed to map buffer!");
+  ts_begin = gst_util_get_timestamp ();
 
-    gst_buffer_unref (buffer);
-    return GST_FLOW_ERROR;
-  }
+  if (dpad->type == GST_DATA_TYPE_TEXT)
+    success = gst_meta_mux_parse_string_metadata (muxer, dpad, buffer);
 
-  // Split the data into separate serialized GValue-s for parsing.
-  strings = g_strsplit_set ((const gchar *) memmap.data, "\n", 0);
+  ts_end = gst_util_get_timestamp ();
+  tsdelta = GST_CLOCK_DIFF (ts_begin, ts_end);
 
-  // Iterate over the serialized strings and turn them into GstValueList.
-  for (idx = 0; strings[idx] != NULL; idx++) {
-    GValue *value = NULL;
+  GST_LOG_OBJECT (pad, "Parse took %" G_GINT64_FORMAT ".%03"
+      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (tsdelta),
+      (GST_TIME_AS_USECONDS (tsdelta) % 1000));
 
-    // Check for empty string and skip it.
-    if (g_strcmp0 (strings[idx], "") == 0)
-      continue;
-
-    if (!g_utf8_validate (strings[idx], -1, NULL)) {
-      GST_WARNING_OBJECT (muxer, "Extracted buffer data at %s pad and index %u"
-          " is not UTF-8: '%s'!", GST_PAD_NAME (pad), idx, strings[idx]);
-      continue;
-    }
-
-    value = g_value_init (g_new0 (GValue, 1), GST_TYPE_LIST);
-
-    // If deserialize fails it mangles the string so work with local copy.
-    string = (dpad->stash != NULL) ?
-        g_strconcat (dpad->stash, strings[idx], NULL) : g_strdup (strings[idx]);
-
-    if (!gst_value_deserialize (value, string)) {
-      GST_DEBUG_OBJECT (muxer, "Failed to deserialize data at %s pad!",
-          GST_PAD_NAME (pad));
-
-      g_free (string);
-
-      // Could be a partial string (e.g. when reading from a file). Stash the
-      // string, combine it with the 1st string from next buffer and try again.
-      if (dpad->stash != NULL) {
-        string = g_strconcat (dpad->stash, strings[idx], NULL);
-
-        g_free (dpad->stash);
-        dpad->stash = string;
-      } else {
-        dpad->stash = g_strdup (strings[idx]);
-      }
-
-      g_value_unset (value);
-      g_free (value);
-
-      continue;
-    }
-
-    g_clear_pointer (&(dpad)->stash, g_free);
-    g_free (string);
-
-    GST_METAMUX_LOCK (muxer);
-
-    g_queue_push_tail (dpad->queue, value);
-    g_cond_signal (&(muxer)->wakeup);
-
-    GST_METAMUX_UNLOCK (muxer);
-  }
-
-  g_strfreev (strings);
-  gst_buffer_unmap (buffer, &memmap);
   gst_buffer_unref (buffer);
-
-  return GST_FLOW_OK;
+  return success ? GST_FLOW_OK : GST_FLOW_ERROR;
 }
 
 static gboolean
