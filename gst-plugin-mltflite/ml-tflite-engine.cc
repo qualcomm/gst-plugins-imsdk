@@ -25,6 +25,40 @@
  * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted (subject to the limitations in the
+ * disclaimer below) provided that the following conditions are met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *
+ *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ *
+ * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+ * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+ * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+ * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #ifdef HAVE_CONFIG_H
@@ -36,8 +70,9 @@
 #include <tensorflow/lite/model.h>
 #include <tensorflow/lite/interpreter.h>
 #include <tensorflow/lite/kernels/register.h>
-#include <tensorflow/lite/tools/evaluation/utils.h>
+#include <tensorflow/lite/delegates/nnapi/nnapi_delegate.h>
 #include <tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h>
+#include <tensorflow/lite/delegates/gpu/delegate.h>
 
 #define GST_ML_RETURN_VAL_IF_FAIL(expression, value, ...) \
 { \
@@ -95,11 +130,14 @@ struct _GstMLTFLiteEngine
 
   // TFLite flatbuffer model.
   // Raw pointer to c++ unique_ptr because struct is allocated via malloc.
-  std::unique_ptr<tflite::FlatBufferModel> model;
+  tflite::FlatBufferModel *model;
 
   // TFLite model interpreter.
   // Raw pointer to c++ unique_ptr because struct is allocated via malloc.
-  std::unique_ptr<tflite::Interpreter> interpreter;
+  tflite::Interpreter *interpreter;
+
+  // TFLite model delegate.
+  TfLiteDelegate *delegate;
 };
 
 static GstDebugCategory *
@@ -123,15 +161,26 @@ gst_ml_tflite_delegate_get_type (void)
     { GST_ML_TFLITE_DELEGATE_NONE,
         "No delegate, CPU is used for all operations", "none"
     },
-    { GST_ML_TFLITE_DELEGATE_DSP,
-        "Run the processing on the Hexagon DSP through the Android NN API",
+    { GST_ML_TFLITE_DELEGATE_NNAPI_DSP,
+        "Run the processing on the DSP through the Android NN API. "
+        "Unsupported operations will fallback on NPU, GPU or CPU",
         "nnapi-dsp"
     },
-    { GST_ML_TFLITE_DELEGATE_NPU,
-        "Run the processing on the NPU through the Android NN API", "nnapi-npu"
+    { GST_ML_TFLITE_DELEGATE_NNAPI_GPU,
+        "Run the processing on the GPU through the Android NN API. "
+        "Unsupported operations will fallback on DSP, NPU or CPU",
+        "nnapi-gpu"
+    },
+    { GST_ML_TFLITE_DELEGATE_NNAPI_NPU,
+        "Run the processing on the NPU through the Android NN API. "
+        "Unsupported operations will fallback on DSP, GPU or CPU",
+        "nnapi-npu"
     },
     { GST_ML_TFLITE_DELEGATE_HEXAGON,
         "Run the processing directly on the Hexagon DSP", "hexagon"
+    },
+    { GST_ML_TFLITE_DELEGATE_GPU,
+        "Run the processing directly on the GPU", "gpu"
     },
     {0, NULL, NULL},
   };
@@ -164,6 +213,127 @@ get_opt_enum (GstStructure * settings, const gchar * opt, GType type, gint dval)
     result : dval;
 }
 
+static TfLiteDelegate *
+gst_ml_tflite_engine_delegate_new (gint type)
+{
+  TfLiteDelegate *delegate = NULL;
+
+  switch (type) {
+    case GST_ML_TFLITE_DELEGATE_NNAPI_DSP:
+    {
+      tflite::StatefulNnApiDelegate::Options options;
+
+      // Set the higher ExecutionPreference bits so that the DSP is chosen.
+      options.execution_preference = static_cast<
+          tflite::StatefulNnApiDelegate::Options::ExecutionPreference>(0x00100000);
+
+      if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
+        GST_WARNING ("Failed to create Android NN Framework DSP delegate!");
+        break;
+      }
+
+      GST_INFO ("Using Android NN Framework DSP delegate");
+      return delegate;
+    }
+    case GST_ML_TFLITE_DELEGATE_NNAPI_GPU:
+    {
+      tflite::StatefulNnApiDelegate::Options options;
+
+      // Set the higher ExecutionPreference bits so that the GPU is chosen.
+      options.execution_preference = static_cast<
+          tflite::StatefulNnApiDelegate::Options::ExecutionPreference>(0x00200000);
+
+      if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
+        GST_WARNING ("Failed to create Android NN Framework DSP delegate!");
+        break;
+      }
+
+      GST_INFO ("Using Android NN Framework GPU delegate");
+      return delegate;
+    }
+    case GST_ML_TFLITE_DELEGATE_NNAPI_NPU:
+    {
+      tflite::StatefulNnApiDelegate::Options options;
+
+      // Set the higher ExecutionPreference bits so that the NPU is chosen.
+      options.execution_preference = static_cast<
+          tflite::StatefulNnApiDelegate::Options::ExecutionPreference>(0x00300000);
+
+      if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
+        GST_WARNING ("Failed to create Android NN Framework NPU delegate!");
+        break;
+      }
+
+      GST_INFO ("Using Android NN Framework NPU delegate");
+      return delegate;
+    }
+    case GST_ML_TFLITE_DELEGATE_HEXAGON:
+    {
+      TfLiteHexagonDelegateOptions options = {};
+
+      // Initialize the Hexagon unit.
+      TfLiteHexagonInit();
+
+      options.debug_level = 0;
+      options.powersave_level = 0;
+      options.print_graph_profile = false;
+      options.print_graph_debug = false;
+
+      if ((delegate = TfLiteHexagonDelegateCreate (&options)) == NULL) {
+        GST_WARNING ("Failed to create Hexagon delegate!");
+        break;
+      }
+
+      GST_INFO ("Using Hexagon delegate");
+      return delegate;
+    }
+    case GST_ML_TFLITE_DELEGATE_GPU:
+    {
+      TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
+
+      if ((delegate = TfLiteGpuDelegateV2Create (&options)) == NULL) {
+        GST_WARNING ("Failed to create GPU delegate!");
+        break;
+      }
+
+      GST_INFO ("Using GPU delegate");
+      return delegate;
+    }
+    default:
+      GST_INFO ("No delegate will be used");
+      break;
+  }
+
+  return NULL;
+}
+
+
+static void
+gst_ml_tflite_engine_delegate_free (TfLiteDelegate * delegate, gint type)
+{
+  if (NULL == delegate)
+    return;
+
+  switch (type) {
+    case GST_ML_TFLITE_DELEGATE_NNAPI_DSP:
+    case GST_ML_TFLITE_DELEGATE_NNAPI_GPU:
+    case GST_ML_TFLITE_DELEGATE_NNAPI_NPU:
+      delete reinterpret_cast<tflite::StatefulNnApiDelegate*>(delegate);
+      break;
+    case GST_ML_TFLITE_DELEGATE_HEXAGON:
+      TfLiteHexagonDelegateDelete (delegate);
+      TfLiteHexagonTearDown ();
+      break;;
+    case GST_ML_TFLITE_DELEGATE_GPU:
+      TfLiteGpuDelegateV2Delete (delegate);
+      break;
+    default:
+      break;
+  }
+
+  return;
+}
+
 GstMLTFLiteEngine *
 gst_ml_tflite_engine_new (GstStructure * settings)
 {
@@ -173,7 +343,7 @@ gst_ml_tflite_engine_new (GstStructure * settings)
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
 
-  engine = new GstMLTFLiteEngine;
+  engine = g_slice_new0 (GstMLTFLiteEngine);
   g_return_val_if_fail (engine != NULL, NULL);
 
   engine->ininfo = gst_ml_info_new ();
@@ -186,108 +356,37 @@ gst_ml_tflite_engine_new (GstStructure * settings)
   GST_ML_RETURN_VAL_IF_FAIL_WITH_CLEAN (filename != NULL, NULL,
       gst_ml_tflite_engine_free (engine), "No model file name!");
 
-  engine->model = tflite::FlatBufferModel::BuildFromFile (filename);
+  engine->model = tflite::FlatBufferModel::BuildFromFile (filename).release();
   GST_ML_RETURN_VAL_IF_FAIL_WITH_CLEAN (engine->model, NULL,
       gst_ml_tflite_engine_free (engine), "Failed to load model file '%s'!",
       filename);
 
   GST_DEBUG ("Loaded model file '%s'!", filename);
 
+  std::unique_ptr<tflite::Interpreter> interpreter;
   tflite::InterpreterBuilder builder (engine->model->GetModel(), resolver);
-  builder (&(engine)->interpreter);
+
+  builder (&interpreter);
+  engine->interpreter = interpreter.release();
 
   GST_ML_RETURN_VAL_IF_FAIL_WITH_CLEAN (engine->interpreter, NULL,
       gst_ml_tflite_engine_free (engine), "Failed to construct interpreter!");
-
-  switch (GET_OPT_DELEGATE (engine->settings)) {
-    case GST_ML_TFLITE_DELEGATE_DSP:
-    {
-      tflite::StatefulNnApiDelegate::Options options;
-      TfLiteStatus status = TfLiteStatus::kTfLiteOk;
-
-      auto delegate = tflite::Interpreter::TfLiteDelegatePtr (
-        new tflite::StatefulNnApiDelegate(options), [](TfLiteDelegate* dlg) {
-          delete reinterpret_cast<tflite::StatefulNnApiDelegate*>(dlg);
-        }
-      );
-
-      if (!delegate) {
-        GST_WARNING ("Failed to create NN Framework delegate!");
-        break;
-      }
-
-      status = engine->interpreter->ModifyGraphWithDelegate(delegate.get());
-      if (status != TfLiteStatus::kTfLiteOk)
-        GST_WARNING ("Failed to modify graph with NN Framework delegate!");
-
-      break;
-    }
-    case GST_ML_TFLITE_DELEGATE_HEXAGON:
-    {
-      TfLiteHexagonDelegateOptions options = {};
-      TfLiteStatus status = TfLiteStatus::kTfLiteOk;
-
-      // Initialize the Hexagon unit.
-      TfLiteHexagonInit();
-
-      options.debug_level = 0;
-      options.powersave_level = 0;
-      options.print_graph_profile = false;
-      options.print_graph_debug = false;
-
-      auto delegate = tflite::Interpreter::TfLiteDelegatePtr (
-        TfLiteHexagonDelegateCreate(&options), [](TfLiteDelegate* dlg) {
-          TfLiteHexagonDelegateDelete(dlg);
-          TfLiteHexagonTearDown();
-        }
-      );
-
-      if (!delegate) {
-        GST_WARNING ("Failed to create NN Framework delegate!");
-        break;
-      }
-
-      status = engine->interpreter->ModifyGraphWithDelegate(delegate.get());
-      if (status != TfLiteStatus::kTfLiteOk)
-        GST_WARNING ("Failed to modify graph with HEXAGON delegate!");
-
-      break;
-    }
-    case GST_ML_TFLITE_DELEGATE_NPU:
-    {
-      tflite::StatefulNnApiDelegate::Options options;
-      TfLiteStatus status = TfLiteStatus::kTfLiteOk;
-
-      // Set the higher ExecutionPreference bits so that the NPU is chosen.
-      options.execution_preference = static_cast<
-          tflite::StatefulNnApiDelegate::Options::ExecutionPreference>(0x00300000);
-
-      auto delegate = tflite::Interpreter::TfLiteDelegatePtr (
-        new tflite::StatefulNnApiDelegate(options), [](TfLiteDelegate* dlg) {
-          delete reinterpret_cast<tflite::StatefulNnApiDelegate*>(dlg);
-        }
-      );
-
-      if (!delegate) {
-        GST_WARNING ("Failed to create NN Framework delegate!");
-        break;
-      }
-
-      status = engine->interpreter->ModifyGraphWithDelegate(delegate.get());
-      if (status != TfLiteStatus::kTfLiteOk)
-        GST_WARNING ("Failed to modify graph with NPU delegate!");
-
-      break;
-    }
-    default:
-      GST_INFO ("No delegate will be used");
-      break;
-  }
 
   n_threads = GET_OPT_STHREADS (engine->settings);
 
   engine->interpreter->SetNumThreads(n_threads);
   GST_DEBUG ("Number of interpreter threads: %u", n_threads);
+
+  engine->delegate = gst_ml_tflite_engine_delegate_new (
+      GET_OPT_DELEGATE (engine->settings));
+
+  if (engine->delegate != NULL) {
+    TfLiteStatus status =
+        engine->interpreter->ModifyGraphWithDelegate(engine->delegate);
+
+    if (status != TfLiteStatus::kTfLiteOk)
+      GST_WARNING ("Failed to modify graph with delegate!");
+  }
 
   GST_ML_RETURN_VAL_IF_FAIL_WITH_CLEAN (
       engine->interpreter->AllocateTensors() == kTfLiteOk, NULL,
@@ -376,6 +475,15 @@ gst_ml_tflite_engine_free (GstMLTFLiteEngine * engine)
   if (NULL == engine)
     return;
 
+  if (engine->interpreter != NULL)
+    delete engine->interpreter;
+
+  if (engine->model != NULL)
+    delete engine->model;
+
+  gst_ml_tflite_engine_delegate_free (engine->delegate,
+      GET_OPT_DELEGATE (engine->settings));
+
   if (engine->outinfo != NULL) {
     gst_ml_info_free (engine->outinfo);
     engine->outinfo = NULL;
@@ -392,7 +500,7 @@ gst_ml_tflite_engine_free (GstMLTFLiteEngine * engine)
   }
 
   GST_INFO ("Destroyed MLE TFLite engine: %p", engine);
-  delete engine;
+  g_slice_free (GstMLTFLiteEngine, engine);
 }
 
 const GstMLInfo *
@@ -434,20 +542,20 @@ gst_ml_tflite_engine_execute (GstMLTFLiteEngine * engine,
     gint input = engine->interpreter->inputs()[idx];
     TfLiteTensor *tensor = engine->interpreter->tensor(input);
 
-    tensor->data.raw =
-        reinterpret_cast<char*>(GST_ML_FRAME_BLOCK_DATA (inframe, idx));
+    memcpy (tensor->data.raw, GST_ML_FRAME_BLOCK_DATA (inframe, idx),
+        GST_ML_FRAME_BLOCK_SIZE (inframe, idx));
   }
+
+  if (!(success = (engine->interpreter->Invoke() == 0)))
+    GST_ERROR ("Model execution failed!");
 
   for (idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
     gint output = engine->interpreter->outputs()[idx];
     TfLiteTensor *tensor = engine->interpreter->tensor(output);
 
-    tensor->data.raw =
-        reinterpret_cast<char*>(GST_ML_FRAME_BLOCK_DATA (outframe, idx));
+    memcpy (GST_ML_FRAME_BLOCK_DATA (outframe, idx), tensor->data.raw,
+        GST_ML_FRAME_BLOCK_SIZE (outframe, idx));
   }
-
-  if (!(success = (engine->interpreter->Invoke() == 0)))
-    GST_ERROR ("Model execution failed!");
 
   return success;
 }
