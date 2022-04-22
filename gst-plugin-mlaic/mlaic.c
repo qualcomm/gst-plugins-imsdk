@@ -121,7 +121,7 @@ gst_engine_request_new ()
       GST_TYPE_ENGINE_REQUEST, NULL, NULL,
       (GstMiniObjectFreeFunction) gst_engine_request_free);
 
-  request->id = -1;
+  request->id = GST_ML_AIC_INVALID_ID;
   request->time = GST_CLOCK_TIME_NONE;
 
   return request;
@@ -261,7 +261,6 @@ gst_ml_aic_create_pool (GstPad * pad, GstCaps * caps)
   return pool;
 }
 
-
 static gboolean
 gst_ml_aic_propose_allocation (GstPad * pad, GstQuery * query)
 {
@@ -386,7 +385,11 @@ gst_ml_aic_prepare_output_buffer (GstPad * pad, GstBuffer * inbuffer,
     return FALSE;
   }
 
-  if (!g_hash_table_contains (bufpairs, inbuffer)) {
+  if (gst_buffer_get_size (inbuffer) == 0 &&
+      GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP)) {
+    // Input is marked as GAP, nothing to process. Create a GAP output buffer.
+    *outbuffer = gst_buffer_new ();
+  } else if (!g_hash_table_contains (bufpairs, inbuffer)) {
     // Retrieve new output buffer from the pool.
     if (gst_buffer_pool_acquire_buffer (pool, outbuffer, NULL) != GST_FLOW_OK) {
       GST_ERROR_OBJECT (pad, "Failed to acquire output buffer!");
@@ -422,10 +425,40 @@ gst_ml_aic_prepare_output_buffer (GstPad * pad, GstBuffer * inbuffer,
   gst_buffer_copy_into (*outbuffer, inbuffer,
       GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
 
+  // Copy the offset field as it may contain channels data for batched buffers.
+  GST_BUFFER_OFFSET (*outbuffer) = GST_BUFFER_OFFSET (inbuffer);
+
   // Transfer GstProtectionMeta entries from input to the output buffer.
   gst_buffer_copy_protection_meta (*outbuffer, inbuffer);
 
   return TRUE;
+}
+
+static void
+gst_ml_aic_push_request (GstPad * sinkpad, GstEngineRequest * request)
+{
+  GstPad *srcpad = NULL;
+  GstDataQueueItem *item = NULL;
+
+  GST_ML_AIC_SINKPAD_LOCK (sinkpad);
+  GST_ML_AIC_SINKPAD (sinkpad)->segment.position =
+      GST_BUFFER_TIMESTAMP (request->outframe.buffer);
+  GST_ML_AIC_SINKPAD_UNLOCK (sinkpad);
+
+  item = g_slice_new0 (GstDataQueueItem);
+  item->object = GST_MINI_OBJECT (request);
+  item->visible = TRUE;
+  item->destroy = gst_ml_aic_free_queue_item;
+
+  // Retrieve the corresponding source pad.
+  srcpad = gst_ml_aic_other_pad (sinkpad);
+
+  // Push the request into the queue or free it on failure.
+  if (!gst_data_queue_push (GST_ML_AIC_SRCPAD (srcpad)->requests, item))
+    item->destroy (item);
+
+  gst_object_unref (srcpad);
+  return;
 }
 
 static void
@@ -466,6 +499,14 @@ gst_ml_aic_src_worker_task (gpointer userdata)
     // Decrease the request reference count as it is no longer needed.
     gst_engine_request_unref (request);
 
+    // GAP buffer, nothing further to do. Propagate buffer downstream.
+    if (gst_buffer_get_size (buffer) == 0 &&
+        GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP)) {
+      GST_TRACE_OBJECT (pad, "Pushing GAP buffer downstream");
+      gst_pad_push (pad, buffer);
+      return;
+    }
+
     // Create a new buffer wrapper to hold a reference to processed buffer.
     outbuffer = gst_buffer_new ();
 
@@ -493,6 +534,9 @@ gst_ml_aic_src_worker_task (gpointer userdata)
     // Copy the flags and timestamps from the processed buffer.
     gst_buffer_copy_into (outbuffer, buffer, GST_BUFFER_COPY_FLAGS |
         GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
+
+    // Copy the offset field as it may contain channels data for batched buffers.
+    GST_BUFFER_OFFSET (outbuffer) = GST_BUFFER_OFFSET (buffer);
 
     // Transfer the GstProtectionMeta into the new buffer.
     gst_buffer_copy_protection_meta (outbuffer, buffer);
@@ -857,6 +901,20 @@ gst_ml_aic_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
   // Create new engine request.
   request = gst_engine_request_new ();
 
+  // Get start time for performance measurements.
+  request->time = gst_util_get_timestamp ();
+
+  // GAP buffer, nothing further to do. Push GAP request to worker task.
+  if (gst_buffer_get_size (outbuffer) == 0 &&
+      GST_BUFFER_FLAG_IS_SET (outbuffer, GST_BUFFER_FLAG_GAP)) {
+
+    request->inframe.buffer = inbuffer;
+    request->outframe.buffer = outbuffer;
+
+    gst_ml_aic_push_request (pad, request);
+    return GST_FLOW_OK;
+  }
+
   info = gst_ml_aic_engine_get_input_info (mlaic->engine);
 
   // Create ML frame from input buffer.
@@ -877,13 +935,10 @@ gst_ml_aic_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
     return GST_FLOW_ERROR;
   }
 
-  // Get start time for performance measurements.
-  request->time = gst_util_get_timestamp ();
-
   request->id = gst_ml_aic_engine_submit_request (mlaic->engine,
       &(request)->inframe, &(request)->outframe);
 
-  if (request->id == (-1)) {
+  if (request->id == GST_ML_AIC_INVALID_ID) {
     GST_WARNING_OBJECT (pad, "Failed to submit request to engine!");
 
     gst_engine_request_unref (request);
@@ -892,29 +947,7 @@ gst_ml_aic_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
 
   GST_TRACE_OBJECT (pad, "Submitted request %d", request->id);
 
-  GST_ML_AIC_SINKPAD_LOCK (pad);
-  GST_ML_AIC_SINKPAD (pad)->segment.position = GST_BUFFER_TIMESTAMP (outbuffer);
-  GST_ML_AIC_SINKPAD_UNLOCK (pad);
-
-  {
-    GstPad *srcpad = NULL;
-    GstDataQueueItem *item = NULL;
-
-    item = g_slice_new0 (GstDataQueueItem);
-    item->object = GST_MINI_OBJECT (request);
-    item->visible = TRUE;
-    item->destroy = gst_ml_aic_free_queue_item;
-
-    // Retrieve the corresponding source pad.
-    srcpad = gst_ml_aic_other_pad (pad);
-
-    // Push the request into the queue or free it on failure.
-    if (!gst_data_queue_push (GST_ML_AIC_SRCPAD (srcpad)->requests, item))
-      item->destroy (item);
-
-    gst_object_unref (srcpad);
-  }
-
+  gst_ml_aic_push_request (pad, request);
   return GST_FLOW_OK;
 }
 

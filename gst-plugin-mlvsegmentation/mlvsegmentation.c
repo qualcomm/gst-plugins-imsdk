@@ -375,7 +375,6 @@ gst_ml_video_segmentation_prepare_output_buffer (GstBaseTransform * base,
 {
   GstMLVideoSegmentation *segmentation = GST_ML_VIDEO_SEGMENTATION (base);
   GstBufferPool *pool = segmentation->outpool;
-  GstFlowReturn ret = GST_FLOW_OK;
 
   if (gst_base_transform_is_passthrough (base)) {
     GST_TRACE_OBJECT (segmentation, "Passthrough, no need to do anything");
@@ -395,8 +394,13 @@ gst_ml_video_segmentation_prepare_output_buffer (GstBaseTransform * base,
     return GST_FLOW_ERROR;
   }
 
-  ret = gst_buffer_pool_acquire_buffer (pool, outbuffer, NULL);
-  if (ret != GST_FLOW_OK) {
+  // Input is marked as GAP, nothing to process. Create a GAP output buffer.
+  if (gst_buffer_get_size (inbuffer) == 0 &&
+      GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP))
+    *outbuffer = gst_buffer_new ();
+
+  if ((*outbuffer == NULL) &&
+      gst_buffer_pool_acquire_buffer (pool, outbuffer, NULL) != GST_FLOW_OK) {
     GST_ERROR_OBJECT (segmentation, "Failed to create output buffer!");
     return GST_FLOW_ERROR;
   }
@@ -631,6 +635,11 @@ gst_ml_video_segmentation_transform (GstBaseTransform * base,
 
   g_return_val_if_fail (segmentation->module != NULL, GST_FLOW_ERROR);
 
+  // GAP buffer, nothing to do. Propagate output buffer downstream.
+  if (gst_buffer_get_size (outbuffer) == 0 &&
+      GST_BUFFER_FLAG_IS_SET (outbuffer, GST_BUFFER_FLAG_GAP))
+    return GST_FLOW_OK;
+
   n_blocks = gst_buffer_n_memory (inbuffer);
 
   if (gst_buffer_get_size (inbuffer) != gst_ml_info_size (segmentation->mlinfo)) {
@@ -792,6 +801,9 @@ gst_ml_video_segmentation_init (GstMLVideoSegmentation * segmentation)
 
   segmentation->modname = DEFAULT_PROP_MODULE;
   segmentation->labels = DEFAULT_PROP_LABELS;
+
+  // Handle buffers with GAP flag internally.
+  gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM (segmentation), TRUE);
 
   GST_DEBUG_CATEGORY_INIT (gst_ml_video_segmentation_debug, "qtimlvsegmentation",
       0, "QTI ML image segmentation plugin");

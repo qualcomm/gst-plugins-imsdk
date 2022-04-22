@@ -88,7 +88,7 @@ GST_DEBUG_CATEGORY_STATIC (gst_ml_video_converter_debug);
 G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
     GST_TYPE_BASE_TRANSFORM);
 
-#define GST_BATCH_CHANNEL_OFFSET     100
+#define GST_BATCH_CHANNEL_BASE       100
 
 #define DEFAULT_PROP_MIN_BUFFERS     2
 #define DEFAULT_PROP_MAX_BUFFERS     24
@@ -326,8 +326,6 @@ gst_map_input_video_frames (GstVideoFrame ** inframes, guint n_inputs,
     GstBuffer *buffer = NULL;
     GstVideoMeta *vmeta = NULL;
     GstVideoRegionOfInterestMeta *roimeta = NULL;
-    GstProtectionMeta *pmeta = NULL;
-    gchar *name = NULL;
 
     // Check if a bitwise mask was set for this channel/batch input.
     if ((GST_BUFFER_OFFSET (inbuffer) != GST_BUFFER_OFFSET_NONE) &&
@@ -353,25 +351,17 @@ gst_map_input_video_frames (GstVideoFrame ** inframes, guint n_inputs,
           vmeta->format, vmeta->width, vmeta->height, vmeta->n_planes,
           vmeta->offset, vmeta->stride);
 
-    id = idx * GST_BATCH_CHANNEL_OFFSET;
+    id = idx * GST_BATCH_CHANNEL_BASE;
     roimeta = gst_buffer_get_video_region_of_interest_meta_id (inbuffer, id);
 
     // Copy ROI metadata for current memory block into the new buffer.
     while (roimeta != NULL) {
       roimeta = gst_buffer_add_video_region_of_interest_meta_id (buffer,
           roimeta->roi_type, roimeta->x, roimeta->y, roimeta->w, roimeta->h);
-      roimeta->id = id % GST_BATCH_CHANNEL_OFFSET;
+      roimeta->id = id % GST_BATCH_CHANNEL_BASE;
 
       roimeta = gst_buffer_get_video_region_of_interest_meta_id (inbuffer, ++id);
     }
-
-    name = g_strdup_printf ("channel-%u", idx);
-
-    // Copy protection metadata for current memory block into the new buffer.
-    if ((pmeta = gst_buffer_get_protection_meta_id (inbuffer, name)) != NULL)
-      gst_buffer_add_protection_meta (buffer, gst_structure_copy (pmeta->info));
-
-    g_free (name);
 
     if (!gst_video_frame_map (&frames[idx], info, buffer, flags)) {
       GST_ERROR ("Failed to map frame at idx %u!", idx);
@@ -481,12 +471,10 @@ gst_ml_video_converter_update_params (GstMLVideoConverter * mlconverter,
       // Construct the name for the protection meta structure.
       name = g_strdup_printf ("channel-%u", (id + num));
 
-      // Transfer protection data from input to the output if available.
-      pmeta = gst_buffer_get_protection_meta_id (inframe->buffer, name);
-
-      // Add channel protection meta to the output buffer.
-      pmeta = gst_buffer_add_protection_meta (outframe->buffer, (pmeta != NULL) ?
-          gst_structure_copy (pmeta->info) : gst_structure_new_empty (name));
+      // Add channel protection meta to the output buffer if not available.
+      if (!(pmeta = gst_buffer_get_protection_meta_id (outframe->buffer, name)))
+        pmeta = gst_buffer_add_protection_meta (outframe->buffer,
+            gst_structure_new_empty (name));
 
       // Add SAR information for tensor decryption downstream.
       gst_structure_set (pmeta->info,
@@ -501,9 +489,9 @@ gst_ml_video_converter_update_params (GstMLVideoConverter * mlconverter,
     // Increase the ID variable tracking the channels with the number of entries.
     id += (n_entries - 1);
 
-#ifdef USE_C2D_CONVERTER
     structure = gst_structure_new_empty ("options");
 
+#ifdef USE_C2D_CONVERTER
     gst_structure_set_value (structure,
         GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, &srcrects);
     gst_structure_set_value (structure,
@@ -514,8 +502,6 @@ gst_ml_video_converter_update_params (GstMLVideoConverter * mlconverter,
 #endif // USE_C2D_CONVERTER
 
 #ifdef USE_GLES_CONVERTER
-    structure = gst_structure_new_empty ("options");
-
     gst_structure_set_value (structure,
         GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, &srcrects);
     gst_structure_set_value (structure,
@@ -906,7 +892,7 @@ gst_ml_video_converter_prepare_output_buffer (GstBaseTransform * base,
 {
   GstMLVideoConverter *mlconverter = GST_ML_VIDEO_CONVERTER (base);
   GstBufferPool *pool = mlconverter->outpool;
-  GstFlowReturn ret = GST_FLOW_OK;
+  guint idx = 0, n_entries = 0;
 
   if (gst_base_transform_is_passthrough (base)) {
     GST_TRACE_OBJECT (mlconverter, "Passthrough, no need to do anything");
@@ -926,17 +912,45 @@ gst_ml_video_converter_prepare_output_buffer (GstBaseTransform * base,
     return GST_FLOW_ERROR;
   }
 
-  ret = gst_buffer_pool_acquire_buffer (pool, outbuffer, NULL);
-  if (ret != GST_FLOW_OK) {
+  // Input is marked as GAP, nothing to process. Create a GAP output buffer.
+  if (gst_buffer_get_size (inbuffer) == 0 &&
+      GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP))
+    *outbuffer = gst_buffer_new ();
+
+  if ((*outbuffer == NULL) &&
+      gst_buffer_pool_acquire_buffer (pool, outbuffer, NULL) != GST_FLOW_OK) {
     GST_ERROR_OBJECT (mlconverter, "Failed to acquire output buffer!");
     return GST_FLOW_ERROR;
   }
 
   // Copy the flags and timestamps from the input buffer.
-  gst_buffer_copy_into (*outbuffer, inbuffer, GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
+  gst_buffer_copy_into (*outbuffer, inbuffer,
+      GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
 
   // Copy the offset field as it may contain channels data for batched buffers.
   GST_BUFFER_OFFSET (*outbuffer) = GST_BUFFER_OFFSET (inbuffer);
+
+  // Set the maximum allowed entries to the size of the tensor batch.
+  n_entries = GST_ML_INFO_TENSOR_DIM (mlconverter->mlinfo, 0, 0);
+
+  // Iterate over all possible batch entries and transfer protection meta.
+  for (idx = 0; idx < n_entries; idx++) {
+    GstProtectionMeta *pmeta = NULL;
+    gchar *name = NULL;
+
+    // Check if a bitwise mask was set for this channel/batch input.
+    if ((GST_BUFFER_OFFSET (inbuffer) != GST_BUFFER_OFFSET_NONE) &&
+        ((GST_BUFFER_OFFSET (inbuffer) & (1 << idx)) == 0))
+      continue;
+
+    name = g_strdup_printf ("channel-%u", idx);
+
+    // Copy protection metadata for current memory block into the new buffer.
+    if ((pmeta = gst_buffer_get_protection_meta_id (inbuffer, name)) != NULL)
+      gst_buffer_add_protection_meta (*outbuffer, gst_structure_copy (pmeta->info));
+
+    g_free (name);
+  }
 
   return GST_FLOW_OK;
 }
@@ -1192,6 +1206,11 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
 
   GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
   GstClockTimeDiff tsdelta = GST_CLOCK_TIME_NONE;
+
+  // GAP buffer, nothing to do. Propagate output buffer downstream.
+  if (gst_buffer_get_size (outbuffer) == 0 &&
+      GST_BUFFER_FLAG_IS_SET (outbuffer, GST_BUFFER_FLAG_GAP))
+    return GST_FLOW_OK;
 
 #ifdef HAVE_LINUX_DMA_BUF_H
   if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
@@ -1488,6 +1507,9 @@ gst_ml_video_converter_init (GstMLVideoConverter * mlconverter)
   mlconverter->pixlayout = DEFAULT_PROP_SUBPIXEL_LAYOUT;
   mlconverter->mean = g_array_new (FALSE, FALSE, sizeof (gdouble));
   mlconverter->sigma = g_array_new (FALSE, FALSE, sizeof (gdouble));
+
+  // Handle buffers with GAP flag internally.
+  gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM (mlconverter), TRUE);
 
   GST_DEBUG_CATEGORY_INIT (gst_ml_video_converter_debug, "qtimlvconverter",
       0, "QTI ML video converter plugin");

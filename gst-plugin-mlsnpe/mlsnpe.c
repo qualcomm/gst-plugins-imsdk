@@ -300,7 +300,6 @@ gst_ml_snpe_prepare_output_buffer (GstBaseTransform * base,
   GstMLSnpe *snpe = GST_ML_SNPE (base);
   GstBufferPool *pool = snpe->outpool;
   GstProtectionMeta *pmeta = NULL;
-  GstFlowReturn ret = GST_FLOW_OK;
 
   if (gst_base_transform_is_passthrough (base)) {
     GST_DEBUG_OBJECT (snpe, "Passthrough, no need to do anything");
@@ -321,8 +320,13 @@ gst_ml_snpe_prepare_output_buffer (GstBaseTransform * base,
     return GST_FLOW_ERROR;
   }
 
-  ret = gst_buffer_pool_acquire_buffer (pool, outbuffer, NULL);
-  if (ret != GST_FLOW_OK) {
+  // Input is marked as GAP, nothing to process. Create a GAP output buffer.
+  if (gst_buffer_get_size (inbuffer) == 0 &&
+      GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP))
+    *outbuffer = gst_buffer_new ();
+
+  if ((*outbuffer == NULL) &&
+      gst_buffer_pool_acquire_buffer (pool, outbuffer, NULL) != GST_FLOW_OK) {
     GST_ERROR_OBJECT (snpe, "Failed to create output buffer!");
     return GST_FLOW_ERROR;
   }
@@ -330,6 +334,9 @@ gst_ml_snpe_prepare_output_buffer (GstBaseTransform * base,
   // Copy the flags and timestamps from the input buffer.
   gst_buffer_copy_into (*outbuffer, inbuffer, GST_BUFFER_COPY_FLAGS |
       GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
+
+  // Copy the offset field as it may contain channels data for batched buffers.
+  GST_BUFFER_OFFSET (*outbuffer) = GST_BUFFER_OFFSET (inbuffer);
 
   if ((pmeta = gst_buffer_get_protection_meta (inbuffer)) != NULL)
     gst_buffer_add_protection_meta (*outbuffer, gst_structure_copy (pmeta->info));
@@ -510,6 +517,11 @@ gst_ml_snpe_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   const GstMLInfo * info = NULL;
   GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
   GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
+
+  // GAP buffer, nothing to do. Propagate output buffer downstream.
+  if (gst_buffer_get_size (outbuffer) == 0 &&
+      GST_BUFFER_FLAG_IS_SET (outbuffer, GST_BUFFER_FLAG_GAP))
+    return GST_FLOW_OK;
 
   info = gst_ml_snpe_engine_get_input_info (snpe->engine);
 
@@ -693,6 +705,9 @@ gst_ml_snpe_init (GstMLSnpe * snpe)
   snpe->model = DEFAULT_PROP_MODEL;
   snpe->delegate = DEFAULT_PROP_DELEGATE;
   snpe->layers = NULL;
+
+  // Handle buffers with GAP flag internally.
+  gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM (snpe), TRUE);
 
   GST_DEBUG_CATEGORY_INIT (gst_ml_snpe_debug, "qtimlsnpe", 0,
       "QTI SNPE ML plugin");

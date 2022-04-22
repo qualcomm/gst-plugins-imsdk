@@ -709,15 +709,19 @@ gst_ml_aic_engine_submit_request (GstMLAicEngine * engine,
 }
 
 gboolean
-gst_ml_aic_engine_wait_request (GstMLAicEngine * engine, guint request_id)
+gst_ml_aic_engine_wait_request (GstMLAicEngine * engine, gint request_id)
 {
   gboolean success = TRUE;
+
+  // Return immediately if request ID is invalid.
+  if (request_id == GST_ML_AIC_INVALID_ID)
+    return TRUE;
 
   GST_AIC_LOCK (engine);
 
   auto it = std::find_if(engine->objects.begin(), engine->objects.end(),
       [&] (const std::pair<::qaic::rt::shExecObj, ::qaic::rt::shQueue> &pair)
-      { return pair.first->getId() == request_id; } );
+      { return pair.first->getId() == (uint32_t) request_id; } );
 
   if (it == engine->objects.end()) {
     GST_ERROR ("Unable to find object ID %x!", request_id);
