@@ -1,33 +1,4 @@
 /*
- * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer in the documentation and/or other materials provided
- *       with the distribution.
- *     * Neither the name of The Linux Foundation nor the names of its
- *       contributors may be used to endorse or promote products derived
- *       from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
- * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
- * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
- * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Changes from Qualcomm Innovation Center are provided under the following license:
- *
  * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -227,7 +198,8 @@ gst_ml_video_segmentation_module_process (gpointer instance,
   GstProtectionMeta *pmeta = NULL;
   GstMapInfo inmap, outmap;
   guint idx = 0, row = 0, column = 0, bpp = 0, padding = 0;
-  guint inwidth = 0, inheight = 0, color = 0;
+  guint width = 0, height = 0, length = 0, color = 0;
+  gdouble mindepth = G_MAXDOUBLE, maxdepth = G_MINDOUBLE;
 
   g_return_val_if_fail (module != NULL, FALSE);
   g_return_val_if_fail (inbuffer != NULL, FALSE);
@@ -248,7 +220,7 @@ gst_ml_video_segmentation_module_process (gpointer instance,
     return FALSE;
   }
 
-  if (mlmeta->type != GST_ML_TYPE_INT32 && mlmeta->type != GST_ML_TYPE_FLOAT32) {
+  if (mlmeta->type != GST_ML_TYPE_FLOAT32) {
     GST_ERROR ("Unsupported tensor type!");
     return FALSE;
   }
@@ -288,8 +260,11 @@ gst_ml_video_segmentation_module_process (gpointer instance,
   padding = vmeta->stride[0] - (vmeta->width * bpp);
 
   // Set the initial width and height of the source mask.
-  inwidth = mlmeta->dimensions[2];
-  inheight = mlmeta->dimensions[1];
+  width = mlmeta->dimensions[2];
+  height = mlmeta->dimensions[1];
+
+  // Set length as full width of the source mask.
+  length = mlmeta->dimensions[2];
 
   // Extract the SAR (Source Aspect Ratio) and adjust mask dimensions.
   if ((pmeta = gst_buffer_get_protection_meta (inbuffer)) != NULL) {
@@ -301,9 +276,9 @@ gst_ml_video_segmentation_module_process (gpointer instance,
         gst_structure_get_value (pmeta->info, "source-aspect-ratio"));
 
     if (sar_n > sar_d)
-      inheight = gst_util_uint64_scale_int (inwidth, sar_d, sar_n);
+      height = gst_util_uint64_scale_int (width, sar_d, sar_n);
     else if (sar_n < sar_d)
-      inwidth = gst_util_uint64_scale_int (inheight, sar_n, sar_d);
+      width = gst_util_uint64_scale_int (height, sar_n, sar_d);
   }
 
 #ifdef HAVE_LINUX_DMA_BUF_H
@@ -318,19 +293,32 @@ gst_ml_video_segmentation_module_process (gpointer instance,
   }
 #endif // HAVE_LINUX_DMA_BUF_H
 
+  // Find the minimum and maximum depth values in the mask.
+  for (row = 0; row < height; row++) {
+    for (column = 0; column < width; column++) {
+      gdouble value = 0.0;
+
+      idx = row * length + column;
+      value = CAST_TO_GFLOAT (inmap.data)[idx];
+
+      if (value > maxdepth)
+        maxdepth = value;
+
+      if (value < mindepth)
+        mindepth = value;
+    }
+  }
+
   for (row = 0; row < vmeta->height; row++) {
     for (column = 0; column < vmeta->width; column++) {
       GstLabel *label = NULL;
-      guint id = 0;
+      guint id = G_MAXUINT8;
 
       // Calculate the source index.
-      idx = inwidth * gst_util_uint64_scale_int (row, inheight, vmeta->height);
-      idx += gst_util_uint64_scale_int (column, inwidth, vmeta->width);
+      idx = length * gst_util_uint64_scale_int (row, height, vmeta->height);
+      idx += gst_util_uint64_scale_int (column, width, vmeta->width);
 
-      if (mlmeta->type == GST_ML_TYPE_FLOAT32)
-        id = CAST_TO_GFLOAT (inmap.data)[idx];
-      else if (mlmeta->type == GST_ML_TYPE_INT32)
-        id = CAST_TO_GUINT32 (inmap.data)[idx];
+      id *= (CAST_TO_GFLOAT (inmap.data)[idx] - mindepth) / (maxdepth - mindepth);
 
       label = g_hash_table_lookup (module->labels, GUINT_TO_POINTER (id));
       color = (label != NULL) ? label->color : 0x000000FF;

@@ -371,14 +371,6 @@ gst_ml_snpe_transform_caps (GstBaseTransform * base,
   // the ML caps from the engine for the corresponding pad and apply filter.
   result = gst_ml_info_to_caps (mlinfo);
 
-  // Extract the aspect ratio.
-  value = gst_structure_get_value (gst_caps_get_structure (caps, 0),
-      "aspect-ratio");
-
-  // Propagate aspect ratio to the ML caps if it exists.
-  if (value != NULL)
-    gst_caps_set_value (result, "aspect-ratio", value);
-
   // Extract the rate.
   value = gst_structure_get_value (gst_caps_get_structure (caps, 0), "rate");
 

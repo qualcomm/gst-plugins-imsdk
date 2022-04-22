@@ -1027,37 +1027,6 @@ gst_ml_video_converter_fixate_caps (GstBaseTransform * base,
     gst_caps_set_value (outcaps, "type", value);
   }
 
-  // TODO Remove this in the future.
-  {
-    gint width = 0, height = 0, par_n = 0, par_d = 0, sar_n = 0, sar_d = 0;
-
-    // Retrieve the input width and height.
-    gst_structure_get_int (gst_caps_get_structure (incaps, 0),
-        "width", &width);
-    gst_structure_get_int (gst_caps_get_structure (incaps, 0),
-        "height", &height);
-
-    // Retrieve the input PAR (Pixel Aspect Ratio) value.
-    value = gst_structure_get_value (gst_caps_get_structure (incaps, 0),
-        "pixel-aspect-ratio");
-
-    if (value != NULL && gst_value_is_fixed (value)) {
-      par_n = gst_value_get_fraction_numerator (value);
-      par_d = gst_value_get_fraction_denominator (value);
-    } else {
-      par_n = par_d = 1;
-    }
-
-    // Calculate input DAR (Display Aspect Ratio) value.
-    if (!gst_util_fraction_multiply (width, height, par_n, par_d, &sar_n, &sar_d))
-      sar_n = sar_d = 1;
-
-    // Set aspect ratio in output to be used for tensor processing downstream.
-    gst_caps_set_simple (outcaps,
-        "aspect-ratio", GST_TYPE_FRACTION, sar_n, sar_d,
-        NULL);
-  }
-
   gst_caps_unref (mlcaps);
   outcaps = gst_caps_fixate (outcaps);
 

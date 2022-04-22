@@ -546,14 +546,6 @@ gst_ml_aic_query_caps (GstMLAic * mlaic, GstPad * pad, GstCaps * filter)
   if (othercaps != NULL) {
     const GValue *value = NULL;
 
-    // Extract the aspect ratio.
-    value = gst_structure_get_value (gst_caps_get_structure (othercaps, 0),
-        "aspect-ratio");
-
-    // Propagate aspect ratio to the result caps if it exists.
-    if (value != NULL)
-      gst_caps_set_value (caps, "aspect-ratio", value);
-
     // Extract the rate.
     value = gst_structure_get_value (gst_caps_get_structure (othercaps, 0),
         "rate");
@@ -742,14 +734,6 @@ gst_ml_aic_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
       }
 
       outcaps = intersect;
-
-      // Extract the aspect ratio.
-      value = gst_structure_get_value (gst_caps_get_structure (incaps, 0),
-          "aspect-ratio");
-
-      // Propagate aspect ratio to the result caps if it exists.
-      if (value != NULL)
-        gst_caps_set_value (outcaps, "aspect-ratio", value);
 
       GST_DEBUG_OBJECT (pad, "Setting caps: %" GST_PTR_FORMAT, outcaps);
 
