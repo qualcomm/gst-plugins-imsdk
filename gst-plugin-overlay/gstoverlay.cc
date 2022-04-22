@@ -25,6 +25,40 @@
 * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*
+* Changes from Qualcomm Innovation Center are provided under the following license:
+*
+* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+*
+* Redistribution and use in source and binary forms, with or without
+* modification, are permitted (subject to the limitations in the
+* disclaimer below) provided that the following conditions are met:
+*
+*     * Redistributions of source code must retain the above copyright
+*       notice, this list of conditions and the following disclaimer.
+*
+*     * Redistributions in binary form must reproduce the above
+*       copyright notice, this list of conditions and the following
+*       disclaimer in the documentation and/or other materials provided
+*       with the distribution.
+*
+*     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+*       contributors may be used to endorse or promote products derived
+*       from this software without specific prior written permission.
+*
+* NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+* GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+* HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+* MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+* IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+* ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+* DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+* GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+* INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+* IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+* OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #ifdef HAVE_CONFIG_H
@@ -245,6 +279,7 @@ gst_overlay_apply_item_list (GstOverlay *gst_overlay,
     GSList * meta_list, GstOverlayMetaApplyFunc apply_func, GSequence * ov_id)
 {
   gboolean res = TRUE;
+  GSList * iter = meta_list;
 
   guint meta_num = g_slist_length (meta_list);
   if (meta_num) {
@@ -254,15 +289,19 @@ gst_overlay_apply_item_list (GstOverlay *gst_overlay,
     }
 
     for (uint32_t i = 0; i < meta_num; i++) {
-      res = apply_func (gst_overlay, g_slist_nth_data (meta_list, 0),
+      res = apply_func (gst_overlay, g_slist_nth_data (iter, 0),
           (uint32_t *) g_sequence_get (g_sequence_get_iter_at_pos (ov_id, i)));
       if (!res) {
         GST_ERROR_OBJECT (gst_overlay, "Overlay create failed!");
-        return res;
+        g_slist_free (meta_list);
+        meta_num = i; // This will ensure proper cleanup of overlay instances
+        break;
       }
-      meta_list = meta_list->next;
+      iter = iter->next;
     }
+    g_slist_free (meta_list);
   }
+
   if ((guint) g_sequence_get_length (ov_id) > meta_num) {
     g_sequence_foreach_range (
         g_sequence_get_iter_at_pos (ov_id, meta_num),
@@ -273,7 +312,7 @@ gst_overlay_apply_item_list (GstOverlay *gst_overlay,
         g_sequence_get_end_iter (ov_id));
   }
 
-  return TRUE;
+  return res;
 }
 
 /**
