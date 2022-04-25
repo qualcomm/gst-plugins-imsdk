@@ -27,6 +27,42 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*
+ *  Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ *  Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ *  Redistribution and use in source and binary forms, with or without
+ *  modification, are permitted (subject to the limitations in the
+ *  disclaimer below) provided that the following conditions are met:
+ *
+ *      * Redistributions of source code must retain the above copyright
+ *        notice, this list of conditions and the following disclaimer.
+ *
+ *      * Redistributions in binary form must reproduce the above
+ *        copyright notice, this list of conditions and the following
+ *        disclaimer in the documentation and/or other materials provided
+ *        with the distribution.
+ *
+ *      * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+ *        contributors may be used to endorse or promote products derived
+ *        from this software without specific prior written permission.
+ *
+ *  NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+ *  GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+ *  HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+ *   WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ *  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ *  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ *  ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ *  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ *  GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ *  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+ *  IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ *  OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ *  IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
 #define LOG_TAG "Overlay"
 
 #include <algorithm>
@@ -455,6 +491,8 @@ int32_t OpenClKernel::SetKernelArgs (OpenClFrame &frame, DrawInfo args)
   local_size_[0] = args.local_size_w;
   local_size_[1] = args.local_size_h;
 
+  cl_ushort mask_stride = args.stride;
+
   // __read_only image2d_t mask,   // 1
   cl_err = clSetKernelArg (kernel_, arg_index++, sizeof(cl_mem),
       &mask_to_process);
@@ -499,6 +537,14 @@ int32_t OpenClKernel::SetKernelArgs (OpenClFrame &frame, DrawInfo args)
 
   // ushort swap_uv                // 6
   cl_err = clSetKernelArg (kernel_, arg_index++, sizeof(cl_ushort), &swap_uv);
+  if (CL_SUCCESS != cl_err) {
+    OVDBG_ERROR ("%s: Failed to set Open cl kernel argument %d. rc: %d ",
+        __func__, arg_index - 1, cl_err);
+    return -EINVAL;
+  }
+
+  // ushort mask_stride,          // 7
+  cl_err = clSetKernelArg (kernel_, arg_index++, sizeof(cl_ushort), &mask_stride);
   if (CL_SUCCESS != cl_err) {
     OVDBG_ERROR ("%s: Failed to set Open cl kernel argument %d. rc: %d ",
         __func__, arg_index - 1, cl_err);
@@ -1649,6 +1695,7 @@ void OverlayItemStaticImage::GetDrawInfo (uint32_t targetWidth,
   draw_info.height = height_;
   draw_info.x = x_;
   draw_info.y = y_;
+  draw_info.stride = surface_.stride_;
   draw_info.mask = surface_.cl_buffer_;
   draw_info.blit_inst = surface_.blit_inst_;
   draw_info.c2dSurfaceId = surface_.c2dsurface_id_;
@@ -1985,6 +2032,7 @@ void OverlayItemDateAndTime::GetDrawInfo (uint32_t targetWidth,
   draw_info.height = height_;
   draw_info.x = x_;
   draw_info.y = y_;
+  draw_info.stride = surface_.stride_;
   draw_info.mask = surface_.cl_buffer_;
   draw_info.blit_inst = surface_.blit_inst_;
   draw_info.c2dSurfaceId = surface_.c2dsurface_id_;
@@ -2269,6 +2317,7 @@ void OverlayItemBoundingBox::GetDrawInfo (uint32_t targetWidth,
   draw_info_bbox.y = y_;
   draw_info_bbox.width = width_;
   draw_info_bbox.height = height_;
+  draw_info_bbox.stride = surface_.stride_;
   draw_info_bbox.mask = surface_.cl_buffer_;
   draw_info_bbox.blit_inst = surface_.blit_inst_;
   draw_info_bbox.c2dSurfaceId = surface_.c2dsurface_id_;
@@ -2284,6 +2333,7 @@ void OverlayItemBoundingBox::GetDrawInfo (uint32_t targetWidth,
   draw_info_text.width = (targetWidth * kTextPercent) / 100;
   draw_info_text.height = (draw_info_text.width * text_surface_.height_)
       / text_surface_.width_;
+  draw_info_text.stride = text_surface_.stride_;
   draw_info_text.mask = text_surface_.cl_buffer_;
   draw_info_text.blit_inst = text_surface_.blit_inst_;
   draw_info_text.c2dSurfaceId = text_surface_.c2dsurface_id_;
@@ -2591,6 +2641,7 @@ void OverlayItemText::GetDrawInfo (uint32_t targetWidth, uint32_t targetHeight,
 
   draw_info.x = x_;
   draw_info.y = y_;
+  draw_info.stride = surface_.stride_;
   draw_info.mask = surface_.cl_buffer_;
   draw_info.blit_inst = surface_.blit_inst_;
   draw_info.c2dSurfaceId = surface_.c2dsurface_id_;
@@ -2855,6 +2906,7 @@ void OverlayItemPrivacyMask::GetDrawInfo (uint32_t targetWidth,
   draw_info.y = y_;
   draw_info.width = width_;
   draw_info.height = height_;
+  draw_info.stride = surface_.stride_;
   draw_info.mask = surface_.cl_buffer_;
   draw_info.blit_inst = surface_.blit_inst_;
   draw_info.c2dSurfaceId = surface_.c2dsurface_id_;
@@ -3081,6 +3133,7 @@ void OverlayItemGraph::GetDrawInfo (uint32_t targetWidth, uint32_t targetHeight,
   draw_info.y = y_;
   draw_info.width = width_;
   draw_info.height = height_;
+  draw_info.stride = surface_.stride_;
   draw_info.mask = surface_.cl_buffer_;
   draw_info.blit_inst = surface_.blit_inst_;
   draw_info.c2dSurfaceId = surface_.c2dsurface_id_;
@@ -3312,6 +3365,7 @@ void OverlayItemArrow::GetDrawInfo (uint32_t targetWidth,
   draw_info_arrows.y = y_;
   draw_info_arrows.width = width_;
   draw_info_arrows.height = height_;
+  draw_info_arrows.stride = surface_.stride_;
   draw_info_arrows.mask = surface_.cl_buffer_;
   draw_info_arrows.blit_inst = surface_.blit_inst_;
   draw_info_arrows.c2dSurfaceId = surface_.c2dsurface_id_;
