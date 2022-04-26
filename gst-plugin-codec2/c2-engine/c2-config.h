@@ -49,6 +49,7 @@
 #define CONFIG_FUNCTION_KEY_DEC_LOW_LATENCY "dec_low_latency"
 #define CONFIG_FUNCTION_KEY_INTRAREFRESH "intra_refresh"
 #define CONFIG_FUNCTION_KEY_OUTPUT_PICTURE_ORDER_MODE "output_picture_order_mode"
+#define CONFIG_FUNCTION_KEY_ROI_ENCODING "roi_encoding"
 #define CONFIG_FUNCTION_KEY_DOWNSCALE "downscale"
 #define CONFIG_FUNCTION_KEY_ENC_CSC "enc_colorspace_conversion"
 #define CONFIG_FUNCTION_KEY_COLOR_ASPECTS_INFO "colorspace_color_aspects"
@@ -190,6 +191,12 @@ typedef struct {
     guint32 width;
     guint32 height;
   } resolution;
+
+  struct {
+    gint64 timestampUs;
+    gchar *rectPayload;
+    gchar *rectPayloadExt;
+  } roi;
 
   struct {
     guint32 miniqp;

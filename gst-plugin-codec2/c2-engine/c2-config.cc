@@ -73,6 +73,7 @@ std::unique_ptr<C2Param> setMirrorType (gpointer param);
 std::unique_ptr<C2Param> setRateControl (gpointer param);
 std::unique_ptr<C2Param> setSyncFrameInterval (gpointer param);
 std::unique_ptr<C2Param> setOutputPictureOrderMode (gpointer param);
+std::unique_ptr<C2Param> setROIEncoding (gpointer param);
 std::unique_ptr<C2Param> setDecLowLatency (gpointer param);
 std::unique_ptr<C2Param> setDownscale (gpointer param);
 std::unique_ptr<C2Param> setEncColorSpaceConv (gpointer param);
@@ -94,6 +95,7 @@ static configFunctionMap sConfigFunctionMap = {
   { CONFIG_FUNCTION_KEY_RATECONTROL, setRateControl },
   { CONFIG_FUNCTION_KEY_SYNC_FRAME_INT, setSyncFrameInterval },
   { CONFIG_FUNCTION_KEY_OUTPUT_PICTURE_ORDER_MODE, setOutputPictureOrderMode },
+  { CONFIG_FUNCTION_KEY_ROI_ENCODING, setROIEncoding },
   { CONFIG_FUNCTION_KEY_DEC_LOW_LATENCY, setDecLowLatency },
   { CONFIG_FUNCTION_KEY_DOWNSCALE, setDownscale },
   { CONFIG_FUNCTION_KEY_ENC_CSC, setEncColorSpaceConv },
@@ -481,6 +483,30 @@ setOutputPictureOrderMode (gpointer param)
   if (config->output_picture_order_mode == OUTPUT_PICTURE_ORDER_DECODER)
     outputPictureOrderMode.enable = C2_TRUE;
   return C2Param::Copy (outputPictureOrderMode);
+}
+
+std::unique_ptr<C2Param>
+setROIEncoding (gpointer param)
+{
+  if (param == NULL)
+    return nullptr;
+
+  config_params_t *config = (config_params_t*) param;
+
+  GST_INFO ("Set ROI encoding - %s %s", config->roi.rectPayload,
+      config->roi.rectPayloadExt);
+
+  qc2::QC2VideoROIRegionInfo::output roiRegion;
+  auto clip = [](std::size_t len) { return len > 128 ? 128 : len; };
+  roiRegion.timestampUs = config->roi.timestampUs;
+
+  memcpy(roiRegion.type_, "rect", 4);
+  memcpy(roiRegion.rectPayload, config->roi.rectPayload,
+      clip(std::strlen(config->roi.rectPayload)));
+  memcpy(roiRegion.rectPayloadExt, config->roi.rectPayloadExt,
+      clip(std::strlen(config->roi.rectPayloadExt)));
+
+  return C2Param::Copy (roiRegion);
 }
 
 std::unique_ptr<C2Param>

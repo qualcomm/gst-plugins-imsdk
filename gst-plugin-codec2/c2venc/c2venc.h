@@ -56,9 +56,17 @@ G_BEGIN_DECLS
 
 typedef struct _GstC2_VENCEncoder GstC2_VENCEncoder;
 typedef struct _GstC2_VENCEncoderClass GstC2_VENCEncoderClass;
+typedef struct _GstC2_ROIenc GstC2_ROIenc;
 
 // Maximum number of input frame queued
 #define MAX_QUEUED_FRAME 32
+
+struct _GstC2_ROIenc {
+  guint top;
+  guint left;
+  guint bottom;
+  guint right;
+};
 
 struct _GstC2_VENCEncoder {
   GstVideoEncoderClass parent;
@@ -100,6 +108,8 @@ struct _GstC2_VENCEncoder {
   guint32 min_qp_b_frames;
   guint32 min_qp_i_frames;
   guint32 min_qp_p_frames;
+  GstC2_ROIenc roi_encoding;
+  gint roi_encoding_qp_delta;
 };
 
 struct _GstC2_VENCEncoderClass {
