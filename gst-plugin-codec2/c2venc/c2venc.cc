@@ -51,6 +51,8 @@ G_DEFINE_TYPE (GstC2_VENCEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 
 #define EOS_WAITING_TIMEOUT 5
 
+#define DEFAULT_PROP_ROI_QP_DELTA -15
+
 // Caps formats.
 #define GST_VIDEO_FORMATS "{ NV12, NV21 }"
 
@@ -105,6 +107,8 @@ enum
   PROP_MIN_QP_B_FRAMES,
   PROP_MIN_QP_I_FRAMES,
   PROP_MIN_QP_P_FRAMES,
+  PROP_ROI,
+  PROP_ROI_QP_DELTA,
 };
 
 static guint32
@@ -279,6 +283,57 @@ make_sync_frame_interval_param (int64_t period_ms)
   param.val.i64 = period_ms;
 
   return param;
+}
+
+static config_params_t
+make_roi_encoding (gint64 timestampUs, char *rectPayload, char *rectPayloadExt)
+{
+  config_params_t param;
+  memset (&param, 0, sizeof (config_params_t));
+
+  param.config_name = CONFIG_FUNCTION_KEY_ROI_ENCODING;
+  param.roi.timestampUs = timestampUs;
+
+  param.roi.rectPayload = rectPayload;
+  param.roi.rectPayloadExt = rectPayloadExt;
+
+  return param;
+}
+
+static void
+config_roi_encoding (GstC2_VENCEncoder *c2venc, gint64 timestampUs)
+{
+  GPtrArray *config = NULL;
+  config_params_t roi_encoding;
+
+  if (c2venc->roi_encoding.top != 0 || c2venc->roi_encoding.left != 0 ||
+      c2venc->roi_encoding.bottom != 0 || c2venc->roi_encoding.right != 0) {
+
+    config = g_ptr_array_new ();
+
+    char rectPayload[128];
+    char rectPayloadExt[128];
+
+    snprintf(rectPayload, sizeof(rectPayload), "%d,%d-%d,%d=%d",
+        c2venc->roi_encoding.top, c2venc->roi_encoding.left,
+        c2venc->roi_encoding.bottom, c2venc->roi_encoding.right,
+        c2venc->roi_encoding_qp_delta);
+
+    snprintf(rectPayloadExt, sizeof(rectPayloadExt), "%d,%d-%d,%d=%d",
+        c2venc->roi_encoding.top, c2venc->roi_encoding.left,
+        c2venc->roi_encoding.bottom, c2venc->roi_encoding.right,
+        c2venc->roi_encoding_qp_delta);
+
+    roi_encoding = make_roi_encoding (timestampUs, rectPayload, rectPayloadExt);
+    g_ptr_array_add (config, &roi_encoding);
+
+    // Config component
+    if (!gst_c2_venc_wrapper_config_component (c2venc->wrapper, config)) {
+      GST_ERROR_OBJECT (c2venc, "Failed to config interface");
+    }
+
+    g_ptr_array_free (config, FALSE);
+  }
 }
 
 static config_params_t
@@ -604,6 +659,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   config_params_t pixelformat;
   config_params_t rate_control;
   config_params_t sync_frame_int;
+  config_params_t roi_encoding;
   config_params_t color_aspects;
   config_params_t intra_refresh;
   config_params_t bitrate;
@@ -884,6 +940,8 @@ gst_c2_venc_encode (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   c2venc->queued_frame[(c2venc->frame_index) % MAX_QUEUED_FRAME] =
       frame->system_frame_number;
 
+  config_roi_encoding (c2venc, inBuf.timestamp);
+
   // Queue buffer to Codec2
   if (!gst_c2_venc_wrapper_component_queue (c2venc->wrapper, &inBuf)) {
     GST_ERROR_OBJECT(c2venc, "failed to queue input frame to Codec2");
@@ -993,6 +1051,22 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
     case PROP_MIN_QP_P_FRAMES:
       c2venc->min_qp_p_frames = g_value_get_uint (value);
       break;
+    case PROP_ROI:
+      g_return_if_fail (gst_value_array_get_size (value) == 4);
+
+      c2venc->roi_encoding.top =
+          g_value_get_int (gst_value_array_get_value (value, 0));
+      c2venc->roi_encoding.left =
+          g_value_get_int (gst_value_array_get_value (value, 1));
+      c2venc->roi_encoding.bottom =
+          g_value_get_int (gst_value_array_get_value (value, 2));
+      c2venc->roi_encoding.right =
+          g_value_get_int (gst_value_array_get_value (value, 3));
+
+      break;
+    case PROP_ROI_QP_DELTA:
+      c2venc->roi_encoding_qp_delta = g_value_get_int (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -1051,6 +1125,27 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
       break;
     case PROP_MIN_QP_P_FRAMES:
       g_value_set_uint (value, c2venc->min_qp_p_frames);
+      break;
+    case PROP_ROI:
+    {
+      GValue val = G_VALUE_INIT;
+      g_value_init (&val, G_TYPE_INT);
+
+      g_value_set_int (&val, c2venc->roi_encoding.top);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, c2venc->roi_encoding.left);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, c2venc->roi_encoding.bottom);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, c2venc->roi_encoding.right);
+      gst_value_array_append_value (value, &val);
+      break;
+    }
+    case PROP_ROI_QP_DELTA:
+      g_value_set_int (value, c2venc->roi_encoding_qp_delta);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1194,6 +1289,23 @@ gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
+  g_object_class_install_property (gobject, PROP_ROI,
+      gst_param_spec_array ("roi", "ROI Encoding",
+          "The ROI rectangle inside the input ('<Top, Left, Bottom, Right>')",
+          g_param_spec_int ("value", "ROI Value",
+              "One of Top, Left, Bottom or Right value.", 0, G_MAXINT, 0,
+              static_cast<GParamFlags>(G_PARAM_WRITABLE |
+              G_PARAM_STATIC_STRINGS)),
+          static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING)));
+
+  g_object_class_install_property (gobject, PROP_ROI_QP_DELTA,
+      g_param_spec_int ("roi-qp", "ROI Encoding QP delta",
+          "ROI encoding QP delta",
+          G_MININT, G_MAXINT, DEFAULT_PROP_ROI_QP_DELTA,
+          static_cast<GParamFlags>(G_PARAM_CONSTRUCT | G_PARAM_READWRITE |
+          G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY)));
+
   gst_element_class_set_static_metadata (element,
       "C2Venc encoder", "C2_VENC/Encoder",
       "C2Venc encoding", "QTI");
@@ -1236,6 +1348,12 @@ gst_c2_venc_init (GstC2_VENCEncoder * c2venc)
   c2venc->min_qp_b_frames = 0;
   c2venc->min_qp_i_frames = 0;
   c2venc->min_qp_p_frames = 0;
+
+  c2venc->roi_encoding.top = 0;
+  c2venc->roi_encoding.left = 0;
+  c2venc->roi_encoding.bottom = 0;
+  c2venc->roi_encoding.right = 0;
+  c2venc->roi_encoding_qp_delta = 0;
 
   memset (c2venc->queued_frame, 0, sizeof (c2venc->queued_frame));
 
