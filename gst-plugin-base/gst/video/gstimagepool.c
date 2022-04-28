@@ -91,6 +91,7 @@ struct _GstImageBufferPoolPrivate
   GstVideoInfo        info;
   gboolean            addmeta;
   gboolean            isubwc;
+  gboolean            keepmapped;
 
   GstAllocator        *allocator;
   GstAllocationParams params;
@@ -261,8 +262,8 @@ static GstMemory *
 gbm_device_alloc (GstImageBufferPool * vpool)
 {
   GstImageBufferPoolPrivate *priv = vpool->priv;
-
-  struct gbm_bo *bo;
+  struct gbm_bo *bo = NULL;
+  GstFdMemoryFlags flags = GST_FD_MEMORY_FLAG_DONT_CLOSE;
   gint fd, format, usage = 0;
 
   format = gst_video_format_to_gbm_format (GST_VIDEO_INFO_FORMAT (&priv->info));
@@ -285,8 +286,10 @@ gbm_device_alloc (GstImageBufferPool * vpool)
 
   GST_DEBUG_OBJECT (vpool, "Allocated GBM memory FD %d", fd);
 
-  return gst_fd_allocator_alloc (priv->allocator, fd, priv->info.size,
-      GST_FD_MEMORY_FLAG_DONT_CLOSE);
+  if (priv->keepmapped)
+    flags |= GST_FD_MEMORY_FLAG_KEEP_MAPPED;
+
+  return gst_fd_allocator_alloc (priv->allocator, fd, priv->info.size, flags);
 }
 
 static void
@@ -344,6 +347,7 @@ static GstMemory *
 ion_device_alloc (GstImageBufferPool * vpool)
 {
   GstImageBufferPoolPrivate *priv = vpool->priv;
+  GstFdMemoryFlags flags = GST_FD_MEMORY_FLAG_DONT_CLOSE;
   gint result = 0, fd = -1;
 
 #ifndef TARGET_ION_ABI_VERSION
@@ -384,9 +388,11 @@ ion_device_alloc (GstImageBufferPool * vpool)
 
   GST_DEBUG_OBJECT (vpool, "Allocated ION memory FD %d", fd);
 
+  if (priv->keepmapped)
+    flags |= GST_FD_MEMORY_FLAG_KEEP_MAPPED;
+
   // Wrap the allocated FD in FD backed allocator.
-  return gst_fd_allocator_alloc (priv->allocator, fd, priv->info.size,
-      GST_FD_MEMORY_FLAG_DONT_CLOSE);
+  return gst_fd_allocator_alloc (priv->allocator, fd, priv->info.size, flags);
 }
 
 static void
@@ -413,6 +419,8 @@ gst_image_buffer_pool_get_options (GstBufferPool * pool)
 {
   static const gchar *options[] = {
     GST_BUFFER_POOL_OPTION_VIDEO_META,
+    GST_IMAGE_BUFFER_POOL_OPTION_UBWC_MODE,
+    GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED,
     NULL
   };
   return options;
@@ -479,6 +487,10 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
   // Check whether we should allocate ubwc buffers.
   priv->isubwc = gst_buffer_pool_config_has_option (config,
       GST_IMAGE_BUFFER_POOL_OPTION_UBWC_MODE);
+
+  // Check whether we should keep buffer memory mapped.
+  priv->keepmapped = gst_buffer_pool_config_has_option (config,
+      GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
 
   // GBM library has its own alignment for the allocated buffers so update
   // the size, stride and offset for the buffer planes in the video info.
