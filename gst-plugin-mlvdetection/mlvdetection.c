@@ -121,8 +121,7 @@ G_DEFINE_TYPE (GstMLVideoDetection, gst_ml_video_detection,
 #define DEFAULT_VIDEO_WIDTH      320
 #define DEFAULT_VIDEO_HEIGHT     240
 
-#define MIN_FONT_SIZE            15.0F
-#define MAX_FONT_SIZE            30.0F
+#define MAX_TEXT_LENGTH          25.0F
 
 #define EXTRACT_RED_COLOR(color)   (((color >> 24) & 0xFF) / 255.0)
 #define EXTRACT_GREEN_COLOR(color) (((color >> 16) & 0xFF) / 255.0)
@@ -413,9 +412,7 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
     borderwidth = 3.0;
 
     // Set the most appropriate font size based on the bounding box dimensions.
-    fontsize = (width / 20) * (5.0F / 3.0F);
-    fontsize = MIN (fontsize, MAX_FONT_SIZE);
-    fontsize = MAX (fontsize, MIN_FONT_SIZE);
+    fontsize = (width / MAX_TEXT_LENGTH) * 9.0 / 5.0;
     cairo_set_font_size (context, fontsize);
 
     // Set color.
@@ -507,7 +504,7 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
 
     entry = gst_structure_new ("ObjectDetection",
         "label", G_TYPE_STRING, prediction->label,
-        "confidence", G_TYPE_FLOAT, prediction->confidence,
+        "confidence", G_TYPE_DOUBLE, prediction->confidence,
         "color", G_TYPE_UINT, prediction->color,
         NULL);
 
