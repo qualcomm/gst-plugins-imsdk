@@ -785,6 +785,13 @@ gst_c2_venc_encode (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
     return GST_FLOW_EOS;
   }
 
+  // This mutex was locked in the base class before call this function
+  // Needs to be unlocked in case we run out of free pending works of
+  // the encoder. If not unlocked here it can cause a dead lock because the
+  // gst_video_encoder_finish_frame cannot be called if gst_c2_venc_handle_frame
+  // is not returned.
+  GST_VIDEO_ENCODER_STREAM_UNLOCK (encoder);
+
   memset (&inBuf, 0, sizeof (BufferDescriptor));
 
   buf = frame->input_buffer;
@@ -796,6 +803,8 @@ gst_c2_venc_encode (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
     inBuf.size = gst_memory_get_sizes (mem, NULL, NULL);
   } else {
     GST_ERROR_OBJECT(c2venc, "Not FD memory");
+    // Lock the mutex again and return to the base class
+    GST_VIDEO_ENCODER_STREAM_LOCK (encoder);
     return GST_FLOW_ERROR;
   }
 
@@ -819,12 +828,17 @@ gst_c2_venc_encode (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   // Queue buffer to Codec2
   if (!gst_c2_venc_wrapper_component_queue (c2venc->wrapper, &inBuf)) {
     GST_ERROR_OBJECT(c2venc, "failed to queue input frame to Codec2");
+    // Lock the mutex again and return to the base class
+    GST_VIDEO_ENCODER_STREAM_LOCK (encoder);
     return GST_FLOW_ERROR;
   }
 
   g_mutex_lock (&(c2venc->pending_lock));
   c2venc->frame_index += 1;
   g_mutex_unlock (&(c2venc->pending_lock));
+
+  // Lock the mutex again and return to the base class
+  GST_VIDEO_ENCODER_STREAM_LOCK (encoder);
 
   return GST_FLOW_OK;
 }
