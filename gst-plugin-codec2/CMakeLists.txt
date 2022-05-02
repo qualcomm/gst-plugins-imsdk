@@ -35,3 +35,4 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
 
 add_subdirectory(c2-engine)
 add_subdirectory(c2venc)
+add_subdirectory(c2vdec)

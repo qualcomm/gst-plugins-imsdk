@@ -1,22 +1,21 @@
-/*
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
-*  
+/* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+*
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
 * disclaimer below) provided that the following conditions are met:
-*  
+*
 *     * Redistributions of source code must retain the above copyright
 *       notice, this list of conditions and the following disclaimer.
-*  
+*
 *     * Redistributions in binary form must reproduce the above
 *       copyright notice, this list of conditions and the following
 *       disclaimer in the documentation and/or other materials provided
 *       with the distribution.
-*  
+*
 *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
 *       contributors may be used to endorse or promote products derived
 *       from this software without specific prior written permission.
-*  
+*
 * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
 * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
 * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
@@ -49,34 +48,45 @@
 #include <mutex>
 #include <condition_variable>
 
+
+#define ALIGN(num, to) (((num) + (to - 1)) & (~(to - 1)))
+
 typedef void (*event_handler_cb)(
     EVENT_TYPE type, void *userdata, void *userdata2);
 
 class C2ComponentWrapper {
 public:
-  C2ComponentWrapper (std::shared_ptr<C2ComponentStore> compstore,
-      const char * name);
-  ~C2ComponentWrapper ();
+  C2ComponentWrapper(std::shared_ptr<C2ComponentStore> compstore,
+    const char* name);
+  ~C2ComponentWrapper();
 
-  bool SetHandler (event_handler_cb callback, gpointer userdata);
-  bool Config (GPtrArray * config);
-  bool Start ();
-  bool Stop ();
-  bool Queue (BufferDescriptor * buffer);
-  bool FreeOutputBuffer (uint64_t bufferIdx);
+  bool SetHandler(event_handler_cb callback, gpointer userdata);
+  bool Config(GPtrArray* config);
+  bool Start();
+  bool Stop();
+  bool Queue(BufferDescriptor * buffer);
+  bool FreeOutputBuffer(uint64_t bufferIdx);
+  c2_status_t createBlockpool(C2BlockPool::local_id_t poolType);
+  std::map<uint64_t, std::shared_ptr<C2Buffer>> out_pending_buffers_;
+  uint32_t mNumPendingWorks;
+  std::mutex mLock;
+  std::condition_variable mCondition;
 
 private:
   C2FrameData::flags_t toC2Flag (FLAG_TYPE flag);
   guint32 gst_to_c2_gbmformat (GstVideoFormat format);
   c2_status_t CheckMaxAvailableQueues ();
+  c2_status_t prepareC2Buffer( BufferDescriptor* buffer, std::shared_ptr<C2Buffer>* c2Buf);
+  c2_status_t waitForProgressOrStateChange(uint32_t maxPendingWorks,uint32_t timeoutMs);
 
   std::shared_ptr<C2ComponentStore> compstore_;
   std::shared_ptr<C2Component> component_;
   std::shared_ptr<C2ComponentInterface> compintf_;
-  std::map<uint64_t, std::shared_ptr<C2Buffer>> out_pending_buffers_;
   uint32_t numpendingworks_;
   std::mutex lock_;
   std::condition_variable workcondition_;
+  std::shared_ptr<C2BlockPool> mLinearPool_;
+  std::shared_ptr<C2BlockPool> mGraphicPool_;
 
   friend class C2ComponentListener;
 };
