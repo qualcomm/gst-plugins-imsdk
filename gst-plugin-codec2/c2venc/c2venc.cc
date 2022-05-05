@@ -810,6 +810,7 @@ gst_c2_venc_encode (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   BufferDescriptor inBuf;
   GstBuffer *buf = NULL;
   GstMemory *mem;
+  GstMapInfo mapinfo = { 0, };
 
   if (!frame) {
     GST_WARNING_OBJECT (c2venc, "frame is NULL, ret GST_FLOW_EOS");
@@ -833,10 +834,11 @@ gst_c2_venc_encode (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
     inBuf.fd = gst_fd_memory_get_fd (mem);
     inBuf.size = gst_memory_get_sizes (mem, NULL, NULL);
   } else {
-    GST_ERROR_OBJECT(c2venc, "Not FD memory");
-    // Lock the mutex again and return to the base class
-    GST_VIDEO_ENCODER_STREAM_LOCK (encoder);
-    return GST_FLOW_ERROR;
+    GST_DEBUG_OBJECT(c2venc, "Not FD memory");
+    gst_buffer_map (buf, &mapinfo, GST_MAP_READ);
+    inBuf.fd = -1;
+    inBuf.data = mapinfo.data;
+    inBuf.size = mapinfo.size;
   }
 
   inBuf.timestamp = frame->pts / 1000;
@@ -862,6 +864,10 @@ gst_c2_venc_encode (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
     // Lock the mutex again and return to the base class
     GST_VIDEO_ENCODER_STREAM_LOCK (encoder);
     return GST_FLOW_ERROR;
+  }
+
+  if (inBuf.fd == -1) {
+    gst_buffer_unmap (buf, &mapinfo);
   }
 
   g_mutex_lock (&(c2venc->pending_lock));
