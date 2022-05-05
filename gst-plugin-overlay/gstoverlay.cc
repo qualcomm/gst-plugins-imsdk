@@ -2403,6 +2403,10 @@ gst_overlay_finalize (GObject * object)
         gst_overlay->overlay);
     g_sequence_free (gst_overlay->bbox_id);
 
+    g_sequence_foreach (gst_overlay->roi_id, gst_overlay_destroy_overlay_item,
+        gst_overlay->overlay);
+    g_sequence_free (gst_overlay->roi_id);
+
     g_sequence_foreach (gst_overlay->simg_id, gst_overlay_destroy_overlay_item,
         gst_overlay->overlay);
     g_sequence_free (gst_overlay->simg_id);
@@ -2533,7 +2537,7 @@ gst_overlay_transform_frame_ip (GstVideoFilter *filter, GstVideoFrame *frame)
   res = gst_overlay_apply_item_list (gst_overlay,
                             gst_buffer_get_roi_meta (frame->buffer),
                             gst_overlay_apply_roi_bbox_item,
-                            gst_overlay->bbox_id);
+                            gst_overlay->roi_id);
   if (!res) {
     GST_ERROR_OBJECT (gst_overlay, "Overlay apply bbox item list failed!");
     return GST_FLOW_ERROR;
@@ -2601,6 +2605,7 @@ gst_overlay_transform_frame_ip (GstVideoFilter *filter, GstVideoFrame *frame)
   g_mutex_unlock (&gst_overlay->lock);
 
   if (!g_sequence_is_empty (gst_overlay->bbox_id) ||
+      !g_sequence_is_empty (gst_overlay->roi_id) ||
       !g_sequence_is_empty (gst_overlay->simg_id) ||
       !g_sequence_is_empty (gst_overlay->text_id) ||
       !g_sequence_is_empty (gst_overlay->pose_id) ||
@@ -2696,6 +2701,7 @@ gst_overlay_init (GstOverlay * gst_overlay)
   gst_overlay->overlay = nullptr;
 
   gst_overlay->bbox_id = g_sequence_new (free);
+  gst_overlay->roi_id = g_sequence_new (free);
   gst_overlay->simg_id = g_sequence_new (free);
   gst_overlay->text_id = g_sequence_new (free);
   gst_overlay->pose_id = g_sequence_new (free);
