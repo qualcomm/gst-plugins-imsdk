@@ -121,6 +121,8 @@ gst_c2_wrapper_free (GstC2Wrapper * wrapper)
 gboolean
 gst_c2_venc_wrapper_create_component (GstC2Wrapper * wrapper,
     const gchar * name, event_handler_cb callback, gpointer userdata) {
+  gboolean ret = FALSE;
+  c2_status_t c2Status = C2_NO_INIT;
 
   if (wrapper->component) {
     GST_INFO ("Delete previous component");
@@ -130,8 +132,17 @@ gst_c2_venc_wrapper_create_component (GstC2Wrapper * wrapper,
   wrapper->component = new C2ComponentWrapper (wrapper->compstore, name);
   wrapper->component->SetHandler (callback, userdata);
 
+  if (wrapper->component) {
+    c2Status =  wrapper->component->createBlockpool(C2BlockPool::BASIC_GRAPHIC);
+    if (c2Status == C2_OK) {
+      ret = TRUE;
+    } else {
+      GST_ERROR("Failed(%d) to allocate block pool(%d)", c2Status, C2BlockPool::BASIC_GRAPHIC);
+    }
+  }
+
   GST_INFO ("Created C2venc component");
-  return TRUE;
+  return ret;
 }
 
 gboolean
