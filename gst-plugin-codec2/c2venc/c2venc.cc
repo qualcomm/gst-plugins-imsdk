@@ -192,6 +192,20 @@ make_bitrate_param (guint32 bitrate, gboolean is_input)
 }
 
 static config_params_t
+make_framerate_param (gfloat framerate, gboolean is_input)
+{
+  config_params_t param;
+
+  memset (&param, 0, sizeof (config_params_t));
+
+  param.config_name = CONFIG_FUNCTION_KEY_FRAMERATE;
+  param.is_input = is_input;
+  param.val.fl = framerate;
+
+  return param;
+}
+
+static config_params_t
 make_resolution_param (guint32 width, guint32 height, gboolean is_input)
 {
   config_params_t param;
@@ -567,6 +581,8 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   gint retval = 0;
   gint width = 0;
   gint height = 0;
+  gint rate_numerator = 0;
+  gint rate_denominator = 0;
   GstVideoFormat input_format = GST_VIDEO_FORMAT_UNKNOWN;
   GPtrArray *config = NULL;
   config_params_t resolution;
@@ -578,12 +594,20 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   config_params_t bitrate;
   config_params_t slice_mode;
   config_params_t qp_ranges;
+  config_params_t framerate;
 
   structure = gst_caps_get_structure (state->caps, 0);
   retval = gst_structure_get_int (structure, "width", &width);
   retval &= gst_structure_get_int (structure, "height", &height);
   if (!retval) {
     GST_ERROR_OBJECT (c2venc, "Unable to get width/height value");
+    return FALSE;
+  }
+
+  retval = gst_structure_get_fraction (structure, "framerate",
+      &rate_numerator, &rate_denominator);
+  if (!retval) {
+    GST_ERROR_OBJECT (c2venc, "Unable to get framerate value");
     return FALSE;
   }
 
@@ -646,6 +670,13 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     bitrate = make_bitrate_param (c2venc->target_bitrate, FALSE);
     g_ptr_array_add (config, &bitrate);
     GST_DEBUG_OBJECT (c2venc, "set target bitrate:%u", c2venc->target_bitrate);
+  }
+
+  if (rate_numerator > 0 && rate_denominator > 0) {
+    c2venc->framerate = rate_numerator / rate_denominator;
+    framerate = make_framerate_param (c2venc->framerate, FALSE);
+    g_ptr_array_add (config, &framerate);
+    GST_DEBUG_OBJECT (c2venc, "set target framerate:%u", c2venc->framerate);
   }
 
   resolution = make_resolution_param (width, height, TRUE);
@@ -1137,6 +1168,7 @@ gst_c2_venc_init (GstC2_VENCEncoder * c2venc)
 
   c2venc->rcMode = RC_MODE_OFF;
   c2venc->target_bitrate = 0;
+  c2venc->framerate = 0;
   c2venc->slice_size = 0;
 
   c2venc->max_qp_b_frames = 0;

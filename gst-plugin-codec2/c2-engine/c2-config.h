@@ -182,6 +182,7 @@ typedef struct {
     guint64 u64;
     gint32 i32;
     gint64 i64;
+    gfloat fl;
   } val;
 
   struct {

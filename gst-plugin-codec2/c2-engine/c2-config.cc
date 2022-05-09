@@ -395,7 +395,7 @@ setVideoFramerate (gpointer param)
 
   } else {
     C2StreamFrameRateInfo::output framerate;
-    framerate.value = config->val.u32;
+    framerate.value = config->val.fl;
     return C2Param::Copy (framerate);
   }
 

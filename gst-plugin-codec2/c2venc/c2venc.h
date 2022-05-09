@@ -88,6 +88,7 @@ struct _GstC2_VENCEncoder {
   ir_mode_t intra_refresh_mode;
   guint32 intra_refresh_mbs;
   guint32 target_bitrate;
+  float framerate;
   slice_mode_t slice_mode;
   guint32 slice_size;
 
