@@ -27,7 +27,7 @@
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
-* Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -1388,6 +1388,8 @@ gpio_event_thread (gpointer userdata)
   timer_t timerid;
   struct sigevent sev;
   struct itimerspec its;
+  memset(&sev, 0, sizeof(struct sigevent));
+  memset(&its, 0, sizeof(struct itimerspec));
 
   GstAppContext *appctx = GST_APP_CONTEXT_CAST (userdata);
   sev.sigev_notify = SIGEV_THREAD;
