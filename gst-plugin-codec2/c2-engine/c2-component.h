@@ -68,6 +68,7 @@ public:
   bool FreeOutputBuffer(uint64_t bufferIdx);
   c2_status_t createBlockpool(C2BlockPool::local_id_t poolType);
   std::map<uint64_t, std::shared_ptr<C2Buffer>> out_pending_buffers_;
+  std::mutex out_pending_buffer_lock_;
   uint32_t mNumPendingWorks;
   std::mutex mLock;
   std::condition_variable mCondition;

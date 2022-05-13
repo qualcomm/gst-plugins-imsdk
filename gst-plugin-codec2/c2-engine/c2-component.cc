@@ -388,6 +388,8 @@ bool
 C2ComponentWrapper::FreeOutputBuffer(uint64_t bufferIdx)
 {
   std::map<uint64_t, std::shared_ptr<C2Buffer> >::iterator it;
+
+  std::unique_lock<std::mutex> ul (out_pending_buffer_lock_);
   it = out_pending_buffers_.find (bufferIdx);
   if (it != out_pending_buffers_.end ()) {
     out_pending_buffers_.erase (it);
@@ -521,7 +523,10 @@ C2ComponentListener::onWorkDone_nb (std::weak_ptr<C2Component> component,
           bufferIdx, worklet->output.ordinal.timestamp.peeku (), outputFrameFlag);
 
       // ref count ++
-      component_wrapper->out_pending_buffers_[bufferIdx] = buffer;
+      {
+        std::unique_lock<std::mutex> ul (component_wrapper->out_pending_buffer_lock_);
+        component_wrapper->out_pending_buffers_[bufferIdx] = buffer;
+      }
 
       if (callback_) {
         callback_->onOutputBufferAvailable (buffer, bufferIdx, timestamp,
