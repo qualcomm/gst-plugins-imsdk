@@ -58,6 +58,11 @@
 #define CONFIG_FUNCTION_KEY_BLUR_MODE "blur_mode"
 #define CONFIG_FUNCTION_KEY_BLUR_RESOLUTION "blur_resolution"
 #define CONFIG_FUNCTION_KEY_QP_RANGES "qp_ranges"
+#define CONFIG_FUNCTION_KEY_ENTROPY_MODE "entropy_mode"
+#define CONFIG_FUNCTION_KEY_LOOP_FILTER_MODE "loop_filter_mode"
+#define CONFIG_FUNCTION_KEY_QP_INIT "qp_init"
+#define CONFIG_FUNCTION_KEY_NUM_LTR_FRAMES "num_ltr_frames"
+#define CONFIG_FUNCTION_KEY_PROFILE_LEVEL "profile_level"
 
 typedef enum {
   INTERLACE_MODE_PROGRESSIVE = 0,
@@ -129,6 +134,19 @@ typedef enum {
 } blur_mode_t;
 
 typedef enum {
+  ENTROPY_MODE_NONE,
+  ENTROPY_MODE_CAVLC,
+  ENTROPY_MODE_CABAC,
+} entropy_mode_t;
+
+typedef enum {
+  LOOP_FILTER_NONE,
+  LOOP_FILTER_ENABLE,
+  LOOP_FILTER_DISABLE,
+  LOOP_FILTER_DISABLE_SLICE_BOUNDARY,
+} loop_filter_mode_t;
+
+typedef enum {
   COLOR_PRIMARIES_UNSPECIFIED,
   COLOR_PRIMARIES_BT709,
   COLOR_PRIMARIES_BT470_M,
@@ -177,6 +195,73 @@ typedef enum {
   IR_MODE_RANDOM,
 } ir_mode_t;
 
+typedef enum {
+  AVC_PROFILE_BASELINE = 0,
+  AVC_PROFILE_CONSTRAINT_BASELINE,
+  AVC_PROFILE_CONSTRAINT_HIGH,
+  AVC_PROFILE_HIGH,
+  AVC_PROFILE_MAIN,
+
+  HEVC_PROFILE_MAIN,
+  HEVC_PROFILE_MAIN10,
+  HEVC_PROFILE_MAIN_STILL_PIC,
+
+  VIDEO_PROFILE_MAX = 0x7FFFFFFF,
+} video_profile_t;
+
+typedef enum {
+  AVC_LEVEL_1 = 0,
+  AVC_LEVEL_1b,
+  AVC_LEVEL_11,
+  AVC_LEVEL_12,
+  AVC_LEVEL_13,
+  AVC_LEVEL_2,
+  AVC_LEVEL_21,
+  AVC_LEVEL_22,
+  AVC_LEVEL_3,
+  AVC_LEVEL_31,
+  AVC_LEVEL_32,
+  AVC_LEVEL_4,
+  AVC_LEVEL_41,
+  AVC_LEVEL_42,
+  AVC_LEVEL_5,
+  AVC_LEVEL_51,
+  AVC_LEVEL_52,
+  AVC_LEVEL_6,
+  AVC_LEVEL_61,
+  AVC_LEVEL_62,
+
+  HEVC_LEVEL_MAIN_TIER_LEVEL1,
+  HEVC_LEVEL_MAIN_TIER_LEVEL2,
+  HEVC_LEVEL_MAIN_TIER_LEVEL21,
+  HEVC_LEVEL_MAIN_TIER_LEVEL3,
+  HEVC_LEVEL_MAIN_TIER_LEVEL31,
+  HEVC_LEVEL_MAIN_TIER_LEVEL4,
+  HEVC_LEVEL_MAIN_TIER_LEVEL41,
+  HEVC_LEVEL_MAIN_TIER_LEVEL5,
+  HEVC_LEVEL_MAIN_TIER_LEVEL51,
+  HEVC_LEVEL_MAIN_TIER_LEVEL52,
+  HEVC_LEVEL_MAIN_TIER_LEVEL6,
+  HEVC_LEVEL_MAIN_TIER_LEVEL61,
+  HEVC_LEVEL_MAIN_TIER_LEVEL62,
+
+  HEVC_LEVEL_HIGH_TIER_LEVEL1,
+  HEVC_LEVEL_HIGH_TIER_LEVEL2,
+  HEVC_LEVEL_HIGH_TIER_LEVEL21,
+  HEVC_LEVEL_HIGH_TIER_LEVEL3,
+  HEVC_LEVEL_HIGH_TIER_LEVEL31,
+  HEVC_LEVEL_HIGH_TIER_LEVEL4,
+  HEVC_LEVEL_HIGH_TIER_LEVEL41,
+  HEVC_LEVEL_HIGH_TIER_LEVEL5,
+  HEVC_LEVEL_HIGH_TIER_LEVEL51,
+  HEVC_LEVEL_HIGH_TIER_LEVEL52,
+  HEVC_LEVEL_HIGH_TIER_LEVEL6,
+  HEVC_LEVEL_HIGH_TIER_LEVEL61,
+  HEVC_LEVEL_HIGH_TIER_LEVEL62,
+
+  VIDEO_LEVEL_MAX = 0x7FFFFFFF,
+} video_level_t;
+
 typedef struct {
   const char *config_name;
   gboolean is_input;
@@ -209,12 +294,25 @@ typedef struct {
     guint32 maxbqp;
   } qp_ranges;
 
+  struct {
+    gboolean quant_i_frames_enable;
+    guint32 quant_i_frames;
+    gboolean quant_p_frames_enable;
+    guint32 quant_p_frames;
+    gboolean quant_b_frames_enable;
+    guint32 quant_b_frames;
+  } qp_init;
+
   pixel_format_t pixel_fmt;
   interlace_mode_t interlace_mode;
   mirror_t mirror_type;
   rc_mode_t rc_mode;
   slice_mode_t slice_mode;
   blur_mode_t blur_mode;
+  entropy_mode_t entropy_mode;
+  loop_filter_mode_t loop_filter_mode;
+  video_profile_t profile;
+  video_level_t level;
 
   struct {
     ir_mode_t type;
@@ -232,5 +330,7 @@ typedef struct {
 } config_params_t;
 
 void push_to_settings (gpointer data, gpointer user_data);
+video_profile_t gst_codec2_get_profile_from_str(const gchar * profile);
+video_level_t gst_codec2_get_level_from_str(const gchar * level);
 
 #endif // __GST_C2_CONFIG_H__

@@ -45,6 +45,8 @@ GST_DEBUG_CATEGORY_STATIC (c2_venc_debug);
 #define GST_TYPE_CODEC2_ENC_RATE_CONTROL (gst_c2_venc_rate_control_get_type ())
 #define GST_TYPE_CODEC2_ENC_INTRA_REFRESH_MODE (gst_c2_venc_intra_refresh_mode_get_type ())
 #define GST_TYPE_CODEC2_ENC_SLICE_MODE (gst_c2_venc_slice_mode_get_type ())
+#define GST_TYPE_CODEC2_ENC_ENTROPY_MODE (gst_c2_venc_entropy_mode_get_type ())
+#define GST_TYPE_CODEC2_ENC_LOOP_FILTER_MODE (gst_c2_venc_loop_filter_get_type ())
 
 #define gst_c2_venc_parent_class parent_class
 G_DEFINE_TYPE (GstC2_VENCEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
@@ -52,6 +54,10 @@ G_DEFINE_TYPE (GstC2_VENCEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 #define EOS_WAITING_TIMEOUT 5
 
 #define DEFAULT_PROP_ROI_QP_DELTA -15
+#define GST_CODEC2_VIDEO_ENC_QUANT_I_FRAMES_DEFAULT (0xffffffff)
+#define GST_CODEC2_VIDEO_ENC_QUANT_P_FRAMES_DEFAULT (0xffffffff)
+#define GST_CODEC2_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT (0xffffffff)
+#define GST_CODEC2_VIDEO_ENC_NUM_LTR_FRAMES_DEFAULT (0xffffffff)
 
 // Caps formats.
 #define GST_VIDEO_FORMATS "{ NV12, NV21 }"
@@ -109,6 +115,12 @@ enum
   PROP_MIN_QP_P_FRAMES,
   PROP_ROI,
   PROP_ROI_QP_DELTA,
+  PROP_ENTROPY_MODE,
+  PROP_LOOP_FILTER_MODE,
+  PROP_QUANT_I_FRAMES,
+  PROP_QUANT_P_FRAMES,
+  PROP_QUANT_B_FRAMES,
+  PROP_NUM_LTR_FRAMES,
 };
 
 static guint32
@@ -181,6 +193,59 @@ gst_c2_venc_intra_refresh_mode_get_type (void)
     qtype = g_enum_register_static ("GstCodec2VencIntraRefreshMode", values);
   }
   return qtype;
+}
+
+static GType
+gst_c2_venc_entropy_mode_get_type (void)
+{
+  static GType qtype = 0;
+
+  if (qtype == 0) {
+    static const GEnumValue values[] = {
+      {ENTROPY_MODE_NONE, "None", "none"},
+      {ENTROPY_MODE_CAVLC, "CAVLC", "cavlc"},
+      {ENTROPY_MODE_CABAC, "CABAC", "cabac"},
+      {0, NULL, NULL}
+    };
+
+    qtype = g_enum_register_static ("GstCodec2VencEntropyMode", values);
+  }
+  return qtype;
+}
+
+static GType
+gst_c2_venc_loop_filter_get_type (void)
+{
+  static GType qtype = 0;
+
+  if (qtype == 0) {
+    static const GEnumValue values[] = {
+      {LOOP_FILTER_NONE, "None", "none"},
+      {LOOP_FILTER_ENABLE, "Enable", "enable"},
+      {LOOP_FILTER_DISABLE, "Disable", "disable"},
+      {LOOP_FILTER_DISABLE_SLICE_BOUNDARY, "Disable-slice-boundary", "disable-slice-boundary"},
+      {0, NULL, NULL}
+    };
+
+    qtype = g_enum_register_static ("GstCodec2VencLoopFilterMode", values);
+  }
+  return qtype;
+}
+
+static config_params_t
+make_profileLevel_param (video_profile_t profile, video_level_t level)
+{
+  config_params_t param;
+
+  memset (&param, 0, sizeof (config_params_t));
+
+  param.config_name = CONFIG_FUNCTION_KEY_PROFILE_LEVEL;
+  if (profile != VIDEO_PROFILE_MAX)
+    param.profile = profile;
+  if (level != VIDEO_LEVEL_MAX)
+    param.level = level;
+
+  return param;
 }
 
 static config_params_t
@@ -373,6 +438,70 @@ make_intraRefresh_param (ir_mode_t mode, guint32 intra_refresh_mbs)
   param.config_name = CONFIG_FUNCTION_KEY_INTRAREFRESH;
   param.ir_mode.type = mode;
   param.ir_mode.intra_refresh_mbs = (float) intra_refresh_mbs;
+
+  return param;
+}
+
+static config_params_t
+make_entropy_mode_param (entropy_mode_t mode)
+{
+  config_params_t param;
+
+  memset (&param, 0, sizeof (config_params_t));
+
+  param.config_name = CONFIG_FUNCTION_KEY_ENTROPY_MODE;
+  param.entropy_mode = mode;
+
+  return param;
+}
+
+static config_params_t
+make_loop_filter_mode_param (loop_filter_mode_t mode)
+{
+  config_params_t param;
+
+  memset (&param, 0, sizeof (config_params_t));
+
+  param.config_name = CONFIG_FUNCTION_KEY_LOOP_FILTER_MODE;
+  param.loop_filter_mode = mode;
+
+  return param;
+}
+
+static config_params_t
+make_qp_Init_param (guint32 quant_i_frames, guint32 quant_p_frames,
+                    guint32 quant_b_frames)
+{
+  config_params_t param;
+
+  memset (&param, 0, sizeof (config_params_t));
+
+  param.config_name = CONFIG_FUNCTION_KEY_QP_INIT;
+  if (quant_i_frames != 0xFFFFFFFF) {
+    param.qp_init.quant_i_frames_enable = TRUE;
+    param.qp_init.quant_i_frames = quant_i_frames;
+  }
+  if (quant_p_frames != 0xFFFFFFFF) {
+    param.qp_init.quant_p_frames_enable = TRUE;
+    param.qp_init.quant_p_frames = quant_p_frames;
+  }
+  if (quant_b_frames != 0xFFFFFFFF) {
+    param.qp_init.quant_b_frames_enable = TRUE;
+    param.qp_init.quant_b_frames = quant_b_frames;
+  }
+
+  return param;
+}
+
+static config_params_t
+make_num_ltr_frames_param (guint32 num_ltr_frames)
+{
+  config_params_t param;
+
+  memset (&param, 0, sizeof (config_params_t));
+
+  param.config_name = CONFIG_FUNCTION_KEY_NUM_LTR_FRAMES;
+  param.val.u32 = num_ltr_frames;
 
   return param;
 }
@@ -685,6 +814,10 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   gint rate_denominator = 0;
   GstVideoFormat input_format = GST_VIDEO_FORMAT_UNKNOWN;
   GPtrArray *config = NULL;
+  GstCaps *peercaps;
+  const gchar *profile_string, *level_string;
+  video_profile_t profile = VIDEO_PROFILE_MAX;
+  video_level_t level = VIDEO_LEVEL_MAX;
   config_params_t resolution;
   config_params_t pixelformat;
   config_params_t rate_control;
@@ -695,6 +828,11 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   config_params_t slice_mode;
   config_params_t qp_ranges;
   config_params_t framerate;
+  config_params_t entropy_mode;
+  config_params_t loop_filter_mode;
+  config_params_t qp_init;
+  config_params_t num_ltr_frames;
+  config_params_t profileLevel;
 
   structure = gst_caps_get_structure (state->caps, 0);
   retval = gst_structure_get_int (structure, "width", &width);
@@ -763,8 +901,45 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
       "set graphic pool with: %d, height: %d, format: %x",
       c2venc->width, c2venc->height, c2venc->input_format);
 
+  // Set profile and level
+  peercaps = gst_pad_peer_query_caps (GST_VIDEO_ENCODER_SRC_PAD (encoder),
+      gst_pad_get_pad_template_caps (GST_VIDEO_ENCODER_SRC_PAD (encoder)));
+  if (peercaps) {
+    if (gst_caps_is_empty (peercaps)) {
+      gst_caps_unref (peercaps);
+      GST_ERROR_OBJECT (c2venc, "Empty caps");
+      return FALSE;
+    }
+
+    structure = gst_caps_get_structure (peercaps, 0);
+    profile_string = gst_structure_get_string (structure, "profile");
+    if (profile_string) {
+      profile = gst_codec2_get_profile_from_str(profile_string);
+      if (profile == VIDEO_PROFILE_MAX) {
+        GST_ERROR_OBJECT (c2venc, "Unsupported profile %s", profile_string);
+        gst_caps_unref (peercaps);
+        return FALSE;
+      }
+    }
+    level_string = gst_structure_get_string (structure, "level");
+    if (level_string) {
+      level = gst_codec2_get_level_from_str(level_string);
+      if (level == VIDEO_PROFILE_MAX) {
+        GST_ERROR_OBJECT (c2venc, "Unsupported level %s", level_string);
+        gst_caps_unref (peercaps);
+        return FALSE;
+      }
+    }
+    gst_caps_unref (peercaps);
+  }
 
   config = g_ptr_array_new ();
+
+  if ((profile != VIDEO_PROFILE_MAX) || (level != VIDEO_LEVEL_MAX)) {
+    profileLevel = make_profileLevel_param (profile, level);
+    g_ptr_array_add (config, &profileLevel);
+    GST_DEBUG_OBJECT (c2venc, "setting profile %u and level %u", profile, level);
+  }
 
   if (c2venc->target_bitrate > 0) {
     bitrate = make_bitrate_param (c2venc->target_bitrate, FALSE);
@@ -819,6 +994,34 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
         make_intraRefresh_param (c2venc->intra_refresh_mode,
         c2venc->intra_refresh_mbs);
     g_ptr_array_add (config, &intra_refresh);
+  }
+
+  if (c2venc->entropy_mode != ENTROPY_MODE_NONE) {
+    entropy_mode = make_entropy_mode_param(c2venc->entropy_mode);
+    g_ptr_array_add (config, &entropy_mode);
+    GST_DEBUG_OBJECT (c2venc, "set entropy_mode - %d", c2venc->entropy_mode);
+  }
+
+  if (c2venc->loop_filter_mode != LOOP_FILTER_NONE) {
+    loop_filter_mode = make_loop_filter_mode_param(c2venc->loop_filter_mode);
+    g_ptr_array_add (config, &loop_filter_mode);
+    GST_DEBUG_OBJECT (c2venc, "set loop_filter_mode - %d", c2venc->loop_filter_mode);
+  }
+
+  if ((c2venc->quant_i_frames != 0xFFFFFFFF)
+   || (c2venc->quant_p_frames != 0xFFFFFFFF)
+   || (c2venc->quant_b_frames != 0xFFFFFFFF)) {
+    qp_init = make_qp_Init_param (c2venc->quant_i_frames,
+        c2venc->quant_p_frames, c2venc->quant_b_frames);
+    g_ptr_array_add (config, &qp_init);
+    GST_DEBUG_OBJECT (c2venc, "set quant I frames: %d, quant P frames: %d, quant B frmes: %d",
+    c2venc->quant_i_frames, c2venc->quant_p_frames, c2venc->quant_b_frames);
+  }
+
+  if (c2venc->num_ltr_frames != GST_CODEC2_VIDEO_ENC_NUM_LTR_FRAMES_DEFAULT) {
+    num_ltr_frames = make_num_ltr_frames_param(c2venc->num_ltr_frames);
+    g_ptr_array_add (config, &num_ltr_frames);
+    GST_DEBUG_OBJECT (c2venc, "set LTR frames number - %d", c2venc->num_ltr_frames);
   }
 
   // Config component
@@ -1128,6 +1331,24 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
     case PROP_ROI_QP_DELTA:
       c2venc->roi_encoding_qp_delta = g_value_get_int (value);
       break;
+    case PROP_ENTROPY_MODE:
+      c2venc->entropy_mode = (entropy_mode_t) g_value_get_enum (value);
+      break;
+    case PROP_LOOP_FILTER_MODE:
+      c2venc->loop_filter_mode = (loop_filter_mode_t) g_value_get_enum (value);
+      break;
+    case PROP_QUANT_I_FRAMES:
+      c2venc->quant_i_frames = g_value_get_uint (value);
+      break;
+    case PROP_QUANT_P_FRAMES:
+      c2venc->quant_p_frames = g_value_get_uint (value);
+      break;
+    case PROP_QUANT_B_FRAMES:
+      c2venc->quant_b_frames = g_value_get_uint (value);
+      break;
+    case PROP_NUM_LTR_FRAMES:
+      c2venc->num_ltr_frames = g_value_get_uint (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -1216,6 +1437,24 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
     }
     case PROP_ROI_QP_DELTA:
       g_value_set_int (value, c2venc->roi_encoding_qp_delta);
+      break;
+    case PROP_ENTROPY_MODE:
+      g_value_set_enum (value, c2venc->entropy_mode);
+      break;
+    case PROP_LOOP_FILTER_MODE:
+      g_value_set_enum (value, c2venc->loop_filter_mode);
+      break;
+    case PROP_QUANT_I_FRAMES:
+      g_value_set_uint (value, c2venc->quant_i_frames);
+      break;
+    case PROP_QUANT_P_FRAMES:
+      g_value_set_uint (value, c2venc->quant_p_frames);
+      break;
+    case PROP_QUANT_B_FRAMES:
+      g_value_set_uint (value, c2venc->quant_b_frames);
+      break;
+    case PROP_NUM_LTR_FRAMES:
+      g_value_set_uint (value, c2venc->num_ltr_frames);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1382,6 +1621,50 @@ gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
       G_CALLBACK (gst_c2_venc_trigger_iframe),
       NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
 
+  g_object_class_install_property (gobject, PROP_ENTROPY_MODE,
+      g_param_spec_enum ("entropy-mode", "Entropy Mode",
+          "Entropy mode for encoding process",
+          GST_TYPE_CODEC2_ENC_ENTROPY_MODE,
+          ENTROPY_MODE_NONE,
+          static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY)));
+
+  g_object_class_install_property (gobject, PROP_LOOP_FILTER_MODE,
+      g_param_spec_enum ("loop-filter-mode", "Loop Filter mode",
+          "Enable or disable the deblocking filter",
+          GST_TYPE_CODEC2_ENC_LOOP_FILTER_MODE,
+          LOOP_FILTER_NONE,
+          static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY)));
+
+  g_object_class_install_property (gobject, PROP_QUANT_I_FRAMES,
+      g_param_spec_uint ("quant-i-frames", "I-Frame Quantization",
+          "Quantization parameter for I-frames (0xffffffff=component default)",
+          0, G_MAXUINT, GST_CODEC2_VIDEO_ENC_QUANT_I_FRAMES_DEFAULT,
+          static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY)));
+
+  g_object_class_install_property (gobject, PROP_QUANT_P_FRAMES,
+      g_param_spec_uint ("quant-p-frames", "P-Frame Quantization",
+          "Quantization parameter for P-frames (0xffffffff=component default)",
+          0, G_MAXUINT, GST_CODEC2_VIDEO_ENC_QUANT_P_FRAMES_DEFAULT,
+          static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY)));
+
+  g_object_class_install_property (gobject, PROP_QUANT_P_FRAMES,
+      g_param_spec_uint ("quant-b-frames", "B-Frame Quantization",
+          "Quantization parameter for B-frames (0xffffffff=component default)",
+          0, G_MAXUINT, GST_CODEC2_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT,
+          static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY)));
+
+  g_object_class_install_property (gobject, PROP_NUM_LTR_FRAMES,
+      g_param_spec_uint ("num-ltr-frames", "LTR Frames Count",
+          "Number of Long Term Reference Frames (0xffffffff=component default)",
+          0, G_MAXUINT, GST_CODEC2_VIDEO_ENC_NUM_LTR_FRAMES_DEFAULT,
+          static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY)));
+
   gst_element_class_set_static_metadata (element,
       "C2Venc encoder", "C2_VENC/Encoder",
       "C2Venc encoding", "QTI");
@@ -1431,6 +1714,13 @@ gst_c2_venc_init (GstC2_VENCEncoder * c2venc)
   c2venc->roi_encoding.bottom = 0;
   c2venc->roi_encoding.right = 0;
   c2venc->roi_encoding_qp_delta = 0;
+
+  c2venc->entropy_mode = ENTROPY_MODE_NONE;
+  c2venc->loop_filter_mode = LOOP_FILTER_NONE;
+  c2venc->quant_i_frames = GST_CODEC2_VIDEO_ENC_QUANT_I_FRAMES_DEFAULT;
+  c2venc->quant_p_frames = GST_CODEC2_VIDEO_ENC_QUANT_P_FRAMES_DEFAULT;
+  c2venc->quant_b_frames = GST_CODEC2_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT;
+  c2venc->num_ltr_frames = GST_CODEC2_VIDEO_ENC_NUM_LTR_FRAMES_DEFAULT;
 
   memset (c2venc->queued_frame, 0, sizeof (c2venc->queued_frame));
 
