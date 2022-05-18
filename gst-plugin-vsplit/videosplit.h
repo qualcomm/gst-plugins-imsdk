@@ -38,9 +38,12 @@
 #include <gst/gst.h>
 #include <gst/video/video.h>
 
+#ifdef USE_C2D_CONVERTER
+#include <gst/video/c2d-video-converter.h>
+#endif // USE_C2D_CONVERTER
 #ifdef USE_GLES_CONVERTER
 #include <gst/video/gles-video-converter.h>
-#endif //USE_GLES_CONVERTER
+#endif // USE_GLES_CONVERTER
 
 G_BEGIN_DECLS
 
@@ -85,6 +88,9 @@ struct _GstVideoSplit
   GList                *srcpads;
 
   /// Supported converters.
+#ifdef USE_C2D_CONVERTER
+  GstC2dVideoConverter *c2dconvert;
+#endif // USE_C2D_CONVERTER
 #ifdef USE_GLES_CONVERTER
   GstGlesConverter     *glesconvert;
 #endif // USE_GLES_CONVERTER
