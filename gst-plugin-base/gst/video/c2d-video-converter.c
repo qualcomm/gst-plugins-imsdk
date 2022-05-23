@@ -164,6 +164,9 @@ struct _GstC2dVideoConverter
   // Map of C2D surface ID and its corresponding GPU address.
   GHashTable        *gpulist;
 
+  // Map of C2D surface ID and its frame virtual mapped address
+  GHashTable        *vaddrlist;
+
   // Map of buffer FDs and their corresponding C2D surface ID.
   GHashTable        *insurfaces;
   GHashTable        *outsurfaces;
@@ -511,10 +514,165 @@ create_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
 
   g_hash_table_insert (convert->gpulist, GUINT_TO_POINTER (surface_id),
        gpuaddress);
+  g_hash_table_insert (convert->vaddrlist, GUINT_TO_POINTER (surface_id),
+      GST_VIDEO_FRAME_PLANE_DATA (frame, 0));
 
   GST_DEBUG ("Created %s surface with id %x", (bits & C2D_SOURCE) ?
       "input" : "output", surface_id);
   return surface_id;
+}
+
+static gboolean
+update_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
+    guint surface_id, guint bits, gboolean isubwc)
+{
+  const gchar *format = NULL, *compression = NULL;
+  C2D_STATUS status = C2D_STATUS_NOT_SUPPORTED;
+  gpointer gpuaddress = NULL;
+
+  gpuaddress = g_hash_table_lookup (convert->gpulist,
+      GUINT_TO_POINTER (surface_id));
+  status = convert->UnMapAddr (gpuaddress);
+
+  if (status != C2D_STATUS_OK) {
+    GST_ERROR ("Failed to unmap GPU address %p for surface %x, error: %d",
+        gpuaddress, surface_id, status);
+    return FALSE;
+  }
+
+  gpuaddress = map_gpu_address (convert, frame);
+  g_return_val_if_fail (gpuaddress != NULL, FALSE);
+
+  format = gst_video_format_to_string (GST_VIDEO_FRAME_FORMAT (frame));
+
+  if (GST_VIDEO_INFO_IS_RGB (&frame->info) ||
+      GST_VIDEO_INFO_IS_GRAY (&frame->info)) {
+    C2D_RGB_SURFACE_DEF surface = { 0, };
+    C2D_SURFACE_TYPE type;
+
+    surface.format =
+        gst_video_format_to_c2d_format (GST_VIDEO_FRAME_FORMAT (frame));
+    g_return_val_if_fail (surface.format != 0, FALSE);
+
+    // In case the format has UBWC enabled append additional format flags.
+    if (isubwc) {
+      surface.format |= C2D_FORMAT_UBWC_COMPRESSED;
+      compression = " UBWC";
+    } else {
+      compression = "";
+    }
+
+    // Set surface dimensions.
+    surface.width = GST_VIDEO_FRAME_WIDTH (frame);
+    surface.height = GST_VIDEO_FRAME_HEIGHT (frame);
+
+    GST_DEBUG ("%s %s%s surface - width(%u) height(%u)", (bits & C2D_SOURCE) ?
+        "Input" : "Output", format, compression, surface.width, surface.height);
+
+    // Plane stride.
+    surface.stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0);
+
+    GST_DEBUG ("%s %s%s surface - stride(%d)", (bits & C2D_SOURCE) ?
+        "Input" : "Output", format, compression, surface.stride);
+
+    // Set plane virtual and GPU address.
+    surface.buffer = GST_VIDEO_FRAME_PLANE_DATA (frame, 0);
+    surface.phys = gpuaddress;
+
+    GST_DEBUG ("%s %s%s surface - plane(%p) phys(%p)", (bits & C2D_SOURCE) ?
+        "Input" : "Output", format, compression, surface.buffer, surface.phys);
+
+    type = (C2D_SURFACE_TYPE)(C2D_SURFACE_RGB_HOST | C2D_SURFACE_WITH_PHYS);
+
+    // Update RGB surface.
+    status = convert->UpdateSurface(surface_id, bits, type, &surface);
+  } else if (GST_VIDEO_INFO_IS_YUV (&frame->info)) {
+    C2D_YUV_SURFACE_DEF surface = { 0, };
+    C2D_SURFACE_TYPE type;
+
+    surface.format =
+        gst_video_format_to_c2d_format (GST_VIDEO_FRAME_FORMAT (frame));
+    g_return_val_if_fail (surface.format != 0, FALSE);
+
+    // In case the format has UBWC enabled append additional format flags.
+    if (isubwc) {
+      surface.format |= C2D_FORMAT_UBWC_COMPRESSED;
+      compression = " UBWC";
+    } else {
+      compression = "";
+    }
+
+    // Set surface dimensions.
+    surface.width = GST_VIDEO_FRAME_WIDTH (frame);
+    surface.height = GST_VIDEO_FRAME_HEIGHT (frame);
+
+    GST_DEBUG ("%s %s%s surface - width(%u) height(%u)", (bits & C2D_SOURCE) ?
+        "Input" : "Output", format, compression, surface.width, surface.height);
+
+    // Y plane stride.
+    surface.stride0 = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0);
+    // UV plane (U plane in planar format) plane stride.
+    surface.stride1 = (GST_VIDEO_FRAME_N_PLANES (frame) >= 2) ?
+        GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1) : 0;
+    // V plane (planar format, ignored in other formats) plane stride.
+    surface.stride2 = (GST_VIDEO_FRAME_N_PLANES (frame) >= 3) ?
+        GST_VIDEO_FRAME_PLANE_STRIDE (frame, 2) : 0;
+
+    GST_DEBUG ("%s %s%s surface - stride0(%d) stride1(%d) stride2(%d)",
+        (bits & C2D_SOURCE) ? "Input" : "Output", format, compression,
+        surface.stride0, surface.stride1, surface.stride2);
+
+    // Y plane virtual address.
+    surface.plane0 = GST_VIDEO_FRAME_PLANE_DATA (frame, 0);
+    // UV plane (U plane in planar format) plane virtual address.
+    surface.plane1 = (GST_VIDEO_FRAME_N_PLANES (frame) >= 2) ?
+        GST_VIDEO_FRAME_PLANE_DATA (frame, 1) : NULL;
+    // V plane (planar format, ignored in other formats) plane virtual address.
+    surface.plane2 = (GST_VIDEO_FRAME_N_PLANES (frame) >= 3) ?
+        GST_VIDEO_FRAME_PLANE_DATA (frame, 2) : NULL;
+
+    GST_DEBUG ("%s %s%s surface - plane0(%p) plane1(%p) plane2(%p)",
+        (bits & C2D_SOURCE) ? "Input" : "Output", format, compression,
+        surface.plane0, surface.plane1, surface.plane2);
+
+    // Y plane GPU address.
+    surface.phys0 = gpuaddress;
+    // UV plane (U plane in planar format)  GPU address.
+    surface.phys1 = (GST_VIDEO_FRAME_N_PLANES (frame) >= 2) ?
+        GSIZE_TO_POINTER (GPOINTER_TO_SIZE (gpuaddress) +
+        GST_VIDEO_FRAME_PLANE_OFFSET (frame, 1)) : NULL;
+    // V plane (planar format, ignored in other formats) GPU address.
+    surface.phys2 = (GST_VIDEO_FRAME_N_PLANES (frame) >= 3) ?
+        GSIZE_TO_POINTER (GPOINTER_TO_SIZE (gpuaddress) +
+        GST_VIDEO_FRAME_PLANE_OFFSET (frame, 2)) : NULL;
+
+    GST_DEBUG ("%s %s%s surface - phys0(%p) phys1(%p) phys2(%p)",
+         (bits & C2D_SOURCE) ? "Input" : "Output", format, compression,
+         surface.phys0, surface.phys1, surface.phys2);
+
+    type = (C2D_SURFACE_TYPE)(C2D_SURFACE_YUV_HOST | C2D_SURFACE_WITH_PHYS);
+
+    // Update YUV surface.
+    status = convert->UpdateSurface(surface_id, bits, type, &surface);
+  } else {
+    GST_ERROR ("Unsupported format %s !", format);
+  }
+
+  if (status != C2D_STATUS_OK) {
+    GST_ERROR ("Failed to Update %s C2D surface, error: %d!",
+        (bits & C2D_SOURCE) ? "Input" : "Output", status);
+    unmap_gpu_address (NULL, gpuaddress, convert);
+    return FALSE;
+  }
+
+  g_hash_table_insert (convert->gpulist, GUINT_TO_POINTER (surface_id),
+      gpuaddress);
+  g_hash_table_insert (convert->vaddrlist, GUINT_TO_POINTER (surface_id),
+      GST_VIDEO_FRAME_PLANE_DATA (frame, 0));
+
+  GST_DEBUG ("Updated %s surface with id %x", (bits & C2D_SOURCE) ?
+      "input" : "output", surface_id);
+  return TRUE;
 }
 
 static void
@@ -875,6 +1033,11 @@ gst_c2d_video_converter_new ()
       gst_c2d_video_converter_free (convert), "Failed to create hash table "
       "for GPU mapped addresses!");
 
+  convert->vaddrlist = g_hash_table_new (NULL, NULL);
+  C2D_RETURN_NULL_IF_FAIL_WITH_MSG (convert->vaddrlist != NULL,
+      gst_c2d_video_converter_free (convert), "Failed to create hash table "
+      "for mapped virtual addresses!");
+
   setup.max_object_list_needed = C2D_INIT_MAX_OBJECT;
   setup.max_surface_template_needed = C2D_INIT_MAX_TEMPLATE;
 
@@ -944,6 +1107,9 @@ gst_c2d_video_converter_free (GstC2dVideoConverter * convert)
     g_hash_table_foreach (convert->gpulist, unmap_gpu_address, convert);
     g_hash_table_destroy (convert->gpulist);
   }
+
+  if (convert->vaddrlist != NULL)
+    g_hash_table_destroy (convert->vaddrlist);
 
   G_LOCK (c2d);
 
@@ -1076,9 +1242,23 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
       g_hash_table_insert (convert->insurfaces, GUINT_TO_POINTER (fd),
           GUINT_TO_POINTER (surface_id));
     } else {
+      gpointer vaddress = NULL;
+
       // Get the input surface ID from the input hash table.
       surface_id = GPOINTER_TO_UINT (
           g_hash_table_lookup (convert->insurfaces, GUINT_TO_POINTER (fd)));
+      vaddress = g_hash_table_lookup (convert->vaddrlist,
+          GUINT_TO_POINTER (surface_id));
+
+      if (vaddress != GST_VIDEO_FRAME_PLANE_DATA (inframe, 0)) {
+        gboolean success = FALSE;
+
+        success = update_surface (convert, inframe, surface_id, C2D_SOURCE,
+            GET_OPT_UBWC_FORMAT (opts));
+
+        C2D_RETURN_NULL_IF_FAIL_WITH_MSG (success == TRUE, GST_C2D_UNLOCK (convert),
+            "Update failed for source surface %x", surface_id);
+      }
     }
 
     // Extract the source and destination rectangles.
@@ -1134,9 +1314,23 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
     g_hash_table_insert (convert->outsurfaces, GUINT_TO_POINTER (fd),
         GUINT_TO_POINTER (surface_id));
   } else {
+    gpointer vaddress = NULL;
+
     // Get the input surface ID from the input hash table.
     surface_id = GPOINTER_TO_UINT (
         g_hash_table_lookup (convert->outsurfaces, GUINT_TO_POINTER (fd)));
+    vaddress = g_hash_table_lookup (convert->vaddrlist,
+        GUINT_TO_POINTER (surface_id));
+
+    if (vaddress != GST_VIDEO_FRAME_PLANE_DATA (outframe, 0)) {
+      gboolean success = FALSE;
+
+      success = update_surface (convert, outframe, surface_id, C2D_TARGET,
+          GET_OPT_UBWC_FORMAT (convert->outopts));
+
+      C2D_RETURN_NULL_IF_FAIL_WITH_MSG (success == TRUE, GST_C2D_UNLOCK (convert),
+          "Update failed for target surface %x", surface_id);
+    }
   }
 
   // Fill the surface if there is visible background area.
@@ -1236,6 +1430,9 @@ gst_c2d_video_converter_flush (GstC2dVideoConverter *convert)
     g_hash_table_foreach (convert->gpulist, unmap_gpu_address, convert);
     g_hash_table_remove_all (convert->gpulist);
   }
+
+  if (convert->vaddrlist != NULL)
+    g_hash_table_remove_all (convert->vaddrlist);
 
   GST_C2D_UNLOCK (convert);
   return;
