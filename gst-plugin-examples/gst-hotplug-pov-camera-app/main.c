@@ -442,6 +442,7 @@ handle_stdin_source (GIOChannel * source, GIOCondition condition,
       return FALSE;
     } else if ((G_IO_STATUS_ERROR == status) && (NULL == error)) {
       g_printerr ("Unknown error!\n");
+      g_clear_error (&error);
       return FALSE;
     }
   } while (status == G_IO_STATUS_AGAIN);
@@ -854,7 +855,7 @@ print_pipeline_elements (GstElement * pipeline, GstStructure * plugins)
 
         g_free (field);
         g_free (name);
-
+        gst_object_unref (element);
         g_value_reset (&item);
         index++;
         break;
@@ -1122,9 +1123,10 @@ gst_pipeline_menu (GstElement * pipeline, GAsyncQueue * messages,
   g_print ("\n\nChoose an option: ");
 
   // If FALSE is returned termination signal has been issued.
-  if (!wait_main_message (messages, &input))
+  if (!wait_main_message (messages, &input)) {
+    g_free (input);
     return FALSE;
-  else if (g_str_equal (input, GPIO_EVENT)) {
+  } else if (g_str_equal (input, GPIO_EVENT)) {
     //if the input in from queue is a GPIO event, return
     //push the GPIO EVENT msg again to preserve it for the main menu thread
     g_async_queue_push (messages, gst_structure_new (STDIN_MESSAGE,
@@ -1145,6 +1147,7 @@ gst_pipeline_menu (GstElement * pipeline, GAsyncQueue * messages,
     // If FALSE is returned termination signal has been issued.
     if (!wait_main_message (messages, &input)) {
       gst_structure_free (plugins);
+      g_free (input);
       return FALSE;
     } else if (g_str_equal (input, GPIO_EVENT)) {
       //if the input in from queue is a GPIO event, return
@@ -1195,7 +1198,7 @@ gst_element_menu (GstElement ** element, GAsyncQueue * messages)
   if (!wait_main_message (messages, &input)) {
     gst_structure_free (props);
     gst_structure_free (signals);
-
+    g_free (input);
     return FALSE;
   } else if (g_str_equal (input, GPIO_EVENT)) {
     //if the input in from queue is a GPIO event, return
@@ -1350,7 +1353,7 @@ timer_handler (union sigval sv)
   gst_element_send_event (appctx->pipeline2, cam_plug_event);
   g_async_queue_push (appctx->messages_main, gst_structure_new (STDIN_MESSAGE,
           "input", G_TYPE_STRING, GPIO_EVENT, NULL));
-
+  gst_event_unref(cam_plug_event);
   return NULL;
 }
 
@@ -1542,10 +1545,10 @@ create_pipeline (GstElement ** pipeline, gpointer userdata, gchar * input)
     g_printerr ("\n\nFailed to create pipeline, error: %s!\n",
         GST_STR_NULL (error->message));
     g_clear_error (&error);
-
     return -1;
   } else if ((NULL == *pipeline) && (NULL == error)) {
     g_printerr ("\n\nFailed to create pipeline, unknown error!\n");
+    g_clear_error (&error);
     return -1;
   } else if ((*pipeline != NULL) && (error != NULL)) {
     g_printerr ("\n\nErroneous pipeline, error: %s!\n",
@@ -1559,13 +1562,16 @@ create_pipeline (GstElement ** pipeline, gpointer userdata, gchar * input)
     // Retrieve reference to the pipeline's bus.
     if ((bus = gst_pipeline_get_bus (GST_PIPELINE (*pipeline))) == NULL) {
       g_printerr ("\n\nERROR: Failed to retrieve pipeline bus!\n");
+      g_clear_error (&error);
       return -1;
     }
     // Watch for messages on the pipeline's bus.
     bus_watch_id = gst_bus_add_watch (bus, handle_bus_message, appctx);
     gst_object_unref (bus);
+    g_clear_error (&error);
     return bus_watch_id;
   }
+  g_clear_error (&error);
 }
 
 /**
@@ -1603,12 +1609,15 @@ configure_pipeline (guint pipeline_idx, gpointer userdata)
         default:
           g_printerr ("%s: Invalid pipeline index %d\n", __func__,
               pipeline_idx);
+          g_free (input);
           return -1;
       }
+      g_free (input);
       return 0;
       //fixme: observing SIGSEGV upon multiple gpio events when waitin for pipeline from user
     }
   } while (1);
+  g_free (input);
   return -1;
 }
 
@@ -1705,7 +1714,7 @@ configure_pref_on_pov_attach (gpointer userdata)
       }
     }
   } while (1);
-
+  g_free (input);
   g_print ("Setting user_pref to %d \n", user_pref);
 }
 
@@ -1924,6 +1933,7 @@ menu_thread (gpointer userdata)
         break;
     }
   }
+  g_free (input);
   g_async_queue_push (appctx->messages1,
       gst_structure_new_empty (TERMINATE_MESSAGE));
   g_print ("waiting for p1thread to join\n");
@@ -1935,7 +1945,6 @@ menu_thread (gpointer userdata)
   g_main_loop_quit (appctx->mloop);
   return NULL;
 }
-
 
 /**
  * init_camera ()
@@ -1960,13 +1969,10 @@ main (gint argc, gchar * argv[])
 {
   GstAppContext *appctx = gst_app_context_new ();
   GOptionContext *optsctx = NULL;
-  GstBus *bus = NULL;
-  GIOChannel *iostdin = NULL, *iogpio42 = NULL;
+  GIOChannel *iostdin = NULL;
   GThread *mthread = NULL, *gpiothread = NULL;
-  guint intrpt_watch_id = 0, stdin_watch_id = 0, usrsig_watch_id =
-      0, event_watch_id = 0;
-  gint fd = -1;
-  gchar *str_pipeline1 = NULL, *str_pipeline2 = NULL;
+  guint intrpt_watch_id = 0, stdin_watch_id = 0, usrsig_watch_id = 0,
+    event_watch_id = 0;
 
   g_set_prgname ("gst-hotplug-pov-camera-app");
 
@@ -1984,10 +1990,12 @@ main (gint argc, gchar * argv[])
       g_printerr ("ERROR: Failed to parse command line options: %s!\n",
           GST_STR_NULL (error->message));
       g_clear_error (&error);
-
+      g_option_context_free (optsctx);
       return -1;
     } else if (!success && (NULL == error)) {
       g_printerr ("ERROR: Initializing: Unknown error!\n");
+      g_option_context_free (optsctx);
+      g_clear_error (&error);
       return -1;
     }
   } else {
@@ -1999,6 +2007,10 @@ main (gint argc, gchar * argv[])
   gst_init (&argc, &argv);
 
   init_camera ();
+
+  //once command line arguments is parsed this variable is not needed
+  g_option_context_free (optsctx);
+
   // Initialize main loop.
   if ((appctx->mloop = g_main_loop_new (NULL, FALSE)) == NULL) {
     g_printerr ("ERROR: Failed to create Main loop!\n");
@@ -2021,7 +2033,6 @@ main (gint argc, gchar * argv[])
   stdin_watch_id =
       g_io_add_watch (iostdin, G_IO_IN | G_IO_PRI, handle_stdin_source, appctx);
   g_io_channel_unref (iostdin);
-
 
   if (-1 == get_gpio_handle ()) {
     g_printerr ("ERROR: Failed to get the ioctl handle for the GPIO!\n");
@@ -2071,6 +2082,5 @@ main (gint argc, gchar * argv[])
 
   gst_app_context_free (appctx);
   gst_deinit ();
-
   return 0;
 }
