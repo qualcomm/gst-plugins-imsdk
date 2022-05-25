@@ -422,6 +422,15 @@ gst_video_split_update_params (GstVideoSplit * vsplit,
 
   structure = gst_structure_new_empty ("options");
 
+#ifdef USE_C2D_CONVERTER
+  gst_structure_set_value (structure,
+      GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, &srcrects);
+  gst_structure_set_value (structure,
+      GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, &dstrects);
+
+  gst_c2d_video_converter_set_input_opts (vsplit->c2dconvert, 0, structure);
+#endif // USE_C2D_CONVERTER
+
 #ifdef USE_GLES_CONVERTER
   gst_structure_set_value (structure,
       GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, &srcrects);
@@ -517,13 +526,38 @@ gst_video_split_sinkpad_chain (GstPad * pad, GstObject * parent,
     return success ? GST_FLOW_OK : GST_FLOW_ERROR;
   }
 
+#ifdef USE_C2D_CONVERTER
+  {
+    gpointer *request_ids = g_new0 (gpointer, request->n_outputs);
+    guint idx = 0;
+
+    // Submit each output frame as seperate c2d converter request.
+    for (idx = 0; idx < request->n_outputs; idx++) {
+      // Update source/destination rectangles and output buffers flags/meta.
+      gst_video_split_update_params (vsplit, &(request)->inframes[0],
+          &(request)->outframes[idx], 1);
+
+      request_ids[idx] = gst_c2d_video_converter_submit_request (vsplit->c2dconvert,
+              request->inframes, request->n_inputs, &(request)->outframes[idx]);
+    }
+
+    // Wait for all c2d converter requests to complete.
+    for (idx = 0; idx < request->n_outputs; idx++)
+      success &= gst_c2d_video_converter_wait_request (vsplit->c2dconvert,
+          request_ids[idx]);
+
+    g_free (request_ids);
+  }
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
   // Update source/destination rectangles and output buffers flags/meta.
   gst_video_split_update_params (vsplit, &(request)->inframes[0],
       request->outframes, request->n_outputs);
 
-#ifdef USE_GLES_CONVERTER
   success = gst_gles_video_converter_process (vsplit->glesconvert,
-      request->inframes, request->n_inputs, request->outframes, request->n_outputs);
+      request->inframes, request->n_inputs, request->outframes,
+      request->n_outputs);
 #endif // USE_GLES_CONVERTER
 
   // Get time difference between current time and start.
@@ -615,6 +649,16 @@ gst_video_split_sinkpad_setcaps (GstVideoSplit * vsplit, GstPad * pad,
   GST_VIDEO_SPLIT_SINKPAD (pad)->info = gst_video_info_copy (&info);
 
   opts = gst_structure_new_empty ("options");
+
+#ifdef USE_C2D_CONVERTER
+  gst_structure_set (opts,
+      GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
+          gst_caps_has_compression (caps, "ubwc"),
+      NULL);
+
+  // Configure the input parameters of the GLES converter.
+  gst_c2d_video_converter_set_input_opts (vsplit->c2dconvert, 0, opts);
+#endif // USE_C2D_CONVERTER
 
 #ifdef USE_GLES_CONVERTER
   // TODO Workaround due to single thread limitation in GLES.
@@ -1018,6 +1062,11 @@ gst_video_split_finalize (GObject * object)
 {
   GstVideoSplit *vsplit = GST_VIDEO_SPLIT (object);
 
+#ifdef USE_C2D_CONVERTER
+  if (vsplit->c2dconvert != NULL)
+    gst_c2d_video_converter_free (vsplit->c2dconvert);
+#endif // USE_C2D_CONVERTER
+
 #ifdef USE_GLES_CONVERTER
   if (vsplit->glesconvert != NULL)
     gst_gles_video_converter_free (vsplit->glesconvert);
@@ -1076,6 +1125,10 @@ gst_video_split_init (GstVideoSplit * vsplit)
 
   vsplit->nextidx = 0;
   vsplit->srcpads = NULL;
+
+#ifdef USE_C2D_CONVERTER
+  vsplit->c2dconvert = gst_c2d_video_converter_new ();
+#endif // USE_C2D_CONVERTER
 
 #ifdef USE_GLES_CONVERTER
   vsplit->glesconvert = NULL;
