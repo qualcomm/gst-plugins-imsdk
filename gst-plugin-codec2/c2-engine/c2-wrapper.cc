@@ -1,0 +1,201 @@
+/*
+* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+*  
+* Redistribution and use in source and binary forms, with or without
+* modification, are permitted (subject to the limitations in the
+* disclaimer below) provided that the following conditions are met:
+*  
+*     * Redistributions of source code must retain the above copyright
+*       notice, this list of conditions and the following disclaimer.
+*  
+*     * Redistributions in binary form must reproduce the above
+*       copyright notice, this list of conditions and the following
+*       disclaimer in the documentation and/or other materials provided
+*       with the distribution.
+*  
+*     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+*       contributors may be used to endorse or promote products derived
+*       from this software without specific prior written permission.
+*  
+* NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+* GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+* HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+* MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+* IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+* ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+* DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+* GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+* INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+* IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+* OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+#include "c2-wrapper.h"
+
+#include <dlfcn.h>
+
+#define GST_CAT_DEFAULT gst_c2_venc_context_debug_category()
+static GstDebugCategory *
+gst_c2_venc_context_debug_category (void)
+{
+  static gsize catgonce = 0;
+
+  if (g_once_init_enter (&catgonce)) {
+    gsize catdone = (gsize) _gst_debug_category_new ("qtic2venc", 0,
+        "C2 encoder context");
+    g_once_init_leave (&catgonce, catdone);
+  }
+  return (GstDebugCategory *) catgonce;
+}
+
+struct _GstC2Wrapper {
+  std::shared_ptr<C2ComponentStore> compstore;
+  gpointer dlhandle;
+  C2ComponentWrapper *component;
+};
+
+struct QC2ComponentStoreFactory {
+    virtual ~QC2ComponentStoreFactory() = default;
+    virtual std::shared_ptr<C2ComponentStore> getInstance() = 0;
+};
+
+using QC2ComponentStoreFactoryGetter_t
+    = QC2ComponentStoreFactory* (*)(int majorVersion, int minorVersion);
+
+GstC2Wrapper *
+gst_c2_wrapper_new ()
+{
+  GstC2Wrapper *wrapper = NULL;
+  wrapper = g_new0 (GstC2Wrapper, 1);
+  g_return_val_if_fail (wrapper != NULL, NULL);
+
+  wrapper->dlhandle = dlopen("libqcodec2_core.so", RTLD_NOW);
+  if (wrapper->dlhandle == NULL) {
+    g_slice_free (GstC2Wrapper, wrapper);
+    GST_ERROR("failed to open %s: %s", "libqcodec2_core.so", dlerror());
+    return NULL;
+  }
+
+  auto factoryGetter =
+      (QC2ComponentStoreFactoryGetter_t) dlsym (wrapper->dlhandle,
+      "QC2ComponentStoreFactoryGetter");
+
+  if (factoryGetter == NULL) {
+    GST_ERROR("failed to load symbol QC2ComponentStoreFactoryGetter: %s",
+        dlerror());
+    dlclose(wrapper->dlhandle);
+    return NULL;
+  }
+
+  auto c2StoreFactory = (*factoryGetter) (1, 0); // get version 1.0
+  if (c2StoreFactory == NULL) {
+    GST_ERROR("failed to get Store factory !");
+    dlclose(wrapper->dlhandle);
+    return NULL;
+  } else {
+    GST_INFO ("Successfully get store factory");
+  }
+
+  wrapper->compstore = c2StoreFactory->getInstance();
+  if (wrapper->compstore == NULL) {
+    GST_ERROR("failed to get Component Store instance!");
+    dlclose(wrapper->dlhandle);
+    return NULL;
+  }
+
+  GST_INFO ("Created C2 wrapper: %p", wrapper);
+  return wrapper;
+}
+
+void
+gst_c2_wrapper_free (GstC2Wrapper * wrapper)
+{
+  dlclose(wrapper->dlhandle);
+  GST_INFO ("Destroyed C2 wrapper: %p", wrapper);
+  g_slice_free (GstC2Wrapper, wrapper);
+}
+
+gboolean
+gst_c2_venc_wrapper_create_component (GstC2Wrapper * wrapper,
+    const gchar * name, event_handler_cb callback, gpointer userdata) {
+
+  if (wrapper->component) {
+    GST_INFO ("Delete previous component");
+    delete wrapper->component;
+  }
+
+  wrapper->component = new C2ComponentWrapper (wrapper->compstore, name);
+  wrapper->component->SetHandler (callback, userdata);
+
+  GST_INFO ("Created C2venc component");
+  return TRUE;
+}
+
+gboolean
+gst_c2_venc_wrapper_delete_component (GstC2Wrapper * wrapper) {
+
+  if (wrapper->component) {
+    GST_INFO ("Delete component");
+    delete wrapper->component;
+  }
+
+  GST_INFO ("Delete C2venc component");
+  return TRUE;
+}
+
+gboolean
+gst_c2_venc_wrapper_config_component (GstC2Wrapper * wrapper,
+    GPtrArray* config) {
+
+  if (wrapper->component) {
+    wrapper->component->Config(config);
+  }
+
+  GST_INFO ("C2venc component start");
+  return TRUE;
+}
+
+gboolean
+gst_c2_venc_wrapper_component_start (GstC2Wrapper * wrapper) {
+
+  if (wrapper->component) {
+    wrapper->component->Start();
+  }
+
+  GST_INFO ("C2venc component start");
+  return TRUE;
+}
+
+gboolean
+gst_c2_venc_wrapper_component_stop (GstC2Wrapper * wrapper) {
+
+  if (wrapper->component) {
+    wrapper->component->Stop();
+  }
+
+  GST_INFO ("C2venc component start");
+  return TRUE;
+}
+
+gboolean
+gst_c2_venc_wrapper_component_queue (GstC2Wrapper * wrapper,
+    BufferDescriptor * buffer) {
+
+  if (wrapper->component) {
+    wrapper->component->Queue(buffer);
+  }
+
+  return TRUE;
+}
+
+gboolean
+gst_c2_venc_wrapper_free_output_buffer (GstC2Wrapper * wrapper,
+    uint64_t bufferIdx) {
+
+  if (wrapper->component) {
+    wrapper->component->FreeOutputBuffer(bufferIdx);
+  }
+  return TRUE;
+}
