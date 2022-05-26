@@ -68,8 +68,8 @@ gst_cvp_optclflow_meta_free (GstMeta * meta, GstBuffer * buffer)
 {
   GstCvpOptclFlowMeta *cvpmeta = GST_CVP_OPTCLFLOW_META_CAST (meta);
 
-  g_array_unref (cvpmeta->mvectors);
-  g_array_unref (cvpmeta->stats);
+  g_array_free (cvpmeta->mvectors, TRUE);
+  g_array_free (cvpmeta->stats, TRUE);
 }
 
 static gboolean
@@ -77,12 +77,24 @@ gst_cvp_optclflow_meta_transform (GstBuffer * transbuffer, GstMeta * meta,
     GstBuffer * buffer, GQuark type, gpointer data)
 {
   GstCvpOptclFlowMeta *dmeta, *smeta;
+  GArray *mvectors = NULL, *stats = NULL;
 
   if (GST_META_TRANSFORM_IS_COPY (type)) {
     smeta = GST_CVP_OPTCLFLOW_META_CAST (meta);
+
+    // TODO: replace with g_array_copy() in glib version > 2.62
+    mvectors = g_array_sized_new (FALSE, FALSE, sizeof (GstCvpMotionVector),
+        smeta->n_vectors);
+    stats = g_array_sized_new (FALSE, FALSE, sizeof (GstCvpOptclFlowStats),
+        smeta->n_stats);
+
+    memcpy (mvectors->data, smeta->mvectors->data,
+        mvectors->len * sizeof (GstCvpMotionVector));
+    memcpy (stats->data, smeta->stats->data,
+        mvectors->len * sizeof (GstCvpMotionVector));
+
     dmeta = gst_buffer_add_cvp_optclflow_meta (transbuffer,
-        g_array_ref (smeta->mvectors), smeta->n_vectors,
-        g_array_ref (smeta->stats), smeta->n_stats);
+        mvectors, smeta->n_vectors, stats, smeta->n_stats);
 
     if (NULL == dmeta)
       return FALSE;
