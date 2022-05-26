@@ -51,6 +51,8 @@ G_DEFINE_TYPE (GstC2_VENCEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 
 #define EOS_WAITING_TIMEOUT 5
 
+#define DEFAULT_PROP_ROI_QP_DELTA -15
+
 // Caps formats.
 #define GST_VIDEO_FORMATS "{ NV12, NV21 }"
 
@@ -95,6 +97,8 @@ enum
   PROP_INTRA_REFRESH_MODE,
   PROP_INTRA_REFRESH_MBS,
   PROP_TARGET_BITRATE,
+  PROP_I_FRAME_ONLY,
+  PROP_IDR_FRAME_INTERVAL,
   PROP_SLICE_MODE,
   PROP_SLICE_SIZE,
   PROP_MAX_QP_B_FRAMES,
@@ -103,6 +107,8 @@ enum
   PROP_MIN_QP_B_FRAMES,
   PROP_MIN_QP_I_FRAMES,
   PROP_MIN_QP_P_FRAMES,
+  PROP_ROI,
+  PROP_ROI_QP_DELTA,
 };
 
 static guint32
@@ -146,12 +152,12 @@ gst_c2_venc_rate_control_get_type (void)
 
   if (qtype == 0) {
     static const GEnumValue values[] = {
-      {RC_OFF, "Disable RC", "disable"},
-      {RC_CONST, "Constant", "constant"},
-      {RC_CBR_VFR, "Constant bitrate, variable framerate", "CBR-VFR"},
-      {RC_VBR_CFR, "Variable bitrate, constant framerate", "VBR-CFR"},
-      {RC_VBR_VFR, "Variable bitrate, variable framerate", "VBR-VFR"},
-      {RC_CQ, "Constant quality", "CQ"},
+      {RC_MODE_OFF, "Disable RC", "disable"},
+      {RC_MODE_CONST, "Constant", "constant"},
+      {RC_MODE_CBR_VFR, "Constant bitrate, variable framerate", "CBR-VFR"},
+      {RC_MODE_VBR_CFR, "Variable bitrate, constant framerate", "VBR-CFR"},
+      {RC_MODE_VBR_VFR, "Variable bitrate, variable framerate", "VBR-VFR"},
+      {RC_MODE_CQ, "Constant quality", "CQ"},
       {0, NULL, NULL}
     };
 
@@ -167,8 +173,8 @@ gst_c2_venc_intra_refresh_mode_get_type (void)
 
   if (qtype == 0) {
     static const GEnumValue values[] = {
-      {IR_NONE, "None", "none"},
-      {IR_RANDOM, "Random", "random"},
+      {IR_MODE_NONE, "None", "none"},
+      {IR_MODE_RANDOM, "Random", "random"},
       {0, NULL, NULL}
     };
 
@@ -177,42 +183,56 @@ gst_c2_venc_intra_refresh_mode_get_type (void)
   return qtype;
 }
 
-static ConfigParams
-make_bitrate_param (guint32 bitrate, gboolean isInput)
+static config_params_t
+make_bitrate_param (guint32 bitrate, gboolean is_input)
 {
-  ConfigParams param;
+  config_params_t param;
 
-  memset (&param, 0, sizeof (ConfigParams));
+  memset (&param, 0, sizeof (config_params_t));
 
   param.config_name = CONFIG_FUNCTION_KEY_BITRATE;
-  param.isInput = isInput;
+  param.is_input = is_input;
   param.val.u32 = bitrate;
 
   return param;
 }
 
-static ConfigParams
-make_resolution_param (guint32 width, guint32 height, gboolean isInput)
+static config_params_t
+make_framerate_param (gfloat framerate, gboolean is_input)
 {
-  ConfigParams param;
+  config_params_t param;
 
-  memset (&param, 0, sizeof (ConfigParams));
+  memset (&param, 0, sizeof (config_params_t));
+
+  param.config_name = CONFIG_FUNCTION_KEY_FRAMERATE;
+  param.is_input = is_input;
+  param.val.fl = framerate;
+
+  return param;
+}
+
+static config_params_t
+make_resolution_param (guint32 width, guint32 height, gboolean is_input)
+{
+  config_params_t param;
+
+  memset (&param, 0, sizeof (config_params_t));
 
   param.config_name = CONFIG_FUNCTION_KEY_RESOLUTION;
-  param.isInput = isInput;
+  param.is_input = is_input;
   param.resolution.width = width;
   param.resolution.height = height;
 
   return param;
 }
 
-static ConfigParams
+static config_params_t
 make_qp_ranges_param (guint32 miniqp, guint32 maxiqp, guint32 minpqp,
     guint32 maxpqp, guint32 minbqp, guint32 maxbqp)
 {
-  ConfigParams param;
+  config_params_t param;
 
-  memset (&param, 0, sizeof (ConfigParams));
+  memset (&param, 0, sizeof (config_params_t));
 
   param.config_name = CONFIG_FUNCTION_KEY_QP_RANGES;
   param.qp_ranges.miniqp = miniqp;
@@ -225,57 +245,121 @@ make_qp_ranges_param (guint32 miniqp, guint32 maxiqp, guint32 minpqp,
   return param;
 }
 
-static ConfigParams
-make_pixelFormat_param (guint32 fmt, gboolean isInput)
+static config_params_t
+make_pixelFormat_param (guint32 fmt, gboolean is_input)
 {
-  ConfigParams param;
+  config_params_t param;
 
-  memset (&param, 0, sizeof (ConfigParams));
+  memset (&param, 0, sizeof (config_params_t));
 
   param.config_name = CONFIG_FUNCTION_KEY_PIXELFORMAT;
-  param.isInput = isInput;
-  param.pixelFormat.fmt = (PIXEL_FORMAT_TYPE) fmt;
+  param.is_input = is_input;
+  param.pixel_fmt = (pixel_format_t) fmt;
 
   return param;
 }
 
-static ConfigParams
-make_rateControl_param (RC_MODE_TYPE mode)
+static config_params_t
+make_rateControl_param (rc_mode_t mode)
 {
-  ConfigParams param;
+  config_params_t param;
 
-  memset (&param, 0, sizeof (ConfigParams));
+  memset (&param, 0, sizeof (config_params_t));
 
   param.config_name = CONFIG_FUNCTION_KEY_RATECONTROL;
-  param.rcMode.type = mode;
+  param.rc_mode = mode;
 
   return param;
 }
 
-static ConfigParams
-make_slicemode_param (guint32 size, SLICE_MODE mode)
+static config_params_t
+make_sync_frame_interval_param (int64_t period_ms)
 {
-  ConfigParams param;
+  config_params_t param;
 
-  memset (&param, 0, sizeof (ConfigParams));
+  memset (&param, 0, sizeof (config_params_t));
+
+  param.config_name = CONFIG_FUNCTION_KEY_SYNC_FRAME_INT;
+  param.val.i64 = period_ms;
+
+  return param;
+}
+
+static config_params_t
+make_roi_encoding (gint64 timestampUs, char *rectPayload, char *rectPayloadExt)
+{
+  config_params_t param;
+  memset (&param, 0, sizeof (config_params_t));
+
+  param.config_name = CONFIG_FUNCTION_KEY_ROI_ENCODING;
+  param.roi.timestampUs = timestampUs;
+
+  param.roi.rectPayload = rectPayload;
+  param.roi.rectPayloadExt = rectPayloadExt;
+
+  return param;
+}
+
+static void
+config_roi_encoding (GstC2_VENCEncoder *c2venc, gint64 timestampUs)
+{
+  GPtrArray *config = NULL;
+  config_params_t roi_encoding;
+
+  if (c2venc->roi_encoding.top != 0 || c2venc->roi_encoding.left != 0 ||
+      c2venc->roi_encoding.bottom != 0 || c2venc->roi_encoding.right != 0) {
+
+    config = g_ptr_array_new ();
+
+    char rectPayload[128];
+    char rectPayloadExt[128];
+
+    snprintf(rectPayload, sizeof(rectPayload), "%d,%d-%d,%d=%d",
+        c2venc->roi_encoding.top, c2venc->roi_encoding.left,
+        c2venc->roi_encoding.bottom, c2venc->roi_encoding.right,
+        c2venc->roi_encoding_qp_delta);
+
+    snprintf(rectPayloadExt, sizeof(rectPayloadExt), "%d,%d-%d,%d=%d",
+        c2venc->roi_encoding.top, c2venc->roi_encoding.left,
+        c2venc->roi_encoding.bottom, c2venc->roi_encoding.right,
+        c2venc->roi_encoding_qp_delta);
+
+    roi_encoding = make_roi_encoding (timestampUs, rectPayload, rectPayloadExt);
+    g_ptr_array_add (config, &roi_encoding);
+
+    // Config component
+    if (!gst_c2_venc_wrapper_config_component (c2venc->wrapper, config)) {
+      GST_ERROR_OBJECT (c2venc, "Failed to config interface");
+    }
+
+    g_ptr_array_free (config, FALSE);
+  }
+}
+
+static config_params_t
+make_slicemode_param (guint32 size, slice_mode_t mode)
+{
+  config_params_t param;
+
+  memset (&param, 0, sizeof (config_params_t));
 
   param.config_name = CONFIG_FUNCTION_KEY_SLICE_MODE;
   param.val.u32 = size;
-  param.SliceMode.type = mode;
+  param.slice_mode = mode;
 
   return param;
 }
 
-static ConfigParams
-make_intraRefresh_param (IR_MODE_TYPE mode, guint32 intra_refresh_mbs)
+static config_params_t
+make_intraRefresh_param (ir_mode_t mode, guint32 intra_refresh_mbs)
 {
-  ConfigParams param;
+  config_params_t param;
 
-  memset (&param, 0, sizeof (ConfigParams));
+  memset (&param, 0, sizeof (config_params_t));
 
   param.config_name = CONFIG_FUNCTION_KEY_INTRAREFRESH;
-  param.irMode.type = mode;
-  param.irMode.intra_refresh_mbs = (float) intra_refresh_mbs;
+  param.ir_mode.type = mode;
+  param.ir_mode.intra_refresh_mbs = (float) intra_refresh_mbs;
 
   return param;
 }
@@ -513,7 +597,7 @@ push_frame_downstream (GstVideoEncoder * encoder, BufferDescriptor * encode_buf)
 }
 
 static void
-handle_video_event (EVENT_TYPE type, void *userdata, void *userdata2)
+handle_video_event (EVENT_TYPE type, void * userdata, void * userdata2)
 {
   GstVideoEncoder *encoder = (GstVideoEncoder *) userdata2;
   GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
@@ -567,23 +651,34 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   gint retval = 0;
   gint width = 0;
   gint height = 0;
+  gint rate_numerator = 0;
+  gint rate_denominator = 0;
   GstVideoFormat input_format = GST_VIDEO_FORMAT_UNKNOWN;
   GPtrArray *config = NULL;
-  ConfigParams resolution;
-  ConfigParams pixelformat;
-  ConfigParams rate_control;
-  ConfigParams downscale;
-  ConfigParams color_aspects;
-  ConfigParams intra_refresh;
-  ConfigParams bitrate;
-  ConfigParams slice_mode;
-  ConfigParams qp_ranges;
+  config_params_t resolution;
+  config_params_t pixelformat;
+  config_params_t rate_control;
+  config_params_t sync_frame_int;
+  config_params_t roi_encoding;
+  config_params_t color_aspects;
+  config_params_t intra_refresh;
+  config_params_t bitrate;
+  config_params_t slice_mode;
+  config_params_t qp_ranges;
+  config_params_t framerate;
 
   structure = gst_caps_get_structure (state->caps, 0);
   retval = gst_structure_get_int (structure, "width", &width);
   retval &= gst_structure_get_int (structure, "height", &height);
   if (!retval) {
     GST_ERROR_OBJECT (c2venc, "Unable to get width/height value");
+    return FALSE;
+  }
+
+  retval = gst_structure_get_fraction (structure, "framerate",
+      &rate_numerator, &rate_denominator);
+  if (!retval) {
+    GST_ERROR_OBJECT (c2venc, "Unable to get framerate value");
     return FALSE;
   }
 
@@ -648,8 +743,26 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     GST_DEBUG_OBJECT (c2venc, "set target bitrate:%u", c2venc->target_bitrate);
   }
 
+  if (rate_numerator > 0 && rate_denominator > 0) {
+    c2venc->framerate = rate_numerator / rate_denominator;
+    framerate = make_framerate_param (c2venc->framerate, FALSE);
+    g_ptr_array_add (config, &framerate);
+    GST_DEBUG_OBJECT (c2venc, "set target framerate:%u", c2venc->framerate);
+  }
+
   resolution = make_resolution_param (width, height, TRUE);
   g_ptr_array_add (config, &resolution);
+
+  if (c2venc->iframe_only) {
+    sync_frame_int = make_sync_frame_interval_param (1 * 1e6 / rate_numerator);
+    g_ptr_array_add (config, &sync_frame_int);
+    GST_DEBUG_OBJECT (c2venc, "I frame only mode");
+  } else if (c2venc->idr_interval != 0) {
+    sync_frame_int =
+        make_sync_frame_interval_param (c2venc->idr_interval * 1000);
+    g_ptr_array_add (config, &sync_frame_int);
+    GST_DEBUG_OBJECT (c2venc, "IDR frame interval - %d", c2venc->idr_interval);
+  }
 
   pixelformat =
       make_pixelFormat_param (gst_to_c2_pixelformat (input_format), TRUE);
@@ -779,11 +892,19 @@ gst_c2_venc_encode (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   BufferDescriptor inBuf;
   GstBuffer *buf = NULL;
   GstMemory *mem;
+  GstMapInfo mapinfo = { 0, };
 
   if (!frame) {
     GST_WARNING_OBJECT (c2venc, "frame is NULL, ret GST_FLOW_EOS");
     return GST_FLOW_EOS;
   }
+
+  // This mutex was locked in the base class before call this function
+  // Needs to be unlocked in case we run out of free pending works of
+  // the encoder. If not unlocked here it can cause a dead lock because the
+  // gst_video_encoder_finish_frame cannot be called if gst_c2_venc_handle_frame
+  // is not returned.
+  GST_VIDEO_ENCODER_STREAM_UNLOCK (encoder);
 
   memset (&inBuf, 0, sizeof (BufferDescriptor));
 
@@ -795,8 +916,11 @@ gst_c2_venc_encode (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
     inBuf.fd = gst_fd_memory_get_fd (mem);
     inBuf.size = gst_memory_get_sizes (mem, NULL, NULL);
   } else {
-    GST_ERROR_OBJECT(c2venc, "Not FD memory");
-    return GST_FLOW_ERROR;
+    GST_DEBUG_OBJECT(c2venc, "Not FD memory");
+    gst_buffer_map (buf, &mapinfo, GST_MAP_READ);
+    inBuf.fd = -1;
+    inBuf.data = mapinfo.data;
+    inBuf.size = mapinfo.size;
   }
 
   inBuf.timestamp = frame->pts / 1000;
@@ -816,15 +940,26 @@ gst_c2_venc_encode (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   c2venc->queued_frame[(c2venc->frame_index) % MAX_QUEUED_FRAME] =
       frame->system_frame_number;
 
+  config_roi_encoding (c2venc, inBuf.timestamp);
+
   // Queue buffer to Codec2
   if (!gst_c2_venc_wrapper_component_queue (c2venc->wrapper, &inBuf)) {
     GST_ERROR_OBJECT(c2venc, "failed to queue input frame to Codec2");
+    // Lock the mutex again and return to the base class
+    GST_VIDEO_ENCODER_STREAM_LOCK (encoder);
     return GST_FLOW_ERROR;
+  }
+
+  if (inBuf.fd == -1) {
+    gst_buffer_unmap (buf, &mapinfo);
   }
 
   g_mutex_lock (&(c2venc->pending_lock));
   c2venc->frame_index += 1;
   g_mutex_unlock (&(c2venc->pending_lock));
+
+  // Lock the mutex again and return to the base class
+  GST_VIDEO_ENCODER_STREAM_LOCK (encoder);
 
   return GST_FLOW_OK;
 }
@@ -875,10 +1010,10 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
 
   switch (prop_id) {
     case PROP_RATE_CONTROL:
-      c2venc->rcMode = (RC_MODE_TYPE) g_value_get_enum (value);
+      c2venc->rcMode = (rc_mode_t) g_value_get_enum (value);
       break;
     case PROP_INTRA_REFRESH_MODE:
-      c2venc->intra_refresh_mode = (IR_MODE_TYPE) g_value_get_enum (value);
+      c2venc->intra_refresh_mode = (ir_mode_t) g_value_get_enum (value);
       break;
     case PROP_INTRA_REFRESH_MBS:
       c2venc->intra_refresh_mbs = g_value_get_uint (value);
@@ -886,11 +1021,17 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
     case PROP_TARGET_BITRATE:
       c2venc->target_bitrate = g_value_get_uint (value);
       break;
+    case PROP_I_FRAME_ONLY:
+      c2venc->iframe_only = g_value_get_boolean (value);
+      break;
+    case PROP_IDR_FRAME_INTERVAL:
+      c2venc->idr_interval = g_value_get_uint (value);
+      break;
     case PROP_SLICE_SIZE:
       c2venc->slice_size = g_value_get_uint (value);
       break;
     case PROP_SLICE_MODE:
-      c2venc->slice_mode = (SLICE_MODE) g_value_get_enum (value);
+      c2venc->slice_mode = (slice_mode_t) g_value_get_enum (value);
       break;
     case PROP_MAX_QP_B_FRAMES:
       c2venc->max_qp_b_frames = g_value_get_uint (value);
@@ -909,6 +1050,22 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
       break;
     case PROP_MIN_QP_P_FRAMES:
       c2venc->min_qp_p_frames = g_value_get_uint (value);
+      break;
+    case PROP_ROI:
+      g_return_if_fail (gst_value_array_get_size (value) == 4);
+
+      c2venc->roi_encoding.top =
+          g_value_get_int (gst_value_array_get_value (value, 0));
+      c2venc->roi_encoding.left =
+          g_value_get_int (gst_value_array_get_value (value, 1));
+      c2venc->roi_encoding.bottom =
+          g_value_get_int (gst_value_array_get_value (value, 2));
+      c2venc->roi_encoding.right =
+          g_value_get_int (gst_value_array_get_value (value, 3));
+
+      break;
+    case PROP_ROI_QP_DELTA:
+      c2venc->roi_encoding_qp_delta = g_value_get_int (value);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -939,6 +1096,12 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
     case PROP_TARGET_BITRATE:
       g_value_set_uint (value, c2venc->target_bitrate);
       break;
+    case PROP_I_FRAME_ONLY:
+      g_value_set_boolean (value, c2venc->iframe_only);
+      break;
+    case PROP_IDR_FRAME_INTERVAL:
+      g_value_set_uint (value, c2venc->idr_interval);
+      break;
     case PROP_SLICE_SIZE:
       g_value_set_uint (value, c2venc->slice_size);
       break;
@@ -962,6 +1125,27 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
       break;
     case PROP_MIN_QP_P_FRAMES:
       g_value_set_uint (value, c2venc->min_qp_p_frames);
+      break;
+    case PROP_ROI:
+    {
+      GValue val = G_VALUE_INIT;
+      g_value_init (&val, G_TYPE_INT);
+
+      g_value_set_int (&val, c2venc->roi_encoding.top);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, c2venc->roi_encoding.left);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, c2venc->roi_encoding.bottom);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, c2venc->roi_encoding.right);
+      gst_value_array_append_value (value, &val);
+      break;
+    }
+    case PROP_ROI_QP_DELTA:
+      g_value_set_int (value, c2venc->roi_encoding_qp_delta);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1009,7 +1193,7 @@ gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
       g_param_spec_enum ("control-rate", "Rate Control",
           "Bitrate control method",
           GST_TYPE_CODEC2_ENC_RATE_CONTROL,
-          RC_OFF,
+          RC_MODE_OFF,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
@@ -1017,7 +1201,7 @@ gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
       g_param_spec_enum ("intra-refresh-mode", "Intra refresh mode",
           "Intra refresh mode, only support random mode. Allow IR only for CBR(_CFR/VFR) RC modes",
           GST_TYPE_CODEC2_ENC_INTRA_REFRESH_MODE,
-          IR_NONE,
+          IR_MODE_NONE,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
@@ -1031,6 +1215,19 @@ gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
   g_object_class_install_property (G_OBJECT_CLASS (klass), PROP_TARGET_BITRATE,
       g_param_spec_uint ("target-bitrate", "Target bitrate",
           "Target bitrate in bits per second (0 means not explicitly set bitrate)",
+          0, G_MAXUINT, 0,
+          static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY)));
+
+  g_object_class_install_property (gobject, PROP_I_FRAME_ONLY,
+      g_param_spec_boolean ("iframe-only", "I Frame only",
+          "I Frame only mode", FALSE,
+          static_cast<GParamFlags>(G_PARAM_CONSTRUCT | G_PARAM_READWRITE |
+          G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY)));
+
+  g_object_class_install_property (G_OBJECT_CLASS (klass), PROP_IDR_FRAME_INTERVAL,
+      g_param_spec_uint ("idr-interval", "IDR frame interval",
+          "IDR frame interval (0 means not explicitly set IDR interval)",
           0, G_MAXUINT, 0,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
@@ -1092,6 +1289,23 @@ gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
+  g_object_class_install_property (gobject, PROP_ROI,
+      gst_param_spec_array ("roi", "ROI Encoding",
+          "The ROI rectangle inside the input ('<Top, Left, Bottom, Right>')",
+          g_param_spec_int ("value", "ROI Value",
+              "One of Top, Left, Bottom or Right value.", 0, G_MAXINT, 0,
+              static_cast<GParamFlags>(G_PARAM_WRITABLE |
+              G_PARAM_STATIC_STRINGS)),
+          static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING)));
+
+  g_object_class_install_property (gobject, PROP_ROI_QP_DELTA,
+      g_param_spec_int ("roi-qp", "ROI Encoding QP delta",
+          "ROI encoding QP delta",
+          G_MININT, G_MAXINT, DEFAULT_PROP_ROI_QP_DELTA,
+          static_cast<GParamFlags>(G_PARAM_CONSTRUCT | G_PARAM_READWRITE |
+          G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY)));
+
   gst_element_class_set_static_metadata (element,
       "C2Venc encoder", "C2_VENC/Encoder",
       "C2Venc encoding", "QTI");
@@ -1121,9 +1335,12 @@ gst_c2_venc_init (GstC2_VENCEncoder * c2venc)
   c2venc->frame_index = 0;
   c2venc->eos_reached = FALSE;
 
-  c2venc->rcMode = RC_OFF;
+  c2venc->rcMode = RC_MODE_OFF;
   c2venc->target_bitrate = 0;
+  c2venc->framerate = 0;
   c2venc->slice_size = 0;
+  c2venc->iframe_only = FALSE;
+  c2venc->idr_interval = 0;
 
   c2venc->max_qp_b_frames = 0;
   c2venc->max_qp_i_frames = 0;
@@ -1131,6 +1348,12 @@ gst_c2_venc_init (GstC2_VENCEncoder * c2venc)
   c2venc->min_qp_b_frames = 0;
   c2venc->min_qp_i_frames = 0;
   c2venc->min_qp_p_frames = 0;
+
+  c2venc->roi_encoding.top = 0;
+  c2venc->roi_encoding.left = 0;
+  c2venc->roi_encoding.bottom = 0;
+  c2venc->roi_encoding.right = 0;
+  c2venc->roi_encoding_qp_delta = 0;
 
   memset (c2venc->queued_frame, 0, sizeof (c2venc->queued_frame));
 

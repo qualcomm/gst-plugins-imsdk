@@ -1,22 +1,22 @@
 /*
 * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
-*  
+*
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
 * disclaimer below) provided that the following conditions are met:
-*  
+*
 *     * Redistributions of source code must retain the above copyright
 *       notice, this list of conditions and the following disclaimer.
-*  
+*
 *     * Redistributions in binary form must reproduce the above
 *       copyright notice, this list of conditions and the following
 *       disclaimer in the documentation and/or other materials provided
 *       with the distribution.
-*  
+*
 *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
 *       contributors may be used to endorse or promote products derived
 *       from this software without specific prior written permission.
-*  
+*
 * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
 * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
 * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
@@ -63,6 +63,7 @@ struct QC2ComponentStoreFactory {
 
 using QC2ComponentStoreFactoryGetter_t
     = QC2ComponentStoreFactory* (*)(int majorVersion, int minorVersion);
+
 
 GstC2Wrapper *
 gst_c2_wrapper_new ()
@@ -120,6 +121,8 @@ gst_c2_wrapper_free (GstC2Wrapper * wrapper)
 gboolean
 gst_c2_venc_wrapper_create_component (GstC2Wrapper * wrapper,
     const gchar * name, event_handler_cb callback, gpointer userdata) {
+  gboolean ret = FALSE;
+  c2_status_t c2Status = C2_NO_INIT;
 
   if (wrapper->component) {
     GST_INFO ("Delete previous component");
@@ -129,8 +132,17 @@ gst_c2_venc_wrapper_create_component (GstC2Wrapper * wrapper,
   wrapper->component = new C2ComponentWrapper (wrapper->compstore, name);
   wrapper->component->SetHandler (callback, userdata);
 
+  if (wrapper->component) {
+    c2Status =  wrapper->component->createBlockpool(C2BlockPool::BASIC_GRAPHIC);
+    if (c2Status == C2_OK) {
+      ret = TRUE;
+    } else {
+      GST_ERROR("Failed(%d) to allocate block pool(%d)", c2Status, C2BlockPool::BASIC_GRAPHIC);
+    }
+  }
+
   GST_INFO ("Created C2venc component");
-  return TRUE;
+  return ret;
 }
 
 gboolean
@@ -140,8 +152,6 @@ gst_c2_venc_wrapper_delete_component (GstC2Wrapper * wrapper) {
     GST_INFO ("Delete component");
     delete wrapper->component;
   }
-
-  GST_INFO ("Delete C2venc component");
   return TRUE;
 }
 
@@ -192,6 +202,104 @@ gst_c2_venc_wrapper_component_queue (GstC2Wrapper * wrapper,
 
 gboolean
 gst_c2_venc_wrapper_free_output_buffer (GstC2Wrapper * wrapper,
+    uint64_t bufferIdx) {
+
+  if (wrapper->component) {
+    wrapper->component->FreeOutputBuffer(bufferIdx);
+  }
+  return TRUE;
+}
+
+gboolean
+gst_c2_vdec_wrapper_create_component (GstC2Wrapper * wrapper,
+    const gchar * name, event_handler_cb callback, gpointer userdata) {
+  gboolean ret = FALSE;
+  c2_status_t c2Status = C2_NO_INIT;
+  if (wrapper->component) {
+    GST_INFO ("Delete previous component");
+    delete wrapper->component;
+  }
+
+  wrapper->component = new C2ComponentWrapper (wrapper->compstore, name);
+  wrapper->component->SetHandler (callback, userdata);
+  if (wrapper->component) {
+    //c2Status =  wrapper->component->createBlockpool(toC2BufferPoolType(BUFFER_POOL_BASIC_LINEAR));
+    c2Status =  wrapper->component->createBlockpool(C2BlockPool::BASIC_LINEAR);
+    if (c2Status == C2_OK) {
+      ret = TRUE;
+    } else {
+      GST_ERROR("Failed(%d) to allocate block pool(%d)", c2Status, C2BlockPool::BASIC_LINEAR);
+    }
+    c2Status =  wrapper->component->createBlockpool(C2BlockPool::BASIC_GRAPHIC);
+    if (c2Status == C2_OK) {
+      ret = TRUE;
+    } else {
+      GST_ERROR("Failed(%d) to allocate block pool(%d)", c2Status, C2BlockPool::BASIC_GRAPHIC);
+    }
+  }
+
+  return ret;
+}
+
+gboolean
+gst_c2_vdec_wrapper_delete_component (GstC2Wrapper * wrapper) {
+
+  if (wrapper->component) {
+    GST_INFO ("Delete component");
+    delete wrapper->component;
+  }
+
+  GST_INFO ("Delete C2venc component");
+  return TRUE;
+}
+
+gboolean
+gst_c2_vdec_wrapper_config_component (GstC2Wrapper * wrapper,
+    GPtrArray* config) {
+
+  if (wrapper->component) {
+    wrapper->component->Config(config);
+  }
+
+  GST_INFO ("C2venc component start");
+  return TRUE;
+}
+
+gboolean
+gst_c2_vdec_wrapper_component_start (GstC2Wrapper * wrapper) {
+
+  if (wrapper->component) {
+    wrapper->component->Start();
+  }
+
+  GST_INFO ("C2venc component start");
+  return TRUE;
+}
+
+gboolean
+gst_c2_vdec_wrapper_component_stop (GstC2Wrapper * wrapper) {
+
+  if (wrapper->component) {
+    wrapper->component->Stop();
+  }
+
+  GST_INFO ("C2venc component start");
+  return TRUE;
+}
+
+gboolean
+gst_c2_vdec_wrapper_component_queue (GstC2Wrapper * wrapper,
+    BufferDescriptor * buffer) {
+
+  if (wrapper->component) {
+    wrapper->component->Queue(buffer);
+  }
+
+  return TRUE;
+}
+
+gboolean
+gst_c2_vdec_wrapper_free_output_buffer (GstC2Wrapper * wrapper,
     uint64_t bufferIdx) {
 
   if (wrapper->component) {

@@ -56,13 +56,20 @@ G_BEGIN_DECLS
 
 typedef struct _GstC2_VENCEncoder GstC2_VENCEncoder;
 typedef struct _GstC2_VENCEncoderClass GstC2_VENCEncoderClass;
+typedef struct _GstC2_ROIenc GstC2_ROIenc;
 
 // Maximum number of input frame queued
-#define MAX_QUEUED_FRAME  32
+#define MAX_QUEUED_FRAME 32
+
+struct _GstC2_ROIenc {
+  guint top;
+  guint left;
+  guint bottom;
+  guint right;
+};
 
 struct _GstC2_VENCEncoder {
-  GstVideoEncoderClass     parent;
-  /// Properties.
+  GstVideoEncoderClass parent;
 
   GstBufferPool *pool;
 
@@ -84,13 +91,16 @@ struct _GstC2_VENCEncoder {
 
   gboolean eos_reached;
 
-  RC_MODE_TYPE rcMode;
-  MATRIX matrix;
-  IR_MODE_TYPE intra_refresh_mode;
+  rc_mode_t rcMode;
+  color_matrix_t matrix;
+  ir_mode_t intra_refresh_mode;
   guint32 intra_refresh_mbs;
   guint32 target_bitrate;
-  SLICE_MODE slice_mode;
+  float framerate;
+  slice_mode_t slice_mode;
   guint32 slice_size;
+  gboolean iframe_only;
+  guint32 idr_interval;
 
   guint32 max_qp_b_frames;
   guint32 max_qp_i_frames;
@@ -98,6 +108,8 @@ struct _GstC2_VENCEncoder {
   guint32 min_qp_b_frames;
   guint32 min_qp_i_frames;
   guint32 min_qp_p_frames;
+  GstC2_ROIenc roi_encoding;
+  gint roi_encoding_qp_delta;
 };
 
 struct _GstC2_VENCEncoderClass {

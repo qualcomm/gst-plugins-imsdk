@@ -1,22 +1,21 @@
-/*
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
-*  
+/* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+*
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
 * disclaimer below) provided that the following conditions are met:
-*  
+*
 *     * Redistributions of source code must retain the above copyright
 *       notice, this list of conditions and the following disclaimer.
-*  
+*
 *     * Redistributions in binary form must reproduce the above
 *       copyright notice, this list of conditions and the following
 *       disclaimer in the documentation and/or other materials provided
 *       with the distribution.
-*  
+*
 *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
 *       contributors may be used to endorse or promote products derived
 *       from this software without specific prior written permission.
-*  
+*
 * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
 * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
 * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
@@ -57,7 +56,7 @@ gst_c2_venc_wrapper_delete_component (GstC2Wrapper * wrapper);
 
 GST_API gboolean
 gst_c2_venc_wrapper_config_component (GstC2Wrapper * wrapper,
-    GPtrArray* config);
+    GPtrArray * config);
 
 GST_API gboolean
 gst_c2_venc_wrapper_component_start (GstC2Wrapper * wrapper);
@@ -72,5 +71,33 @@ gst_c2_venc_wrapper_component_queue (GstC2Wrapper * wrapper,
 GST_API gboolean
 gst_c2_venc_wrapper_free_output_buffer (GstC2Wrapper * wrapper,
     uint64_t bufferIdx);
+
+
+
+gboolean
+gst_c2_vdec_wrapper_create_component (GstC2Wrapper * wrapper,
+    const gchar * name, event_handler_cb callback, gpointer userdata);
+
+GST_API gboolean
+gst_c2_vdec_wrapper_delete_component (GstC2Wrapper * wrapper);
+
+GST_API gboolean
+gst_c2_vdec_wrapper_config_component (GstC2Wrapper * wrapper,
+    GPtrArray* config);
+
+GST_API gboolean
+gst_c2_vdec_wrapper_component_start (GstC2Wrapper * wrapper);
+
+GST_API gboolean
+gst_c2_vdec_wrapper_component_stop (GstC2Wrapper * wrapper);
+
+GST_API gboolean
+gst_c2_vdec_wrapper_component_queue (GstC2Wrapper * wrapper,
+    BufferDescriptor * buffer);
+
+GST_API gboolean
+gst_c2_vdec_wrapper_free_output_buffer (GstC2Wrapper * wrapper,
+    uint64_t bufferIdx);
+
 
 #endif // __GST_C2_WRAPPER_H__

@@ -1,22 +1,22 @@
 /*
 * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
-*  
+*
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
 * disclaimer below) provided that the following conditions are met:
-*  
+*
 *     * Redistributions of source code must retain the above copyright
 *       notice, this list of conditions and the following disclaimer.
-*  
+*
 *     * Redistributions in binary form must reproduce the above
 *       copyright notice, this list of conditions and the following
 *       disclaimer in the documentation and/or other materials provided
 *       with the distribution.
-*  
+*
 *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
 *       contributors may be used to endorse or promote products derived
 *       from this software without specific prior written permission.
-*  
+*
 * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
 * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
 * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
@@ -45,9 +45,11 @@
 #define CONFIG_FUNCTION_KEY_MIRROR "mirror"
 #define CONFIG_FUNCTION_KEY_ROTATION "rotation"
 #define CONFIG_FUNCTION_KEY_RATECONTROL "ratecontrol"
+#define CONFIG_FUNCTION_KEY_SYNC_FRAME_INT "syncframeint"
 #define CONFIG_FUNCTION_KEY_DEC_LOW_LATENCY "dec_low_latency"
 #define CONFIG_FUNCTION_KEY_INTRAREFRESH "intra_refresh"
 #define CONFIG_FUNCTION_KEY_OUTPUT_PICTURE_ORDER_MODE "output_picture_order_mode"
+#define CONFIG_FUNCTION_KEY_ROI_ENCODING "roi_encoding"
 #define CONFIG_FUNCTION_KEY_DOWNSCALE "downscale"
 #define CONFIG_FUNCTION_KEY_ENC_CSC "enc_colorspace_conversion"
 #define CONFIG_FUNCTION_KEY_COLOR_ASPECTS_INFO "colorspace_color_aspects"
@@ -62,15 +64,7 @@ typedef enum {
   INTERLACE_MODE_INTERLEAVED_BOTTOM_FIRST,
   INTERLACE_MODE_FIELD_TOP_FIRST,
   INTERLACE_MODE_FIELD_BOTTOM_FIRST,
-} INTERLACE_MODE_TYPE;
-
-typedef enum {
-  C2_INTERLACE_MODE_PROGRESSIVE = 0,
-  C2_INTERLACE_MODE_INTERLEAVED_TOP_FIRST,
-  C2_INTERLACE_MODE_INTERLEAVED_BOTTOM_FIRST,
-  C2_INTERLACE_MODE_FIELD_TOP_FIRST,
-  C2_INTERLACE_MODE_FIELD_BOTTOM_FIRST,
-} C2_INTERLACE_MODE_TYPE;
+} interlace_mode_t;
 
 typedef enum {
   PIXEL_FORMAT_NV12_LINEAR = 0,
@@ -79,9 +73,9 @@ typedef enum {
   PIXEL_FORMAT_YV12,
   PIXEL_FORMAT_P010,
   PIXEL_FORMAT_TP10_UBWC
-} PIXEL_FORMAT_TYPE;
+} pixel_format_t;
 
-typedef enum {
+enum {
   // RGB-Alpha 8 bit per channel
   C2_PIXEL_FORMAT_RGBA8888 = 1,
   // RGBA 8 bit compressed
@@ -96,42 +90,42 @@ typedef enum {
   C2_PIXEL_FORMAT_VENUS_P010 = 0x7FA30C0A,
   ///< canonical YVU 4:2:0 Planar (YV12)
   C2_PIXEL_FORMAT_YV12 = 842094169,
-} C2_PIXEL_FORMAT;
+} c2_pixel_format_t;
 
-typedef enum {
-  DEFAULT_ORDER = 0,
-  DISPLAY_ORDER,
-  DECODER_ORDER,
-} OUTPUT_PIC_ORDER;
+enum {
+  OUTPUT_PICTURE_ORDER_DEFAULT = 0,
+  OUTPUT_PICTURE_ORDER_DISPLAY,
+  OUTPUT_PICTURE_ORDER_DECODER,
+} output_picture_order_t;
 
 typedef enum {
   MIRROR_NONE = 0,
   MIRROR_VERTICAL,
   MIRROR_HORIZONTAL,
   MIRROR_BOTH,
-} MIRROR_TYPE;
+} mirror_t;
 
 typedef enum {
-  RC_OFF = 0,
-  RC_CONST,
-  RC_CBR_VFR,
-  RC_VBR_CFR,
-  RC_VBR_VFR,
-  RC_CQ,
-  RC_UNSET = 0xFFFF
-} RC_MODE_TYPE;
+  RC_MODE_OFF = 0,
+  RC_MODE_CONST,
+  RC_MODE_CBR_VFR,
+  RC_MODE_VBR_CFR,
+  RC_MODE_VBR_VFR,
+  RC_MODE_CQ,
+  RC_MODE_UNSET = 0xFFFF
+} rc_mode_t;
 
 typedef enum {
   SLICE_MODE_DISABLE,
   SLICE_MODE_MB,
   SLICE_MODE_BYTES,
-} SLICE_MODE;
+} slice_mode_t;
 
 typedef enum {
-  BLUR_AUTO = 0,
-  BLUR_MANUAL,
-  BLUR_DISABLE,
-} BLUR_MODE;
+  BLUR_MODE_AUTO = 0,
+  BLUR_MODE_MANUAL,
+  BLUR_MODE_DISABLE,
+} blur_mode_t;
 
 typedef enum {
   COLOR_PRIMARIES_UNSPECIFIED,
@@ -144,7 +138,7 @@ typedef enum {
   COLOR_PRIMARIES_RP431,
   COLOR_PRIMARIES_EG432,
   COLOR_PRIMARIES_EBU3213,
-} COLOR_PRIMARIES;
+} color_primaries_t;
 
 typedef enum {
   COLOR_TRANSFER_UNSPECIFIED,
@@ -159,7 +153,7 @@ typedef enum {
   COLOR_TRANSFER_XVYCC,
   COLOR_TRANSFER_BT1361,
   COLOR_TRANSFER_ST428,
-} TRANSFER_CHAR;
+} color_transfer_t;
 
 typedef enum {
   COLOR_MATRIX_UNSPECIFIED,
@@ -169,33 +163,40 @@ typedef enum {
   COLOR_MATRIX_240M,
   COLOR_MATRIX_BT2020,
   COLOR_MATRIX_BT2020_CONSTANT,
-} MATRIX;
+} color_matrix_t;
 
 typedef enum {
   COLOR_RANGE_UNSPECIFIED,
   COLOR_RANGE_FULL,
   COLOR_RANGE_LIMITED,
-} FULL_RANGE;
+} color_range_t;
 
 typedef enum {
-  IR_NONE = 0,
-  IR_RANDOM,
-} IR_MODE_TYPE;
+  IR_MODE_NONE = 0,
+  IR_MODE_RANDOM,
+} ir_mode_t;
 
 typedef struct {
-  const char* config_name;
-  gboolean isInput;
+  const char *config_name;
+  gboolean is_input;
   union {
     guint32 u32;
     guint64 u64;
     gint32 i32;
     gint64 i64;
+    gfloat fl;
   } val;
 
   struct {
     guint32 width;
     guint32 height;
   } resolution;
+
+  struct {
+    gint64 timestampUs;
+    gchar *rectPayload;
+    gchar *rectPayloadExt;
+  } roi;
 
   struct {
     guint32 miniqp;
@@ -206,45 +207,28 @@ typedef struct {
     guint32 maxbqp;
   } qp_ranges;
 
-  union {
-    PIXEL_FORMAT_TYPE fmt;
-  } pixelFormat;
-
-  union {
-    INTERLACE_MODE_TYPE type;
-  } interlaceMode;
-
-  union {
-    MIRROR_TYPE type;
-  } mirror;
-
-  union {
-    RC_MODE_TYPE type;
-  } rcMode;
-
-  union {
-    SLICE_MODE type;
-  } SliceMode;
-
-  union {
-    BLUR_MODE mode;
-  } blur;
+  pixel_format_t pixel_fmt;
+  interlace_mode_t interlace_mode;
+  mirror_t mirror_type;
+  rc_mode_t rc_mode;
+  slice_mode_t slice_mode;
+  blur_mode_t blur_mode;
 
   struct {
-    IR_MODE_TYPE type;
+    ir_mode_t type;
     float intra_refresh_mbs;
-  } irMode;
+  } ir_mode;
   guint output_picture_order_mode;
   gboolean low_latency_mode;
   gboolean color_space_conversion;
   struct {
-    COLOR_PRIMARIES primaries;
-    TRANSFER_CHAR transfer_char;
-    MATRIX matrix;
-    FULL_RANGE full_range;
-  } colorAspects;
-} ConfigParams;
+    color_primaries_t primaries;
+    color_transfer_t color_transfer;
+    color_matrix_t matrix;
+    color_range_t full_range;
+  } color_aspects;
+} config_params_t;
 
-void push_to_settings(gpointer data, gpointer user_data);
+void push_to_settings (gpointer data, gpointer user_data);
 
 #endif // __GST_C2_CONFIG_H__
