@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2021, 2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *  
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -209,7 +209,7 @@ gst_jpeg_enc_context_create (GstJPEGEncoderContext * context,
       params, GST_JPEG_ENC_OUTPUT_HEIGHT, &jpeg_params.out_buffer.height);
   gst_structure_get_uint (
       params, GST_JPEG_ENC_OUTPUT_FORMAT, &jpeg_params.out_buffer.format);
-
+  gst_structure_free (params);
   qmmf::recorder::OfflineJpegCb callback =
       [&, context] (guint buf_fd, guint encoded_size)
       { gst_jpeg_enc_callback (context, buf_fd, encoded_size); };
@@ -241,7 +241,6 @@ gst_jpeg_enc_context_destroy (GstJPEGEncoderContext * context)
         &context->lock, wait_time);
     if (!timeout) {
       GST_ERROR ("Timeout on wait for all requests to be received");
-      return FALSE;
     }
     GST_INFO ("All request are received");
   } else {

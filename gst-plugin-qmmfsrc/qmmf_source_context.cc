@@ -28,7 +28,7 @@
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
 *
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -704,7 +704,7 @@ qmmfsrc_gst_buffer_release (GstStructure * structure)
   ::qmmf::recorder::Recorder *recorder = NULL;
   ::qmmf::BufferDescriptor buffer;
 
-  GST_TRACE (" %s", gst_structure_to_string (structure));
+  QMMFSRC_TRACE_STRUCTURE (structure);
 
   gst_structure_get (structure, "recorder", G_TYPE_ULONG, &value, NULL);
   recorder =
@@ -810,8 +810,7 @@ qmmfsrc_gst_buffer_new_wrapped (GstQmmfContext * context, GstPad * pad,
       GST_MINI_OBJECT (gstbuffer), qmmf_buffer_qdata_quark (),
       structure, (GDestroyNotify) qmmfsrc_gst_buffer_release
   );
-
-  GST_TRACE (" %s", gst_structure_to_string (structure));
+  QMMFSRC_TRACE_STRUCTURE (structure);
   return gstbuffer;
 }
 

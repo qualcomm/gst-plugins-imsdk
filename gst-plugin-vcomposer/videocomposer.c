@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -903,6 +903,7 @@ gst_video_composer_prepare_input_frame (GstElement * element, GstPad * pad,
   if (!gst_video_frame_map (&frames[idx], sinkpad->info, buffer,
           GST_MAP_READ | GST_VIDEO_FRAME_MAP_FLAG_NO_REF)) {
     GST_ERROR_OBJECT (pad, "Failed to map input buffer!");
+    gst_buffer_unref (buffer);
     return FALSE;
   }
 
@@ -937,6 +938,7 @@ gst_video_composer_prepare_output_frame (GstElement * element, GstPad * pad,
   if (!gst_video_frame_map (&frames[idx], vcomposer->outinfo, buffer,
           GST_MAP_READWRITE | GST_VIDEO_FRAME_MAP_FLAG_NO_REF)) {
     GST_ERROR_OBJECT (vcomposer, "Failed to map output buffer!");
+    gst_buffer_unref (buffer);
     return FALSE;
   }
 
@@ -1186,6 +1188,8 @@ gst_video_composer_update_src_caps (GstAggregator * aggregator,
     } else if (width < outwidth) {
       GST_ERROR_OBJECT (vcomposer, "Set width (%u) is not compatible with the"
           "extrapolated width (%d) from the sinkpads!", width, outwidth);
+      gst_structure_free (structure);
+      gst_caps_unref (*othercaps);
       return GST_FLOW_NOT_SUPPORTED;
     }
 
@@ -1201,6 +1205,8 @@ gst_video_composer_update_src_caps (GstAggregator * aggregator,
     } else if (height < outheight) {
       GST_ERROR_OBJECT (vcomposer, "Set height (%u) is not compatible with the"
           "extrapolated height (%d) from the sinkpads!", height, outheight);
+      gst_structure_free (structure);
+      gst_caps_unref (*othercaps);
       return GST_FLOW_NOT_SUPPORTED;
     }
 
@@ -1226,6 +1232,8 @@ gst_video_composer_update_src_caps (GstAggregator * aggregator,
         GST_ERROR_OBJECT (vcomposer, "Set framerate (%d/%d) is not compatible"
             " with the extrapolated rate (%d/%d) from the sinkpads!", fps_n,
             fps_d, out_fps_n, out_fps_d);
+        gst_structure_free (structure);
+        gst_caps_unref (*othercaps);
         return GST_FLOW_NOT_SUPPORTED;
       }
     }
@@ -1790,8 +1798,10 @@ gst_video_composer_finalize (GObject * object)
     gst_object_unref (GST_OBJECT_CAST(vcomposer->requests));
   }
 
-  if (vcomposer->outpool != NULL)
+  if (vcomposer->outpool != NULL) {
+    gst_buffer_pool_set_active (vcomposer->outpool, FALSE);
     gst_object_unref (vcomposer->outpool);
+  }
 
   if (vcomposer->outinfo != NULL)
     gst_video_info_free (vcomposer->outinfo);
