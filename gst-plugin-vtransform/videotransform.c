@@ -417,8 +417,6 @@ gst_video_transform_decide_allocation (GstBaseTransform * base,
         maxbuffers);
 
   gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL);
-
-  gst_video_transform_determine_passthrough (vtrans);
   return TRUE;
 }
 
