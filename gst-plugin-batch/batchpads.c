@@ -167,7 +167,7 @@ gst_batch_src_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
 {
   GstBatchSrcPad *srcpad = GST_BATCH_SRC_PAD (pad);
 
-  GST_LOG_OBJECT (srcpad, "Received %s event: %" GST_PTR_FORMAT,
+  GST_TRACE_OBJECT (srcpad, "Received %s event: %" GST_PTR_FORMAT,
       GST_EVENT_TYPE_NAME (event), event);
 
   return gst_pad_event_default (pad, parent, event);
@@ -178,7 +178,7 @@ gst_batch_src_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
 {
   GstBatchSrcPad *srcpad = GST_BATCH_SRC_PAD (pad);
 
-  GST_LOG_OBJECT (srcpad, "Received %s query: %" GST_PTR_FORMAT,
+  GST_TRACE_OBJECT (srcpad, "Received %s query: %" GST_PTR_FORMAT,
       GST_QUERY_TYPE_NAME (query), query);
 
   switch (GST_QUERY_TYPE (query)) {

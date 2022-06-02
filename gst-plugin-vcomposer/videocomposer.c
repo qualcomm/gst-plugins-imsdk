@@ -852,7 +852,7 @@ gst_video_composer_sink_query (GstAggregator * aggregator,
 {
   GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER (aggregator);
 
-  GST_DEBUG_OBJECT (vcomposer, "Received %s query on pad %s:%s",
+  GST_TRACE_OBJECT (vcomposer, "Received %s query on pad %s:%s",
       GST_QUERY_TYPE_NAME (query), GST_DEBUG_PAD_NAME (pad));
 
   switch (GST_QUERY_TYPE (query)) {
@@ -892,7 +892,7 @@ gst_video_composer_sink_event (GstAggregator * aggregator,
 {
   GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER (aggregator);
 
-  GST_DEBUG_OBJECT (vcomposer, "Received %s event on pad %s:%s",
+  GST_TRACE_OBJECT (vcomposer, "Received %s event on pad %s:%s",
       GST_EVENT_TYPE_NAME (event), GST_DEBUG_PAD_NAME (pad));
 
   switch (GST_EVENT_TYPE (event)) {
@@ -920,7 +920,7 @@ gst_video_composer_src_query (GstAggregator * aggregator, GstQuery * query)
 {
   GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER (aggregator);
 
-  GST_DEBUG_OBJECT (vcomposer, "Received %s query on src pad",
+  GST_TRACE_OBJECT (vcomposer, "Received %s query on src pad",
       GST_QUERY_TYPE_NAME (query));
 
   switch (GST_QUERY_TYPE (query)) {

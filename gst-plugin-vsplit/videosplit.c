@@ -716,7 +716,7 @@ static gboolean
 gst_video_split_sinkpad_query (GstPad * pad, GstObject * parent,
     GstQuery * query)
 {
-  GST_LOG_OBJECT (pad, "Received %s query: %" GST_PTR_FORMAT,
+  GST_TRACE_OBJECT (pad, "Received %s query: %" GST_PTR_FORMAT,
       GST_QUERY_TYPE_NAME (query), query);
 
   switch (GST_QUERY_TYPE (query)) {
@@ -757,7 +757,7 @@ gst_video_split_sinkpad_event (GstPad * pad, GstObject * parent,
   GstVideoSplit *vsplit = GST_VIDEO_SPLIT (parent);
   gboolean success = FALSE;
 
-  GST_LOG_OBJECT (pad, "Received %s event: %" GST_PTR_FORMAT,
+  GST_TRACE_OBJECT (pad, "Received %s event: %" GST_PTR_FORMAT,
       GST_EVENT_TYPE_NAME (event), event);
 
   switch (GST_EVENT_TYPE (event)) {
@@ -861,7 +861,7 @@ gst_video_split_srcpad_event (GstPad * pad, GstObject * parent,
 {
   GstVideoSplitSrcPad *srcpad = GST_VIDEO_SPLIT_SRCPAD (pad);
 
-  GST_LOG_OBJECT (srcpad, "Received %s event: %" GST_PTR_FORMAT,
+  GST_TRACE_OBJECT (srcpad, "Received %s event: %" GST_PTR_FORMAT,
       GST_EVENT_TYPE_NAME (event), event);
 
   return gst_pad_event_default (pad, parent, event);
@@ -873,7 +873,7 @@ gst_video_split_srcpad_query (GstPad * pad, GstObject * parent,
 {
   GstVideoSplitSrcPad *srcpad = GST_VIDEO_SPLIT_SRCPAD (pad);
 
-  GST_LOG_OBJECT (srcpad, "Received %s query: %" GST_PTR_FORMAT,
+  GST_TRACE_OBJECT (srcpad, "Received %s query: %" GST_PTR_FORMAT,
       GST_QUERY_TYPE_NAME (query), query);
 
   switch (GST_QUERY_TYPE (query)) {

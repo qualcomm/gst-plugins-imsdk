@@ -426,7 +426,7 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
 static gboolean
 gst_ml_demux_sink_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
 {
-  GST_LOG_OBJECT (pad, "Received %s query: %" GST_PTR_FORMAT,
+  GST_TRACE_OBJECT (pad, "Received %s query: %" GST_PTR_FORMAT,
       GST_QUERY_TYPE_NAME (query), query);
 
   switch (GST_QUERY_TYPE (query)) {
@@ -466,7 +466,7 @@ gst_ml_demux_sink_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
   GstMLDemux *demux = GST_ML_DEMUX (parent);
   gboolean success = FALSE;
 
-  GST_LOG_OBJECT (pad, "Received %s event: %" GST_PTR_FORMAT,
+  GST_TRACE_OBJECT (pad, "Received %s event: %" GST_PTR_FORMAT,
       GST_EVENT_TYPE_NAME (event), event);
 
   switch (GST_EVENT_TYPE (event)) {
@@ -551,7 +551,7 @@ gst_ml_demux_src_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
 {
   GstMLDemuxSrcPad *srcpad = GST_ML_DEMUX_SRCPAD (pad);
 
-  GST_LOG_OBJECT (srcpad, "Received %s event: %" GST_PTR_FORMAT,
+  GST_TRACE_OBJECT (srcpad, "Received %s event: %" GST_PTR_FORMAT,
       GST_EVENT_TYPE_NAME (event), event);
 
   return gst_pad_event_default (pad, parent, event);
@@ -562,7 +562,7 @@ gst_ml_demux_src_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
 {
   GstMLDemuxSrcPad *srcpad = GST_ML_DEMUX_SRCPAD (pad);
 
-  GST_LOG_OBJECT (srcpad, "Received %s query: %" GST_PTR_FORMAT,
+  GST_TRACE_OBJECT (srcpad, "Received %s query: %" GST_PTR_FORMAT,
       GST_QUERY_TYPE_NAME (query), query);
 
   switch (GST_QUERY_TYPE (query)) {

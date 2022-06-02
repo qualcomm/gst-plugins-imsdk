@@ -660,7 +660,7 @@ gst_ml_aic_sink_query (GstPad * pad, GstObject * parent, GstQuery * query)
 {
   GstMLAic *mlaic = GST_ML_AIC (parent);
 
-  GST_LOG_OBJECT (pad, "Received %s query: %" GST_PTR_FORMAT,
+  GST_TRACE_OBJECT (pad, "Received %s query: %" GST_PTR_FORMAT,
       GST_QUERY_TYPE_NAME (query), query);
 
   switch (GST_QUERY_TYPE (query)) {
@@ -726,7 +726,7 @@ gst_ml_aic_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
   GstMLAic *mlaic = GST_ML_AIC (parent);
   GstPad *srcpad = NULL;
 
-  GST_LOG_OBJECT (pad, "Received %s event: %" GST_PTR_FORMAT,
+  GST_TRACE_OBJECT (pad, "Received %s event: %" GST_PTR_FORMAT,
       GST_EVENT_TYPE_NAME (event), event);
 
   // Retrieve the corresponding source pad.
@@ -992,7 +992,7 @@ gst_ml_aic_src_query (GstPad * pad, GstObject * parent, GstQuery * query)
 {
   GstMLAic *mlaic = GST_ML_AIC (parent);
 
-  GST_LOG_OBJECT (pad, "Received %s query: %" GST_PTR_FORMAT,
+  GST_TRACE_OBJECT (pad, "Received %s query: %" GST_PTR_FORMAT,
       GST_QUERY_TYPE_NAME (query), query);
 
   switch (GST_QUERY_TYPE (query)) {
@@ -1028,7 +1028,7 @@ gst_ml_aic_src_query (GstPad * pad, GstObject * parent, GstQuery * query)
 static gboolean
 gst_ml_aic_src_event (GstPad * pad, GstObject * parent, GstEvent * event)
 {
-  GST_LOG_OBJECT (pad, "Received %s event: %" GST_PTR_FORMAT,
+  GST_TRACE_OBJECT (pad, "Received %s event: %" GST_PTR_FORMAT,
       GST_EVENT_TYPE_NAME (event), event);
 
   return gst_pad_event_default (pad, parent, event);
