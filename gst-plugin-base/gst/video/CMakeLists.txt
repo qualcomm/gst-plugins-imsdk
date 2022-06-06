@@ -35,7 +35,6 @@ target_link_libraries(${GST_QTI_VIDEO_BASE} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
-  $<$<BOOL:${GST_GLES_CONVERTER}>:QImgConv>
 )
 
 install(

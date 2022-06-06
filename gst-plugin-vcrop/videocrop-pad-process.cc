@@ -410,8 +410,12 @@ VideoCropPadProcess::Process (gboolean input_is_free, GstBuffer * in_buffer)
     }
 
     if (GST_VIDEO_CROP_TYPE_C2D == crop_type_) {
+      GstC2dComposition composition = {
+        &input_video_frame, 1, &nv12_output_video_frame
+      };
+
       request_id = gst_c2d_video_converter_submit_request (
-          c2dconvert_, &input_video_frame, 1, &nv12_output_video_frame);
+          c2dconvert_, &composition, 1);
       gst_c2d_video_converter_wait_request (c2dconvert_, request_id);
     } else if (GST_VIDEO_CROP_TYPE_FASTCV == crop_type_) {
       gint input_data_stride =
@@ -474,8 +478,12 @@ VideoCropPadProcess::Process (gboolean input_is_free, GstBuffer * in_buffer)
       crop.h = vpad->height;
       SetCrop (&crop);
 
+      GstC2dComposition composition = {
+        inputFrame, 1, &rgb_output_video_frame
+      };
+
       request_id = gst_c2d_video_converter_submit_request (
-          c2dconvert_, inputFrame, 1, &rgb_output_video_frame);
+          c2dconvert_, &composition, 1);
       gst_c2d_video_converter_wait_request (c2dconvert_, request_id);
 
       // Reset crop

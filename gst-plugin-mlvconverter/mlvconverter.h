@@ -120,7 +120,7 @@ struct _GstMLVideoConverter {
 #endif // USE_C2D_CONVERTER
 
 #ifdef USE_GLES_CONVERTER
-  GstGlesConverter     *glesconvert;
+  GstGlesVideoConverter *glesconvert;
 #endif // USE_GLES_CONVERTER
 
   /// Properties.

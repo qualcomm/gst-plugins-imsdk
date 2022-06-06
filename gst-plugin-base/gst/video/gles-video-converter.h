@@ -40,8 +40,6 @@
 
 G_BEGIN_DECLS
 
-typedef struct _GstGlesConverter GstGlesConverter;
-
 /**
  * GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES
  *
@@ -65,26 +63,67 @@ typedef struct _GstGlesConverter GstGlesConverter;
     "GstGlesVideoConverter.destination-rectangles"
 
 /**
- * GST_GLES_VIDEO_CONVERTER_OPT_OUTPUT_WIDTH
+ * GST_GLES_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL:
  *
- * #G_TYPE_UINT, Output width.
- * Default: 0
+ * #G_TYPE_BOOLEAN, flip output horizontally
+ * Default: FALSE
  *
- * Not applicable for input.
+ * Not applicable for output
  */
-#define GST_GLES_VIDEO_CONVERTER_OPT_OUTPUT_WIDTH \
-    "GstGlesVideoConverter.output-width"
+#define GST_GLES_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL \
+    "GstGlesVideoConverter.flip-horizontal"
 
 /**
- * GST_GLES_VIDEO_CONVERTER_OPT_OUTPUT_HEIGHT
+ * GST_GLES_VIDEO_CONVERTER_OPT_FLIP_VERTICAL:
  *
- * #G_TYPE_UINT, Output height.
- * Default: 0
+ * #G_TYPE_BOOLEAN, flip output horizontally
+ * Default: FALSE
  *
- * Not applicable for input.
+ * Not applicable for output
  */
-#define GST_GLES_VIDEO_CONVERTER_OPT_OUTPUT_HEIGHT \
-    "GstGlesVideoConverter.output-height"
+#define GST_GLES_VIDEO_CONVERTER_OPT_FLIP_VERTICAL \
+    "GstGlesVideoConverter.flip-vertical"
+
+/**
+ * GST_GLES_VIDEO_CONVERTER_OPT_ALPHA:
+ *
+ * #G_TYPE_DOUBLE, alpha channel occupancy
+ * Default: 1.0
+ *
+ * Not applicable for output
+ */
+#define GST_GLES_VIDEO_CONVERTER_OPT_ALPHA \
+    "GstGlesVideoConverter.alpha"
+
+/**
+ * GstGlesVideoRotate:
+ * @GST_GLES_VIDEO_ROTATE_NONE: disable rotation of the output
+ * @GST_GLES_VIDEO_ROTATE_90_CW: rotate output 90 degrees clockwise
+ * @GST_GLES_VIDEO_ROTATE_90_CCW: rotate output 90 degrees counter-clockwise
+ * @GST_GLES_VIDEO_ROTATE_180: rotate output 180 degrees
+ *
+ * Different output rotation modes
+ */
+typedef enum {
+  GST_GLES_VIDEO_ROTATE_NONE,
+  GST_GLES_VIDEO_ROTATE_90_CW,
+  GST_GLES_VIDEO_ROTATE_90_CCW,
+  GST_GLES_VIDEO_ROTATE_180,
+} GstGlesVideoRotate;
+
+GST_VIDEO_API GType gst_gles_video_rotation_get_type (void);
+#define GST_TYPE_GLES_VIDEO_ROTATION (gst_gles_video_rotation_get_type())
+
+/**
+ * GST_GLES_VIDEO_CONVERTER_OPT_ROTATION:
+ *
+ * #GST_TYPE_GLES_VIDEO_ROTATION, set the output rotation flags
+ * Default: #GST_GLES_VIDEO_ROTATE_NONE.
+ *
+ * Not applicable for output
+ */
+#define GST_GLES_VIDEO_CONVERTER_OPT_ROTATION \
+    "GstGlesVideoConverter.rotation"
 
 /**
  * GST_GLES_VIDEO_CONVERTER_OPT_BACKGROUND:
@@ -96,6 +135,17 @@ typedef struct _GstGlesConverter GstGlesConverter;
  */
 #define GST_GLES_VIDEO_CONVERTER_OPT_BACKGROUND \
     "GstGlesVideoConverter.background"
+
+/**
+ * GST_GLES_VIDEO_CONVERTER_OPT_CLEAR:
+ *
+ * #G_TYPE_BOOLEAN, clear image pixels and apply background color
+ * Default: TRUE
+ *
+ * Not applicable for input.
+ */
+#define GST_GLES_VIDEO_CONVERTER_OPT_CLEAR \
+    "GstGlesVideoConverter.clear-background"
 
 /**
  * GST_GLES_VIDEO_CONVERTER_OPT_RSCALE:
@@ -142,17 +192,6 @@ typedef struct _GstGlesConverter GstGlesConverter;
     "GstGlesVideoConverter.ascale"
 
 /**
- * GST_GLES_VIDEO_CONVERTER_OPT_QSCALE:
- *
- * #G_TYPE_FLOAT, Quantization scale factor, used in quantize operation.
- * Default: 128.0
- *
- * Not applicable for input.
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_QSCALE \
-    "GstGlesVideoConverter.qscale"
-
-/**
  * GST_GLES_VIDEO_CONVERTER_OPT_ROFFSET
  *
  * #G_TYPE_FLOAT, Red channel offset, used in normalize operation.
@@ -194,51 +233,29 @@ typedef struct _GstGlesConverter GstGlesConverter;
  * Not applicable for input.
  */
 #define GST_GLES_VIDEO_CONVERTER_OPT_AOFFSET \
-    "GstGlesVideoConverter.ascale"
+    "GstGlesVideoConverter.aoffset"
 
 /**
- * GST_GLES_VIDEO_CONVERTER_OPT_QOFFSET
+ * GST_GLES_VIDEO_CONVERTER_OPT_FLOAT16_FORMAT
  *
- * #G_TYPE_FLOAT, Quantization offset, used in quantize operation.
- * Default: 0
- *
- * Not applicable for input.
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_QOFFSET \
-    "GstGlesVideoConverter.qoffset"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_NORMALIZE
- *
- * #G_TYPE_BOOLEAN: Engine operation normalizing input data to FLOAT.
+ * #G_TYPE_BOOLEAN: whether buffer pixels are represented as 16 bit float values
  * Default: FALSE
  *
  * Not applicable for input.
  */
-#define GST_GLES_VIDEO_CONVERTER_OPT_NORMALIZE \
-    "GstGlesVideoConverter.normalize"
+#define GST_GLES_VIDEO_CONVERTER_OPT_FLOAT16_FORMAT \
+    "GstGlesVideoConverter.float16-format"
 
 /**
- * GST_GLES_VIDEO_CONVERTER_OPT_QUANTIZE
+ * GST_GLES_VIDEO_CONVERTER_OPT_FLOAT32_FORMAT
  *
- * #G_TYPE_BOOLEAN: Engine operation for quantizing the input data.
+ * #G_TYPE_BOOLEAN: whether buffer pixels are represented as 32 bit float values
  * Default: FALSE
  *
  * Not applicable for input.
  */
-#define GST_GLES_VIDEO_CONVERTER_OPT_QUANTIZE \
-    "GstGlesVideoConverter.quantize"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_CONVERT_TO_UINT8
- *
- * #G_TYPE_BOOLEAN: Engine operation to convert input data to 8 bit UINT.
- * Default: FALSE
- *
- * Not applicable for input.
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_CONVERT_TO_UINT8 \
-    "GstGlesVideoConverter.convert-to-uint8"
+#define GST_GLES_VIDEO_CONVERTER_OPT_FLOAT32_FORMAT \
+    "GstGlesVideoConverter.float32-format"
 
 /**
  * GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT:
@@ -249,14 +266,33 @@ typedef struct _GstGlesConverter GstGlesConverter;
 #define GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT \
     "GstGlesVideoConverter.ubwc-format"
 
+typedef struct _GstGlesVideoConverter GstGlesVideoConverter;
+typedef struct _GstGlesComposition GstGlesComposition;
+
+/**
+ * GstGlesComposition:
+ * @inframes: Array of input video frames
+ * @n_inputs: Number of input frames
+ * @outframe: Output video frame
+ *
+ * Blit composition. Input frames will be placed in the output frame based
+ * on a previously set configuration.
+ */
+struct _GstGlesComposition
+{
+  GstVideoFrame *inframes;
+  guint         n_inputs;
+  GstVideoFrame *outframe;
+};
+
 /**
  * gst_gles_video_converter_new:
  *
  * Initialize instance of GLES converter module.
  *
- * return: pointer to GLES converter on success or NULL on failure
+ * return: Pointer to GLES converter on success or NULL on failure
  */
-GST_VIDEO_API GstGlesConverter *
+GST_VIDEO_API GstGlesVideoConverter *
 gst_gles_video_converter_new     (void);
 
 /**
@@ -268,7 +304,7 @@ gst_gles_video_converter_new     (void);
  * return: NONE
  */
 GST_VIDEO_API void
-gst_gles_video_converter_free    (GstGlesConverter * convert);
+gst_gles_video_converter_free    (GstGlesVideoConverter * convert);
 
 /**
  * gst_gles_video_converter_set_input_opts:
@@ -276,45 +312,72 @@ gst_gles_video_converter_free    (GstGlesConverter * convert);
  * @index: Input frame index
  * @opts: Pointer to structure containing options
  *
- * Configure source and destination rectangles that are going to be used on
- * the input frame with given index to crop and place that rectangle in output.
+ * Configure source and destination rectangles, rotation, and other parameters
+ * that are going to be used on the input frame with given index. Index is
+ * accumulative across all compositions. If there are 3 compositions each with
+ * 2 input frames then the indexes for the 3rd composition will be 5 and 6.
  *
  * return: TRUE on success or FALSE on failure
  */
 GST_VIDEO_API gboolean
-gst_gles_video_converter_set_input_opts (GstGlesConverter * convert,
+gst_gles_video_converter_set_input_opts (GstGlesVideoConverter * convert,
                                          guint index, GstStructure * opts);
 
 /**
  * gst_gles_video_converter_set_process_opts:
  * @convert: Pointer to GLES converter instance
+ * @index: Output frame index.
  * @opts: Pointer to structure containing options
  *
- * Configure the set of operations that will be performed on the input frames.
+ * Configure a set of operations that will be performed on the output frame
+ * for each composition. The index will corresppond to the index of the
+ * video frame composition submited in submit_request API as each one contains
+ * a single output frame.
  *
  * return: TRUE on success or FALSE on failure
  */
 GST_VIDEO_API gboolean
-gst_gles_video_converter_set_output_opts (GstGlesConverter * convert,
-                                          GstStructure * opts);
+gst_gles_video_converter_set_output_opts (GstGlesVideoConverter * convert,
+                                          guint index, GstStructure * opts);
 
 /**
- * gst_gles_video_converter_process:
- * @convert: pointer to GLES converter instance
- * @inframes: Array of input video frames
- * @n_inputs: Number of input frames
- * @outframes: Array of output video frames
- * @n_outputs: Number of output frames
+ * gst_gles_video_converter_submit_request:
+ * @convert: Pointer to GLES converter instance
+ * @compositions: Array of composition frames
+ * @n_compositions: Number of compositions
  *
- * Perform a set of operations, configured beforehand, on the input frames and
- * place the results into the provided outputs frames.
+ * Submit the a number of video composition which will be executed together.
+ *
+ * return: Pointer to request on success or NULL on failure
+ */
+GST_VIDEO_API gpointer
+gst_gles_video_converter_submit_request (GstGlesVideoConverter * convert,
+                                         GstGlesComposition * compositions,
+                                         guint n_compositions);
+
+/**
+ * gst_gles_video_converter_wait_request:
+ * @convert: Pointer to GLES converter instance
+ * @request_id: Indentification of the request
+ *
+ * Wait for the sumbitted to the GPU compositions to finish.
  *
  * return: TRUE on success or FALSE on failure
  */
 GST_VIDEO_API gboolean
-gst_gles_video_converter_process (GstGlesConverter * convert,
-                                  GstVideoFrame * inframes, guint n_inputs,
-                                  GstVideoFrame * outframes, guint n_outputs);
+gst_gles_video_converter_wait_request (GstGlesVideoConverter * convert,
+                                       gpointer request_id);
+
+/**
+ * gst_gles_video_converter_flush:
+ * @convert: Pointer to GLES converter instance
+ *
+ * Wait for compositions sumbitted to the GPU to finish.
+ *
+ * return: NONE
+ */
+GST_VIDEO_API void
+gst_gles_video_converter_flush        (GstGlesVideoConverter * convert);
 
 G_END_DECLS
 

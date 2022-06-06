@@ -80,6 +80,19 @@ gst_caps_has_feature (const GstCaps * caps, const gchar * feature)
   return FALSE;
 }
 
+static gboolean
+gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
+{
+  GstStructure *structure = NULL;
+  const gchar *string = NULL;
+
+  structure = gst_caps_get_structure (caps, 0);
+  string = gst_structure_has_field (structure, "compression") ?
+      gst_structure_get_string (structure, "compression") : NULL;
+
+  return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
+}
+
 static GstBufferPool *
 gst_video_split_create_pool (GstPad * pad, GstCaps * caps)
 {
@@ -110,6 +123,11 @@ gst_video_split_create_pool (GstPad * pad, GstCaps * caps)
 
   gst_buffer_pool_config_set_allocator (config, allocator, NULL);
   gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
+
+  if (gst_caps_has_compression (caps, "ubwc")) {
+    gst_buffer_pool_config_add_option (config,
+        GST_IMAGE_BUFFER_POOL_OPTION_UBWC_MODE);
+  }
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING_OBJECT (pad, "Failed to set pool configuration!");
@@ -838,6 +856,16 @@ gst_video_split_fixate_framerate (GstPad * pad, GstStructure * input,
 static void
 gst_video_split_sinkpad_finalize (GObject * object)
 {
+  GstVideoSplitSinkPad *pad = GST_VIDEO_SPLIT_SINKPAD (object);
+
+  gst_data_queue_set_flushing (pad->requests, TRUE);
+  gst_data_queue_flush (pad->requests);
+
+  gst_object_unref (GST_OBJECT_CAST(pad->requests));
+
+  if (pad->info != NULL)
+    gst_video_info_free (pad->info);
+
   G_OBJECT_CLASS (gst_video_split_sinkpad_parent_class)->finalize(object);
 }
 
@@ -856,6 +884,12 @@ void
 gst_video_split_sinkpad_init (GstVideoSplitSinkPad * pad)
 {
   gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
+
+  pad->info = NULL;
+  pad->isubwc = FALSE;
+
+  pad->requests = gst_data_queue_new (queue_is_full_cb, NULL, NULL, NULL);
+  gst_data_queue_set_flushing (pad->requests, FALSE);
 }
 
 static GstCaps *
@@ -1043,6 +1077,7 @@ gst_video_split_srcpad_setcaps (GstVideoSplitSrcPad * srcpad, GstCaps * incaps)
     gst_video_info_free (srcpad->info);
 
   srcpad->info = gst_video_info_copy (&info);
+  srcpad->isubwc = gst_caps_has_compression (outcaps, "ubwc");
 
   GST_DEBUG_OBJECT (srcpad, "Negotiated caps: %" GST_PTR_FORMAT, outcaps);
   return TRUE;
@@ -1084,6 +1119,8 @@ gst_video_split_srcpad_init (GstVideoSplitSrcPad * pad)
   gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
 
   pad->info = NULL;
+  pad->isubwc = FALSE;
+
   pad->pool = NULL;
   pad->buffers = gst_data_queue_new (queue_is_full_cb, NULL, NULL, NULL);
 }

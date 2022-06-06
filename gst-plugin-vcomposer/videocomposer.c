@@ -1194,7 +1194,7 @@ gst_video_composer_negotiated_src_caps (GstAggregator * aggregator,
           gst_caps_has_compression (caps, "ubwc"),
       NULL);
 
-  gst_c2d_video_converter_set_output_opts (vcomposer->c2dconvert, options);
+  gst_c2d_video_converter_set_output_opts (vcomposer->c2dconvert, 0, options);
 
   if (!gst_util_fraction_multiply (info.width, info.height,
           info.par_n, info.par_d, &dar_n, &dar_d)) {
@@ -1397,8 +1397,14 @@ gst_video_composer_aggregate (GstAggregator * aggregator, gboolean timeout)
     return GST_FLOW_ERROR;
   }
 
-  request->id = gst_c2d_video_converter_submit_request (vcomposer->c2dconvert,
-      request->inframes, request->n_inputs, request->outframes);
+  {
+    GstC2dComposition composition = {
+      request->inframes, request->n_inputs, request->outframes
+    };
+
+    request->id = gst_c2d_video_converter_submit_request (
+        vcomposer->c2dconvert, &composition, 1);
+  }
 
   if (NULL == request->id) {
     GST_WARNING_OBJECT (vcomposer, "Failed to submit request to converter!");
@@ -1551,7 +1557,7 @@ gst_video_composer_set_property (GObject * object, guint prop_id,
           GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT,
           vcomposer->background, NULL);
 
-      gst_c2d_video_converter_set_output_opts (vcomposer->c2dconvert, opts);
+      gst_c2d_video_converter_set_output_opts (vcomposer->c2dconvert, 0, opts);
       break;
     }
     default:
