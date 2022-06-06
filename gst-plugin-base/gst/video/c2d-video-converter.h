@@ -69,8 +69,6 @@
 
 G_BEGIN_DECLS
 
-typedef struct _GstC2dRequest GstC2dRequest;
-
 /**
  * GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES
  *
@@ -177,6 +175,23 @@ GST_VIDEO_API GType gst_c2d_video_rotation_get_type (void);
     "GstC2dVideoConverter.ubwc-format"
 
 typedef struct _GstC2dVideoConverter GstC2dVideoConverter;
+typedef struct _GstC2dComposition GstC2dComposition;
+
+/**
+ * GstC2dComposition:
+ * @inframes: Array of input video frames
+ * @n_inputs: Number of input frames
+ * @outframe: Output video frame
+ *
+ * Blit composition. Input frames will be placed in the output frame based
+ * on a previously set configuration.
+ */
+struct _GstC2dComposition
+{
+  GstVideoFrame *inframes;
+  guint         n_inputs;
+  GstVideoFrame *outframe;
+};
 
 GST_VIDEO_API GstC2dVideoConverter *
 gst_c2d_video_converter_new             (void);
@@ -190,13 +205,12 @@ gst_c2d_video_converter_set_input_opts  (GstC2dVideoConverter *convert,
 
 GST_VIDEO_API gboolean
 gst_c2d_video_converter_set_output_opts (GstC2dVideoConverter *convert,
-                                         GstStructure *opts);
+                                         guint index, GstStructure *opts);
 
 GST_VIDEO_API gpointer
 gst_c2d_video_converter_submit_request  (GstC2dVideoConverter *convert,
-                                         const GstVideoFrame *inframes,
-                                         guint n_inputs,
-                                         GstVideoFrame *outframe);
+                                         GstC2dComposition * compositions,
+                                         guint n_compositions);
 
 GST_VIDEO_API gboolean
 gst_c2d_video_converter_wait_request    (GstC2dVideoConverter *convert,

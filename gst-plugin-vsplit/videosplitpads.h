@@ -81,11 +81,16 @@ struct _GstVideoSplitSinkPad {
 
   /// Video info from caps.
   GstVideoInfo *info;
+  /// Whether input buffers have Universal Bandwidth Compression.
+  gboolean     isubwc;
+
+  /// Buffer requests.
+  GstDataQueue *requests;
 };
 
 struct _GstVideoSplitSinkPadClass {
   /// Inherited parent structure.
-  GstPadClass parent;
+  GstPadClass  parent;
 };
 
 struct _GstVideoSplitSrcPad {
@@ -97,6 +102,8 @@ struct _GstVideoSplitSrcPad {
 
   /// Video info from caps.
   GstVideoInfo  *info;
+  /// Whether output buffers have Universal Bandwidth Compression.
+  gboolean     isubwc;
 
   /// Buffer pool.
   GstBufferPool *pool;

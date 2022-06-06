@@ -43,10 +43,7 @@
 #include <cstdint>
 #include <cmath>
 
-#include <gst/allocators/gstfdmemory.h>
-#include <adreno/image_convert.h>
-#include <drm/drm_fourcc.h>
-#include <gbm_priv.h>
+#include <iot-core-algs/ib2c.h>
 
 #define GST_GLES_RETURN_VAL_IF_FAIL(expression, value, ...) \
 { \
@@ -65,20 +62,14 @@
   } \
 }
 
-#define DRM_FMT_STRING(x) \
-    (x) & 0xFF, ((x) >> 8) & 0xFF, ((x) >> 16) & 0xFF, ((x) >> 24) & 0xFF
+#define GPOINTER_TO_ULONG(p)         ((gulong) (p))
 
-#define EXTRACT_RED_COLOR(color)   (((color >> 24) & 0xFF) / 255.0)
-#define EXTRACT_GREEN_COLOR(color) (((color >> 16) & 0xFF) / 255.0)
-#define EXTRACT_BLUE_COLOR(color)  (((color >> 8) & 0xFF) / 255.0)
-#define EXTRACT_ALPHA_COLOR(color) (((color) & 0xFF) / 255.0)
-
-#define MAX_NUM_IN_IMAGES            100
-#define MAX_NUM_OUT_IMAGES           25
-
-#define DEFAULT_OPT_OUTPUT_WIDTH     0
-#define DEFAULT_OPT_OUTPUT_HEIGHT    0
+#define DEFAULT_OPT_FLIP_HORIZONTAL  FALSE
+#define DEFAULT_OPT_FLIP_VERTICAL    FALSE
+#define DEFAULT_OPT_ALPHA            1.0
+#define DEFAULT_OPT_ROTATION         GST_GLES_VIDEO_ROTATE_NONE
 #define DEFAULT_OPT_BACKGROUND       0x00000000
+#define DEFAULT_OPT_CLEAR            TRUE
 #define DEFAULT_OPT_RSCALE           128.0
 #define DEFAULT_OPT_GSCALE           128.0
 #define DEFAULT_OPT_BSCALE           128.0
@@ -89,17 +80,23 @@
 #define DEFAULT_OPT_BOFFSET          0.0
 #define DEFAULT_OPT_AOFFSET          0.0
 #define DEFAULT_OPT_QOFFSET          0.0
-#define DEFAULT_OPT_NORMALIZE        FALSE
-#define DEFAULT_OPT_QUANTIZE         FALSE
-#define DEFAULT_OPT_CONVERT_TO_UINT8 FALSE
+#define DEFAULT_OPT_FLOAT16_FORMAT   FALSE
+#define DEFAULT_OPT_FLOAT32_FORMAT   FALSE
 #define DEFAULT_OPT_UBWC_FORMAT      FALSE
 
-#define GET_OPT_OUTPUT_WIDTH(s) get_opt_uint (s, \
-    GST_GLES_VIDEO_CONVERTER_OPT_OUTPUT_WIDTH, DEFAULT_OPT_OUTPUT_WIDTH)
-#define GET_OPT_OUTPUT_HEIGHT(s) get_opt_uint (s, \
-    GST_GLES_VIDEO_CONVERTER_OPT_OUTPUT_HEIGHT, DEFAULT_OPT_OUTPUT_HEIGHT)
+#define GET_OPT_FLIP_HORIZONTAL(s) get_opt_boolean (s, \
+    GST_GLES_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL, DEFAULT_OPT_FLIP_HORIZONTAL)
+#define GET_OPT_FLIP_VERTICAL(s) get_opt_boolean (s, \
+    GST_GLES_VIDEO_CONVERTER_OPT_FLIP_VERTICAL, DEFAULT_OPT_FLIP_VERTICAL)
+#define GET_OPT_ALPHA(s) get_opt_double (s, \
+    GST_GLES_VIDEO_CONVERTER_OPT_ALPHA, DEFAULT_OPT_ALPHA)
+#define GET_OPT_ROTATION(s) get_opt_enum(s, \
+    GST_GLES_VIDEO_CONVERTER_OPT_ROTATION, GST_TYPE_GLES_VIDEO_ROTATION, \
+    DEFAULT_OPT_ROTATION)
 #define GET_OPT_BACKGROUND(s) get_opt_uint (s, \
     GST_GLES_VIDEO_CONVERTER_OPT_BACKGROUND, DEFAULT_OPT_BACKGROUND)
+#define GET_OPT_CLEAR(s) get_opt_boolean(s, \
+    GST_GLES_VIDEO_CONVERTER_OPT_CLEAR, DEFAULT_OPT_CLEAR)
 #define GET_OPT_RSCALE(s) get_opt_double (s, \
     GST_GLES_VIDEO_CONVERTER_OPT_RSCALE, DEFAULT_OPT_RSCALE)
 #define GET_OPT_GSCALE(s) get_opt_double (s, \
@@ -108,8 +105,6 @@
     GST_GLES_VIDEO_CONVERTER_OPT_BSCALE, DEFAULT_OPT_BSCALE)
 #define GET_OPT_ASCALE(s) get_opt_double (s, \
     GST_GLES_VIDEO_CONVERTER_OPT_ASCALE, DEFAULT_OPT_ASCALE)
-#define GET_OPT_QSCALE(s) get_opt_double (s, \
-    GST_GLES_VIDEO_CONVERTER_OPT_QSCALE, DEFAULT_OPT_QSCALE)
 #define GET_OPT_ROFFSET(s) get_opt_double (s, \
     GST_GLES_VIDEO_CONVERTER_OPT_ROFFSET, DEFAULT_OPT_ROFFSET)
 #define GET_OPT_GOFFSET(s) get_opt_double (s, \
@@ -118,35 +113,39 @@
     GST_GLES_VIDEO_CONVERTER_OPT_BOFFSET, DEFAULT_OPT_BOFFSET)
 #define GET_OPT_AOFFSET(s) get_opt_double (s, \
     GST_GLES_VIDEO_CONVERTER_OPT_AOFFSET, DEFAULT_OPT_AOFFSET)
-#define GET_OPT_QOFFSET(s) get_opt_double (s, \
-    GST_GLES_VIDEO_CONVERTER_OPT_QOFFSET, DEFAULT_OPT_QOFFSET)
-#define GET_OPT_NORMALIZE(s) get_opt_boolean (s, \
-    GST_GLES_VIDEO_CONVERTER_OPT_NORMALIZE, DEFAULT_OPT_NORMALIZE)
-#define GET_OPT_QUANTIZE(s) get_opt_boolean (s, \
-    GST_GLES_VIDEO_CONVERTER_OPT_QUANTIZE, DEFAULT_OPT_QUANTIZE)
-#define GET_OPT_CONVERT_TO_UINT8(s) get_opt_boolean (s, \
-    GST_GLES_VIDEO_CONVERTER_OPT_CONVERT_TO_UINT8, DEFAULT_OPT_CONVERT_TO_UINT8)
+#define GET_OPT_FLOAT16_FORMAT(s) get_opt_boolean (s, \
+    GST_GLES_VIDEO_CONVERTER_OPT_FLOAT16_FORMAT, DEFAULT_OPT_FLOAT16_FORMAT)
+#define GET_OPT_FLOAT32_FORMAT(s) get_opt_boolean (s, \
+    GST_GLES_VIDEO_CONVERTER_OPT_FLOAT32_FORMAT, DEFAULT_OPT_FLOAT32_FORMAT)
 #define GET_OPT_UBWC_FORMAT(s) get_opt_boolean(s, \
     GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT, DEFAULT_OPT_UBWC_FORMAT)
 
-#define GST_GLES_GET_LOCK(obj) (&((GstGlesConverter *)obj)->lock)
+#define GST_GLES_GET_LOCK(obj) (&((GstGlesVideoConverter *)obj)->lock)
 #define GST_GLES_LOCK(obj)     g_mutex_lock (GST_GLES_GET_LOCK(obj))
 #define GST_GLES_UNLOCK(obj)   g_mutex_unlock (GST_GLES_GET_LOCK(obj))
 
 #define GST_CAT_DEFAULT ensure_debug_category()
 
-struct _GstGlesConverter
+struct _GstGlesVideoConverter
 {
   // Global mutex lock.
-  GMutex                    lock;
+  GMutex          lock;
 
   // List of surface options for each input frame.
-  GList                     *inopts;
-  // Set of options performed for each output frame.
-  GstStructure              *outopts;
+  GList           *inopts;
+  // List of options performed for each output frame.
+  GList           *outopts;
+
+  // Map of buffer FDs and their corresponding GLES surface ID.
+  GHashTable      *insurfaces;
+  GHashTable      *outsurfaces;
+
+  // IB2C library handle.
+  gpointer        ib2chandle;
 
   // DataConverter to construct the converter pipeline
-  ::QImgConv::DataConverter *engine;
+  //::QImgConv::DataConverter *engine;
+  ::ib2c::IEngine *engine;
 };
 
 enum
@@ -154,6 +153,16 @@ enum
   GST_GLES_INPUT,
   GST_GLES_OUTPUT,
 };
+
+enum
+{
+  GST_GLES_UBWC_FORMAT_FLAG    = (1 << 0),
+  GST_GLES_FLOAT16_FORMAT_FLAG = (1 << 1),
+  GST_GLES_FLOAT32_FORMAT_FLAG = (1 << 2),
+};
+
+/// Mutex for protecting the static reference counter.
+G_LOCK_DEFINE_STATIC (gles);
 
 static GstDebugCategory *
 ensure_debug_category (void)
@@ -190,6 +199,14 @@ get_opt_boolean (const GstStructure * options, const gchar * opt, gboolean value
   return gst_structure_get_boolean (options, opt, &result) ? result : value;
 }
 
+static gint
+get_opt_enum (const GstStructure * options, const gchar * opt, GType type,
+    gint value)
+{
+  gint result;
+  return gst_structure_get_enum (options, opt, type, &result) ? result : value;
+}
+
 static gboolean
 update_options (GQuark field, const GValue * value, gpointer userdata)
 {
@@ -197,86 +214,85 @@ update_options (GQuark field, const GValue * value, gpointer userdata)
   return TRUE;
 }
 
+GType
+gst_gles_video_rotation_get_type (void)
+{
+  static GType gtype = 0;
+
+  static const GEnumValue variants[] = {
+    { GST_GLES_VIDEO_ROTATE_NONE,
+      "No rotation", "none"
+    },
+    { GST_GLES_VIDEO_ROTATE_90_CW,
+      "Rotate 90 degrees clockwise", "90CW"
+    },
+    { GST_GLES_VIDEO_ROTATE_90_CCW,
+      "Rotate 90 degrees counter-clockwise", "90CCW"
+    },
+    { GST_GLES_VIDEO_ROTATE_180,
+      "Rotate 180 degrees", "180"
+    },
+    { 0, NULL, NULL },
+  };
+
+  G_LOCK (gles);
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstGlesVideoRotation", variants);
+
+  G_UNLOCK (gles);
+
+  return gtype;
+}
+
 static gint
-gst_video_format_to_drm_format (GstVideoFormat format)
+gst_video_format_to_ib2c_format (GstVideoFormat format)
 {
   switch (format) {
     case GST_VIDEO_FORMAT_NV12:
-      return DRM_FORMAT_NV12;
+      return ::ib2c::ColorFormat::kNV12;
     case GST_VIDEO_FORMAT_NV21:
-      return DRM_FORMAT_NV21;
-    case GST_VIDEO_FORMAT_I420:
-      return DRM_FORMAT_YUV420;
-    case GST_VIDEO_FORMAT_YV12:
-      return DRM_FORMAT_YVU420;
-    case GST_VIDEO_FORMAT_YUV9:
-      return DRM_FORMAT_YUV410;
-    case GST_VIDEO_FORMAT_YVU9:
-      return DRM_FORMAT_YVU410;
+      return ::ib2c::ColorFormat::kNV21;
     case GST_VIDEO_FORMAT_NV16:
-      return DRM_FORMAT_YUV422;
+      return ::ib2c::ColorFormat::kNV16;
     case GST_VIDEO_FORMAT_NV61:
-      return DRM_FORMAT_YVU422;
+      return ::ib2c::ColorFormat::kNV61;
+    case GST_VIDEO_FORMAT_NV24:
+      return ::ib2c::ColorFormat::kNV24;
     case GST_VIDEO_FORMAT_YUY2:
-      return DRM_FORMAT_YUYV;
+      return ::ib2c::ColorFormat::kYUYV;
     case GST_VIDEO_FORMAT_UYVY:
-      return DRM_FORMAT_UYVY;
+      return ::ib2c::ColorFormat::kUYVY;
     case GST_VIDEO_FORMAT_YVYU:
-      return DRM_FORMAT_YVYU;
+      return ::ib2c::ColorFormat::kYVYU;
     case GST_VIDEO_FORMAT_VYUY:
-      return DRM_FORMAT_VYUY;
-    case GST_VIDEO_FORMAT_BGRx:
-      return DRM_FORMAT_BGRX8888;
-    case GST_VIDEO_FORMAT_RGBx:
-      return DRM_FORMAT_RGBX8888;
-    case GST_VIDEO_FORMAT_xBGR:
-      return DRM_FORMAT_XBGR8888;
-    case GST_VIDEO_FORMAT_xRGB:
-      return DRM_FORMAT_XRGB8888;
-    case GST_VIDEO_FORMAT_RGBA:
-      return DRM_FORMAT_RGBA8888;
-    case GST_VIDEO_FORMAT_BGRA:
-      return DRM_FORMAT_BGRA8888;
-    case GST_VIDEO_FORMAT_ABGR:
-      return DRM_FORMAT_ABGR8888;
-    case GST_VIDEO_FORMAT_ARGB:
-      return DRM_FORMAT_ARGB8888;
-    case GST_VIDEO_FORMAT_BGR:
-      return DRM_FORMAT_BGR888;
-    case GST_VIDEO_FORMAT_RGB:
-      return DRM_FORMAT_RGB888;
-    case GST_VIDEO_FORMAT_BGR16:
-      return DRM_FORMAT_BGR565;
+      return ::ib2c::ColorFormat::kVYUY;
     case GST_VIDEO_FORMAT_RGB16:
-      return DRM_FORMAT_RGB565;
-    default:
-      GST_ERROR ("Unsupported format %s!", gst_video_format_to_string (format));
-  }
-  return 0;
-}
-
-static gint
-gst_video_normalization_format (const GstVideoFrame * frame)
-{
-  GstVideoFormat format = GST_VIDEO_FRAME_FORMAT (frame);
-  guint bpp = GST_VIDEO_FRAME_SIZE (frame) /
-      (GST_VIDEO_FRAME_WIDTH (frame) * GST_VIDEO_FRAME_HEIGHT (frame));
-
-  switch (format) {
+      return ::ib2c::ColorFormat::kRGB565;
+    case GST_VIDEO_FORMAT_BGR16:
+      return ::ib2c::ColorFormat::kBGR565;
     case GST_VIDEO_FORMAT_RGB:
+      return ::ib2c::ColorFormat::kRGB888;
     case GST_VIDEO_FORMAT_BGR:
-      return ((bpp / 3) == 4) ?
-          GBM_FORMAT_RGB323232F : GBM_FORMAT_RGB161616F;
+      return ::ib2c::ColorFormat::kBGR888;
     case GST_VIDEO_FORMAT_RGBA:
+      return ::ib2c::ColorFormat::kRGBA8888;
     case GST_VIDEO_FORMAT_BGRA:
-    case GST_VIDEO_FORMAT_ABGR:
+      return ::ib2c::ColorFormat::kBGRA8888;
     case GST_VIDEO_FORMAT_ARGB:
-    case GST_VIDEO_FORMAT_BGRx:
+      return ::ib2c::ColorFormat::kARGB8888;
+    case GST_VIDEO_FORMAT_ABGR:
+      return ::ib2c::ColorFormat::kABGR8888;
     case GST_VIDEO_FORMAT_RGBx:
-    case GST_VIDEO_FORMAT_xBGR:
+      return ::ib2c::ColorFormat::kRGBX8888;
+    case GST_VIDEO_FORMAT_BGRx:
+      return ::ib2c::ColorFormat::kBGRX8888;
     case GST_VIDEO_FORMAT_xRGB:
-      return ((bpp / 4) == 4) ?
-          GBM_FORMAT_RGBA32323232F : GBM_FORMAT_RGBA16161616F;
+      return ::ib2c::ColorFormat::kXRGB8888;
+    case GST_VIDEO_FORMAT_xBGR:
+      return ::ib2c::ColorFormat::kXBGR8888;
+    case GST_VIDEO_FORMAT_GRAY8:
+      return ::ib2c::ColorFormat::kGRAY8;
     default:
       GST_ERROR ("Unsupported format %s!", gst_video_format_to_string (format));
   }
@@ -284,109 +300,378 @@ gst_video_normalization_format (const GstVideoFrame * frame)
   return 0;
 }
 
-static gboolean
-gst_gles_video_converter_update_image (::QImgConv::Image * image,
-    const guint direction, const GstVideoFrame * frame)
+static guint64
+gst_create_surface (GstGlesVideoConverter * convert, const guint direction,
+    const GstVideoFrame * frame, guint flags)
 {
   GstMemory *memory = NULL;
-  const gchar *type = NULL;
+  const gchar *type = NULL, *format = NULL, *mode = "";
+  ::ib2c::Surface surface;
+  guint64 surface_id = 0;
 
   type = (direction == GST_GLES_INPUT) ? "Input" : "Output";
+  format = gst_video_format_to_string (GST_VIDEO_FRAME_FORMAT (frame));
 
   memory = gst_buffer_peek_memory (frame->buffer, 0);
   GST_GLES_RETURN_VAL_IF_FAIL (gst_is_fd_memory (memory), FALSE,
       "%s buffer memory is not FD backed!", type);
 
-  image->fd = gst_fd_memory_get_fd (memory);
-  image->width = GST_VIDEO_FRAME_WIDTH (frame);
-  image->height = GST_VIDEO_FRAME_HEIGHT (frame);
-  image->format = gst_video_format_to_drm_format (GST_VIDEO_FRAME_FORMAT (frame));
-  image->numPlane = GST_VIDEO_FRAME_N_PLANES (frame);
+  surface.fd = gst_fd_memory_get_fd (memory);
+  surface.format = gst_video_format_to_ib2c_format (GST_VIDEO_FRAME_FORMAT (frame));
+  surface.width = GST_VIDEO_FRAME_WIDTH (frame);
+  surface.height = GST_VIDEO_FRAME_HEIGHT (frame);
+  surface.size = gst_buffer_get_size (frame->buffer);
+  surface.nplanes = GST_VIDEO_FRAME_N_PLANES (frame);
 
-  GST_TRACE ("%s image FD[%d] - Width[%u] Height[%u] Format[%c%c%c%c]"
-      " Planes[%u]", type, image->fd, image->width, image->height,
-      DRM_FMT_STRING (image->format), image->numPlane);
+  // In case the format has UBWC enabled append additional format mask.
+  if (flags & GST_GLES_UBWC_FORMAT_FLAG) {
+    surface.format |= ::ib2c::ColorMode::kUBWC;
+    mode = " UBWC";
+  } else if (flags & GST_GLES_FLOAT16_FORMAT_FLAG) {
+    surface.format |= ::ib2c::ColorMode::kFloat16;
+    mode = " FLOAT16";
+  } else if (flags & GST_GLES_FLOAT32_FORMAT_FLAG) {
+    surface.format |= ::ib2c::ColorMode::kFloat32;
+    mode = " FLOAT32";
+  }
 
-  image->plane0Stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0);
-  image->plane0Offset = GST_VIDEO_FRAME_PLANE_OFFSET (frame, 0);
+  GST_TRACE ("%s surface FD[%d] - Width[%u] Height[%u] Format[%s%s] Planes[%u]",
+      type, surface.fd, surface.width, surface.height, format, mode,
+      surface.nplanes);
 
-  GST_TRACE ("%s image FD[%d] - Stride0[%u] Offset0[%u]", type, image->fd,
-      image->plane0Stride, image->plane0Offset);
+  surface.stride0 = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0);
+  surface.offset0 = GST_VIDEO_FRAME_PLANE_OFFSET (frame, 0);
 
-  image->plane1Stride = (image->numPlane >= 2) ?
+  GST_TRACE ("%s surface FD[%d] - Stride0[%u] Offset0[%u]", type, surface.fd,
+      surface.stride0, surface.offset0);
+
+  surface.stride1 = (surface.nplanes >= 2) ?
       GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1) : 0;
-  image->plane1Offset = (image->numPlane >= 2) ?
+  surface.offset1 = (surface.nplanes >= 2) ?
       GST_VIDEO_FRAME_PLANE_OFFSET (frame, 1) : 0;
 
-  GST_TRACE ("%s image FD[%d] - Stride1[%u] Offset1[%u]", type,
-      image->fd, image->plane1Stride, image->plane1Offset);
+  GST_TRACE ("%s surface FD[%d] - Stride1[%u] Offset1[%u]", type,
+      surface.fd, surface.stride1, surface.offset1);
 
-  image->isLinear = (image->plane0Stride % 128 != 0) ? true : false;
+  surface.stride2 = (surface.nplanes >= 3) ?
+      GST_VIDEO_FRAME_PLANE_STRIDE (frame, 2) : 0;
+  surface.offset2 = (surface.nplanes >= 3) ?
+      GST_VIDEO_FRAME_PLANE_OFFSET (frame, 2) : 0;
 
-  return TRUE;
+  GST_TRACE ("%s surface FD[%d] - Stride2[%u] Offset2[%u]", type,
+      surface.fd, surface.stride2, surface.offset2);
+
+  try {
+    surface_id = convert->engine->CreateSurface (surface);
+    GST_DEBUG ("Created %s surface with id %lx", type, surface_id);
+  } catch (std::exception& e) {
+    GST_ERROR ("Failed to create %s surface, error: '%s'!", type, e.what());
+    return 0;
+  }
+
+  return surface_id;
 }
 
 static void
-gst_gles_video_converter_extract_rectangles (const GstStructure * opts,
-    const gchar * opt, std::vector<::QImgConv::Rec> &rectangles)
+gst_destroy_surface (gpointer key, gpointer value, gpointer userdata)
 {
-  const GValue *entries = NULL, *entry = NULL;
-  const gchar *type = NULL;
-  guint idx = 0, n_entries = 0, n_rects = 0;
+  GstGlesVideoConverter *convert = (GstGlesVideoConverter*) userdata;
+  guint64 surface_id = GPOINTER_TO_ULONG (value);
 
-  entries = gst_structure_get_value (opts, opt);
-  n_entries = (entries == NULL) ? 0 : gst_value_array_get_size (entries);
+  try {
+    convert->engine->DestroySurface(surface_id);
+    GST_DEBUG ("Destroying surface with id %lx", surface_id);
+  } catch (std::exception& e) {
+    GST_ERROR ("Failed to destroy IB2C surface, error: '%s'!", e.what());
+    return;
+  }
 
-  // Make sure that there is at least one new rectangle in the list.
-  n_rects = (n_entries == 0) ? 1 : n_entries;
+  return;
+}
 
-  type = (g_strcmp0 (opt, GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES) == 0) ?
-      "Source" : "Destination";
+static void
+gst_extract_rectangles (const GstStructure * opts,
+    std::vector<::ib2c::Region>& srcrects, std::vector<::ib2c::Region>& dstrects,
+    guint& n_rects)
+{
+  const GValue *srclist = NULL, *dstlist = NULL, *entry = NULL;
+  guint idx = 0, n_srcrects = 0, n_dstrects = 0;
 
-  // Make sure that there is at least one new rectangle in the list.
+  srclist = gst_structure_get_value (opts,
+      GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES);
+  dstlist = gst_structure_get_value (opts,
+      GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES);
+
+  // Make sure that there is at least one new rectangle in the lists.
+  n_srcrects = (srclist == NULL) ? 1 : gst_value_array_get_size (srclist);
+  n_dstrects = (dstlist == NULL) ? 1 : gst_value_array_get_size (dstlist);
+
+  n_srcrects = (n_srcrects == 0) ? 1 : n_srcrects;
+  n_dstrects = (n_dstrects == 0) ? 1 : n_dstrects;
+
+  if (n_srcrects > n_dstrects) {
+    GST_WARNING ("Number of source rectangles exceeds the number of "
+        "destination rectangles, clipping!");
+    n_rects = n_srcrects = n_dstrects;
+  } else if (n_srcrects < n_dstrects) {
+    GST_WARNING ("Number of destination rectangles exceeds the number of "
+        "source rectangles, clipping!");
+    n_rects = n_dstrects = n_srcrects;
+  } else {
+    // Same number of source and destination rectangles.
+    n_rects = n_srcrects;
+  }
+
+  n_srcrects = (srclist == NULL) ? 0 : gst_value_array_get_size (srclist);
+  n_dstrects = (dstlist == NULL) ? 0 : gst_value_array_get_size (dstlist);
+
   for (idx = 0; idx < n_rects; idx++) {
-    ::QImgConv::Rec rectangle = {0,0,0,0};
+    ::ib2c::Region rectangle;
 
-    entry = (n_entries != 0) ? gst_value_array_get_value (entries, idx) : NULL;
+    entry = (n_srcrects != 0) ? gst_value_array_get_value (srclist, idx) : NULL;
 
-    if ((entry != NULL) && (gst_value_array_get_size (entry) == 4)) {
+    if ((entry != NULL) && gst_value_array_get_size (entry) == 4) {
       rectangle.x = g_value_get_int (gst_value_array_get_value (entry, 0));
       rectangle.y = g_value_get_int (gst_value_array_get_value (entry, 1));
-      rectangle.width = g_value_get_int (gst_value_array_get_value (entry, 2));
-      rectangle.height = g_value_get_int (gst_value_array_get_value (entry, 3));
+      rectangle.w = g_value_get_int (gst_value_array_get_value (entry, 2));
+      rectangle.h = g_value_get_int (gst_value_array_get_value (entry, 3));
     } else if (entry != NULL) {
-      GST_WARNING ("%s rectangle at index %u does not contain exactly 4"
-          "values, using default values!", type, idx);
+      GST_WARNING ("Source rectangle at index %u does not contain "
+          "exactly 4 values, using default values!", idx);
     }
 
-    rectangles.push_back(rectangle);
+    srcrects.push_back(rectangle);
+
+    entry = (n_dstrects != 0) ? gst_value_array_get_value (dstlist, idx) : NULL;
+
+    if ((entry != NULL) && gst_value_array_get_size (entry) == 4) {
+      rectangle.x = g_value_get_int (gst_value_array_get_value (entry, 0));
+      rectangle.y = g_value_get_int (gst_value_array_get_value (entry, 1));
+      rectangle.w = g_value_get_int (gst_value_array_get_value (entry, 2));
+      rectangle.h = g_value_get_int (gst_value_array_get_value (entry, 3));
+    } else if (entry != NULL) {
+      GST_WARNING ("Destination rectangle at index %u does not contain "
+          "exactly 4 values, using default values!", idx);
+    }
+
+    dstrects.push_back(rectangle);
   }
 }
 
-GstGlesConverter *
+static void
+gst_update_object (::ib2c::Object * object, guint64 surface_id, GstStructure * opts,
+    const GstVideoFrame * inframe, const ::ib2c::Region * srcrect,
+    const GstVideoFrame * outframe, const ::ib2c::Region * dstrect)
+{
+  gint x = 0, y = 0, width = 0, height = 0;
+
+  object->id = surface_id;
+  object->mask = 0;
+
+  // Transform alpha from double (0.0 - 1.0) to integer (0 - 255).
+  object->alpha = G_MAXUINT8 * GET_OPT_ALPHA (opts);
+  GST_TRACE ("Input surface %lx - Global alpha: %u", surface_id, object->alpha);
+
+  // Setup the source rectangle.
+  x = srcrect->x;
+  y = srcrect->y;
+  width = srcrect->w;
+  height = srcrect->h;
+
+  width = (width == 0) ? GST_VIDEO_FRAME_WIDTH (inframe) :
+      MIN (width, GST_VIDEO_FRAME_WIDTH (inframe) - x);
+  height = (height == 0) ? GST_VIDEO_FRAME_HEIGHT (inframe) :
+      MIN (height, GST_VIDEO_FRAME_HEIGHT (inframe) - y);
+
+  object->source.x = x;
+  object->source.y = y;
+  object->source.w = width;
+  object->source.h = height;
+
+  if (GET_OPT_FLIP_VERTICAL (opts)) {
+    object->mask |= ::ib2c::ConfigMask::kVFlip;
+    GST_TRACE ("Input surface %lx - Flip Vertically", surface_id);
+  }
+
+  if (GET_OPT_FLIP_HORIZONTAL (opts)) {
+    object->mask |= ::ib2c::ConfigMask::kHFlip;
+    GST_TRACE ("Input surface %lx - Flip Horizontally", surface_id);
+  }
+
+  // Setup the target rectangle.
+  x = dstrect->x;
+  y = dstrect->y;
+  width = dstrect->w;
+  height = dstrect->h;
+
+  object->destination.x = ((width != 0) && (height != 0)) ? x : 0;
+  object->destination.y = ((width != 0) && (height != 0)) ? y : 0;;
+
+  // Setup rotation angle and adjustments.
+  switch (GET_OPT_ROTATION (opts)) {
+    case GST_GLES_VIDEO_ROTATE_90_CW:
+    {
+      gint dar_n = 0, dar_d = 0;
+
+      gst_util_fraction_multiply (
+          GST_VIDEO_FRAME_WIDTH (inframe), GST_VIDEO_FRAME_HEIGHT (inframe),
+          GST_VIDEO_INFO_PAR_N (&(inframe)->info),
+          GST_VIDEO_INFO_PAR_D (&(inframe)->info),
+          &dar_n, &dar_d
+      );
+
+      GST_TRACE ("Input surface %lx - rotate 90° clockwise", surface_id);
+
+      // Adjust the target rectangle dimensions.
+      width = (width != 0) ? width :
+          GST_VIDEO_FRAME_HEIGHT (outframe) * dar_d / dar_n;
+      height = (height != 0) ? height : GST_VIDEO_FRAME_HEIGHT (outframe);
+
+      object->destination.w = height;
+      object->destination.h = width;
+
+      object->rotation = 90.0;
+      break;
+    }
+    case GST_GLES_VIDEO_ROTATE_180:
+      GST_TRACE ("Input surface %lx - rotate 180°", surface_id);
+
+      // Adjust the target rectangle dimensions.
+      width = (width == 0) ? GST_VIDEO_FRAME_WIDTH (outframe) : width;
+      height = (height == 0) ? GST_VIDEO_FRAME_HEIGHT (outframe) : height;
+
+      object->destination.w = width;
+      object->destination.h = height;
+
+      object->rotation = 180.0;
+      break;
+    case GST_GLES_VIDEO_ROTATE_90_CCW:
+    {
+      gint dar_n = 0, dar_d = 0;
+
+      gst_util_fraction_multiply (
+          GST_VIDEO_FRAME_WIDTH (inframe), GST_VIDEO_FRAME_HEIGHT (inframe),
+          GST_VIDEO_INFO_PAR_N (&(inframe)->info),
+          GST_VIDEO_INFO_PAR_D (&(inframe)->info),
+          &dar_n, &dar_d
+      );
+
+      GST_TRACE ("Input surface %lx - rotate 90° counter-clockwise", surface_id);
+
+      // Adjust the target rectangle dimensions.
+      width = (width != 0) ? width :
+          GST_VIDEO_FRAME_HEIGHT (outframe) * dar_d / dar_n;
+      height = (height != 0) ? height : GST_VIDEO_FRAME_HEIGHT (outframe);
+
+      object->destination.w = height;
+      object->destination.h = width;
+
+      object->rotation = 270.0;
+      break;
+    }
+    default:
+      width = (width == 0) ? GST_VIDEO_FRAME_WIDTH (outframe) : width;
+      height = (height == 0) ? GST_VIDEO_FRAME_HEIGHT (outframe) : height;
+
+      object->destination.w = width;
+      object->destination.h = height;
+
+      object->rotation = 0.0;
+      break;
+  }
+
+  GST_TRACE ("Input surface %lx - Source rectangle: x(%d) y(%d) w(%d) h(%d)",
+      surface_id, object->source.x, object->source.y,
+      object->source.w, object->source.h);
+
+  GST_TRACE ("Input surface %lx - Target rectangle: x(%d) y(%d) w(%d) h(%d)",
+      surface_id, object->destination.x, object->destination.y,
+      object->destination.w, object->destination.h);
+}
+
+static guint64
+gst_retrieve_surface_id (GstGlesVideoConverter * convert, GHashTable * surfaces,
+    guint direction, const GstVideoFrame * vframe, const GstStructure * opts)
+{
+  GstMemory *memory = NULL;
+  guint fd = 0, flags = 0;
+  guint64 surface_id = 0;
+
+  // Get the 1st (and only) memory block from the input GstBuffer.
+  memory = gst_buffer_peek_memory (vframe->buffer, 0);
+  GST_GLES_RETURN_VAL_IF_FAIL (gst_is_fd_memory (memory), 0,
+      "Input buffer %p does not have FD memory!", vframe->buffer);
+
+  // Get the input buffer FD from the GstBuffer memory block.
+  fd = gst_fd_memory_get_fd (memory);
+
+  if (!g_hash_table_contains (surfaces, GUINT_TO_POINTER (fd))) {
+    flags = GET_OPT_UBWC_FORMAT (opts) ? GST_GLES_UBWC_FORMAT_FLAG : 0;
+    flags |= GET_OPT_FLOAT16_FORMAT (opts) ? GST_GLES_FLOAT16_FORMAT_FLAG : 0;
+    flags |= GET_OPT_FLOAT32_FORMAT (opts) ? GST_GLES_FLOAT32_FORMAT_FLAG : 0;
+
+    // Create an input surface and add its ID to the input hash table.
+    surface_id = gst_create_surface (convert, direction, vframe, flags);
+    GST_GLES_RETURN_VAL_IF_FAIL (surface_id != 0, 0,
+        "Failed to create surface!");
+
+    g_hash_table_insert (surfaces, GUINT_TO_POINTER (fd),
+        GUINT_TO_POINTER (surface_id));
+  } else {
+    // Get the input surface ID from the input hash table.
+    surface_id = GPOINTER_TO_ULONG (
+        g_hash_table_lookup (surfaces, GUINT_TO_POINTER (fd)));
+  }
+
+  return surface_id;
+}
+
+GstGlesVideoConverter *
 gst_gles_video_converter_new ()
 {
-  GstGlesConverter *convert = NULL;
+  GstGlesVideoConverter *convert = NULL;
 
-  convert = g_slice_new0 (GstGlesConverter);
+  convert = g_slice_new0 (GstGlesVideoConverter);
   g_return_val_if_fail (convert != NULL, NULL);
 
   g_mutex_init (&convert->lock);
 
-  convert->engine = new (std::nothrow) ::QImgConv::DataConverter();
-  GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (convert->engine != NULL, NULL,
-      gst_gles_video_converter_free (convert), "Failed to create GLES engine!");
+  convert->ib2chandle = dlopen ("libIB2C.so", RTLD_NOW);
+  GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (convert->ib2chandle != NULL, NULL,
+      gst_gles_video_converter_free (convert),
+      "Failed to open IB2C library, error: %s!", dlerror());
 
-  convert->outopts = gst_structure_new_empty ("Output");
-  GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (convert->outopts != NULL, NULL,
-      gst_gles_video_converter_free (convert), "Failed to create OPTS struct!");
+  ::ib2c::NewIEngine NewEngine =
+      (::ib2c::NewIEngine) dlsym(convert->ib2chandle, IB2C_ENGINE_NEW_FUNC);
+
+  GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (NewEngine != NULL, NULL,
+      gst_gles_video_converter_free (convert),
+      "Failed to load IB2C symbol, error: %s!", dlerror());
+
+  try {
+    convert->engine = NewEngine();
+  } catch (std::exception& e) {
+    GST_ERROR ("Failed to create and init new engine, error: '%s'!", e.what());
+    gst_gles_video_converter_free (convert);
+    return NULL;
+  }
+
+  convert->insurfaces = g_hash_table_new (NULL, NULL);
+  GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (convert->insurfaces != NULL, NULL,
+      gst_gles_video_converter_free (convert),
+      "Failed to create hash table for source surfaces!");
+
+  convert->outsurfaces = g_hash_table_new (NULL, NULL);
+  GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (convert->outsurfaces != NULL, NULL,
+      gst_gles_video_converter_free (convert),
+      "Failed to create hash table for target surfaces!");
 
   GST_INFO ("Created GLES Converter %p", convert);
   return convert;
 }
 
 void
-gst_gles_video_converter_free (GstGlesConverter * convert)
+gst_gles_video_converter_free (GstGlesVideoConverter * convert)
 {
   if (convert == NULL)
     return;
@@ -395,32 +680,40 @@ gst_gles_video_converter_free (GstGlesConverter * convert)
     g_list_free_full (convert->inopts, (GDestroyNotify) gst_structure_free);
 
   if (convert->outopts != NULL)
-    gst_structure_free (convert->outopts);
+    g_list_free_full (convert->outopts, (GDestroyNotify) gst_structure_free);
+
+  if (convert->insurfaces != NULL) {
+    g_hash_table_foreach (convert->insurfaces, gst_destroy_surface, convert);
+    g_hash_table_destroy(convert->insurfaces);
+  }
+
+  if (convert->outsurfaces != NULL) {
+    g_hash_table_foreach (convert->outsurfaces, gst_destroy_surface, convert);
+    g_hash_table_destroy (convert->outsurfaces);
+  }
 
   if (convert->engine != NULL)
     delete convert->engine;
 
+  if (convert->ib2chandle != NULL)
+    dlclose (convert->ib2chandle);
+
   g_mutex_clear (&convert->lock);
 
   GST_INFO ("Destroyed GLES converter: %p", convert);
-  g_slice_free (GstGlesConverter, convert);
+  g_slice_free (GstGlesVideoConverter, convert);
 }
 
 gboolean
-gst_gles_video_converter_set_input_opts (GstGlesConverter * convert,
+gst_gles_video_converter_set_input_opts (GstGlesVideoConverter * convert,
     guint index, GstStructure *opts)
 {
   g_return_val_if_fail (convert != NULL, FALSE);
-  g_return_val_if_fail (opts != NULL, FALSE);
 
   // Locking the converter to set the opts and composition pipeline
   GST_GLES_LOCK (convert);
 
-  if (index > g_list_length (convert->inopts)) {
-    GST_ERROR ("Provided index %u is not sequential!", index);
-    GST_GLES_UNLOCK (convert);
-    return FALSE;
-  } else if ((index == g_list_length (convert->inopts)) && (NULL == opts)) {
+  if ((index >= g_list_length (convert->inopts)) && (NULL == opts)) {
     GST_DEBUG ("There is no configuration for index %u", index);
     GST_GLES_UNLOCK (convert);
     return TRUE;
@@ -430,6 +723,10 @@ gst_gles_video_converter_set_input_opts (GstGlesConverter * convert,
         g_list_nth_data (convert->inopts, index));
     GST_GLES_UNLOCK (convert);
     return TRUE;
+  } else if (index > g_list_length (convert->inopts)) {
+    GST_ERROR ("Provided index %u is not sequential!", index);
+    GST_GLES_UNLOCK (convert);
+    return FALSE;
   }
 
   if (index == g_list_length (convert->inopts)) {
@@ -450,214 +747,191 @@ gst_gles_video_converter_set_input_opts (GstGlesConverter * convert,
 }
 
 gboolean
-gst_gles_video_converter_set_output_opts (GstGlesConverter * convert,
-    GstStructure * opts)
+gst_gles_video_converter_set_output_opts (GstGlesVideoConverter * convert,
+    guint index, GstStructure * opts)
 {
-  guint width, height, colour;
-  gfloat rscale, gscale, bscale, ascale, qscale;
-  gfloat roffset, goffset, boffset, aoffset, qoffset;
-
   g_return_val_if_fail (convert != NULL, FALSE);
-  g_return_val_if_fail (opts != NULL, FALSE);
 
-  // Locking the converter to set the opts and composition pipeline
   GST_GLES_LOCK(convert);
 
-  // Iterate over the fields in the new opts structure and update them.
-  gst_structure_foreach (opts, update_options, convert->outopts);
-  gst_structure_free (opts);
-
-  width  = GET_OPT_OUTPUT_WIDTH (convert->outopts);
-  height = GET_OPT_OUTPUT_HEIGHT (convert->outopts);
-  colour  = GET_OPT_BACKGROUND (convert->outopts);
-
-  rscale  = GET_OPT_RSCALE (convert->outopts);
-  gscale  = GET_OPT_GSCALE (convert->outopts);
-  bscale  = GET_OPT_BSCALE (convert->outopts);
-  ascale  = GET_OPT_ASCALE (convert->outopts);
-  qscale  = GET_OPT_QSCALE (convert->outopts);
-
-  roffset = GET_OPT_ROFFSET (convert->outopts);
-  goffset = GET_OPT_GOFFSET (convert->outopts);
-  boffset = GET_OPT_BOFFSET (convert->outopts);
-  aoffset = GET_OPT_AOFFSET (convert->outopts);
-  qoffset = GET_OPT_QOFFSET (convert->outopts);
-
-  GST_GLES_UNLOCK (convert);
-
-  std::vector<std::string> composition;
-
-  if (width == 0 || height == 0) {
-    GST_ERROR ("Invalid output dimensions: %ux%u!", width, height);
+  if ((index >= g_list_length (convert->outopts)) && (NULL == opts)) {
+    GST_DEBUG ("There is no configuration for index %u", index);
+    GST_GLES_UNLOCK (convert);
+    return TRUE;
+  } else if ((index < g_list_length (convert->outopts)) && (NULL == opts)) {
+    GST_LOG ("Remove options from the list at index %u", index);
+    convert->outopts = g_list_remove (convert->outopts,
+        g_list_nth_data (convert->outopts, index));
+    GST_GLES_UNLOCK (convert);
+    return TRUE;
+  } else if (index > g_list_length (convert->outopts)) {
+    GST_ERROR ("Provided index %u is not sequential!", index);
+    GST_GLES_UNLOCK (convert);
     return FALSE;
   }
 
-  GST_DEBUG ("Resize dimensions: %ux%u", width, height);
-  composition.push_back (convert->engine->Resize (width, height));
+  if (index == g_list_length (convert->outopts)) {
+    GST_LOG ("Add a new opts structure in the list at index %u", index);
 
-  ::QImgConv::Color qcolour = {0.0,0.0,0.0,0.0};
-
-  qcolour.r = EXTRACT_RED_COLOR (colour);
-  qcolour.g = EXTRACT_GREEN_COLOR (colour);
-  qcolour.b = EXTRACT_BLUE_COLOR (colour);
-  qcolour.a = EXTRACT_ALPHA_COLOR (colour);
-
-  GST_DEBUG ("Background colour: 0x%x", colour);
-  composition.push_back (convert->engine->Background (qcolour));
-
-  if (GET_OPT_NORMALIZE (convert->outopts)) {
-    GST_DEBUG ("Normalize Scale [%f %f %f %f] Offset [%f %f %f %f]",
-        rscale, gscale, bscale, ascale, roffset, goffset, boffset, aoffset);
-    composition.push_back (convert->engine->Normalize (
-        (1.0 / rscale), (1.0 / gscale), (1.0 / bscale), (1.0 / ascale),
-        roffset, goffset, boffset, aoffset));
+    convert->outopts = g_list_append (convert->outopts,
+        gst_structure_new_empty ("Input"));
   }
 
-  if (GET_OPT_QUANTIZE (convert->outopts)) {
-    GST_DEBUG ("Quantize Scale [%f] Offset [%f]", qscale, qoffset);
-    composition.push_back (convert->engine->Quantize ((1.0 / qscale), qoffset));
+  // Iterate over the fields in the new opts structure and update them.
+  gst_structure_foreach (opts, update_options,
+      g_list_nth_data (convert->outopts, index));
+  gst_structure_free (opts);
+
+  GST_GLES_UNLOCK (convert);
+
+  return TRUE;
+}
+
+gpointer
+gst_gles_video_converter_submit_request (GstGlesVideoConverter * convert,
+    GstGlesComposition * compositions, guint n_compositions)
+{
+  GstStructure *opts = NULL;
+  guint idx = 0, num = 0, n_rects = 0, n_inputs = 0, offset = 0;
+  guint64 surface_id = 0;
+
+  g_return_val_if_fail (convert != NULL, NULL);
+  g_return_val_if_fail ((compositions != NULL) && (n_compositions != 0), NULL);
+
+  std::vector<::ib2c::Composition> blits;
+
+  GST_GLES_LOCK (convert);
+
+  for (idx = 0; idx < n_compositions; idx++) {
+    const GstVideoFrame *outframe = compositions[idx].outframe;
+    const GstVideoFrame *inframes = compositions[idx].inframes;
+
+    n_inputs = compositions[idx].n_inputs;
+
+    // Sanity checks, output frame and input frames must not be NULL.
+    g_return_val_if_fail (outframe != NULL, NULL);
+    g_return_val_if_fail ((inframes != NULL) && (n_inputs != 0), NULL);
+
+    // Skip this configuration if there is no output buffer.
+    if (NULL == outframe->buffer)
+      continue;
+
+    // Initialize empty options structure in case none have been set.
+    if (idx >= g_list_length (convert->outopts)) {
+      convert->outopts =
+          g_list_append (convert->outopts, gst_structure_new_empty ("options"));
+    }
+
+    std::vector<::ib2c::Object> objects;
+
+    // Iterate over the input frames for current composition.
+    for (num = 0; num < n_inputs; num++) {
+      const GstVideoFrame *inframe = &(inframes[num]);
+
+      if (NULL == inframe->buffer)
+        continue;
+
+      // Initialize empty options structure in case none have been set.
+      if ((num + offset) >= g_list_length (convert->inopts)) {
+        convert->inopts =
+            g_list_append (convert->inopts, gst_structure_new_empty ("options"));
+      }
+
+      // Get the options for current input buffer.
+      opts = GST_STRUCTURE (g_list_nth_data (convert->inopts, (num + offset)));
+
+      surface_id = gst_retrieve_surface_id (convert, convert->insurfaces,
+          GST_GLES_INPUT, inframe, opts);
+      GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (surface_id != 0, NULL,
+          GST_GLES_UNLOCK (convert), "Failed to get surface ID for input buffer!");
+
+      // Extract the source and destination rectangles.
+      std::vector<::ib2c::Region> srcrects, dstrects;
+      gst_extract_rectangles (opts, srcrects, dstrects, n_rects);
+
+      // Fill a separate GLES object for each rectangle pair in this input frame.
+      while (n_rects-- != 0) {
+        ::ib2c::Object object;
+
+        gst_update_object (&object, surface_id, opts, inframe,
+            &srcrects[n_rects], outframe, &dstrects[n_rects]);
+
+        objects.push_back(object);
+      }
+    }
+
+    // Increate the offset to the input frame options.
+    offset += n_inputs;
+
+    // Get the options for current output frame.
+    opts = GST_STRUCTURE (g_list_nth_data (convert->outopts, idx));
+
+    surface_id = gst_retrieve_surface_id (convert, convert->outsurfaces,
+        GST_GLES_OUTPUT, outframe, opts);
+    GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (surface_id != 0, NULL,
+        GST_GLES_UNLOCK (convert), "Failed to get surface ID for output buffer!");
+
+    uint32_t color = GET_OPT_BACKGROUND (opts);
+    bool clear = GET_OPT_CLEAR (opts);
+
+    std::vector<::ib2c::Normalize> normalization;
+
+    normalization.push_back(
+        ::ib2c::Normalize (GET_OPT_RSCALE (opts), GET_OPT_ROFFSET (opts)));
+    normalization.push_back(
+        ::ib2c::Normalize (GET_OPT_GSCALE (opts), GET_OPT_GOFFSET (opts)));
+    normalization.push_back(
+        ::ib2c::Normalize (GET_OPT_BSCALE (opts), GET_OPT_BOFFSET (opts)));
+    normalization.push_back(
+        ::ib2c::Normalize (GET_OPT_ASCALE (opts), GET_OPT_AOFFSET (opts)));
+
+    blits.push_back(std::move(
+        std::make_tuple(surface_id, color, clear, normalization, objects)));
   }
 
-  if (GET_OPT_CONVERT_TO_UINT8 (convert->outopts))
-    composition.push_back (convert->engine->ConverttoUINT8());
+  GST_GLES_UNLOCK (convert);
 
-  for (auto const& op : composition)
-    GST_DEBUG ("Composing DataConverter with %s", op.c_str());
+  std::uintptr_t request_id;
 
-  if (convert->engine->Compose(composition) != ::QImgConv::STATUS_OK) {
-    GST_ERROR ("Failed to compose the GLES engine operations!");
+  try {
+    request_id = convert->engine->Compose (blits);
+  } catch (std::exception& e) {
+    GST_ERROR ("Failed to submit draw objects, error: '%s'!", e.what());
+    return NULL;
+  }
+
+  return reinterpret_cast<gpointer>(request_id);
+}
+
+gboolean
+gst_gles_video_converter_wait_request (GstGlesVideoConverter * convert,
+    gpointer request_id)
+{
+  g_return_val_if_fail (convert != NULL, FALSE);
+
+  if (request_id == NULL)
+    return TRUE;
+
+  try {
+    convert->engine->Finish (reinterpret_cast<std::intptr_t>(request_id));
+  } catch (std::exception& e) {
+    GST_ERROR ("Failed to process request ID, error: '%s'!", e.what());
     return FALSE;
   }
 
   return TRUE;
 }
 
-gboolean
-gst_gles_video_converter_process (GstGlesConverter * convert,
-    GstVideoFrame * inframes, guint n_inputs, GstVideoFrame * outframes,
-    guint n_outputs)
+void
+gst_gles_video_converter_flush (GstGlesVideoConverter * convert)
 {
-  std::vector<::QImgConv::Image> inimages, outimages;
-  std::vector<::QImgConv::Rec> srcrects, dstrects;
-  gboolean success = FALSE;
-  guint idx = 0, num = 0, n_rects = 0;
+  g_return_if_fail (convert != NULL);
 
-  g_return_val_if_fail (convert != NULL, FALSE);
-  g_return_val_if_fail ((inframes != NULL) && (n_inputs != 0), FALSE);
-  g_return_val_if_fail ((outframes != NULL) && (n_outputs != 0), FALSE);
+  // try {
+  //   convert->engine->Finish (reinterpret_cast<std::intptr_t>(nullptr));
+  // } catch (std::exception& e) {
+  //   GST_ERROR ("Failed to process frames, error: '%s'!", e.what());
+  // }
 
-  GST_GLES_LOCK (convert);
-
-  for (idx = 0; idx < n_inputs; idx++) {
-    const GstVideoFrame *frame = &inframes[idx];
-    const GstStructure *opts = NULL;
-    ::QImgConv::Image image;
-
-    if (NULL == frame->buffer)
-      continue;
-
-    // Initialize empty options structure in case none have been set.
-    if (idx >= g_list_length (convert->inopts))
-      convert->inopts = g_list_append (convert->inopts,
-          gst_structure_new_empty ("Input"));
-
-    // Get the options for current input buffer.
-    opts = GST_STRUCTURE (g_list_nth_data (convert->inopts, idx));
-
-    success = gst_gles_video_converter_update_image (&image, GST_GLES_INPUT, frame);
-    GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (success, FALSE, GST_GLES_UNLOCK (convert),
-        "Failed to update QImgConv image at index %u !", idx);
-
-    // In case the UBWC format option is set override the format.
-    if (GET_OPT_UBWC_FORMAT (opts) && (image.format == DRM_FORMAT_NV12))
-      image.format = GBM_FORMAT_YCbCr_420_SP_VENUS_UBWC;
-
-    // Set the start index to the number of initial rectangles.
-    num = n_rects = dstrects.size();
-
-    // Fill the source and destination rectangles.
-    gst_gles_video_converter_extract_rectangles (opts,
-        GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, srcrects);
-    gst_gles_video_converter_extract_rectangles (opts,
-        GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, dstrects);
-
-    if (srcrects.size() > dstrects.size()) {
-      GST_WARNING ("Number of source rectangles exceeds the number of "
-          "destination rectangles, clipping!");
-      n_rects = dstrects.size();
-      srcrects.resize(n_rects);
-    } else if (srcrects.size() < dstrects.size()) {
-      GST_WARNING ("Number of destination rectangles exceeds the number of "
-          "source rectangles, clipping!");
-      n_rects = srcrects.size();
-      dstrects.resize(n_rects);
-    }
-
-    n_rects = srcrects.size();
-
-    // Iterate over the pairs of source and destination rectangles.
-    while (num < n_rects) {
-      // Use the same image for each pair of source and destination rectangles.
-      inimages.push_back(image);
-
-      if ((srcrects[num].width == 0) && (srcrects[num].height == 0)) {
-        srcrects[num].x = srcrects[num].y = 0;
-        srcrects[num].width = image.width;
-        srcrects[num].height = image.height;
-      }
-
-      GST_TRACE ("Input image FD[%d] - Source rectangle[%u]: [%u %u %u %u]",
-          image.fd, num, srcrects[num].x, srcrects[num].y, srcrects[num].width,
-          srcrects[num].height);
-
-      if ((dstrects[num].width == 0) && (dstrects[num].height == 0)) {
-        dstrects[num].x = 0;
-        dstrects[num].y = idx * GET_OPT_OUTPUT_HEIGHT (convert->outopts) / n_inputs;
-        dstrects[num].width = GET_OPT_OUTPUT_WIDTH (convert->outopts);
-        dstrects[num].height = GET_OPT_OUTPUT_HEIGHT (convert->outopts) / n_inputs;
-      }
-
-      GST_TRACE ("Input image FD[%d] - Target rectangle[%u]: [%u %u %u %u]",
-          image.fd, num, dstrects[num].x, dstrects[num].y, dstrects[num].width,
-          dstrects[num].height);
-
-      // Increment the rectangles index.
-      num++;
-    }
-  }
-
-  for (idx = 0; idx < n_outputs; idx++) {
-    const GstVideoFrame *frame = &outframes[idx];
-    ::QImgConv::Image image;
-
-    if (NULL == frame->buffer)
-      continue;
-
-    success = gst_gles_video_converter_update_image (&image, GST_GLES_OUTPUT,
-        frame);
-
-    GST_GLES_RETURN_VAL_IF_FAIL_WITH_CLEAN (success, FALSE, GST_GLES_UNLOCK (convert),
-        "Failed to update output image at index %u !", idx);
-
-    // Override format in case normalization was enabled.
-    if (GET_OPT_NORMALIZE (convert->outopts))
-      image.format = gst_video_normalization_format (frame);
-
-    // Override isLinear to be always true when normalization is enabled.
-    if (GET_OPT_NORMALIZE (convert->outopts))
-      image.isLinear = true;
-
-    outimages.push_back(image);
-  }
-
-  ::QImgConv::STATUS status = convert->engine->DoPreProcess (
-      inimages.data(), srcrects.data(), dstrects.data(), outimages.data(),
-      inimages.size(), std::ceil(inimages.size() / outimages.size()));
-
-  GST_GLES_UNLOCK (convert);
-
-  GST_GLES_RETURN_VAL_IF_FAIL (status == ::QImgConv::STATUS_OK, FALSE,
-      "Failed to process frames!");
-
-  return TRUE;
+  return;
 }

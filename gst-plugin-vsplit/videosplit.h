@@ -87,12 +87,17 @@ struct _GstVideoSplit
   /// Convenient local reference to source pads.
   GList                *srcpads;
 
+  /// Worker task.
+  GstTask              *worktask;
+  /// Worker task mutex.
+  GRecMutex            worklock;
+
   /// Supported converters.
 #ifdef USE_C2D_CONVERTER
   GstC2dVideoConverter *c2dconvert;
 #endif // USE_C2D_CONVERTER
 #ifdef USE_GLES_CONVERTER
-  GstGlesConverter     *glesconvert;
+  GstGlesVideoConverter *glesconvert;
 #endif // USE_GLES_CONVERTER
 
   /// Properties.

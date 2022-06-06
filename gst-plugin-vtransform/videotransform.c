@@ -679,7 +679,7 @@ gst_video_transform_set_caps (GstBaseTransform * base, GstCaps * incaps,
       NULL);
 
   gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
-  gst_c2d_video_converter_set_output_opts (vtrans->c2dconvert, outopts);
+  gst_c2d_video_converter_set_output_opts (vtrans->c2dconvert, 0, outopts);
 
   GST_DEBUG_OBJECT (vtrans, "From %dx%d (PAR: %d/%d, DAR: %d/%d), size %"
       G_GSIZE_FORMAT " -> To %dx%d (PAR: %d/%d, DAR: %d/%d), size %"
@@ -1641,13 +1641,14 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   }
 
   {
+    GstC2dComposition composition = { &inframe, 1, &outframe };
     GstClockTime ts_begin, ts_end;
     GstClockTimeDiff timedelta;
 
     ts_begin = gst_util_get_timestamp ();
 
     request_id = gst_c2d_video_converter_submit_request (vtrans->c2dconvert,
-        &inframe, 1, &outframe);
+        &composition, 1);
     gst_c2d_video_converter_wait_request (vtrans->c2dconvert, request_id);
 
     ts_end = gst_util_get_timestamp ();
@@ -1793,7 +1794,7 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
             GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT,
                 vtrans->background,
             NULL);
-        gst_c2d_video_converter_set_output_opts (vtrans->c2dconvert, opts);
+        gst_c2d_video_converter_set_output_opts (vtrans->c2dconvert, 0, opts);
       }
       break;
     default:
