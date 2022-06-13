@@ -88,6 +88,7 @@ struct _GstC2_VENCEncoder {
   guint64 frame_index;
   GMutex pending_lock;
   GCond pending_cond;
+  gint rate_numerator;
 
   gboolean eos_reached;
 

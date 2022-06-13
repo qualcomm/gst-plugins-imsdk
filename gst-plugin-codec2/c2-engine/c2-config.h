@@ -46,6 +46,7 @@
 #define CONFIG_FUNCTION_KEY_ROTATION "rotation"
 #define CONFIG_FUNCTION_KEY_RATECONTROL "ratecontrol"
 #define CONFIG_FUNCTION_KEY_SYNC_FRAME_INT "syncframeint"
+#define CONFIG_FUNCTION_KEY_REQUEST_SYNC_FRAME "requestsyncframe"
 #define CONFIG_FUNCTION_KEY_DEC_LOW_LATENCY "dec_low_latency"
 #define CONFIG_FUNCTION_KEY_INTRAREFRESH "intra_refresh"
 #define CONFIG_FUNCTION_KEY_OUTPUT_PICTURE_ORDER_MODE "output_picture_order_mode"
@@ -185,6 +186,7 @@ typedef struct {
     gint32 i32;
     gint64 i64;
     gfloat fl;
+    gboolean bl;
   } val;
 
   struct {

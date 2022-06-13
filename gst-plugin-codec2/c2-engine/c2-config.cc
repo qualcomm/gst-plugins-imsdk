@@ -72,6 +72,7 @@ std::unique_ptr<C2Param> setRotation (gpointer param);
 std::unique_ptr<C2Param> setMirrorType (gpointer param);
 std::unique_ptr<C2Param> setRateControl (gpointer param);
 std::unique_ptr<C2Param> setSyncFrameInterval (gpointer param);
+std::unique_ptr<C2Param> requestSyncFrame (gpointer param);
 std::unique_ptr<C2Param> setOutputPictureOrderMode (gpointer param);
 std::unique_ptr<C2Param> setROIEncoding (gpointer param);
 std::unique_ptr<C2Param> setDecLowLatency (gpointer param);
@@ -94,6 +95,7 @@ static configFunctionMap sConfigFunctionMap = {
   { CONFIG_FUNCTION_KEY_MIRROR, setMirrorType },
   { CONFIG_FUNCTION_KEY_RATECONTROL, setRateControl },
   { CONFIG_FUNCTION_KEY_SYNC_FRAME_INT, setSyncFrameInterval },
+  { CONFIG_FUNCTION_KEY_REQUEST_SYNC_FRAME, requestSyncFrame },
   { CONFIG_FUNCTION_KEY_OUTPUT_PICTURE_ORDER_MODE, setOutputPictureOrderMode },
   { CONFIG_FUNCTION_KEY_ROI_ENCODING, setROIEncoding },
   { CONFIG_FUNCTION_KEY_DEC_LOW_LATENCY, setDecLowLatency },
@@ -469,6 +471,19 @@ setSyncFrameInterval (gpointer param)
   C2StreamSyncFrameIntervalTuning::output syncFrameInterval;
   syncFrameInterval.value = config->val.i64;
   return C2Param::Copy (syncFrameInterval);
+}
+
+std::unique_ptr<C2Param>
+requestSyncFrame (gpointer param)
+{
+  if (param == NULL)
+    return nullptr;
+
+  config_params_t *config = (config_params_t*) param;
+
+  C2StreamRequestSyncFrameTuning::output requestSyncFrame;
+  requestSyncFrame.value = config->val.bl;
+  return C2Param::Copy (requestSyncFrame);
 }
 
 std::unique_ptr<C2Param>
