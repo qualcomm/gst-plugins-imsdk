@@ -104,7 +104,7 @@ GST_STATIC_PAD_TEMPLATE ("src",
     GST_PAD_SRC,
     GST_PAD_ALWAYS,
     GST_STATIC_CAPS (
-        "video/x-raw, "
+        "video/x-raw(ANY), "
         "format = (string) NV12, "
         "width  = (int) [ 32, 8192 ], "
         "height = (int) [ 32, 8192 ]"
@@ -200,7 +200,7 @@ gst_c2_buffer_release (GstStructure * structure)
   guint64 index = 0;
   gst_structure_get (structure, "decoder", G_TYPE_POINTER, &decoder, NULL);
   gst_structure_get_uint64 (structure, "index", &index);
-   GST_ERROR_OBJECT (decoder, "gst_c2_buffer_release index %d", index);
+  GST_DEBUG_OBJECT (decoder, "gst_c2_buffer_release index %d", index);
   GstC2vdec *dec = GST_C2VDEC (decoder);
   if (decoder) {
     if (!gst_c2_vdec_wrapper_free_output_buffer (dec->wrapper, index)) {
@@ -532,7 +532,7 @@ gst_qticodec2vdec_decode (GstVideoDecoder * decoder, GstVideoCodecFrame * frame)
 
   inBuf.timestamp = NANO_TO_MILLI (frame->pts);
   inBuf.index = frame->system_frame_number;
-  GST_WARNING_OBJECT (dec," frame index = %d",inBuf.index);
+  GST_DEBUG_OBJECT (dec," frame index = %d",inBuf.index);
 
   /* Queue buffer to Codec2 */
   if (!gst_c2_vdec_wrapper_component_queue (dec->wrapper, &inBuf)) {
@@ -578,7 +578,7 @@ handle_video_event (EVENT_TYPE type, void *userdata, void *userdata2)
           GST_ERROR_OBJECT (c2vdec, "Failed to push frame downstream");
         }
       } else if (outBuffer->flag & FLAG_TYPE_END_OF_STREAM) {
-        GST_INFO_OBJECT (c2vdec, "Encoder reached EOS");
+        GST_INFO_OBJECT (c2vdec, "Decoder reached EOS");
         g_mutex_lock (&c2vdec->pending_lock);
         c2vdec->eos_reached = TRUE;
         g_cond_signal (&c2vdec->pending_cond);

@@ -254,24 +254,6 @@ c2_status_t C2ComponentWrapper::prepareC2Buffer(BufferDescriptor* buffer, std::s
   return result;
 }
 
-
-c2_status_t C2ComponentWrapper::waitForProgressOrStateChange(
-    uint32_t maxPendingWorks,
-    uint32_t timeoutMs)
-{
-  std::unique_lock<std::mutex> ul(mLock);
-  GST_INFO ("waitForProgressOrStateChange: pending = %u", mNumPendingWorks);
-
-  while (mNumPendingWorks > maxPendingWorks) {
-    if (timeoutMs > 0) {
-    } else if (timeoutMs == 0) {
-      mCondition.wait(ul);
-    }
-  }
-
-  return C2_OK;
-}
-
 bool
 C2ComponentWrapper::Queue (BufferDescriptor * buffer)
 {
@@ -361,10 +343,6 @@ C2ComponentWrapper::Queue (BufferDescriptor * buffer)
     } else {
       GST_INFO ("EOS reached");
     }
-
-    //Decoder specific
-    if (poolType == C2BlockPool::BASIC_LINEAR)
-      waitForProgressOrStateChange(MAX_PENDING_WORK, 0);
 
     if (C2_OK != component_->queue_nb (&workList)) {
       GST_ERROR ("Failed to queue work");
