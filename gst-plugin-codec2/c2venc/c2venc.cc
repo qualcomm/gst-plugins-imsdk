@@ -286,6 +286,19 @@ make_sync_frame_interval_param (int64_t period_ms)
 }
 
 static config_params_t
+make_request_sync_frame_param (bool request)
+{
+  config_params_t param;
+
+  memset (&param, 0, sizeof (config_params_t));
+
+  param.config_name = CONFIG_FUNCTION_KEY_REQUEST_SYNC_FRAME;
+  param.val.bl = request;
+
+  return param;
+}
+
+static config_params_t
 make_roi_encoding (gint64 timestampUs, char *rectPayload, char *rectPayloadExt)
 {
   config_params_t param;
@@ -362,6 +375,24 @@ make_intraRefresh_param (ir_mode_t mode, guint32 intra_refresh_mbs)
   param.ir_mode.intra_refresh_mbs = (float) intra_refresh_mbs;
 
   return param;
+}
+
+static gboolean
+gst_c2_venc_trigger_iframe (GstC2_VENCEncoder *c2venc)
+{
+  GST_DEBUG_OBJECT (c2venc, "Trigger I frame insertion");
+
+  GPtrArray *config = g_ptr_array_new ();
+  config_params_t request_sync_frame;
+  request_sync_frame = make_request_sync_frame_param (true);
+  g_ptr_array_add (config, &request_sync_frame);
+  // Config component
+  if (!gst_c2_venc_wrapper_config_component (c2venc->wrapper, config)) {
+    GST_ERROR_OBJECT (c2venc, "Failed to config interface");
+  }
+  g_ptr_array_free (config, FALSE);
+
+  return TRUE;
 }
 
 static gboolean
@@ -651,7 +682,6 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   gint retval = 0;
   gint width = 0;
   gint height = 0;
-  gint rate_numerator = 0;
   gint rate_denominator = 0;
   GstVideoFormat input_format = GST_VIDEO_FORMAT_UNKNOWN;
   GPtrArray *config = NULL;
@@ -660,7 +690,6 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   config_params_t rate_control;
   config_params_t sync_frame_int;
   config_params_t roi_encoding;
-  config_params_t color_aspects;
   config_params_t intra_refresh;
   config_params_t bitrate;
   config_params_t slice_mode;
@@ -676,7 +705,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   }
 
   retval = gst_structure_get_fraction (structure, "framerate",
-      &rate_numerator, &rate_denominator);
+      &c2venc->rate_numerator, &rate_denominator);
   if (!retval) {
     GST_ERROR_OBJECT (c2venc, "Unable to get framerate value");
     return FALSE;
@@ -743,18 +772,19 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     GST_DEBUG_OBJECT (c2venc, "set target bitrate:%u", c2venc->target_bitrate);
   }
 
-  if (rate_numerator > 0 && rate_denominator > 0) {
-    c2venc->framerate = rate_numerator / rate_denominator;
+  if (c2venc->rate_numerator > 0 && rate_denominator > 0) {
+    c2venc->framerate = c2venc->rate_numerator / rate_denominator;
     framerate = make_framerate_param (c2venc->framerate, FALSE);
     g_ptr_array_add (config, &framerate);
-    GST_DEBUG_OBJECT (c2venc, "set target framerate:%u", c2venc->framerate);
+    GST_DEBUG_OBJECT (c2venc, "set target framerate:%f", c2venc->framerate);
   }
 
   resolution = make_resolution_param (width, height, TRUE);
   g_ptr_array_add (config, &resolution);
 
   if (c2venc->iframe_only) {
-    sync_frame_int = make_sync_frame_interval_param (1 * 1e6 / rate_numerator);
+    sync_frame_int =
+        make_sync_frame_interval_param (1 * 1e6 / c2venc->rate_numerator);
     g_ptr_array_add (config, &sync_frame_int);
     GST_DEBUG_OBJECT (c2venc, "I frame only mode");
   } else if (c2venc->idr_interval != 0) {
@@ -999,6 +1029,8 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
   GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (object);
   const gchar *propname = g_param_spec_get_name (pspec);
   GstState state = GST_STATE (c2venc);
+  GPtrArray *config = g_ptr_array_new ();
+  gboolean config_apply = FALSE;
 
   if (!GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE (pspec, state)) {
     GST_WARNING_OBJECT (c2venc, "Property '%s' change not supported in %s "
@@ -1019,13 +1051,42 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
       c2venc->intra_refresh_mbs = g_value_get_uint (value);
       break;
     case PROP_TARGET_BITRATE:
+
       c2venc->target_bitrate = g_value_get_uint (value);
+
+      config_params_t bitrate;
+      if (c2venc->target_bitrate > 0) {
+        bitrate = make_bitrate_param (c2venc->target_bitrate, FALSE);
+        g_ptr_array_add (config, &bitrate);
+        GST_DEBUG_OBJECT (c2venc, "set target bitrate:%u", c2venc->target_bitrate);
+      }
+      config_apply = TRUE;
+
       break;
     case PROP_I_FRAME_ONLY:
       c2venc->iframe_only = g_value_get_boolean (value);
+
+      config_params_t sync_frame_int;
+      if (c2venc->iframe_only) {
+        sync_frame_int =
+            make_sync_frame_interval_param (1 * 1e6 / c2venc->rate_numerator);
+        g_ptr_array_add (config, &sync_frame_int);
+        GST_DEBUG_OBJECT (c2venc, "I frame only mode");
+      }
+      config_apply = TRUE;
+
       break;
     case PROP_IDR_FRAME_INTERVAL:
       c2venc->idr_interval = g_value_get_uint (value);
+
+      if (c2venc->idr_interval != 0) {
+        sync_frame_int =
+            make_sync_frame_interval_param (c2venc->idr_interval * 1000);
+        g_ptr_array_add (config, &sync_frame_int);
+        GST_DEBUG_OBJECT (c2venc, "IDR frame interval - %d", c2venc->idr_interval);
+      }
+      config_apply = TRUE;
+
       break;
     case PROP_SLICE_SIZE:
       c2venc->slice_size = g_value_get_uint (value);
@@ -1071,6 +1132,15 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
   }
+
+  // Config component
+  if (config_apply) {
+    if (!gst_c2_venc_wrapper_config_component (c2venc->wrapper, config)) {
+      GST_ERROR_OBJECT (c2venc, "Failed to config interface");
+    }
+  }
+
+  g_ptr_array_free (config, FALSE);
 
   GST_OBJECT_UNLOCK (c2venc);
 }
@@ -1217,20 +1287,20 @@ gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
           "Target bitrate in bits per second (0 means not explicitly set bitrate)",
           0, G_MAXUINT, 0,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_READY)));
+          GST_PARAM_MUTABLE_PLAYING)));
 
   g_object_class_install_property (gobject, PROP_I_FRAME_ONLY,
       g_param_spec_boolean ("iframe-only", "I Frame only",
           "I Frame only mode", FALSE,
           static_cast<GParamFlags>(G_PARAM_CONSTRUCT | G_PARAM_READWRITE |
-          G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY)));
+          G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_PLAYING)));
 
   g_object_class_install_property (G_OBJECT_CLASS (klass), PROP_IDR_FRAME_INTERVAL,
       g_param_spec_uint ("idr-interval", "IDR frame interval",
           "IDR frame interval (0 means not explicitly set IDR interval)",
           0, G_MAXUINT, 0,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_READY)));
+          GST_PARAM_MUTABLE_PLAYING)));
 
   g_object_class_install_property (gobject, PROP_SLICE_MODE,
       g_param_spec_enum ("slice-mode", "slice mode",
@@ -1304,7 +1374,13 @@ gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
           "ROI encoding QP delta",
           G_MININT, G_MAXINT, DEFAULT_PROP_ROI_QP_DELTA,
           static_cast<GParamFlags>(G_PARAM_CONSTRUCT | G_PARAM_READWRITE |
-          G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY)));
+          G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_PLAYING)));
+
+  // Signal for trigger I frame insertion
+  g_signal_new_class_handler ("trigger-iframe", G_TYPE_FROM_CLASS (klass),
+      static_cast<GSignalFlags>(G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION),
+      G_CALLBACK (gst_c2_venc_trigger_iframe),
+      NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
 
   gst_element_class_set_static_metadata (element,
       "C2Venc encoder", "C2_VENC/Encoder",
@@ -1334,6 +1410,7 @@ gst_c2_venc_init (GstC2_VENCEncoder * c2venc)
   c2venc->height = 0;
   c2venc->frame_index = 0;
   c2venc->eos_reached = FALSE;
+  c2venc->rate_numerator = 0;
 
   c2venc->rcMode = RC_MODE_OFF;
   c2venc->target_bitrate = 0;
