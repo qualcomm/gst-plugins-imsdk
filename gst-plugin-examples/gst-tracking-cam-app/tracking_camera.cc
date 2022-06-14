@@ -550,7 +550,7 @@ main (gint argc, gchar * argv[])
   gboolean ret = FALSE;
   GstTrackingCamera tracking_camera = {};
   AutoFramingConfig auto_framing_config = {};
-  gint diff_pos_threshold, diff_size_threshold, crop_margin, speed_movement = 0;
+  gint diff_pos_threshold, diff_size_threshold, speed_movement = 0;
 
   // Set default settings
   auto_framing_config.out_width = DEFAULT_MAIN_STREAM_WIDTH;
@@ -562,8 +562,7 @@ main (gint argc, gchar * argv[])
   tracking_camera.sync_enable = FALSE;
   diff_pos_threshold = DEFAULT_POS_THRESHOLD;
   diff_size_threshold = DEFAULT_SIZE_THRESHOLD;
-  crop_margin = DEFAULT_MARGIN;
-  speed_movement = DEFAULT_SEED_MOVEMENT;
+  speed_movement = DEFAULT_SPEED_MOVEMENT;
 
   GOptionEntry entries[] = {
       { "pos-percent", 'p', 0, G_OPTION_ARG_INT,
@@ -575,11 +574,6 @@ main (gint argc, gchar * argv[])
         &diff_size_threshold,
         "Dimensions threshold",
         "Parameter for the dimensions threshold of the crop"
-      },
-      { "margin-percent", 'm', 0, G_OPTION_ARG_INT,
-        &crop_margin,
-        "Dimensions margin",
-        "Parameter for the dimensions margin added to the calculated crop"
       },
       { "speed-percent", 's', 0, G_OPTION_ARG_INT,
         &speed_movement,
@@ -642,11 +636,9 @@ main (gint argc, gchar * argv[])
   // Check whether the parameters are correct
   if (diff_pos_threshold < 0 ||
       diff_size_threshold < 0 ||
-      crop_margin < 0 ||
       speed_movement < 0 ||
       diff_pos_threshold > 100 ||
       diff_size_threshold > 100 ||
-      crop_margin > 100 ||
       speed_movement > 100 ||
       auto_framing_config.out_width <= 0 ||
       auto_framing_config.out_height <= 0 ||
@@ -670,8 +662,6 @@ main (gint argc, gchar * argv[])
       diff_pos_threshold);
   auto_framing_algo_set_dims_threshold (tracking_camera.framing_alg_inst,
       diff_size_threshold);
-  auto_framing_algo_set_margins (tracking_camera.framing_alg_inst,
-      crop_margin);
   auto_framing_algo_set_movement_speed (tracking_camera.framing_alg_inst,
       speed_movement);
 
@@ -679,7 +669,6 @@ main (gint argc, gchar * argv[])
   g_print ("\nParameters:\n");
   g_print ("Position threshold - %d\n", diff_pos_threshold);
   g_print ("Dimensions threshold - %d\n", diff_size_threshold);
-  g_print ("Dimensions margin - %d\n", crop_margin);
   g_print ("Speed - %d\n", speed_movement);
   g_print ("Format - %d\n", tracking_camera.format);
   g_print ("Crop type - %d\n", tracking_camera.crop_type);

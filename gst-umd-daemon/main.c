@@ -237,7 +237,6 @@ struct _AutoFrmLib
 
   void           (*set_position_threshold) (gpointer instance, gint threshold);
   void           (*set_dims_threshold) (gpointer instance, gint threshold);
-  void           (*set_margins) (gpointer instance, gint margins);
   void           (*set_movement_speed) (gpointer instance, gint speed);
 };
 
@@ -395,9 +394,6 @@ gst_service_context_new ()
     success &= load_symbol (
         (gpointer*) &ctx->afrmalgo->set_dims_threshold,
         ctx->afrmalgo->handle, "auto_framing_algo_set_dims_threshold");
-    success &= load_symbol (
-        (gpointer*) &ctx->afrmalgo->set_margins,
-        ctx->afrmalgo->handle, "auto_framing_algo_set_margins");
     success &= load_symbol (
         (gpointer*) &ctx->afrmalgo->set_movement_speed,
         ctx->afrmalgo->handle, "auto_framing_algo_set_movement_speed");
@@ -1490,8 +1486,6 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
         srvctx->afrmalgo->instance, afrmops.posthold);
     srvctx->afrmalgo->set_dims_threshold (
         srvctx->afrmalgo->instance, afrmops.dimsthold);
-    srvctx->afrmalgo->set_margins (
-        srvctx->afrmalgo->instance, afrmops.margins);
     srvctx->afrmalgo->set_movement_speed (
         srvctx->afrmalgo->instance, afrmops.speed);
   }
