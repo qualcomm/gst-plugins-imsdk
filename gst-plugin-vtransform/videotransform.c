@@ -1780,7 +1780,7 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
         gst_value_array_append_value (&rects, value);
 
         gst_structure_set_value (inopts,
-            GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, value);
+            GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, &rects);
         g_value_unset (&rects);
 
         gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);

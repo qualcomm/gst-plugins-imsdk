@@ -284,7 +284,7 @@ gst_ml_load_labels (const gchar * input)
     GstLabel *label = NULL;
 
     structure = GST_STRUCTURE (
-        g_value_dup_boxed (gst_value_list_get_value (&list, idx)));
+        g_value_get_boxed (gst_value_list_get_value (&list, idx)));
 
     if (structure == NULL) {
       GST_WARNING ("Failed to extract structure!");
@@ -292,13 +292,11 @@ gst_ml_load_labels (const gchar * input)
     } else if (!gst_structure_has_field (structure, "id") ||
         !gst_structure_has_field (structure, "color")) {
       GST_WARNING ("Structure does not contain 'id' and/or 'color' fields!");
-      gst_structure_free (structure);
       continue;
     }
 
     if ((label = gst_ml_label_new ()) == NULL) {
       GST_ERROR ("Failed to allocate label memory!");
-      gst_structure_free (structure);
       continue;
     }
 
@@ -309,7 +307,6 @@ gst_ml_load_labels (const gchar * input)
     gst_structure_get_uint (structure, "id", &id);
 
     g_hash_table_insert (labels, GUINT_TO_POINTER (id), label);
-    gst_structure_free (structure);
   }
 
   g_value_unset (&list);
