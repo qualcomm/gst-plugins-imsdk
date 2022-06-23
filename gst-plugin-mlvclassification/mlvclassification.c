@@ -378,7 +378,7 @@ gst_ml_video_classification_fill_video_output (
   cairo_set_antialias (context, CAIRO_ANTIALIAS_BEST);
 
   // Set the most appropriate font size based on number of results.
-  fontsize = ((gdouble) vmeta->width / MAX_TEXT_LENGTH) * (5.0F / 3.0F);
+  fontsize = ((gdouble) vmeta->width / MAX_TEXT_LENGTH) * 9.0 / 5.0;
   fontsize = MIN (fontsize, vmeta->height / classification->n_results);
   cairo_set_font_size (context, fontsize);
 
@@ -488,7 +488,7 @@ gst_ml_video_classification_fill_text_output (
 
     entry = gst_structure_new ("ImageClassification",
         "label", G_TYPE_STRING, prediction->label,
-        "confidence", G_TYPE_FLOAT, prediction->confidence,
+        "confidence", G_TYPE_DOUBLE, prediction->confidence,
         "color", G_TYPE_UINT, prediction->color,
         NULL);
 
