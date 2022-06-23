@@ -32,28 +32,67 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __GST_META_MUX_PADS_H__
-#define __GST_META_MUX_PADS_H__
+#ifndef __GST_METAMUX_PADS_H__
+#define __GST_METAMUX_PADS_H__
 
 #include <gst/gst.h>
+#include <gst/base/gstdataqueue.h>
 
 G_BEGIN_DECLS
 
-#define GST_TYPE_META_MUX_DATA_PAD (gst_meta_mux_data_pad_get_type())
-#define GST_META_MUX_DATA_PAD(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_META_MUX_DATA_PAD,\
+#define GST_TYPE_METAMUX_DATA_PAD (gst_metamux_data_pad_get_type())
+#define GST_METAMUX_DATA_PAD(obj) \
+  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_METAMUX_DATA_PAD,\
       GstMetaMuxDataPad))
-#define GST_META_MUX_DATA_PAD_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_META_MUX_DATA_PAD,\
+#define GST_METAMUX_DATA_PAD_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_METAMUX_DATA_PAD,\
       GstMetaMuxDataPadClass))
-#define GST_IS_META_MUX_DATA_PAD(obj) \
-  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_META_MUX_DATA_PAD))
-#define GST_IS_META_MUX_DATA_PAD_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_META_MUX_DATA_PAD))
-#define GST_META_MUX_DATA_PAD_CAST(obj) ((GstMetaMuxDataPad *)(obj))
+#define GST_IS_METAMUX_DATA_PAD(obj) \
+  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_METAMUX_DATA_PAD))
+#define GST_IS_METAMUX_DATA_PAD_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_METAMUX_DATA_PAD))
+#define GST_METAMUX_DATA_PAD_CAST(obj) ((GstMetaMuxDataPad *)(obj))
+
+#define GST_TYPE_METAMUX_SINK_PAD (gst_metamux_sink_pad_get_type())
+#define GST_METAMUX_SINK_PAD(obj) \
+  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_METAMUX_SINK_PAD,\
+      GstMetaMuxSinkPad))
+#define GST_METAMUX_SINK_PAD_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_METAMUX_SINK_PAD,\
+      GstMetaMuxSinkPadClass))
+#define GST_IS_METAMUX_SINK_PAD(obj) \
+  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_METAMUX_SINK_PAD))
+#define GST_IS_METAMUX_SINK_PAD_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_METAMUX_SINK_PAD))
+#define GST_METAMUX_SINK_PAD_CAST(obj) ((GstMetaMuxSinkPad *)(obj))
+
+#define GST_TYPE_METAMUX_SRC_PAD (gst_metamux_src_pad_get_type())
+#define GST_METAMUX_SRC_PAD(obj) \
+  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_METAMUX_SRC_PAD,\
+      GstMetaMuxSrcPad))
+#define GST_METAMUX_SRC_PAD_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_METAMUX_SRC_PAD,\
+      GstMetaMuxSrcPadClass))
+#define GST_IS_METAMUX_SRC_PAD(obj) \
+  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_METAMUX_SRC_PAD))
+#define GST_IS_METAMUX_SRC_PAD_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_METAMUX_SRC_PAD))
+#define GST_METAMUX_SRC_PAD_CAST(obj) ((GstMetaMuxSrcPad *)(obj))
+
+#define GST_METAMUX_SRC_GET_LOCK(obj) (&GST_METAMUX_SRC_PAD(obj)->lock)
+#define GST_METAMUX_SRC_LOCK(obj) \
+    g_mutex_lock(GST_METAMUX_SRC_GET_LOCK(obj))
+#define GST_METAMUX_SRC_UNLOCK(obj) \
+    g_mutex_unlock(GST_METAMUX_SRC_GET_LOCK(obj))
 
 typedef struct _GstMetaMuxDataPad GstMetaMuxDataPad;
 typedef struct _GstMetaMuxDataPadClass GstMetaMuxDataPadClass;
+
+typedef struct _GstMetaMuxSinkPad GstMetaMuxSinkPad;
+typedef struct _GstMetaMuxSinkPadClass GstMetaMuxSinkPadClass;
+
+typedef struct _GstMetaMuxSrcPad GstMetaMuxSrcPad;
+typedef struct _GstMetaMuxSrcPadClass GstMetaMuxSrcPadClass;
 
 typedef enum {
   GST_DATA_TYPE_UNKNOWN,
@@ -81,9 +120,52 @@ struct _GstMetaMuxDataPadClass {
   GstPadClass parent;
 };
 
+struct _GstMetaMuxSinkPad {
+  /// Inherited parent structure.
+  GstPad parent;
 
-GType gst_meta_mux_data_pad_get_type (void);
+  /// Queue for managing incoming video/audio buffers.
+  GQueue *queue;
+};
+
+struct _GstMetaMuxSinkPadClass {
+  /// Inherited parent structure.
+  GstPadClass parent;
+};
+
+struct _GstMetaMuxSrcPad {
+  /// Inherited parent structure.
+  GstPad       parent;
+
+  /// Global mutex lock.
+  GMutex       lock;
+
+  /// Segment.
+  GstSegment   segment;
+
+  /// Queue for output buffers.
+  GstDataQueue *buffers;
+};
+
+struct _GstMetaMuxSrcPadClass {
+  /// Inherited parent structure.
+  GstPadClass parent;
+};
+
+
+GType gst_metamux_data_pad_get_type (void);
+
+GType gst_metamux_sink_pad_get_type (void);
+
+GType gst_metamux_src_pad_get_type (void);
+
+gboolean gst_metamux_src_pad_event (GstPad * pad, GstObject * parent,
+                                    GstEvent * event);
+gboolean gst_metamux_src_pad_query (GstPad * pad, GstObject * parent,
+                                    GstQuery * query);
+gboolean gst_metamux_src_pad_activate_mode (GstPad * pad, GstObject * parent,
+                                            GstPadMode mode, gboolean active);
 
 G_END_DECLS
 
-#endif // __GST_META_MUX_PADS_H__
+#endif // __GST_METAMUX_PADS_H__
