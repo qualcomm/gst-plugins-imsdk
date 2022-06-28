@@ -204,15 +204,8 @@ gst_ml_modules_get_type (void)
   return gtype;
 }
 
-static void
-gst_ml_prediction_free (GstMLPrediction * prediction)
-{
-  if (prediction->label != NULL)
-    g_free (prediction->label);
-}
-
 static gboolean
-caps_has_feature (const GstCaps * caps, const gchar * feature)
+gst_caps_has_feature (const GstCaps * caps, const gchar * feature)
 {
   guint idx = 0;
 
@@ -227,6 +220,29 @@ caps_has_feature (const GstCaps * caps, const gchar * feature)
     idx++;
   }
   return FALSE;
+}
+
+static void
+gst_ml_prediction_free (GstMLPrediction * prediction)
+{
+  if (prediction->label != NULL)
+    g_free (prediction->label);
+}
+
+static gint
+gst_ml_compare_predictions (gconstpointer a, gconstpointer b)
+{
+  const GstMLPrediction *l_prediction, *r_prediction;
+
+  l_prediction = (const GstMLPrediction*)a;
+  r_prediction = (const GstMLPrediction*)b;
+
+  if (l_prediction->confidence > r_prediction->confidence)
+    return -1;
+  else if (l_prediction->confidence < r_prediction->confidence)
+    return 1;
+
+  return 0;
 }
 
 static GstBufferPool *
@@ -246,7 +262,7 @@ gst_ml_video_detection_create_pool (GstMLVideoDetection * detection,
     }
 
     // If downstream allocation query supports GBM, allocate gbm memory.
-    if (caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
+    if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
       GST_INFO_OBJECT (detection, "Uses GBM memory");
       pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
     } else {
@@ -944,6 +960,9 @@ gst_ml_video_detection_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     return GST_FLOW_ERROR;
   }
 
+  // Sort the list of predictions.
+  g_array_sort (predictions, gst_ml_compare_predictions);
+
   if (detection->mode == OUTPUT_MODE_VIDEO)
     success = gst_ml_video_detection_fill_video_output (detection,
         predictions, outbuffer);
@@ -1068,7 +1087,7 @@ gst_ml_video_detection_class_init (GstMLVideoDetectionClass * klass)
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_THRESHOLD,
       g_param_spec_double ("threshold", "Threshold",
-          "Confidence threshold", 10.0F, 100.0F, DEFAULT_PROP_THRESHOLD,
+          "Confidence threshold in %", 10.0F, 100.0F, DEFAULT_PROP_THRESHOLD,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_set_static_metadata (element,

@@ -85,22 +85,6 @@ struct _GstMLSubModule {
   GHashTable *labels;
 };
 
-static gint
-gst_ml_compare_predictions (gconstpointer a, gconstpointer b)
-{
-  const GstMLPrediction *l_prediction, *r_prediction;
-
-  l_prediction = (const GstMLPrediction*)a;
-  r_prediction = (const GstMLPrediction*)b;
-
-  if (l_prediction->confidence > r_prediction->confidence)
-    return -1;
-  else if (l_prediction->confidence < r_prediction->confidence)
-    return 1;
-
-  return 0;
-}
-
 gpointer
 gst_ml_module_open (void)
 {
@@ -207,6 +191,5 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     predictions = g_array_append_val (predictions, prediction);
   }
 
-  g_array_sort (predictions, gst_ml_compare_predictions);
   return TRUE;
 }

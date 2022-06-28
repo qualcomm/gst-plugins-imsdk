@@ -73,11 +73,12 @@ typedef struct _GstMLPrediction GstMLPrediction;
 
 /**
  * GstMLPrediction:
- * @label: the name of the prediction
- * @confidence: the percentage certainty that the prediction is accurate
- * @color: the possible color that is associated with this prediction
+ * @label: the name of the prediction.
+ * @confidence: the percentage certainty that the prediction is accurate.
+ * @color: the possible color that is associated with this prediction.
  *
  * Information describing prediction result from image classification models.
+ * All fields are mandatory and need to be filled by the submodule.
  */
 struct _GstMLPrediction {
   gchar  *label;
@@ -89,7 +90,7 @@ struct _GstMLPrediction {
  * gst_ml_video_classification_module_execute:
  * @module: Pointer to ML post-processing module.
  * @mlframe: Frame containing mapped tensor memory blocks that need processing.
- * @predictions: Sorted GArray of #GstMLPrediction.
+ * @predictions: GArray of #GstMLPrediction.
  *
  * Convenient wrapper function used on plugin level to call the module
  * 'gst_ml_module_process' API via 'gst_ml_module_execute' wrapper in order
