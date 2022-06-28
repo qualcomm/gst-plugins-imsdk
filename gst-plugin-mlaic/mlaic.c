@@ -51,8 +51,8 @@ G_DEFINE_TYPE (GstMLAic, gst_ml_aic, GST_TYPE_ELEMENT);
 #define DEFAULT_PROP_MODEL         NULL
 #define DEFAULT_PROP_N_ACTIVATIONS 1
 
-#define DEFAULT_PROP_MIN_BUFFERS   48
-#define DEFAULT_PROP_MAX_BUFFERS   48
+#define DEFAULT_PROP_MIN_BUFFERS   24
+#define DEFAULT_PROP_MAX_BUFFERS   24
 
 #define GST_ML_AIC_TENSOR_TYPES "{ UINT8, INT32, FLOAT32 }"
 
@@ -483,7 +483,10 @@ gst_ml_aic_src_worker_task (gpointer userdata)
 
     if (!gst_ml_aic_engine_wait_request (mlaic->engine, request->id)) {
       GST_DEBUG_OBJECT (pad, " Waiting request %d failed!", request->id);
+
       gst_engine_request_unref (request);
+      gst_object_unref (mlaic);
+
       return;
     }
 
@@ -512,6 +515,9 @@ gst_ml_aic_src_worker_task (gpointer userdata)
 
     mlinfo = gst_ml_aic_engine_get_output_info (mlaic->engine);
     memory = gst_buffer_peek_memory (buffer, 0);
+
+    // Decrease the pad parent reference count as it is not needed any more.
+    gst_object_unref (mlaic);
 
     // Share memory blocks from processed buffer with the new buffer.
     for (idx = 0; idx < GST_ML_INFO_N_TENSORS (mlinfo); idx++) {
