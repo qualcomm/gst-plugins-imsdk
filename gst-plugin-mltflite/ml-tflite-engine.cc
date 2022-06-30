@@ -67,11 +67,16 @@
 
 #include "ml-tflite-engine.h"
 
+#include <tensorflow/lite/version.h>
 #include <tensorflow/lite/model.h>
 #include <tensorflow/lite/interpreter.h>
 #include <tensorflow/lite/kernels/register.h>
 #include <tensorflow/lite/delegates/nnapi/nnapi_delegate.h>
+#if TF_MAJOR_VERSION <= 2 && TF_MINOR_VERSION <= 2
 #include <tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h>
+#else
+#include <tensorflow/lite/delegates/hexagon/hexagon_delegate.h>
+#endif
 #include <tensorflow/lite/delegates/gpu/delegate.h>
 
 #define GST_ML_RETURN_VAL_IF_FAIL(expression, value, ...) \
