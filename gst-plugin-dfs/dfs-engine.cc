@@ -147,8 +147,8 @@ gst_dfs_engine_new (DfsInitSettings * settings)
 
   dfs_param.filterWidth = settings->filter_width;
   dfs_param.filterHeight = settings->filter_height;
-  dfs_param.minDisparity = settings->min_disparity;
-  dfs_param.numDisparityLevels = settings->num_disparity_levels;
+  dfs_param.disparity.minDisparity = settings->min_disparity;
+  dfs_param.disparity.numDisparityLevels = settings->num_disparity_levels;
   dfs_param.doRectification = settings->rectification;
   dfs_param.doGpuRect = settings->gpu_rect;
 
@@ -156,8 +156,8 @@ gst_dfs_engine_new (DfsInitSettings * settings)
 
   GST_INFO
       ("Filter: %dx%d min_disp: %d num_levels: %d doRectification: %s doGPURect: %s",
-      dfs_param.filterWidth, dfs_param.filterHeight, dfs_param.minDisparity,
-      dfs_param.numDisparityLevels,
+      dfs_param.filterWidth, dfs_param.filterHeight,
+      dfs_param.disparity.minDisparity, dfs_param.disparity.numDisparityLevels,
       dfs_param.doRectification ? "enable" : "disable",
       dfs_param.doGpuRect ? "enable" : "disable");
 
