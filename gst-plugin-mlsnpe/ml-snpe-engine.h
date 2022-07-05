@@ -120,21 +120,24 @@ GST_API GType gst_ml_snpe_delegate_get_type (void);
 typedef struct _GstMLSnpeEngine GstMLSnpeEngine;
 
 GST_API GstMLSnpeEngine *
-gst_ml_snpe_engine_new              (GstStructure * settings);
+gst_ml_snpe_engine_new                (GstStructure * settings);
 
 GST_API void
-gst_ml_snpe_engine_free             (GstMLSnpeEngine * engine);
+gst_ml_snpe_engine_free               (GstMLSnpeEngine * engine);
 
-GST_API const GstMLInfo *
-gst_ml_snpe_engine_get_input_info   (GstMLSnpeEngine * engine);
+GST_API GstCaps *
+gst_ml_snpe_engine_get_input_caps     (GstMLSnpeEngine * engine);
 
-GST_API const GstMLInfo *
-gst_ml_snpe_engine_get_output_info  (GstMLSnpeEngine * engine);
+GST_API GstCaps *
+gst_ml_snpe_engine_get_output_caps    (GstMLSnpeEngine * engine);
 
 GST_API gboolean
-gst_ml_snpe_engine_execute          (GstMLSnpeEngine * engine,
-                                     GstMLFrame * inframe,
-                                     GstMLFrame * outframe);
+gst_ml_snpe_engine_update_output_caps (GstMLSnpeEngine * engine, GstCaps * caps);
+
+GST_API gboolean
+gst_ml_snpe_engine_execute            (GstMLSnpeEngine * engine,
+                                       GstMLFrame * inframe,
+                                       GstMLFrame * outframe);
 
 G_END_DECLS
 

@@ -205,9 +205,14 @@ gst_ml_info_to_caps (const GstMLInfo * info)
     for (dim = 0; dim < info->n_dimensions[idx]; dim++) {
       GValue dimension = G_VALUE_INIT;
 
-      g_value_init (&dimension, G_TYPE_INT);
+      if (info->tensors[idx][dim] == 0) {
+        g_value_init (&dimension, GST_TYPE_INT_RANGE);
+        gst_value_set_int_range (&dimension, 1, 1000);
+      } else {
+        g_value_init (&dimension, G_TYPE_INT);
+        g_value_set_int (&dimension, info->tensors[idx][dim]);
+      }
 
-      g_value_set_int (&dimension, info->tensors[idx][dim]);
       gst_value_array_append_value (&dimensions, &dimension);
       g_value_unset (&dimension);
     }
