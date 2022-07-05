@@ -62,6 +62,9 @@ struct _GstMLSnpe {
   /// Machine learning engine.
   GstMLSnpeEngine   *engine;
 
+  GstMLInfo         *ininfo;
+  GstMLInfo         *outinfo;
+
   /// Properties.
   gchar             *model;
   GstMLSnpeDelegate delegate;

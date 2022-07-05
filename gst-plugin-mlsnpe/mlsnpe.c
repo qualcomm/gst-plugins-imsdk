@@ -350,7 +350,6 @@ gst_ml_snpe_transform_caps (GstBaseTransform * base,
 {
   GstMLSnpe *snpe = GST_ML_SNPE (base);
   GstCaps *result = NULL;
-  const GstMLInfo *mlinfo = NULL;
   const GValue *value = NULL;
 
   if ((NULL == snpe->engine) && (filter != NULL))
@@ -362,21 +361,19 @@ gst_ml_snpe_transform_caps (GstBaseTransform * base,
       " in direction %s", caps, (direction == GST_PAD_SINK) ? "sink" : "src");
   GST_DEBUG_OBJECT (snpe, "Filter caps: %" GST_PTR_FORMAT, filter);
 
+  // The source and sink pads caps do not depend on each other so directly take
+  // the ML caps from the engine for the corresponding pad and apply filter.
   switch (direction) {
     case GST_PAD_SRC:
-      mlinfo = gst_ml_snpe_engine_get_input_info (snpe->engine);
+      result = gst_ml_snpe_engine_get_input_caps (snpe->engine);
       break;
     case GST_PAD_SINK:
-      mlinfo = gst_ml_snpe_engine_get_output_info (snpe->engine);
+      result = gst_ml_snpe_engine_get_output_caps (snpe->engine);
       break;
     default:
       GST_ERROR_OBJECT (snpe, "Invalid pad direction!");
       return NULL;
   }
-
-  // The source and sink pads caps do not depend on each other so directly take
-  // the ML caps from the engine for the corresponding pad and apply filter.
-  result = gst_ml_info_to_caps (mlinfo);
 
   // Extract the rate.
   value = gst_structure_get_value (gst_caps_get_structure (caps, 0), "rate");
@@ -405,7 +402,6 @@ gst_ml_snpe_accept_caps (GstBaseTransform * base, GstPadDirection direction,
 {
   GstMLSnpe *snpe = GST_ML_SNPE (base);
   GstCaps *mlcaps = NULL;
-  const GstMLInfo *mlinfo = NULL;
 
   GST_DEBUG_OBJECT (snpe, "Accept caps: %" GST_PTR_FORMAT
       " in direction %s", caps, (direction == GST_PAD_SINK) ? "sink" : "src");
@@ -415,13 +411,10 @@ gst_ml_snpe_accept_caps (GstBaseTransform * base, GstPadDirection direction,
   } else if ((NULL == snpe->engine) && (direction == GST_PAD_SRC)) {
     mlcaps = gst_pad_get_pad_template_caps (GST_BASE_TRANSFORM_SRC_PAD (base));
   } else if (direction == GST_PAD_SINK) {
-    mlinfo = gst_ml_snpe_engine_get_input_info (snpe->engine);
+    mlcaps = gst_ml_snpe_engine_get_input_caps (snpe->engine);
   } else if (direction == GST_PAD_SRC) {
-    mlinfo = gst_ml_snpe_engine_get_output_info (snpe->engine);
+    mlcaps = gst_ml_snpe_engine_get_output_caps (snpe->engine);
   }
-
-  if ((mlinfo != NULL) && (NULL == mlcaps))
-    mlcaps = gst_ml_info_to_caps (mlinfo);
 
   if (NULL == mlcaps) {
     GST_ERROR_OBJECT (base, "Failed to get ML caps!");
@@ -436,6 +429,38 @@ gst_ml_snpe_accept_caps (GstBaseTransform * base, GstPadDirection direction,
   }
 
   return TRUE;
+}
+
+static gboolean
+gst_ml_snpe_set_caps (GstBaseTransform * base, GstCaps * incaps,
+    GstCaps * outcaps)
+{
+  GstMLSnpe *snpe = GST_ML_SNPE (base);
+  GstMLInfo info;
+
+  if (!gst_ml_info_from_caps (&info, incaps)) {
+    GST_ERROR_OBJECT (snpe, "Failed to get input ML info from caps!");
+    return FALSE;
+  }
+
+  if (snpe->ininfo != NULL)
+    gst_ml_info_free (snpe->ininfo);
+
+  snpe->ininfo = gst_ml_info_copy (&info);
+  GST_DEBUG_OBJECT (snpe, "Input caps: %" GST_PTR_FORMAT, outcaps);
+
+  if (!gst_ml_info_from_caps (&info, outcaps)) {
+    GST_ERROR_OBJECT (snpe, "Failed to get input ML info from caps!");
+    return FALSE;
+  }
+
+  if (snpe->outinfo != NULL)
+    gst_ml_info_free (snpe->outinfo);
+
+  snpe->outinfo = gst_ml_info_copy (&info);
+  GST_DEBUG_OBJECT (snpe, "Output caps: %" GST_PTR_FORMAT, outcaps);
+
+  return gst_ml_snpe_engine_update_output_caps (snpe->engine, outcaps);;
 }
 
 static GstStateChangeReturn
@@ -514,7 +539,6 @@ gst_ml_snpe_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 {
   GstMLSnpe *snpe = GST_ML_SNPE (base);
   GstMLFrame inframe, outframe;
-  const GstMLInfo * info = NULL;
   GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
   GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
 
@@ -523,18 +547,14 @@ gst_ml_snpe_transform (GstBaseTransform * base, GstBuffer * inbuffer,
       GST_BUFFER_FLAG_IS_SET (outbuffer, GST_BUFFER_FLAG_GAP))
     return GST_FLOW_OK;
 
-  info = gst_ml_snpe_engine_get_input_info (snpe->engine);
-
   // Create ML frame from input buffer.
-  if (!gst_ml_frame_map (&inframe, info, inbuffer, GST_MAP_READ)) {
+  if (!gst_ml_frame_map (&inframe, snpe->ininfo, inbuffer, GST_MAP_READ)) {
     GST_ERROR_OBJECT (snpe, "Failed to map input buffer!");
     return GST_FLOW_ERROR;
   }
 
-  info = gst_ml_snpe_engine_get_output_info (snpe->engine);
-
   // Create ML frame from output buffer.
-  if (!gst_ml_frame_map (&outframe, info, outbuffer, GST_MAP_READWRITE)) {
+  if (!gst_ml_frame_map (&outframe, snpe->outinfo, outbuffer, GST_MAP_READWRITE)) {
     GST_ERROR_OBJECT (snpe, "Failed to map output buffer!");
     gst_ml_frame_unmap (&inframe);
     return GST_FLOW_ERROR;
@@ -632,10 +652,16 @@ gst_ml_snpe_finalize (GObject * object)
 {
   GstMLSnpe *snpe = GST_ML_SNPE (object);
 
-  gst_ml_snpe_engine_free (snpe->engine);
+  if (snpe->outinfo != NULL)
+    gst_ml_info_free (snpe->outinfo);
+
+  if (snpe->ininfo != NULL)
+    gst_ml_info_free (snpe->ininfo);
 
   if (snpe->outpool != NULL)
     gst_object_unref (snpe->outpool);
+
+  gst_ml_snpe_engine_free (snpe->engine);
 
   g_free (snpe->model);
 
@@ -692,6 +718,7 @@ gst_ml_snpe_class_init (GstMLSnpeClass * klass)
 
   base->transform_caps = GST_DEBUG_FUNCPTR (gst_ml_snpe_transform_caps);
   base->accept_caps = GST_DEBUG_FUNCPTR (gst_ml_snpe_accept_caps);
+  base->set_caps = GST_DEBUG_FUNCPTR (gst_ml_snpe_set_caps);
 
   base->transform = GST_DEBUG_FUNCPTR (gst_ml_snpe_transform);
 }
