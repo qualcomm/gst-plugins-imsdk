@@ -250,6 +250,7 @@ gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
   return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
 }
 
+#ifdef USE_C2D_CONVERTER
 static GstC2dVideoRotate
 gst_video_composer_rotation_to_c2d_rotate (GstVideoComposerRotate rotation)
 {
@@ -267,6 +268,27 @@ gst_video_composer_rotation_to_c2d_rotate (GstVideoComposerRotate rotation)
   }
   return GST_C2D_VIDEO_ROTATE_NONE;
 }
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+static GstGlesVideoRotate
+gst_video_composer_rotation_to_gles_rotate (GstVideoComposerRotate rotation)
+{
+  switch (rotation) {
+    case GST_VIDEO_COMPOSER_ROTATE_90_CW:
+      return GST_GLES_VIDEO_ROTATE_90_CW;
+    case GST_VIDEO_COMPOSER_ROTATE_90_CCW:
+      return GST_GLES_VIDEO_ROTATE_90_CCW;
+    case GST_VIDEO_COMPOSER_ROTATE_180:
+      return GST_GLES_VIDEO_ROTATE_180;
+    case GST_VIDEO_COMPOSER_ROTATE_NONE:
+      return GST_GLES_VIDEO_ROTATE_NONE;
+    default:
+      GST_WARNING ("Invalid rotation flag %d!", rotation);
+  }
+  return GST_GLES_VIDEO_ROTATE_NONE;
+}
+#endif // USE_GLES_CONVERTER
 
 static gint
 gst_video_composer_zorder_compare (const GstVideoComposerSinkPad * lpad,
@@ -339,7 +361,8 @@ gst_video_composer_set_opts (GstElement * element, GstPad * pad, gpointer data)
 
   GST_VIDEO_COMPOSER_SINKPAD_LOCK (sinkpad);
 
-  opts = gst_structure_new (GST_PAD_NAME (sinkpad),
+#ifdef USE_C2D_CONVERTER
+  opts = gst_structure_new ("options",
       GST_C2D_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL, G_TYPE_BOOLEAN,
           sinkpad->flip_h,
       GST_C2D_VIDEO_CONVERTER_OPT_FLIP_VERTICAL, G_TYPE_BOOLEAN,
@@ -350,6 +373,21 @@ gst_video_composer_set_opts (GstElement * element, GstPad * pad, gpointer data)
           gst_caps_has_compression (caps, "ubwc"),
       GST_C2D_VIDEO_CONVERTER_OPT_ALPHA, G_TYPE_DOUBLE, sinkpad->alpha,
       NULL);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  opts = gst_structure_new ("options",
+      GST_GLES_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL, G_TYPE_BOOLEAN,
+          sinkpad->flip_h,
+      GST_GLES_VIDEO_CONVERTER_OPT_FLIP_VERTICAL, G_TYPE_BOOLEAN,
+          sinkpad->flip_v,
+      GST_GLES_VIDEO_CONVERTER_OPT_ROTATION, GST_TYPE_GLES_VIDEO_ROTATION,
+          gst_video_composer_rotation_to_gles_rotate (sinkpad->rotation),
+      GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
+          gst_caps_has_compression (caps, "ubwc"),
+      GST_GLES_VIDEO_CONVERTER_OPT_ALPHA, G_TYPE_DOUBLE, sinkpad->alpha,
+      NULL);
+#endif // USE_GLES_CONVERTER
 
   g_value_init (&rects, GST_TYPE_ARRAY);
   g_value_init (&entry, GST_TYPE_ARRAY);
@@ -367,8 +405,16 @@ gst_video_composer_set_opts (GstElement * element, GstPad * pad, gpointer data)
   gst_value_array_append_value (&rects, &entry);
   g_value_reset (&entry);
 
+#ifdef USE_C2D_CONVERTER
   gst_structure_set_value (opts,
       GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, &rects);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  gst_structure_set_value (opts,
+      GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, &rects);
+#endif // USE_GLES_CONVERTER
+
   g_value_reset (&rects);
 
   g_value_set_int (&value, sinkpad->destination.x);
@@ -382,8 +428,15 @@ gst_video_composer_set_opts (GstElement * element, GstPad * pad, gpointer data)
 
   gst_value_array_append_value (&rects, &entry);
 
+#ifdef USE_C2D_CONVERTER
   gst_structure_set_value (opts,
       GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, &rects);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  gst_structure_set_value (opts,
+      GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, &rects);
+#endif // USE_GLES_CONVERTER
 
   g_value_unset (&value);
   g_value_unset (&entry);
@@ -397,7 +450,13 @@ gst_video_composer_set_opts (GstElement * element, GstPad * pad, gpointer data)
   idx = g_list_index (element->sinkpads, pad);
   GST_OBJECT_UNLOCK (vcomposer);
 
+#ifdef USE_C2D_CONVERTER
   return gst_c2d_video_converter_set_input_opts (vcomposer->c2dconvert, idx, opts);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  return gst_gles_video_converter_set_input_opts (vcomposer->glesconvert, idx, opts);
+#endif // USE_GLES_CONVERTER
 }
 
 static void
@@ -457,8 +516,15 @@ gst_video_composer_property_crop_cb (GObject * object,
 
   gst_value_array_append_value (&rects, &entry);
 
+#ifdef USE_C2D_CONVERTER
   gst_structure_set_value (opts,
       GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, &rects);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  gst_structure_set_value (opts,
+      GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, &rects);
+#endif // USE_GLES_CONVERTER
 
   GST_VIDEO_COMPOSER_SINKPAD_UNLOCK (sinkpad);
 
@@ -470,7 +536,13 @@ gst_video_composer_property_crop_cb (GObject * object,
   idx = g_list_index (GST_ELEMENT (vcomposer)->sinkpads, sinkpad);
   GST_OBJECT_UNLOCK (vcomposer);
 
+#ifdef USE_C2D_CONVERTER
   gst_c2d_video_converter_set_input_opts (vcomposer->c2dconvert, idx, opts);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  gst_gles_video_converter_set_input_opts (vcomposer->glesconvert, idx, opts);
+#endif // USE_GLES_CONVERTER
 }
 
 static void
@@ -505,8 +577,15 @@ gst_video_composer_property_destination_cb (GObject * object,
 
   gst_value_array_append_value (&rects, &entry);
 
+#ifdef USE_C2D_CONVERTER
   gst_structure_set_value (opts,
       GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, &rects);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  gst_structure_set_value (opts,
+      GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, &rects);
+#endif // USE_GLES_CONVERTER
 
   GST_VIDEO_COMPOSER_SINKPAD_UNLOCK (sinkpad);
 
@@ -518,7 +597,13 @@ gst_video_composer_property_destination_cb (GObject * object,
   idx = g_list_index (GST_ELEMENT (vcomposer)->sinkpads, sinkpad);
   GST_OBJECT_UNLOCK (vcomposer);
 
+#ifdef USE_C2D_CONVERTER
   gst_c2d_video_converter_set_input_opts (vcomposer->c2dconvert, idx, opts);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  gst_gles_video_converter_set_input_opts (vcomposer->glesconvert, idx, opts);
+#endif // USE_GLES_CONVERTER
 }
 
 static void
@@ -535,10 +620,17 @@ gst_video_composer_property_alpha_cb (GObject * object,
 
   GST_VIDEO_COMPOSER_SINKPAD_LOCK (sinkpad);
 
-  opts = gst_structure_new (GST_PAD_NAME (sinkpad),
-      GST_C2D_VIDEO_CONVERTER_OPT_ALPHA, G_TYPE_DOUBLE,
-      sinkpad->alpha,
+#ifdef USE_C2D_CONVERTER
+  opts = gst_structure_new ("options",
+      GST_C2D_VIDEO_CONVERTER_OPT_ALPHA, G_TYPE_DOUBLE, sinkpad->alpha,
       NULL);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  opts = gst_structure_new ("options",
+      GST_GLES_VIDEO_CONVERTER_OPT_ALPHA, G_TYPE_DOUBLE, sinkpad->alpha,
+      NULL);
+#endif // USE_GLES_CONVERTER
 
   GST_VIDEO_COMPOSER_SINKPAD_UNLOCK (sinkpad);
 
@@ -546,7 +638,13 @@ gst_video_composer_property_alpha_cb (GObject * object,
   idx = g_list_index (GST_ELEMENT (vcomposer)->sinkpads, sinkpad);
   GST_OBJECT_UNLOCK (vcomposer);
 
+#ifdef USE_C2D_CONVERTER
   gst_c2d_video_converter_set_input_opts (vcomposer->c2dconvert, idx, opts);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  gst_gles_video_converter_set_input_opts (vcomposer->glesconvert, idx, opts);
+#endif // USE_GLES_CONVERTER
 }
 
 static void
@@ -563,12 +661,23 @@ gst_video_composer_property_flip_cb (GObject * object,
 
   GST_VIDEO_COMPOSER_SINKPAD_LOCK (sinkpad);
 
-  opts = gst_structure_new (GST_PAD_NAME (sinkpad),
+#ifdef USE_C2D_CONVERTER
+  opts = gst_structure_new ("options",
       GST_C2D_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL, G_TYPE_BOOLEAN,
-      sinkpad->flip_h,
+          sinkpad->flip_h,
       GST_C2D_VIDEO_CONVERTER_OPT_FLIP_VERTICAL, G_TYPE_BOOLEAN,
-      sinkpad->flip_v,
+          sinkpad->flip_v,
       NULL);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  opts = gst_structure_new ("options",
+      GST_GLES_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL, G_TYPE_BOOLEAN,
+          sinkpad->flip_h,
+      GST_GLES_VIDEO_CONVERTER_OPT_FLIP_VERTICAL, G_TYPE_BOOLEAN,
+          sinkpad->flip_v,
+      NULL);
+#endif // USE_GLES_CONVERTER
 
   GST_VIDEO_COMPOSER_SINKPAD_UNLOCK (sinkpad);
 
@@ -576,7 +685,13 @@ gst_video_composer_property_flip_cb (GObject * object,
   idx = g_list_index (GST_ELEMENT (vcomposer)->sinkpads, sinkpad);
   GST_OBJECT_UNLOCK (vcomposer);
 
+#ifdef USE_C2D_CONVERTER
   gst_c2d_video_converter_set_input_opts (vcomposer->c2dconvert, idx, opts);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  gst_gles_video_converter_set_input_opts (vcomposer->glesconvert, idx, opts);
+#endif // USE_GLES_CONVERTER
 }
 
 static void
@@ -593,10 +708,19 @@ gst_video_composer_property_rotate_cb (GObject * object,
 
   GST_VIDEO_COMPOSER_SINKPAD_LOCK (sinkpad);
 
-  opts = gst_structure_new (GST_PAD_NAME (sinkpad),
+#ifdef USE_C2D_CONVERTER
+  opts = gst_structure_new ("options",
       GST_C2D_VIDEO_CONVERTER_OPT_ROTATION, GST_TYPE_C2D_VIDEO_ROTATION,
-      gst_video_composer_rotation_to_c2d_rotate (sinkpad->rotation),
+          gst_video_composer_rotation_to_c2d_rotate (sinkpad->rotation),
       NULL);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  opts = gst_structure_new ("options",
+      GST_GLES_VIDEO_CONVERTER_OPT_ROTATION, GST_TYPE_GLES_VIDEO_ROTATION,
+          gst_video_composer_rotation_to_gles_rotate (sinkpad->rotation),
+      NULL);
+#endif // USE_GLES_CONVERTER
 
   GST_VIDEO_COMPOSER_SINKPAD_UNLOCK (sinkpad);
 
@@ -604,7 +728,13 @@ gst_video_composer_property_rotate_cb (GObject * object,
   idx = g_list_index (GST_ELEMENT (vcomposer)->sinkpads, sinkpad);
   GST_OBJECT_UNLOCK (vcomposer);
 
+#ifdef USE_C2D_CONVERTER
   gst_c2d_video_converter_set_input_opts (vcomposer->c2dconvert, idx, opts);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  gst_gles_video_converter_set_input_opts (vcomposer->glesconvert, idx, opts);
+#endif // USE_GLES_CONVERTER
 }
 
 static gboolean
@@ -1189,12 +1319,26 @@ gst_video_composer_negotiated_src_caps (GstAggregator * aggregator,
   }
 
   // Fill the converter output options structure.
+#ifdef USE_C2D_CONVERTER
   options = gst_structure_new ("options",
       GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
           gst_caps_has_compression (caps, "ubwc"),
+      GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT,
+          vcomposer->background,
       NULL);
-
   gst_c2d_video_converter_set_output_opts (vcomposer->c2dconvert, 0, options);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  options = gst_structure_new ("options",
+      GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
+          gst_caps_has_compression (caps, "ubwc"),
+      GST_GLES_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT,
+          vcomposer->background,
+      NULL);
+  gst_gles_video_converter_set_output_opts (vcomposer->glesconvert, 0, options);
+#endif // USE_GLES_CONVERTER
+
 
   if (!gst_util_fraction_multiply (info.width, info.height,
           info.par_n, info.par_d, &dar_n, &dar_d)) {
@@ -1233,8 +1377,16 @@ gst_video_composer_task_loop (gpointer userdata)
     item->destroy (item);
 
     GST_TRACE_OBJECT (vcomposer, "Waiting request %p", request->id);
-    success = gst_c2d_video_converter_wait_request (
-        vcomposer->c2dconvert, request->id);
+
+#ifdef USE_C2D_CONVERTER
+    success = gst_c2d_video_converter_wait_request (vcomposer->c2dconvert,
+        request->id);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+    success = gst_gles_video_converter_wait_request (vcomposer->glesconvert,
+        request->id);
+#endif // USE_GLES_CONVERTER
 
     if (!success) {
       GST_DEBUG_OBJECT (vcomposer, " Waiting request %p failed!", request->id);
@@ -1308,7 +1460,14 @@ gst_video_composer_stop (GstAggregator * aggregator)
   }
 
   // Flush converter and requests queue.
+#ifdef USE_C2D_CONVERTER
   gst_c2d_video_converter_flush (vcomposer->c2dconvert);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  gst_gles_video_converter_flush (vcomposer->glesconvert);
+#endif // USE_GLES_CONVERTER
+
   gst_data_queue_flush (vcomposer->requests);
 
   GST_INFO_OBJECT (vcomposer, "Removing task %p", vcomposer->worktask);
@@ -1397,6 +1556,7 @@ gst_video_composer_aggregate (GstAggregator * aggregator, gboolean timeout)
     return GST_FLOW_ERROR;
   }
 
+#ifdef USE_C2D_CONVERTER
   {
     GstC2dComposition composition = {
       request->inframes, request->n_inputs, request->outframes
@@ -1405,6 +1565,18 @@ gst_video_composer_aggregate (GstAggregator * aggregator, gboolean timeout)
     request->id = gst_c2d_video_converter_submit_request (
         vcomposer->c2dconvert, &composition, 1);
   }
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+    {
+      GstGlesComposition composition = {
+        request->inframes, request->n_inputs, request->outframes
+      };
+
+      request->id = gst_gles_video_converter_submit_request (
+          vcomposer->glesconvert, &composition, 1);
+    }
+#endif // USE_GLES_CONVERTER
 
   if (NULL == request->id) {
     GST_WARNING_OBJECT (vcomposer, "Failed to submit request to converter!");
@@ -1438,7 +1610,14 @@ gst_video_composer_flush (GstAggregator * aggregator)
   gst_data_queue_set_flushing (vcomposer->requests, TRUE);
 
   // Flush converter and requests queue.
+#ifdef USE_C2D_CONVERTER
   gst_c2d_video_converter_flush (vcomposer->c2dconvert);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  gst_gles_video_converter_flush (vcomposer->glesconvert);
+#endif // USE_GLES_CONVERTER
+
   gst_data_queue_flush (vcomposer->requests);
 
   return GST_AGGREGATOR_CLASS (parent_class)->flush (aggregator);;
@@ -1523,7 +1702,13 @@ gst_video_composer_release_pad (GstElement * element, GstPad * pad)
   vcomposer->n_inputs = element->numsinkpads - 1;
   GST_OBJECT_UNLOCK (vcomposer);
 
+#ifdef USE_C2D_CONVERTER
   gst_c2d_video_converter_set_input_opts (vcomposer->c2dconvert, idx, NULL);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  gst_gles_video_converter_set_input_opts (vcomposer->glesconvert, idx, NULL);
+#endif // USE_GLES_CONVERTER
 
   if (0 == vcomposer->n_inputs) {
     GstSegment *segment =
@@ -1553,11 +1738,22 @@ gst_video_composer_set_property (GObject * object, guint prop_id,
       GstStructure *opts = NULL;
 
       vcomposer->background = g_value_get_uint (value);
-      opts = gst_structure_new (gst_element_get_name (vcomposer),
-          GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT,
-          vcomposer->background, NULL);
 
+#ifdef USE_C2D_CONVERTER
+      opts = gst_structure_new ("options",
+          GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT,
+              vcomposer->background,
+          NULL);
       gst_c2d_video_converter_set_output_opts (vcomposer->c2dconvert, 0, opts);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+      opts = gst_structure_new ("options",
+          GST_GLES_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT,
+              vcomposer->background,
+          NULL);
+      gst_gles_video_converter_set_output_opts (vcomposer->glesconvert, 0, opts);
+#endif // USE_GLES_CONVERTER
       break;
     }
     default:
@@ -1593,8 +1789,15 @@ gst_video_composer_finalize (GObject * object)
 {
   GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER (object);
 
+#ifdef USE_C2D_CONVERTER
   if (vcomposer->c2dconvert != NULL)
     gst_c2d_video_converter_free (vcomposer->c2dconvert);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  if (vcomposer->glesconvert != NULL)
+    gst_gles_video_converter_free (vcomposer->glesconvert);
+#endif // USE_GLES_CONVERTER
 
   if (vcomposer->requests != NULL) {
     gst_data_queue_set_flushing (vcomposer->requests, TRUE);
@@ -1691,7 +1894,13 @@ gst_video_composer_init (GstVideoComposer * vcomposer)
   vcomposer->requests =
       gst_data_queue_new (queue_is_full_cb, NULL, NULL, vcomposer);
 
+#ifdef USE_C2D_CONVERTER
   vcomposer->c2dconvert = gst_c2d_video_converter_new ();
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  vcomposer->glesconvert = gst_gles_video_converter_new ();
+#endif // USE_GLES_CONVERTER
 
   vcomposer->background = DEFAULT_PROP_BACKGROUND;
 
