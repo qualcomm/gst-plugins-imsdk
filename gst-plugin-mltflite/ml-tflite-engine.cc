@@ -78,6 +78,7 @@
 #include <tensorflow/lite/delegates/hexagon/hexagon_delegate.h>
 #endif
 #include <tensorflow/lite/delegates/gpu/delegate.h>
+#include <tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h>
 
 #define GST_ML_RETURN_VAL_IF_FAIL(expression, value, ...) \
 { \
@@ -186,6 +187,10 @@ gst_ml_tflite_delegate_get_type (void)
     },
     { GST_ML_TFLITE_DELEGATE_GPU,
         "Run the processing directly on the GPU", "gpu"
+    },
+    {
+      GST_ML_TFLITE_DELEGATE_XNNPACK,
+        "Run inferences using xnnpack cpu runtime", "xnnpack"
     },
     {0, NULL, NULL},
   };
@@ -304,6 +309,18 @@ gst_ml_tflite_engine_delegate_new (gint type)
       GST_INFO ("Using GPU delegate");
       return delegate;
     }
+    case GST_ML_TFLITE_DELEGATE_XNNPACK:
+    {
+      TfLiteXNNPackDelegateOptions options = TfLiteXNNPackDelegateOptionsDefault();
+
+      if ((delegate = TfLiteXNNPackDelegateCreate(&options)) == NULL) {
+        GST_WARNING ("Failed to create XNNPACK delegate!");
+        break;
+      }
+
+      GST_INFO ("Using XNNPACK delegate");
+      return delegate;
+    }
     default:
       GST_INFO ("No delegate will be used");
       break;
@@ -331,6 +348,9 @@ gst_ml_tflite_engine_delegate_free (TfLiteDelegate * delegate, gint type)
       break;;
     case GST_ML_TFLITE_DELEGATE_GPU:
       TfLiteGpuDelegateV2Delete (delegate);
+      break;
+    case GST_ML_TFLITE_DELEGATE_XNNPACK:
+      TfLiteXNNPackDelegateDelete (delegate);
       break;
     default:
       break;
