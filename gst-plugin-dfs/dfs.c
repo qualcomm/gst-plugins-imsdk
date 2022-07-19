@@ -50,7 +50,7 @@ G_DEFINE_TYPE (GstDfs, gst_dfs, GST_TYPE_BASE_TRANSFORM);
 #define DEFAULT_MAX_BUFFERS        10
 #define DEFAULT_CONFIG_PATH "/data/stereo.config"
 
-#define DEFAULT_PROP_MODE MODE_SPEED_GPU
+#define DEFAULT_PROP_MODE MODE_SPEED
 #define DEFAULT_PROP_MIN_DISPARITY 1
 #define DEFAULT_PROP_NUM_DISPARITY_LEVELS 32
 #define DEFAULT_PROP_FILTER_WIDTH 11
@@ -280,16 +280,12 @@ gst_dfs_mode_get_type (void)
   static const GEnumValue mode[] = {
     {MODE_CVP,
         "CVP hardware mode", "cvp"},
-    {MODE_SPEED_CPU,
-        "CPU solution, speed mode", "speed-cpu"},
-    {MODE_SPEED_GPU,
-        "OpenCL solution, speed mode", "speed-gpu"},
-    {MODE_ACCURACY_CPU,
-        "CPU solution, accuracy mode", "accuracy-cpu"},
-    {MODE_COVERAGE_CPU,
-        "CPU solution, coverage mode", "coverage-cpu"},
-    {MODE_COVERAGE_GPU,
-        "OpenCL solution, coverage mode", "coverage-gpu"},
+    {MODE_COVERAGE,
+        "CPU solution, speed mode", "coverage"},
+    {MODE_SPEED,
+        "OpenCL solution, speed mode", "speed"},
+    {MODE_ACCURACY,
+        "CPU solution, accuracy mode", "accuracy"},
     {0, NULL, NULL},
   };
   if (!type)
@@ -708,7 +704,7 @@ gst_dfs_set_caps (GstBaseTransform * trans, GstCaps * incaps, GstCaps * outcaps)
             "format"));
   }
 
-  if (dfs->rectification == TRUE && dfs->dfs_mode == MODE_SPEED_GPU)
+  if (dfs->rectification == TRUE && dfs->dfs_mode == MODE_SPEED)
     dfs->gpu_rect = TRUE;
 
   //Populate stereo parameter values
