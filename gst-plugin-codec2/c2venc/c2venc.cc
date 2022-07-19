@@ -47,6 +47,7 @@ GST_DEBUG_CATEGORY_STATIC (c2_venc_debug);
 #define GST_TYPE_CODEC2_ENC_SLICE_MODE (gst_c2_venc_slice_mode_get_type ())
 #define GST_TYPE_CODEC2_ENC_ENTROPY_MODE (gst_c2_venc_entropy_mode_get_type ())
 #define GST_TYPE_CODEC2_ENC_LOOP_FILTER_MODE (gst_c2_venc_loop_filter_get_type ())
+#define GST_TYPE_CODEC2_ENC_ROTATE (gst_c2_venc_rotate_get_type ())
 
 #define gst_c2_venc_parent_class parent_class
 G_DEFINE_TYPE (GstC2_VENCEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
@@ -121,6 +122,7 @@ enum
   PROP_QUANT_P_FRAMES,
   PROP_QUANT_B_FRAMES,
   PROP_NUM_LTR_FRAMES,
+  PROP_ROTATE,
 };
 
 static guint32
@@ -228,6 +230,25 @@ gst_c2_venc_loop_filter_get_type (void)
     };
 
     qtype = g_enum_register_static ("GstCodec2VencLoopFilterMode", values);
+  }
+  return qtype;
+}
+
+static GType
+gst_c2_venc_rotate_get_type (void)
+{
+  static GType qtype = 0;
+
+  if (qtype == 0) {
+    static const GEnumValue values[] = {
+      {ROTATE_NONE, "No rotation", "none"},
+      {ROTATE_90_CW, "Rotate 90 degrees clockwise", "90CW"},
+      {ROTATE_180, "Rotate 180 degrees", "180"},
+      {ROTATE_90_CCW, "Rotate 90 degrees counter-clockwise", "90CCW"},
+      {0, NULL, NULL}
+    };
+
+    qtype = g_enum_register_static ("GstCodec2VencRotate", values);
   }
   return qtype;
 }
@@ -502,6 +523,19 @@ make_num_ltr_frames_param (guint32 num_ltr_frames)
 
   param.config_name = CONFIG_FUNCTION_KEY_NUM_LTR_FRAMES;
   param.val.u32 = num_ltr_frames;
+
+  return param;
+}
+
+static config_params_t
+make_rotate_param (rotate_t rotate)
+{
+  config_params_t param;
+
+  memset (&param, 0, sizeof (config_params_t));
+
+  param.config_name = CONFIG_FUNCTION_KEY_ROTATE;
+  param.rotate = rotate;
 
   return param;
 }
@@ -833,6 +867,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   config_params_t qp_init;
   config_params_t num_ltr_frames;
   config_params_t profileLevel;
+  config_params_t rotate;
 
   structure = gst_caps_get_structure (state->caps, 0);
   retval = gst_structure_get_int (structure, "width", &width);
@@ -1022,6 +1057,12 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     num_ltr_frames = make_num_ltr_frames_param(c2venc->num_ltr_frames);
     g_ptr_array_add (config, &num_ltr_frames);
     GST_DEBUG_OBJECT (c2venc, "set LTR frames number - %d", c2venc->num_ltr_frames);
+  }
+
+  if (c2venc->rotate != ROTATE_NONE) {
+    rotate = make_rotate_param(c2venc->rotate);
+    g_ptr_array_add (config, &rotate);
+    GST_DEBUG_OBJECT (c2venc, "set rotate - %d", c2venc->rotate);
   }
 
   // Config component
@@ -1349,6 +1390,9 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
     case PROP_NUM_LTR_FRAMES:
       c2venc->num_ltr_frames = g_value_get_uint (value);
       break;
+    case PROP_ROTATE:
+      c2venc->rotate = (rotate_t) g_value_get_enum (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -1455,6 +1499,9 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
       break;
     case PROP_NUM_LTR_FRAMES:
       g_value_set_uint (value, c2venc->num_ltr_frames);
+      break;
+    case PROP_ROTATE:
+      g_value_set_enum (value, c2venc->rotate);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1665,6 +1712,14 @@ gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
+  g_object_class_install_property (gobject, PROP_ROTATE,
+      g_param_spec_enum ("rotate", "Rotate frames",
+          "Rotate video image",
+          GST_TYPE_CODEC2_ENC_ROTATE,
+          ROTATE_NONE,
+          static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY)));
+
   gst_element_class_set_static_metadata (element,
       "C2Venc encoder", "C2_VENC/Encoder",
       "C2Venc encoding", "QTI");
@@ -1721,6 +1776,7 @@ gst_c2_venc_init (GstC2_VENCEncoder * c2venc)
   c2venc->quant_p_frames = GST_CODEC2_VIDEO_ENC_QUANT_P_FRAMES_DEFAULT;
   c2venc->quant_b_frames = GST_CODEC2_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT;
   c2venc->num_ltr_frames = GST_CODEC2_VIDEO_ENC_NUM_LTR_FRAMES_DEFAULT;
+  c2venc->rotate = ROTATE_NONE;
 
   memset (c2venc->queued_frame, 0, sizeof (c2venc->queued_frame));
 

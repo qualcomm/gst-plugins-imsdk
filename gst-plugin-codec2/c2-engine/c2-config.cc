@@ -95,6 +95,7 @@ std::unique_ptr<C2Param> setLoopFilterMode (gpointer param);
 std::unique_ptr<C2Param> setQPInit (gpointer param);
 std::unique_ptr<C2Param> setNumLtrFrames (gpointer param);
 std::unique_ptr<C2Param> setProfileLevel (gpointer param);
+std::unique_ptr<C2Param> setRotate (gpointer param);
 
 // Function map for parameter configuration
 static configFunctionMap sConfigFunctionMap = {
@@ -123,6 +124,7 @@ static configFunctionMap sConfigFunctionMap = {
   { CONFIG_FUNCTION_KEY_QP_INIT, setQPInit },
   { CONFIG_FUNCTION_KEY_NUM_LTR_FRAMES, setNumLtrFrames },
   { CONFIG_FUNCTION_KEY_PROFILE_LEVEL, setProfileLevel },
+  { CONFIG_FUNCTION_KEY_ROTATE, setRotate },
 };
 
 static const VideoProfileMapping video_profile[] = {
@@ -392,6 +394,36 @@ toC2LoopFilterMode (loop_filter_mode_t mode)
   }
 
   return loop_filter_mode;
+}
+
+uint32_t
+toC2Rotate (rotate_t rotate)
+{
+  uint32_t rotate_type = ROTATION_NONE;
+
+  switch (rotate) {
+    case rotate_t::ROTATE_NONE: {
+      rotate_type = ROTATE_NONE;
+      break;
+    }
+    case rotate_t::ROTATE_90_CW: {
+      rotate_type = ROTATION_90;
+      break;
+    }
+    case rotate_t::ROTATE_180: {
+      rotate_type = ROTATION_180;
+      break;
+    }
+    case rotate_t::ROTATE_90_CCW: {
+      rotate_type = ROTATION_270;
+      break;
+    }
+    default: {
+      GST_ERROR ("Invalid Rotate: %d", rotate);
+    }
+  }
+
+  return rotate_type;
 }
 
 uint32_t
@@ -1074,6 +1106,20 @@ setProfileLevel (gpointer param)
   profileLevel.level = (C2Config::level_t)toC2Level(config->level);
 
   return C2Param::Copy (profileLevel);
+}
+
+std::unique_ptr<C2Param>
+setRotate (gpointer param)
+{
+  if (param == NULL)
+    return nullptr;
+
+  config_params_t *config = (config_params_t*) param;
+
+  qc2::C2VideoRotation::input rotate;
+  rotate.angle = (qc2::RotationType)toC2Rotate(config->rotate);
+
+  return C2Param::Copy (rotate);
 }
 
 void

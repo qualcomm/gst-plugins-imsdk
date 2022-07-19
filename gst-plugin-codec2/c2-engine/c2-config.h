@@ -63,6 +63,7 @@
 #define CONFIG_FUNCTION_KEY_QP_INIT "qp_init"
 #define CONFIG_FUNCTION_KEY_NUM_LTR_FRAMES "num_ltr_frames"
 #define CONFIG_FUNCTION_KEY_PROFILE_LEVEL "profile_level"
+#define CONFIG_FUNCTION_KEY_ROTATE "rotate"
 
 typedef enum {
   INTERLACE_MODE_PROGRESSIVE = 0,
@@ -145,6 +146,13 @@ typedef enum {
   LOOP_FILTER_DISABLE,
   LOOP_FILTER_DISABLE_SLICE_BOUNDARY,
 } loop_filter_mode_t;
+
+typedef enum {
+  ROTATE_NONE,
+  ROTATE_90_CW,
+  ROTATE_180,
+  ROTATE_90_CCW,
+} rotate_t;
 
 typedef enum {
   COLOR_PRIMARIES_UNSPECIFIED,
@@ -313,6 +321,7 @@ typedef struct {
   loop_filter_mode_t loop_filter_mode;
   video_profile_t profile;
   video_level_t level;
+  rotate_t rotate;
 
   struct {
     ir_mode_t type;
