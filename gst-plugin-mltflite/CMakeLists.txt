@@ -18,6 +18,8 @@ pkg_check_modules(GST_BASE
   REQUIRED gstreamer-base-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_ALLOC
   REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(TFLITE
+  REQUIRED tensorflow-lite)
 
 # Generate configuration header file.
 configure_file(config.h.in config.h @ONLY)
@@ -41,16 +43,17 @@ add_library(${GST_QTI_ML_TFLITE} SHARED
 
 target_include_directories(${GST_QTI_ML_TFLITE} PUBLIC
   ${GST_INCLUDE_DIRS}
-  ${SYSROOT_INCDIR}/tflite
+  $<$<VERSION_LESS_EQUAL:${TFLITE_VERSION},2.2.0>:${SYSROOT_INCDIR}/tflite>
+  $<$<VERSION_GREATER:${TFLITE_VERSION},2.2.0>:${SYSROOT_INCDIR}/tensorflow>
 )
 
 target_link_libraries(${GST_QTI_ML_TFLITE} PRIVATE
   ${GST_LIBRARIES}
   ${GST_BASE_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
+  ${TFLITE_LIBRARIES}
+  $<$<VERSION_LESS_EQUAL:${TFLITE_VERSION},2.2.0>:gpu_delegate>
   gstqtimlbase
-  tensorflow-lite
-  gpu_delegate
 )
 
 install(
