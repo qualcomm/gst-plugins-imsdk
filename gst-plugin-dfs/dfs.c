@@ -49,6 +49,7 @@ G_DEFINE_TYPE (GstDfs, gst_dfs, GST_TYPE_BASE_TRANSFORM);
 #define DEFAULT_MIN_BUFFERS        2
 #define DEFAULT_MAX_BUFFERS        10
 #define DEFAULT_CONFIG_PATH "/data/stereo.config"
+#define DEFAULT_OUTPUT_MODE OUTPUT_MODE_VIDEO
 
 #define DEFAULT_PROP_MODE MODE_SPEED
 #define DEFAULT_PROP_MIN_DISPARITY 1
@@ -57,6 +58,8 @@ G_DEFINE_TYPE (GstDfs, gst_dfs, GST_TYPE_BASE_TRANSFORM);
 #define DEFAULT_PROP_FILTER_HEIGHT 11
 #define DEFAULT_PROP_RECTIFICATION FALSE
 #define DEFAULT_PROP_GPU_RECT FALSE
+
+#define PLY_HEADER_SIZE 93      //Point Cloud PLY Header size in bytes
 
 enum
 {
@@ -78,19 +81,25 @@ enum
 
 #define GST_SRC_VIDEO_FORMATS "{ RGB, BGR, RGBA, BGRA, RGBx, BGRx, GRAY8 }"
 
+#define GST_SRC_DISPARITY_CAPS "dfs/disparity-map"
+#define GST_SRC_POINT_CLOUD_CAPS "dfs/point-cloud"
+
 
 #define GST_DFS_SRC_CAPS                              \
     "video/x-raw, "                                   \
     "format = (string) " GST_SRC_VIDEO_FORMATS "; "   \
     "video/x-raw(" GST_CAPS_FEATURE_MEMORY_GBM "), "  \
-    "format = (string) " GST_SRC_VIDEO_FORMATS
+    "format = (string) " GST_SRC_VIDEO_FORMATS "; "   \
+    GST_SRC_DISPARITY_CAPS                     "; "   \
+    GST_SRC_POINT_CLOUD_CAPS
 
 
 static GstStaticCaps gst_dfs_static_sink_caps =
     GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_SINK_VIDEO_FORMATS) ";"
     GST_VIDEO_CAPS_MAKE_WITH_FEATURES ("ANY", GST_SINK_VIDEO_FORMATS));
 
-static GstStaticCaps gst_dfs_static_src_caps = GST_STATIC_CAPS (GST_DFS_SRC_CAPS);
+static GstStaticCaps gst_dfs_static_src_caps =
+GST_STATIC_CAPS (GST_DFS_SRC_CAPS);
 
 static GstCaps *
 gst_dfs_sink_caps (void)
@@ -300,10 +309,9 @@ gst_dfs_create_pool (GstDfs * dfs, GstCaps * caps)
   GstStructure *structure = gst_caps_get_structure (caps, 0);
   GstBufferPool *pool = NULL;
   guint size = 0;
+  GstVideoInfo info;
 
   if (gst_structure_has_name (structure, "video/x-raw")) {
-    GstVideoInfo info;
-
     if (!gst_video_info_from_caps (&info, caps)) {
       GST_ERROR_OBJECT (dfs, "Invalid caps %" GST_PTR_FORMAT, caps);
       return NULL;
@@ -316,13 +324,27 @@ gst_dfs_create_pool (GstDfs * dfs, GstCaps * caps)
       GST_INFO_OBJECT (dfs, "Uses ION memory");
       pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
     }
-
     if (NULL == pool) {
       GST_ERROR_OBJECT (dfs, "Failed to create buffer pool!");
       return NULL;
     }
-
     size = GST_VIDEO_INFO_SIZE (&info);
+
+  } else if (gst_structure_has_name (structure, "dfs/disparity-map")) {
+    GST_INFO_OBJECT (dfs, "Uses SYSTEM memory");
+    pool = gst_buffer_pool_new ();
+    guint width = GST_VIDEO_INFO_WIDTH (dfs->ininfo) / 2;
+    guint height = GST_VIDEO_INFO_HEIGHT (dfs->ininfo);
+    size = width * height * sizeof (float);
+
+  } else if (gst_structure_has_name (structure, "dfs/point-cloud")) {
+    GST_INFO_OBJECT (dfs, "Uses SYSTEM memory");
+    pool = gst_buffer_pool_new ();
+    guint width = GST_VIDEO_INFO_WIDTH (dfs->ininfo) / 2;
+    guint height = GST_VIDEO_INFO_HEIGHT (dfs->ininfo);
+    // Setting initial size of buffer to worst case size.
+    // since point cloud is not known ahead of time and is not constant.
+    size = (width * height) + PLY_HEADER_SIZE;
   }
 
   structure = gst_buffer_pool_get_config (pool);
@@ -536,6 +558,7 @@ gst_dfs_transform (GstBaseTransform * trans, GstBuffer * inbuffer,
 
   //Check if Engine has been init already
   if (dfs->engine == NULL) {
+    settings.mode = dfs->output_mode;
     settings.format = dfs->format;
     settings.stereo_frame_width = vmeta->width;
     settings.stereo_frame_height = vmeta->height;
@@ -578,7 +601,6 @@ gst_dfs_transform (GstBaseTransform * trans, GstBuffer * inbuffer,
   }
 
   ts_begin = gst_util_get_timestamp ();
-
   if (!gst_dfs_engine_execute (dfs->engine, &inframe, out_info0.data)) {
     GST_ERROR_OBJECT (dfs, "Failed to execute engine");;
   }
@@ -675,7 +697,7 @@ gst_dfs_get_property (GObject * object, guint property_id,
       g_value_set_boolean (value, dfs->rectification);
       break;
     case PROP_CONFIG_PATH:
-       g_value_set_string (value, dfs->config_location);
+      g_value_set_string (value, dfs->config_location);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -699,9 +721,14 @@ gst_dfs_set_caps (GstBaseTransform * trans, GstCaps * incaps, GstCaps * outcaps)
   structure = gst_caps_get_structure (outcaps, 0);
 
   if (gst_structure_has_name (structure, "video/x-raw")) {
+    dfs->output_mode = OUTPUT_MODE_VIDEO;
     dfs->format =
         gst_video_format_from_string (gst_structure_get_string (structure,
             "format"));
+  } else if (gst_structure_has_name (structure, "dfs/disparity-map")) {
+    dfs->output_mode = OUTPUT_MODE_DISPARITY;
+  } else if (gst_structure_has_name (structure, "dfs/point-cloud")) {
+    dfs->output_mode = OUTPUT_MODE_POINT_CLOUD;
   }
 
   if (dfs->rectification == TRUE && dfs->dfs_mode == MODE_SPEED)
@@ -826,6 +853,7 @@ gst_dfs_init (GstDfs * dfs)
   dfs->outpool = NULL;
   dfs->engine = NULL;
   dfs->config_location = DEFAULT_CONFIG_PATH;
+  dfs->output_mode = DEFAULT_OUTPUT_MODE;
 
   dfs->dfs_mode = DEFAULT_PROP_MODE;
   dfs->min_disparity = DEFAULT_PROP_MIN_DISPARITY;

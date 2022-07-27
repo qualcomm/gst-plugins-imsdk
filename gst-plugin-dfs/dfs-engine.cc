@@ -36,6 +36,9 @@
 #include <dfs_factory.h>
 #include <rvDFS.h>
 
+#include<iomanip>
+#include<iostream>
+
 // DFS lib is looking for those symbols
 int RV_LOG_LEVEL = 0;
 bool RV_STDERR_LOGGING = true;
@@ -43,11 +46,13 @@ bool RV_STDERR_LOGGING = true;
 struct _GstDfsEngine
 {
   rvDFS *handle;
+  gint mode;
   void *out_work_buffer;
   GstVideoFormat format;
   guint32 width;
   guint32 height;
   guint32 stride;
+  guint point_cloud_size;
 };
 
 static void
@@ -132,6 +137,7 @@ gst_dfs_engine_new (DfsInitSettings * settings)
     return NULL;
   }
 
+  engine->mode = settings->mode;
   engine->format = settings->format;
   engine->width = settings->stereo_frame_width / 2;
   engine->height = settings->stereo_frame_height;
@@ -283,6 +289,33 @@ gst_dfs_convert_disparity_map_to_image (GstDfsEngine * engine, float *map,
   }
 }
 
+
+
+void
+write_point_cloud_ply (GstDfsEngine * engine, PointCloudType * pcl,
+    gpointer output)
+{
+  std::stringstream ply_content;
+  uint8_t *dst = (uint8_t *) output;
+  ply_content << "ply" << std::endl;
+  ply_content << "format ascii 1.0" << std::endl;
+  ply_content << "element vertex " << pcl->size () << std::endl;
+  ply_content << "property float x" << std::endl;
+  ply_content << "property float y" << std::endl;
+  ply_content << "property float z" << std::endl;
+  ply_content << "end_header" << std::endl;
+  for (const auto& pc : *pcl) {
+    ply_content << std::fixed << std::
+        setprecision (2) << pc[0] << " " << pc[1] << " " << pc[2] << std::endl;
+  }
+
+  std::string ply_content_str = ply_content.str();
+  for (int i = 0; i < (int) ply_content_str.size(); i++) {
+    dst[i] = ply_content_str[i];
+  }
+}
+
+
 gboolean
 gst_dfs_engine_execute (GstDfsEngine * engine,
     const GstVideoFrame * inframe, gpointer output)
@@ -291,16 +324,43 @@ gst_dfs_engine_execute (GstDfsEngine * engine,
   float *disparity_map = NULL;
   gpointer img_left = GST_VIDEO_FRAME_PLANE_DATA (inframe, 0);
 
-  disparity_map = (float *) engine->out_work_buffer;
+  if (engine->mode == OUTPUT_MODE_VIDEO) {
+    disparity_map = (float *) engine->out_work_buffer;
+    ret = rvDFS_CalculateDisparity (engine->handle,
+        (uint8_t *) img_left, nullptr, disparity_map);
+    if (!ret) {
+      GST_ERROR ("Error in DFS process function");
+      return ret;
+    }
 
-  ret = rvDFS_CalculateDisparity (engine->handle,
-      (uint8_t *) img_left, nullptr, disparity_map);
-  if (!ret) {
-    GST_ERROR ("Error in DFS process function");
-    return ret;
+    gst_dfs_convert_disparity_map_to_image (engine, disparity_map, output);
+
+  } else if (engine->mode == OUTPUT_MODE_DISPARITY) {
+
+    disparity_map = (float *) output;
+    ret = rvDFS_CalculateDisparity (engine->handle,
+        (uint8_t *) img_left, nullptr, disparity_map);
+    if (!ret) {
+      GST_ERROR ("Error in DFS process function");
+      return ret;
+    }
+
+  } else if (engine->mode == OUTPUT_MODE_POINT_CLOUD) {
+
+    PointCloudType pcl;
+    ret = rvDFS_CalculatePointCloud (engine->handle,
+        (uint8_t *) img_left, nullptr, &pcl);
+    if (!ret) {
+      GST_ERROR ("Error in DFS process function");
+      return ret;
+    }
+
+    write_point_cloud_ply (engine, &pcl, output);
+
+  } else {
+    GST_ERROR ("Error invalid output mode");
+    ret = FALSE;
   }
-
-  gst_dfs_convert_disparity_map_to_image (engine, disparity_map, output);
 
   return ret;
 }
