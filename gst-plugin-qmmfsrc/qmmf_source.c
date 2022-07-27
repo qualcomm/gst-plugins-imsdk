@@ -127,6 +127,7 @@ enum
 {
   SIGNAL_CAPTURE_IMAGE,
   SIGNAL_CANCEL_CAPTURE,
+  SIGNAL_RESULT_METADATA,
   LAST_SIGNAL
 };
 
@@ -169,6 +170,8 @@ enum
   PROP_CAMERA_IR_MODE,
   PROP_CAMERA_ACTIVE_SENSOR_SIZE,
   PROP_CAMERA_SENSOR_MODE,
+  PROP_CAMERA_CAPTURE_METADATA,
+  PROP_CAMERA_CHARACTERISTICS,
 };
 
 static GstStaticPadTemplate qmmfsrc_video_src_template =
@@ -534,6 +537,14 @@ qmmfsrc_event_callback (guint event, gpointer userdata)
       GST_WARNING_OBJECT (qmmfsrc, "Unknown camera device event");
       break;
   }
+}
+
+static void
+qmmfsrc_metadata_callback (gint camera_id, gconstpointer metadata,
+    gpointer userdata)
+{
+  GstQmmfSrc *qmmfsrc = GST_QMMFSRC (userdata);
+  g_signal_emit_by_name(qmmfsrc, "result-metadata", camera_id, metadata, NULL);
 }
 
 static gboolean
@@ -1067,6 +1078,10 @@ qmmfsrc_set_property (GObject * object, guint property_id,
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_SENSOR_MODE, value);
       break;
+    case PROP_CAMERA_CAPTURE_METADATA:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_CAPTURE_METADATA, value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -1216,6 +1231,14 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
     case PROP_CAMERA_SENSOR_MODE:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_SENSOR_MODE, value);
+      break;
+    case PROP_CAMERA_CAPTURE_METADATA:
+        gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_CAPTURE_METADATA, value);
+      break;
+    case PROP_CAMERA_CHARACTERISTICS:
+        gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_CHARACTERISTICS, value);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -1477,12 +1500,29 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           "Force set Sensor Mode index (0-15). -1 for Auto selection",
           -1, 15, DEFAULT_PROP_CAMERA_SENSOR_MODE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-
+  g_object_class_install_property (gobject, PROP_CAMERA_CAPTURE_METADATA,
+      g_param_spec_pointer ("capture-metadata", "Get or set capture metadata",
+          "Expose camera metadata object which is used for camera control."
+          " If property get is used, caller must release metadata object.",
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_CAMERA_CHARACTERISTICS,
+      g_param_spec_pointer ("camera-characteristics", "Camera characteristics",
+          "Returns supported values for camera parameters as"
+          " camera metadata object. Caller is taking ownership of camera"
+          " metadata object and he is supposed to release metadata object",
+          G_PARAM_READABLE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
 
   signals[SIGNAL_CAPTURE_IMAGE] =
       g_signal_new_class_handler ("capture-image", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION, G_CALLBACK (qmmfsrc_capture_image),
       NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
+
+  signals[SIGNAL_RESULT_METADATA] =
+      g_signal_new ("result-metadata", G_TYPE_FROM_CLASS (klass),
+      G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 2, G_TYPE_INT,
+      G_TYPE_POINTER);
 
   gstelement->request_new_pad = GST_DEBUG_FUNCPTR (qmmfsrc_request_pad);
   gstelement->release_pad = GST_DEBUG_FUNCPTR (qmmfsrc_release_pad);
@@ -1503,13 +1543,12 @@ qmmfsrc_init (GstQmmfSrc * qmmfsrc)
   qmmfsrc->srcpads = g_hash_table_new (NULL, NULL);
   qmmfsrc->nextidx = 0;
 
-
   qmmfsrc->vidindexes = NULL;
   qmmfsrc->imgindexes = NULL;
   qmmfsrc->isplugged = FALSE;
 
-  qmmfsrc->context = gst_qmmf_context_new (
-      G_CALLBACK (qmmfsrc_event_callback), qmmfsrc);
+  qmmfsrc->context = gst_qmmf_context_new (G_CALLBACK (qmmfsrc_event_callback),
+      G_CALLBACK (qmmfsrc_metadata_callback), qmmfsrc);
   g_return_if_fail (qmmfsrc->context != NULL);
 
   GST_OBJECT_FLAG_SET (qmmfsrc, GST_ELEMENT_FLAG_SOURCE);

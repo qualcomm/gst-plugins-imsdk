@@ -75,6 +75,101 @@ struct _PropAndroidEnum
   guchar venum;
 };
 
+static const PropAndroidEnum control_mode_map[] = {
+  {CONTROL_MODE_OFF, ANDROID_CONTROL_MODE_OFF},
+  {CONTROL_MODE_AUTO, ANDROID_CONTROL_MODE_AUTO},
+  {CONTROL_MODE_USE_SCENE_MODE, ANDROID_CONTROL_MODE_USE_SCENE_MODE},
+  {CONTROL_MODE_OFF_KEEP_STATE, ANDROID_CONTROL_MODE_OFF_KEEP_STATE},
+};
+
+static const PropAndroidEnum effect_mode_map[] = {
+  {EFFECT_MODE_OFF, ANDROID_CONTROL_EFFECT_MODE_OFF},
+  {EFFECT_MODE_MONO, ANDROID_CONTROL_EFFECT_MODE_MONO},
+  {EFFECT_MODE_NEGATIVE, ANDROID_CONTROL_EFFECT_MODE_NEGATIVE},
+  {EFFECT_MODE_SOLARIZE, ANDROID_CONTROL_EFFECT_MODE_SOLARIZE},
+  {EFFECT_MODE_SEPIA, ANDROID_CONTROL_EFFECT_MODE_SEPIA},
+  {EFFECT_MODE_POSTERIZE, ANDROID_CONTROL_EFFECT_MODE_POSTERIZE},
+  {EFFECT_MODE_WHITEBOARD, ANDROID_CONTROL_EFFECT_MODE_WHITEBOARD},
+  {EFFECT_MODE_BLACKBOARD, ANDROID_CONTROL_EFFECT_MODE_BLACKBOARD},
+  {EFFECT_MODE_AQUA, ANDROID_CONTROL_EFFECT_MODE_AQUA},
+};
+
+static const PropAndroidEnum scene_mode_map[] = {
+  {SCENE_MODE_DISABLED, ANDROID_CONTROL_SCENE_MODE_DISABLED},
+  {SCENE_MODE_FACE_PRIORITY, ANDROID_CONTROL_SCENE_MODE_FACE_PRIORITY},
+  {SCENE_MODE_ACTION, ANDROID_CONTROL_SCENE_MODE_ACTION},
+  {SCENE_MODE_PORTRAIT, ANDROID_CONTROL_SCENE_MODE_PORTRAIT},
+  {SCENE_MODE_LANDSCAPE, ANDROID_CONTROL_SCENE_MODE_LANDSCAPE},
+  {SCENE_MODE_NIGHT, ANDROID_CONTROL_SCENE_MODE_NIGHT},
+  {SCENE_MODE_NIGHT_PORTRAIT, ANDROID_CONTROL_SCENE_MODE_NIGHT_PORTRAIT},
+  {SCENE_MODE_THEATRE, ANDROID_CONTROL_SCENE_MODE_THEATRE},
+  {SCENE_MODE_BEACH, ANDROID_CONTROL_SCENE_MODE_BEACH},
+  {SCENE_MODE_SNOW, ANDROID_CONTROL_SCENE_MODE_SNOW},
+  {SCENE_MODE_SUNSET, ANDROID_CONTROL_SCENE_MODE_SUNSET},
+  {SCENE_MODE_STEADYPHOTO, ANDROID_CONTROL_SCENE_MODE_STEADYPHOTO},
+  {SCENE_MODE_FIREWORKS, ANDROID_CONTROL_SCENE_MODE_FIREWORKS},
+  {SCENE_MODE_SPORTS, ANDROID_CONTROL_SCENE_MODE_SPORTS},
+  {SCENE_MODE_PARTY, ANDROID_CONTROL_SCENE_MODE_PARTY},
+  {SCENE_MODE_CANDLELIGHT, ANDROID_CONTROL_SCENE_MODE_CANDLELIGHT},
+  {SCENE_MODE_HDR, ANDROID_CONTROL_SCENE_MODE_HDR},
+};
+
+static const PropAndroidEnum antibanding_map[] = {
+  {ANTIBANDING_MODE_OFF, ANDROID_CONTROL_AE_ANTIBANDING_MODE_OFF},
+  {ANTIBANDING_MODE_50HZ, ANDROID_CONTROL_AE_ANTIBANDING_MODE_50HZ},
+  {ANTIBANDING_MODE_60HZ, ANDROID_CONTROL_AE_ANTIBANDING_MODE_60HZ},
+  {ANTIBANDING_MODE_AUTO, ANDROID_CONTROL_AE_ANTIBANDING_MODE_AUTO},
+};
+
+static const PropAndroidEnum exposure_mode_map[] = {
+  {EXPOSURE_MODE_OFF, ANDROID_CONTROL_AE_MODE_OFF},
+  {EXPOSURE_MODE_AUTO, ANDROID_CONTROL_AE_MODE_ON},
+};
+
+static const PropAndroidEnum white_balance_mode_map[] = {
+  { WHITE_BALANCE_MODE_OFF,
+      ANDROID_CONTROL_AWB_MODE_OFF
+  },
+  { WHITE_BALANCE_MODE_AUTO,
+      ANDROID_CONTROL_AWB_MODE_AUTO
+  },
+  { WHITE_BALANCE_MODE_SHADE,
+      ANDROID_CONTROL_AWB_MODE_SHADE
+  },
+  { WHITE_BALANCE_MODE_INCANDESCENT,
+      ANDROID_CONTROL_AWB_MODE_INCANDESCENT
+  },
+  { WHITE_BALANCE_MODE_FLUORESCENT,
+      ANDROID_CONTROL_AWB_MODE_FLUORESCENT
+  },
+  { WHITE_BALANCE_MODE_WARM_FLUORESCENT,
+      ANDROID_CONTROL_AWB_MODE_WARM_FLUORESCENT
+  },
+  { WHITE_BALANCE_MODE_DAYLIGHT,
+      ANDROID_CONTROL_AWB_MODE_DAYLIGHT
+  },
+  { WHITE_BALANCE_MODE_CLOUDY_DAYLIGHT,
+      ANDROID_CONTROL_AWB_MODE_CLOUDY_DAYLIGHT
+  },
+  { WHITE_BALANCE_MODE_TWILIGHT,
+      ANDROID_CONTROL_AWB_MODE_TWILIGHT
+  },
+};
+
+static const PropAndroidEnum focus_mode_map[] = {
+  {FOCUS_MODE_OFF, ANDROID_CONTROL_AF_MODE_OFF},
+  {FOCUS_MODE_AUTO, ANDROID_CONTROL_AF_MODE_AUTO},
+  {FOCUS_MODE_MACRO, ANDROID_CONTROL_AF_MODE_MACRO},
+  {FOCUS_MODE_CONTINUOUS, ANDROID_CONTROL_AF_MODE_CONTINUOUS_VIDEO},
+  {FOCUS_MODE_EDOF, ANDROID_CONTROL_AF_MODE_EDOF},
+};
+
+static const PropAndroidEnum noise_reduction_map[] = {
+  {NOISE_REDUCTION_OFF, ANDROID_NOISE_REDUCTION_MODE_OFF},
+  {NOISE_REDUCTION_FAST, ANDROID_NOISE_REDUCTION_MODE_FAST},
+  {NOISE_REDUCTION_HIGH_QUALITY, ANDROID_NOISE_REDUCTION_MODE_HIGH_QUALITY},
+};
+
 GType
 gst_qmmfsrc_control_mode_get_type (void)
 {
@@ -496,181 +591,175 @@ guchar
 gst_qmmfsrc_control_mode_android_value (const guint value)
 {
   static guint idx = 0;
-  static const PropAndroidEnum map[] = {
-      {CONTROL_MODE_OFF, ANDROID_CONTROL_MODE_OFF},
-      {CONTROL_MODE_AUTO, ANDROID_CONTROL_MODE_AUTO},
-      {CONTROL_MODE_USE_SCENE_MODE, ANDROID_CONTROL_MODE_USE_SCENE_MODE},
-      {CONTROL_MODE_OFF_KEEP_STATE, ANDROID_CONTROL_MODE_OFF_KEEP_STATE},
-  };
 
-  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(map); ++idx) {
-    if (map[idx].value == value)
-      return map[idx].venum;
+  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(control_mode_map); ++idx) {
+    if (control_mode_map[idx].value == value)
+      return control_mode_map[idx].venum;
   }
-  return (-1);
+  return UCHAR_MAX;
+}
+
+guint
+gst_qmmfsrc_android_value_control_mode (const guchar value)
+{
+  static guint idx = 0;
+  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(control_mode_map); ++idx) {
+    if (control_mode_map[idx].venum == value)
+      return control_mode_map[idx].value;
+  }
+  return UINT_MAX;
 }
 
 guchar
 gst_qmmfsrc_effect_mode_android_value (const guint value)
 {
   static guint idx = 0;
-  static const PropAndroidEnum map[] = {
-      {EFFECT_MODE_OFF, ANDROID_CONTROL_EFFECT_MODE_OFF},
-      {EFFECT_MODE_MONO, ANDROID_CONTROL_EFFECT_MODE_MONO},
-      {EFFECT_MODE_NEGATIVE, ANDROID_CONTROL_EFFECT_MODE_NEGATIVE},
-      {EFFECT_MODE_SOLARIZE, ANDROID_CONTROL_EFFECT_MODE_SOLARIZE},
-      {EFFECT_MODE_SEPIA, ANDROID_CONTROL_EFFECT_MODE_SEPIA},
-      {EFFECT_MODE_POSTERIZE, ANDROID_CONTROL_EFFECT_MODE_POSTERIZE},
-      {EFFECT_MODE_WHITEBOARD, ANDROID_CONTROL_EFFECT_MODE_WHITEBOARD},
-      {EFFECT_MODE_BLACKBOARD, ANDROID_CONTROL_EFFECT_MODE_BLACKBOARD},
-      {EFFECT_MODE_AQUA, ANDROID_CONTROL_EFFECT_MODE_AQUA},
-  };
-
-  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(map); ++idx) {
-    if (map[idx].value == value)
-      return map[idx].venum;
+  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(effect_mode_map); ++idx) {
+    if (effect_mode_map[idx].value == value)
+      return effect_mode_map[idx].venum;
   }
-  return (-1);
+  return UCHAR_MAX;
+}
+
+guint
+gst_qmmfsrc_android_value_effect_mode (const guchar value)
+{
+  static guint idx = 0;
+  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(effect_mode_map); ++idx) {
+    if (effect_mode_map[idx].venum == value)
+      return effect_mode_map[idx].value;
+  }
+  return UINT_MAX;
 }
 
 guchar
 gst_qmmfsrc_scene_mode_android_value (const guint value)
 {
   static guint idx = 0;
-  static const PropAndroidEnum map[] = {
-      {SCENE_MODE_DISABLED, ANDROID_CONTROL_SCENE_MODE_DISABLED},
-      {SCENE_MODE_FACE_PRIORITY, ANDROID_CONTROL_SCENE_MODE_FACE_PRIORITY},
-      {SCENE_MODE_ACTION, ANDROID_CONTROL_SCENE_MODE_ACTION},
-      {SCENE_MODE_PORTRAIT, ANDROID_CONTROL_SCENE_MODE_PORTRAIT},
-      {SCENE_MODE_LANDSCAPE, ANDROID_CONTROL_SCENE_MODE_LANDSCAPE},
-      {SCENE_MODE_NIGHT, ANDROID_CONTROL_SCENE_MODE_NIGHT},
-      {SCENE_MODE_NIGHT_PORTRAIT, ANDROID_CONTROL_SCENE_MODE_NIGHT_PORTRAIT},
-      {SCENE_MODE_THEATRE, ANDROID_CONTROL_SCENE_MODE_THEATRE},
-      {SCENE_MODE_BEACH, ANDROID_CONTROL_SCENE_MODE_BEACH},
-      {SCENE_MODE_SNOW, ANDROID_CONTROL_SCENE_MODE_SNOW},
-      {SCENE_MODE_SUNSET, ANDROID_CONTROL_SCENE_MODE_SUNSET},
-      {SCENE_MODE_STEADYPHOTO, ANDROID_CONTROL_SCENE_MODE_STEADYPHOTO},
-      {SCENE_MODE_FIREWORKS, ANDROID_CONTROL_SCENE_MODE_FIREWORKS},
-      {SCENE_MODE_SPORTS, ANDROID_CONTROL_SCENE_MODE_SPORTS},
-      {SCENE_MODE_PARTY, ANDROID_CONTROL_SCENE_MODE_PARTY},
-      {SCENE_MODE_CANDLELIGHT, ANDROID_CONTROL_SCENE_MODE_CANDLELIGHT},
-      {SCENE_MODE_HDR, ANDROID_CONTROL_SCENE_MODE_HDR},
-  };
-
-  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(map); ++idx) {
-    if (map[idx].value == value)
-      return map[idx].venum;
+  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(scene_mode_map); ++idx) {
+    if (scene_mode_map[idx].value == value)
+      return scene_mode_map[idx].venum;
   }
   return UCHAR_MAX;
+}
+
+guint
+gst_qmmfsrc_android_value_scene_mode (const guchar value)
+{
+  static guint idx = 0;
+  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(scene_mode_map); ++idx) {
+    if (scene_mode_map[idx].venum == value)
+      return scene_mode_map[idx].value;
+  }
+  return UINT_MAX;
 }
 
 guchar
 gst_qmmfsrc_antibanding_android_value (const guint value)
 {
   static guint idx = 0;
-  static const PropAndroidEnum map[] = {
-      {ANTIBANDING_MODE_OFF, ANDROID_CONTROL_AE_ANTIBANDING_MODE_OFF},
-      {ANTIBANDING_MODE_50HZ, ANDROID_CONTROL_AE_ANTIBANDING_MODE_50HZ},
-      {ANTIBANDING_MODE_60HZ, ANDROID_CONTROL_AE_ANTIBANDING_MODE_60HZ},
-      {ANTIBANDING_MODE_AUTO, ANDROID_CONTROL_AE_ANTIBANDING_MODE_AUTO},
-  };
-
-  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(map); ++idx) {
-    if (map[idx].value == value)
-      return map[idx].venum;
+  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(antibanding_map); ++idx) {
+    if (antibanding_map[idx].value == value)
+      return antibanding_map[idx].venum;
   }
   return UCHAR_MAX;
+}
+
+guint
+gst_qmmfsrc_android_value_antibanding (const guchar value)
+{
+  static guint idx = 0;
+  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(antibanding_map); ++idx) {
+    if (antibanding_map[idx].venum == value)
+      return antibanding_map[idx].value;
+  }
+  return UINT_MAX;
 }
 
 guchar
 gst_qmmfsrc_exposure_mode_android_value (const guint value)
 {
   static guint idx = 0;
-  static const PropAndroidEnum map[] = {
-      {EXPOSURE_MODE_OFF, ANDROID_CONTROL_AE_MODE_OFF},
-      {EXPOSURE_MODE_AUTO, ANDROID_CONTROL_AE_MODE_ON},
-  };
-
-  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(map); ++idx) {
-    if (map[idx].value == value)
-      return map[idx].venum;
+  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(exposure_mode_map); ++idx) {
+    if (exposure_mode_map[idx].value == value)
+      return exposure_mode_map[idx].venum;
   }
   return UCHAR_MAX;
+}
+
+guint
+gst_qmmfsrc_android_value_exposure_mode (const guchar value)
+{
+  static guint idx = 0;
+  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(exposure_mode_map); ++idx) {
+    if (exposure_mode_map[idx].venum == value)
+      return exposure_mode_map[idx].value;
+  }
+  return UINT_MAX;
 }
 
 guchar
 gst_qmmfsrc_white_balance_mode_android_value (const guint value)
 {
   static guint idx = 0;
-  static const PropAndroidEnum map[] = {
-      { WHITE_BALANCE_MODE_OFF,
-          ANDROID_CONTROL_AWB_MODE_OFF
-      },
-      { WHITE_BALANCE_MODE_AUTO,
-          ANDROID_CONTROL_AWB_MODE_AUTO
-      },
-      { WHITE_BALANCE_MODE_SHADE,
-          ANDROID_CONTROL_AWB_MODE_SHADE
-      },
-      { WHITE_BALANCE_MODE_INCANDESCENT,
-          ANDROID_CONTROL_AWB_MODE_INCANDESCENT
-      },
-      { WHITE_BALANCE_MODE_FLUORESCENT,
-          ANDROID_CONTROL_AWB_MODE_FLUORESCENT
-      },
-      { WHITE_BALANCE_MODE_WARM_FLUORESCENT,
-          ANDROID_CONTROL_AWB_MODE_WARM_FLUORESCENT
-      },
-      { WHITE_BALANCE_MODE_DAYLIGHT,
-          ANDROID_CONTROL_AWB_MODE_DAYLIGHT
-      },
-      { WHITE_BALANCE_MODE_CLOUDY_DAYLIGHT,
-          ANDROID_CONTROL_AWB_MODE_CLOUDY_DAYLIGHT
-      },
-      { WHITE_BALANCE_MODE_TWILIGHT,
-          ANDROID_CONTROL_AWB_MODE_TWILIGHT
-      },
-  };
-
-  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(map); ++idx) {
-    if (map[idx].value == value)
-      return map[idx].venum;
+  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(white_balance_mode_map); ++idx) {
+    if (white_balance_mode_map[idx].value == value)
+      return white_balance_mode_map[idx].venum;
   }
   return UCHAR_MAX;
+}
+
+guint
+gst_qmmfsrc_android_value_white_balance_mode (const guchar value)
+{
+  static guint idx = 0;
+  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(white_balance_mode_map); ++idx) {
+    if (white_balance_mode_map[idx].venum == value)
+      return white_balance_mode_map[idx].value;
+  }
+  return UINT_MAX;
 }
 
 guchar
 gst_qmmfsrc_focus_mode_android_value (const guint value)
 {
   static guint idx = 0;
-  static const PropAndroidEnum map[] = {
-      {FOCUS_MODE_OFF, ANDROID_CONTROL_AF_MODE_OFF},
-      {FOCUS_MODE_AUTO, ANDROID_CONTROL_AF_MODE_AUTO},
-      {FOCUS_MODE_MACRO, ANDROID_CONTROL_AF_MODE_MACRO},
-      {FOCUS_MODE_CONTINUOUS, ANDROID_CONTROL_AF_MODE_CONTINUOUS_VIDEO},
-      {FOCUS_MODE_EDOF, ANDROID_CONTROL_AF_MODE_EDOF},
-  };
-
-  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(map); ++idx) {
-    if (map[idx].value == value)
-      return map[idx].venum;
+  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(focus_mode_map); ++idx) {
+    if (focus_mode_map[idx].value == value)
+      return focus_mode_map[idx].venum;
   }
   return UCHAR_MAX;
+}
+
+guint
+gst_qmmfsrc_android_value_focus_mode (const guchar value)
+{
+  static guint idx = 0;
+  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(focus_mode_map); ++idx) {
+    if (focus_mode_map[idx].venum == value)
+      return focus_mode_map[idx].value;
+  }
+  return UINT_MAX;
 }
 
 guchar
 gst_qmmfsrc_noise_reduction_android_value (const guint value)
 {
   static guint idx = 0;
-  static const PropAndroidEnum map[] = {
-      {NOISE_REDUCTION_OFF, ANDROID_NOISE_REDUCTION_MODE_OFF},
-      {NOISE_REDUCTION_FAST, ANDROID_NOISE_REDUCTION_MODE_FAST},
-      {NOISE_REDUCTION_HIGH_QUALITY, ANDROID_NOISE_REDUCTION_MODE_HIGH_QUALITY},
-  };
-
-  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(map); ++idx) {
-    if (map[idx].value == value)
-      return map[idx].venum;
+  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(noise_reduction_map); ++idx) {
+    if (noise_reduction_map[idx].value == value)
+      return noise_reduction_map[idx].venum;
   }
   return UCHAR_MAX;
+}
+
+guint
+gst_qmmfsrc_android_value_noise_reduction (const guchar value)
+{
+  static guint idx = 0;
+  for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(noise_reduction_map); ++idx) {
+    if (noise_reduction_map[idx].venum == value)
+      return noise_reduction_map[idx].value;
+  }
+  return UINT_MAX;
 }

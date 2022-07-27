@@ -38,7 +38,9 @@ G_BEGIN_DECLS
 
 typedef struct _GstQmmfContext GstQmmfContext;
 
-typedef void (*GstQmmfCallback) (guint event, gpointer userdata);
+typedef void (*GstCameraEventCb) (guint event, gpointer userdata);
+typedef void (*GstCameraMetaCb) (gint camera_id, gconstpointer metadata,
+    gpointer userdata);
 
 enum {
   EVENT_UNKNOWN,
@@ -87,10 +89,13 @@ enum
   PARAM_CAMERA_IR_MODE,
   PARAM_CAMERA_ACTIVE_SENSOR_SIZE,
   PARAM_CAMERA_SENSOR_MODE,
+  PARAM_CAMERA_CAPTURE_METADATA,
+  PARAM_CAMERA_CHARACTERISTICS,
 };
 
 GST_API GstQmmfContext *
-gst_qmmf_context_new (GstQmmfCallback callback, gpointer userdata);
+gst_qmmf_context_new (GstCameraEventCb eventcb, GstCameraMetaCb metacb,
+                      gpointer userdata);
 
 GST_API void
 gst_qmmf_context_free (GstQmmfContext * context);
