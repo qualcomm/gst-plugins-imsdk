@@ -74,6 +74,8 @@ struct _GstDfs {
 
   gchar                   *config_location;
 
+  OutputMode              output_mode;
+
   stereoConfiguration     stereo_parameter;
 
   DFSMode                 dfs_mode;
