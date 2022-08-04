@@ -1,0 +1,136 @@
+## About
+
+This README file inludes instructions on how to create and compile custom post-processing modules for Image Segmentation models.
+
+
+## Instructions
+
+1. Create .c (only C code) or .cc (C++ and C code) file in the modules subfolder.
+	- The file name can be anything but should not include underscore.
+	- This name will be used as the name of the module itself.
+	- Files layout, note that the prefix ```ml-vpose-``` is mandatory.
+		```bash
+		gst-plugin-mlvpose/
+		├── CMakeLists.txt
+		├── config.h.in
+		├── mlvpose.c
+		├── mlvpose.h
+		└── modules
+		    ├── CMakeLists.txt
+		    ├── ml-video-pose-module.h
+		    └── ml-vpose-<module-name>.c[.cc]
+		```
+
+2. Add compile commands at the end of the CMake file for the modules. Replace <module-name> with the name of your module.
+	```cmake
+	set(GST_QTI_ML_MODULE ml-vpose-<module-name>)
+
+	add_library(${GST_QTI_ML_MODULE} SHARED
+	  ml-vpose-<module-name>.c[.cc]
+	)
+
+	target_include_directories(${GST_QTI_ML_MODULE} PUBLIC
+	  ${GST_INCLUDE_DIRS}
+	)
+
+	target_link_libraries(${GST_QTI_ML_MODULE} PRIVATE
+	  ${GST_LIBRARIES}
+	  gstqtimlbase
+	)
+
+	install(
+	  TARGETS ${GST_QTI_ML_MODULE}
+	  LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0/ml/modules
+	  PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
+	              GROUP_EXECUTE GROUP_READ
+	              WORLD_EXECUTE WORLD_READ
+	)
+	```
+
+3. Include the necessary headers in the source file ```ml-vpose-<module-name>.c[.cc]```. Refer to example below with comments.
+	```c
+	#include "ml-video-pose-module.h" // Main header for the module from which the APi are inherited.
+	// Empty line for readability.
+	#include <stdio.h> // C/C++ library headers
+	#include <math.h> // C/C++ library headers
+	// Empty line for readability.
+	#include <gst/ml/gstmlmeta.h> // Any system headers.
+	```
+
+4. Implement the APIs defined in the main header (gstmodule.h) and the submodule header (ml-video-pose-module.h).
+	- Detailed description on each API can found in the headers. But here is a brief summary:
+		```c
+		// The set of capabilities/tensors that the module can handle.
+		// Refer to the output tensors from the model.
+		#define GST_ML_MODULE_CAPS \
+		    "neural-network/tensors, " \
+		    "type = (string) { FLOAT32 }, " \
+		    "dimensions = (int) < < 1, 10, 4 >, < 1, 10 >, < 1, 10 >, < 1 > >"
+
+		static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
+
+		gpointer
+		gst_ml_module_open (void)
+		{
+		  GstMLSubModule *submodule = NULL;
+		  ...
+		  return (gpointer) submodule;
+		}
+
+		void
+		gst_ml_module_close (gpointer instance)
+		{
+		  GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
+		  ...
+		}
+
+		GstCaps *
+		gst_ml_module_caps (void)
+		{
+		  static GstCaps *caps = NULL;
+		  static volatile gsize inited = 0;
+
+		  if (g_once_init_enter (&inited)) {
+		    caps = gst_static_caps_get (&modulecaps);
+		    g_once_init_leave (&inited, 1);
+		  }
+
+		  return caps;
+		}
+
+		gboolean
+		gst_ml_module_configure (gpointer instance, GstStructure * settings)
+		{
+		  GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
+		  ...
+		  return TRUE;
+		}
+
+		gboolean
+		gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
+		{
+		  GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
+		  // The output argument is casted to the TYPE specified in the submodule header (ml-video-pose-module.h).
+		  TYPE *<output-name> = (TYPE *) output;
+		  ...
+		  return TRUE;
+		}
+		```
+	- Also refer to any of the existing modules under ```gst-plugin-mlvpose/modules```.
+	- For C code style refer to any of the existing plugins and the GStreamer coding style.
+	- For C++ code style refer to the Google C++ guide.
+
+5. Compilation is done via the main plugin recipe. In the console where you have sourced and built your images use the following bitbake command.
+	```
+	bitbake -fc cleanall gstreamer1.0-plugins-qti-oss-mlvpose && bitbake gstreamer1.0-plugins-qti-oss-mlvpose
+	```
+
+6. Deploy the compiled libraries to the device from the same console as in (5).
+	Below <ARCH> is the subfolder for the architecture and <path-to-lib> is the path ot the library which are build specific. For details refer to the Quick Start Guide or contact QTI support.
+	```
+	adb push tmp-glibc/sysroots-components/<ARCH>/gstreamer1.0-plugins-qti-oss-mlvpose/<path-to-lib>/gstreamer-1.0/* <path-to-lib>/gstreamer-1.0/
+	```
+
+7. Check if the new module is detected by the plugin. When doing ```gst-inspect-1.0 qtimlvpose``` it should be visible under ```module``` property.
+
+8. The new module can be loaded exlicitly via the ```module=``` property of the plugin e.g. ```qtimlvpose module=<module-name>```.

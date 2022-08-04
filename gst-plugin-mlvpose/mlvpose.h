@@ -61,63 +61,61 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __GST_QTI_ML_VIDEO_POSENET_H__
-#define __GST_QTI_ML_VIDEO_POSENET_H__
+#ifndef __GST_QTI_ML_VIDEO_POSE_H__
+#define __GST_QTI_ML_VIDEO_POSE_H__
 
 #include <gst/gst.h>
 #include <gst/base/gstbasetransform.h>
 #include <gst/ml/ml-info.h>
 #include <gst/video/video.h>
 
-G_BEGIN_DECLS
-#define GST_TYPE_ML_VIDEO_POSENET (gst_ml_video_posenet_get_type())
-#define GST_ML_VIDEO_POSENET(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj), GST_TYPE_ML_VIDEO_POSENET, \
-                              GstMLVideoPosenet))
-#define GST_ML_VIDEO_POSENET_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_CAST((klass), GST_TYPE_ML_VIDEO_POSENET, \
-                           GstMLVideoPosenetClass))
-#define GST_IS_ML_VIDEO_POSENET(obj) \
-  (G_TYPE_CHECK_INSTANCE_TYPE((obj), GST_TYPE_ML_VIDEO_POSENET))
-#define GST_IS_ML_VIDEO_POSENET_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_TYPE((klass), GST_TYPE_ML_VIDEO_POSENET))
-#define GST_ML_VIDEO_POSENET_CAST(obj) ((GstMLVideoPosenet *)(obj))
-typedef struct _GstMLModule GstMLModule;
-typedef struct _GstMLVideoPosenet GstMLVideoPosenet;
-typedef struct _GstMLVideoPosenetClass GstMLVideoPosenetClass;
+#include "modules/ml-video-pose-module.h"
 
-struct _GstMLVideoPosenet
-{
+G_BEGIN_DECLS
+
+#define GST_TYPE_ML_VIDEO_POSE (gst_ml_video_pose_get_type())
+#define GST_ML_VIDEO_POSE(obj) \
+  (G_TYPE_CHECK_INSTANCE_CAST((obj), GST_TYPE_ML_VIDEO_POSE, \
+                              GstMLVideoPose))
+#define GST_ML_VIDEO_POSE_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_CAST((klass), GST_TYPE_ML_VIDEO_POSE, \
+                           GstMLVideoPoseClass))
+#define GST_IS_ML_VIDEO_POSE(obj) \
+  (G_TYPE_CHECK_INSTANCE_TYPE((obj), GST_TYPE_ML_VIDEO_POSE))
+#define GST_IS_ML_VIDEO_POSE_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_TYPE((klass), GST_TYPE_ML_VIDEO_POSE))
+#define GST_ML_VIDEO_POSE_CAST(obj) ((GstMLVideoPose *)(obj))
+
+typedef struct _GstMLVideoPose GstMLVideoPose;
+typedef struct _GstMLVideoPoseClass GstMLVideoPoseClass;
+
+struct _GstMLVideoPose {
   GstBaseTransform parent;
 
-  GstMLInfo *mlinfo;
+  GstMLInfo        *mlinfo;
 
-  /// Source aspect ratio, extracted from input caps.
-  gint sar_n;
-  gint sar_d;
+  /// Output mode (video or text)
+  guint            mode;
 
   /// Buffer pools.
-  GstBufferPool *outpool;
+  GstBufferPool    *outpool;
 
   /// Tensor deciphering module.
-  GstMLModule *module;
-
-  /// Cairo surfaces and contexts mapped for each buffer.
-  GHashTable *surfaces;
-  GHashTable *contexts;
+  GstMLModule      *module;
 
   /// Properties.
-  gchar *modname;
-  guint n_results;
-  gdouble threshold;
+  gint              mdlenum;
+  gchar             *labels;
+  guint             n_results;
+  gdouble           threshold;
 };
 
-struct _GstMLVideoPosenetClass
-{
+struct _GstMLVideoPoseClass {
   GstBaseTransformClass parent;
 };
 
-G_GNUC_INTERNAL GType gst_ml_video_posenet_get_type (void);
+G_GNUC_INTERNAL GType gst_ml_video_pose_get_type (void);
 
 G_END_DECLS
-#endif // __GST_QTI_ML_VIDEO_POSENET_H__
+
+#endif // __GST_QTI_ML_VIDEO_POSE_H__

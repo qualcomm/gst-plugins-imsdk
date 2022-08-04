@@ -61,97 +61,86 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __GST_QTI_ML_VIDEO_POSENET_MODULE_H__
-#define __GST_QTI_ML_VIDEO_POSENET_MODULE_H__
+#ifndef __GST_QTI_ML_VIDEO_POSE_MODULE_H__
+#define __GST_QTI_ML_VIDEO_POSE_MODULE_H__
 
 #include <gst/gst.h>
+#include <gst/ml/gstmlmodule.h>
 
 G_BEGIN_DECLS
 
-// Must match the keypoints of the posename models
-enum PosenetKeypointId
-{
-  POSENET_KP_NOSE = 0,
-  POSENET_KP_LEFT_EYE,
-  POSENET_KP_RIGHT_EYE,
-  POSENET_KP_LEFT_EAR,
-  POSENET_KP_RIGHT_EAR,
-  POSENET_KP_LEFT_SHOULDER,
-  POSENET_KP_RIGHT_SHOULDER,
-  POSENET_KP_LEFT_ELBOW,
-  POSENET_KP_RIGHT_ELBOW,
-  POSENET_KP_LEFT_WRIST,
-  POSENET_KP_RIGHT_WRIST,
-  POSENET_KP_LEFT_HIP,
-  POSENET_KP_RIGHT_HIP,
-  POSENET_KP_LEFT_KNEE,
-  POSENET_KP_RIGHT_KNEE,
-  POSENET_KP_LEFT_ANKLE,
-  POSENET_KP_RIGHT_ANKLE,
-
-  POSENET_KP_COUNT
-};
-
 typedef struct _GstPoseKeypoint GstPoseKeypoint;
-typedef struct _GstPose GstPose;
+typedef struct _GstPoseLink GstPoseLink;
+typedef struct _GstMLPrediction GstMLPrediction;
 
 /**
  * GstPoseKeypoint:
- * @score: score for the keypoint
- * @x: X coordinate of the keypoint
- * @y: Y coordinate of the keypoint
+ * @label: Name of the keypoint.
+ * @color: Color of the keypoint.
+ * @confidence: Confidence score for this keypoint.
+ * @x: X axis coordinate of the keypoint.
+ * @y: Y axis coordinate of the keypoint.
+ *
+ * Information describing keypoint location and confidence score.
+ *
+ * The fields x and y must be set in (0.0 to 1.0) relative coordinate system.
  */
-struct _GstPoseKeypoint
-{
-  gfloat score;
+struct _GstPoseKeypoint {
+  gchar  *label;
+  guint  color;
+  gfloat confidence;
   gfloat x;
   gfloat y;
 };
 
 /**
- * GstPose:
- * @pose_score: the overall score for the pose
- * @keypoint: the coordinates and score for each keypoints of the pose
+ * GstPoseLink:
+ * @s_kp_idx: ID of the source keypoint.
+ * @d_kp_idx: ID of the destination keypoint.
+ *
+ * Information describing a link between two keypoints.
  */
-struct _GstPose
-{
-  float pose_score;
-  GstPoseKeypoint keypoint[POSENET_KP_COUNT];
+struct _GstPoseLink {
+  guint s_kp_id;
+  guint d_kp_id;
 };
 
 /**
- * gst_ml_video_posenet_module_init:
+ * GstMLPrediction:
+ * @confidence: The overall confidence for the estimated pose.
+ * @keypoints: List of #GstPoseKeypoint.
+ * @connections: List of #GstPoseLink.
  *
- * Initialize instance of the Posenet module.
- *
- * return: pointer to a private module struct on success or NULL on failure
+ * Information describing prediction result from pose estimation models.
+ * All fields are mandatory and need to be filled by the submodule.
  */
-GST_API gpointer gst_ml_video_posenet_module_init ();
+struct _GstMLPrediction {
+  float  confidence;
+  GArray *keypoints;
+  GArray *connections;
+};
 
 /**
- * gst_ml_video_posenet_module_deinit:
- * @instance: pointer to the private module structure
+ * gst_ml_video_pose_module_execute:
+ * @module: Pointer to ML post-processing module.
+ * @mlframe: Frame containing mapped tensor memory blocks that need processing.
+ * @predictions: GArray of #GstMLPrediction.
  *
- * Deinitialize the instance of the Posenet module.
+ * Convenient wrapper function used on plugin level to call the module
+ * 'gst_ml_module_process' API via 'gst_ml_module_execute' wrapper in order
+ * to process input tensors.
  *
- * return: NONE
- */
-GST_API void gst_ml_video_posenet_module_deinit (gpointer instance);
-
-/**
- * gst_ml_video_posenet_module_process:
- * @instance: pointer to the private module structure
- * @buffer: buffer containing tensor memory blocks that need processing
- * @poses: linked list of #GstPose
- *
- * Parses incoming buffer containing result tensors from a Posenet model and
- * converts that information into a list of poses.
+ * Post-processing module must define the 3rd argument of the implemented
+ * 'gst_ml_module_process' API as 'GArray *'.
  *
  * return: TRUE on success or FALSE on failure
  */
 GST_API gboolean
-gst_ml_video_posenet_module_process (gpointer instance, GstBuffer * buffer,
-    GList ** poses);
+gst_ml_video_pose_module_execute (GstMLModule * module,
+    GstMLFrame * mlframe, GArray * predictions)
+{
+  return gst_ml_module_execute (module, mlframe, (gpointer) predictions);
+}
 
 G_END_DECLS
-#endif // __GST_QTI_ML_VIDEO_POSENET_MODULE_H__
+#endif // __GST_QTI_ML_VIDEO_POSE_MODULE_H__
