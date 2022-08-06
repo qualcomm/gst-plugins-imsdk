@@ -104,15 +104,18 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   const gchar *input = NULL;
+  GValue list = G_VALUE_INIT;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (settings != NULL, FALSE);
 
   input = gst_structure_get_string (settings, GST_ML_MODULE_OPT_LABELS);
+  g_return_val_if_fail (gst_ml_parse_labels (input, &list), FALSE);
 
-  submodule->labels = gst_ml_load_labels (input);
+  submodule->labels = gst_ml_load_labels (&list);
   g_return_val_if_fail (submodule->labels != NULL, FALSE);
 
+  g_value_unset (&list);
   gst_structure_free (settings);
   return TRUE;
 }
