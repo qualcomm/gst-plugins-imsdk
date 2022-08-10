@@ -1023,13 +1023,13 @@ gst_overlay_apply_optclflow_item (GstOverlay * gst_overlay, gpointer metadata,
   }
 
   GstCvpOptclFlowMeta *meta = (GstCvpOptclFlowMeta *) metadata;
-  g_return_val_if_fail (meta->n_vectors == meta->n_stats, FALSE);
+  g_return_val_if_fail (meta->mvectors->len == meta->stats->len, FALSE);
 
   gint paxel_width = (gst_overlay->width / 8);
   gint arrows_cnt = 0;
 
   // Read each 4th mv in order to skip each 2nd paxel due arrows density
-  for (guint x = 0; x < meta->n_vectors; x+=4) {
+  for (guint x = 0; x < meta->mvectors->len; x+=4) {
     GstCvpMotionVector *mvector = &g_array_index (meta->mvectors, GstCvpMotionVector, x);
     GstCvpOptclFlowStats *stats = &g_array_index (meta->stats, GstCvpOptclFlowStats, x);
 

@@ -220,17 +220,13 @@ gst_metamux_process_metadata_entry (GstMetaMux * muxer, GstBuffer * buffer,
   if (gst_structure_has_name (structure, "OpticalFlow")) {
     GArray *mvectors = NULL, *mvstats = NULL;
     GstCvpOptclFlowMeta *meta = NULL;
-    gint n_vectors = 0, n_stats = 0;
 
     gst_structure_get (structure,
         "mvectors", G_TYPE_ARRAY, &mvectors,
-        "n_vectors", G_TYPE_INT, &n_vectors,
         "mvstats", G_TYPE_ARRAY, &mvstats,
-        "n_stats", G_TYPE_INT, &n_stats,
         NULL);
 
-    meta = gst_buffer_add_cvp_optclflow_meta (buffer, mvectors, n_vectors,
-        mvstats, n_stats);
+    meta = gst_buffer_add_cvp_optclflow_meta (buffer, mvectors, mvstats);
     meta->id = index;
   } else {
     GstVideoRegionOfInterestMeta *meta = NULL;
@@ -493,6 +489,7 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
   // Iterate over the raw data in reverse, parse and add it to the list.
   mvectors = g_array_sized_new (FALSE, FALSE, sizeof (GstCvpMotionVector),
       n_vectors);
+  g_array_set_size (mvectors, n_vectors);
 
   for (idx = 0; idx < n_vectors; idx++) {
     guint32 *data = CAST_TO_GUINT32 (&(memmap).data[idx * length]);
@@ -564,7 +561,8 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
 
     // Iterate over the raw data in reverse, parse and add it to the list.
     mvstats = g_array_sized_new (FALSE, FALSE, sizeof (GstCvpOptclFlowStats),
-        n_vectors);
+        n_stats);
+    g_array_set_size (mvstats, n_stats);
 
     for (idx = 0; idx < n_stats; idx++) {
       guint32 *data = CAST_TO_GUINT32 (&(memmap).data[idx * length]);
@@ -597,9 +595,7 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
 
     structure = gst_structure_new ("OpticalFlow",
         "mvectors", G_TYPE_ARRAY, mvectors,
-        "n_vectors", G_TYPE_INT, n_vectors,
         "mvstats", G_TYPE_ARRAY, mvstats,
-        "n_stats", G_TYPE_INT, n_stats,
         NULL);
 
     g_value_take_boxed (&value, structure);

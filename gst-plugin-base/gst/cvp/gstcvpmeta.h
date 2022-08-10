@@ -81,9 +81,7 @@ struct _GstCvpOptclFlowStats {
  * @meta: Parent #GstMeta
  * @id: ID corresponding to the memory index inside GstBuffer.
  * @mvectors: Array containing GstCvpMotionVector data.
- * @n_vectors: Number of entries in the GstCvpMotionVector array.
  * @stats: Array containing GstCvpOptclFlowStats data.
- * @n_stats: Number of entries in the GstCvpOptclFlowStats array.
  *
  * Extra buffer metadata describing CVP Optical Flow properties
  */
@@ -93,11 +91,7 @@ struct _GstCvpOptclFlowMeta {
   guint   id;
 
   GArray  *mvectors;
-  guint   n_vectors;
-
-
   GArray  *stats;
-  guint   n_stats;
 };
 
 GST_API GType gst_cvp_optclflow_meta_api_get_type (void);
@@ -105,9 +99,8 @@ GST_API GType gst_cvp_optclflow_meta_api_get_type (void);
 GST_API const GstMetaInfo * gst_cvp_optclflow_meta_get_info (void);
 
 GST_API GstCvpOptclFlowMeta *
-gst_buffer_add_cvp_optclflow_meta (GstBuffer * buffer,
-                                   GArray * mvectors, guint n_vectors,
-                                   GArray * stats, guint n_stats);
+gst_buffer_add_cvp_optclflow_meta (GstBuffer * buffer, GArray * mvectors,
+                                   GArray * stats);
 
 GST_API GstCvpOptclFlowMeta *
 gst_buffer_get_cvp_optclflow_meta (GstBuffer * buffer);
