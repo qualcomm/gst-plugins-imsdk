@@ -55,10 +55,7 @@ gst_cvp_optclflow_meta_init (GstMeta * meta, gpointer params, GstBuffer * buffer
   cvpmeta->id = 0;
 
   cvpmeta->mvectors = NULL;
-  cvpmeta->n_vectors = 0;
-
   cvpmeta->stats = NULL;
-  cvpmeta->n_stats = 0;
 
   return TRUE;
 }
@@ -84,17 +81,25 @@ gst_cvp_optclflow_meta_transform (GstBuffer * transbuffer, GstMeta * meta,
 
     // TODO: replace with g_array_copy() in glib version > 2.62
     mvectors = g_array_sized_new (FALSE, FALSE, sizeof (GstCvpMotionVector),
-        smeta->n_vectors);
+        smeta->mvectors->len);
     stats = g_array_sized_new (FALSE, FALSE, sizeof (GstCvpOptclFlowStats),
-        smeta->n_stats);
+        smeta->stats->len);
 
-    memcpy (mvectors->data, smeta->mvectors->data,
-        mvectors->len * sizeof (GstCvpMotionVector));
-    memcpy (stats->data, smeta->stats->data,
-        mvectors->len * sizeof (GstCvpMotionVector));
+    mvectors->len = smeta->mvectors->len;
+    stats->len = smeta->stats->len;
+
+    if (smeta->mvectors->len > 0) {
+      guint n_bytes = mvectors->len * sizeof (GstCvpMotionVector);
+      memcpy (mvectors->data, smeta->mvectors->data, n_bytes);
+    }
+
+    if (smeta->stats->len > 0) {
+      guint n_bytes = stats->len * sizeof (GstCvpOptclFlowStats);
+      memcpy (stats->data, smeta->stats->data, n_bytes);
+    }
 
     dmeta = gst_buffer_add_cvp_optclflow_meta (transbuffer,
-        mvectors, smeta->n_vectors, stats, smeta->n_stats);
+        mvectors, stats);
 
     if (NULL == dmeta)
       return FALSE;
@@ -139,12 +144,12 @@ gst_cvp_optclflow_meta_get_info (void)
 
 GstCvpOptclFlowMeta *
 gst_buffer_add_cvp_optclflow_meta (GstBuffer * buffer, GArray * mvectors,
-    guint n_vectors, GArray * stats, guint n_stats)
+    GArray * stats)
 {
   GstCvpOptclFlowMeta *meta = NULL;
 
   g_return_val_if_fail (GST_IS_BUFFER (buffer), NULL);
-  g_return_val_if_fail ((mvectors != NULL) && (n_vectors != 0), NULL);
+  g_return_val_if_fail (mvectors != NULL, NULL);
 
   meta = GST_CVP_OPTCLFLOW_META_CAST (
       gst_buffer_add_meta (buffer, GST_CVP_OPTCLFLOW_META_INFO, NULL));
@@ -155,10 +160,7 @@ gst_buffer_add_cvp_optclflow_meta (GstBuffer * buffer, GArray * mvectors,
   }
 
   meta->mvectors = mvectors;
-  meta->n_vectors = n_vectors;
-
   meta->stats = stats;
-  meta->n_stats = n_stats;
 
   return meta;
 }
