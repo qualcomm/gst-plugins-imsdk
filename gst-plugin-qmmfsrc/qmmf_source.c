@@ -114,6 +114,7 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
 #define DEFAULT_PROP_CAMERA_NOISE_REDUCTION_TUNING    NULL
 #define DEFAULT_PROP_CAMERA_IR_MODE                   IR_MODE_OFF
 #define DEFAULT_PROP_CAMERA_SENSOR_MODE               -1
+#define DEFAULT_PROP_CAMERA_FRC_MODE                  FRAME_SKIP
 
 static void gst_qmmfsrc_child_proxy_init (gpointer g_iface, gpointer data);
 
@@ -172,6 +173,7 @@ enum
   PROP_CAMERA_SENSOR_MODE,
   PROP_CAMERA_CAPTURE_METADATA,
   PROP_CAMERA_CHARACTERISTICS,
+  PROP_CAMERA_FRC_MODE,
 };
 
 static GstStaticPadTemplate qmmfsrc_video_src_template =
@@ -1082,6 +1084,10 @@ qmmfsrc_set_property (GObject * object, guint property_id,
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_CAPTURE_METADATA, value);
       break;
+    case PROP_CAMERA_FRC_MODE:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_FRC_MODE, value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -1239,6 +1245,10 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
     case PROP_CAMERA_CHARACTERISTICS:
         gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_CHARACTERISTICS, value);
+      break;
+    case PROP_CAMERA_FRC_MODE:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_FRC_MODE, value);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -1513,6 +1523,11 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           " metadata object and he is supposed to release metadata object",
           G_PARAM_READABLE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_CAMERA_FRC_MODE,
+    g_param_spec_enum ("frc-mode", "Frame rate control",
+          "Stream frame rate control mode.",
+          GST_TYPE_QMMFSRC_FRC_MODE, DEFAULT_PROP_CAMERA_FRC_MODE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   signals[SIGNAL_CAPTURE_IMAGE] =
       g_signal_new_class_handler ("capture-image", G_TYPE_FROM_CLASS (klass),
