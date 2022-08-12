@@ -53,6 +53,7 @@ target_link_libraries(${GST_QTI_ML_TFLITE} PRIVATE
   ${GST_ALLOC_LIBRARIES}
   ${TFLITE_LIBRARIES}
   $<$<VERSION_LESS_EQUAL:${TFLITE_VERSION},2.2.0>:gpu_delegate>
+  $<$<VERSION_LESS_EQUAL:${TFLITE_VERSION},2.2.0>:xnnpack_delegate>
   gstqtimlbase
 )
 
