@@ -687,6 +687,207 @@ gst_overlay_apply_text_item (GstOverlay * gst_overlay, const gchar * name,
 }
 
 /**
+ * gst_overlay_apply_pose_item:
+ * @gst_overlay: context
+ * @keypoints: array of pose keypoints
+ * @item_id: pointer to overlay item instance id
+ *
+ * Converts GstMLPoseNetMeta metadata to overlay configuration and applies
+ * it as graph overlay.
+ *
+ * Return true if succeed.
+ */
+static gboolean
+gst_overlay_apply_pose_item (GstOverlay *gst_overlay,
+    GstMLKeyPoint keypoints[KEY_POINTS_COUNT], uint32_t * item_id)
+{
+  OverlayParam ov_param;
+  int32_t ret = 0;
+
+  g_return_val_if_fail (gst_overlay != NULL, FALSE);
+  g_return_val_if_fail (keypoints != NULL, FALSE);
+  g_return_val_if_fail (item_id != NULL, FALSE);
+
+  static float kScoreTreshold = 0.1;
+
+  if (!(*item_id)) {
+    ov_param = {};
+    ov_param.type = OverlayType::kGraph;
+    ov_param.color = gst_overlay->pose_color;
+  } else {
+    ret = gst_overlay->overlay->GetOverlayParams (*item_id, ov_param);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay get param failed! ret: %d", ret);
+      return FALSE;
+    }
+  }
+
+  ov_param.dst_rect.start_x = 0;
+  ov_param.dst_rect.start_y = 0;
+  ov_param.dst_rect.width = gst_overlay->width;
+  ov_param.dst_rect.height = gst_overlay->height;
+
+  gint count = 0;
+  gint points[KEY_POINTS_COUNT];
+
+  if (keypoints[NOSE].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = keypoints[NOSE].x;
+    ov_param.graph.points[count].y = keypoints[NOSE].y;
+    points[NOSE] = count;
+    count++;
+  }
+
+  if (keypoints[LEFT_EYE].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = keypoints[LEFT_EYE].x;
+    ov_param.graph.points[count].y = keypoints[LEFT_EYE].y;
+    points[LEFT_EYE] = count;
+    count++;
+  }
+
+  if (keypoints[RIGHT_EYE].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = keypoints[RIGHT_EYE].x;
+    ov_param.graph.points[count].y = keypoints[RIGHT_EYE].y;
+    points[RIGHT_EYE] = count;
+    count++;
+  }
+
+  if (keypoints[LEFT_EAR].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = keypoints[LEFT_EAR].x;
+    ov_param.graph.points[count].y = keypoints[LEFT_EAR].y;
+    points[LEFT_EAR] = count;
+    count++;
+  }
+
+  if (keypoints[RIGHT_EAR].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = keypoints[RIGHT_EAR].x;
+    ov_param.graph.points[count].y = keypoints[RIGHT_EAR].y;
+    points[RIGHT_EAR] = count;
+    count++;
+  }
+
+  if (keypoints[LEFT_SHOULDER].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = keypoints[LEFT_SHOULDER].x;
+    ov_param.graph.points[count].y = keypoints[LEFT_SHOULDER].y;
+    points[LEFT_SHOULDER] = count;
+    count++;
+  }
+
+  if (keypoints[RIGHT_SHOULDER].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = keypoints[RIGHT_SHOULDER].x;
+    ov_param.graph.points[count].y = keypoints[RIGHT_SHOULDER].y;
+    points[RIGHT_SHOULDER] = count;
+    count++;
+  }
+
+  if (keypoints[LEFT_ELBOW].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = keypoints[LEFT_ELBOW].x;
+    ov_param.graph.points[count].y = keypoints[LEFT_ELBOW].y;
+    points[LEFT_ELBOW] = count;
+    count++;
+  }
+
+  if (keypoints[RIGHT_ELBOW].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = keypoints[RIGHT_ELBOW].x;
+    ov_param.graph.points[count].y = keypoints[RIGHT_ELBOW].y;
+    points[RIGHT_ELBOW] = count;
+    count++;
+  }
+
+  if (keypoints[LEFT_WRIST].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = keypoints[LEFT_WRIST].x;
+    ov_param.graph.points[count].y = keypoints[LEFT_WRIST].y;
+    points[LEFT_WRIST] = count;
+    count++;
+  }
+
+  if (keypoints[RIGHT_WRIST].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = keypoints[RIGHT_WRIST].x;
+    ov_param.graph.points[count].y = keypoints[RIGHT_WRIST].y;
+    points[RIGHT_WRIST] = count;
+    count++;
+  }
+
+  if (keypoints[LEFT_HIP].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = keypoints[LEFT_HIP].x;
+    ov_param.graph.points[count].y = keypoints[LEFT_HIP].y;
+    points[LEFT_HIP] = count;
+    count++;
+  }
+
+  if (keypoints[RIGHT_HIP].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = keypoints[RIGHT_HIP].x;
+    ov_param.graph.points[count].y = keypoints[RIGHT_HIP].y;
+    points[RIGHT_HIP] = count;
+    count++;
+  }
+
+  if (keypoints[LEFT_KNEE].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = keypoints[LEFT_KNEE].x;
+    ov_param.graph.points[count].y = keypoints[LEFT_KNEE].y;
+    points[LEFT_KNEE] = count;
+    count++;
+  }
+
+  if (keypoints[RIGHT_KNEE].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = keypoints[RIGHT_KNEE].x;
+    ov_param.graph.points[count].y = keypoints[RIGHT_KNEE].y;
+    points[RIGHT_KNEE] = count;
+    count++;
+  }
+
+  if (keypoints[LEFT_ANKLE].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = keypoints[LEFT_ANKLE].x;
+    ov_param.graph.points[count].y = keypoints[LEFT_ANKLE].y;
+    points[LEFT_ANKLE] = count;
+    count++;
+  }
+
+  if (keypoints[RIGHT_ANKLE].score > kScoreTreshold) {
+    ov_param.graph.points[count].x = keypoints[RIGHT_ANKLE].x;
+    ov_param.graph.points[count].y = keypoints[RIGHT_ANKLE].y;
+    points[RIGHT_ANKLE] = count;
+    count++;
+  }
+  ov_param.graph.points_count = count;
+
+  count = 0;
+  ov_param.graph.chain_count = 0;
+  for (guint i = 0; i < sizeof (PoseChain) / sizeof (PoseChain[0]); i++) {
+    GstMLKeyPointsType point0 = PoseChain[i][0];
+    GstMLKeyPointsType point1 = PoseChain[i][1];
+    if (keypoints[point0].score > kScoreTreshold &&
+        keypoints[point1].score > kScoreTreshold) {
+      ov_param.graph.chain[count][0] = points[point0];
+      ov_param.graph.chain[count][1] = points[point1];
+      count++;
+    }
+  }
+  ov_param.graph.chain_count = count;
+
+  if (!(*item_id)) {
+    ret = gst_overlay->overlay->CreateOverlayItem (ov_param, item_id);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay create failed! ret: %d", ret);
+      return FALSE;
+    }
+
+    ret = gst_overlay->overlay->EnableOverlayItem (*item_id);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay enable failed! ret: %d", ret);
+      return FALSE;
+    }
+  } else {
+    ret = gst_overlay->overlay->UpdateOverlayParams (*item_id, ov_param);
+    if (ret != 0) {
+      GST_ERROR_OBJECT (gst_overlay, "Overlay set param failed! ret: %d", ret);
+      return FALSE;
+    }
+  }
+
+  return TRUE;
+}
+
+/**
  * gst_overlay_apply_roi_item:
  * @gst_overlay: context
  * @metadata: machine learning metadata entry
@@ -741,6 +942,203 @@ gst_overlay_apply_roi_item (GstOverlay * gst_overlay, gpointer meta,
 
     return gst_overlay_apply_text_item (gst_overlay, label, color,
         gst_overlay->text_font_size, &rect, item_id);
+  }
+
+  structure = gst_video_region_of_interest_meta_get_param (roimeta,
+      "PoseEstimation");
+  if (structure) {
+    GstStructure *keypoint = NULL;
+    GstMLKeyPoint keypoints[KEY_POINTS_COUNT];
+    gdouble x = 0.0, y = 0.0, confidence = 0.0;
+
+    keypoint = GST_STRUCTURE (
+        g_value_get_boxed (gst_structure_get_value (structure, "nose")));
+
+    gst_structure_get_double (keypoint, "x", &x);
+    gst_structure_get_double (keypoint, "y", &y);
+    gst_structure_get_double (keypoint, "confidence", &confidence);
+
+    keypoints[NOSE].score = confidence;
+    keypoints[NOSE].x = x * gst_overlay->width;
+    keypoints[NOSE].y = y * gst_overlay->height;
+
+    keypoint = GST_STRUCTURE (
+        g_value_get_boxed (gst_structure_get_value (structure, "left-eye")));
+
+    gst_structure_get_double (keypoint, "x", &x);
+    gst_structure_get_double (keypoint, "y", &y);
+    gst_structure_get_double (keypoint, "confidence", &confidence);
+
+    keypoints[LEFT_EYE].score = confidence;
+    keypoints[LEFT_EYE].x = x * gst_overlay->width;
+    keypoints[LEFT_EYE].y = y * gst_overlay->height;
+
+    keypoint = GST_STRUCTURE (
+        g_value_get_boxed (gst_structure_get_value (structure, "right-eye")));
+
+    gst_structure_get_double (keypoint, "x", &x);
+    gst_structure_get_double (keypoint, "y", &y);
+    gst_structure_get_double (keypoint, "confidence", &confidence);
+
+    keypoints[RIGHT_EYE].score = confidence;
+    keypoints[RIGHT_EYE].x = x * gst_overlay->width;
+    keypoints[RIGHT_EYE].y = y * gst_overlay->height;
+
+    keypoint = GST_STRUCTURE (
+        g_value_get_boxed (gst_structure_get_value (structure, "left-ear")));
+
+    gst_structure_get_double (keypoint, "x", &x);
+    gst_structure_get_double (keypoint, "y", &y);
+    gst_structure_get_double (keypoint, "confidence", &confidence);
+
+    keypoints[LEFT_EAR].score = confidence;
+    keypoints[LEFT_EAR].x = x * gst_overlay->width;
+    keypoints[LEFT_EAR].y = y * gst_overlay->height;
+
+    keypoint = GST_STRUCTURE (
+        g_value_get_boxed (gst_structure_get_value (structure, "right-ear")));
+
+    gst_structure_get_double (keypoint, "x", &x);
+    gst_structure_get_double (keypoint, "y", &y);
+    gst_structure_get_double (keypoint, "confidence", &confidence);
+
+    keypoints[RIGHT_EAR].score = confidence;
+    keypoints[RIGHT_EAR].x = x * gst_overlay->width;
+    keypoints[RIGHT_EAR].y = y * gst_overlay->height;
+
+    keypoint = GST_STRUCTURE (
+        g_value_get_boxed (gst_structure_get_value (structure, "left-shoulder")));
+
+    gst_structure_get_double (keypoint, "x", &x);
+    gst_structure_get_double (keypoint, "y", &y);
+    gst_structure_get_double (keypoint, "confidence", &confidence);
+
+    keypoints[LEFT_SHOULDER].score = confidence;
+    keypoints[LEFT_SHOULDER].x = x * gst_overlay->width;
+    keypoints[LEFT_SHOULDER].y = y * gst_overlay->height;
+
+    keypoint = GST_STRUCTURE (
+        g_value_get_boxed (gst_structure_get_value (structure, "right-shoulder")));
+
+    gst_structure_get_double (keypoint, "x", &x);
+    gst_structure_get_double (keypoint, "y", &y);
+    gst_structure_get_double (keypoint, "confidence", &confidence);
+
+    keypoints[RIGHT_SHOULDER].score = confidence;
+    keypoints[RIGHT_SHOULDER].x = x * gst_overlay->width;
+    keypoints[RIGHT_SHOULDER].y = y * gst_overlay->height;
+
+    keypoint = GST_STRUCTURE (
+        g_value_get_boxed (gst_structure_get_value (structure, "left-elbow")));
+
+    gst_structure_get_double (keypoint, "x", &x);
+    gst_structure_get_double (keypoint, "y", &y);
+    gst_structure_get_double (keypoint, "confidence", &confidence);
+
+    keypoints[LEFT_ELBOW].score = confidence;
+    keypoints[LEFT_ELBOW].x = x * gst_overlay->width;
+    keypoints[LEFT_ELBOW].y = y * gst_overlay->height;
+
+    keypoint = GST_STRUCTURE (
+        g_value_get_boxed (gst_structure_get_value (structure, "right-elbow")));
+
+    gst_structure_get_double (keypoint, "x", &x);
+    gst_structure_get_double (keypoint, "y", &y);
+    gst_structure_get_double (keypoint, "confidence", &confidence);
+
+    keypoints[RIGHT_ELBOW].score = confidence;
+    keypoints[RIGHT_ELBOW].x = x * gst_overlay->width;
+    keypoints[RIGHT_ELBOW].y = y * gst_overlay->height;
+
+    keypoint = GST_STRUCTURE (
+        g_value_get_boxed (gst_structure_get_value (structure, "left-wrist")));
+
+    gst_structure_get_double (keypoint, "x", &x);
+    gst_structure_get_double (keypoint, "y", &y);
+    gst_structure_get_double (keypoint, "confidence", &confidence);
+
+    keypoints[LEFT_WRIST].score = confidence;
+    keypoints[LEFT_WRIST].x = x * gst_overlay->width;
+    keypoints[LEFT_WRIST].y = y * gst_overlay->height;
+
+    keypoint = GST_STRUCTURE (
+        g_value_get_boxed (gst_structure_get_value (structure, "right-wrist")));
+
+    gst_structure_get_double (keypoint, "x", &x);
+    gst_structure_get_double (keypoint, "y", &y);
+    gst_structure_get_double (keypoint, "confidence", &confidence);
+
+    keypoints[RIGHT_WRIST].score = confidence;
+    keypoints[RIGHT_WRIST].x = x * gst_overlay->width;
+    keypoints[RIGHT_WRIST].y = y * gst_overlay->height;
+
+    keypoint = GST_STRUCTURE (
+        g_value_get_boxed (gst_structure_get_value (structure, "left-hip")));
+
+    gst_structure_get_double (keypoint, "x", &x);
+    gst_structure_get_double (keypoint, "y", &y);
+    gst_structure_get_double (keypoint, "confidence", &confidence);
+
+    keypoints[LEFT_HIP].score = confidence;
+    keypoints[LEFT_HIP].x = x * gst_overlay->width;
+    keypoints[LEFT_HIP].y = y * gst_overlay->height;
+
+    keypoint = GST_STRUCTURE (
+        g_value_get_boxed (gst_structure_get_value (structure, "right-hip")));
+
+    gst_structure_get_double (keypoint, "x", &x);
+    gst_structure_get_double (keypoint, "y", &y);
+    gst_structure_get_double (keypoint, "confidence", &confidence);
+
+    keypoints[RIGHT_HIP].score = confidence;
+    keypoints[RIGHT_HIP].x = x * gst_overlay->width;
+    keypoints[RIGHT_HIP].y = y * gst_overlay->height;
+
+    keypoint = GST_STRUCTURE (
+        g_value_get_boxed (gst_structure_get_value (structure, "left-knee")));
+
+    gst_structure_get_double (keypoint, "x", &x);
+    gst_structure_get_double (keypoint, "y", &y);
+    gst_structure_get_double (keypoint, "confidence", &confidence);
+
+    keypoints[LEFT_KNEE].score = confidence;
+    keypoints[LEFT_KNEE].x = x * gst_overlay->width;
+    keypoints[LEFT_KNEE].y = y * gst_overlay->height;
+
+    keypoint = GST_STRUCTURE (
+        g_value_get_boxed (gst_structure_get_value (structure, "right-knee")));
+
+    gst_structure_get_double (keypoint, "x", &x);
+    gst_structure_get_double (keypoint, "y", &y);
+    gst_structure_get_double (keypoint, "confidence", &confidence);
+
+    keypoints[RIGHT_KNEE].score = confidence;
+    keypoints[RIGHT_KNEE].x = x * gst_overlay->width;
+    keypoints[RIGHT_KNEE].y = y * gst_overlay->height;
+
+    keypoint = GST_STRUCTURE (
+        g_value_get_boxed (gst_structure_get_value (structure, "left-ankle")));
+
+    gst_structure_get_double (keypoint, "x", &x);
+    gst_structure_get_double (keypoint, "y", &y);
+    gst_structure_get_double (keypoint, "confidence", &confidence);
+
+    keypoints[LEFT_ANKLE].score = confidence;
+    keypoints[LEFT_ANKLE].x = x * gst_overlay->width;
+    keypoints[LEFT_ANKLE].y = y * gst_overlay->height;
+
+    keypoint = GST_STRUCTURE (
+        g_value_get_boxed (gst_structure_get_value (structure, "right-ankle")));
+
+    gst_structure_get_double (keypoint, "x", &x);
+    gst_structure_get_double (keypoint, "y", &y);
+    gst_structure_get_double (keypoint, "confidence", &confidence);
+
+    keypoints[RIGHT_ANKLE].score = confidence;
+    keypoints[RIGHT_ANKLE].x = x * gst_overlay->width;
+    keypoints[RIGHT_ANKLE].y = y * gst_overlay->height;
+
+    return gst_overlay_apply_pose_item (gst_overlay, keypoints, item_id);
   }
 
   return FALSE;
@@ -821,192 +1219,13 @@ static gboolean
 gst_overlay_apply_ml_pose_item (GstOverlay *gst_overlay, gpointer metadata,
     uint32_t * item_id)
 {
-  OverlayParam ov_param;
-  int32_t ret = 0;
-
   g_return_val_if_fail (gst_overlay != NULL, FALSE);
   g_return_val_if_fail (metadata != NULL, FALSE);
   g_return_val_if_fail (item_id != NULL, FALSE);
 
   GstMLPoseNetMeta * pose = (GstMLPoseNetMeta *) metadata;
 
-  static float kScoreTreshold = 0.1;
-
-  if (!(*item_id)) {
-    ov_param = {};
-    ov_param.type = OverlayType::kGraph;
-    ov_param.color = gst_overlay->pose_color;
-  } else {
-    ret = gst_overlay->overlay->GetOverlayParams (*item_id, ov_param);
-    if (ret != 0) {
-      GST_ERROR_OBJECT (gst_overlay, "Overlay get param failed! ret: %d", ret);
-      return FALSE;
-    }
-  }
-
-  ov_param.dst_rect.start_x = 0;
-  ov_param.dst_rect.start_y = 0;
-  ov_param.dst_rect.width = gst_overlay->width;
-  ov_param.dst_rect.height = gst_overlay->height;
-
-  gint count = 0;
-  gint points[KEY_POINTS_COUNT];
-
-  if (pose->points[NOSE].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = pose->points[NOSE].x;
-    ov_param.graph.points[count].y = pose->points[NOSE].y;
-    points[NOSE] = count;
-    count++;
-  }
-
-  if (pose->points[LEFT_EYE].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = pose->points[LEFT_EYE].x;
-    ov_param.graph.points[count].y = pose->points[LEFT_EYE].y;
-    points[LEFT_EYE] = count;
-    count++;
-  }
-
-  if (pose->points[RIGHT_EYE].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = pose->points[RIGHT_EYE].x;
-    ov_param.graph.points[count].y = pose->points[RIGHT_EYE].y;
-    points[RIGHT_EYE] = count;
-    count++;
-  }
-
-  if (pose->points[LEFT_EAR].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = pose->points[LEFT_EAR].x;
-    ov_param.graph.points[count].y = pose->points[LEFT_EAR].y;
-    points[LEFT_EAR] = count;
-    count++;
-  }
-
-  if (pose->points[RIGHT_EAR].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = pose->points[RIGHT_EAR].x;
-    ov_param.graph.points[count].y = pose->points[RIGHT_EAR].y;
-    points[RIGHT_EAR] = count;
-    count++;
-  }
-
-  if (pose->points[LEFT_SHOULDER].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = pose->points[LEFT_SHOULDER].x;
-    ov_param.graph.points[count].y = pose->points[LEFT_SHOULDER].y;
-    points[LEFT_SHOULDER] = count;
-    count++;
-  }
-
-  if (pose->points[RIGHT_SHOULDER].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = pose->points[RIGHT_SHOULDER].x;
-    ov_param.graph.points[count].y = pose->points[RIGHT_SHOULDER].y;
-    points[RIGHT_SHOULDER] = count;
-    count++;
-  }
-
-  if (pose->points[LEFT_ELBOW].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = pose->points[LEFT_ELBOW].x;
-    ov_param.graph.points[count].y = pose->points[LEFT_ELBOW].y;
-    points[LEFT_ELBOW] = count;
-    count++;
-  }
-
-  if (pose->points[RIGHT_ELBOW].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = pose->points[RIGHT_ELBOW].x;
-    ov_param.graph.points[count].y = pose->points[RIGHT_ELBOW].y;
-    points[RIGHT_ELBOW] = count;
-    count++;
-  }
-
-  if (pose->points[LEFT_WRIST].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = pose->points[LEFT_WRIST].x;
-    ov_param.graph.points[count].y = pose->points[LEFT_WRIST].y;
-    points[LEFT_WRIST] = count;
-    count++;
-  }
-
-  if (pose->points[RIGHT_WRIST].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = pose->points[RIGHT_WRIST].x;
-    ov_param.graph.points[count].y = pose->points[RIGHT_WRIST].y;
-    points[RIGHT_WRIST] = count;
-    count++;
-  }
-
-  if (pose->points[LEFT_HIP].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = pose->points[LEFT_HIP].x;
-    ov_param.graph.points[count].y = pose->points[LEFT_HIP].y;
-    points[LEFT_HIP] = count;
-    count++;
-  }
-
-  if (pose->points[RIGHT_HIP].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = pose->points[RIGHT_HIP].x;
-    ov_param.graph.points[count].y = pose->points[RIGHT_HIP].y;
-    points[RIGHT_HIP] = count;
-    count++;
-  }
-
-  if (pose->points[LEFT_KNEE].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = pose->points[LEFT_KNEE].x;
-    ov_param.graph.points[count].y = pose->points[LEFT_KNEE].y;
-    points[LEFT_KNEE] = count;
-    count++;
-  }
-
-  if (pose->points[RIGHT_KNEE].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = pose->points[RIGHT_KNEE].x;
-    ov_param.graph.points[count].y = pose->points[RIGHT_KNEE].y;
-    points[RIGHT_KNEE] = count;
-    count++;
-  }
-
-  if (pose->points[LEFT_ANKLE].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = pose->points[LEFT_ANKLE].x;
-    ov_param.graph.points[count].y = pose->points[LEFT_ANKLE].y;
-    points[LEFT_ANKLE] = count;
-    count++;
-  }
-
-  if (pose->points[RIGHT_ANKLE].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = pose->points[RIGHT_ANKLE].x;
-    ov_param.graph.points[count].y = pose->points[RIGHT_ANKLE].y;
-    points[RIGHT_ANKLE] = count;
-    count++;
-  }
-  ov_param.graph.points_count = count;
-
-  count = 0;
-  ov_param.graph.chain_count = 0;
-  for (guint i = 0; i < sizeof (PoseChain) / sizeof (PoseChain[0]); i++) {
-    GstMLKeyPointsType point0 = PoseChain[i][0];
-    GstMLKeyPointsType point1 = PoseChain[i][1];
-    if (pose->points[point0].score > kScoreTreshold &&
-        pose->points[point1].score > kScoreTreshold) {
-      ov_param.graph.chain[count][0] = points[point0];
-      ov_param.graph.chain[count][1] = points[point1];
-      count++;
-    }
-  }
-  ov_param.graph.chain_count = count;
-
-  if (!(*item_id)) {
-    ret = gst_overlay->overlay->CreateOverlayItem (ov_param, item_id);
-    if (ret != 0) {
-      GST_ERROR_OBJECT (gst_overlay, "Overlay create failed! ret: %d", ret);
-      return FALSE;
-    }
-
-    ret = gst_overlay->overlay->EnableOverlayItem (*item_id);
-    if (ret != 0) {
-      GST_ERROR_OBJECT (gst_overlay, "Overlay enable failed! ret: %d", ret);
-      return FALSE;
-    }
-  } else {
-    ret = gst_overlay->overlay->UpdateOverlayParams (*item_id, ov_param);
-    if (ret != 0) {
-      GST_ERROR_OBJECT (gst_overlay, "Overlay set param failed! ret: %d", ret);
-      return FALSE;
-    }
-  }
-
-  return TRUE;
+  return gst_overlay_apply_pose_item (gst_overlay, pose->points, item_id);
 }
 
 /**
@@ -2836,6 +3055,8 @@ gst_overlay_init (GstOverlay * gst_overlay)
   gst_overlay->text_dest_rect.h = DEFAULT_PROP_DEST_RECT_HEIGHT;
 
   g_mutex_init (&gst_overlay->lock);
+
+  g_warning ("This qtioverlay plugin will be deprecated in the future!");
 }
 
 static void
