@@ -243,16 +243,29 @@ GST_API void
 gst_ml_label_free (GstLabel * label);
 
 /**
- * gst_ml_load_labels:
+ * gst_ml_parse_labels:
  * @input: String containing either file location or a GValue string.
+ * @list: GValue list which will be filled with label information.
  *
  * Helper function to parse either a file containing labels in GValue format
  * or a directly raw GValue formated string.
  *
- * return: Pointer to hash table with the labels on success or NULL on failure
+ * return: TRUE on success or FALSE on failure
+ */
+gboolean
+gst_ml_parse_labels (const gchar * input, GValue * list);
+
+/**
+ * gst_ml_load_labels:
+ * @list: GValue list containing label information.
+ *
+ * Helper function to load labels information from GValue list into hash table
+ * comprised from GstLabel.
+ *
+ * return: Pointer to hash table of GstLabel on success or NULL on failure
  */
 GHashTable *
-gst_ml_load_labels (const gchar * input);
+gst_ml_load_labels (GValue * list);
 
 /**
  * gst_ml_enumarate_modules:

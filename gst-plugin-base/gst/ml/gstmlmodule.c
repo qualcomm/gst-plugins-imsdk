@@ -226,16 +226,13 @@ gst_ml_label_free (GstLabel * label)
   g_free (label);
 }
 
-GHashTable *
-gst_ml_load_labels (const gchar * input)
+gboolean
+gst_ml_parse_labels (const gchar * input, GValue * list)
 {
-  GHashTable *labels = NULL;
-  GValue list = G_VALUE_INIT;
-  guint idx = 0, id = 0;
+  g_return_val_if_fail (input != NULL, FALSE);
+  g_return_val_if_fail (list != NULL, FALSE);
 
-  g_return_val_if_fail (input != NULL, NULL);
-
-  g_value_init (&list, GST_TYPE_LIST);
+  g_value_init (list, GST_TYPE_LIST);
 
   if (g_file_test (input, G_FILE_TEST_IS_REGULAR)) {
     GString *string = NULL;
@@ -247,7 +244,7 @@ gst_ml_load_labels (const gchar * input)
       GST_ERROR ("Failed to get labels file contents, error: %s!",
           GST_STR_NULL (error->message));
       g_clear_error (&error);
-      return NULL;
+      return FALSE;
     }
 
     // Remove trailing space and replace new lines with a comma delimiter.
@@ -264,40 +261,51 @@ gst_ml_load_labels (const gchar * input)
     // Get the raw character data.
     contents = g_string_free (string, FALSE);
 
-    success = gst_value_deserialize (&list, contents);
+    success = gst_value_deserialize (list, contents);
     g_free (contents);
 
     if (!success) {
       GST_ERROR ("Failed to deserialize labels file contents!");
-      return NULL;
+      return FALSE;
     }
-  } else if (!gst_value_deserialize (&list, input)) {
+  } else if (!gst_value_deserialize (list, input)) {
     GST_ERROR ("Failed to deserialize labels!");
-    return NULL;
+    return FALSE;
   }
+
+  return TRUE;
+}
+
+GHashTable *
+gst_ml_load_labels (GValue * list)
+{
+  GHashTable *labels = NULL;
+  guint idx = 0, id = 0;
+
+  g_return_val_if_fail (list != NULL, NULL);
 
   labels = g_hash_table_new_full (NULL, NULL, NULL,
         (GDestroyNotify) gst_ml_label_free);
 
-  for (idx = 0; idx < gst_value_list_get_size (&list); idx++) {
+  for (idx = 0; idx < gst_value_list_get_size (list); idx++) {
     GstStructure *structure = NULL;
     GstLabel *label = NULL;
 
     structure = GST_STRUCTURE (
-        g_value_get_boxed (gst_value_list_get_value (&list, idx)));
+        g_value_get_boxed (gst_value_list_get_value (list, idx)));
 
     if (structure == NULL) {
-      GST_WARNING ("Failed to extract structure!");
-      continue;
+      GST_ERROR ("Failed to extract structure!");
+      return NULL;
     } else if (!gst_structure_has_field (structure, "id") ||
         !gst_structure_has_field (structure, "color")) {
-      GST_WARNING ("Structure does not contain 'id' and/or 'color' fields!");
+      GST_DEBUG ("Structure does not contain 'id' and/or 'color' fields!");
       continue;
     }
 
     if ((label = gst_ml_label_new ()) == NULL) {
       GST_ERROR ("Failed to allocate label memory!");
-      continue;
+      return NULL;
     }
 
     label->name = g_strdup (gst_structure_get_name (structure));
@@ -309,7 +317,6 @@ gst_ml_load_labels (const gchar * input)
     g_hash_table_insert (labels, GUINT_TO_POINTER (id), label);
   }
 
-  g_value_unset (&list);
   return labels;
 }
 

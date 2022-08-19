@@ -70,13 +70,16 @@
 #define GFLOAT_PTR_CAST(data)       ((gfloat*)data)
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
 
+// Non-maximum Suppression (NMS) threshold (50%).
+#define INTERSECTION_THRESHOLD 0.5F
+
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
     "type = (string) { FLOAT32 }, " \
     "dimensions = (int) < < 1, 10, 4 >, < 1, 10 >, < 1, 10 >, < 1 > >; " \
     "neural-network/tensors, " \
     "type = (string) { FLOAT32 }, " \
-    "dimensions = (int) < < 1, 10, 4 >, < 1, 10 >, < 1, 10 > >"
+    "dimensions = (int) < < 1, 100, 4 >, < 1, 100 >, < 1, 100 > >"
 
 // Module caps instance
 static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
@@ -87,20 +90,76 @@ struct _GstMLSubModule {
   GHashTable *labels;
 };
 
-static gint
-gst_ml_compare_predictions (gconstpointer a, gconstpointer b)
+static inline gdouble
+gst_ml_predictions_intersection_score (GstMLPrediction * l_prediction,
+    GstMLPrediction * r_prediction)
 {
-  const GstMLPrediction *l_prediction, *r_prediction;
+  gdouble width = 0, height = 0, intersection = 0, l_area = 0, r_area = 0;
 
-  l_prediction = (const GstMLPrediction*)a;
-  r_prediction = (const GstMLPrediction*)b;
+  // Figure out the width of the intersecting rectangle.
+  // 1st: Find out the X axis coordinate of left most Top-Right point.
+  width = MIN (l_prediction->right, r_prediction->right);
+  // 2nd: Find out the X axis coordinate of right most Top-Left point
+  // and substract from the previously found value.
+  width -= MAX (l_prediction->left, r_prediction->left);
 
-  if (l_prediction->confidence > r_prediction->confidence)
-    return -1;
-  else if (l_prediction->confidence < r_prediction->confidence)
-    return 1;
+  // Negative width means that there is no overlapping.
+  if (width <= 0.0F) return 0.0F;
 
-  return 0;
+  // Figure out the height of the intersecting rectangle.
+  // 1st: Find out the Y axis coordinate of bottom most Left-Top point.
+  height = MIN (l_prediction->bottom, r_prediction->bottom);
+  // 2nd: Find out the Y axis coordinate of top most Left-Bottom point
+  // and substract from the previously found value.
+  height -= MAX (l_prediction->top, r_prediction->top);
+
+  // Negative height means that there is no overlapping.
+  if (height <= 0.0F) return 0.0F;
+
+  // Calculate intersection area.
+  intersection = width * height;
+
+  // Calculate the are of the 2 objects.
+  l_area = (l_prediction->right - l_prediction->left) *
+      (l_prediction->bottom - l_prediction->top);
+  r_area = (r_prediction->right - r_prediction->left) *
+      (r_prediction->bottom - r_prediction->top);
+
+  // Intersection over Union score.
+  return intersection / (l_area + r_area - intersection);
+}
+
+static inline gint
+gst_ml_non_max_suppression (GstMLPrediction * l_prediction, GArray * predictions)
+{
+  gdouble score = 0.0;
+  guint idx = 0;
+
+  for (idx = 0; idx < predictions->len;  idx++) {
+    GstMLPrediction *r_prediction =
+        &(g_array_index (predictions, GstMLPrediction, idx));
+
+    score = gst_ml_predictions_intersection_score (l_prediction, r_prediction);
+
+    // If the score is below the threshold, continue with next list entry.
+    if (score <= INTERSECTION_THRESHOLD)
+      continue;
+
+    // If labels do not match, continue with next list entry.
+    if (g_strcmp0 (l_prediction->label, r_prediction->label) != 0)
+      continue;
+
+    // If confidence of current prediction is higher, remove the old entry.
+    if (l_prediction->confidence > r_prediction->confidence)
+      return idx;
+
+    // If confidence of current prediction is lower, don't add it to the list.
+    if (l_prediction->confidence <= r_prediction->confidence)
+      return -2;
+  }
+
+  // If this point is reached then add current prediction to the list;
+  return -1;
 }
 
 gpointer
@@ -147,15 +206,18 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   const gchar *input = NULL;
+  GValue list = G_VALUE_INIT;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (settings != NULL, FALSE);
 
   input = gst_structure_get_string (settings, GST_ML_MODULE_OPT_LABELS);
+  g_return_val_if_fail (gst_ml_parse_labels (input, &list), FALSE);
 
-  submodule->labels = gst_ml_load_labels (input);
+  submodule->labels = gst_ml_load_labels (&list);
   g_return_val_if_fail (submodule->labels != NULL, FALSE);
 
+  g_value_unset (&list);
   gst_structure_free (settings);
   return TRUE;
 }
@@ -167,7 +229,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GArray *predictions = (GArray *) output;
   GstProtectionMeta *pmeta = NULL;
   gfloat *bboxes = NULL, *classes = NULL, *scores = NULL;
-  guint idx = 0, n_entries = 0, sar_n = 1, sar_d = 1;
+  gint sar_n = 1, sar_d = 1, nms = -1;
+  guint idx = 0, n_entries = 0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);
@@ -231,9 +294,21 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       prediction.right *= coeficient;
     }
 
+    // Non-Max Suppression (NMS) algorithm.
+    nms = gst_ml_non_max_suppression (&prediction, predictions);
+
+    // If the NMS result is -2 don't add the prediction to the list.
+    if (nms == (-2)){
+      g_free (prediction.label);
+      continue;
+    }
+
+    // If the NMS result is above -1 remove the entry with the nms index.
+    if (nms >= 0)
+      predictions = g_array_remove_index (predictions, nms);
+
     predictions = g_array_append_val (predictions, prediction);
   }
 
-  g_array_sort (predictions, gst_ml_compare_predictions);
   return TRUE;
 }

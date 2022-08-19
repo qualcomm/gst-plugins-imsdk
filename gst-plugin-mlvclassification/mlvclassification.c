@@ -205,15 +205,8 @@ gst_ml_modules_get_type (void)
   return gtype;
 }
 
-static void
-gst_ml_prediction_free (GstMLPrediction * prediction)
-{
-  if (prediction->label != NULL)
-    g_free (prediction->label);
-}
-
 static gboolean
-caps_has_feature (const GstCaps * caps, const gchar * feature)
+gst_caps_has_feature (const GstCaps * caps, const gchar * feature)
 {
   guint idx = 0;
 
@@ -228,6 +221,29 @@ caps_has_feature (const GstCaps * caps, const gchar * feature)
     idx++;
   }
   return FALSE;
+}
+
+static void
+gst_ml_prediction_free (GstMLPrediction * prediction)
+{
+  if (prediction->label != NULL)
+    g_free (prediction->label);
+}
+
+static gint
+gst_ml_compare_predictions (gconstpointer a, gconstpointer b)
+{
+  const GstMLPrediction *l_prediction, *r_prediction;
+
+  l_prediction = (const GstMLPrediction*)a;
+  r_prediction = (const GstMLPrediction*)b;
+
+  if (l_prediction->confidence > r_prediction->confidence)
+    return -1;
+  else if (l_prediction->confidence < r_prediction->confidence)
+    return 1;
+
+  return 0;
 }
 
 static GstBufferPool *
@@ -247,7 +263,7 @@ gst_ml_video_classification_create_pool (
     }
 
     // If downstream allocation query supports GBM, allocate gbm memory.
-    if (caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
+    if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
       GST_INFO_OBJECT (classification, "Uses GBM memory");
       pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
     } else {
@@ -907,6 +923,9 @@ gst_ml_video_classification_transform (GstBaseTransform * base,
     g_array_free (predictions, TRUE);
     return GST_FLOW_ERROR;
   }
+
+  // Sort the list of predictions.
+  g_array_sort (predictions, gst_ml_compare_predictions);
 
   if (classification->mode == OUTPUT_MODE_VIDEO)
     success = gst_ml_video_classification_fill_video_output (classification,

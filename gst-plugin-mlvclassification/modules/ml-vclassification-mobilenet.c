@@ -85,22 +85,6 @@ struct _GstMLSubModule {
   GHashTable *labels;
 };
 
-static gint
-gst_ml_compare_predictions (gconstpointer a, gconstpointer b)
-{
-  const GstMLPrediction *l_prediction, *r_prediction;
-
-  l_prediction = (const GstMLPrediction*)a;
-  r_prediction = (const GstMLPrediction*)b;
-
-  if (l_prediction->confidence > r_prediction->confidence)
-    return -1;
-  else if (l_prediction->confidence < r_prediction->confidence)
-    return 1;
-
-  return 0;
-}
-
 gpointer
 gst_ml_module_open (void)
 {
@@ -145,15 +129,18 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   const gchar *input = NULL;
+  GValue list = G_VALUE_INIT;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (settings != NULL, FALSE);
 
   input = gst_structure_get_string (settings, GST_ML_MODULE_OPT_LABELS);
+  g_return_val_if_fail (gst_ml_parse_labels (input, &list), FALSE);
 
-  submodule->labels = gst_ml_load_labels (input);
+  submodule->labels = gst_ml_load_labels (&list);
   g_return_val_if_fail (submodule->labels != NULL, FALSE);
 
+  g_value_unset (&list);
   gst_structure_free (settings);
   return TRUE;
 }
@@ -207,6 +194,5 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     predictions = g_array_append_val (predictions, prediction);
   }
 
-  g_array_sort (predictions, gst_ml_compare_predictions);
   return TRUE;
 }

@@ -73,15 +73,19 @@ typedef struct _GstMLPrediction GstMLPrediction;
 
 /**
  * GstMLPrediction:
- * @label: the name of the prediction
- * @confidence: the percentage certainty that the prediction is accurate
- * @color: the possible color that is associated with this prediction
- * @top: the Y axis coordinate of upper-left corner
- * @left: the X axis coordinate of upper-left corner
- * @bottom: the Y axis coordinate of lower-right corner
- * @right: the X axis coordinate of lower-right corner
+ * @label: the name of the prediction.
+ * @confidence: the percentage certainty that the prediction is accurate.
+ * @color: the possible color that is associated with this prediction.
+ * @top: the Y axis coordinate of upper-left corner.
+ * @left: the X axis coordinate of upper-left corner.
+ * @bottom: the Y axis coordinate of lower-right corner.
+ * @right: the X axis coordinate of lower-right corner.
  *
  * Information describing prediction result from object detection models.
+ * All fields are mandatory and need to be filled by the submodule.
+ *
+ * The fields top, left, bottom and right must be set in (0.0 to 1.0) relative
+ * coordinate system.
  */
 struct _GstMLPrediction {
   gchar  *label;
@@ -97,7 +101,7 @@ struct _GstMLPrediction {
  * gst_ml_video_detection_module_execute:
  * @module: Pointer to ML post-processing module.
  * @mlframe: Frame containing mapped tensor memory blocks that need processing.
- * @predictions: Sorted GArray of #GstMLPrediction.
+ * @predictions: GArray of #GstMLPrediction.
  *
  * Convenient wrapper function used on plugin level to call the module
  * 'gst_ml_module_process' API via 'gst_ml_module_execute' wrapper in order
