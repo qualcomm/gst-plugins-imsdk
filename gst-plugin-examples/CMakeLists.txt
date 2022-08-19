@@ -9,6 +9,8 @@ find_package(PkgConfig)
 # Get the pkgconfigs exported by the automake tools
 pkg_check_modules(GST
   REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_VIDEO
+  REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
 
 if (ENABLE_TRACKING_CAM)
   add_subdirectory(gst-tracking-cam-app)
@@ -20,3 +22,4 @@ add_subdirectory(gst-activate-deactivate-streams-runtime)
 add_subdirectory(gst-hotplug-pov-camera-app)
 add_subdirectory(gst-shdr-app)
 add_subdirectory(gst-camera-metadata-example)
+add_subdirectory(gst-appsink-raw-plus-yuv)
