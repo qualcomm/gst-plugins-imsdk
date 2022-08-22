@@ -1,0 +1,26 @@
+## About
+
+This README file contains steps to enable SNPE GStreamer plugin(s)
+
+## Instructions
+
+1. Enable SNPE Distro
+    - Add 'qti-snpe' to 'DISTRO_FEATURES_append' list in the distro conf file
+        ```
+        DISTRO_FEATURES_append = "qti-snpe"
+        ```
+
+2. Download SNPE package and unzip it.
+
+3. Incorporate the downloaded and unzipped SNPE package into the workspace.
+    - Create folders 'files/snpe' in '<path-to-workspace>/poky/meta-qti-ml-prop/recipes/snpe-sdk/'
+        ```bash
+        mkdir -p <path-to-workspace>/poky/meta-qti-ml-prop/recipes/snpe-sdk/files/snpe
+        ```
+    - Copy the unzipped SNPE package folder to '<path-to-workspace>/poky/meta-qti-ml-prop/recipes/snpe-sdk/files/snpe/'
+        ```bash
+        cp -r <path-to-unzipped-SNPE>/* <path-to-workspace>/poky/meta-qti-ml-prop/recipes/snpe-sdk/files/snpe/
+        ```
+    - The final directory structure should look like - <path-to-workspace>/poky/meta-qti-ml-prop/recipes/snpe-sdk/files/snpe/
+
+4. Rebuild the image and flash the image to device
