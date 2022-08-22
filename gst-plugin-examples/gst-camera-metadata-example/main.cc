@@ -125,7 +125,7 @@ new_sample (GstElement *sink, gpointer userdata)
 {
   GstSample *sample = NULL;
   GstBuffer *buffer = NULL;
-  GstProtectionMeta *pmeta = NULL;
+  guint64 timestamp = 0;
   GstMapInfo info;
 
   // New sample is available, retrieve the buffer from the sink.
@@ -148,15 +148,9 @@ new_sample (GstElement *sink, gpointer userdata)
     return GST_FLOW_ERROR;
   }
 
-  // Extract the original camera timestamp from GST protection meta.
-  pmeta = gst_buffer_get_protection_meta_id (buffer, "CameraFrameMeta");
-
-  if ((pmeta != NULL) && gst_structure_has_field (pmeta->info, "timestamp")) {
-    guint64 timestamp = 0;
-
-    gst_structure_get_uint64 (pmeta->info, "timestamp", &timestamp);
-    g_print ("Camera timestamp: %" G_GUINT64_FORMAT "\n", timestamp);
-  }
+  // Extract the original camera timestamp from GstBuffer OFFSET_END field
+  timestamp = GST_BUFFER_OFFSET_END (buffer);
+  g_print ("Camera timestamp: %" G_GUINT64_FORMAT "\n", timestamp);
 
   gst_buffer_unmap (buffer, &info);
   gst_sample_unref (sample);
