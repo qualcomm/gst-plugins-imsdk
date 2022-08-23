@@ -216,7 +216,9 @@ gst_metamux_sink_pad_finalize (GObject * object)
 {
   GstMetaMuxSinkPad *pad = GST_METAMUX_SINK_PAD (object);
 
-  g_queue_free (pad->queue);
+  gst_data_queue_set_flushing (pad->buffers, TRUE);
+  gst_data_queue_flush (pad->buffers);
+  gst_object_unref (GST_OBJECT_CAST (pad->buffers));
 
   G_OBJECT_CLASS (gst_metamux_sink_pad_parent_class)->finalize(object);
 }
@@ -232,7 +234,7 @@ gst_metamux_sink_pad_class_init (GstMetaMuxSinkPadClass * klass)
 void
 gst_metamux_sink_pad_init (GstMetaMuxSinkPad * pad)
 {
-  pad->queue = g_queue_new ();
+  pad->buffers = gst_data_queue_new (queue_is_full_cb, NULL, NULL, pad);
 }
 
 static void
