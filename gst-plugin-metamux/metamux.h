@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -65,6 +65,11 @@ G_BEGIN_DECLS
 typedef struct _GstMetaMux GstMetaMux;
 typedef struct _GstMetaMuxClass GstMetaMuxClass;
 
+typedef enum {
+  GST_METAMUX_MODE_ASYNC,
+  GST_METAMUX_MODE_SYNC,
+} GstMetaMuxMode;
+
 struct _GstMetaMux
 {
   /// Inherited parent structure.
@@ -95,6 +100,12 @@ struct _GstMetaMux
   gboolean          active;
   /// Condition for push/pop buffers from the queues.
   GCond             wakeup;
+  /// The timestamp until which the worker task will wait for synced data.
+  gint64            timeout;
+
+  /// Properties.
+  GstMetaMuxMode    mode;
+  GstClockTime      latency;
 };
 
 struct _GstMetaMuxClass {
