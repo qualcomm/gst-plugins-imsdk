@@ -167,16 +167,70 @@ result_metadata (gpointer userdata, guint camera_id, gpointer metadata)
   if (meta_ptr != nullptr) {
     g_print ("Result metadata ... entries - %ld\n", meta_ptr->entryCount());
 
+    // Exposure time
     if (meta_ptr->exists(ANDROID_SENSOR_EXPOSURE_TIME)) {
       gint64 sensorExpTime =
           meta_ptr->find(ANDROID_SENSOR_EXPOSURE_TIME).data.i64[0];
-      g_print ("Result sensorExpTime - %ld\n", sensorExpTime);
+      g_print ("Result sensor_exp_time - %ld\n", sensorExpTime);
     }
 
+    // Sensor Timestamp
     if (meta_ptr->exists(ANDROID_SENSOR_TIMESTAMP)) {
       gint64 timestamp =
           meta_ptr->find(ANDROID_SENSOR_TIMESTAMP).data.i64[0];
-      g_print ("Result ts - %ld\n", timestamp);
+      g_print ("Result timestamp - %ld\n", timestamp);
+    }
+
+    // AE mode for manual control
+    if (meta_ptr->exists(ANDROID_CONTROL_AE_MODE)) {
+      gint ae_mode = meta_ptr->find(ANDROID_CONTROL_AE_MODE).data.u8[0];
+      g_print ("Result ae_mode - %d\n", ae_mode);
+    }
+
+    // AE Target
+    if (meta_ptr->exists(ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION)) {
+      gint exp_compensation =
+        meta_ptr->find(ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION).data.i32[0];
+      g_print ("Result exp_compensation - %d\n", exp_compensation);
+    }
+
+    // AE Lock
+    if (meta_ptr->exists(ANDROID_CONTROL_AE_LOCK)) {
+      gint exp_lock =
+        meta_ptr->find(ANDROID_CONTROL_AE_LOCK).data.u8[0];
+      g_print ("Result exp_lock - %d\n", exp_lock);
+    }
+
+     // sensor analog + digital gain
+    if (meta_ptr->exists(ANDROID_SENSOR_SENSITIVITY)) {
+      gint32 sensitivity =
+        meta_ptr->find(ANDROID_SENSOR_SENSITIVITY).data.i32[0];
+      g_print ("Result sensitivity - %d\n", sensitivity);
+    }
+
+     // EV mode
+    if (meta_ptr->exists(ANDROID_CONTROL_AE_COMPENSATION_RANGE)) {
+      gint32 min =
+        meta_ptr->find(ANDROID_CONTROL_AE_COMPENSATION_RANGE).data.i32[0];
+      gint32 max =
+        meta_ptr->find(ANDROID_CONTROL_AE_COMPENSATION_RANGE).data.i32[1];
+      g_print ("Result AE compensation range - %d - %d\n", min, max);
+    }
+
+     // EV steps
+    if (meta_ptr->exists(ANDROID_CONTROL_AE_COMPENSATION_STEP)) {
+      gint numerator =
+        meta_ptr->find(ANDROID_CONTROL_AE_COMPENSATION_STEP).data.r[0].numerator;
+      gint denominator =
+        meta_ptr->find(ANDROID_CONTROL_AE_COMPENSATION_RANGE).data.r[0].denominator;
+      g_print ("Result AE compensation step - %d/%d\n", numerator, denominator);
+    }
+
+    // Sensor analog gain
+    if (meta_ptr->exists(ANDROID_SENSOR_MAX_ANALOG_SENSITIVITY)) {
+      gint32 maxsensitivity =
+        meta_ptr->find(ANDROID_SENSOR_MAX_ANALOG_SENSITIVITY).data.i32[0];
+      g_print ("Result max sensitivity - %d\n", maxsensitivity);
     }
   }
 
