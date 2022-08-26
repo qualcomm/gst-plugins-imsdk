@@ -1,8 +1,8 @@
-# GStreamer ML video posenet plugin modules.
-set(GST_QTI_ML_MODULE ssd-posenet-tflite)
+# GStreamer ML video pose plugin modules.
+set(GST_QTI_ML_MODULE ml-vpose-posenet)
 
 add_library(${GST_QTI_ML_MODULE} SHARED
-  ssd-posenet-tflite.c
+  ml-vpose-posenet.c
 )
 
 target_include_directories(${GST_QTI_ML_MODULE} PUBLIC
