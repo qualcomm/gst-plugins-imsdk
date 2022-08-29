@@ -95,7 +95,7 @@ G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
 
 #define DEFAULT_PROP_SUBPIXEL_LAYOUT GST_ML_VIDEO_PIXEL_LAYOUT_REGULAR
 #define DEFAULT_PROP_MEAN            128.0
-#define DEFAULT_PROP_SIGMA           128.0
+#define DEFAULT_PROP_SIGMA           1.0
 
 #define GET_MEAN_VALUE(mean, idx) (mean->len >= (guint) (idx + 1)) ? \
     g_array_index (mean, gdouble, idx) : DEFAULT_PROP_MEAN
@@ -527,10 +527,12 @@ static gboolean
 gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
     GstVideoFrame * vframe)
 {
+  GstProtectionMeta *pmeta = NULL;
   guint8 *source = NULL;
   gfloat *destination = NULL;
   gdouble mean[4] = {0}, sigma[4] = {0};
   gint idx = 0, row = 0, column = 0, width = 0, height = 0, bpp = 0;
+  gint sar_n = 1, sar_d = 1;
 
   // Retrive the video frame Bytes Per Pixel for later calculations.
   bpp = GST_VIDEO_FORMAT_INFO_BITS (vframe->info.finfo) *
@@ -549,22 +551,25 @@ gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
   width = GST_VIDEO_FRAME_WIDTH (vframe);
   height = GST_VIDEO_FRAME_HEIGHT (vframe);
 
-  // TODO
-//  // Adjust dimensions so that only the image pixels will be normalized.
-//  if (mlconverter->sar_n > mlconverter->sar_d)
-//    height = gst_util_uint64_scale_int (width, mlconverter->sar_d,
-//        mlconverter->sar_n);
-//  else if (mlconverter->sar_n < mlconverter->sar_d)
-//    width = gst_util_uint64_scale_int (height, mlconverter->sar_n,
-//        mlconverter->sar_d);
+  // Extract the SAR (Source Aspect Ratio).
+  if ((pmeta = gst_buffer_get_protection_meta (vframe->buffer)) != NULL) {
+    sar_n = gst_value_get_fraction_numerator (
+        gst_structure_get_value (pmeta->info, "source-aspect-ratio"));
+    sar_d = gst_value_get_fraction_denominator (
+        gst_structure_get_value (pmeta->info, "source-aspect-ratio"));
+  }
+
+  // Adjust dimensions so that only the image pixels will be normalized.
+  if (sar_n > sar_d)
+    height = gst_util_uint64_scale_int (width, sar_d, sar_n);
+  else if (sar_n < sar_d)
+    width = gst_util_uint64_scale_int (height, sar_n, sar_d);
 
   // Normalize in reverse as front bytes are occupied.
   for (row = (height - 1); row >= 0; row--) {
     for (column = ((width * bpp) - 1); column >= 0; column--) {
       idx = (row * width * bpp) + column;
-
-      if (source[idx] != 0)
-        destination[idx] = (source[idx] - mean[idx % bpp]) / sigma[idx % bpp];
+      destination[idx] = (source[idx] - mean[idx % bpp]) * sigma[idx % bpp];
     }
   }
 
@@ -610,7 +615,7 @@ gst_ml_video_converter_normalize (GstMLVideoConverter * mlconverter,
   destination = GST_VIDEO_FRAME_PLANE_DATA (outframe, 0);
 
   for (idx = 0; idx < size; idx++)
-    destination[idx] = (source[idx] - mean[idx % bpp]) / sigma[idx % bpp];
+    destination[idx] = (source[idx] - mean[idx % bpp]) * sigma[idx % bpp];
 
   return TRUE;
 }
@@ -1094,6 +1099,7 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
   // Remove any padding from output video info as tensors require none.
   GST_VIDEO_INFO_PLANE_STRIDE (&outinfo, 0) -= padding;
 
+#ifdef USE_GLES_CONVERTER
   // Adjust the stride for some tensor types.
   if (mlinfo.type == GST_ML_TYPE_INT32 || mlinfo.type == GST_ML_TYPE_UINT32)
     GST_VIDEO_INFO_PLANE_STRIDE (&outinfo, 0) *= 4;
@@ -1101,6 +1107,7 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
     GST_VIDEO_INFO_PLANE_STRIDE (&outinfo, 0) *= 2;
   else if (mlinfo.type == GST_ML_TYPE_FLOAT32)
     GST_VIDEO_INFO_PLANE_STRIDE (&outinfo, 0) *= 4;
+#endif // USE_GLES_CONVERTER
 
   // Adjust the  video info size to account the removed padding.
   GST_VIDEO_INFO_SIZE (&outinfo) -= padding * GST_VIDEO_INFO_HEIGHT (&outinfo);
