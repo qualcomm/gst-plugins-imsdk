@@ -307,6 +307,8 @@ gst_batch_update_src_caps (GstBatch * batch)
     return FALSE;
   }
 
+  length = gst_caps_get_size (srccaps);
+
   // Update the framerate field for video caps.
   for (idx = 0; idx < length; idx++) {
     structure = gst_caps_get_structure (srccaps, idx);
