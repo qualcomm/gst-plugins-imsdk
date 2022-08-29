@@ -40,5 +40,6 @@ install(
   FILES ${CMAKE_CURRENT_SOURCE_DIR}/uvc.config
   DESTINATION /data
   PERMISSIONS OWNER_WRITE OWNER_READ
-  GROUP_READ
+              GROUP_READ
+              WORLD_READ
 )
