@@ -195,6 +195,7 @@ struct OverlayArrow {
 struct OverlayParam {
   OverlayType type;
   uint32_t color;
+  uint32_t font_size;
   OverlayRect dst_rect;
   uint32_t arrows_count;
   union {
