@@ -188,6 +188,8 @@ struct _GstQmmfContext {
   GstVideoRectangle sensorsize;
   /// Camera Sensor Mode.
   gint               sensormode;
+  /// Streams frame rate control mode
+  guchar            frc_mode;
 
   /// QMMF Recorder instance.
   ::qmmf::recorder::Recorder *recorder;
@@ -1128,6 +1130,15 @@ gst_qmmf_context_open (GstQmmfContext * context)
   forcesensormode.mode = context->sensormode;
   xtraparam.Update(::qmmf::recorder::QMMF_FORCE_SENSOR_MODE, forcesensormode);
 
+  // FrameRateControl
+  ::qmmf::recorder::FrameRateControl frc;
+  if (context->frc_mode == FRAME_SKIP) {
+    frc.mode = ::qmmf::recorder::FrameRateControlMode::kFrameSkip;
+  } else {
+    frc.mode = ::qmmf::recorder::FrameRateControlMode::kCaptureRequest;
+  }
+  xtraparam.Update(::qmmf::recorder::QMMF_FRAME_RATE_CONTROL, frc);
+
   qmmf::recorder::CameraResultCb result_cb = [&, context](uint32_t camera_id,
       const android::CameraMetadata& result) {
     context->metacb (camera_id, &result, context->userdata);
@@ -1787,6 +1798,9 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_SENSOR_MODE:
       context->sensormode = g_value_get_int (value);
       return;
+    case PARAM_CAMERA_FRC_MODE:
+      context->frc_mode = g_value_get_enum (value);
+      return;
   }
 
   if (context->state >= GST_STATE_READY &&
@@ -2300,6 +2314,9 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_SENSOR_MODE:
       g_value_set_int (value, context->sensormode);
       break;
+    case PARAM_CAMERA_FRC_MODE:
+      g_value_set_enum (value, context->frc_mode);
+      return;
     case PARAM_CAMERA_MANUAL_WB_SETTINGS:
     {
       gchar *string = NULL;

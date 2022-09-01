@@ -587,6 +587,26 @@ gst_qmmfsrc_noise_reduction_get_type (void)
   return gtype;
 }
 
+GType
+gst_qmmfsrc_frc_mode_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { FRAME_SKIP,
+        "Control stream frame rate by frame skip", "frame-skip"
+    },
+    { CAPTURE_REQUEST,
+        "Control stream frame rate by camera capture request", "capture-request"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstFrcMode", variants);
+
+  return gtype;
+}
+
 guchar
 gst_qmmfsrc_control_mode_android_value (const guint value)
 {
