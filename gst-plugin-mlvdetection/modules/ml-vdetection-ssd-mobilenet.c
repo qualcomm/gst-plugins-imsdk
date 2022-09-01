@@ -266,7 +266,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       continue;
 
     label = g_hash_table_lookup (submodule->labels,
-        GUINT_TO_POINTER (classes[idx] + 1));
+        GUINT_TO_POINTER (classes[idx]));
 
     prediction.confidence = confidence;
     prediction.label = g_strdup (label ? label->name : "unknown");

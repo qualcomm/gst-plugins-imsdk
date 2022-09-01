@@ -276,7 +276,7 @@ gst_ml_module_parse_split_tensors (GstMLSubModule * submodule,
           bbox[3] = pow ((bbox[3] * 2), 2) * gains[idx][anchor][1];
 
           label = g_hash_table_lookup (submodule->labels,
-              GUINT_TO_POINTER ((id - (num + CLASSES_IDX)) + 1));
+              GUINT_TO_POINTER (id - (num + CLASSES_IDX)));
 
           prediction.confidence = confidence * 100.0F;
           prediction.label = g_strdup (label ? label->name : "unknown");
@@ -362,7 +362,7 @@ gst_ml_module_parse_batch_tensors (GstMLSubModule * submodule,
     bbox[3] = (data[idx + 3] - s_qoffset) * s_qscale;
 
     label = g_hash_table_lookup (submodule->labels,
-        GUINT_TO_POINTER ((id - (idx + CLASSES_IDX)) + 1));
+        GUINT_TO_POINTER (id - (idx + CLASSES_IDX)));
 
     prediction.confidence = confidence * 100.0F;
     prediction.label = g_strdup (label ? label->name : "unknown");
