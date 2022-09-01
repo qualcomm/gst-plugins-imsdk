@@ -185,7 +185,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     if (value <= 10.0)
       continue;
 
-    label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (idx + 1));
+    label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (idx));
 
     prediction.confidence = value;
     prediction.label = g_strdup (label ? label->name : "unknown");
