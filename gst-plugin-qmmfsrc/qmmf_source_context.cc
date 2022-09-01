@@ -816,7 +816,6 @@ video_data_callback (GstQmmfContext * context, GstPad * pad,
   gint  stride[GST_VIDEO_MAX_PLANES] = { 0, 0, 0, 0 };
 
   GstBuffer *gstbuffer = NULL;
-  GstStructure *structure = NULL;
   GstDataQueueItem *item = NULL;
 
   for (idx = 0; idx < buffers.size(); ++idx) {
@@ -839,13 +838,10 @@ video_data_callback (GstQmmfContext * context, GstPad * pad,
     // Set GStreamer buffer video metadata.
     gst_buffer_add_video_meta_full (gstbuffer, GST_VIDEO_FRAME_FLAG_NONE,
         (GstVideoFormat)vpad->format, vpad->width, vpad->height,
-        numplanes, offset, stride
-    );
+        numplanes, offset, stride);
 
-    // Append protection meta with the original camera timestamp.
-    structure = gst_structure_new ("CameraFrameMeta",
-        "timestamp", G_TYPE_UINT64, buffer.timestamp, NULL);
-    GstProtectionMeta *pmeta = gst_buffer_add_protection_meta (gstbuffer, structure);
+    // Propagate original camera timestamp in media dependent OFFSET_END field.
+    GST_BUFFER_OFFSET_END (gstbuffer) = buffer.timestamp;
 
     GST_QMMF_CONTEXT_LOCK (context);
     // Initialize the timestamp base value for buffer synchronization.
@@ -888,7 +884,6 @@ image_data_callback (GstQmmfContext * context, GstPad * pad,
   ::qmmf::recorder::Recorder *recorder = context->recorder;
 
   GstBuffer *gstbuffer = NULL;
-  GstStructure *structure = NULL;
   GstDataQueueItem *item = NULL;
 
   gstbuffer = qmmfsrc_gst_buffer_new_wrapped (context, pad, &buffer);
@@ -896,12 +891,10 @@ image_data_callback (GstQmmfContext * context, GstPad * pad,
       recorder->ReturnImageCaptureBuffer (context->camera_id, buffer);,
       "Failed to create GST buffer!");
 
-  // Append protection meta with the original camera timestamp.
-  structure = gst_structure_new ("CameraFrameMeta",
-      "timestamp", G_TYPE_UINT64, buffer.timestamp, NULL);
-  gst_buffer_add_protection_meta (gstbuffer, structure);
-
   GST_BUFFER_FLAG_SET (gstbuffer, GST_BUFFER_FLAG_LIVE);
+
+  // Propagate original camera timestamp in media dependent OFFSET_END field.
+  GST_BUFFER_OFFSET_END (gstbuffer) = buffer.timestamp;
 
   GST_QMMF_CONTEXT_LOCK (context);
   // Initialize the timestamp base value for buffer synchronization.
