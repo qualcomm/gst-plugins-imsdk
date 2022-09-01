@@ -560,9 +560,9 @@ main (gint argc, gchar * argv[])
   tracking_camera.format = DEFAULT_FORMAT;
   tracking_camera.crop_type = DEFAULT_CROP_TYPE;
   tracking_camera.sync_enable = FALSE;
-  diff_pos_threshold = DEFAULT_POS_THRESHOLD;
-  diff_size_threshold = DEFAULT_SIZE_THRESHOLD;
-  speed_movement = DEFAULT_SPEED_MOVEMENT;
+  diff_pos_threshold = AFR_DEFAULT_POS_THRESHOLD;
+  diff_size_threshold = AFR_DEFAULT_SIZE_THRESHOLD;
+  speed_movement = AFR_DEFAULT_SPEED_MOVEMENT;
 
   GOptionEntry entries[] = {
       { "pos-percent", 'p', 0, G_OPTION_ARG_INT,
