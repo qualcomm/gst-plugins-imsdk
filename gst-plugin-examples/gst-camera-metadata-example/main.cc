@@ -222,7 +222,7 @@ result_metadata (gpointer userdata, guint camera_id, gpointer metadata)
       gint numerator =
         meta_ptr->find(ANDROID_CONTROL_AE_COMPENSATION_STEP).data.r[0].numerator;
       gint denominator =
-        meta_ptr->find(ANDROID_CONTROL_AE_COMPENSATION_RANGE).data.r[0].denominator;
+        meta_ptr->find(ANDROID_CONTROL_AE_COMPENSATION_STEP).data.r[0].denominator;
       g_print ("Result AE compensation step - %d/%d\n", numerator, denominator);
     }
 
