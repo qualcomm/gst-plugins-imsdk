@@ -72,6 +72,11 @@
 #define EXTRACT_BLUE_COLOR(color)  ((color >> 8) & 0xFF)
 #define EXTRACT_ALPHA_COLOR(color) ((color) & 0xFF)
 
+#define GST_ML_FRAME_IS_FLOAT32(mlframe) \
+    (GST_ML_FRAME_TYPE (mlframe) == GST_ML_TYPE_FLOAT32)
+#define GST_ML_FRAME_IS_INT32(mlframe) \
+    (GST_ML_FRAME_TYPE (mlframe) == GST_ML_TYPE_INT32)
+
 #define GFLOAT_PTR_CAST(data)       ((gfloat*)data)
 #define GINT32_PTR_CAST(data)       ((gint32*)data)
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
@@ -79,7 +84,13 @@
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
     "type = (string) { INT32, FLOAT32 }, " \
-    "dimensions = (int) < < 1, 513, 513 > >"
+    "dimensions = (int) < < 1, 513, 513 > >; " \
+    "neural-network/tensors, " \
+    "type = (string) { INT32, FLOAT32 }, " \
+    "dimensions = (int) < < 1, 513, 513, 21 > >; " \
+    "neural-network/tensors, " \
+    "type = (string) { FLOAT32 }, " \
+    "dimensions = (int) < < 1, 257, 257, 21 > >"
 
 // Module caps instance
 static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
@@ -157,7 +168,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GstVideoFrame *vframe = (GstVideoFrame *) output;
   GstProtectionMeta *pmeta = NULL;
   guint8 *indata = NULL, *outdata = NULL;
-  guint idx = 0, id = 0, bpp = 0, padding = 0, color = 0;
+  guint idx = 0, num = 0, id = 0, bpp = 0, padding = 0, color = 0, n_scores = 0;
   gint row = 0, column = 0, inwidth = 0, inheight = 0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
@@ -194,6 +205,10 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       inwidth = gst_util_uint64_scale_int (inheight, sar_n, sar_d);
   }
 
+  // The 4th tensor dimension represents multiple the class scores per pixel.
+  n_scores = (GST_ML_FRAME_N_DIMENSIONS (mlframe, 0) != 4) ? 1 :
+      GST_ML_FRAME_DIM (mlframe, 0, 3);
+
   for (row = 0; row < GST_VIDEO_FRAME_HEIGHT (vframe); row++) {
     for (column = 0; column < GST_VIDEO_FRAME_WIDTH (vframe); column++) {
       GstLabel *label = NULL;
@@ -203,11 +218,28 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
           GST_VIDEO_FRAME_HEIGHT (vframe));
       idx += gst_util_uint64_scale_int (column, inwidth,
           GST_VIDEO_FRAME_WIDTH (vframe));
+      idx *= n_scores;
 
-      if (GST_ML_FRAME_TYPE (mlframe) == GST_ML_TYPE_FLOAT32)
-        id = GFLOAT_PTR_CAST (indata)[idx];
-      else if (GST_ML_FRAME_TYPE (mlframe) == GST_ML_TYPE_INT32)
-        id = GINT32_PTR_CAST (indata)[idx];
+      // Initialize the class ID value.
+      id = idx;
+
+      // Find the class index with best score if tensor has multiple class scores.
+      for (num = (idx + 1); num < (idx + n_scores); num++) {
+        if (GST_ML_FRAME_IS_FLOAT32 (mlframe))
+          id = (GFLOAT_PTR_CAST (indata)[num] > GFLOAT_PTR_CAST (indata)[id]) ?
+              num : id;
+        else if (GST_ML_FRAME_IS_INT32 (mlframe))
+          id = (GINT32_PTR_CAST (indata)[num] > GINT32_PTR_CAST (indata)[id]) ?
+              num : id;
+      }
+
+      // If there is no 4th dimension the tensor pixel contains the class ID.
+      if (GST_ML_FRAME_IS_FLOAT32 (mlframe) && (n_scores == 1))
+        id = GFLOAT_PTR_CAST (indata)[id];
+      else if (GST_ML_FRAME_IS_INT32 (mlframe) && (n_scores == 1))
+        id = GINT32_PTR_CAST (indata)[id];
+      else
+        id = (id - idx);
 
       label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (id));
       color = (label != NULL) ? label->color : 0x000000FF;
