@@ -912,7 +912,12 @@ push_frame_downstream (GstVideoEncoder * encoder, BufferDescriptor * encode_buf)
     frame->output_buffer = outbuf;
 
     gst_video_codec_frame_unref (frame);
-    ret = gst_video_encoder_finish_frame (encoder, frame);
+    if (encode_buf->flag & FLAG_TYPE_INCOMPLETE) {
+      GST_DEBUG_OBJECT (c2venc, "INCOMPLETE Buffer received");
+      ret = gst_pad_push (encoder->srcpad, outbuf);
+    } else {
+      ret = gst_video_encoder_finish_frame (encoder, frame);
+    }
     if (ret != GST_FLOW_OK) {
       GST_ERROR_OBJECT (c2venc, "Failed to finish frame, outbuf: %p", outbuf);
       return GST_FLOW_ERROR;
