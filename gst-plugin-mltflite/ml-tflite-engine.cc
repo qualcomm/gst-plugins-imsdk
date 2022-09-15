@@ -233,10 +233,14 @@ gst_ml_tflite_engine_delegate_new (gint type)
     {
       tflite::StatefulNnApiDelegate::Options options;
 
-      // Set the higher ExecutionPreference bits so that the DSP is chosen.
-      options.execution_preference = static_cast<
-          tflite::StatefulNnApiDelegate::Options::ExecutionPreference>(0x00100000);
-
+      options.accelerator_name       = "libunifiedhal-driver.so2";
+      // Save power and maintain high accuracy of inference
+      options.execution_preference   =
+          tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
+#if TF_MAJOR_VERSION >= 2 && TF_MINOR_VERSION >= 5
+      // Burst computation as same delegate is used for all inputs in pipeline
+      options.use_burst_computation  = true;
+#endif
       if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
         GST_WARNING ("Failed to create Android NN Framework DSP delegate!");
         break;
@@ -249,10 +253,16 @@ gst_ml_tflite_engine_delegate_new (gint type)
     {
       tflite::StatefulNnApiDelegate::Options options;
 
-      // Set the higher ExecutionPreference bits so that the GPU is chosen.
-      options.execution_preference = static_cast<
-          tflite::StatefulNnApiDelegate::Options::ExecutionPreference>(0x00200000);
-
+      options.accelerator_name       = "libunifiedhal-driver.so1";
+      // Save power and maintain high accuracy of inference
+      options.execution_preference   =
+          tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
+#if TF_MAJOR_VERSION >= 2 && TF_MINOR_VERSION >= 5
+      // Burst computation as same delegate is used for all inputs in pipeline
+      options.use_burst_computation  = true;
+      // Allow quant types to be converted to fp16 instead of fp32
+      options.allow_fp16             = true;
+#endif
       if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
         GST_WARNING ("Failed to create Android NN Framework DSP delegate!");
         break;
@@ -265,10 +275,14 @@ gst_ml_tflite_engine_delegate_new (gint type)
     {
       tflite::StatefulNnApiDelegate::Options options;
 
-      // Set the higher ExecutionPreference bits so that the NPU is chosen.
-      options.execution_preference = static_cast<
-          tflite::StatefulNnApiDelegate::Options::ExecutionPreference>(0x00300000);
-
+      options.accelerator_name       = "libunifiedhal-driver.so0";
+      // Save power and maintain high accuracy of inference
+      options.execution_preference   =
+          tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
+#if TF_MAJOR_VERSION >= 2 && TF_MINOR_VERSION >= 5
+      // Burst computation as same delegate is used for all inputs in pipeline
+      options.use_burst_computation  = true;
+#endif
       if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
         GST_WARNING ("Failed to create Android NN Framework NPU delegate!");
         break;
