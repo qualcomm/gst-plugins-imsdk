@@ -22,6 +22,8 @@ endif()
 target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_LIBRARIES}
   binder
+  cutils
+  utils
 )
 
 install(
