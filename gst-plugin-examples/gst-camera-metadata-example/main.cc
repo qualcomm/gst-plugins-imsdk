@@ -35,6 +35,7 @@
 #include <glib-unix.h>
 #include <gst/gst.h>
 #include <camera/CameraMetadata.h>
+#include <camera/VendorTagDescriptor.h>
 
 #define GST_PROTECTION_META_CAST(obj) ((GstProtectionMeta *) obj)
 
@@ -120,6 +121,29 @@ error_cb (GstBus * bus, GstMessage * message, gpointer userdata)
   g_main_loop_quit (mloop);
 }
 
+static guint
+get_vendor_tag_by_name (const gchar * section, const gchar * name)
+{
+  ::android::sp<::android::VendorTagDescriptor> vtags;
+  ::android::status_t status = 0;
+  guint tag_id = 0;
+
+  vtags = ::android::VendorTagDescriptor::getGlobalVendorTagDescriptor();
+  if (vtags.get() == NULL) {
+    GST_WARNING ("Failed to retrieve Global Vendor Tag Descriptor!");
+    return 0;
+  }
+
+  status = vtags->lookupTag(::android::String8(name),
+      ::android::String8(section), &tag_id);
+  if (status != 0) {
+    GST_WARNING ("Unable to locate tag for '%s', section '%s'!", name, section);
+    return 0;
+  }
+
+  return tag_id;
+}
+
 static GstFlowReturn
 new_sample (GstElement *sink, gpointer userdata)
 {
@@ -163,6 +187,7 @@ result_metadata (gpointer userdata, guint camera_id, gpointer metadata)
 {
   ::android::CameraMetadata *meta_ptr = (::android::CameraMetadata*) metadata;
   camera_metadata_entry entry;
+  guint tag_id = 0;
 
   if (meta_ptr != nullptr) {
     g_print ("Result metadata ... entries - %ld\n", meta_ptr->entryCount());
@@ -231,6 +256,25 @@ result_metadata (gpointer userdata, guint camera_id, gpointer metadata)
       gint32 maxsensitivity =
         meta_ptr->find(ANDROID_SENSOR_MAX_ANALOG_SENSITIVITY).data.i32[0];
       g_print ("Result max sensitivity - %d\n", maxsensitivity);
+    }
+
+    // Sensor Read Result
+    gboolean flag = 0;
+    tag_id = get_vendor_tag_by_name (
+        "org.codeaurora.qcamera3.sensorreadoutput", "SensorReadResult");
+    if (meta_ptr->exists(tag_id)) {
+      flag = meta_ptr->find(tag_id).data.u8[0];
+      g_print ("Sensor Read Result: %d\n", flag);
+    }
+
+    if (flag) {
+      // Sensor Read Output
+      tag_id = get_vendor_tag_by_name (
+          "org.codeaurora.qcamera3.sensorreadoutput", "SensorReadOutput");
+      if (meta_ptr->exists(tag_id)) {
+        guint value = (meta_ptr->find(tag_id).data.u8[0]) | (meta_ptr->find(tag_id).data.u8[1] << 8);
+        g_print ("Sensor Read Output: %d\n", value);
+      }
     }
   }
 
@@ -369,6 +413,13 @@ main (gint argc, gchar *argv[])
     // Set capture metadata
     guchar awb = 6;
     meta_ptr->update(ANDROID_CONTROL_AWB_MODE, &awb, 1);
+
+    // Sensor Read Input
+    guchar flag = 1;
+    guint tag_id = get_vendor_tag_by_name (
+        "org.codeaurora.qcamera3.sensorreadinput", "SensorReadFlag");
+    meta_ptr->update(tag_id, &flag, 1);
+
     g_object_set (G_OBJECT (qtiqmmfsrc), "capture-metadata", meta_ptr, NULL);
 
     // Release metadata
