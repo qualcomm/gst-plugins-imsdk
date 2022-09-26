@@ -44,6 +44,12 @@
 * Usage:
 * gst-camera-switch-example
 *
+* Help:
+* gst-camera-switch-example --help
+*
+* Parameters:
+* -d - Enable display
+*
 */
 
 #include <stdio.h>
@@ -53,8 +59,6 @@
 
 #define OUTPUT_WIDTH 1280
 #define OUTPUT_HEIGHT 720
-
-#define USE_DISPLAY
 
 typedef struct _GstCameraSwitchCtx GstCameraSwitchCtx;
 
@@ -73,12 +77,13 @@ struct _GstCameraSwitchCtx
 
   GstElement *h264parse;
   GstElement *mp4mux;
-  GstElement *omxh264enc;
+  GstElement *encoder;
   GstElement *filesink;
 
   gboolean is_camera0;
   GMutex lock;
   gboolean exit;
+  gboolean use_display;
 };
 
 // Hangles interrupt signals like Ctrl+C etc.
@@ -247,6 +252,7 @@ thread_fn (gpointer user_data)
 gint
 main (gint argc, gchar * argv[])
 {
+  GOptionContext *ctx = NULL;
   GMainLoop *mloop = NULL;
   GstBus *bus = NULL;
   guint intrpt_watch_id = 0;
@@ -255,7 +261,7 @@ main (gint argc, gchar * argv[])
   GstElement *qtiqmmfsrc_0 = NULL;
   GstElement *capsfilter = NULL;
   GstElement *waylandsink = NULL;
-  GstElement *omxh264enc = NULL;
+  GstElement *encoder = NULL;
   GstElement *filesink = NULL;
   GstElement *h264parse = NULL;
   GstElement *mp4mux = NULL;
@@ -263,10 +269,45 @@ main (gint argc, gchar * argv[])
   GstStateChangeReturn state_ret = GST_STATE_CHANGE_FAILURE;
   GstCameraSwitchCtx cameraswitchctx = {};
   cameraswitchctx.exit = false;
+  cameraswitchctx.use_display = false;
   g_mutex_init (&cameraswitchctx.lock);
 
   // Initialize GST library.
   gst_init (&argc, &argv);
+
+  GOptionEntry entries[] = {
+      { "display", 'd', 0, G_OPTION_ARG_NONE,
+        &cameraswitchctx.use_display,
+        "Enable display",
+        "Parameter for enable display output"
+      },
+      { NULL }
+  };
+
+  // Parse command line entries.
+  if ((ctx = g_option_context_new ("DESCRIPTION")) != NULL) {
+    gboolean success = FALSE;
+    GError *error = NULL;
+
+    g_option_context_add_main_entries (ctx, entries, NULL);
+    g_option_context_add_group (ctx, gst_init_get_option_group ());
+
+    success = g_option_context_parse (ctx, &argc, &argv, &error);
+    g_option_context_free (ctx);
+
+    if (!success && (error != NULL)) {
+      g_printerr ("ERROR: Failed to parse command line options: %s!\n",
+           GST_STR_NULL (error->message));
+      g_clear_error (&error);
+      return -EFAULT;
+    } else if (!success && (NULL == error)) {
+      g_printerr ("ERROR: Initializing: Unknown error!\n");
+      return -EFAULT;
+    }
+  } else {
+    g_printerr ("ERROR: Failed to create options context!\n");
+    return -EFAULT;
+  }
 
   pipeline = gst_pipeline_new ("gst-cameraswitch");
   cameraswitchctx.pipeline = pipeline;
@@ -275,36 +316,55 @@ main (gint argc, gchar * argv[])
   qtiqmmfsrc_0 = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc_0");
   capsfilter = gst_element_factory_make ("capsfilter", "capsfilter");
 
-#ifdef USE_DISPLAY
-  waylandsink = gst_element_factory_make ("waylandsink", "waylandsink");
-#else
-  omxh264enc      = gst_element_factory_make ("omxh264enc", "omxh264enc");
-  filesink        = gst_element_factory_make ("filesink", "filesink");
-  h264parse       = gst_element_factory_make ("h264parse", "h264parse");
-  mp4mux          = gst_element_factory_make ("mp4mux", "mp4mux");
-#endif
-
   // Check if all elements are created successfully
   if (!pipeline || !qtiqmmfsrc_0 || !capsfilter) {
     g_printerr ("One element could not be created of found. Exiting.\n");
     return -1;
   }
 
-#ifndef USE_DISPLAY
-  g_object_set (G_OBJECT (h264parse), "name", "h264parse", NULL);
-  g_object_set (G_OBJECT (mp4mux), "name", "mp4mux", NULL);
-
-  // Set encoder properties
-  g_object_set (G_OBJECT (omxh264enc), "name", "omxh264enc", NULL);
-  g_object_set (G_OBJECT (omxh264enc), "target-bitrate", 6000000, NULL);
-  g_object_set (G_OBJECT (omxh264enc), "periodicity-idr", 1, NULL);
-  g_object_set (G_OBJECT (omxh264enc), "interval-intraframes", 29, NULL);
-  g_object_set (G_OBJECT (omxh264enc), "control-rate", 2, NULL);
-
-  g_object_set (G_OBJECT (filesink), "name", "filesink", NULL);
-  g_object_set (G_OBJECT (filesink), "location", "/data/mux.mp4", NULL);
-  g_object_set (G_OBJECT (filesink), "enable-last-sample", false, NULL);
+  if (cameraswitchctx.use_display) {
+    waylandsink = gst_element_factory_make ("waylandsink", "waylandsink");
+    // Check if all elements are created successfully
+    if (!waylandsink) {
+      g_printerr ("waylandsink could not be created of found. Exiting.\n");
+      return -1;
+    }
+  } else {
+#ifdef CODEC2_ENCODE
+    encoder      = gst_element_factory_make ("qtic2venc", "qtic2venc");
+#else
+    encoder      = gst_element_factory_make ("omxh264enc", "omxh264enc");
 #endif
+    filesink        = gst_element_factory_make ("filesink", "filesink");
+    h264parse       = gst_element_factory_make ("h264parse", "h264parse");
+    mp4mux          = gst_element_factory_make ("mp4mux", "mp4mux");
+
+    // Check if all elements are created successfully
+    if (!encoder || !filesink || !h264parse || !mp4mux) {
+      g_printerr ("Encoder's elements could not be created of found. Exiting.\n");
+      return -1;
+    }
+  }
+
+  if (!cameraswitchctx.use_display) {
+    g_object_set (G_OBJECT (h264parse), "name", "h264parse", NULL);
+    g_object_set (G_OBJECT (mp4mux), "name", "mp4mux", NULL);
+
+    // Set encoder properties
+    g_object_set (G_OBJECT (encoder), "name", "encoder", NULL);
+    g_object_set (G_OBJECT (encoder), "target-bitrate", 6000000, NULL);
+
+#ifndef CODEC2_ENCODE
+    // OMX encoder specific props
+    g_object_set (G_OBJECT (encoder), "periodicity-idr", 1, NULL);
+    g_object_set (G_OBJECT (encoder), "interval-intraframes", 29, NULL);
+    g_object_set (G_OBJECT (encoder), "control-rate", 2, NULL);
+#endif
+
+    g_object_set (G_OBJECT (filesink), "name", "filesink", NULL);
+    g_object_set (G_OBJECT (filesink), "location", "/data/mux.mp4", NULL);
+    g_object_set (G_OBJECT (filesink), "enable-last-sample", false, NULL);
+  }
 
   // Set qmmfsrc 0 properties
   g_object_set (G_OBJECT (qtiqmmfsrc_0), "name", "qmmf_0", NULL);
@@ -313,16 +373,16 @@ main (gint argc, gchar * argv[])
   // Set capsfilter properties
   g_object_set (G_OBJECT (capsfilter), "name", "capsfilter", NULL);
 
-#ifdef USE_DISPLAY
-  // Set waylandsink properties
-  g_object_set (G_OBJECT (waylandsink), "name", "waylandsink", NULL);
-  g_object_set (G_OBJECT (waylandsink), "x", 0, NULL);
-  g_object_set (G_OBJECT (waylandsink), "y", 0, NULL);
-  g_object_set (G_OBJECT (waylandsink), "width", 600, NULL);
-  g_object_set (G_OBJECT (waylandsink), "height", 400, NULL);
-  g_object_set (G_OBJECT (waylandsink), "async", true, NULL);
-  g_object_set (G_OBJECT (waylandsink), "enable-last-sample", false, NULL);
-#endif
+  if (cameraswitchctx.use_display) {
+    // Set waylandsink properties
+    g_object_set (G_OBJECT (waylandsink), "name", "waylandsink", NULL);
+    g_object_set (G_OBJECT (waylandsink), "x", 0, NULL);
+    g_object_set (G_OBJECT (waylandsink), "y", 0, NULL);
+    g_object_set (G_OBJECT (waylandsink), "width", 600, NULL);
+    g_object_set (G_OBJECT (waylandsink), "height", 400, NULL);
+    g_object_set (G_OBJECT (waylandsink), "async", true, NULL);
+    g_object_set (G_OBJECT (waylandsink), "enable-last-sample", false, NULL);
+  }
 
   // Set caps
   filtercaps = gst_caps_new_simple ("video/x-raw",
@@ -340,39 +400,39 @@ main (gint argc, gchar * argv[])
   cameraswitchctx.capsfilter = capsfilter;
   cameraswitchctx.is_camera0 = true;
 
-#ifdef USE_DISPLAY
-  cameraswitchctx.waylandsink = waylandsink;
-#else
-  cameraswitchctx.h264parse = h264parse;
-  cameraswitchctx.mp4mux = mp4mux;
-  cameraswitchctx.omxh264enc = omxh264enc;
-  cameraswitchctx.filesink = filesink;
-#endif
-
-#ifdef USE_DISPLAY
-  // Add qmmfsrc to the pipeline
-  gst_bin_add_many (GST_BIN (cameraswitchctx.pipeline), qtiqmmfsrc_0,
-      capsfilter, waylandsink, NULL);
-#else
-  // Add qmmfsrc to the pipeline
-  gst_bin_add_many (GST_BIN (cameraswitchctx.pipeline), qtiqmmfsrc_0,
-      capsfilter, omxh264enc, h264parse, mp4mux, filesink, NULL);
-#endif
-
-#ifdef USE_DISPLAY
-  // Link the elements
-  if (!gst_element_link_many (qtiqmmfsrc_0, capsfilter, waylandsink, NULL)) {
-    g_printerr ("Error: Link cannot be done!\n");
-    return -1;
+  if (cameraswitchctx.use_display) {
+    cameraswitchctx.waylandsink = waylandsink;
+  } else {
+    cameraswitchctx.h264parse = h264parse;
+    cameraswitchctx.mp4mux = mp4mux;
+    cameraswitchctx.encoder = encoder;
+    cameraswitchctx.filesink = filesink;
   }
-#else
-  // Link the elements
-  if (!gst_element_link_many (qtiqmmfsrc_0, capsfilter, omxh264enc,
-        h264parse, mp4mux, filesink, NULL)) {
-    g_printerr ("Error: Link cannot be done!\n");
-    return -1;
+
+  if (cameraswitchctx.use_display) {
+    // Add qmmfsrc to the pipeline
+    gst_bin_add_many (GST_BIN (cameraswitchctx.pipeline), qtiqmmfsrc_0,
+        capsfilter, waylandsink, NULL);
+  } else {
+      // Add qmmfsrc to the pipeline
+      gst_bin_add_many (GST_BIN (cameraswitchctx.pipeline), qtiqmmfsrc_0,
+          capsfilter, encoder, h264parse, mp4mux, filesink, NULL);
   }
-#endif
+
+  if (cameraswitchctx.use_display) {
+    // Link the elements
+    if (!gst_element_link_many (qtiqmmfsrc_0, capsfilter, waylandsink, NULL)) {
+      g_printerr ("Error: Link cannot be done!\n");
+      return -1;
+    }
+  } else {
+    // Link the elements
+    if (!gst_element_link_many (qtiqmmfsrc_0, capsfilter, encoder,
+          h264parse, mp4mux, filesink, NULL)) {
+      g_printerr ("Error: Link cannot be done!\n");
+      return -1;
+    }
+  }
 
   // Initialize main loop.
   if ((mloop = g_main_loop_new (NULL, FALSE)) == NULL) {
@@ -443,30 +503,31 @@ main (gint argc, gchar * argv[])
   g_main_loop_unref (mloop);
 
   if (cameraswitchctx.is_camera0) {
-#ifdef USE_DISPLAY
-    gst_bin_remove_many (GST_BIN (cameraswitchctx.pipeline),
-      cameraswitchctx.qtiqmmfsrc_0, cameraswitchctx.capsfilter,
-      cameraswitchctx.waylandsink, NULL);
-#else
-    gst_bin_remove_many (GST_BIN (cameraswitchctx.pipeline),
-      cameraswitchctx.qtiqmmfsrc_0, cameraswitchctx.capsfilter,
-      cameraswitchctx.omxh264enc, cameraswitchctx.h264parse,
-      cameraswitchctx.mp4mux, cameraswitchctx.filesink, NULL);
-#endif
+    if (cameraswitchctx.use_display) {
+      gst_bin_remove_many (GST_BIN (cameraswitchctx.pipeline),
+        cameraswitchctx.qtiqmmfsrc_0, cameraswitchctx.capsfilter,
+        cameraswitchctx.waylandsink, NULL);
+    } else {
+      gst_bin_remove_many (GST_BIN (cameraswitchctx.pipeline),
+        cameraswitchctx.qtiqmmfsrc_0, cameraswitchctx.capsfilter,
+        cameraswitchctx.encoder, cameraswitchctx.h264parse,
+        cameraswitchctx.mp4mux, cameraswitchctx.filesink, NULL);
+    }
   } else {
-#ifdef USE_DISPLAY
-    gst_bin_remove_many (GST_BIN (cameraswitchctx.pipeline),
-      cameraswitchctx.qtiqmmfsrc_1, cameraswitchctx.capsfilter,
-      cameraswitchctx.waylandsink, NULL);
-#else
-    gst_bin_remove_many (GST_BIN (cameraswitchctx.pipeline),
-      cameraswitchctx.qtiqmmfsrc_1, cameraswitchctx.capsfilter,
-      cameraswitchctx.omxh264enc, cameraswitchctx.h264parse,
-      cameraswitchctx.mp4mux, cameraswitchctx.filesink, NULL);
-#endif
+    if (cameraswitchctx.use_display) {
+      gst_bin_remove_many (GST_BIN (cameraswitchctx.pipeline),
+        cameraswitchctx.qtiqmmfsrc_1, cameraswitchctx.capsfilter,
+        cameraswitchctx.waylandsink, NULL);
+    } else {
+      gst_bin_remove_many (GST_BIN (cameraswitchctx.pipeline),
+        cameraswitchctx.qtiqmmfsrc_1, cameraswitchctx.capsfilter,
+        cameraswitchctx.encoder, cameraswitchctx.h264parse,
+        cameraswitchctx.mp4mux, cameraswitchctx.filesink, NULL);
+    }
   }
 
   g_mutex_clear (&cameraswitchctx.lock);
+  gst_object_unref (pipeline);
 
   gst_deinit ();
 
