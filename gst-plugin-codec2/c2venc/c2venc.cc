@@ -558,19 +558,6 @@ gst_c2_venc_trigger_iframe (GstC2_VENCEncoder *c2venc)
   return TRUE;
 }
 
-static gboolean
-gst_c2_venc_stop (GstVideoEncoder * encoder)
-{
-  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
-  GST_DEBUG_OBJECT (c2venc, "Encoder stop");
-
-  if (!gst_c2_venc_wrapper_component_stop (c2venc->wrapper)) {
-    GST_ERROR_OBJECT (c2venc, "Failed to stop component");
-  }
-
-  return TRUE;
-}
-
 static gchar *
 gst_c2_venc_get_c2_comp_name (GstStructure * structure)
 {
@@ -652,6 +639,48 @@ gst_c2_venc_setup_output (GstVideoEncoder * encoder,
   }
 
   return ret;
+}
+
+static gboolean
+gst_c2_venc_start (GstVideoEncoder * encoder)
+{
+  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
+  GST_DEBUG_OBJECT (c2venc, "Encoder start");
+
+  if (!c2venc->output_setup) {
+    if (GST_FLOW_OK != gst_c2_venc_setup_output (encoder, c2venc->input_state)) {
+      GST_ERROR_OBJECT (c2venc, "fail to setup output");
+      return FALSE;
+    }
+  }
+
+  if (c2venc->input_setup &&
+      !gst_c2_venc_wrapper_component_start (c2venc->wrapper)) {
+    GST_ERROR_OBJECT (c2venc, "Failed to start component");
+  }
+
+  return TRUE;
+}
+
+static gboolean
+gst_c2_venc_stop (GstVideoEncoder * encoder)
+{
+  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
+  GST_DEBUG_OBJECT (c2venc, "Encoder stop");
+
+  if (c2venc->output_state) {
+    gst_video_codec_state_unref (c2venc->output_state);
+    c2venc->output_state = NULL;
+    c2venc->output_setup = FALSE;
+  }
+
+  if (!gst_c2_venc_wrapper_component_stop (c2venc->wrapper)) {
+    GST_ERROR_OBJECT (c2venc, "Failed to stop component");
+  }
+
+  c2venc->eos_reached = FALSE;
+
+  return TRUE;
 }
 
 static void
@@ -1097,16 +1126,6 @@ gst_c2_venc_close (GstVideoEncoder * encoder)
   GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
   GST_DEBUG_OBJECT (c2venc, "gst_c2_venc_close");
 
-  if (c2venc->input_state) {
-    gst_video_codec_state_unref (c2venc->input_state);
-    c2venc->input_state = NULL;
-  }
-
-  if (c2venc->output_state) {
-    gst_video_codec_state_unref (c2venc->output_state);
-    c2venc->output_state = NULL;
-  }
-
   return TRUE;
 }
 
@@ -1147,7 +1166,7 @@ gst_c2_venc_finish (GstVideoEncoder * encoder)
       GST_ERROR_OBJECT (c2venc, "Timed out on wait, exiting!");
     }
   } else {
-    GST_DEBUG_OBJECT (c2venc, "EOS reached on output, finish the decoding");
+    GST_DEBUG_OBJECT (c2venc, "EOS reached on output, finish the encoding");
   }
 
   g_mutex_unlock (&c2venc->pending_lock);
@@ -1516,6 +1535,11 @@ gst_c2_venc_finalize (GObject * object)
 {
   GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (object);
 
+  if (c2venc->input_state) {
+    gst_video_codec_state_unref (c2venc->input_state);
+    c2venc->input_state = NULL;
+  }
+
   g_mutex_clear (&c2venc->pending_lock);
   g_cond_clear (&c2venc->pending_cond);
 
@@ -1729,6 +1753,7 @@ gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
   gst_element_class_add_static_pad_template (element,
       &gst_c2_venc_src_pad_template);
 
+  venc_class->start = gst_c2_venc_start;
   venc_class->stop = gst_c2_venc_stop;
   venc_class->set_format = gst_c2_venc_set_format;
   venc_class->handle_frame = gst_c2_venc_handle_frame;
