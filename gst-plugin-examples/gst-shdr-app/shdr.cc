@@ -181,11 +181,20 @@ wait_for_state_change (GstAppContext * appctx)
 
 void test_shdr_by_pipe_restart (GstAppContext *appctx)
 {
-  GstElement *qtiqmmfsrc;
+  GstElement *qtiqmmfsrc, *h264enc;
 
   // Get qtiqmmfsrc instance
   qtiqmmfsrc = gst_bin_get_by_name (
       GST_BIN (appctx->pipeline), "qmmf");
+
+  h264enc = gst_bin_get_by_name (
+      GST_BIN (appctx->pipeline), "h264enc");
+
+  // Send EOS to the encoder in order to flush it's buffers
+  if (h264enc) {
+    gst_element_send_event (h264enc, gst_event_new_eos ());
+    gst_object_unref (h264enc);
+  }
 
   if (GST_STATE_CHANGE_ASYNC ==
       gst_element_set_state (appctx->pipeline, GST_STATE_NULL)) {
@@ -332,7 +341,7 @@ create_display_pipe (GstAppContext *appctx, gint width, gint height)
 static gboolean
 create_rtsp_pipe (GstAppContext *appctx, gint width, gint height)
 {
-  GstElement *qtiqmmfsrc, *main_capsfilter, *queue1, *omxh264enc;
+  GstElement *qtiqmmfsrc, *main_capsfilter, *queue1, *encoder;
   GstElement *queue2, *h264parse, *rtph264pay, *sink;
   GstCaps *filtercaps;
   gboolean ret = FALSE;
@@ -341,14 +350,18 @@ create_rtsp_pipe (GstAppContext *appctx, gint width, gint height)
   qtiqmmfsrc = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
   main_capsfilter = gst_element_factory_make ("capsfilter", "capsfilter");
   queue1 = gst_element_factory_make ("queue", "queue1");
-  omxh264enc = gst_element_factory_make ("omxh264enc", "omxh264enc");
+#ifdef CODEC2_ENCODE
+  encoder = gst_element_factory_make ("qtic2venc", "h264enc");
+#else
+  encoder = gst_element_factory_make ("omxh264enc", "h264enc");
+#endif
   queue2 = gst_element_factory_make ("queue", "queue2");
   h264parse = gst_element_factory_make ("h264parse", "h264parse");
   rtph264pay = gst_element_factory_make ("rtph264pay", "rtph264pay");
   sink = gst_element_factory_make ("udpsink", "udpsink");
 
   // Check if all elements are created successfully
-  if (!qtiqmmfsrc || !main_capsfilter || !queue1 || !omxh264enc ||
+  if (!qtiqmmfsrc || !main_capsfilter || !queue1 || !encoder ||
       !queue2 || !h264parse || !rtph264pay || !sink) {
     g_printerr ("One element could not be created. Exiting.\n");
     return FALSE;
@@ -358,7 +371,7 @@ create_rtsp_pipe (GstAppContext *appctx, gint width, gint height)
   appctx->plugins = g_list_append (appctx->plugins, qtiqmmfsrc);
   appctx->plugins = g_list_append (appctx->plugins, main_capsfilter);
   appctx->plugins = g_list_append (appctx->plugins, queue1);
-  appctx->plugins = g_list_append (appctx->plugins, omxh264enc);
+  appctx->plugins = g_list_append (appctx->plugins, encoder);
   appctx->plugins = g_list_append (appctx->plugins, queue2);
   appctx->plugins = g_list_append (appctx->plugins, h264parse);
   appctx->plugins = g_list_append (appctx->plugins, rtph264pay);
@@ -367,11 +380,14 @@ create_rtsp_pipe (GstAppContext *appctx, gint width, gint height)
   // Set qmmfsrc properties
   g_object_set (G_OBJECT (qtiqmmfsrc), "name", "qmmf", NULL);
 
+  // Set encoder properties
+  g_object_set (G_OBJECT (encoder), "target-bitrate", 6000000, NULL);
+#ifndef CODEC2_ENCODE
   // Set omxh264enc properties
-  g_object_set (G_OBJECT (omxh264enc), "control-rate", MAX_BITRATE_CTRL_METHOD, NULL);
-  g_object_set (G_OBJECT (omxh264enc), "target-bitrate", 6000000, NULL);
-  g_object_set (G_OBJECT (omxh264enc), "interval-intraframes", 29, NULL);
-  g_object_set (G_OBJECT (omxh264enc), "periodicity-idr", 1, NULL);
+  g_object_set (G_OBJECT (encoder), "control-rate", MAX_BITRATE_CTRL_METHOD, NULL);
+  g_object_set (G_OBJECT (encoder), "interval-intraframes", 29, NULL);
+  g_object_set (G_OBJECT (encoder), "periodicity-idr", 1, NULL);
+#endif
 
   // Set h264parse properties
   g_object_set (G_OBJECT (h264parse), "config-interval", -1, NULL);
@@ -403,19 +419,19 @@ create_rtsp_pipe (GstAppContext *appctx, gint width, gint height)
   // Add elements to the pipeline and link them
   g_print ("Adding all elements to the pipeline...\n");
   gst_bin_add_many (GST_BIN (appctx->pipeline),
-      qtiqmmfsrc, main_capsfilter, queue1, omxh264enc, queue2,
+      qtiqmmfsrc, main_capsfilter, queue1, encoder, queue2,
       h264parse, rtph264pay, sink, NULL);
 
   g_print ("Linking elements...\n");
 
   // Linking the stream
   ret = gst_element_link_many (
-      qtiqmmfsrc, main_capsfilter, queue1, omxh264enc, queue2,
+      qtiqmmfsrc, main_capsfilter, queue1, encoder, queue2,
       h264parse, rtph264pay, sink, NULL);
   if (!ret) {
     g_printerr ("Pipeline elements cannot be linked. Exiting.\n");
     gst_bin_remove_many (GST_BIN (appctx->pipeline),
-        qtiqmmfsrc, main_capsfilter, queue1, omxh264enc, queue2,
+        qtiqmmfsrc, main_capsfilter, queue1, encoder, queue2,
         h264parse, rtph264pay, sink, NULL);
     return FALSE;
   }

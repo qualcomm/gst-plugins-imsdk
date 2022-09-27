@@ -15,6 +15,10 @@ add_executable(${GST_EXAMPLE_BIN}
   shdr.cc
 )
 
+if(CODEC2_ENCODE)
+add_definitions(-DCODEC2_ENCODE)
+endif()
+
 target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_INCLUDE_DIRS}
 )
