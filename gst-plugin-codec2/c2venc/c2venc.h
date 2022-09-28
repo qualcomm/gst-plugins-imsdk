@@ -119,6 +119,7 @@ struct _GstC2_VENCEncoder {
   guint32 quant_b_frames;
   guint32 num_ltr_frames;
   rotate_t rotate;
+  gboolean is_ubwc;
 };
 
 struct _GstC2_VENCEncoderClass {
