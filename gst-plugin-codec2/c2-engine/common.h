@@ -85,6 +85,7 @@ typedef struct {
     BUFFER_POOL_TYPE pool_type;
     guint8* config_data; // codec config data
     guint32 config_size; // size of codec config data
+    guint32 ubwc_flag;
 } BufferDescriptor;
 
 #endif // __GST_C2_COMMON_H__
