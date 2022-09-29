@@ -218,9 +218,10 @@ video_pad_activate_mode (GstPad * pad, GstObject * parent, GstPadMode mode,
         qmmfsrc_video_pad_flush_buffers_queue (pad, TRUE);
         success = gst_pad_stop_task (pad);
 
+        g_signal_emit (pad, signals[SIGNAL_PAD_ACTIVATION], 0, FALSE);
+
         gst_segment_init (&GST_QMMFSRC_VIDEO_PAD (pad)->segment,
             GST_FORMAT_UNDEFINED);
-        g_signal_emit (pad, signals[SIGNAL_PAD_ACTIVATION], 0, FALSE);
       }
       break;
     default:
