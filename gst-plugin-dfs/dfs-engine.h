@@ -102,8 +102,8 @@ gst_dfs_engine_free         (GstDfsEngine *engine);
 
 GST_API gboolean
 gst_dfs_engine_execute (GstDfsEngine *engine,
-    const GstVideoFrame *inframe, gpointer disparity_map);
+    const GstVideoFrame *inframe, gpointer disparity_map, gsize size);
 
 G_END_DECLS
 
-#endif // __DFS_ENGINE_H__
+#endif // __DFS_ENGINE_H_
