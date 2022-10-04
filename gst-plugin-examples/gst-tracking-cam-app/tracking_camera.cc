@@ -681,7 +681,7 @@ main (gint argc, gchar * argv[])
 
   GstElement *qtiqmmfsrc, *qtiqmmfsrc2, *mle_capsfilter, *main_capsfilter,
              *out_capsfilter, *qtimletflite, *appsink, *qtivtransform,
-             *waylandsink, *omxh264enc, *tee, *filesink, *h264parse,
+             *waylandsink, *encoder, *tee, *filesink, *h264parse,
              *mp4mux, *queue1, *queue2, *avimux;
 
   // Create the pipeline
@@ -698,7 +698,11 @@ main (gint argc, gchar * argv[])
   qtivtransform   = gst_element_factory_make ("qtivtransform", "qtivtransform");
   tee             = gst_element_factory_make ("tee", "tee");
   waylandsink     = gst_element_factory_make ("waylandsink", "waylandsink");
-  omxh264enc      = gst_element_factory_make ("omxh264enc", "omxh264enc");
+#ifdef CODEC2_ENCODE
+  encoder         = gst_element_factory_make ("qtic2venc", "qtic2venc");
+#else
+  encoder         = gst_element_factory_make ("omxh264enc", "omxh264enc");
+#endif
   filesink        = gst_element_factory_make ("filesink", "filesink");
   h264parse       = gst_element_factory_make ("h264parse", "h264parse");
   mp4mux          = gst_element_factory_make ("mp4mux", "mp4mux");
@@ -709,7 +713,7 @@ main (gint argc, gchar * argv[])
   // Check if all elements are created successfully
   if (!pipeline || !qtiqmmfsrc || !mle_capsfilter || !main_capsfilter ||
       !out_capsfilter || !qtimletflite || !appsink || !qtivtransform ||
-      !tee || !waylandsink || !omxh264enc || !filesink || !h264parse ||
+      !tee || !waylandsink || !encoder || !filesink || !h264parse ||
       !mp4mux || !queue1 || !queue2 || !avimux) {
     g_printerr ("One element could not be created. Exiting.\n");
     return -1;
@@ -795,10 +799,12 @@ main (gint argc, gchar * argv[])
   g_object_set (G_OBJECT (waylandsink), "enable-last-sample", 0, NULL);
 
   // Set encoder properties
-  g_object_set (G_OBJECT (omxh264enc), "target-bitrate", 10000000, NULL);
-  g_object_set (G_OBJECT (omxh264enc), "periodicity-idr", 1, NULL);
-  g_object_set (G_OBJECT (omxh264enc), "interval-intraframes", 59, NULL);
-  g_object_set (G_OBJECT (omxh264enc), "control-rate", 2, NULL);
+  g_object_set (G_OBJECT (encoder), "target-bitrate", 10000000, NULL);
+#ifndef CODEC2_ENCODE
+  g_object_set (G_OBJECT (encoder), "periodicity-idr", 1, NULL);
+  g_object_set (G_OBJECT (encoder), "interval-intraframes", 59, NULL);
+  g_object_set (G_OBJECT (encoder), "control-rate", 2, NULL);
+#endif
 
   // Set qtivtransform properties
   g_object_set (G_OBJECT (qtivtransform), "name", "transform", NULL);
@@ -835,7 +841,7 @@ main (gint argc, gchar * argv[])
     case FORMAT_NV12:
     default:
       gst_bin_add_many (GST_BIN (pipeline),
-          qtivtransform, tee, waylandsink, omxh264enc,
+          qtivtransform, tee, waylandsink, encoder,
           h264parse, mp4mux, NULL);
       break;
   }
@@ -872,7 +878,7 @@ main (gint argc, gchar * argv[])
       }
       // Linking the Main stream to the encoder
       ret = gst_element_link_many (
-          tee, omxh264enc, h264parse, mp4mux, filesink, NULL);
+          tee, encoder, h264parse, mp4mux, filesink, NULL);
       if (!ret) {
         g_printerr ("Pipeline elements cannot be linked. Exiting.\n");
         return -1;

@@ -67,7 +67,7 @@ struct _GstStreamInf
   GstElement *waylandsink;
   GstElement *h264parse;
   GstElement *mp4mux;
-  GstElement *omxh264enc;
+  GstElement *encoder;
   GstElement *filesink;
   GstPad     *qmmf_pad;
   GstCaps    *qmmf_caps;
@@ -231,9 +231,13 @@ create_stream (GstAppContext * appctx,
       appctx->stream_cnt);
   stream->waylandsink = gst_element_factory_make ("waylandsink", temp_str);
 #else
-  snprintf (temp_str, sizeof (temp_str), "omxh264enc_%d",
+  snprintf (temp_str, sizeof (temp_str), "encoder_%d",
       appctx->stream_cnt);
-  stream->omxh264enc = gst_element_factory_make ("omxh264enc", temp_str);
+#ifdef CODEC2_ENCODE
+  stream->encoder = gst_element_factory_make ("qtic2venc", temp_str);
+#else
+  stream->encoder = gst_element_factory_make ("omxh264enc", temp_str);
+#endif
   snprintf (temp_str, sizeof (temp_str), "filesink_%d",
       appctx->stream_cnt);
   stream->filesink = gst_element_factory_make ("filesink", temp_str);
@@ -261,11 +265,11 @@ create_stream (GstAppContext * appctx,
   }
 #else
   if (!appctx->pipeline || !qtiqmmfsrc || !stream->capsfilter ||
-      !stream->omxh264enc || !stream->filesink || !stream->h264parse ||
+      !stream->encoder || !stream->filesink || !stream->h264parse ||
       !stream->mp4mux) {
     gst_object_unref (qtiqmmfsrc);
     gst_object_unref (stream->capsfilter);
-    gst_object_unref (stream->omxh264enc);
+    gst_object_unref (stream->encoder);
     gst_object_unref (stream->filesink);
     gst_object_unref (stream->h264parse);
     gst_object_unref (stream->mp4mux);
@@ -296,10 +300,12 @@ create_stream (GstAppContext * appctx,
       G_OBJECT (stream->waylandsink), "enable-last-sample", FALSE, NULL);
 #else
   // Set encoder properties
-  g_object_set (G_OBJECT (stream->omxh264enc), "target-bitrate", 6000000, NULL);
-  g_object_set (G_OBJECT (stream->omxh264enc), "periodicity-idr", 1, NULL);
-  g_object_set (G_OBJECT (stream->omxh264enc), "interval-intraframes", 29, NULL);
-  g_object_set (G_OBJECT (stream->omxh264enc), "control-rate", 2, NULL);
+  g_object_set (G_OBJECT (stream->encoder), "target-bitrate", 6000000, NULL);
+#ifndef CODEC2_ENCODE
+  g_object_set (G_OBJECT (stream->encoder), "periodicity-idr", 1, NULL);
+  g_object_set (G_OBJECT (stream->encoder), "interval-intraframes", 29, NULL);
+  g_object_set (G_OBJECT (stream->encoder), "control-rate", 2, NULL);
+#endif
 
   snprintf (temp_str, sizeof (temp_str), "/data/video_%d.mp4",
       appctx->stream_cnt);
@@ -312,7 +318,7 @@ create_stream (GstAppContext * appctx,
       stream->capsfilter, stream->waylandsink, NULL);
 #else
   gst_bin_add_many (GST_BIN (appctx->pipeline),
-      stream->capsfilter, stream->omxh264enc, stream->h264parse,
+      stream->capsfilter, stream->encoder, stream->h264parse,
       stream->mp4mux, stream->filesink, NULL);
 #endif
 
@@ -321,7 +327,7 @@ create_stream (GstAppContext * appctx,
 #ifdef USE_DISPLAY
   gst_element_sync_state_with_parent (stream->waylandsink);
 #else
-  gst_element_sync_state_with_parent (stream->omxh264enc);
+  gst_element_sync_state_with_parent (stream->encoder);
   gst_element_sync_state_with_parent (stream->h264parse);
   gst_element_sync_state_with_parent (stream->mp4mux);
   gst_element_sync_state_with_parent (stream->filesink);
@@ -360,7 +366,7 @@ create_stream (GstAppContext * appctx,
   }
 #else
   // Link the elements
-  if (!gst_element_link_many (stream->capsfilter, stream->omxh264enc,
+  if (!gst_element_link_many (stream->capsfilter, stream->encoder,
       stream->h264parse, stream->mp4mux, stream->filesink, NULL)) {
     g_printerr ("Error: Link cannot be done!\n");
     goto cleanup;
@@ -383,7 +389,7 @@ cleanup:
 #ifdef USE_DISPLAY
   gst_element_set_state (stream->waylandsink, GST_STATE_NULL);
 #else
-  gst_element_set_state (stream->omxh264enc, GST_STATE_NULL);
+  gst_element_set_state (stream->encoder, GST_STATE_NULL);
   gst_element_set_state (stream->h264parse, GST_STATE_NULL);
   gst_element_set_state (stream->mp4mux, GST_STATE_NULL);
   gst_element_set_state (stream->filesink, GST_STATE_NULL);
@@ -399,7 +405,7 @@ cleanup:
       stream->capsfilter, stream->waylandsink, NULL);
 #else
   gst_bin_remove_many (GST_BIN (appctx->pipeline),
-      stream->capsfilter, stream->omxh264enc, stream->h264parse,
+      stream->capsfilter, stream->encoder, stream->h264parse,
       stream->mp4mux, stream->filesink, NULL);
 #endif
 
@@ -433,10 +439,10 @@ release_stream (GstAppContext * appctx, GstStreamInf * stream)
   GstState state = GST_STATE_VOID_PENDING;
   gst_element_get_state (appctx->pipeline, &state, NULL, GST_CLOCK_TIME_NONE);
   if (state == GST_STATE_PLAYING)
-    gst_element_send_event (stream->omxh264enc, gst_event_new_eos ());
+    gst_element_send_event (stream->encoder, gst_event_new_eos ());
 
   gst_element_unlink_many (
-      qtiqmmfsrc, stream->capsfilter, stream->omxh264enc,
+      qtiqmmfsrc, stream->capsfilter, stream->encoder,
       stream->h264parse, stream->mp4mux, stream->filesink, NULL);
 #endif
   g_print ("Unlinked successfully \n");
@@ -449,7 +455,7 @@ release_stream (GstAppContext * appctx, GstStreamInf * stream)
 #ifdef USE_DISPLAY
   gst_element_set_state (stream->waylandsink, GST_STATE_NULL);
 #else
-  gst_element_set_state (stream->omxh264enc, GST_STATE_NULL);
+  gst_element_set_state (stream->encoder, GST_STATE_NULL);
   gst_element_set_state (stream->h264parse, GST_STATE_NULL);
   gst_element_set_state (stream->mp4mux, GST_STATE_NULL);
   gst_element_set_state (stream->filesink, GST_STATE_NULL);
@@ -464,7 +470,7 @@ release_stream (GstAppContext * appctx, GstStreamInf * stream)
       stream->capsfilter, stream->waylandsink, NULL);
 #else
   gst_bin_remove_many (GST_BIN (appctx->pipeline),
-      stream->capsfilter, stream->omxh264enc, stream->h264parse,
+      stream->capsfilter, stream->encoder, stream->h264parse,
       stream->mp4mux, stream->filesink, NULL);
 #endif
 
