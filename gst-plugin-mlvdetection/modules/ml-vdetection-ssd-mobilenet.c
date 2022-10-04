@@ -79,7 +79,7 @@
     "dimensions = (int) < < 1, 10, 4 >, < 1, 10 >, < 1, 10 >, < 1 > >; " \
     "neural-network/tensors, " \
     "type = (string) { FLOAT32 }, " \
-    "dimensions = (int) < < 1, 100, 4 >, < 1, 100 >, < 1, 100 > >; " \
+    "dimensions = (int) < < 1, 100 >, < 1 >, < 1, 100, 4 >, < 1, 100 > >; " \
     "neural-network/tensors, " \
     "type = (string) { FLOAT32 }, " \
     "dimensions = (int) < < 1, 25, 4 >, < 1, 25 >, < 1, 25 >, < 1 > > "
@@ -90,6 +90,11 @@ static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
 typedef struct _GstMLSubModule GstMLSubModule;
 
 struct _GstMLSubModule {
+  // List of #GstCaps containing info on the supported ML tensors.
+  GPtrArray  *mlcaps;
+  // Stashed input ML frame caps containing info on the tensors.
+  GstCaps    *stgcaps;
+
   GHashTable *labels;
 };
 
@@ -169,9 +174,23 @@ gpointer
 gst_ml_module_open (void)
 {
   GstMLSubModule *submodule = NULL;
+  GstCaps *caps = NULL;
+  guint idx = 0, n_entries = 0;
 
   submodule = g_slice_new0 (GstMLSubModule);
   g_return_val_if_fail (submodule != NULL, NULL);
+
+  // Fetch caps instance and parse it into separate #GstCaps.
+  caps = gst_static_caps_get (&modulecaps);
+  n_entries = gst_caps_get_size (caps);
+
+  submodule->mlcaps =
+      g_ptr_array_new_with_free_func ((GDestroyNotify) gst_caps_unref);
+
+  for (idx = 0; idx < n_entries; idx++)
+    g_ptr_array_add (submodule->mlcaps, gst_caps_copy_nth (caps, idx));
+
+  gst_caps_unref (caps);
 
   return (gpointer) submodule;
 }
@@ -184,8 +203,14 @@ gst_ml_module_close (gpointer instance)
   if (NULL == submodule)
     return;
 
+  if (submodule->stgcaps != NULL)
+    gst_caps_unref (submodule->stgcaps);
+
   if (submodule->labels != NULL)
     g_hash_table_destroy (submodule->labels);
+
+  if (submodule->mlcaps != NULL)
+    g_ptr_array_free (submodule->mlcaps, TRUE);
 
   g_slice_free (GstMLSubModule, submodule);
 }
@@ -230,8 +255,9 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   GArray *predictions = (GArray *) output;
+  GstCaps *caps = NULL;
   GstProtectionMeta *pmeta = NULL;
-  gfloat *bboxes = NULL, *classes = NULL, *scores = NULL;
+  gfloat *bboxes = NULL, *classes = NULL, *scores = NULL, *n_boxes = NULL;
   gint sar_n = 1, sar_d = 1, nms = -1;
   guint idx = 0, n_entries = 0;
 
@@ -239,17 +265,34 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
-  classes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
-  scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
+  if (submodule->stgcaps == NULL)
+    submodule->stgcaps = gst_ml_info_to_caps (&(mlframe)->info);
 
-  if (GST_ML_FRAME_N_TENSORS (mlframe) == 4) {
-    gfloat *n_boxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
-    n_entries = n_boxes[0];
-  } else {
-    gsize bytes = GST_ML_FRAME_BLOCK_SIZE (mlframe, 2);
-    n_entries = bytes / gst_ml_type_get_size (GST_ML_TYPE_FLOAT32);
+  // Depending on the frame tensors tensors are ordered differently.
+  caps = GST_CAPS_CAST (g_ptr_array_index (submodule->mlcaps, 0));
+
+  if (gst_caps_can_intersect (submodule->stgcaps, caps)) {
+    bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+    classes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+    scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
+    n_boxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
   }
+
+  caps = GST_CAPS_CAST (g_ptr_array_index (submodule->mlcaps, 1));
+
+  if (gst_caps_can_intersect (submodule->stgcaps, caps)) {
+    bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
+    classes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+    scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
+    n_boxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+  }
+
+  if (!bboxes || !classes || !scores || !n_boxes) {
+    GST_ERROR ("Unsupported tensors capabilities!");
+    return FALSE;
+  }
+
+  n_entries = n_boxes[0];
 
   // Extract the SAR (Source Aspect Ratio).
   if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL) {

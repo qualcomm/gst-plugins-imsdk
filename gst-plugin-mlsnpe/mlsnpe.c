@@ -447,7 +447,7 @@ gst_ml_snpe_set_caps (GstBaseTransform * base, GstCaps * incaps,
     gst_ml_info_free (snpe->ininfo);
 
   snpe->ininfo = gst_ml_info_copy (&info);
-  GST_DEBUG_OBJECT (snpe, "Input caps: %" GST_PTR_FORMAT, outcaps);
+  GST_DEBUG_OBJECT (snpe, "Input caps: %" GST_PTR_FORMAT, incaps);
 
   if (!gst_ml_info_from_caps (&info, outcaps)) {
     GST_ERROR_OBJECT (snpe, "Failed to get input ML info from caps!");
