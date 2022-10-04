@@ -185,7 +185,7 @@ gst_c2_venc_wrapper_component_stop (GstC2Wrapper * wrapper) {
     wrapper->component->Stop();
   }
 
-  GST_INFO ("C2venc component start");
+  GST_INFO ("C2venc component stop");
   return TRUE;
 }
 
