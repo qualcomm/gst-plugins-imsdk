@@ -315,6 +315,15 @@ gst_ml_tflite_engine_delegate_new (gint type)
     {
       TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
 
+      // Prefer minimum latency and memory usage with precision lower than fp32
+      options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
+      options.inference_priority2 =
+          TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE;
+      options.inference_priority3 =
+          TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
+      options.inference_preference =
+          TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
+
       if ((delegate = TfLiteGpuDelegateV2Create (&options)) == NULL) {
         GST_WARNING ("Failed to create GPU delegate!");
         break;
