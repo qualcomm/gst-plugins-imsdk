@@ -287,6 +287,15 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     n_boxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
   }
 
+  caps = GST_CAPS_CAST (g_ptr_array_index (submodule->mlcaps, 2));
+
+  if (gst_caps_can_intersect (submodule->stgcaps, caps)) {
+    bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+    classes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+    scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
+    n_boxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
+  }
+
   if (!bboxes || !classes || !scores || !n_boxes) {
     GST_ERROR ("Unsupported tensors capabilities!");
     return FALSE;
