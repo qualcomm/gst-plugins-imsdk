@@ -306,6 +306,14 @@ struct _GstServiceContext
 };
 
 static void
+sample_unref (GstSample *sample) {
+    gst_sample_unref (sample);
+#if GST_VERSION_MAJOR >= 1 && GST_VERSION_MINOR > 14
+    gst_sample_set_buffer (sample, NULL);
+#endif
+}
+
+static void
 gst_service_load_uvc_controls_values (GstServiceContext * ctx,
     const char * cfgfile);
 
@@ -649,13 +657,13 @@ mle_new_sample (GstElement *sink, gpointer userdata)
 
   if ((buffer = gst_sample_get_buffer (sample)) == NULL) {
     g_printerr ("\nPulled buffer is NULL!\n");
-    gst_sample_unref (sample);
+    sample_unref (sample);
     return GST_FLOW_ERROR;
   }
 
   if (!gst_buffer_map (buffer, &info, GST_MAP_READ)) {
     g_printerr ("\nFailed to map the pulled buffer!\n");
-    gst_sample_unref (sample);
+    sample_unref (sample);
     return GST_FLOW_ERROR;
   }
 
@@ -697,7 +705,7 @@ mle_new_sample (GstElement *sink, gpointer userdata)
   }
 
   gst_buffer_unmap (buffer, &info);
-  gst_sample_unref (sample);
+  sample_unref (sample);
 
   return GST_FLOW_OK;
 }
@@ -729,13 +737,13 @@ umd_new_sample (GstElement *sink, gpointer userdata)
 
   if ((buffer = gst_sample_get_buffer (sample)) == NULL) {
     g_printerr ("ERROR: Pulled buffer is NULL!");
-    gst_sample_unref (sample);
+    sample_unref (sample);
     return GST_FLOW_ERROR;
   }
 
   if (!gst_buffer_map (buffer, &info, GST_MAP_READ)) {
     g_printerr ("ERROR: Failed to map the pulled buffer!");
-    gst_sample_unref (sample);
+    sample_unref (sample);
     return GST_FLOW_ERROR;
   }
 
@@ -745,7 +753,7 @@ umd_new_sample (GstElement *sink, gpointer userdata)
   umd_gadget_wait_buffer (srvctx->gadget, stream_id, bufidx);
 
   gst_buffer_unmap (buffer, &info);
-  gst_sample_unref (sample);
+  sample_unref (sample);
 
   return GST_FLOW_OK;
 }

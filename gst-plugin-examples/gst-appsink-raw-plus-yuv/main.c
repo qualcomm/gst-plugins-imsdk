@@ -53,6 +53,14 @@
 #include <gst/gst.h>
 #include <gst/video/video.h>
 
+static void
+sample_unref (GstSample *sample) {
+    gst_sample_unref (sample);
+#if GST_VERSION_MAJOR >= 1 && GST_VERSION_MINOR > 14
+    gst_sample_set_buffer (sample, NULL);
+#endif
+}
+
 // YUV callback to be connected to new-sample signal
 static GstFlowReturn
 new_sample_yuv (GstElement * sink, gpointer userdata)
@@ -73,41 +81,43 @@ new_sample_yuv (GstElement * sink, gpointer userdata)
     return GST_FLOW_ERROR;
   }
 
+  frame_counter++;
+
   if ((buffer = gst_sample_get_buffer (sample)) == NULL) {
     g_printerr ("ERROR: Pulled buffer is NULL!");
-    gst_sample_unref (sample);
+    sample_unref(sample);
     return GST_FLOW_ERROR;
   }
 
   // Example for meta retrieval in order to get offset and stride
-  if (NULL != (vmeta = gst_buffer_get_video_meta_id (buffer, 0))) {
-    g_print ("\nbuffer->stride[0]:%d; buffer->offset[0]:%lu\n",
-        vmeta->stride[0], vmeta->offset[0]);
-    g_print ("\nbuffer->stride[1]:%d; buffer->offset[1]:%lu\n",
-        vmeta->stride[1], vmeta->offset[1]);
-  } else {
-    g_print ("FAILED TO GET BUFFER META!\n");
+  vmeta = gst_buffer_get_video_meta_id (buffer, 0);
+  if (!vmeta) {
+    g_printerr ("ERROR: FAILED TO GET BUFFER META!\n");
+    sample_unref(sample);
+    return GST_FLOW_ERROR;
   }
 
-  temp_str = g_strdup_printf ("/data/frame_%lu.yuv", frame_counter);
+  temp_str =
+    g_strdup_printf ("/data/frame_%lu_w_%u_h_%u_stride_%zu_scanline_%zu.yuv",
+      frame_counter, vmeta->width, vmeta->height, vmeta->stride[0],
+      vmeta->offset[1] / vmeta->stride[0]);
 
   // Writing data to file
   if (gst_buffer_map (buffer, &info, GST_MAP_READ)) {
     if (!g_file_set_contents (temp_str, (guchar *) info.data, info.size,
         &error)) {
       g_printerr ("\nERROR writing to %s: %s\n", temp_str, error->message);
-    } else {
-      g_print ("\n%s written successfully!\n", temp_str);
-      gst_buffer_unmap (buffer, &info);
     }
-    frame_counter++;
+    g_print ("\n%s written successfully!\n", temp_str);
+    gst_buffer_unmap (buffer, &info);
   } else {
     g_printerr ("ERROR: Failed to map buffer memory!");
-    gst_sample_unref (sample);
+    sample_unref(sample);
+    g_free (temp_str);
     return GST_FLOW_ERROR;
   }
 
-  gst_sample_unref (sample);
+  sample_unref (sample);
   g_free (temp_str);
   return GST_FLOW_OK;
 }
@@ -119,6 +129,7 @@ new_sample_raw (GstElement * sink, gpointer userdata)
   GstSample *sample = NULL;
   GstBuffer *buffer = NULL;
   GstMapInfo info;
+  GstVideoMeta *vmeta = NULL;
   gchar *temp_str = NULL;
   GError *error = NULL;
   static guint64 frame_counter = 0;
@@ -131,31 +142,41 @@ new_sample_raw (GstElement * sink, gpointer userdata)
     return GST_FLOW_ERROR;
   }
 
+  frame_counter++;
+
   if ((buffer = gst_sample_get_buffer (sample)) == NULL) {
     g_printerr ("ERROR: Pulled buffer is NULL!");
-    gst_sample_unref (sample);
+    sample_unref(sample);
     return GST_FLOW_ERROR;
   }
 
-  temp_str = g_strdup_printf ("/data/frame_%lu.raw", frame_counter);
+  // Example for meta retrieval in order to get offset and stride
+  vmeta = gst_buffer_get_video_meta_id (buffer, 0);
+  if (!vmeta) {
+    g_printerr ("ERROR: FAILED TO GET BUFFER META!\n");
+    sample_unref(sample);
+    return GST_FLOW_ERROR;
+  }
+
+  temp_str = g_strdup_printf ("/data/frame_%lu_w_%u_h_%u_stride_%zu.raw",
+      frame_counter, vmeta->width, vmeta->height, vmeta->stride[0]);
 
   // Writing data to file
   if (gst_buffer_map (buffer, &info, GST_MAP_READ)) {
     if (!g_file_set_contents (temp_str, (guchar *) info.data, info.size,
         &error)) {
       g_printerr ("\nERROR writing to %s: %s\n", temp_str, error->message);
-    } else {
-      g_print ("\n%s written successfully!\n", temp_str);
-      gst_buffer_unmap (buffer, &info);
     }
-    frame_counter++;
+    g_print ("\n%s written successfully!\n", temp_str);
+    gst_buffer_unmap (buffer, &info);
   } else {
     g_printerr ("ERROR: Failed to map buffer memory!");
-    gst_sample_unref (sample);
+    sample_unref(sample);
+    g_free (temp_str);
     return GST_FLOW_ERROR;
   }
 
-  gst_sample_unref (sample);
+  sample_unref (sample);
   g_free (temp_str);
   return GST_FLOW_OK;
 }
