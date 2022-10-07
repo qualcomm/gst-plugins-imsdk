@@ -126,13 +126,18 @@ enum
 };
 
 static guint32
-gst_to_c2_pixelformat (GstVideoFormat format)
+gst_to_c2_pixelformat (GstVideoEncoder * encoder, GstVideoFormat format)
 {
   guint32 result = 0;
+  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
 
   switch (format) {
     case GST_VIDEO_FORMAT_NV12:
-      result = PIXEL_FORMAT_NV12_LINEAR;
+      if (c2venc->is_ubwc) {
+        result = PIXEL_FORMAT_NV12_UBWC;
+      } else {
+        result = PIXEL_FORMAT_NV12_LINEAR;
+      }
       break;
     default:
       break;
@@ -866,6 +871,19 @@ handle_video_event (EVENT_TYPE type, void * userdata, void * userdata2)
 }
 
 static gboolean
+caps_has_compression (const GstCaps * caps, const gchar * compression)
+{
+  GstStructure *structure = NULL;
+  const gchar *string = NULL;
+
+  structure = gst_caps_get_structure (caps, 0);
+  string = gst_structure_has_field (structure, "compression") ?
+      gst_structure_get_string (structure, "compression") : NULL;
+
+  return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
+}
+
+static gboolean
 gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
 {
   GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
@@ -922,6 +940,11 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
       return FALSE;
     }
   }
+
+  GST_DEBUG_OBJECT (c2venc, "caps: %" GST_PTR_FORMAT, state->caps);
+  c2venc->is_ubwc = caps_has_compression (state->caps, "ubwc");
+  GST_DEBUG_OBJECT (c2venc, "Fixed color format:%s, UBWC:%d", fmt,
+    c2venc->is_ubwc);
 
   if (c2venc->input_setup) {
     // Already setup, check to see if something has changed on input caps...
@@ -1034,7 +1057,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   }
 
   pixelformat =
-      make_pixelFormat_param (gst_to_c2_pixelformat (input_format), TRUE);
+      make_pixelFormat_param (gst_to_c2_pixelformat (encoder, input_format), TRUE);
   g_ptr_array_add (config, &pixelformat);
 
   rate_control = make_rateControl_param (c2venc->rcMode);
@@ -1222,6 +1245,7 @@ gst_c2_venc_encode (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   inBuf.width = c2venc->width;
   inBuf.height = c2venc->height;
   inBuf.format = c2venc->input_format;
+  inBuf.ubwc_flag = c2venc->is_ubwc;
 
   gst_memory_unref (mem);
 
@@ -1802,6 +1826,7 @@ gst_c2_venc_init (GstC2_VENCEncoder * c2venc)
   c2venc->quant_b_frames = GST_CODEC2_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT;
   c2venc->num_ltr_frames = GST_CODEC2_VIDEO_ENC_NUM_LTR_FRAMES_DEFAULT;
   c2venc->rotate = ROTATE_NONE;
+  c2venc->is_ubwc = FALSE;
 
   memset (c2venc->queued_frame, 0, sizeof (c2venc->queued_frame));
 
