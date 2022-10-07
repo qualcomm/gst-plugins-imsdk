@@ -39,6 +39,14 @@
 
 #define GST_PROTECTION_META_CAST(obj) ((GstProtectionMeta *) obj)
 
+static void
+sample_unref (GstSample *sample) {
+    gst_sample_unref (sample);
+#if GST_VERSION_MAJOR >= 1 && GST_VERSION_MINOR > 14
+    gst_sample_set_buffer (sample, NULL);
+#endif
+}
+
 static gboolean
 handle_interrupt_signal (gpointer userdata)
 {
@@ -162,13 +170,13 @@ new_sample (GstElement *sink, gpointer userdata)
 
   if ((buffer = gst_sample_get_buffer (sample)) == NULL) {
     g_printerr ("ERROR: Pulled buffer is NULL!");
-    gst_sample_unref (sample);
+    sample_unref(sample);
     return GST_FLOW_ERROR;
   }
 
   if (!gst_buffer_map (buffer, &info, GST_MAP_READ)) {
     g_printerr ("ERROR: Failed to map the pulled buffer!");
-    gst_sample_unref (sample);
+    sample_unref(sample);
     return GST_FLOW_ERROR;
   }
 
@@ -177,7 +185,7 @@ new_sample (GstElement *sink, gpointer userdata)
   g_print ("Camera timestamp: %" G_GUINT64_FORMAT "\n", timestamp);
 
   gst_buffer_unmap (buffer, &info);
-  gst_sample_unref (sample);
+  sample_unref (sample);
 
   return GST_FLOW_OK;
 }
