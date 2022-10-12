@@ -98,6 +98,15 @@
 #define PIPELINE_EOS_MESSAGE   "PIPELINE_EOS_MSG"
 #define PIPELINE_ERROR_MESSAGE "PIPELINE_ERROR_MSG"
 
+#define GST_VIDEO_PIPELINE "qtiqmmfsrc name=camsrc " \
+    "camsrc. ! capsfilter name=mlfilter caps=video/x-raw(memory:GBM),format=NV12,width=1280,height=720,framerate=30/1 ! " \
+    "queue name=camsrc_queue ! qtimlvconverter name=mlvconverter ! queue name=mlvconverter_queue ! " \
+    "qtimltflite name=mltflite delegate=hexagon model=/data/yolov5m-320x320-int8.tflite ! queue name=mltflite_queue ! " \
+    "qtimlvdetection name=mlvdetection threshold=60.0 results=1 module=yolov5m labels=/data/yolov5m.labels ! " \
+    "capsfilter name=mldetection_filter caps=text/x-raw ! queue name=mlvdetection_queue ! appsink name=mlsink " \
+    "camsrc. ! capsfilter name=umdvfilter ! queue name=vqueue ! qtivtransform name=vtransform ! queue name=umdvqueue ! " \
+    "appsink name=umdvsink"
+
 #define GST_SERVICE_CONTEXT_CAST(obj)  ((GstServiceContext*)(obj))
 
 #define UMD_VIDEO_GET_PAN_VALUE(pantilt)  (((int32_t *)(pantilt))[0] / 3600)
@@ -667,14 +676,18 @@ set_crop_rectangle (GstElement * pipeline, gint x, gint y, gint w, gint h)
   g_value_unset (&crop);
 }
 
-// Event handler for all data received from the MLE
+// Event handler for all data received from the ML
 static GstFlowReturn
-mle_new_sample (GstElement *sink, gpointer userdata)
+ml_new_sample (GstElement *sink, gpointer userdata)
 {
   GstServiceContext *srvctx = GST_SERVICE_CONTEXT_CAST (userdata);
   GstSample *sample = NULL;
   GstBuffer *buffer = NULL;
-  GstMapInfo info;
+  GstMapInfo memmap = {};
+  GValue value = G_VALUE_INIT;
+  VideoRectangle rectangle = {0};
+  guint idx = 0, length = 0;
+  gdouble confidence = 0.0;
 
   // New sample is available, retrieve the buffer from the sink.
   g_signal_emit_by_name (sink, "pull-sample", &sample);
@@ -690,50 +703,83 @@ mle_new_sample (GstElement *sink, gpointer userdata)
     return GST_FLOW_ERROR;
   }
 
-  if (!gst_buffer_map (buffer, &info, GST_MAP_READ)) {
+  if (!gst_buffer_map (buffer, &memmap, GST_MAP_READ)) {
     g_printerr ("\nFailed to map the pulled buffer!\n");
     gst_sample_release (sample);
     return GST_FLOW_ERROR;
   }
 
-  {
-    GSList *metalist = NULL, *list = NULL;
-    VideoRectangle rectangle = {0};
-    gfloat confidence = 0.0;
+  g_value_init (&value, GST_TYPE_LIST);
 
-    metalist = list = gst_buffer_get_detection_meta (buffer);
+  // Deserialize the GValue string containing the detections.
+  if (!gst_value_deserialize (&value, memmap.data)) {
+    g_printerr ("\nFailed to deserialize ML detection result!\n");
 
-    while (list != NULL) {
-      GstMLDetectionMeta *meta = NULL;
-      GstMLClassificationResult *classification = NULL;
+    gst_buffer_unmap (buffer, &memmap);
+    gst_sample_release (sample);
 
-      meta = (GstMLDetectionMeta *) list->data;
-      classification =
-          (GstMLClassificationResult *) g_slist_nth_data (meta->box_info, 0);
-
-      // Get the ML detection rectangle with highest confidence.
-      if (g_strcmp0 (classification->name, "person") == 0 &&
-          classification->confidence >= confidence) {
-        rectangle.x = meta->bounding_box.x;
-        rectangle.y = meta->bounding_box.y;
-        rectangle.w = meta->bounding_box.width;
-        rectangle.h = meta->bounding_box.height;
-        confidence = classification->confidence;
-      }
-
-      list = g_slist_next (list);
-    }
-
-    g_slist_free (metalist);
-
-    rectangle = srvctx->afrmalgo->process (
-        srvctx->afrmalgo->instance, (confidence > 0.0) ? &rectangle : NULL);
-
-    set_crop_rectangle (srvctx->vpipeline, rectangle.x, rectangle.y,
-        rectangle.w, rectangle.h);
+    return GST_FLOW_ERROR;
   }
 
-  gst_buffer_unmap (buffer, &info);
+  length = gst_value_list_get_size (&value);
+
+  // Iterate of the ML detection entries.
+  for (idx = 0; idx < length; idx++) {
+    const GValue *entry = gst_value_list_get_value (&value, idx);
+    GstStructure *structure = GST_STRUCTURE (g_value_get_boxed (entry));
+    const gchar *label = NULL;
+
+    // Skip the 'Parameters' structure as this is not a prediction result.
+    if (gst_structure_has_name (structure, "Parameters"))
+      continue;
+
+    label = gst_structure_get_string (structure, "label");
+
+    // Skip non-human detection results.
+    if (g_strcmp0 (label, "person") != 0)
+      continue;
+
+    // Fetch bounding box rectangle if it exists and fill ROI coordinates.
+    entry = gst_structure_get_value (structure, "rectangle");
+
+    if ((entry != NULL) && (gst_value_array_get_size (entry) != 4)) {
+      g_printerr ("\nBadly formed ROI rectangle, expected 4 entries "
+          "but received %u!\n", gst_value_array_get_size (entry));
+    } else if (entry != NULL) {
+      gfloat left = 0.0, right = 0.0, top = 0.0, bottom = 0.0;
+
+      top    = g_value_get_float (gst_value_array_get_value (entry, 0));
+      left   = g_value_get_float (gst_value_array_get_value (entry, 1));
+      bottom = g_value_get_float (gst_value_array_get_value (entry, 2));
+      right  = g_value_get_float (gst_value_array_get_value (entry, 3));
+
+      // Convert from relative coordinates to absolute.
+      rectangle.x = ABS (left) * 1280;
+      rectangle.y = ABS (top) * 720;
+      rectangle.w = ABS (right - left) * 1280;
+      rectangle.h = ABS (bottom - top) * 720;
+
+      // Clip width and height if it outside the frame limits.
+      rectangle.w = ((rectangle.x + rectangle.w) > 1280) ?
+          (1280 - rectangle.x) : rectangle.w;
+      rectangle.h = ((rectangle.y + rectangle.h) > 720) ?
+          (720 - rectangle.y) : rectangle.h;
+
+      gst_structure_get_double (structure, "confidence", &confidence);
+      break;
+
+    }
+  }
+
+  rectangle = srvctx->afrmalgo->process (
+      srvctx->afrmalgo->instance, (confidence > 0.0) ? &rectangle : NULL);
+
+  set_crop_rectangle (srvctx->vpipeline, rectangle.x, rectangle.y,
+      rectangle.w, rectangle.h);
+
+  g_value_reset (&value);
+
+  gst_buffer_unmap (buffer, &memmap);
   gst_sample_release (sample);
 
   return GST_FLOW_OK;
@@ -1037,131 +1083,36 @@ create_audio_pipeline (GstServiceContext * srvctx)
 static gboolean
 create_video_pipeline (GstServiceContext * srvctx)
 {
-  GstElement *camsrc = NULL, *vtransform = NULL;
-  GstElement *mlefilter = NULL, *mletflite = NULL, *mlesink = NULL;
-  GstElement *in_mlequeue = NULL, *out_mlequeue = NULL, *vqueue = NULL;
-  GstElement *umdvqueue = NULL, *umdvfilter = NULL, *umdvsink = NULL;
-
-  GstCaps *filtercaps = NULL;
+  GstElement *element = NULL;
   GstBus *bus = NULL;
+  GError *error = NULL;
 
   // Create the empty video pipeline.
-  if ((srvctx->vpipeline = gst_pipeline_new ("video-pipeline")) == NULL) {
-    g_printerr ("\nFailed to create empty video pipeline.\n");
+  srvctx->vpipeline = gst_parse_launch (GST_VIDEO_PIPELINE, &error);
+
+  if (srvctx->vpipeline == NULL) {
+    g_printerr ("\nPipeline could not be created, error: %s!\n",
+        GST_STR_NULL (error->message));
+    g_clear_error (&error);
     return FALSE;
   }
 
-  // Create the elements.
-  camsrc = gst_element_factory_make ("qtiqmmfsrc", "camsrc");
-  vqueue = gst_element_factory_make ("queue", "vqueue");
-  vtransform = gst_element_factory_make ("qtivtransform", "vtransform");
-  in_mlequeue = gst_element_factory_make ("queue", "inmlequeue");
-  mlefilter = gst_element_factory_make ("capsfilter", "mlefilter");
-  mletflite = gst_element_factory_make ("qtimletflite", "mletflite");
-  out_mlequeue = gst_element_factory_make ("queue", "outmlequeue");
-  mlesink  = gst_element_factory_make ("appsink", "mlesink");
-  umdvfilter = gst_element_factory_make ("capsfilter", "umdvfilter");
-  umdvqueue = gst_element_factory_make ("queue", "umdvqueue");
-  umdvsink = gst_element_factory_make ("appsink", "umdvsink");
-
-  if (!camsrc || !vtransform || !vqueue || !in_mlequeue || !out_mlequeue ||
-      !mlefilter || !mletflite || !mlesink || !umdvfilter || !umdvqueue ||
-      !umdvsink) {
-    g_printerr ("\nNot all elements could be created.\n");
-
-    if (camsrc)
-      gst_object_unref (camsrc);
-
-    if (vtransform)
-      gst_object_unref (vtransform);
-
-    if (vqueue)
-      gst_object_unref (vqueue);
-
-    if (mlefilter)
-      gst_object_unref (mlefilter);
-
-    if (in_mlequeue)
-      gst_object_unref (in_mlequeue);
-
-    if (out_mlequeue)
-      gst_object_unref (out_mlequeue);
-
-    if (mletflite)
-      gst_object_unref (mletflite);
-
-    if (mlesink)
-      gst_object_unref (mlesink);
-
-    if (umdvfilter)
-      gst_object_unref (umdvfilter);
-
-    if (umdvqueue)
-      gst_object_unref (umdvqueue);
-
-    if (umdvsink)
-      gst_object_unref (umdvsink);
-
-    return FALSE;
-  }
-
-  // Add the elements to the pipeline.
-  gst_bin_add_many (GST_BIN (srvctx->vpipeline), camsrc, vtransform, vqueue,
-      mlefilter, in_mlequeue, out_mlequeue, mletflite, mlesink, umdvfilter,
-      umdvqueue, umdvsink, NULL);
-
-  // Link the plugins in the MLE portion of the pipeline.
-  if (!gst_element_link_many (camsrc, mlefilter, in_mlequeue, mletflite,
-          out_mlequeue, mlesink, NULL)) {
-    g_printerr ("\nFailed to link pipeline MLE elements.\n");
-    return FALSE;
-  }
-
-  // Set caps for the MLE camera pad.
-  filtercaps = gst_caps_new_simple ("video/x-raw",
-      "format", G_TYPE_STRING, "NV12",
-      "width", G_TYPE_INT, 1280,
-      "height", G_TYPE_INT, 720,
-      "framerate", GST_TYPE_FRACTION, 30, 1,
-      NULL);
-  gst_caps_set_features (filtercaps, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
-
-  g_object_set (G_OBJECT (mlefilter), "caps", filtercaps, NULL);
-  gst_caps_unref (filtercaps);
-
-  // Set MLE properties
-  g_object_set (G_OBJECT (mletflite),
-      "delegate", 0, NULL);
-  g_object_set (G_OBJECT (mletflite),
-      "config", "/data/misc/camera/mle_tflite.config", NULL);
-  g_object_set (G_OBJECT (mletflite),
-      "model", "/data/misc/camera/detect.tflite", NULL);
-  g_object_set (G_OBJECT (mletflite),
-      "labels", "/data/misc/camera/labelmap.txt", NULL);
-  g_object_set (G_OBJECT (mletflite),
-      "postprocessing", "detection", NULL);
-  g_object_set (G_OBJECT (mletflite),
-      "preprocess-accel", 1, NULL);
-
+  element = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "mlsink");
   // Set emit-signals property and connect a callback to the new-sample signal.
-  g_object_set (G_OBJECT (mlesink), "emit-signals", TRUE, NULL);
-  g_signal_connect (mlesink, "new-sample", G_CALLBACK (mle_new_sample), srvctx);
+  g_object_set (G_OBJECT (element), "emit-signals", TRUE, NULL);
+  g_signal_connect (element, "new-sample", G_CALLBACK (ml_new_sample), srvctx);
+  gst_object_unref (element);
 
-  // Link the plugins in the UMD portion of the pipeline.
-  if (!gst_element_link_many (camsrc, umdvfilter, vqueue, vtransform, umdvqueue,
-          umdvsink, NULL)) {
-    g_printerr ("\nFailed to link pipeline UMD elements.\n");
-    return FALSE;
-  }
-
+  element = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "umdvsink");
   // Set emit-signals property and connect a callback to the new-sample signal.
-  g_object_set (G_OBJECT (umdvsink), "emit-signals", TRUE, NULL);
-  g_signal_connect (umdvsink, "new-sample", G_CALLBACK (umd_new_sample), srvctx);
+  g_object_set (G_OBJECT (element), "emit-signals", TRUE, NULL);
+  g_signal_connect (element, "new-sample", G_CALLBACK (umd_new_sample), srvctx);
 
-  g_object_set (G_OBJECT (umdvsink), "wait-on-eos", FALSE, NULL);
-  g_object_set (G_OBJECT (umdvsink), "enable-last-sample", FALSE, NULL);
-  g_object_set (G_OBJECT (umdvsink), "sync", FALSE, NULL);
+  g_object_set (G_OBJECT (element), "wait-on-eos", FALSE, NULL);
+  g_object_set (G_OBJECT (element), "enable-last-sample", FALSE, NULL);
+  g_object_set (G_OBJECT (element), "sync", FALSE, NULL);
+
+  gst_object_unref (element);
 
   // Retrieve reference to the pipeline's bus.
   if ((bus = gst_pipeline_get_bus (GST_PIPELINE (srvctx->vpipeline))) == NULL) {
@@ -1205,134 +1156,205 @@ create_video_pipeline (GstServiceContext * srvctx)
 }
 
 static gboolean
-mle_reconfigure_pipeline (GstServiceContext * srvctx, gboolean enable)
+ml_reconfigure_pipeline (GstServiceContext * srvctx, gboolean enable)
 {
   GstElement *pipeline = srvctx->vpipeline;
-  GstElement *mlefilter = NULL, *mletflite = NULL, *mlesink = NULL;
-  GstElement *in_mlequeue = NULL, *out_mlequeue = NULL, *fakesink = NULL;
-  gboolean success = TRUE;
+  GstElement *plugin = NULL, *prevplugin = NULL, *newplugin = NULL;
+  GstCaps *filtercaps = NULL;
 
-  // Use the existance of fakesink as indicator for MLE status.
-  fakesink = gst_bin_get_by_name (GST_BIN (pipeline), "fakesink");
+  // Use the existance of fakesink as indicator for ML status.
+  plugin = gst_bin_get_by_name (GST_BIN (pipeline), "fakesink");
 
-  if (enable && (fakesink != NULL)) {
-    gst_bin_remove_many (GST_BIN (pipeline), fakesink, NULL);
+  if (enable && (plugin != NULL)) {
+    GParamSpec *propspecs = NULL;
+    GValue value = G_VALUE_INIT;
+
+    gst_bin_remove_many (GST_BIN (pipeline), plugin, NULL);
 
     // Set the element into NULL state before destroying it.
-    gst_element_set_state (fakesink, GST_STATE_NULL);
-    gst_object_unref (fakesink);
+    gst_element_set_state (plugin, GST_STATE_NULL);
+    gst_object_unref (plugin);
 
-    in_mlequeue = gst_element_factory_make ("queue", "inmlequeue");
-    mletflite = gst_element_factory_make ("qtimletflite", "mletflite");
-    out_mlequeue = gst_element_factory_make ("queue", "outmlequeue");
-    mlesink  = gst_element_factory_make ("appsink", "mlesink");
+    newplugin = gst_element_factory_make ("qtimlvconverter", "mlvconverter");
+    g_return_val_if_fail (newplugin != NULL, FALSE);
 
-    if (!in_mlequeue || !mletflite || !out_mlequeue || !mlesink) {
-      g_printerr ("\nFailed to create one or more MLE elements!\n");
+    // Add the new element to the pipeline, sync its state and link to previous.
+    g_return_val_if_fail (gst_bin_add (GST_BIN (pipeline), newplugin), FALSE);
+    g_return_val_if_fail (gst_element_sync_state_with_parent (newplugin), FALSE);
 
-      if (in_mlequeue)
-        gst_object_unref (in_mlequeue);
+    // Link the new element with the previous one in the pipeline.
+    prevplugin = gst_bin_get_by_name (GST_BIN (pipeline), "camsrc_queue");
+    g_return_val_if_fail (gst_element_link (prevplugin, newplugin), FALSE);
+    gst_object_unref (prevplugin);
 
-      if (mletflite)
-        gst_object_unref (mletflite);
+    prevplugin = newplugin;
 
-      if (out_mlequeue)
-        gst_object_unref (out_mlequeue);
+    newplugin = gst_element_factory_make ("queue", "mlvconverter_queue");
+    g_return_val_if_fail (newplugin != NULL, FALSE);
 
-      if (mlesink)
-        gst_object_unref (mlesink);
+    // Add the new element to the pipeline, sync its state and link to previous.
+    g_return_val_if_fail (gst_bin_add (GST_BIN (pipeline), newplugin), FALSE);
+    g_return_val_if_fail (gst_element_sync_state_with_parent (newplugin), FALSE);
+    g_return_val_if_fail (gst_element_link (prevplugin, newplugin), FALSE);
 
-      return FALSE;
-    }
+    prevplugin = newplugin;
 
-    // Add the new elements to the pipeline.
-    gst_bin_add_many (GST_BIN (pipeline), in_mlequeue, mletflite,
-        out_mlequeue, mlesink, NULL);
+    newplugin = gst_element_factory_make ("qtimltflite", "mltflite");
+    g_return_val_if_fail (newplugin != NULL, FALSE);
 
-    // New elements need to be in the same state as the pipeline.
-    success = gst_element_sync_state_with_parent (mlesink);
-    success &= gst_element_sync_state_with_parent (out_mlequeue);
-    success &= gst_element_sync_state_with_parent (mletflite);
-    success &= gst_element_sync_state_with_parent (in_mlequeue);
+    // Set ML properties
+    propspecs = g_object_class_find_property (G_OBJECT_GET_CLASS (newplugin),
+        "delegate");
 
-    if (!success) {
-      g_printerr ("\nFailed to set new MLE elements into proper state!\n");
-      return FALSE;
-    }
+    g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+    g_return_val_if_fail (gst_value_deserialize (&value, "hexagon"), FALSE);
 
-    // Set MLE properties
-    g_object_set (G_OBJECT (mletflite),
-        "delegate", 0, NULL);
-    g_object_set (G_OBJECT (mletflite),
-        "config", "/data/misc/camera/mle_tflite.config", NULL);
-    g_object_set (G_OBJECT (mletflite),
-        "model", "/data/misc/camera/detect.tflite", NULL);
-    g_object_set (G_OBJECT (mletflite),
-        "labels", "/data/misc/camera/labelmap.txt", NULL);
-    g_object_set (G_OBJECT (mletflite),
-        "postprocessing", "detection", NULL);
-    g_object_set (G_OBJECT (mletflite),
-        "preprocess-accel", 1, NULL);
+    g_object_set_property (G_OBJECT (newplugin), "delegate", &value);
+    g_value_unset (&value);
+
+    g_object_set (G_OBJECT (newplugin),  "model",
+        "/data/yolov5m-320x320-int8.tflite", NULL);
+
+    // Add the new element to the pipeline and sync its state.
+    g_return_val_if_fail (gst_bin_add (GST_BIN (pipeline), newplugin), FALSE);
+    g_return_val_if_fail (gst_element_sync_state_with_parent (newplugin), FALSE);
+
+    // Link the new element with the previous one in the pipeline.
+    g_return_val_if_fail (gst_element_link (prevplugin, newplugin), FALSE);
+
+    prevplugin = newplugin;
+
+    newplugin = gst_element_factory_make ("queue", "mltflite_queue");
+    g_return_val_if_fail (newplugin != NULL, FALSE);
+
+    // Add the new element to the pipeline, sync its state and link to previous.
+    g_return_val_if_fail (gst_bin_add (GST_BIN (pipeline), newplugin), FALSE);
+    g_return_val_if_fail (gst_element_sync_state_with_parent (newplugin), FALSE);
+    g_return_val_if_fail (gst_element_link (prevplugin, newplugin), FALSE);
+
+    prevplugin = newplugin;
+
+    newplugin = gst_element_factory_make ("qtimlvdetection", "mlvdetection");
+    g_return_val_if_fail (newplugin != NULL, FALSE);
+
+    // Set ML Detection properties
+    propspecs = g_object_class_find_property (G_OBJECT_GET_CLASS (newplugin),
+        "module");
+
+    g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+    g_return_val_if_fail (gst_value_deserialize (&value, "yolov5m"), FALSE);
+
+    g_object_set_property (G_OBJECT (newplugin), "module", &value);
+    g_value_unset (&value);
+
+    g_object_set (G_OBJECT (newplugin), "labels", "/data/yolov5m.labels", NULL);
+    g_object_set (G_OBJECT (newplugin), "threshold", 75.0, NULL);
+    g_object_set (G_OBJECT (newplugin), "results", 10, NULL);
+
+    // Add the new element to the pipeline, sync its state and link to previous.
+    g_return_val_if_fail (gst_bin_add (GST_BIN (pipeline), newplugin), FALSE);
+    g_return_val_if_fail (gst_element_sync_state_with_parent (newplugin), FALSE);
+    g_return_val_if_fail (gst_element_link (prevplugin, newplugin), FALSE);
+
+    prevplugin = newplugin;
+
+    newplugin = gst_element_factory_make ("capsfilter", "mldetection_filter");
+    g_return_val_if_fail (newplugin != NULL, FALSE);
+
+    // Set caps for the ML Detection pad.
+    filtercaps = gst_caps_new_simple ("text/x-raw", "format", G_TYPE_STRING,
+        "utf8", NULL);
+    g_object_set (G_OBJECT (newplugin), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
+
+    // Add the new element to the pipeline, sync its state and link to previous.
+    g_return_val_if_fail (gst_bin_add (GST_BIN (pipeline), newplugin), FALSE);
+    g_return_val_if_fail (gst_element_sync_state_with_parent (newplugin), FALSE);
+    g_return_val_if_fail (gst_element_link (prevplugin, newplugin), FALSE);
+
+    prevplugin = newplugin;
+
+    newplugin = gst_element_factory_make ("queue", "mlvdetection_queue");
+    g_return_val_if_fail (newplugin != NULL, FALSE);
+
+    // Add the new element to the pipeline, sync its state and link to previous.
+    g_return_val_if_fail (gst_bin_add (GST_BIN (pipeline), newplugin), FALSE);
+    g_return_val_if_fail (gst_element_sync_state_with_parent (newplugin), FALSE);
+    g_return_val_if_fail (gst_element_link (prevplugin, newplugin), FALSE);
+
+    prevplugin = newplugin;
+
+    newplugin = gst_element_factory_make ("appsink", "mlsink");
+    g_return_val_if_fail (newplugin != NULL, FALSE);
 
     // Set emit-signals property and connect a callback to the new-sample signal.
-    g_object_set (G_OBJECT(mlesink), "emit-signals", TRUE, NULL);
-    g_signal_connect (mlesink, "new-sample", G_CALLBACK (mle_new_sample), srvctx);
+    g_object_set (G_OBJECT(newplugin), "emit-signals", TRUE, NULL);
+    g_signal_connect (newplugin, "new-sample", G_CALLBACK (ml_new_sample), srvctx);
 
-    g_object_set (G_OBJECT(mlesink), "wait-on-eos", FALSE, NULL);
-    g_object_set (G_OBJECT(mlesink), "enable-last-sample", FALSE, NULL);
-    g_object_set (G_OBJECT(mlesink), "sync", FALSE, NULL);
+    g_object_set (G_OBJECT(newplugin), "wait-on-eos", FALSE, NULL);
+    g_object_set (G_OBJECT(newplugin), "enable-last-sample", FALSE, NULL);
+    g_object_set (G_OBJECT(newplugin), "sync", FALSE, NULL);
 
-    // Retrieve MLE filter plugin in order to link the new elements.
-    mlefilter = gst_bin_get_by_name (GST_BIN (pipeline), "mlefilter");
+    // Add the new element to the pipeline, sync its state and link to previous.
+    g_return_val_if_fail (gst_bin_add (GST_BIN (pipeline), newplugin), FALSE);
+    g_return_val_if_fail (gst_element_sync_state_with_parent (newplugin), FALSE);
+    g_return_val_if_fail (gst_element_link (prevplugin, newplugin), FALSE);
 
-    success = gst_element_link_many (mlefilter, in_mlequeue, mletflite,
-        out_mlequeue, mlesink, NULL);
+  } else if (!enable && (NULL == plugin)) {
+    plugin = gst_bin_get_by_name (GST_BIN (pipeline), "mlvconverter");
+    g_return_val_if_fail (gst_bin_remove (GST_BIN (pipeline), plugin), FALSE);
+    gst_element_set_state (plugin, GST_STATE_NULL);
+    gst_object_unref (plugin);
 
-    gst_object_unref (mlefilter);
-  } else if (!enable && (NULL == fakesink)) {
-    in_mlequeue = gst_bin_get_by_name (GST_BIN (pipeline), "inmlequeue");
-    mletflite = gst_bin_get_by_name (GST_BIN (pipeline), "mletflite");
-    out_mlequeue = gst_bin_get_by_name (GST_BIN (pipeline), "outmlequeue");
-    mlesink = gst_bin_get_by_name (GST_BIN (pipeline), "mlesink");
+    plugin = gst_bin_get_by_name (GST_BIN (pipeline), "mlvconverter_queue");
+    g_return_val_if_fail (gst_bin_remove (GST_BIN (pipeline), plugin), FALSE);
+    gst_element_set_state (plugin, GST_STATE_NULL);
+    gst_object_unref (plugin);
 
-    gst_bin_remove_many (GST_BIN (pipeline), in_mlequeue, mletflite,
-        out_mlequeue, mlesink, NULL);
+    plugin = gst_bin_get_by_name (GST_BIN (pipeline), "mltflite");
+    g_return_val_if_fail (gst_bin_remove (GST_BIN (pipeline), plugin), FALSE);
+    gst_element_set_state (plugin, GST_STATE_NULL);
+    gst_object_unref (plugin);
 
-    // Removed elements need to be in NULL state before deletion.
-    gst_element_set_state (mlesink, GST_STATE_NULL);
-    gst_element_set_state (out_mlequeue, GST_STATE_NULL);
-    gst_element_set_state (mletflite, GST_STATE_NULL);
-    gst_element_set_state (in_mlequeue, GST_STATE_NULL);
+    plugin = gst_bin_get_by_name (GST_BIN (pipeline), "mltflite_queue");
+    g_return_val_if_fail (gst_bin_remove (GST_BIN (pipeline), plugin), FALSE);
+    gst_element_set_state (plugin, GST_STATE_NULL);
+    gst_object_unref (plugin);
 
-    gst_object_unref (mlesink);
-    gst_object_unref (out_mlequeue);
-    gst_object_unref (mletflite);
-    gst_object_unref (in_mlequeue);
+    plugin = gst_bin_get_by_name (GST_BIN (pipeline), "mlvdetection");
+    g_return_val_if_fail (gst_bin_remove (GST_BIN (pipeline), plugin), FALSE);
+    gst_element_set_state (plugin, GST_STATE_NULL);
+    gst_object_unref (plugin);
 
-    fakesink = gst_element_factory_make ("fakesink", "fakesink");
+    plugin = gst_bin_get_by_name (GST_BIN (pipeline), "mldetection_filter");
+    g_return_val_if_fail (gst_bin_remove (GST_BIN (pipeline), plugin), FALSE);
+    gst_element_set_state (plugin, GST_STATE_NULL);
+    gst_object_unref (plugin);
 
-    if (!fakesink) {
-      g_printerr ("\nFailed to create fakesink element!\n");
-      return FALSE;
-    }
+    plugin = gst_bin_get_by_name (GST_BIN (pipeline), "mlvdetection_queue");
+    g_return_val_if_fail (gst_bin_remove (GST_BIN (pipeline), plugin), FALSE);
+    gst_element_set_state (plugin, GST_STATE_NULL);
+    gst_object_unref (plugin);
 
-    // Add the new elements to the pipeline.
-    gst_bin_add_many (GST_BIN (pipeline), fakesink, NULL);
+    plugin = gst_bin_get_by_name (GST_BIN (pipeline), "mlsink");
+    g_return_val_if_fail (gst_bin_remove (GST_BIN (pipeline), plugin), FALSE);
+    gst_element_set_state (plugin, GST_STATE_NULL);
+    gst_object_unref (plugin);
 
-    // New elements need to be in the same state as the pipeline.
-    if (!gst_element_sync_state_with_parent (fakesink)) {
-      g_printerr ("\nFailed to set fakesink into proper state!\n");
-      return FALSE;
-    }
+    newplugin = gst_element_factory_make ("fakesink", "fakesink");
+    g_return_val_if_fail (newplugin != NULL, FALSE);
 
-    // Retrieve MLE filter plugin in order to link the new elements.
-    mlefilter = gst_bin_get_by_name (GST_BIN (pipeline), "mlefilter");
-    success = gst_element_link (mlefilter, fakesink);
+    // Add the new element to the pipeline and sync its state.
+    g_return_val_if_fail (gst_bin_add (GST_BIN (pipeline), newplugin), FALSE);
+    g_return_val_if_fail (gst_element_sync_state_with_parent (newplugin), FALSE);
 
-    gst_object_unref (mlefilter);
+    // Retrieve ML filter plugin in order to link the new elements.
+    prevplugin = gst_bin_get_by_name (GST_BIN (pipeline), "camsrc_queue");
+    g_return_val_if_fail (gst_element_link (prevplugin, newplugin), FALSE);
+    gst_object_unref (prevplugin);
   }
 
-  return success;
+  return TRUE;
 }
 
 static bool
@@ -1491,8 +1513,8 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
   // Reset the crop parameters.
   set_crop_rectangle (srvctx->vpipeline, 0, 0, 0, 0);
 
-  if (!mle_reconfigure_pipeline (srvctx, afrmops.enable)) {
-    g_printerr ("\nFailed to reconfigure pipeline MLE elements!\n");
+  if (!ml_reconfigure_pipeline (srvctx, afrmops.enable)) {
+    g_printerr ("\nFailed to reconfigure pipeline ML elements!\n");
     return false;
   }
 

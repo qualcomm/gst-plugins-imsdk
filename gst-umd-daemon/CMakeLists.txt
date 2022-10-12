@@ -9,6 +9,8 @@ find_package(PkgConfig)
 # Get the pkgconfigs exported by the automake tools
 pkg_check_modules(GST
   REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_VIDEO
+  REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
 
 # GStreamer UVC Camera daemon
 set(GST_DAEMON_BIN gst-umd-daemon)
@@ -23,8 +25,8 @@ target_include_directories(${GST_DAEMON_BIN} PRIVATE
 
 target_link_libraries(${GST_DAEMON_BIN} PRIVATE
   ${GST_LIBRARIES}
+  ${GST_VIDEO_LIBRARIES}
   qtiumd
-  qtimlmeta
   dl
 )
 
