@@ -1,5 +1,5 @@
 # GStreamer multi pipeline app example
-set(GST_EXAMPLE_BIN gst-hotplug-pov-camera-app)
+set(GST_EXAMPLE_BIN gst-hotplug-pov-camera-example)
 
 add_executable(${GST_EXAMPLE_BIN}
   main.c
@@ -10,7 +10,8 @@ target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
 )
 
 target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
-  ${GST_LIBRARIES} rt
+  ${GST_LIBRARIES}
+  rt
 )
 
 install(
