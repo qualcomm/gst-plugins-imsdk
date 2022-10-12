@@ -23,6 +23,10 @@ pkg_check_modules(GST_VIDEO
 configure_file(config.h.in config.h @ONLY)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
+# Check whether DMA header is present.
+include(CheckIncludeFile)
+check_include_file("linux/dma-buf.h" HAVE_LINUX_DMA_BUF_H)
+
 # Precompiler definitions.
 add_definitions(-DHAVE_CONFIG_H)
 

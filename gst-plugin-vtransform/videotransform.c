@@ -69,6 +69,11 @@
 
 #include <gst/video/gstimagepool.h>
 
+#ifdef HAVE_LINUX_DMA_BUF_H
+#include <sys/ioctl.h>
+#include <linux/dma-buf.h>
+#endif // HAVE_LINUX_DMA_BUF_H
+
 #define GST_CAT_DEFAULT video_transform_debug
 GST_DEBUG_CATEGORY_STATIC (video_transform_debug);
 
@@ -1688,8 +1693,7 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM_CAST (base);
   GstVideoFrame inframe, outframe;
   gpointer request_id = NULL;
-  GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
-  GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
+  GstClockTime time = GST_CLOCK_TIME_NONE;
 
   // GAP buffer, nothing to do. Propagate output buffer downstream.
   if (gst_buffer_get_size (outbuffer) == 0 &&
@@ -1702,6 +1706,18 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     return GST_FLOW_OK;
   }
 
+#ifdef HAVE_LINUX_DMA_BUF_H
+  if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
+    struct dma_buf_sync bufsync;
+    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
+
+    bufsync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
+
+    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
+      GST_WARNING_OBJECT (vtrans, "DMA IOCTL SYNC START failed!");
+  }
+#endif // HAVE_LINUX_DMA_BUF_H
+
   if (!gst_video_frame_map (&outframe, vtrans->outinfo, outbuffer,
           GST_MAP_READWRITE | GST_VIDEO_FRAME_MAP_FLAG_NO_REF)) {
     GST_ERROR_OBJECT (vtrans, "Failed to map output buffer!");
@@ -1709,7 +1725,7 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     return GST_FLOW_OK;
   }
 
-  ts_begin = gst_util_get_timestamp ();
+  time = gst_util_get_timestamp ();
 
   {
 #ifdef USE_C2D_CONVERTER
@@ -1729,16 +1745,26 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 #endif // USE_GLES_CONVERTER
   }
 
-  ts_end = gst_util_get_timestamp ();
-
-  tsdelta = GST_CLOCK_DIFF (ts_begin, ts_end);
+  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
 
   GST_LOG_OBJECT (vtrans, "Conversion took %" G_GINT64_FORMAT ".%03"
-      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (tsdelta),
-      (GST_TIME_AS_USECONDS (tsdelta) % 1000));
+      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000));
 
   gst_video_frame_unmap (&outframe);
   gst_video_frame_unmap (&inframe);
+
+#ifdef HAVE_LINUX_DMA_BUF_H
+  if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
+    struct dma_buf_sync bufsync;
+    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
+
+    bufsync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
+
+    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
+      GST_WARNING_OBJECT (vtrans, "DMA IOCTL SYNC END failed!");
+  }
+#endif // HAVE_LINUX_DMA_BUF_H
 
   return GST_FLOW_OK;
 }
