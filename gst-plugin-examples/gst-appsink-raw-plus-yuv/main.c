@@ -54,7 +54,8 @@
 #include <gst/video/video.h>
 
 static void
-sample_unref (GstSample *sample) {
+gst_sample_release (GstSample * sample)
+{
     gst_sample_unref (sample);
 #if GST_VERSION_MAJOR >= 1 && GST_VERSION_MINOR > 14
     gst_sample_set_buffer (sample, NULL);
@@ -85,7 +86,7 @@ new_sample_yuv (GstElement * sink, gpointer userdata)
 
   if ((buffer = gst_sample_get_buffer (sample)) == NULL) {
     g_printerr ("ERROR: Pulled buffer is NULL!");
-    sample_unref(sample);
+    gst_sample_release (sample);
     return GST_FLOW_ERROR;
   }
 
@@ -93,7 +94,7 @@ new_sample_yuv (GstElement * sink, gpointer userdata)
   vmeta = gst_buffer_get_video_meta_id (buffer, 0);
   if (!vmeta) {
     g_printerr ("ERROR: FAILED TO GET BUFFER META!\n");
-    sample_unref(sample);
+    gst_sample_release (sample);
     return GST_FLOW_ERROR;
   }
 
@@ -112,12 +113,12 @@ new_sample_yuv (GstElement * sink, gpointer userdata)
     gst_buffer_unmap (buffer, &info);
   } else {
     g_printerr ("ERROR: Failed to map buffer memory!");
-    sample_unref(sample);
+    gst_sample_release (sample);
     g_free (temp_str);
     return GST_FLOW_ERROR;
   }
 
-  sample_unref (sample);
+  gst_sample_release (sample);
   g_free (temp_str);
   return GST_FLOW_OK;
 }
@@ -146,7 +147,7 @@ new_sample_raw (GstElement * sink, gpointer userdata)
 
   if ((buffer = gst_sample_get_buffer (sample)) == NULL) {
     g_printerr ("ERROR: Pulled buffer is NULL!");
-    sample_unref(sample);
+    gst_sample_release (sample);
     return GST_FLOW_ERROR;
   }
 
@@ -154,7 +155,7 @@ new_sample_raw (GstElement * sink, gpointer userdata)
   vmeta = gst_buffer_get_video_meta_id (buffer, 0);
   if (!vmeta) {
     g_printerr ("ERROR: FAILED TO GET BUFFER META!\n");
-    sample_unref(sample);
+    gst_sample_release (sample);
     return GST_FLOW_ERROR;
   }
 
@@ -171,12 +172,12 @@ new_sample_raw (GstElement * sink, gpointer userdata)
     gst_buffer_unmap (buffer, &info);
   } else {
     g_printerr ("ERROR: Failed to map buffer memory!");
-    sample_unref(sample);
+    gst_sample_release (sample);
     g_free (temp_str);
     return GST_FLOW_ERROR;
   }
 
-  sample_unref (sample);
+  gst_sample_release (sample);
   g_free (temp_str);
   return GST_FLOW_OK;
 }

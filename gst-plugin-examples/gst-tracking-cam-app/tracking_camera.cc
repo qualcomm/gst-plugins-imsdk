@@ -156,7 +156,8 @@ struct _GstMleData
 };
 
 static void
-sample_unref (GstSample *sample) {
+gst_sample_release (GstSample * sample)
+{
     gst_sample_unref (sample);
 #if GST_VERSION_MAJOR >= 1 && GST_VERSION_MINOR > 14
     gst_sample_set_buffer (sample, NULL);
@@ -315,14 +316,14 @@ mle_detect_new_sample (GstElement * sink, gpointer userdata)
 
   if ((buffer = gst_sample_get_buffer (sample)) == NULL) {
     g_printerr ("ERROR: Pulled buffer is NULL!\n");
-    sample_unref(sample);
+    gst_sample_release (sample);
     return GST_FLOW_ERROR;
   }
 
   if (!gst_buffer_map (buffer, &info, (GstMapFlags) (GST_MAP_READ |
       GST_VIDEO_FRAME_MAP_FLAG_NO_REF))) {
     g_printerr ("ERROR: Failed to map the pulled buffer!\n");
-    sample_unref(sample);
+    gst_sample_release (sample);
     return GST_FLOW_ERROR;
   }
 
@@ -383,7 +384,7 @@ mle_detect_new_sample (GstElement * sink, gpointer userdata)
           item->destroy (item);
           g_mutex_unlock (&tracking_camera->process_lock);
           gst_buffer_unmap (buffer, &info);
-          sample_unref (sample);
+          gst_sample_release (sample);
           return GST_FLOW_ERROR;
         }
         g_cond_signal (&tracking_camera->process_signal);
@@ -414,7 +415,7 @@ mle_detect_new_sample (GstElement * sink, gpointer userdata)
         item->destroy (item);
         g_mutex_unlock (&tracking_camera->process_lock);
         gst_buffer_unmap (buffer, &info);
-        sample_unref (sample);
+        gst_sample_release (sample);
         return GST_FLOW_ERROR;
       }
       g_cond_signal (&tracking_camera->process_signal);
@@ -423,7 +424,7 @@ mle_detect_new_sample (GstElement * sink, gpointer userdata)
   }
 
   gst_buffer_unmap (buffer, &info);
-  sample_unref (sample);
+  gst_sample_release (sample);
 
   return GST_FLOW_OK;
 }
