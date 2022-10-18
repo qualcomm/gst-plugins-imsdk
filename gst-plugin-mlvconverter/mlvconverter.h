@@ -107,9 +107,10 @@ struct _GstMLVideoConverter {
   /// Input video info.
   GstVideoInfo         *ininfo;
 
-  /// Output ML info and corresponding video info.
-  GstVideoInfo         *vinfo;
+  /// Output ML info.
   GstMLInfo            *mlinfo;
+  /// Video info for the converter engine output, created from the ML info.
+  GstVideoInfo         *vinfo;
 
   /// Buffer pools.
   GstBufferPool        *outpool;
