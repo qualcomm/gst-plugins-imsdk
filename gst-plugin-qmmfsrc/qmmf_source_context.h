@@ -75,7 +75,7 @@ typedef struct _GstQmmfContext GstQmmfContext;
 
 typedef void (*GstCameraEventCb) (guint event, gpointer userdata);
 typedef void (*GstCameraMetaCb) (gint camera_id, gconstpointer metadata,
-    gpointer userdata);
+    gboolean isurgent, gpointer userdata);
 
 enum {
   EVENT_UNKNOWN,
