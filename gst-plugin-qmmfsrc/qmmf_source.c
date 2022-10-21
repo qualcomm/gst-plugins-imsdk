@@ -129,6 +129,7 @@ enum
   SIGNAL_CAPTURE_IMAGE,
   SIGNAL_CANCEL_CAPTURE,
   SIGNAL_RESULT_METADATA,
+  SIGNAL_URGENT_METADATA,
   LAST_SIGNAL
 };
 
@@ -543,10 +544,17 @@ qmmfsrc_event_callback (guint event, gpointer userdata)
 
 static void
 qmmfsrc_metadata_callback (gint camera_id, gconstpointer metadata,
-    gpointer userdata)
+    gboolean isurgent, gpointer userdata)
 {
   GstQmmfSrc *qmmfsrc = GST_QMMFSRC (userdata);
-  g_signal_emit_by_name(qmmfsrc, "result-metadata", camera_id, metadata, NULL);
+
+  if (isurgent) {
+    g_signal_emit_by_name (qmmfsrc, "urgent-metadata", camera_id, metadata,
+        NULL);
+  } else {
+    g_signal_emit_by_name (qmmfsrc, "result-metadata", camera_id, metadata,
+        NULL);
+  }
 }
 
 static gboolean
@@ -1536,6 +1544,11 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
 
   signals[SIGNAL_RESULT_METADATA] =
       g_signal_new ("result-metadata", G_TYPE_FROM_CLASS (klass),
+      G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 2, G_TYPE_INT,
+      G_TYPE_POINTER);
+
+  signals[SIGNAL_URGENT_METADATA] =
+      g_signal_new ("urgent-metadata", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 2, G_TYPE_INT,
       G_TYPE_POINTER);
 

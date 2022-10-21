@@ -1134,7 +1134,13 @@ gst_qmmf_context_open (GstQmmfContext * context)
 
   qmmf::recorder::CameraResultCb result_cb = [&, context](uint32_t camera_id,
       const android::CameraMetadata& result) {
-    context->metacb (camera_id, &result, context->userdata);
+
+    // Timestamp cannot exist in urgent metadata because at time urgent meta
+    // is created frame is not exposed. This is why we use that to detect
+    // result callback is for urgent or full metadata.
+    gboolean isurgent = !result.exists (ANDROID_SENSOR_TIMESTAMP);
+
+    context->metacb (camera_id, &result, isurgent, context->userdata);
   };
 
   status = recorder->StartCamera (context->camera_id, 30, xtraparam, result_cb);

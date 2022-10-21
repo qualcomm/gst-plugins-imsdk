@@ -194,11 +194,10 @@ static GstFlowReturn
 result_metadata (gpointer userdata, guint camera_id, gpointer metadata)
 {
   ::android::CameraMetadata *meta_ptr = (::android::CameraMetadata*) metadata;
-  camera_metadata_entry entry;
   guint tag_id = 0;
 
   if (meta_ptr != nullptr) {
-    g_print ("Result metadata ... entries - %ld\n", meta_ptr->entryCount());
+    g_print ("\nResult metadata ... entries - %ld\n", meta_ptr->entryCount());
 
     // Exposure time
     if (meta_ptr->exists(ANDROID_SENSOR_EXPOSURE_TIME)) {
@@ -283,6 +282,54 @@ result_metadata (gpointer userdata, guint camera_id, gpointer metadata)
         guint value = (meta_ptr->find(tag_id).data.u8[0]) | (meta_ptr->find(tag_id).data.u8[1] << 8);
         g_print ("Sensor Read Output: %d\n", value);
       }
+    }
+  }
+
+  return GST_FLOW_OK;
+}
+
+static GstFlowReturn
+urgent_metadata (gpointer userdata, guint camera_id, gpointer metadata)
+{
+  ::android::CameraMetadata *meta_ptr = (::android::CameraMetadata*) metadata;
+
+  if (meta_ptr != nullptr) {
+    g_print ("\nUrgent metadata ... entries - %ld\n", meta_ptr->entryCount());
+
+    // AWB Mode
+    if (meta_ptr->exists(ANDROID_CONTROL_AWB_MODE)) {
+      gint8 AWBMode = meta_ptr->find(ANDROID_CONTROL_AWB_MODE).data.u8[0];
+      g_print ("Urgent AWB mode - %ld\n", AWBMode);
+    }
+
+    // AWB State
+    if (meta_ptr->exists(ANDROID_CONTROL_AWB_STATE)) {
+      gint8 AWBState = meta_ptr->find(ANDROID_CONTROL_AWB_STATE).data.u8[0];
+      g_print ("Urgent AWB state - %ld\n", AWBState);
+    }
+
+    // AF Mode
+    if (meta_ptr->exists(ANDROID_CONTROL_AF_MODE)) {
+      gint8 AFMode = meta_ptr->find(ANDROID_CONTROL_AF_MODE).data.u8[0];
+      g_print ("Urgent AF mode - %ld\n", AFMode);
+    }
+
+    // AF State
+    if (meta_ptr->exists(ANDROID_CONTROL_AF_STATE)) {
+      gint8 AFState = meta_ptr->find(ANDROID_CONTROL_AF_STATE).data.u8[0];
+      g_print ("Urgent AF state - %ld\n", AFState);
+    }
+
+    // AE Mode
+    if (meta_ptr->exists(ANDROID_CONTROL_AE_MODE)) {
+      gint8 AEMode = meta_ptr->find(ANDROID_CONTROL_AE_MODE).data.u8[0];
+      g_print ("Urgent AE mode - %ld\n", AEMode);
+    }
+
+    // AE State
+    if (meta_ptr->exists(ANDROID_CONTROL_AE_STATE)) {
+      gint8 AEState = meta_ptr->find(ANDROID_CONTROL_AE_STATE).data.u8[0];
+      g_print ("Urgent AE state - %ld\n", AEState);
     }
   }
 
@@ -400,6 +447,8 @@ main (gint argc, gchar *argv[])
   GstElement *qtiqmmfsrc = gst_bin_get_by_name (GST_BIN (pipeline), "camera");
   g_signal_connect (qtiqmmfsrc, "result-metadata",
       G_CALLBACK (result_metadata), NULL);
+  g_signal_connect (qtiqmmfsrc, "urgent-metadata",
+      G_CALLBACK (urgent_metadata), NULL);
 
   // Get static metadata
   ::android::CameraMetadata *st_meta_ptr = nullptr;
