@@ -68,7 +68,11 @@ typedef enum {
     FLAG_TYPE_INCOMPLETE = 1 << 3,
     // Frame contains only codec-specific configuration data,
     // and no actual access unit
-    FLAG_TYPE_CODEC_CONFIG = 1 << 4
+    FLAG_TYPE_CODEC_CONFIG = 1 << 4,
+    // Sync Frame Flag: This flag is set when the buffer content
+    // contains a coded sync frame a frame that has no dependency
+    // on any other frame information
+    FLAG_TYPE_SYNC_FRAME = 1 << 5
 } FLAG_TYPE;
 
 typedef struct {

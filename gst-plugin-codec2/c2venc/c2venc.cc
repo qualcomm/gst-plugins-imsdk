@@ -783,6 +783,19 @@ push_frame_downstream (GstVideoEncoder * encoder, BufferDescriptor * encode_buf)
 
   if (outbuf) {
     gst_buffer_set_flags (outbuf, GST_BUFFER_FLAG_SYNC_AFTER);
+    if (encode_buf->flag & FLAG_TYPE_SYNC_FRAME) {
+      if (frame) {
+        GST_VIDEO_CODEC_FRAME_SET_SYNC_POINT (frame);
+      } else {
+        GST_BUFFER_FLAG_UNSET (outbuf, GST_BUFFER_FLAG_DELTA_UNIT);
+      }
+    } else {
+      if (frame) {
+        GST_VIDEO_CODEC_FRAME_UNSET_SYNC_POINT (frame);
+      } else {
+        GST_BUFFER_FLAG_SET (outbuf, GST_BUFFER_FLAG_DELTA_UNIT);
+      }
+    }
     GST_BUFFER_TIMESTAMP (outbuf) =
         gst_util_uint64_scale (encode_buf->timestamp, GST_SECOND,
         1000000);

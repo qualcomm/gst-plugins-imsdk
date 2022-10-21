@@ -619,6 +619,22 @@ EventCallback::onOutputBufferAvailable (const std::shared_ptr<C2Buffer> buffer,
   if (C2FrameData::FLAG_CODEC_CONFIG & flag) {
     flag_res |= FLAG_TYPE_CODEC_CONFIG;
   }
+
+  if (buffer) {
+    C2BufferData::type_t buf_type = buffer->data ().type ();
+    if (buf_type == C2BufferData::LINEAR) {
+      // check for sync frame
+      auto picTypeInfo =
+          std::static_pointer_cast<const C2StreamPictureTypeInfo::output> (
+          buffer->getInfo (C2StreamPictureTypeInfo::output::PARAM_TYPE));
+      if (picTypeInfo) {
+        if (picTypeInfo->value == C2Config::SYNC_FRAME) {
+          flag_res |= FLAG_TYPE_SYNC_FRAME;
+        }
+      }
+    }
+  }
+
   flag_type = static_cast<FLAG_TYPE> (flag_res);
 
   if (buffer) {
