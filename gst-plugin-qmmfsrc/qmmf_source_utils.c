@@ -783,3 +783,26 @@ gst_qmmfsrc_android_value_noise_reduction (const guchar value)
   }
   return UINT_MAX;
 }
+
+const char *
+gst_qmmf_video_format_to_string (gint format)
+{
+  if (gst_video_format_to_string ((GstVideoFormat)format)) {
+    return gst_video_format_to_string ((GstVideoFormat)format);
+  }
+
+  switch (format) {
+    case GST_BAYER_FORMAT_BGGR:
+      return "RGGB";
+    case GST_BAYER_FORMAT_RGGB:
+      return "RGGB";
+    case GST_BAYER_FORMAT_GBRG:
+      return "GBRG";
+    case GST_BAYER_FORMAT_GRBG:
+      return "GRBG";
+    case GST_BAYER_FORMAT_MONO:
+      return "MONO";
+    default:
+      return "unknown";
+  }
+}

@@ -197,7 +197,6 @@ struct _GstQmmfContext {
 
 static G_DEFINE_QUARK(QmmfBufferQDataQuark, qmmf_buffer_qdata);
 
-
 static gboolean
 update_structure (GQuark id, const GValue * value, gpointer data)
 {
@@ -1228,11 +1227,32 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
       return FALSE;
   }
 
+  if (vpad->compression != GST_VIDEO_COMPRESSION_NONE &&
+      vpad->format != GST_VIDEO_FORMAT_NV12 &&
+      vpad->format != GST_VIDEO_FORMAT_NV12_10LE32) {
+    GST_ERROR ("Compresion is not supported for %s format!",
+        gst_qmmf_video_format_to_string (vpad->format));
+    GST_QMMFSRC_VIDEO_PAD_UNLOCK (vpad);
+    return FALSE;
+  }
+
   switch (vpad->format) {
     case GST_VIDEO_FORMAT_NV12:
       format = (vpad->compression == GST_VIDEO_COMPRESSION_UBWC) ?
           ::qmmf::recorder::VideoFormat::kNV12UBWC :
           ::qmmf::recorder::VideoFormat::kNV12;
+      break;
+    case GST_VIDEO_FORMAT_P010_10LE:
+      format = ::qmmf::recorder::VideoFormat::kP010;
+      break;
+    case GST_VIDEO_FORMAT_NV12_10LE32:
+      if (vpad->compression != GST_VIDEO_COMPRESSION_UBWC) {
+        GST_ERROR ("Only UBWC commpresion is supported for %s format!",
+            gst_qmmf_video_format_to_string (vpad->format));
+        GST_QMMFSRC_VIDEO_PAD_UNLOCK (vpad);
+        return FALSE;
+      }
+      format = ::qmmf::recorder::VideoFormat::kTP10UBWC;
       break;
     case GST_VIDEO_FORMAT_NV16:
       format = ::qmmf::recorder::VideoFormat::kNV16;
@@ -1270,7 +1290,8 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
       // Encoded stream.
       break;
     default:
-      GST_ERROR ("Unsupported video format!");
+      GST_ERROR ("Unsupported %s format!",
+          gst_qmmf_video_format_to_string (vpad->format));
       GST_QMMFSRC_VIDEO_PAD_UNLOCK (vpad);
       return FALSE;
   }

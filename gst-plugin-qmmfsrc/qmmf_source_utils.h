@@ -67,6 +67,7 @@
 #define __GST_QMMFSRC_UTILS_H__
 
 #include <gst/gst.h>
+#include <gst/video/video.h>
 #include <glib/gtypes.h>
 
 G_BEGIN_DECLS
@@ -319,6 +320,8 @@ guint gst_qmmfsrc_android_value_focus_mode (const guchar value);
 guchar gst_qmmfsrc_noise_reduction_android_value (const guint value);
 
 guint gst_qmmfsrc_android_value_noise_reduction (const guchar value);
+
+const char * gst_qmmf_video_format_to_string (gint format);
 
 /// org.quic.camera.defog
 static const gchar * gst_camera_defog_table[] =
