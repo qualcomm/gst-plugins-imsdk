@@ -59,7 +59,6 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_image_pad_debug);
 #define DEFAULT_PROP_SCREENNAIL_WIDTH   0
 #define DEFAULT_PROP_SCREENNAIL_HEIGHT  0
 #define DEFAULT_PROP_SCREENNAIL_QUALITY 85
-#define DEFAULT_PROP_IMAGE_MODE         GST_IMAGE_MODE_VIDEO
 
 enum
 {
@@ -70,32 +69,9 @@ enum
 enum
 {
   PROP_0,
-  PROP_IMAGE_MODE,
 };
 
 static guint signals[LAST_SIGNAL];
-
-GType
-gst_qmmfsrc_image_pad_mode_get_type (void)
-{
-  static GType gtype = 0;
-  static const GEnumValue variants[] = {
-    { GST_IMAGE_MODE_VIDEO,
-        "Video snapshot is captured with video settings. Video recording will "
-        "not be interrupted in this mode", "video"
-    },
-    { GST_IMAGE_MODE_CONTINUOUS,
-        "Continuously capture images at the set frame rate in the "
-        "capabilities.", "continuous"
-    },
-    {0, NULL, NULL},
-  };
-
-  if (!gtype)
-    gtype = g_enum_register_static ("GstImageMode", variants);
-
-  return gtype;
-}
 
 void
 image_pad_worker_task (GstPad * pad)
@@ -504,18 +480,12 @@ image_pad_set_property (GObject * object, guint property_id,
   GST_QMMFSRC_IMAGE_PAD_LOCK (pad);
 
   switch (property_id) {
-    case PROP_IMAGE_MODE:
-      pad->mode = g_value_get_enum (value);
-      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
   }
 
   GST_QMMFSRC_IMAGE_PAD_UNLOCK (pad);
-
-  // Emit a 'notify' signal for the changed property.
-  g_object_notify_by_pspec (G_OBJECT (pad), pspec);
 }
 
 static void
@@ -527,9 +497,6 @@ image_pad_get_property (GObject * object, guint property_id, GValue * value,
   GST_QMMFSRC_IMAGE_PAD_LOCK (pad);
 
   switch (property_id) {
-    case PROP_IMAGE_MODE:
-      g_value_set_enum (value, pad->mode);
-      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -576,13 +543,6 @@ qmmfsrc_image_pad_class_init (GstQmmfSrcImagePadClass * klass)
   gobject->set_property = GST_DEBUG_FUNCPTR (image_pad_set_property);
   gobject->finalize     = GST_DEBUG_FUNCPTR (image_pad_finalize);
 
-  g_object_class_install_property (gobject, PROP_IMAGE_MODE,
-      g_param_spec_enum ("mode", "Image Mode",
-          "Different image mode.",
-          GST_TYPE_QMMFSRC_IMAGE_PAD_MODE, DEFAULT_PROP_IMAGE_MODE,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_READY));
-
   signals[SIGNAL_PAD_RECONFIGURE] =
       g_signal_new ("reconfigure", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0, G_TYPE_NONE);
@@ -605,7 +565,6 @@ qmmfsrc_image_pad_init (GstQmmfSrcImagePad * pad)
   pad->format    = GST_VIDEO_FORMAT_UNKNOWN;
   pad->codec     = GST_IMAGE_CODEC_UNKNOWN;
   pad->params    = gst_structure_new_empty ("codec-params");
-  pad->mode      = DEFAULT_PROP_IMAGE_MODE;
 
   pad->duration  = GST_CLOCK_TIME_NONE;
 
