@@ -291,9 +291,9 @@ gst_dfs_convert_disparity_map_to_image (GstDfsEngine * engine, float *map,
 
 
 
-void
+gboolean
 write_point_cloud_ply (GstDfsEngine * engine, PointCloudType * pcl,
-    gpointer output)
+    gpointer output, gsize size)
 {
   std::stringstream ply_content;
   uint8_t *dst = (uint8_t *) output;
@@ -310,15 +310,22 @@ write_point_cloud_ply (GstDfsEngine * engine, PointCloudType * pcl,
   }
 
   std::string ply_content_str = ply_content.str();
+  if (ply_content_str.size() > size) {
+    GST_ERROR ("Error: point cloud buffer overflow(%ld:%ld)",
+              ply_content_str.size(), size);
+    return FALSE;
+  }
+
   for (int i = 0; i < (int) ply_content_str.size(); i++) {
     dst[i] = ply_content_str[i];
   }
+  return TRUE;
 }
 
 
 gboolean
 gst_dfs_engine_execute (GstDfsEngine * engine,
-    const GstVideoFrame * inframe, gpointer output)
+    const GstVideoFrame * inframe, gpointer output, gsize size)
 {
   gboolean ret;
   float *disparity_map = NULL;
@@ -355,7 +362,11 @@ gst_dfs_engine_execute (GstDfsEngine * engine,
       return ret;
     }
 
-    write_point_cloud_ply (engine, &pcl, output);
+    ret = write_point_cloud_ply (engine, &pcl, output, size);
+    if (!ret) {
+      GST_ERROR ("Error: point cloud buffer overflow");
+      return ret;
+    }
 
   } else {
     GST_ERROR ("Error invalid output mode");

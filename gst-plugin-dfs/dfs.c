@@ -59,7 +59,9 @@ G_DEFINE_TYPE (GstDfs, gst_dfs, GST_TYPE_BASE_TRANSFORM);
 #define DEFAULT_PROP_RECTIFICATION FALSE
 #define DEFAULT_PROP_GPU_RECT FALSE
 
-#define PLY_HEADER_SIZE 93      //Point Cloud PLY Header size in bytes
+#define PLY_HEADER_SIZE 128      //Point Cloud PLY Header size in bytes
+#define PLY_POINT_NUM 3         //Point Cloud PLY point number per row
+#define PLY_POINT_TO_STRING 8    //Point Cloud PLY double to string in bytes
 
 enum
 {
@@ -344,7 +346,7 @@ gst_dfs_create_pool (GstDfs * dfs, GstCaps * caps)
     guint height = GST_VIDEO_INFO_HEIGHT (dfs->ininfo);
     // Setting initial size of buffer to worst case size.
     // since point cloud is not known ahead of time and is not constant.
-    size = (width * height) + PLY_HEADER_SIZE;
+    size = (width * height) * PLY_POINT_NUM * PLY_POINT_TO_STRING + PLY_HEADER_SIZE;
   }
 
   structure = gst_buffer_pool_get_config (pool);
@@ -601,7 +603,7 @@ gst_dfs_transform (GstBaseTransform * trans, GstBuffer * inbuffer,
   }
 
   ts_begin = gst_util_get_timestamp ();
-  if (!gst_dfs_engine_execute (dfs->engine, &inframe, out_info0.data)) {
+  if (!gst_dfs_engine_execute (dfs->engine, &inframe, out_info0.data, out_info0.size)) {
     GST_ERROR_OBJECT (dfs, "Failed to execute engine");;
   }
 
