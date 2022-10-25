@@ -1,31 +1,63 @@
 /*
-* Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted provided that the following conditions are
-* met:
-*     * Redistributions of source code must retain the above copyright
-*       notice, this list of conditions and the following disclaimer.
-*     * Redistributions in binary form must reproduce the above
-*       copyright notice, this list of conditions and the following
-*       disclaimer in the documentation and/or other materials provided
-*       with the distribution.
-*     * Neither the name of The Linux Foundation nor the names of its
-*       contributors may be used to endorse or promote products derived
-*       from this software without specific prior written permission.
-*
-* THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
-* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
-* ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
-* BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-* CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-* SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
-* BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-* WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
-* OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
-* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *     * Neither the name of The Linux Foundation nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted (subject to the limitations in the
+ * disclaimer below) provided that the following conditions are met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *
+ *     * Redistributions in binary form must reproduce the above
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
+ *       with the distribution.
+ *
+ *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ *
+ * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+ * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+ * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+ * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #include <glib-unix.h>
 #include <glib/gstdio.h>
@@ -52,8 +84,8 @@
 
 #define APPEND_PAD_PROPERTIES_SECTION(name, string) \
   g_string_append_printf (string, " %.*s %s Pad %.*s\n", \
-      36 - strlen(name) / 2, DASH_LINE, name, \
-      37 - (strlen(name) / 2) - (strlen(name) % 2), DASH_LINE);
+      (gint)(36 - strlen(name) / 2), DASH_LINE, name, \
+      (gint)(37 - (strlen(name) / 2) - (strlen(name) % 2)), DASH_LINE);
 
 #define APPEND_ELEMENT_SIGNALS_SECTION(string) \
   g_string_append_printf (string, " %.*s Plugin Signals %.*s\n", \
@@ -135,6 +167,19 @@ gst_app_context_free (GstAppContext * ctx)
   g_free (ctx);
 
   return;
+}
+
+static inline gboolean
+g_type_is_pointer (GType type)
+{
+  if (type == G_TYPE_POINTER)
+    return FALSE;
+
+  if (G_TYPE_IS_OBJECT (type) || G_TYPE_IS_BOXED (type) ||
+      G_TYPE_FUNDAMENTAL (type) == G_TYPE_POINTER)
+    return TRUE;
+
+  return FALSE;
 }
 
 static gboolean
@@ -550,11 +595,10 @@ static void
 get_object_signals (GObject * object, guint * index, GstStructure * signals,
     GString * options)
 {
-  GSignalQuery *query = NULL;
   GType type;
 
   for (type = G_OBJECT_TYPE (object); type; type = g_type_parent (type)) {
-    guint i = 0, *signal_ids = NULL, nsignals = 0;
+    guint i = 0, n = 0, *signal_ids = NULL, n_signals = 0;
     gchar *field = NULL;
 
     if (type == GST_TYPE_ELEMENT || type == GST_TYPE_OBJECT)
@@ -565,30 +609,38 @@ get_object_signals (GObject * object, guint * index, GstStructure * signals,
       continue;
 
     // Lists the signals that this element type has.
-    signal_ids = g_signal_list_ids (type, &nsignals);
+    signal_ids = g_signal_list_ids (type, &n_signals);
 
     // Go over each signal and query additional information.
-    for (i = 0; i < nsignals; i++) {
-      query = g_new0 (GSignalQuery, 1);
-      g_signal_query (signal_ids[i], query);
+    for (i = 0; i < n_signals; i++) {
+      GSignalQuery query = {};
 
-      if (query->signal_flags & G_SIGNAL_ACTION) {
+      g_signal_query (signal_ids[i], &query);
+
+      if (query.signal_flags & G_SIGNAL_ACTION) {
         field = g_strdup_printf ("%u", (*index));
-        gst_structure_set (signals, field, G_TYPE_STRING,
-            query->signal_name, NULL);
+        gst_structure_set (signals, field, G_TYPE_UINT,
+            query.signal_id, NULL);
 
-        g_string_append_printf (options, "   (%2u) %-25s\n", (*index),
-            query->signal_name);
+        g_clear_pointer (&field, g_free);
 
-        g_free (field);
-        field = NULL;
+        g_string_append_printf (options, "   (%2u) %-25s: %s (%s* object",
+            (*index), query.signal_name, g_type_name (query.return_type),
+            g_type_name (type));
+
+        for (n = 0; n < query.n_params; n++) {
+          GType ptype = query.param_types[n];
+          gboolean asterisk = g_type_is_pointer (ptype);
+
+          g_string_append_printf (options, ", %s%s arg%d",
+              g_type_name (ptype), asterisk ? "*" : "", n);
+        }
+
+        g_string_append_printf (options, ")\n");
 
         // Increment the index for the next option.
         (*index)++;
       }
-
-      g_free (query);
-      query = NULL;
     }
 
     // Free the allocated resources for the next iteration.
@@ -732,7 +784,7 @@ print_element_options (GstElement * element, GstStructure * props,
   get_object_signals (G_OBJECT (element), &index, signals, options);
 
   APPEND_OTHER_OPTS_SECTION (options);
-  g_string_append_printf (options, "   (%s) %-25s: %s\n", MENU_BACK_OPTION,
+  g_string_append_printf (options, "   (%2s) %-25s: %s\n", MENU_BACK_OPTION,
       "Back", "Return to the previous menu");
 
   g_print ("%s", options->str);
@@ -847,25 +899,25 @@ print_property_info (GObject * object, GParamSpec *propspecs)
     }
     default:
       if (G_IS_PARAM_SPEC_ENUM (propspecs)) {
-        GEnumValue *enumvalues;
-        gint value;
+        GEnumClass *enumklass = NULL;
         const gchar *nick = "";
+        gint value = 0;
         guint idx = 0;
 
         g_object_get (object, propspecs->name, &value, NULL);
-        enumvalues = G_ENUM_CLASS (
-            g_type_class_ref (propspecs->value_type))->values;
+        enumklass = G_ENUM_CLASS (g_type_class_ref (propspecs->value_type));
 
-        while (enumvalues[idx].value_name) {
+        for (idx = 0; idx < enumklass->n_values; idx++) {
+          GEnumValue *genum = &(enumklass->values[idx]);
+
+          if (genum->value == value)
+            nick = genum->value_nick;
+
           g_string_append_printf (info, "   (%d): %-16s - %s\n",
-              enumvalues[idx].value, enumvalues[idx].value_nick,
-              enumvalues[idx].value_name);
-
-          if (enumvalues[idx].value == value)
-            nick = enumvalues[idx].value_nick;
-
-          idx++;
+              genum->value, genum->value_nick, genum->value_name);
         }
+
+        g_type_class_unref (enumklass);
 
         g_string_append_printf (info, "\n Current value: %d, \"%s\"\n",
             value, nick);
@@ -980,10 +1032,155 @@ gst_pipeline_menu (GstElement * pipeline, GAsyncQueue * messages,
 }
 
 static gboolean
+gst_property_menu (GstElement * element, GAsyncQueue * messages,
+    const gchar * propname)
+{
+  GObject *object = NULL;
+  GParamSpec *propspecs = NULL;
+  gchar *input = NULL, **strings = NULL;
+
+  // Split the string in order to check whether it is pad property.
+  strings = g_strsplit (propname, "::", 2);
+
+  // In case property belongs to a pad get reference to that pad by name.
+  object = (g_strv_length (strings) != 2) ? G_OBJECT (element) :
+      G_OBJECT (gst_element_get_static_pad (element, strings[0]));
+
+  // In case property belongs to a pad get pad property name.
+  propname = (g_strv_length (strings) != 2) ? propname : strings[1];
+
+  // Get the property specs structure.
+  propspecs =
+      g_object_class_find_property (G_OBJECT_GET_CLASS (object), propname);
+
+  print_property_info (object, propspecs);
+
+  if (propspecs->flags & G_PARAM_WRITABLE) {
+    g_print ("\nEnter value (or press Enter to keep current one): ");
+
+    // If FALSE is returned termination signal has been issued.
+    if (!wait_stdin_message (messages, &input)) {
+      if (GST_IS_PAD (object))
+        gst_object_unref (object);
+
+      g_strfreev (strings);
+      return FALSE;
+    }
+
+    // If it's not an empty string deserialize the string to a GValue.
+    if (!g_str_equal (input, "")) {
+      GValue value = G_VALUE_INIT;
+      g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+
+      if (gst_value_deserialize (&value, input))
+        g_object_set_property (object, propname, &value);
+    }
+  } else if (propspecs->flags & G_PARAM_READABLE) {
+    g_print ("\nRead-Only property. Press Enter to continue...");
+  }
+
+  g_free (input);
+
+  // Unreference in case the object was a pad.
+  if (GST_IS_PAD (object))
+    gst_object_unref (object);
+
+  g_strfreev (strings);
+  return TRUE;
+}
+
+static gboolean
+gst_signal_menu (GstElement * element, GAsyncQueue * messages,
+    const guint signal_id)
+{
+  GValue *arguments = NULL, value = G_VALUE_INIT;
+  GSignalQuery query;
+  gchar *input = NULL, *status = NULL;
+  guint num = 0;
+
+  // Query the signal parameters.
+  g_signal_query (signal_id, &query);
+
+  // Allocate memory for the array if signal arguments.
+  arguments = g_new0 (GValue, query.n_params + 1);
+
+  // First signal argument is always the GsElement to which it belongs.
+  g_value_init (&arguments[0], GST_TYPE_ELEMENT);
+  g_value_set_object (&arguments[0], element);
+
+  for (num = 0; num < query.n_params; num++) {
+    GString *info = NULL;
+    GType gtype = query.param_types[num];
+    gboolean asterisk = g_type_is_pointer (gtype);
+
+    // Initilaize the GValue container for current argument.
+    g_value_init (&arguments[num + 1], gtype);
+
+    // TODO Ignore arguments of type GPtrArray, for now.
+    if (gtype == G_TYPE_PTR_ARRAY)
+      continue;
+
+    info = g_string_new (NULL);
+
+    // Add additional information if the argument is enum.
+    if (G_TYPE_IS_ENUM (gtype)) {
+      GEnumClass *enumklass = NULL;
+      guint idx = 0;
+
+      g_string_append_printf (info, "\nPossible enum values:\n");
+      enumklass = G_ENUM_CLASS (g_type_class_ref (gtype));
+
+      for (idx = 0; idx < enumklass->n_values; idx++) {
+        GEnumValue *genum = &(enumklass->values[idx]);
+
+        g_string_append_printf (info, "   (%d): %s - %s\n",
+            genum->value, genum->value_nick, genum->value_name);
+      }
+
+      g_type_class_unref (enumklass);
+    }
+
+    g_string_append_printf (info, "Enter '%s%s' value for arg%u: ",
+        g_type_name (gtype), asterisk ? "*" : "", num);
+
+    do {
+      g_print ("%s", info->str);
+
+      // If FALSE is returned termination signal has been issued.
+      if (!wait_stdin_message (messages, &input))
+        return FALSE;
+
+      // Empty inputs are not acceptable, deserialization must be successful.
+    } while (g_str_equal (input, "") ||
+        !gst_value_deserialize (&arguments[num + 1], input));
+
+    g_clear_pointer (&input, g_free);
+    g_string_free (info, TRUE);
+  }
+
+  g_value_init (&value, query.return_type);
+  g_signal_emitv (arguments, signal_id, 0, &value);
+
+  for (num = 0; num < (query.n_params + 1); num++)
+    g_value_reset (&arguments[num]);
+
+  g_free (arguments);
+
+  status = gst_value_serialize (&value);
+  g_value_reset (&value);
+
+  g_print ("\n Signal return value: '%s'\n", status);
+  g_free (status);
+
+  return TRUE;
+}
+
+static gboolean
 gst_element_menu (GstElement ** element, GAsyncQueue * messages)
 {
   GstStructure *props = NULL, *signals = NULL;
   gchar *input = NULL;
+  gboolean active = TRUE;
 
   props = gst_structure_new_empty ("properties");
   signals = gst_structure_new_empty ("signals");
@@ -993,72 +1190,22 @@ gst_element_menu (GstElement ** element, GAsyncQueue * messages)
   g_print ("\n\nChoose an option: ");
 
   // If FALSE is returned termination signal has been issued.
-  if (!wait_stdin_message (messages, &input)) {
-    gst_structure_free (props);
-    gst_structure_free (signals);
+  active = wait_stdin_message (messages, &input);
 
-    return FALSE;
-  }
+  // Handle the chosen option fi not signalled to quit.
+  if (active && gst_structure_has_field (props, input)) {
+    const gchar *name = gst_structure_get_string (props, input);
 
-  if (gst_structure_has_field (props, input)) {
-    GObject *object = NULL;
-    GParamSpec *propspecs = NULL;
-    gchar **strings = NULL;
+    active = gst_property_menu (*element, messages, name);
+  } else if (active && gst_structure_has_field (signals, input)) {
+    guint signal_id = 0;
 
-    // Get the property string from the structure.
-    const gchar *propname = gst_structure_get_string (props, input);
-
-    // Split the string in order to check whether it is pad property.
-    strings = g_strsplit (propname, "::", 2);
-
-    // In case property belongs to a pad get reference to that pad by name.
-    object = (g_strv_length (strings) != 2) ? G_OBJECT (*element) :
-        G_OBJECT (gst_element_get_static_pad (*element, strings[0]));
-
-    // In case property belongs to a pad get pad property name.
-    propname = (g_strv_length (strings) != 2) ? propname : strings[1];
-
-    // Get the property specs structure.
-    propspecs =
-        g_object_class_find_property (G_OBJECT_GET_CLASS (object), propname);
-
-    print_property_info (object, propspecs);
-
-    if (propspecs->flags & G_PARAM_WRITABLE) {
-      g_print ("\nEnter value (or press Enter to keep current one): ");
-
-      // If FALSE is returned termination signal has been issued.
-      if (!wait_stdin_message (messages, &input)) {
-        gst_structure_free (props);
-        gst_structure_free (signals);
-
-        return FALSE;
-      }
-
-      // If it's not an empty string deserialize the string to a GValue.
-      if (!g_str_equal (input, "")) {
-        GValue value = G_VALUE_INIT;
-        g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
-
-        if (gst_value_deserialize (&value, input))
-          g_object_set_property (object, propname, &value);
-      }
-    } else if (propspecs->flags & G_PARAM_READABLE) {
-      g_print ("\nRead-Only property. Press Enter to continue...");
-    }
-
-    // Unreference in case the object was a pad.
-    if (GST_IS_PAD (object))
-      gst_object_unref (object);
-
-    g_strfreev (strings);
-  } else if (gst_structure_has_field (signals, input)) {
-    const gchar *signalname = gst_structure_get_string (signals, input);
-    g_signal_emit_by_name (*element, signalname);
-  } else if (g_str_equal (input, MENU_BACK_OPTION)) {
+    gst_structure_get_uint (signals, input, &signal_id);
+    active = gst_signal_menu (*element, messages, signal_id);
+  } else if (active && g_str_equal (input, MENU_BACK_OPTION)) {
     gst_object_unref (*element);
     *element = NULL;
-  } else {
+  } else if (active) {
     g_print ("Invalid option: '%s'\n", input);
   }
 
@@ -1067,7 +1214,7 @@ gst_element_menu (GstElement ** element, GAsyncQueue * messages)
   gst_structure_free (props);
   gst_structure_free (signals);
 
-  return TRUE;
+  return active;
 }
 
 static gpointer
