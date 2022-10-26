@@ -109,8 +109,6 @@ struct _GstC2_VENCEncoder {
   guint32 min_qp_b_frames;
   guint32 min_qp_i_frames;
   guint32 min_qp_p_frames;
-  GstC2_ROIenc roi_encoding;
-  gint roi_encoding_qp_delta;
 
   entropy_mode_t entropy_mode;
   loop_filter_mode_t loop_filter_mode;
@@ -120,6 +118,9 @@ struct _GstC2_VENCEncoder {
   guint32 num_ltr_frames;
   rotate_t rotate;
   gboolean is_ubwc;
+  gboolean roi_quant_mode;
+  GstStructure *roi_quant_values;
+  GArray *roi_quant_boxes;
 };
 
 struct _GstC2_VENCEncoderClass {

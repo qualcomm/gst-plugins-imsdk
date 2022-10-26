@@ -54,6 +54,7 @@ G_DEFINE_TYPE (GstC2_VENCEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 
 #define EOS_WAITING_TIMEOUT 5
 
+#define DEFAULT_PROP_ROI_QUANT_MODE FALSE
 #define DEFAULT_PROP_ROI_QP_DELTA -15
 #define GST_CODEC2_VIDEO_ENC_QUANT_I_FRAMES_DEFAULT (0xffffffff)
 #define GST_CODEC2_VIDEO_ENC_QUANT_P_FRAMES_DEFAULT (0xffffffff)
@@ -114,8 +115,9 @@ enum
   PROP_MIN_QP_B_FRAMES,
   PROP_MIN_QP_I_FRAMES,
   PROP_MIN_QP_P_FRAMES,
-  PROP_ROI,
-  PROP_ROI_QP_DELTA,
+  PROP_ROI_QUANT_MODE,
+  PROP_ROI_QUANT_META_VALUE,
+  PROP_ROI_QUANT_BOXES,
   PROP_ENTROPY_MODE,
   PROP_LOOP_FILTER_MODE,
   PROP_QUANT_I_FRAMES,
@@ -123,6 +125,15 @@ enum
   PROP_QUANT_B_FRAMES,
   PROP_NUM_LTR_FRAMES,
   PROP_ROTATE,
+};
+
+typedef struct _GstQuantRectangle GstQuantRectangle;
+struct _GstQuantRectangle {
+  gint x;
+  gint y;
+  gint w;
+  gint h;
+  gint qp;
 };
 
 static guint32
@@ -405,30 +416,109 @@ make_roi_encoding (gint64 timestampUs, char *rectPayload, char *rectPayloadExt)
 }
 
 static void
-config_roi_encoding (GstC2_VENCEncoder *c2venc, gint64 timestampUs)
+config_roi_encoding (GstC2_VENCEncoder *c2venc, GstVideoCodecFrame * frame)
 {
   GPtrArray *config = NULL;
   config_params_t roi_encoding;
+  GstMeta *meta = NULL;
+  gpointer state = NULL;
+  gint idx = 0, qpdelta = 0;
+  char tempstr[128];
+  char rectPayload[128] = {0};
+  char rectPayloadExt[128] = {0};
+  gboolean apply_roi = FALSE;
 
-  if (c2venc->roi_encoding.top != 0 || c2venc->roi_encoding.left != 0 ||
-      c2venc->roi_encoding.bottom != 0 || c2venc->roi_encoding.right != 0) {
+  /* ROI mode is disabled, nothing to do except to return immediately */
+  if (!c2venc->roi_quant_mode)
+    return;
 
+  while ((meta =
+          gst_buffer_iterate_meta_filtered (frame->input_buffer, &state,
+              GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE))) {
+    GstVideoRegionOfInterestMeta *roi = (GstVideoRegionOfInterestMeta *) meta;
+    GstStructure *s = NULL;
+    const gchar *label = NULL;
+
+    s = gst_video_region_of_interest_meta_get_param (roi, "ObjectDetection");
+    label = gst_structure_get_string (s, "label");
+
+    GST_LOG_OBJECT (c2venc, "Input buffer ROI: label=%s id=%d (%d, %d) %dx%d",
+        label, roi->id, roi->x, roi->y, roi->w, roi->h);
+
+    if (gst_structure_has_field (c2venc->roi_quant_values, label)){
+      if (gst_structure_get_int (c2venc->roi_quant_values, label, &qpdelta) &&
+          (qpdelta >= -31) && (qpdelta <= 30)) {
+        GST_LOG_OBJECT (c2venc, "Use encoding QP delta (%d) for '%s'",
+            qpdelta, label);
+      } else {
+        qpdelta = DEFAULT_PROP_ROI_QP_DELTA;
+        GST_WARNING_OBJECT (c2venc,"Invalid QP delta for '%s', use default (%d)",
+            label, qpdelta);
+      }
+    } else {
+      qpdelta = DEFAULT_PROP_ROI_QP_DELTA;
+      GST_LOG_OBJECT (c2venc, "No QP delta specified for '%s', use default (%d)",
+          label, qpdelta);
+    }
+
+    g_snprintf (tempstr, sizeof(tempstr), "%d,%d-%d,%d=%d;",
+        roi->y, // Top
+        roi->x, // Left
+        roi->y + roi->h - 1, // Bottom
+        roi->x + roi->w - 1, // Right
+        qpdelta);
+
+    if (strlen (rectPayload) + strlen (tempstr) <= 128) {
+      g_stpcpy (rectPayload + strlen (rectPayload), tempstr);
+    } else {
+      if (strlen (rectPayloadExt) + strlen (tempstr) <= 128) {
+        g_stpcpy (rectPayloadExt + strlen (rectPayloadExt), tempstr);
+      } else {
+        GST_WARNING_OBJECT (c2venc, "The size of ROI exceeded!");
+        break;
+      }
+    }
+
+    apply_roi = TRUE;
+  }
+
+  for (idx = 0; idx < c2venc->roi_quant_boxes->len; idx++) {
+    GstQuantRectangle *qbox =
+        &(g_array_index (c2venc->roi_quant_boxes, GstQuantRectangle, idx));
+
+    GST_LOG_OBJECT (c2venc, "Manual ROI: idx=%u (%d, %d) %dx%d with QP %d",
+        idx, qbox->x, qbox->y, qbox->w, qbox->h, qbox->qp);
+
+    g_snprintf (tempstr, sizeof(tempstr), "%d,%d-%d,%d=%d;",
+        qbox->y, // Top
+        qbox->x, // Left
+        qbox->y + qbox->h - 1, // Bottom
+        qbox->x + qbox->w - 1, // Right
+        qbox->qp);
+
+    if (strlen (rectPayload) + strlen (tempstr) <= 128) {
+      g_stpcpy (rectPayload + strlen (rectPayload), tempstr);
+    } else {
+      if (strlen (rectPayloadExt) + strlen (tempstr) <= 128) {
+        g_stpcpy (rectPayloadExt + strlen (rectPayloadExt), tempstr);
+      } else {
+        GST_WARNING_OBJECT (c2venc, "The size of ROI exceeded!");
+        break;
+      }
+    }
+
+    apply_roi = TRUE;
+  }
+
+  if (apply_roi) {
     config = g_ptr_array_new ();
 
-    char rectPayload[128];
-    char rectPayloadExt[128];
+    if (strlen (rectPayloadExt) == 0) {
+      g_stpcpy (rectPayloadExt, rectPayload);
+    }
 
-    snprintf(rectPayload, sizeof(rectPayload), "%d,%d-%d,%d=%d",
-        c2venc->roi_encoding.top, c2venc->roi_encoding.left,
-        c2venc->roi_encoding.bottom, c2venc->roi_encoding.right,
-        c2venc->roi_encoding_qp_delta);
-
-    snprintf(rectPayloadExt, sizeof(rectPayloadExt), "%d,%d-%d,%d=%d",
-        c2venc->roi_encoding.top, c2venc->roi_encoding.left,
-        c2venc->roi_encoding.bottom, c2venc->roi_encoding.right,
-        c2venc->roi_encoding_qp_delta);
-
-    roi_encoding = make_roi_encoding (timestampUs, rectPayload, rectPayloadExt);
+    roi_encoding =
+        make_roi_encoding (frame->pts / 1000, rectPayload, rectPayloadExt);
     g_ptr_array_add (config, &roi_encoding);
 
     // Config component
@@ -1130,6 +1220,16 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     GST_DEBUG_OBJECT (c2venc, "set rotate - %d", c2venc->rotate);
   }
 
+  if (c2venc->roi_quant_mode) {
+    // The ROI needs to be initialized in case of meta roi
+    char rectPayload[128];
+    char rectPayloadExt[128];
+    g_stpcpy (rectPayload, "0,0-0,0=0;");
+    g_stpcpy (rectPayloadExt, "0,0-0,0=0;");
+    roi_encoding = make_roi_encoding (0, rectPayload, rectPayloadExt);
+    g_ptr_array_add (config, &roi_encoding);
+  }
+
   // Config component
   if (!gst_c2_venc_wrapper_config_component (c2venc->wrapper, config)) {
     GST_ERROR_OBJECT (c2venc, "Failed to config interface");
@@ -1270,7 +1370,7 @@ gst_c2_venc_encode (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   c2venc->queued_frame[(c2venc->frame_index) % MAX_QUEUED_FRAME] =
       frame->system_frame_number;
 
-  config_roi_encoding (c2venc, inBuf.timestamp);
+  config_roi_encoding (c2venc, frame);
 
   // Queue buffer to Codec2
   if (!gst_c2_venc_wrapper_component_queue (c2venc->wrapper, &inBuf)) {
@@ -1412,22 +1512,52 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
     case PROP_MIN_QP_P_FRAMES:
       c2venc->min_qp_p_frames = g_value_get_uint (value);
       break;
-    case PROP_ROI:
-      g_return_if_fail (gst_value_array_get_size (value) == 4);
-
-      c2venc->roi_encoding.top =
-          g_value_get_int (gst_value_array_get_value (value, 0));
-      c2venc->roi_encoding.left =
-          g_value_get_int (gst_value_array_get_value (value, 1));
-      c2venc->roi_encoding.bottom =
-          g_value_get_int (gst_value_array_get_value (value, 2));
-      c2venc->roi_encoding.right =
-          g_value_get_int (gst_value_array_get_value (value, 3));
-
+    case PROP_ROI_QUANT_MODE:
+      c2venc->roi_quant_mode = g_value_get_boolean (value);
       break;
-    case PROP_ROI_QP_DELTA:
-      c2venc->roi_encoding_qp_delta = g_value_get_int (value);
+    case PROP_ROI_QUANT_META_VALUE:
+      if (c2venc->roi_quant_values)
+        gst_structure_free (c2venc->roi_quant_values);
+
+      c2venc->roi_quant_values = (GstStructure *) g_value_dup_boxed (value);
       break;
+    case PROP_ROI_QUANT_BOXES:
+    {
+      guint idx = 0;
+
+      /* Remove all old values */
+      g_array_set_size (c2venc->roi_quant_boxes, 0);
+
+      for (idx = 0; idx < gst_value_array_get_size (value); idx++) {
+        const GValue *v = gst_value_array_get_value (value, idx);
+        GstQuantRectangle qbox = { 0, 0, 0, 0, 0 };
+
+        if (gst_value_array_get_size (v) != 5) {
+          GST_WARNING_OBJECT (c2venc,
+              "Invalid entries for ROI box at index '%u', ignoring", idx);
+          continue;
+        }
+
+        qbox.x = g_value_get_int (gst_value_array_get_value (v, 0));
+        qbox.y = g_value_get_int (gst_value_array_get_value (v, 1));
+        qbox.w = g_value_get_int (gst_value_array_get_value (v, 2));
+        qbox.h = g_value_get_int (gst_value_array_get_value (v, 3));
+        qbox.qp = g_value_get_int (gst_value_array_get_value (v, 4));
+
+        if (qbox.w == 0 || qbox.h == 0) {
+          GST_WARNING_OBJECT (c2venc,
+              "Invalid dimensions for ROI box at index %u, ignoring", idx);
+          continue;
+        } else if ((qbox.qp < -31) || (qbox.qp > 30)) {
+          GST_WARNING_OBJECT (c2venc,
+              "Invalid QP value for ROI box at index %u, ignoring", idx);
+          continue;
+        }
+
+        g_array_append_val (c2venc->roi_quant_boxes, qbox);
+      }
+      break;
+    }
     case PROP_ENTROPY_MODE:
       c2venc->entropy_mode = (entropy_mode_t) g_value_get_enum (value);
       break;
@@ -1517,27 +1647,50 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
     case PROP_MIN_QP_P_FRAMES:
       g_value_set_uint (value, c2venc->min_qp_p_frames);
       break;
-    case PROP_ROI:
+    case PROP_ROI_QUANT_MODE:
+      g_value_set_boolean (value, c2venc->roi_quant_mode);
+      break;
+    case PROP_ROI_QUANT_META_VALUE:
+      if (c2venc->roi_quant_values)
+        g_value_set_boxed (value, c2venc->roi_quant_values);
+      break;
+    case PROP_ROI_QUANT_BOXES:
     {
-      GValue val = G_VALUE_INIT;
-      g_value_init (&val, G_TYPE_INT);
+      GstQuantRectangle *qbox = NULL;
+      guint idx = 0;
 
-      g_value_set_int (&val, c2venc->roi_encoding.top);
-      gst_value_array_append_value (value, &val);
+      for (idx = 0; idx < c2venc->roi_quant_boxes->len; idx++) {
+        GValue element = G_VALUE_INIT, val = G_VALUE_INIT;
 
-      g_value_set_int (&val, c2venc->roi_encoding.left);
-      gst_value_array_append_value (value, &val);
+        g_value_init (&element, GST_TYPE_ARRAY);
+        g_value_init (&val, G_TYPE_INT);
 
-      g_value_set_int (&val, c2venc->roi_encoding.bottom);
-      gst_value_array_append_value (value, &val);
+        qbox =
+            &(g_array_index (c2venc->roi_quant_boxes, GstQuantRectangle, idx));
 
-      g_value_set_int (&val, c2venc->roi_encoding.right);
-      gst_value_array_append_value (value, &val);
+        g_value_set_int (&val, qbox->x);
+        gst_value_array_append_value (&element, &val);
+
+        g_value_set_int (&val, qbox->y);
+        gst_value_array_append_value (&element, &val);
+
+        g_value_set_int (&val, qbox->w);
+        gst_value_array_append_value (&element, &val);
+
+        g_value_set_int (&val, qbox->h);
+        gst_value_array_append_value (&element, &val);
+
+        g_value_set_int (&val, qbox->qp);
+        gst_value_array_append_value (&element, &val);
+
+        /* Append the rectangle to the output GST array */
+        gst_value_array_append_value (value, &element);
+
+        g_value_unset (&val);
+        g_value_unset (&element);
+      }
       break;
     }
-    case PROP_ROI_QP_DELTA:
-      g_value_set_int (value, c2venc->roi_encoding_qp_delta);
-      break;
     case PROP_ENTROPY_MODE:
       g_value_set_enum (value, c2venc->entropy_mode);
       break;
@@ -1591,6 +1744,9 @@ gst_c2_venc_finalize (GObject * object)
     gst_c2_wrapper_free (c2venc->wrapper);
     c2venc->wrapper = NULL;
   }
+
+  g_array_free (c2venc->roi_quant_boxes, TRUE);
+  gst_structure_free (c2venc->roi_quant_values);
 
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (c2venc));
 }
@@ -1706,22 +1862,39 @@ gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
-  g_object_class_install_property (gobject, PROP_ROI,
-      gst_param_spec_array ("roi", "ROI Encoding",
-          "The ROI rectangle inside the input ('<Top, Left, Bottom, Right>')",
-          g_param_spec_int ("value", "ROI Value",
-              "One of Top, Left, Bottom or Right value.", 0, G_MAXINT, 0,
-              static_cast<GParamFlags>(G_PARAM_WRITABLE |
-              G_PARAM_STATIC_STRINGS)),
+  g_object_class_install_property (gobject, PROP_ROI_QUANT_MODE,
+      g_param_spec_boolean ("roi-quant-mode", "ROI Quantization Mode",
+          "Enable/Disable Adjustment of the quantization parameter according "
+          "to ROIs set manually via the 'roi-quant-boxes' property and/or "
+          "arriving as GstVideoRegionOfInterestMeta attached to the buffer",
+          DEFAULT_PROP_ROI_QUANT_MODE,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_PLAYING)));
+          GST_PARAM_MUTABLE_READY)));
 
-  g_object_class_install_property (gobject, PROP_ROI_QP_DELTA,
-      g_param_spec_int ("roi-qp", "ROI Encoding QP delta",
-          "ROI encoding QP delta",
-          G_MININT, G_MAXINT, DEFAULT_PROP_ROI_QP_DELTA,
-          static_cast<GParamFlags>(G_PARAM_CONSTRUCT | G_PARAM_READWRITE |
-          G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_PLAYING)));
+  g_object_class_install_property (gobject, PROP_ROI_QUANT_META_VALUE,
+      g_param_spec_boxed ("roi-quant-meta-value", "ROI Meta Quantization Value",
+          "Set specific QP value, different then the default value of (-15), "
+          "for a GstVideoRegionOfInterestMeta type "
+          "(e.g. 'roi-meta-qp,person=-20,cup=10,dog=-5;'). The QP values must "
+          "be in the range of -31 (best quality) to 30 (worst quality)",
+          GST_TYPE_STRUCTURE,
+          static_cast<GParamFlags>(G_PARAM_READWRITE| G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY)));
+
+  g_object_class_install_property (gobject, PROP_ROI_QUANT_BOXES,
+      gst_param_spec_array ("roi-quant-boxes", "ROI Quantization Boxes",
+          "Manually set ROI boxes (e.g. '<<X, Y, W, H, QP>, <X, Y, W, H, QP>>'). "
+          "The QP values must be in the range of -31 (best quality) to "
+          "30 (worst quality)",
+          gst_param_spec_array ("rectangle", "Rectangle", "Rectangle",
+              g_param_spec_int ("value", "Rectangle Value",
+                  "One of X, Y, WIDTH, HEIGHT or QP", G_MININT, G_MAXINT, 0,
+                  static_cast<GParamFlags>(
+                      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)),
+              static_cast<GParamFlags>(
+                  G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)),
+          static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY)));
 
   // Signal for trigger I frame insertion
   g_signal_new_class_handler ("trigger-iframe", G_TYPE_FROM_CLASS (klass),
@@ -1826,11 +1999,9 @@ gst_c2_venc_init (GstC2_VENCEncoder * c2venc)
   c2venc->min_qp_i_frames = 0;
   c2venc->min_qp_p_frames = 0;
 
-  c2venc->roi_encoding.top = 0;
-  c2venc->roi_encoding.left = 0;
-  c2venc->roi_encoding.bottom = 0;
-  c2venc->roi_encoding.right = 0;
-  c2venc->roi_encoding_qp_delta = 0;
+  c2venc->roi_quant_mode = DEFAULT_PROP_ROI_QUANT_MODE;
+  c2venc->roi_quant_values = gst_structure_new_empty ("roi-meta-qp");
+  c2venc->roi_quant_boxes = g_array_new (FALSE, FALSE, sizeof (GstQuantRectangle));
 
   c2venc->entropy_mode = ENTROPY_MODE_NONE;
   c2venc->loop_filter_mode = LOOP_FILTER_NONE;
