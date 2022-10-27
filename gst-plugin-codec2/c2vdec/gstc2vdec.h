@@ -108,7 +108,8 @@ struct _GstC2vdec
   GCond pending_cond;
   GstC2Wrapper *wrapper;
   gboolean is_ubwc;
-
+  GMutex free_buff_lock;
+  GCond free_buff_cond;
 };
 
 struct _GstC2vdecClass

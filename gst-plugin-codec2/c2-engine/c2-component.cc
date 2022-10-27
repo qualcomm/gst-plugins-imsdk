@@ -45,23 +45,26 @@ gst_c2_venc_context_debug_category (void)
   static gsize catgonce = 0;
 
   if (g_once_init_enter (&catgonce)) {
-    gsize catdone = (gsize) _gst_debug_category_new ("qtic2venc", 0,
+    gsize catdone = (gsize) _gst_debug_category_new ("qtic2engine", 0,
         "C2 encoder context");
     g_once_init_leave (&catgonce, catdone);
   }
   return (GstDebugCategory *) catgonce;
 }
 
-std::shared_ptr<C2Buffer> createLinearBuffer(const std::shared_ptr<C2LinearBlock>& block)
+std::shared_ptr<C2Buffer>
+createLinearBuffer(const std::shared_ptr<C2LinearBlock>& block)
 {
-  return C2Buffer::CreateLinearBuffer(block->share(block->offset(), block->size(), ::C2Fence()));
+  return C2Buffer::CreateLinearBuffer(
+      block->share(block->offset(), block->size(), ::C2Fence()));
 }
 
-std::shared_ptr<C2Buffer> createGraphicBuffer(const std::shared_ptr<C2GraphicBlock>& block)
+std::shared_ptr<C2Buffer>
+createGraphicBuffer(const std::shared_ptr<C2GraphicBlock>& block)
 {
-  return C2Buffer::CreateGraphicBuffer(block->share(C2Rect(block->width(), block->height()), ::C2Fence()));
+  return C2Buffer::CreateGraphicBuffer(
+      block->share(C2Rect(block->width(), block->height()), ::C2Fence()));
 }
-
 
 C2ComponentWrapper::C2ComponentWrapper (
     std::shared_ptr<C2ComponentStore> compstore, const char * name)

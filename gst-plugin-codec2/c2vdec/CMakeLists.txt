@@ -1,5 +1,5 @@
 # GStreamer plugin.
-set(GST_QTI_C2_VDEC_DEC gstc2vdec)
+set(GST_QTI_C2_VDEC_DEC gstqtic2vdec)
 
 add_library(${GST_QTI_C2_VDEC_DEC} SHARED
   gstc2vdec.cc

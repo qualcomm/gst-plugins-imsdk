@@ -522,7 +522,7 @@ config_roi_encoding (GstC2_VENCEncoder *c2venc, GstVideoCodecFrame * frame)
     g_ptr_array_add (config, &roi_encoding);
 
     // Config component
-    if (!gst_c2_venc_wrapper_config_component (c2venc->wrapper, config)) {
+    if (!gst_c2_wrapper_config_component (c2venc->wrapper, config)) {
       GST_ERROR_OBJECT (c2venc, "Failed to config interface");
     }
 
@@ -645,7 +645,7 @@ gst_c2_venc_trigger_iframe (GstC2_VENCEncoder *c2venc)
   request_sync_frame = make_request_sync_frame_param (true);
   g_ptr_array_add (config, &request_sync_frame);
   // Config component
-  if (!gst_c2_venc_wrapper_config_component (c2venc->wrapper, config)) {
+  if (!gst_c2_wrapper_config_component (c2venc->wrapper, config)) {
     GST_ERROR_OBJECT (c2venc, "Failed to config interface");
   }
   g_ptr_array_free (config, FALSE);
@@ -750,7 +750,7 @@ gst_c2_venc_start (GstVideoEncoder * encoder)
   }
 
   if (c2venc->input_setup &&
-      !gst_c2_venc_wrapper_component_start (c2venc->wrapper)) {
+      !gst_c2_wrapper_component_start (c2venc->wrapper)) {
     GST_ERROR_OBJECT (c2venc, "Failed to start component");
   }
 
@@ -769,7 +769,7 @@ gst_c2_venc_stop (GstVideoEncoder * encoder)
     c2venc->output_setup = FALSE;
   }
 
-  if (!gst_c2_venc_wrapper_component_stop (c2venc->wrapper)) {
+  if (!gst_c2_wrapper_component_stop (c2venc->wrapper)) {
     GST_ERROR_OBJECT (c2venc, "Failed to stop component");
   }
 
@@ -788,7 +788,7 @@ gst_c2_venc_buffer_release (GstStructure * structure)
   gst_structure_get_uint64 (structure, "index", &index);
   GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
   if (encoder) {
-    if (!gst_c2_venc_wrapper_free_output_buffer (c2venc->wrapper, index)) {
+    if (!gst_c2_wrapper_free_output_buffer (c2venc->wrapper, index)) {
       GST_ERROR_OBJECT (c2venc, "Failed to release the buffer (%lu)", index);
     }
   } else {
@@ -1081,7 +1081,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   }
 
   // Create component
-  if (!gst_c2_venc_wrapper_create_component (c2venc->wrapper,
+  if (!gst_c2_wrapper_create_component (c2venc->wrapper,
       c2venc->comp_name, handle_video_event, encoder)) {
     GST_ERROR_OBJECT (c2venc, "Failed to create a component");
     return FALSE;
@@ -1231,13 +1231,13 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   }
 
   // Config component
-  if (!gst_c2_venc_wrapper_config_component (c2venc->wrapper, config)) {
+  if (!gst_c2_wrapper_config_component (c2venc->wrapper, config)) {
     GST_ERROR_OBJECT (c2venc, "Failed to config interface");
   }
 
   g_ptr_array_free (config, FALSE);
 
-  if (!gst_c2_venc_wrapper_component_start (c2venc->wrapper)) {
+  if (!gst_c2_wrapper_component_start (c2venc->wrapper)) {
     GST_ERROR_OBJECT (c2venc, "Failed to start component");
   }
 
@@ -1284,7 +1284,7 @@ gst_c2_venc_finish (GstVideoEncoder * encoder)
   inBuf.pool_type = BUFFER_POOL_BASIC_GRAPHIC;
 
   // Setup EOS work
-  if (!gst_c2_venc_wrapper_component_queue (c2venc->wrapper, &inBuf)) {
+  if (!gst_c2_wrapper_component_queue (c2venc->wrapper, &inBuf)) {
     GST_ERROR_OBJECT(c2venc, "failed to queue input frame to Codec2");
     return GST_FLOW_ERROR;
   }
@@ -1373,7 +1373,7 @@ gst_c2_venc_encode (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   config_roi_encoding (c2venc, frame);
 
   // Queue buffer to Codec2
-  if (!gst_c2_venc_wrapper_component_queue (c2venc->wrapper, &inBuf)) {
+  if (!gst_c2_wrapper_component_queue (c2venc->wrapper, &inBuf)) {
     GST_ERROR_OBJECT(c2venc, "failed to queue input frame to Codec2");
     // Lock the mutex again and return to the base class
     GST_VIDEO_ENCODER_STREAM_LOCK (encoder);
@@ -1586,7 +1586,7 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
 
   // Config component
   if (config_apply) {
-    if (!gst_c2_venc_wrapper_config_component (c2venc->wrapper, config)) {
+    if (!gst_c2_wrapper_config_component (c2venc->wrapper, config)) {
       GST_ERROR_OBJECT (c2venc, "Failed to config interface");
     }
   }
@@ -1738,7 +1738,7 @@ gst_c2_venc_finalize (GObject * object)
     c2venc->comp_name = NULL;
   }
 
-  gst_c2_venc_wrapper_delete_component (c2venc->wrapper);
+  gst_c2_wrapper_delete_component (c2venc->wrapper);
 
   if (c2venc->wrapper != NULL) {
     gst_c2_wrapper_free (c2venc->wrapper);
