@@ -43,7 +43,7 @@ gst_c2_venc_context_debug_category (void)
   static gsize catgonce = 0;
 
   if (g_once_init_enter (&catgonce)) {
-    gsize catdone = (gsize) _gst_debug_category_new ("qtic2venc", 0,
+    gsize catdone = (gsize) _gst_debug_category_new ("qtic2engine", 0,
         "C2 encoder context");
     g_once_init_leave (&catgonce, catdone);
   }
@@ -119,7 +119,7 @@ gst_c2_wrapper_free (GstC2Wrapper * wrapper)
 }
 
 gboolean
-gst_c2_venc_wrapper_create_component (GstC2Wrapper * wrapper,
+gst_c2_wrapper_create_component (GstC2Wrapper * wrapper,
     const gchar * name, event_handler_cb callback, gpointer userdata) {
   gboolean ret = FALSE;
   c2_status_t c2Status = C2_NO_INIT;
@@ -133,64 +133,73 @@ gst_c2_venc_wrapper_create_component (GstC2Wrapper * wrapper,
   wrapper->component->SetHandler (callback, userdata);
 
   if (wrapper->component) {
-    c2Status =  wrapper->component->createBlockpool(C2BlockPool::BASIC_GRAPHIC);
+    c2Status = wrapper->component->createBlockpool(C2BlockPool::BASIC_LINEAR);
     if (c2Status == C2_OK) {
       ret = TRUE;
     } else {
-      GST_ERROR("Failed(%d) to allocate block pool(%d)", c2Status, C2BlockPool::BASIC_GRAPHIC);
+      GST_ERROR("Failed(%d) to allocate block pool(%d)",
+          c2Status, C2BlockPool::BASIC_LINEAR);
+    }
+    c2Status = wrapper->component->createBlockpool(C2BlockPool::BASIC_GRAPHIC);
+    if (c2Status == C2_OK) {
+      ret = TRUE;
+    } else {
+      GST_ERROR("Failed(%d) to allocate block pool(%d)",
+          c2Status, C2BlockPool::BASIC_GRAPHIC);
     }
   }
 
-  GST_INFO ("Created C2venc component");
+  GST_INFO ("Created C2 component");
   return ret;
 }
 
 gboolean
-gst_c2_venc_wrapper_delete_component (GstC2Wrapper * wrapper) {
+gst_c2_wrapper_delete_component (GstC2Wrapper * wrapper) {
 
   if (wrapper->component) {
     GST_INFO ("Delete component");
     delete wrapper->component;
   }
+  GST_INFO ("Delete C2 component");
   return TRUE;
 }
 
 gboolean
-gst_c2_venc_wrapper_config_component (GstC2Wrapper * wrapper,
+gst_c2_wrapper_config_component (GstC2Wrapper * wrapper,
     GPtrArray* config) {
 
   if (wrapper->component) {
     wrapper->component->Config(config);
   }
 
-  GST_INFO ("C2venc component start");
+  GST_INFO ("Config C2 component");
   return TRUE;
 }
 
 gboolean
-gst_c2_venc_wrapper_component_start (GstC2Wrapper * wrapper) {
+gst_c2_wrapper_component_start (GstC2Wrapper * wrapper) {
 
   if (wrapper->component) {
     wrapper->component->Start();
   }
 
-  GST_INFO ("C2venc component start");
+  GST_INFO ("Start C2 component");
   return TRUE;
 }
 
 gboolean
-gst_c2_venc_wrapper_component_stop (GstC2Wrapper * wrapper) {
+gst_c2_wrapper_component_stop (GstC2Wrapper * wrapper) {
 
   if (wrapper->component) {
     wrapper->component->Stop();
   }
 
-  GST_INFO ("C2venc component stop");
+  GST_INFO ("Stop C2 component");
   return TRUE;
 }
 
 gboolean
-gst_c2_venc_wrapper_component_queue (GstC2Wrapper * wrapper,
+gst_c2_wrapper_component_queue (GstC2Wrapper * wrapper,
     BufferDescriptor * buffer) {
 
   if (wrapper->component) {
@@ -201,105 +210,7 @@ gst_c2_venc_wrapper_component_queue (GstC2Wrapper * wrapper,
 }
 
 gboolean
-gst_c2_venc_wrapper_free_output_buffer (GstC2Wrapper * wrapper,
-    uint64_t bufferIdx) {
-
-  if (wrapper->component) {
-    wrapper->component->FreeOutputBuffer(bufferIdx);
-  }
-  return TRUE;
-}
-
-gboolean
-gst_c2_vdec_wrapper_create_component (GstC2Wrapper * wrapper,
-    const gchar * name, event_handler_cb callback, gpointer userdata) {
-  gboolean ret = FALSE;
-  c2_status_t c2Status = C2_NO_INIT;
-  if (wrapper->component) {
-    GST_INFO ("Delete previous component");
-    delete wrapper->component;
-  }
-
-  wrapper->component = new C2ComponentWrapper (wrapper->compstore, name);
-  wrapper->component->SetHandler (callback, userdata);
-  if (wrapper->component) {
-    //c2Status =  wrapper->component->createBlockpool(toC2BufferPoolType(BUFFER_POOL_BASIC_LINEAR));
-    c2Status =  wrapper->component->createBlockpool(C2BlockPool::BASIC_LINEAR);
-    if (c2Status == C2_OK) {
-      ret = TRUE;
-    } else {
-      GST_ERROR("Failed(%d) to allocate block pool(%d)", c2Status, C2BlockPool::BASIC_LINEAR);
-    }
-    c2Status =  wrapper->component->createBlockpool(C2BlockPool::BASIC_GRAPHIC);
-    if (c2Status == C2_OK) {
-      ret = TRUE;
-    } else {
-      GST_ERROR("Failed(%d) to allocate block pool(%d)", c2Status, C2BlockPool::BASIC_GRAPHIC);
-    }
-  }
-
-  return ret;
-}
-
-gboolean
-gst_c2_vdec_wrapper_delete_component (GstC2Wrapper * wrapper) {
-
-  if (wrapper->component) {
-    GST_INFO ("Delete component");
-    delete wrapper->component;
-  }
-
-  GST_INFO ("Delete C2venc component");
-  return TRUE;
-}
-
-gboolean
-gst_c2_vdec_wrapper_config_component (GstC2Wrapper * wrapper,
-    GPtrArray* config) {
-
-  if (wrapper->component) {
-    wrapper->component->Config(config);
-  }
-
-  GST_INFO ("C2venc component start");
-  return TRUE;
-}
-
-gboolean
-gst_c2_vdec_wrapper_component_start (GstC2Wrapper * wrapper) {
-
-  if (wrapper->component) {
-    wrapper->component->Start();
-  }
-
-  GST_INFO ("C2venc component start");
-  return TRUE;
-}
-
-gboolean
-gst_c2_vdec_wrapper_component_stop (GstC2Wrapper * wrapper) {
-
-  if (wrapper->component) {
-    wrapper->component->Stop();
-  }
-
-  GST_INFO ("C2venc component start");
-  return TRUE;
-}
-
-gboolean
-gst_c2_vdec_wrapper_component_queue (GstC2Wrapper * wrapper,
-    BufferDescriptor * buffer) {
-
-  if (wrapper->component) {
-    wrapper->component->Queue(buffer);
-  }
-
-  return TRUE;
-}
-
-gboolean
-gst_c2_vdec_wrapper_free_output_buffer (GstC2Wrapper * wrapper,
+gst_c2_wrapper_free_output_buffer (GstC2Wrapper * wrapper,
     uint64_t bufferIdx) {
 
   if (wrapper->component) {

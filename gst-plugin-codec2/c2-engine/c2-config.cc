@@ -45,7 +45,7 @@ gst_c2_venc_context_debug_category (void)
   static gsize catgonce = 0;
 
   if (g_once_init_enter (&catgonce)) {
-    gsize catdone = (gsize) _gst_debug_category_new ("qtic2venc", 0,
+    gsize catdone = (gsize) _gst_debug_category_new ("qtic2engine", 0,
         "C2 encoder config");
     g_once_init_leave (&catgonce, catdone);
   }

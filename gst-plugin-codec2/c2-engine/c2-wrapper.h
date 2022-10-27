@@ -48,56 +48,28 @@ GST_API void
 gst_c2_wrapper_free (GstC2Wrapper * wrapper);
 
 GST_API gboolean
-gst_c2_venc_wrapper_create_component (GstC2Wrapper * wrapper,
+gst_c2_wrapper_create_component (GstC2Wrapper * wrapper,
     const gchar * name, event_handler_cb callback, gpointer userdata);
 
 GST_API gboolean
-gst_c2_venc_wrapper_delete_component (GstC2Wrapper * wrapper);
+gst_c2_wrapper_delete_component (GstC2Wrapper * wrapper);
 
 GST_API gboolean
-gst_c2_venc_wrapper_config_component (GstC2Wrapper * wrapper,
+gst_c2_wrapper_config_component (GstC2Wrapper * wrapper,
     GPtrArray * config);
 
 GST_API gboolean
-gst_c2_venc_wrapper_component_start (GstC2Wrapper * wrapper);
+gst_c2_wrapper_component_start (GstC2Wrapper * wrapper);
 
 GST_API gboolean
-gst_c2_venc_wrapper_component_stop (GstC2Wrapper * wrapper);
+gst_c2_wrapper_component_stop (GstC2Wrapper * wrapper);
 
 GST_API gboolean
-gst_c2_venc_wrapper_component_queue (GstC2Wrapper * wrapper,
+gst_c2_wrapper_component_queue (GstC2Wrapper * wrapper,
     BufferDescriptor * buffer);
 
 GST_API gboolean
-gst_c2_venc_wrapper_free_output_buffer (GstC2Wrapper * wrapper,
+gst_c2_wrapper_free_output_buffer (GstC2Wrapper * wrapper,
     uint64_t bufferIdx);
-
-
-
-gboolean
-gst_c2_vdec_wrapper_create_component (GstC2Wrapper * wrapper,
-    const gchar * name, event_handler_cb callback, gpointer userdata);
-
-GST_API gboolean
-gst_c2_vdec_wrapper_delete_component (GstC2Wrapper * wrapper);
-
-GST_API gboolean
-gst_c2_vdec_wrapper_config_component (GstC2Wrapper * wrapper,
-    GPtrArray* config);
-
-GST_API gboolean
-gst_c2_vdec_wrapper_component_start (GstC2Wrapper * wrapper);
-
-GST_API gboolean
-gst_c2_vdec_wrapper_component_stop (GstC2Wrapper * wrapper);
-
-GST_API gboolean
-gst_c2_vdec_wrapper_component_queue (GstC2Wrapper * wrapper,
-    BufferDescriptor * buffer);
-
-GST_API gboolean
-gst_c2_vdec_wrapper_free_output_buffer (GstC2Wrapper * wrapper,
-    uint64_t bufferIdx);
-
 
 #endif // __GST_C2_WRAPPER_H__
