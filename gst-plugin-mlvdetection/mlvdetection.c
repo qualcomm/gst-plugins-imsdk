@@ -490,7 +490,7 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
     GArray * predictions, GstBuffer * buffer)
 {
   GstMapInfo memmap = {};
-  GValue entries = G_VALUE_INIT;
+  GValue entries = G_VALUE_INIT, value = G_VALUE_INIT;
   gchar *string = NULL;
   guint idx = 0, n_predictions = 0;
   gsize length = 0;
@@ -500,7 +500,7 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
   for (idx = 0; idx < predictions->len; idx++) {
     GstMLPrediction *prediction = NULL;
     GstStructure *entry = NULL;
-    GValue value = G_VALUE_INIT, rectangle = G_VALUE_INIT;
+    GValue rectangle = G_VALUE_INIT;
 
     // Break immediately if we reach the number of results limit.
     if (n_predictions >= detection->n_results)
@@ -542,19 +542,27 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
     gst_value_array_append_value (&rectangle, &value);
 
     gst_structure_set_value (entry, "rectangle", &rectangle);
+
     g_value_unset (&rectangle);
-
     g_value_unset (&value);
-    g_value_init (&value, GST_TYPE_STRUCTURE);
 
-    gst_value_set_structure (&value, entry);
-    gst_structure_free (entry);
+    g_value_init (&value, GST_TYPE_STRUCTURE);
+    g_value_take_boxed (&value, entry);
 
     gst_value_list_append_value (&entries, &value);
     g_value_unset (&value);
 
     n_predictions++;
   }
+
+  // Append timestamp information needed for synchronization.
+  g_value_init (&value, GST_TYPE_STRUCTURE);
+  g_value_take_boxed (&value,
+      gst_structure_new ("Parameters", "timestamp", G_TYPE_UINT64,
+          GST_BUFFER_TIMESTAMP (buffer), NULL));
+
+  gst_value_list_append_value (&entries, &value);
+  g_value_unset (&value);
 
   // Map buffer memory blocks.
   if (!gst_buffer_map_range (buffer, 0, 1, &memmap, GST_MAP_READWRITE)) {
