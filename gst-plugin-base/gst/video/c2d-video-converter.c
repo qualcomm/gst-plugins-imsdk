@@ -786,10 +786,10 @@ gst_extract_rectangles (const GstStructure * opts, C2D_RECT ** srcrects,
     entry = (n_srcrects != 0) ? gst_value_array_get_value (srclist, idx) : NULL;
 
     if ((entry != NULL) && gst_value_array_get_size (entry) == 4) {
-      srcrects[idx]->x = g_value_get_int (gst_value_array_get_value (entry, 0));
-      srcrects[idx]->y = g_value_get_int (gst_value_array_get_value (entry, 1));
-      srcrects[idx]->width = g_value_get_int (gst_value_array_get_value (entry, 2));
-      srcrects[idx]->height = g_value_get_int (gst_value_array_get_value (entry, 3));
+      (*srcrects)[idx].x = g_value_get_int (gst_value_array_get_value (entry, 0));
+      (*srcrects)[idx].y = g_value_get_int (gst_value_array_get_value (entry, 1));
+      (*srcrects)[idx].width = g_value_get_int (gst_value_array_get_value (entry, 2));
+      (*srcrects)[idx].height = g_value_get_int (gst_value_array_get_value (entry, 3));
     } else if (entry != NULL) {
       GST_WARNING ("Source rectangle at index %u does not contain "
           "exactly 4 values, using default values!", idx);
@@ -798,10 +798,10 @@ gst_extract_rectangles (const GstStructure * opts, C2D_RECT ** srcrects,
     entry = (n_dstrects != 0) ? gst_value_array_get_value (dstlist, idx) : NULL;
 
     if ((entry != NULL) && gst_value_array_get_size (entry) == 4) {
-      dstrects[idx]->x = g_value_get_int (gst_value_array_get_value (entry, 0));
-      dstrects[idx]->y = g_value_get_int (gst_value_array_get_value (entry, 1));
-      dstrects[idx]->width = g_value_get_int (gst_value_array_get_value (entry, 2));
-      dstrects[idx]->height = g_value_get_int (gst_value_array_get_value (entry, 3));
+      (*dstrects)[idx].x = g_value_get_int (gst_value_array_get_value (entry, 0));
+      (*dstrects)[idx].y = g_value_get_int (gst_value_array_get_value (entry, 1));
+      (*dstrects)[idx].width = g_value_get_int (gst_value_array_get_value (entry, 2));
+      (*dstrects)[idx].height = g_value_get_int (gst_value_array_get_value (entry, 3));
     } else if (entry != NULL) {
       GST_WARNING ("Destination rectangle at index %u does not contain "
           "exactly 4 values, using default values!", idx);
@@ -1393,7 +1393,7 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
         "Failed to get surface ID for output buffer!");
 
     // Fill the surface if there is visible background area.
-    if ((GET_OPT_BACKGROUND (opts) != 0x00000000) && (area > 0)) {
+    if (area > 0) {
       GST_LOG ("Fill output surface %x", surface_id);
 
       status = convert->FillSurface (surface_id, GET_OPT_BACKGROUND (opts), NULL);
