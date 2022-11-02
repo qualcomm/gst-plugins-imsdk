@@ -9,20 +9,10 @@ target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_INCLUDE_DIRS}
 )
 
-if(CAMERA_CLIENT_DISABLED)
-target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
-  camera_metadata
-)
-else()
-target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
-  camera_client
-)
-endif()
-
 target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_LIBRARIES}
-  binder
-  cutils
+  $<$<BOOL:${CAMERA_CLIENT_DISABLED}>:camera_metadata>
+  $<$<NOT:$<BOOL:${CAMERA_CLIENT_DISABLED}>>:camera_client>
   utils
 )
 
