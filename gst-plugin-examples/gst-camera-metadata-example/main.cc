@@ -37,7 +37,60 @@
 #include <camera/CameraMetadata.h>
 #include <camera/VendorTagDescriptor.h>
 
-#define GST_PROTECTION_META_CAST(obj) ((GstProtectionMeta *) obj)
+
+#define GST_CAMERA_PIPELINE "qtiqmmfsrc name=camera " \
+    "camera.video_0 ! video/x-raw(memory:GBM),format=NV12,width=1280,height=720,framerate=30/1 ! " \
+    "queue ! appsink name=sink emit-signals=true async=false enable-last-sample=false"
+
+#define TERMINATE_MESSAGE      "APP_TERMINATE_MSG"
+#define PIPELINE_STATE_MESSAGE "APP_PIPELINE_STATE_MSG"
+#define PIPELINE_EOS_MESSAGE   "APP_PIPELINE_EOS_MSG"
+
+#define GST_APP_CONTEXT_CAST(obj)           ((GstAppContext*)(obj))
+
+typedef struct _GstAppContext GstAppContext;
+
+struct _GstAppContext
+{
+  // Main application event loop.
+  GMainLoop   *mloop;
+
+  // GStreamer pipeline instance.
+  GstElement  *pipeline;
+
+  // Asynchronous queue thread communication.
+  GAsyncQueue *messages;
+};
+
+/// Command line option variables.
+static gboolean eos_on_shutdown = TRUE;
+
+static GstAppContext *
+gst_app_context_new ()
+{
+  GstAppContext *ctx = g_new0 (GstAppContext, 1);
+
+  ctx->messages = g_async_queue_new_full ((GDestroyNotify) gst_structure_free);
+  ctx->pipeline = NULL;
+  ctx->mloop = NULL;
+
+  return ctx;
+}
+
+static void
+gst_app_context_free (GstAppContext * ctx)
+{
+  if (ctx->mloop != NULL)
+    g_main_loop_unref (ctx->mloop);
+
+  if (ctx->pipeline != NULL)
+    gst_object_unref (ctx->pipeline);
+
+  g_async_queue_unref (ctx->messages);
+  g_free (ctx);
+
+  return;
+}
 
 static void
 gst_sample_release (GstSample * sample)
@@ -46,88 +99,6 @@ gst_sample_release (GstSample * sample)
 #if GST_VERSION_MAJOR >= 1 && GST_VERSION_MINOR > 14
     gst_sample_set_buffer (sample, NULL);
 #endif
-}
-
-static gboolean
-handle_interrupt_signal (gpointer userdata)
-{
-  GstElement *pipeline = GST_ELEMENT (userdata);
-
-  g_print ("\n\nReceived an interrupt signal, quit main loop ...\n");
-  gst_element_send_event (pipeline, gst_event_new_eos ());
-
-  return TRUE;
-}
-
-static GstProtectionMeta *
-gst_buffer_get_protection_meta_id (GstBuffer * buffer, const gchar * name)
-{
-  gpointer state = NULL;
-  GstMeta *meta = NULL;
-
-  while ((meta = gst_buffer_iterate_meta_filtered (buffer, &state,
-              GST_PROTECTION_META_API_TYPE))) {
-    if (gst_structure_has_name (GST_PROTECTION_META_CAST (meta)->info, name))
-      return GST_PROTECTION_META_CAST (meta);
-  }
-
-  return NULL;
-}
-
-static void
-state_changed_cb (GstBus * bus, GstMessage * message, gpointer userdata)
-{
-  GstElement *pipeline = GST_ELEMENT (userdata);
-  GstState old, newst, pending;
-
-  // Handle state changes only for the pipeline.
-  if (GST_MESSAGE_SRC (message) != GST_OBJECT_CAST (pipeline))
-    return;
-
-  gst_message_parse_state_changed (message, &old, &newst, &pending);
-  g_print ("\nPipeline state changed from %s to %s, pending: %s\n",
-      gst_element_state_get_name (old), gst_element_state_get_name (newst),
-      gst_element_state_get_name (pending));
-
-  if ((newst == GST_STATE_PAUSED) && (old == GST_STATE_READY) &&
-      (pending == GST_STATE_VOID_PENDING)) {
-    g_print ("\nSetting pipeline to PLAYING state ...\n");
-
-    if (gst_element_set_state (pipeline,
-            GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
-      gst_printerr ("\nPipeline doesn't want to transition to PLAYING state!\n");
-      return;
-    }
-  }
-}
-
-static void
-warning_cb (GstBus * bus, GstMessage * message, gpointer userdata)
-{
-  GError *error = NULL;
-  gchar *debug = NULL;
-
-  gst_message_parse_warning (message, &error, &debug);
-  gst_object_default_error (GST_MESSAGE_SRC (message), error, debug);
-
-  g_free (debug);
-  g_error_free (error);
-}
-
-static void
-error_cb (GstBus * bus, GstMessage * message, gpointer userdata)
-{
-  GMainLoop *mloop = (GMainLoop*) userdata;
-  GError *error = NULL;
-  gchar *debug = NULL;
-
-  gst_message_parse_error (message, &error, &debug);
-  gst_object_default_error (GST_MESSAGE_SRC (message), error, debug);
-
-  g_free (debug);
-  g_error_free (error);
-
-  g_main_loop_quit (mloop);
 }
 
 static guint
@@ -153,8 +124,140 @@ get_vendor_tag_by_name (const gchar * section, const gchar * name)
   return tag_id;
 }
 
+static gboolean
+handle_interrupt_signal (gpointer userdata)
+{
+  GstAppContext *appctx = GST_APP_CONTEXT_CAST (userdata);
+  GstState state = GST_STATE_VOID_PENDING;
+  static gboolean waiting_eos = FALSE;
+
+  // Signal menu thread to quit.
+  g_async_queue_push (appctx->messages,
+      gst_structure_new_empty (TERMINATE_MESSAGE));
+
+  // Get the current state of the pipeline.
+  gst_element_get_state (appctx->pipeline, &state, NULL, 0);
+
+  if (eos_on_shutdown && !waiting_eos && (state == GST_STATE_PLAYING)) {
+    g_print ("\nEOS enabled -- Sending EOS on the pipeline\n");
+
+    gst_element_post_message (GST_ELEMENT (appctx->pipeline),
+        gst_message_new_custom (GST_MESSAGE_EOS, GST_OBJECT (appctx->pipeline),
+            gst_structure_new_empty ("GST_PIPELINE_INTERRUPT")));
+
+    g_print ("\nWaiting for EOS ...\n");
+    waiting_eos = TRUE;
+  } else if (eos_on_shutdown && waiting_eos) {
+    g_print ("\nInterrupt while waiting for EOS - quit main loop...\n");
+
+    gst_element_set_state (appctx->pipeline, GST_STATE_NULL);
+    g_main_loop_quit (appctx->mloop);
+
+    waiting_eos = FALSE;
+  } else {
+    g_print ("\n\nReceived an interrupt signal, stopping pipeline ...\n");
+    gst_element_set_state (appctx->pipeline, GST_STATE_NULL);
+    g_main_loop_quit (appctx->mloop);
+  }
+
+  return TRUE;
+}
+
+static gboolean
+handle_bus_message (GstBus * bus, GstMessage * message, gpointer userdata)
+{
+  GstAppContext *appctx = GST_APP_CONTEXT_CAST (userdata);
+  static GstState target_state = GST_STATE_VOID_PENDING;
+  static gboolean in_progress = FALSE, buffering = FALSE;
+
+  switch (GST_MESSAGE_TYPE (message)) {
+    case GST_MESSAGE_ERROR:
+    {
+      GError *error = NULL;
+      gchar *debug = NULL;
+
+      g_print ("\n\n");
+      gst_message_parse_error (message, &error, &debug);
+      gst_object_default_error (GST_MESSAGE_SRC (message), error, debug);
+
+      g_free (debug);
+      g_error_free (error);
+
+      g_print ("\nSetting pipeline to NULL ...\n");
+      gst_element_set_state (appctx->pipeline, GST_STATE_NULL);
+
+      g_async_queue_push (appctx->messages,
+          gst_structure_new_empty (TERMINATE_MESSAGE));
+      g_main_loop_quit (appctx->mloop);
+    }
+      break;
+    case GST_MESSAGE_WARNING:
+    {
+      GError *error = NULL;
+      gchar *debug = NULL;
+
+      g_print ("\n\n");
+      gst_message_parse_warning (message, &error, &debug);
+      gst_object_default_error (GST_MESSAGE_SRC (message), error, debug);
+
+      g_free (debug);
+      g_error_free (error);
+    }
+      break;
+    case GST_MESSAGE_EOS:
+      g_print ("\nReceived End-of-Stream from '%s' ...\n",
+          GST_MESSAGE_SRC_NAME (message));
+
+      g_async_queue_push (appctx->messages,
+          gst_structure_new_empty (PIPELINE_EOS_MESSAGE));
+
+      // Stop pipeline and quit main loop in case user interrupt has been sent.
+      gst_element_set_state (appctx->pipeline, GST_STATE_NULL);
+      g_main_loop_quit (appctx->mloop);
+      break;
+    case GST_MESSAGE_REQUEST_STATE:
+    {
+      gchar *name = gst_object_get_path_string (GST_MESSAGE_SRC (message));
+      GstState state;
+
+      gst_message_parse_request_state (message, &state);
+      g_print ("\nSetting pipeline state to %s as requested by %s...\n",
+          gst_element_state_get_name (state), name);
+
+      gst_element_set_state (appctx->pipeline, state);
+      target_state = state;
+
+      g_free (name);
+    }
+      break;
+    case GST_MESSAGE_STATE_CHANGED:
+    {
+      GstState oldstate, newstate, pending;
+
+      // Handle state changes only for the pipeline.
+      if (GST_MESSAGE_SRC (message) != GST_OBJECT_CAST (appctx->pipeline))
+        break;
+
+      gst_message_parse_state_changed (message, &oldstate, &newstate, &pending);
+      g_print ("\nPipeline state changed from %s to %s, pending: %s\n",
+          gst_element_state_get_name (oldstate),
+          gst_element_state_get_name (newstate),
+          gst_element_state_get_name (pending));
+
+      g_async_queue_push (appctx->messages, gst_structure_new (
+          PIPELINE_STATE_MESSAGE, "new", G_TYPE_UINT, newstate,
+          "pending", G_TYPE_UINT, pending, NULL));
+    }
+      break;
+    default:
+      break;
+  }
+
+  return TRUE;
+}
+
 static GstFlowReturn
-new_sample (GstElement *sink, gpointer userdata)
+new_sample (GstElement * element, gpointer userdata)
 {
   GstSample *sample = NULL;
   GstBuffer *buffer = NULL;
@@ -162,21 +265,21 @@ new_sample (GstElement *sink, gpointer userdata)
   GstMapInfo info;
 
   // New sample is available, retrieve the buffer from the sink.
-  g_signal_emit_by_name (sink, "pull-sample", &sample);
+  g_signal_emit_by_name (element, "pull-sample", &sample);
 
   if (sample == NULL) {
-    g_printerr ("ERROR: Pulled sample is NULL!");
+    g_printerr ("ERROR: Pulled sample is NULL!\n");
     return GST_FLOW_ERROR;
   }
 
   if ((buffer = gst_sample_get_buffer (sample)) == NULL) {
-    g_printerr ("ERROR: Pulled buffer is NULL!");
+    g_printerr ("ERROR: Pulled buffer is NULL!\n");
     gst_sample_release (sample);
     return GST_FLOW_ERROR;
   }
 
   if (!gst_buffer_map (buffer, &info, GST_MAP_READ)) {
-    g_printerr ("ERROR: Failed to map the pulled buffer!");
+    g_printerr ("ERROR: Failed to map the pulled buffer!\n");
     gst_sample_release (sample);
     return GST_FLOW_ERROR;
   }
@@ -191,169 +294,345 @@ new_sample (GstElement *sink, gpointer userdata)
   return GST_FLOW_OK;
 }
 
-static GstFlowReturn
-result_metadata (gpointer userdata, guint camera_id, gpointer metadata)
+static void
+result_metadata (GstElement * element, gpointer metadata, gpointer userdata)
 {
-  ::android::CameraMetadata *meta_ptr = (::android::CameraMetadata*) metadata;
+  ::android::CameraMetadata *meta = (::android::CameraMetadata*) metadata;
   guint tag_id = 0;
 
-  if (meta_ptr != nullptr) {
-    g_print ("\nResult metadata ... entries - %ld\n", meta_ptr->entryCount());
+  if (meta == nullptr)
+    return;
 
-    // Exposure time
-    if (meta_ptr->exists(ANDROID_SENSOR_EXPOSURE_TIME)) {
-      gint64 sensorExpTime =
-          meta_ptr->find(ANDROID_SENSOR_EXPOSURE_TIME).data.i64[0];
-      g_print ("Result sensor_exp_time - %ld\n", sensorExpTime);
-    }
+  g_print ("\nResult metadata ... entries - %ld\n", meta->entryCount());
 
-    // Sensor Timestamp
-    if (meta_ptr->exists(ANDROID_SENSOR_TIMESTAMP)) {
-      gint64 timestamp =
-          meta_ptr->find(ANDROID_SENSOR_TIMESTAMP).data.i64[0];
-      g_print ("Result timestamp - %ld\n", timestamp);
-    }
+  // Exposure time
+  if (meta->exists(ANDROID_SENSOR_EXPOSURE_TIME)) {
+    gint64 exptime = meta->find(ANDROID_SENSOR_EXPOSURE_TIME).data.i64[0];
+    g_print ("Result Sensor Exposure Time - %" G_GINT64_FORMAT "\n", exptime);
+  }
 
-    // AE mode for manual control
-    if (meta_ptr->exists(ANDROID_CONTROL_AE_MODE)) {
-      gint ae_mode = meta_ptr->find(ANDROID_CONTROL_AE_MODE).data.u8[0];
-      g_print ("Result ae_mode - %d\n", ae_mode);
-    }
+  // Sensor Timestamp
+  if (meta->exists(ANDROID_SENSOR_TIMESTAMP)) {
+    gint64 timestamp = meta->find(ANDROID_SENSOR_TIMESTAMP).data.i64[0];
+    g_print ("Result timestamp - %" G_GINT64_FORMAT "\n", timestamp);
+  }
 
-    // AE Target
-    if (meta_ptr->exists(ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION)) {
-      gint exp_compensation =
-        meta_ptr->find(ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION).data.i32[0];
-      g_print ("Result exp_compensation - %d\n", exp_compensation);
-    }
+  // AE mode for manual control
+  if (meta->exists(ANDROID_CONTROL_AE_MODE)) {
+    gint mode = meta->find(ANDROID_CONTROL_AE_MODE).data.u8[0];
+    g_print ("Result Auto Exposure Mode - %d\n", mode);
+  }
 
-    // AE Lock
-    if (meta_ptr->exists(ANDROID_CONTROL_AE_LOCK)) {
-      gint exp_lock =
-        meta_ptr->find(ANDROID_CONTROL_AE_LOCK).data.u8[0];
-      g_print ("Result exp_lock - %d\n", exp_lock);
-    }
+  // AE Target
+  if (meta->exists(ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION)) {
+    gint compensation =
+      meta->find(ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION).data.i32[0];
+    g_print ("Result Exposure Compensation - %d\n", compensation);
+  }
 
-     // sensor analog + digital gain
-    if (meta_ptr->exists(ANDROID_SENSOR_SENSITIVITY)) {
-      gint32 sensitivity =
-        meta_ptr->find(ANDROID_SENSOR_SENSITIVITY).data.i32[0];
-      g_print ("Result sensitivity - %d\n", sensitivity);
-    }
+  // AE Lock
+  if (meta->exists(ANDROID_CONTROL_AE_LOCK)) {
+    gint lock = meta->find(ANDROID_CONTROL_AE_LOCK).data.u8[0];
+    g_print ("Result Exposure Lock - %s\n", (lock > 0) ? "ON" : "OFF");
+  }
 
-     // EV mode
-    if (meta_ptr->exists(ANDROID_CONTROL_AE_COMPENSATION_RANGE)) {
-      gint32 min =
-        meta_ptr->find(ANDROID_CONTROL_AE_COMPENSATION_RANGE).data.i32[0];
-      gint32 max =
-        meta_ptr->find(ANDROID_CONTROL_AE_COMPENSATION_RANGE).data.i32[1];
-      g_print ("Result AE compensation range - %d - %d\n", min, max);
-    }
+  // sensor analog + digital gain
+  if (meta->exists(ANDROID_SENSOR_SENSITIVITY)) {
+    gint32 sensitivity = meta->find(ANDROID_SENSOR_SENSITIVITY).data.i32[0];
+    g_print ("Result Sensor Sensitivity - %d\n", sensitivity);
+  }
 
-     // EV steps
-    if (meta_ptr->exists(ANDROID_CONTROL_AE_COMPENSATION_STEP)) {
-      gint numerator =
-        meta_ptr->find(ANDROID_CONTROL_AE_COMPENSATION_STEP).data.r[0].numerator;
-      gint denominator =
-        meta_ptr->find(ANDROID_CONTROL_AE_COMPENSATION_STEP).data.r[0].denominator;
-      g_print ("Result AE compensation step - %d/%d\n", numerator, denominator);
-    }
+  // Sensor analog gain
+  if (meta->exists(ANDROID_SENSOR_MAX_ANALOG_SENSITIVITY)) {
+    gint32 max = meta->find(ANDROID_SENSOR_MAX_ANALOG_SENSITIVITY).data.i32[0];
+    g_print ("Result Sensor Max Sensitivity - %d\n", max);
+  }
 
-    // Sensor analog gain
-    if (meta_ptr->exists(ANDROID_SENSOR_MAX_ANALOG_SENSITIVITY)) {
-      gint32 maxsensitivity =
-        meta_ptr->find(ANDROID_SENSOR_MAX_ANALOG_SENSITIVITY).data.i32[0];
-      g_print ("Result max sensitivity - %d\n", maxsensitivity);
-    }
+  // EV mode
+  if (meta->exists(ANDROID_CONTROL_AE_COMPENSATION_RANGE)) {
+    gint32 min = meta->find(ANDROID_CONTROL_AE_COMPENSATION_RANGE).data.i32[0];
+    gint32 max = meta->find(ANDROID_CONTROL_AE_COMPENSATION_RANGE).data.i32[1];
+    g_print ("Result AE Compensation Range - %d - %d\n", min, max);
+  }
 
-    // Sensor Read Result
-    gboolean flag = 0;
+    // EV steps
+  if (meta->exists(ANDROID_CONTROL_AE_COMPENSATION_STEP)) {
+    gint numerator =
+      meta->find(ANDROID_CONTROL_AE_COMPENSATION_STEP).data.r[0].numerator;
+    gint denominator =
+      meta->find(ANDROID_CONTROL_AE_COMPENSATION_STEP).data.r[0].denominator;
+    g_print ("Result AE Compensation Step - %d/%d\n", numerator, denominator);
+  }
+
+  // Sensor Read Result
+  gboolean result = 0;
+  tag_id = get_vendor_tag_by_name (
+      "org.codeaurora.qcamera3.sensorreadoutput", "SensorReadResult");
+  if (meta->exists(tag_id)) {
+    result = meta->find(tag_id).data.u8[0];
+    g_print ("Sensor Read Result: %d\n", result);
+  }
+
+  if (result) {
+    // Sensor Read Output
     tag_id = get_vendor_tag_by_name (
-        "org.codeaurora.qcamera3.sensorreadoutput", "SensorReadResult");
-    if (meta_ptr->exists(tag_id)) {
-      flag = meta_ptr->find(tag_id).data.u8[0];
-      g_print ("Sensor Read Result: %d\n", flag);
-    }
-
-    if (flag) {
-      // Sensor Read Output
-      tag_id = get_vendor_tag_by_name (
-          "org.codeaurora.qcamera3.sensorreadoutput", "SensorReadOutput");
-      if (meta_ptr->exists(tag_id)) {
-        guint value = (meta_ptr->find(tag_id).data.u8[0]) | (meta_ptr->find(tag_id).data.u8[1] << 8);
-        g_print ("Sensor Read Output: %d\n", value);
-      }
+        "org.codeaurora.qcamera3.sensorreadoutput", "SensorReadOutput");
+    if (meta->exists(tag_id)) {
+      guint value =
+          (meta->find(tag_id).data.u8[0]) | (meta->find(tag_id).data.u8[1] << 8);
+      g_print ("Sensor Read Output: %d\n", value);
     }
   }
-
-  return GST_FLOW_OK;
-}
-
-static GstFlowReturn
-urgent_metadata (gpointer userdata, guint camera_id, gpointer metadata)
-{
-  ::android::CameraMetadata *meta_ptr = (::android::CameraMetadata*) metadata;
-
-  if (meta_ptr != nullptr) {
-    g_print ("\nUrgent metadata ... entries - %ld\n", meta_ptr->entryCount());
-
-    // AWB Mode
-    if (meta_ptr->exists(ANDROID_CONTROL_AWB_MODE)) {
-      gint8 AWBMode = meta_ptr->find(ANDROID_CONTROL_AWB_MODE).data.u8[0];
-      g_print ("Urgent AWB mode - %ld\n", AWBMode);
-    }
-
-    // AWB State
-    if (meta_ptr->exists(ANDROID_CONTROL_AWB_STATE)) {
-      gint8 AWBState = meta_ptr->find(ANDROID_CONTROL_AWB_STATE).data.u8[0];
-      g_print ("Urgent AWB state - %ld\n", AWBState);
-    }
-
-    // AF Mode
-    if (meta_ptr->exists(ANDROID_CONTROL_AF_MODE)) {
-      gint8 AFMode = meta_ptr->find(ANDROID_CONTROL_AF_MODE).data.u8[0];
-      g_print ("Urgent AF mode - %ld\n", AFMode);
-    }
-
-    // AF State
-    if (meta_ptr->exists(ANDROID_CONTROL_AF_STATE)) {
-      gint8 AFState = meta_ptr->find(ANDROID_CONTROL_AF_STATE).data.u8[0];
-      g_print ("Urgent AF state - %ld\n", AFState);
-    }
-
-    // AE Mode
-    if (meta_ptr->exists(ANDROID_CONTROL_AE_MODE)) {
-      gint8 AEMode = meta_ptr->find(ANDROID_CONTROL_AE_MODE).data.u8[0];
-      g_print ("Urgent AE mode - %ld\n", AEMode);
-    }
-
-    // AE State
-    if (meta_ptr->exists(ANDROID_CONTROL_AE_STATE)) {
-      gint8 AEState = meta_ptr->find(ANDROID_CONTROL_AE_STATE).data.u8[0];
-      g_print ("Urgent AE state - %ld\n", AEState);
-    }
-  }
-
-  return GST_FLOW_OK;
 }
 
 static void
-eos_cb (GstBus * bus, GstMessage * message, gpointer userdata)
+urgent_metadata (GstElement * element, gpointer metadata, gpointer userdata)
 {
-  GMainLoop *mloop = (GMainLoop*) userdata;
+  ::android::CameraMetadata *meta = (::android::CameraMetadata*) metadata;
 
-  g_print ("\nReceived End-of-Stream from '%s' ...\n",
-      GST_MESSAGE_SRC_NAME (message));
+  if (meta == nullptr)
+    return;
 
-  g_main_loop_quit (mloop);
+  g_print ("\nUrgent metadata ... entries - %ld\n", meta->entryCount());
+
+  // AWB Mode
+  if (meta->exists(ANDROID_CONTROL_AWB_MODE)) {
+    gint8 mode = meta->find(ANDROID_CONTROL_AWB_MODE).data.u8[0];
+    g_print ("Urgent AWB Mode - %d\n", mode);
+  }
+
+  // AWB State
+  if (meta->exists(ANDROID_CONTROL_AWB_STATE)) {
+    gint8 state = meta->find(ANDROID_CONTROL_AWB_STATE).data.u8[0];
+    g_print ("Urgent AWB state - %d\n", state);
+  }
+
+  // AF Mode
+  if (meta->exists(ANDROID_CONTROL_AF_MODE)) {
+    gint8 mode = meta->find(ANDROID_CONTROL_AF_MODE).data.u8[0];
+    g_print ("Urgent AF mode - %d\n", mode);
+  }
+
+  // AF State
+  if (meta->exists(ANDROID_CONTROL_AF_STATE)) {
+    gint8 state = meta->find(ANDROID_CONTROL_AF_STATE).data.u8[0];
+    g_print ("Urgent AF state - %d\n", state);
+  }
+
+  // AE Mode
+  if (meta->exists(ANDROID_CONTROL_AE_MODE)) {
+    gint8 mode = meta->find(ANDROID_CONTROL_AE_MODE).data.u8[0];
+    g_print ("Urgent AE mode - %d\n", mode);
+  }
+
+  // AE State
+  if (meta->exists(ANDROID_CONTROL_AE_STATE)) {
+    gint8 state = meta->find(ANDROID_CONTROL_AE_STATE).data.u8[0];
+    g_print ("Urgent AE state - %d\n", state);
+  }
+}
+
+static gboolean
+wait_pipeline_eos_message (GAsyncQueue * messages)
+{
+  GstStructure *message = NULL;
+
+  // Wait for either a PIPELINE_EOS or TERMINATE message.
+  while ((message = (GstStructure*) g_async_queue_pop (messages)) != NULL) {
+    if (gst_structure_has_name (message, TERMINATE_MESSAGE)) {
+      gst_structure_free (message);
+      return FALSE;
+    }
+
+    if (gst_structure_has_name (message, PIPELINE_EOS_MESSAGE))
+      break;
+
+    gst_structure_free (message);
+  }
+
+  gst_structure_free (message);
+  return TRUE;
+}
+
+static gboolean
+wait_pipeline_state_message (GAsyncQueue * messages, GstState state)
+{
+  GstStructure *message = NULL;
+
+  // Pipeline does not notify us when changing to NULL state, skip wait.
+  if (state == GST_STATE_NULL)
+    return TRUE;
+
+  // Wait for either a PIPELINE_STATE or TERMINATE message.
+  while ((message = (GstStructure*) g_async_queue_pop (messages)) != NULL) {
+    if (gst_structure_has_name (message, TERMINATE_MESSAGE)) {
+      gst_structure_free (message);
+      return FALSE;
+    }
+
+    if (gst_structure_has_name (message, PIPELINE_STATE_MESSAGE)) {
+      GstState newstate = GST_STATE_VOID_PENDING;
+      gst_structure_get_uint (message, "new", (guint*) &newstate);
+
+      if (newstate == state)
+        break;
+    }
+
+    gst_structure_free (message);
+  }
+
+  gst_structure_free (message);
+  return TRUE;
+}
+
+static gboolean
+update_pipeline_state (GstElement * pipeline, GAsyncQueue * messages,
+    GstState state)
+{
+  GstStateChangeReturn ret = GST_STATE_CHANGE_FAILURE;
+  GstState current, pending;
+
+  // First check current and pending states of the pipeline.
+  ret = gst_element_get_state (pipeline, &current, &pending, 0);
+
+  if (ret == GST_STATE_CHANGE_FAILURE) {
+    g_printerr ("Failed to retrieve pipeline state!\n");
+    return TRUE;
+  }
+
+  if (state == current) {
+    g_print ("Already in %s state\n", gst_element_state_get_name (state));
+    return TRUE;
+  } else if (state == pending) {
+    g_print ("Pending %s state\n", gst_element_state_get_name (state));
+    return TRUE;
+  }
+
+  // Check whether to send an EOS event on the pipeline.
+  if (eos_on_shutdown &&
+      (current == GST_STATE_PLAYING) && (state == GST_STATE_NULL)) {
+    g_print ("EOS enabled -- Sending EOS on the pipeline\n");
+
+    if (!gst_element_send_event (pipeline, gst_event_new_eos ())) {
+      g_printerr ("Failed to send EOS event!");
+      return TRUE;
+    }
+
+    if (!wait_pipeline_eos_message (messages))
+      return FALSE;
+  }
+
+  g_print ("Setting pipeline to %s\n", gst_element_state_get_name (state));
+  ret = gst_element_set_state (pipeline, state);
+
+  switch (ret) {
+    case GST_STATE_CHANGE_FAILURE:
+      g_printerr ("ERROR: Failed to transition to %s state!\n",
+          gst_element_state_get_name (state));
+      return TRUE;
+    case GST_STATE_CHANGE_NO_PREROLL:
+      g_print ("Pipeline is live and does not need PREROLL.\n");
+      break;
+    case GST_STATE_CHANGE_ASYNC:
+      g_print ("Pipeline is PREROLLING ...\n");
+
+      ret = gst_element_get_state (pipeline, NULL, NULL, GST_CLOCK_TIME_NONE);
+
+      if (ret == GST_STATE_CHANGE_FAILURE) {
+        g_printerr ("Pipeline failed to PREROLL!\n");
+        return TRUE;
+      }
+      break;
+    case GST_STATE_CHANGE_SUCCESS:
+      g_print ("Pipeline state change was successful\n");
+      break;
+  }
+
+  if (!wait_pipeline_state_message (messages, state))
+    return FALSE;
+
+  return TRUE;
+}
+
+static gpointer
+work_task (gpointer userdata)
+{
+  GstAppContext *appctx = GST_APP_CONTEXT_CAST (userdata);
+  GstElement *camsrc = NULL;
+  ::android::CameraMetadata *smeta = nullptr, *meta = nullptr;
+  gboolean success = FALSE;
+
+  // Transition to READY state in order to initilize the camera.
+  if (!update_pipeline_state (appctx->pipeline, appctx->messages, GST_STATE_READY)) {
+    g_main_loop_quit (appctx->mloop);
+    return NULL;
+  }
+
+  // Get a reference to the camera plugin.
+  camsrc = gst_bin_get_by_name (GST_BIN (appctx->pipeline), "camera");
+
+  // Get static metadata, containing the camera capabilities.
+  g_object_get (G_OBJECT (camsrc), "static-metadata", &smeta, NULL);
+
+  if (smeta == nullptr) {
+    g_printerr ("ERROR: Failed to fetch static camera metadata!\n");
+    gst_object_unref (camsrc);
+    return NULL;
+  }
+
+  g_print ("\nGot static-metadata entries - %ld\n", smeta->entryCount());
+
+  // Delete the static metadata, no longer needed.
+  delete smeta;
+
+  // Transition to PAUSED state in order to prepare the camera streams.
+  if (!update_pipeline_state (appctx->pipeline, appctx->messages, GST_STATE_PAUSED)) {
+    gst_object_unref (camsrc);
+    g_main_loop_quit (appctx->mloop);
+    return NULL;
+  }
+
+  // Get video metadata, which will be used for video streams.
+  g_object_get (G_OBJECT (camsrc), "video-metadata", &meta, NULL);
+
+  // Change the video streams AWB mode.
+  guchar mode = ANDROID_CONTROL_AWB_MODE_CLOUDY_DAYLIGHT;
+  meta->update(ANDROID_CONTROL_AWB_MODE, &mode, 1);
+
+  // Sensor Read Input
+  guchar flag = 1;
+  guint tag_id = get_vendor_tag_by_name (
+      "org.codeaurora.qcamera3.sensorreadinput", "SensorReadFlag");
+  meta->update(tag_id, &flag, 1);
+
+  g_object_set (G_OBJECT (camsrc), "video-metadata", meta, NULL);
+
+  // Decrease the reference count to the camera element, no longer needed.
+  gst_object_unref (camsrc);
+
+  // Transition to PLAYING state.
+  if (!update_pipeline_state (appctx->pipeline, appctx->messages, GST_STATE_PLAYING)) {
+    g_main_loop_quit (appctx->mloop);
+    return NULL;
+  }
+
+  // Run the pipeline for 15 more seconds.
+  sleep(15);
+
+  // Stop the pipeline.
+  update_pipeline_state (appctx->pipeline, appctx->messages, GST_STATE_NULL);
+
+  g_main_loop_quit (appctx->mloop);
+  return NULL;
 }
 
 gint
 main (gint argc, gchar *argv[])
 {
-  GstElement *pipeline = NULL;
-  GMainLoop *mloop = NULL;
-  guint intrpt_watch_id = 0;
+  GstAppContext *appctx = gst_app_context_new ();
+  GstElement *element = NULL;
+  GThread *mthread = NULL;
+  guint bus_watch_id = 0, intrpt_watch_id = 0;
 
   g_set_prgname ("gst-camera-metadata-example");
 
@@ -363,33 +642,52 @@ main (gint argc, gchar *argv[])
   {
     GError *error = NULL;
 
-    pipeline = gst_parse_launch ("qtiqmmfsrc name=camera ! \
-        video/x-raw(memory:GBM),format=NV12,width=1280,height=720,framerate=30/1 ! \
-        queue ! appsink name=sink emit-signals=true",
-        &error);
+    appctx->pipeline = gst_parse_launch (GST_CAMERA_PIPELINE, &error);
 
     // Check for errors on pipe creation.
-    if ((NULL == pipeline) && (error != NULL)) {
+    if ((NULL == appctx->pipeline) && (error != NULL)) {
       g_printerr ("Failed to create pipeline, error: %s!\n",
           GST_STR_NULL (error->message));
       g_clear_error (&error);
+
+      gst_app_context_free (appctx);
       return -1;
-    } else if ((NULL == pipeline) && (NULL == error)) {
+    } else if ((NULL == appctx->pipeline) && (NULL == error)) {
       g_printerr ("Failed to create pipeline, unknown error!\n");
+
+      gst_app_context_free (appctx);
       return -1;
-    } else if ((pipeline != NULL) && (error != NULL)) {
+    } else if ((appctx->pipeline != NULL) && (error != NULL)) {
       g_printerr ("Erroneous pipeline, error: %s!\n",
           GST_STR_NULL (error->message));
+
       g_clear_error (&error);
-      gst_object_unref (pipeline);
+      gst_app_context_free (appctx);
       return -1;
     }
   }
 
+  // Connect a callback to the new-sample signal.
+  element = gst_bin_get_by_name (GST_BIN (appctx->pipeline), "sink");
+  g_signal_connect (element, "new-sample", G_CALLBACK (new_sample), NULL);
+  gst_object_unref (element);
+
+  // Get a reference to the camera plugin.
+  element = gst_bin_get_by_name (GST_BIN (appctx->pipeline), "camera");
+
+  // Connect a callbacks to the qtiqmmfsrc metadata signals.
+  g_signal_connect (element, "result-metadata",
+      G_CALLBACK (result_metadata), NULL);
+  g_signal_connect (element, "urgent-metadata",
+      G_CALLBACK (urgent_metadata), NULL);
+
+  // Decrease the reference count to the camera element.
+  gst_object_unref (element);
+
   // Initialize main loop.
-  if ((mloop = g_main_loop_new (NULL, FALSE)) == NULL) {
+  if ((appctx->mloop = g_main_loop_new (NULL, FALSE)) == NULL) {
     g_printerr ("ERROR: Failed to create Main loop!\n");
-    gst_object_unref (pipeline);
+    gst_app_context_free (appctx);
     return -1;
   }
 
@@ -397,105 +695,37 @@ main (gint argc, gchar *argv[])
     GstBus *bus = NULL;
 
     // Retrieve reference to the pipeline's bus.
-    if ((bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline))) == NULL) {
+    if ((bus = gst_pipeline_get_bus (GST_PIPELINE (appctx->pipeline))) == NULL) {
       g_printerr ("ERROR: Failed to retrieve pipeline bus!\n");
-
-      g_main_loop_unref (mloop);
-      gst_object_unref (pipeline);
-
+      gst_app_context_free (appctx);
       return -1;
     }
 
     // Watch for messages on the pipeline's bus.
-    gst_bus_add_signal_watch (bus);
-
-    g_signal_connect (bus, "message::state-changed",
-        G_CALLBACK (state_changed_cb), pipeline);
-    g_signal_connect (bus, "message::warning", G_CALLBACK (warning_cb), NULL);
-    g_signal_connect (bus, "message::error", G_CALLBACK (error_cb), mloop);
-    g_signal_connect (bus, "message::eos", G_CALLBACK (eos_cb), mloop);
-
+    bus_watch_id = gst_bus_add_watch (bus, handle_bus_message, appctx);
     gst_object_unref (bus);
   }
 
-  // Connect a callback to the new-sample signal.
-  {
-    GstElement *element = gst_bin_get_by_name (GST_BIN (pipeline), "sink");
-    g_signal_connect (element, "new-sample", G_CALLBACK (new_sample), NULL);
-  }
-
   // Register function for handling interrupt signals with the main loop.
-  intrpt_watch_id = g_unix_signal_add (SIGINT, handle_interrupt_signal, pipeline);
+  intrpt_watch_id = g_unix_signal_add (SIGINT, handle_interrupt_signal, appctx);
 
-  g_print ("Setting pipeline to PAUSED state ...\n");
-
-  switch (gst_element_set_state (pipeline, GST_STATE_PAUSED)) {
-    case GST_STATE_CHANGE_FAILURE:
-      g_printerr ("ERROR: Failed to transition to PAUSED state!\n");
-      break;
-    case GST_STATE_CHANGE_NO_PREROLL:
-      g_print ("Pipeline is live and does not need PREROLL.\n");
-      break;
-    case GST_STATE_CHANGE_ASYNC:
-      g_print ("Pipeline is PREROLLING ...\n");
-      break;
-    case GST_STATE_CHANGE_SUCCESS:
-      g_print ("Pipeline state change was successful\n");
-      break;
-  }
-
-  // Get instance to qmmfsrc
-  GstElement *qtiqmmfsrc = gst_bin_get_by_name (GST_BIN (pipeline), "camera");
-  g_signal_connect (qtiqmmfsrc, "result-metadata",
-      G_CALLBACK (result_metadata), NULL);
-  g_signal_connect (qtiqmmfsrc, "urgent-metadata",
-      G_CALLBACK (urgent_metadata), NULL);
-
-  // Get static metadata
-  ::android::CameraMetadata *st_meta_ptr = nullptr;
-  g_object_get (G_OBJECT (qtiqmmfsrc), "camera-characteristics",
-      &st_meta_ptr, NULL);
-  if (st_meta_ptr) {
-    g_print ("Get static-metadata entries - %ld\n", st_meta_ptr->entryCount());
-    delete st_meta_ptr;
-  } else {
-    g_printerr ("Get static-metadata failed\n");
-  }
-
-  // Get capture metadata
-  ::android::CameraMetadata *meta_ptr = nullptr;
-  g_object_get (G_OBJECT (qtiqmmfsrc), "capture-metadata", &meta_ptr, NULL);
-  if (meta_ptr) {
-    g_print ("Get capture-metadata entries - %ld\n", meta_ptr->entryCount());
-
-    // Set capture metadata
-    guchar awb = 6;
-    meta_ptr->update(ANDROID_CONTROL_AWB_MODE, &awb, 1);
-
-    // Sensor Read Input
-    guchar flag = 1;
-    guint tag_id = get_vendor_tag_by_name (
-        "org.codeaurora.qcamera3.sensorreadinput", "SensorReadFlag");
-    meta_ptr->update(tag_id, &flag, 1);
-
-    g_object_set (G_OBJECT (qtiqmmfsrc), "capture-metadata", meta_ptr, NULL);
-
-    // Release metadata
-    delete meta_ptr;
-  } else {
-    g_printerr ("Get capture-metadata failed\n");
+  // Initiate the main thread in which we will work with the camera element.
+  if ((mthread = g_thread_new ("WorkTask", work_task, appctx)) == NULL) {
+    g_printerr ("ERROR: Failed to create event loop thread!\n");
+    gst_app_context_free (appctx);
+    return -1;
   }
 
   // Run main loop.
-  g_main_loop_run (mloop);
+  g_main_loop_run (appctx->mloop);
 
-  g_print ("Setting pipeline to NULL state ...\n");
-  gst_element_set_state (pipeline, GST_STATE_NULL);
+  // Waits until main menu thread finishes.
+  g_thread_join (mthread);
 
+  g_source_remove (bus_watch_id);
   g_source_remove (intrpt_watch_id);
 
-  g_main_loop_unref (mloop);
-  gst_object_unref (pipeline);
+  gst_app_context_free (appctx);
 
   gst_deinit ();
 
