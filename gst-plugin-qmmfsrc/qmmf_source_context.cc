@@ -195,6 +195,8 @@ struct _GstQmmfContext {
   gint               sensormode;
   /// Streams frame rate control mode
   guchar            frc_mode;
+  /// Camera IFE direct stream enable
+  gboolean          ife_direct_stream;
 
   /// QMMF Recorder instance.
   ::qmmf::recorder::Recorder *recorder;
@@ -1136,6 +1138,11 @@ gst_qmmf_context_open (GstQmmfContext * context)
   }
   xtraparam.Update(::qmmf::recorder::QMMF_FRAME_RATE_CONTROL, frc);
 
+  // IFE Direct Stream
+  ::qmmf::recorder::IFEDirectStream qmmf_ife_direct_stream;
+  qmmf_ife_direct_stream.enable = context->ife_direct_stream;
+  xtraparam.Update(::qmmf::recorder::QMMF_IFE_DIRECT_STREAM, qmmf_ife_direct_stream);
+
   qmmf::recorder::CameraResultCb result_cb = [&, context](uint32_t camera_id,
       const ::camera::CameraMetadata& result) {
 
@@ -1835,6 +1842,9 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_FRC_MODE:
       context->frc_mode = g_value_get_enum (value);
       return;
+    case PARAM_CAMERA_IFE_DIRECT_STREAM:
+      context->ife_direct_stream = g_value_get_boolean (value);
+      return;
   }
 
   if (context->state >= GST_STATE_READY &&
@@ -2351,6 +2361,9 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_FRC_MODE:
       g_value_set_enum (value, context->frc_mode);
       return;
+    case PARAM_CAMERA_IFE_DIRECT_STREAM:
+      g_value_set_boolean (value, context->ife_direct_stream);
+      break;
     case PARAM_CAMERA_MANUAL_WB_SETTINGS:
     {
       gchar *string = NULL;
