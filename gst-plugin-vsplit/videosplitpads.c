@@ -270,8 +270,8 @@ static gboolean
 gst_video_split_fixate_pixel_aspect_ratio (GstPad * pad, GstStructure * input,
     GstStructure * output, gint out_width, gint out_height)
 {
-  gint in_par_n, in_par_d, in_width = 0, in_height = 0;
-  guint out_par_n, out_par_d;
+  gint in_width = 0, in_height = 0, in_par_n = 1, in_par_d = 1;
+  guint out_par_n = 1, out_par_d = 1;
   gboolean success = FALSE;
 
   GST_DEBUG_OBJECT (pad, "Output dimensions fixed to: %dx%d",
@@ -281,7 +281,7 @@ gst_video_split_fixate_pixel_aspect_ratio (GstPad * pad, GstStructure * input,
     // Retrieve the output PAR (pixel aspect ratio) value.
     const GValue *par = gst_structure_get_value (output, "pixel-aspect-ratio");
 
-    if (gst_value_is_fixed (par)) {
+    if ((par != NULL) && gst_value_is_fixed (par)) {
       out_par_n = gst_value_get_fraction_numerator (par);
       out_par_d = gst_value_get_fraction_denominator (par);
 
@@ -294,8 +294,11 @@ gst_video_split_fixate_pixel_aspect_ratio (GstPad * pad, GstStructure * input,
   {
     // Retrieve the input PAR (pixel aspect ratio) value.
     const GValue *par = gst_structure_get_value (input, "pixel-aspect-ratio");
-    in_par_n = gst_value_get_fraction_numerator (par);
-    in_par_d = gst_value_get_fraction_denominator (par);
+
+    if (par != NULL) {
+      in_par_n = gst_value_get_fraction_numerator (par);
+      in_par_d = gst_value_get_fraction_denominator (par);
+    }
   }
 
   // Retrieve the input width and height.
@@ -321,7 +324,8 @@ gst_video_split_fixate_width (GstPad * pad, GstStructure * input,
     GstStructure * output, gint out_height)
 {
   const GValue *in_par, *out_par;
-  gint in_par_n, in_par_d, in_dar_n, in_dar_d, in_width, in_height;
+  gint in_par_n = 1, in_par_d = 1, in_dar_n = 0, in_dar_d = 0;
+  gint in_width = 0, in_height = 0;
   gboolean success;
 
   GST_DEBUG_OBJECT (pad, "Output height is fixed to: %d", out_height);
@@ -330,8 +334,10 @@ gst_video_split_fixate_width (GstPad * pad, GstStructure * input,
   in_par = gst_structure_get_value (input, "pixel-aspect-ratio");
   out_par = gst_structure_get_value (output, "pixel-aspect-ratio");
 
-  in_par_n = gst_value_get_fraction_numerator (in_par);
-  in_par_d = gst_value_get_fraction_denominator (in_par);
+  if (in_par != NULL) {
+    in_par_n = gst_value_get_fraction_numerator (in_par);
+    in_par_d = gst_value_get_fraction_denominator (in_par);
+  }
 
   // Retrieve the input width and height.
   gst_structure_get_int (input, "width", &in_width);
@@ -349,8 +355,8 @@ gst_video_split_fixate_width (GstPad * pad, GstStructure * input,
   GST_DEBUG_OBJECT (pad, "Input DAR is: %d/%d", in_dar_n, in_dar_d);
 
   // PAR is fixed, choose width that is nearest to the width with the same DAR.
-  if (gst_value_is_fixed (out_par)) {
-    gint out_par_n, out_par_d, num, den, out_width;
+  if ((out_par != NULL) && gst_value_is_fixed (out_par)) {
+    gint out_par_n = 1, out_par_d = 1, num = 0, den = 0, out_width = 0;
 
     out_par_d = gst_value_get_fraction_denominator (out_par);
     out_par_n = gst_value_get_fraction_numerator (out_par);
@@ -376,7 +382,8 @@ gst_video_split_fixate_width (GstPad * pad, GstStructure * input,
   } else {
     // PAR is not fixed, try to keep the input DAR and PAR.
     GstStructure *structure = gst_structure_copy (output);
-    gint out_par_n, out_par_d, set_par_n, set_par_d, num, den, out_width;
+    gint out_par_n = 1, out_par_d = 1, set_par_n = 1, set_par_d = 1;
+    gint num = 0, den = 0, out_width = 0;
 
     // Calculate output width scale factor from input DAR and PAR.
     success = gst_util_fraction_multiply (in_dar_n, in_dar_d,
@@ -449,7 +456,8 @@ gst_video_split_fixate_height (GstPad * pad, GstStructure * input,
     GstStructure * output, gint out_width)
 {
   const GValue *in_par, *out_par;
-  gint in_par_n, in_par_d, in_dar_n, in_dar_d, in_width, in_height;
+  gint in_par_n = 1, in_par_d = 1, in_dar_n = 0, in_dar_d = 0;
+  gint in_width = 0, in_height = 0;
   gboolean success;
 
   GST_DEBUG_OBJECT (pad, "Output width is fixed to: %d", out_width);
@@ -458,8 +466,10 @@ gst_video_split_fixate_height (GstPad * pad, GstStructure * input,
   in_par = gst_structure_get_value (input, "pixel-aspect-ratio");
   out_par = gst_structure_get_value (output, "pixel-aspect-ratio");
 
-  in_par_n = gst_value_get_fraction_numerator (in_par);
-  in_par_d = gst_value_get_fraction_denominator (in_par);
+  if (in_par != NULL) {
+    in_par_n = gst_value_get_fraction_numerator (in_par);
+    in_par_d = gst_value_get_fraction_denominator (in_par);
+  }
 
   // Retrieve the input width and height.
   gst_structure_get_int (input, "width", &in_width);
@@ -477,8 +487,8 @@ gst_video_split_fixate_height (GstPad * pad, GstStructure * input,
   GST_DEBUG_OBJECT (pad, "Input DAR is: %d/%d", in_dar_n, in_dar_d);
 
   // PAR is fixed, choose height that is nearest to the height with the same DAR.
-  if (gst_value_is_fixed (out_par)) {
-    gint out_par_n, out_par_d, num, den, out_height;
+  if ((out_par != NULL) && gst_value_is_fixed (out_par)) {
+    gint out_par_n = 1, out_par_d = 1, num = 0, den = 0, out_height = 0;
 
     out_par_n = gst_value_get_fraction_numerator (out_par);
     out_par_d = gst_value_get_fraction_denominator (out_par);
@@ -504,7 +514,8 @@ gst_video_split_fixate_height (GstPad * pad, GstStructure * input,
   } else {
     // PAR is not fixed, try to keep the input DAR and PAR.
     GstStructure *structure = gst_structure_copy (output);
-    gint out_par_n, out_par_d, set_par_n, set_par_d, num, den, out_height;
+    gint out_par_n = 1, out_par_d = 1, set_par_n = 1, set_par_d = 1;
+    gint num = 0, den = 0, out_height = 0;
 
     // Calculate output width scale factor from input DAR and PAR.
     success = gst_util_fraction_multiply (in_dar_n, in_dar_d,
@@ -576,8 +587,8 @@ static gboolean
 gst_video_split_fixate_width_and_height (GstPad * pad, GstStructure * input,
     GstStructure * output, const GValue *out_par)
 {
-  gint in_par_n, in_par_d, in_dar_n, in_dar_d, in_width, in_height;
-  gint out_par_n, out_par_d;
+  gint in_par_n = 1, in_par_d = 1, out_par_n = 1, out_par_d = 1;
+  gint in_dar_n = 0, in_dar_d = 0, in_width = 0, in_height = 0;
   gboolean success;
 
   out_par_n = gst_value_get_fraction_numerator (out_par);
@@ -591,8 +602,10 @@ gst_video_split_fixate_width_and_height (GstPad * pad, GstStructure * input,
     const GValue *in_par = gst_structure_get_value (input,
         "pixel-aspect-ratio");
 
-    in_par_n = gst_value_get_fraction_numerator (in_par);
-    in_par_d = gst_value_get_fraction_denominator (in_par);
+    if (in_par != NULL) {
+      in_par_n = gst_value_get_fraction_numerator (in_par);
+      in_par_d = gst_value_get_fraction_denominator (in_par);
+    }
   }
 
   // Retrieve the input width and height.
@@ -685,16 +698,18 @@ static gboolean
 gst_video_split_fixate_dimensions (GstPad * pad, GstStructure * input,
     GstStructure * output)
 {
-  gint in_par_n, in_par_d, in_dar_n, in_dar_d, in_width, in_height;
+  gint in_width = 0, in_height = 0;
+  gint in_par_n = 1, in_par_d = 1, in_dar_n = 0, in_dar_d = 0;
   gboolean success;
 
   {
     // Retrieve the PAR (pixel aspect ratio) values for the input.
-    const GValue *in_par = gst_structure_get_value (input,
-        "pixel-aspect-ratio");
+    const GValue *in_par = gst_structure_get_value (input, "pixel-aspect-ratio");
 
-    in_par_n = gst_value_get_fraction_numerator (in_par);
-    in_par_d = gst_value_get_fraction_denominator (in_par);
+    if (in_par != NULL) {
+      in_par_n = gst_value_get_fraction_numerator (in_par);
+      in_par_d = gst_value_get_fraction_denominator (in_par);
+    }
   }
 
   // Retrieve the input width and height.
@@ -715,8 +730,9 @@ gst_video_split_fixate_dimensions (GstPad * pad, GstStructure * input,
   {
     // Keep the dimensions as near as possible to the input and scale PAR.
     GstStructure *structure = gst_structure_copy (output);
-    gint set_h, set_w, set_par_n, set_par_d, num, den, value;
-    gint out_par_n, out_par_d, out_width, out_height;
+    gint set_h = 0, set_w = 0, set_par_n = 1, set_par_d = 1;
+    gint out_par_n = 1, out_par_d = 1, out_width = 0, out_height = 0;
+    gint num = 0, den = 0, value = 0;
 
     gst_structure_fixate_field_nearest_int (structure, "width", in_width);
     gst_structure_get_int (structure, "width", &out_width);
@@ -947,7 +963,7 @@ gst_video_split_srcpad_fixate_caps (GstVideoSplitSrcPad * srcpad,
       // The output height is set, try to calculate output width.
       success &= gst_video_split_fixate_width (GST_PAD (srcpad), input, output,
           height);
-    } else if (gst_value_is_fixed (par)) {
+    } else if ((par != NULL) && gst_value_is_fixed (par)) {
       // The output PAR is set, try to calculate the output width and height.
       success &= gst_video_split_fixate_width_and_height (GST_PAD (srcpad),
           input, output, par);
