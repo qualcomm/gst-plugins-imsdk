@@ -87,6 +87,7 @@ gst_c2_wrapper_new ()
     GST_ERROR("failed to load symbol QC2ComponentStoreFactoryGetter: %s",
         dlerror());
     dlclose(wrapper->dlhandle);
+    g_free(wrapper);
     return NULL;
   }
 
@@ -94,6 +95,7 @@ gst_c2_wrapper_new ()
   if (c2StoreFactory == NULL) {
     GST_ERROR("failed to get Store factory !");
     dlclose(wrapper->dlhandle);
+    g_free(wrapper);
     return NULL;
   } else {
     GST_INFO ("Successfully get store factory");
@@ -103,6 +105,7 @@ gst_c2_wrapper_new ()
   if (wrapper->compstore == NULL) {
     GST_ERROR("failed to get Component Store instance!");
     dlclose(wrapper->dlhandle);
+    g_free(wrapper);
     return NULL;
   }
 
@@ -115,7 +118,7 @@ gst_c2_wrapper_free (GstC2Wrapper * wrapper)
 {
   dlclose(wrapper->dlhandle);
   GST_INFO ("Destroyed C2 wrapper: %p", wrapper);
-  g_slice_free (GstC2Wrapper, wrapper);
+  g_free(wrapper);
 }
 
 gboolean
