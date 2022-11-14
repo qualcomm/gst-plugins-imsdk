@@ -1,22 +1,22 @@
 /*
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
-*  
+* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+*
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
 * disclaimer below) provided that the following conditions are met:
-*  
+*
 *     * Redistributions of source code must retain the above copyright
 *       notice, this list of conditions and the following disclaimer.
-*  
+*
 *     * Redistributions in binary form must reproduce the above
 *       copyright notice, this list of conditions and the following
 *       disclaimer in the documentation and/or other materials provided
 *       with the distribution.
-*  
+*
 *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
 *       contributors may be used to endorse or promote products derived
 *       from this software without specific prior written permission.
-*  
+*
 * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
 * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
 * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
@@ -62,7 +62,7 @@ G_DEFINE_TYPE (GstC2_VENCEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 #define GST_CODEC2_VIDEO_ENC_NUM_LTR_FRAMES_DEFAULT (0xffffffff)
 
 // Caps formats.
-#define GST_VIDEO_FORMATS "{ NV12, NV21 }"
+#define GST_VIDEO_FORMATS "{ NV12, NV21, NV12_10LE32, P010_10LE }"
 
 #define GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE(pspec, state) \
   ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
@@ -148,6 +148,16 @@ gst_to_c2_pixelformat (GstVideoEncoder * encoder, GstVideoFormat format)
         result = PIXEL_FORMAT_NV12_UBWC;
       } else {
         result = PIXEL_FORMAT_NV12_LINEAR;
+      }
+      break;
+    case GST_VIDEO_FORMAT_P010_10LE:
+      result = PIXEL_FORMAT_P010;
+      break;
+    case GST_VIDEO_FORMAT_NV12_10LE32:
+      if (c2venc->is_ubwc) {
+        result = PIXEL_FORMAT_TP10_UBWC;
+      } else {
+        GST_ERROR_OBJECT (c2venc, "TP10 without ubwc is not supported");
       }
       break;
     default:
