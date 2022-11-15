@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -155,6 +155,15 @@ GST_VIDEO_API GType gst_c2d_video_rotation_get_type (void);
     "GstC2dVideoConverter.alpha"
 
 /**
+ * GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT:
+ *
+ * #G_TYPE_BOOLEAN, whether buffers have UBWC (Universal Bandwidth Compression)
+ * Default: FALSE
+ */
+#define GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT \
+    "GstC2dVideoConverter.ubwc-format"
+
+/**
  * GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND:
  *
  * #G_TYPE_UINT, background color
@@ -166,13 +175,15 @@ GST_VIDEO_API GType gst_c2d_video_rotation_get_type (void);
     "GstC2dVideoConverter.background"
 
 /**
- * GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT:
+ * GST_C2D_VIDEO_CONVERTER_OPT_CLEAR:
  *
- * #G_TYPE_BOOLEAN, whether buffers have UBWC (Universal Bandwidth Compression)
- * Default: FALSE
+ * #G_TYPE_BOOLEAN, clear image pixels and apply background color
+ * Default: TRUE
+ *
+ * Not applicable for input.
  */
-#define GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT \
-    "GstC2dVideoConverter.ubwc-format"
+#define GST_C2D_VIDEO_CONVERTER_OPT_CLEAR \
+    "GstC2dVideoConverter.clear-background"
 
 typedef struct _GstC2dVideoConverter GstC2dVideoConverter;
 typedef struct _GstC2dComposition GstC2dComposition;
