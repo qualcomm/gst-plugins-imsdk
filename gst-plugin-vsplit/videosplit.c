@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -824,6 +824,8 @@ gst_video_split_sinkpad_setcaps (GstVideoSplit * vsplit, GstPad * pad,
 #ifdef USE_C2D_CONVERTER
   opts = gst_structure_new ("options",
       GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT, 0x00000000,
+      GST_C2D_VIDEO_CONVERTER_OPT_CLEAR, G_TYPE_BOOLEAN,
+          (vsplit->mode == GST_VIDEO_SPLIT_MODE_NORMAL) ? FALSE : TRUE,
       GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
           GST_VIDEO_SPLIT_SRCPAD (srcpad)->isubwc,
       NULL);
@@ -835,6 +837,8 @@ gst_video_split_sinkpad_setcaps (GstVideoSplit * vsplit, GstPad * pad,
 #ifdef USE_GLES_CONVERTER
   opts = gst_structure_new ("options",
       GST_GLES_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT, 0x00000000,
+      GST_GLES_VIDEO_CONVERTER_OPT_CLEAR, G_TYPE_BOOLEAN,
+          (vsplit->mode == GST_VIDEO_SPLIT_MODE_NORMAL) ? FALSE : TRUE,
       GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
           GST_VIDEO_SPLIT_SRCPAD (srcpad)->isubwc,
       NULL);

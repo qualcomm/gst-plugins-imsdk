@@ -101,12 +101,11 @@
 #define C2D_INIT_MAX_OBJECT         12
 #define C2D_INIT_MAX_TEMPLATE       20
 
-#define C2D_MAX_DRAW_OBJECTS        200
-
 #define DEFAULT_OPT_FLIP_HORIZONTAL FALSE
 #define DEFAULT_OPT_FLIP_VERTICAL   FALSE
 #define DEFAULT_OPT_ROTATION        GST_C2D_VIDEO_ROTATE_NONE
 #define DEFAULT_OPT_BACKGROUND      0x00000000
+#define DEFAULT_OPT_CLEAR           TRUE
 #define DEFAULT_OPT_UBWC_FORMAT     FALSE
 
 #define GET_OPT_FLIP_HORIZONTAL(s) get_opt_bool (s, \
@@ -116,10 +115,12 @@
 #define GET_OPT_ROTATION(s) get_opt_enum(s, \
     GST_C2D_VIDEO_CONVERTER_OPT_ROTATION, GST_TYPE_C2D_VIDEO_ROTATION, \
     DEFAULT_OPT_ROTATION)
-#define GET_OPT_BACKGROUND(s) get_opt_uint (s, \
-    GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND, DEFAULT_OPT_BACKGROUND)
 #define GET_OPT_ALPHA(s, v) get_opt_double (s, \
     GST_C2D_VIDEO_CONVERTER_OPT_ALPHA, v)
+#define GET_OPT_BACKGROUND(s) get_opt_uint (s, \
+    GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND, DEFAULT_OPT_BACKGROUND)
+#define GET_OPT_CLEAR(s) get_opt_bool(s, \
+    GST_C2D_VIDEO_CONVERTER_OPT_CLEAR, DEFAULT_OPT_CLEAR)
 #define GET_OPT_UBWC_FORMAT(s) get_opt_bool(s, \
     GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, DEFAULT_OPT_UBWC_FORMAT)
 
@@ -145,13 +146,6 @@ ensure_debug_category (void)
   }
   return (GstDebugCategory *) catonce;
 }
-
-typedef struct _GstC2dRequest GstC2dRequest;
-
-struct _GstC2dRequest {
-  gpointer *timestamps;
-  guint    n_timestamps;
-};
 
 struct _GstC2dVideoConverter
 {
@@ -201,37 +195,6 @@ struct _GstC2dVideoConverter
   C2D_API C2D_STATUS (*GetDriverCapabilities) (C2D_DRIVER_INFO* caps);
 };
 
-GType
-gst_c2d_video_rotation_get_type (void)
-{
-  static GType gtype = 0;
-
-  static const GEnumValue variants[] = {
-    { GST_C2D_VIDEO_ROTATE_NONE,
-      "No rotation", "none"
-    },
-    { GST_C2D_VIDEO_ROTATE_90_CW,
-      "Rotate 90 degrees clockwise", "90CW"
-    },
-    { GST_C2D_VIDEO_ROTATE_90_CCW,
-      "Rotate 90 degrees counter-clockwise", "90CCW"
-    },
-    { GST_C2D_VIDEO_ROTATE_180,
-      "Rotate 180 degrees", "180"
-    },
-    { 0, NULL, NULL },
-  };
-
-  G_LOCK (c2d);
-
-  if (!gtype)
-    gtype = g_enum_register_static ("GstC2dVideoRotation", variants);
-
-  G_UNLOCK (c2d);
-
-  return gtype;
-}
-
 static gdouble
 get_opt_double (const GstStructure * options, const gchar * opt, gdouble value)
 {
@@ -268,23 +231,46 @@ update_options (GQuark field, const GValue * value, gpointer userdata)
   return TRUE;
 }
 
-static GstC2dRequest *
-gst_c2d_request_new (guint n_timestamps)
+static gboolean
+load_symbol (gpointer* method, gpointer handle, const gchar* name)
 {
-  GstC2dRequest *request = g_new (GstC2dRequest, 1);
-
-  request->timestamps = (n_timestamps == 0) ? NULL :
-      g_new0 (gpointer, n_timestamps);
-  request->n_timestamps = n_timestamps;
-
-  return request;
+  *(method) = dlsym (handle, name);
+  if (NULL == *(method)) {
+    GST_ERROR ("Failed to link library method %s, error: %s!", name, dlerror());
+    return FALSE;
+  }
+  return TRUE;
 }
 
-static void
-gst_c2d_request_free (GstC2dRequest * request)
+GType
+gst_c2d_video_rotation_get_type (void)
 {
-  g_free (request->timestamps);
-  g_free (request);
+  static GType gtype = 0;
+
+  static const GEnumValue variants[] = {
+    { GST_C2D_VIDEO_ROTATE_NONE,
+      "No rotation", "none"
+    },
+    { GST_C2D_VIDEO_ROTATE_90_CW,
+      "Rotate 90 degrees clockwise", "90CW"
+    },
+    { GST_C2D_VIDEO_ROTATE_90_CCW,
+      "Rotate 90 degrees counter-clockwise", "90CCW"
+    },
+    { GST_C2D_VIDEO_ROTATE_180,
+      "Rotate 180 degrees", "180"
+    },
+    { 0, NULL, NULL },
+  };
+
+  G_LOCK (c2d);
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstC2dVideoRotation", variants);
+
+  G_UNLOCK (c2d);
+
+  return gtype;
 }
 
 static gint
@@ -368,7 +354,8 @@ gst_video_format_to_c2d_format (GstVideoFormat format)
 }
 
 static gpointer
-gst_map_gpu_address (GstC2dVideoConverter * convert, const GstVideoFrame * frame)
+gst_c2d_map_gpu_address (GstC2dVideoConverter * convert,
+    const GstVideoFrame * frame)
 {
   C2D_STATUS status = C2D_STATUS_OK;
   gpointer gpuaddress = NULL;
@@ -388,7 +375,7 @@ gst_map_gpu_address (GstC2dVideoConverter * convert, const GstVideoFrame * frame
 }
 
 static void
-gst_unmap_gpu_address (gpointer key, gpointer data, gpointer userdata)
+gst_c2d_unmap_gpu_address (gpointer key, gpointer data, gpointer userdata)
 {
   GstC2dVideoConverter *convert = (GstC2dVideoConverter*) userdata;
   guint surface_id = GPOINTER_TO_UINT (key);
@@ -405,14 +392,14 @@ gst_unmap_gpu_address (gpointer key, gpointer data, gpointer userdata)
 }
 
 static guint
-gst_create_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
-    guint bits, gboolean isubwc)
+gst_c2d_create_surface (GstC2dVideoConverter * convert,
+    const GstVideoFrame * frame, guint bits, gboolean isubwc)
 {
   const gchar *format = NULL, *compression = NULL;
   guint surface_id = 0;
   C2D_STATUS status = C2D_STATUS_NOT_SUPPORTED;
 
-  gpointer gpuaddress = gst_map_gpu_address (convert, frame);
+  gpointer gpuaddress = gst_c2d_map_gpu_address (convert, frame);
   g_return_val_if_fail (gpuaddress != NULL, 0);
 
   format = gst_video_format_to_string (GST_VIDEO_FRAME_FORMAT (frame));
@@ -533,7 +520,7 @@ gst_create_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
   if (status != C2D_STATUS_OK) {
     GST_ERROR ("Failed to create %s C2D surface, error: %d!",
         (bits & C2D_SOURCE) ? "Input" : "Output", status);
-    gst_unmap_gpu_address (NULL, gpuaddress, convert);
+    gst_c2d_unmap_gpu_address (NULL, gpuaddress, convert);
     return 0;
   }
 
@@ -548,8 +535,8 @@ gst_create_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
 }
 
 static gboolean
-gst_update_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
-    guint surface_id, guint bits, gboolean isubwc)
+gst_c2d_update_surface (GstC2dVideoConverter * convert,
+    const GstVideoFrame * frame, guint surface_id, guint bits, gboolean isubwc)
 {
   const gchar *format = NULL, *compression = NULL;
   C2D_STATUS status = C2D_STATUS_NOT_SUPPORTED;
@@ -565,7 +552,7 @@ gst_update_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
     return FALSE;
   }
 
-  gpuaddress = gst_map_gpu_address (convert, frame);
+  gpuaddress = gst_c2d_map_gpu_address (convert, frame);
   g_return_val_if_fail (gpuaddress != NULL, FALSE);
 
   format = gst_video_format_to_string (GST_VIDEO_FRAME_FORMAT (frame));
@@ -686,7 +673,7 @@ gst_update_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
   if (status != C2D_STATUS_OK) {
     GST_ERROR ("Failed to Update %s C2D surface, error: %d!",
         (bits & C2D_SOURCE) ? "Input" : "Output", status);
-    gst_unmap_gpu_address (NULL, gpuaddress, convert);
+    gst_c2d_unmap_gpu_address (NULL, gpuaddress, convert);
     return FALSE;
   }
 
@@ -701,7 +688,7 @@ gst_update_surface (GstC2dVideoConverter * convert, const GstVideoFrame * frame,
 }
 
 static void
-gst_destroy_surface (gpointer key, gpointer value, gpointer userdata)
+gst_c2d_destroy_surface (gpointer key, gpointer value, gpointer userdata)
 {
   GstC2dVideoConverter *convert = (GstC2dVideoConverter*) userdata;
   guint surface_id = GPOINTER_TO_UINT (value);
@@ -718,7 +705,7 @@ gst_destroy_surface (gpointer key, gpointer value, gpointer userdata)
 }
 
 static guint
-gst_rectangles_overlapping_area (C2D_RECT * l_rect, C2D_RECT * r_rect)
+gst_c2d_rectangles_overlapping_area (C2D_RECT * l_rect, C2D_RECT * r_rect)
 {
   gint width = 0, height = 0;
 
@@ -748,79 +735,14 @@ gst_rectangles_overlapping_area (C2D_RECT * l_rect, C2D_RECT * r_rect)
 }
 
 static void
-gst_extract_rectangles (const GstStructure * opts, C2D_RECT ** srcrects,
-    C2D_RECT ** dstrects, guint * n_rects)
-{
-  const GValue *srclist = NULL, *dstlist = NULL, *entry = NULL;
-  guint idx = 0, n_srcrects = 0, n_dstrects = 0;
-
-  srclist = gst_structure_get_value (opts,
-      GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES);
-  dstlist = gst_structure_get_value (opts,
-      GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES);
-
-  // Make sure that there is at least one new rectangle in the lists.
-  n_srcrects = (srclist == NULL) ? 1 : gst_value_array_get_size (srclist);
-  n_dstrects = (dstlist == NULL) ? 1 : gst_value_array_get_size (dstlist);
-
-  n_srcrects = (n_srcrects == 0) ? 1 : n_srcrects;
-  n_dstrects = (n_dstrects == 0) ? 1 : n_dstrects;
-
-  if (n_srcrects > n_dstrects) {
-    GST_WARNING ("Number of source rectangles exceeds the number of "
-        "destination rectangles, clipping!");
-    *n_rects = n_srcrects = n_dstrects;
-  } else if (n_srcrects < n_dstrects) {
-    GST_WARNING ("Number of destination rectangles exceeds the number of "
-        "source rectangles, clipping!");
-    *n_rects = n_dstrects = n_srcrects;
-  } else {
-    // Same number of source and destination rectangles.
-    *n_rects = n_srcrects;
-  }
-
-  // Allocate array of source and destination rectangles.
-  *srcrects = g_new0 (C2D_RECT, *n_rects);
-  *dstrects = g_new0 (C2D_RECT, *n_rects);
-
-  n_srcrects = (srclist == NULL) ? 0 : gst_value_array_get_size (srclist);
-  n_dstrects = (dstlist == NULL) ? 0 : gst_value_array_get_size (dstlist);
-
-  for (idx = 0; idx < *n_rects; idx++) {
-    entry = (n_srcrects != 0) ? gst_value_array_get_value (srclist, idx) : NULL;
-
-    if ((entry != NULL) && gst_value_array_get_size (entry) == 4) {
-      (*srcrects)[idx].x = g_value_get_int (gst_value_array_get_value (entry, 0));
-      (*srcrects)[idx].y = g_value_get_int (gst_value_array_get_value (entry, 1));
-      (*srcrects)[idx].width = g_value_get_int (gst_value_array_get_value (entry, 2));
-      (*srcrects)[idx].height = g_value_get_int (gst_value_array_get_value (entry, 3));
-    } else if (entry != NULL) {
-      GST_WARNING ("Source rectangle at index %u does not contain "
-          "exactly 4 values, using default values!", idx);
-    }
-
-    entry = (n_dstrects != 0) ? gst_value_array_get_value (dstlist, idx) : NULL;
-
-    if ((entry != NULL) && gst_value_array_get_size (entry) == 4) {
-      (*dstrects)[idx].x = g_value_get_int (gst_value_array_get_value (entry, 0));
-      (*dstrects)[idx].y = g_value_get_int (gst_value_array_get_value (entry, 1));
-      (*dstrects)[idx].width = g_value_get_int (gst_value_array_get_value (entry, 2));
-      (*dstrects)[idx].height = g_value_get_int (gst_value_array_get_value (entry, 3));
-    } else if (entry != NULL) {
-      GST_WARNING ("Destination rectangle at index %u does not contain "
-          "exactly 4 values, using default values!", idx);
-    }
-  }
-}
-
-static void
-gst_update_object (C2D_OBJECT * object, const GstStructure * opts,
-    guint surface_id, const GstVideoFrame * inframe, const C2D_RECT * srcrect,
+gst_c2d_populate_object (C2D_OBJECT * object, const GstStructure * opts,
+    const GstVideoFrame * inframe, const C2D_RECT * srcrect,
     const GstVideoFrame * outframe, const C2D_RECT * dstrect)
 {
   gint x = 0, y = 0, width = 0, height = 0;
+  guint surface_id = 0;
 
-  object->surface_id = surface_id;
+  surface_id = object->surface_id;
   object->config_mask = (C2D_SOURCE_RECT_BIT | C2D_TARGET_RECT_BIT);
 
   // Transform alpha from double (0.0 - 1.0) to integer (0 - 255).
@@ -981,9 +903,108 @@ gst_update_object (C2D_OBJECT * object, const GstStructure * opts,
       object->scissor_rect.width >> 16, object->scissor_rect.height >> 16);
 }
 
+static gint
+gst_c2d_update_objects (GArray * objects, const guint surface_id,
+    const GstStructure * opts, const GstVideoFrame * inframe,
+    const GstVideoFrame * outframe)
+{
+  const GValue *srclist = NULL, *dstlist = NULL, *entry = NULL;
+  guint idx = 0, num = 0, i = 0, n_srcrects = 0, n_dstrects = 0, n_rects = 0;
+  gint area = 0;
+
+  // Extract the source and destination rectangles.
+  srclist = gst_structure_get_value (opts,
+      GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES);
+  dstlist = gst_structure_get_value (opts,
+      GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES);
+
+  // Make sure that there is at least one new rectangle in the lists.
+  n_srcrects = (srclist == NULL) ? 0 : gst_value_array_get_size (srclist);
+  n_dstrects = (dstlist == NULL) ? 0 : gst_value_array_get_size (dstlist);
+
+  n_srcrects = (n_srcrects == 0) ? 1 : n_srcrects;
+  n_dstrects = (n_dstrects == 0) ? 1 : n_dstrects;
+
+  if (n_srcrects > n_dstrects) {
+    GST_WARNING ("Number of source rectangles exceeds the number of "
+        "destination rectangles, clipping!");
+    n_rects = n_srcrects = n_dstrects;
+  } else if (n_srcrects < n_dstrects) {
+    GST_WARNING ("Number of destination rectangles exceeds the number of "
+        "source rectangles, clipping!");
+    n_rects = n_dstrects = n_srcrects;
+  } else {
+    // Same number of source and destination rectangles.
+    n_rects = n_srcrects;
+  }
+
+  // Increase the size of the C2D blit objects array.
+  num = objects->len;
+  g_array_set_size (objects, (num + n_rects));
+
+  // Fill a separate C2D object for each rectangle pair in this input frame.
+  for (idx = 0; idx < n_rects; idx++) {
+    C2D_OBJECT *object = &(g_array_index (objects, C2D_OBJECT, num));
+    C2D_RECT *l_rect = NULL, *r_rect = NULL;
+    C2D_RECT srcbox = {0}, dstbox = {0};
+
+    entry = (n_srcrects != 0) ? gst_value_array_get_value (srclist, idx) : NULL;
+
+    if ((entry != NULL) && gst_value_array_get_size (entry) == 4) {
+      srcbox.x = g_value_get_int (gst_value_array_get_value (entry, 0));
+      srcbox.y = g_value_get_int (gst_value_array_get_value (entry, 1));
+      srcbox.width = g_value_get_int (gst_value_array_get_value (entry, 2));
+      srcbox.height = g_value_get_int (gst_value_array_get_value (entry, 3));
+    } else if (entry != NULL) {
+      GST_WARNING ("Source rectangle at index %u does not contain "
+          "exactly 4 values, using default values!", idx);
+    }
+
+    entry = (n_dstrects != 0) ? gst_value_array_get_value (dstlist, idx) : NULL;
+
+    if ((entry != NULL) && gst_value_array_get_size (entry) == 4) {
+      dstbox.x = g_value_get_int (gst_value_array_get_value (entry, 0));
+      dstbox.y = g_value_get_int (gst_value_array_get_value (entry, 1));
+      dstbox.width = g_value_get_int (gst_value_array_get_value (entry, 2));
+      dstbox.height = g_value_get_int (gst_value_array_get_value (entry, 3));
+    } else if (entry != NULL) {
+      GST_WARNING ("Destination rectangle at index %u does not contain "
+          "exactly 4 values, using default values!", idx);
+    }
+
+    object->surface_id = surface_id;
+
+    // Populate C2D object.
+    gst_c2d_populate_object (object, opts, inframe, &srcbox, outframe, &dstbox);
+
+    // Calculate the target area filled with frame content.
+    l_rect = &(object->target_rect);
+    // Add the rectangle area of current C2D object to the total area.
+    area += (l_rect->width >> 16) * (l_rect->height >> 16);
+
+    for (i = 0; i < num; i++) {
+      object = &(g_array_index (objects, C2D_OBJECT, i));
+      r_rect = &(object->target_rect);
+
+      // Subtract overlapping area from the total rectangle area.
+      area -= gst_c2d_rectangles_overlapping_area (l_rect, r_rect);
+
+      // Set current object to point to the next one (linked list).
+      if (i <= (num - 1))
+        object->next = &(g_array_index (objects, C2D_OBJECT, (i + 1)));
+    }
+
+    // Increment the counter for the C2D objets.
+    num++;
+  }
+
+  return area;
+}
+
 static guint
-gst_retrieve_surface_id (GstC2dVideoConverter * convert, GHashTable * surfaces,
-    guint bits, const GstVideoFrame * vframe, const GstStructure * opts)
+gst_c2d_retrieve_surface_id (GstC2dVideoConverter * convert,
+    GHashTable * surfaces, guint bits, const GstVideoFrame * vframe,
+    const gboolean isubwc)
 {
   GstMemory *memory = NULL;
   guint fd = 0, surface_id = 0;
@@ -998,8 +1019,7 @@ gst_retrieve_surface_id (GstC2dVideoConverter * convert, GHashTable * surfaces,
 
   if (!g_hash_table_contains (surfaces, GUINT_TO_POINTER (fd))) {
     // Create an output surface and add its ID to the output hash table.
-    surface_id = gst_create_surface (convert, vframe, bits,
-        GET_OPT_UBWC_FORMAT (opts));
+    surface_id = gst_c2d_create_surface (convert, vframe, bits, isubwc);
     GST_C2D_RETURN_VAL_IF_FAIL (surface_id != 0, 0, "Failed to create surface!");
 
     g_hash_table_insert (surfaces, GUINT_TO_POINTER (fd),
@@ -1016,8 +1036,7 @@ gst_retrieve_surface_id (GstC2dVideoConverter * convert, GHashTable * surfaces,
     if (vaddress != GST_VIDEO_FRAME_PLANE_DATA (vframe, 0)) {
       gboolean success = FALSE;
 
-      success = gst_update_surface (convert, vframe, surface_id, bits,
-          GET_OPT_UBWC_FORMAT (opts));
+      success = gst_c2d_update_surface (convert, vframe, surface_id, bits, isubwc);
 
       GST_C2D_RETURN_VAL_IF_FAIL (success == TRUE, 0,
           "Update failed for target surface %x", surface_id);
@@ -1025,17 +1044,6 @@ gst_retrieve_surface_id (GstC2dVideoConverter * convert, GHashTable * surfaces,
   }
 
   return surface_id;
-}
-
-static gboolean
-load_symbol (gpointer* method, gpointer handle, const gchar* name)
-{
-  *(method) = dlsym (handle, name);
-  if (NULL == *(method)) {
-    GST_ERROR ("Failed to link library method %s, error: %s!", name, dlerror());
-    return FALSE;
-  }
-  return TRUE;
 }
 
 GstC2dVideoConverter *
@@ -1169,17 +1177,17 @@ gst_c2d_video_converter_free (GstC2dVideoConverter * convert)
     g_list_free_full (convert->outopts, (GDestroyNotify) gst_structure_free);
 
   if (convert->insurfaces != NULL) {
-    g_hash_table_foreach (convert->insurfaces, gst_destroy_surface, convert);
+    g_hash_table_foreach (convert->insurfaces, gst_c2d_destroy_surface, convert);
     g_hash_table_destroy(convert->insurfaces);
   }
 
   if (convert->outsurfaces != NULL) {
-    g_hash_table_foreach (convert->outsurfaces, gst_destroy_surface, convert);
+    g_hash_table_foreach (convert->outsurfaces, gst_c2d_destroy_surface, convert);
     g_hash_table_destroy (convert->outsurfaces);
   }
 
   if (convert->gpulist != NULL) {
-    g_hash_table_foreach (convert->gpulist, gst_unmap_gpu_address, convert);
+    g_hash_table_foreach (convert->gpulist, gst_c2d_unmap_gpu_address, convert);
     g_hash_table_destroy (convert->gpulist);
   }
 
@@ -1286,29 +1294,28 @@ gpointer
 gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
      GstC2dComposition * compositions, guint n_compositions)
 {
-  GstC2dRequest *request = NULL;
+  GArray *requests = NULL, *objects = NULL;
   GstStructure *opts = NULL;
-  C2D_OBJECT objects[C2D_MAX_DRAW_OBJECTS] = { 0, };
-  guint idx = 0, num = 0, offset = 0, surface_id = 0, area = 0;
+  guint idx = 0, num = 0, offset = 0, surface_id = 0, area = 0, color = 0;
+  gboolean clear = TRUE;
   C2D_STATUS status = C2D_STATUS_OK;
-  c2d_ts_handle timestamp;
 
   g_return_val_if_fail (convert != NULL, NULL);
   g_return_val_if_fail ((compositions != NULL) && (n_compositions != 0), NULL);
 
-  request = gst_c2d_request_new (n_compositions);
+  requests = g_array_sized_new (FALSE, TRUE, sizeof (guint), n_compositions);
+  g_array_set_size (requests, n_compositions);
 
   for (idx = 0; idx < n_compositions; idx++) {
     const GstVideoFrame *outframe = compositions[idx].outframe;
     const GstVideoFrame *inframes = compositions[idx].inframes;
-    guint n_inputs = 0, n_objects = 0;
+    guint n_inputs = 0;
 
     n_inputs = compositions[idx].n_inputs;
 
     // Sanity checks, output frame and input frames must not be NULL.
     g_return_val_if_fail (outframe != NULL, NULL);
     g_return_val_if_fail ((inframes != NULL) && (n_inputs != 0), NULL);
-    g_return_val_if_fail (n_inputs <= C2D_MAX_DRAW_OBJECTS, NULL);
 
     // Skip this configuration if there is no output buffer.
     if (NULL == outframe->buffer)
@@ -1324,13 +1331,14 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
     // to determine whether there are unoccupied background pixels to be filled.
     area = GST_VIDEO_FRAME_WIDTH (outframe) * GST_VIDEO_FRAME_HEIGHT (outframe);
 
+    // Initial allocation of C2D blit objects.
+    objects = g_array_new (FALSE, TRUE, sizeof (C2D_OBJECT));
+
     GST_C2D_LOCK (convert);
 
     // Iterate over the input frames.
     for (num = 0; num < n_inputs; num++) {
       const GstVideoFrame *inframe = &inframes[num];
-      C2D_RECT *srcrects = NULL, *dstrects = NULL;
-      guint x = 0, n_rects = 0;
 
       if (NULL == inframe->buffer)
         continue;
@@ -1344,44 +1352,14 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
       // Get the options for current input buffer.
       opts = g_list_nth_data (convert->inopts, (num + offset));
 
-      surface_id = gst_retrieve_surface_id (convert, convert->insurfaces,
-          C2D_SOURCE, inframe, opts);
+      surface_id = gst_c2d_retrieve_surface_id (convert, convert->insurfaces,
+          C2D_SOURCE, inframe, GET_OPT_UBWC_FORMAT (opts));
       GST_C2D_RETURN_VAL_IF_FAIL_WITH_CLEAN (surface_id != 0, NULL,
-          GST_C2D_UNLOCK (convert); gst_c2d_request_free (request),
-          "Failed to get surface ID for input buffer!");
+          GST_C2D_UNLOCK (convert); g_array_free (objects, TRUE);
+          g_array_free (requests, TRUE), "Failed to get input buffer surface ID!");
 
-      // Extract the source and destination rectangles.
-      gst_extract_rectangles (opts, &srcrects, &dstrects, &n_rects);
-
-      // Fill a separate C2D object for each rectangle pair in this input frame.
-      while (n_rects-- != 0) {
-        C2D_RECT *l_rect = NULL, *r_rect = NULL;
-
-        // Update C2D object.
-        gst_update_object (&objects[n_objects], opts, surface_id, inframe,
-            &srcrects[n_rects], outframe, &dstrects[n_rects]);
-
-        // Calculate the output area filled with frame content.
-        l_rect = &objects[n_objects].target_rect;
-
-        // Subtract the rectangle area of current C2D object to the total area.
-        area -= (l_rect->width >> 16) * (l_rect->height >> 16);
-
-        // Add overlapping area from the total rectangle area.
-        for (x = 0; x < n_objects; x++) {
-          r_rect = &objects[x].target_rect;
-          area += gst_rectangles_overlapping_area (l_rect, r_rect);
-        }
-
-        // Set the previous object to point to current one (linked list).
-        if (n_objects >= 1)
-          objects[(n_objects - 1)].next = &objects[n_objects];
-
-        n_objects++;
-      }
-
-      g_free (srcrects);
-      g_free (dstrects);
+      // Extract and populate blit objects and return the area occupied by them.
+      area -= gst_c2d_update_objects (objects, surface_id, opts, inframe, outframe);
     }
 
     // Increate the offset to the input frame options.
@@ -1390,75 +1368,76 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
     // Get the options for current output frame.
     opts = GST_STRUCTURE (g_list_nth_data (convert->outopts, idx));
 
-    surface_id = gst_retrieve_surface_id (convert, convert->outsurfaces,
-        C2D_TARGET, outframe, opts);
+    // Extract background color and whether to clear it.
+    color = GET_OPT_BACKGROUND (opts);
+    clear = GET_OPT_CLEAR (opts);
+
+    surface_id = gst_c2d_retrieve_surface_id (convert, convert->outsurfaces,
+        C2D_TARGET, outframe, GET_OPT_UBWC_FORMAT (opts));
+
+    GST_C2D_UNLOCK (convert);
+
     GST_C2D_RETURN_VAL_IF_FAIL_WITH_CLEAN (surface_id != 0, NULL,
-        GST_C2D_UNLOCK (convert); gst_c2d_request_free (request),
+        g_array_free (objects, TRUE); g_array_free (requests, TRUE),
         "Failed to get surface ID for output buffer!");
 
     // Fill the surface if there is visible background area.
-    if (area > 0) {
+    if (clear && (area > 0)) {
       GST_LOG ("Fill output surface %x", surface_id);
 
-      status = convert->FillSurface (surface_id, GET_OPT_BACKGROUND (opts), NULL);
+      status = convert->FillSurface (surface_id, color, NULL);
 
       GST_C2D_RETURN_VAL_IF_FAIL_WITH_CLEAN (C2D_STATUS_OK == status, NULL,
-          GST_C2D_UNLOCK (convert); gst_c2d_request_free (request),
+          g_array_free (objects, TRUE); g_array_free (requests, TRUE),
           "FillSurface failed for surface %x, error: %d!", surface_id, status);
     }
 
     GST_LOG ("Draw output surface %x", surface_id);
 
-    status = convert->Draw (surface_id, 0, NULL, 0, 0, objects, n_objects);
+    status = convert->Draw (surface_id, 0, NULL, 0, 0,
+        (C2D_OBJECT*) (objects->data), objects->len);
 
     GST_C2D_RETURN_VAL_IF_FAIL_WITH_CLEAN (C2D_STATUS_OK == status, NULL,
-        GST_C2D_UNLOCK (convert); gst_c2d_request_free (request),
+        g_array_free (objects, TRUE); g_array_free (requests, TRUE),
         "Draw failed for surface %x, error: %d!", surface_id, status);
 
-    GST_C2D_UNLOCK (convert);
-
-    status = convert->Flush (surface_id, &timestamp);
-    if (status != C2D_STATUS_OK) {
-      GST_ERROR ("c2dDraw finish failed for output surface %x, error: %d!",
-          surface_id, status);
-      return NULL;
-    }
-
-    GST_LOG ("Output surface %x, timestamp: %p", surface_id, timestamp);
-    request->timestamps[idx] = timestamp;
+    g_array_free (objects, TRUE);
+    g_array_index (requests, guint, idx) = surface_id;
   }
 
-  return request;
+  return requests;
 }
 
 gboolean
 gst_c2d_video_converter_wait_request (GstC2dVideoConverter *convert,
     gpointer request_id)
 {
-  GstC2dRequest *request = (GstC2dRequest*) request_id;
+  GArray *requests = (GArray*) request_id;
   C2D_STATUS status = C2D_STATUS_OK;
-  guint idx = 0;
+  guint idx = 0, surface_id = 0;
+  gboolean success = TRUE;
 
-  if (NULL == request) {
+  if (NULL == requests) {
     GST_ERROR ("Invalid request ID!");
     return FALSE;
   }
 
-  for (idx = 0; idx < request->n_timestamps; idx++) {
-    GST_LOG ("Waiting timestamp: %p", request->timestamps[idx]);
+  for (idx = 0; idx < requests->len; idx++) {
+    surface_id = g_array_index (requests, guint, idx);
+    GST_LOG ("Waiting surface_id: %x", surface_id);
 
-    status = convert->WaitTimestamp (request->timestamps[idx]);
-    if (status != C2D_STATUS_OK) {
-      GST_ERROR ("c2dWaitTimestamp %p, error: %d!", request->timestamps[idx],
-          status);
-      return FALSE;
+    if ((status = convert->Finish (surface_id)) != C2D_STATUS_OK) {
+      GST_ERROR ("Finish failed for surface %x, error: %d!", surface_id, status);
+
+      success &= FALSE;
+      continue;
     }
 
-    GST_LOG ("Finished waiting timestamp: %p", request->timestamps[idx]);
+    GST_LOG ("Finished waiting surface_id: %x", surface_id);
   }
 
-  gst_c2d_request_free (request);
-  return TRUE;
+  g_array_free (requests, TRUE);
+  return success;
 }
 
 void
@@ -1488,17 +1467,17 @@ gst_c2d_video_converter_flush (GstC2dVideoConverter *convert)
   GST_C2D_LOCK (convert);
 
   if (convert->insurfaces != NULL) {
-    g_hash_table_foreach (convert->insurfaces, gst_destroy_surface, convert);
+    g_hash_table_foreach (convert->insurfaces, gst_c2d_destroy_surface, convert);
     g_hash_table_remove_all (convert->insurfaces);
   }
 
   if (convert->outsurfaces != NULL) {
-    g_hash_table_foreach (convert->outsurfaces, gst_destroy_surface, convert);
+    g_hash_table_foreach (convert->outsurfaces, gst_c2d_destroy_surface, convert);
     g_hash_table_remove_all (convert->outsurfaces);
   }
 
   if (convert->gpulist != NULL) {
-    g_hash_table_foreach (convert->gpulist, gst_unmap_gpu_address, convert);
+    g_hash_table_foreach (convert->gpulist, gst_c2d_unmap_gpu_address, convert);
     g_hash_table_remove_all (convert->gpulist);
   }
 
