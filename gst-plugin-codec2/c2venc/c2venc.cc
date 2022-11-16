@@ -400,26 +400,25 @@ make_request_sync_frame_param (bool request)
   return param;
 }
 
-static config_params_t
+static config_params_t*
 make_roi_encoding (gint64 timestampUs, char *rectPayload, char *rectPayloadExt)
 {
-  config_params_t param;
-  memset (&param, 0, sizeof (config_params_t));
+  config_params_t* param;
+  param = (config_params_t*) g_malloc (sizeof (config_params_t));
 
-  param.config_name = CONFIG_FUNCTION_KEY_ROI_ENCODING;
-  param.roi.timestampUs = timestampUs;
+  param->config_name = CONFIG_FUNCTION_KEY_ROI_ENCODING;
+  param->roi.timestampUs = timestampUs;
 
-  param.roi.rectPayload = rectPayload;
-  param.roi.rectPayloadExt = rectPayloadExt;
+  param->roi.rectPayload = rectPayload;
+  param->roi.rectPayloadExt = rectPayloadExt;
 
   return param;
 }
 
-static void
+static gpointer
 config_roi_encoding (GstC2_VENCEncoder *c2venc, GstVideoCodecFrame * frame)
 {
-  GPtrArray *config = NULL;
-  config_params_t roi_encoding;
+  config_params_t* roi_encoding;
   GstMeta *meta = NULL;
   gpointer state = NULL;
   gint idx = 0, qpdelta = 0;
@@ -430,7 +429,7 @@ config_roi_encoding (GstC2_VENCEncoder *c2venc, GstVideoCodecFrame * frame)
 
   /* ROI mode is disabled, nothing to do except to return immediately */
   if (!c2venc->roi_quant_mode)
-    return;
+    return NULL;
 
   while ((meta =
           gst_buffer_iterate_meta_filtered (frame->input_buffer, &state,
@@ -511,7 +510,6 @@ config_roi_encoding (GstC2_VENCEncoder *c2venc, GstVideoCodecFrame * frame)
   }
 
   if (apply_roi) {
-    config = g_ptr_array_new ();
 
     if (strlen (rectPayloadExt) == 0) {
       g_stpcpy (rectPayloadExt, rectPayload);
@@ -519,15 +517,9 @@ config_roi_encoding (GstC2_VENCEncoder *c2venc, GstVideoCodecFrame * frame)
 
     roi_encoding =
         make_roi_encoding (frame->pts / 1000, rectPayload, rectPayloadExt);
-    g_ptr_array_add (config, &roi_encoding);
-
-    // Config component
-    if (!gst_c2_wrapper_config_component (c2venc->wrapper, config)) {
-      GST_ERROR_OBJECT (c2venc, "Failed to config interface");
-    }
-
-    g_ptr_array_free (config, FALSE);
+    return (gpointer) roi_encoding;
   }
+  return NULL;
 }
 
 static config_params_t
@@ -727,7 +719,7 @@ gst_c2_venc_setup_output (GstVideoEncoder * encoder,
     if (!c2venc->output_state) {
       GST_ERROR_OBJECT (c2venc, "set output state error");
       gst_caps_unref (outcaps);
-      g_free(comp_name);
+      g_free (comp_name);
       return GST_FLOW_ERROR;
     }
     c2venc->output_setup = TRUE;
@@ -1011,7 +1003,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   config_params_t pixelformat;
   config_params_t rate_control;
   config_params_t sync_frame_int;
-  config_params_t roi_encoding;
+  config_params_t* roi_encoding = NULL;
   config_params_t intra_refresh;
   config_params_t bitrate;
   config_params_t slice_mode;
@@ -1232,7 +1224,9 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     g_stpcpy (rectPayload, "0,0-0,0=0;");
     g_stpcpy (rectPayloadExt, "0,0-0,0=0;");
     roi_encoding = make_roi_encoding (0, rectPayload, rectPayloadExt);
-    g_ptr_array_add (config, &roi_encoding);
+    if (roi_encoding) {
+      g_ptr_array_add (config, roi_encoding);
+    }
   }
 
   // Config component
@@ -1240,6 +1234,9 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     GST_ERROR_OBJECT (c2venc, "Failed to config interface");
   }
 
+  if (roi_encoding) {
+    g_free (roi_encoding);
+  }
   g_ptr_array_free (config, FALSE);
 
   if (!gst_c2_wrapper_component_start (c2venc->wrapper)) {
@@ -1375,13 +1372,20 @@ gst_c2_venc_encode (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   c2venc->queued_frame[(c2venc->frame_index) % MAX_QUEUED_FRAME] =
       frame->system_frame_number;
 
-  config_roi_encoding (c2venc, frame);
+  gpointer roi_config = config_roi_encoding (c2venc, frame);
+  if (roi_config) {
+    inBuf.config_data = reinterpret_cast<guint8 *> (roi_config);
+  }
 
   // Queue buffer to Codec2
   if (!gst_c2_wrapper_component_queue (c2venc->wrapper, &inBuf)) {
     GST_ERROR_OBJECT(c2venc, "failed to queue input frame to Codec2");
     // Lock the mutex again and return to the base class
     GST_VIDEO_ENCODER_STREAM_LOCK (encoder);
+    if (roi_config) {
+      g_free (roi_config);
+      inBuf.config_data = NULL;
+    }
     return GST_FLOW_ERROR;
   }
 
@@ -1392,6 +1396,10 @@ gst_c2_venc_encode (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   g_mutex_lock (&(c2venc->pending_lock));
   c2venc->frame_index += 1;
   g_mutex_unlock (&(c2venc->pending_lock));
+  if (roi_config) {
+    g_free (roi_config);
+    inBuf.config_data = NULL;
+  }
 
   // Lock the mutex again and return to the base class
   GST_VIDEO_ENCODER_STREAM_LOCK (encoder);
