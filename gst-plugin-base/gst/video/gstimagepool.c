@@ -79,6 +79,8 @@
 #else
 #include <media/msm_media_info.h>
 #define MMM_COLOR_FMT_NV12_UBWC COLOR_FMT_NV12_UBWC
+#define MMM_COLOR_FMT_NV12_BPP10_UBWC COLOR_FMT_NV12_BPP10_UBWC
+#define MMM_COLOR_FMT_P010_UBWC COLOR_FMT_P010_UBWC
 #define MMM_COLOR_FMT_ALIGN MSM_MEDIA_ALIGN
 #define MMM_COLOR_FMT_Y_META_STRIDE VENUS_Y_META_STRIDE
 #define MMM_COLOR_FMT_Y_META_SCANLINES VENUS_Y_META_SCANLINES
@@ -145,6 +147,11 @@ gst_video_format_to_gbm_format (GstVideoFormat format)
       return GBM_FORMAT_YCrCb_422_I;
     case GST_VIDEO_FORMAT_UYVY:
       return GBM_FORMAT_UYVY;
+    case GST_VIDEO_FORMAT_P010_10LE:
+      return GBM_FORMAT_YCbCr_420_P010_VENUS;
+    case GST_VIDEO_FORMAT_NV12_10LE32:
+      // TODO: Hack due to missing TP10 format
+      return GBM_FORMAT_YCbCr_420_TP10_UBWC;
     case GST_VIDEO_FORMAT_BGRx:
       return GBM_FORMAT_BGRX8888;
     case GST_VIDEO_FORMAT_BGRA:
@@ -277,7 +284,13 @@ gbm_device_alloc (GstImageBufferPool * vpool)
   format = gst_video_format_to_gbm_format (GST_VIDEO_INFO_FORMAT (&priv->info));
   g_return_val_if_fail (format >= 0, NULL);
 
-  usage |= priv->isubwc ? GBM_BO_USAGE_UBWC_ALIGNED_QTI : 0;
+  if (GST_VIDEO_INFO_FORMAT (&priv->info) == GST_VIDEO_FORMAT_P010_10LE)
+    usage |= GBM_BO_USAGE_10BIT_QTI;
+  else if (GST_VIDEO_INFO_FORMAT (&priv->info) == GST_VIDEO_FORMAT_NV12_10LE32)
+    usage |= GBM_BO_USAGE_10BIT_TP_QTI;
+
+  if (priv->isubwc)
+    usage |= GBM_BO_USAGE_UBWC_ALIGNED_QTI;
 
   bo = priv->gbm_bo_create (priv->gbmdevice, GST_VIDEO_INFO_WIDTH (&priv->info),
        GST_VIDEO_INFO_HEIGHT (&priv->info), format, usage);
@@ -511,7 +524,13 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
     bufinfo.format = gst_video_format_to_gbm_format (
         GST_VIDEO_INFO_FORMAT (&priv->info));
 
-    usage |= priv->isubwc ? GBM_BO_USAGE_UBWC_ALIGNED_QTI : 0;
+    if (GST_VIDEO_INFO_FORMAT (&priv->info) == GST_VIDEO_FORMAT_P010_10LE)
+      usage |= GBM_BO_USAGE_10BIT_QTI;
+    else if (GST_VIDEO_INFO_FORMAT (&priv->info) == GST_VIDEO_FORMAT_NV12_10LE32)
+      usage |= GBM_BO_USAGE_10BIT_TP_QTI;
+
+    if (priv->isubwc)
+      usage |= GBM_BO_USAGE_UBWC_ALIGNED_QTI;
 
     priv->gbm_perform (GBM_PERFORM_GET_BUFFER_SIZE_DIMENSIONS, &bufinfo,
         usage, &stride, &scanline, &size);
@@ -529,11 +548,35 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
       GST_VIDEO_INFO_PLANE_OFFSET (&priv->info, 1) = stride * scanline;
 
       // For UBWC formats there is very specific UV plane offset.
-      if (priv->isubwc && (bufinfo.format = GBM_FORMAT_NV12)) {
+      if (priv->isubwc && (bufinfo.format == GBM_FORMAT_NV12)) {
         guint metastride, metascanline;
 
-        metastride = MMM_COLOR_FMT_Y_META_STRIDE (MMM_COLOR_FMT_NV12_UBWC, bufinfo.width);
-        metascanline = MMM_COLOR_FMT_Y_META_SCANLINES (MMM_COLOR_FMT_NV12_UBWC, bufinfo.height);
+        metastride = MMM_COLOR_FMT_Y_META_STRIDE (
+            MMM_COLOR_FMT_NV12_UBWC, bufinfo.width);
+        metascanline = MMM_COLOR_FMT_Y_META_SCANLINES (
+            MMM_COLOR_FMT_NV12_UBWC, bufinfo.height);
+
+        GST_VIDEO_INFO_PLANE_OFFSET (&priv->info, 1) =
+            MMM_COLOR_FMT_ALIGN (stride * scanline, DEFAULT_PAGE_ALIGNMENT) +
+            MMM_COLOR_FMT_ALIGN (metastride * metascanline, DEFAULT_PAGE_ALIGNMENT);
+      } else if (priv->isubwc && (bufinfo.format == GBM_FORMAT_YCbCr_420_TP10_UBWC)) {
+        guint metastride, metascanline;
+
+        metastride = MMM_COLOR_FMT_Y_META_STRIDE (
+            MMM_COLOR_FMT_NV12_BPP10_UBWC, bufinfo.width);
+        metascanline = MMM_COLOR_FMT_Y_META_SCANLINES (
+            MMM_COLOR_FMT_NV12_BPP10_UBWC,bufinfo.height);
+
+        GST_VIDEO_INFO_PLANE_OFFSET (&priv->info, 1) =
+            MMM_COLOR_FMT_ALIGN (stride * scanline, DEFAULT_PAGE_ALIGNMENT) +
+            MMM_COLOR_FMT_ALIGN (metastride * metascanline, DEFAULT_PAGE_ALIGNMENT);
+      } else if (priv->isubwc && (bufinfo.format == GBM_FORMAT_P010)) {
+        guint metastride, metascanline;
+
+        metastride = MMM_COLOR_FMT_Y_META_STRIDE (
+            MMM_COLOR_FMT_P010_UBWC, bufinfo.width);
+        metascanline = MMM_COLOR_FMT_Y_META_SCANLINES (
+            MMM_COLOR_FMT_P010_UBWC, bufinfo.height);
 
         GST_VIDEO_INFO_PLANE_OFFSET (&priv->info, 1) =
             MMM_COLOR_FMT_ALIGN (stride * scanline, DEFAULT_PAGE_ALIGNMENT) +

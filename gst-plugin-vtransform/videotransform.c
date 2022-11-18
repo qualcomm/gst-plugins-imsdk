@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -108,8 +108,11 @@ G_DEFINE_TYPE (GstVideoTransform, gst_video_transform, GST_TYPE_BASE_TRANSFORM);
 #undef GST_VIDEO_FPS_RANGE
 #define GST_VIDEO_FPS_RANGE "(fraction) [ 0, 255 ]"
 
-#define GST_VIDEO_FORMATS \
-  "{ NV12, NV21, YUY2, RGBA, BGRA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR, GRAY8 }"
+#define GST_SINK_VIDEO_FORMATS \
+  "{ NV12, NV21, YUY2, P010_10LE, NV12_10LE32, RGBA, BGRA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR, GRAY8 }"
+
+#define GST_SRC_VIDEO_FORMATS \
+  "{ NV12, NV21, YUY2, P010_10LE, RGBA, BGRA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR, GRAY8 }"
 
 enum
 {
@@ -122,9 +125,13 @@ enum
   PROP_BACKGROUND,
 };
 
-static GstStaticCaps gst_video_transform_format_caps =
-    GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS) ";"
-    GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM, GST_VIDEO_FORMATS));
+static GstStaticCaps gst_video_transform_static_sink_caps =
+    GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_SINK_VIDEO_FORMATS) ";"
+    GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM, GST_SINK_VIDEO_FORMATS));
+
+static GstStaticCaps gst_video_transform_static_src_caps =
+    GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_SRC_VIDEO_FORMATS) ";"
+    GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM, GST_SRC_VIDEO_FORMATS));
 
 static GType
 gst_video_trasform_rotate_get_type (void)
@@ -153,29 +160,42 @@ gst_video_trasform_rotate_get_type (void)
 }
 
 static GstCaps *
-gst_video_transform_caps (void)
+gst_video_transform_sink_caps (void)
 {
   static GstCaps *caps = NULL;
   static gsize inited = 0;
   if (g_once_init_enter (&inited)) {
-    caps = gst_static_caps_get (&gst_video_transform_format_caps);
+    caps = gst_static_caps_get (&gst_video_transform_static_sink_caps);
+    g_once_init_leave (&inited, 1);
+  }
+  return caps;
+}
+
+static GstCaps *
+gst_video_transform_src_caps (void)
+{
+  static GstCaps *caps = NULL;
+  static volatile gsize inited = 0;
+
+  if (g_once_init_enter (&inited)) {
+    caps = gst_static_caps_get (&gst_video_transform_static_src_caps);
     g_once_init_leave (&inited, 1);
   }
   return caps;
 }
 
 static GstPadTemplate *
-gst_video_transform_src_template (void)
-{
-  return gst_pad_template_new ("src", GST_PAD_SRC, GST_PAD_ALWAYS,
-      gst_video_transform_caps ());
-}
-
-static GstPadTemplate *
 gst_video_transform_sink_template (void)
 {
   return gst_pad_template_new ("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
-      gst_video_transform_caps ());
+      gst_video_transform_sink_caps ());
+}
+
+static GstPadTemplate *
+gst_video_transform_src_template (void)
+{
+  return gst_pad_template_new ("src", GST_PAD_SRC, GST_PAD_ALWAYS,
+      gst_video_transform_src_caps ());
 }
 
 static gboolean
@@ -281,6 +301,9 @@ gst_video_transform_determine_passthrough (GstVideoTransform * vtrans)
 
   passthrough &= !vtrans->flip_h && !vtrans->flip_v;
   passthrough &= vtrans->rotation == GST_VIDEO_TRANSFORM_ROTATE_NONE;
+
+  passthrough &= vtrans->outfeature == vtrans->infeature;
+  passthrough &= vtrans->outubwc == vtrans->inubwc;
 
   GST_DEBUG_OBJECT (vtrans, "Passthrough has been %s",
       passthrough ? "enabled" : "disabled");
@@ -612,6 +635,7 @@ gst_video_transform_set_caps (GstBaseTransform * base, GstCaps * incaps,
 {
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM (base);
   GstStructure *inopts = NULL, *outopts = NULL;
+  const gchar *feature = NULL;
   GstVideoInfo ininfo, outinfo;
   GValue rects = G_VALUE_INIT, entry = G_VALUE_INIT, value = G_VALUE_INIT;
   gint in_dar_n, in_dar_d, out_dar_n, out_dar_d;
@@ -769,6 +793,17 @@ gst_video_transform_set_caps (GstBaseTransform * base, GstCaps * incaps,
     gst_video_info_free (vtrans->outinfo);
 
   vtrans->outinfo = gst_video_info_copy (&outinfo);
+
+  feature = gst_caps_has_feature (incaps, GST_CAPS_FEATURE_MEMORY_GBM) ?
+      GST_CAPS_FEATURE_MEMORY_GBM : NULL;
+  vtrans->infeature = g_quark_from_static_string (feature);
+
+  feature = gst_caps_has_feature (outcaps, GST_CAPS_FEATURE_MEMORY_GBM) ?
+      GST_CAPS_FEATURE_MEMORY_GBM : NULL;
+  vtrans->outfeature = g_quark_from_static_string (feature);
+
+  vtrans->inubwc = gst_caps_has_compression (incaps, "ubwc");
+  vtrans->outubwc = gst_caps_has_compression (outcaps, "ubwc");
 
   // Disable passthrough in order to decide output allocation.
   gst_base_transform_set_passthrough (base, FALSE);
@@ -2165,6 +2200,12 @@ gst_video_transform_init (GstVideoTransform * vtrans)
 
   vtrans->ininfo = NULL;
   vtrans->outinfo = NULL;
+
+  vtrans->infeature = g_quark_from_static_string (NULL);
+  vtrans->outfeature = g_quark_from_static_string (NULL);
+
+  vtrans->inubwc = FALSE;
+  vtrans->outubwc = FALSE;
 
   vtrans->outpool = NULL;
 
