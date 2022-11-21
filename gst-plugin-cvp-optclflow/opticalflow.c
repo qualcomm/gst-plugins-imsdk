@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -380,7 +380,7 @@ gst_cvp_optclflow_set_caps (GstBaseTransform * base, GstCaps * incaps,
         return FALSE;
     }
 
-    gbm_perform (GBM_PERFORM_GET_BUFFER_SIZE_DIMENSIONS,
+    gbm_perform (GBM_PERFORM_GET_BUFFER_STRIDE_SCANLINE_SIZE,
         &bufinfo, 0, &stride, &scanline, &size);
   } else {
     GST_LOG_OBJECT (optclflow, "Using stride and scanline from GstVideoInfo");
