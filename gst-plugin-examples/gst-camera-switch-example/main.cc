@@ -84,6 +84,8 @@ struct _GstCameraSwitchCtx
   GMutex lock;
   gboolean exit;
   gboolean use_display;
+  guint  camera0;
+  guint  camera1;
 };
 
 // Hangles interrupt signals like Ctrl+C etc.
@@ -189,14 +191,14 @@ switch_camera (GstCameraSwitchCtx *cameraswitchctx) {
   if (!cameraswitchctx->is_camera0) {
     qmmf = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc_0");
     g_object_set (G_OBJECT (qmmf), "name", "qmmf_0", NULL);
-    g_object_set (G_OBJECT (qmmf), "camera", 0, NULL);
+    g_object_set (G_OBJECT (qmmf), "camera", cameraswitchctx->camera0, NULL);
     cameraswitchctx->qtiqmmfsrc_0 = qmmf;
 
     qmmf_second = cameraswitchctx->qtiqmmfsrc_1;
   } else {
     qmmf = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc_1");
     g_object_set (G_OBJECT (qmmf), "name", "qmmf_1", NULL);
-    g_object_set (G_OBJECT (qmmf), "camera", 1, NULL);
+    g_object_set (G_OBJECT (qmmf), "camera", cameraswitchctx->camera1, NULL);
     cameraswitchctx->qtiqmmfsrc_1 = qmmf;
 
     qmmf_second = cameraswitchctx->qtiqmmfsrc_0;
@@ -270,6 +272,8 @@ main (gint argc, gchar * argv[])
   GstCameraSwitchCtx cameraswitchctx = {};
   cameraswitchctx.exit = false;
   cameraswitchctx.use_display = false;
+  cameraswitchctx.camera0 = 0;
+  cameraswitchctx.camera1 = 1;
   g_mutex_init (&cameraswitchctx.lock);
 
   // Initialize GST library.
@@ -280,6 +284,16 @@ main (gint argc, gchar * argv[])
         &cameraswitchctx.use_display,
         "Enable display",
         "Parameter for enable display output"
+      },
+      { "camera0", 'm', 0, G_OPTION_ARG_INT,
+        &cameraswitchctx.camera0,
+        "ID of camera0",
+        NULL,
+      },
+      { "camera1", 's', 0, G_OPTION_ARG_INT,
+        &cameraswitchctx.camera1,
+        "ID of camera1",
+        NULL,
       },
       { NULL }
   };
@@ -308,6 +322,10 @@ main (gint argc, gchar * argv[])
     g_printerr ("ERROR: Failed to create options context!\n");
     return -EFAULT;
   }
+
+  g_print("Using camera0 id = %d and camera1 id = %d\n",
+          cameraswitchctx.camera0,
+          cameraswitchctx.camera1);
 
   pipeline = gst_pipeline_new ("gst-cameraswitch");
   cameraswitchctx.pipeline = pipeline;
@@ -368,7 +386,7 @@ main (gint argc, gchar * argv[])
 
   // Set qmmfsrc 0 properties
   g_object_set (G_OBJECT (qtiqmmfsrc_0), "name", "qmmf_0", NULL);
-  g_object_set (G_OBJECT (qtiqmmfsrc_0), "camera", 0, NULL);
+  g_object_set (G_OBJECT (qtiqmmfsrc_0), "camera", cameraswitchctx.camera0, NULL);
 
   // Set capsfilter properties
   g_object_set (G_OBJECT (capsfilter), "name", "capsfilter", NULL);
