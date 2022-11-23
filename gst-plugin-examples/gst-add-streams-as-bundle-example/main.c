@@ -86,8 +86,6 @@ struct _GstAppContext
   gint stream_cnt;
   // Mutex lock
   GMutex lock;
-  // Exit thread flag
-  gboolean exit;
   // EOS signal
   GCond eos_signal;
   // Flag for display usage or filesink
@@ -95,17 +93,6 @@ struct _GstAppContext
   // Selected usecase
   void (*usecase_fn) (GstAppContext * appctx);
 };
-
-static gboolean
-check_for_exit (GstAppContext * appctx) {
-  g_mutex_lock (&appctx->lock);
-  if (appctx->exit) {
-    g_mutex_unlock (&appctx->lock);
-    return TRUE;
-  }
-  g_mutex_unlock (&appctx->lock);
-  return FALSE;
-}
 
 // Hangles interrupt signals like Ctrl+C etc.
 static gboolean
@@ -129,10 +116,6 @@ handle_interrupt_signal (gpointer userdata)
   } else {
     g_main_loop_quit (appctx->mloop);
   }
-
-  g_mutex_lock (&appctx->lock);
-  appctx->exit = TRUE;
-  g_mutex_unlock (&appctx->lock);
 
   return TRUE;
 }
@@ -196,10 +179,6 @@ eos_cb (GstBus * bus, GstMessage * message, gpointer userdata)
   g_mutex_lock (&appctx->lock);
   g_cond_signal (&appctx->eos_signal);
   g_mutex_unlock (&appctx->lock);
-
-  if (check_for_exit (appctx)) {
-    g_main_loop_quit (appctx->mloop);
-  }
 }
 
 /*
@@ -541,6 +520,7 @@ streams_usecase (GstAppContext * appctx)
 
   // State transition for PLAYING state to READY
   // After that we can add a number of streams using one configure streams
+  gst_element_send_event (appctx->pipeline, gst_event_new_eos ());
   g_print ("Set pipeline to GST_STATE_READY state\n");
   if (GST_STATE_CHANGE_ASYNC ==
       gst_element_set_state (appctx->pipeline, GST_STATE_READY)) {
@@ -605,10 +585,7 @@ thread_fn (gpointer user_data)
   GstAppContext *appctx = (GstAppContext *) user_data;
   appctx->usecase_fn (appctx);
 
-  if (!check_for_exit (appctx)) {
-    // Quit main loop
-    g_main_loop_quit (appctx->mloop);
-  }
+  g_main_loop_quit (appctx->mloop);
 
   return NULL;
 }
@@ -733,6 +710,7 @@ main (gint argc, gchar * argv[])
   g_thread_join (thread);
 
   g_print ("Setting pipeline to NULL state ...\n");
+  gst_element_send_event (pipeline, gst_event_new_eos ());
   gst_element_set_state (pipeline, GST_STATE_NULL);
 
   g_source_remove (intrpt_watch_id);
