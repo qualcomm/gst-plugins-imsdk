@@ -18,8 +18,16 @@ pkg_check_modules(GST_BASE
   REQUIRED gstreamer-base-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_ALLOC
   REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(TFLITE
-  REQUIRED tensorflow-lite)
+pkg_check_modules(TFLITE_PREBUILT
+  tensorflow-lite-prebuilt)
+
+if(TFLITE_PREBUILT_FOUND)
+  pkg_check_modules(TFLITE
+    REQUIRED tensorflow-lite-prebuilt)
+else()
+  pkg_check_modules(TFLITE
+    REQUIRED tensorflow-lite)
+endif()
 
 # Generate configuration header file.
 configure_file(config.h.in config.h @ONLY)
