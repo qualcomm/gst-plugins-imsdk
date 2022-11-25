@@ -2925,7 +2925,8 @@ main (gint argc, gchar *argv[])
     return -1;
   }
 
-  setup_video_controls_values (srvctx, mainops.cfgfile);
+  if (mainops.video)
+    setup_video_controls_values (srvctx, mainops.cfgfile);
 
   // If a device is not to be initialized, NULL is passed for respective device
   srvctx->gadget = umd_gadget_new (mainops.video, mainops.audio, &callbacks, srvctx);
