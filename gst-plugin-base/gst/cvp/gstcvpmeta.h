@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -50,8 +50,10 @@ typedef struct _GstCvpOptclFlowMeta GstCvpOptclFlowMeta;
 
 /**
  * GstCvpMotionVector:
- * @x: Signed Horizontal motion vector for block 0.
- * @y: Signed Vertical motion vector for block 0.
+ * @x: Signed origin coordinate on the X axis.
+ * @y: Signed origin coordinate on the Y axis
+ * @dx: Signed deviation from the origin coordinate on the X axis.
+ * @dy: Signed deviation from the origin coordinate on the Y axis..
  * @confidence: Motion vector confidence.
  *
  * Structure representing CVP Motion Vector for a macro block.
@@ -59,16 +61,18 @@ typedef struct _GstCvpOptclFlowMeta GstCvpOptclFlowMeta;
 struct _GstCvpMotionVector {
   gint16 x;
   gint16 y;
+  gint16 dx;
+  gint16 dy;
   gint8  confidence;
 };
 
 /**
  * GstCvpOptclFlowStats:
- * @variance: 8x8 block variance.
- * @mean: 8x8 block mean.
+ * @variance: Macro block variance.
+ * @mean: Macro block mean.
  * @sad: SAD (Sum of Absolute Differences) of the (0,0) motion vectors.
  *
- * Structure representing CVP Optical Flow statistics for a 8x8 macro block.
+ * Structure representing CVP Optical Flow statistics for a macro block.
  */
 struct _GstCvpOptclFlowStats {
   guint16 variance;
