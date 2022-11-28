@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -589,7 +589,9 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
   GArray *mvectors = NULL, *mvstats = NULL;
   GstMapInfo memmap = { 0, };
   gint idx = 0, length = 0, n_vectors = 0, n_stats = 0;
+  guint pxlwidth = 0, pxlheight = 0, n_rowpxls = 0, n_clmnpxls = 0;
   guchar offsets[3] = { 0, }, sizes[3] = { 0, }, isunsigned[3] = { 0, };
+  gdouble xscale = 1.0, yscale = 1.0;
 
   if ((pmeta = gst_buffer_get_protection_meta (buffer)) == NULL) {
     GST_ERROR_OBJECT (dpad, "Buffer %p does not contain CVP meta!", buffer);
@@ -599,14 +601,25 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
     return FALSE;
   }
 
-  gst_structure_get (pmeta->info, "motion-vector-params", GST_TYPE_STRUCTURE,
-      &structure, NULL);
+  gst_structure_get (pmeta->info,
+      "motion-vector-params", GST_TYPE_STRUCTURE, &structure,
+      "mv-paxel-width", G_TYPE_UINT, &pxlwidth,
+      "mv-paxel-height", G_TYPE_UINT, &pxlheight,
+      "mv-paxels-row-length", G_TYPE_UINT, &n_rowpxls,
+      "mv-paxels-column-length", G_TYPE_UINT, &n_clmnpxls,
+      NULL);
 
   if (structure == NULL) {
     GST_ERROR_OBJECT (dpad, "CVP protection meta in buffer %p does not contain"
         " the CVP motion vector information necessary for decryption!", buffer);
     return FALSE;
   }
+
+  // Calculate the scale factor for the coordinates.
+  gst_util_fraction_to_double (GST_VIDEO_INFO_WIDTH (muxer->vinfo),
+      (n_rowpxls * pxlwidth), &xscale);
+  gst_util_fraction_to_double (GST_VIDEO_INFO_HEIGHT (muxer->vinfo),
+      (n_clmnpxls * pxlheight), &yscale);
 
   // Map the 1st memory block which will contain raw motion vector data.
   if (!gst_buffer_map_range (buffer, 0, 1, &memmap, GST_MAP_READ)) {
@@ -637,6 +650,9 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
   // Number of motion vector entries.
   n_vectors = memmap.size / length;
 
+  // Sanity check, number of motion vectors must be equal to the number of paxels.
+  g_return_val_if_fail (((guint) n_vectors) == (n_rowpxls * n_clmnpxls), FALSE);
+
   // Iterate over the raw data in reverse, parse and add it to the list.
   mvectors = g_array_sized_new (FALSE, FALSE, sizeof (GstCvpMotionVector),
       n_vectors);
@@ -647,18 +663,24 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
     GstCvpMotionVector *mvector =
         &g_array_index (mvectors, GstCvpMotionVector, idx);
 
-    mvector->x = EXTRACT_DATA_VALUE (data, offsets[0], sizes[0]);
-    mvector->y = EXTRACT_DATA_VALUE (data, offsets[1], sizes[1]);
+    mvector->dx = EXTRACT_DATA_VALUE (data, offsets[0], sizes[0]);
+    mvector->dy = EXTRACT_DATA_VALUE (data, offsets[1], sizes[1]);
     mvector->confidence = EXTRACT_DATA_VALUE (data, offsets[2], sizes[2]);
 
-    if (!isunsigned[0] && (mvector->x & (1 << (sizes[0] - 1))))
-      mvector->x |= ~((1 << sizes[0]) - 1) & 0xFFFF;
+    if (!isunsigned[0] && (mvector->dx & (1 << (sizes[0] - 1))))
+      mvector->dx |= ~((1 << sizes[0]) - 1) & 0xFFFF;
 
-    if (!isunsigned[1] && (mvector->y & (1 << (sizes[1] - 1))))
-      mvector->y |= ~((1 << sizes[1]) - 1) & 0xFFFF;
+    if (!isunsigned[1] && (mvector->dy & (1 << (sizes[1] - 1))))
+      mvector->dy |= ~((1 << sizes[1]) - 1) & 0xFFFF;
 
     if (!isunsigned[2] && (mvector->confidence & (1 << (sizes[2] - 1))))
       mvector->confidence |= ~((1 << sizes[2]) - 1) & 0xFFFF;
+
+    mvector->x = ((idx % n_rowpxls) * pxlwidth) * xscale;
+    mvector->y = ((idx / n_rowpxls) * pxlheight) * yscale;
+
+    mvector->dx *= xscale;
+    mvector->dy *= yscale;
   }
 
   gst_structure_free (structure);
@@ -666,8 +688,12 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
 
   // A 2nd memory block indicates the presents of statistics information.
   if (gst_buffer_n_memory (buffer) == 2) {
-    gst_structure_get (pmeta->info, "statistics-params", GST_TYPE_STRUCTURE,
-        &structure, NULL);
+    guint sad = 0, variance = 0;
+
+    gst_structure_get (pmeta->info,
+        "statistics-params", GST_TYPE_STRUCTURE, &structure,
+        "stats-variance-threshold", G_TYPE_UINT, &variance,
+        "stats-sad-threshold", G_TYPE_UINT, &sad, NULL);
 
     if (structure == NULL) {
       GST_ERROR_OBJECT (dpad, "CVP protection meta in buffer %p does not contain"
@@ -710,9 +736,11 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
     // Number of statistics entries.
     n_stats = memmap.size / length;
 
+    // Sanity check, number of statistics must be equal to the motion vectors.
+    g_return_val_if_fail (n_stats == n_vectors, FALSE);
+
     // Iterate over the raw data in reverse, parse and add it to the list.
-    mvstats = g_array_sized_new (FALSE, FALSE, sizeof (GstCvpOptclFlowStats),
-        n_stats);
+    mvstats = g_array_new (FALSE, FALSE, sizeof (GstCvpOptclFlowStats));
     g_array_set_size (mvstats, n_stats);
 
     for (idx = 0; idx < n_stats; idx++) {
@@ -732,6 +760,12 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
 
       if (!isunsigned[2] && (stats->sad & (1 << (sizes[2] - 1))))
         stats->sad |= ~((1 << sizes[2]) - 1) & 0xFFFF;
+
+      // If variance or SAD are below the thresholds clear the stats variables.
+      if ((stats->variance < variance) || (stats->sad < sad)) {
+        stats->variance = stats->sad = 0;
+        stats->mean = 0;
+      }
     }
 
     gst_structure_free (structure);

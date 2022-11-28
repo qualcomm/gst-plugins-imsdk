@@ -78,7 +78,9 @@ GST_DEBUG_CATEGORY_STATIC (cvp_optclflow_debug);
 #define gst_cvp_optclflow_parent_class parent_class
 G_DEFINE_TYPE (GstCvpOptclFlow, gst_cvp_optclflow, GST_TYPE_BASE_TRANSFORM);
 
-#define DEFAULT_PROP_ENABLE_STATS  TRUE
+#define DEFAULT_PROP_ENABLE_STATS         TRUE
+#define DEFAULT_PROP_VARIANCE_THRESHOLD   0
+#define DEFAULT_PROP_SAD_THRESHOLD        0
 
 #define DEFAULT_MIN_BUFFERS        2
 #define DEFAULT_MAX_BUFFERS        10
@@ -93,6 +95,8 @@ enum
 {
   PROP_0,
   PROP_ENABLE_STATS,
+  PROP_VARIANCE_THRESHOLD,
+  PROP_SAD_THRESHOLD,
 };
 
 
@@ -432,9 +436,8 @@ gst_cvp_optclflow_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   GstCvpOptclFlow *optclflow = GST_CVP_OPTCLFLOW (base);
   GstBuffer *buffer = NULL;
   GstVideoFrame inframes[2];
-  GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
-  GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
-  gboolean success = FALSE;
+  GstClockTime time = GST_CLOCK_TIME_NONE;
+  gboolean success = TRUE;
 
   inbuffer = gst_buffer_ref (inbuffer);
   optclflow->buffers = g_list_append (optclflow->buffers, inbuffer);
@@ -474,21 +477,19 @@ gst_cvp_optclflow_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     return GST_FLOW_ERROR;
   }
 
-  ts_begin = gst_util_get_timestamp ();
+  time = gst_util_get_timestamp ();
 
   success = gst_cvp_optclflow_engine_execute (optclflow->engine, inframes, 2,
       outbuffer);
 
-  ts_end = gst_util_get_timestamp ();
-
-  tsdelta = GST_CLOCK_DIFF (ts_begin, ts_end);
+  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
 
   if (!success)
     GST_ERROR_OBJECT (optclflow, "Failed to process buffers!");
 
   GST_LOG_OBJECT (optclflow, "Execution took %" G_GINT64_FORMAT ".%03"
-      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (tsdelta),
-      (GST_TIME_AS_USECONDS (tsdelta) % 1000));
+      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000));
 
   // Ummap current frame without releasing the buffer reference.
   gst_video_frame_unmap (&inframes[1]);
@@ -496,13 +497,23 @@ gst_cvp_optclflow_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   // Previous buffer for which the optical flow result applies to.
   buffer = inframes[0].buffer;
 
-  // Copy the flags and timestamps from the previous buffer buffer.
+  // Copy the flags and timestamps from the previous buffer.
   gst_buffer_copy_into (outbuffer, buffer,
       GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
 
   // Unmap previous buffer frame and release the held reference.
   gst_video_frame_unmap (&inframes[0]);
   gst_buffer_unref (buffer);
+
+  if (success) {
+    // Attach information regarding the threshold values to the custom meta.
+    GstProtectionMeta *pmeta = gst_buffer_get_protection_meta (outbuffer);
+
+    gst_structure_set (pmeta->info,
+        "stats-variance-threshold", G_TYPE_UINT, optclflow->variance,
+        "stats-sad-threshold", G_TYPE_UINT, optclflow->sad,
+        NULL);
+  }
 
   return success ? GST_FLOW_OK : GST_FLOW_ERROR;
 }
@@ -529,6 +540,12 @@ gst_cvp_optclflow_set_property (GObject * object, guint property_id,
     case PROP_ENABLE_STATS:
       optclflow->stats = g_value_get_boolean (value);
       break;
+    case PROP_VARIANCE_THRESHOLD:
+      optclflow->variance = g_value_get_uint (value);
+      break;
+    case PROP_SAD_THRESHOLD:
+      optclflow->sad = g_value_get_uint (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -544,6 +561,12 @@ gst_cvp_optclflow_get_property (GObject * object, guint property_id,
   switch (property_id) {
     case PROP_ENABLE_STATS:
       g_value_set_boolean (value, optclflow->stats);
+      break;
+    case PROP_VARIANCE_THRESHOLD:
+      g_value_set_uint (value, optclflow->variance);
+      break;
+    case PROP_SAD_THRESHOLD:
+      g_value_set_uint (value, optclflow->sad);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -587,6 +610,16 @@ gst_cvp_optclflow_class_init (GstCvpOptclFlowClass * klass)
           "Enable statistics for additional motion vector info",
           DEFAULT_PROP_ENABLE_STATS,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject, PROP_VARIANCE_THRESHOLD,
+      g_param_spec_uint ("stats-variance-thld", "Stats Variance Threshold",
+          "The statistics variance threshold below which motion vectors will "
+          "be ignored", 0, G_MAXUINT16, DEFAULT_PROP_VARIANCE_THRESHOLD,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject, PROP_SAD_THRESHOLD,
+      g_param_spec_uint ("stats-sad-thld", "Stats SAD Threshold",
+          "The statistics SAD threshold below which motion vectors will "
+          "be ignored", 0, G_MAXUINT16, DEFAULT_PROP_SAD_THRESHOLD,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_set_static_metadata (
       element, "CVP Optical Flow", "Runs optical flow from CVP",
@@ -615,6 +648,8 @@ gst_cvp_optclflow_init (GstCvpOptclFlow * optclflow)
   optclflow->engine = NULL;
 
   optclflow->stats = DEFAULT_PROP_ENABLE_STATS;
+  optclflow->variance = DEFAULT_PROP_VARIANCE_THRESHOLD;
+  optclflow->sad = DEFAULT_PROP_SAD_THRESHOLD;
 
   GST_DEBUG_CATEGORY_INIT (cvp_optclflow_debug, "qticvpoptclflow", 0,
       "QTI Computer Vision Processor Optical Flow");
