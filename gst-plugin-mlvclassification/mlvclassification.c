@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -75,6 +75,7 @@
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
 #include <gst/video/gstimagepool.h>
+#include <gst/memory/gstmempool.h>
 #include <cairo/cairo.h>
 
 #ifdef HAVE_LINUX_DMA_BUF_H
@@ -279,8 +280,9 @@ gst_ml_video_classification_create_pool (
     size = GST_VIDEO_INFO_SIZE (&info);
   } else if (gst_structure_has_name (structure, "text/x-raw")) {
     GST_INFO_OBJECT (classification, "Uses SYSTEM memory");
+    pool = gst_mem_buffer_pool_new (GST_MEMORY_BUFFER_POOL_TYPE_SYSTEM);
 
-    if (NULL == (pool = gst_buffer_pool_new ())) {
+    if (NULL == pool) {
       GST_ERROR_OBJECT (classification, "Failed to create buffer pool!");
       return NULL;
     }
@@ -917,7 +919,6 @@ gst_ml_video_classification_transform (GstBaseTransform * base,
     return GST_FLOW_ERROR;
   }
 
-  // Call the submodule process funtion.
   // Call the submodule process funtion.
   success = gst_ml_video_classification_module_execute (classification->module,
       &mlframe, predictions);

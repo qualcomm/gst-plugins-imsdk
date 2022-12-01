@@ -14,7 +14,7 @@
 
 #include <gbm.h>
 #include <gbm_priv.h>
-#include <gst/memory/gstionpool.h>
+#include <gst/memory/gstmempool.h>
 
 #include "imagepyramid.h"
 #include "imagepyramidpads.h"
@@ -411,7 +411,7 @@ gst_cvp_imgpyramid_create_pool (GstCvpImgPyramid * imgpyramid, GArray * sizes)
 
   for (idx = 1; idx < imgpyramid->n_levels; idx++) {
     size = g_array_index (sizes, guint, idx);
-    pool = gst_ion_buffer_pool_new ();
+    pool = gst_mem_buffer_pool_new (GST_MEMORY_BUFFER_POOL_TYPE_ION);
 
     if (pool == NULL) {
       GST_ERROR_OBJECT (imgpyramid, "Failed to create pool of size (%u)!", size);
