@@ -1994,11 +1994,21 @@ static void
 set_iso_property (GstElement * element, guint16 isovalue)
 {
   GValue value = G_VALUE_INIT;
+  GParamSpec *propspecs = NULL;
 
   g_value_init (&value, G_TYPE_INT);
   g_value_set_int (&value, isovalue);
 
   g_object_set_property (G_OBJECT (element), "manual-iso-value", &value);
+  g_value_unset (&value);
+
+  propspecs = g_object_class_find_property (
+        G_OBJECT_GET_CLASS (element), "iso-mode");
+  g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+  gst_value_deserialize (&value, (isovalue == 0) ? "auto" : "manual");
+
+  g_object_set_property (G_OBJECT (element), "iso-mode", &value);
+  g_value_unset (&value);
 }
 
 static void
@@ -2611,7 +2621,7 @@ setup_video_controls_values (GstServiceContext * srvctx, const gchar * cfgfile)
   srvctx->ctrlvals.blcompensation.max = 1;
   srvctx->ctrlvals.blcompensation.dflt = 0;
 
-  srvctx->ctrlvals.gain.min = 100;
+  srvctx->ctrlvals.gain.min = 0;
   srvctx->ctrlvals.gain.max = 3200;
   srvctx->ctrlvals.gain.dflt = 800;
 
