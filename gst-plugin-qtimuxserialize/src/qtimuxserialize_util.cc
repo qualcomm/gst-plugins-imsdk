@@ -102,7 +102,7 @@ static gboolean test_transform_func (GstBuffer * transbuf, GstMeta * meta,
 
 //return meta api type
 static GType gst_meta_test_api_get_type (void) {
-    static volatile GType type;
+    static GType type;
     static const gchar *tags[] = { "timing", NULL };
 
     if (g_once_init_enter (&type)) {
@@ -119,7 +119,7 @@ guint append_to_outbuf (GstBuffer *inbuf, GstBuffer *outbuf) {
     guint cnt = 0;
     guint channel_id=0, frame_id=0, obj_id=0;
     GstVideoFrameMeta *roi_meta = NULL;
-    static volatile GType i_api_type, o_api_type;
+    static GType i_api_type, o_api_type;
     GstMeta *meta = NULL, *i_meta=NULL;
     gpointer state = NULL;
 
@@ -212,7 +212,7 @@ void verify_outbuf(GstBuffer * outbuf) {
     } else {
             {
                 // meta API type
-                static volatile GType o_api_type;
+                static GType o_api_type;
                 o_api_type = gst_meta_test_api_get_type();
                 guint num = gst_buffer_get_n_meta(outbuf, o_api_type);
                 g_print("outbuf contains %d meta of specified api type\n", num);

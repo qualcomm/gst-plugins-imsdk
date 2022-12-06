@@ -152,7 +152,7 @@ static GstCaps *
 gst_ml_video_pose_sink_caps (void)
 {
   static GstCaps *caps = NULL;
-  static volatile gsize inited = 0;
+  static gsize inited = 0;
 
   if (g_once_init_enter (&inited)) {
     caps = gst_static_caps_get (&gst_ml_video_pose_static_sink_caps);
@@ -165,7 +165,7 @@ static GstCaps *
 gst_ml_video_pose_src_caps (void)
 {
   static GstCaps *caps = NULL;
-  static volatile gsize inited = 0;
+  static gsize inited = 0;
 
   if (g_once_init_enter (&inited)) {
     caps = gst_static_caps_get (&gst_ml_video_pose_static_src_caps);
