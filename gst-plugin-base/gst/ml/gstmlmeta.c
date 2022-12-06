@@ -117,7 +117,7 @@ gst_ml_tensor_meta_transform (GstBuffer * transbuffer, GstMeta * meta,
 GType
 gst_ml_tensor_meta_api_get_type (void)
 {
-  static volatile GType gtype = 0;
+  static GType gtype = 0;
   static const gchar *tags[] = { GST_META_TAG_MEMORY_STR, NULL };
 
   if (g_once_init_enter (&gtype)) {

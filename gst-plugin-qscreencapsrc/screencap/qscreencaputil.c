@@ -56,7 +56,7 @@ void gbm_memory_free(GstQCtx * qctx,QGbm_info *buf_gbm_info);
 GType
 gst_meta_qscreencap_api_get_type (void)
 {
-  static volatile GType type;
+  static GType type;
   static const gchar *tags[] = { "memory", NULL };
 
   if (g_once_init_enter (&type)) {

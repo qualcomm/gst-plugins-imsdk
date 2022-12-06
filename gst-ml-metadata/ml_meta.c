@@ -110,7 +110,7 @@ gst_ml_detection_free (GstMeta *meta, GstBuffer *buffer)
 GType
 gst_ml_detection_get_type (void)
 {
-  static volatile GType type = 0;
+  static GType type = 0;
   static const gchar *tags[] = { NULL };
 
   if (g_once_init_enter (&type)) {
@@ -164,7 +164,7 @@ gst_ml_segmentation_free (GstMeta *meta, GstBuffer *buffer)
 GType
 gst_ml_segmentation_get_type (void)
 {
-  static volatile GType type = 0;
+  static GType type = 0;
   static const gchar *tags[] = { NULL };
 
   if (g_once_init_enter (&type)) {
@@ -214,7 +214,7 @@ gst_ml_classification_free (GstMeta *meta, GstBuffer *buffer)
 GType
 gst_ml_classification_get_type (void)
 {
-  static volatile GType type = 0;
+  static GType type = 0;
   static const gchar *tags[] = { NULL };
 
   if (g_once_init_enter (&type)) {
@@ -254,7 +254,7 @@ gst_ml_posenet_init (GstMeta * meta, gpointer params, GstBuffer * buffer)
 GType
 gst_ml_posenet_get_type (void)
 {
-  static volatile GType type = 0;
+  static GType type = 0;
   static const gchar *tags[] = { NULL };
 
   if (g_once_init_enter (&type)) {
