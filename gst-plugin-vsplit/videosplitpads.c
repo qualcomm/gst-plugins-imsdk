@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -40,15 +40,30 @@
 G_DEFINE_TYPE(GstVideoSplitSinkPad, gst_video_split_sinkpad, GST_TYPE_PAD);
 G_DEFINE_TYPE(GstVideoSplitSrcPad, gst_video_split_srcpad, GST_TYPE_PAD);
 
-GST_DEBUG_CATEGORY_STATIC (gst_video_split_debug);
+GST_DEBUG_CATEGORY_EXTERN (gst_video_split_debug);
 #define GST_CAT_DEFAULT gst_video_split_debug
 
-#define DEFAULT_PROP_MIN_BUFFERS      2
-#define DEFAULT_PROP_MAX_BUFFERS      10
+#define GST_TYPE_VIDEO_SPLIT_MODE (gst_video_split_mode_get_type())
+
+#define DEFAULT_PROP_MODE           GST_VSPLIT_MODE_NONE
+#define DEFAULT_PROP_MIN_BUFFERS    2
+#define DEFAULT_PROP_MAX_BUFFERS    20
 
 #ifndef GST_CAPS_FEATURE_MEMORY_GBM
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
 #endif
+
+#define GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE(pspec, state) \
+    ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
+        : ((pspec->flags & GST_PARAM_MUTABLE_PAUSED) ? (state <= GST_STATE_PAUSED) \
+            : ((pspec->flags & GST_PARAM_MUTABLE_READY) ? (state <= GST_STATE_READY) \
+                : (state <= GST_STATE_NULL))))
+
+enum
+{
+  PROP_0,
+  PROP_MODE,
+};
 
 static gboolean
 queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
@@ -91,6 +106,45 @@ gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
       gst_structure_get_string (structure, "compression") : NULL;
 
   return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
+}
+
+static GType
+gst_video_split_mode_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue methods[] = {
+    { GST_VSPLIT_MODE_NONE,
+        "Incoming buffer is rescaled and color converted in order to match the "
+        "negotiated pad caps. If the input and output caps match then the "
+        "input buffer will be propagated directly to the output and its "
+        "reference count increased.", "none"
+    },
+    { GST_VSPLIT_MODE_FORCE_TRANSFORM,
+        "Incoming buffer is rescaled and color converted in order to match the "
+        "negotiated pad caps. New buffer is produced even if the negotiated "
+        "input and output caps match.", "force-transform"
+    },
+    { GST_VSPLIT_MODE_ROI_SINGLE,
+        "Incoming buffer is checked for ROI meta. If there is a meta entry that "
+        "corresponds to this pad a crop, rescale and color conversion operations "
+        "are performed on the input buffer. The thus transformed buffer is sent "
+        "to the next plugin. Pad with no corresponding ROI meta will produce "
+        "GAP buffer.", "single-roi-meta"
+    },
+    { GST_VSPLIT_MODE_ROI_BATCH,
+        "Incoming buffer is checked for ROI meta. For each meta entry a crop, "
+        "rescale and color conversion are performed on the input buffer. Thus "
+        "for each ROI meta entry a buffer will be produced and sent to the "
+        "next plugin downstream. In case no ROI meta is present the pad will "
+        "produce GAP buffer.", "batch-roi-meta"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstVideoSplitMode", methods);
+
+  return gtype;
 }
 
 static GstBufferPool *
@@ -891,9 +945,6 @@ gst_video_split_sinkpad_class_init (GstVideoSplitSinkPadClass * klass)
   GObjectClass *gobject = (GObjectClass *) klass;
 
   gobject->finalize = GST_DEBUG_FUNCPTR (gst_video_split_sinkpad_finalize);
-
-  GST_DEBUG_CATEGORY_INIT (gst_video_split_debug, "qtivsplit", 0,
-      "QTI video split sink pad");
 }
 
 void
@@ -913,7 +964,13 @@ gst_video_split_srcpad_fixate_caps (GstVideoSplitSrcPad * srcpad,
     GstCaps * incaps, GstCaps * outcaps)
 {
   GstStructure *input = NULL, *output = NULL;
+  GstVideoMultiviewMode mviewmode = GST_VIDEO_MULTIVIEW_MODE_MONO;
+  GstVideoMultiviewFlags mviewflags = GST_VIDEO_MULTIVIEW_FLAGS_NONE;
   gboolean success = TRUE;
+
+  // Overwrite the default multiview mode depending on the pad mode.
+  if (srcpad->mode == GST_VSPLIT_MODE_ROI_BATCH)
+    mviewmode = GST_VIDEO_MULTIVIEW_MODE_MULTIVIEW_FRAME_BY_FRAME;
 
   // Truncate and make the output caps writable.
   outcaps = gst_caps_truncate (outcaps);
@@ -927,6 +984,12 @@ gst_video_split_srcpad_fixate_caps (GstVideoSplitSrcPad * srcpad,
 
   GST_DEBUG_OBJECT (srcpad, "Trying to fixate output caps %" GST_PTR_FORMAT
       " based on caps %" GST_PTR_FORMAT, outcaps, incaps);
+
+  // Set multiview related fields based on the operational mode.
+  gst_structure_set (output, "multiview-mode", G_TYPE_STRING,
+      gst_video_multiview_mode_to_caps_string (mviewmode), "multiview-flags",
+      GST_TYPE_VIDEO_MULTIVIEW_FLAGSET, mviewflags, GST_FLAG_SET_MASK_EXACT,
+      NULL);
 
   // Fill default framerate field if they wasn't set in the caps.
   if (!gst_structure_has_field (output, "framerate"))
@@ -1095,8 +1158,60 @@ gst_video_split_srcpad_setcaps (GstVideoSplitSrcPad * srcpad, GstCaps * incaps)
   srcpad->info = gst_video_info_copy (&info);
   srcpad->isubwc = gst_caps_has_compression (outcaps, "ubwc");
 
+  // Enable passthrough if mode is 'none' and the sink and source caps intersect.
+  srcpad->passthrough = (srcpad->mode == GST_VSPLIT_MODE_NONE) &&
+      gst_caps_can_intersect (incaps, outcaps);
+
   GST_DEBUG_OBJECT (srcpad, "Negotiated caps: %" GST_PTR_FORMAT, outcaps);
   return TRUE;
+}
+
+static void
+gst_video_split_srcpad_set_property (GObject * object, guint prop_id,
+    const GValue * value, GParamSpec * pspec)
+{
+  GstVideoSplitSrcPad *srcpad = GST_VIDEO_SPLIT_SRCPAD (object);
+  GstElement *parent = gst_pad_get_parent_element (GST_PAD (srcpad));
+  const gchar *propname = g_param_spec_get_name (pspec);
+
+  // Extract the state from the pad parent or in case there is no parent
+  // use default value as parameters are being set upon object construction.
+  GstState state = parent ? GST_STATE (parent) : GST_STATE_VOID_PENDING;
+
+  // Decrease the pad parent reference count as it is not needed any more.
+  if (parent != NULL)
+    gst_object_unref (parent);
+
+  if (!GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE (pspec, state)) {
+    GST_WARNING_OBJECT (srcpad, "Property '%s' change not supported in %s "
+        "state!", propname, gst_element_state_get_name (state));
+    return;
+  }
+
+  switch (prop_id) {
+    case PROP_MODE:
+      srcpad->mode = g_value_get_enum (value);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
+}
+
+static void
+gst_video_split_srcpad_get_property (GObject * object, guint prop_id,
+    GValue * value, GParamSpec * pspec)
+{
+  GstVideoSplitSrcPad *srcpad = GST_VIDEO_SPLIT_SRCPAD (object);
+
+  switch (prop_id) {
+    case PROP_MODE:
+      g_value_set_enum (value, srcpad->mode);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
 }
 
 static void
@@ -1123,10 +1238,15 @@ gst_video_split_srcpad_class_init (GstVideoSplitSrcPadClass * klass)
 {
   GObjectClass *gobject = (GObjectClass *) klass;
 
+  gobject->set_property = GST_DEBUG_FUNCPTR (gst_video_split_srcpad_set_property);
+  gobject->get_property = GST_DEBUG_FUNCPTR (gst_video_split_srcpad_get_property);
   gobject->finalize = GST_DEBUG_FUNCPTR (gst_video_split_srcpad_finalize);
 
-  GST_DEBUG_CATEGORY_INIT (gst_video_split_debug, "qtivsplit", 0,
-      "QTI video split src pad");
+  g_object_class_install_property (gobject, PROP_MODE,
+      g_param_spec_enum ("mode", "Mode", "Operational mode",
+          GST_TYPE_VIDEO_SPLIT_MODE, DEFAULT_PROP_MODE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
 }
 
 void
@@ -1136,6 +1256,7 @@ gst_video_split_srcpad_init (GstVideoSplitSrcPad * pad)
 
   pad->info = NULL;
   pad->isubwc = FALSE;
+  pad->passthrough = FALSE;
 
   pad->pool = NULL;
   pad->buffers = gst_data_queue_new (queue_is_full_cb, NULL, NULL, NULL);

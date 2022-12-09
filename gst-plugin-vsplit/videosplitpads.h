@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -72,6 +72,13 @@ typedef struct _GstVideoSplitSinkPadClass GstVideoSplitSinkPadClass;
 typedef struct _GstVideoSplitSrcPad GstVideoSplitSrcPad;
 typedef struct _GstVideoSplitSrcPadClass GstVideoSplitSrcPadClass;
 
+typedef enum {
+  GST_VSPLIT_MODE_NONE,
+  GST_VSPLIT_MODE_FORCE_TRANSFORM,
+  GST_VSPLIT_MODE_ROI_SINGLE,
+  GST_VSPLIT_MODE_ROI_BATCH,
+} GstVideoSplitMode;
+
 struct _GstVideoSplitSinkPad {
   /// Inherited parent structure.
   GstPad       parent;
@@ -95,20 +102,25 @@ struct _GstVideoSplitSinkPadClass {
 
 struct _GstVideoSplitSrcPad {
   /// Inherited parent structure.
-  GstPad        parent;
+  GstPad            parent;
 
   /// Segment.
-  GstSegment    segment;
+  GstSegment        segment;
 
   /// Video info from caps.
-  GstVideoInfo  *info;
+  GstVideoInfo      *info;
   /// Whether output buffers have Universal Bandwidth Compression.
-  gboolean     isubwc;
+  gboolean          isubwc;
+  /// Passthrough when mode is 'none' and sink to source caps match.
+  gboolean          passthrough;
 
   /// Buffer pool.
-  GstBufferPool *pool;
+  GstBufferPool     *pool;
   /// Worker queue.
-  GstDataQueue  *buffers;
+  GstDataQueue      *buffers;
+
+  /// Properties.
+  GstVideoSplitMode mode;
 };
 
 struct _GstVideoSplitSrcPadClass {
