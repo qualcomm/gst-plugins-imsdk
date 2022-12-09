@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -63,11 +63,6 @@ G_BEGIN_DECLS
 #define GST_VIDEO_SPLIT_UNLOCK(obj) \
   g_mutex_unlock(GST_VIDEO_SPLIT_GET_LOCK(obj))
 
-typedef enum {
-  GST_VIDEO_SPLIT_MODE_NORMAL,
-  GST_VIDEO_SPLIT_MODE_ROI,
-} GstVideoSplitMode;
-
 typedef struct _GstVideoSplit GstVideoSplit;
 typedef struct _GstVideoSplitClass GstVideoSplitClass;
 
@@ -99,9 +94,6 @@ struct _GstVideoSplit
 #ifdef USE_GLES_CONVERTER
   GstGlesVideoConverter *glesconvert;
 #endif // USE_GLES_CONVERTER
-
-  /// Properties.
-  GstVideoSplitMode    mode;
 };
 
 struct _GstVideoSplitClass {
