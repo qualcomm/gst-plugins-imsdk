@@ -588,6 +588,30 @@ gst_qmmfsrc_noise_reduction_get_type (void)
 }
 
 GType
+gst_qmmfsrc_capture_mode_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { VIDEO_CAPTURE_MODE,
+        "Snapshot requests will be submitted together with any existing video "
+        "stream. Any request metadata passed as arguments will be ignored and "
+        "instead the video stream metadata will be used.", "video"
+    },
+    { STILL_CAPTURE_MODE,
+        "Snapshot requests will be interleaved with the requests for any "
+        "existing video stream. In this mode any metadata passed as aguments "
+        "will be used for the requests.", "still"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstImageCaptureMode", variants);
+
+  return gtype;
+}
+
+GType
 gst_qmmfsrc_frc_mode_get_type (void)
 {
   static GType gtype = 0;

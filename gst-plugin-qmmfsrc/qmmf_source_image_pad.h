@@ -121,9 +121,6 @@ struct _GstQmmfSrcImagePad {
   /// Agnostic structure containing codec specific parameters.
   GstStructure      *params;
 
-  /// Whether the GStreamer stream is uncompressed or compressed and its type.
-  GstImageMode      mode;
-
   /// QMMF Recorder image stream buffers duration, calculated from framerate.
   GstClockTime      duration;
 
