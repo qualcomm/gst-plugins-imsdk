@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
 *  
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -252,7 +252,7 @@ gst_jpeg_enc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   params = gst_structure_new ("qtijpegenc",
       GST_JPEG_ENC_INPUT_WIDTH, G_TYPE_UINT, GST_VIDEO_INFO_WIDTH (info),
       GST_JPEG_ENC_INPUT_HEIGHT, G_TYPE_UINT, GST_VIDEO_INFO_HEIGHT (info),
-      GST_JPEG_ENC_INPUT_FORMAT, G_TYPE_UINT, HAL_PIXEL_FORMAT_YCBCR_420_888,
+      GST_JPEG_ENC_INPUT_FORMAT, G_TYPE_UINT, HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED,
       GST_JPEG_ENC_OUTPUT_WIDTH, G_TYPE_UINT, GST_VIDEO_INFO_WIDTH (info),
       GST_JPEG_ENC_OUTPUT_HEIGHT, G_TYPE_UINT, GST_VIDEO_INFO_HEIGHT (info),
       GST_JPEG_ENC_OUTPUT_FORMAT, G_TYPE_UINT, HAL_PIXEL_FORMAT_BLOB,
