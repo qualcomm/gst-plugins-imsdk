@@ -1833,7 +1833,7 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
   }
 
   if (context->state >= GST_STATE_READY &&
-      param_id != PARAM_CAMERA_CAPTURE_METADATA)
+      param_id != PARAM_CAMERA_VIDEO_METADATA)
     recorder->GetCameraParam (context->camera_id, meta);
 
   switch (param_id) {
@@ -2251,7 +2251,7 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
   }
 
   if (!context->slave && (context->state >= GST_STATE_READY)) {
-    if (param_id == PARAM_CAMERA_CAPTURE_METADATA) {
+    if (param_id == PARAM_CAMERA_VIDEO_METADATA) {
       ::android::CameraMetadata *meta_ptr =
           (::android::CameraMetadata *) g_value_get_pointer (value);
       recorder->SetCameraParam (context->camera_id, *meta_ptr);
@@ -2477,7 +2477,7 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       gst_value_array_append_value (value, &val);
       break;
     }
-    case PARAM_CAMERA_CAPTURE_METADATA:
+    case PARAM_CAMERA_VIDEO_METADATA:
     {
       ::android::CameraMetadata *meta = new ::android::CameraMetadata();
 
@@ -2487,7 +2487,17 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       g_value_set_pointer (value, meta);
       break;
     }
-    case PARAM_CAMERA_CHARACTERISTICS:
+    case PARAM_CAMERA_IMAGE_METADATA:
+    {
+      ::android::CameraMetadata *meta = new ::android::CameraMetadata();
+
+      if (context->state >= GST_STATE_READY)
+        recorder->GetDefaultCaptureParam (context->camera_id, *meta);
+
+      g_value_set_pointer (value, meta);
+      break;
+    }
+    case PARAM_CAMERA_STATIC_METADATA:
     {
       ::android::CameraMetadata *meta = new ::android::CameraMetadata();
 
