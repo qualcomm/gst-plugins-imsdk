@@ -172,8 +172,9 @@ enum
   PROP_CAMERA_IR_MODE,
   PROP_CAMERA_ACTIVE_SENSOR_SIZE,
   PROP_CAMERA_SENSOR_MODE,
-  PROP_CAMERA_CAPTURE_METADATA,
-  PROP_CAMERA_CHARACTERISTICS,
+  PROP_CAMERA_VIDEO_METADATA,
+  PROP_CAMERA_IMAGE_METADATA,
+  PROP_CAMERA_STATIC_METADATA,
   PROP_CAMERA_FRC_MODE,
 };
 
@@ -558,13 +559,10 @@ qmmfsrc_metadata_callback (gint camera_id, gconstpointer metadata,
 {
   GstQmmfSrc *qmmfsrc = GST_QMMFSRC (userdata);
 
-  if (isurgent) {
-    g_signal_emit_by_name (qmmfsrc, "urgent-metadata", camera_id, metadata,
-        NULL);
-  } else {
-    g_signal_emit_by_name (qmmfsrc, "result-metadata", camera_id, metadata,
-        NULL);
-  }
+  if (isurgent)
+    g_signal_emit_by_name (qmmfsrc, "urgent-metadata", metadata);
+  else
+    g_signal_emit_by_name (qmmfsrc, "result-metadata", metadata);
 }
 
 static gboolean
@@ -1119,9 +1117,13 @@ qmmfsrc_set_property (GObject * object, guint property_id,
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_SENSOR_MODE, value);
       break;
-    case PROP_CAMERA_CAPTURE_METADATA:
+    case PROP_CAMERA_VIDEO_METADATA:
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
-          PARAM_CAMERA_CAPTURE_METADATA, value);
+          PARAM_CAMERA_VIDEO_METADATA, value);
+      break;
+    case PROP_CAMERA_IMAGE_METADATA:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_IMAGE_METADATA, value);
       break;
     case PROP_CAMERA_FRC_MODE:
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
@@ -1277,13 +1279,17 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_SENSOR_MODE, value);
       break;
-    case PROP_CAMERA_CAPTURE_METADATA:
-        gst_qmmf_context_get_camera_param (qmmfsrc->context,
-          PARAM_CAMERA_CAPTURE_METADATA, value);
+    case PROP_CAMERA_VIDEO_METADATA:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_VIDEO_METADATA, value);
       break;
-    case PROP_CAMERA_CHARACTERISTICS:
-        gst_qmmf_context_get_camera_param (qmmfsrc->context,
-          PARAM_CAMERA_CHARACTERISTICS, value);
+    case PROP_CAMERA_IMAGE_METADATA:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_IMAGE_METADATA, value);
+      break;
+    case PROP_CAMERA_STATIC_METADATA:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_STATIC_METADATA, value);
       break;
     case PROP_CAMERA_FRC_MODE:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
@@ -1549,17 +1555,24 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           "Force set Sensor Mode index (0-15). -1 for Auto selection",
           -1, 15, DEFAULT_PROP_CAMERA_SENSOR_MODE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject, PROP_CAMERA_CAPTURE_METADATA,
-      g_param_spec_pointer ("capture-metadata", "Get or set capture metadata",
-          "Expose camera metadata object which is used for camera control."
-          " If property get is used, caller must release metadata object.",
+  g_object_class_install_property (gobject, PROP_CAMERA_VIDEO_METADATA,
+      g_param_spec_pointer ("video-metadata", "Video Metadata",
+          "Settings and parameters used for submitting capture requests for "
+          "video streams in the form of Android CameraMetadata object. "
+          "Caller is responsible for releasing the object.",
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
-  g_object_class_install_property (gobject, PROP_CAMERA_CHARACTERISTICS,
-      g_param_spec_pointer ("camera-characteristics", "Camera characteristics",
-          "Returns supported values for camera parameters as"
-          " camera metadata object. Caller is taking ownership of camera"
-          " metadata object and he is supposed to release metadata object",
+  g_object_class_install_property (gobject, PROP_CAMERA_IMAGE_METADATA,
+      g_param_spec_pointer ("image-metadata", "Image Metadata",
+          "Settings and parameters used for submitting capture requests for high "
+          "quality images via the capture-image signal in the form of Android "
+          "CameraMetadata object. Caller is responsible for releasing the object.",
+          G_PARAM_READABLE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property (gobject, PROP_CAMERA_STATIC_METADATA,
+      g_param_spec_pointer ("static-metadata", "Static Metadata",
+          "Supported camera capabilities as Android CameraMetadata object. "
+          "Caller is responsible for releasing the object.",
           G_PARAM_READABLE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_CAMERA_FRC_MODE,
@@ -1580,13 +1593,11 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
 
   signals[SIGNAL_RESULT_METADATA] =
       g_signal_new ("result-metadata", G_TYPE_FROM_CLASS (klass),
-      G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 2, G_TYPE_INT,
-      G_TYPE_POINTER);
+      G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 1, G_TYPE_POINTER);
 
   signals[SIGNAL_URGENT_METADATA] =
       g_signal_new ("urgent-metadata", G_TYPE_FROM_CLASS (klass),
-      G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 2, G_TYPE_INT,
-      G_TYPE_POINTER);
+      G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 1, G_TYPE_POINTER);
 
   gstelement->request_new_pad = GST_DEBUG_FUNCPTR (qmmfsrc_request_pad);
   gstelement->release_pad = GST_DEBUG_FUNCPTR (qmmfsrc_release_pad);
@@ -1611,8 +1622,8 @@ qmmfsrc_init (GstQmmfSrc * qmmfsrc)
   qmmfsrc->imgindexes = NULL;
   qmmfsrc->isplugged = FALSE;
 
-  qmmfsrc->context = gst_qmmf_context_new (G_CALLBACK (qmmfsrc_event_callback),
-      G_CALLBACK (qmmfsrc_metadata_callback), qmmfsrc);
+  qmmfsrc->context = gst_qmmf_context_new (qmmfsrc_event_callback,
+      qmmfsrc_metadata_callback, qmmfsrc);
   g_return_if_fail (qmmfsrc->context != NULL);
 
   GST_OBJECT_FLAG_SET (qmmfsrc, GST_ELEMENT_FLAG_SOURCE);
