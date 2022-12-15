@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -55,6 +55,69 @@ struct _GstDfsEngine
   guint point_cloud_size;
 };
 
+#if defined(TARGET_BOARD_QRB5165)
+static void
+fill_stereo_params (rvStereoCamera * rv_stereo_param,
+    stereoConfiguration * stereo_param)
+{
+  g_assert (sizeof (rv_stereo_param->translation) ==
+      sizeof (stereo_param->translation));
+  memcpy (rv_stereo_param->translation, stereo_param->translation,
+      sizeof (stereo_param->translation));
+
+  g_assert (sizeof (rv_stereo_param->rotation) ==
+      sizeof (stereo_param->rotation));
+  memcpy (rv_stereo_param->rotation, stereo_param->rotation,
+      sizeof (stereo_param->rotation));
+
+  rv_stereo_param->camera[0].pixelWidth = stereo_param->camera[0].pixelWidth;
+  rv_stereo_param->camera[1].pixelWidth = stereo_param->camera[1].pixelWidth;
+  rv_stereo_param->camera[0].pixelHeight = stereo_param->camera[0].pixelHeight;
+  rv_stereo_param->camera[1].pixelHeight = stereo_param->camera[1].pixelHeight;
+  rv_stereo_param->camera[0].pixelStride =
+      stereo_param->camera[0].memoryStride;
+  rv_stereo_param->camera[1].pixelStride =
+      stereo_param->camera[1].memoryStride;
+
+  g_assert (sizeof (rv_stereo_param->camera[0].principalPoint) ==
+      sizeof (stereo_param->camera[0].principalPoint));
+  g_assert (sizeof (rv_stereo_param->camera[1].principalPoint) ==
+      sizeof (stereo_param->camera[1].principalPoint));
+  memcpy (rv_stereo_param->camera[0].principalPoint,
+      stereo_param->camera[0].principalPoint,
+      sizeof (stereo_param->camera[0].principalPoint));
+  memcpy (rv_stereo_param->camera[1].principalPoint,
+      stereo_param->camera[1].principalPoint,
+      sizeof (stereo_param->camera[1].principalPoint));
+
+  g_assert (sizeof (rv_stereo_param->camera[0].focalLength) ==
+      sizeof (stereo_param->camera[0].focalLength));
+  g_assert (sizeof (rv_stereo_param->camera[1].focalLength) ==
+      sizeof (stereo_param->camera[1].focalLength));
+  memcpy (rv_stereo_param->camera[0].focalLength,
+      stereo_param->camera[0].focalLength,
+      sizeof (stereo_param->camera[0].focalLength));
+  memcpy (rv_stereo_param->camera[1].focalLength,
+      stereo_param->camera[1].focalLength,
+      sizeof (stereo_param->camera[1].focalLength));
+
+  g_assert (sizeof (rv_stereo_param->camera[0].distortion) ==
+      sizeof (stereo_param->camera[0].distortion));
+  g_assert (sizeof (rv_stereo_param->camera[1].distortion) ==
+      sizeof (stereo_param->camera[1].distortion));
+  memcpy (rv_stereo_param->camera[0].distortion,
+      stereo_param->camera[0].distortion,
+      sizeof (stereo_param->camera[0].distortion));
+  memcpy (rv_stereo_param->camera[1].distortion,
+      stereo_param->camera[1].distortion,
+      sizeof (stereo_param->camera[1].distortion));
+
+  rv_stereo_param->camera[0].distortionModel =
+      static_cast<rvDistortionModel>(stereo_param->camera[0].distortionModel);
+  rv_stereo_param->camera[1].distortionModel =
+      static_cast<rvDistortionModel>(stereo_param->camera[1].distortionModel);
+}
+#else
 static void
 fill_stereo_params (rvStereoConfiguration * rv_stereo_param,
     stereoConfiguration * stereo_param)
@@ -73,7 +136,6 @@ fill_stereo_params (rvStereoConfiguration * rv_stereo_param,
   rv_stereo_param->camera[1].pixelWidth = stereo_param->camera[1].pixelWidth;
   rv_stereo_param->camera[0].pixelHeight = stereo_param->camera[0].pixelHeight;
   rv_stereo_param->camera[1].pixelHeight = stereo_param->camera[1].pixelHeight;
-
   rv_stereo_param->camera[0].memoryStride =
       stereo_param->camera[0].memoryStride;
   rv_stereo_param->camera[1].memoryStride =
@@ -124,12 +186,17 @@ fill_stereo_params (rvStereoConfiguration * rv_stereo_param,
   memcpy (rv_stereo_param->correctionFactors, stereo_param->correctionFactors,
       sizeof (stereo_param->correctionFactors));
 }
+#endif
 
 GstDfsEngine *
 gst_dfs_engine_new (DfsInitSettings * settings)
 {
   rvDFSParameter dfs_param;
+#if defined(TARGET_BOARD_QRB5165)
+  rvStereoCamera stereo_param;
+#else
   rvStereoConfiguration stereo_param;
+#endif
 
   GstDfsEngine *engine = (GstDfsEngine *) g_malloc0 (sizeof (GstDfsEngine));
   if (!engine) {
