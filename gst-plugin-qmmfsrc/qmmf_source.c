@@ -187,7 +187,7 @@ static GstStaticPadTemplate qmmfsrc_video_src_template =
         GST_PAD_REQUEST,
         GST_STATIC_CAPS (
             QMMFSRC_VIDEO_JPEG_CAPS "; "
-            QMMFSRC_VIDEO_RAW_CAPS(
+            QMMFSRC_VIDEO_RAW_CAPS (
                 "{ NV12, NV16"
 #ifdef GST_VIDEO_YUY2_FORMAT_ENABLE
                 ", YUY2"
@@ -202,7 +202,7 @@ static GstStaticPadTemplate qmmfsrc_video_src_template =
                 ", NV12_10LE32"
 #endif // GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
                 " }") "; "
-            QMMFSRC_VIDEO_RAW_CAPS_WITH_FEATURES(
+            QMMFSRC_VIDEO_RAW_CAPS_WITH_FEATURES (
                 GST_CAPS_FEATURE_MEMORY_GBM,
                 "{ NV12, NV16"
 #ifdef GST_VIDEO_YUY2_FORMAT_ENABLE
@@ -218,7 +218,7 @@ static GstStaticPadTemplate qmmfsrc_video_src_template =
                 ", NV12_10LE32"
 #endif // GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
                 " }") "; "
-            QMMFSRC_VIDEO_BAYER_CAPS(
+            QMMFSRC_VIDEO_BAYER_CAPS (
                 "{ bggr, rggb, gbrg, grbg, mono }",
                 "{ 8, 10, 12, 16 }")
         )
@@ -230,12 +230,20 @@ static GstStaticPadTemplate qmmfsrc_image_src_template =
         GST_PAD_REQUEST,
         GST_STATIC_CAPS (
             QMMFSRC_IMAGE_JPEG_CAPS "; "
-            QMMFSRC_IMAGE_RAW_CAPS(
-                "{ NV21 }") "; "
-            QMMFSRC_IMAGE_RAW_CAPS_WITH_FEATURES(
+            QMMFSRC_IMAGE_RAW_CAPS (
+                "{ NV21"
+#ifdef GST_IMAGE_NV12_FORMAT_ENABLE
+                ", NV12"
+#endif // GST_IMAGE_NV12_FORMAT_ENABLE
+                " }") "; "
+            QMMFSRC_IMAGE_RAW_CAPS_WITH_FEATURES (
                 GST_CAPS_FEATURE_MEMORY_GBM,
-                "{ NV21 }") "; "
-            QMMFSRC_IMAGE_BAYER_CAPS(
+                "{ NV21"
+#ifdef GST_IMAGE_NV12_FORMAT_ENABLE
+                ", NV12"
+#endif // GST_IMAGE_NV12_FORMAT_ENABLE
+                " }") "; "
+            QMMFSRC_IMAGE_BAYER_CAPS (
                 "{ bggr, rggb, gbrg, grbg, mono }",
                 "{ 8, 10, 12, 16 }")
         )
@@ -576,7 +584,7 @@ qmmfsrc_create_stream (GstQmmfSrc * qmmfsrc)
 {
   gboolean success = FALSE;
   gpointer key;
-  GstPad *pad = NULL, *jpegpad = NULL, *bayerpad = NULL;
+  GstPad *pad = NULL, *jpegpad = NULL, *bayerpad = NULL, *rawpad = NULL;
   GList *list = NULL;
 
   GST_TRACE_OBJECT (qmmfsrc, "Create stream");
@@ -607,13 +615,20 @@ qmmfsrc_create_stream (GstQmmfSrc * qmmfsrc)
     if (GST_QMMFSRC_IMAGE_PAD (pad)->codec == GST_IMAGE_CODEC_JPEG)
       jpegpad = pad;
 
+    if (GST_QMMFSRC_IMAGE_PAD (pad)->format == GST_VIDEO_FORMAT_NV12)
+      rawpad = pad;
+
     if (GST_QMMFSRC_IMAGE_PAD (pad)->format >= GST_BAYER_FORMAT_OFFSET)
       bayerpad = pad;
   }
 
-  // This is to check whether 2 image pad are of Jpeg and Bayer format or not.
-  qmmfsrc->jpegbayerenabled = (jpegpad != NULL && bayerpad != NULL) ?
-      TRUE : FALSE;
+  // This is to check whether 2 image pad are of Jpeg/Raw and Bayer format or not.
+  qmmfsrc->jpegbayerenabled = ((jpegpad != NULL || rawpad != NULL)
+        && bayerpad != NULL) ? TRUE : FALSE;
+
+  QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc,
+      !(jpegpad != NULL && rawpad != NULL), FALSE,
+      "Image pad combination is not correct.");
 
   QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc,
       !(g_list_length (qmmfsrc->imgindexes) == 2 &&
@@ -621,8 +636,9 @@ qmmfsrc_create_stream (GstQmmfSrc * qmmfsrc)
       "Image pad combination is not correct.");
 
   if (qmmfsrc->jpegbayerenabled) {
+    pad = (jpegpad != NULL) ? jpegpad : rawpad;
     success = gst_qmmf_context_create_image_stream (qmmfsrc->context,
-        jpegpad, bayerpad);
+        pad, bayerpad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Image stream creation failed!");
   } else {
@@ -772,7 +788,7 @@ qmmfsrc_capture_image (GstQmmfSrc * qmmfsrc, guint imgtype, guint n_images,
   gpointer key;
   GList *list = NULL;
   gboolean success = FALSE;
-  GstPad *pad = NULL, *jpegpad = NULL, *bayerpad = NULL;
+  GstPad *pad = NULL, *jpegpad = NULL, *bayerpad = NULL, *rawpad = NULL;
 
   GST_TRACE_OBJECT (qmmfsrc, "Submit capture image/s");
 
@@ -784,11 +800,14 @@ qmmfsrc_capture_image (GstQmmfSrc * qmmfsrc, guint imgtype, guint n_images,
       if (GST_QMMFSRC_IMAGE_PAD (pad)->codec == GST_IMAGE_CODEC_JPEG)
         jpegpad = pad;
 
+      if (GST_QMMFSRC_IMAGE_PAD (pad)->format == GST_VIDEO_FORMAT_NV12)
+        rawpad = pad;
+
       if (GST_QMMFSRC_IMAGE_PAD (pad)->format >= GST_BAYER_FORMAT_OFFSET)
         bayerpad = pad;
     }
-
-    success = gst_qmmf_context_capture_image (qmmfsrc->context, jpegpad,
+    pad = (jpegpad != NULL) ? jpegpad : rawpad;
+    success = gst_qmmf_context_capture_image (qmmfsrc->context, pad,
         bayerpad, imgtype, n_images, metas);
 
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,

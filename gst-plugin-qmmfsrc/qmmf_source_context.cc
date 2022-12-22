@@ -1721,10 +1721,16 @@ gst_qmmf_context_capture_image (GstQmmfContext * context, GstPad * pad,
         if (bayerpad == NULL)
           image_data_callback (context, pad, buffer, meta);
         else {
-          if (meta.format == ::qmmf::BufferFormat::kBLOB)
+          if (meta.format == ::qmmf::BufferFormat::kBLOB ||
+              meta.format == ::qmmf::BufferFormat::kNV12)
             image_data_callback (context, pad, buffer, meta);
-          else
+          else if (meta.format == ::qmmf::BufferFormat::kRAW8 ||
+              meta.format == ::qmmf::BufferFormat::kRAW10 ||
+              meta.format == ::qmmf::BufferFormat::kRAW10 ||
+              meta.format == ::qmmf::BufferFormat::kRAW10)
             image_data_callback (context, bayerpad, buffer, meta);
+          else
+            GST_ERROR ("Unsupported snapshot format %d", (gint)meta.format);
         }
       };
 
