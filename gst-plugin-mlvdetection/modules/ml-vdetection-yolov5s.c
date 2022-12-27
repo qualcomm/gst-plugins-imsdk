@@ -60,10 +60,16 @@ static const gint32 gains[3][3][2] = {
     { {116, 90}, {156, 198}, {373, 326} },
 };
 
+// Output dimensions depends on input[w, h], weights_idex and n_classes.
+// Dimensions format: <<1, w/8, h/8, D>, <1, w/16, h/16, D>, <1, w/32, h/32, D>>
+// 8, 16, 32 are coresponding weights[0][0], weights[1][0], weights[2][0]
+// D = (n_classes + CLASSES_IDX) * 3
+// MODULE_CAPS support input[w, h]: [32, 32] -> [1920, 1088]. n_class: 1 -> 1001
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
     "type = (string) { FLOAT32 }, " \
-    "dimensions = (int) < <1, 80, 80, 255>, <1, 40, 40, 255>, <1, 20, 20, 255> > "
+    "dimensions = (int) < <1, [1, 136], [1, 136], [18, 3018]>," \
+    "<1, [1, 136], [1, 136], [18, 3018]>, <1, [1, 136], [1, 136], [18, 3018]> > "
 
 // Module caps instance
 static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
@@ -71,11 +77,6 @@ static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
 typedef struct _GstMLSubModule GstMLSubModule;
 
 struct _GstMLSubModule {
-  // List of #GstCaps containing info on the supported ML tensors.
-  GPtrArray  *mlcaps;
-  // Stashed input ML frame caps containing info on the tensors.
-  GstCaps    *stgcaps;
-
   // List of prediction labels.
   GHashTable *labels;
   // Confidence threshold value.
@@ -189,32 +190,43 @@ gst_ml_non_max_suppression (GstMLPrediction * l_prediction, GArray * predictions
 
 static void
 gst_ml_module_parse_split_tensors (GstMLSubModule * submodule,
-    GArray * predictions, GstMLFrame * mlframe, gint sar_n, gint sar_d)
+    GArray * predictions, GstMLFrame * mlframe, gint sar_n, gint sar_d,
+    guint in_height, guint in_width)
 {
   guint idx = 0, num = 0, anchor = 0, x = 0, y = 0, m = 0, id = 0;
-  guint n_layers = 0, n_anchors = 0, width = 0, height = 0;
+  guint n_detections = 0, n_anchors = 0, width = 0, height = 0;
   gfloat confidence = 0.0, score = 0.0, bbox[4] = { 0, };
   gint nms = -1;
 
   for (idx = 0; idx < GST_ML_FRAME_N_BLOCKS (mlframe); idx++, num = 0) {
     GstLabel *label = NULL;
     gfloat *data = NULL;
+    guint w_idx = 0;
 
     data = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, idx));
 
     // Number of anchors.
     n_anchors = 3;
-    // Number of layers.
-    n_layers = 85;
+    // Detection size(85) = CLASSES_IDX(5) + n_class(80)
+    n_detections = GST_ML_FRAME_DIM (mlframe, idx, 3) / n_anchors;
 
     // The 1rd dimension represents the object matrix height.
     height = GST_ML_FRAME_DIM (mlframe, idx, 1);
     // The 2th dimension represents the object matrix width.
     width = GST_ML_FRAME_DIM (mlframe, idx, 2);
 
+    // Find weight/gain idx in case tensor order sometimes is changed unexpected.
+    // Ex: "< <1, 20, 20, 255>, <1, 40, 40, 255>, <1, 80, 80, 255> > "
+    // TODO: optimize
+    for (w_idx = 0; w_idx < 3 ; w_idx++)
+      if (weights[w_idx][0] == (gint32)(in_width / width)) break;
+
+    GST_DEBUG ("height: %d, width: %d, threshold: %f n_classes: %d",
+        height, width, submodule->threshold, n_detections -  CLASSES_IDX);
+
     for (y = 0; y < height; y++) {
       for (x = 0; x < width; x++) {
-        for (anchor = 0; anchor < n_anchors; anchor++, num += n_layers) {
+        for (anchor = 0; anchor < n_anchors; anchor++, num += n_detections) {
           GstMLPrediction prediction = { 0, };
 
           // Get the object score.
@@ -228,20 +240,20 @@ gst_ml_module_parse_split_tensors (GstMLSubModule * submodule,
           id = num + CLASSES_IDX;
 
           // Find the class ID with the highest confidence.
-          for (m = (num + CLASSES_IDX + 1); m < (num + n_layers); m++)
+          for (m = (num + CLASSES_IDX + 1); m < (num + n_detections); m++)
             id = (data[m] > data[id]) ? m : id;
 
           // Class confidence.
           confidence = data[id];
 
-          // Discard results below the minimum confidence threshold.
-          if (confidence < submodule->threshold)
-            continue;
-
           // Apply a sigmoid function in order to normalize the confidence.
           confidence = 1 / (1 + expf (- confidence));
           // Normalize the end confidence with the object score value.
           confidence *= 1 / (1 + expf (- score));
+
+          // Discard results below the minimum confidence threshold.
+          if (confidence < submodule->threshold)
+            continue;
 
           // Bounding box parameters.
           bbox[0] = data[num];
@@ -256,10 +268,10 @@ gst_ml_module_parse_split_tensors (GstMLSubModule * submodule,
           bbox[3] = 1 / (1 + expf (- bbox[3]));
 
           // Special calculations for the bounding box parameters.
-          bbox[0] = (bbox[0] * 2 - 0.5F + x) * weights[idx][0];
-          bbox[1] = (bbox[1] * 2 - 0.5F + y) * weights[idx][1];
-          bbox[2] = pow ((bbox[2] * 2), 2) * gains[idx][anchor][0];
-          bbox[3] = pow ((bbox[3] * 2), 2) * gains[idx][anchor][1];
+          bbox[0] = (bbox[0] * 2 - 0.5F + x) * weights[w_idx][0];
+          bbox[1] = (bbox[1] * 2 - 0.5F + y) * weights[w_idx][1];
+          bbox[2] = pow ((bbox[2] * 2), 2) * gains[w_idx][anchor][0];
+          bbox[3] = pow ((bbox[3] * 2), 2) * gains[w_idx][anchor][1];
 
           label = g_hash_table_lookup (submodule->labels,
               GUINT_TO_POINTER (id - (num + CLASSES_IDX)));
@@ -275,7 +287,7 @@ gst_ml_module_parse_split_tensors (GstMLSubModule * submodule,
 
           // Adjust bounding box dimensions with extracted source aspect ratio.
           gst_ml_prediction_transform_dimensions (&prediction, sar_n, sar_d,
-              (width * weights[idx][0]), (height* weights[idx][1]));
+              in_width, in_height);
 
           // Non-Max Suppression (NMS) algorithm.
           nms = gst_ml_non_max_suppression (&prediction, predictions);
@@ -295,29 +307,16 @@ gst_ml_module_parse_split_tensors (GstMLSubModule * submodule,
       }
     }
   }
+  GST_DEBUG ("predictions->len: %d", predictions->len);
 }
 
 gpointer
 gst_ml_module_open (void)
 {
   GstMLSubModule *submodule = NULL;
-  GstCaps *caps = NULL;
-  guint idx = 0, n_entries = 0;
 
   submodule = g_slice_new0 (GstMLSubModule);
   g_return_val_if_fail (submodule != NULL, NULL);
-
-  // Fetch caps instance and parse it into separate #GstCaps.
-  caps = gst_static_caps_get (&modulecaps);
-  n_entries = gst_caps_get_size (caps);
-
-  submodule->mlcaps =
-      g_ptr_array_new_with_free_func ((GDestroyNotify) gst_caps_unref);
-
-  for (idx = 0; idx < n_entries; idx++)
-    g_ptr_array_add (submodule->mlcaps, gst_caps_copy_nth (caps, idx));
-
-  gst_caps_unref (caps);
 
   return (gpointer) submodule;
 }
@@ -330,14 +329,8 @@ gst_ml_module_close (gpointer instance)
   if (NULL == submodule)
     return;
 
-  if (submodule->stgcaps != NULL)
-    gst_caps_unref (submodule->stgcaps);
-
   if (submodule->labels != NULL)
     g_hash_table_destroy (submodule->labels);
-
-  if (submodule->mlcaps != NULL)
-    g_ptr_array_free (submodule->mlcaps, TRUE);
 
   g_slice_free (GstMLSubModule, submodule);
 }
@@ -402,25 +395,22 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   GArray *predictions = (GArray *) output;
   GstProtectionMeta *pmeta = NULL;
-  GstCaps *caps = NULL;
   gint sar_n = 1, sar_d = 1;
+  guint in_height = 0, in_width = 0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  if (submodule->stgcaps == NULL)
-    submodule->stgcaps = gst_ml_info_to_caps (&(mlframe)->info);
-
   // Extract the SAR (Source Aspect Ratio).
-  if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL)
+  if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL) {
     gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
+    gst_structure_get_uint (pmeta->info, "input-tensor-height", &in_height);
+    gst_structure_get_uint (pmeta->info, "input-tensor-width", &in_width);
+  }
 
-  // Depending on the frame tensors differen parsing functions will be called.
-  caps = GST_CAPS_CAST (g_ptr_array_index (submodule->mlcaps, 0));
-
-  if (gst_caps_can_intersect (submodule->stgcaps, caps))
-    gst_ml_module_parse_split_tensors (submodule, predictions, mlframe, sar_n, sar_d);
+  gst_ml_module_parse_split_tensors (submodule, predictions, mlframe,
+      sar_n, sar_d, in_height, in_width);
 
   return TRUE;
 }
