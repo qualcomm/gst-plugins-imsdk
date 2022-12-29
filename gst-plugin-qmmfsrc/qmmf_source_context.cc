@@ -236,6 +236,7 @@ validate_bayer_params (GstQmmfContext * context, GstPad * pad)
   camera_metadata_entry entry;
   gint width = 0, height = 0, format = 0;
   gboolean supported = FALSE;
+  guint idx = 0;
 
   if (GST_IS_QMMFSRC_VIDEO_PAD (pad)) {
     width = GST_QMMFSRC_VIDEO_PAD (pad)->width;
@@ -294,7 +295,13 @@ validate_bayer_params (GstQmmfContext * context, GstPad * pad)
 
   entry = meta.find (ANDROID_SENSOR_OPAQUE_RAW_SIZE);
 
-  supported = (width == entry.data.i32[0]) && (height == entry.data.i32[1]);
+  for (idx = 0; idx < entry.count; idx += 3) {
+    if (width == static_cast<gint> (entry.data.i32[idx+0]) &&
+      height == static_cast<gint> (entry.data.i32[idx+1])) {
+      supported = true;
+      break;
+    }
+  }
 
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, supported, FALSE,
       "Invalid bayer resolution, expected %dx%d !", entry.data.i32[0],
@@ -1446,6 +1453,9 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad,
 
     imgparam.mode = ::qmmf::recorder::ImageMode::kSnapshotPlusRaw;
     ::qmmf::recorder::SnapshotRawSetup rawparam;
+
+    rawparam.width = bpad->width;
+    rawparam.height = bpad->height;
 
     switch (bpad->format) {
       case GST_BAYER_FORMAT_BGGR:
