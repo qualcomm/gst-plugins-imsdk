@@ -59,6 +59,12 @@
 #include <camera/CameraMetadata.h>
 #include <camera/VendorTagDescriptor.h>
 
+#ifndef CAMERA_METADATA_1_0_NS
+namespace camera = android;
+#else
+namespace camera = android::hardware::camera::common::V1_0::helper;
+#endif
+
 #define DEFAULT_30_FPS 33
 
 #define HASH_LINE  "##################################################"
@@ -277,11 +283,11 @@ error_cb (GstBus * bus, GstMessage * message, gpointer userdata)
 static guint
 get_vendor_tag_by_name (const gchar * section, const gchar * name)
 {
-  ::android::sp<::android::VendorTagDescriptor> vtags;
+  ::android::sp<::camera::VendorTagDescriptor> vtags;
   ::android::status_t status = 0;
   guint tag_id = 0;
 
-  vtags = ::android::VendorTagDescriptor::getGlobalVendorTagDescriptor();
+  vtags = ::camera::VendorTagDescriptor::getGlobalVendorTagDescriptor();
   if (vtags.get() == NULL) {
     GST_WARNING ("Failed to retrieve Global Vendor Tag Descriptor!");
     return 0;
@@ -400,7 +406,7 @@ metadata_update_thread (gpointer userdata)
     if ((!timeout) && (!appctx->finish)) {
 
       // Get video metadata
-      ::android::CameraMetadata *meta = nullptr;
+      ::camera::CameraMetadata *meta = nullptr;
       g_object_get (G_OBJECT (appctx->qtiqmmfsrc),
           "video-metadata", &meta, NULL);
       if (meta) {
@@ -711,7 +717,7 @@ main (gint argc, gchar *argv[])
   GstElement *qtiqmmfsrc = gst_bin_get_by_name (GST_BIN (appctx->pipeline), "camera");
 
   // Get video metadata
-  ::android::CameraMetadata *meta_ptr = nullptr;
+  ::camera::CameraMetadata *meta_ptr = nullptr;
   g_object_get (G_OBJECT (qtiqmmfsrc), "video-metadata", &meta_ptr, NULL);
   if (meta_ptr) {
     g_print ("Get video-metadata entries - %ld\n", meta_ptr->entryCount());

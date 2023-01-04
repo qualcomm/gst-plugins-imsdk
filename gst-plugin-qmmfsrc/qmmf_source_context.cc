@@ -78,6 +78,11 @@
 #include "qmmf_source_image_pad.h"
 #include "qmmf_source_video_pad.h"
 
+#ifndef CAMERA_METADATA_1_0_NS
+namespace camera = android;
+#else
+namespace camera = android::hardware::camera::common::V1_0::helper;
+#endif
 #define GST_QMMF_CONTEXT_GET_LOCK(obj) (&GST_QMMF_CONTEXT_CAST(obj)->lock)
 #define GST_QMMF_CONTEXT_LOCK(obj) \
   g_mutex_lock(GST_QMMF_CONTEXT_GET_LOCK(obj))
@@ -225,7 +230,7 @@ static gboolean
 validate_bayer_params (GstQmmfContext * context, GstPad * pad)
 {
   ::qmmf::recorder::Recorder *recorder = context->recorder;
-  ::android::CameraMetadata meta;
+  ::camera::CameraMetadata meta;
   camera_metadata_entry entry;
   gint width = 0, height = 0, format = 0;
   gboolean supported = FALSE;
@@ -299,11 +304,11 @@ validate_bayer_params (GstQmmfContext * context, GstPad * pad)
 static guint
 get_vendor_tag_by_name (const gchar * section, const gchar * name)
 {
-  ::android::sp<::android::VendorTagDescriptor> vtags;
+  ::android::sp<::camera::VendorTagDescriptor> vtags;
   ::android::status_t status = 0;
   guint tag_id = 0;
 
-  vtags = ::android::VendorTagDescriptor::getGlobalVendorTagDescriptor();
+  vtags = ::camera::VendorTagDescriptor::getGlobalVendorTagDescriptor();
   if (vtags.get() == NULL) {
     GST_WARNING ("Failed to retrieve Global Vendor Tag Descriptor!");
     return 0;
@@ -320,7 +325,7 @@ get_vendor_tag_by_name (const gchar * section, const gchar * name)
 }
 
 static void
-set_vendor_tags (GstStructure * structure, ::android::CameraMetadata * meta)
+set_vendor_tags (GstStructure * structure, ::camera::CameraMetadata * meta)
 {
   gint idx = 0;
   guint tag_id = 0;
@@ -448,7 +453,7 @@ set_vendor_tags (GstStructure * structure, ::android::CameraMetadata * meta)
 
 static void
 get_vendor_tags (const gchar * section, const gchar * names[], guint n_names,
-    GstStructure * structure, ::android::CameraMetadata * meta)
+    GstStructure * structure, ::camera::CameraMetadata * meta)
 {
   guint idx = 0, num = 0, tag_id = 0;
   const gchar *name = NULL;
@@ -543,7 +548,7 @@ static gboolean
 initialize_camera_param (GstQmmfContext * context)
 {
   ::qmmf::recorder::Recorder *recorder = context->recorder;
-  ::android::CameraMetadata meta;
+  ::camera::CameraMetadata meta;
   guint tag_id = 0;
   guchar numvalue = 0;
   gint ivalue = 0, status = 0;
@@ -1132,7 +1137,7 @@ gst_qmmf_context_open (GstQmmfContext * context)
   xtraparam.Update(::qmmf::recorder::QMMF_FRAME_RATE_CONTROL, frc);
 
   qmmf::recorder::CameraResultCb result_cb = [&, context](uint32_t camera_id,
-      const android::CameraMetadata& result) {
+      const ::camera::CameraMetadata& result) {
 
     // Timestamp cannot exist in urgent metadata because at time urgent meta
     // is created frame is not exposed. This is why we use that to detect
@@ -1146,7 +1151,7 @@ gst_qmmf_context_open (GstQmmfContext * context)
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
       "QMMF Recorder StartCamera Failed!");
 
-  ::android::CameraMetadata meta;
+  ::camera::CameraMetadata meta;
   recorder->GetCameraCharacteristics (context->camera_id, meta);
 
   if (meta.exists(ANDROID_SENSOR_INFO_ACTIVE_ARRAY_SIZE)) {
@@ -1352,7 +1357,7 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
     GST_WARNING ("Cannot apply crop, width and height values are 0 but "
         "X and/or Y are not 0!");
   } else {
-    ::android::CameraMetadata meta;
+    ::camera::CameraMetadata meta;
     guint tag_id = 0;
     gint32 ivalue = 0;
 
@@ -1619,7 +1624,7 @@ gst_qmmf_context_capture_image (GstQmmfContext * context, GstPad * pad,
   ::qmmf::recorder::Recorder *recorder = context->recorder;
   ::qmmf::recorder::ImageCaptureCb imagecb;
   ::qmmf::recorder::SnapshotType type;
-  std::vector<::android::CameraMetadata> metadata;
+  std::vector<::camera::CameraMetadata> metadata;
   gint status = 0;
   guint idx = 0;
 
@@ -1644,15 +1649,15 @@ gst_qmmf_context_capture_image (GstQmmfContext * context, GstPad * pad,
 
   // Extract the capture metadata from the input argument if set.
   while ((imgtype == STILL_CAPTURE_MODE) && (metas != NULL) && (idx < metas->len)) {
-    ::android::CameraMetadata *meta =
-        reinterpret_cast<::android::CameraMetadata*>(
+    ::camera::CameraMetadata *meta =
+        reinterpret_cast<::camera::CameraMetadata*>(
             g_ptr_array_index (metas, idx++));
     metadata.push_back(*meta);
   }
 
   // Fill the capture metadata for each image if not set via the input arguments.
   while ((imgtype == STILL_CAPTURE_MODE) && (metadata.size() < n_images)) {
-    ::android::CameraMetadata meta;
+    ::camera::CameraMetadata meta;
 
     status = recorder->GetDefaultCaptureParam (context->camera_id, meta);
     QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
@@ -1681,7 +1686,7 @@ gst_qmmf_context_capture_image (GstQmmfContext * context, GstPad * pad,
 
 void
 gst_qmmf_context_update_local_props (GstQmmfContext * context,
-    ::android::CameraMetadata *meta)
+    ::camera::CameraMetadata *meta)
 {
   gint temp = 0;
   guint tag_id = 0;
@@ -1797,7 +1802,7 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
     const GValue * value)
 {
   ::qmmf::recorder::Recorder *recorder = context->recorder;
-  ::android::CameraMetadata meta;
+  ::camera::CameraMetadata meta;
 
   switch (param_id) {
     case PARAM_CAMERA_ID:
@@ -2252,8 +2257,8 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
 
   if (!context->slave && (context->state >= GST_STATE_READY)) {
     if (param_id == PARAM_CAMERA_VIDEO_METADATA) {
-      ::android::CameraMetadata *meta_ptr =
-          (::android::CameraMetadata *) g_value_get_pointer (value);
+      ::camera::CameraMetadata *meta_ptr =
+          (::camera::CameraMetadata *) g_value_get_pointer (value);
       recorder->SetCameraParam (context->camera_id, *meta_ptr);
 
       // Update all local props from external metadata
@@ -2349,7 +2354,7 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_MANUAL_WB_SETTINGS:
     {
       gchar *string = NULL;
-      ::android::CameraMetadata meta;
+      ::camera::CameraMetadata meta;
 
       if (context->state >= GST_STATE_READY)
         recorder->GetCameraParam (context->camera_id, meta);
@@ -2373,7 +2378,7 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_NOISE_REDUCTION_TUNING:
     {
       gchar *string = NULL;
-      ::android::CameraMetadata meta;
+      ::camera::CameraMetadata meta;
 
       if (context->state >= GST_STATE_READY)
         recorder->GetCameraParam (context->camera_id, meta);
@@ -2408,7 +2413,7 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_DEFOG_TABLE:
     {
       gchar *string = NULL;
-      ::android::CameraMetadata meta;
+      ::camera::CameraMetadata meta;
 
       if (context->state >= GST_STATE_READY)
         recorder->GetCameraParam (context->camera_id, meta);
@@ -2425,7 +2430,7 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_EXPOSURE_TABLE:
     {
       gchar *string = NULL;
-      ::android::CameraMetadata meta;
+      ::camera::CameraMetadata meta;
 
       if (context->state >= GST_STATE_READY)
         recorder->GetCameraParam (context->camera_id, meta);
@@ -2442,7 +2447,7 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_LOCAL_TONE_MAPPING:
     {
       gchar *string = NULL;
-      ::android::CameraMetadata meta;
+      ::camera::CameraMetadata meta;
 
       if (context->state >= GST_STATE_READY)
         recorder->GetCameraParam (context->camera_id, meta);
@@ -2479,7 +2484,7 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
     }
     case PARAM_CAMERA_VIDEO_METADATA:
     {
-      ::android::CameraMetadata *meta = new ::android::CameraMetadata();
+      ::camera::CameraMetadata *meta = new ::camera::CameraMetadata();
 
       if (context->state >= GST_STATE_READY)
         recorder->GetCameraParam (context->camera_id, *meta);
@@ -2489,7 +2494,7 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
     }
     case PARAM_CAMERA_IMAGE_METADATA:
     {
-      ::android::CameraMetadata *meta = new ::android::CameraMetadata();
+      ::camera::CameraMetadata *meta = new ::camera::CameraMetadata();
 
       if (context->state >= GST_STATE_READY)
         recorder->GetDefaultCaptureParam (context->camera_id, *meta);
@@ -2499,7 +2504,7 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
     }
     case PARAM_CAMERA_STATIC_METADATA:
     {
-      ::android::CameraMetadata *meta = new ::android::CameraMetadata();
+      ::camera::CameraMetadata *meta = new ::camera::CameraMetadata();
 
       if (context->state >= GST_STATE_READY)
         recorder->GetCameraCharacteristics (context->camera_id, *meta);
@@ -2536,7 +2541,7 @@ gst_qmmf_context_update_video_param (GstPad * pad, GParamSpec * pspec,
         ::qmmf::recorder::VideoParam::kFrameRate, &fps, sizeof (fps)
     );
   } else if (g_strcmp0 (pname, "crop") == 0) {
-    ::android::CameraMetadata meta;
+    ::camera::CameraMetadata meta;
     gint32 x = -1, y = -1, width = -1, height = -1;
     guint tag_id = 0;
 

@@ -37,6 +37,11 @@
 #include <camera/CameraMetadata.h>
 #include <camera/VendorTagDescriptor.h>
 
+#ifndef CAMERA_METADATA_1_0_NS
+namespace camera = android;
+#else
+namespace camera = android::hardware::camera::common::V1_0::helper;
+#endif
 
 #define GST_CAMERA_PIPELINE "qtiqmmfsrc name=camera " \
     "camera.video_0 ! video/x-raw(memory:GBM),format=NV12,width=1280,height=720,framerate=30/1 ! " \
@@ -104,11 +109,11 @@ gst_sample_release (GstSample * sample)
 static guint
 get_vendor_tag_by_name (const gchar * section, const gchar * name)
 {
-  ::android::sp<::android::VendorTagDescriptor> vtags;
+  ::android::sp<::camera::VendorTagDescriptor> vtags;
   ::android::status_t status = 0;
   guint tag_id = 0;
 
-  vtags = ::android::VendorTagDescriptor::getGlobalVendorTagDescriptor();
+  vtags = ::camera::VendorTagDescriptor::getGlobalVendorTagDescriptor();
   if (vtags.get() == NULL) {
     GST_WARNING ("Failed to retrieve Global Vendor Tag Descriptor!");
     return 0;
@@ -297,7 +302,7 @@ new_sample (GstElement * element, gpointer userdata)
 static void
 result_metadata (GstElement * element, gpointer metadata, gpointer userdata)
 {
-  ::android::CameraMetadata *meta = (::android::CameraMetadata*) metadata;
+  ::camera::CameraMetadata *meta = (::camera::CameraMetadata*) metadata;
   guint tag_id = 0;
 
   if (meta == nullptr)
@@ -388,7 +393,7 @@ result_metadata (GstElement * element, gpointer metadata, gpointer userdata)
 static void
 urgent_metadata (GstElement * element, gpointer metadata, gpointer userdata)
 {
-  ::android::CameraMetadata *meta = (::android::CameraMetadata*) metadata;
+  ::camera::CameraMetadata *meta = (::camera::CameraMetadata*) metadata;
 
   if (meta == nullptr)
     return;
@@ -559,7 +564,7 @@ work_task (gpointer userdata)
 {
   GstAppContext *appctx = GST_APP_CONTEXT_CAST (userdata);
   GstElement *camsrc = NULL;
-  ::android::CameraMetadata *smeta = nullptr, *meta = nullptr;
+  ::camera::CameraMetadata *smeta = nullptr, *meta = nullptr;
   gboolean success = FALSE;
 
   // Transition to READY state in order to initilize the camera.

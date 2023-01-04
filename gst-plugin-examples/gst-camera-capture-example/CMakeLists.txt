@@ -9,6 +9,11 @@ target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_INCLUDE_DIRS}
 )
 
+# Add target specific precompiler defintions.
+target_compile_definitions(${GST_EXAMPLE_BIN} PRIVATE
+  $<$<STREQUAL:${CAMERA_METADATA_VERSION},1.0ns>:CAMERA_METADATA_1_0_NS>
+)
+
 target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_LIBRARIES}
   $<$<BOOL:${CAMERA_CLIENT_DISABLED}>:camera_metadata>

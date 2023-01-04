@@ -37,6 +37,11 @@
 #include <camera/CameraMetadata.h>
 #include <camera/VendorTagDescriptor.h>
 
+#ifndef CAMERA_METADATA_1_0_NS
+namespace camera = android;
+#else
+namespace camera = android::hardware::camera::common::V1_0::helper;
+#endif
 
 #define GST_CAMERA_PIPELINE "qtiqmmfsrc name=camera " \
     "camera.video_0 ! video/x-raw(memory:GBM),format=NV12,width=1280,height=720,framerate=30/1 ! " \
@@ -109,18 +114,18 @@ gst_sample_release (GstSample * sample)
 static void
 gst_camera_metadata_release (gpointer data)
 {
-  ::android::CameraMetadata *meta = (::android::CameraMetadata*) data;
+  ::camera::CameraMetadata *meta = (::camera::CameraMetadata*) data;
   delete meta;
 }
 
 static guint
 get_vendor_tag_by_name (const gchar * section, const gchar * name)
 {
-  ::android::sp<::android::VendorTagDescriptor> vtags;
+  ::android::sp<::camera::VendorTagDescriptor> vtags;
   ::android::status_t status = 0;
   guint tag_id = 0;
 
-  vtags = ::android::VendorTagDescriptor::getGlobalVendorTagDescriptor();
+  vtags = ::camera::VendorTagDescriptor::getGlobalVendorTagDescriptor();
   if (vtags.get() == NULL) {
     GST_WARNING ("Failed to retrieve Global Vendor Tag Descriptor!");
     return 0;
@@ -477,7 +482,7 @@ work_task (gpointer userdata)
   GstAppContext *appctx = GST_APP_CONTEXT_CAST (userdata);
   GstElement *camsrc = NULL;
   GPtrArray *metas = NULL;
-  ::android::CameraMetadata *smeta = nullptr, *meta = nullptr;
+  ::camera::CameraMetadata *smeta = nullptr, *meta = nullptr;
   gboolean success = FALSE;
 
 
@@ -545,7 +550,7 @@ work_task (gpointer userdata)
 
     // Modify a copy of the capture metadata and add it to the meta array.
     for (idx = 0; idx < n_images; idx++) {
-      ::android::CameraMetadata *metadata = new ::android::CameraMetadata(*meta);
+      ::camera::CameraMetadata *metadata = new ::camera::CameraMetadata(*meta);
 
       metadata->update(ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION, &compensation, 1);
       compensation += step;
