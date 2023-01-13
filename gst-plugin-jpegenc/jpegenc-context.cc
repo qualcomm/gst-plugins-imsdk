@@ -153,9 +153,11 @@ gst_jpeg_enc_callback (GstJPEGEncoderContext * context, guint buf_fd,
     return;
   }
 
+  g_mutex_lock (&context->lock);
   GstVideoCodecFrame *frame = (GstVideoCodecFrame *) g_hash_table_lookup (
       context->requests, GINT_TO_POINTER (buf_fd));
   g_hash_table_remove (context->requests, GINT_TO_POINTER (buf_fd));
+  g_mutex_unlock (&context->lock);
 
   if (frame) {
     // Resize the buffer to the encoded size
@@ -280,13 +282,21 @@ gst_jpeg_enc_context_execute (GstJPEGEncoderContext * context,
   proc_params.in_buf_fd = gst_fd_memory_get_fd (inmemory);
   proc_params.out_buf_fd = gst_fd_memory_get_fd (outmemory);
 
+  // calling EncodeOfflineJPEG() may cause thread context switch
+  // to avoid this, we need to use mutex for EncodeOfflineJPEG()
+  // and hash table access
+
+  g_mutex_lock (&context->lock);
+
   if (context->recorder->EncodeOfflineJPEG(proc_params) != 0) {
     GST_ERROR ("Failed to execute the Jpeg encoder");
+    g_mutex_unlock (&context->lock);
     return FALSE;
   }
 
   g_hash_table_insert (context->requests,
       GINT_TO_POINTER (proc_params.out_buf_fd), frame);
+  g_mutex_unlock (&context->lock);
 
   return TRUE;
 }
