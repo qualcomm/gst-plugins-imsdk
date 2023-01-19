@@ -2,7 +2,7 @@
 set(GST_QTI_C2_VENC gstqtic2venc)
 
 add_library(${GST_QTI_C2_VENC} SHARED
-  c2venc.cc
+  c2venc.c
 )
 
 target_include_directories(${GST_QTI_C2_VENC} PRIVATE
