@@ -1,4 +1,5 @@
-/* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+/*
+* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -31,48 +32,50 @@
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __GST_C2_WRAPPER_H__
-#define __GST_C2_WRAPPER_H__
+#ifndef _GST_C2_VDEC_H_
+#define _GST_C2_VDEC_H_
 
 #include <gst/gst.h>
+#include <gst/video/gstvideodecoder.h>
+#include <gst/allocators/allocators.h>
 
-#include "common.h"
-#include "c2-component.h"
+#include "c2-engine/c2-engine.h"
+#include "c2-engine/c2-engine-params.h"
 
-typedef struct _GstC2Wrapper GstC2Wrapper;
+G_BEGIN_DECLS
 
-GST_API GstC2Wrapper *
-gst_c2_wrapper_new ();
+#define GST_TYPE_C2_VDEC (gst_c2_vdec_get_type())
+#define GST_C2_VDEC(obj) \
+  (G_TYPE_CHECK_INSTANCE_CAST((obj), GST_TYPE_C2_VDEC, GstC2VDecoder))
+#define GST_C2_VDEC_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_CAST((klass), GST_TYPE_C2_VDEC, GstC2VDecoderClass))
+#define GST_IS_C2_VDEC(obj) \
+  (G_TYPE_CHECK_INSTANCE_TYPE((obj), GST_TYPE_C2_VDEC))
+#define GST_IS_C2_VDEC_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_C2_VDEC))
+#define GST_C2_VDEC_CAST(obj) ((GstC2VDecoder *)(obj))
 
-GST_API void
-gst_c2_wrapper_free (GstC2Wrapper * wrapper);
+typedef struct _GstC2VDecoder GstC2VDecoder;
+typedef struct _GstC2VDecoderClass GstC2VDecoderClass;
 
-GST_API gboolean
-gst_c2_wrapper_create_component (GstC2Wrapper * wrapper,
-    const gchar * name, event_handler_cb callback, gpointer userdata);
+struct _GstC2VDecoder {
+  GstVideoDecoder    parent;
 
-GST_API gboolean
-gst_c2_wrapper_delete_component (GstC2Wrapper * wrapper);
+  gchar              *name;
+  GstC2Engine        *engine;
 
-GST_API gint
-gst_c2_wrapper_get_block_pool_id (GstC2Wrapper * wrapper);
+  /// Negotiated output resolution, format, etc.
+  GstVideoCodecState *outstate;
+  /// TRUE if the negotiated output format is UBWC.
+  gboolean           isubwc;
+};
 
-GST_API gboolean
-gst_c2_wrapper_config_component (GstC2Wrapper * wrapper,
-    GPtrArray * config);
+struct _GstC2VDecoderClass {
+  GstVideoDecoderClass parent;
+};
 
-GST_API gboolean
-gst_c2_wrapper_component_start (GstC2Wrapper * wrapper);
+G_GNUC_INTERNAL GType gst_c2_vdec_get_type (void);
 
-GST_API gboolean
-gst_c2_wrapper_component_stop (GstC2Wrapper * wrapper);
+G_END_DECLS
 
-GST_API gboolean
-gst_c2_wrapper_component_queue (GstC2Wrapper * wrapper,
-    BufferDescriptor * buffer);
-
-GST_API gboolean
-gst_c2_wrapper_free_output_buffer (GstC2Wrapper * wrapper,
-    uint64_t buf_idx);
-
-#endif // __GST_C2_WRAPPER_H__
+#endif

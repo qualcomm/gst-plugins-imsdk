@@ -32,97 +32,71 @@
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __GST_QTI_C2_VENC_H__
-#define __GST_QTI_C2_VENC_H__
+#ifndef _GST_C2_VENC_H_
+#define _GST_C2_VENC_H_
 
 #include <gst/gst.h>
 #include <gst/video/gstvideoencoder.h>
 #include <gst/allocators/allocators.h>
 
-#include "c2-engine/c2-wrapper.h"
+#include "c2-engine/c2-engine.h"
+#include "c2-engine/c2-engine-params.h"
 
 G_BEGIN_DECLS
 
 #define GST_TYPE_C2_VENC (gst_c2_venc_get_type())
 #define GST_C2_VENC(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_C2_VENC,GstC2VideoEncoder))
+  (G_TYPE_CHECK_INSTANCE_CAST((obj), GST_TYPE_C2_VENC, GstC2VEncoder))
 #define GST_C2_VENC_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_C2_VENC,GstC2VideoEncoderClass))
+  (G_TYPE_CHECK_CLASS_CAST((klass), GST_TYPE_C2_VENC, GstC2VEncoderClass))
 #define GST_IS_C2_VENC(obj) \
-  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_C2_VENC))
+  (G_TYPE_CHECK_INSTANCE_TYPE((obj), GST_TYPE_C2_VENC))
 #define GST_IS_C2_VENC_CLASS(klass) \
   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_C2_VENC))
-#define GST_C2_VENC_CAST(obj)       ((GstC2VideoEncoder *)(obj))
+#define GST_C2_VENC_CAST(obj) ((GstC2VEncoder *)(obj))
 
-typedef struct _GstC2VideoEncoder GstC2VideoEncoder;
-typedef struct _GstC2VideoEncoderClass GstC2VideoEncoderClass;
-typedef struct _GstC2QuantRegion GstC2QuantRegion;
+typedef struct _GstC2VEncoder GstC2VEncoder;
+typedef struct _GstC2VEncoderClass GstC2VEncoderClass;
 
-// Maximum number of input frame queued
-#define MAX_QUEUED_FRAME 32
-
-struct _GstC2QuantRegion {
-  guint top;
-  guint left;
-  guint bottom;
-  guint right;
-};
-
-struct _GstC2VideoEncoder {
+struct _GstC2VEncoder {
   GstVideoEncoderClass parent;
 
-  GstBufferPool *pool;
+  gchar                *name;
+  GstC2Engine          *engine;
 
-  gchar *comp_name;
-  gboolean input_setup;
-  gboolean output_setup;
-  gint width;
-  gint height;
-  GstVideoFormat input_format;
-  GstVideoCodecState *input_state;
-  GstVideoCodecState *output_state;
+  /// Negotiated input resolution, format, etc.
+  GstVideoCodecState   *instate;
+  /// TRUE if the negotiated input format is UBWC.
+  gboolean             isubwc;
 
-  GstC2Wrapper *wrapper;
+  /// SPS/PPS/VPS NALs headers.
+  GList                *headers;
 
-  guint64 queued_frame[MAX_QUEUED_FRAME];
-  guint64 frame_index;
-  GMutex pending_lock;
-  GCond pending_cond;
-  gint rate_numerator;
+  /// Properties
+  GstC2VideoRotate     rotate;
+  GstC2RateControl     control_rate;
+  guint32              target_bitrate;
 
-  gboolean eos_reached;
+  guint32              idr_interval;
+  GstC2IntraRefresh    intra_refresh;
+  guint32              bframes;
 
-  GstC2ControlRate control_rate;
-  GstC2ColorMatrix matrix;
-  GstC2IRefreshMode intra_refresh_mode;
-  guint32 intra_refresh_mbs;
-  guint32 target_bitrate;
-  gdouble framerate;
-  GstC2SliceMode slice_mode;
-  guint32 slice_size;
-  guint32 idr_interval;
+  GstC2SliceMode       slice_mode;
+  guint32              slice_size;
 
-  guint32 max_qp_b_frames;
-  guint32 max_qp_i_frames;
-  guint32 max_qp_p_frames;
-  guint32 min_qp_b_frames;
-  guint32 min_qp_i_frames;
-  guint32 min_qp_p_frames;
+  GstC2QuantInit       quant_init;
+  GstC2QuantRanges     quant_ranges;
 
-  GstC2EntropyMode entropy_mode;
-  GstC2LoopFilterMode loop_filter_mode;
-  guint32 quant_i_frames;
-  guint32 quant_p_frames;
-  guint32 quant_b_frames;
-  guint32 num_ltr_frames;
-  GstC2Rotate rotate;
-  gboolean is_ubwc;
-  gboolean roi_quant_mode;
-  GstStructure *roi_quant_values;
-  GArray *roi_quant_boxes;
+  gboolean             roi_quant_mode;
+  GstStructure         *roi_quant_values;
+  GArray               *roi_quant_boxes;
+
+  GstC2EntropyMode     entropy_mode;
+  GstC2LoopFilterMode  loop_filter_mode;
+  guint32              num_ltr_frames;
 };
 
-struct _GstC2VideoEncoderClass {
+struct _GstC2VEncoderClass {
   GstVideoEncoderClass parent;
 };
 
@@ -130,4 +104,4 @@ G_GNUC_INTERNAL GType gst_c2_venc_get_type (void);
 
 G_END_DECLS
 
-#endif // __GST_QTI_C2_VENC_H__
+#endif // _GST_C2_VENC_H_
