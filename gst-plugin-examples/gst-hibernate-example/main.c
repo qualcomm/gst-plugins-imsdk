@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -196,12 +196,12 @@ wait_subsystem_restore_dbus ()
 }
 
 static gboolean
-wait_hibernate_exit (GAsyncQueue * hibernate_exit_event)
+wait_hibernate_exit (GAsyncQueue * event_queue)
 {
   GstStructure *event = NULL;
 
   // Wait for HIBERNATE_EXIT_EVENT event.
-  while ((event = g_async_queue_pop (hibernate_exit_event)) != NULL) {
+  while ((event = g_async_queue_pop (event_queue)) != NULL) {
     if (gst_structure_has_name (event, HIBERNATE_EXIT_EVENT))
       break;
     gst_structure_free (event);
@@ -212,12 +212,12 @@ wait_hibernate_exit (GAsyncQueue * hibernate_exit_event)
 }
 
 static gboolean
-wait_subsystem_restore (GAsyncQueue * subsystem_restore_event)
+wait_subsystem_restore (GAsyncQueue * event_queue)
 {
   GstStructure *event = NULL;
 
   // Wait for SUBSYSTEM_RESTORE_EVENT event.
-  while ((event = g_async_queue_pop (subsystem_restore_event)) != NULL) {
+  while ((event = g_async_queue_pop (event_queue)) != NULL) {
     if (gst_structure_has_name (event, SUBSYSTEM_RESTORE_EVENT))
       break;
     gst_structure_free (event);
@@ -228,34 +228,24 @@ wait_subsystem_restore (GAsyncQueue * subsystem_restore_event)
 }
 
 static gpointer
-hibernate_exit_handler (gpointer userdata)
+event_handler (gpointer userdata)
 {
-  GAsyncQueue *hibernate_exit_event = (GAsyncQueue *) (userdata);
+  GAsyncQueue *event_queue = (GAsyncQueue *) (userdata);
   gboolean hibernate_exit_done = FALSE;
+  gboolean subsystem_restore_done = FALSE;
 
   while (!hibernate_exit_done) {
     hibernate_exit_done = wait_hibernate_exit_uevent ();
   }
-
   g_print ("%sHibernate exit done.\n", TAG);
-  g_async_queue_push (hibernate_exit_event,
+  g_async_queue_push (event_queue,
       gst_structure_new_empty (HIBERNATE_EXIT_EVENT));
-
-  return NULL;
-}
-
-static gpointer
-subsystem_restore_handler (gpointer userdata)
-{
-  GAsyncQueue *subsystem_restore_event = (GAsyncQueue *) (userdata);
-  gboolean subsystem_restore_done = FALSE;
 
   while (!subsystem_restore_done) {
     subsystem_restore_done = wait_subsystem_restore_dbus ();
   }
-
   g_print ("%sSubsystem restore done.\n", TAG);
-  g_async_queue_push (subsystem_restore_event,
+  g_async_queue_push (event_queue,
       gst_structure_new_empty (SUBSYSTEM_RESTORE_EVENT));
 
   return NULL;
@@ -266,33 +256,29 @@ main (gint argc, gchar * argv[])
 {
   g_print ("%sStarted gst-hibernate-example program.\n", TAG);
 
-  GThread *hibernate_exit_thread = NULL;
-  GThread *subsystem_restore_thread = NULL;
-  GAsyncQueue *hibernate_exit_event, *subsystem_restore_event;
+  GThread *event_thread = NULL;
+  GAsyncQueue *event_queue;
   gboolean success = TRUE;
-  gboolean initial_wifi_on;
+  gboolean restore_wifi;
 
   // Initiate the GAsyncQueue for hibernate exit.
-  hibernate_exit_event =
-      g_async_queue_new_full ((GDestroyNotify) gst_structure_free);
+  event_queue = g_async_queue_new_full ((GDestroyNotify) gst_structure_free);
 
-  // Initiate the hibernate_exit_handler thread.
-  g_print ("%sCreating hibernate_exit_thread\n", TAG);
-  if ((hibernate_exit_thread = g_thread_new
-          ("hibernate_exit_thread", hibernate_exit_handler,
-              hibernate_exit_event)) == NULL) {
-    g_printerr ("%sERROR: Failed to create hibernate_exit_thread!\n", TAG);
+  // Initiate the event_handler thread.
+  g_print ("%sCreating event_thread\n", TAG);
+  if ((event_thread = g_thread_new
+          ("event_thread", event_handler, event_queue)) == NULL) {
+    g_printerr ("%sERROR: Failed to create event_thread!\n", TAG);
     return -1;
   }
 
-  initial_wifi_on = is_wifi_on ();
-  g_print ("%sWiFi status is %d.\n", TAG, initial_wifi_on);
-  if (initial_wifi_on) {
+  restore_wifi = is_wifi_on ();
+  g_print ("%sWiFi status is %d.\n", TAG, restore_wifi);
+  if (restore_wifi) {
     g_print ("%sStarted disable_wifi.\n", TAG);
     success = disable_wifi ();
     g_print ("%sEnded disable_wifi. Result is %d.\n", TAG, success);
   }
-
   // Trigger hibernate
   g_print ("%sStarted triggering hibernate.\n", TAG);
   system
@@ -303,7 +289,7 @@ main (gint argc, gchar * argv[])
 
   // Wait for hibernate exit uevent
   g_print ("%sStarted wait_hibernate_exit.\n", TAG);
-  success = wait_hibernate_exit (hibernate_exit_event);
+  success = wait_hibernate_exit (event_queue);
   g_print ("%sEnded wait_hibernate_exit. Result is %d.\n", TAG, success);
 
   ///////////////////////CAMERA LAUNCH/////////////////////////////////////
@@ -316,7 +302,7 @@ main (gint argc, gchar * argv[])
   // Build the pipeline
   pipeline = gst_parse_launch ("gst-launch-1.0 -e qtiqmmfsrc ! \
   video/x-raw\(memory:GBM\),format=NV12,width=1920,height=1080,framerate=30/1 ! \
-  multifilesink location=\"/data/frame%d.yuv\"", NULL);
+  multifilesink max-files=1 location=\"/data/frame%d.yuv\"", NULL);
 
   // Start playing
   gst_element_set_state (pipeline, GST_STATE_PLAYING);
@@ -329,36 +315,20 @@ main (gint argc, gchar * argv[])
   g_print ("%sEnded camera launch.\n", TAG);
   /////////////////////////////////////////////////////////////////////
 
-  // Initiate the GAsyncQueue for subsystem restore.
-  subsystem_restore_event =
-      g_async_queue_new_full ((GDestroyNotify) gst_structure_free);
-
-  // Initiate the subsystem_restore_handler thread.
-  g_print ("%sCreating subsystem_restore_thread\n", TAG);
-  if ((subsystem_restore_thread = g_thread_new
-          ("subsystem_restore_thread", subsystem_restore_handler,
-              subsystem_restore_event)) == NULL) {
-    g_printerr ("%sERROR: Failed to create subsystem_restore_thread!\n", TAG);
-    return -1;
-  }
-
   // Wait for subsystem restore
   g_print ("%sStarted wait_subsystem_restore.\n", TAG);
-  success = wait_subsystem_restore (subsystem_restore_event);
+  success = wait_subsystem_restore (event_queue);
   g_print ("%sEnded wait_subsystem_restore. Result is %d.\n", TAG, success);
 
   // Restore WiFi state
-  if (initial_wifi_on) {
+  if (restore_wifi) {
     g_print ("%sStarted enable_wifi.\n", TAG);
     success = enable_wifi ();
     g_print ("%sEnded enable_wifi. Result is %d.\n", TAG, success);
   }
   // Wait until event thread finishes.
-  g_thread_join (hibernate_exit_thread);
-  g_thread_join (subsystem_restore_thread);
-
-  g_async_queue_unref (hibernate_exit_event);
-  g_async_queue_unref (subsystem_restore_event);
+  g_thread_join (event_thread);
+  g_async_queue_unref (event_queue);
   g_print ("%sEnded gst-hibernate-example program.\n", TAG);
 
   return 0;

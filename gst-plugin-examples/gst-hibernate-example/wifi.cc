@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -69,10 +69,8 @@ gboolean
 enable_wifi ()
 {
   QCMAP_Client *qcmap_client;
-  qmi_error_type_v01 qmi_err_num1 = QMI_ERR_NONE_V01;
-  gboolean result1;
-  qmi_error_type_v01 qmi_err_num2 = QMI_ERR_NONE_V01;
-  gboolean result2;
+  qmi_error_type_v01 qmi_err_num = QMI_ERR_NONE_V01;
+  gboolean result;
 
   g_print ("%sEnter enable_wifi.\n", TAG);
 
@@ -80,24 +78,26 @@ enable_wifi ()
 
   enable_mobile_ap (qcmap_client);
 
-  result1 = qcmap_client->EnableWLAN (&qmi_err_num1);
-  if (!result1)
-    g_printerr ("%sFailed to EnableWLAN: %x.\n", TAG, qmi_err_num1);
-  else
-    g_print ("%sSuccess EnableWLAN.\n", TAG);
+  result = qcmap_client->EnableWLAN (&qmi_err_num);
+  if (!result) {
+    g_printerr ("%sFailed to EnableWLAN: %x.\n", TAG, qmi_err_num);
+    disable_mobile_ap (qcmap_client);
+    delete qcmap_client;
+    g_print ("%sExit enable_wifi.\n", TAG);
+    return (result);
+  }
 
-  result2 = qcmap_client->SetAlwaysOnWLAN (true, &qmi_err_num2);
-  if (!result2)
-    g_printerr ("%sFailed to SetAlwaysOnWLAN: %x.\n", TAG, qmi_err_num2);
-  else
-    g_print ("%sSuccess SetAlwaysOnWLAN.\n", TAG);
+  result = qcmap_client->SetAlwaysOnWLAN (true, &qmi_err_num);
+  if (!result) {
+    g_printerr ("%sFailed to SetAlwaysOnWLAN: %x.\n", TAG, qmi_err_num);
+  }
 
   disable_mobile_ap (qcmap_client);
 
   delete qcmap_client;
   g_print ("%sExit enable_wifi.\n", TAG);
 
-  return (result1 && result2);
+  return (result);
 }
 
 gboolean
