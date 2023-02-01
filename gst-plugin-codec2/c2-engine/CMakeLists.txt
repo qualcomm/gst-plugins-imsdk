@@ -7,6 +7,10 @@ add_library(${GST_QTI_C2_ENGINE} SHARED
   c2-config.cc
 )
 
+target_compile_definitions(${GST_QTI_C2_ENGINE} PRIVATE
+  $<$<STREQUAL:${GST_QP_RANGES_VERSION},2.0>:QP_RANGES_VERSION_2_0>
+)
+
 target_include_directories(${GST_QTI_C2_ENGINE} PUBLIC
   ${GST_INCLUDE_DIRS}
 )

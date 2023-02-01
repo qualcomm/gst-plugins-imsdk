@@ -902,6 +902,7 @@ setQPRanges (gpointer param)
   if (param == NULL)
     return nullptr;
 
+#ifndef QP_RANGES_VERSION_2_0
   config_params_t *config = (config_params_t*) param;
   qc2::C2VideoQPRangeSetting::output qp_ranges;
   qp_ranges.miniqp = config->qp_ranges.miniqp;
@@ -912,6 +913,21 @@ setQPRanges (gpointer param)
   qp_ranges.maxbqp = config->qp_ranges.maxbqp;
 
   return C2Param::Copy (qp_ranges);
+#else
+  config_params_t *config = (config_params_t*) param;
+  auto qp_ranges = C2StreamPictureQuantizationTuning::output::AllocUnique(3,0u);
+  qp_ranges->m.values[0].type_ = I_FRAME;
+  qp_ranges->m.values[0].min  = config->qp_ranges.miniqp;
+  qp_ranges->m.values[0].max  = config->qp_ranges.maxiqp;
+  qp_ranges->m.values[1].type_ = P_FRAME;
+  qp_ranges->m.values[1].min  = config->qp_ranges.minpqp;
+  qp_ranges->m.values[1].max  = config->qp_ranges.maxpqp;
+  qp_ranges->m.values[2].type_ = B_FRAME;
+  qp_ranges->m.values[2].min  = config->qp_ranges.minbqp;
+  qp_ranges->m.values[2].max  = config->qp_ranges.maxbqp;
+
+  return C2Param::Copy (*qp_ranges);
+#endif
 }
 
 std::unique_ptr<C2Param>
