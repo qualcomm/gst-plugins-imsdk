@@ -25,6 +25,11 @@
  * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #pragma once
@@ -33,17 +38,19 @@
 #include <string>
 
 #include <cutils/properties.h>
-#include <linux/msm_ion.h>
-#include <sys/ioctl.h>
-#include <sys/mman.h>
 #include <utils/Log.h>
 
-#if TARGET_ION_ABI_VERSION >= 2
-#include <ion/ion.h>
-#include <linux/dma-buf.h>
+#if defined(HAVE_LINUX_DMA_HEAP_H)
+#include <linux/dma-heap.h>
 #else
-#include <fcntl.h>
-#endif
+#include <linux/ion.h>
+#include <linux/msm_ion.h>
+#endif // HAVE_LINUX_DMA_HEAP_H
+
+#ifdef HAVE_LINUX_DMA_BUF_H
+#include <sys/ioctl.h>
+#include <linux/dma-buf.h>
+#endif // HAVE_LINUX_DMA_BUF_H
 
 namespace overlay {
 
@@ -56,14 +63,14 @@ namespace overlay {
 inline void SyncStart (int32_t fd)
 {
   ALOGV ("%s: Enter", __func__);
-#if TARGET_ION_ABI_VERSION >= 2
+#ifdef HAVE_LINUX_DMA_BUF_H
   struct dma_buf_sync buf_sync;
   buf_sync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
 
   auto result = ioctl (fd, DMA_BUF_IOCTL_SYNC, &buf_sync);
   if (result)
     ALOGE ("%s: Failed first DMA_BUF_IOCTL_SYNC start", __func__);
-#endif
+#endif // HAVE_LINUX_DMA_BUF_H
   ALOGV ("%s: Exit", __func__);
 }
 
@@ -76,14 +83,14 @@ inline void SyncStart (int32_t fd)
 inline void SyncEnd (int32_t fd)
 {
   ALOGV ("%s: Enter", __func__);
-#if TARGET_ION_ABI_VERSION >= 2
+#ifdef HAVE_LINUX_DMA_BUF_H
   struct dma_buf_sync buf_sync;
   buf_sync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
 
   auto result = ioctl (fd, DMA_BUF_IOCTL_SYNC, &buf_sync);
   if (result)
     ALOGE ("%s: Failed first DMA_BUF_IOCTL_SYNC End", __func__);
-#endif
+#endif // HAVE_LINUX_DMA_BUF_H
   ALOGV ("%s: Exit", __func__);
 }
 }  // namespace overlay

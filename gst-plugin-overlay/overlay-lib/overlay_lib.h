@@ -26,45 +26,15 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted (subject to the limitations in the
- * disclaimer below) provided that the following conditions are met:
- *
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *
- *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer in the documentation and/or other materials provided
- *       with the distribution.
- *
- *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
- *       contributors may be used to endorse or promote products derived
- *       from this software without specific prior written permission.
- *
- * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
- * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
- * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
- * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
- * IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #pragma once
 
-#include <adreno/c2d2.h>
 #include <cutils/properties.h>
-#include <ion/ion.h>
-#include <linux/msm_ion.h>
 #include <linux/msm_kgsl.h>
 #include <gst/gst.h>
 #include <cairo/cairo.h>
@@ -72,6 +42,10 @@
 
 #include <CL/cl.h>
 #include <CL/cl_ext.h>
+
+#ifdef ENABLE_C2D
+#include <adreno/c2d2.h>
+#endif // ENABLE_C2D
 
 namespace overlay {
 
@@ -132,6 +106,7 @@ struct DrawInfo {
   cl_mem mask;
   std::shared_ptr<OpenClKernel> blit_inst;
   uint32_t c2dSurfaceId;
+  uint64_t ib2cSurfaceId;
   uint32_t in_width;
   uint32_t in_height;
   uint32_t in_x;
@@ -239,10 +214,11 @@ struct RGBAValues {
   double blue;
   double alpha;
 };
-
+#ifdef ENABLE_C2D
 struct C2dObjects {
   C2D_OBJECT objects[MAX_OVERLAYS * 2];
 };
+#endif // ENABLE_C2D
 
 enum class SurfaceFormat {
   kARGB,
@@ -259,37 +235,59 @@ class OverlaySurface {
           height_ (0),
           stride_ (0),
           format_ (SurfaceFormat::kARGB),
-          gpu_addr_ (nullptr),
-          vaddr_ (nullptr),
           ion_fd_ (0),
           size_ (0),
+          vaddr_ (nullptr),
+#ifdef ENABLE_C2D
+          gpu_addr_ (nullptr),
+          c2dsurface_id_ (-1),
+#endif // ENABLE_C2D
+#ifdef ENABLE_GLES
+          ib2c_surface_id_(0),
+#endif // ENABLE_GLES
           cl_buffer_ (nullptr),
-          blit_inst_ (nullptr),
-          c2dsurface_id_ (-1) {}
+          blit_inst_ (nullptr) {}
 
   uint32_t width_;
   uint32_t height_;
   uint32_t stride_;
   SurfaceFormat format_;
-  void * gpu_addr_;
-  void * vaddr_;
   int32_t ion_fd_;
   uint32_t size_;
+  void * vaddr_;
+
+#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
+  ion_user_handle_t handle_;
+#endif // TARGET_ION_ABI_VERSION
+
+#ifdef ENABLE_C2D
+  void * gpu_addr_;
+  uint32_t c2dsurface_id_;
+#endif // ENABLE_C2D
+
+#ifdef ENABLE_GLES
+  uint64_t ib2c_surface_id_;
+#endif // ENABLE_GLES
 
   cl_mem cl_buffer_;
   std::shared_ptr<OpenClKernel> blit_inst_;
-  uint32_t c2dsurface_id_;
 };
 
 //Base class for all types of overlays.
 class OverlayItem {
  public:
 
-  OverlayItem (int32_t ion_device, OverlayType type, CLKernelIds kernel_id);
+  OverlayItem (int32_t ion_device, OverlayType type, OverlayBlitType blit_type,
+               CLKernelIds kernel_id);
 
   virtual ~OverlayItem ();
 
+#ifdef ENABLE_GLES
+  virtual int32_t Init (std::shared_ptr<ib2c::IEngine> ib2c_engine,
+                        OverlayParam& param) = 0;
+#else
   virtual int32_t Init (OverlayParam& param) = 0;
+#endif // ENABLE_GLES
 
   virtual int32_t UpdateAndDraw () = 0;
 
@@ -316,7 +314,13 @@ class OverlayItem {
 
   uint32_t CalcStride (uint32_t width, SurfaceFormat format);
 
+#ifdef ENABLE_C2D
   uint32_t GetC2DFormat (SurfaceFormat format);
+#endif // ENABLE_C2D
+
+#ifdef ENABLE_GLES
+  uint32_t GetGlesFormat (SurfaceFormat format);
+#endif // ENABLE_GLES
 
   cairo_format_t GetCairoFormat (SurfaceFormat format);
 
@@ -326,11 +330,19 @@ protected:
     uint32_t size;
     int32_t fd;
     void * vaddr;
+#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
+    ion_user_handle_t handle;
+#endif // TARGET_ION_ABI_VERSION
   };
 
   int32_t AllocateIonMemory (IonMemInfo& mem_info, uint32_t size);
 
+#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
+  void FreeIonMemory (void *&vaddr, int32_t &ion_fd, uint32_t size,
+                      ion_user_handle_t handle);
+#else
   void FreeIonMemory (void *&vaddr, int32_t &ion_fd, uint32_t size);
+#endif // TARGET_ION_ABI_VERSION
 
   int32_t MapOverlaySurface (OverlaySurface &surface, IonMemInfo &mem_info);
 
@@ -365,6 +377,10 @@ protected:
   size_t local_size_h_;
   uint32_t font_size_;
 
+#ifdef ENABLE_GLES
+  std::shared_ptr<ib2c::IEngine> ib2c_engine_;
+#endif // ENABLE_GLES
+
  private:
 
   bool is_active_;
@@ -373,12 +389,18 @@ protected:
 class OverlayItemStaticImage : public OverlayItem {
  public:
 
-  OverlayItemStaticImage (int32_t ion_device, CLKernelIds kernel_id) :
-          OverlayItem (ion_device, OverlayType::kStaticImage, kernel_id) {};
+  OverlayItemStaticImage (int32_t ion_device, OverlayBlitType blit_type,
+                          CLKernelIds kernel_id) :
+      OverlayItem (ion_device, OverlayType::kStaticImage, blit_type, kernel_id) {};
 
   virtual ~OverlayItemStaticImage () {};
 
+#ifdef ENABLE_GLES
+  int32_t Init (std::shared_ptr<ib2c::IEngine> ib2c_engine,
+                OverlayParam& param) override;
+#else
   int32_t Init (OverlayParam& param) override;
+#endif // ENABLE_GLES
 
   int32_t UpdateAndDraw () override;
 
@@ -408,11 +430,17 @@ class OverlayItemStaticImage : public OverlayItem {
 class OverlayItemDateAndTime : public OverlayItem {
  public:
 
-  OverlayItemDateAndTime (int32_t ion_device, CLKernelIds kernel_id);
+  OverlayItemDateAndTime (int32_t ion_device, OverlayBlitType blit_type,
+                          CLKernelIds kernel_id);
 
   virtual ~OverlayItemDateAndTime ();
 
+#ifdef ENABLE_GLES
+  int32_t Init (std::shared_ptr<ib2c::IEngine> ib2c_engine,
+                OverlayParam& param) override;
+#else
   int32_t Init (OverlayParam& param) override;
+#endif // ENABLE_GLES
 
   int32_t UpdateAndDraw () override;
 
@@ -435,11 +463,17 @@ private:
 class OverlayItemBoundingBox : public OverlayItem {
  public:
 
-  OverlayItemBoundingBox (int32_t ion_device, CLKernelIds kernel_id);
+  OverlayItemBoundingBox (int32_t ion_device, OverlayBlitType blit_type,
+                          CLKernelIds kernel_id);
 
   virtual ~OverlayItemBoundingBox ();
 
+#ifdef ENABLE_GLES
+  int32_t Init (std::shared_ptr<ib2c::IEngine> ib2c_engine,
+                OverlayParam& param) override;
+#else
   int32_t Init (OverlayParam& param) override;
+#endif // ENABLE_GLES
 
   int32_t UpdateAndDraw () override;
 
@@ -452,7 +486,7 @@ class OverlayItemBoundingBox : public OverlayItem {
 
  private:
 
-  static const int32_t kBoxBuffWidth = 320;
+  static const int32_t kBoxBuffWidth = 384;
   static const int32_t kStrokeWidth = 4;
   static const int32_t kTextLimit = 20;
   static const int32_t kTextPercent = 20;
@@ -477,12 +511,18 @@ class OverlayItemBoundingBox : public OverlayItem {
 class OverlayItemText : public OverlayItem {
  public:
 
-  OverlayItemText (int32_t ion_device, CLKernelIds kernel_id) :
-      OverlayItem (ion_device, OverlayType::kUserText, kernel_id) {};
+  OverlayItemText (int32_t ion_device, OverlayBlitType blit_type,
+                   CLKernelIds kernel_id) :
+      OverlayItem (ion_device, OverlayType::kUserText, blit_type, kernel_id) {};
 
   virtual ~OverlayItemText ();
 
+#ifdef ENABLE_GLES
+  int32_t Init (std::shared_ptr<ib2c::IEngine> ib2c_engine,
+                OverlayParam& param) override;
+#else
   int32_t Init (OverlayParam& param) override;
+#endif // ENABLE_GLES
 
   int32_t UpdateAndDraw () override;
 
@@ -504,12 +544,18 @@ class OverlayItemText : public OverlayItem {
 class OverlayItemPrivacyMask : public OverlayItem {
  public:
 
-  OverlayItemPrivacyMask (int32_t ion_device, CLKernelIds kernel_id) :
-          OverlayItem (ion_device, OverlayType::kPrivacyMask, kernel_id) {};
+  OverlayItemPrivacyMask (int32_t ion_device, OverlayBlitType blit_type,
+                          CLKernelIds kernel_id) :
+      OverlayItem (ion_device, OverlayType::kPrivacyMask, blit_type, kernel_id) {};
 
   virtual ~OverlayItemPrivacyMask () {};
 
+#ifdef ENABLE_GLES
+  int32_t Init (std::shared_ptr<ib2c::IEngine> ib2c_engine,
+                OverlayParam& param) override;
+#else
   int32_t Init (OverlayParam& param) override;
+#endif // ENABLE_GLES
 
   int32_t UpdateAndDraw () override;
 
@@ -532,12 +578,18 @@ class OverlayItemPrivacyMask : public OverlayItem {
 class OverlayItemGraph : public OverlayItem {
  public:
 
-  OverlayItemGraph (int32_t ion_device, CLKernelIds kernel_id) :
-      OverlayItem (ion_device, OverlayType::kGraph, kernel_id) {};
+  OverlayItemGraph (int32_t ion_device, OverlayBlitType blit_type,
+                    CLKernelIds kernel_id) :
+      OverlayItem (ion_device, OverlayType::kGraph, blit_type, kernel_id) {};
 
   virtual ~OverlayItemGraph () {};
 
+#ifdef ENABLE_GLES
+  int32_t Init (std::shared_ptr<ib2c::IEngine> ib2c_engine,
+                OverlayParam& param) override;
+#else
   int32_t Init (OverlayParam& param) override;
+#endif // ENABLE_GLES
 
   int32_t UpdateAndDraw () override;
 
@@ -554,8 +606,8 @@ class OverlayItemGraph : public OverlayItem {
 
   static const int kDotRadius = 3;
   static const int kLineWidth = 2;
-  static const int kGraphBufWidth = 480;
-  static const int kGraphBufHeight = 270;
+  static const int kGraphBufWidth = 512;
+  static const int kGraphBufHeight = 288;
 
   uint32_t graph_color_;
   float downscale_ratio_;
@@ -565,11 +617,17 @@ class OverlayItemGraph : public OverlayItem {
 class OverlayItemArrow : public OverlayItem {
  public:
 
-  OverlayItemArrow (int32_t ion_device, CLKernelIds kernel_id);
+  OverlayItemArrow (int32_t ion_device, OverlayBlitType blit_type,
+                    CLKernelIds kernel_id);
 
   virtual ~OverlayItemArrow ();
 
+#ifdef ENABLE_GLES
+  int32_t Init (std::shared_ptr<ib2c::IEngine> ib2c_engine,
+                OverlayParam& param) override;
+#else
   int32_t Init (OverlayParam& param) override;
+#endif // ENABLE_GLES
 
   int32_t UpdateAndDraw () override;
 
