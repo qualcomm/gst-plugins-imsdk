@@ -34,7 +34,17 @@
 
 #include "c2-component.h"
 
+#ifdef HAVE_MMM_COLOR_FMT_H
+#include <display/media/mmm_color_fmt.h>
+#else
 #include <vidc/media/msm_media_info.h>
+#define MMM_COLOR_FMT_NV12 COLOR_FMT_NV12
+#define MMM_COLOR_FMT_NV12_UBWC COLOR_FMT_NV12_UBWC
+#define MMM_COLOR_FMT_Y_STRIDE VENUS_Y_STRIDE
+#define MMM_COLOR_FMT_Y_SCANLINES VENUS_Y_SCANLINES
+#define MMM_COLOR_FMT_UV_STRIDE VENUS_UV_STRIDE
+#define MMM_COLOR_FMT_BUFFER_SIZE_USED VENUS_BUFFER_SIZE_USED
+#endif
 
 #define MAX_PENDING_WORK 6
 
@@ -228,7 +238,7 @@ c2_status_t C2ComponentWrapper::prepareC2Buffer(BufferDescriptor* buffer, std::s
           uint8_t *src, *dest;
 
           if (buffer->ubwc_flag) {
-            uint32_t buf_size = VENUS_BUFFER_SIZE_USED(COLOR_FMT_NV12_UBWC,
+            uint32_t buf_size = MMM_COLOR_FMT_BUFFER_SIZE_USED(MMM_COLOR_FMT_NV12_UBWC,
               buffer->width, buffer->height, 0);
 
             src = rawBuffer;
@@ -239,14 +249,14 @@ c2_status_t C2ComponentWrapper::prepareC2Buffer(BufferDescriptor* buffer, std::s
             src_stride = buffer->width;
             for (i=0; i<2; i++) {
               if (0 == i){
-                dest_stride = VENUS_Y_STRIDE (COLOR_FMT_NV12, buffer->width);
+                dest_stride = MMM_COLOR_FMT_Y_STRIDE (MMM_COLOR_FMT_NV12, buffer->width);
                 height = ((buffer->size / buffer->width) / 3) * 2;
                 dest = (uint8_t *)*data;
               } else {
-                dest_stride = VENUS_UV_STRIDE (COLOR_FMT_NV12, buffer->width);
+                dest_stride = MMM_COLOR_FMT_UV_STRIDE (MMM_COLOR_FMT_NV12, buffer->width);
                 height = (buffer->size / buffer->width) / 3;
-                dest = (uint8_t *)*data + VENUS_Y_STRIDE (COLOR_FMT_NV12,
-                       buffer->width) * VENUS_Y_SCANLINES(COLOR_FMT_NV12,
+                dest = (uint8_t *)*data + MMM_COLOR_FMT_Y_STRIDE (MMM_COLOR_FMT_NV12,
+                       buffer->width) * MMM_COLOR_FMT_Y_SCANLINES(MMM_COLOR_FMT_NV12,
                        buffer->height);
               }
 
@@ -311,15 +321,15 @@ C2ComponentWrapper::Queue (BufferDescriptor * buffer)
           gbm_handle->mInts.width = buffer->width;
           gbm_handle->mInts.height = buffer->height;
           if (buffer->ubwc_flag) {
-            gbm_handle->mInts.stride = VENUS_Y_STRIDE (
-              COLOR_FMT_NV12_UBWC, buffer->width);
-            gbm_handle->mInts.slice_height = VENUS_Y_SCANLINES (
-              COLOR_FMT_NV12_UBWC, buffer->height);
+            gbm_handle->mInts.stride = MMM_COLOR_FMT_Y_STRIDE (
+              MMM_COLOR_FMT_NV12_UBWC, buffer->width);
+            gbm_handle->mInts.slice_height = MMM_COLOR_FMT_Y_SCANLINES (
+              MMM_COLOR_FMT_NV12_UBWC, buffer->height);
           } else {
-            gbm_handle->mInts.stride = VENUS_Y_STRIDE (
-              COLOR_FMT_NV12, buffer->width);
-            gbm_handle->mInts.slice_height = VENUS_Y_SCANLINES (
-              COLOR_FMT_NV12, buffer->height);
+            gbm_handle->mInts.stride = MMM_COLOR_FMT_Y_STRIDE (
+              MMM_COLOR_FMT_NV12, buffer->width);
+            gbm_handle->mInts.slice_height = MMM_COLOR_FMT_Y_SCANLINES (
+              MMM_COLOR_FMT_NV12, buffer->height);
           }
           gbm_handle->mInts.format = gst_to_c2_gbmformat (buffer->format);
           gbm_handle->mInts.usage_lo = GBM_BO_USE_SCANOUT

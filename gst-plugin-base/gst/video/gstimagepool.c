@@ -73,8 +73,16 @@
 #include <gbm_priv.h>
 #include <linux/ion.h>
 #include <linux/msm_ion.h>
-#include <media/msm_media_info.h>
 
+#ifdef HAVE_MMM_COLOR_FMT_H
+#include <display/media/mmm_color_fmt.h>
+#else
+#include <media/msm_media_info.h>
+#define MMM_COLOR_FMT_NV12_UBWC COLOR_FMT_NV12_UBWC
+#define MMM_COLOR_FMT_ALIGN MSM_MEDIA_ALIGN
+#define MMM_COLOR_FMT_Y_META_STRIDE VENUS_Y_META_STRIDE
+#define MMM_COLOR_FMT_Y_META_SCANLINES VENUS_Y_META_SCANLINES
+#endif
 
 GST_DEBUG_CATEGORY_STATIC (gst_image_pool_debug);
 #define GST_CAT_DEFAULT gst_image_pool_debug
@@ -524,12 +532,12 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
       if (priv->isubwc && (bufinfo.format = GBM_FORMAT_NV12)) {
         guint metastride, metascanline;
 
-        metastride = VENUS_Y_META_STRIDE (COLOR_FMT_NV12_UBWC, bufinfo.width);
-        metascanline = VENUS_Y_META_SCANLINES (COLOR_FMT_NV12_UBWC, bufinfo.height);
+        metastride = MMM_COLOR_FMT_Y_META_STRIDE (MMM_COLOR_FMT_NV12_UBWC, bufinfo.width);
+        metascanline = MMM_COLOR_FMT_Y_META_SCANLINES (MMM_COLOR_FMT_NV12_UBWC, bufinfo.height);
 
         GST_VIDEO_INFO_PLANE_OFFSET (&priv->info, 1) =
-            MSM_MEDIA_ALIGN (stride * scanline, DEFAULT_PAGE_ALIGNMENT) +
-            MSM_MEDIA_ALIGN (metastride * metascanline, DEFAULT_PAGE_ALIGNMENT);
+            MMM_COLOR_FMT_ALIGN (stride * scanline, DEFAULT_PAGE_ALIGNMENT) +
+            MMM_COLOR_FMT_ALIGN (metastride * metascanline, DEFAULT_PAGE_ALIGNMENT);
       }
     }
 
