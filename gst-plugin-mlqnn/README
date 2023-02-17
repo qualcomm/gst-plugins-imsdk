@@ -1,0 +1,29 @@
+## About
+
+This README file contains steps to enable QNN GStreamer plugin(s)
+
+## Instructions
+
+1. Enable QNN Distro
+    - Add 'qti-qnn' to 'DISTRO_FEATURES' list in the distro conf file
+        ```
+        DISTRO_FEATURES_append = " qti-qnn"
+        OR
+        DISTRO_FEATURES += "qti-qnn"
+        ```
+        Note the space in _append command.
+
+2. Download QNN package and unzip it.
+
+3. Incorporate the downloaded and unzipped QNN package into the workspace.
+    - Create folders 'files/qnn' in '<path-to-workspace>/poky/meta-qti-ml-prop/recipes/qnn-sdk/'
+        ```bash
+        mkdir -p <path-to-workspace>/poky/meta-qti-ml-prop/recipes/qnn-sdk/files/qnn
+        ```
+    - Copy the unzipped QNN package folder to '<path-to-workspace>/poky/meta-qti-ml-prop/recipes/qnn-sdk/files/qnn/'
+        ```bash
+        cp -r <path-to-unzipped-QNN>/* <path-to-workspace>/poky/meta-qti-ml-prop/recipes/qnn-sdk/files/qnn/
+        ```
+    - The final directory structure should look like - <path-to-workspace>/poky/meta-qti-ml-prop/recipes/qnn-sdk/files/qnn/
+
+4. Rebuild the image and flash the image to device
