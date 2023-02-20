@@ -147,7 +147,7 @@ gst_video_split_mode_get_type (void)
   return gtype;
 }
 
-static GstBufferPool *
+GstBufferPool *
 gst_video_split_create_pool (GstPad * pad, GstCaps * caps)
 {
   GstBufferPool *pool = NULL;
