@@ -135,6 +135,9 @@ GType gst_video_split_srcpad_get_type (void);
 gboolean
 gst_video_split_srcpad_setcaps (GstVideoSplitSrcPad * srcpad, GstCaps * incaps);
 
+GstBufferPool *
+gst_video_split_create_pool (GstPad * pad, GstCaps * caps);
+
 G_END_DECLS
 
 #endif // __GST_QTI_VIDEO_SPLIT_PADS_H__
