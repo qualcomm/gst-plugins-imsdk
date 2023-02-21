@@ -329,7 +329,9 @@ gst_map_input_video_frames (GstVideoFrame ** inframes, guint n_inputs,
 
     // Check if a bitwise mask was set for this channel/batch input.
     if ((GST_BUFFER_OFFSET (inbuffer) != GST_BUFFER_OFFSET_NONE) &&
-        ((GST_BUFFER_OFFSET (inbuffer) & (1 << idx)) == 0))
+        ((GST_BUFFER_OFFSET (inbuffer) & (1 << idx)) == 0) &&
+         GST_VIDEO_INFO_MULTIVIEW_MODE (info) ==
+            GST_VIDEO_MULTIVIEW_MODE_SEPARATED)
       continue;
 
     // Check if there is memory block for this index.
@@ -945,7 +947,9 @@ gst_ml_video_converter_prepare_output_buffer (GstBaseTransform * base,
 
     // Check if a bitwise mask was set for this channel/batch input.
     if ((GST_BUFFER_OFFSET (inbuffer) != GST_BUFFER_OFFSET_NONE) &&
-        ((GST_BUFFER_OFFSET (inbuffer) & (1 << idx)) == 0))
+        ((GST_BUFFER_OFFSET (inbuffer) & (1 << idx)) == 0) &&
+        GST_VIDEO_INFO_MULTIVIEW_MODE (mlconverter->ininfo) ==
+            GST_VIDEO_MULTIVIEW_MODE_SEPARATED)
       continue;
 
     name = g_strdup_printf ("channel-%u", idx);

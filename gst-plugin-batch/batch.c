@@ -316,6 +316,12 @@ gst_batch_update_src_caps (GstBatch * batch)
     if (!gst_structure_has_name (structure, "video/x-raw"))
       continue;
 
+    // Set multiview mode separated which indicates the next plugin to read
+    // the corresponding channel bit in the buffer universal offset field.
+    gst_structure_set (structure, "multiview-mode", G_TYPE_STRING,
+          gst_video_multiview_mode_to_caps_string (
+              GST_VIDEO_MULTIVIEW_MODE_SEPARATED), NULL);
+
     if (G_VALUE_TYPE (&framerate) == GST_TYPE_FRACTION)
       gst_structure_set_value (structure, "framerate", &framerate);
   }
