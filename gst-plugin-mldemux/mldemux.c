@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -392,7 +392,7 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
     if (GST_FORMAT_UNDEFINED == srcpad->segment.format) {
       gst_segment_init (&(srcpad)->segment, GST_FORMAT_TIME);
 
-      srcpad->segment.start = GST_BUFFER_TIMESTAMP (outbuffer);
+      srcpad->segment.start = 0;
       srcpad->segment.position = GST_BUFFER_TIMESTAMP (outbuffer);
 
       gst_pad_push_event (GST_PAD (srcpad),
