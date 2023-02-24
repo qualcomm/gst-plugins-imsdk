@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -69,6 +69,8 @@
 
 #include <ml-meta/ml_meta.h>
 #include <iot-core-algs/umd-gadget.h>
+#include <sys/epoll.h>
+
 
 #define HASH_LINE  "##################################################"
 #define EQUAL_LINE "=================================================="
@@ -107,6 +109,18 @@
     "camsrc. ! capsfilter name=umdvfilter ! queue name=vqueue ! qtivtransform name=vtransform ! queue name=umdvqueue ! " \
     "appsink name=umdvsink"
 
+#define GST_AUDIO_PIPELINE "pulsesrc name=src ! audio/x-raw,format=S16LE,rate=48000,channels=2 ! queue ! " \
+    "audiobuffersplit output-buffer-duration=3/100 ! pulsesink name=sink"
+
+#define AUDIO_P_STATUS_CMD "cat /sys/kernel/config/usb_gadget/g1/functions/uac1.uac1/p_status"
+#define AUDIO_C_STATUS_CMD "cat /sys/kernel/config/usb_gadget/g1/functions/uac1.uac1/c_status"
+#define AUDIO_PB_PIPELINE  "audio playback pipeline"
+#define AUDIO_CP_PIPELINE  "audio capture pipeline"
+#define AUDIO_UAC1_EVENT   "change@/devices/virtual/android_usb/android0/f_uac1"
+#define UEVENT_MSG_LEN     2048
+
+
+
 #define GST_SERVICE_CONTEXT_CAST(obj)  ((GstServiceContext*)(obj))
 
 #define UMD_VIDEO_GET_PAN_VALUE(pantilt)  (((int32_t *)(pantilt))[0] / 3600)
@@ -122,11 +136,35 @@ typedef struct _VideoRectangle VideoRectangle;
 typedef struct _AutoFrmLib AutoFrmLib;
 typedef struct _AutoFrmOps AutoFrmOps;
 typedef struct _MainOps MainOps;
+typedef struct _UeventData UeventData;
+
 
 enum
 {
   ML_CROP_INTERNAL = 0,
   ML_CROP_EXTERNAL = 1,
+};
+
+enum
+{
+  C_STATUS = 0,
+  P_STATUS = 1,
+};
+
+typedef enum
+{
+  AUDIO_STATE_INVALID,
+  AUDIO_STATE_PLAYBACK,
+  AUDIO_STATE_CAPTURE,
+  AUDIO_STATE_PLAYBACK_CAPTURE,
+  AUDIO_STATE_PAUSED
+} AudioState;
+
+struct _UeventData
+{
+  gint fd;
+  AudioState cur;
+  gpointer ptr;
 };
 
 /// ML Auto Framing related command line options.
@@ -147,12 +185,13 @@ static AutoFrmOps afrmops = {
 struct _MainOps
 {
   gchar * video;
-  gchar * audio;
+  gchar * audiosrc;
+  gchar * audiosink;
   gchar * cfgfile;
 };
 
 static MainOps mainops = {
-  NULL, NULL, NULL
+  NULL, NULL, NULL, NULL
 };
 
 static const GOptionEntry entries[] = {
@@ -162,11 +201,17 @@ static const GOptionEntry entries[] = {
       "(default: NULL)",
       "USB-VIDEO-DEVICE"
     },
-    { "uac", 'a', 0, G_OPTION_ARG_STRING,
-      &mainops.audio,
-      "UAC device "
+    { "audio-src", 'i', 0, G_OPTION_ARG_STRING,
+      &mainops.audiosrc,
+      "UAC source device "
       "(default: NULL)",
-      "USB-AUDIO-DEVICE"
+      "USB-AUDIO-SOURCE-DEVICE"
+    },
+    { "audio-sink", 'o', 0, G_OPTION_ARG_STRING,
+      &mainops.audiosink,
+      "UAC sink device "
+      "(default: NULL)",
+      "USB-AUDIO-SINK-DEVICE"
     },
     { "config-file", 'c', 0, G_OPTION_ARG_STRING,
       &mainops.cfgfile,
@@ -326,8 +371,11 @@ struct _GstServiceContext
   // GStreamer video pipeline instance.
   GstElement          *vpipeline;
 
-  // GStreamer audio pipeline instance.
-  GstElement          *apipeline;
+  // GStreamer audio capture pipeline instance.
+  GstElement          *apipelinecp;
+
+  // GStreamer audio playback pipeline instance.
+  GstElement          *apipelinepb;
 
   // Auto Framing Algorithm library instance.
   AutoFrmLib          *afrmalgo;
@@ -341,6 +389,204 @@ struct _GstServiceContext
   // Conteiner for UVC controls min, max and default values
   GstUvcControlValues ctrlvals;
 };
+
+static gint
+get_audio_sysfs_data (gint sysfs_entry)
+{
+  FILE *file = NULL;
+  gchar content[128] = {0};
+  gint status = -1;
+
+  switch (sysfs_entry) {
+    case C_STATUS :
+      snprintf (content, 128, AUDIO_C_STATUS_CMD);
+      break;
+    case P_STATUS :
+      snprintf (content, 128, AUDIO_P_STATUS_CMD);
+      break;
+  }
+
+  file = popen (content, "r");
+  if (!file) {
+    g_printerr ("\nFailed to open audio sysfs entry!\n");
+  }
+  fscanf (file, "%d", &status);
+  if (file) {
+    pclose (file);
+    file = NULL;
+  }
+
+  return status;
+}
+
+static AudioState
+get_audio_client_status ()
+{
+  gint c_status = -1, p_status = -1;
+  AudioState ret = AUDIO_STATE_INVALID;
+
+  p_status = get_audio_sysfs_data (P_STATUS);
+  c_status = get_audio_sysfs_data (C_STATUS);
+
+  if (c_status == 0 && p_status == 0)
+    ret = AUDIO_STATE_PAUSED;
+  if (c_status == 1 && p_status == 1)
+    ret = AUDIO_STATE_PLAYBACK_CAPTURE;
+  if (c_status == 1 && p_status == 0)
+    ret = AUDIO_STATE_CAPTURE;
+  if (c_status == 0 && p_status == 1)
+    ret = AUDIO_STATE_PLAYBACK;
+
+  return ret;
+}
+
+static void
+change_audio_pipeline_state (GstElement *pipeline, GstState new)
+{
+  GstState state = GST_STATE_VOID_PENDING;
+  gst_element_get_state (pipeline, &state, NULL, 0);
+
+  switch (new) {
+    case GST_STATE_PLAYING:
+    {
+      if (state != GST_STATE_PLAYING) {
+        g_print ("\nSetting %s to playing state ...\n",
+            gst_element_get_name (pipeline));
+        if (gst_element_set_state (pipeline, GST_STATE_PLAYING) ==
+            GST_STATE_CHANGE_FAILURE)
+          g_printerr ("\n%s doesn't want to transition to playing state!\n",
+              gst_element_get_name (pipeline));
+      }
+      break;
+    }
+    case GST_STATE_PAUSED:
+    {
+      if (state != GST_STATE_PAUSED) {
+        g_print ("\nSetting %s to paused state ...\n",
+            gst_element_get_name (pipeline));
+      if (gst_element_set_state (pipeline, GST_STATE_PAUSED) ==
+          GST_STATE_CHANGE_FAILURE)
+        g_printerr ("\n%s doesn't want to transition to paused state!\n",
+            gst_element_get_name (pipeline));
+      }
+      break;
+    }
+    default:
+      g_printerr ("\n not a valid state!\n");
+      break;
+  }
+}
+
+static void
+uevent_event (UeventData *payload)
+{
+  GstServiceContext *srvctx = GST_SERVICE_CONTEXT_CAST (payload->ptr);
+  GstElement *pipeline = NULL;
+  GstState state = GST_STATE_VOID_PENDING;
+  char msg[UEVENT_MSG_LEN + 2];
+  gint n;
+  gchar event[] = AUDIO_UAC1_EVENT;
+
+  n = uevent_kernel_multicast_recv (payload->fd, msg, UEVENT_MSG_LEN);
+  if (n <=0 || n >= UEVENT_MSG_LEN) return;
+
+  msg[n] = '\0';
+  msg[n + 1] = '\0';
+  if (!strncmp (msg, event, sizeof(event))) {
+    AudioState newstate = get_audio_client_status ();
+    if (payload->cur != newstate) {
+      payload->cur = newstate;
+      switch (newstate) {
+        case AUDIO_STATE_PAUSED:
+          if (srvctx->apipelinecp != NULL)
+            change_audio_pipeline_state (srvctx->apipelinecp, GST_STATE_PAUSED);
+          if (srvctx->apipelinepb != NULL)
+            change_audio_pipeline_state (srvctx->apipelinepb, GST_STATE_PAUSED);
+        break;
+        case AUDIO_STATE_CAPTURE:
+          if (srvctx->apipelinecp != NULL)
+            change_audio_pipeline_state (srvctx->apipelinecp, GST_STATE_PLAYING);
+          if (srvctx->apipelinepb != NULL)
+            change_audio_pipeline_state (srvctx->apipelinepb, GST_STATE_PAUSED);
+        break;
+        case AUDIO_STATE_PLAYBACK:
+          if (srvctx->apipelinecp != NULL)
+            change_audio_pipeline_state (srvctx->apipelinecp, GST_STATE_PAUSED);
+          if (srvctx->apipelinepb != NULL)
+            change_audio_pipeline_state (srvctx->apipelinepb, GST_STATE_PLAYING);
+        break;
+        case AUDIO_STATE_PLAYBACK_CAPTURE:
+          if (srvctx->apipelinecp != NULL)
+            change_audio_pipeline_state (srvctx->apipelinecp, GST_STATE_PLAYING);
+          if (srvctx->apipelinepb != NULL)
+            change_audio_pipeline_state (srvctx->apipelinepb, GST_STATE_PLAYING);
+        break;
+        default:
+          g_printerr ("\n invalid audio state \n");
+        break;
+      }
+    }
+  }
+}
+
+
+static gpointer
+monitor_audio_status (gpointer userdata)
+{
+  GstServiceContext *srvctx = GST_SERVICE_CONTEXT_CAST (userdata);
+  gboolean active = TRUE;
+  gint uevent_fd, epoll_fd, nevents, n;
+  struct epoll_event ev;
+  struct epoll_event events[64];
+  UeventData payload;
+
+  uevent_fd = uevent_open_socket (64 * 1024, true);
+  if (uevent_fd < 0) {
+    g_printerr ("\nuevent open socket failed\n");
+    return NULL;
+  }
+
+  fcntl (uevent_fd, F_SETFL, O_NONBLOCK);
+
+  ev.events = EPOLLIN;
+  ev.data.ptr = (void*)uevent_event;
+
+  epoll_fd = epoll_create (64);
+  if (epoll_fd == -1) {
+    g_printerr ("\nepoll_create failed\n");
+    close (uevent_fd);
+    return NULL;
+  }
+
+  payload.fd = uevent_fd;
+  payload.ptr = srvctx;
+  payload.cur = AUDIO_STATE_INVALID;
+
+  if (epoll_ctl (epoll_fd, EPOLL_CTL_ADD, uevent_fd, &ev) == -1) {
+    g_printerr ("\nepoll_ctl failed\n");
+    close (uevent_fd);
+    close (epoll_fd);
+    return NULL;
+  }
+
+  while (active) {
+    active = (srvctx->apipelinecp != NULL || srvctx->apipelinepb != NULL);
+    nevents = epoll_wait (epoll_fd, events, 64, -1);
+    if (nevents == -1) {
+      if (errno == EINTR) continue;
+      break;
+    }
+
+    for (n = 0; n < nevents; ++n) {
+      if (events[n].data.ptr)
+        (*(void (*)(UeventData *payload))events[n].data.ptr)(&payload);
+    }
+  }
+
+  close (uevent_fd);
+  close (epoll_fd);
+  return NULL;
+ }
 
 static void
 gst_sample_release (GstSample * sample)
@@ -378,9 +624,16 @@ gst_service_context_free (GstServiceContext * ctx)
     gst_object_unref (ctx->vpipeline);
   }
 
-  if (ctx->apipeline != NULL) {
-    gst_element_set_state (ctx->apipeline, GST_STATE_NULL);
-    gst_object_unref (ctx->apipeline);
+  if (ctx->apipelinecp != NULL) {
+    gst_element_set_state (ctx->apipelinecp, GST_STATE_NULL);
+    gst_object_unref (ctx->apipelinecp);
+    ctx->apipelinecp = NULL;
+  }
+
+  if (ctx->apipelinepb != NULL) {
+    gst_element_set_state (ctx->apipelinepb, GST_STATE_NULL);
+    gst_object_unref (ctx->apipelinepb);
+    ctx->apipelinepb = NULL;
   }
 
   if ((ctx->afrmalgo != NULL) && (ctx->afrmalgo->instance != NULL))
@@ -409,7 +662,8 @@ gst_service_context_new ()
     return NULL;
   }
 
-  ctx->apipeline = NULL;
+  ctx->apipelinecp = NULL;
+  ctx->apipelinepb = NULL;
   ctx->vpipeline = NULL;
   ctx->gadget = NULL;
 
@@ -544,8 +798,11 @@ handle_bus_message (GstBus * bus, GstMessage * message, gpointer userdata)
   GstServiceContext *srvctx = GST_SERVICE_CONTEXT_CAST (userdata);
   GstElement *pipeline = srvctx->vpipeline;
 
-  if (GST_MESSAGE_SRC (message) == GST_OBJECT_CAST (srvctx->apipeline))
-    pipeline = srvctx->apipeline;
+  if (GST_MESSAGE_SRC (message) == GST_OBJECT_CAST (srvctx->apipelinepb))
+    pipeline = srvctx->apipelinepb;
+
+  if (GST_MESSAGE_SRC (message) == GST_OBJECT_CAST (srvctx->apipelinecp))
+    pipeline = srvctx->apipelinecp;
 
   switch (GST_MESSAGE_TYPE (message)) {
     case GST_MESSAGE_ERROR:
@@ -618,17 +875,6 @@ handle_bus_message (GstBus * bus, GstMessage * message, gpointer userdata)
         g_async_queue_push (srvctx->pipemsgs, gst_structure_new (
             PIPELINE_STATE_MESSAGE, "new", G_TYPE_UINT, new,
             "pending", G_TYPE_UINT, pending, NULL));
-
-      if (pipeline == srvctx->apipeline && (new == GST_STATE_PAUSED) &&
-          (old == GST_STATE_READY) && (pending == GST_STATE_VOID_PENDING)) {
-        g_print ("\nSetting %s to PLAYING state ...\n",
-            gst_element_get_name (pipeline));
-
-        if (gst_element_set_state (pipeline, GST_STATE_PLAYING) ==
-                GST_STATE_CHANGE_FAILURE)
-          g_printerr ("\n%s doesn't want to transition to PLAYING state!\n",
-              gst_element_get_name (pipeline));
-      }
       break;
     }
     default:
@@ -797,8 +1043,6 @@ umd_new_sample (GstElement *sink, gpointer userdata)
 
   if (!g_strcmp0 ("umdvsink", gst_element_get_name (sink)))
     stream_id = UMD_VIDEO_STREAM_ID;
-  else if (!g_strcmp0 ("umdasink", gst_element_get_name (sink)))
-    stream_id = UMD_AUDIO_STREAM_ID;
   else
     return GST_FLOW_ERROR;
 
@@ -972,76 +1216,37 @@ update_pipeline_state (GstElement * pipeline, GAsyncQueue * messages,
 }
 
 static gboolean
-create_audio_pipeline (GstServiceContext * srvctx)
+create_audio_pb_pipeline (GstServiceContext * srvctx)
 {
-  GstElement *pcmsrc = NULL, *afilter = NULL;
-  GstElement *abufsplit = NULL, *umdasink = NULL;
-  GstCaps *filtercaps = NULL;
+  GstElement *element = NULL;
   GstBus *bus = NULL;
+  GError *error = NULL;
 
-  // Create the empty audio pipeline.
-  if ((srvctx->apipeline = gst_pipeline_new ("audio-pipeline")) == NULL) {
-    g_printerr ("\nFailed to create empty audio pipeline.\n");
+  // Create the empty audio pb pipeline.
+  srvctx->apipelinepb = gst_parse_launch (GST_AUDIO_PIPELINE, &error);
+  gst_element_set_name (srvctx->apipelinepb, AUDIO_PB_PIPELINE);
+
+  if (srvctx->apipelinepb == NULL) {
+    g_printerr ("\nPipeline could not be created, error: %s!\n",
+        GST_STR_NULL (error->message));
+    g_clear_error (&error);
     return FALSE;
   }
 
-  pcmsrc    = gst_element_factory_make ("pulsesrc", "pcmsrc");
-  afilter   = gst_element_factory_make ("capsfilter", "afilter");
-  abufsplit = gst_element_factory_make ("audiobuffersplit", "abufsplit");
-  umdasink  = gst_element_factory_make ("appsink", "umdasink");
+  element = gst_bin_get_by_name (GST_BIN (srvctx->apipelinepb), "src");
+  g_object_set (G_OBJECT (element), "volume", 10.0, NULL);
+  g_object_set (G_OBJECT (element), "device", mainops.audiosrc, NULL);
+  gst_object_unref (element);
 
-  if (!pcmsrc || !afilter || !abufsplit || !umdasink) {
-    g_printerr ("\nOne audio element could not be created. Exiting.\n");
+  element = gst_bin_get_by_name (GST_BIN (srvctx->apipelinepb), "sink");
+  g_object_set (G_OBJECT (element), "device", "usb-playback", NULL);
+  g_object_set (G_OBJECT (element), "volume", 10.0, NULL);
+  gst_object_unref (element);
 
-    if (pcmsrc)
-      gst_object_unref (pcmsrc);
-
-    if (afilter)
-      gst_object_unref (afilter);
-
-    if (abufsplit)
-      gst_object_unref (abufsplit);
-
-    if (umdasink)
-      gst_object_unref (umdasink);
-
-    return FALSE;
-  }
-
-  // Add the elements to the pipeline.
-  gst_bin_add_many (GST_BIN (srvctx->apipeline), pcmsrc, afilter, abufsplit,
-      umdasink, NULL);
-
-  g_object_set (G_OBJECT (pcmsrc), "volume", 10.0, NULL);
-
-  // Set caps for the pulsesrc audio pad.
-  filtercaps = gst_caps_new_simple ("audio/x-raw",
-      "format", G_TYPE_STRING, "S16LE",
-      "channels", G_TYPE_INT, 2,
-      "rate", G_TYPE_INT, 48000,
-      NULL);
-  g_object_set (G_OBJECT (afilter), "caps", filtercaps, NULL);
-  gst_caps_unref (filtercaps);
-
-  g_object_set (G_OBJECT (abufsplit), "output-buffer-duration", 3, 100, NULL);
-
-  // Connect a callback to the new-sample signal.
-  g_object_set (G_OBJECT (umdasink), "emit-signals", TRUE, NULL);
-  g_signal_connect (umdasink, "new-sample", G_CALLBACK (umd_new_sample), srvctx);
-
-  g_object_set (G_OBJECT(umdasink), "wait-on-eos", FALSE, NULL);
-  g_object_set (G_OBJECT(umdasink), "enable-last-sample", FALSE, NULL);
-  g_object_set (G_OBJECT(umdasink), "sync", FALSE, NULL);
-
-  if (!gst_element_link_many (pcmsrc, afilter, abufsplit, umdasink, NULL)) {
-    g_printerr ("\nFailed to link audio pipeline elements.\n");
-    gst_object_unref (srvctx->apipeline);
-    return FALSE;
-  }
     // Retrieve reference to the pipeline's bus.
-  if ((bus = gst_pipeline_get_bus (GST_PIPELINE (srvctx->apipeline))) == NULL) {
-    g_printerr ("\nERROR: Failed to retrieve audio pipeline bus!\n");
-    gst_object_unref (srvctx->apipeline);
+  if ((bus = gst_pipeline_get_bus (GST_PIPELINE (srvctx->apipelinepb))) == NULL) {
+    g_printerr ("\nERROR: Failed to retrieve audio pb pipeline bus!\n");
+    gst_object_unref (srvctx->apipelinepb);
     return FALSE;
   }
 
@@ -1050,35 +1255,104 @@ create_audio_pipeline (GstServiceContext * srvctx)
   gst_object_unref (bus);
 
   // Set pipeline into PAUSED state.
-  switch (gst_element_set_state (srvctx->apipeline, GST_STATE_PAUSED)) {
+  switch (gst_element_set_state (srvctx->apipelinepb, GST_STATE_PAUSED)) {
     case GST_STATE_CHANGE_FAILURE:
-      g_printerr ("\nAudio pipeline failed to transition to PAUSED state!\n");
+      g_printerr ("\nAudio pb pipeline failed to transition to PAUSED state!\n");
       return FALSE;
     case GST_STATE_CHANGE_NO_PREROLL:
-      g_print ("\nAudio pipeline is live and does not need PREROLL.\n");
+      g_print ("\nAudio pb pipeline is live and does not need PREROLL.\n");
       break;
     case GST_STATE_CHANGE_ASYNC:
     {
       GstStateChangeReturn ret = GST_STATE_CHANGE_FAILURE;
 
-      g_print ("\nAudio pipeline is PREROLLING ...\n");
+      g_print ("\nAudio pb pipeline is PREROLLING ...\n");
 
-      ret = gst_element_get_state (srvctx->apipeline, NULL, NULL,
+      ret = gst_element_get_state (srvctx->apipelinepb, NULL, NULL,
           GST_CLOCK_TIME_NONE);
 
       if (ret != GST_STATE_CHANGE_SUCCESS) {
-        g_printerr ("\nAudio pipeline failed to PREROLL!\n");
+        g_printerr ("\nAudio pb pipeline failed to PREROLL!\n");
         return FALSE;
       }
       break;
     }
     case GST_STATE_CHANGE_SUCCESS:
-      g_print ("\nAudio pipeline state change was successful\n");
+      g_print ("\nAudio pb pipeline state change was successful\n");
       break;
   }
 
   return TRUE;
 }
+
+static gboolean
+create_audio_cp_pipeline (GstServiceContext * srvctx)
+{
+  GstElement *element = NULL;
+  GstBus *bus = NULL;
+  GError *error = NULL;
+
+  // Create the empty audio cp pipeline.
+  srvctx->apipelinecp = gst_parse_launch (GST_AUDIO_PIPELINE, &error);
+  gst_element_set_name (srvctx->apipelinecp, AUDIO_CP_PIPELINE);
+
+  if (srvctx->apipelinecp == NULL) {
+    g_printerr ("\nPipeline could not be created, error: %s!\n",
+        GST_STR_NULL (error->message));
+    g_clear_error (&error);
+    return FALSE;
+  }
+
+  element = gst_bin_get_by_name (GST_BIN (srvctx->apipelinecp), "src");
+  g_object_set (G_OBJECT (element), "device", "usb-capture", NULL);
+  gst_object_unref (element);
+
+  element = gst_bin_get_by_name (GST_BIN (srvctx->apipelinecp), "sink");
+  g_object_set (G_OBJECT (element), "device", mainops.audiosink, NULL);
+  gst_object_unref (element);
+
+    // Retrieve reference to the pipeline's bus.
+  if ((bus = gst_pipeline_get_bus (GST_PIPELINE (srvctx->apipelinecp))) == NULL) {
+    g_printerr ("\nERROR: Failed to retrieve audio cp pipeline bus!\n");
+    gst_object_unref (srvctx->apipelinecp);
+    return FALSE;
+  }
+
+  // Watch for messages on the pipeline's bus.
+  gst_bus_add_watch (bus, handle_bus_message, srvctx);
+  gst_object_unref (bus);
+
+  // Set pipeline into PAUSED state.
+  switch (gst_element_set_state (srvctx->apipelinecp, GST_STATE_PAUSED)) {
+    case GST_STATE_CHANGE_FAILURE:
+      g_printerr ("\nAudio cp pipeline failed to transition to PAUSED state!\n");
+      return FALSE;
+    case GST_STATE_CHANGE_NO_PREROLL:
+      g_print ("\nAudio cp pipeline is live and does not need PREROLL.\n");
+      break;
+    case GST_STATE_CHANGE_ASYNC:
+    {
+      GstStateChangeReturn ret = GST_STATE_CHANGE_FAILURE;
+
+      g_print ("\nAudio cp pipeline is PREROLLING ...\n");
+
+      ret = gst_element_get_state (srvctx->apipelinecp, NULL, NULL,
+          GST_CLOCK_TIME_NONE);
+
+      if (ret != GST_STATE_CHANGE_SUCCESS) {
+        g_printerr ("\nAudio cp pipeline failed to PREROLL!\n");
+        return FALSE;
+      }
+      break;
+    }
+    case GST_STATE_CHANGE_SUCCESS:
+      g_print ("\nAudio cp pipeline state change was successful\n");
+      break;
+  }
+
+  return TRUE;
+}
+
 
 static gboolean
 create_video_pipeline (GstServiceContext * srvctx)
@@ -2885,6 +3159,7 @@ main (gint argc, gchar *argv[])
   GMainLoop *mloop = NULL;
   GIOChannel *iostdin = NULL;
   GThread *mthread = NULL;
+  GThread *audiothread = NULL;
 
   UmdVideoCallbacks callbacks = {
     &setup_camera_stream, &enable_camera_stream,
@@ -2923,8 +3198,14 @@ main (gint argc, gchar *argv[])
   // Initialize GST library.
   gst_init (&argc, &argv);
 
-  if (mainops.audio && !create_audio_pipeline (srvctx)) {
-    g_printerr ("\nFailed to create audio pipeline!\n");
+  if (mainops.audiosrc && !create_audio_pb_pipeline (srvctx)) {
+    g_printerr ("\nFailed to create audio pb pipeline!\n");
+    gst_service_context_free (srvctx);
+    return -1;
+  }
+
+  if (mainops.audiosink && !create_audio_cp_pipeline (srvctx)) {
+    g_printerr ("\nFailed to create audio cp pipeline!\n");
     gst_service_context_free (srvctx);
     return -1;
   }
@@ -2939,11 +3220,13 @@ main (gint argc, gchar *argv[])
     setup_video_controls_values (srvctx, mainops.cfgfile);
 
   // If a device is not to be initialized, NULL is passed for respective device
-  srvctx->gadget = umd_gadget_new (mainops.video, mainops.audio, &callbacks, srvctx);
-  if (NULL == srvctx->gadget) {
-    g_printerr ("\nFailed to create UMD gadget!\n");
-    gst_service_context_free (srvctx);
-    return -1;
+  if (mainops.video) {
+    srvctx->gadget = umd_gadget_new (mainops.video, NULL, &callbacks, srvctx);
+    if (NULL == srvctx->gadget) {
+      g_printerr ("\nFailed to create UMD gadget!\n");
+      gst_service_context_free (srvctx);
+      return -1;
+    }
   }
 
   // Initialize main loop.
@@ -2974,6 +3257,16 @@ main (gint argc, gchar *argv[])
     return -1;
   }
 
+  // Initiate the audio status monitor thread.
+  if (mainops.audiosink || mainops.audiosrc) {
+    if ((audiothread = g_thread_new ("MonitorAudioStatus", monitor_audio_status,
+         srvctx)) == NULL) {
+      g_printerr ("\nFailed to create monitor audio status thread!\n");
+      gst_service_context_free (srvctx);
+      return -1;
+    }
+  }
+
   // Run main loop.
   g_main_loop_run (mloop);
 
@@ -2990,6 +3283,9 @@ main (gint argc, gchar *argv[])
 
   g_main_loop_unref (mloop);
   gst_service_context_free (srvctx);
+
+  if (audiothread != NULL)
+    g_thread_join (audiothread);
 
   gst_deinit ();
 
