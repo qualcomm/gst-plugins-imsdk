@@ -108,7 +108,7 @@ GstCaps *
 gst_ml_module_caps (void)
 {
   static GstCaps *caps = NULL;
-  static volatile gsize inited = 0;
+  static gsize inited = 0;
 
   if (g_once_init_enter (&inited)) {
     caps = gst_static_caps_get (&modulecaps);
