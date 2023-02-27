@@ -19,6 +19,7 @@ set_target_properties(${GST_QTI_VIDEO_BASE} PROPERTIES PUBLIC_HEADER
 
 target_compile_definitions(${GST_QTI_VIDEO_BASE} PRIVATE
   $<$<BOOL:${HAVE_MMM_COLOR_FMT_H}>:HAVE_MMM_COLOR_FMT_H>
+  $<$<BOOL:${HAVE_LINUX_DMA_HEAP_H}>:HAVE_LINUX_DMA_HEAP_H>
 )
 
 target_include_directories(${GST_QTI_VIDEO_BASE} PUBLIC

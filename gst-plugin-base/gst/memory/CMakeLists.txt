@@ -27,6 +27,10 @@ target_include_directories(${GST_QTI_MEMORY_BASE} PRIVATE
   ${KERNEL_BUILDDIR}/usr/include/uapi
 )
 
+target_compile_definitions(${GST_QTI_MEMORY_BASE} PRIVATE
+  $<$<BOOL:${HAVE_LINUX_DMA_HEAP_H}>:HAVE_LINUX_DMA_HEAP_H>
+)
+
 target_link_libraries(${GST_QTI_MEMORY_BASE} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}

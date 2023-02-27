@@ -34,6 +34,7 @@ target_include_directories(${GST_QTI_ML_BASE} PRIVATE
 
 target_compile_definitions(${GST_QTI_ML_BASE} PRIVATE
   GST_ML_MODULES_DIR="${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0/ml/modules"
+  $<$<BOOL:${HAVE_LINUX_DMA_HEAP_H}>:HAVE_LINUX_DMA_HEAP_H>
 )
 
 target_link_libraries(${GST_QTI_ML_BASE} PRIVATE
