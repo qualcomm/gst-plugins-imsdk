@@ -20,6 +20,10 @@ pkg_check_modules(GST_VIDEO
 include(CheckIncludeFile)
 check_include_file("display/media/mmm_color_fmt.h" HAVE_MMM_COLOR_FMT_H)
 
+# Check whether DMA HEAP header is present.
+include(CheckIncludeFile)
+check_include_file("linux/dma-heap.h" HAVE_LINUX_DMA_HEAP_H)
+
 # Common compiler flags.
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
