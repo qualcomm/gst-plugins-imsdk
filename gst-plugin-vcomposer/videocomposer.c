@@ -746,25 +746,10 @@ gst_video_composer_propose_allocation (GstAggregator * aggregator,
   GstCaps *caps = NULL;
   GstBufferPool *pool = NULL;
   GstVideoInfo info;
-  guint idx = 0, n_metas = 0, size = 0;
+  guint size = 0;
   gboolean needpool = FALSE;
 
   GST_DEBUG_OBJECT (vcomposer, "Pad %s:%s", GST_DEBUG_PAD_NAME (pad));
-
-  // No input query, nothing to do.
-  if (NULL == inquery)
-    return TRUE;
-
-  n_metas = gst_query_get_n_allocation_metas (inquery);
-
-  for (idx = 0; idx < n_metas; idx++) {
-    GType gtype;
-    const GstStructure *params;
-
-    gtype = gst_query_parse_nth_allocation_meta (inquery, idx, &params);
-    GST_DEBUG_OBJECT (vcomposer, "Proposing metadata %s", g_type_name (gtype));
-    gst_query_add_allocation_meta (outquery, gtype, params);
-  }
 
   // Extract caps from the query.
   gst_query_parse_allocation (outquery, &caps, &needpool);
