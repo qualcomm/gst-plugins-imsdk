@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -527,8 +527,19 @@ gst_update_object (::ib2c::Object * object, guint64 surface_id, GstStructure * o
           GST_VIDEO_FRAME_HEIGHT (outframe) * dar_d / dar_n;
       height = (height != 0) ? height : GST_VIDEO_FRAME_HEIGHT (outframe);
 
-      object->destination.w = height;
-      object->destination.h = width;
+      // Align to multiple of 4 due to hardware requirements.
+      width = ((width % 4) >= 2) ? GST_ROUND_UP_4 (width) :
+          GST_ROUND_DOWN_4 (width);
+
+      object->destination.w = width;
+      object->destination.h = height;
+
+      x = (dstrect->w && dstrect->h) ?
+          x : (GST_VIDEO_FRAME_WIDTH (outframe) - width) / 2;
+
+      // Adjust the target rectangle coordinates.
+      object->destination.x = GST_VIDEO_FRAME_WIDTH (outframe) - (x + width);
+      object->destination.y = y;
 
       object->rotation = 90.0;
       break;
@@ -563,8 +574,19 @@ gst_update_object (::ib2c::Object * object, guint64 surface_id, GstStructure * o
           GST_VIDEO_FRAME_HEIGHT (outframe) * dar_d / dar_n;
       height = (height != 0) ? height : GST_VIDEO_FRAME_HEIGHT (outframe);
 
-      object->destination.w = height;
-      object->destination.h = width;
+      // Align to multiple of 4 due to hardware requirements.
+      width = ((width % 4) >= 2) ? GST_ROUND_UP_4 (width) :
+          GST_ROUND_DOWN_4 (width);
+
+      object->destination.w = width;
+      object->destination.h = height;
+
+      x = (dstrect->w && dstrect->h) ?
+          x : (GST_VIDEO_FRAME_WIDTH (outframe) - width) / 2;
+
+      // Adjust the target rectangle coordinates.
+      object->destination.x = GST_VIDEO_FRAME_WIDTH (outframe) - (x + width);
+      object->destination.y = y;
 
       object->rotation = 270.0;
       break;
