@@ -47,6 +47,10 @@
 #include <adreno/c2d2.h>
 #endif // ENABLE_C2D
 
+#ifdef HAVE_LINUX_DMA_HEAP_H
+#include <CL/cl_ext_qcom.h>
+#endif // HAVE_LINUX_DMA_HEAP_H
+
 namespace overlay {
 
 #define OVERLAYITEM_X_MARGIN_PERCENT  0.5
