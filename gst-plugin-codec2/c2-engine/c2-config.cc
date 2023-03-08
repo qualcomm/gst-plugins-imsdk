@@ -863,7 +863,12 @@ setROIEncoding (gpointer param)
   GST_INFO ("Set ROI encoding - %s %s", config->roi.rectPayload,
       config->roi.rectPayloadExt);
 
+#ifndef CODEC2_CONFIG_VERSION_2_0
   qc2::QC2VideoROIRegionInfo::output roiRegion;
+#else
+  qc2::QC2VideoROIRegionInfo::input roiRegion;
+#endif
+
   auto clip = [](std::size_t len) { return len > 128 ? 128 : len; };
   roiRegion.timestampUs = config->roi.timestampUs;
 
@@ -902,7 +907,7 @@ setQPRanges (gpointer param)
   if (param == NULL)
     return nullptr;
 
-#ifndef QP_RANGES_VERSION_2_0
+#ifndef CODEC2_CONFIG_VERSION_2_0
   config_params_t *config = (config_params_t*) param;
   qc2::C2VideoQPRangeSetting::output qp_ranges;
   qp_ranges.miniqp = config->qp_ranges.miniqp;
