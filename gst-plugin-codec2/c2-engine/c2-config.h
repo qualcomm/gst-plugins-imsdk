@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -64,6 +64,7 @@
 #define CONFIG_FUNCTION_KEY_NUM_LTR_FRAMES "num_ltr_frames"
 #define CONFIG_FUNCTION_KEY_PROFILE_LEVEL "profile_level"
 #define CONFIG_FUNCTION_KEY_ROTATE "rotate"
+#define CONFIG_FUNCTION_KEY_BLOCK_POOL "block_pool"
 
 typedef enum {
   INTERLACE_MODE_PROGRESSIVE = 0,

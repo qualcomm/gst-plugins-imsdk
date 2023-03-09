@@ -1,10 +1,10 @@
 /*
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
-*  
+* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+*
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
 * disclaimer below) provided that the following conditions are met:
-*  
+*
 *     * Redistributions of source code must retain the above copyright
 *       notice, this list of conditions and the following disclaimer.
 *  
@@ -12,11 +12,11 @@
 *       copyright notice, this list of conditions and the following
 *       disclaimer in the documentation and/or other materials provided
 *       with the distribution.
-*  
+*
 *     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
 *       contributors may be used to endorse or promote products derived
 *       from this software without specific prior written permission.
-*  
+*
 * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
 * GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
 * HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
@@ -96,6 +96,7 @@ std::unique_ptr<C2Param> setQPInit (gpointer param);
 std::unique_ptr<C2Param> setNumLtrFrames (gpointer param);
 std::unique_ptr<C2Param> setProfileLevel (gpointer param);
 std::unique_ptr<C2Param> setRotate (gpointer param);
+std::unique_ptr<C2Param> setOutputBlockPoolId (gpointer param);
 
 // Function map for parameter configuration
 static configFunctionMap sConfigFunctionMap = {
@@ -125,6 +126,7 @@ static configFunctionMap sConfigFunctionMap = {
   { CONFIG_FUNCTION_KEY_NUM_LTR_FRAMES, setNumLtrFrames },
   { CONFIG_FUNCTION_KEY_PROFILE_LEVEL, setProfileLevel },
   { CONFIG_FUNCTION_KEY_ROTATE, setRotate },
+  { CONFIG_FUNCTION_KEY_BLOCK_POOL, setOutputBlockPoolId },
 };
 
 static const VideoProfileMapping video_profile[] = {
@@ -1141,6 +1143,21 @@ setRotate (gpointer param)
   rotate.angle = (qc2::RotationType)toC2Rotate(config->rotate);
 
   return C2Param::Copy (rotate);
+}
+
+std::unique_ptr<C2Param>
+setOutputBlockPoolId (gpointer param)
+{
+  if (param == NULL)
+    return nullptr;
+
+  config_params_t *config = (config_params_t*) param;
+  C2BlockPool::local_id_t id = config->val.u32;
+
+  auto blockPoolTuning =
+        C2PortBlockPoolsTuning::output::AllocUnique({id});
+
+  return C2Param::Copy (*blockPoolTuning);
 }
 
 void

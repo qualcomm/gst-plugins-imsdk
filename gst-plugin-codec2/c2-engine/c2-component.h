@@ -61,6 +61,8 @@ public:
   ~C2ComponentWrapper();
 
   bool SetHandler(event_handler_cb callback, gpointer userdata);
+  bool InitBlockPool (gchar* comp, guint32 width, guint32 height, GstVideoFormat format);
+  gint GetBlockPoolId();
   bool Config(GPtrArray* config);
   bool Start();
   bool Stop();
@@ -88,6 +90,7 @@ private:
   std::condition_variable workcondition_;
   std::shared_ptr<C2BlockPool> mLinearPool_;
   std::shared_ptr<C2BlockPool> mGraphicPool_;
+  std::shared_ptr<C2BlockPool> mOutputGraphicPool_;
 
   friend class C2ComponentListener;
 };

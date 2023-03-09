@@ -1,6 +1,6 @@
 
 /*
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -113,6 +113,20 @@ GST_STATIC_PAD_TEMPLATE ("src",
 static G_DEFINE_QUARK (QtiCodec2EncoderQuark, gst_c2_venc_qdata);
 
 /* class initialization */
+
+static config_params_t
+make_output_block_pool_param (guint32 id, gboolean isInput)
+{
+  config_params_t param;
+
+  memset (&param, 0, sizeof (config_params_t));
+
+  param.config_name = CONFIG_FUNCTION_KEY_BLOCK_POOL;
+  param.is_input = isInput;
+  param.val.u32 = id;
+
+  return param;
+}
 
 static config_params_t
 make_resolution_param (guint32 width, guint32 height, gboolean isInput)
@@ -696,10 +710,12 @@ gst_c2vdec_set_format (GstVideoDecoder * decoder, GstVideoCodecState * state)
   gboolean ret = FALSE;
   gint width = 0;
   gint height = 0;
+  gint id = -1;
   GstVideoInterlaceMode interlace_mode = GST_VIDEO_INTERLACE_MODE_PROGRESSIVE;
   interlace_mode_t c2interlace_mode = INTERLACE_MODE_PROGRESSIVE;
   gchar *comp_name;
   GPtrArray *config = NULL;
+  config_params_t output_block_pool;
   config_params_t resolution;
   config_params_t interlace;
   config_params_t output_picture_order_mode;
@@ -756,6 +772,16 @@ gst_c2vdec_set_format (GstVideoDecoder * decoder, GstVideoCodecState * state)
 
   config = g_ptr_array_new ();
 
+  id = gst_c2_wrapper_get_block_pool_id (dec->wrapper);
+  GST_DEBUG_OBJECT (dec, "block pool ID %d %d, %d", id, width, height);
+
+  if (id) {
+    output_block_pool = make_output_block_pool_param (id, FALSE);
+    g_ptr_array_add (config, &output_block_pool);
+  } else {
+    GST_ERROR_OBJECT (dec, "Failed to get output block pool");
+  }
+
   resolution = make_resolution_param (width, height, TRUE);
   g_ptr_array_add (config, &resolution);
 
@@ -778,6 +804,11 @@ gst_c2vdec_set_format (GstVideoDecoder * decoder, GstVideoCodecState * state)
   if (GST_FLOW_OK != gst_c2vdec_setup_output (decoder, config)) {
     g_ptr_array_free (config, FALSE);
     goto error_set_format;
+  }
+
+  if (!gst_c2_wrapper_init_block_pool(dec->wrapper, dec->comp_name, width,
+       height, GST_VIDEO_FORMAT_NV12)) {
+    GST_ERROR_OBJECT (dec, "Failed to init output block pool");
   }
 
   if (!gst_c2_wrapper_config_component (dec->wrapper, config)) {
