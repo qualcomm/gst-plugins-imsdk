@@ -124,6 +124,45 @@ C2ComponentWrapper::SetHandler (event_handler_cb callback, gpointer userdata)
 }
 
 bool
+C2ComponentWrapper::InitBlockPool (gchar* comp, guint32 width, guint32 height,
+    GstVideoFormat format)
+{
+#ifdef CODEC2_CONFIG_VERSION_2_0
+  uint64_t consumerUsage = C2MemoryUsage::CPU_READ|C2MemoryUsage::CPU_WRITE;
+  uint64_t producerUsage = C2MemoryUsage::CPU_READ|C2MemoryUsage::CPU_WRITE;
+  guint32 alignedWidth = 0, alignedHeight = 0;
+
+  /*
+     Resolution height and width should get from codec2 directly, for now there
+     is no such API provided to GST. after video team provide the API, these hard
+     code will be removed.
+  */
+  alignedWidth = GST_ROUND_UP_16 (width);
+  if (g_strcmp0(comp, "c2.qti.avc.decoder") == 0) {
+    alignedHeight = GST_ROUND_UP_16 (height);
+  } else if (g_strcmp0(comp, "c2.qti.hevc.decoder") == 0) {
+    alignedHeight = GST_ROUND_UP_32 (height);
+  } else {
+    GST_ERROR ("unsupported decoder type: %s", comp);
+    return FALSE;
+  }
+
+  GST_INFO ("InitBlockPool: width: %d height: %d, format: %d, alignedWidth: %d alignedHeight: %d",
+   width, height, format, alignedWidth, alignedHeight);
+
+  AllocBasicParams params ({0, 0}, alignedWidth, alignedHeight,
+      gst_to_c2_gbmformat (format, 0));
+
+  int ret = mOutputGraphicPool_->init (params, 20);
+  if (ret != C2_OK) {
+    GST_ERROR ("Output GRAPHIC Block pool init failed: %d", ret);
+  }
+#endif
+
+  return TRUE;
+}
+
+bool
 C2ComponentWrapper::Config (GPtrArray * config)
 {
   if (compintf_.get () != nullptr) {
@@ -174,6 +213,14 @@ C2ComponentWrapper::Stop ()
     return FALSE;
   }
   return TRUE;
+}
+
+int32_t C2ComponentWrapper::GetBlockPoolId ()
+{
+  if(mOutputGraphicPool_)
+    return (int32_t)mOutputGraphicPool_->getLocalId ();
+
+  return -1;
 }
 
 c2_status_t C2ComponentWrapper::prepareC2Buffer (BufferDescriptor* buffer, std::shared_ptr<C2Buffer>* c2Buf)
@@ -516,6 +563,18 @@ c2_status_t C2ComponentWrapper::createBlockpool (C2BlockPool::local_id_t poolTyp
       return ret;
     }
   }
+
+#ifdef CODEC2_CONFIG_VERSION_2_0
+  if (poolType == C2AllocatorStore::GRAPHIC_NON_CONTIGUOUS) {
+    ret = android::CreateCodec2BlockPool(poolType, component_, &mOutputGraphicPool_);
+    if (ret != C2_OK || mOutputGraphicPool_ == nullptr) {
+      GST_ERROR ("Create NON CONTIGUOUS GRAPHIC failed: %d", ret);
+      return ret;
+    }
+    GST_INFO ("create Graphic block-pool ID %u",
+        (uint32_t) mOutputGraphicPool_->getLocalId());
+  }
+#endif
 
   return ret;
 }

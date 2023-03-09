@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -150,8 +150,17 @@ gst_c2_wrapper_create_component (GstC2Wrapper * wrapper,
       GST_ERROR("Failed(%d) to allocate block pool(%d)",
           c2Status, C2BlockPool::BASIC_GRAPHIC);
     }
-  }
 
+#ifdef CODEC2_CONFIG_VERSION_2_0
+    c2Status = wrapper->component->createBlockpool(C2AllocatorStore::GRAPHIC_NON_CONTIGUOUS);
+    if (c2Status == C2_OK) {
+      ret = TRUE;
+    } else {
+      GST_ERROR("Failed(%d) to allocate block pool(%d)",
+          c2Status, C2AllocatorStore::GRAPHIC_NON_CONTIGUOUS);
+    }
+#endif
+  }
   GST_INFO ("Created C2 component");
   return ret;
 }
@@ -168,37 +177,60 @@ gst_c2_wrapper_delete_component (GstC2Wrapper * wrapper) {
 }
 
 gboolean
+gst_c2_wrapper_init_block_pool (GstC2Wrapper * wrapper, gchar* comp,
+    guint32 width, guint32 height, GstVideoFormat format) {
+
+  GST_INFO ("Init C2 output block pool");
+  if (wrapper->component) {
+    return wrapper->component->InitBlockPool(comp, width, height, format);
+  }
+
+  return FALSE;
+}
+
+gint
+gst_c2_wrapper_get_block_pool_id (GstC2Wrapper * wrapper) {
+
+  GST_INFO ("Get C2 output block pool id");
+  if (wrapper->component) {
+    return wrapper->component->GetBlockPoolId();
+  }
+
+  return -1;
+}
+
+gboolean
 gst_c2_wrapper_config_component (GstC2Wrapper * wrapper,
     GPtrArray* config) {
 
+  GST_INFO ("Config C2 component");
   if (wrapper->component) {
-    wrapper->component->Config(config);
+    return wrapper->component->Config(config);
   }
 
-  GST_INFO ("Config C2 component");
-  return TRUE;
+  return FALSE;
 }
 
 gboolean
 gst_c2_wrapper_component_start (GstC2Wrapper * wrapper) {
 
+  GST_INFO ("Start C2 component");
   if (wrapper->component) {
-    wrapper->component->Start();
+    return wrapper->component->Start();
   }
 
-  GST_INFO ("Start C2 component");
-  return TRUE;
+  return FALSE;
 }
 
 gboolean
 gst_c2_wrapper_component_stop (GstC2Wrapper * wrapper) {
 
+  GST_INFO ("Stop C2 component");
   if (wrapper->component) {
-    wrapper->component->Stop();
+    return wrapper->component->Stop();
   }
 
-  GST_INFO ("Stop C2 component");
-  return TRUE;
+  return FALSE;
 }
 
 gboolean
@@ -206,10 +238,10 @@ gst_c2_wrapper_component_queue (GstC2Wrapper * wrapper,
     BufferDescriptor * buffer) {
 
   if (wrapper->component) {
-    wrapper->component->Queue(buffer);
+    return wrapper->component->Queue(buffer);
   }
 
-  return TRUE;
+  return FALSE;
 }
 
 gboolean
@@ -217,7 +249,7 @@ gst_c2_wrapper_free_output_buffer (GstC2Wrapper * wrapper,
     uint64_t bufferIdx) {
 
   if (wrapper->component) {
-    wrapper->component->FreeOutputBuffer(bufferIdx);
+    return wrapper->component->FreeOutputBuffer(bufferIdx);
   }
-  return TRUE;
+  return FALSE;
 }

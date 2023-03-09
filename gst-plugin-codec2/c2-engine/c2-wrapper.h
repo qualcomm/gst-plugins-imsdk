@@ -1,4 +1,4 @@
-/* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+/* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -53,6 +53,13 @@ gst_c2_wrapper_create_component (GstC2Wrapper * wrapper,
 
 GST_API gboolean
 gst_c2_wrapper_delete_component (GstC2Wrapper * wrapper);
+
+GST_API gboolean
+gst_c2_wrapper_init_block_pool (GstC2Wrapper * wrapper,
+    gchar* comp, guint32 width, guint32 height, GstVideoFormat format);
+
+GST_API gint
+gst_c2_wrapper_get_block_pool_id (GstC2Wrapper * wrapper);
 
 GST_API gboolean
 gst_c2_wrapper_config_component (GstC2Wrapper * wrapper,
