@@ -7,7 +7,7 @@
 *
 *     * Redistributions of source code must retain the above copyright
 *       notice, this list of conditions and the following disclaimer.
-*  
+*
 *     * Redistributions in binary form must reproduce the above
 *       copyright notice, this list of conditions and the following
 *       disclaimer in the documentation and/or other materials provided
@@ -63,12 +63,6 @@ typedef std::unique_ptr<C2Param> (*configFunction)(gpointer data);
 
 // Give a comparison functor to the map to avoid comparing the pointer
 typedef std::map<const char*, configFunction, char_cmp> configFunctionMap;
-
-typedef struct
-{
-  const gchar *profile;
-  video_profile_t e;
-} VideoProfileMapping;
 
 std::unique_ptr<C2Param> setVideoPixelformat (gpointer param);
 std::unique_ptr<C2Param> setVideoResolution (gpointer param);
@@ -127,18 +121,6 @@ static configFunctionMap sConfigFunctionMap = {
   { CONFIG_FUNCTION_KEY_PROFILE_LEVEL, setProfileLevel },
   { CONFIG_FUNCTION_KEY_ROTATE, setRotate },
   { CONFIG_FUNCTION_KEY_BLOCK_POOL, setOutputBlockPoolId },
-};
-
-static const VideoProfileMapping video_profile[] = {
-  { "VIDEO_AVCProfileBaseline", video_profile_t::AVC_PROFILE_BASELINE},
-  { "VIDEO_AVCProfileConstrainedBaseline", video_profile_t::AVC_PROFILE_CONSTRAINT_BASELINE},
-  { "VIDEO_AVCProfileConstrainedHigh", video_profile_t::AVC_PROFILE_CONSTRAINT_HIGH},
-  { "VIDEO_AVCProfileHigh", video_profile_t::AVC_PROFILE_HIGH},
-  { "VIDEO_AVCProfileMain", video_profile_t::AVC_PROFILE_MAIN},
-
-  { "VIDEO_HEVCProfileMain", video_profile_t::HEVC_PROFILE_MAIN},
-  { "VIDEO_HEVCProfileMain10", video_profile_t::HEVC_PROFILE_MAIN10},
-  { "VIDEO_HEVCProfileMainStillPic", video_profile_t::HEVC_PROFILE_MAIN_STILL_PIC},
 };
 
 uint32_t
@@ -1012,8 +994,14 @@ setIntraRefresh (gpointer param)
   config_params_t *config = (config_params_t*) param;
 
   C2StreamIntraRefreshTuning::output intraRefreshMode;
-  intraRefreshMode.mode = (C2Config::intra_refresh_mode_t) config->ir_mode.type;
-  intraRefreshMode.period = config->ir_mode.intra_refresh_mbs;
+  if (config->ir_mode.type == IR_MODE_ARBITRARY) {
+    intraRefreshMode.mode = C2Config::INTRA_REFRESH_ARBITRARY;
+    intraRefreshMode.period = config->ir_mode.intra_refresh_mbs;
+  } else if (config->ir_mode.type == IR_MODE_DISABLE) {
+    intraRefreshMode.mode = C2Config::INTRA_REFRESH_DISABLED;
+  } else {
+    return nullptr;
+  }
   return C2Param::Copy (intraRefreshMode);
 }
 
@@ -1175,114 +1163,129 @@ push_to_settings (gpointer data, gpointer user_data)
 }
 
 video_profile_t
-gst_codec2_get_profile_from_str(const gchar * profile)
+gst_c2_utils_h264_profile_from_string (const gchar * profile)
 {
-  guint i;
+  if (g_str_equal (profile, "baseline"))
+    return video_profile_t::AVC_PROFILE_BASELINE;
+  else if (g_str_equal (profile, "constraint-baseline"))
+    return video_profile_t::AVC_PROFILE_CONSTRAINT_BASELINE;
+  else if (g_str_equal (profile, "main"))
+    return video_profile_t::AVC_PROFILE_MAIN;
+  else if (g_str_equal (profile, "high"))
+    return video_profile_t::AVC_PROFILE_HIGH;
+  else if (g_str_equal (profile, "constraint-high"))
+    return video_profile_t::AVC_PROFILE_CONSTRAINT_HIGH;
 
-  for (i = 0; i < G_N_ELEMENTS(video_profile); i++) {
-    if (g_str_equal(profile, video_profile[i].profile))
-      return video_profile[i].e;
-  }
+  return video_profile_t::VIDEO_PROFILE_MAX;
+}
 
-  return VIDEO_PROFILE_MAX;
+video_profile_t
+gst_c2_utils_h265_profile_from_string (const gchar * profile)
+{
+  if (g_str_equal (profile, "main"))
+    return video_profile_t::HEVC_PROFILE_MAIN;
+  else if (g_str_equal (profile, "main-10"))
+    return video_profile_t::HEVC_PROFILE_MAIN10;
+  else if (g_str_equal (profile, "main-still-picture"))
+    return video_profile_t::HEVC_PROFILE_MAIN_STILL_PIC;
+
+  return video_profile_t::VIDEO_PROFILE_MAX;
 }
 
 video_level_t
-gst_codec2_get_level_from_str(const gchar * level)
+gst_c2_utils_h264_level_from_string (const gchar * level)
 {
-  if (g_str_equal (level, "VIDEO_AVCLevel10")) {
+  if (g_str_equal (level, "1"))
     return video_level_t::AVC_LEVEL_1;
-  } else if (g_str_equal (level, "VIDEO_AVCLevel1b")) {
+  else if (g_str_equal (level, "1b"))
     return video_level_t::AVC_LEVEL_1b;
-  } else if (g_str_equal (level, "VIDEO_AVCLevel11")) {
+  else if (g_str_equal (level, "1.1"))
     return video_level_t::AVC_LEVEL_11;
-  } else if (g_str_equal (level, "VIDEO_AVCLevel12")) {
+  else if (g_str_equal (level, "1.2"))
     return video_level_t::AVC_LEVEL_12;
-  } else if (g_str_equal (level, "VIDEO_AVCLevel13")) {
+  else if (g_str_equal (level, "1.3"))
     return video_level_t::AVC_LEVEL_13;
-  } else if (g_str_equal (level, "VIDEO_AVCLevel20")) {
+  else if (g_str_equal (level, "2"))
     return video_level_t::AVC_LEVEL_2;
-  } else if (g_str_equal (level, "VIDEO_AVCLevel21")) {
+  else if (g_str_equal (level, "2.1"))
     return video_level_t::AVC_LEVEL_21;
-  } else if (g_str_equal (level, "VIDEO_AVCLevel22")) {
+  else if (g_str_equal (level, "2.2"))
     return video_level_t::AVC_LEVEL_22;
-  } else if (g_str_equal (level, "VIDEO_AVCLevel30")) {
+  else if (g_str_equal (level, "3"))
     return video_level_t::AVC_LEVEL_3;
-  } else if (g_str_equal (level, "VIDEO_AVCLevel31")) {
+  else if (g_str_equal (level, "3.1"))
     return video_level_t::AVC_LEVEL_31;
-  } else if (g_str_equal (level, "VIDEO_AVCLevel32")) {
+  else if (g_str_equal (level, "3.2"))
     return video_level_t::AVC_LEVEL_32;
-  } else if (g_str_equal (level, "VIDEO_AVCLevel40")) {
+  else if (g_str_equal (level, "4"))
     return video_level_t::AVC_LEVEL_4;
-  } else if (g_str_equal (level, "VIDEO_AVCLevel41")) {
+  else if (g_str_equal (level, "4.1"))
     return video_level_t::AVC_LEVEL_41;
-  } else if (g_str_equal (level, "VIDEO_AVCLevel42")) {
+  else if (g_str_equal (level, "4.2"))
     return video_level_t::AVC_LEVEL_42;
-  } else if (g_str_equal (level, "VIDEO_AVCLevel50")) {
+  else if (g_str_equal (level, "5"))
     return video_level_t::AVC_LEVEL_5;
-  } else if (g_str_equal (level, "VIDEO_AVCLevel51")) {
+  else if (g_str_equal (level, "5.1"))
     return video_level_t::AVC_LEVEL_51;
-  } else if (g_str_equal (level, "VIDEO_AVCLevel52")) {
+  else if (g_str_equal (level, "5.2"))
     return video_level_t::AVC_LEVEL_52;
-  } else if (g_str_equal (level, "VIDEO_AVCLevel60")) {
+  else if (g_str_equal (level, "6.0"))
     return video_level_t::AVC_LEVEL_6;
-  } else if (g_str_equal (level, "VIDEO_AVCLevel61")) {
+  else if (g_str_equal (level, "6.1"))
     return video_level_t::AVC_LEVEL_61;
-  } else if (g_str_equal (level, "VIDEO_AVCLevel62")) {
+  else if (g_str_equal (level, "6.2"))
     return video_level_t::AVC_LEVEL_62;
-  } else if (g_str_equal (level, "VIDEO_HEVCLevel10")) {
-    return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL1;
-  } else if (g_str_equal (level, "VIDEO_HEVCLevel20")) {
-    return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL2;
-  } else if (g_str_equal (level, "VIDEO_HEVCLevel21")) {
-    return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL21;
-  } else if (g_str_equal (level, "VIDEO_HEVCLevel30")) {
-    return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL3;
-  } else if (g_str_equal (level, "VIDEO_HEVCLevel31")) {
-    return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL31;
-  } else if (g_str_equal (level, "VIDEO_HEVCLevel40")) {
-    return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL4;
-  } else if (g_str_equal (level, "VIDEO_HEVCLevel41")) {
-    return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL41;
-  } else if (g_str_equal (level, "VIDEO_HEVCLevel50")) {
-    return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL5;
-  } else if (g_str_equal (level, "VIDEO_HEVCLevel51")) {
-    return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL51;
-  } else if (g_str_equal (level, "VIDEO_HEVCLevel52")) {
-    return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL52;
-  } else if (g_str_equal (level, "VIDEO_HEVCLevel60")) {
-    return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL6;
-  } else if (g_str_equal (level, "VIDEO_HEVCLevel61")) {
-    return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL61;
-  } else if (g_str_equal (level, "VIDEO_HEVCLevel62")) {
-    return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL62;
-  } else if (g_str_equal (level, "VIDEO_HEVCHIGHLevel10")) {
-    return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL1;
-  } else if (g_str_equal (level, "VIDEO_HEVCHIGHLevel20")) {
-    return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL2;
-  } else if (g_str_equal (level, "VIDEO_HEVCHIGHLevel21")) {
-    return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL21;
-  } else if (g_str_equal (level, "VIDEO_HEVCHIGHLevel30")) {
-    return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL3;
-  } else if (g_str_equal (level, "VIDEO_HEVCHIGHLevel31")) {
-    return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL31;
-  } else if (g_str_equal (level, "VIDEO_HEVCHIGHLevel40")) {
-    return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL4;
-  } else if (g_str_equal (level, "VIDEO_HEVCHIGHLevel41")) {
-    return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL41;
-  } else if (g_str_equal (level, "VIDEO_HEVCHIGHLevel50")) {
-    return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL5;
-  } else if (g_str_equal (level, "VIDEO_HEVCHIGHLevel51")) {
-    return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL51;
-  } else if (g_str_equal (level, "VIDEO_HEVCHIGHLevel52")) {
-    return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL52;
-  } else if (g_str_equal (level, "VIDEO_HEVCHIGHLevel60")) {
-    return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL6;
-  } else if (g_str_equal (level, "VIDEO_HEVCHIGHLevel61")) {
-    return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL61;
-  } else if (g_str_equal (level, "VIDEO_HEVCHIGHLevel62")) {
-    return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL62;
-  }
 
-  return VIDEO_LEVEL_MAX;
+  return video_level_t::VIDEO_LEVEL_MAX;
+}
+
+video_level_t
+gst_c2_utils_h265_level_from_string (const gchar * level, const gchar * tier)
+{
+  if (g_str_equal (tier, "main")) {
+    if (g_str_equal (level, "1"))
+      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL1;
+    else if (g_str_equal (level, "2"))
+      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL2;
+    else if (g_str_equal (level, "2.1"))
+      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL21;
+    else if (g_str_equal (level, "3"))
+      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL3;
+    else if (g_str_equal (level, "3.1"))
+      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL31;
+    else if (g_str_equal (level, "4"))
+      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL4;
+    else if (g_str_equal (level, "4.1"))
+      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL41;
+    else if (g_str_equal (level, "5"))
+      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL5;
+    else if (g_str_equal (level, "5.1"))
+      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL51;
+    else if (g_str_equal (level, "5.2"))
+      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL52;
+    else if (g_str_equal (level, "6"))
+      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL6;
+    else if (g_str_equal (level, "6.1"))
+      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL61;
+    else if (g_str_equal (level, "6.2"))
+      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL62;
+  } else if (g_str_equal (tier, "high")) {
+    if (g_str_equal (level, "4"))
+      return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL4;
+    else if (g_str_equal (level, "4.1"))
+      return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL41;
+    else if (g_str_equal (level, "5"))
+      return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL5;
+    else if (g_str_equal (level, "5.1"))
+      return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL51;
+    else if (g_str_equal (level, "5.2"))
+      return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL52;
+    else if (g_str_equal (level, "6"))
+      return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL6;
+    else if (g_str_equal (level, "6.1"))
+      return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL61;
+    else if (g_str_equal (level, "6.2"))
+      return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL62;
+  }
+  return video_level_t::VIDEO_LEVEL_MAX;
 }
