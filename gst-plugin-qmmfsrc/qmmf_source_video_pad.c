@@ -25,6 +25,40 @@
 * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*
+* Changes from Qualcomm Innovation Center are provided under the following license:
+*
+* Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+*
+* Redistribution and use in source and binary forms, with or without
+* modification, are permitted (subject to the limitations in the
+* disclaimer below) provided that the following conditions are met:
+*
+*     * Redistributions of source code must retain the above copyright
+*       notice, this list of conditions and the following disclaimer.
+*
+*     * Redistributions in binary form must reproduce the above
+*       copyright notice, this list of conditions and the following
+*       disclaimer in the documentation and/or other materials provided
+*       with the distribution.
+*
+*     * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+*       contributors may be used to endorse or promote products derived
+*       from this software without specific prior written permission.
+*
+* NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+* GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+* HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+* MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+* IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+* ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+* DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+* GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+* INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+* IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+* OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "qmmf_source_video_pad.h"
@@ -40,6 +74,10 @@
 // functions, implement qmmfsrc_video_pad_get_type() function and set
 // qmmfsrc_video_pad_parent_class variable.
 G_DEFINE_TYPE(GstQmmfSrcVideoPad, qmmfsrc_video_pad, GST_TYPE_PAD);
+
+#ifdef FEATURE_VIDEO_PREVIEW_TYPE_SUPPORT
+#define GST_TYPE_QMMFSRC_VIDEO_TYPE (video_pad_stream_type_get_type())
+#endif
 
 GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
 #define GST_CAT_DEFAULT qmmfsrc_video_pad_debug
@@ -60,6 +98,9 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
 #define DEFAULT_PROP_CROP_WIDTH      0
 #define DEFAULT_PROP_CROP_HEIGHT     0
 #define DEFAULT_PROP_EXTRA_BUFFERS   0
+#ifdef FEATURE_VIDEO_PREVIEW_TYPE_SUPPORT
+#define DEFAULT_PROP_VIDEO_TYPE      VIDEO_TYPE_VIDEO
+#endif
 
 enum
 {
@@ -75,9 +116,36 @@ enum
   PROP_VIDEO_FRAMERATE,
   PROP_VIDEO_CROP,
   PROP_VIDEO_EXTRA_BUFFERS,
+#ifdef FEATURE_VIDEO_PREVIEW_TYPE_SUPPORT
+  PROP_VIDEO_TYPE,
+#endif
 };
 
 static guint signals[LAST_SIGNAL];
+
+#ifdef FEATURE_VIDEO_PREVIEW_TYPE_SUPPORT
+static GType
+video_pad_stream_type_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { VIDEO_TYPE_VIDEO,
+        "The stream will be configured with tunings and settings most fitted"
+        " for directly encoding the buffers.", "video"
+    },
+    { VIDEO_TYPE_PREVIEW,
+        "The stream will be configured with tunings and settings most fitted"
+        " for directly visualizing the buffers.", "preview"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstQmmfSrcStreamType", variants);
+
+  return gtype;
+}
+#endif
 
 static void
 video_pad_worker_task (GstPad * pad)
@@ -527,6 +595,11 @@ video_pad_set_property (GObject * object, guint property_id,
     case PROP_VIDEO_EXTRA_BUFFERS:
       pad->xtrabufs = g_value_get_uint (value);
       break;
+#ifdef FEATURE_VIDEO_PREVIEW_TYPE_SUPPORT
+    case PROP_VIDEO_TYPE:
+      pad->type = g_value_get_enum(value);
+      break;
+#endif
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (pad, property_id, pspec);
       break;
@@ -574,6 +647,11 @@ video_pad_get_property (GObject * object, guint property_id, GValue * value,
     case PROP_VIDEO_EXTRA_BUFFERS:
       g_value_set_uint (value, pad->xtrabufs);
       break;
+#ifdef FEATURE_VIDEO_PREVIEW_TYPE_SUPPORT
+    case PROP_VIDEO_TYPE:
+      g_value_set_enum(value, pad->type);
+      break;
+#endif
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (pad, property_id, pspec);
       break;
@@ -642,6 +720,14 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
           0, G_MAXUINT, DEFAULT_PROP_EXTRA_BUFFERS,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
+#ifdef FEATURE_VIDEO_PREVIEW_TYPE_SUPPORT
+  g_object_class_install_property (gobject, PROP_VIDEO_TYPE,
+      g_param_spec_enum ("type", "Type",
+          "The type of the stream.",
+           GST_TYPE_QMMFSRC_VIDEO_TYPE, DEFAULT_PROP_VIDEO_TYPE,
+           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+           GST_PARAM_MUTABLE_PLAYING));
+#endif
 
   signals[SIGNAL_PAD_RECONFIGURE] =
       g_signal_new ("reconfigure", G_TYPE_FROM_CLASS (klass),
@@ -677,6 +763,9 @@ qmmfsrc_video_pad_init (GstQmmfSrcVideoPad * pad)
   pad->crop.w       = DEFAULT_PROP_CROP_WIDTH;
   pad->crop.h       = DEFAULT_PROP_CROP_HEIGHT;
   pad->xtrabufs     = DEFAULT_PROP_EXTRA_BUFFERS;
+#ifdef FEATURE_VIDEO_PREVIEW_TYPE_SUPPORT
+  pad->type         = DEFAULT_PROP_VIDEO_TYPE;
+#endif
 
   pad->duration  = GST_CLOCK_TIME_NONE;
 
