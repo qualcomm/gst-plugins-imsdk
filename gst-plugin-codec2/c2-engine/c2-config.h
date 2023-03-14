@@ -123,36 +123,36 @@ typedef enum {
   RC_MODE_UNSET = 0xFFFF
 } rc_mode_t;
 
-typedef enum {
-  SLICE_MODE_DISABLE,
+typedef enum : unsigned int {
   SLICE_MODE_MB,
   SLICE_MODE_BYTES,
+  SLICE_MODE_DEFAULT = 0xFFFFFFFF,
 } slice_mode_t;
 
-typedef enum {
+typedef enum : unsigned int {
   BLUR_MODE_AUTO = 0,
   BLUR_MODE_MANUAL,
   BLUR_MODE_DISABLE,
 } blur_mode_t;
 
-typedef enum {
-  ENTROPY_MODE_NONE,
+typedef enum : unsigned int {
   ENTROPY_MODE_CAVLC,
   ENTROPY_MODE_CABAC,
+  ENTROPY_MODE_DEFAULT = 0xFFFFFFFF,
 } entropy_mode_t;
 
-typedef enum {
-  LOOP_FILTER_NONE,
+typedef enum : unsigned int {
   LOOP_FILTER_ENABLE,
   LOOP_FILTER_DISABLE,
   LOOP_FILTER_DISABLE_SLICE_BOUNDARY,
+  LOOP_FILTER_DEFAULT = 0xFFFFFFFF,
 } loop_filter_mode_t;
 
 typedef enum {
   ROTATE_NONE,
   ROTATE_90_CW,
-  ROTATE_180,
   ROTATE_90_CCW,
+  ROTATE_180,
 } rotate_t;
 
 typedef enum {
@@ -200,8 +200,9 @@ typedef enum {
 } color_range_t;
 
 typedef enum {
-  IR_MODE_NONE = 0,
-  IR_MODE_RANDOM,
+  IR_MODE_DISABLE,
+  IR_MODE_ARBITRARY,
+  IR_MODE_DEFAULT = 0xFFFFFFFF,
 } ir_mode_t;
 
 typedef enum {
@@ -340,7 +341,12 @@ typedef struct {
 } config_params_t;
 
 void push_to_settings (gpointer data, gpointer user_data);
-video_profile_t gst_codec2_get_profile_from_str(const gchar * profile);
-video_level_t gst_codec2_get_level_from_str(const gchar * level);
+
+video_profile_t gst_c2_utils_h264_profile_from_string (const gchar * profile);
+video_profile_t gst_c2_utils_h265_profile_from_string (const gchar * profile);
+
+video_level_t gst_c2_utils_h264_level_from_string (const gchar * level);
+video_level_t gst_c2_utils_h265_level_from_string (const gchar * level,
+    const gchar * tier);
 
 #endif // __GST_C2_CONFIG_H__

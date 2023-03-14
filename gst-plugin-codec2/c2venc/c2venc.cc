@@ -52,17 +52,23 @@ GST_DEBUG_CATEGORY_STATIC (c2_venc_debug);
 #define gst_c2_venc_parent_class parent_class
 G_DEFINE_TYPE (GstC2_VENCEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 
-#define EOS_WAITING_TIMEOUT 5
+#define EOS_WAITING_TIMEOUT  5
+#define DEFAULT_ROI_QP_DELTA (-15)
 
-#define DEFAULT_PROP_ROI_QUANT_MODE FALSE
-#define DEFAULT_PROP_ROI_QP_DELTA -15
-#define GST_CODEC2_VIDEO_ENC_QUANT_I_FRAMES_DEFAULT (0xffffffff)
-#define GST_CODEC2_VIDEO_ENC_QUANT_P_FRAMES_DEFAULT (0xffffffff)
-#define GST_CODEC2_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT (0xffffffff)
-#define GST_CODEC2_VIDEO_ENC_NUM_LTR_FRAMES_DEFAULT (0xffffffff)
+#define DEFAULT_PROP_INTRA_REFRESH_MODE (0xffffffff)
+#define DEFAULT_PROP_IDR_FRAME_INTERVAL (0xffffffff)
+#define DEFAULT_PROP_TARGET_BITRATE     (0xffffffff)
+#define DEFAULT_PROP_SLICE_MODE         (0xffffffff)
+#define DEFAULT_PROP_ENTROPY_MODE       (0xffffffff)
+#define DEFAULT_PROP_LOOP_FILTER_MODE   (0xffffffff)
+#define DEFAULT_PROP_QUANT_I_FRAMES     (0xffffffff)
+#define DEFAULT_PROP_QUANT_P_FRAMES     (0xffffffff)
+#define DEFAULT_PROP_QUANT_B_FRAMES     (0xffffffff)
+#define DEFAULT_PROP_ROI_QUANT_MODE     FALSE
+#define DEFAULT_PROP_NUM_LTR_FRAMES     (0xffffffff)
 
 // Caps formats.
-#define GST_VIDEO_FORMATS "{ NV12, NV21, NV12_10LE32, P010_10LE }"
+#define GST_VIDEO_FORMATS "{ NV12, NV12_10LE32, P010_10LE }"
 
 #define GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE(pspec, state) \
   ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
@@ -90,9 +96,7 @@ GST_STATIC_PAD_TEMPLATE ("src",
         "stream-format = (string) { byte-stream },"
         "alignment = (string) { au }"
         ";"
-        "video/x-heic,"
-        "stream-format = (string) { byte-stream },"
-        "alignment = (string) { au }")
+        "image/heic")
     );
 
 // Function will be named gst_c2_venc_qdata_quark()
@@ -105,7 +109,6 @@ enum
   PROP_INTRA_REFRESH_MODE,
   PROP_INTRA_REFRESH_MBS,
   PROP_TARGET_BITRATE,
-  PROP_I_FRAME_ONLY,
   PROP_IDR_FRAME_INTERVAL,
   PROP_SLICE_MODE,
   PROP_SLICE_SIZE,
@@ -174,9 +177,9 @@ gst_c2_venc_slice_mode_get_type (void)
 
   if (qtype == 0) {
     static const GEnumValue values[] = {
-      {SLICE_MODE_DISABLE, "Slice Mode Disable", "disable"},
       {SLICE_MODE_MB, "Slice Mode MB", "MB"},
       {SLICE_MODE_BYTES, "Slice Mode Bytes", "bytes"},
+      { (gint)0xFFFFFFFF, "Component Default", "default" },
       {0, NULL, NULL}
     };
 
@@ -213,8 +216,9 @@ gst_c2_venc_intra_refresh_mode_get_type (void)
 
   if (qtype == 0) {
     static const GEnumValue values[] = {
-      {IR_MODE_NONE, "None", "none"},
-      {IR_MODE_RANDOM, "Random", "random"},
+      { IR_MODE_DISABLE, "Disable", "disable" },
+      { IR_MODE_ARBITRARY, "Arbitrary", "arbitrary" },
+      { (gint)0xFFFFFFFF, "Component Default", "default" },
       {0, NULL, NULL}
     };
 
@@ -230,9 +234,9 @@ gst_c2_venc_entropy_mode_get_type (void)
 
   if (qtype == 0) {
     static const GEnumValue values[] = {
-      {ENTROPY_MODE_NONE, "None", "none"},
       {ENTROPY_MODE_CAVLC, "CAVLC", "cavlc"},
       {ENTROPY_MODE_CABAC, "CABAC", "cabac"},
+      { (gint)0xFFFFFFFF, "Component Default", "default" },
       {0, NULL, NULL}
     };
 
@@ -248,10 +252,11 @@ gst_c2_venc_loop_filter_get_type (void)
 
   if (qtype == 0) {
     static const GEnumValue values[] = {
-      {LOOP_FILTER_NONE, "None", "none"},
       {LOOP_FILTER_ENABLE, "Enable", "enable"},
       {LOOP_FILTER_DISABLE, "Disable", "disable"},
-      {LOOP_FILTER_DISABLE_SLICE_BOUNDARY, "Disable-slice-boundary", "disable-slice-boundary"},
+      {LOOP_FILTER_DISABLE_SLICE_BOUNDARY, "Disable-slice-boundary",
+          "disable-slice-boundary"},
+      { (gint)0xFFFFFFFF, "Component Default", "default" },
       {0, NULL, NULL}
     };
 
@@ -460,12 +465,12 @@ config_roi_encoding (GstC2_VENCEncoder *c2venc, GstVideoCodecFrame * frame)
         GST_LOG_OBJECT (c2venc, "Use encoding QP delta (%d) for '%s'",
             qpdelta, label);
       } else {
-        qpdelta = DEFAULT_PROP_ROI_QP_DELTA;
+        qpdelta = DEFAULT_ROI_QP_DELTA;
         GST_WARNING_OBJECT (c2venc,"Invalid QP delta for '%s', use default (%d)",
             label, qpdelta);
       }
     } else {
-      qpdelta = DEFAULT_PROP_ROI_QP_DELTA;
+      qpdelta = DEFAULT_ROI_QP_DELTA;
       GST_LOG_OBJECT (c2venc, "No QP delta specified for '%s', use default (%d)",
           label, qpdelta);
     }
@@ -595,15 +600,15 @@ make_qp_Init_param (guint32 quant_i_frames, guint32 quant_p_frames,
   memset (&param, 0, sizeof (config_params_t));
 
   param.config_name = CONFIG_FUNCTION_KEY_QP_INIT;
-  if (quant_i_frames != 0xFFFFFFFF) {
+  if (quant_i_frames != DEFAULT_PROP_QUANT_I_FRAMES) {
     param.qp_init.quant_i_frames_enable = TRUE;
     param.qp_init.quant_i_frames = quant_i_frames;
   }
-  if (quant_p_frames != 0xFFFFFFFF) {
+  if (quant_p_frames != DEFAULT_PROP_QUANT_P_FRAMES) {
     param.qp_init.quant_p_frames_enable = TRUE;
     param.qp_init.quant_p_frames = quant_p_frames;
   }
-  if (quant_b_frames != 0xFFFFFFFF) {
+  if (quant_b_frames != DEFAULT_PROP_QUANT_B_FRAMES) {
     param.qp_init.quant_b_frames_enable = TRUE;
     param.qp_init.quant_b_frames = quant_b_frames;
   }
@@ -664,7 +669,7 @@ gst_c2_venc_get_c2_comp_name (GstStructure * structure)
     ret = g_strdup ("c2.qti.avc.encoder");
   } else if (gst_structure_has_name (structure, "video/x-h265")) {
     ret = g_strdup ("c2.qti.hevc.encoder");
-  } else if (gst_structure_has_name (structure, "video/x-heic")) {
+  } else if (gst_structure_has_name (structure, "image/heic")) {
     ret = g_strdup ("c2.qti.heic.encoder");
   }
 
@@ -1111,7 +1116,11 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     structure = gst_caps_get_structure (peercaps, 0);
     profile_string = gst_structure_get_string (structure, "profile");
     if (profile_string) {
-      profile = gst_codec2_get_profile_from_str(profile_string);
+      if (gst_structure_has_name (structure, "video/x-h264"))
+        profile = gst_c2_utils_h264_profile_from_string (profile_string);
+      else if (gst_structure_has_name (structure, "video/x-h265"))
+        profile = gst_c2_utils_h265_profile_from_string (profile_string);
+
       if (profile == VIDEO_PROFILE_MAX) {
         GST_ERROR_OBJECT (c2venc, "Unsupported profile %s", profile_string);
         gst_caps_unref (peercaps);
@@ -1120,8 +1129,14 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     }
     level_string = gst_structure_get_string (structure, "level");
     if (level_string) {
-      level = gst_codec2_get_level_from_str(level_string);
-      if (level == VIDEO_PROFILE_MAX) {
+      if (gst_structure_has_name (structure, "video/x-h264")) {
+        level = gst_c2_utils_h264_level_from_string (level_string);
+      } else if (gst_structure_has_name (structure, "video/x-h265")) {
+        const gchar *tier = gst_structure_get_string (structure, "tier");
+        level = gst_c2_utils_h265_level_from_string (level_string, tier);
+      }
+
+      if (level == VIDEO_LEVEL_MAX) {
         GST_ERROR_OBJECT (c2venc, "Unsupported level %s", level_string);
         gst_caps_unref (peercaps);
         return FALSE;
@@ -1138,14 +1153,16 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     GST_DEBUG_OBJECT (c2venc, "setting profile %u and level %u", profile, level);
   }
 
-  if (c2venc->target_bitrate > 0) {
+  if (c2venc->target_bitrate != DEFAULT_PROP_TARGET_BITRATE) {
     bitrate = make_bitrate_param (c2venc->target_bitrate, FALSE);
     g_ptr_array_add (config, &bitrate);
     GST_DEBUG_OBJECT (c2venc, "set target bitrate:%u", c2venc->target_bitrate);
   }
 
+  gst_util_fraction_to_double (c2venc->rate_numerator, rate_denominator,
+      &(c2venc->framerate));
+
   if (c2venc->rate_numerator > 0 && rate_denominator > 0) {
-    c2venc->framerate = c2venc->rate_numerator / rate_denominator;
     framerate = make_framerate_param (c2venc->framerate, FALSE);
     g_ptr_array_add (config, &framerate);
     GST_DEBUG_OBJECT (c2venc, "set target framerate:%f", c2venc->framerate);
@@ -1154,14 +1171,11 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   resolution = make_resolution_param (width, height, TRUE);
   g_ptr_array_add (config, &resolution);
 
-  if (c2venc->iframe_only) {
-    sync_frame_int =
-        make_sync_frame_interval_param (1 * 1e6 / c2venc->rate_numerator);
-    g_ptr_array_add (config, &sync_frame_int);
-    GST_DEBUG_OBJECT (c2venc, "I frame only mode");
-  } else if (c2venc->idr_interval != 0) {
-    sync_frame_int =
-        make_sync_frame_interval_param (c2venc->idr_interval * 1000);
+  if (c2venc->idr_interval != DEFAULT_PROP_IDR_FRAME_INTERVAL) {
+    gint64 key_frame_interval =
+        c2venc->idr_interval * (1000000 / c2venc->rate_numerator);
+
+    sync_frame_int = make_sync_frame_interval_param (key_frame_interval);
     g_ptr_array_add (config, &sync_frame_int);
     GST_DEBUG_OBJECT (c2venc, "IDR frame interval - %d", c2venc->idr_interval);
   }
@@ -1173,7 +1187,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   rate_control = make_rateControl_param (c2venc->rcMode);
   g_ptr_array_add (config, &rate_control);
 
-  if (c2venc->slice_mode != SLICE_MODE_DISABLE) {
+  if (c2venc->slice_mode != DEFAULT_PROP_SLICE_MODE) {
     slice_mode = make_slicemode_param (c2venc->slice_size, c2venc->slice_mode);
     g_ptr_array_add (config, &slice_mode);
   }
@@ -1193,21 +1207,21 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     g_ptr_array_add (config, &intra_refresh);
   }
 
-  if (c2venc->entropy_mode != ENTROPY_MODE_NONE) {
+  if (c2venc->entropy_mode != DEFAULT_PROP_ENTROPY_MODE) {
     entropy_mode = make_entropy_mode_param(c2venc->entropy_mode);
     g_ptr_array_add (config, &entropy_mode);
     GST_DEBUG_OBJECT (c2venc, "set entropy_mode - %d", c2venc->entropy_mode);
   }
 
-  if (c2venc->loop_filter_mode != LOOP_FILTER_NONE) {
+  if (c2venc->loop_filter_mode != DEFAULT_PROP_LOOP_FILTER_MODE) {
     loop_filter_mode = make_loop_filter_mode_param(c2venc->loop_filter_mode);
     g_ptr_array_add (config, &loop_filter_mode);
     GST_DEBUG_OBJECT (c2venc, "set loop_filter_mode - %d", c2venc->loop_filter_mode);
   }
 
-  if ((c2venc->quant_i_frames != 0xFFFFFFFF)
-   || (c2venc->quant_p_frames != 0xFFFFFFFF)
-   || (c2venc->quant_b_frames != 0xFFFFFFFF)) {
+  if ((c2venc->quant_i_frames != DEFAULT_PROP_QUANT_I_FRAMES)
+   || (c2venc->quant_p_frames != DEFAULT_PROP_QUANT_P_FRAMES)
+   || (c2venc->quant_b_frames != DEFAULT_PROP_QUANT_B_FRAMES)) {
     qp_init = make_qp_Init_param (c2venc->quant_i_frames,
         c2venc->quant_p_frames, c2venc->quant_b_frames);
     g_ptr_array_add (config, &qp_init);
@@ -1215,7 +1229,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     c2venc->quant_i_frames, c2venc->quant_p_frames, c2venc->quant_b_frames);
   }
 
-  if (c2venc->num_ltr_frames != GST_CODEC2_VIDEO_ENC_NUM_LTR_FRAMES_DEFAULT) {
+  if (c2venc->num_ltr_frames != DEFAULT_PROP_NUM_LTR_FRAMES) {
     num_ltr_frames = make_num_ltr_frames_param(c2venc->num_ltr_frames);
     g_ptr_array_add (config, &num_ltr_frames);
     GST_DEBUG_OBJECT (c2venc, "set LTR frames number - %d", c2venc->num_ltr_frames);
@@ -1478,7 +1492,7 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
       c2venc->target_bitrate = g_value_get_uint (value);
 
       config_params_t bitrate;
-      if (c2venc->target_bitrate > 0) {
+      if (c2venc->target_bitrate != DEFAULT_PROP_TARGET_BITRATE) {
         bitrate = make_bitrate_param (c2venc->target_bitrate, FALSE);
         g_ptr_array_add (config, &bitrate);
         GST_DEBUG_OBJECT (c2venc, "set target bitrate:%u", c2venc->target_bitrate);
@@ -1486,25 +1500,15 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
       config_apply = TRUE;
 
       break;
-    case PROP_I_FRAME_ONLY:
-      c2venc->iframe_only = g_value_get_boolean (value);
-
-      config_params_t sync_frame_int;
-      if (c2venc->iframe_only) {
-        sync_frame_int =
-            make_sync_frame_interval_param (1 * 1e6 / c2venc->rate_numerator);
-        g_ptr_array_add (config, &sync_frame_int);
-        GST_DEBUG_OBJECT (c2venc, "I frame only mode");
-      }
-      config_apply = TRUE;
-
-      break;
     case PROP_IDR_FRAME_INTERVAL:
       c2venc->idr_interval = g_value_get_uint (value);
 
-      if (c2venc->idr_interval != 0) {
-        sync_frame_int =
-            make_sync_frame_interval_param (c2venc->idr_interval * 1000);
+      if (c2venc->idr_interval != DEFAULT_PROP_IDR_FRAME_INTERVAL) {
+        gint64 key_frame_interval =
+            c2venc->idr_interval * (1000000 / c2venc->rate_numerator);
+
+        config_params_t sync_frame_int =
+            make_sync_frame_interval_param (key_frame_interval);
         g_ptr_array_add (config, &sync_frame_int);
         GST_DEBUG_OBJECT (c2venc, "IDR frame interval - %d", c2venc->idr_interval);
       }
@@ -1639,9 +1643,6 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
       break;
     case PROP_TARGET_BITRATE:
       g_value_set_uint (value, c2venc->target_bitrate);
-      break;
-    case PROP_I_FRAME_ONLY:
-      g_value_set_boolean (value, c2venc->iframe_only);
       break;
     case PROP_IDR_FRAME_INTERVAL:
       g_value_set_uint (value, c2venc->idr_interval);
@@ -1795,44 +1796,39 @@ gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
 
   g_object_class_install_property (gobject, PROP_INTRA_REFRESH_MODE,
       g_param_spec_enum ("intra-refresh-mode", "Intra refresh mode",
-          "Intra refresh mode, only support random mode. Allow IR only for CBR(_CFR/VFR) RC modes",
-          GST_TYPE_CODEC2_ENC_INTRA_REFRESH_MODE,
-          IR_MODE_NONE,
+          "Intra refresh mode, only support random mode. Allow IR only for "
+          "CBR(_CFR/VFR) RC modes (0xffffffff=component default)",
+          GST_TYPE_CODEC2_ENC_INTRA_REFRESH_MODE, DEFAULT_PROP_INTRA_REFRESH_MODE,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
   g_object_class_install_property (gobject, PROP_INTRA_REFRESH_MBS,
-      g_param_spec_uint ("intra-refresh-mbs", "Intra refresh mbs/period",
-          "For random modes, it means period of intra refresh. Only support random mode.",
+      g_param_spec_uint ("intra-refresh-period", "Intra refresh mbs/period",
+          "For arbitrary modes, it means period of intra refresh. "
+          "Only support arbitrary mode.",
           0, G_MAXUINT, 0,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
   g_object_class_install_property (G_OBJECT_CLASS (klass), PROP_TARGET_BITRATE,
       g_param_spec_uint ("target-bitrate", "Target bitrate",
-          "Target bitrate in bits per second (0 means not explicitly set bitrate)",
-          0, G_MAXUINT, 0,
+          "Target bitrate in bits per second (0xffffffff=component default)",
+          1, G_MAXUINT, DEFAULT_PROP_TARGET_BITRATE,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING)));
 
-  g_object_class_install_property (gobject, PROP_I_FRAME_ONLY,
-      g_param_spec_boolean ("iframe-only", "I Frame only",
-          "I Frame only mode", FALSE,
-          static_cast<GParamFlags>(G_PARAM_CONSTRUCT | G_PARAM_READWRITE |
-          G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_PLAYING)));
-
   g_object_class_install_property (G_OBJECT_CLASS (klass), PROP_IDR_FRAME_INTERVAL,
       g_param_spec_uint ("idr-interval", "IDR frame interval",
-          "IDR frame interval (0 means not explicitly set IDR interval)",
-          0, G_MAXUINT, 0,
+          "Periodicity of IDR frames. When set to 0 all frames will be I frames "
+          "(0xffffffff=component default)",
+          0, G_MAXUINT, DEFAULT_PROP_IDR_FRAME_INTERVAL,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING)));
 
   g_object_class_install_property (gobject, PROP_SLICE_MODE,
       g_param_spec_enum ("slice-mode", "slice mode",
-          "Slice mode, support MB and BYTES mode",
-          GST_TYPE_CODEC2_ENC_SLICE_MODE,
-          SLICE_MODE_DISABLE,
+          "Slice mode, support MB and BYTES mode (0xffffffff=component default)",
+          GST_TYPE_CODEC2_ENC_SLICE_MODE, DEFAULT_PROP_SLICE_MODE,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
@@ -1927,45 +1923,43 @@ gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
 
   g_object_class_install_property (gobject, PROP_ENTROPY_MODE,
       g_param_spec_enum ("entropy-mode", "Entropy Mode",
-          "Entropy mode for encoding process",
-          GST_TYPE_CODEC2_ENC_ENTROPY_MODE,
-          ENTROPY_MODE_NONE,
+          "Entropy mode for encoding process (0xffffffff=component default)",
+          GST_TYPE_CODEC2_ENC_ENTROPY_MODE, DEFAULT_PROP_ENTROPY_MODE,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
   g_object_class_install_property (gobject, PROP_LOOP_FILTER_MODE,
       g_param_spec_enum ("loop-filter-mode", "Loop Filter mode",
-          "Enable or disable the deblocking filter",
-          GST_TYPE_CODEC2_ENC_LOOP_FILTER_MODE,
-          LOOP_FILTER_NONE,
+          "Enable or disable the deblocking filter (0xffffffff=component default)",
+          GST_TYPE_CODEC2_ENC_LOOP_FILTER_MODE, DEFAULT_PROP_LOOP_FILTER_MODE,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
   g_object_class_install_property (gobject, PROP_QUANT_I_FRAMES,
       g_param_spec_uint ("quant-i-frames", "I-Frame Quantization",
           "Quantization parameter for I-frames (0xffffffff=component default)",
-          0, G_MAXUINT, GST_CODEC2_VIDEO_ENC_QUANT_I_FRAMES_DEFAULT,
+          0, G_MAXUINT, DEFAULT_PROP_QUANT_I_FRAMES,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
   g_object_class_install_property (gobject, PROP_QUANT_P_FRAMES,
       g_param_spec_uint ("quant-p-frames", "P-Frame Quantization",
           "Quantization parameter for P-frames (0xffffffff=component default)",
-          0, G_MAXUINT, GST_CODEC2_VIDEO_ENC_QUANT_P_FRAMES_DEFAULT,
+          0, G_MAXUINT, DEFAULT_PROP_QUANT_P_FRAMES,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
   g_object_class_install_property (gobject, PROP_QUANT_P_FRAMES,
       g_param_spec_uint ("quant-b-frames", "B-Frame Quantization",
           "Quantization parameter for B-frames (0xffffffff=component default)",
-          0, G_MAXUINT, GST_CODEC2_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT,
+          0, G_MAXUINT, DEFAULT_PROP_QUANT_B_FRAMES,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
   g_object_class_install_property (gobject, PROP_NUM_LTR_FRAMES,
       g_param_spec_uint ("num-ltr-frames", "LTR Frames Count",
           "Number of Long Term Reference Frames (0xffffffff=component default)",
-          0, G_MAXUINT, GST_CODEC2_VIDEO_ENC_NUM_LTR_FRAMES_DEFAULT,
+          0, G_MAXUINT, DEFAULT_PROP_NUM_LTR_FRAMES,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
@@ -2007,13 +2001,13 @@ gst_c2_venc_init (GstC2_VENCEncoder * c2venc)
   c2venc->frame_index = 0;
   c2venc->eos_reached = FALSE;
   c2venc->rate_numerator = 0;
+  c2venc->framerate = 0;
 
   c2venc->rcMode = RC_MODE_OFF;
-  c2venc->target_bitrate = 0;
-  c2venc->framerate = 0;
+  c2venc->target_bitrate = DEFAULT_PROP_TARGET_BITRATE;
+  c2venc->slice_mode = (slice_mode_t)DEFAULT_PROP_SLICE_MODE;
   c2venc->slice_size = 0;
-  c2venc->iframe_only = FALSE;
-  c2venc->idr_interval = 0;
+  c2venc->idr_interval = DEFAULT_PROP_IDR_FRAME_INTERVAL;
 
   c2venc->max_qp_b_frames = 0;
   c2venc->max_qp_i_frames = 0;
@@ -2026,12 +2020,12 @@ gst_c2_venc_init (GstC2_VENCEncoder * c2venc)
   c2venc->roi_quant_values = gst_structure_new_empty ("roi-meta-qp");
   c2venc->roi_quant_boxes = g_array_new (FALSE, FALSE, sizeof (GstQuantRectangle));
 
-  c2venc->entropy_mode = ENTROPY_MODE_NONE;
-  c2venc->loop_filter_mode = LOOP_FILTER_NONE;
-  c2venc->quant_i_frames = GST_CODEC2_VIDEO_ENC_QUANT_I_FRAMES_DEFAULT;
-  c2venc->quant_p_frames = GST_CODEC2_VIDEO_ENC_QUANT_P_FRAMES_DEFAULT;
-  c2venc->quant_b_frames = GST_CODEC2_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT;
-  c2venc->num_ltr_frames = GST_CODEC2_VIDEO_ENC_NUM_LTR_FRAMES_DEFAULT;
+  c2venc->entropy_mode = (entropy_mode_t)DEFAULT_PROP_ENTROPY_MODE;
+  c2venc->loop_filter_mode = (loop_filter_mode_t)DEFAULT_PROP_LOOP_FILTER_MODE;
+  c2venc->quant_i_frames = DEFAULT_PROP_QUANT_I_FRAMES;
+  c2venc->quant_p_frames = DEFAULT_PROP_QUANT_P_FRAMES;
+  c2venc->quant_b_frames = DEFAULT_PROP_QUANT_B_FRAMES;
+  c2venc->num_ltr_frames = DEFAULT_PROP_NUM_LTR_FRAMES;
   c2venc->rotate = ROTATE_NONE;
   c2venc->is_ubwc = FALSE;
 
