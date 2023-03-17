@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -513,15 +513,11 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
 
     usage |= priv->isubwc ? GBM_BO_USAGE_UBWC_ALIGNED_QTI : 0;
 
-    priv->gbm_perform (GBM_PERFORM_GET_BUFFER_SIZE_DIMENSIONS, &bufinfo,
+    priv->gbm_perform (GBM_PERFORM_GET_BUFFER_STRIDE_SCANLINE_SIZE, &bufinfo,
         usage, &stride, &scanline, &size);
 
     GST_VIDEO_INFO_PLANE_STRIDE (&priv->info, 0) = stride;
     GST_VIDEO_INFO_PLANE_OFFSET (&priv->info, 0) = 0;
-
-    // TODO: Workaroud for GBM incorect stride
-    if (bufinfo.format == GBM_FORMAT_RGB888)
-      GST_VIDEO_INFO_PLANE_STRIDE (&priv->info, 0) *= 3;
 
     // Check for a second plane and fill its stride and offset.
     if (GST_VIDEO_INFO_N_PLANES (&priv->info) >= 2) {

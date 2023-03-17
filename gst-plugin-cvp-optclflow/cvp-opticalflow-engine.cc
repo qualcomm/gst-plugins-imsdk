@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -138,6 +138,9 @@
 #define CVP_STATS_BEST_SAD_FIELD_SIZE 16
 #define CVP_STATS_SAD_FIELD_SIZE      16
 
+#define CVP_PAXEL_WIDTH               4
+#define CVP_PAXEL_HEIGHT              16
+
 #define DEFAULT_OPT_VIDEO_WIDTH       0
 #define DEFAULT_OPT_VIDEO_HEIGHT      0
 #define DEFAULT_OPT_VIDEO_STRIDE      0
@@ -220,7 +223,7 @@ get_opt_bool (const GstStructure * settings, const gchar * opt, gboolean value)
 }
 
 static void
-gst_buffer_append_cvp_custom_meta (GstBuffer * buffer)
+gst_cvp_append_custom_meta (GstCvpOptclFlowEngine * engine,GstBuffer * buffer)
 {
   GstStructure *info = NULL, *params = NULL;
   GValue entries = G_VALUE_INIT, value = G_VALUE_INIT;
@@ -259,7 +262,7 @@ gst_buffer_append_cvp_custom_meta (GstBuffer * buffer)
   // Fill offset and size of the motion vector confidence field in bits.
   ADD_FIELD_PARAMS (params, &entries, &value, "confidence", offset, size, false);
 
-  // The motion vector parameters to the main info structure.
+  // Add the motion vector parameters to the main info structure.
   gst_structure_set (info,
       "motion-vector-params", GST_TYPE_STRUCTURE, params, NULL);
   gst_structure_free (params);
@@ -332,6 +335,24 @@ gst_buffer_append_cvp_custom_meta (GstBuffer * buffer)
 
   g_value_unset (&value);
   g_value_unset (&entries);
+
+  g_value_init (&value, G_TYPE_UINT);
+
+  // Add the dimensions of single motion vector paxel to the info structure.
+  g_value_set_uint (&value, CVP_PAXEL_WIDTH);
+  gst_structure_set_value (info, "mv-paxel-width", &value);
+  g_value_set_uint (&value, CVP_PAXEL_HEIGHT);
+  gst_structure_set_value (info, "mv-paxel-height", &value);
+
+  // Add the number of paxels in a single row and column to the info structure.
+  g_value_set_uint (&value,
+      GST_ROUND_UP_32 (GET_OPT_WIDTH (engine->settings)) / CVP_PAXEL_WIDTH);
+  gst_structure_set_value (info, "mv-paxels-row-length", &value);
+  g_value_set_uint (&value,
+      GST_ROUND_UP_32 (GET_OPT_HEIGHT (engine->settings)) / CVP_PAXEL_HEIGHT);
+  gst_structure_set_value (info, "mv-paxels-column-length", &value);
+
+  g_value_unset (&value);
 
   // Append custom meta to the output buffer for data decryption.
   gst_buffer_add_protection_meta (buffer, info);
@@ -455,6 +476,7 @@ gst_cvp_optclflow_engine_new (GstStructure * settings)
 {
   GstCvpOptclFlowEngine *engine = NULL;
   cvpConfigOpticalFlow config;
+  cvpAdvConfigOpticalFlow advcfg;
   cvpOpticalFlowOutBuffReq requirements;
   cvpImageInfo imginfo;
   cvpStatus status = CVP_SUCCESS;
@@ -510,25 +532,38 @@ gst_cvp_optclflow_engine_new (GstStructure * settings)
   config.sImageInfo.nWidthStride[0] = stride;
   config.sImageInfo.nAlignedSize[0] = config.sImageInfo.nTotalSize;
 
-  // Initialize optical flow using CVP.
-  // TODO implement advanced configuration and function callbacks.
-  engine->handle = cvpInitOpticalFlow (engine->session, &config, NULL,
-      &requirements, NULL, NULL);
-  GST_RETURN_VAL_IF_FAIL_WITH_CLEAN (engine->handle != NULL, NULL,
-      gst_cvp_optclflow_engine_free (engine), "Failed to init Optical Flow!");
-
-  engine->mvsize = requirements.nMotionVectorBytes;
-  engine->statsize = requirements.nStatsBytes;
-
   GST_INFO ("Configuration:");
-  GST_INFO ("    Stride:         %d", stride);
-  GST_INFO ("    Scanline:       %d", scanline);
   GST_INFO ("    Width:          %d", config.sImageInfo.nWidth);
   GST_INFO ("    Height:         %d", config.sImageInfo.nHeight);
   GST_INFO ("    Format:         %d", config.sImageInfo.eFormat);
   GST_INFO ("    Plane:          %d", config.sImageInfo.nPlane);
   GST_INFO ("    WidthStride:    %d", config.sImageInfo.nWidthStride[0]);
   GST_INFO ("    AlightedSize:   %d", config.sImageInfo.nAlignedSize[0]);
+
+  advcfg.nMvDist = 2;
+  advcfg.nMvWeights[0] = 10;
+  advcfg.nMvWeights[1] = 2;
+  advcfg.nMvWeights[2] = 2;
+  advcfg.nMvWeights[3] = 1;
+  advcfg.nMvWeights[4] = 1;
+  advcfg.nMvWeights[5] = 7;
+  advcfg.nMvWeights[6] = 20;
+  advcfg.nMedianFiltType = 5;
+  advcfg.nThresholdMedFilt = 900;
+  advcfg.nSmoothnessPenaltyThresh = 500;
+  advcfg.nSearchRangeX = 96;
+  advcfg.nSearchRangeY = 48;
+  advcfg.bEnableEic = false;
+
+  // Initialize optical flow using CVP.
+  // TODO implement advanced configuration and function callbacks.
+  engine->handle = cvpInitOpticalFlow (engine->session, &config, &advcfg,
+      &requirements, NULL, NULL);
+  GST_RETURN_VAL_IF_FAIL_WITH_CLEAN (engine->handle != NULL, NULL,
+      gst_cvp_optclflow_engine_free (engine), "Failed to init Optical Flow!");
+
+  engine->mvsize = requirements.nMotionVectorBytes;
+  engine->statsize = requirements.nStatsBytes;
 
   // Start the CVP session.
   status = cvpStartSession (engine->session);
@@ -692,6 +727,6 @@ gst_cvp_optclflow_engine_execute (GstCvpOptclFlowEngine * engine,
     return FALSE;
   }
 
-  gst_buffer_append_cvp_custom_meta (outbuffer);
+  gst_cvp_append_custom_meta (engine, outbuffer);
   return TRUE;
 }

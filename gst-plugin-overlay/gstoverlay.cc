@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -1284,7 +1284,6 @@ gst_overlay_apply_optclflow_item (GstOverlay * gst_overlay, gpointer metadata,
   GstCvpOptclFlowMeta *meta = (GstCvpOptclFlowMeta *) metadata;
   g_return_val_if_fail (meta->mvectors->len == meta->stats->len, FALSE);
 
-  gint paxel_width = (gst_overlay->width / 8);
   gint arrows_cnt = 0;
 
   // Read each 4th mv in order to skip each 2nd paxel due arrows density
@@ -1292,8 +1291,8 @@ gst_overlay_apply_optclflow_item (GstOverlay * gst_overlay, gpointer metadata,
     GstCvpMotionVector *mvector = &g_array_index (meta->mvectors, GstCvpMotionVector, x);
     GstCvpOptclFlowStats *stats = &g_array_index (meta->stats, GstCvpOptclFlowStats, x);
 
-    gint mv_x = mvector->x;
-    gint mv_y = mvector->y;
+    gint mv_x = mvector->dx;
+    gint mv_y = mvector->dy;
 
     // Filter by motion vectors
     if (mv_x < (gint) gst_overlay->arrows_filter_mv &&
@@ -1313,15 +1312,11 @@ gst_overlay_apply_optclflow_item (GstOverlay * gst_overlay, gpointer metadata,
       continue;
     }
 
-    gint row = (gint) (x / (paxel_width * 2) * 2);
-    gint pos = x - row * paxel_width;
-    gint pos_real = (gint) (pos / 2);
+    if ((stats->sad == 0) && (stats->variance == 0))
+      continue;
 
-    ov_param.arrows[arrows_cnt].end_x = pos_real * 8 + 4;
-    if (pos % 2)
-      ov_param.arrows[arrows_cnt].end_y = (row + 1) * 8;
-    else
-      ov_param.arrows[arrows_cnt].end_y = row * 8 + 4;
+    ov_param.arrows[arrows_cnt].end_x = mvector->x;
+    ov_param.arrows[arrows_cnt].end_y = mvector->y;
 
     ov_param.arrows[arrows_cnt].start_x =
         ov_param.arrows[arrows_cnt].end_x + mv_x;
