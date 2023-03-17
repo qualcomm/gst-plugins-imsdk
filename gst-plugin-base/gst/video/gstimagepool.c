@@ -244,8 +244,8 @@ open_gbm_device (GstImageBufferPool * vpool)
     return FALSE;
   }
 
-  // Due to limitation in the GBM implementation we need to open /dev/ion
-  // instead of /dev/dri/card0.
+  GST_INFO_OBJECT (vpool, "Open /dev/dma_heap/qcom,system");
+  priv->devfd = open ("/dev/dma_heap/qcom,system", O_RDWR);
 
   if (priv->devfd < 0) {
     GST_WARNING_OBJECT (vpool, "Falling back to /dev/ion");
@@ -335,7 +335,14 @@ open_ion_device (GstImageBufferPool * vpool)
 {
   GstImageBufferPoolPrivate *priv = vpool->priv;
 
-  priv->devfd = open ("/dev/ion", O_RDWR);
+  GST_INFO_OBJECT (vpool, "Open /dev/dma_heap/qcom,system");
+  priv->devfd = open ("/dev/dma_heap/qcom,system", O_RDWR);
+
+  if (priv->devfd < 0) {
+    GST_WARNING_OBJECT (vpool, "Falling back to /dev/ion");
+    priv->devfd = open ("/dev/ion", O_RDWR);
+  }
+
   if (priv->devfd < 0) {
     GST_ERROR_OBJECT (vpool, "Failed to open ION device FD!");
     return FALSE;
