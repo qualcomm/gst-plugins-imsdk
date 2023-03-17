@@ -1,4 +1,4 @@
-/* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+/* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -75,7 +75,7 @@ public:
 
 private:
   C2FrameData::flags_t toC2Flag (FLAG_TYPE flag);
-  guint32 gst_to_c2_gbmformat (GstVideoFormat format);
+  guint32 gst_to_c2_gbmformat (GstVideoFormat format, bool isUbwc);
   c2_status_t CheckMaxAvailableQueues ();
   c2_status_t prepareC2Buffer( BufferDescriptor* buffer, std::shared_ptr<C2Buffer>* c2Buf);
   c2_status_t waitForProgressOrStateChange(uint32_t maxPendingWorks,uint32_t timeoutMs);
