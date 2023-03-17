@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -329,6 +329,10 @@ gst_video_format_to_c2d_format (GstVideoFormat format)
       return C2D_COLOR_FORMAT_444_AYUV;
     case GST_VIDEO_FORMAT_Y444:
       return C2D_COLOR_FORMAT_444_Y_U_V;
+    case GST_VIDEO_FORMAT_P010_10LE:
+      return C2D_COLOR_FORMAT_420_P010;
+    case GST_VIDEO_FORMAT_NV12_10LE32:
+      return C2D_COLOR_FORMAT_420_TP10;
     case GST_VIDEO_FORMAT_RGBA:
       return C2D_COLOR_FORMAT_8888_ARGB | C2D_FORMAT_SWAP_RB;
     case GST_VIDEO_FORMAT_BGRA:
