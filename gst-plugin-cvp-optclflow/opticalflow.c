@@ -67,7 +67,7 @@
 
 #include "opticalflow.h"
 
-#include <gst/memory/gstionpool.h>
+#include <gst/memory/gstmempool.h>
 
 #include <gbm.h>
 #include <gbm_priv.h>
@@ -178,7 +178,7 @@ gst_cvp_optclflow_create_pool (GstCvpOptclFlow * optclflow)
   gst_cvp_optclflow_engine_sizes (optclflow->engine, &mvsize, &statsize);
 
   GST_INFO_OBJECT (optclflow, "Uses ION memory");
-  pool = gst_ion_buffer_pool_new ();
+  pool = gst_mem_buffer_pool_new (GST_MEMORY_BUFFER_POOL_TYPE_ION);
 
   config = gst_buffer_pool_get_config (pool);
   gst_buffer_pool_config_set_params (config, NULL, (mvsize + statsize),

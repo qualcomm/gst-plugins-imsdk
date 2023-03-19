@@ -2,11 +2,11 @@
 set(GST_QTI_MEMORY_BASE gstqtimemorybase)
 
 add_library(${GST_QTI_MEMORY_BASE} SHARED
-  gstionpool.c
+  gstmempool.c
 )
 
 set_target_properties(${GST_QTI_MEMORY_BASE} PROPERTIES PUBLIC_HEADER
-  gstionpool.h
+  gstmempool.h
 )
 
 target_include_directories(${GST_QTI_MEMORY_BASE} PUBLIC

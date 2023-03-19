@@ -61,7 +61,7 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "gstionpool.h"
+#include "gstmempool.h"
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -72,17 +72,23 @@
 #include <linux/msm_ion.h>
 
 
-GST_DEBUG_CATEGORY_STATIC (gst_ion_pool_debug);
-#define GST_CAT_DEFAULT gst_ion_pool_debug
+GST_DEBUG_CATEGORY_STATIC (gst_mem_pool_debug);
+#define GST_CAT_DEFAULT gst_mem_pool_debug
+
+#define GST_IS_SYSTEM_MEMORY_TYPE(type) \
+    (type == g_quark_from_static_string (GST_MEMORY_BUFFER_POOL_TYPE_SYSTEM))
+#define GST_IS_ION_MEMORY_TYPE(type) \
+    (type == g_quark_from_static_string (GST_MEMORY_BUFFER_POOL_TYPE_ION))
 
 #define DEFAULT_PAGE_ALIGNMENT 4096
 
-struct _GstIonBufferPoolPrivate
+struct _GstMemBufferPoolPrivate
 {
   GList               *memsizes;
 
   GstAllocator        *allocator;
   GstAllocationParams params;
+  GQuark              memtype;
 
   // Either ION device FD.
   gint                devfd;
@@ -93,25 +99,25 @@ struct _GstIonBufferPoolPrivate
 #endif
 };
 
-#define gst_ion_buffer_pool_parent_class parent_class
-G_DEFINE_TYPE_WITH_PRIVATE (GstIonBufferPool, gst_ion_buffer_pool,
+#define gst_mem_buffer_pool_parent_class parent_class
+G_DEFINE_TYPE_WITH_PRIVATE (GstMemBufferPool, gst_mem_buffer_pool,
     GST_TYPE_BUFFER_POOL);
 
 static gboolean
-open_ion_device (GstIonBufferPool * ionpool)
+open_ion_device (GstMemBufferPool * mempool)
 {
-  GstIonBufferPoolPrivate *priv = ionpool->priv;
+  GstMemBufferPoolPrivate *priv = mempool->priv;
 
-  GST_INFO_OBJECT (ionpool, "Open /dev/dma_heap/qcom,system");
+  GST_INFO_OBJECT (mempool, "Open /dev/dma_heap/qcom,system");
   priv->devfd = open ("/dev/dma_heap/qcom,system", O_RDWR);
 
   if (priv->devfd < 0) {
-    GST_WARNING_OBJECT (ionpool, "Falling back to /dev/ion");
+    GST_WARNING_OBJECT (mempool, "Falling back to /dev/ion");
     priv->devfd = open ("/dev/ion", O_RDWR);
   }
 
   if (priv->devfd < 0) {
-    GST_ERROR_OBJECT (ionpool, "Failed to open ION device FD!");
+    GST_ERROR_OBJECT (mempool, "Failed to open ION device FD!");
     return FALSE;
   }
 
@@ -119,17 +125,17 @@ open_ion_device (GstIonBufferPool * ionpool)
   priv->datamap = g_hash_table_new (NULL, NULL);
 #endif
 
-  GST_INFO_OBJECT (ionpool, "Opened ION device FD %d", priv->devfd);
+  GST_INFO_OBJECT (mempool, "Opened ION device FD %d", priv->devfd);
   return TRUE;
 }
 
 static void
-close_ion_device (GstIonBufferPool * ionpool)
+close_ion_device (GstMemBufferPool * mempool)
 {
-  GstIonBufferPoolPrivate *priv = ionpool->priv;
+  GstMemBufferPoolPrivate *priv = mempool->priv;
 
   if (priv->devfd >= 0) {
-    GST_INFO_OBJECT (ionpool, "Closing ION device FD %d", priv->devfd);
+    GST_INFO_OBJECT (mempool, "Closing ION device FD %d", priv->devfd);
     close (priv->devfd);
   }
 
@@ -139,9 +145,9 @@ close_ion_device (GstIonBufferPool * ionpool)
 }
 
 static GstMemory *
-ion_device_alloc (GstIonBufferPool * ionpool, gint size)
+ion_device_alloc (GstMemBufferPool * mempool, gint size)
 {
-  GstIonBufferPoolPrivate *priv = ionpool->priv;
+  GstMemBufferPoolPrivate *priv = mempool->priv;
   gint result = 0, fd = -1;
 
 #ifndef TARGET_ION_ABI_VERSION
@@ -158,7 +164,7 @@ ion_device_alloc (GstIonBufferPool * ionpool, gint size)
 
   result = ioctl (priv->devfd, ION_IOC_ALLOC, &alloc_data);
   if (result != 0) {
-    GST_ERROR_OBJECT (ionpool, "Failed to allocate ION memory!");
+    GST_ERROR_OBJECT (mempool, "Failed to allocate ION memory!");
     return NULL;
   }
 
@@ -167,7 +173,7 @@ ion_device_alloc (GstIonBufferPool * ionpool, gint size)
 
   result = ioctl (priv->devfd, ION_IOC_MAP, &fd_data);
   if (result != 0) {
-    GST_ERROR_OBJECT (ionpool, "Failed to map memory to FD!");
+    GST_ERROR_OBJECT (mempool, "Failed to map memory to FD!");
     ioctl (priv->devfd, ION_IOC_FREE, &alloc_data.handle);
     return NULL;
   }
@@ -180,7 +186,7 @@ ion_device_alloc (GstIonBufferPool * ionpool, gint size)
   fd = alloc_data.fd;
 #endif
 
-  GST_DEBUG_OBJECT (ionpool, "Allocated ION memory FD %d", fd);
+  GST_DEBUG_OBJECT (mempool, "Allocated ION memory FD %d", fd);
 
   // Wrap the allocated FD in FD backed allocator.
   return gst_fd_allocator_alloc (priv->allocator, fd, size,
@@ -188,65 +194,72 @@ ion_device_alloc (GstIonBufferPool * ionpool, gint size)
 }
 
 static void
-ion_device_free (GstIonBufferPool * ionpool, gint fd)
+ion_device_free (GstMemBufferPool * mempool, gint fd)
 {
-  GST_DEBUG_OBJECT (ionpool, "Closing ION memory FD %d", fd);
+  GST_DEBUG_OBJECT (mempool, "Closing ION memory FD %d", fd);
 
 #ifndef TARGET_ION_ABI_VERSION
   ion_user_handle_t handle = GPOINTER_TO_SIZE (
-      g_hash_table_lookup (ionpool->priv->datamap, GINT_TO_POINTER (fd)));
+      g_hash_table_lookup (mempool->priv->datamap, GINT_TO_POINTER (fd)));
 
-  if (ioctl (ionpool->priv->devfd, ION_IOC_FREE, &handle) < 0) {
-    GST_ERROR_OBJECT (ionpool, "Failed to free handle for memory FD %d!", fd);
+  if (ioctl (mempool->priv->devfd, ION_IOC_FREE, &handle) < 0) {
+    GST_ERROR_OBJECT (mempool, "Failed to free handle for memory FD %d!", fd);
   }
 
-  g_hash_table_remove (ionpool->priv->datamap, GINT_TO_POINTER (fd));
+  g_hash_table_remove (mempool->priv->datamap, GINT_TO_POINTER (fd));
 #endif
 
   close (fd);
 }
 
 static const gchar **
-gst_ion_buffer_pool_get_options (GstBufferPool * pool)
+gst_mem_buffer_pool_get_options (GstBufferPool * pool)
 {
   static const gchar *options[] = { NULL };
   return options;
 }
 
 static gboolean
-gst_ion_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
+gst_mem_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
 {
-  GstIonBufferPool *ionpool = GST_ION_BUFFER_POOL (pool);
-  GstIonBufferPoolPrivate *priv = ionpool->priv;
+  GstMemBufferPool *mempool = GST_MEM_BUFFER_POOL (pool);
+  GstMemBufferPoolPrivate *priv = mempool->priv;
   GstAllocator *allocator = NULL;
   const GValue *memblocks = NULL;
   GstAllocationParams params = { 0, };
   guint size = 0;
 
   if (!gst_buffer_pool_config_get_params (config, NULL, &size, NULL, NULL)) {
-    GST_ERROR_OBJECT (ionpool, "Invalid configuration!");
+    GST_ERROR_OBJECT (mempool, "Invalid configuration!");
     return FALSE;
   }
 
   if (!gst_buffer_pool_config_get_allocator (config, &allocator, &params)) {
-    GST_ERROR_OBJECT (ionpool, "Allocator missing from configuration!");
+    GST_ERROR_OBJECT (mempool, "Allocator missing from configuration!");
     return FALSE;
-  } else if (NULL == allocator) {
+  } else if ((NULL == allocator) && GST_IS_ION_MEMORY_TYPE (priv->memtype)) {
     // No allocator set in configuration, create default FD allocator.
     if (NULL == (allocator = gst_fd_allocator_new ())) {
-      GST_ERROR_OBJECT (ionpool, "Failed to create FD allocator!");
+      GST_ERROR_OBJECT (mempool, "Failed to create FD allocator!");
+      return FALSE;
+    }
+  } else if ((NULL == allocator) && GST_IS_SYSTEM_MEMORY_TYPE (priv->memtype)) {
+    allocator = gst_allocator_find (GST_ALLOCATOR_SYSMEM);
+    // No allocator set in configuration, create default SYSTEM allocator.
+    if (NULL == (allocator = gst_allocator_find (GST_ALLOCATOR_SYSMEM))) {
+      GST_ERROR_OBJECT (mempool, "Failed to create SYSTEM allocator!");
       return FALSE;
     }
   }
 
-  if (!GST_IS_FD_ALLOCATOR (allocator)) {
-     GST_ERROR_OBJECT (ionpool, "Allocator %p is not FD backed!", allocator);
-     return FALSE;
+  if (GST_IS_ION_MEMORY_TYPE (priv->memtype) && !GST_IS_FD_ALLOCATOR (allocator)) {
+    GST_ERROR_OBJECT (mempool, "Allocator %p is not FD backed!", allocator);
+    return FALSE;
   }
 
   if ((memblocks = gst_structure_get_value (config, "memory-blocks")) != NULL) {
     guint n_blocks = gst_value_array_get_size (memblocks);
-    GST_INFO_OBJECT (ionpool, "%d memory blocks found", n_blocks);
+    GST_INFO_OBJECT (mempool, "%d memory blocks found", n_blocks);
 
     for (guint i = 0; i < n_blocks; i++) {
       const GValue *value = gst_value_array_get_value (memblocks, i);
@@ -270,11 +283,11 @@ gst_ion_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
 }
 
 static GstFlowReturn
-gst_ion_buffer_pool_alloc (GstBufferPool * pool, GstBuffer ** buffer,
+gst_mem_buffer_pool_alloc (GstBufferPool * pool, GstBuffer ** buffer,
     GstBufferPoolAcquireParams * params)
 {
-  GstIonBufferPool *ionpool = GST_ION_BUFFER_POOL (pool);
-  GstIonBufferPoolPrivate *priv = ionpool->priv;
+  GstMemBufferPool *mempool = GST_MEM_BUFFER_POOL (pool);
+  GstMemBufferPoolPrivate *priv = mempool->priv;
   GstBuffer *newbuffer = NULL;
   GList *list = NULL;
 
@@ -285,12 +298,18 @@ gst_ion_buffer_pool_alloc (GstBufferPool * pool, GstBuffer ** buffer,
     GstMemory *memory = NULL;
     guint blocksize = GPOINTER_TO_UINT (list->data);
 
-    if ((memory = ion_device_alloc (ionpool, blocksize)) == NULL) {
+    if (GST_IS_SYSTEM_MEMORY_TYPE (priv->memtype)) {
+      memory = gst_allocator_alloc (priv->allocator, blocksize, &(priv->params));
+    } else if (GST_IS_ION_MEMORY_TYPE (priv->memtype)) {
+      memory = ion_device_alloc (mempool, blocksize);
+    }
+
+    if (memory == NULL) {
       GST_WARNING_OBJECT (pool, "Failed to allocate memory block!");
       gst_buffer_unref (newbuffer);
       return GST_FLOW_ERROR;
     }
-    // Append the FD backed memory to the newly created GstBuffer.
+    // Append the memory to the newly created GstBuffer.
     gst_buffer_append_memory (newbuffer, memory);
   }
 
@@ -299,29 +318,53 @@ gst_ion_buffer_pool_alloc (GstBufferPool * pool, GstBuffer ** buffer,
 }
 
 static void
-gst_ion_buffer_pool_free (GstBufferPool * pool, GstBuffer * buffer)
+gst_mem_buffer_pool_free (GstBufferPool * pool, GstBuffer * buffer)
 {
-  GstIonBufferPool *ionpool = GST_ION_BUFFER_POOL (pool);
-  GstIonBufferPoolPrivate *priv = ionpool->priv;
+  GstMemBufferPool *mempool = GST_MEM_BUFFER_POOL (pool);
+  GstMemBufferPoolPrivate *priv = mempool->priv;
+  guint idx = 0, length = 0;
 
-  for (guint i = 0; i < g_list_length (priv->memsizes); i++) {
-    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (buffer, i));
-    ion_device_free (ionpool, fd);
+  length = g_list_length (priv->memsizes);
+
+  for (idx = 0; (idx < length) && GST_IS_ION_MEMORY_TYPE (priv->memtype); idx++) {
+    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (buffer, idx));
+    ion_device_free (mempool, fd);
   }
 
   gst_buffer_unref (buffer);
 }
 
 static void
-gst_ion_buffer_pool_finalize (GObject * object)
+gst_mem_buffer_pool_reset (GstBufferPool * pool, GstBuffer * buffer)
 {
-  GstIonBufferPool *ionpool = GST_ION_BUFFER_POOL (object);
-  GstIonBufferPoolPrivate *priv = ionpool->priv;
+  GstMemBufferPoolPrivate *priv = GST_MEM_BUFFER_POOL (pool)->priv;
+  guint idx = 0, length = 0;
 
-  GST_INFO_OBJECT (ionpool, "Finalize buffer pool %p", ionpool);
+  length = gst_buffer_n_memory (buffer);
+
+  // Sanity check.
+  g_return_if_fail (length == g_list_length (priv->memsizes));
+
+  // Resize the buffer to the original size otherwise it will be discarded
+  // due to the mismatch during the default implementation of release_buffer.
+  for (idx = 0; idx < length; idx++) {
+    guint blocksize = GPOINTER_TO_UINT (g_list_nth_data (priv->memsizes, idx));
+    gst_buffer_resize_range (buffer, idx, 1, 0, blocksize);
+  }
+
+  GST_BUFFER_POOL_CLASS (parent_class)->reset_buffer (pool, buffer);
+}
+
+static void
+gst_mem_buffer_pool_finalize (GObject * object)
+{
+  GstMemBufferPool *mempool = GST_MEM_BUFFER_POOL (object);
+  GstMemBufferPoolPrivate *priv = mempool->priv;
+
+  GST_INFO_OBJECT (mempool, "Finalize buffer pool %p", mempool);
 
   if (priv->allocator) {
-    GST_INFO_OBJECT (ionpool, "Free buffer pool allocator %p", priv->allocator);
+    GST_INFO_OBJECT (mempool, "Free buffer pool allocator %p", priv->allocator);
     gst_object_unref (priv->allocator);
   }
 
@@ -330,49 +373,64 @@ gst_ion_buffer_pool_finalize (GObject * object)
     priv->memsizes = NULL;
   }
 
-  close_ion_device (ionpool);
+  close_ion_device (mempool);
 
   G_OBJECT_CLASS (parent_class)->finalize (object);
 }
 
 static void
-gst_ion_buffer_pool_class_init (GstIonBufferPoolClass * klass)
+gst_mem_buffer_pool_class_init (GstMemBufferPoolClass * klass)
 {
   GObjectClass *object = G_OBJECT_CLASS (klass);
   GstBufferPoolClass *pool = GST_BUFFER_POOL_CLASS (klass);
 
-  object->finalize = gst_ion_buffer_pool_finalize;
+  object->finalize = gst_mem_buffer_pool_finalize;
 
-  pool->get_options = gst_ion_buffer_pool_get_options;
-  pool->set_config = gst_ion_buffer_pool_set_config;
-  pool->alloc_buffer = gst_ion_buffer_pool_alloc;
-  pool->free_buffer = gst_ion_buffer_pool_free;
+  pool->get_options = gst_mem_buffer_pool_get_options;
+  pool->set_config = gst_mem_buffer_pool_set_config;
+  pool->alloc_buffer = gst_mem_buffer_pool_alloc;
+  pool->free_buffer = gst_mem_buffer_pool_free;
+  pool->reset_buffer = gst_mem_buffer_pool_reset;
 
-  GST_DEBUG_CATEGORY_INIT (gst_ion_pool_debug, "ion-pool", 0,
-      "ion-pool object");
+  GST_DEBUG_CATEGORY_INIT (gst_mem_pool_debug, "mem-pool", 0,
+      "mem-pool object");
 }
 
 static void
-gst_ion_buffer_pool_init (GstIonBufferPool * ionpool)
+gst_mem_buffer_pool_init (GstMemBufferPool * mempool)
 {
-  ionpool->priv = gst_ion_buffer_pool_get_instance_private (ionpool);
-  ionpool->priv->devfd = -1;
-  ionpool->priv->memsizes = NULL;
+  mempool->priv = gst_mem_buffer_pool_get_instance_private (mempool);
+  mempool->priv->devfd = -1;
+  mempool->priv->memsizes = NULL;
 }
 
 
 GstBufferPool *
-gst_ion_buffer_pool_new ()
+gst_mem_buffer_pool_new (const gchar * type)
 {
-  GstIonBufferPool *ionpool;
+  GstMemBufferPool *mempool = NULL;
+  gboolean success = FALSE;
 
-  ionpool = g_object_new (GST_TYPE_ION_BUFFER_POOL, NULL);
+  mempool = g_object_new (GST_TYPE_MEM_BUFFER_POOL, NULL);
+  mempool->priv->memtype = g_quark_from_string (type);
 
-  if (!open_ion_device (ionpool)) {
-    gst_object_unref (ionpool);
+  if (GST_IS_SYSTEM_MEMORY_TYPE (mempool->priv->memtype)) {
+    GST_INFO_OBJECT (mempool, "Using SYSTEM memory");
+    success = TRUE;
+  } else if (GST_IS_ION_MEMORY_TYPE (mempool->priv->memtype)) {
+    GST_INFO_OBJECT (mempool, "Using ION memory");
+    success = open_ion_device (mempool);
+  } else {
+    GST_ERROR_OBJECT (mempool, "Invalid memory type %s!",
+        g_quark_to_string (mempool->priv->memtype));
+    success = FALSE;
+  }
+
+  if (!success) {
+    gst_object_unref (mempool);
     return NULL;
   }
 
-  GST_INFO_OBJECT (ionpool, "New buffer pool %p", ionpool);
-  return GST_BUFFER_POOL_CAST (ionpool);
+  GST_INFO_OBJECT (mempool, "New buffer pool %p", mempool);
+  return GST_BUFFER_POOL_CAST (mempool);
 }
