@@ -71,8 +71,6 @@
 
 #include <gbm.h>
 #include <gbm_priv.h>
-#include <linux/ion.h>
-#include <linux/msm_ion.h>
 
 #ifdef HAVE_MMM_COLOR_FMT_H
 #include <display/media/mmm_color_fmt.h>
@@ -84,7 +82,14 @@
 #define MMM_COLOR_FMT_ALIGN MSM_MEDIA_ALIGN
 #define MMM_COLOR_FMT_Y_META_STRIDE VENUS_Y_META_STRIDE
 #define MMM_COLOR_FMT_Y_META_SCANLINES VENUS_Y_META_SCANLINES
-#endif
+#endif // HAVE_MMM_COLOR_FMT_H
+
+#if defined(HAVE_LINUX_DMA_HEAP_H)
+#include <linux/dma-heap.h>
+#else
+#include <linux/ion.h>
+#include <linux/msm_ion.h>
+#endif // HAVE_LINUX_DMA_HEAP_H
 
 GST_DEBUG_CATEGORY_STATIC (gst_image_pool_debug);
 #define GST_CAT_DEFAULT gst_image_pool_debug
@@ -107,7 +112,7 @@ struct _GstImageBufferPoolPrivate
   GstAllocationParams params;
   GQuark              memtype;
 
-  // Either ION or GBM device FD.
+  // Either ION, DMA or GBM device FD.
   gint                devfd;
 
   // GBM library handle;
@@ -245,11 +250,11 @@ open_gbm_device (GstImageBufferPool * vpool)
   }
 
   GST_INFO_OBJECT (vpool, "Open /dev/dma_heap/qcom,system");
-  priv->devfd = open ("/dev/dma_heap/qcom,system", O_RDWR);
+  priv->devfd = open ("/dev/dma_heap/qcom,system", O_RDONLY | O_CLOEXEC);
 
   if (priv->devfd < 0) {
     GST_WARNING_OBJECT (vpool, "Falling back to /dev/ion");
-    priv->devfd = open ("/dev/ion", O_RDWR);
+    priv->devfd = open ("/dev/ion", O_RDONLY | O_CLOEXEC);
   }
 
   if (priv->devfd < 0) {
@@ -336,11 +341,11 @@ open_ion_device (GstImageBufferPool * vpool)
   GstImageBufferPoolPrivate *priv = vpool->priv;
 
   GST_INFO_OBJECT (vpool, "Open /dev/dma_heap/qcom,system");
-  priv->devfd = open ("/dev/dma_heap/qcom,system", O_RDWR);
+  priv->devfd = open ("/dev/dma_heap/qcom,system", O_RDONLY | O_CLOEXEC);
 
   if (priv->devfd < 0) {
     GST_WARNING_OBJECT (vpool, "Falling back to /dev/ion");
-    priv->devfd = open ("/dev/ion", O_RDWR);
+    priv->devfd = open ("/dev/ion", O_RDONLY | O_CLOEXEC);
   }
 
   if (priv->devfd < 0) {
@@ -348,9 +353,9 @@ open_ion_device (GstImageBufferPool * vpool)
     return FALSE;
   }
 
-#ifndef TARGET_ION_ABI_VERSION
+#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
   priv->datamap = g_hash_table_new (NULL, NULL);
-#endif
+#endif // TARGET_ION_ABI_VERSION
 
   GST_INFO_OBJECT (vpool, "Opened ION device FD %d", priv->devfd);
   return TRUE;
@@ -366,9 +371,9 @@ close_ion_device (GstImageBufferPool * vpool)
     close (priv->devfd);
   }
 
-#ifndef TARGET_ION_ABI_VERSION
+#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
   g_hash_table_destroy (priv->datamap);
-#endif
+#endif // TARGET_ION_ABI_VERSION
 }
 
 static GstMemory *
@@ -378,25 +383,43 @@ ion_device_alloc (GstImageBufferPool * vpool)
   GstFdMemoryFlags flags = GST_FD_MEMORY_FLAG_DONT_CLOSE;
   gint result = 0, fd = -1;
 
-#ifndef TARGET_ION_ABI_VERSION
-  struct ion_fd_data fd_data;
-#endif
+#if defined(HAVE_LINUX_DMA_HEAP_H)
+  struct dma_heap_allocation_data alloc_data;
+#else
   struct ion_allocation_data alloc_data;
-
-  alloc_data.len = GST_VIDEO_INFO_SIZE (&priv->info);
-#ifndef TARGET_ION_ABI_VERSION
-  alloc_data.align = DEFAULT_PAGE_ALIGNMENT;
+#if !defined(TARGET_ION_ABI_VERSION)
+  struct ion_fd_data fd_data;
+#endif // TARGET_ION_ABI_VERSION
 #endif
+
+  alloc_data.fd = 0;
+  alloc_data.len = GST_VIDEO_INFO_SIZE (&priv->info);
+
+#if defined(HAVE_LINUX_DMA_HEAP_H)
+  // Permissions for the memory to be allocated.
+  alloc_data.fd_flags = O_RDWR | O_CLOEXEC;
+  alloc_data.heap_flags = 0;
+#else
   alloc_data.heap_id_mask = ION_HEAP(ION_SYSTEM_HEAP_ID);
   alloc_data.flags = ION_FLAG_CACHED;
 
+#if !defined(TARGET_ION_ABI_VERSION)
+  alloc_data.align = DEFAULT_PAGE_ALIGNMENT;
+#endif // TARGET_ION_ABI_VERSION
+#endif
+
+#if defined(HAVE_LINUX_DMA_HEAP_H)
+  result = ioctl (priv->devfd, DMA_HEAP_IOCTL_ALLOC, &alloc_data);
+#else
   result = ioctl (priv->devfd, ION_IOC_ALLOC, &alloc_data);
+#endif
+
   if (result != 0) {
     GST_ERROR_OBJECT (vpool, "Failed to allocate ION memory!");
     return NULL;
   }
 
-#ifndef TARGET_ION_ABI_VERSION
+#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
   fd_data.handle = alloc_data.handle;
 
   result = ioctl (priv->devfd, ION_IOC_MAP, &fd_data);
@@ -412,7 +435,7 @@ ion_device_alloc (GstImageBufferPool * vpool)
       GSIZE_TO_POINTER (alloc_data.handle));
 #else
   fd = alloc_data.fd;
-#endif
+#endif // TARGET_ION_ABI_VERSION
 
   GST_DEBUG_OBJECT (vpool, "Allocated ION memory FD %d", fd);
 
@@ -428,7 +451,7 @@ ion_device_free (GstImageBufferPool * vpool, gint fd)
 {
   GST_DEBUG_OBJECT (vpool, "Closing ION memory FD %d", fd);
 
-#ifndef TARGET_ION_ABI_VERSION
+#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
   ion_user_handle_t handle = GPOINTER_TO_SIZE (
       g_hash_table_lookup (vpool->priv->datamap, GINT_TO_POINTER (fd)));
 
@@ -437,7 +460,7 @@ ion_device_free (GstImageBufferPool * vpool, gint fd)
   }
 
   g_hash_table_remove (vpool->priv->datamap, GINT_TO_POINTER (fd));
-#endif
+#endif // TARGET_ION_ABI_VERSION
 
   close (fd);
 }
