@@ -26,6 +26,26 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 # Precompiler definitions.
 add_definitions(-DHAVE_CONFIG_H)
 
+# Check whether C2D header is present.
+include(CheckIncludeFile)
+check_include_file("adreno/c2d2.h" HAVE_C2D_H)
+
+# Check whether IB2C header is present.
+include(CheckIncludeFileCXX)
+check_include_file_cxx("iot-core-algs/ib2c.h" HAVE_GLES_H)
+
+# Check whether MMM color format header is present.
+include(CheckIncludeFile)
+check_include_file("display/media/mmm_color_fmt.h" HAVE_MMM_COLOR_FMT_H)
+
+# Check whether DMA HEAP header is present.
+include(CheckIncludeFileCXX)
+check_include_file_cxx("linux/dma-heap.h" HAVE_LINUX_DMA_HEAP_H)
+
+# Check whether DMA header is present.
+include(CheckIncludeFile)
+check_include_file("linux/dma-buf.h" HAVE_LINUX_DMA_BUF_H)
+
 # Common compiler flags.
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
@@ -37,11 +57,14 @@ add_library(${GST_QTI_OVERLAY} SHARED
   gstoverlay.cc
 )
 
-target_include_directories(${GST_QTI_OVERLAY} PUBLIC
-  ${GST_INCLUDE_DIRS}
-)
 target_include_directories(${GST_QTI_OVERLAY} PRIVATE
+  ${GST_INCLUDE_DIRS}
   ${KERNEL_BUILDDIR}/usr/include
+)
+
+target_compile_definitions(${GST_QTI_OVERLAY} PRIVATE
+  $<$<BOOL:${HAVE_C2D_H}>:ENABLE_C2D>
+  $<$<BOOL:${HAVE_GLES_H}>:ENABLE_GLES>
 )
 
 target_link_libraries(${GST_QTI_OVERLAY} PRIVATE

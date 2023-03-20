@@ -25,6 +25,11 @@
  * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 /*! @file overlay.h
@@ -40,6 +45,15 @@
 
 #ifndef GST_DISABLE_GST_DEBUG
 #include <gst/gst.h>
+#include <gst/gstutils.h>
+
+#ifdef ENABLE_C2D
+#include <adreno/c2d2.h>
+#endif // ENABLE_C2D
+
+#ifdef ENABLE_GLES
+#include <iot-core-algs/ib2c.h>
+#endif // ENABLE_GLES
 
 #define GST_CAT_DEFAULT ensure_debug_category()
 static GstDebugCategory *
@@ -233,7 +247,8 @@ struct OverlayParamInfo {
 
 enum class OverlayBlitType {
   kC2D,
-  kOpenCL
+  kOpenCL,
+  kGLES,
 };
 
 class OverlayItem;
@@ -252,7 +267,7 @@ public:
 
   // Initialise overlay with format of buffer.
   /// Initialise overlay with format of buffer.
-  int32_t Init (const TargetBufferFormat& format);
+  int32_t Init ();
 
   // Create overlay item of type static image, date/time, bounding box,
   // simple text, or privacy mask. this Api provides overlay item id which
@@ -301,17 +316,36 @@ public:
 
 private:
 
+#ifdef ENABLE_C2D
   uint32_t GetC2dColorFormat (const TargetBufferFormat& format);
+#endif // ENABLE_C2D
+
+#ifdef ENABLE_GLES
+  uint32_t GetGlesColorFormat (const TargetBufferFormat& format);
+#endif // ENABLE_GLES
 
   bool IsOverlayItemValid (uint32_t overlay_id);
 
+#ifdef ENABLE_C2D
   int32_t ApplyOverlay_C2D (const OverlayTargetBuffer& buffer);
+#endif // ENABLE_C2D
+
+#ifdef ENABLE_GLES
+  int32_t ApplyOverlay_GLES (const OverlayTargetBuffer& buffer);
+#endif // ENABLE_GLES
 
   int32_t ApplyOverlay_CL (const OverlayTargetBuffer& buffer);
 
   std::map<uint32_t, OverlayItem*> overlay_items_;
 
+#ifdef ENABLE_C2D
   uint32_t target_c2dsurface_id_;
+#endif // ENABLE_C2D
+
+#ifdef ENABLE_GLES
+  std::shared_ptr<::ib2c::IEngine> ib2c_engine_;
+  std::map<int32_t, uint64_t> ib2c_surfaces_;
+#endif // ENABLE_GLES
 
   int32_t ion_device_;
   uint32_t id_;
