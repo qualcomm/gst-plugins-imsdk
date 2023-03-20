@@ -978,66 +978,6 @@ gst_video_transform_fill_pixel_aspect_ratio (GstVideoTransform * vtrans,
 }
 
 static void
-gst_video_transform_fixate_pixel_aspect_ratio (GstVideoTransform * vtrans,
-    GstStructure * input, GstStructure * output, gint out_width, gint out_height)
-{
-  gint in_par_n, in_par_d, in_width = 0, in_height = 0;
-  guint out_par_n, out_par_d;
-  gboolean success = FALSE;
-
-  GST_DEBUG_OBJECT (vtrans, "Output dimensions fixed to: %dx%d",
-      out_width, out_height);
-
-  {
-    // Retrieve the output PAR (pixel aspect ratio) value.
-    const GValue *par = gst_structure_get_value (output, "pixel-aspect-ratio");
-
-    if (gst_value_is_fixed (par)) {
-      out_par_n = gst_value_get_fraction_numerator (par);
-      out_par_d = gst_value_get_fraction_denominator (par);
-
-      GST_DEBUG_OBJECT (vtrans, "Output PAR is fixed to: %d/%d",
-          out_par_n, out_par_d);
-      return;
-    }
-  }
-
-  {
-    // Retrieve the input PAR (pixel aspect ratio) value.
-    const GValue *par = gst_structure_get_value (input, "pixel-aspect-ratio");
-    in_par_n = gst_value_get_fraction_numerator (par);
-    in_par_d = gst_value_get_fraction_denominator (par);
-  }
-
-  // Retrieve the input width and height.
-  gst_structure_get_int (input, "width", &in_width);
-  gst_structure_get_int (input, "height", &in_height);
-
-  switch (vtrans->rotation) {
-    case GST_VIDEO_TRANSFORM_ROTATE_90_CW:
-    case GST_VIDEO_TRANSFORM_ROTATE_90_CCW:
-      success = gst_video_calculate_display_ratio (&out_par_n, &out_par_d,
-          in_height, in_width, in_par_d, in_par_n, out_width, out_height);
-      break;
-    case GST_VIDEO_TRANSFORM_ROTATE_NONE:
-    case GST_VIDEO_TRANSFORM_ROTATE_180:
-      success = gst_video_calculate_display_ratio (&out_par_n, &out_par_d,
-          in_width, in_height, in_par_n, in_par_d, out_width, out_height);
-      break;
-  }
-
-  if (success) {
-    GST_DEBUG_OBJECT (vtrans, "Fixating output PAR to %d/%d",
-        out_par_n, out_par_d);
-
-    gst_structure_fixate_field_nearest_fraction (output,
-        "pixel-aspect-ratio", out_par_n, out_par_d);
-  }
-
-  return;
-}
-
-static void
 gst_video_transform_fixate_width (GstVideoTransform * vtrans,
     GstStructure * input, GstStructure * output, gint out_height)
 {
@@ -1692,13 +1632,14 @@ gst_video_transform_fixate_caps (GstBaseTransform * base,
     par = gst_structure_get_value (output, "pixel-aspect-ratio");
 
     // Check which values are fixed and take the necessary actions.
-    if (width && height) {
-      gst_video_transform_fixate_pixel_aspect_ratio (vtrans, input, output,
-          width, height);
-    } else if (width) {
+    if ((width != 0) && (height != 0) && !gst_value_is_fixed (par)) {
+      // The output dimensions are set but the PAR is not fixated.
+      gst_structure_fixate_field_nearest_fraction (output,
+          "pixel-aspect-ratio", 1, 1);
+    } else if ((width != 0) && (height == 0)) {
       // The output width is set, try to calculate output height.
       gst_video_transform_fixate_height (vtrans, input, output, width);
-    } else if (height) {
+    } else if ((height != 0) && (width == 0)) {
       // The output height is set, try to calculate output width.
       gst_video_transform_fixate_width (vtrans, input, output, height);
     } else if (gst_value_is_fixed (par)) {
