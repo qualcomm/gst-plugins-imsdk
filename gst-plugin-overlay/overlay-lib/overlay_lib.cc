@@ -354,8 +354,13 @@ int32_t OpenClKernel::MapBuffer (cl_mem &cl_buffer, void *vaddr, int32_t fd,
   mem_flags |= CL_MEM_EXT_HOST_PTR_QCOM;
 
   cl_mem_ion_host_ptr ionmem { };
+#ifdef HAVE_LINUX_DMA_HEAP_H
+  ionmem.ext_host_ptr.allocation_type   = CL_MEM_DMABUF_HOST_PTR_QCOM;
+  ionmem.ext_host_ptr.host_cache_policy = CL_MEM_HOST_IOCOHERENT_QCOM;
+#else
   ionmem.ext_host_ptr.allocation_type = CL_MEM_ION_HOST_PTR_QCOM;
   ionmem.ext_host_ptr.host_cache_policy = CL_MEM_HOST_WRITEBACK_QCOM;
+#endif // HAVE_LINUX_DMA_HEAP_H
   ionmem.ion_hostptr = vaddr;
   ionmem.ion_filedesc = fd;
 
@@ -411,8 +416,13 @@ int32_t OpenClKernel::MapImage (cl_mem &cl_buffer, void *vaddr, int32_t fd,
   mem_flags |= CL_MEM_EXT_HOST_PTR_QCOM;
 
   cl_mem_ion_host_ptr ionmem { };
+#ifdef HAVE_LINUX_DMA_HEAP_H
+  ionmem.ext_host_ptr.allocation_type   = CL_MEM_DMABUF_HOST_PTR_QCOM;
+  ionmem.ext_host_ptr.host_cache_policy = CL_MEM_HOST_IOCOHERENT_QCOM;
+#else
   ionmem.ext_host_ptr.allocation_type = CL_MEM_ION_HOST_PTR_QCOM;
   ionmem.ext_host_ptr.host_cache_policy = CL_MEM_HOST_WRITEBACK_QCOM;
+#endif // HAVE_LINUX_DMA_HEAP_H
   ionmem.ion_hostptr = vaddr;
   ionmem.ion_filedesc = fd;
 
