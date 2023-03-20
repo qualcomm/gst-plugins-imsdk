@@ -25,42 +25,11 @@
  * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-
-/*
- *  Changes from Qualcomm Innovation Center are provided under the following license:
  *
- *  Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- *  Redistribution and use in source and binary forms, with or without
- *  modification, are permitted (subject to the limitations in the
- *  disclaimer below) provided that the following conditions are met:
- *
- *      * Redistributions of source code must retain the above copyright
- *        notice, this list of conditions and the following disclaimer.
- *
- *      * Redistributions in binary form must reproduce the above
- *        copyright notice, this list of conditions and the following
- *        disclaimer in the documentation and/or other materials provided
- *        with the distribution.
- *
- *      * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
- *        contributors may be used to endorse or promote products derived
- *        from this software without specific prior written permission.
- *
- *  NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
- *  GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
- *  HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
- *   WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- *  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
- *  ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- *  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- *  GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- *  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
- *  IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *  OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- *  IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #define LOG_TAG "Overlay"
@@ -68,9 +37,10 @@
 #include <algorithm>
 #include <fcntl.h>
 #include <dirent.h>
+#include <unistd.h>
+#include <dlfcn.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
-#include <media/msm_media_info.h>
 #include <string.h>
 #include <cstring>
 #include <string>
@@ -78,6 +48,16 @@
 #include <vector>
 #include <math.h>
 #include <fstream>
+
+#ifdef HAVE_MMM_COLOR_FMT_H
+#include <display/media/mmm_color_fmt.h>
+#else
+#include <media/msm_media_info.h>
+#define MMM_COLOR_FMT_NV12_UBWC COLOR_FMT_NV12_UBWC
+#define MMM_COLOR_FMT_ALIGN MSM_MEDIA_ALIGN
+#define MMM_COLOR_FMT_Y_META_STRIDE VENUS_Y_META_STRIDE
+#define MMM_COLOR_FMT_Y_META_SCANLINES VENUS_Y_META_SCANLINES
+#endif // HAVE_MMM_COLOR_FMT_H
 
 #include "tools.h"
 #include "overlay.h"
@@ -662,8 +642,13 @@ std::string OpenClKernel::CreateCLKernelBuildLog ()
   return build_log;
 }
 
-Overlay::Overlay () : target_c2dsurface_id_ (-1), ion_device_ (-1),
-    id_ (0), blit_type_ (OverlayBlitType::kC2D) {}
+Overlay::Overlay ()
+    : ion_device_ (-1), id_ (0), blit_type_ (OverlayBlitType::kC2D) {
+
+#ifdef ENABLE_C2D
+  target_c2dsurface_id_ = -1;
+#endif // ENABLE_C2D
+}
 
 Overlay::~Overlay ()
 {
@@ -675,39 +660,62 @@ Overlay::~Overlay ()
   overlay_items_.clear ();
 
   if (blit_type_ == OverlayBlitType::kC2D) {
+#ifdef ENABLE_C2D
     if (target_c2dsurface_id_) {
       c2dDestroySurface (target_c2dsurface_id_);
       target_c2dsurface_id_ = 0;
       OVDBG_INFO ("%s: Destroyed c2d Target Surface", __func__);
     }
+#endif // ENABLE_C2D
+  } else if (blit_type_ == OverlayBlitType::kGLES) {
+#ifdef ENABLE_GLES
+    for (auto const& pair : ib2c_surfaces_) {
+      uint64_t surface_id = pair.second;
+      ib2c_engine_->DestroySurface(surface_id);
+    }
+#endif // ENABLE_GLES
   }
 
   if (ion_device_ != -1) {
-    ion_close (ion_device_);
+    close (ion_device_);
     ion_device_ = -1;
   }
 
   OVDBG_INFO ("%s: Exit ", __func__);
 }
 
-int32_t Overlay::Init (const TargetBufferFormat& format)
+int32_t Overlay::Init ()
 {
   OVDBG_VERBOSE ("%s:Enter", __func__);
-  int32_t ret = 0;
 
-  ion_device_ = ion_open ();
+  OVDBG_INFO ("%s: Open /dev/dma_heap/qcom,system", __func__);
+  ion_device_ = open ("/dev/dma_heap/qcom,system", O_RDONLY | O_CLOEXEC);
+
   if (ion_device_ < 0) {
-    OVDBG_ERROR ("%s: Ion dev open failed %s\n", __func__, strerror (errno));
+    OVDBG_ERROR ("%s: Falling back to /dev/ion", __func__);
+    ion_device_ = open ("/dev/ion", O_RDONLY | O_CLOEXEC);
+  }
+
+  if (ion_device_ < 0) {
+    OVDBG_ERROR ("%s: Failed to open ION device FDn", __func__);
     return -1;
   }
 
   char prop_val[PROPERTY_VALUE_MAX];
   property_get("persist.overlay.use_c2d_blit", prop_val, "1");
-  blit_type_ = atoi(prop_val) == 1 ?
-      OverlayBlitType::kC2D : OverlayBlitType::kOpenCL;
+  auto value = atoi(prop_val);
+
+  if (value == 1) {
+    blit_type_ = OverlayBlitType::kC2D;
+  } else if (value == 2) {
+    blit_type_ = OverlayBlitType::kGLES;
+  } else {
+    blit_type_ = OverlayBlitType::kOpenCL;
+  }
 
   if (blit_type_ == OverlayBlitType::kC2D) {
-    uint32_t c2dColotFormat = GetC2dColorFormat (format);
+#ifdef ENABLE_C2D
+    uint32_t c2dColotFormat = C2D_COLOR_FORMAT_420_NV21;
     // Create dummy C2D surface, it is required to Initialize
     // C2D driver before calling any c2d Apis.
     C2D_YUV_SURFACE_DEF surface_def =
@@ -715,20 +723,44 @@ int32_t Overlay::Init (const TargetBufferFormat& format)
       * 4, (void*) 0xaaaaaaaa, (void*) 0xaaaaaaaa, 1 * 4,
       (void*) 0xaaaaaaaa, (void*) 0xaaaaaaaa, 1 * 4,};
 
-    ret = c2dCreateSurface (&target_c2dsurface_id_, C2D_TARGET,
+    auto ret = c2dCreateSurface (&target_c2dsurface_id_, C2D_TARGET,
         (C2D_SURFACE_TYPE) (
             C2D_SURFACE_YUV_HOST | C2D_SURFACE_WITH_PHYS
             | C2D_SURFACE_WITH_PHYS_DUMMY), &surface_def);
     if (ret != C2D_STATUS_OK) {
-      ion_close (ion_device_);
-      ion_device_ = -1;
       OVDBG_ERROR ("%s: c2dCreateSurface failed!", __func__);
       return ret;
     }
+#else
+    OVDBG_ERROR ("%s: C2D converter is not supported!", __func__);
+    return -1;
+#endif // ENABLE_C2D
+  } else if (blit_type_ == OverlayBlitType::kGLES) {
+#ifdef ENABLE_GLES
+    void* handle = dlopen("libIB2C.so", RTLD_NOW);
+    if (!handle || dlerror()) {
+      OVDBG_ERROR ("%s: dlopen failed: '%s'", __func__, dlerror());
+      return -1;
+    }
+
+    ::ib2c::NewIEngine NewEngine =
+        (::ib2c::NewIEngine) dlsym(handle, IB2C_ENGINE_NEW_FUNC);
+    if (dlerror()) {
+      OVDBG_ERROR ("%s: dlsym failed: '%s'", __func__, dlerror());
+      return -1;
+    }
+
+    ib2c_engine_ = std::shared_ptr<::ib2c::IEngine>(
+        NewEngine(), [handle](::ib2c::IEngine* e) { delete e; dlclose(handle); }
+    );
+#else
+    OVDBG_ERROR ("%s: GLES converter is not supported!", __func__);
+    return -1;
+#endif // ENABLE_GLES
   }
 
   OVDBG_VERBOSE ("%s: Exit", __func__);
-  return ret;
+  return 0;
 }
 
 int32_t Overlay::CreateOverlayItem (OverlayParam& param, uint32_t* overlay_id)
@@ -738,39 +770,32 @@ int32_t Overlay::CreateOverlayItem (OverlayParam& param, uint32_t* overlay_id)
 
   switch (param.type) {
   case OverlayType::kDateType:
-    overlayItem = new OverlayItemDateAndTime (ion_device_,
-        blit_type_ == OverlayBlitType::kC2D ? CL_KERNEL_NONE :
-                                              CL_KERNEL_BLIT_RGBA);
+    overlayItem = new OverlayItemDateAndTime (ion_device_, blit_type_,
+        CL_KERNEL_BLIT_RGBA);
     break;
   case OverlayType::kUserText:
-    overlayItem = new OverlayItemText (ion_device_,
-        blit_type_ == OverlayBlitType::kC2D ? CL_KERNEL_NONE :
-                                              CL_KERNEL_BLIT_RGBA);
+    overlayItem = new OverlayItemText (ion_device_, blit_type_,
+        CL_KERNEL_BLIT_RGBA);
     break;
   case OverlayType::kStaticImage:
-    overlayItem = new OverlayItemStaticImage (ion_device_,
-        blit_type_ == OverlayBlitType::kC2D ? CL_KERNEL_NONE :
-                                              CL_KERNEL_BLIT_BGRA);
+    overlayItem = new OverlayItemStaticImage (ion_device_, blit_type_,
+        CL_KERNEL_BLIT_BGRA);
     break;
   case OverlayType::kBoundingBox:
-    overlayItem = new OverlayItemBoundingBox (ion_device_,
-        blit_type_ == OverlayBlitType::kC2D ? CL_KERNEL_NONE :
-                                              CL_KERNEL_BLIT_RGBA);
+    overlayItem = new OverlayItemBoundingBox (ion_device_, blit_type_,
+        CL_KERNEL_BLIT_RGBA);
     break;
   case OverlayType::kPrivacyMask:
-    overlayItem = new OverlayItemPrivacyMask (ion_device_,
-        blit_type_ == OverlayBlitType::kC2D ? CL_KERNEL_NONE :
-                                              CL_KERNEL_PRIVACY_MASK);
+    overlayItem = new OverlayItemPrivacyMask (ion_device_, blit_type_,
+        CL_KERNEL_PRIVACY_MASK);
     break;
   case OverlayType::kGraph:
-    overlayItem = new OverlayItemGraph (ion_device_,
-        blit_type_ == OverlayBlitType::kC2D ? CL_KERNEL_NONE :
-                                              CL_KERNEL_BLIT_RGBA);
+    overlayItem = new OverlayItemGraph (ion_device_, blit_type_,
+        CL_KERNEL_BLIT_RGBA);
     break;
   case OverlayType::kArrow:
-    overlayItem = new OverlayItemArrow (ion_device_,
-        blit_type_ == OverlayBlitType::kC2D ? CL_KERNEL_NONE :
-                                              CL_KERNEL_BLIT_RGBA);
+    overlayItem = new OverlayItemArrow (ion_device_, blit_type_,
+        CL_KERNEL_BLIT_RGBA);
     break;
   default:
     OVDBG_ERROR ("%s: OverlayType(%d) not supported!", __func__,
@@ -784,8 +809,13 @@ int32_t Overlay::CreateOverlayItem (OverlayParam& param, uint32_t* overlay_id)
     return -EINVAL;
   }
 
+#ifdef ENABLE_GLES
+  auto ret = overlayItem->Init (ib2c_engine_, param);
+#else
   auto ret = overlayItem->Init (param);
-  if (ret != C2D_STATUS_OK) {
+#endif // ENABLE_GLES
+
+  if (ret != 0) {
     OVDBG_ERROR ("%s:OverlayItem failed of type(%d)", __func__,
         (int32_t) param.type);
     delete overlayItem;
@@ -902,6 +932,7 @@ int32_t Overlay::DisableOverlayItem (uint32_t overlay_id)
   return ret;
 }
 
+#ifdef ENABLE_C2D
 int32_t Overlay::ApplyOverlay_C2D (const OverlayTargetBuffer& buffer)
 {
   OVDBG_VERBOSE ("%s: Enter", __func__);
@@ -1072,6 +1103,143 @@ int32_t Overlay::ApplyOverlay_C2D (const OverlayTargetBuffer& buffer)
   OVDBG_VERBOSE ("%s: Exit ", __func__);
   return ret;
 }
+#endif // ENABLE_C2D
+
+#ifdef ENABLE_GLES
+int32_t Overlay::ApplyOverlay_GLES (const OverlayTargetBuffer& buffer)
+{
+  OVDBG_VERBOSE ("%s: Enter", __func__);
+
+  std::lock_guard < std::mutex > lock (lock_);
+  size_t numActiveOverlays = 0;
+  bool isItemsActive = false;
+  for (auto &iter : overlay_items_) {
+    if ( (iter).second->IsActive ()) {
+      isItemsActive = true;
+    }
+  }
+  if (!isItemsActive) {
+    OVDBG_VERBOSE ("%s: No overlayItem is Active!", __func__);
+    return 0;
+  }
+  assert (buffer.ion_fd != 0);
+  assert (buffer.width != 0 && buffer.height != 0);
+  assert (buffer.frame_len != 0);
+
+  OVDBG_VERBOSE ("%s:OverlayTargetBuffer: ion_fd = %d", __func__, buffer.ion_fd);
+  OVDBG_VERBOSE (
+      "%s:OverlayTargetBuffer: Width = %d & Height = %d & frameLength" " =% d",
+      __func__, buffer.width, buffer.height,
+      (int32_t) buffer.frame_len);
+  OVDBG_VERBOSE ("%s: OverlayTargetBuffer: format = %d", __func__,
+      (int32_t) buffer.format);
+
+  uint64_t surface_id = 0;
+
+  if (ib2c_surfaces_.count(buffer.ion_fd) == 0) {
+    ib2c::Surface outsurface;
+
+    outsurface.fd = buffer.ion_fd;
+    outsurface.format = GetGlesColorFormat (buffer.format);
+    outsurface.width = buffer.width;
+    outsurface.height = buffer.height;
+    outsurface.size = buffer.frame_len;
+    outsurface.stride0 = buffer.stride[0];
+    outsurface.stride1 = buffer.stride[1];
+    outsurface.offset0 = buffer.offset[0];
+    outsurface.offset1 = buffer.offset[1];
+    outsurface.nplanes = 2;
+
+    try {
+      surface_id = ib2c_engine_->CreateSurface(outsurface);
+      ib2c_surfaces_.emplace(buffer.ion_fd, surface_id);
+    } catch (std::exception& e) {
+      OVDBG_ERROR ("%s: Create surface failed, error: '%s'!", __func__, e.what());
+      return -1;
+    }
+  } else {
+    surface_id = ib2c_surfaces_.at(buffer.ion_fd);
+  }
+
+  SyncStart (buffer.ion_fd);
+
+  // Iterate all dirty overlay Items, and update them.
+  for (auto &iter : overlay_items_) {
+    if ( (iter).second->IsActive ()) {
+      auto ret = (iter).second->UpdateAndDraw ();
+      if (ret != 0) {
+        OVDBG_ERROR ("%s: Update & Draw failed for Item=%d", __func__,
+            (iter).first);
+      }
+    }
+  }
+
+  std::vector<::ib2c::Composition> blits;
+  std::vector<::ib2c::Normalize> normalization;
+  std::vector<::ib2c::Object> objects;
+
+  // Iterate all updated overlayItems, and get coordinates.
+  for (auto &iter : overlay_items_) {
+    std::vector<DrawInfo> draw_infos;
+    OverlayItem* overlay_item = (iter).second;
+    if (overlay_item->IsActive ()) {
+      overlay_item->GetDrawInfo (buffer.width, buffer.height, draw_infos);
+      uint32_t info_size = draw_infos.size ();
+      for (uint32_t i = 0; i < info_size; i++) {
+        ::ib2c::Object object;
+
+        object.id = draw_infos[i].ib2cSurfaceId;
+        if (draw_infos[i].in_width) {
+          object.source.x = draw_infos[i].in_x;
+          object.source.y = draw_infos[i].in_y;
+          object.source.w = draw_infos[i].in_width;
+          object.source.h = draw_infos[i].in_height;
+        }
+        object.destination.x = draw_infos[i].x;
+        object.destination.y = draw_infos[i].y;
+        object.destination.w = draw_infos[i].width;
+        object.destination.h = draw_infos[i].height;
+
+        OVDBG_VERBOSE ("%s: object[%u].surface_id=%lx", __func__, i,
+            object.id);
+        OVDBG_VERBOSE ("%s: object[%u].destination.x=%u", __func__, i,
+            object.destination.x);
+        OVDBG_VERBOSE ("%s: object[%u].destination.y=%u", __func__, i,
+            object.destination.y);
+        OVDBG_VERBOSE ("%s: object[%u].destination.width=%u", __func__, i,
+            object.destination.w);
+        OVDBG_VERBOSE ("%s: object[%u].destination.height=%u", __func__, i,
+            object.destination.h);
+        ++numActiveOverlays;
+
+        objects.push_back(object);
+      }
+    }
+  }
+
+  blits.push_back(std::move(
+      std::make_tuple(surface_id, 0x00000000, false, normalization, objects)));
+
+  OVDBG_VERBOSE ("%s: numActiveOverlays=%zu", __func__, numActiveOverlays);
+
+  {
+#ifdef DEBUG_BLIT_TIME
+    static uint64_t avr_time = 0;
+    Timer t("Apply overly ", &avr_time);
+#endif
+  }
+
+  auto ret = ib2c_engine_->Compose(blits, true);
+  if (ret != 0) {
+    OVDBG_ERROR ("%s: c2dDraw failed!", __func__);
+  }
+
+  SyncEnd (buffer.ion_fd);
+
+  OVDBG_VERBOSE ("%s: Exit ", __func__);
+  return ret;
+}
+#endif // ENABLE_GLES
 
 int32_t Overlay::ApplyOverlay_CL (const OverlayTargetBuffer& buffer)
 {
@@ -1181,7 +1349,13 @@ int32_t Overlay::ApplyOverlay (const OverlayTargetBuffer& buffer)
 
   int32_t ret = 0;
   if (blit_type_ == OverlayBlitType::kC2D) {
+#ifdef ENABLE_C2D
     ret = ApplyOverlay_C2D(buffer);
+#endif // ENABLE_C2D
+  } else if (blit_type_ == OverlayBlitType::kGLES) {
+#ifdef ENABLE_GLES
+    ret = ApplyOverlay_GLES(buffer);
+#endif // ENABLE_GLES
   } else {
     ret = ApplyOverlay_CL(buffer);
   }
@@ -1279,6 +1453,7 @@ int32_t Overlay::DeleteOverlayItems ()
   return ret;
 }
 
+#ifdef ENABLE_C2D
 uint32_t Overlay::GetC2dColorFormat (const TargetBufferFormat& format)
 {
   uint32_t c2dColorFormat = C2D_COLOR_FORMAT_420_NV12;
@@ -1301,6 +1476,33 @@ uint32_t Overlay::GetC2dColorFormat (const TargetBufferFormat& format)
   OVDBG_VERBOSE ("%s:Selected C2D ColorFormat=%d", __func__, c2dColorFormat);
   return c2dColorFormat;
 }
+#endif // ENABLE_C2D
+
+#ifdef ENABLE_GLES
+uint32_t Overlay::GetGlesColorFormat (const TargetBufferFormat& format)
+{
+  uint32_t colorFormat = ib2c::ColorFormat::kNV12;
+  switch (format) {
+  case TargetBufferFormat::kYUVNV12:
+    colorFormat = ib2c::ColorFormat::kNV12;
+    break;
+  case TargetBufferFormat::kYUVNV21:
+    colorFormat = ib2c::ColorFormat::kNV21;
+    break;
+  case TargetBufferFormat::kYUVNV12UBWC:
+    colorFormat = ib2c::ColorFormat::kNV12;
+    colorFormat |= ib2c::ColorMode::kUBWC;
+    break;
+  default:
+    OVDBG_ERROR ("%s: Unsupported buffer format: %d", __func__,
+        (int32_t) format);
+    break;
+  }
+
+  OVDBG_VERBOSE ("%s:Selected GLES ColorFormat=%u", __func__, colorFormat);
+  return colorFormat;
+}
+#endif // ENABLE_GLES
 
 bool Overlay::IsOverlayItemValid (uint32_t overlay_id)
 {
@@ -1317,17 +1519,18 @@ bool Overlay::IsOverlayItemValid (uint32_t overlay_id)
 }
 
 OverlayItem::OverlayItem (int32_t ion_device, OverlayType type,
-    CLKernelIds kernel_id) :
+    OverlayBlitType blit_type, CLKernelIds kernel_id) :
     surface_ (), dirty_ (false), ion_device_ (ion_device), type_ (type),
-    kernel_id_(kernel_id), is_active_ (false)
+    blit_type_ (blit_type), kernel_id_ (kernel_id), is_active_ (false)
 {
   OVDBG_VERBOSE ("%s:Enter ", __func__);
 
   cr_surface_ = nullptr;
   cr_context_ = nullptr;
 
-  if (kernel_id_ != CL_KERNEL_NONE) {
-    blit_type_ = OverlayBlitType::kOpenCL;
+  use_alpha_only_ = false;
+
+  if (blit_type == OverlayBlitType::kOpenCL) {
     for (CLKernelDescriptor kernel : OpenClKernel::supported_kernels) {
       if (kernel.id == kernel_id_) {
         if (kernel.instance == nullptr) {
@@ -1349,9 +1552,6 @@ OverlayItem::OverlayItem (int32_t ion_device, OverlayType type,
         break;
       }
     }
-  } else {
-    blit_type_ = OverlayBlitType::kC2D;
-    use_alpha_only_ = false;
   }
 
   OVDBG_VERBOSE ("%s:Exit ", __func__);
@@ -1394,6 +1594,7 @@ uint32_t OverlayItem::CalcStride (uint32_t width, SurfaceFormat format)
   }
 }
 
+#ifdef ENABLE_C2D
 uint32_t OverlayItem::GetC2DFormat (SurfaceFormat format)
 {
   switch (format) {
@@ -1412,6 +1613,24 @@ uint32_t OverlayItem::GetC2DFormat (SurfaceFormat format)
     return -1;
   }
 }
+#endif // ENABLE_C2D
+
+#ifdef ENABLE_GLES
+uint32_t OverlayItem::GetGlesFormat (SurfaceFormat format)
+{
+  switch (format) {
+  case SurfaceFormat::kARGB:
+    return ib2c::ColorFormat::kARGB8888;
+  case SurfaceFormat::kABGR:
+    return ib2c::ColorFormat::kABGR8888;
+  case SurfaceFormat::kRGB:
+    return ib2c::ColorFormat::kRGB888;
+  default:
+    OVDBG_ERROR ("%s:Format %d not supported", __func__, (int32_t)format);
+    return -1;
+  }
+}
+#endif // ENABLE_GLES
 
 cairo_format_t OverlayItem::GetCairoFormat (SurfaceFormat format)
 {
@@ -1434,48 +1653,107 @@ cairo_format_t OverlayItem::GetCairoFormat (SurfaceFormat format)
 int32_t OverlayItem::AllocateIonMemory (IonMemInfo& mem_info, uint32_t size)
 {
   OVDBG_VERBOSE ("%s:Enter", __func__);
-  int32_t ret = 0;
-  void* data = nullptr;
-  uint32_t flags = ION_FLAG_CACHED;
-  int32_t map_fd = -1;
-  uint32_t heap_id_mask = ION_HEAP (ION_SYSTEM_HEAP_ID);
-  size = ROUND_TO(size, 4096);
+  int32_t ret = 0, fd = -1;
+  void* vaddr = nullptr;
 
-  ret = ion_alloc_fd (ion_device_, size, 0, heap_id_mask, flags, &map_fd);
-  if (ret) {
-    OVDBG_ERROR ("%s:ION allocation failed\n", __func__);
+#if defined(HAVE_LINUX_DMA_HEAP_H)
+  struct dma_heap_allocation_data alloc_data;
+#else
+  struct ion_allocation_data alloc_data;
+#if !defined(TARGET_ION_ABI_VERSION)
+  struct ion_fd_data fd_data;
+#endif // TARGET_ION_ABI_VERSION
+#endif
+
+  alloc_data.fd = 0;
+  alloc_data.len = ROUND_TO(size, 4096);
+
+#if defined(HAVE_LINUX_DMA_HEAP_H)
+  // Permissions for the memory to be allocated.
+  alloc_data.fd_flags = O_RDWR | O_CLOEXEC;
+  alloc_data.heap_flags = 0;
+#else
+  alloc_data.heap_id_mask = ION_HEAP(ION_SYSTEM_HEAP_ID);
+  alloc_data.flags = ION_FLAG_CACHED;
+
+#if !defined(TARGET_ION_ABI_VERSION)
+  alloc_data.align = 4096;
+#endif // TARGET_ION_ABI_VERSION
+#endif
+
+#if defined(HAVE_LINUX_DMA_HEAP_H)
+  ret = ioctl (ion_device_, DMA_HEAP_IOCTL_ALLOC, &alloc_data);
+#else
+  ret = ioctl (ion_device_, ION_IOC_ALLOC, &alloc_data);
+#endif
+
+  if (ret != 0) {
+    OVDBG_ERROR ("%s: Failed to allocate ION memory!", __func__);
     return -1;
   }
 
-  data = mmap (NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, map_fd, 0);
-  if (data == MAP_FAILED) {
-    OVDBG_ERROR ("%s:ION mmap failed: %s (%d)\n", __func__, strerror (errno),
-        errno);
-    goto ION_MAP_FAILED;
+#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
+  fd_data.handle = alloc_data.handle;
+
+  ret = ioctl (ion_device_, ION_IOC_MAP, &fd_data);
+  if (ret != 0) {
+    OVDBG_ERROR ("%s: Failed to map to FD!", __func__);
+    ioctl (ion_device_, ION_IOC_FREE, &alloc_data.handle);
+    return -1;
   }
-  SyncStart (map_fd);
-  mem_info.fd = map_fd;
+
+  fd = fd_data.fd;
+#else
+  fd = alloc_data.fd;
+#endif // TARGET_ION_ABI_VERSION
+
+  vaddr = mmap (NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  if (vaddr == MAP_FAILED) {
+    OVDBG_ERROR ("%s: mmap failed: %s (%d)\n", __func__, strerror (errno), errno);
+#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
+    ioctl (ion_device_, ION_IOC_FREE, &alloc_data.handle);
+#endif // TARGET_ION_ABI_VERSION
+    close(fd);
+    return -1;
+  }
+
+  SyncStart (fd);
+  mem_info.fd = fd;
   mem_info.size = size;
-  mem_info.vaddr = data;
+  mem_info.vaddr = vaddr;
+#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
+  mem_info.handle = alloc_data.handle;
+#endif // TARGET_ION_ABI_VERSION
+
   OVDBG_VERBOSE ("%s:Exit ", __func__);
   return ret;
-
-  ION_MAP_FAILED : close (map_fd);
-  return -1;
 }
 
-void OverlayItem::FreeIonMemory (void *&vaddr, int32_t &ion_fd, uint32_t size)
+
+
+#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
+void OverlayItem::FreeIonMemory (void *&vaddr, int32_t &fd, uint32_t size,
+                                 ion_user_handle_t handle)
+#else
+void OverlayItem::FreeIonMemory (void *&vaddr, int32_t &fd, uint32_t size)
+#endif // TARGET_ION_ABI_VERSION
 {
   if (vaddr) {
-    if (ion_fd != -1)
-      SyncEnd (ion_fd);
+    if (fd != -1)
+      SyncEnd (fd);
     munmap (vaddr, size);
     vaddr = nullptr;
   }
 
-  if (ion_fd != -1) {
-    close (ion_fd);
-    ion_fd = -1;
+  if (fd != -1) {
+#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
+    if (ioctl (ion_device_, ION_IOC_FREE, &handle) < 0) {
+      OVDBG_ERROR ("%s: Failed to free handle for FD %d!", __func__, fd);
+    }
+#endif // TARGET_ION_ABI_VERSION
+
+    close (fd);
+    fd = -1;
   }
 }
 
@@ -1498,7 +1776,8 @@ int32_t OverlayItem::MapOverlaySurface (OverlaySurface &surface,
       OVDBG_ERROR ("%s: Failed to map image!", __func__);
       return -1;
     }
-  } else {
+  } else if (blit_type_ == OverlayBlitType::kC2D) {
+#ifdef ENABLE_C2D
     ret = c2dMapAddr (mem_info.fd, mem_info.vaddr, mem_info.size, 0,
         KGSL_USER_MEM_TYPE_ION, &surface.gpu_addr_);
     if (ret != C2D_STATUS_OK) {
@@ -1524,11 +1803,35 @@ int32_t OverlayItem::MapOverlaySurface (OverlaySurface &surface,
       surface.gpu_addr_ = nullptr;
       return -1;
     }
+#endif // ENABLE_C2D
+  } else if (blit_type_ == OverlayBlitType::kGLES) {
+#ifdef ENABLE_GLES
+    ib2c::Surface insurface;
+
+    insurface.fd = mem_info.fd;
+    insurface.format = GetGlesFormat (surface_.format_);
+    insurface.width = surface.width_;
+    insurface.height = surface.height_;
+    insurface.size = mem_info.size;
+    insurface.stride0 = surface.stride_;
+    insurface.offset0 = 0;
+    insurface.nplanes = 1;
+
+    try {
+      surface.ib2c_surface_id_ = ib2c_engine_->CreateSurface(insurface);
+    } catch (std::exception& e) {
+      OVDBG_ERROR ("%s: Create surface failed, error: '%s'!", __func__, e.what());
+      return -1;
+    }
+#endif // ENABLE_GLES
   }
 
   surface.ion_fd_ = mem_info.fd;
   surface.vaddr_ = mem_info.vaddr;
   surface.size_ = mem_info.size;
+#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
+  surface.handle_ = mem_info.handle;
+#endif // TARGET_ION_ABI_VERSION
 
   OVDBG_VERBOSE ("%s: Exit ", __func__);
 
@@ -1543,7 +1846,8 @@ void OverlayItem::UnMapOverlaySurface (OverlaySurface &surface)
     } else {
       OpenClKernel::UnMapBuffer (surface.cl_buffer_);
     }
-  } else {
+  } else if (blit_type_ == OverlayBlitType::kC2D) {
+#ifdef ENABLE_C2D
     if (surface.gpu_addr_) {
       c2dUnMapAddr (surface.gpu_addr_);
       surface.gpu_addr_ = nullptr;
@@ -1557,15 +1861,37 @@ void OverlayItem::UnMapOverlaySurface (OverlaySurface &surface)
       OVDBG_INFO ("%s: Destroyed c2d text Surface for type(%d)", __func__,
           (int32_t) type_);
     }
+#endif // ENABLE_C2D
+  } else if (blit_type_ == OverlayBlitType::kGLES) {
+#ifdef ENABLE_GLES
+    try {
+      if (surface.ib2c_surface_id_ != 0) {
+        ib2c_engine_->DestroySurface(surface.ib2c_surface_id_);
+        surface.ib2c_surface_id_ = 0;
+      }
+    } catch (std::exception& e) {
+      OVDBG_ERROR ("%s: Destroy surface failed, error: '%s'!", __func__, e.what());
+    }
+#endif // ENABLE_GLES
   }
 }
 
 void OverlayItem::ExtractColorValues (uint32_t hex_color, RGBAValues* color)
 {
-  color->red = ( (hex_color >> 24) & 0xff) / 255.0;
-  color->green = ( (hex_color >> 16) & 0xff) / 255.0;
-  color->blue = ( (hex_color >> 8) & 0xff) / 255.0;
-  color->alpha = ( (hex_color) & 0xff) / 255.0;
+  if (blit_type_ == OverlayBlitType::kGLES) {
+    // TODO: Due to limitaion in IB2C library we have to switch the blue & red
+    // colors when setting the cairo draw color otherwise it won't be displayed
+    // correctly.
+    color->blue = ( (hex_color >> 24) & 0xff) / 255.0;
+    color->green = ( (hex_color >> 16) & 0xff) / 255.0;
+    color->red = ( (hex_color >> 8) & 0xff) / 255.0;
+    color->alpha = ( (hex_color) & 0xff) / 255.0;
+  } else {
+    color->red = ( (hex_color >> 24) & 0xff) / 255.0;
+    color->green = ( (hex_color >> 16) & 0xff) / 255.0;
+    color->blue = ( (hex_color >> 8) & 0xff) / 255.0;
+    color->alpha = ( (hex_color) & 0xff) / 255.0;
+  }
 }
 
 void OverlayItem::ClearSurface ()
@@ -1598,7 +1924,12 @@ void OverlayItem::DestroySurface ()
   OVDBG_VERBOSE ("%s: Enter", __func__);
   MarkDirty (true);
   UnMapOverlaySurface (surface_);
+#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
+  FreeIonMemory (surface_.vaddr_, surface_.ion_fd_, surface_.size_,
+                 surface_.handle_);
+#else
   FreeIonMemory (surface_.vaddr_, surface_.ion_fd_, surface_.size_);
+#endif // TARGET_ION_ABI_VERSION
 
   if (cr_surface_) {
     cairo_surface_destroy (cr_surface_);
@@ -1614,11 +1945,21 @@ void OverlayItemStaticImage::DestroySurface ()
   OVDBG_VERBOSE ("%s: Enter", __func__);
   MarkDirty (true);
   UnMapOverlaySurface (surface_);
+#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
+  FreeIonMemory (surface_.vaddr_, surface_.ion_fd_, surface_.size_,
+                 surface_.handle_);
+#else
   FreeIonMemory (surface_.vaddr_, surface_.ion_fd_, surface_.size_);
+#endif // TARGET_ION_ABI_VERSION
   OVDBG_VERBOSE ("%s: Exit", __func__);
 }
 
+#ifdef ENABLE_GLES
+int32_t OverlayItemStaticImage::Init (std::shared_ptr<ib2c::IEngine> ib2c_engine,
+                                      OverlayParam& param)
+#else
 int32_t OverlayItemStaticImage::Init (OverlayParam& param)
+#endif // ENABLE_GLES
 {
   OVDBG_VERBOSE ("%s: Enter", __func__);
   int32_t ret = 0;
@@ -1627,6 +1968,10 @@ int32_t OverlayItemStaticImage::Init (OverlayParam& param)
     OVDBG_ERROR ("%s: Image Width & Height is not correct!", __func__);
     return -EINVAL;
   }
+
+#ifdef ENABLE_GLES
+  ib2c_engine_ = ib2c_engine;
+#endif // ENABLE_GLES
 
   x_ = param.dst_rect.start_x;
   y_ = param.dst_rect.start_y;
@@ -1672,6 +2017,7 @@ int32_t OverlayItemStaticImage::Init (OverlayParam& param)
 int32_t OverlayItemStaticImage::UpdateAndDraw ()
 {
   if (blit_type_ == OverlayBlitType::kC2D) {
+#ifdef ENABLE_C2D
     // Nothing to update, contents are static.
     // Never marked as dirty.
     std::lock_guard < std::mutex > lock (update_param_lock_);
@@ -1679,6 +2025,7 @@ int32_t OverlayItemStaticImage::UpdateAndDraw ()
       c2dSurfaceUpdated (surface_.c2dsurface_id_, nullptr);
       blob_buffer_updated_ = false;
     }
+#endif // ENABLE_C2D
   }
   return 0;
 }
@@ -1698,7 +2045,12 @@ void OverlayItemStaticImage::GetDrawInfo (uint32_t targetWidth,
   draw_info.stride = surface_.stride_;
   draw_info.mask = surface_.cl_buffer_;
   draw_info.blit_inst = surface_.blit_inst_;
+#ifdef ENABLE_C2D
   draw_info.c2dSurfaceId = surface_.c2dsurface_id_;
+#endif // ENABLE_C2D
+#ifdef ENABLE_GLES
+  draw_info.ib2cSurfaceId = surface_.ib2c_surface_id_;
+#endif // ENABLE_GLES
   draw_info.global_devider_w = global_devider_w_;
   draw_info.global_devider_h = global_devider_h_;
   draw_info.local_size_w = local_size_w_;
@@ -1823,8 +2175,8 @@ ERROR:
 }
 
 OverlayItemDateAndTime::OverlayItemDateAndTime (int32_t ion_device,
-    CLKernelIds kernel_id) :
-    OverlayItem (ion_device, OverlayType::kDateType, kernel_id)
+    OverlayBlitType blit_type, CLKernelIds kernel_id) :
+    OverlayItem (ion_device, OverlayType::kDateType, blit_type, kernel_id)
 {
   OVDBG_VERBOSE ("%s:Enter ", __func__);
   memset (&date_time_type_, 0x0, sizeof date_time_type_);
@@ -1839,7 +2191,12 @@ OverlayItemDateAndTime::~OverlayItemDateAndTime ()
   OVDBG_VERBOSE ("%s:Exit ", __func__);
 }
 
+#ifdef ENABLE_GLES
+int32_t OverlayItemDateAndTime::Init (std::shared_ptr<ib2c::IEngine> ib2c_engine,
+                                      OverlayParam& param)
+#else
 int32_t OverlayItemDateAndTime::Init (OverlayParam& param)
+#endif // ENABLE_GLES
 {
   OVDBG_VERBOSE ("%s: Enter", __func__);
 
@@ -1847,6 +2204,10 @@ int32_t OverlayItemDateAndTime::Init (OverlayParam& param)
     OVDBG_ERROR ("%s: Image Width & Height is not correct!", __func__);
     return -EINVAL;
   }
+
+#ifdef ENABLE_GLES
+  ib2c_engine_ = ib2c_engine;
+#endif // ENABLE_GLES
 
   text_color_ = param.color;
   font_size_ = param.font_size;
@@ -1860,13 +2221,13 @@ int32_t OverlayItemDateAndTime::Init (OverlayParam& param)
   date_time_type_.time_format = param.date_time.time_format;
 
   // Create surface with the same aspect ratio
-  surface_.width_ = ROUND_TO(font_size_ * 6, 16);
+  surface_.width_ = GST_ROUND_UP_128(font_size_ * 6);
   surface_.height_ = font_size_ * 6 * height_ / width_;
 
   // Recalculate if surface height is less than minimum
   if (surface_.height_ < font_size_ * 2) {
     surface_.height_ = font_size_ * 2;
-    surface_.width_ = ROUND_TO(font_size_ * 2 * width_ / height_, 16);
+    surface_.width_ = GST_ROUND_UP_128(font_size_ * 2 * width_ / height_);
     // recalculated height according to aligned width
     surface_.height_ = surface_.width_ * height_ / width_;
   }
@@ -2036,7 +2397,12 @@ void OverlayItemDateAndTime::GetDrawInfo (uint32_t targetWidth,
   draw_info.stride = surface_.stride_;
   draw_info.mask = surface_.cl_buffer_;
   draw_info.blit_inst = surface_.blit_inst_;
+#ifdef ENABLE_C2D
   draw_info.c2dSurfaceId = surface_.c2dsurface_id_;
+#endif // ENABLE_C2D
+#ifdef ENABLE_GLES
+  draw_info.ib2cSurfaceId = surface_.ib2c_surface_id_;
+#endif // ENABLE_GLES
   draw_info.global_devider_w = global_devider_w_;
   draw_info.global_devider_h = global_devider_h_;
   draw_info.local_size_w = local_size_w_;
@@ -2084,13 +2450,13 @@ int32_t OverlayItemDateAndTime::UpdateParameters (OverlayParam& param)
     prev_time_ = 0;
 
     // Create surface with the same aspect ratio
-    surface_.width_ = ROUND_TO(font_size_ * 6, 16);
+    surface_.width_ = GST_ROUND_UP_128(font_size_ * 6);
     surface_.height_ = font_size_ * 6 * height_ / width_;
 
     // Recalculate if surface height is less than minimum
     if (surface_.height_ < font_size_ * 2) {
       surface_.height_ = font_size_ * 2;
-      surface_.width_ = ROUND_TO(font_size_ * 2 * width_ / height_, 16);
+      surface_.width_ = GST_ROUND_UP_128(font_size_ * 2 * width_ / height_);
       // recalculated height according to aligned width
       surface_.height_ = surface_.width_ * height_ / width_;
     }
@@ -2150,8 +2516,9 @@ ERROR:
 }
 
 OverlayItemBoundingBox::OverlayItemBoundingBox (int32_t ion_device,
-    CLKernelIds kernel_id) :
-    OverlayItem (ion_device, OverlayType::kBoundingBox, kernel_id), text_height_ (0)
+    OverlayBlitType blit_type, CLKernelIds kernel_id) :
+    OverlayItem (ion_device, OverlayType::kBoundingBox, blit_type, kernel_id),
+    text_height_ (0)
 {
   OVDBG_VERBOSE ("%s: Enter", __func__);
   OVDBG_VERBOSE ("%s: Exit", __func__);
@@ -2164,7 +2531,12 @@ OverlayItemBoundingBox::~OverlayItemBoundingBox ()
   OVDBG_INFO ("%s: Exit", __func__);
 }
 
+#ifdef ENABLE_GLES
+int32_t OverlayItemBoundingBox::Init (std::shared_ptr<ib2c::IEngine> ib2c_engine,
+                                      OverlayParam& param)
+#else
 int32_t OverlayItemBoundingBox::Init (OverlayParam& param)
+#endif // ENABLE_GLES
 {
   OVDBG_VERBOSE ("%s: Enter", __func__);
 
@@ -2172,6 +2544,10 @@ int32_t OverlayItemBoundingBox::Init (OverlayParam& param)
     OVDBG_ERROR ("%s: Image Width & Height is not correct!", __func__);
     return -EINVAL;
   }
+
+#ifdef ENABLE_GLES
+  ib2c_engine_ = ib2c_engine;
+#endif // ENABLE_GLES
 
   x_ = param.dst_rect.start_x;
   y_ = param.dst_rect.start_y;
@@ -2194,7 +2570,7 @@ int32_t OverlayItemBoundingBox::Init (OverlayParam& param)
   OVDBG_INFO ("%s: Offscreen buffer:(%dx%d)", __func__, surface_.width_,
       surface_.height_);
 
-  text_surface_.width_ = 320;
+  text_surface_.width_ = 384;
   text_surface_.height_ = 80;
   text_surface_.format_ = surface_.format_;
   text_surface_.stride_ = CalcStride (text_surface_.width_, text_surface_.format_);
@@ -2324,7 +2700,12 @@ void OverlayItemBoundingBox::GetDrawInfo (uint32_t targetWidth,
   draw_info_bbox.stride = surface_.stride_;
   draw_info_bbox.mask = surface_.cl_buffer_;
   draw_info_bbox.blit_inst = surface_.blit_inst_;
+#ifdef ENABLE_C2D
   draw_info_bbox.c2dSurfaceId = surface_.c2dsurface_id_;
+#endif // ENABLE_C2D
+#ifdef ENABLE_GLES
+  draw_info_bbox.ib2cSurfaceId = surface_.ib2c_surface_id_;
+#endif // ENABLE_GLES
   draw_info_bbox.global_devider_w = global_devider_w_;
   draw_info_bbox.global_devider_h = global_devider_h_;
   draw_info_bbox.local_size_w = local_size_w_;
@@ -2340,7 +2721,12 @@ void OverlayItemBoundingBox::GetDrawInfo (uint32_t targetWidth,
   draw_info_text.stride = text_surface_.stride_;
   draw_info_text.mask = text_surface_.cl_buffer_;
   draw_info_text.blit_inst = text_surface_.blit_inst_;
-  draw_info_text.c2dSurfaceId = text_surface_.c2dsurface_id_;
+#ifdef ENABLE_C2D
+  draw_info_text.c2dSurfaceId = surface_.c2dsurface_id_;
+#endif // ENABLE_C2D
+#ifdef ENABLE_GLES
+  draw_info_text.ib2cSurfaceId = surface_.ib2c_surface_id_;
+#endif // ENABLE_GLES
   draw_info_text.global_devider_w = global_devider_w_;
   draw_info_text.global_devider_h = global_devider_h_;
   draw_info_text.local_size_w = local_size_w_;
@@ -2507,8 +2893,15 @@ ERROR:
 void OverlayItemBoundingBox::DestroyTextSurface ()
 {
   UnMapOverlaySurface (text_surface_);
+
+#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
   FreeIonMemory (text_surface_.vaddr_, text_surface_.ion_fd_,
-      text_surface_.size_);
+                 text_surface_.size_, text_surface_.handle_);
+#else
+  FreeIonMemory (text_surface_.vaddr_, text_surface_.ion_fd_,
+                 text_surface_.size_);
+#endif // TARGET_ION_ABI_VERSION
+
 
   if (text_cr_surface_) {
     cairo_surface_destroy (text_cr_surface_);
@@ -2524,7 +2917,12 @@ OverlayItemText::~OverlayItemText ()
   OVDBG_VERBOSE ("%s:Exit ", __func__);
 }
 
+#ifdef ENABLE_GLES
+int32_t OverlayItemText::Init (std::shared_ptr<ib2c::IEngine> ib2c_engine,
+                               OverlayParam& param)
+#else
 int32_t OverlayItemText::Init (OverlayParam& param)
+#endif // ENABLE_GLES
 {
   OVDBG_VERBOSE ("%s: Enter", __func__);
 
@@ -2532,6 +2930,10 @@ int32_t OverlayItemText::Init (OverlayParam& param)
     OVDBG_ERROR ("%s: Image Width & Height is not correct!", __func__);
     return -EINVAL;
   }
+
+#ifdef ENABLE_GLES
+  ib2c_engine_ = ib2c_engine;
+#endif // ENABLE_GLES
 
   text_color_ = param.color;
   font_size_ = param.font_size;
@@ -2542,7 +2944,7 @@ int32_t OverlayItemText::Init (OverlayParam& param)
   text_ = param.user_text;
 
   surface_.width_ = std::max (font_size_ * 4, width_);
-  surface_.width_ = ROUND_TO(surface_.width_, 16);
+  surface_.width_ = GST_ROUND_UP_128 (surface_.width_);
   surface_.height_ = std::max (font_size_, height_);
   surface_.format_ = SurfaceFormat::kARGB;
   if (use_alpha_only_) {
@@ -2655,7 +3057,12 @@ void OverlayItemText::GetDrawInfo (uint32_t targetWidth, uint32_t targetHeight,
   draw_info.stride = surface_.stride_;
   draw_info.mask = surface_.cl_buffer_;
   draw_info.blit_inst = surface_.blit_inst_;
+#ifdef ENABLE_C2D
   draw_info.c2dSurfaceId = surface_.c2dsurface_id_;
+#endif // ENABLE_C2D
+#ifdef ENABLE_GLES
+  draw_info.ib2cSurfaceId = surface_.ib2c_surface_id_;
+#endif // ENABLE_GLES
   draw_info.global_devider_w = global_devider_w_;
   draw_info.global_devider_h = global_devider_h_;
   draw_info.local_size_w = local_size_w_;
@@ -2699,7 +3106,7 @@ int32_t OverlayItemText::UpdateParameters (OverlayParam& param)
     height_ = param.dst_rect.height;
 
     surface_.width_ = std::max (font_size_ * 4, width_);
-    surface_.width_ = ROUND_TO(surface_.width_, 16);
+    surface_.width_ = GST_ROUND_UP_128 (surface_.width_);
     surface_.height_ = std::max (font_size_, height_);
     surface_.stride_ = CalcStride (surface_.width_, surface_.format_);
 
@@ -2771,7 +3178,12 @@ ERROR:
   return ret;
 }
 
+#ifdef ENABLE_GLES
+int32_t OverlayItemPrivacyMask::Init (std::shared_ptr<ib2c::IEngine> ib2c_engine,
+                                      OverlayParam& param)
+#else
 int32_t OverlayItemPrivacyMask::Init (OverlayParam& param)
+#endif // ENABLE_GLES
 {
   OVDBG_VERBOSE ("%s: Enter", __func__);
 
@@ -2780,6 +3192,10 @@ int32_t OverlayItemPrivacyMask::Init (OverlayParam& param)
     return -EINVAL;
   }
 
+#ifdef ENABLE_GLES
+  ib2c_engine_ = ib2c_engine;
+#endif // ENABLE_GLES
+
   x_ = param.dst_rect.start_x;
   y_ = param.dst_rect.start_y;
   width_ = param.dst_rect.width;
@@ -2787,7 +3203,7 @@ int32_t OverlayItemPrivacyMask::Init (OverlayParam& param)
   mask_color_ = param.color;
   config_ = param.privacy_mask;
 
-  surface_.width_ = std::min (width_, kMaskBoxBufWidth);
+  surface_.width_ = GST_ROUND_UP_128 (std::min (width_, kMaskBoxBufWidth));
   surface_.height_ = (surface_.width_ * height_) / width_;
   surface_.height_ = ROUND_TO(surface_.height_, 2);
   surface_.format_ = SurfaceFormat::kARGB;
@@ -2926,7 +3342,12 @@ void OverlayItemPrivacyMask::GetDrawInfo (uint32_t targetWidth,
   draw_info.stride = surface_.stride_;
   draw_info.mask = surface_.cl_buffer_;
   draw_info.blit_inst = surface_.blit_inst_;
+#ifdef ENABLE_C2D
   draw_info.c2dSurfaceId = surface_.c2dsurface_id_;
+#endif // ENABLE_C2D
+#ifdef ENABLE_GLES
+  draw_info.ib2cSurfaceId = surface_.ib2c_surface_id_;
+#endif // ENABLE_GLES
   draw_info.global_devider_w = global_devider_w_;
   draw_info.global_devider_h = global_devider_h_;
   draw_info.local_size_w = local_size_w_;
@@ -3014,7 +3435,12 @@ ERROR:
   return ret;
 }
 
+#ifdef ENABLE_GLES
+int32_t OverlayItemGraph::Init (std::shared_ptr<ib2c::IEngine> ib2c_engine,
+                                OverlayParam& param)
+#else
 int32_t OverlayItemGraph::Init (OverlayParam& param)
+#endif // ENABLE_GLES
 {
   OVDBG_VERBOSE ("%s: Enter", __func__);
 
@@ -3035,6 +3461,10 @@ int32_t OverlayItemGraph::Init (OverlayParam& param)
     return -EINVAL;
   }
 
+#ifdef ENABLE_GLES
+  ib2c_engine_ = ib2c_engine;
+#endif // ENABLE_GLES
+
   x_ = param.dst_rect.start_x;
   y_ = param.dst_rect.start_y;
   width_ = param.dst_rect.width;
@@ -3052,7 +3482,7 @@ int32_t OverlayItemGraph::Init (OverlayParam& param)
       scaled_width, scaled_height);
 
   int32_t width = static_cast<int32_t> (round (scaled_width));
-  width = ROUND_TO(width, 16); // Round to multiple of 16.
+  width = GST_ROUND_UP_128 (width); // Round to multiple of 128.
   width = width > kGraphBufWidth ? width : kGraphBufWidth;
   int32_t height = (static_cast<int32_t> (width / aspect_ratio + 15) >> 4) << 4;
   height = height > kGraphBufHeight ? height : kGraphBufHeight;
@@ -3153,7 +3583,12 @@ void OverlayItemGraph::GetDrawInfo (uint32_t targetWidth, uint32_t targetHeight,
   draw_info.stride = surface_.stride_;
   draw_info.mask = surface_.cl_buffer_;
   draw_info.blit_inst = surface_.blit_inst_;
+#ifdef ENABLE_C2D
   draw_info.c2dSurfaceId = surface_.c2dsurface_id_;
+#endif // ENABLE_C2D
+#ifdef ENABLE_GLES
+  draw_info.ib2cSurfaceId = surface_.ib2c_surface_id_;
+#endif // ENABLE_GLES
   draw_info.global_devider_w = global_devider_w_;
   draw_info.global_devider_h = global_devider_h_;
   draw_info.local_size_w = local_size_w_;
@@ -3245,8 +3680,9 @@ ERROR:
 }
 
 OverlayItemArrow::OverlayItemArrow (int32_t ion_device,
-    CLKernelIds kernel_id) :
-    OverlayItem (ion_device, OverlayType::kArrow, kernel_id), arrows_ (NULL)
+    OverlayBlitType blit_type, CLKernelIds kernel_id) :
+    OverlayItem (ion_device, OverlayType::kArrow, blit_type, kernel_id),
+    arrows_ (NULL)
 {
   OVDBG_VERBOSE ("%s: Enter", __func__);
   OVDBG_VERBOSE ("%s: Exit", __func__);
@@ -3260,7 +3696,12 @@ OverlayItemArrow::~OverlayItemArrow ()
   OVDBG_INFO ("%s: Exit", __func__);
 }
 
+#ifdef ENABLE_GLES
+int32_t OverlayItemArrow::Init (std::shared_ptr<ib2c::IEngine> ib2c_engine,
+                                OverlayParam& param)
+#else
 int32_t OverlayItemArrow::Init (OverlayParam& param)
+#endif // ENABLE_GLES
 {
   OVDBG_VERBOSE ("%s: Enter", __func__);
 
@@ -3268,6 +3709,10 @@ int32_t OverlayItemArrow::Init (OverlayParam& param)
     OVDBG_ERROR ("%s: Image Width & Height is not correct!", __func__);
     return -EINVAL;
   }
+
+#ifdef ENABLE_GLES
+  ib2c_engine_ = ib2c_engine;
+#endif // ENABLE_GLES
 
   x_ = param.dst_rect.start_x;
   y_ = param.dst_rect.start_y;
@@ -3279,7 +3724,7 @@ int32_t OverlayItemArrow::Init (OverlayParam& param)
   param.arrows = arrows_;
   arrows_count_ = 0;
 
-  surface_.width_ = width_ / kBufferDiv;
+  surface_.width_ = GST_ROUND_UP_128 (width_ / kBufferDiv);
   surface_.height_ = ROUND_TO( (surface_.width_ * height_) / width_, 2);
   surface_.format_ = SurfaceFormat::kARGB;
   if (use_alpha_only_) {
@@ -3385,7 +3830,12 @@ void OverlayItemArrow::GetDrawInfo (uint32_t targetWidth,
   draw_info_arrows.stride = surface_.stride_;
   draw_info_arrows.mask = surface_.cl_buffer_;
   draw_info_arrows.blit_inst = surface_.blit_inst_;
+#ifdef ENABLE_C2D
   draw_info_arrows.c2dSurfaceId = surface_.c2dsurface_id_;
+#endif // ENABLE_C2D
+#ifdef ENABLE_GLES
+  draw_info_arrows.ib2cSurfaceId = surface_.ib2c_surface_id_;
+#endif // ENABLE_GLES
   draw_info_arrows.global_devider_w = global_devider_w_;
   draw_info_arrows.global_devider_h = global_devider_h_;
   draw_info_arrows.local_size_w = local_size_w_;
@@ -3424,7 +3874,7 @@ int32_t OverlayItemArrow::UpdateParameters (OverlayParam& param)
   y_ = param.dst_rect.start_y;
 
   if (width_ != param.dst_rect.width || height_ != param.dst_rect.height) {
-    surface_.width_ = width_ / kBufferDiv;
+    surface_.width_ = GST_ROUND_UP_128 (width_ / kBufferDiv);
     surface_.height_ = (surface_.width_ * height_) / width_;
     surface_.height_ = ROUND_TO(surface_.height_, 2);
     surface_.stride_ = CalcStride (surface_.width_, surface_.format_);
