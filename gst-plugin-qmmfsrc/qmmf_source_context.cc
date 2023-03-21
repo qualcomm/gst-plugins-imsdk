@@ -251,7 +251,7 @@ validate_bayer_params (GstQmmfContext * context, GstPad * pad)
     return FALSE;
   }
 
-    recorder->GetCameraCharacteristics (context->camera_id, meta);
+  recorder->GetCameraCharacteristics (context->camera_id, meta);
 
   if (!meta.exists (ANDROID_SENSOR_INFO_COLOR_FILTER_ARRANGEMENT)) {
     GST_WARNING ("There is no sensor filter information!");
@@ -277,7 +277,7 @@ validate_bayer_params (GstQmmfContext * context, GstPad * pad)
       QMMFSRC_RETURN_VAL_IF_FAIL (NULL, format == GST_BAYER_FORMAT_RGGB,
           FALSE, "Invalid bayer matrix format, expected format 'rggb' !");
       break;
-#if defined(CAMERA_METADATA_1_1)
+#if defined(CAMERA_METADATA_1_1) || defined(CAMERA_METADATA_1_0_NS)
     case ANDROID_SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_MONO:
       QMMFSRC_RETURN_VAL_IF_FAIL (NULL, format == GST_BAYER_FORMAT_MONO,
           FALSE, "Invalid bayer matrix format, expected format 'mono' !");
@@ -288,24 +288,30 @@ validate_bayer_params (GstQmmfContext * context, GstPad * pad)
       return FALSE;
   }
 
-  if (!meta.exists (ANDROID_SENSOR_OPAQUE_RAW_SIZE)) {
-    GST_WARNING ("There is no camera bayer size information!");
-    return FALSE;
+#if defined(CAMERA_METADATA_1_0_NS)
+  if (meta.exists(ANDROID_SENSOR_OPAQUE_RAW_SIZE_MAXIMUM_RESOLUTION)) {
+    entry = meta.find (ANDROID_SENSOR_OPAQUE_RAW_SIZE_MAXIMUM_RESOLUTION);
+
+    for (idx = 0; !supported && (idx < entry.count); idx += 3) {
+      if ((width == entry.data.i32[idx]) && (height == entry.data.i32[idx+1]))
+        supported = TRUE;
+    }
+  }
+#endif
+
+  if ((supported != TRUE) && (!meta.exists(ANDROID_SENSOR_OPAQUE_RAW_SIZE))) {
+      GST_WARNING ("There is no camera bayer size information!");
+      return FALSE;
   }
 
   entry = meta.find (ANDROID_SENSOR_OPAQUE_RAW_SIZE);
-
-  for (idx = 0; idx < entry.count; idx += 3) {
-    if (width == static_cast<gint> (entry.data.i32[idx+0]) &&
-      height == static_cast<gint> (entry.data.i32[idx+1])) {
-      supported = true;
-      break;
-    }
+  for (idx = 0; !supported && (idx < entry.count); idx += 3) {
+    if ((width == entry.data.i32[idx]) && (height == entry.data.i32[idx+1]))
+      supported = TRUE;
   }
 
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, supported, FALSE,
-      "Invalid bayer resolution, expected %dx%d !", entry.data.i32[0],
-      entry.data.i32[1]);
+      "Invalid %dx%d bayer resolution!", width, height);
 
   return TRUE;
 }
