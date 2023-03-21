@@ -11,9 +11,9 @@ target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_INCLUDE_DIRS}
 )
 
-if(CODEC2_ENCODE)
-add_definitions(-DCODEC2_ENCODE)
-endif()
+target_compile_definitions(${GST_EXAMPLE_BIN} PRIVATE
+  $<$<BOOL:${CODEC2_ENCODE}>:CODEC2_ENCODE>
+)
 
 target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
   pthread
