@@ -69,7 +69,7 @@ GstC2Wrapper *
 gst_c2_wrapper_new ()
 {
   GstC2Wrapper *wrapper = NULL;
-  wrapper = g_new0 (GstC2Wrapper, 1);
+  wrapper = new GstC2Wrapper();
   g_return_val_if_fail (wrapper != NULL, NULL);
 
   wrapper->dlhandle = dlopen("libqcodec2_core.so", RTLD_NOW);
@@ -116,9 +116,9 @@ gst_c2_wrapper_new ()
 void
 gst_c2_wrapper_free (GstC2Wrapper * wrapper)
 {
-  dlclose(wrapper->dlhandle);
+  dlclose (wrapper->dlhandle);
   GST_INFO ("Destroyed C2 wrapper: %p", wrapper);
-  g_free(wrapper);
+  delete (wrapper);
 }
 
 gboolean
