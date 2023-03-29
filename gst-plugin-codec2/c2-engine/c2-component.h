@@ -82,7 +82,6 @@ private:
   c2_status_t prepareC2Buffer( BufferDescriptor* buffer, std::shared_ptr<C2Buffer>* c2Buf);
   c2_status_t waitForProgressOrStateChange(uint32_t maxPendingWorks,uint32_t timeoutMs);
 
-  std::shared_ptr<C2ComponentStore> compstore_;
   std::shared_ptr<C2Component> component_;
   std::shared_ptr<C2ComponentInterface> compintf_;
   uint32_t numpendingworks_;
