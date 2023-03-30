@@ -119,43 +119,6 @@ bool C2ComponentWrapper::SetHandler(event_handler_cb callback, gpointer userdata
     GST_ERROR ("Failed to set component callback");
     return FALSE;
   }
-  return TRUE;
-}
-
-bool C2ComponentWrapper::InitBlockPool(gchar* comp, guint32 width,guint32 height,
-                                       GstVideoFormat format) {
-
-#ifdef CODEC2_CONFIG_VERSION_2_0
-  uint64_t consumerUsage = C2MemoryUsage::CPU_READ|C2MemoryUsage::CPU_WRITE;
-  uint64_t producerUsage = C2MemoryUsage::CPU_READ|C2MemoryUsage::CPU_WRITE;
-  guint32 alignedWidth = 0, alignedHeight = 0;
-
-  /*
-     Resolution height and width should get from codec2 directly, for now there
-     is no such API provided to GST. after video team provide the API, these hard
-     code will be removed.
-  */
-  alignedWidth = GST_ROUND_UP_16 (width);
-  if (g_strcmp0(comp, "c2.qti.avc.decoder") == 0) {
-    alignedHeight = GST_ROUND_UP_16 (height);
-  } else if (g_strcmp0(comp, "c2.qti.hevc.decoder") == 0) {
-    alignedHeight = GST_ROUND_UP_32 (height);
-  } else {
-    GST_ERROR ("unsupported decoder type: %s", comp);
-    return FALSE;
-  }
-
-  GST_INFO ("InitBlockPool: width: %d height: %d, format: %d, alignedWidth: %d alignedHeight: %d",
-   width, height, format, alignedWidth, alignedHeight);
-
-  AllocBasicParams params ({0, 0}, alignedWidth, alignedHeight,
-      ToGBMFormat (format, 0));
-
-  int ret = out_graphic_pool_->init (params, 20);
-  if (ret != C2_OK) {
-    GST_ERROR ("Output GRAPHIC Block pool init failed: %d", ret);
-  }
-#endif
 
   return TRUE;
 }

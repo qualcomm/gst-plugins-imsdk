@@ -176,18 +176,6 @@ gst_c2_wrapper_delete_component (GstC2Wrapper * wrapper) {
   return TRUE;
 }
 
-gboolean
-gst_c2_wrapper_init_block_pool (GstC2Wrapper * wrapper, gchar* comp,
-    guint32 width, guint32 height, GstVideoFormat format) {
-
-  GST_INFO ("Init C2 output block pool");
-  if (wrapper->component) {
-    return wrapper->component->InitBlockPool(comp, width, height, format);
-  }
-
-  return FALSE;
-}
-
 gint
 gst_c2_wrapper_get_block_pool_id (GstC2Wrapper * wrapper) {
 

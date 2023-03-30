@@ -806,11 +806,6 @@ gst_c2vdec_set_format (GstVideoDecoder * decoder, GstVideoCodecState * state)
     goto error_set_format;
   }
 
-  if (!gst_c2_wrapper_init_block_pool(dec->wrapper, dec->comp_name, width,
-       height, GST_VIDEO_FORMAT_NV12)) {
-    GST_ERROR_OBJECT (dec, "Failed to init output block pool");
-  }
-
   if (!gst_c2_wrapper_config_component (dec->wrapper, config)) {
     GST_ERROR_OBJECT (dec, "Failed to config interface");
   }
