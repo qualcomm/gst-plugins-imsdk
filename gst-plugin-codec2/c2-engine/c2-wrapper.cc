@@ -136,14 +136,14 @@ gst_c2_wrapper_create_component (GstC2Wrapper * wrapper,
   wrapper->component->SetHandler (callback, userdata);
 
   if (wrapper->component) {
-    c2Status = wrapper->component->createBlockpool(C2BlockPool::BASIC_LINEAR);
+    c2Status = wrapper->component->CreateBlockpool(C2BlockPool::BASIC_LINEAR);
     if (c2Status == C2_OK) {
       ret = TRUE;
     } else {
       GST_ERROR("Failed(%d) to allocate block pool(%d)",
           c2Status, C2BlockPool::BASIC_LINEAR);
     }
-    c2Status = wrapper->component->createBlockpool(C2BlockPool::BASIC_GRAPHIC);
+    c2Status = wrapper->component->CreateBlockpool(C2BlockPool::BASIC_GRAPHIC);
     if (c2Status == C2_OK) {
       ret = TRUE;
     } else {
@@ -152,7 +152,7 @@ gst_c2_wrapper_create_component (GstC2Wrapper * wrapper,
     }
 
 #ifdef CODEC2_CONFIG_VERSION_2_0
-    c2Status = wrapper->component->createBlockpool(C2AllocatorStore::GRAPHIC_NON_CONTIGUOUS);
+    c2Status = wrapper->component->CreateBlockpool(C2AllocatorStore::GRAPHIC_NON_CONTIGUOUS);
     if (c2Status == C2_OK) {
       ret = TRUE;
     } else {
@@ -246,10 +246,10 @@ gst_c2_wrapper_component_queue (GstC2Wrapper * wrapper,
 
 gboolean
 gst_c2_wrapper_free_output_buffer (GstC2Wrapper * wrapper,
-    uint64_t bufferIdx) {
+    uint64_t buf_idx) {
 
   if (wrapper->component) {
-    return wrapper->component->FreeOutputBuffer(bufferIdx);
+    return wrapper->component->FreeOutputBuffer(buf_idx);
   }
   return FALSE;
 }

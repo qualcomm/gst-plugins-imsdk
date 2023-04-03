@@ -38,59 +38,60 @@
 #include <stdio.h>
 #include <gst/gst.h>
 #include <gst/video/video.h>
+
 #include "c2-config.h"
 
 typedef enum {
-    EVENT_OUTPUTS_DONE = 0,
-    EVENT_TRIPPED,
-    EVENT_ERROR
-} EVENT_TYPE;
+  GST_C2_EVENT_OUTPUTS_DONE = 0,
+  GST_C2_EVENT_TRIPPED,
+  GST_C2_EVENT_ERROR
+} GstC2EventType;
 
 typedef enum {
-    BLOCK_MODE_DONT_BLOCK = 0,
-    BLOCK_MODE_MAY_BLOCK
-} BLOCK_MODE_TYPE;
+  GST_C2_BLOCK_MODE_DONT_BLOCK = 0,
+  GST_C2_BLOCK_MODE_MAY_BLOCK
+} GstC2BlockMode;
 
 typedef enum {
-    BUFFER_POOL_BASIC_LINEAR = 0,
-    BUFFER_POOL_BASIC_GRAPHIC
-} BUFFER_POOL_TYPE;
+  GST_C2_BUFFER_POOL_BASIC_LINEAR = 0,
+  GST_C2_BUFFER_POOL_BASIC_GRAPHIC
+} GstC2BufferPoolType;
 
 typedef enum {
-    FLAG_TYPE_DROP_FRAME = 1 << 0,
-    // For input frames: no output frame shall be generated when
-    // processing this frame.
-    FLAG_TYPE_END_OF_STREAM = 1 << 1,
-    // For output frames: this frame shall be discarded.
-    // This frame shall be discarded with its metadata.
-    FLAG_TYPE_DISCARD_FRAME = 1 << 2,
-    // This frame is not the last frame produced for the input
-    FLAG_TYPE_INCOMPLETE = 1 << 3,
-    // Frame contains only codec-specific configuration data,
-    // and no actual access unit
-    FLAG_TYPE_CODEC_CONFIG = 1 << 4,
-    // Sync Frame Flag: This flag is set when the buffer content
-    // contains a coded sync frame a frame that has no dependency
-    // on any other frame information
-    FLAG_TYPE_SYNC_FRAME = 1 << 5
-} FLAG_TYPE;
+  GST_C2_FLAG_DROP_FRAME = 1 << 0,
+  // For input frames: no output frame shall be generated when
+  // processing this frame.
+  GST_C2_FLAG_END_OF_STREAM = 1 << 1,
+  // For output frames: this frame shall be discarded.
+  // This frame shall be discarded with its metadata.
+  GST_C2_FLAG_DISCARD_FRAME = 1 << 2,
+  // This frame is not the last frame produced for the input
+  GST_C2_FLAG_INCOMPLETE = 1 << 3,
+  // Frame contains only codec-specific configuration data,
+  // and no actual access unit
+  GST_C2_FLAG_CODEC_CONFIG = 1 << 4,
+  // Sync Frame Flag: This flag is set when the buffer content
+  // contains a coded sync frame a frame that has no dependency
+  // on any other frame information
+  GST_C2_FLAG_SYNC_FRAME = 1 << 5
+} GstC2Flag;
 
 typedef struct {
-    gint32 fd;
-    guint8* data;
-    guint32 size;
-    guint64 timestamp;
-    guint64 index;
-    guint32 width;
-    guint32 height;
-    guint32 stride;
-    guint32 scanline;
-    GstVideoFormat format;
-    FLAG_TYPE flag;
-    BUFFER_POOL_TYPE pool_type;
-    guint8* config_data; // codec config data
-    guint32 config_size; // size of codec config data
-    guint32 ubwc_flag;
+  gint32 fd;
+  guint8* data;
+  guint32 size;
+  guint64 timestamp;
+  guint64 index;
+  guint32 width;
+  guint32 height;
+  guint32 stride;
+  guint32 scanline;
+  GstVideoFormat format;
+  GstC2Flag flag;
+  GstC2BufferPoolType pool_type;
+  guint8* config_data; // codec config data
+  guint32 config_size; // size of codec config data
+  guint32 ubwc_flag;
 } BufferDescriptor;
 
 #endif // __GST_C2_COMMON_H__
