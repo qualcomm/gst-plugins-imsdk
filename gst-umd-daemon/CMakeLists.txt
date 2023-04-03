@@ -28,6 +28,7 @@ target_link_libraries(${GST_DAEMON_BIN} PRIVATE
   ${GST_VIDEO_LIBRARIES}
   qtiumd
   dl
+  cutils
 )
 
 install(
