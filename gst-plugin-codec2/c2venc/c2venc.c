@@ -586,6 +586,9 @@ gst_c2_venc_buffer_available (GstBuffer * buffer, gpointer userdata)
   } else if (c2venc->headers != NULL) {
     gst_video_encoder_set_headers (GST_VIDEO_ENCODER (c2venc), c2venc->headers);
     c2venc->headers = NULL;
+  } else if (!GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_MARKER)) {
+    gst_buffer_list_add (c2venc->incomplete_buffers, buffer);
+    return;
   }
 
   // Get the frame index from the buffer offset field.
@@ -610,23 +613,43 @@ gst_c2_venc_buffer_available (GstBuffer * buffer, gpointer userdata)
 
   // Unset the custom SYNC flag if present.
   GST_BUFFER_FLAG_UNSET (buffer, GST_VIDEO_BUFFER_FLAG_SYNC);
-
   // Unset the custom UBWC flag if present.
   GST_BUFFER_FLAG_UNSET (buffer, GST_VIDEO_BUFFER_FLAG_UBWC);
-  GST_BUFFER_DURATION (buffer) =
-      gst_util_uint64_scale (GST_SECOND, vinfo->fps_d, vinfo->fps_n);
 
-  frame->output_buffer = buffer;
+  // Check for incomplete buffers and merge them into single buffer.
+  if (gst_buffer_list_length (c2venc->incomplete_buffers) > 0) {
+    GstMemory *memory = NULL;
+
+    // Create a new buffer to hold the memory blocks for all incomplete buffers.
+    frame->output_buffer = gst_buffer_new ();
+
+    while (gst_buffer_list_length (c2venc->incomplete_buffers) > 0) {
+      GstBuffer *buf = gst_buffer_list_get (c2venc->incomplete_buffers, 0);
+
+      // Append the memory block from input buffer into the new buffer.
+      memory = gst_buffer_get_memory (buf, 0);
+      gst_buffer_append_memory (frame->output_buffer, memory);
+
+      // Add parent meta, input buffer won't be released until new buffer is freed.
+      gst_buffer_add_parent_buffer_meta (frame->output_buffer, buf);
+
+      gst_buffer_list_remove (c2venc->incomplete_buffers, 0, 1);
+    }
+
+    memory = gst_buffer_get_memory (buffer, 0);
+    gst_buffer_append_memory (frame->output_buffer, memory);
+
+    gst_buffer_add_parent_buffer_meta (frame->output_buffer, buffer);
+    gst_buffer_unref (buffer);
+  } else {
+    // No previous incomplete buffers, simply past current as the output buffer.
+    frame->output_buffer = buffer;
+  }
+
   gst_video_codec_frame_unref (frame);
 
   GST_TRACE_OBJECT (c2venc, "Encoded %" GST_PTR_FORMAT, buffer);
-
-  if (GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_MARKER)) {
-    ret = gst_video_encoder_finish_frame (GST_VIDEO_ENCODER (c2venc), frame);
-  } else {
-    // TODO Use gst_video_encoder_finish_subframe() wit hGST 1.18 or above.
-    ret = gst_pad_push (GST_VIDEO_ENCODER (c2venc)->srcpad, buffer);
-  }
+  ret = gst_video_encoder_finish_frame (GST_VIDEO_ENCODER (c2venc), frame);
 
   if (ret != GST_FLOW_OK) {
     GST_LOG_OBJECT (c2venc, "Failed to finish frame!");
@@ -1242,6 +1265,8 @@ gst_c2_venc_finalize (GObject * object)
   if (c2venc->engine != NULL)
     gst_c2_engine_free (c2venc->engine);
 
+  gst_buffer_list_unref (c2venc->incomplete_buffers);
+
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (c2venc));
 }
 
@@ -1413,6 +1438,8 @@ gst_c2_venc_init (GstC2VEncoder * c2venc)
   c2venc->instate = NULL;
   c2venc->isubwc = FALSE;
   c2venc->headers = NULL;
+
+  c2venc->incomplete_buffers = gst_buffer_list_new ();
 
   c2venc->rotate = DEFAULT_PROP_ROTATE;
   c2venc->control_rate = DEFAULT_PROP_RATE_CONTROL;

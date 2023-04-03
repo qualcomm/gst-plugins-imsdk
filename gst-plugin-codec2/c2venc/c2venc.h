@@ -71,6 +71,8 @@ struct _GstC2VEncoder {
 
   /// SPS/PPS/VPS NALs headers.
   GList                *headers;
+  /// List of incomplete buffers.
+  GstBufferList        *incomplete_buffers;
 
   /// Properties
   GstC2VideoRotate     rotate;
