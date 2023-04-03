@@ -781,6 +781,7 @@ EventCallback::onOutputBufferAvailable (const std::shared_ptr<C2Buffer> buffer,
       }
       outBuf.fd = handle->data[0];
       guint32 stride = 0;
+      guint32 scanline = 0;
       guint64 usage = 0;
       guint32 size = 0;
       guint32 format = 0;
@@ -789,6 +790,7 @@ EventCallback::onOutputBufferAvailable (const std::shared_ptr<C2Buffer> buffer,
       guint32 height = 0;
       C2Rect crop;
       const C2GraphicView view = graphic_block.map().get();
+      struct gbm_buf_info bufinfo = { 0, };
 
       _UnwrapNativeCodec2GBMMetadata (handle, &width, &height, &format, &usage, &stride, &size);
 
@@ -801,6 +803,13 @@ EventCallback::onOutputBufferAvailable (const std::shared_ptr<C2Buffer> buffer,
       outBuf.width = crop.width;
       outBuf.height = crop.height;
       outBuf.stride = stride;
+      bufinfo.width = outBuf.width;
+      bufinfo.height = outBuf.height;
+      bufinfo.format = format;
+      gbm_perform (GBM_PERFORM_GET_BUFFER_STRIDE_SCANLINE_SIZE, &bufinfo, usage,
+          &stride, &scanline, &size);
+      outBuf.scanline = scanline;
+
       callback_ (EVENT_OUTPUTS_DONE, &outBuf, userdata_);
       GST_INFO("out buffer size:%d width:%d height:%d stride:%d data:%p\n",
           size, width, height, stride, outBuf.data);
