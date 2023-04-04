@@ -145,6 +145,9 @@ struct _GstQmmfSrcVideoPad {
   /// Synchronization segment.
   GstSegment          segment;
 
+  /// To send stream start event
+  gboolean            stream_start;
+
   /// Global mutex lock.
   GMutex              lock;
   /// Index of the video pad.

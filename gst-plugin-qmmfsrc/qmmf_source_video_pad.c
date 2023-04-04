@@ -148,6 +148,31 @@ video_pad_stream_type_get_type (void)
 #endif
 
 static void
+video_pad_send_stream_start (GstPad * pad)
+{
+  GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
+  gchar *stream_id = NULL;
+  gchar *pad_name  = NULL;
+  GstEvent *event  = NULL;
+
+  if (!vpad->stream_start)
+    return;
+
+  pad_name = gst_pad_get_name (pad);
+  stream_id =  g_strconcat ("qmmfsrc/", pad_name, NULL);
+
+  GST_DEBUG_OBJECT (pad, "Pushing STREAM_START");
+  event = gst_event_new_stream_start (stream_id);
+  gst_event_set_group_id (event, gst_util_group_id_next ());
+
+  gst_pad_push_event (pad, event);
+  vpad->stream_start = FALSE;
+
+  g_free (stream_id);
+  g_free (pad_name);
+}
+
+static void
 video_pad_worker_task (GstPad * pad)
 {
   GstDataQueue *buffers;
@@ -274,6 +299,7 @@ video_pad_activate_mode (GstPad * pad, GstObject * parent, GstPadMode mode,
     gboolean active)
 {
   gboolean success = FALSE;
+  GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
 
   switch (mode) {
     case GST_PAD_MODE_PUSH:
@@ -291,6 +317,7 @@ video_pad_activate_mode (GstPad * pad, GstObject * parent, GstPadMode mode,
         gst_segment_init (&GST_QMMFSRC_VIDEO_PAD (pad)->segment,
             GST_FORMAT_UNDEFINED);
       }
+      vpad->stream_start = active;
       break;
     default:
       break;
@@ -454,6 +481,7 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
 
   // Immediately return the fetched caps if they are fixed.
   if (gst_caps_is_fixed (caps)) {
+    video_pad_send_stream_start (pad);
     gst_pad_set_caps (pad, caps);
 
     GST_DEBUG_OBJECT (pad, "Caps already fixated to: %" GST_PTR_FORMAT, caps);
@@ -533,6 +561,7 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
   gst_structure_set (structure, "pixel-aspect-ratio", GST_TYPE_FRACTION,
         1, 1, NULL);
 
+  video_pad_send_stream_start (pad);
   caps = gst_caps_fixate (caps);
   gst_pad_set_caps (pad, caps);
 
@@ -746,6 +775,7 @@ static void
 qmmfsrc_video_pad_init (GstQmmfSrcVideoPad * pad)
 {
   gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
+  pad->stream_start = FALSE;
 
   pad->session_id   = 0;
   pad->index        = -1;
