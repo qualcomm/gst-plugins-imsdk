@@ -448,9 +448,12 @@ qmmfsrc_request_pad (GstElement * element, GstPadTemplate * templ,
   g_signal_connect (srcpad, "reconfigure",
       G_CALLBACK (qmmfsrc_pad_reconfigure), GST_ELEMENT (qmmfsrc));
 
-  // Connect a callback to the pad activation signal.
-  g_signal_connect (srcpad, "activation",
-      G_CALLBACK (qmmfsrc_pad_activation), GST_ELEMENT (qmmfsrc));
+  if (isvideo) {
+    // Connect a callback to the pad activation signal.
+    g_signal_connect (srcpad, "activation",
+        G_CALLBACK (qmmfsrc_pad_activation), GST_ELEMENT (qmmfsrc));
+  }
+
   return srcpad;
 }
 
