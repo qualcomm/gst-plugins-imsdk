@@ -464,7 +464,8 @@ buffers_task_func (gpointer userdata)
       g_print ("buffers_queue flushing\n");
       return;
     }
-    buffer = (GstBuffer *) item->object;
+    buffer = gst_buffer_ref (GST_BUFFER (item->object));
+    item->destroy (item);
     g_mutex_lock (&cameraswitchctx->lock);
 
     // Get first timestamp
@@ -546,7 +547,7 @@ static void
 gst_free_queue_item (gpointer data)
 {
   GstDataQueueItem *item = (GstDataQueueItem *) data;
-  gst_sample_release ((GstSample *) item->object);
+  gst_buffer_unref (GST_BUFFER (item->object));
   g_slice_free (GstDataQueueItem, item);
 }
 
