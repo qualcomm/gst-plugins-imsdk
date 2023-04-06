@@ -1325,10 +1325,10 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
       ::qmmf::recorder::Rotation::kNone, vpad->xtrabufs
   );
 
-#ifdef FEATURE_VIDEO_PREVIEW_TYPE_SUPPORT
+#ifdef GST_VIDEO_TYPE_SUPPORT
   if (vpad->type == VIDEO_TYPE_PREVIEW)
     params.flags |= ::qmmf::recorder::VideoFlags::kPreview;
-#endif
+#endif // GST_VIDEO_TYPE_SUPPORT
 
   track_cbs.event_cb =
       [&] (uint32_t track_id, ::qmmf::recorder::EventType type,
