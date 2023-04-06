@@ -125,13 +125,11 @@ typedef enum {
   GST_VIDEO_COMPRESSION_UBWC,
 } GstVideoCompression;
 
-#ifdef FEATURE_VIDEO_PREVIEW_TYPE_SUPPORT
 enum
 {
   VIDEO_TYPE_VIDEO,
   VIDEO_TYPE_PREVIEW,
 };
-#endif
 
 typedef void (*GstVideoParamCb) (GstPad * pad, guint param_id, gpointer data);
 
@@ -185,10 +183,8 @@ struct _GstQmmfSrcVideoPad {
   /// Queue for GStreamer buffers wrappers around QMMF Recorder buffers.
   GstDataQueue        *buffers;
 
-#ifdef FEATURE_VIDEO_PREVIEW_TYPE_SUPPORT
   /// QMMF Recorder Video Type
   gint                type;
-#endif
 };
 
 struct _GstQmmfSrcVideoPadClass {
