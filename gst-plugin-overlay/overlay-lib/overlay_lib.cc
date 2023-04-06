@@ -2732,10 +2732,10 @@ void OverlayItemBoundingBox::GetDrawInfo (uint32_t targetWidth,
   draw_info_text.mask = text_surface_.cl_buffer_;
   draw_info_text.blit_inst = text_surface_.blit_inst_;
 #ifdef ENABLE_C2D
-  draw_info_text.c2dSurfaceId = surface_.c2dsurface_id_;
+  draw_info_text.c2dSurfaceId = text_surface_.c2dsurface_id_;
 #endif // ENABLE_C2D
 #ifdef ENABLE_GLES
-  draw_info_text.ib2cSurfaceId = surface_.ib2c_surface_id_;
+  draw_info_text.ib2cSurfaceId = text_surface_.ib2c_surface_id_;
 #endif // ENABLE_GLES
   draw_info_text.global_devider_w = global_devider_w_;
   draw_info_text.global_devider_h = global_devider_h_;
