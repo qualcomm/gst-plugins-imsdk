@@ -30,7 +30,7 @@
 /*
  *  Changes from Qualcomm Innovation Center are provided under the following license:
  *
- *  Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -71,6 +71,13 @@
 #include <glib/gtypes.h>
 
 G_BEGIN_DECLS
+
+#define QMMFSRC_TRACE_STRUCTURE(structure) \
+{ \
+  gchar *string = gst_structure_to_string (structure); \
+  GST_TRACE ("%s", string); \
+  g_free (string); \
+}
 
 #define QMMFSRC_RETURN_VAL_IF_FAIL(element, expression, value, ...) \
 { \
