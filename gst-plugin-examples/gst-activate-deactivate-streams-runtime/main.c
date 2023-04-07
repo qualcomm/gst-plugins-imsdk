@@ -75,6 +75,7 @@ struct _GstStreamInf
   GstCaps    *qmmf_caps;
   gint        width;
   gint        height;
+  gboolean    dummy;
 };
 
 // Contains app context information
@@ -88,7 +89,7 @@ struct _GstAppContext
   GList *streams_list;
   // Stream count
   gint stream_cnt;
-  // Mutex lock
+  // Stream count
   GMutex lock;
   // Exit thread flag
   gboolean exit;
@@ -226,6 +227,7 @@ static gboolean
 create_encoder_stream (GstAppContext * appctx, GstStreamInf * stream,
   GstElement *qtiqmmfsrc)
 {
+  static guint output_cnt = 0;
   gchar temp_str[100];
   gboolean ret = FALSE;
 
@@ -272,8 +274,7 @@ create_encoder_stream (GstAppContext * appctx, GstStreamInf * stream,
   g_object_set (G_OBJECT (stream->encoder), "control-rate", 2, NULL);
 #endif
 
-  snprintf (temp_str, sizeof (temp_str), "/data/video_%d.mp4",
-      appctx->stream_cnt);
+  snprintf (temp_str, sizeof (temp_str), "/data/video_%d.mp4", output_cnt++);
   g_object_set (G_OBJECT (stream->filesink), "location", temp_str, NULL);
 
   gst_bin_add_many (GST_BIN (appctx->pipeline),
@@ -462,6 +463,95 @@ release_display_stream (GstAppContext * appctx, GstStreamInf * stream)
   gst_object_unref (qtiqmmfsrc);
 }
 
+static gboolean
+create_dummy_stream (GstAppContext * appctx, GstStreamInf * stream,
+  GstElement *qtiqmmfsrc)
+{
+  gchar temp_str[100];
+  gboolean ret = FALSE;
+
+  // Create the elements
+  snprintf (temp_str, sizeof (temp_str), "capsfilter_%d", appctx->stream_cnt);
+  stream->capsfilter = gst_element_factory_make ("capsfilter", temp_str);
+
+  snprintf (temp_str, sizeof (temp_str), "filesink_%d", appctx->stream_cnt);
+  stream->filesink = gst_element_factory_make ("fakesink", temp_str);
+
+  // Check if all elements are created successfully
+  if (!stream->capsfilter || !stream->filesink) {
+    gst_object_unref (stream->capsfilter);
+    gst_object_unref (stream->filesink);
+    g_printerr ("One element could not be created of found. Exiting.\n");
+    return FALSE;
+  }
+
+  // Set caps the the caps filter
+  g_object_set (G_OBJECT (stream->capsfilter), "caps", stream->qmmf_caps, NULL);
+
+  // Add the elements to the pipeline
+  gst_bin_add_many (GST_BIN (appctx->pipeline),
+      stream->capsfilter, stream->filesink, NULL);
+
+  // Sync the elements state to the curtent pipeline state
+  gst_element_sync_state_with_parent (stream->capsfilter);
+  gst_element_sync_state_with_parent (stream->filesink);
+
+  // Link qmmfsrc with capsfilter
+  ret = gst_element_link_pads_full (
+    qtiqmmfsrc, gst_pad_get_name (stream->qmmf_pad),
+    stream->capsfilter, NULL, GST_PAD_LINK_CHECK_DEFAULT);
+  if (!ret) {
+    g_printerr ("Error: Link cannot be done!\n");
+    goto cleanup;
+  }
+
+  // Link the elements
+  if (!gst_element_link_many (stream->capsfilter, stream->filesink, NULL)) {
+    g_printerr ("Error: Link cannot be done!\n");
+    goto cleanup;
+  }
+
+  return TRUE;
+
+cleanup:
+  // Set NULL state to the unlinked elemets
+  gst_element_set_state (stream->capsfilter, GST_STATE_NULL);
+  gst_element_set_state (stream->filesink, GST_STATE_NULL);
+
+  // Remove the elements from the pipeline
+  gst_bin_remove_many (GST_BIN (appctx->pipeline),
+      stream->capsfilter, stream->filesink, NULL);
+
+  return FALSE;
+}
+
+static void
+release_dummy_stream (GstAppContext * appctx, GstStreamInf * stream)
+{
+  // Get qtiqmmfsrc instance
+  GstElement *qtiqmmfsrc =
+      gst_bin_get_by_name (GST_BIN (appctx->pipeline), "qmmf");
+
+  // Unlink the elements of this stream
+  g_print ("Unlinking elements...\n");
+  gst_element_unlink_many (qtiqmmfsrc, stream->capsfilter,
+      stream->filesink, NULL);
+  g_print ("Unlinked successfully \n");
+
+  // Set NULL state to the unlinked elemets
+  gst_element_set_state (stream->capsfilter, GST_STATE_NULL);
+  gst_element_set_state (stream->filesink, GST_STATE_NULL);
+
+  // Remove the elements from the pipeline
+  gst_bin_remove_many (GST_BIN (appctx->pipeline),
+      stream->capsfilter, stream->filesink, NULL);
+
+  stream->capsfilter = NULL;
+  stream->filesink = NULL;
+
+  gst_object_unref (qtiqmmfsrc);
+}
+
 /*
  * Link already created stream to the pipeline
  *
@@ -508,7 +598,10 @@ static void
 unlink_stream (GstAppContext * appctx, GstStreamInf * stream)
 {
   // Unlink all elements for that stream
-  if (appctx->use_display) {
+  if (stream->dummy) {
+    release_dummy_stream (appctx, stream);
+    stream->dummy = FALSE;
+  } else if (appctx->use_display) {
     release_display_stream (appctx, stream);
   } else {
     release_encoder_stream (appctx, stream);
@@ -530,7 +623,7 @@ unlink_stream (GstAppContext * appctx, GstStreamInf * stream)
  * h: Camera height
 */
 static GstStreamInf *
-create_stream (GstAppContext * appctx,
+create_stream (GstAppContext * appctx, gboolean dummy,
     gint x, gint y, gint w, gint h)
 {
   gchar temp_str[100];
@@ -541,6 +634,7 @@ create_stream (GstAppContext * appctx,
   GstElement *qtiqmmfsrc =
       gst_bin_get_by_name (GST_BIN (appctx->pipeline), "qmmf");
 
+  stream->dummy = dummy;
   stream->width = w;
   stream->height = h;
   stream->qmmf_caps = gst_caps_new_simple ("video/x-raw",
@@ -568,7 +662,9 @@ create_stream (GstAppContext * appctx,
   }
   g_print ("Pad received - %s\n",  gst_pad_get_name (stream->qmmf_pad));
 
-  if (appctx->use_display) {
+  if (dummy) {
+    ret = create_dummy_stream (appctx, stream, qtiqmmfsrc);
+  } else if (appctx->use_display) {
     ret = create_display_stream (appctx, stream, qtiqmmfsrc, x, y, w, h);
   } else {
     ret = create_encoder_stream (appctx, stream, qtiqmmfsrc);
@@ -671,7 +767,7 @@ link_unlink_streams_usecase_basic (GstAppContext * appctx)
   // After the successful link, will syncronize the state of the new elements
   // to the pipeline state.
   g_print ("Create 1080p stream\n\n");
-  GstStreamInf *stream_inf_1 = create_stream (appctx, 0, 0, 1920, 1080);
+  GstStreamInf *stream_inf_1 = create_stream (appctx, FALSE, 0, 0, 1920, 1080);
 
   // Create a 720p stream and link it to the pipeline
   // This function will create new elements (waylanksink or encoder) and
@@ -680,7 +776,7 @@ link_unlink_streams_usecase_basic (GstAppContext * appctx)
   // After the successful link, will syncronize the state of the new elements
   // to the pipeline state.
   g_print ("Create 720p stream\n\n");
-  GstStreamInf *stream_inf_2 = create_stream (appctx, 650, 0, 1280, 720);
+  GstStreamInf *stream_inf_2 = create_stream (appctx, TRUE, 650, 0, 1280, 720);
 
   // Create a 480p stream and link it to the pipeline
   // This function will create new elements (waylanksink or encoder) and
@@ -689,7 +785,7 @@ link_unlink_streams_usecase_basic (GstAppContext * appctx)
   // After the successful link, will syncronize the state of the new elements
   // to the pipeline state.
   g_print ("Create 480p stream\n\n");
-  GstStreamInf *stream_inf_3 = create_stream (appctx, 0, 610, 640, 480);
+  GstStreamInf *stream_inf_3 = create_stream (appctx, TRUE, 0, 610, 640, 480);
 
   // Go from NULL state to PAUSED state
   // In this state the negotiation of the capabilities will be done.
@@ -810,7 +906,7 @@ link_unlink_streams_usecase_full (GstAppContext * appctx)
   // After the successful link, will syncronize the state of the new elements
   // to the pipeline state.
   g_print ("Create 1080p stream\n\n");
-  GstStreamInf *stream_inf_1 = create_stream (appctx, 0, 0, 1920, 1080);
+  GstStreamInf *stream_inf_1 = create_stream (appctx, TRUE, 0, 0, 1920, 1080);
 
   // Create a 720p stream and link it to the pipeline
   // This function will create new elements (waylanksink or encoder) and
@@ -819,7 +915,7 @@ link_unlink_streams_usecase_full (GstAppContext * appctx)
   // After the successful link, will syncronize the state of the new elements
   // to the pipeline state.
   g_print ("Create 720p stream\n\n");
-  GstStreamInf *stream_inf_2 = create_stream (appctx, 650, 0, 1280, 720);
+  GstStreamInf *stream_inf_2 = create_stream (appctx, TRUE, 650, 0, 1280, 720);
 
   // Create a 480p stream and link it to the pipeline
   // This function will create new elements (waylanksink or encoder) and
@@ -828,7 +924,7 @@ link_unlink_streams_usecase_full (GstAppContext * appctx)
   // After the successful link, will syncronize the state of the new elements
   // to the pipeline state.
   g_print ("Create 480p stream\n\n");
-  GstStreamInf *stream_inf_3 = create_stream (appctx, 0, 610, 640, 480);
+  GstStreamInf *stream_inf_3 = create_stream (appctx, FALSE, 0, 610, 640, 480);
 
   // Go from NULL state to PAUSED state
   // In this state the negotiation of the capabilities will be done.
