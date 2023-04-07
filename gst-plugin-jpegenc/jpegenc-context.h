@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2021, 2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *  
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -139,7 +139,7 @@ gst_jpeg_enc_context_destroy (GstJPEGEncoderContext * context);
 
 GST_API gboolean
 gst_jpeg_enc_context_execute (GstJPEGEncoderContext * context,
-    GstVideoCodecFrame * frame);
+    GstVideoCodecFrame * frame, gint quality);
 
 G_END_DECLS
 

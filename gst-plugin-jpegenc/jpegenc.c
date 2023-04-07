@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *  
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -196,7 +196,7 @@ gst_jpeg_enc_process_task_loop (gpointer userdata)
 
       GST_DEBUG_OBJECT (jpegenc, "Start compressing");
       // Process the JPEG
-      if (!gst_jpeg_enc_context_execute (jpegenc->context, frame)) {
+      if (!gst_jpeg_enc_context_execute (jpegenc->context, frame, jpegenc->quality)) {
         GST_ERROR_OBJECT (jpegenc, "Failed to execute Jpeg encoder!");
         gst_buffer_unref (frame->output_buffer);
         frame->output_buffer = NULL;
@@ -473,7 +473,7 @@ gst_jpeg_enc_class_init (GstJPEGEncoderClass * klass)
   g_object_class_install_property (gobject, PROP_QUALITY,
       g_param_spec_int ("quality", "Quality", "Quality of encoding",
           0, 100, DEFAULT_PROP_JPEG_QUALITY,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_ORIENTATION,
       g_param_spec_enum ("orientation", "Orientation",
           "Orientation of Jpeg encoder",
