@@ -28,7 +28,7 @@
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
 *
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -1325,6 +1325,11 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
       context->camera_id, vpad->width, vpad->height, vpad->framerate, format,
       ::qmmf::recorder::Rotation::kNone, vpad->xtrabufs
   );
+
+#ifdef FEATURE_VIDEO_PREVIEW_TYPE_SUPPORT
+  if (vpad->type == VIDEO_TYPE_PREVIEW)
+    params.flags |= ::qmmf::recorder::VideoFlags::kPreview;
+#endif
 
   track_cbs.event_cb =
       [&] (uint32_t track_id, ::qmmf::recorder::EventType type,
