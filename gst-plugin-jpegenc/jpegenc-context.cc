@@ -169,7 +169,7 @@ gst_jpeg_enc_callback (GstJPEGEncoderContext * context, guint buf_fd,
 
     GST_DEBUG ("End compressing, encoded_size: %d", encoded_size);
   } else {
-    GST_ERROR ("Failed to a request with fd %d", buf_fd);
+    GST_ERROR ("Failed to find a request with fd %d", buf_fd);
   }
 
   // Call the callback
@@ -288,14 +288,17 @@ gst_jpeg_enc_context_execute (GstJPEGEncoderContext * context,
 
   g_mutex_lock (&context->lock);
 
+  g_hash_table_insert (context->requests,
+      GINT_TO_POINTER (proc_params.out_buf_fd), frame);
+
   if (context->recorder->EncodeOfflineJPEG(proc_params) != 0) {
     GST_ERROR ("Failed to execute the Jpeg encoder");
+    g_hash_table_remove (context->requests,
+        GINT_TO_POINTER (proc_params.out_buf_fd));
     g_mutex_unlock (&context->lock);
     return FALSE;
   }
 
-  g_hash_table_insert (context->requests,
-      GINT_TO_POINTER (proc_params.out_buf_fd), frame);
   g_mutex_unlock (&context->lock);
 
   return TRUE;
