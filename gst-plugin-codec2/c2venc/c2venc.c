@@ -291,6 +291,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
   GstC2PixelInfo pixinfo = { GST_VIDEO_FORMAT_UNKNOWN, FALSE };
   GstC2Resolution resolution = { 0, 0 };
   GstC2Gop gop = { 0, 0 };
+  GstC2HeaderMode csdmode = GST_C2_PREPEND_HEADER_TO_ALL_SYNC;
   gdouble framerate = 0.0;
   gboolean success = FALSE;
 
@@ -432,6 +433,13 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
       GST_ERROR_OBJECT (c2venc, "Failed to set rotation parameter!");
       return FALSE;
     }
+  }
+
+  success = gst_c2_engine_set_parameter (c2venc->engine,
+      GST_C2_PARAM_PREPEND_HEADER_MODE, GPOINTER_CAST (&csdmode));
+  if (!success) {
+    GST_ERROR_OBJECT (c2venc, "Failed to set prepend SPS/PPS header parameter!");
+    return FALSE;
   }
 
   success = gst_c2_engine_set_parameter (c2venc->engine,
