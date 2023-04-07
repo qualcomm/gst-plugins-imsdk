@@ -332,13 +332,11 @@ release_encoder_stream (GstAppContext * appctx, GstStreamInf * stream)
 
   // Unlink the elements of this stream
   g_print ("Unlinking elements...\n");
+  gst_element_unlink_many (qtiqmmfsrc, stream->capsfilter, NULL);
+
   gst_element_get_state (appctx->pipeline, &state, NULL, GST_CLOCK_TIME_NONE);
   if (state == GST_STATE_PLAYING)
     gst_element_send_event (stream->encoder, gst_event_new_eos ());
-
-  gst_element_unlink_many (qtiqmmfsrc, stream->capsfilter, stream->encoder,
-      stream->h264parse, stream->mp4mux, stream->filesink, NULL);
-  g_print ("Unlinked successfully \n");
 
   // Set NULL state to the unlinked elemets
   gst_element_set_state (stream->capsfilter, GST_STATE_NULL);
@@ -346,6 +344,11 @@ release_encoder_stream (GstAppContext * appctx, GstStreamInf * stream)
   gst_element_set_state (stream->h264parse, GST_STATE_NULL);
   gst_element_set_state (stream->mp4mux, GST_STATE_NULL);
   gst_element_set_state (stream->filesink, GST_STATE_NULL);
+
+  // Unlink the elements of this stream
+  gst_element_unlink_many (stream->capsfilter, stream->encoder,
+      stream->h264parse, stream->mp4mux, stream->filesink, NULL);
+  g_print ("Unlinked successfully \n");
 
   // Remove the elements from the pipeline
   gst_bin_remove_many (GST_BIN (appctx->pipeline),
