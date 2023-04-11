@@ -252,6 +252,14 @@ create_encoder_stream (GstAppContext * appctx, GstStreamInf * stream,
   g_object_set (G_OBJECT (stream->encoder), "control-rate", 2, NULL);
 #endif
 
+  // Set mp4mux in robust mode
+  g_object_set (G_OBJECT (stream->mp4mux), "reserved-moov-update-period",
+      1000000, NULL);
+  g_object_set (G_OBJECT (stream->mp4mux), "reserved-bytes-per-sec", 10000,
+      NULL);
+  g_object_set (G_OBJECT (stream->mp4mux), "reserved-max-duration", 1000000000,
+      NULL);
+
   snprintf (temp_str, sizeof (temp_str), "/data/video_%d.mp4", output_cnt++);
   g_object_set (G_OBJECT (stream->filesink), "location", temp_str, NULL);
 
