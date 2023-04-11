@@ -60,8 +60,6 @@ public:
   ~C2ComponentWrapper();
 
   bool SetHandler(event_handler_cb callback, gpointer userdata);
-  bool InitBlockPool(gchar* comp, guint32 width, guint32 height,
-                     GstVideoFormat format);
   gint GetBlockPoolId();
   bool Config(GPtrArray* config);
   bool Start();
