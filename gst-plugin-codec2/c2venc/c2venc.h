@@ -32,43 +32,43 @@
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __GST_QTI_C2_VENC_ENC_H__
-#define __GST_QTI_C2_VENC_ENC_H__
+#ifndef __GST_QTI_C2_VENC_H__
+#define __GST_QTI_C2_VENC_H__
 
 #include <gst/gst.h>
 #include <gst/video/gstvideoencoder.h>
 #include <gst/allocators/allocators.h>
+
 #include "c2-engine/c2-wrapper.h"
 
 G_BEGIN_DECLS
 
-#define GST_TYPE_C2_VENC_ENC \
-  (gst_c2_venc_get_type())
-#define GST_C2_VENC_ENC(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_C2_VENC_ENC,GstC2_VENCEncoder))
-#define GST_C2_VENC_ENC_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_C2_VENC_ENC,GstC2_VENCEncoderClass))
-#define GST_IS_C2_VENC_ENC(obj) \
-  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_C2_VENC_ENC))
-#define GST_IS_C2_VENC_ENC_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_C2_VENC_ENC))
-#define GST_C2_VENC_ENC_CAST(obj)       ((GstC2_VENCEncoder *)(obj))
+#define GST_TYPE_C2_VENC (gst_c2_venc_get_type())
+#define GST_C2_VENC(obj) \
+  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_C2_VENC,GstC2VideoEncoder))
+#define GST_C2_VENC_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_C2_VENC,GstC2VideoEncoderClass))
+#define GST_IS_C2_VENC(obj) \
+  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_C2_VENC))
+#define GST_IS_C2_VENC_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_C2_VENC))
+#define GST_C2_VENC_CAST(obj)       ((GstC2VideoEncoder *)(obj))
 
-typedef struct _GstC2_VENCEncoder GstC2_VENCEncoder;
-typedef struct _GstC2_VENCEncoderClass GstC2_VENCEncoderClass;
-typedef struct _GstC2_ROIenc GstC2_ROIenc;
+typedef struct _GstC2VideoEncoder GstC2VideoEncoder;
+typedef struct _GstC2VideoEncoderClass GstC2VideoEncoderClass;
+typedef struct _GstC2QuantRegion GstC2QuantRegion;
 
 // Maximum number of input frame queued
 #define MAX_QUEUED_FRAME 32
 
-struct _GstC2_ROIenc {
+struct _GstC2QuantRegion {
   guint top;
   guint left;
   guint bottom;
   guint right;
 };
 
-struct _GstC2_VENCEncoder {
+struct _GstC2VideoEncoder {
   GstVideoEncoderClass parent;
 
   GstBufferPool *pool;
@@ -92,13 +92,13 @@ struct _GstC2_VENCEncoder {
 
   gboolean eos_reached;
 
-  rc_mode_t rcMode;
-  color_matrix_t matrix;
-  ir_mode_t intra_refresh_mode;
+  GstC2ControlRate control_rate;
+  GstC2ColorMatrix matrix;
+  GstC2IRefreshMode intra_refresh_mode;
   guint32 intra_refresh_mbs;
   guint32 target_bitrate;
   gdouble framerate;
-  slice_mode_t slice_mode;
+  GstC2SliceMode slice_mode;
   guint32 slice_size;
   guint32 idr_interval;
 
@@ -109,20 +109,20 @@ struct _GstC2_VENCEncoder {
   guint32 min_qp_i_frames;
   guint32 min_qp_p_frames;
 
-  entropy_mode_t entropy_mode;
-  loop_filter_mode_t loop_filter_mode;
+  GstC2EntropyMode entropy_mode;
+  GstC2LoopFilterMode loop_filter_mode;
   guint32 quant_i_frames;
   guint32 quant_p_frames;
   guint32 quant_b_frames;
   guint32 num_ltr_frames;
-  rotate_t rotate;
+  GstC2Rotate rotate;
   gboolean is_ubwc;
   gboolean roi_quant_mode;
   GstStructure *roi_quant_values;
   GArray *roi_quant_boxes;
 };
 
-struct _GstC2_VENCEncoderClass {
+struct _GstC2VideoEncoderClass {
   GstVideoEncoderClass parent;
 };
 
@@ -130,4 +130,4 @@ G_GNUC_INTERNAL GType gst_c2_venc_get_type (void);
 
 G_END_DECLS
 
-#endif // __GST_QTI_C2_VENC_ENC_H__
+#endif // __GST_QTI_C2_VENC_H__

@@ -37,6 +37,7 @@
 #endif
 
 #include "c2venc.h"
+
 #include "c2-engine/common.h"
 
 #define GST_CAT_DEFAULT c2_venc_debug
@@ -50,7 +51,7 @@ GST_DEBUG_CATEGORY_STATIC (c2_venc_debug);
 #define GST_TYPE_CODEC2_ENC_ROTATE (gst_c2_venc_rotate_get_type ())
 
 #define gst_c2_venc_parent_class parent_class
-G_DEFINE_TYPE (GstC2_VENCEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
+G_DEFINE_TYPE (GstC2VideoEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 
 #define EOS_WAITING_TIMEOUT  5
 #define DEFAULT_ROI_QP_DELTA (-15)
@@ -143,22 +144,22 @@ static guint32
 gst_to_c2_pixelformat (GstVideoEncoder * encoder, GstVideoFormat format)
 {
   guint32 result = 0;
-  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
+  GstC2VideoEncoder *c2venc = GST_C2_VENC (encoder);
 
   switch (format) {
     case GST_VIDEO_FORMAT_NV12:
       if (c2venc->is_ubwc) {
-        result = PIXEL_FORMAT_NV12_UBWC;
+        result = GST_C2_PIXEL_FORMAT_NV12_UBWC;
       } else {
-        result = PIXEL_FORMAT_NV12_LINEAR;
+        result = GST_C2_PIXEL_FORMAT_NV12_LINEAR;
       }
       break;
     case GST_VIDEO_FORMAT_P010_10LE:
-      result = PIXEL_FORMAT_P010;
+      result = GST_C2_PIXEL_FORMAT_P010;
       break;
     case GST_VIDEO_FORMAT_NV12_10LE32:
       if (c2venc->is_ubwc) {
-        result = PIXEL_FORMAT_TP10_UBWC;
+        result = GST_C2_PIXEL_FORMAT_TP10_UBWC;
       } else {
         GST_ERROR_OBJECT (c2venc, "TP10 without ubwc is not supported");
       }
@@ -177,13 +178,13 @@ gst_c2_venc_slice_mode_get_type (void)
 
   if (qtype == 0) {
     static const GEnumValue values[] = {
-      {SLICE_MODE_MB, "Slice Mode MB", "MB"},
-      {SLICE_MODE_BYTES, "Slice Mode Bytes", "bytes"},
+      { GST_C2_SLICE_MODE_MB, "Slice Mode MB", "MB" },
+      { GST_C2_SLICE_MODE_BYTES, "Slice Mode Bytes", "bytes" },
       { (gint)0xFFFFFFFF, "Component Default", "default" },
-      {0, NULL, NULL}
+      { 0, NULL, NULL}
     };
 
-    qtype = g_enum_register_static ("GstCodec2VencSliceMode", values);
+    qtype = g_enum_register_static ("GstC2SliceMode", values);
   }
   return qtype;
 }
@@ -195,16 +196,19 @@ gst_c2_venc_rate_control_get_type (void)
 
   if (qtype == 0) {
     static const GEnumValue values[] = {
-      {RC_MODE_OFF, "Disable RC", "disable"},
-      {RC_MODE_CONST, "Constant", "constant"},
-      {RC_MODE_CBR_VFR, "Constant bitrate, variable framerate", "CBR-VFR"},
-      {RC_MODE_VBR_CFR, "Variable bitrate, constant framerate", "VBR-CFR"},
-      {RC_MODE_VBR_VFR, "Variable bitrate, variable framerate", "VBR-VFR"},
-      {RC_MODE_CQ, "Constant quality", "CQ"},
-      {0, NULL, NULL}
+      { GST_C2_RATE_CTRLMODE_OFF, "Disable RC", "disable" },
+      { GST_C2_RATE_CTRLMODE_CONST, "Constant", "constant" },
+      { GST_C2_RATE_CTRLMODE_CBR_VFR, "Constant bitrate, variable framerate",
+          "CBR-VFR" },
+      { GST_C2_RATE_CTRLMODE_VBR_CFR, "Variable bitrate, constant framerate",
+          "VBR-CFR" },
+      { GST_C2_RATE_CTRLMODE_VBR_VFR, "Variable bitrate, variable framerate",
+          "VBR-VFR" },
+      { GST_C2_RATE_CTRLMODE_CQ, "Constant quality", "CQ" },
+      { 0, NULL, NULL }
     };
 
-    qtype = g_enum_register_static ("GstCodec2VencRateControl", values);
+    qtype = g_enum_register_static ("GstC2RateControl", values);
   }
   return qtype;
 }
@@ -216,13 +220,13 @@ gst_c2_venc_intra_refresh_mode_get_type (void)
 
   if (qtype == 0) {
     static const GEnumValue values[] = {
-      { IR_MODE_DISABLE, "Disable", "disable" },
-      { IR_MODE_ARBITRARY, "Arbitrary", "arbitrary" },
+      { GST_C2_INTRA_REFRESH_MODE_DISABLE, "Disable", "disable" },
+      { GST_C2_INTRA_REFRESH_MODE_ARBITRARY, "Arbitrary", "arbitrary" },
       { (gint)0xFFFFFFFF, "Component Default", "default" },
       {0, NULL, NULL}
     };
 
-    qtype = g_enum_register_static ("GstCodec2VencIntraRefreshMode", values);
+    qtype = g_enum_register_static ("GstC2IntraRefreshMode", values);
   }
   return qtype;
 }
@@ -234,13 +238,13 @@ gst_c2_venc_entropy_mode_get_type (void)
 
   if (qtype == 0) {
     static const GEnumValue values[] = {
-      {ENTROPY_MODE_CAVLC, "CAVLC", "cavlc"},
-      {ENTROPY_MODE_CABAC, "CABAC", "cabac"},
+      { GST_C2_ENTROPY_MODE_CAVLC, "CAVLC", "cavlc" },
+      { GST_C2_ENTROPY_MODE_CABAC, "CABAC", "cabac" },
       { (gint)0xFFFFFFFF, "Component Default", "default" },
-      {0, NULL, NULL}
+      { 0, NULL, NULL }
     };
 
-    qtype = g_enum_register_static ("GstCodec2VencEntropyMode", values);
+    qtype = g_enum_register_static ("GstC2EntropyMode", values);
   }
   return qtype;
 }
@@ -252,15 +256,15 @@ gst_c2_venc_loop_filter_get_type (void)
 
   if (qtype == 0) {
     static const GEnumValue values[] = {
-      {LOOP_FILTER_ENABLE, "Enable", "enable"},
-      {LOOP_FILTER_DISABLE, "Disable", "disable"},
-      {LOOP_FILTER_DISABLE_SLICE_BOUNDARY, "Disable-slice-boundary",
+      { GST_C2_LOOP_FILTER_ENABLE, "Enable", "enable" },
+      { GST_C2_LOOP_FILTER_DISABLE, "Disable", "disable" },
+      { GST_C2_LOOP_FILTER_DISABLE_SLICE_BOUNDARY, "Disable-slice-boundary",
           "disable-slice-boundary"},
       { (gint)0xFFFFFFFF, "Component Default", "default" },
-      {0, NULL, NULL}
+      { 0, NULL, NULL}
     };
 
-    qtype = g_enum_register_static ("GstCodec2VencLoopFilterMode", values);
+    qtype = g_enum_register_static ("GstC2LoopFilterMode", values);
   }
   return qtype;
 }
@@ -272,40 +276,40 @@ gst_c2_venc_rotate_get_type (void)
 
   if (qtype == 0) {
     static const GEnumValue values[] = {
-      {ROTATE_NONE, "No rotation", "none"},
-      {ROTATE_90_CW, "Rotate 90 degrees clockwise", "90CW"},
-      {ROTATE_180, "Rotate 180 degrees", "180"},
-      {ROTATE_90_CCW, "Rotate 90 degrees counter-clockwise", "90CCW"},
-      {0, NULL, NULL}
+      { GST_C2_ROTATE_NONE, "No rotation", "none" },
+      { GST_C2_ROTATE_90_CW, "Rotate 90 degrees clockwise", "90CW" },
+      { GST_C2_ROTATE_180, "Rotate 180 degrees", "180"},
+      { GST_C2_ROTATE_90_CCW, "Rotate 90 degrees counter-clockwise", "90CCW" },
+      { 0, NULL, NULL }
     };
 
-    qtype = g_enum_register_static ("GstCodec2VencRotate", values);
+    qtype = g_enum_register_static ("GstC2Rotate", values);
   }
   return qtype;
 }
 
-static config_params_t
-make_profileLevel_param (video_profile_t profile, video_level_t level)
+static GstC2ConfigParams
+make_profileLevel_param (GstC2VideoProfile profile, GstC2VideoLevel level)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_PROFILE_LEVEL;
-  if (profile != VIDEO_PROFILE_MAX)
+  if (profile != GST_C2_VIDEO_PROFILE_MAX)
     param.profile = profile;
-  if (level != VIDEO_LEVEL_MAX)
+  if (level != GST_C2_VIDEO_LEVEL_MAX)
     param.level = level;
 
   return param;
 }
 
-static config_params_t
+static GstC2ConfigParams
 make_bitrate_param (guint32 bitrate, gboolean is_input)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_BITRATE;
   param.is_input = is_input;
@@ -314,12 +318,12 @@ make_bitrate_param (guint32 bitrate, gboolean is_input)
   return param;
 }
 
-static config_params_t
+static GstC2ConfigParams
 make_framerate_param (gfloat framerate, gboolean is_input)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_FRAMERATE;
   param.is_input = is_input;
@@ -328,12 +332,12 @@ make_framerate_param (gfloat framerate, gboolean is_input)
   return param;
 }
 
-static config_params_t
+static GstC2ConfigParams
 make_resolution_param (guint32 width, guint32 height, gboolean is_input)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_RESOLUTION;
   param.is_input = is_input;
@@ -343,13 +347,13 @@ make_resolution_param (guint32 width, guint32 height, gboolean is_input)
   return param;
 }
 
-static config_params_t
+static GstC2ConfigParams
 make_qp_ranges_param (guint32 miniqp, guint32 maxiqp, guint32 minpqp,
     guint32 maxpqp, guint32 minbqp, guint32 maxbqp)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_QP_RANGES;
   param.qp_ranges.miniqp = miniqp;
@@ -362,26 +366,26 @@ make_qp_ranges_param (guint32 miniqp, guint32 maxiqp, guint32 minpqp,
   return param;
 }
 
-static config_params_t
+static GstC2ConfigParams
 make_pixelFormat_param (guint32 fmt, gboolean is_input)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_PIXELFORMAT;
   param.is_input = is_input;
-  param.pixel_fmt = (pixel_format_t) fmt;
+  param.pixel_fmt = (GstC2PixelFormat) fmt;
 
   return param;
 }
 
-static config_params_t
-make_rateControl_param (rc_mode_t mode)
+static GstC2ConfigParams
+make_rateControl_param (GstC2ControlRate mode)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_RATECONTROL;
   param.rc_mode = mode;
@@ -389,12 +393,12 @@ make_rateControl_param (rc_mode_t mode)
   return param;
 }
 
-static config_params_t
+static GstC2ConfigParams
 make_sync_frame_interval_param (int64_t period_ms)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_SYNC_FRAME_INT;
   param.val.i64 = period_ms;
@@ -402,12 +406,12 @@ make_sync_frame_interval_param (int64_t period_ms)
   return param;
 }
 
-static config_params_t
+static GstC2ConfigParams
 make_request_sync_frame_param (bool request)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_REQUEST_SYNC_FRAME;
   param.val.bl = request;
@@ -415,31 +419,31 @@ make_request_sync_frame_param (bool request)
   return param;
 }
 
-static config_params_t*
-make_roi_encoding (gint64 timestampUs, char *rectPayload, char *rectPayloadExt)
+static GstC2ConfigParams*
+make_roi_encoding (gint64 timestamp, char *payload, char *payload_ext)
 {
-  config_params_t* param;
-  param = (config_params_t*) g_malloc (sizeof (config_params_t));
+  GstC2ConfigParams* param;
+  param = (GstC2ConfigParams*) g_malloc (sizeof (GstC2ConfigParams));
 
   param->config_name = CONFIG_FUNCTION_KEY_ROI_ENCODING;
-  param->roi.timestampUs = timestampUs;
+  param->roi.timestamp = timestamp;
 
-  param->roi.rectPayload = rectPayload;
-  param->roi.rectPayloadExt = rectPayloadExt;
+  param->roi.payload = payload;
+  param->roi.payload_ext = payload_ext;
 
   return param;
 }
 
 static gpointer
-config_roi_encoding (GstC2_VENCEncoder *c2venc, GstVideoCodecFrame * frame)
+config_roi_encoding (GstC2VideoEncoder *c2venc, GstVideoCodecFrame * frame)
 {
-  config_params_t* roi_encoding;
+  GstC2ConfigParams* roi_encoding;
   GstMeta *meta = NULL;
   gpointer state = NULL;
   gint idx = 0, qpdelta = 0;
   char tempstr[128];
-  char rectPayload[128] = {0};
-  char rectPayloadExt[128] = {0};
+  char payload[128] = {0};
+  char payload_ext[128] = {0};
   gboolean apply_roi = FALSE;
 
   /* ROI mode is disabled, nothing to do except to return immediately */
@@ -482,11 +486,11 @@ config_roi_encoding (GstC2_VENCEncoder *c2venc, GstVideoCodecFrame * frame)
         roi->x + roi->w - 1, // Right
         qpdelta);
 
-    if (strlen (rectPayload) + strlen (tempstr) <= 128) {
-      g_stpcpy (rectPayload + strlen (rectPayload), tempstr);
+    if (strlen (payload) + strlen (tempstr) <= 128) {
+      g_stpcpy (payload + strlen (payload), tempstr);
     } else {
-      if (strlen (rectPayloadExt) + strlen (tempstr) <= 128) {
-        g_stpcpy (rectPayloadExt + strlen (rectPayloadExt), tempstr);
+      if (strlen (payload_ext) + strlen (tempstr) <= 128) {
+        g_stpcpy (payload_ext + strlen (payload_ext), tempstr);
       } else {
         GST_WARNING_OBJECT (c2venc, "The size of ROI exceeded!");
         break;
@@ -510,11 +514,11 @@ config_roi_encoding (GstC2_VENCEncoder *c2venc, GstVideoCodecFrame * frame)
         qbox->x + qbox->w - 1, // Right
         qbox->qp);
 
-    if (strlen (rectPayload) + strlen (tempstr) <= 128) {
-      g_stpcpy (rectPayload + strlen (rectPayload), tempstr);
+    if (strlen (payload) + strlen (tempstr) <= 128) {
+      g_stpcpy (payload + strlen (payload), tempstr);
     } else {
-      if (strlen (rectPayloadExt) + strlen (tempstr) <= 128) {
-        g_stpcpy (rectPayloadExt + strlen (rectPayloadExt), tempstr);
+      if (strlen (payload_ext) + strlen (tempstr) <= 128) {
+        g_stpcpy (payload_ext + strlen (payload_ext), tempstr);
       } else {
         GST_WARNING_OBJECT (c2venc, "The size of ROI exceeded!");
         break;
@@ -526,23 +530,23 @@ config_roi_encoding (GstC2_VENCEncoder *c2venc, GstVideoCodecFrame * frame)
 
   if (apply_roi) {
 
-    if (strlen (rectPayloadExt) == 0) {
-      g_stpcpy (rectPayloadExt, rectPayload);
+    if (strlen (payload_ext) == 0) {
+      g_stpcpy (payload_ext, payload);
     }
 
     roi_encoding =
-        make_roi_encoding (frame->pts / 1000, rectPayload, rectPayloadExt);
+        make_roi_encoding (frame->pts / 1000, payload, payload_ext);
     return (gpointer) roi_encoding;
   }
   return NULL;
 }
 
-static config_params_t
-make_slicemode_param (guint32 size, slice_mode_t mode)
+static GstC2ConfigParams
+make_slicemode_param (guint32 size, GstC2SliceMode mode)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_SLICE_MODE;
   param.val.u32 = size;
@@ -551,12 +555,12 @@ make_slicemode_param (guint32 size, slice_mode_t mode)
   return param;
 }
 
-static config_params_t
-make_intraRefresh_param (ir_mode_t mode, guint32 intra_refresh_mbs)
+static GstC2ConfigParams
+make_intraRefresh_param (GstC2IRefreshMode mode, guint32 intra_refresh_mbs)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_INTRAREFRESH;
   param.ir_mode.type = mode;
@@ -565,12 +569,12 @@ make_intraRefresh_param (ir_mode_t mode, guint32 intra_refresh_mbs)
   return param;
 }
 
-static config_params_t
-make_entropy_mode_param (entropy_mode_t mode)
+static GstC2ConfigParams
+make_entropy_mode_param (GstC2EntropyMode mode)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_ENTROPY_MODE;
   param.entropy_mode = mode;
@@ -578,12 +582,12 @@ make_entropy_mode_param (entropy_mode_t mode)
   return param;
 }
 
-static config_params_t
-make_loop_filter_mode_param (loop_filter_mode_t mode)
+static GstC2ConfigParams
+make_loop_filter_mode_param (GstC2LoopFilterMode mode)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_LOOP_FILTER_MODE;
   param.loop_filter_mode = mode;
@@ -591,13 +595,13 @@ make_loop_filter_mode_param (loop_filter_mode_t mode)
   return param;
 }
 
-static config_params_t
+static GstC2ConfigParams
 make_qp_Init_param (guint32 quant_i_frames, guint32 quant_p_frames,
                     guint32 quant_b_frames)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_QP_INIT;
   if (quant_i_frames != DEFAULT_PROP_QUANT_I_FRAMES) {
@@ -616,12 +620,12 @@ make_qp_Init_param (guint32 quant_i_frames, guint32 quant_p_frames,
   return param;
 }
 
-static config_params_t
+static GstC2ConfigParams
 make_num_ltr_frames_param (guint32 num_ltr_frames)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_NUM_LTR_FRAMES;
   param.val.u32 = num_ltr_frames;
@@ -629,12 +633,12 @@ make_num_ltr_frames_param (guint32 num_ltr_frames)
   return param;
 }
 
-static config_params_t
-make_rotate_param (rotate_t rotate)
+static GstC2ConfigParams
+make_rotate_param (GstC2Rotate rotate)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_ROTATE;
   param.rotate = rotate;
@@ -643,12 +647,12 @@ make_rotate_param (rotate_t rotate)
 }
 
 static gboolean
-gst_c2_venc_trigger_iframe (GstC2_VENCEncoder *c2venc)
+gst_c2_venc_trigger_iframe (GstC2VideoEncoder *c2venc)
 {
   GST_DEBUG_OBJECT (c2venc, "Trigger I frame insertion");
 
   GPtrArray *config = g_ptr_array_new ();
-  config_params_t request_sync_frame;
+  GstC2ConfigParams request_sync_frame;
   request_sync_frame = make_request_sync_frame_param (true);
   g_ptr_array_add (config, &request_sync_frame);
   // Config component
@@ -680,7 +684,7 @@ static GstFlowReturn
 gst_c2_venc_setup_output (GstVideoEncoder * encoder,
     GstVideoCodecState * state)
 {
-  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
+  GstC2VideoEncoder *c2venc = GST_C2_VENC (encoder);
   GstFlowReturn ret = GST_FLOW_OK;
   GstCaps *outcaps;
 
@@ -746,7 +750,7 @@ gst_c2_venc_setup_output (GstVideoEncoder * encoder,
 static gboolean
 gst_c2_venc_start (GstVideoEncoder * encoder)
 {
-  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
+  GstC2VideoEncoder *c2venc = GST_C2_VENC (encoder);
   GST_DEBUG_OBJECT (c2venc, "Encoder start");
 
   if (!c2venc->output_setup) {
@@ -767,7 +771,7 @@ gst_c2_venc_start (GstVideoEncoder * encoder)
 static gboolean
 gst_c2_venc_stop (GstVideoEncoder * encoder)
 {
-  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
+  GstC2VideoEncoder *c2venc = GST_C2_VENC (encoder);
   GST_DEBUG_OBJECT (c2venc, "Encoder stop");
 
   if (c2venc->output_state) {
@@ -793,7 +797,7 @@ gst_c2_venc_buffer_release (GstStructure * structure)
 
   gst_structure_get (structure, "encoder", G_TYPE_POINTER, &encoder, NULL);
   gst_structure_get_uint64 (structure, "index", &index);
-  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
+  GstC2VideoEncoder *c2venc = GST_C2_VENC (encoder);
   if (encoder) {
     if (!gst_c2_wrapper_free_output_buffer (c2venc->wrapper, index)) {
       GST_ERROR_OBJECT (c2venc, "Failed to release the buffer (%lu)", index);
@@ -808,7 +812,7 @@ gst_c2_venc_buffer_release (GstStructure * structure)
 static GstFlowReturn
 push_frame_downstream (GstVideoEncoder * encoder, BufferDescriptor * encode_buf)
 {
-  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
+  GstC2VideoEncoder *c2venc = GST_C2_VENC (encoder);
   GstFlowReturn ret = GST_FLOW_OK;
   GstVideoCodecFrame *frame = NULL;
   GstBuffer *outbuf = NULL;
@@ -837,7 +841,7 @@ push_frame_downstream (GstVideoEncoder * encoder, BufferDescriptor * encode_buf)
   GST_DEBUG_OBJECT (c2venc, "fill codec config size:%d frame size:%d",
       encode_buf->config_size, encode_buf->size);
 
-  if (encode_buf->flag & FLAG_TYPE_CODEC_CONFIG) {
+  if (encode_buf->flag & GST_C2_FLAG_CODEC_CONFIG) {
     GST_DEBUG_OBJECT (c2venc, "fill codec config size:%d first frame size:%d",
         encode_buf->config_size, encode_buf->size);
     outbuf =
@@ -851,12 +855,12 @@ push_frame_downstream (GstVideoEncoder * encoder, BufferDescriptor * encode_buf)
     GstMemory *mem = gst_fd_allocator_alloc (allocator,
         encode_buf->fd, encode_buf->size, GST_FD_MEMORY_FLAG_DONT_CLOSE);
     // create a gst buffer
-    GstBuffer *buf = gst_buffer_new ();
+    GstBuffer *buffer = gst_buffer_new ();
     // insert fd memmory into the gstbuffer
-    gst_buffer_append_memory (buf, mem);
+    gst_buffer_append_memory (buffer, mem);
     gst_object_unref (allocator);
 
-    if (!gst_buffer_map (buf, &info, GST_MAP_READ)) {
+    if (!gst_buffer_map (buffer, &info, GST_MAP_READ)) {
       GST_ERROR_OBJECT (c2venc, "ERROR: Failed to map the buffer!");
       return GST_FLOW_ERROR;
     }
@@ -864,8 +868,8 @@ push_frame_downstream (GstVideoEncoder * encoder, BufferDescriptor * encode_buf)
     gst_buffer_fill (outbuf, encode_buf->config_size, info.data,
         encode_buf->size);
 
-    gst_buffer_unmap (buf, &info);
-    gst_buffer_unref (buf);
+    gst_buffer_unmap (buffer, &info);
+    gst_buffer_unref (buffer);
   } else {
 
     GstAllocator *allocator = gst_fd_allocator_new ();
@@ -880,7 +884,7 @@ push_frame_downstream (GstVideoEncoder * encoder, BufferDescriptor * encode_buf)
 
   if (outbuf) {
     gst_buffer_set_flags (outbuf, GST_BUFFER_FLAG_SYNC_AFTER);
-    if (encode_buf->flag & FLAG_TYPE_SYNC_FRAME) {
+    if (encode_buf->flag & GST_C2_FLAG_SYNC_FRAME) {
       if (frame) {
         GST_VIDEO_CODEC_FRAME_SET_SYNC_POINT (frame);
       } else {
@@ -919,7 +923,7 @@ push_frame_downstream (GstVideoEncoder * encoder, BufferDescriptor * encode_buf)
     frame->output_buffer = outbuf;
 
     gst_video_codec_frame_unref (frame);
-    if (encode_buf->flag & FLAG_TYPE_INCOMPLETE) {
+    if (encode_buf->flag & GST_C2_FLAG_INCOMPLETE) {
       GST_DEBUG_OBJECT (c2venc, "INCOMPLETE Buffer received");
       ret = gst_pad_push (encoder->srcpad, outbuf);
     } else {
@@ -940,15 +944,15 @@ push_frame_downstream (GstVideoEncoder * encoder, BufferDescriptor * encode_buf)
 }
 
 static void
-handle_video_event (EVENT_TYPE type, void * userdata, void * userdata2)
+handle_video_event (GstC2EventType type, void * userdata, void * userdata2)
 {
   GstVideoEncoder *encoder = (GstVideoEncoder *) userdata2;
-  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
+  GstC2VideoEncoder *c2venc = GST_C2_VENC (encoder);
   GST_DEBUG_OBJECT (c2venc, "handle_video_event");
   GstFlowReturn ret = GST_FLOW_OK;
 
   switch (type) {
-    case EVENT_OUTPUTS_DONE: {
+    case GST_C2_EVENT_OUTPUTS_DONE: {
       BufferDescriptor *outBuffer = (BufferDescriptor *) userdata;
 
       GST_DEBUG_OBJECT (c2venc,
@@ -963,7 +967,7 @@ handle_video_event (EVENT_TYPE type, void * userdata, void * userdata2)
         if (ret != GST_FLOW_OK) {
           GST_ERROR_OBJECT (c2venc, "Failed to push frame downstream");
         }
-      } else if (outBuffer->flag & FLAG_TYPE_END_OF_STREAM) {
+      } else if (outBuffer->flag & GST_C2_FLAG_END_OF_STREAM) {
         GST_INFO_OBJECT (c2venc, "Encoder reached EOS");
         g_mutex_lock (&c2venc->pending_lock);
         c2venc->eos_reached = TRUE;
@@ -974,11 +978,11 @@ handle_video_event (EVENT_TYPE type, void * userdata, void * userdata2)
       }
       break;
     }
-    case EVENT_TRIPPED:
-      GST_ERROR_OBJECT (c2venc, "EVENT_TRIPPED(%d)", *(gint32 *) userdata);
+    case GST_C2_EVENT_TRIPPED:
+      GST_ERROR_OBJECT (c2venc, "GST_C2_EVENT_TRIPPED(%d)", *(gint32 *) userdata);
       break;
-    case EVENT_ERROR:
-      GST_ERROR_OBJECT (c2venc, "EVENT_ERROR(%d)", *(gint32 *) userdata);
+    case GST_C2_EVENT_ERROR:
+      GST_ERROR_OBJECT (c2venc, "GST_C2_EVENT_ERROR(%d)", *(gint32 *) userdata);
       break;
     default:
       GST_ERROR_OBJECT (c2venc, "Invalid Event(%d)", type);
@@ -1001,7 +1005,7 @@ caps_has_compression (const GstCaps * caps, const gchar * compression)
 static gboolean
 gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
 {
-  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
+  GstC2VideoEncoder *c2venc = GST_C2_VENC (encoder);
   GstStructure *structure;
   const gchar *fmt;
   gint retval = 0;
@@ -1012,24 +1016,24 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   GPtrArray *config = NULL;
   GstCaps *peercaps;
   const gchar *profile_string, *level_string;
-  video_profile_t profile = VIDEO_PROFILE_MAX;
-  video_level_t level = VIDEO_LEVEL_MAX;
-  config_params_t resolution;
-  config_params_t pixelformat;
-  config_params_t rate_control;
-  config_params_t sync_frame_int;
-  config_params_t* roi_encoding = NULL;
-  config_params_t intra_refresh;
-  config_params_t bitrate;
-  config_params_t slice_mode;
-  config_params_t qp_ranges;
-  config_params_t framerate;
-  config_params_t entropy_mode;
-  config_params_t loop_filter_mode;
-  config_params_t qp_init;
-  config_params_t num_ltr_frames;
-  config_params_t profileLevel;
-  config_params_t rotate;
+  GstC2VideoProfile profile = GST_C2_VIDEO_PROFILE_MAX;
+  GstC2VideoLevel level = GST_C2_VIDEO_LEVEL_MAX;
+  GstC2ConfigParams resolution;
+  GstC2ConfigParams pixelformat;
+  GstC2ConfigParams rate_control;
+  GstC2ConfigParams sync_frame_int;
+  GstC2ConfigParams* roi_encoding = NULL;
+  GstC2ConfigParams intra_refresh;
+  GstC2ConfigParams bitrate;
+  GstC2ConfigParams slice_mode;
+  GstC2ConfigParams qp_ranges;
+  GstC2ConfigParams framerate;
+  GstC2ConfigParams entropy_mode;
+  GstC2ConfigParams loop_filter_mode;
+  GstC2ConfigParams qp_init;
+  GstC2ConfigParams num_ltr_frames;
+  GstC2ConfigParams profileLevel;
+  GstC2ConfigParams rotate;
 
   structure = gst_caps_get_structure (state->caps, 0);
   retval = gst_structure_get_int (structure, "width", &width);
@@ -1121,7 +1125,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
       else if (gst_structure_has_name (structure, "video/x-h265"))
         profile = gst_c2_utils_h265_profile_from_string (profile_string);
 
-      if (profile == VIDEO_PROFILE_MAX) {
+      if (profile == GST_C2_VIDEO_PROFILE_MAX) {
         GST_ERROR_OBJECT (c2venc, "Unsupported profile %s", profile_string);
         gst_caps_unref (peercaps);
         return FALSE;
@@ -1136,7 +1140,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
         level = gst_c2_utils_h265_level_from_string (level_string, tier);
       }
 
-      if (level == VIDEO_LEVEL_MAX) {
+      if (level == GST_C2_VIDEO_LEVEL_MAX) {
         GST_ERROR_OBJECT (c2venc, "Unsupported level %s", level_string);
         gst_caps_unref (peercaps);
         return FALSE;
@@ -1147,7 +1151,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
 
   config = g_ptr_array_new ();
 
-  if ((profile != VIDEO_PROFILE_MAX) || (level != VIDEO_LEVEL_MAX)) {
+  if ((profile != GST_C2_VIDEO_PROFILE_MAX) || (level != GST_C2_VIDEO_LEVEL_MAX)) {
     profileLevel = make_profileLevel_param (profile, level);
     g_ptr_array_add (config, &profileLevel);
     GST_DEBUG_OBJECT (c2venc, "setting profile %u and level %u", profile, level);
@@ -1184,7 +1188,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
       make_pixelFormat_param (gst_to_c2_pixelformat (encoder, input_format), TRUE);
   g_ptr_array_add (config, &pixelformat);
 
-  rate_control = make_rateControl_param (c2venc->rcMode);
+  rate_control = make_rateControl_param (c2venc->control_rate);
   g_ptr_array_add (config, &rate_control);
 
   if (c2venc->slice_mode != DEFAULT_PROP_SLICE_MODE) {
@@ -1235,7 +1239,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     GST_DEBUG_OBJECT (c2venc, "set LTR frames number - %d", c2venc->num_ltr_frames);
   }
 
-  if (c2venc->rotate != ROTATE_NONE) {
+  if (c2venc->rotate != GST_C2_ROTATE_NONE) {
     rotate = make_rotate_param(c2venc->rotate);
     g_ptr_array_add (config, &rotate);
     GST_DEBUG_OBJECT (c2venc, "set rotate - %d", c2venc->rotate);
@@ -1243,11 +1247,11 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
 
   if (c2venc->roi_quant_mode) {
     // The ROI needs to be initialized in case of meta roi
-    char rectPayload[128];
-    char rectPayloadExt[128];
-    g_stpcpy (rectPayload, "0,0-0,0=0;");
-    g_stpcpy (rectPayloadExt, "0,0-0,0=0;");
-    roi_encoding = make_roi_encoding (0, rectPayload, rectPayloadExt);
+    char payload[128];
+    char payload_ext[128];
+    g_stpcpy (payload, "0,0-0,0=0;");
+    g_stpcpy (payload_ext, "0,0-0,0=0;");
+    roi_encoding = make_roi_encoding (0, payload, payload_ext);
     if (roi_encoding) {
       g_ptr_array_add (config, roi_encoding);
     }
@@ -1276,7 +1280,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
 static gboolean
 gst_c2_venc_open (GstVideoEncoder * encoder)
 {
-  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
+  GstC2VideoEncoder *c2venc = GST_C2_VENC (encoder);
   GST_DEBUG_OBJECT (c2venc, "gst_c2_venc_open");
 
   return TRUE;
@@ -1285,7 +1289,7 @@ gst_c2_venc_open (GstVideoEncoder * encoder)
 static gboolean
 gst_c2_venc_close (GstVideoEncoder * encoder)
 {
-  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
+  GstC2VideoEncoder *c2venc = GST_C2_VENC (encoder);
   GST_DEBUG_OBJECT (c2venc, "gst_c2_venc_close");
 
   return TRUE;
@@ -1294,23 +1298,23 @@ gst_c2_venc_close (GstVideoEncoder * encoder)
 static GstFlowReturn
 gst_c2_venc_finish (GstVideoEncoder * encoder)
 {
-  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
+  GstC2VideoEncoder *c2venc = GST_C2_VENC (encoder);
   GST_DEBUG_OBJECT (c2venc, "gst_c2_venc_finish");
 
   gint64 timeout;
-  BufferDescriptor inBuf;
+  BufferDescriptor buf;
 
-  memset (&inBuf, 0, sizeof (BufferDescriptor));
+  memset (&buf, 0, sizeof (BufferDescriptor));
 
-  inBuf.fd = -1;
-  inBuf.size = 0;
-  inBuf.timestamp = 0;
-  inBuf.index = c2venc->frame_index;
-  inBuf.flag = FLAG_TYPE_END_OF_STREAM;
-  inBuf.pool_type = BUFFER_POOL_BASIC_GRAPHIC;
+  buf.fd = -1;
+  buf.size = 0;
+  buf.timestamp = 0;
+  buf.index = c2venc->frame_index;
+  buf.flag = GST_C2_FLAG_END_OF_STREAM;
+  buf.pool_type = GST_C2_BUFFER_POOL_BASIC_GRAPHIC;
 
   // Setup EOS work
-  if (!gst_c2_wrapper_component_queue (c2venc->wrapper, &inBuf)) {
+  if (!gst_c2_wrapper_component_queue (c2venc->wrapper, &buf)) {
     GST_ERROR_OBJECT(c2venc, "failed to queue input frame to Codec2");
     return GST_FLOW_ERROR;
   }
@@ -1341,11 +1345,11 @@ gst_c2_venc_finish (GstVideoEncoder * encoder)
 static GstFlowReturn
 gst_c2_venc_encode (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
 {
-  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
+  GstC2VideoEncoder *c2venc = GST_C2_VENC (encoder);
   GST_DEBUG_OBJECT (c2venc, "gst_c2_venc_encode");
 
-  BufferDescriptor inBuf;
-  GstBuffer *buf = NULL;
+  BufferDescriptor buf;
+  GstBuffer *buffer = NULL;
   GstMemory *mem;
   GstMapInfo mapinfo = { 0, };
 
@@ -1361,36 +1365,36 @@ gst_c2_venc_encode (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   // is not returned.
   GST_VIDEO_ENCODER_STREAM_UNLOCK (encoder);
 
-  memset (&inBuf, 0, sizeof (BufferDescriptor));
+  memset (&buf, 0, sizeof (BufferDescriptor));
 
-  buf = frame->input_buffer;
-  mem = gst_buffer_get_memory (buf, 0);
+  buffer = frame->input_buffer;
+  mem = gst_buffer_get_memory (buffer, 0);
   if (gst_is_fd_memory (mem)) {
     GST_DEBUG_OBJECT (c2venc, "FD buffer");
 
-    inBuf.fd = gst_fd_memory_get_fd (mem);
-    inBuf.size = gst_memory_get_sizes (mem, NULL, NULL);
+    buf.fd = gst_fd_memory_get_fd (mem);
+    buf.size = gst_memory_get_sizes (mem, NULL, NULL);
   } else {
     GST_DEBUG_OBJECT(c2venc, "Not FD memory");
-    gst_buffer_map (buf, &mapinfo, GST_MAP_READ);
-    inBuf.fd = -1;
-    inBuf.data = mapinfo.data;
-    inBuf.size = mapinfo.size;
+    gst_buffer_map (buffer, &mapinfo, GST_MAP_READ);
+    buf.fd = -1;
+    buf.data = mapinfo.data;
+    buf.size = mapinfo.size;
   }
 
-  inBuf.timestamp = frame->pts / 1000;
-  inBuf.index = frame->system_frame_number;
-  inBuf.pool_type = BUFFER_POOL_BASIC_GRAPHIC;
-  inBuf.width = c2venc->width;
-  inBuf.height = c2venc->height;
-  inBuf.format = c2venc->input_format;
-  inBuf.ubwc_flag = c2venc->is_ubwc;
+  buf.timestamp = frame->pts / 1000;
+  buf.index = frame->system_frame_number;
+  buf.pool_type = GST_C2_BUFFER_POOL_BASIC_GRAPHIC;
+  buf.width = c2venc->width;
+  buf.height = c2venc->height;
+  buf.format = c2venc->input_format;
+  buf.ubwc_flag = c2venc->is_ubwc;
 
   gst_memory_unref (mem);
 
   GST_DEBUG_OBJECT (c2venc,
       "input buffer: fd: %d, size: %d, timestamp: %lu, index: %ld",
-      inBuf.fd, inBuf.size, inBuf.timestamp, inBuf.index);
+      buf.fd, buf.size, buf.timestamp, buf.index);
 
   // Keep track of queued frame
   c2venc->queued_frame[(c2venc->frame_index) % MAX_QUEUED_FRAME] =
@@ -1398,23 +1402,23 @@ gst_c2_venc_encode (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
 
   gpointer roi_config = config_roi_encoding (c2venc, frame);
   if (roi_config) {
-    inBuf.config_data = reinterpret_cast<guint8 *> (roi_config);
+    buf.config_data = reinterpret_cast<guint8 *> (roi_config);
   }
 
   // Queue buffer to Codec2
-  if (!gst_c2_wrapper_component_queue (c2venc->wrapper, &inBuf)) {
+  if (!gst_c2_wrapper_component_queue (c2venc->wrapper, &buf)) {
     GST_ERROR_OBJECT(c2venc, "failed to queue input frame to Codec2");
     // Lock the mutex again and return to the base class
     GST_VIDEO_ENCODER_STREAM_LOCK (encoder);
     if (roi_config) {
       g_free (roi_config);
-      inBuf.config_data = NULL;
+      buf.config_data = NULL;
     }
     return GST_FLOW_ERROR;
   }
 
-  if (inBuf.fd == -1) {
-    gst_buffer_unmap (buf, &mapinfo);
+  if (buf.fd == -1) {
+    gst_buffer_unmap (buffer, &mapinfo);
   }
 
   g_mutex_lock (&(c2venc->pending_lock));
@@ -1422,7 +1426,7 @@ gst_c2_venc_encode (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   g_mutex_unlock (&(c2venc->pending_lock));
   if (roi_config) {
     g_free (roi_config);
-    inBuf.config_data = NULL;
+    buf.config_data = NULL;
   }
 
   // Lock the mutex again and return to the base class
@@ -1435,7 +1439,7 @@ static GstFlowReturn
 gst_c2_venc_handle_frame (GstVideoEncoder * encoder,
     GstVideoCodecFrame * frame)
 {
-  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (encoder);
+  GstC2VideoEncoder *c2venc = GST_C2_VENC (encoder);
 
   if (!c2venc->input_setup) {
     GST_ERROR_OBJECT (c2venc, "Input setup is NULL");
@@ -1463,7 +1467,7 @@ static void
 gst_c2_venc_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
 {
-  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (object);
+  GstC2VideoEncoder *c2venc = GST_C2_VENC (object);
   const gchar *propname = g_param_spec_get_name (pspec);
   GstState state = GST_STATE (c2venc);
   GPtrArray *config = g_ptr_array_new ();
@@ -1479,10 +1483,10 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
 
   switch (prop_id) {
     case PROP_RATE_CONTROL:
-      c2venc->rcMode = (rc_mode_t) g_value_get_enum (value);
+      c2venc->control_rate = (GstC2ControlRate) g_value_get_enum (value);
       break;
     case PROP_INTRA_REFRESH_MODE:
-      c2venc->intra_refresh_mode = (ir_mode_t) g_value_get_enum (value);
+      c2venc->intra_refresh_mode = (GstC2IRefreshMode) g_value_get_enum (value);
       break;
     case PROP_INTRA_REFRESH_MBS:
       c2venc->intra_refresh_mbs = g_value_get_uint (value);
@@ -1491,7 +1495,7 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
 
       c2venc->target_bitrate = g_value_get_uint (value);
 
-      config_params_t bitrate;
+      GstC2ConfigParams bitrate;
       if (c2venc->target_bitrate != DEFAULT_PROP_TARGET_BITRATE) {
         bitrate = make_bitrate_param (c2venc->target_bitrate, FALSE);
         g_ptr_array_add (config, &bitrate);
@@ -1507,7 +1511,7 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
         gint64 key_frame_interval =
             c2venc->idr_interval * (1000000 / c2venc->rate_numerator);
 
-        config_params_t sync_frame_int =
+        GstC2ConfigParams sync_frame_int =
             make_sync_frame_interval_param (key_frame_interval);
         g_ptr_array_add (config, &sync_frame_int);
         GST_DEBUG_OBJECT (c2venc, "IDR frame interval - %d", c2venc->idr_interval);
@@ -1519,7 +1523,7 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
       c2venc->slice_size = g_value_get_uint (value);
       break;
     case PROP_SLICE_MODE:
-      c2venc->slice_mode = (slice_mode_t) g_value_get_enum (value);
+      c2venc->slice_mode = (GstC2SliceMode) g_value_get_enum (value);
       break;
     case PROP_MAX_QP_B_FRAMES:
       c2venc->max_qp_b_frames = g_value_get_uint (value);
@@ -1586,10 +1590,10 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
       break;
     }
     case PROP_ENTROPY_MODE:
-      c2venc->entropy_mode = (entropy_mode_t) g_value_get_enum (value);
+      c2venc->entropy_mode = (GstC2EntropyMode) g_value_get_enum (value);
       break;
     case PROP_LOOP_FILTER_MODE:
-      c2venc->loop_filter_mode = (loop_filter_mode_t) g_value_get_enum (value);
+      c2venc->loop_filter_mode = (GstC2LoopFilterMode) g_value_get_enum (value);
       break;
     case PROP_QUANT_I_FRAMES:
       c2venc->quant_i_frames = g_value_get_uint (value);
@@ -1604,7 +1608,7 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
       c2venc->num_ltr_frames = g_value_get_uint (value);
       break;
     case PROP_ROTATE:
-      c2venc->rotate = (rotate_t) g_value_get_enum (value);
+      c2venc->rotate = (GstC2Rotate) g_value_get_enum (value);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1627,13 +1631,13 @@ static void
 gst_c2_venc_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec)
 {
-  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (object);
+  GstC2VideoEncoder *c2venc = GST_C2_VENC (object);
 
   GST_OBJECT_LOCK (c2venc);
 
   switch (prop_id) {
     case PROP_RATE_CONTROL:
-      g_value_set_enum (value, c2venc->rcMode);
+      g_value_set_enum (value, c2venc->control_rate);
       break;
     case PROP_INTRA_REFRESH_MODE:
       g_value_set_enum (value, c2venc->intra_refresh_mode);
@@ -1747,7 +1751,7 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
 static void
 gst_c2_venc_finalize (GObject * object)
 {
-  GstC2_VENCEncoder *c2venc = GST_C2_VENC_ENC (object);
+  GstC2VideoEncoder *c2venc = GST_C2_VENC (object);
 
   if (c2venc->input_state) {
     gst_video_codec_state_unref (c2venc->input_state);
@@ -1776,7 +1780,7 @@ gst_c2_venc_finalize (GObject * object)
 }
 
 static void
-gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
+gst_c2_venc_class_init (GstC2VideoEncoderClass * klass)
 {
   GObjectClass *gobject        = G_OBJECT_CLASS (klass);
   GstElementClass *element     = GST_ELEMENT_CLASS (klass);
@@ -1790,7 +1794,7 @@ gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
       g_param_spec_enum ("control-rate", "Rate Control",
           "Bitrate control method",
           GST_TYPE_CODEC2_ENC_RATE_CONTROL,
-          RC_MODE_OFF,
+          GST_C2_RATE_CTRLMODE_OFF,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
@@ -1967,7 +1971,7 @@ gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
       g_param_spec_enum ("rotate", "Rotate frames",
           "Rotate video image",
           GST_TYPE_CODEC2_ENC_ROTATE,
-          ROTATE_NONE,
+          GST_C2_ROTATE_NONE,
           static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY)));
 
@@ -1990,7 +1994,7 @@ gst_c2_venc_class_init (GstC2_VENCEncoderClass * klass)
 }
 
 static void
-gst_c2_venc_init (GstC2_VENCEncoder * c2venc)
+gst_c2_venc_init (GstC2VideoEncoder * c2venc)
 {
   c2venc->input_setup = FALSE;
   c2venc->output_setup = FALSE;
@@ -2003,9 +2007,9 @@ gst_c2_venc_init (GstC2_VENCEncoder * c2venc)
   c2venc->rate_numerator = 0;
   c2venc->framerate = 0;
 
-  c2venc->rcMode = RC_MODE_OFF;
+  c2venc->control_rate = GST_C2_RATE_CTRLMODE_OFF;
   c2venc->target_bitrate = DEFAULT_PROP_TARGET_BITRATE;
-  c2venc->slice_mode = (slice_mode_t)DEFAULT_PROP_SLICE_MODE;
+  c2venc->slice_mode = (GstC2SliceMode)DEFAULT_PROP_SLICE_MODE;
   c2venc->slice_size = 0;
   c2venc->idr_interval = DEFAULT_PROP_IDR_FRAME_INTERVAL;
 
@@ -2020,13 +2024,13 @@ gst_c2_venc_init (GstC2_VENCEncoder * c2venc)
   c2venc->roi_quant_values = gst_structure_new_empty ("roi-meta-qp");
   c2venc->roi_quant_boxes = g_array_new (FALSE, FALSE, sizeof (GstQuantRectangle));
 
-  c2venc->entropy_mode = (entropy_mode_t)DEFAULT_PROP_ENTROPY_MODE;
-  c2venc->loop_filter_mode = (loop_filter_mode_t)DEFAULT_PROP_LOOP_FILTER_MODE;
+  c2venc->entropy_mode = (GstC2EntropyMode)DEFAULT_PROP_ENTROPY_MODE;
+  c2venc->loop_filter_mode = (GstC2LoopFilterMode)DEFAULT_PROP_LOOP_FILTER_MODE;
   c2venc->quant_i_frames = DEFAULT_PROP_QUANT_I_FRAMES;
   c2venc->quant_p_frames = DEFAULT_PROP_QUANT_P_FRAMES;
   c2venc->quant_b_frames = DEFAULT_PROP_QUANT_B_FRAMES;
   c2venc->num_ltr_frames = DEFAULT_PROP_NUM_LTR_FRAMES;
-  c2venc->rotate = ROTATE_NONE;
+  c2venc->rotate = GST_C2_ROTATE_NONE;
   c2venc->is_ubwc = FALSE;
 
   memset (c2venc->queued_frame, 0, sizeof (c2venc->queued_frame));
@@ -2045,7 +2049,7 @@ static gboolean
 plugin_init (GstPlugin * plugin)
 {
   return gst_element_register (plugin, "qtic2venc", GST_RANK_PRIMARY,
-      GST_TYPE_C2_VENC_ENC);
+      GST_TYPE_C2_VENC);
 }
 
 GST_PLUGIN_DEFINE (

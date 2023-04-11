@@ -77,6 +77,6 @@ gst_c2_wrapper_component_queue (GstC2Wrapper * wrapper,
 
 GST_API gboolean
 gst_c2_wrapper_free_output_buffer (GstC2Wrapper * wrapper,
-    uint64_t bufferIdx);
+    uint64_t buf_idx);
 
 #endif // __GST_C2_WRAPPER_H__
