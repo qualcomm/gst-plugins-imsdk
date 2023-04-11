@@ -304,7 +304,7 @@ gst_c2vdec_wrap_output_buffer (GstVideoDecoder * decoder,
   vinfo->stride[LUMA_PLANE] = decode_buf->stride;
   vinfo->offset[LUMA_PLANE] = 0;
   vinfo->stride[CHROMA_PLANE] = decode_buf->stride;
-  vinfo->offset[CHROMA_PLANE] = decode_buf->stride * (((decode_buf->size/decode_buf->stride)/3) *2);
+  vinfo->offset[CHROMA_PLANE] = decode_buf->stride * decode_buf->scanline;
   gst_buffer_add_video_meta_full (out_buf, GST_VIDEO_FRAME_FLAG_NONE,
           GST_VIDEO_INFO_FORMAT (vinfo), GST_VIDEO_INFO_WIDTH (vinfo),
           GST_VIDEO_INFO_HEIGHT (vinfo), GST_VIDEO_INFO_N_PLANES (vinfo),
