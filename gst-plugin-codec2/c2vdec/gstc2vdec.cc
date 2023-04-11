@@ -37,11 +37,11 @@
 #include "config.h"
 #endif
 
+#include "gstc2vdec.h"
+
 #include <gst/gst.h>
 #include <gst/video/video.h>
 #include <gst/video/gstvideodecoder.h>
-#include "gstc2vdec.h"
-
 
 #define LUMA_PLANE 0
 #define CHROMA_PLANE 1
@@ -73,7 +73,7 @@ enum
 #define GST_QTI_CODEC2_DEC_MAP_OUTBUF_DEFAULT                   (0xffffffff)
 
 #define gst_c2vdec_parent_class parent_class
-G_DEFINE_TYPE (GstC2vdec, gst_c2vdec, GST_TYPE_VIDEO_DECODER);
+G_DEFINE_TYPE (GstC2VideoDecoder, gst_c2vdec, GST_TYPE_VIDEO_DECODER);
 
 /* pad templates */
 
@@ -114,12 +114,12 @@ static G_DEFINE_QUARK (QtiCodec2EncoderQuark, gst_c2_venc_qdata);
 
 /* class initialization */
 
-static config_params_t
+static GstC2ConfigParams
 make_output_block_pool_param (guint32 id, gboolean isInput)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_BLOCK_POOL;
   param.is_input = isInput;
@@ -128,12 +128,12 @@ make_output_block_pool_param (guint32 id, gboolean isInput)
   return param;
 }
 
-static config_params_t
+static GstC2ConfigParams
 make_resolution_param (guint32 width, guint32 height, gboolean isInput)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_RESOLUTION;
   param.is_input = isInput;
@@ -143,26 +143,26 @@ make_resolution_param (guint32 width, guint32 height, gboolean isInput)
   return param;
 }
 
-static config_params_t
+static GstC2ConfigParams
 make_pixelFormat_param (guint32 fmt, gboolean isInput)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_PIXELFORMAT;
   param.is_input = isInput;
-  param.pixel_fmt = (pixel_format_t)fmt;
+  param.pixel_fmt = (GstC2PixelFormat)fmt;
 
   return param;
 }
 
-static config_params_t
-make_interlace_param (interlace_mode_t mode, gboolean isInput)
+static GstC2ConfigParams
+make_interlace_param (GstC2InterlaceMode mode, gboolean isInput)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_INTERLACE;
   param.is_input = isInput;
@@ -171,12 +171,12 @@ make_interlace_param (interlace_mode_t mode, gboolean isInput)
   return param;
 }
 
-static config_params_t
+static GstC2ConfigParams
 make_output_picture_order_param (guint output_picture_order_mode)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_OUTPUT_PICTURE_ORDER_MODE;
   param.output_picture_order_mode = output_picture_order_mode;
@@ -184,12 +184,12 @@ make_output_picture_order_param (guint output_picture_order_mode)
   return param;
 }
 
-static config_params_t
+static GstC2ConfigParams
 make_low_latency_param (gboolean low_latency_mode)
 {
-  config_params_t param;
+  GstC2ConfigParams param;
 
-  memset (&param, 0, sizeof (config_params_t));
+  memset (&param, 0, sizeof (GstC2ConfigParams));
 
   param.config_name = CONFIG_FUNCTION_KEY_DEC_LOW_LATENCY;
   param.low_latency_mode = low_latency_mode;
@@ -205,7 +205,7 @@ gst_c2_buffer_release (GstStructure * structure)
   gst_structure_get (structure, "decoder", G_TYPE_POINTER, &decoder, NULL);
   gst_structure_get_uint64 (structure, "index", &index);
   GST_DEBUG_OBJECT (decoder, "gst_c2_buffer_release index %d", index);
-  GstC2vdec *dec = GST_C2VDEC (decoder);
+  GstC2VideoDecoder *dec = GST_C2_VDEC (decoder);
   if (decoder) {
     if (!gst_c2_wrapper_free_output_buffer (dec->wrapper, index)) {
       GST_ERROR_OBJECT (decoder, "Failed to release the buffer (%lu)", index);
@@ -226,7 +226,7 @@ static gchar *
 get_c2_comp_name (GstVideoDecoder * decoder, GstStructure * s,
     gboolean low_latency)
 {
-  GstC2vdec *dec = GST_C2VDEC (decoder);
+  GstC2VideoDecoder *dec = GST_C2_VDEC (decoder);
   gchar *str = NULL;
   gchar *concat_str = NULL;
   gchar *str_low_latency = g_strdup (".low_latency");
@@ -255,13 +255,13 @@ static guint32
 gst_to_c2_pixelformat (GstVideoDecoder * decoder, GstVideoFormat format)
 {
   guint32 result = 0;
-  GstC2vdec *dec = GST_C2VDEC (decoder);
+  GstC2VideoDecoder *dec = GST_C2_VDEC (decoder);
   switch (format) {
     case GST_VIDEO_FORMAT_NV12:
-      result = PIXEL_FORMAT_NV12_LINEAR;
+      result = GST_C2_PIXEL_FORMAT_NV12_LINEAR;
       break;
     default:
-      result = PIXEL_FORMAT_NV12_UBWC;
+      result = GST_C2_PIXEL_FORMAT_NV12_UBWC;
       GST_WARNING_OBJECT (dec,
           "Invalid pixel format(%d), fallback to NV12 UBWC", format);
       break;
@@ -281,7 +281,7 @@ gst_c2vdec_wrap_output_buffer (GstVideoDecoder * decoder,
   GstVideoCodecState *state;
   GstVideoInfo *vinfo;
   GstStructure *structure = NULL;
-  GstC2vdec *dec = GST_C2VDEC (decoder);
+  GstC2VideoDecoder *dec = GST_C2_VDEC (decoder);
   guint output_size = decode_buf->size;
   guint64 *p_modifier = NULL;
 
@@ -325,7 +325,7 @@ fail:
 static GstFlowReturn
 gst_c2vdec_push_frame_downstream (GstVideoDecoder * decoder, BufferDescriptor * decode_buf)
 {
-  GstC2vdec *dec = GST_C2VDEC (decoder);
+  GstC2VideoDecoder *dec = GST_C2_VDEC (decoder);
   GstBuffer *outbuf;
   GstVideoCodecFrame *frame;
   GstFlowReturn ret = GST_FLOW_OK;
@@ -406,11 +406,11 @@ out:
 static GstFlowReturn
 gst_c2vdec_setup_output (GstVideoDecoder * decoder, GPtrArray * config)
 {
-  GstC2vdec *dec = GST_C2VDEC (decoder);
+  GstC2VideoDecoder *dec = GST_C2_VDEC (decoder);
   GstVideoAlignment align;
   GstFlowReturn ret = GST_FLOW_OK;
   GstVideoFormat output_format = GST_VIDEO_FORMAT_NV12;
-  config_params_t pixelformat;
+  GstC2ConfigParams pixelformat;
 
   GstCaps *templ_caps, *intersection = NULL;
   GstStructure *s;
@@ -508,7 +508,7 @@ error_setup_output:
 static GstFlowReturn
 wait_buffers_released (GstVideoDecoder * decoder)
 {
-  GstC2vdec *c2vdec = GST_C2VDEC (decoder);
+  GstC2VideoDecoder *c2vdec = GST_C2_VDEC (decoder);
   gint64 timeout;
 
   g_mutex_lock (&c2vdec->free_buff_lock);
@@ -527,7 +527,7 @@ wait_buffers_released (GstVideoDecoder * decoder)
 static GstFlowReturn
 gst_qticodec2vdec_decode (GstVideoDecoder * decoder, GstVideoCodecFrame * frame)
 {
-  GstC2vdec *dec = GST_C2VDEC (decoder);
+  GstC2VideoDecoder *dec = GST_C2_VDEC (decoder);
   GstMapInfo mapinfo = { 0, };
   GstBuffer *buf = NULL;
   BufferDescriptor inBuf;
@@ -547,7 +547,7 @@ gst_qticodec2vdec_decode (GstVideoDecoder * decoder, GstVideoCodecFrame * frame)
   inBuf.fd = -1;
   inBuf.data = mapinfo.data;
   inBuf.size = mapinfo.size;
-  inBuf.pool_type = BUFFER_POOL_BASIC_LINEAR;
+  inBuf.pool_type = GST_C2_BUFFER_POOL_BASIC_LINEAR;
 
   GST_INFO_OBJECT (dec, "frame->pts (%" G_GUINT64_FORMAT ")", frame->pts);
 
@@ -584,15 +584,15 @@ out:
 }
 
 static void
-handle_video_event (EVENT_TYPE type, void *userdata, void *userdata2)
+handle_video_event (GstC2EventType type, void *userdata, void *userdata2)
 {
   GstVideoDecoder *decoder = (GstVideoDecoder *) userdata2;
-  GstC2vdec *c2vdec = GST_C2VDEC (decoder);
+  GstC2VideoDecoder *c2vdec = GST_C2_VDEC (decoder);
   GST_DEBUG_OBJECT (c2vdec, "handle_video_event");
   GstFlowReturn ret = GST_FLOW_OK;
 
   switch (type) {
-    case EVENT_OUTPUTS_DONE: {
+    case GST_C2_EVENT_OUTPUTS_DONE: {
       BufferDescriptor *outBuffer = (BufferDescriptor *) userdata;
 
       GST_DEBUG_OBJECT (c2vdec,
@@ -607,7 +607,7 @@ handle_video_event (EVENT_TYPE type, void *userdata, void *userdata2)
         if (ret != GST_FLOW_OK) {
           GST_ERROR_OBJECT (c2vdec, "Failed to push frame downstream");
         }
-      } else if (outBuffer->flag & FLAG_TYPE_END_OF_STREAM) {
+      } else if (outBuffer->flag & GST_C2_FLAG_END_OF_STREAM) {
         GST_INFO_OBJECT (c2vdec, "Decoder reached EOS");
         g_mutex_lock (&c2vdec->pending_lock);
         c2vdec->eos_reached = TRUE;
@@ -618,11 +618,11 @@ handle_video_event (EVENT_TYPE type, void *userdata, void *userdata2)
       }
       break;
     }
-    case EVENT_TRIPPED:
-      GST_ERROR_OBJECT (c2vdec, "EVENT_TRIPPED(%d)", *(gint32 *) userdata);
+    case GST_C2_EVENT_TRIPPED:
+      GST_ERROR_OBJECT (c2vdec, "GST_C2_EVENT_TRIPPED(%d)", *(gint32 *) userdata);
       break;
-    case EVENT_ERROR:
-      GST_ERROR_OBJECT (c2vdec, "EVENT_ERROR(%d)", *(gint32 *) userdata);
+    case GST_C2_EVENT_ERROR:
+      GST_ERROR_OBJECT (c2vdec, "GST_C2_EVENT_ERROR(%d)", *(gint32 *) userdata);
       break;
     default:
       GST_ERROR_OBJECT (c2vdec, "Invalid Event(%d)", type);
@@ -630,7 +630,7 @@ handle_video_event (EVENT_TYPE type, void *userdata, void *userdata2)
 }
 
 static void
-gst_c2vdec_class_init (GstC2vdecClass * klass)
+gst_c2vdec_class_init (GstC2VideoDecoderClass * klass)
 {
   GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
   GstVideoDecoderClass *video_decoder_class = GST_VIDEO_DECODER_CLASS (klass);
@@ -654,7 +654,7 @@ gst_c2vdec_class_init (GstC2vdecClass * klass)
 }
 
 static void
-gst_c2vdec_init (GstC2vdec *c2vdec)
+gst_c2vdec_init (GstC2VideoDecoder *c2vdec)
 {
   g_cond_init (&c2vdec->pending_cond);
   g_mutex_init (&c2vdec->pending_lock);
@@ -684,7 +684,7 @@ gst_c2vdec_init (GstC2vdec *c2vdec)
 static gboolean
 gst_c2vdec_stop (GstVideoDecoder * decoder)
 {
-  GstC2vdec *c2vdec = GST_C2VDEC (decoder);
+  GstC2VideoDecoder *c2vdec = GST_C2_VDEC (decoder);
 
   GST_DEBUG_OBJECT (c2vdec, "stop");
 
@@ -700,7 +700,7 @@ gst_c2vdec_stop (GstVideoDecoder * decoder)
 static gboolean
 gst_c2vdec_set_format (GstVideoDecoder * decoder, GstVideoCodecState * state)
 {
-  GstC2vdec *dec = GST_C2VDEC (decoder);
+  GstC2VideoDecoder *dec = GST_C2_VDEC (decoder);
 
   GST_DEBUG_OBJECT (dec, "set_format");
 
@@ -712,14 +712,14 @@ gst_c2vdec_set_format (GstVideoDecoder * decoder, GstVideoCodecState * state)
   gint height = 0;
   gint id = -1;
   GstVideoInterlaceMode interlace_mode = GST_VIDEO_INTERLACE_MODE_PROGRESSIVE;
-  interlace_mode_t c2interlace_mode = INTERLACE_MODE_PROGRESSIVE;
+  GstC2InterlaceMode c2interlace_mode = GST_C2_INTERLACE_MODE_PROGRESSIVE;
   gchar *comp_name;
   GPtrArray *config = NULL;
-  config_params_t output_block_pool;
-  config_params_t resolution;
-  config_params_t interlace;
-  config_params_t output_picture_order_mode;
-  config_params_t low_latency_mode;
+  GstC2ConfigParams output_block_pool;
+  GstC2ConfigParams resolution;
+  GstC2ConfigParams interlace;
+  GstC2ConfigParams output_picture_order_mode;
+  GstC2ConfigParams low_latency_mode;
 
   GST_DEBUG_OBJECT (dec, "set_format");
 
@@ -740,16 +740,16 @@ gst_c2vdec_set_format (GstVideoDecoder * decoder, GstVideoCodecState * state)
   if ((mode = gst_structure_get_string (structure, "interlace-mode"))) {
     if (g_str_equal ("progressive", mode)) {
       interlace_mode = GST_VIDEO_INTERLACE_MODE_PROGRESSIVE;
-      c2interlace_mode = INTERLACE_MODE_PROGRESSIVE;
+      c2interlace_mode = GST_C2_INTERLACE_MODE_PROGRESSIVE;
     } else if (g_str_equal ("interleaved", mode)) {
       interlace_mode = GST_VIDEO_INTERLACE_MODE_INTERLEAVED;
-      c2interlace_mode = INTERLACE_MODE_INTERLEAVED_TOP_FIRST;
+      c2interlace_mode = GST_C2_INTERLACE_MODE_INTERLEAVED_TOP_FIRST;
     } else if (g_str_equal ("mixed", mode)) {
       interlace_mode = GST_VIDEO_INTERLACE_MODE_MIXED;
-      c2interlace_mode = INTERLACE_MODE_INTERLEAVED_TOP_FIRST;
+      c2interlace_mode = GST_C2_INTERLACE_MODE_INTERLEAVED_TOP_FIRST;
     } else if (g_str_equal ("fields", mode)) {
       interlace_mode = GST_VIDEO_INTERLACE_MODE_FIELDS;
-      c2interlace_mode = INTERLACE_MODE_FIELD_TOP_FIRST;
+      c2interlace_mode = GST_C2_INTERLACE_MODE_FIELD_TOP_FIRST;
     }
   }
 
@@ -846,7 +846,7 @@ error_set_format:
 
 static GstFlowReturn gst_c2vdec_finish (GstVideoDecoder * decoder)
 {
-  GstC2vdec *c2vdec = GST_C2VDEC (decoder);
+  GstC2VideoDecoder *c2vdec = GST_C2_VDEC (decoder);
   gint64 timeout;
   BufferDescriptor inBuf;
 
@@ -858,8 +858,8 @@ static GstFlowReturn gst_c2vdec_finish (GstVideoDecoder * decoder)
   inBuf.size = 0;
   inBuf.timestamp = 0;
   inBuf.index = c2vdec->frame_index;
-  inBuf.flag = FLAG_TYPE_END_OF_STREAM;
-  inBuf.pool_type = BUFFER_POOL_BASIC_LINEAR;
+  inBuf.flag = GST_C2_FLAG_END_OF_STREAM;
+  inBuf.pool_type = GST_C2_BUFFER_POOL_BASIC_LINEAR;
 
   // Setup EOS work
   if (!gst_c2_wrapper_component_queue (c2vdec->wrapper, &inBuf)) {
@@ -890,7 +890,7 @@ static GstFlowReturn gst_c2vdec_finish (GstVideoDecoder * decoder)
 static void
 gst_c2vdec_finalize (GObject * object)
 {
-  GstC2vdec *c2vdec = GST_C2VDEC (object);
+  GstC2VideoDecoder *c2vdec = GST_C2_VDEC (object);
 
   GST_DEBUG_OBJECT (c2vdec, "finalize");
 
@@ -917,7 +917,7 @@ gst_c2vdec_finalize (GObject * object)
 static GstFlowReturn
 gst_c2vdec_handle_frame (GstVideoDecoder * decoder, GstVideoCodecFrame * frame)
 {
-  GstC2vdec *c2vdec = GST_C2VDEC (decoder);
+  GstC2VideoDecoder *c2vdec = GST_C2_VDEC (decoder);
   GstFlowReturn ret = GST_FLOW_OK;
 
   GST_DEBUG_OBJECT (c2vdec, "handle_frame");
@@ -946,7 +946,7 @@ static gboolean
 plugin_init (GstPlugin * plugin)
 {
   return gst_element_register (plugin, "qtic2vdec", GST_RANK_NONE,
-      GST_TYPE_C2VDEC);
+      GST_TYPE_C2_VDEC);
 }
 
 GST_PLUGIN_DEFINE (

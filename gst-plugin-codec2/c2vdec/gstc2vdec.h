@@ -32,16 +32,18 @@
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef _GST_C2VDEC_H_
-#define _GST_C2VDEC_H_
+#ifndef _GST_C2_VDEC_H_
+#define _GST_C2_VDEC_H_
 
 #include <gst/video/video.h>
 #include <gst/video/gstvideodecoder.h>
 #include <gst/allocators/allocators.h>
+
 #include "c2-engine/c2-wrapper.h"
 #include "c2-engine/common.h"
 
 G_BEGIN_DECLS
+
 #define QTICODEC2VDEC_SINK_WH_CAPS    \
   "width  = (int) [ 32, 8192 ], "     \
   "height = (int) [ 32, 8192 ]"
@@ -64,21 +66,27 @@ G_BEGIN_DECLS
 
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
 
-#define GST_TYPE_C2VDEC   (gst_c2vdec_get_type())
-#define GST_C2VDEC(obj)   (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_C2VDEC,GstC2vdec))
-#define GST_C2VDEC_CLASS(klass)   (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_C2VDEC,GstC2vdecClass))
-#define GST_IS_C2VDEC(obj)   (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_C2VDEC))
-#define GST_IS_C2VDEC_CLASS(obj)   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_C2VDEC))
+#define GST_TYPE_C2_VDEC   (gst_c2vdec_get_type())
+#define GST_C2_VDEC(obj) \
+    (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_C2_VDEC,GstC2VideoDecoder))
+#define GST_C2_VDEC_CLASS(klass) \
+    (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_C2_VDEC,GstC2VideoDecoderClass))
+#define GST_IS_C2_VDEC(obj) \
+    (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_C2_VDEC))
+#define GST_IS_C2_VDEC_CLASS(obj) \
+    (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_C2_VDEC))
+
+
 #define MAX_QUEUED_FRAME  64
 #define C2_TICKS_PER_SECOND 1000000
 
-typedef struct _GstC2vdec GstC2vdec;
-typedef struct _GstC2vdecClass GstC2vdecClass;
+typedef struct _GstC2VideoDecoder GstC2VideoDecoder;
+typedef struct _GstC2VideoDecoderClass GstC2VideoDecoderClass;
 
-struct _GstC2vdec
-{
-  GstVideoDecoder base_c2vdec;
-   gboolean silent;
+struct _GstC2VideoDecoder {
+  GstVideoDecoder parent;
+
+  gboolean silent;
 
   void *comp_store;
   void *comp;
@@ -112,9 +120,8 @@ struct _GstC2vdec
   GCond free_buff_cond;
 };
 
-struct _GstC2vdecClass
-{
-  GstVideoDecoderClass base_c2vdec_class;
+struct _GstC2VideoDecoderClass {
+  GstVideoDecoderClass parent;
 };
 
 GType gst_c2vdec_get_type (void);

@@ -34,9 +34,10 @@
 
 #include "c2-config.h"
 
-#include <C2Config.h>
-#include "QC2V4L2Config.h"
 #include <map>
+
+#include <C2Config.h>
+#include <QC2V4L2Config.h>
 
 #define GST_CAT_DEFAULT gst_c2_venc_context_debug_category()
 static GstDebugCategory *
@@ -124,32 +125,32 @@ static configFunctionMap sConfigFunctionMap = {
 };
 
 uint32_t
-toC2PixelFormat (pixel_format_t pixel)
+toC2PixelFormat (GstC2PixelFormat pixel)
 {
   uint32_t result = 0;
 
   switch (pixel) {
-    case PIXEL_FORMAT_NV12_LINEAR: {
+    case GST_C2_PIXEL_FORMAT_NV12_LINEAR: {
       result = C2_PIXEL_FORMAT_VENUS_NV12;
       break;
     }
-    case PIXEL_FORMAT_NV12_UBWC: {
+    case GST_C2_PIXEL_FORMAT_NV12_UBWC: {
       result = C2_PIXEL_FORMAT_VENUS_NV12_UBWC;
       break;
     }
-    case PIXEL_FORMAT_RGBA_8888: {
+    case GST_C2_PIXEL_FORMAT_RGBA_8888: {
       result = C2_PIXEL_FORMAT_RGBA8888;
       break;
     }
-    case PIXEL_FORMAT_YV12: {
+    case GST_C2_PIXEL_FORMAT_YV12: {
       result = C2_PIXEL_FORMAT_YV12;
       break;
     }
-    case PIXEL_FORMAT_P010: {
+    case GST_C2_PIXEL_FORMAT_P010: {
       result = C2_PIXEL_FORMAT_VENUS_P010;
       break;
     }
-    case PIXEL_FORMAT_TP10_UBWC: {
+    case GST_C2_PIXEL_FORMAT_TP10_UBWC: {
       result = C2_PIXEL_FORMAT_VENUS_TP10;
       break;
     }
@@ -163,32 +164,32 @@ toC2PixelFormat (pixel_format_t pixel)
 }
 
 uint32_t
-toC2RateControlMode (rc_mode_t mode)
+toC2RateControlMode (GstC2ControlRate mode)
 {
-  uint32_t rcMode = 0x7F000000; //RC_MODE_EXT_DISABLE
+  uint32_t rcMode = 0x7F000000; //GST_C2_RATE_CTRLMODE_EXT_DISABLE
 
   switch (mode) {
-    case rc_mode_t::RC_MODE_OFF: {
-      rcMode = 0x7F000000; //RC_MODE_EXT_DISABLE
+    case GST_C2_RATE_CTRLMODE_OFF: {
+      rcMode = 0x7F000000; //GST_C2_RATE_CTRLMODE_EXT_DISABLE
       break;
     }
-    case rc_mode_t::RC_MODE_CONST: {
+    case GST_C2_RATE_CTRLMODE_CONST: {
       rcMode = C2Config::BITRATE_CONST;
       break;
     }
-    case rc_mode_t::RC_MODE_CBR_VFR: {
+    case GST_C2_RATE_CTRLMODE_CBR_VFR: {
       rcMode = C2Config::BITRATE_CONST_SKIP_ALLOWED;
       break;
     }
-    case rc_mode_t::RC_MODE_VBR_CFR: {
+    case GST_C2_RATE_CTRLMODE_VBR_CFR: {
       rcMode = C2Config::BITRATE_VARIABLE;
       break;
     }
-    case rc_mode_t::RC_MODE_VBR_VFR: {
+    case GST_C2_RATE_CTRLMODE_VBR_VFR: {
       rcMode = C2Config::BITRATE_VARIABLE_SKIP_ALLOWED;
       break;
     }
-    case rc_mode_t::RC_MODE_CQ: {
+    case GST_C2_RATE_CTRLMODE_CQ: {
       rcMode = C2Config::BITRATE_IGNORE;
       break;
     }
@@ -201,35 +202,35 @@ toC2RateControlMode (rc_mode_t mode)
 }
 
 C2Color::primaries_t
-toC2Primaries (color_primaries_t pixel)
+toC2Primaries (GstC2ColorPrimaries pixel)
 {
   C2Color::primaries_t ret = C2Color::PRIMARIES_UNSPECIFIED;
   switch (pixel) {
-  case COLOR_PRIMARIES_BT709:
+  case GST_C2_COLOR_PRIMARIES_BT709:
     ret = C2Color::PRIMARIES_BT709;
     break;
-  case COLOR_PRIMARIES_BT470_M:
+  case GST_C2_COLOR_PRIMARIES_BT470_M:
     ret = C2Color::PRIMARIES_BT470_M;
     break;
-  case COLOR_PRIMARIES_BT601_625:
+  case GST_C2_COLOR_PRIMARIES_BT601_625:
     ret = C2Color::PRIMARIES_BT601_625;
     break;
-  case COLOR_PRIMARIES_BT601_525:
+  case GST_C2_COLOR_PRIMARIES_BT601_525:
     ret = C2Color::PRIMARIES_BT601_525;
     break;
-  case COLOR_PRIMARIES_GENERIC_FILM:
+  case GST_C2_COLOR_PRIMARIES_GENERIC_FILM:
     ret = C2Color::PRIMARIES_GENERIC_FILM;
     break;
-  case COLOR_PRIMARIES_BT2020:
+  case GST_C2_COLOR_PRIMARIES_BT2020:
     ret = C2Color::PRIMARIES_BT2020;
     break;
-  case COLOR_PRIMARIES_RP431:
+  case GST_C2_COLOR_PRIMARIES_RP431:
     ret = C2Color::PRIMARIES_RP431;
     break;
-  case COLOR_PRIMARIES_EG432:
+  case GST_C2_COLOR_PRIMARIES_EG432:
     ret = C2Color::PRIMARIES_EG432;
     break;
-  case COLOR_PRIMARIES_EBU3213:
+  case GST_C2_COLOR_PRIMARIES_EBU3213:
     ret = C2Color::PRIMARIES_EBU3213;
     break;
   default:
@@ -241,41 +242,41 @@ toC2Primaries (color_primaries_t pixel)
 }
 
 C2Color::transfer_t
-toC2TransferChar (color_transfer_t color_transfer)
+toC2TransferChar (GstC2ColorTransfer color_transfer)
 {
   C2Color::transfer_t ret = C2Color::TRANSFER_UNSPECIFIED;
   switch (color_transfer) {
-  case COLOR_TRANSFER_LINEAR:
+  case GST_C2_COLOR_TRANSFER_LINEAR:
     ret = C2Color::TRANSFER_LINEAR;
     break;
-  case COLOR_TRANSFER_SRGB:
+  case GST_C2_COLOR_TRANSFER_SRGB:
     ret = C2Color::TRANSFER_SRGB;
     break;
-  case COLOR_TRANSFER_170M:
+  case GST_C2_COLOR_TRANSFER_170M:
     ret = C2Color::TRANSFER_170M;
     break;
-  case COLOR_TRANSFER_GAMMA22:
+  case GST_C2_COLOR_TRANSFER_GAMMA22:
     ret = C2Color::TRANSFER_GAMMA22;
     break;
-  case COLOR_TRANSFER_GAMMA28:
+  case GST_C2_COLOR_TRANSFER_GAMMA28:
     ret = C2Color::TRANSFER_GAMMA28;
     break;
-  case COLOR_TRANSFER_ST2084:
+  case GST_C2_COLOR_TRANSFER_ST2084:
     ret = C2Color::TRANSFER_ST2084;
     break;
-  case COLOR_TRANSFER_HLG:
+  case GST_C2_COLOR_TRANSFER_HLG:
     ret = C2Color::TRANSFER_HLG;
     break;
-  case COLOR_TRANSFER_240M:
+  case GST_C2_COLOR_TRANSFER_240M:
     ret = C2Color::TRANSFER_240M;
     break;
-  case COLOR_TRANSFER_XVYCC:
+  case GST_C2_COLOR_TRANSFER_XVYCC:
     ret = C2Color::TRANSFER_XVYCC;
     break;
-  case COLOR_TRANSFER_BT1361:
+  case GST_C2_COLOR_TRANSFER_BT1361:
     ret = C2Color::TRANSFER_BT1361;
     break;
-  case COLOR_TRANSFER_ST428:
+  case GST_C2_COLOR_TRANSFER_ST428:
     ret = C2Color::TRANSFER_ST428;
     break;
   default:
@@ -286,26 +287,26 @@ toC2TransferChar (color_transfer_t color_transfer)
   return ret;
 }
 C2Color::matrix_t
-toC2Matrix (color_matrix_t matrix)
+toC2Matrix (GstC2ColorMatrix matrix)
 {
   C2Color::matrix_t ret = C2Color::MATRIX_UNSPECIFIED;
   switch (matrix) {
-  case COLOR_MATRIX_BT709:
+  case GST_C2_COLOR_MATRIX_BT709:
     ret = C2Color::MATRIX_BT709;
     break;
-  case COLOR_MATRIX_FCC47_73_682:
+  case GST_C2_COLOR_MATRIX_FCC47_73_682:
     ret = C2Color::MATRIX_FCC47_73_682;
     break;
-  case COLOR_MATRIX_BT601:
+  case GST_C2_COLOR_MATRIX_BT601:
     ret = C2Color::MATRIX_BT601;
     break;
-  case COLOR_MATRIX_240M:
+  case GST_C2_COLOR_MATRIX_240M:
     ret = C2Color::MATRIX_240M;
     break;
-  case COLOR_MATRIX_BT2020:
+  case GST_C2_COLOR_MATRIX_BT2020:
     ret = C2Color::MATRIX_BT2020;
     break;
-  case COLOR_MATRIX_BT2020_CONSTANT:
+  case GST_C2_COLOR_MATRIX_BT2020_CONSTANT:
     ret = C2Color::MATRIX_BT2020_CONSTANT;
     break;
   default:
@@ -315,14 +316,14 @@ toC2Matrix (color_matrix_t matrix)
   return ret;
 }
 C2Color::range_t
-toC2FullRange (color_range_t color_range)
+toC2FullRange (GstC2ColorRange color_range)
 {
   C2Color::range_t ret = C2Color::RANGE_UNSPECIFIED;
   switch (color_range) {
-  case COLOR_RANGE_FULL:
+  case GST_C2_COLOR_RANGE_FULL:
     ret = C2Color::RANGE_FULL;
     break;
-  case COLOR_RANGE_LIMITED:
+  case GST_C2_COLOR_RANGE_LIMITED:
     ret = C2Color::RANGE_LIMITED;
     break;
   default:
@@ -333,16 +334,16 @@ toC2FullRange (color_range_t color_range)
 }
 
 uint32_t
-toC2EntropyMode (entropy_mode_t mode)
+toC2EntropyMode (GstC2EntropyMode mode)
 {
   uint32_t entropy_mode = ENTROPYMODE_CAVLC;
 
   switch (mode) {
-    case entropy_mode_t::ENTROPY_MODE_CAVLC: {
+    case GST_C2_ENTROPY_MODE_CAVLC: {
       entropy_mode = ENTROPYMODE_CAVLC;
       break;
     }
-    case entropy_mode_t::ENTROPY_MODE_CABAC: {
+    case GST_C2_ENTROPY_MODE_CABAC: {
       entropy_mode = ENTROPYMODE_CABAC;
       break;
     }
@@ -355,20 +356,20 @@ toC2EntropyMode (entropy_mode_t mode)
 }
 
 uint32_t
-toC2LoopFilterMode (loop_filter_mode_t mode)
+toC2LoopFilterMode (GstC2LoopFilterMode mode)
 {
   uint32_t loop_filter_mode = Qc2AvcLoopFilterEnable;
 
   switch (mode) {
-    case loop_filter_mode_t::LOOP_FILTER_ENABLE: {
+    case GST_C2_LOOP_FILTER_ENABLE: {
       loop_filter_mode = Qc2AvcLoopFilterEnable;
       break;
     }
-    case loop_filter_mode_t::LOOP_FILTER_DISABLE: {
+    case GST_C2_LOOP_FILTER_DISABLE: {
       loop_filter_mode = Qc2AvcLoopFilterDisable;
       break;
     }
-    case loop_filter_mode_t::LOOP_FILTER_DISABLE_SLICE_BOUNDARY: {
+    case GST_C2_LOOP_FILTER_DISABLE_SLICE_BOUNDARY: {
       loop_filter_mode = Qc2AvcLoopFilterDisableSliceBoundary;
       break;
     }
@@ -381,25 +382,25 @@ toC2LoopFilterMode (loop_filter_mode_t mode)
 }
 
 uint32_t
-toC2Rotate (rotate_t rotate)
+toC2Rotate (GstC2Rotate rotate)
 {
-  uint32_t rotate_type = ROTATION_NONE;
+  uint32_t GstC2Rotateype = ROTATION_NONE;
 
   switch (rotate) {
-    case rotate_t::ROTATE_NONE: {
-      rotate_type = ROTATE_NONE;
+    case GST_C2_ROTATE_NONE: {
+      GstC2Rotateype = GST_C2_ROTATE_NONE;
       break;
     }
-    case rotate_t::ROTATE_90_CW: {
-      rotate_type = ROTATION_90;
+    case GST_C2_ROTATE_90_CW: {
+      GstC2Rotateype = ROTATION_90;
       break;
     }
-    case rotate_t::ROTATE_180: {
-      rotate_type = ROTATION_180;
+    case GST_C2_ROTATE_180: {
+      GstC2Rotateype = ROTATION_180;
       break;
     }
-    case rotate_t::ROTATE_90_CCW: {
-      rotate_type = ROTATION_270;
+    case GST_C2_ROTATE_90_CCW: {
+      GstC2Rotateype = ROTATION_270;
       break;
     }
     default: {
@@ -407,44 +408,44 @@ toC2Rotate (rotate_t rotate)
     }
   }
 
-  return rotate_type;
+  return GstC2Rotateype;
 }
 
 uint32_t
-toC2Profile (video_profile_t profile)
+toC2Profile (GstC2VideoProfile profile)
 {
   uint32_t c2_profile = C2Config::profile_t::PROFILE_AVC_BASELINE;
 
   switch (profile) {
-    case video_profile_t::AVC_PROFILE_BASELINE: {
+    case GST_C2_AVC_PROFILE_BASELINE: {
       c2_profile = C2Config::profile_t::PROFILE_AVC_BASELINE;
       break;
     }
-    case video_profile_t::AVC_PROFILE_CONSTRAINT_BASELINE: {
+    case GST_C2_AVC_PROFILE_CONSTRAINT_BASELINE: {
       c2_profile = C2Config::profile_t::PROFILE_AVC_CONSTRAINED_BASELINE;
       break;
     }
-    case video_profile_t::AVC_PROFILE_CONSTRAINT_HIGH: {
+    case GST_C2_AVC_PROFILE_CONSTRAINT_HIGH: {
       c2_profile = C2Config::profile_t::PROFILE_AVC_CONSTRAINED_HIGH;
       break;
     }
-    case video_profile_t::AVC_PROFILE_HIGH: {
+    case GST_C2_AVC_PROFILE_HIGH: {
       c2_profile = C2Config::profile_t::PROFILE_AVC_HIGH;
       break;
     }
-    case video_profile_t::AVC_PROFILE_MAIN: {
+    case GST_C2_AVC_PROFILE_MAIN: {
       c2_profile = C2Config::profile_t::PROFILE_AVC_MAIN;
       break;
     }
-    case video_profile_t::HEVC_PROFILE_MAIN: {
+    case GST_C2_HEVC_PROFILE_MAIN: {
       c2_profile = C2Config::profile_t::PROFILE_HEVC_MAIN;
       break;
     }
-    case video_profile_t::HEVC_PROFILE_MAIN10: {
+    case GST_C2_HEVC_PROFILE_MAIN10: {
       c2_profile = C2Config::profile_t::PROFILE_HEVC_MAIN_10;
       break;
     }
-    case video_profile_t::HEVC_PROFILE_MAIN_STILL_PIC: {
+    case GST_C2_HEVC_PROFILE_MAIN_STILL_PIC: {
       c2_profile = C2Config::profile_t::PROFILE_HEVC_MAIN_STILL;
       break;
     }
@@ -457,192 +458,192 @@ toC2Profile (video_profile_t profile)
 }
 
 uint32_t
-toC2Level (video_level_t level)
+toC2Level (GstC2VideoLevel level)
 {
   uint32_t c2_level = C2Config::level_t::LEVEL_AVC_1;
 
   switch (level) {
-    case video_level_t::AVC_LEVEL_1: {
+    case GST_C2_AVC_LEVEL_1: {
       c2_level = C2Config::level_t::LEVEL_AVC_1;
       break;
     }
-    case video_level_t::AVC_LEVEL_1b: {
+    case GST_C2_AVC_LEVEL_1b: {
       c2_level = C2Config::level_t::LEVEL_AVC_1B;
       break;
     }
-    case video_level_t::AVC_LEVEL_11: {
+    case GST_C2_AVC_LEVEL_11: {
       c2_level = C2Config::level_t::LEVEL_AVC_1_1;
       break;
     }
-    case video_level_t::AVC_LEVEL_12: {
+    case GST_C2_AVC_LEVEL_12: {
       c2_level = C2Config::level_t::LEVEL_AVC_1_2;
       break;
     }
-    case video_level_t::AVC_LEVEL_13: {
+    case GST_C2_AVC_LEVEL_13: {
       c2_level = C2Config::level_t::LEVEL_AVC_1_3;
       break;
     }
-    case video_level_t::AVC_LEVEL_2: {
+    case GST_C2_AVC_LEVEL_2: {
       c2_level = C2Config::level_t::LEVEL_AVC_2;
       break;
     }
-    case video_level_t::AVC_LEVEL_21: {
+    case GST_C2_AVC_LEVEL_21: {
       c2_level = C2Config::level_t::LEVEL_AVC_2_1;
       break;
     }
-    case video_level_t::AVC_LEVEL_22: {
+    case GST_C2_AVC_LEVEL_22: {
       c2_level = C2Config::level_t::LEVEL_AVC_2_2;
       break;
     }
-    case video_level_t::AVC_LEVEL_3: {
+    case GST_C2_AVC_LEVEL_3: {
       c2_level = C2Config::level_t::LEVEL_AVC_3;
       break;
     }
-    case video_level_t::AVC_LEVEL_31: {
+    case GST_C2_AVC_LEVEL_31: {
       c2_level = C2Config::level_t::LEVEL_AVC_3_1;
       break;
     }
-    case video_level_t::AVC_LEVEL_32: {
+    case GST_C2_AVC_LEVEL_32: {
       c2_level = C2Config::level_t::LEVEL_AVC_3_2;
       break;
     }
-    case video_level_t::AVC_LEVEL_4: {
+    case GST_C2_AVC_LEVEL_4: {
       c2_level = C2Config::level_t::LEVEL_AVC_4;
       break;
     }
-    case video_level_t::AVC_LEVEL_41: {
+    case GST_C2_AVC_LEVEL_41: {
       c2_level = C2Config::level_t::LEVEL_AVC_4_1;
       break;
     }
-    case video_level_t::AVC_LEVEL_42: {
+    case GST_C2_AVC_LEVEL_42: {
       c2_level = C2Config::level_t::LEVEL_AVC_4_2;
       break;
     }
-    case video_level_t::AVC_LEVEL_5: {
+    case GST_C2_AVC_LEVEL_5: {
       c2_level = C2Config::level_t::LEVEL_AVC_5;
       break;
     }
-    case video_level_t::AVC_LEVEL_51: {
+    case GST_C2_AVC_LEVEL_51: {
       c2_level = C2Config::level_t::LEVEL_AVC_5_1;
       break;
     }
-    case video_level_t::AVC_LEVEL_52: {
+    case GST_C2_AVC_LEVEL_52: {
       c2_level = C2Config::level_t::LEVEL_AVC_5_2;
       break;
     }
-    case video_level_t::AVC_LEVEL_6: {
+    case GST_C2_AVC_LEVEL_6: {
       c2_level = C2Config::level_t::LEVEL_AVC_6;
       break;
     }
-    case video_level_t::AVC_LEVEL_61: {
+    case GST_C2_AVC_LEVEL_61: {
       c2_level = C2Config::level_t::LEVEL_AVC_6_1;
       break;
     }
-    case video_level_t::AVC_LEVEL_62: {
+    case GST_C2_AVC_LEVEL_62: {
       c2_level = C2Config::level_t::LEVEL_AVC_6_2;
       break;
     }
-    case video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL1: {
+    case GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL1: {
       c2_level = C2Config::level_t::LEVEL_HEVC_MAIN_1;
       break;
     }
-    case video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL2: {
+    case GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL2: {
       c2_level = C2Config::level_t::LEVEL_HEVC_MAIN_2;
       break;
     }
-    case video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL21: {
+    case GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL21: {
       c2_level = C2Config::level_t::LEVEL_HEVC_MAIN_2_1;
       break;
     }
-    case video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL3: {
+    case GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL3: {
       c2_level = C2Config::level_t::LEVEL_HEVC_MAIN_3;
       break;
     }
-    case video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL31: {
+    case GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL31: {
       c2_level = C2Config::level_t::LEVEL_HEVC_MAIN_3_1;
       break;
     }
-    case video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL4: {
+    case GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL4: {
       c2_level = C2Config::level_t::LEVEL_HEVC_MAIN_4;
       break;
     }
-    case video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL41: {
+    case GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL41: {
       c2_level = C2Config::level_t::LEVEL_HEVC_MAIN_4_1;
       break;
     }
-    case video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL5: {
+    case GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL5: {
       c2_level = C2Config::level_t::LEVEL_HEVC_MAIN_5;
       break;
     }
-    case video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL51: {
+    case GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL51: {
       c2_level = C2Config::level_t::LEVEL_HEVC_MAIN_5_1;
       break;
     }
-    case video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL52: {
+    case GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL52: {
       c2_level = C2Config::level_t::LEVEL_HEVC_MAIN_5_2;
       break;
     }
-    case video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL6: {
+    case GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL6: {
       c2_level = C2Config::level_t::LEVEL_HEVC_MAIN_6;
       break;
     }
-    case video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL61: {
+    case GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL61: {
       c2_level = C2Config::level_t::LEVEL_HEVC_MAIN_6_1;
       break;
     }
-    case video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL62: {
+    case GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL62: {
       c2_level = C2Config::level_t::LEVEL_HEVC_MAIN_6_2;
       break;
     }
-    case video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL1: {
+    case GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL1: {
       c2_level = C2_PROFILE_LEVEL_VENDOR_START + 0x100;
       break;
     }
-    case video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL2: {
+    case GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL2: {
       c2_level = C2_PROFILE_LEVEL_VENDOR_START + 0x101;
       break;
     }
-    case video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL21: {
+    case GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL21: {
       c2_level = C2_PROFILE_LEVEL_VENDOR_START + 0x102;
       break;
     }
-    case video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL3: {
+    case GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL3: {
       c2_level = C2_PROFILE_LEVEL_VENDOR_START + 0x103;
       break;
     }
-    case video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL31: {
+    case GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL31: {
       c2_level = C2_PROFILE_LEVEL_VENDOR_START + 0x104;
       break;
     }
-    case video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL4: {
+    case GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL4: {
       c2_level = C2Config::level_t::LEVEL_HEVC_HIGH_4;
       break;
     }
-    case video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL41: {
+    case GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL41: {
       c2_level = C2Config::level_t::LEVEL_HEVC_HIGH_4_1;
       break;
     }
-    case video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL5: {
+    case GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL5: {
       c2_level = C2Config::level_t::LEVEL_HEVC_HIGH_5;
       break;
     }
-    case video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL51: {
+    case GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL51: {
       c2_level = C2Config::level_t::LEVEL_HEVC_HIGH_5_1;
       break;
     }
-    case video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL52: {
+    case GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL52: {
       c2_level = C2Config::level_t::LEVEL_HEVC_HIGH_5_2;
       break;
     }
-    case video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL6: {
+    case GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL6: {
       c2_level = C2Config::level_t::LEVEL_HEVC_HIGH_6;
       break;
     }
-    case video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL61: {
+    case GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL61: {
       c2_level = C2Config::level_t::LEVEL_HEVC_HIGH_6_1;
       break;
     }
-    case video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL62: {
+    case GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL62: {
       c2_level = C2Config::level_t::LEVEL_HEVC_HIGH_6_2;
       break;
     }
@@ -661,7 +662,7 @@ setVideoPixelformat (gpointer param)
     return nullptr;
   }
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   if (config->is_input) {
     C2StreamPixelFormatInfo::input inputColorFmt;
@@ -683,7 +684,7 @@ setVideoResolution (gpointer param)
     return nullptr;
   }
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   if (config->is_input) {
     C2StreamPictureSizeInfo::input size;
@@ -709,7 +710,7 @@ setVideoBitrate (gpointer param)
     return nullptr;
   }
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   if (config->is_input) {
     GST_WARNING("setVideoBitrate input not implemented");
@@ -730,7 +731,7 @@ setVideoFramerate (gpointer param)
     return nullptr;
   }
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   if (config->is_input) {
     GST_WARNING ("setVideoFramerate input not implemented");
@@ -750,11 +751,11 @@ setMirrorType (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   if (config->is_input) {
     qc2::C2VideoMirrorTuning::input mirror;
-    mirror.mirrorType = qc2::QCMirrorType (config->mirror_type);
+    mirror.mirrorType = qc2::QCMirrorType (config->GstC2Mirrorype);
     return C2Param::Copy (mirror);
   } else {
     GST_WARNING ("setMirrorType output not implemented");
@@ -769,7 +770,7 @@ setRotation (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*)param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*)param;
 
   if (config->is_input) {
     qc2::C2VideoRotation::input rotation;
@@ -788,7 +789,7 @@ setRateControl (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   C2StreamBitrateModeTuning::output bitrateMode;
   bitrateMode.value =
@@ -802,7 +803,7 @@ setSyncFrameInterval (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   C2StreamSyncFrameIntervalTuning::output syncFrameInterval;
   syncFrameInterval.value = config->val.i64;
@@ -815,7 +816,7 @@ requestSyncFrame (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   C2StreamRequestSyncFrameTuning::output requestSyncFrame;
   requestSyncFrame.value = config->val.bl;
@@ -828,10 +829,10 @@ setOutputPictureOrderMode (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   qc2::C2VideoPictureOrder::output outputPictureOrderMode;
-  if (config->output_picture_order_mode == OUTPUT_PICTURE_ORDER_DECODER)
+  if (config->output_picture_order_mode == GST_C2_OUTPUT_PICTURE_ORDER_DECODER)
     outputPictureOrderMode.enable = C2_TRUE;
   return C2Param::Copy (outputPictureOrderMode);
 }
@@ -842,10 +843,10 @@ setROIEncoding (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
-  GST_INFO ("Set ROI encoding - %s %s", config->roi.rectPayload,
-      config->roi.rectPayloadExt);
+  GST_INFO ("Set ROI encoding - %s %s", config->roi.payload,
+      config->roi.payload_ext);
 
 #ifndef CODEC2_CONFIG_VERSION_2_0
   qc2::QC2VideoROIRegionInfo::output roiRegion;
@@ -854,13 +855,13 @@ setROIEncoding (gpointer param)
 #endif
 
   auto clip = [](std::size_t len) { return len > 128 ? 128 : len; };
-  roiRegion.timestampUs = config->roi.timestampUs;
+  roiRegion.timestampUs = config->roi.timestamp;
 
   memcpy(roiRegion.type_, "rect", 4);
-  memcpy(roiRegion.rectPayload, config->roi.rectPayload,
-      clip(std::strlen(config->roi.rectPayload)));
-  memcpy(roiRegion.rectPayloadExt, config->roi.rectPayloadExt,
-      clip(std::strlen(config->roi.rectPayloadExt)));
+  memcpy(roiRegion.rectPayload, config->roi.payload,
+      clip(std::strlen(config->roi.payload)));
+  memcpy(roiRegion.rectPayloadExt, config->roi.payload_ext,
+      clip(std::strlen(config->roi.payload_ext)));
 
   return C2Param::Copy (roiRegion);
 }
@@ -871,12 +872,12 @@ setSliceMode (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
-  if (config->slice_mode == SLICE_MODE_BYTES) {
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
+  if (config->slice_mode == GST_C2_SLICE_MODE_BYTES) {
     qc2::C2VideoSliceSizeBytes::output SliceModeBytes;
     SliceModeBytes.value = config->val.u32;
     return C2Param::Copy (SliceModeBytes);
-  } else if (config->slice_mode == SLICE_MODE_MB) {
+  } else if (config->slice_mode == GST_C2_SLICE_MODE_MB) {
     qc2::C2VideoSliceSizeMBCount::output SliceModeMb;
     SliceModeMb.value = config->val.u32;
     return C2Param::Copy (SliceModeMb);
@@ -892,7 +893,7 @@ setQPRanges (gpointer param)
     return nullptr;
 
 #ifndef CODEC2_CONFIG_VERSION_2_0
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
   qc2::C2VideoQPRangeSetting::output qp_ranges;
   qp_ranges.miniqp = config->qp_ranges.miniqp;
   qp_ranges.maxiqp = config->qp_ranges.maxiqp;
@@ -903,7 +904,7 @@ setQPRanges (gpointer param)
 
   return C2Param::Copy (qp_ranges);
 #else
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
   auto qp_ranges = C2StreamPictureQuantizationTuning::output::AllocUnique(3,0u);
   qp_ranges->m.values[0].type_ = I_FRAME;
   qp_ranges->m.values[0].min  = config->qp_ranges.miniqp;
@@ -925,7 +926,7 @@ setDecLowLatency (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   C2GlobalLowLatencyModeTuning lowLatencyMode;
   lowLatencyMode.value = C2_TRUE;
@@ -940,7 +941,7 @@ setDownscale (gpointer param)
     return nullptr;
   }
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   if (config->is_input) {
     GST_WARNING ("setDownscale input not implemented");
@@ -962,7 +963,7 @@ setEncColorSpaceConv (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   qc2::C2VideoCSC::input colorSpaceConv;
   colorSpaceConv.value = config->color_space_conversion;
@@ -975,7 +976,7 @@ setColorAspectsInfo (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   C2StreamColorAspectsInfo::input color_aspects;
   color_aspects.primaries = toC2Primaries (config->color_aspects.primaries);
@@ -991,13 +992,13 @@ setIntraRefresh (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   C2StreamIntraRefreshTuning::output intraRefreshMode;
-  if (config->ir_mode.type == IR_MODE_ARBITRARY) {
+  if (config->ir_mode.type == GST_C2_INTRA_REFRESH_MODE_ARBITRARY) {
     intraRefreshMode.mode = C2Config::INTRA_REFRESH_ARBITRARY;
     intraRefreshMode.period = config->ir_mode.intra_refresh_mbs;
-  } else if (config->ir_mode.type == IR_MODE_DISABLE) {
+  } else if (config->ir_mode.type == GST_C2_INTRA_REFRESH_MODE_DISABLE) {
     intraRefreshMode.mode = C2Config::INTRA_REFRESH_DISABLED;
   } else {
     return nullptr;
@@ -1011,7 +1012,7 @@ setBlurMode (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   if (config->is_input) {
     qc2::C2VideoBlurInfo::input blur;
@@ -1030,7 +1031,7 @@ setBlurResolution (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   if (config->is_input) {
     qc2::C2VideoBlurInfo::input blur;
@@ -1050,7 +1051,7 @@ setEntroyMode (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   qc2::C2VideoEntropyMode::output entropy;
   entropy.value =
@@ -1064,7 +1065,7 @@ setLoopFilterMode (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   qc2::C2VideoDeblockFilter::output loop_filter;
   loop_filter.value =
@@ -1078,7 +1079,7 @@ setQPInit (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
   qc2::C2VideoInitQPSetting::output qp_init;
   qp_init.qpI = config->qp_init.quant_i_frames;
   qp_init.qpIEnable = config->qp_init.quant_i_frames_enable;
@@ -1096,7 +1097,7 @@ setNumLtrFrames (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   qc2::C2VideoLTRCountSetting::input num_ltr_frames;
   num_ltr_frames.count = config->val.u32;
@@ -1110,7 +1111,7 @@ setProfileLevel (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   C2StreamProfileLevelInfo::output profileLevel;
   profileLevel.profile = (C2Config::profile_t)toC2Profile(config->profile);
@@ -1125,7 +1126,7 @@ setRotate (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
 
   qc2::C2VideoRotation::input rotate;
   rotate.angle = (qc2::RotationType)toC2Rotate(config->rotate);
@@ -1139,7 +1140,7 @@ setOutputBlockPoolId (gpointer param)
   if (param == NULL)
     return nullptr;
 
-  config_params_t *config = (config_params_t*) param;
+  GstC2ConfigParams *config = (GstC2ConfigParams*) param;
   C2BlockPool::local_id_t id = config->val.u32;
 
   auto blockPoolTuning =
@@ -1153,7 +1154,7 @@ push_to_settings (gpointer data, gpointer user_data)
 {
   std::list<std::unique_ptr<C2Param>> *settings =
       (std::list<std::unique_ptr<C2Param> >*) user_data;
-  config_params_t *conf_param = (config_params_t*) data;
+  GstC2ConfigParams *conf_param = (GstC2ConfigParams*) data;
 
   auto iter = sConfigFunctionMap.find (conf_param->config_name);
   if (iter != sConfigFunctionMap.end ()) {
@@ -1162,130 +1163,130 @@ push_to_settings (gpointer data, gpointer user_data)
   }
 }
 
-video_profile_t
+GstC2VideoProfile
 gst_c2_utils_h264_profile_from_string (const gchar * profile)
 {
   if (g_str_equal (profile, "baseline"))
-    return video_profile_t::AVC_PROFILE_BASELINE;
+    return GST_C2_AVC_PROFILE_BASELINE;
   else if (g_str_equal (profile, "constraint-baseline"))
-    return video_profile_t::AVC_PROFILE_CONSTRAINT_BASELINE;
+    return GST_C2_AVC_PROFILE_CONSTRAINT_BASELINE;
   else if (g_str_equal (profile, "main"))
-    return video_profile_t::AVC_PROFILE_MAIN;
+    return GST_C2_AVC_PROFILE_MAIN;
   else if (g_str_equal (profile, "high"))
-    return video_profile_t::AVC_PROFILE_HIGH;
+    return GST_C2_AVC_PROFILE_HIGH;
   else if (g_str_equal (profile, "constraint-high"))
-    return video_profile_t::AVC_PROFILE_CONSTRAINT_HIGH;
+    return GST_C2_AVC_PROFILE_CONSTRAINT_HIGH;
 
-  return video_profile_t::VIDEO_PROFILE_MAX;
+  return GST_C2_VIDEO_PROFILE_MAX;
 }
 
-video_profile_t
+GstC2VideoProfile
 gst_c2_utils_h265_profile_from_string (const gchar * profile)
 {
   if (g_str_equal (profile, "main"))
-    return video_profile_t::HEVC_PROFILE_MAIN;
+    return GST_C2_HEVC_PROFILE_MAIN;
   else if (g_str_equal (profile, "main-10"))
-    return video_profile_t::HEVC_PROFILE_MAIN10;
+    return GST_C2_HEVC_PROFILE_MAIN10;
   else if (g_str_equal (profile, "main-still-picture"))
-    return video_profile_t::HEVC_PROFILE_MAIN_STILL_PIC;
+    return GST_C2_HEVC_PROFILE_MAIN_STILL_PIC;
 
-  return video_profile_t::VIDEO_PROFILE_MAX;
+  return GST_C2_VIDEO_PROFILE_MAX;
 }
 
-video_level_t
+GstC2VideoLevel
 gst_c2_utils_h264_level_from_string (const gchar * level)
 {
   if (g_str_equal (level, "1"))
-    return video_level_t::AVC_LEVEL_1;
+    return GST_C2_AVC_LEVEL_1;
   else if (g_str_equal (level, "1b"))
-    return video_level_t::AVC_LEVEL_1b;
+    return GST_C2_AVC_LEVEL_1b;
   else if (g_str_equal (level, "1.1"))
-    return video_level_t::AVC_LEVEL_11;
+    return GST_C2_AVC_LEVEL_11;
   else if (g_str_equal (level, "1.2"))
-    return video_level_t::AVC_LEVEL_12;
+    return GST_C2_AVC_LEVEL_12;
   else if (g_str_equal (level, "1.3"))
-    return video_level_t::AVC_LEVEL_13;
+    return GST_C2_AVC_LEVEL_13;
   else if (g_str_equal (level, "2"))
-    return video_level_t::AVC_LEVEL_2;
+    return GST_C2_AVC_LEVEL_2;
   else if (g_str_equal (level, "2.1"))
-    return video_level_t::AVC_LEVEL_21;
+    return GST_C2_AVC_LEVEL_21;
   else if (g_str_equal (level, "2.2"))
-    return video_level_t::AVC_LEVEL_22;
+    return GST_C2_AVC_LEVEL_22;
   else if (g_str_equal (level, "3"))
-    return video_level_t::AVC_LEVEL_3;
+    return GST_C2_AVC_LEVEL_3;
   else if (g_str_equal (level, "3.1"))
-    return video_level_t::AVC_LEVEL_31;
+    return GST_C2_AVC_LEVEL_31;
   else if (g_str_equal (level, "3.2"))
-    return video_level_t::AVC_LEVEL_32;
+    return GST_C2_AVC_LEVEL_32;
   else if (g_str_equal (level, "4"))
-    return video_level_t::AVC_LEVEL_4;
+    return GST_C2_AVC_LEVEL_4;
   else if (g_str_equal (level, "4.1"))
-    return video_level_t::AVC_LEVEL_41;
+    return GST_C2_AVC_LEVEL_41;
   else if (g_str_equal (level, "4.2"))
-    return video_level_t::AVC_LEVEL_42;
+    return GST_C2_AVC_LEVEL_42;
   else if (g_str_equal (level, "5"))
-    return video_level_t::AVC_LEVEL_5;
+    return GST_C2_AVC_LEVEL_5;
   else if (g_str_equal (level, "5.1"))
-    return video_level_t::AVC_LEVEL_51;
+    return GST_C2_AVC_LEVEL_51;
   else if (g_str_equal (level, "5.2"))
-    return video_level_t::AVC_LEVEL_52;
+    return GST_C2_AVC_LEVEL_52;
   else if (g_str_equal (level, "6.0"))
-    return video_level_t::AVC_LEVEL_6;
+    return GST_C2_AVC_LEVEL_6;
   else if (g_str_equal (level, "6.1"))
-    return video_level_t::AVC_LEVEL_61;
+    return GST_C2_AVC_LEVEL_61;
   else if (g_str_equal (level, "6.2"))
-    return video_level_t::AVC_LEVEL_62;
+    return GST_C2_AVC_LEVEL_62;
 
-  return video_level_t::VIDEO_LEVEL_MAX;
+  return GST_C2_VIDEO_LEVEL_MAX;
 }
 
-video_level_t
+GstC2VideoLevel
 gst_c2_utils_h265_level_from_string (const gchar * level, const gchar * tier)
 {
   if (g_str_equal (tier, "main")) {
     if (g_str_equal (level, "1"))
-      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL1;
+      return GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL1;
     else if (g_str_equal (level, "2"))
-      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL2;
+      return GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL2;
     else if (g_str_equal (level, "2.1"))
-      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL21;
+      return GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL21;
     else if (g_str_equal (level, "3"))
-      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL3;
+      return GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL3;
     else if (g_str_equal (level, "3.1"))
-      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL31;
+      return GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL31;
     else if (g_str_equal (level, "4"))
-      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL4;
+      return GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL4;
     else if (g_str_equal (level, "4.1"))
-      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL41;
+      return GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL41;
     else if (g_str_equal (level, "5"))
-      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL5;
+      return GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL5;
     else if (g_str_equal (level, "5.1"))
-      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL51;
+      return GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL51;
     else if (g_str_equal (level, "5.2"))
-      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL52;
+      return GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL52;
     else if (g_str_equal (level, "6"))
-      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL6;
+      return GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL6;
     else if (g_str_equal (level, "6.1"))
-      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL61;
+      return GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL61;
     else if (g_str_equal (level, "6.2"))
-      return video_level_t::HEVC_LEVEL_MAIN_TIER_LEVEL62;
+      return GST_C2_HEVC_LEVEL_MAIN_TIER_LEVEL62;
   } else if (g_str_equal (tier, "high")) {
     if (g_str_equal (level, "4"))
-      return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL4;
+      return GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL4;
     else if (g_str_equal (level, "4.1"))
-      return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL41;
+      return GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL41;
     else if (g_str_equal (level, "5"))
-      return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL5;
+      return GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL5;
     else if (g_str_equal (level, "5.1"))
-      return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL51;
+      return GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL51;
     else if (g_str_equal (level, "5.2"))
-      return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL52;
+      return GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL52;
     else if (g_str_equal (level, "6"))
-      return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL6;
+      return GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL6;
     else if (g_str_equal (level, "6.1"))
-      return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL61;
+      return GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL61;
     else if (g_str_equal (level, "6.2"))
-      return video_level_t::HEVC_LEVEL_HIGH_TIER_LEVEL62;
+      return GST_C2_HEVC_LEVEL_HIGH_TIER_LEVEL62;
   }
-  return video_level_t::VIDEO_LEVEL_MAX;
+  return GST_C2_VIDEO_LEVEL_MAX;
 }
