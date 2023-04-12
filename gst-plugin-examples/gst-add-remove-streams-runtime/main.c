@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2021,2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -41,12 +41,14 @@
 * add/remove the streams runtime with camera reconfiguration.
 * It creates three streams and add/remove them in different order.
 *
-* The output of the streams can be send to Display or to Filesink by defining
-* this macro USE_DISPLAY
-*
-*
 * Usage:
-* gst-add-remove-streams-runtime
+* gst-add-remove-streams-runtime-example
+*
+* Help:
+* gst-add-remove-streams-runtime-example --help
+*
+* Parameters:
+* -o - Output (Accepted values: "File" or "Display", default is "File")
 *
 */
 
@@ -54,8 +56,6 @@
 #include <glib-unix.h>
 #include <gst/gst.h>
 #include <pthread.h>
-
-#define USE_DISPLAY
 
 typedef struct _GstAppContext GstAppContext;
 typedef struct _GstStreamInf GstStreamInf;
@@ -86,6 +86,8 @@ struct _GstAppContext
   GList *streams_list;
   // Stream count
   gint stream_cnt;
+  // Flag for display usage or filesink
+  gboolean use_display;
   // Mutex lock
   GMutex lock;
   // Exit thread flag
@@ -200,6 +202,245 @@ eos_cb (GstBus * bus, GstMessage * message, gpointer userdata)
   }
 }
 
+static gboolean
+create_encoder_stream (GstAppContext * appctx, GstStreamInf * stream,
+  GstElement *qtiqmmfsrc)
+{
+  static guint output_cnt = 0;
+  gchar temp_str[100];
+  gboolean ret = FALSE;
+
+  // Create the elements
+  snprintf (temp_str, sizeof (temp_str), "capsfilter_%d", appctx->stream_cnt);
+  stream->capsfilter = gst_element_factory_make ("capsfilter", temp_str);
+
+  snprintf (temp_str, sizeof (temp_str), "encoder_%d", appctx->stream_cnt);
+#ifdef CODEC2_ENCODE
+  stream->encoder = gst_element_factory_make ("qtic2venc", temp_str);
+#else
+  stream->encoder = gst_element_factory_make ("omxh264enc", temp_str);
+#endif
+
+  snprintf (temp_str, sizeof (temp_str), "filesink_%d", appctx->stream_cnt);
+  stream->filesink = gst_element_factory_make ("filesink", temp_str);
+
+  snprintf (temp_str, sizeof (temp_str), "h264parse_%d", appctx->stream_cnt);
+  stream->h264parse = gst_element_factory_make ("h264parse", temp_str);
+
+  snprintf (temp_str, sizeof (temp_str), "mp4mux_%d", appctx->stream_cnt);
+  stream->mp4mux = gst_element_factory_make ("mp4mux", temp_str);
+
+  if (!stream->capsfilter || !stream->encoder || !stream->filesink ||
+      !stream->h264parse || !stream->mp4mux) {
+    gst_object_unref (stream->capsfilter);
+    gst_object_unref (stream->encoder);
+    gst_object_unref (stream->filesink);
+    gst_object_unref (stream->h264parse);
+    gst_object_unref (stream->mp4mux);
+    g_printerr ("One element could not be created of found. Exiting.\n");
+    return FALSE;
+  }
+
+  // Set caps the the caps filter
+  g_object_set (G_OBJECT (stream->capsfilter), "caps", stream->qmmf_caps, NULL);
+
+  // Set encoder properties
+  g_object_set (G_OBJECT (stream->encoder), "target-bitrate", 6000000, NULL);
+#ifndef CODEC2_ENCODE
+  g_object_set (G_OBJECT (stream->encoder), "periodicity-idr", 1, NULL);
+  g_object_set (G_OBJECT (stream->encoder), "interval-intraframes", 29, NULL);
+  g_object_set (G_OBJECT (stream->encoder), "control-rate", 2, NULL);
+#endif
+
+  snprintf (temp_str, sizeof (temp_str), "/data/video_%d.mp4", output_cnt++);
+  g_object_set (G_OBJECT (stream->filesink), "location", temp_str, NULL);
+
+  gst_bin_add_many (GST_BIN (appctx->pipeline),
+      stream->capsfilter, stream->encoder, stream->h264parse,
+      stream->mp4mux, stream->filesink, NULL);
+
+  // Sync the elements state to the curtent pipeline state
+  gst_element_sync_state_with_parent (stream->capsfilter);
+  gst_element_sync_state_with_parent (stream->encoder);
+  gst_element_sync_state_with_parent (stream->h264parse);
+  gst_element_sync_state_with_parent (stream->mp4mux);
+  gst_element_sync_state_with_parent (stream->filesink);
+
+  // Link qmmfsrc with capsfilter
+  ret = gst_element_link_pads_full (
+    qtiqmmfsrc, gst_pad_get_name (stream->qmmf_pad),
+    stream->capsfilter, NULL, GST_PAD_LINK_CHECK_DEFAULT);
+  if (!ret) {
+    g_printerr ("Error: Link cannot be done!\n");
+    goto cleanup;
+  }
+
+  // Link the elements
+  if (!gst_element_link_many (stream->capsfilter, stream->encoder,
+          stream->h264parse, stream->mp4mux, stream->filesink, NULL)) {
+    g_printerr ("Error: Link cannot be done!\n");
+    goto cleanup;
+  }
+
+  return TRUE;
+
+cleanup:
+  // Set NULL state to the unlinked elemets
+  gst_element_set_state (stream->capsfilter, GST_STATE_NULL);
+  gst_element_set_state (stream->encoder, GST_STATE_NULL);
+  gst_element_set_state (stream->h264parse, GST_STATE_NULL);
+  gst_element_set_state (stream->mp4mux, GST_STATE_NULL);
+  gst_element_set_state (stream->filesink, GST_STATE_NULL);
+
+  // Remove the elements from the pipeline
+  gst_bin_remove_many (GST_BIN (appctx->pipeline),
+      stream->capsfilter, stream->encoder, stream->h264parse,
+      stream->mp4mux, stream->filesink, NULL);
+
+  return FALSE;
+}
+
+static void
+release_encoder_stream (GstAppContext * appctx, GstStreamInf * stream)
+{
+  GstState state = GST_STATE_VOID_PENDING;
+  GstElement *qtiqmmfsrc;
+
+  // Get qtiqmmfsrc instance
+  qtiqmmfsrc = gst_bin_get_by_name (GST_BIN (appctx->pipeline), "qmmf");
+
+  // Unlink the elements of this stream
+  g_print ("Unlinking elements...\n");
+  gst_element_unlink_many (qtiqmmfsrc, stream->capsfilter, NULL);
+
+  gst_element_get_state (appctx->pipeline, &state, NULL, GST_CLOCK_TIME_NONE);
+  if (state == GST_STATE_PLAYING)
+    gst_element_send_event (stream->encoder, gst_event_new_eos ());
+
+  // Set NULL state to the unlinked elemets
+  gst_element_set_state (stream->capsfilter, GST_STATE_NULL);
+  gst_element_set_state (stream->encoder, GST_STATE_NULL);
+  gst_element_set_state (stream->h264parse, GST_STATE_NULL);
+  gst_element_set_state (stream->mp4mux, GST_STATE_NULL);
+  gst_element_set_state (stream->filesink, GST_STATE_NULL);
+
+  // Unlink the elements of this stream
+  gst_element_unlink_many (stream->capsfilter, stream->encoder,
+      stream->h264parse, stream->mp4mux, stream->filesink, NULL);
+  g_print ("Unlinked successfully \n");
+
+  // Remove the elements from the pipeline
+  gst_bin_remove_many (GST_BIN (appctx->pipeline),
+      stream->capsfilter, stream->encoder, stream->h264parse,
+      stream->mp4mux, stream->filesink, NULL);
+
+  stream->capsfilter = NULL;
+  stream->encoder = NULL;
+  stream->h264parse = NULL;
+  stream->mp4mux = NULL;
+  stream->filesink = NULL;
+
+  gst_object_unref (qtiqmmfsrc);
+}
+
+static gboolean
+create_display_stream (GstAppContext * appctx, GstStreamInf * stream,
+  GstElement *qtiqmmfsrc, gint x, gint y, gint w, gint h)
+{
+  gchar temp_str[100];
+  gboolean ret = FALSE;
+
+  // Create the elements
+  snprintf (temp_str, sizeof (temp_str), "capsfilter_%d", appctx->stream_cnt);
+  stream->capsfilter = gst_element_factory_make ("capsfilter", temp_str);
+
+  snprintf (temp_str, sizeof (temp_str), "waylandsink_%d", appctx->stream_cnt);
+  stream->waylandsink = gst_element_factory_make ("waylandsink", temp_str);
+
+  // Check if all elements are created successfully
+  if (!stream->capsfilter || !stream->waylandsink) {
+    gst_object_unref (stream->capsfilter);
+    gst_object_unref (stream->waylandsink);
+    g_printerr ("One element could not be created of found. Exiting.\n");
+    return FALSE;
+  }
+
+  // Set caps the the caps filter
+  g_object_set (G_OBJECT (stream->capsfilter), "caps", stream->qmmf_caps, NULL);
+
+  // Set waylandsink properties
+  g_object_set (G_OBJECT (stream->waylandsink), "x", x, NULL);
+  g_object_set (G_OBJECT (stream->waylandsink), "y", y, NULL);
+  g_object_set (G_OBJECT (stream->waylandsink), "width", 640, NULL);
+  g_object_set (G_OBJECT (stream->waylandsink), "height", 480, NULL);
+  g_object_set (G_OBJECT (stream->waylandsink), "async", TRUE, NULL);
+  g_object_set (G_OBJECT (stream->waylandsink), "enable-last-sample", FALSE,
+      NULL);
+
+  // Add the elements to the pipeline
+  gst_bin_add_many (GST_BIN (appctx->pipeline),
+      stream->capsfilter, stream->waylandsink, NULL);
+
+  // Sync the elements state to the curtent pipeline state
+  gst_element_sync_state_with_parent (stream->capsfilter);
+  gst_element_sync_state_with_parent (stream->waylandsink);
+
+  // Link qmmfsrc with capsfilter
+  ret = gst_element_link_pads_full (
+    qtiqmmfsrc, gst_pad_get_name (stream->qmmf_pad),
+    stream->capsfilter, NULL, GST_PAD_LINK_CHECK_DEFAULT);
+  if (!ret) {
+    g_printerr ("Error: Link cannot be done!\n");
+    goto cleanup;
+  }
+
+  // Link the elements
+  if (!gst_element_link_many (stream->capsfilter, stream->waylandsink, NULL)) {
+    g_printerr ("Error: Link cannot be done!\n");
+    goto cleanup;
+  }
+
+  return TRUE;
+
+cleanup:
+  // Set NULL state to the unlinked elemets
+  gst_element_set_state (stream->capsfilter, GST_STATE_NULL);
+  gst_element_set_state (stream->waylandsink, GST_STATE_NULL);
+
+  // Remove the elements from the pipeline
+  gst_bin_remove_many (GST_BIN (appctx->pipeline),
+      stream->capsfilter, stream->waylandsink, NULL);
+
+  return FALSE;
+}
+
+static void
+release_display_stream (GstAppContext * appctx, GstStreamInf * stream)
+{
+  // Get qtiqmmfsrc instance
+  GstElement *qtiqmmfsrc =
+      gst_bin_get_by_name (GST_BIN (appctx->pipeline), "qmmf");
+
+  // Unlink the elements of this stream
+  g_print ("Unlinking elements...\n");
+  gst_element_unlink_many (qtiqmmfsrc, stream->capsfilter,
+      stream->waylandsink, NULL);
+  g_print ("Unlinked successfully \n");
+
+  // Set NULL state to the unlinked elemets
+  gst_element_set_state (stream->capsfilter, GST_STATE_NULL);
+  gst_element_set_state (stream->waylandsink, GST_STATE_NULL);
+
+  // Remove the elements from the pipeline
+  gst_bin_remove_many (GST_BIN (appctx->pipeline),
+      stream->capsfilter, stream->waylandsink, NULL);
+
+  stream->capsfilter = NULL;
+  stream->waylandsink = NULL;
+
+  gst_object_unref (qtiqmmfsrc);
+}
+
 /*
  * Add new stream to the pipeline and outputs to the display
  * Requests a new pad from qmmfsrc and link it to the other elements
@@ -210,75 +451,18 @@ eos_cb (GstBus * bus, GstMessage * message, gpointer userdata)
  * h: Camera height
 */
 static GstStreamInf *
-create_stream (GstAppContext * appctx,
-    gint x, gint y, gint w, gint h)
+create_stream (GstAppContext * appctx, gint x, gint y, gint w, gint h)
 {
   gchar temp_str[100];
-  GstElement *qtiqmmfsrc;
   gboolean ret = FALSE;
   GstStreamInf *stream = g_new0 (GstStreamInf, 1);
 
   // Get qtiqmmfsrc instance
-  qtiqmmfsrc = gst_bin_get_by_name (
-      GST_BIN (appctx->pipeline), "qmmf");
-
-  // Create the elements
-  snprintf (temp_str, sizeof (temp_str), "capsfilter_%d",
-      appctx->stream_cnt);
-  stream->capsfilter = gst_element_factory_make ("capsfilter", temp_str);
-#ifdef USE_DISPLAY
-  snprintf (temp_str, sizeof (temp_str), "waylandsink_%d",
-      appctx->stream_cnt);
-  stream->waylandsink = gst_element_factory_make ("waylandsink", temp_str);
-#else
-  snprintf (temp_str, sizeof (temp_str), "encoder_%d",
-      appctx->stream_cnt);
-#ifdef CODEC2_ENCODE
-  stream->encoder = gst_element_factory_make ("qtic2venc", temp_str);
-#else
-  stream->encoder = gst_element_factory_make ("omxh264enc", temp_str);
-#endif
-  snprintf (temp_str, sizeof (temp_str), "filesink_%d",
-      appctx->stream_cnt);
-  stream->filesink = gst_element_factory_make ("filesink", temp_str);
-  snprintf (temp_str, sizeof (temp_str), "h264parse_%d",
-      appctx->stream_cnt);
-  stream->h264parse = gst_element_factory_make ("h264parse", temp_str);
-  snprintf (temp_str, sizeof (temp_str), "mp4mux_%d",
-      appctx->stream_cnt);
-  stream->mp4mux = gst_element_factory_make ("mp4mux", temp_str);
-#endif
+  GstElement *qtiqmmfsrc =
+      gst_bin_get_by_name (GST_BIN (appctx->pipeline), "qmmf");
 
   stream->width = w;
   stream->height = h;
-
-  // Check if all elements are created successfully
-#ifdef USE_DISPLAY
-  if (!appctx->pipeline || !qtiqmmfsrc || !stream->capsfilter ||
-      !stream->waylandsink) {
-    gst_object_unref (qtiqmmfsrc);
-    gst_object_unref (stream->capsfilter);
-    gst_object_unref (stream->waylandsink);
-    g_free (stream);
-    g_printerr ("One element could not be created of found. Exiting.\n");
-    return NULL;
-  }
-#else
-  if (!appctx->pipeline || !qtiqmmfsrc || !stream->capsfilter ||
-      !stream->encoder || !stream->filesink || !stream->h264parse ||
-      !stream->mp4mux) {
-    gst_object_unref (qtiqmmfsrc);
-    gst_object_unref (stream->capsfilter);
-    gst_object_unref (stream->encoder);
-    gst_object_unref (stream->filesink);
-    gst_object_unref (stream->h264parse);
-    gst_object_unref (stream->mp4mux);
-    g_free (stream);
-    g_printerr ("One element could not be created of found. Exiting.\n");
-    return NULL;
-  }
-#endif
-
   stream->qmmf_caps = gst_caps_new_simple ("video/x-raw",
       "format", G_TYPE_STRING, "NV12",
       "width", G_TYPE_INT, w,
@@ -287,51 +471,6 @@ create_stream (GstAppContext * appctx,
       NULL);
   gst_caps_set_features (stream->qmmf_caps, 0,
       gst_caps_features_new ("memory:GBM", NULL));
-  g_object_set (G_OBJECT (stream->capsfilter), "caps", stream->qmmf_caps, NULL);
-
-#ifdef USE_DISPLAY
-  // Set waylandsink properties
-  g_object_set (G_OBJECT (stream->waylandsink), "x", x, NULL);
-  g_object_set (G_OBJECT (stream->waylandsink), "y", y, NULL);
-  g_object_set (G_OBJECT (stream->waylandsink), "width", 640, NULL);
-  g_object_set (G_OBJECT (stream->waylandsink), "height", 480, NULL);
-  g_object_set (G_OBJECT (stream->waylandsink), "async", TRUE, NULL);
-  g_object_set (
-      G_OBJECT (stream->waylandsink), "enable-last-sample", FALSE, NULL);
-#else
-  // Set encoder properties
-  g_object_set (G_OBJECT (stream->encoder), "target-bitrate", 6000000, NULL);
-#ifndef CODEC2_ENCODE
-  g_object_set (G_OBJECT (stream->encoder), "periodicity-idr", 1, NULL);
-  g_object_set (G_OBJECT (stream->encoder), "interval-intraframes", 29, NULL);
-  g_object_set (G_OBJECT (stream->encoder), "control-rate", 2, NULL);
-#endif
-
-  snprintf (temp_str, sizeof (temp_str), "/data/video_%d.mp4",
-      appctx->stream_cnt);
-  g_object_set (G_OBJECT (stream->filesink), "location", temp_str, NULL);
-#endif
-
-  // Add the elements to the pipeline
-#ifdef USE_DISPLAY
-  gst_bin_add_many (GST_BIN (appctx->pipeline),
-      stream->capsfilter, stream->waylandsink, NULL);
-#else
-  gst_bin_add_many (GST_BIN (appctx->pipeline),
-      stream->capsfilter, stream->encoder, stream->h264parse,
-      stream->mp4mux, stream->filesink, NULL);
-#endif
-
-  // Sync the elements state to the curtent pipeline state
-  gst_element_sync_state_with_parent (stream->capsfilter);
-#ifdef USE_DISPLAY
-  gst_element_sync_state_with_parent (stream->waylandsink);
-#else
-  gst_element_sync_state_with_parent (stream->encoder);
-  gst_element_sync_state_with_parent (stream->h264parse);
-  gst_element_sync_state_with_parent (stream->mp4mux);
-  gst_element_sync_state_with_parent (stream->filesink);
-#endif
 
   // Get qmmfsrc Element class
   GstElementClass *qtiqmmfsrc_klass = GST_ELEMENT_GET_CLASS (qtiqmmfsrc);
@@ -349,65 +488,29 @@ create_stream (GstAppContext * appctx,
   }
   g_print ("Pad received - %s\n",  gst_pad_get_name (stream->qmmf_pad));
 
-  // Link qmmfsrc with capsfilter
-  ret = gst_element_link_pads_full (
-    qtiqmmfsrc, gst_pad_get_name (stream->qmmf_pad),
-    stream->capsfilter, NULL, GST_PAD_LINK_CHECK_DEFAULT);
+  if (appctx->use_display) {
+    ret = create_display_stream (appctx, stream, qtiqmmfsrc, x, y, w, h);
+  } else {
+    ret = create_encoder_stream (appctx, stream, qtiqmmfsrc);
+  }
   if (!ret) {
-    g_printerr ("Error: Link cannot be done!\n");
+    g_printerr ("Error: failed to create steam\n");
     goto cleanup;
   }
-
-#ifdef USE_DISPLAY
-  // Link the elements
-  if (!gst_element_link_many (stream->capsfilter, stream->waylandsink, NULL)) {
-    g_printerr ("Error: Link cannot be done!\n");
-    goto cleanup;
-  }
-#else
-  // Link the elements
-  if (!gst_element_link_many (stream->capsfilter, stream->encoder,
-      stream->h264parse, stream->mp4mux, stream->filesink, NULL)) {
-    g_printerr ("Error: Link cannot be done!\n");
-    goto cleanup;
-  }
-#endif
 
   // Add the stream to the list
-  appctx->streams_list =
-      g_list_append (appctx->streams_list, stream);
+  appctx->streams_list = g_list_append (appctx->streams_list, stream);
 
   appctx->stream_cnt++;
-
   gst_object_unref (qtiqmmfsrc);
 
   return stream;
 
 cleanup:
-  // Set NULL state to the unlinked elemets
-  gst_element_set_state (stream->capsfilter, GST_STATE_NULL);
-#ifdef USE_DISPLAY
-  gst_element_set_state (stream->waylandsink, GST_STATE_NULL);
-#else
-  gst_element_set_state (stream->encoder, GST_STATE_NULL);
-  gst_element_set_state (stream->h264parse, GST_STATE_NULL);
-  gst_element_set_state (stream->mp4mux, GST_STATE_NULL);
-  gst_element_set_state (stream->filesink, GST_STATE_NULL);
-#endif
   if (stream->qmmf_pad) {
     // Release the unlinked pad
     gst_element_release_request_pad (qtiqmmfsrc, stream->qmmf_pad);
   }
-
-  // Remove the elements from the pipeline
-#ifdef USE_DISPLAY
-  gst_bin_remove_many (GST_BIN (appctx->pipeline),
-      stream->capsfilter, stream->waylandsink, NULL);
-#else
-  gst_bin_remove_many (GST_BIN (appctx->pipeline),
-      stream->capsfilter, stream->encoder, stream->h264parse,
-      stream->mp4mux, stream->filesink, NULL);
-#endif
 
   gst_object_unref (qtiqmmfsrc);
   gst_caps_unref (stream->qmmf_caps);
@@ -423,59 +526,24 @@ cleanup:
 static void
 release_stream (GstAppContext * appctx, GstStreamInf * stream)
 {
-  GstElement *qtiqmmfsrc;
-  //GstPad *pad = NULL;
-
-  // Get qtiqmmfsrc instance
-  qtiqmmfsrc = gst_bin_get_by_name (
-      GST_BIN (appctx->pipeline), "qmmf");
-
-  // Unlink the elements of this stream
-  g_print ("Unlinking elements...\n");
-#ifdef USE_DISPLAY
-  gst_element_unlink_many (
-      qtiqmmfsrc, stream->capsfilter, stream->waylandsink, NULL);
-#else
-  GstState state = GST_STATE_VOID_PENDING;
-  gst_element_get_state (appctx->pipeline, &state, NULL, GST_CLOCK_TIME_NONE);
-  if (state == GST_STATE_PLAYING)
-    gst_element_send_event (stream->encoder, gst_event_new_eos ());
-
-  gst_element_unlink_many (
-      qtiqmmfsrc, stream->capsfilter, stream->encoder,
-      stream->h264parse, stream->mp4mux, stream->filesink, NULL);
-#endif
-  g_print ("Unlinked successfully \n");
+  // Unlink all elements for that stream
+  if (appctx->use_display) {
+    release_display_stream (appctx, stream);
+  } else {
+    release_encoder_stream (appctx, stream);
+  }
 
   // Deactivation the pad
   gst_pad_set_active (stream->qmmf_pad, FALSE);
 
-  // Set NULL state to the unlinked elemets
-  gst_element_set_state (stream->capsfilter, GST_STATE_NULL);
-#ifdef USE_DISPLAY
-  gst_element_set_state (stream->waylandsink, GST_STATE_NULL);
-#else
-  gst_element_set_state (stream->encoder, GST_STATE_NULL);
-  gst_element_set_state (stream->h264parse, GST_STATE_NULL);
-  gst_element_set_state (stream->mp4mux, GST_STATE_NULL);
-  gst_element_set_state (stream->filesink, GST_STATE_NULL);
-#endif
+  // Get qtiqmmfsrc instance
+  GstElement *qtiqmmfsrc =
+      gst_bin_get_by_name (GST_BIN (appctx->pipeline), "qmmf");
 
   // Release the unlinked pad
   gst_element_release_request_pad (qtiqmmfsrc, stream->qmmf_pad);
 
-  // Remove the elements from the pipeline
-#ifdef USE_DISPLAY
-  gst_bin_remove_many (GST_BIN (appctx->pipeline),
-      stream->capsfilter, stream->waylandsink, NULL);
-#else
-  gst_bin_remove_many (GST_BIN (appctx->pipeline),
-      stream->capsfilter, stream->encoder, stream->h264parse,
-      stream->mp4mux, stream->filesink, NULL);
-#endif
-
   gst_object_unref (qtiqmmfsrc);
-
   gst_caps_unref (stream->qmmf_caps);
 
   // Remove the stream from the list
@@ -633,6 +701,7 @@ thread_fn (gpointer user_data)
 gint
 main (gint argc, gchar * argv[])
 {
+  GOptionContext *ctx = NULL;
   GMainLoop *mloop = NULL;
   GstBus *bus = NULL;
   guint intrpt_watch_id = 0;
@@ -640,10 +709,57 @@ main (gint argc, gchar * argv[])
   GstElement *pipeline = NULL;
   GstElement *qtiqmmfsrc = NULL;
   gboolean ret = FALSE;
+  gchar *output = NULL;
   GstAppContext appctx = {};
   g_mutex_init (&appctx.lock);
   g_cond_init (&appctx.eos_signal);
   appctx.stream_cnt = 0;
+  appctx.use_display = TRUE;
+
+  GOptionEntry entries[] = {
+    { "output", 'o', 0, G_OPTION_ARG_STRING,
+      &output,
+      "What output to use",
+      "Accepted values: \"File\" or \"Display\""
+    },
+    { NULL }
+  };
+
+  // Parse command line entries.
+  if ((ctx = g_option_context_new (
+      "Verifies that multiple streams can run simultaneously "
+      "without interfering with each other")) != NULL) {
+    gboolean success = FALSE;
+    GError *error = NULL;
+
+    g_option_context_add_main_entries (ctx, entries, NULL);
+    g_option_context_add_group (ctx, gst_init_get_option_group ());
+
+    success = g_option_context_parse (ctx, &argc, &argv, &error);
+    g_option_context_free (ctx);
+
+    if (!success && (error != NULL)) {
+      g_printerr ("ERROR: Failed to parse command line options: %s!\n",
+          GST_STR_NULL (error->message));
+      g_clear_error (&error);
+      return -EFAULT;
+    } else if (!success && (NULL == error)) {
+      g_printerr ("ERROR: Initializing: Unknown error!\n");
+      return -EFAULT;
+    }
+  } else {
+    g_printerr ("ERROR: Failed to create options context!\n");
+    return -EFAULT;
+  }
+
+  // By default output is file
+  if (!g_strcmp0 (output, "File")) {
+    g_print ("Output to file\n");
+    appctx.use_display = FALSE;
+  } else {
+    g_print ("Output to display\n");
+    appctx.use_display = TRUE;
+  }
 
   // Initialize GST library.
   gst_init (&argc, &argv);
