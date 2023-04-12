@@ -260,7 +260,7 @@ gst_jpeg_enc_context_destroy (GstJPEGEncoderContext * context)
 
 gboolean
 gst_jpeg_enc_context_execute (GstJPEGEncoderContext * context,
-    GstVideoCodecFrame * frame)
+    GstVideoCodecFrame * frame, gint quality)
 {
   gboolean ret = TRUE;
   GST_DEBUG ("Jpeg encoder execute");
@@ -280,6 +280,7 @@ gst_jpeg_enc_context_execute (GstJPEGEncoderContext * context,
   qmmf::OfflineJpegProcessParams proc_params;
   proc_params.in_buf_fd = gst_fd_memory_get_fd (inmemory);
   proc_params.out_buf_fd = gst_fd_memory_get_fd (outmemory);
+  proc_params.metadata.quality = quality;
 
   // calling EncodeOfflineJPEG() may cause thread context switch
   // to avoid this, we need to use mutex for EncodeOfflineJPEG()
