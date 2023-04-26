@@ -357,7 +357,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
     success = gst_c2_engine_set_parameter (c2venc->engine,
         GST_C2_PARAM_INTRA_REFRESH, GPOINTER_CAST (&(c2venc->intra_refresh)));
     if (!success) {
-      GST_ERROR_OBJECT (c2venc, "Failed to set key frame interval parameter!");
+      GST_ERROR_OBJECT (c2venc, "Failed to set intra refresh mode!");
       return FALSE;
     }
   }

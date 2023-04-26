@@ -188,26 +188,6 @@ class GstC2Notifier : public IC2Notifier {
       size = block.size();
       fd = handle->data[0];
 
-      // Check for AVC/HEVC codecs SPS/PPS/VPS NALs.
-      auto c2param = c2buffer->getInfo(C2StreamInitDataInfo::output::PARAM_TYPE);
-      auto csdinfo =
-          std::static_pointer_cast<const C2StreamInitDataInfo::output>(c2param);
-
-      if (csdinfo) {
-        GST_INFO ("Received codec SPS/PPS/VPS NALs in byte-stream format");
-
-        buffer = gst_buffer_new_and_alloc(csdinfo->flexCount());
-        gst_buffer_fill (buffer, 0, csdinfo->m.value, csdinfo->flexCount());
-
-        GST_BUFFER_FLAG_SET (buffer, GST_BUFFER_FLAG_HEADER);
-        GST_BUFFER_TIMESTAMP (buffer) =
-            gst_util_uint64_scale (timestamp, GST_SECOND, 1000000);
-
-        engine_->callbacks->buffer (buffer, engine_->userdata);
-
-        // Create new GST buffer for the rest of the data.
-        buffer = gst_buffer_new ();
-      }
     } else if (c2buffer->data().type() == C2BufferData::GRAPHIC) {
       const C2ConstGraphicBlock block = c2buffer->data().graphicBlocks().front();
       const C2GraphicView view = block.map().get();
