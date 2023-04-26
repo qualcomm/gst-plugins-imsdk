@@ -177,6 +177,10 @@ gst_video_format_to_gbm_format (GstVideoFormat format)
       return GBM_FORMAT_BGR565;
     case GST_VIDEO_FORMAT_RGB16:
       return GBM_FORMAT_RGB565;
+#if defined(GBM_FORMAT_R8)
+    case GST_VIDEO_FORMAT_GRAY8:
+      return GBM_FORMAT_R8;
+#endif // GBM_FORMAT_R8
     default:
       GST_ERROR ("Unsupported format %s!", gst_video_format_to_string (format));
   }
