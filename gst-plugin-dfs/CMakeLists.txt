@@ -38,11 +38,13 @@ add_library(${GST_DFS} SHARED
   dfs-engine.cc
 )
 
-target_include_directories(${GST_DFS} PUBLIC
-  ${GST_INCLUDE_DIRS}
+# Add target specific precompiler defintions.
+target_compile_definitions(${GST_DFS} PRIVATE
+  $<$<STREQUAL:${TARGET_BOARD_PLATFORM},qrb5165>:TARGET_BOARD_QRB5165>
 )
 
 target_include_directories(${GST_DFS} PRIVATE
+  ${GST_INCLUDE_DIRS}
   ${CMAKE_SOURCE_DIR}
 )
 
@@ -54,6 +56,7 @@ target_link_libraries(${GST_DFS} PRIVATE
   gstqtivideobase
   rv
   fastcvopt
+  $<$<STREQUAL:${TARGET_BOARD_PLATFORM},qrb5165>:mv1>
 )
 
 install(

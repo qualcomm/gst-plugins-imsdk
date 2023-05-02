@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -83,8 +83,8 @@ enum
 
 #define GST_SRC_VIDEO_FORMATS "{ RGB, BGR, RGBA, BGRA, RGBx, BGRx, GRAY8 }"
 
-#define GST_SRC_DISPARITY_CAPS "dfs/disparity-map"
-#define GST_SRC_POINT_CLOUD_CAPS "dfs/point-cloud"
+#define GST_SRC_DISPARITY_CAPS "cvp/x-disparity"
+#define GST_SRC_POINT_CLOUD_CAPS "cvp/x-point-cloud"
 
 
 #define GST_DFS_SRC_CAPS                              \
@@ -221,7 +221,7 @@ gst_dfs_parse_config (gchar * config_location,
   }
 
   if ((rc &=
-          gst_structure_get_array (structure, "camera0_principalPoint",
+          gst_structure_get_array (structure, "left-camera.principal-point",
               &arrvalue))) {
     for (uint i = 0; i < arrvalue->n_values; i++) {
       configuration->camera[0].principalPoint[i] =
@@ -230,7 +230,7 @@ gst_dfs_parse_config (gchar * config_location,
   }
 
   if ((rc &=
-          gst_structure_get_array (structure, "camera1_principalPoint",
+          gst_structure_get_array (structure, "right-camera.principal-point",
               &arrvalue))) {
     for (uint i = 0; i < arrvalue->n_values; i++) {
       configuration->camera[1].principalPoint[i] =
@@ -239,7 +239,7 @@ gst_dfs_parse_config (gchar * config_location,
   }
 
   if ((rc &=
-          gst_structure_get_array (structure, "camera0_focalLength",
+          gst_structure_get_array (structure, "left-camera.focal-length",
               &arrvalue))) {
     for (uint i = 0; i < arrvalue->n_values; i++) {
       configuration->camera[0].focalLength[i] =
@@ -248,7 +248,7 @@ gst_dfs_parse_config (gchar * config_location,
   }
 
   if ((rc &=
-          gst_structure_get_array (structure, "camera1_focalLength",
+          gst_structure_get_array (structure, "right-camera.focal-length",
               &arrvalue))) {
     for (uint i = 0; i < arrvalue->n_values; i++) {
       configuration->camera[1].focalLength[i] =
@@ -257,7 +257,7 @@ gst_dfs_parse_config (gchar * config_location,
   }
 
   if ((rc &=
-          gst_structure_get_array (structure, "camera0_distortion_coefficient",
+          gst_structure_get_array (structure, "left-camera.distortion-coefficient",
               &arrvalue))) {
     for (uint i = 0; i < arrvalue->n_values; i++) {
       configuration->camera[0].distortion[i] =
@@ -266,7 +266,7 @@ gst_dfs_parse_config (gchar * config_location,
   }
 
   if ((rc &=
-          gst_structure_get_array (structure, "camera1_distortion_coefficient",
+          gst_structure_get_array (structure, "right-camera.distortion-coefficient",
               &arrvalue))) {
     for (uint i = 0; i < arrvalue->n_values; i++) {
       configuration->camera[1].distortion[i] =
@@ -274,7 +274,7 @@ gst_dfs_parse_config (gchar * config_location,
     }
   }
 
-  if ((rc &= gst_structure_get_int (structure, "distortion_model", &intvalue))) {
+  if ((rc &= gst_structure_get_int (structure, "distortion-model", &intvalue))) {
     configuration->camera[0].distortionModel = intvalue;
     configuration->camera[1].distortionModel = intvalue;
   }
@@ -332,14 +332,14 @@ gst_dfs_create_pool (GstDfs * dfs, GstCaps * caps)
     }
     size = GST_VIDEO_INFO_SIZE (&info);
 
-  } else if (gst_structure_has_name (structure, "dfs/disparity-map")) {
+  } else if (gst_structure_has_name (structure, "cvp/x-disparity")) {
     GST_INFO_OBJECT (dfs, "Uses SYSTEM memory");
     pool = gst_buffer_pool_new ();
     guint width = GST_VIDEO_INFO_WIDTH (dfs->ininfo) / 2;
     guint height = GST_VIDEO_INFO_HEIGHT (dfs->ininfo);
     size = width * height * sizeof (float);
 
-  } else if (gst_structure_has_name (structure, "dfs/point-cloud")) {
+  } else if (gst_structure_has_name (structure, "cvp/x-point-cloud")) {
     GST_INFO_OBJECT (dfs, "Uses SYSTEM memory");
     pool = gst_buffer_pool_new ();
     guint width = GST_VIDEO_INFO_WIDTH (dfs->ininfo) / 2;
@@ -496,18 +496,22 @@ gst_dfs_fixate_caps (GstBaseTransform * trans,
 
   output = gst_caps_get_structure (outcaps, 0);
 
-  if (gst_structure_has_name (output, "video/x-raw")) {
+  if (gst_structure_has_name (output, "cvp/x-point-cloud")) {
+    outcaps = gst_caps_fixate (outcaps);
+  } else {
 
-    // Fixate the output format.
-    value = gst_structure_get_value (output, "format");
-
-    if (!gst_value_is_fixed (value)) {
-      gst_structure_fixate_field (output, "format");
+    if (gst_structure_has_name (output, "video/x-raw")) {
+      // Fixate the output format.
       value = gst_structure_get_value (output, "format");
-    }
 
-    GST_DEBUG_OBJECT (dfs, "Output format fixed to: %s",
-        g_value_get_string (value));
+      if (!gst_value_is_fixed (value)) {
+        gst_structure_fixate_field (output, "format");
+        value = gst_structure_get_value (output, "format");
+      }
+
+      GST_DEBUG_OBJECT (dfs, "Output format fixed to: %s",
+          g_value_get_string (value));
+    }
 
     gint width = 0, height = 0;
     GstVideoInfo ininfo;
@@ -535,8 +539,7 @@ gst_dfs_fixate_caps (GstBaseTransform * trans,
 
     GST_DEBUG_OBJECT (dfs, "Output width and height fixated to: %dx%d",
         width, height);
-  } else {
-    outcaps = gst_caps_fixate (outcaps);
+
   }
 
   GST_DEBUG_OBJECT (dfs, "Fixated caps to %" GST_PTR_FORMAT, outcaps);
@@ -727,9 +730,9 @@ gst_dfs_set_caps (GstBaseTransform * trans, GstCaps * incaps, GstCaps * outcaps)
     dfs->format =
         gst_video_format_from_string (gst_structure_get_string (structure,
             "format"));
-  } else if (gst_structure_has_name (structure, "dfs/disparity-map")) {
+  } else if (gst_structure_has_name (structure, "cvp/x-disparity")) {
     dfs->output_mode = OUTPUT_MODE_DISPARITY;
-  } else if (gst_structure_has_name (structure, "dfs/point-cloud")) {
+  } else if (gst_structure_has_name (structure, "cvp/x-point-cloud")) {
     dfs->output_mode = OUTPUT_MODE_POINT_CLOUD;
   }
 
@@ -789,7 +792,7 @@ gst_dfs_class_init (GstDfsClass * klass)
 
 
   g_object_class_install_property (gobject, PROP_MODE,
-      g_param_spec_enum ("dfs-mode", "dfs-mode",
+      g_param_spec_enum ("mode", "mode",
           "Select DFS mode", GST_TYPE_DFS_MODE, DEFAULT_PROP_MODE,
           (G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 

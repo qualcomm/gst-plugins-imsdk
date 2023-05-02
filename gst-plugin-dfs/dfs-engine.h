@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -62,18 +62,26 @@ typedef struct{
   guint32 pixelWidth, pixelHeight;
   // Image Memory:
   guint32 memoryStride;
-  guint32 uvOffset;
   // Calibration:
+#if defined(TARGET_BOARD_QRB5165)
+  gfloat principalPoint[2];
+  gfloat focalLength[2];
+  gfloat distortion[8];
+#else
+  guint32 uvOffset;
   gdouble principalPoint[2];
   gdouble focalLength[2];
   gdouble distortion[8];
-  gint32   distortionModel;
+#endif
+  gint32  distortionModel;
 } cameraConfiguration;
 
 typedef struct{
   gfloat translation[3], rotation[3];  // Relative between cameras
   cameraConfiguration camera[2];        // Left/right camera calibrations
+#if !defined(TARGET_BOARD_QRB5165)
   gfloat correctionFactors[4];         // Distance correction
+#endif
 } stereoConfiguration;
 
 
