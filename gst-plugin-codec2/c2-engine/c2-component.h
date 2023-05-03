@@ -61,7 +61,11 @@ enum class C2PixelFormat : uint32_t {
   // 10-bit Tightly-packed and compressed YUV
   kTP10UBWC  = 0x7FA30C09,
   // Venus 10-bit YUV 4:2:0 Planar format
+#ifndef CODEC2_CONFIG_VERSION_2_0
   kP010      = 0x7FA30C0A,
+#else
+  kP010      = 54,
+#endif
   /// YVU 4:2:0 Planar (YV12)
   kYV12      = 842094169,
 };
