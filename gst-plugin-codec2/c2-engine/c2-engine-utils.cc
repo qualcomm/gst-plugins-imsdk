@@ -519,7 +519,12 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       break;
     }
     case GST_C2_PARAM_ROI_ENCODE: {
+#if defined(CODEC2_CONFIG_VERSION_2_0)
+      qc2::QC2VideoROIRegionInfo::input region;
+#else
       qc2::QC2VideoROIRegionInfo::output region;
+#endif // CODEC2_CONFIG_VERSION_2_0
+
       auto rects = reinterpret_cast<GstC2QuantRegions*>(payload)->rects;
       uint32_t n_rects = reinterpret_cast<GstC2QuantRegions*>(payload)->n_rects;
       std::stringstream ss;
