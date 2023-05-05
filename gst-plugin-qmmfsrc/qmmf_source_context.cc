@@ -192,11 +192,15 @@ struct _GstQmmfContext {
   /// Camera sensor active pixels property.
   GstVideoRectangle sensorsize;
   /// Camera Sensor Mode.
-  gint               sensormode;
+  gint              sensormode;
   /// Streams frame rate control mode
   guchar            frc_mode;
   /// Camera IFE direct stream enable
   gboolean          ife_direct_stream;
+  /// Multi Camera (0) Exposure value
+  gint64            master_exp_time;
+  /// Multi Camera (1) Exposure value
+  gint64            slave_exp_time;
 
   /// QMMF Recorder instance.
   ::qmmf::recorder::Recorder *recorder;
@@ -674,6 +678,20 @@ initialize_camera_param (GstQmmfContext * context)
 
   if (tag_id != 0)
     meta.update (tag_id, &(context)->saturation, 1);
+
+  tag_id = get_vendor_tag_by_name ("org.codeaurora.qcamera3.multicam_exptime",
+      "masterExpTime");
+
+  if (tag_id != 0)
+    meta.update (tag_id,
+        (context->master_exp_time) > 0 ? &(context)->master_exp_time : &(context)->exptime, 1);
+
+  tag_id = get_vendor_tag_by_name ("org.codeaurora.qcamera3.multicam_exptime",
+      "slaveExpTime");
+
+  if (tag_id != 0)
+    meta.update (tag_id,
+        (context->slave_exp_time) > 0 ? &(context)->slave_exp_time : &(context)->exptime, 1);
 
   set_vendor_tags (context->defogtable, &meta);
   set_vendor_tags (context->exptable, &meta);
@@ -1822,6 +1840,18 @@ gst_qmmf_context_update_local_props (GstQmmfContext * context,
   if (meta->exists(tag_id)) {
     context->contrast = meta->find(tag_id).data.i32[0];
   }
+
+  tag_id = get_vendor_tag_by_name (
+      "org.codeaurora.qcamera3.multicam_exptime", "masterExpTime");
+  if (meta->exists(tag_id)) {
+    context->master_exp_time = meta->find(tag_id).data.i64[0];
+  }
+
+  tag_id = get_vendor_tag_by_name (
+      "org.codeaurora.qcamera3.multicam_exptime", "slaveExpTime");
+  if (meta->exists(tag_id)) {
+    context->slave_exp_time = meta->find(tag_id).data.i64[0];
+  }
 }
 
 void
@@ -2283,6 +2313,26 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       meta.update(tag_id, &(context)->irmode, 1);
       break;
     }
+    case PARAM_CAMERA_MULTI_CAM_EXPOSURE_TIME:
+    {
+      g_return_if_fail (gst_value_array_get_size (value) == 2);
+
+      context->master_exp_time =
+          g_value_get_int (gst_value_array_get_value (value, 0));
+      context->slave_exp_time =
+          g_value_get_int (gst_value_array_get_value (value, 1));
+
+      guint tag_id = get_vendor_tag_by_name (
+          "org.codeaurora.qcamera3.multicam_exptime", "masterExpTime");
+      meta.update(tag_id,
+          (context->master_exp_time) > 0 ? &(context)->master_exp_time : &(context)->exptime, 1);
+
+      tag_id = get_vendor_tag_by_name (
+          "org.codeaurora.qcamera3.multicam_exptime", "slaveExpTime");
+      meta.update(tag_id,
+          (context->slave_exp_time) > 0 ? &(context)->slave_exp_time : &(context)->exptime, 1);
+      break;
+    }
   }
 
   if (!context->slave && (context->state >= GST_STATE_READY)) {
@@ -2543,6 +2593,19 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
         recorder->GetCameraCharacteristics (context->camera_id, *meta);
 
       g_value_set_pointer (value, meta);
+      break;
+    }
+    case PARAM_CAMERA_MULTI_CAM_EXPOSURE_TIME:
+    {
+      GValue val = G_VALUE_INIT;
+      g_value_init (&val, G_TYPE_INT);
+
+      g_value_set_int (&val, context->master_exp_time);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, context->slave_exp_time);
+      gst_value_array_append_value (value, &val);
+
       break;
     }
   }

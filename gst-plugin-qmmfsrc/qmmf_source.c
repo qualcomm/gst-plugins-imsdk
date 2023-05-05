@@ -28,7 +28,7 @@
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
 *
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -178,6 +178,7 @@ enum
   PROP_CAMERA_STATIC_METADATA,
   PROP_CAMERA_FRC_MODE,
   PROP_CAMERA_IFE_DIRECT_STREAM,
+  PROP_CAMERA_MULTI_CAM_EXPOSURE_TIME,
 };
 
 static GstStaticPadTemplate qmmfsrc_video_src_template =
@@ -836,7 +837,7 @@ qmmfsrc_change_state (GstElement * element, GstStateChange transition)
   switch (transition) {
     case GST_STATE_CHANGE_NULL_TO_READY:
       if (!gst_qmmf_context_open (qmmfsrc->context)) {
-        GST_ERROR_OBJECT (qmmfsrc, "Failed to Open!");
+        GST_ERROR_OBJECT (qmmfsrc, "Failed to Open Camera!");
         return GST_STATE_CHANGE_FAILURE;
       }
       qmmfsrc->isplugged = TRUE;
@@ -1138,6 +1139,10 @@ qmmfsrc_set_property (GObject * object, guint property_id,
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_IFE_DIRECT_STREAM, value);
       break;
+    case PROP_CAMERA_MULTI_CAM_EXPOSURE_TIME:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_MULTI_CAM_EXPOSURE_TIME, value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -1307,6 +1312,10 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
     case PROP_CAMERA_IFE_DIRECT_STREAM:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_IFE_DIRECT_STREAM, value);
+      break;
+    case PROP_CAMERA_MULTI_CAM_EXPOSURE_TIME:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_MULTI_CAM_EXPOSURE_TIME, value);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -1600,6 +1609,18 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           "like IPE",
           DEFAULT_PROP_CAMERA_IFE_DIRECT_STREAM,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+#ifdef MULTI_CAMERA_ENABLE // MULTI_CAMERA_ENABLE
+  g_object_class_install_property (gobject, PROP_CAMERA_MULTI_CAM_EXPOSURE_TIME,
+      gst_param_spec_array ("multi-camera-exp-time", "Multi Camera Exposure Time",
+          "The exposure time (in nano-seconds) for each camera in multi camera"
+          " setup ('<exp-time-1, exp-time-2>') and it is used only when"
+          " exposure-mode is OFF",
+          g_param_spec_int ("exp-time", "Exposure Time",
+              "One of exp-time-1, exp-time-2 value.", 0, G_MAXINT, 0,
+              G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS),
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+#endif  // MULTI_CAMERA_ENABLE
 
   signals[SIGNAL_CAPTURE_IMAGE] =
       g_signal_new_class_handler ("capture-image", G_TYPE_FROM_CLASS (klass),
