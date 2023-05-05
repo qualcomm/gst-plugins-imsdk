@@ -70,16 +70,14 @@
 #define DEFAULT_OPT_ROTATION         GST_GLES_VIDEO_ROTATE_NONE
 #define DEFAULT_OPT_BACKGROUND       0x00000000
 #define DEFAULT_OPT_CLEAR            TRUE
-#define DEFAULT_OPT_RSCALE           128.0
-#define DEFAULT_OPT_GSCALE           128.0
-#define DEFAULT_OPT_BSCALE           128.0
-#define DEFAULT_OPT_ASCALE           128.0
-#define DEFAULT_OPT_QSCALE           128.0
+#define DEFAULT_OPT_RSCALE           1.0
+#define DEFAULT_OPT_GSCALE           1.0
+#define DEFAULT_OPT_BSCALE           1.0
+#define DEFAULT_OPT_ASCALE           1.0
 #define DEFAULT_OPT_ROFFSET          0.0
 #define DEFAULT_OPT_GOFFSET          0.0
 #define DEFAULT_OPT_BOFFSET          0.0
 #define DEFAULT_OPT_AOFFSET          0.0
-#define DEFAULT_OPT_QOFFSET          0.0
 #define DEFAULT_OPT_FLOAT16_FORMAT   FALSE
 #define DEFAULT_OPT_FLOAT32_FORMAT   FALSE
 #define DEFAULT_OPT_UBWC_FORMAT      FALSE
@@ -302,19 +300,27 @@ gst_video_format_to_ib2c_format (GstVideoFormat format)
 
 static guint64
 gst_create_surface (GstGlesVideoConverter * convert, const guint direction,
-    const GstVideoFrame * frame, guint flags)
+    const GstVideoFrame * frame, guint bits)
 {
   GstMemory *memory = NULL;
-  const gchar *type = NULL, *format = NULL, *mode = "";
+  const gchar *name = NULL, *format = NULL, *mode = "";
   ::ib2c::Surface surface;
+  uint32_t flags = 0;
   guint64 surface_id = 0;
 
-  type = (direction == GST_GLES_INPUT) ? "Input" : "Output";
+  if (direction == GST_GLES_INPUT) {
+    name = "Input";
+    flags |= ::ib2c::SurfaceFlags::kInput;
+  } else {
+    name = "Output";
+    flags |= ::ib2c::SurfaceFlags::kOutput;
+  }
+
   format = gst_video_format_to_string (GST_VIDEO_FRAME_FORMAT (frame));
 
   memory = gst_buffer_peek_memory (frame->buffer, 0);
   GST_GLES_RETURN_VAL_IF_FAIL (gst_is_fd_memory (memory), FALSE,
-      "%s buffer memory is not FD backed!", type);
+      "%s buffer memory is not FD backed!", name);
 
   surface.fd = gst_fd_memory_get_fd (memory);
   surface.format = gst_video_format_to_ib2c_format (GST_VIDEO_FRAME_FORMAT (frame));
@@ -324,25 +330,25 @@ gst_create_surface (GstGlesVideoConverter * convert, const guint direction,
   surface.nplanes = GST_VIDEO_FRAME_N_PLANES (frame);
 
   // In case the format has UBWC enabled append additional format mask.
-  if (flags & GST_GLES_UBWC_FORMAT_FLAG) {
+  if (bits & GST_GLES_UBWC_FORMAT_FLAG) {
     surface.format |= ::ib2c::ColorMode::kUBWC;
     mode = " UBWC";
-  } else if (flags & GST_GLES_FLOAT16_FORMAT_FLAG) {
+  } else if (bits & GST_GLES_FLOAT16_FORMAT_FLAG) {
     surface.format |= ::ib2c::ColorMode::kFloat16;
     mode = " FLOAT16";
-  } else if (flags & GST_GLES_FLOAT32_FORMAT_FLAG) {
+  } else if (bits & GST_GLES_FLOAT32_FORMAT_FLAG) {
     surface.format |= ::ib2c::ColorMode::kFloat32;
     mode = " FLOAT32";
   }
 
   GST_TRACE ("%s surface FD[%d] - Width[%u] Height[%u] Format[%s%s] Planes[%u]",
-      type, surface.fd, surface.width, surface.height, format, mode,
+      name, surface.fd, surface.width, surface.height, format, mode,
       surface.nplanes);
 
   surface.stride0 = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0);
   surface.offset0 = GST_VIDEO_FRAME_PLANE_OFFSET (frame, 0);
 
-  GST_TRACE ("%s surface FD[%d] - Stride0[%u] Offset0[%u]", type, surface.fd,
+  GST_TRACE ("%s surface FD[%d] - Stride0[%u] Offset0[%u]", name, surface.fd,
       surface.stride0, surface.offset0);
 
   surface.stride1 = (surface.nplanes >= 2) ?
@@ -350,7 +356,7 @@ gst_create_surface (GstGlesVideoConverter * convert, const guint direction,
   surface.offset1 = (surface.nplanes >= 2) ?
       GST_VIDEO_FRAME_PLANE_OFFSET (frame, 1) : 0;
 
-  GST_TRACE ("%s surface FD[%d] - Stride1[%u] Offset1[%u]", type,
+  GST_TRACE ("%s surface FD[%d] - Stride1[%u] Offset1[%u]", name,
       surface.fd, surface.stride1, surface.offset1);
 
   surface.stride2 = (surface.nplanes >= 3) ?
@@ -358,14 +364,14 @@ gst_create_surface (GstGlesVideoConverter * convert, const guint direction,
   surface.offset2 = (surface.nplanes >= 3) ?
       GST_VIDEO_FRAME_PLANE_OFFSET (frame, 2) : 0;
 
-  GST_TRACE ("%s surface FD[%d] - Stride2[%u] Offset2[%u]", type,
+  GST_TRACE ("%s surface FD[%d] - Stride2[%u] Offset2[%u]", name,
       surface.fd, surface.stride2, surface.offset2);
 
   try {
-    surface_id = convert->engine->CreateSurface (surface);
-    GST_DEBUG ("Created %s surface with id %lx", type, surface_id);
+    surface_id = convert->engine->CreateSurface (surface, flags);
+    GST_DEBUG ("Created %s surface with id %lx", name, surface_id);
   } catch (std::exception& e) {
-    GST_ERROR ("Failed to create %s surface, error: '%s'!", type, e.what());
+    GST_ERROR ("Failed to create %s surface, error: '%s'!", name, e.what());
     return 0;
   }
 
@@ -616,7 +622,7 @@ gst_retrieve_surface_id (GstGlesVideoConverter * convert, GHashTable * surfaces,
     guint direction, const GstVideoFrame * vframe, const GstStructure * opts)
 {
   GstMemory *memory = NULL;
-  guint fd = 0, flags = 0;
+  guint fd = 0, bits = 0;
   guint64 surface_id = 0;
 
   // Get the 1st (and only) memory block from the input GstBuffer.
@@ -628,12 +634,12 @@ gst_retrieve_surface_id (GstGlesVideoConverter * convert, GHashTable * surfaces,
   fd = gst_fd_memory_get_fd (memory);
 
   if (!g_hash_table_contains (surfaces, GUINT_TO_POINTER (fd))) {
-    flags = GET_OPT_UBWC_FORMAT (opts) ? GST_GLES_UBWC_FORMAT_FLAG : 0;
-    flags |= GET_OPT_FLOAT16_FORMAT (opts) ? GST_GLES_FLOAT16_FORMAT_FLAG : 0;
-    flags |= GET_OPT_FLOAT32_FORMAT (opts) ? GST_GLES_FLOAT32_FORMAT_FLAG : 0;
+    bits = GET_OPT_UBWC_FORMAT (opts) ? GST_GLES_UBWC_FORMAT_FLAG : 0;
+    bits |= GET_OPT_FLOAT16_FORMAT (opts) ? GST_GLES_FLOAT16_FORMAT_FLAG : 0;
+    bits |= GET_OPT_FLOAT32_FORMAT (opts) ? GST_GLES_FLOAT32_FORMAT_FLAG : 0;
 
     // Create an input surface and add its ID to the input hash table.
-    surface_id = gst_create_surface (convert, direction, vframe, flags);
+    surface_id = gst_create_surface (convert, direction, vframe, bits);
     GST_GLES_RETURN_VAL_IF_FAIL (surface_id != 0, 0,
         "Failed to create surface!");
 
