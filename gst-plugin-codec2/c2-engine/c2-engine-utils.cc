@@ -37,6 +37,10 @@
 #include <C2PlatformSupport.h>
 #include <C2BlockInternal.h>
 
+#if defined(ENABLE_LINEAR_DMABUF)
+#include <C2DmaBufAllocator.h>
+#endif //ENABLE_LINEAR_DMABUF
+
 #ifdef HAVE_MMM_COLOR_FMT_H
 #include <display/media/mmm_color_fmt.h>
 #else
@@ -1159,7 +1163,7 @@ private:
   C2Allocator::id_t    allocator_id_;
 };
 
-std::shared_ptr<C2Buffer> GstC2Utils::ImportBuffer(GstBuffer* buffer) {
+std::shared_ptr<C2Buffer> GstC2Utils::ImportGraphicBuffer(GstBuffer* buffer) {
 
   GstVideoMeta *vmeta = gst_buffer_get_video_meta (buffer);
   g_return_val_if_fail (vmeta != NULL, nullptr);
@@ -1193,3 +1197,59 @@ std::shared_ptr<C2Buffer> GstC2Utils::ImportBuffer(GstBuffer* buffer) {
 
   return c2buffer;
 }
+
+//TODO: This is a temporary change and this may change once we have a proper
+// solution in codec2 backend for importing fd backed buffers using C2HandleBuf.
+#if defined(ENABLE_LINEAR_DMABUF)
+std::shared_ptr<C2Buffer> GstC2Utils::ImportLinearBuffer(GstBuffer* buffer) {
+
+  int32_t fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (buffer, 0));
+  uint32_t size = gst_buffer_get_size (buffer);
+  static uint32_t index = 0;
+
+  ::android::C2HandleBuf *handle = new android::C2HandleBuf (
+      fd, GST_ROUND_UP_N (size, 4096), index++);
+
+  std::shared_ptr<C2Allocator> allocator;
+  std::shared_ptr<C2AllocatorStore> store =
+      android::GetCodec2PlatformAllocatorStore();
+  auto ret = store->fetchAllocator (
+      android::C2PlatformAllocatorStore::DEFAULT_LINEAR, &allocator);
+  if (ret != C2_OK || allocator == nullptr) {
+    GST_ERROR ("Failed to create C2 allocator");
+    delete handle;
+
+    return nullptr;
+  }
+
+  std::shared_ptr<C2LinearAllocation> allocation;
+  ret = allocator->priorLinearAllocation (handle, &allocation);
+  if (ret != C2_OK) {
+    GST_ERROR ("Prior linear allocation failed");
+    delete handle;
+
+    return nullptr;
+  }
+
+  std::shared_ptr<C2LinearBlock> block =
+      _C2BlockFactory::CreateLinearBlock (allocation);
+  if (!block) {
+    GST_ERROR ("Failed to create linear block!");
+    delete handle;
+
+    return nullptr;
+  }
+  block->mSize = size;
+
+  auto c2buffer = C2Buffer::CreateLinearBuffer (
+      block->share(block->offset(), block->size(), ::C2Fence()));
+  if (!c2buffer) {
+    GST_ERROR ("Failed to create linear C2 buffer");
+    delete handle;
+
+    return nullptr;
+  }
+
+  return c2buffer;
+}
+#endif // ENABLE_LINEAR_DMABUF
