@@ -5,6 +5,10 @@ add_library(${GST_QTI_C2_VENC} SHARED
   c2venc.c
 )
 
+target_compile_definitions(${GST_QTI_C2_VENC} PRIVATE
+  $<$<STREQUAL:${GST_CODEC2_CONFIG_VERSION},2.0>:CODEC2_CONFIG_VERSION_2_0>
+)
+
 target_include_directories(${GST_QTI_C2_VENC} PRIVATE
   ${CMAKE_SOURCE_DIR}
   ${GST_INCLUDE_DIRS}
