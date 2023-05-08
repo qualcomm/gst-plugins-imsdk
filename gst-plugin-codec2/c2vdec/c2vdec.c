@@ -70,8 +70,8 @@ GST_STATIC_PAD_TEMPLATE ("sink",
         "alignment = (string) { au };"
         "video/mpeg,"
         "mpegversion = (int)2;"
-        "video/vp8;"
-        "video/vp9")
+        "video/x-vp8;"
+        "video/x-vp9")
 );
 
 static GstStaticPadTemplate gst_c2_vdec_src_pad_template =
