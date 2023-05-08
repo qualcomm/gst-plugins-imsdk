@@ -55,7 +55,8 @@ G_DEFINE_TYPE (GstC2VDecoder, gst_c2_vdec, GST_TYPE_VIDEO_DECODER);
 
 enum
 {
-  PROP_0
+  PROP_0,
+  PROP_SECURE
 };
 
 static GstStaticPadTemplate gst_c2_vdec_sink_pad_template =
@@ -237,7 +238,8 @@ gst_c2_vdec_set_format (GstVideoDecoder * decoder, GstVideoCodecState * state)
   GstVideoCodecState *outstate = NULL;
   GstCaps *caps = NULL;
   GstStructure *structure = NULL;
-  const gchar *name = NULL, *string = NULL;
+  gchar *name = NULL;
+  const gchar *string = NULL;
   gint width = 0, height = 0, format = GST_VIDEO_FORMAT_UNKNOWN;
   gboolean success = FALSE;
 
@@ -337,6 +339,9 @@ gst_c2_vdec_set_format (GstVideoDecoder * decoder, GstVideoCodecState * state)
     return FALSE;
   }
 
+  if (c2vdec->secure)
+    name = g_strconcat(name, ".secure", NULL);
+
   if ((c2vdec->engine != NULL) && !gst_c2_engine_stop (c2vdec->engine)) {
     GST_ERROR_OBJECT (c2vdec, "Failed to stop engine");
     return FALSE;
@@ -364,6 +369,9 @@ gst_c2_vdec_set_format (GstVideoDecoder * decoder, GstVideoCodecState * state)
     GST_ERROR_OBJECT (c2vdec, "Failed to start engine!");
     return FALSE;
   }
+
+  if (c2vdec->secure)
+    g_free (name);
 
   return TRUE;
 }
@@ -415,6 +423,38 @@ gst_c2_vdec_finish (GstVideoDecoder * decoder)
 }
 
 static void
+gst_c2_vdec_set_property (GObject * object, guint prop_id, const GValue * value,
+    GParamSpec * pspec)
+{
+ GstC2VDecoder *c2vdec = GST_C2_VDEC (object);
+
+  switch (prop_id) {
+    case PROP_SECURE:
+      c2vdec->secure = g_value_get_boolean (value);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
+}
+
+static void
+gst_c2_vdec_get_property (GObject * object, guint prop_id, GValue * value,
+    GParamSpec * pspec)
+{
+  GstC2VDecoder *c2vdec = GST_C2_VDEC (object);
+
+  switch (prop_id) {
+    case PROP_SECURE:
+      g_value_set_boolean (value, c2vdec->secure);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
+}
+
+static void
 gst_c2_vdec_finalize (GObject * object)
 {
   GstC2VDecoder *c2vdec = GST_C2_VDEC (object);
@@ -436,6 +476,8 @@ gst_c2_vdec_class_init (GstC2VDecoderClass * klass)
   GstVideoDecoderClass *vdec_class = GST_VIDEO_DECODER_CLASS (klass);
 
   gobject->finalize = GST_DEBUG_FUNCPTR (gst_c2_vdec_finalize);
+  gobject->set_property = GST_DEBUG_FUNCPTR (gst_c2_vdec_set_property);
+  gobject->get_property = GST_DEBUG_FUNCPTR (gst_c2_vdec_get_property);
 
   gst_element_class_set_static_metadata (element,
       "Codec2 H.264/H.265/VP8/VP9/MPEG Video Decoder", "Codec/Decoder/Video",
@@ -445,6 +487,11 @@ gst_c2_vdec_class_init (GstC2VDecoderClass * klass)
       &gst_c2_vdec_sink_pad_template);
   gst_element_class_add_static_pad_template (element,
       &gst_c2_vdec_src_pad_template);
+
+  g_object_class_install_property (gobject, PROP_SECURE,
+    g_param_spec_boolean ("secure", "Secure", "Secure Playback"
+        "If property is enabled it will select the codec2 secure component",
+        FALSE, G_PARAM_READWRITE));
 
   vdec_class->start = GST_DEBUG_FUNCPTR (gst_c2_vdec_start);
   vdec_class->stop = GST_DEBUG_FUNCPTR (gst_c2_vdec_stop);

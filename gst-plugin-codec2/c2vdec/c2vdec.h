@@ -68,6 +68,9 @@ struct _GstC2VDecoder {
   GstVideoCodecState *outstate;
   /// TRUE if the negotiated output format is UBWC.
   gboolean           isubwc;
+
+  /// Properties
+  gboolean           secure;
 };
 
 struct _GstC2VDecoderClass {
