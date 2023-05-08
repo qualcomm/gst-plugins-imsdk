@@ -51,7 +51,7 @@ G_DEFINE_TYPE (GstC2VDecoder, gst_c2_vdec, GST_TYPE_VIDEO_DECODER);
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
 #endif
 
-#define GST_VIDEO_FORMATS "{ NV12 }"
+#define GST_VIDEO_FORMATS "{ NV12, NV12_10LE32, P010_10LE }"
 
 enum
 {
@@ -94,6 +94,56 @@ gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
       gst_structure_get_string (structure, "compression") : NULL;
 
   return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
+}
+
+static GstVideoFormat
+gst_c2_vdec_get_output_format (GstC2VDecoder * c2vdec,
+    GstStructure *structure, GstVideoFormat format)
+{
+  const gchar *chroma_format = NULL;
+  guint bit_depth_luma = 0, bit_depth_chroma = 0;
+
+  chroma_format = gst_structure_get_string (structure, "chroma-format");
+  gst_structure_get_uint (structure, "bit-depth-luma", &bit_depth_luma);
+  gst_structure_get_uint (structure, "bit-depth-chroma", &bit_depth_chroma);
+
+  if (chroma_format == NULL && bit_depth_luma == 0 && bit_depth_chroma == 0) {
+    //If static HDR10 info is presentin the caps, then bit-depth is 10
+    if (gst_structure_has_field (structure, "mastering-display-info")) {
+      bit_depth_luma = 10;
+      bit_depth_chroma = 10;
+      chroma_format = "4:2:0";
+    } else if (gst_structure_has_name (structure, "video/x-vp9") ||
+        gst_structure_has_name (structure, "video/x-vp8")) {
+      //vp8 and vp9 caps does not have chroma-format, bit-depth fields
+      bit_depth_luma = 8;
+      bit_depth_chroma = 8;
+      chroma_format = "4:2:0";
+    }
+  }
+
+  if (chroma_format == NULL || bit_depth_luma == 0 || bit_depth_chroma == 0) {
+    GST_ERROR_OBJECT (c2vdec, "Unable to get chroma-format or bit-depth");
+    return GST_VIDEO_FORMAT_UNKNOWN;
+  } else if (g_strcmp0 (chroma_format, "4:2:0") != 0) {
+    GST_ERROR_OBJECT (c2vdec, "Unsupported chroma-format %s", chroma_format);
+    return GST_VIDEO_FORMAT_UNKNOWN;
+  }
+
+  if (bit_depth_luma == 8 && bit_depth_chroma == 8) {
+    format = GST_VIDEO_FORMAT_NV12;
+  } else if (bit_depth_luma == 10 && bit_depth_chroma == 10) {
+    if (format != GST_VIDEO_FORMAT_NV12_10LE32 && !c2vdec->isubwc) {
+      format = GST_VIDEO_FORMAT_P010_10LE;
+    } else if (format == GST_VIDEO_FORMAT_NV12_10LE32 && c2vdec->isubwc) {
+      format = GST_VIDEO_FORMAT_NV12_10LE32;
+    } else {
+      GST_ERROR_OBJECT (c2vdec, "Unsupported format");
+      return GST_VIDEO_FORMAT_UNKNOWN;
+    }
+  }
+
+  return format;
 }
 
 static gboolean
@@ -253,19 +303,21 @@ gst_c2_vdec_set_format (GstVideoDecoder * decoder, GstVideoCodecState * state)
   GstStructure *structure = NULL;
   gchar *name = NULL;
   const gchar *string = NULL;
-  gint width = 0, height = 0, format = GST_VIDEO_FORMAT_UNKNOWN;
+  gint width = 0, height = 0;
+  GstVideoFormat format = GST_VIDEO_FORMAT_UNKNOWN;
   gboolean success = FALSE;
 
   GST_DEBUG_OBJECT (c2vdec, "Setting new caps %" GST_PTR_FORMAT, state->caps);
 
   caps = gst_pad_get_allowed_caps (GST_VIDEO_DECODER_SRC_PAD (c2vdec));
 
+  structure = gst_caps_get_structure (caps, 0);
+  c2vdec->isubwc = gst_caps_has_compression (caps, "ubwc");
+
+  if ((string = gst_structure_get_string (structure, "format")) != NULL)
+    format = gst_video_format_from_string (string);
+
   if ((caps != NULL) && !gst_caps_is_empty (caps) && gst_caps_is_fixed (caps)) {
-    structure = gst_caps_get_structure (caps, 0);
-
-    if ((string = gst_structure_get_string (structure, "format")) != NULL)
-      format = gst_video_format_from_string (string);
-
     success = (format != GST_VIDEO_FORMAT_UNKNOWN) ? TRUE : FALSE;
     success &= gst_structure_get_int (structure, "width", &width);
     success &= gst_structure_get_int (structure, "height", &height);
@@ -274,7 +326,8 @@ gst_c2_vdec_set_format (GstVideoDecoder * decoder, GstVideoCodecState * state)
 
     success = gst_structure_get_int (structure, "width", &width);
     success &= gst_structure_get_int (structure, "height", &height);
-    format = GST_VIDEO_FORMAT_NV12;
+    format = gst_c2_vdec_get_output_format (c2vdec, structure, format);
+    success &= (format != GST_VIDEO_FORMAT_UNKNOWN) ? TRUE : FALSE;
   }
 
   if (caps != NULL)
@@ -331,7 +384,6 @@ gst_c2_vdec_set_format (GstVideoDecoder * decoder, GstVideoCodecState * state)
     gst_video_codec_state_unref (c2vdec->outstate);
 
   c2vdec->outstate = outstate;
-  c2vdec->isubwc = gst_caps_has_compression (outstate->caps, "ubwc");
 
   // Extract the component name from the input state caps.
   structure = gst_caps_get_structure (state->caps, 0);
