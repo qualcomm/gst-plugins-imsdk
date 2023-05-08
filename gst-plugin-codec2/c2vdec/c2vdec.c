@@ -124,6 +124,19 @@ gst_c2_vdec_setup_parameters (GstC2VDecoder * c2vdec,
     return FALSE;
   }
 
+#if defined(CODEC2_CONFIG_VERSION_1_0)
+  gdouble framerate = 0.0;
+  gst_util_fraction_to_double (GST_VIDEO_INFO_FPS_N (info),
+      GST_VIDEO_INFO_FPS_D (info), &framerate);
+
+  success = gst_c2_engine_set_parameter (c2vdec->engine,
+      GST_C2_PARAM_IN_FRAMERATE, GPOINTER_CAST (&framerate));
+  if (!success) {
+    GST_ERROR_OBJECT (c2vdec, "Failed to set input framerate parameter!");
+    return FALSE;
+  }
+#endif // CODEC2_CONFIG_VERSION_1_0
+
   return TRUE;
 }
 
