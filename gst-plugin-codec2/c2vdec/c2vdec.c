@@ -119,6 +119,8 @@ gst_c2_vdec_get_output_format (GstC2VDecoder * c2vdec,
       bit_depth_luma = 8;
       bit_depth_chroma = 8;
       chroma_format = "4:2:0";
+      //TODO: for vp8 and vp9 code is assuming NV12 which may not be true
+      //needs to be fixed
     }
   }
 
@@ -148,9 +150,9 @@ gst_c2_vdec_get_output_format (GstC2VDecoder * c2vdec,
 
 static gboolean
 gst_c2_vdec_setup_parameters (GstC2VDecoder * c2vdec,
-    GstVideoCodecState * state)
+    GstVideoCodecState * instate, GstVideoCodecState * outstate)
 {
-  GstVideoInfo *info = &state->info;
+  GstVideoInfo *info = &outstate->info;
   GstC2PixelInfo pixinfo = { GST_VIDEO_FORMAT_UNKNOWN, FALSE };
   GstC2Resolution resolution = { 0, 0 };
   gboolean success = FALSE;
@@ -174,6 +176,39 @@ gst_c2_vdec_setup_parameters (GstC2VDecoder * c2vdec,
     GST_ERROR_OBJECT (c2vdec, "Failed to set output resolution parameter!");
     return FALSE;
   }
+
+  success = gst_c2_engine_set_parameter (c2vdec->engine,
+      GST_C2_PARAM_COLOR_ASPECTS_TUNING, GPOINTER_CAST (&info->colorimetry));
+  if (!success) {
+    GST_ERROR_OBJECT (c2vdec, "Failed to set Color Aspects parameter!");
+    return FALSE;
+  }
+
+#if (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
+  GstStructure * structure = gst_caps_get_structure (instate->caps, 0);
+
+  if (gst_structure_has_field (structure, "mastering-display-info") ||
+        gst_structure_has_field (structure, "content-light-level")) {
+    GstC2HdrStaticMetadata hdrstaticinfo = { 0, };
+    gboolean success = FALSE;
+
+    success |=
+        gst_video_mastering_display_info_from_caps (&hdrstaticinfo.mdispinfo,
+            instate->caps);
+    success |=
+        gst_video_content_light_level_from_caps(&hdrstaticinfo.clightlevel,
+            instate->caps);
+
+    if (success) {
+      success = gst_c2_engine_set_parameter (c2vdec->engine,
+          GST_C2_PARAM_HDR_STATIC_METADATA, GPOINTER_CAST (&hdrstaticinfo));
+      if (!success) {
+        GST_ERROR_OBJECT (c2vdec, "Failed to set Hdr static metadata parameter!");
+        return FALSE;
+      }
+    }
+  }
+#endif // (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
 
 #if defined(CODEC2_CONFIG_VERSION_1_0)
   gdouble framerate = 0.0;
@@ -464,7 +499,7 @@ gst_c2_vdec_set_format (GstVideoDecoder * decoder, GstVideoCodecState * state)
     g_return_val_if_fail (c2vdec->engine != NULL, FALSE);
   }
 
-  if (!gst_c2_vdec_setup_parameters (c2vdec, c2vdec->outstate)) {
+  if (!gst_c2_vdec_setup_parameters (c2vdec, state, c2vdec->outstate)) {
     GST_ERROR_OBJECT (c2vdec, "Failed to setup parameters!");
     return FALSE;
   }
