@@ -214,13 +214,11 @@ video_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
     }
     case GST_QUERY_LATENCY:
     {
-      GstClockTime min_latency, max_latency;
+      GstClockTime min_latency = 0, max_latency = GST_CLOCK_TIME_NONE;
 
-      // Minimum latency is the time to capture one video frame.
-      min_latency = GST_QMMFSRC_VIDEO_PAD (pad)->duration;
-
-      // TODO This will change once GstBufferPool is implemented.
-      max_latency = GST_CLOCK_TIME_NONE;
+      if (GST_QMMFSRC_VIDEO_PAD (pad)->duration != GST_CLOCK_TIME_NONE)
+        // Minimum latency is the time to capture one video frame.
+        min_latency = GST_QMMFSRC_VIDEO_PAD (pad)->duration;
 
       GST_DEBUG_OBJECT (pad, "Latency %" GST_TIME_FORMAT "/%" GST_TIME_FORMAT,
           GST_TIME_ARGS (min_latency), GST_TIME_ARGS (max_latency));
