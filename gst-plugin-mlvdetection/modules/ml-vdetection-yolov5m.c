@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -55,14 +55,14 @@
 // Offset values for each of the 3 primary tensors needed for dequantization.
 static const gint32 p_qoffsets[3] = { 128, 128, 128 };
 // Scale values for each of the 3 primary tensors needed for dequantization.
-static const gfloat p_qscales[3] = { 0.163093, 0.170221, 0.213311 };
+static const gfloat p_qscales[3] = { 0.181336, 0.158401, 0.146546 };
 // Bounding box weights for each of the 3 tensors used for normalization.
-static const gint32 weights[3][2] = { {32, 32}, {16, 16}, {8, 8} };
+static const gint32 weights[3][2] = { {8, 8}, {16, 16}, {32, 32} };
 // Bounding box gains for each of the 3 tensors used for normalization.
 static const gint32 gains[3][3][2] = {
-    { {116, 90}, {156, 198}, {373, 326} },
-    { {30,  61}, {62,   45}, {59,  119} },
     { {10,  13}, {16,   30}, {33,   23} },
+    { {30,  61}, {62,   45}, {59,  119} },
+    { {116, 90}, {156, 198}, {373, 326} },
 };
 
 // Offset value for dequantizing the tensors with the 2nd set of caps.
@@ -73,7 +73,7 @@ static const gfloat s_qscale = 0.005047998391091824;
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
     "type = (string) { UINT8 }, " \
-    "dimensions = (int) < <1, 3, 20, 12, 85>, <1, 3, 40, 24, 85 >, <1, 3, 80, 48, 85> >; " \
+    "dimensions = (int) < <1, 3, 80, 48, 85>, <1, 3, 40, 24, 85 >, <1, 3, 20, 12, 85> >; " \
     "neural-network/tensors, " \
     "type = (string) { UINT8 }, " \
     "dimensions = (int) < < 1, 6300, 85 > >"
