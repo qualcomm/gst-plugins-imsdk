@@ -70,10 +70,15 @@
 #define GFLOAT_PTR_CAST(data)       ((gfloat*)data)
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
 
+// TODO: The tensors in 2nd caps are temporarily negotiated as FLOAT since
+// each tensor is of different data type in QNN
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
     "type = (string) { FLOAT32 }, " \
     "dimensions = (int) < < 1, 10, 4 >, < 1, 10 >, < 1, 10 >, < 1 > >; " \
+    "neural-network/tensors, " \
+    "type = (string) { FLOAT32 }, " \
+    "dimensions = (int) < < 1, 10 >, < 1, 10, 4 >, < 1, 10 >, < 1 >, < 1, 10 > >; " \
     "neural-network/tensors, " \
     "type = (string) { FLOAT32 }, " \
     "dimensions = (int) < < 1, 100 >, < 1 >, < 1, 100, 4 >, < 1, 100 > >; " \
@@ -222,18 +227,25 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     return FALSE;
   }
 
-  if (GST_ML_INFO_N_DIMENSIONS (&(submodule->mlinfo), 3) == 1) {
-    bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
-    classes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
-    scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
-    n_boxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
-  }
+  if (GST_ML_INFO_N_TENSORS (&(submodule->mlinfo)) == 4) {
+    if (GST_ML_INFO_N_DIMENSIONS (&(submodule->mlinfo), 3) == 1) {
+      bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+      classes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+      scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
+      n_boxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
+    }
 
-  if (GST_ML_INFO_N_DIMENSIONS (&(submodule->mlinfo), 3) == 2) {
-    bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
-    classes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
-    scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
-    n_boxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+    if (GST_ML_INFO_N_DIMENSIONS (&(submodule->mlinfo), 3) == 2) {
+      bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
+      classes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+      scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
+      n_boxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+    }
+  } else if (GST_ML_INFO_N_TENSORS (&(submodule->mlinfo)) == 5) {
+    bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+    classes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 4));
+    scores= GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+    n_boxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
   }
 
   n_entries = n_boxes[0];
