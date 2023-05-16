@@ -184,6 +184,19 @@ class GstC2Utils {
   static std::shared_ptr<C2Buffer> CreateBuffer(
       GstBuffer* buffer, std::shared_ptr<C2LinearBlock>& block);
 
+#if defined(ENABLE_AUDIO_PLUGINS)
+  /** CreateBuffer
+   * @buffer: Pointer to GStreamer buffer.
+   * @c2Buffer: Reference to Codec2 C2Buffer.
+   *
+   * Copy the data from the GStreamer buffer into the Codec2 C2Buffer
+   *
+   * return: Empty shared pointer on failure.
+   **/
+  static std::shared_ptr<C2Buffer> CreateBuffer(
+      GstBuffer* buffer, std::shared_ptr<qc2audio::QC2Buffer>& qc2Buffer);
+#endif //ENABLE_AUDIO_PLUGINS
+
   /** ImportGraphicBuffer
    * @buffer: Pointer to GStreamer buffer.
    *

@@ -65,8 +65,8 @@ typedef struct _GstC2HdrStaticMetadata GstC2HdrStaticMetadata;
 
 // Gstreamer Codec2 Engine parameter types.
 enum {
-  GST_C2_PARAM_IN_FORMAT,            // GstC2PixelInfo
-  GST_C2_PARAM_OUT_FORMAT,           // GstC2PixelInfo
+  GST_C2_PARAM_IN_PIXEL_FORMAT,      // GstC2PixelInfo
+  GST_C2_PARAM_OUT_PIXEL_FORMAT,     // GstC2PixelInfo
   GST_C2_PARAM_IN_RESOLUTION,        // GstC2Resolution
   GST_C2_PARAM_OUT_RESOLUTION,       // GstC2Resolution
   GST_C2_PARAM_IN_FRAMERATE,         // gdouble
@@ -101,6 +101,14 @@ enum {
   GST_C2_PARAM_COLOR_ASPECTS_TUNING, // GstVideoColorimetry
   GST_C2_PARAM_REPORT_AVG_QP,        // gboolean
   GST_C2_PARAM_LTR_MARK,             // guint32
+  GST_C2_PARAM_IN_SAMPLE_RATE,       // guint32
+  GST_C2_PARAM_OUT_SAMPLE_RATE,      // guint32
+  GST_C2_PARAM_IN_CHANNELS_COUNT,    // guint32
+  GST_C2_PARAM_OUT_CHANNELS_COUNT,   // guint32
+  GST_C2_PARAM_IN_BITDEPTH,          // GstC2Bitdepth
+  GST_C2_PARAM_OUT_BITDEPTH,         // GstC2Bitdepth
+  GST_C2_PARAM_IN_AAC_FORMAT,       // GstC2AACStreamFormat
+  GST_C2_PARAM_OUT_AAC_FORMAT,       // GstC2AACStreamFormat
 };
 
 typedef enum {
@@ -113,6 +121,9 @@ typedef enum {
   GST_C2_PROFILE_HEVC_MAIN,
   GST_C2_PROFILE_HEVC_MAIN10,
   GST_C2_PROFILE_HEVC_MAIN_STILL,
+
+  GST_C2_PROFILE_AAC_LC,
+  GST_C2_PROFILE_AAC_MAIN,
 
   GST_C2_PROFILE_INVALID,
 } GstC2Profile;
@@ -161,6 +172,8 @@ typedef enum {
   GST_C2_LEVEL_HEVC_HIGH_6,
   GST_C2_LEVEL_HEVC_HIGH_6_1,
   GST_C2_LEVEL_HEVC_HIGH_6_2,
+
+  GST_C2_LEVEL_UNUSED,
 
   GST_C2_LEVEL_INVALID,
 } GstC2Level;
@@ -215,6 +228,17 @@ typedef enum {
   GST_C2_P_FRAME,
   GST_C2_B_FRAME,
 } GstC2PictureType;
+
+typedef enum {
+  GST_C2_PCM_16,
+  GST_C2_PCM_8,
+  GST_C2_PCM_FLOAT,
+} GstC2Bitdepth;
+
+typedef enum {
+  GST_C2_AAC_PACKAGING_RAW,
+  GST_C2_AAC_PACKAGING_ADTS,
+} GstC2AACStreamFormat;
 
 struct _GstC2PixelInfo {
   GstVideoFormat format;
@@ -294,15 +318,19 @@ struct _GstC2TemporalLayer {
 
 guint gst_c2_utils_h264_profile_from_string (const gchar * profile);
 guint gst_c2_utils_h265_profile_from_string (const gchar * profile);
+guint gst_c2_utils_aac_profile_from_string (const gchar * profile);
 
 const gchar * gst_c2_utils_h264_profile_to_string (guint profile);
 const gchar * gst_c2_utils_h265_profile_to_string (guint profile);
+const gchar * gst_c2_utils_aac_profile_to_string (guint profile);
 
 guint gst_c2_utils_h264_level_from_string (const gchar * level);
 guint gst_c2_utils_h265_level_from_string (const gchar * level, const gchar * tier);
+guint gst_c2_utils_aac_level_from_string (const gchar * level);
 
 const gchar * gst_c2_utils_h264_level_to_string (guint level);
 const gchar * gst_c2_utils_h265_level_to_string (guint level);
+const gchar * gst_c2_utils_aac_level_to_string (guint level);
 
 G_END_DECLS
 

@@ -1,0 +1,32 @@
+if (GST_ENABLE_AUDIO_PLUGINS)
+
+# GStreamer plugin.
+set(GST_QTI_C2_AENC gstqtic2aenc)
+
+add_library(${GST_QTI_C2_AENC} SHARED
+  c2aenc.c
+)
+
+target_include_directories(${GST_QTI_C2_AENC} PRIVATE
+  ${CMAKE_SOURCE_DIR}
+  ${GST_INCLUDE_DIRS}
+)
+
+target_link_libraries(${GST_QTI_C2_AENC} PRIVATE
+  ${GST_LIBRARIES}
+  ${GST_ALLOC_LIBRARIES}
+  ${GST_VIDEO_LIBRARIES}
+  ${GST_AUDIO_LIBRARIES}
+  ${GST_PBUTILS_LIBRARIES}
+  c2engine
+)
+
+install(
+  TARGETS ${GST_QTI_C2_AENC}
+  LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0
+  PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
+              GROUP_EXECUTE GROUP_READ
+              WORLD_EXECUTE WORLD_READ
+)
+
+endif()

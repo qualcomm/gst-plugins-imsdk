@@ -161,7 +161,7 @@ gst_c2_vdec_setup_parameters (GstC2VDecoder * c2vdec,
   pixinfo.isubwc = c2vdec->isubwc;
 
   success = gst_c2_engine_set_parameter (c2vdec->engine,
-      GST_C2_PARAM_OUT_FORMAT, GPOINTER_CAST (&pixinfo));
+      GST_C2_PARAM_OUT_PIXEL_FORMAT, GPOINTER_CAST (&pixinfo));
   if (!success) {
     GST_ERROR_OBJECT (c2vdec, "Failed to set output format parameter!");
     return FALSE;
@@ -524,7 +524,8 @@ gst_c2_vdec_set_format (GstVideoDecoder * decoder, GstVideoCodecState * state)
     c2vdec->name = g_strdup (name);
 
   if (c2vdec->engine == NULL) {
-    c2vdec->engine = gst_c2_engine_new (c2vdec->name, &callbacks, c2vdec);
+    c2vdec->engine = gst_c2_engine_new (c2vdec->name, GST_C2_MODE_VIDEO_DECODE,
+        &callbacks, c2vdec);
     g_return_val_if_fail (c2vdec->engine != NULL, FALSE);
   }
 
@@ -548,6 +549,11 @@ static GstFlowReturn
 gst_c2_vdec_handle_frame (GstVideoDecoder * decoder, GstVideoCodecFrame * frame)
 {
   GstC2VDecoder *c2vdec = GST_C2_VDEC (decoder);
+  GstC2QueueItem item;
+
+  item.buffer = frame->input_buffer;
+  item.index = frame->system_frame_number;
+  item.userdata = gst_video_codec_frame_get_user_data (frame);
 
   // This mutex was locked in the base class before call this function
   // Needs to be unlocked in case we reach the maximum number of pending frames.
@@ -557,7 +563,7 @@ gst_c2_vdec_handle_frame (GstVideoDecoder * decoder, GstVideoCodecFrame * frame)
       ", dts: %" GST_TIME_FORMAT, frame->system_frame_number,
       GST_TIME_ARGS (frame->pts), GST_TIME_ARGS (frame->dts));
 
-  if (!gst_c2_engine_queue (c2vdec->engine, frame)) {
+  if (!gst_c2_engine_queue (c2vdec->engine, &item)) {
     GST_ERROR_OBJECT(c2vdec, "Failed to send input frame to be emptied!");
     return GST_FLOW_ERROR;
   }
