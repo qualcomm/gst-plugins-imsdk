@@ -319,7 +319,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
   pixinfo.isubwc = c2venc->isubwc;
 
   success = gst_c2_engine_set_parameter (c2venc->engine,
-      GST_C2_PARAM_IN_FORMAT, GPOINTER_CAST (&pixinfo));
+      GST_C2_PARAM_IN_PIXEL_FORMAT, GPOINTER_CAST (&pixinfo));
   if (!success) {
     GST_ERROR_OBJECT (c2venc, "Failed to set input format parameter!");
     return FALSE;
@@ -957,7 +957,8 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     c2venc->name = g_strdup (name);
 
   if (c2venc->engine == NULL) {
-    c2venc->engine = gst_c2_engine_new (c2venc->name, &callbacks, c2venc);
+    c2venc->engine = gst_c2_engine_new (c2venc->name, GST_C2_MODE_VIDEO_ENCODE,
+        &callbacks, c2venc);
     g_return_val_if_fail (c2venc->engine != NULL, FALSE);
   }
 
@@ -1103,6 +1104,7 @@ gst_c2_venc_handle_frame (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
 {
   GstC2VEncoder *c2venc = GST_C2_VENC (encoder);
   GstClockTimeDiff deadline;
+  GstC2QueueItem item;
 
   // GAP input buffer, drop the frame.
   if ((gst_buffer_get_size (frame->input_buffer) == 0) &&
@@ -1145,7 +1147,11 @@ gst_c2_venc_handle_frame (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   // Needs to be unlocked when waiting for any pending buffers during drain.
   GST_VIDEO_ENCODER_STREAM_UNLOCK (encoder);
 
-  if (!gst_c2_engine_queue (c2venc->engine, frame)) {
+  item.buffer = frame->input_buffer;
+  item.index = frame->system_frame_number;
+  item.userdata = gst_video_codec_frame_get_user_data (frame);
+
+  if (!gst_c2_engine_queue (c2venc->engine, &item)) {
     GST_ERROR_OBJECT(c2venc, "Failed to send input frame to be emptied!");
     return GST_FLOW_ERROR;
   }
