@@ -969,8 +969,30 @@ std::shared_ptr<C2Buffer> GstC2Utils::CreateBuffer(
     return nullptr;
   }
 
-  auto data = view.data();
-  memcpy (static_cast<void*>(data[0]), static_cast<void*>(map.data), map.size);
+  // Get the GST video metadata for the source strides.
+  GstVideoMeta *vmeta = gst_buffer_get_video_meta (buffer);
+  g_return_val_if_fail (vmeta != NULL, FALSE);
+
+  // Fetch the array of pointers to the planes.
+  uint8_t *const *data = view.data();
+  // Fetch the GBM handle containing the destination stride and scanline.
+  auto handle = static_cast<const android::C2HandleGBM*>(block->handle());
+
+  for (uint32_t idx = 0; idx < vmeta->n_planes; idx++) {
+    uint32_t n_rows = (idx == 0) ? vmeta->height : (vmeta->height / 2);
+
+    // Set the source and destination pointers for the next plane.
+    uint8_t *source = static_cast<uint8_t*>(map.data) + vmeta->offset[idx];
+    uint8_t *destination = static_cast<uint8_t*>(data[0]) +
+        (idx * handle->mInts.stride * handle->mInts.slice_height);
+
+    for (uint32_t num = 0; num < n_rows; num++) {
+      memcpy (destination, source, vmeta->stride[idx]);
+
+      destination += handle->mInts.stride;
+      source += vmeta->stride[idx];
+    }
+  }
 
   gst_buffer_unmap (buffer, &map);
 
