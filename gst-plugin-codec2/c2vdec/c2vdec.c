@@ -351,7 +351,7 @@ gst_c2_vdec_set_format (GstVideoDecoder * decoder, GstVideoCodecState * state)
     c2vdec->name = g_strdup (name);
 
   if (c2vdec->engine == NULL) {
-    c2vdec->engine = gst_c2_engine_new (name, &callbacks, c2vdec);
+    c2vdec->engine = gst_c2_engine_new (c2vdec->name, &callbacks, c2vdec);
     g_return_val_if_fail (c2vdec->engine != NULL, FALSE);
   }
 
@@ -424,6 +424,8 @@ gst_c2_vdec_finalize (GObject * object)
 
   if (c2vdec->engine != NULL)
     gst_c2_engine_free (c2vdec->engine);
+
+  g_free (c2vdec->name);
 
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (c2vdec));
 }
