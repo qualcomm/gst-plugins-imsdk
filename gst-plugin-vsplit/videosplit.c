@@ -71,7 +71,9 @@ G_DEFINE_TYPE (GstVideoSplit, gst_video_split, GST_TYPE_ELEMENT);
 #define GST_VIDEO_FORMATS \
   "{ NV12, NV21, UYVY, YUY2, RGBA, BGRA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR, GRAY8 }"
 
-#define GST_CONVERTER_REQUEST(obj) ((GstConverterRequest *) obj)
+static GType gst_vsplit_request_get_type(void);
+#define GST_TYPE_VSPLIT_REQUEST  (gst_vsplit_request_get_type())
+#define GST_VSPLIT_REQUEST(obj)  ((GstVSplitRequest *) obj)
 
 enum
 {
@@ -96,9 +98,9 @@ static GstStaticPadTemplate gst_video_split_src_template =
     );
 
 
-typedef struct _GstConverterRequest GstConverterRequest;
+typedef struct _GstVSplitRequest GstVSplitRequest;
 
-struct _GstConverterRequest {
+struct _GstVSplitRequest {
   GstMiniObject parent;
 
   // Request ID.
@@ -118,23 +120,10 @@ struct _GstConverterRequest {
   GstClockTime  time;
 };
 
-static GstConverterRequest *
-gst_converter_request_new ()
-{
-  GstConverterRequest *request = g_new0 (GstConverterRequest, 1);
-
-  request->id = NULL;
-  request->inframes = NULL;
-  request->n_inputs = 0;
-  request->outframes = NULL;
-  request->n_outputs = 0;
-  request->time = GST_CLOCK_TIME_NONE;
-
-  return request;
-}
+GST_DEFINE_MINI_OBJECT_TYPE (GstVSplitRequest, gst_vsplit_request);
 
 static void
-gst_converter_request_free (GstConverterRequest * request)
+gst_vsplit_request_free (GstVSplitRequest * request)
 {
   GstBuffer *buffer = NULL;
   guint idx = 0;
@@ -160,6 +149,32 @@ gst_converter_request_free (GstConverterRequest * request)
   g_free (request->inframes);
   g_free (request->outframes);
   g_free (request);
+}
+
+static GstVSplitRequest *
+gst_vsplit_request_new ()
+{
+  GstVSplitRequest *request = g_new0 (GstVSplitRequest, 1);
+
+  gst_mini_object_init (GST_MINI_OBJECT (request), 0,
+      GST_TYPE_VSPLIT_REQUEST, NULL, NULL,
+      (GstMiniObjectFreeFunction) gst_vsplit_request_free);
+
+
+  request->id = NULL;
+  request->inframes = NULL;
+  request->n_inputs = 0;
+  request->outframes = NULL;
+  request->n_outputs = 0;
+  request->time = GST_CLOCK_TIME_NONE;
+
+  return request;
+}
+
+static inline void
+gst_vsplit_request_release (GstVSplitRequest * request)
+{
+  gst_mini_object_unref (GST_MINI_OBJECT_CAST (request));
 }
 
 static GType
@@ -224,7 +239,7 @@ gst_video_split_prepare_output_frame (GstElement * element, GstPad * pad,
 {
   GstVideoSplit *vsplit = GST_VIDEO_SPLIT (element);
   GstVideoSplitSrcPad *srcpad = GST_VIDEO_SPLIT_SRCPAD (pad);
-  GstVideoFrame *frames = GST_CONVERTER_REQUEST (userdata)->outframes;
+  GstVideoFrame *frames = GST_VSPLIT_REQUEST (userdata)->outframes;
   GstBufferPool *pool = NULL;
   GstBuffer *inbuffer = NULL, *outbuffer = NULL;
   guint idx = 0, n_entries = 0;
@@ -233,7 +248,7 @@ gst_video_split_prepare_output_frame (GstElement * element, GstPad * pad,
   idx = g_list_index (element->srcpads, pad);
   GST_OBJECT_UNLOCK (vsplit);
 
-  inbuffer = GST_CONVERTER_REQUEST (userdata)->inframes[0].buffer;
+  inbuffer = GST_VSPLIT_REQUEST (userdata)->inframes[0].buffer;
 
   // Fetch the number of ROI entries.
   n_entries = gst_buffer_get_n_meta (inbuffer,
@@ -288,7 +303,7 @@ gst_video_split_push_output_buffer (GstElement * element, GstPad * pad,
 {
   GstVideoSplit *vsplit = GST_VIDEO_SPLIT (element);
   GstVideoSplitSrcPad *srcpad = GST_VIDEO_SPLIT_SRCPAD (pad);
-  GstConverterRequest *request = GST_CONVERTER_REQUEST (userdata);
+  GstVSplitRequest *request = GST_VSPLIT_REQUEST (userdata);
   GstBuffer *inbuffer = NULL, *outbuffer = NULL;
   GstDataQueueItem *item = NULL;
   guint idx = 0;
@@ -506,10 +521,10 @@ gst_video_split_worker_task (gpointer userdata)
   gboolean success = FALSE;
 
   if (gst_data_queue_pop (sinkpad->requests, &item)) {
-    GstConverterRequest *request = NULL;
+    GstVSplitRequest *request = NULL;
     gpointer id = NULL;
 
-    request = GST_CONVERTER_REQUEST (gst_mini_object_ref (item->object));
+    request = GST_VSPLIT_REQUEST (gst_mini_object_ref (item->object));
     item->destroy (item);
 
     id = request->id;
@@ -536,7 +551,7 @@ gst_video_split_worker_task (gpointer userdata)
         gst_video_split_push_output_buffer, request);
 
     // Free the memory allocated by the internal request structure.
-    gst_converter_request_free (request);
+    gst_vsplit_request_release (request);
 
     if (!success)
       GST_WARNING_OBJECT (vsplit, "Failed to push output buffers!");
@@ -616,7 +631,7 @@ gst_video_split_sinkpad_chain (GstPad * pad, GstObject * parent,
     GstBuffer * inbuffer)
 {
   GstVideoSplit *vsplit = GST_VIDEO_SPLIT (parent);
-  GstConverterRequest *request = NULL;
+  GstVSplitRequest *request = NULL;
   GstDataQueueItem *item = NULL;
   gboolean success = FALSE;
   guint idx = 0, n_entries = 0;
@@ -628,7 +643,7 @@ gst_video_split_sinkpad_chain (GstPad * pad, GstObject * parent,
   GST_OBJECT_UNLOCK (vsplit);
 
   // Convenient structure containing all the necessary data.
-  request = gst_converter_request_new ();
+  request = gst_vsplit_request_new ();
   request->inframes = g_new0 (GstVideoFrame, 1);
   request->n_inputs = 1;
   request->outframes = g_new0 (GstVideoFrame, n_entries);
@@ -652,7 +667,7 @@ gst_video_split_sinkpad_chain (GstPad * pad, GstObject * parent,
 
   if (!success) {
     GST_WARNING_OBJECT (pad, "Failed to prepare output video frames!");
-    gst_converter_request_free (request);
+    gst_vsplit_request_release (request);
     return GST_FLOW_ERROR;
   }
 
@@ -664,7 +679,7 @@ gst_video_split_sinkpad_chain (GstPad * pad, GstObject * parent,
     success = gst_element_foreach_src_pad (GST_ELEMENT_CAST (vsplit),
         gst_video_split_push_output_buffer, request);
 
-    gst_converter_request_free (request);
+    gst_vsplit_request_release (request);
     return success ? GST_FLOW_OK : GST_FLOW_ERROR;
   }
 
@@ -725,7 +740,7 @@ gst_video_split_sinkpad_chain (GstPad * pad, GstObject * parent,
 
   if (request->id == NULL) {
     GST_ERROR_OBJECT (pad, "Failed to submit request(s)!");
-    gst_converter_request_free (request);
+    gst_vsplit_request_release (request);
     return GST_FLOW_ERROR;
   }
 
