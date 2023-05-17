@@ -1150,6 +1150,7 @@ gboolean
 gst_video_split_srcpad_activate_mode (GstPad * pad, GstObject * parent,
     GstPadMode mode, gboolean active)
 {
+  GstVideoSplitSrcPad *srcpad = GST_VIDEO_SPLIT_SRCPAD (pad);
   gboolean success = TRUE;
 
   GST_INFO_OBJECT (pad, "%s worker task", active ? "Activating" : "Deactivating");
@@ -1158,14 +1159,14 @@ gst_video_split_srcpad_activate_mode (GstPad * pad, GstObject * parent,
     case GST_PAD_MODE_PUSH:
       if (active) {
         // Disable requests queue in flushing state to enable normal work.
-        gst_data_queue_set_flushing (GST_VIDEO_SPLIT_SRCPAD (pad)->buffers, FALSE);
-        gst_data_queue_flush (GST_VIDEO_SPLIT_SRCPAD (pad)->buffers);
+        gst_data_queue_set_flushing (srcpad->buffers, FALSE);
 
         success = gst_pad_start_task (pad, gst_video_split_srcpad_worker_task,
             pad, NULL);
       } else {
-        gst_data_queue_set_flushing (GST_VIDEO_SPLIT_SRCPAD (pad)->buffers, TRUE);
-        // TODO wait for all requests.
+        gst_data_queue_set_flushing (srcpad->buffers, TRUE);
+        gst_data_queue_flush (srcpad->buffers);
+
         success = gst_pad_stop_task (pad);
       }
       break;
@@ -1238,6 +1239,9 @@ gst_video_split_request_pad (GstElement * element, GstPadTemplate * templ,
 
   GST_VIDEO_SPLIT_UNLOCK (vsplit);
 
+  gst_child_proxy_child_added (GST_CHILD_PROXY (element), G_OBJECT (pad),
+      GST_OBJECT_NAME (pad));
+
   GST_DEBUG_OBJECT (vsplit, "Created pad: %s", GST_PAD_NAME (pad));
   return pad;
 }
@@ -1254,6 +1258,7 @@ gst_video_split_release_pad (GstElement * element, GstPad * pad)
   GST_VIDEO_SPLIT_UNLOCK (vsplit);
 
   gst_element_remove_pad (element, pad);
+  GST_DEBUG_OBJECT (vsplit, "Rad has been removed");
 }
 
 static GstStateChangeReturn
