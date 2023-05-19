@@ -266,6 +266,7 @@ c2_status_t C2Module::Start() {
         "Start failed, error ", status, "!");
   }
 
+  state_ = State::kRunning;
   return C2_OK;
 }
 
@@ -286,6 +287,7 @@ c2_status_t C2Module::Stop() {
         "Stop failed, error ", status, "!");
   }
 
+  state_ = State::kIdle;
   return C2_OK;
 }
 
@@ -342,7 +344,7 @@ c2_status_t C2Module::Queue(std::shared_ptr<C2Buffer>& buffer,
   if (state_ == State::kCreated) {
     throw Exception("Component[", interface_->getName().c_str(), "]: "
         "Queue failed! Not initialized!");
-  } else if (state_ == State::kRunning) {
+  } else if (state_ != State::kRunning) {
     throw Exception("Component[", interface_->getName().c_str(), "]: "
         "Queue failed! Not in running state!");
   }
