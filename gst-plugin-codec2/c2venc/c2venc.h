@@ -96,6 +96,7 @@ struct _GstC2VEncoder {
   GstC2EntropyMode     entropy_mode;
   GstC2LoopFilterMode  loop_filter_mode;
   guint32              num_ltr_frames;
+  gint32               priority;
 };
 
 struct _GstC2VEncoderClass {
