@@ -411,9 +411,17 @@ release_stream (GstAppContext * appctx, GstStreamInf * stream)
   GstElement *qtiqmmfsrc =
       gst_bin_get_by_name (GST_BIN (appctx->pipeline), "qmmf");
 
-  // Unlink the elements of this stream
   g_print ("Unlinking elements...\n");
+
+  // Deactivation the pad
+  gst_pad_set_active (stream->qmmf_pad, FALSE);
+
+  // Set NULL to capsfilter element
+  gst_element_set_state (stream->capsfilter, GST_STATE_NULL);
+
+  // Set NULL to other elements and unlink the elements of this stream
   if (appctx->use_display) {
+    gst_element_set_state (stream->waylandsink, GST_STATE_NULL);
     gst_element_unlink_many (qtiqmmfsrc, stream->capsfilter,
         stream->waylandsink, NULL);
   } else {
@@ -422,24 +430,15 @@ release_stream (GstAppContext * appctx, GstStreamInf * stream)
     if (state == GST_STATE_PLAYING)
       gst_element_send_event (stream->encoder, gst_event_new_eos ());
 
-    gst_element_unlink_many (qtiqmmfsrc, stream->capsfilter, stream->encoder,
-        stream->h264parse, stream->mp4mux, stream->filesink, NULL);
-  }
-  g_print ("Unlinked successfully \n");
-
-  // Deactivation the pad
-  gst_pad_set_active (stream->qmmf_pad, FALSE);
-
-  // Set NULL state to the unlinked elemets
-  gst_element_set_state (stream->capsfilter, GST_STATE_NULL);
-  if (appctx->use_display) {
-    gst_element_set_state (stream->waylandsink, GST_STATE_NULL);
-  } else {
     gst_element_set_state (stream->encoder, GST_STATE_NULL);
     gst_element_set_state (stream->h264parse, GST_STATE_NULL);
     gst_element_set_state (stream->mp4mux, GST_STATE_NULL);
     gst_element_set_state (stream->filesink, GST_STATE_NULL);
+
+    gst_element_unlink_many (qtiqmmfsrc, stream->capsfilter, stream->encoder,
+        stream->h264parse, stream->mp4mux, stream->filesink, NULL);
   }
+  g_print ("Unlinked successfully \n");
 
   // Release the unlinked pad
   gst_element_release_request_pad (qtiqmmfsrc, stream->qmmf_pad);
