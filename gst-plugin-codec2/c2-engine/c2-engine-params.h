@@ -58,6 +58,7 @@ typedef struct _GstC2QuantInit GstC2QuantInit;
 typedef struct _GstC2QuantRanges GstC2QuantRanges;
 typedef struct _GstC2QuantRectangle GstC2QuantRectangle;
 typedef struct _GstC2QuantRegions GstC2QuantRegions;
+typedef struct _GstC2TemporalLayer GstC2TemporalLayer;
 
 // GStreamer Codec2 Engine parameter types.
 enum {
@@ -73,6 +74,7 @@ enum {
   GST_C2_PARAM_GOP_CONFIG,           // GstC2Gop
   GST_C2_PARAM_KEY_FRAME_INTERVAL,   // gint64
   GST_C2_PARAM_INTRA_REFRESH,        // GstC2IntraRefresh
+  GST_C2_PARAM_ADAPTIVE_B_FRAMES,    // gboolean
   GST_C2_PARAM_ENTROPY_MODE,         // GstC2EntropyMode
   GST_C2_PARAM_LOOP_FILTER_MODE,     // GstC2LoopFilterMode
   GST_C2_PARAM_SLICE_MB,             // GstC2Slice
@@ -86,6 +88,8 @@ enum {
   GST_C2_PARAM_QP_RANGES,            // GstC2QuantRanges
   GST_C2_PARAM_ROI_ENCODE,           // GstC2QuantRegions
   GST_C2_PARAM_TRIGGER_SYNC_FRAME,   // gboolean
+  GST_C2_PARAM_NATIVE_RECORDING,     // gboolean
+  GST_C2_PARAM_TEMPORAL_LAYERING,    // GstC2TemporalLayer
 };
 
 typedef enum {
@@ -254,6 +258,12 @@ struct _GstC2QuantRegions {
   GstC2QuantRectangle rects[GST_C2_MAX_RECT_ROI_NUM];
   guint32             n_rects;
   guint64             timestamp;
+};
+
+struct _GstC2TemporalLayer {
+  guint32 n_layers;
+  guint32 n_blayers;
+  GArray  *bitrate_ratios;
 };
 
 guint gst_c2_utils_h264_profile_from_string (const gchar * profile);

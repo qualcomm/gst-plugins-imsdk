@@ -386,6 +386,51 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
     return FALSE;
   }
 
+  if (c2venc->bframes != DEFAULT_PROP_B_FRAMES) {
+    gboolean enable = TRUE;
+
+#if !defined(CODEC2_CONFIG_VERSION_2_0)
+    success = gst_c2_engine_set_parameter (c2venc->engine,
+        GST_C2_PARAM_ADAPTIVE_B_FRAMES, GPOINTER_CAST (&enable));
+
+    if (!success) {
+      GST_ERROR_OBJECT (c2venc, "Failed to set adaptive B frames parameter!");
+      return FALSE;
+    }
+#else
+    gfloat ratio = 0.0;
+    GstC2TemporalLayer templayer = {2, 2, NULL};
+
+    success = gst_c2_engine_set_parameter (c2venc->engine,
+        GST_C2_PARAM_NATIVE_RECORDING, GPOINTER_CAST (&enable));
+
+    if (!success) {
+      GST_ERROR_OBJECT (c2venc, "Failed to enable native recording!");
+      return FALSE;
+    }
+
+    // bitrate ratios are bypassed in component now
+    templayer.bitrate_ratios = g_array_new (FALSE, FALSE, sizeof (gfloat));
+    ratio = 0.5;
+    g_array_append_val (templayer.bitrate_ratios, ratio);
+    ratio = 1.0;
+    g_array_append_val (templayer.bitrate_ratios, ratio);
+
+    success = gst_c2_engine_set_parameter (c2venc->engine,
+        GST_C2_PARAM_TEMPORAL_LAYERING, GPOINTER_CAST (&templayer));
+
+    if (templayer.bitrate_ratios != NULL) {
+      g_array_free (templayer.bitrate_ratios, TRUE);
+      templayer.bitrate_ratios = NULL;
+    }
+
+    if (!success) {
+      GST_ERROR_OBJECT (c2venc, "Failed to set temporal layering parameter!");
+      return FALSE;
+    }
+#endif // CODEC2_CONFIG_VERSION_2_0
+  }
+
   if (c2venc->entropy_mode != DEFAULT_PROP_ENTROPY_MODE) {
     success = gst_c2_engine_set_parameter (c2venc->engine,
         GST_C2_PARAM_ENTROPY_MODE, GPOINTER_CAST (&(c2venc->entropy_mode)));
@@ -1311,6 +1356,12 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
       g_param_spec_uint ("intra-refresh-period", "Intra Refresh Period",
           "The period of intra refresh. Only support random mode.",
           0, G_MAXUINT, DEFAULT_PROP_INTRA_REFRESH_PERIOD,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_B_FRAMES,
+      g_param_spec_uint ("b-frames", "B Frames",
+          "Number of B-frames between two consecutive I-frames "
+          "(0xffffffff=component default)",
+          0, G_MAXUINT, DEFAULT_PROP_B_FRAMES,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
   g_object_class_install_property (gobject, PROP_QUANT_I_FRAMES,
       g_param_spec_uint ("quant-i-frames", "I-Frame Quantization",

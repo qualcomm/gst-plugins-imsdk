@@ -77,6 +77,15 @@ static const std::unordered_map<uint32_t, C2Param::Index> kParamIndexMap = {
       C2StreamSyncFrameIntervalTuning::output::PARAM_TYPE },
   { GST_C2_PARAM_INTRA_REFRESH,
       C2StreamIntraRefreshTuning::output::PARAM_TYPE },
+#if !defined(CODEC2_CONFIG_VERSION_2_0)
+  { GST_C2_PARAM_ADAPTIVE_B_FRAMES,
+      qc2::C2StreamAdaptiveBPreconditions::output::PARAM_TYPE },
+#else
+  { GST_C2_PARAM_NATIVE_RECORDING,
+      qc2::C2VideoNativeRecording::input::PARAM_TYPE },
+  { GST_C2_PARAM_TEMPORAL_LAYERING,
+      C2StreamTemporalLayeringTuning::output::PARAM_TYPE },
+#endif // CODEC2_CONFIG_VERSION_2_0
   { GST_C2_PARAM_ENTROPY_MODE,
       qc2::C2VideoEntropyMode::output::PARAM_TYPE },
   { GST_C2_PARAM_LOOP_FILTER_MODE,
@@ -124,6 +133,7 @@ static const std::unordered_map<uint32_t, const char*> kParamNameMap = {
   { GST_C2_PARAM_GOP_CONFIG, "GOP_CONFIG" },
   { GST_C2_PARAM_KEY_FRAME_INTERVAL, "KEY_FRAME_INTERVAL" },
   { GST_C2_PARAM_INTRA_REFRESH, "INTRA_REFRESH" },
+  { GST_C2_PARAM_ADAPTIVE_B_FRAMES, "ADAPTIVE_B_FRAMES" },
   { GST_C2_PARAM_ENTROPY_MODE, "ENTROPY_MODE" },
   { GST_C2_PARAM_LOOP_FILTER_MODE, "LOOP_FILTER_MODE" },
   { GST_C2_PARAM_SLICE_MB, "SLICE_MB" },
@@ -137,6 +147,8 @@ static const std::unordered_map<uint32_t, const char*> kParamNameMap = {
   { GST_C2_PARAM_QP_RANGES, "QP_RANGES" },
   { GST_C2_PARAM_ROI_ENCODE, "ROI_ENCODE" },
   { GST_C2_PARAM_TRIGGER_SYNC_FRAME, "TRIGGER_SYNC_FRAME" },
+  { GST_C2_PARAM_NATIVE_RECORDING, "NATIVE_RECORDING"},
+  { GST_C2_PARAM_TEMPORAL_LAYERING, "TEMPORAL_LAYERING"},
 };
 
 // Map for the GST_C2_PARAM_PROFILE_LEVEL parameter.
@@ -404,6 +416,40 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       c2param = C2Param::Copy(irefresh);
       break;
     }
+#if !defined(CODEC2_CONFIG_VERSION_2_0)
+    case GST_C2_PARAM_ADAPTIVE_B_FRAMES: {
+      qc2::C2StreamAdaptiveBPreconditions::output bpreconditions;
+      bpreconditions.value = *(reinterpret_cast<gboolean*>(payload));
+      c2param = C2Param::Copy(bpreconditions);
+      break;
+    }
+#else
+    case GST_C2_PARAM_NATIVE_RECORDING: {
+      qc2::C2VideoNativeRecording::input native_recording;
+      native_recording.value = *(reinterpret_cast<gboolean*>(payload));
+      c2param = C2Param::Copy(native_recording);
+      break;
+    }
+    case GST_C2_PARAM_TEMPORAL_LAYERING: {
+      GstC2TemporalLayer *templayer = reinterpret_cast<GstC2TemporalLayer*>(payload);
+      uint32_t ratiosize = templayer->bitrate_ratios->len;
+
+      auto c2templayer =
+          C2StreamTemporalLayeringTuning::output::AllocUnique(ratiosize);
+
+      c2templayer->m.layerCount = templayer->n_layers;
+      c2templayer->m.bLayerCount = templayer->n_blayers;
+
+      // bitrate ratios is ignored for now
+      for (uint32_t i = 0; i < ratiosize; i++) {
+        c2templayer->m.bitrateRatios[i] =
+            g_array_index (templayer->bitrate_ratios, gfloat, i);
+      }
+
+      c2param = C2Param::Copy(*c2templayer);
+      break;
+    }
+#endif // CODEC2_CONFIG_VERSION_2_0
     case GST_C2_PARAM_ENTROPY_MODE: {
       qc2::C2VideoEntropyMode::output entropy;
       uint32_t mode = *(reinterpret_cast<GstC2EntropyMode*>(payload));
@@ -689,6 +735,43 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
       reinterpret_cast<GstC2IntraRefresh*>(payload)->period = irefresh->period;
       break;
     }
+#if !defined(CODEC2_CONFIG_VERSION_2_0)
+    case GST_C2_PARAM_ADAPTIVE_B_FRAMES: {
+      auto bpreconditions =
+          reinterpret_cast<qc2::C2StreamAdaptiveBPreconditions::output*>(c2param.get());
+      *(reinterpret_cast<gboolean*>(payload)) = bpreconditions->value;
+      break;
+    }
+#else
+    case GST_C2_PARAM_NATIVE_RECORDING: {
+      auto native_recording =
+          reinterpret_cast<qc2::C2VideoNativeRecording::input*>(c2param.get());
+
+      *(reinterpret_cast<gboolean*>(payload)) = native_recording->value;
+      break;
+    }
+    case GST_C2_PARAM_TEMPORAL_LAYERING: {
+      auto c2templayer =
+          reinterpret_cast<C2StreamTemporalLayeringTuning::output*>(c2param.get());
+
+      reinterpret_cast<GstC2TemporalLayer*>(payload)->n_layers =
+          c2templayer->m.layerCount;
+      reinterpret_cast<GstC2TemporalLayer*>(payload)->n_blayers =
+          c2templayer->m.bLayerCount;
+
+      float ratio = 0;
+      uint32_t ratiosize = c2templayer->flexCount();
+
+      if (reinterpret_cast<GstC2TemporalLayer*>(payload)->bitrate_ratios != NULL) {
+        GArray* temp = reinterpret_cast<GstC2TemporalLayer*>(payload)->bitrate_ratios;
+        for (uint32_t i = 0; i < ratiosize; i++) {
+          ratio = c2templayer->m.bitrateRatios[i];
+          g_array_append_val (temp, ratio);
+        }
+      }
+      break;
+    }
+#endif // CODEC2_CONFIG_VERSION_2_0
     case GST_C2_PARAM_ENTROPY_MODE: {
       auto entropy =
           reinterpret_cast<qc2::C2VideoEntropyMode::output*>(c2param.get());
