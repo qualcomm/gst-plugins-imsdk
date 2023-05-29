@@ -1161,7 +1161,8 @@ int32_t Overlay::ApplyOverlay_GLES (const OverlayTargetBuffer& buffer)
     outsurface.nplanes = 2;
 
     try {
-      surface_id = ib2c_engine_->CreateSurface(outsurface);
+      surface_id = ib2c_engine_->CreateSurface(outsurface,
+          ib2c::SurfaceFlags::kOutput);
       ib2c_surfaces_.emplace(buffer.ion_fd, surface_id);
     } catch (std::exception& e) {
       OVDBG_ERROR ("%s: Create surface failed, error: '%s'!", __func__, e.what());
@@ -1828,7 +1829,8 @@ int32_t OverlayItem::MapOverlaySurface (OverlaySurface &surface,
     insurface.nplanes = 1;
 
     try {
-      surface.ib2c_surface_id_ = ib2c_engine_->CreateSurface(insurface);
+      surface.ib2c_surface_id_ = ib2c_engine_->CreateSurface(insurface,
+          ib2c::SurfaceFlags::kInput);
     } catch (std::exception& e) {
       OVDBG_ERROR ("%s: Create surface failed, error: '%s'!", __func__, e.what());
       return -1;
