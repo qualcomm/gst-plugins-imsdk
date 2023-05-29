@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -363,7 +363,7 @@ gst_ml_aic_internal_maps_cleanup (GstMLAicEngine * engine,
 
 // Helper function for AIC context.
 static void
-gst_ml_aic_log_callback (QLogLevel level, const char * message)
+gst_ml_aic_log_callback (QLogLevel level, const char * message, void* userdata)
 {
   if (level == QL_DEBUG || level == QL_INFO)
     GST_TRACE ("AIC: %s", message);
@@ -456,7 +456,7 @@ gst_ml_aic_engine_new (GstStructure * settings)
 
     // Create context from the chosen devices and set the log & error handlers.
     engine->context = ::qaic::rt::Context::Factory(nullptr, device_ids,
-        gst_ml_aic_log_callback, gst_ml_aic_error_handler);
+        gst_ml_aic_log_callback, nullptr, gst_ml_aic_error_handler, nullptr);
 
     // Set the highest debug level, it will be filtered by the GST log system.
     engine->context->setLogLevel(QL_DEBUG);
