@@ -424,29 +424,16 @@ gst_c2_engine_flush (GstC2Engine * engine)
 }
 
 gboolean
-gst_c2_engine_drain (GstC2Engine * engine)
+gst_c2_engine_drain (GstC2Engine * engine, gboolean eos)
 {
   C2Module *c2module = engine->c2module;
-  std::shared_ptr<C2Buffer> c2buffer;
-  std::list<std::unique_ptr<C2Param>> settings;
-
-  uint64_t index = 0;
-  uint64_t timestamp = 0;
-  uint32_t flags = C2FrameData::FLAG_END_OF_STREAM;
-
-  // TODO Switch to Drain API when drain with EOS is supported.
-  // try {
-  //   c2module->Drain (C2Component::DRAIN_COMPONENT_WITH_EOS);
-  //   GST_DEBUG ("Drain c2module '%s'", engine->name);
-  // } catch (std::exception& e) {
-  //   GST_ERROR ("Failed to drain c2module, error: '%s'!", e.what());
-  //   return FALSE;
-  // }
 
   try {
-    c2module->Queue (c2buffer, settings, index, timestamp, flags);
+    c2module->Drain (eos ? C2Component::DRAIN_COMPONENT_WITH_EOS :
+        C2Component::DRAIN_COMPONENT_NO_EOS);
+    GST_DEBUG ("Drain c2module '%s'", engine->name);
   } catch (std::exception& e) {
-    GST_ERROR ("Failed to queue EOS, error: '%s'!", e.what());
+    GST_ERROR ("Failed to drain c2module, error: '%s'!", e.what());
     return FALSE;
   }
 
