@@ -216,15 +216,18 @@ video_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
     {
       GstClockTime min_latency = 0, max_latency = GST_CLOCK_TIME_NONE;
 
-      if (GST_QMMFSRC_VIDEO_PAD (pad)->duration != GST_CLOCK_TIME_NONE)
-        // Minimum latency is the time to capture one video frame.
-        min_latency = GST_QMMFSRC_VIDEO_PAD (pad)->duration;
+      if (GST_QMMFSRC_VIDEO_PAD (pad)->duration == GST_CLOCK_TIME_NONE)
+        break;
+
+      // Minimum latency is the time to capture one video frame.
+      min_latency = GST_QMMFSRC_VIDEO_PAD (pad)->duration;
 
       GST_DEBUG_OBJECT (pad, "Latency %" GST_TIME_FORMAT "/%" GST_TIME_FORMAT,
           GST_TIME_ARGS (min_latency), GST_TIME_ARGS (max_latency));
 
       // We are always live, the minimum latency is 1 frame and
       // the maximum latency is the complete buffer of frames.
+      // This should not be done before camera prerolled.
       gst_query_set_latency (query, TRUE, min_latency, max_latency);
       break;
     }
