@@ -592,6 +592,8 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
           ss.get((region.rectPayload + len), ss.tellp());
         else if ((extlen + ss.tellp()) < extsize)
           ss.get((region.rectPayloadExt + extlen), ss.tellp());
+
+        ss.clear();
       }
 
       region.type_[0] = 'r';
