@@ -837,20 +837,23 @@ qmmfsrc_change_state (GstElement * element, GstStateChange transition)
   switch (transition) {
     case GST_STATE_CHANGE_NULL_TO_READY:
       if (!gst_qmmf_context_open (qmmfsrc->context)) {
-        GST_ERROR_OBJECT (qmmfsrc, "Failed to Open Camera!");
+        GST_ELEMENT_ERROR (qmmfsrc, RESOURCE, NOT_FOUND,
+          ("Failed to Open Camera!"), NULL);
         return GST_STATE_CHANGE_FAILURE;
       }
       qmmfsrc->isplugged = TRUE;
       break;
     case GST_STATE_CHANGE_READY_TO_PAUSED:
       if (!qmmfsrc_create_stream (qmmfsrc)) {
-        GST_ERROR_OBJECT (qmmfsrc, "Failed to create stream!");
+        GST_ELEMENT_ERROR (qmmfsrc, STREAM, FAILED,
+          ("Failed to create stream!"), NULL);
         return GST_STATE_CHANGE_FAILURE;
       }
       break;
     case GST_STATE_CHANGE_PAUSED_TO_PLAYING:
       if (!qmmfsrc_start_stream (qmmfsrc)) {
-        GST_ERROR_OBJECT (qmmfsrc, "Failed to start stream!");
+        GST_ELEMENT_ERROR (qmmfsrc, STREAM, FAILED,
+          ("Failed to start stream!"), NULL);
         return GST_STATE_CHANGE_FAILURE;
       }
       break;
@@ -878,7 +881,8 @@ qmmfsrc_change_state (GstElement * element, GstStateChange transition)
       break;
     case GST_STATE_CHANGE_PLAYING_TO_PAUSED:
       if (!qmmfsrc_pause_stream (qmmfsrc)) {
-        GST_ERROR_OBJECT(qmmfsrc, "Failed to pause stream!");
+        GST_ELEMENT_ERROR (qmmfsrc, STREAM, FAILED, ("Failed to pause stream!"),
+          NULL);
         return GST_STATE_CHANGE_FAILURE;
       }
       // Return NO_PREROLL to inform bin/pipeline we won't be able to
@@ -891,17 +895,20 @@ qmmfsrc_change_state (GstElement * element, GstStateChange transition)
       // When PoV is plugged stop_stream will be called from here,
       // otherwise it will be called from camera-plug event handling.
       if (qmmfsrc->isplugged && !qmmfsrc_stop_stream (qmmfsrc)) {
-        GST_ERROR_OBJECT(qmmfsrc, "Failed to stop stream!");
+        GST_ELEMENT_ERROR (qmmfsrc, STREAM, FAILED, ("Failed to stop stream!"),
+          NULL);
         return GST_STATE_CHANGE_FAILURE;
       }
       if (!qmmfsrc_delete_stream (qmmfsrc)) {
-        GST_ERROR_OBJECT (qmmfsrc, "Failed to delete stream!");
+        GST_ELEMENT_ERROR (qmmfsrc, STREAM, FAILED, ("Failed to delete stream!"),
+          NULL);
         return GST_STATE_CHANGE_FAILURE;
       }
       break;
     case GST_STATE_CHANGE_READY_TO_NULL:
       if (!gst_qmmf_context_close (qmmfsrc->context)) {
-        GST_ERROR_OBJECT (qmmfsrc, "Failed to Close!");
+        GST_ELEMENT_ERROR (qmmfsrc, STREAM, FAILED, ("Failed to Close Camera!"),
+          NULL);
         return GST_STATE_CHANGE_FAILURE;
       }
       break;
