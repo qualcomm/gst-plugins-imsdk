@@ -392,6 +392,7 @@ gst_ml_video_converter_update_params (GstMLVideoConverter * mlconverter,
   GstVideoRectangle inrect = {0,0,0,0}, outrect = {0,0,0,0};
   guint idx = 0, num = 0, id = 0, n_entries = 0, maxwidth = 0, maxheight = 0;
   gint par_n = 0, par_d = 0, sar_n = 0, sar_d = 0;
+  guint ml_height = 0, ml_width = 0;
 
   g_value_init (&srcrects, GST_TYPE_ARRAY);
   g_value_init (&dstrects, GST_TYPE_ARRAY);
@@ -478,14 +479,20 @@ gst_ml_video_converter_update_params (GstMLVideoConverter * mlconverter,
         pmeta = gst_buffer_add_protection_meta (outframe->buffer,
             gst_structure_new_empty (name));
 
-      // Add SAR information for tensor decryption downstream.
+      // Add SAR and input tensor resolution for tensor decryption downstream.
+      ml_height = mlconverter->mlinfo->tensors[0][1];
+      ml_width = mlconverter->mlinfo->tensors[0][2];
       gst_structure_set (pmeta->info,
-          "source-aspect-ratio", GST_TYPE_FRACTION, sar_n, sar_d, NULL);
+          "source-aspect-ratio", GST_TYPE_FRACTION, sar_n, sar_d,
+          "input-tensor-height", G_TYPE_UINT, ml_height,
+          "input-tensor-width", G_TYPE_UINT, ml_width,
+          NULL);
       g_free (name);
 
       GST_TRACE_OBJECT (mlconverter, "Rectangles [%u] SAR[%d/%d]: [%d %d %d %d]"
-          " -> [%d %d %d %d]", idx, sar_n, sar_d, inrect.x, inrect.y, inrect.w,
-          inrect.h, outrect.x, outrect.y, outrect.w, outrect.h);
+          " -> [%d %d %d %d]. Tensor Resolution[%ux%u]", idx, sar_n, sar_d,
+          inrect.x, inrect.y, inrect.w, inrect.h, outrect.x, outrect.y, outrect.w,
+          outrect.h, ml_height, ml_width);
     }
 
     // Increase the ID variable tracking the channels with the number of entries.
