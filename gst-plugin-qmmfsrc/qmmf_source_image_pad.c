@@ -93,6 +93,7 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_image_pad_debug);
 #define DEFAULT_PROP_SCREENNAIL_WIDTH   0
 #define DEFAULT_PROP_SCREENNAIL_HEIGHT  0
 #define DEFAULT_PROP_SCREENNAIL_QUALITY 85
+#define DEFAULT_PROP_ROTATE             ROTATE_NONE
 
 enum
 {
@@ -103,6 +104,7 @@ enum
 enum
 {
   PROP_0,
+  PROP_IMAGE_ROTATE,
 };
 
 static guint signals[LAST_SIGNAL];
@@ -543,6 +545,9 @@ image_pad_set_property (GObject * object, guint property_id,
   GST_QMMFSRC_IMAGE_PAD_LOCK (pad);
 
   switch (property_id) {
+    case PROP_IMAGE_ROTATE:
+      pad->rotate = g_value_get_enum (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -560,6 +565,9 @@ image_pad_get_property (GObject * object, guint property_id, GValue * value,
   GST_QMMFSRC_IMAGE_PAD_LOCK (pad);
 
   switch (property_id) {
+    case PROP_IMAGE_ROTATE:
+      g_value_set_enum (value, pad->rotate);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -606,6 +614,12 @@ qmmfsrc_image_pad_class_init (GstQmmfSrcImagePadClass * klass)
   gobject->set_property = GST_DEBUG_FUNCPTR (image_pad_set_property);
   gobject->finalize     = GST_DEBUG_FUNCPTR (image_pad_finalize);
 
+  g_object_class_install_property (gobject, PROP_IMAGE_ROTATE,
+    g_param_spec_enum ("rotate", "Rotate",
+        "Set Orientation Angle for Image Stream",
+        GST_TYPE_QMMFSRC_ROTATE, DEFAULT_PROP_ROTATE,
+        G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
   signals[SIGNAL_PAD_RECONFIGURE] =
       g_signal_new ("reconfigure", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0, G_TYPE_NONE);
@@ -628,6 +642,7 @@ qmmfsrc_image_pad_init (GstQmmfSrcImagePad * pad)
   pad->framerate = 0;
   pad->format    = GST_VIDEO_FORMAT_UNKNOWN;
   pad->codec     = GST_IMAGE_CODEC_UNKNOWN;
+  pad->rotate    = DEFAULT_PROP_ROTATE;
   pad->params    = gst_structure_new_empty ("codec-params");
 
   pad->duration  = GST_CLOCK_TIME_NONE;

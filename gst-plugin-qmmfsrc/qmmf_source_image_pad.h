@@ -163,6 +163,9 @@ struct _GstQmmfSrcImagePad {
 
   /// Queue for GStreamer buffers wrappers around QMMF Recorder buffers.
   GstDataQueue      *buffers;
+
+  ///rotate property for stream orientation
+  gint              rotate;
 };
 
 struct _GstQmmfSrcImagePadClass {
