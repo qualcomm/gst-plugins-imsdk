@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -627,6 +627,32 @@ gst_qmmfsrc_frc_mode_get_type (void)
 
   if (!gtype)
     gtype = g_enum_register_static ("GstFrcMode", variants);
+
+  return gtype;
+}
+
+GType
+gst_qmmfsrc_rotate_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { ROTATE_NONE,
+        "No Rotation ", "none"
+    },
+    { ROTATE_90CCW,
+        "Rotate 90 degrees counter-clockwise", "90CCW"
+    },
+    { ROTATE_180CCW,
+        "Rotate 180 degrees counter-clockwise", "180CCW"
+    },
+    { ROTATE_270CCW,
+        "Rotate 270 degrees counter-clockwise", "270CCW"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstRotate", variants);
 
   return gtype;
 }

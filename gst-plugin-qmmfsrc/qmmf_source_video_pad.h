@@ -185,6 +185,9 @@ struct _GstQmmfSrcVideoPad {
 
   /// QMMF Recorder Video Type
   gint                type;
+
+  ///rotate property for stream orientation
+  gint                rotate;
 };
 
 struct _GstQmmfSrcVideoPadClass {

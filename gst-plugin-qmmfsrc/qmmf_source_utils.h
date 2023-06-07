@@ -135,6 +135,7 @@ G_BEGIN_DECLS
     (gst_qmmfsrc_noise_reduction_get_type())
 #define GST_TYPE_QMMFSRC_CAPTURE_MODE (gst_qmmfsrc_capture_mode_get_type())
 #define GST_TYPE_QMMFSRC_FRC_MODE (gst_qmmfsrc_frc_mode_get_type())
+#define GST_TYPE_QMMFSRC_ROTATE (gst_qmmfsrc_rotate_get_type())
 
 #define GST_BAYER_FORMAT_OFFSET 0x1000
 
@@ -279,6 +280,14 @@ enum
   CAPTURE_REQUEST,
 };
 
+enum
+{
+  ROTATE_NONE,
+  ROTATE_90CCW,
+  ROTATE_180CCW,
+  ROTATE_270CCW,
+};
+
 GType gst_qmmfsrc_control_mode_get_type (void);
 
 GType gst_qmmfsrc_effect_mode_get_type (void);
@@ -304,6 +313,8 @@ GType gst_qmmfsrc_noise_reduction_get_type (void);
 GType gst_qmmfsrc_capture_mode_get_type (void);
 
 GType gst_qmmfsrc_frc_mode_get_type (void);
+
+GType gst_qmmfsrc_rotate_get_type(void);
 
 guchar gst_qmmfsrc_control_mode_android_value (const guint value);
 
