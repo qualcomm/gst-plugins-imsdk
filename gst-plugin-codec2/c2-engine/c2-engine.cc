@@ -474,7 +474,7 @@ gst_c2_engine_queue (GstC2Engine * engine, GstVideoCodecFrame * frame)
   if (GST_C2_MODE_ENCODE (engine) && (gst_buffer_n_memory (buffer) > 0) &&
       gst_is_fd_memory (gst_buffer_peek_memory (buffer, 0))) {
 
-    c2buffer = GstC2Utils::ImportBuffer (buffer);
+    c2buffer = GstC2Utils::ImportGraphicBuffer (buffer);
   } else if (GST_C2_MODE_ENCODE (engine) && (gst_buffer_n_memory (buffer) > 0)) {
     GstVideoMeta *vmeta = gst_buffer_get_video_meta (buffer);
     g_return_val_if_fail (vmeta != NULL, FALSE);
@@ -496,6 +496,12 @@ gst_c2_engine_queue (GstC2Engine * engine, GstVideoCodecFrame * frame)
     }
 
     c2buffer = GstC2Utils::CreateBuffer (buffer, block);
+#if defined(ENABLE_LINEAR_DMABUF)
+  } else if (GST_C2_MODE_DECODE (engine) && (gst_buffer_n_memory (buffer) > 0) &&
+      gst_is_fd_memory (gst_buffer_peek_memory (buffer, 0))) {
+
+    c2buffer = GstC2Utils::ImportLinearBuffer (buffer);
+#endif // ENABLE_LINEAR_DMABUF
   } else if (GST_C2_MODE_DECODE (engine) && (gst_buffer_n_memory (buffer) > 0)) {
     std::shared_ptr<C2LinearBlock> block;
     uint32_t size = gst_buffer_get_size (buffer);

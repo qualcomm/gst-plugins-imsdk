@@ -172,14 +172,25 @@ class GstC2Utils {
   static std::shared_ptr<C2Buffer> CreateBuffer(
       GstBuffer* buffer, std::shared_ptr<C2LinearBlock>& block);
 
-  /** ImportBuffer
+  /** ImportGraphicBuffer
    * @buffer: Pointer to GStreamer buffer.
    *
-   * Create Codec2 buffer from GStreamer buffer without copy.
+   * Create Graphic Codec2 buffer from GStreamer buffer without copy.
    *
    * return: Empty shared pointer on failure.
    **/
-  static std::shared_ptr<C2Buffer> ImportBuffer(GstBuffer* buffer);
+  static std::shared_ptr<C2Buffer> ImportGraphicBuffer(GstBuffer* buffer);
+
+#if defined(ENABLE_LINEAR_DMABUF)
+  /** ImportLinearBuffer
+   * @buffer: Pointer to GStreamer buffer.
+   *
+   * Create Linear Codec2 buffer from GStreamer buffer without copy.
+   *
+   * return: Empty shared pointer on failure.
+   **/
+  static std::shared_ptr<C2Buffer> ImportLinearBuffer(GstBuffer* buffer);
+#endif // ENABLE_LINEAR_DMABUF
 };
 
 #endif // __GST_C2_ENGINE_UTILS_H__
