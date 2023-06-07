@@ -16,7 +16,7 @@ target_compile_definitions(${GST_EXAMPLE_BIN} PRIVATE
 
 target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_LIBRARIES}
-  $<$<BOOL:${CAMERA_CLIENT_DISABLED}>:camera_metadata>
+  camera_metadata
   $<$<NOT:$<BOOL:${CAMERA_CLIENT_DISABLED}>>:camera_client>
   utils
 )
