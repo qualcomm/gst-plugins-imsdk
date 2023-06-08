@@ -121,6 +121,8 @@ static const std::unordered_map<uint32_t, C2Param::Index> kParamIndexMap = {
       qc2::QC2VideoROIRegionInfo::output::PARAM_TYPE },
   { GST_C2_PARAM_TRIGGER_SYNC_FRAME,
       C2StreamRequestSyncFrameTuning::output::PARAM_TYPE },
+  { GST_C2_PARAM_PRIORITY,
+      C2RealTimePriorityTuning::PARAM_TYPE },
 };
 
 // Convenient map for printing the engine parameter name in string form.
@@ -153,6 +155,7 @@ static const std::unordered_map<uint32_t, const char*> kParamNameMap = {
   { GST_C2_PARAM_TRIGGER_SYNC_FRAME, "TRIGGER_SYNC_FRAME" },
   { GST_C2_PARAM_NATIVE_RECORDING, "NATIVE_RECORDING"},
   { GST_C2_PARAM_TEMPORAL_LAYERING, "TEMPORAL_LAYERING"},
+  { GST_C2_PARAM_PRIORITY, "PRIORITY"},
 };
 
 // Map for the GST_C2_PARAM_PROFILE_LEVEL parameter.
@@ -618,6 +621,12 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       c2param = C2Param::Copy(syncframe);
       break;
     }
+    case GST_C2_PARAM_PRIORITY: {
+      C2RealTimePriorityTuning priority;
+      priority.value = *(reinterpret_cast<int32_t*>(payload));
+      c2param = C2Param::Copy(priority);
+      break;
+    }
     default:
       GST_ERROR ("Unsupported parameter: %u!", type);
       return FALSE;
@@ -902,6 +911,12 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
       auto syncframe =
           reinterpret_cast<C2StreamRequestSyncFrameTuning::output*>(c2param.get());
       *(reinterpret_cast<gboolean*>(payload)) = syncframe->value ? TRUE : FALSE;
+      break;
+    }
+    case GST_C2_PARAM_PRIORITY: {
+      auto priority =
+          reinterpret_cast<C2RealTimePriorityTuning*>(c2param.get());
+      *(reinterpret_cast<int32_t*>(payload)) = priority->value;
       break;
     }
     default:

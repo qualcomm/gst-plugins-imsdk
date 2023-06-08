@@ -82,6 +82,7 @@ G_DEFINE_TYPE (GstC2VEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 #define DEFAULT_PROP_ENTROPY_MODE         (0xffffffff)
 #define DEFAULT_PROP_LOOP_FILTER_MODE     (0xffffffff)
 #define DEFAULT_PROP_NUM_LTR_FRAMES       (0xffffffff)
+#define DEFAULT_PROP_PRIORITY             (0xffffffff)
 
 #ifndef GST_CAPS_FEATURE_MEMORY_GBM
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
@@ -116,6 +117,7 @@ enum
   PROP_ENTROPY_MODE,
   PROP_LOOP_FILTER_MODE,
   PROP_NUM_LTR_FRAMES,
+  PROP_PRIORITY,
 };
 
 static GstStaticPadTemplate gst_c2_venc_sink_pad_template =
@@ -323,6 +325,16 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
   if (!success) {
     GST_ERROR_OBJECT (c2venc, "Failed to set output framerate parameter!");
     return FALSE;
+  }
+
+  if (c2venc->priority != DEFAULT_PROP_PRIORITY) {
+    success = gst_c2_engine_set_parameter (c2venc->engine,
+        GST_C2_PARAM_PRIORITY, GPOINTER_CAST (&(c2venc->priority)));
+
+    if (!success) {
+      GST_ERROR_OBJECT (c2venc, "Failed to set video priority parameter!");
+      return FALSE;
+    }
   }
 
   success = gst_c2_engine_set_parameter (c2venc->engine,
@@ -1164,6 +1176,9 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
     case PROP_NUM_LTR_FRAMES:
       c2venc->num_ltr_frames = g_value_get_uint (value);
       break;
+    case PROP_PRIORITY:
+      c2venc->priority = g_value_get_int (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -1287,6 +1302,9 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
       break;
     case PROP_NUM_LTR_FRAMES:
       g_value_set_uint (value, c2venc->num_ltr_frames);
+      break;
+    case PROP_PRIORITY:
+      g_value_set_int (value, c2venc->priority);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1458,6 +1476,12 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
           "Number of Long Term Reference Frames (0xffffffff=component default)",
           0, G_MAXUINT, DEFAULT_PROP_NUM_LTR_FRAMES,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_PRIORITY,
+      g_param_spec_int ("priority", "Priority",
+          "The proirity of current video instance among concurrent cases,"
+          "(0xffffffff=component default default)",
+          G_MININT32, G_MAXINT, DEFAULT_PROP_PRIORITY,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
 
   g_signal_new_class_handler ("trigger-iframe", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION, G_CALLBACK (gst_c2_venc_trigger_iframe),
@@ -1526,6 +1550,7 @@ gst_c2_venc_init (GstC2VEncoder * c2venc)
   c2venc->entropy_mode = DEFAULT_PROP_ENTROPY_MODE;
   c2venc->loop_filter_mode = DEFAULT_PROP_LOOP_FILTER_MODE;
   c2venc->num_ltr_frames = DEFAULT_PROP_NUM_LTR_FRAMES;
+  c2venc->priority = DEFAULT_PROP_PRIORITY;
 
   GST_DEBUG_CATEGORY_INIT (c2_venc_debug, "qtic2venc", 0,
       "QTI c2venc encoder");
