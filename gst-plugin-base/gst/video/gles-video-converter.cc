@@ -138,6 +138,9 @@ struct _GstGlesVideoConverter
   GHashTable      *insurfaces;
   GHashTable      *outsurfaces;
 
+  // List of not yet processed request IDs.
+  GList           *request_ids;
+
   // IB2C library handle.
   gpointer        ib2chandle;
 
@@ -704,6 +707,9 @@ gst_gles_video_converter_free (GstGlesVideoConverter * convert)
   if (convert == NULL)
     return;
 
+  if (convert->request_ids != NULL)
+    g_list_free (convert->request_ids);
+
   if (convert->inopts != NULL)
     g_list_free_full (convert->inopts, (GDestroyNotify) gst_structure_free);
 
@@ -928,6 +934,9 @@ gst_gles_video_converter_submit_request (GstGlesVideoConverter * convert,
     return NULL;
   }
 
+  convert->request_ids = g_list_append (convert->request_ids,
+      reinterpret_cast<gpointer>(request_id));
+
   return reinterpret_cast<gpointer>(request_id);
 }
 
@@ -943,9 +952,14 @@ gst_gles_video_converter_wait_request (GstGlesVideoConverter * convert,
   try {
     convert->engine->Finish (reinterpret_cast<std::intptr_t>(request_id));
   } catch (std::exception& e) {
-    GST_ERROR ("Failed to process request ID, error: '%s'!", e.what());
+    GST_ERROR ("Failed to process request ID %p, error: '%s'!",
+        request_id, e.what());
     return FALSE;
   }
+
+  GST_GLES_LOCK (convert);
+  convert->request_ids = g_list_remove (convert->request_ids, request_id);
+  GST_GLES_UNLOCK (convert);
 
   return TRUE;
 }
@@ -953,13 +967,40 @@ gst_gles_video_converter_wait_request (GstGlesVideoConverter * convert,
 void
 gst_gles_video_converter_flush (GstGlesVideoConverter * convert)
 {
+  GList *list = NULL;
+
   g_return_if_fail (convert != NULL);
 
-  // try {
-  //   convert->engine->Finish (reinterpret_cast<std::intptr_t>(nullptr));
-  // } catch (std::exception& e) {
-  //   GST_ERROR ("Failed to process frames, error: '%s'!", e.what());
-  // }
+  GST_GLES_LOCK (convert);
+
+  GST_LOG ("Forcing pending requests to complete");
+
+  for (list = convert->request_ids; list != NULL; list = list->next) {
+    gpointer request_id = list->data;
+
+    try {
+      convert->engine->Finish (reinterpret_cast<std::intptr_t>(request_id));
+    } catch (std::exception& e) {
+      GST_ERROR ("Failed to process request ID %p, error: '%s'!",
+          request_id, e.what());
+    }
+  }
+
+  g_clear_pointer (&(convert->request_ids), (GDestroyNotify) g_list_free);
+
+  GST_LOG ("Finished pending requests");
+
+  if (convert->insurfaces != NULL) {
+    g_hash_table_foreach (convert->insurfaces, gst_destroy_surface, convert);
+    g_hash_table_remove_all (convert->insurfaces);
+  }
+
+  if (convert->outsurfaces != NULL) {
+    g_hash_table_foreach (convert->outsurfaces, gst_destroy_surface, convert);
+    g_hash_table_remove_all (convert->outsurfaces);
+  }
+
+  GST_GLES_UNLOCK (convert);
 
   return;
 }
