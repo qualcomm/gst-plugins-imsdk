@@ -77,6 +77,9 @@ static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
 typedef struct _GstMLSubModule GstMLSubModule;
 
 struct _GstMLSubModule {
+  // Configurated ML capabilities in structure format.
+  GstMLInfo  mlinfo;
+
   // List of prediction labels.
   GHashTable *labels;
   // Confidence threshold value.
@@ -190,13 +193,20 @@ gst_ml_non_max_suppression (GstMLPrediction * l_prediction, GArray * predictions
 
 static void
 gst_ml_module_parse_split_tensors (GstMLSubModule * submodule,
-    GArray * predictions, GstMLFrame * mlframe, gint sar_n, gint sar_d,
-    guint in_height, guint in_width)
+    GArray * predictions, GstMLFrame * mlframe)
 {
-  guint idx = 0, num = 0, anchor = 0, x = 0, y = 0, m = 0, id = 0;
-  guint n_detections = 0, n_anchors = 0, width = 0, height = 0;
+  GstProtectionMeta *pmeta = NULL;
+  guint idx = 0, num = 0, anchor = 0, n_anchors = 0, x = 0, y = 0, m = 0, id = 0;
+  guint n_detections = 0, width = 0, height = 0, in_width = 0, in_height = 0;
   gfloat confidence = 0.0, score = 0.0, bbox[4] = { 0, };
-  gint nms = -1;
+  gint nms = -1, sar_n = 1, sar_d = 1;
+
+  // Extract the SAR (Source Aspect Ratio) and input tensor resolution.
+  if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL) {
+    gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
+    gst_structure_get_uint (pmeta->info, "input-tensor-width", &in_width);
+    gst_structure_get_uint (pmeta->info, "input-tensor-height", &in_height);
+  }
 
   for (idx = 0; idx < GST_ML_FRAME_N_BLOCKS (mlframe); idx++, num = 0) {
     GstLabel *label = NULL;
@@ -307,7 +317,6 @@ gst_ml_module_parse_split_tensors (GstMLSubModule * submodule,
       }
     }
   }
-  GST_DEBUG ("predictions->len: %d", predictions->len);
 }
 
 gpointer
@@ -353,6 +362,7 @@ gboolean
 gst_ml_module_configure (gpointer instance, GstStructure * settings)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
+  GstCaps *caps = NULL, *mlcaps = NULL;
   const gchar *input = NULL;
   GValue list = G_VALUE_INIT;
   gdouble threshold = 0.0;
@@ -360,6 +370,30 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (settings != NULL, FALSE);
+
+  if (!(success = gst_structure_has_field (settings, GST_ML_MODULE_OPT_CAPS))) {
+    GST_ERROR ("Settings stucture does not contain configuration caps!");
+    goto cleanup;
+  }
+
+  // Fetch the configuration capabilities.
+  gst_structure_get (settings, GST_ML_MODULE_OPT_CAPS, GST_TYPE_CAPS, &caps, NULL);
+  // Get the set of supported capabilities.
+  mlcaps = gst_ml_module_caps ();
+
+  // Make sure that the configuration capabilities are fixated and supported.
+  if (!(success = gst_caps_is_fixed (caps))) {
+    GST_ERROR ("Configuration caps are not fixated!");
+    goto cleanup;
+  } else if (!(success = gst_caps_can_intersect (caps, mlcaps))) {
+    GST_ERROR ("Configuration caps are not supported!");
+    goto cleanup;
+  }
+
+  if (!(success = gst_ml_info_from_caps (&(submodule->mlinfo), caps))) {
+    GST_ERROR ("Failed to get ML info from confguration caps!");
+    goto cleanup;
+  }
 
   input = gst_structure_get_string (settings, GST_ML_MODULE_OPT_LABELS);
 
@@ -383,6 +417,9 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   submodule->threshold = threshold / 100.0;
 
 cleanup:
+  if (caps != NULL)
+    gst_caps_unref (caps);
+
   g_value_unset (&list);
   gst_structure_free (settings);
 
@@ -394,23 +431,17 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   GArray *predictions = (GArray *) output;
-  GstProtectionMeta *pmeta = NULL;
-  gint sar_n = 1, sar_d = 1;
-  guint in_height = 0, in_width = 0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  // Extract the SAR (Source Aspect Ratio).
-  if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL) {
-    gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
-    gst_structure_get_uint (pmeta->info, "input-tensor-height", &in_height);
-    gst_structure_get_uint (pmeta->info, "input-tensor-width", &in_width);
+  if (!gst_ml_info_is_equal (&(mlframe->info), &(submodule->mlinfo))) {
+    GST_ERROR ("ML frame with unsupported layout!");
+    return FALSE;
   }
 
-  gst_ml_module_parse_split_tensors (submodule, predictions, mlframe,
-      sar_n, sar_d, in_height, in_width);
+  gst_ml_module_parse_split_tensors (submodule, predictions, mlframe);
 
   return TRUE;
 }

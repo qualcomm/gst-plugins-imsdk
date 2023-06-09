@@ -90,10 +90,8 @@ static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
 typedef struct _GstMLSubModule GstMLSubModule;
 
 struct _GstMLSubModule {
-  // List of #GstCaps containing info on the supported ML tensors.
-  GPtrArray  *mlcaps;
-  // Stashed input ML frame caps containing info on the tensors.
-  GstCaps    *stgcaps;
+  // Configurated ML capabilities in structure format.
+  GstMLInfo  mlinfo;
 
   // List of prediction labels.
   GHashTable *labels;
@@ -177,23 +175,9 @@ gpointer
 gst_ml_module_open (void)
 {
   GstMLSubModule *submodule = NULL;
-  GstCaps *caps = NULL;
-  guint idx = 0, n_entries = 0;
 
   submodule = g_slice_new0 (GstMLSubModule);
   g_return_val_if_fail (submodule != NULL, NULL);
-
-  // Fetch caps instance and parse it into separate #GstCaps.
-  caps = gst_static_caps_get (&modulecaps);
-  n_entries = gst_caps_get_size (caps);
-
-  submodule->mlcaps =
-      g_ptr_array_new_with_free_func ((GDestroyNotify) gst_caps_unref);
-
-  for (idx = 0; idx < n_entries; idx++)
-    g_ptr_array_add (submodule->mlcaps, gst_caps_copy_nth (caps, idx));
-
-  gst_caps_unref (caps);
 
   return (gpointer) submodule;
 }
@@ -206,14 +190,8 @@ gst_ml_module_close (gpointer instance)
   if (NULL == submodule)
     return;
 
-  if (submodule->stgcaps != NULL)
-    gst_caps_unref (submodule->stgcaps);
-
   if (submodule->labels != NULL)
     g_hash_table_destroy (submodule->labels);
-
-  if (submodule->mlcaps != NULL)
-    g_ptr_array_free (submodule->mlcaps, TRUE);
 
   g_slice_free (GstMLSubModule, submodule);
 }
@@ -236,6 +214,7 @@ gboolean
 gst_ml_module_configure (gpointer instance, GstStructure * settings)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
+  GstCaps *caps = NULL, *mlcaps = NULL;
   const gchar *input = NULL;
   GValue list = G_VALUE_INIT;
   gdouble threshold = 0.0;
@@ -243,6 +222,30 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (settings != NULL, FALSE);
+
+  if (!(success = gst_structure_has_field (settings, GST_ML_MODULE_OPT_CAPS))) {
+    GST_ERROR ("Settings stucture does not contain configuration caps!");
+    goto cleanup;
+  }
+
+  // Fetch the configuration capabilities.
+  gst_structure_get (settings, GST_ML_MODULE_OPT_CAPS, GST_TYPE_CAPS, &caps, NULL);
+  // Get the set of supported capabilities.
+  mlcaps = gst_ml_module_caps ();
+
+  // Make sure that the configuration capabilities are fixated and supported.
+  if (!(success = gst_caps_is_fixed (caps))) {
+    GST_ERROR ("Configuration caps are not fixated!");
+    goto cleanup;
+  } else if (!(success = gst_caps_can_intersect (caps, mlcaps))) {
+    GST_ERROR ("Configuration caps are not supported!");
+    goto cleanup;
+  }
+
+  if (!(success = gst_ml_info_from_caps (&(submodule->mlinfo), caps))) {
+    GST_ERROR ("Failed to get ML info from confguration caps!");
+    goto cleanup;
+  }
 
   input = gst_structure_get_string (settings, GST_ML_MODULE_OPT_LABELS);
 
@@ -266,6 +269,9 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   submodule->threshold = threshold / 100.0;
 
 cleanup:
+  if (caps != NULL)
+    gst_caps_unref (caps);
+
   g_value_unset (&list);
   gst_structure_free (settings);
 
@@ -277,7 +283,6 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   GArray *predictions = (GArray *) output;
-  GstCaps *caps = NULL;
   GstProtectionMeta *pmeta = NULL;
   gfloat *bboxes = NULL, *classes = NULL, *scores = NULL, *n_boxes = NULL;
   gint sar_n = 1, sar_d = 1, nms = -1;
@@ -287,40 +292,23 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  if (submodule->stgcaps == NULL)
-    submodule->stgcaps = gst_ml_info_to_caps (&(mlframe)->info);
+  if (!gst_ml_info_is_equal (&(mlframe->info), &(submodule->mlinfo))) {
+    GST_ERROR ("ML frame with unsupported layout!");
+    return FALSE;
+  }
 
-  // Depending on the frame tensors tensors are ordered differently.
-  caps = GST_CAPS_CAST (g_ptr_array_index (submodule->mlcaps, 0));
-
-  if (gst_caps_can_intersect (submodule->stgcaps, caps)) {
+  if (GST_ML_INFO_N_DIMENSIONS (&(submodule->mlinfo), 3) == 1) {
     bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
     classes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
     scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
     n_boxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
   }
 
-  caps = GST_CAPS_CAST (g_ptr_array_index (submodule->mlcaps, 1));
-
-  if (gst_caps_can_intersect (submodule->stgcaps, caps)) {
+  if (GST_ML_INFO_N_DIMENSIONS (&(submodule->mlinfo), 3) == 2) {
     bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
     classes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
     scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
     n_boxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
-  }
-
-  caps = GST_CAPS_CAST (g_ptr_array_index (submodule->mlcaps, 2));
-
-  if (gst_caps_can_intersect (submodule->stgcaps, caps)) {
-    bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
-    classes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
-    scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
-    n_boxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
-  }
-
-  if (!bboxes || !classes || !scores || !n_boxes) {
-    GST_ERROR ("Unsupported tensors capabilities!");
-    return FALSE;
   }
 
   n_entries = n_boxes[0];

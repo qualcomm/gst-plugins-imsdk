@@ -82,6 +82,9 @@ static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
 typedef struct _GstMLSubModule GstMLSubModule;
 
 struct _GstMLSubModule {
+  // Configurated ML capabilities in structure format.
+  GstMLInfo  mlinfo;
+
   // List of prediction labels.
   GHashTable *labels;
   // Confidence threshold value.
@@ -131,6 +134,7 @@ gboolean
 gst_ml_module_configure (gpointer instance, GstStructure * settings)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
+  GstCaps *caps = NULL, *mlcaps = NULL;
   const gchar *input = NULL;
   GValue list = G_VALUE_INIT;
   gdouble threshold = 0.0;
@@ -138,6 +142,30 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (settings != NULL, FALSE);
+
+  if (!(success = gst_structure_has_field (settings, GST_ML_MODULE_OPT_CAPS))) {
+    GST_ERROR ("Settings stucture does not contain configuration caps!");
+    goto cleanup;
+  }
+
+  // Fetch the configuration capabilities.
+  gst_structure_get (settings, GST_ML_MODULE_OPT_CAPS, GST_TYPE_CAPS, &caps, NULL);
+  // Get the set of supported capabilities.
+  mlcaps = gst_ml_module_caps ();
+
+  // Make sure that the configuration capabilities are fixated and supported.
+  if (!(success = gst_caps_is_fixed (caps))) {
+    GST_ERROR ("Configuration caps are not fixated!");
+    goto cleanup;
+  } else if (!(success = gst_caps_can_intersect (caps, mlcaps))) {
+    GST_ERROR ("Configuration caps are not supported!");
+    goto cleanup;
+  }
+
+  if (!(success = gst_ml_info_from_caps (&(submodule->mlinfo), caps))) {
+    GST_ERROR ("Failed to get ML info from confguration caps!");
+    goto cleanup;
+  }
 
   input = gst_structure_get_string (settings, GST_ML_MODULE_OPT_LABELS);
 
@@ -161,6 +189,9 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   submodule->threshold = threshold;
 
 cleanup:
+  if (caps != NULL)
+    gst_caps_unref (caps);
+
   g_value_unset (&list);
   gst_structure_free (settings);
 
@@ -179,6 +210,11 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
+
+  if (!gst_ml_info_is_equal (&(mlframe->info), &(submodule->mlinfo))) {
+    GST_ERROR ("ML frame with unsupported layout!");
+    return FALSE;
+  }
 
   n_inferences = GST_ML_FRAME_DIM (mlframe, 0, 1);
   data = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
