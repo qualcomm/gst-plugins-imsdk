@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -155,12 +155,9 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
   // Extract the SAR (Source Aspect Ratio) and adjust mask dimensions.
   if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL) {
-    guint sar_n = 1, sar_d = 1;
+    gint sar_n = 1, sar_d = 1;
 
-    sar_n = gst_value_get_fraction_numerator (
-        gst_structure_get_value (pmeta->info, "source-aspect-ratio"));
-    sar_d = gst_value_get_fraction_denominator (
-        gst_structure_get_value (pmeta->info, "source-aspect-ratio"));
+    gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
 
     if (sar_n > sar_d)
       height = gst_util_uint64_scale_int (width, sar_d, sar_n);

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -33,6 +33,7 @@
 */
 
 #include "ml-video-detection-module.h"
+
 #include <math.h>
 #include <stdio.h>
 
@@ -41,7 +42,6 @@
 
 #define MAX_FACE_CNT 256
 #define MIN_FACE_SIZE 400
-#define CONF_THRESHOLD 0.2
 #define TENSOR_STRIDE 8
 
 #define INPUT_TENSOR_W 640
@@ -71,9 +71,13 @@ typedef struct _GstMLSubModule GstMLSubModule;
 typedef struct _ScorePair ScorePair;
 
 struct _GstMLSubModule {
+  // List of prediction labels.
   GHashTable *labels;
+  // Confidence threshold value.
+  gfloat     threshold;
 };
 
+// TODO Numerous code style errors will be addressed in subsequent gerrit.
 struct _ScorePair {
     float   first;
     int     second;
@@ -124,19 +128,38 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   const gchar *input = NULL;
   GValue list = G_VALUE_INIT;
+  gdouble threshold = 0.0;
+  gboolean success = FALSE;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (settings != NULL, FALSE);
 
   input = gst_structure_get_string (settings, GST_ML_MODULE_OPT_LABELS);
-  g_return_val_if_fail (gst_ml_parse_labels (input, &list), FALSE);
+
+  // Parse funtion will print error message if it fails, simply goto cleanup.
+  if (!(success = gst_ml_parse_labels (input, &list)))
+    goto cleanup;
 
   submodule->labels = gst_ml_load_labels (&list);
-  g_return_val_if_fail (submodule->labels != NULL, FALSE);
 
+  // Labels funtion will print error message if it fails, simply goto cleanup.
+  if (!(success = (submodule->labels != NULL)))
+    goto cleanup;
+
+  success = gst_structure_has_field (settings, GST_ML_MODULE_OPT_THRESHOLD);
+  if (!success) {
+    GST_ERROR ("Settings stucture does not contain threshold value!");
+    goto cleanup;
+  }
+
+  gst_structure_get_double (settings, GST_ML_MODULE_OPT_THRESHOLD, &threshold);
+  submodule->threshold = threshold / 100.0;
+
+cleanup:
   g_value_unset (&list);
   gst_structure_free (settings);
-  return TRUE;
+
+  return success;
 }
 
 static float
@@ -210,7 +233,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe,
   GstMLSubModule *submodule = instance;
   GArray *predictions = (GArray *)output;
   GstProtectionMeta *pmeta = NULL;
-  guint sar_n = 0, sar_d = 0;
+  gint sar_n = 0, sar_d = 0;
   guint t = 0, idx = 0;
   guint hm_width = 0, class_num = 0;
 
@@ -246,7 +269,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe,
 
   for (t = 0, idx = 0; t < size && idx < MAX_FACE_CNT; ++t) {
     if (hm_data[t] == hm_pool_data[t]) {
-      if (hm_data[t] < CONF_THRESHOLD)
+      if (hm_data[t] < submodule->threshold)
         continue;
 
       confidenceIndex[idx].first = hm_data[t];
@@ -302,12 +325,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe,
   GST_INFO ("%s: Detected %u faces", __func__, facePrediction->len);
 
   // Extract the SAR (Source Aspect Ratio).
-  if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL) {
-    sar_n = gst_value_get_fraction_numerator (
-        gst_structure_get_value (pmeta->info, "source-aspect-ratio"));
-    sar_d = gst_value_get_fraction_denominator (
-        gst_structure_get_value (pmeta->info, "source-aspect-ratio"));
-  }
+  if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL)
+    gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
 
   for (size_t i = 0; i < facePrediction->len; ++i) {
     GstMLPrediction* prediction =

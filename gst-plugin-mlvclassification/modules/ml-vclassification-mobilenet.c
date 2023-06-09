@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -82,7 +82,10 @@ static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
 typedef struct _GstMLSubModule GstMLSubModule;
 
 struct _GstMLSubModule {
+  // List of prediction labels.
   GHashTable *labels;
+  // Confidence threshold value.
+  gdouble    threshold;
 };
 
 gpointer
@@ -130,19 +133,38 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   const gchar *input = NULL;
   GValue list = G_VALUE_INIT;
+  gdouble threshold = 0.0;
+  gboolean success = FALSE;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (settings != NULL, FALSE);
 
   input = gst_structure_get_string (settings, GST_ML_MODULE_OPT_LABELS);
-  g_return_val_if_fail (gst_ml_parse_labels (input, &list), FALSE);
+
+  // Parse funtion will print error message if it fails, simply goto cleanup.
+  if (!(success = gst_ml_parse_labels (input, &list)))
+    goto cleanup;
 
   submodule->labels = gst_ml_load_labels (&list);
-  g_return_val_if_fail (submodule->labels != NULL, FALSE);
 
+  // Labels funtion will print error message if it fails, simply goto cleanup.
+  if (!(success = (submodule->labels != NULL)))
+    goto cleanup;
+
+  success = gst_structure_has_field (settings, GST_ML_MODULE_OPT_THRESHOLD);
+  if (!success) {
+    GST_ERROR ("Settings stucture does not contain threshold value!");
+    goto cleanup;
+  }
+
+  gst_structure_get_double (settings, GST_ML_MODULE_OPT_THRESHOLD, &threshold);
+  submodule->threshold = threshold;
+
+cleanup:
   g_value_unset (&list);
   gst_structure_free (settings);
-  return TRUE;
+
+  return success;
 }
 
 gboolean
@@ -152,7 +174,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GArray *predictions = (GArray *) output;
   guint8 *data = NULL;
   guint idx = 0, n_inferences = 0;
-  gdouble value = 0.0;
+  gdouble confidence = 0.0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);
@@ -168,26 +190,26 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
     switch (GST_ML_FRAME_TYPE (mlframe)) {
       case GST_ML_TYPE_UINT8:
-        value = data[idx] * (100.0 / G_MAXUINT8);
+        confidence = data[idx] * (100.0 / G_MAXUINT8);
         break;
       case GST_ML_TYPE_INT32:
-        value = GINT32_PTR_CAST (data)[idx];
+        confidence = GINT32_PTR_CAST (data)[idx];
         break;
       case GST_ML_TYPE_FLOAT32:
-        value = GFLOAT_PTR_CAST (data)[idx] * 100;
+        confidence = GFLOAT_PTR_CAST (data)[idx] * 100;
         break;
       default:
         GST_ERROR ("Unsupported tensor type!");
         return FALSE;
     }
 
-    // Discard results below 10% confidence.
-    if (value <= 10.0)
+    // Discard results with confidence below the set threshold.
+    if (confidence < submodule->threshold)
       continue;
 
     label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (idx));
 
-    prediction.confidence = value;
+    prediction.confidence = confidence;
     prediction.label = g_strdup (label ? label->name : "unknown");
     prediction.color = label ? label->color : 0x000000FF;
 
