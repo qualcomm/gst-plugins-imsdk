@@ -871,7 +871,8 @@ gst_ml_video_detection_set_caps (GstBaseTransform * base, GstCaps * incaps,
 
   if (!gst_caps_can_intersect (incaps, modulecaps)) {
     GST_ELEMENT_ERROR (detection, RESOURCE, FAILED, (NULL),
-        ("Module caps do not intersect with the negotiated caps!"));
+        ("Module caps %" GST_PTR_FORMAT " do not intersect with the "
+         "negotiated caps %" GST_PTR_FORMAT "!", modulecaps, incaps));
     return FALSE;
   }
 
@@ -882,6 +883,7 @@ gst_ml_video_detection_set_caps (GstBaseTransform * base, GstCaps * incaps,
   }
 
   structure = gst_structure_new ("options",
+      GST_ML_MODULE_OPT_CAPS, GST_TYPE_CAPS, incaps,
       GST_ML_MODULE_OPT_LABELS, G_TYPE_STRING, detection->labels,
       GST_ML_MODULE_OPT_THRESHOLD, G_TYPE_DOUBLE, detection->threshold,
       NULL);

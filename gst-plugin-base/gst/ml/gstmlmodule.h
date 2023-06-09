@@ -46,6 +46,17 @@ GST_DEBUG_CATEGORY_EXTERN (gst_ml_module_debug);
 #define GST_ML_MODULE_CAST(obj) ((GstMLModule*)(obj))
 
 /**
+ * GST_ML_MODULE_OPT_CAPS
+ *
+ * #GST_TYPE_CAPS: A fixated set of ML caps. Submodule will expect to receive
+ *                 ML frames with the fixated caps layout for processing.
+ * Default: NULL
+ *
+ * To be used as a mandatory option for 'gst_ml_module_configure'.
+ */
+#define GST_ML_MODULE_OPT_CAPS "GstMLModule.caps"
+
+/**
  * GST_ML_MODULE_OPT_LABELS
  *
  * #G_TYPE_STRING: Path and name of the file containing the ML labels.

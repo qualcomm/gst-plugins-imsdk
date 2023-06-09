@@ -62,6 +62,9 @@ static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
 typedef struct _GstMLSubModule GstMLSubModule;
 
 struct _GstMLSubModule {
+  // Configurated ML capabilities in structure format.
+  GstMLInfo  mlinfo;
+
   // List of prediction labels.
   GHashTable *labels;
   // Confidence threshold value.
@@ -214,6 +217,7 @@ gboolean
 gst_ml_module_configure (gpointer instance, GstStructure * settings)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
+  GstCaps *caps = NULL, *mlcaps = NULL;
   const gchar *input = NULL;
   GValue list = G_VALUE_INIT;
   gdouble threshold = 0.0;
@@ -221,6 +225,30 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (settings != NULL, FALSE);
+
+  if (!(success = gst_structure_has_field (settings, GST_ML_MODULE_OPT_CAPS))) {
+    GST_ERROR ("Settings stucture does not contain configuration caps!");
+    goto cleanup;
+  }
+
+  // Fetch the configuration capabilities.
+  gst_structure_get (settings, GST_ML_MODULE_OPT_CAPS, GST_TYPE_CAPS, &caps, NULL);
+  // Get the set of supported capabilities.
+  mlcaps = gst_ml_module_caps ();
+
+  // Make sure that the configuration capabilities are fixated and supported.
+  if (!(success = gst_caps_is_fixed (caps))) {
+    GST_ERROR ("Configuration caps are not fixated!");
+    goto cleanup;
+  } else if (!(success = gst_caps_can_intersect (caps, mlcaps))) {
+    GST_ERROR ("Configuration caps are not supported!");
+    goto cleanup;
+  }
+
+  if (!(success = gst_ml_info_from_caps (&(submodule->mlinfo), caps))) {
+    GST_ERROR ("Failed to get ML info from confguration caps!");
+    goto cleanup;
+  }
 
   input = gst_structure_get_string (settings, GST_ML_MODULE_OPT_LABELS);
 
@@ -244,6 +272,9 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   submodule->threshold = threshold / 100.0;
 
 cleanup:
+  if (caps != NULL)
+    gst_caps_unref (caps);
+
   g_value_unset (&list);
   gst_structure_free (settings);
 
@@ -266,16 +297,16 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
+  if (!gst_ml_info_is_equal (&(mlframe->info), &(submodule->mlinfo))) {
+    GST_ERROR ("ML frame with unsupported layout!");
+    return FALSE;
+  }
+
   // Extract the SAR (Source Aspect Ratio).
   if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL) {
     gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
     gst_structure_get_uint (pmeta->info, "input-tensor-height", &in_height);
     gst_structure_get_uint (pmeta->info, "input-tensor-width", &in_width);
-  }
-
-  if (!in_height || !in_width) {
-    GST_ERROR ("Unsupported input size[%ux%u]!", in_height, in_width);
-    return FALSE;
   }
 
   n_detections = GST_ML_FRAME_DIM (mlframe, 0, 2);
@@ -298,10 +329,6 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     n_classes = GST_ML_FRAME_DIM (mlframe, 0, 1) - 4 ;
   }
 
-  if (!bbox_data || !class_data || !n_classes || !n_detections) {
-    GST_ERROR ("Unsupported tensors capabilities!");
-    return FALSE;
-  }
   GST_LOG ("Input size[%d:%d] SAR[%d/%d]. n_detections: %d. n_classes: %d"
       ". threshold: %f", in_height, in_width, sar_n, sar_d, n_detections,
       n_classes, submodule->threshold);
@@ -341,6 +368,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     prediction.confidence = confidence * 100.0F;
     prediction.label = g_strdup (label ? label->name : "unknown");
     prediction.color = label ? label->color : 0x000000F;
+
     prediction.top =  cy - h / 2.0f;
     prediction.left = cx - w / 2.0f;
     prediction.bottom = prediction.top + h;
@@ -369,6 +397,6 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
     predictions = g_array_append_val (predictions, prediction);
   }
-  GST_DEBUG ("predictions->len: %d", predictions->len);
+
   return TRUE;
 }
