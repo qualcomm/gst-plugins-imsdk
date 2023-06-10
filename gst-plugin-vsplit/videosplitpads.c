@@ -48,6 +48,7 @@ GST_DEBUG_CATEGORY_EXTERN (gst_video_split_debug);
 #define DEFAULT_PROP_MODE           GST_VSPLIT_MODE_NONE
 #define DEFAULT_PROP_MIN_BUFFERS    2
 #define DEFAULT_PROP_MAX_BUFFERS    20
+#define GST_VSPLIT_MAX_QUEUE_LEN    32
 
 #ifndef GST_CAPS_FEATURE_MEMORY_GBM
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
@@ -69,8 +70,7 @@ static gboolean
 queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
     guint64 time, gpointer checkdata)
 {
-  // There won't be any condition limiting for the buffer queue size.
-  return FALSE;
+  return (visible >= GST_VSPLIT_MAX_QUEUE_LEN) ? TRUE : FALSE;
 }
 
 static gboolean
