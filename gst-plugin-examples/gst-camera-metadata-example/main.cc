@@ -753,7 +753,7 @@ static void
 print_vendor_tags (::camera::CameraMetadata * meta, FILE * file)
 {
   gchar *header = NULL;
-  const ::android::sp<::android::VendorTagDescriptor> vtags =
+  const ::android::sp<::camera::VendorTagDescriptor> vtags =
       ::camera::VendorTagDescriptor::getGlobalVendorTagDescriptor();
 
   if (vtags.get() == NULL) {
