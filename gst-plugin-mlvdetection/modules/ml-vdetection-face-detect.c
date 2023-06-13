@@ -37,24 +37,16 @@
 #include <math.h>
 #include <stdio.h>
 
-// output_layers='neuron_47, pool_0, convolution_43, convolution_44'
-// sigma = 1 / 0.014005602337, mean = -113.000000000000
-
-#define MAX_FACE_CNT 256
-#define MIN_FACE_SIZE 400
-#define TENSOR_STRIDE 8
-
-#define INPUT_TENSOR_W 640
-#define INPUT_TENSOR_H 480
-
-#define FD_HM_TENSOR 0
-#define FD_HM_POOL_TENSOR 1
-#define FD_LANDMARK_TENSOR 2
-#define FD_BBOXES_TENSOR 3
-
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
+
+// The size in pixels of a macro block.
+#define MACRO_BLOCK_SIZE       8
+// Non-maximum Suppression (NMS) threshold (50%).
+#define INTERSECTION_THRESHOLD 0.5F
+// Minimum relative size of the bounding box must occupy in the image.
+#define BBOX_SIZE_THRESHOLD    0.01F
 
 #define GFLOAT_PTR_CAST(data)       ((gfloat*) data)
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
@@ -68,7 +60,6 @@
 static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
 
 typedef struct _GstMLSubModule GstMLSubModule;
-typedef struct _ScorePair ScorePair;
 
 struct _GstMLSubModule {
   // List of prediction labels.
@@ -77,11 +68,110 @@ struct _GstMLSubModule {
   gfloat     threshold;
 };
 
-// TODO Numerous code style errors will be addressed in subsequent gerrit.
-struct _ScorePair {
-    float   first;
-    int     second;
-};
+static inline void
+gst_ml_prediction_transform_dimensions (GstMLPrediction * prediction,
+    gint num, gint denum, guint width, guint height)
+{
+  gdouble coeficient = 0.0;
+
+  if (num > denum) {
+    gst_util_fraction_to_double (num, denum, &coeficient);
+
+    prediction->top /= width / coeficient;
+    prediction->bottom /= width / coeficient;
+    prediction->left /= width;
+    prediction->right /= width;
+
+    return;
+  } else if (num < denum) {
+    gst_util_fraction_to_double (denum, num, &coeficient);
+
+    prediction->top /= height;
+    prediction->bottom /= height;
+    prediction->left /= height / coeficient;
+    prediction->right /= height / coeficient;
+
+    return;
+  }
+
+  // There is no need for AR adjustments, just translate to relative coords.
+  prediction->top /= height;
+  prediction->bottom /= height;
+  prediction->left /= width;
+  prediction->right /= width;
+}
+
+static inline gdouble
+gst_ml_predictions_intersection_score (GstMLPrediction * l_prediction,
+    GstMLPrediction * r_prediction)
+{
+  gdouble width = 0, height = 0, intersection = 0, l_area = 0, r_area = 0;
+
+  // Figure out the width of the intersecting rectangle.
+  // 1st: Find out the X axis coordinate of left most Top-Right point.
+  width = MIN (l_prediction->right, r_prediction->right);
+  // 2nd: Find out the X axis coordinate of right most Top-Left point
+  // and substract from the previously found value.
+  width -= MAX (l_prediction->left, r_prediction->left);
+
+  // Negative width means that there is no overlapping.
+  if (width <= 0.0F) return 0.0F;
+
+  // Figure out the height of the intersecting rectangle.
+  // 1st: Find out the Y axis coordinate of bottom most Left-Top point.
+  height = MIN (l_prediction->bottom, r_prediction->bottom);
+  // 2nd: Find out the Y axis coordinate of top most Left-Bottom point
+  // and substract from the previously found value.
+  height -= MAX (l_prediction->top, r_prediction->top);
+
+  // Negative height means that there is no overlapping.
+  if (height <= 0.0F) return 0.0F;
+
+  // Calculate intersection area.
+  intersection = width * height;
+
+  // Calculate the are of the 2 objects.
+  l_area = (l_prediction->right - l_prediction->left) *
+      (l_prediction->bottom - l_prediction->top);
+  r_area = (r_prediction->right - r_prediction->left) *
+      (r_prediction->bottom - r_prediction->top);
+
+  // Intersection over Union score.
+  return intersection / (l_area + r_area - intersection);
+}
+
+static inline gint
+gst_ml_non_max_suppression (GstMLPrediction * l_prediction, GArray * predictions)
+{
+  gdouble score = 0.0;
+  guint idx = 0;
+
+  for (idx = 0; idx < predictions->len;  idx++) {
+    GstMLPrediction *r_prediction =
+        &(g_array_index (predictions, GstMLPrediction, idx));
+
+    score = gst_ml_predictions_intersection_score (l_prediction, r_prediction);
+
+    // If the score is below the threshold, continue with next list entry.
+    if (score <= INTERSECTION_THRESHOLD)
+      continue;
+
+    // If labels do not match, continue with next list entry.
+    if (g_strcmp0 (l_prediction->label, r_prediction->label) != 0)
+      continue;
+
+    // If confidence of current prediction is higher, remove the old entry.
+    if (l_prediction->confidence > r_prediction->confidence)
+      return idx;
+
+    // If confidence of current prediction is lower, don't add it to the list.
+    if (l_prediction->confidence <= r_prediction->confidence)
+      return -2;
+  }
+
+  // If this point is reached then add current prediction to the list;
+  return -1;
+}
 
 gpointer
 gst_ml_module_open (void)
@@ -162,226 +252,109 @@ cleanup:
   return success;
 }
 
-static float
-computeIOU (GstMLPrediction* face1, GstMLPrediction* face2)
-{
-  float cx1 = face1->top, cy1 = face1->left, cx2 = face1->bottom, cy2 = face1->right;
-  float gx1 = face2->top, gy1 = face2->left, gx2 = face2->bottom, gy2 = face2->right;
-  float S_obj1 = (cx2 - cx1 + 1) * (cy2 - cy1 + 1);
-  float S_obj2 = (gx2 - gx1 + 1) * (gy2 - gy1 + 1);
-  float x1 = cx1 > gx1 ? cx1 : gx1;
-  float y1 = cy1 > gy1 ? cy1 : gy1;
-  float x2 = cx2 < gx2 ? cx2 : gx2;
-  float y2 = cy2 < gy2 ? cy2 : gy2;
-
-  float zero_f = 0.0;
-  float w = zero_f > (x2 - x1 + 1) ? zero_f : (x2 - x1 + 1);
-  float h = zero_f > (y2 - y1 + 1) ? zero_f : (y2 - y1 + 1);
-  float area = w * h;
-  return area / (S_obj1 + S_obj2 - area);
-};
-
-static GArray *
-fdNMS (GArray * facePrediction, float iou)
-{
-  if (facePrediction->len < 2)
-    return facePrediction;
-
-  GArray* faceKeep;
-  faceKeep = g_array_new (FALSE, FALSE, sizeof (GstMLPrediction));
-
-  GArray* flag = g_array_new (FALSE, TRUE, sizeof (gboolean));
-  g_array_set_size (flag, facePrediction->len);
-
-  for (size_t i = 0; i < facePrediction->len; ++i) {
-    if (g_array_index (flag, gboolean, i))
-      continue;
-
-    g_array_append_val(faceKeep, g_array_index (facePrediction, GstMLPrediction, i));
-    for (size_t j = i + 1; j < facePrediction->len; ++j) {
-      if (!g_array_index (flag, gboolean, j) &&
-          computeIOU (&g_array_index (facePrediction, GstMLPrediction, i),
-                      &g_array_index (facePrediction, GstMLPrediction, j)) > iou) {
-        gboolean* setFlag = &g_array_index (flag, gboolean, j);
-        *setFlag = TRUE;
-      }
-    }
-  }
-
-  g_array_free (facePrediction, TRUE);
-
-  return faceKeep;
-}
-
-static int
-sortScorePair (const void *p_val1, const void *p_val2)
-{
-  const ScorePair *p_confidence1 = (const ScorePair *) (p_val1);
-  const ScorePair *p_confidence2 = (const ScorePair *) (p_val2);
-
-  if (p_confidence1->first > p_confidence2->first)
-      return -1;
-  if (p_confidence1->first < p_confidence2->first)
-      return 1;
-  return 0;
-}
-
 gboolean
-gst_ml_module_process (gpointer instance, GstMLFrame * mlframe,
-    gpointer output)
+gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 {
-  GstMLSubModule *submodule = instance;
+  GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   GArray *predictions = (GArray *)output;
   GstProtectionMeta *pmeta = NULL;
-  gint sar_n = 0, sar_d = 0;
-  guint t = 0, idx = 0;
-  guint hm_width = 0, class_num = 0;
+  gfloat *scores = NULL, *hm_pool = NULL, *landmarks = NULL, *bboxes = NULL;
+  gfloat size = 0;
+  guint idx = 0, num = 0, n_classes = 0, n_blocks = 0, in_width = 0, in_height = 0;
+  gint sar_n = 1, sar_d = 1, nms = -1, cx = 0, cy = 0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  gfloat * hm_data =
-      GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, FD_HM_TENSOR));
-  gfloat * hm_pool_data =
-      GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, FD_HM_POOL_TENSOR));
-  gfloat * landmark_data =
-      GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, FD_LANDMARK_TENSOR));
-  gfloat * bboxes_data =
-      GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, FD_BBOXES_TENSOR));
-
-  GstMLTensorMeta *mlmeta = NULL;
-  if (!(mlmeta = gst_buffer_get_ml_tensor_meta_id (mlframe->buffer, 0))) {
-    GST_ERROR ("Buffer has no ML meta for tensor %u!", idx);
-    return FALSE;
+  // Extract the SAR (Source Aspect Ratio) and input tensor resolution.
+  if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL) {
+    gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
+    gst_structure_get_uint (pmeta->info, "input-tensor-width", &in_width);
+    gst_structure_get_uint (pmeta->info, "input-tensor-height", &in_height);
   }
 
-  hm_width = mlmeta->dimensions[2];
-  class_num = mlmeta->dimensions[3];
+  // TODO: First tensor represents some kind of confidence scores.
+  scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+  // TODO: Second tensor represents some kind of confidence scores.
+  hm_pool = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+  // Third tensor represents the landmarks (left eye, right ear, etc.).
+  landmarks = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
+  // Fourh tensor represents the coordinates of the bounding boxes.
+  bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
 
-  ScorePair confidenceIndex[MAX_FACE_CNT];
-  guint size = GST_ML_FRAME_BLOCK_SIZE (mlframe, FD_HM_TENSOR) / sizeof (gfloat);
+  // The 4th tensor dimension represents the number of detection classes.
+  n_classes = GST_ML_FRAME_DIM (mlframe, 0, 3);
 
-  GST_INFO ("%s: hm_width:  %u, class_num: %u", __func__, hm_width, class_num);
-  GST_INFO ("%s: Size of hm:  %i, hm_pool: %lu, bboxes: %lu", __func__, size,
-      GST_ML_FRAME_BLOCK_SIZE (mlframe, FD_HM_POOL_TENSOR),
-      GST_ML_FRAME_BLOCK_SIZE (mlframe, FD_BBOXES_TENSOR));
+  // Calculate the number of macroblocks.
+  n_blocks = GST_ML_FRAME_DIM (mlframe, 0, 1) * GST_ML_FRAME_DIM (mlframe, 0, 2);
 
-  for (t = 0, idx = 0; t < size && idx < MAX_FACE_CNT; ++t) {
-    if (hm_data[t] == hm_pool_data[t]) {
-      if (hm_data[t] < submodule->threshold)
-        continue;
+  for (idx = 0; idx < n_blocks; ++idx) {
+    GstLabel *label = NULL;
+    GstMLPrediction prediction = { 0, };
 
-      confidenceIndex[idx].first = hm_data[t];
-      confidenceIndex[idx].second = t;
-      GST_INFO ("%s:kmotov: idx: %u", __func__, idx);
-      idx++;
-    }
-  }
+    // Discard invalid results.
+    if (scores[idx] != hm_pool[idx])
+      continue;
 
-  qsort(confidenceIndex, idx, sizeof(ScorePair), sortScorePair);
+    // Discard results below the minimum score threshold.
+    if (scores[idx] < submodule->threshold)
+      continue;
 
-  guint confidenceIndexSize = idx;
-  GArray *facePrediction;
-  GstLabel *label = NULL;
-  facePrediction = g_array_new (FALSE, FALSE, sizeof (GstMLPrediction));
+    // Calculate the centre coordinates.
+    cx = (idx / n_classes) % GST_ML_FRAME_DIM (mlframe, 0, 2);
+    cy = (idx / n_classes) / GST_ML_FRAME_DIM (mlframe, 0, 2);
 
-  for (idx = 0; idx < confidenceIndexSize; idx++) {
+    prediction.left = (cx - bboxes[(idx * 4)]) * MACRO_BLOCK_SIZE;
+    prediction.top = (cy - bboxes[(idx * 4) + 1]) * MACRO_BLOCK_SIZE;
+    prediction.right = (cx + bboxes[(idx * 4) + 2]) * MACRO_BLOCK_SIZE;
+    prediction.bottom = (cy + bboxes[(idx * 4) + 3]) * MACRO_BLOCK_SIZE;
 
-    GST_INFO ("%s: Face detection confidence[%d] %f",__func__, idx,
-       confidenceIndex[idx].first);
+    // Adjust bounding box dimensions with SAR and input tensor resolution.
+    gst_ml_prediction_transform_dimensions (&prediction, sar_n, sar_d,
+        in_width, in_height);
 
-    int index = confidenceIndex[idx].second;
-    int cx = (index / class_num) % hm_width;
-    int cy = (index / class_num) / hm_width;
+    size = (prediction.right - prediction.left) *
+        (prediction.bottom - prediction.top);
+
+    // Discard results below the minimum bounding box size.
+    if (size < BBOX_SIZE_THRESHOLD)
+      continue;
 
     label = g_hash_table_lookup (submodule->labels,
-        GUINT_TO_POINTER (index % class_num));
+        GUINT_TO_POINTER (idx % n_classes));
 
-    GstMLPrediction face;
-    face.left = (cx - bboxes_data[(index * 4)]) * TENSOR_STRIDE;
-    face.top = (cy - bboxes_data[(index * 4) + 1]) * TENSOR_STRIDE;
-    face.right = (cx + bboxes_data[(index * 4) + 2]) * TENSOR_STRIDE;
-    face.bottom = (cy + bboxes_data[(index * 4) + 3]) * TENSOR_STRIDE;
-    face.confidence = confidenceIndex[idx].first * 100.0; // convert in percent
-    face.label = g_strdup (label ? label->name : "unknown");
-    face.color = label ? label->color : 0x000000FF;
+    prediction.confidence = scores[idx] * 100.0;
+    prediction.label = g_strdup (label ? label->name : "unknown");
+    prediction.color = label ? label->color : 0x000000FF;
 
-    g_array_append_val (facePrediction, face);
+    // Non-Max Suppression (NMS) algorithm.
+    nms = gst_ml_non_max_suppression (&prediction, predictions);
 
-    for (int k = 0; k < 5; ++k) {
-      if (index % class_num == 0) {
-        float lx =
-            (cx + landmark_data[index / class_num * 10 + k]) * TENSOR_STRIDE;
-        float ly =
-            (cy + landmark_data[index / class_num * 10 + k + 5]) * TENSOR_STRIDE;
-        GST_INFO ("%s: ladnmark: [ %.2f %.2f ] ", __func__, lx, ly);
-      }
-    }
-  }
-
-  facePrediction = fdNMS (facePrediction, 0.3);
-
-  GST_INFO ("%s: Detected %u faces", __func__, facePrediction->len);
-
-  // Extract the SAR (Source Aspect Ratio).
-  if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL)
-    gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
-
-  for (size_t i = 0; i < facePrediction->len; ++i) {
-    GstMLPrediction* prediction =
-        &g_array_index (facePrediction, GstMLPrediction, i);
-
-    GST_INFO ("%s: BBox: [ %.2f %.2f %.2f %.2f %.6f] ", __func__,
-        prediction->left, prediction->top, prediction->right,
-        prediction->bottom, prediction->confidence);
-
-    float bb_width = prediction->right - prediction->left;
-    float bb_height = prediction->bottom - prediction->top;
-
-    if (bb_width * bb_height < MIN_FACE_SIZE) {
-      g_free (prediction->label);
+    // If the NMS result is -2 don't add the prediction to the list.
+    if (nms == (-2)){
+      g_free (prediction.label);
       continue;
     }
 
-    if (prediction->left < 0) {
-      prediction->left = 0;
-    }
-    if (prediction->top < 0) {
-      prediction->top = 0;
-    }
-    if (prediction->right > INPUT_TENSOR_W - 1) {
-      prediction->right = INPUT_TENSOR_W - 1;
-    }
-    if (prediction->bottom > INPUT_TENSOR_H - 1) {
-      prediction->bottom = INPUT_TENSOR_H - 1;
-    }
+    // If the NMS result is above -1 remove the entry with the nms index.
+    if (nms >= 0)
+      predictions = g_array_remove_index (predictions, nms);
 
-    // Convert from absolute to relative coordinages
-    if (sar_n > sar_d) {
-      gdouble coeficient = 0.0;
+    // TODO: Enchance predictions to support landmarks.
+    for (num = 0; num < 5; ++num) {
+      gfloat lx = 0.0, ly = 0.0;
 
-      gst_util_fraction_to_double (sar_n, sar_d, &coeficient);
+      if ((idx % n_classes) != 0)
+        continue;
 
-      prediction->top /= (gdouble)INPUT_TENSOR_W / coeficient;
-      prediction->bottom /= (gdouble)INPUT_TENSOR_W / coeficient;
-      prediction->left /= (gdouble)INPUT_TENSOR_W;
-      prediction->right /= (gdouble)INPUT_TENSOR_W;
-    } else if (sar_n < sar_d) {
-      gdouble coeficient = 0.0;
-
-      gst_util_fraction_to_double (sar_d, sar_n, &coeficient);
-
-      prediction->top /= (gdouble)INPUT_TENSOR_H;
-      prediction->bottom /= (gdouble)INPUT_TENSOR_H;
-      prediction->left /= (gdouble)INPUT_TENSOR_H / coeficient;
-      prediction->right /= (gdouble)INPUT_TENSOR_H / coeficient;
+      lx = (cx + landmarks[idx / n_classes * 10 + num]) * MACRO_BLOCK_SIZE;
+      ly = (cy + landmarks[idx / n_classes * 10 + num + 5]) * MACRO_BLOCK_SIZE;
+      GST_INFO ("Ladnmark: [ %.2f %.2f ] ", lx, ly);
     }
 
-    predictions = g_array_append_val (predictions, *prediction);
+    predictions = g_array_append_val (predictions, prediction);
   }
-
-  g_array_free (facePrediction, TRUE);
 
   return TRUE;
 }
