@@ -140,12 +140,16 @@ c2_status_t C2Module::Initialize(std::shared_ptr<IC2Notifier>& notifier) {
   state_ = State::kIdle;
 
 #if defined(CODEC2_CONFIG_VERSION_2_0)
-  bool encoding = (interface_->getName().find("encoder") != std::string::npos);
+  bool decoding = (interface_->getName().find("decoder") != std::string::npos);
+
+  if (!decoding) {
+    // Output buffer pool for the encoder is not properly supported.
+    return C2_OK;
+  }
 
   // Create output graphic/linear pool for buffer circulation.
   ::android::C2PlatformAllocatorStore::id_t type =
-      encoding ? C2AllocatorStore::LINEAR_NON_CONTIGUOUS :
-          C2AllocatorStore::GRAPHIC_NON_CONTIGUOUS;
+      C2AllocatorStore::GRAPHIC_NON_CONTIGUOUS;
 
   std::shared_ptr<C2BlockPool> pool;
   status = ::android::CreateCodec2BlockPool(type, component_, &pool);
@@ -157,13 +161,8 @@ c2_status_t C2Module::Initialize(std::shared_ptr<IC2Notifier>& notifier) {
 
   C2BlockPool::local_id_t id;
 
-  if (encoding) {
-    linear_mem_ = std::make_shared<C2LinearMemory>(pool);
-    id = linear_mem_->GetLocalId();
-  } else {
-    graphic_mem_ = std::make_shared<C2GraphicMemory>(pool);
-    id = graphic_mem_->GetLocalId();
-  }
+  graphic_mem_ = std::make_shared<C2GraphicMemory>(pool);
+  id = graphic_mem_->GetLocalId();
 
   // Register the buffer pool ID so that it is used by the component.
   auto pools = C2PortBlockPoolsTuning::output::AllocUnique({id});
