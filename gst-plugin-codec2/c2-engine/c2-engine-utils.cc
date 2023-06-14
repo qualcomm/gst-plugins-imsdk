@@ -594,10 +594,11 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
 
         size_t len = strlen (region.rectPayload);
         size_t extlen = strlen (region.rectPayloadExt);
+        size_t writelen = static_cast<size_t>(ss.tellp()) - len - extlen;
 
-        if ((len + ss.tellp()) < size)
+        if ((len + writelen) < size)
           ss.get((region.rectPayload + len), ss.tellp());
-        else if ((extlen + ss.tellp()) < extsize)
+        else if ((extlen + writelen) < extsize)
           ss.get((region.rectPayloadExt + extlen), ss.tellp());
 
         ss.clear();
