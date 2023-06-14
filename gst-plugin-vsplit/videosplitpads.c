@@ -639,14 +639,18 @@ gst_video_split_fixate_height (GstPad * pad, GstStructure * input,
 
 static gboolean
 gst_video_split_fixate_width_and_height (GstPad * pad, GstStructure * input,
-    GstStructure * output, const GValue *out_par)
+    GstStructure * output)
 {
+  const GValue *value = NULL;
   gint in_par_n = 1, in_par_d = 1, out_par_n = 1, out_par_d = 1;
   gint in_dar_n = 0, in_dar_d = 0, in_width = 0, in_height = 0;
   gboolean success;
 
-  out_par_n = gst_value_get_fraction_numerator (out_par);
-  out_par_d = gst_value_get_fraction_denominator (out_par);
+  // Retrieve the output PAR (pixel aspect ratio) value.
+  value = gst_structure_get_value (output, "pixel-aspect-ratio");
+
+  out_par_n = gst_value_get_fraction_numerator (value);
+  out_par_d = gst_value_get_fraction_denominator (value);
 
   GST_DEBUG_OBJECT (pad, "Output PAR is fixed to: %d/%d",
       out_par_n, out_par_d);
@@ -749,141 +753,6 @@ gst_video_split_fixate_width_and_height (GstPad * pad, GstStructure * input,
 }
 
 static gboolean
-gst_video_split_fixate_dimensions (GstPad * pad, GstStructure * input,
-    GstStructure * output)
-{
-  gint in_width = 0, in_height = 0;
-  gint in_par_n = 1, in_par_d = 1, in_dar_n = 0, in_dar_d = 0;
-  gboolean success;
-
-  {
-    // Retrieve the PAR (pixel aspect ratio) values for the input.
-    const GValue *in_par = gst_structure_get_value (input, "pixel-aspect-ratio");
-
-    if (in_par != NULL) {
-      in_par_n = gst_value_get_fraction_numerator (in_par);
-      in_par_d = gst_value_get_fraction_denominator (in_par);
-    }
-  }
-
-  // Retrieve the input width and height.
-  gst_structure_get_int (input, "width", &in_width);
-  gst_structure_get_int (input, "height", &in_height);
-
-  // Calculate input DAR (display aspect ratio) from the dimensions and PAR.
-  success = gst_util_fraction_multiply (in_width, in_height,
-      in_par_n, in_par_d, &in_dar_n, &in_dar_d);
-
-  if (!success) {
-    GST_ERROR_OBJECT (pad, "Failed to calculate input DAR!");
-    return FALSE;
-  }
-
-  GST_DEBUG_OBJECT (pad, "Input DAR is: %d/%d", in_dar_n, in_dar_d);
-
-  {
-    // Keep the dimensions as near as possible to the input and scale PAR.
-    GstStructure *structure = gst_structure_copy (output);
-    gint set_h = 0, set_w = 0, set_par_n = 1, set_par_d = 1;
-    gint out_par_n = 1, out_par_d = 1, out_width = 0, out_height = 0;
-    gint num = 0, den = 0, value = 0;
-
-    gst_structure_fixate_field_nearest_int (structure, "width", in_width);
-    gst_structure_get_int (structure, "width", &out_width);
-
-    gst_structure_fixate_field_nearest_int (structure, "height", in_height);
-    gst_structure_get_int (structure, "height", &out_height);
-
-    success = gst_util_fraction_multiply (in_dar_n, in_dar_d,
-        out_height, out_width, &out_par_n, &out_par_d);
-
-    if (!success) {
-      GST_ERROR_OBJECT (pad, "Failed to calculate output PAR!");
-      gst_structure_free (structure);
-      return FALSE;
-    }
-
-    gst_structure_fixate_field_nearest_fraction (structure,
-        "pixel-aspect-ratio", out_par_n, out_par_d);
-    gst_structure_get_fraction (structure, "pixel-aspect-ratio",
-        &set_par_n, &set_par_d);
-
-    // Validate the output PAR and update the output fields.
-    if (set_par_n == out_par_n && set_par_d == out_par_d) {
-      gst_structure_set (output, "width", G_TYPE_INT, out_width,
-          "height", G_TYPE_INT, out_height, NULL);
-
-      gst_structure_set (output, "pixel-aspect-ratio", GST_TYPE_FRACTION,
-          set_par_n, set_par_d, NULL);
-
-      GST_DEBUG_OBJECT (pad, "Output dimensions fixated to: %dx%d, and PAR"
-          " fixated to: %d/%d", out_width, out_height, set_par_n, set_par_d);
-
-      gst_structure_free (structure);
-      return TRUE;
-    }
-
-    // Above failed, scale width to keep the DAR with the set PAR and height.
-    success = gst_util_fraction_multiply (in_dar_n, in_dar_d, set_par_d,
-        set_par_n, &num, &den);
-
-    if (!success) {
-      GST_ERROR_OBJECT (pad, "Failed to calculate output width!");
-      gst_structure_free (structure);
-      return FALSE;
-    }
-
-    set_w = gst_util_uint64_scale_int (out_height, num, den);
-    gst_structure_fixate_field_nearest_int (structure, "width", set_w);
-    gst_structure_get_int (structure, "width", &value);
-
-    if (set_w == value) {
-      gst_structure_set (output, "width", G_TYPE_INT, set_w,
-          "height", G_TYPE_INT, out_height, NULL);
-
-      gst_structure_set (output, "pixel-aspect-ratio", GST_TYPE_FRACTION,
-          set_par_n, set_par_d, NULL);
-
-      GST_DEBUG_OBJECT (pad, "Output dimensions fixated to: %dx%d, and PAR"
-          " fixated to: %d/%d", out_width, out_height, set_par_n, set_par_d);
-
-      gst_structure_free (structure);
-      return TRUE;
-    }
-
-    // Above failed, scale height to keep the DAR with the set PAR and width.
-    set_h = gst_util_uint64_scale_int (out_width, den, num);
-    gst_structure_fixate_field_nearest_int (structure, "height", set_h);
-    gst_structure_get_int (structure, "height", &value);
-
-    gst_structure_free (structure);
-
-    if (set_h == value) {
-      gst_structure_set (output, "width", G_TYPE_INT, out_width,
-          "height", G_TYPE_INT, set_h, NULL);
-
-      gst_structure_set (output, "pixel-aspect-ratio", GST_TYPE_FRACTION,
-          set_par_n, set_par_d, NULL);
-
-      GST_DEBUG_OBJECT (pad, "Output dimensions fixated to: %dx%d, and PAR"
-          " fixated to: %d/%d", out_width, out_height, set_par_n, set_par_d);
-      return TRUE;
-    }
-
-    // All approaches failed, take the values from the 1st iteration.
-    gst_structure_set (output, "width", G_TYPE_INT, out_width,
-        "height", G_TYPE_INT, out_height, NULL);
-    gst_structure_set (output, "pixel-aspect-ratio", GST_TYPE_FRACTION,
-        out_par_n, out_par_d, NULL);
-
-    GST_DEBUG_OBJECT (pad, "Output dimensions fixated to: %dx%d, and PAR"
-        " fixated to: %d/%d", out_width, out_height, out_par_n, out_par_d);
-  }
-
-  return TRUE;
-}
-
-static gboolean
 gst_video_split_fixate_framerate (GstPad * pad, GstStructure * input,
     GstStructure * output)
 {
@@ -963,19 +832,32 @@ static GstCaps *
 gst_video_split_srcpad_fixate_caps (GstVideoSplitSrcPad * srcpad,
     GstCaps * incaps, GstCaps * outcaps)
 {
+  GstCapsFeatures *features = NULL;
   GstStructure *input = NULL, *output = NULL;
   GstVideoMultiviewMode mviewmode = GST_VIDEO_MULTIVIEW_MODE_MONO;
   GstVideoMultiviewFlags mviewflags = GST_VIDEO_MULTIVIEW_FLAGS_NONE;
+  gint width = 0, height = 0;
   gboolean success = TRUE;
 
   // Overwrite the default multiview mode depending on the pad mode.
   if (srcpad->mode == GST_VSPLIT_MODE_ROI_BATCH)
     mviewmode = GST_VIDEO_MULTIVIEW_MODE_MULTIVIEW_FRAME_BY_FRAME;
 
-  // Truncate and make the output caps writable.
-  outcaps = gst_caps_truncate (outcaps);
-  outcaps = gst_caps_make_writable (outcaps);
+  // Prefer caps with feature memory:GBM and removeall others.
+  if (gst_caps_has_feature (outcaps, GST_CAPS_FEATURE_MEMORY_GBM))
+    features = gst_caps_features_new (GST_CAPS_FEATURE_MEMORY_GBM, NULL);
+  else
+    features = gst_caps_features_new_empty ();
 
+  // Trancate and set the prefered features if any.
+  outcaps = gst_caps_truncate (outcaps);
+  gst_caps_set_features (outcaps, 0, features);
+
+  // Remove compression field if caps do not contain memory:GBM feature.
+  if (!gst_caps_has_feature (outcaps, GST_CAPS_FEATURE_MEMORY_GBM))
+    gst_structure_remove_field (output, "compression");
+
+  // Get underlying structure to the only remaining caps.
   output = gst_caps_get_structure (outcaps, 0);
 
   // Take a copy of the input caps structure so we can freely modify it.
@@ -991,10 +873,6 @@ gst_video_split_srcpad_fixate_caps (GstVideoSplitSrcPad * srcpad,
       GST_TYPE_VIDEO_MULTIVIEW_FLAGSET, mviewflags, GST_FLAG_SET_MASK_EXACT,
       NULL);
 
-  // Fill default framerate field if they wasn't set in the caps.
-  if (!gst_structure_has_field (output, "framerate"))
-    gst_structure_set (output, "framerate", GST_TYPE_FRACTION, 0, 255, NULL);
-
   // Fill default pixel-aspect-ratio field if they wasn't set in the caps.
   if (!gst_structure_has_field (output, "pixel-aspect-ratio"))
     gst_structure_set (output, "pixel-aspect-ratio", GST_TYPE_FRACTION, 1, 1, NULL);
@@ -1002,39 +880,26 @@ gst_video_split_srcpad_fixate_caps (GstVideoSplitSrcPad * srcpad,
   // First fixate the output format.
   gst_video_split_fixate_format (GST_PAD (srcpad), input, output);
 
-  {
-    // Fixate output width, height and PAR.
-    gint width = 0, height = 0;
-    const GValue *par = NULL;
+  // Retrieve the output width and height.
+  gst_structure_get_int (output, "width", &width);
+  gst_structure_get_int (output, "height", &height);
 
-    // Retrieve the output width and height.
-    gst_structure_get_int (output, "width", &width);
-    gst_structure_get_int (output, "height", &height);
-
-    // Retrieve the output PAR (pixel aspect ratio) value.
-    par = gst_structure_get_value (output, "pixel-aspect-ratio");
-
-    // Check which values are fixed and take the necessary actions.
-    if (width && height) {
-      gst_video_split_fixate_pixel_aspect_ratio (GST_PAD (srcpad), input,
-          output, width, height);
-    } else if (width) {
-      // The output width is set, try to calculate output height.
-      success &= gst_video_split_fixate_height (GST_PAD (srcpad), input,
-          output, width);
-    } else if (height) {
-      // The output height is set, try to calculate output width.
-      success &= gst_video_split_fixate_width (GST_PAD (srcpad), input, output,
-          height);
-    } else if ((par != NULL) && gst_value_is_fixed (par)) {
-      // The output PAR is set, try to calculate the output width and height.
-      success &= gst_video_split_fixate_width_and_height (GST_PAD (srcpad),
-          input, output, par);
-    } else {
-      // Neither the dimensions nor the PAR are fixated at the output.
-      success &= gst_video_split_fixate_dimensions (GST_PAD (srcpad), input,
-          output);
-    }
+  // Check which values are fixed and take the necessary actions.
+  if (width && height) {
+    gst_video_split_fixate_pixel_aspect_ratio (GST_PAD (srcpad), input,
+        output, width, height);
+  } else if (width) {
+    // The output width is set, try to calculate output height.
+    success &= gst_video_split_fixate_height (GST_PAD (srcpad), input,
+        output, width);
+  } else if (height) {
+    // The output height is set, try to calculate output width.
+    success &= gst_video_split_fixate_width (GST_PAD (srcpad), input, output,
+        height);
+  } else {
+    // The output PAR is set, try to calculate the output width and height.
+    success &= gst_video_split_fixate_width_and_height (GST_PAD (srcpad),
+        input, output);
   }
 
   // Fixate the output framerate.
@@ -1043,8 +908,10 @@ gst_video_split_srcpad_fixate_caps (GstVideoSplitSrcPad * srcpad,
   // Free the local copy of the input caps structure.
   gst_structure_free (input);
 
-  if (!success)
+  if (!success) {
+    GST_ERROR_OBJECT (srcpad, "Failed to fixate output caps");
     return NULL;
+  }
 
   GST_DEBUG_OBJECT (srcpad, "Fixated caps to %" GST_PTR_FORMAT, outcaps);
   return outcaps;
@@ -1224,8 +1091,10 @@ gst_video_split_srcpad_finalize (GObject * object)
 
   gst_object_unref (GST_OBJECT_CAST(pad->buffers));
 
-  if (pad->pool != NULL)
+  if (pad->pool != NULL) {
+    gst_buffer_pool_set_active (pad->pool, FALSE);
     gst_object_unref (pad->pool);
+  }
 
   if (pad->info != NULL)
     gst_video_info_free (pad->info);
