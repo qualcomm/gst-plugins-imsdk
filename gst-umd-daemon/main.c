@@ -109,7 +109,14 @@
     "camsrc. ! capsfilter name=umdvfilter ! queue name=vqueue ! qtivtransform name=vtransform ! queue name=umdvqueue ! " \
     "appsink name=umdvsink"
 
-#define GST_AUDIO_PIPELINE "pulsesrc name=src ! audio/x-raw,format=S16LE,rate=48000,channels=2 ! queue ! " \
+#define GST_AUDIO_FLUENCE_PB_PIPELINE "pulsesrc name=src ! audio/x-raw,format=S16LE,rate=16000,channels=1 ! " \
+    "audioconvert name=aconvert ! audioresample name=aresample ! audio/x-raw,format=S16LE,rate=48000,channels=2 ! " \
+    "queue ! audiobuffersplit output-buffer-duration=3/100 ! pulsesink name=sink"
+
+#define GST_AUDIO_PB_PIPELINE "pulsesrc name=src ! audio/x-raw,format=S16LE,rate=48000,channels=2 ! queue ! " \
+    "audiobuffersplit output-buffer-duration=3/100 ! pulsesink name=sink"
+
+#define GST_AUDIO_CP_PIPELINE "pulsesrc name=src ! audio/x-raw,format=S16LE,rate=48000,channels=2 ! queue ! " \
     "audiobuffersplit output-buffer-duration=3/100 ! pulsesink name=sink"
 
 #define AUDIO_P_STATUS_CMD "cat /sys/kernel/config/usb_gadget/g1/functions/uac1.uac1/p_status"
@@ -1223,7 +1230,10 @@ create_audio_pb_pipeline (GstServiceContext * srvctx)
   GError *error = NULL;
 
   // Create the empty audio pb pipeline.
-  srvctx->apipelinepb = gst_parse_launch (GST_AUDIO_PIPELINE, &error);
+  if (g_str_equal (mainops.audiosrc, "regular0_fluence"))
+    srvctx->apipelinepb = gst_parse_launch (GST_AUDIO_FLUENCE_PB_PIPELINE, &error);
+  else
+    srvctx->apipelinepb = gst_parse_launch (GST_AUDIO_PB_PIPELINE, &error);
   gst_element_set_name (srvctx->apipelinepb, AUDIO_PB_PIPELINE);
 
   if (srvctx->apipelinepb == NULL) {
@@ -1293,7 +1303,7 @@ create_audio_cp_pipeline (GstServiceContext * srvctx)
   GError *error = NULL;
 
   // Create the empty audio cp pipeline.
-  srvctx->apipelinecp = gst_parse_launch (GST_AUDIO_PIPELINE, &error);
+  srvctx->apipelinecp = gst_parse_launch (GST_AUDIO_CP_PIPELINE, &error);
   gst_element_set_name (srvctx->apipelinecp, AUDIO_CP_PIPELINE);
 
   if (srvctx->apipelinecp == NULL) {
