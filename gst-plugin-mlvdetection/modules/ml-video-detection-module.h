@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -68,6 +68,9 @@
 #include <gst/ml/gstmlmodule.h>
 
 G_BEGIN_DECLS
+
+// Non-maximum Suppression (NMS) threshold (50%), corresponding to 2/3 overlap.
+#define NMS_INTERSECTION_THRESHOLD 0.5F
 
 typedef struct _GstMLPrediction GstMLPrediction;
 
@@ -117,6 +120,148 @@ gst_ml_video_detection_module_execute (GstMLModule * module,
     GstMLFrame * mlframe, GArray * predictions)
 {
   return gst_ml_module_execute (module, mlframe, (gpointer) predictions);
+}
+
+/**
+ * gst_ml_prediction_transform_dimensions:
+ * @prediction: Pointer to ML post-processing prediction.
+ * @sar_n: Source Aspect Ratio numerator.
+ * @sar_d:  Source Aspect Ratio denominator.
+ * @width: Width of the input tensor for relative conversion.
+ * @height: Height of the input tensor for relative conversion.
+ *
+ * Helper function for normalizing prediction coordinates based on the source
+ * aspect ratio and transforming them into relative coordinates using the
+ * input tensor width and height. If coordinates are already in relative
+ * coordinate system them width and height must be set  to 1.
+ *
+ * return: NONE
+ */
+static inline void
+gst_ml_prediction_transform_dimensions (GstMLPrediction * prediction,
+    gint sar_n, gint sar_d, guint width, guint height)
+{
+  gdouble coeficient = 0.0;
+
+  if (sar_n > sar_d) {
+    gst_util_fraction_to_double (sar_n, sar_d, &coeficient);
+
+    prediction->top /= width / coeficient;
+    prediction->bottom /= width / coeficient;
+    prediction->left /= width;
+    prediction->right /= width;
+
+    return;
+  } else if (sar_n < sar_d) {
+    gst_util_fraction_to_double (sar_d, sar_n, &coeficient);
+
+    prediction->top /= height;
+    prediction->bottom /= height;
+    prediction->left /= height / coeficient;
+    prediction->right /= height / coeficient;
+
+    return;
+  }
+
+  // There is no need for AR adjustments, just translate to relative coords.
+  prediction->top /= height;
+  prediction->bottom /= height;
+  prediction->left /= width;
+  prediction->right /= width;
+}
+
+/**
+ * gst_ml_predictions_intersection_score:
+ * @l_prediction: Pointer to ML post-processing prediction.
+ * @r_prediction: Pointer to ML post-processing prediction.
+ *
+ * Helper function for scoring how much two predictions are overlapping.
+ *
+ * return: Score from 0.0 (no overlap) to 1.0 (fully overlapping)
+ */
+static inline gdouble
+gst_ml_predictions_intersection_score (GstMLPrediction * l_prediction,
+    GstMLPrediction * r_prediction)
+{
+  gdouble width = 0, height = 0, intersection = 0, l_area = 0, r_area = 0;
+
+  // Figure out the width of the intersecting rectangle.
+  // 1st: Find out the X axis coordinate of left most Top-Right point.
+  width = MIN (l_prediction->right, r_prediction->right);
+  // 2nd: Find out the X axis coordinate of right most Top-Left point
+  // and substract from the previously found value.
+  width -= MAX (l_prediction->left, r_prediction->left);
+
+  // Negative width means that there is no overlapping.
+  if (width <= 0.0F)
+    return 0.0F;
+
+  // Figure out the height of the intersecting rectangle.
+  // 1st: Find out the Y axis coordinate of bottom most Left-Top point.
+  height = MIN (l_prediction->bottom, r_prediction->bottom);
+  // 2nd: Find out the Y axis coordinate of top most Left-Bottom point
+  // and substract from the previously found value.
+  height -= MAX (l_prediction->top, r_prediction->top);
+
+  // Negative height means that there is no overlapping.
+  if (height <= 0.0F)
+    return 0.0F;
+
+  // Calculate intersection area.
+  intersection = width * height;
+
+  // Calculate the are of the 2 objects.
+  l_area = (l_prediction->right - l_prediction->left) *
+      (l_prediction->bottom - l_prediction->top);
+  r_area = (r_prediction->right - r_prediction->left) *
+      (r_prediction->bottom - r_prediction->top);
+
+  // Intersection over Union score.
+  return intersection / (l_area + r_area - intersection);
+}
+
+/**
+ * gst_ml_non_max_suppression:
+ * @l_prediction: Pointer to ML post-processing prediction.
+ * @predictions: GArray of #GstMLPrediction.
+ *
+ * Helper function for Non-Max Suppression (NMS) algorithm.
+ *
+ * return: (-2) If confidence of the prediction is lower then any in the list.
+ *         (-1) If no prediction with the same label is present in the list.
+ *         (>= 0) If confidence of the prediction is higher then any in the list.
+ */
+static inline gint
+gst_ml_non_max_suppression (GstMLPrediction * l_prediction, GArray * predictions)
+{
+  gdouble score = 0.0;
+  guint idx = 0;
+
+  for (idx = 0; idx < predictions->len;  idx++) {
+    GstMLPrediction *r_prediction =
+        &(g_array_index (predictions, GstMLPrediction, idx));
+
+    score = gst_ml_predictions_intersection_score (l_prediction, r_prediction);
+
+    // If the score is below the threshold, continue with next list entry.
+    if (score <= NMS_INTERSECTION_THRESHOLD)
+      continue;
+
+    // If labels do not match, continue with next list entry.
+    if (g_strcmp0 (l_prediction->label, r_prediction->label) != 0)
+      continue;
+
+    // If confidence of current prediction is higher, remove the old entry.
+    if (l_prediction->confidence > r_prediction->confidence)
+      return idx;
+
+    // If confidence of current prediction is lower, don't add it to the list.
+    if (l_prediction->confidence <= r_prediction->confidence)
+      return -2;
+  }
+
+  // If this point is reached then add current prediction to the list;
+  return -1;
 }
 
 G_END_DECLS

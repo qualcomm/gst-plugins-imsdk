@@ -45,8 +45,6 @@
 #define SCORE_IDX              4
 // Layer index from which the class labels begin.
 #define CLASSES_IDX            5
-// Non-maximum Suppression (NMS) threshold (50%).
-#define INTERSECTION_THRESHOLD 0.5F
 
 #define GFLOAT_PTR_CAST(data)       ((gfloat*) data)
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
@@ -85,111 +83,6 @@ struct _GstMLSubModule {
   // Confidence threshold value.
   gfloat     threshold;
 };
-
-static inline void
-gst_ml_prediction_transform_dimensions (GstMLPrediction * prediction,
-    gint num, gint denum, guint width, guint height)
-{
-  gdouble coeficient = 0.0;
-
-  if (num > denum) {
-    gst_util_fraction_to_double (num, denum, &coeficient);
-
-    prediction->top /= width / coeficient;
-    prediction->bottom /= width / coeficient;
-    prediction->left /= width;
-    prediction->right /= width;
-
-    return;
-  } else if (num < denum) {
-    gst_util_fraction_to_double (denum, num, &coeficient);
-
-    prediction->top /= height;
-    prediction->bottom /= height;
-    prediction->left /= height / coeficient;
-    prediction->right /= height / coeficient;
-
-    return;
-  }
-
-  // There is no need for AR adjustments, just translate to relative coords.
-  prediction->top /= height;
-  prediction->bottom /= height;
-  prediction->left /= width;
-  prediction->right /= width;
-}
-
-static inline gdouble
-gst_ml_predictions_intersection_score (GstMLPrediction * l_prediction,
-    GstMLPrediction * r_prediction)
-{
-  gdouble width = 0, height = 0, intersection = 0, l_area = 0, r_area = 0;
-
-  // Figure out the width of the intersecting rectangle.
-  // 1st: Find out the X axis coordinate of left most Top-Right point.
-  width = MIN (l_prediction->right, r_prediction->right);
-  // 2nd: Find out the X axis coordinate of right most Top-Left point
-  // and substract from the previously found value.
-  width -= MAX (l_prediction->left, r_prediction->left);
-
-  // Negative width means that there is no overlapping.
-  if (width <= 0.0F) return 0.0F;
-
-  // Figure out the height of the intersecting rectangle.
-  // 1st: Find out the Y axis coordinate of bottom most Left-Top point.
-  height = MIN (l_prediction->bottom, r_prediction->bottom);
-  // 2nd: Find out the Y axis coordinate of top most Left-Bottom point
-  // and substract from the previously found value.
-  height -= MAX (l_prediction->top, r_prediction->top);
-
-  // Negative height means that there is no overlapping.
-  if (height <= 0.0F) return 0.0F;
-
-  // Calculate intersection area.
-  intersection = width * height;
-
-  // Calculate the are of the 2 objects.
-  l_area = (l_prediction->right - l_prediction->left) *
-      (l_prediction->bottom - l_prediction->top);
-  r_area = (r_prediction->right - r_prediction->left) *
-      (r_prediction->bottom - r_prediction->top);
-
-  // Intersection over Union score.
-  return intersection / (l_area + r_area - intersection);
-}
-
-static inline gint
-gst_ml_non_max_suppression (GstMLPrediction * l_prediction, GArray * predictions)
-{
-  gdouble score = 0.0;
-  guint idx = 0;
-
-  for (idx = 0; idx < predictions->len;  idx++) {
-    GstMLPrediction *r_prediction =
-        &(g_array_index (predictions, GstMLPrediction, idx));
-
-    score = gst_ml_predictions_intersection_score (l_prediction, r_prediction);
-
-    // If the score is below the threshold, continue with next list entry.
-    if (score <= INTERSECTION_THRESHOLD)
-      continue;
-
-    // If labels do not match, continue with next list entry.
-    if (g_strcmp0 (l_prediction->label, r_prediction->label) != 0)
-      continue;
-
-    // If confidence of current prediction is higher, remove the old entry.
-    if (l_prediction->confidence > r_prediction->confidence)
-      return idx;
-
-    // If confidence of current prediction is lower, don't add it to the list.
-    if (l_prediction->confidence <= r_prediction->confidence)
-      return -2;
-  }
-
-  // If this point is reached then add current prediction to the list;
-  return -1;
-}
 
 static void
 gst_ml_module_parse_split_tensors (GstMLSubModule * submodule,
