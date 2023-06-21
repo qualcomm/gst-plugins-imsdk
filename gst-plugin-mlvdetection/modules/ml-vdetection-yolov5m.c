@@ -275,13 +275,6 @@ gst_ml_module_parse_split_tensors (GstMLSubModule * submodule,
           bbox[2] = pow ((bbox[2] * 2), 2) * gains[idx][anchor][0];
           bbox[3] = pow ((bbox[3] * 2), 2) * gains[idx][anchor][1];
 
-          label = g_hash_table_lookup (submodule->labels,
-              GUINT_TO_POINTER (id - (num + CLASSES_IDX)));
-
-          prediction.confidence = confidence * 100.0F;
-          prediction.label = g_strdup (label ? label->name : "unknown");
-          prediction.color = label ? label->color : 0x000000FF;
-
           prediction.top = bbox[1] - (bbox[3] / 2);
           prediction.left = bbox[0] - (bbox[2] / 2);
           prediction.bottom = bbox[1] + (bbox[3] / 2);
@@ -290,6 +283,18 @@ gst_ml_module_parse_split_tensors (GstMLSubModule * submodule,
           // Adjust bounding box dimensions with extracted source aspect ratio.
           gst_ml_prediction_transform_dimensions (&prediction, sar_n, sar_d,
               (width * weights[idx][0]), (height* weights[idx][1]));
+
+          // Discard results with out of region coordinates.
+          if ((prediction.top > 1.0) || (prediction.left > 1.0) ||
+              (prediction.bottom > 1.0) || (prediction.right > 1.0))
+            continue;
+
+          label = g_hash_table_lookup (submodule->labels,
+              GUINT_TO_POINTER (id - (num + CLASSES_IDX)));
+
+          prediction.confidence = confidence * 100.0F;
+          prediction.label = g_strdup (label ? label->name : "unknown");
+          prediction.color = label ? label->color : 0x000000FF;
 
           // Non-Max Suppression (NMS) algorithm.
           nms = gst_ml_non_max_suppression (&prediction, predictions);
