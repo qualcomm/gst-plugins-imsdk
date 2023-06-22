@@ -402,6 +402,7 @@ gst_ml_snpe_engine_new (GstStructure * settings)
     zdl::DlSystem::UserBufferEncoding *encoding = (*optattributes)->getEncoding();
     size_t size = gst_ml_info_tensor_size (engine->outinfo, idx);
 
+    GST_DEBUG ("Output tensor[%u] size: %u", idx, size);
     // Empty User Buffer which will later be set via setBufferAddress API.
     std::unique_ptr<zdl::DlSystem::IUserBuffer> usrbuffer =
         factory.createUserBuffer(NULL, size, strides, encoding);
@@ -566,7 +567,9 @@ gst_ml_snpe_engine_update_output_caps (GstMLSnpeEngine * engine, GstCaps * caps)
     GST_ML_RETURN_VAL_IF_FAIL (encoding != NULL, FALSE,
         "Unsupported encoding for tensor %d!", idx);
 
-    size_t size = gst_ml_info_tensor_size (engine->outinfo, idx);
+    size_t size = gst_ml_info_tensor_size (&info, idx);
+
+    GST_DEBUG ("Output tensor[%u] size: %u", idx, size);
 
     // Empty User Buffer which will later be set via setBufferAddress API.
     std::unique_ptr<zdl::DlSystem::IUserBuffer> usrbuffer =
