@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -54,6 +54,17 @@ GST_DEBUG_CATEGORY_EXTERN (gst_ml_module_debug);
  * To be used as a possible option for 'gst_ml_module_configure'.
  */
 #define GST_ML_MODULE_OPT_LABELS "GstMLModule.labels"
+
+/**
+ * GST_ML_MODULE_OPT_THRESHOLD
+ *
+ * #G_TYPE_DOUBLE: The confidence threshold value in the range of 0.0 to 100.0,
+ *                 below which prediction results will be discarded.
+ * Default: 0.0
+ *
+ * To be used as a possible option for 'gst_ml_module_configure'.
+ */
+#define GST_ML_MODULE_OPT_THRESHOLD "GstMLModule.threshold"
 
 typedef struct _GstMLModule GstMLModule;
 typedef struct _GstLabel GstLabel;
