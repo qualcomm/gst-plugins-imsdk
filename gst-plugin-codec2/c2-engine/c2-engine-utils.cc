@@ -1224,11 +1224,21 @@ std::shared_ptr<C2Buffer> GstC2Utils::ImportGraphicBuffer(GstBuffer* buffer) {
 std::shared_ptr<C2Buffer> GstC2Utils::ImportLinearBuffer(GstBuffer* buffer) {
 
   int32_t fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (buffer, 0));
-  uint32_t size = gst_buffer_get_size (buffer);
   static uint32_t index = 0;
+  gsize maxsize = 0, size = 0;
+
+  size = gst_buffer_get_sizes (buffer, NULL, &maxsize);
+
+  if ((maxsize % 4096) != 0)
+    maxsize = GST_ROUND_DOWN_N (maxsize, 4096);
+
+  if (maxsize < size) {
+    GST_ERROR ("Buffer size (%zu) less than actual data (%zu)", maxsize, size);
+    return nullptr;
+  }
 
   ::android::C2HandleBuf *handle = new android::C2HandleBuf (
-      fd, GST_ROUND_UP_N (size, 4096), index++);
+      dup (fd), maxsize, index++);
 
   std::shared_ptr<C2Allocator> allocator;
   std::shared_ptr<C2AllocatorStore> store =
@@ -1255,8 +1265,6 @@ std::shared_ptr<C2Buffer> GstC2Utils::ImportLinearBuffer(GstBuffer* buffer) {
       _C2BlockFactory::CreateLinearBlock (allocation);
   if (!block) {
     GST_ERROR ("Failed to create linear block!");
-    delete handle;
-
     return nullptr;
   }
   block->mSize = size;
@@ -1265,8 +1273,6 @@ std::shared_ptr<C2Buffer> GstC2Utils::ImportLinearBuffer(GstBuffer* buffer) {
       block->share(block->offset(), block->size(), ::C2Fence()));
   if (!c2buffer) {
     GST_ERROR ("Failed to create linear C2 buffer");
-    delete handle;
-
     return nullptr;
   }
 
