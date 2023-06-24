@@ -6,6 +6,7 @@
 #ifndef __GST_DRM_DECRYPTOR_ENGINE_H__
 #define __GST_DRM_DECRYPTOR_ENGINE_H__
 
+#include <gst/allocators/allocators.h>
 #include <gst/gst.h>
 #include <gst/video/video.h>
 
@@ -23,7 +24,7 @@ gst_drm_decryptor_engine_free (GstDrmDecryptorEngine *engine);
 
 GST_API gboolean
 gst_drm_decryptor_engine_execute (GstDrmDecryptorEngine *engine,
-    GstBuffer *in_buffer, GstBuffer **out_buffer);
+    GstBuffer *in_buffer, GstBuffer *out_buffer);
 
 G_END_DECLS
 

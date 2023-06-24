@@ -9,14 +9,22 @@
 
 #include "drmdecryptor.h"
 
+#include <gst/memory/gstmempool.h>
+
 #define GST_CAT_DEFAULT decryptor_debug
 GST_DEBUG_CATEGORY_STATIC (decryptor_debug);
 
 #define gst_drm_decryptor_parent_class parent_class
 G_DEFINE_TYPE (GstDrmDecryptor, gst_drm_decryptor, GST_TYPE_ELEMENT);
 
-#define DEFAULT_PROP_SESSION_ID   NULL
 #define PLAYREADY_SYSTEM_ID       "9a04f079-9840-4286-ab92-e65be0885f95"
+
+#define DEFAULT_PROP_SESSION_ID   NULL
+// TODO: Check with SSG team to have a common macro or fetch the buffer size
+// requirements from prdrmengine lib
+#define DEFAULT_BUFFER_SIZE       (1024*1024*2)
+#define DEFAULT_MIN_BUFFERS       2
+#define DEFAULT_MAX_BUFFERS       10
 
 static GstStaticPadTemplate gst_drm_decryptor_sink_pad_template =
 GST_STATIC_PAD_TEMPLATE (
@@ -43,13 +51,14 @@ enum {
   PROP_SESSION_ID
 };
 
-//TODO: Add intersection with the allowed caps on the pad.
 static gboolean
 gst_drm_decryptor_update_srccaps (GstDrmDecryptor *decryptor, GstCaps *caps)
 {
-  GstStructure *structure, *src_structure;
-  GstCaps *srccaps;
+  GstStructure *structure;
+  GstCaps *src_caps, *updated_caps;
   const gchar *media_type;
+
+  GST_INFO_OBJECT (decryptor, "Sink caps: %" GST_PTR_FORMAT, caps);
 
   structure = gst_caps_get_structure (caps, 0);
 
@@ -59,22 +68,65 @@ gst_drm_decryptor_update_srccaps (GstDrmDecryptor *decryptor, GstCaps *caps)
     return FALSE;
   }
 
-  src_structure = gst_structure_copy (structure);
-  gst_structure_set_name (src_structure, media_type);
-  gst_structure_remove_fields (src_structure, "original-media-type",
-        "protection-system",
-        NULL);
+  structure = gst_structure_copy (structure);
+  gst_structure_set_name (structure, media_type);
+  gst_structure_remove_fields (structure, "original-media-type",
+      "protection-system",
+      NULL);
 
-  srccaps = gst_caps_new_empty();
-  gst_caps_append_structure (srccaps, src_structure);
-  gst_pad_set_caps (decryptor->srcpad, srccaps);
+  src_caps = gst_pad_get_pad_template_caps (decryptor->srcpad);
 
-  GST_INFO_OBJECT (decryptor, "updated src caps: %" GST_PTR_FORMAT, srccaps);
+  updated_caps = gst_caps_new_empty();
+  gst_caps_append_structure (updated_caps, structure);
 
-  gst_caps_unref (srccaps);
+  if (gst_caps_can_intersect (updated_caps, src_caps)) {
+    gst_pad_set_caps (decryptor->srcpad, updated_caps);
+    GST_INFO_OBJECT (decryptor, "Src caps: %" GST_PTR_FORMAT, updated_caps);
+  } else {
+    GST_ERROR_OBJECT (decryptor, "No intersection between new caps and allowed caps");
+    gst_caps_unref (updated_caps);
+    gst_caps_unref (src_caps);
+    return FALSE;
+  }
+
+  gst_caps_unref (updated_caps);
+  gst_caps_unref (src_caps);
 
   return TRUE;
 }
+
+static GstBufferPool*
+gst_drm_decryptor_create_pool (GstDrmDecryptor *decryptor)
+{
+  GstStructure *config = NULL;
+  GstBufferPool *pool = NULL;
+  GstAllocator *allocator = NULL;
+
+  if (!(pool = gst_mem_buffer_pool_new (GST_MEMORY_BUFFER_POOL_TYPE_SECURE))) {
+    GST_ERROR_OBJECT (decryptor, "Failed to create new buffer pool !");
+    return NULL;
+  }
+
+  config = gst_buffer_pool_get_config (pool);
+  gst_buffer_pool_config_set_params (config, NULL, DEFAULT_BUFFER_SIZE,
+      DEFAULT_MIN_BUFFERS, DEFAULT_MAX_BUFFERS);
+
+  if (!(allocator = gst_fd_allocator_new ())) {
+    GST_ERROR_OBJECT (decryptor, "Failed to create fd allocator !");
+    g_clear_object (&pool);
+    return NULL;
+  }
+  gst_buffer_pool_config_set_allocator (config, allocator, NULL);
+
+  if (!gst_buffer_pool_set_config (pool, config)) {
+    GST_ERROR_OBJECT (decryptor, "Failed to set pool configuration !");
+    g_clear_object (&pool);
+  }
+
+  g_object_unref (allocator);
+  return pool;
+}
+
 
 static GstFlowReturn
 gst_drm_decryptor_sinkpad_chain (GstPad *pad, GstObject *parent, GstBuffer *in_buffer)
@@ -88,7 +140,13 @@ gst_drm_decryptor_sinkpad_chain (GstPad *pad, GstObject *parent, GstBuffer *in_b
     return GST_FLOW_ERROR;
   }
 
-  if (!gst_drm_decryptor_engine_execute (decryptor->engine, in_buffer, &out_buffer)) {
+  if (gst_buffer_pool_acquire_buffer (
+      decryptor->pool, &out_buffer, NULL) != GST_FLOW_OK) {
+    GST_ERROR_OBJECT (decryptor, "Failed to acquire secure buffer from pool!");
+    return GST_FLOW_ERROR;
+  }
+
+  if (!gst_drm_decryptor_engine_execute (decryptor->engine, in_buffer, out_buffer)) {
     GST_ERROR_OBJECT (decryptor, "Decryption failed !");
     gst_buffer_unref (out_buffer);
     gst_buffer_unref (in_buffer);
@@ -96,7 +154,7 @@ gst_drm_decryptor_sinkpad_chain (GstPad *pad, GstObject *parent, GstBuffer *in_b
   }
 
   gst_buffer_copy_into (out_buffer, in_buffer,
-                    GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
+      GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
 
   return gst_pad_push (decryptor->srcpad, out_buffer);
 }
@@ -116,6 +174,17 @@ gst_drm_decryptor_sinkpad_event (GstPad *pad, GstObject *parent, GstEvent *event
       success = gst_drm_decryptor_update_srccaps (decryptor, caps);
       gst_event_unref (event);
 
+      if (success && !decryptor->pool &&
+          !(decryptor->pool = gst_drm_decryptor_create_pool (decryptor))) {
+        GST_ERROR_OBJECT (decryptor, "Failed to create buffer pool!");
+        return FALSE;
+      }
+
+      if (success && !gst_buffer_pool_is_active (decryptor->pool) &&
+          !gst_buffer_pool_set_active (decryptor->pool, TRUE)) {
+        GST_ERROR_OBJECT (decryptor, "Failed to activate buffer pool!");
+        return FALSE;
+      }
       break;
     }
     default:
@@ -167,16 +236,12 @@ gst_drm_decryptor_change_state (GstElement *element, GstStateChange transition)
 
   switch (transition) {
     case GST_STATE_CHANGE_READY_TO_PAUSED:
-    {
       decryptor->engine = gst_drm_decryptor_engine_new (decryptor->session_id);
       if (decryptor->engine == NULL) {
         GST_ERROR_OBJECT (decryptor, "Decryptor engine initialization failed!");
-        ret = GST_STATE_CHANGE_FAILURE;
-        return ret;
+        return GST_STATE_CHANGE_FAILURE;
       }
       break;
-    }
-
     default:
       break;
   }
@@ -185,16 +250,13 @@ gst_drm_decryptor_change_state (GstElement *element, GstStateChange transition)
 
   switch (transition) {
     case GST_STATE_CHANGE_PAUSED_TO_READY:
-    {
       if (decryptor->engine != NULL) {
         gst_drm_decryptor_engine_free (decryptor->engine);
         decryptor->engine = NULL;
       }
       break;
-    }
-
     default:
-    break;
+      break;
   }
 
   return ret;
@@ -210,6 +272,9 @@ gst_drm_decryptor_finalize (GObject *object)
   if (decryptor->engine != NULL)
     gst_drm_decryptor_engine_free (decryptor->engine);
 
+  if (decryptor->pool)
+    gst_object_unref (decryptor->pool);
+
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (decryptor));
 }
 
@@ -218,6 +283,7 @@ gst_drm_decryptor_init (GstDrmDecryptor *decryptor)
 {
   decryptor->engine = NULL;
   decryptor->session_id = DEFAULT_PROP_SESSION_ID;
+  decryptor->pool = NULL;
 
   decryptor->sinkpad = gst_pad_new_from_static_template (
       &gst_drm_decryptor_sink_pad_template, "sink");
