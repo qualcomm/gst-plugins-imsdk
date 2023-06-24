@@ -44,8 +44,8 @@ target_include_directories(${GST_QTI_DRM_DECRYPTOR} PUBLIC
 target_link_libraries(${GST_QTI_DRM_DECRYPTOR} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
-  dmabufheap
   cutils
+  gstqtimemorybase
 )
 
 install(
