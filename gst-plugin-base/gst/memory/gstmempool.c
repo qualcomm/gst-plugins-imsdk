@@ -83,6 +83,8 @@ GST_DEBUG_CATEGORY_STATIC (gst_mem_pool_debug);
     (type == g_quark_from_static_string (GST_MEMORY_BUFFER_POOL_TYPE_SYSTEM))
 #define GST_IS_ION_MEMORY_TYPE(type) \
     (type == g_quark_from_static_string (GST_MEMORY_BUFFER_POOL_TYPE_ION))
+#define GST_IS_SECURE_MEMORY_TYPE(type) \
+    (type == g_quark_from_static_string (GST_MEMORY_BUFFER_POOL_TYPE_SECURE))
 
 #define DEFAULT_PAGE_ALIGNMENT 4096
 
@@ -108,12 +110,17 @@ G_DEFINE_TYPE_WITH_PRIVATE (GstMemBufferPool, gst_mem_buffer_pool,
     GST_TYPE_BUFFER_POOL);
 
 static gboolean
-open_ion_device (GstMemBufferPool * mempool)
+open_ion_device (GstMemBufferPool * mempool, gboolean secure)
 {
   GstMemBufferPoolPrivate *priv = mempool->priv;
 
-  GST_INFO_OBJECT (mempool, "Open /dev/dma_heap/qcom,system");
-  priv->devfd = open ("/dev/dma_heap/qcom,system", O_RDONLY | O_CLOEXEC);
+  if (secure) {
+    GST_INFO_OBJECT (mempool, "Open /dev/dma_heap/system-secure");
+    priv->devfd = open ("/dev/dma_heap/system-secure", O_RDONLY | O_CLOEXEC);
+  } else {
+    GST_INFO_OBJECT (mempool, "Open /dev/dma_heap/qcom,system");
+    priv->devfd = open ("/dev/dma_heap/qcom,system", O_RDONLY | O_CLOEXEC);
+  }
 
   if (priv->devfd < 0) {
     GST_WARNING_OBJECT (mempool, "Falling back to /dev/ion");
@@ -322,7 +329,8 @@ gst_mem_buffer_pool_alloc (GstBufferPool * pool, GstBuffer ** buffer,
 
     if (GST_IS_SYSTEM_MEMORY_TYPE (priv->memtype)) {
       memory = gst_allocator_alloc (priv->allocator, blocksize, &(priv->params));
-    } else if (GST_IS_ION_MEMORY_TYPE (priv->memtype)) {
+    } else if (GST_IS_ION_MEMORY_TYPE (priv->memtype) ||
+        GST_IS_SECURE_MEMORY_TYPE (priv->memtype)) {
       memory = ion_device_alloc (mempool, blocksize);
     }
 
@@ -345,10 +353,14 @@ gst_mem_buffer_pool_free (GstBufferPool * pool, GstBuffer * buffer)
   GstMemBufferPool *mempool = GST_MEM_BUFFER_POOL (pool);
   GstMemBufferPoolPrivate *priv = mempool->priv;
   guint idx = 0, length = 0;
+  gboolean is_dma_heap = FALSE;
 
   length = g_list_length (priv->memsizes);
 
-  for (idx = 0; (idx < length) && GST_IS_ION_MEMORY_TYPE (priv->memtype); idx++) {
+  is_dma_heap = GST_IS_ION_MEMORY_TYPE (priv->memtype) ||
+      GST_IS_SECURE_MEMORY_TYPE (priv->memtype);
+
+  for (idx = 0; (idx < length) && is_dma_heap; idx++) {
     gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (buffer, idx));
     ion_device_free (mempool, fd);
   }
@@ -441,7 +453,10 @@ gst_mem_buffer_pool_new (const gchar * type)
     success = TRUE;
   } else if (GST_IS_ION_MEMORY_TYPE (mempool->priv->memtype)) {
     GST_INFO_OBJECT (mempool, "Using ION memory");
-    success = open_ion_device (mempool);
+    success = open_ion_device (mempool, FALSE);
+  } else if (GST_IS_SECURE_MEMORY_TYPE (mempool->priv->memtype)) {
+    GST_INFO_OBJECT (mempool, "Using SECURE memory");
+    success = open_ion_device (mempool, TRUE);
   } else {
     GST_ERROR_OBJECT (mempool, "Invalid memory type %s!",
         g_quark_to_string (mempool->priv->memtype));
