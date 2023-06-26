@@ -260,12 +260,12 @@ class GstC2Notifier : public IC2Notifier {
     gst_mini_object_set_qdata (GST_MINI_OBJECT (buffer),
         gst_c2_buffer_qdata_quark (), qdata, gst_c2_buffer_qdata_release);
 
+    GST_TRACE ("Available %" GST_PTR_FORMAT, buffer);
+    engine_->callbacks->buffer (buffer, engine_->userdata);
+
     // Deincrement the number of pending works if frame is complete.
     if (!(flags & C2FrameData::FLAG_INCOMPLETE))
       GST_C2_ENGINE_DECREMENT_PENDING_WORK (engine_);
-
-    GST_TRACE ("Available %" GST_PTR_FORMAT, buffer);
-    engine_->callbacks->buffer (buffer, engine_->userdata);
   }
 
  private:
