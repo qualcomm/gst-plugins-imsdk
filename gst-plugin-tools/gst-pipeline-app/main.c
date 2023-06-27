@@ -26,7 +26,8 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -188,8 +189,7 @@ wait_stdin_message (GAsyncQueue * messages, gchar ** input)
   GstStructure *message = NULL;
 
   // Cleanup input variable from previous uses.
-  g_free (*input);
-  *input = NULL;
+  g_clear_pointer (input, g_free);
 
   // Wait for either a STDIN or TERMINATE message.
   while ((message = g_async_queue_pop (messages)) != NULL) {
@@ -198,10 +198,11 @@ wait_stdin_message (GAsyncQueue * messages, gchar ** input)
       return FALSE;
     }
 
-    if (gst_structure_has_name (message, STDIN_MESSAGE)) {
+    if (gst_structure_has_name (message, STDIN_MESSAGE))
       *input = g_strdup (gst_structure_get_string (message, "input"));
+
+    if (*input != NULL)
       break;
-    }
 
     gst_structure_free (message);
   }
