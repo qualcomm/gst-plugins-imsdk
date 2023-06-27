@@ -832,6 +832,25 @@ qmmfsrc_gst_buffer_new_wrapped (GstQmmfContext * context, GstPad * pad,
   return gstbuffer;
 }
 
+::qmmf::recorder::Rotation
+qmmfsrc_gst_get_stream_rotaion (gint rotate)
+{
+  switch (rotate) {
+    case ROTATE_NONE:
+      return ::qmmf::recorder::Rotation::kNone;
+    case ROTATE_90CCW:
+      return ::qmmf::recorder::Rotation::k90;
+    case ROTATE_180CCW:
+      return ::qmmf::recorder::Rotation::k180;
+    case ROTATE_270CCW:
+      return ::qmmf::recorder::Rotation::k270;
+    default:
+      GST_WARNING ("Rotation value %d is invalid default to no rotation",
+          rotate);
+      return ::qmmf::recorder::Rotation::kNone;
+  }
+}
+
 static void
 video_event_callback (uint32_t track_id, ::qmmf::recorder::EventType type,
     void * data, size_t size)
@@ -1236,6 +1255,7 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
   ::qmmf::recorder::TrackCb track_cbs;
   ::qmmf::recorder::VideoExtraParam extraparam;
   ::qmmf::recorder::SessionCb session_cbs;
+  ::qmmf::recorder::Rotation rotate;
   gint status = 0;
 
   GST_TRACE ("Create QMMF context session");
@@ -1338,9 +1358,10 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
       return FALSE;
   }
 
+  rotate = qmmfsrc_gst_get_stream_rotaion (vpad->rotate);
   ::qmmf::recorder::VideoTrackParam params (
       context->camera_id, vpad->width, vpad->height, vpad->framerate, format,
-      ::qmmf::recorder::Rotation::kNone, vpad->xtrabufs
+      rotate, vpad->xtrabufs
   );
 
 #ifdef GST_VIDEO_TYPE_SUPPORT
@@ -1484,6 +1505,7 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad,
 
     rawparam.width = bpad->width;
     rawparam.height = bpad->height;
+    rawparam.rotation = qmmfsrc_gst_get_stream_rotaion (bpad->rotate);
 
     switch (bpad->format) {
       case GST_BAYER_FORMAT_BGGR:
@@ -1524,6 +1546,7 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad,
 
   imgparam.width = ipad->width;
   imgparam.height = ipad->height;
+  imgparam.rotation = qmmfsrc_gst_get_stream_rotaion (ipad->rotate);
 
   if (ipad->codec == GST_IMAGE_CODEC_JPEG) {
     imgparam.format = ::qmmf::recorder::ImageFormat::kJPEG;

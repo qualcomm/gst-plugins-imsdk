@@ -97,6 +97,8 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
 #define DEFAULT_PROP_CROP_HEIGHT     0
 #define DEFAULT_PROP_EXTRA_BUFFERS   0
 #define DEFAULT_PROP_VIDEO_TYPE      VIDEO_TYPE_VIDEO
+#define DEFAULT_PROP_ROTATE          ROTATE_NONE
+
 
 enum
 {
@@ -113,6 +115,7 @@ enum
   PROP_VIDEO_CROP,
   PROP_VIDEO_EXTRA_BUFFERS,
   PROP_VIDEO_TYPE,
+  PROP_VIDEO_ROTATE,
 };
 
 static guint signals[LAST_SIGNAL];
@@ -620,6 +623,9 @@ video_pad_set_property (GObject * object, guint property_id,
     case PROP_VIDEO_TYPE:
       pad->type = g_value_get_enum(value);
       break;
+    case PROP_VIDEO_ROTATE:
+      pad->rotate = g_value_get_enum (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (pad, property_id, pspec);
       break;
@@ -669,6 +675,9 @@ video_pad_get_property (GObject * object, guint property_id, GValue * value,
       break;
     case PROP_VIDEO_TYPE:
       g_value_set_enum(value, pad->type);
+      break;
+    case PROP_VIDEO_ROTATE:
+      g_value_set_enum (value, pad->rotate);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (pad, property_id, pspec);
@@ -738,6 +747,11 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
           0, G_MAXUINT, DEFAULT_PROP_EXTRA_BUFFERS,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_VIDEO_ROTATE,
+    g_param_spec_enum ("rotate", "Rotate",
+        "Set Orientation Angle for Video Stream",
+        GST_TYPE_QMMFSRC_ROTATE, DEFAULT_PROP_ROTATE,
+        G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 #ifdef GST_VIDEO_TYPE_SUPPORT
   g_object_class_install_property (gobject, PROP_VIDEO_TYPE,
       g_param_spec_enum ("type", "Type",
@@ -783,6 +797,7 @@ qmmfsrc_video_pad_init (GstQmmfSrcVideoPad * pad)
   pad->crop.h       = DEFAULT_PROP_CROP_HEIGHT;
   pad->xtrabufs     = DEFAULT_PROP_EXTRA_BUFFERS;
   pad->type         = DEFAULT_PROP_VIDEO_TYPE;
+  pad->rotate       = DEFAULT_PROP_ROTATE;
 
   pad->duration  = GST_CLOCK_TIME_NONE;
 
