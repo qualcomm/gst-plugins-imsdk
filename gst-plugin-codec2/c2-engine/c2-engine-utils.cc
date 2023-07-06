@@ -185,9 +185,9 @@ static const std::unordered_map<uint32_t, const char*> kParamNameMap = {
 static const std::unordered_map<uint32_t, C2Config::profile_t> kProfileMap = {
   { GST_C2_PROFILE_AVC_BASELINE,
       C2Config::profile_t::PROFILE_AVC_BASELINE },
-  { GST_C2_PROFILE_AVC_CONSTRAINT_BASELINE,
+  { GST_C2_PROFILE_AVC_CONSTRAINED_BASELINE,
       C2Config::profile_t::PROFILE_AVC_CONSTRAINED_BASELINE },
-  { GST_C2_PROFILE_AVC_CONSTRAINT_HIGH,
+  { GST_C2_PROFILE_AVC_CONSTRAINED_HIGH,
       C2Config::profile_t::PROFILE_AVC_CONSTRAINED_HIGH },
   { GST_C2_PROFILE_AVC_HIGH,
       C2Config::profile_t::PROFILE_AVC_HIGH },
