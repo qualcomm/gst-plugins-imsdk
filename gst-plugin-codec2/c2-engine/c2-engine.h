@@ -145,13 +145,14 @@ gst_c2_engine_flush (GstC2Engine * engine);
 /**
  * gst_c2_engine_drain:
  * @engine: Pointer to Codec2 engine instance.
+ * @eos: Flag to specify drain with or without EOS.
  *
  * Requests and waits all pending work in the Codec2 component to finish.
  *
  * return: TRUE on success or FALSE on failure.
  */
 GST_API gboolean
-gst_c2_engine_drain (GstC2Engine * engine);
+gst_c2_engine_drain (GstC2Engine * engine, gboolean eos);
 
 /**
  * gst_c2_engine_queue:
