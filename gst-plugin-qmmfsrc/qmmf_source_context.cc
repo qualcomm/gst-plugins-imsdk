@@ -938,6 +938,10 @@ image_data_callback (GstQmmfContext * context, GstPad * pad,
   GstQmmfSrcImagePad *ipad = GST_QMMFSRC_IMAGE_PAD (pad);
   ::qmmf::recorder::Recorder *recorder = context->recorder;
 
+  guint numplanes = 0;
+  gsize offset[GST_VIDEO_MAX_PLANES] = { 0, 0, 0, 0 };
+  gint stride[GST_VIDEO_MAX_PLANES] = { 0, 0, 0, 0 };
+
   GstBuffer *gstbuffer = NULL;
   GstDataQueueItem *item = NULL;
 
@@ -947,6 +951,17 @@ image_data_callback (GstQmmfContext * context, GstPad * pad,
       "Failed to create GST buffer!");
 
   GST_BUFFER_FLAG_SET (gstbuffer, GST_BUFFER_FLAG_LIVE);
+
+  for (size_t i = 0; i < meta.n_planes; ++i) {
+    stride[i] = meta.planes[i].stride;
+    offset[i] = meta.planes[i].offset;
+    numplanes++;
+  }
+
+  // Set GStreamer buffer video metadata.
+  gst_buffer_add_video_meta_full (gstbuffer, GST_VIDEO_FRAME_FLAG_NONE,
+      (GstVideoFormat)ipad->format, ipad->width, ipad->height,
+      numplanes, offset, stride);
 
   // Propagate original camera timestamp in media dependent OFFSET_END field.
   GST_BUFFER_OFFSET_END (gstbuffer) = buffer.timestamp;
