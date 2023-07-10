@@ -21,8 +21,15 @@ pkg_check_modules(GST_ALLOC
 configure_file(config.h.in config.h @ONLY)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
+# Check whether CDM libs are present.
+include(CheckIncludeFileCXX)
+check_include_file_cxx("ce_cdm/cdm.h" HAVE_CDM_H)
+
 # Precompiler definitions.
 add_definitions(-DHAVE_CONFIG_H)
+if (HAVE_CDM_H)
+  add_definitions(-DENABLE_WIDEVINE)
+endif()
 
 # Common compiler flags.
 set(CMAKE_CXX_STANDARD 14)
@@ -33,7 +40,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
 set(GST_QTI_DRM_DECRYPTOR gstqtidrmdecryptor)
 
 add_library(${GST_QTI_DRM_DECRYPTOR} SHARED
-  drmdecryptor.c
+  drmdecryptor.cc
   drmdecryptor-engine.cc
 )
 
@@ -46,6 +53,8 @@ target_link_libraries(${GST_QTI_DRM_DECRYPTOR} PRIVATE
   ${GST_ALLOC_LIBRARIES}
   cutils
   gstqtimemorybase
+  $<$<BOOL:${HAVE_CDM_H}>:widevine_ce_cdm_shared>
+  $<$<BOOL:${HAVE_CDM_H}>:oemcrypto>
 )
 
 install(

@@ -17,9 +17,7 @@ GST_DEBUG_CATEGORY_STATIC (decryptor_debug);
 #define gst_drm_decryptor_parent_class parent_class
 G_DEFINE_TYPE (GstDrmDecryptor, gst_drm_decryptor, GST_TYPE_ELEMENT);
 
-#define PLAYREADY_SYSTEM_ID       "9a04f079-9840-4286-ab92-e65be0885f95"
-
-#define DEFAULT_PROP_SESSION_ID   NULL
+#define DEFAULT_PROP_SESSION_ID     NULL
 // TODO: Check with SSG team to have a common macro or fetch the buffer size
 // requirements from prdrmengine lib
 #define DEFAULT_BUFFER_SIZE       (1024*1024*2)
@@ -32,7 +30,15 @@ GST_STATIC_PAD_TEMPLATE (
   GST_PAD_SINK,
   GST_PAD_ALWAYS,
   GST_STATIC_CAPS ("application/x-cenc, "
-      "protection-system = (string) "PLAYREADY_SYSTEM_ID)
+      "protection-system = (string) " PLAYREADY_SYSTEM_ID
+#ifdef ENABLE_WIDEVINE
+      ";"
+      "application/x-cenc, "
+      "protection-system = (string) " WIDEVINE_SYSTEM_ID
+      ";"
+      "application/x-webm-enc"
+#endif
+  )
 );
 
 static GstStaticPadTemplate gst_drm_decryptor_src_pad_template =
@@ -48,7 +54,8 @@ GST_STATIC_PAD_TEMPLATE (
 
 enum {
   PROP_0,
-  PROP_SESSION_ID
+  PROP_SESSION_ID,
+  PROP_CDM_INSTANCE
 };
 
 static gboolean
@@ -127,34 +134,45 @@ gst_drm_decryptor_create_pool (GstDrmDecryptor *decryptor)
   return pool;
 }
 
-
 static GstFlowReturn
 gst_drm_decryptor_sinkpad_chain (GstPad *pad, GstObject *parent, GstBuffer *in_buffer)
 {
   GstDrmDecryptor *decryptor = GST_DRM_DECRYPTOR (parent);
   GstBuffer *out_buffer = NULL;
 
+  // TODO: Video backend is failing to handle vp9 clear content on secure path.
+  // Added this temporary check to skip clear content until the issue is fixed.
   GstProtectionMeta *pmeta = gst_buffer_get_protection_meta (in_buffer);
   if (pmeta == NULL) {
-    GST_ERROR_OBJECT (decryptor, "No protection metadata in buffer !");
-    return GST_FLOW_ERROR;
+    GstCaps *caps = gst_pad_get_current_caps (decryptor->srcpad);
+    const gchar *name = gst_structure_get_name (
+        gst_caps_get_structure (caps, 0));
+    gst_caps_unref (caps);
+    if (g_str_equal (name, "video/x-vp9")) {
+      GST_WARNING_OBJECT (decryptor, "No protection metadata found for vp9 "
+      "content. Dropping buffer !");
+      gst_buffer_unref (in_buffer);
+      return GST_FLOW_OK;
+    }
   }
 
-  if (gst_buffer_pool_acquire_buffer (
-      decryptor->pool, &out_buffer, NULL) != GST_FLOW_OK) {
+  if (gst_buffer_pool_acquire_buffer (decryptor->pool, &out_buffer, NULL)
+      != GST_FLOW_OK) {
     GST_ERROR_OBJECT (decryptor, "Failed to acquire secure buffer from pool!");
     return GST_FLOW_ERROR;
   }
 
-  if (!gst_drm_decryptor_engine_execute (decryptor->engine, in_buffer, out_buffer)) {
-    GST_ERROR_OBJECT (decryptor, "Decryption failed !");
+  if (gst_drm_decryptor_engine_execute (decryptor->engine, in_buffer,
+      out_buffer) != 0) {
     gst_buffer_unref (out_buffer);
     gst_buffer_unref (in_buffer);
     return GST_FLOW_OK;
   }
 
+  GST_DEBUG_OBJECT (decryptor, "Decryption successful !");
+
   gst_buffer_copy_into (out_buffer, in_buffer,
-      GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
+      GstBufferCopyFlags (GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS), 0, -1);
 
   return gst_pad_push (decryptor->srcpad, out_buffer);
 }
@@ -163,7 +181,7 @@ static gboolean
 gst_drm_decryptor_sinkpad_event (GstPad *pad, GstObject *parent, GstEvent *event)
 {
   GstDrmDecryptor *decryptor = GST_DRM_DECRYPTOR (parent);
-  gboolean success = FALSE;
+  gboolean success = TRUE;
 
   switch (GST_EVENT_TYPE(event)) {
     case GST_EVENT_CAPS:
@@ -187,6 +205,18 @@ gst_drm_decryptor_sinkpad_event (GstPad *pad, GstObject *parent, GstEvent *event
       }
       break;
     }
+    case GST_EVENT_PROTECTION:
+    {
+      const gchar *system_id;
+
+      gst_event_parse_protection (event, &system_id, NULL, NULL);
+      gst_event_unref (event);
+
+      decryptor->engine = gst_drm_decryptor_engine_new (system_id,
+          (gpointer) decryptor->session_id, decryptor->cdm_instance);
+      g_return_val_if_fail (decryptor->engine != NULL, FALSE);
+      break;
+    }
     default:
       success = gst_pad_event_default (pad, parent, event);
       break;
@@ -206,6 +236,9 @@ gst_drm_decryptor_set_property (GObject *gobject, guint prop_id,
       g_free (decryptor->session_id);
       decryptor->session_id = g_strdup (g_value_get_string (value));
       break;
+    case PROP_CDM_INSTANCE:
+      decryptor->cdm_instance = g_value_get_pointer (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (gobject, prop_id, pspec);
       break;
@@ -222,44 +255,13 @@ gst_drm_decryptor_get_property (GObject *gobject, guint prop_id,
     case PROP_SESSION_ID:
       g_value_set_string (value, decryptor->session_id);
       break;
+    case PROP_CDM_INSTANCE:
+      g_value_set_pointer (value, decryptor->cdm_instance);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (gobject, prop_id, pspec);
       break;
   }
-}
-
-static GstStateChangeReturn
-gst_drm_decryptor_change_state (GstElement *element, GstStateChange transition)
-{
-  GstDrmDecryptor *decryptor = GST_DRM_DECRYPTOR (element);
-  GstStateChangeReturn ret = GST_STATE_CHANGE_SUCCESS;
-
-  switch (transition) {
-    case GST_STATE_CHANGE_READY_TO_PAUSED:
-      decryptor->engine = gst_drm_decryptor_engine_new (decryptor->session_id);
-      if (decryptor->engine == NULL) {
-        GST_ERROR_OBJECT (decryptor, "Decryptor engine initialization failed!");
-        return GST_STATE_CHANGE_FAILURE;
-      }
-      break;
-    default:
-      break;
-  }
-
-  ret = GST_ELEMENT_CLASS (parent_class)->change_state (element, transition);
-
-  switch (transition) {
-    case GST_STATE_CHANGE_PAUSED_TO_READY:
-      if (decryptor->engine != NULL) {
-        gst_drm_decryptor_engine_free (decryptor->engine);
-        decryptor->engine = NULL;
-      }
-      break;
-    default:
-      break;
-  }
-
-  return ret;
 }
 
 static void
@@ -267,10 +269,8 @@ gst_drm_decryptor_finalize (GObject *object)
 {
   GstDrmDecryptor *decryptor = GST_DRM_DECRYPTOR (object);
 
-  g_free (decryptor->session_id);
-
   if (decryptor->engine != NULL)
-    gst_drm_decryptor_engine_free (decryptor->engine);
+    delete decryptor->engine;
 
   if (decryptor->pool)
     gst_object_unref (decryptor->pool);
@@ -283,6 +283,7 @@ gst_drm_decryptor_init (GstDrmDecryptor *decryptor)
 {
   decryptor->engine = NULL;
   decryptor->session_id = DEFAULT_PROP_SESSION_ID;
+  decryptor->cdm_instance = NULL;
   decryptor->pool = NULL;
 
   decryptor->sinkpad = gst_pad_new_from_static_template (
@@ -317,14 +318,18 @@ gst_drm_decryptor_class_init (GstDrmDecryptorClass *klass)
 
   g_object_class_install_property (gobject, PROP_SESSION_ID,
       g_param_spec_string ("session-id", "Session ID",
-          "Session id that is generated upon PR DRM plugin open session",
-          DEFAULT_PROP_SESSION_ID, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+          "Session id that is generated upon PR DRM plugin open session or WV DRM"
+          " create session", DEFAULT_PROP_SESSION_ID, GParamFlags (
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
-  element->change_state = GST_DEBUG_FUNCPTR (gst_drm_decryptor_change_state);
+  g_object_class_install_property (gobject, PROP_CDM_INSTANCE,
+      g_param_spec_pointer ("cdm-instance", "CDM Instance",
+          "Widevine CDM Instance to call CDM decrypt API",
+          GParamFlags (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
   gst_element_class_set_static_metadata (element,
       "QTI DRM Decryptor Plugin", GST_ELEMENT_FACTORY_KLASS_DECRYPTOR,
-      "Uses Playready DRM APIs to decrypt CENC scheme protected content",
+      "Uses Playready/Widevine DRM APIs to decrypt CENC scheme protected content",
       "QTI");
 
   GST_DEBUG_CATEGORY_INIT (decryptor_debug, "qtidrmdecryptor", 0,

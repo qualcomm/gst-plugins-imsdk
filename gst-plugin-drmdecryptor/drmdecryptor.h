@@ -39,6 +39,8 @@ struct _GstDrmDecryptor {
 
   /// Properties
   gchar                   *session_id;
+
+  gpointer                cdm_instance;
 };
 
 struct _GstDrmDecryptorClass {
