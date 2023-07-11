@@ -95,6 +95,13 @@ G_BEGIN_DECLS
  */
 #define GST_MEMORY_BUFFER_POOL_TYPE_SYSTEM "GstBufferPoolTypeSystemMemory"
 
+/**
+ * GST_MEMORY_BUFFER_POOL_TYPE_SECURE:
+ *
+ * Type of memory that the pool will use for allocating buffers.
+ */
+#define GST_MEMORY_BUFFER_POOL_TYPE_SECURE "GstBufferPoolTypeSecureMemory"
+
 typedef struct _GstMemBufferPool GstMemBufferPool;
 typedef struct _GstMemBufferPoolClass GstMemBufferPoolClass;
 typedef struct _GstMemBufferPoolPrivate GstMemBufferPoolPrivate;
