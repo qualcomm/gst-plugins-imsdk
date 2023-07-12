@@ -999,7 +999,7 @@ camera_event_callback (GstQmmfContext * context,
       uint32_t camera_id = *(static_cast<uint32_t*>(payload));
 
       // Ignore event if it is not for this camera id.
-      if (camera_id == context->camera_id)
+      if (camera_id != context->camera_id)
         return;
 
       event = EVENT_CAMERA_ERROR;
