@@ -112,6 +112,7 @@ struct _GstMLVideoDetection {
   gchar             *labels;
   guint             n_results;
   gdouble           threshold;
+  GstStructure      *mlconstants;
 };
 
 struct _GstMLVideoDetectionClass {

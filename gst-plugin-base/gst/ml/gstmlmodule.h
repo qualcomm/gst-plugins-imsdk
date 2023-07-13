@@ -77,6 +77,19 @@ GST_DEBUG_CATEGORY_EXTERN (gst_ml_module_debug);
  */
 #define GST_ML_MODULE_OPT_THRESHOLD "GstMLModule.threshold"
 
+/**
+ * GST_ML_MODULE_OPT_CONSTANTS
+ *
+ * #GST_TYPE_STRUCTURE: A structure containing module and caps specific
+ *                      constants, offsets and/or coefficients used for
+ *                      processing incoming tensors.
+ *                      May not be applicable for all modules.
+ * Default: NULL
+ *
+ * To be used as a possible option for 'gst_ml_module_configure'.
+ */
+#define GST_ML_MODULE_OPT_CONSTANTS "GstMLModule.constants"
+
 typedef struct _GstMLModule GstMLModule;
 typedef struct _GstLabel GstLabel;
 
