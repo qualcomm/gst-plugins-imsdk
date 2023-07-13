@@ -3,31 +3,18 @@
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
-#include <string>
-#include <dlfcn.h>
-#include <utils/Vector.h>
+#include "drm_context.h"
 
-#include <gst/gst.h>
-#include <glib-unix.h>
-#include <libxml/parser.h>
 #include <curl/curl.h>
-
-#include <media/drm/DrmAPI.h>
+#include <glib-unix.h>
+#include <gst/gst.h>
+#include <libxml/parser.h>
 
 #define DASH_LINE  "-------------------------------------------------------"
 #define SPACE      "                                                       "
 
 // Manifest will be downloaded here.
 #define MANIFEST_DOWNLOAD_PATH "/data/manifest.xml"
-
-#define DRM_LIB_PATH           "/usr/lib/libprdrmengine.so"
-
-// Type : PERSIST_FALSE_SECURESTOP_FALSE_SL150
-#define CONTENT_TYPE           "Content-Type: text/xml; charset=utf-8"
-#define SOAP_ACTION            "SOAPAction: ""\"http://schemas.microsoft.com/" \
-    "DRM/2007/03/protocols/AcquireLicense\""
-#define LA_URL                 "https://test.playready.microsoft.com/service/" \
-    "rightsmanager.asmx?cfg=(securestop:false,persist:false,sl:150)"
 
 // DRM UUIDs
 #define PLAYREADY_UUID         "urn:uuid:9a04f079-9840-4286-ab92-e65be0885f95"
@@ -46,9 +33,6 @@
 #define OPENING_TAG_HLS        "#EXTM3U"
 #define OPENING_TAG_DASH       "<?xml"
 
-#define PRDRM_SUCCESS          0
-#define PRDRM_FAILED           -1
-
 typedef enum {
   LICENSE_NONE,
   LICENSE_PLAYREADY,
@@ -58,7 +42,11 @@ typedef enum {
 } DrmLicense;
 
 typedef struct _GstAppContext GstAppContext;
+
 struct _GstAppContext {
+  // Instance with variables specific to DRM usecase
+  DrmContext     *drmctx;
+
   // GStreamer pipeline instance
   GstElement    *pipeline;
 
@@ -81,39 +69,6 @@ struct _GstAppContext {
   gboolean      live;
 };
 
-typedef struct _DrmPlayer DrmPlayer;
-struct _DrmPlayer {
-  // Handle for PRDRMEngine library
-  void                   *lib_handle;
-
-  // DRMPlugin object instance
-  android::DrmPlugin     *drm_plugin;
-
-  // PlayReady object header
-  gchar                  *pro_header;
-
-  // Session id returned after opening DRM session
-  std::string            drm_session_id;
-
-  // License challenge used to request license
-  std::string            la_request;
-
-  // License response returned by license server
-  std::string            la_response;
-};
-
-// To store license request and response data
-struct soapbuf {
-  gchar   *pdata;
-  size_t  sdata;
-};
-
-// PlayReady UUID in hex
-static const uint8_t pr_uuid[16] = {
-  0x9A, 0x04, 0xF0, 0x79, 0x98, 0x40, 0x42, 0x86,
-  0xAB, 0x92, 0xE6, 0x5B, 0xE0, 0x88, 0x5F, 0x95
-};
-
 static GstAppContext *
 gst_app_context_new ()
 {
@@ -128,6 +83,7 @@ gst_app_context_new ()
   ctx->desired_state = GST_STATE_PLAYING;
   ctx->buffering = FALSE;
   ctx->live = FALSE;
+  ctx->drmctx = NULL;
 
   return ctx;
 }
@@ -138,71 +94,89 @@ gst_app_context_free (GstAppContext * ctx)
   if (ctx == NULL)
     return;
 
-  if (ctx->pipeline != NULL)
+  if (ctx->pipeline != NULL) {
+    gst_element_set_state (ctx->pipeline, GST_STATE_NULL);
     gst_object_unref (ctx->pipeline);
+  }
 
   if (ctx->mloop != NULL)
     g_main_loop_unref (ctx->mloop);
 
   g_async_queue_unref (ctx->messages);
 
+  if (ctx->drmctx != NULL)
+    delete ctx->drmctx;
+
   g_free (ctx);
   return;
 }
 
-static void
-str_to_vec (std::string s, android::Vector<uint8_t> & v)
+static DrmContext*
+drm_ctx_new (DrmLicense license, gchar * header)
 {
-  v.appendArray (reinterpret_cast<const uint8_t*> (s.data()), s.size());
-}
+  DrmContext *drmctx = NULL;
 
-static std::string
-vec_to_str (android::Vector<uint8_t> v)
-{
-  std::string s (v.begin(), v.end());
-  return s;
-}
+  if (license == LICENSE_BOTH) {
+    gchar *endptr = NULL;
+    gchar input_str[2];
 
-static DrmPlayer *
-drm_player_new (gchar * pro_header)
-{
-  DrmPlayer *player = NULL;
-  g_return_val_if_fail ((player = g_new0 (DrmPlayer, 1)) != NULL, NULL);
+    g_print ("Content can be played with PlayReady as well as Widevine.\n"
+      "Enter '1' for PlayReady or '2' for Widevine: " );
 
-  player->lib_handle = NULL;
-  player->drm_plugin = NULL;
-  player->pro_header = pro_header;
-
-  return player;
-}
-
-static void
-drm_player_free (DrmPlayer * player)
-{
-  android::Vector<uint8_t> session_id;
-
-  if (player == NULL)
-    return;
-
-  g_free (player->pro_header);
-
-  if (player->lib_handle == NULL) {
-    g_free (player);
-    return;
+    fgets (input_str, 2, stdin);
+    license = (DrmLicense) g_ascii_strtoll ((const gchar *) input_str, &endptr, 0);
   }
 
-  str_to_vec (player->drm_session_id, session_id);
+  switch (license) {
+    case LICENSE_NONE:
+      return NULL;
 
-  if (player->drm_plugin->closeSession (session_id) != PRDRM_SUCCESS)
-    g_printerr ("ERROR: Close session failed\n");
-  else
-    g_print ("Session closed successfully\n");
+    case LICENSE_PLAYREADY:
+      drmctx = new PlayreadyContext (header);
+      break;
 
-  delete player->drm_plugin;
-  dlclose (player->lib_handle);
+    case LICENSE_WIDEVINE:
+#ifdef ENABLE_WIDEVINE
+      drmctx = new WidevineContext (header);
+#else
+      g_print ("Widevine CDM libs not present, can't proceed!\n");
+#endif
+      break;
 
-  g_free (player);
-  return;
+    default:
+      g_print ("Invalid license!\n");
+      return NULL;
+  }
+
+  return drmctx;
+}
+
+static gint
+drm_ctx_execute (DrmContext * drmctx)
+{
+  gint result = -1;
+
+  if (result = drmctx->InitSession ()) {
+    g_print ("DRM session init failed.\n");
+    return result;
+  }
+
+  if (result = drmctx->CreateLicenseRequest ()) {
+    g_print ("Creation of license request failed.\n");
+    return result;
+  }
+
+  if (result = drmctx->FetchLicense ()) {
+    g_print ("License fetch failed.\n");
+    return result;
+  }
+
+  if (result = drmctx->ProvideKeyResponse ()) {
+    g_print ("Providing key response failed.\n");
+    return result;
+  }
+
+  return result;
 }
 
 static gboolean
@@ -353,7 +327,7 @@ handle_stdin_source (GIOChannel * source, GIOCondition condition, gpointer data)
 
       return FALSE;
     } else if ((status == G_IO_STATUS_ERROR) && (error == NULL)) {
-      g_printerr ("UNKNOWN ERROR: Failed to parse input! %.30s\n", SPACE);
+      g_printerr ("UNKNOWN ERROR: Failed to parse input!\n");
 
       return FALSE;
     }
@@ -480,280 +454,6 @@ handle_bus_message (GstBus * bus, GstMessage * msg, gpointer data)
   return TRUE;
 }
 
-static gint
-init_playready (DrmPlayer * player)
-{
-  // For PR3.0 and above
-  android::DrmFactory *drm_factory = nullptr;
-  gint result = PRDRM_FAILED;
-
-  {
-    // Load library.
-    gchar *libpath = (gchar *) DRM_LIB_PATH;
-
-    g_print ("Trying to load %s\n", libpath);
-
-    if ((player->lib_handle = dlopen (libpath, RTLD_NOW)) == NULL) {
-      g_printerr ("ERROR: Cannot load library, dlerror = %s\n", dlerror());
-      return result;
-    } else {
-      g_print ("Library loaded successfully.\n");
-    }
-  }
-
-  {
-    // Create DRMFactory object.
-    gchar *err = NULL;
-
-    typedef android::DrmFactory *(*createDrmFactoryFunc)();
-    createDrmFactoryFunc createDrmFactory =
-      (createDrmFactoryFunc) dlsym (player->lib_handle, "createDrmFactory");
-
-    if ((drm_factory = createDrmFactory()) == NULL &&
-        (err = dlerror()) != NULL) {
-      g_printerr ("ERROR: Cannot find symbol, dlerror = %s\n", err);
-
-      g_free (err);
-      return result;
-    } else if (drm_factory == NULL) {
-      return result;
-    }
-
-    if (!drm_factory->isCryptoSchemeSupported (pr_uuid)) {
-      g_printerr ("ERROR: Check given PR UUID\n");
-      delete drm_factory;
-      return result;
-    } else {
-      g_print ("Created DRMFactory.\n");
-    }
-  }
-
-  {
-    // Create DRMPlugin object.
-    result = drm_factory->createDrmPlugin (pr_uuid, &player->drm_plugin);
-    delete drm_factory;
-
-    if (result != PRDRM_SUCCESS) {
-      g_printerr ("ERROR: Couldn't create DrmPlugin \n");
-      return result;
-    } else {
-      g_print ("Created DrmPlugin.\n");
-    }
-  }
-
-  {
-    // Open DRM session.
-    android::Vector<uint8_t> session_id;
-
-    if ((result = player->drm_plugin->openSession (session_id)) != PRDRM_SUCCESS) {
-      g_printerr ("ERROR: Couldn't create session \n");
-      return result;
-    } else {
-      std::string sid (session_id.begin(), session_id.end());
-      g_print ("Opened DRM Session with session ID %s\n", sid.c_str());
-      player->drm_session_id.assign (sid);
-    }
-  }
-
-  return result;
-}
-
-static gint
-create_license_request (DrmPlayer * player)
-{
-  guchar *decoded_str = NULL;
-  android::Vector<uint8_t> init_data, request, session_id;
-  android::KeyedVector<android::String8, android::String8> const optional_parameters;
-  android::DrmPlugin::KeyType key_type = android::DrmPlugin::kKeyType_Streaming;
-  android::DrmPlugin::KeyRequestType key_request_type;
-  android::String8 mime_type, default_url;
-  gint result = PRDRM_FAILED;
-  gsize out_len;
-
-  // Decode base64 encoded PlayReady object.
-  decoded_str = g_base64_decode (player->pro_header, &out_len);
-  init_data.appendArray (reinterpret_cast<const uint8_t*> (decoded_str),
-      out_len);
-  g_free (decoded_str);
-
-  str_to_vec (player->drm_session_id, session_id);
-
-  g_print ("Creating license request...\n");
-
-  if ((result = player->drm_plugin->getKeyRequest (session_id, init_data,
-      mime_type, key_type, optional_parameters, request, default_url,
-      &key_request_type)) == PRDRM_SUCCESS) {
-    g_print ("License request created successfully.\n");
-    player->la_request = vec_to_str (request);
-  }
-
-  return result;
-}
-
-// WRITEFUNCTION callback for curl for fetching license
-static size_t
-soap_callback (gchar * buffer, size_t size, size_t nitems, void * outstream)
-{
-  struct soapbuf *write_buf = (soapbuf *) outstream;
-  size_t write_buf_size = size * nitems;
-
-  write_buf->pdata = (gchar *) realloc (write_buf->pdata,
-      write_buf->sdata + write_buf_size + 1);
-
-  if (write_buf->pdata == NULL) {
-    g_printerr ("ERROR: Memory allocation failed\n");
-    return 0;
-  }
-
-  memcpy (write_buf->pdata + write_buf->sdata, buffer, write_buf_size);
-  write_buf->sdata += write_buf_size;
-  write_buf->pdata [write_buf->sdata] = '\0';
-
-  return write_buf_size;
-}
-
-static gint
-acquire_license (gchar * url, struct curl_slist * http_header,
-    gchar * content_type, gchar ** post_data, size_t * post_data_size)
-{
-  CURL *curl = NULL;
-  struct soapbuf soapbuf;
-  glong response_code = -1;
-  gint ret = -1;
-
-  if (post_data == NULL || *post_data_size == 0)
-    return ret;
-
-  if (curl_global_init (CURL_GLOBAL_ALL) != CURLE_OK) {
-    g_printerr ("ERROR: Curl global init failed.\n");
-    return ret;
-  }
-
-  if ((curl = curl_easy_init()) == NULL) {
-    g_printerr ("ERROR: Curl easy init failed.\n");
-    curl_global_cleanup();
-    return ret;
-  }
-
-  http_header = curl_slist_append (http_header, content_type);
-  curl_easy_setopt (curl, CURLOPT_URL, url);
-  curl_easy_setopt (curl, CURLOPT_HTTPHEADER, http_header);
-  curl_easy_setopt (curl, CURLOPT_POST, 1L);
-  curl_easy_setopt (curl, CURLOPT_POSTFIELDSIZE, *post_data_size);
-  curl_easy_setopt (curl, CURLOPT_POSTFIELDS, *post_data);
-
-  soapbuf.pdata = *post_data;
-  soapbuf.sdata = 0;
-
-  curl_easy_setopt (curl, CURLOPT_WRITEDATA, &soapbuf);
-  curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, soap_callback);
-
-  g_print ("Acquiring license from server...\n");
-
-  if ((ret = curl_easy_perform (curl)) != CURLE_OK) {
-    g_print ("Curl error %d\n", ret);
-    goto curl_error;
-  }
-
-  curl_easy_getinfo (curl, CURLINFO_RESPONSE_CODE, &response_code);
-
-  if (response_code != 200) {
-    g_printerr ("Response error: %ld", response_code);
-    ret = -1;
-    goto curl_error;
-  }
-
-  // Response data
-  *post_data = soapbuf.pdata;
-  *post_data_size = soapbuf.sdata;
-
-curl_error:
-  curl_slist_free_all (http_header);
-  curl_easy_cleanup (curl);
-  curl_global_cleanup();
-
-  return ret;
-}
-
-static gint
-create_soap_request (DrmPlayer * player)
-{
-  struct curl_slist *http_header = NULL;
-  gchar *content_type = (gchar *) CONTENT_TYPE;
-  gchar *url = (gchar *) LA_URL;
-  gchar *req_buf = NULL;
-  size_t req_buf_size;
-  gint result = PRDRM_FAILED;
-
-  http_header = curl_slist_append (http_header, SOAP_ACTION);
-
-  if (player->la_request.empty()) {
-    g_print ("License request object is empty.\n");
-    return result;
-  }
-
-  {
-    req_buf_size = player->la_request.length();
-    req_buf = g_strndup (player->la_request.c_str(), req_buf_size);
-
-    if ((result = acquire_license (url, http_header, content_type,
-        &req_buf, &req_buf_size)) == PRDRM_SUCCESS) {
-      g_print ("License acquired from license server successfully.\n");
-      player->la_response.assign (req_buf, req_buf + req_buf_size);
-    }
-
-    g_free (req_buf);
-  }
-
-  return result;
-}
-
-static gint
-provide_key_response (DrmPlayer * player)
-{
-  android::Vector<uint8_t> req_id;
-  android::Vector<uint8_t> session_id;
-  android::Vector<uint8_t> response;
-  gint result = PRDRM_FAILED;
-
-  str_to_vec (player->drm_session_id, session_id);
-  str_to_vec (player->la_response, response);
-
-  if ((result = player->drm_plugin->provideKeyResponse (session_id,
-      response, req_id)) == PRDRM_SUCCESS)
-    g_print ("Provided license response to DRMPlugin successfully.\n");
-
-  return result;
-}
-
-static gint
-playready_usecase (DrmPlayer * player)
-{
-  gint result = PRDRM_FAILED;
-
-  if ((result = init_playready (player)) != PRDRM_SUCCESS) {
-    g_print ("PlayReady session init failed.\n");
-    return result;
-  }
-
-  if ((result = create_license_request (player)) != PRDRM_SUCCESS) {
-    g_print ("Creation of license request failed.\n");
-    return result;
-  }
-
-  if ((result = create_soap_request (player)) != PRDRM_SUCCESS) {
-    g_print ("Creation of soap request failed.\n");
-    return result;
-  }
-
-  if ((result = provide_key_response (player)) != PRDRM_SUCCESS) {
-    g_print ("Provide key response failed.\n");
-    return result;
-  }
-
-  return result;
-}
-
 static xmlNodePtr
 find_xml_sibling_with_name (xmlNodePtr node, gchar * child_name)
 {
@@ -783,7 +483,7 @@ find_xml_child_with_name (xmlNodePtr root, gchar * child_name)
 }
 
 static DrmLicense
-parse_dash_key_tag (xmlNodePtr node, gchar ** pro_header)
+parse_dash_key_tag (xmlNodePtr node, gchar ** header)
 {
   xmlChar *scheme_id_uri = NULL;
   DrmLicense license = LICENSE_NONE;
@@ -822,10 +522,19 @@ parse_dash_key_tag (xmlNodePtr node, gchar ** pro_header)
       }
 
       license = (license == LICENSE_WIDEVINE ? LICENSE_BOTH : LICENSE_PLAYREADY);
-      *pro_header = (gchar *) xmlNodeGetContent (cur);
+      *header = (gchar *) xmlNodeGetContent (cur);
     } else if (!xmlStrcasecmp (scheme_id_uri, (const xmlChar *) WIDEVINE_UUID)) {
-      license = (license == LICENSE_PLAYREADY ? LICENSE_BOTH : LICENSE_WIDEVINE);
       g_print ("Found Widevine UUID\n");
+
+      // Parse Widevine header.
+      if ((cur = find_xml_child_with_name (child_node, (gchar *)"pssh")) == NULL) {
+        g_printerr ("ERROR: Didn't find Widevine header!\n");
+        child_node = child_node->next;
+        continue;
+      }
+
+      license = (license == LICENSE_PLAYREADY ? LICENSE_BOTH : LICENSE_WIDEVINE);
+      *header = (gchar *) xmlNodeGetContent (cur);
     }
 
     child_node = child_node->next;
@@ -836,7 +545,7 @@ parse_dash_key_tag (xmlNodePtr node, gchar ** pro_header)
 }
 
 static DrmLicense
-parse_dash_manifest (gchar ** pro_header)
+parse_dash_manifest (gchar ** header)
 {
   DrmLicense license = LICENSE_INVALID;
   xmlNodePtr root, period, adapset;
@@ -871,7 +580,7 @@ parse_dash_manifest (gchar ** pro_header)
     goto exit;
   }
 
-  license = parse_dash_key_tag (adapset, pro_header);
+  license = parse_dash_key_tag (adapset, header);
 
   // TODO: If manifest has multiple Period tags, parse all of them.
 
@@ -903,7 +612,7 @@ split_string (gchar ** input_str, const gchar * delim, gint num_of_splits, gint 
 
 // Parse the manifest to find key tag for media segment found at line number 'index'
 static DrmLicense
-parse_hls_key_tag (gchar ** split_content, gint index, gchar ** pro_header)
+parse_hls_key_tag (gchar ** split_content, gint index, gchar ** header)
 {
   gchar *method = NULL, *keyformat = NULL, *uri = NULL;
   DrmLicense license = LICENSE_NONE;
@@ -934,7 +643,7 @@ parse_hls_key_tag (gchar ** split_content, gint index, gchar ** pro_header)
         continue;
       }
 
-      *pro_header = g_strdup (uri);
+      *header = g_strdup (uri);
       license = (license == LICENSE_WIDEVINE ? LICENSE_BOTH : LICENSE_PLAYREADY);
       g_free (uri);
 
@@ -994,7 +703,7 @@ parse_hls_key_tag (gchar ** split_content, gint index, gchar ** pro_header)
       if (!split_string (&uri, ",", 2, 1))
         continue;
 
-      *pro_header = g_strdup (uri);
+      *header = g_strdup (uri);
       license = (license == LICENSE_WIDEVINE ? LICENSE_BOTH : LICENSE_PLAYREADY);
       g_free (uri);
 
@@ -1023,7 +732,7 @@ parse_hls_key_tag (gchar ** split_content, gint index, gchar ** pro_header)
 }
 
 static DrmLicense
-parse_hls_manifest (gchar ** pro_header, gchar * manifest_content)
+parse_hls_manifest (gchar ** header, gchar * manifest_content)
 {
   gchar **split_content = NULL;
   gchar *codec = NULL;
@@ -1067,61 +776,12 @@ parse_hls_manifest (gchar ** pro_header, gchar * manifest_content)
     return license;
   }
 
-  license = parse_hls_key_tag (split_content, i, pro_header);
+  license = parse_hls_key_tag (split_content, i, header);
 
   g_print ("Document parsed successfully.\n");
 
   g_strfreev (split_content);
   return license;
-}
-
-static gboolean
-parse_license (DrmLicense license, DrmPlayer * player)
-{
-  gchar *endptr = NULL;
-  gchar input_str;
-  gint input;
-
-  switch (license) {
-    case LICENSE_NONE:
-      return TRUE;
-
-    case LICENSE_PLAYREADY:
-      if (playready_usecase (player) != PRDRM_SUCCESS)
-        return FALSE;
-      return TRUE;
-
-    case LICENSE_WIDEVINE:
-      g_print ("Not doing anything for Widevine yet!\n");
-      return TRUE;
-
-    case LICENSE_BOTH:
-      break;
-
-    default:
-      return FALSE;
-  }
-
-  g_print ("Content can be played with PlayReady as well as Widevine.\n"
-      "Please enter '1' for PlayReady or '2' for Widevine: " );
-
-  input_str = fgetc (stdin);
-  input = g_ascii_strtoll ((const gchar *) input_str,
-      &endptr, 0);
-
-  switch (input) {
-    case LICENSE_PLAYREADY:
-      if (playready_usecase (player) != PRDRM_SUCCESS)
-        return FALSE;
-    case LICENSE_WIDEVINE:
-        g_print ("Not doing anything for Widevine yet!\n");
-        break;
-    default:
-      g_print ("Invalid choice!");
-      return FALSE;
-  }
-
-  return TRUE;
 }
 
 static gboolean
@@ -1158,15 +818,15 @@ decide_dash_or_hls (gchar ** content)
 }
 
 static DrmLicense
-parse_manifest (gchar ** pro_header)
+parse_manifest (gchar ** header)
 {
   gchar *manifest_content = NULL;
   DrmLicense license = LICENSE_INVALID;
 
   if (decide_dash_or_hls (&manifest_content))
-    license = parse_dash_manifest (pro_header);
+    license = parse_dash_manifest (header);
   else
-    license = parse_hls_manifest (pro_header, manifest_content);
+    license = parse_hls_manifest (header, manifest_content);
 
   g_free (manifest_content);
   return license;
@@ -1231,8 +891,8 @@ toggle_play (GstAppContext * appctx)
 
   if (update_pipeline_state (appctx, appctx->desired_state))
     (appctx->desired_state == GST_STATE_PLAYING) ?
-        g_print ("Playing... %.30s\n", SPACE) :
-        g_print ("Paused %.30s\n", SPACE);
+        g_print ("Playing...\n") :
+        g_print ("Paused\n");
 
   appctx->desired_state = appctx->current_state;
 }
@@ -1262,18 +922,38 @@ decide_mp4 (gchar * pipeline, gchar ** manifest_url, gboolean * mp4_content)
 }
 
 static GstElement *
-create_pipeline (gchar * pipeline_des)
+create_pipeline (gchar * pipeline_des, DrmContext * drmctx, DrmLicense license)
 {
-  GstElement *pipeline;
+  GstElement *pipeline = NULL, *decryptor = NULL;
   GError *error = NULL;
 
-  g_print ("\nCreating pipeline %s %.30s\n", pipeline_des, SPACE);
+  g_print ("\nCreating pipeline %s\n", pipeline_des);
   pipeline = gst_parse_launch ((const gchar *) pipeline_des, &error);
 
   if (error != NULL) {
     g_printerr ("ERROR: %s\n", GST_STR_NULL (error->message));
     g_clear_error (&error);
     return NULL;
+  }
+
+  if (drmctx != NULL) {
+    GstIterator *it = gst_bin_iterate_all_by_element_factory_name (GST_BIN (pipeline),
+        "qtidrmdecryptor");
+    GValue value = G_VALUE_INIT;
+
+    while (gst_iterator_next (it, &value) == GST_ITERATOR_OK &&
+        (decryptor = GST_ELEMENT (g_value_get_object (&value))) != NULL) {
+      g_object_set (G_OBJECT (decryptor), "session-id", drmctx->GetSessionId(), NULL);
+
+      if (license == LICENSE_WIDEVINE)
+        g_object_set (G_OBJECT (decryptor), "cdm-instance",
+            drmctx->GetCdmInstance(), NULL);
+
+      g_value_reset (&value);
+    }
+
+    g_value_reset (&value);
+    gst_iterator_free (it);
   }
 
   return pipeline;
@@ -1327,12 +1007,11 @@ main (gint argc, gchar *argv[])
 {
   GOptionContext *optctx = NULL;
   GstAppContext *appctx = NULL;
-  DrmPlayer *player = NULL;
   GIOChannel *gio = NULL;
   GThread *mthread = NULL;
   GError *err = NULL;
   gchar **args = NULL;
-  gchar *mp4_pro_header = NULL, *pro_header = NULL, *manifest_url = NULL;
+  gchar *mp4_pro_header = NULL, *header = NULL, *manifest_url = NULL;
   DrmLicense license = LICENSE_INVALID;
   guint bus_watch_id = 0, intrpt_watch_id = 0, stdin_watch_id = 0;
   gint status = -1;
@@ -1388,7 +1067,7 @@ main (gint argc, gchar *argv[])
     goto exit;
   } else if (mp4_content) {
     license = LICENSE_PLAYREADY;
-    pro_header = g_strdup (mp4_pro_header);
+    header = g_strdup (mp4_pro_header);
   }
 
   // Download manifest from the given url using libcurl.
@@ -1397,21 +1076,10 @@ main (gint argc, gchar *argv[])
 
   // Parse manifest to detect license type and get license header.
   if (!mp4_content &&
-      ((license = parse_manifest (&pro_header)) == LICENSE_INVALID)) {
+      ((license = parse_manifest (&header)) == LICENSE_INVALID)) {
     g_printerr ("ERROR: Invalid license! Can't proceed...\n");
     goto exit;
   }
-
-  // If content is encrypted, create DrmPlayer context.
-  if (license != LICENSE_NONE && ((player = drm_player_new (pro_header)) == NULL)) {
-    g_printerr ("ERROR: Couldn't create drm player context!\n");
-    g_free (pro_header);
-    goto exit;
-  }
-
-  // Execute APIs according to license type found.
-  if (!parse_license (license, player))
-    goto exit;
 
   // Create app context.
   if ((appctx = gst_app_context_new ()) == NULL) {
@@ -1419,8 +1087,19 @@ main (gint argc, gchar *argv[])
     goto exit;
   }
 
+  // If content is encrypted, create DrmContext context.
+  if (license != LICENSE_NONE && ((appctx->drmctx = drm_ctx_new (license, header)) == NULL)) {
+    g_printerr ("ERROR: Couldn't create DRM context!\n");
+    g_free (header);
+    goto exit;
+  }
+
+  // Execute DRM APIs according to license type found.
+  if (license != LICENSE_NONE && (drm_ctx_execute (appctx->drmctx) != 0))
+    goto exit;
+
   // Create the pipeline.
-  if ((appctx->pipeline = create_pipeline (*args)) == NULL)
+  if ((appctx->pipeline = create_pipeline (*args, appctx->drmctx, license)) == NULL)
     goto exit;
 
   // Initialize main loop.
@@ -1437,7 +1116,7 @@ main (gint argc, gchar *argv[])
 
   // Create a GIOChannel to listen to the standard input stream.
   if ((gio = g_io_channel_unix_new (fileno (stdin))) == NULL) {
-    g_printerr ("ERROR: Failed to initialize I/O support! %.30s\n", SPACE);
+    g_printerr ("ERROR: Failed to initialize I/O support!\n");
     goto exit;
   }
 
@@ -1467,7 +1146,6 @@ main (gint argc, gchar *argv[])
 
 exit:
   gst_app_context_free (appctx);
-  drm_player_free (player);
   g_free (mp4_pro_header);
   g_free (manifest_url);
 
