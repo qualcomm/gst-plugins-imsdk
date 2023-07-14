@@ -170,6 +170,7 @@ gst_c2_intra_refresh_get_type (void)
   static const GEnumValue variants[] = {
     { GST_C2_INTRA_REFRESH_DISABLED, "No intra resfresh", "disable" },
     { GST_C2_INTRA_REFRESH_ARBITRARY, "Arbitrary", "arbitrary" },
+    { GST_C2_INTRA_REFRESH_CYCLIC, "Cyclic", "cyclic" },
     { 0xffffffff, "Component Default", "default" },
     { 0, NULL, NULL },
   };
@@ -364,14 +365,36 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
     }
   }
 
-  if ((c2venc->intra_refresh.mode != DEFAULT_PROP_INTRA_REFRESH_MODE) &&
-      (c2venc->intra_refresh.period != DEFAULT_PROP_INTRA_REFRESH_PERIOD)) {
+  if (c2venc->intra_refresh.mode != DEFAULT_PROP_INTRA_REFRESH_MODE) {
+
+    if (c2venc->intra_refresh.mode == GST_C2_INTRA_REFRESH_DISABLED) {
+      GST_INFO_OBJECT (c2venc, "Intra refresh mode is set to disable, "
+        "resetting period to 0");
+      c2venc->intra_refresh.period = 0;
+    }
+
+    // this configuration just set intra refresh period in codec2 V2
     success = gst_c2_engine_set_parameter (c2venc->engine,
-        GST_C2_PARAM_INTRA_REFRESH, GPOINTER_CAST (&(c2venc->intra_refresh)));
+        GST_C2_PARAM_INTRA_REFRESH_TUNING,
+        GPOINTER_CAST (&(c2venc->intra_refresh)));
+
     if (!success) {
-      GST_ERROR_OBJECT (c2venc, "Failed to set intra refresh mode!");
+      GST_ERROR_OBJECT (c2venc, "Failed to set intra refresh tuning!");
       return FALSE;
     }
+
+#if defined(CODEC2_CONFIG_VERSION_2_0)
+    if (c2venc->intra_refresh.mode != GST_C2_INTRA_REFRESH_DISABLED) {
+      success = gst_c2_engine_set_parameter (c2venc->engine,
+          GST_C2_PARAM_INTRA_REFRESH_MODE,
+          GPOINTER_CAST (&(c2venc->intra_refresh.mode)));
+
+      if (!success) {
+        GST_ERROR_OBJECT (c2venc, "Failed to set intra refresh mode!");
+        return FALSE;
+      }
+    }
+#endif // CODEC2_CONFIG_VERSION_2_0
   }
 
   success = gst_c2_engine_get_parameter (c2venc->engine,

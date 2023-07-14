@@ -79,8 +79,12 @@ static const std::unordered_map<uint32_t, C2Param::Index> kParamIndexMap = {
       C2StreamGopTuning::output::PARAM_TYPE },
   { GST_C2_PARAM_KEY_FRAME_INTERVAL,
       C2StreamSyncFrameIntervalTuning::output::PARAM_TYPE },
-  { GST_C2_PARAM_INTRA_REFRESH,
+  { GST_C2_PARAM_INTRA_REFRESH_TUNING,
       C2StreamIntraRefreshTuning::output::PARAM_TYPE },
+#if defined(CODEC2_CONFIG_VERSION_2_0)
+  { GST_C2_PARAM_INTRA_REFRESH_MODE,
+      qc2::C2VideoIntraRefreshType::output::PARAM_TYPE },
+#endif // CODEC2_CONFIG_VERSION_2_0
 #if !defined(CODEC2_CONFIG_VERSION_2_0)
   { GST_C2_PARAM_ADAPTIVE_B_FRAMES,
       qc2::C2StreamAdaptiveBPreconditions::output::PARAM_TYPE },
@@ -138,7 +142,8 @@ static const std::unordered_map<uint32_t, const char*> kParamNameMap = {
   { GST_C2_PARAM_BITRATE, "BITRATE" },
   { GST_C2_PARAM_GOP_CONFIG, "GOP_CONFIG" },
   { GST_C2_PARAM_KEY_FRAME_INTERVAL, "KEY_FRAME_INTERVAL" },
-  { GST_C2_PARAM_INTRA_REFRESH, "INTRA_REFRESH" },
+  { GST_C2_PARAM_INTRA_REFRESH_TUNING, "INTRA_REFRESH_TUNING" },
+  { GST_C2_PARAM_INTRA_REFRESH_MODE, "INTRA_REFRESH_MODE" },
   { GST_C2_PARAM_ADAPTIVE_B_FRAMES, "ADAPTIVE_B_FRAMES" },
   { GST_C2_PARAM_ENTROPY_MODE, "ENTROPY_MODE" },
   { GST_C2_PARAM_LOOP_FILTER_MODE, "LOOP_FILTER_MODE" },
@@ -233,10 +238,17 @@ static const std::unordered_map<uint32_t, uint32_t> kRateCtrlMap = {
   { GST_C2_RATE_CTRL_CQ,       C2Config::BITRATE_IGNORE },
 };
 
-// Map for the GST_C2_PARAM_INTRA_REFRESH parameter.
+// Map for the GST_C2_PARAM_INTRA_REFRESH_TUNING/
+// GST_C2_PARAM_INTRA_REFRESH_MODE parameter.
 static const std::unordered_map<uint32_t, uint32_t> kIntraRefreshMap = {
   { GST_C2_INTRA_REFRESH_DISABLED,  C2Config::INTRA_REFRESH_DISABLED },
+#if !defined(CODEC2_CONFIG_VERSION_2_0)
   { GST_C2_INTRA_REFRESH_ARBITRARY, C2Config::INTRA_REFRESH_ARBITRARY },
+  { GST_C2_INTRA_REFRESH_CYCLIC,    C2Config::INTRA_REFRESH_ARBITRARY + 1 },
+#else
+  { GST_C2_INTRA_REFRESH_ARBITRARY, qc2::IntraRefreshMode::INTRA_REFRESH_RANDOM },
+  { GST_C2_INTRA_REFRESH_CYCLIC,    qc2::IntraRefreshMode::INTRA_REFRESH_CYCLIC},
+#endif // CODEC2_CONFIG_VERSION_2_0
 };
 
 // Map for the GST_C2_ENTROPY_MODE parameter.
@@ -413,7 +425,7 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       c2param = C2Param::Copy(keyframe);
       break;
     }
-    case GST_C2_PARAM_INTRA_REFRESH: {
+    case GST_C2_PARAM_INTRA_REFRESH_TUNING: {
       C2StreamIntraRefreshTuning::output irefresh;
       uint32_t mode = reinterpret_cast<GstC2IntraRefresh*>(payload)->mode;
 
@@ -423,6 +435,17 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       c2param = C2Param::Copy(irefresh);
       break;
     }
+#if defined(CODEC2_CONFIG_VERSION_2_0)
+    case GST_C2_PARAM_INTRA_REFRESH_MODE: {
+      qc2::C2VideoIntraRefreshType::output ir_type;
+      uint32_t mode = *(reinterpret_cast<guint32*>(payload));
+
+      ir_type.value =
+          static_cast<qc2::IntraRefreshMode>(kIntraRefreshMap.at(mode));
+      c2param = C2Param::Copy(ir_type);
+      break;
+    }
+#endif // CODEC2_CONFIG_VERSION_2_0
 #if !defined(CODEC2_CONFIG_VERSION_2_0)
     case GST_C2_PARAM_ADAPTIVE_B_FRAMES: {
       qc2::C2StreamAdaptiveBPreconditions::output bpreconditions;
@@ -739,7 +762,7 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
       *(reinterpret_cast<int64_t*>(payload)) = keyframe->value;
       break;
     }
-    case GST_C2_PARAM_INTRA_REFRESH: {
+    case GST_C2_PARAM_INTRA_REFRESH_TUNING: {
       auto irefresh =
           reinterpret_cast<C2StreamIntraRefreshTuning::output*>(c2param.get());
 
@@ -751,6 +774,18 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
       reinterpret_cast<GstC2IntraRefresh*>(payload)->period = irefresh->period;
       break;
     }
+#if defined(CODEC2_CONFIG_VERSION_2_0)
+    case GST_C2_PARAM_INTRA_REFRESH_MODE: {
+      auto ir_type =
+          reinterpret_cast<qc2::C2VideoIntraRefreshType::output*>(c2param.get());
+      auto result = std::find_if(kIntraRefreshMap.begin(), kIntraRefreshMap.end(),
+          [&](const auto& m) { return m.second == ir_type->value; });
+
+      *(reinterpret_cast<GstC2IRefreshMode*>(payload)) =
+          static_cast<GstC2IRefreshMode>(result->first);
+      break;
+    }
+#endif // CODEC2_CONFIG_VERSION_2_0
 #if !defined(CODEC2_CONFIG_VERSION_2_0)
     case GST_C2_PARAM_ADAPTIVE_B_FRAMES: {
       auto bpreconditions =
