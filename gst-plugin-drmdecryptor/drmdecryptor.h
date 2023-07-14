@@ -7,7 +7,6 @@
 #define __GST_DRM_DECRYPTOR_H__
 
 #include <gst/gst.h>
-#include <gst/allocators/allocators.h>
 
 #include "drmdecryptor-engine.h"
 
@@ -31,12 +30,14 @@ typedef struct _GstDrmDecryptorClass GstDrmDecryptorClass;
 struct _GstDrmDecryptor {
   GstElement              parent;
 
-  GstPad                  *srcpad,
-                          *sinkpad;
+  GstPad                  *srcpad;
+  GstPad                  *sinkpad;
 
   GstDrmDecryptorEngine   *engine;
 
-  //session id generated on PR DRM engine open session
+  GstBufferPool           *pool;
+
+  /// Properties
   gchar                   *session_id;
 };
 

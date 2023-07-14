@@ -10,17 +10,13 @@
 #include "drmdecryptor-engine.h"
 
 #include <dlfcn.h>
-#include <gst/allocators/allocators.h>
 #include <cutils/native_handle.h>
 
-#include <BufferAllocator/BufferAllocatorWrapper.h>
 #include <media/hardware/CryptoAPI.h>
 #include <media/drm/DrmAPI.h>
 
 #define GST_CAT_DEFAULT           gst_drm_decryptor_engine_debug_category ()
 
-#define HEAP_ALIGN                4096
-#define SECURE_DISPLAY_HEAP_ID    "system-secure"
 #define SUBSAMPLE_INFO_LEN        6
 #define CLEAR_BYTES_SIZE          2
 #define ENCR_BYTES_SIZE           4
@@ -43,21 +39,12 @@
   } \
 }
 
-//using namespace android;
-
 typedef android::CryptoFactory *(*CreateCryptoFactoryFunc)();
-
-// Playready DRM UUID
-static const guint8 playready_uuid[16] = {
-  0x9A, 0x04, 0xF0, 0x79, 0x98, 0x40, 0x42, 0x86,
-  0xAB, 0x92, 0xE6, 0x5B, 0xE0, 0x88, 0x5F, 0x95
-};
 
 struct _GstDrmDecryptorEngine {
   android::CryptoPlugin *crypto_plugin;
   void *lib_handle;
   native_handle_t *nh;
-  BufferAllocator *buf_allocator;
 };
 
 static GstDebugCategory *
@@ -76,8 +63,11 @@ GstDrmDecryptorEngine *
 gst_drm_decryptor_engine_new (const gchar *session_id)
 {
   GstDrmDecryptorEngine *engine = NULL;
-  gulong status = 0;
-  gsize session_id_size = strlen(session_id);
+  // Playready DRM UUID
+  const guint8 uuid[16] = {
+    0x9A, 0x04, 0xF0, 0x79, 0x98, 0x40, 0x42, 0x86,
+    0xAB, 0x92, 0xE6, 0x5B, 0xE0, 0x88, 0x5F, 0x95
+  };
 
   engine = g_slice_new0 (GstDrmDecryptorEngine);
   g_return_val_if_fail (engine != NULL, NULL);
@@ -96,17 +86,16 @@ gst_drm_decryptor_engine_new (const gchar *session_id)
       gst_drm_decryptor_engine_free (engine), "Cannot find symbol, dlerror: %s",
       dlerror());
 
-  android::CryptoFactory *crypto_factory;
-  crypto_factory = createCryptoFactory();
+  android::CryptoFactory *factory;
+  factory = createCryptoFactory();
 
-  GST_RETURN_VAL_IF_FAIL_WITH_CLEAN (crypto_factory != NULL, NULL,
+  GST_RETURN_VAL_IF_FAIL_WITH_CLEAN (factory != NULL, NULL,
       gst_drm_decryptor_engine_free (engine), "Create crypto factory failed !");
 
-  status = crypto_factory->createPlugin (playready_uuid,
-      static_cast<const void*>(session_id), static_cast<size_t>(session_id_size),
-      &(engine->crypto_plugin));
+  gulong status = factory->createPlugin (uuid, static_cast<const void*>(session_id),
+      static_cast<size_t>(strlen(session_id)), &(engine->crypto_plugin));
 
-  delete crypto_factory;
+  delete factory;
 
   GST_RETURN_VAL_IF_FAIL_WITH_CLEAN (status == 0, NULL,
       gst_drm_decryptor_engine_free (engine),
@@ -116,11 +105,6 @@ gst_drm_decryptor_engine_new (const gchar *session_id)
 
   GST_RETURN_VAL_IF_FAIL_WITH_CLEAN (engine->nh != NULL, NULL,
       gst_drm_decryptor_engine_free (engine), "Invalid native handle");
-
-  engine->buf_allocator = CreateDmabufHeapBufferAllocator();
-
-  GST_RETURN_VAL_IF_FAIL_WITH_CLEAN (engine->buf_allocator != NULL, NULL,
-      gst_drm_decryptor_engine_free (engine), "Failed to create Dmabuf allocator");
 
   return engine;
 }
@@ -137,47 +121,12 @@ gst_drm_decryptor_engine_free (GstDrmDecryptorEngine *engine)
   if (engine->nh)
     native_handle_delete (engine->nh);
 
-  if (engine->buf_allocator)
-    FreeDmabufHeapBufferAllocator(engine->buf_allocator);
-
   g_slice_free (GstDrmDecryptorEngine, engine);
-}
-
-GstBuffer*
-gst_drm_decryptor_engine_secure_buffer_allocate (BufferAllocator* buf_allocator,
-    gsize size)
-{
-  GstBuffer *buffer = NULL;
-  GstMemory *memory = NULL;
-  GstAllocator *fd_allocator = NULL;
-  const gchar* heap_id;
-  gint fd = -1;
-  gsize aligned_len;
-
-  heap_id = SECURE_DISPLAY_HEAP_ID;
-  aligned_len = GST_ROUND_UP_N (size, HEAP_ALIGN);
-
-  fd = DmabufHeapAlloc(buf_allocator, heap_id, aligned_len, 0, 0);
-  GST_RETURN_VAL_IF_FAIL (fd >= 0, NULL, "Failed to allocate secure buffer");
-  if (fd < 0) {
-    GST_ERROR ("Failed to allocate secure buffer!");
-    return NULL;
-  }
-
-  buffer = gst_buffer_new ();
-  fd_allocator = gst_fd_allocator_new ();
-  memory = gst_fd_allocator_alloc (fd_allocator, fd, aligned_len,
-                                    GST_FD_MEMORY_FLAG_DONT_CLOSE);
-  memory->size = size;
-  gst_buffer_append_memory (buffer, memory);
-  gst_object_unref (fd_allocator);
-
-  return buffer;
 }
 
 gboolean
 gst_drm_decryptor_engine_execute (GstDrmDecryptorEngine *engine,
-    GstBuffer *in_buffer, GstBuffer **out_buffer)
+    GstBuffer *in_buffer, GstBuffer *out_buffer)
 {
   GstProtectionMeta *pmeta = gst_buffer_get_protection_meta (in_buffer);
   GstBuffer *key_id_buf, *iv_buf, *subsample_buf;
@@ -188,15 +137,8 @@ gst_drm_decryptor_engine_execute (GstDrmDecryptorEngine *engine,
   android::AString *error_detail_msg;
   gsize inbuf_size, decrypt_size = 0;
   guint subsample_count, idx, total_bytes = 0;
-  gboolean secure, result = true;
+  gboolean secure, success = TRUE;
   guint8 iv_arr[IV_SIZE];
-  inbuf_size = gst_buffer_get_size (in_buffer);
-
-  if (!(*out_buffer = gst_drm_decryptor_engine_secure_buffer_allocate (
-                                          engine->buf_allocator, inbuf_size))) {
-    GST_ERROR_OBJECT (engine, "Failed to allocate secure buffer at output!");
-    return false;
-  }
 
   gst_structure_get_boolean (pmeta->info, "encrypted", &secure);
   gst_structure_get_uint (pmeta->info, "subsample_count", &subsample_count);
@@ -204,11 +146,11 @@ gst_drm_decryptor_engine_execute (GstDrmDecryptorEngine *engine,
   subsample = g_new (android::CryptoPlugin::SubSample, subsample_count);
 
   key_id_buf = gst_value_get_buffer (
-    gst_structure_get_value (pmeta->info, "kid"));
+      gst_structure_get_value (pmeta->info, "kid"));
   iv_buf = gst_value_get_buffer (
-    gst_structure_get_value (pmeta->info, "iv"));
+      gst_structure_get_value (pmeta->info, "iv"));
   subsample_buf = gst_value_get_buffer (
-    gst_structure_get_value (pmeta->info, "subsamples"));
+      gst_structure_get_value (pmeta->info, "subsamples"));
 
   gst_buffer_map (in_buffer, &inbuff_map_info, GST_MAP_READ);
   gst_buffer_map (subsample_buf, &subsample_map_info, GST_MAP_READ);
@@ -248,8 +190,10 @@ gst_drm_decryptor_engine_execute (GstDrmDecryptorEngine *engine,
         subsample[idx].mNumBytesOfEncryptedData);
 
     total_bytes += subsample[idx].mNumBytesOfClearData +
-                          subsample[idx].mNumBytesOfEncryptedData;
+        subsample[idx].mNumBytesOfEncryptedData;
   }
+
+  inbuf_size = gst_buffer_get_size (in_buffer);
 
   // Incase of byte-stream stream format in AVC, 6 bytes Access Unit Delimiter
   // is added at the start of each NAL unit. This offset needs to be accounted
@@ -259,8 +203,12 @@ gst_drm_decryptor_engine_execute (GstDrmDecryptorEngine *engine,
     subsample[0].mNumBytesOfClearData += inbuf_size - total_bytes;
 
   mode = android::CryptoPlugin::kMode_AES_CTR;
-  engine->nh->data[0] = gst_fd_memory_get_fd (
-                            gst_buffer_get_memory (*out_buffer, 0));
+
+  {
+    GstMemory *mem = gst_buffer_get_memory (out_buffer, 0);
+    mem->size = inbuf_size;
+    engine->nh->data[0] = gst_fd_memory_get_fd (mem);
+  }
 
   decrypt_size = engine->crypto_plugin->decrypt (
     secure,
@@ -276,12 +224,12 @@ gst_drm_decryptor_engine_execute (GstDrmDecryptorEngine *engine,
   );
 
   if (decrypt_size != inbuf_size) {
-    GST_ERROR_OBJECT (engine, "Decrypted buffer size (%zu bytes) not equal to \
-    input buffer size (%zu bytes)", decrypt_size, inbuf_size);
-    result = false;
+    GST_ERROR_OBJECT (engine, "Decrypted buffer size (%zu bytes) not equal to "
+        "input buffer size (%zu bytes)", decrypt_size, inbuf_size);
+    success = FALSE;
   } else {
-    GST_INFO_OBJECT (engine, "Decrypted buffer size= %zu bytes \
-     input size= %zu bytes", decrypt_size, inbuf_size);
+    GST_INFO_OBJECT (engine, "Decrypted buffer size= %zu bytes "
+        "input size= %zu bytes", decrypt_size, inbuf_size);
   }
 
   g_free (subsample);
@@ -290,5 +238,5 @@ gst_drm_decryptor_engine_execute (GstDrmDecryptorEngine *engine,
   gst_buffer_unmap (key_id_buf, &keyid_map_info);
   gst_buffer_unmap (iv_buf, &iv_map_info);
 
-  return result;
+  return success;
 }
