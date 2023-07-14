@@ -73,7 +73,8 @@ enum {
   GST_C2_PARAM_BITRATE,              // guint32
   GST_C2_PARAM_GOP_CONFIG,           // GstC2Gop
   GST_C2_PARAM_KEY_FRAME_INTERVAL,   // gint64
-  GST_C2_PARAM_INTRA_REFRESH,        // GstC2IntraRefresh
+  GST_C2_PARAM_INTRA_REFRESH_TUNING, // GstC2IntraRefresh
+  GST_C2_PARAM_INTRA_REFRESH_MODE,   // GstC2IRefreshMode
   GST_C2_PARAM_ADAPTIVE_B_FRAMES,    // gboolean
   GST_C2_PARAM_ENTROPY_MODE,         // GstC2EntropyMode
   GST_C2_PARAM_LOOP_FILTER_MODE,     // GstC2LoopFilterMode
@@ -167,6 +168,7 @@ typedef enum {
 typedef enum {
   GST_C2_INTRA_REFRESH_DISABLED,
   GST_C2_INTRA_REFRESH_ARBITRARY,
+  GST_C2_INTRA_REFRESH_CYCLIC,
 } GstC2IRefreshMode;
 
 typedef enum {
