@@ -214,6 +214,12 @@ error_cb (GstBus * bus, GstMessage * message, gpointer userdata)
   // via the default error handler
   gst_object_default_error (GST_MESSAGE_SRC (message), error, debug);
 
+  // Since there is error, set pipeline to NULL state.
+  gst_element_set_state (ctx->pipeline, GST_STATE_NULL);
+
+  // Decrease the refcount of the pipeline which got error.
+  --*ctx->refcount;
+
   g_free (debug);
   g_error_free (error);
 }
