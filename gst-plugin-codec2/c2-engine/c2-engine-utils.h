@@ -148,6 +148,18 @@ class GstC2Utils {
   static bool ExtractHandleInfo(GstBuffer* buffer,
                                 const ::android::C2HandleGBM* handle);
 
+  /** AppendCodecMeta
+   * @buffer: Pointer to GStreamer buffer to which video metadata will be added.
+   * @handle: Reference to Codec2  buffer.
+   *
+   * Extacts the encoded information contained in the Codec2 buffer and
+   * attaches it as CodecInfo to the GStreamer buffer.
+   *
+   * return: True on success or false on failure.
+   **/
+  static bool AppendCodecMeta(GstBuffer* buffer,
+      std::shared_ptr<C2Buffer>& c2buffer);
+
   /** CreateBuffer
    * @buffer: Pointer to GStreamer buffer.
    * @block: Reference to Codec2 graphic block.
