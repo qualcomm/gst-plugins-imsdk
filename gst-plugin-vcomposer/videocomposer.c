@@ -173,7 +173,9 @@ gst_converter_request_free (GstConverterRequest * request)
     buffer = request->outframes[idx].buffer;
 
     if (buffer != NULL) {
-      gst_video_frame_unmap (&(request)->outframes[idx]);
+      if (gst_buffer_get_size (buffer) != 0)
+        gst_video_frame_unmap (&(request)->outframes[idx]);
+
       gst_buffer_unref (buffer);
     }
   }
@@ -853,7 +855,7 @@ gst_video_composer_prepare_input_frame (GstElement * element, GstPad * pad,
 {
   GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER (element);
   GstVideoComposerSinkPad *sinkpad = GST_VIDEO_COMPOSER_SINKPAD (pad);
-  GstVideoFrame *frames = GST_CONVERTER_REQUEST (userdata)->inframes;
+  GstConverterRequest *request = GST_CONVERTER_REQUEST (userdata);
   GstBuffer *buffer = NULL;
   guint idx = 0;
 
@@ -900,7 +902,13 @@ gst_video_composer_prepare_input_frame (GstElement * element, GstPad * pad,
     return TRUE;
   }
 
-  if (!gst_video_frame_map (&frames[idx], sinkpad->info, buffer,
+  // At least one buffer contains data, allocate the frames for composition.
+  if (request->inframes == NULL) {
+    request->inframes = g_new0 (GstVideoFrame, vcomposer->n_inputs);
+    request->n_inputs = vcomposer->n_inputs;
+  }
+
+  if (!gst_video_frame_map (&(request->inframes[idx]), sinkpad->info, buffer,
           GST_MAP_READ | GST_VIDEO_FRAME_MAP_FLAG_NO_REF)) {
     GST_ERROR_OBJECT (pad, "Failed to map input buffer!");
     gst_buffer_unref (buffer);
@@ -915,31 +923,41 @@ gst_video_composer_prepare_output_frame (GstElement * element, GstPad * pad,
     gpointer userdata)
 {
   GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER (element);
-  GstVideoFrame *frames = GST_CONVERTER_REQUEST (userdata)->outframes;
+  GstConverterRequest *request = GST_CONVERTER_REQUEST (userdata);
   GstBufferPool *pool = vcomposer->outpool;
   GstBuffer *buffer = NULL;
   guint idx = 0;
 
-  if (!gst_buffer_pool_is_active (pool) &&
-      !gst_buffer_pool_set_active (pool, TRUE)) {
-    GST_ERROR_OBJECT (vcomposer, "Failed to activate output video buffer pool!");
-    return FALSE;
-  }
+  if ((request->inframes != NULL) && (request->n_inputs != 0)) {
+    if (!gst_buffer_pool_is_active (pool) &&
+        !gst_buffer_pool_set_active (pool, TRUE)) {
+      GST_ERROR_OBJECT (vcomposer, "Failed to activate output video buffer pool!");
+      return FALSE;
+    }
 
-  if (gst_buffer_pool_acquire_buffer (pool, &buffer, NULL) != GST_FLOW_OK) {
-    GST_ERROR_OBJECT (vcomposer, "Failed to create output video buffer!");
-    return FALSE;
-  }
+    if (gst_buffer_pool_acquire_buffer (pool, &buffer, NULL) != GST_FLOW_OK) {
+      GST_ERROR_OBJECT (vcomposer, "Failed to create output video buffer!");
+      return FALSE;
+    }
 
-  GST_OBJECT_LOCK (vcomposer);
-  idx = g_list_index (element->srcpads, pad);
-  GST_OBJECT_UNLOCK (vcomposer);
+    GST_OBJECT_LOCK (vcomposer);
+    idx = g_list_index (element->srcpads, pad);
+    GST_OBJECT_UNLOCK (vcomposer);
 
-  if (!gst_video_frame_map (&frames[idx], vcomposer->outinfo, buffer,
-          GST_MAP_READWRITE | GST_VIDEO_FRAME_MAP_FLAG_NO_REF)) {
-    GST_ERROR_OBJECT (vcomposer, "Failed to map output buffer!");
-    gst_buffer_unref (buffer);
-    return FALSE;
+    if (!gst_video_frame_map (&(request->outframes[idx]), vcomposer->outinfo, buffer,
+            GST_MAP_READWRITE | GST_VIDEO_FRAME_MAP_FLAG_NO_REF)) {
+      GST_ERROR_OBJECT (vcomposer, "Failed to map output buffer!");
+      gst_buffer_unref (buffer);
+      return FALSE;
+    }
+  } else {
+    // Create an empty buffer, which will be submitted downstream.
+    buffer = gst_buffer_new ();
+
+    // Mark this buffer as GAP.
+    GST_BUFFER_FLAG_SET (buffer, GST_BUFFER_FLAG_GAP);
+
+    request->outframes[idx].buffer = buffer;
   }
 
   GST_BUFFER_DURATION (buffer) = vcomposer->duration;
@@ -1363,23 +1381,25 @@ gst_video_composer_task_loop (gpointer userdata)
   if (gst_data_queue_pop (vcomposer->requests, &item)) {
     GstConverterRequest *request = NULL;
     GstBuffer *buffer = NULL;
-    gboolean success = FALSE;
+    gboolean success = TRUE;
 
     // Increase the request reference count to indicate that it is in use.
     request = GST_CONVERTER_REQUEST (gst_mini_object_ref (item->object));
     item->destroy (item);
 
-    GST_TRACE_OBJECT (vcomposer, "Waiting request %p", request->id);
 
+    if (request->id != NULL) {
+      GST_TRACE_OBJECT (vcomposer, "Waiting request %p", request->id);
 #ifdef USE_C2D_CONVERTER
-    success = gst_c2d_video_converter_wait_request (vcomposer->c2dconvert,
-        request->id);
+      success = gst_c2d_video_converter_wait_request (vcomposer->c2dconvert,
+          request->id);
 #endif // USE_C2D_CONVERTER
 
 #ifdef USE_GLES_CONVERTER
-    success = gst_gles_video_converter_wait_request (vcomposer->glesconvert,
-        request->id);
+      success = gst_gles_video_converter_wait_request (vcomposer->glesconvert,
+          request->id);
 #endif // USE_GLES_CONVERTER
+    }
 
     if (!success) {
       GST_DEBUG_OBJECT (vcomposer, " Waiting request %p failed!", request->id);
@@ -1524,10 +1544,6 @@ gst_video_composer_aggregate (GstAggregator * aggregator, gboolean timeout)
     return GST_FLOW_EOS;
 
   request = gst_converter_request_new ();
-  request->inframes = g_new0 (GstVideoFrame, vcomposer->n_inputs);
-  request->n_inputs = vcomposer->n_inputs;
-  request->outframes = g_new0 (GstVideoFrame, vcomposer->n_outputs);
-  request->n_outputs = vcomposer->n_outputs;
 
   // Get start time for performance measurements.
   request->time = gst_util_get_timestamp ();
@@ -1540,6 +1556,9 @@ gst_video_composer_aggregate (GstAggregator * aggregator, gboolean timeout)
     return GST_AGGREGATOR_FLOW_NEED_DATA;
   }
 
+  request->outframes = g_new0 (GstVideoFrame, vcomposer->n_outputs);
+  request->n_outputs = vcomposer->n_outputs;
+
   success = gst_element_foreach_src_pad (GST_ELEMENT_CAST (vcomposer),
       gst_video_composer_prepare_output_frame, request);
 
@@ -1550,7 +1569,7 @@ gst_video_composer_aggregate (GstAggregator * aggregator, gboolean timeout)
   }
 
 #ifdef USE_C2D_CONVERTER
-  {
+  if (request->n_inputs != 0) {
     GstC2dComposition composition = {
       request->inframes, request->n_inputs, request->outframes
     };
@@ -1561,17 +1580,17 @@ gst_video_composer_aggregate (GstAggregator * aggregator, gboolean timeout)
 #endif // USE_C2D_CONVERTER
 
 #ifdef USE_GLES_CONVERTER
-    {
-      GstGlesComposition composition = {
-        request->inframes, request->n_inputs, request->outframes
-      };
+  if (request->n_inputs != 0) {
+     GstGlesComposition composition = {
+       request->inframes, request->n_inputs, request->outframes
+     };
 
-      request->id = gst_gles_video_converter_submit_request (
-          vcomposer->glesconvert, &composition, 1);
-    }
+     request->id = gst_gles_video_converter_submit_request (
+         vcomposer->glesconvert, &composition, 1);
+   }
 #endif // USE_GLES_CONVERTER
 
-  if (NULL == request->id) {
+  if ((request->n_inputs != 0) && (NULL == request->id)) {
     GST_WARNING_OBJECT (vcomposer, "Failed to submit request to converter!");
     gst_converter_request_unref (request);
     return GST_FLOW_ERROR;
