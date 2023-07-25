@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -45,8 +45,6 @@
 #define SCORE_IDX              4
 // Layer index from which the class labels begin.
 #define CLASSES_IDX            5
-// Class confidence threshold (10%).
-#define CONFIDENCE_THRESHOLD   0.1F
 // Non-maximum Suppression (NMS) threshold (50%).
 #define INTERSECTION_THRESHOLD 0.5F
 
@@ -80,6 +78,8 @@ struct _GstMLSubModule {
 
   // List of prediction labels.
   GHashTable *labels;
+  // Confidence threshold value.
+  gfloat     threshold;
 };
 
 static inline void
@@ -193,11 +193,8 @@ gst_ml_module_parse_split_tensors (GstMLSubModule * submodule,
 {
   guint idx = 0, num = 0, anchor = 0, x = 0, y = 0, m = 0, id = 0;
   guint n_layers = 0, n_anchors = 0, width = 0, height = 0;
-  gfloat confidence = 0.0, score = 0.0, threshold = 0.0, bbox[4] = { 0, };
+  gfloat confidence = 0.0, score = 0.0, bbox[4] = { 0, };
   gint nms = -1;
-
-  // Confidence threshold
-  threshold = CONFIDENCE_THRESHOLD;
 
   for (idx = 0; idx < GST_ML_FRAME_N_BLOCKS (mlframe); idx++, num = 0) {
     GstLabel *label = NULL;
@@ -224,7 +221,7 @@ gst_ml_module_parse_split_tensors (GstMLSubModule * submodule,
           score = data[num + SCORE_IDX];
 
           // Discard results below the minimum score threshold.
-          if (score <= threshold)
+          if (score < submodule->threshold)
             continue;
 
           // Initialize the class ID value.
@@ -238,7 +235,7 @@ gst_ml_module_parse_split_tensors (GstMLSubModule * submodule,
           confidence = data[id];
 
           // Discard results below the minimum confidence threshold.
-          if (confidence <= threshold)
+          if (confidence < submodule->threshold)
             continue;
 
           // Apply a sigmoid function in order to normalize the confidence.
@@ -365,19 +362,38 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   const gchar *input = NULL;
   GValue list = G_VALUE_INIT;
+  gdouble threshold = 0.0;
+  gboolean success = FALSE;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (settings != NULL, FALSE);
 
   input = gst_structure_get_string (settings, GST_ML_MODULE_OPT_LABELS);
-  g_return_val_if_fail (gst_ml_parse_labels (input, &list), FALSE);
+
+  // Parse funtion will print error message if it fails, simply goto cleanup.
+  if (!(success = gst_ml_parse_labels (input, &list)))
+    goto cleanup;
 
   submodule->labels = gst_ml_load_labels (&list);
-  g_return_val_if_fail (submodule->labels != NULL, FALSE);
 
+  // Labels funtion will print error message if it fails, simply goto cleanup.
+  if (!(success = (submodule->labels != NULL)))
+    goto cleanup;
+
+  success = gst_structure_has_field (settings, GST_ML_MODULE_OPT_THRESHOLD);
+  if (!success) {
+    GST_ERROR ("Settings stucture does not contain threshold value!");
+    goto cleanup;
+  }
+
+  gst_structure_get_double (settings, GST_ML_MODULE_OPT_THRESHOLD, &threshold);
+  submodule->threshold = threshold / 100.0;
+
+cleanup:
   g_value_unset (&list);
   gst_structure_free (settings);
-  return TRUE;
+
+  return success;
 }
 
 gboolean
@@ -397,12 +413,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     submodule->stgcaps = gst_ml_info_to_caps (&(mlframe)->info);
 
   // Extract the SAR (Source Aspect Ratio).
-  if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL) {
-    sar_n = gst_value_get_fraction_numerator (
-        gst_structure_get_value (pmeta->info, "source-aspect-ratio"));
-    sar_d = gst_value_get_fraction_denominator (
-        gst_structure_get_value (pmeta->info, "source-aspect-ratio"));
-  }
+  if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL)
+    gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
 
   // Depending on the frame tensors differen parsing functions will be called.
   caps = GST_CAPS_CAST (g_ptr_array_index (submodule->mlcaps, 0));

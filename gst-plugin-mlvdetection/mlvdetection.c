@@ -408,10 +408,6 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
 
     prediction = &(g_array_index (predictions, GstMLPrediction, idx));
 
-    // Break immediately if sorted prediction confidence is below the threshold.
-    if (prediction->confidence < detection->threshold)
-      break;
-
     // Concat the prediction data to the output string.
     string = g_strdup_printf ("%s: %.1f%%", prediction->label,
         prediction->confidence);
@@ -509,10 +505,6 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
       break;
 
     prediction = &(g_array_index (predictions, GstMLPrediction, idx));
-
-    // Break immediately if sorted prediction confidence is below the threshold.
-    if (prediction->confidence < detection->threshold)
-      continue;
 
     GST_TRACE_OBJECT (detection, "label: %s, confidence: %.1f%%, "
         "[%.2f %.2f %.2f %.2f]", prediction->label, prediction->confidence,
@@ -890,7 +882,9 @@ gst_ml_video_detection_set_caps (GstBaseTransform * base, GstCaps * incaps,
   }
 
   structure = gst_structure_new ("options",
-      GST_ML_MODULE_OPT_LABELS, G_TYPE_STRING, detection->labels, NULL);
+      GST_ML_MODULE_OPT_LABELS, G_TYPE_STRING, detection->labels,
+      GST_ML_MODULE_OPT_THRESHOLD, G_TYPE_DOUBLE, detection->threshold,
+      NULL);
 
   if (!gst_ml_module_set_opts (detection->module, structure)) {
     GST_ELEMENT_ERROR (detection, RESOURCE, FAILED, (NULL),

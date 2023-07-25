@@ -400,9 +400,6 @@ gst_ml_video_pose_fill_video_output (GstMLVideoPose * vpose,
     for (num = 0; num < keypoints->len; ++num) {
       GstPoseKeypoint *kp = &(g_array_index (keypoints, GstPoseKeypoint, num));
 
-      if (kp->confidence < vpose->threshold)
-        continue;
-
       // Adjust coordinates based on the output buffer dimensions.
       kp->x = kp->x * vmeta->width;
       kp->y = kp->y * vmeta->height;
@@ -431,10 +428,6 @@ gst_ml_video_pose_fill_video_output (GstMLVideoPose * vpose,
 
       s_kp = &(g_array_index (keypoints, GstPoseKeypoint, link->s_kp_id));
       d_kp = &(g_array_index (keypoints, GstPoseKeypoint, link->d_kp_id));
-
-      if ((s_kp->confidence < vpose->threshold) ||
-          (d_kp->confidence < vpose->threshold))
-        continue;
 
       GST_TRACE_OBJECT (vpose, "Link: '%s' [%.0f x %.0f] <--> '%s' [%.0f x %.0f]",
           s_kp->label, s_kp->x, s_kp->y, d_kp->label, d_kp->x, d_kp->y);
@@ -872,7 +865,9 @@ gst_ml_video_pose_set_caps (GstBaseTransform * base, GstCaps * incaps,
   }
 
   structure = gst_structure_new ("options",
-      GST_ML_MODULE_OPT_LABELS, G_TYPE_STRING, vpose->labels, NULL);
+      GST_ML_MODULE_OPT_LABELS, G_TYPE_STRING, vpose->labels,
+      GST_ML_MODULE_OPT_THRESHOLD, G_TYPE_DOUBLE, vpose->threshold,
+      NULL);
 
   if (!gst_ml_module_set_opts (vpose->module, structure)) {
     GST_ELEMENT_ERROR (vpose, RESOURCE, FAILED, (NULL),
