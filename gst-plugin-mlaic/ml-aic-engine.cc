@@ -318,7 +318,7 @@ gst_ml_aic_retrieve_execution_object (GstMLAicEngine * engine,
     n_usage = pair.second;
   }
 
-  GST_LOG ("Using program with ID %u and usage %u", program->getId(), n_usage);
+  GST_LOG ("Using program with usage %u", n_usage);
 
   // Increase the usage count for this program.
   engine->programs[program] += 1;
@@ -333,7 +333,7 @@ gst_ml_aic_retrieve_execution_object (GstMLAicEngine * engine,
     engine->buffers.emplace(object, qbuffers);
     GST_AIC_UNLOCK (engine);
 
-    GST_LOG ("Created execution object for program ID %u", program->getId());
+    GST_LOG ("Created execution object");
   } catch (const ::qaic::rt::CoreExceptionInit &e) {
     GST_ERROR ("Caught exception during object creation: %s", e.what());
 
@@ -499,8 +499,8 @@ gst_ml_aic_engine_new (GstStructure * settings)
       ::qaic::rt::shProgram program = ::qaic::rt::Program::Factory(
           engine->context, device_id, name.c_str(), engine->qpc, &pprops);
 
-      GST_INFO ("Created AIC program %s with ID %u and assigned device ID %u",
-          program->objNameCstr(), program->getId(), device_id);
+      GST_INFO ("Created AIC program %s and assigned device ID %u",
+          program->objNameCstr(), device_id);
 
       // Load and Activate program.
       status = program->load();
@@ -508,16 +508,14 @@ gst_ml_aic_engine_new (GstStructure * settings)
           gst_ml_aic_engine_free (engine), "Failed to load program %s, "
           "status %d!", program->objNameCstr(), status);
 
-      GST_INFO ("Loaded AIC program %s with ID %u", program->objNameCstr(),
-          program->getId());
+      GST_INFO ("Loaded AIC program %s", program->objNameCstr());
 
       status = program->activate();
       GST_ML_RETURN_VAL_IF_FAIL_WITH_CLEAN (status == QS_SUCCESS, NULL,
           gst_ml_aic_engine_free (engine), "Failed to activate program %s, "
           "status %d!", program->objNameCstr(), status);
 
-      GST_INFO ("Activated AIC program %s with ID %u",
-          program->objNameCstr(), program->getId());
+      GST_INFO ("Activated AIC program %s", program->objNameCstr());
 
       ::qaic::rt::shQueue queue = ::qaic::rt::Queue::Factory(
           engine->context, device_id, &qprops);
