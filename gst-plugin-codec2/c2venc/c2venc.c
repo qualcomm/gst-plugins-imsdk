@@ -858,7 +858,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     c2venc->name = g_strdup (name);
 
   if (c2venc->engine == NULL) {
-    c2venc->engine = gst_c2_engine_new (name, &callbacks, c2venc);
+    c2venc->engine = gst_c2_engine_new (c2venc->name, &callbacks, c2venc);
     g_return_val_if_fail (c2venc->engine != NULL, FALSE);
   }
 
@@ -1350,6 +1350,8 @@ gst_c2_venc_finalize (GObject * object)
 
   if (c2venc->engine != NULL)
     gst_c2_engine_free (c2venc->engine);
+
+  g_free (c2venc->name);
 
   gst_buffer_list_unref (c2venc->incomplete_buffers);
 
