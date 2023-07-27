@@ -234,8 +234,8 @@ gst_c2_vdec_event_handler (guint type, gpointer payload, gpointer userdata)
   if (type == GST_C2_EVENT_EOS) {
     GST_DEBUG_OBJECT (c2vdec, "Received engine EOS");
   } else if (type == GST_C2_EVENT_ERROR) {
-    gint32 error = *((gint32*) userdata);
-    GST_ERROR_OBJECT (c2vdec, "Received engine ERROR: '%x'", error);
+    guint32 error = *((guint32*) payload);
+    GST_ERROR_OBJECT (c2vdec, "Received engine ERROR: '%u'", error);
   }
 }
 
