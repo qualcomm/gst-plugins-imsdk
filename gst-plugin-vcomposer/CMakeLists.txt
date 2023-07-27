@@ -12,12 +12,14 @@ link_directories(${SYSROOT_LIBDIR})
 find_package(PkgConfig)
 
 # Get the pkgconfigs exported by the automake tools
-pkg_check_modules(GST
-  REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(GST_ALLOC
-  REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(GST_VIDEO
-  REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_ALLOC REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_VIDEO REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
+
+# GST Video Aggregator is taken from plugins bad on versions below 1.16
+if(GST_VERSION VERSION_LESS 1.16.0)
+  pkg_check_modules(GST_BAD_VIDEO REQUIRED gstreamer-bad-video-1.0>=${GST_VERSION_REQUIRED})
+endif()
 
 # Generate configuration header file.
 configure_file(config.h.in config.h @ONLY)
@@ -28,7 +30,7 @@ add_definitions(-DHAVE_CONFIG_H)
 
 # Common compiler flags.
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter -Wno-cpp")
 
 # GStreamer plugin.
 set(GST_QTI_VIDEO_COMPOSER gstqtivcomposer)
@@ -47,6 +49,7 @@ target_link_libraries(${GST_QTI_VIDEO_COMPOSER} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
+  ${GST_BAD_VIDEO_LIBRARIES}
   gstqtivideobase
   gstqtiutilsbase
   gstqtiallocatorsbase
