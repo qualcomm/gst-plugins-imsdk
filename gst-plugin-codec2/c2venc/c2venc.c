@@ -287,6 +287,23 @@ gst_c2_venc_trigger_iframe (GstC2VEncoder * c2venc)
 }
 
 static gboolean
+gst_c2_venc_ltr_mark (GstC2VEncoder * c2venc, guint id)
+{
+  gboolean success = FALSE;
+
+  GST_DEBUG_OBJECT (c2venc, "LTR Mark index %d", id);
+
+  success = gst_c2_engine_set_parameter (c2venc->engine,
+      GST_C2_PARAM_LTR_MARK, GPOINTER_CAST (&id));
+  if (!success) {
+    GST_ERROR_OBJECT (c2venc, "Failed to set ltr mark index!");
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+static gboolean
 gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
     GstVideoCodecState * state)
 {
@@ -327,6 +344,18 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
     GST_ERROR_OBJECT (c2venc, "Failed to set output framerate parameter!");
     return FALSE;
   }
+
+#if defined(CODEC2_CONFIG_VERSION_2_0)
+  gboolean enable = TRUE;
+  // enable codec2 avg qp info report
+  success = gst_c2_engine_set_parameter (c2venc->engine,
+      GST_C2_PARAM_REPORT_AVG_QP, GPOINTER_CAST (&(enable)));
+
+  if (!success) {
+    GST_ERROR_OBJECT (c2venc, "Failed to enable QP report parameter!");
+    return FALSE;
+  }
+#endif // CODEC2_CONFIG_VERSION_2_0
 
   if (c2venc->priority != DEFAULT_PROP_PRIORITY) {
     success = gst_c2_engine_set_parameter (c2venc->engine,
@@ -1511,6 +1540,10 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
   g_signal_new_class_handler ("trigger-iframe", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION, G_CALLBACK (gst_c2_venc_trigger_iframe),
       NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_BOOLEAN, 0);
+
+  g_signal_new_class_handler ("ltr-mark", G_TYPE_FROM_CLASS (klass),
+      G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION, G_CALLBACK (gst_c2_venc_ltr_mark),
+      NULL, NULL, NULL, G_TYPE_BOOLEAN, 1, G_TYPE_UINT);
 
   gst_element_class_set_static_metadata (element,
       "Codec2 H.264/H.265/HEIC Video Encoder", "Codec/Encoder/Video",

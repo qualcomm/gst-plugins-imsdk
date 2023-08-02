@@ -133,6 +133,12 @@ static const std::unordered_map<uint32_t, C2Param::Index> kParamIndexMap = {
   { GST_C2_PARAM_HDR_STATIC_METADATA,
       C2StreamHdrStaticInfo::output::PARAM_TYPE },
 #endif // (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
+  { GST_C2_PARAM_LTR_MARK,
+      qc2::C2VideoLTRMarkTuning::input::PARAM_TYPE },
+#if defined(CODEC2_CONFIG_VERSION_2_0)
+  { GST_C2_PARAM_REPORT_AVG_QP,
+      C2AndroidStreamAverageBlockQuantizationInfo::output::PARAM_TYPE },
+#endif // CODEC2_CONFIG_VERSION_2_0
 };
 
 // Convenient map for printing the engine parameter name in string form.
@@ -171,6 +177,8 @@ static const std::unordered_map<uint32_t, const char*> kParamNameMap = {
 #if (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
   { GST_C2_PARAM_HDR_STATIC_METADATA, "HDR_STATIC_METADATA" },
 #endif // (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
+  { GST_C2_PARAM_REPORT_AVG_QP, "AVERGE_BLOCK_QP_INFO"},
+  { GST_C2_PARAM_LTR_MARK, "LTR_MARK" },
 };
 
 // Map for the GST_C2_PARAM_PROFILE_LEVEL parameter.
@@ -758,6 +766,21 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       c2param = C2Param::Copy (coloraspects);
       break;
     }
+    case GST_C2_PARAM_LTR_MARK: {
+      qc2::C2VideoLTRMarkTuning::input ltr_mark;
+      ltr_mark.frameid = *(reinterpret_cast<guint32*>(payload));
+
+      c2param = C2Param::Copy(ltr_mark);
+      break;
+    }
+#if defined(CODEC2_CONFIG_VERSION_2_0)
+    case GST_C2_PARAM_REPORT_AVG_QP: {
+      C2AndroidStreamAverageBlockQuantizationInfo::output avg_qp;
+      avg_qp.value = *(reinterpret_cast<int32_t*>(payload));
+      c2param = C2Param::Copy(avg_qp);
+      break;
+    }
+#endif // CODEC2_CONFIG_VERSION_2_0
     default:
       GST_ERROR ("Unsupported parameter: %u!", type);
       return FALSE;
@@ -1062,6 +1085,21 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
       *(reinterpret_cast<int32_t*>(payload)) = priority->value;
       break;
     }
+    case GST_C2_PARAM_LTR_MARK: {
+      auto ltr_mark =
+          reinterpret_cast<qc2::C2VideoLTRMarkTuning::input*>(c2param.get());
+
+      *(reinterpret_cast<guint32*>(payload)) = ltr_mark->frameid;
+      break;
+    }
+#if defined(CODEC2_CONFIG_VERSION_2_0)
+    case GST_C2_PARAM_REPORT_AVG_QP: {
+      auto avg_qp = reinterpret_cast<
+          C2AndroidStreamAverageBlockQuantizationInfo::output*>(c2param.get());
+      *(reinterpret_cast<guint32*>(payload)) = avg_qp->value;
+      break;
+    }
+#endif // CODEC2_CONFIG_VERSION_2_0
     default:
       GST_ERROR ("Unsupported parameter: %u!", type);
       return FALSE;
@@ -1202,6 +1240,48 @@ bool GstC2Utils::ExtractHandleInfo(GstBuffer* buffer,
       format, width, height, n_planes, offsets, strides);
 
   return true;
+}
+
+bool GstC2Utils::AppendCodecMeta(GstBuffer* buffer,
+    std::shared_ptr<C2Buffer>& c2buffer) {
+
+  GstProtectionMeta *pmeta = NULL;
+
+  if (c2buffer->data().type() != C2BufferData::LINEAR)
+    return FALSE;
+
+  pmeta = gst_buffer_add_protection_meta (buffer,
+      gst_structure_new_empty ("CodecInfo"));
+
+  g_return_val_if_fail (pmeta != NULL, FALSE);
+
+  std::shared_ptr<const C2Info> c2info =
+      c2buffer->getInfo (C2StreamPictureTypeInfo::output::PARAM_TYPE);
+  auto pictype =
+      std::static_pointer_cast<const C2StreamPictureTypeInfo::output>(c2info);
+
+  if (pictype) {
+    gst_structure_set (pmeta->info,
+        "picture-type", G_TYPE_UINT, static_cast<guint>(pictype->value), NULL);
+    GST_TRACE ("Picture type: %u", static_cast<guint>(pictype->value));
+  }
+
+#if defined(CODEC2_CONFIG_VERSION_2_0)
+  std::shared_ptr<const C2Info> c2qpinfo = c2buffer->getInfo (
+      C2AndroidStreamAverageBlockQuantizationInfo::output::PARAM_TYPE);
+
+  auto avgqpinfo = std::static_pointer_cast<
+      const C2AndroidStreamAverageBlockQuantizationInfo::output>(c2qpinfo);
+
+  if (avgqpinfo) {
+    gst_structure_set (pmeta->info,
+        "average-block-qp", G_TYPE_INT, static_cast<gint>(avgqpinfo->value),
+        NULL);
+    GST_TRACE ("Average block QP: %d", static_cast<gint>(avgqpinfo->value));
+  }
+#endif // CODEC2_CONFIG_VERSION_2_0
+
+  return TRUE;
 }
 
 std::shared_ptr<C2Buffer> GstC2Utils::CreateBuffer(

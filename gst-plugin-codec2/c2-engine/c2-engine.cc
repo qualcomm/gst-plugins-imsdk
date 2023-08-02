@@ -254,6 +254,9 @@ class GstC2Notifier : public IC2Notifier {
     GST_BUFFER_TIMESTAMP (buffer) =
         gst_util_uint64_scale (timestamp, GST_SECOND, 1000000);
 
+    // extract codec2 buffer info to gst buffer
+    GstC2Utils::AppendCodecMeta (buffer, c2buffer);
+
     GstC2BufferQData *qdata = new GstC2BufferQData(c2buffer);
 
     // Set a notification function to signal when the buffer is no longer used.

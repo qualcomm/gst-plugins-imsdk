@@ -99,6 +99,8 @@ enum {
   GST_C2_PARAM_HDR_STATIC_METADATA,  // GstC2HdrStaticMetadata
 #endif // (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
   GST_C2_PARAM_COLOR_ASPECTS_TUNING, // GstVideoColorimetry
+  GST_C2_PARAM_REPORT_AVG_QP,        // gboolean
+  GST_C2_PARAM_LTR_MARK,             // guint32
 };
 
 typedef enum {
