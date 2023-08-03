@@ -68,6 +68,10 @@ struct _GstC2VEncoder {
   GstVideoCodecState   *instate;
   /// TRUE if the negotiated input format is UBWC.
   gboolean             isubwc;
+  /// Get the buffer duration if input is variable fps and output is fixed fps.
+  GstClockTime         duration;
+  /// Previous timestamp saved for variable fps.
+  GstClockTime         prevts;
 
   /// SPS/PPS/VPS NALs headers.
   GList                *headers;
