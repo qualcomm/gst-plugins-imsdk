@@ -139,6 +139,33 @@ gst_sample_release (GstSample * sample)
 #endif
 }
 
+static GstElement*
+get_element_from_pipeline (GstElement * pipeline, const gchar * factory_name)
+{
+  GstElement *element = NULL;
+  GstElementFactory *elem_factory = gst_element_factory_find (factory_name);
+  GstIterator *it = NULL;
+  GValue value = G_VALUE_INIT;
+
+  // Iterate the pipeline and check factory of each element.
+  for (it = gst_bin_iterate_elements (GST_BIN (pipeline));
+      gst_iterator_next (it, &value) == GST_ITERATOR_OK;
+      g_value_reset (&value)) {
+    element = GST_ELEMENT (g_value_get_object (&value));
+
+    if (gst_element_get_factory (element) == elem_factory)
+      goto free;
+  }
+  g_value_reset (&value);
+  element = NULL;
+
+free:
+  gst_iterator_free (it);
+  gst_object_unref (elem_factory);
+
+  return element;
+}
+
 static gboolean
 handle_interrupt_signal (gpointer userdata)
 {
@@ -737,7 +764,7 @@ set_tag (GstElement * pipeline, const gchar * section_name,
   }
 
   if (status == 0) {
-    GstElement *camsrc = gst_bin_get_by_name (GST_BIN (pipeline), "camera");
+    GstElement *camsrc = get_element_from_pipeline (pipeline, "qtiqmmfsrc");
     g_object_set (G_OBJECT (camsrc), "video-metadata", meta, NULL);
     gst_object_unref (camsrc);
 
@@ -1139,7 +1166,7 @@ handle_metadata_menu (GstAppContext * appctx, gchar ** prop)
     goto exit;
   }
 
-  camsrc = gst_bin_get_by_name (GST_BIN (appctx->pipeline), "camera");
+  camsrc = get_element_from_pipeline (appctx->pipeline, "qtiqmmfsrc");
   g_object_get (G_OBJECT (camsrc), *prop, &meta, NULL);
   gst_object_unref (camsrc);
 
@@ -1256,7 +1283,8 @@ main (gint argc, gchar *argv[])
   GThread *mthread = NULL;
   GError *error = NULL;
   FILE *ts_file = NULL, *umeta_file = NULL, *rmeta_file = NULL;
-  gchar *ts_path = NULL, *umeta_path = NULL, *rmeta_path = NULL;
+  gchar *pipeline = NULL, *ts_path = NULL, *umeta_path = NULL,
+      *rmeta_path = NULL;
   guint bus_watch_id = 0, intrpt_watch_id = 0, stdin_watch_id = 0;
   gint status = -1;
 
@@ -1266,6 +1294,8 @@ main (gint argc, gchar *argv[])
   gst_init (&argc, &argv);
 
   GOptionEntry options[] = {
+    {"custom-pipeline", 'p', 0, G_OPTION_ARG_STRING, &pipeline,
+        "Provide pipeline manually", NULL},
     {"display", 'd', 0, G_OPTION_ARG_NONE, &display,
         "Show preview on display", NULL},
     {"timestamps-location", 't', 0, G_OPTION_ARG_FILENAME, &ts_path,
@@ -1298,10 +1328,13 @@ main (gint argc, gchar *argv[])
     return -1;
   }
 
-  if (display)
-    appctx->pipeline = gst_parse_launch (GST_CAMERA_PIPELINE_DISPLAY, &error);
-  else
-    appctx->pipeline = gst_parse_launch (GST_CAMERA_PIPELINE, &error);
+  if (pipeline == NULL && display)
+    pipeline = g_strdup (GST_CAMERA_PIPELINE_DISPLAY);
+  else if (pipeline == NULL)
+    pipeline = g_strdup (GST_CAMERA_PIPELINE);
+
+  g_print ("Creating pipeline %s\n", pipeline);
+  appctx->pipeline = gst_parse_launch (pipeline, &error);
 
   // Check for errors on pipe creation.
   if ((NULL == appctx->pipeline) && (error != NULL)) {
@@ -1322,19 +1355,21 @@ main (gint argc, gchar *argv[])
     goto exit;
   }
 
-  element = gst_bin_get_by_name (GST_BIN (appctx->pipeline), "sink");
-
-  // Open file for dumping camera timestamp from new-sample callback.
-  if (ts_path != NULL && (ts_file = fopen (ts_path, "w")) == NULL) {
+  // Open file for dumping camera timestamp from new-sample callback of appsink.
+  if ((element = get_element_from_pipeline (appctx->pipeline, "appsink")) != NULL &&
+      ts_path != NULL && (ts_file = fopen (ts_path, "w")) == NULL) {
     g_printerr ("ERROR: Failed to open file for recording camera timestamp\n");
+    gst_object_unref (element);
     goto exit;
+  } else if (element != NULL) {
+    g_signal_connect (element, "new-sample", G_CALLBACK (new_sample), ts_file);
+    gst_object_unref (element);
   }
 
-  g_signal_connect (element, "new-sample", G_CALLBACK (new_sample), ts_file);
-
-  gst_object_unref (element);
-
-  element = gst_bin_get_by_name (GST_BIN (appctx->pipeline), "camera");
+  if ((element = get_element_from_pipeline (appctx->pipeline, "qtiqmmfsrc")) == NULL) {
+    g_printerr ("ERROR: No camera plugin found in pipeline, can't proceed.\n");
+    goto exit;
+  }
 
   // Open file for dumping urgent-metadata tags' values.
   if (umeta_path != NULL && (umeta_file = fopen (umeta_path, "w")) == NULL) {
@@ -1406,6 +1441,7 @@ main (gint argc, gchar *argv[])
   status = 0;
 
 exit:
+  g_free (pipeline);
   g_free (ts_path);
   g_free (umeta_path);
   g_free (rmeta_path);
