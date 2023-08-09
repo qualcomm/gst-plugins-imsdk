@@ -199,6 +199,7 @@ gst_ml_video_pixel_layout_get_type (void)
   return gtype;
 }
 
+#if defined(USE_C2D_CONVERTER) || defined(USE_GLES_CONVERTER)
 static gboolean
 gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
 {
@@ -211,6 +212,7 @@ gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
 
   return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
 }
+#endif // USE_C2D_CONVERTER || USE_GLES_CONVERTER
 
 static void
 init_formats (GValue * formats, ...)
@@ -501,10 +503,20 @@ gst_ml_video_converter_update_params (GstMLVideoConverter * mlconverter,
     gst_gles_video_converter_set_input_opts (mlconverter->glesconvert, idx,
         structure);
 #endif // USE_GLES_CONVERTER
+
+#ifdef USE_FCV_CONVERTER
+    gst_structure_set (structure,
+        GST_FCV_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, G_TYPE_ARRAY, s_rects,
+        GST_FCV_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, G_TYPE_ARRAY, d_rects,
+        NULL);
+
+    gst_fcv_video_converter_set_input_opts (mlconverter->fcvconvert, idx,
+        structure);
+#endif // USE_FCV_CONVERTER
   }
 }
 
-#ifdef USE_C2D_CONVERTER
+#if defined (USE_C2D_CONVERTER) || defined(USE_FCV_CONVERTER)
 static gboolean
 gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
     GstVideoFrame * vframe)
@@ -601,7 +613,7 @@ gst_ml_video_converter_normalize (GstMLVideoConverter * mlconverter,
 
   return TRUE;
 }
-#endif // USE_C2D_CONVERTER
+#endif // USE_C2D_CONVERTER || USE_FCV_CONVERTER
 
 static GstCaps *
 gst_ml_video_converter_translate_ml_caps (GstMLVideoConverter * mlconverter,
@@ -1184,6 +1196,23 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
   }
 #endif // USE_GLES_CONVERTER
 
+#ifdef USE_FCV_CONVERTER
+  gst_structure_set (opts,
+      GST_FCV_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT, 0x00000000,
+      GST_FCV_VIDEO_CONVERTER_OPT_CLEAR, G_TYPE_BOOLEAN, TRUE,
+      NULL);
+
+  // Configure the FCV converter output parameters.
+  gst_fcv_video_converter_set_output_opts (mlconverter->fcvconvert, 0, opts);
+
+  for (idx = 0; idx < GST_ML_INFO_TENSOR_DIM (&mlinfo, 0, 0); idx++) {
+    opts = gst_structure_new_empty ("options");
+
+    // Configure the input parameters of the FCV converter.
+    gst_fcv_video_converter_set_input_opts (mlconverter->fcvconvert, idx, opts);
+  }
+#endif // USE_FCV_CONVERTER
+
   GST_DEBUG_OBJECT (mlconverter, "Input caps: %" GST_PTR_FORMAT, incaps);
   GST_DEBUG_OBJECT (mlconverter, "Output caps: %" GST_PTR_FORMAT, outcaps);
 
@@ -1195,7 +1224,7 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
     GstBuffer * inbuffer, GstBuffer * outbuffer)
 {
   GstMLVideoConverter *mlconverter = GST_ML_VIDEO_CONVERTER (base);
-  GstVideoFrame *inframes = NULL, outframe;
+  GstVideoFrame *inframes = NULL, outframe = { 0, };
   guint n_inputs = 0;
   gboolean success = TRUE;
 
@@ -1283,6 +1312,23 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
         request_id);
   }
 #endif // USE_GLES_CONVERTER
+
+#ifdef USE_FCV_CONVERTER
+  if ((n_inputs > 1) || is_conversion_required (&inframes[0], &outframe)) {
+    GstFcvComposition composition = { inframes, n_inputs, &outframe };
+
+    success = gst_fcv_video_converter_compose (mlconverter->fcvconvert,
+        &composition, 1);
+
+    // If the conversion request was successful apply normalization.
+    if (success && is_normalization_required (mlconverter->mlinfo))
+      success = gst_ml_video_converter_normalize_ip (mlconverter, &outframe);
+  } else if (is_normalization_required (mlconverter->mlinfo)) {
+    // There is not need for frame conversion, apply only normalization.
+    success = gst_ml_video_converter_normalize (mlconverter,
+        &inframes[0], &outframe);
+  }
+#endif // USE_FCV_CONVERTER
 
   ts_end = gst_util_get_timestamp ();
 
@@ -1420,6 +1466,11 @@ gst_ml_video_converter_finalize (GObject * object)
     gst_gles_video_converter_free (mlconverter->glesconvert);
 #endif // USE_GLES_CONVERTER
 
+#ifdef USE_FCV_CONVERTER
+  if (mlconverter->fcvconvert != NULL)
+    gst_fcv_video_converter_free (mlconverter->fcvconvert);
+#endif // USE_FCV_CONVERTER
+
   if (mlconverter->mlinfo != NULL)
     gst_ml_info_free (mlconverter->mlinfo);
 
@@ -1509,6 +1560,11 @@ gst_ml_video_converter_init (GstMLVideoConverter * mlconverter)
 #ifdef USE_GLES_CONVERTER
   mlconverter->glesconvert = gst_gles_video_converter_new ();
 #endif // USE_GLES_CONVERTER
+
+#ifdef USE_FCV_CONVERTER
+  mlconverter->fcvconvert =
+      gst_fcv_video_converter_new (GST_FCV_OP_MODE_PERFORMANCE);
+#endif // USE_FCV_CONVERTER
 
   mlconverter->pixlayout = DEFAULT_PROP_SUBPIXEL_LAYOUT;
   mlconverter->mean = g_array_new (FALSE, FALSE, sizeof (gdouble));
