@@ -5,12 +5,14 @@ add_library(${GST_QTI_VIDEO_BASE} SHARED
   gstimagepool.c
   $<$<BOOL:${GST_C2D_CONVERTER}>:c2d-video-converter.c>
   $<$<BOOL:${GST_GLES_CONVERTER}>:gles-video-converter.cc>
+  fcv-video-converter.c
 )
 
 set(GST_QTI_VIDEO_BASE_HEADERS
   gstimagepool.h
   $<$<BOOL:${GST_C2D_CONVERTER}>:${CMAKE_CURRENT_SOURCE_DIR}/c2d-video-converter.h>
   $<$<BOOL:${GST_GLES_CONVERTER}>:${CMAKE_CURRENT_SOURCE_DIR}/gles-video-converter.h>
+  fcv-video-converter.h
 )
 
 set_target_properties(${GST_QTI_VIDEO_BASE} PROPERTIES PUBLIC_HEADER
