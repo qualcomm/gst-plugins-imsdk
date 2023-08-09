@@ -1013,6 +1013,11 @@ gst_c2_venc_handle_frame (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   GstC2VEncoder *c2venc = GST_C2_VENC (encoder);
   GstClockTimeDiff deadline;
 
+  // GAP input buffer, drop the frame.
+  if ((gst_buffer_get_size (frame->input_buffer) == 0) &&
+      GST_BUFFER_FLAG_IS_SET (frame->input_buffer, GST_BUFFER_FLAG_GAP))
+    return gst_video_encoder_finish_frame (encoder, frame);
+
   if ((deadline = gst_video_encoder_get_max_encode_time (encoder, frame)) < 0) {
     GST_WARNING_OBJECT (c2venc, "Input frame is too late, dropping "
         "(deadline %" GST_TIME_FORMAT ")", GST_TIME_ARGS (-deadline));
