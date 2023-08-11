@@ -74,6 +74,9 @@
 #ifdef USE_GLES_CONVERTER
 #include <gst/video/gles-video-converter.h>
 #endif // USE_GLES_CONVERTER
+#ifdef USE_FCV_CONVERTER
+#include <gst/video/fcv-video-converter.h>
+#endif // USE_FCV_CONVERTER
 
 G_BEGIN_DECLS
 
@@ -129,6 +132,9 @@ struct _GstVideoTransform {
 #ifdef USE_GLES_CONVERTER
   GstGlesVideoConverter *glesconvert;
 #endif // USE_GLES_CONVERTER
+#ifdef USE_FCV_CONVERTER
+  GstFcvVideoConverter *fcvconvert;
+#endif // USE_FCV_CONVERTER
 
   /// Properties.
   gboolean                flip_v;
