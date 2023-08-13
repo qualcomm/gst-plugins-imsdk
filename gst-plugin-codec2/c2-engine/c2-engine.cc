@@ -160,6 +160,10 @@ class GstC2Notifier : public IC2Notifier {
         GST_C2_ENGINE_ZERO_OUT_PENDING_WORK (engine_);
         type = GST_C2_EVENT_EOS;
         break;
+      case C2EventType::kDrop:
+        GST_C2_ENGINE_DECREMENT_PENDING_WORK (engine_);
+        type = GST_C2_EVENT_DROP;
+        break;
       default:
         GST_WARNING ("Unknown event '%u'!", static_cast<uint32_t>(event));
         return;

@@ -46,6 +46,7 @@ enum {
   GST_C2_EVENT_UNKNOWN,
   GST_C2_EVENT_EOS,
   GST_C2_EVENT_ERROR,
+  GST_C2_EVENT_DROP
 };
 
 struct _GstC2Callbacks {

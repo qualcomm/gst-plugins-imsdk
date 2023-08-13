@@ -396,7 +396,13 @@ void C2Module::HandleWorkDone(std::list<std::unique_ptr<C2Work>> witems) {
       continue;
     }
 
-    // Porcess the worklets.
+    if (flags & C2FrameData::FLAG_DROP_FRAME) {
+      uint64_t index = worklet->output.ordinal.frameIndex.peeku();
+      notifier_->EventHandler(C2EventType::kDrop, &index);
+      continue;
+    }
+
+    // Process the worklets.
     if (work->workletsProcessed > 0 && !worklet->output.buffers.empty()) {
       auto buffer = worklet->output.buffers[0];
       uint64_t index = worklet->output.ordinal.frameIndex.peeku();
