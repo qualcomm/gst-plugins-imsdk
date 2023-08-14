@@ -3231,7 +3231,7 @@ main (gint argc, gchar *argv[])
 
   // If a device is not to be initialized, NULL is passed for respective device
   if (mainops.video) {
-    srvctx->gadget = umd_gadget_new (mainops.video, NULL, &callbacks, srvctx);
+    srvctx->gadget = umd_gadget_new (mainops.video, &callbacks, srvctx);
     if (NULL == srvctx->gadget) {
       g_printerr ("\nFailed to create UMD gadget!\n");
       gst_service_context_free (srvctx);
