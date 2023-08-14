@@ -1245,15 +1245,12 @@ bool GstC2Utils::ExtractHandleInfo(GstBuffer* buffer,
 bool GstC2Utils::AppendCodecMeta(GstBuffer* buffer,
     std::shared_ptr<C2Buffer>& c2buffer) {
 
-  GstProtectionMeta *pmeta = NULL;
+  GstStructure *structure = NULL;
 
   if (c2buffer->data().type() != C2BufferData::LINEAR)
     return FALSE;
 
-  pmeta = gst_buffer_add_protection_meta (buffer,
-      gst_structure_new_empty ("CodecInfo"));
-
-  g_return_val_if_fail (pmeta != NULL, FALSE);
+  structure = gst_structure_new_empty ("CodecInfo");
 
   std::shared_ptr<const C2Info> c2info =
       c2buffer->getInfo (C2StreamPictureTypeInfo::output::PARAM_TYPE);
@@ -1261,7 +1258,7 @@ bool GstC2Utils::AppendCodecMeta(GstBuffer* buffer,
       std::static_pointer_cast<const C2StreamPictureTypeInfo::output>(c2info);
 
   if (pictype) {
-    gst_structure_set (pmeta->info,
+    gst_structure_set (structure,
         "picture-type", G_TYPE_UINT, static_cast<guint>(pictype->value), NULL);
     GST_TRACE ("Picture type: %u", static_cast<guint>(pictype->value));
   }
@@ -1274,12 +1271,18 @@ bool GstC2Utils::AppendCodecMeta(GstBuffer* buffer,
       const C2AndroidStreamAverageBlockQuantizationInfo::output>(c2qpinfo);
 
   if (avgqpinfo) {
-    gst_structure_set (pmeta->info,
+    gst_structure_set (structure,
         "average-block-qp", G_TYPE_INT, static_cast<gint>(avgqpinfo->value),
         NULL);
     GST_TRACE ("Average block QP: %d", static_cast<gint>(avgqpinfo->value));
   }
 #endif // CODEC2_CONFIG_VERSION_2_0
+
+  if (gst_structure_n_fields (structure) == 0 ||
+      gst_buffer_add_protection_meta (buffer, structure) == NULL) {
+    gst_structure_free (structure);
+    return FALSE;
+  }
 
   return TRUE;
 }
