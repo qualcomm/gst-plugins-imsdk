@@ -1154,7 +1154,7 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
 #ifdef USE_C2D_CONVERTER
   gst_structure_set (opts,
       GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT, 0x00000000,
-      GST_C2D_VIDEO_CONVERTER_OPT_CLEAR, G_TYPE_BOOLEAN, FALSE,
+      GST_C2D_VIDEO_CONVERTER_OPT_CLEAR, G_TYPE_BOOLEAN, TRUE,
       NULL);
 
   // Configure the C2D converter output parameters.
@@ -1174,7 +1174,7 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
 #ifdef USE_GLES_CONVERTER
   gst_structure_set (opts,
       GST_GLES_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT, 0x00000000,
-      GST_GLES_VIDEO_CONVERTER_OPT_CLEAR, G_TYPE_BOOLEAN, FALSE,
+      GST_GLES_VIDEO_CONVERTER_OPT_CLEAR, G_TYPE_BOOLEAN, TRUE,
       GST_GLES_VIDEO_CONVERTER_OPT_FLOAT16_FORMAT, G_TYPE_BOOLEAN,
           (mlconverter->mlinfo->type == GST_ML_TYPE_FLOAT16),
       GST_GLES_VIDEO_CONVERTER_OPT_FLOAT32_FORMAT, G_TYPE_BOOLEAN,
