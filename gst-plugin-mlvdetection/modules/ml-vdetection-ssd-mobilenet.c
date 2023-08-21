@@ -263,13 +263,6 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     if (confidence < submodule->threshold)
       continue;
 
-    label = g_hash_table_lookup (submodule->labels,
-        GUINT_TO_POINTER (classes[idx]));
-
-    prediction.confidence = confidence * 100;
-    prediction.label = g_strdup (label ? label->name : "unknown");
-    prediction.color = label ? label->color : 0x000000FF;
-
     prediction.top = bboxes[(idx * 4)];
     prediction.left = bboxes[(idx * 4)  + 1];
     prediction.bottom = bboxes[(idx * 4) + 2];
@@ -291,6 +284,17 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       prediction.left *= coeficient;
       prediction.right *= coeficient;
     }
+
+    if ((prediction.top > 1.0) || (prediction.left > 1.0) ||
+        (prediction.bottom > 1.0) || (prediction.right > 1.0))
+      continue;
+
+    label = g_hash_table_lookup (submodule->labels,
+        GUINT_TO_POINTER (classes[idx]));
+
+    prediction.confidence = confidence * 100;
+    prediction.label = g_strdup (label ? label->name : "unknown");
+    prediction.color = label ? label->color : 0x000000FF;
 
     // Non-Max Suppression (NMS) algorithm.
     nms = gst_ml_non_max_suppression (&prediction, predictions);
