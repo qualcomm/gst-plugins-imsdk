@@ -636,8 +636,8 @@ gst_video_transform_set_caps (GstBaseTransform * base, GstCaps * incaps,
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM (base);
   GstStructure *inopts = NULL, *outopts = NULL;
   const gchar *feature = NULL;
+  GArray *s_rects = NULL, *d_rects = NULL;
   GstVideoInfo ininfo, outinfo;
-  GValue rects = G_VALUE_INIT, entry = G_VALUE_INIT, value = G_VALUE_INIT;
   gint in_dar_n, in_dar_d, out_dar_n, out_dar_d;
 
   if (!gst_video_info_from_caps (&ininfo, incaps)) {
@@ -662,6 +662,12 @@ gst_video_transform_set_caps (GstBaseTransform * base, GstCaps * incaps,
     out_dar_n = out_dar_d = -1;
   }
 
+  s_rects = g_array_new (FALSE, FALSE, sizeof (GstVideoRectangle));
+  s_rects = g_array_append_val (s_rects, vtrans->crop);
+
+  d_rects = g_array_new (FALSE, FALSE, sizeof (GstVideoRectangle));
+  d_rects = g_array_append_val (d_rects, vtrans->destination);
+
 #ifdef USE_C2D_CONVERTER
   if (vtrans->c2dconvert != NULL)
     gst_c2d_video_converter_free (vtrans->c2dconvert);
@@ -678,7 +684,19 @@ gst_video_transform_set_caps (GstBaseTransform * base, GstCaps * incaps,
           gst_video_transform_rotation_to_c2d_rotate (vtrans->rotation),
       GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
           gst_caps_has_compression (incaps, "ubwc"),
+      GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, G_TYPE_ARRAY, s_rects,
+      GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, G_TYPE_ARRAY, d_rects,
       NULL);
+
+  // Fill the converter output options structure.
+  outopts = gst_structure_new ("options",
+      GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT, vtrans->background,
+      GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
+          gst_caps_has_compression (outcaps, "ubwc"),
+      NULL);
+
+  gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
+  gst_c2d_video_converter_set_output_opts (vtrans->c2dconvert, 0, outopts);
 #endif // USE_C2D_CONVERTER
 
 #ifdef USE_GLES_CONVERTER
@@ -697,75 +715,10 @@ gst_video_transform_set_caps (GstBaseTransform * base, GstCaps * incaps,
           gst_video_transform_rotation_to_gles_rotate (vtrans->rotation),
       GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
           gst_caps_has_compression (incaps, "ubwc"),
-      NULL);
-#endif // USE_GLES_CONVERTER
-
-  g_value_init (&rects, GST_TYPE_ARRAY);
-  g_value_init (&entry, GST_TYPE_ARRAY);
-  g_value_init (&value, G_TYPE_INT);
-
-  g_value_set_int (&value, vtrans->crop.x);
-  gst_value_array_append_value (&entry, &value);
-  g_value_set_int (&value, vtrans->crop.y);
-  gst_value_array_append_value (&entry, &value);
-  g_value_set_int (&value, vtrans->crop.w);
-  gst_value_array_append_value (&entry, &value);
-  g_value_set_int (&value, vtrans->crop.h);
-  gst_value_array_append_value (&entry, &value);
-
-  gst_value_array_append_value (&rects, &entry);
-  g_value_reset (&entry);
-
-#ifdef USE_C2D_CONVERTER
-  gst_structure_set_value (inopts,
-      GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, &rects);
-#endif // USE_C2D_CONVERTER
-
-#ifdef USE_GLES_CONVERTER
-  gst_structure_set_value (inopts,
-      GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, &rects);
-#endif // USE_GLES_CONVERTER
-
-  g_value_reset (&rects);
-
-  g_value_set_int (&value, vtrans->destination.x);
-  gst_value_array_append_value (&entry, &value);
-  g_value_set_int (&value, vtrans->destination.y);
-  gst_value_array_append_value (&entry, &value);
-  g_value_set_int (&value, vtrans->destination.w);
-  gst_value_array_append_value (&entry, &value);
-  g_value_set_int (&value, vtrans->destination.h);
-  gst_value_array_append_value (&entry, &value);
-
-  gst_value_array_append_value (&rects, &entry);
-
-#ifdef USE_C2D_CONVERTER
-  gst_structure_set_value (inopts,
-      GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, &rects);
-#endif // USE_C2D_CONVERTER
-
-#ifdef USE_GLES_CONVERTER
-  gst_structure_set_value (inopts,
-      GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, &rects);
-#endif // USE_GLES_CONVERTER
-
-  g_value_unset (&value);
-  g_value_unset (&entry);
-  g_value_unset (&rects);
-
-#ifdef USE_C2D_CONVERTER
-  // Fill the converter output options structure.
-  outopts = gst_structure_new ("options",
-      GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT, vtrans->background,
-      GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
-          gst_caps_has_compression (outcaps, "ubwc"),
+      GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, G_TYPE_ARRAY, s_rects,
+      GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, G_TYPE_ARRAY, d_rects,
       NULL);
 
-  gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
-  gst_c2d_video_converter_set_output_opts (vtrans->c2dconvert, 0, outopts);
-#endif // USE_C2D_CONVERTER
-
-#ifdef USE_GLES_CONVERTER
   // Fill the converter output options structure.
   outopts = gst_structure_new ("options",
       GST_GLES_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT, vtrans->background,
@@ -1869,15 +1822,15 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
 
 #ifdef USE_C2D_CONVERTER
       if (vtrans->c2dconvert != NULL) {
-        GstStructure *inopts = gst_structure_new_empty ("options");
-        GValue rects = G_VALUE_INIT;
+        GstStructure *inopts = NULL;
+        GArray *rects = NULL;
 
-        g_value_init (&rects, GST_TYPE_ARRAY);
-        gst_value_array_append_value (&rects, value);
+        rects = g_array_new (FALSE, FALSE, sizeof (GstVideoRectangle));
+        rects = g_array_append_val (rects, vtrans->crop);
 
-        gst_structure_set_value (inopts,
-            GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, &rects);
-        g_value_unset (&rects);
+        inopts = gst_structure_new ("options",
+            GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, G_TYPE_ARRAY, rects,
+            NULL);
 
         gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
       }
@@ -1885,15 +1838,15 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
 
 #ifdef USE_GLES_CONVERTER
       if (vtrans->glesconvert != NULL) {
-        GstStructure *inopts = gst_structure_new_empty ("options");
-        GValue rects = G_VALUE_INIT;
+        GstStructure *inopts = NULL;
+        GArray *rects = NULL;
 
-        g_value_init (&rects, GST_TYPE_ARRAY);
-        gst_value_array_append_value (&rects, value);
+        rects = g_array_new (FALSE, FALSE, sizeof (GstVideoRectangle));
+        rects = g_array_append_val (rects, vtrans->crop);
 
-        gst_structure_set_value (inopts,
-            GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, &rects);
-        g_value_unset (&rects);
+        inopts = gst_structure_new ("options",
+            GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, G_TYPE_ARRAY, rects,
+            NULL);
 
         gst_gles_video_converter_set_input_opts (vtrans->glesconvert, 0, inopts);
       }
@@ -1923,15 +1876,15 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
 
 #ifdef USE_C2D_CONVERTER
       if (vtrans->c2dconvert != NULL) {
-        GstStructure *inopts = gst_structure_new_empty ("options");
-        GValue rects = G_VALUE_INIT;
+        GstStructure *inopts = NULL;
+        GArray *rects = NULL;
 
-        g_value_init (&rects, GST_TYPE_ARRAY);
-        gst_value_array_append_value (&rects, value);
+        rects = g_array_new (FALSE, FALSE, sizeof (GstVideoRectangle));
+        rects = g_array_append_val (rects, vtrans->crop);
 
-        gst_structure_set_value (inopts,
-            GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, &rects);
-        g_value_unset (&rects);
+        inopts = gst_structure_new ("options",
+            GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, G_TYPE_ARRAY, rects,
+            NULL);
 
         gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
       }
@@ -1939,15 +1892,15 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
 
 #ifdef USE_GLES_CONVERTER
       if (vtrans->glesconvert != NULL) {
-        GstStructure *inopts = gst_structure_new_empty ("options");
-        GValue rects = G_VALUE_INIT;
+        GstStructure *inopts = NULL;
+        GArray *rects = NULL;
 
-        g_value_init (&rects, GST_TYPE_ARRAY);
-        gst_value_array_append_value (&rects, value);
+        rects = g_array_new (FALSE, FALSE, sizeof (GstVideoRectangle));
+        rects = g_array_append_val (rects, vtrans->destination);
 
-        gst_structure_set_value (inopts,
-            GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, &rects);
-        g_value_unset (&rects);
+        inopts = gst_structure_new ("options",
+            GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, G_TYPE_ARRAY, rects,
+            NULL);
 
         gst_gles_video_converter_set_input_opts (vtrans->glesconvert, 0, inopts);
       }

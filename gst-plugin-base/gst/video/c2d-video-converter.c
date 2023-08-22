@@ -926,8 +926,8 @@ gst_c2d_rectangles_overlapping_area (C2D_RECT * l_rect, C2D_RECT * r_rect)
 
 static void
 gst_c2d_populate_object (C2D_OBJECT * object, const GstStructure * opts,
-    const GstVideoFrame * inframe, const C2D_RECT * srcrect,
-    const GstVideoFrame * outframe, const C2D_RECT * dstrect)
+    const GstVideoFrame * inframe, const GstVideoRectangle * s_region,
+    const GstVideoFrame * outframe, const GstVideoRectangle * d_region)
 {
   gint x = 0, y = 0, width = 0, height = 0;
   guint surface_id = 0;
@@ -944,10 +944,10 @@ gst_c2d_populate_object (C2D_OBJECT * object, const GstStructure * opts,
     object->config_mask |= C2D_GLOBAL_ALPHA_BIT;
 
   // Setup the source rectangle.
-  x = srcrect->x;
-  y = srcrect->y;
-  width = srcrect->width;
-  height = srcrect->height;
+  x = (s_region == NULL) ? 0 : s_region->x;
+  y = (s_region == NULL) ? 0 : s_region->y;
+  width = (s_region == NULL) ? 0 : s_region->w;
+  height = (s_region == NULL) ? 0 : s_region->h;
 
   width = (width == 0) ? GST_VIDEO_FRAME_WIDTH (inframe) :
       MIN (width, GST_VIDEO_FRAME_WIDTH (inframe) - x);
@@ -973,10 +973,10 @@ gst_c2d_populate_object (C2D_OBJECT * object, const GstStructure * opts,
   }
 
   // Setup the target rectangle.
-  x = dstrect->x;
-  y = dstrect->y;
-  width = dstrect->width;
-  height = dstrect->height;
+  x = (d_region == NULL) ? 0 : d_region->x;
+  y = (d_region == NULL) ? 0 : d_region->y;
+  width = (d_region == NULL) ? 0 : d_region->w;
+  height = (d_region == NULL) ? 0 : d_region->h;
 
   // Setup rotation angle and adjustments.
   switch (GET_OPT_ROTATION (opts)) {
@@ -1000,7 +1000,7 @@ gst_c2d_populate_object (C2D_OBJECT * object, const GstStructure * opts,
           GST_VIDEO_FRAME_HEIGHT (outframe) * dar_d / dar_n;
       height = (height != 0) ? height : GST_VIDEO_FRAME_HEIGHT (outframe);
 
-      x = (dstrect->width && dstrect->height) ?
+      x = ((d_region != NULL) && (d_region->w != 0) && (d_region->h != 0)) ?
           x : (GST_VIDEO_FRAME_WIDTH (outframe) - width) / 2;
 
       object->target_rect.width = height << 16;
@@ -1053,7 +1053,7 @@ gst_c2d_populate_object (C2D_OBJECT * object, const GstStructure * opts,
       object->target_rect.width = height << 16;
       object->target_rect.height = width << 16;
 
-      x = (dstrect->width && dstrect->height) ?
+      x = ((d_region != NULL) && (d_region->w != 0) && (d_region->h != 0)) ?
           x : (GST_VIDEO_FRAME_WIDTH (outframe) - width) / 2;
 
       // Adjust the target rectangle coordinates.
@@ -1094,38 +1094,38 @@ gst_c2d_populate_object (C2D_OBJECT * object, const GstStructure * opts,
 }
 
 static gint
-gst_c2d_update_objects (GArray * objects, const guint surface_id,
-    const GstStructure * opts, const GstVideoFrame * inframe,
+gst_c2d_update_objects (GArray * objects, const GstVideoFrame * inframe,
+    const guint surface_id, const GstStructure * opts,
     const GstVideoFrame * outframe)
 {
-  const GValue *srclist = NULL, *dstlist = NULL, *entry = NULL;
-  guint idx = 0, num = 0, i = 0, n_srcrects = 0, n_dstrects = 0, n_rects = 0;
+  GArray *s_rects = NULL, *d_rects = NULL;
+  guint idx = 0, num = 0, i = 0, n_src_rects = 0, n_dst_rects = 0, n_rects = 0;
   gint area = 0;
 
   // Extract the source and destination rectangles.
-  srclist = gst_structure_get_value (opts,
-      GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES);
-  dstlist = gst_structure_get_value (opts,
-      GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES);
+  gst_structure_get (opts,
+      GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, G_TYPE_ARRAY, &s_rects,
+      GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, G_TYPE_ARRAY, &d_rects,
+      NULL);
 
   // Make sure that there is at least one new rectangle in the lists.
-  n_srcrects = (srclist == NULL) ? 0 : gst_value_array_get_size (srclist);
-  n_dstrects = (dstlist == NULL) ? 0 : gst_value_array_get_size (dstlist);
+  n_src_rects = (s_rects == NULL) ? 0 : s_rects->len;
+  n_dst_rects = (d_rects == NULL) ? 0 : d_rects->len;
 
-  n_srcrects = (n_srcrects == 0) ? 1 : n_srcrects;
-  n_dstrects = (n_dstrects == 0) ? 1 : n_dstrects;
+  n_src_rects = (n_src_rects == 0) ? 1 : n_src_rects;
+  n_dst_rects = (n_dst_rects == 0) ? 1 : n_dst_rects;
 
-  if (n_srcrects > n_dstrects) {
+  if (n_src_rects > n_dst_rects) {
     GST_WARNING ("Number of source rectangles exceeds the number of "
         "destination rectangles, clipping!");
-    n_rects = n_srcrects = n_dstrects;
-  } else if (n_srcrects < n_dstrects) {
+    n_rects = n_src_rects = n_dst_rects;
+  } else if (n_src_rects < n_dst_rects) {
     GST_WARNING ("Number of destination rectangles exceeds the number of "
         "source rectangles, clipping!");
-    n_rects = n_dstrects = n_srcrects;
+    n_rects = n_dst_rects = n_src_rects;
   } else {
     // Same number of source and destination rectangles.
-    n_rects = n_srcrects;
+    n_rects = n_src_rects;
   }
 
   // Increase the size of the C2D blit objects array.
@@ -1136,36 +1136,18 @@ gst_c2d_update_objects (GArray * objects, const guint surface_id,
   for (idx = 0; idx < n_rects; idx++) {
     C2D_OBJECT *object = &(g_array_index (objects, C2D_OBJECT, num));
     C2D_RECT *l_rect = NULL, *r_rect = NULL;
-    C2D_RECT srcbox = {0}, dstbox = {0};
+    GstVideoRectangle *s_region = NULL, *d_region = NULL;
 
-    entry = (n_srcrects != 0) ? gst_value_array_get_value (srclist, idx) : NULL;
+    if ((s_rects != NULL) && (s_rects->len > 0))
+      s_region = &(g_array_index (s_rects, GstVideoRectangle, idx));
 
-    if ((entry != NULL) && gst_value_array_get_size (entry) == 4) {
-      srcbox.x = g_value_get_int (gst_value_array_get_value (entry, 0));
-      srcbox.y = g_value_get_int (gst_value_array_get_value (entry, 1));
-      srcbox.width = g_value_get_int (gst_value_array_get_value (entry, 2));
-      srcbox.height = g_value_get_int (gst_value_array_get_value (entry, 3));
-    } else if (entry != NULL) {
-      GST_WARNING ("Source rectangle at index %u does not contain "
-          "exactly 4 values, using default values!", idx);
-    }
-
-    entry = (n_dstrects != 0) ? gst_value_array_get_value (dstlist, idx) : NULL;
-
-    if ((entry != NULL) && gst_value_array_get_size (entry) == 4) {
-      dstbox.x = g_value_get_int (gst_value_array_get_value (entry, 0));
-      dstbox.y = g_value_get_int (gst_value_array_get_value (entry, 1));
-      dstbox.width = g_value_get_int (gst_value_array_get_value (entry, 2));
-      dstbox.height = g_value_get_int (gst_value_array_get_value (entry, 3));
-    } else if (entry != NULL) {
-      GST_WARNING ("Destination rectangle at index %u does not contain "
-          "exactly 4 values, using default values!", idx);
-    }
+    if ((d_rects != NULL) && (d_rects->len > 0))
+      d_region = &(g_array_index (d_rects, GstVideoRectangle, idx));
 
     object->surface_id = surface_id;
 
     // Populate C2D object.
-    gst_c2d_populate_object (object, opts, inframe, &srcbox, outframe, &dstbox);
+    gst_c2d_populate_object (object, opts, inframe, s_region, outframe, d_region);
 
     // Calculate the target area filled with frame content.
     l_rect = &(object->target_rect);
@@ -1187,6 +1169,12 @@ gst_c2d_update_objects (GArray * objects, const guint surface_id,
     // Increment the counter for the C2D objets.
     num++;
   }
+
+  if (s_rects != NULL)
+    g_array_unref (s_rects);
+
+  if (d_rects != NULL)
+    g_array_unref (d_rects);
 
   return area;
 }
@@ -1562,7 +1550,7 @@ gst_c2d_video_converter_submit_request (GstC2dVideoConverter * convert,
 
       // Extract and populate blit objects and return the area occupied by them.
       area -= gst_c2d_update_objects (
-          blit->objects, surface_id, opts, inframe, outframe);
+          blit->objects, inframe, surface_id, opts, outframe);
     }
 
     // Increate the offset to the input frame options.

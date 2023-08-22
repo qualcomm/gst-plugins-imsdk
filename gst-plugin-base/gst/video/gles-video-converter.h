@@ -43,7 +43,7 @@ G_BEGIN_DECLS
 /**
  * GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES
  *
- * #GST_TYPE_ARRAY: Array of source rectangles.
+ * #G_TYPE_ARRAY: Array of source GstVideoRectangle.
  * Default: NULL
  *
  * Not applicable for output.
@@ -54,7 +54,7 @@ G_BEGIN_DECLS
 /**
  * GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES
  *
- * #GST_TYPE_ARRAY: Array of destination rectangles.
+ * #G_TYPE_ARRAY: Array of destination GstVideoRectangle.
  * Default: NULL
  *
  * Not applicable for output.
