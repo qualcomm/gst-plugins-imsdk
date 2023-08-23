@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -68,6 +68,7 @@
 #include <gst/allocators/allocators.h>
 #include <gst/ml/ml-info.h>
 #include <gst/ml/ml-frame.h>
+#include <tensorflow/lite/version.h>
 
 G_BEGIN_DECLS
 
@@ -80,6 +81,29 @@ G_BEGIN_DECLS
 #define GST_ML_TFLITE_ENGINE_OPT_MODEL \
     "GstMLTFLiteEngine.model"
 
+#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+/**
+ * GST_ML_TFLITE_ENGINE_OPT_EXT_DELEGATE_PATH:
+ *
+ * #G_TYPE_STRING, external delegate absolute file path and name
+ * Default: NULL
+ */
+
+#define GST_ML_TFLITE_ENGINE_OPT_EXT_DELEGATE_PATH \
+    "GstMLTFLiteEngine.ext-delegate-path"
+
+/**
+ * GST_ML_TFLITE_ENGINE_OPT_EXT_DELEGATE_OPTS:
+ *
+ * #GST_TYPE_STRUCTURE, external delegate options
+ * Default: NULL
+ */
+
+#define GST_ML_TFLITE_ENGINE_OPT_EXT_DELEGATE_OPTS \
+    "GstMLTFLiteEngine.ext-delegate-opts"
+
+#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+
 /**
  * GstMLTFLiteDelegate:
  * @GST_ML_TFLITE_DELEGATE_NONE     : CPU is used for all operations
@@ -89,6 +113,7 @@ G_BEGIN_DECLS
  * @GST_ML_TFLITE_DELEGATE_HEXAGON  : Hexagon DSP is used for all operations
  * @GST_ML_TFLITE_DELEGATE_GPU      : GPU is used for all operations
  * @GST_ML_TFLITE_DELEGATE_XNNPACK  : Prefer to delegate nodes to XNNPACK
+ * @GST_ML_TFLITE_DELEGATE_EXTERNAL : Use external delegate
  *
  * Different delegates for transferring part or all of the model execution.
  */
@@ -100,6 +125,9 @@ typedef enum {
   GST_ML_TFLITE_DELEGATE_HEXAGON,
   GST_ML_TFLITE_DELEGATE_GPU,
   GST_ML_TFLITE_DELEGATE_XNNPACK,
+#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+  GST_ML_TFLITE_DELEGATE_EXTERNAL,
+#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
 } GstMLTFLiteDelegate;
 
 GST_API GType gst_ml_tflite_delegate_get_type (void);

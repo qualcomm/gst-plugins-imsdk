@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -67,7 +67,6 @@
 
 #include "ml-tflite-engine.h"
 
-#include <tensorflow/lite/version.h>
 #include <tensorflow/lite/model.h>
 #include <tensorflow/lite/interpreter.h>
 #include <tensorflow/lite/kernels/register.h>
@@ -79,6 +78,10 @@
 #endif
 #include <tensorflow/lite/delegates/gpu/delegate.h>
 #include <tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h>
+
+#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#include "tensorflow/lite/delegates/external/external_delegate.h"
+#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
 
 #define GST_ML_RETURN_VAL_IF_FAIL(expression, value, ...) \
 { \
@@ -124,6 +127,14 @@
     DEFAULT_OPT_DELEGATE)
 #define GET_OPT_STHREADS(s) get_opt_uint (s, \
     GST_ML_TFLITE_ENGINE_OPT_THREADS, DEFAULT_OPT_THREADS)
+
+#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#define GET_OPT_EXT_DELEGATE_PATH(s) get_opt_string (s, \
+    GST_ML_TFLITE_ENGINE_OPT_EXT_DELEGATE_PATH)
+
+#define GET_OPT_EXT_DELEGATE_OPTS(s) get_opt_structure (s, \
+    GST_ML_TFLITE_ENGINE_OPT_EXT_DELEGATE_OPTS)
+#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
 
 #define GST_CAT_DEFAULT gst_ml_tflite_engine_debug_category()
 
@@ -192,6 +203,13 @@ gst_ml_tflite_delegate_get_type (void)
       GST_ML_TFLITE_DELEGATE_XNNPACK,
         "Run inferences using xnnpack cpu runtime", "xnnpack"
     },
+#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+    {
+      GST_ML_TFLITE_DELEGATE_EXTERNAL,
+        "Run the processing on external delegate. It uses two plugin properties"
+        " external-delegate-path and external-delegate-options.", "external"
+    },
+#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
     {0, NULL, NULL},
   };
 
@@ -223,10 +241,19 @@ get_opt_enum (GstStructure * settings, const gchar * opt, GType type, gint dval)
     result : dval;
 }
 
+static GstStructure *
+get_opt_structure (GstStructure * settings, const gchar * opt)
+{
+  GstStructure *result = NULL;
+  gst_structure_get(settings, opt, GST_TYPE_STRUCTURE, &result, NULL);
+  return result;
+}
+
 static TfLiteDelegate *
-gst_ml_tflite_engine_delegate_new (gint type)
+gst_ml_tflite_engine_delegate_new (GstStructure * settings)
 {
   TfLiteDelegate *delegate = NULL;
+  gint type = GET_OPT_DELEGATE (settings);
 
   switch (type) {
     case GST_ML_TFLITE_DELEGATE_NNAPI_DSP:
@@ -344,6 +371,39 @@ gst_ml_tflite_engine_delegate_new (gint type)
       GST_INFO ("Using XNNPACK delegate");
       return delegate;
     }
+#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+    case GST_ML_TFLITE_DELEGATE_EXTERNAL:
+    {
+      const gchar * path = GET_OPT_EXT_DELEGATE_PATH (settings);
+      GstStructure * opts = GET_OPT_EXT_DELEGATE_OPTS (settings);
+
+      if (path == NULL || opts == NULL) {
+        GST_WARNING ("External delegate path/options not provided! "
+            "Failed to create external delegate.");
+        break;
+      }
+
+      TfLiteExternalDelegateOptions options =
+          TfLiteExternalDelegateOptionsDefault(path);
+      auto n_opts = gst_structure_n_fields(opts);
+
+      for (auto idx = 0; idx < n_opts; idx++) {
+        const gchar *name = gst_structure_nth_field_name(opts, idx);
+        const gchar *value = gst_structure_get_string(opts, name);
+
+        GST_INFO("External delegate option '%s' with value '%s'", name, value);
+        options.insert(&options, name, value);
+      }
+
+      if ((delegate = TfLiteExternalDelegateCreate(&options)) == NULL) {
+        GST_WARNING("Failed to create external delegate");
+        break;
+      }
+
+      GST_INFO("Using external delegate");
+      return delegate;
+    }
+#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
     default:
       GST_INFO ("No delegate will be used");
       break;
@@ -351,7 +411,6 @@ gst_ml_tflite_engine_delegate_new (gint type)
 
   return NULL;
 }
-
 
 static void
 gst_ml_tflite_engine_delegate_free (TfLiteDelegate * delegate, gint type)
@@ -375,6 +434,11 @@ gst_ml_tflite_engine_delegate_free (TfLiteDelegate * delegate, gint type)
     case GST_ML_TFLITE_DELEGATE_XNNPACK:
       TfLiteXNNPackDelegateDelete (delegate);
       break;
+#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+    case GST_ML_TFLITE_DELEGATE_EXTERNAL:
+      TfLiteExternalDelegateDelete(delegate);
+      break;
+#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
     default:
       break;
   }
@@ -425,8 +489,7 @@ gst_ml_tflite_engine_new (GstStructure * settings)
   engine->interpreter->SetNumThreads(n_threads);
   GST_DEBUG ("Number of interpreter threads: %u", n_threads);
 
-  engine->delegate = gst_ml_tflite_engine_delegate_new (
-      GET_OPT_DELEGATE (engine->settings));
+  engine->delegate = gst_ml_tflite_engine_delegate_new(engine->settings);
 
   if (engine->delegate != NULL) {
     TfLiteStatus status =
