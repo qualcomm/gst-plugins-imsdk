@@ -201,6 +201,8 @@ struct _GstQmmfContext {
   gint64            master_exp_time;
   /// Multi Camera (1) Exposure value
   gint64            slave_exp_time;
+  /// Camera operation mode
+  gint              cam_operation_mode;
 
   /// QMMF Recorder instance.
   ::qmmf::recorder::Recorder *recorder;
@@ -1207,6 +1209,20 @@ gst_qmmf_context_open (GstQmmfContext * context)
   qmmf_ife_direct_stream.enable = context->ife_direct_stream;
   xtraparam.Update(::qmmf::recorder::QMMF_IFE_DIRECT_STREAM, qmmf_ife_direct_stream);
 
+  // Camera Operation Mode
+  ::qmmf::recorder::CamOpModeControl cam_opmode;
+  switch(context->cam_operation_mode) {
+    case CAM_OPMODE_NONE:
+      cam_opmode.mode = ::qmmf::recorder::ExtraParameCamOpModeEnum::kCamOperationModeNone;
+      break;
+    case CAM_OPMODE_FRAMESELECTION:
+      cam_opmode.mode = ::qmmf::recorder::ExtraParameCamOpModeEnum::kCamOperationModeFrameSelection;
+      break;
+    default:
+      break;
+  }
+  xtraparam.Update(::qmmf::recorder::QMMF_CAM_OP_MODE_CONTROL, cam_opmode);
+
   qmmf::recorder::CameraResultCb result_cb = [&, context](uint32_t camera_id,
       const ::camera::CameraMetadata& result) {
 
@@ -1939,6 +1955,9 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_IFE_DIRECT_STREAM:
       context->ife_direct_stream = g_value_get_boolean (value);
       return;
+    case PARAM_CAMERA_OPERATION_MODE:
+      context->cam_operation_mode = g_value_get_enum (value);
+      return;
   }
 
   if (context->state >= GST_STATE_READY &&
@@ -2660,6 +2679,9 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
 
       break;
     }
+    case PARAM_CAMERA_OPERATION_MODE:
+      g_value_set_enum (value, context->cam_operation_mode);
+      break;
   }
 }
 
