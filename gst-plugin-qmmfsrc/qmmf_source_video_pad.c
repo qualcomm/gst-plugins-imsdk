@@ -90,6 +90,7 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
 #define DEFAULT_VIDEO_BAYER_BPP       "10"
 
 #define DEFAULT_PROP_SOURCE_INDEX    (-1)
+#define DEFAULT_PROP_REPROCESS_PAD   FALSE
 #define DEFAULT_PROP_FRAMERATE       30.0
 #define DEFAULT_PROP_CROP_X          0
 #define DEFAULT_PROP_CROP_Y          0
@@ -111,6 +112,7 @@ enum
 {
   PROP_0,
   PROP_VIDEO_SOURCE_INDEX,
+  PROP_VIDEO_REPROCESS_PAD,
   PROP_VIDEO_FRAMERATE,
   PROP_VIDEO_CROP,
   PROP_VIDEO_EXTRA_BUFFERS,
@@ -604,6 +606,9 @@ video_pad_set_property (GObject * object, guint property_id,
     case PROP_VIDEO_SOURCE_INDEX:
       pad->srcidx = g_value_get_int (value);
       break;
+    case PROP_VIDEO_REPROCESS_PAD:
+      pad->reprocess_enable = g_value_get_boolean (value);
+      break;
     case PROP_VIDEO_FRAMERATE:
       pad->framerate = g_value_get_double (value);
       break;
@@ -648,6 +653,9 @@ video_pad_get_property (GObject * object, guint property_id, GValue * value,
   switch (property_id) {
     case PROP_VIDEO_SOURCE_INDEX:
       g_value_set_int (value, pad->srcidx);
+      break;
+    case PROP_VIDEO_REPROCESS_PAD:
+      g_value_set_boolean (value, pad->reprocess_enable);
       break;
     case PROP_VIDEO_FRAMERATE:
       g_value_set_double (value, pad->framerate);
@@ -724,6 +732,13 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
       g_param_spec_int ("source-index", "Source index",
           "Index of the source video pad to which this pad will be linked",
           -1, G_MAXINT, DEFAULT_PROP_SOURCE_INDEX,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_VIDEO_REPROCESS_PAD,
+      g_param_spec_boolean ("reprocess-enable", "Reprocess pad",
+          "Indicates realtime video pad which will be used as "
+          "input for reprocess",
+          DEFAULT_PROP_REPROCESS_PAD,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
   g_object_class_install_property (gobject, PROP_VIDEO_FRAMERATE,
