@@ -88,6 +88,7 @@ G_DEFINE_TYPE_WITH_CODE (GstVideoComposer, gst_video_composer,
 
 #define DEFAULT_PROP_MIN_BUFFERS  2
 #define DEFAULT_PROP_MAX_BUFFERS  10
+#define GST_VCOMPOSER_MAX_QUEUE_LEN  16
 
 #define DEFAULT_PROP_BACKGROUND   0xFF808080
 
@@ -1835,8 +1836,7 @@ static gboolean
 queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
                   guint64 time, gpointer checkdata)
 {
-  // There won't be any condition limiting for the buffer queue size.
-  return FALSE;
+  return (visible >= GST_VCOMPOSER_MAX_QUEUE_LEN) ? TRUE : FALSE;
 }
 
 static void
