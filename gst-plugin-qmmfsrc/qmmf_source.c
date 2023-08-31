@@ -990,6 +990,15 @@ qmmfsrc_send_event (GstElement * element, GstEvent * event)
             GST_ERROR_OBJECT(qmmfsrc, "Failed to stop stream!");
           }
         }
+      } else if (gst_event_has_name (event, "camera-standby")) {
+        GValue value = G_VALUE_INIT;
+        g_value_init (&value, G_TYPE_UINT);
+        g_value_set_uint (&value, 1);
+        gst_qmmf_context_set_camera_param(qmmfsrc->context,
+            PARAM_CAMERA_STANDBY, &value);
+        if (!qmmfsrc_pause_stream(qmmfsrc)) {
+          GST_ERROR_OBJECT(qmmfsrc, "Failed to stop stream!");
+        }
       }
       gst_event_unref (event);
       break;

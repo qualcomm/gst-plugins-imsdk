@@ -2377,6 +2377,14 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
           (context->slave_exp_time) > 0 ? &(context)->slave_exp_time : &(context)->exptime, 1);
       break;
     }
+    case PARAM_CAMERA_STANDBY:
+    {
+      guint tag_id = get_vendor_tag_by_name (
+          "org.codeaurora.qcamera3.sensorwriteinput","SensorStandByFlag");
+      guint8 standby = g_value_get_uint (value);
+      meta.update(tag_id, &standby, 1);
+      break;
+    }
   }
 
   if (!context->slave && (context->state >= GST_STATE_READY)) {
