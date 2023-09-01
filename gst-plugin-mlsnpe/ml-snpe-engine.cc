@@ -68,7 +68,7 @@
 #include "ml-snpe-engine.h"
 
 #include <algorithm>
-
+#include <map>
 #include <gst/ml/gstmlmeta.h>
 
 #include <DlContainer/IDlContainer.hpp>
@@ -136,7 +136,7 @@ struct _GstMLSnpeEngine
   std::unique_ptr<zdl::SNPE::SNPE> interpreter;
 
   // List with SNPE User Buffers.
-  std::vector<std::unique_ptr<zdl::DlSystem::IUserBuffer>> usrbuffers;
+  std::map<const char *, std::unique_ptr<zdl::DlSystem::IUserBuffer>> usrbuffers;
 
   // Map between SNPE input tensor names and corresponding User Buffer.
   zdl::DlSystem::UserBufferMap inputs;
@@ -225,6 +225,10 @@ snpe_to_ml_type (zdl::DlSystem::UserBufferEncoding::ElementType_t type)
     case zdl::DlSystem::UserBufferEncoding::ElementType_t::UNSIGNED8BIT:
     case zdl::DlSystem::UserBufferEncoding::ElementType_t::TF8:
       return GST_ML_TYPE_UINT8;
+    case zdl::DlSystem::UserBufferEncoding::ElementType_t::INT32:
+      return GST_ML_TYPE_INT32;
+    case zdl::DlSystem::UserBufferEncoding::ElementType_t::UINT32:
+      return GST_ML_TYPE_UINT32;
     default:
       GST_ERROR ("Unsupported format %x!", static_cast<uint32_t>(type));
       break;
@@ -351,8 +355,8 @@ gst_ml_snpe_engine_new (GstStructure * settings)
     std::unique_ptr<zdl::DlSystem::IUserBuffer> usrbuffer =
         factory.createUserBuffer(NULL, size, strides, encoding);
 
-    engine->usrbuffers.push_back(std::move (usrbuffer));
-    engine->inputs.add(name, engine->usrbuffers.back().get());
+    engine->usrbuffers.emplace(name, std::move (usrbuffer));
+    engine->inputs.add(name, engine->usrbuffers[name].get());
   }
 
   GST_DEBUG ("Number of input tensors: %u",
@@ -403,12 +407,6 @@ gst_ml_snpe_engine_new (GstStructure * settings)
     size_t size = gst_ml_info_tensor_size (engine->outinfo, idx);
 
     GST_DEBUG ("Output tensor[%u] size: %u", idx, size);
-    // Empty User Buffer which will later be set via setBufferAddress API.
-    std::unique_ptr<zdl::DlSystem::IUserBuffer> usrbuffer =
-        factory.createUserBuffer(NULL, size, strides, encoding);
-
-    engine->usrbuffers.push_back(std::move (usrbuffer));
-    engine->outputs.add(name, engine->usrbuffers.back().get());
   }
 
   GST_DEBUG ("Number of output tensors: %u",
@@ -575,17 +573,9 @@ gst_ml_snpe_engine_update_output_caps (GstMLSnpeEngine * engine, GstCaps * caps)
     std::unique_ptr<zdl::DlSystem::IUserBuffer> usrbuffer =
         factory.createUserBuffer(NULL, size, strides, encoding);
 
-    // Remove previous UserBuffer for this tensor.
-    auto it = std::find_if(engine->usrbuffers.begin(), engine->usrbuffers.end(),
-      [&](const std::unique_ptr<zdl::DlSystem::IUserBuffer>& buffer) -> bool {
-          return buffer.get() == engine->outputs.getUserBuffer(name);
-      }
-    );
-
-    engine->usrbuffers.erase(it);
-    engine->usrbuffers.push_back(std::move (usrbuffer));
-
-    engine->outputs.add(name, engine->usrbuffers.back().get());
+    // Replace previous UserBuffer for this tensor.
+    engine->usrbuffers[name] = std::move(usrbuffer);
+    engine->outputs.add(name, engine->usrbuffers[name].get());
   }
 
   // Update the tensor type.
