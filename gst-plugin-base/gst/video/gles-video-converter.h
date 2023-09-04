@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -40,249 +40,77 @@
 
 G_BEGIN_DECLS
 
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES
- *
- * #G_TYPE_ARRAY: Array of source GstVideoRectangle.
- * Default: NULL
- *
- * Not applicable for output.
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES \
-    "GstGlesVideoConverter.source-rectangles"
+// Composition flags valid only for the input frame.
+#define GST_GLES_FLAG_FLIP_HORIZONTAL   (1 << 0)
+#define GST_GLES_FLAG_FLIP_VERTICAL     (1 << 1)
+#define GST_GLES_FLAG_ROTATE_90CW       (1 << 2)
+#define GST_GLES_FLAG_ROTATE_180        (2 << 2)
+#define GST_GLES_FLAG_ROTATE_90CCW      (3 << 2)
 
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES
- *
- * #G_TYPE_ARRAY: Array of destination GstVideoRectangle.
- * Default: NULL
- *
- * Not applicable for output.
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES \
-    "GstGlesVideoConverter.destination-rectangles"
+// Composition flags valid for both input and output frame.
+#define GST_GLES_FLAG_UBWC_FORMAT       (1 << 6)
 
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL:
- *
- * #G_TYPE_BOOLEAN, flip output horizontally
- * Default: FALSE
- *
- * Not applicable for output
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL \
-    "GstGlesVideoConverter.flip-horizontal"
+// Composition flags valid only for the output frame.
+#define GST_GLES_FLAG_CLEAR_BACKGROUND  (1 << 7)
+#define GST_GLES_FLAG_FLOAT32_FORMAT    (1 << 8)
+#define GST_GLES_FLAG_FLOAT16_FORMAT    (2 << 8)
 
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_FLIP_VERTICAL:
- *
- * #G_TYPE_BOOLEAN, flip output horizontally
- * Default: FALSE
- *
- * Not applicable for output
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_FLIP_VERTICAL \
-    "GstGlesVideoConverter.flip-vertical"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_ALPHA:
- *
- * #G_TYPE_DOUBLE, alpha channel occupancy
- * Default: 1.0
- *
- * Not applicable for output
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_ALPHA \
-    "GstGlesVideoConverter.alpha"
-
-/**
- * GstGlesVideoRotate:
- * @GST_GLES_VIDEO_ROTATE_NONE: disable rotation of the output
- * @GST_GLES_VIDEO_ROTATE_90_CW: rotate output 90 degrees clockwise
- * @GST_GLES_VIDEO_ROTATE_90_CCW: rotate output 90 degrees counter-clockwise
- * @GST_GLES_VIDEO_ROTATE_180: rotate output 180 degrees
- *
- * Different output rotation modes
- */
-typedef enum {
-  GST_GLES_VIDEO_ROTATE_NONE,
-  GST_GLES_VIDEO_ROTATE_90_CW,
-  GST_GLES_VIDEO_ROTATE_90_CCW,
-  GST_GLES_VIDEO_ROTATE_180,
-} GstGlesVideoRotate;
-
-GST_VIDEO_API GType gst_gles_video_rotation_get_type (void);
-#define GST_TYPE_GLES_VIDEO_ROTATION (gst_gles_video_rotation_get_type())
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_ROTATION:
- *
- * #GST_TYPE_GLES_VIDEO_ROTATION, set the output rotation flags
- * Default: #GST_GLES_VIDEO_ROTATE_NONE.
- *
- * Not applicable for output
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_ROTATION \
-    "GstGlesVideoConverter.rotation"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_BACKGROUND:
- *
- * #G_TYPE_UINT, background color
- * Default: 0x00000000
- *
- * Not applicable for input.
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_BACKGROUND \
-    "GstGlesVideoConverter.background"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_CLEAR:
- *
- * #G_TYPE_BOOLEAN, clear image pixels and apply background color
- * Default: TRUE
- *
- * Not applicable for input.
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_CLEAR \
-    "GstGlesVideoConverter.clear-background"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_RSCALE:
- *
- * #G_TYPE_FLOAT, Red color channel scale factor, used in normalize operation.
- * Default: 128.0
- *
- * Not applicable for input.
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_RSCALE \
-    "GstGlesVideoConverter.rscale"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_GSCALE:
- *
- * #G_TYPE_FLOAT, Green color channel scale factor, used in normalize operation.
- * Default: 128.0
- *
- * Not applicable for input.
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_GSCALE \
-    "GstGlesVideoConverter.gscale"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_BSCALE
- *
- * #G_TYPE_FLOAT, Blue color channel scale factor, used in normalize operation.
- * Default: 128.0
- *
- * Not applicable for input.
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_BSCALE \
-    "GstGlesVideoConverter.bscale"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_ASCALE:
- *
- * #G_TYPE_FLOAT, Alpha channel scale factor, used in normalize operation.
- * Default: 128.0
- *
- * Not applicable for input.
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_ASCALE \
-    "GstGlesVideoConverter.ascale"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_ROFFSET
- *
- * #G_TYPE_FLOAT, Red channel offset, used in normalize operation.
- * Default: 0.0
- *
- * Not applicable for input.
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_ROFFSET \
-    "GstGlesVideoConverter.roffset"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_GOFFSET
- *
- * #G_TYPE_FLOAT, Green channel offset, used in normalize operation.
- * Default: 0.0
- *
- * Not applicable for input.
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_GOFFSET \
-    "GstGlesVideoConverter.goffset"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_BOFFSET
- *
- * #G_TYPE_FLOAT, Blue channel offset, used in normalize operation.
- * Default: 0.0
- *
- * Not applicable for input.
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_BOFFSET \
-    "GstGlesVideoConverter.boffset"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_AOFFSET
- *
- * #G_TYPE_FLOAT, Alpha channel offset, used in normalize operation.
- * Default: 0.0
- *
- * Not applicable for input.
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_AOFFSET \
-    "GstGlesVideoConverter.aoffset"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_FLOAT16_FORMAT
- *
- * #G_TYPE_BOOLEAN: whether buffer pixels are represented as 16 bit float values
- * Default: FALSE
- *
- * Not applicable for input.
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_FLOAT16_FORMAT \
-    "GstGlesVideoConverter.float16-format"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_FLOAT32_FORMAT
- *
- * #G_TYPE_BOOLEAN: whether buffer pixels are represented as 32 bit float values
- * Default: FALSE
- *
- * Not applicable for input.
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_FLOAT32_FORMAT \
-    "GstGlesVideoConverter.float32-format"
-
-/**
- * GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT:
- *
- * #G_TYPE_BOOLEAN, whether buffers have UBWC (Universal Bandwidth Compression)
- * Default: FALSE
- */
-#define GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT \
-    "GstGlesVideoConverter.ubwc-format"
+#define GST_GLES_BLIT_INIT { NULL, 255, NULL, NULL, 0, 0 }
+#define GST_GLES_COMPOSITION_INIT \
+    { NULL, 0, NULL, 0, { 0.0, 0.0, 0.0, 0.0 }, { 0.0, 0.0, 0.0, 0.0 }, 0 }
 
 typedef struct _GstGlesVideoConverter GstGlesVideoConverter;
+typedef struct _GstGlesBlit GstGlesBlit;
 typedef struct _GstGlesComposition GstGlesComposition;
 
 /**
- * GstGlesComposition:
- * @inframes: Array of input video frames
- * @n_inputs: Number of input frames
- * @outframe: Output video frame
+ * GstGlesBlit:
+ * @frame: Input video frame.
+ * @alpha: Global alpha, 0 = fully transparent, 255 = fully opaque.
+ * @sources: Source regions in the frame.
+ * @destinations: Destination regions in the frame.
+ * @n_regions: Number of Source - Destination region pairs.
+ * @flags: Bitwise configuration mask for the input frame.
  *
- * Blit composition. Input frames will be placed in the output frame based
- * on a previously set configuration.
+ * Blit source. Input frame along with a possible crop and destination
+ * rectangles and configuration mask.
+ */
+struct _GstGlesBlit
+{
+  GstVideoFrame     *frame;
+  guint8            alpha;
+
+  GstVideoRectangle *sources;
+  GstVideoRectangle *destinations;
+  guint8            n_regions;
+
+  guint64           flags;
+};
+
+/**
+ * GstGlesComposition:
+ * @blits: Array of blit objects.
+ * @n_blits: Number of blit objects.
+ * @frame: Output video frame where the blit objects will be placed.
+ * @bgcolor: Background color to be applied if CLEAR_BACKGROUND flag is present.
+ * @offsets: Channel offset factors, used in normalize operation.
+ * @scales: Channel scale factors, used in normalize operation.
+ * @flags: Bitwise configuration mask for the output.
+ *
+ * Blit composition.
  */
 struct _GstGlesComposition
 {
-  GstVideoFrame *inframes;
-  guint         n_inputs;
-  GstVideoFrame *outframe;
+  GstGlesBlit   *blits;
+  guint         n_blits;
+
+  GstVideoFrame *frame;
+  guint32       bgcolor;
+
+  gdouble       offsets[4];
+  gdouble       scales[4];
+
+  guint64       flags;
 };
 
 /**
@@ -305,40 +133,6 @@ gst_gles_video_converter_new     (void);
  */
 GST_VIDEO_API void
 gst_gles_video_converter_free    (GstGlesVideoConverter * convert);
-
-/**
- * gst_gles_video_converter_set_input_opts:
- * @convert: Pointer to GLES converter instance
- * @index: Input frame index
- * @opts: Pointer to structure containing options
- *
- * Configure source and destination rectangles, rotation, and other parameters
- * that are going to be used on the input frame with given index. Index is
- * accumulative across all compositions. If there are 3 compositions each with
- * 2 input frames then the indexes for the 3rd composition will be 5 and 6.
- *
- * return: TRUE on success or FALSE on failure
- */
-GST_VIDEO_API gboolean
-gst_gles_video_converter_set_input_opts (GstGlesVideoConverter * convert,
-                                         guint index, GstStructure * opts);
-
-/**
- * gst_gles_video_converter_set_process_opts:
- * @convert: Pointer to GLES converter instance
- * @index: Output frame index.
- * @opts: Pointer to structure containing options
- *
- * Configure a set of operations that will be performed on the output frame
- * for each composition. The index will corresppond to the index of the
- * video frame composition submited in submit_request API as each one contains
- * a single output frame.
- *
- * return: TRUE on success or FALSE on failure
- */
-GST_VIDEO_API gboolean
-gst_gles_video_converter_set_output_opts (GstGlesVideoConverter * convert,
-                                          guint index, GstStructure * opts);
 
 /**
  * gst_gles_video_converter_submit_request:
@@ -372,7 +166,7 @@ gst_gles_video_converter_wait_request (GstGlesVideoConverter * convert,
  * gst_gles_video_converter_flush:
  * @convert: Pointer to GLES converter instance
  *
- * Wait for compositions sumbitted to the GPU to finish.
+ * Wait for compositions sumbitted to the GPU to finish and flush cached data.
  *
  * return: NONE
  */

@@ -11,101 +11,18 @@
 
 G_BEGIN_DECLS
 
-/**
- * GST_FCV_VIDEO_CONVERTER_OPT_SRC_RECTANGLES
- *
- * #G_TYPE_ARRAY: Array of source GstVideoRectangle.
- * Default: NULL
- *
- * Not applicable for output.
- */
-#define GST_FCV_VIDEO_CONVERTER_OPT_SRC_RECTANGLES \
-    "GstFcvVideoConverter.source-rectangles"
+// Composition flags valid only for the input frame.
+#define GST_FCV_FLAG_FLIP_HORIZONTAL  (1 << 0)
+#define GST_FCV_FLAG_FLIP_VERTICAL    (1 << 1)
+#define GST_FCV_FLAG_ROTATE_90CW      (1 << 2)
+#define GST_FCV_FLAG_ROTATE_180       (2 << 2)
+#define GST_FCV_FLAG_ROTATE_90CCW     (3 << 2)
 
-/**
- * GST_FCV_VIDEO_CONVERTER_OPT_DEST_RECTANGLES
- *
- * #G_TYPE_ARRAY: Array of destination GstVideoRectangle.
- * Default: NULL
- *
- * Not applicable for output.
- */
-#define GST_FCV_VIDEO_CONVERTER_OPT_DEST_RECTANGLES \
-    "GstFcvVideoConverter.destination-rectangles"
+// Composition flags valid only for the output frame.
+#define GST_FCV_FLAG_CLEAR_BACKGROUND (1 << 6)
 
-/**
- * GST_FCV_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL:
- *
- * #G_TYPE_BOOLEAN, flip output horizontally
- * Default: FALSE
- *
- * Not applicable for output
- */
-#define GST_FCV_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL \
-    "GstFcvVideoConverter.flip-horizontal"
-
-/**
- * GST_FCV_VIDEO_CONVERTER_OPT_FLIP_VERTICAL:
- *
- * #G_TYPE_BOOLEAN, flip output horizontally
- * Default: FALSE
- *
- * Not applicable for output
- */
-#define GST_FCV_VIDEO_CONVERTER_OPT_FLIP_VERTICAL \
-    "GstFcvVideoConverter.flip-vertical"
-
-/**
- * GstFcvVideoRotate:
- * @GST_FCV_VIDEO_ROTATE_NONE: disable rotation of the output
- * @GST_FCV_VIDEO_ROTATE_90_CW: rotate output 90 degrees clockwise
- * @GST_FCV_VIDEO_ROTATE_90_CCW: rotate output 90 degrees counter-clockwise
- * @GST_FCV_VIDEO_ROTATE_180: rotate output 180 degrees
- *
- * Different output rotation modes
- */
-typedef enum {
-  GST_FCV_VIDEO_ROTATE_NONE,
-  GST_FCV_VIDEO_ROTATE_90_CW,
-  GST_FCV_VIDEO_ROTATE_90_CCW,
-  GST_FCV_VIDEO_ROTATE_180,
-} GstFcvVideoRotate;
-
-GST_VIDEO_API GType gst_fcv_video_rotation_get_type (void);
-#define GST_TYPE_FCV_VIDEO_ROTATION (gst_fcv_video_rotation_get_type())
-
-/**
- * GST_FCV_VIDEO_CONVERTER_OPT_ROTATION:
- *
- * #GST_TYPE_FCV_VIDEO_ROTATION, set the output rotation flags
- * Default: #GST_FCV_VIDEO_ROTATE_NONE.
- *
- * Not applicable for output
- */
-#define GST_FCV_VIDEO_CONVERTER_OPT_ROTATION \
-    "GstFcvVideoConverter.rotation"
-
-/**
- * GST_FCV_VIDEO_CONVERTER_OPT_BACKGROUND:
- *
- * #G_TYPE_UINT, background color
- * Default: 0x00000000
- *
- * Not applicable for input.
- */
-#define GST_FCV_VIDEO_CONVERTER_OPT_BACKGROUND \
-    "GstFcvVideoConverter.background"
-
-/**
- * GST_FCV_VIDEO_CONVERTER_OPT_CLEAR:
- *
- * #G_TYPE_BOOLEAN, clear image pixels and apply background color
- * Default: TRUE
- *
- * Not applicable for input.
- */
-#define GST_FCV_VIDEO_CONVERTER_OPT_CLEAR \
-    "GstFcvVideoConverter.clear-background"
+#define GST_FCV_BLIT_INIT { NULL, NULL, NULL, 0, 0 }
+#define GST_FCV_COMPOSITION_INIT { NULL, 0, NULL, 0, 0 }
 
 /**
  * GstFcvOpMode:
@@ -125,22 +42,51 @@ typedef enum {
 } GstFcvOpMode;
 
 typedef struct _GstFcvVideoConverter GstFcvVideoConverter;
+typedef struct _GstFcvBlit GstFcvBlit;
 typedef struct _GstFcvComposition GstFcvComposition;
+
+
+/**
+ * GstFcvBlit:
+ * @frame: Input video frame.
+ * @sources: Source regions in the frame.
+ * @destinations: Destination regions in the frame.
+ * @n_regions: Number of Source - Destination region pairs.
+ * @flags: Bitwise configuration mask for the input frame.
+ *
+ * Blit source. Input frame along with a possible crop and destination
+ * rectangles and configuration mask.
+ */
+struct _GstFcvBlit
+{
+  GstVideoFrame     *frame;
+
+  GstVideoRectangle *sources;
+  GstVideoRectangle *destinations;
+  guint8            n_regions;
+
+  guint64           flags;
+};
 
 /**
  * GstFcvComposition:
- * @inframes: Array of input video frames
- * @n_inputs: Number of input frames
- * @outframe: Output video frame
+ * @blits: Array of blit objects.
+ * @n_blits: Number of blit objects.
+ * @frame: Output video frame where the blit objects will be placed.
+ * @bgcolor: Background color to be applied if CLEAR_BACKGROUND flag is present.
+ * @flags: Bitwise configuration mask for the output.
  *
- * Blit composition. Input frames will be placed in the output frame based
- * on a previously set configuration.
+ * Blit composition.
  */
 struct _GstFcvComposition
 {
-  GstVideoFrame *inframes;
-  guint         n_inputs;
-  GstVideoFrame *outframe;
+  GstFcvBlit    *blits;
+  guint         n_blits;
+
+  GstVideoFrame *frame;
+  guint32       bgcolor;
+
+  guint64       flags;
 };
 
 /**
@@ -163,40 +109,6 @@ gst_fcv_video_converter_new     (GstFcvOpMode opmode);
  */
 GST_VIDEO_API void
 gst_fcv_video_converter_free    (GstFcvVideoConverter * convert);
-
-/**
- * gst_fcv_video_converter_set_input_opts:
- * @convert: Pointer to FastCV converter instance
- * @index: Input frame index
- * @opts: Pointer to structure containing options
- *
- * Configure source and destination rectangles, rotation, and other parameters
- * that are going to be used on the input frame with given index. Index is
- * accumulative across all compositions. If there are 3 compositions each with
- * 2 input frames then the indexes for the 3rd composition will be 5 and 6.
- *
- * return: TRUE on success or FALSE on failure
- */
-GST_VIDEO_API gboolean
-gst_fcv_video_converter_set_input_opts (GstFcvVideoConverter * convert,
-                                        guint index, GstStructure * opts);
-
-/**
- * gst_fcv_video_converter_set_process_opts:
- * @convert: Pointer to FastCV converter instance
- * @index: Output frame index.
- * @opts: Pointer to structure containing options
- *
- * Configure a set of operations that will be performed on the output frame
- * for each composition. The index will corresppond to the index of the
- * video frame composition submited in submit_request API as each one contains
- * a single output frame.
- *
- * return: TRUE on success or FALSE on failure
- */
-GST_VIDEO_API gboolean
-gst_fcv_video_converter_set_output_opts (GstFcvVideoConverter * convert,
-                                         guint index, GstStructure * opts);
 
 /**
  * gst_fcv_video_converter_compose:

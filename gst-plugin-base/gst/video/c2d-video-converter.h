@@ -69,164 +69,129 @@
 
 G_BEGIN_DECLS
 
-/**
- * GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES
- *
- * #G_TYPE_ARRAY: Array of source GstVideoRectangle.
- * Default: NULL
- *
- * Not applicable for output.
- */
-#define GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES \
-    "GstC2dVideoConverter.source-rectangles"
+// Composition flags valid only for the input frame.
+#define GST_C2D_FLAG_FLIP_HORIZONTAL  (1 << 0)
+#define GST_C2D_FLAG_FLIP_VERTICAL    (1 << 1)
+#define GST_C2D_FLAG_ROTATE_90CW      (1 << 2)
+#define GST_C2D_FLAG_ROTATE_180       (2 << 2)
+#define GST_C2D_FLAG_ROTATE_90CCW     (3 << 2)
 
-/**
- * GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES
- *
- * #G_TYPE_ARRAY: Array of destination GstVideoRectangle.
- * Default: NULL
- *
- * Not applicable for output.
- */
-#define GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES \
-    "GstC2dVideoConverter.destination-rectangles"
+// Composition flags valid for both input and output frame.
+#define GST_C2D_FLAG_UBWC_FORMAT      (1 << 6)
 
-/**
- * GST_C2D_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL:
- *
- * #G_TYPE_BOOLEAN, flip output horizontally
- * Default: FALSE
- *
- * Not applicable for output
- */
-#define GST_C2D_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL \
-    "GstC2dVideoConverter.flip-horizontal"
+// Composition flags valid only for the output frame.
+#define GST_C2D_FLAG_CLEAR_BACKGROUND (1 << 7)
 
-/**
- * GST_C2D_VIDEO_CONVERTER_OPT_FLIP_VERTICAL:
- *
- * #G_TYPE_BOOLEAN, flip output horizontally
- * Default: FALSE
- *
- * Not applicable for output
- */
-#define GST_C2D_VIDEO_CONVERTER_OPT_FLIP_VERTICAL \
-    "GstC2dVideoConverter.flip-vertical"
-
-/**
- * GstC2dVideoRotate:
- * @GST_C2D_VIDEO_ROTATE_NONE: disable rotation of the output
- * @GST_C2D_VIDEO_ROTATE_90_CW: rotate output 90 degrees clockwise
- * @GST_C2D_VIDEO_ROTATE_90_CCW: rotate output 90 degrees counter-clockwise
- * @GST_C2D_VIDEO_ROTATE_180: rotate output 180 degrees
- *
- * Different output rotation modes
- */
-typedef enum {
-  GST_C2D_VIDEO_ROTATE_NONE,
-  GST_C2D_VIDEO_ROTATE_90_CW,
-  GST_C2D_VIDEO_ROTATE_90_CCW,
-  GST_C2D_VIDEO_ROTATE_180,
-} GstC2dVideoRotate;
-
-GST_VIDEO_API GType gst_c2d_video_rotation_get_type (void);
-#define GST_TYPE_C2D_VIDEO_ROTATION (gst_c2d_video_rotation_get_type())
-
-/**
- * GST_C2D_VIDEO_CONVERTER_OPT_ROTATION:
- *
- * #GST_TYPE_C2D_VIDEO_ROTATION, set the output rotation flags
- * Default: #GST_C2D_VIDEO_ROTATE_NONE.
- *
- * Not applicable for output
- */
-#define GST_C2D_VIDEO_CONVERTER_OPT_ROTATION \
-    "GstC2dVideoConverter.rotation"
-
-/**
- * GST_C2D_VIDEO_CONVERTER_OPT_ALPHA:
- *
- * #G_TYPE_DOUBLE, alpha channel occupancy
- * Default: 1.0
- *
- * Not applicable for output
- */
-#define GST_C2D_VIDEO_CONVERTER_OPT_ALPHA \
-    "GstC2dVideoConverter.alpha"
-
-/**
- * GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT:
- *
- * #G_TYPE_BOOLEAN, whether buffers have UBWC (Universal Bandwidth Compression)
- * Default: FALSE
- */
-#define GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT \
-    "GstC2dVideoConverter.ubwc-format"
-
-/**
- * GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND:
- *
- * #G_TYPE_UINT, background color
- * Default: 0x00000000
- *
- * Not applicable for input
- */
-#define GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND \
-    "GstC2dVideoConverter.background"
-
-/**
- * GST_C2D_VIDEO_CONVERTER_OPT_CLEAR:
- *
- * #G_TYPE_BOOLEAN, clear image pixels and apply background color
- * Default: TRUE
- *
- * Not applicable for input.
- */
-#define GST_C2D_VIDEO_CONVERTER_OPT_CLEAR \
-    "GstC2dVideoConverter.clear-background"
+#define GST_C2D_BLIT_INIT { NULL, 255, NULL, NULL, 0, 0 }
+#define GST_C2D_COMPOSITION_INIT { NULL, 0, NULL, 0, 0 }
 
 typedef struct _GstC2dVideoConverter GstC2dVideoConverter;
+typedef struct _GstC2dBlit GstC2dBlit;
 typedef struct _GstC2dComposition GstC2dComposition;
+
+
+/**
+ * GstC2dBlit:
+ * @frame: Input video frame.
+ * @alpha: Global alpha, 0 = fully transparent, 255 = fully opaque.
+ * @sources: Source regions in the frame.
+ * @destinations: Destination regions in the frame.
+ * @n_regions: Number of Source - Destination region pairs.
+ * @flags: Bitwise configuration mask for the input frame.
+ *
+ * Blit entry. Contains input frame along with a possible crop and destination
+ * rectanbgle and configuration mask.
+ */
+struct _GstC2dBlit
+{
+  GstVideoFrame     *frame;
+  guint8            alpha;
+
+  GstVideoRectangle *sources;
+  GstVideoRectangle *destinations;
+  guint8            n_regions;
+
+  guint64           flags;
+};
 
 /**
  * GstC2dComposition:
- * @inframes: Array of input video frames
- * @n_inputs: Number of input frames
- * @outframe: Output video frame
+ * @blits: Array of blit entries.
+ * @n_blits: Number of blit entries.
+ * @frame: Output video frame where the blit entries will be placed.
+ * @bgcolor: Background color to be applied if CLEAR_BACKGROUND flag is present.
+ * @flags: Bitwise configuration mask for the output.
  *
- * Blit composition. Input frames will be placed in the output frame based
- * on a previously set configuration.
+ * Blit composition.
  */
 struct _GstC2dComposition
 {
-  GstVideoFrame *inframes;
-  guint         n_inputs;
-  GstVideoFrame *outframe;
+  GstC2dBlit    *blits;
+  guint         n_blits;
+
+  GstVideoFrame *frame;
+  guint32       bgcolor;
+
+  guint64       flags;
 };
 
+/**
+ * gst_c2d_video_converter_new:
+ *
+ * Initialize instance of C2D converter module.
+ *
+ * return: Pointer to C2D converter on success or NULL on failure
+ */
 GST_VIDEO_API GstC2dVideoConverter *
 gst_c2d_video_converter_new             (void);
 
+/**
+ * gst_c2d_video_converter_free:
+ * @convert: Pointer to C2D converter module
+ *
+ * Deinitialise the C2D converter instance.
+ *
+ * return: NONE
+ */
 GST_VIDEO_API void
 gst_c2d_video_converter_free            (GstC2dVideoConverter *convert);
 
-GST_VIDEO_API gboolean
-gst_c2d_video_converter_set_input_opts  (GstC2dVideoConverter *convert,
-                                         guint index, GstStructure *opts);
-
-GST_VIDEO_API gboolean
-gst_c2d_video_converter_set_output_opts (GstC2dVideoConverter *convert,
-                                         guint index, GstStructure *opts);
-
+/**
+ * gst_c2d_video_converter_submit_request:
+ * @convert: Pointer to C2D converter instance
+ * @compositions: Array of composition frames
+ * @n_compositions: Number of compositions
+ *
+ * Submit the a number of video composition which will be executed together.
+ *
+ * return: Pointer to request on success or NULL on failure
+ */
 GST_VIDEO_API gpointer
 gst_c2d_video_converter_submit_request  (GstC2dVideoConverter *convert,
                                          GstC2dComposition * compositions,
                                          guint n_compositions);
 
+/**
+ * gst_c2d_video_converter_wait_request:
+ * @convert: Pointer to C2D converter instance
+ * @request_id: Indentification of the request
+ *
+ * Wait for the sumbitted to the GPU compositions to finish.
+ *
+ * return: TRUE on success or FALSE on failure
+ */
 GST_VIDEO_API gboolean
 gst_c2d_video_converter_wait_request    (GstC2dVideoConverter *convert,
                                          gpointer request_id);
 
+/**
+ * gst_c2d_video_converter_flush:
+ * @convert: Pointer to C2D converter instance
+ *
+ * Wait for compositions sumbitted to the GPU to finish and flush cached data.
+ *
+ * return: NONE
+ */
 GST_VIDEO_API void
 gst_c2d_video_converter_flush           (GstC2dVideoConverter *convert);
 

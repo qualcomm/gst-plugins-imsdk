@@ -234,62 +234,62 @@ gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
 }
 
 #ifdef USE_C2D_CONVERTER
-static GstC2dVideoRotate
+static guint64
 gst_video_transform_rotation_to_c2d_rotate (GstVideoTransformRotate rotation)
 {
   switch (rotation) {
     case GST_VIDEO_TRANSFORM_ROTATE_90_CW:
-      return GST_C2D_VIDEO_ROTATE_90_CW;
+      return GST_C2D_FLAG_ROTATE_90CW;
     case GST_VIDEO_TRANSFORM_ROTATE_90_CCW:
-      return GST_C2D_VIDEO_ROTATE_90_CCW;
+      return GST_C2D_FLAG_ROTATE_90CCW;
     case GST_VIDEO_TRANSFORM_ROTATE_180:
-      return GST_C2D_VIDEO_ROTATE_180;
+      return GST_C2D_FLAG_ROTATE_180;
     case GST_VIDEO_TRANSFORM_ROTATE_NONE:
-      return GST_C2D_VIDEO_ROTATE_NONE;
+      return 0;
     default:
       GST_WARNING ("Invalid rotation flag %d!", rotation);
   }
-  return GST_C2D_VIDEO_ROTATE_NONE;
+  return 0;
 }
 #endif // USE_C2D_CONVERTER
 
 #ifdef USE_GLES_CONVERTER
-static GstGlesVideoRotate
+static guint64
 gst_video_transform_rotation_to_gles_rotate (GstVideoTransformRotate rotation)
 {
   switch (rotation) {
     case GST_VIDEO_TRANSFORM_ROTATE_90_CW:
-      return GST_GLES_VIDEO_ROTATE_90_CW;
+      return GST_GLES_FLAG_ROTATE_90CW;
     case GST_VIDEO_TRANSFORM_ROTATE_90_CCW:
-      return GST_GLES_VIDEO_ROTATE_90_CCW;
+      return GST_GLES_FLAG_ROTATE_90CCW;
     case GST_VIDEO_TRANSFORM_ROTATE_180:
-      return GST_GLES_VIDEO_ROTATE_180;
+      return GST_GLES_FLAG_ROTATE_180;
     case GST_VIDEO_TRANSFORM_ROTATE_NONE:
-      return GST_GLES_VIDEO_ROTATE_NONE;
+      return 0;
     default:
       GST_WARNING ("Invalid rotation flag %d!", rotation);
   }
-  return GST_GLES_VIDEO_ROTATE_NONE;
+  return 0;
 }
 #endif // USE_GLES_CONVERTER
 
 #ifdef USE_FCV_CONVERTER
-static GstFcvVideoRotate
+static guint64
 gst_video_transform_rotation_to_fcv_rotate (GstVideoTransformRotate rotation)
 {
   switch (rotation) {
     case GST_VIDEO_TRANSFORM_ROTATE_90_CW:
-      return GST_FCV_VIDEO_ROTATE_90_CW;
+      return GST_FCV_FLAG_ROTATE_90CW;
     case GST_VIDEO_TRANSFORM_ROTATE_90_CCW:
-      return GST_FCV_VIDEO_ROTATE_90_CCW;
+      return GST_FCV_FLAG_ROTATE_90CCW;
     case GST_VIDEO_TRANSFORM_ROTATE_180:
-      return GST_FCV_VIDEO_ROTATE_180;
+      return GST_FCV_FLAG_ROTATE_180;
     case GST_VIDEO_TRANSFORM_ROTATE_NONE:
-      return GST_FCV_VIDEO_ROTATE_NONE;
+      return 0;
     default:
       GST_WARNING ("Invalid rotation flag %d!", rotation);
   }
-  return GST_FCV_VIDEO_ROTATE_NONE;
+  return 0;
 }
 #endif // USE_FCV_CONVERTER
 
@@ -654,7 +654,6 @@ gst_video_transform_set_caps (GstBaseTransform * base, GstCaps * incaps,
     GstCaps * outcaps)
 {
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM (base);
-  GstStructure *inopts = NULL, *outopts = NULL;
   const gchar *feature = NULL;
   GArray *s_rects = NULL, *d_rects = NULL;
   GstVideoInfo ininfo, outinfo;
@@ -693,30 +692,6 @@ gst_video_transform_set_caps (GstBaseTransform * base, GstCaps * incaps,
     gst_c2d_video_converter_free (vtrans->c2dconvert);
 
   vtrans->c2dconvert = gst_c2d_video_converter_new ();
-
-  // Fill the converter input options structure.
-  inopts = gst_structure_new ("options",
-      GST_C2D_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL, G_TYPE_BOOLEAN,
-          vtrans->flip_h,
-      GST_C2D_VIDEO_CONVERTER_OPT_FLIP_VERTICAL, G_TYPE_BOOLEAN,
-          vtrans->flip_v,
-      GST_C2D_VIDEO_CONVERTER_OPT_ROTATION, GST_TYPE_C2D_VIDEO_ROTATION,
-          gst_video_transform_rotation_to_c2d_rotate (vtrans->rotation),
-      GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
-          gst_caps_has_compression (incaps, "ubwc"),
-      GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, G_TYPE_ARRAY, s_rects,
-      GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, G_TYPE_ARRAY, d_rects,
-      NULL);
-
-  // Fill the converter output options structure.
-  outopts = gst_structure_new ("options",
-      GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT, vtrans->background,
-      GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
-          gst_caps_has_compression (outcaps, "ubwc"),
-      NULL);
-
-  gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
-  gst_c2d_video_converter_set_output_opts (vtrans->c2dconvert, 0, outopts);
 #endif // USE_C2D_CONVERTER
 
 #ifdef USE_GLES_CONVERTER
@@ -724,23 +699,6 @@ gst_video_transform_set_caps (GstBaseTransform * base, GstCaps * incaps,
     gst_gles_video_converter_free (vtrans->glesconvert);
 
   vtrans->glesconvert = gst_gles_video_converter_new ();
-
-  // Fill the converter input options structure.
-  inopts = gst_structure_new ("options",
-      GST_GLES_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL, G_TYPE_BOOLEAN,
-          vtrans->flip_h,
-      GST_GLES_VIDEO_CONVERTER_OPT_FLIP_VERTICAL, G_TYPE_BOOLEAN,
-          vtrans->flip_v,
-      GST_GLES_VIDEO_CONVERTER_OPT_ROTATION, GST_TYPE_GLES_VIDEO_ROTATION,
-          gst_video_transform_rotation_to_gles_rotate (vtrans->rotation),
-      GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
-          gst_caps_has_compression (incaps, "ubwc"),
-      GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, G_TYPE_ARRAY, s_rects,
-      GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, G_TYPE_ARRAY, d_rects,
-      NULL);
-
-  gst_gles_video_converter_set_input_opts (vtrans->glesconvert, 0, inopts);
-  gst_gles_video_converter_set_output_opts (vtrans->glesconvert, 0, outopts);
 #endif // USE_GLES_CONVERTER
 
 #ifdef USE_FCV_CONVERTER
@@ -748,26 +706,6 @@ gst_video_transform_set_caps (GstBaseTransform * base, GstCaps * incaps,
     gst_fcv_video_converter_free (vtrans->fcvconvert);
 
   vtrans->fcvconvert = gst_fcv_video_converter_new (GST_FCV_OP_MODE_PERFORMANCE);
-
-  // Fill the converter input options structure.
-  inopts = gst_structure_new ("options",
-      GST_FCV_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL, G_TYPE_BOOLEAN,
-          vtrans->flip_h,
-      GST_FCV_VIDEO_CONVERTER_OPT_FLIP_VERTICAL, G_TYPE_BOOLEAN,
-          vtrans->flip_v,
-      GST_FCV_VIDEO_CONVERTER_OPT_ROTATION, GST_TYPE_FCV_VIDEO_ROTATION,
-          gst_video_transform_rotation_to_fcv_rotate (vtrans->rotation),
-      GST_FCV_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, G_TYPE_ARRAY, s_rects,
-      GST_FCV_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, G_TYPE_ARRAY, d_rects,
-      NULL);
-
-  // Fill the converter output options structure.
-  outopts = gst_structure_new ("options",
-      GST_FCV_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT, vtrans->background,
-      NULL);
-
-  gst_fcv_video_converter_set_input_opts (vtrans->fcvconvert, 0, inopts);
-  gst_fcv_video_converter_set_output_opts (vtrans->fcvconvert, 0, outopts);
 #endif // USE_FCV_CONVERTER
 
   GST_DEBUG_OBJECT (vtrans, "From %dx%d (PAR: %d/%d, DAR: %d/%d), size %"
@@ -797,6 +735,16 @@ gst_video_transform_set_caps (GstBaseTransform * base, GstCaps * incaps,
 
   vtrans->inubwc = gst_caps_has_compression (incaps, "ubwc");
   vtrans->outubwc = gst_caps_has_compression (outcaps, "ubwc");
+
+  if ((vtrans->crop.w == 0) && (vtrans->crop.h == 0)) {
+    vtrans->crop.w = GST_VIDEO_INFO_WIDTH (vtrans->ininfo);
+    vtrans->crop.h = GST_VIDEO_INFO_HEIGHT (vtrans->ininfo);
+  }
+
+  if ((vtrans->destination.w == 0) && (vtrans->destination.h == 0)) {
+    vtrans->destination.w = GST_VIDEO_INFO_WIDTH (vtrans->outinfo);
+    vtrans->destination.h = GST_VIDEO_INFO_HEIGHT (vtrans->outinfo);
+  }
 
   // Disable passthrough in order to decide output allocation.
   gst_base_transform_set_passthrough (base, FALSE);
@@ -1713,10 +1661,40 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 
   time = gst_util_get_timestamp ();
 
+  GST_VIDEO_TRANSFORM_LOCK (vtrans);
+
   {
 #ifdef USE_C2D_CONVERTER
     gpointer request_id = NULL;
-    GstC2dComposition composition = { &inframe, 1, &outframe };
+    GstC2dBlit blit = GST_C2D_BLIT_INIT;
+    GstC2dComposition composition = GST_C2D_COMPOSITION_INIT;
+
+    if (vtrans->inubwc)
+      blit.flags |= GST_C2D_FLAG_UBWC_FORMAT;
+
+    if (vtrans->flip_h)
+      blit.flags |= GST_C2D_FLAG_FLIP_HORIZONTAL;
+
+    if (vtrans->flip_v)
+      blit.flags |= GST_C2D_FLAG_FLIP_VERTICAL;
+
+    blit.flags |= gst_video_transform_rotation_to_c2d_rotate (vtrans->rotation);
+
+    blit.sources = &(vtrans->crop);
+    blit.destinations = &(vtrans->destination);
+    blit.n_regions = 1;
+
+    composition.bgcolor = vtrans->background;
+    composition.flags |= GST_C2D_FLAG_CLEAR_BACKGROUND;
+
+    if (vtrans->outubwc)
+      composition.flags |= GST_C2D_FLAG_UBWC_FORMAT;
+
+    blit.frame = &inframe;
+
+    composition.blits = &blit;
+    composition.n_blits = 1;
+    composition.frame = &outframe;
 
     request_id = gst_c2d_video_converter_submit_request (vtrans->c2dconvert,
         &composition, 1);
@@ -1726,7 +1704,35 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 
 #ifdef USE_GLES_CONVERTER
     gpointer request_id = NULL;
-    GstGlesComposition composition = { &inframe, 1, &outframe };
+    GstGlesBlit blit = GST_GLES_BLIT_INIT;
+    GstGlesComposition composition = GST_GLES_COMPOSITION_INIT;
+
+    if (vtrans->inubwc)
+      blit.flags |= GST_GLES_FLAG_UBWC_FORMAT;
+
+    if (vtrans->flip_h)
+      blit.flags |= GST_GLES_FLAG_FLIP_HORIZONTAL;
+
+    if (vtrans->flip_v)
+      blit.flags |= GST_GLES_FLAG_FLIP_VERTICAL;
+
+    blit.flags |= gst_video_transform_rotation_to_gles_rotate (vtrans->rotation);
+
+    blit.sources = &(vtrans->crop);
+    blit.destinations = &(vtrans->destination);
+    blit.n_regions = 1;
+
+    composition.bgcolor = vtrans->background;
+    composition.flags |= GST_GLES_FLAG_CLEAR_BACKGROUND;
+
+    if (vtrans->outubwc)
+      composition.flags |= GST_GLES_FLAG_UBWC_FORMAT;
+
+    blit.frame = &inframe;
+
+    composition.blits = &blit;
+    composition.n_blits = 1;
+    composition.frame = &outframe;
 
     request_id = gst_gles_video_converter_submit_request (vtrans->glesconvert,
         &composition, 1);
@@ -1735,12 +1741,36 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 #endif // USE_GLES_CONVERTER
 
 #ifdef USE_FCV_CONVERTER
-    GstFcvComposition composition = { &inframe, 1, &outframe };
+    GstFcvBlit blit = GST_FCV_BLIT_INIT;
+    GstFcvComposition composition = GST_FCV_COMPOSITION_INIT;
+
+    if (vtrans->flip_h)
+      blit.flags |= GST_FCV_FLAG_FLIP_HORIZONTAL;
+
+    if (vtrans->flip_v)
+      blit.flags |= GST_FCV_FLAG_FLIP_VERTICAL;
+
+    blit.flags |= gst_video_transform_rotation_to_fcv_rotate (vtrans->rotation);
+
+    blit.sources = &(vtrans->crop);
+    blit.destinations = &(vtrans->destination);
+    blit.n_regions = 1;
+
+    composition.bgcolor = vtrans->background;
+    composition.flags |= GST_FCV_FLAG_CLEAR_BACKGROUND;
+
+    blit.frame = &inframe;
+
+    composition.blits = &blit;
+    composition.n_blits = 1;
+    composition.frame = &outframe;
 
     success = gst_fcv_video_converter_compose (vtrans->fcvconvert,
         &composition, 1);
 #endif // USE_FCV_CONVERTER
   }
+
+  GST_VIDEO_TRANSFORM_UNLOCK (vtrans);
 
   time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
 
@@ -1785,105 +1815,17 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
     return;
   }
 
+  GST_VIDEO_TRANSFORM_LOCK (vtrans);
+
   switch (prop_id) {
     case PROP_FLIP_HORIZONTAL:
       vtrans->flip_h = g_value_get_boolean (value);
-
-#ifdef USE_C2D_CONVERTER
-      if (vtrans->c2dconvert != NULL) {
-        GstStructure *inopts = gst_structure_new ("options",
-          GST_C2D_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL, G_TYPE_BOOLEAN,
-              vtrans->flip_h,
-          NULL);
-        gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
-      }
-#endif // USE_C2D_CONVERTER
-
-#ifdef USE_GLES_CONVERTER
-      if (vtrans->glesconvert != NULL) {
-        GstStructure *inopts = gst_structure_new ("options",
-          GST_GLES_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL, G_TYPE_BOOLEAN,
-              vtrans->flip_h,
-          NULL);
-        gst_gles_video_converter_set_input_opts (vtrans->glesconvert, 0, inopts);
-      }
-#endif // USE_GLES_CONVERTER
-
-#ifdef USE_FCV_CONVERTER
-      if (vtrans->fcvconvert != NULL) {
-        GstStructure *inopts = gst_structure_new ("options",
-          GST_FCV_VIDEO_CONVERTER_OPT_FLIP_HORIZONTAL, G_TYPE_BOOLEAN,
-              vtrans->flip_h,
-          NULL);
-        gst_fcv_video_converter_set_input_opts (vtrans->fcvconvert, 0, inopts);
-      }
-#endif // USE_FCV_CONVERTER
       break;
     case PROP_FLIP_VERTICAL:
       vtrans->flip_v = g_value_get_boolean (value);
-
-#ifdef USE_C2D_CONVERTER
-      if (vtrans->c2dconvert != NULL) {
-        GstStructure *inopts = gst_structure_new ("options",
-          GST_C2D_VIDEO_CONVERTER_OPT_FLIP_VERTICAL, G_TYPE_BOOLEAN,
-              vtrans->flip_v,
-          NULL);
-        gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
-      }
-#endif // USE_C2D_CONVERTER
-
-#ifdef USE_GLES_CONVERTER
-      if (vtrans->glesconvert != NULL) {
-        GstStructure *inopts = gst_structure_new ("options",
-          GST_GLES_VIDEO_CONVERTER_OPT_FLIP_VERTICAL, G_TYPE_BOOLEAN,
-              vtrans->flip_v,
-          NULL);
-        gst_gles_video_converter_set_input_opts (vtrans->glesconvert, 0, inopts);
-      }
-#endif // USE_GLES_CONVERTER
-
-#ifdef USE_FCV_CONVERTER
-      if (vtrans->fcvconvert != NULL) {
-        GstStructure *inopts = gst_structure_new ("options",
-          GST_FCV_VIDEO_CONVERTER_OPT_FLIP_VERTICAL, G_TYPE_BOOLEAN,
-              vtrans->flip_v,
-          NULL);
-        gst_fcv_video_converter_set_input_opts (vtrans->fcvconvert, 0, inopts);
-      }
-#endif // USE_FCV_CONVERTER
       break;
     case PROP_ROTATE:
       vtrans->rotation = g_value_get_enum (value);
-
-#ifdef USE_C2D_CONVERTER
-      if (vtrans->c2dconvert != NULL) {
-        GstStructure *inopts = gst_structure_new ("options",
-          GST_C2D_VIDEO_CONVERTER_OPT_ROTATION, GST_TYPE_C2D_VIDEO_ROTATION,
-              gst_video_transform_rotation_to_c2d_rotate (vtrans->rotation),
-          NULL);
-        gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
-      }
-#endif // USE_C2D_CONVERTER
-
-#ifdef USE_GLES_CONVERTER
-      if (vtrans->glesconvert != NULL) {
-        GstStructure *inopts = gst_structure_new ("options",
-          GST_GLES_VIDEO_CONVERTER_OPT_ROTATION, GST_TYPE_GLES_VIDEO_ROTATION,
-              gst_video_transform_rotation_to_gles_rotate (vtrans->rotation),
-          NULL);
-        gst_gles_video_converter_set_input_opts (vtrans->glesconvert, 0, inopts);
-      }
-#endif // USE_GLES_CONVERTER
-
-#ifdef USE_FCV_CONVERTER
-      if (vtrans->fcvconvert != NULL) {
-        GstStructure *inopts = gst_structure_new ("options",
-          GST_FCV_VIDEO_CONVERTER_OPT_ROTATION, GST_TYPE_FCV_VIDEO_ROTATION,
-              gst_video_transform_rotation_to_fcv_rotate (vtrans->rotation),
-          NULL);
-        gst_fcv_video_converter_set_input_opts (vtrans->fcvconvert, 0, inopts);
-      }
-#endif // USE_FCV_CONVERTER
       break;
     case PROP_CROP:
     {
@@ -1896,8 +1838,8 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
       width = g_value_get_int (gst_value_array_get_value (value, 2));
       height = g_value_get_int (gst_value_array_get_value (value, 3));
 
-      if ((width == 0 && height != 0) || (width != 0 && height == 0)) {
-        GST_WARNING_OBJECT (vtrans, "Invalid crop parameters!");
+      if ((width == 0) || (height == 0)) {
+        GST_WARNING_OBJECT (vtrans, "Invalid crop dimensions!");
         break;
       }
 
@@ -1905,54 +1847,6 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
       vtrans->crop.y = y;
       vtrans->crop.w = width;
       vtrans->crop.h = height;
-
-#ifdef USE_C2D_CONVERTER
-      if (vtrans->c2dconvert != NULL) {
-        GstStructure *inopts = NULL;
-        GArray *rects = NULL;
-
-        rects = g_array_new (FALSE, FALSE, sizeof (GstVideoRectangle));
-        rects = g_array_append_val (rects, vtrans->crop);
-
-        inopts = gst_structure_new ("options",
-            GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, G_TYPE_ARRAY, rects,
-            NULL);
-
-        gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
-      }
-#endif // USE_C2D_CONVERTER
-
-#ifdef USE_GLES_CONVERTER
-      if (vtrans->glesconvert != NULL) {
-        GstStructure *inopts = NULL;
-        GArray *rects = NULL;
-
-        rects = g_array_new (FALSE, FALSE, sizeof (GstVideoRectangle));
-        rects = g_array_append_val (rects, vtrans->crop);
-
-        inopts = gst_structure_new ("options",
-            GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, G_TYPE_ARRAY, rects,
-            NULL);
-
-        gst_gles_video_converter_set_input_opts (vtrans->glesconvert, 0, inopts);
-      }
-#endif // USE_GLES_CONVERTER
-
-#ifdef USE_FCV_CONVERTER
-      if (vtrans->fcvconvert != NULL) {
-        GstStructure *inopts = NULL;
-        GArray *rects = NULL;
-
-        rects = g_array_new (FALSE, FALSE, sizeof (GstVideoRectangle));
-        rects = g_array_append_val (rects, vtrans->crop);
-
-        inopts = gst_structure_new ("options",
-            GST_FCV_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, G_TYPE_ARRAY, rects,
-            NULL);
-
-        gst_fcv_video_converter_set_input_opts (vtrans->fcvconvert, 0, inopts);
-      }
-#endif // USE_FCV_CONVERTER
       break;
     }
     case PROP_DESTINATION:
@@ -1966,8 +1860,8 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
       width = g_value_get_int (gst_value_array_get_value (value, 2));
       height = g_value_get_int (gst_value_array_get_value (value, 3));
 
-      if ((width == 0 && height != 0) || (width != 0 && height == 0)) {
-        GST_WARNING_OBJECT (vtrans, "Invalid destination parameters!");
+      if ((width == 0) || (height == 0)) {
+        GST_WARNING_OBJECT (vtrans, "Invalid destination dimensions!");
         break;
       }
 
@@ -1975,93 +1869,17 @@ gst_video_transform_set_property (GObject * object, guint prop_id,
       vtrans->destination.y = y;
       vtrans->destination.w = width;
       vtrans->destination.h = height;
-
-#ifdef USE_C2D_CONVERTER
-      if (vtrans->c2dconvert != NULL) {
-        GstStructure *inopts = NULL;
-        GArray *rects = NULL;
-
-        rects = g_array_new (FALSE, FALSE, sizeof (GstVideoRectangle));
-        rects = g_array_append_val (rects, vtrans->crop);
-
-        inopts = gst_structure_new ("options",
-            GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, G_TYPE_ARRAY, rects,
-            NULL);
-
-        gst_c2d_video_converter_set_input_opts (vtrans->c2dconvert, 0, inopts);
-      }
-#endif // USE_C2D_CONVERTER
-
-#ifdef USE_GLES_CONVERTER
-      if (vtrans->glesconvert != NULL) {
-        GstStructure *inopts = NULL;
-        GArray *rects = NULL;
-
-        rects = g_array_new (FALSE, FALSE, sizeof (GstVideoRectangle));
-        rects = g_array_append_val (rects, vtrans->destination);
-
-        inopts = gst_structure_new ("options",
-            GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, G_TYPE_ARRAY, rects,
-            NULL);
-
-        gst_gles_video_converter_set_input_opts (vtrans->glesconvert, 0, inopts);
-      }
-#endif // USE_GLES_CONVERTER
-
-#ifdef USE_FCV_CONVERTER
-      if (vtrans->fcvconvert != NULL) {
-        GstStructure *inopts = NULL;
-        GArray *rects = NULL;
-
-        rects = g_array_new (FALSE, FALSE, sizeof (GstVideoRectangle));
-        rects = g_array_append_val (rects, vtrans->destination);
-
-        inopts = gst_structure_new ("options",
-            GST_FCV_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, G_TYPE_ARRAY, rects,
-            NULL);
-
-        gst_fcv_video_converter_set_input_opts (vtrans->fcvconvert, 0, inopts);
-      }
-#endif // USE_FCV_CONVERTER
       break;
     }
     case PROP_BACKGROUND:
       vtrans->background = g_value_get_uint (value);
-
-#ifdef USE_C2D_CONVERTER
-      if (vtrans->c2dconvert != NULL) {
-        GstStructure *opts = gst_structure_new ("options",
-            GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT,
-                vtrans->background,
-            NULL);
-        gst_c2d_video_converter_set_output_opts (vtrans->c2dconvert, 0, opts);
-      }
-#endif // USE_C2D_CONVERTER
-
-#ifdef USE_GLES_CONVERTER
-      if (vtrans->glesconvert != NULL) {
-        GstStructure *opts = gst_structure_new ("options",
-            GST_GLES_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT,
-                vtrans->background,
-            NULL);
-        gst_gles_video_converter_set_output_opts (vtrans->glesconvert, 0, opts);
-      }
-#endif // USE_GLES_CONVERTER
-
-#ifdef USE_FCV_CONVERTER
-      if (vtrans->fcvconvert != NULL) {
-        GstStructure *opts = gst_structure_new ("options",
-            GST_FCV_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT,
-                vtrans->background,
-            NULL);
-        gst_fcv_video_converter_set_output_opts (vtrans->fcvconvert, 0, opts);
-      }
-#endif // USE_FCV_CONVERTER
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
   }
+
+  GST_VIDEO_TRANSFORM_UNLOCK (vtrans);
 }
 
 static void
@@ -2069,6 +1887,8 @@ gst_video_transform_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec)
 {
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM (object);
+
+  GST_VIDEO_TRANSFORM_LOCK (vtrans);
 
   switch (prop_id) {
     case PROP_FLIP_HORIZONTAL:
@@ -2123,6 +1943,8 @@ gst_video_transform_get_property (GObject * object, guint prop_id,
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
   }
+
+  GST_VIDEO_TRANSFORM_UNLOCK (vtrans);
 }
 
 static void
@@ -2153,6 +1975,8 @@ gst_video_transform_finalize (GObject * object)
 
   if (vtrans->outpool != NULL)
     gst_object_unref (vtrans->outpool);
+
+  g_mutex_clear (&(vtrans)->lock);
 
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (vtrans));
 }
@@ -2237,6 +2061,8 @@ gst_video_transform_class_init (GstVideoTransformClass * klass)
 static void
 gst_video_transform_init (GstVideoTransform * vtrans)
 {
+  g_mutex_init (&(vtrans)->lock);
+
   vtrans->flip_h = DEFAULT_PROP_FLIP_HORIZONTAL;
   vtrans->flip_v = DEFAULT_PROP_FLIP_VERTICAL;
   vtrans->rotation = DEFAULT_PROP_ROTATE;

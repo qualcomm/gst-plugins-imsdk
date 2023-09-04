@@ -121,14 +121,17 @@ struct _GstMLVideoConverter {
   /// Supported converters.
 #ifdef USE_C2D_CONVERTER
   GstC2dVideoConverter *c2dconvert;
+  GstC2dComposition    composition;
 #endif // USE_C2D_CONVERTER
 
 #ifdef USE_GLES_CONVERTER
   GstGlesVideoConverter *glesconvert;
+  GstGlesComposition    composition;
 #endif // USE_GLES_CONVERTER
 
 #ifdef USE_FCV_CONVERTER
   GstFcvVideoConverter *fcvconvert;
+  GstFcvComposition    composition;
 #endif // USE_FCV_CONVERTER
 
   /// Properties.

@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -107,13 +107,13 @@ struct _GstVideoComposer {
 
   /// Number of sink pads.
   guint                n_inputs;
-  /// Number of source pads.
-  guint                n_outputs;
 
   /// Output pad caps.
   GstVideoInfo         *outinfo;
   /// Output buffer pool.
   GstBufferPool        *outpool;
+  // Whether output caps have UBWC compression.
+  gboolean             isubwc;
 
   /// Output buffer duration.
   GstClockTime         duration;

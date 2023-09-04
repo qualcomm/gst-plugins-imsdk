@@ -16,13 +16,23 @@ pkg_check_modules(GST_ALLOC
 pkg_check_modules(GST_VIDEO
   REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
 
-# Check whether MMM color format header is present.
 include(CheckIncludeFile)
+include(CheckIncludeFileCXX)
+
+# Check whether MMM color format header is present.
 check_include_file("display/media/mmm_color_fmt.h" HAVE_MMM_COLOR_FMT_H)
 
 # Check whether DMA HEAP header is present.
-include(CheckIncludeFile)
 check_include_file("linux/dma-heap.h" HAVE_LINUX_DMA_HEAP_H)
+
+# Check whether Adreno C2D header is present.
+check_include_file("adreno/c2d2.h" HAVE_ADRENO_C2D2_H)
+
+# Check whether IOT CORE IB2C header is present.
+check_include_file_cxx("iot-core-algs/ib2c.h" HAVE_IOT_CORE_IB2C_H)
+
+# Check whether FastCV header is present.
+check_include_file("fastcv/fastcv.h" HAVE_FASTCV_H)
 
 # Common compiler flags.
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")

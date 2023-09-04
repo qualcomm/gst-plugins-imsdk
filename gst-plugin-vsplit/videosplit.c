@@ -145,14 +145,14 @@ gst_vsplit_request_free (GstVSplitRequest * request)
   }
 
   g_ptr_array_free (request->outframes, TRUE);
-  g_free (request->inframe);
-  g_free (request);
+  g_slice_free (GstVideoFrame, request->inframe);
+  g_slice_free (GstVSplitRequest, request);
 }
 
 static GstVSplitRequest *
 gst_vsplit_request_new (guint n_outputs)
 {
-  GstVSplitRequest *request = g_new (GstVSplitRequest, 1);
+  GstVSplitRequest *request = g_slice_new0 (GstVSplitRequest);
   guint idx = 0;
 
   gst_mini_object_init (GST_MINI_OBJECT (request), 0,
@@ -160,7 +160,7 @@ gst_vsplit_request_new (guint n_outputs)
       (GstMiniObjectFreeFunction) gst_vsplit_request_free);
 
   request->id = NULL;
-  request->inframe = g_new0 (GstVideoFrame, 1);
+  request->inframe = g_slice_new0 (GstVideoFrame);
 
   request->outframes = g_ptr_array_sized_new (n_outputs);
   g_ptr_array_set_size (request->outframes, n_outputs);
@@ -179,7 +179,39 @@ gst_vsplit_request_release (GstVSplitRequest * request)
   gst_mini_object_unref (GST_MINI_OBJECT_CAST (request));
 }
 
-static void
+#ifdef USE_C2D_CONVERTER
+static inline void
+gst_c2d_composition_free (gpointer userdata)
+{
+  GstC2dComposition *composition = (GstC2dComposition*) userdata;
+  guint idx = 0;
+
+  for (idx = 0; idx < composition->n_blits; idx++) {
+    g_slice_free (GstVideoRectangle, composition->blits[idx].sources);
+    g_slice_free (GstVideoRectangle, composition->blits[idx].destinations);
+  }
+
+  g_slice_free (GstC2dBlit, composition->blits);
+}
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+static inline void
+gst_gles_composition_free (gpointer userdata)
+{
+  GstGlesComposition *composition = (GstGlesComposition*) userdata;
+  guint idx = 0;
+
+  for (idx = 0; idx < composition->n_blits; idx++) {
+    g_slice_free (GstVideoRectangle, composition->blits[idx].sources);
+    g_slice_free (GstVideoRectangle, composition->blits[idx].destinations);
+  }
+
+  g_slice_free (GstGlesBlit, composition->blits);
+}
+#endif // USE_GLES_CONVERTER
+
+static inline void
 gst_data_queue_free_item (gpointer userdata)
 {
  GstDataQueueItem *item = userdata;
@@ -480,111 +512,125 @@ gst_video_split_stop_worker_task (GstVideoSplit * vsplit)
 }
 
 static void
-gst_video_split_update_params (GstVideoSplit * vsplit, guint index,
-    GstVideoFrame * inframe, GstVideoFrame * outframe,
-    GstVideoRegionOfInterestMeta * roimeta)
+gst_video_split_fill_composition (GstVideoSplit * vsplit,
+    GArray * compositions, guint index, GstVideoFrame * inframe,
+    GstVideoRegionOfInterestMeta * roimeta, GstVideoFrame * outframe)
 {
-  GstStructure *opts = NULL;
-  GArray *s_rects = NULL, *d_rects = NULL;
-  GstVideoRectangle *s_region = NULL, *d_region = NULL;
+#ifdef USE_C2D_CONVERTER
+  GstC2dComposition *composition = NULL;
+#endif // USE_C2D_CONVERTER
+#ifdef USE_GLES_CONVERTER
+  GstGlesComposition *composition = NULL;
+#endif // USE_GLES_CONVERTER
+  GstVideoRectangle *source = NULL, *destination = NULL;
   gint par_n = 0, par_d = 0, sar_n = 0, sar_d = 0, num = 0, den = 0;
 
-  s_rects = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoRectangle), 1);
-  d_rects = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoRectangle), 1);
+#ifdef USE_C2D_CONVERTER
+  composition = &(g_array_index (compositions, GstC2dComposition, index));
 
-  g_array_set_size (s_rects, 1);
-  g_array_set_size (d_rects, 1);
+  composition->blits = g_slice_new0 (GstC2dBlit);
+  composition->n_blits = 1;
 
-  s_region = &(g_array_index (s_rects, GstVideoRectangle, 0));
+  if (GST_VIDEO_SPLIT_SINKPAD (vsplit->sinkpad)->isubwc)
+    composition->blits[0].flags |= GST_C2D_FLAG_UBWC_FORMAT;
 
-  // If available extract coordinates and dimensions from ROI meta.
-  s_region->x = roimeta ? (gint) roimeta->x : 0;
-  s_region->y = roimeta ? (gint) roimeta->y : 0;
-  s_region->w = roimeta ? (gint) roimeta->w : GST_VIDEO_FRAME_WIDTH (inframe);
-  s_region->h = roimeta ? (gint) roimeta->h : GST_VIDEO_FRAME_HEIGHT (inframe);
+  composition->flags = GST_C2D_FLAG_CLEAR_BACKGROUND;
+#endif // USE_C2D_CONVERTER
+#ifdef USE_GLES_CONVERTER
+  composition = &(g_array_index (compositions, GstGlesComposition, index));
+
+  composition->blits = g_slice_new0 (GstGlesBlit);
+  composition->n_blits = 1;
+
+  if (GST_VIDEO_SPLIT_SINKPAD (vsplit->sinkpad)->isubwc)
+    composition->blits[0].flags |= GST_GLES_FLAG_UBWC_FORMAT;
+
+  composition->flags = GST_GLES_FLAG_CLEAR_BACKGROUND;
+#endif // USE_GLES_CONVERTER
+
+  composition->frame = outframe;
+  composition->bgcolor = 0x00000000;
+
+  composition->blits[0].frame = inframe;
+  composition->blits[0].alpha = G_MAXUINT8;
+
+  composition->blits[0].sources = g_slice_new (GstVideoRectangle);
+  composition->blits[0].destinations = g_slice_new (GstVideoRectangle);
+  composition->blits[0].n_regions = 1;
+
+  if (roimeta != NULL) {
+    composition->blits[0].sources[0].x = roimeta->x;
+    composition->blits[0].sources[0].y = roimeta->y;
+    composition->blits[0].sources[0].w = roimeta->w;
+    composition->blits[0].sources[0].h = roimeta->h;
+  } else {
+    composition->blits[0].sources[0].x = 0;
+    composition->blits[0].sources[0].y = 0;
+    composition->blits[0].sources[0].w = GST_VIDEO_FRAME_WIDTH (inframe);
+    composition->blits[0].sources[0].h = GST_VIDEO_FRAME_HEIGHT (inframe);
+  }
+
+  composition->blits[0].destinations[0].x = 0;
+  composition->blits[0].destinations[0].y = 0;
+  composition->blits[0].destinations[0].w = GST_VIDEO_FRAME_WIDTH (outframe);
+  composition->blits[0].destinations[0].h = GST_VIDEO_FRAME_HEIGHT (outframe);
+
+  source = composition->blits[0].sources;
+  destination = composition->blits[0].destinations;
 
   // Fill output PAR (Pixel Aspect Ratio), will be used to calculations.
   par_n = GST_VIDEO_INFO_PAR_N (&(outframe)->info);
   par_d = GST_VIDEO_INFO_PAR_D (&(outframe)->info);
 
   // Calculate input SAR (Source Aspect Ratio) value.
-  if (!gst_util_fraction_multiply (s_region->w, s_region->h, par_n, par_d,
+  if (!gst_util_fraction_multiply (source->w, source->h, par_n, par_d,
           &sar_n, &sar_d))
     sar_n = sar_d = 1;
-
-  d_region = &(g_array_index (d_rects, GstVideoRectangle, 0));
-
-  d_region->x = 0;
-  d_region->y = 0;
-  d_region->w = GST_VIDEO_FRAME_WIDTH (outframe);
-  d_region->h = GST_VIDEO_FRAME_HEIGHT (outframe);
 
   // Adjust destination dimensions to preserve SAR.
   gst_util_fraction_multiply (sar_n, sar_d, par_d, par_n, &num, &den);
 
   if (num > den) {
-    d_region->h = gst_util_uint64_scale_int (d_region->w, den, num);
+    destination->h = gst_util_uint64_scale_int (destination->w, den, num);
 
     // Clip height if outside the limit and recalculate width.
-    if (d_region->h > GST_VIDEO_FRAME_HEIGHT (outframe)) {
-      d_region->h = GST_VIDEO_FRAME_HEIGHT (outframe);
-      d_region->w = gst_util_uint64_scale_int (d_region->h, num, den);
-      d_region->x = (GST_VIDEO_FRAME_WIDTH (outframe) - d_region->w) / 2;
+    if (destination->h > GST_VIDEO_FRAME_HEIGHT (outframe)) {
+      destination->h = GST_VIDEO_FRAME_HEIGHT (outframe);
+      destination->w = gst_util_uint64_scale_int (destination->h, num, den);
+      destination->x = (GST_VIDEO_FRAME_WIDTH (outframe) - destination->w) / 2;
     }
 
-    d_region->y = (GST_VIDEO_FRAME_HEIGHT (outframe) - d_region->h) / 2;
+    destination->y = (GST_VIDEO_FRAME_HEIGHT (outframe) - destination->h) / 2;
   } else if (num < den) {
-    d_region->w = gst_util_uint64_scale_int (d_region->h, num, den);
+    destination->w = gst_util_uint64_scale_int (destination->h, num, den);
 
     // Clip width if outside the limit and recalculate height.
-    if (d_region->w > GST_VIDEO_FRAME_WIDTH (outframe)) {
-      d_region->w = GST_VIDEO_FRAME_WIDTH (outframe);
-      d_region->h = gst_util_uint64_scale_int (d_region->w, den, num);
-      d_region->y = (GST_VIDEO_FRAME_HEIGHT (outframe) - d_region->h) / 2;
+    if (destination->w > GST_VIDEO_FRAME_WIDTH (outframe)) {
+      destination->w = GST_VIDEO_FRAME_WIDTH (outframe);
+      destination->h = gst_util_uint64_scale_int (destination->w, den, num);
+      destination->y = (GST_VIDEO_FRAME_HEIGHT (outframe) - destination->h) / 2;
     }
 
-    d_region->x = (GST_VIDEO_FRAME_WIDTH (outframe) - d_region->w) / 2;
+    destination->x = (GST_VIDEO_FRAME_WIDTH (outframe) - destination->w) / 2;
   }
 
   // Add ROI meta with the actual part of the buffer filled with image data.
-  gst_buffer_add_video_region_of_interest_meta (outframe->buffer,
-      "ImageRegion", d_region->x, d_region->y, d_region->w, d_region->h);
+  gst_buffer_add_video_region_of_interest_meta (outframe->buffer, "ImageRegion",
+      destination->x, destination->y, destination->w, destination->h);
 
-  GST_TRACE_OBJECT (vsplit, "Rectangles [%u] SAR[%d/%d]: [%d %d %d %d] -> "
-      "[%d %d %d %d]", index, sar_n, sar_d, s_region->x, s_region->y, s_region->w,
-      s_region->h, d_region->x, d_region->y, d_region->w, d_region->h);
-
-#ifdef USE_C2D_CONVERTER
-  opts = gst_structure_new ("options",
-      GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
-          GST_VIDEO_SPLIT_SINKPAD (vsplit->sinkpad)->isubwc,
-      GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, G_TYPE_ARRAY, s_rects,
-      GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, G_TYPE_ARRAY, d_rects,
-      NULL);
-
-  gst_c2d_video_converter_set_input_opts (vsplit->c2dconvert, index, opts);
-#endif // USE_C2D_CONVERTER
-
-#ifdef USE_GLES_CONVERTER
-  opts = gst_structure_new ("options",
-      GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
-          GST_VIDEO_SPLIT_SINKPAD (vsplit->sinkpad)->isubwc,
-      GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, G_TYPE_ARRAY, s_rects,
-      GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, G_TYPE_ARRAY, d_rects,
-      NULL);
-
-  gst_gles_video_converter_set_input_opts (vsplit->glesconvert, index, opts);
-#endif // USE_GLES_CONVERTER
+  GST_TRACE_OBJECT (vsplit, "Composition [%u] SAR[%d/%d]: [%d %d %d %d] -> "
+      "[%d %d %d %d]", index, sar_n, sar_d, source->x, source->y, source->w,
+      source->h, destination->x, destination->y, destination->w, destination->h);
 }
 
 static gboolean
 gst_video_split_populate_compositions (GstVideoSplit * vsplit,
-    GstVideoFrame * inframe, GPtrArray * vframes, guint * n_compositions)
+    GstVideoFrame * inframe, GPtrArray * vframes, GArray * compositions)
 {
   GList *list = NULL;
   GstVideoFrame *outframe = NULL;
   GstVideoRegionOfInterestMeta *roimeta = NULL;
-  guint idx = 0, num = 0, id = 0, n_metas = 0,n_entries = 0;
+  guint idx = 0, num = 0, id = 0, n_metas = 0, n_entries = 0;
   gboolean success = TRUE;
 
   // Fetch the number of ROI meta entries from the input buffer.
@@ -617,6 +663,9 @@ gst_video_split_populate_compositions (GstVideoSplit * vsplit,
     idx = g_list_index (vsplit->srcpads, srcpad);
     g_ptr_array_index (vframes, idx) = outframes;
 
+    // Resize the number of compositions.
+    g_array_set_size (compositions, compositions->len + n_entries);
+
     // Aquire buffer for each frame and update the converter parameters.
     for (idx = 0; idx < outframes->len; idx++, id++) {
       outframe = &(g_array_index (outframes, GstVideoFrame, idx));
@@ -635,15 +684,28 @@ gst_video_split_populate_compositions (GstVideoSplit * vsplit,
         roimeta = gst_buffer_get_video_region_of_interest_meta_id (
             inframe->buffer, idx);
 
-      // Update source/destination rectangles and output buffers flags/meta.
-      gst_video_split_update_params (vsplit, id, inframe, outframe, roimeta);
+      // Fill compositions paraeters and output buffer ROI meta.
+      gst_video_split_fill_composition (vsplit, compositions, id, inframe,
+          roimeta, outframe);
+
+#ifdef USE_C2D_CONVERTER
+      GstC2dComposition *composition =
+          &(g_array_index (compositions, GstC2dComposition, id));
+
+      if (srcpad->isubwc)
+        composition->flags |= GST_C2D_FLAG_UBWC_FORMAT;
+#endif // USE_C2D_CONVERTER
+#ifdef USE_GLES_CONVERTER
+      GstGlesComposition *composition =
+          &(g_array_index (compositions, GstGlesComposition, id));
+
+      if (srcpad->isubwc)
+        composition->flags |= GST_GLES_FLAG_UBWC_FORMAT;
+#endif // USE_GLES_CONVERTER
 
       // Reset ROI metadata pointer.
       roimeta = NULL;
     }
-
-    // Increase the total number of compositions.
-    *n_compositions += n_entries;
   }
 
   GST_VIDEO_SPLIT_UNLOCK (vsplit);
@@ -658,95 +720,84 @@ gst_video_split_sinkpad_chain (GstPad * pad, GstObject * parent,
   GstVideoSplitSinkPad *sinkpad = GST_VIDEO_SPLIT_SINKPAD (pad);
   GstVideoSplit *vsplit = GST_VIDEO_SPLIT (parent);
   GstVSplitRequest *request = NULL;
-  guint idx = 0, n_entries = 0, n_compositions = 0;
+  GArray *compositions = NULL;
   gboolean success = FALSE;
 
   GST_TRACE_OBJECT (pad, "Received %" GST_PTR_FORMAT, inbuffer);
 
   GST_VIDEO_SPLIT_LOCK (vsplit);
-  n_entries = g_list_length (vsplit->srcpads);
+  request = gst_vsplit_request_new (g_list_length (vsplit->srcpads));
   GST_VIDEO_SPLIT_UNLOCK (vsplit);
 
   // Allocate request structure with shared input frame across all compositions.
-  request = gst_vsplit_request_new (n_entries);
+  if (request == NULL) {
+    GST_ERROR_OBJECT (pad, "Failed to allocate memory for request!");
+    goto cleanup;
+  }
 
   success = gst_video_frame_map (request->inframe, sinkpad->info, inbuffer,
       GST_MAP_READ | GST_VIDEO_FRAME_MAP_FLAG_NO_REF);
 
   if (!success) {
     GST_ERROR_OBJECT (pad, "Failed to map input buffer!");
+    goto cleanup;
+  }
 
-    gst_vsplit_request_release (request);
-    gst_buffer_unref (inbuffer);
+#ifdef USE_C2D_CONVERTER
+  compositions = g_array_new (FALSE, FALSE, sizeof (GstC2dComposition));
+  g_array_set_clear_func (compositions, gst_c2d_composition_free);
+#endif // USE_C2D_CONVERTER
+#ifdef USE_GLES_CONVERTER
+  compositions = g_array_new (FALSE, FALSE, sizeof (GstGlesComposition));
+  g_array_set_clear_func (compositions, gst_gles_composition_free);
+#endif // USE_GLES_CONVERTER
 
-    return GST_FLOW_ERROR;
+  if (compositions == NULL) {
+    GST_ERROR_OBJECT (pad, "Failed to allocate memory for compositions!");
+    goto cleanup;
   }
 
   // Populate total number of compositions and their output frames.
   success = gst_video_split_populate_compositions (vsplit, request->inframe,
-      request->outframes, &n_compositions);
+      request->outframes, compositions);
 
   if (!success) {
     GST_ERROR_OBJECT (pad, "Failed to populate compositions!");
-    gst_vsplit_request_release (request);
-    return GST_FLOW_ERROR;
+    goto cleanup;
   }
 
   // Get start time for performance measurements.
   request->time = gst_util_get_timestamp ();
 
+   if (compositions->len != 0) {
 #ifdef USE_C2D_CONVERTER
-  if (n_compositions != 0) {
-    GstC2dComposition *compositions = g_new (GstC2dComposition, n_compositions);
-    guint num = 0, id = 0;
-
-    for (idx = 0; idx < request->outframes->len; idx++) {
-      GArray *vframes = g_ptr_array_index (request->outframes, idx);
-
-      for (num = 0; (vframes != NULL) && (num < vframes->len); num++, id++) {
-        compositions[id].inframes = request->inframe;
-        compositions[id].n_inputs = 1;
-        compositions[id].outframe = &(g_array_index (vframes, GstVideoFrame, num));
-      }
-    }
-
     request->id = gst_c2d_video_converter_submit_request (vsplit->c2dconvert,
-        compositions, n_compositions);
-
-    g_free (compositions);
-  }
+        (GstC2dComposition*) compositions->data, compositions->len);
 #endif // USE_C2D_CONVERTER
-
 #ifdef USE_GLES_CONVERTER
-  if (n_compositions != 0) {
-    GstGlesComposition *compositions = g_new (GstGlesComposition, n_compositions);
-    guint num = 0, id = 0;
-
-    for (idx = 0; idx < request->outframes->len; idx++) {
-      GArray *vframes = g_ptr_array_index (request->outframes, idx);
-
-      for (num = 0; (vframes != NULL) && (num < vframes->len); num++, id++) {
-        compositions[id].inframes = request->inframe;
-        compositions[id].n_inputs = 1;
-        compositions[id].outframe = &(g_array_index (vframes, GstVideoFrame, num));
-      }
-    }
-
     request->id = gst_gles_video_converter_submit_request (vsplit->glesconvert,
-        compositions, n_compositions);
-
-    g_free (compositions);
-  }
+        (GstGlesComposition*) compositions->data, compositions->len);
 #endif // USE_GLES_CONVERTER
-
-  if ((n_compositions != 0) && (request->id == NULL)) {
-    GST_ERROR_OBJECT (pad, "Failed to submit request(s)!");
-    gst_vsplit_request_release (request);
-    return GST_FLOW_ERROR;
   }
 
+  if ((compositions->len != 0) && (request->id == NULL)) {
+    GST_ERROR_OBJECT (pad, "Failed to submit request(s)!");
+    goto cleanup;
+  }
+
+  g_array_free (compositions, TRUE);
   gst_data_queue_push_object (sinkpad->requests, GST_MINI_OBJECT (request));
+
   return GST_FLOW_OK;
+
+cleanup:
+  if ((request == NULL) || (request->inframe->buffer == NULL))
+    gst_buffer_unref (inbuffer);
+
+  g_array_free (compositions, TRUE);
+  gst_vsplit_request_release (request);
+
+  return GST_FLOW_ERROR;
 }
 
 static GstCaps *
@@ -798,7 +849,6 @@ static gboolean
 gst_video_split_sinkpad_setcaps (GstVideoSplit * vsplit, GstPad * pad,
     GstCaps * caps)
 {
-  GstStructure *opts = NULL;
   GList *list = NULL;
   GstVideoInfo info = { 0, };
 
@@ -828,32 +878,6 @@ gst_video_split_sinkpad_setcaps (GstVideoSplit * vsplit, GstPad * pad,
       GST_VIDEO_SPLIT_UNLOCK (vsplit);
       return FALSE;
     }
-
-#ifdef USE_C2D_CONVERTER
-  opts = gst_structure_new ("options",
-      GST_C2D_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT, 0x00000000,
-      GST_C2D_VIDEO_CONVERTER_OPT_CLEAR, G_TYPE_BOOLEAN,
-          (srcpad->mode == GST_VSPLIT_MODE_NONE) ? FALSE : TRUE,
-      GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
-          GST_VIDEO_SPLIT_SRCPAD (srcpad)->isubwc,
-      NULL);
-
-  gst_c2d_video_converter_set_output_opts (vsplit->c2dconvert,
-      g_list_index (vsplit->srcpads, srcpad), opts);
-#endif // USE_C2D_CONVERTER
-
-#ifdef USE_GLES_CONVERTER
-  opts = gst_structure_new ("options",
-      GST_GLES_VIDEO_CONVERTER_OPT_BACKGROUND, G_TYPE_UINT, 0x00000000,
-      GST_GLES_VIDEO_CONVERTER_OPT_CLEAR, G_TYPE_BOOLEAN,
-          (srcpad->mode == GST_VSPLIT_MODE_NONE) ? FALSE : TRUE,
-      GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
-          GST_VIDEO_SPLIT_SRCPAD (srcpad)->isubwc,
-      NULL);
-
-  gst_gles_video_converter_set_output_opts (vsplit->glesconvert,
-      g_list_index (vsplit->srcpads, srcpad), opts);
-#endif // USE_GLES_CONVERTER
   }
 
   GST_VIDEO_SPLIT_UNLOCK (vsplit);

@@ -92,6 +92,12 @@ G_BEGIN_DECLS
   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_VIDEO_TRANSFORM))
 #define GST_VIDEO_TRANSFORM_CAST(obj)       ((GstVideoTransform *)(obj))
 
+#define GST_VIDEO_TRANSFORM_GET_LOCK(obj) (&GST_VIDEO_TRANSFORM(obj)->lock)
+#define GST_VIDEO_TRANSFORM_LOCK(obj) \
+  g_mutex_lock(GST_VIDEO_TRANSFORM_GET_LOCK(obj))
+#define GST_VIDEO_TRANSFORM_UNLOCK(obj) \
+  g_mutex_unlock(GST_VIDEO_TRANSFORM_GET_LOCK(obj))
+
 #define GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE(pspec, state) \
   ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
       : ((pspec->flags & GST_PARAM_MUTABLE_PAUSED) ? (state <= GST_STATE_PAUSED) \
@@ -110,6 +116,9 @@ typedef struct _GstVideoTransformClass GstVideoTransformClass;
 
 struct _GstVideoTransform {
   GstBaseTransform        parent;
+
+  /// Global mutex lock.
+  GMutex                  lock;
 
   GstVideoInfo            *ininfo;
   GstVideoInfo            *outinfo;
