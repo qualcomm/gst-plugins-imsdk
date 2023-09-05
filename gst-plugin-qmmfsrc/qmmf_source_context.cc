@@ -1104,6 +1104,11 @@ gst_qmmf_context_new (GstCameraEventCb eventcb, GstCameraMetaCb metacb,
       g_slice_free (GstQmmfContext, context);,
       NULL, "QMMF Recorder creation failed!");
 
+  context->state = GST_STATE_NULL;
+  context->eventcb = eventcb;
+  context->metacb = metacb;
+  context->userdata = userdata;
+
   // Register a events function which will call the EOS callback if necessary.
   cbs.event_cb =
       [&, context] (::qmmf::recorder::EventType type, void *data, size_t size)
@@ -1123,12 +1128,6 @@ gst_qmmf_context_new (GstCameraEventCb eventcb, GstCameraMetaCb metacb,
       gst_structure_new_empty ("org.quic.camera.anr_tuning");
   context->mwbsettings =
       gst_structure_new_empty ("org.codeaurora.qcamera3.manualWB");
-
-  context->state = GST_STATE_NULL;
-
-  context->eventcb = eventcb;
-  context->metacb = metacb;
-  context->userdata = userdata;
 
   GST_INFO ("Created QMMF context: %p", context);
   return context;
