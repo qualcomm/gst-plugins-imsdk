@@ -312,6 +312,10 @@ image_pad_update_params (GstPad * pad, GstStructure *structure)
   gst_structure_get_int (structure, "height", &height);
   gst_structure_get_fraction (structure, "framerate", &fps_n, &fps_d);
 
+  // Use max-framerate for fps calculation if variable framerate is negotiated.
+  if ((fps_n == 0) && (fps_d == 1))
+    gst_structure_get_fraction (structure, "max-framerate", &fps_n, &fps_d);
+
   ipad->duration = gst_util_uint64_scale_int (GST_SECOND, fps_d, fps_n);
   framerate = 1 / GST_TIME_AS_SECONDS (gst_guint64_to_gdouble (ipad->duration));
 
@@ -453,6 +457,8 @@ qmmfsrc_image_pad_fixate_caps (GstPad * pad)
   }
 
   GST_DEBUG_OBJECT (pad, "Trying to fixate caps: %" GST_PTR_FORMAT, caps);
+
+  g_return_val_if_fail (!gst_caps_is_empty(caps), FALSE);
 
   // Capabilities are not fixated, fixate them.
   caps = gst_caps_make_writable (caps);
