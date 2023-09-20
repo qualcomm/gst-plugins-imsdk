@@ -77,13 +77,8 @@
 #define GST_CAT_DEFAULT video_transform_debug
 GST_DEBUG_CATEGORY_STATIC (video_transform_debug);
 
-#ifdef USE_FCV_CONVERTER
-#define gst_video_transform_parent_class parent_class
-G_DEFINE_TYPE (GstFcvVideoTransform, gst_video_transform, GST_TYPE_BASE_TRANSFORM);
-#else // USE_FCV_CONVERTER
 #define gst_video_transform_parent_class parent_class
 G_DEFINE_TYPE (GstVideoTransform, gst_video_transform, GST_TYPE_BASE_TRANSFORM);
-#endif // !USE_FCV_CONVERTER
 
 #define GST_TYPE_VIDEO_TRANSFORM_ROTATE (gst_video_trasform_rotate_get_type())
 
@@ -158,13 +153,8 @@ gst_video_trasform_rotate_get_type (void)
     {0, NULL, NULL},
   };
 
-#ifdef USE_FCV_CONVERTER
-  if (!gtype)
-    gtype = g_enum_register_static ("GstFcvVideoTransformRotate", methods);
-#else // USE_FCV_CONVERTER
   if (!gtype)
     gtype = g_enum_register_static ("GstVideoTransformRotate", methods);
-#endif // !USE_FCV_CONVERTER
 
   return gtype;
 }
@@ -2289,28 +2279,10 @@ gst_video_transform_init (GstVideoTransform * vtrans)
 static gboolean
 plugin_init (GstPlugin * plugin)
 {
-#ifdef USE_FCV_CONVERTER
-  return gst_element_register (plugin, "qtifcvtransform", GST_RANK_PRIMARY,
-      GST_TYPE_VIDEO_TRANSFORM);
-#else // USE_FCV_CONVERTER
   return gst_element_register (plugin, "qtivtransform", GST_RANK_PRIMARY,
       GST_TYPE_VIDEO_TRANSFORM);
-#endif // !USE_FCV_CONVERTER
 }
 
-#ifdef USE_FCV_CONVERTER
-GST_PLUGIN_DEFINE (
-    GST_VERSION_MAJOR,
-    GST_VERSION_MINOR,
-    qtifcvtransform,
-    "Resizes, colorspace converts, flips and rotates video",
-    plugin_init,
-    PACKAGE_VERSION,
-    PACKAGE_LICENSE,
-    PACKAGE_SUMMARY,
-    PACKAGE_ORIGIN
-)
-#else // USE_FCV_CONVERTER
 GST_PLUGIN_DEFINE (
     GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
@@ -2322,4 +2294,3 @@ GST_PLUGIN_DEFINE (
     PACKAGE_SUMMARY,
     PACKAGE_ORIGIN
 )
-#endif // !USE_FCV_CONVERTER
