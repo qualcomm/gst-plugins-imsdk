@@ -107,8 +107,6 @@ typedef enum {
 
 typedef struct _GstVideoTransform GstVideoTransform;
 typedef struct _GstVideoTransformClass GstVideoTransformClass;
-typedef struct _GstVideoTransform GstFcvVideoTransform;
-typedef struct _GstVideoTransformClass GstFcvVideoTransformClass;
 
 struct _GstVideoTransform {
   GstBaseTransform        parent;
