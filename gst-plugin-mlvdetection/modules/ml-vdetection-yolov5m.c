@@ -41,17 +41,13 @@
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
 
+#define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
+
 // Layer index at which the object score resides.
 #define SCORE_IDX              4
 // Layer index from which the class labels begin.
 #define CLASSES_IDX            5
 
-#define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
-
-// Offset values for each of the 3 primary tensors needed for dequantization.
-static const gint32 p_qoffsets[3] = { 128, 128, 128 };
-// Scale values for each of the 3 primary tensors needed for dequantization.
-static const gfloat p_qscales[3] = { 0.181336, 0.158401, 0.146546 };
 // Bounding box weights for each of the 3 tensors used for normalization.
 static const gint32 weights[3][2] = { {8, 8}, {16, 16}, {32, 32} };
 // Bounding box gains for each of the 3 tensors used for normalization.
@@ -60,11 +56,6 @@ static const gint32 gains[3][3][2] = {
     { {30,  61}, {62,   45}, {59,  119} },
     { {116, 90}, {156, 198}, {373, 326} },
 };
-
-// Offset value for dequantizing the tensors with the 2nd set of caps.
-static const gint32 s_qoffset = 3;
-// Scale value for dequantizing the tensors with the 2nd set of caps.
-static const gfloat s_qscale = 0.005047998391091824;
 
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
@@ -87,6 +78,11 @@ struct _GstMLSubModule {
   GHashTable *labels;
   // Confidence threshold value.
   gfloat     threshold;
+
+  // Offset values for each of the tensors for dequantization of some tensors.
+  gdouble    qoffsets[GST_ML_MAX_TENSORS];
+  // Scale values for each of the tensors for dequantization of some tensors.
+  gdouble    qscales[GST_ML_MAX_TENSORS];
 };
 
 static void
@@ -131,7 +127,8 @@ gst_ml_module_parse_split_tensors (GstMLSubModule * submodule,
 
           // Dequantize the object score.
           // Represented as an exponent 'x' in sigmoid function: 1 / (1 + exp(x)).
-          score = (data[num + SCORE_IDX] - p_qoffsets[idx]) * p_qscales[idx];
+          score = (data[num + SCORE_IDX] - submodule->qoffsets[idx]) *
+              submodule->qscales[idx];
 
           // Discard results below the minimum score threshold.
           if (score < threshold)
@@ -145,7 +142,8 @@ gst_ml_module_parse_split_tensors (GstMLSubModule * submodule,
             id = (data[m] > data[id]) ? m : id;
 
           // Dequantize the class confidence.
-          confidence = (data[id] - p_qoffsets[idx]) * p_qscales[idx];
+          confidence =
+              (data[id] - submodule->qoffsets[idx]) * submodule->qscales[idx];
 
           // Discard results below the minimum confidence threshold.
           if (confidence < threshold)
@@ -157,10 +155,14 @@ gst_ml_module_parse_split_tensors (GstMLSubModule * submodule,
           confidence *= 1 / (1 + expf (- score));
 
           // Dequantize the bounding box parameters.
-          bbox[0] = (data[num] - p_qoffsets[idx]) * p_qscales[idx];
-          bbox[1] = (data[num + 1] - p_qoffsets[idx]) * p_qscales[idx];
-          bbox[2] = (data[num + 2] - p_qoffsets[idx]) * p_qscales[idx];
-          bbox[3] = (data[num + 3] - p_qoffsets[idx]) * p_qscales[idx];
+          bbox[0] = (data[num] - submodule->qoffsets[idx]) *
+              submodule->qscales[idx];
+          bbox[1] = (data[num + 1] - submodule->qoffsets[idx]) *
+              submodule->qscales[idx];
+          bbox[2] = (data[num + 2] - submodule->qoffsets[idx]) *
+              submodule->qscales[idx];
+          bbox[3] = (data[num + 3] - submodule->qoffsets[idx]) *
+              submodule->qscales[idx];
 
           // Apply a sigmoid function in order to normalize the parameters.
           bbox[0] = 1 / (1 + expf (- bbox[0]));
@@ -242,7 +244,8 @@ gst_ml_module_parse_batch_tensors (GstMLSubModule * submodule,
 
     // Dequantize the object score.
     // Represented as an exponent 'x' in sigmoid function: 1 / (1 + exp(x)).
-    score = (data[idx + SCORE_IDX] - s_qoffset) * s_qscale;
+    score = (data[idx + SCORE_IDX] - submodule->qoffsets[0]) *
+        submodule->qscales[0];
 
     // Discard results below the minimum score threshold.
     if (score < submodule->threshold)
@@ -256,7 +259,7 @@ gst_ml_module_parse_batch_tensors (GstMLSubModule * submodule,
       id = (data[m] > data[id]) ? m : id;
 
     // Dequantize the class confidence.
-    confidence = (data[id] - s_qoffset) * s_qscale;
+    confidence = (data[id] - submodule->qoffsets[0]) * submodule->qscales[0];
     // Normalize the end confidence with the object score value.
     confidence *= score;
 
@@ -265,10 +268,10 @@ gst_ml_module_parse_batch_tensors (GstMLSubModule * submodule,
       continue;
 
     // Dequantize the bounding box parameters.
-    bbox[0] = (data[idx] - s_qoffset) * s_qscale;
-    bbox[1] = (data[idx + 1] - s_qoffset) * s_qscale;
-    bbox[2] = (data[idx + 2] - s_qoffset) * s_qscale;
-    bbox[3] = (data[idx + 3] - s_qoffset) * s_qscale;
+    bbox[0] = (data[idx] - submodule->qoffsets[0]) * submodule->qscales[0];
+    bbox[1] = (data[idx + 1] - submodule->qoffsets[0]) * submodule->qscales[0];
+    bbox[2] = (data[idx + 2] - submodule->qoffsets[0]) * submodule->qscales[0];
+    bbox[3] = (data[idx + 3] - submodule->qoffsets[0]) * submodule->qscales[0];
 
     label = g_hash_table_lookup (submodule->labels,
         GUINT_TO_POINTER (id - (idx + CLASSES_IDX)));
@@ -306,9 +309,16 @@ gpointer
 gst_ml_module_open (void)
 {
   GstMLSubModule *submodule = NULL;
+  guint idx = 0;
 
   submodule = g_slice_new0 (GstMLSubModule);
   g_return_val_if_fail (submodule != NULL, NULL);
+
+  // Initialize the quantization offsets and scales.
+  for (idx = 0; idx < GST_ML_MAX_TENSORS; idx++) {
+    submodule->qoffsets[idx] = 0.0;
+    submodule->qscales[idx] = 1.0;
+  }
 
   return (gpointer) submodule;
 }
@@ -398,6 +408,50 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
 
   gst_structure_get_double (settings, GST_ML_MODULE_OPT_THRESHOLD, &threshold);
   submodule->threshold = threshold / 100.0;
+
+  if (GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_UINT8) {
+    GstStructure *constants = NULL;
+    const GValue *qoffsets = NULL, *qscales = NULL;
+    guint idx = 0, n_tensors = 0;
+
+    success = gst_structure_has_field (settings, GST_ML_MODULE_OPT_CONSTANTS);
+    if (!success) {
+      GST_ERROR ("Settings stucture does not contain constants value!");
+      goto cleanup;
+    }
+
+    constants = GST_STRUCTURE (g_value_get_boxed (
+        gst_structure_get_value (settings, GST_ML_MODULE_OPT_CONSTANTS)));
+
+    if (!(success = gst_structure_has_field (constants, "q-offsets"))) {
+      GST_ERROR ("Missing quantization offsets coefficients!");
+      goto cleanup;
+    } else if (!(success = gst_structure_has_field (constants, "q-scales"))) {
+      GST_ERROR ("Missing quantization scales coefficients!");
+      goto cleanup;
+    }
+
+    qoffsets = gst_structure_get_value (constants, "q-offsets");
+    qscales = gst_structure_get_value (constants, "q-scales");
+    n_tensors = GST_ML_INFO_N_TENSORS (&(submodule->mlinfo));
+
+    if (!(success = (gst_value_array_get_size (qoffsets) == n_tensors))) {
+      GST_ERROR ("Expecting %u dequantization offsets entries but received "
+          "only %u!", n_tensors, gst_value_array_get_size (qoffsets));
+      goto cleanup;
+    } else if (!(success = (gst_value_array_get_size (qscales) == n_tensors))) {
+      GST_ERROR ("Expecting %u dequantization scales entries but received "
+          "only %u!", n_tensors, gst_value_array_get_size (qscales));
+      goto cleanup;
+    }
+
+    for (idx = 0; idx < n_tensors; idx++) {
+      submodule->qoffsets[idx] =
+          g_value_get_double (gst_value_array_get_value (qoffsets, idx));
+      submodule->qscales[idx] =
+          g_value_get_double (gst_value_array_get_value (qscales, idx));
+    }
+  }
 
 cleanup:
   if (caps != NULL)

@@ -45,18 +45,6 @@
 #define GUINT8_PTR_CAST(data)       ((guint8*) data)
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
 
-#define DEFAULT_SCORE_OFFSET     0
-#define DEFAULT_SCORE_SCALE      0.00349281798
-#define DEFAULT_BOX_OFFSET       0
-#define DEFAULT_BOX_SCALE        1.61797273
-
-// Offset/Score offset value for dequantizing.
-// TODO: optimize
-static gfloat s_offset = DEFAULT_SCORE_OFFSET;
-static gfloat s_scale = DEFAULT_SCORE_SCALE;
-static gfloat b_offset = DEFAULT_BOX_OFFSET;
-static gfloat b_scale = DEFAULT_BOX_SCALE;
-
 // MODULE_CAPS support input dim [32, 32] -> [1920, 1088]. Number class 1 -> 1001
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
@@ -79,15 +67,27 @@ struct _GstMLSubModule {
   GHashTable *labels;
   // Confidence threshold value.
   gfloat     threshold;
+
+  // Offset values for each of the tensors for dequantization of some tensors.
+  gdouble    qoffsets[GST_ML_MAX_TENSORS];
+  // Scale values for each of the tensors for dequantization of some tensors.
+  gdouble    qscales[GST_ML_MAX_TENSORS];
 };
 
 gpointer
 gst_ml_module_open (void)
 {
   GstMLSubModule *submodule = NULL;
+  guint idx = 0;
 
   submodule = g_slice_new0 (GstMLSubModule);
   g_return_val_if_fail (submodule != NULL, NULL);
+
+  // Initialize the quantization offsets and scales.
+  for (idx = 0; idx < GST_ML_MAX_TENSORS; idx++) {
+    submodule->qoffsets[idx] = 0.0;
+    submodule->qscales[idx] = 1.0;
+  }
 
   return (gpointer) submodule;
 }
@@ -178,6 +178,50 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   gst_structure_get_double (settings, GST_ML_MODULE_OPT_THRESHOLD, &threshold);
   submodule->threshold = threshold / 100.0;
 
+  if (GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_UINT8) {
+    GstStructure *constants = NULL;
+    const GValue *qoffsets = NULL, *qscales = NULL;
+    guint idx = 0, n_tensors = 0;
+
+    success = gst_structure_has_field (settings, GST_ML_MODULE_OPT_CONSTANTS);
+    if (!success) {
+      GST_ERROR ("Settings stucture does not contain constants value!");
+      goto cleanup;
+    }
+
+    constants = GST_STRUCTURE (g_value_get_boxed (
+        gst_structure_get_value (settings, GST_ML_MODULE_OPT_CONSTANTS)));
+
+    if (!(success = gst_structure_has_field (constants, "q-offsets"))) {
+      GST_ERROR ("Missing quantization offsets coefficients!");
+      goto cleanup;
+    } else if (!(success = gst_structure_has_field (constants, "q-scales"))) {
+      GST_ERROR ("Missing quantization scales coefficients!");
+      goto cleanup;
+    }
+
+    qoffsets = gst_structure_get_value (constants, "q-offsets");
+    qscales = gst_structure_get_value (constants, "q-scales");
+    n_tensors = GST_ML_INFO_N_TENSORS (&(submodule->mlinfo));
+
+    if (!(success = (gst_value_array_get_size (qoffsets) == n_tensors))) {
+      GST_ERROR ("Expecting %u dequantization offsets entries but received "
+          "only %u!", n_tensors, gst_value_array_get_size (qoffsets));
+      goto cleanup;
+    } else if (!(success = (gst_value_array_get_size (qscales) == n_tensors))) {
+      GST_ERROR ("Expecting %u dequantization scales entries but received "
+          "only %u!", n_tensors, gst_value_array_get_size (qscales));
+      goto cleanup;
+    }
+
+    for (idx = 0; idx < n_tensors; idx++) {
+      submodule->qoffsets[idx] =
+          g_value_get_double (gst_value_array_get_value (qoffsets, idx));
+      submodule->qscales[idx] =
+          g_value_get_double (gst_value_array_get_value (qscales, idx));
+    }
+  }
+
 cleanup:
   if (caps != NULL)
     gst_caps_unref (caps);
@@ -210,11 +254,12 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GArray *predictions = (GArray *) output;
   GstProtectionMeta *pmeta = NULL;
   GstLabel *label = NULL;
-  gint sar_n = 1, sar_d = 1, nms = -1;
   gpointer bboxes = NULL, scores = NULL;
+  GstMLType mltype = GST_ML_TYPE_UNKNOWN;
+  gint sar_n = 1, sar_d = 1, nms = -1;
   guint n_classes = 0, n_detections = 0, in_height = 0, in_width = 0, idx = 0;
   gfloat cx = 0, cy = 0, w = 0, h = 0;
-  GstMLType mltype = GST_ML_INFO_TYPE (&mlframe->info);
+  gdouble s_scale = 0.0, s_offset = 0.0, b_offset = 0.0, b_scale = 0.0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);
@@ -232,6 +277,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     gst_structure_get_uint (pmeta->info, "input-tensor-width", &in_width);
   }
 
+  mltype = GST_ML_FRAME_TYPE (mlframe);
   n_detections = GST_ML_FRAME_DIM (mlframe, 0, 2);
 
   if (GST_ML_FRAME_N_BLOCKS (mlframe) == 2) {
@@ -245,6 +291,12 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       scores = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
       n_classes = GST_ML_FRAME_DIM (mlframe, 0, 1);
     }
+
+    s_scale = submodule->qscales[0];
+    s_offset = submodule->qoffsets[0];
+
+    b_scale = submodule->qscales[1];
+    b_offset = submodule->qoffsets[1];
   } else if (GST_ML_FRAME_N_BLOCKS (mlframe) == 1) {
     //Tensor dimensions looks like: <1, 84, 8400>
     bboxes = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
@@ -255,6 +307,9 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       scores = GUINT8_PTR_CAST (bboxes) + 4 * n_detections;
 
     n_classes = GST_ML_FRAME_DIM (mlframe, 0, 1) - 4;
+
+    s_scale = b_scale = submodule->qscales[0];
+    s_offset = b_offset = submodule->qoffsets[0];
   }
 
   GST_LOG ("Input size[%d:%d] SAR[%d/%d]. n_detections: %d. n_classes: %d"
@@ -305,9 +360,9 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
     // Discard results with out of region coordinates.
     if ((prediction.top > 1.0)   || (prediction.left > 1.0) ||
-       (prediction.bottom > 1.0) || (prediction.right > 1.0) ||
-       (prediction.top < 0.0)    || (prediction.left < 0.0) ||
-       (prediction.bottom < 0.0) || (prediction.right < 0.0))
+        (prediction.bottom > 1.0) || (prediction.right > 1.0) ||
+        (prediction.top < 0.0)    || (prediction.left < 0.0) ||
+        (prediction.bottom < 0.0) || (prediction.right < 0.0))
       continue;
 
     label = g_hash_table_lookup (
