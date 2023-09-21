@@ -41,8 +41,6 @@
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
 
-// The size in pixels of a macro block.
-#define MACRO_BLOCK_SIZE       8
 // Minimum relative size of the bounding box must occupy in the image.
 #define BBOX_SIZE_THRESHOLD    0.01F
 
@@ -52,7 +50,10 @@
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
     "type = (string) { FLOAT32 }, " \
-    "dimensions = (int) < < 1, 60, 80, 1 >, < 1, 60, 80, 1 >, < 1, 60, 80, 10 >, < 1, 60, 80, 4 > >; "
+    "dimensions = (int) < < 1, 60, 80, 1 >, < 1, 60, 80, 1 >, < 1, 60, 80, 10 >, < 1, 60, 80, 4 > >; " \
+    "neural-network/tensors, " \
+    "type = (string) { FLOAT32 }, " \
+    "dimensions = (int) < < 1, 120, 160, 1 >, < 1, 120, 160, 10 >, < 1, 120, 160, 4 > >; "
 
 // Module caps instance
 static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
@@ -184,7 +185,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GstProtectionMeta *pmeta = NULL;
   gfloat *scores = NULL, *hm_pool = NULL, *landmarks = NULL, *bboxes = NULL;
   gfloat size = 0;
-  guint idx = 0, num = 0, n_classes = 0, n_blocks = 0, in_width = 0, in_height = 0;
+  guint idx = 0, num = 0, n_classes = 0, n_blocks = 0, n_tensor = 0, block_size = 0, in_width = 0, in_height = 0;
   gint sar_n = 1, sar_d = 1, nms = -1, cx = 0, cy = 0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
@@ -203,14 +204,24 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     gst_structure_get_uint (pmeta->info, "input-tensor-height", &in_height);
   }
 
+  n_tensor = GST_ML_FRAME_N_TENSORS (mlframe);
+
   // TODO: First tensor represents some kind of confidence scores.
   scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
-  // TODO: Second tensor represents some kind of confidence scores.
-  hm_pool = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
-  // Third tensor represents the landmarks (left eye, right ear, etc.).
-  landmarks = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
-  // Fourh tensor represents the coordinates of the bounding boxes.
-  bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
+
+  if (n_tensor == 4) {
+    // TODO: Second tensor represents some kind of confidence scores.
+    hm_pool = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+    // Third tensor represents the landmarks (left eye, right ear, etc.).
+    landmarks = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
+    // Fourh tensor represents the coordinates of the bounding boxes.
+    bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
+  } else if (n_tensor == 3) {
+    // Second tensor represents the landmarks (left eye, right ear, etc.).
+    landmarks = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+    // Thrid tensor represents the coordinates of the bounding boxes.
+    bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
+  }
 
   // The 4th tensor dimension represents the number of detection classes.
   n_classes = GST_ML_FRAME_DIM (mlframe, 0, 3);
@@ -218,12 +229,14 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   // Calculate the number of macroblocks.
   n_blocks = GST_ML_FRAME_DIM (mlframe, 0, 1) * GST_ML_FRAME_DIM (mlframe, 0, 2);
 
+  block_size = in_width / GST_ML_FRAME_DIM (mlframe, 0, 2);
+
   for (idx = 0; idx < n_blocks; ++idx) {
     GstLabel *label = NULL;
     GstMLPrediction prediction = { 0, };
 
     // Discard invalid results.
-    if (scores[idx] != hm_pool[idx])
+    if (n_tensor == 4 && hm_pool != NULL && scores[idx] != hm_pool[idx])
       continue;
 
     // Discard results below the minimum score threshold.
@@ -234,10 +247,10 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     cx = (idx / n_classes) % GST_ML_FRAME_DIM (mlframe, 0, 2);
     cy = (idx / n_classes) / GST_ML_FRAME_DIM (mlframe, 0, 2);
 
-    prediction.left = (cx - bboxes[(idx * 4)]) * MACRO_BLOCK_SIZE;
-    prediction.top = (cy - bboxes[(idx * 4) + 1]) * MACRO_BLOCK_SIZE;
-    prediction.right = (cx + bboxes[(idx * 4) + 2]) * MACRO_BLOCK_SIZE;
-    prediction.bottom = (cy + bboxes[(idx * 4) + 3]) * MACRO_BLOCK_SIZE;
+    prediction.left = (cx - bboxes[(idx * 4)]) * block_size;
+    prediction.top = (cy - bboxes[(idx * 4) + 1]) * block_size;
+    prediction.right = (cx + bboxes[(idx * 4) + 2]) * block_size;
+    prediction.bottom = (cy + bboxes[(idx * 4) + 3]) * block_size;
 
     // Adjust bounding box dimensions with SAR and input tensor resolution.
     gst_ml_prediction_transform_dimensions (&prediction, sar_n, sar_d,
@@ -277,8 +290,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       if ((idx % n_classes) != 0)
         continue;
 
-      lx = (cx + landmarks[idx / n_classes * 10 + num]) * MACRO_BLOCK_SIZE;
-      ly = (cy + landmarks[idx / n_classes * 10 + num + 5]) * MACRO_BLOCK_SIZE;
+      lx = (cx + landmarks[idx / n_classes * 10 + num]) * block_size;
+      ly = (cy + landmarks[idx / n_classes * 10 + num + 5]) * block_size;
       GST_INFO ("Ladnmark: [ %.2f %.2f ] ", lx, ly);
     }
 
