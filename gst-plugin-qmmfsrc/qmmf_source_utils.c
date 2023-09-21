@@ -657,6 +657,26 @@ gst_qmmfsrc_rotate_get_type (void)
   return gtype;
 }
 
+GType
+gst_qmmfsrc_cam_opmode_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { CAM_OPMODE_NONE,
+        "Normal Camera Operation Mode", "none"
+    },
+    { CAM_OPMODE_FRAMESELECTION,
+        "Camera Operation Mode Frame Selection", "frameselection"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstFrameSelection", variants);
+
+  return gtype;
+}
+
 guchar
 gst_qmmfsrc_control_mode_android_value (const guint value)
 {
