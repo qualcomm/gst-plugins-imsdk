@@ -108,6 +108,7 @@ struct _GstMLVideoPose {
   gchar             *labels;
   guint             n_results;
   gdouble           threshold;
+  GstStructure      *mlconstants;
 };
 
 struct _GstMLVideoPoseClass {
