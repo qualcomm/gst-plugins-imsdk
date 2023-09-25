@@ -1641,6 +1641,134 @@ ml_reconfigure_pipeline (GstServiceContext * srvctx, gboolean enable)
   return TRUE;
 }
 
+
+static gboolean umd_reconfigure_pipeline (GstServiceContext *srvctx, uint32_t format)
+{
+  GstElement *vqueue = NULL, *vtrans = NULL;
+  GstElement  *umdvfilter = NULL, *umdvqueue = NULL;
+  GstElement  *c2venc = NULL, *c2vqueue = NULL, *prevplugin = NULL;;
+  gboolean success = TRUE, encoding = FALSE;
+
+  umdvfilter = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "umdvfilter");
+  umdvqueue = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "umdvqueue");
+  vtrans = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "vtransform");
+  vqueue = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "vqueue");
+
+  // Reconfigure ML elements
+  // Add vtransform plugin only if ML is enabled and crop is external.
+  if (afrmops.enable && (afrmops.croptype == ML_CROP_EXTERNAL) &&
+      (NULL == vtrans) && (NULL == vqueue)) {
+    vtrans = gst_element_factory_make ("qtivtransform", "vtransform");
+    vqueue = gst_element_factory_make ("queue", "vqueue");
+
+    // Add the new elements to the pipeline.
+    gst_bin_add_many (GST_BIN (srvctx->vpipeline), vtrans, vqueue, NULL);
+
+    // New elements need to be in the same state as the pipeline.
+    gst_element_sync_state_with_parent (vqueue);
+    gst_element_sync_state_with_parent (vtrans);
+
+    // Increase elements ref for late use
+    gst_object_ref (vqueue);
+    gst_object_ref (vtrans);
+
+    // Unlink the plugins where we want to add our new elements.
+    gst_element_unlink (umdvfilter, umdvqueue);
+
+    success =
+        gst_element_link_many (umdvfilter, vqueue, vtrans, umdvqueue, NULL);
+  } else if ((!afrmops.enable || (afrmops.croptype == ML_CROP_INTERNAL)) &&
+             (vtrans != NULL) && (vqueue != NULL)) {
+    gst_bin_remove (GST_BIN (srvctx->vpipeline), vtrans);
+    gst_bin_remove (GST_BIN (srvctx->vpipeline), vqueue);
+
+    // Removed elements need to be in NULL state before deletion.
+    gst_element_set_state (vtrans, GST_STATE_NULL);
+    gst_element_set_state (vqueue, GST_STATE_NULL);
+
+    gst_object_unref (vqueue);
+    gst_object_unref (vtrans);
+    vqueue = NULL;
+    vtrans = NULL;
+
+    success = gst_element_link (umdvfilter, umdvqueue);
+  }
+
+  if (!success) {
+    g_printerr ("\nFailed to link pipeline ML elements.\n");
+    goto cleanup;
+  }
+
+  // Reconfigure Encode elements
+  // Add c2venc element only if H.264 is enabled
+  c2venc = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "c2venc");
+  c2vqueue = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "c2vqueue");
+  encoding = (format == UMD_VIDEO_FMT_H264) ? TRUE : FALSE;
+  prevplugin = vtrans ? vtrans : umdvfilter;
+
+  if (encoding && (c2venc == NULL) && (c2vqueue == NULL)) {
+    GValue value = G_VALUE_INIT;
+
+    g_value_init (&value, G_TYPE_INT);
+    c2venc = gst_element_factory_make ("qtic2venc", "c2venc");
+    c2vqueue = gst_element_factory_make ("queue", "c2vqueue");
+
+    g_value_set_int (&value, 20);
+    g_object_set_property (G_OBJECT (c2venc), "min-quant-i-frames", &value);
+    g_object_set_property (G_OBJECT (c2venc), "min-quant-p-frames", &value);
+    g_value_set_int (&value, 30);
+    g_object_set_property (G_OBJECT (c2venc), "max-quant-i-frames", &value);
+    g_object_set_property (G_OBJECT (c2venc), "max-quant-p-frames", &value);
+    g_value_set_int (&value, 20);
+    g_object_set_property (G_OBJECT (c2venc), "quant-i-frames", &value);
+    g_object_set_property (G_OBJECT (c2venc), "quant-p-frames", &value);
+
+    // Add the new elements to the pipeline.
+    gst_bin_add_many (GST_BIN (srvctx->vpipeline), c2venc, c2vqueue, NULL);
+
+    // New elements need to be in the same state as the pipeline.
+    gst_element_sync_state_with_parent (c2venc);
+    gst_element_sync_state_with_parent (c2vqueue);
+
+    // Unlink the plugins where we want to add our new elements.
+    gst_element_unlink (prevplugin, umdvqueue);
+
+    success =
+        gst_element_link_many (prevplugin, c2vqueue, c2venc, umdvqueue, NULL);
+  } else if (!encoding && (c2venc != NULL) && (c2vqueue != NULL)) {
+    gst_bin_remove (GST_BIN (srvctx->vpipeline), c2venc);
+    gst_bin_remove (GST_BIN (srvctx->vpipeline), c2vqueue);
+
+    // Removed elements need to be in NULL state before deletion.
+    gst_element_set_state (c2venc, GST_STATE_NULL);
+    gst_element_set_state (c2vqueue, GST_STATE_NULL);
+
+    gst_object_unref (c2vqueue);
+    gst_object_unref (c2venc);
+
+    success = gst_element_link (prevplugin, umdvqueue);
+  } else if ((c2venc != NULL) && (c2vqueue != NULL)) {
+    gst_object_unref (c2vqueue);
+    gst_object_unref (c2venc);
+  }
+
+  if (!success)
+    g_printerr ("\nFailed to link pipeline Encode elements.\n");
+
+cleanup:
+  gst_object_unref (umdvqueue);
+  gst_object_unref (umdvfilter);
+
+  if (vtrans)
+      gst_object_unref (vtrans);
+
+  if (vqueue)
+      gst_object_unref (vqueue);
+
+  return success;
+}
+
+
 static bool
 setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
 {
@@ -1667,16 +1795,10 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
   switch (stmsetup->format) {
     case UMD_VIDEO_FMT_YUYV:
     {
-      GstElement *vqueue = NULL, *vtrans = NULL;
-      GstElement  *umdvfilter = NULL, *umdvqueue = NULL;
       GstCaps *filtercaps = NULL;
-      gboolean success = TRUE;
+      GstElement  *umdvfilter = NULL;
 
       umdvfilter = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "umdvfilter");
-      umdvqueue = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "umdvqueue");
-      vtrans = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "vtransform");
-      vqueue = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "vqueue");
-
       // Update and set the UMD filter caps.
       filtercaps = gst_caps_new_simple ("video/x-raw",
           "format", G_TYPE_STRING, "YUY2",
@@ -1689,65 +1811,16 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
 
       g_object_set (G_OBJECT (umdvfilter), "caps", filtercaps, NULL);
       gst_caps_unref (filtercaps);
-
-      // Unlink and link pipeline only if elements are not already present.
-      // Add vtransform plugin only if ML is enabled and crop is external.
-      if (afrmops.enable && (afrmops.croptype == ML_CROP_EXTERNAL) &&
-          (NULL == vtrans) && (NULL == vqueue)) {
-        vtrans = gst_element_factory_make ("qtivtransform", "vtransform");
-        vqueue = gst_element_factory_make ("queue", "vqueue");
-
-        // Add the new elements to the pipeline.
-        gst_bin_add_many (GST_BIN (srvctx->vpipeline), vtrans, vqueue, NULL);
-
-        // New elements need to be in the same state as the pipeline.
-        gst_element_sync_state_with_parent (vqueue);
-        gst_element_sync_state_with_parent (vtrans);
-
-        // Unlink the plugins where we want to add our new elements.
-        gst_element_unlink (umdvfilter, umdvqueue);
-
-        success =
-            gst_element_link_many (umdvfilter, vqueue, vtrans, umdvqueue, NULL);
-      } else if ((!afrmops.enable || (afrmops.croptype == ML_CROP_INTERNAL)) &&
-                 (vtrans != NULL) && (vqueue != NULL)) {
-        gst_bin_remove (GST_BIN (srvctx->vpipeline), vtrans);
-        gst_bin_remove (GST_BIN (srvctx->vpipeline), vqueue);
-
-        // Removed elements need to be in NULL state before deletion.
-        gst_element_set_state (vtrans, GST_STATE_NULL);
-        gst_element_set_state (vqueue, GST_STATE_NULL);
-
-        gst_object_unref (vqueue);
-        gst_object_unref (vtrans);
-
-        success = gst_element_link (umdvfilter, umdvqueue);
-      } else if (vtrans && vqueue) {
-        gst_object_unref (vqueue);
-        gst_object_unref (vtrans);
-      }
-
-      gst_object_unref (umdvqueue);
       gst_object_unref (umdvfilter);
 
-      if (!success) {
-        g_printerr ("\nFailed to link pipeline UMD elements.\n");
-        return false;
-      }
       break;
     }
     case UMD_VIDEO_FMT_MJPEG:
     {
-      GstElement *vqueue = NULL, *vtrans = NULL;
-      GstElement  *umdvfilter = NULL, *umdvqueue = NULL;
       GstCaps *filtercaps = NULL;
-      gboolean success = TRUE;
+      GstElement  *umdvfilter = NULL;
 
-      vtrans = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "vtransform");
-      vqueue = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "vqueue");
       umdvfilter = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "umdvfilter");
-      umdvqueue = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "umdvqueue");
-
       // Update and set the UMD filter caps.
       filtercaps = gst_caps_new_simple ("image/jpeg",
           "width", G_TYPE_INT, stmsetup->width,
@@ -1757,41 +1830,45 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
 
       g_object_set (G_OBJECT (umdvfilter), "caps", filtercaps, NULL);
       gst_caps_unref (filtercaps);
-
-      // Unlink and link pipeline only if elements are already present.
-      if ((vtrans != NULL) && (vqueue != NULL)) {
-        gst_bin_remove (GST_BIN (srvctx->vpipeline), vtrans);
-        gst_bin_remove (GST_BIN (srvctx->vpipeline), vqueue);
-
-        // Removed elements need to be in NULL state before deletion.
-        gst_element_set_state (vtrans, GST_STATE_NULL);
-        gst_element_set_state (vqueue, GST_STATE_NULL);
-
-        gst_object_unref (vqueue);
-        gst_object_unref (vtrans);
-
-        success = gst_element_link (umdvfilter, umdvqueue);
-      }
-
-      gst_object_unref (umdvqueue);
       gst_object_unref (umdvfilter);
-
-      if (!success) {
-        g_printerr ("\nFailed to link pipeline UMD elements.\n");
-        return false;
-      }
 
       if (afrmops.croptype == ML_CROP_EXTERNAL) {
         g_print ("\nExternal crop not supported for MJPEG stream, "
             "switching to internal crop mechanism!\n");
         afrmops.croptype = ML_CROP_INTERNAL;
       }
+
+      break;
+    }
+    case UMD_VIDEO_FMT_H264:
+    {
+      GstCaps *filtercaps = NULL;
+      GstElement  *umdvfilter = NULL;
+
+      umdvfilter = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "umdvfilter");
+      // Update and set the UMD filter caps.
+      filtercaps = gst_caps_new_simple ("video/x-raw",
+          "format", G_TYPE_STRING, "NV12",
+          "width", G_TYPE_INT, stmsetup->width,
+          "height", G_TYPE_INT, stmsetup->height,
+          "framerate", GST_TYPE_FRACTION, fps_n, fps_d,
+          NULL);
+
+      g_object_set (G_OBJECT (umdvfilter), "caps", filtercaps, NULL);
+      gst_caps_unref (filtercaps);
+      gst_object_unref (umdvfilter);
+
       break;
     }
     default:
       g_printerr ("\nUnsupported format %c%c%c%c!\n",
           UMD_FMT_NAME (stmsetup->format));
       return false;
+  }
+
+  if (!umd_reconfigure_pipeline (srvctx, stmsetup->format)) {
+    g_printerr ("\nFailed to reconfigure pipeline UMD elements!\n");
+    return false;
   }
 
   // Reset the crop parameters.
