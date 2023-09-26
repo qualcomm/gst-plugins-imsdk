@@ -1662,6 +1662,23 @@ gst_video_transform_fixate_caps (GstBaseTransform * base,
   return outcaps;
 }
 
+static gboolean
+gst_video_transform_flush_converter (GstVideoTransform * vtrans)
+{
+  GST_DEBUG_OBJECT (vtrans, "Flush video converter");
+
+  // Flush converter and requests queue.
+#ifdef USE_C2D_CONVERTER
+  gst_c2d_video_converter_flush (vtrans->c2dconvert);
+#endif // USE_C2D_CONVERTER
+
+#ifdef USE_GLES_CONVERTER
+  gst_gles_video_converter_flush (vtrans->glesconvert);
+#endif // USE_GLES_CONVERTER
+
+  return TRUE;
+}
+
 static GstFlowReturn
 gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     GstBuffer * outbuffer)
@@ -2101,6 +2118,13 @@ gst_video_transform_class_init (GstVideoTransformClass * klass)
           "Background color", 0, 0xFFFFFFFF, DEFAULT_PROP_BACKGROUND,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
+
+  // Temporary solution to flush cached buffers in the video converter
+  // until proper solution is implemented using flush start/stop
+  g_signal_new_class_handler ("flush-converter", G_TYPE_FROM_CLASS (klass),
+      G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION,
+      G_CALLBACK (gst_video_transform_flush_converter),
+      NULL, NULL, NULL, G_TYPE_NONE, 0);
 
   gst_element_class_set_static_metadata (element,
       "Video transformer", "Filter/Effect/Converter/Video/Scaler",
