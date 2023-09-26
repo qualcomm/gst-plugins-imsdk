@@ -209,6 +209,13 @@ typedef enum {
   GST_C2_PREPEND_HEADER_TO_ALL_SYNC,
 } GstC2HeaderMode;
 
+typedef enum {
+  GST_C2_SYNC_FRAME,
+  GST_C2_I_FRAME,
+  GST_C2_P_FRAME,
+  GST_C2_B_FRAME,
+} GstC2PictureType;
+
 struct _GstC2PixelInfo {
   GstVideoFormat format;
   gboolean       isubwc;
