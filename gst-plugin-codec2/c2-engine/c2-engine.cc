@@ -447,13 +447,13 @@ gst_c2_engine_drain (GstC2Engine * engine, gboolean eos)
   // }
 
   try {
+    GST_C2_ENGINE_INCREMENT_PENDING_WORK (engine);
     c2module->Queue (c2buffer, settings, index, timestamp, flags);
   } catch (std::exception& e) {
+    GST_C2_ENGINE_DECREMENT_PENDING_WORK (engine);
     GST_ERROR ("Failed to queue EOS, error: '%s'!", e.what());
     return FALSE;
   }
-
-  GST_C2_ENGINE_INCREMENT_PENDING_WORK (engine);
 
   // Wait until all work is completed or EOS.
   GST_C2_ENGINE_CHECK_AND_WAIT_PENDING_WORK (engine, 0);
