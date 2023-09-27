@@ -236,6 +236,20 @@ gst_c2_vdec_event_handler (guint type, gpointer payload, gpointer userdata)
   } else if (type == GST_C2_EVENT_ERROR) {
     guint32 error = *((guint32*) payload);
     GST_ERROR_OBJECT (c2vdec, "Received engine ERROR: '%u'", error);
+  } else if (type == GST_C2_EVENT_DROP) {
+    guint64 index = *((guint64*) payload);
+    GstVideoCodecFrame *frame = NULL;
+
+    GST_DEBUG_OBJECT (c2vdec, "Received engine drop frame: %lu", index);
+
+    frame = gst_video_decoder_get_frame (GST_VIDEO_DECODER (c2vdec), index);
+    if (frame == NULL) {
+      GST_ERROR_OBJECT (c2vdec, "Failed to get decoder frame with index %"
+          G_GUINT64_FORMAT, index);
+      return;
+    }
+    gst_video_decoder_drop_frame (GST_VIDEO_DECODER (c2vdec), frame);
+    gst_video_codec_frame_unref (frame);
   }
 }
 
@@ -301,7 +315,7 @@ gst_c2_vdec_stop (GstVideoDecoder * decoder)
   GST_DEBUG_OBJECT (c2vdec, "Stop engine");
 
   if ((c2vdec->engine != NULL) && !gst_c2_engine_drain (c2vdec->engine, TRUE)) {
-    GST_ERROR_OBJECT (c2vdec, "Failed to flush engine");
+    GST_ERROR_OBJECT (c2vdec, "Failed to drain engine");
     return FALSE;
   }
 
@@ -320,10 +334,14 @@ gst_c2_vdec_flush (GstVideoDecoder * decoder)
   GstC2VDecoder *c2vdec = GST_C2_VDEC (decoder);
   GST_DEBUG_OBJECT (c2vdec, "Flush engine");
 
+  GST_VIDEO_DECODER_STREAM_UNLOCK (decoder);
+
   if ((c2vdec->engine != NULL) && !gst_c2_engine_flush (c2vdec->engine)) {
     GST_ERROR_OBJECT (c2vdec, "Failed to flush engine");
     return FALSE;
   }
+
+  GST_VIDEO_DECODER_STREAM_LOCK (decoder);
 
   GST_DEBUG_OBJECT (c2vdec, "Engine flushed");
   return TRUE;
