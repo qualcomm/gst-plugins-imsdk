@@ -1514,8 +1514,7 @@ gst_qmmf_context_delete_video_stream (GstQmmfContext * context, GstPad * pad)
 }
 
 gboolean
-gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad,
-    GstPad * bayerpad)
+gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad)
 {
   GstQmmfSrcImagePad *ipad = GST_QMMFSRC_IMAGE_PAD (pad);
   ::qmmf::recorder::Recorder *recorder = context->recorder;
@@ -1525,55 +1524,8 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad,
 
   GST_TRACE ("Create QMMF context image stream");
 
-  if ((bayerpad != NULL) && GST_IS_QMMFSRC_IMAGE_PAD (bayerpad)) {
-    GstQmmfSrcImagePad *bpad = GST_QMMFSRC_IMAGE_PAD (bayerpad);
-
-    GST_QMMFSRC_IMAGE_PAD_LOCK (bpad);
-
-    imgparam.mode = ::qmmf::recorder::ImageMode::kSnapshotPlusRaw;
-    ::qmmf::recorder::SnapshotRawSetup rawparam;
-
-    rawparam.width = bpad->width;
-    rawparam.height = bpad->height;
-    rawparam.rotation = qmmfsrc_gst_get_stream_rotaion (bpad->rotate);
-
-    switch (bpad->format) {
-      case GST_BAYER_FORMAT_BGGR:
-      case GST_BAYER_FORMAT_RGGB:
-      case GST_BAYER_FORMAT_GBRG:
-      case GST_BAYER_FORMAT_GRBG:
-      case GST_BAYER_FORMAT_MONO:
-        if (!validate_bayer_params (context, bayerpad)) {
-          GST_ERROR ("Invalid bayer format or resolution!");
-          GST_QMMFSRC_IMAGE_PAD_UNLOCK (bpad);
-          return FALSE;
-        } else if (bpad->bpp == 8) {
-          rawparam.format = ::qmmf::recorder::ImageFormat::kBayerRDI8BIT;
-        } else if (bpad->bpp == 10) {
-          rawparam.format = ::qmmf::recorder::ImageFormat::kBayerRDI10BIT;
-        } else if (bpad->bpp == 12) {
-          rawparam.format = ::qmmf::recorder::ImageFormat::kBayerRDI12BIT;
-        } else if (bpad->bpp == 16) {
-          rawparam.format = ::qmmf::recorder::ImageFormat::kBayerRDI16BIT;
-        } else {
-          GST_ERROR ("Unsupported bits per pixel for bayer format!");
-          GST_QMMFSRC_IMAGE_PAD_UNLOCK (bpad);
-          return FALSE;
-        }
-        break;
-      default:
-        GST_ERROR ("Unsupported format: %d", bpad->format);
-        GST_QMMFSRC_IMAGE_PAD_UNLOCK (bpad);
-        return FALSE;
-    }
-
-    xtraparam.Update (::qmmf::recorder::QMMF_SNAPSHOT_RAW_SETUP, rawparam, 0);
-
-    GST_QMMFSRC_IMAGE_PAD_UNLOCK (bpad);
-  }
-
   GST_QMMFSRC_IMAGE_PAD_LOCK (ipad);
-
+  imgparam.mode = ::qmmf::recorder::ImageMode::kSnapshot;
   imgparam.width = ipad->width;
   imgparam.height = ipad->height;
   imgparam.rotation = qmmfsrc_gst_get_stream_rotaion (ipad->rotate);
@@ -1619,7 +1571,8 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad,
     }
   }
 
-  status = recorder->ConfigImageCapture (context->camera_id, imgparam, xtraparam);
+  status = recorder->ConfigImageCapture (context->camera_id, ipad->index,
+      imgparam, xtraparam);
 
   GST_QMMFSRC_IMAGE_PAD_UNLOCK (ipad);
 
@@ -1631,14 +1584,16 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad,
 }
 
 gboolean
-gst_qmmf_context_delete_image_stream (GstQmmfContext * context, gboolean cache)
+gst_qmmf_context_delete_image_stream (GstQmmfContext * context, GstPad * pad,
+    gboolean cache)
 {
+  GstQmmfSrcImagePad *ipad = GST_QMMFSRC_IMAGE_PAD (pad);
   ::qmmf::recorder::Recorder *recorder = context->recorder;
   gint status = 0;
 
   GST_TRACE ("Delete QMMF context image stream");
 
-  status = recorder->CancelCaptureImage (context->camera_id,
+  status = recorder->CancelCaptureImage (context->camera_id, ipad->index,
       cache ? true : false);
   QMMFSRC_RETURN_VAL_IF_FAIL (NULL, status == 0, FALSE,
       "QMMF Recorder CancelCaptureImage Failed!");
@@ -1715,37 +1670,37 @@ gst_qmmf_context_pause_video_stream (GstQmmfContext * context, GstPad * pad)
 }
 
 gboolean
-gst_qmmf_context_capture_image (GstQmmfContext * context, GstPad * pad,
-                                GstPad *bayerpad, guint imgtype, guint n_images,
-                                GPtrArray * metas)
+gst_qmmf_context_capture_image (GstQmmfContext * context, GHashTable * srcpads,
+                                GList * imgindexes, guint imgtype,
+                                guint n_images, GPtrArray * metas)
 {
   ::qmmf::recorder::Recorder *recorder = context->recorder;
   ::qmmf::recorder::ImageCaptureCb imagecb;
-  ::qmmf::recorder::SnapshotType type;
+  ::qmmf::recorder::SnapshotType type = ::qmmf::recorder::SnapshotType::kVideo;
   std::vector<::camera::CameraMetadata> metadata;
   gint status = 0;
   guint idx = 0;
 
-  GstQmmfSrcImagePad *ipad = GST_QMMFSRC_IMAGE_PAD (pad);
+  GstQmmfSrcImagePad *ipad = GST_QMMFSRC_IMAGE_PAD (g_hash_table_lookup
+      (srcpads, imgindexes->data));
 
   GST_QMMFSRC_IMAGE_PAD_LOCK (ipad);
 
-  imagecb = [&, context, pad, bayerpad] (uint32_t camera_id, uint32_t imgcount,
+  imagecb = [&, context, srcpads, imgindexes] (uint32_t camera_id,
+      uint32_t imgcount,
       ::qmmf::BufferDescriptor buffer, ::qmmf::BufferMeta meta)
       {
-        if (bayerpad == NULL)
-          image_data_callback (context, pad, buffer, meta);
-        else {
-          if (meta.format == ::qmmf::BufferFormat::kBLOB ||
-              meta.format == ::qmmf::BufferFormat::kNV12)
-            image_data_callback (context, pad, buffer, meta);
-          else if (meta.format == ::qmmf::BufferFormat::kRAW8 ||
-              meta.format == ::qmmf::BufferFormat::kRAW10 ||
-              meta.format == ::qmmf::BufferFormat::kRAW10 ||
-              meta.format == ::qmmf::BufferFormat::kRAW10)
-            image_data_callback (context, bayerpad, buffer, meta);
-          else
-            GST_ERROR ("Unsupported snapshot format %d", (gint)meta.format);
+        gpointer key;
+        GList *list = NULL;
+        GstPad *pad = NULL;
+
+        for (list = imgindexes; list != NULL; list = list->next) {
+          key = list->data;
+          pad = GST_PAD (g_hash_table_lookup (srcpads, key));
+          if (GST_QMMFSRC_IMAGE_PAD (pad)->index == buffer.img_id) {
+            image_data_callback(context, pad, buffer, meta);
+            break;
+          }
         }
       };
 
@@ -1770,14 +1725,9 @@ gst_qmmf_context_capture_image (GstQmmfContext * context, GstPad * pad,
     metadata.push_back(std::move(meta));
   }
 
-  // If there is a bayer pad then send request to both RAW and regular stream.
-  if ((imgtype == VIDEO_CAPTURE_MODE) && (bayerpad != NULL))
-    type = ::qmmf::recorder::SnapshotType::kVideoPlusRaw;
-  else if ((imgtype == STILL_CAPTURE_MODE) && (bayerpad != NULL))
-    type = ::qmmf::recorder::SnapshotType::kStillPlusRaw;
-  else if ((imgtype == VIDEO_CAPTURE_MODE) && (bayerpad == NULL))
+  if (imgtype == VIDEO_CAPTURE_MODE)
     type = ::qmmf::recorder::SnapshotType::kVideo;
-  else if ((imgtype == STILL_CAPTURE_MODE) && (bayerpad == NULL))
+  else if (imgtype == STILL_CAPTURE_MODE)
     type = ::qmmf::recorder::SnapshotType::kStill;
 
   status = recorder->CaptureImage (
