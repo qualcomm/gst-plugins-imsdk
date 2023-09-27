@@ -154,11 +154,11 @@ GST_API gboolean
 gst_qmmf_context_delete_video_stream (GstQmmfContext * context, GstPad * pad);
 
 GST_API gboolean
-gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad,
-                                      GstPad * bayerpad);
+gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad);
 
 GST_API gboolean
-gst_qmmf_context_delete_image_stream (GstQmmfContext * context, gboolean cache);
+gst_qmmf_context_delete_image_stream (GstQmmfContext * context, GstPad * pad,
+                                      gboolean cache);
 
 GST_API gboolean
 gst_qmmf_context_start_video_stream (GstQmmfContext * context, GstPad * pad);
@@ -170,8 +170,11 @@ GST_API gboolean
 gst_qmmf_context_pause_video_stream (GstQmmfContext * context, GstPad * pad);
 
 GST_API gboolean
-gst_qmmf_context_capture_image (GstQmmfContext * context, GstPad * pad,
-                                GstPad * bayerpad, guint imgtype, guint n_images,
+gst_qmmf_context_capture_image (GstQmmfContext * context,
+                                GHashTable * srcpads,
+                                GList * imgindexes,
+                                guint imgtype,
+                                guint n_images,
                                 GPtrArray * metas);
 
 GST_API void
