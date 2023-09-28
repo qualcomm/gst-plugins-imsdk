@@ -69,7 +69,8 @@
   "split. ! queue ! mixer. " \
   "split. ! queue ! qtimlvconverter ! queue ! " \
   "qtimltflite name=infeng delegate=gpu model=/data/posenet_mobilenet_v1_075_481_641_quant.tflite ! queue ! " \
-  "qtimlvpose name=postproc threshold=40.0 results=4 module=posenet labels=/data/posenet.labels ! " \
+  "qtimlvpose name=postproc threshold=40.0 results=4 module=posenet labels=/data/posenet.labels " \ 
+  "constants=\"Posenet,q-offsets=<128.0,128.0,117.0>,q-scales=<0.0784313753247261,0.0784313753247261,1.3875764608383179>;\" ! " \
   "capsfilter caps=video/x-raw,width=640,height=360 ! mixer."
 
 #define GST_POSENET_PIPELINE_OMX  "qtivcomposer name=mixer " \
@@ -81,7 +82,8 @@
   "split. ! queue ! mixer. " \
   "split. ! queue ! qtimlvconverter ! queue ! " \
   "qtimltflite name=infeng delegate=gpu model=/data/posenet_mobilenet_v1_075_481_641_quant.tflite ! queue ! " \
-  "qtimlvpose name=postproc threshold=40.0 results=4 module=posenet labels=/data/posenet.labels ! " \
+  "qtimlvpose name=postproc threshold=40.0 results=4 module=posenet labels=/data/posenet.labels " \
+  "constants=\"Posenet,q-offsets=<128.0,128.0,117.0>,q-scales=<0.0784313753247261,0.0784313753247261,1.3875764608383179>;\" ! " \
   "capsfilter caps=video/x-raw,width=640,height=360 ! mixer."
 
 typedef struct _GstAppContext GstAppContext;
