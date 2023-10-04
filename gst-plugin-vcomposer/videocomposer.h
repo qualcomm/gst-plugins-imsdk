@@ -68,13 +68,7 @@
 #include <gst/base/gstaggregator.h>
 #include <gst/base/gstdataqueue.h>
 #include <gst/video/video.h>
-
-#ifdef USE_C2D_CONVERTER
-#include <gst/video/c2d-video-converter.h>
-#endif // USE_C2D_CONVERTER
-#ifdef USE_GLES_CONVERTER
-#include <gst/video/gles-video-converter.h>
-#endif // USE_GLES_CONVERTER
+#include <gst/video/video-converter-engine.h>
 
 G_BEGIN_DECLS
 
@@ -125,15 +119,11 @@ struct _GstVideoComposer {
   /// Worker queue.
   GstDataQueue         *requests;
 
-  /// Supported converters.
-#ifdef USE_C2D_CONVERTER
-  GstC2dVideoConverter *c2dconvert;
-#endif // USE_C2D_CONVERTER
-#ifdef USE_GLES_CONVERTER
-  GstGlesVideoConverter *glesconvert;
-#endif // USE_GLES_CONVERTER
+  /// Video converter engine.
+  GstVideoConvEngine   *converter;
 
   /// Properties.
+  GstVideoConvBackend  backend;
   guint                background;
 };
 

@@ -11,7 +11,7 @@
 #include <fastcv/fastcv.h>
 
 
-#define GST_CAT_DEFAULT ensure_debug_category()
+#define GST_CAT_DEFAULT gst_video_converter_engine_debug
 
 #define LOAD_FCV_SYMBOL(c, name) \
   load_symbol ((gpointer*)&(c->name), c->fcvhandle, "fcv"#name);
@@ -62,6 +62,7 @@
     c->Flipu16 (s_chroma->data, s_chroma->width, s_chroma->height, \
         s_chroma->stride, d_chroma->data, d_chroma->stride, flip)
 
+// Convinient macros for printing plane values.
 #define GST_FCV_PLANE_FORMAT "ux%u Stride[%u] Data[%p]"
 #define GST_FCV_PLANE_ARGS(plane) \
     (plane)->width, (plane)->height, (plane)->stride, (plane)->data
@@ -75,9 +76,10 @@
 #define GST_FCV_LOCK(obj)           g_mutex_lock (GST_FCV_GET_LOCK(obj))
 #define GST_FCV_UNLOCK(obj)         g_mutex_unlock (GST_FCV_GET_LOCK(obj))
 
-#define GST_FCV_INVALID_STAGE_INDEX (-1)
+#define GST_FCV_INVALID_STAGE_ID    (-1)
 #define GST_FCV_MAX_DRAW_OBJECTS    50
 
+#define GST_FCV_WIDTH_ALIGN         8
 
 typedef struct _GstFcvPlane GstFcvPlane;
 typedef struct _GstFcvObject GstFcvObject;
@@ -88,11 +90,15 @@ enum {
   GST_FCV_FLAG_RGB    = (1 << 1),
   GST_FCV_FLAG_YUV    = (1 << 2),
   GST_FCV_FLAG_STAGED = (1 << 3),
+  GST_FCV_FLAG_I32    = (1 << 4),
+  GST_FCV_FLAG_U32    = (1 << 5),
+  GST_FCV_FLAG_F16    = (1 << 6),
+  GST_FCV_FLAG_F32    = (1 << 7),
 };
 
 /**
  * GstFcvPlane:
- * @idx: Index of the used staging buffer or -1 if created from original frame.
+ * @stgid: Index of the used staging buffer or -1 if created from original frame.
  * @width: Width of the plane in pixels.
  * @height: Height of the plane in pixels.
  * @data: Pointer to bytes of data.
@@ -102,7 +108,7 @@ enum {
  */
 struct _GstFcvPlane
 {
-  gint     idx;
+  gint     stgid;
   guint32  width;
   guint32  height;
   gpointer data;
@@ -152,13 +158,13 @@ struct _GstFcvStageBuffer
 struct _GstFcvVideoConverter
 {
   // Global mutex lock.
-  GMutex       lock;
+  GMutex   lock;
 
   // Staging buffers used as intermediaries during the FastCV operations.
-  GArray       *stgbufs;
+  GArray   *stgbufs;
 
   // FastCV library handle.
-  gpointer     fcvhandle;
+  gpointer fcvhandle;
 
   // FastCV library APIs.
   FASTCV_API int (*SetOperationMode) (fcvOperationMode mode);
@@ -359,20 +365,6 @@ struct _GstFcvVideoConverter
       uint32_t s_stride, uint8_t *__restrict destination, uint32_t d_stride);
 };
 
-static GstDebugCategory *
-ensure_debug_category (void)
-{
-  static gsize catonce = 0;
-
-  if (g_once_init_enter (&catonce)) {
-    gsize catdone = (gsize) _gst_debug_category_new ("fcv-video-converter",
-        0, "FastCV video converter");
-    g_once_init_leave (&catonce, catdone);
-  }
-
-  return (GstDebugCategory *) catonce;
-}
-
 static gboolean
 load_symbol (gpointer* method, gpointer handle, const gchar* name)
 {
@@ -386,6 +378,19 @@ load_symbol (gpointer* method, gpointer handle, const gchar* name)
   return TRUE;
 }
 
+static inline gint
+gst_fcv_get_opmode (const GstStructure * settings)
+{
+  gint value = GST_FCV_OP_MODE_PERFORMANCE;
+
+  if ((settings == NULL) ||
+      !gst_structure_has_field (settings, GST_VCE_OPT_FCV_OP_MODE))
+    return value;
+
+  gst_structure_get_enum (settings, GST_VCE_OPT_FCV_OP_MODE, G_TYPE_ENUM, &value);
+  return value;
+}
+
 static inline void
 gst_fcv_stage_buffer_free (gpointer data)
 {
@@ -396,14 +401,14 @@ gst_fcv_stage_buffer_free (gpointer data)
 static inline guint
 gst_fcv_translate_flip_flags (const guint64 flags)
 {
-  guint64 mask = GST_FCV_FLAG_FLIP_VERTICAL | GST_FCV_FLAG_FLIP_HORIZONTAL;
+  guint64 mask = GST_VCE_FLAG_FLIP_V | GST_VCE_FLAG_FLIP_H;
 
   switch (flags & mask) {
-    case (GST_FCV_FLAG_FLIP_VERTICAL | GST_FCV_FLAG_FLIP_HORIZONTAL):
+    case (GST_VCE_FLAG_FLIP_V | GST_VCE_FLAG_FLIP_H):
       return FASTCV_FLIP_BOTH;
-    case GST_FCV_FLAG_FLIP_VERTICAL:
+    case GST_VCE_FLAG_FLIP_V:
       return FASTCV_FLIP_VERT;
-    case GST_FCV_FLAG_FLIP_HORIZONTAL:
+    case GST_VCE_FLAG_FLIP_H:
       return FASTCV_FLIP_HORIZ;
     default:
       break;
@@ -415,12 +420,12 @@ gst_fcv_translate_flip_flags (const guint64 flags)
 static inline guint
 gst_fcv_translate_rotation_flags (const guint64 flags)
 {
-  switch (flags & (0b11 << 2)) {
-    case GST_FCV_FLAG_ROTATE_90CW:
+  switch (flags & GST_VCE_ROTATION_MASK) {
+    case GST_VCE_FLAG_ROTATE_90:
       return FASTCV_ROTATE_90;
-    case GST_FCV_FLAG_ROTATE_180:
+    case GST_VCE_FLAG_ROTATE_180:
       return FASTCV_ROTATE_180;
-    case GST_FCV_FLAG_ROTATE_90CCW:
+    case GST_VCE_FLAG_ROTATE_270:
       return FASTCV_ROTATE_270;
     default:
       break;
@@ -459,10 +464,10 @@ gst_fcv_regions_overlapping_area (GstVideoRectangle * l_rect,
 }
 
 static inline guint
-gst_fcv_composition_blit_area (GstVideoFrame * outframe,
-    GstFcvBlit * blits, guint index, guint r_idx)
+gst_fcv_composition_blit_area (GstVideoFrame * outframe, GstVideoBlit * blits,
+    guint index, guint r_idx)
 {
-  GstFcvBlit *blit = NULL;
+  GstVideoBlit *blit = NULL;
   GstVideoRectangle *region = NULL, *l_region = NULL;
   guint num = 0, n = 0, area = 0;
 
@@ -512,8 +517,10 @@ gst_fcv_copy_object (GstFcvObject * l_object, GstFcvObject * r_object)
 
 static inline void
 gst_fcv_update_object (GstFcvObject * object, const gchar * type,
-    const GstVideoFrame * frame, const GstVideoRectangle * region)
+    const GstVideoFrame * frame, const GstVideoRectangle * region,
+    const guint64 flags)
 {
+  const gchar *mode = NULL;
   gint x = 0, y = 0, width = 0, height = 0;
 
   width = GST_VIDEO_FRAME_WIDTH (frame);
@@ -528,9 +535,30 @@ gst_fcv_update_object (GstFcvObject * object, const gchar * type,
     height = region->h;
   }
 
-  GST_TRACE ("%s Buffer %p - %ux%u %s", type, frame->buffer,
+  switch (flags & GST_VCE_FORMAT_MASK) {
+    case GST_VCE_FLAG_F16_FORMAT:
+      object->flags = GST_FCV_FLAG_F16;
+      mode = "FLOAT16";
+      break;
+    case GST_VCE_FLAG_F32_FORMAT:
+      object->flags = GST_FCV_FLAG_F32;
+      mode = "FLOAT32";
+      break;
+    case GST_VCE_FLAG_I32_FORMAT:
+      object->flags = GST_FCV_FLAG_I32;
+      mode = "INT32";
+      break;
+    case GST_VCE_FLAG_U32_FORMAT:
+      object->flags = GST_FCV_FLAG_U32;
+      mode = "UINT32";
+      break;
+    default:
+      break;
+  }
+
+  GST_TRACE ("%s Buffer %p - %ux%u %s%s", type, frame->buffer,
       GST_VIDEO_FRAME_WIDTH (frame), GST_VIDEO_FRAME_HEIGHT (frame),
-      gst_video_format_to_string (GST_VIDEO_FRAME_FORMAT (frame)));
+      gst_video_format_to_string (GST_VIDEO_FRAME_FORMAT (frame)), mode);
   GST_TRACE ("%s Buffer %p - Plane 0: Stride[%u] Data[%p]", type,
       frame->buffer, GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0),
       GST_VIDEO_FRAME_PLANE_DATA (frame, 0));
@@ -541,11 +569,14 @@ gst_fcv_update_object (GstFcvObject * object, const gchar * type,
       x, y, width, height);
 
   if (GST_VIDEO_INFO_IS_YUV (&(frame->info)))
-    object->flags = GST_FCV_FLAG_YUV;
+    object->flags |= GST_FCV_FLAG_YUV;
   else if (GST_VIDEO_INFO_IS_RGB (&(frame->info)))
-    object->flags = GST_FCV_FLAG_RGB;
+    object->flags |= GST_FCV_FLAG_RGB;
   else if (GST_VIDEO_INFO_IS_GRAY (&(frame->info)))
-    object->flags = GST_FCV_FLAG_GRAY;
+    object->flags |= GST_FCV_FLAG_GRAY;
+
+  object->flip = gst_fcv_translate_flip_flags (flags);
+  object->rotate = gst_fcv_translate_rotation_flags (flags);
 
   object->format = GST_VIDEO_FRAME_FORMAT (frame);
   object->n_planes = GST_VIDEO_FRAME_N_PLANES (frame);
@@ -560,7 +591,7 @@ gst_fcv_update_object (GstFcvObject * object, const gchar * type,
   object->planes[0].data =
       (gpointer) ((guint8 *) GST_VIDEO_FRAME_PLANE_DATA (frame, 0) +
           (y * object->planes[0].stride) + x);
-  object->planes[0].idx = GST_FCV_INVALID_STAGE_INDEX;
+  object->planes[0].stgid = GST_FCV_INVALID_STAGE_ID;
 
   // Initialize the secondary plane depending on the format.
   switch (object->format) {
@@ -573,7 +604,7 @@ gst_fcv_update_object (GstFcvObject * object, const gchar * type,
           (gpointer) ((guint8 *) GST_VIDEO_FRAME_PLANE_DATA (frame, 1) +
               ((GST_ROUND_UP_2 (y) / 2) * object->planes[1].stride) +
                   GST_ROUND_UP_2 (x));
-      object->planes[1].idx = GST_FCV_INVALID_STAGE_INDEX;
+      object->planes[1].stgid = GST_FCV_INVALID_STAGE_ID;
       break;
     case GST_VIDEO_FORMAT_NV16:
     case GST_VIDEO_FORMAT_NV61:
@@ -583,7 +614,7 @@ gst_fcv_update_object (GstFcvObject * object, const gchar * type,
       object->planes[1].data =
           (gpointer) ((guint8 *) GST_VIDEO_FRAME_PLANE_DATA (frame, 1) +
               (y * object->planes[1].stride) + GST_ROUND_UP_2 (x));
-      object->planes[1].idx = GST_FCV_INVALID_STAGE_INDEX;
+      object->planes[1].stgid = GST_FCV_INVALID_STAGE_ID;
       break;
     case GST_VIDEO_FORMAT_NV24:
       object->planes[1].stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1);
@@ -592,15 +623,15 @@ gst_fcv_update_object (GstFcvObject * object, const gchar * type,
       object->planes[1].data =
           (gpointer) ((guint8 *) GST_VIDEO_FRAME_PLANE_DATA (frame, 1) +
               (y * object->planes[1].stride) + (x * 2));
-      object->planes[1].idx = GST_FCV_INVALID_STAGE_INDEX;
+      object->planes[1].stgid = GST_FCV_INVALID_STAGE_ID;
       break;
     default:
       // No need for initialize anything in te secondary plane.
       break;
   }
 
-  GST_TRACE ("%s Buffer %p - Object Format: %s", type, frame->buffer,
-      gst_video_format_to_string (object->format));
+  GST_TRACE ("%s Buffer %p - Object Format: %s%s", type, frame->buffer,
+      gst_video_format_to_string (object->format), mode);
   GST_TRACE ("%s Buffer %p - Object Plane 0: %" GST_FCV_PLANE_FORMAT, type,
       frame->buffer, GST_FCV_PLANE_ARGS (&(object->planes[0])));
   GST_TRACE ("%s Buffer %p - Object Plane 1: %" GST_FCV_PLANE_FORMAT, type,
@@ -749,7 +780,7 @@ gst_fcv_video_converter_stage_object_init (GstFcvVideoConverter * convert,
     buffer = gst_fcv_video_converter_fetch_stage_buffer (convert, size);
 
     obj->planes[idx].data = buffer->data;
-    obj->planes[idx].idx = buffer->idx;
+    obj->planes[idx].stgid = buffer->idx;
 
     GST_TRACE ("Stage Object %s Plane %u: %" GST_FCV_PLANE_FORMAT,
         gst_video_format_to_string (obj->format), idx,
@@ -763,10 +794,12 @@ static inline void
 gst_fcv_video_converter_stage_object_deinit (GstFcvVideoConverter * convert,
     GstFcvObject * obj)
 {
-  guint num = 0;
+  guint num = 0, stgid = 0;
 
-  for (num = 0; num < obj->n_planes; num++)
-    gst_fcv_video_converter_release_stage_buffer (convert, obj->planes[num].idx);
+  for (num = 0; num < obj->n_planes; num++) {
+    stgid = obj->planes[num].stgid;
+    gst_fcv_video_converter_release_stage_buffer (convert, stgid);
+  }
 }
 
 static inline gboolean
@@ -779,14 +812,76 @@ gst_fcv_video_converter_stage_plane_init (GstFcvVideoConverter * convert,
   plane->height = height;
   plane->stride = stride;
 
-  buffer = gst_fcv_video_converter_fetch_stage_buffer (
-      convert, GST_ROUND_UP_128 (plane->stride * plane->height));
+  buffer = gst_fcv_video_converter_fetch_stage_buffer (convert,
+      GST_ROUND_UP_128 (plane->stride * plane->height));
   g_return_val_if_fail (buffer != NULL, FALSE);
 
   plane->data = buffer->data;
-  plane->idx = buffer->idx;
+  plane->stgid = buffer->idx;
 
   GST_LOG ("Stage Plane: %" GST_FCV_PLANE_FORMAT, GST_FCV_PLANE_ARGS (plane));
+  return TRUE;
+}
+
+static inline gboolean
+gst_fcv_video_converter_compute_conversion (GstFcvVideoConverter * convert,
+    GstFcvObject * s_obj, GstFcvObject * d_obj)
+{
+  GstFcvPlane *s_plane = NULL, *d_plane = NULL;
+  guint8 *s_data = NULL, *d_data = NULL;
+  guint idx = 0, num = 0, n_bytes = 0;
+
+  g_return_val_if_fail (s_obj->format == d_obj->format, FALSE);
+  g_return_val_if_fail (s_obj->n_planes == d_obj->n_planes, FALSE);
+
+  for (idx = 0; idx < d_obj->n_planes; idx++) {
+    s_plane = &(s_obj->planes[idx]);
+    d_plane = &(d_obj->planes[idx]);
+
+    GST_LOG ("Source Plane %u: %" GST_FCV_PLANE_FORMAT, idx,
+        GST_FCV_PLANE_ARGS (s_plane));
+    GST_LOG ("Destination Plane %u: %" GST_FCV_PLANE_FORMAT, idx,
+        GST_FCV_PLANE_ARGS (d_plane));
+
+    g_return_val_if_fail (s_plane->height == d_plane->height, FALSE);
+    g_return_val_if_fail (s_plane->width >= d_plane->width, FALSE);
+
+    switch (d_obj->format) {
+      case GST_VIDEO_FORMAT_RGB16:
+      case GST_VIDEO_FORMAT_BGR16:
+        n_bytes = d_plane->width * 2;
+        break;
+      case GST_VIDEO_FORMAT_RGB:
+      case GST_VIDEO_FORMAT_BGR:
+        n_bytes = d_plane->width * 3;
+        break;
+      case GST_VIDEO_FORMAT_RGBA:
+      case GST_VIDEO_FORMAT_BGRA:
+      case GST_VIDEO_FORMAT_RGBx:
+      case GST_VIDEO_FORMAT_BGRx:
+        n_bytes = d_plane->width * 4;
+        break;
+      default:
+        n_bytes = d_plane->width;
+        break;
+    }
+
+    for (num = 0; num < d_plane->height; num++) {
+      s_data = ((guint8*) s_plane->data) + (num * s_plane->stride);
+      d_data = ((guint8*) d_plane->data) + (num * d_plane->stride);
+
+      // TODO This will cut up to 7 pixels of data. Look for better method.
+      memcpy (d_data, s_data, n_bytes);
+    }
+  }
+
+  // If source is a stage object from previous operation, release stage buffers.
+  if (s_obj->flags & GST_FCV_FLAG_STAGED)
+    gst_fcv_video_converter_stage_object_deinit (convert, s_obj);
+
+  // Set the destination/stage object as source for the next operation.
+  gst_fcv_copy_object (d_obj, s_obj);
+
   return TRUE;
 }
 
@@ -795,7 +890,7 @@ gst_fcv_video_converter_yuv_to_yuv (GstFcvVideoConverter * convert,
     GstFcvObject * s_obj, GstFcvObject * d_obj)
 {
   GstFcvPlane *s_luma = NULL, *s_chroma = NULL, *d_luma = NULL, *d_chroma = NULL;
-  GstFcvPlane l_chroma = { GST_FCV_INVALID_STAGE_INDEX, 0, 0, NULL, 0 };
+  GstFcvPlane l_chroma = { GST_FCV_INVALID_STAGE_ID, 0, 0, NULL, 0 };
 
   // Convenient local pointers to the source and destination planes.
   s_luma = &(s_obj->planes[0]);
@@ -921,8 +1016,8 @@ gst_fcv_video_converter_yuv_to_yuv (GstFcvVideoConverter * convert,
   }
 
   // Free any local storage used from chroma swap.
-  if ((l_chroma.data != NULL) && (l_chroma.idx != GST_FCV_INVALID_STAGE_INDEX))
-      gst_fcv_video_converter_release_stage_buffer (convert, l_chroma.idx);
+  if ((l_chroma.data != NULL) && (l_chroma.stgid != GST_FCV_INVALID_STAGE_ID))
+      gst_fcv_video_converter_release_stage_buffer (convert, l_chroma.stgid);
 
   return TRUE;
 }
@@ -932,7 +1027,7 @@ gst_fcv_video_converter_yuv_to_rgb (GstFcvVideoConverter * convert,
     GstFcvObject * s_obj, GstFcvObject * d_obj)
 {
   GstFcvPlane *s_luma = NULL, *s_chroma = NULL, *d_rgb = NULL;
-  GstFcvPlane l_chroma = { GST_FCV_INVALID_STAGE_INDEX, 0, 0, NULL, 0 };
+  GstFcvPlane l_chroma = { GST_FCV_INVALID_STAGE_ID, 0, 0, NULL, 0 };
 
   // Convenient local pointers to the source and destination planes.
   s_luma = &(s_obj->planes[0]);
@@ -1106,8 +1201,8 @@ gst_fcv_video_converter_yuv_to_rgb (GstFcvVideoConverter * convert,
   }
 
   // Free any local storage used from chroma swap.
-  if ((l_chroma.data != NULL) && (l_chroma.idx != GST_FCV_INVALID_STAGE_INDEX))
-      gst_fcv_video_converter_release_stage_buffer (convert, l_chroma.idx);
+  if ((l_chroma.data != NULL) && (l_chroma.stgid != GST_FCV_INVALID_STAGE_ID))
+      gst_fcv_video_converter_release_stage_buffer (convert, l_chroma.stgid);
 
   return TRUE;
 }
@@ -1117,7 +1212,7 @@ gst_fcv_video_converter_rgb_to_yuv (GstFcvVideoConverter * convert,
     GstFcvObject * s_obj, GstFcvObject * d_obj)
 {
   GstFcvPlane *s_rgb = NULL, *d_luma = NULL, *d_chroma = NULL;
-  GstFcvPlane l_chroma = { GST_FCV_INVALID_STAGE_INDEX, 0, 0, NULL, 0 };
+  GstFcvPlane l_chroma = { GST_FCV_INVALID_STAGE_ID, 0, 0, NULL, 0 };
 
   // Convenient local pointers to the source and destination planes.
   s_rgb = &(s_obj->planes[0]);
@@ -1223,7 +1318,7 @@ gst_fcv_video_converter_rgb_to_yuv (GstFcvVideoConverter * convert,
   }
 
   // If an intermediary was used for the chroma plane, do swap now to destination.
-  if ((l_chroma.data != NULL) && (l_chroma.idx != GST_FCV_INVALID_STAGE_INDEX)) {
+  if ((l_chroma.data != NULL) && (l_chroma.stgid != GST_FCV_INVALID_STAGE_ID)) {
     // Restore the destination chroma plane pointer to the original value.
     d_chroma = &(d_obj->planes[1]);
 
@@ -1231,7 +1326,7 @@ gst_fcv_video_converter_rgb_to_yuv (GstFcvVideoConverter * convert,
     GST_FCV_CHROMA_SWAP (convert, (&l_chroma), d_chroma);
 
     // Free the intermediary local chroma plane.
-    gst_fcv_video_converter_release_stage_buffer (convert, l_chroma.idx);
+    gst_fcv_video_converter_release_stage_buffer (convert, l_chroma.stgid);
   }
 
   return TRUE;
@@ -1325,7 +1420,7 @@ gst_fcv_video_converter_color_transform (GstFcvVideoConverter * convert,
     GstFcvObject * s_obj, GstFcvObject * d_obj)
 {
   GstFcvObject l_obj = { 0, };
-  gboolean success = FALSE, resize = FALSE, transform = FALSE, aligned = TRUE;
+  gboolean success = FALSE, resize = FALSE, transform = FALSE, aligned = FALSE;
   guint flip = 0, rotate = 0;
 
   // Cache the flip and rotation flags, will be later reset on the source.
@@ -1336,18 +1431,17 @@ gst_fcv_video_converter_color_transform (GstFcvVideoConverter * convert,
       (s_obj->planes[0].width != d_obj->planes[0].width);
   transform = (s_obj->rotate != 0) || (s_obj->flip != 0);
 
-  // Unaligned RGB formats require an intermeadiary buffer.
-  if ((d_obj->flags & GST_FCV_FLAG_RGB) && ((d_obj->planes[0].width % 8) != 0))
-    aligned = FALSE;
+  // Unaligned output RGB formats require an intermeadiary buffer.
+  aligned = ((d_obj->planes[0].width % GST_FCV_WIDTH_ALIGN) == 0) ? TRUE : FALSE;
 
-  // Use stage if not aligned or resize/flip/rotate is pending.
-  if (!aligned || resize || transform) {
+  // Use stage if resize/flip/rotate or unaligned RGB is pending.
+  if (((d_obj->flags & GST_FCV_FLAG_RGB) && !aligned) || resize || transform) {
     GstVideoFormat format = d_obj->format;
     guint width = s_obj->planes[0].width;
     guint height = s_obj->planes[0].height;
 
     // Override format if resize/flip/rotate are pending and destination is RGB.
-    if (((aligned && resize) || transform) && (d_obj->flags & GST_FCV_FLAG_RGB))
+    if ((d_obj->flags & GST_FCV_FLAG_RGB) && ((aligned && resize) || transform))
       format = GST_VIDEO_FORMAT_NV12;
 
     // Temporary store the destination object data into local intermediary.
@@ -1557,21 +1651,26 @@ gst_fcv_video_converter_rotate (GstFcvVideoConverter * convert,
   rotate = s_obj->rotate;
 
   // Raise the resize flag if source and detination resolution are different.
-  resize = (s_obj->planes[0].width * s_obj->planes[0].height) !=
-      (d_obj->planes[0].width * d_obj->planes[0].height) ? TRUE : FALSE;
+  if ((rotate == FASTCV_ROTATE_90) || (rotate == FASTCV_ROTATE_270)) {
+    resize = ((s_obj->planes[0].width != d_obj->planes[0].height) ||
+        (s_obj->planes[0].height != d_obj->planes[0].width)) ? TRUE : FALSE;
+  } else {
+    resize = ((s_obj->planes[0].width != d_obj->planes[0].width) ||
+        (s_obj->planes[0].height != d_obj->planes[0].height)) ? TRUE : FALSE;
+  }
 
   // Use stage object if format or stride differs or resize is pending.
   if ((s_obj->format != d_obj->format) || resize) {
     guint width = 0, height = 0;
     gboolean success = FALSE;
 
+    width = s_obj->planes[0].width;
+    height = s_obj->planes[0].height;
+
     // Dimensions are swapped if 90/270 degree rotation is required with resize.
     if (resize && (rotate == FASTCV_ROTATE_90 || rotate == FASTCV_ROTATE_270)) {
       width = s_obj->planes[0].height;
       height = s_obj->planes[0].width;
-    } else {
-      width = s_obj->planes[0].width;
-      height = s_obj->planes[0].height;
     }
 
     // Temporary store the destination object data into local intermediary.
@@ -1710,69 +1809,6 @@ gst_fcv_video_converter_flip (GstFcvVideoConverter * convert,
 }
 
 static inline gboolean
-gst_fcv_video_converter_unaligned_transform (GstFcvVideoConverter * convert,
-    GstFcvObject * s_obj, GstFcvObject * d_obj)
-{
-  GstFcvPlane *s_plane = NULL, *d_plane = NULL;
-  guint8 *s_data = NULL, *d_data = NULL;
-  guint idx = 0, num = 0, n_bytes = 0;
-
-  g_return_val_if_fail (s_obj->format == d_obj->format, FALSE);
-  g_return_val_if_fail (s_obj->n_planes == d_obj->n_planes, FALSE);
-
-  for (idx = 0; idx < d_obj->n_planes; idx++) {
-    s_plane = &(s_obj->planes[idx]);
-    d_plane = &(d_obj->planes[idx]);
-
-    GST_LOG ("Source Plane %u: %" GST_FCV_PLANE_FORMAT, idx,
-        GST_FCV_PLANE_ARGS (s_plane));
-    GST_LOG ("Destination Plane %u: %" GST_FCV_PLANE_FORMAT, idx,
-        GST_FCV_PLANE_ARGS (d_plane));
-
-    g_return_val_if_fail (s_plane->height == d_plane->height, FALSE);
-    g_return_val_if_fail (s_plane->width >= d_plane->width, FALSE);
-
-    switch (d_obj->format) {
-      case GST_VIDEO_FORMAT_RGB16:
-      case GST_VIDEO_FORMAT_BGR16:
-      case GST_VIDEO_FORMAT_NV24:
-        n_bytes = d_plane->width * 2;
-        break;
-      case GST_VIDEO_FORMAT_RGB:
-      case GST_VIDEO_FORMAT_BGR:
-        n_bytes = d_plane->width * 3;
-        break;
-      case GST_VIDEO_FORMAT_RGBA:
-      case GST_VIDEO_FORMAT_BGRA:
-      case GST_VIDEO_FORMAT_RGBx:
-      case GST_VIDEO_FORMAT_BGRx:
-        n_bytes = d_plane->width * 4;
-        break;
-      default:
-        n_bytes = d_plane->width;
-        break;
-    }
-
-    for (num = 0; num < d_plane->height; num++) {
-      s_data = ((guint8*) s_plane->data) + (num * s_plane->stride);
-      d_data = ((guint8*) d_plane->data) + (num * d_plane->stride);
-
-      // TODO This will cut up to 7 pixels of data. Look for better method.
-      memcpy (d_data, s_data, n_bytes);
-    }
-  }
-
-  // If source is a stage object from previous operation, release stage buffers.
-  if (s_obj->flags & GST_FCV_FLAG_STAGED)
-    gst_fcv_video_converter_stage_object_deinit (convert, s_obj);
-
-  // Set the destination/stage object as source for the next operation.
-  gst_fcv_copy_object (d_obj, s_obj);
-
-  return TRUE;
-}
-
-static inline gboolean
 gst_fcv_video_converter_fill_background (GstFcvVideoConverter * convert,
     GstVideoFrame * frame, guint32 color)
 {
@@ -1888,7 +1924,8 @@ gst_fcv_video_converter_process (GstFcvVideoConverter * convert,
   GstFcvObject *s_obj = NULL, *d_obj = NULL;
   guint idx = 0;
   gfloat w_scale = 0.0, h_scale = 0.0, scale = 0.0, flip = 0, rotate = 0;
-  gboolean downscale = FALSE, upscale = FALSE;
+  gboolean downscale = FALSE, upscale = FALSE, aligned = FALSE;
+  gboolean normalize = FALSE;
 
   for (idx = 0; idx < n_objects; idx += 2) {
     s_obj = &(objects[idx]);
@@ -1916,6 +1953,15 @@ gst_fcv_video_converter_process (GstFcvVideoConverter * convert,
     // Use upscale if output is bigger or same scale but reversed dimensions.
     upscale = (scale > 1.0) ||
         (scale == 1.0 && w_scale != 1.0 && h_scale != 1.0 && rotate == 0);
+
+    // Unaligned output RGB formats require additional processing at the end.
+    aligned = ((d_obj->planes[0].width % GST_FCV_WIDTH_ALIGN) == 0) ?
+        TRUE : FALSE;
+
+    // None 8-bit unsigned integer RGB formats require normalization.
+    normalize = (d_obj->flags & GST_FCV_FLAG_F16) ||
+        (d_obj->flags & GST_FCV_FLAG_F32) || (d_obj->flags & GST_FCV_FLAG_I32) ||
+        (d_obj->flags & GST_FCV_FLAG_U32);
 
     // First, check if we need to do color conversion to YUV on the source.
     // Upcscale/Downscale/Rotate/Flip require non-RGB input and output.
@@ -1951,34 +1997,125 @@ gst_fcv_video_converter_process (GstFcvVideoConverter * convert,
       return FALSE;
     }
 
-    // Sixth, perform color conversion if necessary.
+    // Sixth, perform final color conversion if necessary.
     if ((s_obj->format != d_obj->format) &&
         !gst_fcv_video_converter_color_transform (convert, s_obj, d_obj)) {
       GST_ERROR ("Failed to convert image format!");
       return FALSE;
     }
 
-    // Seven, perform image upscale for GRAY/YUV output images if necessary.
+    // Seventh, perform image upscale for GRAY/YUV output images if necessary.
     if (upscale && !(d_obj->flags & GST_FCV_FLAG_RGB) &&
         !gst_fcv_video_converter_upscale (convert, s_obj, d_obj)) {
       GST_ERROR ("Failed to upscale image!");
       return FALSE;
     }
 
-    // Lastly, if destination is not aligned RGB then manualy copy using the CPU.
-    if ((d_obj->flags & GST_FCV_FLAG_RGB) && ((d_obj->planes[0].width % 8) != 0))
-      gst_fcv_video_converter_unaligned_transform (convert, s_obj, d_obj);
+    // Lastly, perform unaligned conversion or normalization if necessary.
+    if ((d_obj->flags & GST_FCV_FLAG_RGB || d_obj->flags & GST_FCV_FLAG_GRAY) &&
+        (!aligned || normalize))
+      gst_fcv_video_converter_compute_conversion (convert, s_obj, d_obj);
   }
 
   return TRUE;
 }
 
+gboolean
+gst_fcv_video_converter_compose (GstFcvVideoConverter * convert,
+    GstVideoComposition * compositions, guint n_compositions, gpointer * fence)
+{
+  GstFcvObject objects[GST_FCV_MAX_DRAW_OBJECTS] = { 0, };
+  guint32 idx = 0, num = 0, n_objects = 0, area = 0;
+
+  // TODO: Implement async operations via threads.
+  if (fence != NULL)
+    GST_WARNING ("Asynchronous composition operations are not supported!");
+
+  for (idx = 0; idx < n_compositions; idx++) {
+    GstVideoFrame *outframe = compositions[idx].frame;
+    GstVideoBlit *blits = compositions[idx].blits;
+    guint n_blits = compositions[idx].n_blits;
+
+    // Sanity checks, output frame and blit entries must not be NULL.
+    g_return_val_if_fail (outframe != NULL, FALSE);
+    g_return_val_if_fail ((blits != NULL) && (n_blits != 0), FALSE);
+
+    // Total area of the output frame that is to be used in later calculations
+    // to determine whether there are unoccupied background pixels to be filled.
+    area = GST_VIDEO_FRAME_WIDTH (outframe) * GST_VIDEO_FRAME_HEIGHT (outframe);
+
+    // Iterate over the input blit entries and update each FCV object.
+    for (num = 0; num < n_blits; num++) {
+      GstVideoBlit *blit = &(blits[num]);
+      guint r_idx = 0;
+
+      // Update a new FCV object (at least 1) for each source/destnation pair.
+      do {
+        GstFcvObject *object = NULL;
+        GstVideoRectangle *region = NULL;
+
+        if (n_objects >= GST_FCV_MAX_DRAW_OBJECTS) {
+          GST_ERROR ("Number of objects exceeds %d!", GST_FCV_MAX_DRAW_OBJECTS);
+          return FALSE;
+        }
+
+        // Intialization of the source FCV object.
+        object = &(objects[n_objects]);
+        region = (r_idx < blit->n_regions) ? &(blit->sources[r_idx]) : NULL;
+
+        gst_fcv_update_object (object, "Source", blit->frame, region, blit->flags);
+
+        // Intialization of the destination FCV object.
+        object = &(objects[n_objects + 1]);
+        region = (r_idx < blit->n_regions) ? &(blit->destinations[r_idx]) : NULL;
+
+        gst_fcv_update_object (object, "Destination", outframe, region,
+            compositions[idx].flags);
+
+        // Subtract blit area from total area.
+        if (area != 0)
+          area -= gst_fcv_composition_blit_area (outframe, blits, num, r_idx);
+
+        // Increment the objects counter by 2 for for Source/Destination pair.
+        n_objects += 2;
+      } while (++r_idx < blit->n_regions);
+    }
+
+    if ((compositions[idx].flags & GST_VCE_FLAG_FILL_BACKGROUND) && (area > 0)) {
+      guint32 color = compositions[idx].bgcolor;
+      gst_fcv_video_converter_fill_background (convert, outframe, color);
+    }
+
+    if (!gst_fcv_video_converter_process (convert, objects, n_objects)) {
+      GST_ERROR ("Failed to process frames for composition %u!", idx);
+      return FALSE;
+    }
+  }
+
+  return TRUE;
+}
+
+gboolean
+gst_fcv_video_converter_wait_fence (GstFcvVideoConverter * convert,
+    gpointer fence)
+{
+  GST_WARNING ("Not implemented!");
+
+  return TRUE;
+}
+
+void
+gst_fcv_video_converter_flush (GstFcvVideoConverter * convert)
+{
+  GST_WARNING ("Not implemented!");
+}
+
 GstFcvVideoConverter *
-gst_fcv_video_converter_new (GstFcvOpMode opmode)
+gst_fcv_video_converter_new (GstStructure * settings)
 {
   GstFcvVideoConverter *convert = NULL;
   gboolean success = TRUE;
-  gint mode = FASTCV_OP_LOW_POWER;
+  gint opmode = FASTCV_OP_PERFORMANCE;
 
   convert = g_slice_new0 (GstFcvVideoConverter);
   g_return_val_if_fail (convert != NULL, NULL);
@@ -2074,29 +2211,32 @@ gst_fcv_video_converter_new (GstFcvOpMode opmode)
   // Set clearing function for the allocated stage memory.
   g_array_set_clear_func (convert->stgbufs, gst_fcv_stage_buffer_free);
 
-  switch (opmode) {
+  switch (gst_fcv_get_opmode (settings)) {
     case GST_FCV_OP_MODE_LOW_POWER:
-      mode = FASTCV_OP_LOW_POWER;
+      opmode = FASTCV_OP_LOW_POWER;
+      GST_INFO ("Operation mode: LOW_POWER");
       break;
     case GST_FCV_OP_MODE_PERFORMANCE:
-      mode = FASTCV_OP_PERFORMANCE;
+      opmode = FASTCV_OP_PERFORMANCE;
+      GST_INFO ("Operation mode: PERFORMANCE");
       break;
     case GST_FCV_OP_MODE_CPU_OFFLOAD:
-      mode = FASTCV_OP_CPU_OFFLOAD;
+      opmode = FASTCV_OP_CPU_OFFLOAD;
+      GST_INFO ("Operation mode: CPU_OFFLOAD");
       break;
     case GST_FCV_OP_MODE_CPU_PERFORMANCE:
-      mode = FASTCV_OP_CPU_PERFORMANCE;
+      opmode = FASTCV_OP_CPU_PERFORMANCE;
+      GST_INFO ("Operation mode: CPU_PERFORMANCE");
       break;
     default:
-      GST_WARNING ("Unknown mode set, defaulting to LOW_POWER");
+      GST_WARNING ("Unknown mode set, defaulting to PERFORMANCE");
       break;
   }
 
-  if (convert->SetOperationMode (mode) != 0) {
+  if (convert->SetOperationMode (opmode) != 0) {
     GST_ERROR ("Failed to set operational mode!");
     goto cleanup;
   }
-
 
   GST_INFO ("Created FastCV Converter %p", convert);
   return convert;
@@ -2125,80 +2265,4 @@ gst_fcv_video_converter_free (GstFcvVideoConverter * convert)
 
   GST_INFO ("Destroyed FastCV converter: %p", convert);
   g_slice_free (GstFcvVideoConverter, convert);
-}
-
-gboolean
-gst_fcv_video_converter_compose (GstFcvVideoConverter * convert,
-    GstFcvComposition * compositions, guint n_compositions)
-{
-  GstFcvObject objects[GST_FCV_MAX_DRAW_OBJECTS] = { 0, };
-  guint32 idx = 0, num = 0, n_objects = 0, area = 0;
-
-  g_return_val_if_fail (convert != NULL, FALSE);
-  g_return_val_if_fail ((compositions != NULL) && (n_compositions != 0), FALSE);
-
-  for (idx = 0; idx < n_compositions; idx++) {
-    GstVideoFrame *outframe = compositions[idx].frame;
-    GstFcvBlit *blits = compositions[idx].blits;
-    guint n_blits = compositions[idx].n_blits;
-
-    // Sanity checks, output frame and blit entries must not be NULL.
-    g_return_val_if_fail (outframe != NULL, FALSE);
-    g_return_val_if_fail ((blits != NULL) && (n_blits != 0), FALSE);
-
-    // Total area of the output frame that is to be used in later calculations
-    // to determine whether there are unoccupied background pixels to be filled.
-    area = GST_VIDEO_FRAME_WIDTH (outframe) * GST_VIDEO_FRAME_HEIGHT (outframe);
-
-    // Iterate over the input blit entries and update each FCV object.
-    for (num = 0; num < n_blits; num++) {
-      GstFcvBlit *blit = &(blits[num]);
-      guint r_idx = 0;
-
-      // Update a new FCV object (at least 1) for each source/destnation pair.
-      do {
-        GstFcvObject *object = NULL;
-        GstVideoRectangle *region = NULL;
-
-        if (n_objects >= GST_FCV_MAX_DRAW_OBJECTS) {
-          GST_ERROR ("Number of objects exceeds %d!", GST_FCV_MAX_DRAW_OBJECTS);
-          return FALSE;
-        }
-
-        // Intialization of the source FCV object.
-        object = &(objects[n_objects]);
-        region = (r_idx < blit->n_regions) ? &(blit->sources[r_idx]) : NULL;
-
-        gst_fcv_update_object (object, "Source", blit->frame, region);
-
-        object->flip = gst_fcv_translate_flip_flags (blit->flags);
-        object->rotate = gst_fcv_translate_rotation_flags (blit->flags);
-
-        // Intialization of the destination FCV object.
-        object = &(objects[n_objects + 1]);
-        region = (r_idx < blit->n_regions) ? &(blit->destinations[r_idx]) : NULL;
-
-        gst_fcv_update_object (object, "Destination", outframe, region);
-
-        // Subtract blit area from total area.
-        if (area != 0)
-          area -= gst_fcv_composition_blit_area (outframe, blits, num, r_idx);
-
-        // Increment the objects counter by 2 for for Source/Destination pair.
-        n_objects += 2;
-      } while (++r_idx < blit->n_regions);
-    }
-
-    if ((compositions[idx].flags & GST_FCV_FLAG_CLEAR_BACKGROUND) && (area > 0)) {
-      guint32 color = compositions[idx].bgcolor;
-      gst_fcv_video_converter_fill_background (convert, outframe, color);
-    }
-
-    if (!gst_fcv_video_converter_process (convert, objects, n_objects)) {
-      GST_ERROR ("Failed to process frames for composition %u!", idx);
-      return FALSE;
-    }
-  }
-
-  return TRUE;
 }

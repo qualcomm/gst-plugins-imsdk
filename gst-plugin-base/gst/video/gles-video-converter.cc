@@ -42,7 +42,7 @@
 #include <iot-core-algs/ib2c.h>
 
 
-#define GST_CAT_DEFAULT ensure_debug_category()
+#define GST_CAT_DEFAULT gst_video_converter_engine_debug
 
 #define GPOINTER_TO_GUINT64(p) ((guint64) (p))
 #define GUINT64_TO_POINTER(p)  ((gpointer) (p))
@@ -62,30 +62,15 @@ struct _GstGlesVideoConverter
   GHashTable      *insurfaces;
   GHashTable      *outsurfaces;
 
-  // List of not yet processed request IDs.
-  GList           *request_ids;
+  // List of not yet processed IB2C fence objects.
+  GList           *fences;
 
   // IB2C library handle.
   gpointer        ib2chandle;
 
-  // DataConverter to construct the converter pipeline
-  //::QImgConv::DataConverter *engine;
+  // IB2C engine interface.
   ::ib2c::IEngine *engine;
 };
-
-static GstDebugCategory *
-ensure_debug_category (void)
-{
-  static gsize catonce = 0;
-
-  if (g_once_init_enter (&catonce)) {
-    gsize catdone = (gsize) _gst_debug_category_new ("gles-video-converter",
-        0, "GLES video converter");
-    g_once_init_leave (&catonce, catdone);
-  }
-
-  return (GstDebugCategory *) catonce;
-}
 
 static gint
 gst_video_format_to_ib2c_format (GstVideoFormat format)
@@ -172,13 +157,13 @@ gst_gles_create_surface (GstGlesVideoConverter * convert,
   surface.nplanes = GST_VIDEO_FRAME_N_PLANES (frame);
 
   // In case the format has UBWC enabled append additional format mask.
-  if (bits & GST_GLES_FLAG_UBWC_FORMAT) {
+  if (bits & GST_VCE_FLAG_UBWC) {
     surface.format |= ::ib2c::ColorMode::kUBWC;
     mode = " UBWC";
-  } else if (bits & GST_GLES_FLAG_FLOAT16_FORMAT) {
+  } else if ((bits & GST_VCE_FORMAT_MASK) == GST_VCE_FLAG_F16_FORMAT) {
     surface.format |= ::ib2c::ColorMode::kFloat16;
     mode = " FLOAT16";
-  } else if (bits & GST_GLES_FLAG_FLOAT32_FORMAT) {
+  } else if ((bits & GST_VCE_FORMAT_MASK) == GST_VCE_FLAG_F32_FORMAT) {
     surface.format |= ::ib2c::ColorMode::kFloat32;
     mode = " FLOAT32";
   }
@@ -269,12 +254,12 @@ gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
   object->source.w = width;
   object->source.h = height;
 
-  if (flags & GST_GLES_FLAG_FLIP_VERTICAL) {
+  if (flags & GST_VCE_FLAG_FLIP_V) {
     object->mask |= ::ib2c::ConfigMask::kVFlip;
     GST_TRACE ("Input surface %lx - Flip Vertically", surface_id);
   }
 
-  if (flags & GST_GLES_FLAG_FLIP_HORIZONTAL) {
+  if (flags & GST_VCE_FLAG_FLIP_H) {
     object->mask |= ::ib2c::ConfigMask::kHFlip;
     GST_TRACE ("Input surface %lx - Flip Horizontally", surface_id);
   }
@@ -291,8 +276,8 @@ gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
   object->destination.y = ((width != 0) && (height != 0)) ? y : 0;
 
   // Setup rotation angle and adjustments.
-  switch (flags & (0b11 << 2)) {
-    case GST_GLES_FLAG_ROTATE_90CW:
+  switch (flags & GST_VCE_ROTATION_MASK) {
+    case GST_VCE_FLAG_ROTATE_90:
     {
       gint dar_n = 0, dar_d = 0;
 
@@ -327,7 +312,7 @@ gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
       object->rotation = 90.0;
       break;
     }
-    case GST_GLES_FLAG_ROTATE_180:
+    case GST_VCE_FLAG_ROTATE_180:
       GST_TRACE ("Input surface %lx - rotate 180°", surface_id);
 
       // Adjust the target rectangle dimensions.
@@ -339,7 +324,7 @@ gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
 
       object->rotation = 180.0;
       break;
-    case GST_GLES_FLAG_ROTATE_90CCW:
+    case GST_VCE_FLAG_ROTATE_270:
     {
       gint dar_n = 0, dar_d = 0;
 
@@ -434,8 +419,170 @@ gst_gles_retrieve_surface_id (GstGlesVideoConverter * convert,
   return surface_id;
 }
 
+gboolean
+gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
+    GstVideoComposition * compositions, guint n_compositions, gpointer * fence)
+{
+  guint idx = 0, num = 0, n_blits = 0;
+  guint64 surface_id = 0;
+
+  std::vector<::ib2c::Composition> comps;
+
+  for (idx = 0; idx < n_compositions; idx++) {
+    GstVideoFrame *outframe = compositions[idx].frame;
+    GstVideoBlit *blits = compositions[idx].blits;
+
+    n_blits = compositions[idx].n_blits;
+
+    // Sanity checks, output frame and blit entries must not be NULL.
+    g_return_val_if_fail (outframe != NULL, FALSE);
+    g_return_val_if_fail ((blits != NULL) && (n_blits != 0), FALSE);
+
+    std::vector<::ib2c::Object> objects;
+
+    // Iterate over the input blit entries and update each IB2C object.
+    for (num = 0; num < n_blits; num++) {
+      GstVideoBlit *blit = &(blits[num]);
+      GstVideoRectangle *source = NULL, *destination = NULL;
+      guint r_idx = 0;
+
+      GST_GLES_LOCK (convert);
+
+      surface_id = gst_gles_retrieve_surface_id (convert, convert->insurfaces,
+          "Input", blit->frame, blit->flags);
+
+      GST_GLES_UNLOCK (convert);
+
+      if (surface_id == 0) {
+        GST_ERROR ("Failed to get surface ID for input buffer %p at index %u "
+            "in composition %u!", blit->frame->buffer, num, idx);
+        return FALSE;
+      }
+
+      // Update a new C2D object (at least 1) for each source/destnation pair.
+      do {
+        ::ib2c::Object object;
+
+        source = (blit->n_regions != 0) ? &(blit->sources[r_idx]) : NULL;
+        destination = (blit->n_regions != 0) ? &(blit->destinations[r_idx]) : NULL;
+
+        gst_gles_update_object (&object, surface_id, blit->frame, blit->alpha,
+            blit->flags, source, destination, outframe);
+
+        objects.push_back(object);
+      } while (++r_idx < blit->n_regions);
+    }
+
+    GST_GLES_LOCK (convert);
+
+    surface_id = gst_gles_retrieve_surface_id (convert, convert->outsurfaces,
+        "Output", outframe, compositions[idx].flags);
+
+    GST_GLES_UNLOCK (convert);
+
+    if (surface_id == 0) {
+      GST_ERROR ("Failed to get surface ID for output buffer %p in "
+          "composition %u!", outframe->buffer, idx);
+      return FALSE;
+    }
+
+    uint32_t color = compositions[idx].bgcolor;
+    bool clear = compositions[idx].flags & GST_VCE_FLAG_FILL_BACKGROUND;
+
+    std::vector<::ib2c::Normalize> normalization;
+
+    normalization.push_back(::ib2c::Normalize (
+        compositions[idx].scales[0], compositions[idx].offsets[0]));
+    normalization.push_back(::ib2c::Normalize (
+        compositions[idx].scales[1], compositions[idx].offsets[1]));
+    normalization.push_back(::ib2c::Normalize (
+        compositions[idx].scales[2], compositions[idx].offsets[2]));
+    normalization.push_back(::ib2c::Normalize (
+        compositions[idx].scales[3], compositions[idx].offsets[3]));
+
+    comps.push_back(std::move(
+        std::make_tuple(surface_id, color, clear, normalization, objects)));
+  }
+
+  try {
+    if (fence != NULL) {
+      // Call IB2C Compose API with synchronous set to false.
+      std::uintptr_t id = convert->engine->Compose (comps, false);
+      *fence = reinterpret_cast<gpointer>(id);
+
+      GST_GLES_LOCK (convert);
+      convert->fences = g_list_append (convert->fences, *fence);
+      GST_GLES_UNLOCK (convert);
+    } else {
+      // Call IB2C Compose API with synchronous set to true.
+      convert->engine->Compose (comps, true);
+    }
+  } catch (std::exception& e) {
+    GST_ERROR ("Failed to submit draw objects, error: '%s'!", e.what());
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+gboolean
+gst_gles_video_converter_wait_fence (GstGlesVideoConverter * convert,
+    gpointer fence)
+{
+  try {
+    convert->engine->Finish (reinterpret_cast<std::intptr_t>(fence));
+  } catch (std::exception& e) {
+    GST_ERROR ("Failed to process fence %p, error: '%s'!", fence, e.what());
+    return FALSE;
+  }
+
+  GST_GLES_LOCK (convert);
+  convert->fences = g_list_remove (convert->fences, fence);
+  GST_GLES_UNLOCK (convert);
+
+  return TRUE;
+}
+
+void
+gst_gles_video_converter_flush (GstGlesVideoConverter * convert)
+{
+  GList *list = NULL;
+
+  GST_GLES_LOCK (convert);
+
+  GST_LOG ("Forcing pending requests to complete");
+
+  for (list = convert->fences; list != NULL; list = list->next) {
+    gpointer fence = list->data;
+
+    try {
+      convert->engine->Finish (reinterpret_cast<std::intptr_t>(fence));
+    } catch (std::exception& e) {
+      GST_ERROR ("Failed to process fence %p, error: '%s'!", fence, e.what());
+    }
+  }
+
+  g_clear_pointer (&(convert->fences), (GDestroyNotify) g_list_free);
+
+  GST_LOG ("Finished pending requests");
+
+  if (convert->insurfaces != NULL) {
+    g_hash_table_foreach (convert->insurfaces, gst_gles_destroy_surface, convert);
+    g_hash_table_remove_all (convert->insurfaces);
+  }
+
+  if (convert->outsurfaces != NULL) {
+    g_hash_table_foreach (convert->outsurfaces, gst_gles_destroy_surface, convert);
+    g_hash_table_remove_all (convert->outsurfaces);
+  }
+
+  GST_GLES_UNLOCK (convert);
+
+  return;
+}
+
 GstGlesVideoConverter *
-gst_gles_video_converter_new ()
+gst_gles_video_converter_new (GstStructure * settings)
 {
   GstGlesVideoConverter *convert = NULL;
   ::ib2c::NewIEngine NewEngine;
@@ -487,8 +634,8 @@ gst_gles_video_converter_free (GstGlesVideoConverter * convert)
   if (convert == NULL)
     return;
 
-  if (convert->request_ids != NULL)
-    g_list_free (convert->request_ids);
+  if (convert->fences != NULL)
+    g_list_free (convert->fences);
 
   if (convert->insurfaces != NULL) {
     g_hash_table_foreach (convert->insurfaces, gst_gles_destroy_surface, convert);
@@ -510,176 +657,4 @@ gst_gles_video_converter_free (GstGlesVideoConverter * convert)
 
   GST_INFO ("Destroyed GLES converter: %p", convert);
   g_slice_free (GstGlesVideoConverter, convert);
-}
-
-gpointer
-gst_gles_video_converter_submit_request (GstGlesVideoConverter * convert,
-    GstGlesComposition * compositions, guint n_compositions)
-{
-  guint idx = 0, num = 0, n_blits = 0;
-  guint64 surface_id = 0;
-
-  g_return_val_if_fail (convert != NULL, NULL);
-  g_return_val_if_fail ((compositions != NULL) && (n_compositions != 0), NULL);
-
-  std::vector<::ib2c::Composition> comps;
-
-  for (idx = 0; idx < n_compositions; idx++) {
-    GstVideoFrame *outframe = compositions[idx].frame;
-    GstGlesBlit *blits = compositions[idx].blits;
-
-    n_blits = compositions[idx].n_blits;
-
-    // Sanity checks, output frame and blit entries must not be NULL.
-    g_return_val_if_fail (outframe != NULL, NULL);
-    g_return_val_if_fail ((blits != NULL) && (n_blits != 0), NULL);
-
-    std::vector<::ib2c::Object> objects;
-
-    // Iterate over the input blit entries and update each IB2C object.
-    for (num = 0; num < n_blits; num++) {
-      GstGlesBlit *blit = &(blits[num]);
-      GstVideoRectangle *source = NULL, *destination = NULL;
-      guint r_idx = 0;
-
-      GST_GLES_LOCK (convert);
-
-      surface_id = gst_gles_retrieve_surface_id (convert, convert->insurfaces,
-          "Input", blit->frame, blit->flags);
-
-      GST_GLES_UNLOCK (convert);
-
-      if (surface_id == 0) {
-        GST_ERROR ("Failed to get surface ID for input buffer %p at index %u "
-            "in composition %u!", blit->frame->buffer, num, idx);
-        return NULL;
-      }
-
-      // Update a new C2D object (at least 1) for each source/destnation pair.
-      do {
-        ::ib2c::Object object;
-
-        source = (blit->n_regions != 0) ? &(blit->sources[r_idx]) : NULL;
-        destination = (blit->n_regions != 0) ? &(blit->destinations[r_idx]) : NULL;
-
-        gst_gles_update_object (&object, surface_id, blit->frame, blit->alpha,
-            blit->flags, source, destination, outframe);
-
-        objects.push_back(object);
-      } while (++r_idx < blit->n_regions);
-    }
-
-    GST_GLES_LOCK (convert);
-
-    surface_id = gst_gles_retrieve_surface_id (convert, convert->outsurfaces,
-        "Output", outframe, compositions[idx].flags);
-
-    GST_GLES_UNLOCK (convert);
-
-    if (surface_id == 0) {
-      GST_ERROR ("Failed to get surface ID for output buffer %p in "
-          "composition %u!", outframe->buffer, idx);
-      return NULL;
-    }
-
-    uint32_t color = compositions[idx].bgcolor;
-    bool clear = compositions[idx].flags & GST_GLES_FLAG_CLEAR_BACKGROUND;
-
-    std::vector<::ib2c::Normalize> normalization;
-
-    normalization.push_back(::ib2c::Normalize (
-        compositions[idx].scales[0], compositions[idx].offsets[0]));
-    normalization.push_back(::ib2c::Normalize (
-        compositions[idx].scales[1], compositions[idx].offsets[1]));
-    normalization.push_back(::ib2c::Normalize (
-        compositions[idx].scales[2], compositions[idx].offsets[2]));
-    normalization.push_back(::ib2c::Normalize (
-        compositions[idx].scales[3], compositions[idx].offsets[3]));
-
-    comps.push_back(std::move(
-        std::make_tuple(surface_id, color, clear, normalization, objects)));
-  }
-
-  std::uintptr_t request_id;
-
-  try {
-    request_id = convert->engine->Compose (comps);
-  } catch (std::exception& e) {
-    GST_ERROR ("Failed to submit draw objects, error: '%s'!", e.what());
-    return NULL;
-  }
-
-  GST_GLES_LOCK (convert);
-
-  convert->request_ids = g_list_append (convert->request_ids,
-      reinterpret_cast<gpointer>(request_id));
-
-  GST_GLES_UNLOCK (convert);
-
-  return reinterpret_cast<gpointer>(request_id);
-}
-
-gboolean
-gst_gles_video_converter_wait_request (GstGlesVideoConverter * convert,
-    gpointer request_id)
-{
-  g_return_val_if_fail (convert != NULL, FALSE);
-
-  if (request_id == NULL)
-    return TRUE;
-
-  try {
-    convert->engine->Finish (reinterpret_cast<std::intptr_t>(request_id));
-  } catch (std::exception& e) {
-    GST_ERROR ("Failed to process request ID %p, error: '%s'!",
-        request_id, e.what());
-    return FALSE;
-  }
-
-  GST_GLES_LOCK (convert);
-  convert->request_ids = g_list_remove (convert->request_ids, request_id);
-  GST_GLES_UNLOCK (convert);
-
-  return TRUE;
-}
-
-void
-gst_gles_video_converter_flush (GstGlesVideoConverter * convert)
-{
-  GList *list = NULL;
-
-  g_return_if_fail (convert != NULL);
-
-  GST_GLES_LOCK (convert);
-
-  GST_LOG ("Forcing pending requests to complete");
-
-  for (list = convert->request_ids; list != NULL; list = list->next) {
-    gpointer request_id = list->data;
-
-    try {
-      convert->engine->Finish (reinterpret_cast<std::intptr_t>(request_id));
-    } catch (std::exception& e) {
-      GST_ERROR ("Failed to process request ID %p, error: '%s'!",
-          request_id, e.what());
-    }
-  }
-
-  g_clear_pointer (&(convert->request_ids), (GDestroyNotify) g_list_free);
-
-  GST_LOG ("Finished pending requests");
-
-  if (convert->insurfaces != NULL) {
-    g_hash_table_foreach (convert->insurfaces, gst_gles_destroy_surface, convert);
-    g_hash_table_remove_all (convert->insurfaces);
-  }
-
-  if (convert->outsurfaces != NULL) {
-    g_hash_table_foreach (convert->outsurfaces, gst_gles_destroy_surface, convert);
-    g_hash_table_remove_all (convert->outsurfaces);
-  }
-
-  GST_GLES_UNLOCK (convert);
-
-  return;
 }

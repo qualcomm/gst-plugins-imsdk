@@ -35,143 +35,73 @@
 #ifndef __GST_GLES_VIDEO_CONVERTER_H__
 #define __GST_GLES_VIDEO_CONVERTER_H__
 
-#include <gst/video/video.h>
-#include <gst/allocators/allocators.h>
+#include "video-converter-engine.h"
 
 G_BEGIN_DECLS
 
-// Composition flags valid only for the input frame.
-#define GST_GLES_FLAG_FLIP_HORIZONTAL   (1 << 0)
-#define GST_GLES_FLAG_FLIP_VERTICAL     (1 << 1)
-#define GST_GLES_FLAG_ROTATE_90CW       (1 << 2)
-#define GST_GLES_FLAG_ROTATE_180        (2 << 2)
-#define GST_GLES_FLAG_ROTATE_90CCW      (3 << 2)
-
-// Composition flags valid for both input and output frame.
-#define GST_GLES_FLAG_UBWC_FORMAT       (1 << 6)
-
-// Composition flags valid only for the output frame.
-#define GST_GLES_FLAG_CLEAR_BACKGROUND  (1 << 7)
-#define GST_GLES_FLAG_FLOAT32_FORMAT    (1 << 8)
-#define GST_GLES_FLAG_FLOAT16_FORMAT    (2 << 8)
-
-#define GST_GLES_BLIT_INIT { NULL, 255, NULL, NULL, 0, 0 }
-#define GST_GLES_COMPOSITION_INIT \
-    { NULL, 0, NULL, 0, { 0.0, 0.0, 0.0, 0.0 }, { 0.0, 0.0, 0.0, 0.0 }, 0 }
-
 typedef struct _GstGlesVideoConverter GstGlesVideoConverter;
-typedef struct _GstGlesBlit GstGlesBlit;
-typedef struct _GstGlesComposition GstGlesComposition;
-
-/**
- * GstGlesBlit:
- * @frame: Input video frame.
- * @alpha: Global alpha, 0 = fully transparent, 255 = fully opaque.
- * @sources: Source regions in the frame.
- * @destinations: Destination regions in the frame.
- * @n_regions: Number of Source - Destination region pairs.
- * @flags: Bitwise configuration mask for the input frame.
- *
- * Blit source. Input frame along with a possible crop and destination
- * rectangles and configuration mask.
- */
-struct _GstGlesBlit
-{
-  GstVideoFrame     *frame;
-  guint8            alpha;
-
-  GstVideoRectangle *sources;
-  GstVideoRectangle *destinations;
-  guint8            n_regions;
-
-  guint64           flags;
-};
-
-/**
- * GstGlesComposition:
- * @blits: Array of blit objects.
- * @n_blits: Number of blit objects.
- * @frame: Output video frame where the blit objects will be placed.
- * @bgcolor: Background color to be applied if CLEAR_BACKGROUND flag is present.
- * @offsets: Channel offset factors, used in normalize operation.
- * @scales: Channel scale factors, used in normalize operation.
- * @flags: Bitwise configuration mask for the output.
- *
- * Blit composition.
- */
-struct _GstGlesComposition
-{
-  GstGlesBlit   *blits;
-  guint         n_blits;
-
-  GstVideoFrame *frame;
-  guint32       bgcolor;
-
-  gdouble       offsets[4];
-  gdouble       scales[4];
-
-  guint64       flags;
-};
 
 /**
  * gst_gles_video_converter_new:
+ * @settings: Structure with optional settings.
  *
- * Initialize instance of GLES converter module.
+ * Initialize instance of GLES converter backend.
  *
  * return: Pointer to GLES converter on success or NULL on failure
  */
 GST_VIDEO_API GstGlesVideoConverter *
-gst_gles_video_converter_new     (void);
+gst_gles_video_converter_new (GstStructure * settings);
 
 /**
  * gst_gles_video_converter_free:
- * @convert: Pointer to GLES converter module
+ * @convert: Pointer to GLES converter backend
  *
- * Deinitialise the GLES converter instance.
+ * Deinitialise the GLES converter.
  *
  * return: NONE
  */
 GST_VIDEO_API void
-gst_gles_video_converter_free    (GstGlesVideoConverter * convert);
+gst_gles_video_converter_free (GstGlesVideoConverter * convert);
 
 /**
- * gst_gles_video_converter_submit_request:
- * @convert: Pointer to GLES converter instance
- * @compositions: Array of composition frames
- * @n_compositions: Number of compositions
+ * gst_gles_video_converter_compose:
+ * @convert: Pointer to GLES converter backend.
+ * @compositions: Array of composition frames.
+ * @n_compositions: Number of compositions.
+ * @fence: Optional fence to be filled if provided and used for async operation.
  *
  * Submit the a number of video composition which will be executed together.
  *
  * return: Pointer to request on success or NULL on failure
  */
-GST_VIDEO_API gpointer
-gst_gles_video_converter_submit_request (GstGlesVideoConverter * convert,
-                                         GstGlesComposition * compositions,
-                                         guint n_compositions);
+GST_VIDEO_API gboolean
+gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
+                                  GstVideoComposition * compositions,
+                                  guint n_compositions, gpointer * fence);
 
 /**
- * gst_gles_video_converter_wait_request:
- * @convert: Pointer to GLES converter instance
- * @request_id: Indentification of the request
+ * gst_gles_video_converter_wait_fence:
+ * @convert: Pointer to GLES converter backend.
+ * @fence: Asynchronously fence object associated with a compose request.
  *
  * Wait for the sumbitted to the GPU compositions to finish.
  *
  * return: TRUE on success or FALSE on failure
  */
 GST_VIDEO_API gboolean
-gst_gles_video_converter_wait_request (GstGlesVideoConverter * convert,
-                                       gpointer request_id);
+gst_gles_video_converter_wait_fence (GstGlesVideoConverter * convert,
+                                    gpointer fence);
 
 /**
  * gst_gles_video_converter_flush:
- * @convert: Pointer to GLES converter instance
+ * @convert: Pointer to GLES converter backend.
  *
  * Wait for compositions sumbitted to the GPU to finish and flush cached data.
  *
  * return: NONE
  */
 GST_VIDEO_API void
-gst_gles_video_converter_flush        (GstGlesVideoConverter * convert);
+gst_gles_video_converter_flush (GstGlesVideoConverter * convert);
 
 G_END_DECLS
 
