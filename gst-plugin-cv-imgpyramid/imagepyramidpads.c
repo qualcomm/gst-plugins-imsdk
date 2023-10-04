@@ -5,11 +5,11 @@
 
 #include "imagepyramidpads.h"
 
-G_DEFINE_TYPE (GstCvpImgPyramidSinkPad, gst_cvp_imgpyramid_sinkpad, GST_TYPE_PAD);
-G_DEFINE_TYPE (GstCvpImgPyramidSrcPad, gst_cvp_imgpyramid_srcpad, GST_TYPE_PAD);
+G_DEFINE_TYPE (GstCvImgPyramidSinkPad, gst_cv_imgpyramid_sinkpad, GST_TYPE_PAD);
+G_DEFINE_TYPE (GstCvImgPyramidSrcPad, gst_cv_imgpyramid_srcpad, GST_TYPE_PAD);
 
-GST_DEBUG_CATEGORY_STATIC (gst_cvp_imgpyramid_debug);
-#define GST_CAT_DEFAULT gst_cvp_imgpyramid_debug
+GST_DEBUG_CATEGORY_STATIC (gst_cv_imgpyramid_debug);
+#define GST_CAT_DEFAULT gst_cv_imgpyramid_debug
 
 #define DEFAULT_VIDEO_STREAM_FPS_NUM  30
 #define DEFAULT_VIDEO_STREAM_FPS_DEN  1
@@ -25,9 +25,9 @@ queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
 
 // Source pad implementation
 static void
-gst_cvp_imgpyramid_srcpad_worker_task (gpointer userdata)
+gst_cv_imgpyramid_srcpad_worker_task (gpointer userdata)
 {
-  GstCvpImgPyramidSrcPad *srcpad = GST_CVP_IMGPYRAMID_SRCPAD (userdata);
+  GstCvImgPyramidSrcPad *srcpad = GST_CV_IMGPYRAMID_SRCPAD (userdata);
   GstDataQueueItem *item = NULL;
 
   if (gst_data_queue_pop (srcpad->buffers, &item)) {
@@ -48,7 +48,7 @@ gst_cvp_imgpyramid_srcpad_worker_task (gpointer userdata)
 }
 
 gboolean
-gst_cvp_imgpyramid_srcpad_push_event (GstElement * element, GstPad * pad,
+gst_cv_imgpyramid_srcpad_push_event (GstElement * element, GstPad * pad,
     gpointer userdata)
 {
   GstEvent *event = GST_EVENT (userdata);
@@ -58,7 +58,8 @@ gst_cvp_imgpyramid_srcpad_push_event (GstElement * element, GstPad * pad,
 }
 
 gboolean
-gst_cvp_imgpyramid_srcpad_setcaps (GstCvpImgPyramidSrcPad * srcpad)
+gst_cv_imgpyramid_srcpad_setcaps (GstCvImgPyramidSrcPad * srcpad,
+    gboolean is_ubwc)
 {
   GstCaps *outcaps = NULL;
   GstStructure *structure;
@@ -112,6 +113,9 @@ gst_cvp_imgpyramid_srcpad_setcaps (GstCvpImgPyramidSrcPad * srcpad)
     }
   }
 
+  if (is_ubwc)
+    gst_structure_fixate_field_string (structure, "compression", "ubwc");
+
   outcaps = gst_caps_fixate (outcaps);
   gst_pad_set_caps (GST_PAD (srcpad), outcaps);
 
@@ -121,10 +125,10 @@ gst_cvp_imgpyramid_srcpad_setcaps (GstCvpImgPyramidSrcPad * srcpad)
 }
 
 gboolean
-gst_cvp_imgpyramid_srcpad_query (GstPad * pad, GstObject * parent,
+gst_cv_imgpyramid_srcpad_query (GstPad * pad, GstObject * parent,
     GstQuery * query)
 {
-  GstCvpImgPyramidSrcPad *srcpad = GST_CVP_IMGPYRAMID_SRCPAD (pad);
+  GstCvImgPyramidSrcPad *srcpad = GST_CV_IMGPYRAMID_SRCPAD (pad);
 
   GST_TRACE_OBJECT (srcpad, "Received %s query: %" GST_PTR_FORMAT,
       GST_QUERY_TYPE_NAME (query), query);
@@ -170,10 +174,10 @@ gst_cvp_imgpyramid_srcpad_query (GstPad * pad, GstObject * parent,
 }
 
 gboolean
-gst_cvp_imgpyramid_srcpad_event (GstPad * pad, GstObject * parent,
+gst_cv_imgpyramid_srcpad_event (GstPad * pad, GstObject * parent,
     GstEvent * event)
 {
-  GstCvpImgPyramidSrcPad *srcpad = GST_CVP_IMGPYRAMID_SRCPAD (pad);
+  GstCvImgPyramidSrcPad *srcpad = GST_CV_IMGPYRAMID_SRCPAD (pad);
 
   GST_TRACE_OBJECT (srcpad, "Received %s event: %" GST_PTR_FORMAT,
       GST_EVENT_TYPE_NAME (event), event);
@@ -182,7 +186,7 @@ gst_cvp_imgpyramid_srcpad_event (GstPad * pad, GstObject * parent,
 }
 
 gboolean
-gst_cvp_imgpyramid_srcpad_activate_mode (GstPad * pad, GstObject * parent,
+gst_cv_imgpyramid_srcpad_activate_mode (GstPad * pad, GstObject * parent,
     GstPadMode mode, gboolean active)
 {
   gboolean success = TRUE;
@@ -194,14 +198,14 @@ gst_cvp_imgpyramid_srcpad_activate_mode (GstPad * pad, GstObject * parent,
     case GST_PAD_MODE_PUSH:
       if (active) {
         // Disable requests queue in flushing state to enable normal work.
-        gst_data_queue_set_flushing (GST_CVP_IMGPYRAMID_SRCPAD (pad)->buffers,
+        gst_data_queue_set_flushing (GST_CV_IMGPYRAMID_SRCPAD (pad)->buffers,
             FALSE);
-        gst_data_queue_flush (GST_CVP_IMGPYRAMID_SRCPAD (pad)->buffers);
+        gst_data_queue_flush (GST_CV_IMGPYRAMID_SRCPAD (pad)->buffers);
 
-        success = gst_pad_start_task (pad, gst_cvp_imgpyramid_srcpad_worker_task,
+        success = gst_pad_start_task (pad, gst_cv_imgpyramid_srcpad_worker_task,
             pad, NULL);
       } else {
-        gst_data_queue_set_flushing (GST_CVP_IMGPYRAMID_SRCPAD (pad)->buffers,
+        gst_data_queue_set_flushing (GST_CV_IMGPYRAMID_SRCPAD (pad)->buffers,
             TRUE);
         success = gst_pad_stop_task (pad);
       }
@@ -223,31 +227,31 @@ gst_cvp_imgpyramid_srcpad_activate_mode (GstPad * pad, GstObject * parent,
 }
 
 static void
-gst_cvp_imgpyramid_srcpad_finalize (GObject * object)
+gst_cv_imgpyramid_srcpad_finalize (GObject * object)
 {
-  GstCvpImgPyramidSrcPad *pad = GST_CVP_IMGPYRAMID_SRCPAD (object);
+  GstCvImgPyramidSrcPad *pad = GST_CV_IMGPYRAMID_SRCPAD (object);
 
   gst_data_queue_set_flushing (pad->buffers, TRUE);
   gst_data_queue_flush (pad->buffers);
 
   gst_object_unref (GST_OBJECT_CAST (pad->buffers));
 
-  G_OBJECT_CLASS (gst_cvp_imgpyramid_srcpad_parent_class)->finalize (object);
+  G_OBJECT_CLASS (gst_cv_imgpyramid_srcpad_parent_class)->finalize (object);
 }
 
 void
-gst_cvp_imgpyramid_srcpad_class_init (GstCvpImgPyramidSrcPadClass * klass)
+gst_cv_imgpyramid_srcpad_class_init (GstCvImgPyramidSrcPadClass * klass)
 {
   GObjectClass *gobject = (GObjectClass *) klass;
 
-  gobject->finalize = GST_DEBUG_FUNCPTR (gst_cvp_imgpyramid_srcpad_finalize);
+  gobject->finalize = GST_DEBUG_FUNCPTR (gst_cv_imgpyramid_srcpad_finalize);
 
-  GST_DEBUG_CATEGORY_INIT (gst_cvp_imgpyramid_debug, "qticvpimgpyramid", 0,
-      "QTI CVP pyramid scaler src pad");
+  GST_DEBUG_CATEGORY_INIT (gst_cv_imgpyramid_debug, "qticvimgpyramid", 0,
+      "QTI CV pyramid scaler src pad");
 }
 
 void
-gst_cvp_imgpyramid_srcpad_init (GstCvpImgPyramidSrcPad * pad)
+gst_cv_imgpyramid_srcpad_init (GstCvImgPyramidSrcPad * pad)
 {
   gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
 
@@ -256,31 +260,31 @@ gst_cvp_imgpyramid_srcpad_init (GstCvpImgPyramidSrcPad * pad)
 
 // Sink pad
 static void
-gst_cvp_imgpyramid_sinkpad_finalize (GObject * object)
+gst_cv_imgpyramid_sinkpad_finalize (GObject * object)
 {
-  GstCvpImgPyramidSinkPad *pad = GST_CVP_IMGPYRAMID_SINKPAD (object);
+  GstCvImgPyramidSinkPad *pad = GST_CV_IMGPYRAMID_SINKPAD (object);
 
   gst_data_queue_set_flushing (pad->requests, TRUE);
   gst_data_queue_flush (pad->requests);
 
   gst_object_unref (GST_OBJECT_CAST (pad->requests));
 
-  G_OBJECT_CLASS (gst_cvp_imgpyramid_sinkpad_parent_class)->finalize (object);
+  G_OBJECT_CLASS (gst_cv_imgpyramid_sinkpad_parent_class)->finalize (object);
 }
 
 void
-gst_cvp_imgpyramid_sinkpad_class_init (GstCvpImgPyramidSinkPadClass * klass)
+gst_cv_imgpyramid_sinkpad_class_init (GstCvImgPyramidSinkPadClass * klass)
 {
   GObjectClass *gobject = (GObjectClass *) klass;
 
-  gobject->finalize = GST_DEBUG_FUNCPTR (gst_cvp_imgpyramid_sinkpad_finalize);
+  gobject->finalize = GST_DEBUG_FUNCPTR (gst_cv_imgpyramid_sinkpad_finalize);
 
-  GST_DEBUG_CATEGORY_INIT (gst_cvp_imgpyramid_debug, "qticvpimgpyramid", 0,
-      "QTI CVP/EVA sink pad");
+  GST_DEBUG_CATEGORY_INIT (gst_cv_imgpyramid_debug, "qticvimgpyramid", 0,
+      "QTI CV/EVA sink pad");
 }
 
 void
-gst_cvp_imgpyramid_sinkpad_init (GstCvpImgPyramidSinkPad * pad)
+gst_cv_imgpyramid_sinkpad_init (GstCvImgPyramidSinkPad * pad)
 {
   gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
 

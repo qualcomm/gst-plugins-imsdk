@@ -3,11 +3,7 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
-#include "cvp-imgpyramid-engine.h"
+#include "imgpyramid-engine.h"
 
 #include <cvp/v2.0/cvpTypes.h>
 #include <cvp/v2.0/cvpMem.h>
@@ -32,26 +28,9 @@
   } \
 }
 
-#define GST_RETURN_IF_FAIL(expression, ...) \
-{ \
-  if (!(expression)) { \
-    GST_ERROR (__VA_ARGS__); \
-    return; \
-  } \
-}
-
-#define GST_RETURN_IF_FAIL_WITH_CLEAN(expression, cleanup, ...) \
-{ \
-  if (!(expression)) { \
-    GST_ERROR (__VA_ARGS__); \
-    cleanup; \
-    return; \
-  } \
-}
-
 #define GST_CAT_DEFAULT gst_cvp_imgpyramid_engine_debug_category ()
 
-struct _GstCvpImgPyramidEngine
+struct _GstImgPyramidEngine
 {
   // CVP session handle.
   cvpSession             session;
@@ -62,10 +41,14 @@ struct _GstCvpImgPyramidEngine
 
   // Map of input buffer FDs and their corresponding CVP image.
   GHashTable             *incvpimages;
+  // Output video info
+  GstVideoInfo           *outinfos;
   // Output CVP images
   cvpImage               *outimages;
   // Output buffer map
   GstMapInfo             *outmaps;
+  // UBWC flag
+  gboolean               is_ubwc;
 };
 
 static GstDebugCategory *
@@ -82,7 +65,7 @@ gst_cvp_imgpyramid_engine_debug_category (void)
 }
 
 static cvpImage *
-gst_cvp_create_image (GstCvpImgPyramidEngine * engine, const GstVideoFrame * frame)
+gst_cvp_create_image (GstImgPyramidEngine * engine, const GstVideoFrame * frame)
 {
   GstMemory *memory = NULL;
   cvpImage *cvpimage = NULL;
@@ -116,7 +99,8 @@ gst_cvp_create_image (GstCvpImgPyramidEngine * engine, const GstVideoFrame * fra
     case GST_VIDEO_FORMAT_NV12:
     case GST_VIDEO_FORMAT_GRAY8:
       // TODO workaround for CVP NV12 issue - Only use Y plane for all format
-      imginfo->eFormat = CVP_COLORFORMAT_GRAY_8BIT;
+      imginfo->eFormat =
+          engine->is_ubwc ? CVP_COLORFORMAT_GRAY_UBWC : CVP_COLORFORMAT_GRAY_8BIT;
       break;
     default:
       GST_ERROR ("Unsupported video format: %s!",
@@ -164,7 +148,7 @@ gst_cvp_create_image (GstCvpImgPyramidEngine * engine, const GstVideoFrame * fra
 static void
 gst_cvp_delete_image (gpointer key, gpointer value, gpointer userdata)
 {
-  GstCvpImgPyramidEngine *engine = (GstCvpImgPyramidEngine*) userdata;
+  GstImgPyramidEngine *engine = (GstImgPyramidEngine*) userdata;
   cvpImage *cvpimage = (cvpImage*) value;
   cvpStatus status = CVP_SUCCESS;
 
@@ -180,31 +164,32 @@ gst_cvp_delete_image (gpointer key, gpointer value, gpointer userdata)
   return;
 }
 
-GstCvpImgPyramidEngine *
-gst_cvp_imgpyramid_engine_new (GstCvpImgPyramidSettings * settings, GArray * sizes)
+GstImgPyramidEngine *
+gst_imgpyramid_engine_new (GstImgPyramidSettings * settings, GArray * sizes)
 {
-  GstCvpImgPyramidEngine *engine = NULL;
+  GstImgPyramidEngine *engine = NULL;
   cvpConfigPyramidImage config;
   cvpPyramidImageOutBuffReq requirements;
   cvpImageInfo imginfo;
   cvpStatus status = CVP_SUCCESS;
   guint stride = 0, scanline = 0, idx;
 
-  engine = g_slice_new0 (GstCvpImgPyramidEngine);
+  engine = g_slice_new0 (GstImgPyramidEngine);
   g_return_val_if_fail (engine != NULL, NULL);
 
   engine->incvpimages = g_hash_table_new (NULL, NULL);
   GST_RETURN_VAL_IF_FAIL_WITH_CLEAN (engine->incvpimages != NULL, NULL,
-      gst_cvp_imgpyramid_engine_free (engine), "Failed to create hash table "
+      gst_imgpyramid_engine_free (engine), "Failed to create hash table "
       "for input images!");
 
   engine->session = cvpCreateSession (NULL, NULL, NULL);
   GST_RETURN_VAL_IF_FAIL_WITH_CLEAN (engine->session != NULL, NULL,
-      gst_cvp_imgpyramid_engine_free (engine), "Failed to create CVP session!");
+      gst_imgpyramid_engine_free (engine), "Failed to create CVP session!");
 
   config.nActualFps            = settings->framerate;
   config.nOperationalFps       = settings->framerate;
-  config.eOutFormat            = CVP_COLORFORMAT_GRAY_8BIT;
+  config.eOutFormat            =
+      engine->is_ubwc ? CVP_COLORFORMAT_GRAY_UBWC : CVP_COLORFORMAT_GRAY_8BIT;
   config.nOctaves              = settings->n_octaves;
   config.nScalesPerOctave      = settings->n_scales;
   config.sSrcImageInfo.nWidth  = settings->width;
@@ -218,11 +203,15 @@ gst_cvp_imgpyramid_engine_new (GstCvpImgPyramidSettings * settings, GArray * siz
     case GST_VIDEO_FORMAT_GRAY8:
       // TODO workaround for CVP NV12 issue - only use Y plane for all format
       config.sSrcImageInfo.eFormat = CVP_COLORFORMAT_GRAY_8BIT;
+      if (settings->is_ubwc) {
+        engine->is_ubwc = settings->is_ubwc;
+        config.sSrcImageInfo.eFormat = CVP_COLORFORMAT_GRAY_UBWC;
+      }
       break;
     default:
       GST_ERROR ("Unsupported video format: %s!",
           gst_video_format_to_string (settings->format));
-      gst_cvp_imgpyramid_engine_free (engine);
+      gst_imgpyramid_engine_free (engine);
 
       return NULL;
   }
@@ -239,7 +228,7 @@ gst_cvp_imgpyramid_engine_new (GstCvpImgPyramidSettings * settings, GArray * siz
   engine->handle = cvpInitPyramidImage (engine->session, &config, &requirements,
       NULL, NULL);
   GST_RETURN_VAL_IF_FAIL_WITH_CLEAN (engine->handle != NULL, NULL,
-      gst_cvp_imgpyramid_engine_free (engine), "Failed to init Pyramid Image!");
+      gst_imgpyramid_engine_free (engine), "Failed to init Pyramid Image!");
 
   GST_INFO ("Configuration:");
   GST_INFO ("    Stride:         %d", stride);
@@ -264,14 +253,14 @@ gst_cvp_imgpyramid_engine_new (GstCvpImgPyramidSettings * settings, GArray * siz
   // Start the CVP session.
   status = cvpStartSession (engine->session);
   GST_RETURN_VAL_IF_FAIL_WITH_CLEAN (status == CVP_SUCCESS, NULL,
-      gst_cvp_imgpyramid_engine_free (engine), "Failed to start CVP session!");
+      gst_imgpyramid_engine_free (engine), "Failed to start CVP session!");
 
   GST_INFO ("Created CVP Pyramid Scaler engine: %p", engine);
   return engine;
 }
 
 void
-gst_cvp_imgpyramid_engine_free (GstCvpImgPyramidEngine * engine)
+gst_imgpyramid_engine_free (GstImgPyramidEngine * engine)
 {
   if (NULL == engine)
     return;
@@ -298,11 +287,11 @@ gst_cvp_imgpyramid_engine_free (GstCvpImgPyramidEngine * engine)
     cvpDeleteSession (engine->session);
 
   GST_INFO ("Destroyed CVP Pyramid Scaler engine: %p", engine);
-  g_slice_free (GstCvpImgPyramidEngine, engine);
+  g_slice_free (GstImgPyramidEngine, engine);
 }
 
 gboolean
-gst_cvp_imgpyramid_engine_execute (GstCvpImgPyramidEngine * engine,
+gst_cvp_imgpyramid_engine_execute (GstImgPyramidEngine * engine,
     const GstVideoFrame * inframe, GstBufferList * outbuffers)
 {
   cvpImage *incvpimage, *outimages;
