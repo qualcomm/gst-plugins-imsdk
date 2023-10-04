@@ -68,16 +68,7 @@
 #include <gst/base/gstbasetransform.h>
 #include <gst/video/video.h>
 #include <gst/ml/ml-info.h>
-
-#ifdef USE_C2D_CONVERTER
-#include <gst/video/c2d-video-converter.h>
-#endif //USE_C2D_CONVERTER
-#ifdef USE_GLES_CONVERTER
-#include <gst/video/gles-video-converter.h>
-#endif //USE_GLES_CONVERTER
-#ifdef USE_FCV_CONVERTER
-#include <gst/video/fcv-video-converter.h>
-#endif //USE_FCV_CONVERTER
+#include <gst/video/video-converter-engine.h>
 
 G_BEGIN_DECLS
 
@@ -118,23 +109,12 @@ struct _GstMLVideoConverter {
   /// Buffer pools.
   GstBufferPool        *outpool;
 
-  /// Supported converters.
-#ifdef USE_C2D_CONVERTER
-  GstC2dVideoConverter *c2dconvert;
-  GstC2dComposition    composition;
-#endif // USE_C2D_CONVERTER
-
-#ifdef USE_GLES_CONVERTER
-  GstGlesVideoConverter *glesconvert;
-  GstGlesComposition    composition;
-#endif // USE_GLES_CONVERTER
-
-#ifdef USE_FCV_CONVERTER
-  GstFcvVideoConverter *fcvconvert;
-  GstFcvComposition    composition;
-#endif // USE_FCV_CONVERTER
+  /// Video converter engine.
+  GstVideoConvEngine   *converter;
+  GstVideoComposition  composition;
 
   /// Properties.
+  GstVideoConvBackend  backend;
   GstVideoPixelLayout  pixlayout;
   GArray               *mean;
   GArray               *sigma;
