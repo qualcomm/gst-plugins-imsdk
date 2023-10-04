@@ -70,6 +70,13 @@ using namespace std;
 
 #define ROUND_TO(val, round_to) ((val + round_to - 1) & ~(round_to - 1))
 
+#define CL_CONTEXT_PERF_HINT_QCOM                   0x40C2
+
+/*cl_perf_hint*/
+#define CL_PERF_HINT_HIGH_QCOM                      0x40C3
+#define CL_PERF_HINT_NORMAL_QCOM                    0x40C4
+#define CL_PERF_HINT_LOW_QCOM                       0x40C5
+
 cl_device_id OpenClKernel::device_id_ = nullptr;
 cl_context OpenClKernel::context_ = nullptr;
 cl_command_queue OpenClKernel::command_queue_ = nullptr;
@@ -137,7 +144,7 @@ int32_t OpenClKernel::OpenCLInit ()
 
   OVDBG_VERBOSE ("%s: Enter ", __func__);
 
-  cl_context_properties properties[] = { CL_CONTEXT_PLATFORM, 0, 0 };
+  cl_context_properties properties[] = {CL_CONTEXT_PLATFORM, (cl_context_properties)0, CL_CONTEXT_PERF_HINT_QCOM, CL_PERF_HINT_NORMAL_QCOM, 0};
   cl_platform_id plat = 0;
   cl_uint ret_num_platform = 0;
   cl_uint ret_num_devices = 0;
