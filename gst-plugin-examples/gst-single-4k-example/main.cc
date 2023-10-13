@@ -224,6 +224,9 @@ create_pipe (GstAppContext *appctx, gint width, gint height)
   g_object_set (G_OBJECT (encoder), "periodicity-idr", 1, NULL);
   g_object_set (G_OBJECT (encoder), "interval-intraframes", 29, NULL);
   g_object_set (G_OBJECT (encoder), "control-rate", 2, NULL);
+#else
+  // rate-control use "constant" mode
+  g_object_set (G_OBJECT (encoder), "control-rate", 1, NULL);
 #endif
 
   // Set filesink properties
