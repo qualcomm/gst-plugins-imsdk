@@ -55,10 +55,11 @@
 
 #define DEFAULT_OUTPUT_WIDTH  1920
 #define DEFAULT_OUTPUT_HEIGHT 1080
-#define TFLITE_YOLO_MODEL  "/data/yolov5m-320x320-int8.tflite"
-#define TFLITE_YOLO_LABELS "/data/yolov5m.labels"
-#define TFLITE_SSD_MODEL   "/data/ssd-mobilenet_v1_1.tflite"
-#define TFLITE_SSD_LABELS  "/data/ssd-mobilenet.labels"
+#define TFLITE_YOLOV5M_MODEL  "/data/yolov5m-320x320-int8.tflite"
+#define TFLITE_YOLOV5S_MODEL  "/data/yolov5s-320x320-int8.tflite"
+#define TFLITE_YOLOV5_LABELS  "/data/yolov5m.labels"
+#define TFLITE_SSD_MODEL      "/data/ssd-mobilenet_v1_1.tflite"
+#define TFLITE_SSD_LABELS     "/data/ssd-mobilenet.labels"
 
 typedef struct _GstAppContext GstAppContext;
 
@@ -341,8 +342,8 @@ main (gint argc, gchar * argv[])
   GstElement *element = NULL;
   gint width = DEFAULT_OUTPUT_WIDTH;
   gint height = DEFAULT_OUTPUT_HEIGHT;
-  gchar *model = ((gchar *)TFLITE_YOLO_MODEL);
-  gchar *labels = ((gchar *)TFLITE_YOLO_LABELS);
+  gchar *model = ((gchar *)TFLITE_YOLOV5M_MODEL);
+  gchar *labels = ((gchar *)TFLITE_YOLOV5_LABELS);
   gint postproc = POSTPROC_YOLOV5M;
 
   // Configure input parameters
@@ -420,6 +421,20 @@ main (gint argc, gchar * argv[])
   element = gst_bin_get_by_name (GST_BIN (appctx.pipeline), "qtimltflite");
   if (element != NULL) {
     g_object_set (G_OBJECT (element), "model", model, NULL);
+    switch (postproc) {
+      case POSTPROC_YOLOV5M : {
+        g_object_set (G_OBJECT (element), "model", TFLITE_YOLOV5M_MODEL, NULL);
+        break;
+      }
+      case POSTPROC_YOLOV5S : {
+        g_object_set (G_OBJECT (element), "model", TFLITE_YOLOV5S_MODEL, NULL);
+        break;
+      }
+      case POSTPROC_SSD : {
+        g_object_set (G_OBJECT (element), "model", TFLITE_SSD_MODEL, NULL);
+        break;
+      }
+    }
     gst_object_unref (element);
   } else {
     g_printerr ("Failed to find qtimltflite. Exiting..\n");
@@ -432,15 +447,20 @@ main (gint argc, gchar * argv[])
     g_object_set (G_OBJECT (element), "labels", labels, NULL);
     switch (postproc) {
       case POSTPROC_YOLOV5M : {
-        g_object_set (G_OBJECT (element), "module", 3, NULL);
+        g_object_set (G_OBJECT (element), "module", 5, NULL);
+        g_object_set (G_OBJECT (element), "labels", TFLITE_YOLOV5_LABELS, NULL);
+        g_object_set (G_OBJECT (element), "constants", "YoloV5,q-offsets=<3.0>,q-scales=<0.005047998391091824>;", NULL);
         break;
       }
       case POSTPROC_YOLOV5S : {
-        g_object_set (G_OBJECT (element), "module", 4, NULL);
+        g_object_set (G_OBJECT (element), "module", 5, NULL);
+        g_object_set (G_OBJECT (element), "labels", TFLITE_YOLOV5_LABELS, NULL);
+        g_object_set (G_OBJECT (element), "constants", "YoloV5,q-offsets=<4.0>,q-scales=<0.005149809643626213>;", NULL);
         break;
       }
       case POSTPROC_SSD : {
-        g_object_set (G_OBJECT (element), "module", 2, NULL);
+        g_object_set (G_OBJECT (element), "module", 3, NULL);
+        g_object_set (G_OBJECT (element), "labels", TFLITE_SSD_LABELS, NULL);
         break;
       }
     }
