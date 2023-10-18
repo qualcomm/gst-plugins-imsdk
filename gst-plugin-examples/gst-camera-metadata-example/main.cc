@@ -644,14 +644,18 @@ get_tag (const gchar * section_name, const gchar * tag_name,
 
 static gint
 set_tag (GstElement * pipeline, const gchar * section_name,
-    const gchar * tag_name, ::camera::CameraMetadata * meta, gchar * new_value)
+    const gchar * tag_name, gchar * new_value)
 {
+  GstElement *camsrc = get_element_from_pipeline (pipeline, "qtiqmmfsrc");
+  ::camera::CameraMetadata *meta = nullptr;
   ::android::status_t status = -1;
   guint32 tag_id = 0;
   gint tag_type = -1;
 
+  g_object_get (G_OBJECT (camsrc), "video-metadata", &meta, NULL);
+
   if ((tag_type = find_tag_by_name (section_name, tag_name, meta, &tag_id)) == -1)
-    return 0;
+    goto free;
 
   switch (tag_type) {
     case TYPE_BYTE:
@@ -764,14 +768,16 @@ set_tag (GstElement * pipeline, const gchar * section_name,
   }
 
   if (status == 0) {
-    GstElement *camsrc = get_element_from_pipeline (pipeline, "qtiqmmfsrc");
     g_object_set (G_OBJECT (camsrc), "video-metadata", meta, NULL);
-    gst_object_unref (camsrc);
-
     g_print ("The tag is set successfully.\n");
   } else {
     g_printerr ("ERROR: Couldn't set the value\n");
   }
+
+free:
+  meta->clear ();
+  delete meta;
+  gst_object_unref (camsrc);
 
   return 0;
 }
@@ -1096,8 +1102,8 @@ print_menu ()
 }
 
 static gboolean
-handle_tag_menu (GstAppContext * appctx, ::camera::CameraMetadata * meta,
-    GstMetadataMenuOption option)
+handle_tag_menu (GstAppContext * appctx, gchar * prop,
+    ::camera::CameraMetadata * meta, GstMetadataMenuOption option)
 {
   gchar *str = NULL;
   gchar *section = NULL, *tag = NULL, *type = NULL, *value = NULL;
@@ -1117,6 +1123,17 @@ handle_tag_menu (GstAppContext * appctx, ::camera::CameraMetadata * meta,
     if (!validate_input_tag (str, &section, &tag))
       continue;
 
+    {
+      // Refresh stale metadata.
+      meta->clear ();
+      delete meta;
+
+      GstElement *camsrc = get_element_from_pipeline (appctx->pipeline,
+          "qtiqmmfsrc");
+      g_object_get (G_OBJECT (camsrc), prop, &meta, NULL);
+      gst_object_unref (camsrc);
+    }
+
     value = get_tag (section, tag, meta, &type);
     g_print ("Current value = %s\n", value);
 
@@ -1134,7 +1151,7 @@ handle_tag_menu (GstAppContext * appctx, ::camera::CameraMetadata * meta,
         return FALSE;
 
       if (!g_str_equal (str, "\n"))
-        set_tag (appctx->pipeline, section, tag, meta, str);
+        set_tag (appctx->pipeline, section, tag, str);
     }
     g_free (section);
     g_free (tag);
@@ -1196,11 +1213,11 @@ handle_metadata_menu (GstAppContext * appctx, gchar ** prop)
 
       break;
     case GET_TAG:
-      active = handle_tag_menu (appctx, meta, GET_TAG);
+      active = handle_tag_menu (appctx, *prop, meta, GET_TAG);
       break;
     case SET_TAG:
       if (g_str_equal (*prop, "video-metadata"))
-        active = handle_tag_menu (appctx, meta, SET_TAG);
+        active = handle_tag_menu (appctx, *prop, meta, SET_TAG);
 
       break;
     default:
