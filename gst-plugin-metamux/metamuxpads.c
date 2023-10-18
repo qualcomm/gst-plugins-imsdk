@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -44,7 +44,14 @@ static gboolean
 queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
     guint64 time, gpointer checkdata)
 {
-  // There won't be any condition limiting for the buffer queue size.
+  GstPad *pad = GST_PAD (checkdata);
+
+  // Accumulating only 1 second data in the queue
+  if (time > 1 * GST_SECOND) {
+    GST_TRACE_OBJECT (pad, "%s pad queue limit reached!", GST_PAD_NAME (pad));
+    return TRUE;
+  }
+
   return FALSE;
 }
 
@@ -57,7 +64,7 @@ gst_metamux_src_pad_worker_task (gpointer userdata)
   if (gst_data_queue_pop (srcpad->buffers, &item)) {
     GstBuffer *buffer = gst_buffer_ref (GST_BUFFER (item->object));
     item->destroy (item);
-
+    GST_TRACE_OBJECT (srcpad, "Pushing %" GST_PTR_FORMAT, buffer);
     gst_pad_push (GST_PAD (srcpad), buffer);
   } else {
     GST_INFO_OBJECT (srcpad, "Pause worker task!");
