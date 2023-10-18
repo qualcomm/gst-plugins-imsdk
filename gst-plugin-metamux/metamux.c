@@ -44,7 +44,7 @@
 #include <gst/allocators/allocators.h>
 #include <gst/video/video.h>
 #include <gst/audio/audio.h>
-#include <gst/cvp/gstcvpmeta.h>
+#include <gst/cv/gstcvmeta.h>
 
 #define GST_CAT_DEFAULT gst_metamux_debug
 GST_DEBUG_CATEGORY_STATIC (gst_metamux_debug);
@@ -80,7 +80,7 @@ G_DEFINE_TYPE (GstMetaMux, gst_metamux, GST_TYPE_ELEMENT);
 
 #define GST_METAMUX_DATA_CAPS     \
     "text/x-raw, format = utf8; " \
-    "cvp/x-optical-flow"
+    "cv/x-optical-flow"
 
 enum
 {
@@ -303,14 +303,14 @@ gst_metamux_process_metadata_entry (GstMetaMux * muxer, GstBuffer * buffer,
 
   if (gst_structure_has_name (structure, "OpticalFlow")) {
     GArray *mvectors = NULL, *mvstats = NULL;
-    GstCvpOptclFlowMeta *meta = NULL;
+    GstCvOptclFlowMeta *meta = NULL;
 
     gst_structure_get (structure,
         "mvectors", G_TYPE_ARRAY, &mvectors,
         "mvstats", G_TYPE_ARRAY, &mvstats,
         NULL);
 
-    meta = gst_buffer_add_cvp_optclflow_meta (buffer, mvectors, mvstats);
+    meta = gst_buffer_add_cv_optclflow_meta (buffer, mvectors, mvstats);
     meta->id = index;
   } else {
     GstVideoRegionOfInterestMeta *meta = NULL;
@@ -594,10 +594,10 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
   gdouble xscale = 1.0, yscale = 1.0;
 
   if ((pmeta = gst_buffer_get_protection_meta (buffer)) == NULL) {
-    GST_ERROR_OBJECT (dpad, "Buffer %p does not contain CVP meta!", buffer);
+    GST_ERROR_OBJECT (dpad, "Buffer %p does not contain CV meta!", buffer);
     return FALSE;
-  } else if (!gst_structure_has_name (pmeta->info, "CvpOpticalFlow")) {
-    GST_ERROR_OBJECT (dpad, "Invalid CVP meta in buffer %p!", buffer);
+  } else if (!gst_structure_has_name (pmeta->info, "CvOpticalFlow")) {
+    GST_ERROR_OBJECT (dpad, "Invalid CV meta in buffer %p!", buffer);
     return FALSE;
   }
 
@@ -610,8 +610,8 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
       NULL);
 
   if (structure == NULL) {
-    GST_ERROR_OBJECT (dpad, "CVP protection meta in buffer %p does not contain"
-        " the CVP motion vector information necessary for decryption!", buffer);
+    GST_ERROR_OBJECT (dpad, "CV protection meta in buffer %p does not contain"
+        " the CV motion vector information necessary for decryption!", buffer);
     return FALSE;
   }
 
@@ -654,14 +654,14 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
   g_return_val_if_fail (((guint) n_vectors) == (n_rowpxls * n_clmnpxls), FALSE);
 
   // Iterate over the raw data in reverse, parse and add it to the list.
-  mvectors = g_array_sized_new (FALSE, FALSE, sizeof (GstCvpMotionVector),
+  mvectors = g_array_sized_new (FALSE, FALSE, sizeof (GstCvMotionVector),
       n_vectors);
   g_array_set_size (mvectors, n_vectors);
 
   for (idx = 0; idx < n_vectors; idx++) {
     guint32 *data = CAST_TO_GUINT32 (&(memmap).data[idx * length]);
-    GstCvpMotionVector *mvector =
-        &g_array_index (mvectors, GstCvpMotionVector, idx);
+    GstCvMotionVector *mvector =
+        &g_array_index (mvectors, GstCvMotionVector, idx);
 
     mvector->dx = EXTRACT_DATA_VALUE (data, offsets[0], sizes[0]);
     mvector->dy = EXTRACT_DATA_VALUE (data, offsets[1], sizes[1]);
@@ -696,8 +696,8 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
         "stats-sad-threshold", G_TYPE_UINT, &sad, NULL);
 
     if (structure == NULL) {
-      GST_ERROR_OBJECT (dpad, "CVP protection meta in buffer %p does not contain"
-          " the CVP statistics information necessary for decryption!", buffer);
+      GST_ERROR_OBJECT (dpad, "CV protection meta in buffer %p does not contain"
+          " the CV statistics information necessary for decryption!", buffer);
 
       g_array_free (mvectors, TRUE);
       return FALSE;
@@ -740,13 +740,13 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
     g_return_val_if_fail (n_stats == n_vectors, FALSE);
 
     // Iterate over the raw data in reverse, parse and add it to the list.
-    mvstats = g_array_new (FALSE, FALSE, sizeof (GstCvpOptclFlowStats));
+    mvstats = g_array_new (FALSE, FALSE, sizeof (GstCvOptclFlowStats));
     g_array_set_size (mvstats, n_stats);
 
     for (idx = 0; idx < n_stats; idx++) {
       guint32 *data = CAST_TO_GUINT32 (&(memmap).data[idx * length]);
-      GstCvpOptclFlowStats *stats =
-          &g_array_index (mvstats, GstCvpOptclFlowStats, idx);
+      GstCvOptclFlowStats *stats =
+          &g_array_index (mvstats, GstCvOptclFlowStats, idx);
 
       stats->variance = EXTRACT_DATA_VALUE (data, offsets[0], sizes[0]);
       stats->mean = EXTRACT_DATA_VALUE (data, offsets[1], sizes[1]);
@@ -1106,7 +1106,7 @@ gst_metamux_data_sink_pad_event (GstPad * pad, GstObject * parent,
 
       if (gst_caps_is_media_type (caps, "text/x-raw"))
         GST_METAMUX_DATA_PAD (pad)->type = GST_DATA_TYPE_TEXT;
-      else if (gst_caps_is_media_type (caps, "cvp/x-optical-flow"))
+      else if (gst_caps_is_media_type (caps, "cv/x-optical-flow"))
         GST_METAMUX_DATA_PAD (pad)->type = GST_DATA_TYPE_OPTICAL_FLOW;
       else
         GST_METAMUX_DATA_PAD (pad)->type = GST_DATA_TYPE_UNKNOWN;

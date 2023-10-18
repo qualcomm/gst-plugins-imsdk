@@ -72,11 +72,11 @@
 #include <gbm.h>
 #include <gbm_priv.h>
 
-#define GST_CAT_DEFAULT cvp_optclflow_debug
-GST_DEBUG_CATEGORY_STATIC (cvp_optclflow_debug);
+#define GST_CAT_DEFAULT cv_optclflow_debug
+GST_DEBUG_CATEGORY_STATIC (cv_optclflow_debug);
 
-#define gst_cvp_optclflow_parent_class parent_class
-G_DEFINE_TYPE (GstCvpOptclFlow, gst_cvp_optclflow, GST_TYPE_BASE_TRANSFORM);
+#define gst_cv_optclflow_parent_class parent_class
+G_DEFINE_TYPE (GstCvOptclFlow, gst_cv_optclflow, GST_TYPE_BASE_TRANSFORM);
 
 #define DEFAULT_PROP_ENABLE_STATS         TRUE
 #define DEFAULT_PROP_VARIANCE_THRESHOLD   0
@@ -99,54 +99,53 @@ enum
   PROP_SAD_THRESHOLD,
 };
 
-
-static GstStaticCaps gst_cvp_optclflow_static_sink_caps =
+static GstStaticCaps gst_cv_optclflow_static_sink_caps =
     GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS) ";"
     GST_VIDEO_CAPS_MAKE_WITH_FEATURES ("ANY", GST_VIDEO_FORMATS));
 
 
-static GstStaticCaps gst_cvp_optclflow_static_src_caps =
-    GST_STATIC_CAPS ("cvp/x-optical-flow");
+static GstStaticCaps gst_cv_optclflow_static_src_caps =
+    GST_STATIC_CAPS ("cv/x-optical-flow");
 
 
 static GstCaps *
-gst_cvp_optclflow_sink_caps (void)
+gst_cv_optclflow_sink_caps (void)
 {
   static GstCaps *caps = NULL;
   static gsize inited = 0;
 
   if (g_once_init_enter (&inited)) {
-    caps = gst_static_caps_get (&gst_cvp_optclflow_static_sink_caps);
+    caps = gst_static_caps_get (&gst_cv_optclflow_static_sink_caps);
     g_once_init_leave (&inited, 1);
   }
   return caps;
 }
 
 static GstCaps *
-gst_cvp_optclflow_src_caps (void)
+gst_cv_optclflow_src_caps (void)
 {
   static GstCaps *caps = NULL;
   static gsize inited = 0;
 
   if (g_once_init_enter (&inited)) {
-    caps = gst_static_caps_get (&gst_cvp_optclflow_static_src_caps);
+    caps = gst_static_caps_get (&gst_cv_optclflow_static_src_caps);
     g_once_init_leave (&inited, 1);
   }
   return caps;
 }
 
 static GstPadTemplate *
-gst_cvp_sink_template (void)
+gst_cv_sink_template (void)
 {
   return gst_pad_template_new ("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
-      gst_cvp_optclflow_sink_caps ());
+      gst_cv_optclflow_sink_caps ());
 }
 
 static GstPadTemplate *
-gst_cvp_src_template (void)
+gst_cv_src_template (void)
 {
   return gst_pad_template_new ("src", GST_PAD_SRC, GST_PAD_ALWAYS,
-      gst_cvp_optclflow_src_caps ());
+      gst_cv_optclflow_src_caps ());
 }
 
 static gboolean
@@ -167,7 +166,7 @@ gst_caps_has_feature (const GstCaps * caps, const gchar * feature)
 }
 
 static GstBufferPool *
-gst_cvp_optclflow_create_pool (GstCvpOptclFlow * optclflow)
+gst_cv_optclflow_create_pool (GstCvOptclFlow * optclflow)
 {
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
@@ -175,7 +174,7 @@ gst_cvp_optclflow_create_pool (GstCvpOptclFlow * optclflow)
   GValue memblocks = G_VALUE_INIT, value = G_VALUE_INIT;
   guint mvsize = 0, statsize = 0;
 
-  gst_cvp_optclflow_engine_sizes (optclflow->engine, &mvsize, &statsize);
+  gst_cv_optclflow_engine_sizes (optclflow->engine, &mvsize, &statsize);
 
   GST_INFO_OBJECT (optclflow, "Uses ION memory");
   pool = gst_mem_buffer_pool_new (GST_MEMORY_BUFFER_POOL_TYPE_ION);
@@ -210,9 +209,9 @@ gst_cvp_optclflow_create_pool (GstCvpOptclFlow * optclflow)
 }
 
 static gboolean
-gst_cvp_optclflow_decide_allocation (GstBaseTransform * base, GstQuery * query)
+gst_cv_optclflow_decide_allocation (GstBaseTransform * base, GstQuery * query)
 {
-  GstCvpOptclFlow *optclflow = GST_CVP_OPTCLFLOW (base);
+  GstCvOptclFlow *optclflow = GST_CV_OPTCLFLOW (base);
   GstCaps *caps = NULL;
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
@@ -233,7 +232,7 @@ gst_cvp_optclflow_decide_allocation (GstBaseTransform * base, GstQuery * query)
   }
 
   // Create a new buffer pool.
-  pool = gst_cvp_optclflow_create_pool (optclflow);
+  pool = gst_cv_optclflow_create_pool (optclflow);
   optclflow->outpool = pool;
 
   // Get the configured pool properties in order to set in query.
@@ -258,10 +257,10 @@ gst_cvp_optclflow_decide_allocation (GstBaseTransform * base, GstQuery * query)
 }
 
 static GstFlowReturn
-gst_cvp_optclflow_prepare_output_buffer (GstBaseTransform * base,
+gst_cv_optclflow_prepare_output_buffer (GstBaseTransform * base,
     GstBuffer * inbuffer, GstBuffer ** outbuffer)
 {
-  GstCvpOptclFlow *optclflow = GST_CVP_OPTCLFLOW (base);
+  GstCvOptclFlow *optclflow = GST_CV_OPTCLFLOW (base);
   GstBufferPool *pool = optclflow->outpool;
   GstFlowReturn ret = GST_FLOW_OK;
 
@@ -293,10 +292,10 @@ gst_cvp_optclflow_prepare_output_buffer (GstBaseTransform * base,
 }
 
 static gboolean
-gst_cvp_optclflow_query (GstBaseTransform * base, GstPadDirection direction,
+gst_cv_optclflow_query (GstBaseTransform * base, GstPadDirection direction,
     GstQuery * query)
 {
-  GstCvpOptclFlow *optclflow = GST_CVP_OPTCLFLOW (base);
+  GstCvOptclFlow *optclflow = GST_CV_OPTCLFLOW (base);
 
   switch (GST_QUERY_TYPE (query)) {
     case GST_QUERY_DRAIN:
@@ -320,10 +319,10 @@ gst_cvp_optclflow_query (GstBaseTransform * base, GstPadDirection direction,
 }
 
 static GstCaps *
-gst_cvp_optclflow_transform_caps (GstBaseTransform * base,
+gst_cv_optclflow_transform_caps (GstBaseTransform * base,
     GstPadDirection direction, GstCaps * caps, GstCaps * filter)
 {
-  GstCvpOptclFlow *optclflow = GST_CVP_OPTCLFLOW (base);
+  GstCvOptclFlow *optclflow = GST_CV_OPTCLFLOW (base);
   GstCaps *result = NULL;
 
   GST_DEBUG_OBJECT (optclflow, "Transforming caps: %" GST_PTR_FORMAT
@@ -350,10 +349,10 @@ gst_cvp_optclflow_transform_caps (GstBaseTransform * base,
 }
 
 static gboolean
-gst_cvp_optclflow_set_caps (GstBaseTransform * base, GstCaps * incaps,
+gst_cv_optclflow_set_caps (GstBaseTransform * base, GstCaps * incaps,
     GstCaps * outcaps)
 {
-  GstCvpOptclFlow *optclflow = GST_CVP_OPTCLFLOW (base);
+  GstCvOptclFlow *optclflow = GST_CV_OPTCLFLOW (base);
   GstStructure *settings = NULL;
   GstVideoInfo ininfo;
   guint stride = 0, scanline = 0, size = 0;
@@ -398,27 +397,27 @@ gst_cvp_optclflow_set_caps (GstBaseTransform * base, GstCaps * incaps,
   GST_LOG_OBJECT (optclflow, "stride %d, scanline %d", stride, scanline);
 
   if (optclflow->engine != NULL)
-    gst_cvp_optclflow_engine_free (optclflow->engine);
+    gst_cv_optclflow_engine_free (optclflow->engine);
 
   // Fill the converter input options structure.
   settings = gst_structure_new ("qtioptclflow",
-      GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_WIDTH, G_TYPE_UINT,
+      GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_WIDTH, G_TYPE_UINT,
       GST_VIDEO_INFO_WIDTH (&ininfo),
-      GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_HEIGHT, G_TYPE_UINT,
+      GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_HEIGHT, G_TYPE_UINT,
       GST_VIDEO_INFO_HEIGHT (&ininfo),
-      GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_STRIDE, G_TYPE_UINT,
+      GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_STRIDE, G_TYPE_UINT,
       stride,
-      GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_SCANLINE, G_TYPE_UINT,
+      GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_SCANLINE, G_TYPE_UINT,
       scanline,
-      GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_FORMAT, GST_TYPE_VIDEO_FORMAT,
+      GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_FORMAT, GST_TYPE_VIDEO_FORMAT,
       GST_VIDEO_INFO_FORMAT (&ininfo),
-      GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_FPS, G_TYPE_UINT,
+      GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_FPS, G_TYPE_UINT,
       GST_VIDEO_INFO_FPS_N (&ininfo) / GST_VIDEO_INFO_FPS_D (&ininfo),
-      GST_CVP_OPTCLFLOW_ENGINE_OPT_ENABLE_STATS, G_TYPE_BOOLEAN,
+      GST_CV_OPTCLFLOW_ENGINE_OPT_ENABLE_STATS, G_TYPE_BOOLEAN,
       optclflow->stats,
       NULL);
 
-  optclflow->engine = gst_cvp_optclflow_engine_new (settings);
+  optclflow->engine = gst_cv_optclflow_engine_new (settings);
 
   if (optclflow->ininfo != NULL)
     gst_video_info_free (optclflow->ininfo);
@@ -430,10 +429,10 @@ gst_cvp_optclflow_set_caps (GstBaseTransform * base, GstCaps * incaps,
 }
 
 static GstFlowReturn
-gst_cvp_optclflow_transform (GstBaseTransform * base, GstBuffer * inbuffer,
+gst_cv_optclflow_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     GstBuffer * outbuffer)
 {
-  GstCvpOptclFlow *optclflow = GST_CVP_OPTCLFLOW (base);
+  GstCvOptclFlow *optclflow = GST_CV_OPTCLFLOW (base);
   GstBuffer *buffer = NULL;
   GstVideoFrame inframes[2];
   GstClockTime time = GST_CLOCK_TIME_NONE;
@@ -479,7 +478,7 @@ gst_cvp_optclflow_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 
   time = gst_util_get_timestamp ();
 
-  success = gst_cvp_optclflow_engine_execute (optclflow->engine, inframes, 2,
+  success = gst_cv_optclflow_engine_execute (optclflow->engine, inframes, 2,
       outbuffer);
 
   time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
@@ -519,9 +518,9 @@ gst_cvp_optclflow_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 }
 
 static gboolean
-gst_cvp_optclflow_stop (GstBaseTransform * base)
+gst_cv_optclflow_stop (GstBaseTransform * base)
 {
-  GstCvpOptclFlow *optclflow = GST_CVP_OPTCLFLOW (base);
+  GstCvOptclFlow *optclflow = GST_CV_OPTCLFLOW (base);
 
   if (optclflow->buffers != NULL)
     g_list_free_full (optclflow->buffers, (GDestroyNotify) gst_buffer_unref);
@@ -531,10 +530,10 @@ gst_cvp_optclflow_stop (GstBaseTransform * base)
 }
 
 static void
-gst_cvp_optclflow_set_property (GObject * object, guint property_id,
+gst_cv_optclflow_set_property (GObject * object, guint property_id,
     const GValue * value, GParamSpec *pspec)
 {
-  GstCvpOptclFlow *optclflow = GST_CVP_OPTCLFLOW (object);
+  GstCvOptclFlow *optclflow = GST_CV_OPTCLFLOW (object);
 
   switch (property_id) {
     case PROP_ENABLE_STATS:
@@ -553,10 +552,10 @@ gst_cvp_optclflow_set_property (GObject * object, guint property_id,
 }
 
 static void
-gst_cvp_optclflow_get_property (GObject * object, guint property_id,
+gst_cv_optclflow_get_property (GObject * object, guint property_id,
     GValue * value, GParamSpec * pspec)
 {
-  GstCvpOptclFlow *optclflow = GST_CVP_OPTCLFLOW (object);
+  GstCvOptclFlow *optclflow = GST_CV_OPTCLFLOW (object);
 
   switch (property_id) {
     case PROP_ENABLE_STATS:
@@ -575,12 +574,12 @@ gst_cvp_optclflow_get_property (GObject * object, guint property_id,
 }
 
 static void
-gst_cvp_optclflow_finalize (GObject * object)
+gst_cv_optclflow_finalize (GObject * object)
 {
-  GstCvpOptclFlow *optclflow = GST_CVP_OPTCLFLOW (object);
+  GstCvOptclFlow *optclflow = GST_CV_OPTCLFLOW (object);
 
   if (optclflow->engine != NULL)
-    gst_cvp_optclflow_engine_free (optclflow->engine);
+    gst_cv_optclflow_engine_free (optclflow->engine);
 
   if (optclflow->buffers != NULL)
     g_list_free_full (optclflow->buffers, (GDestroyNotify) gst_buffer_unref);
@@ -595,15 +594,15 @@ gst_cvp_optclflow_finalize (GObject * object)
 }
 
 static void
-gst_cvp_optclflow_class_init (GstCvpOptclFlowClass * klass)
+gst_cv_optclflow_class_init (GstCvOptclFlowClass * klass)
 {
   GObjectClass *gobject       = G_OBJECT_CLASS (klass);
   GstElementClass *element    = GST_ELEMENT_CLASS (klass);
   GstBaseTransformClass *base = GST_BASE_TRANSFORM_CLASS (klass);
 
-  gobject->set_property = GST_DEBUG_FUNCPTR (gst_cvp_optclflow_set_property);
-  gobject->get_property = GST_DEBUG_FUNCPTR (gst_cvp_optclflow_get_property);
-  gobject->finalize     = GST_DEBUG_FUNCPTR (gst_cvp_optclflow_finalize);
+  gobject->set_property = GST_DEBUG_FUNCPTR (gst_cv_optclflow_set_property);
+  gobject->get_property = GST_DEBUG_FUNCPTR (gst_cv_optclflow_get_property);
+  gobject->finalize     = GST_DEBUG_FUNCPTR (gst_cv_optclflow_finalize);
 
   g_object_class_install_property (gobject, PROP_ENABLE_STATS,
       g_param_spec_boolean ("stats", "Stats",
@@ -622,26 +621,26 @@ gst_cvp_optclflow_class_init (GstCvpOptclFlowClass * klass)
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_set_static_metadata (
-      element, "CVP Optical Flow", "Runs optical flow from CVP",
+      element, "CV Optical Flow", "Runs optical flow from CV",
       "Calculate motion vector from current image and previous image", "QTI");
 
-  gst_element_class_add_pad_template (element, gst_cvp_sink_template ());
-  gst_element_class_add_pad_template (element, gst_cvp_src_template ());
+  gst_element_class_add_pad_template (element, gst_cv_sink_template ());
+  gst_element_class_add_pad_template (element, gst_cv_src_template ());
 
   base->decide_allocation =
-      GST_DEBUG_FUNCPTR (gst_cvp_optclflow_decide_allocation);
+      GST_DEBUG_FUNCPTR (gst_cv_optclflow_decide_allocation);
   base->prepare_output_buffer =
-      GST_DEBUG_FUNCPTR (gst_cvp_optclflow_prepare_output_buffer);
-  base->query = GST_DEBUG_FUNCPTR (gst_cvp_optclflow_query);
+      GST_DEBUG_FUNCPTR (gst_cv_optclflow_prepare_output_buffer);
+  base->query = GST_DEBUG_FUNCPTR (gst_cv_optclflow_query);
   base->transform_caps =
-      GST_DEBUG_FUNCPTR (gst_cvp_optclflow_transform_caps);
-  base->set_caps = GST_DEBUG_FUNCPTR (gst_cvp_optclflow_set_caps);
-  base->transform = GST_DEBUG_FUNCPTR (gst_cvp_optclflow_transform);
-  base->stop = GST_DEBUG_FUNCPTR (gst_cvp_optclflow_stop);
+      GST_DEBUG_FUNCPTR (gst_cv_optclflow_transform_caps);
+  base->set_caps = GST_DEBUG_FUNCPTR (gst_cv_optclflow_set_caps);
+  base->transform = GST_DEBUG_FUNCPTR (gst_cv_optclflow_transform);
+  base->stop = GST_DEBUG_FUNCPTR (gst_cv_optclflow_stop);
 }
 
 static void
-gst_cvp_optclflow_init (GstCvpOptclFlow * optclflow)
+gst_cv_optclflow_init (GstCvOptclFlow * optclflow)
 {
   optclflow->ininfo = NULL;
   optclflow->outpool = NULL;
@@ -651,22 +650,22 @@ gst_cvp_optclflow_init (GstCvpOptclFlow * optclflow)
   optclflow->variance = DEFAULT_PROP_VARIANCE_THRESHOLD;
   optclflow->sad = DEFAULT_PROP_SAD_THRESHOLD;
 
-  GST_DEBUG_CATEGORY_INIT (cvp_optclflow_debug, "qticvpoptclflow", 0,
-      "QTI Computer Vision Processor Optical Flow");
+  GST_DEBUG_CATEGORY_INIT (cv_optclflow_debug, "qticvoptclflow", 0,
+      "QTI Computer Vision Optical Flow");
 }
 
 static gboolean
 plugin_init (GstPlugin * plugin)
 {
-  return gst_element_register (plugin, "qticvpoptclflow", GST_RANK_PRIMARY,
-      GST_TYPE_CVP_OPTCLFLOW);
+  return gst_element_register (plugin, "qticvoptclflow", GST_RANK_PRIMARY,
+      GST_TYPE_CV_OPTCLFLOW);
 }
 
 GST_PLUGIN_DEFINE (
   GST_VERSION_MAJOR,
   GST_VERSION_MINOR,
-  qticvpoptclflow,
-  "Computer Vision Processor Optical Flow",
+  qticvoptclflow,
+  "Computer Vision Optical Flow",
   plugin_init,
   PACKAGE_VERSION,
   PACKAGE_LICENSE,

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8.2)
-project(GST_PLUGINS_QTI_OSS_CVP_OPTCLFLOW
+project(GST_PLUGINS_QTI_OSS_CV_OPTCLFLOW
   VERSION ${GST_PLUGINS_QTI_OSS_VERSION}
   LANGUAGES C CXX
 )
@@ -31,19 +31,19 @@ add_definitions(-DHAVE_CONFIG_H)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
 
-# GStreamer CVP OticalFlow plugin.
-set(GST_CVP_OPTCLFLOW gstqticvpoptclflow)
+# GStreamer CV OticalFlow plugin.
+set(GST_CV_OPTCLFLOW gstqticvoptclflow)
 
-add_library(${GST_CVP_OPTCLFLOW} SHARED
+add_library(${GST_CV_OPTCLFLOW} SHARED
   opticalflow.c
   cvp-opticalflow-engine.cc
 )
 
-target_include_directories(${GST_CVP_OPTCLFLOW} PUBLIC
+target_include_directories(${GST_CV_OPTCLFLOW} PUBLIC
   ${GST_INCLUDE_DIRS}
 )
 
-target_link_libraries(${GST_CVP_OPTCLFLOW} PRIVATE
+target_link_libraries(${GST_CV_OPTCLFLOW} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
@@ -53,7 +53,7 @@ target_link_libraries(${GST_CVP_OPTCLFLOW} PRIVATE
 )
 
 install(
-  TARGETS ${GST_CVP_OPTCLFLOW}
+  TARGETS ${GST_CV_OPTCLFLOW}
   LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0
   PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
               GROUP_EXECUTE GROUP_READ

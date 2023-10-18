@@ -61,8 +61,8 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __GST_CVP_OPTCLFLOW_H__
-#define __GST_CVP_OPTCLFLOW_H__
+#ifndef __GST_CV_OPTCLFLOW_H__
+#define __GST_CV_OPTCLFLOW_H__
 
 #include <gst/gst.h>
 #include <gst/base/gstbasetransform.h>
@@ -71,22 +71,22 @@
 
 G_BEGIN_DECLS
 
-#define GST_TYPE_CVP_OPTCLFLOW \
-  (gst_cvp_optclflow_get_type())
-#define GST_CVP_OPTCLFLOW(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_CVP_OPTCLFLOW,GstCvpOptclFlow))
-#define GST_CVP_OPTCLFLOW_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_CVP_OPTCLFLOW,GstCvpOptclFlowClass))
-#define GST_IS_CVP_OPTCLFLOW(obj) \
-  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_CVP_OPTCLFLOW))
-#define GST_IS_CVP_OPTCLFLOW_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_CVP_OPTCLFLOW))
-#define GST_CVP_OPTCLFLOW_CAST(obj)       ((GstCvpOptclFlow *)(obj))
+#define GST_TYPE_CV_OPTCLFLOW \
+  (gst_cv_optclflow_get_type())
+#define GST_CV_OPTCLFLOW(obj) \
+  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_CV_OPTCLFLOW,GstCvOptclFlow))
+#define GST_CV_OPTCLFLOW_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_CV_OPTCLFLOW,GstCvOptclFlowClass))
+#define GST_IS_CV_OPTCLFLOW(obj) \
+  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_CV_OPTCLFLOW))
+#define GST_IS_CV_OPTCLFLOW_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_CV_OPTCLFLOW))
+#define GST_CV_OPTCLFLOW_CAST(obj)       ((GstCvOptclFlow *)(obj))
 
-typedef struct _GstCvpOptclFlow      GstCvpOptclFlow;
-typedef struct _GstCvpOptclFlowClass GstCvpOptclFlowClass;
+typedef struct _GstCvOptclFlow      GstCvOptclFlow;
+typedef struct _GstCvOptclFlowClass GstCvOptclFlowClass;
 
-struct _GstCvpOptclFlow {
+struct _GstCvOptclFlow {
   GstBaseTransform        parent;
 
   GstVideoInfo            *ininfo;
@@ -95,7 +95,7 @@ struct _GstCvpOptclFlow {
   GstBufferPool           *outpool;
 
   /// Supported converters.
-  GstCvpOptclFlowEngine   *engine;
+  GstCvOptclFlowEngine      *engine;
   /// List of buffers for processing.
   GList                   *buffers;
 
@@ -105,12 +105,12 @@ struct _GstCvpOptclFlow {
   guint16                 sad;
 };
 
-struct _GstCvpOptclFlowClass {
+struct _GstCvOptclFlowClass {
   GstBaseTransformClass parent;
 };
 
-G_GNUC_INTERNAL GType gst_cvp_optclflow_get_type(void);
+G_GNUC_INTERNAL GType gst_cv_optclflow_get_type(void);
 
 G_END_DECLS
 
-#endif // __GST_CVP_OPTCLFLOW_H__
+#endif // __GST_CV_OPTCLFLOW_H__
