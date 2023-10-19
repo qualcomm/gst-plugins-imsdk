@@ -186,13 +186,21 @@ gst_cv_optclflow_create_pool (GstCvOptclFlow * optclflow)
   g_value_init (&memblocks, GST_TYPE_ARRAY);
   g_value_init (&value, G_TYPE_UINT);
 
-  // Set memory block 1
+#ifdef HAVE_CVP_OPTICALFLOW_H
+  // Set memory block 1 for cvp if used
   g_value_set_uint (&value, mvsize);
   gst_value_array_append_value (&memblocks, &value);
 
-  // Set memory block 2
+  // Set memory block 2 for cvp if used
   g_value_set_uint (&value, statsize);
   gst_value_array_append_value (&memblocks, &value);
+#endif // HAVE_CVP_OPTICALFLOW_H
+
+#ifdef HAVE_EVA_OPTICALFLOW_H
+  // Set memory block 1 for eva if used
+  g_value_set_uint (&value, mvsize);
+  gst_value_array_append_value (&memblocks, &value);
+#endif // HAVE_EVA_OPTICALFLOW_H
 
   gst_structure_set_value (config, "memory-blocks", &memblocks);
 

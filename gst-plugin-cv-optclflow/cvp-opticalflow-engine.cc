@@ -65,13 +65,13 @@
 #include "config.h"
 #endif
 
-#include "cvp-opticalflow-engine.h"
-
 #include <cvp/v2.0/cvpTypes.h>
 #include <cvp/v2.0/cvpMem.h>
 #include <cvp/v2.0/cvpSession.h>
 #include <cvp/v2.0/cvpOpticalFlow.h>
 #include <cvp/v2.0/cvpUtils.h>
+
+#include "opticalflow-engine.h"
 
 #define GST_RETURN_VAL_IF_FAIL(expression, value, ...) \
 { \

@@ -67,7 +67,7 @@
 #include <gst/gst.h>
 #include <gst/base/gstbasetransform.h>
 
-#include "cvp-opticalflow-engine.h"
+#include "opticalflow-engine.h"
 
 G_BEGIN_DECLS
 

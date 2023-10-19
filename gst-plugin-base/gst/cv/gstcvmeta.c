@@ -66,7 +66,9 @@ gst_cv_optclflow_meta_free (GstMeta * meta, GstBuffer * buffer)
   GstCvOptclFlowMeta *cvmeta = GST_CV_OPTCLFLOW_META_CAST (meta);
 
   g_array_free (cvmeta->mvectors, TRUE);
-  g_array_free (cvmeta->stats, TRUE);
+
+  if (NULL != cvmeta->stats)
+    g_array_free (cvmeta->stats, TRUE);
 }
 
 static gboolean
@@ -82,20 +84,23 @@ gst_cv_optclflow_meta_transform (GstBuffer * transbuffer, GstMeta * meta,
     // TODO: replace with g_array_copy() in glib version > 2.62
     mvectors = g_array_sized_new (FALSE, FALSE, sizeof (GstCvMotionVector),
         smeta->mvectors->len);
-    stats = g_array_sized_new (FALSE, FALSE, sizeof (GstCvOptclFlowStats),
-        smeta->stats->len);
-
     mvectors->len = smeta->mvectors->len;
-    stats->len = smeta->stats->len;
 
     if (smeta->mvectors->len > 0) {
       guint n_bytes = mvectors->len * sizeof (GstCvMotionVector);
       memcpy (mvectors->data, smeta->mvectors->data, n_bytes);
     }
 
-    if (smeta->stats->len > 0) {
-      guint n_bytes = stats->len * sizeof (GstCvOptclFlowStats);
-      memcpy (stats->data, smeta->stats->data, n_bytes);
+    if (smeta->stats != NULL) {
+      // TODO: replace with g_array_copy() in glib version > 2.62
+      stats = g_array_sized_new (FALSE, FALSE, sizeof (GstCvOptclFlowStats),
+          smeta->stats->len);
+      stats->len = smeta->stats->len;
+
+      if (smeta->stats->len > 0) {
+        guint n_bytes = stats->len * sizeof (GstCvOptclFlowStats);
+        memcpy (stats->data, smeta->stats->data, n_bytes);
+      }
     }
 
     dmeta = gst_buffer_add_cv_optclflow_meta (transbuffer,
