@@ -592,6 +592,7 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
   guint pxlwidth = 0, pxlheight = 0, n_rowpxls = 0, n_clmnpxls = 0;
   guchar offsets[3] = { 0, }, sizes[3] = { 0, }, isunsigned[3] = { 0, };
   gdouble xscale = 1.0, yscale = 1.0;
+  gboolean has_confidence = FALSE;
 
   if ((pmeta = gst_buffer_get_protection_meta (buffer)) == NULL) {
     GST_ERROR_OBJECT (dpad, "Buffer %p does not contain CV meta!", buffer);
@@ -633,8 +634,12 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
   EXTRACT_FIELD_PARAMS (structure, "X", offsets[0], sizes[0], isunsigned[0]);
   // Fill the Y field offsets and sizes in arrays for faster access.
   EXTRACT_FIELD_PARAMS (structure, "Y", offsets[1], sizes[1], isunsigned[1]);
+
   // Fill the confidence field offsets and sizes in arrays for faster access.
-  EXTRACT_FIELD_PARAMS (structure, "confidence", offsets[2], sizes[2], isunsigned[2]);
+  if (gst_structure_has_field (structure, "confidence")){
+    EXTRACT_FIELD_PARAMS (structure, "confidence", offsets[2], sizes[2], isunsigned[2]);
+    has_confidence = TRUE;
+  }
 
   // Calculate the length of one motion vector entry in bits.
   for (idx = 0; idx < gst_structure_n_fields (structure); idx++) {
@@ -665,7 +670,9 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
 
     mvector->dx = EXTRACT_DATA_VALUE (data, offsets[0], sizes[0]);
     mvector->dy = EXTRACT_DATA_VALUE (data, offsets[1], sizes[1]);
-    mvector->confidence = EXTRACT_DATA_VALUE (data, offsets[2], sizes[2]);
+
+    mvector->confidence = has_confidence ?
+        EXTRACT_DATA_VALUE (data, offsets[2], sizes[2]) : 255;
 
     if (!isunsigned[0] && (mvector->dx & (1 << (sizes[0] - 1))))
       mvector->dx |= ~((1 << sizes[0]) - 1) & 0xFFFF;
@@ -673,14 +680,17 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
     if (!isunsigned[1] && (mvector->dy & (1 << (sizes[1] - 1))))
       mvector->dy |= ~((1 << sizes[1]) - 1) & 0xFFFF;
 
-    if (!isunsigned[2] && (mvector->confidence & (1 << (sizes[2] - 1))))
-      mvector->confidence |= ~((1 << sizes[2]) - 1) & 0xFFFF;
-
     mvector->x = ((idx % n_rowpxls) * pxlwidth) * xscale;
     mvector->y = ((idx / n_rowpxls) * pxlheight) * yscale;
 
     mvector->dx *= xscale;
     mvector->dy *= yscale;
+
+    if (!has_confidence)
+      continue;
+
+    if (!isunsigned[2] && (mvector->confidence & (1 << (sizes[2] - 1))))
+      mvector->confidence |= ~((1 << sizes[2]) - 1) & 0xFFFF;
   }
 
   gst_structure_free (structure);
