@@ -1221,10 +1221,16 @@ gst_qmmf_context_open (GstQmmfContext * context)
   ::qmmf::recorder::CamOpModeControl cam_opmode;
   switch(context->cam_operation_mode) {
     case CAM_OPMODE_NONE:
-      cam_opmode.mode = ::qmmf::recorder::ExtraParameCamOpModeEnum::kCamOperationModeNone;
+      cam_opmode.mode =
+        ::qmmf::recorder::CamOpMode::kNone;
       break;
     case CAM_OPMODE_FRAMESELECTION:
-      cam_opmode.mode = ::qmmf::recorder::ExtraParameCamOpModeEnum::kCamOperationModeFrameSelection;
+      cam_opmode.mode =
+        ::qmmf::recorder::CamOpMode::kFrameSelection;
+      break;
+    case CAM_OPMODE_FASTSWITCH:
+      cam_opmode.mode =
+        ::qmmf::recorder::CamOpMode::kFastSwitch;
       break;
     default:
       break;

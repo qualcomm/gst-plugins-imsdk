@@ -668,6 +668,9 @@ gst_qmmfsrc_cam_opmode_get_type (void)
     { CAM_OPMODE_FRAMESELECTION,
         "Camera Operation Mode Frame Selection", "frameselection"
     },
+    { CAM_OPMODE_FASTSWITCH,
+        "Camera Operation Mode Fast Switch", "fastswitch"
+    },
     {0, NULL, NULL},
   };
 
