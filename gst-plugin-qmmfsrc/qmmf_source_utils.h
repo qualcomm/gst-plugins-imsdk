@@ -292,6 +292,7 @@ enum
 typedef enum {
   CAM_OPMODE_NONE,
   CAM_OPMODE_FRAMESELECTION,
+  CAM_OPMODE_FASTSWITCH,
 } GstCamOpMode;
 
 GType gst_qmmfsrc_control_mode_get_type (void);
