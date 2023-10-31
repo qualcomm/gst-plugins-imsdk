@@ -649,18 +649,13 @@ qmmfsrc_delete_stream (GstQmmfSrc * qmmfsrc)
         "Image stream deletion failed!");
   }
 
-  //use reverse order to delete video streams
-  list = g_list_last(qmmfsrc->vidindexes);
-
-  while (list != NULL) {
+  for (list = qmmfsrc->vidindexes; list != NULL; list = list->next) {
     key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
 
     success = gst_qmmf_context_delete_video_stream (qmmfsrc->context, pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Video stream deletion failed!");
-
-    list = list->prev;
   }
 
   GST_TRACE_OBJECT (qmmfsrc, "Stream deleted");
@@ -718,18 +713,14 @@ qmmfsrc_stop_stream (GstQmmfSrc * qmmfsrc)
   if (!success)
     GST_WARNING ("There are no src pads!");
 
-  //use reverse order to stop video streams
-  list = g_list_last(qmmfsrc->vidindexes);
-
-  while (list != NULL) {
+  // Iterate over the video pads, fixate caps and create streams.
+  for (list = qmmfsrc->vidindexes; list != NULL; list = list->next) {
     key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
 
     success = gst_qmmf_context_stop_video_stream (qmmfsrc->context, pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Stream stop failed!");
-
-    list = list->prev;
   }
 
   GST_TRACE_OBJECT (qmmfsrc, "Stream stopped");
@@ -747,18 +738,14 @@ qmmfsrc_pause_stream (GstQmmfSrc * qmmfsrc)
 
   GST_TRACE_OBJECT (qmmfsrc, "Pausing stream");
 
-  //use reverse order to pause video streams
-  list = g_list_last(qmmfsrc->vidindexes);
-
-  while (list != NULL) {
+  // Iterate over the video pads, fixate caps and create streams.
+  for (list = qmmfsrc->vidindexes; list != NULL; list = list->next) {
     key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
 
     success = gst_qmmf_context_pause_video_stream (qmmfsrc->context, pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Stream pause failed!");
-
-    list = list->prev;
   }
 
   GST_TRACE_OBJECT (qmmfsrc, "Stream paused");
