@@ -321,7 +321,7 @@ qmmfsrc_pad_reconfigure (GstPad * pad, GstElement * element)
             qmmfsrc, success, "Video stream deletion failed!");
       }
 
-      GST_INFO_OBJECT (element, "Create new stream");
+      GST_INFO_OBJECT (element, "Create new video stream");
       success = gst_qmmf_context_create_video_stream (qmmfsrc->context, pad);
       QMMFSRC_RETURN_IF_FAIL (
           qmmfsrc, success, "Video stream creation failed!");
@@ -335,9 +335,14 @@ qmmfsrc_pad_reconfigure (GstPad * pad, GstElement * element)
     GST_INFO_OBJECT (qmmfsrc, "Reconfigure image pad");
 
     if (state == GST_STATE_PLAYING || state == GST_STATE_PAUSED) {
+      // First delete the previous camera stream associated with this pad.
+      success = gst_qmmf_context_delete_image_stream (qmmfsrc->context, pad,
+          0);
+      QMMFSRC_RETURN_IF_FAIL (qmmfsrc, success, "Image Stream delete failed!");
+
       GST_INFO_OBJECT (element, "Create new image stream");
       success = gst_qmmf_context_create_image_stream (
-          qmmfsrc->context, pad, NULL);
+          qmmfsrc->context, pad);
       QMMFSRC_RETURN_IF_FAIL (
           qmmfsrc, success, "Image stream creation failed!");
     }
@@ -420,9 +425,6 @@ qmmfsrc_request_pad (GstElement * element, GstPadTemplate * templ,
         g_list_append (qmmfsrc->vidindexes, GUINT_TO_POINTER (index));
     g_free (padname);
   } else if (isimage) {
-    // Currently there is support for only two image pad.
-    // Two image pad is required to accommodate Jpeg and Bayer feature.
-    g_return_val_if_fail (g_list_length (qmmfsrc->imgindexes) <= 1, NULL);
 
     padname = g_strdup_printf ("image_%u", index);
 
@@ -509,7 +511,8 @@ qmmfsrc_release_pad (GstElement * element, GstPad * pad)
 
     if (state == GST_STATE_PLAYING || state == GST_STATE_PAUSED) {
       GST_DEBUG_OBJECT (element, "Delete image stream");
-      success = gst_qmmf_context_delete_image_stream (qmmfsrc->context, FALSE);
+      success = gst_qmmf_context_delete_image_stream (qmmfsrc->context, pad,
+          FALSE);
       QMMFSRC_RETURN_IF_FAIL (
           qmmfsrc, success, "Image stream deletion failed!");
     }
@@ -589,7 +592,7 @@ qmmfsrc_create_stream (GstQmmfSrc * qmmfsrc)
 {
   gboolean success = FALSE;
   gpointer key;
-  GstPad *pad = NULL, *jpegpad = NULL, *bayerpad = NULL, *rawpad = NULL;
+  GstPad *pad = NULL;
   GList *list = NULL;
 
   GST_TRACE_OBJECT (qmmfsrc, "Create stream");
@@ -617,45 +620,9 @@ qmmfsrc_create_stream (GstQmmfSrc * qmmfsrc)
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Failed to fixate image caps!");
 
-    if (GST_QMMFSRC_IMAGE_PAD (pad)->codec == GST_IMAGE_CODEC_JPEG)
-      jpegpad = pad;
-
-    if (GST_QMMFSRC_IMAGE_PAD (pad)->format == GST_VIDEO_FORMAT_NV12)
-      rawpad = pad;
-
-    if (GST_QMMFSRC_IMAGE_PAD (pad)->format >= GST_BAYER_FORMAT_OFFSET)
-      bayerpad = pad;
-  }
-
-  // This is to check whether 2 image pad are of Jpeg/Raw and Bayer format or not.
-  qmmfsrc->jpegbayerenabled = ((jpegpad != NULL || rawpad != NULL)
-        && bayerpad != NULL) ? TRUE : FALSE;
-
-  QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc,
-      !(jpegpad != NULL && rawpad != NULL), FALSE,
-      "Image pad combination is not correct.");
-
-  QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc,
-      !(g_list_length (qmmfsrc->imgindexes) == 2 &&
-      !qmmfsrc->jpegbayerenabled), FALSE,
-      "Image pad combination is not correct.");
-
-  if (qmmfsrc->jpegbayerenabled) {
-    pad = (jpegpad != NULL) ? jpegpad : rawpad;
-    success = gst_qmmf_context_create_image_stream (qmmfsrc->context,
-        pad, bayerpad);
+    success = gst_qmmf_context_create_image_stream (qmmfsrc->context, pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Image stream creation failed!");
-  } else {
-    if (g_list_length (qmmfsrc->imgindexes) > 0) {
-      pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads,
-          (qmmfsrc->imgindexes)->data));
-
-      success = gst_qmmf_context_create_image_stream (qmmfsrc->context,
-          pad, NULL);
-      QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
-          "Image stream creation failed!");
-    }
   }
 
   GST_TRACE_OBJECT (qmmfsrc, "Stream created");
@@ -673,11 +640,11 @@ qmmfsrc_delete_stream (GstQmmfSrc * qmmfsrc)
 
   GST_TRACE_OBJECT (qmmfsrc, "Delete stream");
 
-  if (g_list_length (qmmfsrc->imgindexes) > 0) {
-    pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads,
-        (qmmfsrc->imgindexes)->data));
-
-    success = gst_qmmf_context_delete_image_stream (qmmfsrc->context, TRUE);
+  for (list = qmmfsrc->imgindexes; list != NULL; list = list->next) {
+    key = list->data;
+    pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
+    success = gst_qmmf_context_delete_image_stream (qmmfsrc->context, pad,
+        FALSE);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
         "Image stream deletion failed!");
   }
@@ -803,44 +770,13 @@ static gboolean
 qmmfsrc_capture_image (GstQmmfSrc * qmmfsrc, guint imgtype, guint n_images,
     GPtrArray * metas)
 {
-  gpointer key;
-  GList *list = NULL;
   gboolean success = FALSE;
-  GstPad *pad = NULL, *jpegpad = NULL, *bayerpad = NULL, *rawpad = NULL;
 
   GST_TRACE_OBJECT (qmmfsrc, "Submit capture image/s");
-
-  if (qmmfsrc->jpegbayerenabled) {
-    for (list = qmmfsrc->imgindexes; list != NULL; list = list->next) {
-      key = list->data;
-      pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
-
-      if (GST_QMMFSRC_IMAGE_PAD (pad)->codec == GST_IMAGE_CODEC_JPEG)
-        jpegpad = pad;
-
-      if (GST_QMMFSRC_IMAGE_PAD (pad)->format == GST_VIDEO_FORMAT_NV12)
-        rawpad = pad;
-
-      if (GST_QMMFSRC_IMAGE_PAD (pad)->format >= GST_BAYER_FORMAT_OFFSET)
-        bayerpad = pad;
-    }
-    pad = (jpegpad != NULL) ? jpegpad : rawpad;
-    success = gst_qmmf_context_capture_image (qmmfsrc->context, pad,
-        bayerpad, imgtype, n_images, metas);
-
-    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
-        "Capture image failed!");
-  } else {
-    if (g_list_length (qmmfsrc->imgindexes) > 0) {
-      pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads,
-          (qmmfsrc->imgindexes)->data));
-
-      success = gst_qmmf_context_capture_image (qmmfsrc->context, pad, NULL,
-          imgtype, n_images, metas);
-      QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
-          "Capture image failed!");
-    }
-  }
+  success = gst_qmmf_context_capture_image (qmmfsrc->context, qmmfsrc->srcpads,
+      qmmfsrc->imgindexes, imgtype, n_images, metas);
+  QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
+      "Capture image failed!");
   GST_TRACE_OBJECT (qmmfsrc, "Capture image/s submitted");
 
   return TRUE;
@@ -850,15 +786,20 @@ static gboolean
 qmmfsrc_cancel_capture (GstQmmfSrc * qmmfsrc)
 {
   gboolean success = FALSE;
-
-  if (g_list_length (qmmfsrc->imgindexes) == 0)
-    return TRUE;
+  gpointer key;
+  GstPad *pad = NULL;
+  GList *list = NULL;
 
   GST_TRACE_OBJECT (qmmfsrc, "Canceling image capturing");
 
-  success = gst_qmmf_context_delete_image_stream (qmmfsrc->context, TRUE);
-  QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
-      "Failed to cancel image capture!");
+  for (list = qmmfsrc->imgindexes; list != NULL; list = list->next) {
+    key = list->data;
+    pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
+
+    success = gst_qmmf_context_delete_image_stream (qmmfsrc->context, pad, TRUE);
+    QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
+        "Failed to cancel image capture!");
+  }
 
   GST_TRACE_OBJECT (qmmfsrc, "Image capture canceled");
 
