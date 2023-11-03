@@ -121,6 +121,11 @@ typedef enum {
 } GstImageCodec;
 
 typedef enum {
+  GST_IMAGE_SUBFORMAT_NONE,
+  GST_IMAGE_SUBFORMAT_HEIF,
+} GstImageSubFormat;
+
+typedef enum {
   GST_IMAGE_MODE_VIDEO,
   GST_IMAGE_MODE_CONTINUOUS,
 } GstImageMode;
@@ -157,6 +162,8 @@ struct _GstQmmfSrcImagePad {
   GstImageCodec     codec;
   /// Agnostic structure containing codec specific parameters.
   GstStructure      *params;
+  /// GStreamer image pad sub format.
+  GstImageSubFormat subformat;
 
   /// QMMF Recorder image stream buffers duration, calculated from framerate.
   GstClockTime      duration;

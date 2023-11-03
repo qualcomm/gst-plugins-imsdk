@@ -376,6 +376,17 @@ image_pad_update_params (GstPad * pad, GstStructure *structure)
   ipad->format = format;
   ipad->codec = codec;
 
+  if (gst_structure_has_field (structure, "subformat")) {
+    const gchar *string = gst_structure_get_string (structure, "subformat");
+    GstImageSubFormat subformat = (g_strcmp0 (string, "heif") == 0) ?
+        GST_IMAGE_SUBFORMAT_HEIF : GST_IMAGE_SUBFORMAT_NONE;
+
+    // Raise the reconfiguation flag if subformat changed.
+    reconfigure |= (subformat != ipad->subformat);
+
+    ipad->subformat = subformat;
+  }
+
   GST_QMMFSRC_IMAGE_PAD_UNLOCK (pad);
 
   // Send reconfigurtion signal only when paramters have changed.
@@ -650,6 +661,7 @@ qmmfsrc_image_pad_init (GstQmmfSrcImagePad * pad)
   pad->codec     = GST_IMAGE_CODEC_UNKNOWN;
   pad->rotate    = DEFAULT_PROP_ROTATE;
   pad->params    = gst_structure_new_empty ("codec-params");
+  pad->subformat = GST_IMAGE_SUBFORMAT_NONE;
 
   pad->duration  = GST_CLOCK_TIME_NONE;
 
