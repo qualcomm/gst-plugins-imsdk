@@ -493,12 +493,13 @@ gst_c2_engine_queue (GstC2Engine * engine, GstVideoCodecFrame * frame)
 
     uint32_t width = vmeta->width;
     uint32_t height = vmeta->height;
+    bool isheic = GST_BUFFER_FLAG_IS_SET (buffer, GST_VIDEO_BUFFER_FLAG_HEIC);
 
     std::shared_ptr<C2GraphicBlock> block;
 
     try {
       std::shared_ptr<C2GraphicMemory> c2mem = c2module->GetGraphicMemory();
-      block = c2mem->Fetch(width, height, format);
+      block = c2mem->Fetch(width, height, format, isheic);
     } catch (std::exception& e) {
       GST_ERROR ("Failed to fetch memory block, error: '%s'!", e.what());
       return FALSE;
