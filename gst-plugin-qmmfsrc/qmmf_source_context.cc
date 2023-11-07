@@ -1928,7 +1928,8 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
   }
 
   if (context->state >= GST_STATE_READY &&
-      param_id != PARAM_CAMERA_VIDEO_METADATA)
+      param_id != PARAM_CAMERA_VIDEO_METADATA &&
+      param_id != PARAM_CAMERA_SESSION_METADATA)
     recorder->GetCameraParam (context->camera_id, meta);
 
   switch (param_id) {
@@ -2403,6 +2404,10 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
 
       // Update all local props from external metadata
       gst_qmmf_context_update_local_props (context, meta_ptr);
+    } else if (param_id == PARAM_CAMERA_SESSION_METADATA) {
+      ::camera::CameraMetadata *meta_ptr =
+          (::camera::CameraMetadata *) g_value_get_pointer (value);
+      recorder->SetCameraSessionParam (context->camera_id, *meta_ptr);
     } else {
       recorder->SetCameraParam (context->camera_id, meta);
     }
