@@ -396,7 +396,9 @@ void C2Module::HandleWorkDone(std::list<std::unique_ptr<C2Work>> witems) {
       continue;
     }
 
-    if (flags & C2FrameData::FLAG_DROP_FRAME) {
+    if (flags & C2FrameData::FLAG_DROP_FRAME ||
+        flags & C2FrameData::FLAG_DISCARD_FRAME ||
+        (worklet->output.buffers.empty() && (flags == 0))) {
       uint64_t index = worklet->output.ordinal.frameIndex.peeku();
       notifier_->EventHandler(C2EventType::kDrop, &index);
       continue;
