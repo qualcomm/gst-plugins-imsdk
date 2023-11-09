@@ -219,11 +219,11 @@ gst_video_composer_rotation_to_flags (GstVideoComposerRotate rotation)
 {
   switch (rotation) {
     case GST_VIDEO_COMPOSER_ROTATE_90_CW:
-      return GST_VCE_FLAG_ROTATE_90;
+      return GST_VCE_ROTATE_90;
     case GST_VIDEO_COMPOSER_ROTATE_90_CCW:
-      return GST_VCE_FLAG_ROTATE_270;
+      return GST_VCE_ROTATE_270;
     case GST_VIDEO_COMPOSER_ROTATE_180:
-      return GST_VCE_FLAG_ROTATE_180;
+      return GST_VCE_ROTATE_180;
     case GST_VIDEO_COMPOSER_ROTATE_NONE:
       return 0;
     default:
@@ -427,24 +427,17 @@ gst_video_composer_populate_frames_and_composition (
         g_renew (GstVideoBlit, composition->blits, composition->n_blits);
 
     blit = &(composition->blits[num]);
-
     blit->frame = inframe;
-    blit->flags = 0;
 
     GST_VIDEO_COMPOSER_SINKPAD_LOCK (sinkpad);
 
     blit->alpha = sinkpad->alpha * G_MAXUINT8;
+    blit->isubwc = sinkpad->isubwc;
 
-    if (sinkpad->isubwc)
-      blit->flags |= GST_VCE_FLAG_UBWC;
+    blit->flip_h = sinkpad->flip_h;
+    blit->flip_v = sinkpad->flip_v;
 
-    if (sinkpad->flip_h)
-      blit->flags |= GST_VCE_FLAG_FLIP_H;
-
-    if (sinkpad->flip_v)
-      blit->flags |= GST_VCE_FLAG_FLIP_V;
-
-    blit->flags |= gst_video_composer_rotation_to_flags (sinkpad->rotation);
+    blit->rotate = gst_video_composer_rotation_to_flags (sinkpad->rotation);
 
     blit->sources = g_slice_dup (GstVideoRectangle, &(sinkpad->crop));
     blit->destinations = g_slice_dup (GstVideoRectangle, &(sinkpad->destination));
@@ -464,14 +457,13 @@ gst_video_composer_populate_frames_and_composition (
   }
 
   composition->frame = outframe;
-  composition->flags = GST_VCE_FLAG_FILL_BACKGROUND;
+  composition->bgfill = TRUE;
+  composition->flags = 0;
 
   GST_VIDEO_COMPOSER_LOCK (vcomposer);
 
   composition->bgcolor = vcomposer->background;
-
-  if (vcomposer->isubwc)
-    composition->flags |= GST_VCE_FLAG_UBWC;
+  composition->isubwc = vcomposer->isubwc;
 
   GST_VIDEO_COMPOSER_UNLOCK (vcomposer);
 

@@ -240,11 +240,11 @@ gst_video_transform_rotation_to_flags (GstVideoTransformRotate rotation)
 {
   switch (rotation) {
     case GST_VIDEO_TRANSFORM_ROTATE_90_CW:
-      return GST_VCE_FLAG_ROTATE_90;
+      return GST_VCE_ROTATE_90;
     case GST_VIDEO_TRANSFORM_ROTATE_90_CCW:
-      return GST_VCE_FLAG_ROTATE_270;
+      return GST_VCE_ROTATE_270;
     case GST_VIDEO_TRANSFORM_ROTATE_180:
-      return GST_VCE_FLAG_ROTATE_180;
+      return GST_VCE_ROTATE_180;
     case GST_VIDEO_TRANSFORM_ROTATE_NONE:
       return 0;
     default:
@@ -1596,30 +1596,27 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   GST_VIDEO_TRANSFORM_LOCK (vtrans);
 
   blit.frame = &inframe;
+  blit.isubwc = vtrans->inubwc;
+
   blit.sources = &(vtrans->crop);
   blit.destinations = &(vtrans->destination);
   blit.n_regions = 1;
 
-  if (vtrans->inubwc)
-    blit.flags |= GST_VCE_FLAG_UBWC;
+  blit.flip_h = vtrans->flip_h;
+  blit.flip_v = vtrans->flip_v;
 
-  if (vtrans->flip_h)
-    blit.flags |= GST_VCE_FLAG_FLIP_H;
-
-  if (vtrans->flip_v)
-    blit.flags |= GST_VCE_FLAG_FLIP_V;
-
-  blit.flags |= gst_video_transform_rotation_to_flags (vtrans->rotation);
+  blit.rotate = gst_video_transform_rotation_to_flags (vtrans->rotation);
 
   composition.blits = &blit;
   composition.n_blits = 1;
+
   composition.frame = &outframe;
+  composition.isubwc = vtrans->outubwc;
+  composition.flags = 0;
 
   composition.bgcolor = vtrans->background;
-  composition.flags |= GST_VCE_FLAG_FILL_BACKGROUND;
+  composition.bgfill = TRUE;
 
-  if (vtrans->outubwc)
-    composition.flags |= GST_VCE_FLAG_UBWC;
 
   success = gst_video_converter_engine_compose (vtrans->converter,
       &composition, 1, NULL);

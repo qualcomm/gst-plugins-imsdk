@@ -226,21 +226,8 @@ is_normalization_required (GstMLInfo * mlinfo)
       (mlinfo->type == GST_ML_TYPE_FLOAT32);
 }
 
-static inline gboolean
-gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
-{
-  GstStructure *structure = NULL;
-  const gchar *string = NULL;
-
-  structure = gst_caps_get_structure (caps, 0);
-  string = gst_structure_has_field (structure, "compression") ?
-      gst_structure_get_string (structure, "compression") : NULL;
-
-  return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
-}
-
 static inline void
-gst_init_formats (GValue * formats, ...)
+init_formats (GValue * formats, ...)
 {
   GValue format = G_VALUE_INIT;
   gchar *string = NULL;
@@ -258,6 +245,19 @@ gst_init_formats (GValue * formats, ...)
   }
 
   va_end (args);
+}
+
+static inline gboolean
+gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
+{
+  GstStructure *structure = NULL;
+  const gchar *string = NULL;
+
+  structure = gst_caps_get_structure (caps, 0);
+  string = gst_structure_has_field (structure, "compression") ?
+      gst_structure_get_string (structure, "compression") : NULL;
+
+  return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
 }
 
 static inline void
@@ -328,7 +328,14 @@ gst_ml_video_converter_reset_composition (GstMLVideoConverter * mlconverter)
     composition->blits[idx].destinations = NULL;
 
     composition->blits[idx].n_regions = 0;
-    composition->blits[idx].flags = 0;
+
+    composition->blits[idx].isubwc = FALSE;
+
+    composition->blits[idx].alpha = 255;
+    composition->blits[idx].rotate = GST_VCE_ROTATE_0;
+
+    composition->blits[idx].flip_h = FALSE;
+    composition->blits[idx].flip_v = FALSE;
 
     if ((buffer = frame->buffer) != NULL) {
       gst_video_frame_unmap_and_reset (frame);
@@ -645,17 +652,17 @@ gst_ml_video_converter_translate_ml_caps (GstMLVideoConverter * mlconverter,
 
     // 4th dimension corresponds to the bit depth.
     if (mlinfo.tensors[0][3] == 1) {
-      gst_init_formats (&formats, "GRAY8", NULL);
+      init_formats (&formats, "GRAY8", NULL);
     } else if (mlinfo.tensors[0][3] == 3) {
       if (mlconverter->pixlayout == GST_ML_VIDEO_PIXEL_LAYOUT_REGULAR)
-        gst_init_formats (&formats, "RGB", NULL);
+        init_formats (&formats, "RGB", NULL);
       else if (mlconverter->pixlayout == GST_ML_VIDEO_PIXEL_LAYOUT_REVERSE)
-        gst_init_formats (&formats, "BGR", NULL);
+        init_formats (&formats, "BGR", NULL);
     } else if (mlinfo.tensors[0][3] == 4) {
       if (mlconverter->pixlayout == GST_ML_VIDEO_PIXEL_LAYOUT_REGULAR)
-        gst_init_formats (&formats, "RGBA", "RGBx", "ARGB", "xRGB", NULL);
+        init_formats (&formats, "RGBA", "RGBx", "ARGB", "xRGB", NULL);
       else if (mlconverter->pixlayout == GST_ML_VIDEO_PIXEL_LAYOUT_REVERSE)
-        gst_init_formats (&formats, "BGRA", "BGRx", "ABGR", "xBGR", NULL);
+        init_formats (&formats, "BGRA", "BGRx", "ABGR", "xBGR", NULL);
     }
 
     gst_structure_set_value (structure, "format", &formats);
@@ -1131,15 +1138,16 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
     GstVideoBlit *blit = &(mlconverter->composition.blits[idx]);
 
     blit->frame = g_slice_new0 (GstVideoFrame);
-    blit->alpha = 255;
-
-    if (gst_caps_has_compression (incaps, "ubwc"))
-      blit->flags |= GST_VCE_FLAG_UBWC;
+    blit->isubwc = gst_caps_has_compression (incaps, "ubwc") ? TRUE : FALSE;
+    blit->alpha = G_MAXUINT8;
   }
 
   mlconverter->composition.frame = g_slice_new0 (GstVideoFrame);
+  mlconverter->composition.isubwc = FALSE;
+  mlconverter->composition.flags = 0;
+
   mlconverter->composition.bgcolor = 0x00000000;
-  mlconverter->composition.flags = GST_VCE_FLAG_FILL_BACKGROUND;
+  mlconverter->composition.bgfill = TRUE;
 
   if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_INT32)
     mlconverter->composition.flags |= GST_VCE_FLAG_I32_FORMAT;

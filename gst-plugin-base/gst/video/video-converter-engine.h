@@ -13,33 +13,19 @@ G_BEGIN_DECLS
 
 GST_DEBUG_CATEGORY_EXTERN (gst_video_converter_engine_debug);
 
-// Composition flags valid only for the input frame.
-#define GST_VCE_FLAG_FLIP_H          (1 << 0)
-#define GST_VCE_FLAG_FLIP_V          (1 << 1)
-#define GST_VCE_FLAG_ROTATE_90       (1 << 2)
-#define GST_VCE_FLAG_ROTATE_180      (2 << 2)
-#define GST_VCE_FLAG_ROTATE_270      (3 << 2)
-
-// Composition flags valid for both input and output frame.
-#define GST_VCE_FLAG_UBWC            (1 << 6)
 
 // Composition flags valid only for the output frame.
-#define GST_VCE_FLAG_FILL_BACKGROUND (1 << 7)
-#define GST_VCE_FLAG_F32_FORMAT      (1 << 8)
-#define GST_VCE_FLAG_F16_FORMAT      (2 << 8)
-#define GST_VCE_FLAG_I32_FORMAT      (3 << 8)
-#define GST_VCE_FLAG_U32_FORMAT      (4 << 8)
+#define GST_VCE_FLAG_F32_FORMAT      (1 << 0)
+#define GST_VCE_FLAG_F16_FORMAT      (2 << 0)
+#define GST_VCE_FLAG_I32_FORMAT      (3 << 0)
+#define GST_VCE_FLAG_U32_FORMAT      (4 << 0)
 
-#define GST_VCE_BLIT_INIT { NULL, 255, NULL, NULL, 0, 0 }
+#define GST_VCE_BLIT_INIT { NULL, FALSE, NULL, NULL, 0, 255, 0, FALSE, FALSE }
 #define GST_VCE_COMPOSITION_INIT \
-    { NULL, 0, NULL, 0, { 0.0, 0.0, 0.0, 0.0 }, { 0.0, 0.0, 0.0, 0.0 }, 0 }
+    { NULL, 0, NULL, FALSE, 0, FALSE, { 0.0, 0.0, 0.0, 0.0 }, { 0.0, 0.0, 0.0, 0.0 }, 0 }
 
 // Maximum number of image channels, used for normalization offsets and scales.
 #define GST_VCE_MAX_CHANNELS         4
-
-// Bitwise masks for accessing some flag values.
-#define GST_VCE_ROTATION_MASK        (0b11 << 2)
-#define GST_VCE_FORMAT_MASK          (0b111 << 2)
 
 /**
  * GST_VCE_OPT_FCV_OP_MODE:
@@ -87,27 +73,50 @@ GST_VIDEO_API GType gst_video_converter_backend_get_type (void);
 #define GST_TYPE_VCE_BACKEND (gst_video_converter_backend_get_type())
 
 /**
+ * GstVideoConvRotate:
+ * @GST_VCE_ROTATE_0: No rotation.
+ * @GST_VCE_ROTATE_90: Rotate frame 90 degrees clockwise.
+ * @GST_VCE_ROTATE_180: Rotate frame 180 degrees clockwise.
+ * @GST_VCE_ROTATE_270: Rotate frame 270 degrees clockwise.
+ *
+ * Rotation degrees.
+ */
+typedef enum {
+  GST_VCE_ROTATE_0   = 0,
+  GST_VCE_ROTATE_90  = 90,
+  GST_VCE_ROTATE_180 = 180,
+  GST_VCE_ROTATE_270 = 270,
+} GstVideoConvRotate;
+
+/**
  * GstVideoBlit:
  * @frame: Input video frame.
- * @alpha: Global alpha, 0 = fully transparent, 255 = fully opaque.
+ * @isubwc: Whether the frame has Universal Bandwidth Compression.
  * @sources: Source regions in the frame.
  * @destinations: Destination regions in the frame.
  * @n_regions: Number of Source - Destination region pairs.
- * @flags: Bitwise configuration mask for the input frame.
+ * @alpha: Global alpha, 0 = fully transparent, 255 = fully opaque.
+ * @rotate: The degrees at which the frame will be rotatte.
+ * @flip_v: The frame will be flipped horizontally.
+ * @flip_v: The frame will be flipped vertically.
  *
  * Blit object. Input frame along with a possible crop and destination
  * rectangles and configuration mask.
  */
 struct _GstVideoBlit
 {
-  GstVideoFrame     *frame;
-  guint8            alpha;
+  GstVideoFrame      *frame;
+  gboolean           isubwc;
 
-  GstVideoRectangle *sources;
-  GstVideoRectangle *destinations;
-  guint8            n_regions;
+  GstVideoRectangle  *sources;
+  GstVideoRectangle  *destinations;
+  guint8             n_regions;
 
-  guint64           flags;
+  guint8             alpha;
+  GstVideoConvRotate rotate;
+
+  gboolean           flip_v;
+  gboolean           flip_h;
 };
 
 /**
@@ -115,7 +124,9 @@ struct _GstVideoBlit
  * @blits: Array of blit objects.
  * @n_blits: Number of blit objects.
  * @frame: Output video frame where the blit objects will be placed.
- * @bgcolor: Background color to be applied if BG_CLEAR flag is present.
+ * @isubwc: Whether the frame has Universal Bandwidth Compression.
+ * @bgcolor: Background color to be applied if bgfill is set to TRUE.
+ * @bgfill: Whether to fill the background of the frame image with bgcolor.
  * @offsets: Channel offset factors, used in normalize float operation.
  * @scales: Channel scale factors, used in normalize float operation.
  * @flags: Bitwise configuration mask for the output.
@@ -128,7 +139,10 @@ struct _GstVideoComposition
   guint         n_blits;
 
   GstVideoFrame *frame;
+  gboolean      isubwc;
+
   guint32       bgcolor;
+  gboolean      bgfill;
 
   gdouble       offsets[GST_VCE_MAX_CHANNELS];
   gdouble       scales[GST_VCE_MAX_CHANNELS];

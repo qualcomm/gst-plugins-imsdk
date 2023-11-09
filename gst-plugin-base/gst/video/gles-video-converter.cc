@@ -128,16 +128,16 @@ gst_video_format_to_ib2c_format (GstVideoFormat format)
 }
 
 static guint64
-gst_gles_create_surface (GstGlesVideoConverter * convert,
-    const gchar * direction, const GstVideoFrame * frame, const guint64 bits)
+gst_gles_create_surface (GstGlesVideoConverter * convert, const gchar * direction,
+    const GstVideoFrame * frame, const gboolean isubwc, const guint64 flags)
 {
   GstMemory *memory = NULL;
   const gchar *format = NULL, *mode = "";
   ::ib2c::Surface surface;
-  uint32_t flags = 0;
+  uint32_t type = 0;
   guint64 surface_id = 0;
 
-  flags |= (g_quark_from_static_string (direction) == GST_GLES_INPUT_QUARK) ?
+  type |= (g_quark_from_static_string (direction) == GST_GLES_INPUT_QUARK) ?
       ::ib2c::SurfaceFlags::kInput : ::ib2c::SurfaceFlags::kOutput;
 
   memory = gst_buffer_peek_memory (frame->buffer, 0);
@@ -157,13 +157,13 @@ gst_gles_create_surface (GstGlesVideoConverter * convert,
   surface.nplanes = GST_VIDEO_FRAME_N_PLANES (frame);
 
   // In case the format has UBWC enabled append additional format mask.
-  if (bits & GST_VCE_FLAG_UBWC) {
+  if (isubwc) {
     surface.format |= ::ib2c::ColorMode::kUBWC;
     mode = " UBWC";
-  } else if ((bits & GST_VCE_FORMAT_MASK) == GST_VCE_FLAG_F16_FORMAT) {
+  } else if (flags == GST_VCE_FLAG_F16_FORMAT) {
     surface.format |= ::ib2c::ColorMode::kFloat16;
     mode = " FLOAT16";
-  } else if ((bits & GST_VCE_FORMAT_MASK) == GST_VCE_FLAG_F32_FORMAT) {
+  } else if (flags == GST_VCE_FLAG_F32_FORMAT) {
     surface.format |= ::ib2c::ColorMode::kFloat32;
     mode = " FLOAT32";
   }
@@ -195,7 +195,7 @@ gst_gles_create_surface (GstGlesVideoConverter * convert,
       surface.fd, surface.stride2, surface.offset2);
 
   try {
-    surface_id = convert->engine->CreateSurface (surface, flags);
+    surface_id = convert->engine->CreateSurface (surface, type);
     GST_DEBUG ("Created %s surface with id %lx", direction, surface_id);
   } catch (std::exception& e) {
     GST_ERROR ("Failed to create %s surface, error: '%s'!", direction, e.what());
@@ -224,7 +224,8 @@ gst_gles_destroy_surface (gpointer key, gpointer value, gpointer userdata)
 
 static void
 gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
-    const GstVideoFrame * inframe, guint8 alpha, guint64 flags,
+    const GstVideoFrame * inframe, const GstVideoConvRotate rotate,
+    const gboolean flip_h, const gboolean flip_v, const guint8 alpha,
     const GstVideoRectangle * source, const GstVideoRectangle * destination,
     const GstVideoFrame * outframe)
 {
@@ -254,12 +255,12 @@ gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
   object->source.w = width;
   object->source.h = height;
 
-  if (flags & GST_VCE_FLAG_FLIP_V) {
+  if (flip_h) {
     object->mask |= ::ib2c::ConfigMask::kVFlip;
     GST_TRACE ("Input surface %lx - Flip Vertically", surface_id);
   }
 
-  if (flags & GST_VCE_FLAG_FLIP_H) {
+  if (flip_v) {
     object->mask |= ::ib2c::ConfigMask::kHFlip;
     GST_TRACE ("Input surface %lx - Flip Horizontally", surface_id);
   }
@@ -276,8 +277,8 @@ gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
   object->destination.y = ((width != 0) && (height != 0)) ? y : 0;
 
   // Setup rotation angle and adjustments.
-  switch (flags & GST_VCE_ROTATION_MASK) {
-    case GST_VCE_FLAG_ROTATE_90:
+  switch (rotate) {
+    case GST_VCE_ROTATE_90:
     {
       gint dar_n = 0, dar_d = 0;
 
@@ -312,7 +313,7 @@ gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
       object->rotation = 90.0;
       break;
     }
-    case GST_VCE_FLAG_ROTATE_180:
+    case GST_VCE_ROTATE_180:
       GST_TRACE ("Input surface %lx - rotate 180°", surface_id);
 
       // Adjust the target rectangle dimensions.
@@ -324,7 +325,7 @@ gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
 
       object->rotation = 180.0;
       break;
-    case GST_VCE_FLAG_ROTATE_270:
+    case GST_VCE_ROTATE_270:
     {
       gint dar_n = 0, dar_d = 0;
 
@@ -382,7 +383,7 @@ gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
 static guint64
 gst_gles_retrieve_surface_id (GstGlesVideoConverter * convert,
     GHashTable * surfaces, const gchar * direction,
-    const GstVideoFrame * vframe, const guint64 bits)
+    const GstVideoFrame * vframe, const gboolean isubwc, const guint64 flags)
 {
   GstMemory *memory = NULL;
   guint fd = 0;
@@ -401,7 +402,8 @@ gst_gles_retrieve_surface_id (GstGlesVideoConverter * convert,
 
   if (!g_hash_table_contains (surfaces, GUINT_TO_POINTER (fd))) {
     // Create an input surface and add its ID to the input hash table.
-    surface_id = gst_gles_create_surface (convert, direction, vframe, bits);
+    surface_id =
+        gst_gles_create_surface (convert, direction, vframe, isubwc, flags);
 
     if (surface_id == 0) {
       GST_ERROR ("Failed to create surface!");
@@ -449,7 +451,7 @@ gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
       GST_GLES_LOCK (convert);
 
       surface_id = gst_gles_retrieve_surface_id (convert, convert->insurfaces,
-          "Input", blit->frame, blit->flags);
+          "Input", blit->frame, blit->isubwc, 0);
 
       GST_GLES_UNLOCK (convert);
 
@@ -466,8 +468,9 @@ gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
         source = (blit->n_regions != 0) ? &(blit->sources[r_idx]) : NULL;
         destination = (blit->n_regions != 0) ? &(blit->destinations[r_idx]) : NULL;
 
-        gst_gles_update_object (&object, surface_id, blit->frame, blit->alpha,
-            blit->flags, source, destination, outframe);
+        gst_gles_update_object (&object, surface_id, blit->frame, blit->rotate,
+            blit->flip_h, blit->flip_v, blit->alpha, source, destination,
+            outframe);
 
         objects.push_back(object);
       } while (++r_idx < blit->n_regions);
@@ -476,7 +479,7 @@ gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
     GST_GLES_LOCK (convert);
 
     surface_id = gst_gles_retrieve_surface_id (convert, convert->outsurfaces,
-        "Output", outframe, compositions[idx].flags);
+        "Output", outframe, compositions[idx].isubwc, compositions[idx].flags);
 
     GST_GLES_UNLOCK (convert);
 
@@ -487,7 +490,7 @@ gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
     }
 
     uint32_t color = compositions[idx].bgcolor;
-    bool clear = compositions[idx].flags & GST_VCE_FLAG_FILL_BACKGROUND;
+    bool clear = compositions[idx].bgfill;
 
     std::vector<::ib2c::Normalize> normalization;
 

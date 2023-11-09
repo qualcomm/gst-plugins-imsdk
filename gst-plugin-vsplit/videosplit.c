@@ -613,20 +613,24 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
       composition = &(g_array_index (compositions, GstVideoComposition, id));
 
       composition->frame = outframe;
-      composition->bgcolor = 0x00000000;
-      composition->flags = GST_VCE_FLAG_FILL_BACKGROUND;
+      composition->isubwc = srcpad->isubwc;
+      composition->flags = 0;
 
-      if (srcpad->isubwc)
-        composition->flags |= GST_VCE_FLAG_UBWC;
+      composition->bgcolor = 0x00000000;
+      composition->bgfill = TRUE;
 
       composition->blits = g_slice_new0 (GstVideoBlit);
       composition->n_blits = 1;
 
-      if (GST_VIDEO_SPLIT_SINKPAD (vsplit->sinkpad)->isubwc)
-        composition->blits[0].flags |= GST_VCE_FLAG_UBWC;
-
       composition->blits[0].frame = inframe;
+      composition->blits[0].isubwc =
+          GST_VIDEO_SPLIT_SINKPAD (vsplit->sinkpad)->isubwc;
+
       composition->blits[0].alpha = G_MAXUINT8;
+      composition->blits[0].rotate = GST_VCE_ROTATE_0;
+
+      composition->blits[0].flip_h = FALSE;
+      composition->blits[0].flip_v = FALSE;
 
       composition->blits[0].sources = g_slice_new (GstVideoRectangle);
       composition->blits[0].destinations = g_slice_new (GstVideoRectangle);

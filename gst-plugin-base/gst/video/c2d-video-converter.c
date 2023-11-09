@@ -95,7 +95,6 @@ G_LOCK_DEFINE_STATIC (c2d);
 // Reference counter as C2D is singleton.
 static gint refcount = 0;
 
-typedef struct _GstC2dRequest GstC2dRequest;
 
 struct _GstC2dVideoConverter
 {
@@ -142,11 +141,6 @@ struct _GstC2dVideoConverter
                                  uint32 offset, uint32 flags, void** gpuaddr);
   C2D_API C2D_STATUS (*UnMapAddr) (void* gpuaddr);
   C2D_API C2D_STATUS (*GetDriverCapabilities) (C2D_DRIVER_INFO* caps);
-};
-
-struct _GstC2dRequest
-{
-  guint surface_id;
 };
 
 static gboolean
@@ -322,8 +316,10 @@ gst_c2d_blits_compatible (const GstVideoComposition * l_composition,
     l_blit = &(l_composition->blits[idx]);
     r_blit = &(r_composition->blits[idx]);
 
-    // Both entries need to have the same flags and global alpha.
-    if ((l_blit->flags != r_blit->flags) || (l_blit->alpha != r_blit->alpha))
+    // Both entries need to have the same ubwc, flip, rotate and global alpha.
+    if ((l_blit->rotate != r_blit->rotate) || (l_blit->alpha != r_blit->alpha) ||
+        (l_blit->flip_h != r_blit->flip_h) || (l_blit->flip_v != r_blit->flip_v) ||
+        (l_blit->isubwc != r_blit->isubwc))
       return FALSE;
 
     l_fd = gst_fd_memory_get_fd (
@@ -434,8 +430,7 @@ gst_c2d_optimize_composition (GstVideoBlit * blit,
     l_score += (GST_VIDEO_FRAME_FORMAT (l_composition->frame) ==
         GST_VIDEO_FRAME_FORMAT (composition->frame)) ? 1 : 0;
     // Increase the score if both target blit surfaces have the same UBWC flag.
-    l_score += ((l_composition->flags & GST_VCE_FLAG_UBWC) ==
-        (composition->flags & GST_VCE_FLAG_UBWC)) ? 1 : 0;
+    l_score += (l_composition->isubwc == composition->isubwc) ? 1 : 0;
 
     if (l_score <= score)
       continue;
@@ -444,7 +439,7 @@ gst_c2d_optimize_composition (GstVideoBlit * blit,
     score = l_score;
 
     blit->frame = l_composition->frame;
-    blit->flags = l_composition->flags & GST_VCE_FLAG_UBWC;
+    blit->isubwc = l_composition->isubwc;
 
     optimized = TRUE;
   }
@@ -805,7 +800,8 @@ gst_c2d_destroy_surface (gpointer key, gpointer value, gpointer userdata)
 
 static void
 gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
-    const GstVideoFrame * inframe, guint8 alpha, guint64 flags,
+    const GstVideoFrame * inframe, const GstVideoConvRotate rotate,
+    const guint8 alpha, const gboolean flip_h, const gboolean flip_v,
     const GstVideoRectangle * source, const GstVideoRectangle * destination,
     const GstVideoFrame * outframe)
 {
@@ -842,12 +838,12 @@ gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
   // Apply the flip bits to the object configure mask if set.
   object->config_mask &= ~(C2D_MIRROR_V_BIT | C2D_MIRROR_H_BIT);
 
-  if (flags & GST_VCE_FLAG_FLIP_V) {
+  if (flip_v) {
     object->config_mask |= C2D_MIRROR_V_BIT;
     GST_TRACE ("Input surface %x - Flip Vertically", surface_id);
   }
 
-  if (flags & GST_VCE_FLAG_FLIP_H) {
+  if (flip_h) {
     object->config_mask |= C2D_MIRROR_H_BIT;
     GST_TRACE ("Input surface %x - Flip Horizontally", surface_id);
   }
@@ -861,8 +857,8 @@ gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
   }
 
   // Setup rotation angle and adjustments.
-  switch (flags & GST_VCE_ROTATION_MASK) {
-    case GST_VCE_FLAG_ROTATE_90:
+  switch (rotate) {
+    case GST_VCE_ROTATE_90:
     {
       gint dar_n = 0, dar_d = 0;
 
@@ -894,7 +890,7 @@ gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
       object->target_rect.x = y << 16;
       break;
     }
-    case GST_VCE_FLAG_ROTATE_180:
+    case GST_VCE_ROTATE_180:
       object->config_mask |= (C2D_OVERRIDE_GLOBAL_TARGET_ROTATE_CONFIG |
           C2D_OVERRIDE_TARGET_ROTATE_180);
       GST_LOG ("Input surface %x - rotate 180°", surface_id);
@@ -912,7 +908,7 @@ gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
       object->target_rect.y =
           (GST_VIDEO_FRAME_HEIGHT (outframe) - (y + height)) << 16;
       break;
-    case GST_VCE_FLAG_ROTATE_270:
+    case GST_VCE_ROTATE_270:
     {
       gint dar_n = 0, dar_d = 0;
 
@@ -1046,11 +1042,9 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
   GArray *requests = NULL;
   C2D_OBJECT objects[GST_C2D_MAX_DRAW_OBJECTS] = { 0, };
   guint idx = 0, num = 0, surface_id = 0, area = 0;
-  gboolean isubwc = FALSE;
   C2D_STATUS status = C2D_STATUS_OK;
 
-  requests = g_array_sized_new (FALSE, FALSE, sizeof (GstC2dRequest),
-      n_compositions);
+  requests = g_array_sized_new (FALSE, FALSE, sizeof (guint), n_compositions);
   g_array_set_size (requests, n_compositions);
 
   // Sort compositions by output frame dimensions.
@@ -1061,7 +1055,6 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
     GstVideoComposition *composition = &(compositions[idx]);
     GstVideoFrame *outframe = NULL;
     GstVideoBlit *blits = NULL, l_blit = GST_VCE_BLIT_INIT;
-    GstC2dRequest *request = NULL;
     guint n_blits = 0, n_objects = 0;
     gboolean optimized = FALSE;
 
@@ -1090,9 +1083,8 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
 
       GST_C2D_LOCK (convert);
 
-      isubwc = blit->flags & GST_VCE_FLAG_UBWC;
       surface_id = gst_c2d_retrieve_surface_id (convert, convert->insurfaces,
-          C2D_SOURCE, blit->frame, isubwc);
+          C2D_SOURCE, blit->frame, blit->isubwc);
 
       GST_C2D_UNLOCK (convert);
 
@@ -1115,7 +1107,8 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
         destination = (blit->n_regions != 0) ? &(blit->destinations[r_idx]) : NULL;
 
         gst_c2d_update_object (&(objects[n_objects]), surface_id, blit->frame,
-            blit->alpha, blit->flags, source, destination, outframe);
+            blit->rotate, blit->alpha, blit->flip_h, blit->flip_v, source,
+            destination, outframe);
 
         // Subtract object area from the total area.
         area -= gst_c2d_composition_object_area (objects, n_objects);
@@ -1131,9 +1124,8 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
 
     GST_C2D_LOCK (convert);
 
-    isubwc = composition->flags & GST_VCE_FLAG_UBWC;
     surface_id = gst_c2d_retrieve_surface_id (convert, convert->outsurfaces,
-        C2D_SOURCE | C2D_TARGET, outframe, isubwc);
+        C2D_SOURCE | C2D_TARGET, outframe, composition->isubwc);
 
     GST_C2D_UNLOCK (convert);
 
@@ -1144,7 +1136,7 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
     }
 
     // Fill the surface if there is visible background area.
-    if ((composition->flags & GST_VCE_FLAG_FILL_BACKGROUND) && (area > 0)) {
+    if (composition->bgfill && (area > 0)) {
       GST_LOG ("Fill output surface %x", surface_id);
       status = convert->FillSurface (surface_id, composition->bgcolor, NULL);
 
@@ -1162,8 +1154,7 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
       goto cleanup;
     }
 
-    request = &(g_array_index (requests, GstC2dRequest, idx));
-    request->surface_id = surface_id;
+    g_array_index (requests, guint, idx) = surface_id;
   }
 
   // Wait for all compositions to finish if synchronous, otherwise fill fence.
@@ -1186,25 +1177,24 @@ gst_c2d_video_converter_wait_fence (GstC2dVideoConverter * convert,
     gpointer fence)
 {
   GArray *requests = (GArray*) fence;
-  GstC2dRequest *request = NULL;
-  guint idx = 0;
+  guint idx = 0, surface_id = 0;
   gboolean success = TRUE;
   C2D_STATUS status = C2D_STATUS_OK;
 
   for (idx = 0; idx < requests->len; idx++) {
-    request = &(g_array_index (requests, GstC2dRequest, idx));
+    surface_id = g_array_index (requests, guint, idx);
 
-    GST_LOG ("Waiting surface_id: %x", request->surface_id);
+    GST_LOG ("Waiting surface_id: %x", surface_id);
 
-    if ((status = convert->Finish (request->surface_id)) != C2D_STATUS_OK) {
+    if ((status = convert->Finish (surface_id)) != C2D_STATUS_OK) {
       GST_ERROR ("Finish failed for surface %x, error: %d!",
-          request->surface_id, status);
+          surface_id, status);
 
       success &= FALSE;
       continue;
     }
 
-    GST_LOG ("Finished waiting surface_id: %x", request->surface_id);
+    GST_LOG ("Finished waiting surface_id: %x", surface_id);
   }
 
   g_array_free (requests, TRUE);

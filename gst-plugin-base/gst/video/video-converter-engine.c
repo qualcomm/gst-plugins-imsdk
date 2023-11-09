@@ -154,7 +154,7 @@ gst_video_converter_engine_new (GstVideoConvBackend backend,
   // Initialize the debug category.
   gst_video_conv_engine_init_debug_category ();
 
-  engine = g_slice_new (GstVideoConvEngine);
+  engine = g_new (GstVideoConvEngine, 1);
   g_return_val_if_fail (engine != NULL, FALSE);
 
   switch (backend) {
@@ -204,7 +204,7 @@ gst_video_converter_engine_new (GstVideoConvBackend backend,
   return engine;
 
 cleanup:
-  g_slice_free (GstVideoConvEngine, engine);
+  g_free (engine);
   return NULL;
 }
 
@@ -215,7 +215,7 @@ gst_video_converter_engine_free (GstVideoConvEngine * engine)
     return;
 
   engine->free (engine->converter);
-  g_slice_free (GstVideoConvEngine, engine);
+  g_free (engine);
 }
 
 gboolean
