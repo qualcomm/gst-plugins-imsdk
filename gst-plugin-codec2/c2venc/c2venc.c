@@ -677,6 +677,23 @@ gst_c2_venc_event_handler (guint type, gpointer payload, gpointer userdata)
   } else if (type == GST_C2_EVENT_ERROR) {
     gint32 error = *((gint32*) userdata);
     GST_ERROR_OBJECT (c2venc, "Received engine ERROR: '%x'", error);
+  } else if (type == GST_C2_EVENT_DROP) {
+    guint64 index = *((guint64*) payload);
+    GstVideoCodecFrame *frame = NULL;
+
+    GST_DEBUG_OBJECT (c2venc, "Received engine drop frame: %" G_GUINT64_FORMAT,
+        index);
+
+    frame = gst_video_encoder_get_frame (GST_VIDEO_ENCODER (c2venc), index);
+    if (frame == NULL) {
+      GST_ERROR_OBJECT (c2venc, "Failed to get encoder frame with index %"
+          G_GUINT64_FORMAT, index);
+      return;
+    }
+    frame->output_buffer = NULL;
+    // Calling finish_frame with frame->output_buffer == NULL will drop it.
+    gst_video_encoder_finish_frame (GST_VIDEO_ENCODER (c2venc), frame);
+    gst_video_codec_frame_unref (frame);
   }
 }
 
@@ -791,7 +808,7 @@ gst_c2_venc_stop (GstVideoEncoder * encoder)
   GST_DEBUG_OBJECT (c2venc, "Stop engine");
 
   if ((c2venc->engine != NULL) && !gst_c2_engine_drain (c2venc->engine, TRUE)) {
-    GST_ERROR_OBJECT (c2venc, "Failed to flush engine");
+    GST_ERROR_OBJECT (c2venc, "Failed to drain engine");
     return FALSE;
   }
 
@@ -1638,6 +1655,12 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
   g_signal_new_class_handler ("ltr-mark", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION, G_CALLBACK (gst_c2_venc_ltr_mark),
       NULL, NULL, NULL, G_TYPE_BOOLEAN, 1, G_TYPE_UINT);
+
+  // TODO: Temporary solution to flush all enqued buffers in the encoder
+  // until proper solution is implemented using flush start/stop
+  g_signal_new_class_handler ("flush-buffers", G_TYPE_FROM_CLASS (klass),
+      G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION, G_CALLBACK (gst_c2_venc_flush),
+      NULL, NULL, NULL, G_TYPE_BOOLEAN, 0);
 
   gst_element_class_set_static_metadata (element,
       "Codec2 H.264/H.265/HEIC Video Encoder", "Codec/Encoder/Video",
