@@ -807,11 +807,6 @@ gst_c2_venc_stop (GstVideoEncoder * encoder)
   GstC2VEncoder *c2venc = GST_C2_VENC (encoder);
   GST_DEBUG_OBJECT (c2venc, "Stop engine");
 
-  if ((c2venc->engine != NULL) && !gst_c2_engine_drain (c2venc->engine, TRUE)) {
-    GST_ERROR_OBJECT (c2venc, "Failed to drain engine");
-    return FALSE;
-  }
-
   if ((c2venc->engine != NULL) && !gst_c2_engine_stop (c2venc->engine)) {
     GST_ERROR_OBJECT (c2venc, "Failed to stop engine");
     return FALSE;
