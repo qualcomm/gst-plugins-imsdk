@@ -104,7 +104,8 @@
     "camsrc. ! capsfilter name=mlfilter caps=video/x-raw(memory:GBM),format=NV12,width=1280,height=720,framerate=30/1 ! " \
     "queue name=camsrc_queue ! qtimlvconverter name=mlvconverter ! queue name=mlvconverter_queue ! " \
     "qtimltflite name=mltflite delegate=hexagon model=/data/yolov5m-320x320-int8.tflite ! queue name=mltflite_queue ! " \
-    "qtimlvdetection name=mlvdetection threshold=60.0 results=1 module=yolov5m labels=/data/yolov5m.labels ! " \
+    "qtimlvdetection name=mlvdetection threshold=60.0 results=1 module=yolov5 labels=/data/yolov5m.labels " \
+    "constants=\"YoloV5,q-offsets=<3.0>,q-scales=<0.005047998391091824>;\" ! " \
     "capsfilter name=mldetection_filter caps=text/x-raw ! queue name=mlvdetection_queue ! appsink name=mlsink " \
     "camsrc. ! capsfilter name=umdvfilter ! queue name=vqueue ! qtivtransform name=vtransform ! queue name=umdvqueue ! " \
     "appsink name=umdvsink"
@@ -1526,11 +1527,13 @@ ml_reconfigure_pipeline (GstServiceContext * srvctx, gboolean enable)
         "module");
 
     g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
-    g_return_val_if_fail (gst_value_deserialize (&value, "yolov5m"), FALSE);
+    g_return_val_if_fail (gst_value_deserialize (&value, "yolov5"), FALSE);
 
     g_object_set_property (G_OBJECT (newplugin), "module", &value);
     g_value_unset (&value);
 
+    g_object_set (G_OBJECT (newplugin), "constants",
+        "YoloV5,q-offsets=<3.0>,q-scales=<0.005047998391091824>;", NULL);
     g_object_set (G_OBJECT (newplugin), "labels", "/data/yolov5m.labels", NULL);
     g_object_set (G_OBJECT (newplugin), "threshold", 75.0, NULL);
     g_object_set (G_OBJECT (newplugin), "results", 10, NULL);
@@ -1646,16 +1649,21 @@ static gboolean umd_reconfigure_pipeline (GstServiceContext *srvctx, uint32_t fo
 {
   GstElement *vqueue = NULL, *vtrans = NULL;
   GstElement  *umdvfilter = NULL, *umdvqueue = NULL;
-  GstElement  *c2venc = NULL, *c2vqueue = NULL, *prevplugin = NULL;;
+  GstElement  *c2venc = NULL, *c2vqueue = NULL;
+  GstElement  *prevplugin = NULL, *nextplugin=NULL;
   gboolean success = TRUE, encoding = FALSE;
 
   umdvfilter = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "umdvfilter");
   umdvqueue = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "umdvqueue");
   vtrans = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "vtransform");
   vqueue = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "vqueue");
+  c2venc = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "c2venc");
+  c2vqueue = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "c2vqueue");
 
   // Reconfigure ML elements
   // Add vtransform plugin only if ML is enabled and crop is external.
+  nextplugin = c2vqueue ? c2vqueue : umdvqueue;
+
   if (afrmops.enable && (afrmops.croptype == ML_CROP_EXTERNAL) &&
       (NULL == vtrans) && (NULL == vqueue)) {
     vtrans = gst_element_factory_make ("qtivtransform", "vtransform");
@@ -1673,10 +1681,10 @@ static gboolean umd_reconfigure_pipeline (GstServiceContext *srvctx, uint32_t fo
     gst_object_ref (vtrans);
 
     // Unlink the plugins where we want to add our new elements.
-    gst_element_unlink (umdvfilter, umdvqueue);
+    gst_element_unlink (umdvfilter, nextplugin);
 
     success =
-        gst_element_link_many (umdvfilter, vqueue, vtrans, umdvqueue, NULL);
+        gst_element_link_many (umdvfilter, vqueue, vtrans, nextplugin, NULL);
   } else if ((!afrmops.enable || (afrmops.croptype == ML_CROP_INTERNAL)) &&
              (vtrans != NULL) && (vqueue != NULL)) {
     gst_bin_remove (GST_BIN (srvctx->vpipeline), vtrans);
@@ -1691,7 +1699,7 @@ static gboolean umd_reconfigure_pipeline (GstServiceContext *srvctx, uint32_t fo
     vqueue = NULL;
     vtrans = NULL;
 
-    success = gst_element_link (umdvfilter, umdvqueue);
+    success = gst_element_link (umdvfilter, nextplugin);
   }
 
   if (!success) {
@@ -1701,8 +1709,6 @@ static gboolean umd_reconfigure_pipeline (GstServiceContext *srvctx, uint32_t fo
 
   // Reconfigure Encode elements
   // Add c2venc element only if H.264 is enabled
-  c2venc = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "c2venc");
-  c2vqueue = gst_bin_get_by_name (GST_BIN (srvctx->vpipeline), "c2vqueue");
   encoding = (format == UMD_VIDEO_FMT_H264) ? TRUE : FALSE;
   prevplugin = vtrans ? vtrans : umdvfilter;
 
@@ -1752,6 +1758,9 @@ static gboolean umd_reconfigure_pipeline (GstServiceContext *srvctx, uint32_t fo
     gst_object_unref (c2venc);
   }
 
+  c2venc = NULL;
+  c2vqueue = NULL;
+
   if (!success)
     g_printerr ("\nFailed to link pipeline Encode elements.\n");
 
@@ -1760,10 +1769,16 @@ cleanup:
   gst_object_unref (umdvfilter);
 
   if (vtrans)
-      gst_object_unref (vtrans);
+    gst_object_unref (vtrans);
 
   if (vqueue)
-      gst_object_unref (vqueue);
+    gst_object_unref (vqueue);
+
+  if (c2venc)
+    gst_object_unref(c2venc);
+
+  if (c2vqueue)
+    gst_object_unref(c2vqueue);
 
   return success;
 }
