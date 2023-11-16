@@ -71,91 +71,91 @@
 G_BEGIN_DECLS
 
 /**
- * GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_WIDTH:
+ * GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_WIDTH:
  *
  * #G_TYPE_UINT, video source width
  * Default: 0
  */
-#define GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_WIDTH \
-    "GstCvpOptclFlowEngine.video-width"
+#define GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_WIDTH \
+    "GstCvOptclFlowEngine.video-width"
 
 /**
- * GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_HEIGHT:
+ * GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_HEIGHT:
  *
  * #G_TYPE_UINT, video source height
  * Default: 0
  *
  * Not applicable for output
  */
-#define GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_HEIGHT \
-    "GstCvpOptclFlowEngine.video-height"
+#define GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_HEIGHT \
+    "GstCvOptclFlowEngine.video-height"
 
 /**
- * GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_STRIDE:
+ * GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_STRIDE:
  *
  * #G_TYPE_UINT, video source aligned width
  * Default: 0
  */
-#define GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_STRIDE \
-    "GstCvpOptclFlowEngine.video-stride"
+#define GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_STRIDE \
+    "GstCvOptclFlowEngine.video-stride"
 
 /**
- * GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_SCANLINE:
+ * GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_SCANLINE:
  *
  * #G_TYPE_UINT, video source aligned height
  * Default: 0
  *
  * Not applicable for output
  */
-#define GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_SCANLINE \
-    "GstCvpOptclFlowEngine.video-scanline"
+#define GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_SCANLINE \
+    "GstCvOptclFlowEngine.video-scanline"
 
 /**
- * GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_FORMAT:
+ * GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_FORMAT:
  *
  * #GST_TYPE_VIDEO_SOURCE_FORMAT, set the video source format
  * Default: #GST_VIDEO_FORMAT_UNKNOWN.
  */
-#define GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_FORMAT \
-    "GstCvpOptclFlowEngine.video-format"
+#define GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_FORMAT \
+    "GstCvOptclFlowEngine.video-format"
 
 /**
- * GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_FPS:
+ * GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_FPS:
  *
  * #G_TYPE_UINT, video source frame rate in frames per second
  * Default: 0
  *
  * Not applicable for output
  */
-#define GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_FPS \
-    "GstCvpOptclFlowEngine.video-fps"
+#define GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_FPS \
+    "GstCvOptclFlowEngine.video-fps"
 
 /**
- * GST_CVP_OPTCLFLOW_ENGINE_OPT_ENABLE_STATS:
+ * GST_CV_OPTCLFLOW_ENGINE_OPT_ENABLE_STATS:
  *
  * #G_TYPE_BOOLEAN, Enable/disable additional motion vector statistics
  * Default: TRUE
  */
-#define GST_CVP_OPTCLFLOW_ENGINE_OPT_ENABLE_STATS \
-    "GstCvpOptclFlowEngine.enable-stats"
+#define GST_CV_OPTCLFLOW_ENGINE_OPT_ENABLE_STATS \
+    "GstCvOptclFlowEngine.enable-stats"
 
 
-typedef struct _GstCvpOptclFlowEngine GstCvpOptclFlowEngine;
+typedef struct _GstCvOptclFlowEngine GstCvOptclFlowEngine;
 
-GST_API GstCvpOptclFlowEngine *
-gst_cvp_optclflow_engine_new     (GstStructure * settings);
+GST_API GstCvOptclFlowEngine *
+gst_cv_optclflow_engine_new     (GstStructure * settings);
 
 GST_API void
-gst_cvp_optclflow_engine_free    (GstCvpOptclFlowEngine * engine);
+gst_cv_optclflow_engine_free    (GstCvOptclFlowEngine * engine);
 
 GST_API gboolean
-gst_cvp_optclflow_engine_sizes   (GstCvpOptclFlowEngine * engine,
-                                  guint * mvsize, guint * statsize);
+gst_cv_optclflow_engine_sizes   (GstCvOptclFlowEngine * engine,
+                                 guint * mvsize, guint * statsize);
 
 GST_API gboolean
-gst_cvp_optclflow_engine_execute (GstCvpOptclFlowEngine * engine,
-                                  const GstVideoFrame * inframes, guint n_inputs,
-                                  GstBuffer * outbuffer);
+gst_cv_optclflow_engine_execute (GstCvOptclFlowEngine * engine,
+                                 const GstVideoFrame * inframes, guint n_inputs,
+                                 GstBuffer * outbuffer);
 
 G_END_DECLS
 

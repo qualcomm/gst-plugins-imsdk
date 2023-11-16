@@ -150,24 +150,24 @@
 #define DEFAULT_OPT_ENABLE_STATS      TRUE
 
 #define GET_OPT_FORMAT(s) ((GstVideoFormat) get_opt_enum (s, \
-    GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_FORMAT, GST_TYPE_VIDEO_FORMAT, \
+    GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_FORMAT, GST_TYPE_VIDEO_FORMAT, \
     DEFAULT_OPT_VIDEO_FORMAT))
 #define GET_OPT_WIDTH(s) get_opt_uint (s, \
-    GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_WIDTH, DEFAULT_OPT_VIDEO_WIDTH)
+    GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_WIDTH, DEFAULT_OPT_VIDEO_WIDTH)
 #define GET_OPT_HEIGHT(s) get_opt_uint (s, \
-    GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_HEIGHT, DEFAULT_OPT_VIDEO_HEIGHT)
+    GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_HEIGHT, DEFAULT_OPT_VIDEO_HEIGHT)
 #define GET_OPT_STRIDE(s) get_opt_uint (s, \
-    GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_STRIDE, DEFAULT_OPT_VIDEO_STRIDE)
+    GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_STRIDE, DEFAULT_OPT_VIDEO_STRIDE)
 #define GET_OPT_SCANLINE(s) get_opt_uint (s, \
-    GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_SCANLINE, DEFAULT_OPT_VIDEO_SCANLINE)
+    GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_SCANLINE, DEFAULT_OPT_VIDEO_SCANLINE)
 #define GET_OPT_FPS(s) get_opt_uint (s, \
-    GST_CVP_OPTCLFLOW_ENGINE_OPT_VIDEO_FPS, DEFAULT_OPT_VIDEO_FPS)
+    GST_CV_OPTCLFLOW_ENGINE_OPT_VIDEO_FPS, DEFAULT_OPT_VIDEO_FPS)
 #define GET_OPT_STATS(s) get_opt_bool(s, \
-    GST_CVP_OPTCLFLOW_ENGINE_OPT_ENABLE_STATS, DEFAULT_OPT_ENABLE_STATS)
+    GST_CV_OPTCLFLOW_ENGINE_OPT_ENABLE_STATS, DEFAULT_OPT_ENABLE_STATS)
 
 #define GST_CAT_DEFAULT gst_cvp_optclflow_engine_debug_category()
 
-struct _GstCvpOptclFlowEngine
+struct _GstCvOptclFlowEngine
 {
   GstStructure *settings;
 
@@ -223,7 +223,7 @@ get_opt_bool (const GstStructure * settings, const gchar * opt, gboolean value)
 }
 
 static void
-gst_cvp_append_custom_meta (GstCvpOptclFlowEngine * engine,GstBuffer * buffer)
+gst_cvp_append_custom_meta (GstCvOptclFlowEngine * engine,GstBuffer * buffer)
 {
   GstStructure *info = NULL, *params = NULL;
   GValue entries = G_VALUE_INIT, value = G_VALUE_INIT;
@@ -233,7 +233,7 @@ gst_cvp_append_custom_meta (GstCvpOptclFlowEngine * engine,GstBuffer * buffer)
   g_value_init (&value, G_TYPE_UCHAR);
 
   // Create a structure that will contain information for data decryption.
-  info = gst_structure_new_empty ("CvpOpticalFlow");
+  info = gst_structure_new_empty ("CvOpticalFlow");
 
   // Names, offsets and sizes in bits of the fields in the motion vector.
   params = gst_structure_new_empty ("MotionVector");
@@ -359,7 +359,7 @@ gst_cvp_append_custom_meta (GstCvpOptclFlowEngine * engine,GstBuffer * buffer)
 }
 
 static cvpImage *
-gst_cvp_create_image (GstCvpOptclFlowEngine * engine, const GstVideoFrame * frame)
+gst_cvp_create_image (GstCvOptclFlowEngine * engine, const GstVideoFrame * frame)
 {
   GstMemory *memory = NULL;
   cvpImage *cvpimage = NULL;
@@ -450,7 +450,7 @@ gst_cvp_create_image (GstCvpOptclFlowEngine * engine, const GstVideoFrame * fram
 static void
 gst_cvp_delete_image (gpointer key, gpointer value, gpointer userdata)
 {
-  GstCvpOptclFlowEngine *engine = (GstCvpOptclFlowEngine*) userdata;
+  GstCvOptclFlowEngine *engine = (GstCvOptclFlowEngine*) userdata;
   cvpImage *cvpimage = (cvpImage*) value;
   cvpStatus status = CVP_SUCCESS;
 
@@ -471,10 +471,10 @@ gst_cvp_delete_image (gpointer key, gpointer value, gpointer userdata)
   return;
 }
 
-GstCvpOptclFlowEngine *
-gst_cvp_optclflow_engine_new (GstStructure * settings)
+GstCvOptclFlowEngine *
+gst_cv_optclflow_engine_new (GstStructure * settings)
 {
-  GstCvpOptclFlowEngine *engine = NULL;
+  GstCvOptclFlowEngine *engine = NULL;
   cvpConfigOpticalFlow config;
   cvpAdvConfigOpticalFlow advcfg;
   cvpOpticalFlowOutBuffReq requirements;
@@ -482,7 +482,7 @@ gst_cvp_optclflow_engine_new (GstStructure * settings)
   cvpStatus status = CVP_SUCCESS;
   guint stride = 0, scanline = 0;
 
-  engine = g_slice_new0 (GstCvpOptclFlowEngine);
+  engine = g_slice_new0 (GstCvOptclFlowEngine);
   g_return_val_if_fail (engine != NULL, NULL);
 
   engine->settings = gst_structure_copy (settings);
@@ -490,14 +490,14 @@ gst_cvp_optclflow_engine_new (GstStructure * settings)
 
   engine->cvpimages = g_hash_table_new (NULL, NULL);
   GST_RETURN_VAL_IF_FAIL_WITH_CLEAN (engine->cvpimages != NULL, NULL,
-      gst_cvp_optclflow_engine_free (engine), "Failed to create hash table "
+      gst_cv_optclflow_engine_free (engine), "Failed to create hash table "
       "for source images!");
 
   // Create a CVP session.
   // TODO Initialize configuration and callbacks.
   engine->session = cvpCreateSession (NULL, NULL, NULL);
   GST_RETURN_VAL_IF_FAIL_WITH_CLEAN (engine->session != NULL, NULL,
-      gst_cvp_optclflow_engine_free (engine), "Failed to create CVP session!");
+      gst_cv_optclflow_engine_free (engine), "Failed to create CVP session!");
 
   config.eMode              = CVP_OPTICALFLOW_SEVEN_PASS;
   config.sImageInfo.nWidth  = GET_OPT_WIDTH (engine->settings);
@@ -516,7 +516,7 @@ gst_cvp_optclflow_engine_new (GstStructure * settings)
     default:
       GST_ERROR ("Unsupported video format: %s!",
           gst_video_format_to_string (GET_OPT_FORMAT (engine->settings)));
-      gst_cvp_optclflow_engine_free (engine);
+      gst_cv_optclflow_engine_free (engine);
 
       return NULL;
   }
@@ -560,7 +560,7 @@ gst_cvp_optclflow_engine_new (GstStructure * settings)
   engine->handle = cvpInitOpticalFlow (engine->session, &config, &advcfg,
       &requirements, NULL, NULL);
   GST_RETURN_VAL_IF_FAIL_WITH_CLEAN (engine->handle != NULL, NULL,
-      gst_cvp_optclflow_engine_free (engine), "Failed to init Optical Flow!");
+      gst_cv_optclflow_engine_free (engine), "Failed to init Optical Flow!");
 
   engine->mvsize = requirements.nMotionVectorBytes;
   engine->statsize = requirements.nStatsBytes;
@@ -568,7 +568,7 @@ gst_cvp_optclflow_engine_new (GstStructure * settings)
   // Start the CVP session.
   status = cvpStartSession (engine->session);
   GST_RETURN_VAL_IF_FAIL_WITH_CLEAN (status == CVP_SUCCESS, NULL,
-      gst_cvp_optclflow_engine_free (engine), "Failed to start CVP session!");
+      gst_cv_optclflow_engine_free (engine), "Failed to start CVP session!");
 
   engine->active = TRUE;
   GST_INFO ("Created CVP OpticalFlow engine: %p", engine);
@@ -576,7 +576,7 @@ gst_cvp_optclflow_engine_new (GstStructure * settings)
 }
 
 void
-gst_cvp_optclflow_engine_free (GstCvpOptclFlowEngine * engine)
+gst_cv_optclflow_engine_free (GstCvOptclFlowEngine * engine)
 {
   if (NULL == engine)
     return;
@@ -599,11 +599,11 @@ gst_cvp_optclflow_engine_free (GstCvpOptclFlowEngine * engine)
     gst_structure_free (engine->settings);
 
   GST_INFO ("Destroyed CVP OpticalFlow engine: %p", engine);
-  g_slice_free (GstCvpOptclFlowEngine, engine);
+  g_slice_free (GstCvOptclFlowEngine, engine);
 }
 
 gboolean
-gst_cvp_optclflow_engine_sizes (GstCvpOptclFlowEngine * engine, guint * mvsize,
+gst_cv_optclflow_engine_sizes (GstCvOptclFlowEngine * engine, guint * mvsize,
     guint * statsize)
 {
   g_return_val_if_fail (engine != NULL, FALSE);
@@ -616,7 +616,7 @@ gst_cvp_optclflow_engine_sizes (GstCvpOptclFlowEngine * engine, guint * mvsize,
 }
 
 gboolean
-gst_cvp_optclflow_engine_execute (GstCvpOptclFlowEngine * engine,
+gst_cv_optclflow_engine_execute (GstCvOptclFlowEngine * engine,
     const GstVideoFrame * inframes, guint n_inputs, GstBuffer * outbuffer)
 {
   GstMapInfo *outmap = NULL;

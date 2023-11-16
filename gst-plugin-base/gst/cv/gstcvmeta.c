@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -32,73 +32,73 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "gstcvpmeta.h"
+#include "gstcvmeta.h"
 
-#define GST_CAT_DEFAULT gst_cvp_meta_debug_category()
+#define GST_CAT_DEFAULT gst_cv_meta_debug_category()
 static GstDebugCategory *
-gst_cvp_meta_debug_category (void)
+gst_cv_meta_debug_category (void)
 {
   static gsize catonce = 0;
 
   if (g_once_init_enter (&catonce)) {
-    gsize catdone = (gsize) _gst_debug_category_new ("cvpmeta", 0, "CVP Meta");
+    gsize catdone = (gsize) _gst_debug_category_new ("cvmeta", 0, "CV Meta");
     g_once_init_leave (&catonce, catdone);
   }
   return (GstDebugCategory *) catonce;
 }
 
 static gboolean
-gst_cvp_optclflow_meta_init (GstMeta * meta, gpointer params, GstBuffer * buffer)
+gst_cv_optclflow_meta_init (GstMeta * meta, gpointer params, GstBuffer * buffer)
 {
-  GstCvpOptclFlowMeta *cvpmeta = GST_CVP_OPTCLFLOW_META_CAST (meta);
+  GstCvOptclFlowMeta *cvmeta = GST_CV_OPTCLFLOW_META_CAST (meta);
 
-  cvpmeta->id = 0;
+  cvmeta->id = 0;
 
-  cvpmeta->mvectors = NULL;
-  cvpmeta->stats = NULL;
+  cvmeta->mvectors = NULL;
+  cvmeta->stats = NULL;
 
   return TRUE;
 }
 
 static void
-gst_cvp_optclflow_meta_free (GstMeta * meta, GstBuffer * buffer)
+gst_cv_optclflow_meta_free (GstMeta * meta, GstBuffer * buffer)
 {
-  GstCvpOptclFlowMeta *cvpmeta = GST_CVP_OPTCLFLOW_META_CAST (meta);
+  GstCvOptclFlowMeta *cvmeta = GST_CV_OPTCLFLOW_META_CAST (meta);
 
-  g_array_free (cvpmeta->mvectors, TRUE);
-  g_array_free (cvpmeta->stats, TRUE);
+  g_array_free (cvmeta->mvectors, TRUE);
+  g_array_free (cvmeta->stats, TRUE);
 }
 
 static gboolean
-gst_cvp_optclflow_meta_transform (GstBuffer * transbuffer, GstMeta * meta,
+gst_cv_optclflow_meta_transform (GstBuffer * transbuffer, GstMeta * meta,
     GstBuffer * buffer, GQuark type, gpointer data)
 {
-  GstCvpOptclFlowMeta *dmeta, *smeta;
+  GstCvOptclFlowMeta *dmeta, *smeta;
   GArray *mvectors = NULL, *stats = NULL;
 
   if (GST_META_TRANSFORM_IS_COPY (type)) {
-    smeta = GST_CVP_OPTCLFLOW_META_CAST (meta);
+    smeta = GST_CV_OPTCLFLOW_META_CAST (meta);
 
     // TODO: replace with g_array_copy() in glib version > 2.62
-    mvectors = g_array_sized_new (FALSE, FALSE, sizeof (GstCvpMotionVector),
+    mvectors = g_array_sized_new (FALSE, FALSE, sizeof (GstCvMotionVector),
         smeta->mvectors->len);
-    stats = g_array_sized_new (FALSE, FALSE, sizeof (GstCvpOptclFlowStats),
+    stats = g_array_sized_new (FALSE, FALSE, sizeof (GstCvOptclFlowStats),
         smeta->stats->len);
 
     mvectors->len = smeta->mvectors->len;
     stats->len = smeta->stats->len;
 
     if (smeta->mvectors->len > 0) {
-      guint n_bytes = mvectors->len * sizeof (GstCvpMotionVector);
+      guint n_bytes = mvectors->len * sizeof (GstCvMotionVector);
       memcpy (mvectors->data, smeta->mvectors->data, n_bytes);
     }
 
     if (smeta->stats->len > 0) {
-      guint n_bytes = stats->len * sizeof (GstCvpOptclFlowStats);
+      guint n_bytes = stats->len * sizeof (GstCvOptclFlowStats);
       memcpy (stats->data, smeta->stats->data, n_bytes);
     }
 
-    dmeta = gst_buffer_add_cvp_optclflow_meta (transbuffer,
+    dmeta = gst_buffer_add_cv_optclflow_meta (transbuffer,
         mvectors, stats);
 
     if (NULL == dmeta)
@@ -106,7 +106,7 @@ gst_cvp_optclflow_meta_transform (GstBuffer * transbuffer, GstMeta * meta,
 
     dmeta->id = smeta->id;
 
-    GST_DEBUG ("Duplicate CVP Optical Flow metadata");
+    GST_DEBUG ("Duplicate CV Optical Flow metadata");
   } else {
     // Return FALSE, if transform type is not supported.
     return FALSE;
@@ -115,47 +115,47 @@ gst_cvp_optclflow_meta_transform (GstBuffer * transbuffer, GstMeta * meta,
 }
 
 GType
-gst_cvp_optclflow_meta_api_get_type (void)
+gst_cv_optclflow_meta_api_get_type (void)
 {
   static GType gtype = 0;
   static const gchar *tags[] = { GST_META_TAG_MEMORY_STR, NULL };
 
   if (g_once_init_enter (&gtype)) {
-    GType type = gst_meta_api_type_register ("GstCvpOptclFlowMetaAPI", tags);
+    GType type = gst_meta_api_type_register ("GstCvOptclFlowMetaAPI", tags);
     g_once_init_leave (&gtype, type);
   }
   return gtype;
 }
 
 const GstMetaInfo *
-gst_cvp_optclflow_meta_get_info (void)
+gst_cv_optclflow_meta_get_info (void)
 {
   static const GstMetaInfo *minfo = NULL;
 
   if (g_once_init_enter ((GstMetaInfo **) &minfo)) {
     const GstMetaInfo *info =
-        gst_meta_register (GST_CVP_OPTCLFLOW_META_API_TYPE, "GstCvpOptclFlowMeta",
-        sizeof (GstCvpOptclFlowMeta), gst_cvp_optclflow_meta_init,
-        gst_cvp_optclflow_meta_free, gst_cvp_optclflow_meta_transform);
+        gst_meta_register (GST_CV_OPTCLFLOW_META_API_TYPE, "GstCvOptclFlowMeta",
+        sizeof (GstCvOptclFlowMeta), gst_cv_optclflow_meta_init,
+        gst_cv_optclflow_meta_free, gst_cv_optclflow_meta_transform);
     g_once_init_leave ((GstMetaInfo **) &minfo, (GstMetaInfo *) info);
   }
   return minfo;
 }
 
-GstCvpOptclFlowMeta *
-gst_buffer_add_cvp_optclflow_meta (GstBuffer * buffer, GArray * mvectors,
+GstCvOptclFlowMeta *
+gst_buffer_add_cv_optclflow_meta (GstBuffer * buffer, GArray * mvectors,
     GArray * stats)
 {
-  GstCvpOptclFlowMeta *meta = NULL;
+  GstCvOptclFlowMeta *meta = NULL;
 
   g_return_val_if_fail (GST_IS_BUFFER (buffer), NULL);
   g_return_val_if_fail (mvectors != NULL, NULL);
 
-  meta = GST_CVP_OPTCLFLOW_META_CAST (
-      gst_buffer_add_meta (buffer, GST_CVP_OPTCLFLOW_META_INFO, NULL));
+  meta = GST_CV_OPTCLFLOW_META_CAST (
+      gst_buffer_add_meta (buffer, GST_CV_OPTCLFLOW_META_INFO, NULL));
 
   if (NULL == meta) {
-    GST_ERROR ("Failed to add CVP Optical Flow meta to buffer %p!", buffer);
+    GST_ERROR ("Failed to add CV Optical Flow meta to buffer %p!", buffer);
     return NULL;
   }
 
@@ -165,28 +165,28 @@ gst_buffer_add_cvp_optclflow_meta (GstBuffer * buffer, GArray * mvectors,
   return meta;
 }
 
-GstCvpOptclFlowMeta *
-gst_buffer_get_cvp_optclflow_meta (GstBuffer * buffer)
+GstCvOptclFlowMeta *
+gst_buffer_get_cv_optclflow_meta (GstBuffer * buffer)
 {
   GstMeta *meta = NULL;
-  GstCvpOptclFlowMeta *cvpmeta = NULL;
+  GstCvOptclFlowMeta *cvmeta = NULL;
   gpointer state = NULL;
 
   g_return_val_if_fail (GST_IS_BUFFER (buffer), NULL);
 
   while ((meta = gst_buffer_iterate_meta_filtered (buffer, &state,
-              GST_CVP_OPTCLFLOW_META_API_TYPE))) {
-    if (GST_CVP_OPTCLFLOW_META_CAST (meta)->id == 0)
-      return GST_CVP_OPTCLFLOW_META_CAST (meta);
+              GST_CV_OPTCLFLOW_META_API_TYPE))) {
+    if (GST_CV_OPTCLFLOW_META_CAST (meta)->id == 0)
+      return GST_CV_OPTCLFLOW_META_CAST (meta);
 
-    if (cvpmeta == NULL || GST_CVP_OPTCLFLOW_META_CAST (meta)->id < cvpmeta->id)
-      cvpmeta = GST_CVP_OPTCLFLOW_META_CAST (meta);
+    if (cvmeta == NULL || GST_CV_OPTCLFLOW_META_CAST (meta)->id < cvmeta->id)
+      cvmeta = GST_CV_OPTCLFLOW_META_CAST (meta);
   }
   return NULL;
 }
 
-GstCvpOptclFlowMeta *
-gst_buffer_get_cvp_optclflow_meta_id (GstBuffer * buffer, guint id)
+GstCvOptclFlowMeta *
+gst_buffer_get_cv_optclflow_meta_id (GstBuffer * buffer, guint id)
 {
   GstMeta *meta = NULL;
   gpointer state = NULL;
@@ -194,9 +194,9 @@ gst_buffer_get_cvp_optclflow_meta_id (GstBuffer * buffer, guint id)
   g_return_val_if_fail (GST_IS_BUFFER (buffer), NULL);
 
   while ((meta = gst_buffer_iterate_meta_filtered (buffer, &state,
-              GST_CVP_OPTCLFLOW_META_API_TYPE))) {
-    if (GST_CVP_OPTCLFLOW_META_CAST (meta)->id == id)
-      return GST_CVP_OPTCLFLOW_META_CAST (meta);
+              GST_CV_OPTCLFLOW_META_API_TYPE))) {
+    if (GST_CV_OPTCLFLOW_META_CAST (meta)->id == id)
+      return GST_CV_OPTCLFLOW_META_CAST (meta);
   }
   return NULL;
 }
