@@ -39,7 +39,7 @@
 #include <string.h>
 #include <gst/allocators/gstfdmemory.h>
 #include <ml-meta/ml_meta.h>
-#include <gst/cvp/gstcvpmeta.h>
+#include <gst/cv/gstcvmeta.h>
 
 #include "gstoverlay.h"
 
@@ -1252,15 +1252,15 @@ gst_overlay_apply_optclflow_item (GstOverlay * gst_overlay, gpointer metadata,
     }
   }
 
-  GstCvpOptclFlowMeta *meta = (GstCvpOptclFlowMeta *) metadata;
+  GstCvOptclFlowMeta *meta = (GstCvOptclFlowMeta *) metadata;
   g_return_val_if_fail (meta->mvectors->len == meta->stats->len, FALSE);
 
   gint arrows_cnt = 0;
 
   // Read each 4th mv in order to skip each 2nd paxel due arrows density
   for (guint x = 0; x < meta->mvectors->len; x+=4) {
-    GstCvpMotionVector *mvector = &g_array_index (meta->mvectors, GstCvpMotionVector, x);
-    GstCvpOptclFlowStats *stats = &g_array_index (meta->stats, GstCvpOptclFlowStats, x);
+    GstCvMotionVector *mvector = &g_array_index (meta->mvectors, GstCvMotionVector, x);
+    GstCvOptclFlowStats *stats = &g_array_index (meta->stats, GstCvOptclFlowStats, x);
 
     gint mv_x = mvector->dx;
     gint mv_y = mvector->dy;
@@ -1567,7 +1567,7 @@ gst_buffer_get_optclflow_meta (GstBuffer * buffer)
   g_return_val_if_fail (buffer != NULL, NULL);
 
   while ((meta = gst_buffer_iterate_meta_filtered (buffer, &state,
-      GST_CVP_OPTCLFLOW_META_API_TYPE)) != NULL)
+      GST_CV_OPTCLFLOW_META_API_TYPE)) != NULL)
     list = g_slist_prepend (list, meta);
 
   return list;
