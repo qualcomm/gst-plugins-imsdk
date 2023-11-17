@@ -70,7 +70,31 @@ static gboolean
 queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
     guint64 time, gpointer checkdata)
 {
+  GstPad *pad = GST_PAD (checkdata);
+
+  if (GST_IS_VIDEO_SPLIT_SRCPAD (pad)) {
+    GstVideoSplitSrcPad *srcpad = GST_VIDEO_SPLIT_SRCPAD_CAST (pad);
+    GST_VIDEO_SPLIT_PAD_SIGNAL_IDLE (srcpad, FALSE);
+  } else if (GST_IS_VIDEO_SPLIT_SINKPAD (pad)) {
+    GstVideoSplitSinkPad *sinkpad = GST_VIDEO_SPLIT_SINKPAD_CAST (pad);
+    GST_VIDEO_SPLIT_PAD_SIGNAL_IDLE (sinkpad, FALSE);
+  }
+
   return (visible >= GST_VSPLIT_MAX_QUEUE_LEN) ? TRUE : FALSE;
+}
+
+static void
+queue_empty_cb (GstDataQueue * queue, gpointer checkdata)
+{
+  GstPad *pad = GST_PAD (checkdata);
+
+  if (GST_IS_VIDEO_SPLIT_SRCPAD (pad)) {
+    GstVideoSplitSrcPad *srcpad = GST_VIDEO_SPLIT_SRCPAD_CAST (pad);
+    GST_VIDEO_SPLIT_PAD_SIGNAL_IDLE (srcpad, TRUE);
+  } else if (GST_IS_VIDEO_SPLIT_SINKPAD (pad)) {
+    GstVideoSplitSinkPad *sinkpad = GST_VIDEO_SPLIT_SINKPAD_CAST (pad);
+    GST_VIDEO_SPLIT_PAD_SIGNAL_IDLE (sinkpad, TRUE);
+  }
 }
 
 static gboolean
@@ -805,6 +829,9 @@ gst_video_split_sinkpad_finalize (GObject * object)
   if (pad->info != NULL)
     gst_video_info_free (pad->info);
 
+  g_cond_clear (&pad->drained);
+  g_mutex_clear (&pad->lock);
+
   G_OBJECT_CLASS (gst_video_split_sinkpad_parent_class)->finalize(object);
 }
 
@@ -821,11 +848,16 @@ gst_video_split_sinkpad_init (GstVideoSplitSinkPad * pad)
 {
   gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
 
+  g_mutex_init (&pad->lock);
+  g_cond_init (&pad->drained);
+
+  pad->is_idle = TRUE;
+
   pad->info = NULL;
   pad->isubwc = FALSE;
 
-  pad->requests = gst_data_queue_new (queue_is_full_cb, NULL, NULL, NULL);
-  gst_data_queue_set_flushing (pad->requests, FALSE);
+  pad->requests =
+      gst_data_queue_new (queue_is_full_cb, NULL, queue_empty_cb, pad);
 }
 
 static GstCaps *
@@ -1102,6 +1134,9 @@ gst_video_split_srcpad_finalize (GObject * object)
   if (pad->info != NULL)
     gst_video_info_free (pad->info);
 
+  g_cond_clear (&pad->drained);
+  g_mutex_clear (&pad->lock);
+
   G_OBJECT_CLASS (gst_video_split_srcpad_parent_class)->finalize(object);
 }
 
@@ -1126,10 +1161,16 @@ gst_video_split_srcpad_init (GstVideoSplitSrcPad * pad)
 {
   gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
 
+  g_mutex_init (&pad->lock);
+  g_cond_init (&pad->drained);
+
+  pad->is_idle = TRUE;
+
   pad->info = NULL;
   pad->isubwc = FALSE;
   pad->passthrough = FALSE;
 
   pad->pool = NULL;
-  pad->buffers = gst_data_queue_new (queue_is_full_cb, NULL, NULL, NULL);
+  pad->buffers =
+      gst_data_queue_new (queue_is_full_cb, NULL, queue_empty_cb, pad);
 }
