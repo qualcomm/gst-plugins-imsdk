@@ -968,6 +968,7 @@ gst_pipeline_menu (GstElement * pipeline, GAsyncQueue * messages,
     GstElement ** element)
 {
   gchar *input = NULL;
+  gboolean active = TRUE;
 
   print_pipeline_options (pipeline);
 
@@ -978,20 +979,28 @@ gst_pipeline_menu (GstElement * pipeline, GAsyncQueue * messages,
     return FALSE;
 
   if (g_str_equal (input, NULL_STATE_OPTION)) {
-    if (!update_pipeline_state (pipeline, messages, GST_STATE_NULL))
-      return FALSE;
+    if (!update_pipeline_state (pipeline, messages, GST_STATE_NULL)) {
+      active = FALSE;
+      goto exit;
+    }
 
   } else if (g_str_equal (input, READY_STATE_OPTION)) {
-    if (!update_pipeline_state (pipeline, messages, GST_STATE_READY))
-      return FALSE;
+    if (!update_pipeline_state (pipeline, messages, GST_STATE_READY)) {
+      active = FALSE;
+      goto exit;
+    }
 
   } else if (g_str_equal (input, PAUSED_STATE_OPTION)) {
-    if (!update_pipeline_state (pipeline, messages, GST_STATE_PAUSED))
-      return FALSE;
+    if (!update_pipeline_state (pipeline, messages, GST_STATE_PAUSED)) {
+      active = FALSE;
+      goto exit;
+    }
 
   } else if (g_str_equal (input, PLAYING_STATE_OPTION)) {
-    if (!update_pipeline_state (pipeline, messages, GST_STATE_PLAYING))
-      return FALSE;
+    if (!update_pipeline_state (pipeline, messages, GST_STATE_PLAYING)) {
+      active = FALSE;
+      goto exit;
+    }
 
   } else if (g_str_equal (input, PLUGIN_MODE_OPTION)) {
     GstStructure *plugins = gst_structure_new_empty ("plugins");
@@ -1005,7 +1014,8 @@ gst_pipeline_menu (GstElement * pipeline, GAsyncQueue * messages,
     // If FALSE is returned termination signal has been issued.
     if (!wait_stdin_message (messages, &input)) {
       gst_structure_free (plugins);
-      return FALSE;
+      active = FALSE;
+      goto exit;
     }
 
     if (gst_structure_has_field (plugins, input)) {
@@ -1024,12 +1034,13 @@ gst_pipeline_menu (GstElement * pipeline, GAsyncQueue * messages,
     g_print ("\nQuit pressed!!\n");
 
     update_pipeline_state (pipeline, messages, GST_STATE_NULL);
-    g_free (input);
-    return FALSE;
+    active = FALSE;
+    goto exit;
   }
 
+exit:
   g_free (input);
-  return TRUE;
+  return active;
 }
 
 static gboolean
