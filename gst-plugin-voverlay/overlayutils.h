@@ -37,7 +37,7 @@
 
 #include <gst/gst.h>
 #include <gst/video/video.h>
-#include <gst/cvp/gstcvpmeta.h>
+#include <gst/cv/gstcvmeta.h>
 
 G_BEGIN_DECLS
 

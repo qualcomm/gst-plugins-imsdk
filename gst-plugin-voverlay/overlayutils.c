@@ -52,8 +52,8 @@ GST_DEBUG_CATEGORY_EXTERN (gst_overlay_debug);
     (GST_VIDEO_ROI_META_CAST (meta)->roi_type == \
         g_quark_from_static_string ("PoseEstimation")))
 
-#define GST_META_IS_CVP_OPTCLFLOW(meta) \
-    (meta->info->api == GST_CVP_OPTCLFLOW_META_API_TYPE)
+#define GST_META_IS_CV_OPTCLFLOW(meta) \
+    (meta->info->api == GST_CV_OPTCLFLOW_META_API_TYPE)
 
 static void
 gst_overlay_timestamp_free (GstOverlayTimestamp * timestamp)
@@ -91,7 +91,7 @@ gst_meta_overlay_type (GstMeta * meta)
   if (GST_META_IS_POSE_ESTIMATION (meta))
     return GST_OVERLAY_TYPE_POSE_ESTIMATION;
 
-  if (GST_META_IS_CVP_OPTCLFLOW (meta))
+  if (GST_META_IS_CV_OPTCLFLOW (meta))
     return GST_OVERLAY_TYPE_OPTCLFLOW;
 
   return GST_OVERLAY_TYPE_MAX;
