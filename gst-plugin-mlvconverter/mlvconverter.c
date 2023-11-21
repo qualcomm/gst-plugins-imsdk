@@ -318,6 +318,10 @@ gst_ml_video_converter_reset_composition (GstMLVideoConverter * mlconverter)
 
   composition = &(mlconverter->composition);
 
+  // Reset the number of blits back to the maximum number of tensors.
+  composition->n_blits = GST_ML_INFO_TENSOR_DIM (mlconverter->mlinfo, 0, 0);
+
+  // Deallocate region rectangles, unmap frames and unreference buffers.
   for (idx = 0; idx < composition->n_blits; idx++) {
     frame = composition->blits[idx].frame;
 
@@ -487,7 +491,7 @@ gst_ml_video_converter_setup_composition (GstMLVideoConverter * mlconverter,
       roimeta = gst_buffer_get_video_region_of_interest_meta_id (inbuffer, ++id);
     } while (roimeta != NULL);
 
-    num++;
+    composition->n_blits = ++num;
   }
 
   return TRUE;
@@ -1131,6 +1135,7 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
 
     blit->frame = g_slice_new0 (GstVideoFrame);
     blit->isubwc = gst_caps_has_compression (incaps, "ubwc") ? TRUE : FALSE;
+
     blit->alpha = G_MAXUINT8;
 
     blit->rotate = GST_VCE_ROTATE_0;
@@ -1173,16 +1178,13 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
   GstMLVideoConverter *mlconverter = GST_ML_VIDEO_CONVERTER (base);
   GstVideoFrame *inframe = NULL, *outframe = NULL;
   GstClockTime time = GST_CLOCK_TIME_NONE;
-  guint n_inputs = 0;
+  guint n_blits = 0;
   gboolean success = TRUE;
 
   // GAP buffer, nothing to do. Propagate output buffer downstream.
   if (gst_buffer_get_size (outbuffer) == 0 &&
       GST_BUFFER_FLAG_IS_SET (outbuffer, GST_BUFFER_FLAG_GAP))
     return GST_FLOW_OK;
-
-  // Set the maximum allowed inputs to the size of the tensor batch.
-  n_inputs = GST_ML_INFO_TENSOR_DIM (mlconverter->mlinfo, 0, 0);
 
 #ifdef HAVE_LINUX_DMA_BUF_H
   if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
@@ -1206,10 +1208,11 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
     return GST_FLOW_ERROR;
   }
 
+  n_blits = mlconverter->composition.n_blits;
   inframe = mlconverter->composition.blits[0].frame;
   outframe = mlconverter->composition.frame;
 
-  if ((n_inputs > 1) || is_conversion_required (inframe, outframe) ||
+  if ((n_blits > 1) || is_conversion_required (inframe, outframe) ||
       is_normalization_required (mlconverter->mlinfo)) {
     success = gst_video_converter_engine_compose (mlconverter->converter,
         &(mlconverter->composition), 1, NULL);
