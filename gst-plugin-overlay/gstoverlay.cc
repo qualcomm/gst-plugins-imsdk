@@ -71,6 +71,9 @@ G_DEFINE_TYPE (GstOverlay, gst_overlay, GST_TYPE_VIDEO_FILTER);
 #define DEFAULT_PROP_DEST_RECT_WIDTH  200
 #define DEFAULT_PROP_DEST_RECT_HEIGHT 48
 
+#define CVP_OPTCALFLOW_ARROW_DENSE 4
+#define EVA_OPTCALFLOW_ARROW_DENSE 1
+
 
 /* This is initial value. Size is recalculated runtime and buffer is
  * reallocated runtime.
@@ -1220,6 +1223,7 @@ gst_overlay_apply_optclflow_item (GstOverlay * gst_overlay, gpointer metadata,
 
   OverlayParam ov_param;
   int32_t ret = 0;
+  int32_t arrowdense = EVA_OPTCALFLOW_ARROW_DENSE;
 
   if (!(*item_id)) {
     ov_param = {};
@@ -1253,14 +1257,20 @@ gst_overlay_apply_optclflow_item (GstOverlay * gst_overlay, gpointer metadata,
   }
 
   GstCvOptclFlowMeta *meta = (GstCvOptclFlowMeta *) metadata;
-  g_return_val_if_fail (meta->mvectors->len == meta->stats->len, FALSE);
+  // meta->stats just used by cvp
+  if (NULL != meta->stats) {
+    g_return_val_if_fail (meta->mvectors->len == meta->stats->len, FALSE);
+    arrowdense = CVP_OPTCALFLOW_ARROW_DENSE;
+  }
 
   gint arrows_cnt = 0;
 
-  // Read each 4th mv in order to skip each 2nd paxel due arrows density
-  for (guint x = 0; x < meta->mvectors->len; x+=4) {
+  // Skip due arrows density
+  for (guint x = 0; x < meta->mvectors->len; x += arrowdense) {
     GstCvMotionVector *mvector = &g_array_index (meta->mvectors, GstCvMotionVector, x);
-    GstCvOptclFlowStats *stats = &g_array_index (meta->stats, GstCvOptclFlowStats, x);
+    GstCvOptclFlowStats *stats = NULL;
+    if (NULL != meta->stats)
+      stats = &g_array_index (meta->stats, GstCvOptclFlowStats, x);
 
     gint mv_x = mvector->dx;
     gint mv_y = mvector->dy;
@@ -1273,18 +1283,24 @@ gst_overlay_apply_optclflow_item (GstOverlay * gst_overlay, gpointer metadata,
       continue;
     }
 
-    // Filter by variance
-    if (stats->variance < gst_overlay->arrows_filter_var) {
-      continue;
-    }
+    if (NULL != meta->stats) {
+      // Filter by variance
+      if (stats->variance < gst_overlay->arrows_filter_var)
+        continue;
 
-    // Filter by SAD
-    if (stats->sad < gst_overlay->arrows_filter_sad) {
-      continue;
-    }
+      // Filter by SAD
+      if (stats->sad < gst_overlay->arrows_filter_sad)
+        continue;
 
-    if ((stats->sad == 0) && (stats->variance == 0))
-      continue;
+      if ((stats->sad == 0) && (stats->variance == 0))
+        continue;
+    } else {
+      if (mvector-> x % 16 !=0 || mvector-> y % 16 != 0)
+        continue;
+
+      if ((mvector->dx == 0) && (mvector->dy == 0))
+        continue;
+    }
 
     ov_param.arrows[arrows_cnt].end_x = mvector->x;
     ov_param.arrows[arrows_cnt].end_y = mvector->y;
