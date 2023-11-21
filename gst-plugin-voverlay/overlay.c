@@ -717,11 +717,11 @@ gst_overlay_handle_pose_entry (GstVOverlay * overlay, cairo_t * context,
 
 static gboolean
 gst_overlay_handle_optclflow_entry (GstVOverlay * overlay, cairo_t * context,
-    GstVideoBlit * blit, GstCvpOptclFlowMeta * cvpmeta)
+    GstVideoBlit * blit, GstCvOptclFlowMeta * cvmeta)
 {
   GstVideoFrame *vframe = blit->frame;
-  GstCvpMotionVector *mvector = NULL;
-  GstCvpOptclFlowStats *stats = NULL;
+  GstCvMotionVector *mvector = NULL;
+  GstCvOptclFlowStats *stats = NULL;
   GstVideoRectangle *source = NULL, *destination = NULL;
   guint num = 0, color = 0xFFFFFFFF;
   gdouble x = 0.0, y = 0.0, dx = 0.0, dy = 0.0, xscale = 0.0, yscale = 0.0;
@@ -747,14 +747,14 @@ gst_overlay_handle_optclflow_entry (GstVOverlay * overlay, cairo_t * context,
       GST_VIDEO_FRAME_HEIGHT (vframe), &yscale);
 
   // Read every 6th 4x16 motion vector paxel due arrows density.
-  for (num = 0; num < cvpmeta->mvectors->len; num += 6) {
-    mvector = &g_array_index (cvpmeta->mvectors, GstCvpMotionVector, num);
+  for (num = 0; num < cvmeta->mvectors->len; num += 6) {
+    mvector = &g_array_index (cvmeta->mvectors, GstCvMotionVector, num);
 
     if ((mvector->dx == 0) && (mvector->dy == 0))
       continue;
 
-    if ((cvpmeta->stats != NULL) && (cvpmeta->stats->len != 0))
-      stats = &g_array_index (cvpmeta->stats, GstCvpOptclFlowStats, num);
+    if ((cvmeta->stats != NULL) && (cvmeta->stats->len != 0))
+      stats = &g_array_index (cvmeta->stats, GstCvOptclFlowStats, num);
 
     if ((stats != NULL) && (stats->sad == 0) && (stats->variance == 0))
       continue;
@@ -1183,7 +1183,7 @@ gst_overlay_fill_overlay_blit (GstVOverlay * overlay, GstVideoBlit * blit,
         GST_VIDEO_ROI_META_CAST (ovldata));
   else if (GST_OVERLAY_TYPE_OPTCLFLOW == ovltype)
     success = gst_overlay_handle_optclflow_entry (overlay, context, blit,
-        GST_CVP_OPTCLFLOW_META_CAST (ovldata));
+        GST_CV_OPTCLFLOW_META_CAST (ovldata));
   else if (GST_OVERLAY_TYPE_BBOX == ovltype)
     success = gst_overlay_handle_bbox_entry (overlay, context, blit,
         GST_OVERLAY_BBOX_CAST (ovldata));
@@ -1236,7 +1236,7 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
   // Add the total number of meta entries that needs to be processed.
   n_entries += gst_buffer_get_n_meta (buffer,
       GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE);
-  n_entries += gst_buffer_get_n_meta (buffer, GST_CVP_OPTCLFLOW_META_API_TYPE);
+  n_entries += gst_buffer_get_n_meta (buffer, GST_CV_OPTCLFLOW_META_API_TYPE);
 
   // Add the number of manually set bounding boxes.
   n_entries += (overlay->bboxes != NULL) ? overlay->bboxes->len : 0;
