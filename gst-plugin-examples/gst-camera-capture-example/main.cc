@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -34,14 +34,10 @@
 
 #include <glib-unix.h>
 #include <gst/gst.h>
-#include <camera/CameraMetadata.h>
-#include <camera/VendorTagDescriptor.h>
+#include <qmmf-sdk/qmmf_camera_metadata.h>
+#include <qmmf-sdk/qmmf_vendor_tag_descriptor.h>
 
-#ifndef CAMERA_METADATA_1_0_NS
-namespace camera = android;
-#else
-namespace camera = android::hardware::camera::common::V1_0::helper;
-#endif
+namespace camera = qmmf;
 
 #define GST_CAMERA_PIPELINE "qtiqmmfsrc name=camera " \
     "camera.video_0 ! video/x-raw(memory:GBM),format=NV12,width=1280,height=720,framerate=30/1 ! " \
@@ -121,8 +117,8 @@ gst_camera_metadata_release (gpointer data)
 static guint
 get_vendor_tag_by_name (const gchar * section, const gchar * name)
 {
-  ::android::sp<::camera::VendorTagDescriptor> vtags;
-  ::android::status_t status = 0;
+  std::shared_ptr<::camera::VendorTagDescriptor> vtags;
+  status_t status = 0;
   guint tag_id = 0;
 
   vtags = ::camera::VendorTagDescriptor::getGlobalVendorTagDescriptor();
@@ -131,8 +127,8 @@ get_vendor_tag_by_name (const gchar * section, const gchar * name)
     return 0;
   }
 
-  status = vtags->lookupTag(::android::String8(name),
-      ::android::String8(section), &tag_id);
+  status = vtags->lookupTag(std::string(name),
+      std::string(section), &tag_id);
   if (status != 0) {
     GST_WARNING ("Unable to locate tag for '%s', section '%s'!", name, section);
     return 0;
