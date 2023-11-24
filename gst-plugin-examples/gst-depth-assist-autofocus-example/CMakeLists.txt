@@ -15,10 +15,7 @@ target_compile_definitions(${GST_EXAMPLE_BIN} PRIVATE
 )
 
 target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
-  $<$<BOOL:${CAMERA_CLIENT_DISABLED}>:camera_metadata>
-  $<$<NOT:$<BOOL:${CAMERA_CLIENT_DISABLED}>>:camera_client>
-  $<$<NOT:$<BOOL:${CAMERA_CLIENT_DISABLED}>>:binder>
-  $<$<NOT:$<BOOL:${CAMERA_CLIENT_DISABLED}>>:cutils>
+  qmmf_camera_metadata
   ${GST_LIBRARIES}
   utils
 )
