@@ -34,7 +34,7 @@
 
 #include "c2-engine.h"
 
-#include "c2-component.h"
+#include "c2-module.h"
 #include "c2-engine-params.h"
 #include "c2-engine-utils.h"
 

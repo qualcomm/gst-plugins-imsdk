@@ -49,7 +49,7 @@
 #include <QC2V4L2Config.h>
 
 #include "c2-engine-params.h"
-#include "c2-component.h"
+#include "c2-module.h"
 
 /** GstC2Utils
  *

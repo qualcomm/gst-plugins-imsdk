@@ -5,7 +5,6 @@ add_library(${GST_QTI_C2_ENGINE} SHARED
   c2-engine.cc
   c2-engine-params.cc
   c2-engine-utils.cc
-  c2-component.cc
 )
 
 target_compile_definitions(${GST_QTI_C2_ENGINE} PRIVATE
@@ -27,6 +26,7 @@ target_include_directories(${GST_QTI_C2_ENGINE} PRIVATE
 target_link_libraries(${GST_QTI_C2_ENGINE} PRIVATE
   ${GST_LIBRARIES}
   codec2_vndk
+  qtic2module
 )
 
 install(
