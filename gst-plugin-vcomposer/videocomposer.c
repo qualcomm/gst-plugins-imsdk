@@ -214,8 +214,21 @@ gst_data_queue_item_free (gpointer data)
   g_slice_free (GstDataQueueItem, item);
 }
 
-static guint
-gst_video_composer_rotation_to_flags (GstVideoComposerRotate rotation)
+static inline GstVideoConvFlip
+gst_video_composer_translate_flip (gboolean flip_h, gboolean flip_v)
+{
+  if (flip_h && flip_v)
+   return GST_VCE_FLIP_BOTH;
+  else if (flip_h)
+    return GST_VCE_FLIP_HORIZONTAL;
+  else if (flip_v)
+    return GST_VCE_FLIP_VERTICAL;
+
+  return GST_VCE_FLIP_NONE;
+}
+
+static inline GstVideoConvRotate
+gst_video_composer_translate_rotation (GstVideoComposerRotate rotation)
 {
   switch (rotation) {
     case GST_VIDEO_COMPOSER_ROTATE_90_CW:
@@ -225,11 +238,11 @@ gst_video_composer_rotation_to_flags (GstVideoComposerRotate rotation)
     case GST_VIDEO_COMPOSER_ROTATE_180:
       return GST_VCE_ROTATE_180;
     case GST_VIDEO_COMPOSER_ROTATE_NONE:
-      return 0;
+      return GST_VCE_ROTATE_0;
     default:
       GST_WARNING ("Invalid rotation flag %d!", rotation);
   }
-  return 0;
+  return GST_VCE_ROTATE_0;
 }
 
 static gint
@@ -434,10 +447,8 @@ gst_video_composer_populate_frames_and_composition (
     blit->alpha = sinkpad->alpha * G_MAXUINT8;
     blit->isubwc = sinkpad->isubwc;
 
-    blit->flip_h = sinkpad->flip_h;
-    blit->flip_v = sinkpad->flip_v;
-
-    blit->rotate = gst_video_composer_rotation_to_flags (sinkpad->rotation);
+    blit->flip = gst_video_composer_translate_flip (sinkpad->flip_h, sinkpad->flip_v);
+    blit->rotate = gst_video_composer_translate_rotation (sinkpad->rotation);
 
     blit->sources = g_slice_dup (GstVideoRectangle, &(sinkpad->crop));
     blit->destinations = g_slice_dup (GstVideoRectangle, &(sinkpad->destination));

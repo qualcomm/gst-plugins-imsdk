@@ -399,14 +399,18 @@ gst_fcv_stage_buffer_free (gpointer data)
 }
 
 static inline guint
-gst_fcv_translate_flip (const gboolean flip_h, const gboolean flip_v)
+gst_fcv_translate_flip (const GstVideoConvFlip flip)
 {
-  if (flip_h && flip_v)
-    return FASTCV_FLIP_BOTH;
-  else if (flip_h)
-    return FASTCV_FLIP_HORIZ;
-  else if (flip_v)
-    return FASTCV_FLIP_VERT;
+  switch (flip) {
+    case GST_VCE_FLIP_HORIZONTAL:
+      return FASTCV_FLIP_HORIZ;
+    case GST_VCE_FLIP_VERTICAL:
+      return FASTCV_FLIP_VERT;
+    case GST_VCE_FLIP_BOTH:
+      return FASTCV_FLIP_BOTH;
+    default:
+      break;
+  }
 
   return 0;
 }
@@ -512,8 +516,8 @@ gst_fcv_copy_object (GstFcvObject * l_object, GstFcvObject * r_object)
 static inline void
 gst_fcv_update_object (GstFcvObject * object, const gchar * type,
     const GstVideoFrame * frame, const GstVideoRectangle * region,
-    const gboolean flip_h, const gboolean flip_v,
-    const GstVideoConvRotate rotate, const guint64 flags)
+    const GstVideoConvFlip flip, const GstVideoConvRotate rotate,
+    const guint64 flags)
 {
   const gchar *mode = NULL;
   gint x = 0, y = 0, width = 0, height = 0;
@@ -570,7 +574,7 @@ gst_fcv_update_object (GstFcvObject * object, const gchar * type,
   else if (GST_VIDEO_INFO_IS_GRAY (&(frame->info)))
     object->flags |= GST_FCV_FLAG_GRAY;
 
-  object->flip = gst_fcv_translate_flip (flip_h, flip_v);
+  object->flip = gst_fcv_translate_flip (flip);
   object->rotate = gst_fcv_translate_rotation (rotate);
 
   object->format = GST_VIDEO_FRAME_FORMAT (frame);
@@ -1917,8 +1921,8 @@ gst_fcv_video_converter_process (GstFcvVideoConverter * convert,
     GstFcvObject * objects, guint n_objects)
 {
   GstFcvObject *s_obj = NULL, *d_obj = NULL;
-  guint idx = 0;
-  gfloat w_scale = 0.0, h_scale = 0.0, scale = 0.0, flip = 0, rotate = 0;
+  guint idx = 0, flip = 0, rotate = 0;
+  gfloat w_scale = 0.0, h_scale = 0.0, scale = 0.0;
   gboolean downscale = FALSE, upscale = FALSE, aligned = FALSE;
   gboolean normalize = FALSE;
 
@@ -2059,14 +2063,14 @@ gst_fcv_video_converter_compose (GstFcvVideoConverter * convert,
         region = (r_idx < blit->n_regions) ? &(blit->sources[r_idx]) : NULL;
 
         gst_fcv_update_object (object, "Source", blit->frame, region,
-            blit->rotate, blit->flip_h, blit->flip_v, 0);
+            blit->flip, blit->rotate, 0);
 
         // Intialization of the destination FCV object.
         object = &(objects[n_objects + 1]);
         region = (r_idx < blit->n_regions) ? &(blit->destinations[r_idx]) : NULL;
 
         gst_fcv_update_object (object, "Destination", outframe, region,
-            GST_VCE_ROTATE_0, FALSE, FALSE, compositions[idx].flags);
+            GST_VCE_FLIP_NONE, GST_VCE_ROTATE_0, compositions[idx].flags);
 
         // Subtract blit area from total area.
         if (area != 0)

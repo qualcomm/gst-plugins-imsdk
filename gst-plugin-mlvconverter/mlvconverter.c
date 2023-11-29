@@ -329,14 +329,6 @@ gst_ml_video_converter_reset_composition (GstMLVideoConverter * mlconverter)
 
     composition->blits[idx].n_regions = 0;
 
-    composition->blits[idx].isubwc = FALSE;
-
-    composition->blits[idx].alpha = 255;
-    composition->blits[idx].rotate = GST_VCE_ROTATE_0;
-
-    composition->blits[idx].flip_h = FALSE;
-    composition->blits[idx].flip_v = FALSE;
-
     if ((buffer = frame->buffer) != NULL) {
       gst_video_frame_unmap_and_reset (frame);
       gst_buffer_unref (buffer);
@@ -1140,6 +1132,9 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
     blit->frame = g_slice_new0 (GstVideoFrame);
     blit->isubwc = gst_caps_has_compression (incaps, "ubwc") ? TRUE : FALSE;
     blit->alpha = G_MAXUINT8;
+
+    blit->rotate = GST_VCE_ROTATE_0;
+    blit->flip = GST_VCE_FLIP_NONE;
   }
 
   mlconverter->composition.frame = g_slice_new0 (GstVideoFrame);

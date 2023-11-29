@@ -318,8 +318,7 @@ gst_c2d_blits_compatible (const GstVideoComposition * l_composition,
 
     // Both entries need to have the same ubwc, flip, rotate and global alpha.
     if ((l_blit->rotate != r_blit->rotate) || (l_blit->alpha != r_blit->alpha) ||
-        (l_blit->flip_h != r_blit->flip_h) || (l_blit->flip_v != r_blit->flip_v) ||
-        (l_blit->isubwc != r_blit->isubwc))
+        (l_blit->flip != r_blit->flip) || (l_blit->isubwc != r_blit->isubwc))
       return FALSE;
 
     l_fd = gst_fd_memory_get_fd (
@@ -800,8 +799,8 @@ gst_c2d_destroy_surface (gpointer key, gpointer value, gpointer userdata)
 
 static void
 gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
-    const GstVideoFrame * inframe, const GstVideoConvRotate rotate,
-    const guint8 alpha, const gboolean flip_h, const gboolean flip_v,
+    const GstVideoFrame * inframe, const guint8 alpha,
+    const GstVideoConvFlip flip, const GstVideoConvRotate rotate,
     const GstVideoRectangle * source, const GstVideoRectangle * destination,
     const GstVideoFrame * outframe)
 {
@@ -838,12 +837,12 @@ gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
   // Apply the flip bits to the object configure mask if set.
   object->config_mask &= ~(C2D_MIRROR_V_BIT | C2D_MIRROR_H_BIT);
 
-  if (flip_v) {
+  if ((flip == GST_VCE_FLIP_VERTICAL) || (flip == GST_VCE_FLIP_BOTH)) {
     object->config_mask |= C2D_MIRROR_V_BIT;
     GST_TRACE ("Input surface %x - Flip Vertically", surface_id);
   }
 
-  if (flip_h) {
+  if ((flip == GST_VCE_FLIP_HORIZONTAL) || (flip == GST_VCE_FLIP_BOTH)) {
     object->config_mask |= C2D_MIRROR_H_BIT;
     GST_TRACE ("Input surface %x - Flip Horizontally", surface_id);
   }
@@ -1107,8 +1106,7 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
         destination = (blit->n_regions != 0) ? &(blit->destinations[r_idx]) : NULL;
 
         gst_c2d_update_object (&(objects[n_objects]), surface_id, blit->frame,
-            blit->rotate, blit->alpha, blit->flip_h, blit->flip_v, source,
-            destination, outframe);
+            blit->alpha, blit->flip, blit->rotate, source, destination, outframe);
 
         // Subtract object area from the total area.
         area -= gst_c2d_composition_object_area (objects, n_objects);

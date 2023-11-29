@@ -224,8 +224,8 @@ gst_gles_destroy_surface (gpointer key, gpointer value, gpointer userdata)
 
 static void
 gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
-    const GstVideoFrame * inframe, const GstVideoConvRotate rotate,
-    const gboolean flip_h, const gboolean flip_v, const guint8 alpha,
+    const GstVideoFrame * inframe, const guint8 alpha,
+    const GstVideoConvFlip flip, const GstVideoConvRotate rotate,
     const GstVideoRectangle * source, const GstVideoRectangle * destination,
     const GstVideoFrame * outframe)
 {
@@ -255,12 +255,12 @@ gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
   object->source.w = width;
   object->source.h = height;
 
-  if (flip_h) {
+  if ((flip == GST_VCE_FLIP_VERTICAL) || (flip == GST_VCE_FLIP_BOTH)) {
     object->mask |= ::ib2c::ConfigMask::kVFlip;
     GST_TRACE ("Input surface %lx - Flip Vertically", surface_id);
   }
 
-  if (flip_v) {
+  if ((flip == GST_VCE_FLIP_HORIZONTAL) || (flip == GST_VCE_FLIP_BOTH)) {
     object->mask |= ::ib2c::ConfigMask::kHFlip;
     GST_TRACE ("Input surface %lx - Flip Horizontally", surface_id);
   }
@@ -468,9 +468,8 @@ gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
         source = (blit->n_regions != 0) ? &(blit->sources[r_idx]) : NULL;
         destination = (blit->n_regions != 0) ? &(blit->destinations[r_idx]) : NULL;
 
-        gst_gles_update_object (&object, surface_id, blit->frame, blit->rotate,
-            blit->flip_h, blit->flip_v, blit->alpha, source, destination,
-            outframe);
+        gst_gles_update_object (&object, surface_id, blit->frame, blit->alpha,
+            blit->flip, blit->rotate, source, destination, outframe);
 
         objects.push_back(object);
       } while (++r_idx < blit->n_regions);

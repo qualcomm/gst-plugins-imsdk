@@ -235,8 +235,21 @@ gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
   return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
 }
 
-static guint64
-gst_video_transform_rotation_to_flags (GstVideoTransformRotate rotation)
+static inline GstVideoConvFlip
+gst_video_transform_translate_flip (gboolean flip_h, gboolean flip_v)
+{
+  if (flip_h && flip_v)
+   return GST_VCE_FLIP_BOTH;
+  else if (flip_h)
+    return GST_VCE_FLIP_HORIZONTAL;
+  else if (flip_v)
+    return GST_VCE_FLIP_VERTICAL;
+
+  return GST_VCE_FLIP_NONE;
+}
+
+static inline GstVideoConvRotate
+gst_video_transform_translate_rotation (GstVideoTransformRotate rotation)
 {
   switch (rotation) {
     case GST_VIDEO_TRANSFORM_ROTATE_90_CW:
@@ -246,11 +259,11 @@ gst_video_transform_rotation_to_flags (GstVideoTransformRotate rotation)
     case GST_VIDEO_TRANSFORM_ROTATE_180:
       return GST_VCE_ROTATE_180;
     case GST_VIDEO_TRANSFORM_ROTATE_NONE:
-      return 0;
+      return GST_VCE_ROTATE_0;
     default:
       GST_WARNING ("Invalid rotation flag %d!", rotation);
   }
-  return 0;
+  return GST_VCE_ROTATE_0;
 }
 
 static void
@@ -1602,10 +1615,8 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   blit.destinations = &(vtrans->destination);
   blit.n_regions = 1;
 
-  blit.flip_h = vtrans->flip_h;
-  blit.flip_v = vtrans->flip_v;
-
-  blit.rotate = gst_video_transform_rotation_to_flags (vtrans->rotation);
+  blit.flip = gst_video_transform_translate_flip (vtrans->flip_h, vtrans->flip_v);
+  blit.rotate = gst_video_transform_translate_rotation (vtrans->rotation);
 
   composition.blits = &blit;
   composition.n_blits = 1;

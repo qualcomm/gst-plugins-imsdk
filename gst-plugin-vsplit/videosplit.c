@@ -628,9 +628,7 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
 
       composition->blits[0].alpha = G_MAXUINT8;
       composition->blits[0].rotate = GST_VCE_ROTATE_0;
-
-      composition->blits[0].flip_h = FALSE;
-      composition->blits[0].flip_v = FALSE;
+      composition->blits[0].flip = GST_VCE_FLIP_NONE;
 
       composition->blits[0].sources = g_slice_new (GstVideoRectangle);
       composition->blits[0].destinations = g_slice_new (GstVideoRectangle);

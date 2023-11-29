@@ -20,7 +20,8 @@ GST_DEBUG_CATEGORY_EXTERN (gst_video_converter_engine_debug);
 #define GST_VCE_FLAG_I32_FORMAT      (3 << 0)
 #define GST_VCE_FLAG_U32_FORMAT      (4 << 0)
 
-#define GST_VCE_BLIT_INIT { NULL, FALSE, NULL, NULL, 0, 255, 0, FALSE, FALSE }
+#define GST_VCE_BLIT_INIT \
+    { NULL, FALSE, NULL, NULL, 0, 255, GST_VCE_ROTATE_0, GST_VCE_FLIP_NONE }
 #define GST_VCE_COMPOSITION_INIT \
     { NULL, 0, NULL, FALSE, 0, FALSE, { 0.0, 0.0, 0.0, 0.0 }, { 0.0, 0.0, 0.0, 0.0 }, 0 }
 
@@ -89,6 +90,22 @@ typedef enum {
 } GstVideoConvRotate;
 
 /**
+ * GstVideoConvFlip:
+ * @GST_VCE_FLIP_NONE: No flip.
+ * @GST_VCE_FLIP_HORIZONTAL: Flip frame horizontally.
+ * @GST_VCE_FLIP_VERTICAL: Flip frame vertically.
+ * @GST_VCE_FLIP_BOTH: Flip frame both horizontally and vertically.
+ *
+ * Flip direction.
+ */
+typedef enum {
+  GST_VCE_FLIP_NONE       = 0,
+  GST_VCE_FLIP_HORIZONTAL = 1,
+  GST_VCE_FLIP_VERTICAL   = 2,
+  GST_VCE_FLIP_BOTH       = 3,
+} GstVideoConvFlip;
+
+/**
  * GstVideoBlit:
  * @frame: Input video frame.
  * @isubwc: Whether the frame has Universal Bandwidth Compression.
@@ -97,8 +114,7 @@ typedef enum {
  * @n_regions: Number of Source - Destination region pairs.
  * @alpha: Global alpha, 0 = fully transparent, 255 = fully opaque.
  * @rotate: The degrees at which the frame will be rotatte.
- * @flip_v: The frame will be flipped horizontally.
- * @flip_v: The frame will be flipped vertically.
+ * @flip: The directions at which the frame will be flipped.
  *
  * Blit object. Input frame along with a possible crop and destination
  * rectangles and configuration mask.
@@ -114,9 +130,7 @@ struct _GstVideoBlit
 
   guint8             alpha;
   GstVideoConvRotate rotate;
-
-  gboolean           flip_v;
-  gboolean           flip_h;
+  GstVideoConvFlip   flip;
 };
 
 /**
