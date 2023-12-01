@@ -78,7 +78,8 @@ gint receive_fd_message (gint sock, void * payload, gint psize, gint * fd)
 
   if (fd != NULL) {
     struct cmsghdr *cmsg = CMSG_FIRSTHDR (&msg);
-    memmove (fd, CMSG_DATA (cmsg), sizeof (*fd));
+    if (cmsg)
+      memmove (fd, CMSG_DATA (cmsg), sizeof (*fd));
   }
   return 0;
 }
