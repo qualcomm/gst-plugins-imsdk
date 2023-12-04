@@ -354,11 +354,6 @@ gst_c2_vdec_stop (GstVideoDecoder * decoder)
   GstC2VDecoder *c2vdec = GST_C2_VDEC (decoder);
   GST_DEBUG_OBJECT (c2vdec, "Stop engine");
 
-  if ((c2vdec->engine != NULL) && !gst_c2_engine_drain (c2vdec->engine, TRUE)) {
-    GST_ERROR_OBJECT (c2vdec, "Failed to drain engine");
-    return FALSE;
-  }
-
   if ((c2vdec->engine != NULL) && !gst_c2_engine_stop (c2vdec->engine)) {
     GST_ERROR_OBJECT (c2vdec, "Failed to stop engine");
     return FALSE;
