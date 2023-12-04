@@ -198,11 +198,10 @@ snpe_to_ml_type (zdl::DlSystem::UserBufferEncoding::ElementType_t type)
 }
 
 GstMLSnpeEngine *
-gst_ml_snpe_engine_new (gchar * model, GstMLSnpeDelegate delegate, 
+gst_ml_snpe_engine_new (const gchar * modelfile, GstMLSnpeDelegate delegate,
     gboolean is_tensor, GList * outputs_list)
 {
   GstMLSnpeEngine *engine = NULL;
-  const gchar *filename = NULL;
   gint idx = 0, num = 0;
 
   engine = new GstMLSnpeEngine;
@@ -211,15 +210,14 @@ gst_ml_snpe_engine_new (gchar * model, GstMLSnpeDelegate delegate,
   engine->ininfo = gst_ml_info_new ();
   engine->outinfo = gst_ml_info_new ();
 
-  filename = model;
-  GST_ML_RETURN_VAL_IF_FAIL (filename != NULL, NULL, "No model file name!");
+  GST_ML_RETURN_VAL_IF_FAIL (modelfile != NULL, NULL, "No model file name!");
 
-  engine->model = zdl::DlContainer::IDlContainer::open(std::string(filename));
+  engine->model = zdl::DlContainer::IDlContainer::open(std::string(modelfile));
   GST_ML_RETURN_VAL_IF_FAIL_WITH_CLEAN (engine->model, NULL,
       gst_ml_snpe_engine_free (engine), "Failed to load model file '%s'!",
-      filename);
+      modelfile);
 
-  GST_DEBUG ("Loaded model file '%s'!", filename);
+  GST_DEBUG ("Loaded model file '%s'!", modelfile);
 
   zdl::DlSystem::RuntimeList rtlist;
 

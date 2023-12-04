@@ -403,6 +403,7 @@ gst_ml_snpe_accept_caps (GstBaseTransform * base, GstPadDirection direction,
 {
   GstMLSnpe *snpe = GST_ML_SNPE (base);
   GstCaps *mlcaps = NULL;
+  gboolean success = FALSE;
 
   GST_DEBUG_OBJECT (snpe, "Accept caps: %" GST_PTR_FORMAT
       " in direction %s", caps, (direction == GST_PAD_SINK) ? "sink" : "src");
@@ -424,12 +425,13 @@ gst_ml_snpe_accept_caps (GstBaseTransform * base, GstPadDirection direction,
 
   GST_DEBUG_OBJECT (snpe, "ML caps: %" GST_PTR_FORMAT, mlcaps);
 
-  if (!gst_caps_can_intersect (caps, mlcaps)) {
-    GST_WARNING_OBJECT (base, "Caps can't intersect!");
-    return FALSE;
-  }
+  success = gst_caps_can_intersect (caps, mlcaps);
+  gst_caps_unref (mlcaps);
 
-  return TRUE;
+  if (!success)
+    GST_WARNING_OBJECT (base, "Caps can't intersect!");
+
+  return success;
 }
 
 static gboolean
@@ -572,7 +574,7 @@ gst_ml_snpe_set_property (GObject * object, guint prop_id,
       guint idx = 0;
 
       if (snpe->is_tensor)
-        GST_WARNING_OBJECT (snpe, "Setting Layer property, but Tensor output was chosen!");
+        GST_WARNING_OBJECT (snpe, "Overwriting previously set tensors property!");
 
       snpe->is_tensor = FALSE;
 
@@ -591,7 +593,7 @@ gst_ml_snpe_set_property (GObject * object, guint prop_id,
       guint idx = 0;
 
       if (!snpe->is_tensor)
-        GST_WARNING_OBJECT (snpe, "Setting Tensor property, but Layer output was chosen!");
+        GST_WARNING_OBJECT (snpe, "Overwriting previously set layers property!");
 
       snpe->is_tensor = TRUE;
 
@@ -626,11 +628,9 @@ gst_ml_snpe_get_property (GObject * object, guint prop_id, GValue * value,
       break;
     case PROP_LAYERS:
     {
-      if (snpe->is_tensor)
-      {
-        GST_WARNING_OBJECT (snpe,
-            "Getting Layer property, but Tensor output was chosen!  Returning empty array!");
-        g_value_set_param(value, NULL);
+      if (snpe->is_tensor) {
+        GST_WARNING_OBJECT (snpe, "Getting Layer property, but Tensor output "
+            "was chosen!  Returning empty array!");
         break;
       }
 
@@ -650,11 +650,9 @@ gst_ml_snpe_get_property (GObject * object, guint prop_id, GValue * value,
     }
     case PROP_TENSORS:
     {
-      if (!snpe->is_tensor)
-      {
-        GST_WARNING_OBJECT (snpe,
-            "Getting Tensor property, but Layer output was chosen!  Returning empty array!");
-        g_value_set_param(value, NULL);
+      if (!snpe->is_tensor) {
+        GST_WARNING_OBJECT (snpe, "Getting Tensor property, but Layer output "
+            "was chosen!  Returning empty array!");
         break;
       }
 

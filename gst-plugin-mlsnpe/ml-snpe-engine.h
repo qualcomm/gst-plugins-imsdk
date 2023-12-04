@@ -26,7 +26,7 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
  *
  * Copyright (c) 2022,2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
@@ -93,27 +93,24 @@ GST_API GType gst_ml_snpe_delegate_get_type (void);
 typedef struct _GstMLSnpeEngine GstMLSnpeEngine;
 
 GST_API GstMLSnpeEngine *
-gst_ml_snpe_engine_new                (gchar * model,      
-                                       GstMLSnpeDelegate delegate, 
-                                       gboolean is_tensor, 
-                                       GList *outputs);
+gst_ml_snpe_engine_new (const gchar * modelfile, GstMLSnpeDelegate delegate,
+                        gboolean is_tensor, GList *outputs);
 
 GST_API void
-gst_ml_snpe_engine_free               (GstMLSnpeEngine * engine);
+gst_ml_snpe_engine_free (GstMLSnpeEngine * engine);
 
 GST_API GstCaps *
-gst_ml_snpe_engine_get_input_caps     (GstMLSnpeEngine * engine);
+gst_ml_snpe_engine_get_input_caps (GstMLSnpeEngine * engine);
 
 GST_API GstCaps *
-gst_ml_snpe_engine_get_output_caps    (GstMLSnpeEngine * engine);
+gst_ml_snpe_engine_get_output_caps (GstMLSnpeEngine * engine);
 
 GST_API gboolean
 gst_ml_snpe_engine_update_output_caps (GstMLSnpeEngine * engine, GstCaps * caps);
 
 GST_API gboolean
-gst_ml_snpe_engine_execute            (GstMLSnpeEngine * engine,
-                                       GstMLFrame * inframe,
-                                       GstMLFrame * outframe);
+gst_ml_snpe_engine_execute (GstMLSnpeEngine * engine, GstMLFrame * inframe,
+                            GstMLFrame * outframe);
 
 G_END_DECLS
 
