@@ -19,6 +19,11 @@ namespace camera = android::hardware::camera::common::V1_0::helper;
 #define DEFAULT_OUTPUT_WIDTH 3840
 #define DEFAULT_OUTPUT_HEIGHT 2160
 
+#define DEFAULT_WAYLAND_WIDTH 960
+#define DEFAULT_WAYLAND_HEIGHT 720
+
+#define DEFAULT_BURST_ROUND 1
+
 #define DEFAULT_OUTPUT_PREVIEW  GST_PREVIEW_OUTPUT_DISPLAY
 #define DEFAULT_FORMAT_CAPTURE  GST_CAPTURE_FORMAT_JPEG
 #define DEFAULT_REQUIRE_CAPTURE GST_CAPTURE_5PIC_IN_1SEC
@@ -32,6 +37,7 @@ struct _GstAppContext {
   GMainLoop *loop;
   GstElement *pipeline, *qmmfsrc;
   const char *file_ext;
+  const char *file_ext_2nd;
   gboolean quit_requested;
   GMutex mutex;
   GCond cond_quit;
@@ -55,6 +61,7 @@ typedef enum {
   GST_CAPTURE_FORMAT_JPEG,
   GST_CAPTURE_FORMAT_YUV,
   GST_CAPTURE_FORMAT_BAYER,
+  GST_CAPTURE_FORMAT_JPEG_PLUS_BAYER,
 } GstCaptureFormat;
 
 typedef enum {
@@ -79,6 +86,11 @@ typedef enum {
 static gint width = DEFAULT_OUTPUT_WIDTH;
 static gint height = DEFAULT_OUTPUT_HEIGHT;
 
+static gint width_preview = DEFAULT_WAYLAND_WIDTH;
+static gint height_preview = DEFAULT_WAYLAND_HEIGHT;
+
+static guint burst_round = DEFAULT_BURST_ROUND;
+
 static GstPreviewOutput preview_output   = DEFAULT_OUTPUT_PREVIEW;
 static GstCaptureFormat capture_format   = DEFAULT_FORMAT_CAPTURE;
 static GstCaptureRequire capture_require = DEFAULT_REQUIRE_CAPTURE;
@@ -95,20 +107,38 @@ static GOptionEntry entries[] = {
     "height",
     "image height of stream"
   },
+  { "width_preview", 'a', G_OPTION_FLAG_IN_MAIN, G_OPTION_ARG_INT,
+    &width_preview,
+    "width_preview",
+    "preview width of stream"
+  },
+  { "height_preview", 'b', G_OPTION_FLAG_IN_MAIN, G_OPTION_ARG_INT,
+    &height_preview,
+    "height_preview",
+    "preview height of stream"
+  },
+  { "burst_round", 'd', G_OPTION_FLAG_IN_MAIN, G_OPTION_ARG_INT,
+    &burst_round,
+    "burst_round",
+    "rounds of burst snapshot"
+  },
   { "output_preview", 'p', G_OPTION_FLAG_IN_MAIN, G_OPTION_ARG_INT,
     &preview_output,
-    "output preview",
+    "output preview"
+    "(default: 1 - Display)",
     "preview output type:"
     "\n\t0 - AVC"
     "\n\t1 - Display\n"
   },
   { "capture_format", 'c', G_OPTION_FLAG_IN_MAIN, G_OPTION_ARG_INT,
     &capture_format,
-    "capture format",
+    "capture format"
+    "(default: 0 - JPEG)",
     "capture format type:"
     "\n\t0 - JPEG"
     "\n\t1 - YUV"
-    "\n\t2 - BAYER\n"
+    "\n\t2 - BAYER"
+    "\n\t3 - JPEG+BAYER\n"
   },
   { "capture_require", 'r', G_OPTION_FLAG_IN_MAIN, G_OPTION_ARG_INT,
     &capture_require,
@@ -271,6 +301,7 @@ capture_thread (gpointer userdata)
   gint imgtype;
   gboolean success = FALSE, error = TRUE;
   guint i_snap = 0;
+  guint i_round = 0;
   gint64 end_time;
 
   gfloat s_timeout_backup = (gfloat)TIMEOUT_S;
@@ -313,66 +344,80 @@ capture_thread (gpointer userdata)
     goto cleanup;
   }
 
-  for (i_snap = 0; i_snap < n_snapshots; ++i_snap) {
-    if (0 == i_snap) {
-      s_timeout_backup = s_timeout;
-      s_timeout = (gfloat)TIMEOUT_S;
-    } else {
-      s_timeout = s_timeout_backup;
-    }
-    end_time = g_get_monotonic_time ()
-        + (gint64)(s_timeout * G_TIME_SPAN_SECOND);
-    g_mutex_lock (&ctx->mutex);
-    g_print ("delaying next request for %f seconds...\n", s_timeout);
+  for (i_round = 0; i_round < burst_round; ++i_round) {
+    for (i_snap = 0; i_snap < n_snapshots; ++i_snap) {
+      if (0 == i_snap) {
+        s_timeout_backup = s_timeout;
+        s_timeout = (gfloat)TIMEOUT_S;
+      } else {
+        s_timeout = s_timeout_backup;
+      }
+      end_time = g_get_monotonic_time ()
+          + (gint64)(s_timeout * G_TIME_SPAN_SECOND);
+      g_mutex_lock (&ctx->mutex);
+      g_print ("delaying next request for %f seconds...\n", s_timeout);
 
-    while (!ctx->quit_requested) {
-      if (!g_cond_wait_until (&ctx->cond_quit, &ctx->mutex, end_time)) {
-        g_print ("Waiting is over...\n");
-        break;
+      while (!ctx->quit_requested) {
+        if (!g_cond_wait_until (&ctx->cond_quit, &ctx->mutex, end_time)) {
+          g_print ("Waiting is over...\n");
+          break;
+        }
+      }
+
+      if (ctx->quit_requested) {
+        error = FALSE;
+        g_mutex_unlock (&ctx->mutex);
+        goto cleanup;
+      }
+
+      if (0 == i_snap) {
+        g_print ("Pause preview stream for NZSL Burst...\n");
+        // Deactivation the preview pad
+        gst_pad_set_active (ctx->video_pad, FALSE);
+
+        g_print ("requesting %d snapshot...\n", n_snapshots);
+      }
+
+      g_signal_emit_by_name (ctx->qmmfsrc, "capture-image", imgtype, 1,
+          gmetas, &success);
+      if (!success) {
+        g_mutex_unlock (&ctx->mutex);
+        g_printerr ("failed to send capture request\n");
+        goto cleanup;
+      }
+
+      g_print ("snapshot request %d send\n", i_snap);
+
+      if (n_snapshots - 1 == i_snap) {
+        g_print ("Resume preview stream for NZSL Burst...\n");
+        // Activation the preview pad
+        gst_pad_set_active (ctx->video_pad, TRUE);
+      }
+
+      ctx->pending +=
+          ((GST_CAPTURE_FORMAT_JPEG_PLUS_BAYER == capture_format) ? 2 : 1);
+      g_mutex_unlock (&ctx->mutex);
+    }
+
+    g_print ("snapshot requests send...\n");
+    g_mutex_lock (&ctx->mutex);
+
+    while (ctx->pending && !ctx->quit_requested)
+      g_cond_wait (&ctx->cond_quit, &ctx->mutex);
+
+    g_mutex_unlock (&ctx->mutex);
+  
+    if ((i_round + 1 < burst_round) && (i_snap > 0)) {
+      g_print ("cancelling capture\n");
+      g_signal_emit_by_name (G_OBJECT (ctx->qmmfsrc),
+          "cancel-capture", &success);
+      if (!success) {
+        g_printerr ("cancel capture failed\n");
+        error = TRUE;
       }
     }
-
-    if (ctx->quit_requested) {
-      error = FALSE;
-      g_mutex_unlock (&ctx->mutex);
-      goto cleanup;
-    }
-
-    if (0 == i_snap) {
-      g_print ("Pause preview stream for NZSL Burst...\n");
-      // Deactivation the preview pad
-      gst_pad_set_active (ctx->video_pad, FALSE);
-
-      g_print ("requesting %d snapshot...\n", n_snapshots);
-    }
-
-    g_signal_emit_by_name (ctx->qmmfsrc, "capture-image", imgtype, 1,
-        gmetas, &success);
-    if (!success) {
-      g_mutex_unlock (&ctx->mutex);
-      g_printerr ("failed to send capture request\n");
-      goto cleanup;
-    }
-
-    g_print ("snapshot request %d send\n", i_snap);
-
-    if (n_snapshots - 1 == i_snap) {
-      g_print ("Resume preview stream for NZSL Burst...\n");
-      // Activation the preview pad
-      gst_pad_set_active (ctx->video_pad, TRUE);
-    }
-
-    ctx->pending += 1;
-    g_mutex_unlock (&ctx->mutex);
   }
 
-  g_print ("snapshot requests send...\n");
-  g_mutex_lock (&ctx->mutex);
-
-  while (ctx->pending && !ctx->quit_requested)
-    g_cond_wait (&ctx->cond_quit, &ctx->mutex);
-
-  g_mutex_unlock (&ctx->mutex);
   error = FALSE;
 
 cleanup:
@@ -622,6 +667,65 @@ new_sample (GstElement * element, gpointer userdata)
   return GST_FLOW_OK;
 }
 
+// Used for JPEG+BAYER
+static GstFlowReturn
+new_sample_2nd (GstElement * element, gpointer userdata)
+{
+  GstAppContext *ctx = (GstAppContext *)userdata;
+  GstSample *sample = NULL;
+  GstBuffer *buffer = NULL;
+  GError *error = NULL;
+  GstMapInfo memmap;
+  gchar *filename = NULL;
+  guint64 timestamp = 0;
+
+  // New sample is available, retrieve the buffer from the sink.
+  g_signal_emit_by_name (element, "pull-sample", &sample);
+
+  if (sample == NULL) {
+    g_printerr ("ERROR: Pulled sample is NULL!\n");
+    return GST_FLOW_ERROR;
+  }
+
+  if ((buffer = gst_sample_get_buffer (sample)) == NULL) {
+    g_printerr ("ERROR: Pulled buffer is NULL!\n");
+    gst_sample_release (sample);
+    return GST_FLOW_ERROR;
+  }
+
+  if (!gst_buffer_map (buffer, &memmap, GST_MAP_READ)) {
+    g_printerr ("ERROR: Failed to map the pulled buffer!\n");
+    gst_sample_release (sample);
+    return GST_FLOW_ERROR;
+  }
+
+  g_mutex_lock (&ctx->mutex);
+  if (--(ctx->pending) == 0)
+    g_cond_signal (&ctx->cond_quit);
+  g_mutex_unlock (&ctx->mutex);
+
+  // Extract the original camera timestamp from GstBuffer OFFSET_END field
+  timestamp = GST_BUFFER_OFFSET_END (buffer);
+  g_print ("Camera timestamp: %" G_GUINT64_FORMAT "\n", timestamp);
+
+  filename = g_strdup_printf ("/data/frame_%" G_GUINT64_FORMAT "%s", timestamp,
+      ctx->file_ext_2nd);
+
+  if (!g_file_set_contents (filename, (const gchar*) memmap.data, memmap.size,
+      &error)) {
+    g_printerr ("ERROR: Writing to %s failed: %s\n", filename, error->message);
+    g_clear_error (&error);
+  } else {
+    g_print ("Buffer written to file system: %s\n", filename);
+  }
+
+  g_free (filename);
+  gst_buffer_unmap (buffer, &memmap);
+  gst_sample_release (sample);
+
+  return GST_FLOW_OK;
+}
+
 static gboolean
 link_capture_output (GstCaps * stream_caps, GstElement * pipeline,
     GstElement * qtiqmmfsrc, GstAppContext * smpl_ctx)
@@ -670,6 +774,59 @@ link_capture_output (GstCaps * stream_caps, GstElement * pipeline,
 
   g_signal_connect (G_OBJECT (appsink), "new-sample", G_CALLBACK (new_sample),
       smpl_ctx);
+
+  return TRUE;
+}
+
+// Used for JPEG+BAYER
+static gboolean
+link_2nd_capture_output (GstCaps * stream_caps, GstElement * pipeline,
+    GstElement * qtiqmmfsrc, GstAppContext * smpl_ctx)
+{
+  GstElement *filter_caps_elem, *appsink;
+  gboolean success;
+
+  appsink = gst_element_factory_make ("appsink", "appsink-2");
+  filter_caps_elem = gst_element_factory_make ("capsfilter", "capsfilter-2");
+  if (!appsink || !filter_caps_elem) {
+    g_printerr ("failed to create elements for capture stream \n.");
+    cleanup_many_gst (&filter_caps_elem, &appsink, NULL);
+    return FALSE;
+  }
+
+  g_object_set (G_OBJECT (filter_caps_elem), "caps", stream_caps, NULL);
+
+  g_object_set (G_OBJECT (appsink), "sync", FALSE, NULL);
+  g_object_set (G_OBJECT (appsink), "emit-signals", TRUE, NULL);
+  g_object_set (G_OBJECT (appsink), "async", FALSE, NULL);
+  g_object_set (G_OBJECT (appsink), "enable-last-sample", FALSE, NULL);
+
+  // Add elements to the pipeline and link them
+  g_print ("Adding all elements to the pipeline...\n");
+  gst_bin_add_many (GST_BIN (pipeline), filter_caps_elem, appsink, NULL);
+
+  g_print ("Linking camera capture pad ...\n");
+
+  success = gst_element_link_pads (qtiqmmfsrc, "image_2",
+      filter_caps_elem, NULL);
+  if (!success) {
+    g_printerr ("failed to link camera.image_2 to capture filter\n");
+    gst_bin_remove_many (GST_BIN (pipeline), filter_caps_elem, appsink, NULL);
+    return FALSE;
+  }
+
+  // Linking the stream
+  success = gst_element_link_many (filter_caps_elem, appsink, NULL);
+  if (!success) {
+    g_printerr ("failed to link multifilesink\n");
+    gst_bin_remove_many (GST_BIN (pipeline), filter_caps_elem, appsink, NULL);
+    return FALSE;
+  }
+
+  g_print ("All elements are linked successfully\n");
+
+  g_signal_connect (G_OBJECT (appsink), "new-sample",
+      G_CALLBACK (new_sample_2nd), smpl_ctx);
 
   return TRUE;
 }
@@ -807,7 +964,7 @@ main (int argc, char * * argv)
   GError *gerr = NULL;
   gboolean success = FALSE;
   gint res = -1;
-  GstCaps *stream_caps = NULL, *capture_caps = NULL;
+  GstCaps *stream_caps = NULL, *capture_caps = NULL, *capture_caps_2nd = NULL;
   GstElementClass *qtiqmmfsrc_klass = NULL;
   GstPadTemplate *qtiqmmfsrc_template = NULL;
   GstPad *video_pad = NULL;
@@ -892,7 +1049,7 @@ main (int argc, char * * argv)
       break;
     case GST_CAPTURE_FORMAT_YUV:
       capture_caps = create_raw_caps (width, height);
-      app_ctx.file_ext = ".raw";
+      app_ctx.file_ext = ".yuv";
       break;
     case GST_CAPTURE_FORMAT_BAYER:
     {
@@ -922,6 +1079,39 @@ main (int argc, char * * argv)
       app_ctx.file_ext = ".bayer";
       break;
     }
+    case GST_CAPTURE_FORMAT_JPEG_PLUS_BAYER:
+    {
+      // JPEG
+      capture_caps = create_jpeg_caps (width, height);
+      app_ctx.file_ext = ".jpg";
+
+      // BAYER
+      GValue value = G_VALUE_INIT;
+      gint sensor_width, sensor_height;
+
+      // Retrieve sensor width and height form active-sensor-size property
+      g_value_init (&value, GST_TYPE_ARRAY);
+
+      g_object_get_property (G_OBJECT (qtiqmmfsrc),
+          "active-sensor-size", &value);
+      if (4 != gst_value_array_get_size (&value)) {
+        g_printerr ("ERROR: Expected 4 values for active sensor size,"
+            " Recieved %d", gst_value_array_get_size (&value));
+        g_value_unset (&value);
+        goto cleanup;
+      }
+
+      sensor_width  = g_value_get_int (gst_value_array_get_value (&value, 2));
+      sensor_height = g_value_get_int (gst_value_array_get_value (&value, 3));
+
+      g_value_unset (&value);
+
+      g_print ("bayer, using sensor width: %d and height %d\n",
+          sensor_width, sensor_height);
+      capture_caps_2nd = create_bayer_caps (sensor_width, sensor_height);
+      app_ctx.file_ext_2nd = ".bayer";
+      break;
+    }
     default:
       g_printerr ("unknown option for capture format\n");
       goto cleanup;
@@ -931,6 +1121,11 @@ main (int argc, char * * argv)
     g_printerr ("failed to create capture caps\n");
     goto cleanup;
   }
+  if ((GST_CAPTURE_FORMAT_JPEG_PLUS_BAYER == capture_format)
+      && (!capture_caps_2nd)) {
+    g_printerr ("failed to create second capture caps for JPEG + RAW\n");
+    goto cleanup;
+  }
 
   success = link_capture_output (capture_caps, pipeline, qtiqmmfsrc, &app_ctx);
   if (!success) {
@@ -938,10 +1133,20 @@ main (int argc, char * * argv)
     goto cleanup;
   }
 
+  if ((GST_CAPTURE_FORMAT_JPEG_PLUS_BAYER == capture_format)) {
+    success = link_2nd_capture_output (capture_caps_2nd, pipeline,
+        qtiqmmfsrc, &app_ctx);
+    if (!success) {
+      g_printerr ("failed to link second capture stream\n");
+      goto cleanup;
+    }
+  }
+
   // Create the stream caps with the input camera resolution
-  stream_caps = create_stream_caps (width, height);
+  stream_caps = create_stream_caps (width_preview,
+      height_preview);
   if (!stream_caps) {
-    g_printerr ("failed to create prevew caps\n");
+    g_printerr ("failed to create preview caps\n");
     goto cleanup;
   }
 
@@ -1102,6 +1307,8 @@ cleanup:
     gst_caps_unref (stream_caps);
   if (capture_caps)
     gst_caps_unref (capture_caps);
+  if (capture_caps_2nd)
+    gst_caps_unref (capture_caps_2nd);
 
   if (video_pad) {
     // Release the unlinked pad
