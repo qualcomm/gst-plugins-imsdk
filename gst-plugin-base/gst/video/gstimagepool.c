@@ -106,7 +106,7 @@ struct _GstImageBufferPoolPrivate
   GstVideoInfo        info;
   gboolean            addmeta;
   gboolean            isubwc;
-  gboolean            keepmapped;
+  GstFdMemoryFlags    memflags;
 
   GstAllocator        *allocator;
   GstAllocationParams params;
@@ -222,6 +222,7 @@ open_gbm_device (GstImageBufferPool * vpool)
 {
   GstImageBufferPoolPrivate *priv = vpool->priv;
   gboolean success = TRUE;
+  guint32 dubplicate = 0;
 
   // Load GBM library.
   priv->gbmhandle = dlopen("libgbm.so", RTLD_NOW);
@@ -272,6 +273,14 @@ open_gbm_device (GstImageBufferPool * vpool)
     return FALSE;
   }
 
+#if defined(GBM_PERFORM_GET_FD_WITH_NEW)
+  // Check if the FD returned at gbm_bo_get_fd() is duplicated.
+  priv->gbm_perform (GBM_PERFORM_GET_FD_WITH_NEW, &dubplicate);
+#endif // GBM_PERFORM_GET_FD_WITH_NEW
+
+  // If the BO FD is duplicated then when buffer is free it will be closed.
+  priv->memflags = (dubplicate == 0) ? GST_FD_MEMORY_FLAG_DONT_CLOSE : 0;
+
   priv->datamap = g_hash_table_new (NULL, NULL);
 
   GST_INFO_OBJECT (vpool, "Created GBM handle %p", priv->gbmdevice);
@@ -283,13 +292,7 @@ gbm_device_alloc (GstImageBufferPool * vpool)
 {
   GstImageBufferPoolPrivate *priv = vpool->priv;
   struct gbm_bo *bo = NULL;
-  gint fd, format, usage = 0;
-
-#ifdef GBM_FREE_FD
-  GstFdMemoryFlags flags = 0;
-#else
-  GstFdMemoryFlags flags = GST_FD_MEMORY_FLAG_DONT_CLOSE;
-#endif
+  gint fd = -1, format = 0, usage = 0;
 
   format = gst_video_format_to_gbm_format (GST_VIDEO_INFO_FORMAT (&priv->info));
   g_return_val_if_fail (format >= 0, NULL);
@@ -317,10 +320,8 @@ gbm_device_alloc (GstImageBufferPool * vpool)
 
   GST_DEBUG_OBJECT (vpool, "Allocated GBM memory FD %d", fd);
 
-  if (priv->keepmapped)
-    flags |= GST_FD_MEMORY_FLAG_KEEP_MAPPED;
-
-  return gst_fd_allocator_alloc (priv->allocator, fd, priv->info.size, flags);
+  return gst_fd_allocator_alloc (priv->allocator, fd, priv->info.size,
+      priv->memflags);
 }
 
 static void
@@ -385,7 +386,6 @@ static GstMemory *
 ion_device_alloc (GstImageBufferPool * vpool)
 {
   GstImageBufferPoolPrivate *priv = vpool->priv;
-  GstFdMemoryFlags flags = GST_FD_MEMORY_FLAG_DONT_CLOSE;
   gint result = 0, fd = -1;
 
 #if defined(HAVE_LINUX_DMA_HEAP_H)
@@ -444,11 +444,9 @@ ion_device_alloc (GstImageBufferPool * vpool)
 
   GST_DEBUG_OBJECT (vpool, "Allocated ION memory FD %d", fd);
 
-  if (priv->keepmapped)
-    flags |= GST_FD_MEMORY_FLAG_KEEP_MAPPED;
-
   // Wrap the allocated FD in FD backed allocator.
-  return gst_fd_allocator_alloc (priv->allocator, fd, priv->info.size, flags);
+  return gst_fd_allocator_alloc (priv->allocator, fd, priv->info.size,
+      priv->memflags);
 }
 
 static void
@@ -487,13 +485,12 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
 {
   GstImageBufferPool *vpool = GST_IMAGE_BUFFER_POOL (pool);
   GstImageBufferPoolPrivate *priv = vpool->priv;
-
-  gboolean success;
+  GstCaps *caps = NULL;
+  GstAllocator *allocator = NULL;
   GstVideoInfo info;
-  GstCaps *caps;
-  guint size, minbuffers, maxbuffers;
-  GstAllocator *allocator;
   GstAllocationParams params;
+  guint size = 0, minbuffers = 0, maxbuffers = 0;
+  gboolean success = FALSE, keepmapped = FALSE;
 
   success = gst_buffer_pool_config_get_params (config, &caps, &size,
       &minbuffers, &maxbuffers);
@@ -545,8 +542,11 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
       GST_IMAGE_BUFFER_POOL_OPTION_UBWC_MODE);
 
   // Check whether we should keep buffer memory mapped.
-  priv->keepmapped = gst_buffer_pool_config_has_option (config,
+  keepmapped = gst_buffer_pool_config_has_option (config,
       GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
+
+  if (keepmapped)
+    priv->memflags |= GST_FD_MEMORY_FLAG_KEEP_MAPPED;
 
   // GBM library has its own alignment for the allocated buffers so update
   // the size, stride and offset for the buffer planes in the video info.
@@ -750,6 +750,7 @@ gst_image_buffer_pool_init (GstImageBufferPool * vpool)
 {
   vpool->priv = gst_image_buffer_pool_get_instance_private (vpool);
   vpool->priv->devfd = -1;
+  vpool->priv->memflags = GST_FD_MEMORY_FLAG_DONT_CLOSE;
 
   g_mutex_init (&vpool->priv->lock);
 }
