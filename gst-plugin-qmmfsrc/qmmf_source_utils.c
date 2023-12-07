@@ -65,6 +65,13 @@
 
 #include <system/camera_metadata_tags.h>
 
+// Declare Qmmf buffer pool
+G_DEFINE_TYPE(GstQmmfBufferPool, gst_qmmf_buffer_pool, GST_TYPE_BUFFER_POOL);
+#define qmmf_pool_parent_class gst_qmmf_buffer_pool_parent_class
+
+// Declare qmmf_buffer_qdata_quark() to return Quark for Qmmf buffer data
+G_DEFINE_QUARK(QmmfBufferQDataQuark, qmmf_buffer_qdata);
+
 #define QMMFSRC_PROPERTY_MAP_SIZE(MAP) (sizeof(MAP)/sizeof(MAP[0]))
 
 typedef struct _PropAndroidEnum PropAndroidEnum;
@@ -878,4 +885,58 @@ gst_qmmf_video_format_to_string (gint format)
     default:
       return "unknown";
   }
+}
+
+static void
+gst_qmmf_buffer_pool_reset (GstBufferPool * pool, GstBuffer * buffer)
+{
+  GST_LOG_OBJECT (pool, "QMMF buffer reset %p", buffer);
+
+  // Invoke the previously registered destroy notify function
+  gst_mini_object_set_qdata (GST_MINI_OBJECT (buffer),
+      qmmf_buffer_qdata_quark (), NULL, NULL);
+
+  gst_buffer_remove_all_memory (buffer);
+  GST_BUFFER_FLAG_UNSET (buffer, GST_BUFFER_FLAG_TAG_MEMORY);
+
+  GST_BUFFER_POOL_CLASS (qmmf_pool_parent_class)->reset_buffer (pool, buffer);
+}
+
+GstBufferPool *
+gst_qmmf_buffer_pool_new ()
+{
+  gboolean success = TRUE;
+  GstStructure *config = NULL;
+  GstQmmfBufferPool *pool;
+
+  pool = (GstQmmfBufferPool *) g_object_new (GST_TYPE_QMMF_BUFFER_POOL, NULL);
+  g_return_val_if_fail (pool != NULL, NULL);
+  gst_object_ref_sink (pool);
+
+  GST_LOG_OBJECT (pool, "New QMMF buffer pool %p", pool);
+
+  config = gst_buffer_pool_get_config (GST_BUFFER_POOL_CAST (pool));
+
+  gst_buffer_pool_config_set_params (config, NULL, 0, 3, 0);
+
+  success = gst_buffer_pool_set_config (GST_BUFFER_POOL_CAST (pool), config);
+  QMMFSRC_RETURN_VAL_IF_FAIL_WITH_CLEAN (NULL, success == TRUE,
+      gst_object_unref (pool), NULL, "Failed to set pool configuration!");
+
+  return GST_BUFFER_POOL_CAST (pool);
+}
+
+static void
+gst_qmmf_buffer_pool_class_init (GstQmmfBufferPoolClass * klass)
+{
+  GObjectClass *gobject_class = (GObjectClass *) klass;
+  GstBufferPoolClass *pool = (GstBufferPoolClass *) klass;
+
+  pool->reset_buffer = gst_qmmf_buffer_pool_reset;
+}
+
+static void
+gst_qmmf_buffer_pool_init (GstQmmfBufferPool * pool)
+{
+  GST_DEBUG ("Initializing pool!");
 }
