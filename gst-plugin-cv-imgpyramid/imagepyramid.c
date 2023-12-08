@@ -146,7 +146,10 @@ static void
 gst_data_queue_free_item (gpointer userdata)
 {
   GstDataQueueItem *item = userdata;
-  gst_mini_object_unref (item->object);
+
+  if (item->object != NULL)
+    gst_mini_object_unref (item->object);
+
   g_slice_free (GstDataQueueItem, item);
 }
 
@@ -280,27 +283,27 @@ gst_cv_imgpyramid_worker_task (gpointer userdata)
   GstDataQueueItem *item = NULL;
   gboolean success;
 
-  if (gst_data_queue_pop (sinkpad->requests, &item)) {
-    GstCvRequest *request = NULL;
+  if (gst_data_queue_peek (sinkpad->requests, &item)) {
+    GstCvRequest *request = GST_CV_REQUEST (item->object);
 
-    request = GST_CV_REQUEST (gst_mini_object_ref (item->object));
-
-    success = gst_imgpyramid_engine_execute (imgpyramid->engine, request->inframe,
-        request->outbuffers);
+    success = gst_imgpyramid_engine_execute (imgpyramid->engine,
+        request->inframe, request->outbuffers);
 
     if (!success) {
       GST_ERROR_OBJECT (sinkpad, "Failed to execute request!");
-      item->destroy (item);
-      gst_cv_request_unref (request);
+
+      if (gst_data_queue_pop (sinkpad->requests, &item))
+        item->destroy (item);
+
       return;
     }
 
     g_hash_table_foreach (imgpyramid->srcpads,
         (GHFunc) gst_cv_imgpyramid_push_output_buffer, request);
 
-    item->destroy (item);
-    // Free the memory allocated by the internal request structure.
-    gst_cv_request_unref (request);
+    // Buffer was sent downstream, remove and free the item from the queue.
+    if (gst_data_queue_pop (sinkpad->requests, &item))
+      item->destroy (item);
   } else {
     GST_INFO_OBJECT (imgpyramid, "Pause worker task!");
     gst_task_pause (imgpyramid->worktask);
@@ -731,6 +734,9 @@ gst_cv_imgpyramid_sinkpad_event (GstPad * pad, GstObject * parent,
       return success;
     }
     case GST_EVENT_EOS:
+      // Wait until all queued input requests have been processed.
+      GST_CV_IMGPYRAMID_PAD_WAIT_IDLE (sinkpad);
+
       success = gst_element_foreach_src_pad (GST_ELEMENT (imgpyramid),
           gst_cv_imgpyramid_srcpad_push_event, event);
       return success;
