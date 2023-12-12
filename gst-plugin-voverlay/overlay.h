@@ -55,11 +55,17 @@ G_BEGIN_DECLS
   (G_TYPE_CHECK_CLASS_TYPE((klass), GST_TYPE_OVERLAY))
 #define GST_OVERLAY_CAST(obj) ((GstOverlay *)(obj))
 
+#define GST_OVERLAY_GET_LOCK(obj) (&GST_OVERLAY(obj)->lock)
+#define GST_OVERLAY_LOCK(obj)     g_mutex_lock(GST_OVERLAY_GET_LOCK(obj))
+#define GST_OVERLAY_UNLOCK(obj)   g_mutex_unlock(GST_OVERLAY_GET_LOCK(obj))
+
 typedef struct _GstVOverlay GstVOverlay;
 typedef struct _GstVOverlayClass GstVOverlayClass;
 
 struct _GstVOverlay {
   GstBaseTransform     parent;
+
+  GMutex               lock;
 
   /// Maximum latency.
   GstClockTime         latency;

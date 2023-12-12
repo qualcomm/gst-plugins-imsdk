@@ -88,8 +88,10 @@ struct _GstOverlayPosition {
 };
 
 struct _GstOverlayBBox {
+  GQuark            name;
   GstVideoRectangle destination;
-  guint             color;
+  gint              color;
+  gboolean          enable;
 };
 
 struct _GstOverlayTimestamp {
@@ -98,32 +100,48 @@ struct _GstOverlayTimestamp {
   gint               fontsize;
   GstOverlayPosition position;
   gint               color;
+  gboolean           enable;
 };
 
 struct _GstOverlayString {
+  GQuark             name;
   gchar              *contents;
   gint               fontsize;
   GstOverlayPosition position;
   gint               color;
+  gboolean           enable;
 };
 
 struct _GstOverlayMask {
+  GQuark             name;
   gint               type;
-  GstOverlayPosition position;
   union {
     gint             radius;
     gint             wh[2];
   } dims;
+  GstOverlayPosition position;
   gint               color;
+  gboolean           enable;
 };
 
 struct _GstOverlayImage {
+  GQuark            name;
   gchar             *path;
   gint              width;
   gint              height;
   GstVideoRectangle destination;
   gchar             *contents;
+  gboolean          enable;
 };
+
+void
+gst_overlay_timestamp_free (GstOverlayTimestamp * timestamp);
+
+void
+gst_overlay_string_free (GstOverlayString * string);
+
+void
+gst_overlay_image_free (GstOverlayImage * simage);
 
 guint
 gst_meta_overlay_type (GstMeta * meta);
@@ -131,20 +149,23 @@ gst_meta_overlay_type (GstMeta * meta);
 gboolean
 gst_parse_property_value (const gchar * input, GValue * value);
 
-GArray *
-gst_extract_bboxes (const GValue * value);
+gboolean
+gst_extract_bboxes (const GValue * value, GArray * bboxes);
 
-GArray *
-gst_extract_timestamps (const GValue * value);
+gboolean
+gst_extract_timestamps (const GValue * value, GArray * timestamps);
 
-GArray *
-gst_extract_strings (const GValue * value);
+gboolean
+gst_extract_strings (const GValue * value, GArray * strings);
 
-GArray *
-gst_extract_masks (const GValue * value);
+gboolean
+gst_extract_masks (const GValue * value, GArray * masks);
 
-GArray *
-gst_extract_static_images (const GValue * value);
+gboolean
+gst_extract_static_images (const GValue * value, GArray * images);
+
+gchar *
+gst_serialize_bboxes (GArray * bboxes);
 
 gchar *
 gst_serialize_timestamps (GArray * timestamps);

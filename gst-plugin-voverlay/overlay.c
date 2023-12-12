@@ -1230,28 +1230,30 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
   GstVideoBlit *blit = NULL;
   GstMeta *meta = NULL;
   gpointer state = NULL;
-  guint idx = 0, num = 0, n_entries = 0, length = 0;
-  gboolean success = FALSE;
+  guint idx = 0, n_entries = 0;
+  gboolean success = TRUE;
 
   // Add the total number of meta entries that needs to be processed.
-  n_entries += gst_buffer_get_n_meta (buffer,
+  composition->n_blits = gst_buffer_get_n_meta (buffer,
       GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE);
-  n_entries += gst_buffer_get_n_meta (buffer, GST_CV_OPTCLFLOW_META_API_TYPE);
+  composition->n_blits += gst_buffer_get_n_meta (buffer,
+      GST_CV_OPTCLFLOW_META_API_TYPE);
+
+  GST_OVERLAY_LOCK (overlay);
 
   // Add the number of manually set bounding boxes.
-  n_entries += (overlay->bboxes != NULL) ? overlay->bboxes->len : 0;
+  composition->n_blits += overlay->bboxes->len;
   // Add the number of manually set timestamps.
-  n_entries += (overlay->timestamps != NULL) ? overlay->timestamps->len : 0;
+  composition->n_blits += overlay->timestamps->len;
   // Add the number of manually set strings.
-  n_entries += (overlay->strings != NULL) ? overlay->strings->len : 0;
+  composition->n_blits += overlay->strings->len;
   // Add the number of manually set privacy masks.
-  n_entries += (overlay->masks != NULL) ? overlay->masks->len : 0;
+  composition->n_blits += overlay->masks->len;
   // Add the number of manually set static images.
-  n_entries += (overlay->simages != NULL) ? overlay->simages->len : 0;
+  composition->n_blits += overlay->simages->len;
 
-  // Allocate video blit structure for each of the entries.
-  composition->blits = g_new0 (GstVideoBlit, n_entries);
-  composition->n_blits = n_entries;
+  // Allocate maximum possible blit structures for each of the entries.
+  composition->blits = g_new0 (GstVideoBlit, composition->n_blits);
 
   // Iterate over the buffer meta and process the supported entries.
   while ((meta = gst_buffer_iterate_meta (buffer, &state)) != NULL) {
@@ -1261,11 +1263,13 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
     if (GST_OVERLAY_TYPE_MAX == ovltype)
       continue;
 
-    blit = &(composition->blits[num]);
+    blit = &(composition->blits[n_entries]);
     blit->frame = g_slice_new0 (GstVideoFrame);
     blit->alpha = G_MAXUINT8;
 
-    if (!gst_overlay_acquire_frame (overlay, ovltype, blit->frame)) {
+    success = gst_overlay_acquire_frame (overlay, ovltype, blit->frame);
+
+    if (!success) {
       GST_ERROR_OBJECT (overlay, "Failed to acquire overlay frame!");
       goto cleanup;
     }
@@ -1278,20 +1282,21 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
         GST_GPOINTER_CAST (meta));
 
     if (!success) {
-      GST_ERROR_OBJECT (overlay, "Failed to process meta %u!", num);
+      GST_ERROR_OBJECT (overlay, "Failed to process meta %u!", n_entries);
       goto cleanup;
     }
 
-    num++;
+    n_entries++;
   }
 
-  length = (overlay->bboxes != NULL) ? overlay->bboxes->len : 0;
-
   // Process manually set bounding boxes.
-  for (idx = 0; idx < length; idx++, num++) {
+  for (idx = 0; idx < overlay->bboxes->len; idx++) {
     GstOverlayBBox *bbox = &g_array_index (overlay->bboxes, GstOverlayBBox, idx);
 
-    blit = &(composition->blits[num]);
+    if (!bbox->enable)
+      continue;
+
+    blit = &(composition->blits[n_entries]);
     blit->frame = g_slice_new0 (GstVideoFrame);
     blit->alpha = G_MAXUINT8;
 
@@ -1314,16 +1319,19 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
       GST_ERROR_OBJECT (overlay, "Failed to process bounding box %u!", idx);
       goto cleanup;
     }
+
+    n_entries++;
   }
 
-  length = (overlay->timestamps != NULL) ? overlay->timestamps->len : 0;
-
   // Process manually set timestamps.
-  for (idx = 0; idx < length; idx++, num++) {
+  for (idx = 0; idx < overlay->timestamps->len; idx++) {
     GstOverlayTimestamp *timestamp =
         &g_array_index (overlay->timestamps, GstOverlayTimestamp, idx);
 
-    blit = &(composition->blits[num]);
+    if (!timestamp->enable)
+      continue;
+
+    blit = &(composition->blits[n_entries]);
     blit->frame = g_slice_new0 (GstVideoFrame);
     blit->alpha = G_MAXUINT8;
 
@@ -1346,16 +1354,19 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
       GST_ERROR_OBJECT (overlay, "Failed to process timestamp %u!", idx);
       goto cleanup;
     }
+
+    n_entries++;
   }
 
-  length = (overlay->strings != NULL) ? overlay->strings->len : 0;
-
   // Process manually set strings.
-  for (idx = 0; idx < length; idx++, num++) {
+  for (idx = 0; idx < overlay->strings->len; idx++) {
     GstOverlayString *string =
         &g_array_index (overlay->strings, GstOverlayString, idx);
 
-    blit = &(composition->blits[num]);
+    if (!string->enable)
+      continue;
+
+    blit = &(composition->blits[n_entries]);
     blit->frame = g_slice_new0 (GstVideoFrame);
     blit->alpha = G_MAXUINT8;
 
@@ -1378,15 +1389,18 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
       GST_ERROR_OBJECT (overlay, "Failed to process string %u!", idx);
       goto cleanup;
     }
+
+    n_entries++;
   }
 
-  length = (overlay->masks != NULL) ? overlay->masks->len : 0;
-
   // Process manually set privacy masks.
-  for (idx = 0; idx < length; idx++, num++) {
+  for (idx = 0; idx < overlay->masks->len; idx++) {
     GstOverlayMask *mask = &g_array_index (overlay->masks, GstOverlayMask, idx);
 
-    blit = &(composition->blits[num]);
+    if (!mask->enable)
+      continue;
+
+    blit = &(composition->blits[n_entries]);
     blit->frame = g_slice_new0 (GstVideoFrame);
     blit->alpha = G_MAXUINT8;
 
@@ -1409,16 +1423,19 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
       GST_ERROR_OBJECT (overlay, "Failed to process privacy mask %u!", idx);
       goto cleanup;
     }
+
+    n_entries++;
   }
 
-  length = (overlay->simages != NULL) ? overlay->simages->len : 0;
-
   // Process manually set static images.
-  for (idx = 0; idx < length; idx++, num++) {
+  for (idx = 0; idx < overlay->simages->len; idx++) {
     GstOverlayImage *simage =
         &g_array_index (overlay->simages, GstOverlayImage, idx);
 
-    blit = &(composition->blits[num]);
+    if (!simage->enable)
+      continue;
+
+    blit = &(composition->blits[n_entries]);
     blit->frame = g_slice_new0 (GstVideoFrame);
     blit->alpha = G_MAXUINT8;
 
@@ -1441,13 +1458,22 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
       GST_ERROR_OBJECT (overlay, "Failed to process static image %u!", idx);
       goto cleanup;
     }
+
+    n_entries++;
   }
 
-  return TRUE;
+  // Resize the blits array as actual number is less then the maximum.
+  if (n_entries < composition->n_blits) {
+    composition->blits = g_renew (GstVideoBlit, composition->blits, n_entries);
+    composition->n_blits = n_entries;
+  }
 
 cleanup:
-  gst_video_blits_release (composition->blits, composition->n_blits);
-  return FALSE;
+  if (!success)
+    gst_video_blits_release (composition->blits, composition->n_blits);
+
+  GST_OVERLAY_UNLOCK (overlay);
+  return success;
 }
 
 static gboolean
@@ -1686,25 +1712,30 @@ gst_overlay_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
 {
   GstVOverlay *overlay = GST_OVERLAY (object);
+  const gchar *input = NULL;
+  GValue list = G_VALUE_INIT;
+
+  GST_OVERLAY_LOCK (overlay);
 
   switch (prop_id) {
     case PROP_ENGINE_BACKEND:
       overlay->backend = g_value_get_enum (value);
       break;
     case PROP_BBOXES:
-      if (overlay->bboxes != NULL)
-        g_array_free (overlay->bboxes, TRUE);
+      g_value_init (&list, GST_TYPE_LIST);
+      input = g_value_get_string (value);
 
-      if ((overlay->bboxes = gst_extract_bboxes (value)) == NULL) {
-        GST_ERROR_OBJECT (overlay, "Failed to exract bboxes!");
+      if (!gst_parse_property_value (input, &list)) {
+        GST_ERROR_OBJECT (overlay, "Failed to parse input for bboxes!");
         break;
       }
+
+      if (!gst_extract_bboxes (&list, overlay->bboxes))
+        GST_ERROR_OBJECT (overlay, "Failed to exract bboxes!");
+
+      g_value_unset (&list);
       break;
     case PROP_TIMESTAMPS:
-    {
-      const gchar *input = NULL;
-      GValue list = G_VALUE_INIT;
-
       g_value_init (&list, GST_TYPE_LIST);
       input = g_value_get_string (value);
 
@@ -1713,22 +1744,12 @@ gst_overlay_set_property (GObject * object, guint prop_id,
         break;
       }
 
-      if (overlay->timestamps != NULL)
-        g_array_free (overlay->timestamps, TRUE);
-
-      if ((overlay->timestamps = gst_extract_timestamps (&list)) == NULL) {
+      if (!gst_extract_timestamps (&list, overlay->timestamps))
         GST_ERROR_OBJECT (overlay, "Failed to exract timestamps!");
-        break;
-      }
 
       g_value_unset (&list);
       break;
-    }
     case PROP_STRINGS:
-    {
-      const gchar *input = NULL;
-      GValue list = G_VALUE_INIT;
-
       g_value_init (&list, GST_TYPE_LIST);
       input = g_value_get_string (value);
 
@@ -1737,22 +1758,12 @@ gst_overlay_set_property (GObject * object, guint prop_id,
         break;
       }
 
-      if (overlay->strings != NULL)
-        g_array_free (overlay->strings, TRUE);
-
-      if ((overlay->strings = gst_extract_strings (&list)) == NULL) {
+      if (!gst_extract_strings (&list, overlay->strings))
         GST_ERROR_OBJECT (overlay, "Failed to exract strings!");
-        break;
-      }
 
       g_value_unset (&list);
       break;
-    }
     case PROP_PRIVACY_MASKS:
-    {
-      const gchar *input = NULL;
-      GValue list = G_VALUE_INIT;
-
       g_value_init (&list, GST_TYPE_LIST);
       input = g_value_get_string (value);
 
@@ -1761,22 +1772,12 @@ gst_overlay_set_property (GObject * object, guint prop_id,
         break;
       }
 
-      if (overlay->masks != NULL)
-        g_array_free (overlay->masks, TRUE);
-
-      if ((overlay->masks = gst_extract_masks (&list)) == NULL) {
+      if (!gst_extract_masks (&list, overlay->masks))
         GST_ERROR_OBJECT (overlay, "Failed to exract privacy masks!");
-        break;
-      }
 
       g_value_unset (&list);
       break;
-    }
     case PROP_STATIC_IMAGES:
-    {
-      const gchar *input = NULL;
-      GValue list = G_VALUE_INIT;
-
       g_value_init (&list, GST_TYPE_LIST);
       input = g_value_get_string (value);
 
@@ -1785,21 +1786,17 @@ gst_overlay_set_property (GObject * object, guint prop_id,
         break;
       }
 
-      if (overlay->simages != NULL)
-        g_array_free (overlay->simages, TRUE);
-
-      if ((overlay->simages = gst_extract_static_images (&list)) == NULL) {
+      if (!gst_extract_static_images (&list, overlay->simages))
         GST_ERROR_OBJECT (overlay, "Failed to exract static images!");
-        break;
-      }
 
       g_value_unset (&list);
       break;
-    }
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
   }
+
+  GST_OVERLAY_UNLOCK (overlay);
 }
 
 static void
@@ -1807,84 +1804,40 @@ gst_overlay_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec)
 {
   GstVOverlay *overlay = GST_OVERLAY (object);
+  gchar *string = NULL;
+
+  GST_OVERLAY_LOCK (overlay);
 
   switch (prop_id) {
     case PROP_ENGINE_BACKEND:
       g_value_set_enum (value, overlay->backend);
       break;
     case PROP_BBOXES:
-    {
-      GstOverlayBBox *bbox = NULL;
-      guint idx = 0, length = 0;
-
-      length = (overlay->bboxes != NULL) ? overlay->bboxes->len : 0;
-
-      for (idx = 0; idx < length; idx++) {
-        GValue entry = G_VALUE_INIT, val = G_VALUE_INIT;
-
-        g_value_init (&entry, GST_TYPE_ARRAY);
-        g_value_init (&val, G_TYPE_INT);
-
-        bbox = &g_array_index (overlay->bboxes, GstOverlayBBox, idx);
-
-        g_value_set_int (&val, bbox->destination.x);
-        gst_value_array_append_value (&entry, &val);
-
-        g_value_set_int (&val, bbox->destination.y);
-        gst_value_array_append_value (&entry, &val);
-
-        g_value_set_int (&val, bbox->destination.w);
-        gst_value_array_append_value (&entry, &val);
-
-        g_value_set_int (&val, bbox->destination.h);
-        gst_value_array_append_value (&entry, &val);
-
-        g_value_set_int (&val, bbox->color);
-        gst_value_array_append_value (&entry, &val);
-
-        gst_value_array_append_value (value, &entry);
-
-        g_value_unset (&val);
-        g_value_unset (&entry);
-      }
+      string = gst_serialize_bboxes (overlay->bboxes);
+      g_value_take_string (value, string);
       break;
-    }
     case PROP_TIMESTAMPS:
-    {
-      gchar *string = gst_serialize_strings (overlay->timestamps);
-
-      g_value_set_string (value, string);
-      g_free (string);
+      string = gst_serialize_strings (overlay->timestamps);
+      g_value_take_string (value, string);
       break;
-    }
     case PROP_STRINGS:
-    {
-      gchar *string = gst_serialize_strings (overlay->strings);
-
-      g_value_set_string (value, string);
-      g_free (string);
+      string = gst_serialize_strings (overlay->strings);
+      g_value_take_string (value, string);
       break;
-    }
     case PROP_PRIVACY_MASKS:
-    {
-      gchar *string = gst_serialize_masks (overlay->masks);
-
-      g_value_set_string (value, string);
-      g_free (string);
+      string = gst_serialize_masks (overlay->masks);
+      g_value_take_string (value, string);
       break;
-    }
     case PROP_STATIC_IMAGES:
-    {
-      gchar *string = gst_serialize_static_images (overlay->simages);
-
-      g_value_set_string (value, string);
-      g_free (string);
+      string = gst_serialize_static_images (overlay->simages);
+      g_value_take_string (value, string);
       break;
-    }
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
   }
+
+  GST_OVERLAY_UNLOCK (overlay);
 }
 
 static void
@@ -1921,6 +1874,8 @@ gst_overlay_finalize (GObject * object)
   if (overlay->vinfo != NULL)
     gst_video_info_free (overlay->vinfo);
 
+  g_mutex_clear (&(overlay)->lock);
+
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (overlay));
 }
 
@@ -1940,56 +1895,55 @@ gst_overlay_class_init (GstVOverlayClass * klass)
 
   g_object_class_install_property (gobject, PROP_ENGINE_BACKEND,
       g_param_spec_enum ("engine", "Engine",
-          "Engine backend used for the conversion operations",
+          "Engine backend used for the blitting operations",
           GST_TYPE_VCE_BACKEND, DEFAULT_PROP_ENGINE_BACKEND,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject, PROP_BBOXES,
-      gst_param_spec_array ("bboxes", "BBoxes",
-          "Manually set list of bounding boxes with 4 mandatory parameters "
-          "X, Y, WIDTH and HEIGHT and a 5th optional parameter for COLOR "
-          "(e.g. '<<X, Y, W, H, C>, <X, Y, W, H>, ...>')",
-          gst_param_spec_array ("rectangle", "Rectangle", "Rectangle",
-              g_param_spec_int ("value", "Rectangle Value",
-                  "One of X, Y, WIDTH or HEIGHT value.", G_MININT, G_MAXINT, 0,
-                  G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS),
-              G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS),
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject, PROP_BBOXES,
+      g_param_spec_string ("bboxes", "BBoxes",
+          "Manually set multiple custom bounding boxes in list of GstStructures "
+          "with unique name and 3 parameters 'position', 'dimensions' and 'color'. "
+          "The 'position' and 'dimensions' are mandatory if struct entry is new "
+          "e.g. \"{(structure)\\\"Box1,position=<100,100>,dimensions=<640,480>;"
+          "\\\", (structure)\\\"Box2,position=<1000,100>,dimensions=<300,300>,"
+          "color=0xFF0000FF;\\\"}\"", NULL,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_TIMESTAMPS,
       g_param_spec_string ("timestamps", "Timestamps",
           "Manually set various timestamps as GstStructures with 'Date/Time' as"
-          " keyword for displaying date and/or time with 4 mandatory parameters"
+          " keyword for displaying date and/or time with 4 optional parameters"
           " 'format', 'fontsize', 'position', and 'color'. And use 'PTS/DTS' "
-          "as keyword dispalying buffer timestamp with 3 mandatory parameters "
+          "as keyword dispalying buffer timestamp with 3 optional parameters "
           "'fontsize', 'position', and 'color' e.g. \"{(structure)\\\"Date/Time"
           ",format=\\\\\\\"%d/%m/%Y\\ %H:%M:%S\\\\\\\",fontsize=12,"
           "position=<0,0>,color=0xRRGGBBAA;\\\", (structure)\\\"PTS/DTS,"
-          "fontsize=12,position=<0,0>,color=0xRRGGBBAA;\\\"}\"",
-          NULL, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+          "fontsize=12,position=<0,0>,color=0xRRGGBBAA;\\\"}\"", NULL,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_STRINGS,
       g_param_spec_string ("strings", "Strings",
           "Manually set multiple custom strings in list of GstStructures with "
-          "'Text' as keyword and 4 mandatory parameters 'contents', 'fontsize', "
-          "'position', and 'color' e.g. \"{(structure)\\\"Text,contents="
-          "\\\\\\\"Example\\ 1\\\\\\\",fontsize=12,position=<0,0>,color="
-          "0xRRGGBBAA;\\\"}\"",
-          NULL, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+          "unique name and 4 parameters 'contents', 'fontsize', 'position', "
+          "and 'color'. The 'contents' is mandatory if struct entry is new "
+          "e.g. \"{(structure)\\\"Text1,contents=\\\\\\\"Example\\ 1\\\\\\\","
+          "fontsize=12,position=<0,0>,color=0xRRGGBBAA;\\\"}\"", NULL,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_STATIC_IMAGES,
       g_param_spec_string ("images", "Images",
           "Manually set multiple custom BGRA images in list of GstStructures with "
-          "'Image' as keyword and 3 mandatory parameters 'path', 'resolution',"
-          " 'destination' e.g. \"{(structure)\\\"Image,path=/data/image1.bgra,"
-          "resolution=<480,360>,destination=<0,0,640,480>;\\\", (structure)"
-          "\\\"Image,path=/data/image2.bgra,resolution=<240,180>,destination="
-          "<100,100,480,360>;\\\"}\"",
-          NULL, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+          "unique name and 3 parameters 'path', 'resolution', 'destination'. "
+          "All 3 are mandatory if struct entry is new e.g. \"{(structure)\\\""
+          "Image1,path=/data/image1.bgra,resolution=<480,360>,destination="
+          "<0,0,640,480>;\\\", (structure)\\\"Image2,path=/data/image2.bgra,"
+          "resolution=<240,180>,destination=<100,100,480,360>;\\\"}\"", NULL,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_PRIVACY_MASKS,
       g_param_spec_string ("masks", "Masks",
-          "Manually set multiple privacy masks in list of GstStructures with "
-          "'Mask' as keyword and 2 mandatory parameters 'color' and either "
-          "'circle=<X, Y, RADIUS>' or 'rectangle=<X, Y, WIDTH, HEIGHT>' e.g. "
-          "\"{(structure)\\\"Mask,color=0xRRGGBBAA,circle=<400,400,200>;\\\","
-          "(structure)\\\"Mask,color=0xRRGGBBAA,rectangle=<0,0,20,10>;\\\"}\"",
-          NULL, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+          "Manually set multiple masks in list of GstStructures with unique "
+          "name and 2 parameters 'color' and either 'circle=<X, Y, RADIUS>' or "
+          "'rectangle=<X, Y, WIDTH, HEIGHT>'. Either circle or rectangle must "
+          "be provided if struct entry is new e.g. \"{(structure)"
+          "\\\"Mask,color=0xRRGGBBAA,circle=<400,400,200>;\\\",(structure)"
+          "\\\"Mask,color=0xRRGGBBAA,rectangle=<0,0,20,10>;\\\"}\"", NULL,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_PLAYING));
 
   gst_element_class_set_static_metadata (element, "Video Overlay",
       "Filter/Effect", "Generic plugin to extract meta like ROI from image "
@@ -2011,6 +1965,8 @@ gst_overlay_init (GstVOverlay * overlay)
 {
   guint idx = 0;
 
+  g_mutex_init (&(overlay)->lock);
+
   overlay->latency = 0;
   overlay->vinfo = NULL;
 
@@ -2022,11 +1978,18 @@ gst_overlay_init (GstVOverlay * overlay)
   overlay->converter = NULL;
 
   overlay->backend = DEFAULT_PROP_ENGINE_BACKEND;
-  overlay->bboxes = NULL;
-  overlay->timestamps = NULL;
-  overlay->strings = NULL;
-  overlay->simages = NULL;
-  overlay->masks = NULL;
+  overlay->bboxes = g_array_new (FALSE, FALSE, sizeof (GstOverlayBBox));
+  overlay->timestamps = g_array_new (FALSE, TRUE, sizeof (GstOverlayTimestamp));
+  overlay->strings = g_array_new (FALSE, TRUE, sizeof (GstOverlayString));
+  overlay->simages = g_array_new (FALSE, TRUE, sizeof (GstOverlayImage));
+  overlay->masks = g_array_new (FALSE, FALSE, sizeof (GstOverlayMask));
+
+  g_array_set_clear_func (overlay->timestamps,
+      (GDestroyNotify) gst_overlay_timestamp_free);
+  g_array_set_clear_func (overlay->strings,
+      (GDestroyNotify) gst_overlay_string_free);
+  g_array_set_clear_func (overlay->simages,
+      (GDestroyNotify) gst_overlay_image_free);
 
   // Handle buffers with GAP flag internally.
   gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM (overlay), TRUE);

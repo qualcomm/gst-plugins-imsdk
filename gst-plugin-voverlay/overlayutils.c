@@ -55,21 +55,27 @@ GST_DEBUG_CATEGORY_EXTERN (gst_overlay_debug);
 #define GST_META_IS_CV_OPTCLFLOW(meta) \
     (meta->info->api == GST_CV_OPTCLFLOW_META_API_TYPE)
 
-static void
+#define GST_OVERLAY_DEFAULT_X          0
+#define GST_OVERLAY_DEFAULT_Y          0
+#define GST_OVERLAY_DEFAULT_FONTSIZE   12
+#define GST_OVERLAY_DEFAULT_COLOR      0xFF0000FF
+#define GST_OVERLAY_DEFAULT_FORMATTING "\"%d/%m/%Y %H:%M:%S\""
+
+void
 gst_overlay_timestamp_free (GstOverlayTimestamp * timestamp)
 {
   if (timestamp->format != NULL)
     g_free (timestamp->format);
 }
 
-static void
+void
 gst_overlay_string_free (GstOverlayString * string)
 {
   if (string->contents != NULL)
     g_free (string->contents);
 }
 
-static void
+void
 gst_overlay_image_free (GstOverlayImage * simage)
 {
   if (simage->contents != NULL)
@@ -107,7 +113,7 @@ gst_parse_property_value (const gchar * input, GValue * value)
     gboolean success = FALSE;
 
     if (!g_file_get_contents (input, &contents, NULL, &error)) {
-      GST_ERROR ("Failed to get file contents, error: %s!",
+      GST_ERROR ("Failed to get file contents, cleanup: %s!",
           GST_STR_NULL (error->message));
       g_clear_error (&error);
       return FALSE;
@@ -142,248 +148,424 @@ gst_parse_property_value (const gchar * input, GValue * value)
   return TRUE;
 }
 
-GArray *
-gst_extract_bboxes (const GValue * value)
+gboolean
+gst_extract_bboxes (const GValue * value, GArray * bboxes)
 {
-  GArray *bboxes = NULL;
-  guint idx = 0, size = 0, n_params = 0;
-
-  size = gst_value_list_get_size (value);
-  bboxes = g_array_sized_new (FALSE, FALSE, sizeof (GstOverlayBBox), size);
-
-  g_array_set_size (bboxes, size);
-
-  for (idx = 0; idx < size; idx++) {
-    const GValue *entry = gst_value_array_get_value (value, idx);
-    GstOverlayBBox *bbox = &(g_array_index (bboxes, GstOverlayBBox, idx));
-
-    n_params = gst_value_array_get_size (entry);
-
-    if (n_params < 4 || n_params > 5) {
-      GST_ERROR ("Invalid box dimensions at index %u!", idx);
-      g_array_free (bboxes, TRUE);
-      return NULL;
-    }
-
-    bbox->destination.x = g_value_get_int (gst_value_array_get_value (entry, 0));
-    bbox->destination.y = g_value_get_int (gst_value_array_get_value (entry, 1));
-    bbox->destination.w = g_value_get_int (gst_value_array_get_value (entry, 2));
-    bbox->destination.h = g_value_get_int (gst_value_array_get_value (entry, 3));
-
-    if (n_params == 5)
-      bbox->color = g_value_get_int (gst_value_array_get_value (entry, 4));
-
-    if (bbox->destination.w == 0 || bbox->destination.h == 0) {
-      GST_ERROR ("Invalid width and/or height for the box at index %u", idx);
-      g_array_free (bboxes, TRUE);
-      return NULL;
-    }
-  }
-
-  return bboxes;
-}
-
-GArray *
-gst_extract_timestamps (const GValue * value)
-{
-  GArray *timestamps = NULL;
   GstStructure *structure = NULL;
-  const GValue *position = NULL;
-  guint idx = 0, size = 0;
+  const GValue *position = NULL, *dimensions = NULL;
+  guint idx = 0, num = 0, size = 0;
 
   size = gst_value_list_get_size (value);
-  timestamps = g_array_sized_new (FALSE, TRUE, sizeof (GstOverlayTimestamp), size);
-
-  g_array_set_size (timestamps, size);
-  g_array_set_clear_func (timestamps,
-      (GDestroyNotify) gst_overlay_timestamp_free);
 
   for (idx = 0; idx < size; idx++) {
     const GValue *entry = gst_value_list_get_value (value, idx);
-    GstOverlayTimestamp *timestamp =
-        &(g_array_index (timestamps, GstOverlayTimestamp, idx));
+    GstOverlayBBox *bbox = NULL;
+    const gchar *name = NULL;
 
     if (G_VALUE_TYPE (entry) != GST_TYPE_STRUCTURE) {
       GST_ERROR ("GValue at idx %u is not structure", idx);
-      g_array_free (timestamps, TRUE);
-      return NULL;
+      return FALSE;
     }
 
     structure = GST_STRUCTURE (g_value_get_boxed (entry));
 
     if (structure == NULL) {
       GST_ERROR ("Failed to extract structure at idx %u!", idx);
-      g_array_free (timestamps, TRUE);
-      return NULL;
-    } else if (!gst_structure_has_name (structure, "Date/Time") &&
-               !gst_structure_has_name (structure, "PTS/DTS")) {
-      GST_ERROR ("Structure at idx %u invalid name!", idx);
-      g_array_free (timestamps, TRUE);
-      return NULL;
-    } else if (!gst_structure_has_field (structure, "fontsize") ||
-               !gst_structure_has_field (structure, "position") ||
-               !gst_structure_has_field (structure, "color")) {
-      GST_ERROR ("Structure at idx %u does not contain 'fontsize', 'position' "
-          "and/or 'color' fields!", idx);
-      g_array_free (timestamps, TRUE);
-      return NULL;
+      return FALSE;
     }
 
-    if (gst_structure_has_name (structure, "Date/Time") &&
-        !gst_structure_has_field (structure, "format")) {
-      GST_ERROR ("Structure at idx %u does not contain 'format' field!", idx);
-      g_array_free (timestamps, TRUE);
-      return NULL;
-    } else if (gst_structure_has_name (structure, "PTS/DTS") &&
-               gst_structure_has_field (structure, "format")) {
-      GST_ERROR ("Structure at idx %u contains invalid 'format' field!", idx);
-      g_array_free (timestamps, TRUE);
-      return NULL;
+    // Check if there is text entry with the same identification name.
+    for (num = 0; num < bboxes->len; num++) {
+      bbox = &(g_array_index (bboxes, GstOverlayBBox, num));
+
+      if (bbox->name == gst_structure_get_name_id (structure))
+        break;
     }
 
-    position = gst_structure_get_value (structure, "position");
+    // There is no pre-existing string with that name, create and initialize it.
+    if (num >= bboxes->len) {
+      // User must provide at leats 'dimensions' of the new entry.
+      if (!gst_structure_has_field (structure, "dimensions")) {
+        GST_ERROR ("Structure at idx %u does not have 'dimensions' field!", idx);
+        return FALSE;
+      }
 
-    if (gst_value_array_get_size (position) != 2) {
-      GST_ERROR ("Structure at idx %u has invalid 'position' field!", idx);
-      g_array_free (timestamps, TRUE);
-      return NULL;
+      // Resize the array which will create new entry at the end.
+      g_array_set_size (bboxes, num + 1);
+      bbox = &(g_array_index (bboxes, GstOverlayBBox, num));
+
+      bbox->name = gst_structure_get_name_id (structure);
+      bbox->enable = TRUE;
+
+      bbox->destination.x = -1;
+      bbox->destination.y = -1;
     }
 
-    timestamp->position.x =
-        g_value_get_int (gst_value_array_get_value (position, 0));
-    timestamp->position.y =
-        g_value_get_int (gst_value_array_get_value (position, 1));
+    name = g_quark_to_string (bbox->name);
+
+    if (gst_structure_has_field (structure, "dimensions")) {
+      dimensions = gst_structure_get_value (structure, "dimensions");
+
+      if (gst_value_array_get_size (dimensions) != 2) {
+        GST_ERROR ("Structure at idx %u has invalid 'dimensions' field!", idx);
+        goto cleanup;
+      }
+
+      bbox->destination.w = g_value_get_int (
+          gst_value_array_get_value (dimensions, 0));
+      bbox->destination.h = g_value_get_int (
+          gst_value_array_get_value (dimensions, 1));
+
+      if ((bbox->destination.w == 0) || (bbox->destination.h == 0)) {
+        GST_ERROR ("Invalid width and/or height for structure at idx %u", idx);
+        goto cleanup;
+      }
+    }
+
+    GST_TRACE ("%s: Dimensions: [%d, %d]", name, bbox->destination.w,
+        bbox->destination.h);
+
+    if (gst_structure_has_field (structure, "position")) {
+      position = gst_structure_get_value (structure, "position");
+
+      if (gst_value_array_get_size (position) != 2) {
+        GST_ERROR ("Structure at idx %u has invalid 'position' field!", idx);
+        goto cleanup;
+      }
+
+      bbox->destination.x = g_value_get_int (
+          gst_value_array_get_value (position, 0));
+      bbox->destination.y = g_value_get_int (
+          gst_value_array_get_value (position, 1));
+    } else if ((bbox->destination.x == -1) && (bbox->destination.y == -1)) {
+      bbox->destination.x = GST_OVERLAY_DEFAULT_X;
+      bbox->destination.y = GST_OVERLAY_DEFAULT_Y;
+    }
+
+    GST_TRACE ("%s: Position: [%d, %d]", name, bbox->destination.x,
+        bbox->destination.y);
+
+    if (gst_structure_has_field (structure, "color"))
+      gst_structure_get_int (structure, "color", &(bbox)->color);
+    else if (bbox->color == 0)
+      bbox->color = GST_OVERLAY_DEFAULT_COLOR;
+
+    GST_TRACE ("%s: Color: 0x%X", name, bbox->color);
+
+    if (gst_structure_has_field (structure, "enable"))
+      gst_structure_get_boolean (structure, "enable", &(bbox)->enable);
+
+    GST_TRACE ("%s: %s", name, bbox->enable ? "Enabled" : "Disabled");
+  }
+
+  return TRUE;
+
+cleanup:
+  // On failure resize the array to the old length, removing the new entry.
+  g_array_set_size (bboxes, bboxes->len - 1);
+  return FALSE;
+}
+
+gboolean
+gst_extract_timestamps (const GValue * value, GArray * timestamps)
+{
+  GstStructure *structure = NULL;
+  const GValue *position = NULL;
+  guint idx = 0, num = 0, size = 0;
+
+  size = gst_value_list_get_size (value);
+
+  for (idx = 0; idx < size; idx++) {
+    const GValue *entry = gst_value_list_get_value (value, idx);
+    GstOverlayTimestamp *timestamp = NULL;
+    const gchar *name = NULL;
+    gint type = 0;
+
+    if (G_VALUE_TYPE (entry) != GST_TYPE_STRUCTURE) {
+      GST_ERROR ("GValue at idx %u is not structure", idx);
+      return FALSE;
+    }
+
+    structure = GST_STRUCTURE (g_value_get_boxed (entry));
+
+    if (structure == NULL) {
+      GST_ERROR ("Failed to extract structure at idx %u!", idx);
+      return FALSE;
+    }
 
     if (gst_structure_has_name (structure, "Date/Time")) {
-      timestamp->format =
-          g_strdup (gst_structure_get_string (structure, "format"));
-      timestamp->type = GST_OVERLAY_TIMESTAMP_DATE_TIME;
+      type = GST_OVERLAY_TIMESTAMP_DATE_TIME;
     } else if (gst_structure_has_name (structure, "PTS/DTS")) {
-      timestamp->format = NULL;
-      timestamp->type = GST_OVERLAY_TIMESTAMP_PTS_DTS;
+      type = GST_OVERLAY_TIMESTAMP_PTS_DTS;
+    } else {
+      GST_ERROR ("Structure at idx %u invalid name!", idx);
+      return FALSE;
     }
 
-    gst_structure_get_int (structure, "fontsize", &(timestamp)->fontsize);
-    gst_structure_get_int (structure, "color", &(timestamp)->color);
+    if ((type == GST_OVERLAY_TIMESTAMP_PTS_DTS) &&
+         gst_structure_has_field (structure, "format")) {
+      GST_ERROR ("PTS/DTS at idx %u contains invalid 'format' field!", idx);
+      return FALSE;
+    }
+
+    // Check if there is timestamp of the same type/name.
+    for (num = 0; num < timestamps->len; num++) {
+      timestamp = &(g_array_index (timestamps, GstOverlayTimestamp, num));
+
+      if (timestamp->type == type)
+        break;
+    }
+
+    // There is no pre-existing timestamp of this type, create and initialize it.
+    if (num >= timestamps->len) {
+      // Resize the array which will create new entry at the end.
+      g_array_set_size (timestamps, num + 1);
+      timestamp = &(g_array_index (timestamps, GstOverlayTimestamp, num));
+
+      timestamp->type = type;
+      timestamp->enable = TRUE;
+
+      timestamp->position.x = -1;
+      timestamp->position.y = -1;
+    }
+
+    name = gst_structure_get_name (structure);
+
+    if (gst_structure_has_field (structure, "format")) {
+      g_free (timestamp->format);
+
+      timestamp->format = g_strdup (
+          gst_structure_get_string (structure, "format"));
+    } else if ((timestamp->type == GST_OVERLAY_TIMESTAMP_DATE_TIME) &&
+               (timestamp->format == NULL)) {
+      timestamp->format = g_strdup (GST_OVERLAY_DEFAULT_FORMATTING);
+    }
+
+    GST_TRACE ("%s: Format '%s'", name, timestamp->format);
+
+    if (gst_structure_has_field (structure, "position")) {
+      position = gst_structure_get_value (structure, "position");
+
+      if (gst_value_array_get_size (position) != 2) {
+        GST_ERROR ("Structure at idx %u has invalid 'position' field!", idx);
+        goto cleanup;
+      }
+
+      timestamp->position.x =
+          g_value_get_int (gst_value_array_get_value (position, 0));
+      timestamp->position.y =
+          g_value_get_int (gst_value_array_get_value (position, 1));
+    } else if ((timestamp->position.x == -1) && (timestamp->position.y == -1)) {
+      timestamp->position.x = GST_OVERLAY_DEFAULT_X;
+      timestamp->position.y = GST_OVERLAY_DEFAULT_Y;
+    }
+
+    GST_TRACE ("%s: Position: [%d, %d]", name, timestamp->position.x,
+        timestamp->position.y);
+
+    if (gst_structure_has_field (structure, "color"))
+      gst_structure_get_int (structure, "color", &(timestamp)->color);
+    else if (timestamp->color == 0)
+      timestamp->color = GST_OVERLAY_DEFAULT_COLOR;
+
+    GST_TRACE ("%s: Color: 0x%X", name, timestamp->color);
+
+    if (gst_structure_has_field (structure, "fontsize"))
+      gst_structure_get_int (structure, "fontsize", &(timestamp)->fontsize);
+    else if (timestamp->fontsize == 0)
+      timestamp->fontsize = GST_OVERLAY_DEFAULT_FONTSIZE;
+
+    GST_TRACE ("%s: Font size: %d", name, timestamp->fontsize);
+
+    if (gst_structure_has_field (structure, "enable"))
+      gst_structure_get_boolean (structure, "enable", &(timestamp)->enable);
+
+    GST_TRACE ("%s: %s", name, timestamp->enable ? "Enabled" : "Disabled");
   }
 
-  return timestamps;
+  return TRUE;
+
+cleanup:
+  // On failure resize the array to the old length, removing the new entry.
+  g_array_set_size (timestamps, timestamps->len - 1);
+  return FALSE;
 }
 
-GArray *
-gst_extract_strings (const GValue * value)
+gboolean
+gst_extract_strings (const GValue * value, GArray * strings)
 {
-  GArray *strings = NULL;
   GstStructure *structure = NULL;
   const GValue *position = NULL;
-  guint idx = 0, size = 0;
+  guint idx = 0, num = 0, size = 0;
 
   size = gst_value_list_get_size (value);
-  strings = g_array_sized_new (FALSE, TRUE, sizeof (GstOverlayString), size);
-
-  g_array_set_size (strings, size);
-  g_array_set_clear_func (strings, (GDestroyNotify) gst_overlay_string_free);
 
   for (idx = 0; idx < size; idx++) {
     const GValue *entry = gst_value_list_get_value (value, idx);
-    GstOverlayString *string = &(g_array_index (strings, GstOverlayString, idx));
+    GstOverlayString *string = NULL;
+    const gchar *name = NULL;
 
     if (G_VALUE_TYPE (entry) != GST_TYPE_STRUCTURE) {
       GST_ERROR ("GValue at idx %u is not structure", idx);
-      g_array_free (strings, TRUE);
-      return NULL;
+      return FALSE;
     }
 
     structure = GST_STRUCTURE (g_value_get_boxed (entry));
 
     if (structure == NULL) {
       GST_ERROR ("Failed to extract structure at idx %u!", idx);
-      g_array_free (strings, TRUE);
-      return NULL;
-    } else if (!gst_structure_has_name (structure, "Text")) {
-      GST_ERROR ("Structure at idx %u invalid name!", idx);
-      g_array_free (strings, TRUE);
-      return NULL;
-    } else if (!gst_structure_has_field (structure, "contents") ||
-               !gst_structure_has_field (structure, "fontsize") ||
-               !gst_structure_has_field (structure, "position") ||
-               !gst_structure_has_field (structure, "color")) {
-      GST_ERROR ("Structure at idx %u does not contain 'contents', 'fontsize',"
-          " 'position' and/or 'color' fields!", idx);
-      g_array_free (strings, TRUE);
-      return NULL;
+      return FALSE;
     }
 
-    position = gst_structure_get_value (structure, "position");
+    // Check if there is text entry with the same identification name.
+    for (num = 0; num < strings->len; num++) {
+      string = &(g_array_index (strings, GstOverlayString, num));
 
-    if (gst_value_array_get_size (position) != 2) {
-      GST_ERROR ("Structure at idx %u has invalid 'position' field!", idx);
-      g_array_free (strings, TRUE);
-      return NULL;
+      if (string->name == gst_structure_get_name_id (structure))
+        break;
     }
 
-    string->position.x =
-        g_value_get_int (gst_value_array_get_value (position, 0));
-    string->position.y =
-        g_value_get_int (gst_value_array_get_value (position, 1));
+    // There is no pre-existing string with that name, create and initialize it.
+    if (num >= strings->len) {
+      // User must provide at leats 'contents' of the new string entry.
+      if (!gst_structure_has_field (structure, "contents")) {
+        GST_ERROR ("Structure at idx %u does not have 'contents' field!", idx);
+        return FALSE;
+      }
 
-    string->contents =
-        g_strdup (gst_structure_get_string (structure, "contents"));
+      // Resize the array which will create new entry at the end.
+      g_array_set_size (strings, num + 1);
+      string = &(g_array_index (strings, GstOverlayString, num));
 
-    gst_structure_get_int (structure, "fontsize", &(string)->fontsize);
-    gst_structure_get_int (structure, "color", &(string)->color);
+      string->name = gst_structure_get_name_id (structure);
+      string->enable = TRUE;
+
+      string->position.x = -1;
+      string->position.y = -1;
+    }
+
+    name = g_quark_to_string (string->name);
+
+    if (gst_structure_has_field (structure, "contents")) {
+      const gchar *contents = gst_structure_get_string (structure, "contents");
+
+      g_free (string->contents);
+      string->contents = g_strdup (contents);
+    }
+
+    if (gst_structure_has_field (structure, "position")) {
+      position = gst_structure_get_value (structure, "position");
+
+      if (gst_value_array_get_size (position) != 2) {
+        GST_ERROR ("Structure at idx %u has invalid 'position' field!", idx);
+        goto cleanup;
+      }
+
+      string->position.x =
+          g_value_get_int (gst_value_array_get_value (position, 0));
+      string->position.y =
+          g_value_get_int (gst_value_array_get_value (position, 1));
+    } else if ((string->position.x == -1) && (string->position.y == -1)) {
+      string->position.x = GST_OVERLAY_DEFAULT_X;
+      string->position.y = GST_OVERLAY_DEFAULT_Y;
+    }
+
+    GST_TRACE ("%s: Position: [%d, %d]", name, string->position.x,
+        string->position.y);
+
+    if (gst_structure_has_field (structure, "color"))
+      gst_structure_get_int (structure, "color", &(string)->color);
+    else if (string->color == 0)
+      string->color = GST_OVERLAY_DEFAULT_COLOR;
+
+    GST_TRACE ("%s: Color: 0x%X", name, string->color);
+
+    if (gst_structure_has_field (structure, "fontsize"))
+      gst_structure_get_int (structure, "fontsize", &(string)->fontsize);
+    else if (string->fontsize == 0)
+      string->fontsize = GST_OVERLAY_DEFAULT_FONTSIZE;
+
+    GST_TRACE ("%s: Font size: %d", name, string->fontsize);
+
+    if (gst_structure_has_field (structure, "enable"))
+      gst_structure_get_boolean (structure, "enable", &(string)->enable);
+
+    GST_TRACE ("%s: %s", name, string->enable ? "Enabled" : "Disabled");
   }
 
-  return strings;
+  return TRUE;
+
+cleanup:
+  // On failure resize the array to the old length, removing the new entry.
+  g_array_set_size (strings, strings->len - 1);
+  return FALSE;
 }
 
-GArray *
-gst_extract_masks (const GValue * value)
+gboolean
+gst_extract_masks (const GValue * value, GArray * masks)
 {
-  GArray *masks = NULL;
   GstStructure *structure = NULL;
-  guint idx = 0, size = 0;
+  guint idx = 0, num = 0, size = 0;
 
   size = gst_value_list_get_size (value);
-  masks = g_array_sized_new (FALSE, FALSE, sizeof (GstOverlayMask), size);
-
-  g_array_set_size (masks, size);
 
   for (idx = 0; idx < size; idx++) {
     const GValue *entry = gst_value_list_get_value (value, idx);
-    GstOverlayMask *mask = &(g_array_index (masks, GstOverlayMask, idx));
+    GstOverlayMask *mask = NULL;
+    const gchar *name = NULL;
 
     if (G_VALUE_TYPE (entry) != GST_TYPE_STRUCTURE) {
       GST_ERROR ("GValue at idx %u is not structure", idx);
-      g_array_free (masks, TRUE);
-      return NULL;
+      return FALSE;
     }
 
     structure = GST_STRUCTURE (g_value_get_boxed (entry));
 
     if (structure == NULL) {
       GST_ERROR ("Failed to extract structure at idx %u!", idx);
-      g_array_free (masks, TRUE);
-      return NULL;
-    } else if (!gst_structure_has_name (structure, "Mask")) {
-      GST_ERROR ("Structure at idx %u invalid name!", idx);
-      g_array_free (masks, TRUE);
-      return NULL;
-    } else if (!gst_structure_has_field (structure, "color")) {
-      GST_ERROR ("Structure at idx %u does not contain 'color' field!", idx);
-      g_array_free (masks, TRUE);
-      return NULL;
+      return FALSE;
     }
 
-    gst_structure_get_int (structure, "color", &(mask)->color);
+    // Check if there is text entry with the same identification name.
+    for (num = 0; num < masks->len; num++) {
+      mask = &(g_array_index (masks, GstOverlayMask, num));
+
+      if (mask->name == gst_structure_get_name_id (structure))
+        break;
+    }
+
+    // There is no pre-existing mask with that name, create and initialize it.
+    if (num >= masks->len) {
+      // User must provide at leats 'rectangle/circle' of the new entry.
+      if (!gst_structure_has_field (structure, "circle") &&
+          !gst_structure_has_field (structure, "rectangle")) {
+        GST_ERROR ("Structure at idx %u does not contain neither 'circle' "
+            "nor 'rectangle' field!", idx);
+        return FALSE;
+      }
+
+      // Resize the array which will create new entry at the end.
+      g_array_set_size (masks, num + 1);
+      mask = &(g_array_index (masks, GstOverlayMask, num));
+
+      mask->name = gst_structure_get_name_id (structure);
+      mask->enable = TRUE;
+
+      mask->dims.wh[0] = -1;
+      mask->dims.wh[1] = -1;
+
+      mask->position.x = -1;
+      mask->position.y = -1;
+    }
+
+    name = g_quark_to_string (mask->name);
 
     if (gst_structure_has_field (structure, "circle")) {
       const GValue *circle = gst_structure_get_value (structure, "circle");
 
       if (gst_value_array_get_size (circle) != 3) {
         GST_ERROR ("Structure at idx %u has invalid 'circle' field!", idx);
-        g_array_free (masks, TRUE);
-        return NULL;
+        goto cleanup;
       }
 
       mask->type = GST_OVERLAY_MASK_CIRCLE;
@@ -393,16 +575,16 @@ gst_extract_masks (const GValue * value)
 
       if (mask->dims.radius == 0) {
         GST_ERROR ("Invalid radius for the circle at index %u", idx);
-        g_array_free (masks, TRUE);
-        return NULL;
+        goto cleanup;
       }
+
+      GST_TRACE ("%s: Circle radius: %d", name, mask->dims.radius);
     } else if (gst_structure_has_field (structure, "rectangle")) {
       const GValue *rectangle = gst_structure_get_value (structure, "rectangle");
 
       if (gst_value_array_get_size (rectangle) != 4) {
         GST_ERROR ("Structure at idx %u has invalid 'rectangle' field!", idx);
-        g_array_free (masks, TRUE);
-        return NULL;
+        goto cleanup;
       }
 
       mask->type = GST_OVERLAY_MASK_RECTANGLE;
@@ -417,92 +599,206 @@ gst_extract_masks (const GValue * value)
 
       if (mask->dims.wh[0] == 0 || mask->dims.wh[1] == 0) {
         GST_ERROR ("Invalid width and/or height for rectangle at idx %u", idx);
-        g_array_free (masks, TRUE);
-        return NULL;
+        goto cleanup;
       }
-    } else {
-      GST_ERROR ("Structure at idx %u does not contain neither 'circle' nor "
-          "'rectangle' field!", idx);
-      g_array_free (masks, TRUE);
-      return NULL;
+
+      GST_TRACE ("%s: Rectangle: [%d, %d]", name, mask->dims.wh[0],
+          mask->dims.wh[1]);
     }
+
+    if (gst_structure_has_field (structure, "color"))
+      gst_structure_get_int (structure, "color", &(mask)->color);
+    else if (mask->color == 0)
+      mask->color = GST_OVERLAY_DEFAULT_COLOR;
+
+    GST_TRACE ("%s: Color: 0x%X", name, mask->color);
+
+    if (gst_structure_has_field (structure, "enable"))
+      gst_structure_get_boolean (structure, "enable", &(mask)->enable);
+
+    GST_TRACE ("%s: %s", name, mask->enable ? "Enabled" : "Disabled");
   }
 
-  return masks;
+  return TRUE;
+
+cleanup:
+  // On failure resize the array to the old length, removing the new entry.
+  g_array_set_size (masks, masks->len - 1);
+  return FALSE;
 }
 
-GArray *
-gst_extract_static_images (const GValue * value)
+gboolean
+gst_extract_static_images (const GValue * value, GArray * images)
 {
-  GArray *simages = NULL;
   GstStructure *structure = NULL;
   const GValue *resolution = NULL, *destination = NULL;
-  guint idx = 0, size = 0;
+  guint idx = 0, num = 0, size = 0;
 
   size = gst_value_list_get_size (value);
-  simages = g_array_sized_new (FALSE, TRUE, sizeof (GstOverlayImage), size);
-
-  g_array_set_size (simages, size);
-  g_array_set_clear_func (simages, (GDestroyNotify) gst_overlay_image_free);
 
   for (idx = 0; idx < size; idx++) {
     const GValue *entry = gst_value_list_get_value (value, idx);
-    GstOverlayImage *simage = &(g_array_index (simages, GstOverlayImage, idx));
+    GstOverlayImage *image = NULL;
+    const gchar *name = NULL;
 
     if (G_VALUE_TYPE (entry) != GST_TYPE_STRUCTURE) {
       GST_ERROR ("GValue at idx %u is not structure", idx);
-      g_array_free (simages, TRUE);
-      return NULL;
+      return FALSE;
     }
 
     structure = GST_STRUCTURE (g_value_get_boxed (entry));
 
     if (structure == NULL) {
       GST_ERROR ("Failed to extract structure at idx %u!", idx);
-      g_array_free (simages, TRUE);
-      return NULL;
-    } else if (!gst_structure_has_name (structure, "Image")) {
-      GST_ERROR ("Structure at idx %u invalid name!", idx);
-      g_array_free (simages, TRUE);
-      return NULL;
-    } else if (!gst_structure_has_field (structure, "path") ||
-               !gst_structure_has_field (structure, "resolution") ||
-               !gst_structure_has_field (structure, "destination")) {
-      GST_ERROR ("Structure at idx %u does not contain 'path', 'resolution' "
-          "and/or 'destination' fields!", idx);
-      g_array_free (simages, TRUE);
-      return NULL;
+      return FALSE;
     }
 
-    resolution = gst_structure_get_value (structure, "resolution");
-    destination = gst_structure_get_value (structure, "destination");
+    // Check if there is text entry with the same identification name.
+    for (num = 0; num < images->len; num++) {
+      image = &(g_array_index (images, GstOverlayImage, num));
 
-    if (gst_value_array_get_size (resolution) != 2) {
-      GST_ERROR ("Structure at idx %u has invalid 'resolution' field!", idx);
-      g_array_free (simages, TRUE);
-      return NULL;
-    } else if (gst_value_array_get_size (destination) != 4) {
-      GST_ERROR ("Structure at idx %u has invalid 'destination' field!", idx);
-      g_array_free (simages, TRUE);
-      return NULL;
+      if (image->name == gst_structure_get_name_id (structure))
+        break;
     }
 
-    simage->path =
-        g_strdup (gst_structure_get_string (structure, "path"));
-    simage->width = g_value_get_int (gst_value_array_get_value (resolution, 0));
-    simage->height = g_value_get_int (gst_value_array_get_value (resolution, 1));
+    // There is no pre-existing mask with that name, create and initialize it.
+    if (num >= images->len) {
+      // User must provide 'path/resolution/destination' of the new entry.
+      if (!gst_structure_has_field (structure, "path") ||
+          !gst_structure_has_field (structure, "resolution") ||
+          !gst_structure_has_field (structure, "destination")) {
+        GST_ERROR ("Structure at idx %u does not contain 'path', 'resolution' "
+            "and 'destination' fields!", idx);
+        return FALSE;
+      }
 
-    simage->destination.x = g_value_get_int (
-        gst_value_array_get_value (destination, 0));
-    simage->destination.y = g_value_get_int (
-        gst_value_array_get_value (destination, 1));
-    simage->destination.w = g_value_get_int (
-        gst_value_array_get_value (destination, 2));
-    simage->destination.h = g_value_get_int (
-        gst_value_array_get_value (destination, 3));
+      // Resize the array which will create new entry at the end.
+      g_array_set_size (images, num + 1);
+      image = &(g_array_index (images, GstOverlayImage, num));
+
+      image->name = gst_structure_get_name_id (structure);
+      image->enable = TRUE;
+    }
+
+    name = g_quark_to_string (image->name);
+
+    if (gst_structure_has_field (structure, "path") &&
+        gst_structure_has_field (structure, "resolution")) {
+      resolution = gst_structure_get_value (structure, "resolution");
+
+      if (gst_value_array_get_size (resolution) != 2) {
+        GST_ERROR ("Structure at idx %u has invalid 'resolution' field!", idx);
+        goto cleanup;
+      }
+
+      image->width = g_value_get_int (
+          gst_value_array_get_value (resolution, 0));
+      image->height = g_value_get_int (
+          gst_value_array_get_value (resolution, 1));
+
+      image->path = g_strdup (gst_structure_get_string (structure, "path"));
+
+      GST_TRACE ("%s: Dimensions: [%d, %d]", name, image->width, image->height);
+      GST_TRACE ("%s: Path: '%s'", name, image->path);
+    }
+
+    if (gst_structure_has_field (structure, "destination")) {
+      destination = gst_structure_get_value (structure, "destination");
+
+      if (gst_value_array_get_size (destination) != 4) {
+        GST_ERROR ("Structure at idx %u has invalid 'destination' field!", idx);
+        goto cleanup;
+      }
+
+      image->destination.x = g_value_get_int (
+          gst_value_array_get_value (destination, 0));
+      image->destination.y = g_value_get_int (
+          gst_value_array_get_value (destination, 1));
+      image->destination.w = g_value_get_int (
+          gst_value_array_get_value (destination, 2));
+      image->destination.h = g_value_get_int (
+          gst_value_array_get_value (destination, 3));
+
+      GST_TRACE ("%s: Destination: [%d, %d, %d, %d]", name, image->destination.x,
+          image->destination.y, image->destination.w, image->destination.h);
+    }
+
+    if (gst_structure_has_field (structure, "enable"))
+      gst_structure_get_boolean (structure, "enable", &(image)->enable);
+
+    GST_TRACE ("%s: %s", name, image->enable ? "Enabled" : "Disabled");
   }
 
-  return simages;
+  return TRUE;
+
+cleanup:
+  // On failure resize the array to the old length, removing the new entry.
+  g_array_set_size (images, images->len - 1);
+  return FALSE;
+}
+
+gchar *
+gst_serialize_bboxes (GArray * bboxes)
+{
+  gchar *string = NULL;
+  GValue list = G_VALUE_INIT;
+  guint idx = 0;
+
+  g_value_init (&list, GST_TYPE_LIST);
+
+  for (idx = 0; idx < bboxes->len; idx++) {
+    GstOverlayBBox *bbox = NULL;
+    GstStructure *entry = NULL;
+    GValue position = G_VALUE_INIT, dimensions = G_VALUE_INIT;
+    GValue value = G_VALUE_INIT;
+
+    bbox = &(g_array_index (bboxes, GstOverlayBBox, idx));
+
+    entry = gst_structure_new_empty (g_quark_to_string (bbox->name));
+    gst_structure_set (entry, "color", G_TYPE_INT, bbox->color, NULL);
+
+    g_value_init (&value, G_TYPE_INT);
+    g_value_init (&position, GST_TYPE_ARRAY);
+    g_value_init (&dimensions, GST_TYPE_ARRAY);
+
+    g_value_set_int (&value, bbox->destination.x);
+    gst_value_array_append_value (&position, &value);
+
+    g_value_set_int (&value, bbox->destination.y);
+    gst_value_array_append_value (&position, &value);
+
+    gst_structure_set_value (entry, "position", &position);
+    g_value_unset (&position);
+
+    g_value_set_int (&value, bbox->destination.w);
+    gst_value_array_append_value (&dimensions, &value);
+
+    g_value_set_int (&value, bbox->destination.h);
+    gst_value_array_append_value (&dimensions, &value);
+
+    gst_structure_set_value (entry, "dimensions", &dimensions);
+    g_value_unset (&dimensions);
+
+    g_value_unset (&value);
+    g_value_init (&value, GST_TYPE_STRUCTURE);
+
+    gst_value_set_structure (&value, entry);
+    gst_structure_free (entry);
+
+    gst_value_list_append_value (&list, &value);
+    g_value_unset (&value);
+  }
+
+  // Serialize the predictions into string format.
+  string = gst_value_serialize (&list);
+  g_value_unset (&list);
+
+  if (string == NULL) {
+    GST_ERROR ("Failed serialize bboxes!");
+    return NULL;
+  }
+
+  return string;
 }
 
 gchar *
@@ -582,11 +878,9 @@ gst_serialize_strings (GArray * strings)
 
     string = &(g_array_index (strings, GstOverlayString, idx));
 
-    entry = gst_structure_new ("Text",
-        "contents", G_TYPE_STRING, string->contents,
-        "fontsize", G_TYPE_INT, string->fontsize,
-        "color", G_TYPE_INT, string->color,
-        NULL);
+    entry = gst_structure_new (g_quark_to_string (string->name),
+        "contents", G_TYPE_STRING, string->contents, "fontsize", G_TYPE_INT,
+        string->fontsize, "color", G_TYPE_INT, string->color, NULL);
 
     g_value_init (&value, G_TYPE_INT);
     g_value_init (&position, GST_TYPE_ARRAY);
@@ -639,9 +933,8 @@ gst_serialize_masks (GArray * masks)
 
     mask = &(g_array_index (masks, GstOverlayMask, idx));
 
-    entry = gst_structure_new ("Mask",
-        "color", G_TYPE_INT, mask->color,
-        NULL);
+    entry = gst_structure_new (g_quark_to_string (mask->name),
+        "color", G_TYPE_UINT, mask->color, NULL);
 
     g_value_init (&value, G_TYPE_INT);
     g_value_init (&array, GST_TYPE_ARRAY);
@@ -708,9 +1001,8 @@ gst_serialize_static_images (GArray * simages)
 
     simage = &(g_array_index (simages, GstOverlayImage, idx));
 
-    entry = gst_structure_new ("Image",
-        "path", G_TYPE_STRING, simage->path,
-        NULL);
+    entry = gst_structure_new (g_quark_to_string (simage->name),
+        "path", G_TYPE_STRING, simage->path, NULL);
 
     g_value_init (&value, G_TYPE_INT);
     g_value_init (&array, GST_TYPE_ARRAY);
