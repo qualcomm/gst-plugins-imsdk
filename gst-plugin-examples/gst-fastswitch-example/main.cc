@@ -40,10 +40,14 @@
 * --pwidth, Preview stream width
 * --pheight, Preview stream height
 * --prate, Preview stream framerate
-* --vwidth, Video stream width
-* --vheight, Video stream height
-* --vrate, Video stream framerate
+* --v1width, Video stream 1 width
+* --v1height, Video stream 1 height
+* --v1rate, Video stream 1 framerate
+* --v2width, Video stream 2 width
+* --v2height, Video stream 2 height
+* --v2rate, Video stream 2 framerate
 * --switch_delay, Delay of switch
+* --round, Round to Switch
 *
 * Description:
 * Switch bewteen preview stream and preview + video stream.
@@ -55,18 +59,20 @@
 #include <glib-unix.h>
 
 // Macro defination
+#define DEFAULT_VIDEOSTREAM_NUMBER 1
 #define DEFAULT_VIDEOSTREAM_FORMAT "NV12"
 #define DEFAULT_VIDEOSTREAM_WIDTH 1920
 #define DEFAULT_VIDEOSTREAM_HEIGHT 1080
 #define DEFAULT_VIDEOSTREAM_FPS_NUMERATOR 30
 #define DEFAULT_VIDEOSTREAM_FPS_DENOMINATOR 1
-#define DEFAULT_VIDEOSTREAM_FILE_LOCATION "/data/fast-switch.mp4"
+#define DEFAULT_VIDEOSTREAM_FILE_LOCATION "/data/fast-switch_%d.mp4"
 #define DEFAULT_PREVIEWSTREAM_FORMAT "NV12"
 #define DEFAULT_PREVIEWSTREAM_WIDTH 1920
 #define DEFAULT_PREVIEWSTREAM_HEIGHT 1080
 #define DEFAULT_PREVIEWSTREAM_FPS_NUMERATOR 30
 #define DEFAULT_PREVIEWSTREAM_FPS_DENOMINATOR 1
 #define DEFAULT_SWITCH_DELAY 5
+#define DEFAULT_ROUND G_MININT32
 
 typedef struct _GstAppContext GstAppContext;
 typedef struct _GstVideoStreamInfo GstVideoStreamInfo;
@@ -109,11 +115,11 @@ struct _GstAppContext {
   GMainLoop* mloop;
   GstElement* pipeline;
   GstElement* source;
-  GstVideoStreamInfo* videostream;
+  GList* vstreams_list;
   GstPreviewStreamInfo* previewstream;
   gboolean exit;
+  gint round;
 };
-
 
 /*** Function ***/
 // Declaration
@@ -163,14 +169,15 @@ source_remove (GstAppContext* appctx)
 
 // Init GstAppContext
 static gboolean
-appcontext_create (GstAppContext* appctx)
+appcontext_create (GstAppContext* appctx, const gint vnum)
 {
   appctx->mloop = NULL;
   appctx->pipeline = NULL;
   appctx->source = NULL;
-  appctx->videostream = NULL;
+  appctx->vstreams_list = NULL;
   appctx->previewstream = NULL;
   appctx->exit = FALSE;
+  appctx->round = DEFAULT_ROUND;
 
   appctx->mloop = g_main_loop_new (NULL, FALSE);
   if (!appctx->mloop) {
@@ -189,15 +196,23 @@ appcontext_create (GstAppContext* appctx)
     return FALSE;
   }
 
-  appctx->previewstream = g_new0 (GstPreviewStreamInfo, 1);
-  if (!appctx->previewstream) {
-    g_printerr ("ERROR: failed to allocate previewstream.\n");
+  for (gint i = 1; i <= vnum; ++i) {
+    GstVideoStreamInfo* videostream = NULL;
+    videostream = g_new0 (GstVideoStreamInfo, 1);
+    if (!videostream) {
+      g_printerr ("ERROR: failed to allocate videostream.\n");
+      return FALSE;
+    }
+    appctx->vstreams_list = g_list_append (appctx->vstreams_list, videostream);
+  }
+  if (!appctx->vstreams_list) {
+    g_printerr ("ERROR: failed to create video streams list.\n");
     return FALSE;
   }
 
-  appctx->videostream = g_new0 (GstVideoStreamInfo, 1);
-  if (!appctx->videostream) {
-    g_printerr ("ERROR: failed to allocate videostream.\n");
+  appctx->previewstream = g_new0 (GstPreviewStreamInfo, 1);
+  if (!appctx->previewstream) {
+    g_printerr ("ERROR: failed to allocate previewstream.\n");
     return FALSE;
   }
 
@@ -208,6 +223,8 @@ appcontext_create (GstAppContext* appctx)
 static void
 appcontext_delete (GstAppContext* appctx)
 {
+  GList* list = g_list_first (appctx->vstreams_list);
+
   // Remove the source element
   source_remove (appctx);
 
@@ -217,11 +234,12 @@ appcontext_delete (GstAppContext* appctx)
   if (appctx->pipeline)
     gst_object_unref (appctx->pipeline);
 
+  for (list = appctx->vstreams_list; list != NULL; list = list->next) {
+    g_free (list->data);
+  }
+
   if (appctx->previewstream)
     g_free (appctx->previewstream);
-
-  if (appctx->videostream)
-    g_free (appctx->videostream);
 
   g_free (appctx);
 
@@ -324,8 +342,6 @@ static gboolean
 interrupt_handler (gpointer userdata)
 {
   GstAppContext* appctx = (GstAppContext*) userdata;
-  GstVideoStreamInfo* videostream = appctx->videostream;
-  GstPreviewStreamInfo* previewstream = appctx->previewstream;
   GstState state = GST_STATE_NULL;
   gboolean ret = FALSE;
 
@@ -355,12 +371,11 @@ stream_meta_configure (MetaInfo* meta,
   meta->framerate = fps;
 }
 
-// Create streams and set to PAUSED to configure_streams once
+// Create Preview stream
 static gboolean
-streams_create (GstAppContext* appctx)
+preview_stream_create (GstAppContext* appctx)
 {
   GstPreviewStreamInfo* previewstream = NULL;
-  GstVideoStreamInfo* videostream = NULL;
   GstElementClass* qtiqmmfsrc_klass = NULL;
   GstPadTemplate* qtiqmmfsrc_template = NULL;
   gboolean ret = FALSE;
@@ -371,8 +386,10 @@ streams_create (GstAppContext* appctx)
       gst_element_class_get_pad_template (qtiqmmfsrc_klass, "video_%u");
 
   // Create and link for preview stream
-  g_print ("Create preview stream.\n");
   previewstream = (GstPreviewStreamInfo*)(appctx->previewstream);
+  g_print ("Create preview stream: %d x %d, %d fps\n",
+      previewstream->meta.width, previewstream->meta.height,
+      previewstream->meta.framerate);
 
   previewstream->qmmf_caps = gst_caps_new_simple ("video/x-raw",
       "format", G_TYPE_STRING, DEFAULT_PREVIEWSTREAM_FORMAT,
@@ -426,65 +443,112 @@ streams_create (GstAppContext* appctx)
     return FALSE;
   }
 
-  // Create and link for video stream
-  g_print ("Create video stream.\n");
-  videostream = (GstVideoStreamInfo*)(appctx->videostream);
+  return TRUE;
+}
 
-  videostream->qmmf_caps = gst_caps_new_simple ("video/x-raw",
-      "format", G_TYPE_STRING, DEFAULT_VIDEOSTREAM_FORMAT,
-      "width", G_TYPE_INT, videostream->meta.width,
-      "height", G_TYPE_INT, videostream->meta.height,
-      "framerate", GST_TYPE_FRACTION,
-      videostream->meta.framerate, DEFAULT_VIDEOSTREAM_FPS_DENOMINATOR,
-      NULL);
-  gst_caps_set_features (videostream->qmmf_caps, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
+// Create Video stream
+static gboolean
+video_stream_create (GstAppContext* appctx)
+{
+  GList* list = NULL;
+  GstVideoStreamInfo* videostream = NULL;
+  GstElementClass* qtiqmmfsrc_klass = NULL;
+  GstPadTemplate* qtiqmmfsrc_template = NULL;
+  gboolean ret = FALSE;
+  gchar location[] = DEFAULT_VIDEOSTREAM_FILE_LOCATION;
+  guint index = 0;
 
-  videostream->qmmf_pad = gst_element_request_pad (appctx->source,
-      qtiqmmfsrc_template, "video_%u", videostream->qmmf_caps);
-  if (!videostream->qmmf_pad) {
-    g_printerr ("ERROR: failed to request a pad of video stream.\n");
+  // Get qtiqmmfsrc element pad template
+  qtiqmmfsrc_klass = GST_ELEMENT_GET_CLASS (appctx->source);
+  qtiqmmfsrc_template =
+      gst_element_class_get_pad_template (qtiqmmfsrc_klass, "video_%u");
+
+  for (list = appctx->vstreams_list; list != NULL; list = list->next) {
+    videostream = (GstVideoStreamInfo*) (list->data);
+
+    // Create and link for video stream
+    g_print ("Create video stream: %d x %d, %d fps\n",
+        videostream->meta.width, videostream->meta.height,
+        videostream->meta.framerate);
+
+    videostream->qmmf_caps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, DEFAULT_VIDEOSTREAM_FORMAT,
+        "width", G_TYPE_INT, videostream->meta.width,
+        "height", G_TYPE_INT, videostream->meta.height,
+        "framerate", GST_TYPE_FRACTION,
+        videostream->meta.framerate, DEFAULT_VIDEOSTREAM_FPS_DENOMINATOR,
+        NULL);
+    gst_caps_set_features (videostream->qmmf_caps, 0,
+        gst_caps_features_new ("memory:GBM", NULL));
+
+    videostream->qmmf_pad = gst_element_request_pad (appctx->source,
+        qtiqmmfsrc_template, "video_%u", videostream->qmmf_caps);
+    if (!videostream->qmmf_pad) {
+      g_printerr ("ERROR: failed to request a pad of video stream.\n");
+      return FALSE;
+    }
+
+    g_print ("Pad requested - %s\n", gst_pad_get_name (videostream->qmmf_pad));
+
+    // Create other elements of video stream
+    videostream->capsfilter = gst_element_factory_make ("capsfilter", NULL);
+    videostream->encoder = gst_element_factory_make ("qtic2venc", NULL);
+    videostream->parser = gst_element_factory_make ("h264parse", NULL);
+    videostream->muxer = gst_element_factory_make ("mp4mux", NULL);
+    videostream->filesinker = gst_element_factory_make ("filesink", NULL);
+
+    if (!videostream->capsfilter || !videostream->encoder ||
+        !videostream->parser || !videostream->muxer ||
+        !videostream->filesinker) {
+      g_printerr ("ERROR: elements in video stream could not created.\n");
+      return FALSE;
+    }
+
+    // Set properties of elements
+    g_object_set (G_OBJECT (videostream->capsfilter),
+        "caps", videostream->qmmf_caps, NULL);
+
+    snprintf (location, sizeof (location), DEFAULT_VIDEOSTREAM_FILE_LOCATION, index);
+    ++index;
+    g_object_set (G_OBJECT (videostream->filesinker),
+        "location", location, NULL);
+
+    // Add elements to bin
+    gst_bin_add_many (GST_BIN (appctx->pipeline),
+        appctx->source, videostream->capsfilter,
+        videostream->encoder, videostream->parser,
+        videostream->muxer, videostream->filesinker, NULL);
+
+    // Link elements
+    ret = gst_element_link_pads_full (
+        appctx->source, gst_pad_get_name (videostream->qmmf_pad),
+        videostream->capsfilter, NULL, GST_PAD_LINK_CHECK_DEFAULT);
+
+    ret = gst_element_link_many (videostream->capsfilter, videostream->encoder,
+        videostream->parser, videostream->muxer, videostream->filesinker, NULL);
+
+    if (!ret) {
+      g_printerr ("ERROR: failed to link video stream.\n");
+      return FALSE;
+    }
+  }
+
+  return TRUE;
+}
+
+// Create streams and set to PAUSED to configure_streams once
+static gboolean
+streams_create (GstAppContext* appctx)
+{
+  // Create preview stream
+  if (!preview_stream_create (appctx)) {
+    g_printerr ("ERROR: failed to create preview stream.\n");
     return FALSE;
   }
 
-  g_print ("Pad requested - %s\n", gst_pad_get_name (videostream->qmmf_pad));
-
-  // Create other elements of video stream
-  videostream->capsfilter = gst_element_factory_make ("capsfilter", NULL);
-  videostream->encoder = gst_element_factory_make ("qtic2venc", NULL);
-  videostream->parser = gst_element_factory_make ("h264parse", NULL);
-  videostream->muxer = gst_element_factory_make ("mp4mux", NULL);
-  videostream->filesinker = gst_element_factory_make ("filesink", NULL);
-
-  if (!videostream->capsfilter || !videostream->encoder ||
-      !videostream->parser || !videostream->muxer ||
-      !videostream->filesinker) {
-    g_printerr ("ERROR: elements in video stream could not created.\n");
-    return FALSE;
-  }
-
-  // Set properties of elements
-  g_object_set (G_OBJECT (videostream->capsfilter),
-      "caps", videostream->qmmf_caps, NULL);
-  g_object_set (G_OBJECT (videostream->filesinker),
-      "location", DEFAULT_VIDEOSTREAM_FILE_LOCATION, NULL);
-
-  // Add elements to bin
-  gst_bin_add_many (GST_BIN (appctx->pipeline),
-      appctx->source, videostream->capsfilter,
-      videostream->encoder, videostream->parser,
-      videostream->muxer, videostream->filesinker, NULL);
-
-  // Link elements
-  ret = gst_element_link_pads_full (
-      appctx->source, gst_pad_get_name (videostream->qmmf_pad),
-      videostream->capsfilter, NULL, GST_PAD_LINK_CHECK_DEFAULT);
-
-  ret = gst_element_link_many (videostream->capsfilter, videostream->encoder,
-      videostream->parser, videostream->muxer, videostream->filesinker, NULL);
-
-  if (!ret) {
-    g_printerr ("ERROR: failed to link video stream.\n");
+  // Create video stream
+  if (!video_stream_create (appctx)) {
+    g_printerr ("ERROR: failed to create video stream.\n");
     return FALSE;
   }
 
@@ -498,117 +562,149 @@ streams_create (GstAppContext* appctx)
 // Delete streams
 static void
 streams_delete(GstAppContext* appctx) {
-  GstVideoStreamInfo* videostream = appctx->videostream;
+  GList* list = NULL;
   GstPreviewStreamInfo* previewstream = appctx->previewstream;
 
-  if (videostream->qmmf_pad)
-    gst_element_release_request_pad (appctx->source, videostream->qmmf_pad);
+  for (list = appctx->vstreams_list; list != NULL; list = list->next) {
+    GstVideoStreamInfo* videostream = (GstVideoStreamInfo*) (list->data);
+
+    if (videostream->qmmf_pad)
+      gst_element_release_request_pad (appctx->source, videostream->qmmf_pad);
+
+    gst_bin_remove_many (GST_BIN (appctx->pipeline),
+        videostream->capsfilter, videostream->encoder,
+        videostream->parser, videostream->muxer,
+        videostream->filesinker, NULL);
+  }
 
   if (previewstream->qmmf_pad)
     gst_element_release_request_pad (appctx->source, previewstream->qmmf_pad);
 
   gst_bin_remove_many (GST_BIN (appctx->pipeline),
-      previewstream->capsfilter, previewstream->displayer,
-      videostream->capsfilter, videostream->encoder,
-      videostream->parser, videostream->muxer,
-      videostream->filesinker, NULL);
+      previewstream->capsfilter, previewstream->displayer, NULL);
 }
 
 // Function to switch operation mode
 static gboolean
 switch_func (gpointer userdata) {
   GstAppContext* appctx = (GstAppContext*) userdata;
-  GstVideoStreamInfo* videostream = appctx->videostream;
-  GstState state = GST_STATE_NULL, state_encoder = GST_STATE_NULL;
+  GList* list = NULL;
+  GstState state_encoder = GST_STATE_NULL;
+  static GstState state = GST_STATE_NULL;
   gboolean ret = FALSE;
 
   // Check exit
   if (appctx->exit)
     return FALSE;
 
-  // Check pad activation to distinguish stream type
-  if (gst_pad_is_active (videostream->qmmf_pad)) {
+  // Round of Switch to exit
+  if (appctx->round != DEFAULT_ROUND && appctx->round >= 0) {
+    --(appctx->round);
+  } else if (appctx->round != DEFAULT_ROUND && appctx->round < 0) {
+    interrupt_handler (appctx);
+    return FALSE;
+  }
+
+  list = appctx->vstreams_list;
+  // Check pad activation to link or unlink video stream
+  if (gst_pad_is_active (((GstVideoStreamInfo*) (list->data))->qmmf_pad)) {
     g_print ("Preview + Video stream end.\n");
 
-    // Unlink video stream
-    gst_element_unlink_many (appctx->source, videostream->capsfilter, NULL);
+    for (list = appctx->vstreams_list; list != NULL; list = list->next) {
+      GstVideoStreamInfo* videostream = (GstVideoStreamInfo*) (list->data);
 
-      // Send eos in PLAYING state
-    gst_element_get_state (videostream->encoder,
-        &state_encoder, NULL, GST_CLOCK_TIME_NONE);
+      // Unlink video stream
+      gst_element_unlink_many (appctx->source, videostream->capsfilter, NULL);
 
-    if (state_encoder == GST_STATE_PLAYING)
-      gst_element_send_event (videostream->encoder, gst_event_new_eos ());
+        // Send eos in PLAYING state
+      gst_element_get_state (videostream->encoder,
+          &state_encoder, NULL, GST_CLOCK_TIME_NONE);
 
-    gst_element_set_state (videostream->capsfilter, GST_STATE_NULL);
-    gst_element_set_state (videostream->encoder, GST_STATE_NULL);
-    gst_element_set_state (videostream->parser, GST_STATE_NULL);
-    gst_element_set_state (videostream->muxer, GST_STATE_NULL);
-    gst_element_set_state (videostream->filesinker, GST_STATE_NULL);
+      if (state_encoder == GST_STATE_PLAYING)
+        gst_element_send_event (videostream->encoder, gst_event_new_eos ());
 
-      // Unlink elements
-    gst_element_unlink_many (videostream->capsfilter,
-        videostream->encoder, videostream->parser, videostream->muxer,
-        videostream->filesinker, NULL);
+      gst_element_set_state (videostream->capsfilter, GST_STATE_NULL);
+      gst_element_set_state (videostream->encoder, GST_STATE_NULL);
+      gst_element_set_state (videostream->parser, GST_STATE_NULL);
+      gst_element_set_state (videostream->muxer, GST_STATE_NULL);
+      gst_element_set_state (videostream->filesinker, GST_STATE_NULL);
 
-      // Reference to keep usage after remove from bin
-    gst_object_ref (videostream->capsfilter);
-    gst_object_ref (videostream->encoder);
-    gst_object_ref (videostream->parser);
-    gst_object_ref (videostream->muxer);
-    gst_object_ref (videostream->filesinker);
+        // Unlink elements
+      gst_element_unlink_many (videostream->capsfilter,
+          videostream->encoder, videostream->parser, videostream->muxer,
+          videostream->filesinker, NULL);
 
-      // Remove from bin
-    gst_bin_remove_many (GST_BIN (appctx->pipeline),
-        videostream->capsfilter, videostream->encoder,
-        videostream->parser, videostream->muxer,
-        videostream->filesinker, NULL);
+        // Reference to keep usage after remove from bin
+      gst_object_ref (videostream->capsfilter);
+      gst_object_ref (videostream->encoder);
+      gst_object_ref (videostream->parser);
+      gst_object_ref (videostream->muxer);
+      gst_object_ref (videostream->filesinker);
 
-      // Deactivate the pad
-    gst_pad_set_active (videostream->qmmf_pad, FALSE);
+        // Remove from bin
+      gst_bin_remove_many (GST_BIN (appctx->pipeline),
+          videostream->capsfilter, videostream->encoder,
+          videostream->parser, videostream->muxer,
+          videostream->filesinker, NULL);
 
-    // Get state and set to PLAYING if not
-    if (state != GST_STATE_PLAYING)
+        // Deactivate the pad
+      gst_pad_set_active (videostream->qmmf_pad, FALSE);
+    }
+
+    // Set to PLAYING if not
+    if (state != GST_STATE_PLAYING) {
       gst_element_set_state (appctx->pipeline, GST_STATE_PLAYING);
 
-    gst_element_get_state (appctx->pipeline, &state, NULL, GST_CLOCK_TIME_NONE);
-    if (state != GST_STATE_PLAYING) {
-      g_print ("ERROR: failed to set pipeline to PLAYING state.\n");
-      return FALSE;
+      gst_element_get_state (appctx->pipeline, &state, NULL, GST_CLOCK_TIME_NONE);
+      if (state != GST_STATE_PLAYING) {
+        g_print ("ERROR: failed to set pipeline to PLAYING state.\n");
+        return FALSE;
+      }
     }
 
     g_print ("Preview stream start.\n");
   } else {
     g_print ("Preview stream end.\n");
 
-    // Link video stream
-      // Activate the pad
-    gst_pad_set_active (videostream->qmmf_pad, TRUE);
+    for (list = appctx->vstreams_list; list != NULL; list = list->next) {
+      GstVideoStreamInfo* videostream = (GstVideoStreamInfo*) (list->data);
 
-      // Add into bin
-    gst_bin_add_many (GST_BIN (appctx->pipeline),
-        videostream->capsfilter, videostream->encoder,
-        videostream->parser, videostream->muxer,
-        videostream->filesinker, NULL);
+      // Link video stream
+        // Activate the pad
+      gst_pad_set_active (videostream->qmmf_pad, TRUE);
 
-      // Sync state
-    gst_element_sync_state_with_parent (videostream->capsfilter);
-    gst_element_sync_state_with_parent (videostream->encoder);
-    gst_element_sync_state_with_parent (videostream->parser);
-    gst_element_sync_state_with_parent (videostream->muxer);
-    gst_element_sync_state_with_parent (videostream->filesinker);
+        // Add into bin
+      gst_bin_add_many (GST_BIN (appctx->pipeline),
+          videostream->capsfilter, videostream->encoder,
+          videostream->parser, videostream->muxer,
+          videostream->filesinker, NULL);
 
-      // Link elements
-    ret = gst_element_link_pads_full (
-        appctx->source, gst_pad_get_name (videostream->qmmf_pad),
-        videostream->capsfilter, NULL, GST_PAD_LINK_CHECK_DEFAULT);
+        // Sync state
+      gst_element_sync_state_with_parent (videostream->capsfilter);
+      gst_element_sync_state_with_parent (videostream->encoder);
+      gst_element_sync_state_with_parent (videostream->parser);
+      gst_element_sync_state_with_parent (videostream->muxer);
+      gst_element_sync_state_with_parent (videostream->filesinker);
 
-    ret = gst_element_link_many (videostream->capsfilter,
-        videostream->encoder, videostream->parser, videostream->muxer,
-        videostream->filesinker, NULL);
+        // Link elements
+      ret = gst_element_link_pads_full (
+          appctx->source, gst_pad_get_name (videostream->qmmf_pad),
+          videostream->capsfilter, NULL, GST_PAD_LINK_CHECK_DEFAULT);
 
-    if (!ret)
-      g_printerr ("ERROR: failed to link video stream.\n");
+      if (!ret) {
+        g_printerr ("ERROR: failed to link video pad.\n");
+        return FALSE;
+      }
+
+      ret = gst_element_link_many (videostream->capsfilter,
+          videostream->encoder, videostream->parser, videostream->muxer,
+          videostream->filesinker, NULL);
+
+      if (!ret) {
+        g_printerr ("ERROR: failed to link video stream.\n");
+        return FALSE;
+      }
+    }
 
     g_print ("Preview + Video stream start.\n");
   }
@@ -617,17 +713,23 @@ switch_func (gpointer userdata) {
 }
 
 gint
-main (gint argc, gchar* argv[]) {
+main (gint argc, gchar* argv[])
+{
   GstAppContext* appctx = NULL;
   guint interrupt = 0;
   GOptionContext* ctx = NULL;
   gint previewfps = DEFAULT_PREVIEWSTREAM_FPS_NUMERATOR;
   gint previewwidth = DEFAULT_PREVIEWSTREAM_WIDTH;
   gint previewheight = DEFAULT_PREVIEWSTREAM_HEIGHT;
-  gint videofps = DEFAULT_VIDEOSTREAM_FPS_NUMERATOR;
-  gint videowidth = DEFAULT_VIDEOSTREAM_WIDTH;
-  gint videoheight = DEFAULT_VIDEOSTREAM_HEIGHT;
+  gint vnum = DEFAULT_VIDEOSTREAM_NUMBER;
+  gint videowidth_1 = DEFAULT_VIDEOSTREAM_WIDTH;
+  gint videoheight_1 = DEFAULT_VIDEOSTREAM_HEIGHT;
+  gint videofps_1 = DEFAULT_VIDEOSTREAM_FPS_NUMERATOR;
+  gint videowidth_2 = DEFAULT_VIDEOSTREAM_WIDTH;
+  gint videoheight_2 = DEFAULT_VIDEOSTREAM_HEIGHT;
+  gint videofps_2 = DEFAULT_VIDEOSTREAM_FPS_NUMERATOR;
   gint switchdelay = DEFAULT_SWITCH_DELAY;
+  gint round = DEFAULT_ROUND;
 
   // Configure input parameters
   GOptionEntry entries[] = {
@@ -646,25 +748,50 @@ main (gint argc, gchar* argv[]) {
       "previewfps",
       "Preview Stream Framerate"
     },
-    { "vwidth", 0, 0, G_OPTION_ARG_INT,
-      &videowidth,
-      "videowidth",
-      "Video Stream Width"
+    { "vnum", 0, 0, G_OPTION_ARG_INT,
+      &vnum,
+      "videonumber",
+      "Video Stream Number"
     },
-    { "vheight", 0, 0, G_OPTION_ARG_INT,
-      &videoheight,
-      "videoheight",
-      "Video Stream Height"
+    { "v1width", 0, 0, G_OPTION_ARG_INT,
+      &videowidth_1,
+      "video1width",
+      "Video Stream 1 Width"
     },
-    { "vrate", 0, 0, G_OPTION_ARG_INT,
-      &videofps,
-      "videofps",
-      "Video Stream Framerate"
+    { "v1height", 0, 0, G_OPTION_ARG_INT,
+      &videoheight_1,
+      "video1height",
+      "Video Stream 1 Height"
+    },
+    { "v1rate", 0, 0, G_OPTION_ARG_INT,
+      &videofps_1,
+      "video1fps",
+      "Video Stream 1 Framerate"
+    },
+    { "v2width", 0, 0, G_OPTION_ARG_INT,
+      &videowidth_2,
+      "video2width",
+      "Video Stream 2 Width"
+    },
+    { "v2height", 0, 0, G_OPTION_ARG_INT,
+      &videoheight_2,
+      "video2height",
+      "Video Stream 2 Height"
+    },
+    { "v2rate", 0, 0, G_OPTION_ARG_INT,
+      &videofps_2,
+      "video2fps",
+      "Video Stream 2 Framerate"
     },
     { "switch_delay", 0, 0, G_OPTION_ARG_INT,
       &switchdelay,
       "switchdelay",
       "Switch Delay"
+    },
+    { "round", 0, 0, G_OPTION_ARG_INT,
+      &round,
+      "round",
+      "Round to Switch"
     },
     { NULL }
   };
@@ -704,7 +831,7 @@ main (gint argc, gchar* argv[]) {
   }
 
   // Create GstAppContext
-  if (!appcontext_create (appctx)) {
+  if (!appcontext_create (appctx, vnum)) {
     g_printerr ("ERROR: failed to init GstAppContext.\n");
     goto cleanup;
   }
@@ -719,8 +846,21 @@ main (gint argc, gchar* argv[]) {
   // Configure meta of stream
   stream_meta_configure (&appctx->previewstream->meta,
       previewwidth, previewheight, previewfps);
-  stream_meta_configure (&appctx->videostream->meta,
-      videowidth, videoheight, videofps);
+  if (vnum == 1) {
+    GList* list = g_list_nth (appctx->vstreams_list, 0);
+    stream_meta_configure (&(((GstVideoStreamInfo*)(list->data))->meta),
+        videowidth_1, videoheight_1, videofps_1);
+  } else if (vnum == 2) {
+    GList* list = g_list_nth (appctx->vstreams_list, 0);
+    stream_meta_configure (&(((GstVideoStreamInfo*)(list->data))->meta),
+        videowidth_1, videoheight_1, videofps_1);
+    list = g_list_nth (appctx->vstreams_list, 1);
+    stream_meta_configure (&(((GstVideoStreamInfo*)(list->data))->meta),
+        videowidth_2, videoheight_2, videofps_2);
+  } else {
+    g_print ("ERROR: wrong video stream number, Select between 1 or 2.\n");
+    goto cleanup;
+  }
 
   // Create Streams
   if (!streams_create (appctx)) {
@@ -729,6 +869,7 @@ main (gint argc, gchar* argv[]) {
   }
 
   // Call once to skip the first round of delay
+  appctx->round = round;
   switch_func (appctx);
 
   // Add function to switch
