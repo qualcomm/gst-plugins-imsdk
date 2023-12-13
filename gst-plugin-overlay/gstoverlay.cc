@@ -1538,6 +1538,10 @@ gst_overlay_apply_overlay (GstOverlay *gst_overlay, GstVideoFrame *frame)
   GstMemory *memory = gst_buffer_peek_memory (frame->buffer, 0);
   guint fd = gst_fd_memory_get_fd (memory);
 
+  if (frame->buffer->pool == NULL) {
+    gst_overlay->overlay->DisableInputSurfaceCache ();
+  }
+
   OverlayTargetBuffer overlay_buf;
   overlay_buf.width     = GST_VIDEO_FRAME_WIDTH (frame);
   overlay_buf.height    = GST_VIDEO_FRAME_HEIGHT (frame);
@@ -2814,7 +2818,7 @@ gst_overlay_set_info (GstVideoFilter * filter, GstCaps * in,
 }
 
 /**
- * gst_overlay_set_info:
+ * gst_overlay_transform_frame_ip:
  * @filter: gst overlay object
  * @frame: GST video buffer
  *

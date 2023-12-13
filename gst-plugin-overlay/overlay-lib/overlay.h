@@ -314,6 +314,12 @@ public:
   // updates specified overlay items, disables inactive overlay items.
   int32_t ProcessOverlayItems (const std::vector<OverlayParam>& overlay_list);
 
+  // Disables the caching of input surfaces
+  // we are maintaining the map of surface ID and FD from buffer
+  // In case the input buffers are not acquired from buffer pool, the map grows
+  // monotonically. To avoid this, we need to disable caching
+  void DisableInputSurfaceCache ();
+
 private:
 
 #ifdef ENABLE_C2D
@@ -351,6 +357,7 @@ private:
   uint32_t id_;
   std::mutex lock_;
   OverlayBlitType blit_type_;
+  bool in_surf_cache_ = true;
 };
 
 }; // namespace overlay
