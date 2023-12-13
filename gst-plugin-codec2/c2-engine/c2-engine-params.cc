@@ -40,10 +40,10 @@
 
 static const std::unordered_map<std::string, uint32_t> kH264Profiles = {
   { "baseline", GST_C2_PROFILE_AVC_BASELINE },
-  { "constraint-baseline", GST_C2_PROFILE_AVC_CONSTRAINT_BASELINE },
+  { "constrained-baseline", GST_C2_PROFILE_AVC_CONSTRAINED_BASELINE },
   { "main", GST_C2_PROFILE_AVC_MAIN },
   { "high", GST_C2_PROFILE_AVC_HIGH },
-  { "constraint-high", GST_C2_PROFILE_AVC_CONSTRAINT_HIGH },
+  { "constrained-high", GST_C2_PROFILE_AVC_CONSTRAINED_HIGH },
 };
 
 static const std::unordered_map<std::string, uint32_t> kH265Profiles = {
