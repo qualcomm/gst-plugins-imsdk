@@ -12,4 +12,5 @@ pkg_check_modules(GST
 
 if (ENABLE_AUDIO)
   add_subdirectory(gst-audio-decode-example)
+  add_subdirectory(gst-audio-encode-example)
 endif() # ENABLE_AUDIO
