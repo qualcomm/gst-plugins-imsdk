@@ -78,7 +78,13 @@ ensure_debug_category (void)
 #define OVDBG_DEBUG(...) GST_DEBUG(__VA_ARGS__)
 #define OVDBG_VERBOSE(...) GST_LOG(__VA_ARGS__)
 #else
+#ifdef HAVE_ANDROID_UTILS
 #include <utils/Log.h>
+#else
+#include <log.h>
+#undef LOG_TAG
+#define LOG_TAG "Overlay"
+#endif
 #define OVDBG_INFO(fmt, args...)  ALOGI(fmt, ##args)
 #define OVDBG_ERROR(fmt, args...) ALOGE(fmt, ##args)
 #define OVDBG_WARN(fmt, args...)  ALOGW(fmt, ##args)
