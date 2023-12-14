@@ -38,12 +38,13 @@ target_compile_definitions(overlay_lib PRIVATE
 install(TARGETS overlay_lib DESTINATION lib OPTIONAL)
 target_link_libraries(overlay_lib
   dl
-  log
   pthread
-  utils
-  cutils
   cairo
   OpenCL
+  $<$<BOOL:${HAVE_ANDROID_UTILS}>:log>
+  $<$<BOOL:${HAVE_ANDROID_UTILS}>:utils>
+  $<$<BOOL:${HAVE_ANDROID_UTILS}>:cutils>
+  $<$<NOT:$<BOOL:${HAVE_ANDROID_UTILS}>>:propertyvault>
   $<$<BOOL:${HAVE_C2D_H}>:C2D2>
 )
 
