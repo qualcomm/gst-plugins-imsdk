@@ -38,13 +38,7 @@
 #include <gst/gst.h>
 #include <gst/base/gstbasetransform.h>
 #include <gst/video/video.h>
-
-#ifdef USE_C2D_CONVERTER
-#include <gst/video/c2d-video-converter.h>
-#endif // USE_C2D_CONVERTER
-#ifdef USE_GLES_CONVERTER
-#include <gst/video/gles-video-converter.h>
-#endif // USE_GLES_CONVERTER
+#include <gst/video/video-converter-engine.h>
 
 #include "overlayutils.h"
 
@@ -78,15 +72,11 @@ struct _GstVOverlay {
   /// Video info for the intermediary buffers produced by the pools.
   GstVideoInfo         *ovlinfos[GST_OVERLAY_TYPE_MAX];
 
-  /// Supported converters.
-#ifdef USE_C2D_CONVERTER
-  GstC2dVideoConverter *c2dconvert;
-#endif // USE_C2D_CONVERTER
-#ifdef USE_GLES_CONVERTER
-  GstGlesVideoConverter *glesconvert;
-#endif // USE_GLES_CONVERTER
+  /// Video converter engine.
+  GstVideoConvEngine   *converter;
 
   /// Properties.
+  GstVideoConvBackend  backend;
   GArray               *bboxes;
   GArray               *timestamps;
   GArray               *strings;
