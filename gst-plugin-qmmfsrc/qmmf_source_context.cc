@@ -1557,7 +1557,9 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad)
   } else if (ipad->codec == GST_IMAGE_CODEC_NONE) {
     switch (ipad->format) {
       case GST_VIDEO_FORMAT_NV12:
-        imgparam.format = ::qmmf::recorder::ImageFormat::kNV12;
+        imgparam.format = (ipad->subformat == GST_IMAGE_SUBFORMAT_HEIF) ?
+            ::qmmf::recorder::ImageFormat::kNV12HEIF :
+            ::qmmf::recorder::ImageFormat::kNV12;
         break;
       case GST_VIDEO_FORMAT_NV21:
         imgparam.format = ::qmmf::recorder::ImageFormat::kNV21;
