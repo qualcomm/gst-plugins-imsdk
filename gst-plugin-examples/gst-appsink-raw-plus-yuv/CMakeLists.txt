@@ -1,3 +1,7 @@
+# Get the pkgconfigs exported by the automake tools
+pkg_check_modules(GST_VIDEO
+  REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
+
 # GStreamer appsink example
 set(GST_EXAMPLE_BIN gst-appsink-raw-plus-yuv-example)
 
