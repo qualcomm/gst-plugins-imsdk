@@ -958,8 +958,8 @@ set_tag (GstElement * pipeline, const gchar * section_name,
 
 free:
   if (meta != NULL) {
-    meta->clear ();
     delete meta;
+    meta = NULL;
   }
   gst_object_unref (camsrc);
 
@@ -1462,11 +1462,14 @@ print_menu ()
 
 static gboolean
 handle_tag_menu (GstAppContext * appctx, gchar * prop,
-    ::camera::CameraMetadata * meta, GstMetadataMenuOption option)
+    GstMetadataMenuOption option)
 {
   gchar *str = NULL;
   gchar *section = NULL, *tag = NULL, *type = NULL, *value = NULL;
   gboolean active = TRUE;
+
+  ::camera::CameraMetadata *meta = nullptr;
+  GstElement *camsrc = NULL;
 
   while (TRUE) {
     g_print ("Enter section name and tag name separated by space " \
@@ -1482,21 +1485,24 @@ handle_tag_menu (GstAppContext * appctx, gchar * prop,
     if (!validate_input_tag (str, &section, &tag))
       continue;
 
-    {
-      // Refresh stale metadata.
-      if (meta != NULL) {
-        meta->clear ();
-        delete meta;
-      }
+    camsrc = get_element_from_pipeline (appctx->pipeline,
+        "qtiqmmfsrc");
+    g_object_get (G_OBJECT (camsrc), prop, &meta, NULL);
+    gst_object_unref (camsrc);
 
-      GstElement *camsrc = get_element_from_pipeline (appctx->pipeline,
-          "qtiqmmfsrc");
-      g_object_get (G_OBJECT (camsrc), prop, &meta, NULL);
-      gst_object_unref (camsrc);
+    if (meta == NULL) {
+      g_printerr ("ERROR: Meta not found\n");
+      goto exit;
     }
 
     value = get_tag (section, tag, meta, &type);
     g_print ("Current value = %s\n", value);
+
+    // Delete metadata after being used.
+    if (meta != NULL) {
+      delete meta;
+      meta = NULL;
+    }
 
     if (value == NULL) {
       g_free (section);
@@ -1576,8 +1582,8 @@ collect_tags_menu_sessionmetadata (GstAppContext * appctx, gchar * prop,
 
 exit:
   if (meta_static != NULL) {
-    meta_static->clear ();
     delete meta_static;
+    meta_static = NULL;
   }
   gst_object_unref (camsrc);
 
@@ -1636,11 +1642,11 @@ handle_metadata_menu (GstAppContext * appctx,
         }
         break;
       case GET_TAG:
-        active = handle_tag_menu (appctx, *prop, meta, GET_TAG);
+        active = handle_tag_menu (appctx, *prop, GET_TAG);
         break;
       case SET_TAG:
         if (g_str_equal (*prop, "video-metadata"))
-          active = handle_tag_menu (appctx, *prop, meta, SET_TAG);
+          active = handle_tag_menu (appctx, *prop, SET_TAG);
         break;
       default:
         break;
@@ -1662,8 +1668,8 @@ handle_metadata_menu (GstAppContext * appctx,
 
 exit:
   if (meta != NULL) {
-    meta->clear ();
     delete meta;
+    meta = NULL;
   }
 
   g_free (str);
@@ -2037,8 +2043,8 @@ main_menu (gpointer userdata)
   }
 
   if (meta_collect != NULL) {
-    meta_collect->clear ();
     delete meta_collect;
+    meta_collect = NULL;
   }
 
   if (element != NULL)
