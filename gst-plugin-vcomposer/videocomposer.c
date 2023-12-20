@@ -425,7 +425,7 @@ gst_video_composer_populate_frames_and_composition (
       continue;
 
     if (!gst_video_composer_prepare_input_frame (vcomposer, sinkpad, inframe)) {
-      GST_ERROR_OBJECT (vcomposer, "Failed to prepare input frame!");
+      GST_TRACE_OBJECT (vcomposer, "Failed to prepare input frame!");
       GST_OBJECT_UNLOCK (vcomposer);
       return FALSE;
     }
