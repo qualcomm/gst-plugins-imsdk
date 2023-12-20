@@ -271,9 +271,12 @@ capture_get_imgtype (gint * imgtype)
 
 static gboolean
 capture_prepare_metadata (GstAppContext *ctx, GPtrArray * gmetas,
-    gint n_snapshots)
+    gboolean awb_ae_unlock)
 {
   ::camera::CameraMetadata *meta = nullptr;
+  ::camera::CameraMetadata *metadata = nullptr;
+  guchar afmode = 0;
+  guchar noisemode = 0;
 
   // Get high quality metadata, which will be used for submitting capture-image.
   g_object_get (G_OBJECT (ctx->camsrc), "image-metadata", &meta, NULL);
@@ -282,33 +285,31 @@ capture_prepare_metadata (GstAppContext *ctx, GPtrArray * gmetas,
     goto cleanupset;
   }
 
-  gmetas = g_ptr_array_new_full (0, gst_camera_metadata_release);
-  if (!gmetas) {
-    g_printerr ("failed to create metas array\n");
-    goto cleanupset;
-  }
+  // Remove last metadata saved in gmetas.
+  if (gmetas->len > 0)
+    g_ptr_array_remove_range (gmetas, 0, gmetas->len);
 
   // Capture burst of images with metadata.
   // Modify a copy of the capture metadata and add it to the meta array.
-  for (guint i_meta = 0; i_meta < n_snapshots; i_meta++) {
-    ::camera::CameraMetadata *metadata = new ::camera::CameraMetadata(*meta);
+  metadata = new ::camera::CameraMetadata(*meta);
 
-    // Set OFF focus mode
-    guchar afmode = ANDROID_CONTROL_AF_MODE_OFF;
-    metadata->update(ANDROID_CONTROL_AF_MODE, &afmode, 1);
+  // Set OFF focus mode and ensure noise mode is not high quality.
+  afmode = ANDROID_CONTROL_AF_MODE_OFF;
+  metadata->update(ANDROID_CONTROL_AF_MODE, &afmode, 1);
+  noisemode = ANDROID_NOISE_REDUCTION_MODE_FAST;
+  metadata->update(ANDROID_NOISE_REDUCTION_MODE, &noisemode, 1);
 
-    if (1 == i_meta) {
-      // Unlock AWB in second capture.
-      guchar awbmode = ANDROID_CONTROL_AWB_LOCK_OFF;
-      metadata->update(ANDROID_CONTROL_AWB_LOCK, &awbmode, 1);
+  if (awb_ae_unlock) {
+    // Unlock AWB in second capture.
+    guchar awbmode = ANDROID_CONTROL_AWB_LOCK_OFF;
+    metadata->update(ANDROID_CONTROL_AWB_LOCK, &awbmode, 1);
 
-      // Unlock AEC in second capture.
-      guchar lock = ANDROID_CONTROL_AE_LOCK_OFF;
-      metadata->update(ANDROID_CONTROL_AE_LOCK, &lock, 1);
-    }
-
-    g_ptr_array_add (gmetas, (gpointer) metadata);
+    // Unlock AEC in second capture.
+    guchar lock = ANDROID_CONTROL_AE_LOCK_OFF;
+    metadata->update(ANDROID_CONTROL_AE_LOCK, &lock, 1);
   }
+
+  g_ptr_array_add (gmetas, (gpointer) metadata);
 
   return TRUE;
 
@@ -325,7 +326,7 @@ capture_thread (gpointer userdata)
   GstAppContext *ctx = (GstAppContext *)userdata;
   GPtrArray *gmetas = NULL;
   gint imgtype;
-  gboolean success = FALSE, error = TRUE;
+  gboolean success = FALSE, error = TRUE, awb_ae_unlock = FALSE;
   guint i_snap = 0;
   guint i_round = 0;
   gint64 end_time;
@@ -366,10 +367,10 @@ capture_thread (gpointer userdata)
     goto cleanup;
   }
 
-  // Set compensation.
-  success = capture_prepare_metadata (ctx, gmetas, n_snapshots);
-  if (!success) {
-    g_printerr ("capture_prepare_metadata() fail ...\n");
+  // Init gmetas
+  gmetas = g_ptr_array_new_full (0, gst_camera_metadata_release);
+  if (!gmetas) {
+    g_printerr ("failed to create metas array\n");
     goto cleanup;
   }
 
@@ -409,6 +410,14 @@ capture_thread (gpointer userdata)
 
         error = FALSE;
         g_mutex_unlock (&ctx->mutex);
+        goto cleanup;
+      }
+
+      // Set compensation for each i_snap
+      awb_ae_unlock = (i_snap) == 1 ? TRUE : FALSE;
+      success = capture_prepare_metadata (ctx, gmetas, awb_ae_unlock);
+      if (!success) {
+        g_printerr ("capture_prepare_metadata() fail in %d snap...\n", i_snap);
         goto cleanup;
       }
 
