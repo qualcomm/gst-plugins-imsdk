@@ -427,6 +427,10 @@ handle_stdin_source (GIOChannel * source, GIOCondition condition,
       g_printerr ("ERROR: Unknown error!\n");
 
       return FALSE;
+    } else if ((G_IO_STATUS_AGAIN != status) && (NULL == input)) {
+      g_printerr ("ERROR: Input is NULL!\n");
+
+      return FALSE;
     }
   } while (status == G_IO_STATUS_AGAIN);
 
@@ -447,8 +451,7 @@ wait_stdin_message (GAsyncQueue * queue, gchar ** input)
   GstStructure *message = NULL;
 
   // Clear input from previous use.
-  g_free (*input);
-  *input = NULL;
+  g_clear_pointer (input, g_free);
 
   // Block the thread until there's no input from the user
   // or eos/error msg occurs.
@@ -459,10 +462,11 @@ wait_stdin_message (GAsyncQueue * queue, gchar ** input)
       return FALSE;
     }
 
-    if (gst_structure_has_name (message, STDIN_MESSAGE)) {
+    if (gst_structure_has_name (message, STDIN_MESSAGE))
       *input = g_strdup (gst_structure_get_string (message, "input"));
+
+    if (*input != NULL)
       break;
-    }
 
     // Clear message to terminate the loop after having popped the data.
     gst_structure_free (message);
