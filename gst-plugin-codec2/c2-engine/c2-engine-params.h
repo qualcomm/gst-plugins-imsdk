@@ -44,6 +44,9 @@ G_BEGIN_DECLS
 #define GST_VIDEO_BUFFER_FLAG_SYNC (GST_VIDEO_BUFFER_FLAG_LAST << 0)
 // GST Buffer flag for frame with UBWC.
 #define GST_VIDEO_BUFFER_FLAG_UBWC (GST_VIDEO_BUFFER_FLAG_LAST << 1)
+// GST Buffer flag for frame with HEIC encoding.
+#define GST_VIDEO_BUFFER_FLAG_HEIC (GST_VIDEO_BUFFER_FLAG_LAST << 2)
+
 
 // Maximum number of regions for encoding.
 #define GST_C2_MAX_RECT_ROI_NUM    20
