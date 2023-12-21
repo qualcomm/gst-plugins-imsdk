@@ -485,106 +485,82 @@ gst_video_split_update_params (GstVideoSplit * vsplit, guint index,
     GstVideoRegionOfInterestMeta * roimeta)
 {
   GstStructure *opts = NULL;
-  GValue srcrects = G_VALUE_INIT, dstrects = G_VALUE_INIT;
-  GValue entry = G_VALUE_INIT, value = G_VALUE_INIT;
-  GstVideoRectangle inrect = {0,0,0,0}, outrect = {0,0,0,0};
+  GArray *s_rects = NULL, *d_rects = NULL;
+  GstVideoRectangle *s_region = NULL, *d_region = NULL;
   gint par_n = 0, par_d = 0, sar_n = 0, sar_d = 0, num = 0, den = 0;
 
-  g_value_init (&srcrects, GST_TYPE_ARRAY);
-  g_value_init (&dstrects, GST_TYPE_ARRAY);
+  s_rects = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoRectangle), 1);
+  d_rects = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoRectangle), 1);
 
-  g_value_init (&entry, GST_TYPE_ARRAY);
-  g_value_init (&value, G_TYPE_INT);
+  g_array_set_size (s_rects, 1);
+  g_array_set_size (d_rects, 1);
+
+  s_region = &(g_array_index (s_rects, GstVideoRectangle, 0));
 
   // If available extract coordinates and dimensions from ROI meta.
-  inrect.x = roimeta ? (gint) roimeta->x : 0;
-  inrect.y = roimeta ? (gint) roimeta->y : 0;
-  inrect.w = roimeta ? (gint) roimeta->w : GST_VIDEO_FRAME_WIDTH (inframe);
-  inrect.h = roimeta ? (gint) roimeta->h : GST_VIDEO_FRAME_HEIGHT (inframe);
-
-  g_value_set_int (&value, inrect.x);
-  gst_value_array_append_value (&entry, &value);
-  g_value_set_int (&value, inrect.y);
-  gst_value_array_append_value (&entry, &value);
-  g_value_set_int (&value, inrect.w);
-  gst_value_array_append_value (&entry, &value);
-  g_value_set_int (&value, inrect.h);
-  gst_value_array_append_value (&entry, &value);
-
-  gst_value_array_append_value (&srcrects, &entry);
-  g_value_reset (&entry);
+  s_region->x = roimeta ? (gint) roimeta->x : 0;
+  s_region->y = roimeta ? (gint) roimeta->y : 0;
+  s_region->w = roimeta ? (gint) roimeta->w : GST_VIDEO_FRAME_WIDTH (inframe);
+  s_region->h = roimeta ? (gint) roimeta->h : GST_VIDEO_FRAME_HEIGHT (inframe);
 
   // Fill output PAR (Pixel Aspect Ratio), will be used to calculations.
   par_n = GST_VIDEO_INFO_PAR_N (&(outframe)->info);
   par_d = GST_VIDEO_INFO_PAR_D (&(outframe)->info);
 
   // Calculate input SAR (Source Aspect Ratio) value.
-  if (!gst_util_fraction_multiply (inrect.w, inrect.h, par_n, par_d,
+  if (!gst_util_fraction_multiply (s_region->w, s_region->h, par_n, par_d,
           &sar_n, &sar_d))
     sar_n = sar_d = 1;
 
-  outrect.x = 0;
-  outrect.y = 0;
-  outrect.w = GST_VIDEO_FRAME_WIDTH (outframe);
-  outrect.h = GST_VIDEO_FRAME_HEIGHT (outframe);
+  d_region = &(g_array_index (d_rects, GstVideoRectangle, 0));
+
+  d_region->x = 0;
+  d_region->y = 0;
+  d_region->w = GST_VIDEO_FRAME_WIDTH (outframe);
+  d_region->h = GST_VIDEO_FRAME_HEIGHT (outframe);
 
   // Adjust destination dimensions to preserve SAR.
   gst_util_fraction_multiply (sar_n, sar_d, par_d, par_n, &num, &den);
 
   if (num > den) {
-    outrect.h = gst_util_uint64_scale_int (outrect.w, den, num);
+    d_region->h = gst_util_uint64_scale_int (d_region->w, den, num);
 
     // Clip height if outside the limit and recalculate width.
-    if (outrect.h > GST_VIDEO_FRAME_HEIGHT (outframe)) {
-      outrect.h = GST_VIDEO_FRAME_HEIGHT (outframe);
-      outrect.w = gst_util_uint64_scale_int (outrect.h, num, den);
-      outrect.x = (GST_VIDEO_FRAME_WIDTH (outframe) - outrect.w) / 2;
+    if (d_region->h > GST_VIDEO_FRAME_HEIGHT (outframe)) {
+      d_region->h = GST_VIDEO_FRAME_HEIGHT (outframe);
+      d_region->w = gst_util_uint64_scale_int (d_region->h, num, den);
+      d_region->x = (GST_VIDEO_FRAME_WIDTH (outframe) - d_region->w) / 2;
     }
 
-    outrect.y = (GST_VIDEO_FRAME_HEIGHT (outframe) - outrect.h) / 2;
+    d_region->y = (GST_VIDEO_FRAME_HEIGHT (outframe) - d_region->h) / 2;
   } else if (num < den) {
-    outrect.w = gst_util_uint64_scale_int (outrect.h, num, den);
+    d_region->w = gst_util_uint64_scale_int (d_region->h, num, den);
 
     // Clip width if outside the limit and recalculate height.
-    if (outrect.w > GST_VIDEO_FRAME_WIDTH (outframe)) {
-      outrect.w = GST_VIDEO_FRAME_WIDTH (outframe);
-      outrect.h = gst_util_uint64_scale_int (outrect.w, den, num);
-      outrect.y = (GST_VIDEO_FRAME_HEIGHT (outframe) - outrect.h) / 2;
+    if (d_region->w > GST_VIDEO_FRAME_WIDTH (outframe)) {
+      d_region->w = GST_VIDEO_FRAME_WIDTH (outframe);
+      d_region->h = gst_util_uint64_scale_int (d_region->w, den, num);
+      d_region->y = (GST_VIDEO_FRAME_HEIGHT (outframe) - d_region->h) / 2;
     }
 
-    outrect.x = (GST_VIDEO_FRAME_WIDTH (outframe) - outrect.w) / 2;
+    d_region->x = (GST_VIDEO_FRAME_WIDTH (outframe) - d_region->w) / 2;
   }
-
-  g_value_set_int (&value, outrect.x);
-  gst_value_array_append_value (&entry, &value);
-  g_value_set_int (&value, outrect.y);
-  gst_value_array_append_value (&entry, &value);
-  g_value_set_int (&value, outrect.w);
-  gst_value_array_append_value (&entry, &value);
-  g_value_set_int (&value, outrect.h);
-  gst_value_array_append_value (&entry, &value);
-
-  gst_value_array_append_value (&dstrects, &entry);
-  g_value_reset (&entry);
 
   // Add ROI meta with the actual part of the buffer filled with image data.
   gst_buffer_add_video_region_of_interest_meta (outframe->buffer,
-      "ImageRegion", outrect.x, outrect.y, outrect.w, outrect.h);
+      "ImageRegion", d_region->x, d_region->y, d_region->w, d_region->h);
 
-  GST_TRACE_OBJECT (vsplit, "Rectangles [%u] SAR[%d/%d]: [%d %d %d %d]"
-      " -> [%d %d %d %d]", index, sar_n, sar_d, inrect.x, inrect.y, inrect.w,
-      inrect.h, outrect.x, outrect.y, outrect.w, outrect.h);
+  GST_TRACE_OBJECT (vsplit, "Rectangles [%u] SAR[%d/%d]: [%d %d %d %d] -> "
+      "[%d %d %d %d]", index, sar_n, sar_d, s_region->x, s_region->y, s_region->w,
+      s_region->h, d_region->x, d_region->y, d_region->w, d_region->h);
 
 #ifdef USE_C2D_CONVERTER
   opts = gst_structure_new ("options",
       GST_C2D_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
           GST_VIDEO_SPLIT_SINKPAD (vsplit->sinkpad)->isubwc,
+      GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, G_TYPE_ARRAY, s_rects,
+      GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, G_TYPE_ARRAY, d_rects,
       NULL);
-
-  gst_structure_set_value (opts,
-      GST_C2D_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, &srcrects);
-  gst_structure_set_value (opts,
-      GST_C2D_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, &dstrects);
 
   gst_c2d_video_converter_set_input_opts (vsplit->c2dconvert, index, opts);
 #endif // USE_C2D_CONVERTER
@@ -593,21 +569,12 @@ gst_video_split_update_params (GstVideoSplit * vsplit, guint index,
   opts = gst_structure_new ("options",
       GST_GLES_VIDEO_CONVERTER_OPT_UBWC_FORMAT, G_TYPE_BOOLEAN,
           GST_VIDEO_SPLIT_SINKPAD (vsplit->sinkpad)->isubwc,
+      GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, G_TYPE_ARRAY, s_rects,
+      GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, G_TYPE_ARRAY, d_rects,
       NULL);
-
-  gst_structure_set_value (opts,
-      GST_GLES_VIDEO_CONVERTER_OPT_SRC_RECTANGLES, &srcrects);
-  gst_structure_set_value (opts,
-      GST_GLES_VIDEO_CONVERTER_OPT_DEST_RECTANGLES, &dstrects);
 
   gst_gles_video_converter_set_input_opts (vsplit->glesconvert, index, opts);
 #endif // USE_GLES_CONVERTER
-
-  g_value_unset (&value);
-  g_value_unset (&entry);
-
-  g_value_unset (&dstrects);
-  g_value_unset (&srcrects);
 }
 
 static gboolean
