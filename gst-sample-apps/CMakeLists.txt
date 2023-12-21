@@ -14,3 +14,7 @@ if (ENABLE_AUDIO)
   add_subdirectory(gst-audio-decode-example)
   add_subdirectory(gst-audio-encode-example)
 endif() # ENABLE_AUDIO
+
+if (ENABLE_DISPLAY AND ENABLE_VIDEO_DECODE)
+  add_subdirectory(gst-videocodec-concurrent-playback)
+endif () # ENABLE_DISPLAY AND ENABLE_VIDEO_DECODE
