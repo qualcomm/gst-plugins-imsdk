@@ -67,13 +67,7 @@
 #include <gst/gst.h>
 #include <gst/base/gstbasetransform.h>
 #include <gst/video/video.h>
-
-#ifdef USE_C2D_CONVERTER
-#include <gst/video/c2d-video-converter.h>
-#endif // USE_C2D_CONVERTER
-#ifdef USE_GLES_CONVERTER
-#include <gst/video/gles-video-converter.h>
-#endif // USE_GLES_CONVERTER
+#include <gst/video/video-converter-engine.h>
 
 G_BEGIN_DECLS
 
@@ -88,6 +82,12 @@ G_BEGIN_DECLS
 #define GST_IS_VIDEO_TRANSFORM_CLASS(klass) \
   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_VIDEO_TRANSFORM))
 #define GST_VIDEO_TRANSFORM_CAST(obj)       ((GstVideoTransform *)(obj))
+
+#define GST_VIDEO_TRANSFORM_GET_LOCK(obj) (&GST_VIDEO_TRANSFORM(obj)->lock)
+#define GST_VIDEO_TRANSFORM_LOCK(obj) \
+  g_mutex_lock(GST_VIDEO_TRANSFORM_GET_LOCK(obj))
+#define GST_VIDEO_TRANSFORM_UNLOCK(obj) \
+  g_mutex_unlock(GST_VIDEO_TRANSFORM_GET_LOCK(obj))
 
 #define GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE(pspec, state) \
   ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
@@ -108,6 +108,9 @@ typedef struct _GstVideoTransformClass GstVideoTransformClass;
 struct _GstVideoTransform {
   GstBaseTransform        parent;
 
+  /// Global mutex lock.
+  GMutex                  lock;
+
   GstVideoInfo            *ininfo;
   GstVideoInfo            *outinfo;
 
@@ -122,15 +125,11 @@ struct _GstVideoTransform {
   // Output buffer pool
   GstBufferPool           *outpool;
 
-  /// Supported converters.
-#ifdef USE_C2D_CONVERTER
-  GstC2dVideoConverter *c2dconvert;
-#endif // USE_C2D_CONVERTER
-#ifdef USE_GLES_CONVERTER
-  GstGlesVideoConverter *glesconvert;
-#endif // USE_GLES_CONVERTER
+  /// Video converter engine.
+  GstVideoConvEngine      *converter;
 
   /// Properties.
+  GstVideoConvBackend     backend;
   gboolean                flip_v;
   gboolean                flip_h;
   GstVideoTransformRotate rotation;

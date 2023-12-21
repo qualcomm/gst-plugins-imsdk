@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -99,27 +99,6 @@ enum
   PROP_FLIP_VERTICAL,
   PROP_ROTATE,
 };
-
-static gboolean
-gst_caps_has_feature (const GstCaps * caps, const gchar * feature)
-{
-  guint idx = 0;
-
-  for (idx = 0; idx < gst_caps_get_size (caps); idx++) {
-    GstCapsFeatures *const features = gst_caps_get_features (caps, idx);
-
-    if (feature == NULL && ((gst_caps_features_get_size (features) == 0) ||
-            gst_caps_features_is_any (features)))
-      return TRUE;
-
-    // Skip ANY caps and return immediately if feature is present.
-    if ((feature != NULL) && !gst_caps_features_is_any (features) &&
-        gst_caps_features_contains (features, feature))
-      return TRUE;
-  }
-
-  return FALSE;
-}
 
 static GstCaps *
 gst_video_composer_sinkpad_transform_caps (GstAggregatorPad * pad,
@@ -369,6 +348,8 @@ gst_video_composer_sinkpad_setcaps (GstAggregatorPad * pad,
     gst_video_info_free (GST_VIDEO_COMPOSER_SINKPAD (pad)->info);
 
   GST_VIDEO_COMPOSER_SINKPAD (pad)->info = gst_video_info_copy (&info);
+  GST_VIDEO_COMPOSER_SINKPAD (pad)->isubwc =
+      gst_caps_has_compression (caps, "ubwc");
 
   return TRUE;
 }
@@ -657,8 +638,9 @@ gst_video_composer_sinkpad_init (GstVideoComposerSinkPad * sinkpad)
 {
   g_mutex_init (&sinkpad->lock);
 
-  sinkpad->index = 0;
-  sinkpad->info  = NULL;
+  sinkpad->index  = 0;
+  sinkpad->info   = NULL;
+  sinkpad->isubwc = FALSE;
 
   sinkpad->zorder        = DEFAULT_PROP_Z_ORDER;
   sinkpad->crop.x        = DEFAULT_PROP_CROP_X;
