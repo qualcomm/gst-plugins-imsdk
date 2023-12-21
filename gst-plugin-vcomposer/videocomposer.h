@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -68,13 +68,7 @@
 #include <gst/base/gstaggregator.h>
 #include <gst/base/gstdataqueue.h>
 #include <gst/video/video.h>
-
-#ifdef USE_C2D_CONVERTER
-#include <gst/video/c2d-video-converter.h>
-#endif // USE_C2D_CONVERTER
-#ifdef USE_GLES_CONVERTER
-#include <gst/video/gles-video-converter.h>
-#endif // USE_GLES_CONVERTER
+#include <gst/video/video-converter-engine.h>
 
 G_BEGIN_DECLS
 
@@ -107,13 +101,13 @@ struct _GstVideoComposer {
 
   /// Number of sink pads.
   guint                n_inputs;
-  /// Number of source pads.
-  guint                n_outputs;
 
   /// Output pad caps.
   GstVideoInfo         *outinfo;
   /// Output buffer pool.
   GstBufferPool        *outpool;
+  // Whether output caps have UBWC compression.
+  gboolean             isubwc;
 
   /// Output buffer duration.
   GstClockTime         duration;
@@ -125,15 +119,11 @@ struct _GstVideoComposer {
   /// Worker queue.
   GstDataQueue         *requests;
 
-  /// Supported converters.
-#ifdef USE_C2D_CONVERTER
-  GstC2dVideoConverter *c2dconvert;
-#endif // USE_C2D_CONVERTER
-#ifdef USE_GLES_CONVERTER
-  GstGlesVideoConverter *glesconvert;
-#endif // USE_GLES_CONVERTER
+  /// Video converter engine.
+  GstVideoConvEngine   *converter;
 
   /// Properties.
+  GstVideoConvBackend  backend;
   guint                background;
 };
 

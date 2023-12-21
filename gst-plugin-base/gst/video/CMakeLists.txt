@@ -3,14 +3,15 @@ set(GST_QTI_VIDEO_BASE gstqtivideobase)
 
 add_library(${GST_QTI_VIDEO_BASE} SHARED
   gstimagepool.c
-  $<$<BOOL:${GST_C2D_CONVERTER}>:c2d-video-converter.c>
-  $<$<BOOL:${GST_GLES_CONVERTER}>:gles-video-converter.cc>
+  video-converter-engine.c
+  $<$<BOOL:${HAVE_ADRENO_C2D2_H}>:c2d-video-converter.c>
+  $<$<BOOL:${HAVE_IOT_CORE_IB2C_H}>:gles-video-converter.cc>
+  $<$<BOOL:${HAVE_FASTCV_H}>:fcv-video-converter.c>
 )
 
 set(GST_QTI_VIDEO_BASE_HEADERS
   gstimagepool.h
-  $<$<BOOL:${GST_C2D_CONVERTER}>:${CMAKE_CURRENT_SOURCE_DIR}/c2d-video-converter.h>
-  $<$<BOOL:${GST_GLES_CONVERTER}>:${CMAKE_CURRENT_SOURCE_DIR}/gles-video-converter.h>
+  video-converter-engine.h
 )
 
 set_target_properties(${GST_QTI_VIDEO_BASE} PROPERTIES PUBLIC_HEADER
@@ -20,6 +21,9 @@ set_target_properties(${GST_QTI_VIDEO_BASE} PROPERTIES PUBLIC_HEADER
 target_compile_definitions(${GST_QTI_VIDEO_BASE} PRIVATE
   $<$<BOOL:${HAVE_MMM_COLOR_FMT_H}>:HAVE_MMM_COLOR_FMT_H>
   $<$<BOOL:${HAVE_LINUX_DMA_HEAP_H}>:HAVE_LINUX_DMA_HEAP_H>
+  $<$<BOOL:${HAVE_ADRENO_C2D2_H}>:HAVE_ADRENO_C2D2_H>
+  $<$<BOOL:${HAVE_IOT_CORE_IB2C_H}>:HAVE_IOT_CORE_IB2C_H>
+  $<$<BOOL:${HAVE_FASTCV_H}>:HAVE_FASTCV_H>
 )
 
 target_include_directories(${GST_QTI_VIDEO_BASE} PUBLIC
