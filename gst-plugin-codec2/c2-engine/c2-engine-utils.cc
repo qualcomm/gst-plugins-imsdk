@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -1123,6 +1123,7 @@ bool GstC2Utils::ImportHandleInfo(GstBuffer* buffer,
   GstVideoMeta *vmeta = gst_buffer_get_video_meta (buffer);
   uint32_t size = gst_buffer_get_size (buffer);
   int32_t fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (buffer, 0));
+  int32_t meta_fd = -1;
 
   gboolean isubwc = GST_BUFFER_FLAG_IS_SET (buffer, GST_VIDEO_BUFFER_FLAG_UBWC);
   C2PixelFormat format = GstC2Utils::PixelFormat(vmeta->format, isubwc);
@@ -1175,12 +1176,15 @@ bool GstC2Utils::ImportHandleInfo(GstBuffer* buffer,
       return false;
   }
 
+  struct gbm_bo bo = {.ion_fd = fd, .ion_metadata_fd = -1};
+  gbm_perform(GBM_PERFORM_GET_METADATA_ION_FD, &bo, &meta_fd);
+
   handle->version = ::android::C2HandleGBM::VERSION;
   handle->numFds = ::android::C2HandleGBM::NUM_FDS;
   handle->numInts = ::android::C2HandleGBM::NUM_INTS;
 
   handle->mFds.buffer_fd = fd;
-  handle->mFds.meta_buffer_fd = -1;
+  handle->mFds.meta_buffer_fd = meta_fd;
 
   handle->mInts.width = width;
   handle->mInts.height = height;

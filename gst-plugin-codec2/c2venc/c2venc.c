@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -583,6 +583,14 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
       GST_ERROR_OBJECT (c2venc, "Failed to set QP init parameter!");
       return FALSE;
     }
+  }
+
+  success = gst_c2_engine_set_parameter (c2venc->engine,
+      GST_C2_PARAM_COLOR_ASPECTS_TUNING,
+      GPOINTER_CAST (&info->colorimetry));
+  if (!success) {
+    GST_ERROR_OBJECT (c2venc, "Failed to set Color Aspects parameter!");
+    return FALSE;
   }
 
   return TRUE;
