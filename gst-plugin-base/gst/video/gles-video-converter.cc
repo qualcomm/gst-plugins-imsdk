@@ -62,6 +62,10 @@ struct _GstGlesVideoConverter
   GHashTable      *insurfaces;
   GHashTable      *outsurfaces;
 
+  // TODO: Update fence objects to store the FDs data to avoid below map
+  // Map of request_id and the corresponding buffer FDs that doesn't need cache
+  GHashTable      *nocache;
+
   // List of not yet processed IB2C fence objects.
   GList           *fences;
 
@@ -220,6 +224,42 @@ gst_gles_destroy_surface (gpointer key, gpointer value, gpointer userdata)
   }
 
   return;
+}
+
+static void
+gst_gles_destroy_fd_surfaces (GstGlesVideoConverter * convert, GArray * fds)
+{
+  guint idx = 0, fd;
+  guint64 surface_id = 0;
+  gboolean success;
+
+  for (idx = 0; idx < fds->len; idx++) {
+    fd = g_array_index (fds, guint, idx);
+
+    success = g_hash_table_lookup_extended (convert->insurfaces,
+        GUINT_TO_POINTER (fd), NULL, (gpointer *) &surface_id);
+
+    if (!success)
+      continue;
+
+    try {
+      GST_DEBUG ("Destroying surface with id %lx", surface_id);
+      convert->engine->DestroySurface(surface_id);
+    } catch (std::exception& e) {
+      GST_ERROR ("Failed to destroy IB2C surface, error: '%s'!", e.what());
+      return;
+    }
+
+    g_hash_table_remove (convert->insurfaces, GUINT_TO_POINTER (fd));
+  }
+}
+
+static void
+gst_gles_free_cache (gpointer key, gpointer value, gpointer userdata)
+{
+  GArray *fds = (GArray *) (value);
+
+  g_array_free(fds, TRUE);
 }
 
 static void
@@ -427,8 +467,13 @@ gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
 {
   guint idx = 0, num = 0, n_blits = 0;
   guint64 surface_id = 0;
+  GArray *fds = NULL;
 
   std::vector<::ib2c::Composition> comps;
+
+  fds = g_array_new (FALSE, FALSE, sizeof (guint));
+
+  g_return_val_if_fail (fds != NULL, FALSE);
 
   for (idx = 0; idx < n_compositions; idx++) {
     GstVideoFrame *outframe = compositions[idx].frame;
@@ -459,6 +504,15 @@ gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
         GST_ERROR ("Failed to get surface ID for input buffer %p at index %u "
             "in composition %u!", blit->frame->buffer, num, idx);
         return FALSE;
+      }
+
+      if (blit->frame->buffer->pool == NULL) {
+        GstMemory *memory = NULL;
+        guint fd = 0;
+
+        memory = gst_buffer_peek_memory (blit->frame->buffer, 0);
+        fd = gst_fd_memory_get_fd (memory);
+        g_array_append_val (fds, fd);
       }
 
       // Update a new C2D object (at least 1) for each source/destnation pair.
@@ -514,10 +568,19 @@ gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
 
       GST_GLES_LOCK (convert);
       convert->fences = g_list_append (convert->fences, *fence);
+      g_hash_table_insert (convert->nocache, GUINT_TO_POINTER (*fence), fds);
       GST_GLES_UNLOCK (convert);
     } else {
       // Call IB2C Compose API with synchronous set to true.
       convert->engine->Compose (comps, true);
+
+      GST_GLES_LOCK (convert);
+
+      // Destroy the surfaces which doesn't need cache
+      gst_gles_destroy_fd_surfaces (convert, fds);
+      g_array_free (fds, TRUE);
+
+      GST_GLES_UNLOCK (convert);
     }
   } catch (std::exception& e) {
     GST_ERROR ("Failed to submit draw objects, error: '%s'!", e.what());
@@ -531,6 +594,9 @@ gboolean
 gst_gles_video_converter_wait_fence (GstGlesVideoConverter * convert,
     gpointer fence)
 {
+  GArray *fds = NULL;
+  gboolean success = FALSE;
+
   try {
     convert->engine->Finish (reinterpret_cast<std::intptr_t>(fence));
   } catch (std::exception& e) {
@@ -540,6 +606,16 @@ gst_gles_video_converter_wait_fence (GstGlesVideoConverter * convert,
 
   GST_GLES_LOCK (convert);
   convert->fences = g_list_remove (convert->fences, fence);
+
+  success = g_hash_table_lookup_extended (convert->nocache,
+      GUINT_TO_POINTER (fence), NULL, (gpointer *) &fds);
+  if (success) {
+    // Destroy the surfaces which doesn't need cache
+    gst_gles_destroy_fd_surfaces (convert, fds);
+    g_array_free (fds, TRUE);
+    g_hash_table_remove (convert->nocache, GUINT_TO_POINTER (fence));
+  }
+
   GST_GLES_UNLOCK (convert);
 
   return TRUE;
@@ -576,6 +652,11 @@ gst_gles_video_converter_flush (GstGlesVideoConverter * convert)
   if (convert->outsurfaces != NULL) {
     g_hash_table_foreach (convert->outsurfaces, gst_gles_destroy_surface, convert);
     g_hash_table_remove_all (convert->outsurfaces);
+  }
+
+  if (convert->nocache != NULL) {
+    g_hash_table_foreach (convert->nocache, gst_gles_free_cache, NULL);
+    g_hash_table_remove_all (convert->nocache);
   }
 
   GST_GLES_UNLOCK (convert);
@@ -622,6 +703,11 @@ gst_gles_video_converter_new (GstStructure * settings)
     goto cleanup;
   }
 
+  if ((convert->nocache = g_hash_table_new (NULL, NULL)) == NULL) {
+    GST_ERROR ("Failed to create hash table for cache surfaces!");
+    goto cleanup;
+  }
+
   GST_INFO ("Created GLES Converter %p", convert);
   return convert;
 
@@ -647,6 +733,11 @@ gst_gles_video_converter_free (GstGlesVideoConverter * convert)
   if (convert->outsurfaces != NULL) {
     g_hash_table_foreach (convert->outsurfaces, gst_gles_destroy_surface, convert);
     g_hash_table_destroy (convert->outsurfaces);
+  }
+
+  if (convert->nocache != NULL) {
+    g_hash_table_foreach (convert->nocache, gst_gles_free_cache, NULL);
+    g_hash_table_destroy (convert->nocache);
   }
 
   if (convert->engine != NULL)
