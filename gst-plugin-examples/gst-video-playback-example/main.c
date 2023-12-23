@@ -22,12 +22,13 @@
 #define GST_APP_SUMMARY \
   "This app enables the user to provide a pipeline and use it for video "\
   "playback. It allows the user to execute basic playback features like "\
-  "play, pause, stop, fast forward, rewind. "
+  "play, pause, fast forward, rewind. "
+
+// TODO: Add stop feature.
 
 typedef enum {
   PLAY_OPTION = 1,
   PAUSE_OPTION,
-  STOP_OPTION,
   FAST_FORWARD_OPTION,
   REWIND_OPTION
 } GstMainMenuOption;
@@ -418,7 +419,6 @@ print_menu ()
   g_print ("\n%.25s MENU %.25s\n", DASH_LINE, DASH_LINE);
   g_print ("   (%d) %-25s\n", PLAY_OPTION, "Play");
   g_print ("   (%d) %-25s\n", PAUSE_OPTION, "Pause");
-  g_print ("   (%d) %-25s\n", STOP_OPTION, "Stop");
   g_print ("   (%d) %-25s\n", FAST_FORWARD_OPTION, "Fast Forward");
   g_print ("   (%d) %-25s\n", REWIND_OPTION, "Rewind");
 
@@ -554,15 +554,6 @@ change_state (GstMainMenuOption opt, GstAppContext * appctx)
 
       break;
     }
-    case STOP_OPTION:
-    {
-      if (!update_pipeline_state (appctx, GST_STATE_READY))
-        g_printerr ("ERROR: Couldn't stop!");
-      else
-        g_print ("Stopped...");
-
-      break;
-    }
     default:
       break;
   }
@@ -584,7 +575,7 @@ handle_main_menu (GstAppContext * appctx, gint * opt)
   }
 
   *opt = g_ascii_strtoll ((const gchar *) str, &endptr, 0);
-  if (*opt >= PLAY_OPTION && *opt <= STOP_OPTION)
+  if (*opt >= PLAY_OPTION && *opt <= PAUSE_OPTION)
     change_state (*opt, appctx);
 
   g_free (str);
