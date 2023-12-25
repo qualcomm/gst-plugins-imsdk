@@ -433,10 +433,14 @@ gst_ml_qnn_engine_setup_graphs (GstMLQnnEngine *engine)
       &(engine->device));
 
   if (QNN_SUCCESS != status) {
-    GST_ERROR ("Could not create device!");
-    return FALSE;
+    if (QNN_DEVICE_ERROR_UNSUPPORTED_FEATURE != status){
+      GST_ERROR ("Could not create device!");
+      return FALSE;
+    }
+    GST_DEBUG ("Device is not supported");
+  } else {
+    GST_DEBUG ("Device created");
   }
-  GST_DEBUG ("Device created");
 
   // Set up any context configs that are necessary.
   const QnnContext_Config_t **ctx_configs = nullptr;
