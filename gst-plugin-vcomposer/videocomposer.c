@@ -87,7 +87,7 @@ G_DEFINE_TYPE_WITH_CODE (GstVideoComposer, gst_video_composer,
 #define DEFAULT_VIDEO_FPS_DEN       1
 
 #define DEFAULT_PROP_MIN_BUFFERS    2
-#define DEFAULT_PROP_MAX_BUFFERS    20
+#define DEFAULT_PROP_MAX_BUFFERS    40
 
 #define DEFAULT_PROP_ENGINE_BACKEND (gst_video_converter_default_backend())
 #define DEFAULT_PROP_BACKGROUND     0xFF808080
