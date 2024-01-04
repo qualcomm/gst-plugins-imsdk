@@ -61,6 +61,29 @@ GST_DEBUG_CATEGORY_EXTERN (gst_overlay_debug);
 #define GST_OVERLAY_DEFAULT_COLOR      0xFF0000FF
 #define GST_OVERLAY_DEFAULT_FORMATTING "\"%d/%m/%Y %H:%M:%S\""
 
+static inline void
+gst_video_blit_release (GstVideoBlit * blit)
+{
+  GstBuffer *buffer = NULL;
+
+  g_slice_free (GstVideoRectangle, blit->sources);
+  g_slice_free (GstVideoRectangle, blit->destinations);
+
+  blit->sources = NULL;
+  blit->destinations = NULL;
+  blit->n_regions = 0;
+
+  buffer = blit->frame->buffer;
+  gst_video_frame_unmap (blit->frame);
+
+  // Unreference buffer twice as 2nd refcount has been set when blit was cached.
+  gst_buffer_unref (buffer);
+  gst_buffer_unref (buffer);
+
+  g_slice_free (GstVideoFrame, blit->frame);
+  blit->frame = NULL;
+}
+
 void
 gst_overlay_timestamp_free (GstOverlayTimestamp * timestamp)
 {
@@ -78,9 +101,6 @@ gst_overlay_string_free (GstOverlayString * string)
 void
 gst_overlay_image_free (GstOverlayImage * simage)
 {
-  if (simage->contents != NULL)
-    g_free (simage->contents);
-
   if (simage->path != NULL)
     g_free (simage->path);
 }
@@ -154,6 +174,8 @@ gst_extract_bboxes (const GValue * value, GArray * bboxes)
   GstStructure *structure = NULL;
   const GValue *position = NULL, *dimensions = NULL;
   guint idx = 0, num = 0, size = 0;
+  gint x = -1, y = -1, width = 0, height = 0, color = 0;
+  gboolean changed = FALSE;
 
   size = gst_value_list_get_size (value);
 
@@ -174,7 +196,7 @@ gst_extract_bboxes (const GValue * value, GArray * bboxes)
       return FALSE;
     }
 
-    // Check if there is text entry with the same identification name.
+    // Check if there is bounding box entry with the same identification name.
     for (num = 0; num < bboxes->len; num++) {
       bbox = &(g_array_index (bboxes, GstOverlayBBox, num));
 
@@ -182,7 +204,7 @@ gst_extract_bboxes (const GValue * value, GArray * bboxes)
         break;
     }
 
-    // There is no pre-existing string with that name, create and initialize it.
+    // There is no pre-existing box with that name, create and initialize it.
     if (num >= bboxes->len) {
       // User must provide at leats 'dimensions' of the new entry.
       if (!gst_structure_has_field (structure, "dimensions")) {
@@ -197,8 +219,10 @@ gst_extract_bboxes (const GValue * value, GArray * bboxes)
       bbox->name = gst_structure_get_name_id (structure);
       bbox->enable = TRUE;
 
-      bbox->destination.x = -1;
-      bbox->destination.y = -1;
+      bbox->destination.x = GST_OVERLAY_DEFAULT_X;
+      bbox->destination.y = GST_OVERLAY_DEFAULT_Y;
+
+      bbox->color = GST_OVERLAY_DEFAULT_COLOR;
     }
 
     name = g_quark_to_string (bbox->name);
@@ -211,15 +235,20 @@ gst_extract_bboxes (const GValue * value, GArray * bboxes)
         goto cleanup;
       }
 
-      bbox->destination.w = g_value_get_int (
-          gst_value_array_get_value (dimensions, 0));
-      bbox->destination.h = g_value_get_int (
-          gst_value_array_get_value (dimensions, 1));
+      width = g_value_get_int (gst_value_array_get_value (dimensions, 0));
+      height = g_value_get_int (gst_value_array_get_value (dimensions, 1));
 
-      if ((bbox->destination.w == 0) || (bbox->destination.h == 0)) {
+      if ((width == 0) || (height == 0)) {
         GST_ERROR ("Invalid width and/or height for structure at idx %u", idx);
         goto cleanup;
       }
+
+      // Raise the flag for clearing cached blit if dimensions are different.
+      changed |=
+          (bbox->destination.w != width) || (bbox->destination.h != height);
+
+      bbox->destination.w = width;
+      bbox->destination.h = height;
     }
 
     GST_TRACE ("%s: Dimensions: [%d, %d]", name, bbox->destination.w,
@@ -233,24 +262,33 @@ gst_extract_bboxes (const GValue * value, GArray * bboxes)
         goto cleanup;
       }
 
-      bbox->destination.x = g_value_get_int (
-          gst_value_array_get_value (position, 0));
-      bbox->destination.y = g_value_get_int (
-          gst_value_array_get_value (position, 1));
-    } else if ((bbox->destination.x == -1) && (bbox->destination.y == -1)) {
-      bbox->destination.x = GST_OVERLAY_DEFAULT_X;
-      bbox->destination.y = GST_OVERLAY_DEFAULT_Y;
+      x = g_value_get_int (gst_value_array_get_value (position, 0));
+      y = g_value_get_int (gst_value_array_get_value (position, 1));
+
+      // Raise the flag for clearing cached blit if position is different.
+      changed |= (bbox->destination.x != x) || (bbox->destination.y != y);
+
+      bbox->destination.x = x;
+      bbox->destination.y = y;
     }
 
     GST_TRACE ("%s: Position: [%d, %d]", name, bbox->destination.x,
         bbox->destination.y);
 
-    if (gst_structure_has_field (structure, "color"))
-      gst_structure_get_int (structure, "color", &(bbox)->color);
-    else if (bbox->color == 0)
-      bbox->color = GST_OVERLAY_DEFAULT_COLOR;
+    if (gst_structure_has_field (structure, "color")) {
+      gst_structure_get_int (structure, "color", &color);
+
+      // Raise the flag for clearing cached blit if color is different.
+      changed |= bbox->color != color;
+
+      bbox->color = color;
+    }
 
     GST_TRACE ("%s: Color: 0x%X", name, bbox->color);
+
+    // Clear the cached blit if the flag has been raised.
+    if (changed && (bbox->blit.frame != NULL))
+      gst_video_blit_release (&(bbox->blit));
 
     if (gst_structure_has_field (structure, "enable"))
       gst_structure_get_boolean (structure, "enable", &(bbox)->enable);
@@ -272,6 +310,8 @@ gst_extract_timestamps (const GValue * value, GArray * timestamps)
   GstStructure *structure = NULL;
   const GValue *position = NULL;
   guint idx = 0, num = 0, size = 0;
+  gint x = -1, y = -1, color = 0, fontsize = 0;
+  gboolean changed = FALSE;
 
   size = gst_value_list_get_size (value);
 
@@ -325,8 +365,11 @@ gst_extract_timestamps (const GValue * value, GArray * timestamps)
       timestamp->type = type;
       timestamp->enable = TRUE;
 
-      timestamp->position.x = -1;
-      timestamp->position.y = -1;
+      timestamp->position.x = GST_OVERLAY_DEFAULT_X;
+      timestamp->position.y = GST_OVERLAY_DEFAULT_Y;
+
+      timestamp->color = GST_OVERLAY_DEFAULT_COLOR;
+      timestamp->fontsize = GST_OVERLAY_DEFAULT_FONTSIZE;
     }
 
     name = gst_structure_get_name (structure);
@@ -351,31 +394,44 @@ gst_extract_timestamps (const GValue * value, GArray * timestamps)
         goto cleanup;
       }
 
-      timestamp->position.x =
-          g_value_get_int (gst_value_array_get_value (position, 0));
-      timestamp->position.y =
-          g_value_get_int (gst_value_array_get_value (position, 1));
-    } else if ((timestamp->position.x == -1) && (timestamp->position.y == -1)) {
-      timestamp->position.x = GST_OVERLAY_DEFAULT_X;
-      timestamp->position.y = GST_OVERLAY_DEFAULT_Y;
+      x = g_value_get_int (gst_value_array_get_value (position, 0));
+      y = g_value_get_int (gst_value_array_get_value (position, 1));
+
+      // Raise the flag for clearing cached blit if position is different.
+      changed |= (timestamp->position.x != x) || (timestamp->position.y != y);
+
+      timestamp->position.x = x;
+      timestamp->position.y = y;
     }
 
     GST_TRACE ("%s: Position: [%d, %d]", name, timestamp->position.x,
         timestamp->position.y);
 
-    if (gst_structure_has_field (structure, "color"))
-      gst_structure_get_int (structure, "color", &(timestamp)->color);
-    else if (timestamp->color == 0)
-      timestamp->color = GST_OVERLAY_DEFAULT_COLOR;
+    if (gst_structure_has_field (structure, "color")) {
+      gst_structure_get_int (structure, "color", &color);
+
+      // Raise the flag for clearing cached blit if color is different.
+      changed |= timestamp->color != color;
+
+      timestamp->color = color;
+    }
 
     GST_TRACE ("%s: Color: 0x%X", name, timestamp->color);
 
-    if (gst_structure_has_field (structure, "fontsize"))
-      gst_structure_get_int (structure, "fontsize", &(timestamp)->fontsize);
-    else if (timestamp->fontsize == 0)
-      timestamp->fontsize = GST_OVERLAY_DEFAULT_FONTSIZE;
+    if (gst_structure_has_field (structure, "fontsize")) {
+      gst_structure_get_int (structure, "fontsize", &fontsize);
+
+      // Raise the flag for clearing cached blit if font size is different.
+      changed |= timestamp->fontsize != fontsize;
+
+      timestamp->fontsize = fontsize;
+    }
 
     GST_TRACE ("%s: Font size: %d", name, timestamp->fontsize);
+
+    // Clear the cached blit if the flag has been raised.
+    if (changed && (timestamp->blit.frame != NULL))
+      gst_video_blit_release (&(timestamp->blit));
 
     if (gst_structure_has_field (structure, "enable"))
       gst_structure_get_boolean (structure, "enable", &(timestamp)->enable);
@@ -397,6 +453,8 @@ gst_extract_strings (const GValue * value, GArray * strings)
   GstStructure *structure = NULL;
   const GValue *position = NULL;
   guint idx = 0, num = 0, size = 0;
+  gint x = -1, y = -1, color = 0, fontsize = 0;
+  gboolean changed = FALSE;
 
   size = gst_value_list_get_size (value);
 
@@ -440,8 +498,11 @@ gst_extract_strings (const GValue * value, GArray * strings)
       string->name = gst_structure_get_name_id (structure);
       string->enable = TRUE;
 
-      string->position.x = -1;
-      string->position.y = -1;
+      string->position.x = GST_OVERLAY_DEFAULT_X;
+      string->position.y = GST_OVERLAY_DEFAULT_Y;
+
+      string->color = GST_OVERLAY_DEFAULT_COLOR;
+      string->fontsize = GST_OVERLAY_DEFAULT_FONTSIZE;
     }
 
     name = g_quark_to_string (string->name);
@@ -461,31 +522,45 @@ gst_extract_strings (const GValue * value, GArray * strings)
         goto cleanup;
       }
 
-      string->position.x =
-          g_value_get_int (gst_value_array_get_value (position, 0));
-      string->position.y =
-          g_value_get_int (gst_value_array_get_value (position, 1));
-    } else if ((string->position.x == -1) && (string->position.y == -1)) {
-      string->position.x = GST_OVERLAY_DEFAULT_X;
-      string->position.y = GST_OVERLAY_DEFAULT_Y;
+      x = g_value_get_int (gst_value_array_get_value (position, 0));
+      y = g_value_get_int (gst_value_array_get_value (position, 1));
+
+      // Raise the flag for clearing cached blit if position is different.
+      changed |= (string->position.x != x) || (string->position.y != y);
+
+      string->position.x = x;
+      string->position.y = y;
     }
 
     GST_TRACE ("%s: Position: [%d, %d]", name, string->position.x,
         string->position.y);
 
-    if (gst_structure_has_field (structure, "color"))
-      gst_structure_get_int (structure, "color", &(string)->color);
-    else if (string->color == 0)
-      string->color = GST_OVERLAY_DEFAULT_COLOR;
+    if (gst_structure_has_field (structure, "color")) {
+      gst_structure_get_int (structure, "color", &color);
+
+      // Raise the flag for clearing cached blit if color is different.
+      changed |= string->color != color;
+
+      string->color = color;
+    }
 
     GST_TRACE ("%s: Color: 0x%X", name, string->color);
 
-    if (gst_structure_has_field (structure, "fontsize"))
-      gst_structure_get_int (structure, "fontsize", &(string)->fontsize);
-    else if (string->fontsize == 0)
-      string->fontsize = GST_OVERLAY_DEFAULT_FONTSIZE;
+    if (gst_structure_has_field (structure, "fontsize")) {
+      gst_structure_get_int (structure, "fontsize", &fontsize);
+
+      // Raise the flag for clearing cached blit if color is different.
+      changed |= string->fontsize != fontsize;
+
+      string->fontsize = fontsize;
+    }
+
 
     GST_TRACE ("%s: Font size: %d", name, string->fontsize);
+
+    // Clear the cached blit if the flag has been raised.
+    if (changed && (string->blit.frame != NULL))
+      gst_video_blit_release (&(string->blit));
 
     if (gst_structure_has_field (structure, "enable"))
       gst_structure_get_boolean (structure, "enable", &(string)->enable);
@@ -506,6 +581,8 @@ gst_extract_masks (const GValue * value, GArray * masks)
 {
   GstStructure *structure = NULL;
   guint idx = 0, num = 0, size = 0;
+  gint x = -1, y = -1, width = 0, height = 0, radius = 0, color = 0;
+  gboolean changed = FALSE;
 
   size = gst_value_list_get_size (value);
 
@@ -556,6 +633,8 @@ gst_extract_masks (const GValue * value, GArray * masks)
 
       mask->position.x = -1;
       mask->position.y = -1;
+
+      mask->color = GST_OVERLAY_DEFAULT_COLOR;
     }
 
     name = g_quark_to_string (mask->name);
@@ -569,14 +648,26 @@ gst_extract_masks (const GValue * value, GArray * masks)
       }
 
       mask->type = GST_OVERLAY_MASK_CIRCLE;
-      mask->position.x = g_value_get_int (gst_value_array_get_value (circle, 0));
-      mask->position.y = g_value_get_int (gst_value_array_get_value (circle, 1));
-      mask->dims.radius = g_value_get_int (gst_value_array_get_value (circle, 2));
+      x = g_value_get_int (gst_value_array_get_value (circle, 0));
+      y = g_value_get_int (gst_value_array_get_value (circle, 1));
 
-      if (mask->dims.radius == 0) {
+      // Raise the flag for clearing cached blit if position is different.
+      changed |= (mask->position.x != x) || (mask->position.y != y);
+
+      mask->position.x = x;
+      mask->position.y = y;
+
+      radius = g_value_get_int (gst_value_array_get_value (circle, 2));
+
+      if (radius == 0) {
         GST_ERROR ("Invalid radius for the circle at index %u", idx);
         goto cleanup;
       }
+
+      // Raise the flag for clearing cached blit if radious is different.
+      changed |= mask->dims.radius != radius;
+
+      mask->dims.radius = radius;
 
       GST_TRACE ("%s: Circle radius: %d", name, mask->dims.radius);
     } else if (gst_structure_has_field (structure, "rectangle")) {
@@ -588,30 +679,47 @@ gst_extract_masks (const GValue * value, GArray * masks)
       }
 
       mask->type = GST_OVERLAY_MASK_RECTANGLE;
-      mask->position.x =
-          g_value_get_int (gst_value_array_get_value (rectangle, 0));
-      mask->position.y =
-          g_value_get_int (gst_value_array_get_value (rectangle, 1));
-      mask->dims.wh[0] =
-          g_value_get_int (gst_value_array_get_value (rectangle, 2));
-      mask->dims.wh[1] =
-          g_value_get_int (gst_value_array_get_value (rectangle, 3));
+      x = g_value_get_int (gst_value_array_get_value (rectangle, 0));
+      y = g_value_get_int (gst_value_array_get_value (rectangle, 1));
 
-      if (mask->dims.wh[0] == 0 || mask->dims.wh[1] == 0) {
+      // Raise the flag for clearing cached blit if position is different.
+      changed |= (mask->position.x != x) || (mask->position.y != y);
+
+      mask->position.x = x;
+      mask->position.y = y;
+
+      width = g_value_get_int (gst_value_array_get_value (rectangle, 2));
+      height = g_value_get_int (gst_value_array_get_value (rectangle, 3));
+
+      if (width == 0 || height == 0) {
         GST_ERROR ("Invalid width and/or height for rectangle at idx %u", idx);
         goto cleanup;
       }
+
+      // Raise the flag for clearing cached blit if dimensions are different.
+      changed |= (mask->dims.wh[0] != width) || (mask->dims.wh[1] != height);
+
+      mask->dims.wh[0] = width;
+      mask->dims.wh[1] = height;
 
       GST_TRACE ("%s: Rectangle: [%d, %d]", name, mask->dims.wh[0],
           mask->dims.wh[1]);
     }
 
-    if (gst_structure_has_field (structure, "color"))
-      gst_structure_get_int (structure, "color", &(mask)->color);
-    else if (mask->color == 0)
-      mask->color = GST_OVERLAY_DEFAULT_COLOR;
+    if (gst_structure_has_field (structure, "color")) {
+      gst_structure_get_int (structure, "color", &color);
+
+      // Raise the flag for clearing cached blit if color is different.
+      changed |= mask->color != color;
+
+      mask->color = color;
+    }
 
     GST_TRACE ("%s: Color: 0x%X", name, mask->color);
+
+    // Clear the cached blit if the flag has been raised.
+    if (changed && (mask->blit.frame != NULL))
+      gst_video_blit_release (&(mask->blit));
 
     if (gst_structure_has_field (structure, "enable"))
       gst_structure_get_boolean (structure, "enable", &(mask)->enable);
@@ -633,6 +741,8 @@ gst_extract_static_images (const GValue * value, GArray * images)
   GstStructure *structure = NULL;
   const GValue *resolution = NULL, *destination = NULL;
   guint idx = 0, num = 0, size = 0;
+  gint x = -1, y = -1, width = 0, height = 0;
+  gboolean changed = FALSE;
 
   size = gst_value_list_get_size (value);
 
@@ -684,6 +794,9 @@ gst_extract_static_images (const GValue * value, GArray * images)
 
     if (gst_structure_has_field (structure, "path") &&
         gst_structure_has_field (structure, "resolution")) {
+      const gchar *path = NULL;
+
+      path = gst_structure_get_string (structure, "path");
       resolution = gst_structure_get_value (structure, "resolution");
 
       if (gst_value_array_get_size (resolution) != 2) {
@@ -691,15 +804,23 @@ gst_extract_static_images (const GValue * value, GArray * images)
         goto cleanup;
       }
 
-      image->width = g_value_get_int (
-          gst_value_array_get_value (resolution, 0));
-      image->height = g_value_get_int (
-          gst_value_array_get_value (resolution, 1));
+      // Raise the flag for clearing cached blit if path is different.
+      changed |= g_strcmp0 (image->path, path) != 0;
 
-      image->path = g_strdup (gst_structure_get_string (structure, "path"));
+      g_free (image->path);
+      image->path = g_strdup (path);
 
-      GST_TRACE ("%s: Dimensions: [%d, %d]", name, image->width, image->height);
+      width = g_value_get_int (gst_value_array_get_value (resolution, 0));
+      height = g_value_get_int (gst_value_array_get_value (resolution, 1));
+
+      // Raise the flag for clearing cached blit if dimensions are different.
+      changed |= (image->width != width) || (image->height != height);
+
+      image->width = width;
+      image->height = height;
+
       GST_TRACE ("%s: Path: '%s'", name, image->path);
+      GST_TRACE ("%s: Dimensions: [%d, %d]", name, image->width, image->height);
     }
 
     if (gst_structure_has_field (structure, "destination")) {
@@ -710,18 +831,27 @@ gst_extract_static_images (const GValue * value, GArray * images)
         goto cleanup;
       }
 
-      image->destination.x = g_value_get_int (
-          gst_value_array_get_value (destination, 0));
-      image->destination.y = g_value_get_int (
-          gst_value_array_get_value (destination, 1));
-      image->destination.w = g_value_get_int (
-          gst_value_array_get_value (destination, 2));
-      image->destination.h = g_value_get_int (
-          gst_value_array_get_value (destination, 3));
+      x = g_value_get_int (gst_value_array_get_value (destination, 0));
+      y = g_value_get_int (gst_value_array_get_value (destination, 1));
+      width = g_value_get_int (gst_value_array_get_value (destination, 2));
+      height = g_value_get_int (gst_value_array_get_value (destination, 3));
+
+      // Raise the flag for clearing cached blit if destination is different.
+      changed |= (image->destination.x != x) || (image->destination.y != y) ||
+          (image->destination.w != width) || (image->destination.h != height);
+
+      image->destination.x = x;
+      image->destination.y = y;
+      image->destination.w = width;
+      image->destination.h = height;
 
       GST_TRACE ("%s: Destination: [%d, %d, %d, %d]", name, image->destination.x,
           image->destination.y, image->destination.w, image->destination.h);
     }
+
+    // Clear the cached blit if the flag has been raised.
+    if (changed && (image->blit.frame != NULL))
+      gst_video_blit_release (&(image->blit));
 
     if (gst_structure_has_field (structure, "enable"))
       gst_structure_get_boolean (structure, "enable", &(image)->enable);
