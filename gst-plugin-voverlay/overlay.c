@@ -188,10 +188,11 @@ gst_video_blits_release (GstVideoBlit * blits, guint n_blits)
   guint idx = 0;
 
   for (idx = 0; idx < n_blits; idx++) {
-    g_slice_free (GstVideoRectangle, blits[idx].sources);
-    g_slice_free (GstVideoRectangle, blits[idx].destinations);
-
     buffer = (blits[idx].frame != NULL) ? blits[idx].frame->buffer : NULL;
+
+    // If refcount is >1 then blit object has been cached, do not free the data.
+    if (buffer != NULL && (GST_MINI_OBJECT_REFCOUNT_VALUE (buffer) > 1))
+      continue;
 
     if (buffer != NULL) {
       gst_video_frame_unmap (blits[idx].frame);
@@ -199,6 +200,8 @@ gst_video_blits_release (GstVideoBlit * blits, guint n_blits)
     }
 
     g_slice_free (GstVideoFrame, blits[idx].frame);
+    g_slice_free (GstVideoRectangle, blits[idx].sources);
+    g_slice_free (GstVideoRectangle, blits[idx].destinations);
   }
 
   g_free (blits);
@@ -226,8 +229,8 @@ gst_cairo_draw_text (cairo_t * context, guint color, gdouble x, gdouble y,
     gchar * text, gdouble fontsize)
 {
   // Set color.
-  cairo_set_source_rgba (context, EXTRACT_RED_COLOR (color),
-      EXTRACT_GREEN_COLOR (color), EXTRACT_BLUE_COLOR (color),
+  cairo_set_source_rgba (context, EXTRACT_BLUE_COLOR (color),
+      EXTRACT_GREEN_COLOR (color), EXTRACT_RED_COLOR (color),
       EXTRACT_ALPHA_COLOR (color));
 
   // Set the starting position of the bounding box text.
@@ -245,8 +248,8 @@ gst_cairo_draw_line (cairo_t * context, guint color, gdouble x, gdouble y,
      gdouble dx, gdouble dy, gdouble linewidth)
 {
   // Set color.
-  cairo_set_source_rgba (context, EXTRACT_RED_COLOR (color),
-      EXTRACT_GREEN_COLOR (color), EXTRACT_BLUE_COLOR (color),
+  cairo_set_source_rgba (context, EXTRACT_BLUE_COLOR (color),
+      EXTRACT_GREEN_COLOR (color), EXTRACT_RED_COLOR (color),
       EXTRACT_ALPHA_COLOR (color));
 
   // Set rectangle lines width.
@@ -265,8 +268,8 @@ gst_cairo_draw_rectangle (cairo_t * context, guint color, gdouble x, gdouble y,
     gdouble width, gdouble height, gdouble linewidth, gboolean filled)
 {
   // Set color.
-  cairo_set_source_rgba (context, EXTRACT_RED_COLOR (color),
-      EXTRACT_GREEN_COLOR (color), EXTRACT_BLUE_COLOR (color),
+  cairo_set_source_rgba (context, EXTRACT_BLUE_COLOR (color),
+      EXTRACT_GREEN_COLOR (color), EXTRACT_RED_COLOR (color),
       EXTRACT_ALPHA_COLOR (color));
 
   // Set rectangle lines width.
@@ -288,8 +291,8 @@ gst_cairo_draw_circle (cairo_t * context, guint color, gdouble x, gdouble y,
     gdouble radius, gdouble linewidth, gboolean filled)
 {
   // Set color.
-  cairo_set_source_rgba (context, EXTRACT_RED_COLOR (color),
-      EXTRACT_GREEN_COLOR (color), EXTRACT_BLUE_COLOR (color),
+  cairo_set_source_rgba (context, EXTRACT_BLUE_COLOR (color),
+      EXTRACT_GREEN_COLOR (color), EXTRACT_RED_COLOR (color),
       EXTRACT_ALPHA_COLOR (color));
 
   // Set rectangle lines width.
@@ -352,8 +355,8 @@ gst_cairo_draw_arrow (cairo_t * context, guint color, gdouble x, gdouble y,
   cairo_stroke_preserve (context);
 
   // Set infill color.
-  cairo_set_source_rgba (context, EXTRACT_RED_COLOR (color),
-      EXTRACT_GREEN_COLOR (color), EXTRACT_BLUE_COLOR (color),
+  cairo_set_source_rgba (context, EXTRACT_BLUE_COLOR (color),
+      EXTRACT_GREEN_COLOR (color), EXTRACT_RED_COLOR (color),
       EXTRACT_ALPHA_COLOR (color));
   cairo_fill (context);
 
@@ -459,6 +462,7 @@ gst_overlay_create_pool (GstVOverlay * overlay, GstCaps * caps)
 
   allocator = gst_fd_allocator_new ();
   gst_buffer_pool_config_set_allocator (config, allocator, NULL);
+
   gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
   gst_buffer_pool_config_add_option (config,
       GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
@@ -498,10 +502,6 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, cairo_t * context,
   gst_structure_get_double (param, "confidence", &confidence);
   gst_structure_get_uint (param, "color", &color);
 
-  blit->sources = g_slice_new (GstVideoRectangle);
-  blit->destinations = g_slice_new (GstVideoRectangle);
-  blit->n_regions = 1;
-
   source = &(blit->sources[0]);
   destination = &(blit->destinations[0]);
 
@@ -531,7 +531,7 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, cairo_t * context,
   label = g_strdelimit (label, "-", ' ');
 
   // Set the most appropriate font size based on the bounding box dimensions.
-  fontsize = MIN (((source->w / MAX_TEXT_LENGTH) * 9.0 / 5.0), 16.0F);
+  fontsize = MIN (((source->w / MAX_TEXT_LENGTH) * 9.0 / 5.0), 12.0F);
 
   x = y = linewidth;
 
@@ -568,10 +568,6 @@ gst_overlay_handle_classification_entry (GstVOverlay * overlay, cairo_t * contex
 
   gst_structure_get_double (param, "confidence", &confidence);
   gst_structure_get_uint (param, "color", &color);
-
-  blit->sources = g_slice_new (GstVideoRectangle);
-  blit->destinations = g_slice_new (GstVideoRectangle);
-  blit->n_regions = 1;
 
   source = &(blit->sources[0]);
   destination = &(blit->destinations[0]);
@@ -726,9 +722,6 @@ gst_overlay_handle_optclflow_entry (GstVOverlay * overlay, cairo_t * context,
   guint num = 0, color = 0xFFFFFFFF;
   gdouble x = 0.0, y = 0.0, dx = 0.0, dy = 0.0, xscale = 0.0, yscale = 0.0;
 
-  blit->sources = g_slice_new (GstVideoRectangle);
-  blit->destinations = g_slice_new0 (GstVideoRectangle);
-  blit->n_regions = 1;
 
   source = &(blit->sources[0]);
   destination = &(blit->destinations[0]);
@@ -780,10 +773,6 @@ gst_overlay_handle_bbox_entry (GstVOverlay * overlay, cairo_t * context,
   gdouble scale = 0.0, linewidth = 0.0;
   guint color = 0;
 
-  blit->sources = g_slice_new (GstVideoRectangle);
-  blit->destinations = g_slice_new (GstVideoRectangle);
-  blit->n_regions = 1;
-
   source = &(blit->sources[0]);
   destination = &(blit->destinations[0]);
 
@@ -825,10 +814,6 @@ gst_overlay_handle_timestamp_entry (GstVOverlay * overlay, cairo_t * context,
   gdouble fontsize = 0.0, n_chars = 0.0, scale = 0.0;
   guint color = 0;
   gboolean success = FALSE;
-
-  blit->sources = g_slice_new (GstVideoRectangle);
-  blit->destinations = g_slice_new (GstVideoRectangle);
-  blit->n_regions = 1;
 
   source = &(blit->sources[0]);
   destination = &(blit->destinations[0]);
@@ -912,10 +897,6 @@ gst_overlay_handle_string_entry (GstVOverlay * overlay, cairo_t * context,
   gdouble fontsize = 0.0, n_chars = 0.0, scale = 0.0;
   guint color = 0;
 
-  blit->sources = g_slice_new (GstVideoRectangle);
-  blit->destinations = g_slice_new (GstVideoRectangle);
-  blit->n_regions = 1;
-
   source = &(blit->sources[0]);
   destination = &(blit->destinations[0]);
 
@@ -967,10 +948,6 @@ gst_overlay_handle_mask_entry (GstVOverlay * overlay, cairo_t * context,
   gdouble x = 0.0, y = 0.0, linewidth = 0.0, scale = 0.0;
   guint color = 0;
   gboolean success = FALSE;
-
-  blit->sources = g_slice_new (GstVideoRectangle);
-  blit->destinations = g_slice_new (GstVideoRectangle);
-  blit->n_regions = 1;
 
   source = &(blit->sources[0]);
   destination = &(blit->destinations[0]);
@@ -1043,13 +1020,9 @@ gst_overlay_handle_image_entry (GstVOverlay * overlay, GstVideoBlit * blit,
 {
   GstVideoFrame *vframe = blit->frame;
   GError *error = NULL;
-  gchar *data = NULL;
+  gchar *contents = NULL, *data = NULL;
   GstVideoRectangle *source = NULL, *destination = NULL;
   gint x = 0, num = 0, id = 0;
-
-  blit->sources = g_slice_new (GstVideoRectangle);
-  blit->destinations = g_slice_new (GstVideoRectangle);
-  blit->n_regions = 1;
 
   source = &(blit->sources[0]);
 
@@ -1065,51 +1038,65 @@ gst_overlay_handle_image_entry (GstVOverlay * overlay, GstVideoBlit * blit,
       destination->x, destination->y, destination->w, destination->h);
 
   // Load static image file contents in case it was not already loaded.
-  if (simage->contents == NULL) {
-    if (simage->width > GST_VIDEO_FRAME_WIDTH (vframe)) {
-      GST_ERROR_OBJECT (overlay, "Static image width (%u) is greater than the "
-          "frame width (%u)!", simage->width, GST_VIDEO_FRAME_WIDTH (vframe));
-      return FALSE;
-    } else if (simage->height > GST_VIDEO_FRAME_HEIGHT (vframe)) {
-      GST_ERROR_OBJECT (overlay, "Static image height (%u) is greater than the "
-          "frame height (%u)!", simage->height, GST_VIDEO_FRAME_HEIGHT (vframe));
-      return FALSE;
-    }
+  if (simage->width > GST_VIDEO_FRAME_WIDTH (vframe)) {
+    GST_ERROR_OBJECT (overlay, "Static image width (%u) is greater than the "
+        "frame width (%u)!", simage->width, GST_VIDEO_FRAME_WIDTH (vframe));
+    return FALSE;
+  } else if (simage->height > GST_VIDEO_FRAME_HEIGHT (vframe)) {
+    GST_ERROR_OBJECT (overlay, "Static image height (%u) is greater than the "
+        "frame height (%u)!", simage->height, GST_VIDEO_FRAME_HEIGHT (vframe));
+    return FALSE;
+  }
 
-    if (!g_file_test (simage->path, G_FILE_TEST_IS_REGULAR)) {
-      GST_ERROR_OBJECT (overlay, "Static image path '%s' is not a regular file!",
-          simage->path);
-      return FALSE;
-    }
+  if (!g_file_test (simage->path, G_FILE_TEST_IS_REGULAR)) {
+    GST_ERROR_OBJECT (overlay, "Static image path '%s' is not a regular file!",
+        simage->path);
+    return FALSE;
+  }
 
-    if (!g_file_get_contents (simage->path, &(simage)->contents, NULL, &error)) {
-      GST_WARNING_OBJECT (overlay, "Failed to laod static image file '%s', "
-          "error: %s!", simage->path, GST_STR_NULL (error->message));
+  if (!g_file_get_contents (simage->path, &contents, NULL, &error)) {
+    GST_WARNING_OBJECT (overlay, "Failed to laod static image file '%s', "
+        "error: %s!", simage->path, GST_STR_NULL (error->message));
 
-      g_clear_error (&error);
-      return FALSE;
-    }
+    g_clear_error (&error);
+    return FALSE;
   }
 
   data = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
 
   for (x = 0; x < simage->height; x++, num += (simage->width * 4)) {
     id = x * GST_VIDEO_FRAME_PLANE_STRIDE (vframe, 0);
-    memcpy (&data[id], &(simage)->contents[num], (simage->width * 4));
+    memcpy (&data[id], &contents[num], (simage->width * 4));
   }
 
   return TRUE;
 }
 
 static gboolean
-gst_overlay_fill_overlay_blit (GstVOverlay * overlay, GstVideoBlit * blit,
+gst_overlay_populate_overlay_blit (GstVOverlay * overlay, GstVideoBlit * blit,
     guint ovltype, gpointer ovldata)
 {
-  GstVideoFrame *frame = blit->frame;
+  GstVideoFrame *frame = NULL;
   cairo_surface_t *surface = NULL;
   cairo_t *context = NULL;
   cairo_format_t format;
   gboolean success = FALSE;
+
+  blit->alpha = G_MAXUINT8;
+  blit->frame = g_slice_new0 (GstVideoFrame);
+
+  if (!gst_overlay_acquire_frame (overlay, ovltype, blit->frame)) {
+    GST_ERROR_OBJECT (overlay, "Failed to acquire overlay frame!");
+    return FALSE;
+  }
+
+  // Allocate and intialize source and destination rectangles.
+  blit->sources = g_slice_new0 (GstVideoRectangle);
+  blit->destinations = g_slice_new0 (GstVideoRectangle);
+  blit->n_regions = 1;
+
+  // Convinient local pointer to the video frame.
+  frame = blit->frame;
 
 #ifdef HAVE_LINUX_DMA_BUF_H
   if (gst_is_fd_memory (gst_buffer_peek_memory (frame->buffer, 0))) {
@@ -1227,7 +1214,6 @@ static gboolean
 gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
     GstVideoComposition * composition)
 {
-  GstVideoBlit *blit = NULL;
   GstMeta *meta = NULL;
   gpointer state = NULL;
   guint idx = 0, n_entries = 0;
@@ -1263,23 +1249,8 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
     if (GST_OVERLAY_TYPE_MAX == ovltype)
       continue;
 
-    blit = &(composition->blits[n_entries]);
-    blit->frame = g_slice_new0 (GstVideoFrame);
-    blit->alpha = G_MAXUINT8;
-
-    success = gst_overlay_acquire_frame (overlay, ovltype, blit->frame);
-
-    if (!success) {
-      GST_ERROR_OBJECT (overlay, "Failed to acquire overlay frame!");
-      goto cleanup;
-    }
-
-    // Copy the timestamps from the main buffer.
-    gst_buffer_copy_into (blit->frame->buffer, buffer,
-        GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
-
-    success = gst_overlay_fill_overlay_blit (overlay, blit, ovltype,
-        GST_GPOINTER_CAST (meta));
+    success = gst_overlay_populate_overlay_blit (overlay,
+        &(composition->blits[n_entries]), ovltype, GST_GPOINTER_CAST (meta));
 
     if (!success) {
       GST_ERROR_OBJECT (overlay, "Failed to process meta %u!", n_entries);
@@ -1293,31 +1264,29 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
   for (idx = 0; idx < overlay->bboxes->len; idx++) {
     GstOverlayBBox *bbox = &g_array_index (overlay->bboxes, GstOverlayBBox, idx);
 
+    // Skip this bounding box entry as it has been disabled.
     if (!bbox->enable)
       continue;
 
-    blit = &(composition->blits[n_entries]);
-    blit->frame = g_slice_new0 (GstVideoFrame);
-    blit->alpha = G_MAXUINT8;
+    if (bbox->blit.frame != NULL) {
+      // Take the blit parameters from the cached object.
+      composition->blits[n_entries] = bbox->blit;
+    } else {
+      GstVideoBlit *blit = &(composition->blits[n_entries]);
 
-    success = gst_overlay_acquire_frame (overlay, GST_OVERLAY_TYPE_BBOX,
-        blit->frame);
+      success = gst_overlay_populate_overlay_blit (overlay, blit,
+          GST_OVERLAY_TYPE_BBOX, GST_GPOINTER_CAST (bbox));
 
-    if (!success) {
-      GST_ERROR_OBJECT (overlay, "Failed to acquire overlay frame!");
-      goto cleanup;
-    }
+      if (!success) {
+        GST_ERROR_OBJECT (overlay, "Failed to process bounding box %u!", idx);
+        goto cleanup;
+      }
 
-    // Copy the timestamps from the main buffer.
-    gst_buffer_copy_into (blit->frame->buffer, buffer,
-        GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
-
-    success = gst_overlay_fill_overlay_blit (overlay, blit,
-        GST_OVERLAY_TYPE_BBOX, GST_GPOINTER_CAST (bbox));
-
-    if (!success) {
-      GST_ERROR_OBJECT (overlay, "Failed to process bounding box %u!", idx);
-      goto cleanup;
+      // Save the blit parameters for this entry until something changes.
+      bbox->blit = composition->blits[n_entries];
+      // Increase the buffer refcount, this will be used as indicator that
+      // the blit object has been cached and its parameters won't be freed.
+      gst_buffer_ref (bbox->blit.frame->buffer);
     }
 
     n_entries++;
@@ -1328,31 +1297,29 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
     GstOverlayTimestamp *timestamp =
         &g_array_index (overlay->timestamps, GstOverlayTimestamp, idx);
 
+    // Skip this timstamp entry as it has been disabled.
     if (!timestamp->enable)
       continue;
 
-    blit = &(composition->blits[n_entries]);
-    blit->frame = g_slice_new0 (GstVideoFrame);
-    blit->alpha = G_MAXUINT8;
+    if (timestamp->blit.frame != NULL) {
+      // Take the blit parameters from the cached object.
+      composition->blits[n_entries] = timestamp->blit;
+    } else {
+      GstVideoBlit *blit = &(composition->blits[n_entries]);
 
-    success = gst_overlay_acquire_frame (overlay, GST_OVERLAY_TYPE_TIMESTAMP,
-        blit->frame);
+      success = gst_overlay_populate_overlay_blit (overlay, blit,
+          GST_OVERLAY_TYPE_TIMESTAMP, GST_GPOINTER_CAST (timestamp));
 
-    if (!success) {
-      GST_ERROR_OBJECT (overlay, "Failed to acquire overlay frame!");
-      goto cleanup;
-    }
+      if (!success) {
+        GST_ERROR_OBJECT (overlay, "Failed to process timestamp %u!", idx);
+        goto cleanup;
+      }
 
-    // Copy the timestamps from the main buffer.
-    gst_buffer_copy_into (blit->frame->buffer, buffer,
-        GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
-
-    success = gst_overlay_fill_overlay_blit (overlay, blit,
-        GST_OVERLAY_TYPE_TIMESTAMP, GST_GPOINTER_CAST (timestamp));
-
-    if (!success) {
-      GST_ERROR_OBJECT (overlay, "Failed to process timestamp %u!", idx);
-      goto cleanup;
+      // Save the blit parameters for this entry until something changes.
+      timestamp->blit = composition->blits[n_entries];
+      // Increase the buffer refcount, this will be used as indicator that
+      // the blit object has been cached and its parameters won't be freed.
+      gst_buffer_ref (timestamp->blit.frame->buffer);
     }
 
     n_entries++;
@@ -1363,31 +1330,29 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
     GstOverlayString *string =
         &g_array_index (overlay->strings, GstOverlayString, idx);
 
+    // Skip this text entry as it has been disabled.
     if (!string->enable)
       continue;
 
-    blit = &(composition->blits[n_entries]);
-    blit->frame = g_slice_new0 (GstVideoFrame);
-    blit->alpha = G_MAXUINT8;
+    if (string->blit.frame != NULL) {
+      // Take the blit parameters from the cached object.
+      composition->blits[n_entries] = string->blit;
+    } else {
+      GstVideoBlit *blit = &(composition->blits[n_entries]);
 
-    success = gst_overlay_acquire_frame (overlay, GST_OVERLAY_TYPE_STRING,
-        blit->frame);
+      success = gst_overlay_populate_overlay_blit (overlay, blit,
+          GST_OVERLAY_TYPE_STRING, GST_GPOINTER_CAST (string));
 
-    if (!success) {
-      GST_ERROR_OBJECT (overlay, "Failed to acquire overlay frame!");
-      goto cleanup;
-    }
+      if (!success) {
+        GST_ERROR_OBJECT (overlay, "Failed to process string %u!", idx);
+        goto cleanup;
+      }
 
-    // Copy the timestamps from the main buffer.
-    gst_buffer_copy_into (blit->frame->buffer, buffer,
-        GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
-
-    success = gst_overlay_fill_overlay_blit (overlay, blit,
-        GST_OVERLAY_TYPE_STRING, GST_GPOINTER_CAST (string));
-
-    if (!success) {
-      GST_ERROR_OBJECT (overlay, "Failed to process string %u!", idx);
-      goto cleanup;
+      // Save the blit parameters for this entry until something changes.
+      string->blit = composition->blits[n_entries];
+      // Increase the buffer refcount, this will be used as indicator that
+      // the blit object has been cached and its parameters won't be freed.
+      gst_buffer_ref (string->blit.frame->buffer);
     }
 
     n_entries++;
@@ -1397,31 +1362,29 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
   for (idx = 0; idx < overlay->masks->len; idx++) {
     GstOverlayMask *mask = &g_array_index (overlay->masks, GstOverlayMask, idx);
 
+    // Skip this privacy mask entry as it has been disabled.
     if (!mask->enable)
       continue;
 
-    blit = &(composition->blits[n_entries]);
-    blit->frame = g_slice_new0 (GstVideoFrame);
-    blit->alpha = G_MAXUINT8;
+    if (mask->blit.frame != NULL) {
+      // Take the blit parameters from the cached object.
+      composition->blits[n_entries] = mask->blit;
+    } else {
+      GstVideoBlit *blit = &(composition->blits[n_entries]);
 
-    success = gst_overlay_acquire_frame (overlay, GST_OVERLAY_TYPE_MASK,
-        blit->frame);
+      success = gst_overlay_populate_overlay_blit (overlay, blit,
+          GST_OVERLAY_TYPE_MASK, GST_GPOINTER_CAST (mask));
 
-    if (!success) {
-      GST_ERROR_OBJECT (overlay, "Failed to acquire overlay frame!");
-      goto cleanup;
-    }
+      if (!success) {
+        GST_ERROR_OBJECT (overlay, "Failed to process privacy mask %u!", idx);
+        goto cleanup;
+      }
 
-    // Copy the timestamps from the main buffer.
-    gst_buffer_copy_into (blit->frame->buffer, buffer,
-        GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
-
-    success = gst_overlay_fill_overlay_blit (overlay, blit,
-        GST_OVERLAY_TYPE_MASK, GST_GPOINTER_CAST (mask));
-
-    if (!success) {
-      GST_ERROR_OBJECT (overlay, "Failed to process privacy mask %u!", idx);
-      goto cleanup;
+      // Save the blit parameters for this entry until something changes.
+      mask->blit = composition->blits[n_entries];
+      // Increase the buffer refcount, this will be used as indicator that
+      // the blit object has been cached and its parameters won't be freed.
+      gst_buffer_ref (mask->blit.frame->buffer);
     }
 
     n_entries++;
@@ -1432,31 +1395,29 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
     GstOverlayImage *simage =
         &g_array_index (overlay->simages, GstOverlayImage, idx);
 
+    // Skip this static image entry as it has been disabled.
     if (!simage->enable)
       continue;
 
-    blit = &(composition->blits[n_entries]);
-    blit->frame = g_slice_new0 (GstVideoFrame);
-    blit->alpha = G_MAXUINT8;
+    if (simage->blit.frame != NULL) {
+      // Take the blit parameters from the cached object.
+      composition->blits[n_entries] = simage->blit;
+    } else {
+      GstVideoBlit *blit = &(composition->blits[n_entries]);
 
-    success = gst_overlay_acquire_frame (overlay, GST_OVERLAY_TYPE_IMAGE,
-        blit->frame);
+      success = gst_overlay_populate_overlay_blit (overlay, blit,
+          GST_OVERLAY_TYPE_IMAGE, GST_GPOINTER_CAST (simage));
 
-    if (!success) {
-      GST_ERROR_OBJECT (overlay, "Failed to acquire overlay frame!");
-      goto cleanup;
-    }
+      if (!success) {
+        GST_ERROR_OBJECT (overlay, "Failed to process static image %u!", idx);
+        goto cleanup;
+      }
 
-    // Copy the timestamps from the main buffer.
-    gst_buffer_copy_into (blit->frame->buffer, buffer,
-        GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
-
-    success = gst_overlay_fill_overlay_blit (overlay, blit,
-        GST_OVERLAY_TYPE_IMAGE, GST_GPOINTER_CAST (simage));
-
-    if (!success) {
-      GST_ERROR_OBJECT (overlay, "Failed to process static image %u!", idx);
-      goto cleanup;
+      // Save the blit parameters for this entry until something changes.
+      simage->blit = composition->blits[n_entries];
+      // Increase the buffer refcount, this will be used as indicator that
+      // the blit object has been cached and its parameters won't be freed.
+      gst_buffer_ref (simage->blit.frame->buffer);
     }
 
     n_entries++;
@@ -1978,11 +1939,11 @@ gst_overlay_init (GstVOverlay * overlay)
   overlay->converter = NULL;
 
   overlay->backend = DEFAULT_PROP_ENGINE_BACKEND;
-  overlay->bboxes = g_array_new (FALSE, FALSE, sizeof (GstOverlayBBox));
+  overlay->bboxes = g_array_new (FALSE, TRUE, sizeof (GstOverlayBBox));
   overlay->timestamps = g_array_new (FALSE, TRUE, sizeof (GstOverlayTimestamp));
   overlay->strings = g_array_new (FALSE, TRUE, sizeof (GstOverlayString));
   overlay->simages = g_array_new (FALSE, TRUE, sizeof (GstOverlayImage));
-  overlay->masks = g_array_new (FALSE, FALSE, sizeof (GstOverlayMask));
+  overlay->masks = g_array_new (FALSE, TRUE, sizeof (GstOverlayMask));
 
   g_array_set_clear_func (overlay->timestamps,
       (GDestroyNotify) gst_overlay_timestamp_free);
