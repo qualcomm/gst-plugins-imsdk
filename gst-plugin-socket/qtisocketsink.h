@@ -64,6 +64,7 @@ struct _GstFdSocketSink
 
   GHashTable *bufmap;
   GMutex bufmaplock;
+  gint bufcount;
 
   gint should_stop;
 };

@@ -180,10 +180,15 @@ gst_socket_sink_disconnect (GstFdSocketSink * sink)
 
     g_hash_table_remove (sink->bufmap, GINT_TO_POINTER (buf_id));
 
-    gst_buffer_unref (buffer);
+    if (buffer) {
+      gst_buffer_unref (buffer);
+      sink->bufcount--;
+    }
 
     GST_INFO_OBJECT (sink, "Cleanup buffer: %p, buf_id: %d", buffer, buf_id);
   }
+  g_list_free (keys_list);
+
   g_mutex_unlock (&sink->bufmaplock);
 
   shutdown (sink->socket, SHUT_RDWR);
@@ -257,7 +262,11 @@ gst_socket_sink_render (GstBaseSink * bsink, GstBuffer * buffer)
       meta->width, meta->height, info.new_frame.buf_id, info.new_frame.size);
 
   g_mutex_lock (&sink->bufmaplock);
+  if (g_hash_table_contains (sink->bufmap, GINT_TO_POINTER (info.new_frame.buf_id)))
+    buffer_fd = -1;
+
   g_hash_table_insert (sink->bufmap, GINT_TO_POINTER (info.new_frame.buf_id), buffer);
+  sink->bufcount++;
   g_mutex_unlock (&sink->bufmaplock);
 
   gst_buffer_ref (buffer);
@@ -276,17 +285,12 @@ gst_socket_sink_wait_buffer_loop (gpointer user_data)
 {
   GstFdSocketSink *sink = GST_SOCKET_SINK (user_data);
   GstBuffer *buffer = NULL;
-  GList *keys_list = NULL;
 
   GstFdMessage info = {0};
-  gint buffer_count = 0;
 
   g_mutex_lock (&sink->bufmaplock);
 
-  keys_list = g_hash_table_get_keys (sink->bufmap);
-  buffer_count = g_list_length (keys_list);
-
-  if (g_atomic_int_get (&sink->should_stop) && buffer_count == 0) {
+  if (g_atomic_int_get (&sink->should_stop) && sink->bufcount == 0) {
     g_mutex_unlock (&sink->bufmaplock);
     gst_socket_sink_disconnect (sink);
     GST_INFO_OBJECT (sink, "Buffer loop stop");
@@ -309,13 +313,14 @@ gst_socket_sink_wait_buffer_loop (gpointer user_data)
 
   g_mutex_lock (&sink->bufmaplock);
   buffer = g_hash_table_lookup (sink->bufmap, GINT_TO_POINTER (info.new_frame.buf_id));
-  g_hash_table_remove (sink->bufmap, GINT_TO_POINTER (info.new_frame.buf_id));
+  g_hash_table_insert (sink->bufmap, GINT_TO_POINTER (info.new_frame.buf_id), NULL);
+  sink->bufcount--;
   g_mutex_unlock (&sink->bufmaplock);
 
   gst_buffer_unref (buffer);
 
   GST_DEBUG_OBJECT (sink, "Buffer returned %p, buf_id: %d, count: %d",
-      buffer, info.new_frame.buf_id, buffer_count);
+      buffer, info.new_frame.buf_id, sink->bufcount);
 }
 
 static gboolean
@@ -329,6 +334,7 @@ gst_socket_sink_start (GstBaseSink * basesink)
 
   sink->bufmap = g_hash_table_new (NULL, NULL);
   g_mutex_init (&sink->bufmaplock);
+  sink->bufcount = 0;
   g_mutex_init (&sink->socklock);
 
   g_atomic_int_set (&sink->should_stop, FALSE);
