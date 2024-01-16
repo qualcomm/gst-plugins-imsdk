@@ -62,6 +62,9 @@ struct _GstFdSocketSrc
   gint client_sock;
 
   GstSegment segment;
+
+  GHashTable *fdmap;
+  GMutex fdmaplock;
 };
 
 struct _GstFdSocketSrcClass

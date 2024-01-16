@@ -182,6 +182,9 @@ gst_socket_src_start (GstBaseSrc * bsrc)
     return FALSE;
   }
 
+  src->fdmap = g_hash_table_new (NULL, NULL);
+  g_mutex_init (&src->fdmaplock);
+
   GST_INFO_OBJECT (src, "Socket connected");
 
   return TRUE;
@@ -190,6 +193,7 @@ gst_socket_src_start (GstBaseSrc * bsrc)
 static gboolean
 gst_socket_src_socket_release (GstFdSocketSrc * src)
 {
+  GList *keys_list = NULL;
   GST_INFO_OBJECT (src, "Socket release");
 
   shutdown (src->client_sock, SHUT_RDWR);
@@ -199,6 +203,28 @@ gst_socket_src_socket_release (GstFdSocketSrc * src)
   shutdown (src->socket, SHUT_RDWR);
   close (src->socket);
   src->socket = 0;
+
+  g_mutex_lock (&src->fdmaplock);
+  keys_list = g_hash_table_get_keys (src->fdmap);
+
+  for (GList *element = keys_list; element; element = element->next) {
+    gint buf_id = GPOINTER_TO_INT (element->data);
+    gint fd;
+
+    fd = GPOINTER_TO_INT (g_hash_table_lookup (src->fdmap,
+        GINT_TO_POINTER (buf_id)));
+
+    g_hash_table_remove (src->fdmap, GINT_TO_POINTER (buf_id));
+
+    GST_INFO_OBJECT (src, "Cleanup buffer fd: %d, buf_id: %d", fd, buf_id);
+    close(fd);
+  }
+
+  g_list_free (keys_list);
+  g_mutex_unlock (&src->fdmaplock);
+
+  g_hash_table_destroy (src->fdmap);
+  g_mutex_clear (&src->fdmaplock);
 
   unlink (src->sockfile);
 
@@ -231,8 +257,6 @@ gst_socket_src_buffer_release (GstStructure * structure)
   if (send_fd_message (socket, &info, sizeof (info), -1) < 0)
     GST_ERROR ("Unable to release buffer");
 
-  close (fd);
-
   gst_structure_free (structure);
 }
 
@@ -260,6 +284,18 @@ gst_socket_src_fill_buffer (GstFdSocketSrc * src, GstBuffer ** outbuf)
 
   GST_DEBUG_OBJECT (src, "info: msg_id: %d, buf_id %d, width: %d, height: %d",
       info.id, info.new_frame.buf_id, info.new_frame.width, info.new_frame.height);
+
+  if (fd <= 0) {
+    g_mutex_lock (&src->fdmaplock);
+    fd = GPOINTER_TO_INT (g_hash_table_lookup (src->fdmap,
+        GINT_TO_POINTER (info.new_frame.buf_id)));
+    g_mutex_unlock (&src->fdmaplock);
+
+    if (fd <= 0) {
+      GST_ERROR_OBJECT (src, "Unable to get fd");
+      return GST_FLOW_ERROR;
+    }
+  }
 
   // Create a GstBuffer.
   gstbuffer = gst_buffer_new ();
@@ -329,6 +365,11 @@ gst_socket_src_fill_buffer (GstFdSocketSrc * src, GstBuffer ** outbuf)
       GST_MINI_OBJECT (gstbuffer), socket_buffer_qdata_quark (),
       structure, (GDestroyNotify) gst_socket_src_buffer_release
   );
+
+  g_mutex_lock (&src->fdmaplock);
+  g_hash_table_insert (src->fdmap, GINT_TO_POINTER (info.new_frame.buf_id),
+      GINT_TO_POINTER (fd));
+  g_mutex_unlock (&src->fdmaplock);
 
   *outbuf = gstbuffer;
 
