@@ -18,3 +18,7 @@ endif() # ENABLE_AUDIO
 if (ENABLE_DISPLAY AND ENABLE_VIDEO_DECODE)
   add_subdirectory(gst-videocodec-concurrent-playback)
 endif () # ENABLE_DISPLAY AND ENABLE_VIDEO_DECODE
+
+if (ENABLE_AUDIO AND ENABLE_DISPLAY AND ENABLE_VIDEO_DECODE)
+  add_subdirectory(gst-audio-video-playback)
+endif () # ENABLE_AUDIO AND ENABLE_DISPLAY AND ENABLE_VIDEO_DECODE
