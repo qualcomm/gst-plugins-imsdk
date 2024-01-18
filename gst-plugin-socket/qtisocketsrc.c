@@ -339,12 +339,6 @@ gst_socket_src_fill_buffer (GstFdSocketSrc * src, GstBuffer ** outbuf)
   GST_BUFFER_PTS (gstbuffer) = info.new_frame.timestamp;
   GST_BUFFER_DTS (gstbuffer) = GST_CLOCK_TIME_NONE;
 
-  if (GST_FORMAT_UNDEFINED == src->segment.format) {
-    gst_segment_init (&src->segment, GST_FORMAT_TIME);
-    GstPad *pad = gst_element_get_static_pad (GST_ELEMENT(src), "src");
-    gst_pad_push_event (pad, gst_event_new_segment (&src->segment));
-  }
-
   // GSreamer structure for later recreating the sink buffer to be returned.
   structure = gst_structure_new_empty ("SOCKET_BUFFER");
   if (structure == NULL) {
@@ -472,6 +466,7 @@ gst_socket_src_init (GstFdSocketSrc * src)
   src->client_sock = 0;
   src->timeout = 0;
 
+  gst_base_src_set_format (GST_BASE_SRC (src), GST_FORMAT_TIME);
   GST_DEBUG_CATEGORY_INIT (gst_socket_src_debug, "qtisocketsrc", 0,
     "qtisocketsrc object");
 }
