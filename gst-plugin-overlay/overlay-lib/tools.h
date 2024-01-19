@@ -37,8 +37,15 @@
 #include <sstream>
 #include <string>
 
+#ifdef HAVE_ANDROID_UTILS
 #include <cutils/properties.h>
 #include <utils/Log.h>
+#else
+#include <properties.h>
+#include <log.h>
+#undef LOG_TAG
+#define LOG_TAG "Overlay"
+#endif
 
 #if defined(HAVE_LINUX_DMA_HEAP_H)
 #include <linux/dma-heap.h>
