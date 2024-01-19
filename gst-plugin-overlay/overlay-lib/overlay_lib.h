@@ -34,8 +34,11 @@
 
 #pragma once
 
+#ifdef HAVE_ANDROID_UTILS
 #include <cutils/properties.h>
-#include <linux/msm_kgsl.h>
+#else
+#include <properties.h>
+#endif
 #include <gst/gst.h>
 #include <cairo/cairo.h>
 #include <sys/time.h>
@@ -44,6 +47,7 @@
 #include <CL/cl_ext.h>
 
 #ifdef ENABLE_C2D
+#include <linux/msm_kgsl.h>
 #include <adreno/c2d2.h>
 #endif // ENABLE_C2D
 
@@ -578,6 +582,8 @@ class OverlayItemPrivacyMask : public OverlayItem {
   uint32_t mask_color_;
   OverlayPrivacyMask config_;
 };
+
+const uint32_t OverlayItemPrivacyMask::kMaskBoxBufWidth;
 
 class OverlayItemGraph : public OverlayItem {
  public:

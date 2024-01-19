@@ -65,7 +65,6 @@
 
 namespace overlay {
 
-using namespace android;
 using namespace std;
 
 #define ROUND_TO(val, round_to) ((val + round_to - 1) & ~(round_to - 1))
@@ -712,7 +711,7 @@ int32_t Overlay::Init ()
     return -1;
   }
 
-  char prop_val[PROPERTY_VALUE_MAX];
+  char prop_val[PROP_VALUE_MAX];
   property_get("persist.overlay.use_c2d_blit", prop_val, "1");
   auto value = atoi(prop_val);
 
@@ -2602,7 +2601,7 @@ int32_t OverlayItemBoundingBox::Init (OverlayParam& param)
 
   box_stroke_width_ = (kStrokeWidth * surface_.width_ + width_ - 1) / width_;
 
-  char prop_val[PROPERTY_VALUE_MAX];
+  char prop_val[PROP_VALUE_MAX];
   property_get (PROP_BOX_STROKE_WIDTH, prop_val, "4");
   box_stroke_width_ =
       (static_cast<uint32_t> (atoi (prop_val)) > box_stroke_width_) ?
