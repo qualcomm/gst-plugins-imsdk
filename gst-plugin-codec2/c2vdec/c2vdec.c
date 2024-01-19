@@ -177,11 +177,16 @@ gst_c2_vdec_setup_parameters (GstC2VDecoder * c2vdec,
     return FALSE;
   }
 
-  success = gst_c2_engine_set_parameter (c2vdec->engine,
-      GST_C2_PARAM_COLOR_ASPECTS_TUNING, GPOINTER_CAST (&info->colorimetry));
-  if (!success) {
-    GST_ERROR_OBJECT (c2vdec, "Failed to set Color Aspects parameter!");
-    return FALSE;
+  if (info->colorimetry.primaries != GST_VIDEO_COLOR_PRIMARIES_UNKNOWN &&
+      info->colorimetry.matrix != GST_VIDEO_COLOR_MATRIX_UNKNOWN &&
+      info->colorimetry.transfer != GST_VIDEO_TRANSFER_UNKNOWN &&
+      info->colorimetry.range != GST_VIDEO_COLOR_RANGE_UNKNOWN) {
+    success = gst_c2_engine_set_parameter (c2vdec->engine,
+        GST_C2_PARAM_COLOR_ASPECTS_TUNING, GPOINTER_CAST (&info->colorimetry));
+    if (!success) {
+      GST_ERROR_OBJECT (c2vdec, "Failed to set Color Aspects parameter!");
+      return FALSE;
+    }
   }
 
 #if (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
