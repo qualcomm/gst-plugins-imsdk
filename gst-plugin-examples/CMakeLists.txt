@@ -52,3 +52,5 @@ add_subdirectory(gst-camera-standby-example)
 add_subdirectory(gst-fastswitch-example)
 add_subdirectory(gst-timelapse-example)
 add_subdirectory(gst-video-playback-example)
+add_subdirectory(gst-gbm-appsrc-example)
+
