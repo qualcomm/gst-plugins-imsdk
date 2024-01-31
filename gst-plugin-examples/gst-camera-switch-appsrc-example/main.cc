@@ -344,6 +344,10 @@ switch_camera (GstCameraSwitchCtx *cameraswitchctx) {
     // Reset last camera timestamp since the camera will start from zero
     g_mutex_lock (&cameraswitchctx->lock);
     cameraswitchctx->last_camera_timestamp = 0;
+    if (cameraswitchctx->camera_buffer_cnt == 0) {
+      cameraswitchctx->pipeline_stopping = FALSE;
+      gst_data_queue_set_flushing (cameraswitchctx->buffers_queue, FALSE);
+    }
     g_mutex_unlock (&cameraswitchctx->lock);
 
     g_print ("Start pipeline_cam1\n");
@@ -373,6 +377,10 @@ switch_camera (GstCameraSwitchCtx *cameraswitchctx) {
     // Reset last camera timestamp since the camera will start from zero
     g_mutex_lock (&cameraswitchctx->lock);
     cameraswitchctx->last_camera_timestamp = 0;
+    if (cameraswitchctx->camera_buffer_cnt == 0) {
+      cameraswitchctx->pipeline_stopping = FALSE;
+      gst_data_queue_set_flushing (cameraswitchctx->buffers_queue, FALSE);
+    }
     g_mutex_unlock (&cameraswitchctx->lock);
 
     g_print ("Start pipeline_cam0\n");
@@ -417,6 +425,7 @@ buffers_task_func (gpointer userdata)
 {
   GstCameraSwitchCtx *cameraswitchctx = (GstCameraSwitchCtx *) userdata;
   GstBuffer *buffer = NULL;
+  GstMemory *memory = NULL;
   static GstClockTime local_timestamp = 0;
   static GstClockTime duration = 0;
 
@@ -485,10 +494,12 @@ buffers_task_func (gpointer userdata)
 
     cameraswitchctx->camera_buffer_cnt++;
     // Set a notification function to signal when the buffer is no longer used.
+    memory = gst_buffer_get_memory (buffer, 0);
     gst_mini_object_set_qdata (
-        GST_MINI_OBJECT (buffer), gst_cam_switch_qdata_quark (),
+        GST_MINI_OBJECT (memory), gst_cam_switch_qdata_quark (),
         cameraswitchctx, (GDestroyNotify) buffer_release_notify
     );
+    gst_memory_unref (memory);
   }
 
   if (!cameraswitchctx->exit) {
