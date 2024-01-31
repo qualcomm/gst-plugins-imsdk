@@ -111,17 +111,6 @@ gst_smartcodec_engine_free (SmartCodecEngine * engine)
 }
 
 void
-gst_smartcodec_engine_set_callbacks (SmartCodecEngine * engine,
-    GstBitrateReceivedCallback bitrate_callback,
-    GstFRDeviderReceivedCallback fr_callback,
-    GstReleaseBufferCallback release_buffer_callback,
-    gpointer user_data)
-{
-  engine->videoctrlengine->SetCallbacks (bitrate_callback, fr_callback,
-      release_buffer_callback, user_data);
-}
-
-void
 gst_smartcodec_engine_init (SmartCodecEngine * engine,
     GstCaps * caps, guint stats_mask)
 {
@@ -129,6 +118,77 @@ gst_smartcodec_engine_init (SmartCodecEngine * engine,
 
   gst_video_info_from_caps (&engine->video_info, caps);
   engine->stats_mask = stats_mask;
+}
+
+void
+gst_smartcodec_engine_config (SmartCodecEngine * engine,
+    gboolean smart_bitrate_en,
+    gboolean smart_framerate_en,
+    gboolean smart_gop_en,
+    guint width,
+    guint height,
+    guint stride,
+    guint fps_ctrl,
+    guint target_bitrate,
+    guint initial_goplength,
+    guint long_goplength,
+    guint gop_threshold,
+    GArray * bitrate_thresholds,
+    GArray * framerate_thresholds,
+    GArray * roi_qualitys,
+    GstBitrateReceivedCallback bitrate_callback,
+    GstFRDeviderReceivedCallback fr_callback,
+    GstGOPLengthReceivedCallback goplength_callback,
+    GstReleaseBufferCallback release_buffer_callback,
+    gpointer user_data)
+{
+  guint idx = 0;
+  ::videoctrl::Config config;
+
+  config.smart_bitrate_en = smart_bitrate_en;
+  config.smart_framerate_en = smart_framerate_en;
+  config.smart_gop_en = smart_gop_en;
+
+  config.fps_main = engine->video_info.fps_n;
+  config.fps_ctrl = fps_ctrl;
+
+  config.width = width;
+  config.height = height;
+  config.stride = stride;
+  config.target_bitrate = target_bitrate;
+  config.gop_len = initial_goplength;
+  config.long_gop_len = long_goplength;
+  config.gop_threshold = gop_threshold;
+
+  config.callbacks.bitrate_callback = bitrate_callback;
+  config.callbacks.fr_callback = fr_callback;
+  config.callbacks.goplength_callback = goplength_callback;
+  config.callbacks.release_buffer_callback = release_buffer_callback;
+  config.callbacks.user_data = user_data;
+
+  for (idx = 0; idx < bitrate_thresholds->len; idx++) {
+    guint *values =
+        (guint *) g_array_index (bitrate_thresholds, gpointer, idx);
+    ::videoctrl::BitrateThres t;
+    t.threshold = values[0];
+    t.reduction = values[1];
+    config.bitrate_thresholds.push_back (t);
+  }
+
+  for (idx = 0; idx < framerate_thresholds->len; idx++) {
+    guint thres = g_array_index (framerate_thresholds, guint, idx);
+    config.framerate_thresholds.push_back (thres);
+  }
+
+  for (idx = 0; idx < roi_qualitys->len; idx++) {
+    char **values = (char **) g_array_index (roi_qualitys, gpointer, idx);
+    ::videoctrl::RoiQualitys q;
+    g_strlcpy (q.qualitys_lb, values[0], sizeof (q.qualitys_lb));
+    g_strlcpy (q.qualitys_qp, values[1], sizeof (q.qualitys_qp));
+    config.roi_qualitys.push_back (q);
+  }
+
+  engine->videoctrlengine->SetConfig (&config);
 }
 
 void
@@ -345,14 +405,15 @@ gst_smartcodec_engine_check_elapsed_time_and_print_bwstats (
 }
 
 void
-gst_smartcodec_engine_push_ctrl_buff (SmartCodecEngine * engine, guint8 * buff)
+gst_smartcodec_engine_push_ctrl_buff (SmartCodecEngine * engine, guint8 * buff,
+    guint64 timestamp)
 {
   if (NULL == buff) {
     GST_ERROR ("invalid buff");
     return;
   }
 
-  engine->videoctrlengine->PushBuffer (buff);
+  engine->videoctrlengine->PushBuffer (buff, timestamp);
 }
 
 void
@@ -430,72 +491,6 @@ gst_smartcodec_engine_push_ml_buff (SmartCodecEngine * engine, gchar * data)
 
   engine->videoctrlengine->PushMLData (rects);
   gst_smartcodec_engine_handle_rois (engine, rects);
-}
-
-void
-gst_smartcodec_engine_set_target_bitrate (SmartCodecEngine * engine,
-    guint target_bitrate)
-{
-  engine->videoctrlengine->SetTargetBitrate (target_bitrate);
-}
-
-void
-gst_smartcodec_engine_set_video_info (SmartCodecEngine * engine,
-    guint width, guint height, guint stride)
-{
-  engine->videoctrlengine->SetVideoInfo (
-      engine->video_info.fps_n, engine->video_info.fps_d,
-      width, height, stride);
-}
-
-void
-gst_smartcodec_engine_set_bitrate_thresholds (SmartCodecEngine * engine,
-    GArray * bitrate_thresholds)
-{
-  guint idx;
-  std::vector<::videoctrl::BitrateThres> thresholds;
-  for (idx = 0; idx < bitrate_thresholds->len; idx++) {
-    guint *values =
-        (guint *) g_array_index (bitrate_thresholds, gpointer, idx);
-    ::videoctrl::BitrateThres t;
-    t.threshold = values[0];
-    t.reduction = values[1];
-    thresholds.push_back (t);
-  }
-
-  engine->videoctrlengine->SetBitrateThres (thresholds);
-}
-
-void
-gst_smartcodec_engine_set_fr_thresholds (SmartCodecEngine * engine,
-    GArray * framerate_thresholds)
-{
-  guint idx;
-  std::vector<uint32_t> thresholds;
-  for (idx = 0; idx < framerate_thresholds->len; idx++) {
-    guint thres = g_array_index (framerate_thresholds, guint, idx);
-    thresholds.push_back (
-        g_array_index (framerate_thresholds, guint, idx));
-  }
-
-  engine->videoctrlengine->SetFramerateThres (thresholds);
-}
-
-void
-gst_smartcodec_engine_set_roi_classes_qps (SmartCodecEngine * engine,
-    GArray * roi_qualitys)
-{
-  guint idx;
-  std::vector<::videoctrl::RoiQualitys> qualitys;
-  for (idx = 0; idx < roi_qualitys->len; idx++) {
-    char **values = (char **) g_array_index (roi_qualitys, gpointer, idx);
-    ::videoctrl::RoiQualitys q;
-    g_strlcpy (q.qualitys_lb, values[0], sizeof (q.qualitys_lb));
-    g_strlcpy (q.qualitys_qp, values[1], sizeof (q.qualitys_qp));
-    qualitys.push_back (q);
-  }
-
-  engine->videoctrlengine->SetRoiQps (qualitys);
 }
 
 void

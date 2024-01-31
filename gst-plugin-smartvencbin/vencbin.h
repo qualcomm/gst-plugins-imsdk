@@ -73,6 +73,12 @@ struct _GstVideoEncBin
   GstBinEncoderType encoder_type;
   guint             buff_cnt_delay;
   guint             target_bitrate;
+  gboolean          smart_bitrate_en;
+  gboolean          smart_framerate_en;
+  gboolean          smart_gop_en;
+  guint             initial_goplength;
+  guint             long_goplength;
+  guint             gop_threshold;
   GArray            *framerate_thresholds;
   GArray            *bitrate_thresholds;
   GArray            *roi_qualitys;
@@ -92,6 +98,8 @@ struct _GstVideoEncBin
   gboolean          active;
   /// Condition for push/pop buffers from the queues.
   GCond             wakeup;
+  /// Contains timestamps of I-frame insertions.
+  GList             *syncframe_timestamps;
 };
 
 struct _GstVideoEncBinClass
