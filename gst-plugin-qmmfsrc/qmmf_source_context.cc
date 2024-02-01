@@ -71,18 +71,14 @@
 #include <qmmf-sdk/qmmf_recorder.h>
 #include <qmmf-sdk/qmmf_recorder_extra_param_tags.h>
 #include <qmmf-sdk/qmmf_recorder_extra_param.h>
-#include <camera/VendorTagDescriptor.h>
-#include <camera/CameraMetadata.h>
+#include <qmmf-sdk/qmmf_vendor_tag_descriptor.h>
+#include <qmmf-sdk/qmmf_camera_metadata.h>
 
 #include "qmmf_source_utils.h"
 #include "qmmf_source_image_pad.h"
 #include "qmmf_source_video_pad.h"
 
-#ifndef CAMERA_METADATA_1_0_NS
-namespace camera = android;
-#else
-namespace camera = android::hardware::camera::common::V1_0::helper;
-#endif
+namespace camera = qmmf;
 #define GST_QMMF_CONTEXT_GET_LOCK(obj) (&GST_QMMF_CONTEXT_CAST(obj)->lock)
 #define GST_QMMF_CONTEXT_LOCK(obj) \
   g_mutex_lock(GST_QMMF_CONTEXT_GET_LOCK(obj))
@@ -327,18 +323,18 @@ validate_bayer_params (GstQmmfContext * context, GstPad * pad)
 static guint
 get_vendor_tag_by_name (const gchar * section, const gchar * name)
 {
-  ::android::sp<::camera::VendorTagDescriptor> vtags;
-  ::android::status_t status = 0;
+  std::shared_ptr<VendorTagDescriptor> vtags;
+  status_t status = 0;
   guint tag_id = 0;
 
-  vtags = ::camera::VendorTagDescriptor::getGlobalVendorTagDescriptor();
+  vtags = VendorTagDescriptor::getGlobalVendorTagDescriptor();
   if (vtags.get() == NULL) {
     GST_WARNING ("Failed to retrieve Global Vendor Tag Descriptor!");
     return 0;
   }
 
-  status = vtags->lookupTag(::android::String8(name),
-      ::android::String8(section), &tag_id);
+  status = vtags->lookupTag(std::string(name),
+      std::string(section), &tag_id);
   if (status != 0) {
     GST_WARNING ("Unable to locate tag for '%s', section '%s'!", name, section);
     return 0;

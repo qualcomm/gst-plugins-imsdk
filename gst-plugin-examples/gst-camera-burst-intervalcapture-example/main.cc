@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
@@ -7,14 +7,10 @@
 #include <gst/gst.h>
 #include <glib.h>
 #include <stdarg.h>
-#include <camera/CameraMetadata.h>
-#include <camera/VendorTagDescriptor.h>
+#include <qmmf-sdk/qmmf_camera_metadata.h>
+#include <qmmf-sdk/qmmf_vendor_tag_descriptor.h>
 
-#ifndef CAMERA_METADATA_1_0_NS
-namespace camera = android;
-#else
-namespace camera = android::hardware::camera::common::V1_0::helper;
-#endif
+namespace camera = qmmf;
 
 #define DEFAULT_OUTPUT_WIDTH 3840
 #define DEFAULT_OUTPUT_HEIGHT 2160

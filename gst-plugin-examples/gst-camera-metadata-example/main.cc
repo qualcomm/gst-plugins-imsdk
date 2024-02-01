@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -37,14 +37,10 @@
 #include <glib-unix.h>
 #include <gst/gst.h>
 
-#include <camera/CameraMetadata.h>
-#include <camera/VendorTagDescriptor.h>
+#include <qmmf-sdk/qmmf_camera_metadata.h>
+#include <qmmf-sdk/qmmf_vendor_tag_descriptor.h>
 
-#ifndef CAMERA_METADATA_1_0_NS
-namespace camera = android;
-#else
-namespace camera = android::hardware::camera::common::V1_0::helper;
-#endif
+namespace camera = qmmf;
 
 #define DASH_LINE   "----------------------------------------------------------------------"
 #define SPACE       "                                                                      "
@@ -676,7 +672,7 @@ find_tag_by_name (const gchar * section_name, const gchar * tag_name,
 {
   gchar *tag = NULL;
   gint tag_type = -1;
-  const ::android::sp<::camera::VendorTagDescriptor> vtags =
+  const std::shared_ptr<::camera::VendorTagDescriptor> vtags =
      ::camera::VendorTagDescriptor::getGlobalVendorTagDescriptor();
 
   if (vtags.get() == NULL) {
@@ -707,7 +703,7 @@ get_tag_typechar (const gchar * section_name, const gchar * tag_name,
     ::camera::CameraMetadata * meta, gchar ** type, guint32 * tag_id)
 {
   gchar *tag_value = NULL;
-  ::android::status_t status = 0;
+  status_t status = 0;
   gint tag_type = -1;
 
   if ((tag_type =
@@ -755,7 +751,7 @@ get_tag (const gchar * section_name, const gchar * tag_name,
     ::camera::CameraMetadata * meta, gchar ** type)
 {
   gchar *tag_value = NULL;
-  ::android::status_t status = 0;
+  status_t status = 0;
   guint32 tag_id = 0;
   gint tag_type = -1;
 
@@ -829,7 +825,7 @@ set_tag (GstElement * pipeline, const gchar * section_name,
 {
   GstElement *camsrc = get_element_from_pipeline (pipeline, "qtiqmmfsrc");
   ::camera::CameraMetadata *meta = nullptr;
-  ::android::status_t status = -1;
+  status_t status = -1;
   guint32 tag_id = 0;
   gint tag_type = -1;
 
@@ -971,7 +967,7 @@ collect_tags (GstElement * pipeline, const gchar * section_name,
     const gchar * tag_name, gchar * new_value, ::camera::CameraMetadata * meta,
     gint tag_type, guint32 tag_id)
 {
-  ::android::status_t status = -1;
+  status_t status = -1;
 
   switch (tag_type) {
     case TYPE_BYTE:
@@ -1129,7 +1125,7 @@ static void
 print_vendor_tags (::camera::CameraMetadata * meta, FILE * file)
 {
   gchar *header = NULL;
-  const ::android::sp<::camera::VendorTagDescriptor> vtags =
+  const std::shared_ptr<::camera::VendorTagDescriptor> vtags =
       ::camera::VendorTagDescriptor::getGlobalVendorTagDescriptor();
 
   if (vtags.get() == NULL) {
