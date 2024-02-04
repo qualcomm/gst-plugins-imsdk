@@ -767,7 +767,9 @@ gst_c2_venc_buffer_available (GstBuffer * buffer, gpointer userdata)
   GST_BUFFER_FLAG_UNSET (buffer, GST_VIDEO_BUFFER_FLAG_UBWC);
   // Unset the custom HEIC flag if present.
   GST_BUFFER_FLAG_UNSET (buffer, GST_VIDEO_BUFFER_FLAG_HEIC);
-  
+  // Unset the custom GBM flag if present.
+  GST_BUFFER_FLAG_UNSET (buffer, GST_VIDEO_BUFFER_FLAG_GBM);
+
   // Check for incomplete buffers and merge them into single buffer.
   if (gst_buffer_list_length (c2venc->incomplete_buffers) > 0) {
     GstMemory *memory = NULL;
@@ -933,6 +935,9 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   c2venc->isubwc = gst_caps_has_compression (state->caps, "ubwc");
 
   c2venc->isheif = gst_caps_has_subformat(state->caps, "heif");
+
+  c2venc->isgbm = gst_caps_features_contains
+      (gst_caps_get_features (state->caps, 0), GST_CAPS_FEATURE_MEMORY_GBM);
 
   GST_DEBUG_OBJECT (c2venc, "Setting new format %s%s",
       gst_video_format_to_string (GST_VIDEO_INFO_FORMAT (info)),
@@ -1166,6 +1171,9 @@ gst_c2_venc_handle_frame (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
 
   if (c2venc->isheif)
     GST_BUFFER_FLAG_SET (frame->input_buffer, GST_VIDEO_BUFFER_FLAG_HEIC);
+
+  if (c2venc->isgbm)
+    GST_BUFFER_FLAG_SET (frame->input_buffer, GST_VIDEO_BUFFER_FLAG_GBM);
 
   // This mutex was locked in the base class before call this function.
   // Needs to be unlocked when waiting for any pending buffers during drain.
@@ -1715,6 +1723,7 @@ gst_c2_venc_init (GstC2VEncoder * c2venc)
   c2venc->instate = NULL;
   c2venc->isubwc = FALSE;
   c2venc->isheif = FALSE;
+  c2venc->isgbm = FALSE;
   c2venc->headers = NULL;
 
   c2venc->incomplete_buffers = gst_buffer_list_new ();

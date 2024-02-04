@@ -1176,8 +1176,10 @@ bool GstC2Utils::ImportHandleInfo(GstBuffer* buffer,
       return false;
   }
 
-  struct gbm_bo bo = {.ion_fd = fd, .ion_metadata_fd = -1};
-  gbm_perform(GBM_PERFORM_GET_METADATA_ION_FD, &bo, &meta_fd);
+  if (GST_BUFFER_FLAG_IS_SET (buffer, GST_VIDEO_BUFFER_FLAG_GBM)) {
+    struct gbm_bo bo = {.ion_fd = fd, .ion_metadata_fd = -1};
+    gbm_perform (GBM_PERFORM_GET_METADATA_ION_FD, &bo, &meta_fd);
+  }
 
   handle->version = ::android::C2HandleGBM::VERSION;
   handle->numFds = ::android::C2HandleGBM::NUM_FDS;
