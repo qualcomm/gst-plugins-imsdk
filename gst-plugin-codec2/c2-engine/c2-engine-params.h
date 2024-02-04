@@ -46,6 +46,8 @@ G_BEGIN_DECLS
 #define GST_VIDEO_BUFFER_FLAG_UBWC (GST_VIDEO_BUFFER_FLAG_LAST << 1)
 // GST Buffer flag for frame with HEIC encoding.
 #define GST_VIDEO_BUFFER_FLAG_HEIC (GST_VIDEO_BUFFER_FLAG_LAST << 2)
+// GST Buffer flag for frame with GBM format.
+#define GST_VIDEO_BUFFER_FLAG_GBM  (GST_VIDEO_BUFFER_FLAG_LAST << 3)
 
 
 // Maximum number of regions for encoding.
