@@ -31,3 +31,11 @@ endif () # ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE
 if (ENABLE_CAMERA)
   add_subdirectory(gst-appsink-example)
 endif () # ENABLE_CAMERA
+
+if (ENABLE_ML AND ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE)
+  add_subdirectory(gst-ai-classification)
+  add_subdirectory(gst-ai-object-detection)
+  add_subdirectory(gst-ai-pose-detection)
+  add_subdirectory(gst-ai-segmentation)
+  add_subdirectory(gst-ai-parallel-inference)
+endif () # ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE

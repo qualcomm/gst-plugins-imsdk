@@ -29,34 +29,52 @@ typedef struct
 } GstAppContext;
 
 /**
- * ModelType:
- * @MODEL_TYPE_NONE  : Invalid Model Type.
- * @MODEL_TYPE_SNPE  : SNPE DLC Container.
- * @MODEL_TYPE_TFLITE: TFLITE Container.
+ * GstModelType:
+ * @GST_MODEL_TYPE_NONE  : Invalid Model Type.
+ * @GST_MODEL_TYPE_SNPE  : SNPE DLC Container.
+ * @GST_MODEL_TYPE_TFLITE: TFLITE Container.
  *
  * Type of Model container for the Runtime.
  */
 typedef enum {
-  MODEL_TYPE_NONE,
-  MODEL_TYPE_SNPE,
-  MODEL_TYPE_TFLITE
-} ModelType;
+  GST_MODEL_TYPE_NONE,
+  GST_MODEL_TYPE_SNPE,
+  GST_MODEL_TYPE_TFLITE
+} GstModelType;
 
 /**
- * YoloModelType:
- * @YOLO_TYPE_NONE: Invalid Model Type.
- * @YOLO_TYPE_V5  : Yolov5 Object Detection Model.
- * @YOLO_TYPE_V8  : Yolov8 Object Detection Model.
- * @YOLO_TYPE_NAS: Yolonas Object Detection Model.
+ * GstYoloModelType:
+ * @GST_YOLO_TYPE_NONE: Invalid Model Type.
+ * @GST_YOLO_TYPE_V5  : Yolov5 Object Detection Model.
+ * @GST_YOLO_TYPE_V8  : Yolov8 Object Detection Model.
+ * @GST_YOLO_TYPE_NAS: Yolonas Object Detection Model.
  *
  * Type of Yolo Model.
  */
 typedef enum {
-  YOLO_TYPE_NONE,
-  YOLO_TYPE_V5,
-  YOLO_TYPE_V8,
-  YOLO_TYPE_NAS
-} YoloModelType;
+  GST_YOLO_TYPE_NONE,
+  GST_YOLO_TYPE_V5,
+  GST_YOLO_TYPE_V8,
+  GST_YOLO_TYPE_NAS
+} GstYoloModelType;
+
+/**
+ * GstInferenceType:
+ * @param GST_OBJECT_DETECTION: Object detection Pipeline.
+ * @param GST_CLASSIFICATION: Classification Pipeline.
+ * @param GST_POSE_DETECTION: Pose detection Pipeline.
+ * @param GST_SEGMENTATION: Segmentation Pipeline.
+ * @param GST_PIPELINE_CNT
+ *
+ * Type of Inference.
+ */
+typedef enum {
+  GST_OBJECT_DETECTION,
+  GST_CLASSIFICATION,
+  GST_POSE_DETECTION,
+  GST_SEGMENTATION,
+  GST_PIPELINE_CNT
+} GstInferenceType;
 
 /**
  * GstMLSnpeDelegate:
@@ -205,6 +223,8 @@ state_changed_cb (GstBus * bus, GstMessage * message, gpointer userdata)
     return;
 
   gst_message_parse_state_changed (message, &old, &new_st, &pending);
+
+  g_print("state change: %d -> %d\n", old, new_st);
 
   if ((new_st == GST_STATE_PAUSED) && (old == GST_STATE_READY) &&
       (pending == GST_STATE_VOID_PENDING)) {
