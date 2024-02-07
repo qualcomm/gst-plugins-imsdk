@@ -17,6 +17,7 @@ endif() # ENABLE_AUDIO
 
 if (ENABLE_DISPLAY AND ENABLE_VIDEO_DECODE)
   add_subdirectory(gst-videocodec-concurrent-playback)
+  add_subdirectory(gst-weston-composition-example)
 endif () # ENABLE_DISPLAY AND ENABLE_VIDEO_DECODE
 
 if (ENABLE_AUDIO AND ENABLE_DISPLAY AND ENABLE_VIDEO_DECODE)
