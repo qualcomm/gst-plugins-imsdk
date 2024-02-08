@@ -27,3 +27,7 @@ endif () # ENABLE_AUDIO AND ENABLE_DISPLAY AND ENABLE_VIDEO_DECODE
 if (ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE)
   add_subdirectory(gst-camera-single-stream-example)
 endif () # ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE
+
+if (ENABLE_CAMERA)
+  add_subdirectory(gst-appsink-example)
+endif () # ENABLE_CAMERA
