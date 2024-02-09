@@ -50,14 +50,10 @@
 
 #include <gst/gst.h>
 #include <glib-unix.h>
-#include <camera/CameraMetadata.h>
-#include <camera/VendorTagDescriptor.h>
+#include <qmmf-sdk/qmmf_camera_metadata.h>
+#include <qmmf-sdk/qmmf_vendor_tag_descriptor.h>
 
-#ifndef CAMERA_METADATA_1_0_NS
-namespace camera = android;
-#else
-namespace camera = android::hardware::camera::common::V1_0::helper;
-#endif // CAMERA_METADATA_1_0_NS
+namespace camera = qmmf;
 
 #define PIPELINE_MAIN "qtiqmmfsrc name=camsrc camsrc.video_0 ! " \
     "video/x-raw(memory:GBM),format=NV12,width=1280,height=720,framerate=30/1 ! " \
