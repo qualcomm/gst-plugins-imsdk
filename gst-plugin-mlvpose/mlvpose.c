@@ -315,8 +315,7 @@ gst_ml_video_pose_create_pool (GstMLVideoPose * vpose, GstCaps * caps)
 }
 
 static gboolean
-gst_ml_video_pose_fill_video_output (GstMLVideoPose * vpose,
-    GArray * predictions, GstBuffer * buffer)
+gst_ml_video_pose_fill_video_output (GstMLVideoPose * vpose, GstBuffer * buffer)
 {
   GstVideoMeta *vmeta = NULL;
   GstMapInfo memmap;
@@ -395,7 +394,7 @@ gst_ml_video_pose_fill_video_output (GstMLVideoPose * vpose,
   // Set skeleton line width.
   cairo_set_line_width (context, borderwidth);
 
-  for (idx = 0; idx < predictions->len; ++idx) {
+  for (idx = 0; idx < vpose->predictions->len; ++idx) {
     GstMLPrediction *prediction = NULL;
     GArray *keypoints = NULL, *connections = NULL;
 
@@ -403,7 +402,7 @@ gst_ml_video_pose_fill_video_output (GstMLVideoPose * vpose,
     if (n_predictions >= vpose->n_results)
       break;
 
-    prediction = &(g_array_index (predictions, GstMLPrediction, idx));
+    prediction = &(g_array_index (vpose->predictions, GstMLPrediction, idx));
 
     // Break immediately if sorted prediction confidence is below the threshold.
     if (prediction->confidence < vpose->threshold)
@@ -485,8 +484,7 @@ gst_ml_video_pose_fill_video_output (GstMLVideoPose * vpose,
 }
 
 static gboolean
-gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose,
-    GArray * predictions, GstBuffer * buffer)
+gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
 {
   GstMapInfo memmap = {};
   GValue entries = G_VALUE_INIT, value = G_VALUE_INIT;
@@ -496,7 +494,7 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose,
 
   g_value_init (&entries, GST_TYPE_LIST);
 
-  for (idx = 0; idx < predictions->len; idx++) {
+  for (idx = 0; idx < vpose->predictions->len; idx++) {
     GstMLPrediction *prediction = NULL;
     GstStructure *entry = NULL, *keypoint = NULL;
     GValue links = G_VALUE_INIT, link = G_VALUE_INIT;
@@ -505,7 +503,7 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose,
     if (n_predictions >= vpose->n_results)
       break;
 
-    prediction = &(g_array_index (predictions, GstMLPrediction, idx));
+    prediction = &(g_array_index (vpose->predictions, GstMLPrediction, idx));
 
     // Break immediately if sorted prediction confidence is below the threshold.
     if (prediction->confidence < vpose->threshold)
@@ -679,12 +677,73 @@ gst_ml_video_pose_decide_allocation (GstBaseTransform * base,
 }
 
 static GstFlowReturn
+gst_ml_video_pose_submit_input_buffer (GstBaseTransform * base,
+    gboolean is_discont, GstBuffer * buffer)
+{
+  GstMLVideoPose *vpose = GST_ML_VIDEO_POSE (base);
+  GstMLFrame mlframe = { 0, };
+  GstFlowReturn ret = GST_FLOW_OK;
+  GstClockTime time = GST_CLOCK_TIME_NONE;
+  gboolean success = FALSE;
+
+  // Let baseclass handle caps (re)negotiation and QoS.
+  ret = GST_BASE_TRANSFORM_CLASS (parent_class)->submit_input_buffer (base,
+      is_discont, buffer);
+
+  if (ret != GST_FLOW_OK)
+    return ret;
+
+  // Check if the baseclass set the plufin in passthrough mode.
+  if (gst_base_transform_is_passthrough (base))
+    return ret;
+
+  // GAP input buffer, nothing to do. Propagate output buffer downstream.
+  if (gst_buffer_get_size (buffer) == 0 &&
+      GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP))
+    return ret;
+
+  // Perform pre-processing on the input buffer.
+  time = gst_util_get_timestamp ();
+
+  if (!gst_ml_frame_map (&mlframe, vpose->mlinfo, buffer, GST_MAP_READ)) {
+    GST_ERROR_OBJECT (vpose, "Failed to map buffer!");
+    return GST_FLOW_ERROR;
+  }
+
+  // Clear previously stored values.
+  vpose->predictions = g_array_remove_range (
+      vpose->predictions, 0, vpose->predictions->len);
+
+  // Call the submodule process funtion.
+  success = gst_ml_video_pose_module_execute (vpose->module, &mlframe,
+      vpose->predictions);
+
+  gst_ml_frame_unmap (&mlframe);
+
+  if (!success) {
+    GST_ERROR_OBJECT (vpose, "Failed to process tensors!");
+    return GST_FLOW_ERROR;
+  }
+
+  // Sort the list of predictions.
+  g_array_sort (vpose->predictions, gst_ml_compare_predictions);
+
+  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
+
+  GST_LOG_OBJECT (vpose, "Processing took %" G_GINT64_FORMAT ".%03"
+      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000));
+
+  return GST_FLOW_OK;
+}
+
+static GstFlowReturn
 gst_ml_video_pose_prepare_output_buffer (GstBaseTransform * base,
     GstBuffer * inbuffer, GstBuffer ** outbuffer)
 {
   GstMLVideoPose *vpose = GST_ML_VIDEO_POSE (base);
   GstBufferPool *pool = vpose->outpool;
-  GstFlowReturn ret = GST_FLOW_OK;
+  GstBufferCopyFlags flags = GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS;
 
   if (gst_base_transform_is_passthrough (base)) {
     GST_DEBUG_OBJECT (vpose, "Passthrough, no need to do anything");
@@ -700,14 +759,26 @@ gst_ml_video_pose_prepare_output_buffer (GstBaseTransform * base,
     return GST_FLOW_ERROR;
   }
 
-  ret = gst_buffer_pool_acquire_buffer (pool, outbuffer, NULL);
-  if (ret != GST_FLOW_OK) {
+  // Input is marked as GAP, nothing to process. Create a GAP output buffer.
+  if (gst_buffer_get_size (inbuffer) == 0 &&
+      GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP))
+    *outbuffer = gst_buffer_new ();
+
+  // When there are no predictions in the input create a GAP output buffer.
+  if ((*outbuffer == NULL) && (vpose->predictions->len == 0)) {
+    *outbuffer = gst_buffer_new ();
+    GST_BUFFER_FLAG_SET (*outbuffer, GST_BUFFER_FLAG_GAP);
+    flags &= ~GST_BUFFER_COPY_FLAGS;
+  }
+
+  if ((*outbuffer == NULL) &&
+      gst_buffer_pool_acquire_buffer (pool, outbuffer, NULL) != GST_FLOW_OK) {
     GST_ERROR_OBJECT (vpose, "Failed to create output buffer!");
     return GST_FLOW_ERROR;
   }
+
   // Copy the flags and timestamps from the input buffer.
-  gst_buffer_copy_into (*outbuffer, inbuffer,
-      GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
+  gst_buffer_copy_into (*outbuffer, inbuffer, flags, 0, -1);
 
   return GST_FLOW_OK;
 }
@@ -933,12 +1004,8 @@ gst_ml_video_pose_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     GstBuffer * outbuffer)
 {
   GstMLVideoPose *vpose = GST_ML_VIDEO_POSE (base);
-  GArray *predictions = NULL;
-  GstMLFrame mlframe = { 0, };
+  GstClockTime time = GST_CLOCK_TIME_NONE;
   gboolean success = FALSE;
-
-  GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
-  GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
 
   g_return_val_if_fail (vpose->module != NULL, GST_FLOW_ERROR);
 
@@ -947,57 +1014,25 @@ gst_ml_video_pose_transform (GstBaseTransform * base, GstBuffer * inbuffer,
       GST_BUFFER_FLAG_IS_SET (outbuffer, GST_BUFFER_FLAG_GAP))
     return GST_FLOW_OK;
 
-  // Initialize the array which will contain the predictions, must not fail.
-  predictions = g_array_new (FALSE, FALSE, sizeof (GstMLPrediction));
-  g_return_val_if_fail (predictions != NULL, GST_FLOW_ERROR);
-
-  g_array_set_clear_func (predictions, gst_ml_prediction_free);
-
-  ts_begin = gst_util_get_timestamp ();
-
-  if (!gst_ml_frame_map (&mlframe, vpose->mlinfo, inbuffer, GST_MAP_READ)) {
-    GST_ERROR_OBJECT (vpose, "Failed to map input buffer!");
-    return GST_FLOW_ERROR;
-  }
-
-  // Call the submodule process funtion.
-  success = gst_ml_video_pose_module_execute (vpose->module, &mlframe,
-      predictions);
-
-  gst_ml_frame_unmap (&mlframe);
-
-  if (!success) {
-    GST_ERROR_OBJECT (vpose, "Failed to process tensors!");
-    g_array_free (predictions, TRUE);
-    return GST_FLOW_ERROR;
-  }
-
-  // Sort the list of predictions.
-  g_array_sort (predictions, gst_ml_compare_predictions);
+  time = gst_util_get_timestamp ();
 
   if (vpose->mode == OUTPUT_MODE_VIDEO)
-    success = gst_ml_video_pose_fill_video_output (vpose, predictions,
-        outbuffer);
+    success = gst_ml_video_pose_fill_video_output (vpose, outbuffer);
   else if (vpose->mode == OUTPUT_MODE_TEXT)
-    success = gst_ml_video_pose_fill_text_output (vpose, predictions,
-        outbuffer);
+    success = gst_ml_video_pose_fill_text_output (vpose, outbuffer);
   else
     success = FALSE;
-
-  g_array_free (predictions, TRUE);
 
   if (!success) {
     GST_ERROR_OBJECT (vpose, "Failed to fill output buffer!");
     return GST_FLOW_ERROR;
   }
 
-  ts_end = gst_util_get_timestamp ();
-
-  tsdelta = GST_CLOCK_DIFF (ts_begin, ts_end);
+  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
 
   GST_LOG_OBJECT (vpose, "Pose estimation took %" G_GINT64_FORMAT ".%03"
-      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (tsdelta),
-      (GST_TIME_AS_USECONDS (tsdelta) % 1000));
+      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000));
 
   return GST_FLOW_OK;
 }
@@ -1122,6 +1157,7 @@ gst_ml_video_pose_finalize (GObject * object)
 {
   GstMLVideoPose *vpose = GST_ML_VIDEO_POSE (object);
 
+  g_array_free (vpose->predictions, TRUE);
   gst_ml_module_free (vpose->module);
 
   if (vpose->mlinfo != NULL)
@@ -1179,6 +1215,8 @@ gst_ml_video_pose_class_init (GstMLVideoPoseClass * klass)
 
   base->decide_allocation =
       GST_DEBUG_FUNCPTR (gst_ml_video_pose_decide_allocation);
+  base->submit_input_buffer =
+      GST_DEBUG_FUNCPTR (gst_ml_video_pose_submit_input_buffer);
   base->prepare_output_buffer =
       GST_DEBUG_FUNCPTR (gst_ml_video_pose_prepare_output_buffer);
 
@@ -1197,6 +1235,13 @@ gst_ml_video_pose_init (GstMLVideoPose * vpose)
 
   vpose->outpool = NULL;
   vpose->module = NULL;
+
+  vpose->predictions = g_array_new (FALSE, FALSE, sizeof (GstMLPrediction));
+  g_return_if_fail (vpose->predictions != NULL);
+
+  // Set element clearing function.
+  g_array_set_clear_func (vpose->predictions,
+      (GDestroyNotify) gst_ml_prediction_free);
 
   vpose->mdlenum = DEFAULT_PROP_MODULE;
   vpose->labels = DEFAULT_PROP_LABELS;
