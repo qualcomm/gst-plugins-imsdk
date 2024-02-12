@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -311,16 +311,23 @@ gst_batch_update_src_caps (GstBatch * batch)
 
   // Update the framerate field for video caps.
   for (idx = 0; idx < length; idx++) {
+    const gchar *viewmode = NULL;
+    gint n_views = 0;
+
     structure = gst_caps_get_structure (srccaps, idx);
 
     if (!gst_structure_has_name (structure, "video/x-raw"))
       continue;
 
+    viewmode = gst_video_multiview_mode_to_caps_string (
+        GST_VIDEO_MULTIVIEW_MODE_SEPARATED);
+    n_views = g_list_length (batch->sinkpads);
+
     // Set multiview mode separated which indicates the next plugin to read
     // the corresponding channel bit in the buffer universal offset field.
-    gst_structure_set (structure, "multiview-mode", G_TYPE_STRING,
-          gst_video_multiview_mode_to_caps_string (
-              GST_VIDEO_MULTIVIEW_MODE_SEPARATED), NULL);
+    gst_structure_set (structure,
+        "multiview-mode", G_TYPE_STRING, viewmode,
+        "views", G_TYPE_INT, n_views, NULL);
 
     if (G_VALUE_TYPE (&framerate) == GST_TYPE_FRACTION)
       gst_structure_set_value (structure, "framerate", &framerate);
