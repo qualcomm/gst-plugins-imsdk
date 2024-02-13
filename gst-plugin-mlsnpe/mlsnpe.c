@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -94,6 +94,7 @@ enum
   PROP_MODEL,
   PROP_DELEGATE,
   PROP_LAYERS,
+  PROP_TENSORS,
 };
 
 static GstStaticCaps gst_ml_snpe_static_caps =
@@ -472,36 +473,10 @@ gst_ml_snpe_change_state (GstElement * element, GstStateChange transition)
   switch (transition) {
     case GST_STATE_CHANGE_NULL_TO_READY:
     {
-      GstStructure *settings = gst_structure_new_empty ("ml-engine-settings");
-      GList *list = NULL;
-      GValue layers = G_VALUE_INIT;
-
-      gst_structure_set (settings,
-          GST_ML_SNPE_ENGINE_OPT_MODEL, G_TYPE_STRING,
-          snpe->model,
-          GST_ML_SNPE_ENGINE_OPT_DELEGATE, GST_TYPE_ML_SNPE_DELEGATE,
-          snpe->delegate,
-          NULL);
-
-      g_value_init (&layers, GST_TYPE_ARRAY);
-
-      for (list = snpe->layers; list != NULL; list = list->next) {
-        const gchar *layer = list->data;
-        GValue value = G_VALUE_INIT;
-
-        g_value_init (&value, G_TYPE_STRING);
-        g_value_set_string (&value, layer);
-
-        gst_value_array_append_value (&layers, &value);
-        g_value_unset (&value);
-      }
-
-      gst_structure_set_value (settings, GST_ML_SNPE_ENGINE_OPT_LAYERS,
-          &layers);
-
       gst_ml_snpe_engine_free (snpe->engine);
 
-      snpe->engine = gst_ml_snpe_engine_new (settings);
+      snpe->engine = gst_ml_snpe_engine_new (snpe->model, snpe->delegate,
+          snpe->is_tensor, snpe->outputs);
       if (NULL == snpe->engine) {
         GST_ERROR_OBJECT (snpe, "Failed to create engine!");
         return GST_STATE_CHANGE_FAILURE;
@@ -596,13 +571,37 @@ gst_ml_snpe_set_property (GObject * object, guint prop_id,
     {
       guint idx = 0;
 
-      g_list_free_full (snpe->layers, (GDestroyNotify) g_free);
-      snpe->layers = NULL;
+      if (snpe->is_tensor)
+        GST_WARNING_OBJECT (snpe, "Setting Layer property, but Tensor output was chosen!");
+
+      snpe->is_tensor = FALSE;
+
+      g_list_free_full (snpe->outputs, (GDestroyNotify) g_free);
+      snpe->outputs = NULL;
 
       for (idx = 0; idx < gst_value_array_get_size (value); idx++) {
         const gchar *layer = g_value_get_string (
             gst_value_array_get_value (value, idx));
-        snpe->layers = g_list_append (snpe->layers, g_strdup (layer));
+        snpe->outputs = g_list_append (snpe->outputs, g_strdup (layer));
+      }
+      break;
+    }
+    case PROP_TENSORS:
+    {
+      guint idx = 0;
+
+      if (!snpe->is_tensor)
+        GST_WARNING_OBJECT (snpe, "Setting Tensor property, but Layer output was chosen!");
+
+      snpe->is_tensor = TRUE;
+
+      g_list_free_full (snpe->outputs, (GDestroyNotify) g_free);
+      snpe->outputs = NULL;
+
+      for (idx = 0; idx < gst_value_array_get_size (value); idx++) {
+        const gchar *tensor = g_value_get_string (
+            gst_value_array_get_value (value, idx));
+        snpe->outputs = g_list_append (snpe->outputs, g_strdup (tensor));
       }
       break;
     }
@@ -627,14 +626,46 @@ gst_ml_snpe_get_property (GObject * object, guint prop_id, GValue * value,
       break;
     case PROP_LAYERS:
     {
+      if (snpe->is_tensor)
+      {
+        GST_WARNING_OBJECT (snpe,
+            "Getting Layer property, but Tensor output was chosen!  Returning empty array!");
+        g_value_set_param(value, NULL);
+        break;
+      }
+
       GList *list = NULL;
       GValue val = G_VALUE_INIT;
 
-      for (list = snpe->layers; list != NULL; list = list->next) {
+      for (list = snpe->outputs; list != NULL; list = list->next) {
         const gchar *layer = list->data;
 
         g_value_init (&val, G_TYPE_STRING);
         g_value_set_string (&val, layer);
+
+        gst_value_array_append_value (value, &val);
+        g_value_unset (&val);
+      }
+      break;
+    }
+    case PROP_TENSORS:
+    {
+      if (!snpe->is_tensor)
+      {
+        GST_WARNING_OBJECT (snpe,
+            "Getting Tensor property, but Layer output was chosen!  Returning empty array!");
+        g_value_set_param(value, NULL);
+        break;
+      }
+
+      GList *list = NULL;
+      GValue val = G_VALUE_INIT;
+
+      for (list = snpe->outputs; list != NULL; list = list->next) {
+        const gchar *tensor = list->data;
+
+        g_value_init (&val, G_TYPE_STRING);
+        g_value_set_string (&val, tensor);
 
         gst_value_array_append_value (value, &val);
         g_value_unset (&val);
@@ -665,7 +696,7 @@ gst_ml_snpe_finalize (GObject * object)
 
   g_free (snpe->model);
 
-  g_list_free_full (snpe->layers, (GDestroyNotify) g_free);
+  g_list_free_full (snpe->outputs, (GDestroyNotify) g_free);
 
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (snpe));
 }
@@ -695,6 +726,13 @@ gst_ml_snpe_class_init (GstMLSnpeClass * klass)
           "List of output layers. Should be set if model has more than one output",
           g_param_spec_string ("name", "Layer Name",
               "Name of the output layer.", NULL,
+              G_PARAM_WRITABLE | G_PARAM_STATIC_STRINGS),
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject, PROP_TENSORS,
+     gst_param_spec_array ("tensors", "Tensors",
+          "List of output tensors. Alternative to output layer list",
+          g_param_spec_string ("name", "Tensor Name",
+              "Name of the output tensor.", NULL,
               G_PARAM_WRITABLE | G_PARAM_STATIC_STRINGS),
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
@@ -731,7 +769,8 @@ gst_ml_snpe_init (GstMLSnpe * snpe)
 
   snpe->model = DEFAULT_PROP_MODEL;
   snpe->delegate = DEFAULT_PROP_DELEGATE;
-  snpe->layers = NULL;
+  snpe->outputs = NULL;
+  snpe->is_tensor = FALSE;
 
   // Handle buffers with GAP flag internally.
   gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM (snpe), TRUE);

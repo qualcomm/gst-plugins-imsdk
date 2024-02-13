@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022,2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -72,15 +72,6 @@
 G_BEGIN_DECLS
 
 /**
- * GST_ML_SNPE_ENGINE_OPT_MODEL:
- *
- * #G_TYPE_STRING, neural network model file path and name
- * Default: NULL
- */
-#define GST_ML_SNPE_ENGINE_OPT_MODEL \
-    "GstMLSnpeEngine.model"
-
-/**
  * GstMLSnpeDelegate:
  * @GST_ML_SNPE_DELEGATE_NONE: CPU is used for all operations
  * @GST_ML_SNPE_DELEGATE_DSP: Hexagon Digital Signal Processor
@@ -99,28 +90,13 @@ typedef enum {
 GST_API GType gst_ml_snpe_delegate_get_type (void);
 #define GST_TYPE_ML_SNPE_DELEGATE (gst_ml_snpe_delegate_get_type())
 
-/**
- * GST_ML_SNPE_ENGINE_OPT_DELEGATE:
- *
- * #GST_TYPE_ML_SNPE_DELEGATE, set the delegate
- * Default: #GST_ML_SNPE_DELEGATE_NONE.
- */
-#define GST_ML_SNPE_ENGINE_OPT_DELEGATE \
-    "GstMLSnpeEngine.delegate"
-
-/**
- * GST_ML_SNPE_ENGINE_OPT_LAYERS:
- *
- * #GST_TYPE_ARRAY, list of layers
- * Default: NULL.
- */
-#define GST_ML_SNPE_ENGINE_OPT_LAYERS \
-    "GstMLSnpeEngine.layers"
-
 typedef struct _GstMLSnpeEngine GstMLSnpeEngine;
 
 GST_API GstMLSnpeEngine *
-gst_ml_snpe_engine_new                (GstStructure * settings);
+gst_ml_snpe_engine_new                (gchar * model,      
+                                       GstMLSnpeDelegate delegate, 
+                                       gboolean is_tensor, 
+                                       GList *outputs);
 
 GST_API void
 gst_ml_snpe_engine_free               (GstMLSnpeEngine * engine);
