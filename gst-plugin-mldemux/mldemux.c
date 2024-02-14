@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -340,9 +340,12 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
     name = g_strdup_printf ("channel-%u", channel);
 
     // Transfer the proper GstProtectionMeta into the new buffer if available.
-    if ((pmeta = gst_buffer_get_protection_meta_id (inbuffer, name)) != NULL)
+    if ((pmeta = gst_buffer_get_protection_meta_id (inbuffer, name)) != NULL) {
       pmeta = gst_buffer_add_protection_meta (outbuffer,
           gst_structure_copy (pmeta->info));
+      // Rename as this is the demuxed tensor.
+      gst_structure_set_name (pmeta->info, "channel-0");
+    }
 
     g_free (name);
 
