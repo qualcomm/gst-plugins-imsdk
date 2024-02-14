@@ -58,9 +58,9 @@
 
 // Map between engine parameter enum and the corresponding Codec2 config index.
 static const std::unordered_map<uint32_t, C2Param::Index> kParamIndexMap = {
-  { GST_C2_PARAM_IN_FORMAT,
+  { GST_C2_PARAM_IN_PIXEL_FORMAT,
       C2StreamPixelFormatInfo::input::PARAM_TYPE },
-  { GST_C2_PARAM_OUT_FORMAT,
+  { GST_C2_PARAM_OUT_PIXEL_FORMAT,
       C2StreamPixelFormatInfo::output::PARAM_TYPE },
   { GST_C2_PARAM_IN_RESOLUTION,
       C2StreamPictureSizeInfo::input::PARAM_TYPE },
@@ -140,12 +140,28 @@ static const std::unordered_map<uint32_t, C2Param::Index> kParamIndexMap = {
   { GST_C2_PARAM_REPORT_AVG_QP,
       C2AndroidStreamAverageBlockQuantizationInfo::output::PARAM_TYPE },
 #endif // CODEC2_CONFIG_VERSION_2_0
+  { GST_C2_PARAM_IN_SAMPLE_RATE,
+      C2StreamSampleRateInfo::input::PARAM_TYPE },
+  { GST_C2_PARAM_OUT_SAMPLE_RATE,
+      C2StreamSampleRateInfo::output::PARAM_TYPE },
+  { GST_C2_PARAM_IN_CHANNELS_COUNT,
+      C2StreamChannelCountInfo::input::PARAM_TYPE },
+  { GST_C2_PARAM_OUT_CHANNELS_COUNT,
+      C2StreamChannelCountInfo::output::PARAM_TYPE },
+  { GST_C2_PARAM_IN_BITDEPTH,
+      C2StreamPcmEncodingInfo::input::PARAM_TYPE },
+  { GST_C2_PARAM_OUT_BITDEPTH,
+      C2StreamPcmEncodingInfo::output::PARAM_TYPE },
+  { GST_C2_PARAM_IN_AAC_FORMAT,
+      C2StreamAacFormatInfo::input::PARAM_TYPE },
+  { GST_C2_PARAM_OUT_AAC_FORMAT,
+      C2StreamAacFormatInfo::output::PARAM_TYPE },
 };
 
 // Convenient map for printing the engine parameter name in string form.
 static const std::unordered_map<uint32_t, const char*> kParamNameMap = {
-  { GST_C2_PARAM_IN_FORMAT, "IN_FORMAT" },
-  { GST_C2_PARAM_OUT_FORMAT, "OUT_FORMAT" },
+  { GST_C2_PARAM_IN_PIXEL_FORMAT, "IN_FORMAT" },
+  { GST_C2_PARAM_OUT_PIXEL_FORMAT, "OUT_FORMAT" },
   { GST_C2_PARAM_IN_RESOLUTION, "IN_RESOLUTION" },
   { GST_C2_PARAM_OUT_RESOLUTION, "OUT_RESOLUTION" },
   { GST_C2_PARAM_IN_FRAMERATE, "IN_FRAMERATE" },
@@ -180,6 +196,14 @@ static const std::unordered_map<uint32_t, const char*> kParamNameMap = {
 #endif // (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
   { GST_C2_PARAM_REPORT_AVG_QP, "AVERGE_BLOCK_QP_INFO"},
   { GST_C2_PARAM_LTR_MARK, "LTR_MARK" },
+  { GST_C2_PARAM_IN_SAMPLE_RATE, "IN_STREAM_SAMPLE_RATE" },
+  { GST_C2_PARAM_OUT_SAMPLE_RATE, "OUT_STREAM_SAMPLE_RATE" },
+  { GST_C2_PARAM_IN_CHANNELS_COUNT, "IN_STREAM_CHANNELS_COUNT" },
+  { GST_C2_PARAM_OUT_CHANNELS_COUNT, "OUT_STREAM_CHANNELS_COUNT" },
+  { GST_C2_PARAM_IN_BITDEPTH, "IN_STREAM_BITDEPTH" },
+  { GST_C2_PARAM_OUT_BITDEPTH, "OUT_STREAM_BITDEPTH" },
+  { GST_C2_PARAM_IN_AAC_FORMAT, "IN_STREAM_FORMAT" },
+  { GST_C2_PARAM_OUT_AAC_FORMAT, "OUT_STREAM_FORMAT" },
 };
 
 // Map for the GST_C2_PARAM_PROFILE_LEVEL parameter.
@@ -200,6 +224,10 @@ static const std::unordered_map<uint32_t, C2Config::profile_t> kProfileMap = {
       C2Config::profile_t::PROFILE_HEVC_MAIN_10 },
   { GST_C2_PROFILE_HEVC_MAIN_STILL,
       C2Config::profile_t::PROFILE_HEVC_MAIN_STILL },
+  { GST_C2_PROFILE_AAC_LC,
+      C2Config::profile_t::PROFILE_AAC_LC },
+  { GST_C2_PROFILE_AAC_MAIN,
+      C2Config::profile_t::PROFILE_AAC_MAIN },
 };
 
 // Map for the GST_C2_PARAM_PROFILE_LEVEL parameter.
@@ -245,6 +273,7 @@ static const std::unordered_map<uint32_t, C2Config::level_t> kLevelMap = {
   { GST_C2_LEVEL_HEVC_HIGH_6,   C2Config::level_t::LEVEL_HEVC_HIGH_6 },
   { GST_C2_LEVEL_HEVC_HIGH_6_1, C2Config::level_t::LEVEL_HEVC_HIGH_6_1 },
   { GST_C2_LEVEL_HEVC_HIGH_6_2, C2Config::level_t::LEVEL_HEVC_HIGH_6_2 },
+  { GST_C2_LEVEL_UNUSED,        C2Config::level_t::LEVEL_UNUSED },
 };
 
 // Map for the GST_C2_PARAM_RATE_CONTROL parameter.
@@ -290,6 +319,20 @@ static const std::unordered_map<uint32_t, uint32_t> kRotationMap = {
   { GST_C2_ROTATE_180,    ROTATION_180 },
   { GST_C2_ROTATE_90_CCW, ROTATION_270 },
 };
+
+// Map for the BITDEPTH parameter.
+static const std::unordered_map<uint32_t, C2Config::pcm_encoding_t> kBitdepthMap = {
+  { GST_C2_PCM_16,    C2Config::PCM_16 },
+  { GST_C2_PCM_8,     C2Config::PCM_8 },
+  { GST_C2_PCM_FLOAT, C2Config::PCM_FLOAT },
+};
+
+// Map for the GST_C2_PARAM_AAC_FORMAT parameter.
+static const std::unordered_map<uint32_t, C2Config::aac_packaging_t> kStreamFormatMap = {
+  { GST_C2_AAC_PACKAGING_RAW,  C2Config::AAC_PACKAGING_RAW },
+  { GST_C2_AAC_PACKAGING_ADTS, C2Config::AAC_PACKAGING_ADTS },
+};
+
 
 // Map for the GST_C2_PARAM_PREPEND_HEADER_MODE parameter.
 static const std::unordered_map<uint32_t, uint32_t> kPrependHeaderMap = {
@@ -420,7 +463,7 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
                                std::unique_ptr<C2Param>& c2param) {
 
   switch (type) {
-    case GST_C2_PARAM_IN_FORMAT: {
+    case GST_C2_PARAM_IN_PIXEL_FORMAT: {
       C2StreamPixelFormatInfo::input pixformat;
       GstC2PixelInfo *pixinfo = reinterpret_cast<GstC2PixelInfo*>(payload);
 
@@ -429,7 +472,7 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       c2param = C2Param::Copy(pixformat);
       break;
     }
-    case GST_C2_PARAM_OUT_FORMAT: {
+    case GST_C2_PARAM_OUT_PIXEL_FORMAT: {
       C2StreamPixelFormatInfo::output pixformat;
       GstC2PixelInfo *pixinfo = reinterpret_cast<GstC2PixelInfo*>(payload);
 
@@ -790,6 +833,62 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       break;
     }
 #endif // CODEC2_CONFIG_VERSION_2_0
+    case GST_C2_PARAM_IN_SAMPLE_RATE: {
+      C2StreamSampleRateInfo::input samplerate;
+      samplerate.value = *(reinterpret_cast<guint32*>(payload));
+      c2param = C2Param::Copy(samplerate);
+      break;
+    }
+    case GST_C2_PARAM_OUT_SAMPLE_RATE: {
+      C2StreamSampleRateInfo::output samplerate;
+      samplerate.value = *(reinterpret_cast<guint32*>(payload));
+      c2param = C2Param::Copy(samplerate);
+      break;
+    }
+    case GST_C2_PARAM_IN_CHANNELS_COUNT: {
+      C2StreamChannelCountInfo::input channels;
+      channels.value = *(reinterpret_cast<guint32*>(payload));
+      c2param = C2Param::Copy(channels);
+      break;
+    }
+    case GST_C2_PARAM_OUT_CHANNELS_COUNT: {
+      C2StreamChannelCountInfo::output channels;
+      channels.value = *(reinterpret_cast<guint32*>(payload));
+      c2param = C2Param::Copy(channels);
+      break;
+    }
+    case GST_C2_PARAM_IN_BITDEPTH: {
+      C2StreamPcmEncodingInfo::input bitdepth;
+      uint32_t depth = *(reinterpret_cast<GstC2Bitdepth*>(payload));
+
+      bitdepth.value = kBitdepthMap.at(depth);
+      c2param = C2Param::Copy(bitdepth);
+      break;
+    }
+    case GST_C2_PARAM_OUT_BITDEPTH: {
+      C2StreamPcmEncodingInfo::output bitdepth;
+      uint32_t depth = *(reinterpret_cast<GstC2Bitdepth*>(payload));
+
+      bitdepth.value = kBitdepthMap.at(depth);
+      c2param = C2Param::Copy(bitdepth);
+      break;
+    }
+    case GST_C2_PARAM_IN_AAC_FORMAT: {
+      C2StreamAacFormatInfo::input streamFormat;
+      uint32_t fmt = *(reinterpret_cast<GstC2AACStreamFormat*>(payload));
+
+      streamFormat.value = kStreamFormatMap.at(fmt);
+      c2param = C2Param::Copy(streamFormat);
+      break;
+    }
+    case GST_C2_PARAM_OUT_AAC_FORMAT: {
+      C2StreamAacFormatInfo::output streamFormat;
+      uint32_t fmt = *(reinterpret_cast<GstC2AACStreamFormat*>(payload));
+
+      streamFormat.value = kStreamFormatMap.at(fmt);
+      c2param = C2Param::Copy(streamFormat);
+      break;
+    }
     default:
       GST_ERROR ("Unsupported parameter: %u!", type);
       return FALSE;
@@ -802,7 +901,7 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
                              void* payload) {
 
   switch (type) {
-    case GST_C2_PARAM_IN_FORMAT: {
+    case GST_C2_PARAM_IN_PIXEL_FORMAT: {
       auto pixformat =
           reinterpret_cast<C2StreamPixelFormatInfo::input*>(c2param.get());
       std::tuple<GstVideoFormat, bool> tuple =
@@ -814,7 +913,7 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
           std::get<bool>(tuple) ? TRUE : FALSE;
       break;
     }
-    case GST_C2_PARAM_OUT_FORMAT: {
+    case GST_C2_PARAM_OUT_PIXEL_FORMAT: {
       auto pixformat =
           reinterpret_cast<C2StreamPixelFormatInfo::output*>(c2param.get());
       std::tuple<GstVideoFormat, bool> tuple =
@@ -1109,6 +1208,76 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
       break;
     }
 #endif // CODEC2_CONFIG_VERSION_2_0
+    case GST_C2_PARAM_IN_SAMPLE_RATE: {
+      auto samplerate =
+          reinterpret_cast<C2StreamSampleRateInfo::input*>(c2param.get());
+      *(reinterpret_cast<guint32*>(payload)) = samplerate->value;
+      break;
+    }
+    case GST_C2_PARAM_OUT_SAMPLE_RATE: {
+      auto samplerate =
+          reinterpret_cast<C2StreamSampleRateInfo::output*>(c2param.get());
+      *(reinterpret_cast<guint32*>(payload)) = samplerate->value;
+      break;
+    }
+    case GST_C2_PARAM_IN_CHANNELS_COUNT: {
+      auto channels =
+          reinterpret_cast<C2StreamChannelCountInfo::input*>(c2param.get());
+      *(reinterpret_cast<guint32*>(payload)) = channels->value;
+      break;
+    }
+    case GST_C2_PARAM_OUT_CHANNELS_COUNT: {
+      auto channels =
+          reinterpret_cast<C2StreamChannelCountInfo::output*>(c2param.get());
+      *(reinterpret_cast<guint32*>(payload)) = channels->value;
+      break;
+    }
+    case GST_C2_PARAM_IN_BITDEPTH: {
+      auto bitdepth =
+          reinterpret_cast<C2StreamPcmEncodingInfo::input*>(c2param.get());
+
+      auto result = std::find_if(kBitdepthMap.begin(), kBitdepthMap.end(),
+          [&](const auto& m) { return m.second == bitdepth->value; });
+
+      *(reinterpret_cast<GstC2Bitdepth*>(payload)) =
+          static_cast<GstC2Bitdepth>(result->first);
+      break;
+    }
+    case GST_C2_PARAM_OUT_BITDEPTH: {
+      auto bitdepth =
+          reinterpret_cast<C2StreamPcmEncodingInfo::output*>(c2param.get());
+
+      auto result = std::find_if(kBitdepthMap.begin(), kBitdepthMap.end(),
+          [&](const auto& m) { return m.second == bitdepth->value; });
+
+      *(reinterpret_cast<GstC2Bitdepth*>(payload)) =
+          static_cast<GstC2Bitdepth>(result->first);
+      break;
+    }
+    case GST_C2_PARAM_IN_AAC_FORMAT: {
+      auto streamFormat =
+          reinterpret_cast<C2StreamAacFormatInfo::input*>(c2param.get());
+
+      auto result = std::find_if(kStreamFormatMap.begin(),
+          kStreamFormatMap.end(),
+          [&](const auto& m) { return m.second == streamFormat->value; });
+
+      *(reinterpret_cast<GstC2AACStreamFormat*>(payload)) =
+          static_cast<GstC2AACStreamFormat>(result->first);
+      break;
+    }
+    case GST_C2_PARAM_OUT_AAC_FORMAT: {
+      auto streamFormat =
+          reinterpret_cast<C2StreamAacFormatInfo::output*>(c2param.get());
+
+      auto result = std::find_if(kStreamFormatMap.begin(),
+          kStreamFormatMap.end(),
+          [&](const auto& m) { return m.second == streamFormat->value; });
+
+      *(reinterpret_cast<GstC2AACStreamFormat*>(payload)) =
+          static_cast<GstC2AACStreamFormat>(result->first);
+      break;
+    }
     default:
       GST_ERROR ("Unsupported parameter: %u!", type);
       return FALSE;
@@ -1402,6 +1571,37 @@ std::shared_ptr<C2Buffer> GstC2Utils::CreateBuffer(
 
   return c2buffer;
 }
+
+#if defined(ENABLE_AUDIO_PLUGINS)
+std::shared_ptr<C2Buffer> GstC2Utils::CreateBuffer(GstBuffer* buffer,
+    std::shared_ptr<qc2audio::QC2Buffer>& qc2Buffer) {
+
+  if (qc2Buffer && qc2Buffer->isLinear()) {
+    auto& linear = qc2Buffer->linear();
+    auto linear_map = linear.map();
+    GstMapInfo map;
+
+    if (!gst_buffer_map (buffer, &map, GST_MAP_READ)) {
+      GST_ERROR ("Failed to map GST buffer!");
+      return nullptr;
+    }
+
+    if (linear_map->baseRW()) {
+      qc2audio::memcpy_s (linear_map->baseRW(), linear_map->capacity(),
+          map.data, map.size);
+      linear.setRange(0, map.size);
+    } else {
+      GST_ERROR ("Failed QC2Buffer is not writable!");
+      return nullptr;
+    }
+
+    gst_buffer_unmap (buffer, &map);
+    return qc2Buffer->getSharedBuffer();
+  }
+
+  return nullptr;
+}
+#endif //ENABLE_AUDIO_PLUGINS
 
 // TODO Workaround due to issues in codec2 implementation, REMOVE IT.
 class C2VencBuffWrapper : public C2GraphicAllocation {

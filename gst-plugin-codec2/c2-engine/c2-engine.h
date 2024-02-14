@@ -41,12 +41,30 @@ G_BEGIN_DECLS
 
 typedef struct _GstC2Engine GstC2Engine;
 typedef struct _GstC2Callbacks GstC2Callbacks;
+typedef struct _GstC2QueueItem GstC2QueueItem;
 
 enum {
   GST_C2_EVENT_UNKNOWN,
   GST_C2_EVENT_EOS,
   GST_C2_EVENT_ERROR,
   GST_C2_EVENT_DROP
+};
+
+enum
+{
+  GST_C2_MODE_VIDEO_ENCODE,
+  GST_C2_MODE_VIDEO_DECODE,
+  GST_C2_MODE_AUDIO_ENCODE,
+  GST_C2_MODE_AUDIO_DECODE,
+};
+
+struct _GstC2QueueItem {
+  /// Input buffer to be queued
+  GstBuffer *buffer;
+  /// Current index of the buffer
+  guint64   index;
+  /// Frame user data
+  gpointer  userdata;
 };
 
 struct _GstC2Callbacks {
@@ -66,7 +84,7 @@ struct _GstC2Callbacks {
  * return: Pointer to Codec2 engine on success or NULL on failure.
  */
 GST_API GstC2Engine *
-gst_c2_engine_new (const gchar * name, GstC2Callbacks * callbacks,
+gst_c2_engine_new (const gchar * name, guint32 mode, GstC2Callbacks * callbacks,
                    gpointer userdata);
 
 /**
@@ -158,16 +176,16 @@ gst_c2_engine_drain (GstC2Engine * engine, gboolean eos);
 /**
  * gst_c2_engine_queue:
  * @engine: Pointer to Codec2 engine instance.
- * @frame: GStreamer codec frame that will be queued for encoding or decoding.
+ * @item: Buffer data that will be queued for encoding or decoding.
  *
- * Takes a GStreamer codec frame containing a GstBuffer, translates that codec
+ * Takes a Buffer data containing a GstBuffer, translates that codec
  * frame into Codec2 buffer and submits it to the Codec2 component for encoding
  * or decoding.
  *
  * return: TRUE on success or FALSE on failure.
  */
 GST_API gboolean
-gst_c2_engine_queue (GstC2Engine * engine, GstVideoCodecFrame * frame);
+gst_c2_engine_queue (GstC2Engine * engine, GstC2QueueItem * item);
 
 G_END_DECLS
 

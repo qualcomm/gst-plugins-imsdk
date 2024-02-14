@@ -20,6 +20,10 @@ pkg_check_modules(GST_ALLOC
   REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_VIDEO
   REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_AUDIO
+  REQUIRED gstreamer-audio-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_PBUTILS
+  REQUIRED gstreamer-pbutils-1.0>=${GST_VERSION_REQUIRED})
 
 # Check whether MMM color format header is present.
 include(CheckIncludeFileCXX)
@@ -40,3 +44,5 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
 add_subdirectory(c2-engine)
 add_subdirectory(c2venc)
 add_subdirectory(c2vdec)
+add_subdirectory(c2aenc)
+add_subdirectory(c2adec)

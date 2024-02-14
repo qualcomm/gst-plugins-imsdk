@@ -38,14 +38,17 @@
 #include "c2-engine-params.h"
 #include "c2-engine-utils.h"
 
-
 #define GST_CAT_DEFAULT ensure_debug_category()
 static G_DEFINE_QUARK (GstC2BufferQuark, gst_c2_buffer_qdata);
 
-#define GST_C2_MODE_ENCODE(engine) \
-  ((engine->mode == GST_C2_ENGINE_MODE_ENCODE) ? TRUE : FALSE)
-#define GST_C2_MODE_DECODE(engine) \
-  ((engine->mode == GST_C2_ENGINE_MODE_DECODE) ? TRUE : FALSE)
+#define GST_C2_MODE_VIDEO_ENCODE(engine) \
+  ((engine->mode == GST_C2_MODE_VIDEO_ENCODE) ? TRUE : FALSE)
+#define GST_C2_MODE_VIDEO_DECODE(engine) \
+  ((engine->mode == GST_C2_MODE_VIDEO_DECODE) ? TRUE : FALSE)
+#define GST_C2_MODE_AUDIO_ENCODE(engine) \
+  ((engine->mode == GST_C2_MODE_AUDIO_ENCODE) ? TRUE : FALSE)
+#define GST_C2_MODE_AUDIO_DECODE(engine) \
+  ((engine->mode == GST_C2_MODE_AUDIO_DECODE) ? TRUE : FALSE)
 
 #define GST_C2_ENGINE_INCREMENT_PENDING_WORK(engine) \
 { \
@@ -83,12 +86,6 @@ static G_DEFINE_QUARK (GstC2BufferQuark, gst_c2_buffer_qdata);
 }
 
 #define MAX_NUM_PENDING_WORK      (11)
-
-enum
-{
-  GST_C2_ENGINE_MODE_ENCODE,
-  GST_C2_ENGINE_MODE_DECODE,
-};
 
 struct _GstC2Engine {
   /// Component name, used mainly for debugging.
@@ -180,60 +177,77 @@ class GstC2Notifier : public IC2Notifier {
     GstMemory *memory = NULL;
     uint32_t fd = 0, size = 0;
 
-    if ((buffer = gst_buffer_new ()) == NULL) {
-      GST_ERROR ("Failed to create GST buffer!");
-      return;
-    }
-
-    if (c2buffer->data().type() == C2BufferData::LINEAR) {
+    // Allocate a new buffer and copy output data from the codec
+    // This is needed due to circular buffer implementation in the Codec2
+    // where the output buffers are reusable and a caching issues will appears
+    // in the next plugins
+    if (GST_C2_MODE_AUDIO_ENCODE (engine_) ||
+        GST_C2_MODE_AUDIO_DECODE (engine_)) {
+#if defined(ENABLE_AUDIO_PLUGINS)
       const C2ConstLinearBlock block = c2buffer->data().linearBlocks().front();
-      const C2Handle *handle = block.handle();
-
       size = block.size();
-      fd = handle->data[0];
+      C2ReadView view = block.map().get();
+      buffer = gst_buffer_new_and_alloc (size);
+      gst_buffer_fill (buffer, 0, view.data(), size);
+#else
+      GST_ERROR ("Audio is not supported!");
+      return;
+#endif //ENABLE_AUDIO_PLUGINS
+    } else {
+      if ((buffer = gst_buffer_new ()) == NULL) {
+        GST_ERROR ("Failed to create GST buffer!");
+        return;
+      }
 
-    } else if (c2buffer->data().type() == C2BufferData::GRAPHIC) {
-      const C2ConstGraphicBlock block = c2buffer->data().graphicBlocks().front();
-      auto handle = static_cast<const android::C2HandleGBM*>(block.handle());
+      if (c2buffer->data().type() == C2BufferData::LINEAR) {
+        const C2ConstLinearBlock block = c2buffer->data().linearBlocks().front();
+        const C2Handle *handle = block.handle();
 
-      size = handle->mInts.size;
-      fd = handle->mFds.buffer_fd;
+        size = block.size();
+        fd = handle->data[0];
+      } else if (c2buffer->data().type() == C2BufferData::GRAPHIC) {
+        const C2ConstGraphicBlock block = c2buffer->data().graphicBlocks().front();
+        auto handle = static_cast<const android::C2HandleGBM*>(block.handle());
 
-      if (!GstC2Utils::ExtractHandleInfo (buffer, handle)) {
-        GST_ERROR ("Failed to extract GBM handle info!");
+        size = handle->mInts.size;
+        fd = handle->mFds.buffer_fd;
+
+        if (!GstC2Utils::ExtractHandleInfo (buffer, handle)) {
+          GST_ERROR ("Failed to extract GBM handle info!");
+          gst_buffer_unref (buffer);
+          return;
+        }
+
+        GstVideoMeta *vmeta = gst_buffer_get_video_meta (buffer);
+
+        vmeta->width = block.crop().width;
+        vmeta->height = block.crop().height;
+
+        GST_LOG ("Crop rectangle (%d,%d) [%dx%d] ", block.crop().left,
+            block.crop().top, block.crop().width, block.crop().height);
+      } else {
+        GST_ERROR ("Unknown Codec2 buffer type!");
         gst_buffer_unref (buffer);
         return;
       }
 
-      GstVideoMeta *vmeta = gst_buffer_get_video_meta (buffer);
+      if ((allocator = gst_fd_allocator_new ()) == NULL) {
+        GST_ERROR ("Failed to create FD allocator!");
+        gst_buffer_unref (buffer);
+        return;
+      }
 
-      vmeta->width = block.crop().width;
-      vmeta->height = block.crop().height;
+      if ((memory = gst_fd_allocator_alloc (allocator, fd, size,
+              GST_FD_MEMORY_FLAG_DONT_CLOSE)) == NULL) {
+        GST_ERROR ("Failed to create memory block!");
+        gst_buffer_unref (buffer);
+        gst_object_unref (allocator);
+        return;
+      }
 
-      GST_LOG ("Crop rectangle (%d,%d) [%dx%d] ", block.crop().left,
-          block.crop().top, block.crop().width, block.crop().height);
-    } else {
-      GST_ERROR ("Unknown Codec2 buffer type!");
-      gst_buffer_unref (buffer);
-      return;
-    }
-
-    if ((allocator = gst_fd_allocator_new ()) == NULL) {
-      GST_ERROR ("Failed to create FD allocator!");
-      gst_buffer_unref (buffer);
-      return;
-    }
-
-    if ((memory = gst_fd_allocator_alloc (allocator, fd, size,
-            GST_FD_MEMORY_FLAG_DONT_CLOSE)) == NULL) {
-      GST_ERROR ("Failed to create memory block!");
-      gst_buffer_unref (buffer);
+      gst_buffer_append_memory (buffer, memory);
       gst_object_unref (allocator);
-      return;
     }
-
-    gst_buffer_append_memory (buffer, memory);
-    gst_object_unref (allocator);
 
     // Check whetehr this is a key/sync frame.
     std::shared_ptr<const C2Info> c2info =
@@ -279,7 +293,7 @@ class GstC2Notifier : public IC2Notifier {
 };
 
 GstC2Engine *
-gst_c2_engine_new (const gchar * name, GstC2Callbacks * callbacks,
+gst_c2_engine_new (const gchar * name, guint32 mode, GstC2Callbacks * callbacks,
     gpointer userdata)
 {
   GstC2Engine *engine = NULL;
@@ -290,8 +304,29 @@ gst_c2_engine_new (const gchar * name, GstC2Callbacks * callbacks,
   g_mutex_init (&engine->lock);
   g_cond_init (&engine->workdone);
 
+  engine->mode = mode;
+
+  C2ModeType component_mode;
+  switch (mode) {
+    case GST_C2_MODE_VIDEO_ENCODE:
+      component_mode = C2ModeType::kVideoEncode;
+      break;
+    case GST_C2_MODE_VIDEO_DECODE:
+      component_mode = C2ModeType::kVideoDecode;
+      break;
+    case GST_C2_MODE_AUDIO_ENCODE:
+      component_mode = C2ModeType::kAudioEncode;
+      break;
+    case GST_C2_MODE_AUDIO_DECODE:
+      component_mode = C2ModeType::kAudioDecode;
+      break;
+    default:
+      component_mode = C2ModeType::kVideoEncode;
+      break;
+  }
+
   try {
-    engine->c2module = C2Factory::GetModule (name);
+    engine->c2module = C2Factory::GetModule (name, component_mode);
   } catch (std::exception& e) {
     GST_ERROR ("Failed to create C2 module, error: '%s'!", e.what());
     gst_c2_engine_free (engine);
@@ -310,8 +345,6 @@ gst_c2_engine_new (const gchar * name, GstC2Callbacks * callbacks,
   }
 
   engine->name = g_strdup (name);
-  engine->mode = g_str_has_suffix (name, ".encoder") ?
-      GST_C2_ENGINE_MODE_ENCODE : GST_C2_ENGINE_MODE_DECODE;
 
   engine->callbacks = callbacks;
   engine->userdata = userdata;
@@ -466,25 +499,26 @@ gst_c2_engine_drain (GstC2Engine * engine, gboolean eos)
 }
 
 gboolean
-gst_c2_engine_queue (GstC2Engine * engine, GstVideoCodecFrame * frame)
+gst_c2_engine_queue (GstC2Engine * engine, GstC2QueueItem * item)
 {
   C2Module *c2module = engine->c2module;
-  GstBuffer *buffer = frame->input_buffer;
+  GstBuffer *buffer = item->buffer;
   std::shared_ptr<C2Buffer> c2buffer;
   std::list<std::unique_ptr<C2Param>> settings;
 
-  uint64_t index = frame->system_frame_number;
+  uint64_t index = item->index;
   uint64_t timestamp = 0;
   uint32_t flags = 0;
 
   // Check and wait in case maximum number of pending frames has been reached.
   GST_C2_ENGINE_CHECK_AND_WAIT_PENDING_WORK (engine, MAX_NUM_PENDING_WORK);
 
-  if (GST_C2_MODE_ENCODE (engine) && (gst_buffer_n_memory (buffer) > 0) &&
+  if (GST_C2_MODE_VIDEO_ENCODE (engine) && (gst_buffer_n_memory (buffer) > 0) &&
       gst_is_fd_memory (gst_buffer_peek_memory (buffer, 0))) {
 
     c2buffer = GstC2Utils::ImportGraphicBuffer (buffer);
-  } else if (GST_C2_MODE_ENCODE (engine) && (gst_buffer_n_memory (buffer) > 0)) {
+  } else if (GST_C2_MODE_VIDEO_ENCODE (engine) &&
+            gst_buffer_n_memory (buffer) > 0) {
     GstVideoMeta *vmeta = gst_buffer_get_video_meta (buffer);
     g_return_val_if_fail (vmeta != NULL, FALSE);
 
@@ -507,12 +541,16 @@ gst_c2_engine_queue (GstC2Engine * engine, GstVideoCodecFrame * frame)
 
     c2buffer = GstC2Utils::CreateBuffer (buffer, block);
 #if defined(ENABLE_LINEAR_DMABUF)
-  } else if (GST_C2_MODE_DECODE (engine) && (gst_buffer_n_memory (buffer) > 0) &&
-      gst_is_fd_memory (gst_buffer_peek_memory (buffer, 0))) {
+  } else if ((GST_C2_MODE_VIDEO_DECODE (engine) ||
+              GST_C2_MODE_AUDIO_ENCODE (engine) ||
+              GST_C2_MODE_AUDIO_DECODE (engine)) &&
+              gst_buffer_n_memory (buffer) > 0 &&
+              gst_is_fd_memory (gst_buffer_peek_memory (buffer, 0))) {
 
     c2buffer = GstC2Utils::ImportLinearBuffer (buffer);
 #endif // ENABLE_LINEAR_DMABUF
-  } else if (GST_C2_MODE_DECODE (engine) && (gst_buffer_n_memory (buffer) > 0)) {
+  } else if (GST_C2_MODE_VIDEO_DECODE (engine) &&
+             gst_buffer_n_memory (buffer) > 0) {
     std::shared_ptr<C2LinearBlock> block;
     uint32_t size = gst_buffer_get_size (buffer);
 
@@ -525,21 +563,44 @@ gst_c2_engine_queue (GstC2Engine * engine, GstVideoCodecFrame * frame)
     }
 
     c2buffer = GstC2Utils::CreateBuffer (buffer, block);
+  } else if ((GST_C2_MODE_AUDIO_ENCODE (engine) ||
+              GST_C2_MODE_AUDIO_DECODE (engine)) &&
+              gst_buffer_n_memory (buffer) > 0) {
+    std::shared_ptr<C2LinearBlock> block;
+    uint32_t size = gst_buffer_get_size (buffer);
+#if defined(ENABLE_AUDIO_PLUGINS)
+    try {
+      qc2audio::QC2Status status = qc2audio::QC2_OK;
+      std::shared_ptr<qc2audio::QC2Buffer> outbuffer;
+      std::shared_ptr<qc2audio::QC2BufferCirclePools> c2circlePool =
+          c2module->GetLinearCirclePool(size);
+      status = c2circlePool->take(&outbuffer, nullptr);
+      c2buffer = GstC2Utils::CreateBuffer(buffer, outbuffer);
+    } catch (std::exception& e) {
+      GST_ERROR ("Failed to fetch memory block, error: '%s'!", e.what());
+      return FALSE;
+    }
+#else
+    GST_ERROR ("Audio is not supported!");
+    return FALSE;
+#endif //ENABLE_AUDIO_PLUGINS
   }
 
   if (GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_DROPPABLE))
     flags |= C2FrameData::FLAG_DROP_FRAME;
 
-  if (GST_CLOCK_TIME_IS_VALID (frame->dts))
-    timestamp = GST_TIME_AS_USECONDS (frame->dts);
-  else if (GST_CLOCK_TIME_IS_VALID (frame->pts))
-    timestamp = GST_TIME_AS_USECONDS (frame->pts);
+  if (GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_HEADER))
+    flags |= C2FrameData::FLAG_CODEC_CONFIG;
+
+  if (GST_CLOCK_TIME_IS_VALID (GST_BUFFER_DTS (buffer)))
+    timestamp = GST_TIME_AS_USECONDS (GST_BUFFER_DTS (buffer));
+  else if (GST_CLOCK_TIME_IS_VALID (GST_BUFFER_PTS (buffer)))
+    timestamp = GST_TIME_AS_USECONDS (GST_BUFFER_PTS (buffer));
 
   // Get per frame settings. TODO: Right now this is only ROI data.
-  GstC2QuantRegions *roiparam = reinterpret_cast<GstC2QuantRegions*>(
-      gst_video_codec_frame_get_user_data (frame));
-
-  if (roiparam != NULL) {
+  if (item->userdata) {
+    GstC2QuantRegions *roiparam = reinterpret_cast<GstC2QuantRegions*>(
+        item->userdata);
     std::unique_ptr<C2Param> c2param;
     GstC2Utils::UnpackPayload(GST_C2_PARAM_ROI_ENCODE, roiparam, c2param);
     settings.push_back(std::move(c2param));
