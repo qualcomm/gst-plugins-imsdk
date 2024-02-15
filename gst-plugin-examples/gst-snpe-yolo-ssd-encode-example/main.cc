@@ -55,9 +55,10 @@
 #define DEFAULT_OUTPUT_WIDTH 1920
 #define DEFAULT_OUTPUT_HEIGHT 1080
 #define DEFAULT_MODEL 0
-#define SNPE_YOLO_MODEL "/data/yolov5s_relu_finetune_quantized_cle_bc.dlc"
+#define SNPEv1_YOLO_MODEL "/data/yolov5s_relu_finetune_quantized_cle_bc.dlc"
+#define SNPEv1_SSD_MODEL "/data/tensorflow_mobilenet_v1_ssd_2017_quantized.dlc"
+#define SNPEv2_SSD_MODEL "/data/tf11_public_cnns_cnns_mobilenet_v2_ssd_quant_aware_batch_1_quant.dlc"
 #define SNPE_YOLO_LABELS "/data/yolov5s.labels"
-#define SNPE_SSD_MODEL "/data/tensorflow_mobilenet_v1_ssd_2017_quantized.dlc"
 #define SNPE_SSD_LABELS "/data/ssd-mobilenet.labels"
 #define MP4_FILE_SAVE "/data/mux.mp4"
 
@@ -277,9 +278,9 @@ create_pipe (GstAppContext *appctx, gint width, gint height, gint model)
   g_value_init (&value, G_TYPE_STRING);
 
   if (model == 0) {
-    g_print ("Use Yolo model\n");
+    g_print ("Use SNPEv1_Yolo model\n");
     // Set Yolo specific settings
-    g_object_set (G_OBJECT (qtimlsnpe), "model", SNPE_YOLO_MODEL, NULL);
+    g_object_set (G_OBJECT (qtimlsnpe), "model", SNPEv1_YOLO_MODEL, NULL);
     g_value_set_string (&value, "Conv_139");
     gst_value_array_append_value (&layers, &value);
     g_value_set_string (&value, "Conv_140");
@@ -288,18 +289,29 @@ create_pipe (GstAppContext *appctx, gint width, gint height, gint model)
     gst_value_array_append_value (&layers, &value);
     g_object_set_property (G_OBJECT (qtimlsnpe), "layers", &layers);
 
-    g_object_set (G_OBJECT (qtimlvdetection), "module", 4, NULL); // yolov5s
+    g_object_set (G_OBJECT (qtimlvdetection), "module", 5, NULL); // yolov5
     g_object_set (G_OBJECT (qtimlvdetection), "labels", SNPE_YOLO_LABELS, NULL);
   } else if (model == 1) {
-    g_print ("Use SSD model\n");
+    g_print ("Use SNPEv1_SSD model\n");
     // Set SSD specific settings
-    g_object_set (G_OBJECT (qtimlsnpe), "model", SNPE_SSD_MODEL, NULL);
+    g_object_set (G_OBJECT (qtimlsnpe), "model", SNPEv1_SSD_MODEL, NULL);
     g_value_set_string (&value,
         "Postprocessor/BatchMultiClassNonMaxSuppression");
     gst_value_array_append_value (&layers, &value);
     g_object_set_property (G_OBJECT (qtimlsnpe), "layers", &layers);
 
-    g_object_set (G_OBJECT (qtimlvdetection), "module", 2, NULL); // ssd
+    g_object_set (G_OBJECT (qtimlvdetection), "module", 3, NULL); // ssd
+    g_object_set (G_OBJECT (qtimlvdetection), "labels", SNPE_SSD_LABELS, NULL);
+  } else if (model == 2) {
+    g_print ("Use SNPEv2_SSD model\n");
+    // Set SSD specific settings
+    g_object_set (G_OBJECT (qtimlsnpe), "model", SNPEv2_SSD_MODEL, NULL);
+    g_value_set_string (&value,
+        "Postprocessor/BatchMultiClassNonMaxSuppression");
+    gst_value_array_append_value (&layers, &value);
+    g_object_set_property (G_OBJECT (qtimlsnpe), "layers", &layers);
+
+    g_object_set (G_OBJECT (qtimlvdetection), "module", 3, NULL); // ssd
     g_object_set (G_OBJECT (qtimlvdetection), "labels", SNPE_SSD_LABELS, NULL);
   }
 
@@ -390,7 +402,7 @@ main (gint argc, gchar * argv[])
     { "model", 'm', DEFAULT_MODEL, G_OPTION_ARG_INT,
       &model,
       "model",
-      "0 - yolo, 1 - SSD"
+      "0 - SNPEv1_yolov5, 1 - SNPEv1_SSD, 2 - SNPEv2_SSD"
     },
     { NULL }
   };
