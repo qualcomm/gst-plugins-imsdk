@@ -970,7 +970,7 @@ qmmfsrc_set_property (GObject * object, guint property_id,
   const gchar *propname = g_param_spec_get_name (pspec);
   GstState state = GST_STATE (qmmfsrc);
 
-  if (!QMMFSRC_IS_PROPERTY_MUTABLE_IN_CURRENT_STATE(pspec, state)) {
+  if (!GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE(pspec, state)) {
     GST_WARNING ("Property '%s' change not supported in %s state!",
         propname, gst_element_state_get_name (state));
     return;

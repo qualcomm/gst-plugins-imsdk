@@ -43,6 +43,7 @@ target_link_libraries(${GST_QTI_ML_DEMUX} PRIVATE
   ${GST_LIBRARIES}
   ${GST_BASE_LIBRARIES}
   gstqtimlbase
+  gstqtiutilsbase
 )
 
 install(

@@ -40,13 +40,14 @@
 
 #include <stdio.h>
 
+#include <gst/utils/common-utils.h>
+
 #ifdef HAVE_LINUX_DMA_BUF_H
 #include <sys/ioctl.h>
 #include <linux/dma-buf.h>
 #endif // HAVE_LINUX_DMA_BUF_H
 
 #include "videosplitpads.h"
-
 
 #define GST_CAT_DEFAULT gst_video_split_debug
 GST_DEBUG_CATEGORY (gst_video_split_debug);
@@ -220,19 +221,6 @@ gst_data_queue_push_object (GstDataQueue * queue, GstMiniObject * object)
   // Push the mini object into the queue or free it on failure.
   if (!gst_data_queue_push (queue, item))
     item->destroy (item);
-}
-
-static gboolean
-gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
-{
-  GstStructure *structure = NULL;
-  const gchar *string = NULL;
-
-  structure = gst_caps_get_structure (caps, 0);
-  string = gst_structure_has_field (structure, "compression") ?
-      gst_structure_get_string (structure, "compression") : NULL;
-
-  return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
 }
 
 static void

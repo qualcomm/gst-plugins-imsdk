@@ -37,16 +37,13 @@
 #include <stdio.h>
 #include <math.h>
 
+#include <gst/utils/common-utils.h>
+
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
 
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
-
-#define EXTRACT_RED_COLOR(color)    ((color >> 24) & 0xFF)
-#define EXTRACT_GREEN_COLOR(color)  ((color >> 16) & 0xFF)
-#define EXTRACT_BLUE_COLOR(color)   ((color >> 8) & 0xFF)
-#define EXTRACT_ALPHA_COLOR(color)  ((color) & 0xFF)
 
 #define GFLOAT_PTR_CAST(data)       ((gfloat*) data)
 #define GINT8_PTR_CAST(data)        ((gint8*) data)

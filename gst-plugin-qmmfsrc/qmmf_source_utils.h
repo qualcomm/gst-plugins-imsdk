@@ -69,6 +69,7 @@
 #include <gst/gst.h>
 #include <gst/video/video.h>
 #include <glib/gtypes.h>
+#include <gst/utils/common-utils.h>
 
 G_BEGIN_DECLS
 
@@ -112,12 +113,6 @@ G_BEGIN_DECLS
     return; \
   } \
 }
-
-#define QMMFSRC_IS_PROPERTY_MUTABLE_IN_CURRENT_STATE(pspec, state) \
-    ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
-        : ((pspec->flags & GST_PARAM_MUTABLE_PAUSED) ? (state <= GST_STATE_PAUSED) \
-            : ((pspec->flags & GST_PARAM_MUTABLE_READY) ? (state <= GST_STATE_READY) \
-                : (state <= GST_STATE_NULL))))
 
 #define GST_TYPE_QMMFSRC_CONTROL_MODE (gst_qmmfsrc_control_mode_get_type())
 #define GST_TYPE_QMMFSRC_EFFECT_MODE (gst_qmmfsrc_effect_mode_get_type())

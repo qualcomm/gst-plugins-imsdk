@@ -62,6 +62,7 @@ target_link_libraries(${GST_QTI_ML_VIDEO_SEGMENTATION} PRIVATE
   ${GST_VIDEO_LIBRARIES}
   gstqtimlbase
   gstqtivideobase
+  gstqtiutilsbase
 )
 
 install(

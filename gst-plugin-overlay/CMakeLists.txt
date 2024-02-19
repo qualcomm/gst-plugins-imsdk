@@ -78,6 +78,7 @@ target_link_libraries(${GST_QTI_OVERLAY} PRIVATE
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
   gstqticvbase
+  gstqtiutilsbase
 )
 
 install(

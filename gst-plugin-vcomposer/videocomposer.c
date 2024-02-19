@@ -68,6 +68,7 @@
 #include "videocomposer.h"
 
 #include <gst/video/gstimagepool.h>
+#include <gst/utils/common-utils.h>
 
 #include "videocomposersinkpad.h"
 

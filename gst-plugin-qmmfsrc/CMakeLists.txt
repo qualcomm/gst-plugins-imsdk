@@ -79,6 +79,7 @@ target_link_libraries(${GST_QMMFSRC_PLUGIN} PRIVATE
   ${GST_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
+  gstqtiutilsbase
 )
 
 install(
