@@ -257,12 +257,6 @@ struct _GstOverlayString {
 
 G_GNUC_INTERNAL GType gst_overlay_get_type (void);
 
-#define OVERLAY_IS_PROPERTY_MUTABLE_IN_CURRENT_STATE(pspec, state) \
-    ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
-        : ((pspec->flags & GST_PARAM_MUTABLE_PAUSED) ? (state <= GST_STATE_PAUSED) \
-            : ((pspec->flags & GST_PARAM_MUTABLE_READY) ? (state <= GST_STATE_READY) \
-                : (state <= GST_STATE_NULL))))
-
 G_END_DECLS
 
 #endif // __GST_QTI_OVERLAY_H__

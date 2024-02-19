@@ -75,6 +75,8 @@
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
 #include <gst/video/gstimagepool.h>
+#include <gst/utils/common-utils.h>
+#include <gst/utils/batch-utils.h>
 
 #ifdef HAVE_LINUX_DMA_BUF_H
 #include <sys/ioctl.h>
@@ -87,8 +89,6 @@ GST_DEBUG_CATEGORY_STATIC (gst_ml_video_converter_debug);
 #define gst_ml_video_converter_parent_class parent_class
 G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
     GST_TYPE_BASE_TRANSFORM);
-
-#define GST_BATCH_CHANNEL_BASE       100
 
 #define DEFAULT_PROP_MIN_BUFFERS     2
 #define DEFAULT_PROP_MAX_BUFFERS     24
@@ -111,8 +111,6 @@ G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
     g_array_index (mean, gdouble, idx) : DEFAULT_PROP_MEAN
 #define GET_SIGMA_VALUE(sigma, idx) (sigma->len > idx) ? \
     g_array_index (sigma, gdouble, idx) : DEFAULT_PROP_SIGMA
-
-#define GST_PROTECTION_META_CAST(obj) ((GstProtectionMeta *) obj)
 
 #ifndef GST_CAPS_FEATURE_MEMORY_GBM
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
@@ -249,19 +247,6 @@ init_formats (GValue * formats, ...)
   va_end (args);
 }
 
-static inline gboolean
-gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
-{
-  GstStructure *structure = NULL;
-  const gchar *string = NULL;
-
-  structure = gst_caps_get_structure (caps, 0);
-  string = gst_structure_has_field (structure, "compression") ?
-      gst_structure_get_string (structure, "compression") : NULL;
-
-  return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
-}
-
 static inline void
 gst_calculate_dimensions (gint maxwidth, gint maxheight, gint par_n, gint par_d,
     gint sar_n, gint sar_d, gint * width, gint * height)
@@ -282,21 +267,6 @@ gst_calculate_dimensions (gint maxwidth, gint maxheight, gint par_n, gint par_d,
     *width = maxwidth;
     *height = maxheight;
   }
-}
-
-static inline GstProtectionMeta *
-gst_buffer_get_protection_meta_id (GstBuffer * buffer, const gchar * name)
-{
-  gpointer state = NULL;
-  GstMeta *meta = NULL;
-
-  while ((meta = gst_buffer_iterate_meta_filtered (buffer, &state,
-              GST_PROTECTION_META_API_TYPE))) {
-    if (gst_structure_has_name (GST_PROTECTION_META_CAST (meta)->info, name))
-      return GST_PROTECTION_META_CAST (meta);
-  }
-
-  return NULL;
 }
 
 static inline void
@@ -392,7 +362,7 @@ gst_ml_video_converter_setup_composition (GstMLVideoConverter * mlconverter,
   multiview = GST_VIDEO_INFO_MULTIVIEW_MODE (mlconverter->ininfo);
   n_views = GST_VIDEO_INFO_VIEWS (mlconverter->ininfo);
 
-  // Expectd number of intputs is the tensor batch size.
+  // Expected number of intputs is the tensor batch size.
   n_batch = GST_ML_INFO_TENSOR_DIM (mlconverter->mlinfo, 0, 0);
 
   // Maximum allowed inputs is the size of the tensor batch.
@@ -424,7 +394,7 @@ gst_ml_video_converter_setup_composition (GstMLVideoConverter * mlconverter,
     GstVideoMeta *vmeta = NULL;
     GstVideoRegionOfInterestMeta *roimeta = NULL;
     GstProtectionMeta *pmeta = NULL;
-    gchar *name = NULL;
+    const gchar *name = NULL;
 
     // Check if a bitwise mask was set for this channel/batch input.
     if ((GST_BUFFER_OFFSET (inbuffer) != GST_BUFFER_OFFSET_NONE) &&
@@ -459,7 +429,7 @@ gst_ml_video_converter_setup_composition (GstMLVideoConverter * mlconverter,
       goto cleanup;
     }
 
-    id = idx * GST_BATCH_CHANNEL_BASE;
+    id = GST_BATCH_CHANNEL_ID (idx, 0);
     roimeta = gst_buffer_get_video_region_of_interest_meta_id (inbuffer, id);
 
     do {
@@ -492,7 +462,7 @@ gst_ml_video_converter_setup_composition (GstMLVideoConverter * mlconverter,
         sar_n = sar_d = 1;
 
       // Calculate the Y offset for this ROI meta in the output buffer.
-      destination->y = (idx + (id % GST_BATCH_CHANNEL_BASE)) * maxheight;
+      destination->y = (idx + GST_BATCH_CHANNEL_GET_SEQ_NUM (id)) * maxheight;
       destination->x = 0;
 
       // Calculate destination dimensions adjusted to preserve SAR.
@@ -504,15 +474,13 @@ gst_ml_video_converter_setup_composition (GstMLVideoConverter * mlconverter,
           source->y, source->w, source->h, destination->x, destination->y,
           destination->w, destination->h);
 
-      // Construct the name for the protection meta structure.
-      name = g_strdup_printf ("channel-%u", idx + (id % GST_BATCH_CHANNEL_BASE));
+      // Get the name for the protection meta structure with that batch number.
+      name = gst_batch_channel_name (idx + GST_BATCH_CHANNEL_GET_SEQ_NUM (id));
 
       // Add channel protection meta to the output buffer if not available.
       if (!(pmeta = gst_buffer_get_protection_meta_id (outframe->buffer, name)))
         pmeta = gst_buffer_add_protection_meta (outframe->buffer,
             gst_structure_new_empty (name));
-
-      g_free (name);
 
       // Add SAR and ID of source ROI for tensor result decryption downstream.
       gst_structure_set (pmeta->info,
@@ -922,7 +890,7 @@ gst_ml_video_converter_prepare_output_buffer (GstBaseTransform * base,
 {
   GstMLVideoConverter *mlconverter = GST_ML_VIDEO_CONVERTER (base);
   GstBufferPool *pool = mlconverter->outpool;
-  guint idx = 0, n_entries = 0;
+  guint idx = 0, n_batch = 0;
 
   if (gst_base_transform_is_passthrough (base)) {
     GST_TRACE_OBJECT (mlconverter, "Passthrough, no need to do anything");
@@ -961,12 +929,12 @@ gst_ml_video_converter_prepare_output_buffer (GstBaseTransform * base,
   GST_BUFFER_OFFSET (*outbuffer) = GST_BUFFER_OFFSET (inbuffer);
 
   // Set the maximum allowed entries to the size of the tensor batch.
-  n_entries = GST_ML_INFO_TENSOR_DIM (mlconverter->mlinfo, 0, 0);
+  n_batch = GST_ML_INFO_TENSOR_DIM (mlconverter->mlinfo, 0, 0);
 
   // Iterate over all possible batch entries and transfer protection meta.
-  for (idx = 0; idx < n_entries; idx++) {
+  for (idx = 0; idx < n_batch; idx++) {
     GstProtectionMeta *pmeta = NULL;
-    gchar *name = NULL;
+    const gchar *name = NULL;
 
     // Check if a bitwise mask was set for this channel/batch input.
     if ((GST_BUFFER_OFFSET (inbuffer) != GST_BUFFER_OFFSET_NONE) &&
@@ -975,13 +943,12 @@ gst_ml_video_converter_prepare_output_buffer (GstBaseTransform * base,
             GST_VIDEO_MULTIVIEW_MODE_SEPARATED)
       continue;
 
-    name = g_strdup_printf ("channel-%u", idx);
+    // Get the name for the protection meta structure with that batch number.
+    name = gst_batch_channel_name (idx);
 
     // Copy protection metadata for current memory block into the new buffer.
     if ((pmeta = gst_buffer_get_protection_meta_id (inbuffer, name)) != NULL)
       gst_buffer_add_protection_meta (*outbuffer, gst_structure_copy (pmeta->info));
-
-    g_free (name);
   }
 
   return GST_FLOW_OK;

@@ -37,9 +37,11 @@
 #endif
 
 #include <string.h>
+
 #include <gst/allocators/gstfdmemory.h>
 #include <ml-meta/ml_meta.h>
 #include <gst/cv/gstcvmeta.h>
+#include <gst/utils/common-utils.h>
 
 #include "gstoverlay.h"
 
@@ -2608,7 +2610,7 @@ gst_overlay_set_property (GObject * object, guint prop_id,
   const gchar *propname = g_param_spec_get_name (pspec);
   GstState state = GST_STATE (gst_overlay);
 
-  if (!OVERLAY_IS_PROPERTY_MUTABLE_IN_CURRENT_STATE(pspec, state)) {
+  if (!GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE(pspec, state)) {
     GST_WARNING ("Property '%s' change not supported in %s state!",
         propname, gst_element_state_get_name (state));
     return;

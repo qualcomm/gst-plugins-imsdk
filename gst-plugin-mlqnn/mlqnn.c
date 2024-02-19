@@ -3,15 +3,16 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
-#include <gst/ml/gstmlmeta.h>
-#include <gst/ml/gstmlpool.h>
-#include <gst/ml/ml-frame.h>
-
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif // HAVE_CONFIG_H
 
 #include "mlqnn.h"
+
+#include <gst/ml/gstmlmeta.h>
+#include <gst/ml/gstmlpool.h>
+#include <gst/ml/ml-frame.h>
+#include <gst/utils/common-utils.h>
 
 #define GST_CAT_DEFAULT gst_ml_qnn_debug
 GST_DEBUG_CATEGORY (gst_ml_qnn_debug);
@@ -80,19 +81,6 @@ gst_ml_qnn_sink_template (void)
 {
   return gst_pad_template_new ("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
       gst_ml_qnn_sink_caps ());
-}
-
-static void
-gst_buffer_copy_protection_meta (GstBuffer * outbuffer, GstBuffer * inbuffer)
-{
-  gpointer state = NULL;
-  GstMeta *meta = NULL;
-
-  while ((meta = gst_buffer_iterate_meta_filtered (inbuffer, &state,
-              GST_PROTECTION_META_API_TYPE))) {
-    gst_buffer_add_protection_meta (outbuffer,
-        gst_structure_copy (((GstProtectionMeta *) meta)->info));
-  }
 }
 
 static GstCaps *

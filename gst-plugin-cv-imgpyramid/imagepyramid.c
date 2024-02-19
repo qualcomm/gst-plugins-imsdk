@@ -1,11 +1,14 @@
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
+
+#include <gst/memory/gstmempool.h>
+#include <gst/utils/common-utils.h>
 
 #ifdef HAVE_LINUX_DMA_BUF_H
 #include <sys/ioctl.h>
@@ -14,7 +17,6 @@
 
 #include <gbm.h>
 #include <gbm_priv.h>
-#include <gst/memory/gstmempool.h>
 
 #include "imagepyramid.h"
 #include "imagepyramidpads.h"
@@ -41,12 +43,6 @@ G_DEFINE_TYPE (GstCvImgPyramid, gst_cv_imgpyramid, GST_TYPE_ELEMENT);
 #ifndef GST_CAPS_FEATURE_MEMORY_GBM
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
 #endif
-
-#define GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE(pspec, state) \
-  ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
-      : ((pspec->flags & GST_PARAM_MUTABLE_PAUSED) ? (state <= GST_STATE_PAUSED) \
-          : ((pspec->flags & GST_PARAM_MUTABLE_READY) ? (state <= GST_STATE_READY) \
-              : (state <= GST_STATE_NULL))))
 
 static GType gst_cv_request_get_type (void);
 #define GST_TYPE_CV_REQUEST  (gst_cv_request_get_type())
@@ -148,41 +144,6 @@ gst_data_queue_free_item (gpointer userdata)
   GstDataQueueItem *item = userdata;
   gst_mini_object_unref (item->object);
   g_slice_free (GstDataQueueItem, item);
-}
-
-static gboolean
-gst_caps_has_feature (const GstCaps * caps, const gchar * feature)
-{
-  guint idx = 0;
-
-  while (idx != gst_caps_get_size (caps)) {
-    GstCapsFeatures *const features = gst_caps_get_features (caps, idx);
-
-    if (feature == NULL && ((gst_caps_features_get_size (features) == 0) ||
-            gst_caps_features_is_any (features)))
-      return TRUE;
-
-    // Skip ANY caps and return immediately if feature is present.
-    if ((feature != NULL) && !gst_caps_features_is_any (features) &&
-        gst_caps_features_contains (features, feature))
-      return TRUE;
-
-    idx++;
-  }
-  return FALSE;
-}
-
-static gboolean
-gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
-{
-  GstStructure *structure = NULL;
-  const gchar *string = NULL;
-
-  structure = gst_caps_get_structure (caps, 0);
-  string = gst_structure_has_field (structure, "compression") ?
-      gst_structure_get_string (structure, "compression") : NULL;
-
-  return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
 }
 
 static gboolean

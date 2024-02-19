@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -9,21 +9,15 @@
 
 #include "c2aenc.h"
 
+#include <gst/utils/common-utils.h>
+
 #define GST_CAT_DEFAULT c2_aenc_debug
 GST_DEBUG_CATEGORY_STATIC (c2_aenc_debug);
 
 #define gst_c2_aenc_parent_class parent_class
 G_DEFINE_TYPE (GstC2AEncoder, gst_c2_aenc, GST_TYPE_AUDIO_ENCODER);
 
-#define GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE(pspec, state) \
-  ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
-      : ((pspec->flags & GST_PARAM_MUTABLE_PAUSED) ? (state <= GST_STATE_PAUSED) \
-          : ((pspec->flags & GST_PARAM_MUTABLE_READY) ? (state <= GST_STATE_READY) \
-              : (state <= GST_STATE_NULL))))
-
 #define DEFAULT_PROP_BITRATE      (48000)
-
-#define GPOINTER_CAST(ptr)                ((gpointer) ptr)
 
 #define GST_AUDIO_FORMATS "{ S16LE }"
 #define SAMPLES_CNT_IN_BUFFER 1024

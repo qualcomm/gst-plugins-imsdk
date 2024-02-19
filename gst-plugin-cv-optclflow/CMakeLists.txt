@@ -61,6 +61,7 @@ target_link_libraries(${GST_CV_OPTCLFLOW} PRIVATE
   ${GST_VIDEO_LIBRARIES}
   ${GBM_LIBRARIES}
   gstqtimemorybase
+  gstqtiutilsbase
   $<$<BOOL:${HAVE_CVP_OPTICALFLOW_H}>:cvp2>
   $<$<BOOL:${HAVE_EVA_OPTICALFLOW_H}>:eva>
 )

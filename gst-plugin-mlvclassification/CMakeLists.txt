@@ -68,6 +68,7 @@ target_link_libraries(${GST_QTI_ML_VIDEO_CLASSIFICATION} PRIVATE
   gstqtimlbase
   gstqtivideobase
   gstqtimemorybase
+  gstqtiutilsbase
 )
 
 install(

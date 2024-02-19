@@ -41,6 +41,8 @@
 #include <stdio.h>
 
 #include <gst/ml/gstmlmeta.h>
+#include <gst/utils/common-utils.h>
+#include <gst/utils/batch-utils.h>
 
 #include "mldemuxpads.h"
 
@@ -56,8 +58,6 @@ G_DEFINE_TYPE (GstMLDemux, gst_ml_demux, GST_TYPE_ELEMENT);
   (x & 0x80 ? '1' : '0'), (x & 0x40 ? '1' : '0'), (x & 0x20 ? '1' : '0'), \
   (x & 0x10 ? '1' : '0'), (x & 0x08 ? '1' : '0'), (x & 0x04 ? '1' : '0'), \
   (x & 0x02 ? '1' : '0'), (x & 0x01 ? '1' : '0')
-
-#define GST_PROTECTION_META_CAST(obj) ((GstProtectionMeta *) obj)
 
 #define GST_ML_DEMUX_TENSOR_TYPES \
   "{ INT8, UINT8, INT32, UINT32, FLOAT16, FLOAT32 }"
@@ -96,21 +96,6 @@ gst_data_queue_free_item (gpointer userdata)
   GstDataQueueItem *item = userdata;
   gst_buffer_unref (GST_BUFFER (item->object));
   g_slice_free (GstDataQueueItem, item);
-}
-
-static GstProtectionMeta *
-gst_buffer_get_protection_meta_id (GstBuffer * buffer, const gchar * name)
-{
-  gpointer state = NULL;
-  GstMeta *meta = NULL;
-
-  while ((meta = gst_buffer_iterate_meta_filtered (buffer, &state,
-              GST_PROTECTION_META_API_TYPE))) {
-    if (gst_structure_has_name (GST_PROTECTION_META_CAST (meta)->info, name))
-      return GST_PROTECTION_META_CAST (meta);
-  }
-
-  return NULL;
 }
 
 static gboolean
@@ -300,8 +285,8 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
   GstBuffer *outbuffer = NULL;
   GstDataQueueItem *item = NULL;
   GstProtectionMeta *pmeta = NULL;
-  gchar *name = NULL;
-  guint idx = 0, channel = 0, n_memory = 0, offset = 0, size = 0;
+  const gchar *name = NULL;
+  guint idx = 0, num = 0, n_memory = 0, offset = 0, size = 0;
 
   n_memory = gst_buffer_n_memory (inbuffer);
   size = gst_buffer_get_size (inbuffer);
@@ -328,26 +313,26 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
       continue;
     }
 
-    channel = g_list_index (demux->srcpads, srcpad);
+    idx = g_list_index (demux->srcpads, srcpad);
 
     // Check if a inference was done for this channel.
-    if ((GST_BUFFER_OFFSET (inbuffer) & (1 << channel)) == 0)
+    if ((GST_BUFFER_OFFSET (inbuffer) & (1 << idx)) == 0)
       continue;
 
     // Create a new buffer wrapper to hold a reference to input buffer.
     outbuffer = gst_buffer_new ();
 
-    name = g_strdup_printf ("channel-%u", channel);
+    // Get the name for the protection meta structure with that batch number.
+    name = gst_batch_channel_name (idx);
 
     // Transfer the proper GstProtectionMeta into the new buffer if available.
     if ((pmeta = gst_buffer_get_protection_meta_id (inbuffer, name)) != NULL) {
       pmeta = gst_buffer_add_protection_meta (outbuffer,
           gst_structure_copy (pmeta->info));
-      // Rename as this is the demuxed tensor.
-      gst_structure_set_name (pmeta->info, "channel-0");
-    }
 
-    g_free (name);
+      // Rename to 'batch-channel-00' as this is the single demuxed tensor.
+      gst_structure_set_name (pmeta->info, gst_batch_channel_name (0));
+    }
 
     if ((pmeta != NULL) && gst_structure_has_field (pmeta->info, "timestamp")) {
       gst_structure_get_uint64 (pmeta->info, "timestamp", &timestamp);
@@ -374,8 +359,8 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
     gst_buffer_set_flags (outbuffer, flags);
 
     // Share memory blocks from input buffer with the new buffer.
-    for (idx = 0; idx < n_memory; idx++) {
-      GstMemory *memory = gst_buffer_peek_memory (inbuffer, idx);
+    for (num = 0; num < n_memory; num++) {
+      GstMemory *memory = gst_buffer_peek_memory (inbuffer, num);
       GstMLTensorMeta *mlmeta = NULL;
 
       // In case the GAP flag is set then do not transfer any memory blocks.
@@ -383,16 +368,16 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
         break;
 
       // Set the size of memory that needs to be shared.
-      size = gst_ml_info_tensor_size (srcpad->mlinfo, idx);
+      size = gst_ml_info_tensor_size (srcpad->mlinfo, num);
       // Set the offset to the piece of memory that needs to be shared.
-      offset = size * channel;
+      offset = size * num;
 
       gst_buffer_append_memory (outbuffer,
           gst_memory_copy (memory, offset, size));
 
       mlmeta = gst_buffer_add_ml_tensor_meta (outbuffer, srcpad->mlinfo->type,
-          srcpad->mlinfo->n_dimensions[idx], srcpad->mlinfo->tensors[idx]);
-      mlmeta->id = idx;
+          srcpad->mlinfo->n_dimensions[num], srcpad->mlinfo->tensors[num]);
+      mlmeta->id = num;
     }
 
     // Initialize and send the source segment for synchronization.

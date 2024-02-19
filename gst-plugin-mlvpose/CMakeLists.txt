@@ -66,6 +66,7 @@ target_link_libraries(${GST_QTI_ML_VIDEO_POSE} PRIVATE
   ${CAIRO_LIBRARIES}
   gstqtimlbase
   gstqtivideobase
+  gstqtiutilsbase
 )
 
 install(

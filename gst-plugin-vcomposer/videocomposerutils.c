@@ -26,7 +26,7 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -57,38 +57,4 @@ gst_video_composer_rotate_get_type (void)
     gtype = g_enum_register_static ("GstVideoComposerRotate", methods);
 
   return gtype;
-}
-
-gboolean
-gst_caps_has_feature (const GstCaps * caps, const gchar * feature)
-{
-  guint idx = 0;
-
-  for (idx = 0; idx < gst_caps_get_size (caps); idx++) {
-    GstCapsFeatures *const features = gst_caps_get_features (caps, idx);
-
-    if (feature == NULL && ((gst_caps_features_get_size (features) == 0) ||
-            gst_caps_features_is_any (features)))
-      return TRUE;
-
-    // Skip ANY caps and return immediately if feature is present.
-    if ((feature != NULL) && !gst_caps_features_is_any (features) &&
-        gst_caps_features_contains (features, feature))
-      return TRUE;
-  }
-
-  return FALSE;
-}
-
-gboolean
-gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
-{
-  GstStructure *structure = NULL;
-  const gchar *string = NULL;
-
-  structure = gst_caps_get_structure (caps, 0);
-  string = gst_structure_has_field (structure, "compression") ?
-      gst_structure_get_string (structure, "compression") : NULL;
-
-  return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
 }

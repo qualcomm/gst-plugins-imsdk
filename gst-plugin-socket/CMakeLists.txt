@@ -49,6 +49,7 @@ target_link_libraries(${GST_QTI_SOCKETSRC} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
+  gstqtiutilsbase
 )
 
 install(
@@ -79,6 +80,7 @@ target_link_libraries(${GST_QTI_SOCKETSINK} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
+  gstqtiutilsbase
 )
 
 install(

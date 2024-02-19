@@ -1,6 +1,6 @@
 
 /*
-* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -39,13 +39,13 @@
 
 #include "c2vdec.h"
 
+#include <gst/utils/common-utils.h>
+
 GST_DEBUG_CATEGORY_STATIC (gst_c2_vdec_debug_category);
 #define GST_CAT_DEFAULT gst_c2_vdec_debug_category
 
 #define gst_c2_vdec_parent_class parent_class
 G_DEFINE_TYPE (GstC2VDecoder, gst_c2_vdec, GST_TYPE_VIDEO_DECODER);
-
-#define GPOINTER_CAST(ptr)          ((gpointer) ptr)
 
 #ifndef GST_CAPS_FEATURE_MEMORY_GBM
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
@@ -82,19 +82,6 @@ GST_STATIC_PAD_TEMPLATE("src",
     GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS) ";"
         GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM, GST_VIDEO_FORMATS))
 );
-
-static gboolean
-gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
-{
-  GstStructure *structure = NULL;
-  const gchar *string = NULL;
-
-  structure = gst_caps_get_structure (caps, 0);
-  string = gst_structure_has_field (structure, "compression") ?
-      gst_structure_get_string (structure, "compression") : NULL;
-
-  return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
-}
 
 static GstVideoFormat
 gst_c2_vdec_get_output_format (GstC2VDecoder * c2vdec,
