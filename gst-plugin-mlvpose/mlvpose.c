@@ -474,7 +474,8 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
 
   for (idx = 0; idx < vpose->predictions->len; idx++) {
     GstMLPrediction *prediction = NULL;
-    GstStructure *entry = NULL, *keypoint = NULL;
+    GstStructure *entry = NULL, *structure = NULL;
+    GValue keypoints = G_VALUE_INIT;
     GValue links = G_VALUE_INIT, link = G_VALUE_INIT;
 
     // Break immediately if we reach the number of results limit.
@@ -491,6 +492,8 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
         "confidence", G_TYPE_DOUBLE, prediction->confidence,
         NULL);
 
+    g_value_init (&keypoints, GST_TYPE_ARRAY);
+
     for (num = 0; num < prediction->keypoints->len; num++) {
       GstPoseKeypoint *kp =
           &(g_array_index (prediction->keypoints, GstPoseKeypoint, num));
@@ -499,41 +502,48 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
           kp->label, kp->x, kp->y, kp->confidence);
 
       // Replace white spaces with placeholder symbol.
-      kp->label = g_strdelimit (kp->label, " ", '-');
+      kp->label = g_strdelimit (kp->label, " ", '.');
 
-      keypoint = gst_structure_new ("PoseKeypoint",
+      structure = gst_structure_new (kp->label,
           "confidence", G_TYPE_DOUBLE, kp->confidence,
           "color", G_TYPE_UINT, kp->color,
           "x", G_TYPE_DOUBLE, kp->x,
           "y", G_TYPE_DOUBLE, kp->y,
           NULL);
 
-      gst_structure_set (entry, kp->label, GST_TYPE_STRUCTURE, keypoint, NULL);
-      gst_structure_free (keypoint);
+      g_value_init (&value, GST_TYPE_STRUCTURE);
+      g_value_take_boxed (&value, structure);
+
+      gst_value_array_append_value (&keypoints, &value);
+      g_value_unset (&value);
     }
+
+    gst_structure_set_value (entry, "keypoints", &keypoints);
+    g_value_unset (&keypoints);
 
     g_value_init (&links, GST_TYPE_ARRAY);
 
     for (num = 0; num < prediction->connections->len; num++) {
       GstPoseLink *connection = NULL;
-      GstPoseKeypoint *kp = NULL;
+      GstPoseKeypoint *s_kp = NULL, *d_kp = NULL;
 
       connection = &(g_array_index (prediction->connections, GstPoseLink, num));
+
+      s_kp = &(g_array_index (prediction->keypoints, GstPoseKeypoint,
+          connection->s_kp_id));
+      d_kp = &(g_array_index (prediction->keypoints, GstPoseKeypoint,
+          connection->d_kp_id));
+
+      GST_TRACE_OBJECT (vpose, "Link: '%s' <--> '%s'", s_kp->label, d_kp->label);
 
       g_value_init (&value, G_TYPE_STRING);
       g_value_init (&link, GST_TYPE_ARRAY);
 
-      kp = &(g_array_index (prediction->keypoints, GstPoseKeypoint,
-          connection->s_kp_id));
-
-      g_value_set_string (&value, kp->label);
+      g_value_set_string (&value, s_kp->label);
       gst_value_array_append_value (&link, &value);
       g_value_reset (&value);
 
-      kp = &(g_array_index (prediction->keypoints, GstPoseKeypoint,
-          connection->d_kp_id));
-
-      g_value_set_string (&value, kp->label);
+      g_value_set_string (&value, d_kp->label);
       gst_value_array_append_value (&link, &value);
       g_value_unset (&value);
 
