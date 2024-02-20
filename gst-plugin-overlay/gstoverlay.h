@@ -138,6 +138,10 @@ struct _GstOverlay {
   GstVideoRectangle   text_dest_rect;
   guint               last_ov_y;
 
+  // Track the number of inherited metas between ROIs.
+  guint               n_class_labels;
+  guint               n_landmark_metas;
+
   /* User overlay */
   GSequence           *usr_text;
   GSequence           *usr_date;

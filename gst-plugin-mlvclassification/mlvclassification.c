@@ -476,19 +476,20 @@ gst_ml_video_classification_fill_text_output (
     GstMLVideoClassification * classification, GstBuffer *buffer)
 {
   GstMapInfo memmap = {};
-  GValue entries = G_VALUE_INIT, value = G_VALUE_INIT;
+  GValue entries = G_VALUE_INIT, labels = G_VALUE_INIT, value = G_VALUE_INIT;
+  GstStructure *structure = NULL;
   gchar *string = NULL;
-  guint idx = 0, n_predictions = 0;
+  guint idx = 0;
   gsize length = 0;
 
   g_value_init (&entries, GST_TYPE_LIST);
+  g_value_init (&labels, GST_TYPE_ARRAY);
 
   for (idx = 0; idx < classification->predictions->len; idx++) {
     GstMLPrediction *prediction = NULL;
-    GstStructure *entry = NULL;
 
     // Break immediately if we reach the number of results limit.
-    if (n_predictions >= classification->n_results)
+    if (idx >= classification->n_results)
       break;
 
     prediction =
@@ -501,31 +502,36 @@ gst_ml_video_classification_fill_text_output (
     GST_TRACE_OBJECT (classification, "label: %s, confidence: %.1f%%",
         prediction->label, prediction->confidence);
 
-    prediction->label = g_strdelimit (prediction->label, " ", '-');
+    prediction->label = g_strdelimit (prediction->label, " ", '.');
 
-    entry = gst_structure_new ("ImageClassification",
-        "label", G_TYPE_STRING, prediction->label,
+    structure = gst_structure_new (prediction->label,
         "confidence", G_TYPE_DOUBLE, prediction->confidence,
         "color", G_TYPE_UINT, prediction->color,
         NULL);
 
-    prediction->label = g_strdelimit (prediction->label, "-", ' ');
-
     g_value_init (&value, GST_TYPE_STRUCTURE);
-    g_value_take_boxed (&value, entry);
+    g_value_take_boxed (&value, structure);
 
-    gst_value_list_append_value (&entries, &value);
+    gst_value_array_append_value (&labels, &value);
     g_value_unset (&value);
-
-    n_predictions++;
   }
 
-  // Append timestamp information needed for synchronization.
-  g_value_init (&value, GST_TYPE_STRUCTURE);
-  g_value_take_boxed (&value,
-      gst_structure_new ("Parameters", "timestamp", G_TYPE_UINT64,
-          GST_BUFFER_TIMESTAMP (buffer), NULL));
+  structure = gst_structure_new_empty ("ImageClassification");
+  gst_structure_set_value (structure, "labels", &labels);
 
+  g_value_unset (&labels);
+
+  g_value_init (&value, GST_TYPE_STRUCTURE);
+  g_value_take_boxed (&value, structure);
+
+  gst_value_list_append_value (&entries, &value);
+  g_value_reset (&value);
+
+  // Append timestamp information needed for synchronization.
+  structure = gst_structure_new ("Parameters",
+      "timestamp", G_TYPE_UINT64, GST_BUFFER_TIMESTAMP (buffer), NULL);
+
+  g_value_take_boxed (&value, structure);
   gst_value_list_append_value (&entries, &value);
   g_value_unset (&value);
 

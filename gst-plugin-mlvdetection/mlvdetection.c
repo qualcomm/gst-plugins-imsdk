@@ -490,7 +490,7 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
         "[%.2f %.2f %.2f %.2f]", prediction->label, prediction->confidence,
         prediction->top, prediction->left, prediction->bottom, prediction->right);
 
-    prediction->label = g_strdelimit (prediction->label, " ", '-');
+    prediction->label = g_strdelimit (prediction->label, " ", '.');
 
     entry = gst_structure_new ("ObjectDetection",
         "label", G_TYPE_STRING, prediction->label,
@@ -498,7 +498,7 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
         "color", G_TYPE_UINT, prediction->color,
         NULL);
 
-    prediction->label = g_strdelimit (prediction->label, "-", ' ');
+    prediction->label = g_strdelimit (prediction->label, ".", ' ');
 
     g_value_init (&value, G_TYPE_FLOAT);
     g_value_init (&rectangle, GST_TYPE_ARRAY);
