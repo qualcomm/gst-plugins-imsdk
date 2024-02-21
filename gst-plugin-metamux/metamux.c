@@ -1182,9 +1182,21 @@ gst_metamux_data_sink_pad_chain (GstPad * pad, GstObject * parent,
     return GST_FLOW_EOS;
   }
 
-  // Buffer is marked as GAP, nothing to process. Just consume it.
   if (gst_buffer_get_size (buffer) == 0 &&
       GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP)) {
+    GstMetaEntry *entry = gst_metadata_entry_new ();
+
+    // Create an empty entry with the buffer TS for synchronization purpose.
+    entry->timestamp = GST_BUFFER_TIMESTAMP (buffer);
+
+    GST_METAMUX_LOCK (muxer);
+
+    g_queue_push_tail (dpad->queue, entry);
+    g_cond_signal (&(muxer)->wakeup);
+
+    GST_METAMUX_UNLOCK (muxer);
+
+    // Buffer is marked as GAP, nothing to process. Just consume it.
     gst_buffer_unref (buffer);
     return GST_FLOW_OK;
   }
