@@ -27,6 +27,11 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+ /* Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #ifndef __GST_QTI_ML_SNPE_H__
 #define __GST_QTI_ML_SNPE_H__
 
@@ -68,7 +73,8 @@ struct _GstMLSnpe {
   /// Properties.
   gchar             *model;
   GstMLSnpeDelegate delegate;
-  GList             *layers;
+  gboolean          is_tensor;
+  GList             *outputs;
 };
 
 struct _GstMLSnpeClass {

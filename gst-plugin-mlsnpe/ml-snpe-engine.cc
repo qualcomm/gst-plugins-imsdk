@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -110,24 +110,12 @@
   } \
 }
 
-#define DEFAULT_OPT_DELEGATE GST_ML_SNPE_DELEGATE_NONE
-
-#define GET_OPT_MODEL(s) get_opt_string (s, \
-    GST_ML_SNPE_ENGINE_OPT_MODEL)
-#define GET_OPT_DELEGATE(s) get_opt_enum (s, \
-    GST_ML_SNPE_ENGINE_OPT_DELEGATE, GST_TYPE_ML_SNPE_DELEGATE, \
-    DEFAULT_OPT_DELEGATE)
-#define GET_OPT_LAYERS(s) get_opt_list (s, \
-    GST_ML_SNPE_ENGINE_OPT_LAYERS)
-
 #define GST_CAT_DEFAULT gst_ml_snpe_engine_debug_category()
 
 struct _GstMLSnpeEngine
 {
   GstMLInfo *ininfo;
   GstMLInfo *outinfo;
-
-  GstStructure *settings;
 
   // SNPE container model.
   std::unique_ptr<zdl::DlContainer::IDlContainer> model;
@@ -183,39 +171,6 @@ gst_ml_snpe_delegate_get_type (void)
   return gtype;
 }
 
-static const gchar *
-get_opt_string (GstStructure * settings, const gchar * opt)
-{
-  return gst_structure_get_string (settings, opt);
-}
-
-static gint
-get_opt_enum (GstStructure * settings, const gchar * opt, GType type, gint dval)
-{
-  gint result;
-  return gst_structure_get_enum (settings, opt, type, &result) ?
-    result : dval;
-}
-
-static GList *
-get_opt_list (GstStructure * settings, const gchar * opt)
-{
-  GList *list = NULL;
-  const GValue *value = NULL;
-  guint idx = 0;
-
-  if ((value = gst_structure_get_value (settings, opt)) == NULL)
-    return NULL;
-
-  for (idx = 0; idx < gst_value_array_get_size (value); idx++) {
-    const gchar *layer = g_value_get_string (
-        gst_value_array_get_value (value, idx));
-    list = g_list_append (list, g_strdup (layer));
-  }
-
-  return list;
-}
-
 static GstMLType
 snpe_to_ml_type (zdl::DlSystem::UserBufferEncoding::ElementType_t type)
 {
@@ -238,10 +193,10 @@ snpe_to_ml_type (zdl::DlSystem::UserBufferEncoding::ElementType_t type)
 }
 
 GstMLSnpeEngine *
-gst_ml_snpe_engine_new (GstStructure * settings)
+gst_ml_snpe_engine_new (gchar * model, GstMLSnpeDelegate delegate, 
+    gboolean is_tensor, GList * outputs_list)
 {
   GstMLSnpeEngine *engine = NULL;
-  GList *list = NULL;
   const gchar *filename = NULL;
   gint idx = 0, num = 0;
 
@@ -251,10 +206,7 @@ gst_ml_snpe_engine_new (GstStructure * settings)
   engine->ininfo = gst_ml_info_new ();
   engine->outinfo = gst_ml_info_new ();
 
-  engine->settings = gst_structure_copy (settings);
-  gst_structure_free (settings);
-
-  filename = GET_OPT_MODEL (engine->settings);
+  filename = model;
   GST_ML_RETURN_VAL_IF_FAIL (filename != NULL, NULL, "No model file name!");
 
   engine->model = zdl::DlContainer::IDlContainer::open(std::string(filename));
@@ -266,7 +218,7 @@ gst_ml_snpe_engine_new (GstStructure * settings)
 
   zdl::DlSystem::RuntimeList rtlist;
 
-  switch (GET_OPT_DELEGATE (engine->settings)) {
+  switch (delegate) {
     case GST_ML_SNPE_DELEGATE_DSP:
       rtlist.add(zdl::DlSystem::Runtime_t::DSP);
       break;
@@ -288,16 +240,17 @@ gst_ml_snpe_engine_new (GstStructure * settings)
       names.at(0), (names.size() > 1) ? names.at(1) : "");
 
   zdl::SNPE::SNPEBuilder builder(engine->model.get());
-  zdl::DlSystem::StringList layers;
+  zdl::DlSystem::StringList outputs;
 
-  list = GET_OPT_LAYERS (engine->settings);
+  for (idx = 0; idx < g_list_length (outputs_list); idx++)
+    outputs.append ((const gchar *) g_list_nth_data (outputs_list, idx));
 
-  for (idx = 0; idx < g_list_length (list); idx++)
-    layers.append ((const gchar *) g_list_nth_data (list, idx));
+  g_list_free_full (outputs_list, (GDestroyNotify) g_free);
 
-  g_list_free_full (list, (GDestroyNotify) g_free);
-
-  builder.setOutputLayers(layers).setRuntimeProcessorOrder(rtlist);
+  if (is_tensor)
+    builder.setOutputTensors(outputs).setRuntimeProcessorOrder(rtlist);
+  else
+    builder.setOutputLayers(outputs).setRuntimeProcessorOrder(rtlist);
   builder.setUseUserSuppliedBuffers(true);
 
   engine->interpreter = builder.build();
@@ -432,11 +385,6 @@ gst_ml_snpe_engine_free (GstMLSnpeEngine * engine)
   if (engine->ininfo != NULL) {
     gst_ml_info_free (engine->ininfo);
     engine->ininfo = NULL;
-  }
-
-  if (engine->settings != NULL) {
-    gst_structure_free (engine->settings);
-    engine->settings = NULL;
   }
 
   GST_INFO ("Destroyed MLE SNPE engine: %p", engine);
