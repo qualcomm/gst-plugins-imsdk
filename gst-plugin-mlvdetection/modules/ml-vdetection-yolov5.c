@@ -217,7 +217,7 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
     for (tile_idx = 0; tile_idx < n_tiles; tile_idx++) {
       for (anchor = 0; anchor < n_anchors; anchor++, num += n_layers) {
         GstMLPrediction prediction = { 0, };
-        GstLabel *label = NULL;
+        GstMLLabel *label = NULL;
 
         // Dequantize the object score.
         // Represented as an exponent 'x' in sigmoid function: 1 / (1 + exp(x)).
@@ -318,7 +318,7 @@ gst_ml_module_parse_monoblock_tensors (GstMLSubModule * submodule,
     GArray * predictions, GstMLFrame * mlframe)
 {
   GstProtectionMeta *pmeta = NULL;
-  GstLabel *label = NULL;
+  GstMLLabel *label = NULL;
   guint8 *data = NULL;
   guint idx = 0, num = 0, m = 0, id = 0, n_layers = 0, n_tiles = 0;
   gdouble confidence = 0.0, score = 0.0, bbox[4] = { 0, };

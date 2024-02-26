@@ -424,7 +424,7 @@ gst_ml_module_traverse_skeleton_links (GstMLSubModule * submodule,
 {
   GstPoseLink *link =NULL;
   GstPoseKeypoint *s_kp = NULL, *d_kp = NULL;
-  GstLabel *label = NULL;
+  GstMLLabel *label = NULL;
   gpointer heatmap = NULL, offsets = NULL, displacements = NULL;
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   gfloat displacement = 0.0, offset = 0.0, confidence = 0.0;
@@ -746,7 +746,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   GArray *predictions = ((GArray *) output), *rootpoints = NULL;
   GstProtectionMeta *pmeta = NULL;
-  GstLabel *label = NULL;
+  GstMLLabel *label = NULL;
   gint nms = 0, sar_n = 1, sar_d = 1;
   guint idx = 0, num = 0, n_parts = 0;
 

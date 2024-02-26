@@ -233,7 +233,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
   for (row = 0; row < GST_VIDEO_FRAME_HEIGHT (vframe); row++) {
     for (column = 0; column < GST_VIDEO_FRAME_WIDTH (vframe); column++) {
-      GstLabel *label = NULL;
+      GstMLLabel *label = NULL;
       guint id = G_MAXUINT8;
 
       // Calculate the source index.

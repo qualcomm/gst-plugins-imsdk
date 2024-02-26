@@ -196,7 +196,7 @@ gst_ml_module_bbox_parse_tripleblock_tensors (GstMLSubModule * submodule,
     GstMLFrame * mlframe, GArray * bboxes, GArray * mask_matrix_indices)
 {
   GstProtectionMeta *pmeta = NULL;
-  GstLabel *label = NULL;
+  GstMLLabel *label = NULL;
   gpointer mlboxes = NULL, scores = NULL, classes = NULL;
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   gint nms = -1, num = 0;

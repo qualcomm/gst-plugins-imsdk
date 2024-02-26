@@ -469,7 +469,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   // Iterate the heatmap and find the block with highest score for each keypoint.
   for (idx = 0; idx < n_keypoints; idx++) {
     GstPoseKeypoint *kp = NULL;
-    GstLabel *label = NULL;
+    GstMLLabel *label = NULL;
     gint dx = 0, dy = 0;
 
     // Initial position ID of this type of keypoint.
