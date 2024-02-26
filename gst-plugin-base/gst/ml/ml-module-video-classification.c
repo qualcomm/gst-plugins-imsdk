@@ -63,6 +63,25 @@
 
 #include "ml-module-video-classification.h"
 
+void
+gst_ml_class_prediction_cleanup (GstMLClassPrediction * prediction)
+{
+  if (prediction->entries != NULL)
+    g_array_free (prediction->entries, TRUE);
+}
+
+gint
+gst_ml_class_compare_entries (const GstMLClassEntry * l_entry,
+    const GstMLClassEntry * r_entry)
+{
+  if (l_entry->confidence > r_entry->confidence)
+    return -1;
+  else if (l_entry->confidence < r_entry->confidence)
+    return 1;
+
+  return 0;
+}
+
 GST_API gboolean
 gst_ml_module_video_classification_execute (GstMLModule * module,
     GstMLFrame * mlframe, GArray * predictions)

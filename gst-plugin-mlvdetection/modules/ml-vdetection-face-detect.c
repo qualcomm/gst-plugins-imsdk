@@ -51,10 +51,10 @@
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
     "type = (string) { FLOAT32 }, " \
-    "dimensions = (int) < < 1, 60, 80, 1 >, < 1, 60, 80, 1 >, < 1, 60, 80, 10 >, < 1, 60, 80, 4 > >; " \
+    "dimensions = (int) < <1, 60, 80, 1 >, < 1, 60, 80, 1 >, < 1, 60, 80, 10 >, < 1, 60, 80, 4 > >; " \
     "neural-network/tensors, " \
     "type = (string) { FLOAT32 }, " \
-    "dimensions = (int) < < 1, 120, 160, 1 >, < 1, 120, 160, 10 >, < 1, 120, 160, 4 > >; "
+    "dimensions = (int) < <1, 120, 160, 1 >, < 1, 120, 160, 10 >, < 1, 120, 160, 4 > >; "
 
 // Module caps instance
 static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
@@ -189,6 +189,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   GArray *predictions = (GArray *)output;
   GstProtectionMeta *pmeta = NULL;
+  GstMLBoxPrediction *prediction = NULL;
   gfloat *scores = NULL, *hm_pool = NULL, *landmarks = NULL, *bboxes = NULL;
   GstVideoRectangle region = { 0, };
   gfloat size = 0;
@@ -199,13 +200,13 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  if (!gst_ml_info_is_equal (&(mlframe->info), &(submodule->mlinfo))) {
-    GST_ERROR ("ML frame with unsupported layout!");
-    return FALSE;
-  }
-
   pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
       gst_batch_channel_name (0));
+
+  prediction = &(g_array_index (predictions, GstMLBoxPrediction, 0));
+
+  prediction->batch_idx = 0;
+  prediction->info = pmeta->info;
 
   // Extract the dimensions of the input tensor that produced the output tensors.
   if (submodule->inwidth == 0 || submodule->inheight == 0) {
@@ -245,7 +246,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
   for (idx = 0; idx < n_blocks; ++idx) {
     GstMLLabel *label = NULL;
-    GstMLBoxPrediction prediction = { 0, };
+    GstMLBoxEntry entry = { 0, };
 
     // Discard invalid results.
     if (n_tensor == 4 && hm_pool != NULL && scores[idx] != hm_pool[idx])
@@ -259,16 +260,16 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     cx = (idx / n_classes) % GST_ML_FRAME_DIM (mlframe, 0, 2);
     cy = (idx / n_classes) / GST_ML_FRAME_DIM (mlframe, 0, 2);
 
-    prediction.left = (cx - bboxes[(idx * 4)]) * block_size;
-    prediction.top = (cy - bboxes[(idx * 4) + 1]) * block_size;
-    prediction.right = (cx + bboxes[(idx * 4) + 2]) * block_size;
-    prediction.bottom = (cy + bboxes[(idx * 4) + 3]) * block_size;
+    entry.left = (cx - bboxes[(idx * 4)]) * block_size;
+    entry.top = (cy - bboxes[(idx * 4) + 1]) * block_size;
+    entry.right = (cx + bboxes[(idx * 4) + 2]) * block_size;
+    entry.bottom = (cy + bboxes[(idx * 4) + 3]) * block_size;
 
     // Adjust bounding box dimensions with SAR and input tensor resolution.
-    gst_ml_box_transform_dimensions (&prediction, &region);
+    gst_ml_box_transform_dimensions (&entry, &region);
 
-    size = (prediction.right - prediction.left) *
-        (prediction.bottom - prediction.top);
+    size = (entry.right - entry.left) *
+        (entry.bottom - entry.top);
 
     // Discard results below the minimum bounding box size.
     if (size < BBOX_SIZE_THRESHOLD)
@@ -277,12 +278,12 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     label = g_hash_table_lookup (submodule->labels,
         GUINT_TO_POINTER (idx % n_classes));
 
-    prediction.confidence = scores[idx] * 100.0;
-    prediction.name = g_quark_from_string (label ? label->name : "unknown");
-    prediction.color = label ? label->color : 0x000000FF;
+    entry.confidence = scores[idx] * 100.0;
+    entry.name = g_quark_from_string (label ? label->name : "unknown");
+    entry.color = label ? label->color : 0x000000FF;
 
     // Non-Max Suppression (NMS) algorithm.
-    nms = gst_ml_box_non_max_suppression (&prediction, predictions);
+    nms = gst_ml_box_non_max_suppression (&entry, prediction->entries);
 
     // If the NMS result is -2 don't add the prediction to the list.
     if (nms == (-2))
@@ -290,7 +291,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
     // If the NMS result is above -1 remove the entry with the nms index.
     if (nms >= 0)
-      predictions = g_array_remove_index (predictions, nms);
+      predictions = g_array_remove_index (prediction->entries, nms);
 
     // TODO: Enchance predictions to support landmarks.
     for (num = 0; num < 5; ++num) {
@@ -304,8 +305,10 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       GST_INFO ("Ladnmark: [ %.2f %.2f ] ", lx, ly);
     }
 
-    predictions = g_array_append_val (predictions, prediction);
+    prediction->entries = g_array_append_val (prediction->entries, entry);
   }
+
+  g_array_sort (prediction->entries, (GCompareFunc) gst_ml_box_compare_entries);
 
   return TRUE;
 }

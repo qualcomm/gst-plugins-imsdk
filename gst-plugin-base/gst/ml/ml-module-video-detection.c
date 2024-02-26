@@ -66,15 +66,27 @@
 // Non-maximum Suppression (NMS) threshold (50%), corresponding to 2/3 overlap.
 #define NMS_INTERSECTION_THRESHOLD 0.5F
 
-gboolean
-gst_ml_module_video_detection_execute (GstMLModule * module,
-    GstMLFrame * mlframe, GArray * predictions)
+void
+gst_ml_box_prediction_cleanup (GstMLBoxPrediction * prediction)
 {
-  return gst_ml_module_execute (module, mlframe, (gpointer) predictions);
+  if (prediction->entries != NULL)
+    g_array_free (prediction->entries, TRUE);
+}
+
+gint
+gst_ml_box_compare_entries (const GstMLBoxEntry * l_entry,
+    const GstMLBoxEntry * r_entry)
+{
+  if (l_entry->confidence > r_entry->confidence)
+    return -1;
+  else if (l_entry->confidence < r_entry->confidence)
+    return 1;
+
+  return 0;
 }
 
 void
-gst_ml_box_relative_translation (GstMLBoxPrediction * box, gint width, gint height)
+gst_ml_box_relative_translation (GstMLBoxEntry * box, gint width, gint height)
 {
   box->top /= height;
   box->bottom /= height;
@@ -83,8 +95,7 @@ gst_ml_box_relative_translation (GstMLBoxPrediction * box, gint width, gint heig
 }
 
 void
-gst_ml_box_transform_dimensions (GstMLBoxPrediction * box,
-    GstVideoRectangle * region)
+gst_ml_box_transform_dimensions (GstMLBoxEntry * box, GstVideoRectangle * region)
 {
   box->top = (box->top - region->y) / region->h;
   box->bottom = (box->bottom - region->y) / region->h;
@@ -93,8 +104,7 @@ gst_ml_box_transform_dimensions (GstMLBoxPrediction * box,
 }
 
 gfloat
-gst_ml_boxes_intersection_score (GstMLBoxPrediction * l_box,
-    GstMLBoxPrediction * r_box)
+gst_ml_boxes_intersection_score (GstMLBoxEntry * l_box, GstMLBoxEntry * r_box)
 {
   gfloat width = 0, height = 0, intersection = 0, l_area = 0, r_area = 0;
 
@@ -132,14 +142,14 @@ gst_ml_boxes_intersection_score (GstMLBoxPrediction * l_box,
 }
 
 gint
-gst_ml_box_non_max_suppression (GstMLBoxPrediction * l_box, GArray * boxes)
+gst_ml_box_non_max_suppression (GstMLBoxEntry * l_box, GArray * boxes)
 {
-  GstMLBoxPrediction *r_box = NULL;
+  GstMLBoxEntry *r_box = NULL;
   gdouble score = 0.0;
   guint idx = 0;
 
   for (idx = 0; idx < boxes->len;  idx++) {
-    r_box = &(g_array_index (boxes, GstMLBoxPrediction, idx));
+    r_box = &(g_array_index (boxes, GstMLBoxEntry, idx));
 
     // If labels do not match, continue with next list entry.
     if (l_box->name != r_box->name)
@@ -162,4 +172,11 @@ gst_ml_box_non_max_suppression (GstMLBoxPrediction * l_box, GArray * boxes)
 
   // If this point is reached then add current box to the list;
   return -1;
+}
+
+gboolean
+gst_ml_module_video_detection_execute (GstMLModule * module,
+    GstMLFrame * mlframe, GArray * predictions)
+{
+  return gst_ml_module_execute (module, mlframe, (gpointer) predictions);
 }

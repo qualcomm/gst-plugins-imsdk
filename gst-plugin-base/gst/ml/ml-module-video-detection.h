@@ -70,10 +70,11 @@
 
 G_BEGIN_DECLS
 
+typedef struct _GstMLBoxEntry GstMLBoxEntry;
 typedef struct _GstMLBoxPrediction GstMLBoxPrediction;
 
 /**
- * GstMLBoxPrediction:
+ * GstMLBoxEntry:
  * @name: Name of the prediction.
  * @confidence: Percentage certainty that the prediction is accurate.
  * @color: Possible color that is associated with this prediction.
@@ -88,7 +89,7 @@ typedef struct _GstMLBoxPrediction GstMLBoxPrediction;
  * The fields top, left, bottom and right must be set in (0.0 to 1.0) relative
  * coordinate system.
  */
-struct _GstMLBoxPrediction {
+struct _GstMLBoxEntry {
   GQuark name;
   gfloat confidence;
 
@@ -99,6 +100,99 @@ struct _GstMLBoxPrediction {
   gfloat bottom;
   gfloat right;
 };
+
+/**
+ * GstMLBoxPrediction:
+ * @batch_idx: Position of the entries in the batch.
+ * @entries: GArray of #GstMLBoxEntry.
+ * @info: Additonal info structure, beloging to the batch #GstProtectionMeta
+ *        in the ML tensor buffer from which the prediction result was produced.
+ *        Ownership is still with that tensor buffer.
+ *
+ * Information describing a group of prediction results beloging to the same batch.
+ * All fields are mandatory and need to be filled by the submodule.
+ */
+struct _GstMLBoxPrediction {
+  guint8             batch_idx;
+  GArray             *entries;
+  const GstStructure *info;
+};
+
+/**
+ * gst_ml_box_prediction_cleanup:
+ * @prediction: Pointer to the ML box prediction.
+ *
+ * Helper function for freeing any resources allocated owned by the prediction.
+ *
+ * return: None
+ */
+GST_API void
+gst_ml_box_prediction_cleanup (GstMLBoxPrediction * prediction);
+
+/**
+ * gst_ml_box_compare_entries:
+ * @l_entry: Left (or First) ML box post-processing entry.
+ * @r_entry: Right (or Second) ML box post-processing entry.
+ *
+ * Helper function for comparing two ML box entries.
+ *
+ * return: -1 (l_entry > r_entry), 1 (l_entry < r_entry) and 0 (l_entry == r_entry)
+ */
+GST_API gint
+gst_ml_box_compare_entries (const GstMLBoxEntry * l_entry,
+                            const GstMLBoxEntry * r_entry);
+
+/**
+ * gst_ml_box_relative_translation:
+ * @box: Pointer to the ML box entry which will be modified.
+ * @width: Width of the tensor.
+ * @height: Height of the tensor.
+ *
+ * Helper function for transforming ML box dimensions from absolute to relative.
+ *
+ * return: None
+ */
+GST_API void
+gst_ml_box_relative_translation (GstMLBoxEntry * box, gint width, gint height);
+
+/**
+ * gst_ml_box_transform_dimensions:
+ * @box: Pointer to the ML box entry which will be modified.
+ * @region: Region in the tensor containg the actual data.
+ *
+ * Helper function for adjusting ML box dimensions to within the region
+ * which actually contains data and transforming them to relative.
+ *
+ * return: None
+ */
+GST_API void
+gst_ml_box_transform_dimensions (GstMLBoxEntry * box, GstVideoRectangle * region);
+
+/**
+ * gst_ml_box_intersection_score:
+ * @l_box: Left (or First) ML box post-processing entry.
+ * @r_box: Right (or Second) ML box post-processing entry.
+ *
+ * Helper function for scoring how much two entries are overlapping.
+ *
+ * return: Score from 0.0 (no overlap) to 1.0 (fully overlapping)
+ */
+GST_API gfloat
+gst_ml_boxes_intersection_score (GstMLBoxEntry * l_box, GstMLBoxEntry * r_box);
+
+/**
+ * gst_ml_box_non_max_suppression:
+ * @l_box: Pointer to ML box post-processing entry.
+ * @boxes: GArray of #GstMLBoxEntry.
+ *
+ * Helper function for Non-Max Suppression (NMS) algorithm.
+ *
+ * return: (-2) If confidence of the prediction is lower then any in the list.
+ *         (-1) If no prediction with the same label is present in the list.
+ *         (>= 0) If confidence of the prediction is higher then any in the list.
+ */
+GST_API gint
+gst_ml_box_non_max_suppression (GstMLBoxEntry * l_box, GArray * boxes);
 
 /**
  * gst_ml_module_video_detection_execute:
@@ -118,60 +212,6 @@ struct _GstMLBoxPrediction {
 GST_API gboolean
 gst_ml_module_video_detection_execute (GstMLModule * module, GstMLFrame * mlframe,
                                        GArray * predictions);
-
-/**
- * gst_ml_box_relative_translation:
- * @box: Pointer to the ML box prediction which will be modified.
- * @width: Width of the tensor.
- * @height: Height of the tensor.
- *
- * Helper function for transforming ML box dimensions from absolute to relative.
- *
- * return: None
- */
-void
-gst_ml_box_relative_translation (GstMLBoxPrediction * box, gint width, gint height);
-
-/**
- * gst_ml_box_transform_dimensions:
- * @box: Pointer to the ML box prediction which will be modified.
- * @region: Region in the tensor containg the actual data.
- *
- * Helper function for adjusting ML box dimensions to within the region
- * which actually contains data and transforming them to relative.
- *
- * return: None
- */
-void
-gst_ml_box_transform_dimensions (GstMLBoxPrediction * box,
-                                 GstVideoRectangle * region);
-
-/**
- * gst_ml_box_intersection_score:
- * @l_box: Left (or First) ML box post-processing prediction.
- * @r_box: Right (or Second) ML box post-processing prediction.
- *
- * Helper function for scoring how much two predictions are overlapping.
- *
- * return: Score from 0.0 (no overlap) to 1.0 (fully overlapping)
- */
-gfloat
-gst_ml_boxes_intersection_score (GstMLBoxPrediction * l_box,
-                                 GstMLBoxPrediction * r_box);
-
-/**
- * gst_ml_box_non_max_suppression:
- * @l_prediction: Pointer to ML box post-processing prediction.
- * @predictions: GArray of #GstMLBoxPrediction.
- *
- * Helper function for Non-Max Suppression (NMS) algorithm.
- *
- * return: (-2) If confidence of the prediction is lower then any in the list.
- *         (-1) If no prediction with the same label is present in the list.
- *         (>= 0) If confidence of the prediction is higher then any in the list.
- */
-gint
-gst_ml_box_non_max_suppression (GstMLBoxPrediction * l_box, GArray * boxes);
 
 G_END_DECLS
 

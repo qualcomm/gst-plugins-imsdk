@@ -134,6 +134,7 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
     GArray * predictions, GstMLFrame * mlframe)
 {
   GstProtectionMeta *pmeta = NULL;
+  GstMLBoxPrediction *prediction = NULL;
   GstVideoRectangle region = { 0, };
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   guint idx = 0, num = 0, x = 0, y = 0, m = 0, id = 0, w_idx = 0, tile_idx = 0;
@@ -144,6 +145,11 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
 
   pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
       gst_batch_channel_name (0));
+
+  prediction = &(g_array_index (predictions, GstMLBoxPrediction, 0));
+
+  prediction->batch_idx = 0;
+  prediction->info = pmeta->info;
 
   // Extract the source tensor region with actual data.
   gst_ml_protecton_meta_get_source_region (pmeta, &region);
@@ -185,7 +191,7 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
 
     for (tile_idx = 0; tile_idx < n_tiles; tile_idx++) {
       for (anchor = 0; anchor < n_anchors; anchor++, num += n_layers) {
-        GstMLBoxPrediction prediction = { 0, };
+        GstMLBoxEntry entry = { 0, };
         GstMLLabel *label = NULL;
 
         // Dequantize the object score.
@@ -242,28 +248,28 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
         bbox[2] = pow ((bbox[2] * 2), 2) * gains[w_idx][anchor][0];
         bbox[3] = pow ((bbox[3] * 2), 2) * gains[w_idx][anchor][1];
 
-        prediction.top = bbox[1] - (bbox[3] / 2);
-        prediction.left = bbox[0] - (bbox[2] / 2);
-        prediction.bottom = bbox[1] + (bbox[3] / 2);
-        prediction.right = bbox[0] + (bbox[2] / 2);
+        entry.top = bbox[1] - (bbox[3] / 2);
+        entry.left = bbox[0] - (bbox[2] / 2);
+        entry.bottom = bbox[1] + (bbox[3] / 2);
+        entry.right = bbox[0] + (bbox[2] / 2);
 
         // Adjust bounding box dimensions with extracted source tensor region.
-        gst_ml_box_transform_dimensions (&prediction, &region);
+        gst_ml_box_transform_dimensions (&entry, &region);
 
         // Discard results with out of region coordinates.
-        if ((prediction.top > 1.0) || (prediction.left > 1.0) ||
-            (prediction.bottom > 1.0) || (prediction.right > 1.0))
+        if ((entry.top > 1.0) || (entry.left > 1.0) ||
+            (entry.bottom > 1.0) || (entry.right > 1.0))
           continue;
 
         label = g_hash_table_lookup (submodule->labels,
             GUINT_TO_POINTER (id - (num + CLASSES_IDX)));
 
-        prediction.confidence = confidence * 100.0F;
-        prediction.name = g_quark_from_string (label ? label->name : "unknown");
-        prediction.color = label ? label->color : 0x000000FF;
+        entry.confidence = confidence * 100.0F;
+        entry.name = g_quark_from_string (label ? label->name : "unknown");
+        entry.color = label ? label->color : 0x000000FF;
 
         // Non-Max Suppression (NMS) algorithm.
-        nms = gst_ml_box_non_max_suppression (&prediction, predictions);
+        nms = gst_ml_box_non_max_suppression (&entry, prediction->entries);
 
         // If the NMS result is -2 don't add the prediction to the list.
         if (nms == (-2))
@@ -271,12 +277,14 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
 
         // If the NMS result is above -1 remove the entry with the nms index.
         if (nms >= 0)
-          predictions = g_array_remove_index (predictions, nms);
+          prediction->entries = g_array_remove_index (prediction->entries, nms);
 
-        predictions = g_array_append_val (predictions, prediction);
+        prediction->entries = g_array_append_val (prediction->entries, entry);
       }
     }
   }
+
+  g_array_sort (prediction->entries, (GCompareFunc) gst_ml_box_compare_entries);
 }
 
 static void
@@ -284,6 +292,7 @@ gst_ml_module_parse_monoblock_tensors (GstMLSubModule * submodule,
     GArray * predictions, GstMLFrame * mlframe)
 {
   GstProtectionMeta *pmeta = NULL;
+  GstMLBoxPrediction *prediction = NULL;
   GstMLLabel *label = NULL;
   guint8 *data = NULL;
   GstVideoRectangle region = { 0, };
@@ -294,6 +303,11 @@ gst_ml_module_parse_monoblock_tensors (GstMLSubModule * submodule,
 
   pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
       gst_batch_channel_name (0));
+
+  prediction = &(g_array_index (predictions, GstMLBoxPrediction, 0));
+
+  prediction->batch_idx = 0;
+  prediction->info = pmeta->info;
 
   // Extract the dimensions of the input tensor that produced the output tensors.
   if (submodule->inwidth == 0 || submodule->inheight == 0) {
@@ -313,7 +327,7 @@ gst_ml_module_parse_monoblock_tensors (GstMLSubModule * submodule,
   n_layers = GST_ML_FRAME_DIM (mlframe, 0, 2);
 
   for (num = 0; num < n_tiles; num++, idx += n_layers) {
-    GstMLBoxPrediction prediction = { 0, };
+    GstMLBoxEntry entry = { 0, };
 
     // Dequantize the object score.
     // Represented as an exponent 'x' in sigmoid function: 1 / (1 + exp(x)).
@@ -353,28 +367,28 @@ gst_ml_module_parse_monoblock_tensors (GstMLSubModule * submodule,
         submodule->qoffsets[0], submodule->qscales[0]);
 
     // Translate box coordinates to absolute as the tensor region is in absolute.
-    prediction.top = (bbox[1] - (bbox[3] / 2)) * submodule->inheight;
-    prediction.left = (bbox[0] - (bbox[2] / 2)) * submodule->inwidth;
-    prediction.bottom = (bbox[1] + (bbox[3] / 2)) * submodule->inheight;
-    prediction.right = (bbox[0] + (bbox[2] / 2)) * submodule->inwidth;
+    entry.top = (bbox[1] - (bbox[3] / 2)) * submodule->inheight;
+    entry.left = (bbox[0] - (bbox[2] / 2)) * submodule->inwidth;
+    entry.bottom = (bbox[1] + (bbox[3] / 2)) * submodule->inheight;
+    entry.right = (bbox[0] + (bbox[2] / 2)) * submodule->inwidth;
 
     // Adjust bounding box dimensions with extracted source tensor region.
-    gst_ml_box_transform_dimensions (&prediction, &region);
+    gst_ml_box_transform_dimensions (&entry, &region);
 
     // Discard results with out of region coordinates.
-    if ((prediction.top > 1.0) || (prediction.left > 1.0) ||
-        (prediction.bottom > 1.0) || (prediction.right > 1.0))
+    if ((entry.top > 1.0) || (entry.left > 1.0) ||
+        (entry.bottom > 1.0) || (entry.right > 1.0))
       continue;
 
     label = g_hash_table_lookup (submodule->labels,
         GUINT_TO_POINTER (id - (idx + CLASSES_IDX)));
 
-    prediction.confidence = confidence * 100.0F;
-    prediction.name = g_quark_from_string (label ? label->name : "unknown");
-    prediction.color = label ? label->color : 0x000000FF;
+    entry.confidence = confidence * 100.0F;
+    entry.name = g_quark_from_string (label ? label->name : "unknown");
+    entry.color = label ? label->color : 0x000000FF;
 
     // Non-Max Suppression (NMS) algorithm.
-    nms = gst_ml_box_non_max_suppression (&prediction, predictions);
+    nms = gst_ml_box_non_max_suppression (&entry, prediction->entries);
 
     // If the NMS result is -2 don't add the prediction to the list.
     if (nms == (-2))
@@ -382,10 +396,12 @@ gst_ml_module_parse_monoblock_tensors (GstMLSubModule * submodule,
 
     // If the NMS result is above -1 remove the entry with the nms index.
     if (nms >= 0)
-      predictions = g_array_remove_index (predictions, nms);
+      prediction->entries = g_array_remove_index (prediction->entries, nms);
 
-    predictions = g_array_append_val (predictions, prediction);
+    prediction->entries = g_array_append_val (prediction->entries, entry);
   }
+
+  g_array_sort (prediction->entries, (GCompareFunc) gst_ml_box_compare_entries);
 }
 
 gpointer
@@ -556,11 +572,6 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
-
-  if (!gst_ml_info_is_equal (&(mlframe->info), &(submodule->mlinfo))) {
-    GST_ERROR ("ML frame with unsupported layout!");
-    return FALSE;
-  }
 
   if (GST_ML_INFO_N_TENSORS (&(submodule->mlinfo)) == 3) {
     gst_ml_module_parse_tripleblock_frame (submodule, predictions, mlframe);

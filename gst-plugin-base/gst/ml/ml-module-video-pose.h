@@ -72,6 +72,7 @@ G_BEGIN_DECLS
 
 typedef struct _GstMLKeypoint GstMLKeypoint;
 typedef struct _GstMLKeypointsLink GstMLKeypointsLink;
+typedef struct _GstMLPoseEntry GstMLPoseEntry;
 typedef struct _GstMLPosePrediction GstMLPosePrediction;
 
 /**
@@ -109,7 +110,7 @@ struct _GstMLKeypointsLink {
 };
 
 /**
- * GstMLPosePrediction:
+ * GstMLPoseEntry:
  * @confidence: The overall confidence for the estimated pose.
  * @keypoints: List of #GstMLKeypoint.
  * @connections: List of #GstMLKeypointsLink.
@@ -117,12 +118,106 @@ struct _GstMLKeypointsLink {
  * Information describing prediction result from pose estimation models.
  * All fields are mandatory and need to be filled by the submodule.
  */
-struct _GstMLPosePrediction {
+struct _GstMLPoseEntry {
   gdouble confidence;
 
   GArray  *keypoints;
   GArray  *connections;
 };
+
+/**
+ * GstMLPosePrediction:
+ * @batch_idx: Position of the entries in the batch.
+ * @entries: GArray of #GstMLPoseEntry.
+ * @info: Additonal info structure, beloging to the batch #GstProtectionMeta
+ *        in the ML tensor buffer from which the prediction result was produced.
+ *        Ownership is still with that tensor buffer.
+ *
+ * Information describing a group of prediction results beloging to the same batch.
+ * All fields are mandatory and need to be filled by the submodule.
+ */
+struct _GstMLPosePrediction {
+  guint8             batch_idx;
+  GArray             *entries;
+  const GstStructure *info;
+};
+
+/**
+ * gst_ml_pose_entry_cleanup:
+ * @entry: Pointer to the ML pose entry.
+ *
+ * Helper function for freeing any resources allocated owned by the entry.
+ *
+ * return: None
+ */
+GST_API void
+gst_ml_pose_entry_cleanup (GstMLPoseEntry * entry);
+
+/**
+ * gst_ml_pose_prediction_cleanup:
+ * @prediction: Pointer to the ML pose prediction.
+ *
+ * Helper function for freeing any resources allocated owned by the prediction.
+ *
+ * return: None
+ */
+GST_API void
+gst_ml_pose_prediction_cleanup (GstMLPosePrediction * prediction);
+
+/**
+ * gst_ml_pose_compare_entries:
+ * @l_entry: Left (or First) ML pose post-processing entry.
+ * @r_entry: Right (or Second) ML pose post-processing entry.
+ *
+ * Helper function for comparing two ML pose entries.
+ *
+ * return: -1 (l_entry > r_entry), 1 (l_entry < r_entry) and 0 (l_entry == r_entry)
+ */
+GST_API gint
+gst_ml_pose_compare_entries (const GstMLPoseEntry * l_entry,
+                             const GstMLPoseEntry * r_entry);
+
+/**
+ * gst_ml_load_links:
+ * @list: GValue list containing link information.
+ * @idx: Seed index from which to start.
+ * @links: Array to be filled.
+ *
+ * Helper recursive function to load the skeleton chain/tree starting from
+ * GValue list with seed index provided by user into array comprised by
+ * #GstMLKeypointsLink.
+ *
+ * return: TRUE on success or FALSE on failure
+ */
+GST_API gboolean
+gst_ml_load_links (const GValue * list, const guint idx, GArray * links);
+
+/**
+ * gst_ml_load_connections:
+ * @list: GValue list containing label information.
+ * @connections: Array to be filled.
+ *
+ * Helper function to load the keypoint pairs/links from GValue list into
+ * array comprised by #GstMLKeypointsLink.
+ *
+ * return: TRUE on success or FALSE on failure
+ */
+GST_API gboolean
+gst_ml_load_connections (const GValue * list, GArray * connections);
+
+/**
+ * gst_ml_keypoint_transform_coordinates:
+ * @keypoint: Pointer to the ML keypoint which will be modified.
+ * @region: Region in the tensor containg the actual data.
+ *
+ * Helper function for adjusting ML keypoint dimensions to within the region
+ * which actually contains data and transforming them to relative.
+ *
+ * return: None
+ */
+GST_API void
+gst_ml_keypoint_transform_coordinates (GstMLKeypoint * keypoint,
+                                       GstVideoRectangle * region);
 
 /**
  * gst_ml_module_video_pose_execute:
@@ -142,48 +237,6 @@ struct _GstMLPosePrediction {
 GST_API gboolean
 gst_ml_module_video_pose_execute (GstMLModule * module, GstMLFrame * mlframe,
                                   GArray * predictions);
-
-/**
- * gst_ml_load_links:
- * @list: GValue list containing link information.
- * @idx: Seed index from which to start.
- * @links: Array to be filled.
- *
- * Helper recursive function to load the skeleton chain/tree starting from
- * GValue list with seed index provided by user into array comprised by
- * #GstMLKeypointsLink.
- *
- * return: TRUE on success or FALSE on failure
- */
-gboolean
-gst_ml_load_links (const GValue * list, const guint idx, GArray * links);
-
-/**
- * gst_ml_load_connections:
- * @list: GValue list containing label information.
- * @connections: Array to be filled.
- *
- * Helper function to load the keypoint pairs/links from GValue list into
- * array comprised by #GstMLKeypointsLink.
- *
- * return: TRUE on success or FALSE on failure
- */
-gboolean
-gst_ml_load_connections (const GValue * list, GArray * connections);
-
-/**
- * gst_ml_keypoint_transform_coordinates:
- * @keypoint: Pointer to the ML keypoint which will be modified.
- * @region: Region in the tensor containg the actual data.
- *
- * Helper function for adjusting ML keypoint dimensions to within the region
- * which actually contains data and transforming them to relative.
- *
- * return: None
- */
-void
-gst_ml_keypoint_transform_coordinates (GstMLKeypoint * keypoint,
-                                      GstVideoRectangle * region);
 
 G_END_DECLS
 

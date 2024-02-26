@@ -49,7 +49,7 @@
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
     "type = (string) { UINT8, FLOAT32 }, " \
-    "dimensions = (int) < < 1, [8, 480], [8, 480], [1, 5] >, < 1, [8, 480], [8, 480], [1, 5] > > ;"
+    "dimensions = (int) < <1, [8, 480], [8, 480], [1, 5]>, <1, [8, 480], [8, 480], [1, 5]> > ;"
 
 // Module caps instance
 static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
@@ -235,6 +235,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   GArray *predictions = (GArray *) output;
   GstProtectionMeta *pmeta = NULL;
+  GstMLBoxPrediction *prediction = NULL;
   gpointer scores = NULL, geometry = NULL;
   GstVideoRectangle region = { 0, };
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
@@ -247,13 +248,13 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  if (!gst_ml_info_is_equal (&(mlframe->info), &(submodule->mlinfo))) {
-    GST_ERROR ("ML frame with unsupported layout!");
-    return FALSE;
-  }
-
   pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
       gst_batch_channel_name (0));
+
+  prediction = &(g_array_index (predictions, GstMLBoxPrediction, 0));
+
+  prediction->batch_idx = 0;
+  prediction->info = pmeta->info;
 
   // Extract the source tensor region with actual data.
   gst_ml_protecton_meta_get_source_region (pmeta, &region);
@@ -273,7 +274,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   for (y = 0; y < n_rows; y++) {
     for (x = 0; x < n_cols; x++, num++, idx += 5) {
       GstMLLabel *label = NULL;
-      GstMLBoxPrediction prediction = { 0, };
+      GstMLBoxEntry entry = { 0, };
 
       confidence = gst_ml_tensor_extract_value (mltype, scores, num,
           submodule->qoffsets[0], submodule->qscales[0]);
@@ -281,8 +282,6 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       // Discard results below the minimum score threshold.
       if (confidence < submodule->threshold)
         continue;
-
-      prediction.confidence = confidence * 100.0F;
 
       // Extracting the derive rotated boxes surround text
       x0 = gst_ml_tensor_extract_value (mltype, geometry, idx,
@@ -306,41 +305,45 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       w = x1 + x3;
 
       // Compute coordinates of text prediction bounding box
-      prediction.right = (x * 4 + (cos_angle * x1) + (sin_angle * x2));
-      prediction.bottom = (y * 4 - (sin_angle * x1) + (cos_angle * x2));
-      prediction.left = (prediction.right - w);
-      prediction.top = (prediction.bottom - h);
+      entry.right = (x * 4 + (cos_angle * x1) + (sin_angle * x2));
+      entry.bottom = (y * 4 - (sin_angle * x1) + (cos_angle * x2));
+      entry.left = (entry.right - w);
+      entry.top = (entry.bottom - h);
 
       // Adjust bounding box dimensions with extracted source tensor region.
-      gst_ml_box_transform_dimensions (&prediction, &region);
+      gst_ml_box_transform_dimensions (&entry, &region);
 
       // Discard results with out of region coordinates.
-      if ((prediction.top > 1.0)   || (prediction.left > 1.0) ||
-          (prediction.bottom > 1.0) || (prediction.right > 1.0))
+      if ((entry.top > 1.0)   || (entry.left > 1.0) ||
+          (entry.bottom > 1.0) || (entry.right > 1.0))
         continue;
 
       label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (0));
-      prediction.name = g_quark_from_string (label ? label->name : "Text");
-      prediction.color = label ? label->color : 0x00FF00FF;
+
+      entry.confidence = confidence * 100.0F;
+      entry.name = g_quark_from_string (label ? label->name : "Text");
+      entry.color = label ? label->color : 0x00FF00FF;
 
       // Non-Max Suppression (NMS) algorithm.
-      nms = gst_ml_box_non_max_suppression (&prediction, predictions);
+      nms = gst_ml_box_non_max_suppression (&entry, prediction->entries);
 
       // If the NMS result is -2 don't add the prediction to the list.
       if (nms == (-2))
         continue;
 
-      GST_LOG ("Box[%.2f, %.2f, %.2f, %.2f]. Label: %s. Confidence: %.2f",
-          prediction.top, prediction.left, prediction.bottom, prediction.right,
-          g_quark_to_string (prediction.name), prediction.confidence);
+      GST_LOG ("Label: %s. Confidence: %.2f Box[%.2f, %.2f, %.2f, %.2f]",
+          g_quark_to_string (entry.name), entry.confidence, entry.top,
+          entry.left, entry.bottom, entry.right);
 
       // If the NMS result is above -1 remove the entry with the nms index.
       if (nms >= 0)
-        predictions = g_array_remove_index (predictions, nms);
+        prediction->entries = g_array_remove_index (prediction->entries, nms);
 
-      predictions = g_array_append_val (predictions, prediction);
+      prediction->entries = g_array_append_val (prediction->entries, entry);
     }
   }
+
+  g_array_sort (prediction->entries, (GCompareFunc) gst_ml_box_compare_entries);
 
   return TRUE;
 }
