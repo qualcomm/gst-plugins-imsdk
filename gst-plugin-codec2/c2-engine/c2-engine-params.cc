@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -178,7 +178,9 @@ gst_c2_utils_h264_level_from_string (const gchar * level)
 guint
 gst_c2_utils_h265_level_from_string (const gchar * level, const gchar * tier)
 {
-  if (g_str_equal (tier, "main") && (kH265MainLevels.count(level) != 0))
+  // If tier is null, returns main level.
+  if ((tier == NULL || g_str_equal (tier, "main")) &&
+      (kH265MainLevels.count(level) != 0))
     return kH265MainLevels.at(level);
   else if (g_str_equal (tier, "high") && (kH265HighLevels.count(level) != 0))
     return kH265HighLevels.at(level);
