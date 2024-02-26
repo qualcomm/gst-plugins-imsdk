@@ -255,7 +255,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
 
   for (idx = 0; idx < n_entries; idx++) {
-    GstLabel *label = NULL;
+    GstMLLabel *label = NULL;
     GstMLPrediction prediction = { 0, };
     gfloat confidence = scores[idx];
 

@@ -284,7 +284,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
   for (y = 0; y < n_rows; y++) {
     for (x = 0; x < n_cols; x++, s_idx++, b_idx += 5) {
-      GstLabel *label = NULL;
+      GstMLLabel *label = NULL;
       GstMLPrediction prediction = { 0, };
       confidence = gst_ml_module_get_dequant_value (scores, mltype,
           s_idx, submodule->qoffsets[0], submodule->qscales[0]);

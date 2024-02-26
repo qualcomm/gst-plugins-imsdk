@@ -118,7 +118,7 @@ gst_ml_module_parse_monoblock_frame (GstMLSubModule * submodule,
     GArray * predictions, GstMLFrame * mlframe)
 {
   GstProtectionMeta *pmeta = NULL;
-  GstLabel *label = NULL;
+  GstMLLabel *label = NULL;
   gpointer bboxes = NULL, scores = NULL;
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   gint sar_n = 1, sar_d = 1, nms = -1;
@@ -237,7 +237,7 @@ gst_ml_module_parse_dualblock_frame (GstMLSubModule * submodule,
     GArray * predictions, GstMLFrame * mlframe)
 {
   GstProtectionMeta *pmeta = NULL;
-  GstLabel *label = NULL;
+  GstMLLabel *label = NULL;
   gpointer bboxes = NULL, scores = NULL;
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   gint sar_n = 1, sar_d = 1, nms = -1;
@@ -348,7 +348,7 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
     GArray * predictions, GstMLFrame * mlframe)
 {
   GstProtectionMeta *pmeta = NULL;
-  GstLabel *label = NULL;
+  GstMLLabel *label = NULL;
   gpointer bboxes = NULL, scores = NULL, classes = NULL;
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   gint sar_n = 1, sar_d = 1, nms = -1;

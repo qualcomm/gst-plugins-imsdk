@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -329,7 +329,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
   for (row = 0; row < GST_VIDEO_FRAME_HEIGHT (vframe); row++) {
     for (column = 0; column < GST_VIDEO_FRAME_WIDTH (vframe); column++) {
-      GstLabel *label = NULL;
+      GstMLLabel *label = NULL;
 
       // Calculate the source index. First calculate the row offset.
       idx = GST_ML_FRAME_DIM (mlframe, 0, 2) *

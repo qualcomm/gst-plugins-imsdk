@@ -232,7 +232,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   block_size = in_width / GST_ML_FRAME_DIM (mlframe, 0, 2);
 
   for (idx = 0; idx < n_blocks; ++idx) {
-    GstLabel *label = NULL;
+    GstMLLabel *label = NULL;
     GstMLPrediction prediction = { 0, };
 
     // Discard invalid results.

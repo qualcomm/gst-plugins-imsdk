@@ -325,7 +325,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
   // Fill the prediction table.
   for (idx = 0; idx < n_inferences; ++idx) {
-    GstLabel *label = NULL;
+    GstMLLabel *label = NULL;
     GstMLPrediction prediction = { 0 };
 
     confidence = gst_ml_module_get_dequant_value (data, mltype, idx,
