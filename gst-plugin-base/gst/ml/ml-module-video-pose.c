@@ -63,11 +63,36 @@
 
 #include "ml-module-video-pose.h"
 
-gboolean
-gst_ml_module_video_pose_execute (GstMLModule * module, GstMLFrame * mlframe,
-    GArray * predictions)
+void
+gst_ml_pose_entry_cleanup (GstMLPoseEntry * entry)
 {
-  return gst_ml_module_execute (module, mlframe, (gpointer) predictions);
+  if (entry->keypoints != NULL)
+    g_array_free (entry->keypoints, TRUE);
+
+  // if (entry->connections != NULL)
+  //   g_array_free (entry->connections, TRUE);
+}
+
+void
+gst_ml_pose_prediction_cleanup (GstMLPosePrediction * prediction)
+{
+  g_array_set_clear_func (prediction->entries,
+      (GDestroyNotify) gst_ml_pose_entry_cleanup);
+
+  if (prediction->entries != NULL)
+    g_array_free (prediction->entries, TRUE);
+}
+
+gint
+gst_ml_pose_compare_entries (const GstMLPoseEntry * l_entry,
+    const GstMLPoseEntry * r_entry)
+{
+  if (l_entry->confidence > r_entry->confidence)
+    return -1;
+  else if (l_entry->confidence < r_entry->confidence)
+    return 1;
+
+  return 0;
 }
 
 gboolean
@@ -150,4 +175,11 @@ gst_ml_keypoint_transform_coordinates (GstMLKeypoint * keypoint,
 {
   keypoint->x = (keypoint->x - region->x) / region->w;
   keypoint->y = (keypoint->y - region->y) / region->h;
+}
+
+gboolean
+gst_ml_module_video_pose_execute (GstMLModule * module, GstMLFrame * mlframe,
+    GArray * predictions)
+{
+  return gst_ml_module_execute (module, mlframe, (gpointer) predictions);
 }

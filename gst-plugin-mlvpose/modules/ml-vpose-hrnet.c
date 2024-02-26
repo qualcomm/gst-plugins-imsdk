@@ -275,21 +275,34 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GArray *predictions = ((GArray *) output);
   GstProtectionMeta *pmeta = NULL;
   GstMLPosePrediction *prediction = NULL;
+  GstMLPoseEntry *entry = NULL;
   gpointer heatmap = NULL;
   GstVideoRectangle region = { 0, };
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   guint idx = 0, num = 0, id = 0, x = 0, y = 0;
-  guint width = 0, height = 0, n_keypoints = 0, n_blocks = 0;;
+  guint width = 0, height = 0, n_keypoints = 0, n_blocks = 0;
   gfloat confidence = 0.0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  if (!gst_ml_info_is_equal (&(mlframe->info), &(submodule->mlinfo))) {
-    GST_ERROR ("ML frame with unsupported layout!");
-    return FALSE;
+  pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
+      gst_batch_channel_name (0));
+
+  prediction = &(g_array_index (predictions, GstMLPosePrediction, 0));
+
+  prediction->batch_idx = 0;
+  prediction->info = pmeta->info;
+
+  // Extract the dimensions of the input tensor that produced the output tensors.
+  if (submodule->inwidth == 0 || submodule->inheight == 0) {
+    gst_ml_protecton_meta_get_source_dimensions (pmeta, &(submodule->inwidth),
+        &(submodule->inheight));
   }
+
+  // Extract the source tensor region with actual data.
+  gst_ml_protecton_meta_get_source_region (pmeta, &region);
 
   // The 2nd dimension of each tensor represents the matrix height.
   height = GST_ML_FRAME_DIM (mlframe, 0, 1);
@@ -305,27 +318,15 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   // The total number of macro blocks in the matrix.
   n_blocks = width * height * n_keypoints;
 
-  pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
-      gst_batch_channel_name (0));
-
-  // Extract the dimensions of the input tensor that produced the output tensors.
-  if (submodule->inwidth == 0 || submodule->inheight == 0) {
-    gst_ml_protecton_meta_get_source_dimensions (pmeta, &(submodule->inwidth),
-        &(submodule->inheight));
-  }
-
-  // Extract the source tensor region with actual data.
-  gst_ml_protecton_meta_get_source_region (pmeta, &region);
-
   // Allocate only single prediction result.
-  g_array_set_size (predictions, 1);
-  prediction = &(g_array_index (predictions, GstMLPosePrediction, 0));
+  g_array_set_size (prediction->entries, 1);
+  entry = &(g_array_index (prediction->entries, GstMLPoseEntry, 0));
 
   // Allocate memory for the keypoiints.
-  prediction->keypoints = g_array_sized_new (FALSE, TRUE,
+  entry->keypoints = g_array_sized_new (FALSE, TRUE,
       sizeof (GstMLKeypoint), g_hash_table_size (submodule->labels));
 
-  g_array_set_size (prediction->keypoints, n_keypoints);
+  g_array_set_size (entry->keypoints, n_keypoints);
 
   // Iterate the heatmap and find the block with highest score for each keypoint.
   for (idx = 0; idx < n_keypoints; idx++) {
@@ -366,7 +367,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     GST_TRACE ("Refined Keypoint: %u [%.2f x %.2f], confidence %.2f", idx,
         (x + dx * 0.25), (y + dy * 0.25), confidence);
 
-    kp = &(g_array_index (prediction->keypoints, GstMLKeypoint, idx));
+    kp = &(g_array_index (entry->keypoints, GstMLKeypoint, idx));
 
     // Multiply by the dimensions of the paxel.
     kp->x = ((x + dx * 0.25) / width) * submodule->inwidth;
@@ -379,19 +380,19 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     kp->color = label->color;
 
     kp->confidence = confidence * 100;
-    prediction->confidence += kp->confidence;
+    entry->confidence += kp->confidence;
 
     gst_ml_keypoint_transform_coordinates (kp, &region);
   }
 
-  // The final confidence score for the whole prediction.
-  prediction->confidence /= n_keypoints;
+  // The final confidence score for the whole prediction entry.
+  entry->confidence /= n_keypoints;
 
   // TODO: For now set the same connections.
-  prediction->connections = submodule->connections;
+  entry->connections = submodule->connections;
 
-  if (prediction->confidence < submodule->threshold)
-    predictions = g_array_remove_index (predictions, 0);
+  if (entry->confidence < submodule->threshold)
+    prediction->entries = g_array_remove_index (prediction->entries, 0);
 
   return TRUE;
 }

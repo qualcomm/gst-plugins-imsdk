@@ -70,6 +70,7 @@
 
 G_BEGIN_DECLS
 
+typedef struct _GstMLClassEntry GstMLClassEntry;
 typedef struct _GstMLClassPrediction GstMLClassPrediction;
 
 /**
@@ -85,25 +86,66 @@ typedef enum {
 } GstVideoClassificationOperation;
 
 /**
- * GstMLClassPrediction:
- * @label: Name of the prediction.
+ * GstMLClassEntry:
+ * @name: Name of the prediction.
  * @confidence: Percentage certainty that the prediction is accurate.
  * @color: Possible color that is associated with this prediction.
  *
  * Information describing prediction result from image classification models.
  * All fields are mandatory and need to be filled by the submodule.
  */
-struct _GstMLClassPrediction {
+struct _GstMLClassEntry {
   GQuark  name;
   gfloat  confidence;
   guint32 color;
 };
 
 /**
+ * GstMLClassPrediction:
+ * @batch_idx: Position of the entries in the batch.
+ * @entries: GArray of #GstMLClassEntry.
+ * @info: Additonal info structure, beloging to the batch #GstProtectionMeta
+ *        in the ML tensor buffer from which the prediction result was produced.
+ *        Ownership is still with that tensor buffer.
+ *
+ * Information describing a group of prediction results beloging to the same batch.
+ * All fields are mandatory and need to be filled by the submodule.
+ */
+struct _GstMLClassPrediction {
+  guint8             batch_idx;
+  GArray             *entries;
+  const GstStructure *info;
+};
+
+/**
+ * gst_ml_class_prediction_cleanup:
+ * @prediction: Pointer to the ML class prediction.
+ *
+ * Helper function for freeing any resources allocated owned by the prediction.
+ *
+ * return: None
+ */
+GST_API void
+gst_ml_class_prediction_cleanup (GstMLClassPrediction * prediction);
+
+/**
+ * gst_ml_class_compare_entries:
+ * @l_entry: Left (or First) ML class post-processing entry.
+ * @r_entry: Right (or Second) ML class post-processing entry.
+ *
+ * Helper function for comparing two ML class entries.
+ *
+ * return: -1 (l_entry > r_entry), 1 (l_entry < r_entry) and 0 (l_entry == r_entry)
+ */
+GST_API gint
+gst_ml_class_compare_entries (const GstMLClassEntry * l_entry,
+                              const GstMLClassEntry * r_entry);
+
+/**
  * gst_ml_module_video_classification_execute:
  * @module: Pointer to ML post-processing module.
  * @mlframe: Frame containing mapped tensor memory blocks that need processing.
- * @predictions: GArray of #GstMLClassPrediction.
+ * @predictions: GArray of #GstMLClassBatch.
  *
  * Convenient wrapper function used on plugin level to call the module
  * 'gst_ml_module_process' API via 'gst_ml_module_execute' wrapper in order

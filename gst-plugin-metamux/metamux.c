@@ -44,6 +44,8 @@
 #include <gst/allocators/allocators.h>
 #include <gst/video/video.h>
 #include <gst/audio/audio.h>
+#include <gst/utils/common-utils.h>
+#include <gst/utils/batch-utils.h>
 #include <gst/cv/gstcvmeta.h>
 #include <gst/video/gstvideoclassificationmeta.h>
 #include <gst/video/gstvideolandmarksmeta.h>
@@ -262,10 +264,11 @@ gst_metamux_flush_metadata_queues (GstMetaMux * muxer)
   return;
 }
 
-static GstCvOptclFlowMeta*
-gst_metamux_process_opticalflow_entry (GstMetaMux * muxer, GstBuffer * buffer,
-    GstStructure * structure)
+static void
+gst_metamux_process_opticalflow_metadata (GstMetaMux * muxer,
+    GstBuffer * buffer, GstStructure * structure)
 {
+  GstCvOptclFlowMeta *meta = NULL;
   GArray *mvectors = NULL, *mvstats = NULL;
 
   gst_structure_get (structure,
@@ -273,26 +276,35 @@ gst_metamux_process_opticalflow_entry (GstMetaMux * muxer, GstBuffer * buffer,
       "mvstats", G_TYPE_ARRAY, &mvstats,
       NULL);
 
-  return gst_buffer_add_cv_optclflow_meta (buffer, mvectors, mvstats);
+  meta = gst_buffer_add_cv_optclflow_meta (buffer, mvectors, mvstats);
+
+  GST_TRACE_OBJECT (muxer, "Attached 'OpticalFlow' meta with ID[0x%X] "
+      "to buffer %p", meta->id, buffer);
 }
 
-static GstVideoRegionOfInterestMeta*
-gst_metamux_process_detection_entry (GstMetaMux * muxer, GstBuffer * buffer,
+static void
+gst_metamux_process_detection_metadata (GstMetaMux * muxer, GstBuffer * buffer,
     GstStructure * structure)
 {
-  const GValue *value = NULL;
   GstVideoRegionOfInterestMeta *meta = NULL;
+  GstStructure *entry = NULL;
+  const GValue *bboxes = NULL, *value = NULL;
   gchar *label = NULL;
+  gfloat left = 0.0, right = 0.0, top = 0.0, bottom = 0.0;
   gint x = 0, y = 0, width = 0, height = 0;
+  guint batch_idx = 0, id = 0, idx = 0, size = 0;
 
-  // Fetch bounding box rectangle if it exists and fill ROI coordinates.
-  value = gst_structure_get_value (structure, "rectangle");
+  gst_structure_get_uint (structure, "batch-index", &batch_idx);
 
-  if ((value != NULL) && (gst_value_array_get_size (value) != 4)) {
-    GST_WARNING_OBJECT (muxer, "Badly formed ROI rectangle, expected 4 entries"
-        " but received %u!", gst_value_array_get_size (value));
-  } else if (value != NULL) {
-    gfloat left = 0.0, right = 0.0, top = 0.0, bottom = 0.0;
+  bboxes = gst_structure_get_value (structure, "bounding-boxes");
+  size = gst_value_array_get_size (bboxes);
+
+  for (idx = 0; idx < size; idx++) {
+    value = gst_value_array_get_value (bboxes, idx);
+    entry = GST_STRUCTURE (g_value_get_boxed (value));
+
+    // Fetch bounding box rectangle if it exists and fill ROI coordinates.
+    value = gst_structure_get_value (entry, "rectangle");
 
     top    = g_value_get_float (gst_value_array_get_value (value, 0));
     left   = g_value_get_float (gst_value_array_get_value (value, 1));
@@ -309,108 +321,130 @@ gst_metamux_process_detection_entry (GstMetaMux * muxer, GstBuffer * buffer,
         (GST_VIDEO_INFO_WIDTH (muxer->vinfo) - x) : width;
     height = ((y + height) > GST_VIDEO_INFO_HEIGHT (muxer->vinfo)) ?
         (GST_VIDEO_INFO_HEIGHT (muxer->vinfo) - y) : height;
+
+    label = g_strdup (gst_structure_get_name (entry));
+    label = g_strdelimit (label, ".", ' ');
+
+    meta = gst_buffer_add_video_region_of_interest_meta_id (buffer,
+        g_quark_from_string (label), x, y, width, height);
+    g_free (label);
+
+    gst_structure_get_uint (entry, "id", &id);
+    meta->id = GST_BATCH_CHANNEL_ID (batch_idx, id);
+
+    gst_structure_remove_fields (entry, "rectangle", "id", NULL);
+    gst_structure_set_name (entry, "ObjectDetection");
+
+    gst_video_region_of_interest_meta_add_param (meta, gst_structure_copy (entry));
+
+    GST_TRACE_OBJECT (muxer, "Attached 'ObjectDetection' meta with ID[0x%X] "
+        "parent ID[0x%X] to buffer %p", meta->id, meta->parent_id, buffer);
   }
-
-  label = g_strdup (gst_structure_get_string (structure, "label"));
-  label = g_strdelimit (label, ".", ' ');
-
-  meta = gst_buffer_add_video_region_of_interest_meta_id (buffer,
-      g_quark_from_string (label), x, y, width, height);
-  g_free (label);
-
-  gst_structure_remove_fields (structure, "rectangle", "label", NULL);
-
-  gst_video_region_of_interest_meta_add_param (meta,
-      gst_structure_copy (structure));
-
-  return meta;
 }
 
-static GstVideoLandmarksMeta*
-gst_metamux_process_landmarks_entry (GstMetaMux * muxer, GstBuffer * buffer,
+static void
+gst_metamux_process_landmarks_metadata (GstMetaMux * muxer, GstBuffer * buffer,
     GstStructure * structure)
 {
+  GstVideoLandmarksMeta *meta = NULL;
   GArray *keypoints = NULL, *links = NULL;
-  const GValue *value = NULL, *entry = NULL;
-  GstStructure *params = NULL;
-  guint idx = 0, num = 0, size = 0;
+  const GValue *poses = NULL, *value = NULL, *entry = NULL;
+  GstStructure *params = NULL, *landmark = NULL;
+  guint batch_idx = 0, id = 0, idx = 0, num = 0, seqnum = 0, size = 0, length = 0;
   gdouble confidence = 0.0, x = 0.0, y = 0.0;
 
-  gst_structure_get_double (structure, "confidence", &confidence);
+  gst_structure_get_uint (structure, "batch-index", &batch_idx);
 
-  // Get the keypoints.
-  value = gst_structure_get_value (structure, "keypoints");
-  size = gst_value_array_get_size (value);
+  poses = gst_structure_get_value (structure, "poses");
+  size = gst_value_array_get_size (poses);
 
-  // Allocate memory for the keypoints.
-  keypoints = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoKeypoint), size);
-  g_array_set_size (keypoints, size);
+  for (seqnum = 0; seqnum < size; seqnum++) {
+    value = gst_value_array_get_value (poses, seqnum);
+    landmark = GST_STRUCTURE (g_value_get_boxed (value));
 
-  for (idx = 0; idx < size; idx++) {
-    GstVideoKeypoint *kp = &(g_array_index (keypoints, GstVideoKeypoint, idx));
-    gchar *name = NULL;
+    gst_structure_get_double (landmark, "confidence", &confidence);
 
-    entry = gst_value_array_get_value (value, idx);
-    params = GST_STRUCTURE (g_value_get_boxed (entry));
+    // Get the keypoints.
+    value = gst_structure_get_value (landmark, "keypoints");
+    length = gst_value_array_get_size (value);
 
-    name = g_strdup (gst_structure_get_name (params));
-    name = g_strdelimit (name, ".", ' ');
+    // Allocate memory for the keypoints.
+    keypoints = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoKeypoint), length);
+    g_array_set_size (keypoints, length);
 
-    kp->name = g_quark_from_string (name);
-    g_free (name);
+    for (idx = 0; idx < length; idx++) {
+      GstVideoKeypoint *kp = &(g_array_index (keypoints, GstVideoKeypoint, idx));
+      gchar *name = NULL;
 
-    gst_structure_get_double (params, "confidence", &(kp->confidence));
-    gst_structure_get_uint (params, "color", &(kp->color));
+      entry = gst_value_array_get_value (value, idx);
+      params = GST_STRUCTURE (g_value_get_boxed (entry));
 
-    gst_structure_get_double (params, "x", &x);
-    gst_structure_get_double (params, "y", &y);
+      name = g_strdup (gst_structure_get_name (params));
+      name = g_strdelimit (name, ".", ' ');
 
-    // Translate relative coordinates to absolute.
-    kp->x = x * GST_VIDEO_INFO_WIDTH (muxer->vinfo);
-    kp->y = y * GST_VIDEO_INFO_HEIGHT (muxer->vinfo);
-  }
+      kp->name = g_quark_from_string (name);
+      g_free (name);
 
-  // Get the keypoint connections/links.
-  value = gst_structure_get_value (structure, "connections");
-  size = gst_value_array_get_size (value);
+      gst_structure_get_double (params, "confidence", &(kp->confidence));
+      gst_structure_get_uint (params, "color", &(kp->color));
 
-  // Allocate memory for the links.
-  links = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoKeypointLink), size);
-  g_array_set_size (links, size);
+      gst_structure_get_double (params, "x", &x);
+      gst_structure_get_double (params, "y", &y);
 
-  for (idx = 0; idx < size; idx++) {
-    GstVideoKeypointLink *link = &(g_array_index (links, GstVideoKeypointLink, idx));
-    const gchar *string = NULL;
-    GQuark s_name, d_name;
-
-    entry = gst_value_array_get_value (value, idx);
-
-    // Extract the names of the source and destination keypoints.
-    string = g_value_get_string (gst_value_array_get_value (entry, 0));
-    s_name = g_quark_from_string (string);
-
-    string = g_value_get_string (gst_value_array_get_value (entry, 1));
-    d_name = g_quark_from_string (string);
-
-    // TODO: Maybe 10-15 points. Optimize with binary search?
-    for (num = 0; num < keypoints->len; num++) {
-      GstVideoKeypoint *kp = &(g_array_index (keypoints, GstVideoKeypoint, num));
-
-      if (kp->name == s_name)
-        link->s_kp_idx = num;
-      else if (kp->name == d_name)
-        link->d_kp_idx = num;
+      // Translate relative coordinates to absolute.
+      kp->x = x * GST_VIDEO_INFO_WIDTH (muxer->vinfo);
+      kp->y = y * GST_VIDEO_INFO_HEIGHT (muxer->vinfo);
     }
-  }
 
-  return gst_buffer_add_video_landmarks_meta (buffer, confidence, keypoints,
-      links);
+    // Get the keypoint connections/links.
+    value = gst_structure_get_value (landmark, "connections");
+    length = gst_value_array_get_size (value);
+
+    // Allocate memory for the links.
+    links = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoKeypointLink), length);
+    g_array_set_size (links, length);
+
+    for (idx = 0; idx < length; idx++) {
+      GstVideoKeypointLink *link = &(g_array_index (links, GstVideoKeypointLink, idx));
+      const gchar *string = NULL;
+      GQuark s_name, d_name;
+
+      entry = gst_value_array_get_value (value, idx);
+
+      // Extract the names of the source and destination keypoints.
+      string = g_value_get_string (gst_value_array_get_value (entry, 0));
+      s_name = g_quark_from_string (string);
+
+      string = g_value_get_string (gst_value_array_get_value (entry, 1));
+      d_name = g_quark_from_string (string);
+
+      // TODO: Maybe 10-15 points. Optimize with binary search?
+      for (num = 0; num < keypoints->len; num++) {
+        GstVideoKeypoint *kp = &(g_array_index (keypoints, GstVideoKeypoint, num));
+
+        if (kp->name == s_name)
+          link->s_kp_idx = num;
+        else if (kp->name == d_name)
+          link->d_kp_idx = num;
+      }
+    }
+
+    meta = gst_buffer_add_video_landmarks_meta (buffer, confidence, keypoints,
+        links);
+
+    gst_structure_get_uint (landmark, "id", &id);
+    meta->id = GST_BATCH_CHANNEL_ID (batch_idx, id);
+
+    GST_TRACE_OBJECT (muxer, "Attached 'VideoLandmarks' meta with ID[0x%X] "
+        "to buffer %p", meta->id, buffer);
+  }
 }
 
-static GstVideoClassificationMeta*
-gst_metamux_process_classification_entry (GstMetaMux * muxer, GstBuffer * buffer,
-    GstStructure * structure)
+static void
+gst_metamux_process_classification_metadata (GstMetaMux * muxer,
+    GstBuffer * buffer, GstStructure * structure)
 {
+  GstVideoClassificationMeta *meta = NULL;
   GArray *labels = NULL;
   const GValue *value = NULL, *entry = NULL;
   GstStructure *params = NULL;
@@ -440,7 +474,13 @@ gst_metamux_process_classification_entry (GstMetaMux * muxer, GstBuffer * buffer
     gst_structure_get_uint (params, "color", &(label->color));
   }
 
-  return gst_buffer_add_video_classification_meta (buffer, labels);
+  meta = gst_buffer_add_video_classification_meta (buffer, labels);
+
+  // Use the batch index as meta ID.
+  gst_structure_get_uint (structure, "batch-index", &(meta->id));
+
+  GST_TRACE_OBJECT (muxer, "Attached 'ImageClassification' meta with ID[0x%X]"
+      " to buffer %p", meta->id, buffer);
 }
 
 static gboolean
@@ -448,8 +488,7 @@ gst_metamux_process_meta_entries (GstMetaMux * muxer, GstBuffer * buffer,
     GstClockTime timestamp)
 {
   GList *list = NULL;
-  guint idx = 0, size = 0, id = 0, n_optclflow_metas = 0, n_detection_metas = 0;
-  guint n_classification_metas = 0, n_landmark_metas = 0;
+  guint idx = 0, size = 0;
 
   if (!gst_buffer_is_writable (buffer)) {
     GST_WARNING_OBJECT (muxer, "Unable to attach metadata to buffer %p, "
@@ -483,35 +522,14 @@ gst_metamux_process_meta_entries (GstMetaMux * muxer, GstBuffer * buffer,
       if (gst_structure_has_name (structure, "Parameters"))
         continue;
 
-      if (gst_structure_has_name (structure, "OpticalFlow")) {
-        GstCvOptclFlowMeta *meta =
-            gst_metamux_process_opticalflow_entry (muxer, buffer, structure);
-
-        // Add the sequential index of this meta to the base ID.
-        id = meta->id = n_optclflow_metas++;
-      } else if (gst_structure_has_name (structure, "ObjectDetection")) {
-        GstVideoRegionOfInterestMeta *meta =
-            gst_metamux_process_detection_entry (muxer, buffer, structure);
-
-        // Add the sequential index of this meta to the base ID.
-        id = meta->id = n_detection_metas++;
-      } else if (gst_structure_has_name (structure, "PoseEstimation")) {
-        GstVideoLandmarksMeta *meta =
-            gst_metamux_process_landmarks_entry (muxer, buffer, structure);
-
-        // Add the sequential index of this meta to the base ID.
-        id = meta->id = n_landmark_metas++;
-      } else if (gst_structure_has_name (structure, "ImageClassification")) {
-        GstVideoClassificationMeta *meta =
-            gst_metamux_process_classification_entry (muxer, buffer, structure);
-
-        // Add the sequential index of this meta to the base ID.
-        id = meta->id = n_classification_metas++;
-      }
-
-      GST_TRACE_OBJECT (dpad, "Attached meta '%s' with ID(0x%X) and timestamp %"
-          GST_TIME_FORMAT " to %" GST_PTR_FORMAT, gst_structure_get_name (structure),
-          id, GST_TIME_ARGS (entry->timestamp), buffer);
+      if (gst_structure_has_name (structure, "OpticalFlow"))
+        gst_metamux_process_opticalflow_metadata (muxer, buffer, structure);
+      else if (gst_structure_has_name (structure, "ObjectDetection"))
+        gst_metamux_process_detection_metadata (muxer, buffer, structure);
+      else if (gst_structure_has_name (structure, "PoseEstimation"))
+        gst_metamux_process_landmarks_metadata (muxer, buffer, structure);
+      else if (gst_structure_has_name (structure, "ImageClassification"))
+        gst_metamux_process_classification_metadata (muxer, buffer, structure);
     }
 
     gst_metadata_entry_free (entry);

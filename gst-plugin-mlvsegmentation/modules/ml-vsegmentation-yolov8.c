@@ -95,7 +95,7 @@ gst_ml_module_bbox_parse_tripleblock_tensors (GstMLSubModule * submodule,
   classes = GST_ML_FRAME_BLOCK_DATA (mlframe, 3);
 
   for (idx = 0; idx < n_paxels; idx++) {
-    GstMLBoxPrediction bbox = { 0, };
+    GstMLBoxEntry bbox = { 0, };
 
     confidence = gst_ml_tensor_extract_value (mltype, scores, idx,
         submodule->qoffsets[1], submodule->qscales[1]);
@@ -177,11 +177,11 @@ gst_ml_module_colormask_parse_monoblock_tensor (GstMLSubModule * submodule,
 
   // Process the segmentation data only the in recognized box bboxes.
   for (idx = 0; idx < bboxes->len; idx++) {
-    GstMLBoxPrediction *bbox = NULL;
+    GstMLBoxEntry *bbox = NULL;
     gdouble m_value = 0.0, p_value = 0.0;
     guint m_idx = 0, b_idx= 0;
 
-    bbox = &(g_array_index (bboxes, GstMLBoxPrediction, idx));
+    bbox = &(g_array_index (bboxes, GstMLBoxEntry, idx));
     m_idx = g_array_index (mask_matrix_indices, guint, idx);
 
     // Transform to dimensions in the color mask.
@@ -388,11 +388,6 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (vframe != NULL, FALSE);
 
-  if (!gst_ml_info_is_equal (&(mlframe->info), &(submodule->mlinfo))) {
-    GST_ERROR ("ML frame with unsupported layout!");
-    return FALSE;
-  }
-
   pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
       gst_batch_channel_name (0));
 
@@ -413,7 +408,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   padding = GST_VIDEO_FRAME_PLANE_STRIDE (vframe, 0) - (width * bpp);
 
   // Initialize the array with bounding box predictions.
-  bboxes = g_array_new (FALSE, FALSE, sizeof (GstMLBoxPrediction));
+  bboxes = g_array_new (FALSE, FALSE, sizeof (GstMLBoxEntry));
 
   // Initialize the array with indices to mask matrices for the bouding boxes.
   mask_matrix_indices = g_array_new (FALSE, FALSE, sizeof (guint));

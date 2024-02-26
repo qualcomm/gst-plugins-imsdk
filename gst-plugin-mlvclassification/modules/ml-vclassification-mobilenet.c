@@ -273,6 +273,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   GArray *predictions = (GArray *) output;
+  GstMLClassPrediction *prediction = NULL;
+  GstProtectionMeta *pmeta = NULL;
   guint8 *data = NULL;
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   guint idx = 0, n_inferences = 0;
@@ -282,10 +284,13 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  if (!gst_ml_info_is_equal (&(mlframe->info), &(submodule->mlinfo))) {
-    GST_ERROR ("ML frame with unsupported layout!");
-    return FALSE;
-  }
+  pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
+      gst_batch_channel_name (0));
+
+  prediction = &(g_array_index (predictions, GstMLClassPrediction, 0));
+
+  prediction->batch_idx = 0;
+  prediction->info = pmeta->info;
 
   mltype = GST_ML_FRAME_TYPE (mlframe);
   n_inferences = GST_ML_FRAME_DIM (mlframe, 0, 1);
@@ -303,16 +308,20 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   // Fill the prediction table.
   for (idx = 0; idx < n_inferences; ++idx) {
     GstMLLabel *label = NULL;
-    GstMLClassPrediction prediction = { 0 };
+    GstMLClassEntry entry = { 0 };
 
     confidence = gst_ml_tensor_extract_value (mltype, data, idx,
         submodule->qoffsets[0], submodule->qscales[0]);
 
-    // Apply softmax function on the confidence result.
-    if (GST_ML_OP_IS_SOFTMAX (submodule->operation))
-      confidence = (exp(confidence) / sum);
-
-    confidence *= 100;
+    switch (submodule->operation) {
+      case GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX:
+        // Apply softmax function on the confidence result.
+        confidence = (exp(confidence) / sum) * 100;
+        break;
+      default:
+        confidence *= 100;
+        break;
+    }
 
     // Discard results with confidence below the set threshold.
     if (confidence < submodule->threshold)
@@ -320,12 +329,14 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
     label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (idx));
 
-    prediction.confidence = confidence;
-    prediction.name = g_quark_from_string (label ? label->name : "unknown");
-    prediction.color = label ? label->color : 0x000000FF;
+    entry.confidence = confidence;
+    entry.name = g_quark_from_string (label ? label->name : "unknown");
+    entry.color = label ? label->color : 0x000000FF;
 
-    predictions = g_array_append_val (predictions, prediction);
+    prediction->entries = g_array_append_val (prediction->entries, entry);
   }
+
+  g_array_sort (prediction->entries, (GCompareFunc) gst_ml_class_compare_entries);
 
   return TRUE;
 }

@@ -141,26 +141,25 @@ gst_ml_compare_rootpoints (gconstpointer a, gconstpointer b)
 }
 
 static inline gint
-gst_ml_pose_non_max_suppression (GstMLPosePrediction * l_prediction,
-    GArray * predictions)
+gst_ml_pose_non_max_suppression (GstMLPoseEntry * l_entry, GArray * entries)
 {
-  GstMLPosePrediction *r_prediction = NULL;
+  GstMLPoseEntry *r_entry = NULL;
   GstMLKeypoint *l_kp = NULL, *r_kp = NULL;
   guint idx = 0, num = 0, n_keypoints = 0, n_overlaps = 0;
   gdouble distance = 0.0, threshold = 0.0;
 
-  n_keypoints = l_prediction->keypoints->len;
+  n_keypoints = l_entry->keypoints->len;
 
   // The threhold distance between 2 keypoints.
   threshold = NMS_THRESHOLD_RADIUS * NMS_THRESHOLD_RADIUS;
 
-  for (idx = 0; idx < predictions->len;  idx++, n_overlaps = 0) {
-    r_prediction = &(g_array_index (predictions, GstMLPosePrediction, idx));
+  for (idx = 0; idx < entries->len;  idx++, n_overlaps = 0) {
+    r_entry = &(g_array_index (entries, GstMLPoseEntry, idx));
 
     // Find out how much overlap is between the keypoints of the predictons.
     for (num = 0; num < n_keypoints; num++) {
-      l_kp = &(g_array_index (l_prediction->keypoints, GstMLKeypoint, num));
-      r_kp = &(g_array_index (r_prediction->keypoints, GstMLKeypoint, num));
+      l_kp = &(g_array_index (l_entry->keypoints, GstMLKeypoint, num));
+      r_kp = &(g_array_index (r_entry->keypoints, GstMLKeypoint, num));
 
       distance = pow (l_kp->x - r_kp->x, 2) + pow (l_kp->y - r_kp->y, 2);
 
@@ -174,11 +173,11 @@ gst_ml_pose_non_max_suppression (GstMLPosePrediction * l_prediction,
       continue;
 
     // If confidence of current prediction is higher, remove the old entry.
-    if (l_prediction->confidence > r_prediction->confidence)
+    if (l_entry->confidence > r_entry->confidence)
       return idx;
 
     // If confidence of current prediction is lower, don't add it to the list.
-    if (l_prediction->confidence <= r_prediction->confidence)
+    if (l_entry->confidence <= r_entry->confidence)
       return -2;
   }
 
@@ -295,7 +294,7 @@ gst_ml_module_extract_rootpoints (GstMLSubModule * submodule,
 
 static void
 gst_ml_module_traverse_skeleton_links (GstMLSubModule * submodule,
-    GstMLFrame * mlframe, GstMLPosePrediction * prediction, gboolean backwards)
+    GstMLFrame * mlframe, GstMLPoseEntry * entry, gboolean backwards)
 {
   GstMLKeypointsLink *link =NULL;
   GstMLKeypoint *s_kp = NULL, *d_kp = NULL;
@@ -340,8 +339,8 @@ gst_ml_module_traverse_skeleton_links (GstMLSubModule * submodule,
     s_kp_id = backwards ? link->d_kp_id : link->s_kp_id;
     d_kp_id = backwards ? link->s_kp_id : link->d_kp_id;
 
-    s_kp = &(g_array_index (prediction->keypoints, GstMLKeypoint, s_kp_id));
-    d_kp = &(g_array_index (prediction->keypoints, GstMLKeypoint, d_kp_id));
+    s_kp = &(g_array_index (entry->keypoints, GstMLKeypoint, s_kp_id));
+    d_kp = &(g_array_index (entry->keypoints, GstMLKeypoint, d_kp_id));
 
     // Skip if source is not present or destination is already populated.
     if ((s_kp->confidence == 0.0) || (d_kp->confidence != 0.0))
@@ -416,7 +415,7 @@ gst_ml_module_traverse_skeleton_links (GstMLSubModule * submodule,
         g_quark_to_string (d_kp->name), d_kp->x, d_kp->y, d_kp->confidence);
 
     // Increase the overall prediction confidence with the found keypoint.
-    prediction->confidence += d_kp->confidence / n_parts;
+    entry->confidence += d_kp->confidence / n_parts;
   }
 }
 
@@ -622,6 +621,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   GArray *predictions = ((GArray *) output), *rootpoints = NULL;
   GstProtectionMeta *pmeta = NULL;
+  GstMLPosePrediction *prediction = NULL;
   GstMLLabel *label = NULL;
   GstVideoRectangle region = { 0, };
   guint idx = 0, num = 0, n_parts = 0;
@@ -631,13 +631,13 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  if (!gst_ml_info_is_equal (&(mlframe->info), &(submodule->mlinfo))) {
-    GST_ERROR ("ML frame with unsupported layout!");
-    return FALSE;
-  }
-
   pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
       gst_batch_channel_name (0));
+
+  prediction = &(g_array_index (predictions, GstMLPosePrediction, 0));
+
+  prediction->batch_idx = 0;
+  prediction->info = pmeta->info;
 
   // Extract the dimensions of the input tensor that produced the output tensors.
   if (submodule->inwidth == 0 || submodule->inheight == 0) {
@@ -658,7 +658,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   for (idx = 0; idx < rootpoints->len; idx++) {
     GstRootPoint *rootpoint = NULL;
     GstMLKeypoint keypoint = { 0, }, *kp = NULL;
-    GstMLPosePrediction prediction = { 0, };
+    GstMLPoseEntry entry = { 0, };
 
     rootpoint = &(g_array_index (rootpoints, GstRootPoint, idx));
 
@@ -672,56 +672,57 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     keypoint.name = g_quark_from_string (label ? label->name : "unknown");
     keypoint.color = label->color;
 
-    prediction.keypoints = g_array_sized_new (FALSE, TRUE,
-        sizeof (GstMLKeypoint), n_parts);
+    entry.keypoints =
+        g_array_sized_new (FALSE, TRUE, sizeof (GstMLKeypoint), n_parts);
 
-    g_array_set_size (prediction.keypoints, n_parts);
+    g_array_set_size (entry.keypoints, n_parts);
 
     // Copy the new seed inside the pose prediction struct.
-    kp = &(g_array_index (prediction.keypoints, GstMLKeypoint, rootpoint->id));
+    kp = &(g_array_index (entry.keypoints, GstMLKeypoint, rootpoint->id));
     memcpy (kp, &keypoint, sizeof (GstMLKeypoint));
 
-    prediction.confidence = kp->confidence / n_parts;
+    entry.confidence = kp->confidence / n_parts;
 
     GST_TRACE ("Seed Keypoint: '%s' [%.2f x %.2f], confidence %.2f",
         g_quark_to_string (kp->name), kp->x, kp->y, kp->confidence);
 
     // Iterate backwards over the skeleton links to find the seed keypoint.
-    gst_ml_module_traverse_skeleton_links (submodule, mlframe, &prediction, TRUE);
+    gst_ml_module_traverse_skeleton_links (submodule, mlframe, &entry, TRUE);
     // Iterate forward over the skeleton links to find all other keypoints.
-    gst_ml_module_traverse_skeleton_links (submodule, mlframe, &prediction, FALSE);
+    gst_ml_module_traverse_skeleton_links (submodule, mlframe, &entry, FALSE);
 
     // Non-Max Suppression (NMS) algorithm.
     // If the NMS result is below 0 don't create new pose prediction.
-    nms = gst_ml_pose_non_max_suppression (&prediction, predictions);
+    nms = gst_ml_pose_non_max_suppression (&entry, prediction->entries);
 
     // If the NMS result is -2 don't add the prediction to the list.
     if (nms == (-2)) {
-      g_array_free (prediction.keypoints, TRUE);
+      g_array_free (entry.keypoints, TRUE);
       continue;
     }
 
     // TODO: For now set the same connections.
-    prediction.connections = submodule->connections;
+    entry.connections = submodule->connections;
 
     // If the NMS result is above -1 remove the entry with the nms index.
     if (nms >= 0)
-      predictions = g_array_remove_index (predictions, nms);
+      prediction->entries = g_array_remove_index (prediction->entries, nms);
 
-    predictions = g_array_append_val (predictions, prediction);
+    prediction->entries = g_array_append_val (prediction->entries, entry);
   }
 
   g_array_free (rootpoints, TRUE);
+  g_array_sort (prediction->entries, (GCompareFunc) gst_ml_pose_compare_entries);
 
   // TODO Optimize?
   // Transform coordinates to relative with extracted source aspect ratio.
-  for (idx = 0; idx < predictions->len; idx++) {
-    GstMLPosePrediction *prediction =
-        &(g_array_index (predictions, GstMLPosePrediction, idx));
+  for (idx = 0; idx < prediction->entries->len; idx++) {
+    GstMLPoseEntry *entry =
+        &(g_array_index (prediction->entries, GstMLPoseEntry, idx));
 
-    for (num = 0; num < prediction->keypoints->len; num++) {
+    for (num = 0; num < entry->keypoints->len; num++) {
       GstMLKeypoint *keypoint =
-          &(g_array_index (prediction->keypoints, GstMLKeypoint, num));
+          &(g_array_index (entry->keypoints, GstMLKeypoint, num));
 
       gst_ml_keypoint_transform_coordinates (keypoint, &region);
     }
