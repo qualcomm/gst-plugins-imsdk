@@ -80,12 +80,7 @@ G_DEFINE_TYPE (GstVOverlay, gst_overlay, GST_TYPE_BASE_TRANSFORM);
 #define DEFAULT_MIN_BUFFERS         1
 #define DEFAULT_MAX_BUFFERS         30
 
-#define MAX_TEXT_LENGTH             25.0F
-
-#define EXTRACT_RED_COLOR(color)   (((color >> 24) & 0xFF) / 255.0)
-#define EXTRACT_GREEN_COLOR(color) (((color >> 16) & 0xFF) / 255.0)
-#define EXTRACT_BLUE_COLOR(color)  (((color >> 8) & 0xFF) / 255.0)
-#define EXTRACT_ALPHA_COLOR(color) (((color) & 0xFF) / 255.0)
+#define MAX_TEXT_LENGTH             32.0F
 
 enum
 {
@@ -143,42 +138,6 @@ gst_overlay_src_template (void)
 {
   return gst_pad_template_new ("src", GST_PAD_SRC, GST_PAD_ALWAYS,
       gst_overlay_src_caps ());
-}
-
-
-static gboolean
-gst_caps_has_feature (const GstCaps * caps, const gchar * feature)
-{
-  guint idx = 0;
-
-  while (idx != gst_caps_get_size (caps)) {
-    GstCapsFeatures *const features = gst_caps_get_features (caps, idx);
-
-    if (feature == NULL && ((gst_caps_features_get_size (features) == 0) ||
-            gst_caps_features_is_any (features)))
-      return TRUE;
-
-    // Skip ANY caps and return immediately if feature is present.
-    if ((feature != NULL) && !gst_caps_features_is_any (features) &&
-        gst_caps_features_contains (features, feature))
-      return TRUE;
-
-    idx++;
-  }
-  return FALSE;
-}
-
-static gboolean
-gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
-{
-  GstStructure *structure = NULL;
-  const gchar *string = NULL;
-
-  structure = gst_caps_get_structure (caps, 0);
-  string = gst_structure_has_field (structure, "compression") ?
-      gst_structure_get_string (structure, "compression") : NULL;
-
-  return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
 }
 
 static inline void
@@ -488,7 +447,7 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, cairo_t * context,
 {
   GstVideoFrame *vframe = blit->frame;
   GstStructure *param = NULL;
-  gchar *label = NULL;
+  gchar text[128] = { 0, };
   GstVideoRectangle *source = NULL, *destination = NULL;
   gdouble confidence = 0.0, scale = 0.0, linewidth = 0.0;
   gdouble x = 0.0, y = 0.0, fontsize = 0.0;
@@ -524,11 +483,8 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, cairo_t * context,
   gst_util_fraction_to_double (source->w, destination->w, &scale);
   linewidth = (scale > 1.0F) ? (2.0F / scale) : 2.0F;
 
-  label = g_strdup_printf ("%s: %.1f%%",
-      gst_structure_get_string (param, "label"), confidence);
-
-  // Remove white space delimeter.
-  label = g_strdelimit (label, "-", ' ');
+  g_snprintf (text, 128, "%s: %.1f%%", g_quark_to_string (roimeta->roi_type),
+      confidence);
 
   // Set the most appropriate font size based on the bounding box dimensions.
   fontsize = MIN (((source->w / MAX_TEXT_LENGTH) * 9.0 / 5.0), 12.0F);
@@ -536,10 +492,9 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, cairo_t * context,
   x = y = linewidth;
 
   GST_TRACE_OBJECT (overlay, "Label: %s, Color: 0x%X, Position: [%.2f %.2f]",
-      label, color, x, y);
+      text, color, x, y);
 
-  success = gst_cairo_draw_text (context, color, x, y, label, fontsize);
-  g_free (label);
+  success = gst_cairo_draw_text (context, color, x, y, text, fontsize);
 
   GST_TRACE_OBJECT (overlay, "Rectangle: [%d %d %d %d], Color: 0x%X",
       source->x, source->y, source->w, source->h, color);
@@ -551,151 +506,105 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, cairo_t * context,
 }
 
 static gboolean
-gst_overlay_handle_classification_entry (GstVOverlay * overlay, cairo_t * context,
-    GstVideoBlit * blit, GstVideoRegionOfInterestMeta * roimeta)
+gst_overlay_handle_classification_entry (GstVOverlay * overlay,
+    cairo_t * context, GstVideoBlit * blit, GstVideoClassificationMeta * meta)
 {
   GstVideoFrame *vframe = blit->frame;
-  GstStructure *param = NULL;
-  gchar *label = NULL;
+  gchar text[128] = { 0, };
   GstVideoRectangle *source = NULL, *destination = NULL;
-  gdouble confidence = 0.0, x = 0.0, y = 0.0, fontsize = 0.0;
-  guint color = 0x000000FF;
-  gboolean success = FALSE;
-
-  // Extract the structure containing ROI parameters.
-  param = gst_video_region_of_interest_meta_get_param (roimeta,
-      g_quark_to_string (roimeta->roi_type));
-
-  gst_structure_get_double (param, "confidence", &confidence);
-  gst_structure_get_uint (param, "color", &color);
-
-  source = &(blit->sources[0]);
-  destination = &(blit->destinations[0]);
-
-  source->w = destination->w = GST_VIDEO_FRAME_WIDTH (vframe);
-  source->h = destination->h = GST_VIDEO_FRAME_HEIGHT (vframe);
-
-  source->x = source->y = 0;
-
-  destination->x = 0;
-  destination->y = roimeta->id * GST_VIDEO_FRAME_HEIGHT (vframe);
-
-  GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
-      "[%d %d %d %d]", source->x, source->y, source->w, source->h,
-      destination->x, destination->y, destination->w, destination->h);
-
-  label = g_strdup_printf ("%s: %.1f%%",
-      gst_structure_get_string (param, "label"), confidence);
-
-  // Remove white space delimeter.
-  label = g_strdelimit (label, "-", ' ');
+  gdouble x = 0.0, y = 0.0, fontsize = 0.0;
+  guint num = 0, length = 0;
+  gboolean success = TRUE;
 
   // Set the most appropriate font size based on the overlay frame dimensions.
   fontsize = (GST_VIDEO_FRAME_WIDTH (vframe) / MAX_TEXT_LENGTH) * 9.0 / 5.0;
 
-  if ((GST_VIDEO_FRAME_HEIGHT (vframe) / fontsize) < 1.0)
-    fontsize = GST_VIDEO_FRAME_HEIGHT (vframe);
+  length = (meta->labels != NULL) ? meta->labels->len : 0;
 
-  GST_TRACE_OBJECT (overlay, "Label: %s, Color: 0x%X, Position: [%.2f %.2f]",
-      label, color, x, y);
+  for (num = 0; num < length; num++, y += fontsize) {
+    GstClassLabel *label = &(g_array_index (meta->labels, GstClassLabel, num));
 
-  success = gst_cairo_draw_text (context, color, x, y, label, fontsize);
-  g_free (label);
+    if (y > GST_VIDEO_FRAME_HEIGHT (vframe))
+      break;
+
+    g_snprintf (text, 128, "%s: %.1f%%", g_quark_to_string (label->name),
+        label->confidence);
+
+    GST_TRACE_OBJECT (overlay, "Label: %s, Color: 0x%X, Position: [%.2f %.2f],"
+        " Fontsize: %.2f", text, label->color, x, y, fontsize);
+
+    success &= gst_cairo_draw_text (context, label->color, x, y, text, fontsize);
+  }
+
+  source = &(blit->sources[0]);
+  destination = &(blit->destinations[0]);
+
+  source->x = source->y = 0;
+  source->w = destination->w = GST_VIDEO_FRAME_WIDTH (vframe);
+  source->h = destination->h =
+      MIN (GST_VIDEO_FRAME_HEIGHT (vframe), (length * fontsize));
+
+  GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
+      "[%d %d %d %d]", source->x, source->y, source->w, source->h,
+      destination->x, destination->y, destination->w, destination->h);
 
   return success;
 }
 
 static gboolean
 gst_overlay_handle_pose_entry (GstVOverlay * overlay, cairo_t * context,
-    GstVideoBlit * blit, GstVideoRegionOfInterestMeta * roimeta)
+    GstVideoBlit * blit, GstVideoLandmarksMeta * meta)
 {
   GstVideoFrame *vframe = blit->frame;
-  GstStructure *param = NULL, *keypoint = NULL;
   GstVideoRectangle *source = NULL, *destination = NULL;
-  GValue connections = G_VALUE_INIT;
-  gdouble score = 0.0, confidence = 0.0, x = 0.0, y = 0.0;
-  guint num = 0, size = 0, color = 0x000000FF;
+  gdouble x = 0.0, y = 0.0, dx = 0.0, dy = 0.0, xscale = 0.0, yscale = 0.0;
+  guint num = 0, length = 0;
   gboolean success = TRUE;
 
-  // Extract the structure containing ROI parameters.
-  param = gst_video_region_of_interest_meta_get_param (roimeta,
-      g_quark_to_string (roimeta->roi_type));
+  // Calculate the rescallling factors for X and Y in the source dimensions.
+  gst_util_fraction_to_double (GST_VIDEO_FRAME_WIDTH (vframe),
+      GST_VIDEO_INFO_WIDTH (overlay->vinfo), &xscale);
+  gst_util_fraction_to_double (GST_VIDEO_FRAME_HEIGHT (vframe),
+      GST_VIDEO_INFO_HEIGHT (overlay->vinfo), &yscale);
 
-  g_value_init (&connections, GST_TYPE_ARRAY);
+  length = (meta->keypoints != NULL) ? meta->keypoints->len : 0;
 
-  // First extract and remoeve the 'connections' field.
-  g_value_copy (gst_structure_get_value (param, "connections"), &connections);
-  gst_structure_remove_field (param, "connections");
+  for (num = 0; num < length; num++) {
+    GstVideoKeypoint *kp =
+        &(g_array_index (meta->keypoints, GstVideoKeypoint, num));
 
-  // Next extract and remove the overall pose confidence score.
-  gst_structure_get_double (param, "confidence", &score);
-  gst_structure_remove_field (param, "confidence");
-
-  // Get the number of remaining fields, this the number of keypoints.
-  size = gst_structure_n_fields (param);
-
-  for (num = 0; num < size; num++) {
-    const gchar *name = gst_structure_nth_field_name (param, num);
-
-    keypoint = GST_STRUCTURE (
-        g_value_get_boxed (gst_structure_get_value (param, name)));
-
-    gst_structure_get_double (keypoint, "x", &x);
-    gst_structure_get_double (keypoint, "y", &y);
-    gst_structure_get_double (keypoint, "confidence", &confidence);
-    gst_structure_get_uint (keypoint, "color", &color);
-
-    // Translate relative X & Y axis coordinates to absolute.
-    x *= GST_VIDEO_FRAME_WIDTH (vframe);
-    y *= GST_VIDEO_FRAME_HEIGHT (vframe);
+    x = kp->x * xscale;
+    y = kp->y * yscale;
 
     GST_TRACE_OBJECT (overlay, "Keypoint: %s, Position: [%.2f %.2f], "
-        "Confidence: %.2f, Color: 0x%X", name, x, y, confidence, color);
+        "Confidence: %.2f, Color: 0x%X", g_quark_to_string (kp->name), x, y,
+        kp->confidence, kp->color);
 
-    success &= gst_cairo_draw_circle (context, color, x, y, 2.0, 1.0, TRUE);
+    success &= gst_cairo_draw_circle (context, kp->color, x, y, 2.0, 1.0, TRUE);
   }
 
-  // Get the number of keypoint connections.
-  size = gst_value_array_get_size (&connections);
+  length = (meta->links != NULL) ? meta->links->len : 0;
 
-  for (num = 0; num < size; num++) {
-    const GValue *connection = gst_value_array_get_value (&connections, num);
-    const gchar *s_name = NULL, *d_name = NULL;
-    gdouble x = 0.0, y = 0.0, dx = 0.0, dy = 0.0;
+  for (num = 0; num < length; num++) {
+    GstVideoKeypointLink *link = NULL;
+    GstVideoKeypoint *s_kp = NULL, *d_kp = NULL;
 
-    // Extract the names of the source and destination keypoints.
-    s_name = g_value_get_string (gst_value_array_get_value (connection, 0));
-    d_name = g_value_get_string (gst_value_array_get_value (connection, 1));
+    link = &(g_array_index (meta->links, GstVideoKeypointLink, num));
+    s_kp = &(g_array_index (meta->keypoints, GstVideoKeypoint, link->s_kp_idx));
+    d_kp = &(g_array_index (meta->keypoints, GstVideoKeypoint, link->d_kp_idx));
 
-    keypoint = GST_STRUCTURE (
-        g_value_get_boxed (gst_structure_get_value (param, s_name)));
+    x = s_kp->x * xscale;
+    y = s_kp->y * yscale;
 
-    gst_structure_get_double (keypoint, "x", &x);
-    gst_structure_get_double (keypoint, "y", &y);
-
-    x *= GST_VIDEO_FRAME_WIDTH (vframe);
-    y *= GST_VIDEO_FRAME_HEIGHT (vframe);
-
-    keypoint = GST_STRUCTURE (
-        g_value_get_boxed (gst_structure_get_value (param, d_name)));
-
-    gst_structure_get_double (keypoint, "x", &dx);
-    gst_structure_get_double (keypoint, "y", &dy);
-
-    dx *= GST_VIDEO_FRAME_WIDTH (vframe);
-    dy *= GST_VIDEO_FRAME_HEIGHT (vframe);
+    dx = d_kp->x * xscale;
+    dy = d_kp->y * yscale;
 
     GST_TRACE_OBJECT (overlay, "Link: %s [%.2f %.2f] <---> %s [%.2f %.2f]",
-        s_name, x, y, d_name, dx, dy);
+        g_quark_to_string (s_kp->name), x, y, g_quark_to_string (d_kp->name),
+        dx, dy);
 
-    success &= gst_cairo_draw_line (context, color, x, y, dx, dy, 1.0);
+    success &= gst_cairo_draw_line (context, s_kp->color, x, y, dx, dy, 1.0);
   }
-
-  g_value_unset (&connections);
-
-  blit->sources = g_slice_new (GstVideoRectangle);
-  blit->destinations = g_slice_new0 (GstVideoRectangle);
-  blit->n_regions = 1;
 
   source = &(blit->sources[0]);
   destination = &(blit->destinations[0]);
@@ -721,7 +630,6 @@ gst_overlay_handle_optclflow_entry (GstVOverlay * overlay, cairo_t * context,
   GstVideoRectangle *source = NULL, *destination = NULL;
   guint num = 0, color = 0xFFFFFFFF;
   gdouble x = 0.0, y = 0.0, dx = 0.0, dy = 0.0, xscale = 0.0, yscale = 0.0;
-
 
   source = &(blit->sources[0]);
   destination = &(blit->destinations[0]);
@@ -1164,10 +1072,10 @@ gst_overlay_populate_overlay_blit (GstVOverlay * overlay, GstVideoBlit * blit,
         GST_VIDEO_ROI_META_CAST (ovldata));
   else if (GST_OVERLAY_TYPE_CLASSIFICATION == ovltype)
     success = gst_overlay_handle_classification_entry (overlay, context, blit,
-        GST_VIDEO_ROI_META_CAST (ovldata));
+        GST_VIDEO_CLASSIFICATION_META_CAST (ovldata));
   else if (GST_OVERLAY_TYPE_POSE_ESTIMATION == ovltype)
     success = gst_overlay_handle_pose_entry (overlay, context, blit,
-        GST_VIDEO_ROI_META_CAST (ovldata));
+        GST_VIDEO_LANDMARKS_META_CAST (ovldata));
   else if (GST_OVERLAY_TYPE_OPTCLFLOW == ovltype)
     success = gst_overlay_handle_optclflow_entry (overlay, context, blit,
         GST_CV_OPTCLFLOW_META_CAST (ovldata));
@@ -1223,6 +1131,10 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
   composition->n_blits = gst_buffer_get_n_meta (buffer,
       GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE);
   composition->n_blits += gst_buffer_get_n_meta (buffer,
+      GST_VIDEO_CLASSIFICATION_META_API_TYPE);
+  composition->n_blits += gst_buffer_get_n_meta (buffer,
+      GST_VIDEO_LANDMARKS_META_API_TYPE);
+  composition->n_blits += gst_buffer_get_n_meta (buffer,
       GST_CV_OPTCLFLOW_META_API_TYPE);
 
   GST_OVERLAY_LOCK (overlay);
@@ -1250,7 +1162,7 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
       continue;
 
     success = gst_overlay_populate_overlay_blit (overlay,
-        &(composition->blits[n_entries]), ovltype, GST_GPOINTER_CAST (meta));
+        &(composition->blits[n_entries]), ovltype, GPOINTER_CAST (meta));
 
     if (!success) {
       GST_ERROR_OBJECT (overlay, "Failed to process meta %u!", n_entries);
@@ -1275,7 +1187,7 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
       GstVideoBlit *blit = &(composition->blits[n_entries]);
 
       success = gst_overlay_populate_overlay_blit (overlay, blit,
-          GST_OVERLAY_TYPE_BBOX, GST_GPOINTER_CAST (bbox));
+          GST_OVERLAY_TYPE_BBOX, GPOINTER_CAST (bbox));
 
       if (!success) {
         GST_ERROR_OBJECT (overlay, "Failed to process bounding box %u!", idx);
@@ -1308,7 +1220,7 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
       GstVideoBlit *blit = &(composition->blits[n_entries]);
 
       success = gst_overlay_populate_overlay_blit (overlay, blit,
-          GST_OVERLAY_TYPE_TIMESTAMP, GST_GPOINTER_CAST (timestamp));
+          GST_OVERLAY_TYPE_TIMESTAMP, GPOINTER_CAST (timestamp));
 
       if (!success) {
         GST_ERROR_OBJECT (overlay, "Failed to process timestamp %u!", idx);
@@ -1341,7 +1253,7 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
       GstVideoBlit *blit = &(composition->blits[n_entries]);
 
       success = gst_overlay_populate_overlay_blit (overlay, blit,
-          GST_OVERLAY_TYPE_STRING, GST_GPOINTER_CAST (string));
+          GST_OVERLAY_TYPE_STRING, GPOINTER_CAST (string));
 
       if (!success) {
         GST_ERROR_OBJECT (overlay, "Failed to process string %u!", idx);
@@ -1373,7 +1285,7 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
       GstVideoBlit *blit = &(composition->blits[n_entries]);
 
       success = gst_overlay_populate_overlay_blit (overlay, blit,
-          GST_OVERLAY_TYPE_MASK, GST_GPOINTER_CAST (mask));
+          GST_OVERLAY_TYPE_MASK, GPOINTER_CAST (mask));
 
       if (!success) {
         GST_ERROR_OBJECT (overlay, "Failed to process privacy mask %u!", idx);
@@ -1406,7 +1318,7 @@ gst_overlay_populate_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
       GstVideoBlit *blit = &(composition->blits[n_entries]);
 
       success = gst_overlay_populate_overlay_blit (overlay, blit,
-          GST_OVERLAY_TYPE_IMAGE, GST_GPOINTER_CAST (simage));
+          GST_OVERLAY_TYPE_IMAGE, GPOINTER_CAST (simage));
 
       if (!success) {
         GST_ERROR_OBJECT (overlay, "Failed to process static image %u!", idx);
@@ -1542,9 +1454,9 @@ gst_overlay_set_caps (GstBaseTransform * base, GstCaps * incaps,
       width = GST_ROUND_UP_128 (MAX (width / 6, 256));
       height = GST_ROUND_UP_4 (width / 4);
     } else if (ovltype == GST_OVERLAY_TYPE_CLASSIFICATION) {
-      // For classification overlay resolution with aspect ratio 12:1 is optimal.
-      width = GST_ROUND_UP_128 (MAX (width / 6, 256));
-      height = GST_ROUND_UP_4 (width / 16);
+      // For classification overlay resolution with aspect ratio 32:10 is optimal.
+      width = GST_ROUND_UP_128 (MAX (width / 6, 512));
+      height = GST_ROUND_UP_4 ((width * 10) / 32);
     } else if (ovltype == GST_OVERLAY_TYPE_OPTCLFLOW) {
       // For optical flow a 4 times lower resolution seems to be optimal.
       gst_recalculate_dimensions (&width, &height, num, denum, 2);
@@ -1673,7 +1585,6 @@ gst_overlay_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
 {
   GstVOverlay *overlay = GST_OVERLAY (object);
-  const gchar *input = NULL;
   GValue list = G_VALUE_INIT;
 
   GST_OVERLAY_LOCK (overlay);
@@ -1684,9 +1595,8 @@ gst_overlay_set_property (GObject * object, guint prop_id,
       break;
     case PROP_BBOXES:
       g_value_init (&list, GST_TYPE_LIST);
-      input = g_value_get_string (value);
 
-      if (!gst_parse_property_value (input, &list)) {
+      if (!gst_parse_string_property_value (value, &list)) {
         GST_ERROR_OBJECT (overlay, "Failed to parse input for bboxes!");
         break;
       }
@@ -1698,9 +1608,8 @@ gst_overlay_set_property (GObject * object, guint prop_id,
       break;
     case PROP_TIMESTAMPS:
       g_value_init (&list, GST_TYPE_LIST);
-      input = g_value_get_string (value);
 
-      if (!gst_parse_property_value (input, &list)) {
+      if (!gst_parse_string_property_value (value, &list)) {
         GST_ERROR_OBJECT (overlay, "Failed to parse input for timestamps!");
         break;
       }
@@ -1712,9 +1621,8 @@ gst_overlay_set_property (GObject * object, guint prop_id,
       break;
     case PROP_STRINGS:
       g_value_init (&list, GST_TYPE_LIST);
-      input = g_value_get_string (value);
 
-      if (!gst_parse_property_value (input, &list)) {
+      if (!gst_parse_string_property_value (value, &list)) {
         GST_ERROR_OBJECT (overlay, "Failed to parse input for strings!");
         break;
       }
@@ -1726,9 +1634,8 @@ gst_overlay_set_property (GObject * object, guint prop_id,
       break;
     case PROP_PRIVACY_MASKS:
       g_value_init (&list, GST_TYPE_LIST);
-      input = g_value_get_string (value);
 
-      if (!gst_parse_property_value (input, &list)) {
+      if (!gst_parse_string_property_value (value, &list)) {
         GST_ERROR_OBJECT (overlay, "Failed to parse input for masks!");
         break;
       }
@@ -1740,9 +1647,8 @@ gst_overlay_set_property (GObject * object, guint prop_id,
       break;
     case PROP_STATIC_IMAGES:
       g_value_init (&list, GST_TYPE_LIST);
-      input = g_value_get_string (value);
 
-      if (!gst_parse_property_value (input, &list)) {
+      if (!gst_parse_string_property_value (value, &list)) {
         GST_ERROR_OBJECT (overlay, "Failed to parse input for images!");
         break;
       }

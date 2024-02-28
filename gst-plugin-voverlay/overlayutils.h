@@ -39,11 +39,12 @@
 #include <gst/video/video.h>
 #include <gst/video/video-converter-engine.h>
 #include <gst/cv/gstcvmeta.h>
+#include <gst/utils/common-utils.h>
+#include <gst/video/gstvideoclassificationmeta.h>
+#include <gst/video/gstvideolandmarksmeta.h>
 
 G_BEGIN_DECLS
 
-#define GST_GPOINTER_CAST(obj)          ((gpointer)(obj))
-#define GST_VIDEO_ROI_META_CAST(obj)    ((GstVideoRegionOfInterestMeta *)(obj))
 #define GST_OVERLAY_BBOX_CAST(obj)      ((GstOverlayBBox *)(obj))
 #define GST_OVERLAY_TIMESTAMP_CAST(obj) ((GstOverlayTimestamp *)(obj))
 #define GST_OVERLAY_STRING_CAST(obj)    ((GstOverlayString *)(obj))
@@ -234,9 +235,6 @@ gst_overlay_image_free (GstOverlayImage * simage);
 
 guint
 gst_meta_overlay_type (GstMeta * meta);
-
-gboolean
-gst_parse_property_value (const gchar * input, GValue * value);
 
 gboolean
 gst_extract_bboxes (const GValue * value, GArray * bboxes);

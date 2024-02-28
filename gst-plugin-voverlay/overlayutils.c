@@ -39,18 +39,14 @@ GST_DEBUG_CATEGORY_EXTERN (gst_overlay_debug);
 
 #define GST_META_IS_OBJECT_DETECTION(meta) \
     ((meta->info->api == GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE) && \
-    (GST_VIDEO_ROI_META_CAST (meta)->roi_type == \
-        g_quark_from_static_string ("ObjectDetection")))
+     (GST_VIDEO_ROI_META_CAST (meta)->roi_type != \
+          g_quark_from_static_string ("ImageRegion")))
 
 #define GST_META_IS_IMAGE_CLASSIFICATION(meta) \
-    ((meta->info->api == GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE) && \
-    (GST_VIDEO_ROI_META_CAST (meta)->roi_type == \
-        g_quark_from_static_string ("ImageClassification")))
+    (meta->info->api == GST_VIDEO_CLASSIFICATION_META_API_TYPE)
 
 #define GST_META_IS_POSE_ESTIMATION(meta) \
-    ((meta->info->api == GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE) && \
-    (GST_VIDEO_ROI_META_CAST (meta)->roi_type == \
-        g_quark_from_static_string ("PoseEstimation")))
+    (meta->info->api == GST_VIDEO_LANDMARKS_META_API_TYPE)
 
 #define GST_META_IS_CV_OPTCLFLOW(meta) \
     (meta->info->api == GST_CV_OPTCLFLOW_META_API_TYPE)
@@ -121,51 +117,6 @@ gst_meta_overlay_type (GstMeta * meta)
     return GST_OVERLAY_TYPE_OPTCLFLOW;
 
   return GST_OVERLAY_TYPE_MAX;
-}
-
-gboolean
-gst_parse_property_value (const gchar * input, GValue * value)
-{
-  if (g_file_test (input, G_FILE_TEST_IS_REGULAR)) {
-    GString *string = NULL;
-    GError *error = NULL;
-    gchar *contents = NULL;
-    gboolean success = FALSE;
-
-    if (!g_file_get_contents (input, &contents, NULL, &error)) {
-      GST_ERROR ("Failed to get file contents, cleanup: %s!",
-          GST_STR_NULL (error->message));
-      g_clear_error (&error);
-      return FALSE;
-    }
-
-    // Remove trailing space and replace new lines with a comma delimiter.
-    contents = g_strstrip (contents);
-    contents = g_strdelimit (contents, "\n", ',');
-
-    string = g_string_new (contents);
-    g_free (contents);
-
-    // Add opening and closing brackets.
-    string = g_string_prepend (string, "{ ");
-    string = g_string_append (string, " }");
-
-    // Get the raw character data.
-    contents = g_string_free (string, FALSE);
-
-    success = gst_value_deserialize (value, contents);
-    g_free (contents);
-
-    if (!success) {
-      GST_ERROR ("Failed to deserialize file contents!");
-      return FALSE;
-    }
-  } else if (!gst_value_deserialize (value, input)) {
-    GST_ERROR ("Failed to deserialize string!");
-    return FALSE;
-  }
-
-  return TRUE;
 }
 
 gboolean
