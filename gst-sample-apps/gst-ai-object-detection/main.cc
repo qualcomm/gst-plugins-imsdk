@@ -223,9 +223,9 @@ create_pipe (GstAppContext * appctx, GstYoloModelType model_type,
     // Set Yolov8 specific settings
     case GST_YOLO_TYPE_V8:
       g_object_set (G_OBJECT (qtimlelement), "model", model_path, NULL);
-      g_value_set_string (&value, "/model.22/Sigmoid");
+      g_value_set_string (&value, "Mul_248");
       gst_value_array_append_value (&layers, &value);
-      g_value_set_string (&value, "/model.22/Mul_2");
+      g_value_set_string (&value, "Sigmoid_249");
       gst_value_array_append_value (&layers, &value);
       g_object_set_property (G_OBJECT (qtimlelement), "layers", &layers);
 
