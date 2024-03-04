@@ -250,6 +250,36 @@ enum GstAppComposerOutput {
 };
 
 /**
+ * GstFlipVideoType:
+ * @GST_FLIP_TYPE_NONE: No video image flip.
+ * @GST_FLIP_TYPE_HORIZONTAL: Video image flip horizontal.
+ * @GST_FLIP_TYPE_VERTICAL: Video image flip vertical
+ * @GST_FLIP_TYPE_BOTH: Video image flip vertical and horizontal
+ * Options to select Flip type.
+ */
+typedef enum {
+  GST_FLIP_TYPE_NONE,
+  GST_FLIP_TYPE_HORIZONTAL,
+  GST_FLIP_TYPE_VERTICAL,
+  GST_FLIP_TYPE_BOTH
+} GstFlipVideoType;
+
+/**
+ * GstRotateVideoType:
+ * @GST_ROTATE_TYPE_NONE: No video rotation.
+ * @GST_ROTATE_TYPE_90CW: 90 degree video rotation.
+ * @GST_ROTATE_TYPE_90CCW: 270 degree video rotation.
+ * @GST_ROTATE_TYPE_180: 180 degree video rotation.
+ * Options to select Rotate type.
+ */
+typedef enum {
+  GST_ROTATE_TYPE_NONE,
+  GST_ROTATE_TYPE_90CW,
+  GST_ROTATE_TYPE_90CCW,
+  GST_ROTATE_TYPE_180
+} GstRotateVideoType;
+
+/**
  * Handles interrupt by CTRL+C.
  *
  * @param userdata pointer to AppContext.
