@@ -58,7 +58,11 @@ struct GstVideoAppContext : GstAppContext {
   gchar *out_file;
 };
 
-// Function to create a new application context
+/**
+ * Create and initialize application context:
+ *
+ * @param NULL
+ */
 static GstVideoAppContext *
 gst_app_context_new ()
 {
@@ -77,7 +81,11 @@ gst_app_context_new ()
   return ctx;
 }
 
-// Function to free the application context
+/**
+ * Free Application context:
+ *
+ * @param appctx Application Context object
+ */
 static void
 gst_app_context_free (GstVideoAppContext * ctx)
 {
@@ -100,7 +108,15 @@ gst_app_context_free (GstVideoAppContext * ctx)
   g_free (ctx);
 }
 
-// Function to create the pipeline and link all elements
+/**
+ * Create GST pipeline invloves 3 main steps
+ * 1. Initiate an empty pipeline
+ * 2. Get source element and set input file location
+ * 3. Get sink element and Set output file location
+ *
+ * @param appctx Application Context Object.
+ * @param number of stream counts.
+ */
 static gboolean
 create_pipe (GstVideoAppContext *appctx, gint stream_cnt)
 {
@@ -121,7 +137,7 @@ create_pipe (GstVideoAppContext *appctx, gint stream_cnt)
     return FALSE;
   }
 
-  // Get source element form pipeline Set input file location
+  // Get source element from pipeline Set input file location
   for (int i = 1; i <= stream_cnt; i++)
   {
     snprintf (temp_str, sizeof (temp_str), "source%d", i);
@@ -144,7 +160,7 @@ create_pipe (GstVideoAppContext *appctx, gint stream_cnt)
     memset( temp_str, 0, ARRAY_LENGTH );
   }
 
-  // Get sink element form pipeline Set output file location
+  // Get sink element from pipeline Set output file location
   sink = gst_bin_get_by_name (GST_BIN (appctx->pipeline), "sink_yuv");
   if (sink != NULL) {
     if (appctx->out_file == NULL) {
@@ -285,7 +301,10 @@ main (gint argc, gchar * argv[])
   switch (gst_element_set_state (appctx->pipeline, GST_STATE_PAUSED)) {
     case GST_STATE_CHANGE_FAILURE:
       g_printerr ("ERROR: Failed to transition to PAUSED state!\n");
-      break;
+      if (intrpt_watch_id)
+        g_source_remove (intrpt_watch_id);
+      gst_app_context_free (appctx);
+      return -1;
     case GST_STATE_CHANGE_NO_PREROLL:
       g_print ("Pipeline is live and does not need PREROLL.\n");
       break;
@@ -302,7 +321,8 @@ main (gint argc, gchar * argv[])
   g_main_loop_run (mloop);
 
   // Remove the interrupt signal handler
-  g_source_remove (intrpt_watch_id);
+  if (intrpt_watch_id)
+    g_source_remove (intrpt_watch_id);
 
   // Free the application context
   g_print ("\n Free the Application context\n");
