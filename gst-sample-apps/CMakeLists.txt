@@ -10,6 +10,10 @@ find_package(PkgConfig)
 pkg_check_modules(GST
   REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
 
+# Check whether Camx libs are present
+include(CheckIncludeFileCXX)
+check_include_file_cxx("camx-api/camx/service/system/camera_metadata.h" HAVE_CAMX_API)
+
 if (ENABLE_AUDIO)
   add_subdirectory(gst-audio-decode-example)
   add_subdirectory(gst-audio-encode-example)
@@ -32,6 +36,7 @@ endif () # ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE
 
 if (ENABLE_CAMERA)
   add_subdirectory(gst-appsink-example)
+  add_subdirectory(gst-camera-metadata-example)
 endif () # ENABLE_CAMERA
 
 if (ENABLE_ML AND ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE)
