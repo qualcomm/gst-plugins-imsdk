@@ -47,21 +47,19 @@
   "gst-camera-single-stream-example -s 1 -w 1920 -h 1080 "                  \
   "--output_file=/opt/yuv_dump%d.yuv"
 
-// Enum to define the type of sink type that user can set
-enum GstAppFormat {
-  GST_WAYLANDSINK,
-  GST_YUVDUMP,
-};
-
 // Structure to hold the application context
 struct GstCameraAppContext : GstAppContext {
   gchar *output_file;
-  GstAppFormat sinktype;
+  GstSinkType sinktype;
   gint width;
   gint height;
 };
 
-// Function to create a new application context
+/**
+ * Create and initialize application context:
+ *
+ * @param NULL
+ */
 static GstCameraAppContext *
 gst_app_context_new ()
 {
@@ -85,7 +83,11 @@ gst_app_context_new ()
   return ctx;
 }
 
-// Function to free the application context
+/**
+ * Free Application context:
+ *
+ * @param appctx Application Context object
+ */
 static void
 gst_app_context_free (GstCameraAppContext * appctx)
 {
@@ -127,7 +129,14 @@ gst_app_context_free (GstCameraAppContext * appctx)
     g_free (appctx);
 }
 
-// Function to create the pipeline and link all elements
+/**
+ * Create GST pipeline involves 3 main steps
+ * 1. Create all elements/GST Plugins
+ * 2. Set Paramters for each plugin
+ * 3. Link plugins to create GST pipeline
+ *
+ * @param appctx Application Context Object.
+ */
 static gboolean
 create_pipe (GstCameraAppContext * appctx)
 {
@@ -292,6 +301,13 @@ main (gint argc, gchar *argv[])
 
   g_set_prgname ("gst-camera-single-stream-example");
 
+  // Check the Input value
+  if (appctx->sinktype > GST_YUVDUMP) {
+    g_printerr ("\n Invalid user Input:gst-camera-single-stream-example --help \n");
+    gst_app_context_free (appctx);
+    return -1;
+  }
+
   // Create the pipeline
   pipeline = gst_pipeline_new ("pipeline");
   if (!pipeline) {
@@ -320,7 +336,6 @@ main (gint argc, gchar *argv[])
   // Retrieve reference to the pipeline's bus.
   if ((bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline))) == NULL) {
     g_printerr ("\n Failed to retrieve pipeline bus!\n");
-    g_main_loop_unref (mloop);
     gst_app_context_free (appctx);
     return -1;
   }
@@ -343,7 +358,10 @@ main (gint argc, gchar *argv[])
   switch (gst_element_set_state (pipeline, GST_STATE_PAUSED)) {
     case GST_STATE_CHANGE_FAILURE:
       g_printerr ("\n Failed to transition to PAUSED state!\n");
-      break;
+      if (intrpt_watch_id)
+        g_source_remove (intrpt_watch_id);
+      gst_app_context_free (appctx);
+      return -1;
     case GST_STATE_CHANGE_NO_PREROLL:
       g_print ("\n Pipeline is live and does not need PREROLL.\n");
       break;
@@ -360,7 +378,8 @@ main (gint argc, gchar *argv[])
   g_main_loop_run (mloop);
 
   // Remove the interrupt signal handler
-  g_source_remove (intrpt_watch_id);
+  if (intrpt_watch_id)
+    g_source_remove (intrpt_watch_id);
 
   // Set the pipeline to the NULL state
   g_print ("\n Setting pipeline to NULL state ...\n");
