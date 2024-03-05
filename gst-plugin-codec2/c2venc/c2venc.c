@@ -853,10 +853,14 @@ gst_c2_venc_flush (GstVideoEncoder * encoder)
   GstC2VEncoder *c2venc = GST_C2_VENC (encoder);
   GST_DEBUG_OBJECT (c2venc, "Flush engine");
 
+  GST_VIDEO_ENCODER_STREAM_UNLOCK (encoder);
+
   if ((c2venc->engine != NULL) && !gst_c2_engine_flush (c2venc->engine)) {
     GST_ERROR_OBJECT (c2venc, "Failed to flush engine");
     return FALSE;
   }
+
+  GST_VIDEO_ENCODER_STREAM_LOCK (encoder);
 
   g_list_free_full (c2venc->headers, (GDestroyNotify) gst_buffer_unref);
   c2venc->headers = NULL;
