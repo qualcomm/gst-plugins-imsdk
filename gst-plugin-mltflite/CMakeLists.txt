@@ -25,6 +25,15 @@ if(NOT TFLITE_FOUND)
   pkg_check_modules(TFLITE REQUIRED tensorflow-lite)
 endif()
 
+include(CheckIncludeFile)
+
+# Check for hexagon delegate header
+if(${TFLITE_VERSION} VERSION_GREATER 2.2.0)
+  check_include_file("tensorflow/lite/delegates/hexagon/hexagon_delegate.h" HAVE_HEXAGON_DELEGATE_H)
+else()
+  check_include_file("tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h" HAVE_HEXAGON_DELEGATE_H)
+endif()
+
 # Generate configuration header file.
 configure_file(config.h.in config.h @ONLY)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
