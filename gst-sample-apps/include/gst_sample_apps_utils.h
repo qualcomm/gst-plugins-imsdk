@@ -187,13 +187,16 @@ enum GstAudioPlayerCodecType {
 /**
  * GstSinkType:
  * @GST_WAYLANDSINK: Waylandsink Type.
- * @GST_YUVDUMP  : YUV Filesink Type.
- *
+ * @GST_VIDEO_ENCODE : Video Encode Type.
+ * @GST_YUV_DUMP: YUV Filesink Type.
+ * @GST_RTSP_STREAMING : RTSP streaming Type.
  * Type of App Sink.
  */
 enum GstSinkType {
   GST_WAYLANDSINK,
-  GST_YUVDUMP,
+  GST_VIDEO_ENCODE,
+  GST_YUV_DUMP,
+  GST_RTSP_STREAMING,
 };
 
 /**
