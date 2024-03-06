@@ -54,3 +54,7 @@ endif () # ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE
 if (ENABLE_VIDEO_DECODE)
   add_subdirectory(gst-video-playback-example)
 endif () # ENABLE_VIDEO_DECODE
+
+if (ENABLE_VIDEO_DECODE AND ENABLE_VIDEO_ENCODE)
+  add_subdirectory(gst-video-transcode-example)
+endif () # ENABLE_VIDEO_DECODE AND ENABLE_VIDEO_ENCODE
