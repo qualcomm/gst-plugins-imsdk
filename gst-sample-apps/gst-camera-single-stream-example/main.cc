@@ -10,8 +10,8 @@
  * Description:
  * This application Demonstrates single camera usecases with below possible outputs:
  *     --Live Camera Preview on Display
- *     --Dump the Camera YUV to a filesink of user choice
  *     --Store the Video encoder output of user choice
+ *     --Dump the Camera YUV to a filesink of user choice
  *     --Live RTSP streaming
  *
  * Usage:
@@ -54,16 +54,16 @@
 
 #define GST_APP_SUMMARY                                                           \
   "This app enables the users to use single camera with different outputs     \n" \
-  "such as preview,encode,YUV Dump and RTSP streaming                     "       \
+  "such as preview,encode,YUV Dump and RTSP streaming"                            \
   "\nForWaylandsink Preview:\n"                                                   \
   "gst-camera-single-stream-example -o 0 -w 1920 -h 1080 \n"                      \
   "\nFor Video Encoding:\n"                                                       \
   "gst-camera-single-stream-example -o 1 -w 1920 -h 1080 "                        \
   "--file_output=/opt/video.mp4"                                                  \
-  "\nFor YUV dump \n"                                                             \
+  "\nFor YUV dump:\n"                                                             \
   "gst-camera-single-stream-example -o 2 -w 1920 -h 1080"                         \
   "--file_output=/opt/file%d.yuv"                                                 \
-  "\nFor RTSP STREAMING \n"                                                       \
+  "\nFor RTSP STREAMING:\n"                                                       \
   "gst-camera-single-stream-example -o 3 -w 1920 -h 1080"                         \
 
 // Structure to hold the application context
@@ -364,8 +364,8 @@ main (gint argc, gchar *argv[])
       "\n\t3-RTSPSTREAMING" },
     { "file_output", 'f', 0, G_OPTION_ARG_STRING, &appctx->output_file,
       "Output Filename"
-      "\n\t1-YUV dump: -f /opt/yuv_dump%d.yuv"
-      "\n\t2-Video Encoding: -f /opt/video.mp4" },
+      "\n\t1-Video Encoding: -f /opt/video.mp4"
+      "\n\t2-YUV dump: -f /opt/yuv_dump%d.yuv" },
     { NULL }
     };
 
