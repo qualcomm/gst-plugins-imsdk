@@ -10,6 +10,12 @@
 #ifndef GST_SAMPLE_APPS_UTILS_H
 #define GST_SAMPLE_APPS_UTILS_H
 
+#include <stdio.h>
+#include <stdarg.h>
+
+#include <glib-unix.h>
+#include <gst/gst.h>
+
 /**
  * GstAppContext:
  * @pipeline: Pipeline connecting all the elements for Use Case.
@@ -409,6 +415,32 @@ get_enum_value (GstElement * element, const gchar * prop_name,
 
   g_free (property_specs);
   return ret;
+}
+
+/**
+ * Unref Gstreamer plugin elements
+ *
+ * @param element Plugins.
+ *
+ * Unref all elements if any fails to create.
+ */
+static void
+unref_elements(void *first_elem, ...) {
+  va_list args;
+
+  va_start(args, first_elem);
+
+  while (1) {
+    if (first_elem) {
+      if (!strcmp((char *) first_elem, "NULL"))
+        break;
+      gst_object_unref (first_elem);
+    }
+
+    first_elem = va_arg(args, void *);
+  }
+
+  va_end(args);
 }
 
 #endif //GST_SAMPLE_APPS_UTILS_H
