@@ -34,6 +34,7 @@ if (ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE)
   add_subdirectory(gst-transform-example)
   add_subdirectory(gst-activate-deactivate-streams-runtime)
   add_subdirectory(gst-multi-camera-example)
+  add_subdirectory(gst-multi-stream-example)
 endif () # ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE
 
 if (ENABLE_CAMERA)
