@@ -45,6 +45,8 @@ struct _GstC2AEncoder {
   GHashTable      *framesmap;
   /// Frame number counter
   guint64         framenum;
+  /// Audio bitrate
+  guint           bitrate;
 
   /// Properties
 };
