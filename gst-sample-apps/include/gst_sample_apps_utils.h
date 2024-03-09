@@ -11,6 +11,12 @@
 #define GST_SAMPLE_APPS_UTILS_H
 
 /**
+ * Preprocessor to Convert variable value to string
+ */
+#define _TO_STR(x) #x
+#define TO_STR(x) _TO_STR(x)
+
+/**
  * GstAppContext:
  * @pipeline: Pipeline connecting all the elements for Use Case.
  * @plugins : List of all the plugins used in Pipeline.
