@@ -582,6 +582,9 @@ gst_c2_engine_queue (GstC2Engine * engine, GstC2QueueItem * item)
       GST_ERROR ("Failed to fetch memory block, error: '%s'!", e.what());
       return FALSE;
     }
+
+    if (GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_HEADER))
+      flags |= C2FrameData::FLAG_CODEC_CONFIG;
 #else
     GST_ERROR ("Audio is not supported!");
     return FALSE;
@@ -590,9 +593,6 @@ gst_c2_engine_queue (GstC2Engine * engine, GstC2QueueItem * item)
 
   if (GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_DROPPABLE))
     flags |= C2FrameData::FLAG_DROP_FRAME;
-
-  if (GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_HEADER))
-    flags |= C2FrameData::FLAG_CODEC_CONFIG;
 
   if (GST_CLOCK_TIME_IS_VALID (GST_BUFFER_DTS (buffer)))
     timestamp = GST_TIME_AS_USECONDS (GST_BUFFER_DTS (buffer));
