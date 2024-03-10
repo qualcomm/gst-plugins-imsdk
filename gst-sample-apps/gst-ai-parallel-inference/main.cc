@@ -15,7 +15,7 @@
  * overlayed AI models output composed as 2x2 matrix
  *
  * Pipeline for Gstreamer Parallel Inferencing (4 Stream) below:
- * qtiqmmfsrc (Camera) -> qmmfsrc_caps -> tee (SPLIT)
+ * qtiqmmfsrc (Camera) -> qmmfsrc_caps -> qtivtransform -> tee (SPLIT)
  *     | tee -> qtivcomposer
  *     |     -> Pre process-> ML Framework -> Post process -> qtivcomposer
  *     | tee -> qtivcomposer
@@ -43,8 +43,8 @@
  */
 #define DEFAULT_SNPE_OBJECT_DETECTION_MODEL "/opt/yolov5.dlc"
 #define DEFAULT_OBJECT_DETECTION_LABELS "/opt/yolov5.labels"
-#define DEFAULT_TFLITE_CLASSIFICATION_MODEL "/opt/resnet50.tflite"
-#define DEFAULT_CLASSIFICATION_LABELS "/opt/resnet50.labels"
+#define DEFAULT_TFLITE_CLASSIFICATION_MODEL "/opt/mobilenetv2.tflite"
+#define DEFAULT_CLASSIFICATION_LABELS "/opt/classification.labels"
 #define DEFAULT_TFLITE_POSE_DETECTION_MODEL "/opt/posenet_mobilenet_v1.tflite"
 #define DEFAULT_POSE_DETECTION_LABELS "/opt/posenet_mobilenet_v1.labels"
 #define DEFAULT_SNPE_SEGMENTATION_MODEL "/opt/deeplabv3_resnet50.dlc"
@@ -167,7 +167,7 @@ help (const gchar *app_name)
 static gboolean
 create_pipe (GstAppContext * appctx)
 {
-  GstElement *qtiqmmfsrc, *qmmfsrc_caps, *tee;
+  GstElement *qtiqmmfsrc, *qmmfsrc_caps, *qtivtransform, *tee;
   GstElement *qtimlvconverter[GST_PIPELINE_CNT];
   GstElement *qtimlelement[GST_PIPELINE_CNT];
   GstElement *qtimlvpostproc[GST_PIPELINE_CNT];
@@ -194,6 +194,15 @@ create_pipe (GstAppContext * appctx)
   qmmfsrc_caps = gst_element_factory_make ("capsfilter", "qmmfsrc_caps");
   if (!qmmfsrc_caps) {
     g_printerr ("Failed to create qmmfsrc_caps\n");
+    return FALSE;
+  }
+
+  // Create qtivtransform to convert UBWC Buffers to Non-UBWC buffers
+  // for fpsdisplaysink
+  qtivtransform = gst_element_factory_make ("qtivtransform",
+      "qtivtransform");
+  if (!qtivtransform) {
+    g_printerr ("Failed to create qtivtransform\n");
     return FALSE;
   }
 
@@ -273,6 +282,7 @@ create_pipe (GstAppContext * appctx)
   appctx->plugins = g_list_append (appctx->plugins, qtiqmmfsrc);
   appctx->plugins = g_list_append (appctx->plugins, tee);
   appctx->plugins = g_list_append (appctx->plugins, qmmfsrc_caps);
+  appctx->plugins = g_list_append (appctx->plugins, qtivtransform );
 
   for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
     appctx->plugins = g_list_append (appctx->plugins, qtimlvconverter[i]);
@@ -340,8 +350,8 @@ create_pipe (GstAppContext * appctx)
       case GST_CLASSIFICATION:
         module_id = get_enum_value (qtimlvpostproc[i], "module", "mobilenet");
         if (module_id != -1) {
-          g_object_set (G_OBJECT (qtimlvpostproc[i]), "threshold", 20.0,
-              "results", 3, "module", module_id, NULL);
+          g_object_set (G_OBJECT (qtimlvpostproc[i]), "threshold", 60.0,
+              "results", 2, "module", module_id, NULL);
         } else {
           g_printerr ("Module mobilenet not available in qtimlvclassifivation\n");
           goto error;
@@ -419,14 +429,14 @@ create_pipe (GstAppContext * appctx)
   gst_caps_unref (filtercaps);
 
   // 2.3 Set the properties of Wayland compositor
-  g_object_set (G_OBJECT (waylandsink), "sync", FALSE, NULL);
+  g_object_set (G_OBJECT (waylandsink), "sync", false, NULL);
   g_object_set (G_OBJECT (waylandsink), "fullscreen", true, NULL);
 
   // 3. Setup the pipeline
   g_print ("Adding all elements to the pipeline...\n");
 
   gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc,  qmmfsrc_caps,
-      tee, qtivcomposer, waylandsink, NULL);
+      qtivtransform, tee, qtivcomposer, waylandsink, NULL);
 
   for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), qtimlvconverter[i],
@@ -440,7 +450,8 @@ create_pipe (GstAppContext * appctx)
   g_print ("Linking elements...\n");
 
   // 3.1 Create pipeline for Parallel Inferencing
-  ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps, queue[0], tee, NULL);
+  ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps, queue[0],
+      qtivtransform, tee, NULL);
   if (!ret) {
     g_printerr ("Pipeline elements cannot be linked for qmmfsource->tee\n");
     goto error;
@@ -539,7 +550,7 @@ create_pipe (GstAppContext * appctx)
 
 error:
   gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, qmmfsrc_caps,
-      tee, qtivcomposer, waylandsink, NULL);
+      qtivtransform, tee, qtivcomposer, waylandsink, NULL);
 
   for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
     gst_bin_remove_many (GST_BIN (appctx->pipeline), qtimlelement[i],
