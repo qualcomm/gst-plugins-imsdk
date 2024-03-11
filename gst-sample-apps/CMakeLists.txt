@@ -59,3 +59,7 @@ endif () # ENABLE_VIDEO_DECODE
 if (ENABLE_VIDEO_DECODE AND ENABLE_VIDEO_ENCODE)
   add_subdirectory(gst-video-transcode-example)
 endif () # ENABLE_VIDEO_DECODE AND ENABLE_VIDEO_ENCODE
+
+if (ENABLE_AUDIO AND ENABLE_VIDEO_ENCODE)
+  add_subdirectory(gst-audio-video-encode)
+endif () # ENABLE_AUDIO AND ENABLE_VIDEO_ENCODE
