@@ -23,6 +23,7 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <glib-unix.h>
 #include <gst/gst.h>
 
@@ -398,6 +399,10 @@ main (gint argc, gchar * argv[])
   gchar help_description[1024];
   gboolean ret = FALSE;
   guint intrpt_watch_id = 0;
+
+  // Set Display environment variables
+  setenv("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv("WAYLAND_DISPLAY", "wayland-1", 0);
 
   // Structure to define the user options selection
   GOptionEntry entries[] = {
