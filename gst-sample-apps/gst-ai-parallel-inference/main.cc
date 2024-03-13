@@ -35,6 +35,7 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <glib-unix.h>
 #include <gst/gst.h>
 #include <gst/video/video.h>
@@ -639,6 +640,10 @@ main (gint argc, gchar * argv[])
     help (app_name);
     return -1;
   }
+
+  // Set Display environment variables
+  setenv("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv("WAYLAND_DISPLAY", "wayland-1", 0);
 
   // Initialize GST library.
   gst_init (&argc, &argv);
