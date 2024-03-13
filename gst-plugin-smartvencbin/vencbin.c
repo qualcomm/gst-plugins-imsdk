@@ -322,6 +322,8 @@ gst_venc_init_session (GstVideoEncBin * vencbin, GstCaps * caps)
 static void
 gst_venc_init_video_crtl_session (GstVideoEncBin * vencbin, GstCaps * caps)
 {
+  guint ctrl_fps = 0;
+
   GST_INFO_OBJECT (vencbin, "gst_venc_init_video_crtl_session");
 
   if (NULL == vencbin || NULL == caps) {
@@ -336,6 +338,8 @@ gst_venc_init_video_crtl_session (GstVideoEncBin * vencbin, GstCaps * caps)
   }
 
   gst_video_info_from_caps (&vencbin->video_ctrl_info, caps);
+  ctrl_fps = (guint) (vencbin->video_ctrl_info.fps_n /
+      vencbin->video_ctrl_info.fps_d);
 
   // Set config of the engine
   gst_smartcodec_engine_config (vencbin->engine,
@@ -345,7 +349,7 @@ gst_venc_init_video_crtl_session (GstVideoEncBin * vencbin, GstCaps * caps)
       GST_VIDEO_INFO_WIDTH (&vencbin->video_ctrl_info),
       GST_VIDEO_INFO_HEIGHT (&vencbin->video_ctrl_info),
       vencbin->video_ctrl_info.stride[0],
-      vencbin->video_ctrl_info.fps_n,
+      ctrl_fps,
       vencbin->target_bitrate,
       vencbin->initial_goplength,
       vencbin->long_goplength,
@@ -591,8 +595,9 @@ gst_venc_bin_ml_pad_chain (GstPad * pad, GstObject * parent,
 
   gchar *data =  g_strndup ((const gchar *) memmap.data, memmap.size);
   if (data) {
-    GST_INFO_OBJECT (vencbin, "gst_smartcodec_engine_push_ml_buff");
-    gst_smartcodec_engine_push_ml_buff (vencbin->engine, data);
+    GST_DEBUG_OBJECT (vencbin, "gst_smartcodec_engine_push_ml_buff");
+    gst_smartcodec_engine_push_ml_buff (vencbin->engine, data,
+        GST_BUFFER_TIMESTAMP (buffer));
     g_free (data);
   } else {
     GST_ERROR_OBJECT (vencbin, "failed null string");
@@ -615,6 +620,10 @@ gst_venc_bin_worker_task (gpointer user_data)
   gboolean shouldDrop = FALSE;
   guint64 timestamp = 0;
   gboolean success = FALSE;
+  guint64 buf_pts = 0;
+  guint64 ml_pts = 0;
+  guint fps_n = 0;
+  guint fps_d = 0;
 
   GST_VENC_BIN_LOCK (vencbin);
 
@@ -643,18 +652,44 @@ gst_venc_bin_worker_task (gpointer user_data)
       return;
     }
 
+    buf_pts = GST_TIME_AS_MSECONDS (GST_BUFFER_TIMESTAMP (buffer));
+
     shouldDrop = gst_smartcodec_engine_process_input_videobuffer (
         vencbin->engine, buffer);
 
     if (FALSE == shouldDrop) {
       RectDeltaQPs rect_delta_qps;
-      GST_INFO_OBJECT (vencbin, "encode frame");
-      gst_smartcodec_engine_get_rois_with_qp (vencbin->engine, &rect_delta_qps);
+      gst_smartcodec_engine_get_fps (vencbin->engine, &fps_n, &fps_d);
+      gboolean has_roi = FALSE;
 
-      if (rect_delta_qps.num_rectangles > 0) {
-        GST_INFO_OBJECT (vencbin, "rect_delta_qps.num_rectangles - %d",
-            rect_delta_qps.num_rectangles);
-        gst_venc_set_roi_qp (vencbin, &rect_delta_qps);
+      while (gst_smartcodec_engine_get_rois_from_queue (vencbin->engine,
+          &rect_delta_qps)) {
+        ml_pts = GST_TIME_AS_MSECONDS (rect_delta_qps.timestamp);
+        has_roi = TRUE;
+
+        if (buf_pts > ml_pts) {
+          gst_smartcodec_engine_remove_rois_from_queue (vencbin->engine);
+          continue;
+        }
+        break;
+      }
+
+      if (has_roi) {
+        GST_DEBUG_OBJECT (vencbin, "buf_pts - %ld, ml_pts - %ld",
+            buf_pts, ml_pts);
+
+        if (buf_pts == ml_pts) {
+          GST_DEBUG_OBJECT (vencbin, "Number of rectangles set: %d",
+              rect_delta_qps.num_rectangles);
+          gst_venc_set_roi_qp (vencbin, &rect_delta_qps);
+        } else {
+          GST_DEBUG_OBJECT (vencbin,
+              "ML timestamp is not in sync with HD timestamp");
+        }
+
+        if (buf_pts >= ml_pts) {
+          gst_smartcodec_engine_remove_rois_from_queue (vencbin->engine);
+        }
       }
 
       // Insert I-frame if needed
