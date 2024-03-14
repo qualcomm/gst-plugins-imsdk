@@ -1388,6 +1388,21 @@ main (gint argc, gchar * argv[])
     options.out_display = TRUE;
   }
 
+  if (!file_exists (options.model_path)) {
+    g_print ("Invalid model file path: %s\n", options.model_path);
+    return -EINVAL;
+  }
+
+  if (!file_exists (options.labels_path)) {
+    g_print ("Invalid labels file path: %s\n", options.labels_path);
+    return -EINVAL;
+  }
+
+  if (options.out_file && !file_location_exists (options.out_file)) {
+    g_print ("Invalid output file location: %s\n", options.out_file);
+    return -EINVAL;
+  }
+
   g_print ("Run app with model: %s and labels: %s\n",
       options.model_path, options.labels_path);
 
