@@ -28,7 +28,7 @@
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
 *
-* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -1551,7 +1551,8 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
   g_object_class_install_property (gobject, PROP_CAMERA_ZOOM,
       gst_param_spec_array ("zoom", "Zoom Rectangle",
           "Camera zoom rectangle ('<X, Y, WIDTH, HEIGHT >') in sensor active "
-          "pixel array coordinates",
+          "pixel array coordinates. Defaults to active-sensor-size values"
+          " for 1x or no zoom",
           g_param_spec_int ("value", "Zoom Value",
               "One of X, Y, WIDTH or HEIGHT value.", 0, G_MAXINT, 0,
               G_PARAM_WRITABLE | G_PARAM_STATIC_STRINGS),
