@@ -43,7 +43,11 @@ struct GstAppSinkContext : GstAppContext {
   gint height;
 };
 
-// Function to get gst sample release buffer
+/**
+ * Release GstSample when processing is done:
+ *
+ * @param sample buffer to release
+ */
 static void
 gst_sample_release (GstSample * sample)
 {
@@ -53,7 +57,11 @@ gst_sample_release (GstSample * sample)
 #endif
 }
 
-// Function to create a new application context
+/**
+ * Create and initialize application context:
+ *
+ * @param NULL
+ */
 static GstAppSinkContext *
 gst_app_context_new ()
 {
@@ -75,7 +83,12 @@ gst_app_context_new ()
   return ctx;
 }
 
-// Function to emit the signal and sample
+/**
+ * Signal that a new sample is available:
+ *
+ * @param appsink element that emitted the signal
+ * @param No description available
+ */
 static GstFlowReturn
 new_sample (GstElement * sink, gpointer userdata)
 {
@@ -115,7 +128,11 @@ new_sample (GstElement * sink, gpointer userdata)
   return GST_FLOW_OK;
 }
 
-// Function to free the application context
+/**
+ * Free Application context:
+ *
+ * @param appctx Application Context object
+ */
 static void
 gst_app_context_free (GstAppSinkContext * appctx)
 {
@@ -153,7 +170,14 @@ gst_app_context_free (GstAppSinkContext * appctx)
     g_free (appctx);
 }
 
-// Function to create the pipeline and link all elements
+/**
+ * Create GST pipeline involves 3 main steps
+ * 1. Create all elements/GST Plugins
+ * 2. Set Paramters for each plugin
+ * 3. Link plugins to create GST pipeline
+ *
+ * @param appctx Application Context object.
+ */
 static gboolean
 create_pipe (GstAppSinkContext * appctx)
 {
@@ -297,7 +321,6 @@ main (gint argc, gchar *argv[])
   // Retrieve reference to the pipeline's bus.
   if ((bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline))) == NULL) {
     g_printerr ("\n Failed to retrieve pipeline bus!\n");
-    g_main_loop_unref (mloop);
     gst_app_context_free (appctx);
     return -1;
   }
@@ -320,7 +343,10 @@ main (gint argc, gchar *argv[])
   switch (gst_element_set_state (pipeline, GST_STATE_PAUSED)) {
     case GST_STATE_CHANGE_FAILURE:
       g_printerr ("\n Failed to transition to PAUSED state!\n");
-      break;
+      if (intrpt_watch_id)
+        g_source_remove (intrpt_watch_id);
+      gst_app_context_free (appctx);
+      return -1;
     case GST_STATE_CHANGE_NO_PREROLL:
       g_print ("\n Pipeline is live and does not need PREROLL.\n");
       break;
@@ -337,7 +363,8 @@ main (gint argc, gchar *argv[])
   g_main_loop_run (mloop);
 
   // Remove the Interrupt signal Handler
-  g_source_remove (intrpt_watch_id);
+  if (intrpt_watch_id)
+    g_source_remove (intrpt_watch_id);
 
   // set the pipeline to the NULL state
   g_print ("\n Setting pipeline to NULL state ...\n");

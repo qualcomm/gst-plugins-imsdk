@@ -36,20 +36,17 @@
   "For mp3: gst-audio-decode-example -i /opt/<filename>.mp3  -f 1 \n" \
   "For wav: gst-audio-decode-example -i /opt/<filename>.wav  -f 2"
 
-// Enum to define the type of audio codec that user can set
-enum GstAudioCodecType {
-  GST_ADEFAULT,
-  GST_MP3,
-  GST_WAV,
-};
-
 // Structure to hold the application context
 struct GstAudioAppContext : GstAppContext {
   gchar *input_file;
-  GstAudioCodecType format;
+  GstAudioDecodeCodecType format;
 };
 
-// Function to create a new application context
+/**
+ * Create and initialize application context:
+ *
+ * @param NULL
+ */
 static GstAudioAppContext *
 gst_app_context_new ()
 {
@@ -67,12 +64,16 @@ gst_app_context_new ()
   ctx->mloop = NULL;
   ctx->plugins = NULL;
   ctx->input_file = NULL;
-  ctx->format = GST_ADEFAULT;
+  ctx->format = GST_ADECODE_NONE;
 
   return ctx;
 }
 
-// Function to free the application context
+/**
+ * Free Application context:
+ *
+ * @param appctx Application Context object
+ */
 static void
 gst_app_context_free (GstAudioAppContext * appctx)
 {
@@ -113,7 +114,14 @@ gst_app_context_free (GstAudioAppContext * appctx)
     g_free (appctx);
 }
 
-// Function to create the pipeline and link all elements
+/**
+ * Create GST pipeline involves 3 main steps
+ * 1. Create all elements/GST Plugins
+ * 2. Set Paramters for each plugin
+ * 3. Link plugins to create GST pipeline
+ *
+ * @param appctx Application Context Object.
+ */
 static gboolean
 create_pipe (GstAudioAppContext * appctx)
 {
@@ -132,7 +140,7 @@ create_pipe (GstAudioAppContext * appctx)
   audiosink = gst_element_factory_make ("pulsesink", "audiosink");
 
   // Depending on the format, create the parser and decoder elements, and link all elements
-  if (appctx->format == GST_WAV) {
+  if (appctx->format == GST_ADECODE_WAV) {
     parse = gst_element_factory_make ("wavparse", "parse");
 
     // Check if all elements are created successfully
@@ -151,7 +159,7 @@ create_pipe (GstAudioAppContext * appctx)
           audiosink, NULL);
       return FALSE;
     }
-  } else if (appctx->format == GST_MP3) {
+  } else if (appctx->format == GST_ADECODE_MP3) {
     parse = gst_element_factory_make ("mpegaudioparse", "parse");
     decoder = gst_element_factory_make ("mpg123audiodec", "decoder");
 
@@ -177,7 +185,7 @@ create_pipe (GstAudioAppContext * appctx)
   appctx->plugins = g_list_append (appctx->plugins, filesrc);
   appctx->plugins = g_list_append (appctx->plugins, parse);
   appctx->plugins = g_list_append (appctx->plugins, audiosink);
-  if (appctx->format == GST_MP3)
+  if (appctx->format == GST_ADECODE_MP3)
     appctx->plugins = g_list_append (appctx->plugins, decoder);
 
   g_print ("\n All elements are linked successfully\n");
@@ -254,11 +262,11 @@ main (gint argc, gchar *argv[])
   }
 
   // Check the input parameters from the user
-  if (appctx->format < GST_MP3 || appctx->format > GST_WAV ||
+  if (appctx->format < GST_ADECODE_MP3 || appctx->format > GST_ADECODE_WAV ||
       appctx->input_file == NULL) {
     g_printerr ("\n one of input parameters is not given -f %d -i %s\n",
         appctx->format, appctx->input_file);
-    g_print ("\n usage: gst-audio-video-playback --help \n");
+    g_print ("\n usage: gst-audio-decode-example --help \n");
     gst_app_context_free (appctx);
     return -1;
   }
@@ -297,7 +305,6 @@ main (gint argc, gchar *argv[])
   // Retrieve reference to the pipeline's bus.
   if ((bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline))) == NULL) {
     g_printerr ("\n Failed to retrieve pipeline bus!\n");
-    g_main_loop_unref (mloop);
     gst_app_context_free (appctx);
     return -1;
   }
@@ -320,7 +327,10 @@ main (gint argc, gchar *argv[])
   switch (gst_element_set_state (pipeline, GST_STATE_PAUSED)) {
     case GST_STATE_CHANGE_FAILURE:
       g_printerr ("\n Failed to transition to PAUSED state!\n");
-      break;
+      if (intrpt_watch_id)
+        g_source_remove (intrpt_watch_id);
+      gst_app_context_free (appctx);
+      return -1;
     case GST_STATE_CHANGE_NO_PREROLL:
       g_print ("\n Pipeline is live and does not need PREROLL.\n");
       break;
@@ -337,7 +347,8 @@ main (gint argc, gchar *argv[])
   g_main_loop_run (mloop);
 
   // Remove the interrupt signal handler
-  g_source_remove (intrpt_watch_id);
+  if (intrpt_watch_id)
+    g_source_remove (intrpt_watch_id);
 
   // Set the pipeline to the NULL state
   g_print ("\n Setting pipeline to NULL state ...\n");

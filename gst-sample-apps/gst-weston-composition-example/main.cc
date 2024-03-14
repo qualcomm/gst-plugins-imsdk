@@ -57,18 +57,6 @@
   "\nFor qtivcomposer composing side by side:\n"                              \
   "gst-weston-composition-example -c 1 -t 1 -i /opt/<h264_file>.mp4\n"
 
-// Enum to define the type of composition that user can set
-enum GstAppCompositionType {
-  GST_PIP_COMPOSE,
-  GST_SIDE_BY_SIDE_COMPOSE,
-};
-
-// Enum to define the type of composer types that user can select
-enum GstAppComposerOutput {
-  GST_APP_OUTPUT_WAYLANDSINK,
-  GST_APP_OUTPUT_QTIVCOMPOSER,
-};
-
 // Structure to hold the application context
 struct GstComposeAppContext : GstAppContext {
   gchar *input_file;
@@ -76,7 +64,11 @@ struct GstComposeAppContext : GstAppContext {
   GstAppComposerOutput composer;
 };
 
-// Function to create a new application context
+/**
+ * Create and initialize application context:
+ *
+ * @param NULL
+ */
 static GstComposeAppContext *
 gst_app_context_new ()
 {
@@ -99,7 +91,11 @@ gst_app_context_new ()
   return ctx;
 }
 
-// Function to free the application context
+/**
+ * Free Application context:
+ *
+ * @param appctx Application Context object
+ */
 static void
 gst_app_context_free (GstComposeAppContext * appctx)
 {
@@ -139,7 +135,13 @@ gst_app_context_free (GstComposeAppContext * appctx)
     g_free (appctx);
 }
 
-// Linking of the pad
+/**
+ * Create pad property parser callback
+ *
+ * @param Gst Element parser
+ * @param pad to link with sinkpad
+ * @param data pointer
+ */
 static void
 on_pad_added (GstElement * element, GstPad * pad, gpointer data)
 {
@@ -152,9 +154,15 @@ on_pad_added (GstElement * element, GstPad * pad, gpointer data)
   gst_object_unref (sinkpad);
 }
 
-// create pad property to set the position and dimensions
+/**
+ * Create pad property to set the position and dimensions for composition
+ *
+ * @param property to set position and dimension
+ * @param values to be set for position and dimension
+ * @param number of index as an integer
+ */
 static void
-build_pad_property (GValue * property, gint values[], int num)
+build_pad_property (GValue * property, gint values[], gint num)
 {
   GValue val = G_VALUE_INIT;
   g_value_init (&val, G_TYPE_INT);
@@ -167,7 +175,14 @@ build_pad_property (GValue * property, gint values[], int num)
   g_value_unset (&val);
 }
 
-// Function to create pipeline for waylandsink composition & link all elements
+/**
+ * Create the pipeline for waylandsink composition
+ * 1. Create all elements/GST Plugins
+ * 2. Set Paramters for each plugin
+ * 3. Link plugins to create GST pipeline
+ *
+ * @param appctx Application Context Object.
+ */
 static gboolean
 create_pipe_waylandsink (GstComposeAppContext * appctx)
 {
@@ -296,7 +311,14 @@ create_pipe_waylandsink (GstComposeAppContext * appctx)
   return TRUE;
 }
 
-// Function to create the qtivcomposer composition pipeline & link all elements
+/**
+ * Create the qtivcomposer composition pipeline
+ * 1. Create all elements/GST Plugins
+ * 2. Set Paramters for each plugin
+ * 3. Link plugins to create GST pipeline
+ *
+ * @param appctx Application Context Object.
+ */
 static gboolean
 create_pipe_qtivcomposer (GstComposeAppContext * appctx)
 {
@@ -322,7 +344,7 @@ create_pipe_qtivcomposer (GstComposeAppContext * appctx)
 
   // create camera source element and add capsfilter
   qtiqmmfsrc = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
-  g_object_set(G_OBJECT(qtiqmmfsrc), "camera", 1, NULL);
+
   capsfilter = gst_element_factory_make ("capsfilter", "capsfilter");
 
   filtercaps = gst_caps_new_simple ("video/x-raw", "format", G_TYPE_STRING, "NV12",
@@ -356,7 +378,7 @@ create_pipe_qtivcomposer (GstComposeAppContext * appctx)
     return FALSE;
   }
 
-  // Linking filesrc video streams element
+  // Link filesrc video streams element
   ret = gst_element_link (filesrc, qtdemux);
   if (!ret) {
     g_printerr (
@@ -575,7 +597,6 @@ main (gint argc, gchar *argv[])
   // Retrieve reference to the pipeline's bus.
   if ((bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline))) == NULL) {
     g_printerr ("\n Failed to retrieve pipeline bus!\n");
-    g_main_loop_unref (mloop);
     gst_app_context_free (appctx);
     return -1;
   }
@@ -598,7 +619,10 @@ main (gint argc, gchar *argv[])
   switch (gst_element_set_state (pipeline, GST_STATE_PAUSED)) {
     case GST_STATE_CHANGE_FAILURE:
       g_printerr ("\n Failed to transition to PAUSED state!\n");
-      break;
+      if (intrpt_watch_id)
+        g_source_remove (intrpt_watch_id);
+      gst_app_context_free (appctx);
+      return -1;
     case GST_STATE_CHANGE_NO_PREROLL:
       g_print ("\n Pipeline is live and does not need PREROLL.\n");
       break;
@@ -615,7 +639,8 @@ main (gint argc, gchar *argv[])
   g_main_loop_run (mloop);
 
   // Remove the interrupt signal handler
-  g_source_remove (intrpt_watch_id);
+  if (intrpt_watch_id)
+    g_source_remove (intrpt_watch_id);
 
   // Set the pipeline to the NULL state
   g_print ("\n Setting pipeline to NULL state ...\n");
