@@ -24,7 +24,7 @@ GST_STATIC_PAD_TEMPLATE("sink",
     GST_PAD_SINK,
     GST_PAD_ALWAYS,
     GST_STATIC_CAPS ("audio/mpeg,"
-        "mpegversion = (int) 4,"
+        "mpegversion = (int) { 2, 4 },"
         "stream-format = (string) { raw, adts },")
 );
 
@@ -36,17 +36,18 @@ GST_STATIC_PAD_TEMPLATE ("src",
 );
 
 static gboolean
-gst_c2_adec_setup_parameters (GstC2adecoder * c2adec, GstAudioInfo * info)
+gst_c2_adec_setup_parameters (GstC2adecoder * c2adec, GstAudioInfo * info,
+    GstC2AACStreamFormat streamformat)
 {
   gboolean success = FALSE;
 
   guint32 samplerate = info->rate;
   guint32 channels = info->channels;
   GstC2Bitdepth depth = GST_C2_PCM_16;
-  GstC2AACStreamFormat streamformat = GST_C2_AAC_PACKAGING_ADTS;
 
   GST_INFO_OBJECT (c2adec, "samplerate - %d", samplerate);
   GST_INFO_OBJECT (c2adec, "channels - %d", channels);
+  GST_INFO_OBJECT (c2adec, "streamformat - %d", streamformat);
 
   success = gst_c2_engine_set_parameter (c2adec->engine,
       GST_C2_PARAM_OUT_SAMPLE_RATE, GPOINTER_CAST (&samplerate));
@@ -178,7 +179,7 @@ gst_c2_adec_set_format (GstAudioDecoder * decoder, GstCaps * caps)
 {
   GstC2adecoder *c2adec = GST_C2_ADEC (decoder);
   GstStructure *structure = NULL;
-  const gchar *name = "c2.qti.aac.hw.decoder";
+  const gchar *name = "c2.qti.aac.hw.decoder", *string = NULL;
   gint32 rate = 0;
   gint32 channels = 0;
   gint sample_rate_idx;
@@ -186,6 +187,7 @@ gst_c2_adec_set_format (GstAudioDecoder * decoder, GstCaps * caps)
   GstAudioFormat out_format = GST_AUDIO_FORMAT_S16LE;
   GstAudioChannelPosition pos[64] = { 0, };
   GstAudioLayout layout = GST_AUDIO_LAYOUT_INTERLEAVED;
+  GstC2AACStreamFormat streamformat = GST_C2_AAC_PACKAGING_RAW;
 
   GST_DEBUG_OBJECT (c2adec, "Setting input caps: %" GST_PTR_FORMAT, caps);
 
@@ -210,6 +212,11 @@ gst_c2_adec_set_format (GstAudioDecoder * decoder, GstCaps * caps)
 
   gst_structure_get_int (structure, "rate", &rate);
   gst_structure_get_int (structure, "channels", &channels);
+
+  if ((string = gst_structure_get_string (structure, "stream-format")) != NULL) {
+    if (g_str_equal (string, "adts"))
+      streamformat = GST_C2_AAC_PACKAGING_ADTS;
+  }
 
   // Get input codec data which should be send as a config buffer
   // to the decoder
@@ -250,7 +257,7 @@ gst_c2_adec_set_format (GstAudioDecoder * decoder, GstCaps * caps)
     return FALSE;
   }
 
-  if (!gst_c2_adec_setup_parameters (c2adec, &c2adec->ainfo)) {
+  if (!gst_c2_adec_setup_parameters (c2adec, &c2adec->ainfo, streamformat)) {
     GST_ERROR_OBJECT (c2adec, "Failed to setup parameters!");
     return FALSE;
   }
