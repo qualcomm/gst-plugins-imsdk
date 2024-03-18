@@ -27,6 +27,7 @@
 
 #include <glib-unix.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include <gst/gst.h>
 
@@ -48,9 +49,14 @@
   "filesink name=sink_yuv enable-last-sample=false location=DEFAULT_YUV_FILESINK " \
 
 #define GST_APP_SUMMARY \
-  "In this example we are using the HEVC and AVC coded content to decode \
-  gst-videocodec-concurrent-playback -i <h264_file>.mp4 -i <h265_file>.mp4 \
-      -o <filename>.yuv" \
+  "This application demonstrates the concurrent ability of Qualcomm video " \
+  "engine decoding the different video codecs content concurrently. \n" \
+  "The first file should be H264 and the second file should be HEVC with MP4 container.\n" \
+  "\nCommand:\n" \
+  "  gst-videocodec-concurrent-playback -i <h264_file>.mp4 -i <h265_file>.mp4 "\
+  "-o <filename>.yuv \n" \
+  "\nOutput:\n" \
+  "  H264 content goes to the display and HEVC content is dumped to YUV file.\n"
 
 // Structure to hold the application context
 struct GstVideoAppContext : GstAppContext {
@@ -195,6 +201,11 @@ main (gint argc, gchar * argv[])
     g_print ("\n usage: gst-videocodec-concurrent-playback --help \n");
     return -1;
   }
+
+  // Setting Display environment variables
+  g_print ("Setting Display environment \n");
+  setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
   // Create the application context
   appctx = gst_app_context_new ();

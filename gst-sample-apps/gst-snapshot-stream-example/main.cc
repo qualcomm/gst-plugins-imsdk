@@ -31,6 +31,8 @@
 * ********************************************************
 */
 
+#include <stdlib.h>
+
 #include "include/gst_sample_apps_utils.h"
 
 #define DEFAULT_CAMERA_WIDTH 1280
@@ -46,11 +48,16 @@
 #define DEFAULT_MAX_SNAPSHOTS 5
 
 #define GST_APP_SUMMARY \
-  "This application helps to creates one preview stream and snapshot stream\n" \
-  "One stream preview to display and another stream capture snapshots and\n" \
-  "dump to a file in JPEG format. Number of snapshot count is user defined\n"
-
-#define GST_APP_USAGE "-W 1280 -H 720 -w 3840 -h 2160 -c 5"
+  "This application facilitates the creation of two streams: a preview stream" \
+  " and a snapshot stream. The preview stream is used for display purposes,\n" \
+  " while the snapshot stream captures snapshots and saves them to a file in" \
+  " JPEG format. \n The number of snapshots taken is determined by the user." \
+  "\nCommand:\n" \
+  "  gst-snapshot-stream-example -W 1280 -H 720 -w 3840 -h 2160 -c 5" \
+  "\nOutput:\n" \
+  "  Upon execution, the application will generate an output for preview " \
+  "on the display. \n Once the use case concludes, snapshot output files will" \
+  " be available at the '/opt/' directory."
 
 // Structure to hold the application context
 struct GstSnapshotAppContext : GstAppContext {
@@ -244,6 +251,11 @@ main (gint argc, gchar * argv[])
   guint intrpt_watch_id = 0;
   gboolean ret = -1;
 
+  // Setting Display environment variables
+  g_print ("Setting Display environment \n");
+  setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
+
   // Create the application context
   appctx = gst_app_context_new ();
   if (appctx == NULL) {
@@ -255,40 +267,34 @@ main (gint argc, gchar * argv[])
   GOptionEntry entries[] = {
     { "input_width", 'W', 0, G_OPTION_ARG_INT,
       &appctx->input_width,
-      "width",
-      "camera input width"
+      "camera input width  -Default width:1280"
     },
     { "input_height", 'H', 0, G_OPTION_ARG_INT,
       &appctx->input_height,
-      "height",
-      "camera input height"
+      "camera input height  -Default height:720"
     },
     { "snap_width", 'w', 0, G_OPTION_ARG_INT,
       &appctx->snap_width,
-      "width",
-      "snapshot image width"
+      "snapshot image width  -Default width:3840"
     },
     { "snap_height", 'h', 0, G_OPTION_ARG_INT,
       &appctx->snap_height,
-      "height",
-      "snapshot image height"
+      "snapshot image height  -Default height:2160"
     },
     { "snapcount", 'c', 0, G_OPTION_ARG_INT,
       &appctx->snapcount,
-      "max number of snapshot count",
-      "snapshot count"
+      "max number of snapshot count  -Default count:5"
     },
     { NULL }
   };
 
   // Parse command line entries.
-  if ((ctx = g_option_context_new (GST_APP_USAGE)) != NULL) {
+  if ((ctx = g_option_context_new (GST_APP_SUMMARY)) != NULL) {
     gboolean success = FALSE;
     GError *error = NULL;
 
     g_option_context_add_main_entries (ctx, entries, NULL);
     g_option_context_add_group (ctx, gst_init_get_option_group ());
-    g_option_context_set_summary(ctx, GST_APP_SUMMARY);
 
     success = g_option_context_parse (ctx, &argc, &argv, &error);
     g_option_context_free (ctx);

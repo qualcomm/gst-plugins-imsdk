@@ -390,7 +390,9 @@ state_changed_cb (GstBus * bus, GstMessage * message, gpointer userdata)
 
   gst_message_parse_state_changed (message, &old, &new_st, &pending);
 
-  g_print("state change: %d -> %d\n", old, new_st);
+  g_print ("\nPipeline state changed from %s to %s:\n",
+      gst_element_state_get_name (old),
+      gst_element_state_get_name (new_st));
 
   if ((new_st == GST_STATE_PAUSED) && (old == GST_STATE_READY) &&
       (pending == GST_STATE_VOID_PENDING)) {

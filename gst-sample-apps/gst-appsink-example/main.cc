@@ -33,9 +33,15 @@
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
 
-#define GST_APP_SUMMARY                                \
-  "when new sample is available in the pipeline then " \
-  "application extracts the buffer from the sample"
+#define GST_APP_SUMMARY "This application illustrates the utilization of the" \
+  " appsink plugin to extract buffer samples from a camera pipeline." \
+  "\n Users can employ these buffers for custom processing.\n" \
+  "\nCommand:\n" \
+  "  gst-appsink-example --width=1920 --height=1080 \n" \
+  "\nOutput:\n" \
+  "  Upon successful execution, the application will display the" \
+  " following message on the screen:" \
+  "\n  Received a buffer, doing some processing...\n"
 
 // Structure to hold the application context
 struct GstAppSinkContext : GstAppContext {
@@ -255,16 +261,15 @@ main (gint argc, gchar *argv[])
 
   // Configure input parameters
   GOptionEntry entries[] = {
-      {"width", 'w', 0, G_OPTION_ARG_INT, &appctx->width, "width",
-       "image width"},
-      {"height", 'h', 0, G_OPTION_ARG_INT, &appctx->height, "height",
-       "image height"},
+      {"width", 'w', 0, G_OPTION_ARG_INT, &appctx->width,
+       "Supported camera width   -Default width:1280"},
+      {"height", 'h', 0, G_OPTION_ARG_INT, &appctx->height,
+       "Supported camera height  -Default height:720"},
       {NULL}
   };
 
   // Parse command line entries.
-  if ((ctx = g_option_context_new ("gst-appsink-example")) != NULL) {
-    g_option_context_set_summary (ctx, GST_APP_SUMMARY);
+  if ((ctx = g_option_context_new (GST_APP_SUMMARY)) != NULL) {
     gboolean success = FALSE;
     GError *error = NULL;
 

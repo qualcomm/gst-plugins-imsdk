@@ -52,19 +52,21 @@
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
 
-#define GST_APP_SUMMARY                                                           \
-  "This app enables the users to use single camera with different outputs     \n" \
-  "such as preview,encode,YUV Dump and RTSP streaming"                            \
-  "\nForWaylandsink Preview:\n"                                                   \
-  "gst-camera-single-stream-example -o 0 -w 1920 -h 1080 \n"                      \
-  "\nFor Video Encoding:\n"                                                       \
-  "gst-camera-single-stream-example -o 1 -w 1920 -h 1080 "                        \
-  "--file_output=/opt/video.mp4"                                                  \
-  "\nFor YUV dump:\n"                                                             \
-  "gst-camera-single-stream-example -o 2 -w 1920 -h 1080"                         \
-  "--file_output=/opt/file%d.yuv"                                                 \
-  "\nFor RTSP STREAMING:\n"                                                       \
-  "gst-camera-single-stream-example -o 3 -w 1920 -h 1080"                         \
+#define GST_APP_SUMMARY "This app enables the users to use single camera with" \
+  " different outputs such as preview,encode,YUV Dump and RTSP streaming \n" \
+  "\nCommand:\n" \
+  "\nForWaylandsink Preview:\n" \
+  "  gst-camera-single-stream-example -o 0 -w 1920 -h 1080 \n" \
+  "\nFor Video Encoding:\n" \
+  "  gst-camera-single-stream-example -o 1 -w 1920 -h 1080 "  \
+  "--file_output=/opt/video.mp4" \
+  "\nFor YUV dump:\n" \
+  "  gst-camera-single-stream-example -o 2 -w 1920 -h 1080" \
+  "--file_output=/opt/file%d.yuv" \
+  "\nFor RTSP STREAMING:(run the rtsp server or follow the docs steps ) \n" \
+  "  gst-camera-single-stream-example -o 3 -w 1920 -h 1080" \
+  "\nOutput:\n" \
+  "  Upon execution, application will generates output as user selected."
 
 // Structure to hold the application context
 struct GstCameraAppContext : GstAppContext {
@@ -337,11 +339,10 @@ main (gint argc, gchar *argv[])
   gboolean ret = FALSE;
   guint intrpt_watch_id = 0;
 
-  // If the user only provided the application name, print the help option
-  if (argc < 2) {
-    g_print ("\n usage: gst-camera-single-stream-example --help \n");
-    return -1;
-  }
+  // Setting Display environment variables
+  g_print ("Setting Display environment \n");
+  setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
   // create the application context
   appctx = gst_app_context_new ();
@@ -370,8 +371,7 @@ main (gint argc, gchar *argv[])
     };
 
   // Parse command line entries.
-  if ((ctx = g_option_context_new ("gst-camera-single-stream-example")) != NULL) {
-    g_option_context_set_summary (ctx, GST_APP_SUMMARY);
+  if ((ctx = g_option_context_new (GST_APP_SUMMARY)) != NULL) {
     gboolean success = FALSE;
     GError *error = NULL;
 

@@ -40,22 +40,30 @@
 
 #include <glib-unix.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include <gst/gst.h>
 
 #include "include/gst_sample_apps_utils.h"
 
 #define GST_APP_SUMMARY                                                       \
-  "This app enables the users for weston and qtivcomposer composition\n"      \
-  "for both picture in picture and side by side\n"                            \
+  "This application showcases the composition of various sources, " \
+  "specifically live camera input and an offline file. \n  The composition " \
+  "can be configured in two formats: picture-in-picture or side-by-side. \n" \
+  "  The choice of composition is performed using either the waylandsink or " \
+  "qtivcomposer plugins, depending on the user preference.\n" \
+  "\nCommand:\n" \
   "\nFor waylandsink composing picture in picture:\n"                         \
-  "gst-weston-composition-example -c 0 -t 0 -i /opt/<h264_file>.mp4\n"        \
+  "  gst-weston-composition-example -c 0 -t 0 -i /opt/<h264_file>.mp4\n"      \
   "\nFor waylandsink composing side by side:\n"                               \
-  "gst-weston-composition-example -c 0 -t 1 -i /opt/<h264_file>.mp4\n"        \
+  "  gst-weston-composition-example -c 0 -t 1 -i /opt/<h264_file>.mp4\n"      \
   "\nFor qtivcomposer composing picture in picture:\n"                        \
-  "gst-weston-composition-example -c 1 -t 0 -i /opt/<h264_file>.mp4\n"        \
+  "  gst-weston-composition-example -c 1 -t 0 -i /opt/<h264_file>.mp4\n"      \
   "\nFor qtivcomposer composing side by side:\n"                              \
-  "gst-weston-composition-example -c 1 -t 1 -i /opt/<h264_file>.mp4\n"
+  "  gst-weston-composition-example -c 1 -t 1 -i /opt/<h264_file>.mp4\n"      \
+  "\nOutput:\n" \
+  "  Upon executing the application, the offline video and live camera " \
+  "composition can be observed on the display."
 
 // Structure to hold the application context
 struct GstComposeAppContext : GstAppContext {
@@ -488,6 +496,11 @@ main (gint argc, gchar *argv[])
     return -1;
   }
 
+  // Setting Display environment variables
+  g_print ("Setting Display environment \n");
+  setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
+
   // create the app context
   appctx = gst_app_context_new ();
   if (appctx == NULL) {
@@ -517,11 +530,10 @@ main (gint argc, gchar *argv[])
   };
 
   // Parse command line entries.
-  if ((ctx = g_option_context_new ("gst-weston-composition-example")) != NULL) {
+  if ((ctx = g_option_context_new (GST_APP_SUMMARY)) != NULL) {
     gboolean success = FALSE;
     GError *error = NULL;
 
-    g_option_context_set_summary (ctx, GST_APP_SUMMARY);
     g_option_context_add_main_entries (ctx, entries, NULL);
     g_option_context_add_group (ctx, gst_init_get_option_group ());
 
