@@ -13,16 +13,17 @@
  * display preview with overlayed AI Model output/classification labels.
  *
  * Pipeline for Gstreamer:
- * qtiqmmfsrc (Camera) -> qmmfsrc_caps -> tee (SPLIT)
+ * qtiqmmfsrc (Camera) -> qmmfsrc_caps -> qtivtransform -> tee (SPLIT)
  *     | tee -> qtivcomposer
  *     |     -> Pre process-> ML Framework -> Post process -> qtivcomposer
- *     qtivcomposer (COMPOSITION) -> waylandsink (Display)
+ *     qtivcomposer (COMPOSITION) -> fpsdisplaysink (Display)
  *     Pre process: qtimlvconverter
  *     ML Framework: qtimlsnpe/qtimltflite
  *     Post process: qtimlvclassification -> detection_filter
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <glib-unix.h>
 #include <gst/gst.h>
 
@@ -31,9 +32,9 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_SNPE_CLASSIFICATION_MODEL "/opt/resnet50.dlc"
-#define DEFAULT_TFLITE_CLASSIFICATION_MODEL "/opt/resnet50.tflite"
-#define DEFAULT_CLASSIFICATION_LABELS "/opt/resnet50.labels"
+#define DEFAULT_SNPE_CLASSIFICATION_MODEL "/opt/inceptionv3.dlc"
+#define DEFAULT_TFLITE_CLASSIFICATION_MODEL "/opt/mobilenetv2.tflite"
+#define DEFAULT_CLASSIFICATION_LABELS "/opt/classification.labels"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
@@ -84,10 +85,10 @@ static gboolean
 create_pipe (GstAppContext * appctx, GstModelType model_type,
     const gchar * model_path, const gchar * labels_path)
 {
-  GstElement *qtiqmmfsrc, *qmmfsrc_caps, *queue[QUEUE_COUNT];
+  GstElement *qtiqmmfsrc, *qmmfsrc_caps, *qtivtransform, *queue[QUEUE_COUNT];
   GstElement *tee, *qtimlvconverter, *qtimlelement;
   GstElement *qtimlvclassification, *detection_filter;
-  GstElement *qtivcomposer, *waylandsink;
+  GstElement *qtivcomposer, *fpsdisplaysink, *waylandsink;
   GstCaps *pad_filter, *filtercaps;
   GstPad *vcomposer_sink;
   GstStructure *delegate_options;
@@ -112,6 +113,15 @@ create_pipe (GstAppContext * appctx, GstModelType model_type,
   qmmfsrc_caps = gst_element_factory_make ("capsfilter", "qmmfsrc_caps");
   if (!qmmfsrc_caps) {
     g_printerr ("Failed to create qmmfsrc_caps\n");
+    return FALSE;
+  }
+
+  // Create qtivtransform to convert UBWC Buffers to Non-UBWC buffers
+  // for fpsdisplaysink
+  qtivtransform = gst_element_factory_make ("qtivtransform",
+      "qtivtransform");
+  if (!qtivtransform) {
+    g_printerr ("Failed to create qtivtransform\n");
     return FALSE;
   }
 
@@ -181,17 +191,26 @@ create_pipe (GstAppContext * appctx, GstModelType model_type,
     return FALSE;
   }
 
+  // Create fpsdisplaysink to display the current and
+  // average framerate as a text overlay
+  fpsdisplaysink = gst_element_factory_make ("fpsdisplaysink", "fpsdisplaysink");
+  if (!fpsdisplaysink ) {
+    g_printerr ("Failed to create fpsdisplaysink\n");
+    return FALSE;
+  }
+
   // 1.1 Append all elements in a list for cleanup
   appctx->plugins = NULL;
   appctx->plugins = g_list_append (appctx->plugins, qtiqmmfsrc);
   appctx->plugins = g_list_append (appctx->plugins, qmmfsrc_caps);
+  appctx->plugins = g_list_append (appctx->plugins, qtivtransform);
   appctx->plugins = g_list_append (appctx->plugins, tee);
   appctx->plugins = g_list_append (appctx->plugins, qtimlvconverter);
   appctx->plugins = g_list_append (appctx->plugins, qtimlelement);
   appctx->plugins = g_list_append (appctx->plugins, qtimlvclassification);
   appctx->plugins = g_list_append (appctx->plugins, detection_filter);
   appctx->plugins = g_list_append (appctx->plugins, qtivcomposer);
-  appctx->plugins = g_list_append (appctx->plugins, waylandsink);
+  appctx->plugins = g_list_append (appctx->plugins, fpsdisplaysink);
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     appctx->plugins = g_list_append (appctx->plugins, queue[i]);
@@ -230,7 +249,7 @@ create_pipe (GstAppContext * appctx, GstModelType model_type,
   module_id = get_enum_value (qtimlvclassification, "module", "mobilenet");
   if (module_id != -1) {
     g_object_set (G_OBJECT (qtimlvclassification),
-        "threshold", 20.0, "results", 3,
+        "threshold", 60.0, "results", 2,
         "module", module_id, "labels", labels_path, NULL);
   } else {
     g_printerr ("Module mobilenet is not available in qtimlvclassification.\n");
@@ -240,6 +259,12 @@ create_pipe (GstAppContext * appctx, GstModelType model_type,
   // 2.4 Set the properties of Wayland compositor
   g_object_set (G_OBJECT (waylandsink), "sync", FALSE, NULL);
   g_object_set (G_OBJECT (waylandsink), "fullscreen", true, NULL);
+
+  // 2.5 Set the properties of fpsdisplaysink plugin- sync,
+  // signal-fps-measurements, text-overlay and video-sink
+  g_object_set (G_OBJECT (fpsdisplaysink), "signal-fps-measurements", true, NULL);
+  g_object_set (G_OBJECT (fpsdisplaysink), "text-overlay", true, NULL);
+  g_object_set (G_OBJECT (fpsdisplaysink), "video-sink", waylandsink, NULL);
 
   // Set the properties of pad_filter for negotiation with qtivcomposer
   pad_filter = gst_caps_new_simple ("video/x-raw",
@@ -254,8 +279,8 @@ create_pipe (GstAppContext * appctx, GstModelType model_type,
   g_print ("Adding all elements to the pipeline...\n");
 
   gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, qmmfsrc_caps,
-      tee, qtimlvconverter, qtimlelement, qtimlvclassification,
-      detection_filter, qtivcomposer, waylandsink, NULL);
+      qtivtransform, tee, qtimlvconverter, qtimlelement, qtimlvclassification,
+      detection_filter, qtivcomposer, fpsdisplaysink, NULL);
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), queue[i], NULL);
@@ -264,16 +289,17 @@ create_pipe (GstAppContext * appctx, GstModelType model_type,
   g_print ("Linking elements...\n");
 
   // Create Pipeline for Classification
-  ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps, queue[0], tee, NULL);
+  ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps, queue[0],
+      qtivtransform, tee, NULL);
   if (!ret) {
     g_printerr ("Pipeline elements cannot be linked for qmmfsource->tee\n");
     goto error;
   }
 
-  ret = gst_element_link_many (qtivcomposer, queue[1], waylandsink, NULL);
+  ret = gst_element_link_many (qtivcomposer, queue[1], fpsdisplaysink, NULL);
   if (!ret) {
     g_printerr ("Pipeline elements cannot be linked for"
-        "qtivcomposer->waylandsink.\n");
+        "qtivcomposer->fpsdisplaysink\n");
     goto error;
   }
 
@@ -323,8 +349,8 @@ create_pipe (GstAppContext * appctx, GstModelType model_type,
 
 error:
   gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, qmmfsrc_caps,
-      tee, qtivcomposer, qtimlvconverter, qtimlelement, qtimlvclassification,
-      detection_filter, waylandsink, NULL);
+      qtivtransform, tee, qtivcomposer, qtimlvconverter, qtimlelement,
+      qtimlvclassification, detection_filter, fpsdisplaysink, NULL);
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     gst_bin_remove_many (GST_BIN (appctx->pipeline), queue[i], NULL);
@@ -373,6 +399,10 @@ main (gint argc, gchar * argv[])
   gchar help_description[1024];
   gboolean ret = FALSE;
   guint intrpt_watch_id = 0;
+
+  // Set Display environment variables
+  setenv("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv("WAYLAND_DISPLAY", "wayland-1", 0);
 
   // Structure to define the user options selection
   GOptionEntry entries[] = {

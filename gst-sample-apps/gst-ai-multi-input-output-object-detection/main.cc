@@ -31,6 +31,7 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <glib-unix.h>
 #include <gst/gst.h>
 #include <gst/video/video.h>
@@ -59,9 +60,9 @@
  * Maximum count of various sources possible to configure
  */
 #define MAX_CAMSRCS 2
-#define MAX_FILESRCS 9
-#define MAX_RTSPSRCS 9
-#define MAX_SRCS_COUNT 9
+#define MAX_FILESRCS 6
+#define MAX_RTSPSRCS 6
+#define MAX_SRCS_COUNT 6
 
 /**
  * Number of Queues used for buffer caching between elements
@@ -1168,6 +1169,10 @@ main (gint argc, gchar * argv[])
   gboolean ret = FALSE;
   gchar help_description[1024];
 
+  // Set Display environment variables
+  setenv("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv("WAYLAND_DISPLAY", "wayland-1", 0);
+
   // Structure to define the user options selection
   GOptionEntry entries[] = {
     { "num-camera", 0, 0, G_OPTION_ARG_INT,
@@ -1184,14 +1189,17 @@ main (gint argc, gchar * argv[])
     },
     { "num-file", 0, 0, G_OPTION_ARG_INT,
       &options.num_file,
-      "Number of files to be used (range: 0-" TO_STR (MAX_FILESRCS) ")\n"
-      "      Copy the files to /opt and name as video1.mp4, video2.mp4 and so on",
+      "Number of input files to be used (range: 0-" TO_STR (MAX_FILESRCS) ")\n"
+      "      Copy the H.264 encoded files to /opt and name"
+      " as video1.mp4, video2.mp4 and so on",
       NULL
     },
     { "num-rtsp", 0, 0, G_OPTION_ARG_INT,
       &options.num_rtsp,
-      "Number of rtsp streams to be used (range: 0-" TO_STR (MAX_RTSPSRCS) ")\n"
-      "      rtsp server should provide streams /live1.mkv, /live2.mkv and so on",
+      "Number of input rtsp streams to be used"
+      " (range: 0-" TO_STR (MAX_RTSPSRCS) ")\n"
+      "      rtsp server should provide H.264 encoded streams"
+      " /live1.mkv, /live2.mkv and so on",
       NULL
     },
     { "rtsp-ip-port", 0, 0, G_OPTION_ARG_STRING,
@@ -1203,7 +1211,8 @@ main (gint argc, gchar * argv[])
     },
     { "model-type", 't', 0, G_OPTION_ARG_INT,
       &options.model_type,
-      "Yolo Model version to Execute: Yolov5 (1), Yolov8 (2), YoloNas (3)",
+      "Yolo Model version to Execute: Yolov5 (1), Yolov8 (2), YoloNas (3)\n"
+      "      Default model is YoloNas (3)",
       "1 or 2 or 3"
     },
     { "model", 'm', 0, G_OPTION_ARG_STRING,
@@ -1240,26 +1249,27 @@ main (gint argc, gchar * argv[])
       " caps=\\\"application/x-rtp,media=video,clock-rate=90000,"
       "encoding-name=H264,payload=96\\\" )\"\n"
       "      Live URL on port 8900: rtsp://127.0.0.1:8900/live\n"
-      "           Change IP address to match your network settings",
+      "          Change IP address to match your network settings",
       NULL
     },
     { NULL }
   };
 
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
-  options.model_type = GST_YOLO_TYPE_V5;
+  options.model_type = GST_YOLO_TYPE_NAS;
   options.mlframework = "qtimlsnpe";
   options.camera_id = -1;
   options.rtsp_ip_port = "127.0.0.1:8554";
 
   snprintf (help_description, 1023, "\nExample:\n"
+      "  %s --num-file=4\n"
       "  %s --num-camera=2 --display\n"
-      "  %s --model=%s --labels=%s\n"
-      "  %s --num-camera=1 --num-file=2 -d -f /opt/app.mp4 --out-rtsp\n"
+      "  %s -t %d --model=%s --labels=%s\n"
+      "  %s --num-file=4 -d -f /opt/app.mp4 --out-rtsp\n"
       "\nThis Sample App demonstrates Object Detection with various input/output"
       " stream combinations",
-      app_name, app_name, DEFAULT_SNPE_YOLOV5_MODEL, DEFAULT_YOLOV5_LABELS,
-      app_name);
+      app_name, app_name, app_name, GST_YOLO_TYPE_NAS, DEFAULT_SNPE_YOLONAS_MODEL,
+      DEFAULT_YOLONAS_LABELS, app_name);
   help_description[1023] = '\0';
 
   // Parse command line entries.
@@ -1309,9 +1319,11 @@ main (gint argc, gchar * argv[])
 
   options.input_count = options.num_camera + options.num_file + options.num_rtsp;
 
-  if (options.input_count > MAX_SRCS_COUNT) {
-    g_printerr ("Total number of streams (cam + file + rtsp)"
-        " cannot be more than %d\n", MAX_SRCS_COUNT);
+  if (options.input_count != options.num_camera &&
+      options.input_count != options.num_file &&
+      options.input_count != options.num_rtsp) {
+    g_printerr ("use only same kind of input, like %d camera or %d files or"
+        " %d rtsp inputs\n", MAX_CAMSRCS, MAX_FILESRCS, MAX_RTSPSRCS);
     return -1;
   }
 

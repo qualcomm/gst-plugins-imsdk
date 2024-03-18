@@ -10,6 +10,12 @@
 #ifndef GST_SAMPLE_APPS_UTILS_H
 #define GST_SAMPLE_APPS_UTILS_H
 
+#include <stdio.h>
+#include <stdarg.h>
+
+#include <glib-unix.h>
+#include <gst/gst.h>
+
 /**
  * Preprocessor to Convert variable value to string
  */
@@ -121,6 +127,157 @@ typedef enum {
   GST_ML_TFLITE_DELEGATE_XNNPACK,
   GST_ML_TFLITE_DELEGATE_EXTERNAL,
 } GstMLTFLiteDelegate;
+
+/**
+ * GstAudioDecodeCodecType:
+ * @GST_ADECODE_NONE: Default Audio Decode Codec Type.
+ * @GST_ADECODE_MP3: Audio mp3 Codec Type.
+ * @GST_ADECODE_WAV: Audio wav Codec Type.
+ *
+ * Type of Audio Decode Codec.
+ */
+enum GstAudioDecodeCodecType {
+  GST_ADECODE_NONE,
+  GST_ADECODE_MP3,
+  GST_ADECODE_WAV,
+};
+
+/**
+ * GstAudioEncodeCodecType:
+ * @GST_AENCODE_NONE: Default Audio Encode Codec Type.
+ * @GST_AENCODE_FLAC: Audio flac Codec Type.
+ * @GST_AENCODE_WAV: Audio wav Codec Type.
+ *
+ * Type of Audio Encode Codec.
+ */
+enum GstAudioEncodeCodecType {
+  GST_AENCODE_NONE,
+  GST_AENCODE_FLAC,
+  GST_AENCODE_WAV,
+};
+
+/**
+ * GstVideoPlayerCodecType:
+ * @GST_VCODEC_NONE: Default Video codec Type.
+ * @GST_VCODEC_AVC: Video AVC Codec Type.
+ * @GST_VCODEC_HEVC: Video HEVC Codec Type.
+ *
+ * Type of Video Codec for AV Player.
+ */
+enum GstVideoPlayerCodecType {
+  GST_VCODEC_NONE,
+  GST_VCODEC_AVC,
+  GST_VCODEC_HEVC,
+};
+
+/**
+ * GstAudioPlayerCodecType:
+ * @GST_ACODEC_NONE: Default Audio Codec Type.
+ * @GST_ACODEC_FLAC: Audio flac Codec Type.
+ * @GST_ACODEC_MP3: Audio wav Codec Type.
+ *
+ * Type of Audio Codec for AV Player.
+ */
+enum GstAudioPlayerCodecType {
+  GST_ACODEC_NONE,
+  GST_ACODEC_FLAC,
+  GST_ACODEC_MP3,
+};
+
+/**
+ * GstSinkType:
+ * @GST_WAYLANDSINK: Waylandsink Type.
+ * @GST_YUVDUMP  : YUV Filesink Type.
+ *
+ * Type of App Sink.
+ */
+enum GstSinkType {
+  GST_WAYLANDSINK,
+  GST_YUVDUMP,
+};
+
+/**
+ * GstMainMenuOption:
+ * @GST_PLAY_OPTION: Option to play video.
+ * @GST_PAUSE_OPTION  : Option to pause video.
+ * @GST_FAST_FORWARD_OPTION  : Option to fast forward video.
+ * @GST_REWIND_OPTION  : Option to rewind video.
+ *
+ * Options to select from Main Menu.
+ */
+typedef enum {
+  GST_PLAY_OPTION = 1,
+  GST_PAUSE_OPTION,
+  GST_FAST_FORWARD_OPTION,
+  GST_REWIND_OPTION
+} GstMainMenuOption;
+
+/**
+ * GstFFRMenuOption:
+ * @GST_TIME_BASED: Option to seek based on time.
+ * @GST_SPEED_BASED  : Option to seek based on speed.
+ *
+ * Options to select from FFR Menu.
+ */
+typedef enum {
+  GST_TIME_BASED = 1,
+  GST_SPEED_BASED
+} GstFFRMenuOption;
+
+/**
+ * GstAppCompositionType:
+ * @GST_PIP_COMPOSE: Option to set composition position and dimension.
+ * @GST_SIDE_BY_SIDE_COMPOSE  : Option to set composition side by side.
+ *
+ * Options to select App composition.
+ */
+enum GstAppCompositionType {
+  GST_PIP_COMPOSE,
+  GST_SIDE_BY_SIDE_COMPOSE,
+};
+
+/**
+ * GstAppComposerOutput:
+ * @GST_APP_OUTPUT_WAYLANDSINK: Option to set waylandsink type.
+ * @GST_APP_OUTPUT_QTIVCOMPOSER  : Option to set composer type.
+ *
+ * Options to select composer type.
+ */
+// Enum to define the type of composer types that user can select
+enum GstAppComposerOutput {
+  GST_APP_OUTPUT_WAYLANDSINK,
+  GST_APP_OUTPUT_QTIVCOMPOSER,
+};
+
+/**
+ * GstFlipVideoType:
+ * @GST_FLIP_TYPE_NONE: No video image flip.
+ * @GST_FLIP_TYPE_HORIZONTAL: Video image flip horizontal.
+ * @GST_FLIP_TYPE_VERTICAL: Video image flip vertical
+ * @GST_FLIP_TYPE_BOTH: Video image flip vertical and horizontal
+ * Options to select Flip type.
+ */
+typedef enum {
+  GST_FLIP_TYPE_NONE,
+  GST_FLIP_TYPE_HORIZONTAL,
+  GST_FLIP_TYPE_VERTICAL,
+  GST_FLIP_TYPE_BOTH
+} GstFlipVideoType;
+
+/**
+ * GstRotateVideoType:
+ * @GST_ROTATE_TYPE_NONE: No video rotation.
+ * @GST_ROTATE_TYPE_90CW: 90 degree video rotation.
+ * @GST_ROTATE_TYPE_90CCW: 270 degree video rotation.
+ * @GST_ROTATE_TYPE_180: 180 degree video rotation.
+ * Options to select Rotate type.
+ */
+typedef enum {
+  GST_ROTATE_TYPE_NONE,
+  GST_ROTATE_TYPE_90CW,
+  GST_ROTATE_TYPE_90CCW,
+  GST_ROTATE_TYPE_180
+} GstRotateVideoType;
 
 /**
  * Handles interrupt by CTRL+C.
@@ -294,6 +451,32 @@ get_enum_value (GstElement * element, const gchar * prop_name,
 
   g_free (property_specs);
   return ret;
+}
+
+/**
+ * Unref Gstreamer plugin elements
+ *
+ * @param element Plugins.
+ *
+ * Unref all elements if any fails to create.
+ */
+static void
+unref_elements(void *first_elem, ...) {
+  va_list args;
+
+  va_start(args, first_elem);
+
+  while (1) {
+    if (first_elem) {
+      if (!strcmp((char *) first_elem, "NULL"))
+        break;
+      gst_object_unref (first_elem);
+    }
+
+    first_elem = va_arg(args, void *);
+  }
+
+  va_end(args);
 }
 
 #endif //GST_SAMPLE_APPS_UTILS_H
