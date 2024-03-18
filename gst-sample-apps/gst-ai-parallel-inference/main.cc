@@ -47,7 +47,7 @@
  */
 #define DEFAULT_SNPE_OBJECT_DETECTION_MODEL "/opt/yolov5.dlc"
 #define DEFAULT_OBJECT_DETECTION_LABELS "/opt/yolov5.labels"
-#define DEFAULT_TFLITE_CLASSIFICATION_MODEL "/opt/mobilenetv2.tflite"
+#define DEFAULT_TFLITE_CLASSIFICATION_MODEL "/opt/inceptionv3.tflite"
 #define DEFAULT_CLASSIFICATION_LABELS "/opt/classification.labels"
 #define DEFAULT_TFLITE_POSE_DETECTION_MODEL "/opt/posenet_mobilenet_v1.tflite"
 #define DEFAULT_POSE_DETECTION_LABELS "/opt/posenet_mobilenet_v1.labels"

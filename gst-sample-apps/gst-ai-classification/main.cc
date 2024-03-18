@@ -33,7 +33,7 @@
  * Default models and labels path, if not provided by user
  */
 #define DEFAULT_SNPE_CLASSIFICATION_MODEL "/opt/inceptionv3.dlc"
-#define DEFAULT_TFLITE_CLASSIFICATION_MODEL "/opt/mobilenetv2.tflite"
+#define DEFAULT_TFLITE_CLASSIFICATION_MODEL "/opt/inceptionv3.tflite"
 #define DEFAULT_CLASSIFICATION_LABELS "/opt/classification.labels"
 
 /**
