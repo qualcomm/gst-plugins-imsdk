@@ -444,6 +444,16 @@ main (gint argc, gchar * argv[])
   model_path = model_path ? model_path : (model_type == GST_MODEL_TYPE_SNPE ?
       DEFAULT_SNPE_SEGMENTATION_MODEL : DEFAULT_TFLITE_SEGMENTATION_MODEL);
 
+  if (!file_exists (model_path)) {
+    g_print ("Invalid model file path: %s\n", model_path);
+    return -EINVAL;
+  }
+
+  if (!file_exists (labels_path)) {
+    g_print ("Invalid labels file path: %s\n", labels_path);
+    return -EINVAL;
+  }
+
   g_print ("Running app with model: %s and labels: %s\n",
       model_path, labels_path);
 

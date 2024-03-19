@@ -494,6 +494,16 @@ main (gint argc, gchar * argv[])
       (model_type == GST_YOLO_TYPE_V8 ? DEFAULT_YOLOV8_LABELS :
       DEFAULT_YOLONAS_LABELS));
 
+  if (!file_exists (model_path)) {
+    g_print ("Invalid model file path: %s\n", model_path);
+    return -EINVAL;
+  }
+
+  if (!file_exists (labels_path)) {
+    g_print ("Invalid labels file path: %s\n", labels_path);
+    return -EINVAL;
+  }
+
   g_print ("Running app with model: %s and labels: %s\n",
       model_path, labels_path);
 

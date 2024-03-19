@@ -252,6 +252,40 @@ enum GstAppComposerOutput {
   GST_APP_OUTPUT_QTIVCOMPOSER,
 };
 
+/*
+ * Check if File Exists
+ *
+ * @param path file path to check for existence
+ * @result TRUE if file exists and can be accessed, FALSE otherwise
+ */
+static gboolean
+file_exists (const gchar * path)
+{
+  FILE *fp = fopen (path, "r+");
+  if (fp) {
+    fclose (fp);
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/*
+ * Check if File Location is Valid
+ *
+ * @param path file path to check for valid path
+ * @result TRUE if path exists and can be accessed, FALSE otherwise
+ */
+static gboolean
+file_location_exists (const gchar * path)
+{
+  FILE *fp = fopen (path, "ab");
+  if (fp) {
+    fclose (fp);
+    return TRUE;
+  }
+  return FALSE;
+}
+
 /**
  * GstFlipVideoType:
  * @GST_FLIP_TYPE_NONE: No video image flip.
