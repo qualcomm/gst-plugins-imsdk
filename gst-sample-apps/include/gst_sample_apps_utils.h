@@ -133,13 +133,14 @@ typedef enum {
  * @GST_ADECODE_NONE: Default Audio Decode Codec Type.
  * @GST_ADECODE_MP3: Audio mp3 Codec Type.
  * @GST_ADECODE_WAV: Audio wav Codec Type.
- *
+ * @GST_ADECODE_FLAC: Audio flac Codec Type.
  * Type of Audio Decode Codec.
  */
 enum GstAudioDecodeCodecType {
   GST_ADECODE_NONE,
   GST_ADECODE_MP3,
   GST_ADECODE_WAV,
+  GST_ADECODE_FLAC,
 };
 
 /**
