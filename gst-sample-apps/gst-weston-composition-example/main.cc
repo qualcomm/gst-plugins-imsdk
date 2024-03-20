@@ -246,7 +246,6 @@ create_pipe_waylandsink (GstComposeAppContext * appctx)
   // create the sink element for file source and set the position and dimensions
   waylandsink_filesrc = gst_element_factory_make ("waylandsink", "waylandsink_filesrc");
   g_object_set (G_OBJECT (waylandsink_filesrc), "async", true, NULL);
-  g_object_set (G_OBJECT (waylandsink_filesrc), "sync", false, NULL);
   if (appctx->composition == GST_PIP_COMPOSE) {
     // For PIP filesrc is full screen and camera preview is in small window
     g_object_set (G_OBJECT (waylandsink_filesrc), "width", 1280, NULL);
