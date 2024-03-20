@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -1188,7 +1188,7 @@ gst_video_split_release_pad (GstElement * element, GstPad * pad)
   GST_VIDEO_SPLIT_UNLOCK (vsplit);
 
   gst_element_remove_pad (element, pad);
-  GST_DEBUG_OBJECT (vsplit, "Rad has been removed");
+  GST_DEBUG_OBJECT (vsplit, "Pad has been removed");
 }
 
 static GstStateChangeReturn
