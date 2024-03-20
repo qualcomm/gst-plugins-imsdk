@@ -5,6 +5,9 @@
 
 #include <stdio.h>
 #include <glib-unix.h>
+#include <stdlib.h>
+
+
 #include <gst/gst.h>
 
 #define DASH_LINE   "----------------------------------------------------------------------"
@@ -20,9 +23,23 @@
 #define GST_APP_CONTEXT_CAST(obj)           ((GstAppContext*)(obj))
 
 #define GST_APP_SUMMARY \
-  "This app enables the user to provide a pipeline and use it for video "\
-  "playback. It allows the user to execute basic playback features like "\
-  "play, pause, fast forward, rewind. "
+  "This application enables users to create and utilize a video pipeline " \
+  "for playback. It provides essential playback features such as play, " \
+  "pause, fast forward, and rewind.\n" \
+  "To use this application effectively, users should have knowledge of " \
+  "pipeline construction in GStreamer.\n" \
+  "\nCommand:\n" \
+  "AVC Video Codec Playback:\n" \
+  "  gst-video-playback-example -e filesrc location=<avc_file>.mp4 ! qtdemux ! "\
+  "queue ! h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! "\
+  "waylandsink enable-last-sample=false async=false fullscreen=true \n" \
+  "HEVC Video Codec Playback:\n" \
+  "  gst-video-playback-example -e filesrc location=<hevc_file>.mp4 ! qtdemux ! "\
+  "queue ! h265parse ! v4l2h265dec capture-io-mode=5 output-io-mode=5 ! "\
+  "waylandsink enable-last-sample=false async=false fullscreen=true \n" \
+  "\nOutput:\n" \
+  "  Upon executing the application, user will observe video content " \
+  "displayed on the screen, \n" \
 
 // TODO: Add stop feature.
 
@@ -621,6 +638,11 @@ main (gint argc, gchar *argv[])
   gint status = -1;
 
   g_set_prgname ("gst-video-playback-example");
+
+  // Setting Display environment variables
+  g_print ("Setting Display environment \n");
+  setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
   // Initialize GST library.
   gst_init (&argc, &argv);

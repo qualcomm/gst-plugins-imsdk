@@ -43,13 +43,17 @@
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
 
-#define GST_APP_SUMMARY                                                     \
-  "This app enables users to have Multicamera live preview on display    \n"\
-  "Waylandsink or dumping video encoder output\n"                           \
-  "\nForWaylandsink Preview:\n"                                             \
-  "gst-multi-camera-example -o 0 -w 1920 -h 1080 \n"                 \
-  "\nFor Encoder Dump:\n"                                                   \
-  "gst-multi-camera-example -o 1 -w 1920 -h 1080 "
+#define GST_APP_SUMMARY "This application allows users to utilize a " \
+  "multi-camera live preview on their display. It also provides the " \
+  "functionality to either use Waylandsink or dump the encoded output\n" \
+  "\nCommand:\n" \
+  "\nFor Waylandsink Preview:\n" \
+  "  gst-multi-camera-example -o 0 -w 1920 -h 1080 \n" \
+  "\nFor Encoded output:\n" \
+  "  gst-multi-camera-example -o 1 -w 1920 -h 1080 " \
+  "\nOutput:\n" \
+  "  Upon execution, application will generates output as preview or " \
+  "encoded files for two cameras."
 
 // Structure to hold the application context
 struct GstMultiCamAppContext : GstAppContext {
@@ -453,11 +457,10 @@ main (gint argc, gchar *argv[])
   gboolean ret = FALSE;
   guint intrpt_watch_id = 0;
 
-  // If the user only provided the application name, print the help option
-  if (argc < 2) {
-    g_print ("\n usage: gst-multi-camera-example --help \n");
-    return -1;
-  }
+  // Setting Display environment variables
+  g_print ("Setting Display environment \n");
+  setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
   // create the application context
   appctx = gst_app_context_new ();

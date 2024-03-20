@@ -44,21 +44,30 @@
 #define DEFAULT_OUTPUT_WIDTH 1920
 #define DEFAULT_OUTPUT_HEIGHT 1080
 
-#define DEFAULT_ROTATION 0
+#define DEFAULT_ROTATION 90
 
 #define QUEUE_COUNT 6
 
 #define ARRAY_SIZE 20
 
 #define GST_APP_SUMMARY \
-  "This application helps to enable rotation, flip and scale\n" \
-  "and one output dump to mp4 file and another preview to display \n" \
-  "Eg, 1080P->720P or 720P->1080P scale or rotate-90,180,270 or" \
-  "flip 0/1/2/3 or all three \n"
-
-#define GST_APP_USAGE \
-  "-r 90 -f 2 --input_width 3840 --input_height 2160 --output_width 1920" \
-  "--output_height 1080 -o /opt/video_transform.mp4 \n"
+  "This application facilitates rotation, flipping, and scaling operations. " \
+  "It provides two outputs: one is a dump to an MP4 file, and the other is " \
+  "a preview display. \n For example, it can scale from 1080P to 720P or " \
+  "from 720P to 1080P. It can also rotate the image by 90, 180, or 270 " \
+  "degrees. \n The flip options include no flip (0), horizontal flip (1), " \
+  "vertical flip (2), or both (3). All three operations can be performed " \
+  "simultaneously if needed.\n" \
+  "\nCommand:\n" \
+  "All three operations \n" \
+  "  gst-transform-example -r 90 -f 2 --input_width 3840 --input_height 2160 " \
+  "--output_width 1920 --output_height 1080 -o /opt/video_transform.mp4 \n" \
+  "Perform the only rotation\n" \
+  "  gst-transform-example -r 270 -o /opt/video_transform.mp4 \n" \
+  "\nOutput:\n" \
+  "  After the execution, the application gets the output to preview on " \
+  "display and after the use case stops, the recorded o/p file is saved " \
+  "at given path.(/opt/)" \
 
 // Structure to hold the application context
 struct GstTransformAppContext : GstAppContext {
@@ -243,6 +252,8 @@ create_transform_pipeline (GstTransformAppContext * appctx)
   } else if (appctx->flip_type == GST_FLIP_TYPE_BOTH) {
     g_object_set (G_OBJECT (qtivtransform), "flip-horizontal", true, NULL);
     g_object_set (G_OBJECT (qtivtransform), "flip-vertical", true, NULL);
+  } else {
+    g_print ("Flip is not enabled\n");
   }
 
   // Set capture I/O mode
@@ -362,10 +373,10 @@ main (gint argc, gchar **argv)
   GstStateChangeReturn change_ret = GST_STATE_CHANGE_FAILURE;
   gint ret = -1;
 
-  if (argc < 2) {
-    g_print ("\n usage:gst-transform-example --help \n");
-    return ret;
-  }
+  // Setting Display environment variables
+  g_print ("Setting Display environment \n");
+  setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
   // Create the application context
   app_ctx = gst_app_context_new ();
@@ -414,11 +425,10 @@ main (gint argc, gchar **argv)
   };
 
   // Parse the command line entries
-  if ((ctx = g_option_context_new (GST_APP_USAGE)) != NULL) {
+  if ((ctx = g_option_context_new (GST_APP_SUMMARY)) != NULL) {
     gboolean success = FALSE;
     GError *error = NULL;
 
-    g_option_context_set_summary (ctx, GST_APP_SUMMARY);
     g_option_context_add_main_entries (ctx, entries, NULL);
     g_option_context_add_group (ctx, gst_init_get_option_group ());
 

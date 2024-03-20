@@ -29,6 +29,7 @@
 
 #include <glib-unix.h>
 #include <stdio.h>
+#include <sys/resource.h>
 
 #include <gst/gst.h>
 
@@ -41,7 +42,21 @@
 #define EIGHT_STREAM_CNT 8
 #define SIXTEEN_STREAM_CNT 16
 
-#define GST_APP_SUMMARY "Concurrent video playback and composition on display"
+#define GST_APP_SUMMARY "This application performs concurrent " \
+  "video playback for AVC codec and composition on display (video wall).\n" \
+  "The application expects at least one input file from the user. If the " \
+  "number of input files is less than the concurrency count, the same " \
+  "file will be played concurrently. \n The input file is expected to be " \
+  "an MP4 file encoded with the AVC codec. \n" \
+  "\nCommand:\n" \
+  "concurrent playback for two sessions \n" \
+  "  gst-concurrent-videoplay-composition -c 2 -i <h264_file>.mp4 " \
+  "-i <h264_file>.mp4 \n" \
+  "concurrent playback for four sessions \n " \
+  "  gst-concurrent-videoplay-composition -c 4 -i <h264_file>.mp4 \n" \
+  "\nOutput:\n" \
+  "  Upon executing the application, concurrent video playback can be " \
+  "observed on the display."
 
 // Structure to hold the application context
 struct GstVideoAppContext : GstAppContext {
@@ -173,6 +188,26 @@ main (gint argc, gchar *argv[])
   GstBus *bus = NULL;
   GstVideoAppContext *appctx = NULL;
   guint intrpt_watch_id = 0;
+  struct rlimit rl;
+
+  // Define the new limit
+  rl.rlim_cur = 4096; // Soft limit
+  rl.rlim_max = 4096; // Hard limit
+
+  // Set the new limit
+  if (setrlimit(RLIMIT_NOFILE, &rl) != 0) {
+    g_printerr ("Failed to set setrlimit\n");
+  }
+
+  // Get the current limit
+  if (getrlimit(RLIMIT_NOFILE, &rl) != 0) {
+    g_printerr ("Failed to get getrlimit\n");
+  }
+
+  // Setting Display environment variables
+  g_print ("Setting Display environment \n");
+  setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
   // Create the application context
   appctx = gst_app_context_new ();
@@ -192,12 +227,11 @@ main (gint argc, gchar *argv[])
   };
 
   // Parse the command line entries
-  if ((ctx = g_option_context_new ("gst-concurrent-videoplay-composition")) !=
+  if ((ctx = g_option_context_new (GST_APP_SUMMARY)) !=
       NULL) {
     gboolean success = FALSE;
     GError *error = NULL;
 
-    g_option_context_set_summary (ctx, GST_APP_SUMMARY);
     g_option_context_add_main_entries (ctx, entries, NULL);
     g_option_context_add_group (ctx, gst_init_get_option_group ());
 
