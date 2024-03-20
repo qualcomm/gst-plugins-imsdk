@@ -33,11 +33,16 @@
 
 #include "include/gst_sample_apps_utils.h"
 
-#define GST_APP_SUMMARY                                                      \
-  "This app enables the users to encode audio i.e. wav or flac "             \
-  "format.\n"                                                                \
-  "flac:gst-audio-encode-example -o /opt/<filename>.flac --audio_format=1 \n" \
-  "wav: gst-audio-encode-example -o /opt/<filename>.wav  --audio_format=2"
+#define DEFAULT_OUTPUT_FILENAME "/opt/audio_record.flac"
+
+#define GST_APP_SUMMARY "This app enables the users to encode audio with " \
+  "wav or flac format.\n" \
+  "\nCommand:\n" \
+  "flac: gst-audio-encode-example -o /opt/<filename>.flac --audio_format=1 \n" \
+  "wav:  gst-audio-encode-example -o /opt/<filename>.wav  --audio_format=2 \n" \
+  "\nOutput:\n" \
+  "  Upon execution, application will generates recorded audio files " \
+  "at output path (/opt/)."
 
 // Structure to hold the application context
 struct GstAudioAppContext : GstAppContext {
@@ -66,8 +71,8 @@ gst_app_context_new ()
   ctx->pipeline = NULL;
   ctx->mloop = NULL;
   ctx->plugins = NULL;
-  ctx->output_file = NULL;
-  ctx->format = GST_AENCODE_NONE;
+  ctx->output_file = DEFAULT_OUTPUT_FILENAME;
+  ctx->format = GST_AENCODE_FLAC;
 
   return ctx;
 }
@@ -222,12 +227,6 @@ main (gint argc, gchar *argv[])
   gboolean ret = FALSE;
   guint intrpt_watch_id = 0;
 
-  // If the user only provided the application name, print the help option
-  if (argc < 2) {
-    g_print ("\n usage: gst-audio-encode-example --help \n");
-    return -1;
-  }
-
   // Create the application context
   appctx = gst_app_context_new ();
   if (appctx == NULL) {
@@ -250,8 +249,7 @@ main (gint argc, gchar *argv[])
   };
 
   // Parse the command line entries
-  if ((ctx = g_option_context_new ("gst-audio-encode-example")) != NULL) {
-    g_option_context_set_summary (ctx, GST_APP_SUMMARY);
+  if ((ctx = g_option_context_new (GST_APP_SUMMARY)) != NULL) {
     gboolean success = FALSE;
     GError *error = NULL;
 
@@ -370,6 +368,8 @@ main (gint argc, gchar *argv[])
   // Set the pipeline to the NULL state
   g_print ("\n Setting pipeline to NULL state ...\n");
   gst_element_set_state (appctx->pipeline, GST_STATE_NULL);
+
+  g_print ("Recorded Audio file %s\n", appctx->output_file);
 
   // Free the application context
   g_print ("\n Free the Application context\n");

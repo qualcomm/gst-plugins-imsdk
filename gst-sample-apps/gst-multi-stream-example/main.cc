@@ -37,11 +37,16 @@
 #define DEFAULT_HEIGHT 720
 #define DEFAULT_NUM_OF_STREAM 2
 
-#define GST_APP_SUMMARY                                                   \
-  "This app will execute the usecase of multistream from single camera"   \
-  "\nFor Two Stream:First stream on waylandsink and second is video Encoding"\
-  "\nFor Two Stream \n"                                                   \
-  "gst-multi-stream-example -w 1920 -h 1080 -n 2 -o /opt/video.mp4 \n"
+#define GST_APP_SUMMARY "This application demonstrates the use of a single " \
+  "camera to generate multiple streams for various purposes. \n One stream " \
+  "is displayed as a preview, while the other stream is stored as an " \
+  "encoded stream. \n " \
+  "\nCommand:\n" \
+  "For Two Stream \n" \
+  "  gst-multi-stream-example -w 1920 -h 1080 -n 2 -o /opt/video.mp4 \n" \
+  "\nOutput:\n" \
+  "  Upon execution, application will generates output as preview and " \
+  "encoded mp4 file."
 
 // Structure to hold the application context
 struct GstMultiStreamAppContext : GstAppContext {
@@ -273,11 +278,10 @@ main (gint argc, gchar *argv[])
   GstMultiStreamAppContext *appctx = NULL;
   guint intrpt_watch_id = 0;
 
-  // If the user only provided the application name, print the help option
-  if (argc < 2) {
-    g_print ("\n usage: gst-multi-stream-example --help \n");
-    return -1;
-  }
+  // Setting Display environment variables
+  g_print ("Setting Display environment \n");
+  setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
   // create the application context
   appctx = gst_app_context_new ();
@@ -301,11 +305,10 @@ main (gint argc, gchar *argv[])
     };
 
   // Parse command line entries.
-  if ((ctx = g_option_context_new ("gst-multi-stream-example")) != NULL) {
+  if ((ctx = g_option_context_new (GST_APP_SUMMARY)) != NULL) {
     gboolean success = FALSE;
     GError *error = NULL;
 
-    g_option_context_set_summary (ctx, GST_APP_SUMMARY);
     g_option_context_add_main_entries (ctx, entries, NULL);
     g_option_context_add_group (ctx, gst_init_get_option_group ());
 
@@ -415,6 +418,8 @@ main (gint argc, gchar *argv[])
   // Set the pipeline to the NULL state
   g_print ("\n Setting pipeline to NULL state ...\n");
   gst_element_set_state (appctx->pipeline, GST_STATE_NULL);
+
+  g_print ("Encoded mp4 File %s\n", appctx->output_file);
 
   // Free the application context
   g_print ("\n Free the Application context\n");

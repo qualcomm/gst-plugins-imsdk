@@ -47,12 +47,17 @@
 
 #define DEFAULT_OUTPUT_FILENAME "/opt/transcoded_video.mp4"
 
-#define GST_APP_SUMMARY                                                \
-  "This app transcode the AVC format to HEVC format and vice versa \n" \
-  "\nFor AVC to HEVC \n"                                               \
-  "gst-video-transcode-example -i /opt/avc.mp4 -c 1 -o /opt/hevc.mp4"  \
-  "\nFor HEVC to AVC \n"                                               \
-  "gst-video-transcode-example -i /opt/hevc.mp4 -c 2 -o /opt/avc.mp4"
+#define GST_APP_SUMMARY "This application is designed to showcase video "\
+  "transcoding capabilities. It can accept user input files encoded in" \
+  "either AVC or HEVC video codecs and transcode them into either HEVC " \
+  "or AVC format.\n" \
+  "\nCommand:\n" \
+  "For AVC to HEVC transcode\n" \
+  "  gst-video-transcode-example -i /opt/avc.mp4 -c 1 -o /opt/hevc.mp4 \n" \
+  "For HEVC to AVC transcode\n" \
+  "  gst-video-transcode-example -i /opt/hevc.mp4 -c 2 -o /opt/avc.mp4 \n" \
+  "\nOutput:\n" \
+  "  Upon execution, application will generates output mp4 file at given path"
 
 // Structure to hold the application context
 struct GstTranscodeAppContext : GstAppContext {
@@ -315,11 +320,10 @@ main (gint argc, gchar *argv[])
   };
 
   // Parse command line entries.
-  if ((ctx = g_option_context_new ("gst-video-transcode-example")) != NULL) {
+  if ((ctx = g_option_context_new (GST_APP_SUMMARY)) != NULL) {
     gboolean success = FALSE;
     GError *error = NULL;
 
-    g_option_context_set_summary (ctx, GST_APP_SUMMARY);
     g_option_context_add_main_entries (ctx, entries, NULL);
     g_option_context_add_group (ctx, gst_init_get_option_group ());
 
