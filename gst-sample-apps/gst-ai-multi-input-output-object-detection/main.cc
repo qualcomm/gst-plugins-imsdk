@@ -1273,18 +1273,27 @@ main (gint argc, gchar * argv[])
     options.out_display = TRUE;
   }
 
+  for (gint i = 0; i < options.num_file; i++) {
+    gchar file_name[128];
+    snprintf (file_name, 127, "/opt/video%d.mp4", i+1);
+    if (!file_exists (file_name)) {
+      g_printerr ("video file doesnot exist at path: %s\n", file_name);
+      return -EINVAL;
+    }
+  }
+
   if (!file_exists (options.model_path)) {
-    g_print ("Invalid model file path: %s\n", options.model_path);
+    g_printerr ("Invalid model file path: %s\n", options.model_path);
     return -EINVAL;
   }
 
   if (!file_exists (options.labels_path)) {
-    g_print ("Invalid labels file path: %s\n", options.labels_path);
+    g_printerr ("Invalid labels file path: %s\n", options.labels_path);
     return -EINVAL;
   }
 
   if (options.out_file && !file_location_exists (options.out_file)) {
-    g_print ("Invalid output file location: %s\n", options.out_file);
+    g_printerr ("Invalid output file location: %s\n", options.out_file);
     return -EINVAL;
   }
 
