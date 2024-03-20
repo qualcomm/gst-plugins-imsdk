@@ -249,7 +249,7 @@ create_pipe (GstAppContext * appctx, GstModelType model_type,
   module_id = get_enum_value (qtimlvclassification, "module", "mobilenet");
   if (module_id != -1) {
     g_object_set (G_OBJECT (qtimlvclassification),
-        "threshold", 50.0, "results", 2,
+        "threshold", 40.0, "results", 2,
         "module", module_id, "labels", labels_path, NULL);
   } else {
     g_printerr ("Module mobilenet is not available in qtimlvclassification.\n");

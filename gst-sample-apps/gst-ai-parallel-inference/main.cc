@@ -45,8 +45,8 @@
 /**
  * Default models path and labels path
  */
-#define DEFAULT_SNPE_OBJECT_DETECTION_MODEL "/opt/yolov5.dlc"
-#define DEFAULT_OBJECT_DETECTION_LABELS "/opt/yolov5.labels"
+#define DEFAULT_SNPE_OBJECT_DETECTION_MODEL "/opt/yolonas.dlc"
+#define DEFAULT_OBJECT_DETECTION_LABELS "/opt/yolonas.labels"
 #define DEFAULT_TFLITE_CLASSIFICATION_MODEL "/opt/inceptionv3.tflite"
 #define DEFAULT_CLASSIFICATION_LABELS "/opt/classification.labels"
 #define DEFAULT_TFLITE_POSE_DETECTION_MODEL "/opt/posenet_mobilenet_v1.tflite"
@@ -373,19 +373,17 @@ create_pipe (GstAppContext * appctx)
       case GST_OBJECT_DETECTION:
         g_value_init (&layers, GST_TYPE_ARRAY);
         g_value_init (&value, G_TYPE_STRING);
-        g_value_set_string (&value, "Conv_198");
+        g_value_set_string (&value, "/heads/Mul");
         gst_value_array_append_value (&layers, &value);
-        g_value_set_string (&value, "Conv_232");
-        gst_value_array_append_value (&layers, &value);
-        g_value_set_string (&value, "Conv_266");
+        g_value_set_string (&value, "/heads/Sigmoid");
         gst_value_array_append_value (&layers, &value);
         g_object_set_property (G_OBJECT (qtimlelement[i]), "layers", &layers);
-        module_id = get_enum_value (qtimlvpostproc[i], "module", "yolov5");
+        module_id = get_enum_value (qtimlvpostproc[i], "module", "yolo-nas");
         if (module_id != -1) {
           g_object_set (G_OBJECT (qtimlvpostproc[i]),
               "module", module_id, NULL);
         } else {
-          g_printerr ("Module yolov5 is not available in qtimlvdetection\n");
+          g_printerr ("Module yolo-nas is not available in qtimlvdetection\n");
           goto error;
         }
         // Set the object detection module threshold limit
@@ -396,7 +394,7 @@ create_pipe (GstAppContext * appctx)
       case GST_CLASSIFICATION:
         module_id = get_enum_value (qtimlvpostproc[i], "module", "mobilenet");
         if (module_id != -1) {
-          g_object_set (G_OBJECT (qtimlvpostproc[i]), "threshold", 50.0,
+          g_object_set (G_OBJECT (qtimlvpostproc[i]), "threshold", 40.0,
               "results", 2, "module", module_id, NULL);
         } else {
           g_printerr ("Module mobilenet not available in qtimlvclassifivation\n");
