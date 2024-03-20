@@ -61,11 +61,16 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <math.h>
+
 #include "ml-video-classification-module.h"
 
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
+
+#define GST_ML_OP_IS_SOFTMAX(op) \
+    (op == GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX)
 
 #define GINT8_PTR_CAST(data)        ((gint8*) data)
 #define GUINT8_PTR_CAST(data)       ((guint8*) data)
@@ -97,6 +102,9 @@ struct _GstMLSubModule {
   gdouble    qoffsets[GST_ML_MAX_TENSORS];
   // Scale values for each of the tensors for dequantization of some tensors.
   gdouble    qscales[GST_ML_MAX_TENSORS];
+
+  // Extra operations that need to apply
+  gint       operation;
 };
 
 static inline gfloat
@@ -222,6 +230,11 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   gst_structure_get_double (settings, GST_ML_MODULE_OPT_THRESHOLD, &threshold);
   submodule->threshold = threshold;
 
+  gst_structure_get_enum (settings, GST_ML_MODULE_OPT_XTRA_OPERATION, G_TYPE_ENUM,
+      &submodule->operation);
+
+  GST_INFO ("Extra operation selected: %u", submodule->operation);
+
   if ((GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_INT8) ||
       (GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_UINT8)) {
     GstStructure *constants = NULL;
@@ -285,7 +298,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   guint8 *data = NULL;
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   guint idx = 0, n_inferences = 0;
-  gdouble confidence = 0.0;
+  gdouble confidence = 0.0, sum = 0.0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);
@@ -300,6 +313,16 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   n_inferences = GST_ML_FRAME_DIM (mlframe, 0, 1);
   data = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
 
+  if (GST_ML_OP_IS_SOFTMAX (submodule->operation)) {
+    gfloat score = 0.0;
+    // Calculate the sum of the exponents for softmax function.
+    for (idx = 0; idx < n_inferences; ++idx) {
+      score = gst_ml_module_get_dequant_value (data, mltype, idx,
+          submodule->qoffsets[0], submodule->qscales[0]);
+      sum += exp(score);
+    }
+  }
+
   // Fill the prediction table.
   for (idx = 0; idx < n_inferences; ++idx) {
     GstLabel *label = NULL;
@@ -307,6 +330,11 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
     confidence = gst_ml_module_get_dequant_value (data, mltype, idx,
         submodule->qoffsets[0], submodule->qscales[0]);
+
+    // Apply softmax function on the confidence result.
+    if (GST_ML_OP_IS_SOFTMAX (submodule->operation))
+      confidence = (exp(confidence) / sum);
+
     confidence *= 100;
 
     // Discard results with confidence below the set threshold.

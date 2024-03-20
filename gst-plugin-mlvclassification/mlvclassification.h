@@ -113,6 +113,7 @@ struct _GstMLVideoClassification {
   guint             n_results;
   gdouble           threshold;
   GstStructure      *mlconstants;
+  gint              operation;
 };
 
 struct _GstMLVideoClassificationClass {
