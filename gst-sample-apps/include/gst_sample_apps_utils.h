@@ -286,6 +286,32 @@ file_location_exists (const gchar * path)
   return FALSE;
 }
 
+/*
+ * Get Active Display Mode
+ *
+ * @param width fill display current width
+ * @param height fill display current height
+ * @result TRUE if api is able to provide information, FALSE otherwise
+ */
+static gboolean
+get_active_display_mode (gint * width, gint * height)
+{
+  gchar line[128];
+  FILE *fp = fopen ("/sys/class/drm/card0-DSI-1/modes", "rb");
+  if (!fp) {
+    return FALSE;
+  }
+
+  fgets (line, 128, fp);
+  fclose (fp);
+  if (strlen (line) > 0) {
+    if (2 == sscanf (line, "%dx%d", width, height)) {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
 /**
  * GstFlipVideoType:
  * @GST_FLIP_TYPE_NONE: No video image flip.

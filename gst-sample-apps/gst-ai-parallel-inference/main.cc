@@ -160,6 +160,26 @@ help (const gchar *app_name)
   g_print ("\nTo use your own model and labels replace at the default paths\n");
 }
 
+/*
+ * Update Window Grid
+ * Change position of grid as per display resolution
+ */
+static void
+update_window_grid ()
+{
+  gint width, height;
+  if (get_active_display_mode (&width, &height)) {
+    gint win_w = width/2;
+    gint win_h = height/2;
+    pipeline_data[0].position = {0, 0, win_w, win_h};
+    pipeline_data[1].position = {win_w, 0, win_w, win_h};
+    pipeline_data[2].position = {0, win_h, win_w, win_h};
+    pipeline_data[3].position = {win_w, win_h, win_w, win_h};
+  } else {
+    g_warning ("Failed to get active display mode, using 1080p default config");
+  }
+}
+
 /**
  * Create GST pipeline: has 3 main steps
  * 1. Create all elements/GST Plugins
@@ -187,6 +207,8 @@ create_pipe (GstAppContext * appctx)
   gint width = DEFAULT_CAMERA_OUTPUT_WIDTH;
   gint height = DEFAULT_CAMERA_OUTPUT_HEIGHT;
   gint framerate = DEFAULT_CAMERA_FRAME_RATE;
+
+  update_window_grid();
 
   // 1. Create the elements or Plugins
   // Create qtiqmmfsrc plugin for camera stream
