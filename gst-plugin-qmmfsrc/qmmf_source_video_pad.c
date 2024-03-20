@@ -592,7 +592,7 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
 
     if (!colorimetry) {
       gst_structure_fixate_field_string (structure, "colorimetry",
-          NULL);
+          GST_VIDEO_COLORIMETRY_BT601);
       GST_DEBUG_OBJECT (pad, "colorimetry not set, using default value bt601");
     }
   }
