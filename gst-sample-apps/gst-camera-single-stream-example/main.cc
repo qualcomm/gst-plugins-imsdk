@@ -5,26 +5,40 @@
 
 /*
  * Gstreamer Application:
- * Gstreamer Application for single Camera usecases with different possible o/p
+ * Gstreamer Application for single Camera usecases with different possible outputs
  *
  * Description:
- * This application Demonstrates in Viewing Camera Live on waylandsink
- * or Dumping the Camera YUV to a filesink of user choice
+ * This application Demonstrates single camera usecases with below possible outputs:
+ *     --Live Camera Preview on Display
+ *     --Store the Video encoder output of user choice
+ *     --Dump the Camera YUV to a filesink of user choice
+ *     --Live RTSP streaming
  *
  * Usage:
- * For Preview on Display:
- * gst-camera-single-stream-example --sinktype=0 --width=1920 --height=1080
+ * Live Camera Preview on Display:
+ * gst-camera-single-stream-example  -o 0--width=1920 --height=1080
+ * For Encoder dump on device:
+ * gst-camera-single-stream-example  -o 1--width=1920 --height=1080 -f
+ * /opt/video.mp4
  * For YUV dump on device:
- * gst-camera-single-stream-example --sinktype=1 --width=1920 --height=1080
- * /opt/yuv_dump%d.yuv
+ * gst-camera-single-stream-example -o 2--width=1920 --height=1080 -f
+ * /opt/file%d.yuv
+ * For RTSP STREAMING on device:
+ * gst-camera-single-stream-example -o 3 --width=1920 --height=1080
  *
  * Help:
  * gst-camera-single-stream-example --help
  *
- * *******************************************************************
- * Pipeline For YUV dump on device: qtiqmmfsrc->capsfilter->filesink
- * Pipeline For Preview on Display: qtiqmmfsrc->capsfilter->waylandsink
- * *******************************************************************
+ * *******************************************************************************
+ * Dump the Camera YUV to a filesink:
+ *     qtiqmmfsrc->capsfilter->filesink
+ * Live Camera Preview on Display:
+ *     qtiqmmfsrc->capsfilter->waylandsink
+ * Pipeline For the Video Encoding:
+ * qtiqmmfsrc->capsfilter->waylandsink->->v4l2h264enc->h264parse->mp4mux->filesink
+ * Pipeline For the RTSPSTREAMING:
+ * qtiqmmfsrc->capsfilter->v4l2h264enc->h264parse->rtph264pay->udpsink
+ * *******************************************************************************
  */
 
 #include <glib-unix.h>
@@ -38,14 +52,21 @@
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
 
-#define GST_APP_SUMMARY                                                     \
-  "This app enables the users to view the either to have Camera Live\n"     \
-  "on Waylandsink or for encoding to filesink and for Camera YUV Dumping\n" \
-  "\nForWaylandsink Preview:\n"                                             \
-  "gst-camera-single-stream-example -s 0 -w 1920 -h 1080 \n"                \
-  "\nFor YUV Dump:\n"                                                       \
-  "gst-camera-single-stream-example -s 1 -w 1920 -h 1080 "                  \
-  "--output_file=/opt/yuv_dump%d.yuv"
+#define GST_APP_SUMMARY "This app enables the users to use single camera with" \
+  " different outputs such as preview,encode,YUV Dump and RTSP streaming \n" \
+  "\nCommand:\n" \
+  "\nForWaylandsink Preview:\n" \
+  "  gst-camera-single-stream-example -o 0 -w 1920 -h 1080 \n" \
+  "\nFor Video Encoding:\n" \
+  "  gst-camera-single-stream-example -o 1 -w 1920 -h 1080 "  \
+  "--file_output=/opt/video.mp4" \
+  "\nFor YUV dump:\n" \
+  "  gst-camera-single-stream-example -o 2 -w 1920 -h 1080" \
+  "--file_output=/opt/file%d.yuv" \
+  "\nFor RTSP STREAMING:(run the rtsp server or follow the docs steps ) \n" \
+  "  gst-camera-single-stream-example -o 3 -w 1920 -h 1080" \
+  "\nOutput:\n" \
+  "  Upon execution, application will generates output as user selected."
 
 // Structure to hold the application context
 struct GstCameraAppContext : GstAppContext {
@@ -122,7 +143,8 @@ gst_app_context_free (GstCameraAppContext * appctx)
     appctx->pipeline = NULL;
   }
 
-  if (appctx->output_file != NULL && appctx->sinktype != NULL)
+  if (appctx->sinktype == GST_VIDEO_ENCODE ||
+      appctx->sinktype == GST_YUV_DUMP)
     g_free (appctx->output_file);
 
   if (appctx != NULL)
@@ -141,8 +163,10 @@ static gboolean
 create_pipe (GstCameraAppContext * appctx)
 {
   // Declare the elements of the pipeline
-  GstElement *qtiqmmfsrc, *capsfilter, *waylandsink, *filesink;
+  GstElement *qtiqmmfsrc, *capsfilter, *waylandsink, *filesink, *v4l2h264enc;
+  GstElement *h264parse, *mp4mux, *rtph264pay, *udpsink;
   GstCaps *filtercaps;
+  GstStructure *fcontrols;
   gboolean ret = FALSE;
   appctx->plugins = NULL;
 
@@ -152,12 +176,14 @@ create_pipe (GstCameraAppContext * appctx)
 
   // Set the source elements capability
   filtercaps = gst_caps_new_simple ("video/x-raw",
-      "format", G_TYPE_STRING,
-      "NV12",
+      "format", G_TYPE_STRING, "NV12",
       "width", G_TYPE_INT, appctx->width,
-      "height", G_TYPE_INT,
-      appctx->height, "framerate", GST_TYPE_FRACTION, 30, 1, "compression",
-      G_TYPE_STRING, "ubwc", NULL);
+      "height", G_TYPE_INT, appctx->height,
+      "framerate", GST_TYPE_FRACTION, 30, 1,
+      "compression", G_TYPE_STRING, "ubwc",
+      "interlace-mode", G_TYPE_STRING, "progressive",
+      "colorimetry", G_TYPE_STRING, "bt601",
+      NULL);
 
   gst_caps_set_features (filtercaps, 0,
       gst_caps_features_new ("memory:GBM", NULL));
@@ -178,16 +204,16 @@ create_pipe (GstCameraAppContext * appctx)
     gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter,
         waylandsink, NULL);
 
-    g_print ("\n Linking display elements ..\n");
+    g_print ("\n Link pipeline for display elements ..\n");
 
     ret = gst_element_link_many (qtiqmmfsrc, capsfilter, waylandsink, NULL);
     if (!ret) {
-      g_printerr ("\n Pipeline elements cannot be linked. Exiting.\n");
-      gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc,
-          capsfilter, waylandsink, NULL);
+      g_printerr ("\n Display Pipeline elements cannot be linked. Exiting.\n");
+      gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter,
+          waylandsink, NULL);
       return FALSE;
     }
-  } else if (appctx->sinktype == GST_YUVDUMP) {
+  } else if (appctx->sinktype == GST_YUV_DUMP) {
     // set the output file location for filesink element
     filesink = gst_element_factory_make ("multifilesink", "filesink");
     g_object_set (G_OBJECT (filesink), "location", appctx->output_file, NULL);
@@ -195,31 +221,107 @@ create_pipe (GstCameraAppContext * appctx)
     g_object_set (G_OBJECT (filesink), "max-files", 2, NULL);
 
     if (!qtiqmmfsrc || !capsfilter || !filesink) {
-      g_printerr ("\n One element could not be created. Exiting.\n");
+      g_printerr ("\n YUV dump elements could not be created. Exiting.\n");
       return FALSE;
     }
 
-    gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter,
-        filesink, NULL);
+    gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter, filesink,
+        NULL);
 
-    g_print ("\n Linking elements yuv dump..\n");
+    g_print ("\n Link pipeline elements for yuv dump..\n");
 
     ret = gst_element_link_many (qtiqmmfsrc, capsfilter, filesink, NULL);
     if (!ret) {
       g_printerr ("\n Pipeline elements cannot be linked. Exiting.\n");
-      gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc,
-          capsfilter, filesink, NULL);
+      gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter,
+          filesink, NULL);
       return FALSE;
     }
-  }
+  } else if (appctx->sinktype == GST_VIDEO_ENCODE ||
+      appctx->sinktype == GST_RTSP_STREAMING) {
+    // Create v4l2h264enc element and set the properties
+    v4l2h264enc = gst_element_factory_make ("v4l2h264enc", "v4l2h264enc");
+    g_object_set (G_OBJECT (v4l2h264enc), "capture-io-mode", 5, NULL);
+    g_object_set (G_OBJECT (v4l2h264enc), "output-io-mode", 5, NULL);
+    fcontrols = gst_structure_from_string (
+        "fcontrols,video_bitrate=512000,video_bitrate_mode=0", NULL);
+    g_object_set (G_OBJECT (v4l2h264enc), "extra-controls", fcontrols, NULL);
 
+    // Create h264parse element for parsing the stream
+    h264parse = gst_element_factory_make ("h264parse", "h264parse");
+    g_object_set (G_OBJECT (h264parse), "config-interval", -1, NULL);
+    if (appctx->sinktype == GST_RTSP_STREAMING) {
+      rtph264pay = gst_element_factory_make ("rtph264pay", "rtph264pay");
+      g_object_set (G_OBJECT (rtph264pay), "pt", 96, NULL);
+
+      udpsink = gst_element_factory_make ("udpsink", "udpsink");
+      g_object_set (G_OBJECT (udpsink), "host", "127.0.0.1", NULL);
+      g_object_set (G_OBJECT (udpsink), "port", 8554, NULL);
+
+      gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter,
+          v4l2h264enc, h264parse, rtph264pay, udpsink, NULL);
+
+      g_print ("\n Link pipeline for video streaming elements ..\n");
+
+      ret = gst_element_link_many (qtiqmmfsrc, capsfilter, v4l2h264enc, h264parse,
+          rtph264pay, udpsink, NULL);
+      if (!ret) {
+        g_printerr (
+            "\n Pipeline video streaming elements cannot be linked. Exiting.\n");
+        gst_bin_remove_many (GST_BIN (appctx->pipeline), capsfilter, v4l2h264enc,
+            h264parse, rtph264pay, udpsink, NULL);
+        return FALSE;
+      }
+    } else if (appctx->sinktype == GST_VIDEO_ENCODE) {
+      // Create mp4mux element for muxing the stream
+      mp4mux = gst_element_factory_make ("mp4mux", "mp4mux");
+
+      // Create filesink element for storing the encoding stream
+      filesink = gst_element_factory_make ("filesink", "filesink");
+      g_object_set (G_OBJECT (filesink), "location", appctx->output_file, NULL);
+
+      if (!qtiqmmfsrc || !capsfilter || !v4l2h264enc || !h264parse || !mp4mux ||
+          !filesink) {
+        g_printerr (
+            "\n Video Encoder elements could not be created \n");
+        return FALSE;
+      }
+
+      gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter,
+          v4l2h264enc, h264parse, mp4mux, filesink, NULL);
+
+      g_print ("\n Link pipeline elements for encoder..\n");
+
+      // Linking the encoder stream
+      ret = gst_element_link_many (qtiqmmfsrc, capsfilter, v4l2h264enc, h264parse,
+          mp4mux, filesink, NULL);
+      if (!ret) {
+        g_printerr (
+            "\n Video Encoder Pipeline elements cannot be linked. Exiting.\n");
+        gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter,
+            v4l2h264enc, h264parse, mp4mux, filesink, NULL);
+        return FALSE;
+      }
+    }
+  }
   // Append all elements to the plugins list for clean up
   appctx->plugins = g_list_append (appctx->plugins, qtiqmmfsrc);
   appctx->plugins = g_list_append (appctx->plugins, capsfilter);
   if (appctx->sinktype == GST_WAYLANDSINK) {
     appctx->plugins = g_list_append (appctx->plugins, waylandsink);
-  } else if (appctx->sinktype == GST_YUVDUMP) {
+  } else if (appctx->sinktype == GST_YUV_DUMP) {
     appctx->plugins = g_list_append (appctx->plugins, filesink);
+  } else if (appctx->sinktype == GST_VIDEO_ENCODE ||
+      appctx->sinktype == GST_RTSP_STREAMING) {
+    appctx->plugins = g_list_append (appctx->plugins, v4l2h264enc);
+    appctx->plugins = g_list_append (appctx->plugins, h264parse);
+    if (appctx->sinktype == GST_VIDEO_ENCODE) {
+      appctx->plugins = g_list_append (appctx->plugins, mp4mux);
+      appctx->plugins = g_list_append (appctx->plugins, filesink);
+    } else if (appctx->sinktype == GST_RTSP_STREAMING) {
+      appctx->plugins = g_list_append (appctx->plugins, rtph264pay);
+      appctx->plugins = g_list_append (appctx->plugins, udpsink);
+    }
   }
 
   g_print ("\n All elements are linked successfully\n");
@@ -237,11 +339,10 @@ main (gint argc, gchar *argv[])
   gboolean ret = FALSE;
   guint intrpt_watch_id = 0;
 
-  // If the user only provided the application name, print the help option
-  if (argc < 2) {
-    g_print ("\n usage: gst-camera-single-stream-example --help \n");
-    return -1;
-  }
+  // Setting Display environment variables
+  g_print ("Setting Display environment \n");
+  setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
   // create the application context
   appctx = gst_app_context_new ();
@@ -252,27 +353,25 @@ main (gint argc, gchar *argv[])
 
   // Configure input parameters
   GOptionEntry entries[] = {
-      {"width", 'w', 0, G_OPTION_ARG_INT, &appctx->width, "width",
-       "image width"
-      },
-      {"height", 'h', 0, G_OPTION_ARG_INT, &appctx->height, "height",
-       "image height"
-      },
-      {"sinktype", 's', 0, G_OPTION_ARG_INT, &appctx->sinktype,
-       "\t\t\t\t\t   sinktype",
-       "\n\t0-WAYLANDSINK"
-       "\n\t1-YUVDUMP"
-      },
-      {"output_file", 'o', 0, G_OPTION_ARG_STRING, &appctx->output_file,
-       "Output Filename , \
-          -o /opt/yuv_dump%d.yuv"
-      },
-      {NULL}
-  };
+    { "width", 'w', 0, G_OPTION_ARG_INT, &appctx->width,
+      "width", "camera width" },
+    { "height", 'h', 0, G_OPTION_ARG_INT, &appctx->height, "height",
+      "camera height" },
+    { "output", 'o', 0, G_OPTION_ARG_INT, &appctx->sinktype,
+      "\t\t\t\t\t   sinktype",
+      "\n\t0-WAYLANDSINK"
+      "\n\t1-VIDEOENCODING"
+      "\n\t2-YUVDUMP"
+      "\n\t3-RTSPSTREAMING" },
+    { "file_output", 'f', 0, G_OPTION_ARG_STRING, &appctx->output_file,
+      "Output Filename"
+      "\n\t1-Video Encoding: -f /opt/video.mp4"
+      "\n\t2-YUV dump: -f /opt/yuv_dump%d.yuv" },
+    { NULL }
+    };
 
   // Parse command line entries.
-  if ((ctx = g_option_context_new ("gst-camera-single-stream-example")) != NULL) {
-    g_option_context_set_summary (ctx, GST_APP_SUMMARY);
+  if ((ctx = g_option_context_new (GST_APP_SUMMARY)) != NULL) {
     gboolean success = FALSE;
     GError *error = NULL;
 
@@ -286,13 +385,16 @@ main (gint argc, gchar *argv[])
       g_printerr ("\n Failed to parse command line options: %s!\n",
           GST_STR_NULL (error->message));
       g_clear_error (&error);
+      gst_app_context_free (appctx);
       return -1;
     } else if (!success && (NULL == error)) {
       g_printerr ("\n Initializing: Unknown error!\n");
+      gst_app_context_free (appctx);
       return -1;
     }
   } else {
     g_printerr ("\n Failed to create options context!\n");
+    gst_app_context_free (appctx);
     return -1;
   }
 
@@ -301,8 +403,7 @@ main (gint argc, gchar *argv[])
 
   g_set_prgname ("gst-camera-single-stream-example");
 
-  // Check the Input value
-  if (appctx->sinktype > GST_YUVDUMP) {
+  if (appctx->sinktype > GST_RTSP_STREAMING) {
     g_printerr ("\n Invalid user Input:gst-camera-single-stream-example --help \n");
     gst_app_context_free (appctx);
     return -1;
@@ -312,6 +413,7 @@ main (gint argc, gchar *argv[])
   pipeline = gst_pipeline_new ("pipeline");
   if (!pipeline) {
     g_printerr ("\n failed to create pipeline.\n");
+    gst_app_context_free (appctx);
     return -1;
   }
 

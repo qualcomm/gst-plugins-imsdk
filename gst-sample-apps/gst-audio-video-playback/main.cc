@@ -29,14 +29,28 @@
 
 #include <glib-unix.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include <gst/gst.h>
 
 #include "include/gst_sample_apps_utils.h"
 
-#define GST_APP_SUMMARY \
-  "This app enables the user to Decode a Audio Video mp4 file show the output \
-  on the display E.g: gst-audio-video-playback -v 1 -a 1 -i <filename>.mp4"
+#define GST_APP_SUMMARY "This application designed to handle the playback " \
+  "of audio and video streams. \n " \
+  "This includes support for various audio and video formats. \n" \
+  "\nCommand:\n" \
+  "If codec type is AVC and FLAC:\n" \
+  "  gst-audio-video-playback -v 1 -a 1 -i <avc_flac_file>.mp4 \n" \
+  "If codec type is HEVC and FLAC:\n" \
+  "  gst-audio-video-playback -v 2 -a 1 -i <hevc_flac_file>.mp4 \n" \
+  "If codec type is AVC and MP3:\n" \
+  "  gst-audio-video-playback -v 1 -a 2 -i <avc_mp3_file>.mp4 \n" \
+  "If codec type is HEVC and MP3:\n" \
+  "  gst-audio-video-playback -v 2 -a 2 -i <hevc_mp3_file>.mp4 \n" \
+  "\nOutput:\n" \
+  "  Upon executing the application, user will observe AVC/HEVC video " \
+  "content displayed on the screen, \n" \
+  "with either FLAC or MP3 audio being played through the device speaker." \
 
 // Structure to hold the application context
 struct GstVideoAppContext : GstAppContext {
@@ -284,6 +298,11 @@ main (gint argc, gchar *argv[])
     return -1;
   }
 
+  // Setting Display environment variables
+  g_print ("Setting Display environment \n");
+  setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
+
   // Create the application context
   appctx = gst_app_context_new ();
   if (NULL == appctx) {
@@ -296,12 +315,10 @@ main (gint argc, gchar *argv[])
     { "video_codec", 'v', 0,
       G_OPTION_ARG_INT, &appctx->vc_format,
       "Select Video codec type -v 1 (AVC) or -v 2 (HEVC)"
-      "  e.g. -v 1 or -v 2 "
     },
     { "audio_codec", 'a', 0,
       G_OPTION_ARG_INT, &appctx->ac_format,
       "Select Audio codec type -a 1 (FLAC) or -a 2 (MP3)"
-      "  e.g. -a 1 or -a 2"
     },
     { "input_file", 'i', 0,
       G_OPTION_ARG_FILENAME, &appctx->input_file,
@@ -312,11 +329,10 @@ main (gint argc, gchar *argv[])
   };
 
   // Parse the command line entries
-  if ((ctx = g_option_context_new ("gst-audio-video-playback")) != NULL) {
+  if ((ctx = g_option_context_new (GST_APP_SUMMARY)) != NULL) {
     gboolean success = FALSE;
     GError *error = NULL;
 
-    g_option_context_set_summary (ctx, GST_APP_SUMMARY);
     g_option_context_add_main_entries (ctx, entries, NULL);
     g_option_context_add_group (ctx, gst_init_get_option_group ());
 

@@ -181,17 +181,17 @@ gst_ml_tflite_delegate_get_type (void)
         "No delegate, CPU is used for all operations", "none"
     },
     { GST_ML_TFLITE_DELEGATE_NNAPI_DSP,
-        "Run the processing on the DSP through the Android NN API. "
+        "Run the processing on the DSP through NN API. "
         "Unsupported operations will fallback on NPU, GPU or CPU",
         "nnapi-dsp"
     },
     { GST_ML_TFLITE_DELEGATE_NNAPI_GPU,
-        "Run the processing on the GPU through the Android NN API. "
+        "Run the processing on the GPU through NN API. "
         "Unsupported operations will fallback on DSP, NPU or CPU",
         "nnapi-gpu"
     },
     { GST_ML_TFLITE_DELEGATE_NNAPI_NPU,
-        "Run the processing on the NPU through the Android NN API. "
+        "Run the processing on the NPU through NN API. "
         "Unsupported operations will fallback on DSP, GPU or CPU",
         "nnapi-npu"
     },
@@ -273,11 +273,11 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
       options.use_burst_computation  = true;
 #endif
       if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
-        GST_WARNING ("Failed to create Android NN Framework DSP delegate!");
+        GST_WARNING ("Failed to create NN Framework DSP delegate!");
         break;
       }
 
-      GST_INFO ("Using Android NN Framework DSP delegate");
+      GST_INFO ("Using NN Framework DSP delegate");
       return delegate;
     }
     case GST_ML_TFLITE_DELEGATE_NNAPI_GPU:
@@ -295,11 +295,11 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
       options.allow_fp16             = true;
 #endif
       if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
-        GST_WARNING ("Failed to create Android NN Framework DSP delegate!");
+        GST_WARNING ("Failed to create NN Framework DSP delegate!");
         break;
       }
 
-      GST_INFO ("Using Android NN Framework GPU delegate");
+      GST_INFO ("Using NN Framework GPU delegate");
       return delegate;
     }
     case GST_ML_TFLITE_DELEGATE_NNAPI_NPU:
@@ -315,11 +315,11 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
       options.use_burst_computation  = true;
 #endif
       if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
-        GST_WARNING ("Failed to create Android NN Framework NPU delegate!");
+        GST_WARNING ("Failed to create NN Framework NPU delegate!");
         break;
       }
 
-      GST_INFO ("Using Android NN Framework NPU delegate");
+      GST_INFO ("Using NN Framework NPU delegate");
       return delegate;
     }
 #ifdef HAVE_HEXAGON_DELEGATE_H

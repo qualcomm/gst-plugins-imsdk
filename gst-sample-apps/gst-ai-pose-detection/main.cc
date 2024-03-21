@@ -343,8 +343,8 @@ main (gint argc, gchar * argv[])
   guint intrpt_watch_id = 0;
 
   // Set Display environment variables
-  setenv("XDG_RUNTIME_DIR", "/run/user/root", 0);
-  setenv("WAYLAND_DISPLAY", "wayland-1", 0);
+  setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
   // Structure to define the user options selection
   GOptionEntry entries[] = {
@@ -400,6 +400,16 @@ main (gint argc, gchar * argv[])
 
   // Set model path for execution
   model_path = model_path ? model_path: DEFAULT_TFLITE_POSE_DETECTION_MODEL;
+
+  if (!file_exists (model_path)) {
+    g_print ("Invalid model file path: %s\n", model_path);
+    return -EINVAL;
+  }
+
+  if (!file_exists (labels_path)) {
+    g_print ("Invalid labels file path: %s\n", labels_path);
+    return -EINVAL;
+  }
 
   g_print ("Running app with model: %s and labels: %s\n",
       model_path, labels_path);

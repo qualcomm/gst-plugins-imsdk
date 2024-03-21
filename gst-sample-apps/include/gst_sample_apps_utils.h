@@ -133,13 +133,14 @@ typedef enum {
  * @GST_ADECODE_NONE: Default Audio Decode Codec Type.
  * @GST_ADECODE_MP3: Audio mp3 Codec Type.
  * @GST_ADECODE_WAV: Audio wav Codec Type.
- *
+ * @GST_ADECODE_FLAC: Audio flac Codec Type.
  * Type of Audio Decode Codec.
  */
 enum GstAudioDecodeCodecType {
   GST_ADECODE_NONE,
   GST_ADECODE_MP3,
   GST_ADECODE_WAV,
+  GST_ADECODE_FLAC,
 };
 
 /**
@@ -187,13 +188,16 @@ enum GstAudioPlayerCodecType {
 /**
  * GstSinkType:
  * @GST_WAYLANDSINK: Waylandsink Type.
- * @GST_YUVDUMP  : YUV Filesink Type.
- *
+ * @GST_VIDEO_ENCODE : Video Encode Type.
+ * @GST_YUV_DUMP: YUV Filesink Type.
+ * @GST_RTSP_STREAMING : RTSP streaming Type.
  * Type of App Sink.
  */
 enum GstSinkType {
   GST_WAYLANDSINK,
-  GST_YUVDUMP,
+  GST_VIDEO_ENCODE,
+  GST_YUV_DUMP,
+  GST_RTSP_STREAMING,
 };
 
 /**
@@ -248,6 +252,66 @@ enum GstAppComposerOutput {
   GST_APP_OUTPUT_WAYLANDSINK,
   GST_APP_OUTPUT_QTIVCOMPOSER,
 };
+
+/*
+ * Check if File Exists
+ *
+ * @param path file path to check for existence
+ * @result TRUE if file exists and can be accessed, FALSE otherwise
+ */
+static gboolean
+file_exists (const gchar * path)
+{
+  FILE *fp = fopen (path, "r+");
+  if (fp) {
+    fclose (fp);
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/*
+ * Check if File Location is Valid
+ *
+ * @param path file path to check for valid path
+ * @result TRUE if path exists and can be accessed, FALSE otherwise
+ */
+static gboolean
+file_location_exists (const gchar * path)
+{
+  FILE *fp = fopen (path, "ab");
+  if (fp) {
+    fclose (fp);
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/*
+ * Get Active Display Mode
+ *
+ * @param width fill display current width
+ * @param height fill display current height
+ * @result TRUE if api is able to provide information, FALSE otherwise
+ */
+static gboolean
+get_active_display_mode (gint * width, gint * height)
+{
+  gchar line[128];
+  FILE *fp = fopen ("/sys/class/drm/card0-DSI-1/modes", "rb");
+  if (!fp) {
+    return FALSE;
+  }
+
+  fgets (line, 128, fp);
+  fclose (fp);
+  if (strlen (line) > 0) {
+    if (2 == sscanf (line, "%dx%d", width, height)) {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
 
 /**
  * GstFlipVideoType:
@@ -387,7 +451,9 @@ state_changed_cb (GstBus * bus, GstMessage * message, gpointer userdata)
 
   gst_message_parse_state_changed (message, &old, &new_st, &pending);
 
-  g_print("state change: %d -> %d\n", old, new_st);
+  g_print ("\nPipeline state changed from %s to %s:\n",
+      gst_element_state_get_name (old),
+      gst_element_state_get_name (new_st));
 
   if ((new_st == GST_STATE_PAUSED) && (old == GST_STATE_READY) &&
       (pending == GST_STATE_VOID_PENDING)) {

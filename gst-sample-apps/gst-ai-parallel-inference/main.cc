@@ -47,7 +47,7 @@
  */
 #define DEFAULT_SNPE_OBJECT_DETECTION_MODEL "/opt/yolov5.dlc"
 #define DEFAULT_OBJECT_DETECTION_LABELS "/opt/yolov5.labels"
-#define DEFAULT_TFLITE_CLASSIFICATION_MODEL "/opt/mobilenetv2.tflite"
+#define DEFAULT_TFLITE_CLASSIFICATION_MODEL "/opt/inceptionv3.tflite"
 #define DEFAULT_CLASSIFICATION_LABELS "/opt/classification.labels"
 #define DEFAULT_TFLITE_POSE_DETECTION_MODEL "/opt/posenet_mobilenet_v1.tflite"
 #define DEFAULT_POSE_DETECTION_LABELS "/opt/posenet_mobilenet_v1.labels"
@@ -160,6 +160,26 @@ help (const gchar *app_name)
   g_print ("\nTo use your own model and labels replace at the default paths\n");
 }
 
+/*
+ * Update Window Grid
+ * Change position of grid as per display resolution
+ */
+static void
+update_window_grid ()
+{
+  gint width, height;
+  if (get_active_display_mode (&width, &height)) {
+    gint win_w = width/2;
+    gint win_h = height/2;
+    pipeline_data[0].position = {0, 0, win_w, win_h};
+    pipeline_data[1].position = {win_w, 0, win_w, win_h};
+    pipeline_data[2].position = {0, win_h, win_w, win_h};
+    pipeline_data[3].position = {win_w, win_h, win_w, win_h};
+  } else {
+    g_warning ("Failed to get active display mode, using 1080p default config");
+  }
+}
+
 /**
  * Create GST pipeline: has 3 main steps
  * 1. Create all elements/GST Plugins
@@ -187,6 +207,8 @@ create_pipe (GstAppContext * appctx)
   gint width = DEFAULT_CAMERA_OUTPUT_WIDTH;
   gint height = DEFAULT_CAMERA_OUTPUT_HEIGHT;
   gint framerate = DEFAULT_CAMERA_FRAME_RATE;
+
+  update_window_grid();
 
   // 1. Create the elements or Plugins
   // Create qtiqmmfsrc plugin for camera stream
@@ -374,7 +396,7 @@ create_pipe (GstAppContext * appctx)
       case GST_CLASSIFICATION:
         module_id = get_enum_value (qtimlvpostproc[i], "module", "mobilenet");
         if (module_id != -1) {
-          g_object_set (G_OBJECT (qtimlvpostproc[i]), "threshold", 60.0,
+          g_object_set (G_OBJECT (qtimlvpostproc[i]), "threshold", 50.0,
               "results", 2, "module", module_id, NULL);
         } else {
           g_printerr ("Module mobilenet not available in qtimlvclassifivation\n");
@@ -642,8 +664,8 @@ main (gint argc, gchar * argv[])
   }
 
   // Set Display environment variables
-  setenv("XDG_RUNTIME_DIR", "/run/user/root", 0);
-  setenv("WAYLAND_DISPLAY", "wayland-1", 0);
+  setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
   // Initialize GST library.
   gst_init (&argc, &argv);

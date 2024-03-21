@@ -33,7 +33,7 @@
  * Default models and labels path, if not provided by user
  */
 #define DEFAULT_SNPE_CLASSIFICATION_MODEL "/opt/inceptionv3.dlc"
-#define DEFAULT_TFLITE_CLASSIFICATION_MODEL "/opt/mobilenetv2.tflite"
+#define DEFAULT_TFLITE_CLASSIFICATION_MODEL "/opt/inceptionv3.tflite"
 #define DEFAULT_CLASSIFICATION_LABELS "/opt/classification.labels"
 
 /**
@@ -249,7 +249,7 @@ create_pipe (GstAppContext * appctx, GstModelType model_type,
   module_id = get_enum_value (qtimlvclassification, "module", "mobilenet");
   if (module_id != -1) {
     g_object_set (G_OBJECT (qtimlvclassification),
-        "threshold", 60.0, "results", 2,
+        "threshold", 50.0, "results", 2,
         "module", module_id, "labels", labels_path, NULL);
   } else {
     g_printerr ("Module mobilenet is not available in qtimlvclassification.\n");
@@ -401,8 +401,8 @@ main (gint argc, gchar * argv[])
   guint intrpt_watch_id = 0;
 
   // Set Display environment variables
-  setenv("XDG_RUNTIME_DIR", "/run/user/root", 0);
-  setenv("WAYLAND_DISPLAY", "wayland-1", 0);
+  setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
   // Structure to define the user options selection
   GOptionEntry entries[] = {
@@ -478,6 +478,16 @@ main (gint argc, gchar * argv[])
   // Set model path for execution
   model_path = model_path ? model_path: (model_type == GST_MODEL_TYPE_SNPE ?
       DEFAULT_SNPE_CLASSIFICATION_MODEL : DEFAULT_TFLITE_CLASSIFICATION_MODEL);
+
+  if (!file_exists (model_path)) {
+    g_print ("Invalid model file path: %s\n", model_path);
+    return -EINVAL;
+  }
+
+  if (!file_exists (labels_path)) {
+    g_print ("Invalid labels file path: %s\n", labels_path);
+    return -EINVAL;
+  }
 
   g_print ("Running app with model: %s and labels: %s\n",
       model_path, labels_path);

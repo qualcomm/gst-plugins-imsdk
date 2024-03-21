@@ -1592,26 +1592,26 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
   g_object_class_install_property (gobject, PROP_CAMERA_VIDEO_METADATA,
       g_param_spec_pointer ("video-metadata", "Video Metadata",
           "Settings and parameters used for submitting capture requests for "
-          "video streams in the form of Android CameraMetadata object. "
+          "video streams in the form of CameraMetadata object. "
           "Caller is responsible for releasing the object.",
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_CAMERA_IMAGE_METADATA,
       g_param_spec_pointer ("image-metadata", "Image Metadata",
           "Settings and parameters used for submitting capture requests for high "
-          "quality images via the capture-image signal in the form of Android "
+          "quality images via the capture-image signal in the form of "
           "CameraMetadata object. Caller is responsible for releasing the object.",
           G_PARAM_READABLE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_CAMERA_STATIC_METADATA,
       g_param_spec_pointer ("static-metadata", "Static Metadata",
-          "Supported camera capabilities as Android CameraMetadata object. "
+          "Supported camera capabilities as CameraMetadata object. "
           "Caller is responsible for releasing the object.",
           G_PARAM_READABLE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_CAMERA_SESSION_METADATA,
       g_param_spec_pointer ("session-metadata", "Session Metadata",
-          "Settings parameters used for configure stream as Android"
+          "Settings parameters used for configure stream as "
           "CameraMetadata object. Caller is responsible for releasing the object.",
           G_PARAM_WRITABLE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));

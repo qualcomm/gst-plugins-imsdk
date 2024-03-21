@@ -20,17 +20,36 @@
 * gst-activate-deactivate-streams-runtime-example --help
 *
 * Parameters:
-* -u - Usecase (Accepted values: "Basic" or "Full", default is "Basic")
-* -o - Output (Accepted values: "File" or "Display", default is "File")
+* -u - Usecase (Accepted values: "Basic" or "Full")
+* -o - Output (Accepted values: "File" or "Display", default is "Display")
 *
 */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <glib-unix.h>
 #include <gst/gst.h>
 #include <pthread.h>
 
 #include "include/gst_sample_apps_utils.h"
+
+#define GST_APP_SUMMARY \
+  "This application demonstrates two major usecases i.e Basic and Full." \
+  "\n Basic about activate/deactivate multiple streams without entering NULL state"\
+  "\n Full about activate/deactivate multiple streams by entering into NULL state" \
+  "\n Command:\n" \
+  "\n Basic usecase and stream on waylandsink:"        \
+  "\n gst-activate-deactivate-streams-runtime-example -u Basic -o Display" \
+  "\n Basic usecase and encode to mp4 file:"        \
+  "\n gst-activate-deactivate-streams-runtime-example -u Basic -o File" \
+  "\n Full usecase and stream on waylandsink:"        \
+  "\n gst-activate-deactivate-streams-runtime-example -u Full -o Display" \
+  "\n Full usecase and encode to mp4 file:"        \
+  "\n gst-activate-deactivate-streams-runtime-example -u Full -o Display" \
+  "\n Output:\n" \
+  "\n Upon executing the application user can find:" \
+  "\n if usecase is display then streams on waylandsink" \
+  "\n if usecase is file then encoded mp4 files on the device"
 
 typedef struct _GstStreamInf GstStreamInf;
 
@@ -815,7 +834,7 @@ link_unlink_streams_usecase_full (GstActivateDeactivateAppContext * appctx)
 {
   // Create a 720p stream and link it to the pipeline
   g_print ("Create 720p stream\n\n");
-  GstStreamInf *stream_inf_1 = create_stream (appctx, TRUE, 0, 0, 1280, 720);
+  GstStreamInf *stream_inf_1 = create_stream (appctx, FALSE, 0, 0, 1280, 720);
 
   // Create a 480p stream and link it to the pipeline
   g_print ("Create 480p stream\n\n");
@@ -828,11 +847,11 @@ link_unlink_streams_usecase_full (GstActivateDeactivateAppContext * appctx)
     wait_for_state_change (appctx);
   }
 
-  g_print ("Unlink 720p stream\n\n");
-  unlink_stream (appctx, stream_inf_1);
-
   g_print ("Unlink 480p stream\n\n");
   unlink_stream (appctx, stream_inf_2);
+
+  g_print ("link 480p stream\n\n");
+  link_stream (appctx, 650, 0, stream_inf_2);
 
   // Set the pipeline in PLAYING state and all streams will start streaming.
   g_print ("Set pipeline to GST_STATE_PLAYING state\n");
@@ -841,18 +860,6 @@ link_unlink_streams_usecase_full (GstActivateDeactivateAppContext * appctx)
     wait_for_state_change (appctx);
   }
   g_print ("Set pipeline to GST_STATE_PLAYING state done\n");
-
-  sleep (10);
-
-  // Link a 720p stream which is already created earlier
-  g_print ("Link 720p stream\n\n");
-  link_stream (appctx, 0, 0, stream_inf_1);
-
-  sleep (10);
-
-  // Link a 480p stream which is already created earlier
-  g_print ("Link 480p stream\n\n");
-  link_stream (appctx, 650, 0, stream_inf_2);
 
   sleep (10);
 
@@ -873,7 +880,6 @@ link_unlink_streams_usecase_full (GstActivateDeactivateAppContext * appctx)
       gst_element_set_state (appctx->pipeline, GST_STATE_PLAYING)) {
     wait_for_state_change (appctx);
   }
-
   sleep (10);
 
   g_print ("Unlink 720p stream\n\n");
@@ -886,30 +892,7 @@ link_unlink_streams_usecase_full (GstActivateDeactivateAppContext * appctx)
 
   sleep (10);
 
-  // Link a 720p stream which is already created earlier
-  g_print ("Link 720p stream\n\n");
-  link_stream (appctx, 0, 0, stream_inf_1);
-
-  sleep (10);
-
-  // Link a 480p stream which is already created earlier
-  g_print ("Link 480p stream\n\n");
-  link_stream (appctx, 650, 0, stream_inf_2);
-
-  sleep (10);
-
-  g_print ("Unlink 480p stream\n\n");
-  unlink_stream (appctx, stream_inf_2);
-
-  sleep (10);
-
-  // Link a 480p stream which is already created earlier
-  g_print ("Link 480p stream\n\n");
-  link_stream (appctx, 650, 0, stream_inf_2);
-
-  sleep (10);
-
-  // Set the pipeline state to NULL and stop all streams
+// Set the pipeline state to NULL and stop all streams
   gst_element_send_event (appctx->pipeline, gst_event_new_eos ());
   wait_for_eos (appctx);
 
@@ -953,6 +936,11 @@ main (gint argc, gchar * argv[])
   guint intrpt_watch_id = 0;
   gboolean ret = -1;
 
+  // Setting Display environment variables
+  g_print ("Setting Display environment \n");
+  setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
+
   // Create the application context
   appctx = gst_app_context_new ();
   if (appctx == NULL) {
@@ -975,9 +963,7 @@ main (gint argc, gchar * argv[])
   };
 
   // Parse command line entries.
-  if ((ctx = g_option_context_new (
-      "Verifies that multiple streams can run simultaneously "
-      "without interfering with each other")) != NULL) {
+  if ((ctx = g_option_context_new (GST_APP_SUMMARY)) != NULL) {
     gboolean success = FALSE;
     GError *error = NULL;
 
@@ -1016,12 +1002,13 @@ main (gint argc, gchar * argv[])
     g_print ("Usecase Basic\n");
   }
 
-  // By default output is file
-  if (!g_strcmp0 (appctx->output, "Display")) {
+  // By default output is display
+  if (!g_strcmp0 (appctx->output, "File")) {
+    appctx->use_display = FALSE;
+    g_print ("Output to file\n");
+  } else {
     appctx->use_display = TRUE;
     g_print ("Output to display\n");
-  } else {
-    g_print ("Output to file\n");
   }
 
   // Initialize GST library.
