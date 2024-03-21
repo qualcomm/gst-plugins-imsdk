@@ -561,8 +561,8 @@ create_pipe (GstAppContext * appctx)
       case GST_CLASSIFICATION:
         g_value_init (&position, GST_TYPE_ARRAY);
         g_value_init (&dimension, GST_TYPE_ARRAY);
-        pos_vals[0] = 0; pos_vals[1] = 0;
-        dim_vals[0] = 500; dim_vals[1] = 250;
+        pos_vals[0] = 30; pos_vals[1] = 45;
+        dim_vals[0] = 320; dim_vals[1] = 180;
         composer_sink = gst_element_get_static_pad (
             qtivcomposer[GST_CLASSIFICATION], "sink_1");
         if (!composer_sink) {

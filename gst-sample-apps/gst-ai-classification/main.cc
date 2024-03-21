@@ -331,8 +331,8 @@ create_pipe (GstAppContext * appctx, GstModelType model_type,
   g_value_init (&position, GST_TYPE_ARRAY);
   g_value_init (&dimension, GST_TYPE_ARRAY);
 
-  pos_vals[0] = 0;
-  pos_vals[1] = 0;
+  pos_vals[0] = 30;
+  pos_vals[1] = 30;
   dim_vals[0] = 320;
   dim_vals[1] = 180;
   build_pad_property (&position, pos_vals, 2);

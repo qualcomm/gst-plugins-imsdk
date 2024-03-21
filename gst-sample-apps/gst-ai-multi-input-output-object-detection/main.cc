@@ -9,14 +9,14 @@
  *
  * Description:
  * The application takes video stream from camera/file/rtsp and maximum of
- * 9 streams in parallel and give to Yolo models for object detection and
+ * 6 streams in parallel and give to Yolo models for object detection and
  * AI Model output (Labels & Bounding Boxes) overlayed on incoming videos
  * are arranged in a grid pattern to be displayed on HDMI Screen, save as
  * h264 encoded mp4 file or streamed over rtsp server running on device.
  * Any combination of inputs and outputs can be configured with commandline
  * options. Camera default resolution is set to 1280x720. Display will be
  * full screen for 1 input stream, divided into 2x2 grid for 2-4 input streams
- * and divided into 3x3 grid for 5-9 streams.
+ * and divided into 3x3 grid for 5-6 streams.
  *
  * Pipeline for Gstreamer:
  * Source -> tee (SPLIT)
@@ -1273,6 +1273,11 @@ main (gint argc, gchar * argv[])
     g_printerr ("use only same kind of input, like %d camera or %d files or"
         " %d rtsp inputs\n", MAX_CAMSRCS, MAX_FILESRCS, MAX_RTSPSRCS);
     return -1;
+  }
+
+  if (options.camera_id < -1 || options.camera_id > 1) {
+    g_printerr ("invalid camera id: %d\n", options.camera_id);
+    return -EINVAL;
   }
 
   if (options.input_count == 0 ||
