@@ -402,7 +402,7 @@ main (gint argc, gchar * argv[])
   const gchar *labels_path = NULL;
   const gchar *app_name = NULL;
   GstAppContext appctx = {};
-  GstYoloModelType model_type = GST_YOLO_TYPE_V5;
+  GstYoloModelType model_type = GST_YOLO_TYPE_NAS;
   gboolean ret = FALSE;
   gchar help_description[1024];
   guint intrpt_watch_id = 0;
@@ -415,7 +415,8 @@ main (gint argc, gchar * argv[])
   GOptionEntry entries[] = {
     { "model-type", 't', 0, G_OPTION_ARG_INT,
       &model_type,
-      "Yolo Model version to Execute: Yolov5 (1), Yolov8 (2), YoloNas (3)",
+      "Yolo Model version to Execute: Yolov5 (1), Yolov8 (2), YoloNas (3)"
+      "[Default]",
       "1 or 2 or 3"
     },
     { "model", 'm', 0, G_OPTION_ARG_STRING,

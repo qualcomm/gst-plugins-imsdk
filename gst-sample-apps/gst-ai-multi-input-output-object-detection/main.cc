@@ -33,6 +33,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <glib-unix.h>
+
+#include <sys/resource.h>
+
 #include <gst/gst.h>
 #include <gst/video/video.h>
 
@@ -1103,9 +1106,24 @@ main (gint argc, gchar * argv[])
   const gchar *app_name = NULL;
   GstAppContext appctx = {};
   GstAppOptions options = {};
+  struct rlimit rl;
   guint intrpt_watch_id = 0;
   gboolean ret = FALSE;
   gchar help_description[1024];
+
+  // Define the new limit
+  rl.rlim_cur = 4096; // Soft limit
+  rl.rlim_max = 4096; // Hard limit
+
+  // Set the new limit
+  if (setrlimit (RLIMIT_NOFILE, &rl) != 0) {
+    g_printerr ("Failed to set setrlimit\n");
+  }
+
+  // Get the current limit
+  if (getrlimit (RLIMIT_NOFILE, &rl) != 0) {
+    g_printerr ("Failed to get getrlimit\n");
+  }
 
   // Set Display environment variables
   setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
