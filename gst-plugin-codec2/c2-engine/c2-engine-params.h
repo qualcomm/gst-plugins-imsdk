@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -112,8 +112,9 @@ enum {
   GST_C2_PARAM_OUT_CHANNELS_COUNT,   // guint32
   GST_C2_PARAM_IN_BITDEPTH,          // GstC2Bitdepth
   GST_C2_PARAM_OUT_BITDEPTH,         // GstC2Bitdepth
-  GST_C2_PARAM_IN_AAC_FORMAT,       // GstC2AACStreamFormat
+  GST_C2_PARAM_IN_AAC_FORMAT,        // GstC2AACStreamFormat
   GST_C2_PARAM_OUT_AAC_FORMAT,       // GstC2AACStreamFormat
+  GST_C2_PARAM_DOWN_SCALAR,          // GstC2Resolution
 };
 
 typedef enum {
