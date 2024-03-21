@@ -517,11 +517,20 @@ gst_ml_tflite_engine_new (GstStructure * settings)
   idx = engine->interpreter->inputs()[0];
 
   switch (engine->interpreter->tensor(idx)->type) {
+    case kTfLiteFloat16:
+      engine->ininfo->type = GST_ML_TYPE_FLOAT16;
+      break;
     case kTfLiteFloat32:
       engine->ininfo->type = GST_ML_TYPE_FLOAT32;
       break;
     case kTfLiteInt32:
       engine->ininfo->type = GST_ML_TYPE_INT32;
+      break;
+    case kTfLiteUInt32:
+      engine->ininfo->type = GST_ML_TYPE_UINT32;
+      break;
+    case kTfLiteInt8:
+      engine->ininfo->type = GST_ML_TYPE_INT8;
       break;
     case kTfLiteUInt8:
       engine->ininfo->type = GST_ML_TYPE_UINT8;
@@ -535,11 +544,20 @@ gst_ml_tflite_engine_new (GstStructure * settings)
   idx = engine->interpreter->outputs()[0];
 
   switch (engine->interpreter->tensor(idx)->type) {
+    case kTfLiteFloat16:
+      engine->outinfo->type = GST_ML_TYPE_FLOAT16;
+      break;
     case kTfLiteFloat32:
       engine->outinfo->type = GST_ML_TYPE_FLOAT32;
       break;
     case kTfLiteInt32:
       engine->outinfo->type = GST_ML_TYPE_INT32;
+      break;
+    case kTfLiteUInt32:
+      engine->outinfo->type = GST_ML_TYPE_UINT32;
+      break;
+    case kTfLiteInt8:
+      engine->outinfo->type = GST_ML_TYPE_INT8;
       break;
     case kTfLiteUInt8:
       engine->outinfo->type = GST_ML_TYPE_UINT8;

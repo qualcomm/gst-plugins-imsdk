@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -54,7 +54,7 @@ G_DEFINE_TYPE (GstMLAic, gst_ml_aic, GST_TYPE_ELEMENT);
 #define DEFAULT_PROP_MIN_BUFFERS   24
 #define DEFAULT_PROP_MAX_BUFFERS   24
 
-#define GST_ML_AIC_TENSOR_TYPES "{ UINT8, INT32, FLOAT32 }"
+#define GST_ML_AIC_TENSOR_TYPES "{ INT8, UINT8, INT32, FLOAT16, FLOAT32 }"
 
 #define GST_ML_AIC_CAPS                        \
     "neural-network/tensors, "                 \
