@@ -245,8 +245,6 @@ gst_ml_snpe_engine_new (gchar * model, GstMLSnpeDelegate delegate,
   for (idx = 0; idx < g_list_length (outputs_list); idx++)
     outputs.append ((const gchar *) g_list_nth_data (outputs_list, idx));
 
-  g_list_free_full (outputs_list, (GDestroyNotify) g_free);
-
   if (is_tensor)
     builder.setOutputTensors(outputs).setRuntimeProcessorOrder(rtlist);
   else
