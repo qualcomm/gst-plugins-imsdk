@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -118,7 +118,7 @@ G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
     "video/x-raw(" GST_CAPS_FEATURE_MEMORY_GBM "), "              \
     "format = (string) " GST_ML_VIDEO_FORMATS
 
-#define GST_ML_TENSOR_TYPES "{ UINT8, INT32, FLOAT16, FLOAT32 }"
+#define GST_ML_TENSOR_TYPES "{ INT8, UINT8, INT32, UINT32, FLOAT16, FLOAT32 }"
 
 #define GST_ML_VIDEO_CONVERTER_SRC_CAPS    \
     "neural-network/tensors, "             \
