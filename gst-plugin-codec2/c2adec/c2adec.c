@@ -36,46 +36,48 @@ GST_STATIC_PAD_TEMPLATE ("src",
 );
 
 static gboolean
-gst_c2_adec_setup_parameters (GstC2adecoder * c2adec, GstAudioInfo * info,
-    GstC2AACStreamFormat streamformat)
+gst_c2_adec_config (GstC2adecoder *c2adec)
 {
   gboolean success = FALSE;
+  gint rate = 0;
+  gint channels = 0;
+  GstAudioFormat out_format = GST_AUDIO_FORMAT_S16LE;
+  GstAudioChannelPosition pos[64] = { 0, };
+  GstAudioLayout layout = GST_AUDIO_LAYOUT_INTERLEAVED;
 
-  guint32 samplerate = info->rate;
-  guint32 channels = info->channels;
-  GstC2Bitdepth depth = GST_C2_PCM_16;
-
-  GST_INFO_OBJECT (c2adec, "samplerate - %d", samplerate);
-  GST_INFO_OBJECT (c2adec, "channels - %d", channels);
-  GST_INFO_OBJECT (c2adec, "streamformat - %d", streamformat);
-
-  success = gst_c2_engine_set_parameter (c2adec->engine,
-      GST_C2_PARAM_OUT_SAMPLE_RATE, GPOINTER_CAST (&samplerate));
+  success = gst_c2_engine_get_parameter (c2adec->engine,
+      GST_C2_PARAM_OUT_SAMPLE_RATE, GPOINTER_CAST (&rate));
   if (!success) {
-    GST_ERROR_OBJECT (c2adec, "Failed to set output samplerate parameter!");
+    GST_ERROR_OBJECT (c2adec, "Failed to get samplerate parameter!");
     return FALSE;
   }
 
-  success = gst_c2_engine_set_parameter (c2adec->engine,
+  success = gst_c2_engine_get_parameter (c2adec->engine,
       GST_C2_PARAM_OUT_CHANNELS_COUNT, GPOINTER_CAST (&channels));
   if (!success) {
-    GST_ERROR_OBJECT (c2adec, "Failed to set output channels parameter!");
+    GST_ERROR_OBJECT (c2adec, "Failed to get channels parameter!");
     return FALSE;
   }
 
-  success = gst_c2_engine_set_parameter (c2adec->engine,
-      GST_C2_PARAM_OUT_BITDEPTH, GPOINTER_CAST (&depth));
-  if (!success) {
-    GST_ERROR_OBJECT (c2adec, "Failed to set output depth parameter!");
+  gst_audio_info_set_format (&c2adec->ainfo, out_format,
+      rate, channels, pos);
+  c2adec->ainfo.layout = layout;
+
+  if (!gst_audio_decoder_set_output_format (GST_AUDIO_DECODER (c2adec),
+      &c2adec->ainfo)){
+    GST_ERROR_OBJECT (c2adec, "Failed to set output format!");
     return FALSE;
   }
 
-  success = gst_c2_engine_set_parameter (c2adec->engine,
-      GST_C2_PARAM_IN_AAC_FORMAT, GPOINTER_CAST (&streamformat));
-  if (!success) {
-    GST_ERROR_OBJECT (c2adec, "Failed to set input streamformat parameter!");
+  if (!gst_audio_decoder_negotiate (GST_AUDIO_DECODER (c2adec))) {
+    GST_ERROR_OBJECT (c2adec, "Failed to negotiate caps!");
     return FALSE;
   }
+
+  GST_DEBUG_OBJECT (c2adec, "Update rate - %d, channels - %d",
+      rate, channels);
+
+  c2adec->configured = TRUE;
 
   return TRUE;
 }
@@ -107,6 +109,18 @@ gst_c2_adec_buffer_available (GstBuffer * buffer, gpointer userdata)
     GST_WARNING_OBJECT (c2adec, "Buffer size is zero - skipping");
     gst_buffer_unref (buffer);
     gst_audio_decoder_finish_frame (GST_AUDIO_DECODER (c2adec), NULL, 1);
+    return;
+  }
+
+  // Config the output
+  // There is an issue that the aacparse reports half sample rate value
+  // and one channel (in case of two channels) for
+  // HE or HEv2 (high efficiency) format.
+  // To solve this issue we are using the automatic detection for sample rate
+  // and channels count in the decoder. At least one buffer needs to be decoded
+  // to be able to read the correct values.
+  if (!c2adec->configured && !gst_c2_adec_config (c2adec)) {
+    GST_ERROR_OBJECT (c2adec, "Config failed!");
     return;
   }
 
@@ -181,13 +195,12 @@ gst_c2_adec_set_format (GstAudioDecoder * decoder, GstCaps * caps)
   GstC2adecoder *c2adec = GST_C2_ADEC (decoder);
   GstStructure *structure = NULL;
   const gchar *name = "c2.qti.aac.hw.decoder", *string = NULL;
-  gint32 rate = 0;
-  gint32 channels = 0;
+  gint rate = 0;
+  gint channels = 0;
   gint sample_rate_idx;
   guint8 codec_data[2];
-  GstAudioFormat out_format = GST_AUDIO_FORMAT_S16LE;
-  GstAudioChannelPosition pos[64] = { 0, };
-  GstAudioLayout layout = GST_AUDIO_LAYOUT_INTERLEAVED;
+  gboolean success = FALSE;
+  GstC2Bitdepth depth = GST_C2_PCM_16;
   GstC2AACStreamFormat streamformat = GST_C2_AAC_PACKAGING_RAW;
 
   GST_DEBUG_OBJECT (c2adec, "Setting input caps: %" GST_PTR_FORMAT, caps);
@@ -239,27 +252,17 @@ gst_c2_adec_set_format (GstAudioDecoder * decoder, GstCaps * caps)
     gst_buffer_fill (c2adec->codec_data_buffer, 0, codec_data, 2);
   }
 
-  GST_DEBUG_OBJECT (c2adec, "rate - %d", rate);
-  GST_DEBUG_OBJECT (c2adec, "channels - %d", channels);
-
-  gst_audio_info_set_format (&c2adec->ainfo, out_format,
-      rate, channels, pos);
-  c2adec->ainfo.layout = layout;
-
-  GST_DEBUG_OBJECT (c2adec, "Setting output state caps: %" GST_PTR_FORMAT, caps);
-
-  if (!gst_audio_decoder_set_output_format (decoder, &c2adec->ainfo)){
-    GST_ERROR_OBJECT (c2adec, "Failed to set output format!");
+  success = gst_c2_engine_set_parameter (c2adec->engine,
+      GST_C2_PARAM_OUT_BITDEPTH, GPOINTER_CAST (&depth));
+  if (!success) {
+    GST_ERROR_OBJECT (c2adec, "Failed to set output depth parameter!");
     return FALSE;
   }
 
-  if (!gst_audio_decoder_negotiate (decoder)) {
-    GST_ERROR_OBJECT (c2adec, "Failed to negotiate caps!");
-    return FALSE;
-  }
-
-  if (!gst_c2_adec_setup_parameters (c2adec, &c2adec->ainfo, streamformat)) {
-    GST_ERROR_OBJECT (c2adec, "Failed to setup parameters!");
+  success = gst_c2_engine_set_parameter (c2adec->engine,
+      GST_C2_PARAM_IN_AAC_FORMAT, GPOINTER_CAST (&streamformat));
+  if (!success) {
+    GST_ERROR_OBJECT (c2adec, "Failed to set input streamformat parameter!");
     return FALSE;
   }
 
@@ -390,6 +393,7 @@ gst_c2_adec_init (GstC2adecoder * c2adec)
   c2adec->engine = NULL;
   c2adec->framenum = 0;
   c2adec->codec_data_buffer = NULL;
+  c2adec->configured = FALSE;
 
   gst_audio_decoder_set_drainable (GST_AUDIO_DECODER (c2adec), TRUE);
   gst_audio_decoder_set_needs_format (GST_AUDIO_DECODER (c2adec), TRUE);

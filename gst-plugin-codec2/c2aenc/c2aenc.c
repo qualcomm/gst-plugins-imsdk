@@ -233,7 +233,7 @@ gst_c2_aenc_set_format (GstAudioEncoder * encoder, GstAudioInfo * info)
   GstCaps *caps = NULL;
   GstStructure *structure = NULL;
   const gchar *name = NULL, *string = NULL;
-  GstC2Profile profile = GST_C2_PROFILE_INVALID;
+  GstC2Profile profile = GST_C2_PROFILE_AAC_LC;
   GstC2Level level = GST_C2_LEVEL_INVALID;
   gint sample_rate_idx;
   guint8 codec_data[2];
@@ -241,6 +241,9 @@ gst_c2_aenc_set_format (GstAudioEncoder * encoder, GstAudioInfo * info)
   gboolean success = FALSE;
   GstBuffer *codec_data_buffer;
   GstC2AACStreamFormat streamformat = GST_C2_AAC_PACKAGING_RAW;
+  gint mpegversion = 0;
+  guint audio_object_type = AOT_AAC_LC;
+  gint samples_in_buffer = SAMPLES_CNT_IN_BUFFER;
 
   if (!gst_audio_info_is_equal (info, &c2aenc->ainfo)) {
     if (!gst_c2_aenc_stop (encoder)) {
@@ -284,21 +287,6 @@ gst_c2_aenc_set_format (GstAudioEncoder * encoder, GstAudioInfo * info)
     g_return_val_if_fail (c2aenc->engine != NULL, FALSE);
   }
 
-  // Set the codec_data data according to AudioSpecificConfig,
-  // ISO/IEC 14496-3, 1.6.2.1
-  sample_rate_idx =
-      gst_codec_utils_aac_get_index_from_sample_rate (info->rate);
-  // LC profile only
-  codec_data[0] = ((0x02 << 3) | (sample_rate_idx >> 1));
-  codec_data[1] = ((sample_rate_idx & 0x01) << 7) | (info->channels << 3);
-  gst_codec_utils_aac_caps_set_level_and_profile (caps, codec_data, 2);
-
-  codec_data_buffer = gst_buffer_new_and_alloc (2);
-  gst_buffer_fill (codec_data_buffer, 0, codec_data, 2);
-  gst_structure_set (structure, "codec_data", GST_TYPE_BUFFER,
-      codec_data_buffer, NULL);
-  gst_buffer_unref (codec_data_buffer);
-
   gst_structure_set (structure, "rate", G_TYPE_INT, info->rate, NULL);
   gst_structure_set (structure, "channels", G_TYPE_INT, info->channels, NULL);
 
@@ -326,6 +314,23 @@ gst_c2_aenc_set_format (GstAudioEncoder * encoder, GstAudioInfo * info)
     }
   }
 
+  if (profile != GST_C2_PROFILE_INVALID) {
+    audio_object_type = gst_c2_utils_aac_profile_to_aot (profile);
+  }
+
+  // Set the codec_data data according to AudioSpecificConfig,
+  // ISO/IEC 14496-3, 1.6.2.1
+  sample_rate_idx =
+      gst_codec_utils_aac_get_index_from_sample_rate (info->rate);
+  codec_data[0] = ((audio_object_type << 3) | (sample_rate_idx >> 1));
+  codec_data[1] = ((sample_rate_idx & 0x01) << 7) | (info->channels << 3);
+
+  codec_data_buffer = gst_buffer_new_and_alloc (2);
+  gst_buffer_fill (codec_data_buffer, 0, codec_data, 2);
+  gst_structure_set (structure, "codec_data", GST_TYPE_BUFFER,
+      codec_data_buffer, NULL);
+  gst_buffer_unref (codec_data_buffer);
+
   success = gst_c2_engine_get_parameter (c2aenc->engine,
       GST_C2_PARAM_PROFILE_LEVEL, &param);
   if (!success) {
@@ -336,6 +341,7 @@ gst_c2_aenc_set_format (GstAudioEncoder * encoder, GstAudioInfo * info)
 
   GST_DEBUG_OBJECT (c2aenc, "profile - %d", profile);
   GST_DEBUG_OBJECT (c2aenc, "level - %d", level);
+  GST_DEBUG_OBJECT (c2aenc, "Audio object type - %d", audio_object_type);
 
   if (profile != GST_C2_PROFILE_INVALID)
     param = (param & 0xFFFF0000) + (profile & 0xFFFF);
@@ -355,10 +361,22 @@ gst_c2_aenc_set_format (GstAudioEncoder * encoder, GstAudioInfo * info)
     return FALSE;
   }
 
+  // Codec2 requires double buffer size in case of High efficiency profile
+  // 8192 bytes - 16bit/2ch, 4096 bytes - 16bit/1ch
+  if (profile == GST_C2_PROFILE_AAC_HE || profile == GST_C2_PROFILE_AAC_HE_PS) {
+    samples_in_buffer *= 2;
+  }
+
   if (gst_structure_has_name (structure, "audio/mpeg")) {
     if (profile != GST_C2_PROFILE_INVALID) {
       string = gst_c2_utils_aac_profile_to_string (profile);
-      gst_structure_set (structure, "profile", G_TYPE_STRING, string, NULL);
+      gst_structure_get_int (structure, "mpegversion", &mpegversion);
+      if (mpegversion == 4) {
+        gst_structure_set (structure, "base-profile", G_TYPE_STRING, string,
+            "profile", G_TYPE_STRING, string, NULL);
+      } else {
+        gst_structure_set (structure, "profile", G_TYPE_STRING, string, NULL);
+      }
     }
 
     if (level != GST_C2_LEVEL_INVALID) {
@@ -377,9 +395,9 @@ gst_c2_aenc_set_format (GstAudioEncoder * encoder, GstAudioInfo * info)
   }
 
   gst_audio_encoder_set_frame_samples_min (GST_AUDIO_ENCODER (encoder),
-      SAMPLES_CNT_IN_BUFFER);
+      samples_in_buffer);
   gst_audio_encoder_set_frame_samples_max (GST_AUDIO_ENCODER (encoder),
-      SAMPLES_CNT_IN_BUFFER);
+      samples_in_buffer);
   gst_audio_encoder_set_frame_max (GST_AUDIO_ENCODER (encoder), 1);
 
   if (!gst_audio_encoder_negotiate (encoder)) {

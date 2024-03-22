@@ -44,6 +44,8 @@ struct _GstC2adecoder {
   GstBuffer       *codec_data_buffer;
   /// Frame number counter
   guint64         framenum;
+  /// Output configured flag
+  gboolean        configured;
 
   /// Properties
 };
