@@ -55,16 +55,16 @@
 #define GST_APP_SUMMARY "This app enables the users to use single camera with" \
   " different outputs such as preview,encode,YUV Dump and RTSP streaming \n" \
   "\nCommand:\n" \
-  "\nForWaylandsink Preview:\n" \
+  "ForWaylandsink Preview:\n" \
   "  gst-camera-single-stream-example -o 0 -w 1920 -h 1080 \n" \
-  "\nFor Video Encoding:\n" \
+  "For Video Encoding:\n" \
   "  gst-camera-single-stream-example -o 1 -w 1920 -h 1080 "  \
   "--file_output=/opt/video.mp4" \
-  "\nFor YUV dump:\n" \
-  "  gst-camera-single-stream-example -o 2 -w 1920 -h 1080" \
+  "For YUV dump:\n" \
+  "  gst-camera-single-stream-example -o 2 -w 1920 -h 1080 " \
   "--file_output=/opt/file%d.yuv" \
   "\nFor RTSP STREAMING:(run the rtsp server or follow the docs steps ) \n" \
-  "  gst-camera-single-stream-example -o 3 -w 1920 -h 1080" \
+  "  gst-camera-single-stream-example -o 3 -w 1280 -h 720 " \
   "\nOutput:\n" \
   "  Upon execution, application will generates output as user selected."
 
@@ -174,16 +174,27 @@ create_pipe (GstCameraAppContext * appctx)
   qtiqmmfsrc = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
   capsfilter = gst_element_factory_make ("capsfilter", "capsfilter");
 
-  // Set the source elements capability
-  filtercaps = gst_caps_new_simple ("video/x-raw",
-      "format", G_TYPE_STRING, "NV12",
-      "width", G_TYPE_INT, appctx->width,
-      "height", G_TYPE_INT, appctx->height,
-      "framerate", GST_TYPE_FRACTION, 30, 1,
-      "compression", G_TYPE_STRING, "ubwc",
-      "interlace-mode", G_TYPE_STRING, "progressive",
-      "colorimetry", G_TYPE_STRING, "bt601",
-      NULL);
+  // Set the source elements capability and in case YUV dump disable UBWC
+  if (appctx->sinktype == GST_YUV_DUMP) {
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, "NV12",
+        "width", G_TYPE_INT, appctx->width,
+        "height", G_TYPE_INT, appctx->height,
+        "framerate", GST_TYPE_FRACTION, 30, 1,
+        "interlace-mode", G_TYPE_STRING, "progressive",
+        "colorimetry", G_TYPE_STRING, "bt601",
+        NULL);
+  } else {
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, "NV12",
+        "width", G_TYPE_INT, appctx->width,
+        "height", G_TYPE_INT, appctx->height,
+        "framerate", GST_TYPE_FRACTION, 30, 1,
+        "compression", G_TYPE_STRING, "ubwc",
+        "interlace-mode", G_TYPE_STRING, "progressive",
+        "colorimetry", G_TYPE_STRING, "bt601",
+        NULL);
+  }
 
   gst_caps_set_features (filtercaps, 0,
       gst_caps_features_new ("memory:GBM", NULL));
@@ -244,7 +255,7 @@ create_pipe (GstCameraAppContext * appctx)
     g_object_set (G_OBJECT (v4l2h264enc), "capture-io-mode", 5, NULL);
     g_object_set (G_OBJECT (v4l2h264enc), "output-io-mode", 5, NULL);
     fcontrols = gst_structure_from_string (
-        "fcontrols,video_bitrate=512000,video_bitrate_mode=0", NULL);
+        "fcontrols,video_bitrate=2000000,video_bitrate_mode=0", NULL);
     g_object_set (G_OBJECT (v4l2h264enc), "extra-controls", fcontrols, NULL);
 
     // Create h264parse element for parsing the stream
@@ -340,7 +351,6 @@ main (gint argc, gchar *argv[])
   guint intrpt_watch_id = 0;
 
   // Setting Display environment variables
-  g_print ("Setting Display environment \n");
   setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
   setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
@@ -358,7 +368,7 @@ main (gint argc, gchar *argv[])
     { "height", 'h', 0, G_OPTION_ARG_INT, &appctx->height, "height",
       "camera height" },
     { "output", 'o', 0, G_OPTION_ARG_INT, &appctx->sinktype,
-      "\t\t\t\t\t   sinktype",
+      "Sinktype"
       "\n\t0-WAYLANDSINK"
       "\n\t1-VIDEOENCODING"
       "\n\t2-YUVDUMP"

@@ -45,7 +45,7 @@
   "\n Full usecase and stream on waylandsink:"        \
   "\n gst-activate-deactivate-streams-runtime-example -u Full -o Display" \
   "\n Full usecase and encode to mp4 file:"        \
-  "\n gst-activate-deactivate-streams-runtime-example -u Full -o Display" \
+  "\n gst-activate-deactivate-streams-runtime-example -u Full -o File" \
   "\n Output:\n" \
   "\n Upon executing the application user can find:" \
   "\n if usecase is display then streams on waylandsink" \
@@ -937,7 +937,6 @@ main (gint argc, gchar * argv[])
   gboolean ret = -1;
 
   // Setting Display environment variables
-  g_print ("Setting Display environment \n");
   setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
   setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 

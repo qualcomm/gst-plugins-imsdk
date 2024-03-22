@@ -115,7 +115,7 @@ gst_app_context_free (GstAudioAppContext * appctx)
     appctx->pipeline = NULL;
   }
 
-  if (appctx->output_file != NULL)
+  if (appctx->output_file != NULL && appctx->output_file != DEFAULT_OUTPUT_FILENAME)
     g_free (appctx->output_file);
 
   // Finally, free the application context itself

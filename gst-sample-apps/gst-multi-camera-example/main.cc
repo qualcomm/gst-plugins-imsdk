@@ -458,7 +458,6 @@ main (gint argc, gchar *argv[])
   guint intrpt_watch_id = 0;
 
   // Setting Display environment variables
-  g_print ("Setting Display environment \n");
   setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
   setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 

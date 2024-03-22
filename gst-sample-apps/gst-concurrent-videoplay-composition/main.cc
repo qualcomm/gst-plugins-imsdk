@@ -199,13 +199,7 @@ main (gint argc, gchar *argv[])
     g_printerr ("Failed to set setrlimit\n");
   }
 
-  // Get the current limit
-  if (getrlimit(RLIMIT_NOFILE, &rl) != 0) {
-    g_printerr ("Failed to get getrlimit\n");
-  }
-
   // Setting Display environment variables
-  g_print ("Setting Display environment \n");
   setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
   setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
