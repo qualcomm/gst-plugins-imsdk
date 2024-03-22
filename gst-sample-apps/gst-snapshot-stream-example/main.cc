@@ -56,7 +56,7 @@
   "  gst-snapshot-stream-example -W 1280 -H 720 -w 3840 -h 2160 -c 5" \
   "\nOutput:\n" \
   "  Upon execution, the application will generate an output for preview " \
-  "on the display. \n Once the use case concludes, snapshot output files will" \
+  "on the display. \n  Once the use case concludes, snapshot output files will" \
   " be available at the '/opt/' directory."
 
 // Structure to hold the application context
@@ -252,7 +252,6 @@ main (gint argc, gchar * argv[])
   gboolean ret = -1;
 
   // Setting Display environment variables
-  g_print ("Setting Display environment \n");
   setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
   setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 

@@ -30,15 +30,16 @@
 
 #include "include/gst_sample_apps_utils.h"
 
-#define GST_APP_SUMMARY                                                       \
-  "This audio decode app enables the users to decode audio i.e wav "          \
-  "file or mp3 or flac file.\n"                                               \
+#define GST_APP_SUMMARY \
+  "This audio decoding application allows users to decode audio files " \
+  "such as MP3, WAV, or FLAC. \n" \
   "\nCommand \n" \
-  "For mp3: gst-audio-decode-example -i /opt/<filename>.mp3  -f 1 \n" \
-  "For wav: gst-audio-decode-example -i /opt/<filename>.wav  -f 2 \n" \
-  "For flac: gst-audio-decode-example -i /opt/<filename>.flac  -f 3" \
+  "  For mp3: gst-audio-decode-example -i /opt/<filename>.mp3  -f 1 \n" \
+  "  For wav: gst-audio-decode-example -i /opt/<filename>.wav  -f 2 \n" \
+  "  For flac: gst-audio-decode-example -i /opt/<filename>.flac  -f 3" \
   "\nOutput:\n" \
-  "\nUpon executing the application user can perceive the audio over speaker"
+  "\n  Upon executing the application user can perceive the audio over speaker"
+
 // Structure to hold the application context
 struct GstAudioAppContext : GstAppContext {
   gchar *input_file;

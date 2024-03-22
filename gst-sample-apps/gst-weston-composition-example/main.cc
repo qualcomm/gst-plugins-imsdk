@@ -218,20 +218,18 @@ create_pipe_waylandsink (GstComposeAppContext * appctx)
 
   // create the sink element for camera feed and set the position and dimensions
   waylandsink_cam = gst_element_factory_make ("waylandsink", "waylandsink_cam");
-  g_object_set (G_OBJECT (waylandsink_cam), "async", true, NULL);
-  g_object_set (G_OBJECT (waylandsink_cam), "sync", false, NULL);
 
   // Camera preview will start from top left corner
   g_object_set (G_OBJECT (waylandsink_cam), "x", 0, NULL);
   g_object_set (G_OBJECT (waylandsink_cam), "y", 0, NULL);
   if (appctx->composition == GST_PIP_COMPOSE) {
-    // For PIP camera preview will be in small window: dimesion are 320*240
-    g_object_set (G_OBJECT (waylandsink_cam), "width", 320, NULL);
-    g_object_set (G_OBJECT (waylandsink_cam), "height", 240, NULL);
+    // For PIP camera preview will be in small window: dimesion are 480*270
+    g_object_set (G_OBJECT (waylandsink_cam), "width", 480, NULL);
+    g_object_set (G_OBJECT (waylandsink_cam), "height", 270, NULL);
   } else {
     // For SIDE_BY_SIDE we divide screen into two euqal parts
-    g_object_set (G_OBJECT (waylandsink_cam), "width", 640, NULL);
-    g_object_set (G_OBJECT (waylandsink_cam), "height", 480, NULL);
+    g_object_set (G_OBJECT (waylandsink_cam), "width", 960, NULL);
+    g_object_set (G_OBJECT (waylandsink_cam), "height", 1080, NULL);
   }
 
   // Create Source element for reading from a file
@@ -253,7 +251,6 @@ create_pipe_waylandsink (GstComposeAppContext * appctx)
 
   // create the sink element for file source and set the position and dimensions
   waylandsink_filesrc = gst_element_factory_make ("waylandsink", "waylandsink_filesrc");
-  g_object_set (G_OBJECT (waylandsink_filesrc), "async", true, NULL);
   if (appctx->composition == GST_PIP_COMPOSE) {
     // For PIP filesrc is full screen and camera preview is in small window
     g_object_set (G_OBJECT (waylandsink_filesrc), "width", 1280, NULL);
@@ -262,9 +259,9 @@ create_pipe_waylandsink (GstComposeAppContext * appctx)
     g_object_set (G_OBJECT (waylandsink_filesrc), "y", 0, NULL);
   } else {
     // For SIDE_BY_SIDE divide screen into two euqal parts for camera & filesrc
-    g_object_set (G_OBJECT (waylandsink_filesrc), "width", 640, NULL);
-    g_object_set (G_OBJECT (waylandsink_filesrc), "height", 480, NULL);
-    g_object_set (G_OBJECT (waylandsink_filesrc), "x", 640, NULL);
+    g_object_set (G_OBJECT (waylandsink_filesrc), "width", 960, NULL);
+    g_object_set (G_OBJECT (waylandsink_filesrc), "height", 1080, NULL);
+    g_object_set (G_OBJECT (waylandsink_filesrc), "x", 960, NULL);
     g_object_set (G_OBJECT (waylandsink_filesrc), "y", 0, NULL);
   }
 
@@ -368,8 +365,6 @@ create_pipe_qtivcomposer (GstComposeAppContext * appctx)
   // create waylandsink element to render output on Display
   waylandsink = gst_element_factory_make ("waylandsink", "waylandsink");
   g_object_set (G_OBJECT (waylandsink), "fullscreen", true, NULL);
-  g_object_set (G_OBJECT (waylandsink), "async", true, NULL);
-  g_object_set (G_OBJECT (waylandsink), "sync", false, NULL);
 
   gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter,
       qtivcomposer, filesrc, qtdemux, h264parse, v4l2h264dec, waylandsink, NULL);
@@ -496,7 +491,6 @@ main (gint argc, gchar *argv[])
   }
 
   // Setting Display environment variables
-  g_print ("Setting Display environment \n");
   setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
   setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
