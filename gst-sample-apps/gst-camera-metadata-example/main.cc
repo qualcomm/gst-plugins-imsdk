@@ -66,7 +66,6 @@ namespace camera = qmmf;
 #define PLAYING_STATE_OPTION           "3"
 #define CHECK_METADATA_OPTION          "4"
 
-#define CAPTURE_MODE_OPTION            "c"
 #define QUIT_OPTION                    "q"
 #define MENU_BACK_OPTION               "b"
 
@@ -89,6 +88,15 @@ namespace camera = qmmf;
 #define STDIN_MESSAGE          "APP_STDIN_MSG"
 
 #define GST_APP_CONTEXT_CAST(obj)           ((GstAppContext*)(obj))
+
+#define GST_APP_SUMMARY \
+  "This application helps to list all camera tags and allow user to set/get tags dynamically." \
+  "\nCommand:\n" \
+  "  gst-camera-metadata-example -d 1" \
+  "\nOutput:\n" \
+  "  Upon execution, the application will generate an output for preview " \
+  "on the display. \n Once the use case started, it requires user input to " \
+  " list all the camera tags and set/get tag values.\n"
 
 typedef enum {
   VIDEO_METADATA_OPTION = 1,
@@ -1616,8 +1624,6 @@ print_pipeline_options (GstElement * pipeline)
   APPEND_OTHER_OPTS_SECTION (options);
   g_string_append_printf (options, "   (%s) %-25s: %s\n", CHECK_METADATA_OPTION,
       "META", "Check or set metadata in READY/PAUSED/PLAYING state");
-  g_string_append_printf (options, "   (%s) %-25s: %s\n", CAPTURE_MODE_OPTION,
-      "Capture Options", "Choose a capture option (pipeline should support)");
   g_string_append_printf (options, "   (%s) %-25s: %s\n", QUIT_OPTION,
       "Quit", "Exit the application");
 
@@ -1681,14 +1687,6 @@ gst_pipeline_menu (GstAppContext *appctx, GstElement ** element, gchar ** prop)
       goto exit;
     } else {
       g_print ("\nGST State cannot be set or check in NULL state.\n");
-      active = FALSE;
-      goto exit;
-    }
-
-  } else if (g_str_equal (input, CAPTURE_MODE_OPTION)) {
-    *element = get_element_from_pipeline (pipeline, "qtiqmmfsrc");
-    if (NULL == *element) {
-      g_printerr ("No qtiqmmfsrc found in pipeline.\n");
       active = FALSE;
       goto exit;
     }
@@ -1977,7 +1975,7 @@ main (gint argc, gchar *argv[])
     {NULL}
   };
 
-  optctx = g_option_context_new ("");
+  optctx = g_option_context_new (GST_APP_SUMMARY);
   g_option_context_add_main_entries (optctx, options, NULL);
   g_option_context_add_group (optctx, gst_init_get_option_group ());
 
@@ -1996,6 +1994,12 @@ main (gint argc, gchar *argv[])
   if ((appctx = gst_app_context_new ()) == NULL) {
     g_printerr ("ERROR: Couldn't create app context!\n");
     return -1;
+  }
+
+  // Set Display environment variables
+  if (display) {
+    setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
+    setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
   }
 
   if (pipeline == NULL && display)
