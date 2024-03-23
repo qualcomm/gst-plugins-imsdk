@@ -41,9 +41,6 @@
 #define DEFAULT_INPUT_WIDTH 1920
 #define DEFAULT_INPUT_HEIGHT 1080
 
-#define DEFAULT_OUTPUT_WIDTH 1920
-#define DEFAULT_OUTPUT_HEIGHT 1080
-
 #define DEFAULT_ROTATION 90
 
 #define QUEUE_COUNT 6
@@ -62,12 +59,12 @@
   "All three operations \n" \
   "  gst-transform-example -r 90 -f 2 --input_width 3840 --input_height 2160 " \
   "--output_width 1920 --output_height 1080 -o /opt/video_transform.mp4 \n" \
-  "Perform the only rotation\n" \
+  "Execute rotations\n" \
   "  gst-transform-example -r 270 -o /opt/video_transform.mp4 \n" \
   "\nOutput:\n" \
-  "  After the execution, the application gets the output to preview on " \
-  "display and after the use case stops, the recorded o/p file is saved " \
-  "at given path.(/opt/)" \
+  "  Upon execution, the application presents the output for preview on the " \
+  "display. Once the use case concludes, the recorded output file is saved " \
+  "at the specified path.(/opt/)" \
 
 // Structure to hold the application context
 struct GstTransformAppContext : GstAppContext {
@@ -105,8 +102,8 @@ gst_app_context_new ()
   ctx->rotate = DEFAULT_ROTATION;
   ctx->input_width = DEFAULT_INPUT_WIDTH;
   ctx->input_height = DEFAULT_INPUT_HEIGHT;
-  ctx->output_width = DEFAULT_OUTPUT_WIDTH;
-  ctx->output_height = DEFAULT_OUTPUT_HEIGHT;
+  ctx->output_width = NULL;
+  ctx->output_height = NULL;
   ctx->flip_type = GST_FLIP_TYPE_NONE;
 
   return ctx;
@@ -285,8 +282,8 @@ create_transform_pipeline (GstTransformAppContext * appctx)
   gst_caps_unref (filtercaps);
 
   // Configure the scale stream capabilities based on width and height
-  if (appctx->output_width == DEFAULT_OUTPUT_WIDTH &&
-      appctx->output_height == DEFAULT_OUTPUT_HEIGHT) {
+  if (appctx->output_width == NULL &&
+      appctx->output_height == NULL) {
     appctx->output_width = appctx->input_width;
     appctx->output_height = appctx->input_height;
   }
