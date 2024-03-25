@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -202,11 +202,13 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL) {
     gint sar_n = 1, sar_d = 1;
 
-    gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
+    gst_structure_get_fraction (pmeta->info, "source-aspect-ratio",
+        &sar_n, &sar_d);
 
-    if (sar_n > sar_d)
+    // Adjust dimensions so that only the mask with actual data will be used.
+    if ((sar_n * height) > (width * sar_d)) // SAR > (width / height)
       height = gst_util_uint64_scale_int (width, sar_d, sar_n);
-    else if (sar_n < sar_d)
+    else if ((sar_n * height) < (width * sar_d)) // SAR < (width / height)
       width = gst_util_uint64_scale_int (height, sar_n, sar_d);
   }
 
