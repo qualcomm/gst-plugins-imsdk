@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -108,6 +108,7 @@ G_DEFINE_TYPE (GstMLVideoSegmentation, gst_ml_video_segmentation,
 
 #define DEFAULT_PROP_MODULE         0
 #define DEFAULT_PROP_LABELS         NULL
+#define DEFAULT_PROP_CONSTANTS      NULL
 
 #define DEFAULT_MIN_BUFFERS         2
 #define DEFAULT_MAX_BUFFERS         10
@@ -117,6 +118,7 @@ enum
   PROP_0,
   PROP_MODULE,
   PROP_LABELS,
+  PROP_CONSTANTS,
 };
 
 static GstStaticCaps gst_ml_video_segmentation_static_sink_caps =
@@ -552,6 +554,11 @@ gst_ml_video_segmentation_set_caps (GstBaseTransform * base, GstCaps * incaps,
       GST_ML_MODULE_OPT_LABELS, G_TYPE_STRING, segmentation->labels,
       NULL);
 
+  if (segmentation->mlconstants != NULL) {
+    gst_structure_set (structure, GST_ML_MODULE_OPT_CONSTANTS,
+        GST_TYPE_STRUCTURE, segmentation->mlconstants, NULL);
+  }
+
   if (!gst_ml_module_set_opts (segmentation->module, structure)) {
     GST_ELEMENT_ERROR (segmentation, RESOURCE, FAILED, (NULL),
         ("Failed to set module options!"));
@@ -683,6 +690,59 @@ gst_ml_video_segmentation_set_property (GObject * object, guint prop_id,
       g_free (segmentation->labels);
       segmentation->labels = g_strdup (g_value_get_string (value));
       break;
+    case PROP_CONSTANTS:
+    {
+      const gchar *input = g_value_get_string (value);
+      GValue value = G_VALUE_INIT;
+
+      g_value_init (&value, GST_TYPE_STRUCTURE);
+
+      if (g_file_test (input, G_FILE_TEST_IS_REGULAR)) {
+        GString *string = NULL;
+        GError *error = NULL;
+        gchar *contents = NULL;
+        gboolean success = FALSE;
+
+        if (!g_file_get_contents (input, &contents, NULL, &error)) {
+          GST_ERROR ("Failed to get file contents, error: %s!",
+              GST_STR_NULL (error->message));
+          g_clear_error (&error);
+          break;
+        }
+
+        // Remove trailing space and replace new lines with a comma delimiter.
+        contents = g_strstrip (contents);
+        contents = g_strdelimit (contents, "\n", ',');
+
+        string = g_string_new (contents);
+        g_free (contents);
+
+        // Add opening and closing brackets.
+        string = g_string_prepend (string, "{ ");
+        string = g_string_append (string, " }");
+
+        // Get the raw character data.
+        contents = g_string_free (string, FALSE);
+
+        success = gst_value_deserialize (&value, contents);
+        g_free (contents);
+
+        if (!success) {
+          GST_ERROR ("Failed to deserialize file contents!");
+          break;
+        }
+      } else if (!gst_value_deserialize (&value, input)) {
+        GST_ERROR ("Failed to deserialize string!");
+        break;
+      }
+
+      if (segmentation->mlconstants != NULL)
+        gst_structure_free (segmentation->mlconstants);
+
+      segmentation->mlconstants = GST_STRUCTURE (g_value_dup_boxed (&value));
+      g_value_unset (&value);
+      break;
+    }
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -702,6 +762,17 @@ gst_ml_video_segmentation_get_property (GObject * object, guint prop_id,
     case PROP_LABELS:
       g_value_set_string (value, segmentation->labels);
       break;
+    case PROP_CONSTANTS:
+    {
+      gchar *string = NULL;
+
+      if (segmentation->mlconstants != NULL)
+        string = gst_structure_to_string (segmentation->mlconstants);
+
+      g_value_set_string (value, string);
+      g_free (string);
+      break;
+    }
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -725,6 +796,9 @@ gst_ml_video_segmentation_finalize (GObject * object)
     gst_object_unref (segmentation->outpool);
 
   g_free (segmentation->labels);
+
+  if (segmentation->mlconstants != NULL)
+    gst_structure_free (segmentation->mlconstants);
 
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (segmentation));
 }
@@ -755,6 +829,12 @@ gst_ml_video_segmentation_class_init (GstMLVideoSegmentationClass * klass)
   gst_element_class_set_static_metadata (element,
       "Machine Learning image segmentation", "Filter/Effect/Converter",
       "Machine Learning plugin for image segmentation", "QTI");
+  g_object_class_install_property (gobject, PROP_CONSTANTS,
+      g_param_spec_string ("constants", "Constants",
+          "Constants, offsets and coefficients used by the chosen module for "
+          "post-processing of incoming tensors in GstStructure string format. "
+          "Applicable only for some modules.",
+          DEFAULT_PROP_CONSTANTS, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_add_pad_template (element,
       gst_ml_video_segmentation_sink_template ());
@@ -782,6 +862,7 @@ gst_ml_video_segmentation_init (GstMLVideoSegmentation * segmentation)
 
   segmentation->mdlenum = DEFAULT_PROP_MODULE;
   segmentation->labels = DEFAULT_PROP_LABELS;
+  segmentation->mlconstants = DEFAULT_PROP_CONSTANTS;
 
   // Handle buffers with GAP flag internally.
   gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM (segmentation), TRUE);
