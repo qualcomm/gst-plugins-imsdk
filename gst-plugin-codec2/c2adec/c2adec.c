@@ -89,7 +89,8 @@ gst_c2_adec_event_handler (guint type, gpointer payload, gpointer userdata)
     GST_DEBUG_OBJECT (c2adec, "Received engine EOS");
   } else if (type == GST_C2_EVENT_ERROR) {
     gint32 error = *((gint32*) userdata);
-    GST_ERROR_OBJECT (c2adec, "Received engine ERROR: '%x'", error);
+    GST_ELEMENT_ERROR (c2adec, RESOURCE, FAILED,
+        ("Codec2 encountered an un-recovarable error '%x' !", error), (NULL));
   }
 }
 
@@ -143,7 +144,7 @@ gst_c2_adec_stop (GstAudioDecoder * decoder)
   GST_DEBUG_OBJECT (c2adec, "Stop engine");
 
   if ((c2adec->engine != NULL) && !gst_c2_engine_drain (c2adec->engine, TRUE)) {
-    GST_ERROR_OBJECT (c2adec, "Failed to flush engine");
+    GST_ERROR_OBJECT (c2adec, "Failed to drain engine");
     return FALSE;
   }
 

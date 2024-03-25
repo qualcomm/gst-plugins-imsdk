@@ -152,6 +152,7 @@ class GstC2Notifier : public IC2Notifier {
     switch (event) {
       case C2EventType::kError:
         type = GST_C2_EVENT_ERROR;
+        GST_C2_ENGINE_ZERO_OUT_PENDING_WORK (engine_);
         break;
       case C2EventType::kEOS:
         GST_C2_ENGINE_ZERO_OUT_PENDING_WORK (engine_);

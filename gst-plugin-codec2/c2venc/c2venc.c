@@ -700,7 +700,8 @@ gst_c2_venc_event_handler (guint type, gpointer payload, gpointer userdata)
     GST_DEBUG_OBJECT (c2venc, "Received engine EOS");
   } else if (type == GST_C2_EVENT_ERROR) {
     gint32 error = *((gint32*) userdata);
-    GST_ERROR_OBJECT (c2venc, "Received engine ERROR: '%x'", error);
+    GST_ELEMENT_ERROR (c2venc, RESOURCE, FAILED,
+        ("Codec2 encountered an un-recovarable error '%x' !", error), (NULL));
   } else if (type == GST_C2_EVENT_DROP) {
     guint64 index = *((guint64*) payload);
     GstVideoCodecFrame *frame = NULL;
