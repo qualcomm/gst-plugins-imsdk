@@ -261,19 +261,24 @@ gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
 }
 
 static inline void
-gst_calculate_dimensions (gint outwidth, gint outheight, gint out_par_n,
-    gint out_par_d, gint sar_n, gint sar_d, gint * width, gint * height)
+gst_calculate_dimensions (gint maxwidth, gint maxheight, gint par_n, gint par_d,
+    gint sar_n, gint sar_d, gint * width, gint * height)
 {
   gint num = 0, den = 0;
 
-  gst_util_fraction_multiply (sar_n, sar_d, out_par_d, out_par_n, &num, &den);
+  // Aspect ratio of the destination, usually same as SAR (as PAR is 1/1)
+  gst_util_fraction_multiply (sar_n, sar_d, par_d, par_n, &num, &den);
 
-  if (num > den) {
-    *width = outwidth;
-    *height = gst_util_uint64_scale_int (outwidth, den, num);
-  } else if (num < den) {
-    *width = gst_util_uint64_scale_int (outheight, num, den);
-    *height = outheight;
+  // Based on the end aspect ratio different dimension will be used as base.
+  if ((num * maxheight) > (maxwidth * den)) {
+    *width = maxwidth;
+    *height = gst_util_uint64_scale_int (maxwidth, den, num);
+  } else if ((num * maxheight) < (maxwidth * den)) {
+    *height = maxheight;
+    *width = gst_util_uint64_scale_int (maxheight, num, den);
+  } else { // (num * maxheight) == (maxwidth * den)
+    *width = maxwidth;
+    *height = maxheight;
   }
 }
 
@@ -541,9 +546,9 @@ gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
   }
 
   // Adjust dimensions so that only the image pixels will be normalized.
-  if (sar_n > sar_d)
+  if ((sar_n * height) > (width * sar_d)) // SAR > (width / height)
     height = gst_util_uint64_scale_int (width, sar_d, sar_n);
-  else if (sar_n < sar_d)
+  else if ((sar_n * height) < (width * sar_d)) // SAR < (width / height)
     width = gst_util_uint64_scale_int (height, sar_n, sar_d);
 
   // Normalize in reverse as front bytes are occupied.
