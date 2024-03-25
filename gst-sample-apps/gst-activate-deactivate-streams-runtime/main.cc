@@ -667,8 +667,10 @@ create_stream (GstActivateDeactivateAppContext * appctx, gboolean dummy,
   if (dummy) {
     ret = create_dummy_stream (appctx, stream, qtiqmmfsrc);
   } else if (appctx->use_display) {
+    g_object_set (G_OBJECT (stream->qmmf_pad), "type", 1, NULL);
     ret = create_display_stream (appctx, stream, qtiqmmfsrc, x, y, w, h);
   } else {
+    g_object_set (G_OBJECT (stream->qmmf_pad), "type", 1, NULL);
     ret = create_encoder_stream (appctx, stream, qtiqmmfsrc);
   }
   if (!ret) {
@@ -834,11 +836,11 @@ link_unlink_streams_usecase_full (GstActivateDeactivateAppContext * appctx)
 {
   // Create a 720p stream and link it to the pipeline
   g_print ("Create 720p stream\n\n");
-  GstStreamInf *stream_inf_1 = create_stream (appctx, FALSE, 0, 0, 1280, 720);
+  GstStreamInf *stream_inf_1 = create_stream (appctx, TRUE, 0, 0, 1280, 720);
 
   // Create a 480p stream and link it to the pipeline
   g_print ("Create 480p stream\n\n");
-  GstStreamInf *stream_inf_2 = create_stream (appctx, TRUE, 650, 0, 640, 480);
+  GstStreamInf *stream_inf_2 = create_stream (appctx, FALSE, 650, 0, 640, 480);
 
   // Move NULL state to PAUSED state and negotiation of the capabilities done
   g_print ("Set pipeline to GST_STATE_PAUSED state\n");
@@ -847,11 +849,8 @@ link_unlink_streams_usecase_full (GstActivateDeactivateAppContext * appctx)
     wait_for_state_change (appctx);
   }
 
-  g_print ("Unlink 480p stream\n\n");
-  unlink_stream (appctx, stream_inf_2);
-
-  g_print ("link 480p stream\n\n");
-  link_stream (appctx, 650, 0, stream_inf_2);
+  g_print ("Unlink 720p stream\n\n");
+  unlink_stream (appctx, stream_inf_1);
 
   // Set the pipeline in PLAYING state and all streams will start streaming.
   g_print ("Set pipeline to GST_STATE_PLAYING state\n");
@@ -863,13 +862,18 @@ link_unlink_streams_usecase_full (GstActivateDeactivateAppContext * appctx)
 
   sleep (10);
 
+  g_print ("Link 720p stream\n\n");
+  link_stream (appctx, 0, 0, stream_inf_1);
+
+  sleep (10);
+
   // State transition for PLAYING state to NULL and againg to PLAYING
   gst_element_send_event (appctx->pipeline, gst_event_new_eos ());
   wait_for_eos (appctx);
 
   g_print ("Set pipeline to GST_STATE_NULL state\n");
   if (GST_STATE_CHANGE_ASYNC ==
-      gst_element_set_state (appctx->pipeline, GST_STATE_PAUSED)) {
+      gst_element_set_state (appctx->pipeline, GST_STATE_NULL)) {
     wait_for_state_change (appctx);
   }
 
@@ -887,8 +891,8 @@ link_unlink_streams_usecase_full (GstActivateDeactivateAppContext * appctx)
 
   sleep (10);
 
-  g_print ("Unlink 480p stream\n\n");
-  unlink_stream (appctx, stream_inf_2);
+  g_print ("Link 720p stream\n\n");
+  link_stream (appctx, 0, 0, stream_inf_1);
 
   sleep (10);
 
