@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -67,14 +67,17 @@
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
 
+#define GINT8_PTR_CAST(data)        ((gint8*) data)
+#define GUINT8_PTR_CAST(data)       ((guint8*) data)
 #define GINT32_PTR_CAST(data)       ((gint32*) data)
 #define GFLOAT_PTR_CAST(data)       ((gfloat*) data)
+
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
 
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
-    "type = (string) { UINT8, INT32, FLOAT32 }, " \
-    "dimensions = (int) < < 1, [ 1000, 1001 ] > >"
+    "type = (string) { INT8, UINT8, INT32, FLOAT32 }, " \
+    "dimensions = (int) < <1, [ 1000, 1001 ]> >"
 
 // Module caps instance
 static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
@@ -89,15 +92,46 @@ struct _GstMLSubModule {
   GHashTable *labels;
   // Confidence threshold value.
   gdouble    threshold;
+
+  // Offset values for each of the tensors for dequantization of some tensors.
+  gdouble    qoffsets[GST_ML_MAX_TENSORS];
+  // Scale values for each of the tensors for dequantization of some tensors.
+  gdouble    qscales[GST_ML_MAX_TENSORS];
 };
+
+static inline gfloat
+gst_ml_module_get_dequant_value (void * pdata, GstMLType mltype, guint idx,
+    gfloat offset, gfloat scale)
+{
+  switch (mltype) {
+    case GST_ML_TYPE_INT8:
+      return ((GINT8_PTR_CAST (pdata))[idx] - offset) * scale;
+    case GST_ML_TYPE_UINT8:
+      return ((GUINT8_PTR_CAST (pdata))[idx] - offset) * scale;
+    case GST_ML_TYPE_INT32:
+      return GINT32_PTR_CAST (pdata)[idx];
+    case GST_ML_TYPE_FLOAT32:
+      return GFLOAT_PTR_CAST (pdata)[idx];
+    default:
+      break;
+  }
+  return 0.0;
+}
 
 gpointer
 gst_ml_module_open (void)
 {
   GstMLSubModule *submodule = NULL;
+  guint idx = 0;
 
   submodule = g_slice_new0 (GstMLSubModule);
   g_return_val_if_fail (submodule != NULL, NULL);
+
+  // Initialize the quantization offsets and scales.
+  for (idx = 0; idx < GST_ML_MAX_TENSORS; idx++) {
+    submodule->qoffsets[idx] = 0.0;
+    submodule->qscales[idx] = 1.0;
+  }
 
   return (gpointer) submodule;
 }
@@ -188,6 +222,51 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   gst_structure_get_double (settings, GST_ML_MODULE_OPT_THRESHOLD, &threshold);
   submodule->threshold = threshold;
 
+  if ((GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_INT8) ||
+      (GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_UINT8)) {
+    GstStructure *constants = NULL;
+    const GValue *qoffsets = NULL, *qscales = NULL;
+    guint idx = 0, n_tensors = 0;
+
+    success = gst_structure_has_field (settings, GST_ML_MODULE_OPT_CONSTANTS);
+    if (!success) {
+      GST_ERROR ("Settings stucture does not contain constants value!");
+      goto cleanup;
+    }
+
+    constants = GST_STRUCTURE (g_value_get_boxed (
+        gst_structure_get_value (settings, GST_ML_MODULE_OPT_CONSTANTS)));
+
+    if (!(success = gst_structure_has_field (constants, "q-offsets"))) {
+      GST_ERROR ("Missing quantization offsets coefficients!");
+      goto cleanup;
+    } else if (!(success = gst_structure_has_field (constants, "q-scales"))) {
+      GST_ERROR ("Missing quantization scales coefficients!");
+      goto cleanup;
+    }
+
+    qoffsets = gst_structure_get_value (constants, "q-offsets");
+    qscales = gst_structure_get_value (constants, "q-scales");
+    n_tensors = GST_ML_INFO_N_TENSORS (&(submodule->mlinfo));
+
+    if (!(success = (gst_value_array_get_size (qoffsets) == n_tensors))) {
+      GST_ERROR ("Expecting %u dequantization offsets entries but received "
+          "only %u!", n_tensors, gst_value_array_get_size (qoffsets));
+      goto cleanup;
+    } else if (!(success = (gst_value_array_get_size (qscales) == n_tensors))) {
+      GST_ERROR ("Expecting %u dequantization scales entries but received "
+          "only %u!", n_tensors, gst_value_array_get_size (qscales));
+      goto cleanup;
+    }
+
+    for (idx = 0; idx < n_tensors; idx++) {
+      submodule->qoffsets[idx] =
+          g_value_get_double (gst_value_array_get_value (qoffsets, idx));
+      submodule->qscales[idx] =
+          g_value_get_double (gst_value_array_get_value (qscales, idx));
+    }
+  }
+
 cleanup:
   if (caps != NULL)
     gst_caps_unref (caps);
@@ -204,6 +283,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   GArray *predictions = (GArray *) output;
   guint8 *data = NULL;
+  GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   guint idx = 0, n_inferences = 0;
   gdouble confidence = 0.0;
 
@@ -216,6 +296,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     return FALSE;
   }
 
+  mltype = GST_ML_FRAME_TYPE (mlframe);
   n_inferences = GST_ML_FRAME_DIM (mlframe, 0, 1);
   data = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
 
@@ -224,20 +305,9 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     GstLabel *label = NULL;
     GstMLPrediction prediction = { 0 };
 
-    switch (GST_ML_FRAME_TYPE (mlframe)) {
-      case GST_ML_TYPE_UINT8:
-        confidence = data[idx] * (100.0 / G_MAXUINT8);
-        break;
-      case GST_ML_TYPE_INT32:
-        confidence = GINT32_PTR_CAST (data)[idx];
-        break;
-      case GST_ML_TYPE_FLOAT32:
-        confidence = GFLOAT_PTR_CAST (data)[idx] * 100;
-        break;
-      default:
-        GST_ERROR ("Unsupported tensor type!");
-        return FALSE;
-    }
+    confidence = gst_ml_module_get_dequant_value (data, mltype, idx,
+        submodule->qoffsets[0], submodule->qscales[0]);
+    confidence *= 100;
 
     // Discard results with confidence below the set threshold.
     if (confidence < submodule->threshold)
