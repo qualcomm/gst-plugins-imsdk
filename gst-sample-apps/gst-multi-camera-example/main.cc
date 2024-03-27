@@ -367,7 +367,7 @@ create_camera_video_pipe (GstMultiCamAppContext * appctx)
   g_object_set (G_OBJECT (v4l2h264enc_cam1), "capture-io-mode", 5, NULL);
   g_object_set (G_OBJECT (v4l2h264enc_cam1), "output-io-mode", 5, NULL);
   fcontrols = gst_structure_from_string (
-      "fcontrols,video_bitrate=512000,video_bitrate_mode=0", NULL);
+      "fcontrols,video_bitrate_mode=0", NULL);
   g_object_set (G_OBJECT (v4l2h264enc_cam1), "extra-controls", fcontrols, NULL);
 
   // Create h264parse element for first source
@@ -382,7 +382,7 @@ create_camera_video_pipe (GstMultiCamAppContext * appctx)
   g_object_set (G_OBJECT (v4l2h264enc_cam2), "output-io-mode", 5, NULL);
 
   scontrols = gst_structure_from_string (
-      "scontrols,video_bitrate=512000,video_bitrate_mode=0", NULL);
+      "scontrols,video_bitrate_mode=0", NULL);
   g_object_set (G_OBJECT (v4l2h264enc_cam2), "extra-controls", scontrols, NULL);
 
   // Create h264parse element for second source
