@@ -208,7 +208,7 @@ create_pipe (GstAppContext * appctx)
   gint height = DEFAULT_CAMERA_OUTPUT_HEIGHT;
   gint framerate = DEFAULT_CAMERA_FRAME_RATE;
 
-  update_window_grid();
+  update_window_grid ();
 
   // 1. Create the elements or Plugins
   // Create qtiqmmfsrc plugin for camera stream
@@ -664,6 +664,18 @@ main (gint argc, gchar * argv[])
   // Set Display environment variables
   setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
   setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
+
+  for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
+    if (!file_exists (pipeline_data[i].model)) {
+      g_printerr ("File does not exist: %s\n", pipeline_data[i].model);
+      return -EINVAL;
+    }
+
+    if (!file_exists (pipeline_data[i].labels)) {
+      g_printerr ("File does not exist: %s\n", pipeline_data[i].labels);
+      return -EINVAL;
+    }
+  }
 
   // Initialize GST library.
   gst_init (&argc, &argv);
