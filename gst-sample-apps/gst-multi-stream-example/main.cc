@@ -187,7 +187,7 @@ create_two_stream_pipe (GstMultiStreamAppContext * appctx)
   g_object_set (G_OBJECT (v4l2h264enc), "capture-io-mode", 5, NULL);
   g_object_set (G_OBJECT (v4l2h264enc), "output-io-mode", 5, NULL);
   controls = gst_structure_from_string (
-      "controls,video_bitrate=512000,video_bitrate_mode=0", NULL);
+      "controls,video_bitrate_mode=0", NULL);
   g_object_set (G_OBJECT (v4l2h264enc), "extra-controls", controls, NULL);
 
   // Create h264parse element for parsing the stream

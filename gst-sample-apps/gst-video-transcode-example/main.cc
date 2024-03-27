@@ -218,7 +218,7 @@ create_pipe (GstTranscodeAppContext * appctx)
   g_object_set (G_OBJECT (encoder), "capture-io-mode", 5, NULL);
   g_object_set (G_OBJECT (encoder), "output-io-mode", 5, NULL);
   fcontrols = gst_structure_from_string (
-      "fcontrols,video_bitrate=512000,video_bitrate_mode=0", NULL);
+      "fcontrols,video_bitrate_mode=0", NULL);
   g_object_set (G_OBJECT (encoder), "extra-controls", fcontrols, NULL);
 
   // Create mp4mux element for muxing the stream
