@@ -23,7 +23,8 @@ GST_DEBUG_CATEGORY_EXTERN (gst_video_converter_engine_debug);
 #define GST_VCE_BLIT_INIT \
     { NULL, FALSE, NULL, NULL, 0, 255, GST_VCE_ROTATE_0, GST_VCE_FLIP_NONE }
 #define GST_VCE_COMPOSITION_INIT \
-    { NULL, 0, NULL, FALSE, 0, FALSE, { 0.0, 0.0, 0.0, 0.0 }, { 0.0, 0.0, 0.0, 0.0 }, 0 }
+    { NULL, 0, NULL, FALSE, 0, FALSE, { 0.0, 0.0, 0.0, 0.0 }, \
+        { 1.0 / 255.0, 1.0 / 255.0, 1.0 / 255.0, 1.0 / 255.0 }, 0 }
 
 // Maximum number of image channels, used for normalization offsets and scales.
 #define GST_VCE_MAX_CHANNELS         4
