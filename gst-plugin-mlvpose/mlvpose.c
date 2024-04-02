@@ -503,7 +503,7 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose,
       GstPoseKeypoint *kp =
           &(g_array_index (prediction->keypoints, GstPoseKeypoint, num));
 
-      GST_TRACE_OBJECT (vpose, "Keypoint: '%s' [%.0f x %.0f], confidence %.2f",
+      GST_TRACE_OBJECT (vpose, "Keypoint: '%s' [%.2f x %.2f], confidence %.2f",
           kp->label, kp->x, kp->y, kp->confidence);
 
       // Replace white spaces with placeholder symbol.
