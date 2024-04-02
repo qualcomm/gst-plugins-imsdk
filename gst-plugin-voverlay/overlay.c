@@ -442,107 +442,40 @@ gst_overlay_create_pool (GstVOverlay * overlay, GstCaps * caps)
 }
 
 static gboolean
-gst_overlay_handle_detection_entry (GstVOverlay * overlay, cairo_t * context,
-    GstVideoBlit * blit, GstVideoRegionOfInterestMeta * roimeta)
+gst_overlay_handle_classification_entry (GstVOverlay * overlay,
+    cairo_t * context, GstVideoBlit * blit, GArray * labels)
 {
   GstVideoFrame *vframe = blit->frame;
-  GstStructure *param = NULL;
   gchar text[128] = { 0, };
   GstVideoRectangle *source = NULL, *destination = NULL;
-  gdouble confidence = 0.0, scale = 0.0, linewidth = 0.0;
-  gdouble x = 0.0, y = 0.0, fontsize = 0.0;
-  guint color = 0x000000FF;
-  gboolean success = FALSE;
+  gdouble x = 4.0, y = 4.0, fontsize = 0.0;
+  guint num = 0, length = 0, width = 0;
+  gboolean success = TRUE;
 
-  // Extract the structure containing ROI parameters.
-  param = gst_video_region_of_interest_meta_get_param (roimeta,
-      g_quark_to_string (roimeta->roi_type));
-
-  gst_structure_get_double (param, "confidence", &confidence);
-  gst_structure_get_uint (param, "color", &color);
+  length = (labels != NULL) ? labels->len : 0;
 
   source = &(blit->sources[0]);
   destination = &(blit->destinations[0]);
 
-  destination->x = roimeta->x;
-  destination->y = roimeta->y;
-
-  source->x = source->y = 0;
-
-  source->w = destination->w = roimeta->w;
-  source->h = destination->h = roimeta->h;
-
-  // Adjust bbox dimensions so that it fits inside the overlay frame.
-  gst_overlay_update_rectangle_dimensions (overlay, vframe, source);
-
-  GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
-      "[%d %d %d %d]", source->x, source->y, source->w, source->h,
-      destination->x, destination->y, destination->w, destination->h);
-
-  // Set the most appropriate box line width based on frame and box dimensions.
-  gst_util_fraction_to_double (source->w, destination->w, &scale);
-  linewidth = (scale > 1.0F) ? (2.0F / scale) : 2.0F;
-
-  g_snprintf (text, 128, "%s: %.1f%%", g_quark_to_string (roimeta->roi_type),
-      confidence);
-
-  // Set the most appropriate font size based on the bounding box dimensions.
-  fontsize = MIN (((source->w / MAX_TEXT_LENGTH) * 9.0 / 5.0), 12.0F);
-
-  x = y = linewidth;
-
-  GST_TRACE_OBJECT (overlay, "Label: %s, Color: 0x%X, Position: [%.2f %.2f]",
-      text, color, x, y);
-
-  success = gst_cairo_draw_text (context, color, x, y, text, fontsize);
-
-  GST_TRACE_OBJECT (overlay, "Rectangle: [%d %d %d %d], Color: 0x%X",
-      source->x, source->y, source->w, source->h, color);
-
-  success &= gst_cairo_draw_rectangle (context, color, source->x, source->y,
-      source->w, source->h, linewidth, FALSE);
-
-  return success;
-}
-
-static gboolean
-gst_overlay_handle_classification_entry (GstVOverlay * overlay,
-    cairo_t * context, GstVideoBlit * blit, GstVideoClassificationMeta * meta)
-{
-  GstVideoFrame *vframe = blit->frame;
-  gchar text[128] = { 0, };
-  GstVideoRectangle *source = NULL, *destination = NULL;
-  gdouble x = 0.0, y = 0.0, fontsize = 0.0;
-  guint num = 0, length = 0;
-  gboolean success = TRUE;
+  width = (source->w != 0) ? source->w : GST_VIDEO_FRAME_WIDTH (vframe);
 
   // Set the most appropriate font size based on the overlay frame dimensions.
-  fontsize = (GST_VIDEO_FRAME_WIDTH (vframe) / MAX_TEXT_LENGTH) * 9.0 / 5.0;
-
-  length = (meta->labels != NULL) ? meta->labels->len : 0;
+  fontsize = MIN (((width / MAX_TEXT_LENGTH) * 9.0 / 5.0), 12.0F);
 
   for (num = 0; num < length; num++, y += fontsize) {
-    GstClassLabel *label = &(g_array_index (meta->labels, GstClassLabel, num));
+    GstClassLabel *label = &(g_array_index (labels, GstClassLabel, num));
 
     if (y > GST_VIDEO_FRAME_HEIGHT (vframe))
       break;
 
-    g_snprintf (text, 128, "%s: %.1f%%", g_quark_to_string (label->name),
-        label->confidence);
+    g_snprintf (text, MAX_TEXT_LENGTH, "%s: %.1f%%",
+        g_quark_to_string (label->name), label->confidence);
 
     GST_TRACE_OBJECT (overlay, "Label: %s, Color: 0x%X, Position: [%.2f %.2f],"
         " Fontsize: %.2f", text, label->color, x, y, fontsize);
 
     success &= gst_cairo_draw_text (context, label->color, x, y, text, fontsize);
   }
-
-  source = &(blit->sources[0]);
-  destination = &(blit->destinations[0]);
-
-  source->x = source->y = 0;
-  source->w = destination->w = GST_VIDEO_FRAME_WIDTH (vframe);
-  source->h = destination->h =
-      MIN (GST_VIDEO_FRAME_HEIGHT (vframe), (length * fontsize));
 
   GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
       "[%d %d %d %d]", source->x, source->y, source->w, source->h,
@@ -553,25 +486,24 @@ gst_overlay_handle_classification_entry (GstVOverlay * overlay,
 
 static gboolean
 gst_overlay_handle_pose_entry (GstVOverlay * overlay, cairo_t * context,
-    GstVideoBlit * blit, GstVideoLandmarksMeta * meta)
+    GstVideoBlit * blit, GArray * keypoints, GArray * links)
 {
-  GstVideoFrame *vframe = blit->frame;
   GstVideoRectangle *source = NULL, *destination = NULL;
-  gdouble x = 0.0, y = 0.0, dx = 0.0, dy = 0.0, xscale = 0.0, yscale = 0.0;
+  gdouble x = 0.0, y = 0.0, dx = 0.0, dy = 0.0, xscale = 1.0, yscale = 1.0;
   guint num = 0, length = 0;
   gboolean success = TRUE;
 
-  // Calculate the rescallling factors for X and Y in the source dimensions.
-  gst_util_fraction_to_double (GST_VIDEO_FRAME_WIDTH (vframe),
-      GST_VIDEO_INFO_WIDTH (overlay->vinfo), &xscale);
-  gst_util_fraction_to_double (GST_VIDEO_FRAME_HEIGHT (vframe),
-      GST_VIDEO_INFO_HEIGHT (overlay->vinfo), &yscale);
+  source = &(blit->sources[0]);
+  destination = &(blit->destinations[0]);
 
-  length = (meta->keypoints != NULL) ? meta->keypoints->len : 0;
+  gst_util_fraction_to_double (source->w, destination->w, &xscale);
+  gst_util_fraction_to_double (source->h, destination->h, &yscale);
+
+  length = (keypoints != NULL) ? keypoints->len : 0;
 
   for (num = 0; num < length; num++) {
     GstVideoKeypoint *kp =
-        &(g_array_index (meta->keypoints, GstVideoKeypoint, num));
+        &(g_array_index (keypoints, GstVideoKeypoint, num));
 
     x = kp->x * xscale;
     y = kp->y * yscale;
@@ -583,15 +515,15 @@ gst_overlay_handle_pose_entry (GstVOverlay * overlay, cairo_t * context,
     success &= gst_cairo_draw_circle (context, kp->color, x, y, 2.0, 1.0, TRUE);
   }
 
-  length = (meta->links != NULL) ? meta->links->len : 0;
+  length = (links != NULL) ? links->len : 0;
 
   for (num = 0; num < length; num++) {
     GstVideoKeypointLink *link = NULL;
     GstVideoKeypoint *s_kp = NULL, *d_kp = NULL;
 
-    link = &(g_array_index (meta->links, GstVideoKeypointLink, num));
-    s_kp = &(g_array_index (meta->keypoints, GstVideoKeypoint, link->s_kp_idx));
-    d_kp = &(g_array_index (meta->keypoints, GstVideoKeypoint, link->d_kp_idx));
+    link = &(g_array_index (links, GstVideoKeypointLink, num));
+    s_kp = &(g_array_index (keypoints, GstVideoKeypoint, link->s_kp_idx));
+    d_kp = &(g_array_index (keypoints, GstVideoKeypoint, link->d_kp_idx));
 
     x = s_kp->x * xscale;
     y = s_kp->y * yscale;
@@ -606,13 +538,6 @@ gst_overlay_handle_pose_entry (GstVOverlay * overlay, cairo_t * context,
     success &= gst_cairo_draw_line (context, s_kp->color, x, y, dx, dy, 1.0);
   }
 
-  source = &(blit->sources[0]);
-  destination = &(blit->destinations[0]);
-
-  source->x = source->y = 0;
-  source->w = GST_VIDEO_FRAME_WIDTH (vframe);
-  source->h = GST_VIDEO_FRAME_HEIGHT (vframe);
-
   GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
       "[%d %d %d %d]", source->x, source->y, source->w, source->h,
       destination->x, destination->y, destination->w, destination->h);
@@ -622,21 +547,17 @@ gst_overlay_handle_pose_entry (GstVOverlay * overlay, cairo_t * context,
 
 static gboolean
 gst_overlay_handle_optclflow_entry (GstVOverlay * overlay, cairo_t * context,
-    GstVideoBlit * blit, GstCvOptclFlowMeta * cvmeta)
+    GstVideoBlit * blit, GArray * mvectors, GArray * stats)
 {
   GstVideoFrame *vframe = blit->frame;
   GstCvMotionVector *mvector = NULL;
-  GstCvOptclFlowStats *stats = NULL;
+  GstCvOptclFlowStats *cvstats = NULL;
   GstVideoRectangle *source = NULL, *destination = NULL;
   guint num = 0, color = 0xFFFFFFFF;
   gdouble x = 0.0, y = 0.0, dx = 0.0, dy = 0.0, xscale = 0.0, yscale = 0.0;
 
   source = &(blit->sources[0]);
   destination = &(blit->destinations[0]);
-
-  source->x = source->y = 0;
-  source->w = GST_VIDEO_FRAME_WIDTH (vframe);
-  source->h = GST_VIDEO_FRAME_HEIGHT (vframe);
 
   GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
       "[%d %d %d %d]", source->x, source->y, source->w, source->h,
@@ -648,16 +569,16 @@ gst_overlay_handle_optclflow_entry (GstVOverlay * overlay, cairo_t * context,
       GST_VIDEO_FRAME_HEIGHT (vframe), &yscale);
 
   // Read every 6th 4x16 motion vector paxel due arrows density.
-  for (num = 0; num < cvmeta->mvectors->len; num += 6) {
-    mvector = &g_array_index (cvmeta->mvectors, GstCvMotionVector, num);
+  for (num = 0; num < mvectors->len; num += 6) {
+    mvector = &g_array_index (mvectors, GstCvMotionVector, num);
 
     if ((mvector->dx == 0) && (mvector->dy == 0))
       continue;
 
-    if ((cvmeta->stats != NULL) && (cvmeta->stats->len != 0))
-      stats = &g_array_index (cvmeta->stats, GstCvOptclFlowStats, num);
+    if ((stats != NULL) && (stats->len != 0))
+      cvstats = &g_array_index (stats, GstCvOptclFlowStats, num);
 
-    if ((stats != NULL) && (stats->sad == 0) && (stats->variance == 0))
+    if ((cvstats != NULL) && (cvstats->sad == 0) && (cvstats->variance == 0))
       continue;
 
     x = (mvector->x / xscale) + mvector->dx;
@@ -670,6 +591,106 @@ gst_overlay_handle_optclflow_entry (GstVOverlay * overlay, cairo_t * context,
   }
 
   return TRUE;
+}
+
+static gboolean
+gst_overlay_handle_detection_entry (GstVOverlay * overlay, cairo_t * context,
+    GstVideoBlit * blit, GstVideoRegionOfInterestMeta * roimeta)
+{
+  GstVideoFrame *vframe = blit->frame;
+  GstStructure *param = NULL;
+  GList *list = NULL;
+  gchar text[128] = { 0, };
+  GstVideoRectangle *source = NULL, *destination = NULL;
+  gdouble confidence = 0.0, scale = 0.0, linewidth = 0.0;
+  gdouble x = 0.0, y = 0.0, fontsize = 0.0;
+  guint color = 0x000000FF;
+  gboolean success = TRUE, haslabel = FALSE;
+
+  source = &(blit->sources[0]);
+  destination = &(blit->destinations[0]);
+
+  destination->x = roimeta->x;
+  destination->y = roimeta->y;
+
+  source->w = destination->w = roimeta->w;
+  source->h = destination->h = roimeta->h;
+
+  // Adjust bbox dimensions so that it fits inside the overlay frame.
+  gst_overlay_update_rectangle_dimensions (overlay, vframe, source);
+
+  // Process attached meta entries that were derived from this ROI.
+  for (list = roimeta->params; list != NULL; list = g_list_next (list)) {
+    GQuark id = 0;
+
+    param = GST_STRUCTURE_CAST (list->data);
+    id = gst_structure_get_name_id (param);
+
+    if (id == g_quark_from_static_string ("VideoLandmarks")) {
+      GArray *keypoints = NULL, *links = NULL;
+
+      keypoints = g_value_get_boxed (gst_structure_get_value (param, "keypoints"));
+      links = g_value_get_boxed (gst_structure_get_value (param, "links"));
+
+      success &= gst_overlay_handle_pose_entry (overlay, context, blit,
+          keypoints, links);
+    } else if (id == g_quark_from_static_string ("ImageClassification")) {
+      GArray *labels = NULL;
+
+      labels = g_value_get_boxed (gst_structure_get_value (param, "labels"));
+
+      success &= gst_overlay_handle_classification_entry (overlay, context,
+          blit, labels);
+
+      haslabel = ((labels != NULL) && (labels->len > 0)) ? TRUE : FALSE;
+    } else if (id == g_quark_from_static_string ("OpticalFlow")) {
+      GArray *mvectors = NULL, *stats = NULL;
+
+      mvectors = g_value_get_boxed (gst_structure_get_value (param, "mvectors"));
+      stats = g_value_get_boxed (gst_structure_get_value (param, "stats"));
+
+      success &= gst_overlay_handle_optclflow_entry (overlay, context, blit,
+          mvectors, stats);
+    }
+  }
+
+  // Extract the structure containing ROI parameters.
+  param = gst_video_region_of_interest_meta_get_param (roimeta,
+      "ObjectDetection");
+  gst_structure_get_uint (param, "color", &color);
+
+  // Set the most appropriate box line width based on frame and box dimensions.
+  gst_util_fraction_to_double (source->w, destination->w, &scale);
+  linewidth = (scale > 1.0F) ? (6.0F / scale) : 6.0F;
+
+  if (!haslabel) {
+    gst_structure_get_double (param, "confidence", &confidence);
+
+    g_snprintf (text, MAX_TEXT_LENGTH, "%s: %.1f%%",
+        g_quark_to_string (roimeta->roi_type), confidence);
+
+    // Set the most appropriate font size based on the overlay frame dimensions.
+    fontsize = MIN (((source->w / MAX_TEXT_LENGTH) * 9.0 / 5.0), 12.0F);
+
+    x = y = linewidth + 1.0F;
+
+    GST_TRACE_OBJECT (overlay, "Label: %s, Color: 0x%X, Position: [%.2f %.2f],"
+        " Fontsize: %.2f", text, color, x, y, fontsize);
+
+    success &= gst_cairo_draw_text (context, color, x, y, text, fontsize);
+  }
+
+  GST_TRACE_OBJECT (overlay, "Rectangle: [%d %d %d %d], Color: 0x%X",
+      source->x, source->y, source->w, source->h, color);
+
+  success &= gst_cairo_draw_rectangle (context, color, source->x, source->y,
+      source->w, source->h, linewidth, FALSE);
+
+  GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
+      "[%d %d %d %d]", source->x, source->y, source->w, source->h,
+      destination->x, destination->y, destination->w, destination->h);
+
+  return success;
 }
 
 static gboolean
@@ -729,10 +750,8 @@ gst_overlay_handle_timestamp_entry (GstVOverlay * overlay, cairo_t * context,
   destination->x = timestamp->position.x;
   destination->y = timestamp->position.y;
 
-  source->x = source->y = 0;
-
-  destination->w = source->w = GST_VIDEO_FRAME_WIDTH (vframe);
-  destination->h = source->h = GST_VIDEO_FRAME_HEIGHT (vframe);
+  destination->w = GST_VIDEO_FRAME_WIDTH (vframe);
+  destination->h = GST_VIDEO_FRAME_HEIGHT (vframe);
 
   fontsize = timestamp->fontsize;
   color = timestamp->color;
@@ -811,10 +830,8 @@ gst_overlay_handle_string_entry (GstVOverlay * overlay, cairo_t * context,
   destination->x = string->position.x;
   destination->y = string->position.y;
 
-  destination->w = source->w = GST_VIDEO_FRAME_WIDTH (vframe);
-  destination->h = source->h = GST_VIDEO_FRAME_HEIGHT (vframe);
-
-  source->x = source->y = 0;
+  destination->w = GST_VIDEO_FRAME_WIDTH (vframe);
+  destination->h = GST_VIDEO_FRAME_HEIGHT (vframe);
 
   fontsize = string->fontsize;
   color = string->color;
@@ -859,8 +876,6 @@ gst_overlay_handle_mask_entry (GstVOverlay * overlay, cairo_t * context,
 
   source = &(blit->sources[0]);
   destination = &(blit->destinations[0]);
-
-  source->x = source->y = 0;
 
   switch (mask->type) {
     case GST_OVERLAY_MASK_RECTANGLE:
@@ -934,7 +949,6 @@ gst_overlay_handle_image_entry (GstVOverlay * overlay, GstVideoBlit * blit,
 
   source = &(blit->sources[0]);
 
-  source->x = source->y = 0;
   source->w = simage->width;
   source->h = simage->height;
 
@@ -999,9 +1013,19 @@ gst_overlay_populate_overlay_blit (GstVOverlay * overlay, GstVideoBlit * blit,
   }
 
   // Allocate and intialize source and destination rectangles.
-  blit->sources = g_slice_new0 (GstVideoRectangle);
-  blit->destinations = g_slice_new0 (GstVideoRectangle);
+  blit->sources = g_slice_new (GstVideoRectangle);
+  blit->destinations = g_slice_new (GstVideoRectangle);
   blit->n_regions = 1;
+
+  // Initialize the blit source rectangle.
+  blit->sources[0].x = blit->sources[0].y = 0;
+  blit->sources[0].w = GST_VIDEO_FRAME_WIDTH (blit->frame);
+  blit->sources[0].h = GST_VIDEO_FRAME_HEIGHT (blit->frame);
+
+  // Initialize the blit destination rectangle.
+  blit->destinations[0].x = blit->destinations[0].y = 0;
+  blit->destinations[0].w = GST_VIDEO_INFO_WIDTH (overlay->vinfo);
+  blit->destinations[0].h = GST_VIDEO_INFO_HEIGHT (overlay->vinfo);
 
   // Convinient local pointer to the video frame.
   frame = blit->frame;
@@ -1067,35 +1091,44 @@ gst_overlay_populate_overlay_blit (GstVOverlay * overlay, GstVideoBlit * blit,
     cairo_font_options_destroy (options);
   }
 
-  if (GST_OVERLAY_TYPE_DETECTION == ovltype)
+  if (GST_OVERLAY_TYPE_DETECTION == ovltype) {
     success = gst_overlay_handle_detection_entry (overlay, context, blit,
         GST_VIDEO_ROI_META_CAST (ovldata));
-  else if (GST_OVERLAY_TYPE_CLASSIFICATION == ovltype)
-    success = gst_overlay_handle_classification_entry (overlay, context, blit,
-        GST_VIDEO_CLASSIFICATION_META_CAST (ovldata));
-  else if (GST_OVERLAY_TYPE_POSE_ESTIMATION == ovltype)
+  } else if (GST_OVERLAY_TYPE_CLASSIFICATION == ovltype) {
+    GArray *labels = GST_VIDEO_CLASSIFICATION_META_CAST (ovldata)->labels;
+
+    success =
+        gst_overlay_handle_classification_entry (overlay, context, blit, labels);
+  } else if (GST_OVERLAY_TYPE_POSE_ESTIMATION == ovltype) {
+    GArray *keypoints = GST_VIDEO_LANDMARKS_META_CAST (ovldata)->keypoints;
+    GArray *links = GST_VIDEO_LANDMARKS_META_CAST (ovldata)->links;
+
     success = gst_overlay_handle_pose_entry (overlay, context, blit,
-        GST_VIDEO_LANDMARKS_META_CAST (ovldata));
-  else if (GST_OVERLAY_TYPE_OPTCLFLOW == ovltype)
+        keypoints, links);
+  } else if (GST_OVERLAY_TYPE_OPTCLFLOW == ovltype) {
+    GArray *mvectors = GST_CV_OPTCLFLOW_META_CAST (ovldata)->mvectors;
+    GArray *stats = GST_CV_OPTCLFLOW_META_CAST (ovldata)->stats;
+
     success = gst_overlay_handle_optclflow_entry (overlay, context, blit,
-        GST_CV_OPTCLFLOW_META_CAST (ovldata));
-  else if (GST_OVERLAY_TYPE_BBOX == ovltype)
+        mvectors, stats);
+  } else if (GST_OVERLAY_TYPE_BBOX == ovltype) {
     success = gst_overlay_handle_bbox_entry (overlay, context, blit,
         GST_OVERLAY_BBOX_CAST (ovldata));
-  else if (GST_OVERLAY_TYPE_TIMESTAMP == ovltype)
+  } else if (GST_OVERLAY_TYPE_TIMESTAMP == ovltype) {
     success = gst_overlay_handle_timestamp_entry (overlay, context, blit,
         GST_OVERLAY_TIMESTAMP_CAST (ovldata));
-  else if (GST_OVERLAY_TYPE_STRING == ovltype)
+  } else if (GST_OVERLAY_TYPE_STRING == ovltype) {
     success = gst_overlay_handle_string_entry (overlay, context, blit,
         GST_OVERLAY_STRING_CAST (ovldata));
-  else if (GST_OVERLAY_TYPE_IMAGE == ovltype)
+  } else if (GST_OVERLAY_TYPE_IMAGE == ovltype) {
     success = gst_overlay_handle_image_entry (overlay, blit,
         GST_OVERLAY_IMAGE_CAST (ovldata));
-  else if (GST_OVERLAY_TYPE_MASK == ovltype)
+  } else if (GST_OVERLAY_TYPE_MASK == ovltype) {
     success = gst_overlay_handle_mask_entry (overlay, context, blit,
         GST_OVERLAY_MASK_CAST (ovldata));
-  else
+  } else {
     GST_ERROR_OBJECT (overlay, "Unhandled overlay type: %u!", ovltype);
+  }
 
   // Flush to ensure all writing to the surface has been done.
   cairo_surface_flush (surface);
@@ -1440,8 +1473,8 @@ gst_overlay_set_caps (GstBaseTransform * base, GstCaps * incaps,
     if ((ovltype == GST_OVERLAY_TYPE_BBOX) ||
         (ovltype == GST_OVERLAY_TYPE_DETECTION) ||
         (ovltype == GST_OVERLAY_TYPE_MASK)) {
-      // Square resolution (128 to 256 pixels) is most optimal.
-      width = height = GST_ROUND_UP_128 (MIN (MAX (width, height) / 10, 256));
+      // Square resolution of atleats 256 is most optimal.
+      width = height = GST_ROUND_UP_128 (MAX (MAX (width, height) / 8, 256));
     } else if (ovltype == GST_OVERLAY_TYPE_IMAGE) {
       // Square resolution 4 times smaller than the frame is most optimal.
       width = height = GST_ROUND_UP_128 (MAX (width, height) / 4);
