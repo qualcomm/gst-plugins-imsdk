@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -1145,7 +1145,7 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
     }
 
     GST_LOG ("Draw output surface %x", surface_id);
-    status = convert->Draw (surface_id, 0, NULL, 0, 0, objects, n_blits);
+    status = convert->Draw (surface_id, 0, NULL, 0, 0, objects, n_objects);
 
     if (status != C2D_STATUS_OK) {
       GST_ERROR ("Draw failed for surface %x, error: %d!", surface_id, status);
