@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -89,6 +89,18 @@ GST_DEBUG_CATEGORY_EXTERN (gst_ml_module_debug);
  * To be used as a possible option for 'gst_ml_module_configure'.
  */
 #define GST_ML_MODULE_OPT_CONSTANTS "GstMLModule.constants"
+
+/**
+ * GST_ML_MODULE_OPT_XTRA_OPERATION
+ *
+ * #G_TYPE_ENUM: Operation enum value contains extra operations to perform
+ *               on the data.
+ *               May not be applicable for all modules.
+ * Default: NULL
+ *
+ * To be used as a possible option for 'gst_ml_module_configure'.
+ */
+#define GST_ML_MODULE_OPT_XTRA_OPERATION "GstMLModule.xtra-operation"
 
 typedef struct _GstMLModule GstMLModule;
 typedef struct _GstLabel GstLabel;

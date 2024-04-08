@@ -148,10 +148,30 @@ create_two_stream_pipe (GstMultiStreamAppContext * appctx)
       *h264parse, *mp4mux, *filesink, *waylandsink;
   GstCaps *filtercaps;
   GstStructure *controls;
+  GstPad *pad = NULL;
   gboolean ret = FALSE;
 
   // Create first source element set the first camera
   qtiqmmfsrc = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
+
+  // Get qmmfsrc Element class
+  GstElementClass *qtiqmmfsrc_klass = GST_ELEMENT_GET_CLASS (qtiqmmfsrc);
+
+  // Get qmmfsrc pad template
+  GstPadTemplate *qtiqmmfsrc_template =
+      gst_element_class_get_pad_template (qtiqmmfsrc_klass, "video_%u");
+
+  // Request a pad from qmmfsrc
+  pad = gst_element_request_pad (qtiqmmfsrc, qtiqmmfsrc_template,
+      "video_%u", NULL);
+  if (!pad) {
+    g_printerr ("Error: pad cannot be retrieved from qmmfsrc!\n");
+  }
+  g_print ("Pad received - %s\n",  gst_pad_get_name (pad));
+
+  //g_object_set_property (G_OBJECT (pad), "type", &value);
+  g_object_set (G_OBJECT (pad), "type", 1, NULL);
+  gst_object_unref (pad);
 
   // Create capsfilter element for waylandsink to properties
   capsfilter_dis = gst_element_factory_make ("capsfilter", "capsfilter_dis");
