@@ -72,16 +72,14 @@ struct _GstVideoEncBin
   // Properties.
   GstBinEncoderType encoder_type;
   guint             buff_cnt_delay;
-  guint             target_bitrate;
-  gboolean          smart_bitrate_en;
+  guint             max_bitrate;
   gboolean          smart_framerate_en;
   gboolean          smart_gop_en;
-  guint             initial_goplength;
-  guint             long_goplength;
-  guint             gop_threshold;
-  GArray            *framerate_thresholds;
-  GArray            *bitrate_thresholds;
-  GArray            *roi_qualitys;
+  guint             default_goplength;
+  guint             max_goplength;
+  GstStructure      *levels_override;
+  GstStructure      *roi_qualitys;
+  gboolean          output_caps_processed;
 
   // Ctrl pad frames queue
   GstDataQueue      *ctrl_frames;
@@ -100,6 +98,10 @@ struct _GstVideoEncBin
   GCond             wakeup;
   /// Contains timestamps of I-frame insertions.
   GList             *syncframe_timestamps;
+
+  /// GOP len to be invoked at specified HD stream PTS
+  guint64           pending_gop_pts;
+  guint             pending_gop_len;
 };
 
 struct _GstVideoEncBinClass
