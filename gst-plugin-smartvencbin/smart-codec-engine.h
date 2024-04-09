@@ -14,27 +14,15 @@
 G_BEGIN_DECLS
 
 typedef struct _SmartCodecEngine SmartCodecEngine;
-typedef struct _BwStats BwStats;
 typedef struct _RectDeltaQP RectDeltaQP;
 typedef struct _RectDeltaQPs RectDeltaQPs;
 
 typedef void (* GstBitrateReceivedCallback) (guint bitrate, gpointer user_data);
-typedef void (* GstFRDeviderReceivedCallback) (guint frdivider,
-    gpointer user_data);
 typedef void (* GstGOPLengthReceivedCallback) (guint goplength,
     guint64 insert_syncframe_pts, gpointer user_data);
 typedef void (* GstReleaseBufferCallback) (gpointer user_data);
 
-#define STATS_BANDWIDTH 0x1
 #define MAX_RECT_ROI_NUM 10
-
-struct _BwStats {
-  gint total_size;
-  gint total_frames;
-  guint64 initial_time_ms;
-  guint64 last_stats_time_ms;
-  guint64 next_stats_time_ms;
-};
 
 struct _RectDeltaQP {
   gint left;
@@ -58,11 +46,14 @@ gst_smartcodec_engine_free (SmartCodecEngine * engine);
 
 GST_API void
 gst_smartcodec_engine_init (SmartCodecEngine * engine,
-    GstCaps * caps, guint stats_mask);
+    GstCaps * caps);
+
+GST_API void
+gst_smartcodec_engine_process_output_caps (SmartCodecEngine * engine,
+    GstCaps *caps);
 
 GST_API void
 gst_smartcodec_engine_config (SmartCodecEngine * engine,
-    gboolean smart_bitrate_en,
     gboolean smart_framerate_en,
     gboolean smart_gop_en,
     guint width,
@@ -70,15 +61,12 @@ gst_smartcodec_engine_config (SmartCodecEngine * engine,
     guint stride,
     guint fps_ctrl_n,
     guint fps_ctrl_d,
-    guint target_bitrate,
-    guint initial_goplength,
-    guint long_goplength,
-    guint gop_threshold,
-    GArray * bitrate_thresholds,
-    GArray * framerate_thresholds,
-    GArray * roi_qualitys,
+    guint max_bitrate,
+    guint default_goplength,
+    guint max_goplength,
+    GstStructure * levels_override,
+    GstStructure * roi_qualitys,
     GstBitrateReceivedCallback bitrate_callback,
-    GstFRDeviderReceivedCallback fr_callback,
     GstGOPLengthReceivedCallback goplength_callback,
     GstReleaseBufferCallback release_buffer_callback,
     gpointer user_data);
@@ -93,7 +81,7 @@ gst_smartcodec_engine_process_input_videobuffer (SmartCodecEngine * engine,
 
 GST_API void
 gst_smartcodec_engine_process_output_videobuffer (SmartCodecEngine * engine,
-    GstBuffer * buffer);
+    GstBuffer * buffer, gboolean bSyncFrame);
 
 GST_API void
 gst_smartcodec_engine_get_fps (SmartCodecEngine * engine, guint * n, guint * d);
@@ -106,16 +94,15 @@ GST_API void
 gst_smartcodec_engine_remove_rois_from_queue (SmartCodecEngine * engine);
 
 GST_API void
-gst_smartcodec_engine_check_elapsed_time_and_print_bwstats (
-    SmartCodecEngine * engine);
-
-GST_API void
 gst_smartcodec_engine_push_ctrl_buff (SmartCodecEngine * engine, guint8 * buff,
     guint32 stride, guint64 timestamp);
 
 GST_API void
 gst_smartcodec_engine_push_ml_buff (SmartCodecEngine * engine, gchar * data,
     guint64 timestamp);
+
+GST_API guint
+gst_smartcodec_engine_get_buff_cnt_delay (SmartCodecEngine * engine);
 
 GST_API void
 gst_smartcodec_engine_flush (SmartCodecEngine * engine);
