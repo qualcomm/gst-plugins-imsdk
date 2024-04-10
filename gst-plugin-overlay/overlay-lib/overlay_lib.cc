@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -3334,6 +3334,38 @@ int32_t OverlayItemPrivacyMask::UpdateAndDraw ()
     uint32_t cy = (config_.circle.center_y * surface_.height_) / height_;
     uint32_t rad = (config_.circle.radius * surface_.width_) / width_;
     cairo_arc (cr_context_, cx, cy, rad, 0, 2 * M_PI);
+    cairo_rectangle (cr_context_, 0, 0, surface_.width_, surface_.height_);
+    cairo_set_fill_rule (cr_context_, CAIRO_FILL_RULE_EVEN_ODD);
+    cairo_fill (cr_context_);
+  }
+    break;
+
+  case OverlayPrivacyMaskType::kPolygon: {
+    uint32_t* x_coords = config_.polygon.x_coords;
+    uint32_t* y_coords = config_.polygon.y_coords;
+    uint32_t n_sides = config_.polygon.n_sides;
+    cairo_move_to (cr_context_, (((*x_coords) * surface_.width_) / width_),
+            (((*y_coords) * surface_.height_) / height_));
+    for (uint32_t j = 1; j < n_sides; j++) {
+      cairo_line_to (cr_context_, (((*(x_coords + j)) * surface_.width_) / width_),
+            (((*(y_coords + j)) * surface_.height_) / height_));
+    }
+    cairo_close_path (cr_context_);
+    cairo_fill (cr_context_);
+  }
+    break;
+
+  case OverlayPrivacyMaskType::kInversePolygon: {
+    uint32_t* x_coords = config_.polygon.x_coords;
+    uint32_t* y_coords = config_.polygon.y_coords;
+    uint32_t n_sides = config_.polygon.n_sides;
+    cairo_move_to (cr_context_, (((*x_coords) * surface_.width_) / width_),
+            (((*y_coords) * surface_.height_) / height_));
+    for (uint32_t j = 1; j < n_sides; j++) {
+      cairo_line_to (cr_context_, (((*(x_coords + j)) * surface_.width_) / width_),
+            (((*(y_coords + j)) * surface_.height_) / height_));
+    }
+    cairo_close_path (cr_context_);
     cairo_rectangle (cr_context_, 0, 0, surface_.width_, surface_.height_);
     cairo_set_fill_rule (cr_context_, CAIRO_FILL_RULE_EVEN_ODD);
     cairo_fill (cr_context_);

@@ -27,7 +27,7 @@
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -222,16 +222,18 @@ struct _GstOverlayUsrBBox {
  * type: privacy mask type
  * circle: circle dimensions
  * rectangle: rectangle dimensions
+ * polygon: polygon dimensions
  * color: overlay color
  * dest_rect: render destination rectangle in video stream
  */
 struct _GstOverlayUsrMask {
-  GstOverlayUser        base;
+  GstOverlayUser         base;
   OverlayPrivacyMaskType type;
-  Overlaycircle         circle;
-  OverlayRect           rectangle;
-  guint                 color;
-  GstVideoRectangle     dest_rect;
+  Overlaycircle          circle;
+  OverlayRect            rectangle;
+  OverlayPolygon         polygon;
+  guint                  color;
+  GstVideoRectangle      dest_rect;
 };
 
 /* GstOverlayString - pair for string and capacity

@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -171,6 +171,12 @@ struct Overlaycircle {
   uint32_t radius;
 };
 
+struct OverlayPolygon {
+  uint32_t n_sides;
+  uint32_t *x_coords;
+  uint32_t *y_coords;
+};
+
 struct OverlayImageInfo {
   char * image_buffer;
   uint32_t image_size;
@@ -188,13 +194,16 @@ enum class OverlayPrivacyMaskType {
   kInverseRectangle,
   kCircle,
   kInverseCircle,
+  kPolygon,
+  kInversePolygon
 };
 
 struct OverlayPrivacyMask {
   OverlayPrivacyMaskType type;
   union {
-    Overlaycircle circle;
-    OverlayRect rectangle;
+    Overlaycircle  circle;
+    OverlayRect    rectangle;
+    OverlayPolygon polygon;
   };
 };
 

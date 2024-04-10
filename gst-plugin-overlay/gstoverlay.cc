@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -1423,6 +1423,7 @@ gst_overlay_apply_user_date_item (gpointer data, gpointer user_data)
  * @gst_overlay: context
  * @circle: circle dimensions
  * @rectangle: rectangle dimensions
+ * @polygon: polygon dimensions
  * @color: privacy mask color
  * @dest_rect: render destination rectangle in video stream
  * @item_id: pointer to overlay item instance id
@@ -1434,7 +1435,8 @@ gst_overlay_apply_user_date_item (gpointer data, gpointer user_data)
 static gboolean
 gst_overlay_apply_mask_item (GstOverlay * gst_overlay,
     OverlayPrivacyMaskType type, Overlaycircle *circle, OverlayRect *rectangle,
-    guint color, GstVideoRectangle * dest_rect, uint32_t * item_id)
+    OverlayPolygon *polygon, guint color, GstVideoRectangle * dest_rect,
+    uint32_t * item_id)
 {
   OverlayParam ov_param;
   int32_t ret = 0;
@@ -1442,6 +1444,7 @@ gst_overlay_apply_mask_item (GstOverlay * gst_overlay,
   g_return_val_if_fail (gst_overlay != NULL, FALSE);
   g_return_val_if_fail (circle != NULL, FALSE);
   g_return_val_if_fail (rectangle != NULL, FALSE);
+  g_return_val_if_fail (polygon != NULL, FALSE);
   g_return_val_if_fail (dest_rect != NULL, FALSE);
   g_return_val_if_fail (item_id != NULL, FALSE);
 
@@ -1466,6 +1469,9 @@ gst_overlay_apply_mask_item (GstOverlay * gst_overlay,
   if (type == OverlayPrivacyMaskType::kInverseRectangle ||
       type == OverlayPrivacyMaskType::kRectangle) {
     ov_param.privacy_mask.rectangle = *rectangle;
+  } else if (type == OverlayPrivacyMaskType::kInversePolygon ||
+             type == OverlayPrivacyMaskType::kPolygon) {
+    ov_param.privacy_mask.polygon = *polygon;
   } else {
     ov_param.privacy_mask.circle = *circle;
   }
@@ -1512,7 +1518,7 @@ gst_overlay_apply_user_mask_item (gpointer data, gpointer user_data)
 
   if (!ov_data->base.is_applied) {
     gboolean res = gst_overlay_apply_mask_item (gst_overlay, ov_data->type,
-        &ov_data->circle, &ov_data->rectangle, ov_data->color,
+        &ov_data->circle, &ov_data->rectangle, &ov_data->polygon, ov_data->color,
         &ov_data->dest_rect, &ov_data->base.item_id);
     if (!res) {
       GST_ERROR_OBJECT (gst_overlay, "User overlay apply failed!");
@@ -1994,6 +2000,7 @@ gst_overlay_set_mask_overlay (GstOverlayUser * entry, GstStructure * structure,
   gboolean entry_valid = FALSE;
   gboolean circle_valid = FALSE;
   gboolean rectangle_valid = FALSE;
+  gboolean polygon_valid = FALSE;
   gboolean dest_rect_valid = FALSE;
   gboolean inverse = FALSE;
 
@@ -2027,6 +2034,35 @@ gst_overlay_set_mask_overlay (GstOverlayUser * entry, GstStructure * structure,
       rectangle_valid = TRUE;
     }
 
+    if (!g_strcmp0 (name, "polygon") && G_VALUE_HOLDS (value, GST_TYPE_ARRAY)
+        && gst_value_array_get_size (value) == 3) {
+      const GValue *x_vals, *y_vals;
+      guint n_points = g_value_get_int (gst_value_array_get_value (value, 0));
+      x_vals = gst_value_array_get_value (value, 1);
+      y_vals = gst_value_array_get_value (value, 2);
+      if ((gst_value_array_get_size (x_vals) != n_points) ||
+          (gst_value_array_get_size (y_vals) != n_points)) {
+        GST_INFO("Values of required number of co-ordinates not found.");
+        return FALSE;
+      }
+      mask_entry->polygon.n_sides = n_points;
+      if (mask_entry->polygon.x_coords) {
+        g_free (mask_entry->polygon.x_coords);
+      }
+      mask_entry->polygon.x_coords = g_new0(uint32_t, n_points);
+      if (mask_entry->polygon.y_coords) {
+        g_free (mask_entry->polygon.y_coords);
+      }
+      mask_entry->polygon.y_coords = g_new0(uint32_t, n_points);
+      for (guint i = 0; i < n_points; ++i) {
+        mask_entry->polygon.x_coords[i] =
+            g_value_get_int (gst_value_array_get_value (x_vals, i));
+        mask_entry->polygon.y_coords[i] =
+            g_value_get_int (gst_value_array_get_value (y_vals, i));
+      }
+      polygon_valid = TRUE;
+    }
+
     if (!g_strcmp0 (name, "inverse") && G_VALUE_HOLDS (value, G_TYPE_BOOLEAN)) {
       inverse = g_value_get_boolean (value);
     }
@@ -2056,12 +2092,13 @@ gst_overlay_set_mask_overlay (GstOverlayUser * entry, GstStructure * structure,
     }
   }
 
-  if (circle_valid && rectangle_valid) {
-    GST_INFO ("circle and rectangle cannot be set in the same time");
+  if ((circle_valid && rectangle_valid) || (rectangle_valid && polygon_valid) ||
+      (circle_valid && polygon_valid)) {
+    GST_INFO ("Two masks cannot be set in the same time");
     return FALSE;
   }
 
-  entry_valid = (circle_valid || rectangle_valid) && dest_rect_valid;
+  entry_valid = (circle_valid || rectangle_valid || polygon_valid) && dest_rect_valid;
 
   if (entry_valid) {
     if (circle_valid && inverse) {
@@ -2072,6 +2109,10 @@ gst_overlay_set_mask_overlay (GstOverlayUser * entry, GstStructure * structure,
       mask_entry->type = OverlayPrivacyMaskType::kInverseRectangle;
     } else if (rectangle_valid) {
       mask_entry->type = OverlayPrivacyMaskType::kRectangle;
+    } else if (polygon_valid && inverse) {
+      mask_entry->type = OverlayPrivacyMaskType::kInversePolygon;
+    } else if (polygon_valid) {
+      mask_entry->type = OverlayPrivacyMaskType::kPolygon;
     } else {
       GST_INFO ("Error cannot find privacy mask type!");
       return FALSE;
@@ -2439,12 +2480,29 @@ gst_overlay_mask_overlay_to_string (gpointer data, gpointer user_data)
         ov_data->type == OverlayPrivacyMaskType::kRectangle ? "false" : "true",
         ov_data->color, ov_data->dest_rect.x,
         ov_data->dest_rect.y, ov_data->dest_rect.w, ov_data->dest_rect.h);
+  } else if (ov_data->type == OverlayPrivacyMaskType::kPolygon ||
+            ov_data->type == OverlayPrivacyMaskType::kInversePolygon) {
+    std::string tmp_x, tmp_y;
+    for (uint32_t i = 0; i < ov_data->polygon.n_sides; i++) {
+      tmp_x += std::to_string(*(ov_data->polygon.x_coords + i)) ;
+      tmp_y += std::to_string(*(ov_data->polygon.y_coords + i)) ;
+      if (i != ov_data->polygon.n_sides-1) {
+        tmp_x += ", ";
+        tmp_y += ", ";
+      }
+    }
+    ret = snprintf (tmp, size,
+        "%s, polygon=<%d, <%s>, <%s>>, inverse=%s, color=0x%x, dest-rect=<%d, %d, %d, %d>; ",
+        ov_data->base.user_id, ov_data->polygon.n_sides, tmp_x.c_str(), tmp_y.c_str(),
+        ov_data->type == OverlayPrivacyMaskType::kPolygon ? "false" : "true",
+        ov_data->color, ov_data->dest_rect.x,
+        ov_data->dest_rect.y, ov_data->dest_rect.w, ov_data->dest_rect.h);
   } else {
     ret = snprintf (tmp, size,
         "%s, circle=<%d, %d, %d>, inverse=%s, color=0x%x, dest-rect=<%d, %d, %d, %d>; ",
         ov_data->base.user_id, ov_data->circle.center_x,
         ov_data->circle.center_y, ov_data->circle.radius,
-        ov_data->type == OverlayPrivacyMaskType::kRectangle ? "false" : "true",
+        ov_data->type == OverlayPrivacyMaskType::kCircle ? "false" : "true",
         ov_data->color, ov_data->dest_rect.x,
         ov_data->dest_rect.y, ov_data->dest_rect.w, ov_data->dest_rect.h);
   }
@@ -3009,6 +3067,26 @@ gst_overlay_free_user_bbox_entry (gpointer ptr)
   }
 }
 
+/**
+ * gst_overlay_free_user_mask_entry:
+ * @ptr: GstOverlayUsrMask
+ *
+ * Free user mask overlay data.
+ */
+static void
+gst_overlay_free_user_mask_entry (gpointer ptr)
+{
+  if (ptr) {
+    GstOverlayUsrMask * entry = (GstOverlayUsrMask *) ptr;
+    if (entry->type == OverlayPrivacyMaskType::kPolygon ||
+        entry->type == OverlayPrivacyMaskType::kInversePolygon) {
+      g_free(entry->polygon.x_coords);
+      g_free(entry->polygon.y_coords);
+    }
+    gst_overlay_free_user_overlay_entry (ptr);
+  }
+}
+
 static void
 gst_overlay_init (GstOverlay * gst_overlay)
 {
@@ -3025,7 +3103,7 @@ gst_overlay_init (GstOverlay * gst_overlay)
   gst_overlay->usr_date = g_sequence_new (gst_overlay_free_user_overlay_entry);
   gst_overlay->usr_simg = g_sequence_new (gst_overlay_free_user_simg_entry);
   gst_overlay->usr_bbox = g_sequence_new (gst_overlay_free_user_bbox_entry);
-  gst_overlay->usr_mask = g_sequence_new (gst_overlay_free_user_overlay_entry);
+  gst_overlay->usr_mask = g_sequence_new (gst_overlay_free_user_mask_entry);
 
   gst_overlay->bbox_color = DEFAULT_PROP_OVERLAY_BBOX_COLOR;
   gst_overlay->date_color = DEFAULT_PROP_OVERLAY_DATE_COLOR;
