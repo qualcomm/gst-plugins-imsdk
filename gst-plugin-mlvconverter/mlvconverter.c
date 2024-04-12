@@ -98,9 +98,15 @@ G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
 #define DEFAULT_PROP_MEAN            0.0
 #define DEFAULT_PROP_SIGMA           (1.0 / 255.0)
 
-#define GET_MEAN_VALUE(mean, idx) (mean->len >= (guint) (idx + 1)) ? \
+#define GINT8_PTR_CAST(data)         ((gint8*) data)
+#define GUINT8_PTR_CAST(data)        ((guint8*) data)
+#define GINT32_PTR_CAST(data)        ((gint32*) data)
+#define GUINT32_PTR_CAST(data)       ((guint32*) data)
+#define GFLOAT_PTR_CAST(data)        ((gfloat*) data)
+
+#define GET_MEAN_VALUE(mean, idx) (mean->len > idx) ? \
     g_array_index (mean, gdouble, idx) : DEFAULT_PROP_MEAN
-#define GET_SIGMA_VALUE(sigma, idx) (sigma->len >= (guint) (idx + 1)) ? \
+#define GET_SIGMA_VALUE(sigma, idx) (sigma->len > idx) ? \
     g_array_index (sigma, gdouble, idx) : DEFAULT_PROP_SIGMA
 
 #define GST_PROTECTION_META_CAST(obj) ((GstProtectionMeta *) obj)
@@ -219,13 +225,6 @@ is_conversion_required (GstVideoFrame * inframe, GstVideoFrame * outframe)
   return conversion;
 }
 
-static inline gboolean
-is_normalization_required (GstMLInfo * mlinfo)
-{
-  return (mlinfo->type == GST_ML_TYPE_FLOAT16) ||
-      (mlinfo->type == GST_ML_TYPE_FLOAT32);
-}
-
 static inline void
 init_formats (GValue * formats, ...)
 {
@@ -311,6 +310,31 @@ gst_video_frame_unmap_and_reset (GstVideoFrame * frame)
   memset (frame->map, 0, sizeof (GstMapInfo) * GST_VIDEO_MAX_PLANES);
 
   gst_video_info_init (&(frame->info));
+}
+
+static inline void
+gst_ml_tensor_assign_value (GstMLType mltype, gpointer data, guint index,
+    gdouble value)
+{
+  switch (mltype) {
+    case GST_ML_TYPE_INT8:
+      GINT8_PTR_CAST (data)[index] = (gint8) value;
+      break;
+    case GST_ML_TYPE_UINT8:
+      GUINT8_PTR_CAST (data)[index] = (guint8) value;
+      break;
+    case GST_ML_TYPE_INT32:
+      GINT32_PTR_CAST (data)[index] = (gint32) value;
+      break;
+    case GST_ML_TYPE_UINT32:
+      GUINT32_PTR_CAST (data)[index] = (guint32) value;
+      break;
+    case GST_ML_TYPE_FLOAT32:
+      GFLOAT_PTR_CAST (data)[index] = (gfloat) value;
+      break;
+    default:
+      break;
+  }
 }
 
 static void
@@ -514,9 +538,10 @@ gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
     GstVideoFrame * vframe)
 {
   guint8 *source = NULL;
-  gfloat *destination = NULL;
+  gpointer destination = NULL;
   gdouble mean[4] = {0}, sigma[4] = {0};
-  gint idx = 0, row = 0, column = 0, width = 0, height = 0, bpp = 0;
+  gint row = 0, column = 0, width = 0, height = 0;
+  guint idx = 0, bpp = 0;
 
   // Retrive the video frame Bytes Per Pixel for later calculations.
   bpp = GST_VIDEO_FORMAT_INFO_BITS (vframe->info.finfo) *
@@ -539,7 +564,9 @@ gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
   for (row = (height - 1); row >= 0; row--) {
     for (column = ((width * bpp) - 1); column >= 0; column--) {
       idx = (row * width * bpp) + column;
-      destination[idx] = (source[idx] - mean[idx % bpp]) * sigma[idx % bpp];
+
+      gst_ml_tensor_assign_value (GST_ML_INFO_TYPE (mlconverter->mlinfo),
+          destination, idx, (source[idx] - mean[idx % bpp]) * sigma[idx % bpp]);
     }
   }
 
@@ -551,7 +578,7 @@ gst_ml_video_converter_normalize (GstMLVideoConverter * mlconverter,
     GstVideoFrame * inframe, GstVideoFrame * outframe)
 {
   guint8 *source = NULL;
-  gfloat *destination = NULL;
+  gpointer destination = NULL;
   gdouble mean[4] = {0}, sigma[4] = {0};
   guint idx = 0, size = 0, bpp = 0;
 
@@ -584,8 +611,10 @@ gst_ml_video_converter_normalize (GstMLVideoConverter * mlconverter,
   source = GST_VIDEO_FRAME_PLANE_DATA (inframe, 0);
   destination = GST_VIDEO_FRAME_PLANE_DATA (outframe, 0);
 
-  for (idx = 0; idx < size; idx++)
-    destination[idx] = (source[idx] - mean[idx % bpp]) * sigma[idx % bpp];
+  for (idx = 0; idx < size; idx++) {
+    gst_ml_tensor_assign_value (GST_ML_INFO_TYPE (mlconverter->mlinfo),
+        destination, idx, (source[idx] - mean[idx % bpp]) * sigma[idx % bpp]);
+  }
 
   return TRUE;
 }
@@ -1202,16 +1231,16 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
   outframe = mlconverter->composition.frame;
 
   if ((n_blits > 1) || is_conversion_required (inframe, outframe) ||
-      is_normalization_required (mlconverter->mlinfo)) {
+      ((mlconverter->mean->len != 0) && (mlconverter->sigma->len != 0))) {
     success = gst_video_converter_engine_compose (mlconverter->converter,
         &(mlconverter->composition), 1, NULL);
 
     // If the conversion request was successful apply normalization.
     if (success && (mlconverter->backend != GST_VCE_BACKEND_GLES) &&
-        is_normalization_required (mlconverter->mlinfo))
+        ((mlconverter->mean->len != 0) && (mlconverter->sigma->len != 0)))
       success = gst_ml_video_converter_normalize_ip (mlconverter, outframe);
   } else if ((mlconverter->backend != GST_VCE_BACKEND_GLES) &&
-             is_normalization_required (mlconverter->mlinfo)) {
+             ((mlconverter->mean->len != 0) && (mlconverter->sigma->len != 0))) {
     // There is not need for frame conversion, apply only normalization.
     success = gst_ml_video_converter_normalize (mlconverter, inframe, outframe);
   }
