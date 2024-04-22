@@ -48,25 +48,26 @@
 
 #include "include/gst_sample_apps_utils.h"
 
-#define DEFAULT_OUTPUT_FILENAME "/opt/yuv_dump%d.yuv"
+#define DEFAULT_OP_YUV_FILENAME "/opt/yuv_dump%d.yuv"
+#define DEFAULT_OP_MP4_FILENAME "/opt/video.mp4"
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
 
 #define GST_APP_SUMMARY "This app enables the users to use single camera with" \
   " different outputs such as preview,encode,YUV Dump and RTSP streaming \n" \
   "\nCommand:\n" \
-  "ForWaylandsink Preview:\n" \
+  "For Preview on Display:\n" \
   "  gst-camera-single-stream-example -o 0 -w 1920 -h 1080 \n" \
   "For Video Encoding:\n" \
-  "  gst-camera-single-stream-example -o 1 -w 1920 -h 1080 "  \
-  "--file_output=/opt/video.mp4" \
+  "  gst-camera-single-stream-example -o 1 -w 1920 -h 1080 \n" \
   "For YUV dump:\n" \
   "  gst-camera-single-stream-example -o 2 -w 1920 -h 1080 " \
-  "--file_output=/opt/file%d.yuv" \
-  "\nFor RTSP STREAMING:(run the rtsp server or follow the docs steps ) \n" \
+  "\nFor RTSP Streaming:(run the rtsp server or follow the docs steps ) \n" \
   "  gst-camera-single-stream-example -o 3 -w 1280 -h 720 " \
   "\nOutput:\n" \
-  "  Upon execution, application will generates output as user selected."
+  "  Upon execution, application will generates output as user selected. \n" \
+  "  In case Video Encoding the output video stored at /opt/video.mp4 \n" \
+  "  In case YUV dump the output video stored at /opt/yuv_dump%d.yuv" \
 
 // Structure to hold the application context
 struct GstCameraAppContext : GstAppContext {
@@ -97,7 +98,7 @@ gst_app_context_new ()
   ctx->pipeline = NULL;
   ctx->mloop = NULL;
   ctx->plugins = NULL;
-  ctx->output_file = DEFAULT_OUTPUT_FILENAME;
+  ctx->output_file = NULL;
   ctx->sinktype = GST_WAYLANDSINK;
   ctx->width = DEFAULT_WIDTH;
   ctx->height = DEFAULT_HEIGHT;
@@ -142,10 +143,6 @@ gst_app_context_free (GstCameraAppContext * appctx)
     gst_object_unref (appctx->pipeline);
     appctx->pipeline = NULL;
   }
-
-  if (appctx->sinktype == GST_VIDEO_ENCODE ||
-      appctx->sinktype == GST_YUV_DUMP)
-    g_free (appctx->output_file);
 
   if (appctx != NULL)
     g_free (appctx);
@@ -226,6 +223,7 @@ create_pipe (GstCameraAppContext * appctx)
     }
   } else if (appctx->sinktype == GST_YUV_DUMP) {
     // set the output file location for filesink element
+    appctx->output_file = DEFAULT_OP_YUV_FILENAME;
     filesink = gst_element_factory_make ("multifilesink", "filesink");
     g_object_set (G_OBJECT (filesink), "location", appctx->output_file, NULL);
     g_object_set (G_OBJECT (filesink), "enable-last-sample", false, NULL);
@@ -254,14 +252,16 @@ create_pipe (GstCameraAppContext * appctx)
     v4l2h264enc = gst_element_factory_make ("v4l2h264enc", "v4l2h264enc");
     g_object_set (G_OBJECT (v4l2h264enc), "capture-io-mode", 5, NULL);
     g_object_set (G_OBJECT (v4l2h264enc), "output-io-mode", 5, NULL);
-    fcontrols = gst_structure_from_string (
-        "fcontrols,video_bitrate=2000000,video_bitrate_mode=0", NULL);
-    g_object_set (G_OBJECT (v4l2h264enc), "extra-controls", fcontrols, NULL);
 
     // Create h264parse element for parsing the stream
     h264parse = gst_element_factory_make ("h264parse", "h264parse");
     g_object_set (G_OBJECT (h264parse), "config-interval", -1, NULL);
     if (appctx->sinktype == GST_RTSP_STREAMING) {
+      // Set bitrate for streaming usecase
+      fcontrols = gst_structure_from_string (
+          "fcontrols,video_bitrate=6000000,video_bitrate_mode=0", NULL);
+      g_object_set (G_OBJECT (v4l2h264enc), "extra-controls", fcontrols, NULL);
+
       rtph264pay = gst_element_factory_make ("rtph264pay", "rtph264pay");
       g_object_set (G_OBJECT (rtph264pay), "pt", 96, NULL);
 
@@ -284,10 +284,14 @@ create_pipe (GstCameraAppContext * appctx)
         return FALSE;
       }
     } else if (appctx->sinktype == GST_VIDEO_ENCODE) {
+      fcontrols = gst_structure_from_string (
+          "fcontrols,video_bitrate_mode=0", NULL);
+      g_object_set (G_OBJECT (v4l2h264enc), "extra-controls", fcontrols, NULL);
       // Create mp4mux element for muxing the stream
       mp4mux = gst_element_factory_make ("mp4mux", "mp4mux");
 
       // Create filesink element for storing the encoding stream
+      appctx->output_file = DEFAULT_OP_MP4_FILENAME;
       filesink = gst_element_factory_make ("filesink", "filesink");
       g_object_set (G_OBJECT (filesink), "location", appctx->output_file, NULL);
 
@@ -373,10 +377,6 @@ main (gint argc, gchar *argv[])
       "\n\t1-VIDEOENCODING"
       "\n\t2-YUVDUMP"
       "\n\t3-RTSPSTREAMING" },
-    { "file_output", 'f', 0, G_OPTION_ARG_STRING, &appctx->output_file,
-      "Output Filename"
-      "\n\t1-Video Encoding: -f /opt/video.mp4"
-      "\n\t2-YUV dump: -f /opt/yuv_dump%d.yuv" },
     { NULL }
     };
 
@@ -413,7 +413,7 @@ main (gint argc, gchar *argv[])
 
   g_set_prgname ("gst-camera-single-stream-example");
 
-  if (appctx->sinktype > GST_RTSP_STREAMING) {
+  if (appctx->sinktype < GST_WAYLANDSINK || appctx->sinktype > GST_RTSP_STREAMING) {
     g_printerr ("\n Invalid user Input:gst-camera-single-stream-example --help \n");
     gst_app_context_free (appctx);
     return -1;
@@ -496,6 +496,9 @@ main (gint argc, gchar *argv[])
   // Set the pipeline to the NULL state
   g_print ("\n Setting pipeline to NULL state ...\n");
   gst_element_set_state (appctx->pipeline, GST_STATE_NULL);
+  if (appctx->output_file)
+    g_print ("\n Video file will be stored at %s\n",
+        appctx->output_file);
 
   // Free the application context
   g_print ("\n Free the Application context\n");
