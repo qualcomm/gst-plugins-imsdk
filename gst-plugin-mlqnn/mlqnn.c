@@ -33,7 +33,7 @@ G_DEFINE_TYPE (GstMLQnn, gst_ml_qnn, GST_TYPE_BASE_TRANSFORM);
 #define DEFAULT_PROP_MIN_BUFFERS  2
 #define DEFAULT_PROP_MAX_BUFFERS  10
 
-#define GST_ML_QNN_TENSOR_TYPES "{ UINT8, INT32, FLOAT32 }"
+#define GST_ML_QNN_TENSOR_TYPES "{ INT8, UINT8, INT32, UINT32, FLOAT16, FLOAT32 }"
 
 #define GST_ML_QNN_CAPS                           \
     "neural-network/tensors, "                    \

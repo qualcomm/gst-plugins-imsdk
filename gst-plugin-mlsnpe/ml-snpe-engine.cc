@@ -175,10 +175,15 @@ static GstMLType
 snpe_to_ml_type (zdl::DlSystem::UserBufferEncoding::ElementType_t type)
 {
   switch (type) {
+    case zdl::DlSystem::UserBufferEncoding::ElementType_t::FLOAT16:
+      return GST_ML_TYPE_FLOAT16;
     case zdl::DlSystem::UserBufferEncoding::ElementType_t::FLOAT:
       return GST_ML_TYPE_FLOAT32;
+    case zdl::DlSystem::UserBufferEncoding::ElementType_t::INT8:
+      return GST_ML_TYPE_INT8;
     case zdl::DlSystem::UserBufferEncoding::ElementType_t::UNSIGNED8BIT:
     case zdl::DlSystem::UserBufferEncoding::ElementType_t::TF8:
+    case zdl::DlSystem::UserBufferEncoding::ElementType_t::UINT8:
       return GST_ML_TYPE_UINT8;
     case zdl::DlSystem::UserBufferEncoding::ElementType_t::INT32:
       return GST_ML_TYPE_INT32;
