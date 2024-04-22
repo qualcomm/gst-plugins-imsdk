@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -173,12 +173,16 @@ static GstMLType
 gst_ml_aic_to_ml_type (::aicapi::bufferIoDataTypeEnum type)
 {
   switch (type) {
+    case ::aicapi::FLOAT_16_TYPE:
+      return GST_ML_TYPE_FLOAT16;
     case ::aicapi::FLOAT_TYPE:
       return GST_ML_TYPE_FLOAT32;
     case ::aicapi::INT8_Q_TYPE:
       return GST_ML_TYPE_INT8;
     case ::aicapi::UINT8_Q_TYPE:
       return GST_ML_TYPE_UINT8;
+    case ::aicapi::INT32_I_TYPE:
+      return GST_ML_TYPE_INT32;
     default:
       GST_ERROR ("Unsupported format %d!", static_cast<int32_t>(type));
       break;
