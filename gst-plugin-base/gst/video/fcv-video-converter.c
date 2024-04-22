@@ -473,7 +473,7 @@ gst_fcv_composition_blit_area (GstVideoFrame * outframe, GstVideoBlit * blits,
   blit = &(blits[index]);
 
   // If there are no destination regions then the whole frame is the region.
-  if (r_idx < blit->n_regions)
+  if (r_idx >= blit->n_regions)
     return GST_VIDEO_FRAME_WIDTH (outframe) * GST_VIDEO_FRAME_HEIGHT (outframe);
 
   // Calculate the destination area filled with frame content.
@@ -481,11 +481,7 @@ gst_fcv_composition_blit_area (GstVideoFrame * outframe, GstVideoBlit * blits,
   area = region->w * region->h;
 
   // Iterate destination region for each blit and subtract overlapping area.
-  for (num = 0; num <= index; num++) {
-    // No destination regions in that blit object, whole frame is the region.
-    if (blits[num].n_regions == 0)
-      return GST_VIDEO_FRAME_WIDTH (outframe) * GST_VIDEO_FRAME_HEIGHT (outframe);
-
+  for (num = 0; num < index; num++) {
     // Subtract overlapping are of the destination regions in that blit object.
     for (n = 0; n < blits[num].n_regions; n++) {
       l_region = &(blits[num].destinations[n]);
