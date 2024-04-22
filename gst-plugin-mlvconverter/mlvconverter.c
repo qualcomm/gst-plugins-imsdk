@@ -95,8 +95,8 @@ G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
 
 #define DEFAULT_PROP_ENGINE_BACKEND  (gst_video_converter_default_backend())
 #define DEFAULT_PROP_SUBPIXEL_LAYOUT GST_ML_VIDEO_PIXEL_LAYOUT_REGULAR
-#define DEFAULT_PROP_MEAN            128.0
-#define DEFAULT_PROP_SIGMA           1.0
+#define DEFAULT_PROP_MEAN            0.0
+#define DEFAULT_PROP_SIGMA           (1.0 / 255.0)
 
 #define GET_MEAN_VALUE(mean, idx) (mean->len >= (guint) (idx + 1)) ? \
     g_array_index (mean, gdouble, idx) : DEFAULT_PROP_MEAN
