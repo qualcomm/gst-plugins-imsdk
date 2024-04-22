@@ -513,12 +513,10 @@ static gboolean
 gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
     GstVideoFrame * vframe)
 {
-  GstProtectionMeta *pmeta = NULL;
   guint8 *source = NULL;
   gfloat *destination = NULL;
   gdouble mean[4] = {0}, sigma[4] = {0};
   gint idx = 0, row = 0, column = 0, width = 0, height = 0, bpp = 0;
-  gint sar_n = 1, sar_d = 1;
 
   // Retrive the video frame Bytes Per Pixel for later calculations.
   bpp = GST_VIDEO_FORMAT_INFO_BITS (vframe->info.finfo) *
@@ -536,20 +534,6 @@ gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
 
   width = GST_VIDEO_FRAME_WIDTH (vframe);
   height = GST_VIDEO_FRAME_HEIGHT (vframe);
-
-  // Extract the SAR (Source Aspect Ratio).
-  if ((pmeta = gst_buffer_get_protection_meta (vframe->buffer)) != NULL) {
-    sar_n = gst_value_get_fraction_numerator (
-        gst_structure_get_value (pmeta->info, "source-aspect-ratio"));
-    sar_d = gst_value_get_fraction_denominator (
-        gst_structure_get_value (pmeta->info, "source-aspect-ratio"));
-  }
-
-  // Adjust dimensions so that only the image pixels will be normalized.
-  if ((sar_n * height) > (width * sar_d)) // SAR > (width / height)
-    height = gst_util_uint64_scale_int (width, sar_d, sar_n);
-  else if ((sar_n * height) < (width * sar_d)) // SAR < (width / height)
-    width = gst_util_uint64_scale_int (height, sar_n, sar_d);
 
   // Normalize in reverse as front bytes are occupied.
   for (row = (height - 1); row >= 0; row--) {
