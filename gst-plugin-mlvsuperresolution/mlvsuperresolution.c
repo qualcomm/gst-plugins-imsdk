@@ -634,7 +634,7 @@ gst_ml_video_super_resolution_transform (GstBaseTransform * base,
 #endif // HAVE_LINUX_DMA_BUF_H
 
   // Call the submodule process funtion.
-  success = gst_ml_video_super_resolution_module_execute (
+  success = gst_ml_module_video_super_resolution_execute (
       super_resolution->module, &mlframe, &vframe);
 
 #ifdef HAVE_LINUX_DMA_BUF_H

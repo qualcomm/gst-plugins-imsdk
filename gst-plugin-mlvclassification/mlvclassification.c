@@ -228,20 +228,13 @@ gst_ml_video_classification_xtra_opration_get_type (void)
   return gtype;
 }
 
-static void
-gst_ml_prediction_free (GstMLPrediction * prediction)
-{
-  if (prediction->label != NULL)
-    g_free (prediction->label);
-}
-
 static gint
 gst_ml_compare_predictions (gconstpointer a, gconstpointer b)
 {
-  const GstMLPrediction *l_prediction, *r_prediction;
+  const GstMLClassPrediction *l_prediction, *r_prediction;
 
-  l_prediction = (const GstMLPrediction*)a;
-  r_prediction = (const GstMLPrediction*)b;
+  l_prediction = (const GstMLClassPrediction*)a;
+  r_prediction = (const GstMLClassPrediction*)b;
 
   if (l_prediction->confidence > r_prediction->confidence)
     return -1;
@@ -412,7 +405,7 @@ gst_ml_video_classification_fill_video_output (
   }
 
   for (idx = 0; idx < classification->predictions->len; idx++) {
-    GstMLPrediction *prediction = NULL;
+    GstMLClassPrediction *prediction = NULL;
     gchar *string = NULL;
 
     // Break immediately if we reach the number of results limit.
@@ -420,14 +413,14 @@ gst_ml_video_classification_fill_video_output (
       break;
 
     prediction =
-        &(g_array_index (classification->predictions, GstMLPrediction, idx));
+        &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
 
     // Concat the prediction data to the output string.
-    string = g_strdup_printf ("%s: %.1f%%", prediction->label,
+    string = g_strdup_printf ("%s: %.1f%%", g_quark_to_string (prediction->name),
         prediction->confidence);
 
     GST_TRACE_OBJECT (classification, "label: %s, confidence: %.1f%%",
-        prediction->label, prediction->confidence);
+        g_quark_to_string (prediction->name), prediction->confidence);
 
     // Set text color.
     cairo_set_source_rgba (context,
@@ -475,10 +468,10 @@ static gboolean
 gst_ml_video_classification_fill_text_output (
     GstMLVideoClassification * classification, GstBuffer *buffer)
 {
+  gchar *string = NULL, *name = NULL;
   GstMapInfo memmap = {};
   GValue entries = G_VALUE_INIT, labels = G_VALUE_INIT, value = G_VALUE_INIT;
   GstStructure *structure = NULL;
-  gchar *string = NULL;
   guint idx = 0;
   gsize length = 0;
 
@@ -486,28 +479,29 @@ gst_ml_video_classification_fill_text_output (
   g_value_init (&labels, GST_TYPE_ARRAY);
 
   for (idx = 0; idx < classification->predictions->len; idx++) {
-    GstMLPrediction *prediction = NULL;
+    GstMLClassPrediction *prediction = NULL;
 
     // Break immediately if we reach the number of results limit.
     if (idx >= classification->n_results)
       break;
 
     prediction =
-        &(g_array_index (classification->predictions, GstMLPrediction, idx));
+        &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
 
     // Break immediately if sorted prediction confidence is below the threshold.
     if (prediction->confidence < classification->threshold)
       break;
 
     GST_TRACE_OBJECT (classification, "label: %s, confidence: %.1f%%",
-        prediction->label, prediction->confidence);
+        g_quark_to_string (prediction->name), prediction->confidence);
 
-    prediction->label = g_strdelimit (prediction->label, " ", '.');
+    // Replace empty spaces otherwise subsequent stream parse call will fail.
+    name = g_strdup (g_quark_to_string (prediction->name));
+    name = g_strdelimit (name, " ", '.');
 
-    structure = gst_structure_new (prediction->label,
-        "confidence", G_TYPE_DOUBLE, prediction->confidence,
-        "color", G_TYPE_UINT, prediction->color,
-        NULL);
+    structure = gst_structure_new (name, "confidence", G_TYPE_DOUBLE,
+        prediction->confidence, "color", G_TYPE_UINT, prediction->color, NULL);
+    g_free (name);
 
     g_value_init (&value, GST_TYPE_STRUCTURE);
     g_value_take_boxed (&value, structure);
@@ -669,7 +663,7 @@ gst_ml_video_classification_submit_input_buffer (GstBaseTransform * base,
       classification->predictions, 0, classification->predictions->len);
 
   // Call the submodule process funtion.
-  success = gst_ml_video_classification_module_execute (classification->module,
+  success = gst_ml_module_video_classification_execute (classification->module,
       &mlframe, classification->predictions);
 
   gst_ml_frame_unmap (&mlframe);
@@ -1194,12 +1188,8 @@ gst_ml_video_classification_init (GstMLVideoClassification * classification)
   classification->module = NULL;
 
   classification->predictions =
-      g_array_new (FALSE, FALSE, sizeof (GstMLPrediction));
+      g_array_new (FALSE, FALSE, sizeof (GstMLClassPrediction));
   g_return_if_fail (classification->predictions != NULL);
-
-  // Set element clearing function.
-  g_array_set_clear_func (classification->predictions,
-      (GDestroyNotify) gst_ml_prediction_free);
 
   classification->mdlenum = DEFAULT_PROP_MODULE;
   classification->labels = DEFAULT_PROP_LABELS;

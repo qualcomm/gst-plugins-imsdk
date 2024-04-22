@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -32,10 +32,13 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "ml-video-detection-module.h"
-
 #include <stdio.h>
 #include <math.h>
+
+#include <gst/utils/common-utils.h>
+#include <gst/utils/batch-utils.h>
+#include <gst/ml/ml-module-utils.h>
+#include <gst/ml/ml-module-video-detection.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
@@ -226,21 +229,6 @@ cleanup:
   return success;
 }
 
-static inline gfloat
-gst_ml_module_get_dequant_value (void * pdata, GstMLType mltype, guint idx,
-    gfloat offset, gfloat scale)
-{
-  switch (mltype) {
-    case GST_ML_TYPE_UINT8:
-      return ((GUINT8_PTR_CAST (pdata))[idx] - offset) * scale;
-    case GST_ML_TYPE_FLOAT32:
-      return (GFLOAT_PTR_CAST (pdata))[idx];
-    default:
-      break;
-  }
-  return 0.0;
-}
-
 gboolean
 gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 {
@@ -250,7 +238,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   gpointer scores = NULL, geometry = NULL;
   GstVideoRectangle region = { 0, };
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
-  guint s_idx = 0, b_idx = 0, n_rows = 0, n_cols = 0, x = 0, y = 0;
+  guint num = 0, idx = 0, n_rows = 0, n_cols = 0, x = 0, y = 0;
   gfloat x0 = 0, x1 = 0, x2 = 0, x3 = 0, angle = 0, cos_angle = 0, sin_angle = 0;
   gfloat confidence = 0, h = 0, w = 0;
   gint nms = -1;
@@ -264,7 +252,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     return FALSE;
   }
 
-  pmeta = gst_buffer_get_protection_meta (mlframe->buffer);
+  pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
+      gst_batch_channel_name (0));
 
   // Extract the source tensor region with actual data.
   gst_ml_protecton_meta_get_source_region (pmeta, &region);
@@ -282,11 +271,12 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   }
 
   for (y = 0; y < n_rows; y++) {
-    for (x = 0; x < n_cols; x++, s_idx++, b_idx += 5) {
+    for (x = 0; x < n_cols; x++, num++, idx += 5) {
       GstMLLabel *label = NULL;
-      GstMLPrediction prediction = { 0, };
-      confidence = gst_ml_module_get_dequant_value (scores, mltype,
-          s_idx, submodule->qoffsets[0], submodule->qscales[0]);
+      GstMLBoxPrediction prediction = { 0, };
+
+      confidence = gst_ml_tensor_extract_value (mltype, scores, num,
+          submodule->qoffsets[0], submodule->qscales[0]);
 
       // Discard results below the minimum score threshold.
       if (confidence < submodule->threshold)
@@ -295,17 +285,17 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       prediction.confidence = confidence * 100.0F;
 
       // Extracting the derive rotated boxes surround text
-      x0 = gst_ml_module_get_dequant_value (geometry, mltype, b_idx,
+      x0 = gst_ml_tensor_extract_value (mltype, geometry, idx,
           submodule->qoffsets[1], submodule->qscales[1]);
-      x1 = gst_ml_module_get_dequant_value (geometry, mltype, b_idx + 1,
+      x1 = gst_ml_tensor_extract_value (mltype, geometry, idx + 1,
           submodule->qoffsets[1], submodule->qscales[1]);
-      x2 = gst_ml_module_get_dequant_value (geometry, mltype, b_idx + 2,
+      x2 = gst_ml_tensor_extract_value (mltype, geometry, idx + 2,
           submodule->qoffsets[1], submodule->qscales[1]);
-      x3 = gst_ml_module_get_dequant_value (geometry, mltype, b_idx + 3,
+      x3 = gst_ml_tensor_extract_value (mltype, geometry, idx + 3,
           submodule->qoffsets[1], submodule->qscales[1]);
 
       // Extracting the rotation angle then computing the sine and cosine
-      angle = gst_ml_module_get_dequant_value (geometry, mltype, b_idx + 4,
+      angle = gst_ml_tensor_extract_value (mltype, geometry, idx + 4,
           submodule->qoffsets[1], submodule->qscales[1]);
 
       cos_angle = cos (angle);
@@ -322,7 +312,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       prediction.top = (prediction.bottom - h);
 
       // Adjust bounding box dimensions with extracted source tensor region.
-      gst_ml_prediction_transform_dimensions (&prediction, &region);
+      gst_ml_box_transform_dimensions (&prediction, &region);
 
       // Discard results with out of region coordinates.
       if ((prediction.top > 1.0)   || (prediction.left > 1.0) ||
@@ -330,21 +320,19 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
         continue;
 
       label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (0));
-      prediction.label = g_strdup (label ? label->name : "Text");
+      prediction.name = g_quark_from_string (label ? label->name : "Text");
       prediction.color = label ? label->color : 0x00FF00FF;
 
       // Non-Max Suppression (NMS) algorithm.
-      nms = gst_ml_non_max_suppression (&prediction, predictions);
+      nms = gst_ml_box_non_max_suppression (&prediction, predictions);
 
       // If the NMS result is -2 don't add the prediction to the list.
-      if (nms == (-2)) {
-        g_free (prediction.label);
+      if (nms == (-2))
         continue;
-      }
 
       GST_LOG ("Box[%.2f, %.2f, %.2f, %.2f]. Label: %s. Confidence: %.2f",
           prediction.top, prediction.left, prediction.bottom, prediction.right,
-          prediction.label, prediction.confidence);
+          g_quark_to_string (prediction.name), prediction.confidence);
 
       // If the NMS result is above -1 remove the entry with the nms index.
       if (nms >= 0)

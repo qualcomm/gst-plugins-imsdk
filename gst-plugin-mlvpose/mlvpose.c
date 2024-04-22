@@ -75,6 +75,7 @@
 #include <gst/ml/gstmlmeta.h>
 #include <gst/video/gstimagepool.h>
 #include <gst/utils/common-utils.h>
+#include <gst/utils/batch-utils.h>
 #include <cairo/cairo.h>
 
 #ifdef HAVE_LINUX_DMA_BUF_H
@@ -204,7 +205,7 @@ gst_ml_modules_get_type (void)
 static void
 gst_ml_prediction_free (gpointer data)
 {
-  GstMLPrediction *prediction = (GstMLPrediction*) data;
+  GstMLPosePrediction *prediction = (GstMLPosePrediction*) data;
 
   if (prediction->keypoints != NULL)
     g_array_free (prediction->keypoints, TRUE);
@@ -216,10 +217,10 @@ gst_ml_prediction_free (gpointer data)
 static gint
 gst_ml_compare_predictions (gconstpointer a, gconstpointer b)
 {
-  const GstMLPrediction *l_prediction, *r_prediction;
+  const GstMLPosePrediction *l_prediction, *r_prediction;
 
-  l_prediction = (const GstMLPrediction*)a;
-  r_prediction = (const GstMLPrediction*)b;
+  l_prediction = (const GstMLPosePrediction*)a;
+  r_prediction = (const GstMLPosePrediction*)b;
 
   if (l_prediction->confidence > r_prediction->confidence)
     return -1;
@@ -373,34 +374,24 @@ gst_ml_video_pose_fill_video_output (GstMLVideoPose * vpose, GstBuffer * buffer)
   cairo_set_line_width (context, borderwidth);
 
   for (idx = 0; idx < vpose->predictions->len; ++idx) {
-    GstMLPrediction *prediction = NULL;
+    GstMLPosePrediction *prediction = NULL;
     GArray *keypoints = NULL, *connections = NULL;
 
-    // Break immediately if we reach the number of results limit.
-    if (n_predictions >= vpose->n_results)
-      break;
-
-    prediction = &(g_array_index (vpose->predictions, GstMLPrediction, idx));
-
-    // Break immediately if sorted prediction confidence is below the threshold.
-    if (prediction->confidence < vpose->threshold)
-      break;
-
-    GST_TRACE_OBJECT (vpose, "Pose confidence: %.2f", prediction->confidence);
+    prediction = &(g_array_index (vpose->predictions, GstMLPosePrediction, idx));
 
     keypoints = prediction->keypoints;
     connections = prediction->connections;
 
     // Draw pose keypoints.
     for (num = 0; num < keypoints->len; ++num) {
-      GstPoseKeypoint *kp = &(g_array_index (keypoints, GstPoseKeypoint, num));
+      GstMLKeypoint *kp = &(g_array_index (keypoints, GstMLKeypoint, num));
 
       // Adjust coordinates based on the output buffer dimensions.
       kp->x = kp->x * vmeta->width;
       kp->y = kp->y * vmeta->height;
 
       GST_TRACE_OBJECT (vpose, "Keypoint: '%s' [%.0f x %.0f], confidence %.2f",
-          kp->label, kp->x, kp->y, kp->confidence);
+          g_quark_to_string (kp->name), kp->x, kp->y, kp->confidence);
 
       // Set color.
       cairo_set_source_rgba (context,
@@ -416,16 +407,17 @@ gst_ml_video_pose_fill_video_output (GstMLVideoPose * vpose, GstBuffer * buffer)
 
     // Draw pose skeleton.
     for (num = 0; num < connections->len; ++num) {
-      const GstPoseLink *link = NULL;
-      const GstPoseKeypoint *s_kp = NULL, *d_kp = NULL;
+      const GstMLKeypointsLink *link = NULL;
+      const GstMLKeypoint *s_kp = NULL, *d_kp = NULL;
 
-      link = &(g_array_index (connections, GstPoseLink, num));
+      link = &(g_array_index (connections, GstMLKeypointsLink, num));
 
-      s_kp = &(g_array_index (keypoints, GstPoseKeypoint, link->s_kp_id));
-      d_kp = &(g_array_index (keypoints, GstPoseKeypoint, link->d_kp_id));
+      s_kp = &(g_array_index (keypoints, GstMLKeypoint, link->s_kp_id));
+      d_kp = &(g_array_index (keypoints, GstMLKeypoint, link->d_kp_id));
 
       GST_TRACE_OBJECT (vpose, "Link: '%s' [%.0f x %.0f] <--> '%s' [%.0f x %.0f]",
-          s_kp->label, s_kp->x, s_kp->y, d_kp->label, d_kp->x, d_kp->y);
+          g_quark_to_string (s_kp->name), s_kp->x, s_kp->y,
+          g_quark_to_string (d_kp->name), d_kp->x, d_kp->y);
 
       cairo_move_to (context, s_kp->x, s_kp->y);
       cairo_line_to (context, d_kp->x, d_kp->y);
@@ -464,29 +456,21 @@ gst_ml_video_pose_fill_video_output (GstMLVideoPose * vpose, GstBuffer * buffer)
 static gboolean
 gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
 {
+  gchar *string = NULL, *name = NULL;
   GstMapInfo memmap = {};
   GValue entries = G_VALUE_INIT, value = G_VALUE_INIT;
-  gchar *string = NULL;
-  guint idx = 0, num = 0, n_predictions = 0;
+  guint idx = 0, num = 0;
   gsize length = 0;
 
   g_value_init (&entries, GST_TYPE_LIST);
 
   for (idx = 0; idx < vpose->predictions->len; idx++) {
-    GstMLPrediction *prediction = NULL;
+    GstMLPosePrediction *prediction = NULL;
     GstStructure *entry = NULL, *structure = NULL;
     GValue keypoints = G_VALUE_INIT;
     GValue links = G_VALUE_INIT, link = G_VALUE_INIT;
 
-    // Break immediately if we reach the number of results limit.
-    if (n_predictions >= vpose->n_results)
-      break;
-
-    prediction = &(g_array_index (vpose->predictions, GstMLPrediction, idx));
-
-    // Break immediately if sorted prediction confidence is below the threshold.
-    if (prediction->confidence < vpose->threshold)
-      continue;
+    prediction = &(g_array_index (vpose->predictions, GstMLPosePrediction, idx));
 
     entry = gst_structure_new ("PoseEstimation",
         "confidence", G_TYPE_DOUBLE, prediction->confidence,
@@ -495,21 +479,20 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
     g_value_init (&keypoints, GST_TYPE_ARRAY);
 
     for (num = 0; num < prediction->keypoints->len; num++) {
-      GstPoseKeypoint *kp =
-          &(g_array_index (prediction->keypoints, GstPoseKeypoint, num));
+      GstMLKeypoint *kp =
+          &(g_array_index (prediction->keypoints, GstMLKeypoint, num));
 
       GST_TRACE_OBJECT (vpose, "Keypoint: '%s' [%.2f x %.2f], confidence %.2f",
-          kp->label, kp->x, kp->y, kp->confidence);
+          g_quark_to_string (kp->name), kp->x, kp->y, kp->confidence);
 
-      // Replace white spaces with placeholder symbol.
-      kp->label = g_strdelimit (kp->label, " ", '.');
+      // Replace empty spaces otherwise subsequent stream parse call will fail.
+      name = g_strdup (g_quark_to_string (kp->name));
+      name = g_strdelimit (name, " ", '.');
 
-      structure = gst_structure_new (kp->label,
-          "confidence", G_TYPE_DOUBLE, kp->confidence,
-          "color", G_TYPE_UINT, kp->color,
-          "x", G_TYPE_DOUBLE, kp->x,
-          "y", G_TYPE_DOUBLE, kp->y,
-          NULL);
+      structure = gst_structure_new (name, "confidence", G_TYPE_DOUBLE,
+          kp->confidence, "x", G_TYPE_DOUBLE, kp->x, "y", G_TYPE_DOUBLE, kp->y,
+          "color", G_TYPE_UINT, kp->color, NULL);
+      g_free (name);
 
       g_value_init (&value, GST_TYPE_STRUCTURE);
       g_value_take_boxed (&value, structure);
@@ -524,26 +507,28 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
     g_value_init (&links, GST_TYPE_ARRAY);
 
     for (num = 0; num < prediction->connections->len; num++) {
-      GstPoseLink *connection = NULL;
-      GstPoseKeypoint *s_kp = NULL, *d_kp = NULL;
+      GstMLKeypointsLink *connection = NULL;
+      GstMLKeypoint *s_kp = NULL, *d_kp = NULL;
 
-      connection = &(g_array_index (prediction->connections, GstPoseLink, num));
+      connection =
+          &(g_array_index (prediction->connections, GstMLKeypointsLink, num));
 
-      s_kp = &(g_array_index (prediction->keypoints, GstPoseKeypoint,
+      s_kp = &(g_array_index (prediction->keypoints, GstMLKeypoint,
           connection->s_kp_id));
-      d_kp = &(g_array_index (prediction->keypoints, GstPoseKeypoint,
+      d_kp = &(g_array_index (prediction->keypoints, GstMLKeypoint,
           connection->d_kp_id));
 
-      GST_TRACE_OBJECT (vpose, "Link: '%s' <--> '%s'", s_kp->label, d_kp->label);
+      GST_TRACE_OBJECT (vpose, "Link: '%s' <--> '%s'",
+          g_quark_to_string (s_kp->name), g_quark_to_string (d_kp->name));
 
       g_value_init (&value, G_TYPE_STRING);
       g_value_init (&link, GST_TYPE_ARRAY);
 
-      g_value_set_string (&value, s_kp->label);
+      g_value_set_string (&value, g_quark_to_string (s_kp->name));
       gst_value_array_append_value (&link, &value);
       g_value_reset (&value);
 
-      g_value_set_string (&value, d_kp->label);
+      g_value_set_string (&value, g_quark_to_string (d_kp->name));
       gst_value_array_append_value (&link, &value);
       g_value_unset (&value);
 
@@ -559,8 +544,6 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
 
     gst_value_list_append_value (&entries, &value);
     g_value_unset (&value);
-
-    n_predictions++;
   }
 
   // Append timestamp information needed for synchronization.
@@ -703,7 +686,7 @@ gst_ml_video_pose_submit_input_buffer (GstBaseTransform * base,
       vpose->predictions, 0, vpose->predictions->len);
 
   // Call the submodule process funtion.
-  success = gst_ml_video_pose_module_execute (vpose->module, &mlframe,
+  success = gst_ml_module_video_pose_execute (vpose->module, &mlframe,
       vpose->predictions);
 
   gst_ml_frame_unmap (&mlframe);
@@ -1189,7 +1172,7 @@ gst_ml_video_pose_init (GstMLVideoPose * vpose)
   vpose->outpool = NULL;
   vpose->module = NULL;
 
-  vpose->predictions = g_array_new (FALSE, FALSE, sizeof (GstMLPrediction));
+  vpose->predictions = g_array_new (FALSE, FALSE, sizeof (GstMLPosePrediction));
   g_return_if_fail (vpose->predictions != NULL);
 
   // Set element clearing function.

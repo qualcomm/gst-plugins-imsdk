@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -61,7 +61,10 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "ml-video-detection-module.h"
+#include <gst/utils/common-utils.h>
+#include <gst/utils/batch-utils.h>
+#include <gst/ml/ml-module-utils.h>
+#include <gst/ml/ml-module-video-detection.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
@@ -231,7 +234,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     return FALSE;
   }
 
-  pmeta = gst_buffer_get_protection_meta (mlframe->buffer);
+  pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
+      gst_batch_channel_name (0));
 
   // Extract the dimensions of the input tensor that produced the output tensors.
   if (submodule->inwidth == 0 || submodule->inheight == 0) {
@@ -267,7 +271,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
   for (idx = 0; idx < n_entries; idx++) {
     GstMLLabel *label = NULL;
-    GstMLPrediction prediction = { 0, };
+    GstMLBoxPrediction prediction = { 0, };
     gfloat confidence = scores[idx];
 
     // Discard results with confidence below the set threshold.
@@ -281,7 +285,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     prediction.right = bboxes[(idx * 4) + 3] * submodule->inwidth;
 
     // Adjust bounding box dimensions with extracted source tensor region.
-    gst_ml_prediction_transform_dimensions (&prediction, &region);
+    gst_ml_box_transform_dimensions (&prediction, &region);
 
     if ((prediction.top > 1.0) || (prediction.left > 1.0) ||
         (prediction.bottom > 1.0) || (prediction.right > 1.0))
@@ -291,17 +295,15 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
         GUINT_TO_POINTER (classes[idx]));
 
     prediction.confidence = confidence * 100;
-    prediction.label = g_strdup (label ? label->name : "unknown");
+    prediction.name = g_quark_from_string (label ? label->name : "unknown");
     prediction.color = label ? label->color : 0x000000FF;
 
     // Non-Max Suppression (NMS) algorithm.
-    nms = gst_ml_non_max_suppression (&prediction, predictions);
+    nms = gst_ml_box_non_max_suppression (&prediction, predictions);
 
     // If the NMS result is -2 don't add the prediction to the list.
-    if (nms == (-2)){
-      g_free (prediction.label);
+    if (nms == (-2))
       continue;
-    }
 
     // If the NMS result is above -1 remove the entry with the nms index.
     if (nms >= 0)

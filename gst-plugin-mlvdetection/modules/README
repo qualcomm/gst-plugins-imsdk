@@ -17,7 +17,6 @@ This README file inludes instructions on how to create and compile custom post-p
 		├── mlvdetection.h
 		└── modules
 		    ├── CMakeLists.txt
-		    ├── ml-video-detection-module.h
 		    └── ml-vdetection-<module-name>.c[.cc]
 		```
 
@@ -49,7 +48,7 @@ This README file inludes instructions on how to create and compile custom post-p
 
 3. Include the necessary headers in the source file ```ml-vdetection-<module-name>.c[.cc]```. Refer to example below with comments.
 	```c
-	#include "ml-video-detection-module.h" // Main header for the module from which the APi are inherited.
+	#include "ml-module-video-detection.h" // Main header for the module from which the APi are inherited.
 	// Empty line for readability.
 	#include <stdio.h> // C/C++ library headers
 	#include <math.h> // C/C++ library headers
@@ -57,7 +56,7 @@ This README file inludes instructions on how to create and compile custom post-p
 	#include <gst/ml/gstmlmeta.h> // Any system headers.
 	```
 
-4. Implement the APIs defined in the main header (gstmodule.h) and the submodule header (ml-video-detection-module.h).
+4. Implement the APIs defined in the main header (gstmodule.h) and the submodule header (ml-module-video-detection.h).
 	- Detailed description on each API can found in the headers. But here is a brief summary:
 		```c
 		// The set of capabilities/tensors that the module can handle.
@@ -110,7 +109,7 @@ This README file inludes instructions on how to create and compile custom post-p
 		gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 		{
 		  GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
-		  // The output argument is casted to the TYPE specified in the submodule header (ml-video-detection-module.h).
+		  // The output argument is casted to the TYPE specified in the submodule header (ml-module-video-detection.h).
 		  TYPE *<output-name> = (TYPE *) output;
 		  ...
 		  return TRUE;

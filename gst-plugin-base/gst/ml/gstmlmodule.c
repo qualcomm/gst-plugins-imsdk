@@ -278,12 +278,12 @@ gst_ml_parse_labels (const gchar * input, GValue * list)
     if (!success) {
       guint idx = 0;
       GValue value = G_VALUE_INIT;
-      g_value_init (&value, G_TYPE_STRING);
 
       GST_WARNING ("Failed to deserialize labels file contents!");
 
       // Clear previous data
       g_value_reset (list);
+      g_value_init (&value, G_TYPE_STRING);
 
       gchar **split_labels = g_strsplit (contents, ",", -1);
 

@@ -32,9 +32,10 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "ml-video-segmentation-module.h"
-
 #include <gst/utils/common-utils.h>
+#include <gst/utils/batch-utils.h>
+#include <gst/ml/ml-module-utils.h>
+#include <gst/ml/ml-module-video-segmentation.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
@@ -197,7 +198,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   indata = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
   outdata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
 
-  pmeta = gst_buffer_get_protection_meta (mlframe->buffer);
+  pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
+      gst_batch_channel_name (0));
 
   // Extract the dimensions of the input tensor that produced the output tensors.
   if (submodule->inwidth == 0 || submodule->inheight == 0) {

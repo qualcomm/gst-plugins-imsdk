@@ -643,7 +643,7 @@ gst_ml_video_segmentation_transform (GstBaseTransform * base,
 #endif // HAVE_LINUX_DMA_BUF_H
 
   // Call the submodule process funtion.
-  success = gst_ml_video_segmentation_module_execute (segmentation->module,
+  success = gst_ml_module_video_segmentation_execute (segmentation->module,
       &mlframe, &vframe);
 
 #ifdef HAVE_LINUX_DMA_BUF_H

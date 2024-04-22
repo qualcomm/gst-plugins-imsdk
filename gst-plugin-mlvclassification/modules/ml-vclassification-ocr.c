@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -61,13 +61,14 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "ml-video-classification-module.h"
-
+#include <gst/utils/common-utils.h>
+#include <gst/utils/batch-utils.h>
+#include <gst/ml/ml-module-utils.h>
+#include <gst/ml/ml-module-video-classification.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
 
-#define GFLOAT_PTR_CAST(data)       ((gfloat*)data)
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
 
 #define GST_ML_MODULE_CAPS \
@@ -246,10 +247,10 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   }
 
   if (result->len > 0) {
-    GstMLPrediction prediction = { 0, 0.0, 0x00FF00FF };
+    GstMLClassPrediction prediction = { 0, 0.0, 0x00FF00FF };
 
     prediction.confidence = 100;
-    prediction.label = g_strdup (result->str);
+    prediction.name = g_quark_from_string (result->str);
     prediction.color = 0x00FF00FF;
 
     predictions = g_array_append_val (predictions, prediction);

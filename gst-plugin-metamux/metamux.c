@@ -334,7 +334,7 @@ gst_metamux_process_landmarks_entry (GstMetaMux * muxer, GstBuffer * buffer,
   const GValue *value = NULL, *entry = NULL;
   GstStructure *params = NULL;
   guint idx = 0, num = 0, size = 0;
-  gdouble confidence = 0.0;
+  gdouble confidence = 0.0, x = 0.0, y = 0.0;
 
   gst_structure_get_double (structure, "confidence", &confidence);
 
@@ -348,12 +348,17 @@ gst_metamux_process_landmarks_entry (GstMetaMux * muxer, GstBuffer * buffer,
 
   for (idx = 0; idx < size; idx++) {
     GstVideoKeypoint *kp = &(g_array_index (keypoints, GstVideoKeypoint, idx));
-    gdouble x = 0.0, y = 0.0;
+    gchar *name = NULL;
 
     entry = gst_value_array_get_value (value, idx);
     params = GST_STRUCTURE (g_value_get_boxed (entry));
 
-    kp->name = gst_structure_get_name_id (params);
+    name = g_strdup (gst_structure_get_name (params));
+    name = g_strdelimit (name, ".", ' ');
+
+    kp->name = g_quark_from_string (name);
+    g_free (name);
+
     gst_structure_get_double (params, "confidence", &(kp->confidence));
     gst_structure_get_uint (params, "color", &(kp->color));
 
@@ -420,11 +425,17 @@ gst_metamux_process_classification_entry (GstMetaMux * muxer, GstBuffer * buffer
 
   for (idx = 0; idx < size; idx++) {
     GstClassLabel *label = &(g_array_index (labels, GstClassLabel, idx));
+    gchar *name = NULL;
 
     entry = gst_value_array_get_value (value, idx);
     params = GST_STRUCTURE (g_value_get_boxed (entry));
 
-    label->name = gst_structure_get_name_id (params);
+    name = g_strdup (gst_structure_get_name (params));
+    name = g_strdelimit (name, ".", ' ');
+
+    label->name = g_quark_from_string (name);
+    g_free (name);
+
     gst_structure_get_double (params, "confidence", &(label->confidence));
     gst_structure_get_uint (params, "color", &(label->color));
   }

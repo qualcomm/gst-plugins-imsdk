@@ -203,20 +203,13 @@ gst_ml_modules_get_type (void)
   return gtype;
 }
 
-static void
-gst_ml_prediction_free (GstMLPrediction * prediction)
-{
-  if (prediction->label != NULL)
-    g_free (prediction->label);
-}
-
 static gint
 gst_ml_compare_predictions (gconstpointer a, gconstpointer b)
 {
-  const GstMLPrediction *l_prediction, *r_prediction;
+  const GstMLBoxPrediction *l_prediction, *r_prediction;
 
-  l_prediction = (const GstMLPrediction*)a;
-  r_prediction = (const GstMLPrediction*)b;
+  l_prediction = (const GstMLBoxPrediction*)a;
+  r_prediction = (const GstMLBoxPrediction*)b;
 
   if (l_prediction->confidence > r_prediction->confidence)
     return -1;
@@ -379,17 +372,17 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
   }
 
   for (idx = 0; idx < detection->predictions->len; idx++) {
-    GstMLPrediction *prediction = NULL;
+    GstMLBoxPrediction *prediction = NULL;
     gchar *string = NULL;
 
     // Break immediately if we reach the number of results limit.
     if (n_predictions >= detection->n_results)
       break;
 
-    prediction = &(g_array_index (detection->predictions, GstMLPrediction, idx));
+    prediction = &(g_array_index (detection->predictions, GstMLBoxPrediction, idx));
 
     // Concat the prediction data to the output string.
-    string = g_strdup_printf ("%s: %.1f%%", prediction->label,
+    string = g_strdup_printf ("%s: %.1f%%", g_quark_to_string (prediction->name),
         prediction->confidence);
 
     // Set the bounding box parameters based on the output buffer dimensions.
@@ -424,8 +417,9 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
     g_return_val_if_fail (CAIRO_STATUS_SUCCESS == cairo_status (context), FALSE);
 
     GST_TRACE_OBJECT (detection, "label: %s, confidence: %.1f%%, "
-        "[%.2f %.2f %.2f %.2f]", prediction->label, prediction->confidence,
-        prediction->top, prediction->left, prediction->bottom, prediction->right);
+        "[%.2f %.2f %.2f %.2f]", g_quark_to_string (prediction->name),
+        prediction->confidence, prediction->top, prediction->left,
+        prediction->bottom, prediction->right);
 
     // Set rectangle borders width.
     cairo_set_line_width (context, borderwidth);
@@ -467,16 +461,16 @@ static gboolean
 gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
     GstBuffer * buffer)
 {
+  gchar *string = NULL, *name = NULL;
   GstMapInfo memmap = {};
   GValue entries = G_VALUE_INIT, value = G_VALUE_INIT;
-  gchar *string = NULL;
   guint idx = 0, n_predictions = 0;
   gsize length = 0;
 
   g_value_init (&entries, GST_TYPE_LIST);
 
   for (idx = 0; idx < detection->predictions->len; idx++) {
-    GstMLPrediction *prediction = NULL;
+    GstMLBoxPrediction *prediction = NULL;
     GstStructure *entry = NULL;
     GValue rectangle = G_VALUE_INIT;
 
@@ -484,21 +478,21 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
     if (n_predictions >= detection->n_results)
       break;
 
-    prediction = &(g_array_index (detection->predictions, GstMLPrediction, idx));
+    prediction = &(g_array_index (detection->predictions, GstMLBoxPrediction, idx));
 
     GST_TRACE_OBJECT (detection, "label: %s, confidence: %.1f%%, "
-        "[%.2f %.2f %.2f %.2f]", prediction->label, prediction->confidence,
-        prediction->top, prediction->left, prediction->bottom, prediction->right);
+        "[%.2f %.2f %.2f %.2f]", g_quark_to_string (prediction->name),
+        prediction->confidence, prediction->top, prediction->left,
+        prediction->bottom, prediction->right);
 
-    prediction->label = g_strdelimit (prediction->label, " ", '.');
+    // Replace empty spaces otherwise subsequent stream parse call will fail.
+    name = g_strdup (g_quark_to_string (prediction->name));
+    name = g_strdelimit (name, " ", '.');
 
-    entry = gst_structure_new ("ObjectDetection",
-        "label", G_TYPE_STRING, prediction->label,
-        "confidence", G_TYPE_DOUBLE, prediction->confidence,
-        "color", G_TYPE_UINT, prediction->color,
-        NULL);
-
-    prediction->label = g_strdelimit (prediction->label, ".", ' ');
+    entry = gst_structure_new ("ObjectDetection", "label", G_TYPE_STRING, name,
+        "confidence", G_TYPE_DOUBLE, prediction->confidence, "color", G_TYPE_UINT,
+        prediction->color, NULL);
+    g_free (name);
 
     g_value_init (&value, G_TYPE_FLOAT);
     g_value_init (&rectangle, GST_TYPE_ARRAY);
@@ -671,7 +665,7 @@ gst_ml_video_detection_submit_input_buffer (GstBaseTransform * base,
       detection->predictions, 0, detection->predictions->len);
 
   // Call the submodule process funtion.
-  success = gst_ml_video_detection_module_execute (detection->module, &mlframe,
+  success = gst_ml_module_video_detection_execute (detection->module, &mlframe,
       detection->predictions);
 
   gst_ml_frame_unmap (&mlframe);
@@ -1184,12 +1178,8 @@ gst_ml_video_detection_init (GstMLVideoDetection * detection)
   detection->outpool = NULL;
   detection->module = NULL;
 
-  detection->predictions = g_array_new (FALSE, FALSE, sizeof (GstMLPrediction));
+  detection->predictions = g_array_new (FALSE, FALSE, sizeof (GstMLBoxPrediction));
   g_return_if_fail (detection->predictions != NULL);
-
-  // Set element clearing function.
-  g_array_set_clear_func (detection->predictions,
-      (GDestroyNotify) gst_ml_prediction_free);
 
   detection->mdlenum = DEFAULT_PROP_MODULE;
   detection->labels = DEFAULT_PROP_LABELS;

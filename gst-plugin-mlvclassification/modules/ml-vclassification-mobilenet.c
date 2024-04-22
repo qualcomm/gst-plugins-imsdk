@@ -63,19 +63,16 @@
 
 #include <math.h>
 
-#include "ml-video-classification-module.h"
-
+#include <gst/utils/common-utils.h>
+#include <gst/utils/batch-utils.h>
+#include <gst/ml/ml-module-utils.h>
+#include <gst/ml/ml-module-video-classification.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
 
 #define GST_ML_OP_IS_SOFTMAX(op) \
     (op == GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX)
-
-#define GINT8_PTR_CAST(data)        ((gint8*) data)
-#define GUINT8_PTR_CAST(data)       ((guint8*) data)
-#define GINT32_PTR_CAST(data)       ((gint32*) data)
-#define GFLOAT_PTR_CAST(data)       ((gfloat*) data)
 
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
 
@@ -106,25 +103,6 @@ struct _GstMLSubModule {
   // Extra operations that need to apply
   gint       operation;
 };
-
-static inline gfloat
-gst_ml_module_get_dequant_value (void * pdata, GstMLType mltype, guint idx,
-    gfloat offset, gfloat scale)
-{
-  switch (mltype) {
-    case GST_ML_TYPE_INT8:
-      return ((GINT8_PTR_CAST (pdata))[idx] - offset) * scale;
-    case GST_ML_TYPE_UINT8:
-      return ((GUINT8_PTR_CAST (pdata))[idx] - offset) * scale;
-    case GST_ML_TYPE_INT32:
-      return GINT32_PTR_CAST (pdata)[idx];
-    case GST_ML_TYPE_FLOAT32:
-      return GFLOAT_PTR_CAST (pdata)[idx];
-    default:
-      break;
-  }
-  return 0.0;
-}
 
 gpointer
 gst_ml_module_open (void)
@@ -314,21 +292,20 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   data = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
 
   if (GST_ML_OP_IS_SOFTMAX (submodule->operation)) {
-    gfloat score = 0.0;
     // Calculate the sum of the exponents for softmax function.
     for (idx = 0; idx < n_inferences; ++idx) {
-      score = gst_ml_module_get_dequant_value (data, mltype, idx,
+      confidence = gst_ml_tensor_extract_value (mltype, data, idx,
           submodule->qoffsets[0], submodule->qscales[0]);
-      sum += exp(score);
+      sum += exp(confidence);
     }
   }
 
   // Fill the prediction table.
   for (idx = 0; idx < n_inferences; ++idx) {
     GstMLLabel *label = NULL;
-    GstMLPrediction prediction = { 0 };
+    GstMLClassPrediction prediction = { 0 };
 
-    confidence = gst_ml_module_get_dequant_value (data, mltype, idx,
+    confidence = gst_ml_tensor_extract_value (mltype, data, idx,
         submodule->qoffsets[0], submodule->qscales[0]);
 
     // Apply softmax function on the confidence result.
@@ -344,7 +321,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (idx));
 
     prediction.confidence = confidence;
-    prediction.label = g_strdup (label ? label->name : "unknown");
+    prediction.name = g_quark_from_string (label ? label->name : "unknown");
     prediction.color = label ? label->color : 0x000000FF;
 
     predictions = g_array_append_val (predictions, prediction);
