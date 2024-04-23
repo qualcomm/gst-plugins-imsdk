@@ -66,6 +66,7 @@
 
 #include <gst/gst.h>
 #include <gst/ml/gstmlmodule.h>
+#include <gst/ml/ml-module-utils.h>
 
 G_BEGIN_DECLS
 

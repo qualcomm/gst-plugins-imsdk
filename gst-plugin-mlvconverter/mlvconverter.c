@@ -72,9 +72,10 @@
 #include <dlfcn.h>
 #include <unistd.h>
 
+#include <gst/video/gstimagepool.h>
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
-#include <gst/video/gstimagepool.h>
+#include <gst/ml/ml-module-utils.h>
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
 
@@ -93,19 +94,14 @@ G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
 #define DEFAULT_PROP_MIN_BUFFERS     2
 #define DEFAULT_PROP_MAX_BUFFERS     24
 
-#define DEFAULT_PROP_ENGINE_BACKEND  (gst_video_converter_default_backend())
-#define DEFAULT_PROP_SUBPIXEL_LAYOUT GST_ML_VIDEO_PIXEL_LAYOUT_REGULAR
-#define DEFAULT_PROP_MEAN            0.0
-#define DEFAULT_PROP_SIGMA           1.0
+#define DEFAULT_PROP_ENGINE_BACKEND    (gst_video_converter_default_backend())
+#define DEFAULT_PROP_IMAGE_DISPOSITION GST_ML_VIDEO_DISPOSITION_TOP_LEFT
+#define DEFAULT_PROP_SUBPIXEL_LAYOUT   GST_ML_VIDEO_PIXEL_LAYOUT_REGULAR
+#define DEFAULT_PROP_MEAN              0.0
+#define DEFAULT_PROP_SIGMA             1.0
 
-#define SIGNED_CONVERSION_OFFSET     (128.0)
-#define FLOAT_CONVERSION_SIGMA       (255.0)
-
-#define GINT8_PTR_CAST(data)         ((gint8*) data)
-#define GUINT8_PTR_CAST(data)        ((guint8*) data)
-#define GINT32_PTR_CAST(data)        ((gint32*) data)
-#define GUINT32_PTR_CAST(data)       ((guint32*) data)
-#define GFLOAT_PTR_CAST(data)        ((gfloat*) data)
+#define SIGNED_CONVERSION_OFFSET       128.0
+#define FLOAT_CONVERSION_SIGMA         255.0
 
 #define GET_MEAN_VALUE(mean, idx) (mean->len > idx) ? \
     g_array_index (mean, gdouble, idx) : DEFAULT_PROP_MEAN
@@ -135,6 +131,7 @@ enum
 {
   PROP_0,
   PROP_ENGINE_BACKEND,
+  PROP_IMAGE_DISPOSITION,
   PROP_SUBPIXEL_LAYOUT,
   PROP_MEAN,
   PROP_SIGMA,
@@ -185,6 +182,33 @@ gst_ml_video_converter_src_template (void)
 {
   return gst_pad_template_new ("src", GST_PAD_SRC, GST_PAD_ALWAYS,
       gst_ml_video_converter_src_caps ());
+}
+
+GType
+gst_ml_video_disposition_get_type (void)
+{
+  static GType gtype = 0;
+
+  static const GEnumValue variants[] = {
+    { GST_ML_VIDEO_DISPOSITION_TOP_LEFT,
+        "Preserve the source image AR (Aspect Ratio) during scaledown and place "
+        "it in the top-left corner of the output tensor", "top-left"
+    },
+    { GST_ML_VIDEO_DISPOSITION_CENTRE,
+        "Preserve the source image AR (Aspect Ratio) during scaledown and place "
+        "it in the centre of the output tensor", "centre"
+    },
+    { GST_ML_VIDEO_DISPOSITION_STRETCH,
+        "Ignore the source image AR (Aspect Ratio) and if required stretch it's "
+        "AR in order to fit completely inside the output tensor", "stretch"
+    },
+    { 0, NULL, NULL },
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstMLVideoDisposition", variants);
+
+  return gtype;
 }
 
 GType
@@ -248,28 +272,6 @@ init_formats (GValue * formats, ...)
 }
 
 static inline void
-gst_calculate_dimensions (gint maxwidth, gint maxheight, gint par_n, gint par_d,
-    gint sar_n, gint sar_d, gint * width, gint * height)
-{
-  gint num = 0, den = 0;
-
-  // Aspect ratio of the destination, usually same as SAR (as PAR is 1/1)
-  gst_util_fraction_multiply (sar_n, sar_d, par_d, par_n, &num, &den);
-
-  // Based on the end aspect ratio different dimension will be used as base.
-  if ((num * maxheight) > (maxwidth * den)) {
-    *width = maxwidth;
-    *height = gst_util_uint64_scale_int (maxwidth, den, num);
-  } else if ((num * maxheight) < (maxwidth * den)) {
-    *height = maxheight;
-    *width = gst_util_uint64_scale_int (maxheight, num, den);
-  } else { // (num * maxheight) == (maxwidth * den)
-    *width = maxwidth;
-    *height = maxheight;
-  }
-}
-
-static inline void
 gst_video_frame_unmap_and_reset (GstVideoFrame * frame)
 {
   gst_video_frame_unmap (frame);
@@ -308,6 +310,35 @@ gst_ml_tensor_assign_value (GstMLType mltype, gpointer data, guint index,
     default:
       break;
   }
+}
+
+static void
+gst_ml_video_converter_update_destination (GstMLVideoConverter * mlconverter,
+    const GstVideoRectangle * source, GstVideoRectangle * destination)
+{
+  gint maxwidth = 0, maxheight = 0;
+
+  // If the image disposition is simply to stretch simply return, nothing to do.
+  if (mlconverter->disposition == GST_ML_VIDEO_DISPOSITION_STRETCH)
+    return;
+
+  maxwidth = destination->w;
+  maxheight = destination->h;
+
+  // Disposition is one of two modes with AR (Aspect Ratio) preservation.
+  // Recalculate the destination width or height depending on the ratios.
+  if ((source->w * destination->h) > (source->h * destination->w))
+    destination->h = gst_util_uint64_scale_int (maxwidth, source->h, source->w);
+  else if ((source->w * destination->h) < (source->h * destination->w))
+    destination->w = gst_util_uint64_scale_int (maxheight, source->w, source->h);
+
+  // No additional adjustment to the X and Y axis are needed, simply return.
+  if (mlconverter->disposition == GST_ML_VIDEO_DISPOSITION_TOP_LEFT)
+    return;
+
+  // Additional correction of X and Y axis for centred image disposition.
+  destination->x = (maxwidth - destination->w) / 2;
+  destination->y += (maxheight - destination->h) / 2;
 }
 
 static void
@@ -355,7 +386,7 @@ gst_ml_video_converter_setup_composition (GstMLVideoConverter * mlconverter,
   GstVideoFrame *inframe = NULL, *outframe = NULL;
   GstBuffer *buffer = NULL;
   GstVideoMultiviewMode multiview = GST_VIDEO_MULTIVIEW_MODE_NONE;
-  gint par_n = 1, par_d = 1, sar_n = 0, sar_d = 0, maxwidth = 0, maxheight = 0;
+  gint maxwidth = 0, maxheight = 0, offset = 0;
   guint idx = 0, num = 0, id = 0, n_memory = 0, n_batch = 0, n_views = 0;
   gboolean success = FALSE;
 
@@ -386,10 +417,6 @@ gst_ml_video_converter_setup_composition (GstMLVideoConverter * mlconverter,
   maxwidth = GST_VIDEO_FRAME_WIDTH (outframe);
   maxheight = GST_VIDEO_FRAME_HEIGHT  (outframe) / n_batch;
 
-  // Fill output PAR (Pixel Aspect Ratio), will be used to calculations.
-  par_n = GST_VIDEO_INFO_PAR_N (&(outframe)->info);
-  par_d = GST_VIDEO_INFO_PAR_D (&(outframe)->info);
-
   for (idx = 0, num = 0; idx < n_batch; idx++) {
     GstVideoMeta *vmeta = NULL;
     GstVideoRegionOfInterestMeta *roimeta = NULL;
@@ -399,7 +426,7 @@ gst_ml_video_converter_setup_composition (GstMLVideoConverter * mlconverter,
     // Check if a bitwise mask was set for this channel/batch input.
     if ((GST_BUFFER_OFFSET (inbuffer) != GST_BUFFER_OFFSET_NONE) &&
         ((GST_BUFFER_OFFSET (inbuffer) & (1 << idx)) == 0) &&
-        (multiview == GST_VIDEO_MULTIVIEW_MODE_SEPARATED))
+            (multiview == GST_VIDEO_MULTIVIEW_MODE_SEPARATED))
       continue;
 
     // Check if there is memory block for this tensor index.
@@ -456,23 +483,21 @@ gst_ml_video_converter_setup_composition (GstMLVideoConverter * mlconverter,
         source->h = GST_VIDEO_FRAME_HEIGHT (inframe);
       }
 
-      // Calculate input SAR (Source Aspect Ratio) value.
-      if (!gst_util_fraction_multiply (source->w, source->h, par_n, par_d,
-              &sar_n, &sar_d))
-        sar_n = sar_d = 1;
+      // The Y axis offset for this ROI meta in the output buffer.
+      offset = (idx + GST_BATCH_CHANNEL_GET_SEQ_NUM (id)) * maxheight;
 
       // Calculate the Y offset for this ROI meta in the output buffer.
-      destination->y = (idx + GST_BATCH_CHANNEL_GET_SEQ_NUM (id)) * maxheight;
+      destination->y = offset;
       destination->x = 0;
+      destination->w = maxwidth;
+      destination->h = maxheight;
 
-      // Calculate destination dimensions adjusted to preserve SAR.
-      gst_calculate_dimensions (maxwidth, maxheight, par_n, par_d,
-          sar_n, sar_d, &(destination->w), &(destination->h));
+      // Update destination dimensions and coordinates based on the disposition.
+      gst_ml_video_converter_update_destination (mlconverter, source, destination);
 
-      GST_TRACE_OBJECT (mlconverter, "Batch[%u] SAR[%d/%d] Regions: "
-          "[%d %d %d %d] -> [%d %d %d %d]", idx, sar_n, sar_d, source->x,
-          source->y, source->w, source->h, destination->x, destination->y,
-          destination->w, destination->h);
+      GST_TRACE_OBJECT (mlconverter, "Batch[%u] Regions: [%d %d %d %d] -> "
+          "[%d %d %d %d]", idx, source->x, source->y, source->w, source->h,
+          destination->x, destination->y, destination->w, destination->h);
 
       // Get the name for the protection meta structure with that batch number.
       name = gst_batch_channel_name (idx + GST_BATCH_CHANNEL_GET_SEQ_NUM (id));
@@ -482,17 +507,23 @@ gst_ml_video_converter_setup_composition (GstMLVideoConverter * mlconverter,
         pmeta = gst_buffer_add_protection_meta (outframe->buffer,
             gst_structure_new_empty (name));
 
-      // Add SAR and ID of source ROI for tensor result decryption downstream.
-      gst_structure_set (pmeta->info,
-          "source-region-id", G_TYPE_INT, (roimeta != NULL) ? roimeta->id : (-1),
-          "source-aspect-ratio", GST_TYPE_FRACTION, sar_n, sar_d,
-          NULL);
+      // Add ID of source ROI for tensor result decryption downstream.
+      gst_structure_set (pmeta->info, "source-region-id", G_TYPE_INT,
+          (roimeta != NULL) ? roimeta->id : (-1), NULL);
+
+      // Remove the Y axis offset as each region is given in separate coordinates.
+      destination->y -= offset;
+
+      // Add the tensor region actually populated with data for decryption.
+      gst_ml_protecton_meta_set_source_region (pmeta, destination);
+
+      // Resore the Y axis offset for the composition.
+      destination->y += offset;
 
       // Add input tensor resolution for tensor result decryption downstream.
-      gst_structure_set (pmeta->info,
-          "input-tensor-width", G_TYPE_UINT, mlconverter->mlinfo->tensors[0][2],
-          "input-tensor-height", G_TYPE_UINT, mlconverter->mlinfo->tensors[0][1],
-          NULL);
+      gst_ml_protecton_meta_set_source_dimensions (pmeta,
+          GST_ML_INFO_TENSOR_DIM (mlconverter->mlinfo, 0, 2),
+          GST_ML_INFO_TENSOR_DIM (mlconverter->mlinfo, 0, 1));
 
       // When input is batched buffer with multiple possible memory blocks (views)
       // and number of those views is equal then use only the 1st available ROI.
@@ -890,6 +921,7 @@ gst_ml_video_converter_prepare_output_buffer (GstBaseTransform * base,
 {
   GstMLVideoConverter *mlconverter = GST_ML_VIDEO_CONVERTER (base);
   GstBufferPool *pool = mlconverter->outpool;
+  GstVideoMultiviewMode multiview = GST_VIDEO_MULTIVIEW_MODE_NONE;
   guint idx = 0, n_batch = 0;
 
   if (gst_base_transform_is_passthrough (base)) {
@@ -931,6 +963,8 @@ gst_ml_video_converter_prepare_output_buffer (GstBaseTransform * base,
   // Set the maximum allowed entries to the size of the tensor batch.
   n_batch = GST_ML_INFO_TENSOR_DIM (mlconverter->mlinfo, 0, 0);
 
+  multiview = GST_VIDEO_INFO_MULTIVIEW_MODE (mlconverter->ininfo);
+
   // Iterate over all possible batch entries and transfer protection meta.
   for (idx = 0; idx < n_batch; idx++) {
     GstProtectionMeta *pmeta = NULL;
@@ -939,8 +973,7 @@ gst_ml_video_converter_prepare_output_buffer (GstBaseTransform * base,
     // Check if a bitwise mask was set for this channel/batch input.
     if ((GST_BUFFER_OFFSET (inbuffer) != GST_BUFFER_OFFSET_NONE) &&
         ((GST_BUFFER_OFFSET (inbuffer) & (1 << idx)) == 0) &&
-        GST_VIDEO_INFO_MULTIVIEW_MODE (mlconverter->ininfo) ==
-            GST_VIDEO_MULTIVIEW_MODE_SEPARATED)
+            (multiview == GST_VIDEO_MULTIVIEW_MODE_SEPARATED))
       continue;
 
     // Get the name for the protection meta structure with that batch number.
@@ -1283,6 +1316,9 @@ gst_ml_video_converter_set_property (GObject * object, guint prop_id,
     case PROP_ENGINE_BACKEND:
       mlconverter->backend = g_value_get_enum (value);
       break;
+    case PROP_IMAGE_DISPOSITION:
+      mlconverter->disposition = g_value_get_enum (value);
+      break;
     case PROP_SUBPIXEL_LAYOUT:
       mlconverter->pixlayout = g_value_get_enum (value);
       break;
@@ -1321,6 +1357,9 @@ gst_ml_video_converter_get_property (GObject * object, guint prop_id,
   switch (prop_id) {
     case PROP_ENGINE_BACKEND:
       g_value_set_enum (value, mlconverter->backend);
+      break;
+    case PROP_IMAGE_DISPOSITION:
+      g_value_set_enum (value, mlconverter->disposition);
       break;
     case PROP_SUBPIXEL_LAYOUT:
       g_value_set_enum (value, mlconverter->pixlayout);
@@ -1418,9 +1457,14 @@ gst_ml_video_converter_class_init (GstMLVideoConverterClass * klass)
           "Engine backend used for the conversion operations",
           GST_TYPE_VCE_BACKEND, DEFAULT_PROP_ENGINE_BACKEND,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject, PROP_IMAGE_DISPOSITION,
+      g_param_spec_enum ("image-disposition", "Image Disposition",
+          "Aspect Ratio and placement of the image inside the output tensor",
+          GST_TYPE_ML_VIDEO_DISPOSITION, DEFAULT_PROP_IMAGE_DISPOSITION,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_SUBPIXEL_LAYOUT,
       g_param_spec_enum ("subpixel-layout", "Subpixel Layout",
-          "Arrangement of the image pixels in the output tensor",
+          "Arrangement of the image pixels insize the output tensor",
           GST_TYPE_ML_VIDEO_PIXEL_LAYOUT, DEFAULT_PROP_SUBPIXEL_LAYOUT,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_MEAN,
@@ -1473,6 +1517,7 @@ gst_ml_video_converter_init (GstMLVideoConverter * mlconverter)
   mlconverter->outpool = NULL;
 
   mlconverter->backend = DEFAULT_PROP_ENGINE_BACKEND;
+  mlconverter->disposition = DEFAULT_PROP_IMAGE_DISPOSITION;
   mlconverter->pixlayout = DEFAULT_PROP_SUBPIXEL_LAYOUT;
   mlconverter->mean = g_array_new (FALSE, FALSE, sizeof (gdouble));
   mlconverter->sigma = g_array_new (FALSE, FALSE, sizeof (gdouble));

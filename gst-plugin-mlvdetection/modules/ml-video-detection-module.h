@@ -66,6 +66,7 @@
 
 #include <gst/gst.h>
 #include <gst/ml/gstmlmodule.h>
+#include <gst/ml/ml-module-utils.h>
 
 G_BEGIN_DECLS
 
@@ -125,10 +126,7 @@ gst_ml_video_detection_module_execute (GstMLModule * module,
 /**
  * gst_ml_prediction_transform_dimensions:
  * @prediction: Pointer to ML post-processing prediction.
- * @sar_n: Source Aspect Ratio numerator.
- * @sar_d:  Source Aspect Ratio denominator.
- * @width: Width of the input tensor for relative conversion.
- * @height: Height of the input tensor for relative conversion.
+ * @region: Source Aspect Ratio numerator.
  *
  * Helper function for normalizing prediction coordinates based on the source
  * aspect ratio and transforming them into relative coordinates using the
@@ -139,35 +137,12 @@ gst_ml_video_detection_module_execute (GstMLModule * module,
  */
 static inline void
 gst_ml_prediction_transform_dimensions (GstMLPrediction * prediction,
-    gint sar_n, gint sar_d, guint width, guint height)
+    GstVideoRectangle * region)
 {
-  gdouble coeficient = 0.0;
-
-  if (sar_n > sar_d) {
-    gst_util_fraction_to_double (sar_n, sar_d, &coeficient);
-
-    prediction->top /= width / coeficient;
-    prediction->bottom /= width / coeficient;
-    prediction->left /= width;
-    prediction->right /= width;
-
-    return;
-  } else if (sar_n < sar_d) {
-    gst_util_fraction_to_double (sar_d, sar_n, &coeficient);
-
-    prediction->top /= height;
-    prediction->bottom /= height;
-    prediction->left /= height / coeficient;
-    prediction->right /= height / coeficient;
-
-    return;
-  }
-
-  // There is no need for AR adjustments, just translate to relative coords.
-  prediction->top /= height;
-  prediction->bottom /= height;
-  prediction->left /= width;
-  prediction->right /= width;
+  prediction->top = (prediction->top - region->y) / region->h;
+  prediction->bottom = (prediction->bottom - region->y) / region->h;
+  prediction->left = (prediction->left - region->x) / region->w;
+  prediction->right = (prediction->right - region->x) / region->w;
 }
 
 /**

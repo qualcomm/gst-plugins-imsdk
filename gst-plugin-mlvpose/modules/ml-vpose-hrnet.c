@@ -37,15 +37,10 @@
 #include <stdio.h>
 #include <math.h>
 
-
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
 
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
-
-#define GFLOAT_PTR_CAST(data)       ((gfloat*) data)
-#define GINT8_PTR_CAST(data)        ((gint8*) data)
-#define GUINT8_PTR_CAST(data)       ((guint8*) data)
 
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
@@ -60,6 +55,11 @@ typedef struct _GstMLSubModule GstMLSubModule;
 struct _GstMLSubModule {
   // Configurated ML capabilities in structure format.
   GstMLInfo  mlinfo;
+
+  // The width of the model input tensor.
+  guint      inwidth;
+  // The height of the model input tensor.
+  guint      inheight;
 
   // List of keypoint labels.
   GHashTable *labels;
@@ -125,26 +125,10 @@ gst_ml_keypoint_free (gpointer data)
 
 static inline void
 gst_ml_keypoint_transform_coordinates (GstPoseKeypoint * keypoint,
-    gint sar_n, gint sar_d, guint width, guint height)
+    GstVideoRectangle * region)
 {
-  gdouble coeficient = 0.0;
-
-  if ((sar_n * height) > (width * sar_d)) {
-    // SAR < (width / height)
-    gst_util_fraction_to_double (sar_d, sar_n, &coeficient);
-
-    keypoint->x /= width;
-    keypoint->y /= width * coeficient;
-  } else if ((sar_n * height) < (width * sar_d)) {
-    // SAR > (width / height)
-    gst_util_fraction_to_double (sar_n, sar_d, &coeficient);
-
-    keypoint->x /= height * coeficient;
-    keypoint->y /= height;
-  } else {
-    keypoint->x /= width;
-    keypoint->y /= height;
-  }
+  keypoint->x /= region->w;
+  keypoint->y /= region->h;
 }
 
 static gboolean
@@ -417,10 +401,10 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GstProtectionMeta *pmeta = NULL;
   GstMLPrediction *prediction = NULL;
   gpointer heatmap = NULL;
+  GstVideoRectangle region = { 0, };
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
-  gint sar_n = 1, sar_d = 1;
-  guint idx = 0, num = 0, id = 0, x = 0, y = 0, n_keypoints = 0, n_blocks = 0;
-  guint width = 0, height = 0, in_width = 0, in_height = 0;
+  guint idx = 0, num = 0, id = 0, x = 0, y = 0;
+  guint width = 0, height = 0, n_keypoints = 0, n_blocks = 0;;
   gfloat confidence = 0.0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
@@ -448,12 +432,14 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
   pmeta = gst_buffer_get_protection_meta (mlframe->buffer);
 
-  // Extract the SAR (Source Aspect Ratio).
-  gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
-
   // Extract the dimensions of the input tensor that produced the output tensors.
-  gst_structure_get_uint (pmeta->info, "input-tensor-width", &in_width);
-  gst_structure_get_uint (pmeta->info, "input-tensor-height", &in_height);
+  if (submodule->inwidth == 0 || submodule->inheight == 0) {
+    gst_ml_protecton_meta_get_source_dimensions (pmeta, &(submodule->inwidth),
+        &(submodule->inheight));
+  }
+
+  // Extract the source tensor region with actual data.
+  gst_ml_protecton_meta_get_source_region (pmeta, &region);
 
   // Allocate only single prediction result.
   g_array_set_size (predictions, 1);
@@ -508,8 +494,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     kp = &(g_array_index (prediction->keypoints, GstPoseKeypoint, idx));
 
     // Multiply by the dimensions of the paxel.
-    kp->x = (x + dx * 0.25) * (in_width / width);
-    kp->y = (y + dy * 0.25) * (in_height / height);
+    kp->x = (x + dx * 0.25) * (submodule->inwidth / width);
+    kp->y = (y + dy * 0.25) * (submodule->inheight / height);
 
     // Extract info from labels and populate the coresponding keypoint params.
     label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (idx));
@@ -520,7 +506,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     kp->confidence = confidence * 100;
     prediction->confidence += kp->confidence;
 
-    gst_ml_keypoint_transform_coordinates (kp, sar_n, sar_d, in_width, in_height);
+    gst_ml_keypoint_transform_coordinates (kp, &region);
   }
 
   // The final confidence score for the whole prediction.

@@ -85,10 +85,17 @@ G_BEGIN_DECLS
   (G_TYPE_CHECK_CLASS_TYPE((klass), GST_TYPE_ML_VIDEO_CONVERTER))
 #define GST_ML_VIDEO_CONVERTER_CAST(obj) ((GstMLVideoConverter *)(obj))
 
+#define GST_TYPE_ML_VIDEO_DISPOSITION  (gst_ml_video_disposition_get_type())
 #define GST_TYPE_ML_VIDEO_PIXEL_LAYOUT (gst_ml_video_pixel_layout_get_type())
 
 typedef struct _GstMLVideoConverter GstMLVideoConverter;
 typedef struct _GstMLVideoConverterClass GstMLVideoConverterClass;
+
+typedef enum {
+  GST_ML_VIDEO_DISPOSITION_TOP_LEFT,
+  GST_ML_VIDEO_DISPOSITION_CENTRE,
+  GST_ML_VIDEO_DISPOSITION_STRETCH,
+} GstVideoDisposition;
 
 typedef enum {
   GST_ML_VIDEO_PIXEL_LAYOUT_REGULAR,
@@ -115,6 +122,7 @@ struct _GstMLVideoConverter {
 
   /// Properties.
   GstVideoConvBackend  backend;
+  GstVideoDisposition  disposition;
   GstVideoPixelLayout  pixlayout;
   GArray               *mean;
   GArray               *sigma;
@@ -125,6 +133,8 @@ struct _GstMLVideoConverterClass {
 };
 
 G_GNUC_INTERNAL GType gst_ml_video_converter_get_type (void);
+
+G_GNUC_INTERNAL GType gst_ml_video_disposition_get_type (void);
 
 G_GNUC_INTERNAL GType gst_ml_video_pixel_layout_get_type (void);
 
