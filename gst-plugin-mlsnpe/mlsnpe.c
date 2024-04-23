@@ -76,8 +76,13 @@ GST_DEBUG_CATEGORY_STATIC (gst_ml_snpe_debug);
 #define gst_ml_snpe_parent_class parent_class
 G_DEFINE_TYPE (GstMLSnpe, gst_ml_snpe, GST_TYPE_BASE_TRANSFORM);
 
-#define DEFAULT_PROP_MODEL       NULL
-#define DEFAULT_PROP_DELEGATE    GST_ML_SNPE_DELEGATE_NONE
+#define DEFAULT_PROP_MODEL           NULL
+#define DEFAULT_PROP_DELEGATE        GST_ML_SNPE_DELEGATE_NONE
+#define DEFAULT_PROP_PERF_PROFILE    GST_ML_SNPE_PERF_PROFILE_DEFAULT
+#define DEFAULT_PROP_PROFILING_LEVEL GST_ML_SNPE_PROFILING_LEVEL_OFF
+#define DEFAULT_PROP_EXEC_PRIORITY   GST_ML_SNPE_EXEC_PRIORITY_NORMAL
+#define DEFAULT_PROP_IS_TENSOR       FALSE
+#define DEFAULT_PROP_OUTPUTS         NULL
 
 #define DEFAULT_PROP_MIN_BUFFERS 2
 #define DEFAULT_PROP_MAX_BUFFERS 10
@@ -93,6 +98,9 @@ enum
   PROP_0,
   PROP_MODEL,
   PROP_DELEGATE,
+  PROP_PERF_PROFILE,
+  PROP_PROFILING_LEVEL,
+  PROP_EXEC_PRIORITY,
   PROP_LAYERS,
   PROP_TENSORS,
 };
@@ -487,10 +495,7 @@ gst_ml_snpe_change_state (GstElement * element, GstStateChange transition)
   switch (transition) {
     case GST_STATE_CHANGE_NULL_TO_READY:
     {
-      gst_ml_snpe_engine_free (snpe->engine);
-
-      snpe->engine = gst_ml_snpe_engine_new (snpe->model, snpe->delegate,
-          snpe->is_tensor, snpe->outputs);
+      snpe->engine = gst_ml_snpe_engine_new (&snpe->settings);
       if (NULL == snpe->engine) {
         GST_ERROR_OBJECT (snpe, "Failed to create engine!");
         return GST_STATE_CHANGE_FAILURE;
@@ -575,28 +580,38 @@ gst_ml_snpe_set_property (GObject * object, guint prop_id,
 
   switch (prop_id) {
     case PROP_MODEL:
-      g_free (snpe->model);
-      snpe->model = g_strdup (g_value_get_string (value));
+      g_free (snpe->settings.modelfile);
+      snpe->settings.modelfile = g_strdup (g_value_get_string (value));
       break;
     case PROP_DELEGATE:
-      snpe->delegate = g_value_get_enum (value);
+      snpe->settings.delegate = g_value_get_enum (value);
+      break;
+    case PROP_PERF_PROFILE:
+      snpe->settings.perf_profile = g_value_get_enum (value);
+      break;
+    case PROP_PROFILING_LEVEL:
+      snpe->settings.profiling_level = g_value_get_enum (value);
+      break;
+    case PROP_EXEC_PRIORITY:
+      snpe->settings.exec_priority = g_value_get_enum (value);
       break;
     case PROP_LAYERS:
     {
       guint idx = 0;
 
-      if (snpe->is_tensor)
+      if (snpe->settings.is_tensor)
         GST_WARNING_OBJECT (snpe, "Overwriting previously set tensors property!");
 
-      snpe->is_tensor = FALSE;
+      snpe->settings.is_tensor = FALSE;
 
-      g_list_free_full (snpe->outputs, (GDestroyNotify) g_free);
-      snpe->outputs = NULL;
+      g_list_free_full (snpe->settings.outputs, (GDestroyNotify) g_free);
+      snpe->settings.outputs = NULL;
 
       for (idx = 0; idx < gst_value_array_get_size (value); idx++) {
         const gchar *layer = g_value_get_string (
             gst_value_array_get_value (value, idx));
-        snpe->outputs = g_list_append (snpe->outputs, g_strdup (layer));
+        snpe->settings.outputs = g_list_append (
+            snpe->settings.outputs, g_strdup (layer));
       }
       break;
     }
@@ -604,18 +619,19 @@ gst_ml_snpe_set_property (GObject * object, guint prop_id,
     {
       guint idx = 0;
 
-      if (!snpe->is_tensor)
+      if (!snpe->settings.is_tensor)
         GST_WARNING_OBJECT (snpe, "Overwriting previously set layers property!");
 
-      snpe->is_tensor = TRUE;
+      snpe->settings.is_tensor = TRUE;
 
-      g_list_free_full (snpe->outputs, (GDestroyNotify) g_free);
-      snpe->outputs = NULL;
+      g_list_free_full (snpe->settings.outputs, (GDestroyNotify) g_free);
+      snpe->settings.outputs = NULL;
 
       for (idx = 0; idx < gst_value_array_get_size (value); idx++) {
         const gchar *tensor = g_value_get_string (
             gst_value_array_get_value (value, idx));
-        snpe->outputs = g_list_append (snpe->outputs, g_strdup (tensor));
+        snpe->settings.outputs = g_list_append (
+            snpe->settings.outputs, g_strdup (tensor));
       }
       break;
     }
@@ -633,23 +649,32 @@ gst_ml_snpe_get_property (GObject * object, guint prop_id, GValue * value,
 
   switch (prop_id) {
     case PROP_MODEL:
-      g_value_set_string (value, snpe->model);
+      g_value_set_string (value, snpe->settings.modelfile);
       break;
     case PROP_DELEGATE:
-      g_value_set_enum (value, snpe->delegate);
+      g_value_set_enum (value, snpe->settings.delegate);
+      break;
+    case PROP_PERF_PROFILE:
+      g_value_set_enum (value, snpe->settings.perf_profile);
+      break;
+    case PROP_PROFILING_LEVEL:
+      g_value_set_enum (value, snpe->settings.profiling_level);
+      break;
+    case PROP_EXEC_PRIORITY:
+      g_value_set_enum (value, snpe->settings.exec_priority);
       break;
     case PROP_LAYERS:
     {
-      if (snpe->is_tensor) {
-        GST_WARNING_OBJECT (snpe, "Getting Layer property, but Tensor output "
-            "was chosen!  Returning empty array!");
-        break;
-      }
-
       GList *list = NULL;
       GValue val = G_VALUE_INIT;
 
-      for (list = snpe->outputs; list != NULL; list = list->next) {
+      if (snpe->settings.is_tensor) {
+        GST_WARNING_OBJECT (snpe, "Getting Layer property, but Tensor output"
+            " was chosen! Returning empty array!");
+        break;
+      }
+
+      for (list = snpe->settings.outputs; list != NULL; list = list->next) {
         const gchar *layer = list->data;
 
         g_value_init (&val, G_TYPE_STRING);
@@ -662,16 +687,16 @@ gst_ml_snpe_get_property (GObject * object, guint prop_id, GValue * value,
     }
     case PROP_TENSORS:
     {
-      if (!snpe->is_tensor) {
-        GST_WARNING_OBJECT (snpe, "Getting Tensor property, but Layer output "
-            "was chosen!  Returning empty array!");
-        break;
-      }
-
       GList *list = NULL;
       GValue val = G_VALUE_INIT;
 
-      for (list = snpe->outputs; list != NULL; list = list->next) {
+      if (!snpe->settings.is_tensor) {
+        GST_WARNING_OBJECT (snpe, "Getting Tensor property, but Layer output"
+            " was chosen! Returning empty array!");
+        break;
+      }
+
+      for (list = snpe->settings.outputs; list != NULL; list = list->next) {
         const gchar *tensor = list->data;
 
         g_value_init (&val, G_TYPE_STRING);
@@ -704,9 +729,9 @@ gst_ml_snpe_finalize (GObject * object)
 
   gst_ml_snpe_engine_free (snpe->engine);
 
-  g_free (snpe->model);
+  g_free (snpe->settings.modelfile);
 
-  g_list_free_full (snpe->outputs, (GDestroyNotify) g_free);
+  g_list_free_full (snpe->settings.outputs, (GDestroyNotify) g_free);
 
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (snpe));
 }
@@ -730,6 +755,23 @@ gst_ml_snpe_class_init (GstMLSnpeClass * klass)
       g_param_spec_enum ("delegate", "Delegate",
           "Delegate the graph execution to another executor",
           GST_TYPE_ML_SNPE_DELEGATE, DEFAULT_PROP_DELEGATE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject, PROP_PERF_PROFILE,
+      g_param_spec_enum ("performance-profile", "Performance Profile",
+          "Request a performance profile.",
+          GST_TYPE_ML_SNPE_PERF_PROFILE, DEFAULT_PROP_PERF_PROFILE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject, PROP_PROFILING_LEVEL,
+      g_param_spec_enum ("profiling-level", "Profiling Level",
+          "Set the profiling level.",
+          GST_TYPE_ML_SNPE_PROFILING_LEVEL, DEFAULT_PROP_PROFILING_LEVEL,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject, PROP_EXEC_PRIORITY,
+      g_param_spec_enum ("priority", "Execution Priority",
+          "Sets a preference for execution priority. "
+          "This allows the caller to give coarse hint to SNPE runtime "
+          "about the priority of the network.",
+          GST_TYPE_ML_SNPE_EXEC_PRIORITY, DEFAULT_PROP_EXEC_PRIORITY,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_LAYERS,
      gst_param_spec_array ("layers", "Layers",
@@ -777,10 +819,13 @@ gst_ml_snpe_init (GstMLSnpe * snpe)
   snpe->outpool = NULL;
   snpe->engine = NULL;
 
-  snpe->model = DEFAULT_PROP_MODEL;
-  snpe->delegate = DEFAULT_PROP_DELEGATE;
-  snpe->outputs = NULL;
-  snpe->is_tensor = FALSE;
+  snpe->settings.modelfile = DEFAULT_PROP_MODEL;
+  snpe->settings.delegate = DEFAULT_PROP_DELEGATE;
+  snpe->settings.perf_profile = DEFAULT_PROP_PERF_PROFILE;
+  snpe->settings.profiling_level = DEFAULT_PROP_PROFILING_LEVEL;
+  snpe->settings.exec_priority = DEFAULT_PROP_EXEC_PRIORITY;
+  snpe->settings.is_tensor = DEFAULT_PROP_IS_TENSOR;
+  snpe->settings.outputs = DEFAULT_PROP_OUTPUTS;
 
   // Handle buffers with GAP flag internally.
   gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM (snpe), TRUE);

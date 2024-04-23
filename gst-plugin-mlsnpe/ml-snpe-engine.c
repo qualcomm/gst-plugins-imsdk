@@ -115,6 +115,12 @@ struct _GstMLSnpeEngine
       Snpe_SNPEBuilder_Handle_t, Snpe_RuntimeList_Handle_t);
   SNPE_API Snpe_ErrorCode_t (*SNPEBuilderSetUseUserSuppliedBuffers) (
       Snpe_SNPEBuilder_Handle_t, int);
+  SNPE_API Snpe_ErrorCode_t (*SnpeSNPEBuilderSetPerformanceProfile) (
+      Snpe_SNPEBuilder_Handle_t, Snpe_PerformanceProfile_t);
+  SNPE_API Snpe_ErrorCode_t (*SnpeSNPEBuilderSetProfilingLevel) (
+      Snpe_SNPEBuilder_Handle_t, Snpe_ProfilingLevel_t);
+  SNPE_API Snpe_ErrorCode_t (*SnpeSNPEBuilderSetExecutionPriorityHint) (
+      Snpe_SNPEBuilder_Handle_t, Snpe_ExecutionPriorityHint_t);
   SNPE_API Snpe_SNPE_Handle_t (*SNPEBuilderBuild) (Snpe_SNPEBuilder_Handle_t);
 
   SNPE_API Snpe_ErrorCode_t (*SNPE_Delete) (Snpe_SNPE_Handle_t);
@@ -224,6 +230,109 @@ gst_ml_snpe_delegate_get_type (void)
 
   if (!gtype)
       gtype = g_enum_register_static ("GstMLSnpeDelegate", variants);
+
+  return gtype;
+}
+
+GType
+gst_ml_snpe_perf_profile_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { GST_ML_SNPE_PERF_PROFILE_DEFAULT,
+        "Run in a standard mode",
+        "default"
+    },
+    { GST_ML_SNPE_PERF_PROFILE_BALANCED,
+        "Run in a balanced mode",
+        "balanced"
+    },
+    { GST_ML_SNPE_PERF_PROFILE_HIGH_PERFORMANCE,
+        "Run in high performance mode",
+        "high-performance"
+    },
+    { GST_ML_SNPE_PERF_PROFILE_POWER_SAVER,
+        "Run in a power sensitive mode, at the expense of performance",
+        "power-saver"
+    },
+    { GST_ML_SNPE_PERF_PROFILE_SYSTEM_SETTINGS,
+        "Use system settings. no calls to performance APIs",
+        "system-settings"
+    },
+    { GST_ML_SNPE_PERF_PROFILE_SUSTAINED_HIGH_PERFORMANCE,
+        "Run in sustained high performance mode",
+        "sustained-high-performance"
+    },
+    { GST_ML_SNPE_PERF_PROFILE_BURST,
+        "Run in burst mode",
+        "burst"
+    },
+    { GST_ML_SNPE_PERF_PROFILE_LOW_POWER_SAVER,
+        "Run in lower clock than POWER_SAVER with less performance",
+        "low-power-saver"
+    },
+    { GST_ML_SNPE_PERF_PROFILE_HIGH_POWER_SAVER,
+        "Higher clock and better performance compared to POWER_SAVER",
+        "high-power-saver"
+    },
+    { GST_ML_SNPE_PERF_PROFILE_LOW_BALANCED,
+        "Run in lower balanced mode",
+        "low-balanced"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstMLSnpePerformanceProfile", variants);
+
+  return gtype;
+}
+
+GType
+gst_ml_snpe_profiling_level_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { GST_ML_SNPE_PROFILING_LEVEL_OFF,
+        "No profiling. Collects no runtime stats in the DiagLog", "off"
+    },
+    { GST_ML_SNPE_PROFILING_LEVEL_BASIC,
+        "Basic profiling Collects some runtime stats in the DiagLog", "basic"
+    },
+    { GST_ML_SNPE_PROFILING_LEVEL_DETAILED,
+        "Detailed profiling Collects more runtime stats in the DiagLog", "detailed"
+    },
+    { GST_ML_SNPE_PROFILING_LEVEL_MODERATE,
+        "Moderate profiling Collects more runtime stats in the DiagLog", "moderate"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstMLSnpeProfilingLevel", variants);
+
+  return gtype;
+}
+
+GType
+gst_ml_snpe_exec_priority_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { GST_ML_SNPE_EXEC_PRIORITY_NORMAL,
+        "Normal priority", "normal"
+    },
+    { GST_ML_SNPE_EXEC_PRIORITY_HIGH,
+        "Higher than normal priority", "high"
+    },
+    { GST_ML_SNPE_EXEC_PRIORITY_LOW,
+        "Lower priority", "low"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstMLSnpeExecutionPriority", variants);
 
   return gtype;
 }
@@ -473,8 +582,8 @@ cleanup:
 }
 
 static gboolean
-gst_ml_snpe_engine_setup_backend (GstMLSnpeEngine *engine, const gchar * modelfile,
-    GstMLSnpeDelegate delegate, gboolean is_tensor, GList * outputs)
+gst_ml_snpe_engine_setup_backend (GstMLSnpeEngine *engine,
+  GstMLSnpeSettings * settings)
 {
   Snpe_StringList_Handle_t strlist = NULL;
   Snpe_RuntimeList_Handle_t rtlist = NULL;
@@ -483,12 +592,12 @@ gst_ml_snpe_engine_setup_backend (GstMLSnpeEngine *engine, const gchar * modelfi
   const gchar *version = NULL;
   gboolean success = FALSE;
 
-  if ((engine->model = engine->DlContainerOpen (modelfile)) == NULL) {
-    GST_ERROR ("Failed to load model file '%s'!", modelfile);
+  if ((engine->model = engine->DlContainerOpen (settings->modelfile)) == NULL) {
+    GST_ERROR ("Failed to load model file '%s'!", settings->modelfile);
     return FALSE;
   }
 
-  GST_DEBUG ("Loaded model file '%s'!", modelfile);
+  GST_DEBUG ("Loaded model file '%s'!", settings->modelfile);
 
   if ((engine->builder = engine->SNPEBuilderCreate (engine->model)) == NULL) {
     GST_ERROR ("Failed to create SNPE builder!");
@@ -500,10 +609,99 @@ gst_ml_snpe_engine_setup_backend (GstMLSnpeEngine *engine, const gchar * modelfi
     return FALSE;
   }
 
-  for (ls = outputs; ls != NULL; ls = ls->next)
+  switch (settings->perf_profile) {
+    case GST_ML_SNPE_PERF_PROFILE_DEFAULT:
+      engine->SnpeSNPEBuilderSetPerformanceProfile (engine->builder,
+          SNPE_PERFORMANCE_PROFILE_DEFAULT);
+      break;
+    case GST_ML_SNPE_PERF_PROFILE_BALANCED:
+      engine->SnpeSNPEBuilderSetPerformanceProfile (engine->builder,
+          SNPE_PERFORMANCE_PROFILE_BALANCED);
+      break;
+    case GST_ML_SNPE_PERF_PROFILE_HIGH_PERFORMANCE:
+      engine->SnpeSNPEBuilderSetPerformanceProfile (engine->builder,
+          SNPE_PERFORMANCE_PROFILE_HIGH_PERFORMANCE);
+      break;
+    case GST_ML_SNPE_PERF_PROFILE_POWER_SAVER:
+      engine->SnpeSNPEBuilderSetPerformanceProfile (engine->builder,
+          SNPE_PERFORMANCE_PROFILE_POWER_SAVER);
+      break;
+    case GST_ML_SNPE_PERF_PROFILE_SYSTEM_SETTINGS:
+      engine->SnpeSNPEBuilderSetPerformanceProfile (engine->builder,
+          SNPE_PERFORMANCE_PROFILE_SYSTEM_SETTINGS);
+      break;
+    case GST_ML_SNPE_PERF_PROFILE_SUSTAINED_HIGH_PERFORMANCE:
+      engine->SnpeSNPEBuilderSetPerformanceProfile (engine->builder,
+          SNPE_PERFORMANCE_PROFILE_SUSTAINED_HIGH_PERFORMANCE);
+      break;
+    case GST_ML_SNPE_PERF_PROFILE_BURST:
+      engine->SnpeSNPEBuilderSetPerformanceProfile (engine->builder,
+          SNPE_PERFORMANCE_PROFILE_BURST);
+      break;
+    case GST_ML_SNPE_PERF_PROFILE_LOW_POWER_SAVER:
+      engine->SnpeSNPEBuilderSetPerformanceProfile (engine->builder,
+          SNPE_PERFORMANCE_PROFILE_LOW_POWER_SAVER);
+      break;
+    case GST_ML_SNPE_PERF_PROFILE_HIGH_POWER_SAVER:
+      engine->SnpeSNPEBuilderSetPerformanceProfile (engine->builder,
+          SNPE_PERFORMANCE_PROFILE_HIGH_POWER_SAVER);
+      break;
+    case GST_ML_SNPE_PERF_PROFILE_LOW_BALANCED:
+      engine->SnpeSNPEBuilderSetPerformanceProfile (engine->builder,
+          SNPE_PERFORMANCE_PROFILE_LOW_BALANCED);
+      break;
+    default:
+      engine->SnpeSNPEBuilderSetPerformanceProfile (engine->builder,
+          SNPE_PERFORMANCE_PROFILE_DEFAULT);
+      break;
+  }
+
+  switch (settings->profiling_level) {
+    case GST_ML_SNPE_PROFILING_LEVEL_OFF:
+      engine->SnpeSNPEBuilderSetProfilingLevel (engine->builder,
+          SNPE_PROFILING_LEVEL_OFF);
+      break;
+    case GST_ML_SNPE_PROFILING_LEVEL_BASIC:
+      engine->SnpeSNPEBuilderSetProfilingLevel (engine->builder,
+          SNPE_PROFILING_LEVEL_BASIC);
+      break;
+    case GST_ML_SNPE_PROFILING_LEVEL_DETAILED:
+      engine->SnpeSNPEBuilderSetProfilingLevel (engine->builder,
+          SNPE_PROFILING_LEVEL_DETAILED);
+      break;
+    case GST_ML_SNPE_PROFILING_LEVEL_MODERATE:
+      engine->SnpeSNPEBuilderSetProfilingLevel (engine->builder,
+          SNPE_PROFILING_LEVEL_MODERATE);
+      break;
+    default:
+      engine->SnpeSNPEBuilderSetProfilingLevel (engine->builder,
+          SNPE_PROFILING_LEVEL_OFF);
+      break;
+  }
+
+  switch (settings->exec_priority) {
+    case GST_ML_SNPE_EXEC_PRIORITY_NORMAL:
+      engine->SnpeSNPEBuilderSetExecutionPriorityHint (engine->builder,
+          SNPE_EXECUTION_PRIORITY_NORMAL);
+      break;
+    case GST_ML_SNPE_EXEC_PRIORITY_HIGH:
+      engine->SnpeSNPEBuilderSetExecutionPriorityHint (engine->builder,
+          SNPE_EXECUTION_PRIORITY_HIGH);
+      break;
+    case GST_ML_SNPE_EXEC_PRIORITY_LOW:
+      engine->SnpeSNPEBuilderSetExecutionPriorityHint (engine->builder,
+          SNPE_EXECUTION_PRIORITY_LOW);
+      break;
+    default:
+      engine->SnpeSNPEBuilderSetExecutionPriorityHint (engine->builder,
+          SNPE_EXECUTION_PRIORITY_NORMAL);
+      break;
+  }
+
+  for (ls = settings->outputs; ls != NULL; ls = ls->next)
     engine->StringListAppend (strlist, (const gchar *) ls->data);
 
-  if (is_tensor) {
+  if (settings->is_tensor) {
     error = engine->SNPEBuilderSetOutputLayers (engine->builder, strlist);
     success = (error == SNPE_SUCCESS) ? TRUE : FALSE;
   } else {
@@ -524,7 +722,7 @@ gst_ml_snpe_engine_setup_backend (GstMLSnpeEngine *engine, const gchar * modelfi
     goto cleanup;
   }
 
-  switch (delegate) {
+  switch (settings->delegate) {
     case GST_ML_SNPE_DELEGATE_DSP:
       engine->RuntimeListAdd (rtlist, SNPE_RUNTIME_DSP);
       GST_INFO ("Delegate preference: DSP > CPU");
@@ -582,8 +780,7 @@ cleanup:
 }
 
 GstMLSnpeEngine *
-gst_ml_snpe_engine_new (const gchar * modelfile, GstMLSnpeDelegate delegate,
-    gboolean is_tensor, GList * outputs)
+gst_ml_snpe_engine_new (GstMLSnpeSettings * settings)
 {
   GstMLSnpeEngine *engine = NULL;
   gboolean success = TRUE;
@@ -617,6 +814,12 @@ gst_ml_snpe_engine_new (const gchar * modelfile, GstMLSnpeDelegate delegate,
       engine->libhandle, "Snpe_SNPEBuilder_SetRuntimeProcessorOrder");
   success &= load_symbol ((gpointer*)&engine->SNPEBuilderSetUseUserSuppliedBuffers,
       engine->libhandle, "Snpe_SNPEBuilder_SetUseUserSuppliedBuffers");
+  success &= load_symbol ((gpointer*)&engine->SnpeSNPEBuilderSetPerformanceProfile,
+      engine->libhandle, "Snpe_SNPEBuilder_SetPerformanceProfile");
+  success &= load_symbol ((gpointer*)&engine->SnpeSNPEBuilderSetProfilingLevel,
+      engine->libhandle, "Snpe_SNPEBuilder_SetProfilingLevel");
+  success &= load_symbol ((gpointer*)&engine->SnpeSNPEBuilderSetExecutionPriorityHint,
+      engine->libhandle, "Snpe_SNPEBuilder_SetExecutionPriorityHint");
   success &= load_symbol ((gpointer*)&engine->SNPEBuilderBuild,
       engine->libhandle, "Snpe_SNPEBuilder_Build");
 
@@ -701,8 +904,7 @@ gst_ml_snpe_engine_new (const gchar * modelfile, GstMLSnpeDelegate delegate,
   if (!success)
     goto error;
 
-  success = gst_ml_snpe_engine_setup_backend (engine, modelfile, delegate,
-      is_tensor, outputs);
+  success = gst_ml_snpe_engine_setup_backend (engine, settings);
   if (!success) {
     GST_ERROR ("Failed to set setup SNPE backend!");
     goto error;
