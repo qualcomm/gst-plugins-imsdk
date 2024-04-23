@@ -115,6 +115,7 @@ enum {
   GST_C2_PARAM_IN_AAC_FORMAT,        // GstC2AACStreamFormat
   GST_C2_PARAM_OUT_AAC_FORMAT,       // GstC2AACStreamFormat
   GST_C2_PARAM_DOWN_SCALAR,          // GstC2Resolution
+  GST_C2_PARAM_HIER_BPRECONDITIONS,  // gboolean
 };
 
 typedef enum {
@@ -379,7 +380,6 @@ struct _GstC2QuantRegions {
 struct _GstC2TemporalLayer {
   guint32 n_layers;
   guint32 n_blayers;
-  GArray  *bitrate_ratios;
 };
 
 guint gst_c2_utils_h264_profile_from_string (const gchar * profile);

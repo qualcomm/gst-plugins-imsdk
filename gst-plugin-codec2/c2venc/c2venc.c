@@ -83,6 +83,7 @@ G_DEFINE_TYPE (GstC2VEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 #define DEFAULT_PROP_LOOP_FILTER_MODE     (0xffffffff)
 #define DEFAULT_PROP_NUM_LTR_FRAMES       (0xffffffff)
 #define DEFAULT_PROP_PRIORITY             (0xffffffff)
+#define DEFAULT_PROP_TEMPORAL_LAYER_NUM   (0xffffffff)
 
 #ifndef GST_CAPS_FEATURE_MEMORY_GBM
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
@@ -118,6 +119,7 @@ enum
   PROP_LOOP_FILTER_MODE,
   PROP_NUM_LTR_FRAMES,
   PROP_PRIORITY,
+  PROP_TEMPORAL_LAYER,
 };
 
 static GstStaticPadTemplate gst_c2_venc_sink_pad_template =
@@ -445,8 +447,12 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
 
     if (c2venc->intra_refresh.mode == GST_C2_INTRA_REFRESH_DISABLED) {
       GST_INFO_OBJECT (c2venc, "Intra refresh mode is set to disable, "
-        "resetting period to 0");
+          "resetting period to 0");
       c2venc->intra_refresh.period = 0;
+    } else if (c2venc->control_rate != GST_C2_RATE_CTRL_CONSTANT &&
+        c2venc->control_rate != GST_C2_RATE_CTRL_CBR_VFR) {
+      GST_WARNING_OBJECT (c2venc, "Intra refresh mode is disabled as "
+          "bitrate is not constant!");
     }
 
     // this configuration just set intra refresh period in codec2 V2
@@ -501,6 +507,28 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
     gboolean enable = TRUE;
 
 #if !defined(CODEC2_CONFIG_VERSION_2_0)
+    // Sanity check
+    if (c2venc->temp_layer.n_layers > c2venc->temp_layer.n_blayers &&
+        g_str_has_suffix (c2venc->name, "avc.encoder"))
+      GST_WARNING_OBJECT (c2venc, "B-frame disabled with non-zero "
+          "p-layer count for AVC!");
+    else if (c2venc->temp_layer.n_blayers < 2 &&
+        g_str_has_suffix (c2venc->name, "hevc.encoder"))
+      GST_WARNING_OBJECT (c2venc, "B-frame disabled with b-layer count "
+          "less than 2 for HEVC!");
+
+    enable = FALSE;
+    // Codec2 will use platform b-frame count if native recording and
+    // adaptive b-frame both are enabled.
+    success = gst_c2_engine_set_parameter (c2venc->engine,
+        GST_C2_PARAM_NATIVE_RECORDING, GPOINTER_CAST (&enable));
+
+    if (!success) {
+      GST_ERROR_OBJECT (c2venc, "Failed to disable native recording!");
+      return FALSE;
+    }
+
+    enable = TRUE;
     success = gst_c2_engine_set_parameter (c2venc->engine,
         GST_C2_PARAM_ADAPTIVE_B_FRAMES, GPOINTER_CAST (&enable));
 
@@ -509,37 +537,99 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
       return FALSE;
     }
 #else
-    gfloat ratio = 0.0;
-    GstC2TemporalLayer templayer = {2, 2, NULL};
+    GstC2TemporalLayer templayer = {2, 2};
 
     success = gst_c2_engine_set_parameter (c2venc->engine,
-        GST_C2_PARAM_NATIVE_RECORDING, GPOINTER_CAST (&enable));
+        GST_C2_PARAM_HIER_BPRECONDITIONS, GPOINTER_CAST (&enable));
 
     if (!success) {
-      GST_ERROR_OBJECT (c2venc, "Failed to enable native recording!");
+      GST_ERROR_OBJECT (c2venc, "Failed to enable heir bpreconditions!");
       return FALSE;
     }
 
-    // bitrate ratios are bypassed in component now
-    templayer.bitrate_ratios = g_array_new (FALSE, FALSE, sizeof (gfloat));
-    ratio = 0.5;
-    g_array_append_val (templayer.bitrate_ratios, ratio);
-    ratio = 1.0;
-    g_array_append_val (templayer.bitrate_ratios, ratio);
-
+    // Bframes will be adjusted to 0 in driver if blayers are disabled.
+    // Hence, enable blayers to driver when bframe is set. The values will be
+    // updated if temporal layer property is set.
     success = gst_c2_engine_set_parameter (c2venc->engine,
         GST_C2_PARAM_TEMPORAL_LAYERING, GPOINTER_CAST (&templayer));
-
-    if (templayer.bitrate_ratios != NULL) {
-      g_array_free (templayer.bitrate_ratios, TRUE);
-      templayer.bitrate_ratios = NULL;
-    }
 
     if (!success) {
       GST_ERROR_OBJECT (c2venc, "Failed to set temporal layering parameter!");
       return FALSE;
     }
 #endif // CODEC2_CONFIG_VERSION_2_0
+  }
+
+  if (c2venc->temp_layer.n_layers != DEFAULT_PROP_TEMPORAL_LAYER_NUM) {
+    gboolean enable = TRUE;
+
+#if !defined(CODEC2_CONFIG_VERSION_2_0)
+    if (c2venc->temp_layer.n_blayers == 0 &&
+        c2venc->profile == GST_C2_PROFILE_HEVC_MAIN) {
+      enable = FALSE;
+
+      // Codec2 will use platform blayer count if native recording is enabled,
+      // so disable it here.
+      success = gst_c2_engine_set_parameter (c2venc->engine,
+          GST_C2_PARAM_NATIVE_RECORDING, GPOINTER_CAST (&enable));
+
+      if (!success) {
+         GST_ERROR_OBJECT (c2venc, "Failed to disable native recording!");
+         return FALSE;
+      }
+    } else if (c2venc->temp_layer.n_blayers > 0 &&
+        c2venc->profile == GST_C2_PROFILE_HEVC_MAIN) {
+      enable = TRUE;
+
+      // Enable hierb and native recording if blayers set in HEVC_MAIN.
+      success = gst_c2_engine_set_parameter (c2venc->engine,
+          GST_C2_PARAM_HIER_BPRECONDITIONS, GPOINTER_CAST (&enable));
+
+      success = gst_c2_engine_set_parameter (c2venc->engine,
+          GST_C2_PARAM_NATIVE_RECORDING, GPOINTER_CAST (&enable));
+
+      if (!success) {
+        GST_ERROR_OBJECT (c2venc, "Failed to enable heir bpreconditions"
+            " or native recording!");
+        return FALSE;
+      }
+    } else if (c2venc->temp_layer.n_blayers > 0 &&
+        c2venc->profile != GST_C2_PROFILE_HEVC_MAIN) {
+      GST_WARNING_OBJECT (c2venc, "Temporal Layer: b-layers count is ignored"
+          "if profile is not HEVC_MAIN!");
+    }
+#else
+    if (c2venc->temp_layer.n_blayers > 0 ) {
+       success = gst_c2_engine_set_parameter (c2venc->engine,
+           GST_C2_PARAM_HIER_BPRECONDITIONS, GPOINTER_CAST (&enable));
+
+       if (!success) {
+         GST_ERROR_OBJECT (c2venc, "Failed to enable heir bpreconditions!");
+         return FALSE;
+       }
+    } else if (c2venc->temp_layer.n_layers == 0 &&
+        c2venc->temp_layer.n_blayers == 0) {
+      enable = FALSE;
+
+      // Codec2 will use platform blayer count if native recording is enabled,
+      // so disable it here.
+      success = gst_c2_engine_set_parameter (c2venc->engine,
+          GST_C2_PARAM_NATIVE_RECORDING, GPOINTER_CAST (&enable));
+
+      if (!success) {
+         GST_ERROR_OBJECT (c2venc, "Failed to disable native recording!");
+         return FALSE;
+      }
+    }
+#endif // CODEC2_CONFIG_VERSION_2_0
+
+    success = gst_c2_engine_set_parameter (c2venc->engine,
+        GST_C2_PARAM_TEMPORAL_LAYERING, GPOINTER_CAST (&c2venc->temp_layer));
+
+    if (!success) {
+      GST_ERROR_OBJECT (c2venc, "Failed to set temporal layering parameter!");
+      return FALSE;
+    }
   }
 
   if (c2venc->entropy_mode != DEFAULT_PROP_ENTROPY_MODE) {
@@ -1137,6 +1227,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     if (level >= GST_C2_LEVEL_HEVC_HIGH_4 && level <= GST_C2_LEVEL_HEVC_HIGH_6_2)
       gst_structure_set (structure, "tier", G_TYPE_STRING, "high", NULL);
   }
+  c2venc->profile = profile;
 
   GST_DEBUG_OBJECT (c2venc, "Setting output state caps: %" GST_PTR_FORMAT, caps);
 
@@ -1473,6 +1564,29 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
     case PROP_PRIORITY:
       c2venc->priority = g_value_get_int (value);
       break;
+    case PROP_TEMPORAL_LAYER:
+    {
+      gint size = 0, layers = 0, blayers = 0;
+
+      // Sanity check, must have 2 values.
+      if ((size = gst_value_array_get_size (value)) != 2) {
+        GST_ERROR_OBJECT (c2venc, "Invalid number for temporal layer, "
+            "expecting 2 but received %d !", size);
+        break;
+      }
+      layers = g_value_get_int (gst_value_array_get_value (value, 0));
+      blayers = g_value_get_int (gst_value_array_get_value (value, 1));
+
+      if (layers < blayers) {
+        GST_ERROR_OBJECT (c2venc, "Invalid layers number, "
+            "expecting layers >= blayers");
+        break;
+      }
+
+      c2venc->temp_layer.n_layers = layers;
+      c2venc->temp_layer.n_blayers = blayers;
+      break;
+    }
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -1574,7 +1688,7 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
         g_value_set_int (&val, qbox->qp);
         gst_value_array_append_value (&element, &val);
 
-        /* Append the rectangle to the output GST array */
+        // Append the rectangle to the output GST array.
         gst_value_array_append_value (value, &element);
 
         g_value_unset (&val);
@@ -1600,6 +1714,21 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
     case PROP_PRIORITY:
       g_value_set_int (value, c2venc->priority);
       break;
+    case PROP_TEMPORAL_LAYER:
+    {
+      GValue val = G_VALUE_INIT;
+
+      g_value_init (&val, G_TYPE_INT);
+
+      g_value_set_int (&val, c2venc->temp_layer.n_layers);
+      gst_value_array_append_value (value, &val);
+
+      g_value_set_int (&val, c2venc->temp_layer.n_blayers);
+      gst_value_array_append_value (value, &val);
+
+      g_value_unset (&val);
+      break;
+    }
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -1673,8 +1802,13 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
   g_object_class_install_property (gobject, PROP_B_FRAMES,
       g_param_spec_uint ("b-frames", "B Frames",
-          "Number of B-frames between two consecutive I-frames "
-          "(0xffffffff=component default)",
+          "Number of B-frames between neighboring P-frame and "
+          "P-frame/I-frame (0xffffffff=component default). "
+#if !defined(CODEC2_CONFIG_VERSION_2_0)
+          "B-frame will be disabled if temporal layer has non-zero p-layer"
+          " count for AVC or b-layer count less than 2 for HEVC"
+#endif // CODEC2_CONFIG_VERSION_2_0
+          "Allow B-frame only for VBR(_CFR/VFR) RC modes.",
           0, G_MAXUINT, DEFAULT_PROP_B_FRAMES,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
   g_object_class_install_property (gobject, PROP_QUANT_I_FRAMES,
@@ -1778,6 +1912,19 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
           "(0xffffffff=component default)",
           G_MININT32, G_MAXINT, DEFAULT_PROP_PRIORITY,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_TEMPORAL_LAYER,
+      gst_param_spec_array ("temporal-layer", "Temporal Layer",
+          "Set temporal layer number for layer encoding, include layers ("
+          "p-layers + b-layers) number, b-layers number (e.g. '<4,0>;'). "
+          "layers number couldn't be larger than 6."
+#if !defined(CODEC2_CONFIG_VERSION_2_0)
+          "blayers number is ignored if profile is not HEVC_MAIN"
+#endif // CODEC2_CONFIG_VERSION_2_0
+          "b-layers number couldn't be larger than layers number.",
+          g_param_spec_int ("temporal-layer", "Temporal Layer",
+              "One of layers number, b-layers number", G_MININT,
+              G_MAXINT, 0, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS),
+          G_PARAM_READWRITE |G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
 
   g_signal_new_class_handler ("trigger-iframe", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION, G_CALLBACK (gst_c2_venc_trigger_iframe),
@@ -1863,6 +2010,8 @@ gst_c2_venc_init (GstC2VEncoder * c2venc)
   c2venc->loop_filter_mode = DEFAULT_PROP_LOOP_FILTER_MODE;
   c2venc->num_ltr_frames = DEFAULT_PROP_NUM_LTR_FRAMES;
   c2venc->priority = DEFAULT_PROP_PRIORITY;
+  c2venc->temp_layer.n_layers = DEFAULT_PROP_TEMPORAL_LAYER_NUM;
+  c2venc->temp_layer.n_blayers = DEFAULT_PROP_TEMPORAL_LAYER_NUM;
 
   GST_DEBUG_CATEGORY_INIT (c2_venc_debug, "qtic2venc", 0,
       "QTI c2venc encoder");
