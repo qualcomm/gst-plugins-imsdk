@@ -33,7 +33,10 @@
  * Default models and labels path, if not provided by user
  */
 #define DEFAULT_SNPE_CLASSIFICATION_MODEL "/opt/inceptionv3.dlc"
-#define DEFAULT_TFLITE_CLASSIFICATION_MODEL "/opt/inceptionv3.tflite"
+#define DEFAULT_TFLITE_UINT8_CLASSIFICATION_MODEL \
+    "/opt/inceptionv3_uint8.tflite"
+#define DEFAULT_TFLITE_INT8_CLASSIFICATION_MODEL \
+    "/opt/inceptionv3_int8.tflite"
 #define DEFAULT_CLASSIFICATION_LABELS "/opt/classification.labels"
 
 /**
@@ -43,6 +46,17 @@
 #define DEFAULT_CAMERA_OUTPUT_WIDTH 1280
 #define DEFAULT_CAMERA_OUTPUT_HEIGHT 720
 #define DEFAULT_CAMERA_FRAME_RATE 30
+
+/**
+ * To enable softmax operation for post processing
+ */
+#define GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX 1
+
+/**
+ * Default constants to dequantize values
+ */
+#define DEFAULT_CONSTANTS \
+    "Mobilenet,q-offsets=<95.0>,q-scales=<0.18740029633045197>;"
 
 /**
  * Number of Queues used for buffer caching between elements
@@ -83,7 +97,8 @@ build_pad_property (GValue * property, gint values[], gint num)
  */
 static gboolean
 create_pipe (GstAppContext * appctx, GstModelType model_type,
-    const gchar * model_path, const gchar * labels_path)
+    GstModelFormatType model_format, const gchar * model_path,
+    const gchar * labels_path)
 {
   GstElement *qtiqmmfsrc, *qmmfsrc_caps, *qtivtransform, *queue[QUEUE_COUNT];
   GstElement *tee, *qtimlvconverter, *qtimlelement;
@@ -251,6 +266,12 @@ create_pipe (GstAppContext * appctx, GstModelType model_type,
     g_object_set (G_OBJECT (qtimlvclassification),
         "threshold", 40.0, "results", 2,
         "module", module_id, "labels", labels_path, NULL);
+    if (model_format == GST_MODEL_FORMAT_INT8) {
+      g_object_set (G_OBJECT (qtimlvclassification),
+          "extra-operation", GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX,
+          "constants", DEFAULT_CONSTANTS,
+          NULL);
+    }
   } else {
     g_printerr ("Module mobilenet is not available in qtimlvclassification.\n");
     goto error;
@@ -396,6 +417,7 @@ main (gint argc, gchar * argv[])
   const gchar *app_name = NULL;
   GstAppContext appctx = {};
   GstModelType model_type = GST_MODEL_TYPE_SNPE;
+  GstModelFormatType model_format = GST_MODEL_FORMAT_UINT8;
   gchar help_description[1024];
   gboolean ret = FALSE;
   guint intrpt_watch_id = 0;
@@ -411,13 +433,18 @@ main (gint argc, gchar * argv[])
       "Execute Model in SNPE DLC (1) or TFlite (2) format",
       "1 or 2"
     },
+    { "model-format", 't', 0, G_OPTION_ARG_INT,
+      &model_format,
+      "UINT8 (1) or INT8 (2) format",
+      "1 or 2"
+    },
     { "model", 'm', 0, G_OPTION_ARG_STRING,
       &model_path,
       "This is an optional parameter and overrides default path\n"
       "      Default model path for SNPE DLC: "
       DEFAULT_SNPE_CLASSIFICATION_MODEL "\n"
       "      Default model path for TFLITE Model: "
-      DEFAULT_TFLITE_CLASSIFICATION_MODEL,
+      DEFAULT_TFLITE_UINT8_CLASSIFICATION_MODEL,
       "/PATH"
     },
     { "labels", 'l', 0, G_OPTION_ARG_STRING,
@@ -475,9 +502,22 @@ main (gint argc, gchar * argv[])
     return -EINVAL;
   }
 
+  if (model_format < GST_MODEL_FORMAT_UINT8 ||
+      model_format > GST_MODEL_FORMAT_INT8) {
+    g_printerr ("Invalid model-format option selected\n"
+        "Available options:\n"
+        "    UINT8: %d\n"
+        "    INT8: %d\n",
+        GST_MODEL_FORMAT_UINT8, GST_MODEL_FORMAT_INT8);
+    return -EINVAL;
+  }
+
   // Set model path for execution
-  model_path = model_path ? model_path: (model_type == GST_MODEL_TYPE_SNPE ?
-      DEFAULT_SNPE_CLASSIFICATION_MODEL : DEFAULT_TFLITE_CLASSIFICATION_MODEL);
+  model_path = model_path ? model_path : (model_type == GST_MODEL_TYPE_SNPE ?
+      DEFAULT_SNPE_CLASSIFICATION_MODEL :
+      (model_format == GST_MODEL_FORMAT_INT8) ?
+      DEFAULT_TFLITE_INT8_CLASSIFICATION_MODEL :
+      DEFAULT_TFLITE_UINT8_CLASSIFICATION_MODEL);
 
   if (!file_exists (model_path)) {
     g_print ("Invalid model file path: %s\n", model_path);
@@ -505,7 +545,7 @@ main (gint argc, gchar * argv[])
   appctx.pipeline = pipeline;
 
   // Build the pipeline, link all elements in the pipeline
-  ret = create_pipe (&appctx, model_type, model_path, labels_path);
+  ret = create_pipe (&appctx, model_type, model_format, model_path, labels_path);
   if (!ret) {
     g_printerr ("ERROR: failed to create GST pipe.\n");
     destroy_pipe (&appctx);

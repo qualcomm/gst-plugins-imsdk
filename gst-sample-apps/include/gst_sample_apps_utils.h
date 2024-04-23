@@ -55,6 +55,20 @@ typedef enum {
 } GstModelType;
 
 /**
+ * GstModelFormatType:
+ * @GST_MODEL_FORMAT_NONE   : Invalid Model Format.
+ * @GST_MODEL_FORMAT_UINT8  : INT8 Model.
+ * @GST_MODEL_FORMAT_INT8   : UINT8 Model.
+ *
+ * Type of Model format.
+ */
+typedef enum {
+  GST_MODEL_FORMAT_NONE,
+  GST_MODEL_FORMAT_UINT8,
+  GST_MODEL_FORMAT_INT8
+} GstModelFormatType;
+
+/**
  * GstYoloModelType:
  * @GST_YOLO_TYPE_NONE: Invalid Model Type.
  * @GST_YOLO_TYPE_V5  : Yolov5 Object Detection Model.
@@ -69,6 +83,20 @@ typedef enum {
   GST_YOLO_TYPE_V8,
   GST_YOLO_TYPE_NAS
 } GstYoloModelType;
+
+/**
+ * GstSegmentationModelType:
+ * @GST_SEGMENTATION_TYPE_NONE       : Invalid Model Type.
+ * @GST_SEGMENTATION_TYPE_DEEPLABV3  : DEEPLABV3 Segmentation Model.
+ * @GST_SEGMENTATION_TYPE_FFNET40S   : FFNET40S Segmentation Model.
+ *
+ * Type of Segmentation Model.
+ */
+typedef enum {
+  GST_SEGMENTATION_TYPE_NONE,
+  GST_SEGMENTATION_TYPE_DEEPLABV3,
+  GST_SEGMENTATION_TYPE_FFNET40S
+} GstSegmentationModelType;
 
 /**
  * GstInferenceType:
