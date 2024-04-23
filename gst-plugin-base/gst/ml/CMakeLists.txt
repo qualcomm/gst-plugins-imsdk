@@ -8,10 +8,11 @@ add_library(${GST_QTI_ML_BASE} SHARED
   gstmlmeta.c
   gstmlmodule.c
   gstmlpool.c
+  ml-module-utils.c
 )
 
 set_target_properties(${GST_QTI_ML_BASE} PROPERTIES PUBLIC_HEADER
-  "ml-type.h;ml-info.h;ml-frame.h;gstmlmeta.h;gstmlmodule.h;gstmlpool.h"
+  "ml-type.h;ml-info.h;ml-frame.h;gstmlmeta.h;gstmlmodule.h;gstmlpool.h;ml-module-utils.h"
 )
 
 target_include_directories(${GST_QTI_ML_BASE} PUBLIC
