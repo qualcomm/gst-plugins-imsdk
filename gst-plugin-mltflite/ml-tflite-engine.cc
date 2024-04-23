@@ -71,15 +71,16 @@
 #include <tensorflow/lite/interpreter.h>
 #include <tensorflow/lite/kernels/register.h>
 #include <tensorflow/lite/delegates/nnapi/nnapi_delegate.h>
+#include <tensorflow/lite/delegates/gpu/delegate.h>
+#include <tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h>
+
 #ifdef HAVE_HEXAGON_DELEGATE_H
 #if TF_MAJOR_VERSION <= 2 && TF_MINOR_VERSION <= 2
 #include <tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h>
 #else
 #include <tensorflow/lite/delegates/hexagon/hexagon_delegate.h>
-#endif
+#endif // TF_MAJOR_VERSION <= 2 && TF_MINOR_VERSION <= 2
 #endif // HAVE_HEXAGON_DELEGATE_H
-#include <tensorflow/lite/delegates/gpu/delegate.h>
-#include <tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h>
 
 #if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
 #include "tensorflow/lite/delegates/external/external_delegate.h"
@@ -526,9 +527,11 @@ gst_ml_tflite_engine_new (GstStructure * settings)
     case kTfLiteInt32:
       engine->ininfo->type = GST_ML_TYPE_INT32;
       break;
+#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
     case kTfLiteUInt32:
       engine->ininfo->type = GST_ML_TYPE_UINT32;
       break;
+#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
     case kTfLiteInt8:
       engine->ininfo->type = GST_ML_TYPE_INT8;
       break;
@@ -553,9 +556,11 @@ gst_ml_tflite_engine_new (GstStructure * settings)
     case kTfLiteInt32:
       engine->outinfo->type = GST_ML_TYPE_INT32;
       break;
+#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
     case kTfLiteUInt32:
       engine->outinfo->type = GST_ML_TYPE_UINT32;
       break;
+#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
     case kTfLiteInt8:
       engine->outinfo->type = GST_ML_TYPE_INT8;
       break;
