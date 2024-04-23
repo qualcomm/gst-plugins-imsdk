@@ -37,15 +37,10 @@
 #include <stdio.h>
 #include <math.h>
 
-
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
 
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
-
-#define GFLOAT_PTR_CAST(data)       ((gfloat*) data)
-#define GINT8_PTR_CAST(data)        ((gint8*) data)
-#define GUINT8_PTR_CAST(data)       ((guint8*) data)
 
 // Layer index at which the object score resides.
 #define SCORE_IDX              4
@@ -97,6 +92,11 @@ typedef struct _GstMLSubModule GstMLSubModule;
 struct _GstMLSubModule {
   // Configurated ML capabilities in structure format.
   GstMLInfo  mlinfo;
+
+  // The width of the model input tensor.
+  guint      inwidth;
+  // The height of the model input tensor.
+  guint      inheight;
 
   // List of prediction labels.
   GHashTable *labels;
@@ -165,19 +165,18 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
     GArray * predictions, GstMLFrame * mlframe)
 {
   GstProtectionMeta *pmeta = NULL;
+  GstVideoRectangle region = { 0, };
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   guint idx = 0, num = 0, x = 0, y = 0, m = 0, id = 0, w_idx = 0, tile_idx = 0;
-  guint width = 0, height = 0, in_width = 0, in_height = 0;
+  guint width = 0, height = 0;
   guint anchor = 0, n_layers = 0, n_anchors = 0, n_tiles = 0;
   gdouble confidence = 0.0, score = 0.0, threshold = 0.0, bbox[4] = { 0, };
-  gint nms = -1, sar_n = 1, sar_d = 1;
+  gint nms = -1;
 
-  // Extract the SAR (Source Aspect Ratio) and input tensor resolution.
-  if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL) {
-    gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
-    gst_structure_get_uint (pmeta->info, "input-tensor-width", &in_width);
-    gst_structure_get_uint (pmeta->info, "input-tensor-height", &in_height);
-  }
+  pmeta = gst_buffer_get_protection_meta (mlframe->buffer);
+
+  // Extract the source tensor region with actual data.
+  gst_ml_protecton_meta_get_source_region (pmeta, &region);
 
   mltype = GST_ML_FRAME_TYPE (mlframe);
   threshold = gst_ml_module_get_threshold_value (mltype, submodule->threshold);
@@ -212,7 +211,7 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
     // Ex: "< <1, 20, 20, 255>, <1, 40, 40, 255>, <1, 80, 80, 255> > "
     // TODO: optimize
     for (w_idx = 0; w_idx < 3 ; w_idx++)
-      if (weights[w_idx][0] == (gint32)(in_width / width)) break;
+      if (weights[w_idx][0] == (gint32)(submodule->inwidth / width)) break;
 
     for (tile_idx = 0; tile_idx < n_tiles; tile_idx++) {
       for (anchor = 0; anchor < n_anchors; anchor++, num += n_layers) {
@@ -278,9 +277,8 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
         prediction.bottom = bbox[1] + (bbox[3] / 2);
         prediction.right = bbox[0] + (bbox[2] / 2);
 
-        // Adjust bounding box dimensions with extracted source aspect ratio.
-        gst_ml_prediction_transform_dimensions (&prediction, sar_n, sar_d,
-            in_width, in_height);
+        // Adjust bounding box dimensions with extracted source tensor region.
+        gst_ml_prediction_transform_dimensions (&prediction, &region);
 
         // Discard results with out of region coordinates.
         if ((prediction.top > 1.0) || (prediction.left > 1.0) ||
@@ -320,13 +318,21 @@ gst_ml_module_parse_monoblock_tensors (GstMLSubModule * submodule,
   GstProtectionMeta *pmeta = NULL;
   GstMLLabel *label = NULL;
   guint8 *data = NULL;
+  GstVideoRectangle region = { 0, };
   guint idx = 0, num = 0, m = 0, id = 0, n_layers = 0, n_tiles = 0;
   gdouble confidence = 0.0, score = 0.0, bbox[4] = { 0, };
-  gint nms = -1, sar_n = 1, sar_d = 1;
+  gint nms = -1;
 
-  // Extract the SAR (Source Aspect Ratio).
-  if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL)
-    gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
+  pmeta = gst_buffer_get_protection_meta (mlframe->buffer);
+
+  // Extract the dimensions of the input tensor that produced the output tensors.
+  if (submodule->inwidth == 0 || submodule->inheight == 0) {
+    gst_ml_protecton_meta_get_source_dimensions (pmeta, &(submodule->inwidth),
+        &(submodule->inheight));
+  }
+
+  // Extract the source tensor region with actual data.
+  gst_ml_protecton_meta_get_source_region (pmeta, &region);
 
   data = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
 
@@ -369,13 +375,14 @@ gst_ml_module_parse_monoblock_tensors (GstMLSubModule * submodule,
     bbox[2] = (data[idx + 2] - submodule->qoffsets[0]) * submodule->qscales[0];
     bbox[3] = (data[idx + 3] - submodule->qoffsets[0]) * submodule->qscales[0];
 
-    prediction.top = bbox[1] - (bbox[3] / 2);
-    prediction.left = bbox[0] - (bbox[2] / 2);
-    prediction.bottom = bbox[1] + (bbox[3] / 2);
-    prediction.right = bbox[0] + (bbox[2] / 2);
+    // Translate box coordinates to absolute as the tensor region is in absolute.
+    prediction.top = (bbox[1] - (bbox[3] / 2)) * submodule->inheight;
+    prediction.left = (bbox[0] - (bbox[2] / 2)) * submodule->inwidth;
+    prediction.bottom = (bbox[1] + (bbox[3] / 2)) * submodule->inheight;
+    prediction.right = (bbox[0] + (bbox[2] / 2)) * submodule->inwidth;
 
-    // Adjust bounding box dimensions with extracted source aspect ratio.
-    gst_ml_prediction_transform_dimensions (&prediction, sar_n, sar_d, 1, 1);
+    // Adjust bounding box dimensions with extracted source tensor region.
+    gst_ml_prediction_transform_dimensions (&prediction, &region);
 
     // Discard results with out of region coordinates.
     if ((prediction.top > 1.0) || (prediction.left > 1.0) ||
