@@ -73,19 +73,24 @@
 #define DEFAULT_PREVIEWSTREAM_FPS_DENOMINATOR 1
 #define DEFAULT_SWITCH_DELAY 5
 #define DEFAULT_ROUND G_MININT32
+#define DEFAULT_OPMODE "fastswitch"
+
+// Global variable
+static gchar *opmode = (gchar *)DEFAULT_OPMODE;
+static gboolean frameselection_enabled = FALSE;
 
 typedef struct _GstAppContext GstAppContext;
 typedef struct _GstVideoStreamInfo GstVideoStreamInfo;
 typedef struct _GstPreviewStreamInfo GstPreviewStreamInfo;
 typedef struct _MetaInfo MetaInfo;
 
-/*** Data Structure ***/
 enum {
-  CAM_OPMODE_NONE,
-  CAM_OPMODE_FRAMESELECTION,
-  CAM_OPMODE_FASTSWITCH
+  CAM_OPMODE_NONE               = (1 << 0),
+  CAM_OPMODE_FRAMESELECTION     = (1 << 1),
+  CAM_OPMODE_FASTSWITCH         = (1 << 2),
 };
 
+/*** Data Structure ***/
 struct _MetaInfo {
   gint width;
   gint height;
@@ -97,6 +102,7 @@ struct _GstVideoStreamInfo {
   GstCaps* qmmf_caps;
   GstElement* capsfilter;
   GstElement* encoder;
+  GstElement* capsfilter_dfps;
   GstElement* parser;
   GstElement* muxer;
   GstElement* filesinker;
@@ -125,7 +131,8 @@ struct _GstAppContext {
 // Declaration
 static gboolean source_add (GstAppContext* appctx);
 static void source_remove (GstAppContext* appctx);
-static gboolean appcontext_create (GstAppContext* appctx);
+static gboolean appcontext_create (GstAppContext* appctx,
+    const gint vnum);
 static void appcontext_delete (GstAppContext* appctx);
 static gboolean interrupt_handler (gpointer userdata);
 static gboolean streams_create (GstAppContext* appctx);
@@ -140,15 +147,22 @@ static gboolean signal_add (GstAppContext* appctx);
 static gboolean
 source_add (GstAppContext* appctx)
 {
+  gchar *propname = (gchar *)"op-mode";
+  guint32 flags = CAM_OPMODE_NONE;
+
+  if (frameselection_enabled)
+    flags = CAM_OPMODE_FRAMESELECTION |  CAM_OPMODE_FASTSWITCH;
+  else
+    flags = CAM_OPMODE_FASTSWITCH;
+
   appctx->source = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
+
   if (!appctx->source) {
     g_printerr ("ERROR: failed to create qtiqmmfsrc.\n");
     return FALSE;
   }
 
-  // Configure op-mode
-  g_object_set (G_OBJECT (appctx->source),
-      "op-mode", CAM_OPMODE_FASTSWITCH, NULL);
+  g_object_set (G_OBJECT (appctx->source), "op-mode", flags, NULL);
 
   if (!gst_bin_add (GST_BIN (appctx->pipeline), appctx->source)) {
     g_printerr ("ERROR: failed to add source to bin.\n");
@@ -426,6 +440,8 @@ preview_stream_create (GstAppContext* appctx)
   g_object_set (G_OBJECT (previewstream->capsfilter),
       "caps", previewstream->qmmf_caps, NULL);
 
+  g_object_set (G_OBJECT (previewstream->displayer), "sync", FALSE, NULL);
+
   // Add elements to bin
   gst_bin_add_many(GST_BIN (appctx->pipeline), appctx->source,
       previewstream->capsfilter, previewstream->displayer, NULL);
@@ -471,13 +487,24 @@ video_stream_create (GstAppContext* appctx)
         videostream->meta.width, videostream->meta.height,
         videostream->meta.framerate);
 
-    videostream->qmmf_caps = gst_caps_new_simple ("video/x-raw",
-        "format", G_TYPE_STRING, DEFAULT_VIDEOSTREAM_FORMAT,
-        "width", G_TYPE_INT, videostream->meta.width,
-        "height", G_TYPE_INT, videostream->meta.height,
-        "framerate", GST_TYPE_FRACTION,
-        videostream->meta.framerate, DEFAULT_VIDEOSTREAM_FPS_DENOMINATOR,
-        NULL);
+    if (!frameselection_enabled)
+      videostream->qmmf_caps = gst_caps_new_simple ("video/x-raw",
+          "format", G_TYPE_STRING, DEFAULT_VIDEOSTREAM_FORMAT,
+          "width", G_TYPE_INT, videostream->meta.width,
+          "height", G_TYPE_INT, videostream->meta.height,
+          "framerate", GST_TYPE_FRACTION,
+          videostream->meta.framerate, DEFAULT_VIDEOSTREAM_FPS_DENOMINATOR,
+          NULL);
+    else
+      videostream->qmmf_caps = gst_caps_new_simple ("video/x-raw",
+          "format", G_TYPE_STRING, DEFAULT_VIDEOSTREAM_FORMAT,
+          "width", G_TYPE_INT, videostream->meta.width,
+          "height", G_TYPE_INT, videostream->meta.height,
+          "framerate", GST_TYPE_FRACTION, 0, 1,
+          "max-framerate", GST_TYPE_FRACTION,
+          videostream->meta.framerate, DEFAULT_VIDEOSTREAM_FPS_DENOMINATOR,
+          NULL);
+
     gst_caps_set_features (videostream->qmmf_caps, 0,
         gst_caps_features_new ("memory:GBM", NULL));
 
@@ -493,6 +520,7 @@ video_stream_create (GstAppContext* appctx)
     // Create other elements of video stream
     videostream->capsfilter = gst_element_factory_make ("capsfilter", NULL);
     videostream->encoder = gst_element_factory_make ("qtic2venc", NULL);
+    videostream->capsfilter_dfps = gst_element_factory_make ("capsfilter", NULL);
     videostream->parser = gst_element_factory_make ("h264parse", NULL);
     videostream->muxer = gst_element_factory_make ("mp4mux", NULL);
     videostream->filesinker = gst_element_factory_make ("filesink", NULL);
@@ -513,11 +541,39 @@ video_stream_create (GstAppContext* appctx)
     g_object_set (G_OBJECT (videostream->filesinker),
         "location", location, NULL);
 
+    g_object_set (G_OBJECT (videostream->encoder), "control-rate", 3, NULL);
+    g_object_set (G_OBJECT (videostream->encoder), "target-bitrate", 30000000, NULL);
+    g_object_set (G_OBJECT (videostream->encoder), "priority", 0, NULL);
+    g_object_set (G_OBJECT (videostream->encoder), "min-quant-i-frames",
+        30, NULL);
+    g_object_set (G_OBJECT (videostream->encoder), "min-quant-p-frames",
+        30, NULL);
+    g_object_set (G_OBJECT (videostream->encoder), "max-quant-i-frames",
+        51, NULL);
+    g_object_set (G_OBJECT (videostream->encoder), "max-quant-p-frames",
+        51, NULL);
+    g_object_set (G_OBJECT (videostream->encoder), "quant-i-frames",
+        30, NULL);
+    g_object_set (G_OBJECT (videostream->encoder), "quant-p-frames",
+        30, NULL);
+
+    if (frameselection_enabled) {
+      GstCaps* caps_dfps = NULL;
+
+      caps_dfps = gst_caps_new_simple ("video/x-h264",
+          "framerate", GST_TYPE_FRACTION,
+          videostream->meta.framerate, DEFAULT_VIDEOSTREAM_FPS_DENOMINATOR,
+          NULL);
+      g_object_set (G_OBJECT (videostream->capsfilter_dfps),
+          "caps", caps_dfps, NULL);
+      gst_caps_unref (caps_dfps);
+    }
+
     // Add elements to bin
     gst_bin_add_many (GST_BIN (appctx->pipeline),
         appctx->source, videostream->capsfilter,
-        videostream->encoder, videostream->parser,
-        videostream->muxer, videostream->filesinker, NULL);
+        videostream->encoder, videostream->capsfilter_dfps,
+        videostream->parser, videostream->muxer, videostream->filesinker, NULL);
 
     // Link elements
     ret = gst_element_link_pads_full (
@@ -525,7 +581,8 @@ video_stream_create (GstAppContext* appctx)
         videostream->capsfilter, NULL, GST_PAD_LINK_CHECK_DEFAULT);
 
     ret = gst_element_link_many (videostream->capsfilter, videostream->encoder,
-        videostream->parser, videostream->muxer, videostream->filesinker, NULL);
+        videostream->capsfilter_dfps, videostream->parser, videostream->muxer,
+        videostream->filesinker, NULL);
 
     if (!ret) {
       g_printerr ("ERROR: failed to link video stream.\n");
@@ -573,8 +630,8 @@ streams_delete(GstAppContext* appctx) {
 
     gst_bin_remove_many (GST_BIN (appctx->pipeline),
         videostream->capsfilter, videostream->encoder,
-        videostream->parser, videostream->muxer,
-        videostream->filesinker, NULL);
+        videostream->capsfilter_dfps, videostream->parser,
+        videostream->muxer, videostream->filesinker, NULL);
   }
 
   if (previewstream->qmmf_pad)
@@ -625,18 +682,19 @@ switch_func (gpointer userdata) {
 
       gst_element_set_state (videostream->capsfilter, GST_STATE_NULL);
       gst_element_set_state (videostream->encoder, GST_STATE_NULL);
+      gst_element_set_state (videostream->capsfilter_dfps, GST_STATE_NULL);
       gst_element_set_state (videostream->parser, GST_STATE_NULL);
       gst_element_set_state (videostream->muxer, GST_STATE_NULL);
       gst_element_set_state (videostream->filesinker, GST_STATE_NULL);
 
-        // Unlink elements
-      gst_element_unlink_many (videostream->capsfilter,
-          videostream->encoder, videostream->parser, videostream->muxer,
+      gst_element_unlink_many (videostream->capsfilter, videostream->encoder,
+          videostream->capsfilter_dfps, videostream->parser, videostream->muxer,
           videostream->filesinker, NULL);
 
         // Reference to keep usage after remove from bin
       gst_object_ref (videostream->capsfilter);
       gst_object_ref (videostream->encoder);
+      gst_object_ref (videostream->capsfilter_dfps);
       gst_object_ref (videostream->parser);
       gst_object_ref (videostream->muxer);
       gst_object_ref (videostream->filesinker);
@@ -644,8 +702,8 @@ switch_func (gpointer userdata) {
         // Remove from bin
       gst_bin_remove_many (GST_BIN (appctx->pipeline),
           videostream->capsfilter, videostream->encoder,
-          videostream->parser, videostream->muxer,
-          videostream->filesinker, NULL);
+          videostream->capsfilter_dfps, videostream->parser,
+          videostream->muxer, videostream->filesinker, NULL);
 
         // Deactivate the pad
       gst_pad_set_active (videostream->qmmf_pad, FALSE);
@@ -676,12 +734,13 @@ switch_func (gpointer userdata) {
         // Add into bin
       gst_bin_add_many (GST_BIN (appctx->pipeline),
           videostream->capsfilter, videostream->encoder,
-          videostream->parser, videostream->muxer,
-          videostream->filesinker, NULL);
+          videostream->capsfilter_dfps, videostream->parser,
+          videostream->muxer, videostream->filesinker, NULL);
 
         // Sync state
       gst_element_sync_state_with_parent (videostream->capsfilter);
       gst_element_sync_state_with_parent (videostream->encoder);
+      gst_element_sync_state_with_parent (videostream->capsfilter_dfps);
       gst_element_sync_state_with_parent (videostream->parser);
       gst_element_sync_state_with_parent (videostream->muxer);
       gst_element_sync_state_with_parent (videostream->filesinker);
@@ -695,10 +754,10 @@ switch_func (gpointer userdata) {
         g_printerr ("ERROR: failed to link video pad.\n");
         return FALSE;
       }
-
       ret = gst_element_link_many (videostream->capsfilter,
-          videostream->encoder, videostream->parser, videostream->muxer,
-          videostream->filesinker, NULL);
+          videostream->encoder, videostream->capsfilter_dfps,
+          videostream->parser, videostream->muxer, videostream->filesinker,
+          NULL);
 
       if (!ret) {
         g_printerr ("ERROR: failed to link video stream.\n");
@@ -793,6 +852,11 @@ main (gint argc, gchar* argv[])
       "round",
       "Round to Switch"
     },
+    { "op-mode", 0, 0, G_OPTION_ARG_STRING,
+      &opmode,
+      "opmode",
+      "Operation mode of camera, interval with comma"
+    },
     { NULL }
   };
 
@@ -820,6 +884,11 @@ main (gint argc, gchar* argv[])
     g_printerr ("ERROR: Failed to create options context!\n");
     return -EFAULT;
   }
+
+  // Check op-mode
+  frameselection_enabled = (strstr (opmode, "frameselection")) ? TRUE : FALSE;
+  g_print ("frameselection: %d\n", frameselection_enabled);
+
 
   // Init GST Library
   gst_init (&argc, &argv);
