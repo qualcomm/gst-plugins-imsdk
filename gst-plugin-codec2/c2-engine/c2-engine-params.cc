@@ -55,6 +55,31 @@ static const std::unordered_map<std::string, uint32_t> kH265Profiles = {
 static const std::unordered_map<std::string, uint32_t> kAACProfiles = {
   { "lc", GST_C2_PROFILE_AAC_LC },
   { "main", GST_C2_PROFILE_AAC_MAIN },
+  { "ssr", GST_C2_PROFILE_AAC_SSR },
+  { "ltp", GST_C2_PROFILE_AAC_LTP },
+  { "he", GST_C2_PROFILE_AAC_HE },
+  { "scalable", GST_C2_PROFILE_AAC_SCALABLE },
+  { "er-lc", GST_C2_PROFILE_AAC_ER_LC },
+  { "er-scalable", GST_C2_PROFILE_AAC_ER_SCALABLE },
+  { "ld", GST_C2_PROFILE_AAC_LD },
+  { "he-ps", GST_C2_PROFILE_AAC_HE_PS },
+  { "eld", GST_C2_PROFILE_AAC_ELD },
+  { "xhe", GST_C2_PROFILE_AAC_XHE },
+};
+
+static const std::unordered_map<uint32_t, uint32_t> kAACProfilesAOT = {
+  { GST_C2_PROFILE_AAC_LC, AOT_AAC_LC },
+  { GST_C2_PROFILE_AAC_MAIN, AOT_AAC_MAIN },
+  { GST_C2_PROFILE_AAC_SSR, AOT_AAC_SSR },
+  { GST_C2_PROFILE_AAC_LTP, AOT_AAC_LTP },
+  { GST_C2_PROFILE_AAC_HE, AOT_AAC_LC },
+  { GST_C2_PROFILE_AAC_SCALABLE, AOT_AAC_SCALABLE },
+  { GST_C2_PROFILE_AAC_ER_LC, AOT_ER_AAC_LC },
+  { GST_C2_PROFILE_AAC_ER_SCALABLE, AOT_ER_AAC_SCALABLE },
+  { GST_C2_PROFILE_AAC_LD, AOT_ER_AAC_LD },
+  { GST_C2_PROFILE_AAC_HE_PS, AOT_AAC_LC },
+  { GST_C2_PROFILE_AAC_ELD, AOT_ER_AAC_ELD },
+  { GST_C2_PROFILE_AAC_XHE, AOT_AAC_LC },
 };
 
 static const std::unordered_map<std::string, uint32_t> kH264Levels = {
@@ -164,6 +189,15 @@ gst_c2_utils_aac_profile_to_string (guint profile)
       [&](const auto& m) { return m.second == profile; });
 
   return (it != kAACProfiles.end()) ? it->first.c_str() : NULL;
+}
+
+guint
+gst_c2_utils_aac_profile_to_aot (guint profile)
+{
+  if (kAACProfilesAOT.count(profile) != 0)
+    return kAACProfilesAOT.at(profile);
+
+  return AOT_INVALID;
 }
 
 guint
