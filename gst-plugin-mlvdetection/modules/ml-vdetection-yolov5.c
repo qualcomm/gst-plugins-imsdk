@@ -42,8 +42,10 @@
 #define GST_CAT_DEFAULT gst_ml_module_debug
 
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
-#define GUINT8_PTR_CAST(data)       ((guint8*) data)
+
 #define GFLOAT_PTR_CAST(data)       ((gfloat*) data)
+#define GINT8_PTR_CAST(data)        ((gint8*) data)
+#define GUINT8_PTR_CAST(data)       ((guint8*) data)
 
 // Layer index at which the object score resides.
 #define SCORE_IDX              4
@@ -78,13 +80,13 @@ static const gint32 gains[3][3][2] = {
 // The maximum supported input[w, h] is [1088, 1088]
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
-    "type = (string) { UINT8, FLOAT32 }, " \
+    "type = (string) { INT8, UINT8, FLOAT32 }, " \
     "dimensions = (int) < <1, [1, 136], [1, 136], [18, 3018]>, <1, [1, 136], [1, 136], [18, 3018]>, <1, [1, 136], [1, 136], [18, 3018]> >; " \
     "neural-network/tensors, " \
-    "type = (string) { UINT8 }, " \
+    "type = (string) { INT8, UINT8 }, " \
     "dimensions = (int) < <1, 3, [1, 136], [1, 136], [6, 85]>, <1, 3, [1, 136], [1, 136], [6, 85]>, <1, 3, [1, 136], [1, 136], [6, 85]> >; " \
     "neural-network/tensors, " \
-    "type = (string) { UINT8 }, " \
+    "type = (string) { INT8, UINT8 }, " \
     "dimensions = (int) < <1, [21, 72828], [6, 85]> >;"
 
 // Module caps instance
@@ -107,14 +109,67 @@ struct _GstMLSubModule {
   gdouble    qscales[GST_ML_MAX_TENSORS];
 };
 
+static inline gfloat
+gst_ml_module_get_threshold_value (GstMLType mltype, gfloat threshold)
+{
+  // Adjust threshold value depending on the tensors type.
+  switch (mltype) {
+    case GST_ML_TYPE_UINT8:
+      // Confidence threshold represented as the exponent of sigmoid.
+      return log (threshold / (1 - threshold));
+    case GST_ML_TYPE_FLOAT32:
+      // Confidence threshold is represent normally.
+      return threshold;
+    default:
+      break;
+  }
+  return 0.0;
+}
+
+static inline gdouble
+gst_ml_module_get_dequant_value (void * pdata, GstMLType mltype, guint idx,
+    gdouble offset, gdouble scale)
+{
+  switch (mltype) {
+    case GST_ML_TYPE_INT8:
+      return ((GINT8_PTR_CAST (pdata))[idx] - offset) * scale;
+    case GST_ML_TYPE_UINT8:
+      return ((GUINT8_PTR_CAST (pdata))[idx] - offset) * scale;
+    case GST_ML_TYPE_FLOAT32:
+      return (GFLOAT_PTR_CAST (pdata))[idx];
+    default:
+      break;
+  }
+  return 0.0;
+}
+
+static inline gint
+gst_ml_module_compare_values (void * data, GstMLType mltype,
+    guint l_idx, guint r_idx)
+{
+  switch (mltype) {
+    case GST_ML_TYPE_INT8:
+      return GINT8_PTR_CAST (data)[l_idx] > GINT8_PTR_CAST (data)[r_idx] ? 1 : 0;
+    case GST_ML_TYPE_UINT8:
+      return GUINT8_PTR_CAST (data)[l_idx] > GUINT8_PTR_CAST (data)[r_idx] ? 1 : 0;
+    case GST_ML_TYPE_FLOAT32:
+      return GFLOAT_PTR_CAST (data)[l_idx] > GFLOAT_PTR_CAST (data)[r_idx] ? 1 : 0;
+    default:
+      break;
+  }
+  return 0;
+}
+
 static void
-gst_ml_module_parse_float_split_tensors (GstMLSubModule * submodule,
+gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
     GArray * predictions, GstMLFrame * mlframe)
 {
   GstProtectionMeta *pmeta = NULL;
-  guint idx = 0, num = 0, anchor = 0, n_anchors = 0, x = 0, y = 0, m = 0, id = 0;
-  guint n_detections = 0, width = 0, height = 0, in_width = 0, in_height = 0;
-  gfloat confidence = 0.0, score = 0.0, bbox[4] = { 0, };
+  GstMLType mltype = GST_ML_TYPE_UNKNOWN;
+  guint idx = 0, num = 0, x = 0, y = 0, m = 0, id = 0, w_idx = 0, tile_idx = 0;
+  guint width = 0, height = 0, in_width = 0, in_height = 0;
+  guint anchor = 0, n_layers = 0, n_anchors = 0, n_tiles = 0;
+  gdouble confidence = 0.0, score = 0.0, threshold = 0.0, bbox[4] = { 0, };
   gint nms = -1, sar_n = 1, sar_d = 1;
 
   // Extract the SAR (Source Aspect Ratio) and input tensor resolution.
@@ -124,22 +179,34 @@ gst_ml_module_parse_float_split_tensors (GstMLSubModule * submodule,
     gst_structure_get_uint (pmeta->info, "input-tensor-height", &in_height);
   }
 
+  mltype = GST_ML_FRAME_TYPE (mlframe);
+  threshold = gst_ml_module_get_threshold_value (mltype, submodule->threshold);
+
   for (idx = 0; idx < GST_ML_FRAME_N_BLOCKS (mlframe); idx++, num = 0) {
-    GstLabel *label = NULL;
-    gfloat *data = NULL;
-    guint w_idx = 0;
+    void *data = GST_ML_FRAME_BLOCK_DATA (mlframe, idx);
 
-    data = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, idx));
+    if (GST_ML_FRAME_N_DIMENSIONS (mlframe, idx) == 5) {
+      // The 2nd dimension represents number of anchors.
+      n_anchors = GST_ML_FRAME_DIM (mlframe, idx, 1);
+      // The 3rd dimension represents the object matrix height.
+      height = GST_ML_FRAME_DIM (mlframe, idx, 2);
+      // The 4th dimension represents the object matrix width.
+      width = GST_ML_FRAME_DIM (mlframe, idx, 3);
+      // The 5th dimension represents number of layers.
+      n_layers = GST_ML_FRAME_DIM (mlframe, idx, 4);
+    } else { // A 4 dimensional tensor which has exactly 3 anchors.
+      // Number of anchors.
+      n_anchors = 3;
+      // The 1rd dimension represents the object matrix height.
+      height = GST_ML_FRAME_DIM (mlframe, idx, 1);
+      // The 2th dimension represents the object matrix width.
+      width = GST_ML_FRAME_DIM (mlframe, idx, 2);
+      // Layers(85) = CLASSES_IDX(5) + n_class(80)
+      n_layers = GST_ML_FRAME_DIM (mlframe, idx, 3) / n_anchors;
+    }
 
-    // Number of anchors.
-    n_anchors = 3;
-    // Detection size(85) = CLASSES_IDX(5) + n_class(80)
-    n_detections = GST_ML_FRAME_DIM (mlframe, idx, 3) / n_anchors;
-
-    // The 1rd dimension represents the object matrix height.
-    height = GST_ML_FRAME_DIM (mlframe, idx, 1);
-    // The 2th dimension represents the object matrix width.
-    width = GST_ML_FRAME_DIM (mlframe, idx, 2);
+    // Total number of tiles in the matrix.
+    n_tiles = width * height;
 
     // Find weight/gain idx in case tensor order sometimes is changed unexpected.
     // Ex: "< <1, 20, 20, 255>, <1, 40, 40, 255>, <1, 80, 80, 255> > "
@@ -147,235 +214,114 @@ gst_ml_module_parse_float_split_tensors (GstMLSubModule * submodule,
     for (w_idx = 0; w_idx < 3 ; w_idx++)
       if (weights[w_idx][0] == (gint32)(in_width / width)) break;
 
-    GST_DEBUG ("height: %d, width: %d, threshold: %f n_classes: %d",
-        height, width, submodule->threshold, n_detections -  CLASSES_IDX);
+    for (tile_idx = 0; tile_idx < n_tiles; tile_idx++) {
+      for (anchor = 0; anchor < n_anchors; anchor++, num += n_layers) {
+        GstMLPrediction prediction = { 0, };
+        GstLabel *label = NULL;
 
-    for (y = 0; y < height; y++) {
-      for (x = 0; x < width; x++) {
-        for (anchor = 0; anchor < n_anchors; anchor++, num += n_detections) {
-          GstMLPrediction prediction = { 0, };
+        // Dequantize the object score.
+        // Represented as an exponent 'x' in sigmoid function: 1 / (1 + exp(x)).
+        score = gst_ml_module_get_dequant_value (data, mltype, num + SCORE_IDX,
+            submodule->qoffsets[idx], submodule->qscales[idx]);
 
-          // Get the object score.
-          score = data[num + SCORE_IDX];
+        // Discard results below the minimum score threshold.
+        if (score < threshold)
+          continue;
 
-          // Discard results below the minimum score threshold.
-          if (score < submodule->threshold)
-            continue;
+        // Initialize the class index.
+        id = num + CLASSES_IDX;
 
-          // Initialize the class ID value.
-          id = num + CLASSES_IDX;
+        // Find the class index with the highest score in current paxel.
+        for (m = (num + CLASSES_IDX + 1); m < (num + n_layers); m++)
+          id = (gst_ml_module_compare_values (data, mltype, m, id) > 0) ? m : id;
 
-          // Find the class ID with the highest confidence.
-          for (m = (num + CLASSES_IDX + 1); m < (num + n_detections); m++)
-            id = (data[m] > data[id]) ? m : id;
+        // Dequantize the class confidence.
+        confidence = gst_ml_module_get_dequant_value (data, mltype, id,
+            submodule->qoffsets[idx], submodule->qscales[idx]);
 
-          // Class confidence.
-          confidence = data[id];
+        // Discard results below the minimum confidence threshold.
+        if (confidence < threshold)
+          continue;
 
-          // Apply a sigmoid function in order to normalize the confidence.
-          confidence = 1 / (1 + expf (- confidence));
-          // Normalize the end confidence with the object score value.
-          confidence *= 1 / (1 + expf (- score));
+        // Apply a sigmoid function in order to normalize the confidence.
+        confidence = 1 / (1 + expf (- confidence));
+        // Normalize the end confidence with the object score value.
+        confidence *= 1 / (1 + expf (- score));
 
-          // Discard results below the minimum confidence threshold.
-          if (confidence < submodule->threshold)
-            continue;
+        // Dequantize the bounding box parameters.
+        bbox[0] = gst_ml_module_get_dequant_value (data, mltype, num,
+            submodule->qoffsets[idx], submodule->qscales[idx]);
+        bbox[1] = gst_ml_module_get_dequant_value (data, mltype, num + 1,
+            submodule->qoffsets[idx], submodule->qscales[idx]);
+        bbox[2] = gst_ml_module_get_dequant_value (data, mltype, num + 2,
+            submodule->qoffsets[idx], submodule->qscales[idx]);
+        bbox[3] = gst_ml_module_get_dequant_value (data, mltype, num + 3,
+            submodule->qoffsets[idx], submodule->qscales[idx]);
 
-          // Bounding box parameters.
-          bbox[0] = data[num];
-          bbox[1] = data[num + 1];
-          bbox[2] = data[num + 2];
-          bbox[3] = data[num + 3];
+        // Apply a sigmoid function in order to normalize the parameters.
+        bbox[0] = 1 / (1 + expf (- bbox[0]));
+        bbox[1] = 1 / (1 + expf (- bbox[1]));
+        bbox[2] = 1 / (1 + expf (- bbox[2]));
+        bbox[3] = 1 / (1 + expf (- bbox[3]));
 
-          // Apply a sigmoid function in order to normalize the parameters.
-          bbox[0] = 1 / (1 + expf (- bbox[0]));
-          bbox[1] = 1 / (1 + expf (- bbox[1]));
-          bbox[2] = 1 / (1 + expf (- bbox[2]));
-          bbox[3] = 1 / (1 + expf (- bbox[3]));
+        y = (tile_idx % n_tiles) / height;
+        x = (tile_idx % n_tiles) % width;
 
-          // Special calculations for the bounding box parameters.
-          bbox[0] = (bbox[0] * 2 - 0.5F + x) * weights[w_idx][0];
-          bbox[1] = (bbox[1] * 2 - 0.5F + y) * weights[w_idx][1];
-          bbox[2] = pow ((bbox[2] * 2), 2) * gains[w_idx][anchor][0];
-          bbox[3] = pow ((bbox[3] * 2), 2) * gains[w_idx][anchor][1];
+        // Special calculations for the bounding box parameters.
+        bbox[0] = (bbox[0] * 2 - 0.5F + x) * weights[w_idx][0];
+        bbox[1] = (bbox[1] * 2 - 0.5F + y) * weights[w_idx][1];
+        bbox[2] = pow ((bbox[2] * 2), 2) * gains[w_idx][anchor][0];
+        bbox[3] = pow ((bbox[3] * 2), 2) * gains[w_idx][anchor][1];
 
-          label = g_hash_table_lookup (submodule->labels,
-              GUINT_TO_POINTER (id - (num + CLASSES_IDX)));
+        prediction.top = bbox[1] - (bbox[3] / 2);
+        prediction.left = bbox[0] - (bbox[2] / 2);
+        prediction.bottom = bbox[1] + (bbox[3] / 2);
+        prediction.right = bbox[0] + (bbox[2] / 2);
 
-          prediction.confidence = confidence * 100.0F;
-          prediction.label = g_strdup (label ? label->name : "unknown");
-          prediction.color = label ? label->color : 0x000000FF;
+        // Adjust bounding box dimensions with extracted source aspect ratio.
+        gst_ml_prediction_transform_dimensions (&prediction, sar_n, sar_d,
+            in_width, in_height);
 
-          prediction.top = bbox[1] - (bbox[3] / 2);
-          prediction.left = bbox[0] - (bbox[2] / 2);
-          prediction.bottom = bbox[1] + (bbox[3] / 2);
-          prediction.right = bbox[0] + (bbox[2] / 2);
+        // Discard results with out of region coordinates.
+        if ((prediction.top > 1.0) || (prediction.left > 1.0) ||
+            (prediction.bottom > 1.0) || (prediction.right > 1.0))
+          continue;
 
-          // Adjust bounding box dimensions with extracted source aspect ratio.
-          gst_ml_prediction_transform_dimensions (&prediction, sar_n, sar_d,
-              in_width, in_height);
+        label = g_hash_table_lookup (submodule->labels,
+            GUINT_TO_POINTER (id - (num + CLASSES_IDX)));
 
-          // Non-Max Suppression (NMS) algorithm.
-          nms = gst_ml_non_max_suppression (&prediction, predictions);
+        prediction.confidence = confidence * 100.0F;
+        prediction.label = g_strdup (label ? label->name : "unknown");
+        prediction.color = label ? label->color : 0x000000FF;
 
-          // If the NMS result is -2 don't add the prediction to the list.
-          if (nms == (-2)){
-            g_free (prediction.label);
-            continue;
-          }
+        // Non-Max Suppression (NMS) algorithm.
+        nms = gst_ml_non_max_suppression (&prediction, predictions);
 
-          // If the NMS result is above -1 remove the entry with the nms index.
-          if (nms >= 0)
-            predictions = g_array_remove_index (predictions, nms);
-
-          predictions = g_array_append_val (predictions, prediction);
+        // If the NMS result is -2 don't add the prediction to the list.
+        if (nms == (-2)){
+          g_free (prediction.label);
+          continue;
         }
+
+        // If the NMS result is above -1 remove the entry with the nms index.
+        if (nms >= 0)
+          predictions = g_array_remove_index (predictions, nms);
+
+        predictions = g_array_append_val (predictions, prediction);
       }
     }
   }
 }
 
 static void
-gst_ml_module_parse_quant_split_tensors (GstMLSubModule * submodule,
-    GArray * predictions, GstMLFrame * mlframe)
-{
-  GstProtectionMeta *pmeta = NULL;
-  guint idx = 0, num = 0, anchor = 0, n_anchors = 0, x = 0, y = 0, m = 0;
-  guint id = 0, n_layers = 0, width = 0, height = 0, in_width = 0, in_height = 0;
-  gfloat confidence = 0.0, score = 0.0, threshold = 0.0, bbox[4] = { 0, };
-  gint nms = -1, sar_n = 1, sar_d = 1;
-
-  // Extract the SAR (Source Aspect Ratio) and input tensor resolution.
-  if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL) {
-    gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
-    gst_structure_get_uint (pmeta->info, "input-tensor-width", &in_width);
-    gst_structure_get_uint (pmeta->info, "input-tensor-height", &in_height);
-  }
-
-  // Confidence threshold represented as the exponent of sigmoid.
-  threshold = log (submodule->threshold / (1 - submodule->threshold));
-
-  for (idx = 0; idx < GST_ML_FRAME_N_BLOCKS (mlframe); idx++, num = 0) {
-    GstLabel *label = NULL;
-    guint8 *data = NULL;
-
-    data = GST_ML_FRAME_BLOCK_DATA (mlframe, idx);
-
-    // The 2nd dimension represents number of anchors.
-    n_anchors = GST_ML_FRAME_DIM (mlframe, idx, 1);
-    // The 3rd dimension represents the object matrix height.
-    height = GST_ML_FRAME_DIM (mlframe, idx, 2);
-    // The 4th dimension represents the object matrix width.
-    width = GST_ML_FRAME_DIM (mlframe, idx, 3);
-    // The 5th dimension represents number of layers.
-    n_layers = GST_ML_FRAME_DIM (mlframe, idx, 4);
-
-    for (anchor = 0; anchor < n_anchors; anchor++) {
-      for (y = 0; y < height; y++) {
-        for (x = 0; x < width; x++, num += n_layers) {
-          GstMLPrediction prediction = { 0, };
-
-          // Dequantize the object score.
-          // Represented as an exponent 'x' in sigmoid function: 1 / (1 + exp(x)).
-          score = (data[num + SCORE_IDX] - submodule->qoffsets[idx]) *
-              submodule->qscales[idx];
-
-          // Discard results below the minimum score threshold.
-          if (score < threshold)
-            continue;
-
-          // Initialize the class ID value.
-          id = num + CLASSES_IDX;
-
-          // Find the class ID with the highest confidence.
-          for (m = (num + CLASSES_IDX + 1); m < (num + n_layers); m++)
-            id = (data[m] > data[id]) ? m : id;
-
-          // Dequantize the class confidence.
-          confidence =
-              (data[id] - submodule->qoffsets[idx]) * submodule->qscales[idx];
-
-          // Discard results below the minimum confidence threshold.
-          if (confidence < threshold)
-            continue;
-
-          // Apply a sigmoid function in order to normalize the confidence.
-          confidence = 1 / (1 + expf (- confidence));
-          // Normalize the end confidence with the object score value.
-          confidence *= 1 / (1 + expf (- score));
-
-          // Dequantize the bounding box parameters.
-          bbox[0] = (data[num] - submodule->qoffsets[idx]) *
-              submodule->qscales[idx];
-          bbox[1] = (data[num + 1] - submodule->qoffsets[idx]) *
-              submodule->qscales[idx];
-          bbox[2] = (data[num + 2] - submodule->qoffsets[idx]) *
-              submodule->qscales[idx];
-          bbox[3] = (data[num + 3] - submodule->qoffsets[idx]) *
-              submodule->qscales[idx];
-
-          // Apply a sigmoid function in order to normalize the parameters.
-          bbox[0] = 1 / (1 + expf (- bbox[0]));
-          bbox[1] = 1 / (1 + expf (- bbox[1]));
-          bbox[2] = 1 / (1 + expf (- bbox[2]));
-          bbox[3] = 1 / (1 + expf (- bbox[3]));
-
-          // Special calculations for the bounding box parameters.
-          bbox[0] = (bbox[0] * 2 - 0.5F + x) * weights[idx][0];
-          bbox[1] = (bbox[1] * 2 - 0.5F + y) * weights[idx][1];
-          bbox[2] = pow ((bbox[2] * 2), 2) * gains[idx][anchor][0];
-          bbox[3] = pow ((bbox[3] * 2), 2) * gains[idx][anchor][1];
-
-          prediction.top = bbox[1] - (bbox[3] / 2);
-          prediction.left = bbox[0] - (bbox[2] / 2);
-          prediction.bottom = bbox[1] + (bbox[3] / 2);
-          prediction.right = bbox[0] + (bbox[2] / 2);
-
-          // Adjust bounding box dimensions with extracted source aspect ratio.
-          gst_ml_prediction_transform_dimensions (&prediction, sar_n, sar_d,
-              in_width, in_height);
-
-          // Discard results with out of region coordinates.
-          if ((prediction.top > 1.0) || (prediction.left > 1.0) ||
-              (prediction.bottom > 1.0) || (prediction.right > 1.0))
-            continue;
-
-          label = g_hash_table_lookup (submodule->labels,
-              GUINT_TO_POINTER (id - (num + CLASSES_IDX)));
-
-          prediction.confidence = confidence * 100.0F;
-          prediction.label = g_strdup (label ? label->name : "unknown");
-          prediction.color = label ? label->color : 0x000000FF;
-
-          // Non-Max Suppression (NMS) algorithm.
-          nms = gst_ml_non_max_suppression (&prediction, predictions);
-
-          // If the NMS result is -2 don't add the prediction to the list.
-          if (nms == (-2)){
-            g_free (prediction.label);
-            continue;
-          }
-
-          // If the NMS result is above -1 remove the entry with the nms index.
-          if (nms >= 0)
-            predictions = g_array_remove_index (predictions, nms);
-
-          predictions = g_array_append_val (predictions, prediction);
-        }
-      }
-    }
-  }
-}
-
-static void
-gst_ml_module_parse_batch_tensors (GstMLSubModule * submodule,
+gst_ml_module_parse_monoblock_tensors (GstMLSubModule * submodule,
     GArray * predictions, GstMLFrame * mlframe)
 {
   GstProtectionMeta *pmeta = NULL;
   GstLabel *label = NULL;
   guint8 *data = NULL;
-  guint idx = 0, num = 0, m = 0, id = 0, n_layers = 0, n_rows = 0;
-  gfloat confidence = 0.0, score = 0.0, bbox[4] = { 0, };
+  guint idx = 0, num = 0, m = 0, id = 0, n_layers = 0, n_tiles = 0;
+  gdouble confidence = 0.0, score = 0.0, bbox[4] = { 0, };
   gint nms = -1, sar_n = 1, sar_d = 1;
 
   // Extract the SAR (Source Aspect Ratio).
@@ -384,12 +330,12 @@ gst_ml_module_parse_batch_tensors (GstMLSubModule * submodule,
 
   data = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
 
-  // The 2nd dimension represents the number of rows.
-  n_rows = GST_ML_FRAME_DIM (mlframe, 0, 1);
+  // The 2nd dimension represents ((w/8 * h/8) + (w/16 * h/16) + (w/32* h/32)) * 3
+  n_tiles = GST_ML_FRAME_DIM (mlframe, 0, 1);
   // The 3rd dimension represents number of layers.
   n_layers = GST_ML_FRAME_DIM (mlframe, 0, 2);
 
-  for (num = 0; num < n_rows; num++, idx += n_layers) {
+  for (num = 0; num < n_tiles; num++, idx += n_layers) {
     GstMLPrediction prediction = { 0, };
 
     // Dequantize the object score.
@@ -564,7 +510,8 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   gst_structure_get_double (settings, GST_ML_MODULE_OPT_THRESHOLD, &threshold);
   submodule->threshold = threshold / 100.0;
 
-  if (GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_UINT8) {
+  if ((GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_INT8) ||
+      (GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_UINT8)) {
     GstStructure *constants = NULL;
     const GValue *qoffsets = NULL, *qscales = NULL;
     guint idx = 0, n_tensors = 0;
@@ -633,14 +580,10 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     return FALSE;
   }
 
-  if ((GST_ML_INFO_N_TENSORS (&(submodule->mlinfo)) == 3) &&
-      (GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_FLOAT32)) {
-    gst_ml_module_parse_float_split_tensors (submodule, predictions, mlframe);
-  } else if ((GST_ML_INFO_N_TENSORS (&(submodule->mlinfo)) == 3) &&
-      (GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_UINT8)) {
-    gst_ml_module_parse_quant_split_tensors (submodule, predictions, mlframe);
+  if (GST_ML_INFO_N_TENSORS (&(submodule->mlinfo)) == 3) {
+    gst_ml_module_parse_tripleblock_frame (submodule, predictions, mlframe);
   } else if (GST_ML_INFO_N_TENSORS (&(submodule->mlinfo)) == 1) {
-    gst_ml_module_parse_batch_tensors (submodule, predictions, mlframe);
+    gst_ml_module_parse_monoblock_tensors (submodule, predictions, mlframe);
   } else {
     GST_ERROR ("Ml frame with unsupported post-processing procedure!");
     return FALSE;
