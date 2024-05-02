@@ -7,7 +7,7 @@ add_executable(${GST_EXAMPLE_BIN}
 
 target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_INCLUDE_DIRS}
-  $<$<BOOL:${HAVE_CAMX_API}>:${SYSROOT_INCDIR}/camx-api/camx/service>
+  $<$<STREQUAL:${CAMERA_SERVICE},LECAM>:${SYSROOT_INCDIR}/camx-api/camx/service>
 )
 
 target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
