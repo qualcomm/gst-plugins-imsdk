@@ -1502,7 +1502,7 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
     gint32 ivalue = 0;
 
     recorder->GetCameraParam (context->camera_id, meta);
-
+#ifdef C2D_ENABLE
     tag_id = get_vendor_tag_by_name (
         "org.codeaurora.qcamera3.c2dCropParam", "c2dCropX");
     ivalue = vpad->crop.x;
@@ -1524,6 +1524,7 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
         "org.codeaurora.qcamera3.c2dCropParam", "c2dCropHeight");
     if (meta.update (tag_id, &vpad->crop.h, 1) != 0)
       GST_WARNING ("Failed to update crop height");
+#endif
 
 #if (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
     tag_id = get_vendor_tag_by_name (
@@ -2801,7 +2802,7 @@ gst_qmmf_context_update_video_param (GstPad * pad, GParamSpec * pspec,
     }
 
     recorder->GetCameraParam (context->camera_id, meta);
-
+#ifdef C2D_ENABLE
     tag_id = get_vendor_tag_by_name (
         "org.codeaurora.qcamera3.c2dCropParam", "c2dCropX");
     if (meta.update (tag_id, &x, 1) != 0)
@@ -2821,7 +2822,7 @@ gst_qmmf_context_update_video_param (GstPad * pad, GParamSpec * pspec,
         "org.codeaurora.qcamera3.c2dCropParam", "c2dCropHeight");
     if (meta.update (tag_id, &height, 1) != 0)
       GST_WARNING ("Failed to update crop height");
-
+#endif
     status = recorder->SetCameraParam (context->camera_id, meta);
   } else {
     GST_WARNING ("Unsupported parameter '%s'!", pname);
