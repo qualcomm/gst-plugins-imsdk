@@ -895,6 +895,14 @@ gst_video_composer_update_src_caps (GstAggregator * aggregator,
   }
 
   GST_DEBUG_OBJECT (vcomposer, "Updated caps %" GST_PTR_FORMAT, *othercaps);
+
+  // Applicable for 1.20 version, since the GstAggregator base class is not
+  // marking src pad for reconfigure in case NEED_DATA is returned.
+  // On older versions, mark reconfigure is already happening but it won't
+  // cause any problem since it is just about setting the flag.
+  if (!configured)
+    gst_pad_mark_reconfigure (GST_AGGREGATOR_SRC_PAD (vcomposer));
+
   return configured ? GST_FLOW_OK : GST_AGGREGATOR_FLOW_NEED_DATA;
 }
 
