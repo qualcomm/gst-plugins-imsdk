@@ -129,8 +129,13 @@ struct _GstQmmfContext {
   gboolean          ldc;
   /// Camera property to Enable or Disable Lateral Chromatic Aberration Correction.
   gboolean          lcac;
+#ifndef EIS_MODES_ENABLE
   /// Camera property to Enable or Disable Electronic Image Stabilization.
   gboolean          eis;
+#else
+  /// Camera property to select Electronic Image Stabilization mode.
+  gint              eis;
+#endif // EIS_MODES_ENABLE
   /// Camera property to Enable or Disable Super High Dynamic Range.
   gboolean          shdr;
   /// Camera property to Enable or Disable Auto Dynamic Range Compression.
@@ -1200,9 +1205,21 @@ gst_qmmf_context_open (GstQmmfContext * context)
   xtraparam.Update (::qmmf::recorder::QMMF_LCAC, lcac);
 
   // EIS
+#ifndef EIS_MODES_ENABLE
   ::qmmf::recorder::EISSetup eis;
   eis.enable = context->eis;
   xtraparam.Update (::qmmf::recorder::QMMF_EIS, eis);
+#else
+  ::qmmf::recorder::EISModeSetup eis;
+  if (context->eis == EIS_OFF) {
+    eis.mode = ::qmmf::recorder::EisMode::kEisOff;
+  } else if (context->eis == EIS_ON_SINGLE_STREAM) {
+    eis.mode = ::qmmf::recorder::EisMode::kEisSingleStream;
+  } else {
+    eis.mode = ::qmmf::recorder::EisMode::kEisDualStream;
+  }
+  xtraparam.Update (::qmmf::recorder::QMMF_EIS_MODE, eis);
+#endif // EIS_MODES_ENABLE
 
   // SHDR
   ::qmmf::recorder::VideoHDRMode hdr;
@@ -1945,7 +1962,11 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       context->lcac = g_value_get_boolean (value);
       return;
     case PARAM_CAMERA_EIS:
+#ifndef EIS_MODES_ENABLE
       context->eis = g_value_get_boolean (value);
+#else
+      context->eis = g_value_get_enum (value);
+#endif // EIS_MODES_ENABLE
       return;
     case PARAM_CAMERA_SHDR: {
       gboolean new_shdr = g_value_get_boolean (value);
@@ -2480,7 +2501,11 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       g_value_set_boolean (value, context->lcac);
       break;
     case PARAM_CAMERA_EIS:
+#ifndef EIS_MODES_ENABLE
       g_value_set_boolean (value, context->eis);
+#else
+      g_value_set_enum (value, context->eis);
+#endif // EIS_MODES_ENABLE
       break;
     case PARAM_CAMERA_SHDR:
       g_value_set_boolean (value, context->shdr);
