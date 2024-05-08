@@ -46,6 +46,7 @@ target_link_libraries(overlay_lib
   $<$<BOOL:${HAVE_ANDROID_UTILS}>:cutils>
   $<$<NOT:$<BOOL:${HAVE_ANDROID_UTILS}>>:propertyvault>
   $<$<BOOL:${HAVE_C2D_H}>:C2D2>
+  ${GST_LIBRARIES}
 )
 
 install(

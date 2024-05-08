@@ -75,6 +75,7 @@ target_include_directories(${GST_QMMFSRC_PLUGIN} PRIVATE
 
 target_link_libraries(${GST_QMMFSRC_PLUGIN} PRIVATE
   qmmf_recorder_client
+  qmmf_camera_metadata
   ${GST_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
