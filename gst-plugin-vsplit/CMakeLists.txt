@@ -15,6 +15,10 @@ pkg_check_modules(GST
   REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_BASE
   REQUIRED gstreamer-base-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_VIDEO
+  REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_ALLOC
+  REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
 
 # Generate configuration header file.
 configure_file(config.h.in config.h @ONLY)
@@ -50,6 +54,8 @@ target_include_directories(${GST_QTI_VIDEO_SPLIT} PUBLIC
 target_link_libraries(${GST_QTI_VIDEO_SPLIT} PRIVATE
   ${GST_LIBRARIES}
   ${GST_BASE_LIBRARIES}
+  ${GST_VIDEO_LIBRARIES}
+  ${GST_ALLOC_LIBRARIES}
   gstqtivideobase
 )
 
