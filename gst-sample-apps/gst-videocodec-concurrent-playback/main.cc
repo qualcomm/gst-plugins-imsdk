@@ -203,7 +203,7 @@ main (gint argc, gchar * argv[])
   }
 
   // Setting Display environment variables
-  setenv ("XDG_RUNTIME_DIR", "/run/user/root", 0);
+  setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
   setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
   // Create the application context
