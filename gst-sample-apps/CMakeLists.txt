@@ -33,6 +33,7 @@ if (ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE)
   add_subdirectory(gst-multi-camera-example)
   add_subdirectory(gst-multi-stream-example)
   add_subdirectory(gst-add-streams-as-bundle-example)
+  add_subdirectory(gst-add-remove-streams-runtime)
 endif () # ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE
 
 if (ENABLE_CAMERA)
