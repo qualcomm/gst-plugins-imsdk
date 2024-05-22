@@ -312,6 +312,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstElement *mp4mux, *filesink;
   GstElement *rtph264pay, *udpsink;
   GstCaps *filtercaps;
+  GstStructure *fcontrols;
   gint width = DEFAULT_CAMERA_OUTPUT_WIDTH;
   gint height = DEFAULT_CAMERA_OUTPUT_HEIGHT;
   gint framerate = DEFAULT_CAMERA_FRAME_RATE;
@@ -795,6 +796,10 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   if (options->out_file || options->out_rtsp) {
     g_object_set (G_OBJECT (v4l2h264enc), "capture-io-mode", 5,
         "output-io-mode", 5, NULL);
+    // Set bitrate for streaming usecase
+    fcontrols = gst_structure_from_string (
+        "fcontrols,video_bitrate=6000000,video_bitrate_mode=0", NULL);
+    g_object_set (G_OBJECT (v4l2h264enc), "extra-controls", fcontrols, NULL);
 
     if (options->out_file) {
       g_object_set (G_OBJECT (filesink), "location", options->out_file, NULL);
