@@ -133,6 +133,18 @@ typedef enum {
 } GstMLSnpeDelegate;
 
 /**
+ * GstQmmfSrcStreamType:
+ * @GST_SOURCE_STREAM_TYPE_VIDEO   : Stream fitted for encoding the buffer.
+ * @GST_SOURCE_STREAM_TYPE_PREVIEW : Stream fitted for visualizing the buffers.
+ *
+ * Type of qmmfsrc stream.
+ */
+typedef enum {
+  GST_SOURCE_STREAM_TYPE_VIDEO,
+  GST_SOURCE_STREAM_TYPE_PREVIEW
+} GstQmmfSrcStreamType;
+
+/**
  * GstMLTFLiteDelegate:
  * @GST_ML_TFLITE_DELEGATE_NONE     : CPU is used for all operations
  * @GST_ML_TFLITE_DELEGATE_NNAPI_DSP: DSP through Android NN API
