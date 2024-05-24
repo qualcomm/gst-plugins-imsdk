@@ -136,8 +136,13 @@ struct _GstQmmfContext {
   /// Camera property to select Electronic Image Stabilization mode.
   gint              eis;
 #endif // EIS_MODES_ENABLE
+#ifndef VHDR_MODES_ENABLE
   /// Camera property to Enable or Disable Super High Dynamic Range.
   gboolean          shdr;
+#else
+  /// Camera property for Video High Dynamic Range modes.
+  gint              vhdr;
+#endif // VHDR_MODES_ENABLE
   /// Camera property to Enable or Disable Auto Dynamic Range Compression.
   gboolean          adrc;
   /// Overall mode of 3A
@@ -1223,7 +1228,30 @@ gst_qmmf_context_open (GstQmmfContext * context)
 
   // SHDR
   ::qmmf::recorder::VideoHDRMode hdr;
+#ifndef VHDR_MODES_ENABLE
   hdr.enable = context->shdr;
+#else
+  switch (context->vhdr) {
+    case VHDR_OFF:
+      hdr.mode = ::qmmf::recorder::VHDRMode::kVHDROff;
+      break;
+    case SHDR_MODE_RAW:
+      hdr.mode = ::qmmf::recorder::VHDRMode::kSHDRRaw;
+      break;
+    case SHDR_MODE_YUV:
+      hdr.mode = ::qmmf::recorder::VHDRMode::kSHDRYuv;
+      break;
+    case SHDR_SWITCH_ENABLE:
+      hdr.mode = ::qmmf::recorder::VHDRMode::kSHDRSwitchEnable;
+      break;
+    case QBC_HDR_MODE_VIDEO:
+      hdr.mode = ::qmmf::recorder::VHDRMode::kQBCHDRVideo;
+      break;
+    case QBC_HDR_MODE_SNAPSHOT:
+      hdr.mode = ::qmmf::recorder::VHDRMode::kQBCHDRSnapshot;
+      break;
+  }
+#endif // VHDR_MODES_ENABLE
   xtraparam.Update (::qmmf::recorder::QMMF_VIDEO_HDR_MODE, hdr);
 
   // ForceSensorMode
@@ -1968,6 +1996,7 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       context->eis = g_value_get_enum (value);
 #endif // EIS_MODES_ENABLE
       return;
+#ifndef VHDR_MODES_ENABLE
     case PARAM_CAMERA_SHDR: {
       gboolean new_shdr = g_value_get_boolean (value);
       if (context->shdr != new_shdr) {
@@ -1976,6 +2005,17 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
           recorder->SetSHDR (context->camera_id, context->shdr);
       }
     }
+#else
+    case PARAM_CAMERA_VHDR: {
+      gint new_vhdr = g_value_get_enum (value);
+      if (context->vhdr != new_vhdr) {
+        context->vhdr = new_vhdr;
+       if (context->state != GST_STATE_NULL)
+          recorder->SetVHDR (context->camera_id, context->vhdr);
+      }
+    }
+#endif // VHDR_MODES_ENABLE
+
       return;
     case PARAM_CAMERA_SENSOR_MODE:
       context->sensormode = g_value_get_int (value);
@@ -2507,8 +2547,13 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       g_value_set_enum (value, context->eis);
 #endif // EIS_MODES_ENABLE
       break;
+#ifndef VHDR_MODES_ENABLE
     case PARAM_CAMERA_SHDR:
       g_value_set_boolean (value, context->shdr);
+#else
+    case PARAM_CAMERA_VHDR:
+      g_value_set_enum (value, context->vhdr);
+#endif // VHDR_MODES_ENABLE
       break;
     case PARAM_CAMERA_ADRC:
       g_value_set_boolean (value, context->adrc);

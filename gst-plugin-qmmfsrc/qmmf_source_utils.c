@@ -667,6 +667,52 @@ gst_qmmfsrc_eis_mode_get_type (void)
 }
 #endif // EIS_MODES_ENABLE
 
+#ifdef VHDR_MODES_ENABLE
+GType
+gst_qmmfsrc_vhdr_mode_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { VHDR_OFF,
+        "VHDR is disabled.", "off"
+    },
+    { SHDR_MODE_RAW,
+        "Raw SHDR line interleaved mode with 2 frame. "
+        "Use this mode for better performance on supporting sensor.",
+        "shdr-raw"
+    },
+    { SHDR_MODE_YUV,
+        "YUV SHDR virtual channel mode with 2 frames. "
+        "Use this mode for better quality on supporting sensor. "
+        "This mode may result in reduced framerate.", "shdr-yuv"
+    },
+    { SHDR_SWITCH_ENABLE,
+        "Enable SHDR switch. "
+        "Use this mode for enabling shdr switch in camera backend based on lux value. "
+        "The switch is between linear and other SHDR type based on support in camera.",
+        "shdr-switch-enable"
+    },
+    { QBC_HDR_MODE_VIDEO,
+        "Enable in-sensor HDR for video stream. "
+        "This mode is applicable for sensor that support this feature only. ",
+        "qbc-hdr-video"
+    },
+    { QBC_HDR_MODE_SNAPSHOT,
+        "Enable in-sensor HDR for snapshot. "
+        "When enabled camera backend decides to enable in-sensor hdr for snapshot"
+        " based on the scene. This mode is applicable for sensor that support this"
+        " feature only.", "qbc-hdr-snapshot"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstSHDRMode", variants);
+
+  return gtype;
+}
+#endif // VHDR_MODES_ENABLE
+
 GType
 gst_qmmfsrc_rotate_get_type (void)
 {
