@@ -5,6 +5,39 @@
 
 #include "common-utils.h"
 
+static const gchar* mux_stream_names[] = {
+    "mux-stream-00", "mux-stream-01", "mux-stream-02", "mux-stream-03",
+    "mux-stream-04", "mux-stream-05", "mux-stream-06", "mux-stream-07",
+    "mux-stream-08", "mux-stream-09", "mux-stream-10", "mux-stream-11",
+    "mux-stream-12", "mux-stream-13", "mux-stream-14", "mux-stream-15",
+    "mux-stream-16", "mux-stream-17", "mux-stream-18", "mux-stream-19",
+    "mux-stream-20", "mux-stream-21", "mux-stream-22", "mux-stream-23",
+    "mux-stream-24", "mux-stream-25", "mux-stream-26", "mux-stream-27",
+    "mux-stream-28", "mux-stream-29", "mux-stream-30", "mux-stream-31",
+};
+
+const gchar *
+gst_mux_stream_name (guint index)
+{
+  g_return_val_if_fail ((G_N_ELEMENTS (mux_stream_names) > index), NULL);
+  return mux_stream_names[index];
+}
+
+gint
+gst_mux_buffer_get_memory_stream_id (GstBuffer * buffer, gint mem_idx)
+{
+  gint num = -1;
+
+  if (GST_BUFFER_OFFSET (buffer) == GST_BUFFER_OFFSET_NONE)
+    return -1;
+
+  // Find the set bit index corresponding to the given memory index.
+  while (mem_idx >= 0)
+    mem_idx -= ((GST_BUFFER_OFFSET (buffer) >> (++num)) & 0b01) ? 1 : 0;
+
+  return num;
+}
+
 gboolean
 gst_caps_has_feature (const GstCaps * caps, const gchar * feature)
 {

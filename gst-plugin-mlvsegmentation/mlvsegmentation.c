@@ -496,8 +496,10 @@ gst_ml_video_segmentation_fixate_caps (GstBaseTransform * base,
   GST_DEBUG_OBJECT (segmentation, "Output width and height fixated to: %dx%d",
       width, height);
 
-  GST_DEBUG_OBJECT (segmentation, "Fixated caps to %" GST_PTR_FORMAT, outcaps);
+  // Fixate any remaining fields.
+  outcaps = gst_caps_fixate (outcaps);
 
+  GST_DEBUG_OBJECT (segmentation, "Fixated caps to %" GST_PTR_FORMAT, outcaps);
   return outcaps;
 }
 
@@ -585,6 +587,12 @@ gst_ml_video_segmentation_set_caps (GstBaseTransform * base, GstCaps * incaps,
     gst_ml_info_free (segmentation->mlinfo);
 
   segmentation->mlinfo = gst_ml_info_copy (&ininfo);
+
+  if (GST_ML_INFO_TENSOR_DIM (segmentation->mlinfo, 0, 0) > 1) {
+    GST_ELEMENT_ERROR (segmentation, CORE, FAILED, (NULL),
+        ("Batched input tensors with video output is not supported!"));
+    return FALSE;
+  }
 
   if (segmentation->vinfo != NULL)
     gst_video_info_free (segmentation->vinfo);

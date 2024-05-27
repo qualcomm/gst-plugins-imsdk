@@ -234,8 +234,6 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       gst_batch_channel_name (0));
 
   prediction = &(g_array_index (predictions, GstMLBoxPrediction, 0));
-
-  prediction->batch_idx = 0;
   prediction->info = pmeta->info;
 
   // Extract the dimensions of the input tensor that produced the output tensors.

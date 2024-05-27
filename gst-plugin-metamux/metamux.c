@@ -136,23 +136,23 @@ gst_caps_is_media_type (const GstCaps * caps, const gchar * mediatype)
       TRUE : FALSE;
 }
 
-static GstMetaEntry *
-gst_metadata_entry_new ()
+static GstMetaItem *
+gst_metadata_item_new ()
 {
-  GstMetaEntry *entry = g_new0 (GstMetaEntry, 1);
-  g_return_val_if_fail (entry != NULL, NULL);
+  GstMetaItem *item = g_slice_new (GstMetaItem);
+  g_return_val_if_fail (item != NULL, NULL);
 
-  g_value_init (&(entry)->value, GST_TYPE_LIST);
-  entry->timestamp = GST_CLOCK_TIME_NONE;
+  item->values = NULL;
+  item->timestamp = GST_CLOCK_TIME_NONE;
 
-  return entry;
+  return item;
 }
 
 static void
-gst_metadata_entry_free (GstMetaEntry * entry)
+gst_metadata_item_free (GstMetaItem * item)
 {
-  g_value_unset (&(entry)->value);
-  g_free (entry);
+  g_list_free_full (item->values, (GDestroyNotify) gst_structure_free);
+  g_slice_free (GstMetaItem, item);
 }
 
 static GType
@@ -186,7 +186,7 @@ static gboolean
 gst_metamux_is_meta_available (GstMetaMux * muxer, GstClockTime timestamp)
 {
   GList *list = NULL;
-  GstMetaEntry *entry = NULL;
+  GstMetaItem *item = NULL;
   gboolean available = TRUE, skip = FALSE;
 
   // Iterate ovr the data pads and check if data available on all of them.
@@ -213,14 +213,14 @@ gst_metamux_is_meta_available (GstMetaMux * muxer, GstClockTime timestamp)
     if (!GST_CLOCK_TIME_IS_VALID (timestamp))
       continue;
 
-    while ((entry = g_queue_peek_head (dpad->queue)) != NULL) {
-      // If the entry doesn't contain a valid timestamp we cannot do matching.
-      if (!GST_CLOCK_TIME_IS_VALID (entry->timestamp)) {
-        gst_metadata_entry_free (g_queue_pop_head (dpad->queue));
+    while ((item = g_queue_peek_head (dpad->queue)) != NULL) {
+      // If the item doesn't contain a valid timestamp we cannot do matching.
+      if (!GST_CLOCK_TIME_IS_VALID (item->timestamp)) {
+        gst_metadata_item_free (g_queue_pop_head (dpad->queue));
         continue;
       }
 
-      delta = GST_CLOCK_DIFF (entry->timestamp, timestamp);
+      delta = GST_CLOCK_DIFF (item->timestamp, timestamp);
 
       // Timestamp delta is below the threshold, break and continue with next pad.
       if (ABS (delta) <= TIMESTAMP_DELTA_THRESHOLD)
@@ -230,8 +230,8 @@ gst_metamux_is_meta_available (GstMetaMux * muxer, GstClockTime timestamp)
       if (delta < 0)
         return FALSE;
 
-      // Drop this entry as its timestamp is too old.
-      gst_metadata_entry_free (g_queue_pop_head (dpad->queue));
+      // Drop this item as its timestamp is too old.
+      gst_metadata_item_free (g_queue_pop_head (dpad->queue));
     }
 
     // If there is no data left to this pad return immediately.
@@ -253,9 +253,10 @@ gst_metamux_flush_metadata_queues (GstMetaMux * muxer)
     GstMetaMuxDataPad *dpad = GST_METAMUX_DATA_PAD (list->data);
 
     while (!g_queue_is_empty (dpad->queue))
-      gst_metadata_entry_free (g_queue_pop_head (dpad->queue));
+      gst_metadata_item_free (g_queue_pop_head (dpad->queue));
 
-    g_clear_pointer (&(dpad)->stash, g_free);
+    g_clear_pointer (&(dpad)->strcache, g_free);
+    g_clear_pointer (&(dpad)->prtlmeta, gst_metadata_item_free);
   }
 
   g_cond_signal (&(muxer)->wakeup);
@@ -546,8 +547,11 @@ static gboolean
 gst_metamux_process_meta_entries (GstMetaMux * muxer, GstBuffer * buffer,
     GstClockTime timestamp)
 {
-  GList *list = NULL;
-  guint idx = 0, size = 0;
+  GList *list = NULL, *vlist = NULL;
+
+  // No metadata pads, nothing to process.
+  if (muxer->metapads == NULL)
+    return TRUE;
 
   if (!gst_buffer_is_writable (buffer)) {
     GST_WARNING_OBJECT (muxer, "Unable to attach metadata to buffer %p, "
@@ -557,32 +561,26 @@ gst_metamux_process_meta_entries (GstMetaMux * muxer, GstBuffer * buffer,
 
   for (list = muxer->metapads; list != NULL; list = g_list_next (list)) {
     GstMetaMuxDataPad *dpad = GST_METAMUX_DATA_PAD (list->data);
-    GstMetaEntry *entry = NULL;
+    GstMetaItem *item = NULL;
 
-    if ((entry = g_queue_peek_head (dpad->queue)) == NULL)
+    if ((item = g_queue_peek_head (dpad->queue)) == NULL)
       continue;
 
     if (GST_CLOCK_TIME_IS_VALID (timestamp)) {
-      GstClockTimeDiff delta = GST_CLOCK_DIFF (entry->timestamp, timestamp);
+      GstClockTimeDiff delta = GST_CLOCK_DIFF (item->timestamp, timestamp);
 
       // Timestamp delta is above the threshold, continue with next pad.
       if (ABS (delta) > TIMESTAMP_DELTA_THRESHOLD)
         continue;
     }
 
-    entry = g_queue_pop_head (dpad->queue);
-    size = gst_value_list_get_size (&(entry)->value);
+    item = g_queue_pop_head (dpad->queue);
 
-    GST_TRACE_OBJECT (dpad, "Processing entry with timestamp %" GST_TIME_FORMAT
-      " for %" GST_PTR_FORMAT, GST_TIME_ARGS (entry->timestamp), buffer);
+    GST_TRACE_OBJECT (dpad, "Processing item with timestamp %" GST_TIME_FORMAT
+      " for %" GST_PTR_FORMAT, GST_TIME_ARGS (item->timestamp), buffer);
 
-    for (idx = 0; idx < size; idx++) {
-      const GValue *value = gst_value_list_get_value (&(entry->value), idx);
-      GstStructure *structure = GST_STRUCTURE (g_value_get_boxed (value));
-
-      // Skip the 'Parameters' structure as this is not a prediction result.
-      if (gst_structure_has_name (structure, "Parameters"))
-        continue;
+    for (vlist = item->values; vlist != NULL; vlist = vlist->next) {
+      GstStructure *structure = GST_STRUCTURE (vlist->data);
 
       if (gst_structure_has_name (structure, "OpticalFlow"))
         gst_metamux_process_opticalflow_metadata (muxer, buffer, structure);
@@ -594,7 +592,7 @@ gst_metamux_process_meta_entries (GstMetaMux * muxer, GstBuffer * buffer,
         gst_metamux_process_classification_metadata (muxer, buffer, structure);
     }
 
-    gst_metadata_entry_free (entry);
+    gst_metadata_item_free (item);
   }
 
   return TRUE;
@@ -635,14 +633,14 @@ gst_metamux_worker_task (gpointer userdata)
       if (muxer->timeout == (gint64) GST_CLOCK_TIME_NONE)
         muxer->timeout = g_get_monotonic_time ();
 
-      // Increase the timeout with buffer duration and any additional latency.
-      muxer->timeout += GST_TIME_AS_USECONDS (muxer->latency) +
-          GST_TIME_AS_USECONDS (GST_BUFFER_DURATION (buffer));
-
       while (muxer->active && !gst_metamux_is_meta_available (muxer, timestamp)) {
+        // Increase the timeout with buffer duration and any additional latency.
+        muxer->timeout += GST_TIME_AS_USECONDS (muxer->latency) +
+            GST_TIME_AS_USECONDS (GST_BUFFER_DURATION (buffer));
+
         if (!g_cond_wait_until (&(muxer)->wakeup, GST_METAMUX_GET_LOCK (muxer),
                 muxer->timeout))
-          break;
+          GST_WARNING_OBJECT (muxer, "Timeout while waiting for metadata!");
       }
       break;
     default:
@@ -754,79 +752,104 @@ gst_metamux_parse_string_metadata (GstMetaMux * muxer,
     GstMetaMuxDataPad * dpad, GstBuffer * buffer)
 {
   GstMapInfo memmap = {};
-  gchar *data = NULL, *token = NULL, *next = NULL, *ctx = NULL, *string = NULL;
-  gboolean success = FALSE;
+  GValue vlist = G_VALUE_INIT;
+  gchar *data = NULL, *token = NULL, *ctx = NULL;
+  guint idx = 0, size = 0, offset = 0;
 
   if (!gst_buffer_map (buffer, &memmap, GST_MAP_READ)) {
     GST_ERROR_OBJECT (dpad, "Failed to map buffer %p!", buffer);
     return FALSE;
   }
 
-  // Make sure that the last character is '\0'.
-  data = g_strndup ((const gchar *) memmap.data, memmap.size);
+  // Calculate the size the local '\0' terminated string data.
+  size = memmap.size + 1;
+  size += (dpad->strcache != NULL) ? strlen (dpad->strcache) : 0;
 
-  // Split the data into separate serialized GValue token for parsing.
-  next = strtok_r (data, "\n", &ctx);
+  // Allocate local '\0' terminated string and transfer stashed and buffer data.
+  data = g_new0 (gchar, size);
 
-  // Iterate over the serialized strings and turn them into GstValueList.
-  while ((token = next) != NULL) {
-    GstMetaEntry *entry = gst_metadata_entry_new ();
-    guint idx = 0, size = 0;
-
-    // Grab the next token from the mapped buffer data.
-    next = strtok_r (NULL, "\n", &ctx);
-
-    // If deserialize fails it mangles the string so work with local copy.
-    string = (dpad->stash != NULL) ?
-        g_strconcat (dpad->stash, token, NULL) : g_strdup (token);
-
-    success = gst_value_deserialize (&(entry)->value, string);
-    g_free (string);
-
-    if (!success) {
-      GST_TRACE_OBJECT (dpad, "Failed to deserialize data!");
-
-      // Could be a partial string (e.g. when reading from a file). Stash the
-      // string, combine it with the 1st string from next buffer and try again.
-      string = (dpad->stash != NULL) ?
-          g_strconcat (dpad->stash, token, NULL) : g_strdup (token);
-
-      g_free (dpad->stash);
-      gst_metadata_entry_free (entry);
-
-      dpad->stash = string;
-      continue;
-    }
-
-    g_clear_pointer (&(dpad)->stash, g_free);
-
-    // Take the buffer timestamp if it is valid.
-    if (GST_BUFFER_TIMESTAMP_IS_VALID (buffer))
-      entry->timestamp = GST_BUFFER_TIMESTAMP (buffer);
-
-    size = gst_value_list_get_size (&(entry)->value);
-
-    // Try to extract the timestamp from the parsed GValue if not set already.
-    while (!GST_CLOCK_TIME_IS_VALID (entry->timestamp) && (idx < size)) {
-      const GValue *value = gst_value_list_get_value (&(entry)->value, idx++);
-      GstStructure *structure = GST_STRUCTURE (g_value_get_boxed (value));
-
-      if (!gst_structure_has_name (structure, "Parameters"))
-        continue;
-
-      gst_structure_get_uint64 (structure, "timestamp", &(entry)->timestamp);
-    }
-
-    GST_METAMUX_LOCK (muxer);
-
-    g_queue_push_tail (dpad->queue, entry);
-    g_cond_signal (&(muxer)->wakeup);
-
-    GST_METAMUX_UNLOCK (muxer);
+  // Transfer stashed partial string from previous operations.
+  if (dpad->strcache != NULL) {
+    offset = g_strlcpy (data, dpad->strcache, size);
+    g_clear_pointer (&(dpad->strcache), g_free);
   }
 
-  g_free (data);
+  // Transfer the data in from the buffer and unmap it.
+  memcpy ((gpointer) (data + offset), memmap.data, memmap.size);
   gst_buffer_unmap (buffer, &memmap);
+
+  // Initialize the GValue list in which the deserialized string will be stored.
+  g_value_init (&vlist, GST_TYPE_LIST);
+
+  // Split the data into separate serialized string token for parsing.
+  token = strtok_r (data, "\n", &ctx);
+
+  // Iterate over the serialized strings and turn them into GST_TYPE_LIST.
+  while (token != NULL) {
+    GstMetaItem *item = NULL;
+    GstClockTime timestamp = GST_CLOCK_TIME_NONE;
+    gint seqnum = 0, n_entries = 0;
+
+    // If deserialize fails it could be a partial string (e.g. reading from a file).
+    // In that case, stash and combine it with the data in subsequent call.
+    if (!gst_value_deserialize (&vlist, token)) {
+      GST_TRACE_OBJECT (dpad, "Failed to deserialize data, probably incomplete "
+          "string token. Caching it for usage in subsequent calls.");
+      dpad->strcache = g_strdup (token);
+      break;
+    }
+
+    // Use the partial meta from previous iteration, otherwise allocate a new.
+    item = (dpad->prtlmeta != NULL) ?
+        g_steal_pointer (&(dpad->prtlmeta)) : gst_metadata_item_new ();
+
+    size = gst_value_list_get_size (&vlist);
+
+    for (idx = 0; idx < size; idx++) {
+      const GValue *value = gst_value_list_get_value (&vlist, idx);
+      GstStructure *entry = GST_STRUCTURE (g_value_get_boxed (value));
+
+      // Extract the sequential index and the total number of entries.
+      gst_structure_get_fraction (entry, "sequence-id", &seqnum, &n_entries);
+      // Extract the timestamp for this metadata object.
+      gst_structure_get_uint64 (entry, "timestamp", &timestamp);
+
+      // Remove the timestamp and sequence fields, not needed anymore.
+      gst_structure_remove_fields (entry, "timestamp", "sequence-id", NULL);
+
+      // Take the timestamp from the parsed GValue entry if not already set.
+      if (!GST_CLOCK_TIME_IS_VALID (item->timestamp))
+        item->timestamp = timestamp;
+
+      item->values = g_list_append (item->values, gst_structure_copy (entry));
+
+      // Not yet the last entries in the sequence for the this timestamp.
+      if (seqnum != n_entries)
+        continue;
+
+      GST_METAMUX_LOCK (muxer);
+
+      g_queue_push_tail (dpad->queue, item);
+      g_cond_signal (&(muxer)->wakeup);
+
+      GST_METAMUX_UNLOCK (muxer);
+
+      // Allocate new item if there are still parsed entries for processing.
+      item = ((idx + 1) < size) ? gst_metadata_item_new () : NULL;
+    }
+
+    // If meta item is incomplete it will be filled on subsequent calls.
+    dpad->prtlmeta = item;
+
+    // Grab the next token for subsequent loop.
+    token = strtok_r (NULL, "\n", &ctx);
+
+    // Reset the GValue list for next deserialize.
+    g_value_reset (&vlist);
+  }
+
+  g_value_unset (&vlist);
+  g_free (data);
 
   return TRUE;
 }
@@ -1035,29 +1058,22 @@ gst_metamux_parse_optical_flow_metadata (GstMetaMux * muxer,
 
   {
     // Add the parsed information to a GValue container.
-    GstMetaEntry *entry = NULL;
-    GValue value = G_VALUE_INIT;
-
-    entry = gst_metadata_entry_new ();
-
-    g_value_init (&value, GST_TYPE_STRUCTURE);
+    GstMetaItem *item = gst_metadata_item_new ();
 
     structure = gst_structure_new ("OpticalFlow",
         "mvectors", G_TYPE_ARRAY, mvectors,
         "mvstats", G_TYPE_ARRAY, mvstats,
         NULL);
 
-    g_value_take_boxed (&value, structure);
-    gst_value_list_append_value (&(entry)->value, &value);
-    g_value_unset (&value);
+    item->values = g_list_append (item->values, structure);
 
     // Take the buffer timestamp if it is valid.
     if (GST_BUFFER_TIMESTAMP_IS_VALID (buffer))
-      entry->timestamp = GST_BUFFER_TIMESTAMP (buffer);
+      item->timestamp = GST_BUFFER_TIMESTAMP (buffer);
 
     GST_METAMUX_LOCK (muxer);
 
-    g_queue_push_tail (dpad->queue, entry);
+    g_queue_push_tail (dpad->queue, item);
     g_cond_signal (&(muxer)->wakeup);
 
     GST_METAMUX_UNLOCK (muxer);
@@ -1426,14 +1442,14 @@ gst_metamux_data_sink_pad_chain (GstPad * pad, GstObject * parent,
 
   if (gst_buffer_get_size (buffer) == 0 &&
       GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP)) {
-    GstMetaEntry *entry = gst_metadata_entry_new ();
+    GstMetaItem *item = gst_metadata_item_new ();
 
-    // Create an empty entry with the buffer TS for synchronization purpose.
-    entry->timestamp = GST_BUFFER_TIMESTAMP (buffer);
+    // Create an empty item with the buffer TS for synchronization purpose.
+    item->timestamp = GST_BUFFER_TIMESTAMP (buffer);
 
     GST_METAMUX_LOCK (muxer);
 
-    g_queue_push_tail (dpad->queue, entry);
+    g_queue_push_tail (dpad->queue, item);
     g_cond_signal (&(muxer)->wakeup);
 
     GST_METAMUX_UNLOCK (muxer);

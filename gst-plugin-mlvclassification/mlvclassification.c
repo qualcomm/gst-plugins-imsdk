@@ -458,11 +458,11 @@ gst_ml_video_classification_fill_text_output (
   GstStructure *structure = NULL;
   gchar *string = NULL, *name = NULL;
   GstMapInfo memmap = {};
-  GValue entries = G_VALUE_INIT, labels = G_VALUE_INIT, value = G_VALUE_INIT;
+  GValue list = G_VALUE_INIT, labels = G_VALUE_INIT, value = G_VALUE_INIT;
   guint idx = 0, num = 0, n_entries = 0;
   gsize length = 0;
 
-  g_value_init (&entries, GST_TYPE_LIST);
+  g_value_init (&list, GST_TYPE_LIST);
   g_value_init (&labels, GST_TYPE_ARRAY);
   g_value_init (&value, GST_TYPE_STRUCTURE);
 
@@ -504,20 +504,25 @@ gst_ml_video_classification_fill_text_output (
     gst_structure_set_value (structure, "labels", &labels);
     g_value_reset (&labels);
 
-    val = gst_structure_get_value (prediction->info, "source-region-id");
-    gst_structure_set_value (structure, "source-region-id", val);
+    val = gst_structure_get_value (prediction->info, "timestamp");
+    gst_structure_set_value (structure, "timestamp", val);
+
+    val = gst_structure_get_value (prediction->info, "sequence-id");
+    gst_structure_set_value (structure, "sequence-id", val);
+
+    if ((val = gst_structure_get_value (prediction->info, "stream-id")))
+      gst_structure_set_value (structure, "stream-id", val);
+
+    if ((val = gst_structure_get_value (prediction->info, "stream-timestamp")))
+      gst_structure_set_value (structure, "stream-timestamp", val);
+
+    if ((val = gst_structure_get_value (prediction->info, "source-region-id")))
+      gst_structure_set_value (structure, "source-region-id", val);
 
     g_value_take_boxed (&value, structure);
-    gst_value_list_append_value (&entries, &value);
+    gst_value_list_append_value (&list, &value);
     g_value_reset (&value);
   }
-
-  // Append timestamp information needed for synchronization.
-  structure = gst_structure_new ("Parameters",
-      "timestamp", G_TYPE_UINT64, GST_BUFFER_TIMESTAMP (buffer), NULL);
-
-  g_value_take_boxed (&value, structure);
-  gst_value_list_append_value (&entries, &value);
 
   g_value_unset (&labels);
   g_value_unset (&value);
@@ -528,9 +533,9 @@ gst_ml_video_classification_fill_text_output (
     return FALSE;
   }
 
-  // Serialize the predictions into string format.
-  string = gst_value_serialize (&entries);
-  g_value_unset (&entries);
+  // Serialize the predictions list into string format.
+  string = gst_value_serialize (&list);
+  g_value_unset (&list);
 
   if (string == NULL) {
     GST_ERROR_OBJECT (classification, "Failed serialize predictions structure!");
@@ -639,10 +644,25 @@ gst_ml_video_classification_submit_input_buffer (GstBaseTransform * base,
   if (gst_base_transform_is_passthrough (base))
     return ret;
 
-  // GAP input buffer, nothing to do. Propagate output buffer downstream.
+  // GAP input buffer, cleanup the entries and set the protection meta info.
   if (gst_buffer_get_size (buffer) == 0 &&
-      GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP))
-    return ret;
+      GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP)) {
+    GstProtectionMeta *pmeta = NULL;
+    GstMLClassPrediction *prediction = NULL;
+
+    for (idx = 0; idx < classification->predictions->len; ++idx) {
+      prediction =
+          &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
+
+      pmeta = gst_buffer_get_protection_meta_id (buffer,
+          gst_batch_channel_name (idx));
+
+      g_array_remove_range (prediction->entries, 0, prediction->entries->len);
+      prediction->info = pmeta->info;
+    }
+
+    return GST_FLOW_OK;
+  }
 
   // Perform pre-processing on the input buffer.
   time = gst_util_get_timestamp ();
@@ -656,7 +676,9 @@ gst_ml_video_classification_submit_input_buffer (GstBaseTransform * base,
   for (idx = 0; idx < classification->predictions->len; ++idx) {
     GstMLClassPrediction *prediction =
         &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
+
     g_array_remove_range (prediction->entries, 0, prediction->entries->len);
+    prediction->info = NULL;
   }
 
   // Call the submodule process funtion.
@@ -685,8 +707,6 @@ gst_ml_video_classification_prepare_output_buffer (GstBaseTransform * base,
 {
   GstMLVideoClassification *classification = GST_ML_VIDEO_CLASSIFICATION (base);
   GstBufferPool *pool = classification->outpool;
-  GstBufferCopyFlags flags = GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS;
-  guint idx = 0, n_entries = 0;
 
   if (gst_base_transform_is_passthrough (base)) {
     GST_DEBUG_OBJECT (classification, "Passthrough, no need to do anything");
@@ -703,21 +723,11 @@ gst_ml_video_classification_prepare_output_buffer (GstBaseTransform * base,
   }
 
   // Input is marked as GAP, nothing to process. Create a GAP output buffer.
-  if (gst_buffer_get_size (inbuffer) == 0 &&
-      GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP))
-    *outbuffer = gst_buffer_new ();
-
-  for (idx = 0; idx < classification->predictions->len; ++idx) {
-    GstMLClassPrediction *prediction =
-        &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
-    n_entries += prediction->entries->len;
-  }
-
-  // When there are no predictions in the input create a GAP output buffer.
-  if ((*outbuffer == NULL) && (n_entries == 0)) {
+  if ((classification->mode == OUTPUT_MODE_VIDEO) &&
+      (gst_buffer_get_size (inbuffer) == 0) &&
+      GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP)) {
     *outbuffer = gst_buffer_new ();
     GST_BUFFER_FLAG_SET (*outbuffer, GST_BUFFER_FLAG_GAP);
-    flags &= ~GST_BUFFER_COPY_FLAGS;
   }
 
   if ((*outbuffer == NULL) &&
@@ -727,7 +737,7 @@ gst_ml_video_classification_prepare_output_buffer (GstBaseTransform * base,
   }
 
   // Copy the flags and timestamps from the input buffer.
-  gst_buffer_copy_into (*outbuffer, inbuffer, flags, 0, -1);
+  gst_buffer_copy_into (*outbuffer, inbuffer, GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
 
   return GST_FLOW_OK;
 }
@@ -869,8 +879,10 @@ gst_ml_video_classification_fixate_caps (GstBaseTransform * base,
         width, height);
   }
 
-  GST_DEBUG_OBJECT (classification, "Fixated caps to %" GST_PTR_FORMAT, outcaps);
+  // Fixate any remaining fields.
+  outcaps = gst_caps_fixate (outcaps);
 
+  GST_DEBUG_OBJECT (classification, "Fixated caps to %" GST_PTR_FORMAT, outcaps);
   return outcaps;
 }
 
@@ -960,6 +972,13 @@ gst_ml_video_classification_set_caps (GstBaseTransform * base, GstCaps * incaps,
   else if (gst_structure_has_name (structure, "text/x-raw"))
     classification->mode = OUTPUT_MODE_TEXT;
 
+  if ((classification->mode == OUTPUT_MODE_VIDEO) &&
+      (GST_ML_INFO_TENSOR_DIM (classification->mlinfo, 0, 0) > 1)) {
+    GST_ELEMENT_ERROR (classification, CORE, FAILED, (NULL),
+        ("Batched input tensors with video output is not supported!"));
+    return FALSE;
+  }
+
   // Allocate the maximum number of predictions based on the batch size.
   g_array_set_size (classification->predictions,
       GST_ML_INFO_TENSOR_DIM (classification->mlinfo, 0, 0));
@@ -967,7 +986,9 @@ gst_ml_video_classification_set_caps (GstBaseTransform * base, GstCaps * incaps,
   for (idx = 0; idx < classification->predictions->len; ++idx) {
     GstMLClassPrediction *prediction =
         &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
+
     prediction->entries = g_array_new (FALSE, FALSE, sizeof (GstMLClassEntry));
+    prediction->batch_idx = idx;
   }
 
   GST_DEBUG_OBJECT (classification, "Input caps: %" GST_PTR_FORMAT, incaps);

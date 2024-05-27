@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -61,6 +61,11 @@ queue_empty_cb (GstDataQueue * queue, gpointer checkdata)
 static void
 gst_ml_demux_sinkpad_finalize (GObject * object)
 {
+  GstMLDemuxSinkPad *pad = GST_ML_DEMUX_SINKPAD (object);
+
+  if (pad->mlinfo != NULL)
+    gst_ml_info_free (pad->mlinfo);
+
   G_OBJECT_CLASS (gst_ml_demux_sinkpad_parent_class)->finalize(object);
 }
 
@@ -76,6 +81,8 @@ void
 gst_ml_demux_sinkpad_init (GstMLDemuxSinkPad * pad)
 {
   gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
+
+  pad->mlinfo = NULL;
 }
 
 static void
@@ -113,6 +120,7 @@ gst_ml_demux_srcpad_init (GstMLDemuxSrcPad * pad)
 
   gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
 
+  pad->id = 0;
   pad->mlinfo = NULL;
   pad->buffers = gst_data_queue_new (queue_is_full_cb, NULL, queue_empty_cb, pad);
   pad->is_idle = TRUE;

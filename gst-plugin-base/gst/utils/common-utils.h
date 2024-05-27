@@ -10,9 +10,6 @@
 
 G_BEGIN_DECLS
 
-#define GPOINTER_CAST(obj)            ((gpointer) obj)
-#define GST_PROTECTION_META_CAST(obj) ((GstProtectionMeta *) obj)
-
 // Macro for checking whether a property can be set in current plugin state.
 #define GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE(pspec, state) \
     ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
@@ -20,10 +17,43 @@ G_BEGIN_DECLS
             : ((pspec->flags & GST_PARAM_MUTABLE_READY) ? (state <= GST_STATE_READY) \
                 : (state <= GST_STATE_NULL))))
 
-#define EXTRACT_RED_COLOR(color)   ((color >> 24) & 0xFF)
-#define EXTRACT_GREEN_COLOR(color) ((color >> 16) & 0xFF)
-#define EXTRACT_BLUE_COLOR(color)  ((color >> 8) & 0xFF)
-#define EXTRACT_ALPHA_COLOR(color) ((color) & 0xFF)
+#define GPOINTER_CAST(obj)             ((gpointer) obj)
+#define GST_PROTECTION_META_CAST(obj)  ((GstProtectionMeta *) obj)
+
+#define EXTRACT_RED_COLOR(color)       ((color >> 24) & 0xFF)
+#define EXTRACT_GREEN_COLOR(color)     ((color >> 16) & 0xFF)
+#define EXTRACT_BLUE_COLOR(color)      ((color >> 8) & 0xFF)
+#define EXTRACT_ALPHA_COLOR(color)     ((color) & 0xFF)
+
+// The bit offset where the stream ID can be embedded in a variable
+#define GST_MUX_STREAM_ID_OFFSET       16
+#define GST_MUX_STREAM_ID_MASK         (0xFFFF << GST_MUX_STREAM_ID_OFFSET)
+
+/**
+ * gst_mux_stream_name:
+ * @index: The index of the muxed stream inside the buffer.
+ *
+ * Return the string representation of the stream index for use as name of the
+ * #GstProtectionMeta attached when buffers are created from muxed streams.
+ *
+ * This is convinient in order to avoid the constant allocation of a string
+ * when corresponding to the batch number when there is a need for it.
+ *
+ * return: Pointer to string in "mux-stream-%2d" format or NULL on failure
+ */
+GST_API const gchar *
+gst_mux_stream_name (guint index);
+
+/**
+ * gst_mux_buffer_get_memory_stream_id:
+ * @mem_idx: The index of the memory inside the muxed buffer.
+ *
+ * Extract the stream ID of the buffer memory inside the muxed buffer.
+ *
+ * return: Stream ID on success or -1 on failure.
+ */
+GST_API gint
+gst_mux_buffer_get_memory_stream_id (GstBuffer * buffer, gint mem_idx);
 
 /**
  * gst_caps_has_feature:

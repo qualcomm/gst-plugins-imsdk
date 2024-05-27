@@ -53,12 +53,6 @@ GST_DEBUG_CATEGORY (gst_ml_demux_debug);
 #define gst_ml_demux_parent_class parent_class
 G_DEFINE_TYPE (GstMLDemux, gst_ml_demux, GST_TYPE_ELEMENT);
 
-#define GST_BINARY_8BIT_FORMAT "%c%c%c%c%c%c%c%c"
-#define GST_BINARY_8BIT_STRING(x) \
-  (x & 0x80 ? '1' : '0'), (x & 0x40 ? '1' : '0'), (x & 0x20 ? '1' : '0'), \
-  (x & 0x10 ? '1' : '0'), (x & 0x08 ? '1' : '0'), (x & 0x04 ? '1' : '0'), \
-  (x & 0x02 ? '1' : '0'), (x & 0x01 ? '1' : '0')
-
 #define GST_ML_DEMUX_TENSOR_TYPES \
   "{ INT8, UINT8, INT32, UINT32, FLOAT16, FLOAT32 }"
 
@@ -174,6 +168,11 @@ gst_ml_demux_sink_setcaps (GstMLDemux * demux, GstPad * pad, GstCaps * caps)
     return FALSE;
   }
 
+  if (GST_ML_DEMUX_SINKPAD_CAST (pad)->mlinfo != NULL)
+    gst_ml_info_free (GST_ML_DEMUX_SINKPAD_CAST (pad)->mlinfo);
+
+  GST_ML_DEMUX_SINKPAD_CAST (pad)->mlinfo = gst_ml_info_copy (&mlinfo);
+
   // Initialize batch size variable with the value of the 1st tensor.
   n_batch = GST_ML_INFO_TENSOR_DIM(&mlinfo, 0, 0);
 
@@ -185,19 +184,11 @@ gst_ml_demux_sink_setcaps (GstMLDemux * demux, GstPad * pad, GstCaps * caps)
       return FALSE;
     }
 
-    // Set the batch size of the tensor to 1, will be used later for caps.
+    // Set the batch size of the output tensors to 1, will be used later for caps.
     GST_ML_INFO_TENSOR_DIM (&mlinfo, idx, 0) = 1;
   }
 
   GST_ML_DEMUX_LOCK (demux);
-
-  // Source pads must be less or equal to the batch size.
-  if (g_list_length (demux->srcpads) > n_batch) {
-    GST_ELEMENT_ERROR (demux, CORE, NEGOTIATION, (NULL),
-        ("Number of source pads is greater then batch size!"));
-    GST_ML_DEMUX_UNLOCK (demux);
-    return FALSE;
-  }
 
   // Create new filter caps for source pads from the modified ML info.
   filter = gst_ml_info_to_caps (&mlinfo);
@@ -259,6 +250,22 @@ gst_ml_demux_sink_setcaps (GstMLDemux * demux, GstPad * pad, GstCaps * caps)
   return TRUE;
 }
 
+static GstMLDemuxSrcPad *
+gst_ml_demux_find_srcpad (GstMLDemux * demux, const guint stream_id)
+{
+  GstMLDemuxSrcPad *srcpad = NULL;
+  GList *list = NULL;
+
+  for (list = demux->srcpads; list != NULL; list = g_list_next (list)) {
+    srcpad = GST_ML_DEMUX_SRCPAD_CAST (list->data);
+
+    if (srcpad->id == stream_id)
+      return srcpad;
+  }
+
+  return NULL;
+}
+
 static void
 gst_ml_demux_src_pad_worker_task (gpointer userdata)
 {
@@ -281,104 +288,104 @@ static GstFlowReturn
 gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
 {
   GstMLDemux *demux = GST_ML_DEMUX (parent);
-  GList *list = NULL;
-  GstBuffer *outbuffer = NULL;
-  GstDataQueueItem *item = NULL;
+  GstMLDemuxSrcPad *srcpad = NULL;
   GstProtectionMeta *pmeta = NULL;
-  const gchar *name = NULL;
-  guint idx = 0, num = 0, n_memory = 0, offset = 0, size = 0;
+  const GValue *value = NULL;
+  guint batch_idx = 0, num = 0, n_batch = 0, n_memory = 0;
 
+  GST_TRACE_OBJECT (pad, "Received %" GST_PTR_FORMAT, inbuffer);
+
+  n_batch = GST_ML_INFO_TENSOR_DIM (
+      GST_ML_DEMUX_SINKPAD (demux->sinkpad)->mlinfo, 0, 0);
   n_memory = gst_buffer_n_memory (inbuffer);
-  size = gst_buffer_get_size (inbuffer);
-
-  GST_TRACE_OBJECT (pad, "Received buffer %p of size %u with %u memory blocks,"
-      " channels mask " GST_BINARY_8BIT_FORMAT ", timestamp %" GST_TIME_FORMAT
-      ", duration %" GST_TIME_FORMAT " flags 0x%X", inbuffer, size, n_memory,
-      GST_BINARY_8BIT_STRING (GST_BUFFER_OFFSET (inbuffer)),
-      GST_TIME_ARGS (GST_BUFFER_TIMESTAMP (inbuffer)),
-      GST_TIME_ARGS (GST_BUFFER_DURATION (inbuffer)),
-      GST_BUFFER_FLAGS (inbuffer));
 
   GST_ML_DEMUX_LOCK (demux);
 
-  for (list = demux->srcpads; list != NULL; list = g_list_next (list)) {
-    GstMLDemuxSrcPad *srcpad = GST_ML_DEMUX_SRCPAD (list->data);
-    GstClockTime timestamp = GST_CLOCK_TIME_NONE, duration = GST_CLOCK_TIME_NONE;
-    guint flags = 0;
+  for (batch_idx = 0; batch_idx < n_batch; ++batch_idx) {
+    GstStructure *structure = NULL;
+    GstBuffer *outbuffer = NULL;
+    GstDataQueueItem *item = NULL;
 
-    if (!GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP) &&
-        (n_memory != 0) && (n_memory != GST_ML_INFO_N_TENSORS (srcpad->mlinfo))) {
-      GST_ERROR_OBJECT (pad, "Incompatible number of memory blocks (%u) and "
-          "tensors (%u)!", n_memory, GST_ML_INFO_N_TENSORS (srcpad->mlinfo));
+    pmeta = gst_buffer_get_protection_meta_id (inbuffer,
+        gst_batch_channel_name (batch_idx));
+
+    // No protection meta for this batch number, continue with next one.
+    if (pmeta == NULL)
       continue;
-    }
 
-    idx = g_list_index (demux->srcpads, srcpad);
+    // No muxed stream ID (probably not a muxed stream tensor), continue.
+    if ((value = gst_structure_get_value (pmeta->info, "stream-id")) == NULL)
+      continue;
 
-    // Check if a inference was done for this channel.
-    if ((GST_BUFFER_OFFSET (inbuffer) & (1 << idx)) == 0)
+    // Get the stream ID for this batch and check if there is corresponding pad.
+    if (!(srcpad = gst_ml_demux_find_srcpad (demux, g_value_get_int (value))))
       continue;
 
     // Create a new buffer wrapper to hold a reference to input buffer.
     outbuffer = gst_buffer_new ();
 
-    // Get the name for the protection meta structure with that batch number.
-    name = gst_batch_channel_name (idx);
+    // Extract the original stream timestamp.
+    gst_structure_get_uint64 (pmeta->info, "stream-timestamp",
+        &GST_BUFFER_TIMESTAMP (outbuffer));
 
-    // Transfer the proper GstProtectionMeta into the new buffer if available.
-    if ((pmeta = gst_buffer_get_protection_meta_id (inbuffer, name)) != NULL) {
-      pmeta = gst_buffer_add_protection_meta (outbuffer,
-          gst_structure_copy (pmeta->info));
+    structure = gst_structure_new (gst_batch_channel_name (0),
+        "timestamp", G_TYPE_UINT64, GST_BUFFER_TIMESTAMP (outbuffer), NULL);
 
-      // Rename to 'batch-channel-00' as this is the single demuxed tensor.
-      gst_structure_set_name (pmeta->info, gst_batch_channel_name (0));
+    value = gst_structure_get_value (pmeta->info, "sequence-id");
+    gst_structure_set_value (structure, "sequence-id", value);
+
+    if ((value = gst_structure_get_value (pmeta->info, "source-region-id"))) {
+      // Remove the stream ID prefix from the muxed ROI ID.
+      gint id = g_value_get_int (value) && (~GST_MUX_STREAM_ID_MASK);
+      gst_structure_set (structure, "source-region-id", G_TYPE_INT, id, NULL);
     }
 
-    if ((pmeta != NULL) && gst_structure_has_field (pmeta->info, "timestamp")) {
-      gst_structure_get_uint64 (pmeta->info, "timestamp", &timestamp);
-      gst_structure_remove_field (pmeta->info, "timestamp");
-    }
+    if ((value = gst_structure_get_value (pmeta->info, "input-tensor-width")))
+      gst_structure_set_value (structure, "input-tensor-width", value);
 
-    if ((pmeta != NULL) && gst_structure_has_field (pmeta->info, "duration")) {
-      gst_structure_get_uint64 (pmeta->info, "duration", &duration);
-      gst_structure_remove_field (pmeta->info, "duration");
-    }
+    if ((value = gst_structure_get_value (pmeta->info, "input-tensor-height")))
+      gst_structure_set_value (structure, "input-tensor-height", value);
 
-    if ((pmeta != NULL) && gst_structure_has_field (pmeta->info, "flags")) {
-      gst_structure_get_uint (pmeta->info, "flags", &flags);
-      gst_structure_remove_field (pmeta->info, "flags");
-    } else {
-      flags = GST_BUFFER_FLAGS (inbuffer);
-    }
+    if ((value = gst_structure_get_value (pmeta->info, "input-region-x")))
+      gst_structure_set_value (structure, "input-region-x", value);
 
-    GST_BUFFER_TIMESTAMP (outbuffer) = (timestamp != GST_CLOCK_TIME_NONE) ?
-        timestamp : GST_BUFFER_TIMESTAMP (inbuffer);
-    GST_BUFFER_DURATION (outbuffer) = (duration != GST_CLOCK_TIME_NONE) ?
-        duration : GST_BUFFER_DURATION (inbuffer);
+    if ((value = gst_structure_get_value (pmeta->info, "input-region-y")))
+      gst_structure_set_value (structure, "input-region-y", value);
 
-    gst_buffer_set_flags (outbuffer, flags);
+    if ((value = gst_structure_get_value (pmeta->info, "input-region-width")))
+      gst_structure_set_value (structure, "input-region-width", value);
 
-    // Share memory blocks from input buffer with the new buffer.
-    for (num = 0; num < n_memory; num++) {
+    if ((value = gst_structure_get_value (pmeta->info, "input-region-height")))
+      gst_structure_set_value (structure, "input-region-height", value);
+
+    // Transfer the batch protection meta into the buffer for this stream.
+    pmeta = gst_buffer_add_protection_meta (outbuffer, structure);
+
+      // Transfer the memory block for this batch number.
+    for (num = 0; num < n_memory; ++num) {
       GstMemory *memory = gst_buffer_peek_memory (inbuffer, num);
       GstMLTensorMeta *mlmeta = NULL;
-
-      // In case the GAP flag is set then do not transfer any memory blocks.
-      if (GST_BUFFER_FLAG_IS_SET (outbuffer, GST_BUFFER_FLAG_GAP))
-        break;
+      guint offset = 0, size = 0;
 
       // Set the size of memory that needs to be shared.
       size = gst_ml_info_tensor_size (srcpad->mlinfo, num);
       // Set the offset to the piece of memory that needs to be shared.
-      offset = size * num;
+      offset = size * batch_idx;
 
-      gst_buffer_append_memory (outbuffer,
-          gst_memory_copy (memory, offset, size));
+      GST_TRACE_OBJECT (srcpad, "Transfering memory region %u with offset %u "
+          "and size %u", num, offset, size);
+
+      gst_buffer_append_memory (outbuffer, gst_memory_copy (memory, offset, size));
 
       mlmeta = gst_buffer_add_ml_tensor_meta (outbuffer, srcpad->mlinfo->type,
           srcpad->mlinfo->n_dimensions[num], srcpad->mlinfo->tensors[num]);
       mlmeta->id = num;
     }
+
+    // If input is a GAP buffer set the GAP flag for the output buffer.
+    if (gst_buffer_get_size (inbuffer) == 0 &&
+        GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP))
+      GST_BUFFER_FLAG_SET (outbuffer, GST_BUFFER_FLAG_GAP);
 
     // Initialize and send the source segment for synchronization.
     if (GST_FORMAT_UNDEFINED == srcpad->segment.format) {
@@ -688,6 +695,8 @@ gst_ml_demux_request_pad (GstElement * element, GstPadTemplate * templ,
     GST_ERROR_OBJECT (demux, "Failed to create source pad!");
     return NULL;
   }
+
+  GST_ML_DEMUX_SRCPAD_CAST (pad)->id = index;
 
   gst_pad_set_query_function (pad,
       GST_DEBUG_FUNCPTR (gst_ml_demux_src_pad_query));

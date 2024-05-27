@@ -85,11 +85,19 @@ G_BEGIN_DECLS
   (G_TYPE_CHECK_CLASS_TYPE((klass), GST_TYPE_ML_VIDEO_CONVERTER))
 #define GST_ML_VIDEO_CONVERTER_CAST(obj) ((GstMLVideoConverter *)(obj))
 
+#define GST_TYPE_ML_CONVERSION_MODE    (gst_ml_conversion_mode_get_type())
 #define GST_TYPE_ML_VIDEO_DISPOSITION  (gst_ml_video_disposition_get_type())
 #define GST_TYPE_ML_VIDEO_PIXEL_LAYOUT (gst_ml_video_pixel_layout_get_type())
 
 typedef struct _GstMLVideoConverter GstMLVideoConverter;
 typedef struct _GstMLVideoConverterClass GstMLVideoConverterClass;
+
+typedef enum {
+  GST_ML_CONVERSION_MODE_IMAGE_NON_CUMULATIVE,
+  GST_ML_CONVERSION_MODE_IMAGE_CUMULATIVE,
+  GST_ML_CONVERSION_MODE_ROI_NON_CUMULATIVE,
+  GST_ML_CONVERSION_MODE_ROI_CUMULATIVE,
+} GstConversionMode;
 
 typedef enum {
   GST_ML_VIDEO_DISPOSITION_TOP_LEFT,
@@ -116,11 +124,28 @@ struct _GstMLVideoConverter {
   /// Buffer pools.
   GstBufferPool        *outpool;
 
+  /// Queue for managing stashed buffers with not enough ROI / memory.
+  GQueue               *bufqueue;
+
+  /// Tracker for the current index in the sequential ROI/memory entries.
+  guint                seq_idx;
+  /// The total number of ROI/memory entries to batch from the queued buffer.
+  guint                n_seq_entries;
+
+  /// Tracker for the current batch position to be filled in the tensor.
+  guint                batch_idx;
+
+  /// The next image block in the queued muxed stream buffer to be processed.
+  gint                 next_mem_idx;
+  /// The ID of next ROI meta in the queued buffer to be processed.
+  gint                 next_roi_id;
+
   /// Video converter engine.
   GstVideoConvEngine   *converter;
   GstVideoComposition  composition;
 
   /// Properties.
+  GstConversionMode    mode;
   GstVideoConvBackend  backend;
   GstVideoDisposition  disposition;
   GstVideoPixelLayout  pixlayout;
@@ -133,6 +158,8 @@ struct _GstMLVideoConverterClass {
 };
 
 G_GNUC_INTERNAL GType gst_ml_video_converter_get_type (void);
+
+G_GNUC_INTERNAL GType gst_ml_conversion_mode_get_type (void);
 
 G_GNUC_INTERNAL GType gst_ml_video_disposition_get_type (void);
 
