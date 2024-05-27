@@ -3445,7 +3445,7 @@ int32_t OverlayItemPrivacyMask::UpdateParameters (OverlayParam& param)
   mask_color_ = param.color;
   config_ = param.privacy_mask;
 
-  surface_.width_ = kMaskBoxBufWidth;
+  surface_.width_ = GST_ROUND_UP_128 (std::min (width_, kMaskBoxBufWidth));
   surface_.height_ = (surface_.width_ * height_) / width_;
   surface_.height_ = ROUND_TO(surface_.height_, 2);
   surface_.stride_ = CalcStride (surface_.width_, surface_.format_);
