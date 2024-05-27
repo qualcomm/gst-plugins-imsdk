@@ -95,8 +95,6 @@ gst_ml_module_parse_monoblock_frame (GstMLSubModule * submodule,
       gst_batch_channel_name (0));
 
   prediction = &(g_array_index (predictions, GstMLBoxPrediction, 0));
-
-  prediction->batch_idx = 0;
   prediction->info = pmeta->info;
 
   // Extract the source tensor region with actual data.
@@ -216,8 +214,6 @@ gst_ml_module_parse_dualblock_frame (GstMLSubModule * submodule,
       gst_batch_channel_name (0));
 
   prediction = &(g_array_index (predictions, GstMLBoxPrediction, 0));
-
-  prediction->batch_idx = 0;
   prediction->info = pmeta->info;
 
   // Extract the source tensor region with actual data.
@@ -330,8 +326,6 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
       gst_batch_channel_name (0));
 
   prediction = &(g_array_index (predictions, GstMLBoxPrediction, 0));
-
-  prediction->batch_idx = 0;
   prediction->info = pmeta->info;
 
   // Extract the source tensor region with actual data.

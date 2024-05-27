@@ -288,8 +288,6 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       gst_batch_channel_name (0));
 
   prediction = &(g_array_index (predictions, GstMLClassPrediction, 0));
-
-  prediction->batch_idx = 0;
   prediction->info = pmeta->info;
 
   mltype = GST_ML_FRAME_TYPE (mlframe);

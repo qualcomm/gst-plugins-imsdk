@@ -492,6 +492,9 @@ gst_ml_video_super_resolution_fixate_caps (GstBaseTransform * base,
   GST_DEBUG_OBJECT (super_resolution, "Output width and height fixated to: %dx%d",
       width, height);
 
+  // Fixate any remaining fields.
+  outcaps = gst_caps_fixate (outcaps);
+
   GST_DEBUG_OBJECT (super_resolution, "Fixated caps to %" GST_PTR_FORMAT, outcaps);
   return outcaps;
 }
@@ -575,6 +578,12 @@ gst_ml_video_super_resolution_set_caps (GstBaseTransform * base, GstCaps * incap
     gst_ml_info_free (super_resolution->mlinfo);
 
   super_resolution->mlinfo = gst_ml_info_copy (&ininfo);
+
+  if (GST_ML_INFO_TENSOR_DIM (super_resolution->mlinfo, 0, 0) > 1) {
+    GST_ELEMENT_ERROR (super_resolution, CORE, FAILED, (NULL),
+        ("Batched input tensors with video output is not supported!"));
+    return FALSE;
+  }
 
   if (super_resolution->vinfo != NULL)
     gst_video_info_free (super_resolution->vinfo);
