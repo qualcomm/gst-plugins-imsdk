@@ -37,15 +37,21 @@
 #define DEFAULT_YOLOV8_LABELS "/opt/yolov8.labels"
 #define DEFAULT_SNPE_YOLONAS_MODEL "/opt/yolonas.dlc"
 #define DEFAULT_YOLONAS_LABELS "/opt/yolonas.labels"
+#define DEFAULT_TFLITE_YOLOV8_MODEL "/opt/yolov8_det_quantized.tflite"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
  * will be done in qtimlvconverter based on model input
  */
-#define DEFAULT_CAMERA_OUTPUT_WIDTH 1280
-#define DEFAULT_CAMERA_OUTPUT_HEIGHT 720
+#define DEFAULT_CAMERA_OUTPUT_WIDTH 1920
+#define DEFAULT_CAMERA_OUTPUT_HEIGHT 1080
 #define DEFAULT_CAMERA_FRAME_RATE 30
 
+/**
+ * Default constants to dequantize values
+ */
+#define DEFAULT_CONSTANTS \
+    "YOLOv8,q-offsets=<-107.0, -128.0, 0.0>,q-scales=<3.093529462814331, 0.00390625, 0.0>;"
 /**
  * Number of Queues used for buffer caching between elements
  */
@@ -59,18 +65,22 @@
  *
  * @param appctx Application Context Pointer.
  * @param yolo_model_type Type of Yolo Model variant.
+ * @param ml_framework Type of Model container for the Runtime.
  * @param model_path Location of Model Container.
  * @param labels_path Location of Model Labels.
+ * @param constants constants to dequantize values.
  */
 static gboolean
 create_pipe (GstAppContext * appctx, GstYoloModelType model_type,
-    const gchar * model_path, const gchar * labels_path)
+    GstModelType ml_framework, const gchar * model_path,
+    const gchar * labels_path, const gchar * constants)
 {
   GstElement *qtiqmmfsrc, *qmmfsrc_caps, *qtivtransform, *queue[QUEUE_COUNT];
   GstElement *tee, *qtimlvconverter, *qtimlelement;
   GstElement *qtimlvdetection, *detection_filter;
   GstElement *qtivcomposer, *fpsdisplaysink, *waylandsink;
   GstCaps *pad_filter, *filtercaps;
+  GstStructure *delegate_options;
   GValue layers = G_VALUE_INIT;
   GValue value = G_VALUE_INIT;
   gboolean ret = FALSE;
@@ -130,8 +140,13 @@ create_pipe (GstAppContext * appctx, GstYoloModelType model_type,
     return FALSE;
   }
 
-  // Create the ML inferencing plugin
-  qtimlelement = gst_element_factory_make ("qtimlsnpe", "qtimlsnpe");
+
+  // Create the ML inferencing plugin SNPE/TFLITE
+  if (ml_framework == GST_MODEL_TYPE_SNPE) {
+    qtimlelement = gst_element_factory_make ("qtimlsnpe", "qtimlsnpe");
+  } else {
+    qtimlelement = gst_element_factory_make ("qtimltflite", "qtimltflite");
+  }
   if (!qtimlelement) {
     g_printerr ("Failed to create qtimlelement\n");
     return FALSE;
@@ -205,89 +220,129 @@ create_pipe (GstAppContext * appctx, GstYoloModelType model_type,
   gst_caps_unref (filtercaps);
 
   // 2.2 Select the HW to DSP for model inferencing using delegate property
-  g_object_set (G_OBJECT (qtimlelement), "model", model_path,
-      "delegate", GST_ML_SNPE_DELEGATE_DSP, NULL);
+  if (ml_framework == GST_MODEL_TYPE_SNPE) {
+    g_object_set (G_OBJECT (qtimlelement), "model", model_path,
+        "delegate", GST_ML_SNPE_DELEGATE_DSP, NULL);
+  } else {
+    delegate_options = gst_structure_from_string (
+        "QNNExternalDelegate,backend_type=htp;", NULL);
+    g_object_set (G_OBJECT (qtimlelement), "model", model_path,
+        "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
+    g_object_set (G_OBJECT (qtimlelement),
+        "external-delegate-path", "libQnnTFLiteDelegate.so", NULL);
+    g_object_set (G_OBJECT (qtimlelement),
+        "external-delegate-options", delegate_options, NULL);
+    gst_structure_free (delegate_options);
+  }
 
   // 2.3 Set properties for ML postproc plugins- module, layers, threshold
   g_value_init (&layers, GST_TYPE_ARRAY);
   g_value_init (&value, G_TYPE_STRING);
-  switch (model_type) {
-    // Set Yolov5 specific settings
-    case GST_YOLO_TYPE_V5:
-      g_object_set (G_OBJECT (qtimlelement), "model", model_path, NULL);
-      g_value_set_string (&value, "Conv_198");
-      gst_value_array_append_value (&layers, &value);
-      g_value_set_string (&value, "Conv_232");
-      gst_value_array_append_value (&layers, &value);
-      g_value_set_string (&value, "Conv_266");
-      gst_value_array_append_value (&layers, &value);
-      g_object_set_property (G_OBJECT (qtimlelement), "layers", &layers);
 
-      // Get enum value of module property from qtimlvdetection plugin
-      module_id = get_enum_value (qtimlvdetection, "module", "yolov5");
-      if (module_id != -1) {
-        g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
-      } else {
-        g_printerr ("Module yolov5s is not available in qtimlvdetection\n");
+  if (ml_framework == GST_MODEL_TYPE_SNPE) {
+    switch (model_type) {
+      // Set Yolov5 specific settings
+      case GST_YOLO_TYPE_V5:
+        g_object_set (G_OBJECT (qtimlelement), "model", model_path, NULL);
+        g_value_set_string (&value, "Conv_198");
+        gst_value_array_append_value (&layers, &value);
+        g_value_set_string (&value, "Conv_232");
+        gst_value_array_append_value (&layers, &value);
+        g_value_set_string (&value, "Conv_266");
+        gst_value_array_append_value (&layers, &value);
+        g_object_set_property (G_OBJECT (qtimlelement), "layers", &layers);
+
+        // Get enum value of module property from qtimlvdetection plugin
+        module_id = get_enum_value (qtimlvdetection, "module", "yolov5");
+        if (module_id != -1) {
+          g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
+        } else {
+          g_printerr ("Module yolov5s is not available in qtimlvdetection\n");
+          goto error;
+        }
+        g_object_set (G_OBJECT (qtimlvdetection), "labels", labels_path, NULL);
+
+        // Set qtimlvdetection properties
+        g_object_set (G_OBJECT (qtimlvdetection), "threshold", 40.0, NULL);
+        g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
+        break;
+
+      // Set Yolov8 specific settings
+      case GST_YOLO_TYPE_V8:
+        g_object_set (G_OBJECT (qtimlelement), "model", model_path, NULL);
+        g_value_set_string (&value, "Mul_248");
+        gst_value_array_append_value (&layers, &value);
+        g_value_set_string (&value, "Sigmoid_249");
+        gst_value_array_append_value (&layers, &value);
+        g_object_set_property (G_OBJECT (qtimlelement), "layers", &layers);
+
+        // Get enum value of module property from qtimlvdetection plugin
+        module_id = get_enum_value (qtimlvdetection, "module", "yolov8");
+        if (module_id != -1) {
+          g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
+        } else {
+          g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
+          goto error;
+        }
+        g_object_set (G_OBJECT (qtimlvdetection), "labels", labels_path, NULL);
+
+        // Set qtimlvdetection properties
+        g_object_set (G_OBJECT (qtimlvdetection), "threshold", 50.0, NULL);
+        g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
+        break;
+
+      // Set YoloNas specific settings
+      case GST_YOLO_TYPE_NAS:
+        g_object_set (G_OBJECT (qtimlelement), "model", model_path, NULL);
+        g_value_set_string (&value, "/heads/Mul");
+        gst_value_array_append_value (&layers, &value);
+        g_value_set_string (&value, "/heads/Sigmoid");
+        gst_value_array_append_value (&layers, &value);
+        g_object_set_property (G_OBJECT (qtimlelement), "layers", &layers);
+
+        // Get enum value of module property from qtimlvdetection plugin
+        module_id = get_enum_value (qtimlvdetection, "module", "yolo-nas");
+        if (module_id != -1) {
+          g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
+        } else {
+          g_printerr ("Module yolo-nas is not available in qtimlvdetection\n");
+          goto error;
+        }
+        g_object_set (G_OBJECT (qtimlvdetection), "labels", labels_path, NULL);
+
+        // Set qtimlvdetection properties
+        g_object_set (G_OBJECT (qtimlvdetection), "threshold", 51.0, NULL);
+        g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
+        break;
+      default:
+        g_printerr ("Invalid Yolo Model type");
         goto error;
-      }
-      g_object_set (G_OBJECT (qtimlvdetection), "labels", labels_path, NULL);
+    }
+  } else if (ml_framework == GST_MODEL_TYPE_TFLITE) {
+    switch (model_type) {
+      // Set Yolov8 specific settings
+      case GST_YOLO_TYPE_V8:
+        // Set ML postproc properties - labels, module, threshold & constants
+        g_object_set (G_OBJECT (qtimlvdetection), "labels", labels_path, NULL);
+        module_id = get_enum_value (qtimlvdetection, "module", "yolov8");
+        if (module_id != -1) {
+          g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
+        } else {
+          g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
+          return FALSE;
+        }
 
-      // Set qtimlvdetection properties
-      g_object_set (G_OBJECT (qtimlvdetection), "threshold", 40.0, NULL);
-      g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
-      break;
-
-    // Set Yolov8 specific settings
-    case GST_YOLO_TYPE_V8:
-      g_object_set (G_OBJECT (qtimlelement), "model", model_path, NULL);
-      g_value_set_string (&value, "Mul_248");
-      gst_value_array_append_value (&layers, &value);
-      g_value_set_string (&value, "Sigmoid_249");
-      gst_value_array_append_value (&layers, &value);
-      g_object_set_property (G_OBJECT (qtimlelement), "layers", &layers);
-
-      // Get enum value of module property from qtimlvdetection plugin
-      module_id = get_enum_value (qtimlvdetection, "module", "yolov8");
-      if (module_id != -1) {
-        g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
-      } else {
-        g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
+        g_object_set (G_OBJECT (qtimlvdetection), "threshold", 45.0, "results", 10,
+            "constants", constants, NULL);
+        break;
+      default:
+        g_printerr ("Unsupported TFLITE model, Use YoloV8 TFLITE model\n");
         goto error;
-      }
-      g_object_set (G_OBJECT (qtimlvdetection), "labels", labels_path, NULL);
+    }
+  } else {
+    g_printerr ("Invalid model_type or ml_framework\n");
+    goto error;
 
-      // Set qtimlvdetection properties
-      g_object_set (G_OBJECT (qtimlvdetection), "threshold", 50.0, NULL);
-      g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
-      break;
-
-    // Set YoloNas specific settings
-    case GST_YOLO_TYPE_NAS:
-      g_object_set (G_OBJECT (qtimlelement), "model", model_path, NULL);
-      g_value_set_string (&value, "/heads/Mul");
-      gst_value_array_append_value (&layers, &value);
-      g_value_set_string (&value, "/heads/Sigmoid");
-      gst_value_array_append_value (&layers, &value);
-      g_object_set_property (G_OBJECT (qtimlelement), "layers", &layers);
-
-      // Get enum value of module property from qtimlvdetection plugin
-      module_id = get_enum_value (qtimlvdetection, "module", "yolo-nas");
-      if (module_id != -1) {
-        g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
-      } else {
-        g_printerr ("Module yolo-nas is not available in qtimlvdetection\n");
-        goto error;
-      }
-      g_object_set (G_OBJECT (qtimlvdetection), "labels", labels_path, NULL);
-
-      // Set qtimlvdetection properties
-      g_object_set (G_OBJECT (qtimlvdetection), "threshold", 51.0, NULL);
-      g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
-      break;
-    default:
-      g_printerr ("Invalid Yolo Model type");
-      goto error;
   }
 
   // 2.4 Set the properties of Wayland compositor
@@ -401,8 +456,10 @@ main (gint argc, gchar * argv[])
   const gchar *model_path = NULL;
   const gchar *labels_path = NULL;
   const gchar *app_name = NULL;
+  const gchar *constants = DEFAULT_CONSTANTS;
   GstAppContext appctx = {};
   GstYoloModelType model_type = GST_YOLO_TYPE_NAS;
+  GstModelType ml_framework = GST_MODEL_TYPE_SNPE;
   gboolean ret = FALSE;
   gchar help_description[1024];
   guint intrpt_watch_id = 0;
@@ -419,12 +476,19 @@ main (gint argc, gchar * argv[])
       "[Default]",
       "1 or 2 or 3"
     },
+    { "ml-framework", 'f', 0, G_OPTION_ARG_INT,
+      &ml_framework,
+      "Execute Model in SNPE DLC (1) or TFlite (2) format",
+      "1 or 2"
+    },
     { "model", 'm', 0, G_OPTION_ARG_STRING,
       &model_path,
       "This is an optional parameter and overrides default path\n"
       "      Default model path for YOLOV5 DLC: " DEFAULT_SNPE_YOLOV5_MODEL "\n"
       "      Default model path for YOLOV8 DLC: " DEFAULT_SNPE_YOLOV8_MODEL "\n"
-      "      Default model path for YOLO NAS DLC: " DEFAULT_SNPE_YOLONAS_MODEL,
+      "      Default model path for YOLO NAS DLC: " DEFAULT_SNPE_YOLONAS_MODEL "\n"
+      "      Default model path for YOLOV8 TFLITE: "
+      DEFAULT_TFLITE_YOLOV8_MODEL "\n",
       "/PATH"
     },
     { "labels", 'l', 0, G_OPTION_ARG_STRING,
@@ -432,8 +496,16 @@ main (gint argc, gchar * argv[])
       "This is an optional parameter and overrides default path\n"
       "      Default labels path for YOLOV5: " DEFAULT_YOLOV5_LABELS "\n"
       "      Default labels path for YOLOV8: " DEFAULT_YOLOV8_LABELS "\n"
-      "      Default labels path for YOLO NAS: " DEFAULT_YOLONAS_LABELS,
+      "      Default labels path for YOLO NAS: " DEFAULT_YOLONAS_LABELS "\n",
       "/PATH"
+    },
+    { "constants", 'c', 0, G_OPTION_ARG_STRING,
+      &constants,
+      "Constants, offsets and coefficients used by the chosen module \n"
+      "      for post-processing of incoming tensors."
+      " Applicable only for some modules\n"
+      "      Default constants: " DEFAULT_CONSTANTS,
+      "/CONSTANTS"
     },
     { NULL }
   };
@@ -443,8 +515,11 @@ main (gint argc, gchar * argv[])
   snprintf (help_description, 1023, "\nExample:\n"
       "  %s --model-type=1\n"
       "  %s -t 3 --model=%s --labels=%s\n"
+      "  %s -t 2 -f 2 --model=%s --labels=%s -c \"%s\"\n"
       "\nThis Sample App demonstrates Object Detection on Live Stream",
-      app_name, app_name, DEFAULT_SNPE_YOLONAS_MODEL, DEFAULT_YOLONAS_LABELS);
+      app_name, app_name, DEFAULT_SNPE_YOLONAS_MODEL, DEFAULT_YOLONAS_LABELS,
+      app_name, DEFAULT_TFLITE_YOLOV8_MODEL, DEFAULT_YOLOV8_LABELS,
+      DEFAULT_CONSTANTS);
   help_description[1023] = '\0';
 
   // Parse command line entries.
@@ -483,11 +558,28 @@ main (gint argc, gchar * argv[])
     return -EINVAL;
   }
 
+  if (ml_framework < GST_MODEL_TYPE_SNPE ||
+      ml_framework > GST_MODEL_TYPE_TFLITE) {
+    g_printerr ("Invalid ml-framework option selected\n"
+        "Available options:\n"
+        "    SNPE: %d\n"
+        "    TFLite: %d\n",
+        GST_MODEL_TYPE_SNPE, GST_MODEL_TYPE_TFLITE);
+    return -EINVAL;
+  }
+
   // Set model path for execution
-  model_path = model_path ? model_path:
-      (model_type == GST_YOLO_TYPE_V5 ? DEFAULT_SNPE_YOLOV5_MODEL :
-      (model_type == GST_YOLO_TYPE_V8 ? DEFAULT_SNPE_YOLOV8_MODEL :
-      DEFAULT_SNPE_YOLONAS_MODEL));
+  if (ml_framework == GST_MODEL_TYPE_SNPE) {
+     model_path = model_path ? model_path:
+        (model_type == GST_YOLO_TYPE_V5 ? DEFAULT_SNPE_YOLOV5_MODEL :
+        (model_type == GST_YOLO_TYPE_V8 ? DEFAULT_SNPE_YOLOV8_MODEL :
+        DEFAULT_SNPE_YOLONAS_MODEL));
+  } else if (ml_framework == GST_MODEL_TYPE_TFLITE) {
+     model_path = DEFAULT_TFLITE_YOLOV8_MODEL;
+  } else {
+     g_printerr ("Invalid ml_framework\n");
+     return -EINVAL;
+  }
 
   // Set default Label path for execution
   labels_path = labels_path ? labels_path:
@@ -521,7 +613,8 @@ main (gint argc, gchar * argv[])
   appctx.pipeline = pipeline;
 
   // Build the pipeline, link all elements in the pipeline
-  ret = create_pipe (&appctx, model_type, model_path, labels_path);
+  ret = create_pipe (&appctx, model_type, ml_framework, model_path,
+            labels_path, constants);
   if (!ret) {
     g_printerr ("ERROR: failed to create GST pipe.\n");
     destroy_pipe (&appctx);
