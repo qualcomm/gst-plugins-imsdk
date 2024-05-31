@@ -562,9 +562,10 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
   GstVideoFrame *outframe = NULL;
   GstVideoRegionOfInterestMeta *roimeta = NULL;
   GstVideoComposition *composition = NULL;
-  guint idx = 0, num = 0, id = 0, n_metas = 0, n_entries = 0;
+  guint idx = 0, num = 0, id = 0, n_metas = 0, n_entries = 0, i = 0;
   gint sar_n = 1, sar_d = 1;
   gboolean success = TRUE;
+  const gdouble scale = 1.0 / 255.0, offset = 0.0;
 
   // Fetch the number of ROI meta entries from the input buffer.
   n_metas = gst_buffer_get_n_meta (inframe->buffer,
@@ -618,6 +619,11 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
 
       composition->bgcolor = 0x00000000;
       composition->bgfill = TRUE;
+
+      for (i = 0; i < GST_VCE_MAX_CHANNELS; ++i) {
+        composition->scales[i] = scale;
+        composition->offsets[i] = offset;
+      }
 
       composition->blits = g_slice_new0 (GstVideoBlit);
       composition->n_blits = 1;
