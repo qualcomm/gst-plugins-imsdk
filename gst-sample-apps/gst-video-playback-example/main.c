@@ -32,11 +32,11 @@
   "AVC Video Codec Playback:\n" \
   "  gst-video-playback-example -e filesrc location=<avc_file>.mp4 ! qtdemux ! "\
   "queue ! h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! "\
-  "waylandsink enable-last-sample=false async=false fullscreen=true \n" \
+  "waylandsink enable-last-sample=false fullscreen=true \n" \
   "HEVC Video Codec Playback:\n" \
   "  gst-video-playback-example -e filesrc location=<hevc_file>.mp4 ! qtdemux ! "\
   "queue ! h265parse ! v4l2h265dec capture-io-mode=5 output-io-mode=5 ! "\
-  "waylandsink enable-last-sample=false async=false fullscreen=true \n" \
+  "waylandsink enable-last-sample=false fullscreen=true \n" \
   "\nOutput:\n" \
   "  Upon executing the application, user will observe video content " \
   "displayed on the screen, \n" \

@@ -43,7 +43,7 @@
 #define GST_PIPELINE_2STREAM_VIDEO "filesrc name=source1 " \
   "location=DEFAULT_AVC_FILESOURCE ! qtdemux ! queue ! h264parse ! " \
   "v4l2h264dec capture-io-mode=5 output-io-mode=5 ! " \
-  "queue ! waylandsink enable-last-sample=false async=false fullscreen=true " \
+  "queue ! waylandsink enable-last-sample=false fullscreen=true " \
   "filesrc name=source2 location=DEFAULT_HEVC_FILESOURCE ! qtdemux ! " \
   "h265parse ! v4l2h265dec capture-io-mode=5 output-io-mode=5 ! " \
   "filesink name=sink_yuv enable-last-sample=false location=DEFAULT_YUV_FILESINK " \

@@ -15,7 +15,7 @@
   "sink_0::position=\"<0, 0>\" sink_0::dimensions=\"<960, 1080>\" " \
   "sink_1::position=\"<960, 0>\" sink_1::dimensions=\"<960, 1080>\" " \
   "mixer. ! queue ! " \
-  "waylandsink enable-last-sample=false async=false sync=true fullscreen=true " \
+  "waylandsink enable-last-sample=false fullscreen=true " \
   "filesrc name=source0 location=FILESOURCE ! qtdemux ! queue ! " \
   "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
   "filesrc name=source1 location=FILESOURCE ! qtdemux ! queue ! " \
@@ -27,7 +27,7 @@
   "sink_2::position=\"<0, 540>\" sink_2::dimensions=\"<960, 540>\" " \
   "sink_3::position=\"<960, 540>\" sink_3::dimensions=\"<960, 540>\" " \
   "mixer. ! queue ! " \
-  "waylandsink enable-last-sample=false async=false sync=true fullscreen=true " \
+  "waylandsink enable-last-sample=false fullscreen=true " \
   "filesrc name=source0 location=FILESOURCE ! qtdemux ! queue ! " \
   "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
   "filesrc name=source1 location=FILESOURCE ! qtdemux ! queue ! " \
@@ -47,7 +47,7 @@
   "sink_6::position=\"<960, 540>\" sink_6::dimensions=\"<480, 540>\" " \
   "sink_7::position=\"<1440, 540>\" sink_7::dimensions=\"<480, 540>\" " \
   "mixer. ! queue ! " \
-  "waylandsink enable-last-sample=false async=false sync=true fullscreen=true " \
+  "waylandsink enable-last-sample=false fullscreen=true " \
   "filesrc name=source0 location=FILESOURCE ! qtdemux ! queue ! " \
   "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
   "filesrc name=source1 location=FILESOURCE ! qtdemux ! queue ! " \
@@ -83,7 +83,7 @@
   "sink_14::position=\"<960, 810>\" sink_14::dimensions=\"<480, 270>\" " \
   "sink_15::position=\"<1440, 810>\" sink_15::dimensions=\"<480, 270>\" " \
   "mixer. ! queue ! " \
-  "waylandsink enable-last-sample=false async=false sync=true fullscreen=true " \
+  "waylandsink enable-last-sample=false fullscreen=true " \
   "filesrc name=source0 location=FILESOURCE ! qtdemux ! queue ! " \
   "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
   "filesrc name=source1 location=FILESOURCE ! qtdemux ! queue ! " \
