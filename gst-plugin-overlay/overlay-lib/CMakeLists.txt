@@ -41,10 +41,6 @@ target_link_libraries(overlay_lib
   pthread
   cairo
   OpenCL
-  $<$<BOOL:${HAVE_ANDROID_UTILS}>:log>
-  $<$<BOOL:${HAVE_ANDROID_UTILS}>:utils>
-  $<$<BOOL:${HAVE_ANDROID_UTILS}>:cutils>
-  $<$<NOT:$<BOOL:${HAVE_ANDROID_UTILS}>>:propertyvault>
   $<$<BOOL:${HAVE_C2D_H}>:C2D2>
   ${GST_LIBRARIES}
 )

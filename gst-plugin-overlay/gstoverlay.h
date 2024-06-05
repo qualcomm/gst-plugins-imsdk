@@ -95,6 +95,12 @@ typedef struct _GstOverlayUsrBBox GstOverlayUsrBBox;
 typedef struct _GstOverlayUsrMask GstOverlayUsrMask;
 typedef struct _GstOverlayString GstOverlayString;
 
+typedef enum {
+  GST_OVERLAY_ENGINE_C2D,
+  GST_OVERLAY_ENGINE_OPENCL,
+  GST_OVERLAY_ENGINE_GLES,
+} GstOverlayEngine;
+
 struct _GstOverlay {
   GstVideoFilter      parent;
   Overlay             *overlay;
@@ -120,6 +126,10 @@ struct _GstOverlay {
   guint               bbox_font_size;
   guint               date_font_size;
   guint               text_font_size;
+
+  guint               bbox_stroke_width;
+
+  GstOverlayEngine    engine;
 
   guint               arrows_filter_mv;
   guint               arrows_filter_sad;

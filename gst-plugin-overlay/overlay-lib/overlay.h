@@ -43,10 +43,6 @@
 #include <vector>
 #include <memory>
 
-#ifndef GST_DISABLE_GST_DEBUG
-#include <gst/gst.h>
-#include <gst/gstutils.h>
-
 #ifdef ENABLE_C2D
 #include <adreno/c2d2.h>
 #endif // ENABLE_C2D
@@ -54,60 +50,6 @@
 #ifdef ENABLE_GLES
 #include <iot-core-algs/ib2c.h>
 #endif // ENABLE_GLES
-
-#define GST_CAT_DEFAULT ensure_debug_category()
-static GstDebugCategory *
-ensure_debug_category (void)
-{
-  static gsize category = 0;
-
-  if (g_once_init_enter (&category)) {
-    gsize cat_done;
-
-    cat_done = (gsize) _gst_debug_category_new("qtioverlay", 0,
-        "QTI overlay");
-
-    g_once_init_leave (&category, cat_done);
-  }
-
-  return (GstDebugCategory *) category;
-}
-
-#define OVDBG_ERROR(...) GST_ERROR(__VA_ARGS__)
-#define OVDBG_INFO(...) GST_INFO(__VA_ARGS__)
-#define OVDBG_DEBUG(...) GST_DEBUG(__VA_ARGS__)
-#define OVDBG_VERBOSE(...) GST_LOG(__VA_ARGS__)
-#else
-#ifdef HAVE_ANDROID_UTILS
-#include <utils/Log.h>
-#else
-#include <log.h>
-#undef LOG_TAG
-#define LOG_TAG "Overlay"
-#endif
-#define OVDBG_INFO(fmt, args...)  ALOGI(fmt, ##args)
-#define OVDBG_ERROR(fmt, args...) ALOGE(fmt, ##args)
-#define OVDBG_WARN(fmt, args...)  ALOGW(fmt, ##args)
-
-// Remove comment markers to define LOG_LEVEL_DEBUG for debugging-related logs
-//#define LOG_LEVEL_DEBUG
-
-// Remove comment markers to define LOG_LEVEL_VERBOSE for complete logs
-//#define LOG_LEVEL_VERBOSE
-
-#ifdef LOG_LEVEL_DEBUG
-#define OVDBG_DEBUG(fmt, args...)  ALOGD(fmt, ##args)
-#else
-#define OVDBG_DEBUG(...) ((void)0)
-#endif
-
-#ifdef LOG_LEVEL_VERBOSE
-#define OVDBG_VERBOSE(fmt, args...)  ALOGD(fmt, ##args)
-#else
-#define OVDBG_VERBOSE(...) ((void)0)
-#endif
-#define ensure_debug_category() /* NOOP */
-#endif /* GST_DISABLE_GST_DEBUG */
 
 /// @namespace overlay
 namespace overlay {
@@ -225,6 +167,7 @@ struct OverlayParam {
   OverlayType type;
   uint32_t color;
   uint32_t font_size;
+  uint32_t bbox_stroke_width;
   OverlayRect dst_rect;
   uint32_t arrows_count;
   union {
@@ -282,7 +225,7 @@ public:
 
   // Initialise overlay with format of buffer.
   /// Initialise overlay with format of buffer.
-  int32_t Init ();
+  int32_t Init (OverlayBlitType blit_type);
 
   // Create overlay item of type static image, date/time, bounding box,
   // simple text, or privacy mask. this Api provides overlay item id which

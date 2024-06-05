@@ -51,6 +51,9 @@ G_DEFINE_TYPE (GstOverlay, gst_overlay, GST_TYPE_VIDEO_FILTER);
 
 #define GST_VIDEO_FORMATS "{ NV12, NV21 }"
 
+#define GST_TYPE_OVERLAY_ENGINE      (gst_overlay_engine_get_type())
+#define DEFAULT_PROP_OVERLAY_ENGINE  GST_OVERLAY_ENGINE_C2D
+
 #define DEFAULT_PROP_OVERLAY_TEXT        NULL
 #define DEFAULT_PROP_OVERLAY_DATE        NULL
 #define DEFAULT_PROP_OVERLAY_SIMG        NULL
@@ -65,6 +68,8 @@ G_DEFINE_TYPE (GstOverlay, gst_overlay, GST_TYPE_VIDEO_FILTER);
 #define DEFAULT_PROP_OVERLAY_BBOX_FONT_SIZE 25
 #define DEFAULT_PROP_OVERLAY_DATE_FONT_SIZE 20
 #define DEFAULT_PROP_OVERLAY_TEXT_FONT_SIZE 40
+
+#define DEFAULT_PROP_OVERLAY_BBOX_STROKE_WIDTH 4
 
 #define DEFAULT_PROP_DEST_RECT_X      40
 #define DEFAULT_PROP_DEST_RECT_Y      40
@@ -120,6 +125,7 @@ static GstMLKeyPointsType PoseChain [][2] {
  * PROP_OVERLAY_OPTIFLOW_FT_MV - Optical flow MV filter
  * PROP_OVERLAY_OPTIFLOW_FT_SAD - Optical flow SAD filter
  * PROP_OVERLAY_OPTIFLOW_FT_VAR - Optical flow VAR filter
+ * PROP_OVERLAY_BBOX_STROKE_WIDTH - Box stroke width
  */
 enum {
   PROP_0,
@@ -140,11 +146,39 @@ enum {
   PROP_OVERLAY_OPTIFLOW_FT_MV,
   PROP_OVERLAY_OPTIFLOW_FT_SAD,
   PROP_OVERLAY_OPTIFLOW_FT_VAR,
+  PROP_OVERLAY_BBOX_STROKE_WIDTH,
+  PROP_OVERLAY_ENGINE,
 };
 
 static GstStaticCaps gst_overlay_format_caps =
     GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS) ";"
     GST_VIDEO_CAPS_MAKE_WITH_FEATURES ("ANY", GST_VIDEO_FORMATS));
+
+static GType
+gst_overlay_engine_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { GST_OVERLAY_ENGINE_C2D,
+        "C2D blit engine.",
+        "c2d"
+    },
+    { GST_OVERLAY_ENGINE_OPENCL,
+        "OpenCL blit engine.",
+        "opencl"
+    },
+    { GST_OVERLAY_ENGINE_GLES,
+        "GLES blit engine.",
+        "gles"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstOverlayEngine", variants);
+
+  return gtype;
+}
 
 /**
  * GstOverlayMetaApplyFunc:
@@ -341,6 +375,7 @@ gst_overlay_apply_bbox_item (GstOverlay * gst_overlay, GstVideoRectangle * bbox,
   ov_param.dst_rect.start_y = bbox->y;
   ov_param.dst_rect.width = bbox->w;
   ov_param.dst_rect.height = bbox->h;
+  ov_param.bbox_stroke_width = gst_overlay->bbox_stroke_width;
 
   if (sizeof (ov_param.bounding_box.box_name) <= strlen (label)) {
     GST_ERROR_OBJECT (gst_overlay, "Text size exceeded %zu <= %zu",
@@ -2241,7 +2276,7 @@ gst_overlay_text_overlay_to_string (gpointer data, gpointer user_data)
     strlen (ov_data->text);
   gchar * tmp = (gchar *) malloc(size);
   if (!tmp) {
-    GST_ERROR ("%s: failed to allocate memory", __func__);
+    GST_ERROR ("failed to allocate memory");
     return;
   }
 
@@ -2251,7 +2286,7 @@ gst_overlay_text_overlay_to_string (gpointer data, gpointer user_data)
     ov_data->dest_rect.x, ov_data->dest_rect.y,
     ov_data->dest_rect.w, ov_data->dest_rect.h);
   if (ret < 0 || ret >= size) {
-    GST_ERROR ("%s: String size %d exceed size %d", __func__, ret, size);
+    GST_ERROR ("String size %d exceed size %d", ret, size);
     free (tmp);
     return;
   }
@@ -2260,7 +2295,7 @@ gst_overlay_text_overlay_to_string (gpointer data, gpointer user_data)
     size = (strlen (output->string) + strlen (tmp)) * 2;
     output->string = (gchar *) realloc(output->string, size);
     if (!output->string) {
-      GST_ERROR ("%s: Failed to reallocate memory. Size %d", __func__, size);
+      GST_ERROR ("Failed to reallocate memory. Size %d", size);
       free (tmp);
       return;
     }
@@ -2288,7 +2323,7 @@ gst_overlay_date_overlay_to_string (gpointer data, gpointer user_data)
   gint size = GST_OVERLAY_DATE_STRING_SIZE + strlen (ov_data->base.user_id);
   gchar * tmp = (gchar *) malloc (size);
   if (!tmp) {
-    GST_ERROR ("%s: failed to allocate memory", __func__);
+    GST_ERROR ("failed to allocate memory");
     return;
   }
 
@@ -2332,7 +2367,7 @@ gst_overlay_date_overlay_to_string (gpointer data, gpointer user_data)
     ov_data->font_size, ov_data->dest_rect.x, ov_data->dest_rect.y,
     ov_data->dest_rect.w, ov_data->dest_rect.h);
   if (ret < 0 || ret >= size) {
-    GST_ERROR ("%s: String size %d exceed size %d", __func__, ret, size);
+    GST_ERROR ("String size %d exceed size %d", ret, size);
     free (tmp);
     return;
   }
@@ -2341,7 +2376,7 @@ gst_overlay_date_overlay_to_string (gpointer data, gpointer user_data)
     size = (strlen (output->string) + strlen (tmp)) * 2;
     output->string = (gchar *) realloc(output->string, size);
     if (!output->string) {
-      GST_ERROR ("%s: Failed to reallocate memory. Size %d", __func__, size);
+      GST_ERROR ("Failed to reallocate memory. Size %d", size);
       free (tmp);
       return;
     }
@@ -2370,7 +2405,7 @@ gst_overlay_simg_overlay_to_string (gpointer data, gpointer user_data)
       strlen (ov_data->img_file);
   gchar * tmp = (gchar *) malloc(size);
   if (!tmp) {
-    GST_ERROR ("%s: failed to allocate memory", __func__);
+    GST_ERROR ("failed to allocate memory");
     return;
   }
 
@@ -2380,7 +2415,7 @@ gst_overlay_simg_overlay_to_string (gpointer data, gpointer user_data)
     ov_data->img_height, ov_data->dest_rect.x, ov_data->dest_rect.y,
     ov_data->dest_rect.w, ov_data->dest_rect.h);
   if (ret < 0 || ret >= size) {
-    GST_ERROR ("%s: String size %d exceed size %d", __func__, ret, size);
+    GST_ERROR ("String size %d exceed size %d", ret, size);
     free (tmp);
     return;
   }
@@ -2389,7 +2424,7 @@ gst_overlay_simg_overlay_to_string (gpointer data, gpointer user_data)
     size = (strlen (output->string) + strlen (tmp)) * 2;
     output->string = (gchar *) realloc(output->string, size);
     if (!output->string) {
-      GST_ERROR ("%s: Failed to reallocate memory. Size %d", __func__, size);
+      GST_ERROR ("Failed to reallocate memory. Size %d", size);
       free (tmp);
       return;
     }
@@ -2418,7 +2453,7 @@ gst_overlay_bbox_overlay_to_string (gpointer data, gpointer user_data)
     strlen (ov_data->label);
   gchar * tmp = (gchar *) malloc(size);
   if (!tmp) {
-    GST_ERROR ("%s: failed to allocate memory", __func__);
+    GST_ERROR ("failed to allocate memory");
     return;
   }
 
@@ -2428,7 +2463,7 @@ gst_overlay_bbox_overlay_to_string (gpointer data, gpointer user_data)
     ov_data->boundind_box.w, ov_data->boundind_box.h, ov_data->label,
     ov_data->color, ov_data->font_size);
   if (ret < 0 || ret >= size) {
-    GST_ERROR ("%s: String size %d exceed size %d", __func__, ret, size);
+    GST_ERROR ("String size %d exceed size %d", ret, size);
     free (tmp);
     return;
   }
@@ -2437,7 +2472,7 @@ gst_overlay_bbox_overlay_to_string (gpointer data, gpointer user_data)
     size = (strlen (output->string) + strlen (tmp)) * 2;
     output->string = (gchar *) realloc(output->string, size);
     if (!output->string) {
-      GST_ERROR ("%s: Failed to reallocate memory. Size %d", __func__, size);
+      GST_ERROR ("Failed to reallocate memory. Size %d", size);
       free (tmp);
       return;
     }
@@ -2502,7 +2537,7 @@ gst_overlay_mask_overlay_to_string (gpointer data, gpointer user_data)
   }
 
   if (!tmp) {
-    GST_ERROR ("%s: failed to allocate memory", __func__);
+    GST_ERROR ("failed to allocate memory");
     return;
   }
 
@@ -2510,7 +2545,7 @@ gst_overlay_mask_overlay_to_string (gpointer data, gpointer user_data)
     size = (strlen (output->string) + strlen (tmp)) * 2;
     output->string = (gchar *) realloc(output->string, size);
     if (!output->string) {
-      GST_ERROR ("%s: Failed to reallocate memory. Size %d", __func__, size);
+      GST_ERROR ("Failed to reallocate memory. Size %d", size);
       free (tmp);
       return;
     }
@@ -2543,7 +2578,7 @@ gst_overlay_get_user_overlay (GstOverlay *gst_overlay, GValue * value,
   output.capacity = GST_OVERLAY_TO_STRING_SIZE;
   output.string = (gchar *) malloc (GST_OVERLAY_TO_STRING_SIZE);
   if (!output.string) {
-    GST_ERROR ("%s: failed to allocate memory", __func__);
+    GST_ERROR ("failed to allocate memory");
     g_mutex_unlock (&gst_overlay->lock);
     return;
   }
@@ -2649,6 +2684,12 @@ gst_overlay_set_property (GObject * object, guint prop_id,
     case PROP_OVERLAY_OPTIFLOW_FT_VAR:
       gst_overlay->arrows_filter_var = g_value_get_uint (value);
       break;
+    case PROP_OVERLAY_BBOX_STROKE_WIDTH:
+      gst_overlay->bbox_stroke_width = g_value_get_uint (value);
+      break;
+    case PROP_OVERLAY_ENGINE:
+      gst_overlay->engine = (GstOverlayEngine) g_value_get_enum (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -2743,6 +2784,12 @@ gst_overlay_get_property (GObject * object, guint prop_id, GValue * value,
       break;
     case PROP_OVERLAY_OPTIFLOW_FT_VAR:
       g_value_set_uint (value, gst_overlay->arrows_filter_var);
+      break;
+    case PROP_OVERLAY_BBOX_STROKE_WIDTH:
+      g_value_set_uint (value, gst_overlay->bbox_stroke_width);
+      break;
+    case PROP_OVERLAY_ENGINE:
+      g_value_set_enum (value, gst_overlay->engine);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -2856,7 +2903,23 @@ gst_overlay_set_info (GstVideoFilter * filter, GstCaps * in,
   gst_overlay->format = new_format;
   gst_overlay->overlay = new Overlay();
 
-  int32_t ret = gst_overlay->overlay->Init ();
+  OverlayBlitType engine;
+  switch (gst_overlay->engine) {
+    case GST_OVERLAY_ENGINE_C2D:
+      engine = OverlayBlitType::kC2D;
+      break;
+    case GST_OVERLAY_ENGINE_OPENCL:
+      engine = OverlayBlitType::kOpenCL;
+      break;
+    case GST_OVERLAY_ENGINE_GLES:
+      engine = OverlayBlitType::kGLES;
+      break;
+    default:
+      engine = OverlayBlitType::kC2D;
+      break;
+  }
+
+  int32_t ret = gst_overlay->overlay->Init (engine);
   if (ret != 0) {
     GST_ERROR_OBJECT (gst_overlay, "Overlay init failed! Format: %u",
         (guint)gst_overlay->format);
@@ -3110,6 +3173,7 @@ gst_overlay_init (GstOverlay * gst_overlay)
   gst_overlay->text_dest_rect.y = DEFAULT_PROP_DEST_RECT_Y;
   gst_overlay->text_dest_rect.w = DEFAULT_PROP_DEST_RECT_WIDTH;
   gst_overlay->text_dest_rect.h = DEFAULT_PROP_DEST_RECT_HEIGHT;
+  gst_overlay->bbox_stroke_width = DEFAULT_PROP_OVERLAY_BBOX_STROKE_WIDTH;
 
   g_mutex_init (&gst_overlay->lock);
 
@@ -3235,6 +3299,20 @@ gst_overlay_class_init (GstOverlayClass * klass)
   g_object_class_install_property (gobject, PROP_OVERLAY_OPTIFLOW_FT_VAR,
     g_param_spec_uint ("arrows-ft-var", "VAR filter", "Arrows var filter",
       0, G_MAXUINT, 0, static_cast<GParamFlags>(
+        G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
+  g_object_class_install_property (gobject, PROP_OVERLAY_BBOX_STROKE_WIDTH,
+    g_param_spec_uint ("bbox-stroke-width", "Bounding box stroke width",
+      "Set the width of the bounding box rectangle",
+      1, G_MAXUINT, DEFAULT_PROP_OVERLAY_BBOX_STROKE_WIDTH,
+      static_cast<GParamFlags>(
+        G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
+  g_object_class_install_property (gobject, PROP_OVERLAY_ENGINE,
+    g_param_spec_enum ("engine", "Engine type",
+      "Set the engine used for blit",
+      GST_TYPE_OVERLAY_ENGINE, DEFAULT_PROP_OVERLAY_ENGINE,
+      static_cast<GParamFlags>(
         G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
   gst_element_class_set_static_metadata (element, "QTI Overlay", "Overlay",
