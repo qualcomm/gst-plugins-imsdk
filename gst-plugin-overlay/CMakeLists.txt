@@ -34,6 +34,10 @@ check_include_file("adreno/c2d2.h" HAVE_C2D_H)
 include(CheckIncludeFileCXX)
 check_include_file_cxx("iot-core-algs/ib2c.h" HAVE_GLES_H)
 
+# Check whether CL EXT header is present.
+include(CheckIncludeFile)
+check_include_file("CL/cl_ext_qcom.h" HAVE_CL_EXT_QCOM_H)
+
 # Check whether MMM color format header is present.
 include(CheckIncludeFile)
 check_include_file("display/media/mmm_color_fmt.h" HAVE_MMM_COLOR_FMT_H)
