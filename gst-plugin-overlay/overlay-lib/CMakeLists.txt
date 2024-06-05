@@ -7,7 +7,8 @@ set(exclude EXCLUDE_FROM_ALL)
 endif()
 
 add_library(overlay_lib SHARED ${exclude}
-${CMAKE_CURRENT_SOURCE_DIR}/overlay_lib.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/overlay_lib.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/open_cl_funcs.cc
 )
 
 target_include_directories(overlay_lib
@@ -40,7 +41,6 @@ target_link_libraries(overlay_lib
   dl
   pthread
   cairo
-  OpenCL
   $<$<BOOL:${HAVE_C2D_H}>:C2D2>
   ${GST_LIBRARIES}
 )

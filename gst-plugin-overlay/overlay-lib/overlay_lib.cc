@@ -77,6 +77,8 @@ using namespace std;
 #define CL_PERF_HINT_NORMAL_QCOM                    0x40C4
 #define CL_PERF_HINT_LOW_QCOM                       0x40C5
 
+std::shared_ptr<OpenClFuncs> OpenClKernel::ocl_ = nullptr;
+
 cl_device_id OpenClKernel::device_id_ = nullptr;
 cl_context OpenClKernel::context_ = nullptr;
 cl_command_queue OpenClKernel::command_queue_ = nullptr;
@@ -144,13 +146,20 @@ int32_t OpenClKernel::OpenCLInit ()
 
   GST_LOG ("Enter ");
 
+  if (nullptr == ocl_) {
+    ocl_ = OpenClFuncs::New();
+    if (nullptr == ocl_) {
+      return -EINVAL;
+    }
+  }
+
   cl_context_properties properties[] = {CL_CONTEXT_PLATFORM, (cl_context_properties)0, CL_CONTEXT_PERF_HINT_QCOM, CL_PERF_HINT_NORMAL_QCOM, 0};
   cl_platform_id plat = 0;
   cl_uint ret_num_platform = 0;
   cl_uint ret_num_devices = 0;
   cl_int cl_err;
 
-  cl_err = clGetPlatformIDs (1, &plat, &ret_num_platform);
+  cl_err = ocl_->GetPlatformIDs (1, &plat, &ret_num_platform);
   if ( (CL_SUCCESS != cl_err) || (ret_num_platform == 0)) {
     GST_ERROR ("Open cl hw platform not available. rc %d", cl_err);
     return -EINVAL;
@@ -158,23 +167,23 @@ int32_t OpenClKernel::OpenCLInit ()
 
   properties[1] = (cl_context_properties) plat;
 
-  cl_err = clGetDeviceIDs (plat, CL_DEVICE_TYPE_DEFAULT, 1, &device_id_,
+  cl_err = ocl_->GetDeviceIDs (plat, CL_DEVICE_TYPE_DEFAULT, 1, &device_id_,
       &ret_num_devices);
   if ( (CL_SUCCESS != cl_err) || (ret_num_devices != 1)) {
     GST_ERROR ("Open cl hw device not available. rc %d", cl_err);
     return -EINVAL;
   }
 
-  context_ = clCreateContext (properties, 1, &device_id_, NULL, NULL, &cl_err);
+  context_ = ocl_->CreateContext (properties, 1, &device_id_, NULL, NULL, &cl_err);
   if (CL_SUCCESS != cl_err) {
     GST_ERROR ("Failed to create Open cl context. rc: %d", cl_err);
     return -EINVAL;
   }
 
-  command_queue_ = clCreateCommandQueueWithProperties (context_, device_id_, 0,
+  command_queue_ = ocl_->CreateCommandQueueWithProperties (context_, device_id_, 0,
       &cl_err);
   if (CL_SUCCESS != cl_err) {
-    clReleaseContext (context_);
+    ocl_->ReleaseContext (context_);
     GST_ERROR ("Failed to create Open cl command queue. rc: %d", cl_err);
     return -EINVAL;
   }
@@ -199,17 +208,17 @@ int32_t OpenClKernel::OpenCLDeInit ()
   assert (context_ != nullptr);
 
   if (command_queue_) {
-    clReleaseCommandQueue (command_queue_);
+    ocl_->ReleaseCommandQueue (command_queue_);
     command_queue_ = nullptr;
   }
 
   if (context_) {
-    clReleaseContext (context_);
+    ocl_->ReleaseContext (context_);
     context_ = nullptr;
   }
 
   if (device_id_) {
-    clReleaseDevice (device_id_);
+    ocl_->ReleaseDevice (device_id_);
     device_id_ = nullptr;
   }
 
@@ -266,10 +275,10 @@ OpenClKernel::~OpenClKernel ()
   /* OpenCL program is created by reference instance which does not have
    * kernel instance. */
   if (kernel_) {
-    clReleaseKernel (kernel_);
+    ocl_->ReleaseKernel (kernel_);
     kernel_ = nullptr;
   } else if (prog_) {
-    clReleaseProgram (prog_);
+    ocl_->ReleaseProgram (prog_);
     prog_ = nullptr;
   }
   g_mutex_clear (&sync_.lock_);
@@ -301,14 +310,14 @@ int32_t OpenClKernel::BuildProgram (const std::string &path_to_src)
   cl_int num_program_devices = 1;
   const char *strings[] = { kernel_src.c_str () };
   const size_t length = kernel_src.size ();
-  prog_ = clCreateProgramWithSource (context_, num_program_devices, strings,
+  prog_ = ocl_->CreateProgramWithSource (context_, num_program_devices, strings,
       &length, &cl_err);
   if (CL_SUCCESS != cl_err) {
     GST_ERROR ("Fail to create CL program! ");
     return -EINVAL;
   }
 
-  cl_err = clBuildProgram (prog_, num_program_devices, &device_id_,
+  cl_err = ocl_->BuildProgram (prog_, num_program_devices, &device_id_,
       " -cl-fast-relaxed-math -D ARTIFACT_REMOVE ", nullptr, nullptr);
   if (CL_SUCCESS != cl_err) {
     std::string build_log = CreateCLKernelBuildLog ();
@@ -332,7 +341,7 @@ int32_t OpenClKernel::CreateKernelInstance ()
 
   assert (context_ != nullptr);
 
-  kernel_ = clCreateKernel (prog_, kernel_name_.c_str (), &cl_err);
+  kernel_ = ocl_->CreateKernel (prog_, kernel_name_.c_str (), &cl_err);
   if (CL_SUCCESS != cl_err) {
     GST_ERROR ("Failed to create Open cl kernel rc: %d", cl_err);
     return -EINVAL;
@@ -358,17 +367,17 @@ int32_t OpenClKernel::MapBuffer (cl_mem &cl_buffer, void *vaddr, int32_t fd,
   mem_flags |= CL_MEM_EXT_HOST_PTR_QCOM;
 
   cl_mem_ion_host_ptr ionmem { };
-#ifdef HAVE_LINUX_DMA_HEAP_H
+#ifdef HAVE_CL_EXT_QCOM_H
   ionmem.ext_host_ptr.allocation_type   = CL_MEM_DMABUF_HOST_PTR_QCOM;
   ionmem.ext_host_ptr.host_cache_policy = CL_MEM_HOST_IOCOHERENT_QCOM;
 #else
   ionmem.ext_host_ptr.allocation_type = CL_MEM_ION_HOST_PTR_QCOM;
   ionmem.ext_host_ptr.host_cache_policy = CL_MEM_HOST_WRITEBACK_QCOM;
-#endif // HAVE_LINUX_DMA_HEAP_H
+#endif // HAVE_CL_EXT_QCOM_H
   ionmem.ion_hostptr = vaddr;
   ionmem.ion_filedesc = fd;
 
-  cl_buffer = clCreateBuffer (context_, mem_flags, size,
+  cl_buffer = ocl_->CreateBuffer (context_, mem_flags, size,
       mem_flags & CL_MEM_EXT_HOST_PTR_QCOM ? &ionmem : nullptr, &rc);
   if (CL_SUCCESS != rc) {
     GST_ERROR ("Cannot create cl buffer memory object! rc %d",
@@ -382,7 +391,7 @@ int32_t OpenClKernel::MapBuffer (cl_mem &cl_buffer, void *vaddr, int32_t fd,
 int32_t OpenClKernel::UnMapBuffer (cl_mem &cl_buffer)
 {
   if (cl_buffer) {
-    auto rc = clReleaseMemObject (cl_buffer);
+    auto rc = ocl_->ReleaseMemObject (cl_buffer);
     if (CL_SUCCESS != rc) {
       GST_ERROR ("cannot release buf! rc %d", rc);
       return -EINVAL;
@@ -406,8 +415,11 @@ int32_t OpenClKernel::MapImage (cl_mem &cl_buffer, void *vaddr, int32_t fd,
   format.image_channel_data_type = CL_UNSIGNED_INT8;
   format.image_channel_order = CL_RGBA;
 
-  clGetDeviceImageInfoQCOM (device_id_, width, height, &format,
+#ifdef HAVE_CL_EXT_QCOM_H
+  ocl_->GetDeviceImageInfoQCOM (device_id_, width, height, &format,
       CL_IMAGE_ROW_PITCH, sizeof (row_pitch), &row_pitch, NULL);
+#endif // HAVE_CL_EXT_QCOM_H
+
   if (stride < row_pitch) {
     GST_ERROR ("Error stride: %d platform stride: %d", stride,
         row_pitch);
@@ -420,13 +432,13 @@ int32_t OpenClKernel::MapImage (cl_mem &cl_buffer, void *vaddr, int32_t fd,
   mem_flags |= CL_MEM_EXT_HOST_PTR_QCOM;
 
   cl_mem_ion_host_ptr ionmem { };
-#ifdef HAVE_LINUX_DMA_HEAP_H
+#ifdef HAVE_CL_EXT_QCOM_H
   ionmem.ext_host_ptr.allocation_type   = CL_MEM_DMABUF_HOST_PTR_QCOM;
   ionmem.ext_host_ptr.host_cache_policy = CL_MEM_HOST_IOCOHERENT_QCOM;
 #else
   ionmem.ext_host_ptr.allocation_type = CL_MEM_ION_HOST_PTR_QCOM;
   ionmem.ext_host_ptr.host_cache_policy = CL_MEM_HOST_WRITEBACK_QCOM;
-#endif // HAVE_LINUX_DMA_HEAP_H
+#endif // HAVE_CL_EXT_QCOM_H
   ionmem.ion_hostptr = vaddr;
   ionmem.ion_filedesc = fd;
 
@@ -442,7 +454,7 @@ int32_t OpenClKernel::MapImage (cl_mem &cl_buffer, void *vaddr, int32_t fd,
   desc.num_samples = 0;
   desc.buffer = nullptr;
 
-  cl_buffer = clCreateImage (context_, mem_flags, &format, &desc,
+  cl_buffer = ocl_->CreateImage (context_, mem_flags, &format, &desc,
       mem_flags & CL_MEM_EXT_HOST_PTR_QCOM ? &ionmem : nullptr, &rc);
   if (CL_SUCCESS != rc) {
     GST_ERROR ("Cannot create cl image memory object! rc %d", rc);
@@ -487,7 +499,7 @@ int32_t OpenClKernel::SetKernelArgs (OpenClFrame &frame, DrawInfo args)
   cl_ushort mask_stride = args.stride;
 
   // __read_only image2d_t mask,   // 1
-  cl_err = clSetKernelArg (kernel_, arg_index++, sizeof(cl_mem),
+  cl_err = ocl_->SetKernelArg (kernel_, arg_index++, sizeof(cl_mem),
       &mask_to_process);
   if (CL_SUCCESS != cl_err) {
     GST_ERROR ("Failed to set Open cl kernel argument %d. rc: %d ",
@@ -496,7 +508,7 @@ int32_t OpenClKernel::SetKernelArgs (OpenClFrame &frame, DrawInfo args)
   }
 
   // __global uchar *frame,        // 2
-  cl_err = clSetKernelArg (kernel_, arg_index++, sizeof(cl_mem),
+  cl_err = ocl_->SetKernelArg (kernel_, arg_index++, sizeof(cl_mem),
       &buf_to_process);
   if (CL_SUCCESS != cl_err) {
     GST_ERROR ("Failed to set Open cl kernel argument %d. rc: %d ",
@@ -505,7 +517,7 @@ int32_t OpenClKernel::SetKernelArgs (OpenClFrame &frame, DrawInfo args)
   }
 
   // uint y_offset,                // 3
-  cl_err = clSetKernelArg (kernel_, arg_index++, sizeof(cl_uint), &offset_y);
+  cl_err = ocl_->SetKernelArg (kernel_, arg_index++, sizeof(cl_uint), &offset_y);
   if (CL_SUCCESS != cl_err) {
     GST_ERROR ("Failed to set Open cl kernel argument %d. rc: %d ",
         arg_index - 1, cl_err);
@@ -513,7 +525,7 @@ int32_t OpenClKernel::SetKernelArgs (OpenClFrame &frame, DrawInfo args)
   }
 
   // uint nv_offset,               // 4
-  cl_err = clSetKernelArg (kernel_, arg_index++, sizeof(cl_uint), &offset_nv);
+  cl_err = ocl_->SetKernelArg (kernel_, arg_index++, sizeof(cl_uint), &offset_nv);
   if (CL_SUCCESS != cl_err) {
     GST_ERROR ("Failed to set Open cl kernel argument %d. rc: %d ",
         arg_index - 1, cl_err);
@@ -521,7 +533,7 @@ int32_t OpenClKernel::SetKernelArgs (OpenClFrame &frame, DrawInfo args)
   }
 
   // ushort stride,                // 5
-  cl_err = clSetKernelArg (kernel_, arg_index++, sizeof(cl_ushort), &stride);
+  cl_err = ocl_->SetKernelArg (kernel_, arg_index++, sizeof(cl_ushort), &stride);
   if (CL_SUCCESS != cl_err) {
     GST_ERROR ("Failed to set Open cl kernel argument %d. rc: %d ",
         arg_index - 1, cl_err);
@@ -529,7 +541,7 @@ int32_t OpenClKernel::SetKernelArgs (OpenClFrame &frame, DrawInfo args)
   }
 
   // ushort swap_uv                // 6
-  cl_err = clSetKernelArg (kernel_, arg_index++, sizeof(cl_ushort), &swap_uv);
+  cl_err = ocl_->SetKernelArg (kernel_, arg_index++, sizeof(cl_ushort), &swap_uv);
   if (CL_SUCCESS != cl_err) {
     GST_ERROR ("Failed to set Open cl kernel argument %d. rc: %d ",
         arg_index - 1, cl_err);
@@ -537,7 +549,7 @@ int32_t OpenClKernel::SetKernelArgs (OpenClFrame &frame, DrawInfo args)
   }
 
   // ushort mask_stride,          // 7
-  cl_err = clSetKernelArg (kernel_, arg_index++, sizeof(cl_ushort), &mask_stride);
+  cl_err = ocl_->SetKernelArg (kernel_, arg_index++, sizeof(cl_ushort), &mask_stride);
   if (CL_SUCCESS != cl_err) {
     GST_ERROR ("Failed to set Open cl kernel argument %d. rc: %d ",
         arg_index - 1, cl_err);
@@ -562,7 +574,7 @@ void OpenClKernel::ClCompleteCallback (cl_event event,
     g_cond_signal (&sync->signal_);
     g_mutex_unlock (&sync->lock_);
   }
-  clReleaseEvent (event);
+  ocl_->ReleaseEvent (event);
 
   GST_LOG ("Exit ");
 }
@@ -580,7 +592,7 @@ int32_t OpenClKernel::RunCLKernel (bool wait_to_finish)
   size_t *local_work_size =
       local_size_[0] + local_size_[1] == 0 ? nullptr : local_size_;
 
-  cl_err = clEnqueueNDRangeKernel (command_queue_, kernel_, kernel_dimensions_,
+  cl_err = ocl_->EnqueueNDRangeKernel (command_queue_, kernel_, kernel_dimensions_,
       global_offset_, global_size_, local_work_size, 0, nullptr,
       wait_to_finish ? &kernel_event : nullptr);
   if (CL_SUCCESS != cl_err) {
@@ -592,7 +604,7 @@ int32_t OpenClKernel::RunCLKernel (bool wait_to_finish)
   if (wait_to_finish) {
     g_mutex_lock (&sync_.lock_);
     sync_.done_ = false;
-    cl_err = clSetEventCallback (kernel_event, CL_COMPLETE, &ClCompleteCallback,
+    cl_err = ocl_->SetEventCallback (kernel_event, CL_COMPLETE, &ClCompleteCallback,
         reinterpret_cast<void *> (&sync_));
     if (CL_SUCCESS != cl_err) {
       GST_ERROR ("Failed to set Open cl kernel callback! rc: %d ",
@@ -605,7 +617,7 @@ int32_t OpenClKernel::RunCLKernel (bool wait_to_finish)
 
   if (wait_to_finish) {
     g_mutex_lock (&sync_.lock_);
-    cl_err = clFlush (command_queue_);
+    cl_err = ocl_->Flush (command_queue_);
     if (CL_SUCCESS != cl_err) {
       GST_ERROR ("Failed to flush Open cl command queue! rc: %d ",
           cl_err);
@@ -633,7 +645,7 @@ std::string OpenClKernel::CreateCLKernelBuildLog ()
 {
   cl_int cl_err;
   size_t log_size;
-  cl_err = clGetProgramBuildInfo (prog_, device_id_, CL_PROGRAM_BUILD_LOG, 0,
+  cl_err = ocl_->GetProgramBuildInfo (prog_, device_id_, CL_PROGRAM_BUILD_LOG, 0,
       nullptr, &log_size);
   if (CL_SUCCESS != cl_err) {
     GST_ERROR ("Failed to get Open cl build log size. rc: %d ",
@@ -644,7 +656,7 @@ std::string OpenClKernel::CreateCLKernelBuildLog ()
   std::string build_log;
   build_log.reserve (log_size);
   void *log = static_cast<void *> (const_cast<char *> (build_log.data ()));
-  cl_err = clGetProgramBuildInfo (prog_, device_id_, CL_PROGRAM_BUILD_LOG,
+  cl_err = ocl_->GetProgramBuildInfo (prog_, device_id_, CL_PROGRAM_BUILD_LOG,
       log_size, log, nullptr);
   if (CL_SUCCESS != cl_err) {
     GST_ERROR ("Failed to get Open cl build log. rc: %d ",
