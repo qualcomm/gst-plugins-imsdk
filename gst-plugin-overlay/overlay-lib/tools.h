@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -37,15 +37,7 @@
 #include <sstream>
 #include <string>
 
-#ifdef HAVE_ANDROID_UTILS
-#include <cutils/properties.h>
-#include <utils/Log.h>
-#else
-#include <properties.h>
-#include <log.h>
-#undef LOG_TAG
-#define LOG_TAG "Overlay"
-#endif
+#include <gst/gst.h>
 
 #if defined(HAVE_LINUX_DMA_HEAP_H)
 #include <linux/dma-heap.h>
@@ -59,6 +51,24 @@
 #include <linux/dma-buf.h>
 #endif // HAVE_LINUX_DMA_BUF_H
 
+#define GST_CAT_DEFAULT ensure_debug_category()
+static GstDebugCategory *
+ensure_debug_category (void)
+{
+  static gsize category = 0;
+
+  if (g_once_init_enter (&category)) {
+    gsize cat_done;
+
+    cat_done = (gsize) _gst_debug_category_new("qtioverlay", 0,
+        "QTI overlay");
+
+    g_once_init_leave (&category, cat_done);
+  }
+
+  return (GstDebugCategory *) category;
+}
+
 namespace overlay {
 
 /** SyncStart
@@ -69,16 +79,16 @@ namespace overlay {
  **/
 inline void SyncStart (int32_t fd)
 {
-  ALOGV ("%s: Enter", __func__);
+  GST_LOG ("Enter");
 #ifdef HAVE_LINUX_DMA_BUF_H
   struct dma_buf_sync buf_sync;
   buf_sync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
 
   auto result = ioctl (fd, DMA_BUF_IOCTL_SYNC, &buf_sync);
   if (result)
-    ALOGE ("%s: Failed first DMA_BUF_IOCTL_SYNC start", __func__);
+    GST_ERROR ("Failed first DMA_BUF_IOCTL_SYNC start");
 #endif // HAVE_LINUX_DMA_BUF_H
-  ALOGV ("%s: Exit", __func__);
+  GST_LOG ("Exit");
 }
 
 /** SyncEnd
@@ -89,15 +99,15 @@ inline void SyncStart (int32_t fd)
  **/
 inline void SyncEnd (int32_t fd)
 {
-  ALOGV ("%s: Enter", __func__);
+  GST_LOG ("Enter");
 #ifdef HAVE_LINUX_DMA_BUF_H
   struct dma_buf_sync buf_sync;
   buf_sync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
 
   auto result = ioctl (fd, DMA_BUF_IOCTL_SYNC, &buf_sync);
   if (result)
-    ALOGE ("%s: Failed first DMA_BUF_IOCTL_SYNC End", __func__);
+    GST_ERROR ("Failed first DMA_BUF_IOCTL_SYNC End");
 #endif // HAVE_LINUX_DMA_BUF_H
-  ALOGV ("%s: Exit", __func__);
+  GST_LOG ("Exit");
 }
 }  // namespace overlay

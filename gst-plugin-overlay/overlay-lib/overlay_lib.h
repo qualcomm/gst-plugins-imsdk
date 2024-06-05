@@ -28,17 +28,12 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #pragma once
 
-#ifdef HAVE_ANDROID_UTILS
-#include <cutils/properties.h>
-#else
-#include <properties.h>
-#endif
 #include <gst/gst.h>
 #include <cairo/cairo.h>
 #include <sys/time.h>
@@ -71,7 +66,6 @@ namespace overlay {
 // Remove comment marker to measure time taken in overlay drawing.
 //#define DEBUG_BLIT_TIME
 
-#define PROP_DUMP_BLOB_IMAGE        "persist.overlay.dump.blob"
 #define PROP_BOX_STROKE_WIDTH       "persist.overlay.stroke.width"
 
 #define OV_UNUSED(a) (void)(a)
@@ -685,10 +679,10 @@ public:
         *avr_time = diff;
       }
       *avr_time = (15 * (*avr_time) + diff) / 16;
-      OVDBG_INFO ("%s: Current: %.2f ms Avrg: %.2f ms", str.c_str(),
+      GST_INFO ("%s: Current: %.2f ms Avrg: %.2f ms", str.c_str(),
           diff / 1000.0, (*avr_time) / 1000.0);
     } else {
-      OVDBG_INFO ("%s: %.2f ms", str.c_str(), diff / 1000.0);
+      GST_INFO ("%s: %.2f ms", str.c_str(), diff / 1000.0);
     }
   }
 

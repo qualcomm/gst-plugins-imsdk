@@ -46,11 +46,6 @@ check_include_file_cxx("linux/dma-heap.h" HAVE_LINUX_DMA_HEAP_H)
 include(CheckIncludeFile)
 check_include_file("linux/dma-buf.h" HAVE_LINUX_DMA_BUF_H)
 
-# Check whether android utilities are present.
-check_include_file("cutils/properties.h" HAVE_ANDROID_UTILS)
-
-add_compile_definitions($<$<BOOL:${HAVE_ANDROID_UTILS}>:HAVE_ANDROID_UTILS>)
-
 # Common compiler flags.
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
