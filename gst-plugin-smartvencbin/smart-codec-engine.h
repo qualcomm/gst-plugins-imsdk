@@ -9,6 +9,7 @@
 #include <gst/gst.h>
 #include <gst/video/video.h>
 #include <time.h>
+#include <gst/base/gstdataqueue.h>
 
 G_BEGIN_DECLS
 
@@ -46,6 +47,7 @@ struct _RectDeltaQP {
 struct _RectDeltaQPs {
   guint num_rectangles;
   RectDeltaQP mRectangle[MAX_RECT_ROI_NUM];
+  guint64 timestamp;
 };
 
 GST_API SmartCodecEngine *
@@ -95,9 +97,12 @@ gst_smartcodec_engine_process_output_videobuffer (SmartCodecEngine * engine,
 GST_API void
 gst_smartcodec_engine_get_fps (SmartCodecEngine * engine, guint * n, guint * d);
 
-GST_API void
-gst_smartcodec_engine_get_rois_with_qp (SmartCodecEngine * engine,
+GST_API gboolean
+gst_smartcodec_engine_get_rois_from_queue (SmartCodecEngine * engine,
     RectDeltaQPs * rect_delta_qps);
+
+GST_API void
+gst_smartcodec_engine_remove_rois_from_queue (SmartCodecEngine * engine);
 
 GST_API void
 gst_smartcodec_engine_check_elapsed_time_and_print_bwstats (
@@ -108,7 +113,8 @@ gst_smartcodec_engine_push_ctrl_buff (SmartCodecEngine * engine, guint8 * buff,
     guint64 timestamp);
 
 GST_API void
-gst_smartcodec_engine_push_ml_buff (SmartCodecEngine * engine, gchar * data);
+gst_smartcodec_engine_push_ml_buff (SmartCodecEngine * engine, gchar * data,
+    guint64 timestamp);
 
 GST_API void
 gst_smartcodec_engine_flush (SmartCodecEngine * engine);

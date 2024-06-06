@@ -18,8 +18,7 @@ struct _SmartCodecEngine {
   GstClockTime         last_buffer_ts;
   guint                stats_mask;
   BwStats              bw_stats;
-
-  RectDeltaQPs         *rect_delta_qps;
+  GstDataQueue         *ml_rois_queue;
 
   // VideoCtrl library handle.
   gpointer             videoctrlhandle;
@@ -63,8 +62,6 @@ gst_smartcodec_engine_new ()
   engine->bw_stats.last_stats_time_ms = 0;
   engine->bw_stats.next_stats_time_ms = 0;
 
-  engine->rect_delta_qps = g_new0 (RectDeltaQPs, 1);
-
   if ((engine->videoctrlhandle =
       dlopen ("libVideoCtrl.so", RTLD_NOW)) == NULL) {
     GST_ERROR ("Failed to open VideoCtrl library, error: %s!", dlerror());
@@ -104,10 +101,22 @@ gst_smartcodec_engine_free (SmartCodecEngine * engine)
   if (engine->videoctrlhandle != NULL)
     dlclose (engine->videoctrlhandle);
 
-  if (engine->rect_delta_qps != NULL)
-    g_free (engine->rect_delta_qps);
+  if (engine->ml_rois_queue != NULL) {
+    gst_data_queue_set_flushing (engine->ml_rois_queue, TRUE);
+    gst_data_queue_flush (engine->ml_rois_queue);
+    gst_object_unref (GST_OBJECT_CAST (engine->ml_rois_queue));
+    engine->ml_rois_queue = NULL;
+  }
 
   g_free (engine);
+}
+
+static gboolean
+queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
+    guint64 time, gpointer checkdata)
+{
+  // There won't be any condition limiting for the buffer queue size.
+  return FALSE;
 }
 
 void
@@ -118,6 +127,9 @@ gst_smartcodec_engine_init (SmartCodecEngine * engine,
 
   gst_video_info_from_caps (&engine->video_info, caps);
   engine->stats_mask = stats_mask;
+
+  engine->ml_rois_queue =
+      gst_data_queue_new (queue_is_full_cb, NULL, NULL, NULL);
 }
 
 void
@@ -149,7 +161,8 @@ gst_smartcodec_engine_config (SmartCodecEngine * engine,
   config.smart_framerate_en = smart_framerate_en;
   config.smart_gop_en = smart_gop_en;
 
-  config.fps_main = engine->video_info.fps_n;
+  config.fps_main = (guint) (engine->video_info.fps_n /
+      engine->video_info.fps_d);
   config.fps_ctrl = fps_ctrl;
 
   config.width = width;
@@ -291,11 +304,25 @@ gst_smartcodec_engine_process_output_videobuffer (SmartCodecEngine * engine,
 }
 
 static void
+gst_free_ml_rois_queue_item (gpointer data)
+{
+  GstDataQueueItem *item = (GstDataQueueItem *) data;
+  RectDeltaQPs *rect_delta_qps = (RectDeltaQPs *) item->object;
+  g_free (rect_delta_qps);
+  g_slice_free (GstDataQueueItem, item);
+}
+
+static void
 gst_smartcodec_engine_handle_rois (SmartCodecEngine * engine,
-    std::vector<::videoctrl::RoiQPRectangle>& rects)
+    std::vector<::videoctrl::RoiQPRectangle>& rects, guint64 timestamp)
 {
   std::lock_guard<std::mutex> lock (engine->engine_lock);
-  engine->rect_delta_qps->num_rectangles = 0;
+
+  GstDataQueueItem *item = NULL;
+  RectDeltaQPs *rect_delta_qps = g_new0 (RectDeltaQPs, 1);
+
+  rect_delta_qps->num_rectangles = 0;
+  rect_delta_qps->timestamp = timestamp;
 
   const int resolution_width  = GST_VIDEO_INFO_WIDTH (&engine->video_info);
   const int resolution_height = GST_VIDEO_INFO_HEIGHT (&engine->video_info);
@@ -340,13 +367,23 @@ gst_smartcodec_engine_handle_rois (SmartCodecEngine * engine,
         "roi_width=%d roi_height=%d", __func__, left_val,
         top_val, right_val, bottom_val, width, height);
 
-    const guint arrayIdx = engine->rect_delta_qps->num_rectangles;
-    engine->rect_delta_qps->mRectangle[arrayIdx].left = left_val;
-    engine->rect_delta_qps->mRectangle[arrayIdx].top = top_val;
-    engine->rect_delta_qps->mRectangle[arrayIdx].width = width;
-    engine->rect_delta_qps->mRectangle[arrayIdx].height = height;
-    engine->rect_delta_qps->mRectangle[arrayIdx].delta_qp = rects[i].qp;
-    ++engine->rect_delta_qps->num_rectangles;
+    const guint arrayIdx = rect_delta_qps->num_rectangles;
+    rect_delta_qps->mRectangle[arrayIdx].left = left_val;
+    rect_delta_qps->mRectangle[arrayIdx].top = top_val;
+    rect_delta_qps->mRectangle[arrayIdx].width = width;
+    rect_delta_qps->mRectangle[arrayIdx].height = height;
+    rect_delta_qps->mRectangle[arrayIdx].delta_qp = rects[i].qp;
+    ++rect_delta_qps->num_rectangles;
+  }
+
+  // Push rois in the queue
+  item = g_slice_new0 (GstDataQueueItem);
+  item->object = GST_MINI_OBJECT (rect_delta_qps);
+  item->visible = TRUE;
+  item->destroy = gst_free_ml_rois_queue_item;
+  if (!gst_data_queue_push (engine->ml_rois_queue, item)) {
+    GST_ERROR ("ERROR: Cannot push data to the queue!");
+    item->destroy (item);
   }
 }
 
@@ -357,17 +394,48 @@ gst_smartcodec_engine_get_fps (SmartCodecEngine * engine, guint * n, guint * d)
   *d = engine->video_info.fps_d;
 }
 
-void
-gst_smartcodec_engine_get_rois_with_qp (SmartCodecEngine * engine,
+gboolean
+gst_smartcodec_engine_get_rois_from_queue (SmartCodecEngine * engine,
     RectDeltaQPs * rect_delta_qps)
 {
-  GST_INFO ("%u rois", engine->rect_delta_qps->num_rectangles);
-
   std::lock_guard<std::mutex> lock (engine->engine_lock);
-  for (int i=0; i < engine->rect_delta_qps->num_rectangles; ++i) {
-    rect_delta_qps->mRectangle[i] = engine->rect_delta_qps->mRectangle[i];
+  GstDataQueueItem *item = NULL;
+  RectDeltaQPs *rect_delta_qps_itm = NULL;
+
+  if (gst_data_queue_is_empty (engine->ml_rois_queue)) {
+    return FALSE;
   }
-  rect_delta_qps->num_rectangles = engine->rect_delta_qps->num_rectangles;
+
+  if (!gst_data_queue_peek (engine->ml_rois_queue, &item)) {
+    GST_INFO ("ml_rois_queue flushing");
+    return FALSE;
+  }
+  rect_delta_qps_itm = (RectDeltaQPs *) item->object;
+
+  for (int i=0; i < rect_delta_qps_itm->num_rectangles; ++i) {
+    rect_delta_qps->mRectangle[i] = rect_delta_qps_itm->mRectangle[i];
+  }
+  rect_delta_qps->num_rectangles = rect_delta_qps_itm->num_rectangles;
+  rect_delta_qps->timestamp = rect_delta_qps_itm->timestamp;
+  return TRUE;
+}
+
+void
+gst_smartcodec_engine_remove_rois_from_queue (SmartCodecEngine * engine)
+{
+  std::lock_guard<std::mutex> lock (engine->engine_lock);
+  GstDataQueueItem *item = NULL;
+
+  if (gst_data_queue_is_empty (engine->ml_rois_queue)) {
+    return;
+  }
+
+  if (!gst_data_queue_pop (engine->ml_rois_queue, &item)) {
+    GST_INFO ("buffers_queue flushing");
+    return;
+  }
+
+  item->destroy (item);
 }
 
 void
@@ -417,7 +485,8 @@ gst_smartcodec_engine_push_ctrl_buff (SmartCodecEngine * engine, guint8 * buff,
 }
 
 void
-gst_smartcodec_engine_push_ml_buff (SmartCodecEngine * engine, gchar * data)
+gst_smartcodec_engine_push_ml_buff (SmartCodecEngine * engine, gchar * data,
+    guint64 timestamp)
 {
   if (NULL == data) {
     GST_ERROR ("invalid data");
@@ -490,7 +559,7 @@ gst_smartcodec_engine_push_ml_buff (SmartCodecEngine * engine, gchar * data)
   }
 
   engine->videoctrlengine->PushMLData (rects);
-  gst_smartcodec_engine_handle_rois (engine, rects);
+  gst_smartcodec_engine_handle_rois (engine, rects, timestamp);
 }
 
 void
