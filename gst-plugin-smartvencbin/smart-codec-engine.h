@@ -68,7 +68,8 @@ gst_smartcodec_engine_config (SmartCodecEngine * engine,
     guint width,
     guint height,
     guint stride,
-    guint fps_ctrl,
+    guint fps_ctrl_n,
+    guint fps_ctrl_d,
     guint target_bitrate,
     guint initial_goplength,
     guint long_goplength,
@@ -110,7 +111,7 @@ gst_smartcodec_engine_check_elapsed_time_and_print_bwstats (
 
 GST_API void
 gst_smartcodec_engine_push_ctrl_buff (SmartCodecEngine * engine, guint8 * buff,
-    guint64 timestamp);
+    guint32 stride, guint64 timestamp);
 
 GST_API void
 gst_smartcodec_engine_push_ml_buff (SmartCodecEngine * engine, gchar * data,

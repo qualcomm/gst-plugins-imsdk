@@ -322,8 +322,6 @@ gst_venc_init_session (GstVideoEncBin * vencbin, GstCaps * caps)
 static void
 gst_venc_init_video_crtl_session (GstVideoEncBin * vencbin, GstCaps * caps)
 {
-  guint ctrl_fps = 0;
-
   GST_INFO_OBJECT (vencbin, "gst_venc_init_video_crtl_session");
 
   if (NULL == vencbin || NULL == caps) {
@@ -338,8 +336,6 @@ gst_venc_init_video_crtl_session (GstVideoEncBin * vencbin, GstCaps * caps)
   }
 
   gst_video_info_from_caps (&vencbin->video_ctrl_info, caps);
-  ctrl_fps = (guint) (vencbin->video_ctrl_info.fps_n /
-      vencbin->video_ctrl_info.fps_d);
 
   // Set config of the engine
   gst_smartcodec_engine_config (vencbin->engine,
@@ -349,7 +345,8 @@ gst_venc_init_video_crtl_session (GstVideoEncBin * vencbin, GstCaps * caps)
       GST_VIDEO_INFO_WIDTH (&vencbin->video_ctrl_info),
       GST_VIDEO_INFO_HEIGHT (&vencbin->video_ctrl_info),
       vencbin->video_ctrl_info.stride[0],
-      ctrl_fps,
+      vencbin->video_ctrl_info.fps_n,
+      vencbin->video_ctrl_info.fps_d,
       vencbin->target_bitrate,
       vencbin->initial_goplength,
       vencbin->long_goplength,
@@ -550,6 +547,7 @@ gst_venc_bin_sinkctrl_pad_chain (GstPad * pad, GstObject * parent,
   GST_DEBUG_OBJECT (vencbin, "Push ctrl buffer");
   gst_smartcodec_engine_push_ctrl_buff (vencbin->engine,
       GST_VIDEO_FRAME_PLANE_DATA (&ctrlframedata->vframe, 0),
+      GST_VIDEO_FRAME_PLANE_STRIDE (&ctrlframedata->vframe, 0),
       GST_BUFFER_TIMESTAMP (ctrlframedata->buffer));
 
   return retval;

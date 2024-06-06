@@ -140,7 +140,8 @@ gst_smartcodec_engine_config (SmartCodecEngine * engine,
     guint width,
     guint height,
     guint stride,
-    guint fps_ctrl,
+    guint fps_ctrl_n,
+    guint fps_ctrl_d,
     guint target_bitrate,
     guint initial_goplength,
     guint long_goplength,
@@ -161,9 +162,10 @@ gst_smartcodec_engine_config (SmartCodecEngine * engine,
   config.smart_framerate_en = smart_framerate_en;
   config.smart_gop_en = smart_gop_en;
 
-  config.fps_main = (guint) (engine->video_info.fps_n /
-      engine->video_info.fps_d);
-  config.fps_ctrl = fps_ctrl;
+  config.fps_main_n = engine->video_info.fps_n;
+  config.fps_main_d = engine->video_info.fps_d;
+  config.fps_ctrl_n = fps_ctrl_n;
+  config.fps_ctrl_d = fps_ctrl_d;
 
   config.width = width;
   config.height = height;
@@ -474,14 +476,14 @@ gst_smartcodec_engine_check_elapsed_time_and_print_bwstats (
 
 void
 gst_smartcodec_engine_push_ctrl_buff (SmartCodecEngine * engine, guint8 * buff,
-    guint64 timestamp)
+    guint32 stride, guint64 timestamp)
 {
   if (NULL == buff) {
     GST_ERROR ("invalid buff");
     return;
   }
 
-  engine->videoctrlengine->PushBuffer (buff, timestamp);
+  engine->videoctrlengine->PushBuffer (buff, stride, timestamp);
 }
 
 void
