@@ -2461,18 +2461,12 @@ gst_overlay_mask_overlay_to_string (gpointer data, gpointer user_data)
 {
   GstOverlayUsrMask * ov_data = (GstOverlayUsrMask *) data;
   GstOverlayString * output = (GstOverlayString *) user_data;
+  gchar * tmp;
+  gint size;
 
-  gint size = GST_OVERLAY_MASK_STRING_SIZE + strlen (ov_data->base.user_id);
-  gchar * tmp = (gchar *) malloc(size);
-  if (!tmp) {
-    GST_ERROR ("%s: failed to allocate memory", __func__);
-    return;
-  }
-
-  gint ret;
   if (ov_data->type == OverlayPrivacyMaskType::kRectangle ||
       ov_data->type == OverlayPrivacyMaskType::kInverseRectangle) {
-    ret = snprintf (tmp, size,
+    tmp = g_strdup_printf (
         "%s, rectangle=<%d, %d, %d, %d>, inverse=%s, color=0x%x, dest-rect=<%d, %d, %d, %d>; ",
         ov_data->base.user_id, ov_data->rectangle.start_x,
         ov_data->rectangle.start_y, ov_data->rectangle.width,
@@ -2491,14 +2485,14 @@ gst_overlay_mask_overlay_to_string (gpointer data, gpointer user_data)
         tmp_y += ", ";
       }
     }
-    ret = snprintf (tmp, size,
+    tmp = g_strdup_printf (
         "%s, polygon=<%d, <%s>, <%s>>, inverse=%s, color=0x%x, dest-rect=<%d, %d, %d, %d>; ",
         ov_data->base.user_id, ov_data->polygon.n_sides, tmp_x.c_str(), tmp_y.c_str(),
         ov_data->type == OverlayPrivacyMaskType::kPolygon ? "false" : "true",
         ov_data->color, ov_data->dest_rect.x,
         ov_data->dest_rect.y, ov_data->dest_rect.w, ov_data->dest_rect.h);
   } else {
-    ret = snprintf (tmp, size,
+    tmp = g_strdup_printf (
         "%s, circle=<%d, %d, %d>, inverse=%s, color=0x%x, dest-rect=<%d, %d, %d, %d>; ",
         ov_data->base.user_id, ov_data->circle.center_x,
         ov_data->circle.center_y, ov_data->circle.radius,
@@ -2507,9 +2501,8 @@ gst_overlay_mask_overlay_to_string (gpointer data, gpointer user_data)
         ov_data->dest_rect.y, ov_data->dest_rect.w, ov_data->dest_rect.h);
   }
 
-  if (ret < 0 || ret >= size) {
-    GST_ERROR ("%s: String size %d exceed size %d", __func__, ret, size);
-    free (tmp);
+  if (!tmp) {
+    GST_ERROR ("%s: failed to allocate memory", __func__);
     return;
   }
 
