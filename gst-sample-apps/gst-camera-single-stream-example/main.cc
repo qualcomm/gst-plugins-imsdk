@@ -24,7 +24,7 @@
  * gst-camera-single-stream-example -o 2--width=1920 --height=1080 -f
  * /opt/file%d.yuv
  * For RTSP STREAMING on device:
- * gst-camera-single-stream-example -o 3 --width=1920 --height=1080
+ * gst-camera-single-stream-example -o 3 --width=1920 --height=1080 -i <ip> -p <port>
  *
  * Help:
  * gst-camera-single-stream-example --help
@@ -52,6 +52,8 @@
 #define DEFAULT_OP_MP4_FILENAME "/opt/video.mp4"
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
+#define DEFAULT_IP "127.0.0.1"
+#define DEFAULT_PORT 8554
 
 #define GST_APP_SUMMARY "This app enables the users to use single camera with" \
   " different outputs such as preview,encode,YUV Dump and RTSP streaming \n" \
@@ -63,7 +65,11 @@
   "For YUV dump:\n" \
   "  gst-camera-single-stream-example -o 2 -w 1920 -h 1080 " \
   "\nFor RTSP Streaming:(run the rtsp server or follow the docs steps ) \n" \
-  "  gst-camera-single-stream-example -o 3 -w 1280 -h 720 " \
+  "  gst-camera-single-stream-example -o 3 -w 1280 -h 720 \n" \
+  "  Run below command on a separate shell to start the rtsp server:\n" \
+  "  gst-rtsp-server -p 8900 -a <device_ip> -m /live \"( udpsrc name=pay0" \
+  "port=<port> caps=\\\"application/x-rtp,media=video,clock-rate=90000," \
+  "encoding-name=H264,payload=96\\\" )\"\n" \
   "\nOutput:\n" \
   "  Upon execution, application will generates output as user selected. \n" \
   "  In case Video Encoding the output video stored at /opt/video.mp4 \n" \
@@ -72,9 +78,11 @@
 // Structure to hold the application context
 struct GstCameraAppContext : GstAppContext {
   gchar *output_file;
+  gchar *ip_address;
   GstSinkType sinktype;
   gint width;
   gint height;
+  gint port_num;
 };
 
 /**
@@ -99,6 +107,8 @@ gst_app_context_new ()
   ctx->mloop = NULL;
   ctx->plugins = NULL;
   ctx->output_file = NULL;
+  ctx->ip_address = DEFAULT_IP;
+  ctx->port_num = DEFAULT_PORT;
   ctx->sinktype = GST_WAYLANDSINK;
   ctx->width = DEFAULT_WIDTH;
   ctx->height = DEFAULT_HEIGHT;
@@ -266,8 +276,8 @@ create_pipe (GstCameraAppContext * appctx)
       g_object_set (G_OBJECT (rtph264pay), "pt", 96, NULL);
 
       udpsink = gst_element_factory_make ("udpsink", "udpsink");
-      g_object_set (G_OBJECT (udpsink), "host", "127.0.0.1", NULL);
-      g_object_set (G_OBJECT (udpsink), "port", 8554, NULL);
+      g_object_set (G_OBJECT (udpsink), "host", appctx->ip_address, NULL);
+      g_object_set (G_OBJECT (udpsink), "port", appctx->port_num, NULL);
 
       gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter,
           v4l2h264enc, h264parse, rtph264pay, udpsink, NULL);
@@ -377,6 +387,12 @@ main (gint argc, gchar *argv[])
       "\n\t1-VIDEOENCODING"
       "\n\t2-YUVDUMP"
       "\n\t3-RTSPSTREAMING" },
+    { "ip", 'i', 0, G_OPTION_ARG_STRING,
+      &appctx->ip_address,
+      "Valid IP address in case of RSTP streaming output" },
+    { "port", 'p', 0, G_OPTION_ARG_INT,
+      &appctx->port_num,
+      "Valid port number in case of RSTP streaming output" },
     { NULL }
     };
 
