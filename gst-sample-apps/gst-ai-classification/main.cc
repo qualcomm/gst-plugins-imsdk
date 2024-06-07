@@ -92,13 +92,15 @@ build_pad_property (GValue * property, gint values[], gint num)
  *
  * @param appctx Application Context Pointer.
  * @param model_type Type of Model container for the Runtime.
+ * @param model_format Model format INT8 or UINT8.
  * @param model_path Location of Model Container.
  * @param labels_path Location of Model Labels.
+ * @param constants constants to dequantize values
  */
 static gboolean
 create_pipe (GstAppContext * appctx, GstModelType model_type,
     GstModelFormatType model_format, const gchar * model_path,
-    const gchar * labels_path)
+    const gchar * labels_path, const gchar * constants)
 {
   GstElement *qtiqmmfsrc, *qmmfsrc_caps, *qtivtransform, *queue[QUEUE_COUNT];
   GstElement *tee, *qtimlvconverter, *qtimlelement;
@@ -269,8 +271,7 @@ create_pipe (GstAppContext * appctx, GstModelType model_type,
     if (model_format == GST_MODEL_FORMAT_INT8) {
       g_object_set (G_OBJECT (qtimlvclassification),
           "extra-operation", GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX,
-          "constants", DEFAULT_CONSTANTS,
-          NULL);
+          "constants", constants, NULL);
     }
   } else {
     g_printerr ("Module mobilenet is not available in qtimlvclassification.\n");
@@ -414,6 +415,7 @@ main (gint argc, gchar * argv[])
   GOptionContext *ctx = NULL;
   const gchar *model_path = NULL;
   const gchar *labels_path = DEFAULT_CLASSIFICATION_LABELS;
+  const gchar *constants = DEFAULT_CONSTANTS;
   const gchar *app_name = NULL;
   GstAppContext appctx = {};
   GstModelType model_type = GST_MODEL_TYPE_SNPE;
@@ -453,6 +455,14 @@ main (gint argc, gchar * argv[])
       "      Default labels path: " DEFAULT_CLASSIFICATION_LABELS,
       "/PATH"
     },
+    { "constants", 'c', 0, G_OPTION_ARG_STRING,
+      &constants,
+      "Constants, offsets and coefficients used by the chosen module \n"
+      "for post-processing of incoming tensors."
+      " Applicable only for some modules\n"
+      "      Default constants: " DEFAULT_CONSTANTS,
+      "/CONSTANTS"
+    },
     { NULL }
   };
 
@@ -460,11 +470,11 @@ main (gint argc, gchar * argv[])
 
   snprintf (help_description, 1023, "\nExample:\n"
       "  %s --ml-framework=1\n"
-      "  %s -f 2\n"
+      "  %s -f 2 -t 2 -c  \"%s\" \n"
       "  %s -f 1 --model=%s --labels=%s\n"
       "\nThis Sample App demonstrates Classification on Live Stream",
-      app_name, app_name, app_name, DEFAULT_SNPE_CLASSIFICATION_MODEL,
-      DEFAULT_CLASSIFICATION_LABELS);
+      app_name, app_name, DEFAULT_CONSTANTS, app_name,
+      DEFAULT_SNPE_CLASSIFICATION_MODEL, DEFAULT_CLASSIFICATION_LABELS);
   help_description[1023] = '\0';
 
   // Parse command line entries.
@@ -545,7 +555,8 @@ main (gint argc, gchar * argv[])
   appctx.pipeline = pipeline;
 
   // Build the pipeline, link all elements in the pipeline
-  ret = create_pipe (&appctx, model_type, model_format, model_path, labels_path);
+  ret = create_pipe (&appctx, model_type, model_format, model_path,
+            labels_path, constants);
   if (!ret) {
     g_printerr ("ERROR: failed to create GST pipe.\n");
     destroy_pipe (&appctx);

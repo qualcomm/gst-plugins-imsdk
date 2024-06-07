@@ -14,12 +14,8 @@
 struct _SmartCodecEngine {
   std::mutex           engine_lock;
   GstVideoInfo         video_info;
-  guint                cur_fr_divider;
   GstClockTime         last_buffer_ts;
-  guint                stats_mask;
-  BwStats              bw_stats;
-
-  RectDeltaQPs         *rect_delta_qps;
+  GstDataQueue         *ml_rois_queue;
 
   // VideoCtrl library handle.
   gpointer             videoctrlhandle;
@@ -52,18 +48,8 @@ gst_smartcodec_engine_new ()
   engine = g_new0 (SmartCodecEngine, 1);
   g_return_val_if_fail (engine != NULL, NULL);
 
-  engine->cur_fr_divider = 1;
   engine->last_buffer_ts = 0;
-  engine->stats_mask = 0;
   gst_video_info_init (&engine->video_info);
-
-  engine->bw_stats.total_size = 0;
-  engine->bw_stats.total_frames = 0;
-  engine->bw_stats.initial_time_ms = 0;
-  engine->bw_stats.last_stats_time_ms = 0;
-  engine->bw_stats.next_stats_time_ms = 0;
-
-  engine->rect_delta_qps = g_new0 (RectDeltaQPs, 1);
 
   if ((engine->videoctrlhandle =
       dlopen ("libVideoCtrl.so", RTLD_NOW)) == NULL) {
@@ -104,31 +90,196 @@ gst_smartcodec_engine_free (SmartCodecEngine * engine)
   if (engine->videoctrlhandle != NULL)
     dlclose (engine->videoctrlhandle);
 
-  if (engine->rect_delta_qps != NULL)
-    g_free (engine->rect_delta_qps);
+  if (engine->ml_rois_queue != NULL) {
+    gst_data_queue_set_flushing (engine->ml_rois_queue, TRUE);
+    gst_data_queue_flush (engine->ml_rois_queue);
+    gst_object_unref (GST_OBJECT_CAST (engine->ml_rois_queue));
+    engine->ml_rois_queue = NULL;
+  }
 
   g_free (engine);
 }
 
-void
-gst_smartcodec_engine_set_callbacks (SmartCodecEngine * engine,
-    GstBitrateReceivedCallback bitrate_callback,
-    GstFRDeviderReceivedCallback fr_callback,
-    GstReleaseBufferCallback release_buffer_callback,
-    gpointer user_data)
+static gboolean
+queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
+    guint64 time, gpointer checkdata)
 {
-  engine->videoctrlengine->SetCallbacks (bitrate_callback, fr_callback,
-      release_buffer_callback, user_data);
+  // There won't be any condition limiting for the buffer queue size.
+  return FALSE;
 }
 
 void
 gst_smartcodec_engine_init (SmartCodecEngine * engine,
-    GstCaps * caps, guint stats_mask)
+    GstCaps * caps)
 {
   GST_INFO ("initializing tsStore and frame dropper");
 
   gst_video_info_from_caps (&engine->video_info, caps);
-  engine->stats_mask = stats_mask;
+
+  engine->ml_rois_queue =
+      gst_data_queue_new (queue_is_full_cb, NULL, NULL, NULL);
+}
+
+static gboolean
+roi_quality_item (GQuark id, const GValue * value, gpointer data)
+{
+  ::videoctrl::Config *config = (::videoctrl::Config *) data;
+
+  ::videoctrl::RoiQualitys q;
+  g_strlcpy (q.qualitys_lb, g_quark_to_string (id), sizeof (q.qualitys_lb));
+  q.qualitys_qp = g_value_get_int (value);
+  config->roi_qualitys.push_back (q);
+
+  GST_INFO ("ROI QPs: %s, qp: %d", q.qualitys_lb, q.qualitys_qp);
+
+  return TRUE;
+}
+
+void
+gst_smartcodec_engine_process_output_caps (SmartCodecEngine * engine,
+    GstCaps *caps)
+{
+  GstStructure *structure = NULL;
+
+  // Check which encoder is used and configure video-ctrl lib
+  if (caps) {
+    structure = gst_caps_get_structure (caps, 0);
+
+    if (gst_structure_has_name (structure, "video/x-h264")) {
+      engine->videoctrlengine->SetEncoderType (::videoctrl::ENCODER_H264);
+    } else if (gst_structure_has_name (structure, "video/x-h265")) {
+      engine->videoctrlengine->SetEncoderType (::videoctrl::ENCODER_H265);
+    }
+  }
+}
+
+void
+gst_smartcodec_engine_config (SmartCodecEngine * engine,
+    gboolean smart_framerate_en,
+    gboolean smart_gop_en,
+    guint width,
+    guint height,
+    guint stride,
+    guint fps_ctrl_n,
+    guint fps_ctrl_d,
+    guint max_bitrate,
+    guint default_goplength,
+    guint max_goplength,
+    GstStructure * levels_override,
+    GstStructure * roi_qualitys,
+    GstBitrateReceivedCallback bitrate_callback,
+    GstGOPLengthReceivedCallback goplength_callback,
+    GstReleaseBufferCallback release_buffer_callback,
+    gpointer user_data)
+{
+  guint idx = 0;
+  ::videoctrl::Config config;
+
+  config.smart_framerate_en = smart_framerate_en;
+  config.smart_gop_en = smart_gop_en;
+
+  config.fps_main_n = engine->video_info.fps_n;
+  config.fps_main_d = engine->video_info.fps_d;
+  config.fps_ctrl_n = fps_ctrl_n;
+  config.fps_ctrl_d = fps_ctrl_d;
+
+  config.hd_width = GST_VIDEO_INFO_WIDTH (&engine->video_info);
+  config.hd_height = GST_VIDEO_INFO_HEIGHT (&engine->video_info);
+  config.width = width;
+  config.height = height;
+  config.stride = stride;
+  config.max_bitrate = max_bitrate;
+  config.default_gop_len = default_goplength;
+  config.max_gop_len = max_goplength;
+
+  config.callbacks.bitrate_callback = bitrate_callback;
+  config.callbacks.goplength_callback = goplength_callback;
+  config.callbacks.release_buffer_callback = release_buffer_callback;
+  config.callbacks.user_data = user_data;
+
+  if (levels_override &&
+      gst_structure_has_name (levels_override, "LevelsOverride")) {
+    GST_INFO ("Has level override values");
+
+    if (gst_structure_has_field (levels_override, "bitrate_static")) {
+      ::videoctrl::LevelBitrate t;
+      t.level = ::videoctrl::BITRATE_LEVEL_STATIC;
+      gst_structure_get_int (levels_override, "bitrate_static",
+          (int32_t *) (&t.bitrate));
+      config.bitrate_levels_override.push_back (t);
+      GST_INFO ("Override Bitrate level: %d, bitrate: %d", t.level, t.bitrate);
+    }
+
+    if (gst_structure_has_field (levels_override, "bitrate_low")) {
+      ::videoctrl::LevelBitrate t;
+      t.level = ::videoctrl::BITRATE_LEVEL_LOW;
+      gst_structure_get_int (levels_override, "bitrate_low",
+          (int32_t *) (&t.bitrate));
+      config.bitrate_levels_override.push_back (t);
+      GST_INFO ("Override Bitrate level: %d, bitrate: %d", t.level, t.bitrate);
+    }
+
+    if (gst_structure_has_field (levels_override, "bitrate_medium")) {
+      ::videoctrl::LevelBitrate t;
+      t.level = ::videoctrl::BITRATE_LEVEL_MED;
+      gst_structure_get_int (levels_override, "bitrate_medium",
+          (int32_t *) (&t.bitrate));
+      config.bitrate_levels_override.push_back (t);
+      GST_INFO ("Override Bitrate level: %d, bitrate: %d", t.level, t.bitrate);
+    }
+
+    if (gst_structure_has_field (levels_override, "bitrate_high")) {
+      ::videoctrl::LevelBitrate t;
+      t.level = ::videoctrl::BITRATE_LEVEL_HIGH;
+      gst_structure_get_int (levels_override, "bitrate_high",
+          (int32_t *) (&t.bitrate));
+      config.bitrate_levels_override.push_back (t);
+      GST_INFO ("Override Bitrate level: %d, bitrate: %d", t.level, t.bitrate);
+    }
+
+    if (gst_structure_has_field (levels_override, "fr_static")) {
+      ::videoctrl::LevelFR t;
+      t.level = ::videoctrl::FR_LEVEL_STATIC;
+      gst_structure_get_int (levels_override, "fr_static",
+          (int32_t *) (&t.frdivider));
+      config.fr_levels_override.push_back (t);
+      GST_INFO ("Override FR level: %d, frames: %d", t.level, t.frdivider);
+    }
+
+    if (gst_structure_has_field (levels_override, "fr_low")) {
+      ::videoctrl::LevelFR t;
+      t.level = ::videoctrl::FR_LEVEL_LOW;
+      gst_structure_get_int (levels_override, "fr_low",
+          (int32_t *) (&t.frdivider));
+      config.fr_levels_override.push_back (t);
+      GST_INFO ("Override FR level: %d, frames: %d", t.level, t.frdivider);
+    }
+
+    if (gst_structure_has_field (levels_override, "fr_medium")) {
+      ::videoctrl::LevelFR t;
+      t.level = ::videoctrl::FR_LEVEL_MED;
+      gst_structure_get_int (levels_override, "fr_medium",
+          (int32_t *) (&t.frdivider));
+      config.fr_levels_override.push_back (t);
+      GST_INFO ("Override FR level: %d, frames: %d", t.level, t.frdivider);
+    }
+
+    if (gst_structure_has_field (levels_override, "fr_high")) {
+      ::videoctrl::LevelFR t;
+      t.level = ::videoctrl::FR_LEVEL_HIGH;
+      gst_structure_get_int (levels_override, "fr_high",
+          (int32_t *) (&t.frdivider));
+      config.fr_levels_override.push_back (t);
+      GST_INFO ("Override FR level: %d, frames: %d", t.level, t.frdivider);
+    }
+  }
+
+  if (roi_qualitys && gst_structure_has_name (roi_qualitys, "ROIQPs")) {
+    GST_INFO ("Has ROI QP values");
+    gst_structure_foreach (roi_qualitys, roi_quality_item, &config);
+  }
+
+  engine->videoctrlengine->SetConfig (&config);
 }
 
 void
@@ -137,7 +288,6 @@ gst_smartcodec_engine_update_fr_divider (SmartCodecEngine * engine,
 {
   GST_INFO ("set fr_divider=%u", fr_divider);
   engine->videoctrlengine->UpdateFrDivider (fr_divider);
-  engine->cur_fr_divider = fr_divider;
 }
 
 gboolean
@@ -146,16 +296,14 @@ gst_smartcodec_engine_process_input_videobuffer (SmartCodecEngine * engine,
 {
   gboolean should_drop = FALSE;
   GstClockTime mod_ts_ns = 0;
-
-  const GstClockTime buf_ts = GST_BUFFER_PTS (buffer);
+  GstClockTime interframe_delta = 0;
+  GstClockTime buf_ts = GST_BUFFER_PTS (buffer);
 
   if (!GST_BUFFER_TIMESTAMP_IS_VALID (buffer)) {
     should_drop = FALSE;
     GST_ERROR ("%s: invalid TS", __func__);
     return FALSE;
   }
-
-  GstClockTime interframe_delta = 0;
 
   if (0 != engine->last_buffer_ts) {
     interframe_delta = buf_ts - engine->last_buffer_ts;
@@ -174,7 +322,7 @@ gst_smartcodec_engine_process_input_videobuffer (SmartCodecEngine * engine,
 
 void
 gst_smartcodec_engine_process_output_videobuffer (SmartCodecEngine * engine,
-    GstBuffer * buffer)
+    GstBuffer * buffer, gboolean bSyncFrame)
 {
   // Modify the encoded frame's timestamp
   if (GST_BUFFER_TIMESTAMP_IS_VALID (buffer)) {
@@ -189,7 +337,7 @@ gst_smartcodec_engine_process_output_videobuffer (SmartCodecEngine * engine,
     gboolean res = engine->videoctrlengine->GetOutBuffTS (dts_ns, pts_ns,
         duration);
     if (!res)
-      GST_ERROR("failed to GetOutBuffTS");
+      GST_ERROR ("failed to GetOutBuffTS");
 
 
     GST_BUFFER_DTS (buffer) = dts_ns;
@@ -202,40 +350,34 @@ gst_smartcodec_engine_process_output_videobuffer (SmartCodecEngine * engine,
 
     if (duration > 0) {
       GST_INFO ("buffer duration updated from %lu to %u (ms)",
-          GST_BUFFER_DURATION(buffer), duration);
+          GST_BUFFER_DURATION (buffer), duration);
       GST_BUFFER_DURATION (buffer) = duration;
     }
-  }
 
-  gst_smartcodec_engine_check_elapsed_time_and_print_bwstats(engine);
-
-  if (engine->stats_mask & STATS_BANDWIDTH) {
-    GstMapInfo map_info;
-    gst_buffer_map (buffer, &map_info, GST_MAP_READ);
-
-    // Get the video frame size
-    guint frame_size = map_info.size;
-
-    // Get the presentation timestamp (PTS)
-    GstClockTime pts = GST_BUFFER_PTS (buffer);
-    GstClockTime dts = GST_BUFFER_DTS (buffer);
-    // Unmap the buffer's memory
-    gst_buffer_unmap (buffer, &map_info);
-
-    engine->bw_stats.total_size += frame_size;
-    GST_INFO ("frame_size=%u PTS=%lu DTS=%lu (duration=%lu)",
-        frame_size,
-        GST_TIME_AS_MSECONDS (pts), GST_TIME_AS_MSECONDS (dts),
-        GST_TIME_AS_MSECONDS (GST_BUFFER_DURATION (buffer)));
+    engine->videoctrlengine->ProcessOutputBuffer (bSyncFrame, pts_ns);
   }
 }
 
 static void
+gst_free_ml_rois_queue_item (gpointer data)
+{
+  GstDataQueueItem *item = (GstDataQueueItem *) data;
+  RectDeltaQPs *rect_delta_qps = (RectDeltaQPs *) item->object;
+  g_free (rect_delta_qps);
+  g_slice_free (GstDataQueueItem, item);
+}
+
+static void
 gst_smartcodec_engine_handle_rois (SmartCodecEngine * engine,
-    std::vector<::videoctrl::RoiQPRectangle>& rects)
+    std::vector<::videoctrl::RoiQPRectangle>& rects, guint64 timestamp)
 {
   std::lock_guard<std::mutex> lock (engine->engine_lock);
-  engine->rect_delta_qps->num_rectangles = 0;
+
+  GstDataQueueItem *item = NULL;
+  RectDeltaQPs *rect_delta_qps = g_new0 (RectDeltaQPs, 1);
+
+  rect_delta_qps->num_rectangles = 0;
+  rect_delta_qps->timestamp = timestamp;
 
   const int resolution_width  = GST_VIDEO_INFO_WIDTH (&engine->video_info);
   const int resolution_height = GST_VIDEO_INFO_HEIGHT (&engine->video_info);
@@ -280,13 +422,23 @@ gst_smartcodec_engine_handle_rois (SmartCodecEngine * engine,
         "roi_width=%d roi_height=%d", __func__, left_val,
         top_val, right_val, bottom_val, width, height);
 
-    const guint arrayIdx = engine->rect_delta_qps->num_rectangles;
-    engine->rect_delta_qps->mRectangle[arrayIdx].left = left_val;
-    engine->rect_delta_qps->mRectangle[arrayIdx].top = top_val;
-    engine->rect_delta_qps->mRectangle[arrayIdx].width = width;
-    engine->rect_delta_qps->mRectangle[arrayIdx].height = height;
-    engine->rect_delta_qps->mRectangle[arrayIdx].delta_qp = rects[i].qp;
-    ++engine->rect_delta_qps->num_rectangles;
+    const guint arrayIdx = rect_delta_qps->num_rectangles;
+    rect_delta_qps->mRectangle[arrayIdx].left = left_val;
+    rect_delta_qps->mRectangle[arrayIdx].top = top_val;
+    rect_delta_qps->mRectangle[arrayIdx].width = width;
+    rect_delta_qps->mRectangle[arrayIdx].height = height;
+    rect_delta_qps->mRectangle[arrayIdx].delta_qp = rects[i].qp;
+    ++rect_delta_qps->num_rectangles;
+  }
+
+  // Push rois in the queue
+  item = g_slice_new0 (GstDataQueueItem);
+  item->object = GST_MINI_OBJECT (rect_delta_qps);
+  item->visible = TRUE;
+  item->destroy = gst_free_ml_rois_queue_item;
+  if (!gst_data_queue_push (engine->ml_rois_queue, item)) {
+    GST_ERROR ("ERROR: Cannot push data to the queue!");
+    item->destroy (item);
   }
 }
 
@@ -297,66 +449,65 @@ gst_smartcodec_engine_get_fps (SmartCodecEngine * engine, guint * n, guint * d)
   *d = engine->video_info.fps_d;
 }
 
-void
-gst_smartcodec_engine_get_rois_with_qp (SmartCodecEngine * engine,
+gboolean
+gst_smartcodec_engine_get_rois_from_queue (SmartCodecEngine * engine,
     RectDeltaQPs * rect_delta_qps)
 {
-  GST_INFO ("%u rois", engine->rect_delta_qps->num_rectangles);
-
   std::lock_guard<std::mutex> lock (engine->engine_lock);
-  for (int i=0; i < engine->rect_delta_qps->num_rectangles; ++i) {
-    rect_delta_qps->mRectangle[i] = engine->rect_delta_qps->mRectangle[i];
+  GstDataQueueItem *item = NULL;
+  RectDeltaQPs *rect_delta_qps_itm = NULL;
+
+  if (gst_data_queue_is_empty (engine->ml_rois_queue)) {
+    return FALSE;
   }
-  rect_delta_qps->num_rectangles = engine->rect_delta_qps->num_rectangles;
+
+  if (!gst_data_queue_peek (engine->ml_rois_queue, &item)) {
+    GST_INFO ("ml_rois_queue flushing");
+    return FALSE;
+  }
+  rect_delta_qps_itm = (RectDeltaQPs *) item->object;
+
+  for (int i=0; i < rect_delta_qps_itm->num_rectangles; ++i) {
+    rect_delta_qps->mRectangle[i] = rect_delta_qps_itm->mRectangle[i];
+  }
+  rect_delta_qps->num_rectangles = rect_delta_qps_itm->num_rectangles;
+  rect_delta_qps->timestamp = rect_delta_qps_itm->timestamp;
+  return TRUE;
 }
 
 void
-gst_smartcodec_engine_check_elapsed_time_and_print_bwstats (
-    SmartCodecEngine * engine)
+gst_smartcodec_engine_remove_rois_from_queue (SmartCodecEngine * engine)
 {
-  const guint64 stats_duration_ms = 1000 * engine->cur_fr_divider;
-  struct timeval current_time;
-  gettimeofday (&current_time, NULL);
+  std::lock_guard<std::mutex> lock (engine->engine_lock);
+  GstDataQueueItem *item = NULL;
 
-  guint64 sysTimeMs = (1000 * current_time.tv_sec) +
-      current_time.tv_usec / 1000;
-
-  if (0 == engine->bw_stats.last_stats_time_ms) {
-    // first time
-    engine->bw_stats.initial_time_ms = sysTimeMs;
-    engine->bw_stats.last_stats_time_ms = sysTimeMs;
+  if (gst_data_queue_is_empty (engine->ml_rois_queue)) {
+    return;
   }
 
-  guint64 next_stats_time_ms =
-      engine->bw_stats.last_stats_time_ms + stats_duration_ms;
-
-  if (sysTimeMs >= next_stats_time_ms) {
-    engine->bw_stats.last_stats_time_ms = next_stats_time_ms;
-    int calcBitrateKbps = (8.0 * engine->bw_stats.total_size) /
-        (stats_duration_ms / 1000.0);
-    calcBitrateKbps /= 1024;
-
-    GST_INFO ("calcBitrateKbps ElapsedTime: %lu CalcBitrate: %d divider=%d",
-        sysTimeMs - engine->bw_stats.initial_time_ms,
-        calcBitrateKbps, engine->cur_fr_divider);
-
-    engine->bw_stats.total_size = 0;
+  if (!gst_data_queue_pop (engine->ml_rois_queue, &item)) {
+    GST_INFO ("buffers_queue flushing");
+    return;
   }
+
+  item->destroy (item);
 }
 
 void
-gst_smartcodec_engine_push_ctrl_buff (SmartCodecEngine * engine, guint8 * buff)
+gst_smartcodec_engine_push_ctrl_buff (SmartCodecEngine * engine, guint8 * buff,
+    guint32 stride, guint64 timestamp)
 {
   if (NULL == buff) {
     GST_ERROR ("invalid buff");
     return;
   }
 
-  engine->videoctrlengine->PushBuffer (buff);
+  engine->videoctrlengine->PushBuffer (buff, stride, timestamp);
 }
 
 void
-gst_smartcodec_engine_push_ml_buff (SmartCodecEngine * engine, gchar * data)
+gst_smartcodec_engine_push_ml_buff (SmartCodecEngine * engine, gchar * data,
+    guint64 timestamp)
 {
   if (NULL == data) {
     GST_ERROR ("invalid data");
@@ -429,73 +580,13 @@ gst_smartcodec_engine_push_ml_buff (SmartCodecEngine * engine, gchar * data)
   }
 
   engine->videoctrlengine->PushMLData (rects);
-  gst_smartcodec_engine_handle_rois (engine, rects);
+  gst_smartcodec_engine_handle_rois (engine, rects, timestamp);
 }
 
-void
-gst_smartcodec_engine_set_target_bitrate (SmartCodecEngine * engine,
-    guint target_bitrate)
+guint
+gst_smartcodec_engine_get_buff_cnt_delay (SmartCodecEngine * engine)
 {
-  engine->videoctrlengine->SetTargetBitrate (target_bitrate);
-}
-
-void
-gst_smartcodec_engine_set_video_info (SmartCodecEngine * engine,
-    guint width, guint height, guint stride)
-{
-  engine->videoctrlengine->SetVideoInfo (
-      engine->video_info.fps_n, engine->video_info.fps_d,
-      width, height, stride);
-}
-
-void
-gst_smartcodec_engine_set_bitrate_thresholds (SmartCodecEngine * engine,
-    GArray * bitrate_thresholds)
-{
-  guint idx;
-  std::vector<::videoctrl::BitrateThres> thresholds;
-  for (idx = 0; idx < bitrate_thresholds->len; idx++) {
-    guint *values =
-        (guint *) g_array_index (bitrate_thresholds, gpointer, idx);
-    ::videoctrl::BitrateThres t;
-    t.threshold = values[0];
-    t.reduction = values[1];
-    thresholds.push_back (t);
-  }
-
-  engine->videoctrlengine->SetBitrateThres (thresholds);
-}
-
-void
-gst_smartcodec_engine_set_fr_thresholds (SmartCodecEngine * engine,
-    GArray * framerate_thresholds)
-{
-  guint idx;
-  std::vector<uint32_t> thresholds;
-  for (idx = 0; idx < framerate_thresholds->len; idx++) {
-    guint thres = g_array_index (framerate_thresholds, guint, idx);
-    thresholds.push_back (
-        g_array_index (framerate_thresholds, guint, idx));
-  }
-
-  engine->videoctrlengine->SetFramerateThres (thresholds);
-}
-
-void
-gst_smartcodec_engine_set_roi_classes_qps (SmartCodecEngine * engine,
-    GArray * roi_qualitys)
-{
-  guint idx;
-  std::vector<::videoctrl::RoiQualitys> qualitys;
-  for (idx = 0; idx < roi_qualitys->len; idx++) {
-    char **values = (char **) g_array_index (roi_qualitys, gpointer, idx);
-    ::videoctrl::RoiQualitys q;
-    g_strlcpy (q.qualitys_lb, values[0], sizeof (q.qualitys_lb));
-    g_strlcpy (q.qualitys_qp, values[1], sizeof (q.qualitys_qp));
-    qualitys.push_back (q);
-  }
-
-  engine->videoctrlengine->SetRoiQps (qualitys);
+  return engine->videoctrlengine->GetBuffCntDelay ();
 }
 
 void

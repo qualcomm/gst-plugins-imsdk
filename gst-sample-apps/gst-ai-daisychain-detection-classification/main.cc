@@ -505,7 +505,7 @@ create_pipe (GstAppContext * appctx, GstStreamSourceType source_type,
     module_id = get_enum_value (qtimlvdetection[i], "module", "yolov5");
     if (module_id != -1) {
       g_object_set (G_OBJECT (qtimlvdetection[i]),
-          "threshold", 75.0, "results", 4,
+          "threshold", 40.0, "results", 4,
           "module", module_id, "labels", DEFAULT_YOLOV5_LABELS,
           "constants", YOLOV5_CONSTANT,
           NULL);
@@ -522,7 +522,7 @@ create_pipe (GstAppContext * appctx, GstStreamSourceType source_type,
     module_id = get_enum_value (qtimlvclassification[i], "module", "mobilenet");
     if (module_id != -1) {
       g_object_set (G_OBJECT (qtimlvclassification[i]),
-          "threshold", 51.0, "results", 2,
+          "threshold", 40.0, "results", 2,
           "module", module_id, "labels", DEFAULT_CLASSIFICATION_LABELS, NULL);
       }
     else {

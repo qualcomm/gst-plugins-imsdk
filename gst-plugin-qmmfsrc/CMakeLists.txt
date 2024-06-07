@@ -26,6 +26,10 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 # Precompiler definitions.
 add_definitions(-DHAVE_CONFIG_H)
 
+# Check whether C2D header is present.
+include(CheckIncludeFile)
+check_include_file("adreno/c2d2.h" HAVE_C2D2_H)
+
 # Common compiler flags.
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror")
@@ -60,6 +64,7 @@ target_compile_definitions(${GST_QMMFSRC_PLUGIN} PRIVATE
   $<$<BOOL:${GST_IMAGE_NV12_FORMAT_ENABLE}>:GST_IMAGE_NV12_FORMAT_ENABLE>
   $<$<BOOL:${GST_VIDEO_TYPE_SUPPORT}>:GST_VIDEO_TYPE_SUPPORT>
   $<$<BOOL:${MULTI_CAMERA_ENABLE}>:MULTI_CAMERA_ENABLE>
+  $<$<BOOL:${HAVE_C2D2_H}>:C2D_ENABLE>
 )
 
 target_include_directories(${GST_QMMFSRC_PLUGIN} PRIVATE

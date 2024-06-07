@@ -27,18 +27,23 @@ enum {
 
 #define GST_TYPE_VENC_BIN_ENCODER   (gst_venc_bin_encoder_get_type())
 #define DEFAULT_PROP_ENCODER        GST_VENC_BIN_C2_ENC
-#define DEFAULT_PROP_TARGET_BITRATE (6000000)
-#define DEFAULT_PROP_BUFF_CNT_DELAY (10)
+#define DEFAULT_PROP_MAX_BITRATE (6000000)
+#define DEFAULT_PROP_DEFAULT_GOP_LENGTH (30)
+#define DEFAULT_PROP_MAX_GOP_LENGTH (600)
+#define DEFAULT_PROP_SMART_FRAMERATE (TRUE)
+#define DEFAULT_PROP_SMART_GOP (TRUE)
 
 enum
 {
   PROP_0,
   PROP_ENCODER,
-  PROP_TARGET_BITRATE,
-  PROP_FRAMERATE_THRES,
-  PROP_BITRATE_THRES,
+  PROP_MAX_BITRATE,
+  PROP_SMART_FRAMERATE,
+  PROP_SMART_GOP,
+  PROP_DEFAULT_GOP_LENGTH,
+  PROP_MAX_GOP_LENGTH,
+  PROP_LEVELS_OVERRIDE,
   PROP_ROI_QUALITY_CFG,
-  PROP_BUFF_CNT_DELAY,
 };
 
 #ifndef GST_CAPS_FEATURE_MEMORY_GBM
@@ -133,9 +138,9 @@ gst_venc_bin_update_encoder (GstVideoEncBin * vencbin)
       }
 
       // Set default properties
-      g_object_set (G_OBJECT (vencbin->encoder), "control-rate", 1, NULL);
+      g_object_set (G_OBJECT (vencbin->encoder), "control-rate", 3, NULL);
       g_object_set (G_OBJECT (vencbin->encoder), "target-bitrate",
-          vencbin->target_bitrate, NULL);
+          vencbin->max_bitrate, NULL);
       g_object_set (G_OBJECT (vencbin->encoder), "roi-quant-mode", TRUE, NULL);
 
       break;
@@ -148,7 +153,7 @@ gst_venc_bin_update_encoder (GstVideoEncBin * vencbin)
 
       // Set default properties
       g_object_set (G_OBJECT (vencbin->encoder), "target-bitrate",
-          vencbin->target_bitrate, NULL);
+          vencbin->max_bitrate, NULL);
       g_object_set (G_OBJECT (vencbin->encoder), "roi-quant-mode", TRUE, NULL);
 
       break;
@@ -192,11 +197,6 @@ gst_venc_bin_update_encoder (GstVideoEncBin * vencbin)
     goto cleanup;
   }
 
-  g_object_get (G_OBJECT (vencbin->encoder), "target-bitrate",
-      &vencbin->target_bitrate, NULL);
-  GST_INFO_OBJECT (vencbin, "Initial target-bitrate - %d",
-      vencbin->target_bitrate);
-
   return TRUE;
 
 cleanup:
@@ -204,6 +204,87 @@ cleanup:
   vencbin->encoder = NULL;
 
   return FALSE;
+}
+
+
+static void
+on_videoctrl_bitrate_received (guint bitrate, gpointer user_data)
+{
+  GstVideoEncBin *vencbin = GST_VENC_BIN (user_data);
+
+  if (NULL == vencbin) {
+    GST_ERROR("unexpected NULL filter");
+    return;
+  }
+
+  if (NULL == vencbin->encoder) {
+    GST_ERROR_OBJECT (vencbin, "unexpected NULL video encoder");
+    return;
+  }
+
+  GST_INFO_OBJECT (vencbin, "bitrate=%u", bitrate);
+  g_object_set (G_OBJECT (vencbin->encoder), "target-bitrate", bitrate, NULL);
+}
+
+static void
+on_videoctrl_goplength_received (guint goplength, guint64 pts,
+    gpointer user_data)
+{
+  GstVideoEncBin *vencbin = GST_VENC_BIN (user_data);
+
+  GST_VENC_BIN_LOCK (vencbin);
+
+  if (NULL == vencbin) {
+    GST_ERROR_OBJECT (vencbin, "unexpected NULL object");
+    GST_VENC_BIN_UNLOCK (vencbin);
+    return;
+  }
+
+  if (NULL == vencbin->encoder) {
+    GST_ERROR_OBJECT (vencbin, "unexpected NULL video encoder");
+    GST_VENC_BIN_UNLOCK (vencbin);
+    return;
+  }
+
+  GST_INFO_OBJECT (vencbin, "goplength=%u, pts=%lu", goplength,
+      GST_TIME_AS_MSECONDS(pts));
+
+  if (0 == pts) {
+    // Set GOP length to encoder (init gop)
+    GST_INFO_OBJECT (vencbin, "Set GOP LEN - %d (default=%d)", goplength,
+        vencbin->default_goplength);
+    g_object_set(G_OBJECT(vencbin->encoder), "idr-interval", goplength, NULL);
+
+     // no longer relevant
+    vencbin->pending_gop_pts = 0;
+    vencbin->pending_gop_len = 0;
+  } else {
+    // Set GOP len when HD PTS reaches gop len increase pts
+    vencbin->pending_gop_pts = pts;
+    vencbin->pending_gop_len = goplength;
+
+    GST_INFO_OBJECT(vencbin, "Set pending gop len %d at pts=%ld",
+      vencbin->pending_gop_len, GST_TIME_AS_MSECONDS(vencbin->pending_gop_pts));
+  }
+
+  GST_VENC_BIN_UNLOCK (vencbin);
+}
+
+void
+gst_venc_bin_release_ctrl_buffer (gpointer user_data)
+{
+  GstVideoEncBin *vencbin = GST_VENC_BIN (user_data);
+  if (!gst_data_queue_is_empty (vencbin->ctrl_frames)) {
+    GstDataQueueItem *item = NULL;
+    if (!gst_data_queue_pop (vencbin->ctrl_frames, &item)) {
+      GST_INFO_OBJECT (vencbin, "buffers_queue flushing");
+      return;
+    }
+    item->destroy (item);
+  }
+  GST_DEBUG_OBJECT (vencbin, "Release ctrl buffer");
+
+  return;
 }
 
 static void
@@ -222,16 +303,7 @@ gst_venc_init_session (GstVideoEncBin * vencbin, GstCaps * caps)
     return;
   }
 
-  gst_smartcodec_engine_init (vencbin->engine, caps, STATS_BANDWIDTH);
-
-  gst_smartcodec_engine_set_target_bitrate (vencbin->engine,
-      vencbin->target_bitrate);
-  gst_smartcodec_engine_set_bitrate_thresholds (vencbin->engine,
-      vencbin->bitrate_thresholds);
-  gst_smartcodec_engine_set_fr_thresholds (vencbin->engine,
-      vencbin->framerate_thresholds);
-  gst_smartcodec_engine_set_roi_classes_qps (vencbin->engine,
-      vencbin->roi_qualitys);
+  gst_smartcodec_engine_init (vencbin->engine, caps);
 }
 
 static void
@@ -251,11 +323,28 @@ gst_venc_init_video_crtl_session (GstVideoEncBin * vencbin, GstCaps * caps)
   }
 
   gst_video_info_from_caps (&vencbin->video_ctrl_info, caps);
-  gst_smartcodec_engine_set_video_info (vencbin->engine,
+
+  // Set config of the engine
+  gst_smartcodec_engine_config (vencbin->engine,
+      vencbin->smart_framerate_en,
+      vencbin->smart_gop_en,
       GST_VIDEO_INFO_WIDTH (&vencbin->video_ctrl_info),
       GST_VIDEO_INFO_HEIGHT (&vencbin->video_ctrl_info),
-      vencbin->video_ctrl_info.stride[0]);
-
+      vencbin->video_ctrl_info.stride[0],
+      vencbin->video_ctrl_info.fps_n,
+      vencbin->video_ctrl_info.fps_d,
+      vencbin->max_bitrate,
+      vencbin->default_goplength,
+      vencbin->max_goplength,
+      vencbin->levels_override,
+      vencbin->roi_qualitys,
+      (GstBitrateReceivedCallback) G_CALLBACK (
+          on_videoctrl_bitrate_received),
+      (GstGOPLengthReceivedCallback) G_CALLBACK (
+          on_videoctrl_goplength_received),
+      (GstReleaseBufferCallback) G_CALLBACK (
+          gst_venc_bin_release_ctrl_buffer),
+      vencbin);
 }
 
 GstPadProbeReturn
@@ -272,6 +361,12 @@ gst_venc_encoder_output_probe (GstPad * pad, GstPadProbeInfo * info,
     return GST_PAD_PROBE_DROP;
   }
 
+  if (!vencbin->output_caps_processed) {
+    gst_smartcodec_engine_process_output_caps (vencbin->engine,
+        gst_pad_get_current_caps (pad));
+    vencbin->output_caps_processed = TRUE;
+  }
+
   buffer = gst_buffer_make_writable (buffer);
 
   if (!buffer) {
@@ -279,7 +374,17 @@ gst_venc_encoder_output_probe (GstPad * pad, GstPadProbeInfo * info,
     return GST_PAD_PROBE_DROP;
   }
 
-  gst_smartcodec_engine_process_output_videobuffer (vencbin->engine, buffer);
+  gboolean bSyncFrame = !GST_BUFFER_FLAG_IS_SET (buffer,
+      GST_BUFFER_FLAG_DELTA_UNIT);
+
+  gst_smartcodec_engine_process_output_videobuffer (vencbin->engine, buffer,
+      bSyncFrame);
+
+  GstClockTime pts_ns = GST_BUFFER_PTS (buffer);
+  if (bSyncFrame) {
+    GST_DEBUG_OBJECT (vencbin, "New sync frame: PTS - %ld",
+        GST_TIME_AS_MSECONDS (pts_ns));
+  }
 
   return GST_PAD_PROBE_OK;
 }
@@ -324,7 +429,7 @@ gst_venc_set_roi_qp (GstVideoEncBin * vencbin, RectDeltaQPs * qps)
 
   guint arrsize = gst_value_array_get_size (&roi_rect_params_array);
   if (arrsize > 0) {
-    GST_INFO ("invoke setprop roi-quant-boxes\n");
+    GST_INFO ("invoke setprop roi-quant-boxes");
     g_object_set_property (G_OBJECT (vencbin->encoder),
         "roi-quant-boxes", &roi_rect_params_array);
   } else {
@@ -367,7 +472,7 @@ gst_venc_bin_sink_pad_chain (GstPad * pad, GstObject * parent,
   item->visible = TRUE;
   item->destroy = gst_free_main_queue_item;
   if (!gst_data_queue_push (vencbin->main_frames, item)) {
-    GST_ERROR_OBJECT (vencbin, "ERROR: Cannot push data to the queue!\n");
+    GST_ERROR_OBJECT (vencbin, "ERROR: Cannot push data to the queue!");
     item->destroy (item);
     return GST_FLOW_OK;
   }
@@ -400,23 +505,6 @@ gst_venc_bin_sink_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
   return gst_pad_event_default (pad, parent, event);
 }
 
-void
-gst_venc_bin_release_ctrl_buffer (gpointer user_data)
-{
-  GstVideoEncBin *vencbin = GST_VENC_BIN (user_data);
-  if (!gst_data_queue_is_empty (vencbin->ctrl_frames)) {
-    GstDataQueueItem *item = NULL;
-    if (!gst_data_queue_pop (vencbin->ctrl_frames, &item)) {
-      GST_INFO_OBJECT (vencbin, "buffers_queue flushing");
-      return;
-    }
-    item->destroy (item);
-  }
-  GST_DEBUG_OBJECT (vencbin, "Release ctrl buffer");
-
-  return;
-}
-
 GstFlowReturn
 gst_venc_bin_sinkctrl_pad_chain (GstPad * pad, GstObject * parent,
     GstBuffer * buffer)
@@ -441,14 +529,16 @@ gst_venc_bin_sinkctrl_pad_chain (GstPad * pad, GstObject * parent,
   item->visible = TRUE;
   item->destroy = gst_free_ctrl_queue_item;
   if (!gst_data_queue_push (vencbin->ctrl_frames, item)) {
-    GST_ERROR_OBJECT (vencbin, "ERROR: Cannot push data to the queue!\n");
+    GST_ERROR_OBJECT (vencbin, "ERROR: Cannot push data to the queue!");
     item->destroy (item);
     return GST_FLOW_OK;
   }
 
   GST_DEBUG_OBJECT (vencbin, "Push ctrl buffer");
   gst_smartcodec_engine_push_ctrl_buff (vencbin->engine,
-      GST_VIDEO_FRAME_PLANE_DATA (&ctrlframedata->vframe, 0));
+      GST_VIDEO_FRAME_PLANE_DATA (&ctrlframedata->vframe, 0),
+      GST_VIDEO_FRAME_PLANE_STRIDE (&ctrlframedata->vframe, 0),
+      GST_BUFFER_TIMESTAMP (ctrlframedata->buffer));
 
   return retval;
 }
@@ -493,8 +583,9 @@ gst_venc_bin_ml_pad_chain (GstPad * pad, GstObject * parent,
 
   gchar *data =  g_strndup ((const gchar *) memmap.data, memmap.size);
   if (data) {
-    GST_INFO_OBJECT (vencbin, "gst_smartcodec_engine_push_ml_buff");
-    gst_smartcodec_engine_push_ml_buff (vencbin->engine, data);
+    GST_DEBUG_OBJECT (vencbin, "gst_smartcodec_engine_push_ml_buff");
+    gst_smartcodec_engine_push_ml_buff (vencbin->engine, data,
+        GST_BUFFER_TIMESTAMP (buffer));
     g_free (data);
   } else {
     GST_ERROR_OBJECT (vencbin, "failed null string");
@@ -503,47 +594,7 @@ gst_venc_bin_ml_pad_chain (GstPad * pad, GstObject * parent,
   gst_buffer_unmap (buffer, &memmap);
   gst_buffer_unref (buffer);
 
-  GST_INFO_OBJECT (vencbin, "drop frame");
-  gst_buffer_unref (buffer);
-
   return retval;
-}
-
-static void on_videoctrl_bitrate_received (guint bitrate, gpointer user_data) {
-
-  GstVideoEncBin *vencbin = GST_VENC_BIN (user_data);
-
-  if (NULL == vencbin) {
-    GST_ERROR("unexpected NULL filter");
-    return;
-  }
-
-  if (NULL == vencbin->encoder) {
-    GST_ERROR_OBJECT (vencbin, "unexpected NULL video encoder");
-    return;
-  }
-
-  GST_INFO_OBJECT (vencbin, "bitrate=%u", bitrate);
-  g_object_set (G_OBJECT (vencbin->encoder), "target-bitrate", bitrate, NULL);
-}
-
-static void on_videoctrl_frdivider_received (guint frdivider,
-    gpointer user_data) {
-
-  GstVideoEncBin *vencbin = GST_VENC_BIN (user_data);
-
-  if (NULL == vencbin) {
-    GST_ERROR_OBJECT (vencbin, "unexpected NULL object");
-    return;
-  }
-
-  if (NULL == vencbin->engine) {
-    GST_ERROR_OBJECT (vencbin, "unexpected NULL smartCodecEngine");
-    return;
-  }
-
-  GST_INFO_OBJECT (vencbin, "frdivider=%u", frdivider);
-  gst_smartcodec_engine_update_fr_divider (vencbin->engine, frdivider);
 }
 
 static void
@@ -555,12 +606,14 @@ gst_venc_bin_worker_task (gpointer user_data)
   GstBuffer *buffer = NULL;
   GstPad *encoder_sink = NULL;
   gboolean shouldDrop = FALSE;
+  guint64 buf_pts = 0;
+  guint64 ml_pts = 0;
+  guint fps_n = 0;
+  guint fps_d = 0;
 
   GST_VENC_BIN_LOCK (vencbin);
 
   gst_data_queue_get_level (vencbin->main_frames, &queuelevel);
-  GST_DEBUG_OBJECT (vencbin, "main_frames buffers cnt - %d",
-      queuelevel.visible);
   if (queuelevel.visible >= vencbin->buff_cnt_delay) {
     if (!gst_data_queue_pop (vencbin->main_frames, &item)) {
       GST_INFO_OBJECT (vencbin, "buffers_queue flushing");
@@ -577,31 +630,73 @@ gst_venc_bin_worker_task (gpointer user_data)
       return;
     }
 
-    encoder_sink = gst_element_get_static_pad(vencbin->encoder, "sink");
+    encoder_sink = gst_element_get_static_pad (vencbin->encoder, "sink");
     if (NULL == encoder_sink) {
       GST_ERROR_OBJECT (vencbin, "failed to get encoder sink pad");
       GST_VENC_BIN_UNLOCK (vencbin);
       return;
     }
 
+    buf_pts = GST_TIME_AS_MSECONDS (GST_BUFFER_TIMESTAMP (buffer));
+
     shouldDrop = gst_smartcodec_engine_process_input_videobuffer (
         vencbin->engine, buffer);
 
     if (FALSE == shouldDrop) {
       RectDeltaQPs rect_delta_qps;
-      GST_INFO_OBJECT (vencbin, "encode frame");
-      gst_smartcodec_engine_get_rois_with_qp (vencbin->engine, &rect_delta_qps);
+      gst_smartcodec_engine_get_fps (vencbin->engine, &fps_n, &fps_d);
+      gboolean has_roi = FALSE;
 
-      if (rect_delta_qps.num_rectangles > 0) {
-        GST_INFO_OBJECT (vencbin, "rect_delta_qps.num_rectangles - %d",
-            rect_delta_qps.num_rectangles);
-        gst_venc_set_roi_qp (vencbin, &rect_delta_qps);
+      while (gst_smartcodec_engine_get_rois_from_queue (vencbin->engine,
+          &rect_delta_qps)) {
+        ml_pts = GST_TIME_AS_MSECONDS (rect_delta_qps.timestamp);
+        has_roi = TRUE;
+
+        if (buf_pts > ml_pts) {
+          gst_smartcodec_engine_remove_rois_from_queue (vencbin->engine);
+          continue;
+        }
+        break;
       }
 
-      GST_DEBUG_OBJECT (vencbin, "Push video buffer");
+      if (has_roi) {
+        GST_DEBUG_OBJECT (vencbin, "buf_pts - %ld, ml_pts - %ld",
+            buf_pts, ml_pts);
+
+        if (buf_pts == ml_pts) {
+          GST_DEBUG_OBJECT (vencbin, "Number of rectangles set: %d",
+              rect_delta_qps.num_rectangles);
+          gst_venc_set_roi_qp (vencbin, &rect_delta_qps);
+        } else {
+          GST_DEBUG_OBJECT (vencbin,
+              "ML timestamp is not in sync with HD timestamp");
+        }
+
+        if (buf_pts >= ml_pts) {
+          gst_smartcodec_engine_remove_rois_from_queue (vencbin->engine);
+        }
+      }
+
+      guint64 pending_gop_pts = GST_TIME_AS_MSECONDS (vencbin->pending_gop_pts);
+      if (pending_gop_pts > 0 &&
+          buf_pts >= pending_gop_pts) {
+
+        // Set GOP length to encoder (long gop)
+        GST_INFO_OBJECT (vencbin,
+            "Increase GOP LEN - %d (default=%d) at pts %ld",
+            vencbin->pending_gop_len, vencbin->default_goplength,
+            pending_gop_pts);
+        g_object_set (G_OBJECT (vencbin->encoder), "idr-interval",
+            vencbin->pending_gop_len, NULL);
+
+        vencbin->pending_gop_pts = 0;
+        vencbin->pending_gop_len = 0;
+      }
+
+      GST_DEBUG_OBJECT (vencbin, "Push video buffer: encode frame");
       gst_pad_chain (encoder_sink, buffer);
     } else {
-      GST_INFO_OBJECT (vencbin, "drop frame");
+      GST_DEBUG_OBJECT (vencbin, "drop frame");
       gst_buffer_unref (buffer);
     }
 
@@ -686,6 +781,7 @@ gst_venc_bin_change_state (GstElement * element, GstStateChange transition)
       gst_data_queue_set_flushing (vencbin->main_frames, FALSE);
       gst_venc_bin_start_worker_task (vencbin);
       gst_data_queue_set_flushing (vencbin->ctrl_frames, FALSE);
+      vencbin->output_caps_processed = FALSE;
       break;
     default:
       break;
@@ -729,76 +825,73 @@ gst_venc_bin_set_property (GObject * object, guint prop_id,
       vencbin->encoder_type = g_value_get_enum (value);
       gst_venc_bin_update_encoder (vencbin);
       break;
-    case PROP_TARGET_BITRATE:
+    case PROP_MAX_BITRATE:
     {
-      vencbin->target_bitrate = g_value_get_uint (value);
-      if (vencbin->encoder) {
+      vencbin->max_bitrate = g_value_get_uint (value);
+      if (vencbin->encoder != NULL) {
         g_object_set (G_OBJECT (vencbin->encoder), "target-bitrate",
-            vencbin->target_bitrate, NULL);
-      }
-
-      if (vencbin->engine != NULL) {
-        gst_smartcodec_engine_set_target_bitrate (vencbin->engine,
-            vencbin->target_bitrate);
+            vencbin->max_bitrate, NULL);
+        GST_INFO_OBJECT (vencbin, "Set encoder target bitrate - %d",
+            vencbin->max_bitrate);
       }
       break;
     }
-    case PROP_FRAMERATE_THRES:
+    case PROP_SMART_FRAMERATE:
     {
-      guint idx;
-      g_array_remove_range (vencbin->framerate_thresholds, 0,
-          vencbin->framerate_thresholds->len);
-      for (idx = 0; idx < gst_value_array_get_size (value); idx++) {
-        guint val = g_value_get_uint (gst_value_array_get_value (value, idx));
-        g_array_append_val (vencbin->framerate_thresholds, val);
-      }
+      vencbin->smart_framerate_en = g_value_get_boolean (value);
       break;
     }
-    case PROP_BITRATE_THRES:
+    case PROP_SMART_GOP:
     {
-      guint idx;
-      for (idx = 0; idx < vencbin->bitrate_thresholds->len; idx++)
-        g_free (g_array_index (vencbin->bitrate_thresholds, gpointer, idx));
+      vencbin->smart_gop_en = g_value_get_boolean (value);
+      break;
+    }
+    case PROP_DEFAULT_GOP_LENGTH:
+    {
+      vencbin->default_goplength = g_value_get_uint (value);
+      break;
+    }
+    case PROP_MAX_GOP_LENGTH:
+    {
+      vencbin->max_goplength = g_value_get_uint (value);
+      break;
+    }
+    case PROP_LEVELS_OVERRIDE:
+    {
+      const gchar *input = g_value_get_string (value);
+      GValue value = G_VALUE_INIT;
 
-      g_array_remove_range (vencbin->bitrate_thresholds, 0,
-          vencbin->bitrate_thresholds->len);
-      for (idx = 0; idx < gst_value_array_get_size (value); idx++) {
-        const GValue *val = gst_value_array_get_value (value, idx);
-        if (val) {
-          g_return_if_fail (gst_value_array_get_size (val) == 2);
-          guint *values = g_new0 (guint, 2);
-          values[0] = g_value_get_uint (gst_value_array_get_value (val, 0));
-          values[1] = g_value_get_uint (gst_value_array_get_value (val, 1));
-          g_array_append_val (vencbin->bitrate_thresholds, values);
-        }
+      g_value_init (&value, GST_TYPE_STRUCTURE);
+
+      if (!gst_value_deserialize (&value, input)) {
+        GST_ERROR ("Failed to deserialize string!");
+        break;
       }
+
+      if (vencbin->levels_override != NULL)
+        gst_structure_free (vencbin->levels_override);
+
+      vencbin->levels_override = GST_STRUCTURE (g_value_dup_boxed (&value));
+      g_value_unset (&value);
       break;
     }
     case PROP_ROI_QUALITY_CFG:
     {
-      guint idx;
-      for (idx = 0; idx < vencbin->roi_qualitys->len; idx++)
-        g_free (g_array_index (vencbin->roi_qualitys, gpointer, idx));
+      const gchar *input = g_value_get_string (value);
+      GValue value = G_VALUE_INIT;
 
-      g_array_remove_range (vencbin->roi_qualitys, 0,
-          vencbin->roi_qualitys->len);
-      for (idx = 0; idx < gst_value_array_get_size (value); idx++) {
-        const GValue *val = gst_value_array_get_value (value, idx);
-        if (val) {
-          g_return_if_fail (gst_value_array_get_size (val) == 2);
-          const GValue *roi_label_val = gst_value_array_get_value (val, 0);
-          const GValue *roi_quality_val = gst_value_array_get_value (val, 1);
-          char **values = g_new0 (char*, 2);
-          values[0] = g_strdup (g_value_get_string (roi_label_val));
-          values[1] = g_strdup (g_value_get_string (roi_quality_val));
-          g_array_append_val (vencbin->roi_qualitys, values);
-        }
+      g_value_init (&value, GST_TYPE_STRUCTURE);
+
+      if (!gst_value_deserialize (&value, input)) {
+        GST_ERROR ("Failed to deserialize string!");
+        break;
       }
-      break;
-    }
-    case PROP_BUFF_CNT_DELAY:
-    {
-      vencbin->buff_cnt_delay = g_value_get_uint (value);
+
+      if (vencbin->roi_qualitys != NULL)
+        gst_structure_free (vencbin->roi_qualitys);
+
+      vencbin->roi_qualitys = GST_STRUCTURE (g_value_dup_boxed (&value));
+      g_value_unset (&value);
       break;
     }
     default:
@@ -821,61 +914,41 @@ gst_venc_bin_get_property (GObject * object, guint prop_id, GValue * value,
     case PROP_ENCODER:
       g_value_set_enum (value, vencbin->encoder_type);
       break;
-    case PROP_TARGET_BITRATE:
-      g_value_set_uint (value, vencbin->target_bitrate);
+    case PROP_MAX_BITRATE:
+      g_value_set_uint (value, vencbin->max_bitrate);
       break;
-    case PROP_FRAMERATE_THRES:
-    {
-      guint idx;
-      GValue val = G_VALUE_INIT;
-      g_value_init (&val, G_TYPE_UINT);
-      for (idx = 0; idx < vencbin->framerate_thresholds->len; idx++) {
-        g_value_set_uint (&val, g_array_index (vencbin->framerate_thresholds,
-            guint, idx));
-        gst_value_array_append_value (value, &val);
-      }
+    case PROP_SMART_FRAMERATE:
+      g_value_set_boolean (value, vencbin->smart_framerate_en);
       break;
-    }
-    case PROP_BITRATE_THRES:
+    case PROP_SMART_GOP:
+      g_value_set_boolean (value, vencbin->smart_gop_en);
+      break;
+    case PROP_DEFAULT_GOP_LENGTH:
+      g_value_set_uint (value, vencbin->default_goplength);
+      break;
+    case PROP_MAX_GOP_LENGTH:
+      g_value_set_uint (value, vencbin->max_goplength);
+      break;
+    case PROP_LEVELS_OVERRIDE:
     {
-      guint idx;
-      GValue val = G_VALUE_INIT;
-      GValue val_arr = G_VALUE_INIT;
-      g_value_init (&val_arr, G_TYPE_ARRAY);
-      g_value_init (&val, G_TYPE_UINT);
-      for (idx = 0; idx < vencbin->bitrate_thresholds->len; idx++) {
-        guint *values =
-            (guint *) g_array_index (vencbin->bitrate_thresholds,
-            gpointer, idx);
-        g_value_set_uint (&val, values[0]);
-        gst_value_array_append_value (&val_arr, &val);
-        g_value_set_uint (&val, values[1]);
-        gst_value_array_append_value (&val_arr, &val);
-        gst_value_array_append_value (value, &val_arr);
+      gchar *string = NULL;
+      if (vencbin->levels_override != NULL) {
+        string = gst_structure_to_string (vencbin->levels_override);
+        g_value_set_string (value, string);
+        g_free (string);
       }
+
       break;
     }
     case PROP_ROI_QUALITY_CFG:
     {
-      guint idx;
-      GValue val = G_VALUE_INIT;
-      GValue val_arr = G_VALUE_INIT;
-      g_value_init (&val_arr, G_TYPE_ARRAY);
-      g_value_init (&val, G_TYPE_STRING);
-      for (idx = 0; idx < vencbin->roi_qualitys->len; idx++) {
-        char **values =
-            (char **) g_array_index (vencbin->roi_qualitys, gpointer, idx);
-        g_value_set_string (&val, values[0]);
-        gst_value_array_append_value (&val_arr, &val);
-        g_value_set_string (&val, values[0]);
-        gst_value_array_append_value (&val_arr, &val);
-        gst_value_array_append_value (value, &val_arr);
+      gchar *string = NULL;
+      if (vencbin->roi_qualitys != NULL) {
+        string = gst_structure_to_string (vencbin->roi_qualitys);
+        g_value_set_string (value, string);
+        g_free (string);
       }
-      break;
-    }
-    case PROP_BUFF_CNT_DELAY:
-    {
-      g_value_set_uint (value, vencbin->buff_cnt_delay);
+
       break;
     }
     default:
@@ -890,24 +963,12 @@ static void
 gst_venc_bin_finalize (GObject * object)
 {
   GstVideoEncBin *vencbin = GST_VENC_BIN (object);
-  guint idx;
 
-  if (vencbin->framerate_thresholds != NULL)
-    g_array_free (vencbin->framerate_thresholds, TRUE);
+  if (vencbin->levels_override != NULL)
+    gst_structure_free (vencbin->levels_override);
 
-  if (vencbin->bitrate_thresholds != NULL) {
-    for (idx = 0; idx < vencbin->bitrate_thresholds->len; idx++)
-      g_free (g_array_index (vencbin->bitrate_thresholds, gpointer, idx));
-
-    g_array_free (vencbin->bitrate_thresholds, TRUE);
-  }
-
-  if (vencbin->roi_qualitys != NULL) {
-    for (idx = 0; idx < vencbin->roi_qualitys->len; idx++)
-      g_free (g_array_index (vencbin->roi_qualitys, gpointer, idx));
-
-    g_array_free (vencbin->roi_qualitys, TRUE);
-  }
+  if (vencbin->roi_qualitys != NULL)
+    gst_structure_free (vencbin->roi_qualitys);
 
   if (vencbin->ctrl_frames != NULL) {
     gst_data_queue_set_flushing (vencbin->ctrl_frames, TRUE);
@@ -921,6 +982,11 @@ gst_venc_bin_finalize (GObject * object)
     gst_data_queue_flush (vencbin->main_frames);
     gst_object_unref (GST_OBJECT_CAST (vencbin->main_frames));
     vencbin->main_frames = NULL;
+  }
+
+  if (vencbin->syncframe_timestamps != NULL) {
+    g_list_free (vencbin->syncframe_timestamps);
+    vencbin->syncframe_timestamps = NULL;
   }
 
   if (vencbin->encoders)
@@ -963,55 +1029,48 @@ gst_venc_bin_class_init (GstVideoEncBinClass *klass)
           GST_TYPE_VENC_BIN_ENCODER, DEFAULT_PROP_ENCODER,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
-  g_object_class_install_property (gobject, PROP_TARGET_BITRATE,
-      g_param_spec_uint ("target-bitrate", "Target bitrate",
-          "Target bitrate in bits per second",
-          0, G_MAXUINT, DEFAULT_PROP_TARGET_BITRATE,
+  g_object_class_install_property (gobject, PROP_MAX_BITRATE,
+      g_param_spec_uint ("max-bitrate", "Max bitrate",
+          "Max bitrate in bits per second",
+          0, G_MAXUINT, DEFAULT_PROP_MAX_BITRATE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_PLAYING));
-  g_object_class_install_property (gobject, PROP_FRAMERATE_THRES,
-      gst_param_spec_array ("framerate-thres", "Framerate thresholds",
-          "Thresholds ('<thres1, thres2, thres3, thresN >')",
-          g_param_spec_uint ("value", "Threshold value",
-              "Threshold value.", 0, G_MAXUINT, 0,
-              G_PARAM_WRITABLE | G_PARAM_STATIC_STRINGS),
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
-  g_object_class_install_property (gobject, PROP_BITRATE_THRES,
-      gst_param_spec_array (
-          "bitrate-thres", "Bitrate thresholds",
-          "Bitrate thresholds (e.g.'<<MotionPCT, BitratePCT>, <MotionPCT, BitratePCT>>')",
-          gst_param_spec_array (
-            "bitrate-thres", "Bitrate threshold",
-            "Bitrate Threshold (e.g. '<MotionPCT, BitratePCT>)",
-            g_param_spec_uint (
-              "value", "Threshold value",
-              "One of motion-PCT or bitrate-PCT threshold", 0, G_MAXUINT, 0,
-              (G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)),
-            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS),
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+  g_object_class_install_property (gobject, PROP_SMART_FRAMERATE,
+      g_param_spec_boolean ("smart-framerate", "Smart framerate enable",
+          "Enable/Disable smart framerate functionality",
+          DEFAULT_PROP_SMART_FRAMERATE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_SMART_GOP,
+      g_param_spec_boolean ("smart-gop", "Smart GOP enable",
+          "Enable/Disable smart GOP functionality",
+          DEFAULT_PROP_SMART_GOP,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_DEFAULT_GOP_LENGTH,
+      g_param_spec_uint ("default-gop", "Default GOP length",
+          "Default GOP length",
+          0, G_MAXUINT, DEFAULT_PROP_DEFAULT_GOP_LENGTH,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_MAX_GOP_LENGTH,
+      g_param_spec_uint ("max-gop", "Max GOP length",
+          "Max GOP length",
+          0, G_MAXUINT, DEFAULT_PROP_MAX_GOP_LENGTH,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_LEVELS_OVERRIDE,
+      g_param_spec_string ("levels-override", "Levels override",
+          "Override bitrate and FR levels "
+          "e.g. \"LevelsOverride,bitrate_static=160000,bitrate_low=358000,"
+          "bitrate_medium=700000,bitrate_high=1400000,fr_static=15,fr_low=3,"
+          "fr_medium=1,fr_high=0;\"",
+          NULL, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_ROI_QUALITY_CFG,
-      gst_param_spec_array (
-          "roi-quality-cfg", "ROI Quality Config",
-          "Array of ROI Quality Config (e.g.'<<\"car\", \"+2\">, <\"person\", \"+1\">, <\"tree\", \"-2\">')",
-          gst_param_spec_array (
-            "roi-quality", "ROI quality",
-            "ROI quality tuple (e.g. '<\"car\", \"+2\")",
-            g_param_spec_string (
-              "roi-quality-value", "ROI quality value",
-              "One of ROI label or quality constant",
-              NULL,
-              G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS),
-            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS),
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_READY));
-  g_object_class_install_property (gobject, PROP_BUFF_CNT_DELAY,
-      g_param_spec_uint ("buff-cnt-delay", "Buffer count delay",
-          "Buffer count delay of the input stream",
-          1, G_MAXUINT, DEFAULT_PROP_BUFF_CNT_DELAY,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-          GST_PARAM_MUTABLE_PLAYING));
+      g_param_spec_string ("roi-quality-cfg", "ROI Quality Config",
+          "ROI Quality Config "
+          "e.g. \"ROIQPs,car=2,person=1,tree=-2;\"",
+          NULL, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_set_static_metadata (element, "Smart Video Encode Bin",
       "Generic/Bin/Encoder", "Smart control over video encoding", "QTI");
@@ -1031,7 +1090,6 @@ static void
 gst_venc_bin_init (GstVideoEncBin * vencbin)
 {
   GstPadTemplate *template = NULL;
-  guint u_val = 0;
 
   g_mutex_init (&vencbin->lock);
 
@@ -1043,43 +1101,22 @@ gst_venc_bin_init (GstVideoEncBin * vencbin)
   vencbin->engine = NULL;
   vencbin->worktask = NULL;
   vencbin->active = FALSE;
+  vencbin->syncframe_timestamps = NULL;
+  vencbin->output_caps_processed = FALSE;
+
+  vencbin->pending_gop_pts = 0;
+  vencbin->pending_gop_len = 0;
+
   g_rec_mutex_init (&vencbin->worklock);
   g_cond_init (&vencbin->wakeup);
-  vencbin->buff_cnt_delay = DEFAULT_PROP_BUFF_CNT_DELAY;
-  vencbin->target_bitrate = 0;
+  vencbin->max_bitrate = DEFAULT_PROP_MAX_BITRATE;
+  vencbin->smart_framerate_en = DEFAULT_PROP_SMART_FRAMERATE;
+  vencbin->smart_gop_en = DEFAULT_PROP_SMART_GOP;
+  vencbin->default_goplength = DEFAULT_PROP_DEFAULT_GOP_LENGTH;
+  vencbin->max_goplength = DEFAULT_PROP_MAX_GOP_LENGTH;
 
-  vencbin->framerate_thresholds = g_array_new (FALSE, FALSE, sizeof (guint));
-  u_val = 10;
-  g_array_append_val (vencbin->framerate_thresholds, u_val);
-  u_val = 5;
-  g_array_append_val (vencbin->framerate_thresholds, u_val);
-  u_val = 2;
-  g_array_append_val (vencbin->framerate_thresholds, u_val);
-
-  vencbin->bitrate_thresholds = g_array_new (FALSE, FALSE, sizeof (gpointer));
-  guint *thres = g_new0 (guint, 2);
-  thres[0] = 7;
-  thres[1] = 85;
-  g_array_append_val (vencbin->bitrate_thresholds, thres);
-  thres = g_new0 (guint, 2);
-  thres[0] = 4;
-  thres[1] = 70;
-  g_array_append_val (vencbin->bitrate_thresholds, thres);
-
-  vencbin->roi_qualitys = g_array_new (FALSE, FALSE, sizeof (gpointer));
-
-  char **qps = g_new0 (char*, 2);
-  qps[0] = g_strdup ("car");
-  qps[1] = g_strdup ("+2");
-  g_array_append_val (vencbin->roi_qualitys, qps);
-  qps = g_new0 (char*, 2);
-  qps[0] = g_strdup ("person");
-  qps[1] = g_strdup ("+2");
-  g_array_append_val (vencbin->roi_qualitys, qps);
-  qps = g_new0 (char*, 2);
-  qps[0] = g_strdup ("tree");
-  qps[1] = g_strdup ("-2");
-  g_array_append_val (vencbin->roi_qualitys, qps);
+  vencbin->levels_override = NULL;
+  vencbin->roi_qualitys = NULL;
 
   gst_video_info_init (&vencbin->video_ctrl_info);
   vencbin->ctrl_frames =
@@ -1139,12 +1176,9 @@ gst_venc_bin_init (GstVideoEncBin * vencbin)
     return;
   }
 
-  // Set callbacks
-  gst_smartcodec_engine_set_callbacks (vencbin->engine,
-      (GstBitrateReceivedCallback) G_CALLBACK (on_videoctrl_bitrate_received),
-      (GstFRDeviderReceivedCallback) G_CALLBACK (on_videoctrl_frdivider_received),
-      (GstReleaseBufferCallback) G_CALLBACK (gst_venc_bin_release_ctrl_buffer),
-      vencbin);
+  // Get buffer count delay
+  vencbin->buff_cnt_delay =
+      gst_smartcodec_engine_get_buff_cnt_delay (vencbin->engine);
 }
 
 static gboolean
