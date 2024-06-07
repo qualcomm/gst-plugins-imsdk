@@ -90,7 +90,6 @@
     "/opt/inceptionv3.tflite"
 #define DEFAULT_YOLOV5_LABELS "/opt/yolov5.labels"
 #define DEFAULT_CLASSIFICATION_LABELS "/opt/classification.labels"
-#define DEFAULT_FILE_PATH "/opt/video.mp4"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
@@ -835,6 +834,7 @@ main (gint argc, gchar * argv[])
   GOptionContext *ctx = NULL;
   const gchar *app_name = NULL;
   const gchar *file_source = NULL;
+  gboolean camera_source = FALSE;
   GstAppContext appctx = {};
   GstStreamSourceType source_type = GST_STREAM_TYPE_CAMERA;
   gboolean ret = FALSE;
@@ -847,16 +847,14 @@ main (gint argc, gchar * argv[])
 
   // Structure to define the user options selection
   GOptionEntry entries[] = {
-    { "source-type", 't', 0, G_OPTION_ARG_INT,
-      &source_type,
-      "Camera (1) or File source (2)\n"
-       "      Default source-type: Camera (1) ",
-      "1 or 2"
+    { "camera", 'c', 0, G_OPTION_ARG_NONE,
+      &camera_source,
+      "Camera source (Default)",
+      NULL
     },
     { "file", 'f', 0, G_OPTION_ARG_STRING,
       &file_source,
-      "File source path\n"
-      "      Default video file path : " DEFAULT_FILE_PATH,
+      "File source path\n",
       "/PATH"
     },
     { NULL }
@@ -866,8 +864,8 @@ main (gint argc, gchar * argv[])
 
   snprintf (help_description, 1023, "\nExample:\n"
       "  %s \n"
-      "  %s --source-type=1\n"
-      "  %s --source-type=2 --file=/opt/video.mp4\n"
+      "  %s --camera\n"
+      "  %s --file=/opt/video.mp4\n"
       "\nThis Sample App demonstrates Daisy chain of "
       "Object Detection and Classification\n"
       "\nDefault Path for model and labels used are as below:\n"
@@ -904,14 +902,24 @@ main (gint argc, gchar * argv[])
     return -EFAULT;
   }
 
-  if (source_type < GST_STREAM_TYPE_CAMERA ||
-    source_type > GST_STREAM_TYPE_FILE) {
-    g_printerr ("Invalid source type %d\n", source_type);
+  if (camera_source && file_source)
+  {
+    g_printerr ("Both Camera and File source are provided as input.\n"
+        "Select either Camera or File source\n");
     return -EINVAL;
+  } else if (camera_source) {
+    g_print ("Camera source is selected.\n");
+    source_type = GST_STREAM_TYPE_CAMERA;
+  } else if (file_source) {
+    g_print ("File source is selected.\n");
+    source_type = GST_STREAM_TYPE_FILE;
+  } else {
+    g_print ("No source is selected."
+        "Camera is set as Default\n");
+    source_type = GST_STREAM_TYPE_CAMERA;
   }
 
   if (source_type == GST_STREAM_TYPE_FILE) {
-    file_source = file_source ? file_source : DEFAULT_FILE_PATH;
     if (!file_exists (file_source)) {
       g_print ("Invalid video file source path: %s\n", file_source);
       return -EINVAL;
