@@ -70,7 +70,70 @@ static GstStaticPadTemplate socket_src_template =
       GST_PAD_ALWAYS,
       GST_STATIC_CAPS_ANY);
 
+
+// Declare SocketSrc buffer pool
+G_DEFINE_TYPE(GstSocketSrcBufferPool, gst_socketsrc_buffer_pool, GST_TYPE_BUFFER_POOL);
+#define socketsrc_pool_parent_class gst_socketsrc_buffer_pool_parent_class
+
+// Declare socket_buffer_qdata_quark() to return Quark for SocketSrc buffer data
 static G_DEFINE_QUARK (SocketBufferQDataQuark, socket_buffer_qdata);
+
+static void
+gst_socketsrc_buffer_pool_reset (GstBufferPool * pool, GstBuffer * buffer)
+{
+  GST_LOG_OBJECT (pool, "SOCKET_SRC buffer reset %p", buffer);
+
+  // Invoke the previously registered destroy notify function
+  gst_mini_object_set_qdata (GST_MINI_OBJECT (buffer),
+      socket_buffer_qdata_quark (), NULL, NULL);
+
+  gst_buffer_remove_all_memory (buffer);
+  GST_BUFFER_FLAG_UNSET (buffer, GST_BUFFER_FLAG_TAG_MEMORY);
+
+  GST_BUFFER_POOL_CLASS (socketsrc_pool_parent_class)->reset_buffer (pool, buffer);
+}
+
+GstBufferPool *
+gst_socketsrc_buffer_pool_new ()
+{
+  gboolean success = TRUE;
+  GstStructure *config = NULL;
+  GstSocketSrcBufferPool *pool;
+
+  pool = (GstSocketSrcBufferPool *) g_object_new (
+      GST_TYPE_SOCKET_SRC_BUFFER_POOL, NULL);
+  g_return_val_if_fail (pool != NULL, NULL);
+  gst_object_ref_sink (pool);
+
+  GST_LOG_OBJECT (pool, "New socket src buffer pool %p", pool);
+
+  config = gst_buffer_pool_get_config (GST_BUFFER_POOL_CAST (pool));
+
+  gst_buffer_pool_config_set_params (config, NULL, 0, 3, 0);
+
+  success = gst_buffer_pool_set_config (GST_BUFFER_POOL_CAST (pool), config);
+  if (success == FALSE) {
+    gst_object_unref (pool);
+    GST_ERROR("Failed to set pool configuration!");
+    return NULL;
+  }
+
+  return GST_BUFFER_POOL_CAST (pool);
+}
+
+static void
+gst_socketsrc_buffer_pool_class_init (GstSocketSrcBufferPoolClass * klass)
+{
+  GstBufferPoolClass *pool = (GstBufferPoolClass *) klass;
+
+  pool->reset_buffer = gst_socketsrc_buffer_pool_reset;
+}
+
+static void
+gst_socketsrc_buffer_pool_init (GstSocketSrcBufferPool * pool)
+{
+  GST_DEBUG ("Initializing pool!");
+}
 
 static gboolean
 gst_socket_src_set_location (GstFdSocketSrc * src, const gchar * location)
@@ -143,6 +206,7 @@ gst_socket_src_start (GstBaseSrc * bsrc)
 {
   GstFdSocketSrc *src = GST_SOCKET_SRC (bsrc);
   struct sockaddr_un address = {0};
+  GstBufferPool *pool = NULL;
   gint addrlen = 0;
 
   src->socket = socket (AF_UNIX, SOCK_STREAM, 0);
@@ -184,6 +248,15 @@ gst_socket_src_start (GstBaseSrc * bsrc)
   src->fdmap = g_hash_table_new (NULL, NULL);
   g_mutex_init (&src->fdmaplock);
 
+  pool = gst_socketsrc_buffer_pool_new ();
+  if (!pool) {
+    GST_ERROR_OBJECT (src, "Failed to create buffer pool!");
+    return FALSE;
+  }
+
+  gst_buffer_pool_set_active (pool, TRUE);
+  src->pool = pool;
+
   GST_INFO_OBJECT (src, "Socket connected");
 
   return TRUE;
@@ -202,6 +275,9 @@ gst_socket_src_socket_release (GstFdSocketSrc * src)
   shutdown (src->socket, SHUT_RDWR);
   close (src->socket);
   src->socket = 0;
+
+  gst_buffer_pool_set_active (src->pool, FALSE);
+  gst_object_unref (src->pool);
 
   g_mutex_lock (&src->fdmaplock);
   keys_list = g_hash_table_get_keys (src->fdmap);
@@ -281,8 +357,10 @@ gst_socket_src_fill_buffer (GstFdSocketSrc * src, GstBuffer ** outbuf)
 
   g_return_val_if_fail (info.id == MESSAGE_NEW_FRAME, GST_FLOW_ERROR);
 
-  GST_DEBUG_OBJECT (src, "info: msg_id: %d, buf_id %d, width: %d, height: %d",
-      info.id, info.new_frame.buf_id, info.new_frame.width, info.new_frame.height);
+  GST_DEBUG_OBJECT (src,
+      "info: msg_id: %d, buf_id %d, fd: %d, width: %d, height: %d pool: %d",
+      info.id, info.new_frame.buf_id, fd, info.new_frame.width,
+      info.new_frame.height, info.new_frame.use_buffer_pool);
 
   if (fd <= 0) {
     g_mutex_lock (&src->fdmaplock);
@@ -296,8 +374,12 @@ gst_socket_src_fill_buffer (GstFdSocketSrc * src, GstBuffer ** outbuf)
     }
   }
 
-  // Create a GstBuffer.
-  gstbuffer = gst_buffer_new ();
+  // Create or acquire a GstBuffer.
+  if (info.new_frame.use_buffer_pool) {
+    gst_buffer_pool_acquire_buffer (src->pool, &gstbuffer, NULL);
+  } else {
+    gstbuffer = gst_buffer_new ();
+  }
   g_return_val_if_fail (gstbuffer != NULL, GST_FLOW_ERROR);
 
   // Create a FD backed allocator.
@@ -310,7 +392,8 @@ gst_socket_src_fill_buffer (GstFdSocketSrc * src, GstBuffer ** outbuf)
 
   // Wrap our buffer memory block in FD backed memory.
   gstmemory = gst_fd_allocator_alloc (allocator, fd, info.new_frame.maxsize,
-      GST_FD_MEMORY_FLAG_DONT_CLOSE);
+      info.new_frame.use_buffer_pool ?
+          GST_FD_MEMORY_FLAG_DONT_CLOSE : GST_FD_MEMORY_FLAG_NONE);
   if (gstmemory == NULL) {
     gst_buffer_unref (gstbuffer);
     gst_object_unref (allocator);
@@ -350,7 +433,7 @@ gst_socket_src_fill_buffer (GstFdSocketSrc * src, GstBuffer ** outbuf)
   gst_structure_set (structure,
       "socket", G_TYPE_INT, src->client_sock,
       "fd", G_TYPE_INT, fd,
-       "bufid", G_TYPE_INT, info.new_frame.buf_id,
+      "bufid", G_TYPE_INT, info.new_frame.buf_id,
       NULL);
 
   // Set a notification function to signal when the buffer is no longer used.

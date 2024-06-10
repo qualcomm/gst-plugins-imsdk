@@ -50,6 +50,17 @@ G_BEGIN_DECLS
 typedef struct _GstFdSocketSrc GstFdSocketSrc;
 typedef struct _GstFdSocketSrcClass GstFdSocketSrcClass;
 
+/* Bufferpool */
+#define GST_TYPE_SOCKET_SRC_BUFFER_POOL (gst_socketsrc_buffer_pool_get_type())
+#define GST_IS_SOCKET_SRC_BUFFER_POOL (obj) \
+  (G_TYPE_CHECK_INSTANCE_TYPE ((obj), GST_TYPE_SOCKET_SRC_BUFFER_POOL))
+#define GST_SOCKET_SRC_BUFFER_POOL (obj) \
+  (G_TYPE_CHECK_INSTANCE_CAST ((obj), GST_TYPE_SOCKET_SRC_BUFFER_POOL, GstSocketSrcBufferPool))
+#define GST_SOCKET_SRC_BUFFER_POOL_CAST(obj) ((GstSocketSrcBufferPool*)(obj))
+
+typedef struct _GstSocketSrcBufferPool GstSocketSrcBufferPool;
+typedef struct _GstSocketSrcBufferPoolClass GstSocketSrcBufferPoolClass;
+
 struct _GstFdSocketSrc
 {
   GstPushSrc element;
@@ -63,12 +74,28 @@ struct _GstFdSocketSrc
 
   GHashTable *fdmap;
   GMutex fdmaplock;
+
+  GstBufferPool *pool;
 };
 
 struct _GstFdSocketSrcClass
 {
   GstPushSrcClass parent_class;
 };
+
+struct _GstSocketSrcBufferPool
+{
+  GstBufferPool bufferpool;
+};
+
+struct _GstSocketSrcBufferPoolClass
+{
+  GstBufferPoolClass parent_class;
+};
+
+GType gst_socketsrc_buffer_pool_get_type (void);
+
+GstBufferPool * gst_socketsrc_buffer_pool_new (void);
 
 G_GNUC_INTERNAL GType gst_socket_src_get_type (void);
 
