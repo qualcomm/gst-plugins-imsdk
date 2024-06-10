@@ -249,6 +249,7 @@ gst_socket_sink_render (GstBaseSink * bsink, GstBuffer * buffer)
   info.new_frame.format = meta->format;
   info.new_frame.flags = meta->flags;
   info.new_frame.n_planes = meta->n_planes;
+  info.new_frame.use_buffer_pool = buffer->pool != NULL;
 
   for (guint i = 0; i < meta->n_planes; i++) {
     info.new_frame.stride[i] = meta->stride[i];
@@ -261,7 +262,10 @@ gst_socket_sink_render (GstBaseSink * bsink, GstBuffer * buffer)
       meta->width, meta->height, info.new_frame.buf_id, info.new_frame.size);
 
   g_mutex_lock (&sink->bufmaplock);
-  if (g_hash_table_contains (sink->bufmap, GINT_TO_POINTER (info.new_frame.buf_id)))
+  // Transfer FDs if source does not use buffer pool or
+  // if we send this buffer for first time.
+  if (buffer->pool &&
+      g_hash_table_contains (sink->bufmap, GINT_TO_POINTER (info.new_frame.buf_id)))
     buffer_fd = -1;
 
   g_hash_table_insert (sink->bufmap, GINT_TO_POINTER (info.new_frame.buf_id), buffer);
