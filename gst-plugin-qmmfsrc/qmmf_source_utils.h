@@ -30,7 +30,7 @@
 /*
  *  Changes from Qualcomm Innovation Center are provided under the following license:
  *
- *  Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -137,6 +137,9 @@ G_BEGIN_DECLS
 #define GST_TYPE_QMMFSRC_FRC_MODE (gst_qmmfsrc_frc_mode_get_type())
 #define GST_TYPE_QMMFSRC_ROTATE (gst_qmmfsrc_rotate_get_type())
 #define GST_TYPE_QMMFSRC_CAM_OPMODE (gst_qmmfsrc_cam_opmode_get_type())
+#ifdef EIS_MODES_ENABLE
+#define GST_TYPE_QMMFSRC_EIS_MODE (gst_qmmfsrc_eis_mode_get_type())
+#endif // EIS_MODES_ENABLE
 
 #define GST_BAYER_FORMAT_OFFSET 0x1000
 
@@ -292,6 +295,15 @@ enum
   CAPTURE_REQUEST,
 };
 
+#ifdef EIS_MODES_ENABLE
+enum
+{
+  EIS_OFF,
+  EIS_ON_SINGLE_STREAM,
+  EIS_ON_DUAL_STREAM,
+};
+#endif // EIS_MODES_ENABLE
+
 enum
 {
   ROTATE_NONE,
@@ -332,7 +344,11 @@ GType gst_qmmfsrc_capture_mode_get_type (void);
 
 GType gst_qmmfsrc_frc_mode_get_type (void);
 
-GType gst_qmmfsrc_rotate_get_type(void);
+#ifdef EIS_MODES_ENABLE
+GType gst_qmmfsrc_eis_mode_get_type (void);
+#endif // EIS_MODES_ENABLE
+
+GType gst_qmmfsrc_rotate_get_type (void);
 
 GType gst_qmmfsrc_cam_opmode_get_type (void);
 

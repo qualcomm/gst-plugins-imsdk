@@ -86,7 +86,11 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
 #define DEFAULT_PROP_CAMERA_SLAVE                     FALSE
 #define DEFAULT_PROP_CAMERA_LDC_MODE                  FALSE
 #define DEFAULT_PROP_CAMERA_LCAC_MODE                 FALSE
+#ifndef EIS_MODES_ENABLE
 #define DEFAULT_PROP_CAMERA_EIS_MODE                  FALSE
+#else
+#define DEFAULT_PROP_CAMERA_EIS_MODE                  EIS_OFF
+#endif // EIS_MODES_ENABLE
 #define DEFAULT_PROP_CAMERA_SHDR_MODE                 FALSE
 #define DEFAULT_PROP_CAMERA_ADRC                      FALSE
 #define DEFAULT_PROP_CAMERA_CONTROL_MODE              CONTROL_MODE_AUTO
@@ -1402,11 +1406,19 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
       g_param_spec_boolean ("lcac", "LCAC",
           "Lateral Chromatic Aberration Correction", DEFAULT_PROP_CAMERA_LCAC_MODE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+#ifndef EIS_MODES_ENABLE
   g_object_class_install_property (gobject, PROP_CAMERA_EIS,
       g_param_spec_boolean ("eis", "EIS",
-          "Electronic Image Stabilization to reduce the effects of camera shake",
+          "Electronic Image Stabilization mode to reduce the effects of camera shake",
           DEFAULT_PROP_CAMERA_EIS_MODE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+#else
+  g_object_class_install_property (gobject, PROP_CAMERA_EIS,
+      g_param_spec_enum ("eis", "EIS",
+          "Electronic Image Stabilization mode to reduce the effects of camera shake",
+          GST_TYPE_QMMFSRC_EIS_MODE, DEFAULT_PROP_CAMERA_EIS_MODE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+#endif // EIS_MODES_ENABLE
   g_object_class_install_property (gobject, PROP_CAMERA_SHDR,
       g_param_spec_boolean ("shdr", "SHDR",
           "Super High Dynamic Range Imaging", DEFAULT_PROP_CAMERA_SHDR_MODE,
