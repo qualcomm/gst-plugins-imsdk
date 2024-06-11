@@ -76,6 +76,18 @@ struct _GstMLModule {
   GstMLModuleProcess   process;
 };
 
+static const guint colors[] = {
+  0x5548f8ff, 0xa515beff, 0x2dc305ff, 0x61458dff, 0x042547ff, 0x89561cff,
+  0x8c1e2fff, 0xe44999ff, 0xaa9310ff, 0x09bf77ff, 0xafd032ff, 0x9638c3ff,
+  0x943e08ff, 0x386136ff, 0x4110fbff, 0x02d97cff, 0xc67c67ff, 0x9d84e3ff,
+  0x886350ff, 0xe31f15ff, 0xbf6989ff, 0x662f8eff, 0x268a06ff, 0x8a743dff,
+  0xc78f49ff, 0xbcbc6dff, 0x242b25ff, 0xc953a5ff, 0x7d710cff, 0x4d150bff,
+  0x95394cff, 0x782907ff, 0x87f257ff, 0x20a9fbff, 0x7dd89bff, 0x3e2097ff,
+  0xe5e002ff, 0xeb3353ff, 0x101681ff, 0x5467dbff, 0x520f53ff, 0xe2a4afff,
+  0x295e74ff, 0x43d4e3ff, 0xe1ae0dff, 0x3d2e5dff, 0x883a17ff, 0x7e42d8ff,
+  0xfb04a4ff, 0xf04c61ff
+};
+
 static inline void
 gst_ml_module_initialize_debug_category (void)
 {
@@ -237,7 +249,7 @@ gst_ml_parse_labels (const gchar * input, GValue * list)
   if (g_file_test (input, G_FILE_TEST_IS_REGULAR)) {
     GString *string = NULL;
     GError *error = NULL;
-    gchar *contents = NULL;
+    gchar *contents = NULL, *labels = NULL;
     gboolean success = FALSE;
 
     if (!g_file_get_contents (input, &contents, NULL, &error)) {
@@ -252,22 +264,39 @@ gst_ml_parse_labels (const gchar * input, GValue * list)
     contents = g_strdelimit (contents, "\n", ',');
 
     string = g_string_new (contents);
-    g_free (contents);
 
     // Add opening and closing brackets.
     string = g_string_prepend (string, "{ ");
     string = g_string_append (string, " }");
 
     // Get the raw character data.
-    contents = g_string_free (string, FALSE);
+    labels = g_string_free (string, FALSE);
 
-    success = gst_value_deserialize (list, contents);
-    g_free (contents);
+    success = gst_value_deserialize (list, labels);
+    g_free (labels);
 
     if (!success) {
-      GST_ERROR ("Failed to deserialize labels file contents!");
-      return FALSE;
+      guint idx = 0;
+      GValue value = G_VALUE_INIT;
+      g_value_init (&value, G_TYPE_STRING);
+
+      GST_WARNING ("Failed to deserialize labels file contents!");
+
+      // Clear previous data
+      g_value_reset (list);
+
+      gchar **split_labels = g_strsplit (contents, ",", -1);
+
+      for (idx = 0; idx < g_strv_length (split_labels); idx++) {
+        g_value_set_string (&value, split_labels[idx]);
+        gst_value_list_append_value (list, &value);
+      }
+
+      g_strfreev (split_labels);
+      g_value_unset (&value);
     }
+
+    g_free (contents);
   } else if (!gst_value_deserialize (list, input)) {
     GST_ERROR ("Failed to deserialize labels!");
     return FALSE;
@@ -281,6 +310,9 @@ gst_ml_load_labels (GValue * list)
 {
   GHashTable *labels = NULL;
   guint idx = 0, id = 0;
+  GstStructure *structure = NULL;
+  GstLabel *label = NULL;
+  guint n_colours = G_N_ELEMENTS (colors);
 
   g_return_val_if_fail (list != NULL, NULL);
 
@@ -288,31 +320,43 @@ gst_ml_load_labels (GValue * list)
         (GDestroyNotify) gst_ml_label_free);
 
   for (idx = 0; idx < gst_value_list_get_size (list); idx++) {
-    GstStructure *structure = NULL;
-    GstLabel *label = NULL;
+    if (G_VALUE_HOLDS_BOXED (gst_value_list_get_value (list, idx))) {
+      structure = GST_STRUCTURE (
+          g_value_get_boxed (gst_value_list_get_value (list, idx)));
 
-    structure = GST_STRUCTURE (
-        g_value_get_boxed (gst_value_list_get_value (list, idx)));
+      if (!gst_structure_has_field (structure, "id")) {
+        GST_DEBUG ("Structure does not contain 'id' field!");
+        continue;
+      }
 
-    if (structure == NULL) {
-      GST_ERROR ("Failed to extract structure!");
-      return NULL;
-    } else if (!gst_structure_has_field (structure, "id") ||
-        !gst_structure_has_field (structure, "color")) {
-      GST_DEBUG ("Structure does not contain 'id' and/or 'color' fields!");
-      continue;
+      if ((label = gst_ml_label_new ()) == NULL) {
+        GST_ERROR ("Failed to allocate label memory!");
+        return NULL;
+      }
+
+      label->name = g_strdup (gst_structure_get_name (structure));
+      label->name = g_strdelimit (label->name, "-", ' ');
+
+      if (gst_structure_has_field (structure, "color"))
+        gst_structure_get_uint (structure, "color", &label->color);
+      else
+        label->color = colors[idx % n_colours];
+
+      gst_structure_get_uint (structure, "id", &id);
+    } else {
+      GST_DEBUG ("The label doesn't contains structure, use it as a plain text");
+
+      if ((label = gst_ml_label_new ()) == NULL) {
+        GST_ERROR ("Failed to allocate label memory!");
+        return NULL;
+      }
+
+      label->name = g_strdup (
+          g_value_get_string (gst_value_list_get_value (list, idx)));
+      label->name = g_strdelimit (label->name, "-", ' ');
+      label->color = colors[idx % n_colours];
+      id = idx;
     }
-
-    if ((label = gst_ml_label_new ()) == NULL) {
-      GST_ERROR ("Failed to allocate label memory!");
-      return NULL;
-    }
-
-    label->name = g_strdup (gst_structure_get_name (structure));
-    label->name = g_strdelimit (label->name, "-", ' ');
-
-    gst_structure_get_uint (structure, "color", &label->color);
-    gst_structure_get_uint (structure, "id", &id);
 
     g_hash_table_insert (labels, GUINT_TO_POINTER (id), label);
   }
