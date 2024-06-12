@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -52,12 +52,20 @@ G_DEFINE_TYPE (GstDfs, gst_dfs, GST_TYPE_BASE_TRANSFORM);
 #define DEFAULT_OUTPUT_MODE OUTPUT_MODE_VIDEO
 
 #define DEFAULT_PROP_MODE MODE_SPEED
+#define DEFAULT_PROP_RECTIFICATION FALSE
+#define DEFAULT_PROP_PPLEVEL PP_BASIC
+#define DEFAULT_PROP_GPU_RECT FALSE
 #define DEFAULT_PROP_MIN_DISPARITY 1
+
+#if defined(RVSDK_API_VERSION) && (RVSDK_API_VERSION >= 0x202403)
+#define DEFAULT_PROP_NUM_DISPARITY_LEVELS 96
+#define DEFAULT_PROP_FILTER_WIDTH 16
+#define DEFAULT_PROP_FILTER_HEIGHT 4
+#else
 #define DEFAULT_PROP_NUM_DISPARITY_LEVELS 32
 #define DEFAULT_PROP_FILTER_WIDTH 11
 #define DEFAULT_PROP_FILTER_HEIGHT 11
-#define DEFAULT_PROP_RECTIFICATION FALSE
-#define DEFAULT_PROP_GPU_RECT FALSE
+#endif // RVSDK_API_VERSION
 
 #define PLY_HEADER_SIZE 128      //Point Cloud PLY Header size in bytes
 #define PLY_POINT_NUM 3         //Point Cloud PLY point number per row
@@ -73,6 +81,7 @@ enum
   PROP_FILTER_HEIGHT,
   PROP_RECTIFICATION,
   PROP_CONFIG_PATH,
+  PROP_PPLEVEL,
 };
 
 #ifndef GST_CAPS_FEATURE_MEMORY_GBM
@@ -295,12 +304,35 @@ gst_dfs_mode_get_type (void)
         "CPU solution, speed mode", "coverage"},
     {MODE_SPEED,
         "OpenCL solution, speed mode", "speed"},
+    {MODE_BALANCE,
+        "CPU solution, accuracy mode", "balance"},
     {MODE_ACCURACY,
         "CPU solution, accuracy mode", "accuracy"},
     {0, NULL, NULL},
   };
   if (!type)
     type = g_enum_register_static ("DFSMode", mode);
+
+  return type;
+}
+
+GType
+gst_dfs_pplevel_get_type (void)
+{
+  static GType type = 0;
+  static const GEnumValue pplevel[] = {
+    {PP_BASIC,
+        "basic mode", "basic"},
+    {PP_MEDIUM,
+        "advanced mode", "medium"},
+    {PP_STRONG,
+        "strong mode, need specific customer code", "strong"},
+    {PP_SUPREME,
+        "supreme mode, need specific customer code", "supreme"},
+    {0, NULL, NULL},
+  };
+  if (!type)
+    type = g_enum_register_static ("PPlevel", pplevel);
 
   return type;
 }
@@ -574,6 +606,7 @@ gst_dfs_transform (GstBaseTransform * trans, GstBuffer * inbuffer,
     settings.filter_width = dfs->filter_width;
     settings.filter_height = dfs->filter_height;
     settings.rectification = dfs->rectification;
+    settings.pplevel = dfs->pplevel;
     settings.gpu_rect = dfs->gpu_rect;
     settings.stereo_parameter = dfs->stereo_parameter;
 
@@ -648,7 +681,7 @@ gst_dfs_set_property (GObject * object, guint property_id,
   GST_OBJECT_LOCK (dfs);
   switch (property_id) {
     case PROP_MODE:
-      dfs->dfs_mode = (DFSMode) g_value_get_enum (value);
+      dfs->dfs_mode = g_value_get_enum (value);
       break;
     case PROP_MIN_DISPARITY:
       dfs->min_disparity = g_value_get_int (value);
@@ -667,6 +700,9 @@ gst_dfs_set_property (GObject * object, guint property_id,
       break;
     case PROP_CONFIG_PATH:
       dfs->config_location = g_strdup(g_value_get_string (value));
+      break;
+    case PROP_PPLEVEL:
+      dfs->pplevel = g_value_get_enum (value);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -703,6 +739,9 @@ gst_dfs_get_property (GObject * object, guint property_id,
       break;
     case PROP_CONFIG_PATH:
       g_value_set_string (value, dfs->config_location);
+      break;
+    case PROP_PPLEVEL:
+      g_value_set_enum (value, dfs->pplevel);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -793,7 +832,11 @@ gst_dfs_class_init (GstDfsClass * klass)
 
   g_object_class_install_property (gobject, PROP_MODE,
       g_param_spec_enum ("mode", "mode",
-          "Select DFS mode", GST_TYPE_DFS_MODE, DEFAULT_PROP_MODE,
+          "Select DFS mode. 0-cvp: hardware, 1-cpu: coverage mode. "
+          "2-opencl: speed mode. 3-opencl: balance mode, only for "
+          "equal or after RVSDK202403 version. 4-cpu: accuracy mode,"
+          "only for equal or before RVSDK202307 version.",
+          GST_TYPE_DFS_MODE, DEFAULT_PROP_MODE,
           (G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
   g_object_class_install_property (gobject, PROP_MIN_DISPARITY,
@@ -830,6 +873,11 @@ gst_dfs_class_init (GstDfsClass * klass)
   g_object_class_install_property (gobject, PROP_CONFIG_PATH,
       g_param_spec_string("config", "Path to stereo config file",
           "Path to config file. Eg.: /data/stereo.config", DEFAULT_CONFIG_PATH,
+          (G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
+  g_object_class_install_property (gobject, PROP_PPLEVEL,
+      g_param_spec_enum ("pplevel", "pplevel",
+          "Select postprocessing level", GST_TYPE_DFS_PPLEVEL, DEFAULT_PROP_PPLEVEL,
           (G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
   gst_element_class_set_static_metadata (element, "Depth From Stereo",

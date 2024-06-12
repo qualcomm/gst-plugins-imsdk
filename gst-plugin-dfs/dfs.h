@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -44,6 +44,7 @@
 G_BEGIN_DECLS
 
 GType gst_dfs_mode_get_type (void);
+GType gst_dfs_pplevel_get_type (void);
 
 #define GST_TYPE_DFS (gst_dfs_get_type())
 #define GST_DFS(obj) \
@@ -57,6 +58,7 @@ GType gst_dfs_mode_get_type (void);
 #define GST_DFS_CAST(obj) ((GstDfs *)(obj))
 
 #define GST_TYPE_DFS_MODE (gst_dfs_mode_get_type())
+#define GST_TYPE_DFS_PPLEVEL (gst_dfs_pplevel_get_type())
 
 typedef struct _GstDfs GstDfs;
 typedef struct _GstDfsClass GstDfsClass;
@@ -91,6 +93,8 @@ struct _GstDfs {
   gboolean                rectification;
 
   gboolean                gpu_rect;
+
+  DFSPPLevel              pplevel;
 };
 
 struct _GstDfsClass {

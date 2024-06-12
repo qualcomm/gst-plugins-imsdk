@@ -39,9 +39,7 @@ add_library(${GST_DFS} SHARED
 )
 
 # Add target specific precompiler defintions.
-target_compile_definitions(${GST_DFS} PRIVATE
-  $<$<STREQUAL:${TARGET_BOARD_PLATFORM},qrb5165>:TARGET_BOARD_QRB5165>
-)
+add_definitions(-DRVSDK_API_VERSION=${RVSDK_API_VERSION})
 
 target_include_directories(${GST_DFS} PRIVATE
   ${GST_INCLUDE_DIRS}
@@ -56,7 +54,7 @@ target_link_libraries(${GST_DFS} PRIVATE
   gstqtivideobase
   rv
   fastcvopt
-  $<$<STREQUAL:${TARGET_BOARD_PLATFORM},qrb5165>:mv1>
+  $<$<STREQUAL:${RVSDK_API_VERSION},0x202307>:mv1>
 )
 
 install(

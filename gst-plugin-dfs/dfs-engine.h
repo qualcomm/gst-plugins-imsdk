@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -54,8 +54,16 @@ typedef enum {
   MODE_CVP = 0,         //CVP hardware mode
   MODE_COVERAGE,        //CPU solution, speed mode
   MODE_SPEED,           //OpenCL solution, speed mode, fastest mode
+  MODE_BALANCE,         //Special in Kodiak/Kailua
   MODE_ACCURACY,        //CPU solution, accuracy mode
 } DFSMode;
+
+typedef enum {
+  PP_BASIC = 0,         //Basic mode
+  PP_MEDIUM,            //Advanced mode
+  PP_STRONG,            //Strong mode, need secific customer code
+  PP_SUPREME,           //Supreme mode, need secific customer code
+} DFSPPLevel;
 
 typedef struct{
   // Image:
@@ -63,10 +71,14 @@ typedef struct{
   // Image Memory:
   guint32 memoryStride;
   // Calibration:
-#if defined(TARGET_BOARD_QRB5165)
+#if (RVSDK_API_VERSION >= 0x202307) && (RVSDK_API_VERSION < 0x202403)
   gfloat principalPoint[2];
   gfloat focalLength[2];
   gfloat distortion[8];
+#elif (RVSDK_API_VERSION >= 0x202403)
+  gfloat principalPoint[2];
+  gfloat focalLength[2];
+  gfloat distortion[14];
 #else
   guint32 uvOffset;
   gdouble principalPoint[2];
@@ -79,12 +91,10 @@ typedef struct{
 typedef struct{
   gfloat translation[3], rotation[3];  // Relative between cameras
   cameraConfiguration camera[2];        // Left/right camera calibrations
-#if !defined(TARGET_BOARD_QRB5165)
+#if (RVSDK_API_VERSION != 0x202307)
   gfloat correctionFactors[4];         // Distance correction
 #endif
 } stereoConfiguration;
-
-
 
 struct _DfsInitSettings {
   guint                 stereo_frame_width;
@@ -99,6 +109,7 @@ struct _DfsInitSettings {
   gint                  filter_height;
   gboolean              rectification;
   gboolean              gpu_rect;
+  gint                  pplevel;
   stereoConfiguration   stereo_parameter;
 };
 
@@ -110,7 +121,7 @@ gst_dfs_engine_free         (GstDfsEngine *engine);
 
 GST_API gboolean
 gst_dfs_engine_execute (GstDfsEngine *engine,
-    const GstVideoFrame *inframe, gpointer disparity_map, gsize size);
+    const GstVideoFrame *inframe, gpointer output, gsize size);
 
 G_END_DECLS
 
