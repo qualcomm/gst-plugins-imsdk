@@ -56,7 +56,7 @@
  * Default constants to dequantize values
  */
 #define DEFAULT_CONSTANTS \
-    "Mobilenet,q-offsets=<95.0>,q-scales=<0.18740029633045197>;"
+    "Mobilenet,q-offsets=<-95.0>,q-scales=<0.18740029633045197>;"
 
 /**
  * Number of Queues used for buffer caching between elements
