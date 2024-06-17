@@ -1039,6 +1039,7 @@ error:
 
   g_print ("Set pipeline to NULL state ...\n");
   gst_element_set_state (pipeline, GST_STATE_NULL);
+  gst_object_unref (appctx.pipeline);
 
   g_print ("gst_deinit\n");
   gst_deinit ();
