@@ -89,12 +89,11 @@ static const std::unordered_map<uint32_t, C2Param::Index> kParamIndexMap = {
 #if !defined(CODEC2_CONFIG_VERSION_2_0)
   { GST_C2_PARAM_ADAPTIVE_B_FRAMES,
       qc2::C2StreamAdaptiveBPreconditions::output::PARAM_TYPE },
-#else
+#endif // CODEC2_CONFIG_VERSION_2_0
   { GST_C2_PARAM_NATIVE_RECORDING,
       qc2::C2VideoNativeRecording::input::PARAM_TYPE },
   { GST_C2_PARAM_TEMPORAL_LAYERING,
       C2StreamTemporalLayeringTuning::output::PARAM_TYPE },
-#endif // CODEC2_CONFIG_VERSION_2_0
   { GST_C2_PARAM_ENTROPY_MODE,
       qc2::C2VideoEntropyMode::output::PARAM_TYPE },
   { GST_C2_PARAM_LOOP_FILTER_MODE,
@@ -158,6 +157,8 @@ static const std::unordered_map<uint32_t, C2Param::Index> kParamIndexMap = {
       C2StreamAacFormatInfo::output::PARAM_TYPE },
   { GST_C2_PARAM_DOWN_SCALAR,
       qc2::C2VideoDownScalarSetting::output::PARAM_TYPE },
+  { GST_C2_PARAM_HIER_BPRECONDITIONS,
+      qc2::C2StreamHierBPreconditions::output::PARAM_TYPE },
 };
 
 // Convenient map for printing the engine parameter name in string form.
@@ -207,6 +208,7 @@ static const std::unordered_map<uint32_t, const char*> kParamNameMap = {
   { GST_C2_PARAM_IN_AAC_FORMAT, "IN_STREAM_FORMAT" },
   { GST_C2_PARAM_OUT_AAC_FORMAT, "OUT_STREAM_FORMAT" },
   { GST_C2_PARAM_DOWN_SCALAR, "DOWN_SCALAR" },
+  { GST_C2_PARAM_HIER_BPRECONDITIONS, "HIER_BPREDCONDITIONS" },
 };
 
 // Map for the GST_C2_PARAM_PROFILE_LEVEL parameter.
@@ -604,7 +606,7 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       c2param = C2Param::Copy(bpreconditions);
       break;
     }
-#else
+#endif // CODEC2_CONFIG_VERSION_2_0
     case GST_C2_PARAM_NATIVE_RECORDING: {
       qc2::C2VideoNativeRecording::input native_recording;
       native_recording.value = *(reinterpret_cast<gboolean*>(payload));
@@ -613,24 +615,16 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
     }
     case GST_C2_PARAM_TEMPORAL_LAYERING: {
       GstC2TemporalLayer *templayer = reinterpret_cast<GstC2TemporalLayer*>(payload);
-      uint32_t ratiosize = templayer->bitrate_ratios->len;
 
       auto c2templayer =
-          C2StreamTemporalLayeringTuning::output::AllocUnique(ratiosize);
+          C2StreamTemporalLayeringTuning::output::AllocUnique(2);
 
       c2templayer->m.layerCount = templayer->n_layers;
       c2templayer->m.bLayerCount = templayer->n_blayers;
 
-      // bitrate ratios is ignored for now
-      for (uint32_t i = 0; i < ratiosize; i++) {
-        c2templayer->m.bitrateRatios[i] =
-            g_array_index (templayer->bitrate_ratios, gfloat, i);
-      }
-
       c2param = C2Param::Copy(*c2templayer);
       break;
     }
-#endif // CODEC2_CONFIG_VERSION_2_0
     case GST_C2_PARAM_ENTROPY_MODE: {
       qc2::C2VideoEntropyMode::output entropy;
       uint32_t mode = *(reinterpret_cast<GstC2EntropyMode*>(payload));
@@ -920,6 +914,13 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       c2param = C2Param::Copy(scalar);
       break;
     }
+    case GST_C2_PARAM_HIER_BPRECONDITIONS: {
+      qc2::C2StreamHierBPreconditions::output hierb;
+
+      hierb.value = *(reinterpret_cast<gboolean*>(payload));
+      c2param = C2Param::Copy(hierb);
+      break;
+    }
     default:
       GST_ERROR ("Unsupported parameter: %u!", type);
       return FALSE;
@@ -1062,7 +1063,7 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
       *(reinterpret_cast<gboolean*>(payload)) = bpreconditions->value;
       break;
     }
-#else
+#endif // CODEC2_CONFIG_VERSION_2_0
     case GST_C2_PARAM_NATIVE_RECORDING: {
       auto native_recording =
           reinterpret_cast<qc2::C2VideoNativeRecording::input*>(c2param.get());
@@ -1078,20 +1079,8 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
           c2templayer->m.layerCount;
       reinterpret_cast<GstC2TemporalLayer*>(payload)->n_blayers =
           c2templayer->m.bLayerCount;
-
-      float ratio = 0;
-      uint32_t ratiosize = c2templayer->flexCount();
-
-      if (reinterpret_cast<GstC2TemporalLayer*>(payload)->bitrate_ratios != NULL) {
-        GArray* temp = reinterpret_cast<GstC2TemporalLayer*>(payload)->bitrate_ratios;
-        for (uint32_t i = 0; i < ratiosize; i++) {
-          ratio = c2templayer->m.bitrateRatios[i];
-          g_array_append_val (temp, ratio);
-        }
-      }
       break;
     }
-#endif // CODEC2_CONFIG_VERSION_2_0
     case GST_C2_PARAM_ENTROPY_MODE: {
       auto entropy =
           reinterpret_cast<qc2::C2VideoEntropyMode::output*>(c2param.get());
@@ -1315,6 +1304,13 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
 
       reinterpret_cast<GstC2Resolution*>(payload)->width = scalar->width;
       reinterpret_cast<GstC2Resolution*>(payload)->height = scalar->height;
+      break;
+    }
+    case GST_C2_PARAM_HIER_BPRECONDITIONS: {
+      auto hierb =
+          reinterpret_cast<qc2::C2StreamHierBPreconditions::output*>(c2param.get());
+
+      *(reinterpret_cast<gboolean*>(payload)) = hierb->value;
       break;
     }
     default:

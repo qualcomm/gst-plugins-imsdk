@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -76,6 +76,8 @@ struct _GstC2VEncoder {
   GstClockTime         duration;
   /// Previous timestamp saved for variable fps.
   GstClockTime         prevts;
+  /// Current profile.
+  GstC2Profile         profile;
 
   /// SPS/PPS/VPS NALs headers.
   GList                *headers;
@@ -105,6 +107,7 @@ struct _GstC2VEncoder {
   GstC2LoopFilterMode  loop_filter_mode;
   guint32              num_ltr_frames;
   gint32               priority;
+  GstC2TemporalLayer   temp_layer;
 };
 
 struct _GstC2VEncoderClass {
