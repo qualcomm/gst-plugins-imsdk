@@ -225,12 +225,6 @@ is_conversion_required (GstVideoFrame * inframe, GstVideoFrame * outframe)
   return conversion;
 }
 
-static inline gboolean
-is_quantization_adjustment_needed (GstMLInfo * mlinfo)
-{
-  return (mlinfo->type == GST_ML_TYPE_INT8);
-}
-
 static inline void
 init_formats (GValue * formats, ...)
 {
@@ -620,32 +614,6 @@ gst_ml_video_converter_normalize (GstMLVideoConverter * mlconverter,
   for (idx = 0; idx < size; idx++) {
     gst_ml_tensor_assign_value (GST_ML_INFO_TYPE (mlconverter->mlinfo),
         destination, idx, (source[idx] - mean[idx % bpp]) * sigma[idx % bpp]);
-  }
-
-  return TRUE;
-}
-
-static gboolean
-gst_ml_video_converter_adjust_quantization (GstMLVideoConverter * mlconverter,
-    GstVideoFrame * inframe, GstVideoFrame * outframe)
-{
-  guint8 *source = NULL;
-  gint8 *destination = NULL;
-  guint8 tmp = 0;
-  guint idx = 0, size = 0;
-
-  size = GST_VIDEO_FRAME_SIZE (outframe) /
-      gst_ml_type_get_size (mlconverter->mlinfo->type);
-
-  // Sanity check, input frame size must be equal to adjusted output size.
-  g_return_val_if_fail (GST_VIDEO_FRAME_SIZE (inframe) == size, FALSE);
-
-  source = (guint8 *)GST_VIDEO_FRAME_PLANE_DATA (inframe, 0);
-  destination = (gint8 *)GST_VIDEO_FRAME_PLANE_DATA (outframe, 0);
-
-  for (idx = 0; idx < size; idx++) {
-    tmp = source[idx];
-    destination[idx] = (tmp - 128);
   }
 
   return TRUE;
@@ -1275,11 +1243,6 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
              ((mlconverter->mean->len != 0) && (mlconverter->sigma->len != 0))) {
     // There is not need for frame conversion, apply only normalization.
     success = gst_ml_video_converter_normalize (mlconverter, inframe, outframe);
-  }
-
-  if (is_quantization_adjustment_needed (mlconverter->mlinfo)) {
-    success = gst_ml_video_converter_adjust_quantization (mlconverter, outframe,
-        outframe);
   }
 
   gst_ml_video_converter_reset_composition (mlconverter);
