@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -170,6 +170,9 @@ gst_gles_create_surface (GstGlesVideoConverter * convert, const gchar * directio
   } else if (flags == GST_VCE_FLAG_F32_FORMAT) {
     surface.format |= ::ib2c::ColorMode::kFloat32;
     mode = " FLOAT32";
+  } else if (flags == GST_VCE_FLAG_I8_FORMAT) {
+    surface.format |= ::ib2c::ColorMode::kSigned;
+    mode = " SIGNED";
   }
 
   GST_TRACE ("%s surface FD[%d] - Width[%u] Height[%u] Format[%s%s] Planes[%u]",
