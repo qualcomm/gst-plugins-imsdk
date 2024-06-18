@@ -61,8 +61,8 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __GST_QTI_ML_VIDEO_SUPERRESOLUTION_MODULE_H__
-#define __GST_QTI_ML_VIDEO_SUPERRESOLUTION_MODULE_H__
+#ifndef __GST_QTI_ML_VIDEO_SUPER_RESOLUTION_MODULE_H__
+#define __GST_QTI_ML_VIDEO_SUPER_RESOLUTION_MODULE_H__
 
 #include <gst/gst.h>
 #include <gst/ml/gstmlmodule.h>
@@ -71,7 +71,7 @@
 G_BEGIN_DECLS
 
 /**
- * gst_ml_video_superresolution_module_execute:
+ * gst_ml_video_super_resolution_module_execute:
  * @module: Pointer to ML post-processing module.
  * @mlframe: Frame containing mapped tensor memory blocks that need processing.
  * @vframe: Frame containing image.
@@ -81,12 +81,12 @@ G_BEGIN_DECLS
  * to process input tensors.
  *
  * Post-processing module must define the 3rd argument of the implemented
- * 'gst_ml_module_process' API as 'GArray *'.
+ * 'gst_ml_module_process' API as 'GstVideoFrame *'.
  *
  * return: TRUE on success or FALSE on failure
  */
 GST_API gboolean
-gst_ml_video_superresolution_module_execute (GstMLModule * module,
+gst_ml_video_super_resolution_module_execute (GstMLModule * module,
     GstMLFrame * mlframe, GstVideoFrame * vframe)
 {
   return gst_ml_module_execute (module, mlframe, (gpointer) vframe);
@@ -94,4 +94,4 @@ gst_ml_video_superresolution_module_execute (GstMLModule * module,
 
 G_END_DECLS
 
-#endif // __GST_QTI_ML_VIDEO_SUPERRESOLUTION_MODULE_H__
+#endif // __GST_QTI_ML_VIDEO_SUPER_RESOLUTION_MODULE_H__

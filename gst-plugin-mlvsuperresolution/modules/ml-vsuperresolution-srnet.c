@@ -90,6 +90,7 @@ typedef struct _GstMLSubModule GstMLSubModule;
 struct _GstMLSubModule {
   // Configurated ML capabilities in structure format.
   GstMLInfo  mlinfo;
+
   // Offset values for each of the tensors for dequantization of some tensors.
   gdouble    qoffsets[GST_ML_MAX_TENSORS];
   // Scale values for each of the tensors for dequantization of some tensors.
@@ -278,23 +279,26 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   outdata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
   mltype = GST_ML_FRAME_TYPE (mlframe);
 
+  // TODO: Right now this won't work with any output resolution.
+  // TODO: Expolore the possible use of OpenGL or OpenCL
   for (row = 0; row < GST_VIDEO_FRAME_HEIGHT (vframe); row++) {
     for (column = 0; column < GST_VIDEO_FRAME_WIDTH (vframe); column++) {
       // Calculate the destination index.
       idx = (((row * GST_VIDEO_FRAME_WIDTH (vframe)) + column) * bpp) +
           (row * padding);
-      
-      outdata[idx] = gst_ml_module_get_dequant_value (indata, mltype, idx,
-            submodule->qoffsets[0], submodule->qscales[0]) * 255;
 
-      outdata[idx + 1] = gst_ml_module_get_dequant_value (indata, mltype, idx + 1,
-            submodule->qoffsets[0], submodule->qscales[0]) * 255;
+      outdata[idx] = gst_ml_module_get_dequant_value (indata, mltype,
+          idx, submodule->qoffsets[0], submodule->qscales[0]);
 
-      outdata[idx + 2] = gst_ml_module_get_dequant_value (indata, mltype, idx + 2,
-            submodule->qoffsets[0], submodule->qscales[0]) * 255;
-      
+      outdata[idx + 1] = gst_ml_module_get_dequant_value (indata, mltype,
+          (idx + 1), submodule->qoffsets[0], submodule->qscales[0]);
+
+      outdata[idx + 2] = gst_ml_module_get_dequant_value (indata, mltype,
+          (idx + 2), submodule->qoffsets[0], submodule->qscales[0]);
+
+      // If output has an alpha channel set it to opaque.
       if (bpp == 4)
-        outdata[idx + 3] = 0;
+        outdata[idx + 3] = 0xFF;
     }
   }
 

@@ -61,8 +61,8 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __GST_QTI_ML_VIDEO_SUPERRESOLUTION_H__
-#define __GST_QTI_ML_VIDEO_SUPERRESOLUTION_H__
+#ifndef __GST_QTI_ML_VIDEO_SUPER_RESOLUTION_H__
+#define __GST_QTI_ML_VIDEO_SUPER_RESOLUTION_H__
 
 #include <gst/gst.h>
 #include <gst/base/gstbasetransform.h>
@@ -73,23 +73,25 @@
 
 G_BEGIN_DECLS
 
-#define GST_TYPE_ML_VIDEO_SUPERRESOLUTION (gst_ml_video_superresolution_get_type())
-#define GST_ML_VIDEO_SUPERRESOLUTION(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj), GST_TYPE_ML_VIDEO_SUPERRESOLUTION, \
-                              GstMLVideoSuperresolution))
-#define GST_ML_VIDEO_SUPERRESOLUTION_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_CAST((klass), GST_TYPE_ML_VIDEO_SUPERRESOLUTION, \
-                           GstMLVideoSuperresolutionClass))
-#define GST_IS_ML_VIDEO_SUPERRESOLUTION(obj) \
-  (G_TYPE_CHECK_INSTANCE_TYPE((obj), GST_TYPE_ML_VIDEO_SUPERRESOLUTION))
-#define GST_IS_ML_VIDEO_SUPERRESOLUTION_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_TYPE((klass), GST_TYPE_ML_VIDEO_SUPERRESOLUTION))
-#define GST_ML_VIDEO_SUPERRESOLUTION_CAST(obj) ((GstMLVideoSuperresolution *)(obj))
+#define GST_TYPE_ML_VIDEO_SUPER_RESOLUTION \
+    (gst_ml_video_super_resolution_get_type())
+#define GST_ML_VIDEO_SUPER_RESOLUTION(obj) \
+    (G_TYPE_CHECK_INSTANCE_CAST((obj), GST_TYPE_ML_VIDEO_SUPER_RESOLUTION, \
+        GstMLVideoSuperResolution))
+#define GST_ML_VIDEO_SUPER_RESOLUTION_CLASS(klass) \
+    (G_TYPE_CHECK_CLASS_CAST((klass), GST_TYPE_ML_VIDEO_SUPER_RESOLUTION, \
+        GstMLVideoSuperResolutionClass))
+#define GST_IS_ML_VIDEO_SUPER_RESOLUTION(obj) \
+    (G_TYPE_CHECK_INSTANCE_TYPE((obj), GST_TYPE_ML_VIDEO_SUPER_RESOLUTION))
+#define GST_IS_ML_VIDEO_SUPER_RESOLUTION_CLASS(klass) \
+    (G_TYPE_CHECK_CLASS_TYPE((klass), GST_TYPE_ML_VIDEO_SUPER_RESOLUTION))
+#define GST_ML_VIDEO_SUPER_RESOLUTION_CAST(obj) \
+    ((GstMLVideoSuperResolution *)(obj))
 
-typedef struct _GstMLVideoSuperresolution GstMLVideoSuperresolution;
-typedef struct _GstMLVideoSuperresolutionClass GstMLVideoSuperresolutionClass;
+typedef struct _GstMLVideoSuperResolution GstMLVideoSuperResolution;
+typedef struct _GstMLVideoSuperResolutionClass GstMLVideoSuperResolutionClass;
 
-struct _GstMLVideoSuperresolution {
+struct _GstMLVideoSuperResolution {
   GstBaseTransform  parent;
 
   GstMLInfo         *mlinfo;
@@ -106,12 +108,12 @@ struct _GstMLVideoSuperresolution {
   GstStructure      *mlconstants;
 };
 
-struct _GstMLVideoSuperresolutionClass {
+struct _GstMLVideoSuperResolutionClass {
   GstBaseTransformClass parent;
 };
 
-G_GNUC_INTERNAL GType gst_ml_video_Superresolution_get_type (void);
+G_GNUC_INTERNAL GType gst_ml_video_super_resolution_get_type (void);
 
 G_END_DECLS
 
-#endif // __GST_QTI_ML_VIDEO_SUPERRESOLUTION_H__
+#endif // __GST_QTI_ML_VIDEO_SUPER_RESOLUTION_H__
