@@ -11,7 +11,7 @@
  * This app connects the camera with appsink element,
  * once an appsink callback is connected to the new-sample signal,
  * it saves buffer to device storage based on the capture type.
- * capture format can be BAYER/RAW/JPEG.
+ * capture format can be BAYER/YUV/JPEG.
  * main stream format can be avc/wayland.
  *
  * Usage:
@@ -35,11 +35,11 @@ namespace camera = qmmf;
 #define DEFAULT_OUTPUT_PREVIEW GST_PREVIEW_OUTPUT_DISPLAY
 #define DEFAULT_FORMAT_CAPTURE GST_CAPTURE_FORMAT_JPEG
 
-#define N_SNAPSHOTS 5
-#define N_STILLS 7
+#define N_SNAPSHOTS 3
+#define N_STILLS 5
 #define TIMEOUT_S 10
 
-#define FILE_MP4 "/opt/mux.mp4"
+#define FILE_MP4 "/opt/Video.mp4"
 
 enum _GstPreviewOutput
 {
@@ -51,7 +51,7 @@ typedef enum _GstPreviewOutput GstPreviewOutput;
 enum _GstCaptureFormat
 {
   GST_CAPTURE_FORMAT_JPEG,
-  GST_CAPTURE_FORMAT_RAW,
+  GST_CAPTURE_FORMAT_YUV,
   GST_CAPTURE_FORMAT_BAYER,
 };
 typedef enum _GstCaptureFormat GstCaptureFormat;
@@ -73,7 +73,7 @@ struct _GstAppContext {
   "delayed by a 10s timer then quits the app\n"\
   "in file path starting with /opt/frame_ \n"\
   "preview is shown either on display or avc\n"\
-  "capture is either in jpeg, raw or bayer\n" \
+  "capture is either in jpeg, yuv, raw/bayer\n" \
   "\nCommand:\n" \
   "For Display Stream and jpeg capture \n" \
   "  gst-camera-burst-capture-example -w 1280 -h 720 -p 1 -c 0 \n" \
@@ -113,8 +113,8 @@ static GOptionEntry entries[] = {
     "capture format",
     "capture format type:"
     "\n\t0 - JPEG"
-    "\n\t1 - RAW"
-    "\n\t2 - BAYER\n"
+    "\n\t1 - YUV"
+    "\n\t2 - RAW/BAYER\n"
   },
   { NULL }
 };
@@ -416,7 +416,7 @@ create_stream_caps (gint width, gint height)
 }
 
 static GstCaps *
-create_raw_caps (gint width, gint height)
+create_yuv_caps (gint width, gint height)
 {
   GstCaps *filter_caps;
 
@@ -782,9 +782,9 @@ main (int argc, char * * argv)
       capture_caps = create_jpeg_caps (width, height);
       app_ctx.file_ext = ".jpg";
       break;
-    case GST_CAPTURE_FORMAT_RAW:
-      capture_caps = create_raw_caps (width, height);
-      app_ctx.file_ext = ".raw";
+    case GST_CAPTURE_FORMAT_YUV:
+      capture_caps = create_yuv_caps (width, height);
+      app_ctx.file_ext = ".yuv";
       break;
     case GST_CAPTURE_FORMAT_BAYER:
     {
@@ -811,7 +811,7 @@ main (int argc, char * * argv)
           sensor_width, sensor_height);
 
       capture_caps = create_bayer_caps (sensor_width, sensor_height);
-      app_ctx.file_ext = ".bayer";
+      app_ctx.file_ext = ".raw";
       break;
     }
     default:
