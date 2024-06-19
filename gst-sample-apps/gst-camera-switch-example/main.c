@@ -65,6 +65,25 @@ struct GstCameraSwitchCtxStruct {
 typedef struct GstCameraSwitchCtxStruct GstCameraSwitchCtx;
 
 /**
+ * In case of ASYNC state change it will properly wait for state change
+ *
+ * @param element gst element object.
+ */
+static gboolean
+wait_for_state_change (GstElement *element) {
+  GstStateChangeReturn ret = GST_STATE_CHANGE_FAILURE;
+  g_print ("Element is PREROLLING ...\n");
+
+  ret = gst_element_get_state (element, NULL, NULL, GST_CLOCK_TIME_NONE);
+
+  if (ret == GST_STATE_CHANGE_FAILURE) {
+    g_printerr ("Element failed to PREROLL!\n");
+    return FALSE;
+  }
+  return TRUE;
+}
+
+/**
  * Switch Camera involves 3 main steps
  * 1. Create next camera elements and Sync state to curtent pipeline state
  * 2. Unlink the current camera stream
@@ -72,7 +91,7 @@ typedef struct GstCameraSwitchCtxStruct GstCameraSwitchCtx;
  *
  * @param cameraswitchctx Application Context Object.
  */
-void
+static gboolean
 switch_camera (GstCameraSwitchCtx *cameraswitchctx)
 {
   GstElement *new_camsrc = NULL;
@@ -105,17 +124,25 @@ switch_camera (GstCameraSwitchCtx *cameraswitchctx)
   g_print ("Linking next camera stream...\n");
   if (!gst_element_link (new_camsrc, cameraswitchctx->capsfilter)) {
     g_printerr ("Error: Link cannot be done!\n");
-    return;
+    return FALSE;
   }
   g_print ("Linked next camera stream successfully \n");
 
   // Set NULL state to the unlinked elemets
   gst_element_set_state (current_camsrc, GST_STATE_NULL);
 
+  // Wait for state change to complete
+  if (!wait_for_state_change (current_camsrc)) {
+    g_printerr ("Error: Set state failed for element!\n");
+    return FALSE;
+  }
+
   gst_bin_remove (GST_BIN (cameraswitchctx->pipeline), current_camsrc);
 
   cameraswitchctx->is_camera0 = !cameraswitchctx->is_camera0;
   cameraswitchctx->current_camsrc = new_camsrc;
+
+  return TRUE;
 }
 
 /**
@@ -139,7 +166,10 @@ thread_fn (gpointer user_data)
     }
     g_mutex_unlock (&cameraswitchctx->lock);
 
-    switch_camera (cameraswitchctx);
+    if (!switch_camera (cameraswitchctx)) {
+      g_printerr ("Failed to switch camera...Exiting.\n");
+      return NULL;
+    }
   }
 
   return NULL;
