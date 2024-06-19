@@ -569,16 +569,17 @@ main (gint argc, gchar * argv[])
   }
 
   // Set model path for execution
-  if (ml_framework == GST_MODEL_TYPE_SNPE) {
-     model_path = model_path ? model_path:
-        (model_type == GST_YOLO_TYPE_V5 ? DEFAULT_SNPE_YOLOV5_MODEL :
-        (model_type == GST_YOLO_TYPE_V8 ? DEFAULT_SNPE_YOLOV8_MODEL :
-        DEFAULT_SNPE_YOLONAS_MODEL));
-  } else if (ml_framework == GST_MODEL_TYPE_TFLITE) {
-     model_path = DEFAULT_TFLITE_YOLOV8_MODEL;
-  } else {
-     g_printerr ("Invalid ml_framework\n");
-     return -EINVAL;
+  if (model_path == NULL) {
+    if (ml_framework == GST_MODEL_TYPE_SNPE) {
+      model_path = (model_type == GST_YOLO_TYPE_V5 ? DEFAULT_SNPE_YOLOV5_MODEL :
+          (model_type == GST_YOLO_TYPE_V8 ? DEFAULT_SNPE_YOLOV8_MODEL :
+          DEFAULT_SNPE_YOLONAS_MODEL));
+    } else if (ml_framework == GST_MODEL_TYPE_TFLITE) {
+      model_path = DEFAULT_TFLITE_YOLOV8_MODEL;
+    } else {
+      g_printerr ("Invalid ml_framework\n");
+      return -EINVAL;
+    }
   }
 
   // Set default Label path for execution
