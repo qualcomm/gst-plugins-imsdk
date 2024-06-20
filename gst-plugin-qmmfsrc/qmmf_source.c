@@ -1651,13 +1651,16 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
 #endif  // MULTI_CAMERA_ENABLE
+
   g_object_class_install_property (gobject, PROP_CAMERA_OPERATION_MODE,
-      g_param_spec_enum ("op-mode", "Camera operation mode",
-           "provide camera operation mode to support specified camera function "
-           "support mode : none | frameselection "
-           "by default camera operation mode is none.",
-           GST_TYPE_QMMFSRC_CAM_OPMODE, DEFAULT_PROP_CAMERA_OPERATION_MODE,
-           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+      g_param_spec_flags ("op-mode", "Camera operation mode",
+          "provide camera operation mode to support specified camera function "
+          "support mode : none, frameselection and fastswitch"
+          "by default camera operation mode is none.",
+          GST_TYPE_QMMFSRC_CAM_OPMODE, DEFAULT_PROP_CAMERA_OPERATION_MODE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+
   g_object_class_install_property (gobject, PROP_CAMERA_INPUT_ROI,
       g_param_spec_boolean ("input-roi-enable", "Input ROI reprocess enable",
           "Input ROI if enabled, Input ROI reprocess usecase will be selected",
