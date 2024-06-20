@@ -203,7 +203,7 @@ struct _GstQmmfContext {
   /// Multi Camera (1) Exposure value
   gint64            slave_exp_time;
   /// Camera operation mode
-  gint              cam_operation_mode;
+  guint32           op_mode;
   /// Input ROI reprocess usecase enable
   gboolean          input_roi_enable;
   /// Number of Input ROI's
@@ -1181,6 +1181,7 @@ gst_qmmf_context_open (GstQmmfContext * context)
 {
   ::qmmf::recorder::Recorder *recorder = context->recorder;
   gint status = 0;
+  uint32_t op_mode = context->op_mode;
 
   GST_TRACE ("Open QMMF context");
 
@@ -1252,23 +1253,33 @@ gst_qmmf_context_open (GstQmmfContext * context)
 
   // Camera Operation Mode
   ::qmmf::recorder::CamOpModeControl cam_opmode;
-  switch(context->cam_operation_mode) {
-    case CAM_OPMODE_NONE:
+  gint extra_param_entry = 0;
+
+  while (op_mode) {
+    if (op_mode & CAM_OPMODE_NONE) {
       cam_opmode.mode =
         ::qmmf::recorder::CamOpMode::kNone;
-      break;
-    case CAM_OPMODE_FRAMESELECTION:
+      op_mode &= (~CAM_OPMODE_NONE);
+    } else if (op_mode & CAM_OPMODE_FRAMESELECTION) {
       cam_opmode.mode =
         ::qmmf::recorder::CamOpMode::kFrameSelection;
-      break;
-    case CAM_OPMODE_FASTSWITCH:
+      op_mode &= (~CAM_OPMODE_FRAMESELECTION);
+    } else if (op_mode & CAM_OPMODE_FASTSWITCH) {
       cam_opmode.mode =
         ::qmmf::recorder::CamOpMode::kFastSwitch;
-      break;
-    default:
-      break;
+      op_mode &= (~CAM_OPMODE_FASTSWITCH);
+    }
+
+    if (xtraparam.Update(::qmmf::recorder::QMMF_CAM_OP_MODE_CONTROL,
+          cam_opmode, extra_param_entry) < 0)
+      GST_ERROR ("operation mode (%d) idx (%d) update failed",
+        (int32_t)cam_opmode.mode, extra_param_entry);
+    else
+      GST_DEBUG ("operation mode (%d) idx (%d) update OK",
+        (int32_t)cam_opmode.mode, extra_param_entry);
+
+    extra_param_entry++;
   }
-  xtraparam.Update(::qmmf::recorder::QMMF_CAM_OP_MODE_CONTROL, cam_opmode);
 
   qmmf::recorder::CameraResultCb result_cb = [&, context](uint32_t camera_id,
       const ::camera::CameraMetadata& result) {
@@ -1987,7 +1998,7 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       context->ife_direct_stream = g_value_get_boolean (value);
       return;
     case PARAM_CAMERA_OPERATION_MODE:
-      context->cam_operation_mode = g_value_get_enum (value);
+      context->op_mode = g_value_get_flags (value);
       return;
     case PARAM_CAMERA_INPUT_ROI:
       context->input_roi_enable = g_value_get_boolean (value);
@@ -2748,7 +2759,7 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       break;
     }
     case PARAM_CAMERA_OPERATION_MODE:
-      g_value_set_enum (value, context->cam_operation_mode);
+      g_value_set_flags (value, context->op_mode);
       break;
     case PARAM_CAMERA_INPUT_ROI_INFO:
     {

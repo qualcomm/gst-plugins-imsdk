@@ -697,7 +697,7 @@ GType
 gst_qmmfsrc_cam_opmode_get_type (void)
 {
   static GType gtype = 0;
-  static const GEnumValue variants[] = {
+  static const GFlagsValue variants[] = {
     { CAM_OPMODE_NONE,
         "Normal Camera Operation Mode", "none"
     },
@@ -711,7 +711,7 @@ gst_qmmfsrc_cam_opmode_get_type (void)
   };
 
   if (!gtype)
-    gtype = g_enum_register_static ("GstFrameSelection", variants);
+    gtype = g_flags_register_static ("GstFrameSelection", variants);
 
   return gtype;
 }
