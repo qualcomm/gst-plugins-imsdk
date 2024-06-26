@@ -353,7 +353,6 @@ gst_ml_qnn_prepare_output_buffer (GstBaseTransform * base,
 {
   GstMLQnn *mlqnn = GST_ML_QNN (base);
   GstBufferPool *pool = mlqnn->outpool;
-  GstProtectionMeta *pmeta = NULL;
 
   GST_DEBUG_OBJECT (mlqnn, "prepare_output_buffer");
 
