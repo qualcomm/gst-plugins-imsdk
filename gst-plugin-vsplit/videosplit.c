@@ -565,7 +565,7 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
   guint idx = 0, num = 0, id = 0, n_metas = 0, n_entries = 0, i = 0;
   gint sar_n = 1, sar_d = 1;
   gboolean success = TRUE;
-  const gdouble scale = 1.0 / 255.0, offset = 0.0;
+  const gdouble scale = 1.0, offset = 0.0;
 
   // Fetch the number of ROI meta entries from the input buffer.
   n_metas = gst_buffer_get_n_meta (inframe->buffer,

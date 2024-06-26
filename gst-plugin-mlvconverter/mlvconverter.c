@@ -96,7 +96,10 @@ G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
 #define DEFAULT_PROP_ENGINE_BACKEND  (gst_video_converter_default_backend())
 #define DEFAULT_PROP_SUBPIXEL_LAYOUT GST_ML_VIDEO_PIXEL_LAYOUT_REGULAR
 #define DEFAULT_PROP_MEAN            0.0
-#define DEFAULT_PROP_SIGMA           (1.0 / 255.0)
+#define DEFAULT_PROP_SIGMA           1.0
+
+#define SIGNED_CONVERSION_OFFSET     (128.0)
+#define FLOAT_CONVERSION_SIGMA       (255.0)
 
 #define GINT8_PTR_CAST(data)         ((gint8*) data)
 #define GUINT8_PTR_CAST(data)        ((guint8*) data)
@@ -552,6 +555,15 @@ gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
   for (idx = 0; idx < bpp; idx++) {
     mean[idx] = GET_MEAN_VALUE (mlconverter->mean, idx);
     sigma[idx] = GET_SIGMA_VALUE (mlconverter->sigma, idx);
+
+    // Apply coefficients for signed and singned conversion.
+    if (GST_ML_INFO_TYPE (mlconverter->mlinfo) == GST_ML_TYPE_INT8)
+      mean[idx] += SIGNED_CONVERSION_OFFSET;
+
+    // Apply coefficients for float conversion.
+    if (GST_ML_INFO_TYPE (mlconverter->mlinfo) == GST_ML_TYPE_FLOAT16 ||
+        GST_ML_INFO_TYPE (mlconverter->mlinfo) == GST_ML_TYPE_FLOAT32)
+      sigma[idx] /= FLOAT_CONVERSION_SIGMA;
   }
 
   source = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
@@ -606,6 +618,15 @@ gst_ml_video_converter_normalize (GstMLVideoConverter * mlconverter,
   for (idx = 0; idx < bpp; idx++) {
     mean[idx] = GET_MEAN_VALUE (mlconverter->mean, idx);
     sigma[idx] = GET_SIGMA_VALUE (mlconverter->sigma, idx);
+
+    // Apply coefficients for signed and singned conversion.
+    if (GST_ML_INFO_TYPE (mlconverter->mlinfo) == GST_ML_TYPE_INT8)
+      mean[idx] += SIGNED_CONVERSION_OFFSET;
+
+    // Apply coefficients for float conversion.
+    if (GST_ML_INFO_TYPE (mlconverter->mlinfo) == GST_ML_TYPE_FLOAT16 ||
+        GST_ML_INFO_TYPE (mlconverter->mlinfo) == GST_ML_TYPE_FLOAT32)
+      sigma[idx] /= FLOAT_CONVERSION_SIGMA;
   }
 
   source = GST_VIDEO_FRAME_PLANE_DATA (inframe, 0);
@@ -1175,12 +1196,18 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
     mlconverter->composition.flags |= GST_VCE_FLAG_F16_FORMAT;
   else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_FLOAT32)
     mlconverter->composition.flags |= GST_VCE_FLAG_F32_FORMAT;
+  else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_INT8)
+    mlconverter->composition.flags |= GST_VCE_FLAG_I8_FORMAT;
 
   for (idx = 0; idx < GST_VCE_MAX_CHANNELS; idx++) {
     mlconverter->composition.offsets[idx] = (idx < mlconverter->mean->len) ?
         g_array_index (mlconverter->mean, gdouble, idx) : DEFAULT_PROP_MEAN;
     mlconverter->composition.scales[idx] = (idx < mlconverter->sigma->len) ?
         g_array_index (mlconverter->sigma, gdouble, idx) : DEFAULT_PROP_SIGMA;
+
+    // Apply coefficients for unsigned to singned conversion.
+    if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_INT8)
+      mlconverter->composition.offsets[idx] += SIGNED_CONVERSION_OFFSET;
   }
 
   GST_DEBUG_OBJECT (mlconverter, "Input caps: %" GST_PTR_FORMAT, incaps);
