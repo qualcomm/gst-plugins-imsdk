@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -138,6 +138,19 @@ gst_ml_snpe_sink_template (void)
 {
   return gst_pad_template_new ("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
       gst_ml_snpe_sink_caps ());
+}
+
+static void
+gst_buffer_copy_protection_meta (GstBuffer * outbuffer, GstBuffer * inbuffer)
+{
+  gpointer state = NULL;
+  GstMeta *meta = NULL;
+
+  while ((meta = gst_buffer_iterate_meta_filtered (inbuffer, &state,
+              GST_PROTECTION_META_API_TYPE))) {
+    gst_buffer_add_protection_meta (outbuffer,
+        gst_structure_copy (((GstProtectionMeta *) meta)->info));
+  }
 }
 
 static GstBufferPool *
@@ -300,7 +313,6 @@ gst_ml_snpe_prepare_output_buffer (GstBaseTransform * base,
 {
   GstMLSnpe *snpe = GST_ML_SNPE (base);
   GstBufferPool *pool = snpe->outpool;
-  GstProtectionMeta *pmeta = NULL;
 
   if (gst_base_transform_is_passthrough (base)) {
     GST_DEBUG_OBJECT (snpe, "Passthrough, no need to do anything");
@@ -339,8 +351,8 @@ gst_ml_snpe_prepare_output_buffer (GstBaseTransform * base,
   // Copy the offset field as it may contain channels data for batched buffers.
   GST_BUFFER_OFFSET (*outbuffer) = GST_BUFFER_OFFSET (inbuffer);
 
-  if ((pmeta = gst_buffer_get_protection_meta (inbuffer)) != NULL)
-    gst_buffer_add_protection_meta (*outbuffer, gst_structure_copy (pmeta->info));
+  // Transfer GstProtectionMeta entries from input to the output buffer.
+  gst_buffer_copy_protection_meta (*outbuffer, inbuffer);
 
   return GST_FLOW_OK;
 }
