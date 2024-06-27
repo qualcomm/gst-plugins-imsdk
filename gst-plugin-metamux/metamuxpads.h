@@ -85,6 +85,35 @@ G_BEGIN_DECLS
 #define GST_METAMUX_SRC_UNLOCK(obj) \
     g_mutex_unlock(GST_METAMUX_SRC_GET_LOCK(obj))
 
+#define GST_METAMUX_PAD_SIGNAL_IDLE(pad, idle) \
+{\
+  g_mutex_lock (&(pad->lock));                                     \
+                                                                   \
+  if (pad->is_idle != idle) {                                      \
+    pad->is_idle = idle;                                           \
+    GST_TRACE_OBJECT (pad, "State %s", idle ? "Idle" : "Running"); \
+    g_cond_signal (&(pad->drained));                               \
+  }                                                                \
+                                                                   \
+  g_mutex_unlock (&(pad->lock));                                   \
+}
+
+#define GST_METAMUX_PAD_WAIT_IDLE(pad) \
+{\
+  g_mutex_lock (&(pad->lock));                                         \
+  GST_TRACE_OBJECT (pad, "Waiting until idle");                        \
+                                                                       \
+  while (!pad->is_idle) {                                              \
+    gint64 endtime = g_get_monotonic_time () + 1 * G_TIME_SPAN_SECOND; \
+                                                                       \
+    if (!g_cond_wait_until (&(pad->drained), &(pad->lock), endtime))   \
+      GST_WARNING_OBJECT (pad, "Timeout while waiting for idle!");     \
+  }                                                                    \
+                                                                       \
+  GST_TRACE_OBJECT (pad, "Received idle");                             \
+  g_mutex_unlock (&(pad->lock));                                       \
+}
+
 typedef struct _GstMetaEntry GstMetaEntry;
 
 typedef struct _GstMetaMuxDataPad GstMetaMuxDataPad;
@@ -133,6 +162,14 @@ struct _GstMetaMuxSinkPad {
   /// Inherited parent structure.
   GstPad       parent;
 
+  /// Global mutex lock.
+  GMutex       lock;
+
+  /// Condition for signalling that last buffer was submitted downstream.
+  GCond        drained;
+  /// Flag indicating that there is no more work for processing.
+  gboolean     is_idle;
+
   /// Queue for managing incoming video/audio buffers.
   GstDataQueue *buffers;
 };
@@ -148,6 +185,11 @@ struct _GstMetaMuxSrcPad {
 
   /// Global mutex lock.
   GMutex       lock;
+
+  /// Condition for signalling that last buffer was submitted downstream.
+  GCond        drained;
+  /// Flag indicating that there is no more work for processing.
+  gboolean     is_idle;
 
   /// Segment.
   GstSegment   segment;

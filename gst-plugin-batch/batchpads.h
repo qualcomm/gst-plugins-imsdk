@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -74,6 +74,35 @@ G_BEGIN_DECLS
 #define GST_BATCH_SRC_LOCK(obj)     g_mutex_lock(GST_BATCH_SRC_GET_LOCK(obj))
 #define GST_BATCH_SRC_UNLOCK(obj)   g_mutex_unlock(GST_BATCH_SRC_GET_LOCK(obj))
 
+#define GST_BATCH_PAD_SIGNAL_IDLE(pad, idle) \
+{\
+  g_mutex_lock (&(pad->lock));                                     \
+                                                                   \
+  if (pad->is_idle != idle) {                                      \
+    pad->is_idle = idle;                                           \
+    GST_TRACE_OBJECT (pad, "State %s", idle ? "Idle" : "Running"); \
+    g_cond_signal (&(pad->drained));                               \
+  }                                                                \
+                                                                   \
+  g_mutex_unlock (&(pad->lock));                                   \
+}
+
+#define GST_BATCH_PAD_WAIT_IDLE(pad) \
+{\
+  g_mutex_lock (&(pad->lock));                                         \
+  GST_TRACE_OBJECT (pad, "Waiting until idle");                        \
+                                                                       \
+  while (!pad->is_idle) {                                              \
+    gint64 endtime = g_get_monotonic_time () + 1 * G_TIME_SPAN_SECOND; \
+                                                                       \
+    if (!g_cond_wait_until (&(pad->drained), &(pad->lock), endtime))   \
+      GST_WARNING_OBJECT (pad, "Timeout while waiting for idle!");     \
+  }                                                                    \
+                                                                       \
+  GST_TRACE_OBJECT (pad, "Received idle");                             \
+  g_mutex_unlock (&(pad->lock));                                       \
+}
+
 typedef struct _GstBatchSinkPad GstBatchSinkPad;
 typedef struct _GstBatchSinkPadClass GstBatchSinkPadClass;
 typedef struct _GstBatchSrcPad GstBatchSrcPad;
@@ -81,16 +110,21 @@ typedef struct _GstBatchSrcPadClass GstBatchSrcPadClass;
 
 struct _GstBatchSinkPad {
   /// Inherited parent structure.
-  GstPad     parent;
+  GstPad       parent;
 
   /// Global mutex lock.
-  GMutex     lock;
+  GMutex       lock;
+
+  /// Condition for signalling that last buffer was submitted downstream.
+  GCond        drained;
+  /// Flag indicating that there is no more work for processing.
+  gboolean     is_idle;
 
   /// Segment.
-  GstSegment segment;
+  GstSegment   segment;
 
   /// Queue for managing incoming buffers.
-  GQueue     *queue;
+  GstDataQueue *buffers;
 };
 
 struct _GstBatchSinkPadClass {
@@ -104,6 +138,11 @@ struct _GstBatchSrcPad {
 
   /// Global mutex lock.
   GMutex       lock;
+
+  /// Condition for signalling that last buffer was submitted downstream.
+  GCond        drained;
+  /// Flag indicating that there is no more work for processing.
+  gboolean     is_idle;
 
   /// Segment.
   GstSegment   segment;
@@ -134,10 +173,6 @@ gboolean gst_batch_src_pad_query (GstPad * pad, GstObject * parent,
                                   GstQuery * query);
 gboolean gst_batch_src_pad_activate_mode (GstPad * pad, GstObject * parent,
                                           GstPadMode mode, gboolean active);
-
-
-void gst_batch_sink_pad_flush_queue (GstPad * sinkpad);
-gboolean gst_batch_src_pad_activate_task (GstPad * srcpad, gboolean active);
 
 G_END_DECLS
 

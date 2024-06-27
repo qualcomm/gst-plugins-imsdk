@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -48,7 +48,7 @@
 
 
 #define GST_CAT_DEFAULT gst_batch_debug
-GST_DEBUG_CATEGORY_STATIC (gst_batch_debug);
+GST_DEBUG_CATEGORY (gst_batch_debug);
 
 #define gst_batch_parent_class parent_class
 G_DEFINE_TYPE (GstBatch, gst_batch, GST_TYPE_ELEMENT);
@@ -87,7 +87,10 @@ static void
 gst_data_queue_free_item (gpointer userdata)
 {
   GstDataQueueItem *item = userdata;
-  gst_buffer_unref (GST_BUFFER (item->object));
+
+  if (item->object != NULL)
+    gst_buffer_unref (GST_BUFFER (item->object));
+
   g_slice_free (GstDataQueueItem, item);
 }
 
@@ -214,11 +217,8 @@ gst_batch_sink_buffers_available (GstBatch * batch)
     GST_OBJECT_LOCK (sinkpad);
 
     // Pads which are in EOS or FLUSHING state are not included in the checks.
-    if (!GST_PAD_IS_EOS (list->data) && !GST_PAD_IS_FLUSHING (list->data)) {
-      GST_BATCH_SINK_LOCK (sinkpad);
-      available &= !g_queue_is_empty (sinkpad->queue);
-      GST_BATCH_SINK_UNLOCK (sinkpad);
-    }
+    if (!GST_PAD_IS_EOS (list->data) && !GST_PAD_IS_FLUSHING (list->data))
+      available &= !gst_data_queue_is_empty (sinkpad->buffers);
 
     GST_OBJECT_UNLOCK (sinkpad);
   }
@@ -311,16 +311,23 @@ gst_batch_update_src_caps (GstBatch * batch)
 
   // Update the framerate field for video caps.
   for (idx = 0; idx < length; idx++) {
+    const gchar *viewmode = NULL;
+    gint n_views = 0;
+
     structure = gst_caps_get_structure (srccaps, idx);
 
     if (!gst_structure_has_name (structure, "video/x-raw"))
       continue;
 
+    viewmode = gst_video_multiview_mode_to_caps_string (
+        GST_VIDEO_MULTIVIEW_MODE_SEPARATED);
+    n_views = g_list_length (batch->sinkpads);
+
     // Set multiview mode separated which indicates the next plugin to read
     // the corresponding channel bit in the buffer universal offset field.
-    gst_structure_set (structure, "multiview-mode", G_TYPE_STRING,
-          gst_video_multiview_mode_to_caps_string (
-              GST_VIDEO_MULTIVIEW_MODE_SEPARATED), NULL);
+    gst_structure_set (structure,
+        "multiview-mode", G_TYPE_STRING, viewmode,
+        "views", G_TYPE_INT, n_views, NULL);
 
     if (G_VALUE_TYPE (&framerate) == GST_TYPE_FRACTION)
       gst_structure_set_value (structure, "framerate", &framerate);
@@ -368,8 +375,8 @@ static gboolean
 gst_batch_extract_sink_buffer (GstElement * element, GstPad * pad,
     gpointer userdata)
 {
-  GstBatch *batch = GST_BATCH (element);
   GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (pad);
+  GstDataQueueItem *item = NULL;
   GstBuffer *outbuffer = NULL, *inbuffer = NULL;
   GstVideoMeta *vmeta = NULL;
   GstVideoRegionOfInterestMeta *roimeta = NULL;
@@ -379,14 +386,15 @@ gst_batch_extract_sink_buffer (GstElement * element, GstPad * pad,
 
   outbuffer = GST_BUFFER (userdata);
 
-  GST_BATCH_SINK_LOCK (sinkpad);
-  inbuffer = g_queue_pop_head (sinkpad->queue);
-  GST_BATCH_SINK_UNLOCK (sinkpad);
-
-  if (NULL == inbuffer)
+  if (gst_data_queue_is_empty (sinkpad->buffers) ||
+      !gst_data_queue_peek (sinkpad->buffers, &item))
     return TRUE;
 
-  GST_TRACE_OBJECT (batch, "Taking %" GST_PTR_FORMAT, inbuffer);
+  // Take the buffer from the queue item and null the object pointer.
+  inbuffer = GST_BUFFER (item->object);
+  item->object = NULL;
+
+  GST_TRACE_OBJECT (sinkpad, "Taking %" GST_PTR_FORMAT, inbuffer);
 
   // Get the index of current sink pad.
   idx = g_list_index (element->sinkpads, sinkpad);
@@ -396,10 +404,9 @@ gst_batch_extract_sink_buffer (GstElement * element, GstPad * pad,
 
   // Create a structure that will contain information for decryption.
   structure = gst_structure_new (name,
-    "timestamp", G_TYPE_UINT64, GST_BUFFER_TIMESTAMP (inbuffer),
-    "duration", G_TYPE_UINT64, GST_BUFFER_DURATION (inbuffer),
-    "flags", G_TYPE_UINT, GST_BUFFER_FLAGS (inbuffer),
-    NULL);
+      "timestamp", G_TYPE_UINT64, GST_BUFFER_TIMESTAMP (inbuffer),
+      "duration", G_TYPE_UINT64, GST_BUFFER_DURATION (inbuffer),
+      "flags", G_TYPE_UINT, GST_BUFFER_FLAGS (inbuffer), NULL);
   g_free (name);
 
   // Add meta containing information for tensor decryption downstream.
@@ -457,6 +464,7 @@ gst_batch_worker_task (gpointer userdata)
   GstBatchSrcPad *srcpad = GST_BATCH_SRC_PAD (batch->srcpad);
   GstBuffer *buffer = NULL;
   GstDataQueueItem *item = NULL;
+  GList *list = NULL;
   gint64 endtime = 0;
 
   GST_BATCH_LOCK (batch);
@@ -479,9 +487,12 @@ gst_batch_worker_task (gpointer userdata)
 
   // Initialize and send the source segment for synchronization.
   if (GST_FORMAT_UNDEFINED == srcpad->segment.format) {
+    GstEvent *event = NULL;
+
     gst_segment_init (&(srcpad)->segment, GST_FORMAT_TIME);
-    gst_pad_push_event (GST_PAD (srcpad),
-        gst_event_new_segment (&(srcpad)->segment));
+    event = gst_event_new_segment (&(srcpad)->segment);
+
+    gst_pad_push_event (GST_PAD (srcpad), event);
   }
 
   srcpad->basetime = (srcpad->basetime == (-1)) ?
@@ -552,6 +563,27 @@ gst_batch_worker_task (gpointer userdata)
   if (!gst_data_queue_push (GST_BATCH_SRC_PAD (batch->srcpad)->buffers, item))
     item->destroy (item);
 
+  GST_OBJECT_LOCK (batch);
+
+  // Buffer was sent to srcpad, remove and free the sinkpad item from the queue.
+  for (list = GST_ELEMENT (batch)->sinkpads; list; list = list->next) {
+    GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (list->data);
+
+    if (gst_data_queue_is_empty (sinkpad->buffers) ||
+        !gst_data_queue_peek (sinkpad->buffers, &item))
+      continue;
+
+    if (item->object != NULL)
+      continue;
+
+    if (gst_data_queue_pop (sinkpad->buffers, &item))
+      item->destroy (item);
+
+    GST_BATCH_PAD_SIGNAL_IDLE (sinkpad, gst_data_queue_is_empty (sinkpad->buffers));
+  }
+
+  GST_OBJECT_UNLOCK (batch);
+
   return;
 }
 
@@ -567,9 +599,7 @@ gst_batch_start_worker_task (GstBatch * batch)
   GST_INFO_OBJECT (batch, "Created task %p", batch->worktask);
 
   GST_BATCH_LOCK (batch);
-
   batch->active = TRUE;
-
   GST_BATCH_UNLOCK (batch);
 
   if (!gst_task_start (batch->worktask)) {
@@ -753,6 +783,7 @@ static gboolean
 gst_batch_sink_query (GstPad * pad, GstObject * parent, GstQuery * query)
 {
   GstBatch *batch = GST_BATCH (parent);
+  GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (pad);
 
   GST_TRACE_OBJECT (pad, "Received %s query: %" GST_PTR_FORMAT,
       GST_QUERY_TYPE_NAME (query), query);
@@ -782,12 +813,13 @@ gst_batch_sink_query (GstPad * pad, GstObject * parent, GstQuery * query)
       return TRUE;
     }
     case GST_QUERY_DRAIN:
-    {
       // When upstream elements query for drain state
       // let sinkpad flush the buffers in internal queue
-      gst_batch_sink_pad_flush_queue (pad);
+      gst_data_queue_set_flushing (sinkpad->buffers, TRUE);
+      gst_data_queue_flush (sinkpad->buffers);
+
+      gst_data_queue_set_flushing (sinkpad->buffers, FALSE);
       return TRUE;
-    }
     default:
       break;
   }
@@ -799,6 +831,7 @@ static gboolean
 gst_batch_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
 {
   GstBatch *batch = GST_BATCH (parent);
+  GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (pad);
 
   GST_TRACE_OBJECT (pad, "Received %s event: %" GST_PTR_FORMAT,
       GST_EVENT_TYPE_NAME (event), event);
@@ -817,7 +850,6 @@ gst_batch_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
     }
     case GST_EVENT_SEGMENT:
     {
-      GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (pad);
       GstSegment *segment = &GST_BATCH_SRC_PAD (batch->srcpad)->segment;
 
       gst_event_copy_segment (event, &sinkpad->segment);
@@ -842,48 +874,37 @@ gst_batch_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
     }
     case GST_EVENT_FLUSH_START:
       // Flush the sink pad buffer queue.
-      gst_batch_sink_pad_flush_queue (pad);
+      gst_data_queue_set_flushing (sinkpad->buffers, TRUE);
+      gst_data_queue_flush (sinkpad->buffers);
 
       // When all other sink pads are in flushing state push event to source.
-      if (gst_batch_all_sink_pads_flushing (batch, pad)) {
-        gst_pad_push_event (batch->srcpad, event);
-        gst_batch_src_pad_activate_task (batch->srcpad, FALSE);
-
-        gst_batch_stop_worker_task (batch);
-        return TRUE;
-      }
+      if (gst_batch_all_sink_pads_flushing (batch, pad))
+        return gst_pad_push_event (batch->srcpad, event);
 
       // Drop the event until all sink pads are in flushing state.
       gst_event_unref (event);
       return TRUE;
     case GST_EVENT_FLUSH_STOP:
-      // Reset the sink pad segment element.
-      gst_segment_init (&GST_BATCH_SINK_PAD (pad)->segment,
-          GST_FORMAT_UNDEFINED);
+      // Enable data queue and reset the sink pad segment element.
+      gst_segment_init (&sinkpad->segment, GST_FORMAT_UNDEFINED);
+      gst_data_queue_set_flushing (sinkpad->buffers, FALSE);
 
       // When all other sink pads are in non flushing state push event to source.
-      if (gst_batch_all_sink_pads_non_flushing (batch, pad)) {
-        gst_pad_push_event (batch->srcpad, event);
-        gst_batch_src_pad_activate_task (batch->srcpad, TRUE);
-
-        gst_batch_start_worker_task (batch);
-        return TRUE;
-      }
+      if (gst_batch_all_sink_pads_non_flushing (batch, pad))
+        return gst_pad_push_event (batch->srcpad, event);
 
       // Drop the event until all sink pads are in non flushing state.
       gst_event_unref (event);
       return TRUE;
     case GST_EVENT_EOS:
-      // Flush the sink pad buffer queue.
-      gst_batch_sink_pad_flush_queue (pad);
+      // Wait until all queued input buffers have been processed.
+      GST_BATCH_PAD_WAIT_IDLE (GST_BATCH_SINK_PAD_CAST (pad));
 
       // When all other sink pads are in EOS state push event to the source.
       if (gst_batch_all_sink_pads_eos (batch, pad)) {
-        gst_pad_push_event (batch->srcpad, event);
-        gst_batch_src_pad_activate_task (batch->srcpad, FALSE);
-
-        gst_batch_stop_worker_task (batch);
-        return TRUE;
+        // Before pushing EOS downstream wait until all buffers are send.
+        GST_BATCH_PAD_WAIT_IDLE (GST_BATCH_SRC_PAD_CAST (batch->srcpad));
+        return gst_pad_push_event (batch->srcpad, event);
       }
 
       // Drop the event until all sink pads are in EOS state.
@@ -909,12 +930,20 @@ gst_batch_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * buffer)
 {
   GstBatch *batch = GST_BATCH (parent);
   GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (pad);
+  GstDataQueueItem *item = NULL;
 
   GST_TRACE_OBJECT (pad, "Received %" GST_PTR_FORMAT, buffer);
 
-  GST_BATCH_SINK_LOCK (sinkpad);
-  g_queue_push_tail (sinkpad->queue, buffer);
-  GST_BATCH_SINK_UNLOCK (sinkpad);
+  item = g_slice_new0 (GstDataQueueItem);
+  item->object = GST_MINI_OBJECT (buffer);
+  item->size = gst_buffer_get_size (buffer);
+  item->duration = GST_BUFFER_DURATION (buffer);
+  item->visible = TRUE;
+  item->destroy = gst_data_queue_free_item;
+
+  // Push the buffer into the queue or free it on failure.
+  if (!gst_data_queue_push (sinkpad->buffers, item))
+    item->destroy (item);
 
   g_cond_signal (&(batch)->wakeup);
   return GST_FLOW_OK;
@@ -985,9 +1014,7 @@ gst_batch_release_pad (GstElement * element, GstPad * pad)
   GST_DEBUG_OBJECT (batch, "Releasing pad: %s", GST_PAD_NAME (pad));
 
   GST_BATCH_LOCK (batch);
-
   batch->sinkpads = g_list_remove (batch->sinkpads, pad);
-
   GST_BATCH_UNLOCK (batch);
 
   gst_element_remove_pad (element, pad);
@@ -998,9 +1025,19 @@ gst_batch_change_state (GstElement * element, GstStateChange transition)
 {
   GstBatch *batch = GST_BATCH (element);
   GstStateChangeReturn ret = GST_STATE_CHANGE_SUCCESS;
+  GList *list = NULL;
 
   switch (transition) {
     case GST_STATE_CHANGE_READY_TO_PAUSED:
+      GST_OBJECT_LOCK (batch);
+
+      for (list = GST_ELEMENT (batch)->sinkpads; list; list = list->next) {
+        GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (list->data);
+        gst_data_queue_set_flushing (sinkpad->buffers, FALSE);
+      }
+
+      GST_OBJECT_UNLOCK (batch);
+
       gst_batch_start_worker_task (batch);
       break;
     default:
@@ -1011,13 +1048,14 @@ gst_batch_change_state (GstElement * element, GstStateChange transition)
 
   switch (transition) {
     case GST_STATE_CHANGE_PAUSED_TO_READY:
-    {
-      GList *list = NULL;
-
       GST_OBJECT_LOCK (batch);
 
-      for (list = GST_ELEMENT (batch)->sinkpads; list; list = list->next)
-        gst_batch_sink_pad_flush_queue (GST_PAD (list->data));
+      for (list = GST_ELEMENT (batch)->sinkpads; list; list = list->next) {
+        GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (list->data);
+
+        gst_data_queue_set_flushing (sinkpad->buffers, TRUE);
+        gst_data_queue_flush (sinkpad->buffers);
+      }
 
       GST_OBJECT_UNLOCK (batch);
 
@@ -1027,7 +1065,6 @@ gst_batch_change_state (GstElement * element, GstStateChange transition)
           GST_FORMAT_UNDEFINED);
       GST_BATCH_SRC_PAD (batch->srcpad)->stmstart = FALSE;
       break;
-    }
     default:
       break;
   }

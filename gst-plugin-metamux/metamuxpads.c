@@ -34,11 +34,12 @@
 
 #include "metamuxpads.h"
 
+GST_DEBUG_CATEGORY_EXTERN (gst_metamux_debug);
+#define GST_CAT_DEFAULT gst_metamux_debug
+
 G_DEFINE_TYPE(GstMetaMuxDataPad, gst_metamux_data_pad, GST_TYPE_PAD);
 G_DEFINE_TYPE(GstMetaMuxSinkPad, gst_metamux_sink_pad, GST_TYPE_PAD);
 G_DEFINE_TYPE(GstMetaMuxSrcPad, gst_metamux_src_pad, GST_TYPE_PAD);
-
-GST_DEBUG_CATEGORY_EXTERN (gst_metamux_debug);
 
 static gboolean
 queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
@@ -46,13 +47,35 @@ queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
 {
   GstPad *pad = GST_PAD (checkdata);
 
-  // Accumulating only 1 second data in the queue
-  if (time > 1 * GST_SECOND) {
-    GST_TRACE_OBJECT (pad, "%s pad queue limit reached!", GST_PAD_NAME (pad));
+  if (GST_IS_METAMUX_SRC_PAD (pad)) {
+    GstMetaMuxSrcPad *srcpad = GST_METAMUX_SRC_PAD_CAST (pad);
+    GST_METAMUX_PAD_SIGNAL_IDLE (srcpad, FALSE);
+  } else if (GST_IS_METAMUX_SINK_PAD (pad)) {
+    GstMetaMuxSinkPad *sinkpad = GST_METAMUX_SINK_PAD_CAST (pad);
+    GST_METAMUX_PAD_SIGNAL_IDLE (sinkpad, FALSE);
+  }
+
+  // Accumulating only 1 second data in the queue.
+  if (time > (1 * GST_SECOND)) {
+    GST_TRACE_OBJECT (pad, "Queue limit reached!");
     return TRUE;
   }
 
   return FALSE;
+}
+
+static void
+queue_empty_cb (GstDataQueue * queue, gpointer checkdata)
+{
+  GstPad *pad = GST_PAD (checkdata);
+
+  if (GST_IS_METAMUX_SRC_PAD (pad)) {
+    GstMetaMuxSrcPad *srcpad = GST_METAMUX_SRC_PAD_CAST (pad);
+    GST_METAMUX_PAD_SIGNAL_IDLE (srcpad, TRUE);
+  } else if (GST_IS_METAMUX_SINK_PAD (pad)) {
+    GstMetaMuxSinkPad *sinkpad = GST_METAMUX_SINK_PAD_CAST (pad);
+    GST_METAMUX_PAD_SIGNAL_IDLE (sinkpad, TRUE);
+  }
 }
 
 static void
@@ -61,11 +84,19 @@ gst_metamux_src_pad_worker_task (gpointer userdata)
   GstMetaMuxSrcPad *srcpad = GST_METAMUX_SRC_PAD (userdata);
   GstDataQueueItem *item = NULL;
 
-  if (gst_data_queue_pop (srcpad->buffers, &item)) {
-    GstBuffer *buffer = gst_buffer_ref (GST_BUFFER (item->object));
-    item->destroy (item);
+  if (gst_data_queue_peek (srcpad->buffers, &item)) {
+    GstBuffer *buffer = NULL;
+
+    // Take the buffer from the queue item and null the object pointer.
+    buffer = GST_BUFFER (item->object);
+    item->object = NULL;
+
     GST_TRACE_OBJECT (srcpad, "Pushing %" GST_PTR_FORMAT, buffer);
     gst_pad_push (GST_PAD (srcpad), buffer);
+
+    // Buffer was sent downstream, remove and free the item from the queue.
+    if (gst_data_queue_pop (srcpad->buffers, &item))
+      item->destroy (item);
   } else {
     GST_INFO_OBJECT (srcpad, "Pause worker task!");
     gst_pad_pause_task (GST_PAD (srcpad));
@@ -227,6 +258,9 @@ gst_metamux_sink_pad_finalize (GObject * object)
   gst_data_queue_flush (pad->buffers);
   gst_object_unref (GST_OBJECT_CAST (pad->buffers));
 
+  g_cond_clear (&pad->drained);
+  g_mutex_clear (&pad->lock);
+
   G_OBJECT_CLASS (gst_metamux_sink_pad_parent_class)->finalize(object);
 }
 
@@ -241,7 +275,12 @@ gst_metamux_sink_pad_class_init (GstMetaMuxSinkPadClass * klass)
 void
 gst_metamux_sink_pad_init (GstMetaMuxSinkPad * pad)
 {
-  pad->buffers = gst_data_queue_new (queue_is_full_cb, NULL, NULL, pad);
+  g_mutex_init (&pad->lock);
+  g_cond_init (&pad->drained);
+
+  pad->buffers =
+      gst_data_queue_new (queue_is_full_cb, NULL, queue_empty_cb, pad);
+  pad->is_idle = TRUE;
 }
 
 static void
@@ -253,6 +292,7 @@ gst_metamux_src_pad_finalize (GObject * object)
   gst_data_queue_flush (pad->buffers);
   gst_object_unref (GST_OBJECT_CAST (pad->buffers));
 
+  g_cond_clear (&pad->drained);
   g_mutex_clear (&pad->lock);
 
   G_OBJECT_CLASS (gst_metamux_src_pad_parent_class)->finalize(object);
@@ -270,9 +310,12 @@ void
 gst_metamux_src_pad_init (GstMetaMuxSrcPad * pad)
 {
   g_mutex_init (&pad->lock);
+  g_cond_init (&pad->drained);
 
   gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
 
-  pad->buffers = gst_data_queue_new (queue_is_full_cb, NULL, NULL, pad);
+  pad->buffers =
+      gst_data_queue_new (queue_is_full_cb, NULL, queue_empty_cb, pad);
+  pad->is_idle = TRUE;
 }
 
