@@ -81,11 +81,11 @@
 #include <linux/dma-buf.h>
 #endif // HAVE_LINUX_DMA_BUF_H
 
-#define GST_CAT_DEFAULT gst_ml_video_superresolution_debug
-GST_DEBUG_CATEGORY_STATIC (gst_ml_video_superresolution_debug);
+#define GST_CAT_DEFAULT gst_ml_video_super_resolution_debug
+GST_DEBUG_CATEGORY_STATIC (gst_ml_video_super_resolution_debug);
 
-#define gst_ml_video_superresolution_parent_class parent_class
-G_DEFINE_TYPE (GstMLVideoSuperresolution, gst_ml_video_superresolution,
+#define gst_ml_video_super_resolution_parent_class parent_class
+G_DEFINE_TYPE (GstMLVideoSuperResolution, gst_ml_video_super_resolution,
     GST_TYPE_BASE_TRANSFORM);
 
 #define GST_TYPE_ML_MODULES (gst_ml_modules_get_type())
@@ -94,16 +94,16 @@ G_DEFINE_TYPE (GstMLVideoSuperresolution, gst_ml_video_superresolution,
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
 #endif
 
-#define GST_ML_VIDEO_SUPERRESOLUTION_VIDEO_FORMATS \
+#define GST_ML_VIDEO_SUPER_RESOLUTION_VIDEO_FORMATS \
     "{ RGBA, BGRA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR }"
 
-#define GST_ML_VIDEO_SUPERRESOLUTION_SRC_CAPS                            \
+#define GST_ML_VIDEO_SUPER_RESOLUTION_SRC_CAPS                            \
     "video/x-raw, "                                                   \
-    "format = (string) " GST_ML_VIDEO_SUPERRESOLUTION_VIDEO_FORMATS "; " \
+    "format = (string) " GST_ML_VIDEO_SUPER_RESOLUTION_VIDEO_FORMATS "; " \
     "video/x-raw(" GST_CAPS_FEATURE_MEMORY_GBM "), "                  \
-    "format = (string) " GST_ML_VIDEO_SUPERRESOLUTION_VIDEO_FORMATS
+    "format = (string) " GST_ML_VIDEO_SUPER_RESOLUTION_VIDEO_FORMATS
 
-#define GST_ML_VIDEO_SUPERRESOLUTION_SINK_CAPS \
+#define GST_ML_VIDEO_SUPER_RESOLUTION_SINK_CAPS \
     "neural-network/tensors"
 
 #define DEFAULT_PROP_MODULE         0
@@ -119,50 +119,50 @@ enum
   PROP_CONSTANTS,
 };
 
-static GstStaticCaps gst_ml_video_superresolution_static_sink_caps =
-    GST_STATIC_CAPS (GST_ML_VIDEO_SUPERRESOLUTION_SINK_CAPS);
+static GstStaticCaps gst_ml_video_super_resolution_static_sink_caps =
+    GST_STATIC_CAPS (GST_ML_VIDEO_SUPER_RESOLUTION_SINK_CAPS);
 
-static GstStaticCaps gst_ml_video_superresolution_static_src_caps =
-    GST_STATIC_CAPS (GST_ML_VIDEO_SUPERRESOLUTION_SRC_CAPS);
+static GstStaticCaps gst_ml_video_super_resolution_static_src_caps =
+    GST_STATIC_CAPS (GST_ML_VIDEO_SUPER_RESOLUTION_SRC_CAPS);
 
 static GstCaps *
-gst_ml_video_superresolution_sink_caps (void)
+gst_ml_video_super_resolution_sink_caps (void)
 {
   static GstCaps *caps = NULL;
   static gsize inited = 0;
 
   if (g_once_init_enter (&inited)) {
-    caps = gst_static_caps_get (&gst_ml_video_superresolution_static_sink_caps);
+    caps = gst_static_caps_get (&gst_ml_video_super_resolution_static_sink_caps);
     g_once_init_leave (&inited, 1);
   }
   return caps;
 }
 
 static GstCaps *
-gst_ml_video_superresolution_src_caps (void)
+gst_ml_video_super_resolution_src_caps (void)
 {
   static GstCaps *caps = NULL;
   static gsize inited = 0;
 
   if (g_once_init_enter (&inited)) {
-    caps = gst_static_caps_get (&gst_ml_video_superresolution_static_src_caps);
+    caps = gst_static_caps_get (&gst_ml_video_super_resolution_static_src_caps);
     g_once_init_leave (&inited, 1);
   }
   return caps;
 }
 
 static GstPadTemplate *
-gst_ml_video_superresolution_sink_template (void)
+gst_ml_video_super_resolution_sink_template (void)
 {
   return gst_pad_template_new ("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
-      gst_ml_video_superresolution_sink_caps ());
+      gst_ml_video_super_resolution_sink_caps ());
 }
 
 static GstPadTemplate *
-gst_ml_video_superresolution_src_template (void)
+gst_ml_video_super_resolution_src_template (void)
 {
   return gst_pad_template_new ("src", GST_PAD_SRC, GST_PAD_ALWAYS,
-      gst_ml_video_superresolution_src_caps ());
+      gst_ml_video_super_resolution_src_caps ());
 }
 
 static GType
@@ -175,7 +175,7 @@ gst_ml_modules_get_type (void)
     return gtype;
 
   variants = gst_ml_enumarate_modules ("ml-vsuperresolution-");
-  gtype = g_enum_register_static ("GstMLVideoSuperresolutionModules", variants);
+  gtype = g_enum_register_static ("GstMLVideoSuperResolutionModules", variants);
 
   return gtype;
 }
@@ -199,8 +199,8 @@ caps_has_feature (const GstCaps * caps, const gchar * feature)
 }
 
 static GstBufferPool *
-gst_ml_video_superresolution_create_pool (GstMLVideoSuperresolution *
-    superresolution, GstCaps * caps)
+gst_ml_video_super_resolution_create_pool (
+    GstMLVideoSuperResolution * super_resolution, GstCaps * caps)
 {
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
@@ -208,23 +208,22 @@ gst_ml_video_superresolution_create_pool (GstMLVideoSuperresolution *
   GstVideoInfo info;
   guint size = 0;
 
-
   if (!gst_video_info_from_caps (&info, caps)) {
-    GST_ERROR_OBJECT (superresolution, "Invalid caps %" GST_PTR_FORMAT, caps);
+    GST_ERROR_OBJECT (super_resolution, "Invalid caps %" GST_PTR_FORMAT, caps);
     return NULL;
   }
 
   // If downstream allocation query supports GBM, allocate gbm memory.
   if (caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
-    GST_INFO_OBJECT (superresolution, "Uses GBM memory");
+    GST_INFO_OBJECT (super_resolution, "Uses GBM memory");
     pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
   } else {
-    GST_INFO_OBJECT (superresolution, "Uses ION memory");
+    GST_INFO_OBJECT (super_resolution, "Uses ION memory");
     pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
   }
 
   if (NULL == pool) {
-    GST_ERROR_OBJECT (superresolution, "Failed to create buffer pool!");
+    GST_ERROR_OBJECT (super_resolution, "Failed to create buffer pool!");
     return NULL;
   }
 
@@ -239,7 +238,7 @@ gst_ml_video_superresolution_create_pool (GstMLVideoSuperresolution *
   gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
 
   if (!gst_buffer_pool_set_config (pool, config)) {
-    GST_WARNING_OBJECT (superresolution, "Failed to set pool configuration!");
+    GST_WARNING_OBJECT (super_resolution, "Failed to set pool configuration!");
     g_object_unref (pool);
     pool = NULL;
   }
@@ -249,11 +248,10 @@ gst_ml_video_superresolution_create_pool (GstMLVideoSuperresolution *
 }
 
 static gboolean
-gst_ml_video_superresolution_decide_allocation (GstBaseTransform * base,
+gst_ml_video_super_resolution_decide_allocation (GstBaseTransform * base,
     GstQuery * query)
 {
-  GstMLVideoSuperresolution *superresolution =
-      GST_ML_VIDEO_SUPERRESOLUTION (base);
+  GstMLVideoSuperResolution *super_resolution = GST_ML_VIDEO_SUPER_RESOLUTION (base);
   GstCaps *caps = NULL;
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
@@ -263,22 +261,22 @@ gst_ml_video_superresolution_decide_allocation (GstBaseTransform * base,
 
   gst_query_parse_allocation (query, &caps, NULL);
   if (!caps) {
-    GST_ERROR_OBJECT (superresolution, "Failed to parse the allocation caps!");
+    GST_ERROR_OBJECT (super_resolution, "Failed to parse the allocation caps!");
     return FALSE;
   }
 
   // Invalidate the cached pool if there is an allocation_query.
-  if (superresolution->outpool)
-    gst_object_unref (superresolution->outpool);
+  if (super_resolution->outpool)
+    gst_object_unref (super_resolution->outpool);
 
   // Create a new buffer pool.
-  pool = gst_ml_video_superresolution_create_pool (superresolution, caps);
+  pool = gst_ml_video_super_resolution_create_pool (super_resolution, caps);
   if (pool == NULL) {
-    GST_ERROR_OBJECT (superresolution, "Failed to create buffer pool!");
+    GST_ERROR_OBJECT (super_resolution, "Failed to create buffer pool!");
     return FALSE;
   }
 
-  superresolution->outpool = pool;
+  super_resolution->outpool = pool;
 
   // Get the configured pool properties in order to set in query.
   config = gst_buffer_pool_get_config (pool);
@@ -304,19 +302,18 @@ gst_ml_video_superresolution_decide_allocation (GstBaseTransform * base,
 }
 
 static GstFlowReturn
-gst_ml_video_superresolution_prepare_output_buffer (GstBaseTransform * base,
+gst_ml_video_super_resolution_prepare_output_buffer (GstBaseTransform * base,
     GstBuffer * inbuffer, GstBuffer ** outbuffer)
 {
-  GstMLVideoSuperresolution *superresolution =
-      GST_ML_VIDEO_SUPERRESOLUTION (base);
-  GstBufferPool *pool = superresolution->outpool;
+  GstMLVideoSuperResolution *super_resolution = GST_ML_VIDEO_SUPER_RESOLUTION (base);
+  GstBufferPool *pool = super_resolution->outpool;
 
   if (gst_base_transform_is_passthrough (base)) {
-    GST_TRACE_OBJECT (superresolution, "Passthrough, no need to do anything");
+    GST_TRACE_OBJECT (super_resolution, "Passthrough, no need to do anything");
     *outbuffer = inbuffer;
     return GST_FLOW_OK;
   } else if (gst_base_transform_is_in_place (base)) {
-    GST_TRACE_OBJECT (superresolution, "Inplace, use input buffer as output");
+    GST_TRACE_OBJECT (super_resolution, "Inplace, use input buffer as output");
     *outbuffer = inbuffer;
     return GST_FLOW_OK;
   }
@@ -325,7 +322,7 @@ gst_ml_video_superresolution_prepare_output_buffer (GstBaseTransform * base,
 
   if (!gst_buffer_pool_is_active (pool) &&
       !gst_buffer_pool_set_active (pool, TRUE)) {
-    GST_ERROR_OBJECT (superresolution, "Failed to activate output buffer pool!");
+    GST_ERROR_OBJECT (super_resolution, "Failed to activate output buffer pool!");
     return GST_FLOW_ERROR;
   }
 
@@ -336,7 +333,7 @@ gst_ml_video_superresolution_prepare_output_buffer (GstBaseTransform * base,
 
   if ((*outbuffer == NULL) &&
       gst_buffer_pool_acquire_buffer (pool, outbuffer, NULL) != GST_FLOW_OK) {
-    GST_ERROR_OBJECT (superresolution, "Failed to create output buffer!");
+    GST_ERROR_OBJECT (super_resolution, "Failed to create output buffer!");
     return GST_FLOW_ERROR;
   }
 
@@ -348,17 +345,16 @@ gst_ml_video_superresolution_prepare_output_buffer (GstBaseTransform * base,
 }
 
 static GstCaps *
-gst_ml_video_superresolution_transform_caps (GstBaseTransform * base,
+gst_ml_video_super_resolution_transform_caps (GstBaseTransform * base,
     GstPadDirection direction, GstCaps * caps, GstCaps * filter)
 {
-  GstMLVideoSuperresolution *superresolution =
-      GST_ML_VIDEO_SUPERRESOLUTION (base);
+  GstMLVideoSuperResolution *super_resolution = GST_ML_VIDEO_SUPER_RESOLUTION (base);
   GstCaps *tmplcaps = NULL, *result = NULL;
   guint idx = 0, num = 0, length = 0;
 
-  GST_DEBUG_OBJECT (superresolution, "Transforming caps: %" GST_PTR_FORMAT
+  GST_DEBUG_OBJECT (super_resolution, "Transforming caps: %" GST_PTR_FORMAT
       " in direction %s", caps, (direction == GST_PAD_SINK) ? "sink" : "src");
-  GST_DEBUG_OBJECT (superresolution, "Filter caps: %" GST_PTR_FORMAT, filter);
+  GST_DEBUG_OBJECT (super_resolution, "Filter caps: %" GST_PTR_FORMAT, filter);
 
   if (direction == GST_PAD_SRC) {
     GstPad *pad = GST_BASE_TRANSFORM_SINK_PAD (base);
@@ -412,17 +408,16 @@ gst_ml_video_superresolution_transform_caps (GstBaseTransform * base,
     result = intersection;
   }
 
-  GST_DEBUG_OBJECT (superresolution, "Returning caps: %" GST_PTR_FORMAT, result);
+  GST_DEBUG_OBJECT (super_resolution, "Returning caps: %" GST_PTR_FORMAT, result);
 
   return result;
 }
 
 static GstCaps *
-gst_ml_video_superresolution_fixate_caps (GstBaseTransform * base,
+gst_ml_video_super_resolution_fixate_caps (GstBaseTransform * base,
     GstPadDirection direction, GstCaps * incaps, GstCaps * outcaps)
 {
-  GstMLVideoSuperresolution *superresolution =
-      GST_ML_VIDEO_SUPERRESOLUTION (base);
+  GstMLVideoSuperResolution *super_resolution = GST_ML_VIDEO_SUPER_RESOLUTION (base);
   GstStructure *output = NULL;
   GstMLInfo mlinfo;
   gint width = 0, height = 0, par_n = 1, par_d = 1;
@@ -434,7 +429,7 @@ gst_ml_video_superresolution_fixate_caps (GstBaseTransform * base,
 
   output = gst_caps_get_structure (outcaps, 0);
 
-  GST_DEBUG_OBJECT (superresolution, "Trying to fixate output caps %"
+  GST_DEBUG_OBJECT (super_resolution, "Trying to fixate output caps %"
       GST_PTR_FORMAT " based on caps %" GST_PTR_FORMAT, outcaps, incaps);
 
   // Fixate the output format.
@@ -445,7 +440,7 @@ gst_ml_video_superresolution_fixate_caps (GstBaseTransform * base,
     value = gst_structure_get_value (output, "format");
   }
 
-  GST_DEBUG_OBJECT (superresolution, "Output format fixed to: %s",
+  GST_DEBUG_OBJECT (super_resolution, "Output format fixed to: %s",
       g_value_get_string (value));
 
   // Fixate output PAR if not already fixated..
@@ -461,12 +456,12 @@ gst_ml_video_superresolution_fixate_caps (GstBaseTransform * base,
   par_n = gst_value_get_fraction_numerator (value);
 
   if (par_n != par_d) {
-    GST_ERROR_OBJECT (superresolution, 
+    GST_ERROR_OBJECT (super_resolution,
         "Output PAR other than 1/1 not supported!");
     return NULL;
   }
 
-  GST_DEBUG_OBJECT (superresolution, "Output PAR fixed to: %d/%d", par_n, par_d);
+  GST_DEBUG_OBJECT (super_resolution, "Output PAR fixed to: %d/%d", par_n, par_d);
 
   gst_ml_info_from_caps (&mlinfo, incaps);
 
@@ -494,20 +489,18 @@ gst_ml_video_superresolution_fixate_caps (GstBaseTransform * base,
     gst_structure_get_int (output, "height", &height);
   }
 
-  GST_DEBUG_OBJECT (superresolution, "Output width and height fixated to: %dx%d",
+  GST_DEBUG_OBJECT (super_resolution, "Output width and height fixated to: %dx%d",
       width, height);
 
-  GST_DEBUG_OBJECT (superresolution, "Fixated caps to %" GST_PTR_FORMAT, outcaps);
-
+  GST_DEBUG_OBJECT (super_resolution, "Fixated caps to %" GST_PTR_FORMAT, outcaps);
   return outcaps;
 }
 
 static gboolean
-gst_ml_video_superresolution_set_caps (GstBaseTransform * base, GstCaps * incaps,
+gst_ml_video_super_resolution_set_caps (GstBaseTransform * base, GstCaps * incaps,
     GstCaps * outcaps)
 {
-  GstMLVideoSuperresolution *superresolution =
-      GST_ML_VIDEO_SUPERRESOLUTION (base);
+  GstMLVideoSuperResolution *super_resolution = GST_ML_VIDEO_SUPER_RESOLUTION (base);
   GstCaps *modulecaps = NULL;
   GstStructure *structure = NULL;
   GEnumClass *eclass = NULL;
@@ -515,35 +508,35 @@ gst_ml_video_superresolution_set_caps (GstBaseTransform * base, GstCaps * incaps
   GstMLInfo ininfo;
   GstVideoInfo outinfo;
 
-  if (DEFAULT_PROP_MODULE == superresolution->mdlenum) {
-    GST_ELEMENT_ERROR (superresolution, RESOURCE, NOT_FOUND, (NULL),
+  if (DEFAULT_PROP_MODULE == super_resolution->mdlenum) {
+    GST_ELEMENT_ERROR (super_resolution, RESOURCE, NOT_FOUND, (NULL),
         ("Module name not set, automatic module pick up not supported!"));
     return FALSE;
   }
 
   eclass = G_ENUM_CLASS (g_type_class_peek (GST_TYPE_ML_MODULES));
-  evalue = g_enum_get_value (eclass, superresolution->mdlenum);
+  evalue = g_enum_get_value (eclass, super_resolution->mdlenum);
 
-  gst_ml_module_free (superresolution->module);
-  superresolution->module = gst_ml_module_new (evalue->value_name);
+  gst_ml_module_free (super_resolution->module);
+  super_resolution->module = gst_ml_module_new (evalue->value_name);
 
-  if (NULL == superresolution->module) {
-    GST_ELEMENT_ERROR (superresolution, RESOURCE, FAILED, (NULL),
+  if (NULL == super_resolution->module) {
+    GST_ELEMENT_ERROR (super_resolution, RESOURCE, FAILED, (NULL),
         ("Module creation failed!"));
     return FALSE;
   }
 
-  modulecaps = gst_ml_module_get_caps (superresolution->module);
+  modulecaps = gst_ml_module_get_caps (super_resolution->module);
 
   if (!gst_caps_can_intersect (incaps, modulecaps)) {
-    GST_ELEMENT_ERROR (superresolution, RESOURCE, FAILED, (NULL),
+    GST_ELEMENT_ERROR (super_resolution, RESOURCE, FAILED, (NULL),
         ("Module caps %" GST_PTR_FORMAT " do not intersect with the "
          "negotiated caps %" GST_PTR_FORMAT "!", modulecaps, incaps));
     return FALSE;
   }
 
-  if (!gst_ml_module_init (superresolution->module)) {
-    GST_ELEMENT_ERROR (superresolution, RESOURCE, FAILED, (NULL),
+  if (!gst_ml_module_init (super_resolution->module)) {
+    GST_ELEMENT_ERROR (super_resolution, RESOURCE, FAILED, (NULL),
         ("Module initialization failed!"));
     return FALSE;
   }
@@ -552,25 +545,25 @@ gst_ml_video_superresolution_set_caps (GstBaseTransform * base, GstCaps * incaps
       GST_ML_MODULE_OPT_CAPS, GST_TYPE_CAPS, incaps,
       NULL);
 
-  if (superresolution->mlconstants != NULL) {
+  if (super_resolution->mlconstants != NULL) {
     gst_structure_set (structure, GST_ML_MODULE_OPT_CONSTANTS,
-        GST_TYPE_STRUCTURE, superresolution->mlconstants, NULL);
+        GST_TYPE_STRUCTURE, super_resolution->mlconstants, NULL);
   }
 
-  if (!gst_ml_module_set_opts (superresolution->module, structure)) {
-    GST_ELEMENT_ERROR (superresolution, RESOURCE, FAILED, (NULL),
+  if (!gst_ml_module_set_opts (super_resolution->module, structure)) {
+    GST_ELEMENT_ERROR (super_resolution, RESOURCE, FAILED, (NULL),
         ("Failed to set module options!"));
     return FALSE;
   }
 
   if (!gst_ml_info_from_caps (&ininfo, incaps)) {
-    GST_ERROR_OBJECT (superresolution, "Failed to get input ML info from caps %"
+    GST_ERROR_OBJECT (super_resolution, "Failed to get input ML info from caps %"
         GST_PTR_FORMAT "!", incaps);
     return FALSE;
   }
 
   if (!gst_video_info_from_caps (&outinfo, outcaps)) {
-    GST_ERROR_OBJECT (superresolution, "Failed to get output video info from caps"
+    GST_ERROR_OBJECT (super_resolution, "Failed to get output video info from caps"
         " %" GST_PTR_FORMAT "!", outcaps);
     return FALSE;
   }
@@ -578,28 +571,27 @@ gst_ml_video_superresolution_set_caps (GstBaseTransform * base, GstCaps * incaps
   gst_base_transform_set_passthrough (base, FALSE);
   gst_base_transform_set_in_place (base, FALSE);
 
-  if (superresolution->mlinfo != NULL)
-    gst_ml_info_free (superresolution->mlinfo);
+  if (super_resolution->mlinfo != NULL)
+    gst_ml_info_free (super_resolution->mlinfo);
 
-  superresolution->mlinfo = gst_ml_info_copy (&ininfo);
+  super_resolution->mlinfo = gst_ml_info_copy (&ininfo);
 
-  if (superresolution->vinfo != NULL)
-    gst_video_info_free (superresolution->vinfo);
+  if (super_resolution->vinfo != NULL)
+    gst_video_info_free (super_resolution->vinfo);
 
-  superresolution->vinfo = gst_video_info_copy (&outinfo);
+  super_resolution->vinfo = gst_video_info_copy (&outinfo);
 
-  GST_DEBUG_OBJECT (superresolution, "Input caps: %" GST_PTR_FORMAT, incaps);
-  GST_DEBUG_OBJECT (superresolution, "Output caps: %" GST_PTR_FORMAT, outcaps);
+  GST_DEBUG_OBJECT (super_resolution, "Input caps: %" GST_PTR_FORMAT, incaps);
+  GST_DEBUG_OBJECT (super_resolution, "Output caps: %" GST_PTR_FORMAT, outcaps);
 
   return TRUE;
 }
 
 static GstFlowReturn
-gst_ml_video_superresolution_transform (GstBaseTransform * base,
+gst_ml_video_super_resolution_transform (GstBaseTransform * base,
     GstBuffer * inbuffer, GstBuffer * outbuffer)
 {
-  GstMLVideoSuperresolution *superresolution =
-      GST_ML_VIDEO_SUPERRESOLUTION (base);
+  GstMLVideoSuperResolution *super_resolution = GST_ML_VIDEO_SUPER_RESOLUTION (base);
   GstMLFrame mlframe = { 0, };
   GstVideoFrame vframe = { 0, };
   gboolean success = FALSE;
@@ -607,7 +599,7 @@ gst_ml_video_superresolution_transform (GstBaseTransform * base,
   GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
   GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
 
-  g_return_val_if_fail (superresolution->module != NULL, GST_FLOW_ERROR);
+  g_return_val_if_fail (super_resolution->module != NULL, GST_FLOW_ERROR);
 
   // GAP buffer, nothing to do. Propagate output buffer downstream.
   if (gst_buffer_get_size (outbuffer) == 0 &&
@@ -616,15 +608,15 @@ gst_ml_video_superresolution_transform (GstBaseTransform * base,
 
   ts_begin = gst_util_get_timestamp ();
 
-  if (!gst_ml_frame_map (&mlframe, superresolution->mlinfo, inbuffer,
+  if (!gst_ml_frame_map (&mlframe, super_resolution->mlinfo, inbuffer,
       GST_MAP_READ)) {
-    GST_ERROR_OBJECT (superresolution, "Failed to map input buffer!");
+    GST_ERROR_OBJECT (super_resolution, "Failed to map input buffer!");
     return GST_FLOW_ERROR;
   }
 
-  if (!gst_video_frame_map (&vframe, superresolution->vinfo, outbuffer,
+  if (!gst_video_frame_map (&vframe, super_resolution->vinfo, outbuffer,
       GST_MAP_READWRITE | GST_VIDEO_FRAME_MAP_FLAG_NO_REF)) {
-    GST_ERROR_OBJECT (superresolution, "Failed to map output buffer!");
+    GST_ERROR_OBJECT (super_resolution, "Failed to map output buffer!");
     gst_ml_frame_unmap (&mlframe);
     return GST_FLOW_ERROR;
   }
@@ -637,13 +629,13 @@ gst_ml_video_superresolution_transform (GstBaseTransform * base,
     bufsync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
 
     if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
-      GST_WARNING_OBJECT (superresolution, "DMA IOCTL SYNC START failed!");
+      GST_WARNING_OBJECT (super_resolution, "DMA IOCTL SYNC START failed!");
   }
 #endif // HAVE_LINUX_DMA_BUF_H
 
   // Call the submodule process funtion.
-  success = gst_ml_video_superresolution_module_execute (superresolution->module,
-      &mlframe, &vframe);
+  success = gst_ml_video_super_resolution_module_execute (
+      super_resolution->module, &mlframe, &vframe);
 
 #ifdef HAVE_LINUX_DMA_BUF_H
   if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
@@ -653,7 +645,7 @@ gst_ml_video_superresolution_transform (GstBaseTransform * base,
     bufsync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
 
     if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
-      GST_WARNING_OBJECT (superresolution, "DMA IOCTL SYNC END failed!");
+      GST_WARNING_OBJECT (super_resolution, "DMA IOCTL SYNC END failed!");
   }
 #endif // HAVE_LINUX_DMA_BUF_H
 
@@ -661,7 +653,7 @@ gst_ml_video_superresolution_transform (GstBaseTransform * base,
   gst_ml_frame_unmap (&mlframe);
 
   if (!success) {
-    GST_ERROR_OBJECT (superresolution, "Failed to process tensors!");
+    GST_ERROR_OBJECT (super_resolution, "Failed to process tensors!");
     return GST_FLOW_ERROR;
   }
 
@@ -669,7 +661,7 @@ gst_ml_video_superresolution_transform (GstBaseTransform * base,
 
   tsdelta = GST_CLOCK_DIFF (ts_begin, ts_end);
 
-  GST_LOG_OBJECT (superresolution, "Superresolution took %" G_GINT64_FORMAT ".%03"
+  GST_LOG_OBJECT (super_resolution, "super_resolution took %" G_GINT64_FORMAT ".%03"
       G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (tsdelta),
       (GST_TIME_AS_USECONDS (tsdelta) % 1000));
 
@@ -677,15 +669,14 @@ gst_ml_video_superresolution_transform (GstBaseTransform * base,
 }
 
 static void
-gst_ml_video_superresolution_set_property (GObject * object, guint prop_id,
+gst_ml_video_super_resolution_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
 {
-  GstMLVideoSuperresolution *superresolution =
-      GST_ML_VIDEO_SUPERRESOLUTION (object);
+  GstMLVideoSuperResolution *super_resolution = GST_ML_VIDEO_SUPER_RESOLUTION (object);
 
   switch (prop_id) {
     case PROP_MODULE:
-      superresolution->mdlenum = g_value_get_enum (value);
+      super_resolution->mdlenum = g_value_get_enum (value);
       break;
     case PROP_CONSTANTS:
     {
@@ -733,10 +724,10 @@ gst_ml_video_superresolution_set_property (GObject * object, guint prop_id,
         break;
       }
 
-      if (superresolution->mlconstants != NULL)
-        gst_structure_free (superresolution->mlconstants);
+      if (super_resolution->mlconstants != NULL)
+        gst_structure_free (super_resolution->mlconstants);
 
-      superresolution->mlconstants = GST_STRUCTURE (g_value_dup_boxed (&value));
+      super_resolution->mlconstants = GST_STRUCTURE (g_value_dup_boxed (&value));
       g_value_unset (&value);
       break;
     }
@@ -747,22 +738,21 @@ gst_ml_video_superresolution_set_property (GObject * object, guint prop_id,
 }
 
 static void
-gst_ml_video_superresolution_get_property (GObject * object, guint prop_id,
+gst_ml_video_super_resolution_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec)
 {
-  GstMLVideoSuperresolution *superresolution =
-      GST_ML_VIDEO_SUPERRESOLUTION (object);
+  GstMLVideoSuperResolution *super_resolution = GST_ML_VIDEO_SUPER_RESOLUTION (object);
 
   switch (prop_id) {
     case PROP_MODULE:
-      g_value_set_enum (value, superresolution->mdlenum);
+      g_value_set_enum (value, super_resolution->mdlenum);
       break;
     case PROP_CONSTANTS:
     {
       gchar *string = NULL;
 
-      if (superresolution->mlconstants != NULL)
-        string = gst_structure_to_string (superresolution->mlconstants);
+      if (super_resolution->mlconstants != NULL)
+        string = gst_structure_to_string (super_resolution->mlconstants);
 
       g_value_set_string (value, string);
       g_free (string);
@@ -775,49 +765,45 @@ gst_ml_video_superresolution_get_property (GObject * object, guint prop_id,
 }
 
 static void
-gst_ml_video_superresolution_finalize (GObject * object)
+gst_ml_video_super_resolution_finalize (GObject * object)
 {
-  GstMLVideoSuperresolution *superresolution =
-      GST_ML_VIDEO_SUPERRESOLUTION (object);
+  GstMLVideoSuperResolution *super_resolution = GST_ML_VIDEO_SUPER_RESOLUTION (object);
 
-  gst_ml_module_free (superresolution->module);
+  gst_ml_module_free (super_resolution->module);
 
-  if (superresolution->mlinfo != NULL)
-    gst_ml_info_free (superresolution->mlinfo);
+  if (super_resolution->mlinfo != NULL)
+    gst_ml_info_free (super_resolution->mlinfo);
 
-  if (superresolution->vinfo != NULL)
-    gst_video_info_free (superresolution->vinfo);
+  if (super_resolution->vinfo != NULL)
+    gst_video_info_free (super_resolution->vinfo);
 
-  if (superresolution->outpool != NULL)
-    gst_object_unref (superresolution->outpool);
+  if (super_resolution->outpool != NULL)
+    gst_object_unref (super_resolution->outpool);
 
-  if (superresolution->mlconstants != NULL)
-    gst_structure_free (superresolution->mlconstants);
+  if (super_resolution->mlconstants != NULL)
+    gst_structure_free (super_resolution->mlconstants);
 
-  G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (superresolution));
+  G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (super_resolution));
 }
 
 static void
-gst_ml_video_superresolution_class_init (GstMLVideoSuperresolutionClass * klass)
+gst_ml_video_super_resolution_class_init (GstMLVideoSuperResolutionClass * klass)
 {
   GObjectClass *gobject       = G_OBJECT_CLASS (klass);
   GstElementClass *element    = GST_ELEMENT_CLASS (klass);
   GstBaseTransformClass *base = GST_BASE_TRANSFORM_CLASS (klass);
 
   gobject->set_property =
-      GST_DEBUG_FUNCPTR (gst_ml_video_superresolution_set_property);
+      GST_DEBUG_FUNCPTR (gst_ml_video_super_resolution_set_property);
   gobject->get_property =
-      GST_DEBUG_FUNCPTR (gst_ml_video_superresolution_get_property);
-  gobject->finalize = GST_DEBUG_FUNCPTR (gst_ml_video_superresolution_finalize);
+      GST_DEBUG_FUNCPTR (gst_ml_video_super_resolution_get_property);
+  gobject->finalize = GST_DEBUG_FUNCPTR (gst_ml_video_super_resolution_finalize);
 
   g_object_class_install_property (gobject, PROP_MODULE,
       g_param_spec_enum ("module", "Module",
           "Module name that is going to be used for processing the tensors",
           GST_TYPE_ML_MODULES, DEFAULT_PROP_MODULE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-  gst_element_class_set_static_metadata (element,
-      "Machine Learning image superresolution", "Filter/Effect/Converter",
-      "Machine Learning plugin for image superresolution", "QTI");
   g_object_class_install_property (gobject, PROP_CONSTANTS,
       g_param_spec_string ("constants", "Constants",
           "Constants, offsets and coefficients used by the chosen module for "
@@ -825,53 +811,56 @@ gst_ml_video_superresolution_class_init (GstMLVideoSuperresolutionClass * klass)
           "Applicable only for some modules.",
           DEFAULT_PROP_CONSTANTS, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
+  gst_element_class_set_static_metadata (element,
+      "Machine Learning image super resolution", "Filter/Effect/Converter",
+      "Machine Learning plugin for image super_resolution", "QTI");
+
   gst_element_class_add_pad_template (element,
-      gst_ml_video_superresolution_sink_template ());
+      gst_ml_video_super_resolution_sink_template ());
   gst_element_class_add_pad_template (element,
-      gst_ml_video_superresolution_src_template ());
+      gst_ml_video_super_resolution_src_template ());
 
   base->decide_allocation =
-      GST_DEBUG_FUNCPTR (gst_ml_video_superresolution_decide_allocation);
+      GST_DEBUG_FUNCPTR (gst_ml_video_super_resolution_decide_allocation);
   base->prepare_output_buffer =
-      GST_DEBUG_FUNCPTR (gst_ml_video_superresolution_prepare_output_buffer);
+      GST_DEBUG_FUNCPTR (gst_ml_video_super_resolution_prepare_output_buffer);
 
   base->transform_caps =
-      GST_DEBUG_FUNCPTR (gst_ml_video_superresolution_transform_caps);
+      GST_DEBUG_FUNCPTR (gst_ml_video_super_resolution_transform_caps);
   base->fixate_caps =
-      GST_DEBUG_FUNCPTR (gst_ml_video_superresolution_fixate_caps);
-  base->set_caps = GST_DEBUG_FUNCPTR (gst_ml_video_superresolution_set_caps);
+      GST_DEBUG_FUNCPTR (gst_ml_video_super_resolution_fixate_caps);
+  base->set_caps = GST_DEBUG_FUNCPTR (gst_ml_video_super_resolution_set_caps);
 
-  base->transform = GST_DEBUG_FUNCPTR (gst_ml_video_superresolution_transform);
+  base->transform = GST_DEBUG_FUNCPTR (gst_ml_video_super_resolution_transform);
 }
 
 static void
-gst_ml_video_superresolution_init (GstMLVideoSuperresolution * superresolution)
+gst_ml_video_super_resolution_init (GstMLVideoSuperResolution * super_resolution)
 {
-  superresolution->outpool = NULL;
-  superresolution->module = NULL;
-  superresolution->mdlenum = DEFAULT_PROP_MODULE;
-  superresolution->mlconstants = DEFAULT_PROP_CONSTANTS;
+  super_resolution->outpool = NULL;
+  super_resolution->module = NULL;
+  super_resolution->mdlenum = DEFAULT_PROP_MODULE;
+  super_resolution->mlconstants = DEFAULT_PROP_CONSTANTS;
 
   // Handle buffers with GAP flag internally.
-  gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM (superresolution), TRUE);
+  gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM (super_resolution), TRUE);
 
-  GST_DEBUG_CATEGORY_INIT (
-      gst_ml_video_superresolution_debug, "qtimlvsuperresolution",
-      0, "QTI ML image superresolution plugin");
+  GST_DEBUG_CATEGORY_INIT (gst_ml_video_super_resolution_debug,
+      "qtimlvsuperresolution", 0, "QTI ML image super resolution plugin");
 }
 
 static gboolean
 plugin_init (GstPlugin * plugin)
 {
   return gst_element_register (plugin, "qtimlvsuperresolution", GST_RANK_NONE,
-      GST_TYPE_ML_VIDEO_SUPERRESOLUTION);
+      GST_TYPE_ML_VIDEO_SUPER_RESOLUTION);
 }
 
 GST_PLUGIN_DEFINE (
     GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
     qtimlvsuperresolution,
-    "QTI Machine Learning plugin for image superresolution post processing",
+    "QTI Machine Learning plugin for image super resolution post processing",
     plugin_init,
     PACKAGE_VERSION,
     PACKAGE_LICENSE,

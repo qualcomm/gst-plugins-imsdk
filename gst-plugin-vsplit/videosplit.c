@@ -201,7 +201,10 @@ static inline void
 gst_data_queue_free_item (gpointer userdata)
 {
  GstDataQueueItem *item = userdata;
- gst_mini_object_unref (item->object);
+
+  if (item->object != NULL)
+    gst_mini_object_unref (item->object);
+
  g_slice_free (GstDataQueueItem, item);
 }
 
@@ -356,6 +359,10 @@ gst_video_split_srcpad_push_event (GstElement * element, GstPad * pad,
   GstVideoSplit *vsplit = GST_VIDEO_SPLIT (element);
   GstEvent *event = GST_EVENT (userdata);
 
+  // On EOS wait until all queued buffers have been pushed before propagating it.
+  if (GST_EVENT_TYPE (event) == GST_EVENT_EOS)
+    GST_VIDEO_SPLIT_PAD_WAIT_IDLE (GST_VIDEO_SPLIT_SRCPAD_CAST (pad));
+
   GST_TRACE_OBJECT (vsplit, "Event: %s", GST_EVENT_TYPE_NAME (event));
   return gst_pad_push_event (pad, gst_event_ref (event));
 }
@@ -435,17 +442,23 @@ gst_video_split_srcpad_worker_task (gpointer userdata)
   GstVideoSplitSrcPad *srcpad = GST_VIDEO_SPLIT_SRCPAD (userdata);
   GstDataQueueItem *item = NULL;
 
-  if (gst_data_queue_pop (srcpad->buffers, &item)) {
-    GstBuffer *buffer = gst_buffer_ref (GST_BUFFER (item->object));
-    item->destroy (item);
+  if (gst_data_queue_peek (srcpad->buffers, &item)) {
+    GstBuffer *buffer = NULL;
 
-    GST_TRACE_OBJECT (srcpad, "Submitting %" GST_PTR_FORMAT, buffer);
+    // Take the buffer from the queue item and null the object pointer.
+    buffer = GST_BUFFER (item->object);
+    item->object = NULL;
 
     // Adjust the source pad segment position.
     srcpad->segment.position = GST_BUFFER_TIMESTAMP (buffer) +
         GST_BUFFER_DURATION (buffer);
 
+    GST_TRACE_OBJECT (srcpad, "Pushing %" GST_PTR_FORMAT, buffer);
     gst_pad_push (GST_PAD (srcpad), buffer);
+
+    // Buffer was sent downstream, remove and free the item from the queue.
+    if (gst_data_queue_pop (srcpad->buffers, &item))
+      item->destroy (item);
   } else {
     GST_INFO_OBJECT (srcpad, "Pause worker task!");
     gst_pad_pause_task (GST_PAD (srcpad));
@@ -460,11 +473,12 @@ gst_video_split_worker_task (gpointer userdata)
   GstDataQueueItem *item = NULL;
   gboolean success = FALSE;
 
-  if (gst_data_queue_pop (sinkpad->requests, &item)) {
+  if (gst_data_queue_peek (sinkpad->requests, &item)) {
     GstVSplitRequest *request = NULL;
 
-    request = GST_VSPLIT_REQUEST (gst_mini_object_ref (item->object));
-    item->destroy (item);
+    // Take the request from the queue item and null the object pointer.
+    request = GST_VSPLIT_REQUEST (item->object);
+    item->object = NULL;
 
     if (request->fence != NULL) {
       gpointer fence = request->fence;
@@ -484,12 +498,15 @@ gst_video_split_worker_task (gpointer userdata)
     success = gst_element_foreach_src_pad (GST_ELEMENT_CAST (vsplit),
         gst_video_split_srcpad_push_buffer, request);
 
-    // Free the memory allocated by the internal request structure.
-    gst_vsplit_request_release (request);
-
     if (!success)
       GST_WARNING_OBJECT (vsplit, "Failed to push output buffers!");
 
+    // Free the memory allocated by the internal request structure.
+    gst_vsplit_request_release (request);
+
+    // Buffers have been sent, remove and free the sinkpad item from the queue.
+    if (gst_data_queue_pop (sinkpad->requests, &item))
+      item->destroy (item);
   } else {
     GST_INFO_OBJECT (vsplit, "Pause worker task!");
     gst_task_pause (vsplit->worktask);
@@ -565,7 +582,7 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
   guint idx = 0, num = 0, id = 0, n_metas = 0, n_entries = 0, i = 0;
   gint sar_n = 1, sar_d = 1;
   gboolean success = TRUE;
-  const gdouble scale = 1.0 / 255.0, offset = 0.0;
+  const gdouble scale = 1.0, offset = 0.0;
 
   // Fetch the number of ROI meta entries from the input buffer.
   n_metas = gst_buffer_get_n_meta (inframe->buffer,
@@ -1012,6 +1029,9 @@ gst_video_split_sinkpad_event (GstPad * pad, GstObject * parent,
       return success;
     }
     case GST_EVENT_EOS:
+      // Wait until all queued input requests have been processed.
+      GST_VIDEO_SPLIT_PAD_WAIT_IDLE (GST_VIDEO_SPLIT_SINKPAD (pad));
+
       success = gst_element_foreach_src_pad (GST_ELEMENT (vsplit),
           gst_video_split_srcpad_push_event, event);
       return success;

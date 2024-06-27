@@ -89,3 +89,7 @@ if (ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_ML)
   add_subdirectory(gst-tflite-posenet-display-example)
   add_subdirectory(gst-tflite-yolo-ssd-display-example)
 endif () # ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_ML
+
+if (ENABLE_WEBRTC)
+  add_subdirectory(gst-webrtc-sendrecv-example)
+endif () # ENABLE_WEBRTC

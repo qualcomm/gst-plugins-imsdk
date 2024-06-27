@@ -47,7 +47,7 @@
 #include <gst/cv/gstcvmeta.h>
 
 #define GST_CAT_DEFAULT gst_metamux_debug
-GST_DEBUG_CATEGORY_STATIC (gst_metamux_debug);
+GST_DEBUG_CATEGORY (gst_metamux_debug);
 
 #define gst_metamux_parent_class parent_class
 G_DEFINE_TYPE (GstMetaMux, gst_metamux, GST_TYPE_ELEMENT);
@@ -116,7 +116,10 @@ static void
 gst_data_queue_free_item (gpointer userdata)
 {
   GstDataQueueItem *item = userdata;
-  gst_buffer_unref (GST_BUFFER (item->object));
+
+  if (item->object != NULL)
+    gst_buffer_unref (GST_BUFFER (item->object));
+
   g_slice_free (GstDataQueueItem, item);
 }
 
@@ -333,11 +336,12 @@ gst_metamux_worker_task (gpointer userdata)
   GstBuffer *buffer = NULL;
   GstClockTime timestamp = GST_CLOCK_TIME_NONE;
 
-  if (!gst_data_queue_pop (muxer->sinkpad->buffers, &item))
+  if (!gst_data_queue_peek (muxer->sinkpad->buffers, &item))
     return;
 
-  buffer = gst_buffer_ref (GST_BUFFER (item->object));
-  item->destroy (item);
+  // Take the buffer from the queue item and null the object pointer.
+  buffer = GST_BUFFER (item->object);
+  item->object = NULL;
 
   GST_TRACE_OBJECT (muxer, "Processing %" GST_PTR_FORMAT, buffer);
 
@@ -370,18 +374,20 @@ gst_metamux_worker_task (gpointer userdata)
       break;
     default:
       GST_ERROR_OBJECT (muxer, "Unsupported mode '%d'!", muxer->mode);
-      GST_METAMUX_UNLOCK (muxer);
 
+      GST_METAMUX_UNLOCK (muxer);
       gst_buffer_unref (buffer);
-      return;
+
+      goto cleanup;
   }
 
   if (!muxer->active) {
     GST_INFO_OBJECT (muxer, "Task has been deactivated");
-    GST_METAMUX_UNLOCK (muxer);
 
+    GST_METAMUX_UNLOCK (muxer);
     gst_buffer_unref (buffer);
-    return;
+
+    goto cleanup;
   }
 
   // Iterate over all of the data pad queues and extract available data.
@@ -433,7 +439,10 @@ gst_metamux_worker_task (gpointer userdata)
   if (!gst_data_queue_push (muxer->srcpad->buffers, item))
     item->destroy (item);
 
-  return;
+cleanup:
+  // Buffer was sent to srcpad, remove and free the sinkpad item from the queue.
+  if (gst_data_queue_pop (muxer->sinkpad->buffers, &item))
+    item->destroy (item);
 }
 
 static gboolean
@@ -978,18 +987,19 @@ gst_metamux_main_sink_pad_event (GstPad * pad, GstObject * parent, GstEvent * ev
 
       gst_metamux_stop_worker_task (muxer);
       gst_metamux_flush_metadata_queues (muxer);
-      break;
+
+      return gst_pad_push_event (pad, event);
     case GST_EVENT_FLUSH_STOP:
       gst_data_queue_set_flushing (GST_METAMUX_SINK_PAD (pad)->buffers, FALSE);
       gst_metamux_start_worker_task (muxer);
-      break;
-    case GST_EVENT_EOS:
-      gst_data_queue_set_flushing (GST_METAMUX_SINK_PAD (pad)->buffers, TRUE);
-      gst_data_queue_flush (GST_METAMUX_SINK_PAD (pad)->buffers);
 
-      gst_metamux_stop_worker_task (muxer);
+      return gst_pad_push_event (pad, event);
+    case GST_EVENT_EOS:
+      GST_METAMUX_PAD_WAIT_IDLE (GST_METAMUX_SINK_PAD (pad));
+      GST_METAMUX_PAD_WAIT_IDLE (muxer->srcpad);
+
       gst_metamux_flush_metadata_queues (muxer);
-      break;
+      return gst_pad_push_event (GST_PAD (muxer->srcpad), event);
     default:
       break;
   }
@@ -1136,20 +1146,8 @@ gst_metamux_data_sink_pad_event (GstPad * pad, GstObject * parent,
       return TRUE;
     }
     case GST_EVENT_EOS:
-    {
-      GstMetaMux *muxer = GST_METAMUX (parent);
-
-      GST_OBJECT_LOCK (pad);
-      GST_OBJECT_FLAG_SET (pad, GST_PAD_FLAG_EOS);
-      GST_OBJECT_UNLOCK (pad);
-
-      GST_METAMUX_LOCK (muxer);
-      g_cond_signal (&(muxer)->wakeup);
-      GST_METAMUX_UNLOCK (muxer);
-
       gst_event_unref (event);
       return TRUE;
-    }
     case GST_EVENT_FLUSH_STOP:
     case GST_EVENT_SEGMENT:
     case GST_EVENT_GAP:
@@ -1184,9 +1182,21 @@ gst_metamux_data_sink_pad_chain (GstPad * pad, GstObject * parent,
     return GST_FLOW_EOS;
   }
 
-  // Buffer is marked as GAP, nothing to process. Just consume it.
   if (gst_buffer_get_size (buffer) == 0 &&
       GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP)) {
+    GstMetaEntry *entry = gst_metadata_entry_new ();
+
+    // Create an empty entry with the buffer TS for synchronization purpose.
+    entry->timestamp = GST_BUFFER_TIMESTAMP (buffer);
+
+    GST_METAMUX_LOCK (muxer);
+
+    g_queue_push_tail (dpad->queue, entry);
+    g_cond_signal (&(muxer)->wakeup);
+
+    GST_METAMUX_UNLOCK (muxer);
+
+    // Buffer is marked as GAP, nothing to process. Just consume it.
     gst_buffer_unref (buffer);
     return GST_FLOW_OK;
   }
@@ -1286,6 +1296,13 @@ gst_metamux_change_state (GstElement * element, GstStateChange transition)
       gst_data_queue_set_flushing (muxer->sinkpad->buffers, FALSE);
       gst_metamux_start_worker_task (muxer);
       break;
+    case GST_STATE_CHANGE_PAUSED_TO_READY:
+      // FLush buffers otherwise the chain function may get blocked if the queue
+      // is full and this will lead to a deadlock with the pad deactivation
+      // calls during change_state() below as we will be holding STREAM_LOCK.
+      gst_data_queue_set_flushing (muxer->sinkpad->buffers, TRUE);
+      gst_data_queue_flush (muxer->sinkpad->buffers);
+      break;
     default:
       break;
   }
@@ -1294,9 +1311,6 @@ gst_metamux_change_state (GstElement * element, GstStateChange transition)
 
   switch (transition) {
     case GST_STATE_CHANGE_PAUSED_TO_READY:
-      gst_data_queue_set_flushing (muxer->sinkpad->buffers, TRUE);
-      gst_data_queue_flush (muxer->sinkpad->buffers);
-
       gst_metamux_stop_worker_task (muxer);
       gst_metamux_flush_metadata_queues (muxer);
       break;

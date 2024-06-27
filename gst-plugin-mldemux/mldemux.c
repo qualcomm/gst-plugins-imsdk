@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -46,7 +46,7 @@
 
 
 #define GST_CAT_DEFAULT gst_ml_demux_debug
-GST_DEBUG_CATEGORY_STATIC (gst_ml_demux_debug);
+GST_DEBUG_CATEGORY (gst_ml_demux_debug);
 
 #define gst_ml_demux_parent_class parent_class
 G_DEFINE_TYPE (GstMLDemux, gst_ml_demux, GST_TYPE_ELEMENT);
@@ -119,6 +119,10 @@ gst_ml_demux_src_pad_push_event (GstElement * element, GstPad * pad,
 {
   GstMLDemux *demux = GST_ML_DEMUX (element);
   GstEvent *event = GST_EVENT (userdata);
+
+  // On EOS wait until all queued buffers have been pushed before propagating it.
+  if (GST_EVENT_TYPE (event) == GST_EVENT_EOS)
+    GST_ML_DEMUX_PAD_WAIT_IDLE (GST_ML_DEMUX_SRCPAD_CAST (pad));
 
   GST_TRACE_OBJECT (demux, "Event: %s", GST_EVENT_TYPE_NAME (event));
   return gst_pad_push_event (pad, gst_event_ref (event));
@@ -336,9 +340,12 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
     name = g_strdup_printf ("channel-%u", channel);
 
     // Transfer the proper GstProtectionMeta into the new buffer if available.
-    if ((pmeta = gst_buffer_get_protection_meta_id (inbuffer, name)) != NULL)
+    if ((pmeta = gst_buffer_get_protection_meta_id (inbuffer, name)) != NULL) {
       pmeta = gst_buffer_add_protection_meta (outbuffer,
           gst_structure_copy (pmeta->info));
+      // Rename as this is the demuxed tensor.
+      gst_structure_set_name (pmeta->info, "channel-0");
+    }
 
     g_free (name);
 

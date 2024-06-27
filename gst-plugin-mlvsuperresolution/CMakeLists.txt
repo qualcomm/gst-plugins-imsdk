@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8.2)
-project(GST_PLUGIN_QTI_OSS_ML_VIDEO_SUPERRESOLUTION
+project(GST_PLUGIN_QTI_OSS_ML_VIDEO_SUPER_RESOLUTION
   VERSION ${GST_PLUGINS_QTI_OSS_VERSION}
   LANGUAGES C
 )
@@ -38,27 +38,27 @@ add_definitions(-DHAVE_CONFIG_H)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
 
-# GStreamer ML video superresolution plugin.
-set(GST_QTI_ML_VIDEO_SUPERRESOLUTION gstqtimlvsuperresolution)
+# GStreamer ML video Super Resolution plugin.
+set(GST_QTI_ML_VIDEO_SUPER_RESOLUTION gstqtimlvsuperresolution)
 
-add_library(${GST_QTI_ML_VIDEO_SUPERRESOLUTION} SHARED
+add_library(${GST_QTI_ML_VIDEO_SUPER_RESOLUTION} SHARED
   mlvsuperresolution.c
 )
 
-set_target_properties(${GST_QTI_ML_VIDEO_SUPERRESOLUTION} PROPERTIES PUBLIC_HEADER
+set_target_properties(${GST_QTI_ML_VIDEO_SUPER_RESOLUTION} PROPERTIES PUBLIC_HEADER
   "modules/ml-video-superresolution-module.h"
 )
 
-target_compile_definitions(${GST_QTI_ML_VIDEO_SUPERRESOLUTION} PRIVATE
+target_compile_definitions(${GST_QTI_ML_VIDEO_SUPER_RESOLUTION} PRIVATE
   $<$<BOOL:${HAVE_LINUX_DMA_BUF_H}>:HAVE_LINUX_DMA_BUF_H>
 )
 
-target_include_directories(${GST_QTI_ML_VIDEO_SUPERRESOLUTION} PUBLIC
+target_include_directories(${GST_QTI_ML_VIDEO_SUPER_RESOLUTION} PUBLIC
   ${GST_INCLUDE_DIRS}
   ${KERNEL_BUILDDIR}/usr/include
 )
 
-target_link_libraries(${GST_QTI_ML_VIDEO_SUPERRESOLUTION} PRIVATE
+target_link_libraries(${GST_QTI_ML_VIDEO_SUPER_RESOLUTION} PRIVATE
   ${GST_LIBRARIES}
   ${GST_BASE_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
@@ -69,7 +69,7 @@ target_link_libraries(${GST_QTI_ML_VIDEO_SUPERRESOLUTION} PRIVATE
 )
 
 install(
-  TARGETS ${GST_QTI_ML_VIDEO_SUPERRESOLUTION}
+  TARGETS ${GST_QTI_ML_VIDEO_SUPER_RESOLUTION}
   LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0
   PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
               GROUP_EXECUTE GROUP_READ

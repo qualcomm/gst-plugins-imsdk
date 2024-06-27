@@ -65,3 +65,7 @@ endif () # ENABLE_VIDEO_DECODE AND ENABLE_VIDEO_ENCODE
 if (ENABLE_AUDIO AND ENABLE_VIDEO_ENCODE)
   add_subdirectory(gst-audio-video-encode)
 endif () # ENABLE_AUDIO AND ENABLE_VIDEO_ENCODE
+
+if (ENABLE_WEBRTC)
+  add_subdirectory(gst-webrtc-sendrecv-example)
+endif () # ENABLE_WEBRTC

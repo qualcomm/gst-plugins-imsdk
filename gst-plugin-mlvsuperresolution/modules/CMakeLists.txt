@@ -1,4 +1,4 @@
-# GStreamer ML video superresolution plugin modules.
+# GStreamer ML video super_resolution plugin modules.
 set(GST_QTI_ML_MODULE  ml-vsuperresolution-srnet)
 
 add_library(${GST_QTI_ML_MODULE} SHARED
