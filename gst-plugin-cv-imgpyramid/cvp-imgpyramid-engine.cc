@@ -37,7 +37,7 @@ struct _GstImgPyramidEngine
   // CVP handle for the PyramidImage algorithm.
   cvpHandle              handle;
   // Number of pyramid levels.
-  guint                  nlevels;
+  guint                  n_levels;
 
   // Map of input buffer FDs and their corresponding CVP image.
   GHashTable             *incvpimages;
@@ -240,12 +240,12 @@ gst_imgpyramid_engine_new (GstImgPyramidSettings * settings, GArray * sizes)
   GST_INFO ("    WidthStride:    %d", config.sSrcImageInfo.nWidthStride[0]);
   GST_INFO ("    AlightedSize:   %d", config.sSrcImageInfo.nAlignedSize[0]);
 
-  engine->nlevels = requirements.nLevels;
+  engine->n_levels = requirements.nLevels;
   // Create placeholder for the output
   engine->outimages = g_new0 (cvpImage, requirements.nLevels);
   engine->outmaps = g_new0 (GstMapInfo, requirements.nLevels);
 
-  for (idx=0; idx < engine->nlevels; idx++) {
+  for (idx = 0; idx < engine->n_levels; idx++) {
     g_array_append_val (sizes, requirements.nImageBytes[idx]);
     engine->outimages[idx].pBuffer = g_new0 (cvpMem, 1);
   }
@@ -262,6 +262,8 @@ gst_imgpyramid_engine_new (GstImgPyramidSettings * settings, GArray * sizes)
 void
 gst_imgpyramid_engine_free (GstImgPyramidEngine * engine)
 {
+  guint idx = 0;
+
   if (NULL == engine)
     return;
 
@@ -270,10 +272,8 @@ gst_imgpyramid_engine_free (GstImgPyramidEngine * engine)
     g_hash_table_destroy (engine->incvpimages);
   }
 
-  gint i;
-  for (i = 0; i < engine->nlevels; i++) {
-    g_free (engine->outimages[i].pBuffer);
-  }
+  for (idx = 0; idx < engine->n_levels; idx++)
+    g_free (engine->outimages[idx].pBuffer);
 
   g_free (engine->outimages);
   g_free (engine->outmaps);
@@ -291,22 +291,22 @@ gst_imgpyramid_engine_free (GstImgPyramidEngine * engine)
 }
 
 gboolean
-gst_cvp_imgpyramid_engine_execute (GstImgPyramidEngine * engine,
+gst_imgpyramid_engine_execute (GstImgPyramidEngine * engine,
     const GstVideoFrame * inframe, GstBufferList * outbuffers)
 {
-  cvpImage *incvpimage, *outimages;
-  guint idx = 0, fd = 0;
+  cvpImage *incvpimage = NULL, *outimages = NULL;
   GstBuffer *outbuffer = NULL;
   GstMemory *memory = NULL;
   GstMapInfo *outmap = NULL;
   cvpPyramidImage imgpyramidout;
   cvpStatus status = CVP_SUCCESS;
-  guint n_outputs = gst_buffer_list_length (outbuffers);
-
+  guint idx = 0, fd = 0, n_outputs = 0;
 
   g_return_val_if_fail (engine != NULL, FALSE);
   g_return_val_if_fail (inframe != NULL, FALSE);
   g_return_val_if_fail (outbuffers != NULL , FALSE);
+
+  n_outputs = gst_buffer_list_length (outbuffers);
 
   // Get the memory block from the input GstBuffer.
   memory = gst_buffer_peek_memory (inframe->buffer, 0);
@@ -329,12 +329,15 @@ gst_cvp_imgpyramid_engine_execute (GstImgPyramidEngine * engine,
         GUINT_TO_POINTER (fd));
   }
 
-  n_outputs = engine->nlevels;
+  n_outputs = engine->n_levels;
   outimages = engine->outimages;
+
   for (idx = 1; idx < n_outputs; idx++) {
     outbuffer = gst_buffer_list_get (outbuffers, idx-1);
     cvpImage *outimage = &outimages[idx];
+
     outmap = &(engine->outmaps[idx]);
+
     // Map output buffer memory blocks.
     memory = gst_buffer_peek_memory (outbuffer, 0);
     GST_RETURN_VAL_IF_FAIL (gst_is_fd_memory (memory), FALSE,
@@ -345,6 +348,7 @@ gst_cvp_imgpyramid_engine_execute (GstImgPyramidEngine * engine,
 
       for (n_outputs = idx, idx = 1; idx < n_outputs; idx++) {
         outbuffer = gst_buffer_list_get (outbuffers, idx-1);
+
         outmap = &(engine->outmaps[idx]);
         gst_buffer_unmap (outbuffer, outmap);
       }
@@ -365,6 +369,7 @@ gst_cvp_imgpyramid_engine_execute (GstImgPyramidEngine * engine,
   gsize offset[1] = { 0 };
   gint  stride[1] = { 0 };
   guint width = 0, height = 0, nplanes = 0, size = 0;
+
   for (idx = 1; idx < n_outputs; idx++) {
     GstBuffer *outbuffer = gst_buffer_list_get (outbuffers, idx-1);
 
@@ -373,14 +378,17 @@ gst_cvp_imgpyramid_engine_execute (GstImgPyramidEngine * engine,
     nplanes = imgpyramidout.pImage[idx].sImageInfo.nPlane;
     stride[0] = imgpyramidout.pImage[idx].sImageInfo.nWidthStride[0];
     size = imgpyramidout.pImage[idx].sImageInfo.nTotalSize;
+
     GST_TRACE ("Outbuffer meta info, wxh=%ux%u, nplanes=%u, stride=%d size=%u",
         width, height, nplanes, stride[0], size);
+
     gst_buffer_add_video_meta_full (outbuffer, GST_VIDEO_FRAME_FLAG_NONE,
         GST_VIDEO_FORMAT_GRAY8, width, height, nplanes, offset, stride);
   }
 
   for (idx = 1; idx < n_outputs; idx++) {
     outbuffer = gst_buffer_list_get (outbuffers, idx-1);
+
     outmap = &(engine->outmaps[idx]);
     gst_buffer_unmap (outbuffer, outmap);
   }

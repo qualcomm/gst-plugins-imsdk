@@ -19,8 +19,32 @@ static gboolean
 queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
     guint64 time, gpointer checkdata)
 {
+  GstPad *pad = GST_PAD (checkdata);
+
+  if (GST_IS_CV_IMGPYRAMID_SRCPAD (pad)) {
+    GstCvImgPyramidSrcPad *srcpad = GST_CV_IMGPYRAMID_SRCPAD_CAST (pad);
+    GST_CV_IMGPYRAMID_PAD_SIGNAL_IDLE (srcpad, FALSE);
+  } else if (GST_IS_CV_IMGPYRAMID_SINKPAD (pad)) {
+    GstCvImgPyramidSinkPad *sinkpad = GST_CV_IMGPYRAMID_SINKPAD_CAST (pad);
+    GST_CV_IMGPYRAMID_PAD_SIGNAL_IDLE (sinkpad, FALSE);
+  }
+
   // There won't be any condition limiting for the buffer queue size.
   return FALSE;
+}
+
+static void
+queue_empty_cb (GstDataQueue * queue, gpointer checkdata)
+{
+  GstPad *pad = GST_PAD (checkdata);
+
+  if (GST_IS_CV_IMGPYRAMID_SRCPAD (pad)) {
+    GstCvImgPyramidSrcPad *srcpad = GST_CV_IMGPYRAMID_SRCPAD_CAST (pad);
+    GST_CV_IMGPYRAMID_PAD_SIGNAL_IDLE (srcpad, TRUE);
+  } else if (GST_IS_CV_IMGPYRAMID_SINKPAD (pad)) {
+    GstCvImgPyramidSinkPad *sinkpad = GST_CV_IMGPYRAMID_SINKPAD_CAST (pad);
+    GST_CV_IMGPYRAMID_PAD_SIGNAL_IDLE (sinkpad, TRUE);
+  }
 }
 
 // Source pad implementation
@@ -30,9 +54,12 @@ gst_cv_imgpyramid_srcpad_worker_task (gpointer userdata)
   GstCvImgPyramidSrcPad *srcpad = GST_CV_IMGPYRAMID_SRCPAD (userdata);
   GstDataQueueItem *item = NULL;
 
-  if (gst_data_queue_pop (srcpad->buffers, &item)) {
-    GstBuffer *buffer = gst_buffer_ref (GST_BUFFER (item->object));
-    item->destroy (item);
+  if (gst_data_queue_peek (srcpad->buffers, &item)) {
+    GstBuffer *buffer = NULL;
+
+    // Take the buffer from the queue item and null the object pointer.
+    buffer = GST_BUFFER (item->object);
+    item->object = NULL;
 
     GST_TRACE_OBJECT (srcpad, "Submitting %" GST_PTR_FORMAT, buffer);
 
@@ -41,6 +68,10 @@ gst_cv_imgpyramid_srcpad_worker_task (gpointer userdata)
         GST_BUFFER_DURATION (buffer);
 
     gst_pad_push (GST_PAD (srcpad), buffer);
+
+    // Buffer was sent downstream, remove and free the item from the queue.
+    if (gst_data_queue_pop (srcpad->buffers, &item))
+      item->destroy (item);
   } else {
     GST_INFO_OBJECT (srcpad, "Pause worker task!");
     gst_pad_pause_task (GST_PAD (srcpad));
@@ -52,6 +83,10 @@ gst_cv_imgpyramid_srcpad_push_event (GstElement * element, GstPad * pad,
     gpointer userdata)
 {
   GstEvent *event = GST_EVENT (userdata);
+
+  // On EOS wait until all queued buffers have been pushed before propagating it.
+  if (GST_EVENT_TYPE (event) == GST_EVENT_EOS)
+    GST_CV_IMGPYRAMID_PAD_WAIT_IDLE (GST_CV_IMGPYRAMID_SRCPAD_CAST (pad));
 
   GST_TRACE_OBJECT (pad, "Event: %s", GST_EVENT_TYPE_NAME (event));
   return gst_pad_push_event (pad, gst_event_ref (event));
@@ -236,6 +271,9 @@ gst_cv_imgpyramid_srcpad_finalize (GObject * object)
 
   gst_object_unref (GST_OBJECT_CAST (pad->buffers));
 
+  g_cond_clear (&pad->drained);
+  g_mutex_clear (&pad->lock);
+
   G_OBJECT_CLASS (gst_cv_imgpyramid_srcpad_parent_class)->finalize (object);
 }
 
@@ -255,7 +293,12 @@ gst_cv_imgpyramid_srcpad_init (GstCvImgPyramidSrcPad * pad)
 {
   gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
 
-  pad->buffers = gst_data_queue_new (queue_is_full_cb, NULL, NULL, NULL);
+  g_mutex_init (&pad->lock);
+  g_cond_init (&pad->drained);
+
+  pad->buffers =
+      gst_data_queue_new (queue_is_full_cb, NULL, queue_empty_cb, NULL);
+  pad->is_idle = TRUE;
 }
 
 // Sink pad
@@ -268,6 +311,9 @@ gst_cv_imgpyramid_sinkpad_finalize (GObject * object)
   gst_data_queue_flush (pad->requests);
 
   gst_object_unref (GST_OBJECT_CAST (pad->requests));
+
+  g_cond_clear (&pad->drained);
+  g_mutex_clear (&pad->lock);
 
   G_OBJECT_CLASS (gst_cv_imgpyramid_sinkpad_parent_class)->finalize (object);
 }
@@ -288,8 +334,13 @@ gst_cv_imgpyramid_sinkpad_init (GstCvImgPyramidSinkPad * pad)
 {
   gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
 
+  g_mutex_init (&pad->lock);
+  g_cond_init (&pad->drained);
+
+  pad->is_idle = TRUE;
   pad->info = NULL;
 
-  pad->requests = gst_data_queue_new (queue_is_full_cb, NULL, NULL, NULL);
+  pad->requests =
+      gst_data_queue_new (queue_is_full_cb, NULL, queue_empty_cb, NULL);
   gst_data_queue_set_flushing (pad->requests, FALSE);
 }
