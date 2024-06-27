@@ -26,6 +26,7 @@
 #include <gst/sdp/sdp.h>
 #include <gst/rtp/rtp.h>
 #include <glib-unix.h>
+#include <gst/app/gstappsrc.h>
 
 #define GST_USE_UNSTABLE_API
 #include <gst/webrtc/webrtc.h>
@@ -65,14 +66,16 @@ enum AppState
   "the streaming"
 
 #define SIGNALING_SERVER "wss://webrtc.nirbheek.in:8443"
+#define DEFAULT_PRIMARY_STREAM "qtiqmmfsrc name=camsrc ! video/x-raw(memory:GBM),format=NV12,width=1920,height=1080,framerate=30/1 ! queue ! v4l2h264enc capture-io-mode=5 output-io-mode=5 ! queue ! h264parse ! rtph264pay config-interval=-1 ! webrtcbin name=webrtcbin stun-server=stun://stun1.l.google.com bundle-policy=3"
+#define DEFAULT_SECONDARY_STREAM "appsrc name=appsrc ! rtph264depay name=rtph264depay ! queue ! h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! waylandsink"
 
 typedef struct _GstAppContext GstAppContext;
 struct _GstAppContext
 {
-  // Pointer to the pipeline
-  GstElement *pipeline;
-  // list of pipeline plugins
-  GList *plugins;
+  // Pointer to the pr_pipeline
+  GstElement *pr_pipeline;
+  // Pointer to the sc_pipeline
+  GstElement *sc_pipeline;
   // Pointer to the mainloop
   GMainLoop *mloop;
   // Pointer to the WebRTC bin plugin
@@ -91,7 +94,10 @@ struct _GstAppContext
   gchar *local_id;
   // Request remote to generate the offer
   gboolean ask_remote_for_offer;
-  gchar **args;
+  // Primary pipeline string
+  gchar *primary_stream_str;
+  // Secondary pipeline string
+  gchar *secondary_stream_str;
 };
 
 // Handle interrupt by CTRL+C
@@ -115,6 +121,11 @@ state_changed_cb (GstBus * bus, GstMessage * message, gpointer userdata)
 {
   GstElement *pipeline = GST_ELEMENT (userdata);
   GstState old, new_st, pending;
+
+  gst_message_parse_state_changed (message, &old, &new_st, &pending);
+  g_print ("\nPipeline state changed from %s to %s, pending: %s\n",
+      gst_element_state_get_name (old), gst_element_state_get_name (new_st),
+      gst_element_state_get_name (pending));
 
   // Handle state changes only for the pipeline.
   if (GST_MESSAGE_SRC (message) != GST_OBJECT_CAST (pipeline))
@@ -216,65 +227,128 @@ get_str_from_json_obj (JsonObject * obj)
   return ret;
 }
 
+static GstElement *
+create_pipeline (gchar * pipeline_des)
+{
+  GstElement *pipeline = NULL;
+  GError *error = NULL;
+
+  g_print ("\nCreating pipeline %s\n", pipeline_des);
+  pipeline = gst_parse_launch ((const gchar *) pipeline_des, &error);
+
+  if (error != NULL) {
+    g_printerr ("ERROR: %s\n", GST_STR_NULL (error->message));
+    g_clear_error (&error);
+    return NULL;
+  }
+
+  return pipeline;
+}
+
+static void
+gst_sample_release (GstSample * sample)
+{
+    gst_sample_unref (sample);
+#if GST_VERSION_MAJOR >= 1 && GST_VERSION_MINOR > 14
+    gst_sample_set_buffer (sample, NULL);
+#endif
+}
+
+static GstFlowReturn
+new_sample (GstElement * element, gpointer userdata)
+{
+  GstAppContext *appctx = (GstAppContext *)userdata;
+  GstSample *sample = NULL;
+  GstBuffer *buffer = NULL;
+  GError *error = NULL;
+  GstElement *appsrc = NULL;
+
+  // New sample is available, retrieve the buffer from the sink.
+  g_signal_emit_by_name (element, "pull-sample", &sample);
+
+  if (sample == NULL) {
+    g_printerr ("ERROR: Pulled sample is NULL!\n");
+    return GST_FLOW_ERROR;
+  }
+
+  if ((appsrc = gst_bin_get_by_name (
+      GST_BIN (appctx->sc_pipeline),"appsrc")) == NULL) {
+    g_printerr ("ERROR: cannot get appsrc instance\n");
+    gst_sample_release (sample);
+    return GST_FLOW_ERROR;
+  }
+
+  GstFlowReturn ret = gst_app_src_push_sample (GST_APP_SRC (appsrc), sample);
+  if (ret != GST_FLOW_OK) {
+    g_printerr ("ERROR: gst_app_src_push_buffer!\n");
+  }
+
+  gst_object_unref (appsrc);
+
+  return GST_FLOW_OK;
+}
+
 static void
 on_incoming_stream (GstElement * webrtc, GstPad * pad, gpointer userdata)
 {
   GstAppContext *appctx = (GstAppContext *) userdata;
   GstElement *rtph264depay, *decoder, *waylandsink, *h264parse,
-      *queue1, *queue2;
+      *queue1, *queue2, *appsink, *appsrc;
   GstPad *sinkpad;
   GstCaps *filtercaps;
+  GstElement *depay = NULL;
+  GstCaps *caps = NULL;
 
   gst_print ("Incoming stream received\n");
 
   if (GST_PAD_DIRECTION (pad) != GST_PAD_SRC)
     return;
 
-  rtph264depay = gst_element_factory_make ("rtph264depay", NULL);
-  queue1 = gst_element_factory_make ("queue", NULL);
-  h264parse = gst_element_factory_make ("h264parse", NULL);
-  decoder = gst_element_factory_make ("v4l2h264dec", NULL);
-  queue2 = gst_element_factory_make ("queue", NULL);
-  waylandsink = gst_element_factory_make ("waylandsink", NULL);
-
-  // Append all elements in a list
-  appctx->plugins = NULL;
-  appctx->plugins = g_list_append (appctx->plugins, rtph264depay);
-  appctx->plugins = g_list_append (appctx->plugins, queue1);
-  appctx->plugins = g_list_append (appctx->plugins, h264parse);
-  appctx->plugins = g_list_append (appctx->plugins, decoder);
-  appctx->plugins = g_list_append (appctx->plugins, queue2);
-  appctx->plugins = g_list_append (appctx->plugins, waylandsink);
-
-  // Set decoder properties
-  g_object_set (G_OBJECT (decoder), "capture-io-mode", 5, NULL);
-  g_object_set (G_OBJECT (decoder), "output-io-mode", 5, NULL);
-
-  gst_bin_add_many (GST_BIN (appctx->pipeline), rtph264depay, queue1,
-      h264parse, decoder, queue2, waylandsink, NULL);
-
-  if (!gst_element_link_many (rtph264depay, queue1, h264parse, decoder,
-      queue2, waylandsink, NULL)) {
-    gst_printerr ("Error link incoming stream\n");
-    disconnect_and_quit_loop (appctx);
+  if ((caps = gst_pad_get_current_caps (pad)) == NULL) {
+    g_printerr ("ERROR: cannot get caps of incoming stream\n");
     return;
   }
 
-  sinkpad = gst_element_get_static_pad (rtph264depay, "sink");
+  if ((appsrc = gst_bin_get_by_name (GST_BIN (
+      appctx->sc_pipeline), "appsrc")) == NULL) {
+    g_printerr ("ERROR: cannot get caps of incoming stream\n");
+    return;
+  }
+
+  // Set caps of the appsrc
+  g_object_set (G_OBJECT (appsrc), "caps", caps, NULL);
+  g_object_set (G_OBJECT (appsrc),
+      "stream-type", 0,
+      "format", GST_FORMAT_TIME,
+      NULL);
+  gst_object_unref (appsrc);
+
+  if ((appsink = gst_element_factory_make ("appsink", NULL)) == NULL) {
+    g_printerr ("ERROR: cannot create appsink element\n");
+    return;
+  }
+
+  g_object_set (G_OBJECT (appsink), "emit-signals", 1, NULL);
+  g_signal_connect (G_OBJECT (appsink), "new-sample", G_CALLBACK (new_sample),
+      appctx);
+
+  gst_bin_add (GST_BIN (appctx->pr_pipeline), appsink);
+
+  sinkpad = gst_element_get_static_pad (appsink, "sink");
   if (gst_pad_link (pad, sinkpad)) {
     gst_printerr ("Error link incoming pad\n");
     disconnect_and_quit_loop (appctx);
     return;
   }
+
   gst_print ("Link incoming stream successfull\n");
   gst_object_unref (sinkpad);
 
-  gst_element_sync_state_with_parent (rtph264depay);
-  gst_element_sync_state_with_parent (queue1);
-  gst_element_sync_state_with_parent (h264parse);
-  gst_element_sync_state_with_parent (decoder);
-  gst_element_sync_state_with_parent (queue2);
-  gst_element_sync_state_with_parent (waylandsink);
+  gst_element_sync_state_with_parent (appsink);
+
+  gst_print ("Starting secondary pipeline\n");
+  // Transition to PLAYING state of secondary pipeline.
+  gst_element_set_state (appctx->sc_pipeline, GST_STATE_PLAYING);
 }
 
 static void
@@ -430,51 +504,6 @@ on_data_channel (GstElement * webrtc, GObject * data_channel,
   connect_data_channel_signals (appctx, data_channel);
 }
 
-static GstElement *
-create_pipeline (gchar * pipeline_des)
-{
-  GstElement *pipeline = NULL;
-  GError *error = NULL;
-
-  g_print ("\nCreating pipeline %s\n", pipeline_des);
-  pipeline = gst_parse_launch ((const gchar *) pipeline_des, &error);
-
-  if (error != NULL) {
-    g_printerr ("ERROR: %s\n", GST_STR_NULL (error->message));
-    g_clear_error (&error);
-    return NULL;
-  }
-
-  return pipeline;
-}
-
-static GstElement*
-get_element_from_pipeline (GstElement * pipeline, const gchar * factory_name)
-{
-  GstElement *element = NULL;
-  GstElementFactory *elem_factory = gst_element_factory_find (factory_name);
-  GstIterator *it = NULL;
-  GValue value = G_VALUE_INIT;
-
-  // Iterate the pipeline and check factory of each element.
-  for (it = gst_bin_iterate_elements (GST_BIN (pipeline));
-      gst_iterator_next (it, &value) == GST_ITERATOR_OK;
-      g_value_reset (&value)) {
-    element = GST_ELEMENT (g_value_get_object (&value));
-
-    if (gst_element_get_factory (element) == elem_factory)
-      goto free;
-  }
-  g_value_reset (&value);
-  element = NULL;
-
-free:
-  gst_iterator_free (it);
-  gst_object_unref (elem_factory);
-
-  return element;
-}
-
 static gboolean
 start_pipeline (GstAppContext * appctx, gboolean create_offer)
 {
@@ -484,8 +513,8 @@ start_pipeline (GstAppContext * appctx, gboolean create_offer)
 
   appctx->create_offer = create_offer;
 
-  if ((appctx->webrtcbin = get_element_from_pipeline (
-      appctx->pipeline, "webrtcbin")) == NULL)
+  if ((appctx->webrtcbin = gst_bin_get_by_name (
+      GST_BIN (appctx->pr_pipeline), "webrtcbin")) == NULL)
     return FALSE;
 
   // Called when go to PLAYING state
@@ -497,8 +526,8 @@ start_pipeline (GstAppContext * appctx, gboolean create_offer)
 
   // Transition to READY state.
   if (GST_STATE_CHANGE_ASYNC ==
-      gst_element_set_state (appctx->pipeline, GST_STATE_READY)) {
-    wait_for_state_change (appctx->pipeline);
+      gst_element_set_state (appctx->pr_pipeline, GST_STATE_READY)) {
+    wait_for_state_change (appctx->pr_pipeline);
   }
 
   // Create incoming data channel
@@ -517,11 +546,11 @@ start_pipeline (GstAppContext * appctx, gboolean create_offer)
   g_signal_connect (appctx->webrtcbin, "pad-added",
       G_CALLBACK (on_incoming_stream), appctx);
 
-  gst_print ("Starting pipeline\n");
+  gst_print ("Starting primary pipeline\n");
   // Transition to PLAYING state.
   if (GST_STATE_CHANGE_ASYNC ==
-      gst_element_set_state (appctx->pipeline, GST_STATE_PLAYING)) {
-    wait_for_state_change (appctx->pipeline);
+      gst_element_set_state (appctx->pr_pipeline, GST_STATE_PLAYING)) {
+    wait_for_state_change (appctx->pr_pipeline);
   }
 
   return TRUE;
@@ -879,8 +908,8 @@ gst_app_context_new ()
   GstAppContext *ctx = NULL;
   g_return_val_if_fail ((ctx = g_new0 (GstAppContext, 1)) != NULL, NULL);
 
-  ctx->pipeline = NULL;
-  ctx->plugins = NULL;
+  ctx->pr_pipeline = NULL;
+  ctx->sc_pipeline = NULL;
   ctx->mloop = NULL;
 
   ctx->app_state = 0;
@@ -891,7 +920,8 @@ gst_app_context_new ()
   ctx->remote_id = NULL;
   ctx->local_id = NULL;
   ctx->ask_remote_for_offer = FALSE;
-  ctx->args = NULL;
+  ctx->primary_stream_str = NULL;
+  ctx->secondary_stream_str = NULL;
 
   return ctx;
 }
@@ -902,28 +932,14 @@ gst_app_context_free (GstAppContext * ctx)
   if (ctx == NULL)
     return;
 
-  // If the plugins list is not empty, unlink and remove all elements
-  if (ctx->plugins != NULL) {
-    GstElement *element_curr = (GstElement *) ctx->plugins->data;
-    GstElement *element_next;
-
-    GList *list = ctx->plugins->next;
-    for (; list != NULL; list = list->next) {
-      element_next = (GstElement *) list->data;
-      gst_element_unlink (element_curr, element_next);
-      gst_bin_remove (GST_BIN (ctx->pipeline), element_curr);
-      element_curr = element_next;
-    }
-    gst_bin_remove (GST_BIN (ctx->pipeline), element_curr);
-
-    // Free the plugins list
-    g_list_free (ctx->plugins);
-    ctx->plugins = NULL;
+  if (ctx->pr_pipeline != NULL) {
+    gst_element_set_state (ctx->pr_pipeline, GST_STATE_NULL);
+    gst_object_unref (ctx->pr_pipeline);
   }
 
-  if (ctx->pipeline != NULL) {
-    gst_element_set_state (ctx->pipeline, GST_STATE_NULL);
-    gst_object_unref (ctx->pipeline);
+  if (ctx->sc_pipeline != NULL) {
+    gst_element_set_state (ctx->sc_pipeline, GST_STATE_NULL);
+    gst_object_unref (ctx->sc_pipeline);
   }
 
   if (ctx->mloop != NULL)
@@ -950,6 +966,8 @@ main (gint argc, gchar * argv[])
   gint status = -1;
   GError *error = NULL;
   GThread *mthread = NULL;
+  gchar *primary_stream_str = DEFAULT_PRIMARY_STREAM;
+  gchar *secondary_stream_str = DEFAULT_SECONDARY_STREAM;
 
   // Initialize GST library.
   gst_init (&argc, &argv);
@@ -969,7 +987,12 @@ main (gint argc, gchar * argv[])
     {"ask-remote-for-offer", 'o', 0, G_OPTION_ARG_NONE,
         &appctx->ask_remote_for_offer,
         "Request remote to generate the offer and we'll answer", NULL},
-    {G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_STRING_ARRAY, &appctx->args, NULL},
+    {"primary-stream", 'm', 0, G_OPTION_ARG_STRING,
+        &appctx->primary_stream_str,
+        "Our local ID which remote peer can connect to us", "ID"},
+    {"secondary-stream", 's', 0, G_OPTION_ARG_STRING,
+        &appctx->secondary_stream_str,
+        "Our local ID which remote peer can connect to us", "ID"},
     { NULL }
   };
 
@@ -989,8 +1012,8 @@ main (gint argc, gchar * argv[])
   }
   g_option_context_free (optctx);
 
-  if (appctx->args == NULL || (!appctx->remote_id && !appctx->local_id)) {
-    g_print ("Usage: gst-webrtc-sendrecv-example <pipeline> [OPTION]\n");
+  if (!appctx->remote_id && !appctx->local_id) {
+    g_print ("Usage: gst-webrtc-sendrecv-example [OPTION]\n");
     g_print ("\nFor help: gst-webrtc-sendrecv-example [-h | --help]\n\n");
     goto exit;
   }
@@ -1000,8 +1023,20 @@ main (gint argc, gchar * argv[])
     goto exit;
   }
 
+  if (appctx->primary_stream_str) {
+    primary_stream_str = appctx->primary_stream_str;
+  }
+
+  if (appctx->secondary_stream_str) {
+    secondary_stream_str = appctx->secondary_stream_str;
+  }
+
   // Parse input pipeline
-  if ((appctx->pipeline = create_pipeline (*appctx->args)) == NULL)
+  if ((appctx->pr_pipeline = create_pipeline (primary_stream_str)) == NULL)
+    goto exit;
+
+  // Parse input pipeline
+  if ((appctx->sc_pipeline = create_pipeline (secondary_stream_str)) == NULL)
     goto exit;
 
   // Initialize main loop.
@@ -1010,17 +1045,33 @@ main (gint argc, gchar * argv[])
     goto exit;
   }
 
-  // Retrieve reference to the pipeline's bus.
-  if ((bus = gst_pipeline_get_bus (GST_PIPELINE (appctx->pipeline))) == NULL) {
+  // Retrieve reference to the pr_pipeline's bus.
+  if ((bus = gst_pipeline_get_bus (GST_PIPELINE (appctx->pr_pipeline))) == NULL) {
     g_printerr ("ERROR: Failed to retrieve pipeline bus!\n");
     g_main_loop_unref (appctx->mloop);
     goto exit;
   }
 
-  // Watch for messages on the pipeline's bus.
+  // Watch for messages on the pr_pipeline's bus.
   gst_bus_add_signal_watch (bus);
   g_signal_connect (bus, "message::state-changed",
-      G_CALLBACK (state_changed_cb), appctx->pipeline);
+      G_CALLBACK (state_changed_cb), appctx->pr_pipeline);
+  g_signal_connect (bus, "message::warning", G_CALLBACK (warning_cb), NULL);
+  g_signal_connect (bus, "message::error", G_CALLBACK (error_cb), appctx->mloop);
+  g_signal_connect (bus, "message::eos", G_CALLBACK (eos_cb), appctx->mloop);
+  gst_object_unref (bus);
+
+  // Retrieve reference to the sc_pipeline's bus.
+  if ((bus = gst_pipeline_get_bus (GST_PIPELINE (appctx->sc_pipeline))) == NULL) {
+    g_printerr ("ERROR: Failed to retrieve pipeline bus!\n");
+    g_main_loop_unref (appctx->mloop);
+    goto exit;
+  }
+
+  // Watch for messages on the sc_pipeline's bus.
+  gst_bus_add_signal_watch (bus);
+  g_signal_connect (bus, "message::state-changed",
+      G_CALLBACK (state_changed_cb), appctx->sc_pipeline);
   g_signal_connect (bus, "message::warning", G_CALLBACK (warning_cb), NULL);
   g_signal_connect (bus, "message::error", G_CALLBACK (error_cb), appctx->mloop);
   g_signal_connect (bus, "message::eos", G_CALLBACK (eos_cb), appctx->mloop);
