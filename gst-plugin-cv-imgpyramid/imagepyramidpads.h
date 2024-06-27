@@ -38,6 +38,35 @@ G_BEGIN_DECLS
   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_CV_IMGPYRAMID_SRCPAD))
 #define GST_CV_IMGPYRAMID_SRCPAD_CAST(obj) ((GstCvImgPyramidSrcPad *)(obj))
 
+#define GST_CV_IMGPYRAMID_PAD_SIGNAL_IDLE(pad, idle) \
+{\
+  g_mutex_lock (&(pad->lock));                                     \
+                                                                   \
+  if (pad->is_idle != idle) {                                      \
+    pad->is_idle = idle;                                           \
+    GST_TRACE_OBJECT (pad, "State %s", idle ? "Idle" : "Running"); \
+    g_cond_signal (&(pad->drained));                               \
+  }                                                                \
+                                                                   \
+  g_mutex_unlock (&(pad->lock));                                   \
+}
+
+#define GST_CV_IMGPYRAMID_PAD_WAIT_IDLE(pad) \
+{\
+  g_mutex_lock (&(pad->lock));                                         \
+  GST_TRACE_OBJECT (pad, "Waiting until idle");                        \
+                                                                       \
+  while (!pad->is_idle) {                                              \
+    gint64 endtime = g_get_monotonic_time () + 1 * G_TIME_SPAN_SECOND; \
+                                                                       \
+    if (!g_cond_wait_until (&(pad->drained), &(pad->lock), endtime))   \
+      GST_WARNING_OBJECT (pad, "Timeout while waiting for idle!");     \
+  }                                                                    \
+                                                                       \
+  GST_TRACE_OBJECT (pad, "Received idle");                             \
+  g_mutex_unlock (&(pad->lock));                                       \
+}
+
 typedef struct _GstCvImgPyramidSinkPad GstCvImgPyramidSinkPad;
 typedef struct _GstCvImgPyramidSinkPadClass GstCvImgPyramidSinkPadClass;
 typedef struct _GstCvImgPyramidSrcPad GstCvImgPyramidSrcPad;
@@ -46,6 +75,14 @@ typedef struct _GstCvImgPyramidSrcPadClass GstCvImgPyramidSrcPadClass;
 struct _GstCvImgPyramidSinkPad {
   /// Inherited parent structure.
   GstPad       parent;
+
+  /// Global mutex lock.
+  GMutex       lock;
+
+  /// Condition for signalling that last buffer was submitted downstream.
+  GCond        drained;
+  /// Flag indicating that there is no more work for processing.
+  gboolean     is_idle;
 
   /// Segment.
   GstSegment   segment;
@@ -65,6 +102,14 @@ struct _GstCvImgPyramidSinkPadClass {
 struct _GstCvImgPyramidSrcPad {
   /// Inherited parent structure.
   GstPad       parent;
+
+  /// Global mutex lock.
+  GMutex       lock;
+
+  /// Condition for signalling that last buffer was submitted downstream.
+  GCond        drained;
+  /// Flag indicating that there is no more work for processing.
+  gboolean     is_idle;
 
   /// Segment.
   GstSegment   segment;
