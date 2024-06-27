@@ -98,10 +98,10 @@ struct _GstMLTFLite {
 
   /// Properties.
   gchar               *model;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#ifdef HAVE_EXTERNAL_DELEGATE_H
   gchar               *ext_delegate_path;
   GstStructure        *ext_delegate_opts;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#endif // HAVE_EXTERNAL_DELEGATE_H
   GstMLTFLiteDelegate delegate;
   guint               n_threads;
 };
