@@ -15,8 +15,8 @@ std::shared_ptr<OpenClFuncs> OpenClFuncs::New() {
   dlerror();
   lib_opencl_handle = dlopen ("libOpenCl.so", RTLD_LAZY);
 
-  if (nullptr != lib_opencl_handle) {
-    GST_ERROR ("%s", dlerror());
+  if (nullptr == lib_opencl_handle) {
+    GST_ERROR ("Cannot load lib libOpenCl.so : %s", dlerror());
     return nullptr;
   }
 
