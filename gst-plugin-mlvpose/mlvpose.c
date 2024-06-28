@@ -28,7 +28,7 @@
  *
  * ​​​​​Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -215,6 +215,22 @@ gst_ml_prediction_free (gpointer data)
 
   // if (prediction->connections != NULL)
   //   g_array_free (prediction->connections, TRUE);
+}
+
+static gint
+gst_ml_compare_predictions (gconstpointer a, gconstpointer b)
+{
+  const GstMLPrediction *l_prediction, *r_prediction;
+
+  l_prediction = (const GstMLPrediction*)a;
+  r_prediction = (const GstMLPrediction*)b;
+
+  if (l_prediction->confidence > r_prediction->confidence)
+    return -1;
+  else if (l_prediction->confidence < r_prediction->confidence)
+    return 1;
+
+  return 0;
 }
 
 static gboolean
@@ -955,6 +971,9 @@ gst_ml_video_pose_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     g_array_free (predictions, TRUE);
     return GST_FLOW_ERROR;
   }
+
+  // Sort the list of predictions.
+  g_array_sort (predictions, gst_ml_compare_predictions);
 
   if (vpose->mode == OUTPUT_MODE_VIDEO)
     success = gst_ml_video_pose_fill_video_output (vpose, predictions,
