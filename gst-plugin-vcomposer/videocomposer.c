@@ -260,43 +260,28 @@ gst_buffer_transfer_roi_meta (GstBuffer * buffer, GstVideoRectangle * source,
 
     if (id == g_quark_from_static_string ("VideoLandmarks")) {
       GArray *keypoints = NULL, *links = NULL;
-      GArray *newkeypoints = NULL, *newlinks = NULL;
+      const GValue *value = NULL;
       gdouble confidence = 0.0;
-      guint n_bytes = 0;
 
       gst_structure_get_double (structure, "confidence", &confidence);
 
-      keypoints = (GArray *) g_value_get_boxed (
-          gst_structure_get_value (structure, "keypoints"));
-      links = (GArray *) g_value_get_boxed (
-          gst_structure_get_value (structure, "links"));
+      value = gst_structure_get_value (structure, "keypoints");
+      keypoints = g_array_copy (g_value_get_boxed (value));
 
-      // TODO: replace with g_array_copy() in glib version > 2.62
-      newkeypoints = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoKeypoint),
-          keypoints->len);
-      newkeypoints = g_array_set_size (newkeypoints, keypoints->len);
-
-      n_bytes = keypoints->len * sizeof (GstVideoKeypoint);
-      memcpy (newkeypoints->data, keypoints->data, n_bytes);
-
-      newlinks = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoKeypointLink),
-          links->len);
-      newlinks = g_array_set_size (newlinks, links->len);
-
-      n_bytes = links->len * sizeof (GstVideoKeypointLink);
-      memcpy (newlinks->data, links->data, n_bytes);
+      value = gst_structure_get_value (structure, "links");
+      links = g_array_copy (g_value_get_boxed (value));
 
       // Correct the X and Y of each keypoint based on the regions.
-      for (num = 0; num < newkeypoints->len; num++) {
+      for (num = 0; num < keypoints->len; num++) {
         GstVideoKeypoint *kp =
-            &(g_array_index (newkeypoints, GstVideoKeypoint, num));
+            &(g_array_index (keypoints, GstVideoKeypoint, num));
 
         kp->x = kp->x * w_scale;
         kp->y = kp->y * h_scale;
       }
 
-      structure = gst_structure_new ("VideoLandmarks", "keypoints",
-          G_TYPE_ARRAY, newkeypoints, "links", G_TYPE_ARRAY, newlinks,
+      structure = gst_structure_new ("VideoLandmarks",
+          "keypoints", G_TYPE_ARRAY, keypoints, "links", G_TYPE_ARRAY, links,
           "confidence", G_TYPE_DOUBLE, confidence, NULL);
       gst_video_region_of_interest_meta_add_param (newmeta, structure);
     } else if (id == g_quark_from_static_string ("ImageClassification")) {
@@ -315,25 +300,13 @@ gst_buffer_transfer_landmarks_meta (GstBuffer * buffer, GstVideoRectangle * sour
 {
   GArray *keypoints = NULL, *links = NULL;
   gdouble w_scale = 0.0, h_scale = 0.0;
-  guint num = 0, n_bytes = 0;
+  guint num = 0;
 
   gst_util_fraction_to_double (destination->w, source->w, &w_scale);
   gst_util_fraction_to_double (destination->h, source->h, &h_scale);
 
-  // TODO: replace with g_array_copy() in glib version > 2.62
-  keypoints = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoKeypoint),
-      lmkmeta->keypoints->len);
-  keypoints = g_array_set_size (keypoints, lmkmeta->keypoints->len);
-
-  links = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoKeypointLink),
-      lmkmeta->links->len);
-  links = g_array_set_size (links, lmkmeta->links->len);
-
-  n_bytes = keypoints->len * sizeof (GstVideoKeypoint);
-  memcpy (keypoints->data, lmkmeta->keypoints->data, n_bytes);
-
-  n_bytes = links->len * sizeof (GstVideoKeypointLink);
-  memcpy (links->data, lmkmeta->links->data, n_bytes);
+  keypoints = g_array_copy (lmkmeta->keypoints);
+  links = g_array_copy (lmkmeta->links);
 
   // Correct the X and Y of each keypoint bases on the regions.
   for (num = 0; num < keypoints->len; num++) {
@@ -351,15 +324,7 @@ static inline void
 gst_buffer_transfer_classification_meta (GstBuffer * buffer,
     GstVideoClassificationMeta * classmeta)
 {
-  GArray *labels = NULL;
-
-  // TODO: replace with g_array_copy() in glib version > 2.62
-  labels = g_array_sized_new (FALSE, FALSE, sizeof (GstClassLabel),
-      classmeta->labels->len);
-  labels = g_array_set_size (labels, classmeta->labels->len);
-
-  memcpy (labels->data, classmeta->labels->data,
-      labels->len * sizeof (GstClassLabel));
+  GArray *labels = g_array_copy (classmeta->labels);
 
   gst_buffer_add_video_classification_meta (buffer, labels);
 }
