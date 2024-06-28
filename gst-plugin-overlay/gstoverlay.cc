@@ -303,15 +303,28 @@ gst_overlay_apply_item_list (GstOverlay *gst_overlay,
 {
   gboolean res = TRUE;
   GSList * iter = meta_list;
+  uint32_t n_derived_metas = 0;
 
   guint meta_num = g_slist_length (meta_list);
+
+  // Increase the num of metas with the number of inherited landmark metas.
+  // This is done in order to cleanup unused overlay items below.
+  if (ov_id == gst_overlay->pose_id)
+    n_derived_metas = gst_overlay->n_landmark_metas;
+
+  // Set the num of metas to the number of class labels in those metas.
+  // This is done in order to cleanup unused overlay items below.
+  if (ov_id == gst_overlay->text_id)
+    n_derived_metas = gst_overlay->n_class_labels;
+
   if (meta_num) {
-    for (uint32_t i = g_sequence_get_length (ov_id);
-        i < meta_num; i++) {
+    meta_num += n_derived_metas;
+
+    for (uint32_t i = g_sequence_get_length (ov_id); i < meta_num; i++) {
       g_sequence_append(ov_id, calloc(1, sizeof(uint32_t)));
     }
 
-    for (uint32_t i = 0; i < meta_num; i++) {
+    for (uint32_t i = n_derived_metas; i < meta_num; i++) {
       res = apply_func (gst_overlay, g_slist_nth_data (iter, 0),
           (uint32_t *) g_sequence_get (g_sequence_get_iter_at_pos (ov_id, i)));
       if (!res) {
@@ -325,23 +338,13 @@ gst_overlay_apply_item_list (GstOverlay *gst_overlay,
     g_slist_free (meta_list);
   }
 
-  // Increase the num of metas with the number of inherited landmark metas.
-  // This is done in order to cleanup unused overlay items below.
-  if (ov_id == gst_overlay->pose_id)
-    meta_num += gst_overlay->n_landmark_metas;
-
-  // Set the num of metas to the number of class labels in those metas.
-  // This is done in order to cleanup unused overlay items below.
-  if (ov_id == gst_overlay->text_id)
-    meta_num = gst_overlay->n_class_labels;
-
-  if ((guint) g_sequence_get_length (ov_id) > meta_num) {
+  if ((guint) g_sequence_get_length (ov_id) > (meta_num + n_derived_metas)) {
     g_sequence_foreach_range (
-        g_sequence_get_iter_at_pos (ov_id, meta_num),
+        g_sequence_get_iter_at_pos (ov_id, (meta_num + n_derived_metas)),
         g_sequence_get_end_iter (ov_id),
         gst_overlay_destroy_overlay_item, gst_overlay->overlay);
     g_sequence_remove_range (
-        g_sequence_get_iter_at_pos (ov_id, meta_num),
+        g_sequence_get_iter_at_pos (ov_id, (meta_num + n_derived_metas)),
         g_sequence_get_end_iter (ov_id));
   }
 
