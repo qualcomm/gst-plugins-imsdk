@@ -102,6 +102,8 @@ struct _GstMLVideoPose {
 
   /// Tensor deciphering module.
   GstMLModule      *module;
+  /// Array with predictions from the module post-processing.
+  GArray           *predictions;
 
   /// Properties.
   gint              mdlenum;
