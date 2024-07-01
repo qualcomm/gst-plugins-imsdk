@@ -35,7 +35,7 @@
 #include "videosplitpads.h"
 
 #include <gst/video/gstimagepool.h>
-
+#include <gst/utils/common-utils.h>
 
 G_DEFINE_TYPE(GstVideoSplitSinkPad, gst_video_split_sinkpad, GST_TYPE_PAD);
 G_DEFINE_TYPE(GstVideoSplitSrcPad, gst_video_split_srcpad, GST_TYPE_PAD);
@@ -53,12 +53,6 @@ GST_DEBUG_CATEGORY_EXTERN (gst_video_split_debug);
 #ifndef GST_CAPS_FEATURE_MEMORY_GBM
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
 #endif
-
-#define GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE(pspec, state) \
-    ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
-        : ((pspec->flags & GST_PARAM_MUTABLE_PAUSED) ? (state <= GST_STATE_PAUSED) \
-            : ((pspec->flags & GST_PARAM_MUTABLE_READY) ? (state <= GST_STATE_READY) \
-                : (state <= GST_STATE_NULL))))
 
 enum
 {
@@ -95,41 +89,6 @@ queue_empty_cb (GstDataQueue * queue, gpointer checkdata)
     GstVideoSplitSinkPad *sinkpad = GST_VIDEO_SPLIT_SINKPAD_CAST (pad);
     GST_VIDEO_SPLIT_PAD_SIGNAL_IDLE (sinkpad, TRUE);
   }
-}
-
-static gboolean
-gst_caps_has_feature (const GstCaps * caps, const gchar * feature)
-{
-  guint idx = 0;
-
-  while (idx != gst_caps_get_size (caps)) {
-    GstCapsFeatures *const features = gst_caps_get_features (caps, idx);
-
-    if (feature == NULL && ((gst_caps_features_get_size (features) == 0) ||
-            gst_caps_features_is_any (features)))
-      return TRUE;
-
-    // Skip ANY caps and return immediately if feature is present.
-    if ((feature != NULL) && !gst_caps_features_is_any (features) &&
-        gst_caps_features_contains (features, feature))
-      return TRUE;
-
-    idx++;
-  }
-  return FALSE;
-}
-
-static gboolean
-gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
-{
-  GstStructure *structure = NULL;
-  const gchar *string = NULL;
-
-  structure = gst_caps_get_structure (caps, 0);
-  string = gst_structure_has_field (structure, "compression") ?
-      gst_structure_get_string (structure, "compression") : NULL;
-
-  return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
 }
 
 static GType

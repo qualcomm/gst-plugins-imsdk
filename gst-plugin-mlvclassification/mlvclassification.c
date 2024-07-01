@@ -76,6 +76,7 @@
 #include <gst/ml/gstmlmeta.h>
 #include <gst/video/gstimagepool.h>
 #include <gst/memory/gstmempool.h>
+#include <gst/utils/common-utils.h>
 #include <cairo/cairo.h>
 
 #ifdef HAVE_LINUX_DMA_BUF_H
@@ -129,11 +130,6 @@ G_DEFINE_TYPE (GstMLVideoClassification, gst_ml_video_classification,
 #define DEFAULT_FONT_SIZE          20
 
 #define MAX_TEXT_LENGTH            25
-
-#define EXTRACT_RED_COLOR(color)   (((color >> 24) & 0xFF) / 255.0)
-#define EXTRACT_GREEN_COLOR(color) (((color >> 16) & 0xFF) / 255.0)
-#define EXTRACT_BLUE_COLOR(color)  (((color >> 8) & 0xFF) / 255.0)
-#define EXTRACT_ALPHA_COLOR(color) (((color) & 0xFF) / 255.0)
 
 enum
 {
@@ -232,24 +228,6 @@ gst_ml_video_classification_xtra_opration_get_type (void)
   return gtype;
 }
 
-static gboolean
-gst_caps_has_feature (const GstCaps * caps, const gchar * feature)
-{
-  guint idx = 0;
-
-  while (idx != gst_caps_get_size (caps)) {
-    GstCapsFeatures *const features = gst_caps_get_features (caps, idx);
-
-    // Skip ANY caps and return immediately if feature is present.
-    if (!gst_caps_features_is_any (features) &&
-        gst_caps_features_contains (features, feature))
-      return TRUE;
-
-    idx++;
-  }
-  return FALSE;
-}
-
 static void
 gst_ml_prediction_free (GstMLPrediction * prediction)
 {
@@ -341,8 +319,7 @@ gst_ml_video_classification_create_pool (
 
 static gboolean
 gst_ml_video_classification_fill_video_output (
-    GstMLVideoClassification * classification, GArray * predictions,
-    GstBuffer *buffer)
+    GstMLVideoClassification * classification, GstBuffer *buffer)
 {
   GstVideoMeta *vmeta = NULL;
   GstMapInfo memmap;
@@ -434,7 +411,7 @@ gst_ml_video_classification_fill_video_output (
     cairo_font_options_destroy (options);
   }
 
-  for (idx = 0; idx < predictions->len; idx++) {
+  for (idx = 0; idx < classification->predictions->len; idx++) {
     GstMLPrediction *prediction = NULL;
     gchar *string = NULL;
 
@@ -442,7 +419,8 @@ gst_ml_video_classification_fill_video_output (
     if (n_predictions >= classification->n_results)
       break;
 
-    prediction = &(g_array_index (predictions, GstMLPrediction, idx));
+    prediction =
+        &(g_array_index (classification->predictions, GstMLPrediction, idx));
 
     // Concat the prediction data to the output string.
     string = g_strdup_printf ("%s: %.1f%%", prediction->label,
@@ -495,26 +473,27 @@ gst_ml_video_classification_fill_video_output (
 
 static gboolean
 gst_ml_video_classification_fill_text_output (
-    GstMLVideoClassification * classification, GArray * predictions,
-    GstBuffer *buffer)
+    GstMLVideoClassification * classification, GstBuffer *buffer)
 {
   GstMapInfo memmap = {};
-  GValue entries = G_VALUE_INIT, value = G_VALUE_INIT;
+  GValue entries = G_VALUE_INIT, labels = G_VALUE_INIT, value = G_VALUE_INIT;
+  GstStructure *structure = NULL;
   gchar *string = NULL;
-  guint idx = 0, n_predictions = 0;
+  guint idx = 0;
   gsize length = 0;
 
   g_value_init (&entries, GST_TYPE_LIST);
+  g_value_init (&labels, GST_TYPE_ARRAY);
 
-  for (idx = 0; idx < predictions->len; idx++) {
+  for (idx = 0; idx < classification->predictions->len; idx++) {
     GstMLPrediction *prediction = NULL;
-    GstStructure *entry = NULL;
 
     // Break immediately if we reach the number of results limit.
-    if (n_predictions >= classification->n_results)
+    if (idx >= classification->n_results)
       break;
 
-    prediction = &(g_array_index (predictions, GstMLPrediction, idx));
+    prediction =
+        &(g_array_index (classification->predictions, GstMLPrediction, idx));
 
     // Break immediately if sorted prediction confidence is below the threshold.
     if (prediction->confidence < classification->threshold)
@@ -523,31 +502,36 @@ gst_ml_video_classification_fill_text_output (
     GST_TRACE_OBJECT (classification, "label: %s, confidence: %.1f%%",
         prediction->label, prediction->confidence);
 
-    prediction->label = g_strdelimit (prediction->label, " ", '-');
+    prediction->label = g_strdelimit (prediction->label, " ", '.');
 
-    entry = gst_structure_new ("ImageClassification",
-        "label", G_TYPE_STRING, prediction->label,
+    structure = gst_structure_new (prediction->label,
         "confidence", G_TYPE_DOUBLE, prediction->confidence,
         "color", G_TYPE_UINT, prediction->color,
         NULL);
 
-    prediction->label = g_strdelimit (prediction->label, "-", ' ');
-
     g_value_init (&value, GST_TYPE_STRUCTURE);
-    g_value_take_boxed (&value, entry);
+    g_value_take_boxed (&value, structure);
 
-    gst_value_list_append_value (&entries, &value);
+    gst_value_array_append_value (&labels, &value);
     g_value_unset (&value);
-
-    n_predictions++;
   }
 
-  // Append timestamp information needed for synchronization.
-  g_value_init (&value, GST_TYPE_STRUCTURE);
-  g_value_take_boxed (&value,
-      gst_structure_new ("Parameters", "timestamp", G_TYPE_UINT64,
-          GST_BUFFER_TIMESTAMP (buffer), NULL));
+  structure = gst_structure_new_empty ("ImageClassification");
+  gst_structure_set_value (structure, "labels", &labels);
 
+  g_value_unset (&labels);
+
+  g_value_init (&value, GST_TYPE_STRUCTURE);
+  g_value_take_boxed (&value, structure);
+
+  gst_value_list_append_value (&entries, &value);
+  g_value_reset (&value);
+
+  // Append timestamp information needed for synchronization.
+  structure = gst_structure_new ("Parameters",
+      "timestamp", G_TYPE_UINT64, GST_BUFFER_TIMESTAMP (buffer), NULL);
+
+  g_value_take_boxed (&value, structure);
   gst_value_list_append_value (&entries, &value);
   g_value_unset (&value);
 
@@ -647,11 +631,73 @@ gst_ml_video_classification_decide_allocation (GstBaseTransform * base,
 }
 
 static GstFlowReturn
+gst_ml_video_classification_submit_input_buffer (GstBaseTransform * base,
+    gboolean is_discont, GstBuffer * buffer)
+{
+  GstMLVideoClassification *classification = GST_ML_VIDEO_CLASSIFICATION (base);
+  GstMLFrame mlframe = { 0, };
+  GstFlowReturn ret = GST_FLOW_OK;
+  GstClockTime time = GST_CLOCK_TIME_NONE;
+  gboolean success = FALSE;
+
+  // Let baseclass handle caps (re)negotiation and QoS.
+  ret = GST_BASE_TRANSFORM_CLASS (parent_class)->submit_input_buffer (base,
+      is_discont, buffer);
+
+  if (ret != GST_FLOW_OK)
+    return ret;
+
+  // Check if the baseclass set the plufin in passthrough mode.
+  if (gst_base_transform_is_passthrough (base))
+    return ret;
+
+  // GAP input buffer, nothing to do. Propagate output buffer downstream.
+  if (gst_buffer_get_size (buffer) == 0 &&
+      GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP))
+    return ret;
+
+  // Perform pre-processing on the input buffer.
+  time = gst_util_get_timestamp ();
+
+  if (!gst_ml_frame_map (&mlframe, classification->mlinfo, buffer, GST_MAP_READ)) {
+    GST_ERROR_OBJECT (classification, "Failed to map buffer!");
+    return GST_FLOW_ERROR;
+  }
+
+  // Clear previously stored values.
+  classification->predictions = g_array_remove_range (
+      classification->predictions, 0, classification->predictions->len);
+
+  // Call the submodule process funtion.
+  success = gst_ml_video_classification_module_execute (classification->module,
+      &mlframe, classification->predictions);
+
+  gst_ml_frame_unmap (&mlframe);
+
+  if (!success) {
+    GST_ERROR_OBJECT (classification, "Failed to process tensors!");
+    return GST_FLOW_ERROR;
+  }
+
+  // Sort the list of predictions.
+  g_array_sort (classification->predictions, gst_ml_compare_predictions);
+
+  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
+
+  GST_LOG_OBJECT (classification, "Processing took %" G_GINT64_FORMAT ".%03"
+      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000));
+
+  return GST_FLOW_OK;
+}
+
+static GstFlowReturn
 gst_ml_video_classification_prepare_output_buffer (GstBaseTransform * base,
     GstBuffer * inbuffer, GstBuffer ** outbuffer)
 {
   GstMLVideoClassification *classification = GST_ML_VIDEO_CLASSIFICATION (base);
   GstBufferPool *pool = classification->outpool;
+  GstBufferCopyFlags flags = GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS;
 
   if (gst_base_transform_is_passthrough (base)) {
     GST_DEBUG_OBJECT (classification, "Passthrough, no need to do anything");
@@ -672,6 +718,13 @@ gst_ml_video_classification_prepare_output_buffer (GstBaseTransform * base,
       GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP))
     *outbuffer = gst_buffer_new ();
 
+  // When there are no predictions in the input create a GAP output buffer.
+  if ((*outbuffer == NULL) && (classification->predictions->len == 0)) {
+    *outbuffer = gst_buffer_new ();
+    GST_BUFFER_FLAG_SET (*outbuffer, GST_BUFFER_FLAG_GAP);
+    flags &= ~GST_BUFFER_COPY_FLAGS;
+  }
+
   if ((*outbuffer == NULL) &&
       gst_buffer_pool_acquire_buffer (pool, outbuffer, NULL) != GST_FLOW_OK) {
     GST_ERROR_OBJECT (classification, "Failed to create output buffer!");
@@ -679,8 +732,7 @@ gst_ml_video_classification_prepare_output_buffer (GstBaseTransform * base,
   }
 
   // Copy the flags and timestamps from the input buffer.
-  gst_buffer_copy_into (*outbuffer, inbuffer,
-      GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
+  gst_buffer_copy_into (*outbuffer, inbuffer, flags, 0, -1);
 
   return GST_FLOW_OK;
 }
@@ -924,12 +976,8 @@ gst_ml_video_classification_transform (GstBaseTransform * base,
     GstBuffer * inbuffer, GstBuffer * outbuffer)
 {
   GstMLVideoClassification *classification = GST_ML_VIDEO_CLASSIFICATION (base);
-  GArray *predictions = NULL;
-  GstMLFrame mlframe = { 0, };
+  GstClockTime time = GST_CLOCK_TIME_NONE;
   gboolean success = FALSE;
-
-  GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
-  GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
 
   g_return_val_if_fail (classification->module != NULL, GST_FLOW_ERROR);
 
@@ -938,57 +986,27 @@ gst_ml_video_classification_transform (GstBaseTransform * base,
       GST_BUFFER_FLAG_IS_SET (outbuffer, GST_BUFFER_FLAG_GAP))
     return GST_FLOW_OK;
 
-  predictions = g_array_new (FALSE, FALSE, sizeof (GstMLPrediction));
-  g_return_val_if_fail (predictions != NULL, GST_FLOW_ERROR);
-
-  // Set element clearing function.
-  g_array_set_clear_func (predictions, (GDestroyNotify) gst_ml_prediction_free);
-
-  ts_begin = gst_util_get_timestamp ();
-
-  if (!gst_ml_frame_map (&mlframe, classification->mlinfo, inbuffer, GST_MAP_READ)) {
-    GST_ERROR_OBJECT (classification, "Failed to map input buffer!");
-    return GST_FLOW_ERROR;
-  }
-
-  // Call the submodule process funtion.
-  success = gst_ml_video_classification_module_execute (classification->module,
-      &mlframe, predictions);
-
-  gst_ml_frame_unmap (&mlframe);
-
-  if (!success) {
-    GST_ERROR_OBJECT (classification, "Failed to process tensors!");
-    g_array_free (predictions, TRUE);
-    return GST_FLOW_ERROR;
-  }
-
-  // Sort the list of predictions.
-  g_array_sort (predictions, gst_ml_compare_predictions);
+  time = gst_util_get_timestamp ();
 
   if (classification->mode == OUTPUT_MODE_VIDEO)
-    success = gst_ml_video_classification_fill_video_output (classification,
-        predictions, outbuffer);
+    success =
+        gst_ml_video_classification_fill_video_output (classification, outbuffer);
   else if (classification->mode == OUTPUT_MODE_TEXT)
-    success = gst_ml_video_classification_fill_text_output (classification,
-        predictions, outbuffer);
+    success =
+        gst_ml_video_classification_fill_text_output (classification, outbuffer);
   else
     success = FALSE;
-
-  g_array_free (predictions, TRUE);
 
   if (!success) {
     GST_ERROR_OBJECT (classification, "Failed to fill output buffer!");
     return GST_FLOW_ERROR;
   }
 
-  ts_end = gst_util_get_timestamp ();
-
-  tsdelta = GST_CLOCK_DIFF (ts_begin, ts_end);
+  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
 
   GST_LOG_OBJECT (classification, "Categorization took %" G_GINT64_FORMAT ".%03"
-      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (tsdelta),
-      (GST_TIME_AS_USECONDS (tsdelta) % 1000));
+      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000));
 
   return GST_FLOW_OK;
 }
@@ -1015,55 +1033,20 @@ gst_ml_video_classification_set_property (GObject * object, guint prop_id,
       break;
     case PROP_CONSTANTS:
     {
-      const gchar *input = g_value_get_string (value);
-      GValue value = G_VALUE_INIT;
+      GValue structure = G_VALUE_INIT;
 
-      g_value_init (&value, GST_TYPE_STRUCTURE);
+      g_value_init (&structure, GST_TYPE_STRUCTURE);
 
-      if (g_file_test (input, G_FILE_TEST_IS_REGULAR)) {
-        GString *string = NULL;
-        GError *error = NULL;
-        gchar *contents = NULL;
-        gboolean success = FALSE;
-
-        if (!g_file_get_contents (input, &contents, NULL, &error)) {
-          GST_ERROR ("Failed to get file contents, error: %s!",
-              GST_STR_NULL (error->message));
-          g_clear_error (&error);
-          break;
-        }
-
-        // Remove trailing space and replace new lines with a comma delimiter.
-        contents = g_strstrip (contents);
-        contents = g_strdelimit (contents, "\n", ',');
-
-        string = g_string_new (contents);
-        g_free (contents);
-
-        // Add opening and closing brackets.
-        string = g_string_prepend (string, "{ ");
-        string = g_string_append (string, " }");
-
-        // Get the raw character data.
-        contents = g_string_free (string, FALSE);
-
-        success = gst_value_deserialize (&value, contents);
-        g_free (contents);
-
-        if (!success) {
-          GST_ERROR ("Failed to deserialize file contents!");
-          break;
-        }
-      } else if (!gst_value_deserialize (&value, input)) {
-        GST_ERROR ("Failed to deserialize string!");
+      if (!gst_parse_string_property_value (value, &structure)) {
+        GST_ERROR_OBJECT (classification, "Failed to parse constants!");
         break;
       }
 
       if (classification->mlconstants != NULL)
         gst_structure_free (classification->mlconstants);
 
-      classification->mlconstants = GST_STRUCTURE (g_value_dup_boxed (&value));
-      g_value_unset (&value);
+      classification->mlconstants = GST_STRUCTURE (g_value_dup_boxed (&structure));
+      g_value_unset (&structure);
       break;
     }
     case PROP_EXTRA_OPERATIONS:
@@ -1119,6 +1102,7 @@ gst_ml_video_classification_finalize (GObject * object)
 {
   GstMLVideoClassification *classification = GST_ML_VIDEO_CLASSIFICATION (object);
 
+  g_array_free (classification->predictions, TRUE);
   gst_ml_module_free (classification->module);
 
   if (classification->mlinfo != NULL)
@@ -1189,6 +1173,8 @@ gst_ml_video_classification_class_init (GstMLVideoClassificationClass * klass)
 
   base->decide_allocation =
       GST_DEBUG_FUNCPTR (gst_ml_video_classification_decide_allocation);
+  base->submit_input_buffer =
+      GST_DEBUG_FUNCPTR (gst_ml_video_classification_submit_input_buffer);
   base->prepare_output_buffer =
       GST_DEBUG_FUNCPTR (gst_ml_video_classification_prepare_output_buffer);
 
@@ -1206,6 +1192,14 @@ gst_ml_video_classification_init (GstMLVideoClassification * classification)
 {
   classification->outpool = NULL;
   classification->module = NULL;
+
+  classification->predictions =
+      g_array_new (FALSE, FALSE, sizeof (GstMLPrediction));
+  g_return_if_fail (classification->predictions != NULL);
+
+  // Set element clearing function.
+  g_array_set_clear_func (classification->predictions,
+      (GDestroyNotify) gst_ml_prediction_free);
 
   classification->mdlenum = DEFAULT_PROP_MODULE;
   classification->labels = DEFAULT_PROP_LABELS;

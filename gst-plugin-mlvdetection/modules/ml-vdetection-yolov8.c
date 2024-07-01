@@ -37,15 +37,10 @@
 #include <stdio.h>
 #include <math.h>
 
-
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
 
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
-
-#define GFLOAT_PTR_CAST(data)       ((gfloat*) data)
-#define GINT8_PTR_CAST(data)        ((gint8*) data)
-#define GUINT8_PTR_CAST(data)       ((guint8*) data)
 
 // MODULE_CAPS support input dim [32, 32] -> [1920, 1088] Number class 1 -> 1001
 #define GST_ML_MODULE_CAPS \
@@ -118,21 +113,18 @@ gst_ml_module_parse_monoblock_frame (GstMLSubModule * submodule,
     GArray * predictions, GstMLFrame * mlframe)
 {
   GstProtectionMeta *pmeta = NULL;
-  GstLabel *label = NULL;
+  GstMLLabel *label = NULL;
   gpointer bboxes = NULL, scores = NULL;
+  GstVideoRectangle region = { 0, };
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
-  gint sar_n = 1, sar_d = 1, nms = -1;
-  guint n_classes = 0, n_paxels = 0, height = 0, width = 0, idx = 0, num = 0;
+  guint n_classes = 0, n_paxels = 0, idx = 0, num = 0;
   gdouble cx = 0, cy = 0, w = 0, h = 0, confidence = 0.0;
+  gint nms = -1;
 
   pmeta = gst_buffer_get_protection_meta (mlframe->buffer);
 
-  // Extract the SAR (Source Aspect Ratio).
-  gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
-
-  // Extract the dimensions of the input tensor that produced the output tensors.
-  gst_structure_get_uint (pmeta->info, "input-tensor-height", &height);
-  gst_structure_get_uint (pmeta->info, "input-tensor-width", &width);
+  // Extract the source tensor region with actual data.
+  gst_ml_protecton_meta_get_source_region (pmeta, &region);
 
   mltype = GST_ML_FRAME_TYPE (mlframe);
   n_paxels = GST_ML_FRAME_DIM (mlframe, 0, 2);
@@ -193,9 +185,8 @@ gst_ml_module_parse_monoblock_frame (GstMLSubModule * submodule,
         prediction.top, prediction.left, prediction.bottom, prediction.right,
         class_idx, confidence);
 
-    // Adjust bounding box dimensions with extracted source aspect ratio.
-    gst_ml_prediction_transform_dimensions (&prediction, sar_n, sar_d,
-        width, height);
+    // Adjust bounding box dimensions with extracted source tensor region.
+    gst_ml_prediction_transform_dimensions (&prediction, &region);
 
     // Discard results with out of region coordinates.
     if ((prediction.top > 1.0)   || (prediction.left > 1.0) ||
@@ -237,21 +228,18 @@ gst_ml_module_parse_dualblock_frame (GstMLSubModule * submodule,
     GArray * predictions, GstMLFrame * mlframe)
 {
   GstProtectionMeta *pmeta = NULL;
-  GstLabel *label = NULL;
+  GstMLLabel *label = NULL;
   gpointer bboxes = NULL, scores = NULL;
+  GstVideoRectangle region = { 0, };
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
-  gint sar_n = 1, sar_d = 1, nms = -1;
-  guint n_classes = 0, n_paxels = 0, height = 0, width = 0, idx = 0, num = 0;
+  guint n_classes = 0, n_paxels = 0, idx = 0, num = 0;
   gdouble cx = 0, cy = 0, w = 0, h = 0, confidence = 0.0;
+  gint nms = -1;
 
   pmeta = gst_buffer_get_protection_meta (mlframe->buffer);
 
-  // Extract the SAR (Source Aspect Ratio).
-  gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
-
-  // Extract the dimensions of the input tensor that produced the output tensors.
-  gst_structure_get_uint (pmeta->info, "input-tensor-height", &height);
-  gst_structure_get_uint (pmeta->info, "input-tensor-width", &width);
+  // Extract the source tensor region with actual data.
+  gst_ml_protecton_meta_get_source_region (pmeta, &region);
 
   mltype = GST_ML_FRAME_TYPE (mlframe);
   n_paxels = GST_ML_FRAME_DIM (mlframe, 0, 2);
@@ -304,9 +292,8 @@ gst_ml_module_parse_dualblock_frame (GstMLSubModule * submodule,
         prediction.top, prediction.left, prediction.bottom, prediction.right,
         class_idx, confidence);
 
-    // Adjust bounding box dimensions with extracted source aspect ratio.
-    gst_ml_prediction_transform_dimensions (&prediction, sar_n, sar_d,
-        width, height);
+    // Adjust bounding box dimensions with extracted source tensor region.
+    gst_ml_prediction_transform_dimensions (&prediction, &region);
 
     // Discard results with out of region coordinates.
     if ((prediction.top > 1.0)   || (prediction.left > 1.0) ||
@@ -348,21 +335,18 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
     GArray * predictions, GstMLFrame * mlframe)
 {
   GstProtectionMeta *pmeta = NULL;
-  GstLabel *label = NULL;
+  GstMLLabel *label = NULL;
   gpointer bboxes = NULL, scores = NULL, classes = NULL;
+  GstVideoRectangle region = { 0, };
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
-  gint sar_n = 1, sar_d = 1, nms = -1;
-  guint n_paxels = 0, height = 0, width = 0, idx = 0, class_idx = 0;
+  guint n_paxels = 0, idx = 0, class_idx = 0;
   gfloat confidence = 0;
+  gint nms = -1;
 
   pmeta = gst_buffer_get_protection_meta (mlframe->buffer);
 
-  // Extract the SAR (Source Aspect Ratio).
-  gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
-
-  // Extract the dimensions of the input tensor that produced the output tensors.
-  gst_structure_get_uint (pmeta->info, "input-tensor-height", &height);
-  gst_structure_get_uint (pmeta->info, "input-tensor-width", &width);
+  // Extract the source tensor region with actual data.
+  gst_ml_protecton_meta_get_source_region (pmeta, &region);
 
   mltype = GST_ML_FRAME_TYPE (mlframe);
   n_paxels = GST_ML_FRAME_DIM (mlframe, 0, 1);
@@ -396,9 +380,8 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
         prediction.top, prediction.left, prediction.bottom, prediction.right,
         class_idx, confidence);
 
-    // Adjust bounding box dimensions with extracted source aspect ratio.
-    gst_ml_prediction_transform_dimensions (&prediction, sar_n, sar_d,
-        width, height);
+    // Adjust bounding box dimensions with extracted source tensor region.
+    gst_ml_prediction_transform_dimensions (&prediction, &region);
 
     // Discard results with out of region coordinates.
     if ((prediction.top > 1.0)   || (prediction.left > 1.0) ||

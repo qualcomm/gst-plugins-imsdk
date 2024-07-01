@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -63,19 +63,10 @@
 
 #include "ml-video-segmentation-module.h"
 
+#include <gst/utils/common-utils.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
-
-#define EXTRACT_RED_COLOR(color)   ((color >> 24) & 0xFF)
-#define EXTRACT_GREEN_COLOR(color) ((color >> 16) & 0xFF)
-#define EXTRACT_BLUE_COLOR(color)  ((color >> 8) & 0xFF)
-#define EXTRACT_ALPHA_COLOR(color) ((color) & 0xFF)
-
-#define GFLOAT_PTR_CAST(data)       ((gfloat*)data)
-#define GINT32_PTR_CAST(data)       ((gint32*)data)
-#define GINT8_PTR_CAST(data)        ((gint8*)data)
-#define GUINT8_PTR_CAST(data)       ((guint8*)data)
 
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
 
@@ -95,6 +86,11 @@ typedef struct _GstMLSubModule GstMLSubModule;
 struct _GstMLSubModule {
   // Configurated ML capabilities in structure format.
   GstMLInfo  mlinfo;
+
+  // The width of the model input tensor.
+  guint      inwidth;
+  // The height of the model input tensor.
+  guint      inheight;
 
   // List of segmentation labels.
   GHashTable *labels;
@@ -281,8 +277,9 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GstProtectionMeta *pmeta = NULL;
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   guint8 *indata = NULL, *outdata = NULL;
+  GstVideoRectangle region = { 0, };
   guint idx = 0, num = 0, id = 0, bpp = 0, padding = 0, color = 0, n_scores = 0;
-  gint row = 0, column = 0, inwidth = 0, inheight = 0;
+  gint row = 0, column = 0, width = 0, height = 0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);
@@ -293,17 +290,15 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     return FALSE;
   }
 
+  width = GST_VIDEO_FRAME_WIDTH (vframe);
+  height = GST_VIDEO_FRAME_HEIGHT (vframe);
+
   // Retrive the video frame Bytes Per Pixel for later calculations.
   bpp = GST_VIDEO_FORMAT_INFO_BITS (vframe->info.finfo) *
       GST_VIDEO_INFO_N_COMPONENTS (&(vframe)->info) / CHAR_BIT;
 
   // Calculate the row padding in bytes.
-  padding = GST_VIDEO_FRAME_PLANE_STRIDE (vframe, 0) -
-      (GST_VIDEO_FRAME_WIDTH (vframe) * bpp);
-
-  // Set the initial width and height of the source mask.
-  inwidth = GST_ML_FRAME_DIM (mlframe, 0, 2);
-  inheight = GST_ML_FRAME_DIM (mlframe, 0, 1);
+  padding = GST_VIDEO_FRAME_PLANE_STRIDE (vframe, 0) - (width * bpp);
 
   indata = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
   outdata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
@@ -313,31 +308,33 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       GST_ML_FRAME_DIM (mlframe, 0, 3);
   mltype = GST_ML_FRAME_TYPE (mlframe);
 
-  // Extract the SAR (Source Aspect Ratio) and adjust mask dimensions.
-  if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL) {
-    gint sar_n = 1, sar_d = 1;
+  pmeta = gst_buffer_get_protection_meta (mlframe->buffer);
 
-    gst_structure_get_fraction (pmeta->info, "source-aspect-ratio",
-        &sar_n, &sar_d);
-
-    // Adjust dimensions so that only the mask with actual data will be used.
-    if ((sar_n * inheight) > (inwidth * sar_d)) // SAR > (inwidth / inheight)
-      inheight = gst_util_uint64_scale_int (inwidth, sar_d, sar_n);
-    else if ((sar_n * inheight) < (inwidth * sar_d)) // SAR < (inwidth / inheight)
-      inwidth = gst_util_uint64_scale_int (inheight, sar_n, sar_d);
+  // Extract the dimensions of the input tensor that produced the output tensors.
+  if (submodule->inwidth == 0 || submodule->inheight == 0) {
+    gst_ml_protecton_meta_get_source_dimensions (pmeta, &(submodule->inwidth),
+        &(submodule->inheight));
   }
 
-  for (row = 0; row < GST_VIDEO_FRAME_HEIGHT (vframe); row++) {
-    for (column = 0; column < GST_VIDEO_FRAME_WIDTH (vframe); column++) {
-      GstLabel *label = NULL;
+  // Extract the source tensor region for color mask extraction.
+  gst_ml_protecton_meta_get_source_region (pmeta, &region);
+
+  // Transform source tensor region dimensions to dimensions in the color mask.
+  region.x *= (GST_ML_FRAME_DIM (mlframe, 0, 2) / (gfloat) submodule->inwidth);
+  region.y *= (GST_ML_FRAME_DIM (mlframe, 0, 1) / (gfloat) submodule->inheight);
+  region.w *= (GST_ML_FRAME_DIM (mlframe, 0, 2) / (gfloat) submodule->inwidth);
+  region.h *= (GST_ML_FRAME_DIM (mlframe, 0, 1) / (gfloat) submodule->inheight);
+
+  for (row = 0; row < height; row++) {
+    for (column = 0; column < width; column++) {
+      GstMLLabel *label = NULL;
 
       // Calculate the source index. First calculate the row offset.
       idx = GST_ML_FRAME_DIM (mlframe, 0, 2) *
-          gst_util_uint64_scale_int (row, inheight, GST_VIDEO_FRAME_HEIGHT (vframe));
+          (region.y + gst_util_uint64_scale_int (row, region.h, height));
 
       // Calculate the source index. Second calculate the column offset.
-      idx += gst_util_uint64_scale_int (column, inwidth,
-          GST_VIDEO_FRAME_WIDTH (vframe));
+      idx += region.x + gst_util_uint64_scale_int (column, region.w, width);
 
       // Calculate the source index. Lastly multiply by the number of class scores.
       idx *= n_scores;

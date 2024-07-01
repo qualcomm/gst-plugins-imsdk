@@ -38,19 +38,13 @@
 
 #include "c2venc.h"
 
+#include <gst/utils/common-utils.h>
+
 #define GST_CAT_DEFAULT c2_venc_debug
 GST_DEBUG_CATEGORY_STATIC (c2_venc_debug);
 
 #define gst_c2_venc_parent_class parent_class
 G_DEFINE_TYPE (GstC2VEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
-
-#define GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE(pspec, state) \
-  ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
-      : ((pspec->flags & GST_PARAM_MUTABLE_PAUSED) ? (state <= GST_STATE_PAUSED) \
-          : ((pspec->flags & GST_PARAM_MUTABLE_READY) ? (state <= GST_STATE_READY) \
-              : (state <= GST_STATE_NULL))))
-
-#define GPOINTER_CAST(ptr)                ((gpointer) ptr)
 
 #define GST_TYPE_C2_RATE_CONTROL       (gst_c2_rate_control_get_type())
 #define GST_TYPE_C2_INTRA_REFRESH_MODE (gst_c2_intra_refresh_get_type())
@@ -256,19 +250,6 @@ gst_c2_video_rotation_get_type (void)
     gtype = g_enum_register_static ("GstC2VideoRotation", variants);
 
   return gtype;
-}
-
-static gboolean
-gst_caps_has_compression (const GstCaps * caps, const gchar * compression)
-{
-  GstStructure *structure = NULL;
-  const gchar *string = NULL;
-
-  structure = gst_caps_get_structure (caps, 0);
-  string = gst_structure_has_field (structure, "compression") ?
-      gst_structure_get_string (structure, "compression") : NULL;
-
-  return (g_strcmp0 (string, compression) == 0) ? TRUE : FALSE;
 }
 
 static gboolean

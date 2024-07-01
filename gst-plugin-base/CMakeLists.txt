@@ -48,6 +48,7 @@ include_directories(
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/gstreamer-1.0>
 )
 
+add_subdirectory(gst/utils)
 add_subdirectory(gst/video)
 add_subdirectory(gst/memory)
 add_subdirectory(gst/ml)

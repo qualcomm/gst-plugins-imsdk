@@ -103,7 +103,7 @@ GST_DEBUG_CATEGORY_EXTERN (gst_ml_module_debug);
 #define GST_ML_MODULE_OPT_XTRA_OPERATION "GstMLModule.xtra-operation"
 
 typedef struct _GstMLModule GstMLModule;
-typedef struct _GstLabel GstLabel;
+typedef struct _GstMLLabel GstMLLabel;
 
 /**
  * GstMLModuleOpen:
@@ -179,13 +179,13 @@ typedef gboolean  (*GstMLModuleProcess)   (gpointer submodule,
                                            gpointer output);
 
 /**
- * GstLabel:
+ * GstMLLabel:
  * @name: The label name.
  * @color: Color of the label is present, otherwise is set to 0x00000000.
  *
  * Machine learning label used for post-processing.
  */
-struct _GstLabel {
+struct _GstMLLabel {
   gchar *name;
   guint color;
 };
@@ -275,7 +275,7 @@ gst_ml_module_execute  (GstMLModule * module, GstMLFrame * mlframe,
  *
  * return: Pointer to ML label on success or NULL on failure
  */
-GST_API GstLabel *
+GST_API GstMLLabel *
 gst_ml_label_new (void);
 
 /**
@@ -287,7 +287,7 @@ gst_ml_label_new (void);
  * return: NONE
  */
 GST_API void
-gst_ml_label_free (GstLabel * label);
+gst_ml_label_free (GstMLLabel * label);
 
 /**
  * gst_ml_parse_labels:
@@ -307,9 +307,9 @@ gst_ml_parse_labels (const gchar * input, GValue * list);
  * @list: GValue list containing label information.
  *
  * Helper function to load labels information from GValue list into hash table
- * comprised from GstLabel.
+ * comprised from GstMLLabel.
  *
- * return: Pointer to hash table of GstLabel on success or NULL on failure
+ * return: Pointer to hash table of GstMLLabel on success or NULL on failure
  */
 GHashTable *
 gst_ml_load_labels (GValue * list);
