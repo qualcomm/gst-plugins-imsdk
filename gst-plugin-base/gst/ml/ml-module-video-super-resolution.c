@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -61,38 +61,11 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __GST_QTI_ML_VIDEO_SEGMENTATION_MODULE_H__
-#define __GST_QTI_ML_VIDEO_SEGMENTATION_MODULE_H__
+#include "ml-module-video-super-resolution.h"
 
-#include <gst/gst.h>
-#include <gst/video/video.h>
-#include <gst/ml/gstmlmodule.h>
-#include <gst/ml/ml-module-utils.h>
-
-G_BEGIN_DECLS
-
-/**
- * gst_ml_video_segmentation_module_execute:
- * @module: Pointer to ML post-processing module.
- * @mlframe: Frame containing mapped tensor memory blocks that need processing.
- * @vframe: Frame containing mask/image.
- *
- * Convenient wrapper function used on plugin level to call the module
- * 'gst_ml_module_process' API via 'gst_ml_module_execute' wrapper in order
- * to process input tensors.
- *
- * Post-processing module must define the 3rd argument of the implemented
- * 'gst_ml_module_process' API as 'GstVideoFrame *'.
- *
- * return: TRUE on success or FALSE on failure
- */
 GST_API gboolean
-gst_ml_video_segmentation_module_execute (GstMLModule * module,
+gst_ml_module_video_super_resolution_execute (GstMLModule * module,
     GstMLFrame * mlframe, GstVideoFrame * vframe)
 {
   return gst_ml_module_execute (module, mlframe, (gpointer) vframe);
 }
-
-G_END_DECLS
-
-#endif // __GST_QTI_ML_VIDEO_SEGMENTATION_MODULE_H__

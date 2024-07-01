@@ -381,7 +381,7 @@ gst_batch_extract_sink_buffer (GstElement * element, GstPad * pad,
   GstVideoMeta *vmeta = NULL;
   GstVideoRegionOfInterestMeta *roimeta = NULL;
   GstStructure *structure = NULL;
-  guint num = 0, idx = 0;
+  guint num = 0, stream_id = 0;
 
   outbuffer = GST_BUFFER (userdata);
 
@@ -396,10 +396,10 @@ gst_batch_extract_sink_buffer (GstElement * element, GstPad * pad,
   GST_TRACE_OBJECT (sinkpad, "Taking %" GST_PTR_FORMAT, inbuffer);
 
   // Get the index of current sink pad.
-  idx = g_list_index (element->sinkpads, sinkpad);
+  stream_id = g_list_index (element->sinkpads, sinkpad);
 
   // Create a structure that will contain information for decryption.
-  structure = gst_structure_new (gst_batch_channel_name (idx),
+  structure = gst_structure_new (gst_mux_stream_name (stream_id),
       "timestamp", G_TYPE_UINT64, GST_BUFFER_TIMESTAMP (inbuffer),
       "duration", G_TYPE_UINT64, GST_BUFFER_DURATION (inbuffer),
       "flags", G_TYPE_UINT, GST_BUFFER_FLAGS (inbuffer), NULL);
@@ -408,7 +408,7 @@ gst_batch_extract_sink_buffer (GstElement * element, GstPad * pad,
   gst_buffer_add_protection_meta (outbuffer, structure);
 
   // Set the corresponding channel bit in the buffer universal offset field.
-  GST_BUFFER_OFFSET (outbuffer) |= (1 << idx);
+  GST_BUFFER_OFFSET (outbuffer) |= (1 << stream_id);
 
   // GAP buffer, nothing further to do.
   if (gst_buffer_get_size (inbuffer) == 0 &&
@@ -441,7 +441,9 @@ gst_batch_extract_sink_buffer (GstElement * element, GstPad * pad,
   while (roimeta != NULL) {
     roimeta = gst_buffer_add_video_region_of_interest_meta_id (outbuffer,
         roimeta->roi_type, roimeta->x, roimeta->y, roimeta->w, roimeta->h);
-    roimeta->id = GST_BATCH_CHANNEL_ID (idx, num);
+
+    // Prefix the original ROI ID with the stream ID.
+    roimeta->id = (stream_id << GST_MUX_STREAM_ID_OFFSET) + num;
 
     roimeta = gst_buffer_get_video_region_of_interest_meta_id (inbuffer, ++num);
   }

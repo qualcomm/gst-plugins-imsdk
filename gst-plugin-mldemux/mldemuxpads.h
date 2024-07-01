@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -101,6 +101,9 @@ struct _GstMLDemuxSinkPad {
   /// Inherited parent structure.
   GstPad     parent;
 
+  /// ML tensors info from caps.
+  GstMLInfo  *mlinfo;
+
   /// Segment.
   GstSegment segment;
 };
@@ -116,6 +119,8 @@ struct _GstMLDemuxSrcPad {
 
   /// Global mutex lock.
   GMutex       lock;
+  /// ID/Index with which this pad was created.
+  guint        id;
 
   /// Condition for signalling that last buffer was submitted downstream.
   GCond        drained;

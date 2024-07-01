@@ -32,21 +32,19 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "ml-video-segmentation-module.h"
-
 #include <stdio.h>
 #include <math.h>
 
 #include <gst/utils/common-utils.h>
-
+#include <gst/utils/batch-utils.h>
+#include <gst/ml/ml-module-utils.h>
+#include <gst/ml/ml-module-video-segmentation.h>
+#include <gst/ml/ml-module-video-detection.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
 
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
-
-// Non-maximum Suppression (NMS) threshold (50%), corresponding to 2/3 overlap.
-#define NMS_INTERSECTION_THRESHOLD  0.5F
 
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
@@ -56,20 +54,7 @@
 // Module caps instance
 static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
 
-typedef struct _GstMLBoxPrediction GstMLBoxPrediction;
 typedef struct _GstMLSubModule GstMLSubModule;
-
-struct _GstMLBoxPrediction {
-  GQuark  label;
-  gfloat  confidence;
-  guint32 color;
-
-  gfloat  top;
-  gfloat  left;
-  gfloat  bottom;
-  gfloat  right;
-};
-
 
 struct _GstMLSubModule {
   // Configurated ML capabilities in structure format.
@@ -91,104 +76,6 @@ struct _GstMLSubModule {
   gdouble    qscales[GST_ML_MAX_TENSORS];
 };
 
-static inline gdouble
-gst_ml_module_get_dequant_value (gpointer pdata, GstMLType mltype, guint idx,
-    gdouble offset, gdouble scale)
-{
-  switch (mltype) {
-    case GST_ML_TYPE_INT8:
-      return ((GINT8_PTR_CAST (pdata))[idx] - offset) * scale;
-    case GST_ML_TYPE_UINT8:
-      return ((GUINT8_PTR_CAST (pdata))[idx] - offset) * scale;
-    case GST_ML_TYPE_FLOAT32:
-      return (GFLOAT_PTR_CAST (pdata))[idx];
-    default:
-      break;
-  }
-  return 0.0;
-}
-
-static inline void
-gst_ml_box_relative_translation (GstMLBoxPrediction * box, guint width,
-    guint height)
-{
-  box->top /= height;
-  box->bottom /= height;
-  box->left /= width;
-  box->right /= width;
-}
-
-static inline gdouble
-gst_ml_box_intersection_score (GstMLBoxPrediction * l_box, GstMLBoxPrediction * r_box)
-{
-  gdouble width = 0, height = 0, intersection = 0, l_area = 0, r_area = 0;
-
-  // Figure out the width of the intersecting rectangle.
-  // 1st: Find out the X axis coordinate of left most Top-Right point.
-  width = MIN (l_box->right, r_box->right);
-  // 2nd: Find out the X axis coordinate of right most Top-Left point
-  // and substract from the previously found value.
-  width -= MAX (l_box->left, r_box->left);
-
-  // Negative width means that there is no overlapping.
-  if (width <= 0.0F)
-    return 0.0F;
-
-  // Figure out the height of the intersecting rectangle.
-  // 1st: Find out the Y axis coordinate of bottom most Left-Top point.
-  height = MIN (l_box->bottom, r_box->bottom);
-  // 2nd: Find out the Y axis coordinate of top most Left-Bottom point
-  // and substract from the previously found value.
-  height -= MAX (l_box->top, r_box->top);
-
-  // Negative height means that there is no overlapping.
-  if (height <= 0.0F)
-    return 0.0F;
-
-  // Calculate intersection area.
-  intersection = width * height;
-
-  // Calculate the area of the 2 objects.
-  l_area = (l_box->right - l_box->left) * (l_box->bottom - l_box->top);
-  r_area = (r_box->right - r_box->left) * (r_box->bottom - r_box->top);
-
-  // Intersection over Union score.
-  return intersection / (l_area + r_area - intersection);
-}
-
-static inline gint
-gst_ml_non_max_suppression (GstMLBoxPrediction * l_bbox, GArray * boxes)
-{
-  GstMLBoxPrediction *r_bbox = NULL;
-  guint idx = 0;
-  gdouble score = 0.0;
-
-  for (idx = 0; idx < boxes->len;  idx++) {
-    r_bbox = &(g_array_index (boxes, GstMLBoxPrediction, idx));
-
-    // If labels do not match, continue with next list entry.
-    if (l_bbox->label != r_bbox->label)
-      continue;
-
-    score = gst_ml_box_intersection_score (l_bbox, r_bbox);
-
-    // If the score is below the threshold, continue with next list entry.
-    if (score <= NMS_INTERSECTION_THRESHOLD)
-      continue;
-
-    // If confidence of current bbox is higher, remove the old entry.
-    if (l_bbox->confidence > r_bbox->confidence)
-      return idx;
-
-    // If confidence of current bbox is lower, don't add it to the list.
-    if (l_bbox->confidence <= r_bbox->confidence)
-      return -2;
-  }
-
-  // If this point is reached then add current bbox to the list;
-  return -1;
-}
-
 static void
 gst_ml_module_bbox_parse_tripleblock_tensors (GstMLSubModule * submodule,
     GstMLFrame * mlframe, GArray * bboxes, GArray * mask_matrix_indices)
@@ -208,25 +95,25 @@ gst_ml_module_bbox_parse_tripleblock_tensors (GstMLSubModule * submodule,
   classes = GST_ML_FRAME_BLOCK_DATA (mlframe, 3);
 
   for (idx = 0; idx < n_paxels; idx++) {
-    GstMLBoxPrediction bbox = { 0, };
+    GstMLBoxEntry bbox = { 0, };
 
-    confidence = gst_ml_module_get_dequant_value (scores, mltype, idx,
+    confidence = gst_ml_tensor_extract_value (mltype, scores, idx,
         submodule->qoffsets[1], submodule->qscales[1]);
-    class_idx = gst_ml_module_get_dequant_value (classes, mltype, idx,
+    class_idx = gst_ml_tensor_extract_value (mltype, classes, idx,
         submodule->qoffsets[3], submodule->qscales[3]);
 
     // Discard results below the minimum confidence threshold.
     if (confidence < submodule->threshold)
       continue;
 
-    bbox.left = gst_ml_module_get_dequant_value (mlboxes, mltype,
-        (idx * 4) + 0, submodule->qoffsets[0], submodule->qscales[0]);
-    bbox.top = gst_ml_module_get_dequant_value (mlboxes, mltype,
-        (idx * 4) + 1, submodule->qoffsets[0], submodule->qscales[0]);
-    bbox.right  = gst_ml_module_get_dequant_value (mlboxes, mltype,
-        (idx * 4) + 2, submodule->qoffsets[0], submodule->qscales[0]);
-    bbox.bottom  = gst_ml_module_get_dequant_value (mlboxes, mltype,
-        (idx * 4) + 3, submodule->qoffsets[0], submodule->qscales[0]);
+    bbox.left = gst_ml_tensor_extract_value (mltype, mlboxes, (idx * 4) + 0,
+        submodule->qoffsets[0], submodule->qscales[0]);
+    bbox.top = gst_ml_tensor_extract_value (mltype, mlboxes, (idx * 4) + 1,
+        submodule->qoffsets[0], submodule->qscales[0]);
+    bbox.right  = gst_ml_tensor_extract_value (mltype, mlboxes, (idx * 4) + 2,
+        submodule->qoffsets[0], submodule->qscales[0]);
+    bbox.bottom  = gst_ml_tensor_extract_value (mltype, mlboxes, (idx * 4) + 3,
+        submodule->qoffsets[0], submodule->qscales[0]);
 
     GST_TRACE ("Class: %u Box[%f, %f, %f, %f] Confidence: %f", class_idx,
         bbox.top, bbox.left, bbox.bottom, bbox.right, confidence);
@@ -238,18 +125,18 @@ gst_ml_module_bbox_parse_tripleblock_tensors (GstMLSubModule * submodule,
         submodule->labels, GUINT_TO_POINTER (class_idx));
 
     bbox.confidence = confidence * 100.0F;
-    bbox.label = g_quark_from_string (label ? label->name : "unknown");
+    bbox.name = g_quark_from_string (label ? label->name : "unknown");
     bbox.color = label ? label->color : 0x000000FF;
 
     // Non-Max Suppression (NMS) algorithm.
-    nms = gst_ml_non_max_suppression (&bbox, bboxes);
+    nms = gst_ml_box_non_max_suppression (&bbox, bboxes);
 
     // If the NMS result is -2 don't add the bbox to the list.
     if (nms == (-2))
       continue;
 
     GST_LOG ("Label: %s  Box[%f, %f, %f, %f] Confidence: %f",
-        g_quark_to_string (bbox.label), bbox.top, bbox.left, bbox.bottom,
+        g_quark_to_string (bbox.name), bbox.top, bbox.left, bbox.bottom,
         bbox.right, bbox.confidence);
 
     // If the NMS result is above -1 remove the entry with the nms index.
@@ -290,11 +177,11 @@ gst_ml_module_colormask_parse_monoblock_tensor (GstMLSubModule * submodule,
 
   // Process the segmentation data only the in recognized box bboxes.
   for (idx = 0; idx < bboxes->len; idx++) {
-    GstMLBoxPrediction *bbox = NULL;
+    GstMLBoxEntry *bbox = NULL;
     gdouble m_value = 0.0, p_value = 0.0;
     guint m_idx = 0, b_idx= 0;
 
-    bbox = &(g_array_index (bboxes, GstMLBoxPrediction, idx));
+    bbox = &(g_array_index (bboxes, GstMLBoxEntry, idx));
     m_idx = g_array_index (mask_matrix_indices, guint, idx);
 
     // Transform to dimensions in the color mask.
@@ -311,11 +198,11 @@ gst_ml_module_colormask_parse_monoblock_tensor (GstMLSubModule * submodule,
         // Perform matrix multiplication for current macro block.
         for (num = 0; num < GST_ML_FRAME_DIM (mlframe, 2, 2); num++) {
           // Get the mask value for current channel/class.
-          m_value = gst_ml_module_get_dequant_value (masks, mltype,
+          m_value = gst_ml_tensor_extract_value (mltype, masks,
               m_idx + num, submodule->qoffsets[2], submodule->qscales[2]);
 
           // Get the protos value for current channel/class and macro block.
-          p_value = gst_ml_module_get_dequant_value (protos, mltype,
+          p_value = gst_ml_tensor_extract_value (mltype, protos,
               b_idx + num * n_blocks, submodule->qoffsets[4], submodule->qscales[4]);
 
           // Confidence score for this macro block.
@@ -501,12 +388,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (vframe != NULL, FALSE);
 
-  if (!gst_ml_info_is_equal (&(mlframe->info), &(submodule->mlinfo))) {
-    GST_ERROR ("ML frame with unsupported layout!");
-    return FALSE;
-  }
-
-  pmeta = gst_buffer_get_protection_meta (mlframe->buffer);
+  pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
+      gst_batch_channel_name (0));
 
   // Extract the dimensions of the input tensor that produced the output tensors.
   if (submodule->inwidth == 0 || submodule->inheight == 0) {
@@ -525,7 +408,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   padding = GST_VIDEO_FRAME_PLANE_STRIDE (vframe, 0) - (width * bpp);
 
   // Initialize the array with bounding box predictions.
-  bboxes = g_array_new (FALSE, FALSE, sizeof (GstMLBoxPrediction));
+  bboxes = g_array_new (FALSE, FALSE, sizeof (GstMLBoxEntry));
 
   // Initialize the array with indices to mask matrices for the bouding boxes.
   mask_matrix_indices = g_array_new (FALSE, FALSE, sizeof (guint));

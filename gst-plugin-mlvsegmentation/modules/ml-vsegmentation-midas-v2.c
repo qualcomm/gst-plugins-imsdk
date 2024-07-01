@@ -32,9 +32,10 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "ml-video-segmentation-module.h"
-
 #include <gst/utils/common-utils.h>
+#include <gst/utils/batch-utils.h>
+#include <gst/ml/ml-module-utils.h>
+#include <gst/ml/ml-module-video-segmentation.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
@@ -179,11 +180,6 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (vframe != NULL, FALSE);
 
-  if (!gst_ml_info_is_equal (&(mlframe->info), &(submodule->mlinfo))) {
-    GST_ERROR ("ML frame with unsupported layout!");
-    return FALSE;
-  }
-
   width = GST_VIDEO_FRAME_WIDTH (vframe);
   height = GST_VIDEO_FRAME_HEIGHT (vframe);
 
@@ -197,7 +193,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   indata = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
   outdata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
 
-  pmeta = gst_buffer_get_protection_meta (mlframe->buffer);
+  pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
+      gst_batch_channel_name (0));
 
   // Extract the dimensions of the input tensor that produced the output tensors.
   if (submodule->inwidth == 0 || submodule->inheight == 0) {

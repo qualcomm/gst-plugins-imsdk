@@ -61,9 +61,10 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "ml-video-segmentation-module.h"
-
 #include <gst/utils/common-utils.h>
+#include <gst/utils/batch-utils.h>
+#include <gst/ml/ml-module-utils.h>
+#include <gst/ml/ml-module-video-segmentation.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
@@ -100,25 +101,6 @@ struct _GstMLSubModule {
   // Scale values for each of the tensors for dequantization of some tensors.
   gdouble    qscales[GST_ML_MAX_TENSORS];
 };
-
-static inline gdouble
-gst_ml_module_get_dequant_value (void * data, GstMLType mltype, guint idx,
-    gdouble offset, gdouble scale)
-{
-  switch (mltype) {
-    case GST_ML_TYPE_INT8:
-      return ((GINT8_PTR_CAST (data))[idx] - offset) * scale;
-    case GST_ML_TYPE_UINT8:
-      return ((GUINT8_PTR_CAST (data))[idx] - offset) * scale;
-    case GST_ML_TYPE_INT32:
-      return (GINT32_PTR_CAST (data))[idx];
-    case GST_ML_TYPE_FLOAT32:
-      return (GFLOAT_PTR_CAST (data))[idx];
-    default:
-      break;
-  }
-  return 0.0;
-}
 
 gpointer
 gst_ml_module_open (void)
@@ -285,11 +267,6 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (vframe != NULL, FALSE);
 
-  if (!gst_ml_info_is_equal (&(mlframe->info), &(submodule->mlinfo))) {
-    GST_ERROR ("ML frame with unsupported layout!");
-    return FALSE;
-  }
-
   width = GST_VIDEO_FRAME_WIDTH (vframe);
   height = GST_VIDEO_FRAME_HEIGHT (vframe);
 
@@ -302,13 +279,14 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
   indata = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
   outdata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
+  mltype = GST_ML_FRAME_TYPE (mlframe);
 
   // The 4th tensor dimension represents multiple the class scores per pixel.
   n_scores = (GST_ML_FRAME_N_DIMENSIONS (mlframe, 0) != 4) ? 1 :
       GST_ML_FRAME_DIM (mlframe, 0, 3);
-  mltype = GST_ML_FRAME_TYPE (mlframe);
 
-  pmeta = gst_buffer_get_protection_meta (mlframe->buffer);
+  pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
+      gst_batch_channel_name (0));
 
   // Extract the dimensions of the input tensor that produced the output tensors.
   if (submodule->inwidth == 0 || submodule->inheight == 0) {
@@ -343,21 +321,12 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       id = idx;
 
       // Find the class index with best score if tensor has multiple class scores.
-      for (num = (idx + 1); num < (idx + n_scores); num++) {
-        gdouble l_score = 0.0, r_score = 0.0;
-
-        l_score = gst_ml_module_get_dequant_value (indata, mltype, num,
-            submodule->qoffsets[0], submodule->qscales[0]);
-        r_score = gst_ml_module_get_dequant_value (indata, mltype, id,
-            submodule->qoffsets[0], submodule->qscales[0]);
-
-        // Assign the ID of the new best score.
-        id = (l_score > r_score) ? num : id;
-      }
+      for (num = (idx + 1); num < (idx + n_scores); num++)
+        id = (gst_ml_tensor_compare_values (mltype, indata, num, id) > 0) ? num : id;
 
       // If there is no 4th dimension the tensor pixel contains the class ID.
       if (n_scores == 1)
-        id = gst_ml_module_get_dequant_value (indata, mltype, id,
+        id = gst_ml_tensor_extract_value (mltype, indata, id,
             submodule->qoffsets[0], submodule->qscales[0]);
       else
         id = (id - idx);
