@@ -567,14 +567,17 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
   GstVideoFrame *outframe = NULL;
   GstVideoRegionOfInterestMeta *roimeta = NULL;
   GstVideoComposition *composition = NULL;
+  GstMeta *meta = NULL;
+  gpointer state = NULL;
   guint idx = 0, num = 0, id = 0, n_metas = 0, n_entries = 0, i = 0;
   gint sar_n = 1, sar_d = 1;
   gboolean success = TRUE;
   const gdouble scale = 1.0, offset = 0.0;
 
-  // Fetch the number of ROI meta entries from the input buffer.
-  n_metas = gst_buffer_get_n_meta (inframe->buffer,
-      GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE);
+  // Calculate the number of non-derived ROI meta entries from the input buffer.
+  while ((meta = gst_buffer_iterate_meta_filtered (inframe->buffer, &state,
+              GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE)) != NULL)
+    n_metas += (((GstVideoRegionOfInterestMeta*) meta)->parent_id == -1) ? 1 : 0;
 
   GST_VIDEO_SPLIT_LOCK (vsplit);
 
