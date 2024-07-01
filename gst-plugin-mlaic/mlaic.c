@@ -40,7 +40,7 @@
 
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
-
+#include <gst/utils/common-utils.h>
 
 #define GST_CAT_DEFAULT gst_ml_aic_debug
 GST_DEBUG_CATEGORY_STATIC (gst_ml_aic_debug);
@@ -182,19 +182,6 @@ gst_ml_aic_sink_template (void)
 {
   return gst_pad_template_new ("sink_%u", GST_PAD_SINK, GST_PAD_REQUEST,
       gst_ml_aic_sink_caps ());
-}
-
-static void
-gst_buffer_copy_protection_meta (GstBuffer * outbuffer, GstBuffer * inbuffer)
-{
-  gpointer state = NULL;
-  GstMeta *meta = NULL;
-
-  while ((meta = gst_buffer_iterate_meta_filtered (inbuffer, &state,
-              GST_PROTECTION_META_API_TYPE))) {
-    gst_buffer_add_protection_meta (outbuffer,
-        gst_structure_copy (((GstProtectionMeta *) meta)->info));
-  }
 }
 
 static GstPad *

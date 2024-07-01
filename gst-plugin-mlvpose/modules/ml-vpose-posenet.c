@@ -71,10 +71,6 @@
 
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
 
-#define GFLOAT_PTR_CAST(data)       ((gfloat*) data)
-#define GINT8_PTR_CAST(data)        ((gint8*) data)
-#define GUINT8_PTR_CAST(data)       ((guint8*) data)
-
 // Minimum distance in pixels between keypoints of poses.
 #define NMS_THRESHOLD_RADIUS  20.0F
 // Radius in which to search for highest root keypoint of given type.
@@ -244,26 +240,10 @@ gst_ml_load_connections (const GValue * list, GArray * connections)
 
 static inline void
 gst_ml_keypoint_transform_coordinates (GstPoseKeypoint * keypoint,
-    gint sar_n, gint sar_d, guint width, guint height)
+    GstVideoRectangle * region)
 {
-  gdouble coeficient = 0.0;
-
-  if ((sar_n * height) > (width * sar_d)) {
-    // SAR < (width / height)
-    gst_util_fraction_to_double (sar_d, sar_n, &coeficient);
-
-    keypoint->x /= width;
-    keypoint->y /= width * coeficient;
-  } else if ((sar_n * height) < (width * sar_d)) {
-    // SAR > (width / height)
-    gst_util_fraction_to_double (sar_n, sar_d, &coeficient);
-
-    keypoint->x /= height * coeficient;
-    keypoint->y /= height;
-  } else {
-    keypoint->x /= width;
-    keypoint->y /= height;
-  }
+  keypoint->x /= region->w;
+  keypoint->y /= region->h;
 }
 
 static inline gint
@@ -424,7 +404,7 @@ gst_ml_module_traverse_skeleton_links (GstMLSubModule * submodule,
 {
   GstPoseLink *link =NULL;
   GstPoseKeypoint *s_kp = NULL, *d_kp = NULL;
-  GstLabel *label = NULL;
+  GstMLLabel *label = NULL;
   gpointer heatmap = NULL, offsets = NULL, displacements = NULL;
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   gfloat displacement = 0.0, offset = 0.0, confidence = 0.0;
@@ -746,9 +726,10 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   GArray *predictions = ((GArray *) output), *rootpoints = NULL;
   GstProtectionMeta *pmeta = NULL;
-  GstLabel *label = NULL;
-  gint nms = 0, sar_n = 1, sar_d = 1;
+  GstMLLabel *label = NULL;
+  GstVideoRectangle region = { 0, };
   guint idx = 0, num = 0, n_parts = 0;
+  gint nms = 0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);
@@ -763,12 +744,12 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
   // Extract the dimensions of the input tensor that produced the output tensors.
   if (submodule->inwidth == 0 || submodule->inheight == 0) {
-    gst_structure_get_uint (pmeta->info, "input-tensor-width", &submodule->inwidth);
-    gst_structure_get_uint (pmeta->info, "input-tensor-height", &submodule->inheight);
+    gst_ml_protecton_meta_get_source_dimensions (pmeta, &(submodule->inwidth),
+        &(submodule->inheight));
   }
 
-  // Extract the SAR (Source Aspect Ratio).
-  gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
+  // Extract the source tensor region with actual data.
+  gst_ml_protecton_meta_get_source_region (pmeta, &region);
 
   // The 4th dimension of 1st tensor represents the number of parts in the pose.
   n_parts = GST_ML_FRAME_DIM (mlframe, 0, 3);
@@ -846,8 +827,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       GstPoseKeypoint *keypoint =
           &(g_array_index (prediction->keypoints, GstPoseKeypoint, num));
 
-      gst_ml_keypoint_transform_coordinates (keypoint, sar_n, sar_d,
-          submodule->inwidth, submodule->inheight);
+      gst_ml_keypoint_transform_coordinates (keypoint, &region);
     }
   }
 

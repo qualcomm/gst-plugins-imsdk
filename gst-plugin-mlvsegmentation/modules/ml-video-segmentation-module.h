@@ -65,8 +65,9 @@
 #define __GST_QTI_ML_VIDEO_SEGMENTATION_MODULE_H__
 
 #include <gst/gst.h>
-#include <gst/ml/gstmlmodule.h>
 #include <gst/video/video.h>
+#include <gst/ml/gstmlmodule.h>
+#include <gst/ml/ml-module-utils.h>
 
 G_BEGIN_DECLS
 

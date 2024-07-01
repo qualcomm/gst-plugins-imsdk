@@ -49,6 +49,8 @@ target_link_libraries(${GST_QTI_METAMUX} PRIVATE
   ${GST_VIDEO_LIBRARIES}
   ${GST_AUDIO_LIBRARIES}
   gstqticvbase
+  gstqtiutilsbase
+  gstqtivideobase
 )
 
 install(

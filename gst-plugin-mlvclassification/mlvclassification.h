@@ -102,6 +102,8 @@ struct _GstMLVideoClassification {
 
   /// Tensor processing module.
   GstMLModule       *module;
+  /// Array with predictions from the module post-processing.
+  GArray            *predictions;
 
   /// Cairo surfaces and contexts mapped for each buffer.
   GHashTable        *surfaces;

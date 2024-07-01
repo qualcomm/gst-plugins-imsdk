@@ -74,6 +74,7 @@
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
 #include <gst/video/gstimagepool.h>
+#include <gst/utils/common-utils.h>
 #include <cairo/cairo.h>
 
 #ifdef HAVE_LINUX_DMA_BUF_H
@@ -122,11 +123,6 @@ G_DEFINE_TYPE (GstMLVideoPose, gst_ml_video_pose,
 #define DEFAULT_TEXT_BUFFER_SIZE 24576
 #define DEFAULT_VIDEO_WIDTH      320
 #define DEFAULT_VIDEO_HEIGHT     240
-
-#define EXTRACT_RED_COLOR(color)   (((color >> 24) & 0xFF) / 255.0)
-#define EXTRACT_GREEN_COLOR(color) (((color >> 16) & 0xFF) / 255.0)
-#define EXTRACT_BLUE_COLOR(color)  (((color >> 8) & 0xFF) / 255.0)
-#define EXTRACT_ALPHA_COLOR(color) (((color) & 0xFF) / 255.0)
 
 enum
 {
@@ -231,24 +227,6 @@ gst_ml_compare_predictions (gconstpointer a, gconstpointer b)
     return 1;
 
   return 0;
-}
-
-static gboolean
-gst_caps_has_feature (const GstCaps * caps, const gchar * feature)
-{
-  guint idx = 0;
-
-  while (idx != gst_caps_get_size (caps)) {
-    GstCapsFeatures *const features = gst_caps_get_features (caps, idx);
-
-    // Skip ANY caps and return immediately if feature is present.
-    if (!gst_caps_features_is_any (features) &&
-        gst_caps_features_contains (features, feature))
-      return TRUE;
-
-    idx++;
-  }
-  return FALSE;
 }
 
 static GstBufferPool *
@@ -496,7 +474,8 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
 
   for (idx = 0; idx < vpose->predictions->len; idx++) {
     GstMLPrediction *prediction = NULL;
-    GstStructure *entry = NULL, *keypoint = NULL;
+    GstStructure *entry = NULL, *structure = NULL;
+    GValue keypoints = G_VALUE_INIT;
     GValue links = G_VALUE_INIT, link = G_VALUE_INIT;
 
     // Break immediately if we reach the number of results limit.
@@ -513,6 +492,8 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
         "confidence", G_TYPE_DOUBLE, prediction->confidence,
         NULL);
 
+    g_value_init (&keypoints, GST_TYPE_ARRAY);
+
     for (num = 0; num < prediction->keypoints->len; num++) {
       GstPoseKeypoint *kp =
           &(g_array_index (prediction->keypoints, GstPoseKeypoint, num));
@@ -521,41 +502,48 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
           kp->label, kp->x, kp->y, kp->confidence);
 
       // Replace white spaces with placeholder symbol.
-      kp->label = g_strdelimit (kp->label, " ", '-');
+      kp->label = g_strdelimit (kp->label, " ", '.');
 
-      keypoint = gst_structure_new ("PoseKeypoint",
+      structure = gst_structure_new (kp->label,
           "confidence", G_TYPE_DOUBLE, kp->confidence,
           "color", G_TYPE_UINT, kp->color,
           "x", G_TYPE_DOUBLE, kp->x,
           "y", G_TYPE_DOUBLE, kp->y,
           NULL);
 
-      gst_structure_set (entry, kp->label, GST_TYPE_STRUCTURE, keypoint, NULL);
-      gst_structure_free (keypoint);
+      g_value_init (&value, GST_TYPE_STRUCTURE);
+      g_value_take_boxed (&value, structure);
+
+      gst_value_array_append_value (&keypoints, &value);
+      g_value_unset (&value);
     }
+
+    gst_structure_set_value (entry, "keypoints", &keypoints);
+    g_value_unset (&keypoints);
 
     g_value_init (&links, GST_TYPE_ARRAY);
 
     for (num = 0; num < prediction->connections->len; num++) {
       GstPoseLink *connection = NULL;
-      GstPoseKeypoint *kp = NULL;
+      GstPoseKeypoint *s_kp = NULL, *d_kp = NULL;
 
       connection = &(g_array_index (prediction->connections, GstPoseLink, num));
+
+      s_kp = &(g_array_index (prediction->keypoints, GstPoseKeypoint,
+          connection->s_kp_id));
+      d_kp = &(g_array_index (prediction->keypoints, GstPoseKeypoint,
+          connection->d_kp_id));
+
+      GST_TRACE_OBJECT (vpose, "Link: '%s' <--> '%s'", s_kp->label, d_kp->label);
 
       g_value_init (&value, G_TYPE_STRING);
       g_value_init (&link, GST_TYPE_ARRAY);
 
-      kp = &(g_array_index (prediction->keypoints, GstPoseKeypoint,
-          connection->s_kp_id));
-
-      g_value_set_string (&value, kp->label);
+      g_value_set_string (&value, s_kp->label);
       gst_value_array_append_value (&link, &value);
       g_value_reset (&value);
 
-      kp = &(g_array_index (prediction->keypoints, GstPoseKeypoint,
-          connection->d_kp_id));
-
-      g_value_set_string (&value, kp->label);
+      g_value_set_string (&value, d_kp->label);
       gst_value_array_append_value (&link, &value);
       g_value_unset (&value);
 
@@ -1059,55 +1047,20 @@ gst_ml_video_pose_set_property (GObject * object, guint prop_id,
       break;
     case PROP_CONSTANTS:
     {
-      const gchar *input = g_value_get_string (value);
-      GValue value = G_VALUE_INIT;
+      GValue structure = G_VALUE_INIT;
 
-      g_value_init (&value, GST_TYPE_STRUCTURE);
+      g_value_init (&structure, GST_TYPE_STRUCTURE);
 
-      if (g_file_test (input, G_FILE_TEST_IS_REGULAR)) {
-        GString *string = NULL;
-        GError *error = NULL;
-        gchar *contents = NULL;
-        gboolean success = FALSE;
-
-        if (!g_file_get_contents (input, &contents, NULL, &error)) {
-          GST_ERROR ("Failed to get file contents, error: %s!",
-              GST_STR_NULL (error->message));
-          g_clear_error (&error);
-          break;
-        }
-
-        // Remove trailing space and replace new lines with a comma delimiter.
-        contents = g_strstrip (contents);
-        contents = g_strdelimit (contents, "\n", ',');
-
-        string = g_string_new (contents);
-        g_free (contents);
-
-        // Add opening and closing brackets.
-        string = g_string_prepend (string, "{ ");
-        string = g_string_append (string, " }");
-
-        // Get the raw character data.
-        contents = g_string_free (string, FALSE);
-
-        success = gst_value_deserialize (&value, contents);
-        g_free (contents);
-
-        if (!success) {
-          GST_ERROR ("Failed to deserialize file contents!");
-          break;
-        }
-      } else if (!gst_value_deserialize (&value, input)) {
-        GST_ERROR ("Failed to deserialize string!");
+      if (!gst_parse_string_property_value (value, &structure)) {
+        GST_ERROR_OBJECT (vpose, "Failed to parse constants!");
         break;
       }
 
       if (vpose->mlconstants != NULL)
         gst_structure_free (vpose->mlconstants);
 
-      vpose->mlconstants = GST_STRUCTURE (g_value_dup_boxed (&value));
-      g_value_unset (&value);
+      vpose->mlconstants = GST_STRUCTURE (g_value_dup_boxed (&structure));
+      g_value_unset (&structure);
       break;
     }
     default:

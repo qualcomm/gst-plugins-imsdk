@@ -26,7 +26,7 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -36,12 +36,6 @@
 #include <gst/gst.h>
 
 G_BEGIN_DECLS
-
-#define GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE(pspec, state) \
-    ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
-        : ((pspec->flags & GST_PARAM_MUTABLE_PAUSED) ? (state <= GST_STATE_PAUSED) \
-            : ((pspec->flags & GST_PARAM_MUTABLE_READY) ? (state <= GST_STATE_READY) \
-                : (state <= GST_STATE_NULL))))
 
 #define GST_TYPE_VIDEO_COMPOSER_ROTATE \
   (gst_video_composer_rotate_get_type())
@@ -54,10 +48,6 @@ typedef enum {
 } GstVideoComposerRotate;
 
 GType gst_video_composer_rotate_get_type (void);
-
-gboolean gst_caps_has_feature (const GstCaps * caps, const gchar * feature);
-
-gboolean gst_caps_has_compression (const GstCaps * caps, const gchar * compression);
 
 G_END_DECLS
 

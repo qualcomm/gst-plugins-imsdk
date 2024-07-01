@@ -53,6 +53,7 @@ target_link_libraries(${GST_QTI_ML_SNPE} PRIVATE
   ${GST_BASE_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   gstqtimlbase
+  gstqtiutilsbase
 )
 
 install(

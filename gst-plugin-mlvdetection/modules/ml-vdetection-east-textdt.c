@@ -40,8 +40,6 @@
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
 
-#define GFLOAT_PTR_CAST(data)       ((gfloat*) data)
-#define GUINT8_PTR_CAST(data)       ((guint8*) data)
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
 
 // MODULE_CAPS support input dim [32, 32] -> [1920, 1088]
@@ -250,11 +248,12 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GArray *predictions = (GArray *) output;
   GstProtectionMeta *pmeta = NULL;
   gpointer scores = NULL, geometry = NULL;
+  GstVideoRectangle region = { 0, };
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
-  gint sar_n = 1, sar_d = 1, nms = -1;
   guint s_idx = 0, b_idx = 0, n_rows = 0, n_cols = 0, x = 0, y = 0;
   gfloat x0 = 0, x1 = 0, x2 = 0, x3 = 0, angle = 0, cos_angle = 0, sin_angle = 0;
   gfloat confidence = 0, h = 0, w = 0;
+  gint nms = -1;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);
@@ -265,10 +264,10 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     return FALSE;
   }
 
-  // Extract the SAR (Source Aspect Ratio).
-  if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL) {
-    gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
-  }
+  pmeta = gst_buffer_get_protection_meta (mlframe->buffer);
+
+  // Extract the source tensor region with actual data.
+  gst_ml_protecton_meta_get_source_region (pmeta, &region);
 
   mltype = GST_ML_FRAME_TYPE (mlframe);
   n_rows = GST_ML_FRAME_DIM (mlframe, 0, 1);
@@ -284,7 +283,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
   for (y = 0; y < n_rows; y++) {
     for (x = 0; x < n_cols; x++, s_idx++, b_idx += 5) {
-      GstLabel *label = NULL;
+      GstMLLabel *label = NULL;
       GstMLPrediction prediction = { 0, };
       confidence = gst_ml_module_get_dequant_value (scores, mltype,
           s_idx, submodule->qoffsets[0], submodule->qscales[0]);
@@ -322,9 +321,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       prediction.left = (prediction.right - w);
       prediction.top = (prediction.bottom - h);
 
-      // Adjust bounding box dimensions with extracted source aspect ratio.
-      gst_ml_prediction_transform_dimensions (
-          &prediction, sar_n, sar_d, n_cols * 4, n_rows * 4);
+      // Adjust bounding box dimensions with extracted source tensor region.
+      gst_ml_prediction_transform_dimensions (&prediction, &region);
 
       // Discard results with out of region coordinates.
       if ((prediction.top > 1.0)   || (prediction.left > 1.0) ||
@@ -344,7 +342,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
         continue;
       }
 
-      GST_LOG ("Box[y1,x1,y2,x2]=[%f, %f, %f, %f]. Label: %s. Confidence: %f",
+      GST_LOG ("Box[%.2f, %.2f, %.2f, %.2f]. Label: %s. Confidence: %.2f",
           prediction.top, prediction.left, prediction.bottom, prediction.right,
           prediction.label, prediction.confidence);
 

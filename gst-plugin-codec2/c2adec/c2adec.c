@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -9,13 +9,13 @@
 
 #include "c2adec.h"
 
+#include <gst/utils/common-utils.h>
+
 #define GST_CAT_DEFAULT c2_adec_debug
 GST_DEBUG_CATEGORY_STATIC (c2_adec_debug);
 
 #define gst_c2_adec_parent_class parent_class
 G_DEFINE_TYPE (GstC2adecoder, gst_c2_adec, GST_TYPE_AUDIO_DECODER);
-
-#define GPOINTER_CAST(ptr)                ((gpointer) ptr)
 
 #define GST_AUDIO_FORMATS "{ S16LE }"
 
