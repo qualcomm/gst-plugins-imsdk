@@ -47,10 +47,6 @@ target_include_directories(${GST_QTI_ML_VIDEO_SEGMENTATION} PUBLIC
   ${GST_INCLUDE_DIRS}
 )
 
-set_target_properties(${GST_QTI_ML_VIDEO_SEGMENTATION} PROPERTIES PUBLIC_HEADER
-  "modules/ml-video-segmentation-module.h"
-)
-
 target_compile_definitions(${GST_QTI_ML_VIDEO_SEGMENTATION} PRIVATE
   $<$<BOOL:${HAVE_LINUX_DMA_BUF_H}>:HAVE_LINUX_DMA_BUF_H>
 )
@@ -71,7 +67,6 @@ install(
   PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
               GROUP_EXECUTE GROUP_READ
               WORLD_EXECUTE WORLD_READ
-  PUBLIC_HEADER DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_INCDIR}/gstreamer-1.0/gst/ml/
 )
 
 add_subdirectory(modules)

@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -61,22 +61,23 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "ml-video-classification-module.h"
-
+#include <gst/utils/common-utils.h>
+#include <gst/utils/batch-utils.h>
+#include <gst/ml/ml-module-utils.h>
+#include <gst/ml/ml-module-video-classification.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
 
-#define GFLOAT_PTR_CAST(data)       ((gfloat*)data)
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
 
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
     "type = (string) { FLOAT32 }, " \
-    "dimensions = (int) < < 26, 1, 37 > > ;" \
+    "dimensions = (int) < <26, 1, 37> > ;" \
     "neural-network/tensors, " \
     "type = (string) { FLOAT32 }, " \
-    "dimensions = (int) < < 1, [26, 48], 37 > >"
+    "dimensions = (int) < <1, [26, 48], 37> >"
 
 
 // Module caps instance
@@ -208,7 +209,9 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   GArray *predictions = (GArray *) output;
-  gfloat *data = NULL;
+  GstMLClassPrediction *prediction = NULL;
+  GstProtectionMeta *pmeta = NULL;
+  gfloat *data = NULL, *pclass = NULL;
   guint n_characters = 0, n_rows = 0, idx = 0;
   GString *result = NULL;
 
@@ -216,12 +219,12 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  if (!gst_ml_info_is_equal (&(mlframe->info), &(submodule->mlinfo))) {
-    GST_ERROR ("ML frame with unsupported layout!");
-    return FALSE;
-  }
+  pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
+      gst_batch_channel_name (0));
 
-  result = g_string_new (NULL);
+  prediction = &(g_array_index (predictions, GstMLClassPrediction, 0));
+  prediction->info = pmeta->info;
+
   data = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
   n_characters = GST_ML_FRAME_DIM (mlframe, 0, 2);
   n_rows = GST_ML_FRAME_DIM (mlframe, 0, 0);
@@ -229,15 +232,18 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   if (n_rows == 1)
     n_rows = GST_ML_FRAME_DIM (mlframe, 0, 1);
 
-  GST_LOG("n_rows: %d, n_characters: %d", n_rows, n_characters);
+  GST_LOG ("n_rows: %d, n_characters: %d", n_rows, n_characters);
+
+  result = g_string_new (NULL);
 
   for (idx = 0; idx < n_rows; idx++) {
-    guint m = 0, c_id = 0;
-    gfloat *pclass = data + (n_characters  * idx);
+    guint num = 0, c_id = 0;
+
+    pclass = data + (n_characters  * idx);
 
      // Find the character ID with the highest confidence.
-    for (m = 1; m < n_characters; m++)
-      c_id = (pclass[m] > pclass[c_id]) ? m : c_id;
+    for (num = 1; num < n_characters; num++)
+      c_id = (pclass[num] > pclass[c_id]) ? num : c_id;
 
     if (!c_id)
       continue;
@@ -246,13 +252,13 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   }
 
   if (result->len > 0) {
-    GstMLPrediction prediction = { 0, 0.0, 0x00FF00FF };
+    GstMLClassEntry entry = { 0, };
 
-    prediction.confidence = 100;
-    prediction.label = g_strdup (result->str);
-    prediction.color = 0x00FF00FF;
+    entry.confidence = 100;
+    entry.name = g_quark_from_string (result->str);
+    entry.color = 0x00FF00FF;
 
-    predictions = g_array_append_val (predictions, prediction);
+    prediction->entries = g_array_append_val (prediction->entries, entry);
   }
 
   g_string_free (result, TRUE);

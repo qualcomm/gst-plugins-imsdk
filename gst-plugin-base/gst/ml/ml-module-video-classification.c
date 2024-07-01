@@ -61,58 +61,30 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __GST_QTI_ML_VIDEO_SUPER_RESOLUTION_H__
-#define __GST_QTI_ML_VIDEO_SUPER_RESOLUTION_H__
+#include "ml-module-video-classification.h"
 
-#include <gst/gst.h>
-#include <gst/base/gstbasetransform.h>
-#include <gst/video/video.h>
-#include <gst/ml/ml-info.h>
-#include <gst/ml/ml-module-video-super-resolution.h>
+void
+gst_ml_class_prediction_cleanup (GstMLClassPrediction * prediction)
+{
+  if (prediction->entries != NULL)
+    g_array_free (prediction->entries, TRUE);
+}
 
-G_BEGIN_DECLS
+gint
+gst_ml_class_compare_entries (const GstMLClassEntry * l_entry,
+    const GstMLClassEntry * r_entry)
+{
+  if (l_entry->confidence > r_entry->confidence)
+    return -1;
+  else if (l_entry->confidence < r_entry->confidence)
+    return 1;
 
-#define GST_TYPE_ML_VIDEO_SUPER_RESOLUTION \
-    (gst_ml_video_super_resolution_get_type())
-#define GST_ML_VIDEO_SUPER_RESOLUTION(obj) \
-    (G_TYPE_CHECK_INSTANCE_CAST((obj), GST_TYPE_ML_VIDEO_SUPER_RESOLUTION, \
-        GstMLVideoSuperResolution))
-#define GST_ML_VIDEO_SUPER_RESOLUTION_CLASS(klass) \
-    (G_TYPE_CHECK_CLASS_CAST((klass), GST_TYPE_ML_VIDEO_SUPER_RESOLUTION, \
-        GstMLVideoSuperResolutionClass))
-#define GST_IS_ML_VIDEO_SUPER_RESOLUTION(obj) \
-    (G_TYPE_CHECK_INSTANCE_TYPE((obj), GST_TYPE_ML_VIDEO_SUPER_RESOLUTION))
-#define GST_IS_ML_VIDEO_SUPER_RESOLUTION_CLASS(klass) \
-    (G_TYPE_CHECK_CLASS_TYPE((klass), GST_TYPE_ML_VIDEO_SUPER_RESOLUTION))
-#define GST_ML_VIDEO_SUPER_RESOLUTION_CAST(obj) \
-    ((GstMLVideoSuperResolution *)(obj))
+  return 0;
+}
 
-typedef struct _GstMLVideoSuperResolution GstMLVideoSuperResolution;
-typedef struct _GstMLVideoSuperResolutionClass GstMLVideoSuperResolutionClass;
-
-struct _GstMLVideoSuperResolution {
-  GstBaseTransform  parent;
-
-  GstMLInfo         *mlinfo;
-  GstVideoInfo      *vinfo;
-
-  /// Buffer pools.
-  GstBufferPool     *outpool;
-
-  /// Tensor deciphering module.
-  GstMLModule       *module;
-
-  /// Properties.
-  gint              mdlenum;
-  GstStructure      *mlconstants;
-};
-
-struct _GstMLVideoSuperResolutionClass {
-  GstBaseTransformClass parent;
-};
-
-G_GNUC_INTERNAL GType gst_ml_video_super_resolution_get_type (void);
-
-G_END_DECLS
-
-#endif // __GST_QTI_ML_VIDEO_SUPER_RESOLUTION_H__
+GST_API gboolean
+gst_ml_module_video_classification_execute (GstMLModule * module,
+    GstMLFrame * mlframe, GArray * predictions)
+{
+  return gst_ml_module_execute (module, mlframe, (gpointer) predictions);
+}

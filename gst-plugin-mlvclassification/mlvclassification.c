@@ -77,6 +77,7 @@
 #include <gst/video/gstimagepool.h>
 #include <gst/memory/gstmempool.h>
 #include <gst/utils/common-utils.h>
+#include <gst/utils/batch-utils.h>
 #include <cairo/cairo.h>
 
 #ifdef HAVE_LINUX_DMA_BUF_H
@@ -126,7 +127,7 @@ G_DEFINE_TYPE (GstMLVideoClassification, gst_ml_video_classification,
 
 #define DEFAULT_MIN_BUFFERS        2
 #define DEFAULT_MAX_BUFFERS        10
-#define DEFAULT_TEXT_BUFFER_SIZE   4096
+#define DEFAULT_TEXT_BUFFER_SIZE   8192
 #define DEFAULT_FONT_SIZE          20
 
 #define MAX_TEXT_LENGTH            25
@@ -228,29 +229,6 @@ gst_ml_video_classification_xtra_opration_get_type (void)
   return gtype;
 }
 
-static void
-gst_ml_prediction_free (GstMLPrediction * prediction)
-{
-  if (prediction->label != NULL)
-    g_free (prediction->label);
-}
-
-static gint
-gst_ml_compare_predictions (gconstpointer a, gconstpointer b)
-{
-  const GstMLPrediction *l_prediction, *r_prediction;
-
-  l_prediction = (const GstMLPrediction*)a;
-  r_prediction = (const GstMLPrediction*)b;
-
-  if (l_prediction->confidence > r_prediction->confidence)
-    return -1;
-  else if (l_prediction->confidence < r_prediction->confidence)
-    return 1;
-
-  return 0;
-}
-
 static GstBufferPool *
 gst_ml_video_classification_create_pool (
     GstMLVideoClassification * classification, GstCaps * caps)
@@ -323,7 +301,7 @@ gst_ml_video_classification_fill_video_output (
 {
   GstVideoMeta *vmeta = NULL;
   GstMapInfo memmap;
-  guint idx = 0, n_predictions = 0;
+  guint idx = 0, num = 0, n_entries = 0;
   gdouble fontsize = 0.0;
 
   cairo_format_t format;
@@ -412,42 +390,44 @@ gst_ml_video_classification_fill_video_output (
   }
 
   for (idx = 0; idx < classification->predictions->len; idx++) {
-    GstMLPrediction *prediction = NULL;
+    GstMLClassPrediction *prediction = NULL;
+    GstMLClassEntry *entry = NULL;
     gchar *string = NULL;
 
-    // Break immediately if we reach the number of results limit.
-    if (n_predictions >= classification->n_results)
-      break;
-
     prediction =
-        &(g_array_index (classification->predictions, GstMLPrediction, idx));
+        &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
 
-    // Concat the prediction data to the output string.
-    string = g_strdup_printf ("%s: %.1f%%", prediction->label,
-        prediction->confidence);
+    n_entries = (prediction->entries->len < classification->n_results) ?
+        prediction->entries->len : classification->n_results;
 
-    GST_TRACE_OBJECT (classification, "label: %s, confidence: %.1f%%",
-        prediction->label, prediction->confidence);
+    for (num = 0; num < n_entries; num++) {
+      entry = &(g_array_index (prediction->entries, GstMLClassEntry, num));
 
-    // Set text color.
-    cairo_set_source_rgba (context,
-        EXTRACT_RED_COLOR (prediction->color),
-        EXTRACT_GREEN_COLOR (prediction->color),
-        EXTRACT_BLUE_COLOR (prediction->color),
-        EXTRACT_ALPHA_COLOR (prediction->color));
+      // Concat the prediction data to the output string.
+      string = g_strdup_printf ("%s: %.1f%%",
+          g_quark_to_string (entry->name), entry->confidence);
 
-    // (0,0) is at top left corner of the buffer.
-    cairo_move_to (context, 0.0, (fontsize * (n_predictions + 1)) - 6);
+      GST_TRACE_OBJECT (classification, "Batch: %u, label: %s, confidence: "
+          "%.1f%%", prediction->batch_idx, g_quark_to_string (entry->name),
+          entry->confidence);
 
-    // Draw text string.
-    cairo_show_text (context, string);
-    g_return_val_if_fail (CAIRO_STATUS_SUCCESS == cairo_status (context), FALSE);
+      // Set text color.
+      cairo_set_source_rgba (context,
+          EXTRACT_RED_COLOR (entry->color), EXTRACT_GREEN_COLOR (entry->color),
+          EXTRACT_BLUE_COLOR (entry->color), EXTRACT_ALPHA_COLOR (entry->color));
 
-    // Flush to ensure all writing to the surface has been done.
-    cairo_surface_flush (surface);
+      // (0,0) is at top left corner of the buffer.
+      cairo_move_to (context, 0.0, (fontsize * (num + 1)) - 6);
 
-    g_free (string);
-    n_predictions++;
+      // Draw text string.
+      cairo_show_text (context, string);
+      g_return_val_if_fail (CAIRO_STATUS_SUCCESS == cairo_status (context), FALSE);
+
+      // Flush to ensure all writing to the surface has been done.
+      cairo_surface_flush (surface);
+
+      g_free (string);
+    }
   }
 
   cairo_destroy (context);
@@ -475,64 +455,76 @@ static gboolean
 gst_ml_video_classification_fill_text_output (
     GstMLVideoClassification * classification, GstBuffer *buffer)
 {
-  GstMapInfo memmap = {};
-  GValue entries = G_VALUE_INIT, labels = G_VALUE_INIT, value = G_VALUE_INIT;
   GstStructure *structure = NULL;
-  gchar *string = NULL;
-  guint idx = 0;
+  gchar *string = NULL, *name = NULL;
+  GstMapInfo memmap = {};
+  GValue list = G_VALUE_INIT, labels = G_VALUE_INIT, value = G_VALUE_INIT;
+  guint idx = 0, num = 0, n_entries = 0;
   gsize length = 0;
 
-  g_value_init (&entries, GST_TYPE_LIST);
+  g_value_init (&list, GST_TYPE_LIST);
   g_value_init (&labels, GST_TYPE_ARRAY);
+  g_value_init (&value, GST_TYPE_STRUCTURE);
 
   for (idx = 0; idx < classification->predictions->len; idx++) {
-    GstMLPrediction *prediction = NULL;
-
-    // Break immediately if we reach the number of results limit.
-    if (idx >= classification->n_results)
-      break;
+    GstMLClassPrediction *prediction = NULL;
+    GstMLClassEntry *entry = NULL;
+    const GValue *val = NULL;
 
     prediction =
-        &(g_array_index (classification->predictions, GstMLPrediction, idx));
+        &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
 
-    // Break immediately if sorted prediction confidence is below the threshold.
-    if (prediction->confidence < classification->threshold)
-      break;
+    n_entries = (prediction->entries->len < classification->n_results) ?
+        prediction->entries->len : classification->n_results;
 
-    GST_TRACE_OBJECT (classification, "label: %s, confidence: %.1f%%",
-        prediction->label, prediction->confidence);
+    for (num = 0; num < n_entries; num++) {
+      entry = &(g_array_index (prediction->entries, GstMLClassEntry, num));
 
-    prediction->label = g_strdelimit (prediction->label, " ", '.');
+      GST_TRACE_OBJECT (classification, "Batch: %u, label: %s, confidence: "
+          "%.1f%%", prediction->batch_idx, g_quark_to_string (entry->name),
+          entry->confidence);
 
-    structure = gst_structure_new (prediction->label,
-        "confidence", G_TYPE_DOUBLE, prediction->confidence,
-        "color", G_TYPE_UINT, prediction->color,
-        NULL);
+      // Replace empty spaces otherwise subsequent stream parse call will fail.
+      name = g_strdup (g_quark_to_string (entry->name));
+      name = g_strdelimit (name, " ", '.');
 
-    g_value_init (&value, GST_TYPE_STRUCTURE);
+      structure = gst_structure_new (name, "id", G_TYPE_UINT, num,
+          "confidence", G_TYPE_DOUBLE,  entry->confidence, "color", G_TYPE_UINT,
+          entry->color, NULL);
+      g_free (name);
+
+      g_value_take_boxed (&value, structure);
+      gst_value_array_append_value (&labels, &value);
+      g_value_reset (&value);
+    }
+
+    structure = gst_structure_new ("ImageClassification",
+        "batch-index", G_TYPE_UINT, prediction->batch_idx, NULL);
+
+    gst_structure_set_value (structure, "labels", &labels);
+    g_value_reset (&labels);
+
+    val = gst_structure_get_value (prediction->info, "timestamp");
+    gst_structure_set_value (structure, "timestamp", val);
+
+    val = gst_structure_get_value (prediction->info, "sequence-id");
+    gst_structure_set_value (structure, "sequence-id", val);
+
+    if ((val = gst_structure_get_value (prediction->info, "stream-id")))
+      gst_structure_set_value (structure, "stream-id", val);
+
+    if ((val = gst_structure_get_value (prediction->info, "stream-timestamp")))
+      gst_structure_set_value (structure, "stream-timestamp", val);
+
+    if ((val = gst_structure_get_value (prediction->info, "source-region-id")))
+      gst_structure_set_value (structure, "source-region-id", val);
+
     g_value_take_boxed (&value, structure);
-
-    gst_value_array_append_value (&labels, &value);
-    g_value_unset (&value);
+    gst_value_list_append_value (&list, &value);
+    g_value_reset (&value);
   }
 
-  structure = gst_structure_new_empty ("ImageClassification");
-  gst_structure_set_value (structure, "labels", &labels);
-
   g_value_unset (&labels);
-
-  g_value_init (&value, GST_TYPE_STRUCTURE);
-  g_value_take_boxed (&value, structure);
-
-  gst_value_list_append_value (&entries, &value);
-  g_value_reset (&value);
-
-  // Append timestamp information needed for synchronization.
-  structure = gst_structure_new ("Parameters",
-      "timestamp", G_TYPE_UINT64, GST_BUFFER_TIMESTAMP (buffer), NULL);
-
-  g_value_take_boxed (&value, structure);
-  gst_value_list_append_value (&entries, &value);
   g_value_unset (&value);
 
   // Map buffer memory blocks.
@@ -541,9 +533,9 @@ gst_ml_video_classification_fill_text_output (
     return FALSE;
   }
 
-  // Serialize the predictions into string format.
-  string = gst_value_serialize (&entries);
-  g_value_unset (&entries);
+  // Serialize the predictions list into string format.
+  string = gst_value_serialize (&list);
+  g_value_unset (&list);
 
   if (string == NULL) {
     GST_ERROR_OBJECT (classification, "Failed serialize predictions structure!");
@@ -638,6 +630,7 @@ gst_ml_video_classification_submit_input_buffer (GstBaseTransform * base,
   GstMLFrame mlframe = { 0, };
   GstFlowReturn ret = GST_FLOW_OK;
   GstClockTime time = GST_CLOCK_TIME_NONE;
+  guint idx = 0;
   gboolean success = FALSE;
 
   // Let baseclass handle caps (re)negotiation and QoS.
@@ -651,10 +644,25 @@ gst_ml_video_classification_submit_input_buffer (GstBaseTransform * base,
   if (gst_base_transform_is_passthrough (base))
     return ret;
 
-  // GAP input buffer, nothing to do. Propagate output buffer downstream.
+  // GAP input buffer, cleanup the entries and set the protection meta info.
   if (gst_buffer_get_size (buffer) == 0 &&
-      GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP))
-    return ret;
+      GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP)) {
+    GstProtectionMeta *pmeta = NULL;
+    GstMLClassPrediction *prediction = NULL;
+
+    for (idx = 0; idx < classification->predictions->len; ++idx) {
+      prediction =
+          &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
+
+      pmeta = gst_buffer_get_protection_meta_id (buffer,
+          gst_batch_channel_name (idx));
+
+      g_array_remove_range (prediction->entries, 0, prediction->entries->len);
+      prediction->info = pmeta->info;
+    }
+
+    return GST_FLOW_OK;
+  }
 
   // Perform pre-processing on the input buffer.
   time = gst_util_get_timestamp ();
@@ -665,11 +673,16 @@ gst_ml_video_classification_submit_input_buffer (GstBaseTransform * base,
   }
 
   // Clear previously stored values.
-  classification->predictions = g_array_remove_range (
-      classification->predictions, 0, classification->predictions->len);
+  for (idx = 0; idx < classification->predictions->len; ++idx) {
+    GstMLClassPrediction *prediction =
+        &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
+
+    g_array_remove_range (prediction->entries, 0, prediction->entries->len);
+    prediction->info = NULL;
+  }
 
   // Call the submodule process funtion.
-  success = gst_ml_video_classification_module_execute (classification->module,
+  success = gst_ml_module_video_classification_execute (classification->module,
       &mlframe, classification->predictions);
 
   gst_ml_frame_unmap (&mlframe);
@@ -678,9 +691,6 @@ gst_ml_video_classification_submit_input_buffer (GstBaseTransform * base,
     GST_ERROR_OBJECT (classification, "Failed to process tensors!");
     return GST_FLOW_ERROR;
   }
-
-  // Sort the list of predictions.
-  g_array_sort (classification->predictions, gst_ml_compare_predictions);
 
   time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
 
@@ -697,7 +707,6 @@ gst_ml_video_classification_prepare_output_buffer (GstBaseTransform * base,
 {
   GstMLVideoClassification *classification = GST_ML_VIDEO_CLASSIFICATION (base);
   GstBufferPool *pool = classification->outpool;
-  GstBufferCopyFlags flags = GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS;
 
   if (gst_base_transform_is_passthrough (base)) {
     GST_DEBUG_OBJECT (classification, "Passthrough, no need to do anything");
@@ -714,15 +723,11 @@ gst_ml_video_classification_prepare_output_buffer (GstBaseTransform * base,
   }
 
   // Input is marked as GAP, nothing to process. Create a GAP output buffer.
-  if (gst_buffer_get_size (inbuffer) == 0 &&
-      GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP))
-    *outbuffer = gst_buffer_new ();
-
-  // When there are no predictions in the input create a GAP output buffer.
-  if ((*outbuffer == NULL) && (classification->predictions->len == 0)) {
+  if ((classification->mode == OUTPUT_MODE_VIDEO) &&
+      (gst_buffer_get_size (inbuffer) == 0) &&
+      GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP)) {
     *outbuffer = gst_buffer_new ();
     GST_BUFFER_FLAG_SET (*outbuffer, GST_BUFFER_FLAG_GAP);
-    flags &= ~GST_BUFFER_COPY_FLAGS;
   }
 
   if ((*outbuffer == NULL) &&
@@ -732,7 +737,7 @@ gst_ml_video_classification_prepare_output_buffer (GstBaseTransform * base,
   }
 
   // Copy the flags and timestamps from the input buffer.
-  gst_buffer_copy_into (*outbuffer, inbuffer, flags, 0, -1);
+  gst_buffer_copy_into (*outbuffer, inbuffer, GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
 
   return GST_FLOW_OK;
 }
@@ -874,8 +879,10 @@ gst_ml_video_classification_fixate_caps (GstBaseTransform * base,
         width, height);
   }
 
-  GST_DEBUG_OBJECT (classification, "Fixated caps to %" GST_PTR_FORMAT, outcaps);
+  // Fixate any remaining fields.
+  outcaps = gst_caps_fixate (outcaps);
 
+  GST_DEBUG_OBJECT (classification, "Fixated caps to %" GST_PTR_FORMAT, outcaps);
   return outcaps;
 }
 
@@ -889,6 +896,7 @@ gst_ml_video_classification_set_caps (GstBaseTransform * base, GstCaps * incaps,
   GEnumClass *eclass = NULL;
   GEnumValue *evalue = NULL;
   GstMLInfo ininfo;
+  guint idx = 0;
 
   if (NULL == classification->labels) {
     GST_ELEMENT_ERROR (classification, RESOURCE, NOT_FOUND, (NULL),
@@ -955,7 +963,6 @@ gst_ml_video_classification_set_caps (GstBaseTransform * base, GstCaps * incaps,
     gst_ml_info_free (classification->mlinfo);
 
   classification->mlinfo = gst_ml_info_copy (&ininfo);
-  gst_base_transform_set_passthrough (base, FALSE);
 
   // Get the output caps structure in order to determine the mode.
   structure = gst_caps_get_structure (outcaps, 0);
@@ -965,9 +972,29 @@ gst_ml_video_classification_set_caps (GstBaseTransform * base, GstCaps * incaps,
   else if (gst_structure_has_name (structure, "text/x-raw"))
     classification->mode = OUTPUT_MODE_TEXT;
 
+  if ((classification->mode == OUTPUT_MODE_VIDEO) &&
+      (GST_ML_INFO_TENSOR_DIM (classification->mlinfo, 0, 0) > 1)) {
+    GST_ELEMENT_ERROR (classification, CORE, FAILED, (NULL),
+        ("Batched input tensors with video output is not supported!"));
+    return FALSE;
+  }
+
+  // Allocate the maximum number of predictions based on the batch size.
+  g_array_set_size (classification->predictions,
+      GST_ML_INFO_TENSOR_DIM (classification->mlinfo, 0, 0));
+
+  for (idx = 0; idx < classification->predictions->len; ++idx) {
+    GstMLClassPrediction *prediction =
+        &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
+
+    prediction->entries = g_array_new (FALSE, FALSE, sizeof (GstMLClassEntry));
+    prediction->batch_idx = idx;
+  }
+
   GST_DEBUG_OBJECT (classification, "Input caps: %" GST_PTR_FORMAT, incaps);
   GST_DEBUG_OBJECT (classification, "Output caps: %" GST_PTR_FORMAT, outcaps);
 
+  gst_base_transform_set_passthrough (base, FALSE);
   return TRUE;
 }
 
@@ -988,14 +1015,13 @@ gst_ml_video_classification_transform (GstBaseTransform * base,
 
   time = gst_util_get_timestamp ();
 
-  if (classification->mode == OUTPUT_MODE_VIDEO)
-    success =
-        gst_ml_video_classification_fill_video_output (classification, outbuffer);
-  else if (classification->mode == OUTPUT_MODE_TEXT)
-    success =
-        gst_ml_video_classification_fill_text_output (classification, outbuffer);
-  else
-    success = FALSE;
+  if (classification->mode == OUTPUT_MODE_VIDEO) {
+    success = gst_ml_video_classification_fill_video_output (classification,
+        outbuffer);
+  } else if (classification->mode == OUTPUT_MODE_TEXT) {
+    success = gst_ml_video_classification_fill_text_output (classification,
+        outbuffer);
+  }
 
   if (!success) {
     GST_ERROR_OBJECT (classification, "Failed to fill output buffer!");
@@ -1194,12 +1220,11 @@ gst_ml_video_classification_init (GstMLVideoClassification * classification)
   classification->module = NULL;
 
   classification->predictions =
-      g_array_new (FALSE, FALSE, sizeof (GstMLPrediction));
+      g_array_new (FALSE, FALSE, sizeof (GstMLClassPrediction));
   g_return_if_fail (classification->predictions != NULL);
 
-  // Set element clearing function.
   g_array_set_clear_func (classification->predictions,
-      (GDestroyNotify) gst_ml_prediction_free);
+      (GDestroyNotify) gst_ml_class_prediction_cleanup);
 
   classification->mdlenum = DEFAULT_PROP_MODULE;
   classification->labels = DEFAULT_PROP_LABELS;

@@ -28,7 +28,7 @@
  *
  * ​​​​​Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -61,87 +61,125 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __GST_QTI_ML_VIDEO_POSE_MODULE_H__
-#define __GST_QTI_ML_VIDEO_POSE_MODULE_H__
+#include "ml-module-video-pose.h"
 
-#include <gst/gst.h>
-#include <gst/ml/gstmlmodule.h>
-#include <gst/ml/ml-module-utils.h>
+void
+gst_ml_pose_entry_cleanup (GstMLPoseEntry * entry)
+{
+  if (entry->keypoints != NULL)
+    g_array_free (entry->keypoints, TRUE);
 
-G_BEGIN_DECLS
+  // if (entry->connections != NULL)
+  //   g_array_free (entry->connections, TRUE);
+}
 
-typedef struct _GstPoseKeypoint GstPoseKeypoint;
-typedef struct _GstPoseLink GstPoseLink;
-typedef struct _GstMLPrediction GstMLPrediction;
+void
+gst_ml_pose_prediction_cleanup (GstMLPosePrediction * prediction)
+{
+  g_array_set_clear_func (prediction->entries,
+      (GDestroyNotify) gst_ml_pose_entry_cleanup);
 
-/**
- * GstPoseKeypoint:
- * @label: Name of the keypoint.
- * @color: Color of the keypoint.
- * @confidence: Confidence score for this keypoint.
- * @x: X axis coordinate of the keypoint.
- * @y: Y axis coordinate of the keypoint.
- *
- * Information describing keypoint location and confidence score.
- *
- * The fields x and y must be set in (0.0 to 1.0) relative coordinate system.
- */
-struct _GstPoseKeypoint {
-  gchar  *label;
-  guint  color;
-  gfloat confidence;
-  gfloat x;
-  gfloat y;
-};
+  if (prediction->entries != NULL)
+    g_array_free (prediction->entries, TRUE);
+}
 
-/**
- * GstPoseLink:
- * @s_kp_idx: ID of the source keypoint.
- * @d_kp_idx: ID of the destination keypoint.
- *
- * Information describing a link between two keypoints.
- */
-struct _GstPoseLink {
-  guint s_kp_id;
-  guint d_kp_id;
-};
+gint
+gst_ml_pose_compare_entries (const GstMLPoseEntry * l_entry,
+    const GstMLPoseEntry * r_entry)
+{
+  if (l_entry->confidence > r_entry->confidence)
+    return -1;
+  else if (l_entry->confidence < r_entry->confidence)
+    return 1;
 
-/**
- * GstMLPrediction:
- * @confidence: The overall confidence for the estimated pose.
- * @keypoints: List of #GstPoseKeypoint.
- * @connections: List of #GstPoseLink.
- *
- * Information describing prediction result from pose estimation models.
- * All fields are mandatory and need to be filled by the submodule.
- */
-struct _GstMLPrediction {
-  float  confidence;
-  GArray *keypoints;
-  GArray *connections;
-};
+  return 0;
+}
 
-/**
- * gst_ml_video_pose_module_execute:
- * @module: Pointer to ML post-processing module.
- * @mlframe: Frame containing mapped tensor memory blocks that need processing.
- * @predictions: GArray of #GstMLPrediction.
- *
- * Convenient wrapper function used on plugin level to call the module
- * 'gst_ml_module_process' API via 'gst_ml_module_execute' wrapper in order
- * to process input tensors.
- *
- * Post-processing module must define the 3rd argument of the implemented
- * 'gst_ml_module_process' API as 'GArray *'.
- *
- * return: TRUE on success or FALSE on failure
- */
-GST_API gboolean
-gst_ml_video_pose_module_execute (GstMLModule * module,
-    GstMLFrame * mlframe, GArray * predictions)
+gboolean
+gst_ml_load_links (const GValue * list, const guint idx, GArray * links)
+{
+  GstStructure *structure = NULL;
+  const GValue *array = NULL, *value = NULL;
+  GstMLKeypointsLink link = { 0, };
+  guint id = 0, num = 0, size = 0;
+
+  structure = GST_STRUCTURE (
+      g_value_get_boxed (gst_value_list_get_value (list, idx)));
+
+  if (structure == NULL) {
+    GST_ERROR ("Failed to extract structure!");
+    return FALSE;
+  }
+
+  if (!gst_structure_has_field (structure, "links"))
+    return TRUE;
+
+  // Initial ID of the source keypoint.
+  gst_structure_get_uint (structure, "id", &id);
+  link.s_kp_id = id;
+
+  array = gst_structure_get_value (structure, "links");
+  g_return_val_if_fail (GST_VALUE_HOLDS_ARRAY (array), FALSE);
+
+  size = gst_value_array_get_size (array);
+  g_return_val_if_fail (size != 0, FALSE);
+
+  for (num = 0; num < size; num++) {
+    value = gst_value_array_get_value (array, num);
+    g_return_val_if_fail (G_VALUE_HOLDS_UINT (value), FALSE);
+
+    link.d_kp_id = id = g_value_get_uint (value);
+    g_array_append_val (links, link);
+
+    // Recursively check and load the next link in teh chain/tree.
+    if (!gst_ml_load_links (list, id, links))
+      return FALSE;
+  }
+
+  return TRUE;
+}
+
+gboolean
+gst_ml_load_connections (const GValue * list, GArray * connections)
+{
+  GstStructure *structure = NULL;
+  GstMLKeypointsLink connection = { 0, };
+  guint idx = 0, size = 0;
+
+  size = gst_value_list_get_size (list);
+
+  for (idx = 0; idx < size; idx++) {
+    structure = GST_STRUCTURE (
+        g_value_get_boxed (gst_value_list_get_value (list, idx)));
+
+    if (structure == NULL) {
+      GST_ERROR ("Failed to extract structure!");
+      return FALSE;
+    }
+
+    if (!gst_structure_has_field (structure, "connection"))
+      continue;
+
+    gst_structure_get_uint (structure, "id", &(connection.s_kp_id));
+    gst_structure_get_uint (structure, "connection", &(connection.d_kp_id));
+
+    g_array_append_val (connections, connection);
+  }
+
+  return TRUE;
+}
+
+void
+gst_ml_keypoint_transform_coordinates (GstMLKeypoint * keypoint,
+    GstVideoRectangle * region)
+{
+  keypoint->x = (keypoint->x - region->x) / region->w;
+  keypoint->y = (keypoint->y - region->y) / region->h;
+}
+
+gboolean
+gst_ml_module_video_pose_execute (GstMLModule * module, GstMLFrame * mlframe,
+    GArray * predictions)
 {
   return gst_ml_module_execute (module, mlframe, (gpointer) predictions);
 }
-
-G_END_DECLS
-#endif // __GST_QTI_ML_VIDEO_POSE_MODULE_H__

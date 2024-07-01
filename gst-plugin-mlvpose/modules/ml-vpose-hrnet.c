@@ -32,10 +32,13 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
-#include "ml-video-pose-module.h"
-
 #include <stdio.h>
 #include <math.h>
+
+#include <gst/utils/common-utils.h>
+#include <gst/utils/batch-utils.h>
+#include <gst/ml/ml-module-utils.h>
+#include <gst/ml/ml-module-video-pose.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
@@ -76,134 +79,6 @@ struct _GstMLSubModule {
   // Scale values for each of the tensors for dequantization of some tensors.
   gdouble    qscales[GST_ML_MAX_TENSORS];
 };
-
-static inline gdouble
-gst_ml_module_get_dequant_value (void * pdata, GstMLType mltype, guint idx,
-    gdouble offset, gdouble scale)
-{
-  switch (mltype) {
-    case GST_ML_TYPE_INT8:
-      return ((GINT8_PTR_CAST (pdata))[idx] - offset) * scale;
-    case GST_ML_TYPE_UINT8:
-      return ((GUINT8_PTR_CAST (pdata))[idx] - offset) * scale;
-    case GST_ML_TYPE_FLOAT32:
-      return (GFLOAT_PTR_CAST (pdata))[idx];
-    default:
-      break;
-  }
-  return 0.0;
-}
-
-static inline gint
-gst_ml_module_compare_values (void * data, GstMLType mltype,
-    guint l_idx, guint r_idx)
-{
-  switch (mltype) {
-    case GST_ML_TYPE_INT8:
-      return GINT8_PTR_CAST (data)[l_idx] > GINT8_PTR_CAST (data)[r_idx] ? 1 :
-          GINT8_PTR_CAST (data)[l_idx] < GINT8_PTR_CAST (data)[r_idx] ? -1 : 0;
-    case GST_ML_TYPE_UINT8:
-      return GUINT8_PTR_CAST (data)[l_idx] > GUINT8_PTR_CAST (data)[r_idx] ? 1 :
-          GUINT8_PTR_CAST (data)[l_idx] < GUINT8_PTR_CAST (data)[r_idx] ? -1 : 0;
-    case GST_ML_TYPE_FLOAT32:
-      return GFLOAT_PTR_CAST (data)[l_idx] > GFLOAT_PTR_CAST (data)[r_idx] ? 1 :
-          GFLOAT_PTR_CAST (data)[l_idx] < GFLOAT_PTR_CAST (data)[r_idx] ? -1 : 0;
-    default:
-      break;
-  }
-  return 0;
-}
-
-static inline void
-gst_ml_keypoint_free (gpointer data)
-{
-  GstPoseKeypoint *keypoint = (GstPoseKeypoint*) data;
-
-  if (keypoint->label != NULL)
-    g_free (keypoint->label);
-}
-
-static inline void
-gst_ml_keypoint_transform_coordinates (GstPoseKeypoint * keypoint,
-    GstVideoRectangle * region)
-{
-  keypoint->x /= region->w;
-  keypoint->y /= region->h;
-}
-
-static gboolean
-gst_ml_load_links (const GValue * list, const guint idx, GArray * links)
-{
-  GstStructure *structure = NULL;
-  const GValue *array = NULL, *value = NULL;
-  GstPoseLink link = { 0, };
-  guint id = 0, num = 0, size = 0;
-
-  structure = GST_STRUCTURE (
-      g_value_get_boxed (gst_value_list_get_value (list, idx)));
-
-  if (structure == NULL) {
-    GST_ERROR ("Failed to extract structure!");
-    return FALSE;
-  }
-
-  if (!gst_structure_has_field (structure, "links"))
-    return TRUE;
-
-  // Initial ID of the source keypoint.
-  gst_structure_get_uint (structure, "id", &id);
-  link.s_kp_id = id;
-
-  array = gst_structure_get_value (structure, "links");
-  g_return_val_if_fail (GST_VALUE_HOLDS_ARRAY (array), FALSE);
-
-  size = gst_value_array_get_size (array);
-  g_return_val_if_fail (size != 0, FALSE);
-
-  for (num = 0; num < size; num++) {
-    value = gst_value_array_get_value (array, num);
-    g_return_val_if_fail (G_VALUE_HOLDS_UINT (value), FALSE);
-
-    link.d_kp_id = id = g_value_get_uint (value);
-    g_array_append_val (links, link);
-
-    // Recursively check and load the next link in teh chain/tree.
-    if (!gst_ml_load_links (list, id, links))
-      return FALSE;
-  }
-
-  return TRUE;
-}
-
-static gboolean
-gst_ml_load_connections (const GValue * list, GArray * connections)
-{
-  GstStructure *structure = NULL;
-  GstPoseLink connection = { 0, };
-  guint idx = 0, size = 0;
-
-  size = gst_value_list_get_size (list);
-
-  for (idx = 0; idx < size; idx++) {
-    structure = GST_STRUCTURE (
-        g_value_get_boxed (gst_value_list_get_value (list, idx)));
-
-    if (structure == NULL) {
-      GST_ERROR ("Failed to extract structure!");
-      return FALSE;
-    }
-
-    if (!gst_structure_has_field (structure, "connection"))
-      continue;
-
-    gst_structure_get_uint (structure, "id", &(connection).s_kp_id);
-    gst_structure_get_uint (structure, "connection", &(connection).d_kp_id);
-
-    g_array_append_val (connections, connection);
-  }
-
-  return TRUE;
-}
 
 gpointer
 gst_ml_module_open (void)
@@ -314,8 +189,8 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   }
 
   // Fill the keypoints chain/tree.
-  submodule->links = g_array_new (FALSE, FALSE, sizeof (GstPoseLink));
-  submodule->connections = g_array_new (FALSE, FALSE, sizeof (GstPoseLink));
+  submodule->links = g_array_new (FALSE, FALSE, sizeof (GstMLKeypointsLink));
+  submodule->connections = g_array_new (FALSE, FALSE, sizeof (GstMLKeypointsLink));
 
   // Recursiveli fill the skeleton chain/tree starting from label 0 as seed.
   if (!(success = gst_ml_load_links (&list, 0, submodule->links))) {
@@ -399,22 +274,33 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   GArray *predictions = ((GArray *) output);
   GstProtectionMeta *pmeta = NULL;
-  GstMLPrediction *prediction = NULL;
+  GstMLPosePrediction *prediction = NULL;
+  GstMLPoseEntry *entry = NULL;
   gpointer heatmap = NULL;
   GstVideoRectangle region = { 0, };
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   guint idx = 0, num = 0, id = 0, x = 0, y = 0;
-  guint width = 0, height = 0, n_keypoints = 0, n_blocks = 0;;
+  guint width = 0, height = 0, n_keypoints = 0, n_blocks = 0;
   gfloat confidence = 0.0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
-  if (!gst_ml_info_is_equal (&(mlframe->info), &(submodule->mlinfo))) {
-    GST_ERROR ("ML frame with unsupported layout!");
-    return FALSE;
+  pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
+      gst_batch_channel_name (0));
+
+  prediction = &(g_array_index (predictions, GstMLPosePrediction, 0));
+  prediction->info = pmeta->info;
+
+  // Extract the dimensions of the input tensor that produced the output tensors.
+  if (submodule->inwidth == 0 || submodule->inheight == 0) {
+    gst_ml_protecton_meta_get_source_dimensions (pmeta, &(submodule->inwidth),
+        &(submodule->inheight));
   }
+
+  // Extract the source tensor region with actual data.
+  gst_ml_protecton_meta_get_source_region (pmeta, &region);
 
   // The 2nd dimension of each tensor represents the matrix height.
   height = GST_ML_FRAME_DIM (mlframe, 0, 1);
@@ -430,31 +316,19 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   // The total number of macro blocks in the matrix.
   n_blocks = width * height * n_keypoints;
 
-  pmeta = gst_buffer_get_protection_meta (mlframe->buffer);
-
-  // Extract the dimensions of the input tensor that produced the output tensors.
-  if (submodule->inwidth == 0 || submodule->inheight == 0) {
-    gst_ml_protecton_meta_get_source_dimensions (pmeta, &(submodule->inwidth),
-        &(submodule->inheight));
-  }
-
-  // Extract the source tensor region with actual data.
-  gst_ml_protecton_meta_get_source_region (pmeta, &region);
-
   // Allocate only single prediction result.
-  g_array_set_size (predictions, 1);
-  prediction = &(g_array_index (predictions, GstMLPrediction, 0));
+  g_array_set_size (prediction->entries, 1);
+  entry = &(g_array_index (prediction->entries, GstMLPoseEntry, 0));
 
   // Allocate memory for the keypoiints.
-  prediction->keypoints = g_array_sized_new (FALSE, TRUE,
-      sizeof (GstPoseKeypoint), g_hash_table_size (submodule->labels));
+  entry->keypoints = g_array_sized_new (FALSE, TRUE,
+      sizeof (GstMLKeypoint), g_hash_table_size (submodule->labels));
 
-  g_array_set_size (prediction->keypoints, n_keypoints);
-  g_array_set_clear_func (prediction->keypoints, gst_ml_keypoint_free);
+  g_array_set_size (entry->keypoints, n_keypoints);
 
   // Iterate the heatmap and find the block with highest score for each keypoint.
   for (idx = 0; idx < n_keypoints; idx++) {
-    GstPoseKeypoint *kp = NULL;
+    GstMLKeypoint *kp = NULL;
     GstMLLabel *label = NULL;
     gint dx = 0, dy = 0;
 
@@ -463,10 +337,10 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
     // Find the position of the keypoint with the highest score in current paxel.
     for (num = (idx + n_keypoints); num < n_blocks; num += n_keypoints)
-      id = (gst_ml_module_compare_values (heatmap, mltype, num, id) > 0) ? num : id;
+      id = (gst_ml_tensor_compare_values (mltype, heatmap, num, id) > 0) ? num : id;
 
     // Dequantize the keypoint confidence.
-    confidence = gst_ml_module_get_dequant_value (heatmap, mltype, id,
+    confidence = gst_ml_tensor_extract_value (mltype, heatmap, id,
         submodule->qoffsets[0], submodule->qscales[0]);
 
     x = (id / n_keypoints) % width;
@@ -479,44 +353,44 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     // (X - 1) Keypoint (X + 1)
     //         (Y + 1)
     if ((x > 1) && (x < (width - 1)) && (y > 0) && (y < height)) {
-      dx = gst_ml_module_compare_values (heatmap, mltype,
+      dx = gst_ml_tensor_compare_values (mltype, heatmap,
           (y * (x + 1) * n_keypoints) + idx, (y * (x - 1) * n_keypoints) + idx);
     }
 
     if ((y > 1) && (y < (height - 1)) && (x > 0) && (x < width)) {
-      dy = gst_ml_module_compare_values (heatmap, mltype,
+      dy = gst_ml_tensor_compare_values (mltype, heatmap,
           ((y + 1) * x * n_keypoints) + idx, ((y - 1) * x * n_keypoints) + idx);
     }
 
     GST_TRACE ("Refined Keypoint: %u [%.2f x %.2f], confidence %.2f", idx,
         (x + dx * 0.25), (y + dy * 0.25), confidence);
 
-    kp = &(g_array_index (prediction->keypoints, GstPoseKeypoint, idx));
+    kp = &(g_array_index (entry->keypoints, GstMLKeypoint, idx));
 
     // Multiply by the dimensions of the paxel.
-    kp->x = (x + dx * 0.25) * (submodule->inwidth / width);
-    kp->y = (y + dy * 0.25) * (submodule->inheight / height);
+    kp->x = ((x + dx * 0.25) / width) * submodule->inwidth;
+    kp->y = ((y + dy * 0.25) / height) * submodule->inheight;
 
     // Extract info from labels and populate the coresponding keypoint params.
     label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (idx));
 
-    kp->label = g_strdup (label ? label->name : "unknown");
+    kp->name = g_quark_from_string (label ? label->name : "unknown");
     kp->color = label->color;
 
     kp->confidence = confidence * 100;
-    prediction->confidence += kp->confidence;
+    entry->confidence += kp->confidence;
 
     gst_ml_keypoint_transform_coordinates (kp, &region);
   }
 
-  // The final confidence score for the whole prediction.
-  prediction->confidence /= n_keypoints;
+  // The final confidence score for the whole prediction entry.
+  entry->confidence /= n_keypoints;
 
   // TODO: For now set the same connections.
-  prediction->connections = submodule->connections;
+  entry->connections = submodule->connections;
 
-  if (prediction->confidence < submodule->threshold)
-    predictions = g_array_remove_index (predictions, 0);
+  if (entry->confidence < submodule->threshold)
+    prediction->entries = g_array_remove_index (prediction->entries, 0);
 
   return TRUE;
 }
