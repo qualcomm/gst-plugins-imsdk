@@ -636,7 +636,7 @@ video_pad_set_property (GObject * object, guint property_id,
   if (parent != NULL)
     gst_object_unref (parent);
 
-  if (!QMMFSRC_IS_PROPERTY_MUTABLE_IN_CURRENT_STATE (pspec, state)) {
+  if (!GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE (pspec, state)) {
     GST_WARNING_OBJECT (pad, "Property '%s' change not supported in %s state!",
         propname, gst_element_state_get_name (state));
     return;

@@ -13,6 +13,7 @@ target_link_libraries(${GST_QTI_ML_MODULE} PRIVATE
   ${GST_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
   gstqtimlbase
+  gstqtiutilsbase
 )
 
 install(
@@ -37,6 +38,7 @@ target_link_libraries(${GST_QTI_ML_MODULE} PRIVATE
   ${GST_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
   gstqtimlbase
+  gstqtiutilsbase
 )
 
 install(
@@ -61,6 +63,7 @@ target_link_libraries(${GST_QTI_ML_MODULE} PRIVATE
   ${GST_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
   gstqtimlbase
+  gstqtiutilsbase
 )
 
 install(

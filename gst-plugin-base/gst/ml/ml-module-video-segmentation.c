@@ -61,65 +61,11 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __GST_QTI_ML_VIDEO_CLASSIFICATION_MODULE_H__
-#define __GST_QTI_ML_VIDEO_CLASSIFICATION_MODULE_H__
+#include "ml-module-video-segmentation.h"
 
-#include <gst/gst.h>
-#include <gst/ml/gstmlmodule.h>
-
-G_BEGIN_DECLS
-
-typedef struct _GstMLPrediction GstMLPrediction;
-
-/**
- * GstVideoClassificationOperation:
- * @GST_VIDEO_CLASSIFICATION_OPERATION_NONE: No operation
- * @GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX: SoftMax operation is applied
- *
- * Defines extra operations applied on data
- */
-typedef enum {
-  GST_VIDEO_CLASSIFICATION_OPERATION_NONE,
-  GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX,
-} GstVideoClassificationOperation;
-
-/**
- * GstMLPrediction:
- * @label: the name of the prediction.
- * @confidence: the percentage certainty that the prediction is accurate.
- * @color: the possible color that is associated with this prediction.
- *
- * Information describing prediction result from image classification models.
- * All fields are mandatory and need to be filled by the submodule.
- */
-struct _GstMLPrediction {
-  gchar  *label;
-  gfloat confidence;
-  guint  color;
-};
-
-/**
- * gst_ml_video_classification_module_execute:
- * @module: Pointer to ML post-processing module.
- * @mlframe: Frame containing mapped tensor memory blocks that need processing.
- * @predictions: GArray of #GstMLPrediction.
- *
- * Convenient wrapper function used on plugin level to call the module
- * 'gst_ml_module_process' API via 'gst_ml_module_execute' wrapper in order
- * to process input tensors.
- *
- * Post-processing module must define the 3rd argument of the implemented
- * 'gst_ml_module_process' API as 'GArray *'.
- *
- * return: TRUE on success or FALSE on failure
- */
-GST_API gboolean
-gst_ml_video_classification_module_execute (GstMLModule * module,
-    GstMLFrame * mlframe, GArray * predictions)
+gboolean
+gst_ml_module_video_segmentation_execute (GstMLModule * module, GstMLFrame * mlframe,
+    GstVideoFrame * vframe)
 {
-  return gst_ml_module_execute (module, mlframe, (gpointer) predictions);
+  return gst_ml_module_execute (module, mlframe, (gpointer) vframe);
 }
-
-G_END_DECLS
-
-#endif // __GST_QTI_ML_VIDEO_CLASSIFICATION_MODULE_H__

@@ -46,10 +46,6 @@ add_library(${GST_QTI_ML_VIDEO_CLASSIFICATION} SHARED
   mlvclassification.c
 )
 
-set_target_properties(${GST_QTI_ML_VIDEO_CLASSIFICATION} PROPERTIES PUBLIC_HEADER
-  "modules/ml-video-classification-module.h"
-)
-
 target_compile_definitions(${GST_QTI_ML_VIDEO_CLASSIFICATION} PRIVATE
   $<$<BOOL:${HAVE_LINUX_DMA_BUF_H}>:HAVE_LINUX_DMA_BUF_H>
 )
@@ -68,6 +64,7 @@ target_link_libraries(${GST_QTI_ML_VIDEO_CLASSIFICATION} PRIVATE
   gstqtimlbase
   gstqtivideobase
   gstqtimemorybase
+  gstqtiutilsbase
 )
 
 install(
@@ -76,7 +73,6 @@ install(
   PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
               GROUP_EXECUTE GROUP_READ
               WORLD_EXECUTE WORLD_READ
-  PUBLIC_HEADER DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_INCDIR}/gstreamer-1.0/gst/ml/
 )
 
 add_subdirectory(modules)

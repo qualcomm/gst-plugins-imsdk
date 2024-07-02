@@ -138,6 +138,10 @@ struct _GstOverlay {
   GstVideoRectangle   text_dest_rect;
   guint               last_ov_y;
 
+  // Track the number of inherited metas between ROIs.
+  guint               n_class_labels;
+  guint               n_landmark_metas;
+
   /* User overlay */
   GSequence           *usr_text;
   GSequence           *usr_date;
@@ -256,12 +260,6 @@ struct _GstOverlayString {
 };
 
 G_GNUC_INTERNAL GType gst_overlay_get_type (void);
-
-#define OVERLAY_IS_PROPERTY_MUTABLE_IN_CURRENT_STATE(pspec, state) \
-    ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
-        : ((pspec->flags & GST_PARAM_MUTABLE_PAUSED) ? (state <= GST_STATE_PAUSED) \
-            : ((pspec->flags & GST_PARAM_MUTABLE_READY) ? (state <= GST_STATE_READY) \
-                : (state <= GST_STATE_NULL))))
 
 G_END_DECLS
 

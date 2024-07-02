@@ -75,6 +75,7 @@
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
 #include <gst/video/gstimagepool.h>
+#include <gst/utils/common-utils.h>
 
 #ifdef HAVE_LINUX_DMA_BUF_H
 #include <sys/ioctl.h>
@@ -495,8 +496,10 @@ gst_ml_video_segmentation_fixate_caps (GstBaseTransform * base,
   GST_DEBUG_OBJECT (segmentation, "Output width and height fixated to: %dx%d",
       width, height);
 
-  GST_DEBUG_OBJECT (segmentation, "Fixated caps to %" GST_PTR_FORMAT, outcaps);
+  // Fixate any remaining fields.
+  outcaps = gst_caps_fixate (outcaps);
 
+  GST_DEBUG_OBJECT (segmentation, "Fixated caps to %" GST_PTR_FORMAT, outcaps);
   return outcaps;
 }
 
@@ -585,6 +588,12 @@ gst_ml_video_segmentation_set_caps (GstBaseTransform * base, GstCaps * incaps,
 
   segmentation->mlinfo = gst_ml_info_copy (&ininfo);
 
+  if (GST_ML_INFO_TENSOR_DIM (segmentation->mlinfo, 0, 0) > 1) {
+    GST_ELEMENT_ERROR (segmentation, CORE, FAILED, (NULL),
+        ("Batched input tensors with video output is not supported!"));
+    return FALSE;
+  }
+
   if (segmentation->vinfo != NULL)
     gst_video_info_free (segmentation->vinfo);
 
@@ -642,7 +651,7 @@ gst_ml_video_segmentation_transform (GstBaseTransform * base,
 #endif // HAVE_LINUX_DMA_BUF_H
 
   // Call the submodule process funtion.
-  success = gst_ml_video_segmentation_module_execute (segmentation->module,
+  success = gst_ml_module_video_segmentation_execute (segmentation->module,
       &mlframe, &vframe);
 
 #ifdef HAVE_LINUX_DMA_BUF_H
@@ -692,55 +701,20 @@ gst_ml_video_segmentation_set_property (GObject * object, guint prop_id,
       break;
     case PROP_CONSTANTS:
     {
-      const gchar *input = g_value_get_string (value);
-      GValue value = G_VALUE_INIT;
+      GValue structure = G_VALUE_INIT;
 
-      g_value_init (&value, GST_TYPE_STRUCTURE);
+      g_value_init (&structure, GST_TYPE_STRUCTURE);
 
-      if (g_file_test (input, G_FILE_TEST_IS_REGULAR)) {
-        GString *string = NULL;
-        GError *error = NULL;
-        gchar *contents = NULL;
-        gboolean success = FALSE;
-
-        if (!g_file_get_contents (input, &contents, NULL, &error)) {
-          GST_ERROR ("Failed to get file contents, error: %s!",
-              GST_STR_NULL (error->message));
-          g_clear_error (&error);
-          break;
-        }
-
-        // Remove trailing space and replace new lines with a comma delimiter.
-        contents = g_strstrip (contents);
-        contents = g_strdelimit (contents, "\n", ',');
-
-        string = g_string_new (contents);
-        g_free (contents);
-
-        // Add opening and closing brackets.
-        string = g_string_prepend (string, "{ ");
-        string = g_string_append (string, " }");
-
-        // Get the raw character data.
-        contents = g_string_free (string, FALSE);
-
-        success = gst_value_deserialize (&value, contents);
-        g_free (contents);
-
-        if (!success) {
-          GST_ERROR ("Failed to deserialize file contents!");
-          break;
-        }
-      } else if (!gst_value_deserialize (&value, input)) {
-        GST_ERROR ("Failed to deserialize string!");
+      if (!gst_parse_string_property_value (value, &structure)) {
+        GST_ERROR_OBJECT (segmentation, "Failed to parse constants!");
         break;
       }
 
       if (segmentation->mlconstants != NULL)
         gst_structure_free (segmentation->mlconstants);
 
-      segmentation->mlconstants = GST_STRUCTURE (g_value_dup_boxed (&value));
-      g_value_unset (&value);
+      segmentation->mlconstants = GST_STRUCTURE (g_value_dup_boxed (&structure));
+      g_value_unset (&structure);
       break;
     }
     default:

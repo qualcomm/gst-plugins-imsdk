@@ -43,6 +43,8 @@
 #include <gst/allocators/allocators.h>
 #include <gst/video/video.h>
 #include <gst/audio/audio.h>
+#include <gst/utils/common-utils.h>
+#include <gst/utils/batch-utils.h>
 
 #include "batchpads.h"
 
@@ -52,8 +54,6 @@ GST_DEBUG_CATEGORY (gst_batch_debug);
 
 #define gst_batch_parent_class parent_class
 G_DEFINE_TYPE (GstBatch, gst_batch, GST_TYPE_ELEMENT);
-
-#define GST_BATCH_CHANNEL_BASE     100
 
 #define GST_BATCH_SINK_CAPS \
     "video/x-raw(ANY); "    \
@@ -381,8 +381,7 @@ gst_batch_extract_sink_buffer (GstElement * element, GstPad * pad,
   GstVideoMeta *vmeta = NULL;
   GstVideoRegionOfInterestMeta *roimeta = NULL;
   GstStructure *structure = NULL;
-  gchar *name = NULL;
-  guint idx = 0, id = 0;
+  guint num = 0, stream_id = 0;
 
   outbuffer = GST_BUFFER (userdata);
 
@@ -397,23 +396,19 @@ gst_batch_extract_sink_buffer (GstElement * element, GstPad * pad,
   GST_TRACE_OBJECT (sinkpad, "Taking %" GST_PTR_FORMAT, inbuffer);
 
   // Get the index of current sink pad.
-  idx = g_list_index (element->sinkpads, sinkpad);
-
-  // Construct the name for the protection meta structure.
-  name = g_strdup_printf ("channel-%u", idx);
+  stream_id = g_list_index (element->sinkpads, sinkpad);
 
   // Create a structure that will contain information for decryption.
-  structure = gst_structure_new (name,
+  structure = gst_structure_new (gst_mux_stream_name (stream_id),
       "timestamp", G_TYPE_UINT64, GST_BUFFER_TIMESTAMP (inbuffer),
       "duration", G_TYPE_UINT64, GST_BUFFER_DURATION (inbuffer),
       "flags", G_TYPE_UINT, GST_BUFFER_FLAGS (inbuffer), NULL);
-  g_free (name);
 
   // Add meta containing information for tensor decryption downstream.
   gst_buffer_add_protection_meta (outbuffer, structure);
 
   // Set the corresponding channel bit in the buffer universal offset field.
-  GST_BUFFER_OFFSET (outbuffer) |= (1 << idx);
+  GST_BUFFER_OFFSET (outbuffer) |= (1 << stream_id);
 
   // GAP buffer, nothing further to do.
   if (gst_buffer_get_size (inbuffer) == 0 &&
@@ -440,15 +435,17 @@ gst_batch_extract_sink_buffer (GstElement * element, GstPad * pad,
 
 
   // Transfer all ROI meta if present in the input buffer.
-  roimeta = gst_buffer_get_video_region_of_interest_meta_id (inbuffer, id);
+  roimeta = gst_buffer_get_video_region_of_interest_meta_id (inbuffer, num);
 
   // Copy ROI metadata for current memory block into the new buffer.
   while (roimeta != NULL) {
     roimeta = gst_buffer_add_video_region_of_interest_meta_id (outbuffer,
         roimeta->roi_type, roimeta->x, roimeta->y, roimeta->w, roimeta->h);
-    roimeta->id = (idx * GST_BATCH_CHANNEL_BASE) + id;
 
-    roimeta = gst_buffer_get_video_region_of_interest_meta_id (inbuffer, ++id);
+    // Prefix the original ROI ID with the stream ID.
+    roimeta->id = (stream_id << GST_MUX_STREAM_ID_OFFSET) + num;
+
+    roimeta = gst_buffer_get_video_region_of_interest_meta_id (inbuffer, ++num);
   }
 
   // Reduce the reference count of the input buffer, it is no longer needed.

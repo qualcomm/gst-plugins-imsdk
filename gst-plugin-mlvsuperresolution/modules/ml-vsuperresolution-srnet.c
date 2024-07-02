@@ -61,16 +61,14 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "ml-video-superresolution-module.h"
+#include <gst/utils/common-utils.h>
+#include <gst/utils/batch-utils.h>
+#include <gst/ml/ml-module-utils.h>
+#include <gst/ml/ml-module-video-super-resolution.h>
 
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
-
-#define GFLOAT_PTR_CAST(data)       ((gfloat*)data)
-#define GINT32_PTR_CAST(data)       ((gint32*)data)
-#define GINT8_PTR_CAST(data)        ((gint8*)data)
-#define GUINT8_PTR_CAST(data)       ((guint8*)data)
 
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
 
@@ -96,25 +94,6 @@ struct _GstMLSubModule {
   // Scale values for each of the tensors for dequantization of some tensors.
   gdouble    qscales[GST_ML_MAX_TENSORS];
 };
-
-static inline gdouble
-gst_ml_module_get_dequant_value (void * data, GstMLType mltype, guint idx,
-    gdouble offset, gdouble scale)
-{
-  switch (mltype) {
-    case GST_ML_TYPE_INT8:
-      return ((GINT8_PTR_CAST (data))[idx] - offset) * scale;
-    case GST_ML_TYPE_UINT8:
-      return ((GUINT8_PTR_CAST (data))[idx] - offset) * scale;
-    case GST_ML_TYPE_INT32:
-      return (GINT32_PTR_CAST (data))[idx];
-    case GST_ML_TYPE_FLOAT32:
-      return (GFLOAT_PTR_CAST (data))[idx];
-    default:
-      break;
-  }
-  return 0.0;
-}
 
 gpointer
 gst_ml_module_open (void)
@@ -287,14 +266,12 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       idx = (((row * GST_VIDEO_FRAME_WIDTH (vframe)) + column) * bpp) +
           (row * padding);
 
-      outdata[idx] = gst_ml_module_get_dequant_value (indata, mltype,
-          idx, submodule->qoffsets[0], submodule->qscales[0]);
-
-      outdata[idx + 1] = gst_ml_module_get_dequant_value (indata, mltype,
-          (idx + 1), submodule->qoffsets[0], submodule->qscales[0]);
-
-      outdata[idx + 2] = gst_ml_module_get_dequant_value (indata, mltype,
-          (idx + 2), submodule->qoffsets[0], submodule->qscales[0]);
+      outdata[idx] = gst_ml_tensor_extract_value (mltype, indata, idx,
+            submodule->qoffsets[0], submodule->qscales[0]);
+      outdata[idx + 1] = gst_ml_tensor_extract_value (mltype, indata, (idx + 1),
+            submodule->qoffsets[0], submodule->qscales[0]);
+      outdata[idx + 2] = gst_ml_tensor_extract_value (mltype, indata, (idx + 2),
+            submodule->qoffsets[0], submodule->qscales[0]);
 
       // If output has an alpha channel set it to opaque.
       if (bpp == 4)

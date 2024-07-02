@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -88,12 +88,6 @@ G_BEGIN_DECLS
   g_mutex_lock(GST_VIDEO_TRANSFORM_GET_LOCK(obj))
 #define GST_VIDEO_TRANSFORM_UNLOCK(obj) \
   g_mutex_unlock(GST_VIDEO_TRANSFORM_GET_LOCK(obj))
-
-#define GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE(pspec, state) \
-  ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
-      : ((pspec->flags & GST_PARAM_MUTABLE_PAUSED) ? (state <= GST_STATE_PAUSED) \
-          : ((pspec->flags & GST_PARAM_MUTABLE_READY) ? (state <= GST_STATE_READY) \
-              : (state <= GST_STATE_NULL))))
 
 typedef enum {
   GST_VIDEO_TRANSFORM_ROTATE_NONE,

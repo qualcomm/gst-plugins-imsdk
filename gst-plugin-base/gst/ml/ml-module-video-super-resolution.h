@@ -61,8 +61,8 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __GST_QTI_ML_VIDEO_SUPER_RESOLUTION_MODULE_H__
-#define __GST_QTI_ML_VIDEO_SUPER_RESOLUTION_MODULE_H__
+#ifndef __GST_QTI_ML_MODULE_VIDEO_SUPER_RESOLUTION_H__
+#define __GST_QTI_ML_MODULE_VIDEO_SUPER_RESOLUTION_H__
 
 #include <gst/gst.h>
 #include <gst/ml/gstmlmodule.h>
@@ -86,12 +86,10 @@ G_BEGIN_DECLS
  * return: TRUE on success or FALSE on failure
  */
 GST_API gboolean
-gst_ml_video_super_resolution_module_execute (GstMLModule * module,
-    GstMLFrame * mlframe, GstVideoFrame * vframe)
-{
-  return gst_ml_module_execute (module, mlframe, (gpointer) vframe);
-}
+gst_ml_module_video_super_resolution_execute (GstMLModule * module,
+                                              GstMLFrame * mlframe,
+                                              GstVideoFrame * vframe);
 
 G_END_DECLS
 
-#endif // __GST_QTI_ML_VIDEO_SUPER_RESOLUTION_MODULE_H__
+#endif // __GST_QTI_ML_MODULE_VIDEO_SUPER_RESOLUTION_H__

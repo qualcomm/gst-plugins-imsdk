@@ -66,6 +66,7 @@ target_compile_definitions(${GST_QMMFSRC_PLUGIN} PRIVATE
   $<$<BOOL:${MULTI_CAMERA_ENABLE}>:MULTI_CAMERA_ENABLE>
   $<$<BOOL:${HAVE_C2D2_H}>:C2D_ENABLE>
   $<$<BOOL:${EIS_MODES_ENABLE}>:EIS_MODES_ENABLE>
+  $<$<BOOL:${VHDR_MODES_ENABLE}>:VHDR_MODES_ENABLE>
 )
 
 target_include_directories(${GST_QMMFSRC_PLUGIN} PRIVATE
@@ -79,6 +80,7 @@ target_link_libraries(${GST_QMMFSRC_PLUGIN} PRIVATE
   ${GST_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
+  gstqtiutilsbase
 )
 
 install(

@@ -17,7 +17,7 @@
  * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYright OWNER OR CONTRIBUTORS
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
  * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
  * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
  * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
@@ -26,9 +26,9 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * ​​​​​Changes from Qualcomm Innovation Center are provided under the following license:
+ * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -61,70 +61,91 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __GST_QTI_ML_VIDEO_POSE_MODULE_H__
-#define __GST_QTI_ML_VIDEO_POSE_MODULE_H__
+#ifndef __GST_QTI_ML_MODULE_VIDEO_CLASSIFICATION_H__
+#define __GST_QTI_ML_MODULE_VIDEO_CLASSIFICATION_H__
 
 #include <gst/gst.h>
+#include <gst/video/video.h>
 #include <gst/ml/gstmlmodule.h>
 
 G_BEGIN_DECLS
 
-typedef struct _GstPoseKeypoint GstPoseKeypoint;
-typedef struct _GstPoseLink GstPoseLink;
-typedef struct _GstMLPrediction GstMLPrediction;
+typedef struct _GstMLClassEntry GstMLClassEntry;
+typedef struct _GstMLClassPrediction GstMLClassPrediction;
 
 /**
- * GstPoseKeypoint:
- * @label: Name of the keypoint.
- * @color: Color of the keypoint.
- * @confidence: Confidence score for this keypoint.
- * @x: X axis coordinate of the keypoint.
- * @y: Y axis coordinate of the keypoint.
+ * GstVideoClassificationOperation:
+ * @GST_VIDEO_CLASSIFICATION_OPERATION_NONE: No operation
+ * @GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX: SoftMax operation is applied
  *
- * Information describing keypoint location and confidence score.
- *
- * The fields x and y must be set in (0.0 to 1.0) relative coordinate system.
+ * Defines extra operations applied on data
  */
-struct _GstPoseKeypoint {
-  gchar  *label;
-  guint  color;
-  gfloat confidence;
-  gfloat x;
-  gfloat y;
-};
+typedef enum {
+  GST_VIDEO_CLASSIFICATION_OPERATION_NONE,
+  GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX,
+} GstVideoClassificationOperation;
 
 /**
- * GstPoseLink:
- * @s_kp_idx: ID of the source keypoint.
- * @d_kp_idx: ID of the destination keypoint.
+ * GstMLClassEntry:
+ * @name: Name of the prediction.
+ * @confidence: Percentage certainty that the prediction is accurate.
+ * @color: Possible color that is associated with this prediction.
  *
- * Information describing a link between two keypoints.
- */
-struct _GstPoseLink {
-  guint s_kp_id;
-  guint d_kp_id;
-};
-
-/**
- * GstMLPrediction:
- * @confidence: The overall confidence for the estimated pose.
- * @keypoints: List of #GstPoseKeypoint.
- * @connections: List of #GstPoseLink.
- *
- * Information describing prediction result from pose estimation models.
+ * Information describing prediction result from image classification models.
  * All fields are mandatory and need to be filled by the submodule.
  */
-struct _GstMLPrediction {
-  float  confidence;
-  GArray *keypoints;
-  GArray *connections;
+struct _GstMLClassEntry {
+  GQuark  name;
+  gfloat  confidence;
+  guint32 color;
 };
 
 /**
- * gst_ml_video_pose_module_execute:
+ * GstMLClassPrediction:
+ * @batch_idx: Position of the entries in the batch.
+ * @entries: GArray of #GstMLClassEntry.
+ * @info: Additonal info structure, beloging to the batch #GstProtectionMeta
+ *        in the ML tensor buffer from which the prediction result was produced.
+ *        Ownership is still with that tensor buffer.
+ *
+ * Information describing a group of prediction results beloging to the same batch.
+ * All fields are mandatory and need to be filled by the submodule.
+ */
+struct _GstMLClassPrediction {
+  guint8             batch_idx;
+  GArray             *entries;
+  const GstStructure *info;
+};
+
+/**
+ * gst_ml_class_prediction_cleanup:
+ * @prediction: Pointer to the ML class prediction.
+ *
+ * Helper function for freeing any resources allocated owned by the prediction.
+ *
+ * return: None
+ */
+GST_API void
+gst_ml_class_prediction_cleanup (GstMLClassPrediction * prediction);
+
+/**
+ * gst_ml_class_compare_entries:
+ * @l_entry: Left (or First) ML class post-processing entry.
+ * @r_entry: Right (or Second) ML class post-processing entry.
+ *
+ * Helper function for comparing two ML class entries.
+ *
+ * return: -1 (l_entry > r_entry), 1 (l_entry < r_entry) and 0 (l_entry == r_entry)
+ */
+GST_API gint
+gst_ml_class_compare_entries (const GstMLClassEntry * l_entry,
+                              const GstMLClassEntry * r_entry);
+
+/**
+ * gst_ml_module_video_classification_execute:
  * @module: Pointer to ML post-processing module.
  * @mlframe: Frame containing mapped tensor memory blocks that need processing.
- * @predictions: GArray of #GstMLPrediction.
+ * @predictions: GArray of #GstMLClassBatch.
  *
  * Convenient wrapper function used on plugin level to call the module
  * 'gst_ml_module_process' API via 'gst_ml_module_execute' wrapper in order
@@ -136,11 +157,9 @@ struct _GstMLPrediction {
  * return: TRUE on success or FALSE on failure
  */
 GST_API gboolean
-gst_ml_video_pose_module_execute (GstMLModule * module,
-    GstMLFrame * mlframe, GArray * predictions)
-{
-  return gst_ml_module_execute (module, mlframe, (gpointer) predictions);
-}
+gst_ml_module_video_classification_execute (GstMLModule * module, GstMLFrame * mlframe,
+                                            GArray * predictions);
 
 G_END_DECLS
-#endif // __GST_QTI_ML_VIDEO_POSE_MODULE_H__
+
+#endif // __GST_QTI_ML_MODULE_VIDEO_CLASSIFICATION_H__

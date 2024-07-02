@@ -114,7 +114,7 @@ G_BEGIN_DECLS
   g_mutex_unlock (&(pad->lock));                                       \
 }
 
-typedef struct _GstMetaEntry GstMetaEntry;
+typedef struct _GstMetaItem GstMetaItem;
 
 typedef struct _GstMetaMuxDataPad GstMetaMuxDataPad;
 typedef struct _GstMetaMuxDataPadClass GstMetaMuxDataPadClass;
@@ -131,26 +131,29 @@ typedef enum {
   GST_DATA_TYPE_OPTICAL_FLOW,
 } GstDataType;
 
-struct _GstMetaEntry {
-  /// Parsed metadata in GST_TYPE_LIST format containing GST_TYPE_STRUCTURE.
-  GValue       value;
+struct _GstMetaItem {
+  /// Parsed metadata in list format containing GstStructure.
+  GList        *values;
   /// The timestamp corresponding to the metadata entry.
   GstClockTime timestamp;
 };
 
 struct _GstMetaMuxDataPad {
   /// Inherited parent structure.
-  GstPad      parent;
+  GstPad       parent;
 
   // Format of negotiated metadata.
-  GstDataType type;
+  GstDataType  type;
   /// Segment.
-  GstSegment  segment;
+  GstSegment   segment;
 
-  /// Variable for temporarily storing partial data(meta).
-  gchar       *stash;
-  /// Queue for managing parsed #GstMetaEntry data.
-  GQueue      *queue;
+  /// Variable for temporarily storing partial meta entry.
+  GstMetaItem  *prtlmeta;
+  /// Variable for temporarily storing incomplete string data(meta).
+  gchar        *strcache;
+
+  /// Queue for managing parsed #GstMetaItem data.
+  GQueue       *queue;
 };
 
 struct _GstMetaMuxDataPadClass {

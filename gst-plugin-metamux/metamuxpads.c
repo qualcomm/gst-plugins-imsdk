@@ -245,7 +245,8 @@ gst_metamux_data_pad_init (GstMetaMuxDataPad * pad)
   pad->type = GST_DATA_TYPE_UNKNOWN;
   gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
 
-  pad->stash = NULL;
+  pad->prtlmeta = NULL;
+  pad->strcache = NULL;
   pad->queue = g_queue_new ();
 }
 

@@ -54,6 +54,7 @@ target_link_libraries(${GST_QTI_VIDEO_TRANSFORM} PRIVATE
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
   gstqtivideobase
+  gstqtiutilsbase
 )
 
 install(

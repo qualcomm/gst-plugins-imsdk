@@ -71,10 +71,7 @@ struct _GstMLSnpe {
   GstMLInfo         *outinfo;
 
   /// Properties.
-  gchar             *model;
-  GstMLSnpeDelegate delegate;
-  gboolean          is_tensor;
-  GList             *outputs;
+  GstMLSnpeSettings settings;
 };
 
 struct _GstMLSnpeClass {

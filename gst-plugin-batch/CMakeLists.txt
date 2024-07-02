@@ -48,6 +48,7 @@ target_link_libraries(${GST_QTI_BATCH} PRIVATE
   ${GST_BASE_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
   ${GST_AUDIO_LIBRARIES}
+  gstqtiutilsbase
 )
 
 install(

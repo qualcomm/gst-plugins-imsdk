@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -32,20 +32,18 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "ml-video-detection-module.h"
-
 #include <stdio.h>
 #include <math.h>
 
+#include <gst/utils/common-utils.h>
+#include <gst/utils/batch-utils.h>
+#include <gst/ml/ml-module-utils.h>
+#include <gst/ml/ml-module-video-detection.h>
 
 // Set the default debug category.
 #define GST_CAT_DEFAULT gst_ml_module_debug
 
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
-
-#define GFLOAT_PTR_CAST(data)       ((gfloat*) data)
-#define GINT8_PTR_CAST(data)        ((gint8*) data)
-#define GUINT8_PTR_CAST(data)       ((guint8*) data)
 
 // Layer index at which the object score resides.
 #define SCORE_IDX              4
@@ -98,6 +96,11 @@ struct _GstMLSubModule {
   // Configurated ML capabilities in structure format.
   GstMLInfo  mlinfo;
 
+  // The width of the model input tensor.
+  guint      inwidth;
+  // The height of the model input tensor.
+  guint      inheight;
+
   // List of prediction labels.
   GHashTable *labels;
   // Confidence threshold value.
@@ -126,58 +129,28 @@ gst_ml_module_get_threshold_value (GstMLType mltype, gfloat threshold)
   return 0.0;
 }
 
-static inline gdouble
-gst_ml_module_get_dequant_value (void * pdata, GstMLType mltype, guint idx,
-    gdouble offset, gdouble scale)
-{
-  switch (mltype) {
-    case GST_ML_TYPE_INT8:
-      return ((GINT8_PTR_CAST (pdata))[idx] - offset) * scale;
-    case GST_ML_TYPE_UINT8:
-      return ((GUINT8_PTR_CAST (pdata))[idx] - offset) * scale;
-    case GST_ML_TYPE_FLOAT32:
-      return (GFLOAT_PTR_CAST (pdata))[idx];
-    default:
-      break;
-  }
-  return 0.0;
-}
-
-static inline gint
-gst_ml_module_compare_values (void * data, GstMLType mltype,
-    guint l_idx, guint r_idx)
-{
-  switch (mltype) {
-    case GST_ML_TYPE_INT8:
-      return GINT8_PTR_CAST (data)[l_idx] > GINT8_PTR_CAST (data)[r_idx] ? 1 : 0;
-    case GST_ML_TYPE_UINT8:
-      return GUINT8_PTR_CAST (data)[l_idx] > GUINT8_PTR_CAST (data)[r_idx] ? 1 : 0;
-    case GST_ML_TYPE_FLOAT32:
-      return GFLOAT_PTR_CAST (data)[l_idx] > GFLOAT_PTR_CAST (data)[r_idx] ? 1 : 0;
-    default:
-      break;
-  }
-  return 0;
-}
-
 static void
 gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
     GArray * predictions, GstMLFrame * mlframe)
 {
   GstProtectionMeta *pmeta = NULL;
+  GstMLBoxPrediction *prediction = NULL;
+  GstVideoRectangle region = { 0, };
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   guint idx = 0, num = 0, x = 0, y = 0, m = 0, id = 0, w_idx = 0, tile_idx = 0;
-  guint width = 0, height = 0, in_width = 0, in_height = 0;
+  guint width = 0, height = 0;
   guint anchor = 0, n_layers = 0, n_anchors = 0, n_tiles = 0;
   gdouble confidence = 0.0, score = 0.0, threshold = 0.0, bbox[4] = { 0, };
-  gint nms = -1, sar_n = 1, sar_d = 1;
+  gint nms = -1;
 
-  // Extract the SAR (Source Aspect Ratio) and input tensor resolution.
-  if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL) {
-    gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
-    gst_structure_get_uint (pmeta->info, "input-tensor-width", &in_width);
-    gst_structure_get_uint (pmeta->info, "input-tensor-height", &in_height);
-  }
+  pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
+      gst_batch_channel_name (0));
+
+  prediction = &(g_array_index (predictions, GstMLBoxPrediction, 0));
+  prediction->info = pmeta->info;
+
+  // Extract the source tensor region with actual data.
+  gst_ml_protecton_meta_get_source_region (pmeta, &region);
 
   mltype = GST_ML_FRAME_TYPE (mlframe);
   threshold = gst_ml_module_get_threshold_value (mltype, submodule->threshold);
@@ -212,16 +185,16 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
     // Ex: "< <1, 20, 20, 255>, <1, 40, 40, 255>, <1, 80, 80, 255> > "
     // TODO: optimize
     for (w_idx = 0; w_idx < 3 ; w_idx++)
-      if (weights[w_idx][0] == (gint32)(in_width / width)) break;
+      if (weights[w_idx][0] == (gint32)(submodule->inwidth / width)) break;
 
     for (tile_idx = 0; tile_idx < n_tiles; tile_idx++) {
       for (anchor = 0; anchor < n_anchors; anchor++, num += n_layers) {
-        GstMLPrediction prediction = { 0, };
-        GstLabel *label = NULL;
+        GstMLBoxEntry entry = { 0, };
+        GstMLLabel *label = NULL;
 
         // Dequantize the object score.
         // Represented as an exponent 'x' in sigmoid function: 1 / (1 + exp(x)).
-        score = gst_ml_module_get_dequant_value (data, mltype, num + SCORE_IDX,
+        score = gst_ml_tensor_extract_value (mltype, data, num + SCORE_IDX,
             submodule->qoffsets[idx], submodule->qscales[idx]);
 
         // Discard results below the minimum score threshold.
@@ -233,10 +206,10 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
 
         // Find the class index with the highest score in current paxel.
         for (m = (num + CLASSES_IDX + 1); m < (num + n_layers); m++)
-          id = (gst_ml_module_compare_values (data, mltype, m, id) > 0) ? m : id;
+          id = (gst_ml_tensor_compare_values (mltype, data, m, id) > 0) ? m : id;
 
         // Dequantize the class confidence.
-        confidence = gst_ml_module_get_dequant_value (data, mltype, id,
+        confidence = gst_ml_tensor_extract_value (mltype, data, id,
             submodule->qoffsets[idx], submodule->qscales[idx]);
 
         // Discard results below the minimum confidence threshold.
@@ -249,13 +222,13 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
         confidence *= 1 / (1 + expf (- score));
 
         // Dequantize the bounding box parameters.
-        bbox[0] = gst_ml_module_get_dequant_value (data, mltype, num,
+        bbox[0] = gst_ml_tensor_extract_value (mltype, data, num,
             submodule->qoffsets[idx], submodule->qscales[idx]);
-        bbox[1] = gst_ml_module_get_dequant_value (data, mltype, num + 1,
+        bbox[1] = gst_ml_tensor_extract_value (mltype, data, num + 1,
             submodule->qoffsets[idx], submodule->qscales[idx]);
-        bbox[2] = gst_ml_module_get_dequant_value (data, mltype, num + 2,
+        bbox[2] = gst_ml_tensor_extract_value (mltype, data, num + 2,
             submodule->qoffsets[idx], submodule->qscales[idx]);
-        bbox[3] = gst_ml_module_get_dequant_value (data, mltype, num + 3,
+        bbox[3] = gst_ml_tensor_extract_value (mltype, data, num + 3,
             submodule->qoffsets[idx], submodule->qscales[idx]);
 
         // Apply a sigmoid function in order to normalize the parameters.
@@ -273,44 +246,43 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
         bbox[2] = pow ((bbox[2] * 2), 2) * gains[w_idx][anchor][0];
         bbox[3] = pow ((bbox[3] * 2), 2) * gains[w_idx][anchor][1];
 
-        prediction.top = bbox[1] - (bbox[3] / 2);
-        prediction.left = bbox[0] - (bbox[2] / 2);
-        prediction.bottom = bbox[1] + (bbox[3] / 2);
-        prediction.right = bbox[0] + (bbox[2] / 2);
+        entry.top = bbox[1] - (bbox[3] / 2);
+        entry.left = bbox[0] - (bbox[2] / 2);
+        entry.bottom = bbox[1] + (bbox[3] / 2);
+        entry.right = bbox[0] + (bbox[2] / 2);
 
-        // Adjust bounding box dimensions with extracted source aspect ratio.
-        gst_ml_prediction_transform_dimensions (&prediction, sar_n, sar_d,
-            in_width, in_height);
+        // Adjust bounding box dimensions with extracted source tensor region.
+        gst_ml_box_transform_dimensions (&entry, &region);
 
         // Discard results with out of region coordinates.
-        if ((prediction.top > 1.0) || (prediction.left > 1.0) ||
-            (prediction.bottom > 1.0) || (prediction.right > 1.0))
+        if ((entry.top > 1.0) || (entry.left > 1.0) ||
+            (entry.bottom > 1.0) || (entry.right > 1.0))
           continue;
 
         label = g_hash_table_lookup (submodule->labels,
             GUINT_TO_POINTER (id - (num + CLASSES_IDX)));
 
-        prediction.confidence = confidence * 100.0F;
-        prediction.label = g_strdup (label ? label->name : "unknown");
-        prediction.color = label ? label->color : 0x000000FF;
+        entry.confidence = confidence * 100.0F;
+        entry.name = g_quark_from_string (label ? label->name : "unknown");
+        entry.color = label ? label->color : 0x000000FF;
 
         // Non-Max Suppression (NMS) algorithm.
-        nms = gst_ml_non_max_suppression (&prediction, predictions);
+        nms = gst_ml_box_non_max_suppression (&entry, prediction->entries);
 
         // If the NMS result is -2 don't add the prediction to the list.
-        if (nms == (-2)){
-          g_free (prediction.label);
+        if (nms == (-2))
           continue;
-        }
 
         // If the NMS result is above -1 remove the entry with the nms index.
         if (nms >= 0)
-          predictions = g_array_remove_index (predictions, nms);
+          prediction->entries = g_array_remove_index (prediction->entries, nms);
 
-        predictions = g_array_append_val (predictions, prediction);
+        prediction->entries = g_array_append_val (prediction->entries, entry);
       }
     }
   }
+
+  g_array_sort (prediction->entries, (GCompareFunc) gst_ml_box_compare_entries);
 }
 
 static void
@@ -318,17 +290,32 @@ gst_ml_module_parse_monoblock_tensors (GstMLSubModule * submodule,
     GArray * predictions, GstMLFrame * mlframe)
 {
   GstProtectionMeta *pmeta = NULL;
-  GstLabel *label = NULL;
+  GstMLBoxPrediction *prediction = NULL;
+  GstMLLabel *label = NULL;
   guint8 *data = NULL;
+  GstVideoRectangle region = { 0, };
+  GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   guint idx = 0, num = 0, m = 0, id = 0, n_layers = 0, n_tiles = 0;
   gdouble confidence = 0.0, score = 0.0, bbox[4] = { 0, };
-  gint nms = -1, sar_n = 1, sar_d = 1;
+  gint nms = -1;
 
-  // Extract the SAR (Source Aspect Ratio).
-  if ((pmeta = gst_buffer_get_protection_meta (mlframe->buffer)) != NULL)
-    gst_structure_get_fraction (pmeta->info, "source-aspect-ratio", &sar_n, &sar_d);
+  pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
+      gst_batch_channel_name (0));
+
+  prediction = &(g_array_index (predictions, GstMLBoxPrediction, 0));
+  prediction->info = pmeta->info;
+
+  // Extract the dimensions of the input tensor that produced the output tensors.
+  if (submodule->inwidth == 0 || submodule->inheight == 0) {
+    gst_ml_protecton_meta_get_source_dimensions (pmeta, &(submodule->inwidth),
+        &(submodule->inheight));
+  }
+
+  // Extract the source tensor region with actual data.
+  gst_ml_protecton_meta_get_source_region (pmeta, &region);
 
   data = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
+  mltype = GST_ML_FRAME_TYPE (mlframe);
 
   // The 2nd dimension represents ((w/8 * h/8) + (w/16 * h/16) + (w/32* h/32)) * 3
   n_tiles = GST_ML_FRAME_DIM (mlframe, 0, 1);
@@ -336,12 +323,12 @@ gst_ml_module_parse_monoblock_tensors (GstMLSubModule * submodule,
   n_layers = GST_ML_FRAME_DIM (mlframe, 0, 2);
 
   for (num = 0; num < n_tiles; num++, idx += n_layers) {
-    GstMLPrediction prediction = { 0, };
+    GstMLBoxEntry entry = { 0, };
 
     // Dequantize the object score.
     // Represented as an exponent 'x' in sigmoid function: 1 / (1 + exp(x)).
-    score = (data[idx + SCORE_IDX] - submodule->qoffsets[0]) *
-        submodule->qscales[0];
+    score = gst_ml_tensor_extract_value (mltype, data, idx + SCORE_IDX,
+        submodule->qoffsets[0], submodule->qscales[0]);
 
     // Discard results below the minimum score threshold.
     if (score < submodule->threshold)
@@ -352,10 +339,12 @@ gst_ml_module_parse_monoblock_tensors (GstMLSubModule * submodule,
 
     // Find the class ID with the highest confidence.
     for (m = (idx + CLASSES_IDX + 1); m < (idx + n_layers); m++)
-      id = (data[m] > data[id]) ? m : id;
+      id = (gst_ml_tensor_compare_values (mltype, data, m, id) > 0) ? m : id;
 
     // Dequantize the class confidence.
-    confidence = (data[id] - submodule->qoffsets[0]) * submodule->qscales[0];
+    confidence = gst_ml_tensor_extract_value (mltype, data, id,
+        submodule->qoffsets[0], submodule->qscales[0]);
+
     // Normalize the end confidence with the object score value.
     confidence *= score;
 
@@ -364,46 +353,51 @@ gst_ml_module_parse_monoblock_tensors (GstMLSubModule * submodule,
       continue;
 
     // Dequantize the bounding box parameters.
-    bbox[0] = (data[idx] - submodule->qoffsets[0]) * submodule->qscales[0];
-    bbox[1] = (data[idx + 1] - submodule->qoffsets[0]) * submodule->qscales[0];
-    bbox[2] = (data[idx + 2] - submodule->qoffsets[0]) * submodule->qscales[0];
-    bbox[3] = (data[idx + 3] - submodule->qoffsets[0]) * submodule->qscales[0];
+    bbox[0] = gst_ml_tensor_extract_value (mltype, data, idx,
+        submodule->qoffsets[0], submodule->qscales[0]);
+    bbox[1] = gst_ml_tensor_extract_value (mltype, data, idx + 1,
+        submodule->qoffsets[0], submodule->qscales[0]);
+    bbox[2] = gst_ml_tensor_extract_value (mltype, data, idx + 2,
+        submodule->qoffsets[0], submodule->qscales[0]);
+    bbox[3] = gst_ml_tensor_extract_value (mltype, data, idx + 3,
+        submodule->qoffsets[0], submodule->qscales[0]);
 
-    prediction.top = bbox[1] - (bbox[3] / 2);
-    prediction.left = bbox[0] - (bbox[2] / 2);
-    prediction.bottom = bbox[1] + (bbox[3] / 2);
-    prediction.right = bbox[0] + (bbox[2] / 2);
+    // Translate box coordinates to absolute as the tensor region is in absolute.
+    entry.top = (bbox[1] - (bbox[3] / 2)) * submodule->inheight;
+    entry.left = (bbox[0] - (bbox[2] / 2)) * submodule->inwidth;
+    entry.bottom = (bbox[1] + (bbox[3] / 2)) * submodule->inheight;
+    entry.right = (bbox[0] + (bbox[2] / 2)) * submodule->inwidth;
 
-    // Adjust bounding box dimensions with extracted source aspect ratio.
-    gst_ml_prediction_transform_dimensions (&prediction, sar_n, sar_d, 1, 1);
+    // Adjust bounding box dimensions with extracted source tensor region.
+    gst_ml_box_transform_dimensions (&entry, &region);
 
     // Discard results with out of region coordinates.
-    if ((prediction.top > 1.0) || (prediction.left > 1.0) ||
-        (prediction.bottom > 1.0) || (prediction.right > 1.0))
+    if ((entry.top > 1.0) || (entry.left > 1.0) ||
+        (entry.bottom > 1.0) || (entry.right > 1.0))
       continue;
 
     label = g_hash_table_lookup (submodule->labels,
         GUINT_TO_POINTER (id - (idx + CLASSES_IDX)));
 
-    prediction.confidence = confidence * 100.0F;
-    prediction.label = g_strdup (label ? label->name : "unknown");
-    prediction.color = label ? label->color : 0x000000FF;
+    entry.confidence = confidence * 100.0F;
+    entry.name = g_quark_from_string (label ? label->name : "unknown");
+    entry.color = label ? label->color : 0x000000FF;
 
     // Non-Max Suppression (NMS) algorithm.
-    nms = gst_ml_non_max_suppression (&prediction, predictions);
+    nms = gst_ml_box_non_max_suppression (&entry, prediction->entries);
 
     // If the NMS result is -2 don't add the prediction to the list.
-    if (nms == (-2)){
-      g_free (prediction.label);
+    if (nms == (-2))
       continue;
-    }
 
     // If the NMS result is above -1 remove the entry with the nms index.
     if (nms >= 0)
-      predictions = g_array_remove_index (predictions, nms);
+      prediction->entries = g_array_remove_index (prediction->entries, nms);
 
-    predictions = g_array_append_val (predictions, prediction);
+    prediction->entries = g_array_append_val (prediction->entries, entry);
   }
+
+  g_array_sort (prediction->entries, (GCompareFunc) gst_ml_box_compare_entries);
 }
 
 gpointer
@@ -574,11 +568,6 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
-
-  if (!gst_ml_info_is_equal (&(mlframe->info), &(submodule->mlinfo))) {
-    GST_ERROR ("ML frame with unsupported layout!");
-    return FALSE;
-  }
 
   if (GST_ML_INFO_N_TENSORS (&(submodule->mlinfo)) == 3) {
     gst_ml_module_parse_tripleblock_frame (submodule, predictions, mlframe);

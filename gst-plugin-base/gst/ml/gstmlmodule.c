@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -215,10 +215,10 @@ gst_ml_module_execute (GstMLModule * module, GstMLFrame * mlframe,
   return module->process (module->submodule, mlframe, output);
 }
 
-GstLabel *
+GstMLLabel *
 gst_ml_label_new (void)
 {
-  GstLabel *label = g_new (GstLabel, 1);
+  GstMLLabel *label = g_new (GstMLLabel, 1);
 
   label->name = NULL;
   label->color = 0x00000000;
@@ -227,7 +227,7 @@ gst_ml_label_new (void)
 }
 
 void
-gst_ml_label_free (GstLabel * label)
+gst_ml_label_free (GstMLLabel * label)
 {
   if (NULL == label)
     return;
@@ -278,12 +278,12 @@ gst_ml_parse_labels (const gchar * input, GValue * list)
     if (!success) {
       guint idx = 0;
       GValue value = G_VALUE_INIT;
-      g_value_init (&value, G_TYPE_STRING);
 
       GST_WARNING ("Failed to deserialize labels file contents!");
 
       // Clear previous data
       g_value_reset (list);
+      g_value_init (&value, G_TYPE_STRING);
 
       gchar **split_labels = g_strsplit (contents, ",", -1);
 
@@ -309,10 +309,9 @@ GHashTable *
 gst_ml_load_labels (GValue * list)
 {
   GHashTable *labels = NULL;
-  guint idx = 0, id = 0;
   GstStructure *structure = NULL;
-  GstLabel *label = NULL;
-  guint n_colours = G_N_ELEMENTS (colors);
+  GstMLLabel *label = NULL;
+  guint idx = 0, id = 0, n_colours = G_N_ELEMENTS (colors);
 
   g_return_val_if_fail (list != NULL, NULL);
 
@@ -355,6 +354,7 @@ gst_ml_load_labels (GValue * list)
           g_value_get_string (gst_value_list_get_value (list, idx)));
       label->name = g_strdelimit (label->name, "-", ' ');
       label->color = colors[idx % n_colours];
+
       id = idx;
     }
 

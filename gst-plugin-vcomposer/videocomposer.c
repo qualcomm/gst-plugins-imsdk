@@ -67,7 +67,10 @@
 
 #include "videocomposer.h"
 
+#include <gst/utils/common-utils.h>
 #include <gst/video/gstimagepool.h>
+#include <gst/video/gstvideoclassificationmeta.h>
+#include <gst/video/gstvideolandmarksmeta.h>
 
 #include "videocomposersinkpad.h"
 
@@ -207,7 +210,7 @@ gst_converter_request_unref (GstConverterRequest * request)
 }
 
 static inline void
-gst_video_composition_free (GstVideoComposition * composition)
+gst_video_composition_cleanup (GstVideoComposition * composition)
 {
   guint idx = 0;
 
@@ -221,12 +224,186 @@ gst_video_composition_free (GstVideoComposition * composition)
   g_free (composition->blits);
 }
 
-static void
+static inline void
 gst_data_queue_item_free (gpointer data)
 {
   GstDataQueueItem *item = data;
   gst_converter_request_unref (GST_CONVERTER_REQUEST (item->object));
   g_slice_free (GstDataQueueItem, item);
+}
+
+static inline void
+gst_buffer_transfer_roi_meta (GstBuffer * buffer, GstVideoRectangle * source,
+    GstVideoRectangle * destination, GstVideoRegionOfInterestMeta * roimeta)
+{
+  GstVideoRegionOfInterestMeta *newmeta = NULL;
+  GList *param = NULL;
+  gdouble w_scale = 0.0, h_scale = 0.0;
+  guint num = 0, x = 0, y = 0, width = 0, height = 0;
+
+  gst_util_fraction_to_double (destination->w, source->w, &w_scale);
+  gst_util_fraction_to_double (destination->h, source->h, &h_scale);
+
+  width = roimeta->w * w_scale;
+  height = roimeta->h * h_scale;
+  x = (roimeta->x * w_scale) + destination->x;
+  y = (roimeta->y * h_scale) + destination->y;
+
+  // Add ROI meta with the actual part of the buffer filled with image data.
+  newmeta = gst_buffer_add_video_region_of_interest_meta_id (buffer,
+      roimeta->roi_type, x, y, width, height);
+
+  // Transfer all meta derived from the ROI meta.
+  for (param = roimeta->params; param != NULL; param = g_list_next (param)) {
+    GstStructure *structure = GST_STRUCTURE_CAST (param->data);
+    GQuark id = gst_structure_get_name_id (structure);
+
+    if (id == g_quark_from_static_string ("VideoLandmarks")) {
+      GArray *keypoints = NULL, *links = NULL;
+      GArray *newkeypoints = NULL, *newlinks = NULL;
+      gdouble confidence = 0.0;
+      guint n_bytes = 0;
+
+      gst_structure_get_double (structure, "confidence", &confidence);
+
+      keypoints = (GArray *) g_value_get_boxed (
+          gst_structure_get_value (structure, "keypoints"));
+      links = (GArray *) g_value_get_boxed (
+          gst_structure_get_value (structure, "links"));
+
+      // TODO: replace with g_array_copy() in glib version > 2.62
+      newkeypoints = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoKeypoint),
+          keypoints->len);
+      newkeypoints = g_array_set_size (newkeypoints, keypoints->len);
+
+      n_bytes = keypoints->len * sizeof (GstVideoKeypoint);
+      memcpy (newkeypoints->data, keypoints->data, n_bytes);
+
+      newlinks = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoKeypointLink),
+          links->len);
+      newlinks = g_array_set_size (newlinks, links->len);
+
+      n_bytes = links->len * sizeof (GstVideoKeypointLink);
+      memcpy (newlinks->data, links->data, n_bytes);
+
+      // Correct the X and Y of each keypoint based on the regions.
+      for (num = 0; num < newkeypoints->len; num++) {
+        GstVideoKeypoint *kp =
+            &(g_array_index (newkeypoints, GstVideoKeypoint, num));
+
+        kp->x = kp->x * w_scale;
+        kp->y = kp->y * h_scale;
+      }
+
+      structure = gst_structure_new ("VideoLandmarks", "keypoints",
+          G_TYPE_ARRAY, newkeypoints, "links", G_TYPE_ARRAY, newlinks,
+          "confidence", G_TYPE_DOUBLE, confidence, NULL);
+      gst_video_region_of_interest_meta_add_param (newmeta, structure);
+    } else if (id == g_quark_from_static_string ("ImageClassification")) {
+      structure = gst_structure_copy (structure);
+      gst_video_region_of_interest_meta_add_param (newmeta, structure);
+    } else if (id == g_quark_from_static_string ("ObjectDetection")) {
+      structure = gst_structure_copy (structure);
+      gst_video_region_of_interest_meta_add_param (newmeta, structure);
+    }
+  }
+}
+
+static inline void
+gst_buffer_transfer_landmarks_meta (GstBuffer * buffer, GstVideoRectangle * source,
+    GstVideoRectangle * destination, GstVideoLandmarksMeta * lmkmeta)
+{
+  GArray *keypoints = NULL, *links = NULL;
+  gdouble w_scale = 0.0, h_scale = 0.0;
+  guint num = 0, n_bytes = 0;
+
+  gst_util_fraction_to_double (destination->w, source->w, &w_scale);
+  gst_util_fraction_to_double (destination->h, source->h, &h_scale);
+
+  // TODO: replace with g_array_copy() in glib version > 2.62
+  keypoints = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoKeypoint),
+      lmkmeta->keypoints->len);
+  keypoints = g_array_set_size (keypoints, lmkmeta->keypoints->len);
+
+  links = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoKeypointLink),
+      lmkmeta->links->len);
+  links = g_array_set_size (links, lmkmeta->links->len);
+
+  n_bytes = keypoints->len * sizeof (GstVideoKeypoint);
+  memcpy (keypoints->data, lmkmeta->keypoints->data, n_bytes);
+
+  n_bytes = links->len * sizeof (GstVideoKeypointLink);
+  memcpy (links->data, lmkmeta->links->data, n_bytes);
+
+  // Correct the X and Y of each keypoint bases on the regions.
+  for (num = 0; num < keypoints->len; num++) {
+    GstVideoKeypoint *kp = &(g_array_index (keypoints, GstVideoKeypoint, num));
+
+    kp->x = (kp->x * w_scale) + destination->x;
+    kp->y = (kp->y * h_scale) + destination->y;
+  }
+
+  gst_buffer_add_video_landmarks_meta (buffer, lmkmeta->confidence, keypoints,
+      links);
+}
+
+static inline void
+gst_buffer_transfer_classification_meta (GstBuffer * buffer,
+    GstVideoClassificationMeta * classmeta)
+{
+  GArray *labels = NULL;
+
+  // TODO: replace with g_array_copy() in glib version > 2.62
+  labels = g_array_sized_new (FALSE, FALSE, sizeof (GstClassLabel),
+      classmeta->labels->len);
+  labels = g_array_set_size (labels, classmeta->labels->len);
+
+  memcpy (labels->data, classmeta->labels->data,
+      labels->len * sizeof (GstClassLabel));
+
+  gst_buffer_add_video_classification_meta (buffer, labels);
+}
+
+static void
+gst_video_composition_populate_output_metas (GstVideoComposition * composition)
+{
+  GstBuffer *inbuffer = NULL, *outbuffer = NULL;
+  GstVideoRectangle *source = NULL, *destination = NULL;
+  GstMeta *meta = NULL;
+  gpointer state = NULL;
+  guint idx = 0;
+
+  outbuffer = composition->frame->buffer;
+
+  for (idx = 0; idx < composition->n_blits; idx++) {
+    inbuffer = composition->blits[idx].frame->buffer;
+
+    source = &(composition->blits[idx].sources[0]);
+    destination = &(composition->blits[idx].destinations[0]);
+
+    while ((meta = gst_buffer_iterate_meta (inbuffer, &state))) {
+      if (meta->info->api == GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE) {
+        GstVideoRegionOfInterestMeta *roimeta =
+            (GstVideoRegionOfInterestMeta *) meta;
+
+        // Skip if ROI is a ImageRegion with actual data (populated by vsplit).
+        // This is primery used for blitting only pixels with actual data.
+        if (roimeta->roi_type == g_quark_from_static_string ("ImageRegion"))
+          continue;
+
+        gst_buffer_transfer_roi_meta (outbuffer, source, destination, roimeta);
+      } else if (meta->info->api == GST_VIDEO_CLASSIFICATION_META_API_TYPE) {
+        GstVideoClassificationMeta *classmeta =
+            GST_VIDEO_CLASSIFICATION_META_CAST (meta);
+
+        gst_buffer_transfer_classification_meta (outbuffer, classmeta);
+      } else if (meta->info->api == GST_VIDEO_LANDMARKS_META_API_TYPE) {
+        GstVideoLandmarksMeta *lmkmeta = GST_VIDEO_LANDMARKS_META_CAST (meta);
+
+        gst_buffer_transfer_landmarks_meta (outbuffer, source, destination, lmkmeta);
+      }
+    }
+  }
 }
 
 static inline GstVideoConvFlip
@@ -469,6 +646,16 @@ gst_video_composer_populate_frames_and_composition (
     blit->destinations = g_slice_dup (GstVideoRectangle, &(sinkpad->destination));
     blit->n_regions = 1;
 
+    if ((blit->sources[0].w == 0) && (blit->sources[0].h == 0)) {
+      blit->sources[0].w = GST_VIDEO_FRAME_WIDTH (blit->frame);
+      blit->sources[0].h = GST_VIDEO_FRAME_HEIGHT (blit->frame);
+    }
+
+    if ((blit->destinations[0].w == 0) && (blit->destinations[0].h == 0)) {
+      blit->destinations[0].w = GST_VIDEO_INFO_WIDTH (vcomposer->outinfo);
+      blit->destinations[0].h = GST_VIDEO_INFO_HEIGHT (vcomposer->outinfo);
+    }
+
     GST_VIDEO_COMPOSER_SINKPAD_UNLOCK (sinkpad);
   }
 
@@ -492,6 +679,9 @@ gst_video_composer_populate_frames_and_composition (
   composition->isubwc = vcomposer->isubwc;
 
   GST_VIDEO_COMPOSER_UNLOCK (vcomposer);
+
+  // Transfer metadata from the input buffers to the output buffer.
+  gst_video_composition_populate_output_metas (composition);
 
   return TRUE;
 }
@@ -1141,7 +1331,7 @@ gst_video_composer_aggregate (GstAggregator * aggregator, gboolean timeout)
       request->inframes, request->outframe, &composition);
 
   if (!success) {
-    gst_video_composition_free (&composition);
+    gst_video_composition_cleanup (&composition);
     gst_converter_request_unref (request);
     return GST_AGGREGATOR_FLOW_NEED_DATA;
   }
@@ -1152,7 +1342,7 @@ gst_video_composer_aggregate (GstAggregator * aggregator, gboolean timeout)
   if ((composition.blits != NULL) && (composition.n_blits != 0)) {
     success = gst_video_converter_engine_compose (vcomposer->converter,
         &composition, 1, &(request->fence));
-    gst_video_composition_free (&composition);
+    gst_video_composition_cleanup (&composition);
   }
 
   if (!success) {

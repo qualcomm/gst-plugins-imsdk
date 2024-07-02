@@ -8,10 +8,31 @@ add_library(${GST_QTI_ML_BASE} SHARED
   gstmlmeta.c
   gstmlmodule.c
   gstmlpool.c
+  ml-module-utils.c
+  ml-module-video-classification.c
+  ml-module-video-detection.c
+  ml-module-video-pose.c
+  ml-module-video-segmentation.c
+  ml-module-video-super-resolution.c
+)
+
+set(GST_QTI_ML_BASE_HEADERS
+  ml-type.h
+  ml-info.h
+  ml-frame.h
+  gstmlmeta.h
+  gstmlmodule.h
+  gstmlpool.h
+  ml-module-utils.h
+  ml-module-video-classification.h
+  ml-module-video-detection.h
+  ml-module-video-pose.h
+  ml-module-video-segmentation.h
+  ml-module-video-super-resolution.h
 )
 
 set_target_properties(${GST_QTI_ML_BASE} PROPERTIES PUBLIC_HEADER
-  "ml-type.h;ml-info.h;ml-frame.h;gstmlmeta.h;gstmlmodule.h;gstmlpool.h"
+  "${GST_QTI_ML_BASE_HEADERS}"
 )
 
 target_include_directories(${GST_QTI_ML_BASE} PUBLIC
@@ -40,6 +61,7 @@ target_compile_definitions(${GST_QTI_ML_BASE} PRIVATE
 target_link_libraries(${GST_QTI_ML_BASE} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
+  ${GST_VIDEO_LIBRARIES}
 )
 
 install(

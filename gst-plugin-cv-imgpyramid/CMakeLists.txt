@@ -61,6 +61,7 @@ target_link_libraries(${GST_QTI_CV_IMGPYRAMID} PRIVATE
   ${GST_VIDEO_LIBRARIES}
   ${GBM_LIBRARIES}
   gstqtimemorybase
+  gstqtiutilsbase
   $<$<BOOL:${HAVE_CVP_IMGPYRAMID_H}>:cvp2>
   $<$<BOOL:${HAVE_EVA_IMGPYRAMID_H}>:eva>
 )

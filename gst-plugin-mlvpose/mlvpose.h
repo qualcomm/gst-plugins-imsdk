@@ -28,7 +28,7 @@
  *
  * ​​​​​Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -66,10 +66,9 @@
 
 #include <gst/gst.h>
 #include <gst/base/gstbasetransform.h>
-#include <gst/ml/ml-info.h>
 #include <gst/video/video.h>
-
-#include "modules/ml-video-pose-module.h"
+#include <gst/ml/ml-info.h>
+#include <gst/ml/ml-module-video-pose.h>
 
 G_BEGIN_DECLS
 
@@ -102,6 +101,8 @@ struct _GstMLVideoPose {
 
   /// Tensor deciphering module.
   GstMLModule      *module;
+  /// Array with predictions from the module post-processing.
+  GArray           *predictions;
 
   /// Properties.
   gint              mdlenum;

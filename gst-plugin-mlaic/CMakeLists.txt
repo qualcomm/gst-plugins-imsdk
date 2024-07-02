@@ -54,8 +54,9 @@ target_link_libraries(${GST_QTI_ML_AIC} PRIVATE
   ${GST_BASE_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   ${PROTOBUF_LITE_LIBRARIES}
-  gstqtimlbase
   QAic
+  gstqtimlbase
+  gstqtiutilsbase
 )
 
 install(

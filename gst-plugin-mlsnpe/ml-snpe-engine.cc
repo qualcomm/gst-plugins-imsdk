@@ -171,6 +171,109 @@ gst_ml_snpe_delegate_get_type (void)
   return gtype;
 }
 
+GType
+gst_ml_snpe_perf_profile_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { GST_ML_SNPE_PERF_PROFILE_DEFAULT,
+        "Run in a standard mode",
+        "default"
+    },
+    { GST_ML_SNPE_PERF_PROFILE_BALANCED,
+        "Run in a balanced mode",
+        "balanced"
+    },
+    { GST_ML_SNPE_PERF_PROFILE_HIGH_PERFORMANCE,
+        "Run in high performance mode",
+        "high-performance"
+    },
+    { GST_ML_SNPE_PERF_PROFILE_POWER_SAVER,
+        "Run in a power sensitive mode, at the expense of performance",
+        "power-saver"
+    },
+    { GST_ML_SNPE_PERF_PROFILE_SYSTEM_SETTINGS,
+        "Use system settings. no calls to performance APIs",
+        "system-settings"
+    },
+    { GST_ML_SNPE_PERF_PROFILE_SUSTAINED_HIGH_PERFORMANCE,
+        "Run in sustained high performance mode",
+        "sustained-high-performance"
+    },
+    { GST_ML_SNPE_PERF_PROFILE_BURST,
+        "Run in burst mode",
+        "burst"
+    },
+    { GST_ML_SNPE_PERF_PROFILE_LOW_POWER_SAVER,
+        "Run in lower clock than POWER_SAVER with less performance",
+        "low-power-saver"
+    },
+    { GST_ML_SNPE_PERF_PROFILE_HIGH_POWER_SAVER,
+        "Higher clock and better performance compared to POWER_SAVER",
+        "high-power-saver"
+    },
+    { GST_ML_SNPE_PERF_PROFILE_LOW_BALANCED,
+        "Run in lower balanced mode",
+        "low-balanced"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstMLSnpePerformanceProfile", variants);
+
+  return gtype;
+}
+
+GType
+gst_ml_snpe_profiling_level_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { GST_ML_SNPE_PROFILING_LEVEL_OFF,
+        "No profiling. Collects no runtime stats in the DiagLog", "off"
+    },
+    { GST_ML_SNPE_PROFILING_LEVEL_BASIC,
+        "Basic profiling Collects some runtime stats in the DiagLog", "basic"
+    },
+    { GST_ML_SNPE_PROFILING_LEVEL_DETAILED,
+        "Detailed profiling Collects more runtime stats in the DiagLog", "detailed"
+    },
+    { GST_ML_SNPE_PROFILING_LEVEL_MODERATE,
+        "Moderate profiling Collects more runtime stats in the DiagLog", "moderate"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstMLSnpeProfilingLevel", variants);
+
+  return gtype;
+}
+
+GType
+gst_ml_snpe_exec_priority_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { GST_ML_SNPE_EXEC_PRIORITY_NORMAL,
+        "Normal priority", "normal"
+    },
+    { GST_ML_SNPE_EXEC_PRIORITY_HIGH,
+        "Higher than normal priority", "high"
+    },
+    { GST_ML_SNPE_EXEC_PRIORITY_LOW,
+        "Lower priority", "low"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstMLSnpeExecutionPriority", variants);
+
+  return gtype;
+}
+
 static GstMLType
 snpe_to_ml_type (zdl::DlSystem::UserBufferEncoding::ElementType_t type)
 {
@@ -198,8 +301,7 @@ snpe_to_ml_type (zdl::DlSystem::UserBufferEncoding::ElementType_t type)
 }
 
 GstMLSnpeEngine *
-gst_ml_snpe_engine_new (const gchar * modelfile, GstMLSnpeDelegate delegate,
-    gboolean is_tensor, GList * outputs_list)
+gst_ml_snpe_engine_new (GstMLSnpeSettings * settings)
 {
   GstMLSnpeEngine *engine = NULL;
   gint idx = 0, num = 0;
@@ -210,18 +312,20 @@ gst_ml_snpe_engine_new (const gchar * modelfile, GstMLSnpeDelegate delegate,
   engine->ininfo = gst_ml_info_new ();
   engine->outinfo = gst_ml_info_new ();
 
-  GST_ML_RETURN_VAL_IF_FAIL (modelfile != NULL, NULL, "No model file name!");
+  GST_ML_RETURN_VAL_IF_FAIL (settings->modelfile != NULL, NULL,
+      "No model file name!");
 
-  engine->model = zdl::DlContainer::IDlContainer::open(std::string(modelfile));
+  engine->model =
+      zdl::DlContainer::IDlContainer::open(std::string(settings->modelfile));
   GST_ML_RETURN_VAL_IF_FAIL_WITH_CLEAN (engine->model, NULL,
       gst_ml_snpe_engine_free (engine), "Failed to load model file '%s'!",
-      modelfile);
+      settings->modelfile);
 
-  GST_DEBUG ("Loaded model file '%s'!", modelfile);
+  GST_DEBUG ("Loaded model file '%s'!", settings->modelfile);
 
   zdl::DlSystem::RuntimeList rtlist;
 
-  switch (delegate) {
+  switch (settings->delegate) {
     case GST_ML_SNPE_DELEGATE_DSP:
       rtlist.add(zdl::DlSystem::Runtime_t::DSP);
       break;
@@ -245,10 +349,95 @@ gst_ml_snpe_engine_new (const gchar * modelfile, GstMLSnpeDelegate delegate,
   zdl::SNPE::SNPEBuilder builder(engine->model.get());
   zdl::DlSystem::StringList outputs;
 
-  for (idx = 0; idx < g_list_length (outputs_list); idx++)
-    outputs.append ((const gchar *) g_list_nth_data (outputs_list, idx));
+  switch (settings->perf_profile) {
+    case GST_ML_SNPE_PERF_PROFILE_DEFAULT:
+      builder.setPerformanceProfile (
+          zdl::DlSystem::PerformanceProfile_t::DEFAULT);
+      break;
+    case GST_ML_SNPE_PERF_PROFILE_BALANCED:
+      builder.setPerformanceProfile (
+          zdl::DlSystem::PerformanceProfile_t::BALANCED);
+      break;
+    case GST_ML_SNPE_PERF_PROFILE_HIGH_PERFORMANCE:
+      builder.setPerformanceProfile (
+          zdl::DlSystem::PerformanceProfile_t::HIGH_PERFORMANCE);
+      break;
+    case GST_ML_SNPE_PERF_PROFILE_POWER_SAVER:
+      builder.setPerformanceProfile (
+          zdl::DlSystem::PerformanceProfile_t::POWER_SAVER);
+      break;
+    case GST_ML_SNPE_PERF_PROFILE_SYSTEM_SETTINGS:
+      builder.setPerformanceProfile (
+          zdl::DlSystem::PerformanceProfile_t::SYSTEM_SETTINGS);
+      break;
+    case GST_ML_SNPE_PERF_PROFILE_SUSTAINED_HIGH_PERFORMANCE:
+      builder.setPerformanceProfile (
+          zdl::DlSystem::PerformanceProfile_t::SUSTAINED_HIGH_PERFORMANCE);
+      break;
+    case GST_ML_SNPE_PERF_PROFILE_BURST:
+      builder.setPerformanceProfile (
+          zdl::DlSystem::PerformanceProfile_t::BURST);
+      break;
+    case GST_ML_SNPE_PERF_PROFILE_LOW_POWER_SAVER:
+      builder.setPerformanceProfile (
+          zdl::DlSystem::PerformanceProfile_t::LOW_POWER_SAVER);
+      break;
+    case GST_ML_SNPE_PERF_PROFILE_HIGH_POWER_SAVER:
+      builder.setPerformanceProfile (
+          zdl::DlSystem::PerformanceProfile_t::HIGH_POWER_SAVER);
+      break;
+    case GST_ML_SNPE_PERF_PROFILE_LOW_BALANCED:
+      builder.setPerformanceProfile (
+          zdl::DlSystem::PerformanceProfile_t::LOW_BALANCED);
+      break;
+    default:
+      builder.setPerformanceProfile (
+          zdl::DlSystem::PerformanceProfile_t::DEFAULT);
+      break;
+  }
 
-  if (is_tensor)
+  switch (settings->profiling_level) {
+    case GST_ML_SNPE_PROFILING_LEVEL_OFF:
+      builder.setProfilingLevel(zdl::DlSystem::ProfilingLevel_t::OFF);
+      break;
+    case GST_ML_SNPE_PROFILING_LEVEL_BASIC:
+      builder.setProfilingLevel(zdl::DlSystem::ProfilingLevel_t::BASIC);
+      break;
+    case GST_ML_SNPE_PROFILING_LEVEL_DETAILED:
+      builder.setProfilingLevel(zdl::DlSystem::ProfilingLevel_t::DETAILED);
+      break;
+    case GST_ML_SNPE_PROFILING_LEVEL_MODERATE:
+      builder.setProfilingLevel(zdl::DlSystem::ProfilingLevel_t::MODERATE);
+      break;
+    default:
+      builder.setProfilingLevel(zdl::DlSystem::ProfilingLevel_t::OFF);
+      break;
+  }
+
+  switch (settings->exec_priority) {
+    case GST_ML_SNPE_EXEC_PRIORITY_NORMAL:
+      builder.setExecutionPriorityHint(
+          zdl::DlSystem::ExecutionPriorityHint_t::NORMAL);
+      break;
+    case GST_ML_SNPE_EXEC_PRIORITY_HIGH:
+      builder.setExecutionPriorityHint(
+          zdl::DlSystem::ExecutionPriorityHint_t::HIGH);
+      break;
+    case GST_ML_SNPE_EXEC_PRIORITY_LOW:
+      builder.setExecutionPriorityHint(
+          zdl::DlSystem::ExecutionPriorityHint_t::LOW);
+      break;
+    default:
+      builder.setExecutionPriorityHint(
+          zdl::DlSystem::ExecutionPriorityHint_t::NORMAL);
+      break;
+  }
+
+  for (idx = 0; idx < g_list_length (settings->outputs); idx++)
+    outputs.append (
+        (const gchar *) g_list_nth_data (settings->outputs, idx));
+
+  if (settings->is_tensor)
     builder.setOutputTensors(outputs).setRuntimeProcessorOrder(rtlist);
   else
     builder.setOutputLayers(outputs).setRuntimeProcessorOrder(rtlist);
