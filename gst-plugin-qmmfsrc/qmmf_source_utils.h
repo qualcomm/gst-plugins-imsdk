@@ -135,6 +135,9 @@ G_BEGIN_DECLS
 #ifdef EIS_MODES_ENABLE
 #define GST_TYPE_QMMFSRC_EIS_MODE (gst_qmmfsrc_eis_mode_get_type())
 #endif // EIS_MODES_ENABLE
+#ifdef VHDR_MODES_ENABLE
+#define GST_TYPE_QMMFSRC_VHDR_MODE (gst_qmmfsrc_vhdr_mode_get_type())
+#endif // VHDR_MODES_ENABLE
 
 #define GST_BAYER_FORMAT_OFFSET 0x1000
 
@@ -299,6 +302,18 @@ enum
 };
 #endif // EIS_MODES_ENABLE
 
+#ifdef VHDR_MODES_ENABLE
+enum
+{
+  VHDR_OFF,
+  SHDR_MODE_RAW,
+  SHDR_MODE_YUV,
+  SHDR_SWITCH_ENABLE,
+  QBC_HDR_MODE_VIDEO,
+  QBC_HDR_MODE_SNAPSHOT,
+};
+#endif // VHDR_MODES_ENABLE
+
 enum
 {
   ROTATE_NONE,
@@ -342,6 +357,10 @@ GType gst_qmmfsrc_frc_mode_get_type (void);
 #ifdef EIS_MODES_ENABLE
 GType gst_qmmfsrc_eis_mode_get_type (void);
 #endif // EIS_MODES_ENABLE
+
+#ifdef VHDR_MODES_ENABLE
+GType gst_qmmfsrc_vhdr_mode_get_type (void);
+#endif // VHDR_MODES_ENABLE
 
 GType gst_qmmfsrc_rotate_get_type (void);
 

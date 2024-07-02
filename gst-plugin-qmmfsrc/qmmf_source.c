@@ -91,7 +91,11 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
 #else
 #define DEFAULT_PROP_CAMERA_EIS_MODE                  EIS_OFF
 #endif // EIS_MODES_ENABLE
+#ifndef VHDR_MODES_ENABLE
 #define DEFAULT_PROP_CAMERA_SHDR_MODE                 FALSE
+#else
+#define DEFAULT_PROP_CAMERA_VHDR_MODE                 VHDR_OFF
+#endif // VHDR_MODES_ENABLE
 #define DEFAULT_PROP_CAMERA_ADRC                      FALSE
 #define DEFAULT_PROP_CAMERA_CONTROL_MODE              CONTROL_MODE_AUTO
 #define DEFAULT_PROP_CAMERA_EFFECT_MODE               EFFECT_MODE_OFF
@@ -150,7 +154,11 @@ enum
   PROP_CAMERA_LDC,
   PROP_CAMERA_LCAC,
   PROP_CAMERA_EIS,
+#ifndef VHDR_MODES_ENABLE
   PROP_CAMERA_SHDR,
+#else
+  PROP_CAMERA_VHDR,
+#endif // VHDR_MODES_ENABLE
   PROP_CAMERA_ADRC,
   PROP_CAMERA_CONTROL_MODE,
   PROP_CAMERA_EFFECT_MODE,
@@ -997,10 +1005,17 @@ qmmfsrc_set_property (GObject * object, guint property_id,
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_EIS, value);
       break;
+#ifndef VHDR_MODES_ENABLE
     case PROP_CAMERA_SHDR:
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_SHDR, value);
       break;
+#else
+    case PROP_CAMERA_VHDR:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_VHDR, value);
+      break;
+#endif // VHDR_MODES_ENABLE
     case PROP_CAMERA_ADRC:
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_ADRC, value);
@@ -1179,10 +1194,17 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_EIS, value);
       break;
+#ifndef VHDR_MODES_ENABLE
     case PROP_CAMERA_SHDR:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_SHDR, value);
       break;
+#else
+    case PROP_CAMERA_VHDR:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_VHDR, value);
+      break;
+#endif // VHDR_MODES_ENABLE
     case PROP_CAMERA_ADRC:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_ADRC, value);
@@ -1419,11 +1441,20 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           GST_TYPE_QMMFSRC_EIS_MODE, DEFAULT_PROP_CAMERA_EIS_MODE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 #endif // EIS_MODES_ENABLE
+#ifndef VHDR_MODES_ENABLE
   g_object_class_install_property (gobject, PROP_CAMERA_SHDR,
       g_param_spec_boolean ("shdr", "SHDR",
           "Super High Dynamic Range Imaging", DEFAULT_PROP_CAMERA_SHDR_MODE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
+#else
+  g_object_class_install_property (gobject, PROP_CAMERA_VHDR,
+      g_param_spec_enum ("vhdr", "VHDR",
+          "Video High Dynamic Range Imaging Modes",
+          GST_TYPE_QMMFSRC_VHDR_MODE, DEFAULT_PROP_CAMERA_VHDR_MODE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+#endif // VHDR_MODES_ENABLE
   g_object_class_install_property (gobject, PROP_CAMERA_ADRC,
       g_param_spec_boolean ("adrc", "ADRC",
           "Automatic Dynamic Range Compression", DEFAULT_PROP_CAMERA_ADRC,
