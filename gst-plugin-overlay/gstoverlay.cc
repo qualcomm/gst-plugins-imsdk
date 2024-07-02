@@ -312,11 +312,6 @@ gst_overlay_apply_item_list (GstOverlay *gst_overlay,
   if (ov_id == gst_overlay->pose_id)
     n_derived_metas = gst_overlay->n_landmark_metas;
 
-  // Set the num of metas to the number of class labels in those metas.
-  // This is done in order to cleanup unused overlay items below.
-  if (ov_id == gst_overlay->text_id)
-    n_derived_metas = gst_overlay->n_class_labels;
-
   if (meta_num) {
     meta_num += n_derived_metas;
 
@@ -336,15 +331,18 @@ gst_overlay_apply_item_list (GstOverlay *gst_overlay,
       iter = iter->next;
     }
     g_slist_free (meta_list);
+  } else {
+    // To ensure proper clenaup.
+    meta_num = n_derived_metas;
   }
 
-  if ((guint) g_sequence_get_length (ov_id) > (meta_num + n_derived_metas)) {
+  if ((guint) g_sequence_get_length (ov_id) > meta_num) {
     g_sequence_foreach_range (
-        g_sequence_get_iter_at_pos (ov_id, (meta_num + n_derived_metas)),
+        g_sequence_get_iter_at_pos (ov_id, meta_num),
         g_sequence_get_end_iter (ov_id),
         gst_overlay_destroy_overlay_item, gst_overlay->overlay);
     g_sequence_remove_range (
-        g_sequence_get_iter_at_pos (ov_id, (meta_num + n_derived_metas)),
+        g_sequence_get_iter_at_pos (ov_id, meta_num),
         g_sequence_get_end_iter (ov_id));
   }
 
@@ -932,9 +930,8 @@ gst_overlay_apply_roi_item (GstOverlay * gst_overlay, gpointer meta,
   GstStructure *param = NULL;
   GList *list = NULL;
   GstVideoRectangle bbox;
-  const gchar *label = NULL;
+  const gchar *name = NULL;
   guint color = 0x00000000;
-  gboolean success = FALSE;
 
   g_return_val_if_fail (gst_overlay != NULL, FALSE);
   g_return_val_if_fail (meta != NULL, FALSE);
@@ -942,19 +939,13 @@ gst_overlay_apply_roi_item (GstOverlay * gst_overlay, gpointer meta,
 
   param = gst_video_region_of_interest_meta_get_param (roimeta, "ObjectDetection");
 
-  label = g_quark_to_string (roimeta->roi_type);
+  name = g_quark_to_string (roimeta->roi_type);
   gst_structure_get_uint (param, "color", &color);
 
   bbox.x = roimeta->x;
   bbox.y = roimeta->y;
   bbox.w = roimeta->w;
   bbox.h = roimeta->h;
-
-  success = gst_overlay_apply_bbox_item (gst_overlay, &bbox, label, color,
-      gst_overlay->bbox_font_size, item_id);
-
-  if (!success)
-    return FALSE;
 
   // Process attached meta entries that were derived from this ROI.
   for (list = roimeta->params; list != NULL; list = g_list_next (list)) {
@@ -1017,83 +1008,44 @@ gst_overlay_apply_roi_item (GstOverlay * gst_overlay, gpointer meta,
         }
       }
 
-      success = gst_overlay_apply_pose_item (gst_overlay, mlkeypoints, sub_item_id);
-    } else if (id == g_quark_from_static_string ("ImageClassification")) {
-      GArray *labels = NULL;
-      guint idx = 0, last_ov_y = 20;
+      if (!gst_overlay_apply_pose_item (gst_overlay, mlkeypoints, sub_item_id))
+        return FALSE;
 
-      labels = (GArray*) g_value_get_boxed (
+    } else if (id == g_quark_from_static_string ("ImageClassification")) {
+      GArray *labels = (GArray*) g_value_get_boxed (
           gst_structure_get_value (param, "labels"));
 
-      for (idx = 0; (idx < labels->len) && success; idx++) {
-        GstClassLabel *label = &(g_array_index (labels, GstClassLabel, idx));
-        GstVideoRectangle rect = {6, 0, 100, 20};
-
-        gst_overlay->n_class_labels++;
-
-        if (gst_overlay->n_class_labels >
-                (guint) g_sequence_get_length (gst_overlay->text_id))
-          g_sequence_append(gst_overlay->text_id, calloc(1, sizeof(uint32_t)));
-
-        sub_item_id = (uint32_t *) g_sequence_get (g_sequence_get_iter_at_pos (
-            gst_overlay->text_id, gst_overlay->n_class_labels - 1));
-
-        rect.x += roimeta->x;
-        rect.y += roimeta->y + last_ov_y;
-
-        // Calculate the Y possition in case of multiple lines
-        last_ov_y += rect.h;
-
-        success = gst_overlay_apply_text_item (gst_overlay,
-            g_quark_to_string (label->name), color,
-            gst_overlay->text_font_size, &rect, sub_item_id);
+      // Due to limitation apply only the 1st item with most confidence.
+      if (labels->len != 0) {
+        GstClassLabel *label = &(g_array_index (labels, GstClassLabel, 0));
+        name = g_quark_to_string (label->name);
       }
     }
-
-    if (!success)
-      return FALSE;
   }
 
-  return TRUE;
+  return gst_overlay_apply_bbox_item (gst_overlay, &bbox, name, color,
+      gst_overlay->bbox_font_size, item_id);
 }
 
 static gboolean
 gst_overlay_apply_classification_item (GstOverlay * gst_overlay, gpointer meta,
-    __attribute__((unused)) uint32_t * item_id)
+    uint32_t * item_id)
 {
   GstVideoClassificationMeta *classmeta = (GstVideoClassificationMeta*) meta;
-  guint idx = 0;
-  gboolean success = TRUE;
 
-  if (classmeta->labels == NULL)
-    return TRUE;
+  // Due to limitation apply only the 1st item with most confidence.
+  GstClassLabel *label = &(g_array_index (classmeta->labels, GstClassLabel, 0));
+  GstVideoRectangle rect = gst_overlay->text_dest_rect;
 
-  for (idx = 0; (idx < classmeta->labels->len) && success; idx++) {
-    GstClassLabel *label = &(g_array_index (classmeta->labels, GstClassLabel, idx));
-    GstVideoRectangle rect = gst_overlay->text_dest_rect;
-    uint32_t *sub_item_id = NULL;
-
-    gst_overlay->n_class_labels++;
-
-    if (gst_overlay->n_class_labels >
-            (guint) g_sequence_get_length (gst_overlay->text_id))
-      g_sequence_append(gst_overlay->text_id, calloc(1, sizeof(uint32_t)));
-
-    sub_item_id = (uint32_t *) g_sequence_get (g_sequence_get_iter_at_pos (
-        gst_overlay->text_id, gst_overlay->n_class_labels - 1));
-
-    // Calculate the Y possition in case of multiple lines
-    if (gst_overlay->last_ov_y > 0) {
-      rect.y += gst_overlay->last_ov_y + rect.h - rect.y;
-    }
-    gst_overlay->last_ov_y = rect.y;
-
-    success = gst_overlay_apply_text_item (gst_overlay,
-        g_quark_to_string (label->name), label->color,
-        gst_overlay->text_font_size, &rect, sub_item_id);
+  // Calculate the Y possition in case of multiple lines
+  if (gst_overlay->last_ov_y > 0) {
+    rect.y += gst_overlay->last_ov_y + rect.h - rect.y;
   }
+  gst_overlay->last_ov_y = rect.y;
 
-  return success;
+  return gst_overlay_apply_text_item (gst_overlay,
+      g_quark_to_string (label->name), label->color,
+      gst_overlay->text_font_size, &rect, item_id);
 }
 
 static gboolean
@@ -2962,7 +2914,6 @@ gst_overlay_transform_frame_ip (GstVideoFilter *filter, GstVideoFrame *frame)
   }
 
   // Reset the trackers for the inherited metas.
-  gst_overlay->n_class_labels = 0;
   gst_overlay->n_landmark_metas = 0;
 
   res = gst_overlay_apply_item_list (gst_overlay,
@@ -3130,7 +3081,6 @@ gst_overlay_init (GstOverlay * gst_overlay)
   gst_overlay->pose_id = g_sequence_new (free);
   gst_overlay->optclflow_id = g_sequence_new (free);
 
-  gst_overlay->n_class_labels = 0;
   gst_overlay->n_landmark_metas = 0;
 
   gst_overlay->usr_text = g_sequence_new (gst_overlay_free_user_text_entry);
