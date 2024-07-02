@@ -31,6 +31,7 @@ target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_SOUP_LIBRARIES}
   ${GST_WEBRTC_LIBRARIES}
   ${GST_SDP_LIBRARIES}
+  gstapp-1.0
 )
 
 install(
