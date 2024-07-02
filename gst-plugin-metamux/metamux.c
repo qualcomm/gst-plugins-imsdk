@@ -1180,6 +1180,12 @@ gst_metamux_main_sink_pad_setcaps (GstMetaMux * muxer, GstPad * pad,
   }
 
   GST_DEBUG_OBJECT (pad, "Negotiated caps %" GST_PTR_FORMAT, caps);
+
+  // Wait for pending buffers to be processed before sending new caps.
+  GST_METAMUX_PAD_WAIT_IDLE (GST_METAMUX_SINK_PAD (pad));
+  GST_METAMUX_PAD_WAIT_IDLE (muxer->srcpad);
+
+  GST_DEBUG_OBJECT (pad, "Pushing new caps %" GST_PTR_FORMAT, caps);
   return gst_pad_push_event (GST_PAD (muxer->srcpad), gst_event_new_caps (caps));
 }
 
