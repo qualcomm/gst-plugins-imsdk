@@ -55,6 +55,7 @@ if (ENABLE_ML AND ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE)
   add_subdirectory(gst-ai-multi-input-output-object-detection)
   add_subdirectory(gst-ai-monodepth)
   add_subdirectory(gst-ai-daisychain-detection-classification)
+  add_subdirectory(gst-ai-superresolution)
 endif () # ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE
 
 if (ENABLE_VIDEO_DECODE)
