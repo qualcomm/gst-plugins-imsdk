@@ -583,7 +583,7 @@ cleanup:
 
 static gboolean
 gst_ml_snpe_engine_setup_backend (GstMLSnpeEngine *engine,
-  GstMLSnpeSettings * settings)
+    GstMLSnpeSettings * settings)
 {
   Snpe_StringList_Handle_t strlist = NULL;
   Snpe_RuntimeList_Handle_t rtlist = NULL;
@@ -702,10 +702,10 @@ gst_ml_snpe_engine_setup_backend (GstMLSnpeEngine *engine,
     engine->StringListAppend (strlist, (const gchar *) ls->data);
 
   if (settings->is_tensor) {
-    error = engine->SNPEBuilderSetOutputLayers (engine->builder, strlist);
+    error = engine->SNPEBuilderSetOutputTensors (engine->builder, strlist);
     success = (error == SNPE_SUCCESS) ? TRUE : FALSE;
   } else {
-    error = engine->SNPEBuilderSetOutputTensors (engine->builder, strlist);
+    error = engine->SNPEBuilderSetOutputLayers (engine->builder, strlist);
     success = (error == SNPE_SUCCESS) ? TRUE : FALSE;
   }
 
