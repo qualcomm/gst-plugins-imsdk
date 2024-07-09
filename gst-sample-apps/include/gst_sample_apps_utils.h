@@ -85,20 +85,6 @@ typedef enum {
 } GstYoloModelType;
 
 /**
- * GstSegmentationModelType:
- * @GST_SEGMENTATION_TYPE_NONE       : Invalid Model Type.
- * @GST_SEGMENTATION_TYPE_DEEPLABV3  : DEEPLABV3 Segmentation Model.
- * @GST_SEGMENTATION_TYPE_FFNET40S   : FFNET40S Segmentation Model.
- *
- * Type of Segmentation Model.
- */
-typedef enum {
-  GST_SEGMENTATION_TYPE_NONE,
-  GST_SEGMENTATION_TYPE_DEEPLABV3,
-  GST_SEGMENTATION_TYPE_FFNET40S
-} GstSegmentationModelType;
-
-/**
  * GstStreamSourceType:
  * @GST_STREAM_TYPE_NONE    : Invalid Stream Type.
  * @GST_STREAM_TYPE_CAMERA  : Camera Stream.

@@ -33,10 +33,10 @@
  * Default models and labels path, if not provided by user
  */
 #define DEFAULT_SNPE_SEGMENTATION_MODEL "/opt/deeplabv3_resnet50.dlc"
-#define DEFAULT_TFLITE_DEEPLABV3_SEGMENTATION_MODEL \
-    "/opt/deeplabv3_resnet50.tflite"
-#define DEFAULT_TFLITE_FFNET40S_SEGMENTATION_MODEL \
-    "/opt/ffnet_40s_quantized.tflite"
+#define DEFAULT_TFLITE_UINT8_SEGMENTATION_MODEL \
+    "/opt/deeplabv3_resnet50_uint8.tflite"
+#define DEFAULT_TFLITE_INT8_SEGMENTATION_MODEL \
+    "/opt/ffnet_40s_quantized_int8.tflite"
 #define DEFAULT_SEGMENTATION_LABELS "/opt/deeplabv3_resnet50.labels"
 
 /**
@@ -46,18 +46,6 @@
 #define DEFAULT_CAMERA_OUTPUT_WIDTH 1280
 #define DEFAULT_CAMERA_OUTPUT_HEIGHT 720
 #define DEFAULT_CAMERA_FRAME_RATE 30
-
-/**
- * Default mean and sigma values for INT8 model
- * will be done in qtimlvconverter based on model input
- */
-#define MEAN_R 123.674988251
-#define MEAN_G 116.279988953
-#define MEAN_B 103.529990165
-
-#define SIGMA_R 0.017124752
-#define SIGMA_G 0.017507004
-#define SIGMA_B 0.017429196
 
 /**
  * Default constants to dequantize values
@@ -104,8 +92,8 @@ build_pad_property (GValue * property, gdouble values[], gint num)
  */
 static gboolean
 create_pipe (GstAppContext * appctx, GstModelType model_type,
-    GstSegmentationModelType tflite_model, const gchar * model_path,
-    const gchar * labels_path)
+    GstModelFormatType model_format, const gchar * model_path,
+    const gchar * labels_path, const gchar * constants)
 {
   GstElement *qtiqmmfsrc, *qmmfsrc_caps, *qtivtransform, *queue[QUEUE_COUNT];
   GstElement *tee, *qtimlvconverter, *qtimlelement;
@@ -121,8 +109,6 @@ create_pipe (GstAppContext * appctx, GstModelType model_type,
   gint height = DEFAULT_CAMERA_OUTPUT_HEIGHT;
   gint framerate = DEFAULT_CAMERA_FRAME_RATE;
   gint module_id;
-  GValue mean = G_VALUE_INIT, sigma = G_VALUE_INIT;
-  gdouble mean_vals[3], sigma_vals[3];
 
   // 1. Create the elements or Plugins
   // Create qtiqmmfsrc plugin for camera stream
@@ -273,9 +259,9 @@ create_pipe (GstAppContext * appctx, GstModelType model_type,
   if (module_id != -1) {
     g_object_set (G_OBJECT (qtimlvsegmentation),
         "module", module_id, "labels", labels_path, NULL);
-    if (tflite_model == GST_SEGMENTATION_TYPE_FFNET40S) {
+    if (model_format == GST_MODEL_FORMAT_INT8) {
       g_object_set (G_OBJECT (qtimlvsegmentation),
-          "constants", DEFAULT_CONSTANTS,
+          "constants", constants,
           NULL);
     }
   } else {
@@ -283,29 +269,11 @@ create_pipe (GstAppContext * appctx, GstModelType model_type,
     goto error;
   }
 
-  // 2.4 Set the properties of qtimlvconverter plugin- mean and sigma
-  if (tflite_model == GST_SEGMENTATION_TYPE_FFNET40S) {
-    g_value_init (&mean, GST_TYPE_ARRAY);
-    g_value_init (&sigma, GST_TYPE_ARRAY);
-
-    mean_vals[0] = MEAN_R; mean_vals[1] = MEAN_G; mean_vals[2] = MEAN_B;
-    sigma_vals[0] = SIGMA_R; sigma_vals[1] = SIGMA_G; sigma_vals[2] = SIGMA_B;
-
-    build_pad_property (&mean, mean_vals, 3);
-    build_pad_property (&sigma, sigma_vals, 3);
-
-    g_object_set_property (G_OBJECT (qtimlvconverter), "mean", &mean);
-    g_object_set_property (G_OBJECT (qtimlvconverter), "sigma", &sigma);
-
-    g_value_unset (&mean);
-    g_value_unset (&sigma);
-  }
-
-  // 2.5 Set the properties of Wayland compositor
+  // 2.4 Set the properties of Wayland compositor
   g_object_set (G_OBJECT (waylandsink), "sync", false, NULL);
   g_object_set (G_OBJECT (waylandsink), "fullscreen", true, NULL);
 
-  // 2.6 Set the properties of fpsdisplaysink plugin- sync,
+  // 2.5 Set the properties of fpsdisplaysink plugin- sync,
   // signal-fps-measurements, text-overlay and video-sink
   g_object_set (G_OBJECT (fpsdisplaysink), "sync", false, NULL);
   g_object_set (G_OBJECT (fpsdisplaysink), "signal-fps-measurements", true, NULL);
@@ -426,10 +394,11 @@ main (gint argc, gchar * argv[])
   GOptionContext *ctx = NULL;
   const gchar *model_path = NULL;
   const gchar *labels_path = DEFAULT_SEGMENTATION_LABELS;
+  const gchar *constants = DEFAULT_CONSTANTS;
   const gchar *app_name = NULL;
   GstAppContext appctx = {};
   GstModelType model_type = GST_MODEL_TYPE_SNPE;
-  GstSegmentationModelType tflite_model = GST_SEGMENTATION_TYPE_DEEPLABV3;
+  GstModelFormatType model_format = GST_MODEL_FORMAT_UINT8;
   gboolean ret = FALSE;
   gchar help_description[1024];
   guint intrpt_watch_id = 0;
@@ -445,9 +414,9 @@ main (gint argc, gchar * argv[])
       "Execute Model in SNPE DLC (1) or TFlite (2) format",
       "1 or 2"
     },
-    { "tflite-model", 't', 0, G_OPTION_ARG_INT,
-      &tflite_model,
-      "DEEPLABV3 (1) or FFNET40S (2) TFlite format",
+    { "model-format", 't', 0, G_OPTION_ARG_INT,
+      &model_format,
+      "UINT8 (1) or INT8 (2) format",
       "1 or 2"
     },
     { "model", 'm', 0, G_OPTION_ARG_STRING,
@@ -456,7 +425,7 @@ main (gint argc, gchar * argv[])
       "      Default model path for SNPE DLC: "
       DEFAULT_SNPE_SEGMENTATION_MODEL "\n"
       "      Default model path for TFlite Model: "
-      DEFAULT_TFLITE_DEEPLABV3_SEGMENTATION_MODEL,
+      DEFAULT_TFLITE_UINT8_SEGMENTATION_MODEL,
       "/PATH"
     },
     { "labels", 'l', 0, G_OPTION_ARG_STRING,
@@ -465,6 +434,14 @@ main (gint argc, gchar * argv[])
       "      Default labels path: " DEFAULT_SEGMENTATION_LABELS,
       "/PATH"
     },
+    { "constants", 'c', 0, G_OPTION_ARG_STRING,
+      &constants,
+      "Constants, offsets and coefficients used by the chosen module \n"
+      "for post-processing of incoming tensors."
+      " Applicable only for some modules\n"
+      "      Default constants: " DEFAULT_CONSTANTS,
+      "/CONSTANTS"
+    },
     { NULL }
   };
 
@@ -472,11 +449,11 @@ main (gint argc, gchar * argv[])
 
   snprintf (help_description, 1023, "\nExample:\n"
       "  %s --ml-framework=1\n"
-      "  %s -f 2 -t 1\n"
+      "  %s -f 2 -t 2 -c  \"%s\" \n"
       "  %s -f 1 --model=%s --labels=%s\n"
       "\nThis Sample App demonstrates Segmentation on Live Stream",
-      app_name, app_name, app_name, DEFAULT_SNPE_SEGMENTATION_MODEL,
-      DEFAULT_SEGMENTATION_LABELS);
+      app_name, app_name, DEFAULT_CONSTANTS, app_name,
+	  DEFAULT_SNPE_SEGMENTATION_MODEL, DEFAULT_SEGMENTATION_LABELS);
   help_description[1023] = '\0';
 
   // Parse command line entries.
@@ -514,22 +491,22 @@ main (gint argc, gchar * argv[])
     return -EINVAL;
   }
 
-  if (tflite_model < GST_SEGMENTATION_TYPE_DEEPLABV3 ||
-      tflite_model > GST_SEGMENTATION_TYPE_FFNET40S) {
-    g_printerr ("Invalid tflite-model option selected\n"
+  if (model_format < GST_MODEL_FORMAT_UINT8 ||
+      model_format > GST_MODEL_FORMAT_INT8) {
+    g_printerr ("Invalid model-format option selected\n"
         "Available options:\n"
-        "    DEEPLABV3: %d\n"
-        "    FFNET40S: %d\n",
-        GST_SEGMENTATION_TYPE_DEEPLABV3, GST_SEGMENTATION_TYPE_FFNET40S);
+        "    UINT8: %d\n"
+        "    INT8: %d\n",
+        GST_MODEL_FORMAT_UINT8, GST_MODEL_FORMAT_INT8);
     return -EINVAL;
   }
 
   // Set model path for execution
   model_path = model_path ? model_path : (model_type == GST_MODEL_TYPE_SNPE ?
       DEFAULT_SNPE_SEGMENTATION_MODEL :
-      (tflite_model == GST_SEGMENTATION_TYPE_DEEPLABV3) ?
-      DEFAULT_TFLITE_DEEPLABV3_SEGMENTATION_MODEL :
-      DEFAULT_TFLITE_FFNET40S_SEGMENTATION_MODEL);
+      (model_format == GST_MODEL_FORMAT_INT8) ?
+      DEFAULT_TFLITE_INT8_SEGMENTATION_MODEL :
+      DEFAULT_TFLITE_UINT8_SEGMENTATION_MODEL);
 
   if (!file_exists (model_path)) {
     g_print ("Invalid model file path: %s\n", model_path);
@@ -557,7 +534,8 @@ main (gint argc, gchar * argv[])
   appctx.pipeline = pipeline;
 
   // Build the pipeline, link all elements in the pipeline
-  ret = create_pipe (&appctx, model_type, tflite_model, model_path, labels_path);
+  ret = create_pipe (&appctx, model_type, model_format, model_path,
+            labels_path, constants);
   if (!ret) {
     g_printerr ("ERROR: failed to create GST pipe.\n");
     destroy_pipe (&appctx);
