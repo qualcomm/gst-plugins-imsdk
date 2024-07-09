@@ -150,7 +150,7 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
   prediction->info = pmeta->info;
 
   // Extract the source tensor region with actual data.
-  gst_ml_protecton_meta_get_source_region (pmeta, &region);
+  gst_ml_structure_get_source_region (pmeta->info, &region);
 
   mltype = GST_ML_FRAME_TYPE (mlframe);
   threshold = gst_ml_module_get_threshold_value (mltype, submodule->threshold);
@@ -307,12 +307,12 @@ gst_ml_module_parse_monoblock_tensors (GstMLSubModule * submodule,
 
   // Extract the dimensions of the input tensor that produced the output tensors.
   if (submodule->inwidth == 0 || submodule->inheight == 0) {
-    gst_ml_protecton_meta_get_source_dimensions (pmeta, &(submodule->inwidth),
+    gst_ml_structure_get_source_dimensions (pmeta->info, &(submodule->inwidth),
         &(submodule->inheight));
   }
 
   // Extract the source tensor region with actual data.
-  gst_ml_protecton_meta_get_source_region (pmeta, &region);
+  gst_ml_structure_get_source_region (pmeta->info, &region);
 
   data = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
   mltype = GST_ML_FRAME_TYPE (mlframe);

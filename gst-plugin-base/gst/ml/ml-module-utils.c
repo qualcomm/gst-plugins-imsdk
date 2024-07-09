@@ -53,26 +53,26 @@ gst_ml_tensor_compare_values (GstMLType mltype, gpointer data, guint l_idx,
 }
 
 void
-gst_ml_protecton_meta_set_source_dimensions (GstProtectionMeta * pmeta,
+gst_ml_structure_set_source_dimensions (GstStructure * structure,
     guint width, guint height)
 {
-  gst_structure_set (pmeta->info, "input-tensor-width", G_TYPE_UINT, width,
+  gst_structure_set (structure, "input-tensor-width", G_TYPE_UINT, width,
       "input-tensor-height", G_TYPE_UINT, height, NULL);
 }
 
 void
-gst_ml_protecton_meta_get_source_dimensions (GstProtectionMeta * pmeta,
+gst_ml_structure_get_source_dimensions (const GstStructure * structure,
     guint * width, guint * height)
 {
-  gst_structure_get_uint (pmeta->info, "input-tensor-width", width);
-  gst_structure_get_uint (pmeta->info, "input-tensor-height", height);
+  gst_structure_get_uint (structure, "input-tensor-width", width);
+  gst_structure_get_uint (structure, "input-tensor-height", height);
 }
 
 void
-gst_ml_protecton_meta_set_source_region (GstProtectionMeta * pmeta,
+gst_ml_structure_set_source_region (GstStructure * structure,
     GstVideoRectangle * region)
 {
-  gst_structure_set (pmeta->info,
+  gst_structure_set (structure,
       "input-region-x", G_TYPE_INT, region->x,
       "input-region-y", G_TYPE_INT, region->y,
       "input-region-width", G_TYPE_INT, region->w,
@@ -81,11 +81,11 @@ gst_ml_protecton_meta_set_source_region (GstProtectionMeta * pmeta,
 }
 
 void
-gst_ml_protecton_meta_get_source_region (GstProtectionMeta * pmeta,
+gst_ml_structure_get_source_region (const GstStructure * structure,
     GstVideoRectangle * region)
 {
-  gst_structure_get_int (pmeta->info, "input-region-x", &(region->x));
-  gst_structure_get_int (pmeta->info, "input-region-y", &(region->y));
-  gst_structure_get_int (pmeta->info, "input-region-width", &(region->w));
-  gst_structure_get_int (pmeta->info, "input-region-height", &(region->h));
+  gst_structure_get_int (structure, "input-region-x", &(region->x));
+  gst_structure_get_int (structure, "input-region-y", &(region->y));
+  gst_structure_get_int (structure, "input-region-width", &(region->w));
+  gst_structure_get_int (structure, "input-region-height", &(region->h));
 }

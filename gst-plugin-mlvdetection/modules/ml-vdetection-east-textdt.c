@@ -255,7 +255,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   prediction->info = pmeta->info;
 
   // Extract the source tensor region with actual data.
-  gst_ml_protecton_meta_get_source_region (pmeta, &region);
+  gst_ml_structure_get_source_region (pmeta->info, &region);
 
   mltype = GST_ML_FRAME_TYPE (mlframe);
   n_rows = GST_ML_FRAME_DIM (mlframe, 0, 1);

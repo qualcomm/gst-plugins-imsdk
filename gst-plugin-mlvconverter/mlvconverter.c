@@ -599,13 +599,13 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
     destination->y -= offset;
 
     // Add the tensor region actually populated with data for decryption.
-    gst_ml_protecton_meta_set_source_region (pmeta, destination);
+    gst_ml_structure_set_source_region (pmeta->info, destination);
 
     // Resore the Y axis offset for the composition.
     destination->y += offset;
 
     // Add input tensor resolution for tensor result decryption downstream.
-    gst_ml_protecton_meta_set_source_dimensions (pmeta,
+    gst_ml_structure_set_source_dimensions (pmeta->info,
         GST_ML_INFO_TENSOR_DIM (mlconverter->mlinfo, 0, 2),
         GST_ML_INFO_TENSOR_DIM (mlconverter->mlinfo, 0, 1));
 

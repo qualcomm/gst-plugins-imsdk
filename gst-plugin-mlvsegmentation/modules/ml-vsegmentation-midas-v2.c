@@ -198,12 +198,12 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
   // Extract the dimensions of the input tensor that produced the output tensors.
   if (submodule->inwidth == 0 || submodule->inheight == 0) {
-    gst_ml_protecton_meta_get_source_dimensions (pmeta, &(submodule->inwidth),
+    gst_ml_structure_get_source_dimensions (pmeta->info, &(submodule->inwidth),
         &(submodule->inheight));
   }
 
   // Extract the source tensor region for color mask extraction.
-  gst_ml_protecton_meta_get_source_region (pmeta, &region);
+  gst_ml_structure_get_source_region (pmeta->info, &region);
 
   // Transform source tensor region dimensions to dimensions in the color mask.
   region.x *= (GST_ML_FRAME_DIM (mlframe, 0, 2) / (gfloat) submodule->inwidth);

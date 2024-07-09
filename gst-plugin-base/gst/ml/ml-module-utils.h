@@ -54,8 +54,8 @@ gst_ml_tensor_compare_values (GstMLType mltype, gpointer data, guint l_idx,
                               guint r_idx);
 
 /**
- * gst_ml_protecton_meta_set_source_dimensions:
- * @pmeta: Protection meta for ML post-processing parameters.
+ * gst_ml_structure_set_source_dimensions:
+ * @structure: #GstStructure for ML post-processing parameters.
  * @width: Width of the source tensor.
  * @height: Height of the source tensor.
  *
@@ -65,12 +65,12 @@ gst_ml_tensor_compare_values (GstMLType mltype, gpointer data, guint l_idx,
  * return: None
  */
 void
-gst_ml_protecton_meta_set_source_dimensions (GstProtectionMeta * pmeta,
-                                             guint width, guint height);
+gst_ml_structure_set_source_dimensions (GstStructure * structure,
+                                        guint width, guint height);
 
 /**
- * gst_ml_protecton_meta_get_source_dimensions:
- * @pmeta: Protection meta containing ML post-processing parameters.
+ * gst_ml_structure_get_source_dimensions:
+ * @structure: #GstStructure for ML post-processing parameters.
  * @width: Width parameter which will be populated.
  * @height: Height parameter which will be populated.
  *
@@ -80,12 +80,12 @@ gst_ml_protecton_meta_set_source_dimensions (GstProtectionMeta * pmeta,
  * return: None
  */
 void
-gst_ml_protecton_meta_get_source_dimensions (GstProtectionMeta * pmeta,
-                                             guint * width, guint * height);
+gst_ml_structure_get_source_dimensions (const GstStructure * structure,
+                                        guint * width, guint * height);
 
 /**
- * gst_ml_protecton_meta_set_source_region:
- * @pmeta: Protection meta for ML post-processing parameters.
+ * gst_ml_structure_set_source_region:
+ * @structure: #GstStructure for ML post-processing parameters.
  * @region: Video rectangle with the region in the tensor.
  *
  * Helper function for populating the postion and dimensions of the region
@@ -94,12 +94,12 @@ gst_ml_protecton_meta_get_source_dimensions (GstProtectionMeta * pmeta,
  * return: None
  */
 void
-gst_ml_protecton_meta_set_source_region (GstProtectionMeta * pmeta,
-                                         GstVideoRectangle * region);
+gst_ml_structure_set_source_region (GstStructure * structure,
+                                    GstVideoRectangle * region);
 
 /**
- * gst_ml_protecton_meta_get_source_region:
- * @pmeta: Protection meta containing ML post-processing parameters.
+ * gst_ml_structure_get_source_region:
+ * @structure: #GstStructure for ML post-processing parameters.
  * @region: Video rectangle which will be populated.
  *
  * Helper function for retrieving the postion and dimensions of the region
@@ -108,8 +108,8 @@ gst_ml_protecton_meta_set_source_region (GstProtectionMeta * pmeta,
  * return: None
  */
 void
-gst_ml_protecton_meta_get_source_region (GstProtectionMeta * pmeta,
-                                         GstVideoRectangle * region);
+gst_ml_structure_get_source_region (const GstStructure * structure,
+                                    GstVideoRectangle * region);
 
 G_END_DECLS
 
