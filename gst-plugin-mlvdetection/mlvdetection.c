@@ -72,6 +72,7 @@
 
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
+#include <gst/ml/ml-module-utils.h>
 #include <gst/video/gstimagepool.h>
 #include <gst/memory/gstmempool.h>
 #include <gst/utils/common-utils.h>
@@ -360,11 +361,35 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
     GstMLBoxPrediction *prediction = NULL;
     GstMLBoxEntry *entry = NULL;
     gchar *string = NULL;
+    GstVideoRectangle region = { 0, };
 
     prediction = &(g_array_index (detection->predictions, GstMLBoxPrediction, idx));
 
     n_entries = (prediction->entries->len < detection->n_results) ?
         prediction->entries->len : detection->n_results;
+
+    // No decoded poses, nothing to do.
+    if (n_entries == 0)
+      continue;
+
+    // Get the source tensor region with actual data.
+    gst_ml_structure_get_source_region (prediction->info, &region);
+
+    // Recalculate the region dimensions depending on the ratios.
+    if ((region.w * vmeta->height) > (region.h * vmeta->width)) {
+      region.h = gst_util_uint64_scale_int (vmeta->width, region.h, region.w);
+      region.w = vmeta->width;
+    } else if ((region.w * vmeta->height) < (region.h * vmeta->width)) {
+      region.w = gst_util_uint64_scale_int (vmeta->height, region.w, region.h);
+      region.h = vmeta->height;
+    } else {
+      region.w = vmeta->width;
+      region.h = vmeta->height;
+    }
+
+    // Additional overwrite of X and Y axis for centred image disposition.
+    region.x = (vmeta->width - region.w) / 2;
+    region.y = (vmeta->height - region.h) / 2;
 
     for (num = 0; num < n_entries; num++) {
       entry = &(g_array_index (prediction->entries, GstMLBoxEntry, num));
@@ -374,10 +399,10 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
           entry->confidence);
 
       // Set the bounding box parameters based on the output buffer dimensions.
-      x      = ABS (entry->left) * vmeta->width;
-      y      = ABS (entry->top) * vmeta->height;
-      width  = ABS (entry->right - entry->left) * vmeta->width;
-      height = ABS (entry->bottom - entry->top) * vmeta->height;
+      x      = region.x + (ABS (entry->left) * region.w);
+      y      = region.y + (ABS (entry->top) * region.h);
+      width  = ABS (entry->right - entry->left) * region.w;
+      height = ABS (entry->bottom - entry->top) * region.h;
 
       // Clip width and height if it outside the frame limits.
       width = ((x + width) > vmeta->width) ? (vmeta->width - x) : width;
