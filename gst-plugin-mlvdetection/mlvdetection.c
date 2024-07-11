@@ -69,6 +69,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
@@ -114,11 +115,12 @@ G_DEFINE_TYPE (GstMLVideoDetection, gst_ml_video_detection,
 #define GST_ML_VIDEO_DETECTION_SINK_CAPS \
     "neural-network/tensors"
 
-#define DEFAULT_PROP_MODULE      0
-#define DEFAULT_PROP_LABELS      NULL
-#define DEFAULT_PROP_NUM_RESULTS 5
-#define DEFAULT_PROP_THRESHOLD   10.0F
-#define DEFAULT_PROP_CONSTANTS   NULL
+#define DEFAULT_PROP_MODULE        0
+#define DEFAULT_PROP_LABELS        NULL
+#define DEFAULT_PROP_NUM_RESULTS   5
+#define DEFAULT_PROP_THRESHOLD     10.0F
+#define DEFAULT_PROP_CONSTANTS     NULL
+#define DEFAULT_PROP_STABILIZATION TRUE
 
 #define DEFAULT_MIN_BUFFERS      2
 #define DEFAULT_MAX_BUFFERS      10
@@ -128,6 +130,9 @@ G_DEFINE_TYPE (GstMLVideoDetection, gst_ml_video_detection,
 
 #define MAX_TEXT_LENGTH          25.0F
 
+#define DISPLACEMENT_THRESHOLD 0.7F
+#define POSITION_THRESHOLD 0.04
+
 enum
 {
   PROP_0,
@@ -136,6 +141,7 @@ enum
   PROP_NUM_RESULTS,
   PROP_THRESHOLD,
   PROP_CONSTANTS,
+  PROP_STABILIZATION,
 };
 
 enum {
@@ -269,6 +275,100 @@ gst_ml_video_detection_create_pool (GstMLVideoDetection * detection,
   }
 
   return pool;
+}
+
+
+void
+gst_ml_box_displacement_correction (GstMLBoxEntry * l_box, GArray * boxes)
+{
+  GstMLBoxEntry *r_box = NULL;
+  gdouble score = 0.0;
+  guint idx = 0;
+
+  if (boxes == NULL)
+    return;
+
+  for (idx = 0; idx < boxes->len;  idx++) {
+    r_box = &(g_array_index (boxes, GstMLBoxEntry, idx));
+
+    // If labels do not match, continue with next list entry.
+    if (l_box->name != r_box->name)
+      continue;
+
+    score = gst_ml_boxes_intersection_score (l_box, r_box);
+
+    // If the score is below the threshold, continue with next list entry.
+    if (score <= DISPLACEMENT_THRESHOLD)
+      continue;
+
+    // Previously detected box overlaps at ~95 % with current one, use it.
+    l_box->top = r_box->top;
+    l_box->left = r_box->left;
+    l_box->bottom = r_box->bottom;
+    l_box->right = r_box->right;
+
+    break;
+  }
+
+  return;
+}
+
+gint
+gst_ml_box_compare_entries_by_pos (const GstMLBoxEntry * l_entry,
+    const GstMLBoxEntry * r_entry)
+{
+  gfloat delta = l_entry->left - r_entry->left;
+
+  if (fabs (delta) > POSITION_THRESHOLD)
+    return (delta > 0) ? 1 : (-1);
+
+  delta = l_entry->top - r_entry->top;
+  if (fabs (delta) > POSITION_THRESHOLD)
+    return (delta > 0) ? 1 : (-1);
+
+  return 0;
+}
+
+static void
+gst_ml_video_detection_stabilization (GstMLVideoDetection * detection)
+{
+  guint idx = 0, num = 0;
+  GstMLBoxEntry *entry = NULL;
+  GArray *mlboxes = NULL;
+  GstMLBoxPrediction *prediction = NULL;
+
+  for (idx = 0; idx < detection->predictions->len; idx++) {
+    prediction =
+        &(g_array_index (detection->predictions, GstMLBoxPrediction, idx));
+    mlboxes = g_list_nth_data (detection->stashedmlboxes, idx);
+
+    for (num = 0; num < prediction->entries->len; num++) {
+      entry = &(g_array_index (prediction->entries, GstMLBoxEntry, num));
+
+      // Overwrite current box with previously detected one if required.
+      gst_ml_box_displacement_correction (entry, mlboxes);
+    }
+
+    // Stash the previous prediction results.
+    if (mlboxes) {
+      detection->stashedmlboxes =
+          g_list_remove (detection->stashedmlboxes, mlboxes);
+      g_array_free (mlboxes, TRUE);
+    }
+    detection->stashedmlboxes = g_list_append (detection->stashedmlboxes,
+        g_array_copy (prediction->entries));
+
+    // Clear lower confidence results before position sort
+    if (prediction->entries->len > detection->n_results) {
+      guint index = detection->n_results;
+      guint length = prediction->entries->len - detection->n_results;
+      g_array_remove_range (prediction->entries, index, length);
+    }
+
+    // Sort bboxes by possition
+    g_array_sort (prediction->entries,
+        (GCompareFunc) gst_ml_box_compare_entries_by_pos);
+  }
 }
 
 static gboolean
@@ -1089,6 +1189,10 @@ gst_ml_video_detection_transform (GstBaseTransform * base, GstBuffer * inbuffer,
       GST_BUFFER_FLAG_IS_SET (outbuffer, GST_BUFFER_FLAG_GAP))
     return GST_FLOW_OK;
 
+  // Apply stabilization for fluctuating bboxes
+  if (detection->stabilization)
+    gst_ml_video_detection_stabilization (detection);
+
   time = gst_util_get_timestamp ();
 
   if (detection->mode == OUTPUT_MODE_VIDEO)
@@ -1129,6 +1233,9 @@ gst_ml_video_detection_set_property (GObject * object, guint prop_id,
       break;
     case PROP_THRESHOLD:
       detection->threshold = g_value_get_double (value);
+      break;
+    case PROP_STABILIZATION:
+      detection->stabilization = g_value_get_boolean (value);
       break;
     case PROP_CONSTANTS:
     {
@@ -1172,6 +1279,9 @@ gst_ml_video_detection_get_property (GObject * object, guint prop_id,
       break;
     case PROP_THRESHOLD:
       g_value_set_double (value, detection->threshold);
+      break;
+    case PROP_STABILIZATION:
+      g_value_set_boolean (value, detection->stabilization);
       break;
     case PROP_CONSTANTS:
     {
@@ -1248,6 +1358,10 @@ gst_ml_video_detection_class_init (GstMLVideoDetectionClass * klass)
           "post-processing of incoming tensors in GstStructure string format. "
           "Applicable only for some modules.",
           DEFAULT_PROP_CONSTANTS, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject, PROP_STABILIZATION,
+      g_param_spec_boolean ("stabilization", "Stabilization enable",
+          "Enable stabilization of bboxes", DEFAULT_PROP_STABILIZATION,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_set_static_metadata (element,
       "Machine Learning image object detection", "Filter/Effect/Converter",
@@ -1283,6 +1397,7 @@ gst_ml_video_detection_init (GstMLVideoDetection * detection)
   detection->outpool = NULL;
   detection->module = NULL;
 
+  detection->stashedmlboxes = NULL;
   detection->stage_id = 0;
 
   detection->predictions = g_array_new (FALSE, FALSE, sizeof (GstMLBoxPrediction));
@@ -1296,6 +1411,7 @@ gst_ml_video_detection_init (GstMLVideoDetection * detection)
   detection->n_results = DEFAULT_PROP_NUM_RESULTS;
   detection->threshold = DEFAULT_PROP_THRESHOLD;
   detection->mlconstants = DEFAULT_PROP_CONSTANTS;
+  detection->stabilization = DEFAULT_PROP_STABILIZATION;
 
   // Handle buffers with GAP flag internally.
   gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM (detection), TRUE);
