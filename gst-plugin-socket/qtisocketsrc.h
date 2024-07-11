@@ -25,6 +25,11 @@
 * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*
+* Changes from Qualcomm Innovation Center are provided under the following license:
+*
+* Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
 #ifndef __GST_QTI_SOCKET_SRC_H__
@@ -32,6 +37,7 @@
 
 #include <gst/gst.h>
 #include <gst/base/gstpushsrc.h>
+#include <gst/ml/ml-info.h>
 
 G_BEGIN_DECLS
 
@@ -65,6 +71,13 @@ struct _GstFdSocketSrc
 {
   GstPushSrc element;
 
+  GThread *thread;
+  GCond cond;
+  GMutex mutex;
+  gboolean thread_done;
+  gboolean stop_thread;
+  gboolean release_done;
+
   guint64 timeout;
 
   gchar *sockfile;
@@ -76,6 +89,10 @@ struct _GstFdSocketSrc
   GMutex fdmaplock;
 
   GstBufferPool *pool;
+
+  GstSegment segment;
+
+  GstMLInfo *mlinfo;
 };
 
 struct _GstFdSocketSrcClass

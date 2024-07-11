@@ -25,6 +25,11 @@
 * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*
+* Changes from Qualcomm Innovation Center are provided under the following license:
+*
+* Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
 #ifndef __GST_QTI_SOCKET_H__
@@ -36,10 +41,12 @@
 #include <poll.h>
 
 #include <gst/video/gstvideometa.h>
+#include <gst/ml/gstmlmeta.h>
 
 typedef struct _GstFdMessage GstFdMessage;
 typedef struct _GstNewFrameMgs GstNewFrameMgs;
 typedef struct _GstReturnFrameMsg GstReturnFrameMsg;
+typedef struct _GstTensorMgs GstTensorMgs;
 
 struct __attribute__((packed, aligned(4))) _GstNewFrameMgs
 {
@@ -57,6 +64,15 @@ struct __attribute__((packed, aligned(4))) _GstNewFrameMgs
   gboolean use_buffer_pool;
 };
 
+struct __attribute__((packed, aligned(4))) _GstTensorMgs
+{
+  gint buf_id;
+  gsize size;
+  gsize maxsize;
+  GstMLTensorMeta meta;
+  guint64 timestamp;
+};
+
 struct __attribute__((packed, aligned(4))) _GstReturnFrameMsg
 {
   gint buf_id;
@@ -70,6 +86,7 @@ struct __attribute__((packed, aligned(4))) _GstFdMessage
     // EMPTY for MESSAGE_EOS
     // EMPTY for MESSAGE_DISCONNECT
     GstNewFrameMgs new_frame; // MESSAGE_NEW_FRAM
+    GstTensorMgs tensor_frame; // MESSAGE_NEW_TENSOR_FRAME
     GstReturnFrameMsg return_frame; // MESSAGE_RETURN_FRAME
   };
 };
@@ -79,6 +96,7 @@ enum
   MESSAGE_EOS,
   MESSAGE_DISCONNECT,
   MESSAGE_NEW_FRAME,
+  MESSAGE_NEW_TENSOR_FRAME,
   MESSAGE_RETURN_FRAME
 };
 
