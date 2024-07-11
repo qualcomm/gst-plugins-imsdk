@@ -99,6 +99,20 @@ typedef enum {
 } GstStreamSourceType;
 
 /**
+ * GstStreamSourceType:
+ * @GST_CAMERA_TYPE_NONE       : Invalid Stream Type.
+ * @GST_CAMERA_TYPE_PRIMARY    : Camera Stream.
+ * @GST_CAMERA_TYPE_SECONDARY  : Video File Stream.
+ *
+ * Type of CameraSource.
+ */
+typedef enum {
+  GST_CAMERA_TYPE_NONE = -1,
+  GST_CAMERA_TYPE_PRIMARY,
+  GST_CAMERA_TYPE_SECONDARY
+} GstCameraSourceType;
+
+/**
  * GstInferenceType:
  * @param GST_OBJECT_DETECTION: Object detection Pipeline.
  * @param GST_CLASSIFICATION: Classification Pipeline.
@@ -583,6 +597,23 @@ unref_elements(void *first_elem, ...) {
   }
 
   va_end(args);
+}
+
+// Recieves a list of pointers to variable containing pointer to gst element
+// and unrefs the gst element if needed
+static void
+cleanup_gst (void * first_elem, ...)
+{
+  va_list args;
+  void **p_gst_obj = (void **)first_elem;
+
+  va_start (args, first_elem);
+  while (p_gst_obj) {
+    if (*p_gst_obj)
+      gst_object_unref (*p_gst_obj);
+    p_gst_obj = va_arg (args, void **);
+  }
+  va_end (args);
 }
 
 #endif //GST_SAMPLE_APPS_UTILS_H
