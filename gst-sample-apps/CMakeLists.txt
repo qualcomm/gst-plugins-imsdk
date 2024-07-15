@@ -35,6 +35,7 @@ if (ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE)
   add_subdirectory(gst-add-streams-as-bundle-example)
   add_subdirectory(gst-add-remove-streams-runtime)
   add_subdirectory(gst-camera-burst-capture-example)
+  add_subdirectory(gst-usb-single-camera-app)
 endif () # ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE
 
 if (ENABLE_CAMERA)
