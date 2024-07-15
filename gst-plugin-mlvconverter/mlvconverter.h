@@ -121,6 +121,11 @@ struct _GstMLVideoConverter {
   /// Video info for the converter engine output, created from the ML info.
   GstVideoInfo         *vinfo;
 
+  /// The ID of the previous ML inference stage.
+  guint                src_stage_id;
+  /// The ID of current ML inference stage.
+  guint                stage_id;
+
   /// Buffer pools.
   GstBufferPool        *outpool;
 

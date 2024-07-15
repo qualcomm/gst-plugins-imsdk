@@ -43,7 +43,7 @@ G_DEFINE_TYPE(GstVideoSplitSrcPad, gst_video_split_srcpad, GST_TYPE_PAD);
 GST_DEBUG_CATEGORY_EXTERN (gst_video_split_debug);
 #define GST_CAT_DEFAULT gst_video_split_debug
 
-#define GST_TYPE_VIDEO_SPLIT_MODE (gst_video_split_mode_get_type())
+#define GST_TYPE_VIDEO_SPLIT_MODE   (gst_video_split_mode_get_type())
 
 #define DEFAULT_PROP_MODE           GST_VSPLIT_MODE_NONE
 #define DEFAULT_PROP_MIN_BUFFERS    2
@@ -1132,4 +1132,6 @@ gst_video_split_srcpad_init (GstVideoSplitSrcPad * pad)
   pad->pool = NULL;
   pad->buffers =
       gst_data_queue_new (queue_is_full_cb, NULL, queue_empty_cb, pad);
+
+  pad->mode = DEFAULT_PROP_MODE;
 }

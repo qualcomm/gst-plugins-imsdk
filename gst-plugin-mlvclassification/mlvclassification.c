@@ -74,6 +74,7 @@
 
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
+#include <gst/ml/ml-module-utils.h>
 #include <gst/video/gstimagepool.h>
 #include <gst/memory/gstmempool.h>
 #include <gst/utils/common-utils.h>
@@ -459,7 +460,7 @@ gst_ml_video_classification_fill_text_output (
   gchar *string = NULL, *name = NULL;
   GstMapInfo memmap = {};
   GValue list = G_VALUE_INIT, labels = G_VALUE_INIT, value = G_VALUE_INIT;
-  guint idx = 0, num = 0, n_entries = 0;
+  guint idx = 0, num = 0, n_entries = 0, sequence_idx = 0, id = 0;
   gsize length = 0;
 
   g_value_init (&list, GST_TYPE_LIST);
@@ -477,20 +478,24 @@ gst_ml_video_classification_fill_text_output (
     n_entries = (prediction->entries->len < classification->n_results) ?
         prediction->entries->len : classification->n_results;
 
+    gst_structure_get_uint (prediction->info, "sequence-index", &sequence_idx);
+
     for (num = 0; num < n_entries; num++) {
       entry = &(g_array_index (prediction->entries, GstMLClassEntry, num));
 
-      GST_TRACE_OBJECT (classification, "Batch: %u, label: %s, confidence: "
-          "%.1f%%", prediction->batch_idx, g_quark_to_string (entry->name),
-          entry->confidence);
+      id = GST_META_ID (classification->stage_id, sequence_idx, num);
+
+      GST_TRACE_OBJECT (classification, "Batch: %u, ID: %X, Label: %s, "
+          "Confidence: %.1f%%", prediction->batch_idx, id,
+          g_quark_to_string (entry->name), entry->confidence);
 
       // Replace empty spaces otherwise subsequent stream parse call will fail.
       name = g_strdup (g_quark_to_string (entry->name));
       name = g_strdelimit (name, " ", '.');
 
-      structure = gst_structure_new (name, "id", G_TYPE_UINT, num,
-          "confidence", G_TYPE_DOUBLE,  entry->confidence, "color", G_TYPE_UINT,
-          entry->color, NULL);
+      structure = gst_structure_new (name, "id", G_TYPE_UINT, id, "confidence",
+          G_TYPE_DOUBLE,  entry->confidence, "color", G_TYPE_UINT, entry->color,
+          NULL);
       g_free (name);
 
       g_value_take_boxed (&value, structure);
@@ -507,8 +512,11 @@ gst_ml_video_classification_fill_text_output (
     val = gst_structure_get_value (prediction->info, "timestamp");
     gst_structure_set_value (structure, "timestamp", val);
 
-    val = gst_structure_get_value (prediction->info, "sequence-id");
-    gst_structure_set_value (structure, "sequence-id", val);
+    val = gst_structure_get_value (prediction->info, "sequence-index");
+    gst_structure_set_value (structure, "sequence-index", val);
+
+    val = gst_structure_get_value (prediction->info, "sequence-num-entries");
+    gst_structure_set_value (structure, "sequence-num-entries", val);
 
     if ((val = gst_structure_get_value (prediction->info, "stream-id")))
       gst_structure_set_value (structure, "stream-id", val);
@@ -740,6 +748,33 @@ gst_ml_video_classification_prepare_output_buffer (GstBaseTransform * base,
   gst_buffer_copy_into (*outbuffer, inbuffer, GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
 
   return GST_FLOW_OK;
+}
+
+static gboolean
+gst_ml_video_classification_sink_event (GstBaseTransform * base, GstEvent * event)
+{
+  GstMLVideoClassification *classification = GST_ML_VIDEO_CLASSIFICATION (base);
+
+  switch (GST_EVENT_TYPE (event)) {
+    case GST_EVENT_CUSTOM_DOWNSTREAM_OOB:
+    {
+      const GstStructure *structure = gst_event_get_structure (event);
+
+      // Not a supported custom event, pass it to the default handling function.
+      if (structure == NULL ||
+          !gst_structure_has_name (structure, "ml-inference-information"))
+        break;
+
+      gst_structure_get_uint (structure, "stage-id", &(classification->stage_id));
+      GST_INFO_OBJECT (classification, "Stage ID: %u", classification->stage_id);
+
+      return gst_pad_push_event (GST_BASE_TRANSFORM_SRC_PAD (base), event);
+    }
+    default:
+      break;
+  }
+
+  return GST_BASE_TRANSFORM_CLASS (parent_class)->sink_event (base, event);
 }
 
 static GstCaps *
@@ -1204,6 +1239,8 @@ gst_ml_video_classification_class_init (GstMLVideoClassificationClass * klass)
   base->prepare_output_buffer =
       GST_DEBUG_FUNCPTR (gst_ml_video_classification_prepare_output_buffer);
 
+  base->sink_event = GST_DEBUG_FUNCPTR (gst_ml_video_classification_sink_event);
+
   base->transform_caps =
       GST_DEBUG_FUNCPTR (gst_ml_video_classification_transform_caps);
   base->fixate_caps =
@@ -1218,6 +1255,8 @@ gst_ml_video_classification_init (GstMLVideoClassification * classification)
 {
   classification->outpool = NULL;
   classification->module = NULL;
+
+  classification->stage_id = 0;
 
   classification->predictions =
       g_array_new (FALSE, FALSE, sizeof (GstMLClassPrediction));
