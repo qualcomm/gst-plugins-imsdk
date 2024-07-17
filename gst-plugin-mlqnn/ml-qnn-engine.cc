@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -18,15 +18,28 @@
 #define GST_CAT_DEFAULT gst_ml_qnn_engine_debug_category()
 #define GST_CAT_QNN_SDK gst_ml_qnn_sdk_debug_category()
 
-#define QNN_TENSOR_DATA_TYPE(tensor)      \
-    ((tensor.version == QNN_TENSOR_VERSION_1) ?      \
-        tensor.v1.dataType : QNN_DATATYPE_UNDEFINED)
+#define QNN_TENSOR_DATA_TYPE(tensor) \
+    ((tensor->version == QNN_TENSOR_VERSION_UNDEFINED) ? \
+        QNN_DATATYPE_UNDEFINED : ((tensor->version == QNN_TENSOR_VERSION_1) ? \
+            tensor->v1.dataType : tensor->v2.dataType))
 
 #define QNN_TENSOR_DIMENSION(tensor, idx) \
-    ((tensor.version == QNN_TENSOR_VERSION_1) ? tensor.v1.dimensions[idx] : 0)
+    ((tensor->version == QNN_TENSOR_VERSION_UNDEFINED) ? \
+        0 : ((tensor->version == QNN_TENSOR_VERSION_1) ?  \
+            tensor->v1.dimensions[idx] : tensor->v2.dimensions[idx]))
 
 #define QNN_TENSOR_RANK(tensor) \
-    ((tensor.version == QNN_TENSOR_VERSION_1) ? tensor.v1.rank : 0u)
+    ((tensor->version == QNN_TENSOR_VERSION_UNDEFINED) ? \
+        0u : ((tensor->version == QNN_TENSOR_VERSION_1) ? \
+            tensor->v1.rank : tensor->v2.rank))
+
+#define QNN_TENSOR_CLIENTBUF(tensor) \
+    ((tensor->version == QNN_TENSOR_VERSION_1) ? \
+        tensor->v1.clientBuf : tensor->v2.clientBuf)
+
+#define QNN_TENSOR_QUANTIZE_PARAMS(tensor) \
+    ((tensor->version == QNN_TENSOR_VERSION_1) ? \
+        tensor->v1.quantizeParams : tensor->v2.quantizeParams)
 
 // TODO: Workaround! Need to be exported by the QNN SDK.
 typedef struct {
@@ -187,12 +200,12 @@ gst_ml_qnn_convert_to_float (GstMLFrame *mlframe, guint idx,
   n_elements = gst_ml_info_tensor_size (&(mlframe->info), idx);
   n_elements /= gst_ml_type_get_size (mlframe->info.type);
 
-  switch (tensor->v1.dataType) {
+  switch (QNN_TENSOR_DATA_TYPE (tensor)) {
     case QNN_DATATYPE_UFIXED_POINT_8:
     {
-      uint8_t *data = reinterpret_cast<uint8_t *>(tensor->v1.clientBuf.data);
-      int32_t offset = tensor->v1.quantizeParams.scaleOffsetEncoding.offset;
-      float scale = tensor->v1.quantizeParams.scaleOffsetEncoding.scale;
+      uint8_t *data = reinterpret_cast<uint8_t *>(QNN_TENSOR_CLIENTBUF (tensor).data);
+      int32_t offset = QNN_TENSOR_QUANTIZE_PARAMS (tensor).scaleOffsetEncoding.offset;
+      float scale = QNN_TENSOR_QUANTIZE_PARAMS (tensor).scaleOffsetEncoding.scale;
 
       for (auto idx = 0; idx < n_elements; idx++)
         output[idx] = (float)(data[idx] + offset) * scale;
@@ -201,9 +214,9 @@ gst_ml_qnn_convert_to_float (GstMLFrame *mlframe, guint idx,
     }
     case QNN_DATATYPE_UFIXED_POINT_16:
     {
-      uint16_t *data = reinterpret_cast<uint16_t *>(tensor->v1.clientBuf.data);
-      int32_t offset = tensor->v1.quantizeParams.scaleOffsetEncoding.offset;
-      float scale = tensor->v1.quantizeParams.scaleOffsetEncoding.scale;
+      uint16_t *data = reinterpret_cast<uint16_t *>(QNN_TENSOR_CLIENTBUF (tensor).data);
+      int32_t offset = QNN_TENSOR_QUANTIZE_PARAMS (tensor).scaleOffsetEncoding.offset;
+      float scale = QNN_TENSOR_QUANTIZE_PARAMS (tensor).scaleOffsetEncoding.scale;
 
       for (auto idx = 0; idx < n_elements; idx++)
         output[idx] = (float)(data[idx] + offset) * scale;
@@ -212,7 +225,7 @@ gst_ml_qnn_convert_to_float (GstMLFrame *mlframe, guint idx,
     }
     case QNN_DATATYPE_UINT_8:
     {
-      uint8_t *data = reinterpret_cast<uint8_t *>(tensor->v1.clientBuf.data);
+      uint8_t *data = reinterpret_cast<uint8_t *>(QNN_TENSOR_CLIENTBUF (tensor).data);
 
       for (auto idx = 0; idx < n_elements; idx++)
         output[idx] = static_cast<float>(data[idx]);
@@ -221,7 +234,7 @@ gst_ml_qnn_convert_to_float (GstMLFrame *mlframe, guint idx,
     }
     case QNN_DATATYPE_UINT_16:
     {
-      uint16_t *data = reinterpret_cast<uint16_t *>(tensor->v1.clientBuf.data);
+      uint16_t *data = reinterpret_cast<uint16_t *>(QNN_TENSOR_CLIENTBUF (tensor).data);
 
       for (auto idx = 0; idx < n_elements; idx++)
         output[idx] = static_cast<float>(data[idx]);
@@ -230,7 +243,7 @@ gst_ml_qnn_convert_to_float (GstMLFrame *mlframe, guint idx,
     }
     case QNN_DATATYPE_UINT_32:
     {
-      uint32_t *data = reinterpret_cast<uint32_t *>(tensor->v1.clientBuf.data);
+      uint32_t *data = reinterpret_cast<uint32_t *>(QNN_TENSOR_CLIENTBUF (tensor).data);
 
       for (auto idx = 0; idx < n_elements; idx++)
         output[idx] = static_cast<float>(data[idx]);
@@ -239,7 +252,7 @@ gst_ml_qnn_convert_to_float (GstMLFrame *mlframe, guint idx,
     }
     case QNN_DATATYPE_INT_8:
     {
-      int8_t *data = reinterpret_cast<int8_t *>(tensor->v1.clientBuf.data);
+      int8_t *data = reinterpret_cast<int8_t *>(QNN_TENSOR_CLIENTBUF (tensor).data);
 
       for (auto idx = 0; idx < n_elements; idx++)
         output[idx] = static_cast<float>(data[idx]);
@@ -248,7 +261,7 @@ gst_ml_qnn_convert_to_float (GstMLFrame *mlframe, guint idx,
     }
     case QNN_DATATYPE_INT_16:
     {
-      int16_t *data = reinterpret_cast<int16_t *>(tensor->v1.clientBuf.data);
+      int16_t *data = reinterpret_cast<int16_t *>(QNN_TENSOR_CLIENTBUF (tensor).data);
 
       for (auto idx = 0; idx < n_elements; idx++)
         output[idx] = static_cast<float>(data[idx]);
@@ -257,7 +270,7 @@ gst_ml_qnn_convert_to_float (GstMLFrame *mlframe, guint idx,
     }
     case QNN_DATATYPE_INT_32:
     {
-      int32_t *data = reinterpret_cast<int32_t *>(tensor->v1.clientBuf.data);
+      int32_t *data = reinterpret_cast<int32_t *>(QNN_TENSOR_CLIENTBUF (tensor).data);
 
       for (auto idx = 0; idx < n_elements; idx++)
         output[idx] = static_cast<float>(data[idx]);
@@ -266,7 +279,7 @@ gst_ml_qnn_convert_to_float (GstMLFrame *mlframe, guint idx,
     }
     case QNN_DATATYPE_BOOL_8:
     {
-      uint8_t *data = reinterpret_cast<uint8_t *>(tensor->v1.clientBuf.data);
+      uint8_t *data = reinterpret_cast<uint8_t *>(QNN_TENSOR_CLIENTBUF (tensor).data);
 
       for (auto idx = 0; idx < n_elements; idx++)
         output[idx] = static_cast<float>(data[idx]);
@@ -487,6 +500,8 @@ gst_ml_qnn_engine_new (GstStructure *settings)
 {
   GstMLQnnEngine *engine = NULL;
   const GraphInfo_t *graph_info = NULL;
+  Qnn_Tensor_t *input_tensor = NULL;
+  Qnn_Tensor_t *output_tensor = NULL;
 
   GST_DEBUG ("Creating engine");
 
@@ -512,11 +527,12 @@ gst_ml_qnn_engine_new (GstStructure *settings)
   }
 
   graph_info = engine->graph_infos[0];
+  input_tensor = &(graph_info->inputTensors[0]);
 
   // Translate information about input tensors to GstMLInfo.
   engine->ininfo->n_tensors = graph_info->numInputTensors;
   engine->ininfo->type = qnn_to_ml_type (
-      QNN_TENSOR_DATA_TYPE (graph_info->inputTensors[0]));
+      QNN_TENSOR_DATA_TYPE (input_tensor));
 
   GST_DEBUG ("Number of input tensors: %u",
       GST_ML_INFO_N_TENSORS (engine->ininfo));
@@ -524,12 +540,13 @@ gst_ml_qnn_engine_new (GstStructure *settings)
       gst_ml_type_to_string (GST_ML_INFO_TYPE (engine->ininfo)));
 
   for (auto idx = 0; idx < engine->ininfo->n_tensors; ++idx) {
+    input_tensor = &(graph_info->inputTensors[idx]);
     engine->ininfo->n_dimensions[idx] =
-        QNN_TENSOR_RANK (graph_info->inputTensors[idx]);
+        QNN_TENSOR_RANK (input_tensor);
 
     for (auto num = 0; num < engine->ininfo->n_dimensions[idx]; ++num) {
       engine->ininfo->tensors[idx][num] =
-          QNN_TENSOR_DIMENSION (graph_info->inputTensors[idx], num);
+          QNN_TENSOR_DIMENSION (input_tensor, num);
 
       GST_DEBUG ("Input tensor[%u] Dimension[%u]: %u", idx, num,
           engine->ininfo->tensors[idx][num]);
@@ -549,15 +566,16 @@ gst_ml_qnn_engine_new (GstStructure *settings)
       gst_ml_type_to_string (GST_ML_INFO_TYPE (engine->outinfo)));
 
   for (auto idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
-    Qnn_Tensor_t *tensor = &(graph_info->outputTensors[idx]);
+    output_tensor = &(graph_info->outputTensors[idx]);
 
-    if (tensor->version != QNN_TENSOR_VERSION_1)
+    if (output_tensor->version != QNN_TENSOR_VERSION_1 &&
+        output_tensor->version != QNN_TENSOR_VERSION_2)
       continue;
 
-    engine->outinfo->n_dimensions[idx] = tensor->v1.rank;
+    engine->outinfo->n_dimensions[idx] = QNN_TENSOR_RANK (output_tensor);
 
     for (auto num = 0; num < engine->outinfo->n_dimensions[idx]; ++num) {
-      engine->outinfo->tensors[idx][num] = tensor->v1.dimensions[num];
+      engine->outinfo->tensors[idx][num] = QNN_TENSOR_DIMENSION (output_tensor, num);
 
       GST_DEBUG ("Output tensor[%u] Dimension[%u]: %u", idx, num,
           engine->outinfo->tensors[idx][num]);
@@ -569,10 +587,10 @@ gst_ml_qnn_engine_new (GstStructure *settings)
 
     // Use the tensor type from the graph instead of that from MLInfo
     size /= gst_ml_type_get_size (engine->outinfo->type);
-    size *= kDataTypeToSize.find(tensor->v1.dataType)->second;
+    size *= kDataTypeToSize.find(QNN_TENSOR_DATA_TYPE (output_tensor))->second;
 
-    tensor->v1.clientBuf.data = g_malloc (size);
-    tensor->v1.clientBuf.dataSize = size;
+    QNN_TENSOR_CLIENTBUF (output_tensor).data = g_malloc (size);
+    QNN_TENSOR_CLIENTBUF (output_tensor).dataSize = size;
   }
 
   GST_INFO ("Created MLE QNN engine: %p", engine);
@@ -606,10 +624,12 @@ gst_ml_qnn_engine_free (GstMLQnnEngine * engine)
 
   if (engine->graph_infos) {
     const GraphInfo_t *graph_info = engine->graph_infos[0];
+
     for (auto idx = 0; idx < graph_info->numOutputTensors; ++idx) {
       Qnn_Tensor_t *tensor = &(graph_info->outputTensors[idx]);
-      g_free (tensor->v1.clientBuf.data);
+      g_free (QNN_TENSOR_CLIENTBUF (tensor).data);
     }
+
     engine->FreeGraph (&(engine->graph_infos), engine->n_graph_infos);
     engine->graph_infos = NULL;
     engine->n_graph_infos = 0;
@@ -674,11 +694,12 @@ gst_ml_qnn_engine_execute (GstMLQnnEngine *engine, GstMLFrame *inframe,
   for (size_t idx = 0; idx < graph_info->numInputTensors; idx++) {
     Qnn_Tensor_t *tensor = &(graph_info->inputTensors[idx]);
 
-    if (tensor->version != QNN_TENSOR_VERSION_1)
+    if (tensor->version != QNN_TENSOR_VERSION_1 &&
+        tensor->version != QNN_TENSOR_VERSION_2)
       continue;
 
-    tensor->v1.clientBuf.data = GST_ML_FRAME_BLOCK_DATA (inframe, idx);
-    tensor->v1.clientBuf.dataSize = GST_ML_FRAME_BLOCK_SIZE (inframe, idx);
+    QNN_TENSOR_CLIENTBUF (tensor).data = GST_ML_FRAME_BLOCK_DATA (inframe, idx);
+    QNN_TENSOR_CLIENTBUF (tensor).dataSize = GST_ML_FRAME_BLOCK_SIZE (inframe, idx);
   }
 
   // Execute Graph
@@ -693,20 +714,21 @@ gst_ml_qnn_engine_execute (GstMLQnnEngine *engine, GstMLFrame *inframe,
   }
 
   for (size_t idx = 0; idx < graph_info->numOutputTensors; idx++) {
-    Qnn_Tensor_t tensor = graph_info->outputTensors[idx];
+    Qnn_Tensor_t *tensor = &(graph_info->outputTensors[idx]);
 
-    if (tensor.version != QNN_TENSOR_VERSION_1)
+    if (tensor->version != QNN_TENSOR_VERSION_1 &&
+        tensor->version != QNN_TENSOR_VERSION_2)
       continue;
 
     // TODO: Workaround! Need to handle tensors of different data type to avoid
     // buffer allocation and buffer copy
-    if (tensor.v1.dataType == QNN_DATATYPE_FLOAT_32) {
+    if (QNN_TENSOR_DATA_TYPE (tensor) == QNN_DATATYPE_FLOAT_32) {
       memcpy (reinterpret_cast<float *>(GST_ML_FRAME_BLOCK_DATA(outframe, idx)),
-          reinterpret_cast<float *> (tensor.v1.clientBuf.data),
+          reinterpret_cast<float *> (QNN_TENSOR_CLIENTBUF (tensor).data),
           GST_ML_FRAME_BLOCK_SIZE (outframe, idx));
     } else {
       GST_DEBUG ("Converting Native tensor type to Float");
-      gst_ml_qnn_convert_to_float (outframe, idx, &tensor);
+      gst_ml_qnn_convert_to_float (outframe, idx, tensor);
     }
   }
 
