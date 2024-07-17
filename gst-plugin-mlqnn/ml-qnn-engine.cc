@@ -18,28 +18,41 @@
 #define GST_CAT_DEFAULT gst_ml_qnn_engine_debug_category()
 #define GST_CAT_QNN_SDK gst_ml_qnn_sdk_debug_category()
 
+#if defined(QNN_TENSOR_V2_INIT)
+
+#define QNN_GET_TENSOR(tensor) ((tensor)->v2)
+#define QNN_TENSOR_VERSION_SUPPORTED(tensor) \
+    (((tensor)->version == QNN_TENSOR_VERSION_1) || \
+        ((tensor)->version == QNN_TENSOR_VERSION_2))
+
+#elif defined(QNN_TENSOR_V1_INIT)
+
+#define QNN_GET_TENSOR(tensor) ((tensor)->v1)
+#define QNN_TENSOR_VERSION_SUPPORTED(tensor) \
+    ((tensor)->version == QNN_TENSOR_VERSION_1)
+
+#else
+
+#error "Not supprted QNN tensor version !!!"
+
+#endif
+
+// Following fields of Qnn_TensorV2_t Qnn_TensorV1_t are compatible
+
 #define QNN_TENSOR_DATA_TYPE(tensor) \
-    ((tensor->version == QNN_TENSOR_VERSION_UNDEFINED) ? \
-        QNN_DATATYPE_UNDEFINED : ((tensor->version == QNN_TENSOR_VERSION_1) ? \
-            tensor->v1.dataType : tensor->v2.dataType))
+    (QNN_GET_TENSOR (tensor).dataType)
 
 #define QNN_TENSOR_DIMENSION(tensor, idx) \
-    ((tensor->version == QNN_TENSOR_VERSION_UNDEFINED) ? \
-        0 : ((tensor->version == QNN_TENSOR_VERSION_1) ?  \
-            tensor->v1.dimensions[idx] : tensor->v2.dimensions[idx]))
+    (QNN_GET_TENSOR (tensor).dimensions[(idx)])
 
 #define QNN_TENSOR_RANK(tensor) \
-    ((tensor->version == QNN_TENSOR_VERSION_UNDEFINED) ? \
-        0u : ((tensor->version == QNN_TENSOR_VERSION_1) ? \
-            tensor->v1.rank : tensor->v2.rank))
+    (QNN_GET_TENSOR (tensor).rank)
 
 #define QNN_TENSOR_CLIENTBUF(tensor) \
-    ((tensor->version == QNN_TENSOR_VERSION_1) ? \
-        tensor->v1.clientBuf : tensor->v2.clientBuf)
+    (QNN_GET_TENSOR (tensor).clientBuf)
 
 #define QNN_TENSOR_QUANTIZE_PARAMS(tensor) \
-    ((tensor->version == QNN_TENSOR_VERSION_1) ? \
-        tensor->v1.quantizeParams : tensor->v2.quantizeParams)
+    (QNN_GET_TENSOR (tensor).quantizeParams)
 
 // TODO: Workaround! Need to be exported by the QNN SDK.
 typedef struct {
@@ -529,6 +542,11 @@ gst_ml_qnn_engine_new (GstStructure *settings)
   graph_info = engine->graph_infos[0];
   input_tensor = &(graph_info->inputTensors[0]);
 
+  if (!QNN_TENSOR_VERSION_SUPPORTED (input_tensor)) {
+    GST_ERROR ("Not supported tensor version!");
+    goto cleanup;
+  }
+
   // Translate information about input tensors to GstMLInfo.
   engine->ininfo->n_tensors = graph_info->numInputTensors;
   engine->ininfo->type = qnn_to_ml_type (
@@ -541,6 +559,12 @@ gst_ml_qnn_engine_new (GstStructure *settings)
 
   for (auto idx = 0; idx < engine->ininfo->n_tensors; ++idx) {
     input_tensor = &(graph_info->inputTensors[idx]);
+
+    if (!QNN_TENSOR_VERSION_SUPPORTED (input_tensor)) {
+      GST_ERROR ("Not supported tensor version!");
+      goto cleanup;
+    }
+
     engine->ininfo->n_dimensions[idx] =
         QNN_TENSOR_RANK (input_tensor);
 
@@ -568,9 +592,10 @@ gst_ml_qnn_engine_new (GstStructure *settings)
   for (auto idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
     output_tensor = &(graph_info->outputTensors[idx]);
 
-    if (output_tensor->version != QNN_TENSOR_VERSION_1 &&
-        output_tensor->version != QNN_TENSOR_VERSION_2)
-      continue;
+    if (!QNN_TENSOR_VERSION_SUPPORTED (output_tensor)) {
+      GST_ERROR ("Not supported tensor version!");
+      goto cleanup;
+    }
 
     engine->outinfo->n_dimensions[idx] = QNN_TENSOR_RANK (output_tensor);
 
@@ -694,10 +719,6 @@ gst_ml_qnn_engine_execute (GstMLQnnEngine *engine, GstMLFrame *inframe,
   for (size_t idx = 0; idx < graph_info->numInputTensors; idx++) {
     Qnn_Tensor_t *tensor = &(graph_info->inputTensors[idx]);
 
-    if (tensor->version != QNN_TENSOR_VERSION_1 &&
-        tensor->version != QNN_TENSOR_VERSION_2)
-      continue;
-
     QNN_TENSOR_CLIENTBUF (tensor).data = GST_ML_FRAME_BLOCK_DATA (inframe, idx);
     QNN_TENSOR_CLIENTBUF (tensor).dataSize = GST_ML_FRAME_BLOCK_SIZE (inframe, idx);
   }
@@ -715,10 +736,6 @@ gst_ml_qnn_engine_execute (GstMLQnnEngine *engine, GstMLFrame *inframe,
 
   for (size_t idx = 0; idx < graph_info->numOutputTensors; idx++) {
     Qnn_Tensor_t *tensor = &(graph_info->outputTensors[idx]);
-
-    if (tensor->version != QNN_TENSOR_VERSION_1 &&
-        tensor->version != QNN_TENSOR_VERSION_2)
-      continue;
 
     // TODO: Workaround! Need to handle tensors of different data type to avoid
     // buffer allocation and buffer copy
