@@ -56,7 +56,7 @@ G_DEFINE_TYPE (GstOverlay, gst_overlay, GST_TYPE_VIDEO_FILTER);
 #define GST_VIDEO_FORMATS "{ NV12, NV21 }"
 
 #define GST_TYPE_OVERLAY_ENGINE      (gst_overlay_engine_get_type())
-#define DEFAULT_PROP_OVERLAY_ENGINE  GST_OVERLAY_ENGINE_C2D
+#define DEFAULT_PROP_OVERLAY_ENGINE  (gst_overlay_engine_get_default())
 
 #define DEFAULT_PROP_OVERLAY_TEXT        NULL
 #define DEFAULT_PROP_OVERLAY_DATE        NULL
@@ -163,18 +163,22 @@ gst_overlay_engine_get_type (void)
 {
   static GType gtype = 0;
   static const GEnumValue variants[] = {
+#ifdef ENABLE_C2D
     { GST_OVERLAY_ENGINE_C2D,
         "C2D blit engine.",
         "c2d"
     },
+#endif // ENABLE_C2D
     { GST_OVERLAY_ENGINE_OPENCL,
         "OpenCL blit engine.",
         "opencl"
     },
+#ifdef ENABLE_GLES
     { GST_OVERLAY_ENGINE_GLES,
         "GLES blit engine.",
         "gles"
     },
+#endif // ENABLE_GLES
     {0, NULL, NULL},
   };
 
@@ -182,6 +186,20 @@ gst_overlay_engine_get_type (void)
     gtype = g_enum_register_static ("GstOverlayEngine", variants);
 
   return gtype;
+}
+
+static GstOverlayEngine
+gst_overlay_engine_get_default (void)
+{
+  GstOverlayEngine engine = GST_OVERLAY_ENGINE_OPENCL;
+
+#if defined(ENABLE_GLES)
+  engine = GST_OVERLAY_ENGINE_GLES;
+#elif defined(ENABLE_C2D)
+  engine = GST_OVERLAY_ENGINE_C2D;
+#endif
+
+  return engine;
 }
 
 /**
