@@ -844,12 +844,12 @@ gst_video_split_srcpad_fixate_caps (GstVideoSplitSrcPad * srcpad,
   outcaps = gst_caps_truncate (outcaps);
   gst_caps_set_features (outcaps, 0, features);
 
+  // Get underlying structure to the only remaining caps.
+  output = gst_caps_get_structure (outcaps, 0);
+
   // Remove compression field if caps do not contain memory:GBM feature.
   if (!gst_caps_has_feature (outcaps, GST_CAPS_FEATURE_MEMORY_GBM))
     gst_structure_remove_field (output, "compression");
-
-  // Get underlying structure to the only remaining caps.
-  output = gst_caps_get_structure (outcaps, 0);
 
   // Take a copy of the input caps structure so we can freely modify it.
   input = gst_caps_get_structure (incaps, 0);
