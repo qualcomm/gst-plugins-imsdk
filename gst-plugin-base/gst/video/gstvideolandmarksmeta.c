@@ -44,28 +44,10 @@ gst_video_landmarks_meta_transform (GstBuffer * transbuffer, GstMeta * meta,
   }
 
   smeta = GST_VIDEO_LANDMARKS_META_CAST (meta);
+  keypoints = g_array_copy (smeta->keypoints);
 
-  // TODO: replace with g_array_copy() in glib version > 2.62
-  keypoints = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoKeypoint),
-      smeta->keypoints->len);
-  keypoints->len = smeta->keypoints->len;
-
-  if (smeta->keypoints->len > 0) {
-    guint n_bytes = keypoints->len * sizeof (GstVideoKeypoint);
-    memcpy (keypoints->data, smeta->keypoints->data, n_bytes);
-  }
-
-  if (smeta->links != NULL) {
-    // TODO: replace with g_array_copy() in glib version > 2.62
-    links = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoKeypointLink),
-        smeta->links->len);
-    links->len = smeta->links->len;
-
-    if (smeta->links->len > 0) {
-      guint n_bytes = links->len * sizeof (GstVideoKeypointLink);
-      memcpy (links->data, smeta->links->data, n_bytes);
-    }
-  }
+  if (smeta->links != NULL)
+    links = g_array_copy (smeta->links);
 
   dmeta = gst_buffer_add_video_landmarks_meta (transbuffer, smeta->confidence,
       keypoints, links);

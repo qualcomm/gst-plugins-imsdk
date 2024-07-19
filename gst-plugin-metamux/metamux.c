@@ -492,10 +492,14 @@ gst_metamux_process_classification_metadata (GstMetaMux * muxer,
   GstStructure *params = NULL;
   guint idx = 0, size = 0, batch_idx = 0;
 
-  gst_structure_get_uint (structure, "batch-index", &batch_idx);
-
   value = gst_structure_get_value (structure, "labels");
   size = gst_value_array_get_size (value);
+
+  // No classification label results for this buffer, nothing to do.
+  if (size == 0)
+    return;
+
+  gst_structure_get_uint (structure, "batch-index", &batch_idx);
 
   // Allocate memory for the labels.
   labels = g_array_sized_new (FALSE, FALSE, sizeof (GstClassLabel), size);

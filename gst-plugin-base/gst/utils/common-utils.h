@@ -117,6 +117,20 @@ gst_buffer_get_protection_meta_id (GstBuffer * buffer, const gchar * name);
 GST_API void
 gst_buffer_copy_protection_meta (GstBuffer * destination, GstBuffer * source);
 
+#if GLIB_MAJOR_VERSION < 2 || (GLIB_MAJOR_VERSION == 2 && GLIB_MINOR_VERSION < 62)
+/**
+ * g_array_copy:
+ * @array: A #GArray.
+ *
+ * Simple replacement for g_array_copy() in glib version < 2.62
+ * TODO: Remove when only glib version >= 2.62 is used.
+ *
+ * return: A copy of of the array.
+ **/
+GST_API GArray *
+g_array_copy (GArray * array);
+#endif // GLIB_MAJOR_VERSION < 2 || (GLIB_MAJOR_VERSION == 2 && GLIB_MINOR_VERSION < 62)
+
 G_END_DECLS
 
 #endif /* __GST_QTI_COMMON_UTILS_H__ */
