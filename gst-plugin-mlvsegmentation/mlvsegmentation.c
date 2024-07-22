@@ -569,8 +569,8 @@ gst_ml_video_segmentation_set_caps (GstBaseTransform * base, GstCaps * incaps,
   }
 
   if (!gst_ml_info_from_caps (&ininfo, incaps)) {
-    GST_ERROR_OBJECT (segmentation, "Failed to get input ML info from caps %"
-        GST_PTR_FORMAT "!", incaps);
+    GST_ELEMENT_ERROR (segmentation, CORE, CAPS, (NULL),
+        ("Failed to get input ML info from caps %" GST_PTR_FORMAT "!", incaps));
     return FALSE;
   }
 

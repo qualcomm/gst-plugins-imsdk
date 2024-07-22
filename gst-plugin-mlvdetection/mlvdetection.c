@@ -130,8 +130,8 @@ G_DEFINE_TYPE (GstMLVideoDetection, gst_ml_video_detection,
 
 #define MAX_TEXT_LENGTH          48.0F
 
-#define DISPLACEMENT_THRESHOLD 0.7F
-#define POSITION_THRESHOLD 0.04
+#define DISPLACEMENT_THRESHOLD   0.7F
+#define POSITION_THRESHOLD       0.04F
 
 enum
 {
@@ -211,6 +211,58 @@ gst_ml_modules_get_type (void)
   return gtype;
 }
 
+static void
+gst_ml_box_displacement_correction (GstMLBoxEntry * l_box, GArray * boxes)
+{
+  GstMLBoxEntry *r_box = NULL;
+  gdouble score = 0.0;
+  guint idx = 0;
+
+  if (boxes == NULL)
+    return;
+
+  for (idx = 0; idx < boxes->len;  idx++) {
+    r_box = &(g_array_index (boxes, GstMLBoxEntry, idx));
+
+    // If labels do not match, continue with next list entry.
+    if (l_box->name != r_box->name)
+      continue;
+
+    score = gst_ml_boxes_intersection_score (l_box, r_box);
+
+    // If the score is below the threshold, continue with next list entry.
+    if (score <= DISPLACEMENT_THRESHOLD)
+      continue;
+
+    // Previously detected box overlaps at ~95 % with current one, use it.
+    l_box->top = r_box->top;
+    l_box->left = r_box->left;
+    l_box->bottom = r_box->bottom;
+    l_box->right = r_box->right;
+
+    break;
+  }
+
+  return;
+}
+
+static gint
+gst_ml_box_compare_entries_by_position (const GstMLBoxEntry * l_entry,
+    const GstMLBoxEntry * r_entry)
+{
+  gfloat delta = l_entry->left - r_entry->left;
+
+  if (fabs (delta) > POSITION_THRESHOLD)
+    return (delta > 0) ? 1 : (-1);
+
+  delta = l_entry->top - r_entry->top;
+
+  if (fabs (delta) > POSITION_THRESHOLD)
+    return (delta > 0) ? 1 : (-1);
+
+  return 0;
+}
+
 static GstBufferPool *
 gst_ml_video_detection_create_pool (GstMLVideoDetection * detection,
     GstCaps * caps)
@@ -277,58 +329,6 @@ gst_ml_video_detection_create_pool (GstMLVideoDetection * detection,
   return pool;
 }
 
-
-void
-gst_ml_box_displacement_correction (GstMLBoxEntry * l_box, GArray * boxes)
-{
-  GstMLBoxEntry *r_box = NULL;
-  gdouble score = 0.0;
-  guint idx = 0;
-
-  if (boxes == NULL)
-    return;
-
-  for (idx = 0; idx < boxes->len;  idx++) {
-    r_box = &(g_array_index (boxes, GstMLBoxEntry, idx));
-
-    // If labels do not match, continue with next list entry.
-    if (l_box->name != r_box->name)
-      continue;
-
-    score = gst_ml_boxes_intersection_score (l_box, r_box);
-
-    // If the score is below the threshold, continue with next list entry.
-    if (score <= DISPLACEMENT_THRESHOLD)
-      continue;
-
-    // Previously detected box overlaps at ~95 % with current one, use it.
-    l_box->top = r_box->top;
-    l_box->left = r_box->left;
-    l_box->bottom = r_box->bottom;
-    l_box->right = r_box->right;
-
-    break;
-  }
-
-  return;
-}
-
-gint
-gst_ml_box_compare_entries_by_pos (const GstMLBoxEntry * l_entry,
-    const GstMLBoxEntry * r_entry)
-{
-  gfloat delta = l_entry->left - r_entry->left;
-
-  if (fabs (delta) > POSITION_THRESHOLD)
-    return (delta > 0) ? 1 : (-1);
-
-  delta = l_entry->top - r_entry->top;
-  if (fabs (delta) > POSITION_THRESHOLD)
-    return (delta > 0) ? 1 : (-1);
-
-  return 0;
-}
-
 static void
 gst_ml_video_detection_stabilization (GstMLVideoDetection * detection)
 {
@@ -350,24 +350,26 @@ gst_ml_video_detection_stabilization (GstMLVideoDetection * detection)
     }
 
     // Stash the previous prediction results.
-    if (mlboxes) {
+    if (mlboxes != NULL) {
       detection->stashedmlboxes =
           g_list_remove (detection->stashedmlboxes, mlboxes);
       g_array_free (mlboxes, TRUE);
     }
+
     detection->stashedmlboxes = g_list_append (detection->stashedmlboxes,
         g_array_copy (prediction->entries));
 
-    // Clear lower confidence results before position sort
+    // Clear lower confidence results before position sort.
     if (prediction->entries->len > detection->n_results) {
       guint index = detection->n_results;
       guint length = prediction->entries->len - detection->n_results;
+
       g_array_remove_range (prediction->entries, index, length);
     }
 
-    // Sort bboxes by possition
+    // Sort bboxes by possition.
     g_array_sort (prediction->entries,
-        (GCompareFunc) gst_ml_box_compare_entries_by_pos);
+        (GCompareFunc) gst_ml_box_compare_entries_by_position);
   }
 }
 
@@ -907,22 +909,19 @@ gst_ml_video_detection_prepare_output_buffer (GstBaseTransform * base,
 static gboolean
 gst_ml_video_detection_sink_event (GstBaseTransform * base, GstEvent * event)
 {
-  GstMLVideoDetection *detection = GST_ML_VIDEO_DETECTION (base);
-
   switch (GST_EVENT_TYPE (event)) {
-    case GST_EVENT_CUSTOM_DOWNSTREAM_OOB:
+    case GST_EVENT_CUSTOM_DOWNSTREAM:
     {
       const GstStructure *structure = gst_event_get_structure (event);
 
       // Not a supported custom event, pass it to the default handling function.
-      if (structure == NULL ||
-          !gst_structure_has_name (structure, "ml-inference-information"))
+      if ((structure == NULL) ||
+          !gst_structure_has_name (structure, "ml-detection-information"))
         break;
 
-      gst_structure_get_uint (structure, "stage-id", &(detection->stage_id));
-      GST_INFO_OBJECT (detection, "Stage ID: %u", detection->stage_id);
-
-      return gst_pad_push_event (GST_BASE_TRANSFORM_SRC_PAD (base), event);
+      // Consume downstream information from previous detection stage.
+      gst_event_unref (event);
+      return TRUE;
     }
     default:
       break;
@@ -1082,10 +1081,12 @@ gst_ml_video_detection_set_caps (GstBaseTransform * base, GstCaps * incaps,
 {
   GstMLVideoDetection *detection = GST_ML_VIDEO_DETECTION (base);
   GstCaps *modulecaps = NULL;
+  GstQuery *query = NULL;
   GstStructure *structure = NULL;
   GEnumClass *eclass = NULL;
   GEnumValue *evalue = NULL;
   GstMLInfo ininfo;
+  gboolean success = FALSE;
   guint idx = 0;
 
   if (NULL == detection->labels) {
@@ -1125,6 +1126,24 @@ gst_ml_video_detection_set_caps (GstBaseTransform * base, GstCaps * incaps,
     return FALSE;
   }
 
+  // Query upstream pre-process plugin about the inference parameters.
+  query = gst_query_new_custom (GST_QUERY_CUSTOM,
+      gst_structure_new_empty ("ml-preprocess-information"));
+
+  if (gst_pad_peer_query (base->sinkpad, query)) {
+    const GstStructure *s = gst_query_get_structure (query);
+
+    gst_structure_get_uint (s, "stage-id", &(detection->stage_id));
+    GST_DEBUG_OBJECT (detection, "Queried stage ID: %u", detection->stage_id);
+  } else {
+    GST_ELEMENT_ERROR (detection, CORE, NEGOTIATION, (NULL),
+        ("Failed to receive preprocess information!"));
+    return FALSE;
+  }
+
+  // Free the query instance as it is no longer needed and we are the owners.
+  gst_query_unref (query);
+
   structure = gst_structure_new ("options",
       GST_ML_MODULE_OPT_CAPS, GST_TYPE_CAPS, incaps,
       GST_ML_MODULE_OPT_LABELS, G_TYPE_STRING, detection->labels,
@@ -1144,8 +1163,8 @@ gst_ml_video_detection_set_caps (GstBaseTransform * base, GstCaps * incaps,
   }
 
   if (!gst_ml_info_from_caps (&ininfo, incaps)) {
-    GST_ERROR_OBJECT (detection, "Failed to get input ML info from caps %"
-        GST_PTR_FORMAT "!", incaps);
+    GST_ELEMENT_ERROR (detection, CORE, CAPS, (NULL),
+        ("Failed to get input ML info from caps %" GST_PTR_FORMAT "!", incaps));
     return FALSE;
   }
 
@@ -1166,6 +1185,21 @@ gst_ml_video_detection_set_caps (GstBaseTransform * base, GstCaps * incaps,
       (GST_ML_INFO_TENSOR_DIM (detection->mlinfo, 0, 0) > 1)) {
     GST_ELEMENT_ERROR (detection, CORE, FAILED, (NULL),
         ("Batched input tensors with video output is not supported!"));
+    return FALSE;
+  }
+
+  // Inform any ML pre-process downstream about it's ROI stage ID.
+  structure = gst_structure_new ("ml-detection-information", "stage-id",
+      G_TYPE_UINT, detection->stage_id, NULL);
+
+  GST_DEBUG_OBJECT (detection, "Send stage ID %u", detection->stage_id);
+
+  success = gst_pad_push_event (GST_BASE_TRANSFORM_SRC_PAD (detection),
+      gst_event_new_custom (GST_EVENT_CUSTOM_DOWNSTREAM, structure));
+
+  if (!success) {
+    GST_ELEMENT_ERROR (detection, CORE, EVENT, (NULL),
+        ("Failed to send ML info downstream!"));
     return FALSE;
   }
 

@@ -5,6 +5,70 @@
 
 #include "ml-module-utils.h"
 
+
+// Global table for storing registered indeces of ML stages.
+static GHashTable *ml_stage_table = NULL;
+// Mutex for protecting access to the global table for ML stage indeces.
+G_LOCK_DEFINE_STATIC (ml_stage_mutex);
+
+
+gint8
+gst_ml_stage_get_unique_index (void)
+{
+  gint8 index = 0;
+
+  G_LOCK (ml_stage_mutex);
+
+  if (ml_stage_table == NULL)
+    ml_stage_table = g_hash_table_new (NULL, NULL);
+
+  while (g_hash_table_contains (ml_stage_table, GINT_TO_POINTER (index)))
+    index++;
+
+  if (index >= 0)
+    g_hash_table_insert (ml_stage_table, GINT_TO_POINTER (index), NULL);
+
+  G_UNLOCK (ml_stage_mutex);
+
+  return (index >= 0) ? index : (-1);
+}
+
+gboolean
+gst_ml_stage_register_unique_index (gint8 index)
+{
+  gboolean exists = FALSE;
+
+  if (index < 0)
+    return FALSE;
+
+  G_LOCK (ml_stage_mutex);
+
+  if (ml_stage_table == NULL)
+    ml_stage_table = g_hash_table_new (NULL, NULL);
+
+  exists = g_hash_table_insert (ml_stage_table, GINT_TO_POINTER (index), NULL);
+
+  G_UNLOCK (ml_stage_mutex);
+
+  return !exists ? TRUE : FALSE;
+}
+
+void
+gst_ml_stage_unregister_unique_index (gint8 index)
+{
+  G_LOCK (ml_stage_mutex);
+
+  if (ml_stage_table == NULL)
+    ml_stage_table = g_hash_table_new (NULL, NULL);
+
+  g_hash_table_remove (ml_stage_table, GINT_TO_POINTER (index));
+
+  if (g_hash_table_size (ml_stage_table) == 0)
+    g_clear_pointer (&ml_stage_table, g_hash_table_unref);
+
+  G_UNLOCK (ml_stage_mutex);
+}
+
 gdouble
 gst_ml_tensor_extract_value (GstMLType mltype, gpointer data, guint idx,
     gdouble offset, gdouble scale)
