@@ -38,16 +38,7 @@ gst_video_classification_meta_transform (GstBuffer * transbuffer, GstMeta * meta
   }
 
   smeta = GST_VIDEO_CLASSIFICATION_META_CAST (meta);
-
-  // TODO: replace with g_array_copy() in glib version > 2.62
-  labels = g_array_sized_new (FALSE, FALSE, sizeof (GstClassLabel),
-      smeta->labels->len);
-  labels->len = smeta->labels->len;
-
-  if (smeta->labels->len > 0) {
-    guint n_bytes = labels->len * sizeof (GstClassLabel);
-    memcpy (labels->data, smeta->labels->data, n_bytes);
-  }
+  labels = g_array_copy (smeta->labels);
 
   dmeta = gst_buffer_add_video_classification_meta (transbuffer, labels);
 

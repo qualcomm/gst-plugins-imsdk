@@ -67,7 +67,7 @@ enum AppState
 
 #define SIGNALING_SERVER "wss://webrtc.nirbheek.in:8443"
 #define DEFAULT_PRIMARY_STREAM "qtiqmmfsrc name=camsrc ! video/x-raw(memory:GBM),format=NV12,width=1920,height=1080,framerate=30/1 ! queue ! v4l2h264enc capture-io-mode=5 output-io-mode=5 ! queue ! h264parse ! rtph264pay config-interval=-1 ! webrtcbin name=webrtcbin stun-server=stun://stun1.l.google.com bundle-policy=3"
-#define DEFAULT_SECONDARY_STREAM "appsrc name=appsrc ! rtph264depay name=rtph264depay ! queue ! h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! waylandsink"
+#define DEFAULT_SECONDARY_STREAM "appsrc name=appsrc ! rtph264depay name=rtph264depay ! queue ! h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! waylandsink fullscreen=true async=true sync=false"
 
 typedef struct _GstAppContext GstAppContext;
 struct _GstAppContext
@@ -94,11 +94,27 @@ struct _GstAppContext
   gchar *local_id;
   // Request remote to generate the offer
   gboolean ask_remote_for_offer;
-  // Primary pipeline string
-  gchar *primary_stream_str;
-  // Secondary pipeline string
-  gchar *secondary_stream_str;
+  // Flag for exit app
+  gboolean exit;
 };
+
+
+static void
+disconnect_and_quit_loop (GstAppContext * appctx)
+{
+  if (appctx->ws_conn) {
+    if (soup_websocket_connection_get_state (appctx->ws_conn) ==
+        SOUP_WEBSOCKET_STATE_OPEN) {
+      soup_websocket_connection_close (appctx->ws_conn, 1000, "");
+    } else {
+      g_clear_object (&appctx->ws_conn);
+    }
+  }
+
+  if (appctx->mloop) {
+    g_main_loop_quit (appctx->mloop);
+  }
+}
 
 // Handle interrupt by CTRL+C
 static gboolean
@@ -110,7 +126,8 @@ handle_interrupt_signal (gpointer userdata)
 
   g_print ("\n\nReceived an interrupt signal, send EOS ...\n");
 
-  g_main_loop_quit (appctx->mloop);
+  appctx->exit = TRUE;
+  disconnect_and_quit_loop (appctx);
 
   return TRUE;
 }
@@ -150,7 +167,7 @@ warning_cb (GstBus * bus, GstMessage * message, gpointer userdata)
 static void
 error_cb (GstBus * bus, GstMessage * message, gpointer userdata)
 {
-  GMainLoop *mloop = (GMainLoop*) userdata;
+  GstAppContext *appctx = (GstAppContext *) userdata;
   GError *error = NULL;
   gchar *debug = NULL;
 
@@ -162,19 +179,21 @@ error_cb (GstBus * bus, GstMessage * message, gpointer userdata)
 
   g_print ("error_cb\n");
 
-  g_main_loop_quit (mloop);
+  disconnect_and_quit_loop (appctx);
 }
 
 // Handle end of stream event
 static void
 eos_cb (GstBus * bus, GstMessage * message, gpointer userdata)
 {
-  GMainLoop *mloop = (GMainLoop*) userdata;
+  GstAppContext *appctx = (GstAppContext *) userdata;
   static guint eoscnt = 0;
 
   g_print ("\nReceived End-of-Stream from '%s' ...\n",
       GST_MESSAGE_SRC_NAME (message));
-  g_main_loop_quit (mloop);
+
+  appctx->exit = TRUE;
+  disconnect_and_quit_loop (appctx);
 }
 
 static gboolean
@@ -191,23 +210,6 @@ wait_for_state_change (GstElement * pipeline)
   }
 
   return TRUE;
-}
-
-static void
-disconnect_and_quit_loop (GstAppContext * appctx)
-{
-  if (appctx->ws_conn) {
-    if (soup_websocket_connection_get_state (appctx->ws_conn) ==
-        SOUP_WEBSOCKET_STATE_OPEN) {
-      soup_websocket_connection_close (appctx->ws_conn, 1000, "");
-    } else {
-      g_clear_object (&appctx->ws_conn);
-    }
-  }
-
-  if (appctx->mloop) {
-    g_main_loop_quit (appctx->mloop);
-  }
 }
 
 static gchar *
@@ -920,8 +922,7 @@ gst_app_context_new ()
   ctx->remote_id = NULL;
   ctx->local_id = NULL;
   ctx->ask_remote_for_offer = FALSE;
-  ctx->primary_stream_str = NULL;
-  ctx->secondary_stream_str = NULL;
+  ctx->exit = FALSE;
 
   return ctx;
 }
@@ -966,33 +967,30 @@ main (gint argc, gchar * argv[])
   gint status = -1;
   GError *error = NULL;
   GThread *mthread = NULL;
-  gchar *primary_stream_str = DEFAULT_PRIMARY_STREAM;
-  gchar *secondary_stream_str = DEFAULT_SECONDARY_STREAM;
+  gchar *primary_stream_str = NULL;
+  gchar *secondary_stream_str = NULL;
+  gchar *remote_id = NULL;
+  gchar *local_id = NULL;
+  gboolean ask_remote_for_offer = FALSE;
 
   // Initialize GST library.
   gst_init (&argc, &argv);
 
-  // Create app context.
-  if ((appctx = gst_app_context_new ()) == NULL) {
-    g_printerr ("ERROR: Couldn't create app context!\n");
-    goto exit;
-  }
-
   // Configure input parameters
   GOptionEntry options[] = {
-    {"remote-id", 'r', 0, G_OPTION_ARG_STRING, &appctx->remote_id,
-      "ID of the remote peer which will connect to", "ID"},
-    {"local-id", 'l', 0, G_OPTION_ARG_STRING, &appctx->local_id,
-        "Our local ID which remote peer can connect to us", "ID"},
+    {"remote-id", 'r', 0, G_OPTION_ARG_STRING, &remote_id,
+      "ID of the remote peer which will connect to", NULL},
+    {"local-id", 'l', 0, G_OPTION_ARG_STRING, &local_id,
+        "Our local ID which remote peer can connect to us", NULL},
     {"ask-remote-for-offer", 'o', 0, G_OPTION_ARG_NONE,
-        &appctx->ask_remote_for_offer,
+        &ask_remote_for_offer,
         "Request remote to generate the offer and we'll answer", NULL},
     {"primary-stream", 'm', 0, G_OPTION_ARG_STRING,
-        &appctx->primary_stream_str,
-        "Our local ID which remote peer can connect to us", "ID"},
+        &primary_stream_str,
+        "Our local ID which remote peer can connect to us", NULL},
     {"secondary-stream", 's', 0, G_OPTION_ARG_STRING,
-        &appctx->secondary_stream_str,
-        "Our local ID which remote peer can connect to us", "ID"},
+        &secondary_stream_str,
+        "Our local ID which remote peer can connect to us", NULL},
     { NULL }
   };
 
@@ -1006,89 +1004,104 @@ main (gint argc, gchar * argv[])
 
     g_option_context_free (optctx);
     g_clear_error (&error);
-
-    gst_app_context_free (appctx);
     return -1;
   }
   g_option_context_free (optctx);
 
-  if (!appctx->remote_id && !appctx->local_id) {
+  if (!remote_id && !local_id) {
     g_print ("Usage: gst-webrtc-sendrecv-example [OPTION]\n");
     g_print ("\nFor help: gst-webrtc-sendrecv-example [-h | --help]\n\n");
     goto exit;
   }
 
-  if (appctx->remote_id && appctx->local_id) {
+  if (remote_id && local_id) {
     gst_printerr ("specify only --remote-id or --local-id\n");
     goto exit;
   }
 
-  if (appctx->primary_stream_str) {
-    primary_stream_str = appctx->primary_stream_str;
+  if (primary_stream_str == NULL) {
+    primary_stream_str = DEFAULT_PRIMARY_STREAM;
   }
 
-  if (appctx->secondary_stream_str) {
-    secondary_stream_str = appctx->secondary_stream_str;
+  if (secondary_stream_str == NULL) {
+    secondary_stream_str = DEFAULT_SECONDARY_STREAM;
   }
 
-  // Parse input pipeline
-  if ((appctx->pr_pipeline = create_pipeline (primary_stream_str)) == NULL)
-    goto exit;
+  while (TRUE) {
+    // Create app context.
+    if ((appctx = gst_app_context_new ()) == NULL) {
+      g_printerr ("ERROR: Couldn't create app context!\n");
+      break;
+    }
 
-  // Parse input pipeline
-  if ((appctx->sc_pipeline = create_pipeline (secondary_stream_str)) == NULL)
-    goto exit;
+    appctx->remote_id = remote_id;
+    appctx->local_id = local_id;
+    appctx->ask_remote_for_offer = ask_remote_for_offer;
 
-  // Initialize main loop.
-  if ((appctx->mloop = g_main_loop_new (NULL, FALSE)) == NULL) {
-    g_printerr ("ERROR: Failed to create Main loop!\n");
-    goto exit;
+    // Parse input pipeline
+    if ((appctx->pr_pipeline = create_pipeline (primary_stream_str)) == NULL)
+      break;
+
+    // Parse input pipeline
+    if ((appctx->sc_pipeline = create_pipeline (secondary_stream_str)) == NULL)
+      break;
+
+    // Initialize main loop.
+    if ((appctx->mloop = g_main_loop_new (NULL, FALSE)) == NULL) {
+      g_printerr ("ERROR: Failed to create Main loop!\n");
+      break;
+    }
+
+    // Retrieve reference to the pr_pipeline's bus.
+    if ((bus = gst_pipeline_get_bus (GST_PIPELINE (appctx->pr_pipeline))) == NULL) {
+      g_printerr ("ERROR: Failed to retrieve pipeline bus!\n");
+      g_main_loop_unref (appctx->mloop);
+      break;
+    }
+
+    // Watch for messages on the pr_pipeline's bus.
+    gst_bus_add_signal_watch (bus);
+    g_signal_connect (bus, "message::state-changed",
+        G_CALLBACK (state_changed_cb), appctx->pr_pipeline);
+    g_signal_connect (bus, "message::warning", G_CALLBACK (warning_cb), NULL);
+    g_signal_connect (bus, "message::error", G_CALLBACK (error_cb), appctx);
+    g_signal_connect (bus, "message::eos", G_CALLBACK (eos_cb), appctx);
+    gst_object_unref (bus);
+
+    // Retrieve reference to the sc_pipeline's bus.
+    if ((bus = gst_pipeline_get_bus (GST_PIPELINE (appctx->sc_pipeline))) == NULL) {
+      g_printerr ("ERROR: Failed to retrieve pipeline bus!\n");
+      g_main_loop_unref (appctx->mloop);
+      break;
+    }
+
+    // Watch for messages on the sc_pipeline's bus.
+    gst_bus_add_signal_watch (bus);
+    g_signal_connect (bus, "message::state-changed",
+        G_CALLBACK (state_changed_cb), appctx->sc_pipeline);
+    g_signal_connect (bus, "message::warning", G_CALLBACK (warning_cb), NULL);
+    g_signal_connect (bus, "message::error", G_CALLBACK (error_cb), appctx);
+    g_signal_connect (bus, "message::eos", G_CALLBACK (eos_cb), appctx);
+    gst_object_unref (bus);
+
+    // Register function for handling interrupt signals with the main loop.
+    intrpt_watch_id = g_unix_signal_add (SIGINT, handle_interrupt_signal, appctx);
+
+    connect_to_websocket_server_async (appctx);
+
+    g_print ("g_main_loop_run\n");
+    g_main_loop_run (appctx->mloop);
+    g_print ("g_main_loop_run ends\n");
+
+    g_source_remove (intrpt_watch_id);
+
+    if (appctx->exit) {
+      status = 0;
+      break;
+    }
+
+    gst_app_context_free (appctx);
   }
-
-  // Retrieve reference to the pr_pipeline's bus.
-  if ((bus = gst_pipeline_get_bus (GST_PIPELINE (appctx->pr_pipeline))) == NULL) {
-    g_printerr ("ERROR: Failed to retrieve pipeline bus!\n");
-    g_main_loop_unref (appctx->mloop);
-    goto exit;
-  }
-
-  // Watch for messages on the pr_pipeline's bus.
-  gst_bus_add_signal_watch (bus);
-  g_signal_connect (bus, "message::state-changed",
-      G_CALLBACK (state_changed_cb), appctx->pr_pipeline);
-  g_signal_connect (bus, "message::warning", G_CALLBACK (warning_cb), NULL);
-  g_signal_connect (bus, "message::error", G_CALLBACK (error_cb), appctx->mloop);
-  g_signal_connect (bus, "message::eos", G_CALLBACK (eos_cb), appctx->mloop);
-  gst_object_unref (bus);
-
-  // Retrieve reference to the sc_pipeline's bus.
-  if ((bus = gst_pipeline_get_bus (GST_PIPELINE (appctx->sc_pipeline))) == NULL) {
-    g_printerr ("ERROR: Failed to retrieve pipeline bus!\n");
-    g_main_loop_unref (appctx->mloop);
-    goto exit;
-  }
-
-  // Watch for messages on the sc_pipeline's bus.
-  gst_bus_add_signal_watch (bus);
-  g_signal_connect (bus, "message::state-changed",
-      G_CALLBACK (state_changed_cb), appctx->sc_pipeline);
-  g_signal_connect (bus, "message::warning", G_CALLBACK (warning_cb), NULL);
-  g_signal_connect (bus, "message::error", G_CALLBACK (error_cb), appctx->mloop);
-  g_signal_connect (bus, "message::eos", G_CALLBACK (eos_cb), appctx->mloop);
-  gst_object_unref (bus);
-
-  // Register function for handling interrupt signals with the main loop.
-  intrpt_watch_id = g_unix_signal_add (SIGINT, handle_interrupt_signal, appctx);
-
-  connect_to_websocket_server_async (appctx);
-
-  g_print ("g_main_loop_run\n");
-  g_main_loop_run (appctx->mloop);
-  g_print ("g_main_loop_run ends\n");
-
-  g_source_remove (intrpt_watch_id);
-
-  status = 0;
 
 exit:
   gst_app_context_free (appctx);

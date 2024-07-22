@@ -34,6 +34,9 @@ else()
   check_include_file("tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h" HAVE_HEXAGON_DELEGATE_H)
 endif()
 
+# Check for external delegate header
+check_include_file("tensorflow/lite/delegates/external/external_delegate.h" HAVE_EXTERNAL_DELEGATE_H)
+
 # Generate configuration header file.
 configure_file(config.h.in config.h @ONLY)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
@@ -52,6 +55,11 @@ set(GST_QTI_ML_TFLITE gstqtimltflite)
 add_library(${GST_QTI_ML_TFLITE} SHARED
   mltflite.c
   ml-tflite-engine.cc
+)
+
+target_compile_definitions(${GST_QTI_ML_TFLITE} PRIVATE
+  $<$<BOOL:${HAVE_HEXAGON_DELEGATE_H}>:HAVE_HEXAGON_DELEGATE_H>
+  $<$<BOOL:${HAVE_EXTERNAL_DELEGATE_H}>:HAVE_EXTERNAL_DELEGATE_H>
 )
 
 target_include_directories(${GST_QTI_ML_TFLITE} PUBLIC

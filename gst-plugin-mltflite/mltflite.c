@@ -81,10 +81,10 @@ G_DEFINE_TYPE (GstMLTFLite, gst_ml_tflite, GST_TYPE_BASE_TRANSFORM);
 #define DEFAULT_PROP_DELEGATE    GST_ML_TFLITE_DELEGATE_NONE
 #define DEFAULT_PROP_THREADS     1
 
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#ifdef HAVE_EXTERNAL_DELEGATE_H
 #define DEFAULT_PROP_EXT_DELEGATE_PATH    NULL
 #define DEFAULT_PROP_EXT_DELEGATE_OPTS    NULL
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#endif // HAVE_EXTERNAL_DELEGATE_H
 
 #define DEFAULT_PROP_MIN_BUFFERS 2
 #define DEFAULT_PROP_MAX_BUFFERS 10
@@ -105,10 +105,10 @@ enum
   PROP_MODEL,
   PROP_DELEGATE,
   PROP_THREADS,
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#ifdef HAVE_EXTERNAL_DELEGATE_H
   PROP_EXT_DELEGATE_PATH,
   PROP_EXT_DELEGATE_OPTS,
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#endif // HAVE_EXTERNAL_DELEGATE_H
 };
 
 static GstStaticCaps gst_ml_tflite_static_caps =
@@ -474,7 +474,7 @@ gst_ml_tflite_change_state (GstElement * element, GstStateChange transition)
         GST_ERROR_OBJECT (tflite, "Failed to populate engine settings!");
         return GST_STATE_CHANGE_FAILURE;
       }
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#ifdef HAVE_EXTERNAL_DELEGATE_H
       if (tflite->delegate == GST_ML_TFLITE_DELEGATE_EXTERNAL) {
         gst_structure_set(settings,
             GST_ML_TFLITE_ENGINE_OPT_EXT_DELEGATE_PATH, G_TYPE_STRING,
@@ -483,7 +483,7 @@ gst_ml_tflite_change_state (GstElement * element, GstStateChange transition)
             tflite->ext_delegate_opts,
             NULL);
       }
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#endif // HAVE_EXTERNAL_DELEGATE_H
       gst_ml_tflite_engine_free (tflite->engine);
 
       tflite->engine = gst_ml_tflite_engine_new (settings);
@@ -585,7 +585,7 @@ gst_ml_tflite_set_property (GObject * object, guint prop_id,
     case PROP_THREADS:
       tflite->n_threads = g_value_get_uint (value);
       break;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#ifdef HAVE_EXTERNAL_DELEGATE_H
     case PROP_EXT_DELEGATE_PATH:
       g_free (tflite->ext_delegate_path);
       tflite->ext_delegate_path = g_strdup (g_value_get_string (value));
@@ -598,7 +598,7 @@ gst_ml_tflite_set_property (GObject * object, guint prop_id,
       tflite->ext_delegate_opts =
           GST_STRUCTURE_CAST (g_value_dup_boxed (value));
       break;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#endif // HAVE_EXTERNAL_DELEGATE_H
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -621,7 +621,7 @@ gst_ml_tflite_get_property (GObject * object, guint prop_id, GValue * value,
     case PROP_THREADS:
       g_value_set_uint (value, tflite->n_threads);
       break;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#ifdef HAVE_EXTERNAL_DELEGATE_H
     case PROP_EXT_DELEGATE_PATH:
       g_value_set_string (value, tflite->ext_delegate_path);
       break;
@@ -631,7 +631,7 @@ gst_ml_tflite_get_property (GObject * object, guint prop_id, GValue * value,
         g_value_set_boxed (value, tflite->ext_delegate_opts);
 
       break;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#endif // HAVE_EXTERNAL_DELEGATE_H
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -643,7 +643,7 @@ gst_ml_tflite_finalize (GObject * object)
 {
   GstMLTFLite *tflite = GST_ML_TFLITE (object);
 
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#ifdef HAVE_EXTERNAL_DELEGATE_H
   if (tflite->ext_delegate_path != NULL) {
     g_free (tflite->ext_delegate_path);
     tflite->ext_delegate_path = NULL;
@@ -653,7 +653,7 @@ gst_ml_tflite_finalize (GObject * object)
     gst_structure_free (tflite->ext_delegate_opts);
     tflite->ext_delegate_opts = NULL;
   }
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#endif // HAVE_EXTERNAL_DELEGATE_H
 
   gst_ml_tflite_engine_free (tflite->engine);
 
@@ -689,7 +689,7 @@ gst_ml_tflite_class_init (GstMLTFLiteClass * klass)
       g_param_spec_uint ("threads", "Threads",
           "Number of threads", 1, 4, DEFAULT_PROP_THREADS,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#ifdef HAVE_EXTERNAL_DELEGATE_H
   g_object_class_install_property (gobject, PROP_EXT_DELEGATE_PATH,
       g_param_spec_string ("external-delegate-path", "External Delegate Path",
           "External delegate's absolute path. "
@@ -704,7 +704,7 @@ gst_ml_tflite_class_init (GstMLTFLiteClass * klass)
           "This takes effect when the 'delegate' property is 'external'.",
           GST_TYPE_STRUCTURE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#endif // HAVE_EXTERNAL_DELEGATE_H
 
   gst_element_class_set_static_metadata (element,
       "TFLite Machine Learning", "Filter/Effect/Converter",
@@ -738,10 +738,10 @@ gst_ml_tflite_init (GstMLTFLite * tflite)
 
   tflite->model = DEFAULT_PROP_MODEL;
   tflite->delegate = DEFAULT_PROP_DELEGATE;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#ifdef HAVE_EXTERNAL_DELEGATE_H
   tflite->ext_delegate_path = DEFAULT_PROP_EXT_DELEGATE_PATH;
   tflite->ext_delegate_opts = DEFAULT_PROP_EXT_DELEGATE_OPTS;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#endif // HAVE_EXTERNAL_DELEGATE_H
   tflite->n_threads = DEFAULT_PROP_THREADS;
 
   // Handle buffers with GAP flag internally.

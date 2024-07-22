@@ -301,53 +301,39 @@ gst_video_composition_populate_output_metas (GstVideoComposition * composition,
     rmeta->h = rmeta->h * h_scale;
 
     rmeta->x = (rmeta->x - ((roimeta != NULL) ? roimeta->x : 0)) * w_scale;
-    rmeta->y = (rmeta->y - ((roimeta != NULL) ? roimeta->y : 0)) * h_scale;
     rmeta->x += destination->x;
+
+    rmeta->y = (rmeta->y - ((roimeta != NULL) ? roimeta->y : 0)) * h_scale;
     rmeta->y += destination->y;
 
     for (param = params; param != NULL; param = g_list_next (param)) {
       GstStructure *structure = GST_STRUCTURE_CAST (param->data);
       GQuark id = gst_structure_get_name_id (structure);
+      const GValue *value = NULL;
 
       if (id == g_quark_from_static_string ("VideoLandmarks")) {
         GArray *keypoints = NULL, *links = NULL;
-        GArray *newkeypoints = NULL, *newlinks = NULL;
         gdouble confidence = 0.0;
-        guint num = 0, n_bytes = 0;
+        guint num = 0;
 
         gst_structure_get_double (structure, "confidence", &confidence);
 
-        keypoints = (GArray *) g_value_get_boxed (
-            gst_structure_get_value (structure, "keypoints"));
-        links = (GArray *) g_value_get_boxed (
-            gst_structure_get_value (structure, "links"));
+        value = gst_structure_get_value (structure, "keypoints");
+        keypoints = g_array_copy (g_value_get_boxed (value));
 
-        // TODO: replace with g_array_copy() in glib version > 2.62
-        newkeypoints = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoKeypoint),
-            keypoints->len);
-        newkeypoints = g_array_set_size (newkeypoints, keypoints->len);
-
-        n_bytes = keypoints->len * sizeof (GstVideoKeypoint);
-        memcpy (newkeypoints->data, keypoints->data, n_bytes);
-
-        newlinks = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoKeypointLink),
-            links->len);
-        newlinks = g_array_set_size (newlinks, links->len);
-
-        n_bytes = links->len * sizeof (GstVideoKeypointLink);
-        memcpy (newlinks->data, links->data, n_bytes);
+        value = gst_structure_get_value (structure, "links");
+        links = g_array_copy (g_value_get_boxed (value));
 
         // Correct the X and Y of each keypoint based on the regions.
-        for (num = 0; num < newkeypoints->len; num++) {
-          GstVideoKeypoint *kp =
-              &(g_array_index (newkeypoints, GstVideoKeypoint, num));
+        for (num = 0; num < keypoints->len; num++) {
+          GstVideoKeypoint *kp = &(g_array_index (keypoints, GstVideoKeypoint, num));
 
           kp->x = kp->x * w_scale;
           kp->y = kp->y * h_scale;
         }
 
-        structure = gst_structure_new ("VideoLandmarks", "keypoints",
-            G_TYPE_ARRAY, newkeypoints, "links", G_TYPE_ARRAY, newlinks,
+        structure = gst_structure_new ("VideoLandmarks",
+            "keypoints", G_TYPE_ARRAY, keypoints, "links", G_TYPE_ARRAY, links,
             "confidence", G_TYPE_DOUBLE, confidence, NULL);
         gst_video_region_of_interest_meta_add_param (rmeta, structure);
       } else if (id == g_quark_from_static_string ("ImageClassification")) {
@@ -366,58 +352,38 @@ gst_video_composition_populate_output_metas (GstVideoComposition * composition,
   for (param = params; param != NULL; param = g_list_next (param)) {
     GstStructure *structure = GST_STRUCTURE_CAST (param->data);
     GQuark id = gst_structure_get_name_id (structure);
+    const GValue *value = NULL;
 
     if (id == g_quark_from_static_string ("VideoLandmarks")) {
       GArray *keypoints = NULL, *links = NULL;
-      GArray *newkeypoints = NULL, *newlinks = NULL;
       gdouble confidence = 0.0;
-      guint idx = 0, n_bytes = 0;
+      guint idx = 0;
 
       gst_structure_get_double (structure, "confidence", &confidence);
 
-      keypoints = (GArray *) g_value_get_boxed (
-          gst_structure_get_value (structure, "keypoints"));
-      links = (GArray *) g_value_get_boxed (
-          gst_structure_get_value (structure, "links"));
+      value = gst_structure_get_value (structure, "keypoints");
+      keypoints = g_array_copy (g_value_get_boxed (value));
 
-      newkeypoints = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoKeypoint),
-          keypoints->len);
-      newkeypoints = g_array_set_size (newkeypoints, keypoints->len);
-
-      n_bytes = keypoints->len * sizeof (GstVideoKeypoint);
-      memcpy (newkeypoints->data, keypoints->data, n_bytes);
-
-      newlinks = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoKeypointLink),
-          links->len);
-      newlinks = g_array_set_size (newlinks, links->len);
-
-      n_bytes = links->len * sizeof (GstVideoKeypointLink);
-      memcpy (newlinks->data, links->data, n_bytes);
+      value = gst_structure_get_value (structure, "links");
+      links = g_array_copy (g_value_get_boxed (value));
 
       // Correct the X and Y of each keypoint bases on the regions.
-      for (idx = 0; idx < newkeypoints->len; idx++) {
-        GstVideoKeypoint *kp =
-            &(g_array_index (newkeypoints, GstVideoKeypoint, idx));
+      for (idx = 0; idx < keypoints->len; idx++) {
+        GstVideoKeypoint *kp = &(g_array_index (keypoints, GstVideoKeypoint, idx));
 
         kp->x = (kp->x * w_scale) + destination->x;
         kp->y = (kp->y * h_scale) + destination->y;
       }
 
-      gst_buffer_add_video_landmarks_meta (outbuffer, confidence, newkeypoints,
-          newlinks);
+      gst_buffer_add_video_landmarks_meta (outbuffer, confidence, keypoints, links);
     } else if (id == g_quark_from_static_string ("ImageClassification")) {
-      GArray *labels = NULL, *newlabels = NULL;
+      GArray *labels = NULL;
+      const GValue *value = NULL;
 
-      labels = (GArray *) g_value_get_boxed (
-          gst_structure_get_value (structure, "labels"));
+      value = gst_structure_get_value (structure, "labels");
+      labels = g_array_copy (g_value_get_boxed (value));
 
-      newlabels = g_array_sized_new (FALSE, FALSE, sizeof (GstClassLabel),
-          labels->len);
-      newlabels = g_array_set_size (newlabels, labels->len);
-
-      memcpy (newlabels->data, labels->data, labels->len * sizeof (GstClassLabel));
-
-      gst_buffer_add_video_classification_meta (outbuffer, newlabels);
+      gst_buffer_add_video_classification_meta (outbuffer, labels);
     }
   }
 

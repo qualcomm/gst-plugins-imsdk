@@ -492,10 +492,14 @@ gst_metamux_process_classification_metadata (GstMetaMux * muxer,
   GstStructure *params = NULL;
   guint idx = 0, size = 0, batch_idx = 0;
 
-  gst_structure_get_uint (structure, "batch-index", &batch_idx);
-
   value = gst_structure_get_value (structure, "labels");
   size = gst_value_array_get_size (value);
+
+  // No classification label results for this buffer, nothing to do.
+  if (size == 0)
+    return;
+
+  gst_structure_get_uint (structure, "batch-index", &batch_idx);
 
   // Allocate memory for the labels.
   labels = g_array_sized_new (FALSE, FALSE, sizeof (GstClassLabel), size);
@@ -1180,6 +1184,12 @@ gst_metamux_main_sink_pad_setcaps (GstMetaMux * muxer, GstPad * pad,
   }
 
   GST_DEBUG_OBJECT (pad, "Negotiated caps %" GST_PTR_FORMAT, caps);
+
+  // Wait for pending buffers to be processed before sending new caps.
+  GST_METAMUX_PAD_WAIT_IDLE (GST_METAMUX_SINK_PAD (pad));
+  GST_METAMUX_PAD_WAIT_IDLE (muxer->srcpad);
+
+  GST_DEBUG_OBJECT (pad, "Pushing new caps %" GST_PTR_FORMAT, caps);
   return gst_pad_push_event (GST_PAD (muxer->srcpad), gst_event_new_caps (caps));
 }
 

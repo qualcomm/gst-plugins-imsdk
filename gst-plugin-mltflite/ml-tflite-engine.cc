@@ -75,16 +75,16 @@
 #include <tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h>
 
 #ifdef HAVE_HEXAGON_DELEGATE_H
-#if TF_MAJOR_VERSION <= 2 && TF_MINOR_VERSION <= 2
-#include <tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h>
-#else
+#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 3)
 #include <tensorflow/lite/delegates/hexagon/hexagon_delegate.h>
-#endif // TF_MAJOR_VERSION <= 2 && TF_MINOR_VERSION <= 2
+#else
+#include <tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h>
+#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 3)
 #endif // HAVE_HEXAGON_DELEGATE_H
 
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
-#include "tensorflow/lite/delegates/external/external_delegate.h"
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#ifdef HAVE_EXTERNAL_DELEGATE_H
+#include <tensorflow/lite/delegates/external/external_delegate.h>
+#endif // HAVE_EXTERNAL_DELEGATE_H
 
 #define GST_ML_RETURN_VAL_IF_FAIL(expression, value, ...) \
 { \
@@ -131,13 +131,13 @@
 #define GET_OPT_STHREADS(s) get_opt_uint (s, \
     GST_ML_TFLITE_ENGINE_OPT_THREADS, DEFAULT_OPT_THREADS)
 
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#ifdef HAVE_EXTERNAL_DELEGATE_H
 #define GET_OPT_EXT_DELEGATE_PATH(s) get_opt_string (s, \
     GST_ML_TFLITE_ENGINE_OPT_EXT_DELEGATE_PATH)
 
 #define GET_OPT_EXT_DELEGATE_OPTS(s) get_opt_structure (s, \
     GST_ML_TFLITE_ENGINE_OPT_EXT_DELEGATE_OPTS)
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#endif // HAVE_EXTERNAL_DELEGATE_H
 
 #define GST_CAT_DEFAULT gst_ml_tflite_engine_debug_category()
 
@@ -208,13 +208,13 @@ gst_ml_tflite_delegate_get_type (void)
       GST_ML_TFLITE_DELEGATE_XNNPACK,
         "Run inferences using xnnpack cpu runtime", "xnnpack"
     },
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#ifdef HAVE_EXTERNAL_DELEGATE_H
     {
       GST_ML_TFLITE_DELEGATE_EXTERNAL,
         "Run the processing on external delegate. It uses two plugin properties"
         " external-delegate-path and external-delegate-options.", "external"
     },
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#endif // HAVE_EXTERNAL_DELEGATE_H
     {0, NULL, NULL},
   };
 
@@ -269,10 +269,10 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
       // Save power and maintain high accuracy of inference
       options.execution_preference   =
           tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
-#if TF_MAJOR_VERSION >= 2 && TF_MINOR_VERSION >= 5
+#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
       // Burst computation as same delegate is used for all inputs in pipeline
       options.use_burst_computation  = true;
-#endif
+#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
       if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
         GST_WARNING ("Failed to create NN Framework DSP delegate!");
         break;
@@ -289,12 +289,12 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
       // Save power and maintain high accuracy of inference
       options.execution_preference   =
           tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
-#if TF_MAJOR_VERSION >= 2 && TF_MINOR_VERSION >= 5
+#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
       // Burst computation as same delegate is used for all inputs in pipeline
       options.use_burst_computation  = true;
       // Allow quant types to be converted to fp16 instead of fp32
       options.allow_fp16             = true;
-#endif
+#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
       if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
         GST_WARNING ("Failed to create NN Framework DSP delegate!");
         break;
@@ -311,10 +311,10 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
       // Save power and maintain high accuracy of inference
       options.execution_preference   =
           tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
-#if TF_MAJOR_VERSION >= 2 && TF_MINOR_VERSION >= 5
+#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
       // Burst computation as same delegate is used for all inputs in pipeline
       options.use_burst_computation  = true;
-#endif
+#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
       if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
         GST_WARNING ("Failed to create NN Framework NPU delegate!");
         break;
@@ -378,7 +378,7 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
       GST_INFO ("Using XNNPACK delegate");
       return delegate;
     }
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#ifdef HAVE_EXTERNAL_DELEGATE_H
     case GST_ML_TFLITE_DELEGATE_EXTERNAL:
     {
       const gchar * path = GET_OPT_EXT_DELEGATE_PATH (settings);
@@ -410,7 +410,7 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
       GST_INFO("Using external delegate");
       return delegate;
     }
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#endif // HAVE_EXTERNAL_DELEGATE_H
     default:
       GST_INFO ("No delegate will be used");
       break;
@@ -443,11 +443,11 @@ gst_ml_tflite_engine_delegate_free (TfLiteDelegate * delegate, gint type)
     case GST_ML_TFLITE_DELEGATE_XNNPACK:
       TfLiteXNNPackDelegateDelete (delegate);
       break;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#ifdef HAVE_EXTERNAL_DELEGATE_H
     case GST_ML_TFLITE_DELEGATE_EXTERNAL:
       TfLiteExternalDelegateDelete(delegate);
       break;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
+#endif // HAVE_EXTERNAL_DELEGATE_H
     default:
       break;
   }
