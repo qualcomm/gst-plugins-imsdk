@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -26,10 +26,20 @@
  */
 #define GST_ML_QNN_ENGINE_OPT_BACKEND "GstMLQNNEngine.backend"
 
+/**
+ * GST_ML_QNN_ENGINE_OPT_SYSLIB:
+ *
+ * #G_TYPE_STRING, QNN system library file path and name
+ * Default: NULL
+ */
+#define GST_ML_QNN_ENGINE_OPT_SYSLIB "GstMLQNNEngine.sysLib"
+
 #define GET_OPT_MODEL(s) \
   gst_structure_get_string (s, GST_ML_QNN_ENGINE_OPT_MODEL)
 #define GET_OPT_BACKEND(s) \
   gst_structure_get_string (s, GST_ML_QNN_ENGINE_OPT_BACKEND)
+#define GET_OPT_SYSLIB(s) \
+  gst_structure_get_string (s, GST_ML_QNN_ENGINE_OPT_SYSLIB)
 
 G_BEGIN_DECLS
 

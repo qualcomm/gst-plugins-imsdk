@@ -20,7 +20,8 @@ GST_DEBUG_CATEGORY (gst_ml_qnn_debug);
 #define gst_ml_qnn_parent_class parent_class
 G_DEFINE_TYPE (GstMLQnn, gst_ml_qnn, GST_TYPE_BASE_TRANSFORM);
 
-#define PROP_QNN_BACKEND_DEFAULT  NULL
+#define PROP_QNN_BACKEND_DEFAULT  "/usr/lib/libQnnCpu.so"
+#define PROP_QNN_SYSTEM_DEFAULT   "/usr/lib/libQnnSystem.so"
 #define PROP_QNN_MODEL_DEFAULT    NULL
 
 #define DEFAULT_PROP_MIN_BUFFERS  2
@@ -37,6 +38,7 @@ enum
   PROP_0,
   PROP_QNN_BACKEND,
   PROP_QNN_MODEL,
+  PROP_QNN_SYSTEM,
 };
 
 static GstStaticCaps gst_ml_qnn_static_caps = GST_STATIC_CAPS (GST_ML_QNN_CAPS);
@@ -397,6 +399,7 @@ gst_ml_qnn_change_state (GstElement * element, GstStateChange transition)
       settings = gst_structure_new ("ml-engine-settings",
           GST_ML_QNN_ENGINE_OPT_BACKEND, G_TYPE_STRING, mlqnn->backend,
           GST_ML_QNN_ENGINE_OPT_MODEL, G_TYPE_STRING, mlqnn->model,
+          GST_ML_QNN_ENGINE_OPT_SYSLIB, G_TYPE_STRING, mlqnn->syslib,
           NULL);
 
       mlqnn->engine = gst_ml_qnn_engine_new (settings);
@@ -495,6 +498,9 @@ gst_ml_qnn_set_property (GObject * object, guint property_id,
     case PROP_QNN_MODEL:
       mlqnn->model = g_strdup (g_value_get_string (value));
       break;
+    case PROP_QNN_SYSTEM:
+      mlqnn->syslib = g_strdup (g_value_get_string (value));
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -513,6 +519,9 @@ gst_ml_qnn_get_property (GObject * object, guint property_id,
       break;
     case PROP_QNN_MODEL:
       g_value_set_string (value, mlqnn->model);
+      break;
+    case PROP_QNN_SYSTEM:
+      g_value_set_string (value, mlqnn->syslib);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -537,6 +546,9 @@ gst_ml_qnn_finalize (GObject * object)
   g_free(mlqnn->backend);
   mlqnn->backend = NULL;
 
+  g_free(mlqnn->syslib);
+  mlqnn->syslib = NULL;
+
   G_OBJECT_CLASS (gst_ml_qnn_parent_class)->finalize (object);
 }
 
@@ -556,8 +568,12 @@ gst_ml_qnn_class_init (GstMLQnnClass * klass)
           PROP_QNN_BACKEND_DEFAULT,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject_class, PROP_QNN_MODEL,
-      g_param_spec_string ("model", "Model", "Model file path",
+      g_param_spec_string ("model", "Model", "Model/CachedBin file path",
           PROP_QNN_MODEL_DEFAULT,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject_class, PROP_QNN_SYSTEM,
+      g_param_spec_string ("system", "System", "System lib path",
+          PROP_QNN_SYSTEM_DEFAULT,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   gst_element_class_set_static_metadata (GST_ELEMENT_CLASS (klass),
       "QNN based ML plugin", "QNN", "QNN based ML plugin", "QTI");
@@ -588,6 +604,7 @@ gst_ml_qnn_init (GstMLQnn * mlqnn)
 
   mlqnn->model = PROP_QNN_MODEL_DEFAULT;
   mlqnn->backend = PROP_QNN_BACKEND_DEFAULT;
+  mlqnn->syslib = PROP_QNN_SYSTEM_DEFAULT;
 
   GST_DEBUG_CATEGORY_INIT (gst_ml_qnn_debug, "qtimlqnn", 0,
       "QTI QNN ML plugin");
