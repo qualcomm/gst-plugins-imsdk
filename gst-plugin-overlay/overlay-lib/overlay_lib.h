@@ -619,7 +619,8 @@ class OverlayItemGraph : public OverlayItem {
   static const int kGraphBufHeight = 288;
 
   uint32_t graph_color_;
-  float downscale_ratio_;
+  float w_downscale_ratio_;
+  float h_downscale_ratio_;
   OverlayGraph graph_;
 };
 
