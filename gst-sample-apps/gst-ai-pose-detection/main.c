@@ -9,7 +9,7 @@
  *
  * Description:
  * The application takes live video stream from camera/file/rtsp and gives same to
- * posenet mobilenet v1 TensorFlow Lite Model for pose detection and
+ * Hrnet TensorFlow Lite Model for pose detection and
  * display preview with overlayed AI Model output labels.
  *
  * Pipeline for Gstreamer:
@@ -32,8 +32,11 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_TFLITE_POSE_DETECTION_MODEL "/opt/posenet_mobilenet_v1.tflite"
-#define DEFAULT_POSE_DETECTION_LABELS "/opt/posenet_mobilenet_v1.labels"
+#define DEFAULT_TFLITE_POSE_DETECTION_MODEL "/opt/hrnet_pose_quantized.tflite"
+#define DEFAULT_POSE_DETECTION_LABELS "/opt/hrnet_pose.labels"
+
+#define DEFAULT_CONSTANTS \
+    "hrnet,q-offsets=<8.0>,q-scales=<0.0040499246679246426>;"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
@@ -58,6 +61,7 @@ typedef struct {
   gchar *rtsp_ip_port;
   gchar *model_path;
   gchar *labels_path;
+  gchar *constants;
   GstCameraSourceType camera_type;
   gdouble threshold;
   gboolean use_cpu;
@@ -100,6 +104,11 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
     g_free (options->labels_path);
   }
 
+  if (options->constants != DEFAULT_CONSTANTS &&
+      options->constants != NULL) {
+    g_free (options->constants);
+  }
+
   if (appctx->pipeline != NULL) {
     gst_object_unref (appctx->pipeline);
     appctx->pipeline = NULL;
@@ -108,7 +117,7 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
 
 /* Default value of Threshold
  */
-#define DEFAULT_THRESHOLD_VALUE 51.0
+#define DEFAULT_THRESHOLD_VALUE 40.0
 
 /**
  * Function to link the dynamic video pad of demux to queue:
@@ -416,15 +425,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   // 2.6 Set properties for ML postproc plugins- module, layers, threshold
-  module_id = get_enum_value (qtimlvpose, "module", "posenet");
+  module_id = get_enum_value (qtimlvpose, "module", "hrnet");
   if (module_id != -1 ) {
     g_object_set (G_OBJECT (qtimlvpose), "threshold", options->threshold,
-        "results", 2, "module", module_id, "labels", options->labels_path,
-        "constants", "Posenet,q-offsets=<128.0,128.0,117.0>,"
-        "q-scales=<0.0784313753247261,0.0784313753247261,1.3875764608383179>;",
+        "results", 1, "module", module_id, "labels", options->labels_path,
+        "constants", options->constants,
         NULL);
   } else {
-    g_printerr ("Module posenet in not available in qtimlvpose.\n");
+    g_printerr ("Module hrnet in not available in qtimlvpose.\n");
     goto error_clean_elements;
   }
 
@@ -599,6 +607,7 @@ main (gint argc, gchar * argv[])
   options.model_path = NULL;
   options.file_path = NULL;
   options.rtsp_ip_port = NULL;
+  options.constants = DEFAULT_CONSTANTS;
   options.labels_path = DEFAULT_POSE_DETECTION_LABELS;
   options.threshold = DEFAULT_THRESHOLD_VALUE;
   options.use_cpu = FALSE, options.use_gpu = FALSE, options.use_dsp = FALSE;
@@ -638,6 +647,14 @@ main (gint argc, gchar * argv[])
       "      Default labels path: " DEFAULT_POSE_DETECTION_LABELS,
       "/PATH"
     },
+    { "constants", 'k', 0, G_OPTION_ARG_STRING,
+      &options.constants,
+      "Constants, offsets and coefficients used by the chosen module \n"
+      "      for post-processing of incoming tensors."
+      " Applicable only for some modules\n"
+      "      Default constants: " DEFAULT_CONSTANTS,
+      "/CONSTANTS"
+    },
     { "threshold", 'p', 0, G_OPTION_ARG_DOUBLE,
       &options.threshold,
       "This is an optional parameter and overides default threshold value 51",
@@ -664,10 +681,13 @@ main (gint argc, gchar * argv[])
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
 
   snprintf (help_description, 1023, "\nExample:\n"
-      "  %s --model=%s --labels=%s\n"
+      "  %s -s <file_path> --model=%s --labels=%s -k \"%s\"\n"
+      "  %s -c 0 --model=%s --labels=%s -k \"%s\"\n"
       "\nThis Sample App demonstrates Pose Detection on Live Stream",
       app_name, DEFAULT_TFLITE_POSE_DETECTION_MODEL,
-      DEFAULT_POSE_DETECTION_LABELS);
+      DEFAULT_POSE_DETECTION_LABELS, DEFAULT_CONSTANTS,
+      app_name, DEFAULT_TFLITE_POSE_DETECTION_MODEL,
+      DEFAULT_POSE_DETECTION_LABELS, DEFAULT_CONSTANTS);
   help_description[1023] = '\0';
 
   // Parse command line entries.
