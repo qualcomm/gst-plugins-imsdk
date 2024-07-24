@@ -29,35 +29,19 @@ G_BEGIN_DECLS
 typedef struct _GstRedisSink GstRedisSink;
 typedef struct _GstRedisSinkClass GstRedisSinkClass;
 
-
-typedef enum {
-  GST_DATA_TYPE_NONE,
-  GST_DATA_TYPE_VIDEO,
-  GST_DATA_TYPE_TEXT,
-} GstDataType;
-
 struct _GstRedisSink {
   /// Inherited parent structure.
   GstBaseSink parent;
 
-  /// Negotiated data type
-  GstDataType data_type;
-
   /// Hiredis library context
   redisContext *redis;
-
-  /// Parsing ML data module
-  GstMLModule *module;
 
   /// Properties.
   gchar *host;
   guint port;
   gchar *password;
   gchar *username;
-  gchar *detection_channel;
-  gchar *image_classification_channel;
-  gchar *pose_estimation_channel;
-  gint mdlenum;
+  gchar *channel;
 };
 
 struct _GstRedisSinkClass {

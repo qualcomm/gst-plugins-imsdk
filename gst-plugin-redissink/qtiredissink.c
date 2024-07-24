@@ -9,15 +9,7 @@
 #endif
 
 #include "qtiredissink.h"
-
-
-#define GST_TYPE_REDIS_MODULES (gst_ml_modules_get_type())
-
-#define REDIS_SINK_IS_PROPERTY_MUTABLE_IN_CURRENT_STATE(pspec, state) \
-    ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
-        : ((pspec->flags & GST_PARAM_MUTABLE_PAUSED) ? (state <= GST_STATE_PAUSED) \
-            : ((pspec->flags & GST_PARAM_MUTABLE_READY) ? (state <= GST_STATE_READY) \
-                : (state <= GST_STATE_NULL))))
+#include <gst/utils/common-utils.h>
 
 #define gst_redis_sink_parent_class parent_class
 G_DEFINE_TYPE (GstRedisSink, gst_redis_sink, GST_TYPE_BASE_SINK);
@@ -27,20 +19,17 @@ GST_DEBUG_CATEGORY_STATIC (gst_redis_sink_debug);
 
 
 #define GST_REDIS_SINK_CAPS \
-    "text/x-raw;" \
-    "video/x-raw(ANY)"
+    "text/x-raw"
 
-#define DEFAULT_PROP_MODULE 0
 #define DEFAULT_PROP_HOSTNAME "127.0.0.1"
 #define DEFAULT_PROP_PORT 6379
-#define DEFAULT_PROP_USERNAME ""
-#define DEFAULT_PROP_PASSWORD ""
-#define DEFAULT_PROP_CHANNEL ""
+#define DEFAULT_PROP_USERNAME NULL
+#define DEFAULT_PROP_PASSWORD NULL
+#define DEFAULT_PROP_CHANNEL NULL
 
 enum
 {
   PROP_0,
-  PROP_MODULE,
   PROP_HOST,
   PROP_PORT,
   PROP_USERNAME,
@@ -54,58 +43,14 @@ static GstStaticPadTemplate redis_sink_template =
         GST_PAD_ALWAYS,
         GST_STATIC_CAPS (GST_REDIS_SINK_CAPS));
 
-
-static void
-gst_redis_sink_set_channels (GstRedisSink *sink, const GValue * value)
-{
-  GValue val = G_VALUE_INIT;
-  const GValue *pval = NULL;
-  GstStructure *structure = NULL;
-
-  g_value_init (&val, GST_TYPE_STRUCTURE);
-
-  if (!gst_value_deserialize (&val, g_value_get_string (value)))
-    return;
-
-  structure = GST_STRUCTURE (g_value_get_boxed (&val));
-
-  pval = gst_structure_get_value (structure, "detection");
-  if (pval) {
-    g_free (sink->detection_channel);
-    sink->detection_channel = g_strdup (g_value_get_string (pval));
-  }
-
-  pval = gst_structure_get_value (structure, "classification");
-  if (pval) {
-    g_free (sink->image_classification_channel);
-    sink->image_classification_channel = g_strdup (g_value_get_string (pval));
-  }
-
-  pval = gst_structure_get_value (structure, "estimation");
-  if (pval) {
-    g_free (sink->pose_estimation_channel);
-    sink->pose_estimation_channel = g_strdup (g_value_get_string (pval));
-  }
-
-  GST_DEBUG_OBJECT (sink, "Redis detection channel = %s",
-    sink->detection_channel);
-
-  GST_DEBUG_OBJECT (sink, "Redis image classification channel = %s",
-    sink->image_classification_channel);
-
-  GST_DEBUG_OBJECT (sink, "Redis pose estimation channel = %s",
-    sink->pose_estimation_channel);
-
-  return;
-}
-
 static gboolean
 gst_redis_sink_publish (GstBaseSink * bsink, const gchar *string, gchar *channel)
 {
   redisReply *reply = NULL;
   GstRedisSink *sink = GST_REDIS_SINK (bsink);
 
-  g_return_val_if_fail (string != NULL, TRUE);
+  g_return_val_if_fail (string != NULL, FALSE);
+  g_return_val_if_fail (channel != NULL, FALSE);
 
   GST_DEBUG_OBJECT (sink, "REDIS: PUBLISH %s %s", channel, string);
 
@@ -115,33 +60,11 @@ gst_redis_sink_publish (GstBaseSink * bsink, const gchar *string, gchar *channel
   return TRUE;
 }
 
-static void
-destroy_redissink (void *redis)
-{
-  if (redis) redisFree(redis);
-}
-
-static GType
-gst_ml_modules_get_type (void)
-{
-  static GType gtype = 0;
-  static GEnumValue *variants = NULL;
-
-  if (gtype)
-    return gtype;
-
-  variants = gst_ml_enumarate_modules ("redis-ml-parser-");
-  gtype = g_enum_register_static ("GstRedisModules", variants);
-
-  return gtype;
-}
-
 static GstFlowReturn
 gst_redis_sink_render (GstBaseSink * bsink, GstBuffer * buffer)
 {
-  const gchar *output_string;
+  GstMapInfo bufmap = { 0, };
   GstRedisSink *sink;
-  GstMLFrame mlframe = { 0, };
 
   sink = GST_REDIS_SINK (bsink);
 
@@ -153,35 +76,19 @@ gst_redis_sink_render (GstBaseSink * bsink, GstBuffer * buffer)
     return GST_FLOW_OK;
   }
 
+  if (!gst_buffer_map (buffer, &bufmap, GST_MAP_READ)) {
+    GST_ERROR ("Unable to map buffer!");
+    return GST_FLOW_ERROR;
+  }
+
   gst_buffer_ref (buffer);
 
-  GstStructure *output = gst_structure_new_empty ("output");
-
-  mlframe.buffer = buffer;
-  gst_ml_module_execute (sink->module, &mlframe, (gpointer) output);
-
-  if (sink->detection_channel) {
-    output_string = gst_structure_has_field (output, "ObjectDetection") ?
-        gst_structure_get_string (output, "ObjectDetection") : NULL;
+  if (sink->channel) {
     gst_redis_sink_publish (bsink,
-        output_string, sink->detection_channel);
+        (gchar*) bufmap.data, sink->channel);
   }
 
-  if (sink->image_classification_channel) {
-    output_string = gst_structure_has_field (output, "ImageClassification") ?
-        gst_structure_get_string (output, "ImageClassification") : NULL;
-    gst_redis_sink_publish (bsink,
-        output_string, sink->image_classification_channel);
-  }
-
-  if (sink->pose_estimation_channel) {
-    output_string = gst_structure_has_field (output, "PoseEstimation") ?
-        gst_structure_get_string (output, "PoseEstimation") : NULL;
-    gst_redis_sink_publish (bsink,
-        output_string, sink->pose_estimation_channel);
-  }
-
-  gst_structure_free (output);
+  gst_buffer_unmap (buffer, &bufmap);
   gst_buffer_unref (buffer);
 
   return GST_FLOW_OK;
@@ -207,7 +114,10 @@ gst_redis_sink_stop (GstBaseSink * basesink)
 
   GST_INFO_OBJECT (sink, "Stop");
 
-  g_clear_pointer (&(sink->redis), destroy_redissink);
+  if (sink->redis)
+    redisFree(sink->redis);
+
+  sink->redis = NULL;
 
   return TRUE;
 }
@@ -217,54 +127,7 @@ gst_redis_sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
 {
   GstRedisSink *sink = GST_REDIS_SINK (bsink);
 
-  GstStructure *structure = NULL;
-  const gchar *caps_name = NULL;
-  GEnumClass *eclass = NULL;
-  GEnumValue *evalue = NULL;
-
   GST_INFO_OBJECT (sink, "Input caps: %" GST_PTR_FORMAT, caps);
-
-  structure = gst_caps_get_structure (caps, 0);
-
-  caps_name = gst_structure_get_name (structure);
-
-  GST_DEBUG_OBJECT (sink, "Caps: %s", caps_name);
-
-  if (!strcmp (caps_name, "text/x-raw")) {
-    sink->data_type = GST_DATA_TYPE_TEXT;
-  } else if (!strcmp (caps_name, "video/x-raw(ANY)")) {
-    sink->data_type = GST_DATA_TYPE_VIDEO;
-  } else {
-    sink->data_type = GST_DATA_TYPE_NONE;
-  }
-
-  if (DEFAULT_PROP_MODULE == sink->mdlenum) {
-    GST_ELEMENT_ERROR (sink, RESOURCE, NOT_FOUND, (NULL),
-        ("Module name not set, automatic module pick up not supported!"));
-    return FALSE;
-  }
-
-  eclass = G_ENUM_CLASS (g_type_class_peek (GST_TYPE_REDIS_MODULES));
-  evalue = g_enum_get_value (eclass, sink->mdlenum);
-
-  gst_ml_module_free (sink->module);
-  sink->module = gst_ml_module_new (evalue->value_name);
-
-  if (!gst_ml_module_init (sink->module)) {
-    GST_ELEMENT_ERROR (sink, RESOURCE, FAILED, (NULL),
-        ("Module initialization failed!"));
-    return FALSE;
-  }
-
-  structure = gst_structure_new ("options",
-      GST_ML_MODULE_OPT_CAPS, GST_TYPE_CAPS, caps,
-      NULL);
-
-  if (!gst_ml_module_set_opts (sink->module, structure)) {
-    GST_ELEMENT_ERROR (sink, RESOURCE, FAILED, (NULL),
-        ("Failed to set module options!"));
-    return FALSE;
-  }
 
   return TRUE;
 }
@@ -278,7 +141,7 @@ gst_redis_sink_set_property (GObject * object, guint prop_id,
 
   GstState state = GST_STATE (sink);
 
-  if (!REDIS_SINK_IS_PROPERTY_MUTABLE_IN_CURRENT_STATE (pspec, state)) {
+  if (!GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE (pspec, state)) {
     GST_WARNING ("Property '%s' change not supported in %s state!",
         propname, gst_element_state_get_name (state));
     return;
@@ -300,10 +163,7 @@ gst_redis_sink_set_property (GObject * object, guint prop_id,
       sink->password = g_strdup (g_value_get_string (value));
       break;
     case PROP_CHANNEL:
-      gst_redis_sink_set_channels (sink, value);
-      break;
-    case PROP_MODULE:
-      sink->mdlenum = g_value_get_enum (value);
+      sink->channel = g_strdup (g_value_get_string (value));
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -333,9 +193,7 @@ gst_redis_sink_get_property (GObject * object, guint prop_id, GValue * value,
       g_value_set_string (value, sink->password);
       break;
     case PROP_CHANNEL:
-      break;
-    case PROP_MODULE:
-      g_value_set_enum (value, sink->mdlenum);
+      g_value_set_string (value, sink->channel);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -352,9 +210,7 @@ gst_redis_sink_dispose (GObject * obj)
   g_clear_pointer (&(sink->host), g_free);
   g_clear_pointer (&(sink->password), g_free);
   g_clear_pointer (&(sink->username), g_free);
-  g_clear_pointer (&(sink->detection_channel), g_free);
-  g_clear_pointer (&(sink->image_classification_channel), g_free);
-  g_clear_pointer (&(sink->pose_estimation_channel), g_free);
+  g_clear_pointer (&(sink->channel), g_free);
 
   G_OBJECT_CLASS (parent_class)->dispose (obj);
 }
@@ -373,12 +229,6 @@ gst_redis_sink_class_init (GstRedisSinkClass * klass)
   gobject->set_property = GST_DEBUG_FUNCPTR (gst_redis_sink_set_property);
   gobject->get_property = GST_DEBUG_FUNCPTR (gst_redis_sink_get_property);
   gobject->dispose      = GST_DEBUG_FUNCPTR (gst_redis_sink_dispose);
-
-  g_object_class_install_property (gobject, PROP_MODULE,
-      g_param_spec_enum ("module", "Module",
-          "Module name that is going to be used for processing the tensors",
-          GST_TYPE_REDIS_MODULES, DEFAULT_PROP_MODULE,
-          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property (gobject, PROP_HOST,
       g_param_spec_string ("host", "Redis service hostname",
@@ -427,15 +277,12 @@ gst_redis_sink_class_init (GstRedisSinkClass * klass)
 static void
 gst_redis_sink_init (GstRedisSink * sink)
 {
-  sink->data_type = GST_DATA_TYPE_NONE;
   sink->redis = NULL;
   sink->host = NULL;
   sink->port = 0;
   sink->password = NULL;
   sink->username = NULL;
-  sink->detection_channel = NULL;
-  sink->image_classification_channel = NULL;
-  sink->pose_estimation_channel = NULL;
+  sink->channel = NULL;
 
   GST_DEBUG_CATEGORY_INIT (gst_redis_sink_debug, "qtiredissink", 0,
     "qtiredissink object");
