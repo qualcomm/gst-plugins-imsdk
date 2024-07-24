@@ -44,7 +44,7 @@
 #define GST_CAT_DEFAULT gst_ml_module_debug
 
 // Minimum relative size of the bounding box must occupy in the image.
-#define BBOX_SIZE_THRESHOLD    0.01F
+#define BBOX_SIZE_THRESHOLD    100 // 10 x 10 pixels
 
 #define GST_ML_SUB_MODULE_CAST(obj) ((GstMLSubModule*)(obj))
 
@@ -54,7 +54,10 @@
     "dimensions = (int) < <1, 60, 80, 1 >, < 1, 60, 80, 1 >, < 1, 60, 80, 10 >, < 1, 60, 80, 4 > >; " \
     "neural-network/tensors, " \
     "type = (string) { FLOAT32 }, " \
-    "dimensions = (int) < <1, 120, 160, 1 >, < 1, 120, 160, 10 >, < 1, 120, 160, 4 > >; "
+    "dimensions = (int) < <1, 120, 160, 1>, <1, 120, 160, 10>, <1, 120, 160, 4> >; " \
+    "neural-network/tensors, " \
+    "type = (string) { FLOAT32 }, " \
+    "dimensions = (int) < < 1, 60, 80, 4 >, < 1, 60, 80, 10 >, < 1, 60, 80, 1 > >;"
 
 // Module caps instance
 static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
@@ -190,10 +193,11 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GArray *predictions = (GArray *)output;
   GstProtectionMeta *pmeta = NULL;
   GstMLBoxPrediction *prediction = NULL;
-  gfloat *scores = NULL, *hm_pool = NULL, *landmarks = NULL, *bboxes = NULL;
+  gfloat *scores = NULL, *landmarks = NULL, *bboxes = NULL, *hm_pool = NULL;
   GstVideoRectangle region = { 0, };
-  gfloat size = 0;
-  guint idx = 0, num = 0, n_classes = 0, n_blocks = 0, n_tensor = 0, block_size = 0;
+  gfloat confidence = 0.0;
+  guint idx = 0, num = 0, id = 0, class_idx = 0, size = 0.0;
+  guint n_classes = 0, n_landmarks = 0, n_paxels = 0, paxelsize = 0;
   gint nms = -1, cx = 0, cy = 0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
@@ -215,68 +219,136 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   // Extract the source tensor region with actual data.
   gst_ml_structure_get_source_region (pmeta->info, &region);
 
-  n_tensor = GST_ML_FRAME_N_TENSORS (mlframe);
-
-  // TODO: First tensor represents some kind of confidence scores.
-  scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
-
-  if (n_tensor == 4) {
+  if (GST_ML_FRAME_N_TENSORS (mlframe) == 4) {
+    // First tensor represents confidence scores.
+    scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
     // TODO: Second tensor represents some kind of confidence scores.
     hm_pool = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
     // Third tensor represents the landmarks (left eye, right ear, etc.).
     landmarks = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
     // Fourh tensor represents the coordinates of the bounding boxes.
     bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
-  } else if (n_tensor == 3) {
+
+    // The 4th tensor dimension represents the number of detection classes.
+    n_classes = GST_ML_FRAME_DIM (mlframe, 0, 3);
+    // The 4th tensor dimension represents the number of landmark X & Y pairs.
+    n_landmarks = GST_ML_FRAME_DIM (mlframe, 2, 3) / 2;
+  } else if (GST_ML_FRAME_N_TENSORS (mlframe) == 3) {
+    // Check whether the first tensor contains the bounding boxes.
+    if (GST_ML_FRAME_DIM (mlframe, 0, 3) == 4) {
+      // Thrid tensor represents confidence scores.
+      scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
+      // First tensor represents the coordinates of the bounding boxes.
+      bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+
+      // The 4th tensor dimension represents the number of detection classes.
+      n_classes = GST_ML_FRAME_DIM (mlframe, 2, 3);
+    } else {
+      // First tensor represents confidence scores.
+      scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+      // Thrid tensor represents the coordinates of the bounding boxes.
+      bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
+
+      // The 4th tensor dimension represents the number of detection classes.
+      n_classes = GST_ML_FRAME_DIM (mlframe, 0, 3);
+    }
+
     // Second tensor represents the landmarks (left eye, right ear, etc.).
     landmarks = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
-    // Thrid tensor represents the coordinates of the bounding boxes.
-    bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
+    // The 4th tensor dimension represents the number of landmark X & Y pairs.
+    n_landmarks = GST_ML_FRAME_DIM (mlframe, 1, 3) / 2;
   }
 
-  // The 4th tensor dimension represents the number of detection classes.
-  n_classes = GST_ML_FRAME_DIM (mlframe, 0, 3);
+  // Calculate the number of macroblocks (paxels).
+  n_paxels = GST_ML_FRAME_DIM (mlframe, 0, 1) * GST_ML_FRAME_DIM (mlframe, 0, 2);
+  // Calculate the dimension of the square macro block.
+  paxelsize = submodule->inwidth / GST_ML_FRAME_DIM (mlframe, 0, 2);
 
-  // Calculate the number of macroblocks.
-  n_blocks = GST_ML_FRAME_DIM (mlframe, 0, 1) * GST_ML_FRAME_DIM (mlframe, 0, 2);
-
-  block_size = submodule->inwidth / GST_ML_FRAME_DIM (mlframe, 0, 2);
-
-  for (idx = 0; idx < n_blocks; ++idx) {
+  // TODO: This is currently processing only class with index 0 (face).
+  for (idx = 0; idx < n_paxels; idx += n_classes) {
     GstMLLabel *label = NULL;
     GstMLBoxEntry entry = { 0, };
+    gfloat left = G_MAXFLOAT, right = 0.0, top = G_MAXFLOAT, bottom = 0.0;
+    gfloat x = 0.0, y = 0.0, tx = 0.0, ty = 0.0, width = 0.0, height = 0.0;
 
     // Discard invalid results.
-    if (n_tensor == 4 && hm_pool != NULL && scores[idx] != hm_pool[idx])
+    if ((hm_pool != NULL) && scores[idx] != hm_pool[idx])
       continue;
 
     // Discard results below the minimum score threshold.
     if (scores[idx] < submodule->threshold)
       continue;
 
+    class_idx = idx % n_classes;
+    confidence = scores[idx];
+
     // Calculate the centre coordinates.
     cx = (idx / n_classes) % GST_ML_FRAME_DIM (mlframe, 0, 2);
     cy = (idx / n_classes) / GST_ML_FRAME_DIM (mlframe, 0, 2);
 
-    entry.left = (cx - bboxes[(idx * 4)]) * block_size;
-    entry.top = (cy - bboxes[(idx * 4) + 1]) * block_size;
-    entry.right = (cx + bboxes[(idx * 4) + 2]) * block_size;
-    entry.bottom = (cy + bboxes[(idx * 4) + 3]) * block_size;
+    entry.left = (cx - bboxes[(idx * 4)]) * paxelsize;
+    entry.top = (cy - bboxes[(idx * 4) + 1]) * paxelsize;
+    entry.right = (cx + bboxes[(idx * 4) + 2]) * paxelsize;
+    entry.bottom = (cy + bboxes[(idx * 4) + 3]) * paxelsize;
 
-    // Adjust bounding box dimensions with SAR and input tensor resolution.
-    gst_ml_box_transform_dimensions (&entry, &region);
-
-    size = (entry.right - entry.left) *
-        (entry.bottom - entry.top);
+    size = (entry.right - entry.left) * (entry.bottom - entry.top);
 
     // Discard results below the minimum bounding box size.
     if (size < BBOX_SIZE_THRESHOLD)
       continue;
 
-    label = g_hash_table_lookup (submodule->labels,
-        GUINT_TO_POINTER (idx % n_classes));
+    for (num = 0; num < n_landmarks; ++num) {
+      id = (idx / n_classes) * (n_landmarks * 2) + num;
 
-    entry.confidence = scores[idx] * 100.0;
+      x = (cx + landmarks[id]) * paxelsize;
+      y = (cy + landmarks[id + n_landmarks]) * paxelsize;
+
+      // Normalize landmark X and Y within bbox coordinates
+      x -= region.x + entry.left;
+      y -= region.y + entry.top;
+
+      // Find the region in which the landmarks reside.
+      left = MIN (left, x);
+      top = MIN (top, y);
+      right = MAX (right, x);
+      bottom = MAX (bottom, y);
+
+      GST_TRACE ("Ladnmark: [ %f %f ] ", x, y);
+    }
+
+    // Translate the bbox centre based on the landmarks region centre.
+    tx = left + ((right - left) / 2) - ((entry.right - entry.left) / 2);
+    ty = top + ((bottom - top) / 2) - ((entry.bottom - entry.top) / 2);
+
+    entry.left += tx;
+    entry.top += ty;
+    entry.right += tx;
+    entry.bottom += ty;
+
+    GST_LOG ("Class: %u Confidence: %.2f Box[%f, %f, %f, %f]", class_idx,
+        confidence, entry.top, entry.left, entry.bottom, entry.right);
+
+    // Adjust bounding box dimensions in order to make it a square with margins.
+    width = entry.right - entry.left;
+    height = entry.bottom - entry.top;
+
+    if (width > height) {
+      entry.top -= ((width - height) / 2);
+      entry.bottom = entry.top + width;
+    } else if (width < height) {
+      entry.left -= ((height - width) / 2);
+      entry.right = entry.left + height;
+    }
+
+    GST_LOG ("Class: %u Confidence: %.2f Adjusted Box[%f, %f, %f, %f]",
+        class_idx, confidence, entry.top, entry.left, entry.bottom, entry.right);
+
+    // Adjust bounding box dimensions with SAR and input tensor resolution.
+    gst_ml_box_transform_dimensions (&entry, &region);
+
+    label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (class_idx));
+
+    entry.confidence = confidence * 100.0;
     entry.name = g_quark_from_string (label ? label->name : "unknown");
     entry.color = label ? label->color : 0x000000FF;
 
@@ -287,26 +359,17 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     if (nms == (-2))
       continue;
 
+    GST_TRACE ("Label: %s Confidence: %.2f Box[%f, %f, %f, %f]",
+        g_quark_to_string (entry.name), entry.confidence, entry.top, entry.left,
+        entry.bottom, entry.right);
+
     // If the NMS result is above -1 remove the entry with the nms index.
     if (nms >= 0)
       predictions = g_array_remove_index (prediction->entries, nms);
-
-    // TODO: Enchance predictions to support landmarks.
-    for (num = 0; num < 5; ++num) {
-      gfloat lx = 0.0, ly = 0.0;
-
-      if ((idx % n_classes) != 0)
-        continue;
-
-      lx = (cx + landmarks[idx / n_classes * 10 + num]) * block_size;
-      ly = (cy + landmarks[idx / n_classes * 10 + num + 5]) * block_size;
-      GST_INFO ("Ladnmark: [ %.2f %.2f ] ", lx, ly);
-    }
 
     prediction->entries = g_array_append_val (prediction->entries, entry);
   }
 
   g_array_sort (prediction->entries, (GCompareFunc) gst_ml_box_compare_entries);
-
   return TRUE;
 }
