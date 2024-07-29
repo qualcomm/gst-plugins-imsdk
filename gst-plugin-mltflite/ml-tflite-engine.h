@@ -26,7 +26,7 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
  *
  * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
@@ -81,7 +81,6 @@ G_BEGIN_DECLS
 #define GST_ML_TFLITE_ENGINE_OPT_MODEL \
     "GstMLTFLiteEngine.model"
 
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
 /**
  * GST_ML_TFLITE_ENGINE_OPT_EXT_DELEGATE_PATH:
  *
@@ -102,7 +101,6 @@ G_BEGIN_DECLS
 #define GST_ML_TFLITE_ENGINE_OPT_EXT_DELEGATE_OPTS \
     "GstMLTFLiteEngine.ext-delegate-opts"
 
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
 
 /**
  * GstMLTFLiteDelegate:
@@ -125,9 +123,7 @@ typedef enum {
   GST_ML_TFLITE_DELEGATE_HEXAGON,
   GST_ML_TFLITE_DELEGATE_GPU,
   GST_ML_TFLITE_DELEGATE_XNNPACK,
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
   GST_ML_TFLITE_DELEGATE_EXTERNAL,
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 10)
 } GstMLTFLiteDelegate;
 
 GST_API GType gst_ml_tflite_delegate_get_type (void);
