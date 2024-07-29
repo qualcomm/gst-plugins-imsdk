@@ -1,0 +1,439 @@
+/*
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
+/*
+ * Gstreamer Application:
+ * Gstreamer Application for SmartCodec usecases
+ *
+ * Description:
+ * This Application Smartly reduce network bandwidth/storage
+ * from camera input using Qualcomm GStreamer plugins.
+ *
+ * Usage:
+ * gst-smartcodec-example --width=1920 --height=1080
+ *
+ * Help:
+ * gst-smartcodec-example --help
+ *
+ * *******************************************************************
+ * Pipeline for two stream:
+ *             |capsfilter->sink_ctrl(qtismartvencbin)
+ * qtiqmmfsrc->|
+ *             |capsfilter->sink(qtismartvencbin)->v4l2h264enc->h264parse->mp4mux->filesink
+ *
+ * *******************************************************************
+ */
+
+#include <glib-unix.h>
+
+#include <gst/gst.h>
+
+#include "include/gst_sample_apps_utils.h"
+
+#define DEFAULT_OUTPUT_FILENAME "/opt/video.mp4"
+#define DEFAULT_WIDTH           1280
+#define DEFAULT_HEIGHT          720
+#define DEFAULT_STREAM_TYPE     1   // camera preview stream
+
+#define GST_APP_SUMMARY                                                       \
+  "This Application Smartly reduce network "                                  \
+  "bandwidth/storage from camera input using Qualcomm GStreamer plugins. \n " \
+  "\nCommand:\n"                                                              \
+  "  gst-smartcodec-example -w 1920 -h 1080 -o video.mp4 \n"                  \
+  "\nOutput:\n"                                                               \
+  "  Upon execution, application will generates output as "                   \
+  "encoded mp4 file."
+
+// Structure to hold the application context
+struct _GstSmartCodecContext {
+  GstElement *pipeline;
+  GMainLoop *mloop;
+  gchar *output_file;
+  gint width;
+  gint height;
+};
+
+typedef struct _GstSmartCodecContext GstSmartCodecContext;
+
+/**
+ * Create and initialize application context:
+ *
+ * @param NULL
+ */
+static GstSmartCodecContext *
+gst_app_context_new ()
+{
+  // Allocate memory for the new context
+  GstSmartCodecContext *ctx = (GstSmartCodecContext *)
+      g_new0 (GstSmartCodecContext, 1);
+
+  // If memory allocation failed, print an error message and return NULL
+  if (NULL == ctx) {
+    g_printerr ("\n Unable to create App Context");
+    return NULL;
+  }
+
+  // Initialize the context fields
+  ctx->pipeline = NULL;
+  ctx->mloop = NULL;
+  ctx->width = DEFAULT_WIDTH;
+  ctx->height = DEFAULT_HEIGHT;
+  ctx->output_file = NULL;
+  return ctx;
+}
+
+/**
+ * Free Application context:
+ *
+ * @param appctx application context object
+ */
+static void
+gst_app_context_free (GstSmartCodecContext * appctx)
+{
+  // If specific pointer is not NULL, unref it
+
+  if (appctx->mloop != NULL) {
+    g_main_loop_unref (appctx->mloop);
+    appctx->mloop = NULL;
+  }
+
+  if (appctx->pipeline != NULL) {
+    gst_object_unref (appctx->pipeline);
+    appctx->pipeline = NULL;
+  }
+
+  g_free (appctx->output_file);
+
+  if (appctx != NULL)
+    g_free (appctx);
+}
+
+/**
+ * Create GST pipeline involves 3 main steps
+ * 1. Create all elements/GST Plugins
+ * 2. Set Paramters for each plugin
+ * 3. Link plugins to create GST pipeline
+ *
+ * @param appctx Application Context object.
+ *
+ */
+static gboolean
+create_pipe (GstSmartCodecContext * appctx)
+{
+  // Declare the elements of the pipeline
+  GstElement *qtiqmmfsrc, *capsfilter_ctrl, *capsfilter_enc, *qtismartvencbin,
+      *h264parse, *mp4mux, *filesink, *queue_ctrl, *queue_sc;
+  GstCaps *filtercaps;
+  GstPad *qmmf_pad, *sc_src, *ctrl_src, *sc_sink, *ctrl_sink;
+  gboolean ret = FALSE;
+
+  // Create first source element set the first camera
+  qtiqmmfsrc = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
+
+  // Create capsfilter element
+  capsfilter_ctrl = gst_element_factory_make ("capsfilter", "capsfilter_ctrl");
+  queue_ctrl = gst_element_factory_make ("queue", "queue_ctrl");
+  queue_sc = gst_element_factory_make ("queue", "queue_sc");
+
+  // Create capsfilter element for the encoder to set properties
+  capsfilter_enc = gst_element_factory_make ("capsfilter", "capsfilter_enc");
+
+  // Create qtismartvencbin element for the smart encoder
+  qtismartvencbin = gst_element_factory_make ("qtismartvencbin",
+      "qtismartvencbin");
+
+  // Create h264parse element for parsing the stream
+  h264parse = gst_element_factory_make ("h264parse", "h264parse");
+
+  // Create mp4mux element for muxing the stream
+  mp4mux = gst_element_factory_make ("mp4mux", "mp4mux");
+
+  // Create filesink element for storing the encoding stream
+  filesink = gst_element_factory_make ("filesink", "filesink");
+
+  // Check if all elements are created successfully
+  if (!qtiqmmfsrc || !capsfilter_ctrl || !capsfilter_enc || !queue_ctrl ||
+      !queue_sc || !qtismartvencbin || !h264parse || !mp4mux || !filesink) {
+    g_printerr ("\n One element could not be created. Exiting experiment.\n");
+    return FALSE;
+  }
+
+  // Get qmmfsrc Element class
+  GstElementClass *qtiqmmfsrc_klass = GST_ELEMENT_GET_CLASS (qtiqmmfsrc);
+
+  // Get qmmfsrc pad template
+  GstPadTemplate
+      *qtiqmmfsrc_template = gst_element_class_get_pad_template (qtiqmmfsrc_klass,
+          "video_%u");
+
+  // Request a pad from qmmfsrc
+  qmmf_pad = gst_element_request_pad (qtiqmmfsrc, qtiqmmfsrc_template, "video_%u",
+      NULL);
+  if (!qmmf_pad) {
+    g_printerr ("Error: pad cannot be retrieved from qmmfsrc!\n");
+  }
+  g_print ("Pad received - %s\n", gst_pad_get_name (qmmf_pad));
+
+  g_object_set (G_OBJECT (qmmf_pad), "type", DEFAULT_STREAM_TYPE, NULL);
+  g_object_set (G_OBJECT (qmmf_pad), "extra-buffers", 20, NULL);
+  g_object_set (G_OBJECT (qtiqmmfsrc), "noise-reduction", 2, NULL);
+  gst_object_unref (qmmf_pad);
+
+  // Set properties for qtismartvencbin
+  g_object_set (G_OBJECT (qtismartvencbin), "default-gop", 30, NULL);
+  g_object_set (G_OBJECT (qtismartvencbin), "max-gop", 600, NULL);
+  g_object_set (G_OBJECT (qtismartvencbin), "levels-override",
+      "LevelsOverride,bitrate_static=160000,bitrate_low=358000,bitrate_medium=700000,bitrate_high=1400000,fr_static=16,fr_low=4,fr_medium=2,fr_high=1;",
+      NULL);
+  g_object_set (G_OBJECT (qtismartvencbin), "roi-quality-cfg",
+      "ROIQPs,car=2,person=1,tree=-2;", NULL);
+  g_object_set (G_OBJECT (qtismartvencbin), "encoder", 2, NULL);
+  g_object_set (G_OBJECT (qtismartvencbin), "max-bitrate", 4200000, NULL);
+
+  // Set filesink_enc properties
+  g_object_set (G_OBJECT (filesink), "location", appctx->output_file, NULL);
+
+  // Configure the capsfilter_ctrl stream caps
+  filtercaps = gst_caps_new_simple ("video/x-raw",
+      "format", G_TYPE_STRING, "NV12",
+      "width", G_TYPE_INT, 640,
+      "height", G_TYPE_INT, 480,
+      "framerate", GST_TYPE_FRACTION, 15, 1,
+      NULL);
+  gst_caps_set_features (filtercaps, 0,
+      gst_caps_features_new ("memory:GBM", NULL));
+  g_object_set (G_OBJECT (capsfilter_ctrl), "caps", filtercaps, NULL);
+  gst_caps_unref (filtercaps);
+
+  // Configure the encode stream caps
+  filtercaps = gst_caps_new_simple ("video/x-raw",
+      "format", G_TYPE_STRING, "NV12",
+      "width", G_TYPE_INT, appctx->width,
+      "height", G_TYPE_INT, appctx->height,
+      "framerate", GST_TYPE_FRACTION, 30, 1,
+      "compression", G_TYPE_STRING, "ubwc",
+      NULL);
+  gst_caps_set_features (filtercaps, 0,
+      gst_caps_features_new ("memory:GBM", NULL));
+  g_object_set (G_OBJECT (capsfilter_enc), "caps", filtercaps, NULL);
+  gst_caps_unref (filtercaps);
+
+  // Add elements to the pipeline and link them
+  g_print ("\n Adding all elements to the pipeline...\n");
+  gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter_ctrl,
+      capsfilter_enc, h264parse, mp4mux, filesink, queue_sc, queue_ctrl,
+      qtismartvencbin, NULL);
+
+  g_print ("\n Link Smart Codec elements...\n");
+  // Linking the encoder stream
+  ret = gst_element_link_many (qtiqmmfsrc, capsfilter_enc, queue_sc, NULL);
+  if (!ret) {
+    g_printerr (
+        "\n Video Smart Codec Pipeline elements cannot be linked. Exiting.\n");
+    gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter_ctrl,
+        capsfilter_enc, h264parse, mp4mux, filesink, queue_sc, queue_ctrl,
+        qtismartvencbin, NULL);
+    return FALSE;
+  }
+
+  g_print ("\n Link encoder elements...\n");
+  // Linking the encoder stream
+  ret = gst_element_link_many (qtismartvencbin, h264parse, mp4mux, filesink, NULL);
+  if (!ret) {
+    g_printerr ("\n Video Encoder Pipeline elements cannot be linked. Exiting.\n");
+    gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter_ctrl,
+        capsfilter_enc, h264parse, mp4mux, filesink, queue_sc, queue_ctrl,
+        qtismartvencbin, NULL);
+    return FALSE;
+  }
+
+  sc_src = gst_element_get_static_pad (queue_sc, "src");
+  sc_sink = gst_element_get_static_pad (qtismartvencbin, "sink");
+  g_print ("\n smart code pad link %d \n", gst_pad_link (sc_src, sc_sink));
+
+  g_print ("\n Link sink_ctrl elements...\n");
+  // Linking the display stream
+  ret = gst_element_link_many (qtiqmmfsrc, capsfilter_ctrl, queue_ctrl, NULL);
+  if (!ret) {
+    g_printerr ("\n sink_ctrl Pipeline elements cannot be linked. Exiting.\n");
+    gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter_ctrl,
+        capsfilter_enc, h264parse, mp4mux, filesink, queue_sc, queue_ctrl,
+        qtismartvencbin, NULL);
+    return FALSE;
+  }
+
+  ctrl_src = gst_element_get_static_pad (queue_ctrl, "src");
+  ctrl_sink = gst_element_get_static_pad (qtismartvencbin, "sink_ctrl");
+  g_print ("\n smart code pad link %d \n", gst_pad_link (ctrl_src, ctrl_sink));
+
+  gst_object_unref (sc_src);
+  gst_object_unref (sc_sink);
+  gst_object_unref (ctrl_src);
+  gst_object_unref (ctrl_sink);
+
+  g_print ("\n All elements are linked successfully\n");
+
+  return TRUE;
+}
+
+gint
+main (gint argc, gchar *argv[])
+{
+  GOptionContext *ctx = NULL;
+  GMainLoop *mloop = NULL;
+  GstBus *bus = NULL;
+  GstElement *pipeline = NULL;
+  gboolean ret = FALSE;
+  GstSmartCodecContext *appctx = NULL;
+  guint intrpt_watch_id = 0;
+
+  // Setting Display environment variables
+  setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
+  setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
+
+  // create the application context
+  appctx = gst_app_context_new ();
+  if (appctx == NULL) {
+    g_printerr ("\n Failed app context Initializing: Unknown error!\n");
+    return -1;
+  }
+
+  // Configure input parameters
+  GOptionEntry entries[] = {
+    { "width", 'w', 0, G_OPTION_ARG_INT,
+      &appctx->width, "width", "image width" },
+    { "height", 'h', 0, G_OPTION_ARG_INT, &appctx->height, "height",
+      "image height" },
+    { "output_file", 'o', 0, G_OPTION_ARG_STRING, &appctx->output_file,
+      "Output Filename , \
+          -o /opt/video.mp4" },
+    { NULL }
+    };
+
+  // Parse command line entries.
+  if ((ctx = g_option_context_new (GST_APP_SUMMARY)) != NULL) {
+    gboolean success = FALSE;
+    GError *error = NULL;
+
+    g_option_context_add_main_entries (ctx, entries, NULL);
+    g_option_context_add_group (ctx, gst_init_get_option_group ());
+
+    success = g_option_context_parse (ctx, &argc, &argv, &error);
+    g_option_context_free (ctx);
+
+    if (!success && (error != NULL)) {
+      g_printerr ("\n Failed to parse command line options: %s!\n",
+          GST_STR_NULL (error->message));
+      g_clear_error (&error);
+      gst_app_context_free (appctx);
+      return -1;
+    } else if (!success && (NULL == error)) {
+      g_printerr ("\n Failed Initializing: Unknown error!\n");
+      gst_app_context_free (appctx);
+      return -1;
+    }
+  } else {
+    g_printerr ("\n Failed to create options context!\n");
+    gst_app_context_free (appctx);
+    return -1;
+  }
+
+  // set the Output Filename
+  if (appctx->output_file == NULL)
+    appctx->output_file = g_strdup (DEFAULT_OUTPUT_FILENAME);
+
+  // Initialize GST library.
+  gst_init (&argc, &argv);
+
+  // Create the pipeline
+  pipeline = gst_pipeline_new ("gst-smartcodec-example");
+  if (!pipeline) {
+    g_printerr ("\n failed to create pipeline.\n");
+    gst_app_context_free (appctx);
+    return -1;
+  }
+
+  appctx->pipeline = pipeline;
+
+  // Build the pipeline
+  ret = create_pipe (appctx);
+  if (!ret) {
+    g_printerr ("\n failed to create GST pipe.\n");
+    gst_app_context_free (appctx);
+    return -1;
+  }
+
+  // Initialize main loop.
+  if ((mloop = g_main_loop_new (NULL, FALSE)) == NULL) {
+    g_printerr ("\n Failed to create Main loop!\n");
+    gst_app_context_free (appctx);
+    return -1;
+  }
+  appctx->mloop = mloop;
+
+  // Retrieve reference to the pipeline's bus.
+  if ((bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline))) == NULL) {
+    g_printerr ("\n Failed to retrieve pipeline bus!\n");
+    gst_app_context_free (appctx);
+    return -1;
+  }
+
+  // Watch for messages on the pipeline's bus
+  gst_bus_add_signal_watch (bus);
+  g_signal_connect (bus, "message::state-changed", G_CALLBACK (state_changed_cb),
+      pipeline);
+  g_signal_connect (bus, "message::warning", G_CALLBACK (warning_cb), NULL);
+  g_signal_connect (bus, "message::error", G_CALLBACK (error_cb), mloop);
+  g_signal_connect (bus, "message::eos", G_CALLBACK (eos_cb), mloop);
+  gst_object_unref (bus);
+
+  // Register function for handling interrupt signals with the main loop
+  intrpt_watch_id = g_unix_signal_add (SIGINT, handle_interrupt_signal, appctx);
+
+  // Set the pipeline to the PAUSED state, On successful transition
+  // move application state to PLAYING state in state_changed_cb function
+  g_print ("\n Setting pipeline to PAUSED state ...\n");
+  switch (gst_element_set_state (pipeline, GST_STATE_PAUSED)) {
+    case GST_STATE_CHANGE_FAILURE:
+      g_printerr ("\n Failed to transition to PAUSED state!\n");
+      if (intrpt_watch_id)
+        g_source_remove (intrpt_watch_id);
+      gst_app_context_free (appctx);
+      return -1;
+    case GST_STATE_CHANGE_NO_PREROLL:
+      g_print ("\n Pipeline is live and does not need PREROLL.\n");
+      break;
+    case GST_STATE_CHANGE_ASYNC:
+      g_print ("\n Pipeline is PREROLLING ...\n");
+      break;
+    case GST_STATE_CHANGE_SUCCESS:
+      g_print ("\n Pipeline state change was successful\n");
+      break;
+  }
+
+  // Start the main loop
+  g_print ("\n Application is running... \n");
+  g_main_loop_run (mloop);
+
+  // Remove the interrupt signal handler
+  if (intrpt_watch_id)
+    g_source_remove (intrpt_watch_id);
+
+  // Set the pipeline to the NULL state
+  g_print ("\n Setting pipeline to NULL state ...\n");
+  gst_element_set_state (appctx->pipeline, GST_STATE_NULL);
+
+  g_print ("Encoded mp4 File %s\n", appctx->output_file);
+
+  // Free the application context
+  g_print ("\n Free the Application context\n");
+  gst_app_context_free (appctx);
+
+  // Deinitialize the GST library
+  g_print ("\n gst_deinit\n");
+  gst_deinit ();
+
+  return 0;
+}
