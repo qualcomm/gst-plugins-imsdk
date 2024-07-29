@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
+#include <stdio.h>
+
 #include "vencbin.h"
 
 #define GST_CAT_DEFAULT gst_venc_bin_debug
@@ -25,13 +27,15 @@ enum {
   LAST_SIGNAL
 };
 
-#define GST_TYPE_VENC_BIN_ENCODER   (gst_venc_bin_encoder_get_type())
-#define DEFAULT_PROP_ENCODER        GST_VENC_BIN_C2_ENC
-#define DEFAULT_PROP_MAX_BITRATE (6000000)
-#define DEFAULT_PROP_DEFAULT_GOP_LENGTH (30)
-#define DEFAULT_PROP_MAX_GOP_LENGTH (600)
-#define DEFAULT_PROP_SMART_FRAMERATE (TRUE)
-#define DEFAULT_PROP_SMART_GOP (TRUE)
+#define GST_CONTROLS_MAX_SIZE               256
+#define GST_TYPE_VENC_BIN_ENCODER           (gst_venc_bin_encoder_get_type())
+
+#define DEFAULT_PROP_ENCODER                GST_VENC_BIN_C2_ENC
+#define DEFAULT_PROP_MAX_BITRATE            (6000000)
+#define DEFAULT_PROP_DEFAULT_GOP_LENGTH     (30)
+#define DEFAULT_PROP_MAX_GOP_LENGTH         (600)
+#define DEFAULT_PROP_SMART_FRAMERATE        (TRUE)
+#define DEFAULT_PROP_SMART_GOP              (TRUE)
 
 enum
 {
@@ -104,6 +108,14 @@ gst_venc_bin_encoder_get_type (void)
         "OMX encoder.",
         "omxenc"
     },
+    { GST_VENC_BIN_V4L2_H264_ENC,
+        "V4L2 H264 encoder",
+        "v4l2h264enc"
+    },
+    { GST_VENC_BIN_V4L2_H265_ENC,
+        "V4L2 H265 encoder",
+        "v4l2h265enc"
+    },
     {0, NULL, NULL},
   };
 
@@ -157,6 +169,36 @@ gst_venc_bin_update_encoder (GstVideoEncBin * vencbin)
       g_object_set (G_OBJECT (vencbin->encoder), "roi-quant-mode", TRUE, NULL);
 
       break;
+    case GST_VENC_BIN_V4L2_H264_ENC:
+    case GST_VENC_BIN_V4L2_H265_ENC:
+    {
+      gchar controls[GST_CONTROLS_MAX_SIZE];
+      GstStructure *e_controls = NULL;
+
+      if (vencbin->encoder_type == GST_VENC_BIN_V4L2_H264_ENC)
+        vencbin->encoder = gst_element_factory_make("v4l2h264enc", NULL);
+      else
+        vencbin->encoder = gst_element_factory_make("v4l2h265enc", NULL);
+
+      if (NULL == vencbin->encoder) {
+        GST_ERROR_OBJECT (vencbin, "failed to create videoctrl");
+        return FALSE;
+      }
+
+      // Set default properties
+      g_object_set (G_OBJECT (vencbin->encoder), "capture-io-mode", 5, NULL);
+      g_object_set (G_OBJECT (vencbin->encoder), "output-io-mode", 5, NULL);
+
+      snprintf(controls, GST_CONTROLS_MAX_SIZE, "controls,video_bitrate=%u;",
+          vencbin->max_bitrate);
+      GST_DEBUG_OBJECT (vencbin, "%s", controls);
+      e_controls = gst_structure_from_string (controls, NULL);
+      g_object_set (G_OBJECT (vencbin->encoder), "extra-controls",
+          e_controls, NULL);
+      gst_structure_free(e_controls);
+
+      break;
+    }
     default:
       GST_ERROR_OBJECT (vencbin, "Unsupported encoder type '%d'!",
           vencbin->encoder_type);
@@ -223,7 +265,27 @@ on_videoctrl_bitrate_received (guint bitrate, gpointer user_data)
   }
 
   GST_INFO_OBJECT (vencbin, "bitrate=%u", bitrate);
-  g_object_set (G_OBJECT (vencbin->encoder), "target-bitrate", bitrate, NULL);
+  switch (vencbin->encoder_type) {
+    case GST_VENC_BIN_C2_ENC:
+    case GST_VENC_BIN_OMX_ENC:
+      g_object_set (G_OBJECT (vencbin->encoder), "target-bitrate", bitrate, NULL);
+      break;
+    case GST_VENC_BIN_V4L2_H264_ENC:
+    case GST_VENC_BIN_V4L2_H265_ENC:
+    {
+      gchar controls[GST_CONTROLS_MAX_SIZE];
+      GstStructure *e_controls = NULL;
+
+      snprintf(controls, GST_CONTROLS_MAX_SIZE, "controls,video_bitrate=%u;",
+          bitrate);
+      GST_DEBUG_OBJECT (vencbin, "%s", controls);
+      e_controls = gst_structure_from_string (controls, NULL);
+      g_object_set (G_OBJECT (vencbin->encoder), "extra-controls",
+          e_controls, NULL);
+      gst_structure_free(e_controls);
+      break;
+    }
+  }
 }
 
 static void
@@ -253,7 +315,28 @@ on_videoctrl_goplength_received (guint goplength, guint64 pts,
     // Set GOP length to encoder (init gop)
     GST_INFO_OBJECT (vencbin, "Set GOP LEN - %d (default=%d)", goplength,
         vencbin->default_goplength);
-    g_object_set(G_OBJECT(vencbin->encoder), "idr-interval", goplength, NULL);
+
+    switch (vencbin->encoder_type) {
+      case GST_VENC_BIN_C2_ENC:
+      case GST_VENC_BIN_OMX_ENC:
+        g_object_set(G_OBJECT(vencbin->encoder), "idr-interval", goplength, NULL);
+        break;
+      case GST_VENC_BIN_V4L2_H264_ENC:
+      case GST_VENC_BIN_V4L2_H265_ENC:
+      {
+        gchar  controls[GST_CONTROLS_MAX_SIZE];
+        GstStructure *e_controls = NULL;
+
+        snprintf(controls, GST_CONTROLS_MAX_SIZE, "controls,video_gop_size=%u;",
+            goplength);
+        GST_DEBUG_OBJECT (vencbin, "%s", controls);
+        e_controls = gst_structure_from_string (controls, NULL);
+        g_object_set (G_OBJECT (vencbin->encoder), "extra-controls",
+            e_controls, NULL);
+        gst_structure_free(e_controls);
+        break;
+      }
+    }
 
      // no longer relevant
     vencbin->pending_gop_pts = 0;
@@ -430,8 +513,18 @@ gst_venc_set_roi_qp (GstVideoEncBin * vencbin, RectDeltaQPs * qps)
   guint arrsize = gst_value_array_get_size (&roi_rect_params_array);
   if (arrsize > 0) {
     GST_INFO ("invoke setprop roi-quant-boxes");
-    g_object_set_property (G_OBJECT (vencbin->encoder),
-        "roi-quant-boxes", &roi_rect_params_array);
+    switch (vencbin->encoder_type) {
+      case GST_VENC_BIN_C2_ENC:
+      case GST_VENC_BIN_OMX_ENC:
+        g_object_set_property (G_OBJECT (vencbin->encoder),
+            "roi-quant-boxes", &roi_rect_params_array);
+        break;
+      case GST_VENC_BIN_V4L2_H264_ENC:
+      case GST_VENC_BIN_V4L2_H265_ENC:
+        GST_WARNING_OBJECT (vencbin, "ROI is not handled for V4L2");
+        break;
+    }
+
   } else {
     GST_INFO ("skip roi-quant-boxes");
   }
@@ -686,8 +779,29 @@ gst_venc_bin_worker_task (gpointer user_data)
             "Increase GOP LEN - %d (default=%d) at pts %ld",
             vencbin->pending_gop_len, vencbin->default_goplength,
             pending_gop_pts);
-        g_object_set (G_OBJECT (vencbin->encoder), "idr-interval",
-            vencbin->pending_gop_len, NULL);
+
+        switch (vencbin->encoder_type) {
+          case GST_VENC_BIN_C2_ENC:
+          case GST_VENC_BIN_OMX_ENC:
+            g_object_set (G_OBJECT (vencbin->encoder), "idr-interval",
+                vencbin->pending_gop_len, NULL);
+            break;
+          case GST_VENC_BIN_V4L2_H264_ENC:
+          case GST_VENC_BIN_V4L2_H265_ENC:
+          {
+            gchar  controls[GST_CONTROLS_MAX_SIZE];
+            GstStructure *e_controls = NULL;
+
+            snprintf(controls, GST_CONTROLS_MAX_SIZE, "controls,video_gop_size=%u;",
+                vencbin->pending_gop_len);
+            GST_DEBUG_OBJECT (vencbin, "%s", controls);
+            e_controls = gst_structure_from_string (controls, NULL);
+            g_object_set (G_OBJECT (vencbin->encoder), "extra-controls",
+                e_controls, NULL);
+            gst_structure_free(e_controls);
+            break;
+          }
+        }
 
         vencbin->pending_gop_pts = 0;
         vencbin->pending_gop_len = 0;
@@ -829,8 +943,31 @@ gst_venc_bin_set_property (GObject * object, guint prop_id,
     {
       vencbin->max_bitrate = g_value_get_uint (value);
       if (vencbin->encoder != NULL) {
-        g_object_set (G_OBJECT (vencbin->encoder), "target-bitrate",
-            vencbin->max_bitrate, NULL);
+        switch (vencbin->encoder_type) {
+          case GST_VENC_BIN_C2_ENC:
+          case GST_VENC_BIN_OMX_ENC:
+            g_object_set (G_OBJECT (vencbin->encoder), "target-bitrate",
+                vencbin->max_bitrate, NULL);
+            break;
+          case GST_VENC_BIN_V4L2_H264_ENC:
+          case GST_VENC_BIN_V4L2_H265_ENC:
+          {
+            gchar  controls[GST_CONTROLS_MAX_SIZE];
+            GstStructure *e_controls = NULL;
+
+            snprintf(controls, GST_CONTROLS_MAX_SIZE, "controls,video_bitrate=%u;",
+                vencbin->max_bitrate);
+            GST_DEBUG_OBJECT (vencbin, "%s", controls);
+            e_controls = gst_structure_from_string (controls, NULL);
+            g_object_set (G_OBJECT (vencbin->encoder), "extra-controls",
+                e_controls, NULL);
+            gst_structure_free(e_controls);
+            break;
+          }
+          default:
+            GST_ERROR_OBJECT (vencbin, "Unsupported encoder type '%d'!",
+                vencbin->encoder_type);
+        }
         GST_INFO_OBJECT (vencbin, "Set encoder target bitrate - %d",
             vencbin->max_bitrate);
       }

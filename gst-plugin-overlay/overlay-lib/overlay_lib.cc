@@ -3554,7 +3554,8 @@ int32_t OverlayItemGraph::Init (OverlayParam& param)
     surface_.blit_inst_ = blit_->AddInstance ();
   }
 
-  downscale_ratio_ = (float) width_ / (float) surface_.width_;
+  w_downscale_ratio_ = (float) width_ / (float) surface_.width_;
+  h_downscale_ratio_ = (float) height_ / (float) surface_.height_;
 
   GST_INFO ("Offscreen buffer:(%dx%d)", surface_.width_,
       surface_.height_);
@@ -3594,8 +3595,8 @@ int32_t OverlayItemGraph::UpdateAndDraw ()
   for (uint32_t i = 0; i < graph_.points_count; i++) {
     if (graph_.points[i].x >= 0 && graph_.points[i].y >= 0) {
       cairo_arc (cr_context_,
-          (uint32_t) ((float) graph_.points[i].x / downscale_ratio_),
-          (uint32_t) ((float) graph_.points[i].y / downscale_ratio_),
+          (uint32_t) ((float) graph_.points[i].x / w_downscale_ratio_),
+          (uint32_t) ((float) graph_.points[i].y / h_downscale_ratio_),
           kDotRadius, 0, 2 * M_PI);
       cairo_fill (cr_context_);
     }
@@ -3605,14 +3606,14 @@ int32_t OverlayItemGraph::UpdateAndDraw ()
   for (uint32_t i = 0; i < graph_.chain_count; i++) {
     cairo_move_to (cr_context_,
         (uint32_t) (
-            (float) graph_.points[graph_.chain[i][0]].x / downscale_ratio_),
+            (float) graph_.points[graph_.chain[i][0]].x / w_downscale_ratio_),
         (uint32_t) (
-            (float) graph_.points[graph_.chain[i][0]].y / downscale_ratio_));
+            (float) graph_.points[graph_.chain[i][0]].y / h_downscale_ratio_));
     cairo_line_to (cr_context_,
         (uint32_t) (
-            (float) graph_.points[graph_.chain[i][1]].x / downscale_ratio_),
+            (float) graph_.points[graph_.chain[i][1]].x / w_downscale_ratio_),
         (uint32_t) (
-            (float) graph_.points[graph_.chain[i][1]].y / downscale_ratio_));
+            (float) graph_.points[graph_.chain[i][1]].y / h_downscale_ratio_));
     cairo_stroke (cr_context_);
   }
 

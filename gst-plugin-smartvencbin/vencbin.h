@@ -41,6 +41,8 @@ typedef struct _GstCtrlFrameData GstCtrlFrameData;
 typedef enum {
   GST_VENC_BIN_C2_ENC,
   GST_VENC_BIN_OMX_ENC,
+  GST_VENC_BIN_V4L2_H264_ENC,
+  GST_VENC_BIN_V4L2_H265_ENC,
 } GstBinEncoderType;
 
 struct _GstCtrlFrameData
