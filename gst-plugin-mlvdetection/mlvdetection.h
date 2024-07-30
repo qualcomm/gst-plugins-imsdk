@@ -111,12 +111,16 @@ struct _GstMLVideoDetection {
   GHashTable        *surfaces;
   GHashTable        *contexts;
 
+  // Stashed ML boxes used fot stabilization
+  GList             *stashedmlboxes;
+
   /// Properties.
   gint              mdlenum;
   gchar             *labels;
   guint             n_results;
   gdouble           threshold;
   GstStructure      *mlconstants;
+  gboolean          stabilization;
 };
 
 struct _GstMLVideoDetectionClass {
