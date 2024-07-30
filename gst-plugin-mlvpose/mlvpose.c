@@ -73,6 +73,7 @@
 
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
+#include <gst/ml/ml-module-utils.h>
 #include <gst/video/gstimagepool.h>
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
@@ -348,11 +349,35 @@ gst_ml_video_pose_fill_video_output (GstMLVideoPose * vpose, GstBuffer * buffer)
   for (idx = 0; idx < vpose->predictions->len; ++idx) {
     GstMLPosePrediction *prediction = NULL;
     GstMLPoseEntry *entry = NULL;
+    GstVideoRectangle region = { 0, };
 
     prediction = &(g_array_index (vpose->predictions, GstMLPosePrediction, idx));
 
     n_entries = (prediction->entries->len < vpose->n_results) ?
         prediction->entries->len : vpose->n_results;
+
+    // No decoded poses, nothing to do.
+    if (n_entries == 0)
+      continue;
+
+    // Get the source tensor region with actual data.
+    gst_ml_structure_get_source_region (prediction->info, &region);
+
+    // Recalculate the region dimensions depending on the ratios.
+    if ((region.w * vmeta->height) > (region.h * vmeta->width)) {
+      region.h = gst_util_uint64_scale_int (vmeta->width, region.h, region.w);
+      region.w = vmeta->width;
+    } else if ((region.w * vmeta->height) < (region.h * vmeta->width)) {
+      region.w = gst_util_uint64_scale_int (vmeta->height, region.w, region.h);
+      region.h = vmeta->height;
+    } else {
+      region.w = vmeta->width;
+      region.h = vmeta->height;
+    }
+
+    // Additional overwrite of X and Y axis for centred image disposition.
+    region.x = (vmeta->width - region.w) / 2;
+    region.y = (vmeta->height - region.h) / 2;
 
     for (num = 0; num < n_entries; num++) {
       entry = &(g_array_index (prediction->entries, GstMLPoseEntry, num));
@@ -366,8 +391,8 @@ gst_ml_video_pose_fill_video_output (GstMLVideoPose * vpose, GstBuffer * buffer)
             &(g_array_index (entry->keypoints, GstMLKeypoint, m));
 
         // Adjust coordinates based on the output buffer dimensions.
-        kp->x = kp->x * vmeta->width;
-        kp->y = kp->y * vmeta->height;
+        kp->x = region.x + (kp->x * region.w);
+        kp->y = region.y + (kp->y * region.h);
 
         GST_TRACE_OBJECT (vpose, "Keypoint: '%s' [%.0f x %.0f], confidence %.2f",
             g_quark_to_string (kp->name), kp->x, kp->y, kp->confidence);
