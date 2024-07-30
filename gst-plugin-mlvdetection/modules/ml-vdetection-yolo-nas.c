@@ -263,7 +263,7 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
   prediction->info = pmeta->info;
 
   // Extract the source tensor region with actual data.
-  gst_ml_protecton_meta_get_source_region (pmeta, &region);
+  gst_ml_structure_get_source_region (pmeta->info, &region);
 
   mltype = GST_ML_FRAME_TYPE (mlframe);
   n_paxels = GST_ML_FRAME_DIM (mlframe, 0, 1);
@@ -355,7 +355,7 @@ gst_ml_module_parse_dualblock_frame (GstMLSubModule * submodule,
   prediction->info = pmeta->info;
 
   // Extract the source tensor region with actual data.
-  gst_ml_protecton_meta_get_source_region (pmeta, &region);
+  gst_ml_structure_get_source_region (pmeta->info, &region);
 
   // The 2nd dimension represents the number of paxels.
   n_paxels = GST_ML_FRAME_DIM (mlframe, 0, 1);

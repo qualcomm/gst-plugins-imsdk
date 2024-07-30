@@ -238,12 +238,12 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
   // Extract the dimensions of the input tensor that produced the output tensors.
   if (submodule->inwidth == 0 || submodule->inheight == 0) {
-    gst_ml_protecton_meta_get_source_dimensions (pmeta, &(submodule->inwidth),
+    gst_ml_structure_get_source_dimensions (pmeta->info, &(submodule->inwidth),
         &(submodule->inheight));
   }
 
   // Extract the source tensor region with actual data.
-  gst_ml_protecton_meta_get_source_region (pmeta, &region);
+  gst_ml_structure_get_source_region (pmeta->info, &region);
 
   if (GST_ML_INFO_N_TENSORS (&(submodule->mlinfo)) == 4) {
     if (GST_ML_INFO_N_DIMENSIONS (&(submodule->mlinfo), 3) == 1) {
