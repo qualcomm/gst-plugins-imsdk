@@ -233,8 +233,9 @@ gst_data_queue_item_free (gpointer data)
 }
 
 static inline void
-gst_buffer_transfer_roi_meta (GstBuffer * buffer, GstVideoRectangle * source,
-    GstVideoRectangle * destination, GstVideoRegionOfInterestMeta * roimeta)
+gst_buffer_transfer_video_region_of_interest_meta (GstBuffer * buffer,
+    GstVideoRectangle * source, GstVideoRectangle * destination,
+    GstVideoRegionOfInterestMeta * roimeta)
 {
   GstVideoRegionOfInterestMeta *newmeta = NULL;
   GList *param = NULL;
@@ -252,6 +253,7 @@ gst_buffer_transfer_roi_meta (GstBuffer * buffer, GstVideoRectangle * source,
   // Add ROI meta with the actual part of the buffer filled with image data.
   newmeta = gst_buffer_add_video_region_of_interest_meta_id (buffer,
       roimeta->roi_type, x, y, width, height);
+  newmeta->id = roimeta->id;
 
   // Transfer all meta derived from the ROI meta.
   for (param = roimeta->params; param != NULL; param = g_list_next (param)) {
@@ -295,8 +297,9 @@ gst_buffer_transfer_roi_meta (GstBuffer * buffer, GstVideoRectangle * source,
 }
 
 static inline void
-gst_buffer_transfer_landmarks_meta (GstBuffer * buffer, GstVideoRectangle * source,
-    GstVideoRectangle * destination, GstVideoLandmarksMeta * lmkmeta)
+gst_buffer_transfer_video_landmarks_meta (GstBuffer * buffer,
+    GstVideoRectangle * source, GstVideoRectangle * destination,
+    GstVideoLandmarksMeta * lmkmeta)
 {
   GArray *keypoints = NULL, *links = NULL;
   gdouble w_scale = 0.0, h_scale = 0.0;
@@ -321,7 +324,7 @@ gst_buffer_transfer_landmarks_meta (GstBuffer * buffer, GstVideoRectangle * sour
 }
 
 static inline void
-gst_buffer_transfer_classification_meta (GstBuffer * buffer,
+gst_buffer_transfer_video_classification_meta (GstBuffer * buffer,
     GstVideoClassificationMeta * classmeta)
 {
   GArray *labels = g_array_copy (classmeta->labels);
@@ -348,24 +351,25 @@ gst_video_composition_populate_output_metas (GstVideoComposition * composition)
 
     while ((meta = gst_buffer_iterate_meta (inbuffer, &state))) {
       if (meta->info->api == GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE) {
-        GstVideoRegionOfInterestMeta *roimeta =
-            (GstVideoRegionOfInterestMeta *) meta;
+        GstVideoRegionOfInterestMeta *roimeta = GST_VIDEO_ROI_META_CAST (meta);
 
         // Skip if ROI is a ImageRegion with actual data (populated by vsplit).
         // This is primery used for blitting only pixels with actual data.
         if (roimeta->roi_type == g_quark_from_static_string ("ImageRegion"))
           continue;
 
-        gst_buffer_transfer_roi_meta (outbuffer, source, destination, roimeta);
+        gst_buffer_transfer_video_region_of_interest_meta (outbuffer, source,
+            destination, roimeta);
       } else if (meta->info->api == GST_VIDEO_CLASSIFICATION_META_API_TYPE) {
         GstVideoClassificationMeta *classmeta =
             GST_VIDEO_CLASSIFICATION_META_CAST (meta);
 
-        gst_buffer_transfer_classification_meta (outbuffer, classmeta);
+        gst_buffer_transfer_video_classification_meta (outbuffer, classmeta);
       } else if (meta->info->api == GST_VIDEO_LANDMARKS_META_API_TYPE) {
         GstVideoLandmarksMeta *lmkmeta = GST_VIDEO_LANDMARKS_META_CAST (meta);
 
-        gst_buffer_transfer_landmarks_meta (outbuffer, source, destination, lmkmeta);
+        gst_buffer_transfer_video_landmarks_meta (outbuffer, source,
+            destination, lmkmeta);
       }
     }
   }

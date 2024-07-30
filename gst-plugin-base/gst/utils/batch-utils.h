@@ -10,20 +10,6 @@
 
 G_BEGIN_DECLS
 
-// Offset to the bits which contain the batch channel index.
-#define GST_BATCH_CHANNEL_INDEX_OFFSET 16
-// Bit mask containing the sequential number in the unique ID.
-#define GST_BATCH_CHANNEL_INDEX_MASK   (0xFFFF << GST_BATCH_CHANNEL_INDEX_OFFSET)
-
-// The unique batch ID is made from batch index and sequential number.
-#define GST_BATCH_CHANNEL_ID(idx, num) \
-    ((idx << GST_BATCH_CHANNEL_INDEX_OFFSET) + num)
-// Retrieve the batch number from the unique ID.
-#define GST_BATCH_CHANNEL_GET_INDEX(id)   (id >> GST_BATCH_CHANNEL_INDEX_OFFSET)
-// Retrieve the batch sequential number from the unique ID.
-#define GST_BATCH_CHANNEL_GET_SEQ_NUM(id) (id & (~GST_BATCH_CHANNEL_INDEX_MASK))
-
-
 /**
  * gst_batch_channel_name:
  * @index: The batch channel index.

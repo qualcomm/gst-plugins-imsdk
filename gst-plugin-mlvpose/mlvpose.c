@@ -114,11 +114,11 @@ G_DEFINE_TYPE (GstMLVideoPose, gst_ml_video_pose,
 #define GST_ML_VIDEO_POSE_SINK_CAPS \
     "neural-network/tensors"
 
-#define DEFAULT_PROP_MODULE      0
-#define DEFAULT_PROP_LABELS      NULL
-#define DEFAULT_PROP_NUM_RESULTS 5
-#define DEFAULT_PROP_THRESHOLD   50.0F
-#define DEFAULT_PROP_CONSTANTS   NULL
+#define DEFAULT_PROP_MODULE          0
+#define DEFAULT_PROP_LABELS          NULL
+#define DEFAULT_PROP_NUM_RESULTS     5
+#define DEFAULT_PROP_THRESHOLD       50.0F
+#define DEFAULT_PROP_CONSTANTS       NULL
 
 #define DEFAULT_MIN_BUFFERS      2
 #define DEFAULT_MAX_BUFFERS      10
@@ -464,7 +464,7 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
   GstMapInfo memmap = {};
   GValue list = G_VALUE_INIT, poses = G_VALUE_INIT, value = G_VALUE_INIT;
   GValue keypoints = G_VALUE_INIT, links = G_VALUE_INIT, link = G_VALUE_INIT;
-  guint idx = 0, num = 0, seqnum = 0, n_entries = 0;
+  guint idx = 0, num = 0, seqnum = 0, n_entries = 0, sequence_idx = 0, id = 0;
   gsize length = 0;
 
   g_value_init (&list, GST_TYPE_LIST);
@@ -482,6 +482,8 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
 
     n_entries = (prediction->entries->len < vpose->n_results) ?
         prediction->entries->len : vpose->n_results;
+
+    gst_structure_get_uint (prediction->info, "sequence-index", &sequence_idx);
 
     for (num = 0; num < n_entries; num++) {
       entry = &(g_array_index (prediction->entries, GstMLPoseEntry, num));
@@ -541,8 +543,13 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
         g_value_reset (&link);
       }
 
-      structure = gst_structure_new ("pose", "id", G_TYPE_UINT, num,
+      id = GST_META_ID (vpose->stage_id, sequence_idx, num);
+
+      structure = gst_structure_new ("pose", "id", G_TYPE_UINT, id,
           "confidence", G_TYPE_DOUBLE, entry->confidence, NULL);
+
+      GST_TRACE_OBJECT (vpose, "Batch: %u, ID: %X, Confidence: %.1f%%",
+          prediction->batch_idx, id, entry->confidence);
 
       gst_structure_set_value (structure, "keypoints", &keypoints);
       gst_structure_set_value (structure, "connections", &links);
@@ -567,8 +574,11 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
     val = gst_structure_get_value (prediction->info, "timestamp");
     gst_structure_set_value (structure, "timestamp", val);
 
-    val = gst_structure_get_value (prediction->info, "sequence-id");
-    gst_structure_set_value (structure, "sequence-id", val);
+    val = gst_structure_get_value (prediction->info, "sequence-index");
+    gst_structure_set_value (structure, "sequence-index", val);
+
+    val = gst_structure_get_value (prediction->info, "sequence-num-entries");
+    gst_structure_set_value (structure, "sequence-num-entries", val);
 
     if ((val = gst_structure_get_value (prediction->info, "stream-id")))
       gst_structure_set_value (structure, "stream-id", val);
@@ -801,6 +811,33 @@ gst_ml_video_pose_prepare_output_buffer (GstBaseTransform * base,
   gst_buffer_copy_into (*outbuffer, inbuffer, GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
 
   return GST_FLOW_OK;
+}
+
+static gboolean
+gst_ml_video_pose_sink_event (GstBaseTransform * base, GstEvent * event)
+{
+  GstMLVideoPose *vpose = GST_ML_VIDEO_POSE (base);
+
+  switch (GST_EVENT_TYPE (event)) {
+    case GST_EVENT_CUSTOM_DOWNSTREAM_OOB:
+    {
+      const GstStructure *structure = gst_event_get_structure (event);
+
+      // Not a supported custom event, pass it to the default handling function.
+      if (structure == NULL ||
+          !gst_structure_has_name (structure, "ml-inference-information"))
+        break;
+
+      gst_structure_get_uint (structure, "stage-id", &(vpose->stage_id));
+      GST_INFO_OBJECT (vpose, "Stage ID: %u", vpose->stage_id);
+
+      return gst_pad_push_event (GST_BASE_TRANSFORM_SRC_PAD (base), event);
+    }
+    default:
+      break;
+  }
+
+  return GST_BASE_TRANSFORM_CLASS (parent_class)->sink_event (base, event);
 }
 
 static GstCaps *
@@ -1229,6 +1266,8 @@ gst_ml_video_pose_class_init (GstMLVideoPoseClass * klass)
   base->prepare_output_buffer =
       GST_DEBUG_FUNCPTR (gst_ml_video_pose_prepare_output_buffer);
 
+  base->sink_event = GST_DEBUG_FUNCPTR (gst_ml_video_pose_sink_event);
+
   base->transform_caps =
       GST_DEBUG_FUNCPTR (gst_ml_video_pose_transform_caps);
   base->fixate_caps = GST_DEBUG_FUNCPTR (gst_ml_video_pose_fixate_caps);
@@ -1244,6 +1283,8 @@ gst_ml_video_pose_init (GstMLVideoPose * vpose)
 
   vpose->outpool = NULL;
   vpose->module = NULL;
+
+  vpose->stage_id = 0;
 
   vpose->predictions = g_array_new (FALSE, FALSE, sizeof (GstMLPosePrediction));
   g_return_if_fail (vpose->predictions != NULL);

@@ -17,8 +17,13 @@ G_BEGIN_DECLS
             : ((pspec->flags & GST_PARAM_MUTABLE_READY) ? (state <= GST_STATE_READY) \
                 : (state <= GST_STATE_NULL))))
 
+#define GST_BUFFER_ITERATE_ROI_METAS(buffer, state) \
+    (GstVideoRegionOfInterestMeta*) gst_buffer_iterate_meta_filtered (buffer, \
+        &state, GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE)
+
 #define GPOINTER_CAST(obj)             ((gpointer) obj)
 #define GST_PROTECTION_META_CAST(obj)  ((GstProtectionMeta *) obj)
+#define GST_VIDEO_ROI_META_CAST(obj)   ((GstVideoRegionOfInterestMeta *) obj)
 
 #define EXTRACT_RED_COLOR(color)       ((color >> 24) & 0xFF)
 #define EXTRACT_GREEN_COLOR(color)     ((color >> 16) & 0xFF)
@@ -26,8 +31,22 @@ G_BEGIN_DECLS
 #define EXTRACT_ALPHA_COLOR(color)     ((color) & 0xFF)
 
 // The bit offset where the stream ID can be embedded in a variable
-#define GST_MUX_STREAM_ID_OFFSET       16
-#define GST_MUX_STREAM_ID_MASK         (0xFFFF << GST_MUX_STREAM_ID_OFFSET)
+#define GST_MUX_STREAM_ID_OFFSET       24
+#define GST_MUX_STREAM_ID_MASK         (0xFF << GST_MUX_STREAM_ID_OFFSET)
+
+// The bit offset for stage and sequence ID embedded in a single variable.
+#define GST_META_STAGE_ID_OFFSET       16
+#define GST_META_SEQ_ID_OFFSET         8
+
+// Macro to create unique meta ID from stage, sequence and entry IDs.
+#define GST_META_ID(stage_id, sequence_id, entry_id) \
+    (((stage_id & 0xFF) << GST_META_STAGE_ID_OFFSET) | \
+        ((sequence_id & 0xFF) << GST_META_SEQ_ID_OFFSET) | entry_id)
+
+// Macro to extract stage from meta ID.
+#define GST_META_ID_GET_STAGE(id) ((id >> GST_META_STAGE_ID_OFFSET) & 0xFF)
+// Macro to extract stage from meta ID.
+#define GST_META_ID_GET_ENTRY(id) (id & 0xFF)
 
 /**
  * gst_mux_stream_name:

@@ -331,8 +331,11 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
     structure = gst_structure_new (gst_batch_channel_name (0),
         "timestamp", G_TYPE_UINT64, GST_BUFFER_TIMESTAMP (outbuffer), NULL);
 
-    value = gst_structure_get_value (pmeta->info, "sequence-id");
-    gst_structure_set_value (structure, "sequence-id", value);
+    value = gst_structure_get_value (pmeta->info, "sequence-index");
+    gst_structure_set_value (structure, "sequence-index", value);
+
+    value = gst_structure_get_value (pmeta->info, "sequence-num-entries");
+    gst_structure_set_value (structure, "sequence-num-entries", value);
 
     if ((value = gst_structure_get_value (pmeta->info, "source-region-id"))) {
       // Remove the stream ID prefix from the muxed ROI ID.

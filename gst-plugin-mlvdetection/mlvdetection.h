@@ -99,6 +99,9 @@ struct _GstMLVideoDetection {
   /// Buffer pools.
   GstBufferPool     *outpool;
 
+  /// The ID of this stage of ML inference.
+  guint             stage_id;
+
   /// Tensor deciphering module.
   GstMLModule       *module;
   /// Array with predictions from the module post-processing.
