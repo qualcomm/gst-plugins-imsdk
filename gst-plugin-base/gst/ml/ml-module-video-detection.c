@@ -67,8 +67,18 @@
 #define NMS_INTERSECTION_THRESHOLD 0.5F
 
 void
+gst_ml_box_entry_cleanup (GstMLBoxEntry * entry)
+{
+  if (entry->landmarks != NULL)
+    g_array_free (entry->landmarks, TRUE);
+}
+
+void
 gst_ml_box_prediction_cleanup (GstMLBoxPrediction * prediction)
 {
+  g_array_set_clear_func (prediction->entries,
+      (GDestroyNotify) gst_ml_box_entry_cleanup);
+
   if (prediction->entries != NULL)
     g_array_free (prediction->entries, TRUE);
 }

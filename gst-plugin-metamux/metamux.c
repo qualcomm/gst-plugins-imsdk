@@ -292,9 +292,7 @@ gst_metamux_process_detection_metadata (GstMetaMux * muxer, GstBuffer * buffer,
   gchar *label = NULL;
   gfloat left = 0.0, right = 0.0, top = 0.0, bottom = 0.0;
   gint x = 0, y = 0, width = 0, height = 0;
-  guint batch_idx = 0, id = 0, idx = 0, size = 0;
-
-  gst_structure_get_uint (structure, "batch-index", &batch_idx);
+  guint id = 0, idx = 0, num = 0, size = 0, length = 0, color = 0;
 
   // If result is derived from a ROI, use it the recalculate dimensions.
   if ((value = gst_structure_get_value (structure, "source-region-id"))) {
@@ -327,6 +325,51 @@ gst_metamux_process_detection_metadata (GstMetaMux * muxer, GstBuffer * buffer,
       y = ABS (top) * GST_VIDEO_INFO_HEIGHT (muxer->vinfo);
       width = ABS (right - left) * GST_VIDEO_INFO_WIDTH (muxer->vinfo);
       height = ABS (bottom - top) * GST_VIDEO_INFO_HEIGHT (muxer->vinfo);
+    }
+
+    // Get the optional bbox landmarks in GValue format.
+    value = gst_structure_get_value (entry, "landmarks");
+    length = (value != NULL) ? gst_value_array_get_size (value) : 0;
+
+    if (length != 0) {
+      GArray *lndmrks = NULL;
+      GstVideoKeypoint *kp = NULL;
+      GstStructure *param = NULL;
+      gdouble lx = 0.0, ly = 0.0;
+
+      lndmrks = g_array_sized_new (FALSE, FALSE, sizeof (GstVideoKeypoint), length);
+      g_array_set_size (lndmrks, length);
+
+      gst_structure_get_uint (entry, "color", &color);
+
+      for (num = 0; num < lndmrks->len; num++) {
+        kp = &(g_array_index (lndmrks, GstVideoKeypoint, num));
+
+        kp->confidence = 100.0;
+        kp->color = color;
+
+        param = GST_STRUCTURE (
+            g_value_get_boxed (gst_value_array_get_value (value, num)));
+
+        label = g_strdup (gst_structure_get_name (param));
+        label = g_strdelimit (label, ".", ' ');
+
+        kp->name = g_quark_from_string (label);
+        g_free (label);
+
+        gst_structure_get_double (param, "x", &lx);
+        gst_structure_get_double (param, "y", &ly);
+
+        // Translate relative coordinates to absolute.
+        kp->x = lx * width;
+        kp->y = ly * height;
+      }
+
+      // Overwrite the landmarks field with the updated coordinates.
+      gst_structure_set (entry, "landmarks", G_TYPE_ARRAY, lndmrks, NULL);
+    } else {
+      // Make sure there are no landmarks if their size is 0.
+      gst_structure_remove_field (entry, "landmarks");
     }
 
     // Clip width and height if it outside the frame limits.
@@ -370,9 +413,7 @@ gst_metamux_process_landmarks_metadata (GstMetaMux * muxer, GstBuffer * buffer,
   const GValue *poses = NULL, *value = NULL, *entry = NULL;
   GstStructure *params = NULL, *landmark = NULL;
   gdouble confidence = 0.0, x = 0.0, y = 0.0;
-  guint batch_idx = 0, id = 0, idx = 0, num = 0, seqnum = 0, size = 0, length = 0;
-
-  gst_structure_get_uint (structure, "batch-index", &batch_idx);
+  guint id = 0, idx = 0, num = 0, seqnum = 0, size = 0, length = 0;
 
   // If result is derived from a ROI, attach this result to that ROI meta.
   if ((value = gst_structure_get_value (structure, "source-region-id"))) {
@@ -489,7 +530,7 @@ gst_metamux_process_classification_metadata (GstMetaMux * muxer,
   GArray *labels = NULL;
   const GValue *value = NULL, *entry = NULL;
   GstStructure *params = NULL;
-  guint idx = 0, size = 0, batch_idx = 0, id = 0;
+  guint idx = 0, size = 0, id = 0;
 
   value = gst_structure_get_value (structure, "labels");
   size = gst_value_array_get_size (value);
@@ -497,8 +538,6 @@ gst_metamux_process_classification_metadata (GstMetaMux * muxer,
   // No classification label results for this buffer, nothing to do.
   if (size == 0)
     return;
-
-  gst_structure_get_uint (structure, "batch-index", &batch_idx);
 
   // Allocate memory for the labels.
   labels = g_array_sized_new (FALSE, FALSE, sizeof (GstClassLabel), size);
