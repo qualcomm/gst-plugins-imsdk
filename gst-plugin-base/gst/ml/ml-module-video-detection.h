@@ -70,8 +70,25 @@
 
 G_BEGIN_DECLS
 
+typedef struct _GstMLBoxLandmark GstMLBoxLandmark;
 typedef struct _GstMLBoxEntry GstMLBoxEntry;
 typedef struct _GstMLBoxPrediction GstMLBoxPrediction;
+
+/**
+ * GstMLBoxLandmark:
+ * @name: Optinal name of the landmark.
+ * @x: X axis coordinate of the keypoint.
+ * @y: Y axis coordinate of the keypoint.
+ *
+ * Information describing a landmark keypoint.
+ *
+ * The fields x and y must be set in (0.0 to 1.0) relative coordinate system.
+ */
+struct _GstMLBoxLandmark {
+  GQuark name;
+  gfloat x;
+  gfloat y;
+};
 
 /**
  * GstMLBoxEntry:
@@ -82,6 +99,7 @@ typedef struct _GstMLBoxPrediction GstMLBoxPrediction;
  * @left: X axis coordinate of upper-left corner.
  * @bottom: Y axis coordinate of lower-right corner.
  * @right: X axis coordinate of lower-right corner.
+ * @landmarks: Optional list of #GstMLBoxLandmark.
  *
  * Information describing prediction result from object detection models.
  * All fields are mandatory and need to be filled by the submodule.
@@ -99,6 +117,8 @@ struct _GstMLBoxEntry {
   gfloat left;
   gfloat bottom;
   gfloat right;
+
+  GArray *landmarks;
 };
 
 /**
@@ -117,6 +137,17 @@ struct _GstMLBoxPrediction {
   GArray             *entries;
   const GstStructure *info;
 };
+
+/**
+ * gst_ml_box_entry_cleanup:
+ * @entry: Pointer to the ML box entry.
+ *
+ * Helper function for freeing any resources allocated owned by the entry.
+ *
+ * return: None
+ */
+GST_API void
+gst_ml_box_entry_cleanup (GstMLBoxEntry * entry);
 
 /**
  * gst_ml_box_prediction_cleanup:
