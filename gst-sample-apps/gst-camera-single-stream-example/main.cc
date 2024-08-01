@@ -46,7 +46,7 @@
 
 #include <gst/gst.h>
 
-#include "include/gst_sample_apps_utils.h"
+#include <gst/sampleapps/gst_sample_apps_utils.h>
 
 #define DEFAULT_OP_YUV_FILENAME "/opt/yuv_dump%d.yuv"
 #define DEFAULT_OP_MP4_FILENAME "/opt/video.mp4"

@@ -33,8 +33,8 @@
 
 #include <gst/gst.h>
 
-#include "include/gst_sample_apps_pipeline.h"
-#include "include/gst_sample_apps_utils.h"
+#include <gst/sampleapps/gst_sample_apps_pipeline.h>
+#include <gst/sampleapps/gst_sample_apps_utils.h>
 
 #define ARRAY_LENGTH 20
 #define TWO_STREAM_CNT 2

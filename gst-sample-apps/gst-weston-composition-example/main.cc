@@ -44,7 +44,7 @@
 
 #include <gst/gst.h>
 
-#include "include/gst_sample_apps_utils.h"
+#include <gst/sampleapps/gst_sample_apps_utils.h>
 
 #define GST_APP_SUMMARY                                                       \
   "This application showcases the composition of various sources, " \
