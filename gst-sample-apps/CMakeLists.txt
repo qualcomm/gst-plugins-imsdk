@@ -41,6 +41,7 @@ if (ENABLE_CAMERA)
   add_subdirectory(gst-appsink-example)
   add_subdirectory(gst-camera-metadata-example)
   add_subdirectory(gst-camera-switch-example)
+  add_subdirectory(gst-camera-shdr-ldc-eis-example)
 endif () # ENABLE_CAMERA
 
 if (ENABLE_ML AND ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE)
