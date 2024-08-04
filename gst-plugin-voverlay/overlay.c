@@ -269,6 +269,38 @@ gst_cairo_draw_circle (cairo_t * context, guint color, gdouble x, gdouble y,
 }
 
 static inline gboolean
+gst_cairo_draw_polygon (cairo_t * context, guint color,
+    gdouble coords[GST_VIDEO_POLYGON_MAX_POINTS * 2], guint n_coords,
+    gdouble linewidth, gboolean filled)
+{
+  guint idx = 0;
+
+  // Set polygon lines width.
+  cairo_set_line_width (context, linewidth);
+
+  cairo_move_to (context, coords[0], coords[1]);
+
+  for (idx = 2; idx < n_coords; idx += 2)
+    cairo_line_to (context, coords[idx], coords[idx + 1]);
+
+  cairo_close_path (context);
+
+  // Set color.
+  cairo_set_source_rgba (context, EXTRACT_BLUE_COLOR (color),
+      EXTRACT_GREEN_COLOR (color), EXTRACT_RED_COLOR (color),
+      EXTRACT_ALPHA_COLOR (color));
+
+  if (filled) {
+    cairo_stroke_preserve (context);
+    cairo_fill (context);
+  } else {
+    cairo_stroke (context);
+  }
+
+  return (cairo_status (context) == CAIRO_STATUS_SUCCESS) ? TRUE : FALSE;
+}
+
+static inline gboolean
 gst_cairo_draw_arrow (cairo_t * context, guint color, gdouble x, gdouble y,
     gdouble dx, gdouble dy, gdouble linewidth)
 {
@@ -872,25 +904,32 @@ gst_overlay_handle_mask_entry (GstVOverlay * overlay, cairo_t * context,
   GstVideoRectangle *source = NULL, *destination = NULL;
   gdouble x = 0.0, y = 0.0, linewidth = 0.0, scale = 0.0;
   guint color = 0;
-  gboolean success = FALSE;
+  gboolean success = FALSE, infill = TRUE;
 
   source = &(blit->sources[0]);
   destination = &(blit->destinations[0]);
 
   switch (mask->type) {
     case GST_OVERLAY_MASK_RECTANGLE:
-      source->w = destination->w = mask->dims.wh[0];
-      source->h = destination->h = mask->dims.wh[1];
+      source->w = destination->w = mask->dims.rectangle.w;
+      source->h = destination->h = mask->dims.rectangle.h;
 
-      destination->x = mask->position.x;
-      destination->y = mask->position.y;
+      destination->x = mask->dims.rectangle.x;
+      destination->y = mask->dims.rectangle.y;
       break;
     case GST_OVERLAY_MASK_CIRCLE:
-      source->w = destination->w = mask->dims.radius * 2;
-      source->h = destination->h = mask->dims.radius * 2;
+      source->w = destination->w = mask->dims.circle.radius * 2;
+      source->h = destination->h = mask->dims.circle.radius * 2;
 
-      destination->x = mask->position.x - mask->dims.radius;
-      destination->y = mask->position.y - mask->dims.radius;
+      destination->x = mask->dims.circle.x - mask->dims.circle.radius;
+      destination->y = mask->dims.circle.y - mask->dims.circle.radius;
+      break;
+    case GST_OVERLAY_MASK_POLYGON:
+      source->w = destination->w = mask->dims.polygon.region.w;
+      source->h = destination->h = mask->dims.polygon.region.h;
+
+      destination->x = mask->dims.polygon.region.x;
+      destination->y = mask->dims.polygon.region.y;
       break;
     default:
       GST_ERROR_OBJECT (overlay, "Unknown privacy mask type %d!", mask->type);
@@ -898,6 +937,7 @@ gst_overlay_handle_mask_entry (GstVOverlay * overlay, cairo_t * context,
   }
 
   color = mask->color;
+  infill = mask->infill;
 
   // Adjust mask source dimensions so that it fits inside the overlay frame.
   gst_overlay_update_rectangle_dimensions (overlay, vframe, source);
@@ -920,7 +960,7 @@ gst_overlay_handle_mask_entry (GstVOverlay * overlay, cairo_t * context,
         x, y, width, height, color);
 
     success = gst_cairo_draw_rectangle (context, color, x, y, width, height,
-        linewidth, TRUE);
+        linewidth, infill);
   } else if (GST_OVERLAY_MASK_CIRCLE == mask->type) {
     gdouble radius = 0.0;
 
@@ -931,7 +971,23 @@ gst_overlay_handle_mask_entry (GstVOverlay * overlay, cairo_t * context,
         radius, color);
 
     success = gst_cairo_draw_circle (context, color, x, y, radius, linewidth,
-        TRUE);
+        infill);
+  } else if (GST_OVERLAY_MASK_POLYGON == mask->type) {
+    gdouble coords[GST_VIDEO_POLYGON_MAX_POINTS * 2];
+    guint idx = 0, num = 0, n_coords = 0;
+
+    n_coords = mask->dims.polygon.n_points * 2;
+
+    for (idx = 0; idx < mask->dims.polygon.n_points; idx++, num += 2) {
+      coords[num] = (mask->dims.polygon.points[idx].x - destination->x) * scale;
+      coords[num + 1] = (mask->dims.polygon.points[idx].y - destination->y) * scale;
+
+      GST_TRACE_OBJECT (overlay, "Polygon: [%.2f %.2f], Color: 0x%X",
+          coords[num], coords[num + 1], color);
+    }
+
+    success = gst_cairo_draw_polygon (context, color, coords, n_coords,
+        linewidth, infill);
   }
 
   return success;
@@ -1841,8 +1897,9 @@ gst_overlay_class_init (GstVOverlayClass * klass)
           "name and 2 parameters 'color' and either 'circle=<X, Y, RADIUS>' or "
           "'rectangle=<X, Y, WIDTH, HEIGHT>'. Either circle or rectangle must "
           "be provided if struct entry is new e.g. \"{(structure)"
-          "\\\"Mask,color=0xRRGGBBAA,circle=<400,400,200>;\\\",(structure)"
-          "\\\"Mask,color=0xRRGGBBAA,rectangle=<0,0,20,10>;\\\"}\"", NULL,
+          "\\\"Mask1,color=0xRRGGBBAA,circle=<400,400,200>;\\\",(structure)"
+          "\\\"Mask2,color=0xRRGGBBAA,rectangle=<0,0,20,10>;\\\",(structure)"
+          "\\\"Mask3,color=0xRRGGBBAA,polygon=<<2,2>,<2,4>,<4,4>>;\\\"}\"", NULL,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_PLAYING));
 
   gst_element_class_set_static_metadata (element, "Video Overlay",

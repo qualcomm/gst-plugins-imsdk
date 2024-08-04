@@ -533,7 +533,7 @@ gst_extract_masks (const GValue * value, GArray * masks)
   GstStructure *structure = NULL;
   guint idx = 0, num = 0, size = 0;
   gint x = -1, y = -1, width = 0, height = 0, radius = 0, color = 0;
-  gboolean changed = FALSE;
+  gboolean changed = FALSE, infill = FALSE;
 
   size = gst_value_list_get_size (value);
 
@@ -566,9 +566,10 @@ gst_extract_masks (const GValue * value, GArray * masks)
     if (num >= masks->len) {
       // User must provide at leats 'rectangle/circle' of the new entry.
       if (!gst_structure_has_field (structure, "circle") &&
-          !gst_structure_has_field (structure, "rectangle")) {
+          !gst_structure_has_field (structure, "rectangle") &&
+          !gst_structure_has_field (structure, "polygon")) {
         GST_ERROR ("Structure at idx %u does not contain neither 'circle' "
-            "nor 'rectangle' field!", idx);
+            "nor 'rectangle' or 'polygon' field!", idx);
         return FALSE;
       }
 
@@ -578,14 +579,10 @@ gst_extract_masks (const GValue * value, GArray * masks)
 
       mask->name = gst_structure_get_name_id (structure);
       mask->enable = TRUE;
-
-      mask->dims.wh[0] = -1;
-      mask->dims.wh[1] = -1;
-
-      mask->position.x = -1;
-      mask->position.y = -1;
-
       mask->color = GST_OVERLAY_DEFAULT_COLOR;
+      mask->infill = TRUE;
+
+      memset(&(mask->dims), -1, sizeof (mask->dims));
     }
 
     name = g_quark_to_string (mask->name);
@@ -603,10 +600,10 @@ gst_extract_masks (const GValue * value, GArray * masks)
       y = g_value_get_int (gst_value_array_get_value (circle, 1));
 
       // Raise the flag for clearing cached blit if position is different.
-      changed |= (mask->position.x != x) || (mask->position.y != y);
+      changed |= (mask->dims.circle.x != x) || (mask->dims.circle.y != y);
 
-      mask->position.x = x;
-      mask->position.y = y;
+      mask->dims.circle.x = x;
+      mask->dims.circle.y = y;
 
       radius = g_value_get_int (gst_value_array_get_value (circle, 2));
 
@@ -616,11 +613,12 @@ gst_extract_masks (const GValue * value, GArray * masks)
       }
 
       // Raise the flag for clearing cached blit if radious is different.
-      changed |= mask->dims.radius != radius;
+      changed |= mask->dims.circle.radius != radius;
 
-      mask->dims.radius = radius;
+      mask->dims.circle.radius = radius;
 
-      GST_TRACE ("%s: Circle radius: %d", name, mask->dims.radius);
+      GST_TRACE ("%s: Circle radius: %d, centre: [%d, %d]", name,
+          mask->dims.circle.radius, mask->dims.circle.x, mask->dims.circle.y);
     } else if (gst_structure_has_field (structure, "rectangle")) {
       const GValue *rectangle = gst_structure_get_value (structure, "rectangle");
 
@@ -634,10 +632,10 @@ gst_extract_masks (const GValue * value, GArray * masks)
       y = g_value_get_int (gst_value_array_get_value (rectangle, 1));
 
       // Raise the flag for clearing cached blit if position is different.
-      changed |= (mask->position.x != x) || (mask->position.y != y);
+      changed |= (mask->dims.rectangle.x != x) || (mask->dims.rectangle.y != y);
 
-      mask->position.x = x;
-      mask->position.y = y;
+      mask->dims.rectangle.x = x;
+      mask->dims.rectangle.y = y;
 
       width = g_value_get_int (gst_value_array_get_value (rectangle, 2));
       height = g_value_get_int (gst_value_array_get_value (rectangle, 3));
@@ -648,13 +646,66 @@ gst_extract_masks (const GValue * value, GArray * masks)
       }
 
       // Raise the flag for clearing cached blit if dimensions are different.
-      changed |= (mask->dims.wh[0] != width) || (mask->dims.wh[1] != height);
+      changed |= (mask->dims.rectangle.w != width) ||
+          (mask->dims.rectangle.h != height);
 
-      mask->dims.wh[0] = width;
-      mask->dims.wh[1] = height;
+      mask->dims.rectangle.w = width;
+      mask->dims.rectangle.h = height;
 
-      GST_TRACE ("%s: Rectangle: [%d, %d]", name, mask->dims.wh[0],
-          mask->dims.wh[1]);
+      GST_TRACE ("%s: Rectangle coordinates: [%d, %d] dimensions: %dx%d", name,
+          mask->dims.rectangle.x,  mask->dims.rectangle.y,
+          mask->dims.rectangle.w, mask->dims.rectangle.h);
+    } else if (gst_structure_has_field (structure, "polygon")) {
+      const GValue *polygon = gst_structure_get_value (structure, "polygon");
+      guint idx = 0, size = 0;
+
+      size = gst_value_array_get_size (polygon);
+
+      if ((size < GST_VIDEO_POLYGON_MIN_POINTS) ||
+          (size > GST_VIDEO_POLYGON_MAX_POINTS)) {
+        GST_ERROR ("Structure at idx %u has invalid 'polygon' field!", idx);
+        goto cleanup;
+      }
+
+      mask->type = GST_OVERLAY_MASK_POLYGON;
+      mask->dims.polygon.n_points = size;
+
+      for (idx = 0; idx < size; idx++) {
+        const GValue *point = gst_value_array_get_value (polygon, idx);
+
+        x = g_value_get_int (gst_value_array_get_value (point, 0));
+        y = g_value_get_int (gst_value_array_get_value (point, 1));
+
+        // Initialize the X and Y axis with the first point.
+        if (mask->dims.polygon.region.x == -1)
+          mask->dims.polygon.region.x = x;
+
+        if (mask->dims.polygon.region.y == -1)
+          mask->dims.polygon.region.y = y;
+
+        // Find the coordinates of the rectangle in which the polygon fits.
+        mask->dims.polygon.region.x = MIN (mask->dims.polygon.region.x, x);
+        mask->dims.polygon.region.y = MIN (mask->dims.polygon.region.y, y);
+        mask->dims.polygon.region.w = MAX (mask->dims.polygon.region.w, x);
+        mask->dims.polygon.region.h = MAX (mask->dims.polygon.region.h, y);
+
+        // Raise the flag for clearing cached blit if any point is different.
+        changed |= (mask->dims.polygon.points[idx].x != x) ||
+            (mask->dims.polygon.points[idx].y != y);
+
+        mask->dims.polygon.points[idx].x = x;
+        mask->dims.polygon.points[idx].y = y;
+
+        GST_TRACE ("%s: Polygon Coordinate: [%d, %d]", name,
+            mask->dims.polygon.points[idx].x, mask->dims.polygon.points[idx].y);
+      }
+
+      mask->dims.polygon.region.w -= mask->dims.polygon.region.x;
+      mask->dims.polygon.region.h -= mask->dims.polygon.region.y;
+
+      GST_TRACE ("%s: Polygon Region: [%d, %d] %dx%d", name,
+          mask->dims.polygon.region.x, mask->dims.polygon.region.y,
+          mask->dims.polygon.region.w, mask->dims.polygon.region.h);
     }
 
     if (gst_structure_has_field (structure, "color")) {
@@ -662,11 +713,19 @@ gst_extract_masks (const GValue * value, GArray * masks)
 
       // Raise the flag for clearing cached blit if color is different.
       changed |= mask->color != color;
-
       mask->color = color;
     }
 
-    GST_TRACE ("%s: Color: 0x%X", name, mask->color);
+    if (gst_structure_has_field (structure, "infill")) {
+      gst_structure_get_boolean (structure, "infill", &infill);
+
+      // Raise the flag for clearing cached blit if infill is changed.
+      changed |= mask->infill != infill;
+      mask->infill = infill;
+    }
+
+    GST_TRACE ("%s: Color: 0x%X, Infill: %s", name, mask->color,
+        mask->infill ? "YES" : "NO");
 
     // Clear the cached blit if the flag has been raised.
     if (changed && (mask->blit.frame != NULL))
@@ -1015,30 +1074,56 @@ gst_serialize_masks (GArray * masks)
     mask = &(g_array_index (masks, GstOverlayMask, idx));
 
     entry = gst_structure_new (g_quark_to_string (mask->name),
-        "color", G_TYPE_UINT, mask->color, NULL);
+        "color", G_TYPE_UINT, mask->color, "infill", G_TYPE_BOOLEAN,
+        mask->infill, NULL);
 
     g_value_init (&value, G_TYPE_INT);
     g_value_init (&array, GST_TYPE_ARRAY);
 
-    g_value_set_int (&value, mask->position.x);
-    gst_value_array_append_value (&array, &value);
-
-    g_value_set_int (&value, mask->position.y);
-    gst_value_array_append_value (&array, &value);
-
     if (mask->type == GST_OVERLAY_MASK_CIRCLE) {
-      g_value_set_int (&value, mask->dims.radius);
+      g_value_set_int (&value, mask->dims.circle.x);
+      gst_value_array_append_value (&array, &value);
+
+      g_value_set_int (&value, mask->dims.circle.y);
+      gst_value_array_append_value (&array, &value);
+
+      g_value_set_int (&value, mask->dims.circle.radius);
       gst_value_array_append_value (&array, &value);
 
       gst_structure_set_value (entry, "circle", &array);
     } else if (mask->type == GST_OVERLAY_MASK_RECTANGLE) {
-      g_value_set_int (&value, mask->dims.wh[0]);
+      g_value_set_int (&value, mask->dims.rectangle.x);
       gst_value_array_append_value (&array, &value);
 
-      g_value_set_int (&value, mask->dims.wh[1]);
+      g_value_set_int (&value, mask->dims.rectangle.y);
+      gst_value_array_append_value (&array, &value);
+
+      g_value_set_int (&value, mask->dims.rectangle.w);
+      gst_value_array_append_value (&array, &value);
+
+      g_value_set_int (&value, mask->dims.rectangle.h);
       gst_value_array_append_value (&array, &value);
 
       gst_structure_set_value (entry, "rectangle", &array);
+    } else if (mask->type == GST_OVERLAY_MASK_POLYGON) {
+      GValue point = G_VALUE_INIT;
+      guint idx = 0;
+
+      g_value_init (&point, GST_TYPE_ARRAY);
+
+      for (idx = 0; idx < mask->dims.polygon.n_points; idx++) {
+        g_value_set_int (&value, mask->dims.polygon.points[idx].x);
+        gst_value_array_append_value (&point, &value);
+
+        g_value_set_int (&value, mask->dims.polygon.points[idx].y);
+        gst_value_array_append_value (&point, &value);
+
+        gst_value_array_append_value (&array, &point);
+        g_value_reset (&point);
+      }
+
+      gst_structure_set_value (entry, "polygon", &array);
+      g_value_unset (&point);
     }
 
     g_value_unset (&array);
