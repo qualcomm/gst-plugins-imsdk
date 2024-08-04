@@ -51,7 +51,12 @@ G_BEGIN_DECLS
 #define GST_OVERLAY_IMAGE_CAST(obj)     ((GstOverlayImage *)(obj))
 #define GST_OVERLAY_MASK_CAST(obj)      ((GstOverlayMask *)(obj))
 
-typedef struct _GstOverlayPosition GstOverlayPosition;
+#define GST_VIDEO_POLYGON_MIN_POINTS    3
+#define GST_VIDEO_POLYGON_MAX_POINTS    20
+
+typedef struct _GstVideoCoords GstVideoCoords;
+typedef struct _GstVideoCircle GstVideoCircle;
+typedef struct _GstVideoPolygon GstVideoPolygon;
 typedef struct _GstOverlayTimestamp GstOverlayTimestamp;
 typedef struct _GstOverlayBBox GstOverlayBBox;
 typedef struct _GstOverlayString GstOverlayString;
@@ -82,18 +87,47 @@ enum
 {
   GST_OVERLAY_MASK_CIRCLE,
   GST_OVERLAY_MASK_RECTANGLE,
+  GST_OVERLAY_MASK_POLYGON,
 };
 
 /**
- * GstOverlayPosition:
+ * GstVideoCoords:
  * @x: Point coordinate on the X Axis in pixels.
  * @y: Point coordinate on the Y Axis in pixels.
  *
- * Position coordinates in pixels.
+ * Point coordinates in pixels.
  */
-struct _GstOverlayPosition {
+struct _GstVideoCoords {
   gint x;
   gint y;
+};
+
+/**
+ * GstVideoCircle:
+ * @x: The circle centre coordinate on the X Axis in pixels.
+ * @y: The circle Centre coordinate on the Y Axis in pixels.
+ * @radius: Point coordinate on the Y Axis in pixels.
+ *
+ * Circle position and radius in pixels.
+ */
+struct _GstVideoCircle {
+  gint x;
+  gint y;
+  gint radius;
+};
+
+/**
+ * GstVideoPolygon:
+ * @points: Polygon points with X and Y coordinates in pixels.
+ * @n_points: The number of polygon points.
+ * @region: The rectangular region which the polygon occupies.
+ *
+ * Circle position and radius in pixels.
+ */
+struct _GstVideoPolygon {
+  GstVideoCoords    points[GST_VIDEO_POLYGON_MAX_POINTS];
+  guint8            n_points;
+  GstVideoRectangle region;
 };
 
 /**
@@ -132,16 +166,16 @@ struct _GstOverlayBBox {
  * by the user.
  */
 struct _GstOverlayTimestamp {
-  gint               type;
+  gint           type;
 
-  gchar              *format;
-  gint               fontsize;
+  gchar          *format;
+  gint           fontsize;
 
-  GstOverlayPosition position;
-  gint32             color;
+  GstVideoCoords position;
+  gint32         color;
 
-  gboolean           enable;
-  GstVideoBlit       blit;
+  gboolean       enable;
+  GstVideoBlit   blit;
 };
 
 /**
@@ -158,16 +192,16 @@ struct _GstOverlayTimestamp {
  * by the user.
  */
 struct _GstOverlayString {
-  GQuark             name;
+  GQuark         name;
 
-  gchar              *contents;
-  gint               fontsize;
+  gchar          *contents;
+  gint           fontsize;
 
-  GstOverlayPosition position;
-  gint32             color;
+  GstVideoCoords position;
+  gint32         color;
 
-  gboolean           enable;
-  GstVideoBlit       blit;
+  gboolean       enable;
+  GstVideoBlit   blit;
 };
 
 /**
@@ -175,8 +209,8 @@ struct _GstOverlayString {
  * @name: Unique name identifier (GQuark).
  * @type: The type of the mask - rectangle or circle.
  * @dims: Union for the dimensions of the privacy mask.
- * @position: Top left corner of the overlay frame (in pixels).
  * @color: Color code in hex format - 0xRRGGBBAA.
+ * @infill: Whether or not ot fill the whole mask area or just the borders.
  * @enable: Whether or not to apply the overlay object.
  * @blit: Cached overlay blit with the drawn object.
  *
@@ -184,19 +218,20 @@ struct _GstOverlayString {
  * and position defined by the user.
  */
 struct _GstOverlayMask {
-  GQuark             name;
+  GQuark              name;
 
-  gint               type;
+  gint                type;
   union {
-    gint             radius;
-    gint             wh[2];
+    GstVideoCircle    circle;
+    GstVideoRectangle rectangle;
+    GstVideoPolygon   polygon;
   } dims;
 
-  GstOverlayPosition position;
-  gint32             color;
+  gint32              color;
+  gboolean            infill;
 
-  gboolean           enable;
-  GstVideoBlit       blit;
+  gboolean            enable;
+  GstVideoBlit        blit;
 };
 
 /**
