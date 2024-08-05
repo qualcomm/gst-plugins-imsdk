@@ -1242,8 +1242,11 @@ gst_qmmf_context_open (GstQmmfContext * context)
     case SHDR_MODE_YUV:
       hdr.mode = ::qmmf::recorder::VHDRMode::kSHDRYuv;
       break;
-    case SHDR_SWITCH_ENABLE:
-      hdr.mode = ::qmmf::recorder::VHDRMode::kSHDRSwitchEnable;
+    case SHDR_RAW_SWITCH_ENABLE:
+      hdr.mode = ::qmmf::recorder::VHDRMode::kSHDRRawSwitchEnable;
+      break;
+    case SHDR_YUV_SWITCH_ENABLE:
+      hdr.mode = ::qmmf::recorder::VHDRMode::kSHDRYUVSwitchEnable;
       break;
     case QBC_HDR_MODE_VIDEO:
       hdr.mode = ::qmmf::recorder::VHDRMode::kQBCHDRVideo;
