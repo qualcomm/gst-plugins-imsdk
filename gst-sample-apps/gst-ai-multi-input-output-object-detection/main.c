@@ -48,6 +48,11 @@
 #define DEFAULT_YOLOV5_LABELS "/opt/yolov5.labels"
 
 /**
+ * Default rtsp input port address, if not provided by user
+ */
+#define DEFAULT_RTSP_IP_PORT "127.0.0.1:8554"
+
+/**
  * Default settings of camera output resolution, Scaling of camera output
  * will be done in qtimlvconverter based on model input
  */
@@ -78,11 +83,11 @@
  * Structure for various application specific options
  */
 typedef struct {
-  const gchar *rtsp_ip_port;
-  const gchar *mlframework;
-  const gchar *model_path;
-  const gchar *labels_path;
-  const gchar *out_file;
+  gchar *rtsp_ip_port;
+  gchar *mlframework;
+  gchar *model_path;
+  gchar *labels_path;
+  gchar *out_file;
   gchar *ip_address;
   gint num_camera;
   gint num_file;
@@ -110,6 +115,36 @@ static GstVideoRectangle positions_9[9] = {
     {0, 0, 640, 360}, {640, 0, 640, 360}, {1280, 0, 640, 360},
     {0, 360, 640, 360}, {640, 360, 640, 360}, {1280, 360, 640, 360},
     {0, 720, 640, 360}, {640, 720, 640, 360}, {1280, 720, 640, 360}};
+
+/**
+ * Free Application context:
+ *
+ * @param appctx Application Context object
+ */
+static void
+gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
+{
+  // If specific pointer is not NULL, unref it
+  if (appctx->mloop != NULL) {
+    g_main_loop_unref (appctx->mloop);
+    appctx->mloop = NULL;
+  }
+
+  if (options->rtsp_ip_port != DEFAULT_RTSP_IP_PORT &&
+      options->rtsp_ip_port != NULL) {
+    g_free (options->rtsp_ip_port);
+  }
+
+  if (options->model_path != DEFAULT_TFLITE_YOLOV5_MODEL &&
+      options->model_path != NULL) {
+    g_free (options->model_path);
+  }
+
+  if (options->labels_path != DEFAULT_YOLOV5_LABELS &&
+      options->labels_path != NULL) {
+    g_free (options->labels_path);
+  }
+}
 
 /**
  * Set parameters for ML Framework Elements.
@@ -1103,7 +1138,6 @@ destroy_pipe (GstAppContext * appctx)
     curr = next;
   }
   gst_bin_remove (GST_BIN (appctx->pipeline), curr);
-
   g_list_free (appctx->plugins);
   appctx->plugins = NULL;
   gst_object_unref (appctx->pipeline);
@@ -1229,7 +1263,7 @@ main (gint argc, gchar * argv[])
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
   options.mlframework = "qtimltflite";
   options.camera_id = -1;
-  options.rtsp_ip_port = "127.0.0.1:8554";
+  options.rtsp_ip_port = DEFAULT_RTSP_IP_PORT;
   options.model_path = DEFAULT_TFLITE_YOLOV5_MODEL;
   options.labels_path = DEFAULT_YOLOV5_LABELS;
 
@@ -1260,33 +1294,40 @@ main (gint argc, gchar * argv[])
       g_printerr ("Failed to parse command line options: %s!\n",
           GST_STR_NULL (error->message));
       g_clear_error (&error);
+      gst_app_context_free (&appctx, &options);
       return -EFAULT;
     } else if (!success && (NULL == error)) {
       g_printerr ("Initializing: Unknown error!\n");
+      gst_app_context_free (&appctx, &options);
       return -EFAULT;
     }
   } else {
     g_printerr ("Failed to create options context!\n");
+    gst_app_context_free (&appctx, &options);
     return -EFAULT;
   }
 
   if (options.num_camera > MAX_CAMSRCS) {
     g_printerr ("Number of camera streams cannot be more than 2\n");
+    gst_app_context_free (&appctx, &options);
     return -1;
   }
 
   if (options.num_file > MAX_FILESRCS) {
     g_printerr ("Number of file streams cannot be more than %d\n", MAX_FILESRCS);
+    gst_app_context_free (&appctx, &options);
     return -1;
   }
 
   if (options.num_rtsp > MAX_RTSPSRCS) {
     g_printerr ("Number of rtsp streams cannot be more than %d\n", MAX_RTSPSRCS);
+    gst_app_context_free (&appctx, &options);
     return -1;
   }
 
   if (options.num_camera < 0 || options.num_file < 0 || options.num_rtsp < 0) {
     g_printerr ("Negative count for any input is not supported\n");
+    gst_app_context_free (&appctx, &options);
     return -1;
   }
 
@@ -1297,11 +1338,13 @@ main (gint argc, gchar * argv[])
       options.input_count != options.num_rtsp) {
     g_printerr ("use only same kind of input, like %d camera or %d files or"
         " %d rtsp inputs\n", MAX_CAMSRCS, MAX_FILESRCS, MAX_RTSPSRCS);
+    gst_app_context_free (&appctx, &options);
     return -1;
   }
 
   if (options.camera_id < -1 || options.camera_id > 1) {
     g_printerr ("invalid camera id: %d\n", options.camera_id);
+    gst_app_context_free (&appctx, &options);
     return -EINVAL;
   }
 
@@ -1326,22 +1369,26 @@ main (gint argc, gchar * argv[])
     snprintf (file_name, 127, "/opt/video%d.mp4", i+1);
     if (!file_exists (file_name)) {
       g_printerr ("video file doesnot exist at path: %s\n", file_name);
+      gst_app_context_free (&appctx, &options);
       return -EINVAL;
     }
   }
 
   if (!file_exists (options.model_path)) {
     g_printerr ("Invalid model file path: %s\n", options.model_path);
+    gst_app_context_free (&appctx, &options);
     return -EINVAL;
   }
 
   if (!file_exists (options.labels_path)) {
     g_printerr ("Invalid labels file path: %s\n", options.labels_path);
+    gst_app_context_free (&appctx, &options);
     return -EINVAL;
   }
 
   if (options.out_file && !file_location_exists (options.out_file)) {
     g_printerr ("Invalid output file location: %s\n", options.out_file);
+    gst_app_context_free (&appctx, &options);
     return -EINVAL;
   }
 
@@ -1364,6 +1411,7 @@ main (gint argc, gchar * argv[])
   ret = create_pipe (&appctx, &options);
   if (!ret) {
     g_printerr ("ERROR: failed to create GST pipe.\n");
+    gst_app_context_free (&appctx, &options);
     destroy_pipe (&appctx);
     return -1;
   }
@@ -1371,6 +1419,7 @@ main (gint argc, gchar * argv[])
   // Initialize main loop.
   if ((mloop = g_main_loop_new (NULL, FALSE)) == NULL) {
     g_printerr ("ERROR: Failed to create Main loop!\n");
+    gst_app_context_free (&appctx, &options);
     destroy_pipe (&appctx);
     return -1;
   }
@@ -1380,7 +1429,7 @@ main (gint argc, gchar * argv[])
   // Bus is message queue for getting callback from gstreamer pipeline
   if ((bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline))) == NULL) {
     g_printerr ("ERROR: Failed to retrieve pipeline bus!\n");
-    g_main_loop_unref (mloop);
+    gst_app_context_free (&appctx, &options);
     destroy_pipe (&appctx);
     return -1;
   }
@@ -1393,6 +1442,7 @@ main (gint argc, gchar * argv[])
       G_CALLBACK (state_changed_cb), pipeline);
 
   g_signal_connect (bus, "message::error", G_CALLBACK (error_cb), mloop);
+  g_signal_connect (bus, "message::warning", G_CALLBACK (warning_cb), mloop);
 
   g_signal_connect (bus, "message::eos", G_CALLBACK (eos_cb), mloop);
   gst_object_unref (bus);
@@ -1425,13 +1475,17 @@ main (gint argc, gchar * argv[])
   g_print ("g_main_loop_run ends\n");
 
 error:
-  g_source_remove (intrpt_watch_id);
-  g_main_loop_unref (mloop);
+  // Remove the interrupt signal handler
+  if (intrpt_watch_id)
+    g_source_remove (intrpt_watch_id);
 
   g_print ("Set pipeline to NULL state ...\n");
   gst_element_set_state (pipeline, GST_STATE_NULL);
 
+  g_print ("Destroy gst_app_context_free\n");
+  gst_app_context_free (&appctx, &options);
   g_print ("Destroy pipeline\n");
+
   destroy_pipe (&appctx);
 
   g_print ("gst_deinit\n");

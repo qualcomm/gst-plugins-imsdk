@@ -1,7 +1,7 @@
 set(GST_EXAMPLE_BIN gst-ai-multi-input-output-object-detection)
 
 add_executable(${GST_EXAMPLE_BIN}
-  main.cc
+  main.c
 )
 
 target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
