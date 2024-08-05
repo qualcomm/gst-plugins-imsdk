@@ -686,11 +686,17 @@ gst_qmmfsrc_vhdr_mode_get_type (void)
         "Use this mode for better quality on supporting sensor. "
         "This mode may result in reduced framerate.", "shdr-yuv"
     },
-    { SHDR_SWITCH_ENABLE,
-        "Enable SHDR switch. "
+    { SHDR_RAW_SWITCH_ENABLE,
+        "Enable Raw SHDR switch. "
         "Use this mode for enabling shdr switch in camera backend based on lux value. "
-        "The switch is between linear and other SHDR type based on support in camera.",
-        "shdr-switch-enable"
+        "The switch is between linear and Raw SHDR based on support in camera.",
+        "raw-shdr-switch"
+    },
+    { SHDR_YUV_SWITCH_ENABLE,
+        "Enable YUV SHDR switch. "
+        "Use this mode for enabling shdr switch in camera backend based on lux value. "
+        "The switch is between linear and YUV SHDR based on support in camera.",
+        "yuv-shdr-switch"
     },
     { QBC_HDR_MODE_VIDEO,
         "Enable in-sensor HDR for video stream. "
