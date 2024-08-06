@@ -1,0 +1,24 @@
+# Message Adaptor
+
+set(MSG_ADAPTOR gstqtimsgadaptor)
+
+add_library(${MSG_ADAPTOR} SHARED
+  msg-adaptor.c
+)
+
+target_include_directories(${MSG_ADAPTOR} PRIVATE
+  ${GST_INCLUDE_DIRS}
+  ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(${MSG_ADAPTOR} PRIVATE
+  ${GST_LIBRARIES}
+)
+
+install(
+  TARGETS ${MSG_ADAPTOR}
+  LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}
+  PERMISSIONS OWNER_EXECUTE OWNER_READ OWNER_WRITE
+              GROUP_EXECUTE GROUP_READ
+              WORLD_EXECUTE WORLD_READ
+)
