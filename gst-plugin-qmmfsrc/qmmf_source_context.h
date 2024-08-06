@@ -28,7 +28,7 @@
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
 *
-* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -71,7 +71,9 @@ G_BEGIN_DECLS
 
 #define GST_QMMF_CONTEXT_CAST(obj)   ((GstQmmfContext*)(obj))
 
-typedef struct _GstQmmfContext GstQmmfContext;
+typedef struct _GstQmmfContext            GstQmmfContext;
+typedef struct _GstQmmfLogicalCamInfo     GstQmmfLogicalCamInfo;
+typedef struct _GstQmmfCameraSwitchInfo   GstQmmfCameraSwitchInfo;
 
 typedef void (*GstCameraEventCb) (guint event, gpointer userdata);
 typedef void (*GstCameraMetaCb) (gint camera_id, gconstpointer metadata,
@@ -139,6 +141,7 @@ enum
   PARAM_CAMERA_OPERATION_MODE,
   PARAM_CAMERA_INPUT_ROI,
   PARAM_CAMERA_INPUT_ROI_INFO,
+  PARAM_CAMERA_PHYISICAL_CAMERA_SWITCH,
 };
 
 GST_API GstQmmfContext *
