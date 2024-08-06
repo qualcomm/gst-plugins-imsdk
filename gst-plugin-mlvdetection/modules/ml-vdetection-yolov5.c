@@ -51,9 +51,9 @@
 #define CLASSES_IDX            5
 
 // Bounding box weights for each of the 3 tensors used for normalization.
-static const gint32 weights[3][2] = { {8, 8}, {16, 16}, {32, 32} };
-// Bounding box gains for each of the 3 tensors used for normalization.
-static const gint32 gains[3][3][2] = {
+static const guint32 weights[3] = { 8, 16, 32 };
+// Bounding box anchor values for each of the 3 tensors used for normalization.
+static const guint32 anchors[3][3][2] = {
     { {10,  13}, {16,   30}, {33,   23} },
     { {30,  61}, {62,   45}, {59,  119} },
     { {116, 90}, {156, 198}, {373, 326} },
@@ -137,9 +137,9 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
   GstMLBoxPrediction *prediction = NULL;
   GstVideoRectangle region = { 0, };
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
-  guint idx = 0, num = 0, x = 0, y = 0, m = 0, id = 0, w_idx = 0, tile_idx = 0;
-  guint width = 0, height = 0;
-  guint anchor = 0, n_layers = 0, n_anchors = 0, n_tiles = 0;
+  guint idx = 0, num = 0, x = 0, y = 0, m = 0, id = 0, w_idx = 0, pxl_idx = 0;
+  guint width = 0, height = 0, paxelsize = 0, class_idx = 0;
+  guint anchor = 0, n_layers = 0, n_anchors = 0, n_paxels = 0;
   gdouble confidence = 0.0, score = 0.0, threshold = 0.0, bbox[4] = { 0, };
   gint nms = -1;
 
@@ -148,6 +148,12 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
 
   prediction = &(g_array_index (predictions, GstMLBoxPrediction, 0));
   prediction->info = pmeta->info;
+
+  // Extract the dimensions of the input tensor that produced the output tensors.
+  if (submodule->inwidth == 0 || submodule->inheight == 0) {
+    gst_ml_structure_get_source_dimensions (pmeta->info, &(submodule->inwidth),
+        &(submodule->inheight));
+  }
 
   // Extract the source tensor region with actual data.
   gst_ml_structure_get_source_region (pmeta->info, &region);
@@ -178,16 +184,18 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
       n_layers = GST_ML_FRAME_DIM (mlframe, idx, 3) / n_anchors;
     }
 
-    // Total number of tiles in the matrix.
-    n_tiles = width * height;
+    // Total number of paxels in the matrix.
+    n_paxels = width * height;
+    // The paxel dimensions in pixels.
+    paxelsize = submodule->inwidth / width;
 
     // Find weight/gain idx in case tensor order sometimes is changed unexpected.
     // Ex: "< <1, 20, 20, 255>, <1, 40, 40, 255>, <1, 80, 80, 255> > "
     // TODO: optimize
-    for (w_idx = 0; w_idx < 3 ; w_idx++)
-      if (weights[w_idx][0] == (gint32)(submodule->inwidth / width)) break;
+    for (w_idx = 0; w_idx < 3; w_idx++)
+      if (weights[w_idx] == paxelsize) break;
 
-    for (tile_idx = 0; tile_idx < n_tiles; tile_idx++) {
+    for (pxl_idx = 0; pxl_idx < n_paxels; pxl_idx++) {
       for (anchor = 0; anchor < n_anchors; anchor++, num += n_layers) {
         GstMLBoxEntry entry = { 0, };
         GstMLLabel *label = NULL;
@@ -207,6 +215,8 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
         // Find the class index with the highest score in current paxel.
         for (m = (num + CLASSES_IDX + 1); m < (num + n_layers); m++)
           id = (gst_ml_tensor_compare_values (mltype, data, m, id) > 0) ? m : id;
+
+        class_idx = id - (num + CLASSES_IDX);
 
         // Dequantize the class confidence.
         confidence = gst_ml_tensor_extract_value (mltype, data, id,
@@ -237,19 +247,22 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
         bbox[2] = 1 / (1 + expf (- bbox[2]));
         bbox[3] = 1 / (1 + expf (- bbox[3]));
 
-        y = (tile_idx % n_tiles) / height;
-        x = (tile_idx % n_tiles) % width;
+        x = pxl_idx % width;
+        y = pxl_idx / width;
 
         // Special calculations for the bounding box parameters.
-        bbox[0] = (bbox[0] * 2 - 0.5F + x) * weights[w_idx][0];
-        bbox[1] = (bbox[1] * 2 - 0.5F + y) * weights[w_idx][1];
-        bbox[2] = pow ((bbox[2] * 2), 2) * gains[w_idx][anchor][0];
-        bbox[3] = pow ((bbox[3] * 2), 2) * gains[w_idx][anchor][1];
+        bbox[0] = (bbox[0] * 2 - 0.5F + x) * paxelsize;
+        bbox[1] = (bbox[1] * 2 - 0.5F + y) * paxelsize;
+        bbox[2] = pow ((bbox[2] * 2), 2) * anchors[w_idx][anchor][0];
+        bbox[3] = pow ((bbox[3] * 2), 2) * anchors[w_idx][anchor][1];
 
         entry.top = bbox[1] - (bbox[3] / 2);
         entry.left = bbox[0] - (bbox[2] / 2);
         entry.bottom = bbox[1] + (bbox[3] / 2);
         entry.right = bbox[0] + (bbox[2] / 2);
+
+        GST_TRACE ("Class: %u Confidence: %.2f Box[%f, %f, %f, %f]", class_idx,
+            confidence, entry.top, entry.left, entry.bottom, entry.right);
 
         // Adjust bounding box dimensions with extracted source tensor region.
         gst_ml_box_transform_dimensions (&entry, &region);
@@ -273,6 +286,10 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
         if (nms == (-2))
           continue;
 
+        GST_TRACE ("Label: %s Confidence: %.2f Box[%f, %f, %f, %f]",
+            g_quark_to_string (entry.name), entry.confidence, entry.top,
+            entry.left, entry.bottom, entry.right);
+
         // If the NMS result is above -1 remove the entry with the nms index.
         if (nms >= 0)
           prediction->entries = g_array_remove_index (prediction->entries, nms);
@@ -295,7 +312,7 @@ gst_ml_module_parse_monoblock_tensors (GstMLSubModule * submodule,
   guint8 *data = NULL;
   GstVideoRectangle region = { 0, };
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
-  guint idx = 0, num = 0, m = 0, id = 0, n_layers = 0, n_tiles = 0;
+  guint idx = 0, num = 0, m = 0, id = 0, n_layers = 0, n_paxels = 0;
   gdouble confidence = 0.0, score = 0.0, bbox[4] = { 0, };
   gint nms = -1;
 
@@ -318,11 +335,11 @@ gst_ml_module_parse_monoblock_tensors (GstMLSubModule * submodule,
   mltype = GST_ML_FRAME_TYPE (mlframe);
 
   // The 2nd dimension represents ((w/8 * h/8) + (w/16 * h/16) + (w/32* h/32)) * 3
-  n_tiles = GST_ML_FRAME_DIM (mlframe, 0, 1);
+  n_paxels = GST_ML_FRAME_DIM (mlframe, 0, 1);
   // The 3rd dimension represents number of layers.
   n_layers = GST_ML_FRAME_DIM (mlframe, 0, 2);
 
-  for (num = 0; num < n_tiles; num++, idx += n_layers) {
+  for (num = 0; num < n_paxels; num++, idx += n_layers) {
     GstMLBoxEntry entry = { 0, };
 
     // Dequantize the object score.
