@@ -155,6 +155,23 @@ check_for_exit (GstActivateDeactivateAppContext * appctx)
   return FALSE;
 }
 
+// Handles state change transisions
+static void
+state_change_cb (GstBus * bus, GstMessage * message, gpointer userdata)
+{
+  GstElement *pipeline = GST_ELEMENT (userdata);
+  GstState old, newstate, pending;
+
+  // Handle state changes only for the pipeline.
+  if (GST_MESSAGE_SRC (message) != GST_OBJECT_CAST (pipeline))
+    return;
+
+  gst_message_parse_state_changed (message, &old, &newstate, &pending);
+  g_print ("\n'%s' state changed from %s to %s, pending: %s\n",
+      GST_ELEMENT_NAME (pipeline), gst_element_state_get_name (old),
+      gst_element_state_get_name (newstate), gst_element_state_get_name (pending));
+}
+
 // Wait fot end of streaming
 static gboolean
 wait_for_eos (GstActivateDeactivateAppContext * appctx)
@@ -599,10 +616,8 @@ unlink_stream (GstActivateDeactivateAppContext * appctx, GstStreamInf * stream)
     release_dummy_stream (appctx, stream);
     stream->dummy = FALSE;
   } else if (appctx->use_display) {
-	  g_print ("Enter release_display_stream\n");
     release_display_stream (appctx, stream);
   } else {
-	  g_print ("Enter release_encoder_stream\n");
     release_encoder_stream (appctx, stream);
   }
 
@@ -764,11 +779,32 @@ wait_for_state_change (GstActivateDeactivateAppContext * appctx) {
 static void
 link_unlink_streams_usecase_basic (GstActivateDeactivateAppContext * appctx)
 {
-  g_print ("Create 720p stream\n\n");
-  GstStreamInf *stream_inf_1 = create_stream (appctx, FALSE, 0, 0, 1280, 720);
+  // Create a 1080p stream and link it to the pipeline
+  // This function will create new elements (waylanksink or encoder) and
+  // will add them to the bin.
+  // It will link all elements to a new created pad from the qmmfsrc.
+  // After the successful link, will syncronize the state of the new elements
+  // to the pipeline state.
+  g_print ("Create 1080p stream\n\n");
+  GstStreamInf *stream_inf_1 = create_stream (appctx, FALSE, 0, 0, 1920, 1080);
 
+  // Create a 720p stream and link it to the pipeline
+  // This function will create new elements (waylanksink or encoder) and
+  // will add them to the bin.
+  // It will link all elements to a new created pad from the qmmfsrc.
+  // After the successful link, will syncronize the state of the new elements
+  // to the pipeline state.
+  g_print ("Create 720p stream\n\n");
+  GstStreamInf *stream_inf_2 = create_stream (appctx, TRUE, 650, 0, 1280, 720);
+
+  // Create a 480p stream and link it to the pipeline
+  // This function will create new elements (waylanksink or encoder) and
+  // will add them to the bin.
+  // It will link all elements to a new created pad from the qmmfsrc.
+  // After the successful link, will syncronize the state of the new elements
+  // to the pipeline state.
   g_print ("Create 480p stream\n\n");
-  GstStreamInf *stream_inf_2 = create_stream (appctx, TRUE, 650, 0, 640, 480);
+  GstStreamInf *stream_inf_3 = create_stream (appctx, TRUE, 0, 610, 640, 480);
 
   // Move NULL state to PAUSED state and negotiation of the capabilities done.
   g_print ("Set pipeline to GST_STATE_PAUSED state\n");
@@ -777,7 +813,18 @@ link_unlink_streams_usecase_basic (GstActivateDeactivateAppContext * appctx)
     wait_for_state_change (appctx);
   }
 
+  // Remove unnecessary stream 480p before going in PLAYING state
+  // This function will unlink all elemets of the stream.
+  // It will set all elements to NULL state and will remove them from the bin.
+  // The qmmfsrc pad will be deactivated and it will be ready for further usage.
   g_print ("Unlink 480p stream\n\n");
+  unlink_stream (appctx, stream_inf_3);
+
+  // Remove unnecessary stream 720p before going in PLAYING state
+  // This function will unlink all elemets of the stream.
+  // It will set all elements to NULL state and will remove them from the bin.
+  // The qmmfsrc pad will be deactivated and it will be ready for further usage.
+  g_print ("Unlink 720p stream\n\n");
   unlink_stream (appctx, stream_inf_2);
 
   // Set the pipeline in PLAYING state and all streams will start streaming.
@@ -790,13 +837,29 @@ link_unlink_streams_usecase_basic (GstActivateDeactivateAppContext * appctx)
 
   sleep (10);
 
-  g_print ("Link 480p stream\n\n");
+  // Link both streams together 480p and 720p which are already created earlier
+  // This function will create new elements (waylanksink or encoder) and
+  // will add them to the bin.
+  // It will link all elements to already created pad from the qmmfsrc.
+  // After the successful link, will syncronize the state of the new elements
+  // to the pipeline state. And will activate the qmmfsrc pad.
+  g_print ("Link 480p and 720p streams\n\n");
   link_stream (appctx, 650, 0, stream_inf_2);
+  link_stream (appctx, 0, 610, stream_inf_3);
 
   sleep (10);
 
+  // Unlink both streams together 480p and 720p in PLAYING state
+  // This function will unlink all elemets of the stream.
+  // It will set all elements to NULL state and will remove them from the bin.
+  // The qmmfsrc pad will be deactivated and it will be ready for further usage.
+  // The other streams will not be interrupted.
+  g_print ("Unlink 480p stream\n\n");
+  unlink_stream (appctx, stream_inf_3);
   g_print ("Unlink 480p stream done\n\n");
+  g_print ("Unlink 720p stream\n\n");
   unlink_stream (appctx, stream_inf_2);
+  g_print ("Unlink 720p stream done\n\n");
 
   sleep (10);
 
@@ -810,17 +873,36 @@ link_unlink_streams_usecase_basic (GstActivateDeactivateAppContext * appctx)
     wait_for_state_change (appctx);
   }
 
-  // Link stream 480p which are already created earlier
-  g_print ("Link 480p stream\n\n");
+  // Link both streams together 480p and 720p which are already created earlier
+  // This function will create new elements (waylanksink or encoder) and
+  // will add them to the bin.
+  // It will link all elements to already created pad from the qmmfsrc.
+  // After the successful link, will syncronize the state of the new elements
+  // to the pipeline state. And will activate the qmmfsrc pad.
+  g_print ("Link 480p and 720p streams\n\n");
   link_stream (appctx, 0, 0, stream_inf_2);
+  link_stream (appctx, 0, 0, stream_inf_3);
 
-  // Release stream 720p in PLAYING state
-  g_print ("Release 720p stream\n\n");
+  // Release stream 1080p in PLAYING state
+  // This function will unlink all elemets of the stream.
+  // It will set all elements to NULL state and will remove them from the bin.
+  // Qmmfsrc pad will be deactivated and released, it cannot be used anymore.
+  g_print ("Release 1080p stream\n\n");
   release_stream (appctx, stream_inf_1);
 
-  // Release stream 480p in PLAYING state
-  g_print ("Release 480p stream\n\n");
+  // Release stream 720p in PLAYING state
+  // This function will unlink all elemets of the stream.
+  // It will set all elements to NULL state and will remove them from the bin.
+  // Qmmfsrc pad will be deactivated and released, it cannot be used anymore.
+  g_print ("Release 720p stream\n\n");
   release_stream (appctx, stream_inf_2);
+
+  // Release stream 480p in PLAYING state
+  // This function will unlink all elemets of the stream.
+  // It will set all elements to NULL state and will remove them from the bin.
+  // Qmmfsrc pad will be deactivated and released, it cannot be used anymore.
+  g_print ("Release 480p stream\n\n");
+  release_stream (appctx, stream_inf_3);
 }
 
 /*
@@ -834,13 +916,32 @@ link_unlink_streams_usecase_basic (GstActivateDeactivateAppContext * appctx)
 static void
 link_unlink_streams_usecase_full (GstActivateDeactivateAppContext * appctx)
 {
+  // Create a 1080p stream and link it to the pipeline
+  // This function will create new elements (waylanksink or encoder) and
+  // will add them to the bin.
+  // It will link all elements to a new created pad from the qmmfsrc.
+  // After the successful link, will syncronize the state of the new elements
+  // to the pipeline state.
+  g_print ("Create 1080p stream\n\n");
+  GstStreamInf *stream_inf_1 = create_stream (appctx, FALSE, 0, 0, 1920, 1080);
+
   // Create a 720p stream and link it to the pipeline
+  // This function will create new elements (waylanksink or encoder) and
+  // will add them to the bin.
+  // It will link all elements to a new created pad from the qmmfsrc.
+  // After the successful link, will syncronize the state of the new elements
+  // to the pipeline state.
   g_print ("Create 720p stream\n\n");
-  GstStreamInf *stream_inf_1 = create_stream (appctx, TRUE, 0, 0, 1280, 720);
+  GstStreamInf *stream_inf_2 = create_stream (appctx, TRUE, 650, 0, 1280, 720);
 
   // Create a 480p stream and link it to the pipeline
+  // This function will create new elements (waylanksink or encoder) and
+  // will add them to the bin.
+  // It will link all elements to a new created pad from the qmmfsrc.
+  // After the successful link, will syncronize the state of the new elements
+  // to the pipeline state.
   g_print ("Create 480p stream\n\n");
-  GstStreamInf *stream_inf_2 = create_stream (appctx, FALSE, 650, 0, 640, 480);
+  GstStreamInf *stream_inf_3 = create_stream (appctx, TRUE, 0, 610, 640, 480);
 
   // Move NULL state to PAUSED state and negotiation of the capabilities done
   g_print ("Set pipeline to GST_STATE_PAUSED state\n");
@@ -849,8 +950,19 @@ link_unlink_streams_usecase_full (GstActivateDeactivateAppContext * appctx)
     wait_for_state_change (appctx);
   }
 
+  // Remove unnecessary stream 720p before going in PLAYING state
+  // This function will unlink all elemets of the stream.
+  // It will set all elements to NULL state and will remove them from the bin.
+  // The qmmfsrc pad will be deactivated and it will be ready for further usage.
   g_print ("Unlink 720p stream\n\n");
-  unlink_stream (appctx, stream_inf_1);
+  unlink_stream (appctx, stream_inf_2);
+
+  // Remove unnecessary stream 480p before going in PLAYING state
+  // This function will unlink all elemets of the stream.
+  // It will set all elements to NULL state and will remove them from the bin.
+  // The qmmfsrc pad will be deactivated and it will be ready for further usage.
+  g_print ("Unlink 480p stream\n\n");
+  unlink_stream (appctx, stream_inf_3);
 
   // Set the pipeline in PLAYING state and all streams will start streaming.
   g_print ("Set pipeline to GST_STATE_PLAYING state\n");
@@ -862,12 +974,29 @@ link_unlink_streams_usecase_full (GstActivateDeactivateAppContext * appctx)
 
   sleep (10);
 
+  // Link a 720p stream which is already created earlier
+  // This function will create new elements (waylanksink or encoder) and
+  // will add them to the bin.
+  // It will link all elements to already created pad from the qmmfsrc.
+  // After the successful link, will syncronize the state of the new elements
+  // to the pipeline state. And will activate the qmmfsrc pad.
   g_print ("Link 720p stream\n\n");
-  link_stream (appctx, 0, 0, stream_inf_1);
+  link_stream (appctx, 0, 0, stream_inf_2);
 
   sleep (10);
 
+  // Link a 480p stream which is already created earlier
+  // This function will create new elements (waylanksink or encoder) and
+  // will add them to the bin.
+  // It will link all elements to already created pad from the qmmfsrc.
+  // After the successful link, will syncronize the state of the new elements
+  // to the pipeline state. And will activate the qmmfsrc pad.
   // State transition for PLAYING state to NULL and againg to PLAYING
+  g_print ("Link 480p stream\n\n");
+  link_stream (appctx, 650, 0, stream_inf_3);
+
+  sleep (10);
+
   gst_element_send_event (appctx->pipeline, gst_event_new_eos ());
   wait_for_eos (appctx);
 
@@ -886,17 +1015,83 @@ link_unlink_streams_usecase_full (GstActivateDeactivateAppContext * appctx)
   }
   sleep (10);
 
+  // Unlink stream 720p in PLAYING state
+  // This function will unlink all elemets of the stream.
+  // It will set all elements to NULL state and will remove them from the bin.
+  // The qmmfsrc pad will be deactivated and it will be ready for further usage.
+  // The other streams will not be interrupted.
   g_print ("Unlink 720p stream\n\n");
-  unlink_stream (appctx, stream_inf_1);
+  unlink_stream (appctx, stream_inf_2);
 
   sleep (10);
 
+  // Unlink stream 480p in PLAYING state
+  // This function will unlink all elemets of the stream.
+  // It will set all elements to NULL state and will remove them from the bin.
+  // The qmmfsrc pad will be deactivated and it will be ready for further usage.
+  // The other streams will not be interrupted.
+  g_print ("Unlink 480p stream\n\n");
+  unlink_stream (appctx, stream_inf_3);
+
+  sleep (10);
+
+  // Link a 720p stream which is already created earlier
+  // This function will create new elements (waylanksink or encoder) and
+  // will add them to the bin.
+  // It will link all elements to already created pad from the qmmfsrc.
+  // After the successful link, will syncronize the state of the new elements
+  // to the pipeline state. And will activate the qmmfsrc pad.
   g_print ("Link 720p stream\n\n");
-  link_stream (appctx, 0, 0, stream_inf_1);
+  link_stream (appctx, 0, 0, stream_inf_2);
 
   sleep (10);
 
-// Set the pipeline state to NULL and stop all streams
+  // Link a 480p stream which is already created earlier
+  // This function will create new elements (waylanksink or encoder) and
+  // will add them to the bin.
+  // It will link all elements to already created pad from the qmmfsrc.
+  // After the successful link, will syncronize the state of the new elements
+  // to the pipeline state. And will activate the qmmfsrc pad.
+  g_print ("Link 480p stream\n\n");
+  link_stream (appctx, 650, 0, stream_inf_3);
+
+  sleep (10);
+
+  // Unlink both streams together 720p and 480p in PLAYING state
+  // This function will unlink all elemets of the stream.
+  // It will set all elements to NULL state and will remove them from the bin.
+  // The qmmfsrc pad will be deactivated and it will be ready for further usage.
+  // The other streams will not be interrupted.
+  g_print ("Unlink 720p stream\n\n");
+  unlink_stream (appctx, stream_inf_2);
+  g_print ("Unlink 480p stream\n\n");
+  unlink_stream (appctx, stream_inf_3);
+
+  sleep (10);
+
+  // Link a 720p stream which is already created earlier
+  // This function will create new elements (waylanksink or encoder) and
+  // will add them to the bin.
+  // It will link all elements to already created pad from the qmmfsrc.
+  // After the successful link, will syncronize the state of the new elements
+  // to the pipeline state. And will activate the qmmfsrc pad.
+  g_print ("Link 720p stream\n\n");
+  link_stream (appctx, 650, 0, stream_inf_2);
+
+  sleep (10);
+
+  // Link a 480p stream which is already created earlier
+  // This function will create new elements (waylanksink or encoder) and
+  // will add them to the bin.
+  // It will link all elements to already created pad from the qmmfsrc.
+  // After the successful link, will syncronize the state of the new elements
+  // to the pipeline state. And will activate the qmmfsrc pad.
+  g_print ("Link 480p stream\n\n");
+  link_stream (appctx, 0, 610, stream_inf_3);
+
+  sleep (10);
+
+  // Set the pipeline state to NULL and stop all streams
   gst_element_send_event (appctx->pipeline, gst_event_new_eos ());
   wait_for_eos (appctx);
 
@@ -906,11 +1101,26 @@ link_unlink_streams_usecase_full (GstActivateDeactivateAppContext * appctx)
     wait_for_state_change (appctx);
   }
 
-  g_print ("Release 720p stream\n\n");
+  // Release stream 1080p in PLAYING state
+  // This function will unlink all elemets of the stream.
+  // It will set all elements to NULL state and will remove them from the bin.
+  // Qmmfsrc pad will be deactivated and released, it cannot be used anymore.
+  g_print ("Release 1080p stream\n\n");
   release_stream (appctx, stream_inf_1);
 
-  g_print ("Release 480p stream\n\n");
+  // Release stream 720p in PLAYING state
+  // This function will unlink all elemets of the stream.
+  // It will set all elements to NULL state and will remove them from the bin.
+  // Qmmfsrc pad will be deactivated and released, it cannot be used anymore.
+  g_print ("Release 720p stream\n\n");
   release_stream (appctx, stream_inf_2);
+
+  // Release stream 480p in PLAYING state
+  // This function will unlink all elemets of the stream.
+  // It will set all elements to NULL state and will remove them from the bin.
+  // Qmmfsrc pad will be deactivated and released, it cannot be used anymore.
+  g_print ("Release 480p stream\n\n");
+  release_stream (appctx, stream_inf_3);
 }
 
 static void *
@@ -1049,7 +1259,7 @@ main (gint argc, gchar * argv[])
   // Watch for messages on the pipeline's bus.
   gst_bus_add_signal_watch (bus);
   g_signal_connect (bus, "message::state-changed",
-      G_CALLBACK (state_changed_cb), pipeline);
+      G_CALLBACK (state_change_cb), pipeline);
   g_signal_connect (bus, "message::warning", G_CALLBACK (warning_cb), NULL);
   g_signal_connect (bus, "message::error", G_CALLBACK (error_cb), mloop);
   g_signal_connect (bus, "message::eos", G_CALLBACK (app_eos_cb), appctx);
