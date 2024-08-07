@@ -398,9 +398,10 @@ gst_ml_video_pose_fill_video_output (GstMLVideoPose * vpose, GstBuffer * buffer)
             g_quark_to_string (kp->name), kp->x, kp->y, kp->confidence);
 
         // Set color.
-        cairo_set_source_rgba (context,
-            EXTRACT_RED_COLOR (kp->color), EXTRACT_GREEN_COLOR (kp->color),
-            EXTRACT_BLUE_COLOR (kp->color), EXTRACT_ALPHA_COLOR (kp->color));
+        cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (kp->color),
+            EXTRACT_FLOAT_GREEN_COLOR (kp->color),
+            EXTRACT_FLOAT_RED_COLOR (kp->color),
+            EXTRACT_FLOAT_ALPHA_COLOR (kp->color));
 
         cairo_arc (context, kp->x, kp->y, radius, 0, 2 * M_PI);
         cairo_close_path (context);

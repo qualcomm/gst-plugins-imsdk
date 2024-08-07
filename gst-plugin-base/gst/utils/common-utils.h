@@ -21,14 +21,19 @@ G_BEGIN_DECLS
     (GstVideoRegionOfInterestMeta*) gst_buffer_iterate_meta_filtered (buffer, \
         &state, GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE)
 
-#define GPOINTER_CAST(obj)             ((gpointer) obj)
-#define GST_PROTECTION_META_CAST(obj)  ((GstProtectionMeta *) obj)
-#define GST_VIDEO_ROI_META_CAST(obj)   ((GstVideoRegionOfInterestMeta *) obj)
+#define GPOINTER_CAST(obj)               ((gpointer) obj)
+#define GST_PROTECTION_META_CAST(obj)    ((GstProtectionMeta *) obj)
+#define GST_VIDEO_ROI_META_CAST(obj)     ((GstVideoRegionOfInterestMeta *) obj)
 
-#define EXTRACT_RED_COLOR(color)       ((color >> 24) & 0xFF)
-#define EXTRACT_GREEN_COLOR(color)     ((color >> 16) & 0xFF)
-#define EXTRACT_BLUE_COLOR(color)      ((color >> 8) & 0xFF)
-#define EXTRACT_ALPHA_COLOR(color)     ((color) & 0xFF)
+#define EXTRACT_RED_COLOR(color)         ((color >> 24) & 0xFF)
+#define EXTRACT_GREEN_COLOR(color)       ((color >> 16) & 0xFF)
+#define EXTRACT_BLUE_COLOR(color)        ((color >> 8) & 0xFF)
+#define EXTRACT_ALPHA_COLOR(color)       ((color) & 0xFF)
+
+#define EXTRACT_FLOAT_RED_COLOR(color)   (((color >> 24) & 0xFF) / 255.0)
+#define EXTRACT_FLOAT_GREEN_COLOR(color) (((color >> 16) & 0xFF) / 255.0)
+#define EXTRACT_FLOAT_BLUE_COLOR(color)  (((color >> 8) & 0xFF) / 255.0)
+#define EXTRACT_FLOAT_ALPHA_COLOR(color) (((color) & 0xFF) / 255.0)
 
 // The bit offset where the stream ID can be embedded in a variable
 #define GST_MUX_STREAM_ID_OFFSET       24

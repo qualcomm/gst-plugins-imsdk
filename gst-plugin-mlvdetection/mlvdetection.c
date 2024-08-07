@@ -516,9 +516,10 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
       cairo_set_font_size (context, fontsize);
 
       // Set color.
-      cairo_set_source_rgba (context,
-          EXTRACT_RED_COLOR (entry->color), EXTRACT_GREEN_COLOR (entry->color),
-          EXTRACT_BLUE_COLOR (entry->color), EXTRACT_ALPHA_COLOR (entry->color));
+      cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (entry->color),
+          EXTRACT_FLOAT_GREEN_COLOR (entry->color),
+          EXTRACT_FLOAT_RED_COLOR (entry->color),
+          EXTRACT_FLOAT_ALPHA_COLOR (entry->color));
 
       // Set the starting position of the bounding box text.
       cairo_move_to (context, (x + 3), (y + fontsize / 2 + 3));
