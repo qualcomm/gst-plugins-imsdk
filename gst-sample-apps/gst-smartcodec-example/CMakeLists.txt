@@ -1,4 +1,11 @@
-set(GST_EXAMPLE_BIN gst-ai-daisychain-detection-classification)
+cmake_minimum_required(VERSION 3.8.2)
+
+# Get the pkgconfigs exported by the automake tools
+pkg_check_modules(GST
+  REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
+
+# ggst-smartcodec-example
+set(GST_EXAMPLE_BIN gst-smartcodec-example)
 
 add_executable(${GST_EXAMPLE_BIN}
   main.c

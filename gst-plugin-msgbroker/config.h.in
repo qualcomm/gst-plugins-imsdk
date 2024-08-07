@@ -1,0 +1,10 @@
+/*
+* Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* SPDX-License-Identifier: BSD-3-Clause-Clear
+*/
+
+#define PACKAGE         "@GST_PLUGINS_QTI_OSS_PACKAGE@"
+#define PACKAGE_VERSION "@GST_PLUGINS_QTI_OSS_VERSION@"
+#define PACKAGE_LICENSE "@GST_PLUGINS_QTI_OSS_LICENSE@"
+#define PACKAGE_SUMMARY "@GST_PLUGINS_QTI_OSS_SUMMARY@"
+#define PACKAGE_ORIGIN  "@GST_PLUGINS_QTI_OSS_ORIGIN@"

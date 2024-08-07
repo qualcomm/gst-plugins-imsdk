@@ -35,12 +35,15 @@ if (ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE)
   add_subdirectory(gst-add-streams-as-bundle-example)
   add_subdirectory(gst-add-remove-streams-runtime)
   add_subdirectory(gst-camera-burst-capture-example)
+  add_subdirectory(gst-usb-single-camera-app)
+  add_subdirectory(gst-smartcodec-example)
 endif () # ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE
 
 if (ENABLE_CAMERA)
   add_subdirectory(gst-appsink-example)
   add_subdirectory(gst-camera-metadata-example)
   add_subdirectory(gst-camera-switch-example)
+  add_subdirectory(gst-camera-shdr-ldc-eis-example)
 endif () # ENABLE_CAMERA
 
 if (ENABLE_ML AND ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE)
