@@ -188,9 +188,9 @@ gst_cairo_draw_text (cairo_t * context, guint color, gdouble x, gdouble y,
     gchar * text, gdouble fontsize)
 {
   // Set color.
-  cairo_set_source_rgba (context, EXTRACT_BLUE_COLOR (color),
-      EXTRACT_GREEN_COLOR (color), EXTRACT_RED_COLOR (color),
-      EXTRACT_ALPHA_COLOR (color));
+  cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
+      EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
+      EXTRACT_FLOAT_ALPHA_COLOR (color));
 
   // Set the starting position of the bounding box text.
   cairo_move_to (context, x, (y + (fontsize * 4.0F / 5.0F)));
@@ -207,9 +207,9 @@ gst_cairo_draw_line (cairo_t * context, guint color, gdouble x, gdouble y,
      gdouble dx, gdouble dy, gdouble linewidth)
 {
   // Set color.
-  cairo_set_source_rgba (context, EXTRACT_BLUE_COLOR (color),
-      EXTRACT_GREEN_COLOR (color), EXTRACT_RED_COLOR (color),
-      EXTRACT_ALPHA_COLOR (color));
+  cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
+      EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
+      EXTRACT_FLOAT_ALPHA_COLOR (color));
 
   // Set rectangle lines width.
   cairo_set_line_width (context, linewidth);
@@ -227,9 +227,9 @@ gst_cairo_draw_rectangle (cairo_t * context, guint color, gdouble x, gdouble y,
     gdouble width, gdouble height, gdouble linewidth, gboolean filled)
 {
   // Set color.
-  cairo_set_source_rgba (context, EXTRACT_BLUE_COLOR (color),
-      EXTRACT_GREEN_COLOR (color), EXTRACT_RED_COLOR (color),
-      EXTRACT_ALPHA_COLOR (color));
+  cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
+      EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
+      EXTRACT_FLOAT_ALPHA_COLOR (color));
 
   // Set rectangle lines width.
   cairo_set_line_width (context, linewidth);
@@ -250,9 +250,9 @@ gst_cairo_draw_circle (cairo_t * context, guint color, gdouble x, gdouble y,
     gdouble radius, gdouble linewidth, gboolean filled)
 {
   // Set color.
-  cairo_set_source_rgba (context, EXTRACT_BLUE_COLOR (color),
-      EXTRACT_GREEN_COLOR (color), EXTRACT_RED_COLOR (color),
-      EXTRACT_ALPHA_COLOR (color));
+  cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
+      EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
+      EXTRACT_FLOAT_ALPHA_COLOR (color));
 
   // Set rectangle lines width.
   cairo_set_line_width (context, linewidth);
@@ -286,9 +286,9 @@ gst_cairo_draw_polygon (cairo_t * context, guint color,
   cairo_close_path (context);
 
   // Set color.
-  cairo_set_source_rgba (context, EXTRACT_BLUE_COLOR (color),
-      EXTRACT_GREEN_COLOR (color), EXTRACT_RED_COLOR (color),
-      EXTRACT_ALPHA_COLOR (color));
+  cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
+      EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
+      EXTRACT_FLOAT_ALPHA_COLOR (color));
 
   if (filled) {
     cairo_stroke_preserve (context);
@@ -346,9 +346,9 @@ gst_cairo_draw_arrow (cairo_t * context, guint color, gdouble x, gdouble y,
   cairo_stroke_preserve (context);
 
   // Set infill color.
-  cairo_set_source_rgba (context, EXTRACT_BLUE_COLOR (color),
-      EXTRACT_GREEN_COLOR (color), EXTRACT_RED_COLOR (color),
-      EXTRACT_ALPHA_COLOR (color));
+  cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
+      EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
+      EXTRACT_FLOAT_ALPHA_COLOR (color));
   cairo_fill (context);
 
   return (cairo_status (context) == CAIRO_STATUS_SUCCESS) ? TRUE : FALSE;
@@ -576,9 +576,9 @@ gst_overlay_handle_classification_entry (GstVOverlay * overlay,
     GST_TRACE_OBJECT (overlay, "Label: %s, Color: 0x%X, Position: [%.2f %.2f],"
         " Fontsize: %.2f", text, color, x, y, fontsize);
 
-    cairo_set_source_rgba (context, EXTRACT_BLUE_COLOR (color),
-        EXTRACT_GREEN_COLOR (color), EXTRACT_RED_COLOR (color),
-        EXTRACT_ALPHA_COLOR (color));
+    cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
+        EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
+        EXTRACT_FLOAT_ALPHA_COLOR (color));
     cairo_paint (context);
 
     // Choose the best contrasting color to the background.

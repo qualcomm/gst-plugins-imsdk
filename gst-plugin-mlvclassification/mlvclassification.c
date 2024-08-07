@@ -413,9 +413,10 @@ gst_ml_video_classification_fill_video_output (
           entry->confidence);
 
       // Set text color.
-      cairo_set_source_rgba (context,
-          EXTRACT_RED_COLOR (entry->color), EXTRACT_GREEN_COLOR (entry->color),
-          EXTRACT_BLUE_COLOR (entry->color), EXTRACT_ALPHA_COLOR (entry->color));
+      cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (entry->color),
+          EXTRACT_FLOAT_GREEN_COLOR (entry->color),
+          EXTRACT_FLOAT_RED_COLOR (entry->color),
+          EXTRACT_FLOAT_ALPHA_COLOR (entry->color));
 
       // (0,0) is at top left corner of the buffer.
       cairo_move_to (context, 0.0, (fontsize * (num + 1)) - 6);
