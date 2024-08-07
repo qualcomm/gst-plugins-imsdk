@@ -23,10 +23,10 @@ install(
               WORLD_EXECUTE WORLD_READ
 )
 
-set(GST_QTI_ML_MODULE ml-vdetection-face-detect)
+set(GST_QTI_ML_MODULE ml-vdetection-qfd)
 
 add_library(${GST_QTI_ML_MODULE} SHARED
-  ml-vdetection-face-detect.c
+  ml-vdetection-qfd.c
 )
 
 target_include_directories(${GST_QTI_ML_MODULE} PUBLIC
