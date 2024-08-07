@@ -700,8 +700,12 @@ gst_extract_masks (const GValue * value, GArray * masks)
             mask->dims.polygon.points[idx].x, mask->dims.polygon.points[idx].y);
       }
 
-      mask->dims.polygon.region.w -= mask->dims.polygon.region.x;
-      mask->dims.polygon.region.h -= mask->dims.polygon.region.y;
+      // Adjust polygon region with margins due to draw lines width.
+      mask->dims.polygon.region.x -= 2;
+      mask->dims.polygon.region.y -= 2;
+
+      mask->dims.polygon.region.w -= mask->dims.polygon.region.x - 2;
+      mask->dims.polygon.region.h -= mask->dims.polygon.region.y - 2;
 
       GST_TRACE ("%s: Polygon Region: [%d, %d] %dx%d", name,
           mask->dims.polygon.region.x, mask->dims.polygon.region.y,

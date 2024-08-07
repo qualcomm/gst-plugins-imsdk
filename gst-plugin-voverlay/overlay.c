@@ -543,8 +543,8 @@ gst_overlay_handle_classification_entry (GstVOverlay * overlay,
   GstVideoFrame *vframe = NULL;
   gchar text[MAX_TEXT_LENGTH] = { 0, };
   GstVideoRectangle *source = NULL, *destination = NULL;
-  gdouble x = 1.0, y = 1.0, fontsize = 14.0;
-  guint num = 0, n_labels = 0, length = 0, maxlength = 0, color = 0xFFFFFFFF;
+  gdouble x = 1.0, y = 1.0, fontsize = 24.0;
+  guint num = 0, length = 0, maxlength = 0, color = 0xFFFFFFFF;
   gboolean success = TRUE;
 
   success = gst_cairo_draw_setup (blit->frame, &surface, &context);
@@ -557,9 +557,10 @@ gst_overlay_handle_classification_entry (GstVOverlay * overlay,
   destination->w = source->w;
   destination->h = source->h;
 
-  n_labels = (labels != NULL) ? labels->len : 0;
+  if ((labels == NULL) || (labels->len == 0))
+    return TRUE;
 
-  for (num = 0; num < n_labels; num++, y += fontsize) {
+  for (num = 0; num < labels->len; num++, y += fontsize) {
     GstClassLabel *label = &(g_array_index (labels, GstClassLabel, num));
 
     if (y > GST_VIDEO_FRAME_HEIGHT (vframe))
@@ -591,10 +592,10 @@ gst_overlay_handle_classification_entry (GstVOverlay * overlay,
   }
 
   // Update the source and destination with the actual text dimensions.
-  destination->w = source->w = ceil (maxlength * fontsize * 5.0F / 8.5F);
+  destination->w = source->w = ceil (maxlength * fontsize * 3.0F / 5.0F);
   destination->h = source->h = ceil (num * fontsize);
 
-  // The default value is 14.0 at 1080p resolution, scale up/down based on that.
+  // The default value is for 1080p resolution, scale up/down based on that.
   destination->w *= (GST_VIDEO_INFO_HEIGHT (overlay->vinfo) / 1080.0F);
   destination->h *= (GST_VIDEO_INFO_HEIGHT (overlay->vinfo) / 1080.0F);
 
@@ -766,8 +767,8 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   gst_structure_get_uint (objparam, "color", &color);
 
   // Set the most appropriate box line width based on frame and box dimensions.
-  gst_util_fraction_to_double (source->w, destination->w, &scale);
-  linewidth = (scale > 1.0F) ? (6.0F / scale) : 6.0F;
+  gst_util_fraction_to_double (destination->w, source->w, &scale);
+  linewidth = (scale > 1.0F) ? (4.0F / scale) : 4.0F;
 
   GST_TRACE_OBJECT (overlay, "Rectangle: [%d %d %d %d], Color: 0x%X",
       source->x, source->y, source->w, source->h, color);
@@ -886,8 +887,8 @@ gst_overlay_handle_bbox_entry (GstVOverlay * overlay, GstVideoBlit * blit,
       destination->x, destination->y, destination->w, destination->h);
 
   // Set the most appropriate box line width based on frame and box dimensions.
-  gst_util_fraction_to_double (source->w, destination->w, &scale);
-  linewidth = (scale > 1.0F) ? (6.0F / scale) : 6.0F;
+  gst_util_fraction_to_double (destination->w, source->w, &scale);
+  linewidth = (scale > 1.0F) ? (4.0F / scale) : 4.0F;
 
   GST_TRACE_OBJECT (overlay, "Rectangle: [%d %d %d %d], Color: 0x%X",
       source->x, source->y, source->w, source->h, color);
@@ -1104,8 +1105,8 @@ gst_overlay_handle_mask_entry (GstVOverlay * overlay, GstVideoBlit * blit,
       destination->x, destination->y, destination->w, destination->h);
 
   // Set the most appropriate box line width based on frame and box dimensions.
-  gst_util_fraction_to_double (source->w, destination->w, &scale);
-  linewidth = (scale > 1.0F) ? (6.0F / scale) : 6.0F;
+  gst_util_fraction_to_double (destination->w, source->w, &scale);
+  linewidth = (scale > 1.0F) ? (4.0F / scale) : 4.0F;
 
   if (GST_OVERLAY_MASK_RECTANGLE == mask->type) {
     gdouble width = 0.0, height = 0.0;
@@ -1136,8 +1137,8 @@ gst_overlay_handle_mask_entry (GstVOverlay * overlay, GstVideoBlit * blit,
     n_coords = mask->dims.polygon.n_points * 2;
 
     for (idx = 0; idx < mask->dims.polygon.n_points; idx++, num += 2) {
-      coords[num] = (mask->dims.polygon.points[idx].x - destination->x) * scale;
-      coords[num + 1] = (mask->dims.polygon.points[idx].y - destination->y) * scale;
+      coords[num] = (mask->dims.polygon.points[idx].x - destination->x) / scale;
+      coords[num + 1] = (mask->dims.polygon.points[idx].y - destination->y) / scale;
 
       GST_TRACE_OBJECT (overlay, "Polygon: [%.2f %.2f], Color: 0x%X",
           coords[num], coords[num + 1], color);

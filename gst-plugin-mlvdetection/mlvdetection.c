@@ -128,7 +128,7 @@ G_DEFINE_TYPE (GstMLVideoDetection, gst_ml_video_detection,
 #define DEFAULT_VIDEO_WIDTH      320
 #define DEFAULT_VIDEO_HEIGHT     240
 
-#define MAX_TEXT_LENGTH          25.0F
+#define MAX_TEXT_LENGTH          48.0F
 
 #define DISPLACEMENT_THRESHOLD 0.7F
 #define POSITION_THRESHOLD 0.04
@@ -378,8 +378,8 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
   GstVideoMeta *vmeta = NULL;
   GstMapInfo memmap;
   gdouble x = 0.0, y = 0.0, width = 0.0, height = 0.0;
-  gdouble fontsize = 0.0, borderwidth = 0.0;
-  guint idx = 0, num = 0, n_entries = 0;
+  gdouble fontsize = 12.0, borderwidth = 2.0;
+  guint idx = 0, num = 0, n_entries = 0, color = 0;
 
   cairo_format_t format;
   cairo_surface_t* surface = NULL;
@@ -457,10 +457,13 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
     cairo_font_options_destroy (options);
   }
 
+  // Set rectangle borders width and label font size.
+  cairo_set_line_width (context, borderwidth);
+  cairo_set_font_size (context, fontsize);
+
   for (idx = 0; idx < detection->predictions->len; idx++) {
     GstMLBoxPrediction *prediction = NULL;
     GstMLBoxEntry *entry = NULL;
-    gchar *string = NULL;
     GstVideoRectangle region = { 0, };
 
     prediction = &(g_array_index (detection->predictions, GstMLBoxPrediction, idx));
@@ -494,13 +497,9 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
     for (num = 0; num < n_entries; num++) {
       entry = &(g_array_index (prediction->entries, GstMLBoxEntry, num));
 
-      // Concat the prediction data to the output string.
-      string = g_strdup_printf ("%s: %.1f%%", g_quark_to_string (entry->name),
-          entry->confidence);
-
       // Set the bounding box parameters based on the output buffer dimensions.
-      x      = region.x + (ABS (entry->left) * region.w);
-      y      = region.y + (ABS (entry->top) * region.h);
+      x = region.x + (ABS (entry->left) * region.w);
+      y = region.y + (ABS (entry->top) * region.h);
       width  = ABS (entry->right - entry->left) * region.w;
       height = ABS (entry->bottom - entry->top) * region.h;
 
@@ -508,24 +507,48 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
       width = ((x + width) > vmeta->width) ? (vmeta->width - x) : width;
       height = ((y + height) > vmeta->height) ? (vmeta->height - y) : height;
 
-      // TODO: Set the most appropriate border size based on the bbox dimensions.
-      borderwidth = 3.0;
-
-      // Set the most appropriate font size based on the bounding box dimensions.
-      fontsize = (width / MAX_TEXT_LENGTH) * 9.0 / 5.0;
-      cairo_set_font_size (context, fontsize);
+      color = entry->color;
 
       // Set color.
-      cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (entry->color),
-          EXTRACT_FLOAT_GREEN_COLOR (entry->color),
-          EXTRACT_FLOAT_RED_COLOR (entry->color),
-          EXTRACT_FLOAT_ALPHA_COLOR (entry->color));
+      cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
+          EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
+          EXTRACT_FLOAT_ALPHA_COLOR (color));
 
-      // Set the starting position of the bounding box text.
-      cairo_move_to (context, (x + 3), (y + fontsize / 2 + 3));
+      // Draw rectangle
+      cairo_rectangle (context, x, y, width, height);
+      cairo_stroke (context);
+      g_return_val_if_fail (CAIRO_STATUS_SUCCESS == cairo_status (context), FALSE);
+
+      // Set the width and height of the label background rectangle.
+      width = ceil (strlen (g_quark_to_string (entry->name)) *
+          fontsize * 3.0F / 5.0F);
+      height = ceil (fontsize);
+
+      // Calculate the X and Y position of the label.
+      if ((y -= height) < 0.0)
+        y = region.y + region.h;
+
+      if ((x + width - 1) > (gdouble) region.w)
+        x = region.x + region.w - width;
+
+      cairo_rectangle (context, (x - 1), y, width, height);
+      cairo_fill (context);
+
+      // Choose the best contrasting color to the background.
+      color = EXTRACT_ALPHA_COLOR (color);
+      color += ((EXTRACT_RED_COLOR (entry->color) > 0x7F) ? 0x00 : 0xFF) << 8;
+      color += ((EXTRACT_GREEN_COLOR (entry->color) > 0x7F) ? 0x00 : 0xFF) << 16;
+      color += ((EXTRACT_BLUE_COLOR (entry->color) > 0x7F) ? 0x00 : 0xFF) << 24;
+
+      cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
+          EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
+          EXTRACT_FLOAT_ALPHA_COLOR (color));
+
+      // Set the starting position of the label text.
+      cairo_move_to (context, x, (y + (fontsize * 4.0F / 5.0F)));
 
       // Draw text string.
-      cairo_show_text (context, string);
+      cairo_show_text (context, g_quark_to_string (entry->name));
       g_return_val_if_fail (CAIRO_STATUS_SUCCESS == cairo_status (context), FALSE);
 
       GST_TRACE_OBJECT (detection, "Batch: %u, label: %s, confidence: %.1f%%, "
@@ -533,18 +556,8 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
           g_quark_to_string (entry->name), entry->confidence,
           entry->top, entry->left, entry->bottom, entry->right);
 
-      // Set rectangle borders width.
-      cairo_set_line_width (context, borderwidth);
-
-      // Draw rectangle
-      cairo_rectangle (context, x, y, width, height);
-      cairo_stroke (context);
-      g_return_val_if_fail (CAIRO_STATUS_SUCCESS == cairo_status (context), FALSE);
-
       // Flush to ensure all writing to the surface has been done.
       cairo_surface_flush (surface);
-
-      g_free (string);
     }
   }
 
