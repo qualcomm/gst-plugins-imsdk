@@ -44,10 +44,10 @@
 
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
-    "type = (string) { FLOAT32 }, " \
+    "type = (string) { UINT8, FLOAT32 }, " \
     "dimensions = (int) < < 1, 256, 256, 1 > >; " \
     "neural-network/tensors, " \
-    "type = (string) { FLOAT32 }, " \
+    "type = (string) { UINT8, FLOAT32 }, " \
     "dimensions = (int) < < 1, 256, 256 > >"
 
 // Module caps instance
@@ -66,6 +66,11 @@ struct _GstMLSubModule {
 
   // List of segmentation labels.
   GHashTable *labels;
+
+  // Offset values for each of the tensors for dequantization of some tensors.
+  gdouble    qoffsets[GST_ML_MAX_TENSORS];
+  // Scale values for each of the tensors for dequantization of some tensors.
+  gdouble    qscales[GST_ML_MAX_TENSORS];
 };
 
 gpointer
@@ -75,6 +80,12 @@ gst_ml_module_open (void)
 
   submodule = g_slice_new0 (GstMLSubModule);
   g_return_val_if_fail (submodule != NULL, NULL);
+
+  // Initialize the quantization offsets and scales.
+  for (guint idx = 0; idx < GST_ML_MAX_TENSORS; idx++) {
+    submodule->qoffsets[idx] = 0.0;
+    submodule->qscales[idx] = 1.0;
+  }
 
   return (gpointer) submodule;
 }
@@ -154,6 +165,50 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   // Labels funtion will print error message if it fails, simply goto cleanup.
   success = (submodule->labels != NULL);
 
+  if (GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_UINT8) {
+    GstStructure *constants = NULL;
+    const GValue *qoffsets = NULL, *qscales = NULL;
+    guint idx = 0, n_tensors = 0;
+
+    success = gst_structure_has_field (settings, GST_ML_MODULE_OPT_CONSTANTS);
+    if (!success) {
+      GST_ERROR ("Settings stucture does not contain constants value!");
+      goto cleanup;
+    }
+
+    constants = GST_STRUCTURE (g_value_get_boxed (
+        gst_structure_get_value (settings, GST_ML_MODULE_OPT_CONSTANTS)));
+
+    if (!(success = gst_structure_has_field (constants, "q-offsets"))) {
+      GST_ERROR ("Missing quantization offsets coefficients!");
+      goto cleanup;
+    } else if (!(success = gst_structure_has_field (constants, "q-scales"))) {
+      GST_ERROR ("Missing quantization scales coefficients!");
+      goto cleanup;
+    }
+
+    qoffsets = gst_structure_get_value (constants, "q-offsets");
+    qscales = gst_structure_get_value (constants, "q-scales");
+    n_tensors = GST_ML_INFO_N_TENSORS (&(submodule->mlinfo));
+
+    if (!(success = (gst_value_array_get_size (qoffsets) == n_tensors))) {
+      GST_ERROR ("Expecting %u dequantization offsets entries but received "
+          "only %u!", n_tensors, gst_value_array_get_size (qoffsets));
+      goto cleanup;
+    } else if (!(success = (gst_value_array_get_size (qscales) == n_tensors))) {
+      GST_ERROR ("Expecting %u dequantization scales entries but received "
+          "only %u!", n_tensors, gst_value_array_get_size (qscales));
+      goto cleanup;
+    }
+
+    for (idx = 0; idx < n_tensors; idx++) {
+      submodule->qoffsets[idx] =
+          g_value_get_double (gst_value_array_get_value (qoffsets, idx));
+      submodule->qscales[idx] =
+          g_value_get_double (gst_value_array_get_value (qscales, idx));
+    }
+  }
+
 cleanup:
   if (caps != NULL)
     gst_caps_unref (caps);
@@ -171,10 +226,13 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GstVideoFrame *vframe = (GstVideoFrame *) output;
   GstProtectionMeta *pmeta = NULL;
   guint8 *indata = NULL, *outdata = NULL;
+  GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   GstVideoRectangle region = { 0, };
   guint idx = 0, bpp = 0, padding = 0, color = 0;
   gint row = 0, column = 0, width = 0, height = 0;
+  gint mlwidth = 0, mlheight = 0;
   gdouble mindepth = G_MAXDOUBLE, maxdepth = G_MINDOUBLE;
+  gdouble value = 0.0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);
@@ -189,6 +247,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
   // Calculate the row padding in bytes.
   padding = GST_VIDEO_FRAME_PLANE_STRIDE (vframe, 0) - (width * bpp);
+
+  mltype = GST_ML_FRAME_TYPE (mlframe);
 
   indata = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
   outdata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
@@ -206,18 +266,20 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   gst_ml_structure_get_source_region (pmeta->info, &region);
 
   // Transform source tensor region dimensions to dimensions in the color mask.
-  region.x *= (GST_ML_FRAME_DIM (mlframe, 0, 2) / (gfloat) submodule->inwidth);
-  region.y *= (GST_ML_FRAME_DIM (mlframe, 0, 1) / (gfloat) submodule->inheight);
-  region.w *= (GST_ML_FRAME_DIM (mlframe, 0, 2) / (gfloat) submodule->inwidth);
-  region.h *= (GST_ML_FRAME_DIM (mlframe, 0, 1) / (gfloat) submodule->inheight);
+  mlwidth = GST_ML_FRAME_DIM (mlframe, 0, 2);
+  mlheight = GST_ML_FRAME_DIM (mlframe, 0, 1);
+
+  region.x *= mlwidth / (gfloat) submodule->inwidth;
+  region.y *= mlheight / (gfloat) submodule->inheight;
+  region.w *= mlwidth / (gfloat) submodule->inwidth;
+  region.h *= mlheight / (gfloat) submodule->inheight;
 
   // Find the minimum and maximum depth values in the region mask.
   for (row = region.y; row < region.h; row++) {
     for (column = region.x; column < region.w; column++) {
-      gdouble value = 0.0;
-
-      idx = row * GST_ML_FRAME_DIM (mlframe, 0, 2) + column;
-      value = GFLOAT_PTR_CAST (indata)[idx];
+      idx = row * mlwidth + column;
+      value = gst_ml_tensor_extract_value (mltype, indata, idx,
+          submodule->qoffsets[0], submodule->qscales[0]);
 
       if (value > maxdepth)
         maxdepth = value;
@@ -233,13 +295,15 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       guint id = G_MAXUINT8;
 
       // Calculate the source index. First calculate the row offset.
-      idx = GST_ML_FRAME_DIM (mlframe, 0, 2) *
-          (region.y + gst_util_uint64_scale_int (row, region.h, height));
+      idx = mlwidth * (region.y + gst_util_uint64_scale_int (row, region.h, height));
 
       // Calculate the source index. Second calculate the column offset.
       idx += region.x + gst_util_uint64_scale_int (column, region.w, width);
 
-      id *= (GFLOAT_PTR_CAST (indata)[idx] - mindepth) / (maxdepth - mindepth);
+      value = gst_ml_tensor_extract_value (mltype, indata, idx,
+          submodule->qoffsets[0], submodule->qscales[0]);
+
+      id *= (value - mindepth) / (maxdepth - mindepth);
 
       label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (id));
       color = (label != NULL) ? label->color : 0x000000FF;
