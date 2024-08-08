@@ -463,10 +463,12 @@ main (gint argc, gchar ** argv)
   {"flip", 'f', 0, G_OPTION_ARG_INT, &app_ctx->flip_type,
       "Flip video image enable",
       "Parameter flip type 0-noflip/1-horizontal/2-vertical/3-both, default 0"},
+#ifdef ENABLE_CAMERA
   {"input_width", 'W', 0, G_OPTION_ARG_INT, &app_ctx->input_width, "Width",
       "Camera input width, default 1920"},
   {"input_height", 'H', 0, G_OPTION_ARG_INT, &app_ctx->input_height, "Height",
       "Camera input height, default 1080"},
+#endif // ENABLE_CAMERA
   {"output_width", 'w', 0, G_OPTION_ARG_INT, &app_ctx->output_width, "Width",
       "image scale output width, default 1920"},
   {"output_height", 'h', 0, G_OPTION_ARG_INT, &app_ctx->output_height, "Height",
@@ -506,6 +508,18 @@ main (gint argc, gchar ** argv)
     gst_app_context_free (app_ctx);
     return ret;
   }
+
+// Check for input source
+#ifdef ENABLE_CAMERA
+  g_print ("TARGET Can support file and camera source\n");
+#else
+  g_print ("TARGET Can only support file source.\n");
+  if (app_ctx->input_file == NULL){
+    g_print ("User need to give proper input file as source\n");
+    gst_app_context_free (app_ctx);
+    return ret;
+  }
+#endif // ENABLE_CAMERA
 
   // Initialize GST library.
   gst_init (&argc, &argv);
