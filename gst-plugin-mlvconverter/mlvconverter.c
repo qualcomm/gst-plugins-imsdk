@@ -615,9 +615,26 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
       gst_structure_set (pmeta->info, "source-region-id", G_TYPE_INT,
           roimeta->id, NULL);
     } else { // GST_CONVERSION_MODE_IS_IMAGE (mlconverter->mode)
-      source->x = source->y = 0;
-      source->w = GST_VIDEO_FRAME_WIDTH (blit->frame);
-      source->h = GST_VIDEO_FRAME_HEIGHT (blit->frame);
+      // Check whether the image was produced as a split from some base image.
+      while ((roimeta = GST_BUFFER_ITERATE_ROI_METAS (inbuffer, state)) != NULL) {
+        if (roimeta->roi_type == g_quark_from_static_string ("ImageRegion"))
+          break;
+      }
+
+      if (roimeta != NULL) {
+        // Propagate the ID of the ROI from which this batch position was created.
+        gst_structure_set (pmeta->info, "source-region-id", G_TYPE_INT,
+            roimeta->id, NULL);
+
+        source->x = roimeta->x;
+        source->y = roimeta->y;
+        source->w = roimeta->w;
+        source->h = roimeta->h;
+      } else {
+        source->x = source->y = 0;
+        source->w = GST_VIDEO_FRAME_WIDTH (blit->frame);
+        source->h = GST_VIDEO_FRAME_HEIGHT (blit->frame);
+      }
     }
 
     // The Y axis offset for this ROI meta in the output buffer.

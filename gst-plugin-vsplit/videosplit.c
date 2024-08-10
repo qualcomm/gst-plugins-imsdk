@@ -232,14 +232,17 @@ gst_data_queue_push_object (GstDataQueue * queue, GstMiniObject * object)
 }
 
 static inline GstVideoRegionOfInterestMeta*
-gst_buffer_find_region_of_interest_meta (GstBuffer * buffer, const gint entry_id)
+gst_buffer_find_region_of_interest_meta (GstBuffer * buffer, const guint index)
 {
   GstVideoRegionOfInterestMeta *roimeta = NULL;
   gpointer state = NULL;
+  guint num = 0;
 
   while ((roimeta = GST_BUFFER_ITERATE_ROI_METAS (buffer, state)) != NULL) {
-    if ((roimeta->parent_id == -1) &&
-        (GST_META_ID_GET_ENTRY (roimeta->id) == entry_id))
+    if (roimeta->parent_id != -1)
+      continue;
+
+    if (++num == index)
       return roimeta;
   }
 
@@ -333,11 +336,12 @@ gst_buffer_transfer_video_region_of_interest_metas (GstBuffer * outbuffer,
   }
 }
 
-static inline void
+static inline GstVideoLandmarksMeta *
 gst_buffer_transfer_video_landmarks_meta (GstBuffer * buffer,
     GstVideoLandmarksMeta * lmkmeta, GstVideoCoords * offset,
     const gdouble w_scale, const gdouble h_scale)
 {
+  GstVideoLandmarksMeta *newmeta = NULL;
   GArray *keypoints = NULL, *links = NULL;
   guint num = 0;
 
@@ -352,22 +356,29 @@ gst_buffer_transfer_video_landmarks_meta (GstBuffer * buffer,
     kp->y = (kp->y * h_scale) + offset->y;
   }
 
-  gst_buffer_add_video_landmarks_meta (buffer, lmkmeta->confidence, keypoints,
-      links);
+  newmeta = gst_buffer_add_video_landmarks_meta (buffer, lmkmeta->confidence,
+      keypoints, links);
+  newmeta->id = lmkmeta->id;
+
+  return newmeta;
 }
 
-static inline void
+static inline GstVideoClassificationMeta *
 gst_buffer_transfer_video_classification_meta (GstBuffer * buffer,
     GstVideoClassificationMeta * classmeta)
 {
-  GArray *labels = g_array_copy (classmeta->labels);
+  GstVideoClassificationMeta *newmeta = NULL;
 
-  gst_buffer_add_video_classification_meta (buffer, labels);
+  newmeta = gst_buffer_add_video_classification_meta (buffer,
+      g_array_copy (classmeta->labels));
+  newmeta->id = classmeta->id;
+
+  return newmeta;
 }
 
 static inline void
-gst_video_composition_populate_output_metas (GstVideoComposition * composition,
-    GstVideoRegionOfInterestMeta * roimeta)
+gst_video_split_composition_populate_metas (GstVideoSplitSrcPad * srcpad,
+    GstVideoComposition * composition, GstVideoRegionOfInterestMeta * roimeta)
 {
   GstBuffer *outbuffer = NULL, *inbuffer = NULL;
   GstVideoRectangle *source = NULL, *destination = NULL;
@@ -406,6 +417,7 @@ gst_video_composition_populate_output_metas (GstVideoComposition * composition,
     const GValue *value = NULL;
 
     if (id == g_quark_from_static_string ("VideoLandmarks")) {
+      GstVideoLandmarksMeta *lmkmeta = NULL;
       GArray *keypoints = NULL, *links = NULL;
       gdouble confidence = 0.0;
       guint idx = 0;
@@ -426,15 +438,22 @@ gst_video_composition_populate_output_metas (GstVideoComposition * composition,
         kp->y = (kp->y * h_scale) + destination->y;
       }
 
-      gst_buffer_add_video_landmarks_meta (outbuffer, confidence, keypoints, links);
+      lmkmeta = gst_buffer_add_video_landmarks_meta (outbuffer, confidence,
+          keypoints, links);
+
+      GST_TRACE_OBJECT (srcpad, "Attached derived 'VideoLandmarks' meta "
+          "with ID[0x%X] to buffer %p", lmkmeta->id, outbuffer);
     } else if (id == g_quark_from_static_string ("ImageClassification")) {
+      GstVideoClassificationMeta *classmeta = NULL;
       GArray *labels = NULL;
       const GValue *value = NULL;
 
       value = gst_structure_get_value (structure, "labels");
       labels = g_array_copy (g_value_get_boxed (value));
 
-      gst_buffer_add_video_classification_meta (outbuffer, labels);
+      classmeta = gst_buffer_add_video_classification_meta (outbuffer, labels);
+      GST_TRACE_OBJECT (srcpad, "Attached derived 'ImageClassification' meta "
+          "with ID[0x%X] to buffer %p", classmeta->id, outbuffer);
     }
   }
 
@@ -448,22 +467,30 @@ gst_video_composition_populate_output_metas (GstVideoComposition * composition,
       GstVideoClassificationMeta *classmeta =
           GST_VIDEO_CLASSIFICATION_META_CAST (meta);
 
-      gst_buffer_transfer_video_classification_meta (outbuffer, classmeta);
+      classmeta = gst_buffer_transfer_video_classification_meta (outbuffer,
+          classmeta);
+
+      GST_TRACE_OBJECT (srcpad, "Transferred 'ImageClassification' meta "
+          "with ID[0x%X] to buffer %p", classmeta->id, outbuffer);
     } else if (meta->info->api == GST_VIDEO_LANDMARKS_META_API_TYPE) {
       GstVideoLandmarksMeta *lmkmeta = GST_VIDEO_LANDMARKS_META_CAST (meta);
 
-      gst_buffer_transfer_video_landmarks_meta (outbuffer, lmkmeta,
+      lmkmeta = gst_buffer_transfer_video_landmarks_meta (outbuffer, lmkmeta,
           &d_offset, w_scale, h_scale);
+
+      GST_TRACE_OBJECT (srcpad, "Transferred 'VideoLandmarks' meta "
+          "with ID[0x%X] to buffer %p", lmkmeta->id, outbuffer);
     }
   }
 }
 
 static inline void
-gst_video_composition_update_regions (GstVideoComposition * composition,
-    GstVideoRegionOfInterestMeta * roimeta)
+gst_video_split_composition_update_regions (GstVideoSplitSrcPad * srcpad,
+    GstVideoComposition * composition, GstVideoRegionOfInterestMeta * roimeta)
 {
   GstBuffer *outbuffer = NULL;
   GstVideoRectangle *source = NULL, *destination = NULL;
+  GstVideoRegionOfInterestMeta *rmeta = NULL;
   gint maxwidth = 0, maxheight = 0;
 
   outbuffer = composition->frame->buffer;
@@ -496,8 +523,17 @@ gst_video_composition_update_regions (GstVideoComposition * composition,
   destination->y += (maxheight - destination->h) / 2;
 
   // Add ROI meta with the actual part of the buffer filled with image data.
-  gst_buffer_add_video_region_of_interest_meta (outbuffer, "ImageRegion",
+  rmeta = gst_buffer_add_video_region_of_interest_meta (outbuffer, "ImageRegion",
       destination->x, destination->y, destination->w, destination->h);
+
+  // Propagate the original IDs of the ROI meta via the image region.
+  if (roimeta != NULL) {
+    rmeta->id = roimeta->id;
+    rmeta->parent_id = roimeta->parent_id;
+  }
+
+  GST_TRACE_OBJECT (srcpad, "Attached 'ImageRegion' meta with ID[0x%X] parent "
+      "ID[0x%X] to buffer %p", rmeta->id, rmeta->parent_id, outbuffer);
 }
 
 static gboolean
@@ -810,9 +846,6 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
     // Resize the number of compositions.
     g_array_set_size (compositions, compositions->len + n_entries);
 
-    // Reset the state variable used for meta iteration, will be reused later.
-    state = NULL;
-
     // Aquire buffer for each frame and update the converter parameters.
     for (idx = 0; idx < outframes->len; idx++, id++) {
       GstVideoRectangle *source = NULL, *destination = NULL;
@@ -856,18 +889,18 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
 
       // Depending on the mode a different ROI meta is used or none at all.
       if (srcpad->mode == GST_VSPLIT_MODE_ROI_SINGLE)
-        roimeta = gst_buffer_find_region_of_interest_meta (inframe->buffer, num-1);
+        roimeta = gst_buffer_find_region_of_interest_meta (inframe->buffer, num);
       else if (srcpad->mode == GST_VSPLIT_MODE_ROI_BATCH)
         roimeta = gst_buffer_find_region_of_interest_meta (inframe->buffer, idx);
 
       // Update source/destination regions and output buffer meta.
-      gst_video_composition_update_regions (composition, roimeta);
-      gst_video_composition_populate_output_metas (composition, roimeta);
+      gst_video_split_composition_update_regions (srcpad, composition, roimeta);
+      gst_video_split_composition_populate_metas (srcpad, composition, roimeta);
 
       source = &(composition->blits[0].sources[0]);
       destination = &(composition->blits[0].destinations[0]);
 
-      GST_TRACE_OBJECT (vsplit, "Composition [%u] Regions: [%d %d %d %d] ->"
+      GST_TRACE_OBJECT (srcpad, "Composition [%u] Regions: [%d %d %d %d] ->"
           " [%d %d %d %d]", id, source->x, source->y, source->w, source->h,
           destination->x, destination->y, destination->w, destination->h);
 
