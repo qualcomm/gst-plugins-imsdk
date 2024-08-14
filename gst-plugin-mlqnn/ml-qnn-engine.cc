@@ -151,7 +151,7 @@ struct _GstMLQnnEngine
   Qnn_DeviceHandle_t             device;
   // QNN graph context handle.
   Qnn_ContextHandle_t            context;
-  // QNN graph systemcontext handle
+  // QNN graph systemcontext handle.
   QnnSystemContext_Handle_t      sysctx_handle;
   Qnn_BackendHandle_t            backend;
 
@@ -161,6 +161,9 @@ struct _GstMLQnnEngine
   gboolean                       iscached;
   // QNNF library APIs
   FreeGraphFn                    FreeGraph;
+
+  // Device Platform Information.
+  const QnnDevice_PlatformInfo_t *device_platform;
 };
 
 static const std::map<Qnn_DataType_t, size_t> kDataTypeToSize = {
@@ -435,10 +438,73 @@ gst_ml_qnn_graph_info_from_binary_info (
 }
 
 static gboolean
+gst_ml_qnn_create_device_config (GstMLQnnEngine *engine,
+    QnnDevice_Config_t**& dev_configs)
+{
+  QnnDevice_PlatformInfo_t* device_platform_info = nullptr;
+  QnnDevice_HardwareDeviceInfo_t* p_hw_device_info = nullptr;
+
+  Qnn_ErrorHandle_t error = engine->interface.deviceGetPlatformInfo(nullptr,
+      &(engine->device_platform));
+
+  if (QNN_DEVICE_ERROR_UNSUPPORTED_FEATURE == error) {
+    GST_WARNING ("Device feature is not supported!");
+    return TRUE;
+  }
+
+  if (QNN_SUCCESS != error) {
+    GST_ERROR ("Failed to get platform info. Error %ld",
+        QNN_GET_ERROR_CODE (error));
+    return FALSE;
+  }
+
+  guint backend_device_id = 0;
+  QnnDevice_HardwareDeviceInfo_t* hw_device_info =
+      engine->device_platform->v1.hwDevices;
+  QnnDevice_HardwareDeviceInfo_t* hw_device_info_chosen = nullptr;
+
+  gst_structure_get_uint (engine->settings,
+      GST_ML_QNN_ENGINE_OPT_BACKEND_DEVICE_ID, &(backend_device_id));
+
+  for (uint32_t idx = 0; idx < engine->device_platform->v1.numHwDevices; ++idx) {
+    if (hw_device_info[idx].v1.deviceId == backend_device_id) {
+      hw_device_info_chosen = &hw_device_info[idx];
+      GST_INFO ("HW device found!, id = %u", backend_device_id);
+      break;
+    }
+  }
+
+  if (nullptr == hw_device_info_chosen) {
+    GST_ERROR ("Failed to get device with id = %u.", backend_device_id);
+    return FALSE;
+  }
+
+  device_platform_info = g_new0 (QnnDevice_PlatformInfo_t, 1);
+  device_platform_info->version = QNN_DEVICE_PLATFORM_INFO_VERSION_1;
+  // We only choose 1 device here.
+  device_platform_info->v1.numHwDevices = 1;
+  device_platform_info->v1.hwDevices = hw_device_info_chosen;
+
+  dev_configs = g_new0 (QnnDevice_Config_t*, 2);
+  QnnDevice_Config_t* dev_config_arr = g_new0 (QnnDevice_Config_t, 1);
+
+  dev_config_arr[0].option = QNN_DEVICE_CONFIG_OPTION_PLATFORM_INFO;
+  dev_config_arr[0].hardwareInfo = device_platform_info;
+
+  dev_configs[0] = dev_config_arr;
+
+  // Null-terminate the array.
+  dev_configs[1] = NULL;
+
+  return TRUE;
+}
+
+static gboolean
 gst_ml_qnn_engine_setup_backend (GstMLQnnEngine *engine)
 {
   gboolean success = TRUE;
   const gchar *filename = NULL;
+  guint idx = 0;
 
   filename = GET_OPT_BACKEND (engine->settings);
 
@@ -501,6 +567,33 @@ gst_ml_qnn_engine_setup_backend (GstMLQnnEngine *engine)
 
   if (QNN_SUCCESS != status) {
     GST_ERROR ("Unable to create profile handle in the backend!");
+    return FALSE;
+  }
+
+  QnnDevice_Config_t **dev_configs = nullptr;
+
+  success = gst_ml_qnn_create_device_config (engine, dev_configs);
+
+  if (!success)
+    return FALSE;
+
+  status = engine->interface.deviceCreate(engine->logger,
+      const_cast<const QnnDevice_Config_t **>(dev_configs), &(engine->device));
+
+  while ((dev_configs != NULL) && (dev_configs[idx] != NULL)) {
+    if (QNN_DEVICE_CONFIG_OPTION_PLATFORM_INFO == dev_configs[idx]->option)
+      g_free (dev_configs[idx]->hardwareInfo);
+
+    g_free (dev_configs[idx]);
+    idx++;
+  }
+
+  g_free (dev_configs);
+
+  if (QNN_SUCCESS == status) {
+    GST_DEBUG ("Device created");
+  } else if (QNN_DEVICE_ERROR_UNSUPPORTED_FEATURE != status) {
+    GST_ERROR ("Could not create device!");
     return FALSE;
   }
 
@@ -692,23 +785,9 @@ gst_ml_qnn_engine_setup_uncached_graphs (GstMLQnnEngine *engine)
     return FALSE;
   }
 
-  const QnnDevice_Config_t **dev_configs = nullptr;
-  auto status = engine->interface.deviceCreate(engine->logger, dev_configs,
-      &(engine->device));
-
-  if (QNN_SUCCESS != status) {
-    if (QNN_DEVICE_ERROR_UNSUPPORTED_FEATURE != status){
-      GST_ERROR ("Could not create device!");
-      return FALSE;
-    }
-    GST_DEBUG ("Device is not supported");
-  } else {
-    GST_DEBUG ("Device created");
-  }
-
   // Set up any context configs that are necessary.
   const QnnContext_Config_t **ctx_configs = nullptr;
-  status = engine->interface.contextCreate(engine->backend,
+  auto status = engine->interface.contextCreate(engine->backend,
       engine->device, ctx_configs, &(engine->context));
 
   if (QNN_SUCCESS != status) {
@@ -931,6 +1010,9 @@ gst_ml_qnn_engine_free (GstMLQnnEngine * engine)
     engine->graph_infos = NULL;
     engine->n_graphs = 0;
   }
+
+  if (engine->interface.deviceFreePlatformInfo && engine->device_platform)
+    engine->interface.deviceFreePlatformInfo (nullptr, engine->device_platform);
 
   if (engine->interface.contextFree && engine->context)
     engine->interface.contextFree (engine->context, nullptr);
