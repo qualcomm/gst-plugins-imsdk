@@ -22,7 +22,7 @@
  * GST_ML_QNN_ENGINE_OPT_BACKEND:
  *
  * #G_TYPE_STRING, set the delegate
- * Default: NULL
+ * Default: /usr/lib/libQnnCpu.so
  */
 #define GST_ML_QNN_ENGINE_OPT_BACKEND "GstMLQNNEngine.backend"
 
@@ -30,9 +30,17 @@
  * GST_ML_QNN_ENGINE_OPT_SYSLIB:
  *
  * #G_TYPE_STRING, QNN system library file path and name
- * Default: NULL
+ * Default: /usr/lib/libQnnSystem.so
  */
 #define GST_ML_QNN_ENGINE_OPT_SYSLIB "GstMLQNNEngine.sysLib"
+
+/**
+ * GST_ML_QNN_ENGINE_OPT_BACKEND_DEVICE_ID:
+ *
+ * #G_TYPE_UINT, QNN backend device id
+ * Default: 0
+ */
+#define GST_ML_QNN_ENGINE_OPT_BACKEND_DEVICE_ID "GstMLQNNEngine.backend_device_id"
 
 #define GET_OPT_MODEL(s) \
   gst_structure_get_string (s, GST_ML_QNN_ENGINE_OPT_MODEL)

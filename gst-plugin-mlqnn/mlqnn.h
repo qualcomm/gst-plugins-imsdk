@@ -48,6 +48,7 @@ struct _GstMLQnn {
   gchar             *model;
   gchar             *backend;
   gchar             *syslib;
+  guint             backend_device_id;
 };
 
 struct _GstMLQnnClass {
