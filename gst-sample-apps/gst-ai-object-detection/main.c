@@ -777,12 +777,14 @@ main (gint argc, gchar * argv[])
 
   // Structure to define the user options selected
   GOptionEntry entries[] = {
+#ifdef ENABLE_CAMERA
     { "camera", 'c', 0, G_OPTION_ARG_INT,
       &options.camera_type,
       "Select (0) for Primary Camera and (1) for secondary one.\n"
       "      invalid camera id will switch to primary camera",
       "0 or 1"
     },
+#endif // ENABLE_CAMERA
     { "file-path", 's', 0, G_OPTION_ARG_STRING,
       &options.file_path,
       "File source path",
@@ -857,13 +859,18 @@ main (gint argc, gchar * argv[])
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
 
   snprintf (help_description, 1023, "\nExample:\n"
+#ifdef ENABLE_CAMERA
       "  %s --model-type=1\n"
-      "  %s -s <file path> -t 3 --model=%s --labels=%s\n"
       "  %s -t 2 -f 2 --model=%s --labels=%s -k \"%s\"\n"
+#endif // ENABLE_CAMERA
+      "  %s -s <file path> -t 3 --model=%s --labels=%s\n"
       "\nThis Sample App demonstrates Object Detection on Live Stream\n",
-      app_name, app_name, DEFAULT_SNPE_YOLONAS_MODEL, DEFAULT_YOLONAS_LABELS,
-      app_name, DEFAULT_TFLITE_YOLOV8_MODEL, DEFAULT_YOLOV8_LABELS,
-      DEFAULT_CONSTANTS);
+#ifdef ENABLE_CAMERA
+      app_name, app_name, DEFAULT_TFLITE_YOLOV8_MODEL, DEFAULT_YOLOV8_LABELS,
+      DEFAULT_CONSTANTS,
+#endif // ENABLE_CAMERA
+      app_name, DEFAULT_SNPE_YOLONAS_MODEL,
+      DEFAULT_YOLONAS_LABELS);
   help_description[1023] = '\0';
 
     // Parse command line entries
@@ -893,6 +900,18 @@ main (gint argc, gchar * argv[])
     gst_app_context_free (&appctx, &options);
     return -EFAULT;
   }
+
+// Check for input source
+#ifdef ENABLE_CAMERA
+  g_print ("TARGET Can support file source, RTSP source and camera source\n");
+#else
+  g_print ("TARGET Can only support file source and RTSP source.\n");
+  if (options.file_path == NULL && options.rtsp_ip_port == NULL) {
+    g_print ("User need to give proper input file as source\n");
+    gst_app_context_free (&appctx, &options);
+    return -EINVAL;
+  }
+#endif // ENABLE_CAMERA
 
   if (options.file_path != NULL) {
     options.use_file = TRUE;

@@ -824,12 +824,14 @@ main (gint argc, gchar * argv[])
 
   // Structure to define the user options selection
   GOptionEntry entries[] = {
+#ifdef ENABLE_CAMERA
     { "camera", 'c', 0, G_OPTION_ARG_INT,
       &options.camera_type,
       "Select (0) for Primary Camera and (1) for secondary one.\n"
       "      invalid camera id will switch to primary camera",
       "0 or 1"
     },
+#endif // ENABLE_CAMERA
     { "file-path", 's', 0, G_OPTION_ARG_STRING,
       &options.file_path,
       "File source path",
@@ -847,7 +849,9 @@ main (gint argc, gchar * argv[])
 
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
   snprintf (help_description, 2047, "\nExample:\n"
+#ifdef ENABLE_CAMERA
       "  %s --camera=0\n"
+#endif // ENABLE_CAMERA
       "  %s --file-path=\"/opt/video.mp4\"\n"
       "  %s --rtsp-ip-port=\"rtsp://<ip>:<port>/<stream>\"\n"
       "\nThis Sample App demonstrates Classification, Segmemtation"
@@ -866,7 +870,10 @@ main (gint argc, gchar * argv[])
       "  ------------------------------------------------------------"
       "--------------------------------------------\n"
       "\nTo use your own model and labels replace at the default paths\n",
-      app_name, app_name, app_name, "Model", "Labels",
+#ifdef ENABLE_CAMERA
+      app_name,
+#endif // ENABLE_CAMERA
+      app_name, app_name, "Model", "Labels",
       DEFAULT_SNPE_OBJECT_DETECTION_MODEL, DEFAULT_OBJECT_DETECTION_LABELS,
       DEFAULT_TFLITE_POSE_DETECTION_MODEL,DEFAULT_POSE_DETECTION_LABELS,
       DEFAULT_SNPE_SEGMENTATION_MODEL, DEFAULT_SEGMENTATION_LABELS,
@@ -900,6 +907,18 @@ main (gint argc, gchar * argv[])
     gst_app_context_free (&appctx, &options);
     return -EFAULT;
   }
+
+// Check for input source
+#ifdef ENABLE_CAMERA
+  g_print ("TARGET Can support file source, RTSP source and camera source\n");
+#else
+  g_print ("TARGET Can only support file source and RTSP source.\n");
+  if (options.file_path == NULL && options.rtsp_ip_port == NULL) {
+    g_print ("User need to give proper input file as source\n");
+    gst_app_context_free (&appctx, &options);
+    return -EINVAL;
+  }
+#endif // ENABLE_CAMERA
 
   if (options.file_path != NULL) {
     options.use_file = TRUE;

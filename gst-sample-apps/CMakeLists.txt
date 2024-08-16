@@ -46,7 +46,8 @@ if (ENABLE_CAMERA)
   add_subdirectory(gst-camera-shdr-ldc-eis-example)
 endif () # ENABLE_CAMERA
 
-if (ENABLE_ML AND ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE)
+# AI Sample Applications can take file and RTSP, camera input sources
+if (ENABLE_ML AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE)
   add_subdirectory(gst-ai-classification)
   add_subdirectory(gst-ai-object-detection)
   add_subdirectory(gst-ai-pose-detection)
@@ -56,7 +57,7 @@ if (ENABLE_ML AND ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE)
   add_subdirectory(gst-ai-monodepth)
   add_subdirectory(gst-ai-daisychain-detection-classification)
   add_subdirectory(gst-ai-superresolution)
-endif () # ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE
+endif () # ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE
 
 if (ENABLE_VIDEO_DECODE)
   add_subdirectory(gst-video-playback-example)
