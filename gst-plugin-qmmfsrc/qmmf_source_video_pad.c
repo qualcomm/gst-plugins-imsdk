@@ -67,6 +67,9 @@
 #include <gst/gstelementfactory.h>
 #include <gst/gstpadtemplate.h>
 #include <gst/allocators/allocators.h>
+#ifdef ENABLE_RUNTIME_PARSER
+#include <gst/utils/runtime-flags-parser-c-api.h>
+#endif // ENABLE_RUNTIME_PARSER
 
 #include "qmmf_source_utils.h"
 
@@ -817,6 +820,22 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
           "Set Orientation Angle for Video Stream",
           GST_TYPE_QMMFSRC_ROTATE, DEFAULT_PROP_ROTATE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+#ifdef ENABLE_RUNTIME_PARSER
+  void* qmmfsrc_parser = get_qmmfsrc_parser ();
+
+  gboolean gst_video_type_support = get_flag_as_bool (qmmfsrc_parser,
+      "GST_VIDEO_TYPE_SUPPORT");
+
+  if (gst_video_type_support) {
+     g_object_class_install_property (gobject, PROP_VIDEO_TYPE,
+      g_param_spec_enum ("type", "Type",
+          "The type of the stream.",
+          GST_TYPE_QMMFSRC_VIDEO_TYPE, DEFAULT_PROP_VIDEO_TYPE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+  }
+#else
 #ifdef GST_VIDEO_TYPE_SUPPORT
   g_object_class_install_property (gobject, PROP_VIDEO_TYPE,
       g_param_spec_enum ("type", "Type",
@@ -834,6 +853,7 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PAUSED));
 #endif // FEATURE_LOGICAL_CAMERA_SUPPORT
+#endif // ENABLE_RUNTIME_PARSER
 
   signals[SIGNAL_PAD_RECONFIGURE] =
       g_signal_new ("reconfigure", G_TYPE_FROM_CLASS (klass),
