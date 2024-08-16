@@ -1182,6 +1182,7 @@ main (gint argc, gchar * argv[])
 
   // Structure to define the user options selection
   GOptionEntry entries[] = {
+#ifdef ENABLE_CAMERA
     { "num-camera", 0, 0, G_OPTION_ARG_INT,
       &options.num_camera,
       "Number of cameras to be used (range: 0-" TO_STR (MAX_CAMSRCS) ")",
@@ -1194,6 +1195,7 @@ main (gint argc, gchar * argv[])
       "      This parameter is ignored if num-camera=" TO_STR (MAX_CAMSRCS),
       "0 or 1"
     },
+#endif // ENABLE_CAMERA
     { "num-file", 0, 0, G_OPTION_ARG_INT,
       &options.num_file,
       "Number of input files to be used (range: 0-" TO_STR (MAX_FILESRCS) ")\n"
@@ -1270,13 +1272,19 @@ main (gint argc, gchar * argv[])
 
   snprintf (help_description, 1023, "\nExample:\n"
       "  %s --num-file=6\n"
+#ifdef ENABLE_CAMERA
       "  %s --num-camera=2 --display\n"
       "  %s --model=%s --labels=%s\n"
+#endif // ENABLE_CAMERA
       "  %s --num-file=4 -d -f /opt/app.mp4 --out-rtsp -i <ip> -p <port>\n"
       "\nThis Sample App demonstrates Object Detection with various input/output"
       " stream combinations",
-      app_name, app_name, app_name, DEFAULT_TFLITE_YOLOV5_MODEL,
-      DEFAULT_YOLOV5_LABELS, app_name);
+      app_name,
+#ifdef ENABLE_CAMERA
+      app_name, app_name, DEFAULT_TFLITE_YOLOV5_MODEL,
+      DEFAULT_YOLOV5_LABELS,
+#endif // ENABLE_CAMERA
+      app_name);
   help_description[1023] = '\0';
 
   // Parse command line entries.
@@ -1306,6 +1314,18 @@ main (gint argc, gchar * argv[])
     gst_app_context_free (&appctx, &options);
     return -EFAULT;
   }
+
+// Check for input source
+#ifdef ENABLE_CAMERA
+  g_print ("TARGET Can support file source, RTSP source and camera source\n");
+#else
+  g_print ("TARGET Can only support file source and RTSP source.\n");
+  if (options.num_file == 0 && options.num_rtsp == 0) {
+    g_print ("User need to give proper input file as source\n");
+    gst_app_context_free (&appctx, &options);
+    return -EINVAL;
+  }
+#endif // ENABLE_CAMERA
 
   if (options.num_camera > MAX_CAMSRCS) {
     g_printerr ("Number of camera streams cannot be more than 2\n");
