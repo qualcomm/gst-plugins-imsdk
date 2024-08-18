@@ -814,33 +814,6 @@ gst_ml_video_pose_prepare_output_buffer (GstBaseTransform * base,
   return GST_FLOW_OK;
 }
 
-static gboolean
-gst_ml_video_pose_sink_event (GstBaseTransform * base, GstEvent * event)
-{
-  GstMLVideoPose *vpose = GST_ML_VIDEO_POSE (base);
-
-  switch (GST_EVENT_TYPE (event)) {
-    case GST_EVENT_CUSTOM_DOWNSTREAM_OOB:
-    {
-      const GstStructure *structure = gst_event_get_structure (event);
-
-      // Not a supported custom event, pass it to the default handling function.
-      if (structure == NULL ||
-          !gst_structure_has_name (structure, "ml-inference-information"))
-        break;
-
-      gst_structure_get_uint (structure, "stage-id", &(vpose->stage_id));
-      GST_INFO_OBJECT (vpose, "Stage ID: %u", vpose->stage_id);
-
-      return gst_pad_push_event (GST_BASE_TRANSFORM_SRC_PAD (base), event);
-    }
-    default:
-      break;
-  }
-
-  return GST_BASE_TRANSFORM_CLASS (parent_class)->sink_event (base, event);
-}
-
 static GstCaps *
 gst_ml_video_pose_transform_caps (GstBaseTransform * base,
     GstPadDirection direction, GstCaps * caps, GstCaps * filter)
@@ -972,6 +945,7 @@ gst_ml_video_pose_set_caps (GstBaseTransform * base, GstCaps * incaps,
 {
   GstMLVideoPose *vpose = GST_ML_VIDEO_POSE (base);
   GstCaps *modulecaps = NULL;
+  GstQuery *query = NULL;
   GstStructure *structure = NULL;
   GEnumClass *eclass = NULL;
   GEnumValue *evalue = NULL;
@@ -1015,6 +989,20 @@ gst_ml_video_pose_set_caps (GstBaseTransform * base, GstCaps * incaps,
     return FALSE;
   }
 
+  // Query upstream pre-process plugin about the inference parameters.
+  query = gst_query_new_custom (GST_QUERY_CUSTOM,
+      gst_structure_new_empty ("ml-preprocess-information"));
+
+  if (gst_pad_peer_query (base->sinkpad, query)) {
+    const GstStructure *s = gst_query_get_structure (query);
+
+    gst_structure_get_uint (s, "stage-id", &(vpose->stage_id));
+    GST_DEBUG_OBJECT (vpose, "Stage ID: %u", vpose->stage_id);
+  }
+
+  // Free the query instance as it is no longer needed and we are the owners.
+  gst_query_unref (query);
+
   structure = gst_structure_new ("options",
       GST_ML_MODULE_OPT_CAPS, GST_TYPE_CAPS, incaps,
       GST_ML_MODULE_OPT_LABELS, G_TYPE_STRING, vpose->labels,
@@ -1034,8 +1022,8 @@ gst_ml_video_pose_set_caps (GstBaseTransform * base, GstCaps * incaps,
   }
 
   if (!gst_ml_info_from_caps (&ininfo, incaps)) {
-    GST_ERROR_OBJECT (vpose, "Failed to get input ML info from caps %"
-        GST_PTR_FORMAT "!", incaps);
+    GST_ELEMENT_ERROR (vpose, CORE, CAPS, (NULL),
+        ("Failed to get input ML info from caps %" GST_PTR_FORMAT "!", incaps));
     return FALSE;
   }
 
@@ -1266,8 +1254,6 @@ gst_ml_video_pose_class_init (GstMLVideoPoseClass * klass)
       GST_DEBUG_FUNCPTR (gst_ml_video_pose_submit_input_buffer);
   base->prepare_output_buffer =
       GST_DEBUG_FUNCPTR (gst_ml_video_pose_prepare_output_buffer);
-
-  base->sink_event = GST_DEBUG_FUNCPTR (gst_ml_video_pose_sink_event);
 
   base->transform_caps =
       GST_DEBUG_FUNCPTR (gst_ml_video_pose_transform_caps);

@@ -352,18 +352,35 @@ gst_ml_tensor_assign_value (GstMLType mltype, gpointer data, guint index,
   }
 }
 
+static inline gboolean
+gst_region_of_interest_is_valid (GstVideoRegionOfInterestMeta * roimeta,
+    const GArray * roi_stage_ids)
+{
+  guint idx = 0, stage_id = 0;
+
+  for (idx = 0; idx < roi_stage_ids->len; idx++) {
+    stage_id = g_array_index (roi_stage_ids, guint, idx);
+
+    if (GST_META_ID_GET_STAGE (roimeta->id) == stage_id)
+      return TRUE;
+  }
+
+  return FALSE;
+}
+
 static inline guint
-gst_buffer_get_region_of_interest_meta_index (GstBuffer * buffer, const gint id)
+gst_buffer_get_region_of_interest_meta_index (GstBuffer * buffer,
+    const gint roi_id, const GArray * roi_stage_ids)
 {
   GstVideoRegionOfInterestMeta *roimeta = NULL;
   gpointer state = NULL;
   guint index = 0;
 
   while ((roimeta = GST_BUFFER_ITERATE_ROI_METAS (buffer, state)) != NULL) {
-    if (id == roimeta->id)
+    if (roi_id == roimeta->id)
       break;
 
-    if (GST_META_ID_GET_STAGE (roimeta->id) == GST_META_ID_GET_STAGE (id))
+    if (gst_region_of_interest_is_valid (roimeta, roi_stage_ids))
       index++;
   }
 
@@ -371,14 +388,22 @@ gst_buffer_get_region_of_interest_meta_index (GstBuffer * buffer, const gint id)
 }
 
 static inline guint
-gst_buffer_get_region_of_interest_n_meta (GstBuffer * buffer, const guint stage_id)
+gst_buffer_get_region_of_interest_n_meta (GstBuffer * buffer,
+    const GArray * roi_stage_ids)
 {
   GstVideoRegionOfInterestMeta *roimeta = NULL;
   gpointer state = NULL;
   guint n_metas = 0;
 
-  while ((roimeta = GST_BUFFER_ITERATE_ROI_METAS (buffer, state)) != NULL)
-    n_metas += (GST_META_ID_GET_STAGE (roimeta->id) == stage_id) ? 1 : 0;
+  while ((roimeta = GST_BUFFER_ITERATE_ROI_METAS (buffer, state)) != NULL) {
+    if (roi_stage_ids->len != 0) {
+      // Check if the ROI has a valid stage ID.
+      n_metas += gst_region_of_interest_is_valid (roimeta, roi_stage_ids) ? 1 : 0;
+    } else {
+      // The stage IDs array is empty, there are no restriction for teh ROIs.
+      n_metas++;
+    }
+  }
 
   return n_metas;
 }
@@ -518,7 +543,7 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
 
   if GST_CONVERSION_MODE_IS_ROI (mlconverter->mode) {
     blit->n_regions = gst_buffer_get_region_of_interest_n_meta (inbuffer,
-        mlconverter->src_stage_id);
+        mlconverter->roi_stage_ids);
   }
 
   GST_TRACE_OBJECT (mlconverter, "Number of Source/Destination regions "
@@ -527,7 +552,7 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
   // Decrease the regions if some of them were previously processed.
   if (mlconverter->next_roi_id != -1) {
     blit->n_regions -= gst_buffer_get_region_of_interest_meta_index (inbuffer,
-        mlconverter->next_roi_id);
+        mlconverter->next_roi_id, mlconverter->roi_stage_ids);
   }
 
   GST_TRACE_OBJECT (mlconverter, "Number of Source/Destination regions "
@@ -575,7 +600,7 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
       // Loop until the stashed ROI meta ID is reached and continue from there.
       while (((mlconverter->next_roi_id != -1) &&
                 (roimeta->id != mlconverter->next_roi_id)) ||
-          (GST_META_ID_GET_STAGE(roimeta->id) != mlconverter->src_stage_id))
+          !gst_region_of_interest_is_valid (roimeta, mlconverter->roi_stage_ids))
         roimeta = GST_BUFFER_ITERATE_ROI_METAS (inbuffer, state);
 
       // Reset the stashed ROI ID in case it was previously set.
@@ -637,7 +662,7 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
     roimeta = GST_BUFFER_ITERATE_ROI_METAS (inbuffer, state);
 
     while ((roimeta != NULL) &&
-           (GST_META_ID_GET_STAGE(roimeta->id) != mlconverter->src_stage_id))
+           !gst_region_of_interest_is_valid (roimeta, mlconverter->roi_stage_ids))
       roimeta = GST_BUFFER_ITERATE_ROI_METAS (inbuffer, state);
 
     mlconverter->next_roi_id = (roimeta != NULL) ? roimeta->id : -1;
@@ -725,7 +750,7 @@ gst_ml_video_converter_setup_composition (GstMLVideoConverter * mlconverter,
         mlconverter->n_seq_entries = n_memory;
       } else { // GST_CONVERSION_MODE_IS_ROI (mlconverter->mode)
         mlconverter->n_seq_entries = gst_buffer_get_region_of_interest_n_meta (
-            inbuffer,  mlconverter->src_stage_id);
+            inbuffer,  mlconverter->roi_stage_ids);
       }
 
       // Limit to the batch size if operating in any of the non cumulative modes.
@@ -743,7 +768,7 @@ gst_ml_video_converter_setup_composition (GstMLVideoConverter * mlconverter,
         buffer = gst_buffer_new_from_parent_memory (inbuffer, mem_idx);
 
         n_roi_meta = gst_buffer_get_region_of_interest_n_meta (buffer,
-            mlconverter->src_stage_id);
+            mlconverter->roi_stage_ids);
 
         if (GST_CONVERSION_MODE_IS_ROI (mlconverter->mode) && (n_roi_meta == 0)) {
           GST_TRACE_OBJECT (mlconverter, "Muxed stream buffer doesn't contain "
@@ -840,7 +865,7 @@ gst_ml_video_converter_prepare_buffer_queues (GstMLVideoConverter * mlconverter,
   if (mlconverter->mode == GST_ML_CONVERSION_MODE_ROI_CUMULATIVE) {
     // Accumulative ROI batch mode, base decisions on the number of ROI metas.
     n_regions = gst_buffer_get_region_of_interest_n_meta (inbuffer,
-        mlconverter->src_stage_id);
+        mlconverter->roi_stage_ids);
 
     // Buffer does not contain ROI metas, process buffers in the internal queue
     // and set buffer as queued_buf to the base class for subsequent processing.
@@ -854,13 +879,13 @@ gst_ml_video_converter_prepare_buffer_queues (GstMLVideoConverter * mlconverter,
       GstBuffer *buffer = GST_BUFFER (l->data);
 
       n_regions += gst_buffer_get_region_of_interest_n_meta (buffer,
-          mlconverter->src_stage_id);
+          mlconverter->roi_stage_ids);
     }
 
     // Decrease the ROI count if some of the ROIs were previously processed.
     if (mlconverter->next_roi_id != -1) {
       n_regions -= gst_buffer_get_region_of_interest_meta_index (inbuffer,
-          mlconverter->next_roi_id);
+          mlconverter->next_roi_id, mlconverter->roi_stage_ids);
     }
 
     if (n_regions < n_batch) {
@@ -1284,44 +1309,59 @@ gst_ml_video_converter_decide_allocation (GstBaseTransform * base,
 }
 
 static gboolean
+gst_ml_video_converter_query (GstBaseTransform * base,
+    GstPadDirection direction, GstQuery * query)
+{
+  GstMLVideoConverter *mlconverter = GST_ML_VIDEO_CONVERTER (base);
+
+  switch (GST_QUERY_TYPE (query)) {
+    case GST_QUERY_CUSTOM:
+    {
+      GstStructure *structure = gst_query_writable_structure (query);
+
+      // Not a supported custom event, pass it to the default handling function.
+      if ((structure == NULL) ||
+          !gst_structure_has_name (structure, "ml-preprocess-information"))
+        break;
+
+      gst_structure_set (structure, "stage-id", G_TYPE_UINT,
+          mlconverter->stage_id, NULL);
+
+      GST_DEBUG_OBJECT (mlconverter, "Stage ID %u", mlconverter->stage_id);
+      return TRUE;
+    }
+    default:
+      break;
+  }
+
+  return GST_BASE_TRANSFORM_CLASS (parent_class)->query (base, direction, query);
+}
+
+static gboolean
 gst_ml_video_converter_sink_event (GstBaseTransform * base, GstEvent * event)
 {
   GstMLVideoConverter *mlconverter = GST_ML_VIDEO_CONVERTER (base);
 
   switch (GST_EVENT_TYPE (event)) {
-    case GST_EVENT_CUSTOM_DOWNSTREAM_OOB:
+    case GST_EVENT_CUSTOM_DOWNSTREAM:
     {
       const GstStructure *structure = gst_event_get_structure (event);
-      GstStructure *newstructure = NULL;
-      guint prev_stage_id = 0;
+      guint src_stage_id = 0;
 
       // Not a supported custom event, pass it to the default handling function.
-      if (structure == NULL ||
-          !gst_structure_has_name (structure, "ml-inference-information"))
+      if ((structure == NULL) ||
+          !gst_structure_has_name (structure, "ml-detection-information"))
         break;
 
       // Get the ID of the previous stage and update the ID of current stage.
-      gst_structure_get_uint (structure, "stage-id", &prev_stage_id);
+      gst_structure_get_uint (structure, "stage-id", &src_stage_id);
 
       // Set the source stage ID if not explicitly set.
-      mlconverter->src_stage_id = prev_stage_id;
+      g_array_append_val (mlconverter->roi_stage_ids, src_stage_id);
+      GST_DEBUG_OBJECT (mlconverter, "Source Stage ID: %u", src_stage_id);
 
-      GST_INFO_OBJECT (mlconverter, "Source Stage ID: %u",
-          mlconverter->src_stage_id);
-
-      // Increment the previous stage ID in order to create the current stage ID.
-      mlconverter->stage_id = mlconverter->src_stage_id + 1;
-
-      GST_INFO_OBJECT (mlconverter, "Stage ID: %u", mlconverter->stage_id);
-
-      // Consume the event and create a new one with information from this stage.
-      gst_event_unref (event);
-
-      newstructure = gst_structure_new ("ml-inference-information",
-          "stage-id", G_TYPE_UINT, mlconverter->stage_id, NULL);
-      event = gst_event_new_custom (GST_EVENT_CUSTOM_DOWNSTREAM_OOB, newstructure);
-
-      return gst_pad_push_event (GST_BASE_TRANSFORM_SRC_PAD (base), event);
+      // Pass to default handling function to propagate to the post-process.
+      break;
     }
     default:
       break;
@@ -1570,22 +1610,6 @@ static gboolean
 gst_ml_video_converter_start (GstBaseTransform * base)
 {
   GstMLVideoConverter *mlconverter = GST_ML_VIDEO_CONVERTER (base);
-  GstStructure *structure = NULL;
-  gboolean success = FALSE;
-
-  structure = gst_structure_new ("ml-inference-information", "stage-id",
-      G_TYPE_UINT, mlconverter->stage_id, NULL);
-
-  GST_INFO_OBJECT (mlconverter, "Sending ML information for current stage"
-      " ID: %u", mlconverter->stage_id);
-
-  success = gst_pad_push_event (GST_BASE_TRANSFORM_SRC_PAD (mlconverter),
-      gst_event_new_custom (GST_EVENT_CUSTOM_DOWNSTREAM_OOB, structure));
-
-  if (!success) {
-    GST_ERROR_OBJECT (mlconverter, "Failed to send ML info downstream!");
-    return FALSE;
-  }
 
   GST_INFO_OBJECT (mlconverter, "Initiate processing");
   return TRUE;
@@ -1646,7 +1670,7 @@ gst_ml_video_converter_prepare_output_buffer (GstBaseTransform * base,
 
     // Check if there is atleast one suitable meta.
     while ((roimeta != NULL) &&
-           (GST_META_ID_GET_STAGE(roimeta->id) != mlconverter->src_stage_id))
+           !gst_region_of_interest_is_valid (roimeta, mlconverter->roi_stage_ids))
       roimeta = GST_BUFFER_ITERATE_ROI_METAS (inbuffer, state);
 
     if (roimeta == NULL)
@@ -1928,6 +1952,11 @@ gst_ml_video_converter_finalize (GObject * object)
   if (mlconverter->outpool != NULL)
     gst_object_unref (mlconverter->outpool);
 
+  if (mlconverter->roi_stage_ids != NULL)
+    g_array_free (mlconverter->roi_stage_ids, TRUE);
+
+  gst_ml_stage_unregister_unique_index (mlconverter->stage_id);
+
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (mlconverter));
 }
 
@@ -1993,6 +2022,7 @@ gst_ml_video_converter_class_init (GstMLVideoConverterClass * klass)
   base->decide_allocation =
       GST_DEBUG_FUNCPTR (gst_ml_video_converter_decide_allocation);
 
+  base->query = GST_DEBUG_FUNCPTR (gst_ml_video_converter_query);
   base->sink_event = GST_DEBUG_FUNCPTR (gst_ml_video_converter_sink_event);
 
   base->transform_caps =
@@ -2016,8 +2046,8 @@ gst_ml_video_converter_init (GstMLVideoConverter * mlconverter)
   mlconverter->vinfo = NULL;
   mlconverter->mlinfo = NULL;
 
-  mlconverter->src_stage_id = 0;
-  mlconverter->stage_id = 0;
+  mlconverter->stage_id = gst_ml_stage_get_unique_index ();
+  mlconverter->roi_stage_ids = g_array_new (FALSE, FALSE, sizeof (guint));
 
   mlconverter->outpool = NULL;
 

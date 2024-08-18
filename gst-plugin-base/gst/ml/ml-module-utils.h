@@ -21,6 +21,39 @@ G_BEGIN_DECLS
 #define GFLOAT_PTR_CAST(data)       ((gfloat*) data)
 
 /**
+ * gst_ml_stage_get_unique_index:
+ *
+ * Get an available unique sequentially increasing number.
+ *
+ * return: Index on success or -1 on failure.
+ */
+GST_API gint8
+gst_ml_stage_get_unique_index (void);
+
+/**
+ * gst_ml_stage_register_unique_index:
+ * @index: The unique index which to register in the internal table.
+ *
+ * Add an index number to the internal mapping.
+ * If the index is already registered this function will fail.
+ *
+ * return: TRUE on success or FALSE on failure
+ */
+GST_API gboolean
+gst_ml_stage_register_unique_index (gint8 index);
+
+/**
+ * gst_ml_stage_unregister_unique_index:
+ * @index: The unique index which to unregister from the internal table.
+ *
+ * Remove an index number from the internal mapping.
+ *
+ * return: TRUE on success or FALSE on failure
+ */
+GST_API void
+gst_ml_stage_unregister_unique_index (gint8 index);
+
+/**
  * gst_ml_tensor_extract_value:
  * @mltype: ML type of the tensor.
  * @data: Pointer to the data in the ML tensor.
