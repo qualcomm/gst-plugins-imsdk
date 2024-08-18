@@ -560,8 +560,8 @@ gst_ml_video_super_resolution_set_caps (GstBaseTransform * base, GstCaps * incap
   }
 
   if (!gst_ml_info_from_caps (&ininfo, incaps)) {
-    GST_ERROR_OBJECT (super_resolution, "Failed to get input ML info from caps %"
-        GST_PTR_FORMAT "!", incaps);
+    GST_ELEMENT_ERROR (super_resolution, CORE, CAPS, (NULL),
+        ("Failed to get input ML info from caps %" GST_PTR_FORMAT "!", incaps));
     return FALSE;
   }
 

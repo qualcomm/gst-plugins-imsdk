@@ -1274,6 +1274,23 @@ gst_metamux_main_sink_pad_event (GstPad * pad, GstObject * parent, GstEvent * ev
 
       gst_metamux_flush_metadata_queues (muxer);
       return gst_pad_push_event (GST_PAD (muxer->srcpad), event);
+    case GST_EVENT_CUSTOM_DOWNSTREAM:
+    {
+      const GstStructure *structure = gst_event_get_structure (event);
+
+      // Not a supported custom event, pass it to the default handling function.
+      if ((structure == NULL) ||
+          !gst_structure_has_name (structure, "ml-detection-information"))
+        break;
+
+      GST_DEBUG_OBJECT (muxer, "Consuming %s event",
+          gst_structure_get_name (structure));
+
+      // Do not propagate ML detection info from previous, non-current stages.
+      // The current stage information will be propagated via the data pads.
+      gst_event_unref (event);
+      return TRUE;
+    }
     default:
       break;
   }
