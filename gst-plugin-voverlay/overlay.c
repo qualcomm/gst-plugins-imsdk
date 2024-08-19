@@ -761,31 +761,9 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   // Adjust bbox dimensions so that it fits inside the overlay frame.
   gst_overlay_update_rectangle_dimensions (overlay, vframe, source);
 
-  // Extract the structure containing ROI parameters.
-  objparam = gst_video_region_of_interest_meta_get_param (roimeta,
-      "ObjectDetection");
-  gst_structure_get_uint (objparam, "color", &color);
-
-  // Set the most appropriate box line width based on frame and box dimensions.
-  gst_util_fraction_to_double (destination->w, source->w, &scale);
-  linewidth = (scale > 1.0F) ? (4.0F / scale) : 4.0F;
-
-  GST_TRACE_OBJECT (overlay, "Rectangle: [%d %d %d %d], Color: 0x%X",
-      source->x, source->y, source->w, source->h, color);
-
-  success = gst_cairo_draw_rectangle (context, color, source->x, source->y,
-      source->w, source->h, linewidth, FALSE);
-
-  GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
-      "[%d %d %d %d]", source->x, source->y, source->w, source->h,
-      destination->x, destination->y, destination->w, destination->h);
-
   // Initialize the destination X/Y of the auxiliary blit for labels.
-  source = &(auxblit->sources[0]);
-  destination = &(auxblit->destinations[0]);
-
-  destination->x = roimeta->x;
-  destination->y = roimeta->y;
+  auxblit->destinations[0].x = roimeta->x;
+  auxblit->destinations[0].y = roimeta->y;
 
   // Process attached meta entries that were derived from this ROI.
   for (list = roimeta->params; list != NULL; list = g_list_next (list)) {
@@ -818,6 +796,25 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, GstVideoBlit * blit,
     }
   }
 
+  // Extract the structure containing ROI parameters.
+  objparam = gst_video_region_of_interest_meta_get_param (roimeta,
+      "ObjectDetection");
+  gst_structure_get_uint (objparam, "color", &color);
+
+  // Set the most appropriate box line width based on frame and box dimensions.
+  gst_util_fraction_to_double (destination->w, source->w, &scale);
+  linewidth = (scale > 1.0F) ? (4.0F / scale) : 4.0F;
+
+  GST_TRACE_OBJECT (overlay, "Rectangle: [%d %d %d %d], Color: 0x%X",
+      source->x, source->y, source->w, source->h, color);
+
+  success = gst_cairo_draw_rectangle (context, color, source->x, source->y,
+      source->w, source->h, linewidth, FALSE);
+
+  GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
+      "[%d %d %d %d]", source->x, source->y, source->w, source->h,
+      destination->x, destination->y, destination->w, destination->h);
+
   if (!haslabel) {
     // TODO: Optimize!
     GArray *labels = g_array_sized_new (FALSE, FALSE, sizeof (GstClassLabel), 1);
@@ -834,6 +831,9 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, GstVideoBlit * blit,
     success &= gst_overlay_handle_classification_entry (overlay, auxblit, labels);
     g_array_free (labels, TRUE);
   }
+
+  source = &(auxblit->sources[0]);
+  destination = &(auxblit->destinations[0]);
 
   // Correct the destination of the auxiliary blit for labels.
   if ((destination->y -= destination->h) < 0)
