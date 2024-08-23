@@ -1022,7 +1022,7 @@ gst_ml_video_classification_set_caps (GstBaseTransform * base, GstCaps * incaps,
     GstMLClassPrediction *prediction =
         &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
 
-    prediction->entries = g_array_new (FALSE, FALSE, sizeof (GstMLClassEntry));
+    prediction->entries = g_array_new (FALSE, TRUE, sizeof (GstMLClassEntry));
     prediction->batch_idx = idx;
   }
 

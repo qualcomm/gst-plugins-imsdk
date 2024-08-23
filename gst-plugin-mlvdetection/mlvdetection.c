@@ -380,8 +380,8 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
   GstVideoMeta *vmeta = NULL;
   GstMapInfo memmap;
   gdouble x = 0.0, y = 0.0, width = 0.0, height = 0.0;
-  gdouble fontsize = 12.0, borderwidth = 2.0;
-  guint idx = 0, num = 0, n_entries = 0, color = 0;
+  gdouble fontsize = 12.0, borderwidth = 2.0, radius = 2.0;
+  guint idx = 0, num = 0, mrk = 0, n_entries = 0, color = 0, length = 0;
 
   cairo_format_t format;
   cairo_surface_t* surface = NULL;
@@ -521,6 +521,26 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
       cairo_stroke (context);
       g_return_val_if_fail (CAIRO_STATUS_SUCCESS == cairo_status (context), FALSE);
 
+      length = (entry->landmarks != NULL) ? entry->landmarks->len : 0;
+
+      // Draw landmarks if present.
+      for (mrk = 0; mrk < length; mrk++) {
+        GstMLBoxLandmark *kp =
+            &(g_array_index (entry->landmarks, GstMLBoxLandmark, mrk));
+
+        GST_TRACE_OBJECT (detection, "Landmark [%.2f x %.2f]", kp->x, kp->y);
+
+        // Adjust coordinates based on the output buffer dimensions.
+        kp->x = kp->x * vmeta->width;
+        kp->y = kp->y * vmeta->height;
+
+        cairo_arc (context, kp->x, kp->y, radius, 0, 2 * G_PI);
+        cairo_close_path (context);
+
+        cairo_fill (context);
+        g_return_val_if_fail (CAIRO_STATUS_SUCCESS == cairo_status (context), FALSE);
+      }
+
       // Set the width and height of the label background rectangle.
       width = ceil (strlen (g_quark_to_string (entry->name)) *
           fontsize * 3.0F / 5.0F);
@@ -592,13 +612,13 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
   gchar *string = NULL, *name = NULL;
   GstMapInfo memmap = {};
   GValue list = G_VALUE_INIT, bboxes = G_VALUE_INIT;
-  GValue rectangle = G_VALUE_INIT, value = G_VALUE_INIT;
-  guint idx = 0, num = 0, n_entries = 0, sequence_idx = 0, id = 0;
+  GValue array = G_VALUE_INIT, value = G_VALUE_INIT;
+  guint idx = 0, num = 0, mrk = 0, n_entries = 0, sequence_idx = 0, id = 0;
   gsize length = 0;
 
   g_value_init (&list, GST_TYPE_LIST);
   g_value_init (&bboxes, GST_TYPE_ARRAY);
-  g_value_init (&rectangle, GST_TYPE_ARRAY);
+  g_value_init (&array, GST_TYPE_ARRAY);
 
   for (idx = 0; idx < detection->predictions->len; idx++) {
     GstMLBoxPrediction *prediction = NULL;
@@ -634,22 +654,49 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
       g_value_init (&value, G_TYPE_FLOAT);
 
       g_value_set_float (&value, entry->top);
-      gst_value_array_append_value (&rectangle, &value);
+      gst_value_array_append_value (&array, &value);
 
       g_value_set_float (&value, entry->left);
-      gst_value_array_append_value (&rectangle, &value);
+      gst_value_array_append_value (&array, &value);
 
       g_value_set_float (&value, entry->bottom);
-      gst_value_array_append_value (&rectangle, &value);
+      gst_value_array_append_value (&array, &value);
 
       g_value_set_float (&value, entry->right);
-      gst_value_array_append_value (&rectangle, &value);
+      gst_value_array_append_value (&array, &value);
 
-      gst_structure_set_value (structure, "rectangle", &rectangle);
-      g_value_reset (&rectangle);
+      gst_structure_set_value (structure, "rectangle", &array);
+      g_value_reset (&array);
 
       g_value_unset (&value);
       g_value_init (&value, GST_TYPE_STRUCTURE);
+
+      if ((entry->landmarks != NULL) && (entry->landmarks->len != 0)) {
+        GstMLBoxLandmark *lndmark = NULL;
+        GstStructure *substructure = NULL;
+
+        for (mrk = 0; mrk < entry->landmarks->len; mrk++) {
+          lndmark = &(g_array_index (entry->landmarks, GstMLBoxLandmark, mrk));
+
+          GST_TRACE_OBJECT (detection, "Landmark %s [%.2f x %.2f]",
+              g_quark_to_string (lndmark->name), lndmark->x, lndmark->y);
+
+          // Replace empty spaces otherwise subsequent structure call will fail.
+          name = g_strdup (g_quark_to_string (lndmark->name));
+          name = g_strdelimit (name, " ", '.');
+
+          substructure = gst_structure_new (name, "x", G_TYPE_DOUBLE,
+              lndmark->x, "y", G_TYPE_DOUBLE, lndmark->y, NULL);
+          g_free (name);
+
+          g_value_take_boxed (&value, substructure);
+          gst_value_array_append_value (&array, &value);
+          g_value_reset (&value);
+        }
+
+        gst_structure_set_value (structure, "landmarks", &array);
+        g_value_reset (&array);
+      }
 
       g_value_take_boxed (&value, structure);
       gst_value_array_append_value (&bboxes, &value);
@@ -687,7 +734,7 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
     g_value_unset (&value);
   }
 
-  g_value_unset (&rectangle);
+  g_value_unset (&array);
   g_value_unset (&bboxes);
 
   // Map buffer memory blocks.
@@ -1211,8 +1258,11 @@ gst_ml_video_detection_set_caps (GstBaseTransform * base, GstCaps * incaps,
     GstMLBoxPrediction *prediction =
         &(g_array_index (detection->predictions, GstMLBoxPrediction, idx));
 
-    prediction->entries = g_array_new (FALSE, FALSE, sizeof (GstMLBoxEntry));
+    prediction->entries = g_array_new (FALSE, TRUE, sizeof (GstMLBoxEntry));
     prediction->batch_idx = idx;
+
+    g_array_set_clear_func (prediction->entries,
+        (GDestroyNotify) gst_ml_box_entry_cleanup);
   }
 
   GST_DEBUG_OBJECT (detection, "Input caps: %" GST_PTR_FORMAT, incaps);
