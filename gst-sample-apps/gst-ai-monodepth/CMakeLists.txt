@@ -1,7 +1,12 @@
 set(GST_EXAMPLE_BIN gst-ai-monodepth)
 
 add_executable(${GST_EXAMPLE_BIN}
-  main.cc
+  main.c
+)
+
+# Add target specific precompiler defintions.
+target_compile_definitions(${GST_EXAMPLE_BIN} PRIVATE
+  $<$<BOOL:${ENABLE_CAMERA}>:ENABLE_CAMERA>
 )
 
 target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
