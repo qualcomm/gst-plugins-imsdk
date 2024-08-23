@@ -8,7 +8,7 @@ pkg_check_modules(GST
 set(GST_EXAMPLE_BIN gst-transform-example)
 
 add_executable(${GST_EXAMPLE_BIN}
-  main.cc
+  main.c
 )
 
 target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
