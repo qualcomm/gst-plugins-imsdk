@@ -742,8 +742,8 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   GList *list = NULL;
   GstVideoRectangle *source = NULL, *destination = NULL;
   gdouble scale = 0.0, linewidth = 0.0;
-  guint color = 0x000000FF;
-  gboolean success = TRUE, haslabel = FALSE;
+  guint idx = 0, color = 0x000000FF;
+  gboolean success = TRUE, haslabel = FALSE, haslndmrks = FALSE;
 
   success = gst_cairo_draw_setup (blit->frame, &surface, &context);
   g_return_val_if_fail (success, FALSE);
@@ -786,6 +786,8 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, GstVideoBlit * blit,
       links = g_value_get_boxed (gst_structure_get_value (param, "links"));
 
       success &= gst_overlay_handle_pose_entry (overlay, blit, keypoints, links);
+
+      haslndmrks = ((keypoints != NULL) && (keypoints->len > 0)) ? TRUE : FALSE;
     } else if (id == g_quark_from_static_string ("OpticalFlow")) {
       GArray *mvectors = NULL, *stats = NULL;
 
@@ -814,6 +816,27 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
       "[%d %d %d %d]", source->x, source->y, source->w, source->h,
       destination->x, destination->y, destination->w, destination->h);
+
+  // Process any additional landmarks if present.
+  if (!haslndmrks && gst_structure_has_field (objparam, "landmarks")) {
+    GArray *landmarks = NULL;
+    GstVideoKeypoint *kp = NULL;
+    gfloat x = 0.0, y = 0.0;
+
+    gst_structure_get (objparam, "landmarks", G_TYPE_ARRAY, &landmarks, NULL);
+
+    for (idx = 0; idx < landmarks->len; idx++) {
+      kp = &(g_array_index (landmarks, GstVideoKeypoint, idx));
+
+      // Additionally adjust coordinates with source to destination ratio.
+      x = kp->x  * (source->w / (gfloat) destination->w);
+      y = kp->y * (source->h / (gfloat) destination->h);
+
+      GST_TRACE_OBJECT (overlay, "Landmark: [%.2f %.2f]", x, y);
+      success &=
+          gst_cairo_draw_circle (context, color, x, y, (linewidth / 2), 1, TRUE);
+    }
+  }
 
   if (!haslabel) {
     // TODO: Optimize!
