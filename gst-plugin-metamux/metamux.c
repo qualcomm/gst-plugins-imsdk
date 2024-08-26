@@ -272,6 +272,12 @@ gst_metamux_process_opticalflow_metadata (GstMetaMux * muxer,
   GstCvOptclFlowMeta *meta = NULL;
   GArray *mvectors = NULL, *mvstats = NULL;
 
+  if (!gst_buffer_is_writable (buffer)) {
+    GST_WARNING_OBJECT (muxer, "Unable to attach metadata to buffer %p, "
+        "not writable!", buffer);
+    return;
+  }
+
   gst_structure_get (structure,
       "mvectors", G_TYPE_ARRAY, &mvectors, "mvstats", G_TYPE_ARRAY, &mvstats,
       NULL);
@@ -302,6 +308,15 @@ gst_metamux_process_detection_metadata (GstMetaMux * muxer, GstBuffer * buffer,
 
   bboxes = gst_structure_get_value (structure, "bounding-boxes");
   size = gst_value_array_get_size (bboxes);
+
+  if (size == 0)
+    return;
+
+  if (!gst_buffer_is_writable (buffer)) {
+    GST_WARNING_OBJECT (muxer, "Unable to attach metadata to buffer %p, "
+        "not writable!", buffer);
+    return;
+  }
 
   for (idx = 0; idx < size; idx++) {
     value = gst_value_array_get_value (bboxes, idx);
@@ -424,6 +439,15 @@ gst_metamux_process_landmarks_metadata (GstMetaMux * muxer, GstBuffer * buffer,
   poses = gst_structure_get_value (structure, "poses");
   size = gst_value_array_get_size (poses);
 
+  if (size == 0)
+    return;
+
+  if (!gst_buffer_is_writable (buffer)) {
+    GST_WARNING_OBJECT (muxer, "Unable to attach metadata to buffer %p, "
+        "not writable!", buffer);
+    return;
+  }
+
   for (seqnum = 0; seqnum < size; seqnum++) {
     value = gst_value_array_get_value (poses, seqnum);
     landmark = GST_STRUCTURE (g_value_get_boxed (value));
@@ -539,6 +563,12 @@ gst_metamux_process_classification_metadata (GstMetaMux * muxer,
   if (size == 0)
     return;
 
+  if (!gst_buffer_is_writable (buffer)) {
+    GST_WARNING_OBJECT (muxer, "Unable to attach metadata to buffer %p, "
+        "not writable!", buffer);
+    return;
+  }
+
   // Allocate memory for the labels.
   labels = g_array_sized_new (FALSE, FALSE, sizeof (GstClassLabel), size);
   g_array_set_size (labels, size);
@@ -599,12 +629,6 @@ gst_metamux_process_meta_entries (GstMetaMux * muxer, GstBuffer * buffer,
   // No metadata pads, nothing to process.
   if (muxer->metapads == NULL)
     return TRUE;
-
-  if (!gst_buffer_is_writable (buffer)) {
-    GST_WARNING_OBJECT (muxer, "Unable to attach metadata to buffer %p, "
-        "not writable!", buffer);
-    return FALSE;
-  }
 
   for (list = muxer->metapads; list != NULL; list = g_list_next (list)) {
     GstMetaMuxDataPad *dpad = GST_METAMUX_DATA_PAD (list->data);
