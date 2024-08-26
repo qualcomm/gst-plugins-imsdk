@@ -48,7 +48,7 @@ gst_smartcodec_engine_new ()
   engine = g_new0 (SmartCodecEngine, 1);
   g_return_val_if_fail (engine != NULL, NULL);
 
-  engine->last_buffer_ts = 0;
+  engine->last_buffer_ts = -1;
   gst_video_info_init (&engine->video_info);
 
   if ((engine->videoctrlhandle =
@@ -305,7 +305,7 @@ gst_smartcodec_engine_process_input_videobuffer (SmartCodecEngine * engine,
     return FALSE;
   }
 
-  if (0 != engine->last_buffer_ts) {
+  if (-1 != engine->last_buffer_ts) {
     interframe_delta = buf_ts - engine->last_buffer_ts;
   }
 
