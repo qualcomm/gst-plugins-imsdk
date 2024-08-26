@@ -1,41 +1,14 @@
 /*
-* Copyright (c) 2021, The Linux Foundation. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted provided that the following conditions are
-* met:
-*     * Redistributions of source code must retain the above copyright
-*       notice, this list of conditions and the following disclaimer.
-*     * Redistributions in binary form must reproduce the above
-*       copyright notice, this list of conditions and the following
-*       disclaimer in the documentation and/or other materials provided
-*       with the distribution.
-*     * Neither the name of The Linux Foundation nor the names of its
-*       contributors may be used to endorse or promote products derived
-*       from this software without specific prior written permission.
-*
-* THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
-* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
-* ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
-* BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-* CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-* SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
-* BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-* WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
-* OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
-* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*
-* Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
-* Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
-* SPDX-License-Identifier: BSD-3-Clause-Clear
-*/
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #ifndef __GST_QTI_REDIS_SINK_H__
 #define __GST_QTI_REDIS_SINK_H__
 
 #include <gst/gst.h>
 #include <gst/base/gstbasesink.h>
+#include <gst/ml/gstmlmodule.h>
 
 #include <hiredis/hiredis.h>
 
@@ -55,18 +28,13 @@ G_BEGIN_DECLS
 
 typedef struct _GstRedisSink GstRedisSink;
 typedef struct _GstRedisSinkClass GstRedisSinkClass;
-typedef struct _GstJsonString GstJsonString;
+
 
 typedef enum {
   GST_DATA_TYPE_NONE,
   GST_DATA_TYPE_VIDEO,
   GST_DATA_TYPE_TEXT,
 } GstDataType;
-
-struct _GstJsonString {
-  GString *str;
-  gboolean is_first;
-} _GstJsonString;
 
 struct _GstRedisSink {
   /// Inherited parent structure.
@@ -78,6 +46,9 @@ struct _GstRedisSink {
   /// Hiredis library context
   redisContext *redis;
 
+  /// Parsing ML data module
+  GstMLModule *module;
+
   /// Properties.
   gchar *host;
   guint port;
@@ -86,6 +57,7 @@ struct _GstRedisSink {
   gchar *detection_channel;
   gchar *image_classification_channel;
   gchar *pose_estimation_channel;
+  gint mdlenum;
 };
 
 struct _GstRedisSinkClass {
