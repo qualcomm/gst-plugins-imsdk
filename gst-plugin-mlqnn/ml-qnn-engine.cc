@@ -13,6 +13,7 @@
 
 #include <QnnInterface.h>
 #include <System/QnnSystemInterface.h>
+#include <System/QnnSystemContext.h>
 
 #include "ml-qnn-engine.h"
 
@@ -111,11 +112,8 @@ typedef struct {
   const QnnGraph_Config_t **graphConfigs;
 } GraphConfigInfo_t;
 
-typedef Qnn_ErrorHandle_t (*QnnInterfaceGetProvidersFn)(
-    const QnnInterface_t ***providerList, uint32_t *numProviders);
-
-typedef Qnn_ErrorHandle_t (*QnnSystemInterfaceGetProvidersFn)(
-    const QnnSystemInterface_t ***providerList, uint32_t *numProviders);
+using QnnInterfaceGetProvidersFn = decltype(QnnInterface_getProviders);
+using QnnSystemInterfaceGetProvidersFn = decltype(QnnSystemInterface_getProviders);
 
 typedef Qnn_ErrorHandle_t (*ComposeGraphsFn)(Qnn_BackendHandle_t,
     QNN_INTERFACE_VER_TYPE, Qnn_ContextHandle_t, const GraphConfigInfo_t **,
@@ -517,7 +515,7 @@ gst_ml_qnn_engine_setup_backend (GstMLQnnEngine *engine)
   GST_DEBUG ("Loaded backend '%s'!", filename);
 
   // Load interface symbol of the backend library.
-  QnnInterfaceGetProvidersFn GetProviders;
+  QnnInterfaceGetProvidersFn* GetProviders;
   success &= load_symbol ((gpointer*)&GetProviders, engine->libhandle,
       "QnnInterface_getProviders");
 
@@ -611,7 +609,7 @@ gst_ml_qnn_engine_setup_backend (GstMLQnnEngine *engine)
     }
 
     // Load sys interface symbol of the sys library.
-    QnnSystemInterfaceGetProvidersFn GetSysIntfProviders;
+    QnnSystemInterfaceGetProvidersFn* GetSysIntfProviders;
     success &= load_symbol ((gpointer*)&GetSysIntfProviders,
         engine->syslibhandle, "QnnSystemInterface_getProviders");
 
