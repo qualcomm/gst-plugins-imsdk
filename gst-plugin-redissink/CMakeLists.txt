@@ -41,7 +41,6 @@ target_include_directories(${GST_QTI_REDISSINK} PUBLIC
 target_link_libraries(${GST_QTI_REDISSINK} PRIVATE
   ${GST_LIBRARIES}
   ${GST_BASE_LIBRARIES}
-  gstqtimlbase
   gstqtiutilsbase
   hiredis
 )
@@ -53,5 +52,3 @@ install(
               GROUP_EXECUTE GROUP_READ
               WORLD_EXECUTE WORLD_READ
 )
-
-add_subdirectory(modules)
