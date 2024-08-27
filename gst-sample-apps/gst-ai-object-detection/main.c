@@ -1017,7 +1017,6 @@ main (gint argc, gchar * argv[])
     } else if (options.model_type == GST_MODEL_TYPE_TFLITE) {
       g_print ("No tflite model provided, Using default Model\n");
       options.model_path = DEFAULT_TFLITE_YOLOV8_MODEL;
-      options.labels_path = DEFAULT_YOLOV8_LABELS;
       options.yolo_model_type = GST_YOLO_TYPE_V8;
     } else {
       g_printerr ("Invalid ml_framework\n");
