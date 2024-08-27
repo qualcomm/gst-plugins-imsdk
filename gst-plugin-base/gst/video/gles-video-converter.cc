@@ -53,12 +53,22 @@
 
 #define GST_GLES_INPUT_QUARK   g_quark_from_static_string ("Input")
 
+typedef struct _GstGlesSurface GstGlesSurface;
+
+struct _GstGlesSurface
+{
+  // Surface ID.
+  guint64 id;
+  // Number of times that this surface was referenced.
+  guint n_refs;
+};
+
 struct _GstGlesVideoConverter
 {
   // Global mutex lock.
   GMutex          lock;
 
-  // Map of buffer FDs and their corresponding GLES surface ID.
+  // Map of buffer FDs and their corresponding GstGlesSurface.
   GHashTable      *insurfaces;
   GHashTable      *outsurfaces;
 
@@ -216,44 +226,49 @@ static void
 gst_gles_destroy_surface (gpointer key, gpointer value, gpointer userdata)
 {
   GstGlesVideoConverter *convert = (GstGlesVideoConverter*) userdata;
-  guint64 surface_id = GPOINTER_TO_GUINT64 (value);
+  GstGlesSurface *glsurface = (GstGlesSurface*) value;
 
   try {
-    convert->engine->DestroySurface(surface_id);
-    GST_DEBUG ("Destroying surface with id %lx", surface_id);
+    convert->engine->DestroySurface(glsurface->id);
+    GST_DEBUG ("Destroying surface with id %lx", glsurface->id);
   } catch (std::exception& e) {
     GST_ERROR ("Failed to destroy IB2C surface, error: '%s'!", e.what());
     return;
   }
 
+  g_slice_free (GstGlesSurface, glsurface);
   return;
 }
 
 static void
-gst_gles_destroy_fd_surfaces (GstGlesVideoConverter * convert, GArray * fds)
+gst_gles_remove_input_surfaces (GstGlesVideoConverter * convert, GArray * fds)
 {
+  GstGlesSurface *glsurface = NULL;
   guint idx = 0, fd;
-  guint64 surface_id = 0;
   gboolean success;
 
   for (idx = 0; idx < fds->len; idx++) {
     fd = g_array_index (fds, guint, idx);
 
     success = g_hash_table_lookup_extended (convert->insurfaces,
-        GUINT_TO_POINTER (fd), NULL, (gpointer *) &surface_id);
+        GUINT_TO_POINTER (fd), NULL, ((gpointer *) &glsurface));
 
     if (!success)
       continue;
 
+    if (--(glsurface->n_refs) != 0)
+      continue;
+
     try {
-      GST_DEBUG ("Destroying surface with id %lx", surface_id);
-      convert->engine->DestroySurface(surface_id);
+      GST_DEBUG ("Destroying surface with id %lx", glsurface->id);
+      convert->engine->DestroySurface(glsurface->id);
     } catch (std::exception& e) {
       GST_ERROR ("Failed to destroy IB2C surface, error: '%s'!", e.what());
       return;
     }
 
     g_hash_table_remove (convert->insurfaces, GUINT_TO_POINTER (fd));
+    g_slice_free (GstGlesSurface, glsurface);
   }
 }
 
@@ -429,6 +444,7 @@ gst_gles_retrieve_surface_id (GstGlesVideoConverter * convert,
     const GstVideoFrame * vframe, const gboolean isubwc, const guint64 flags)
 {
   GstMemory *memory = NULL;
+  GstGlesSurface *glsurface = NULL;
   guint fd = 0;
   guint64 surface_id = 0;
 
@@ -453,12 +469,18 @@ gst_gles_retrieve_surface_id (GstGlesVideoConverter * convert,
       return 0;
     }
 
-    g_hash_table_insert (surfaces, GUINT_TO_POINTER (fd),
-        GUINT64_TO_POINTER (surface_id));
+    glsurface = g_slice_new (GstGlesSurface);
+    glsurface->id = surface_id;
+    glsurface->n_refs = 1;
+
+    g_hash_table_insert (surfaces, GUINT_TO_POINTER (fd), glsurface);
   } else {
     // Get the input surface ID from the input hash table.
-    surface_id = GPOINTER_TO_GUINT64 (
+    glsurface = (GstGlesSurface*) (
         g_hash_table_lookup (surfaces, GUINT_TO_POINTER (fd)));
+    surface_id = glsurface->id;
+
+    glsurface->n_refs += 1;
   }
 
   return surface_id;
@@ -580,7 +602,7 @@ gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
       GST_GLES_LOCK (convert);
 
       // Destroy the surfaces which doesn't need cache
-      gst_gles_destroy_fd_surfaces (convert, fds);
+      gst_gles_remove_input_surfaces (convert, fds);
       g_array_free (fds, TRUE);
 
       GST_GLES_UNLOCK (convert);
@@ -614,7 +636,7 @@ gst_gles_video_converter_wait_fence (GstGlesVideoConverter * convert,
       GUINT_TO_POINTER (fence), NULL, (gpointer *) &fds);
   if (success) {
     // Destroy the surfaces which doesn't need cache
-    gst_gles_destroy_fd_surfaces (convert, fds);
+    gst_gles_remove_input_surfaces (convert, fds);
     g_array_free (fds, TRUE);
     g_hash_table_remove (convert->nocache, GUINT_TO_POINTER (fence));
   }
