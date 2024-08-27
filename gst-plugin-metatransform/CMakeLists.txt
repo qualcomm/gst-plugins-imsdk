@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8.2)
-project(GST_PLUGIN_QTI_OSS_FDTRANSFER
+project(GST_PLUGIN_QTI_OSS_META_TRANSFORM
   VERSION ${GST_PLUGINS_QTI_OSS_VERSION}
   LANGUAGES C
 )
@@ -25,28 +25,33 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 add_definitions(-DHAVE_CONFIG_H)
 
 # Common compiler flags.
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
 
-# GStreamer sink plugin.
-set(GST_QTI_REDISSINK qtiredissink)
+# GStreamer Meta Transform plugin.
+set(GST_QTI_META_TRANSFORM gstqtimetatransform)
 
-add_library(${GST_QTI_REDISSINK} SHARED
-  qtiredissink.c
+add_library(${GST_QTI_META_TRANSFORM} SHARED
+  metatransform.c
+  meta-transform-module.c
 )
 
-target_include_directories(${GST_QTI_REDISSINK} PUBLIC
+target_include_directories(${GST_QTI_META_TRANSFORM} PUBLIC
   ${GST_INCLUDE_DIRS}
 )
 
-target_link_libraries(${GST_QTI_REDISSINK} PRIVATE
+target_link_libraries(${GST_QTI_META_TRANSFORM} PRIVATE
   ${GST_LIBRARIES}
   ${GST_BASE_LIBRARIES}
   gstqtiutilsbase
-  hiredis
+)
+
+target_compile_definitions(${GST_QTI_META_TRANSFORM} PRIVATE
+  GST_META_TRANSFORM_MODULES_DIR="${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0/meta/modules"
 )
 
 install(
-  TARGETS ${GST_QTI_REDISSINK}
+  TARGETS ${GST_QTI_META_TRANSFORM}
   LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0
   PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
               GROUP_EXECUTE GROUP_READ

@@ -55,12 +55,6 @@ queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
     GST_METAMUX_PAD_SIGNAL_IDLE (sinkpad, FALSE);
   }
 
-  // Accumulating only 1 second data in the queue.
-  if (time > (1 * GST_SECOND)) {
-    GST_TRACE_OBJECT (pad, "Queue limit reached!");
-    return TRUE;
-  }
-
   return FALSE;
 }
 

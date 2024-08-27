@@ -1055,7 +1055,7 @@ gst_ml_video_pose_set_caps (GstBaseTransform * base, GstCaps * incaps,
     GstMLPosePrediction *prediction =
         &(g_array_index (vpose->predictions, GstMLPosePrediction, idx));
 
-    prediction->entries = g_array_new (FALSE, FALSE, sizeof (GstMLPoseEntry));
+    prediction->entries = g_array_new (FALSE, TRUE, sizeof (GstMLPoseEntry));
     g_array_set_clear_func (
         prediction->entries, (GDestroyNotify) gst_ml_pose_entry_cleanup);
 

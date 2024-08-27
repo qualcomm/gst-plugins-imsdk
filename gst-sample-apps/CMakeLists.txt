@@ -28,7 +28,6 @@ endif () # ENABLE_AUDIO AND ENABLE_DISPLAY AND ENABLE_VIDEO_DECODE
 if (ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE)
   add_subdirectory(gst-camera-single-stream-example)
   add_subdirectory(gst-snapshot-stream-example)
-  add_subdirectory(gst-transform-example)
   add_subdirectory(gst-activate-deactivate-streams-runtime)
   add_subdirectory(gst-multi-camera-example)
   add_subdirectory(gst-multi-stream-example)
@@ -46,7 +45,8 @@ if (ENABLE_CAMERA)
   add_subdirectory(gst-camera-shdr-ldc-eis-example)
 endif () # ENABLE_CAMERA
 
-if (ENABLE_ML AND ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE)
+# AI Sample Applications can take file and RTSP, camera input sources
+if (ENABLE_ML AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE)
   add_subdirectory(gst-ai-classification)
   add_subdirectory(gst-ai-object-detection)
   add_subdirectory(gst-ai-pose-detection)
@@ -56,7 +56,9 @@ if (ENABLE_ML AND ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE)
   add_subdirectory(gst-ai-monodepth)
   add_subdirectory(gst-ai-daisychain-detection-classification)
   add_subdirectory(gst-ai-superresolution)
-endif () # ENABLE_CAMERA AND ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE
+  add_subdirectory(gst-ai-daisychain-detection-pose)
+  add_subdirectory(gst-ai-multistream-inference)
+endif () # ENABLE_DISPLAY AND ENABLE_VIDEO_ENCODE
 
 if (ENABLE_VIDEO_DECODE)
   add_subdirectory(gst-video-playback-example)
@@ -64,6 +66,7 @@ endif () # ENABLE_VIDEO_DECODE
 
 if (ENABLE_VIDEO_DECODE AND ENABLE_VIDEO_ENCODE)
   add_subdirectory(gst-video-transcode-example)
+  add_subdirectory(gst-transform-example)
 endif () # ENABLE_VIDEO_DECODE AND ENABLE_VIDEO_ENCODE
 
 if (ENABLE_AUDIO AND ENABLE_VIDEO_ENCODE)

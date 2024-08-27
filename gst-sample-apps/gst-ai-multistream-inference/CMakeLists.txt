@@ -1,4 +1,4 @@
-set(GST_EXAMPLE_BIN gst-ai-classification)
+set(GST_EXAMPLE_BIN gst-ai-multistream-inference)
 
 add_executable(${GST_EXAMPLE_BIN}
   main.c

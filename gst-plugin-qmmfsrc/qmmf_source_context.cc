@@ -2832,6 +2832,12 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       GValue val = G_VALUE_INIT;
       g_value_init (&val, G_TYPE_INT);
 
+      g_message("Sensor active array size <X,Y,Width,Height> is <%d,%d,%d,%d>", \
+          context->sensorsize.x,context->sensorsize.y, \
+          context->sensorsize.w,context->sensorsize.h);
+      g_message("Please align the ROI values and aspect ratio according to " \
+          "Sensor active array size");
+
       for (int i = 0; i < context->input_roi_count * 4; i++) {
         g_value_set_int (&val, 0);
         gst_value_array_append_value (value, &val);
