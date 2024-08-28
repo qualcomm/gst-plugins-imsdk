@@ -26,7 +26,7 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * ​​​​​Changes from Qualcomm Innovation Center are provided under the following license:
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
  *
  * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
@@ -122,7 +122,7 @@ G_DEFINE_TYPE (GstMLVideoPose, gst_ml_video_pose,
 
 #define DEFAULT_MIN_BUFFERS      2
 #define DEFAULT_MAX_BUFFERS      10
-#define DEFAULT_TEXT_BUFFER_SIZE 24576
+#define DEFAULT_TEXT_BUFFER_SIZE 102400
 #define DEFAULT_VIDEO_WIDTH      320
 #define DEFAULT_VIDEO_HEIGHT     240
 
@@ -516,8 +516,10 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
       g_value_unset (&value);
       g_value_init (&value, G_TYPE_STRING);
 
+      length = (entry->connections != NULL) ? entry->connections->len : 0;
+
       // Extract the connections from the entry and place them in a structure.
-      for (seqnum = 0; seqnum < entry->connections->len; seqnum++) {
+      for (seqnum = 0; seqnum < length; seqnum++) {
         GstMLKeypointsLink *connection = NULL;
         GstMLKeypoint *s_kp = NULL, *d_kp = NULL;
 
