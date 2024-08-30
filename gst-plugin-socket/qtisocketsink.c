@@ -68,6 +68,19 @@ static GstStaticPadTemplate socket_sink_template =
         GST_PAD_ALWAYS,
         GST_STATIC_CAPS (GST_SOCKET_SINK_CAPS));
 
+static gint
+gst_socket_sink_get_protection_meta_count (GstBuffer * buffer)
+{
+  GstMeta *meta = NULL;
+  gpointer state = NULL;
+  gint size = 0;
+  while ((meta = gst_buffer_iterate_meta_filtered (buffer, &state,
+      GST_PROTECTION_META_API_TYPE))) {
+    size++;
+  }
+  return size;
+}
+
 static gboolean
 gst_socket_sink_set_location (GstFdSocketSink * sink, const gchar * location)
 {
@@ -137,7 +150,7 @@ gst_socket_sink_try_connect (GstFdSocketSink * sink)
     return TRUE;
   }
 
-  if ((sink->socket = socket (AF_UNIX, SOCK_STREAM, 0)) < 0) {
+  if ((sink->socket = socket (AF_UNIX, SOCK_SEQPACKET, 0)) < 0) {
     GST_ERROR_OBJECT (sink, "Socket creation error");
     g_mutex_unlock (&sink->socklock);
     return FALSE;
@@ -231,7 +244,9 @@ gst_socket_sink_render (GstBaseSink * bsink, GstBuffer * buffer)
   GstFdSocketSink *sink = GST_SOCKET_SINK (bsink);
   GstBufferPayload * buffer_pl = NULL;
   GstMemory *memory = NULL;
-  GstPayloadInfo pl_info = {NULL, NULL, NULL, NULL, NULL, NULL};
+  GstMeta *meta = NULL;
+  gpointer state = NULL;
+  GstPayloadInfo pl_info = {0};
   gint memory_fds[GST_MAX_MEM_BLOCKS]; // todo expand
   gint memory_fds_send[GST_MAX_MEM_BLOCKS]; // todo expand
   guint n_memory = 0;
@@ -244,6 +259,36 @@ gst_socket_sink_render (GstBaseSink * bsink, GstBuffer * buffer)
 
   if (!gst_socket_sink_try_connect (sink))
     return GST_FLOW_OK;
+
+  pl_info.protection_metadata_info = g_ptr_array_new_full (
+      gst_socket_sink_get_protection_meta_count (buffer), g_free);
+
+  while ((meta = gst_buffer_iterate_meta_filtered (buffer, &state,
+      GST_PROTECTION_META_API_TYPE))) {
+    GstProtectionMetadataPayload * pmeta_pl = NULL;
+    const gchar * pmeta = gst_structure_to_string (
+        GST_PROTECTION_META_CAST (meta)->info);
+
+    gsize size = strlen (pmeta) + 1;
+
+    pmeta_pl = g_malloc (sizeof (GstProtectionMetadataPayload));
+
+    GST_DEBUG_OBJECT (sink, "Add protetion metadata: %s", pmeta);
+
+    pmeta_pl->identity = MESSAGE_PROTECTION_META;
+
+    if (sizeof (pmeta_pl->contents) < size) {
+        GST_ERROR_OBJECT (sink, "Got too much data");
+        free_pl_struct (&pl_info);
+        return GST_FLOW_ERROR;
+    }
+
+    memmove (pmeta_pl->contents, pmeta, size);
+
+    pmeta_pl->size = size;
+    pmeta_pl->maxsize = sizeof (pmeta_pl->contents);
+    g_ptr_array_add (pl_info.protection_metadata_info, pmeta_pl);
+  }
 
   n_memory = gst_buffer_n_memory (buffer);
   if (n_memory != GST_EXPECTED_MEM_BLOCKS(sink)) {
@@ -309,7 +354,7 @@ gst_socket_sink_render (GstBaseSink * bsink, GstBuffer * buffer)
       buffer_pl->buf_id[i] = memory_fds[i];
 
       GstMLTensorMeta *mlmeta =
-        gst_buffer_get_ml_tensor_meta (buffer);
+        gst_buffer_get_ml_tensor_meta_id (buffer, i);
       if (mlmeta == NULL) {
         GST_ERROR_OBJECT (sink, "Invalid mlmeta");
         return GST_FLOW_ERROR;
@@ -442,7 +487,7 @@ gst_socket_sink_wait_message_loop (gpointer user_data)
 {
   GstFdSocketSink *sink = GST_SOCKET_SINK (user_data);
   GstBuffer *buffer = NULL;
-  GstPayloadInfo pl_info = {NULL, NULL, NULL, NULL, NULL, NULL};
+  GstPayloadInfo pl_info = {0};
 
   if (g_atomic_int_get (&sink->should_stop)) {
     if (sink->mode != DATA_MODE_TEXT) {
@@ -601,7 +646,7 @@ static gboolean
 gst_socket_sink_event (GstBaseSink *bsink, GstEvent *event)
 {
   GstFdSocketSink *sink = GST_SOCKET_SINK (bsink);
-  GstPayloadInfo pl_info = {NULL, NULL, NULL, NULL, NULL, NULL};
+  GstPayloadInfo pl_info = {0};
   GstMessagePayload msg;
 
   GST_DEBUG_OBJECT (sink, "GST EVENT: %d", GST_EVENT_TYPE (event));
