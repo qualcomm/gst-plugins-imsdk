@@ -59,7 +59,7 @@
 /**
  * Scale and Offset value for post processing
  */
-#define DEFAULT_CONSTANTS "srnet,q-offsets=<-128.0>,q-scales=<1.0>;"
+#define DEFAULT_CONSTANTS "srnet,q-offsets=<0.0>,q-scales=<1.0>;"
 
 /**
  * Output dimensions of output stream
