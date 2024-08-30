@@ -51,6 +51,9 @@ free_pl_struct (GstPayloadInfo * pl_info)
 
   if (pl_info->mem_block_info != NULL)
     g_ptr_array_free (pl_info->mem_block_info, TRUE);
+
+  if (pl_info->protection_metadata_info != NULL)
+    g_ptr_array_free (pl_info->protection_metadata_info, TRUE);
 }
 
 gint
@@ -59,8 +62,8 @@ send_socket_message (gint sock, GstPayloadInfo * pl_info)
   struct cmsghdr *cmsg = NULL;
   GPtrArray * send_arr = g_ptr_array_new ();
   struct msghdr msg = {0};
-  struct iovec io[sizeof(struct iovec) * GST_MAX_MEM_BLOCKS];
-  gchar buf[CMSG_SPACE (sizeof (*pl_info->fds) * GST_MAX_MEM_BLOCKS)];
+  gchar buf[CMSG_SPACE (sizeof (*pl_info->fds) * GST_PL_INFO_GET_N_FDS (pl_info))];
+
   gint data_size = 0;
 
   memset (buf, 0, sizeof (buf));
@@ -82,6 +85,14 @@ send_socket_message (gint sock, GstPayloadInfo * pl_info)
       g_ptr_array_add (send_arr, g_ptr_array_index (pl_info->mem_block_info, i));
     }
   }
+
+  if (pl_info->protection_metadata_info != NULL) {
+    for (guint i = 0; i < pl_info->protection_metadata_info->len; i++) {
+      g_ptr_array_add (send_arr, g_ptr_array_index (pl_info->protection_metadata_info, i));
+    }
+  }
+
+  struct iovec io[send_arr->len];
 
   for (guint i = 0; i < send_arr->len; i++) {
     gpointer ptr = g_ptr_array_index (send_arr, i);
@@ -171,6 +182,8 @@ receive_socket_message (gint sock, GstPayloadInfo * pl_info, int msg_flags)
       pl_info->return_buffer = (GstReturnBufferPayload *) ptr;
     } else if (GST_SOCKET_MSG_IDENTITY (ptr) == MESSAGE_FD_COUNT) {
       pl_info->fd_count = (GstFdCountPayload *) ptr;
+    } else if (GST_SOCKET_MSG_IDENTITY (ptr) == MESSAGE_PROTECTION_META) {
+      g_ptr_array_add (pl_info->protection_metadata_info, ptr);
     } else {
       g_ptr_array_add (pl_info->mem_block_info, ptr);
     }
@@ -218,6 +231,10 @@ get_payload_size (gpointer payload) {
     case MESSAGE_FD_COUNT:
       return sizeof (GstFdCountPayload);
       break;
+    case MESSAGE_PROTECTION_META:
+      return sizeof (GstProtectionMetadataPayload);
+      break;
+
     default:
       return -1;
   }
