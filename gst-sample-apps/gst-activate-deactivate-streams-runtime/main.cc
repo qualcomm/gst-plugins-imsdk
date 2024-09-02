@@ -31,7 +31,7 @@
 #include <gst/gst.h>
 #include <pthread.h>
 
-#include "include/gst_sample_apps_utils.h"
+#include <gst/sampleapps/gst_sample_apps_utils.h>
 
 #define GST_APP_SUMMARY \
   "This application demonstrates two major usecases i.e Basic and Full." \

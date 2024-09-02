@@ -53,7 +53,7 @@
 #include <gst/gst.h>
 #include <gst/video/video.h>
 
-#include "include/gst_sample_apps_utils.h"
+#include <gst/sampleapps/gst_sample_apps_utils.h>
 
 /**
  * Default models path and labels path

@@ -43,7 +43,7 @@
 
 #include <gst/gst.h>
 
-#include "include/gst_sample_apps_utils.h"
+#include <gst/sampleapps/gst_sample_apps_utils.h>
 
 #define DEFAULT_OUTPUT_FILENAME "/opt/transcoded_video.mp4"
 
