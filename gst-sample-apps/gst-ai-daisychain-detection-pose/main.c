@@ -215,15 +215,34 @@ build_pad_property (GValue * property, gint values[], gint num)
 static void
 on_pad_added (GstElement * element, GstPad * pad, gpointer data)
 {
-  GstPad *sinkpad;
+  GstPad *sinkpad = NULL;
+  gchar *caps_str = NULL;
   GstElement *queue = (GstElement *) data;
-  GstPadLinkReturn ret;
+  GstCaps *caps = gst_pad_get_current_caps (pad);
+  if (!caps) {
+    caps = gst_pad_query_caps (pad, NULL);
+  }
 
-  // Get the static sink pad from the queue
-  sinkpad = gst_element_get_static_pad (queue, "sink");
-  g_assert (gst_pad_link (pad, sinkpad) == GST_PAD_LINK_OK);
+  if (caps) {
+    caps_str = gst_caps_to_string (caps);
+  } else {
+    g_print ("No caps available for this pad\n");
+  }
 
-  gst_object_unref (sinkpad);
+  // Check if caps contains video
+  if (caps_str) {
+    if (g_strrstr (caps_str, "video")) {
+      // Get the static sink pad from the queue
+      sinkpad = gst_element_get_static_pad (queue, "sink");
+      // Get the static sink pad from the queue
+      g_assert (gst_pad_link (pad, sinkpad) == GST_PAD_LINK_OK);
+      gst_object_unref (sinkpad);
+    } else {
+      g_print ("Ignoring caps\n");
+    }
+  }
+  g_free (caps_str);
+  gst_caps_unref (caps);
 }
 
 /**
