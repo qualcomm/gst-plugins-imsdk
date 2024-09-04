@@ -246,6 +246,7 @@ get_opt_enum (GstStructure * settings, const gchar * opt, GType type, gint dval)
     result : dval;
 }
 
+#ifdef HAVE_EXTERNAL_DELEGATE_H
 static GstStructure *
 get_opt_structure (GstStructure * settings, const gchar * opt)
 {
@@ -253,6 +254,7 @@ get_opt_structure (GstStructure * settings, const gchar * opt)
   gst_structure_get(settings, opt, GST_TYPE_STRUCTURE, &result, NULL);
   return result;
 }
+#endif // HAVE_EXTERNAL_DELEGATE_H
 
 static TfLiteDelegate *
 gst_ml_tflite_engine_delegate_new (GstStructure * settings)
@@ -577,7 +579,7 @@ gst_ml_tflite_engine_new (GstStructure * settings)
   GST_DEBUG ("Input tensors type: %s",
       gst_ml_type_to_string (engine->ininfo->type));
 
-  for (idx = 0; idx < engine->ininfo->n_tensors; ++idx) {
+  for (guint idx = 0; idx < engine->ininfo->n_tensors; ++idx) {
     gint input = engine->interpreter->inputs()[idx];
     TfLiteIntArray* dimensions = engine->interpreter->tensor(input)->dims;
 
@@ -594,7 +596,7 @@ gst_ml_tflite_engine_new (GstStructure * settings)
   GST_DEBUG ("Output tensors type: %s",
       gst_ml_type_to_string (engine->outinfo->type));
 
-  for (idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
+  for (guint idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
     gint output = engine->interpreter->outputs()[idx];
     TfLiteIntArray* dimensions = engine->interpreter->tensor(output)->dims;
 
