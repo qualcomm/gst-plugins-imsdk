@@ -19,23 +19,64 @@ pkg_check_modules(GST_BASE REQUIRED
 pkg_check_modules(GST_ALLOC REQUIRED
   gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
 
-# Prefer the prebuilt TFLite package.
-pkg_check_modules(TFLITE tensorflow-lite-prebuilt)
-if(NOT TFLITE_FOUND)
-  pkg_check_modules(TFLITE REQUIRED tensorflow-lite)
-endif()
-
 include(CheckIncludeFile)
-
-# Check for hexagon delegate header
-if(${TFLITE_VERSION} VERSION_GREATER 2.2.0)
-  check_include_file("tensorflow/lite/delegates/hexagon/hexagon_delegate.h" HAVE_HEXAGON_DELEGATE_H)
-else()
-  check_include_file("tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h" HAVE_HEXAGON_DELEGATE_H)
-endif()
+include(CheckIncludeFileCXX)
 
 # Check for external delegate header
 check_include_file("tensorflow/lite/delegates/external/external_delegate.h" HAVE_EXTERNAL_DELEGATE_H)
+
+if(HAVE_EXTERNAL_DELEGATE_H)
+  # Check whether the C API header for the TFLITE library is present.
+  check_include_file("tensorflow/lite/core/c/c_api.h" HAVE_CORE_C_API_H)
+  check_include_file("tensorflow/lite/c/c_api.h" HAVE_C_API_H)
+
+  # Check for hexagon delegate header
+  check_include_file_cxx("tensorflow/lite/delegates/hexagon/hexagon_delegate.h" HAVE_HEXAGON_DELEGATE_H)
+  check_include_file_cxx("tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h" HAVE_HEXAGON_EXPERIMENTAL_DELEGATE_H)
+
+  # Check for nnapi delegate header
+  check_include_file_cxx("tensorflow/lite/delegates/nnapi/nnapi_delegate_c_api.h" HAVE_NNAPI_H)
+
+  list(APPEND TARGET_COMPILE_DEFINITIONS
+    $<$<BOOL:${HAVE_C_API_H}>:HAVE_C_API_H>
+    $<$<BOOL:${HAVE_CORE_C_API_H}>:HAVE_CORE_C_API_H>
+    $<$<BOOL:${HAVE_HEXAGON_EXPERIMENTAL_DELEGATE_H}>:HAVE_HEXAGON_EXPERIMENTAL_DELEGATE_H>
+    $<$<BOOL:${HAVE_NNAPI_H}>:HAVE_NNAPI_H>
+  )
+  list(APPEND TARGET_INCS
+    ${SYSROOT_INCDIR}/tflite
+    ${SYSROOT_INCDIR}/tensorflow
+  )
+  list(APPEND TARGET_LIBRARIES
+    ${CMAKE_DL_LIBS}
+  )
+else()
+  # Prefer the prebuilt TFLite package.
+  pkg_check_modules(TFLITE tensorflow-lite-prebuilt)
+  if(NOT TFLITE_FOUND)
+    pkg_check_modules(TFLITE REQUIRED tensorflow-lite)
+  endif()
+
+  include(CheckIncludeFile)
+
+  # Check for hexagon delegate header
+  if(${TFLITE_VERSION} VERSION_GREATER 2.2.0)
+    check_include_file("tensorflow/lite/delegates/hexagon/hexagon_delegate.h" HAVE_HEXAGON_DELEGATE_H)
+  else()
+    check_include_file("tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h" HAVE_HEXAGON_DELEGATE_H)
+  endif()
+
+  list(APPEND TARGET_INCS
+    $<$<VERSION_LESS_EQUAL:${TFLITE_VERSION},2.2.0>:${SYSROOT_INCDIR}/tflite>
+    $<$<VERSION_GREATER:${TFLITE_VERSION},2.2.0>:${SYSROOT_INCDIR}/tensorflow>
+  )
+
+  list(APPEND TARGET_LIBRARIES
+    ${TFLITE_LIBRARIES}
+    $<$<VERSION_LESS_EQUAL:${TFLITE_VERSION},2.2.0>:gpu_delegate>
+    $<$<VERSION_LESS_EQUAL:${TFLITE_VERSION},2.2.0>:xnnpack_delegate>
+  )
+endif()
 
 # Generate configuration header file.
 configure_file(config.h.in config.h @ONLY)
@@ -60,21 +101,19 @@ add_library(${GST_QTI_ML_TFLITE} SHARED
 target_compile_definitions(${GST_QTI_ML_TFLITE} PRIVATE
   $<$<BOOL:${HAVE_HEXAGON_DELEGATE_H}>:HAVE_HEXAGON_DELEGATE_H>
   $<$<BOOL:${HAVE_EXTERNAL_DELEGATE_H}>:HAVE_EXTERNAL_DELEGATE_H>
+  ${TARGET_COMPILE_DEFINITIONS}
 )
 
 target_include_directories(${GST_QTI_ML_TFLITE} PUBLIC
   ${GST_INCLUDE_DIRS}
-  $<$<VERSION_LESS_EQUAL:${TFLITE_VERSION},2.2.0>:${SYSROOT_INCDIR}/tflite>
-  $<$<VERSION_GREATER:${TFLITE_VERSION},2.2.0>:${SYSROOT_INCDIR}/tensorflow>
+  ${TARGET_INCS}
 )
 
 target_link_libraries(${GST_QTI_ML_TFLITE} PRIVATE
   ${GST_LIBRARIES}
   ${GST_BASE_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
-  ${TFLITE_LIBRARIES}
-  $<$<VERSION_LESS_EQUAL:${TFLITE_VERSION},2.2.0>:gpu_delegate>
-  $<$<VERSION_LESS_EQUAL:${TFLITE_VERSION},2.2.0>:xnnpack_delegate>
+  ${TARGET_LIBRARIES}
   gstqtimlbase
   gstqtiutilsbase
 )
