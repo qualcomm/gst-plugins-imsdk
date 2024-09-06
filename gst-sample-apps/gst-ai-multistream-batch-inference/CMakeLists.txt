@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8.2)
-project(GST-SMARTCODEC-EXAMPLE LANGUAGES C CXX)
+project(GST-AI-MULTISTREAM-BATCH-INFERENCE LANGUAGES C CXX)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
@@ -13,8 +13,10 @@ find_package(PkgConfig)
 pkg_check_modules(GST
   REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
 
-# ggst-smartcodec-example
-set(GST_EXAMPLE_BIN gst-smartcodec-example)
+pkg_check_modules(GST_JSON
+  REQUIRED json-glib-1.0)
+
+set(GST_EXAMPLE_BIN gst-ai-multistream-batch-inference)
 
 add_executable(${GST_EXAMPLE_BIN}
   main.c
@@ -27,10 +29,12 @@ target_compile_definitions(${GST_EXAMPLE_BIN} PRIVATE
 
 target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_INCLUDE_DIRS}
+  ${GST_JSON_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_LIBRARIES}
+  ${GST_JSON_LIBRARIES}
   gstappsutils
 )
 
