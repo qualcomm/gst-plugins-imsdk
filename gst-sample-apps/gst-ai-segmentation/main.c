@@ -480,7 +480,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   // 2.8 Set the properties of fpsdisplaysink plugin- sync,
   // signal-fps-measurements, text-overlay and video-sink
-  g_object_set (G_OBJECT (fpsdisplaysink), "sync", FALSE, NULL);
+  g_object_set (G_OBJECT (fpsdisplaysink), "sync", TRUE, NULL);
   g_object_set (G_OBJECT (fpsdisplaysink), "signal-fps-measurements", TRUE, NULL);
   g_object_set (G_OBJECT (fpsdisplaysink), "text-overlay", TRUE, NULL);
   g_object_set (G_OBJECT (fpsdisplaysink), "video-sink", waylandsink, NULL);
