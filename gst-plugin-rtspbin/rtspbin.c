@@ -298,7 +298,7 @@ gst_rtsp_bin_sink_pad_chain (GstPad * pad, GstObject * parent,
 }
 
 static gboolean
-gst_rtsp_bin_check_all_caps_received (GstRtspBin *rtspbin)
+gst_rtsp_bin_check_all_caps_received (GstRtspBin * rtspbin)
 {
   GList *list = NULL;
 
@@ -310,6 +310,30 @@ gst_rtsp_bin_check_all_caps_received (GstRtspBin *rtspbin)
   }
 
   return TRUE;
+}
+
+static gboolean
+gst_rtsp_bin_all_sink_pads_eos (GstRtspBin * rtspbin, GstPad * pad)
+{
+  GList *list = NULL;
+  gboolean eos = TRUE;
+
+  GST_OBJECT_LOCK (rtspbin);
+
+  // Check all whether other sink pads are in EOS state.
+  for (list = GST_ELEMENT (rtspbin)->sinkpads; list; list = list->next) {
+    // Skip current sink pad as it is already in EOS state.
+    if (g_strcmp0 (GST_PAD_NAME (list->data), GST_PAD_NAME (pad)) == 0)
+      continue;
+
+    GST_OBJECT_LOCK (GST_PAD (list->data));
+    eos &= GST_PAD_IS_EOS (GST_PAD (list->data));
+    GST_OBJECT_UNLOCK (GST_PAD (list->data));
+  }
+
+  GST_OBJECT_UNLOCK (rtspbin);
+
+  return eos;
 }
 
 static gboolean
@@ -338,6 +362,31 @@ gst_rtsp_bin_sink_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
       if (!gst_rtsp_bin_init_server (rtspbin)) {
         GST_ERROR_OBJECT (rtspbin, "Failed to init RTSP server");
         return FALSE;
+      }
+    }
+    break;
+    case GST_EVENT_EOS:
+    {
+      GstMessage *message;
+      guint32 seqnum;
+      GstRtspBinSinkPad *sinkpad = GST_RTSP_BIN_SINKPAD (pad);
+
+      // Send EOS to the appsrc attached to the pad
+      if (sinkpad->appsrc) {
+        gst_element_send_event (sinkpad->appsrc, gst_event_new_eos ());
+      }
+
+      // When all other sink pads are in EOS state post EOS.
+      if (gst_rtsp_bin_all_sink_pads_eos (rtspbin, pad)) {
+        GST_DEBUG_OBJECT (rtspbin, "All sink pads are in EOS");
+
+        // Now we can post the message
+        GST_DEBUG_OBJECT (rtspbin, "Posting EOS");
+
+        seqnum = gst_event_get_seqnum (event);
+        message = gst_message_new_eos (parent);
+        gst_message_set_seqnum (message, seqnum);
+        gst_element_post_message (GST_ELEMENT_CAST (parent), message);
       }
     }
     break;
