@@ -67,24 +67,19 @@
 
 #include "ml-tflite-engine.h"
 
-#include <tensorflow/lite/model.h>
-#include <tensorflow/lite/interpreter.h>
-#include <tensorflow/lite/kernels/register.h>
-#include <tensorflow/lite/delegates/nnapi/nnapi_delegate.h>
+#include <string>
+#include <dlfcn.h>
+
+#if defined(HAVE_CORE_C_API_H)
+#include <tensorflow/lite/core/c/c_api.h>
+#include <tensorflow/lite/core/c/c_api_experimental.h>
+#elif defined(HAVE_C_API_H)
+#include <tensorflow/lite/c/c_api.h>
+#include <tensorflow/lite/c/c_api_experimental.h>
+#endif // defined(HAVE_CORE_C_API_H)
 #include <tensorflow/lite/delegates/gpu/delegate.h>
 #include <tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h>
-
-#ifdef HAVE_HEXAGON_DELEGATE_H
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 3)
-#include <tensorflow/lite/delegates/hexagon/hexagon_delegate.h>
-#else
-#include <tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h>
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 3)
-#endif // HAVE_HEXAGON_DELEGATE_H
-
-#ifdef HAVE_EXTERNAL_DELEGATE_H
 #include <tensorflow/lite/delegates/external/external_delegate.h>
-#endif // HAVE_EXTERNAL_DELEGATE_H
 
 #define GST_ML_RETURN_VAL_IF_FAIL(expression, value, ...) \
 { \
@@ -131,34 +126,13 @@
 #define GET_OPT_STHREADS(s) get_opt_uint (s, \
     GST_ML_TFLITE_ENGINE_OPT_THREADS, DEFAULT_OPT_THREADS)
 
-#ifdef HAVE_EXTERNAL_DELEGATE_H
 #define GET_OPT_EXT_DELEGATE_PATH(s) get_opt_string (s, \
     GST_ML_TFLITE_ENGINE_OPT_EXT_DELEGATE_PATH)
 
 #define GET_OPT_EXT_DELEGATE_OPTS(s) get_opt_structure (s, \
     GST_ML_TFLITE_ENGINE_OPT_EXT_DELEGATE_OPTS)
-#endif // HAVE_EXTERNAL_DELEGATE_H
 
 #define GST_CAT_DEFAULT gst_ml_tflite_engine_debug_category()
-
-struct _GstMLTFLiteEngine
-{
-  GstMLInfo *ininfo;
-  GstMLInfo *outinfo;
-
-  GstStructure *settings;
-
-  // TFLite flatbuffer model.
-  // Raw pointer to c++ unique_ptr because struct is allocated via malloc.
-  tflite::FlatBufferModel *model;
-
-  // TFLite model interpreter.
-  // Raw pointer to c++ unique_ptr because struct is allocated via malloc.
-  tflite::Interpreter *interpreter;
-
-  // TFLite model delegate.
-  TfLiteDelegate *delegate;
-};
 
 static GstDebugCategory *
 gst_ml_tflite_engine_debug_category (void)
@@ -181,26 +155,6 @@ gst_ml_tflite_delegate_get_type (void)
     { GST_ML_TFLITE_DELEGATE_NONE,
         "No delegate, CPU is used for all operations", "none"
     },
-    { GST_ML_TFLITE_DELEGATE_NNAPI_DSP,
-        "Run the processing on the DSP through NN API. "
-        "Unsupported operations will fallback on NPU, GPU or CPU",
-        "nnapi-dsp"
-    },
-    { GST_ML_TFLITE_DELEGATE_NNAPI_GPU,
-        "Run the processing on the GPU through NN API. "
-        "Unsupported operations will fallback on DSP, NPU or CPU",
-        "nnapi-gpu"
-    },
-    { GST_ML_TFLITE_DELEGATE_NNAPI_NPU,
-        "Run the processing on the NPU through NN API. "
-        "Unsupported operations will fallback on DSP, GPU or CPU",
-        "nnapi-npu"
-    },
-#ifdef HAVE_HEXAGON_DELEGATE_H
-    { GST_ML_TFLITE_DELEGATE_HEXAGON,
-        "Run the processing directly on the Hexagon DSP", "hexagon"
-    },
-#endif // HAVE_HEXAGON_DELEGATE_H
     { GST_ML_TFLITE_DELEGATE_GPU,
         "Run the processing directly on the GPU", "gpu"
     },
@@ -208,13 +162,11 @@ gst_ml_tflite_delegate_get_type (void)
       GST_ML_TFLITE_DELEGATE_XNNPACK,
         "Run inferences using xnnpack cpu runtime", "xnnpack"
     },
-#ifdef HAVE_EXTERNAL_DELEGATE_H
     {
       GST_ML_TFLITE_DELEGATE_EXTERNAL,
         "Run the processing on external delegate. It uses two plugin properties"
         " external-delegate-path and external-delegate-options.", "external"
     },
-#endif // HAVE_EXTERNAL_DELEGATE_H
     {0, NULL, NULL},
   };
 
@@ -223,6 +175,116 @@ gst_ml_tflite_delegate_get_type (void)
 
   return gtype;
 }
+
+using GpuDelegateOptionsV2Default_fn = decltype (
+    TfLiteGpuDelegateOptionsV2Default);
+using GpuDelegateV2Create_fn = decltype (TfLiteGpuDelegateV2Create);
+using GpuDelegateV2Delete_fn = decltype (TfLiteGpuDelegateV2Delete);
+using XNNPackDelegateOptionsDefault_fn = decltype (
+    TfLiteXNNPackDelegateOptionsDefault);
+using XNNPackDelegateCreate_fn = decltype (TfLiteXNNPackDelegateCreate);
+using XNNPackDelegateDelete_fn = decltype (TfLiteXNNPackDelegateDelete);
+
+using ExternalDelegateOptionsDefault_fn = decltype (
+    TfLiteExternalDelegateOptionsDefault);
+using ExternalDelegateCreate_fn = decltype (TfLiteExternalDelegateCreate);
+using ExternalDelegateDelete_fn = decltype (TfLiteExternalDelegateDelete);
+
+using ModelCreateFromFile_fn = decltype (TfLiteModelCreateFromFile);
+using ModelDelete_fn = decltype (TfLiteModelDelete);
+using InterpreterOptionsCreate_fn = decltype (TfLiteInterpreterOptionsCreate);
+using InterpreterOptionsDelete_fn = decltype (TfLiteInterpreterOptionsDelete);
+using InterpreterCreate_fn = decltype (TfLiteInterpreterCreate);
+using InterpreterDelete_fn = decltype (TfLiteInterpreterDelete);
+using InterpreterOptionsSetNumThreads_fn = decltype (
+    TfLiteInterpreterOptionsSetNumThreads);
+using InterpreterOptionsAddDelegate_fn = decltype (
+    TfLiteInterpreterOptionsAddDelegate);
+using InterpreterAllocateTensors_fn = decltype (
+    TfLiteInterpreterAllocateTensors);
+using InterpreterGetInputTensorCount_fn = decltype (
+    TfLiteInterpreterGetInputTensorCount);
+using InterpreterGetInputTensor_fn = decltype (
+    TfLiteInterpreterGetInputTensor);
+using InterpreterGetOutputTensorCount_fn = decltype (
+    TfLiteInterpreterGetOutputTensorCount);
+using InterpreterGetOutputTensor_fn = decltype (
+    TfLiteInterpreterGetOutputTensor);
+using InterpreterModifyGraphWithDelegate_fn = decltype (
+    TfLiteInterpreterModifyGraphWithDelegate);
+using InterpreterInvoke_fn = decltype (TfLiteInterpreterInvoke);
+using TensorType_fn = decltype (TfLiteTensorType);
+using TensorNumDims_fn = decltype (TfLiteTensorNumDims);
+using TensorDim_fn = decltype (TfLiteTensorDim);
+using TensorData_fn = decltype (TfLiteTensorData);
+using Version_fn = decltype (TfLiteVersion);
+
+struct _GstMLTFLiteEngine
+{
+  GstMLInfo *ininfo;
+  GstMLInfo *outinfo;
+
+  GstStructure *settings;
+
+  // TFLite model delegate.
+  TfLiteDelegate *delegate;
+
+  // TFLite flatbuffer model.
+  TfLiteModel* model;
+
+  // TFLite model interpreter.
+  TfLiteInterpreter* interpreter;
+
+  // TFLite version variables.
+  gint major;
+  gint minor;
+  gint patch;
+
+  // TFLite backend library handle.
+  void* libhandle;
+
+  // TFLite library APIs.
+  GpuDelegateOptionsV2Default_fn* GpuDelegateOptionsV2Default;
+
+  GpuDelegateV2Create_fn* GpuDelegateV2Create;
+  GpuDelegateV2Delete_fn* GpuDelegateV2Delete;
+
+  XNNPackDelegateOptionsDefault_fn* XNNPackDelegateOptionsDefault;
+
+  XNNPackDelegateCreate_fn* XNNPackDelegateCreate;
+  XNNPackDelegateDelete_fn* XNNPackDelegateDelete;
+
+  ExternalDelegateOptionsDefault_fn* ExternalDelegateOptionsDefault;
+
+  ExternalDelegateCreate_fn* ExternalDelegateCreate;
+  ExternalDelegateDelete_fn* ExternalDelegateDelete;
+
+  ModelCreateFromFile_fn* ModelCreateFromFile;
+  ModelDelete_fn* ModelDelete;
+
+  InterpreterOptionsCreate_fn* InterpreterOptionsCreate;
+  InterpreterOptionsDelete_fn* InterpreterOptionsDelete;
+
+  InterpreterCreate_fn* InterpreterCreate;
+  InterpreterDelete_fn* InterpreterDelete;
+
+  InterpreterOptionsSetNumThreads_fn* InterpreterOptionsSetNumThreads;
+  InterpreterOptionsAddDelegate_fn* InterpreterOptionsAddDelegate;
+  InterpreterAllocateTensors_fn* InterpreterAllocateTensors;
+  InterpreterGetInputTensorCount_fn* InterpreterGetInputTensorCount;
+  InterpreterGetInputTensor_fn* InterpreterGetInputTensor;
+  InterpreterGetOutputTensorCount_fn* InterpreterGetOutputTensorCount;
+  InterpreterGetOutputTensor_fn* InterpreterGetOutputTensor;
+  InterpreterModifyGraphWithDelegate_fn* InterpreterModifyGraphWithDelegate;
+  InterpreterInvoke_fn* InterpreterInvoke;
+
+  TensorType_fn* TensorType;
+  TensorNumDims_fn* TensorNumDims;
+  TensorDim_fn* TensorDim;
+  TensorData_fn* TensorData;
+
+  Version_fn* Version;
+};
 
 static const gchar *
 get_opt_string (GstStructure * settings, const gchar * opt)
@@ -254,100 +316,139 @@ get_opt_structure (GstStructure * settings, const gchar * opt)
   return result;
 }
 
+const GstMLInfo *
+gst_ml_tflite_engine_get_input_info  (GstMLTFLiteEngine * engine)
+{
+  return (engine == NULL) ? NULL : engine->ininfo;
+}
+
+const GstMLInfo *
+gst_ml_tflite_engine_get_output_info  (GstMLTFLiteEngine * engine)
+{
+  return (engine == NULL) ? NULL : engine->outinfo;
+}
+
+static gboolean
+load_symbol (gpointer* method, gpointer handle, const gchar* name)
+{
+  *(method) = dlsym (handle, name);
+  if (NULL == *(method)) {
+    GST_ERROR ("Failed to find symbol %s, error: %s!", name, dlerror());
+    return FALSE;
+  }
+  return TRUE;
+}
+
+static gboolean
+gst_ml_tflite_initialize_library (GstMLTFLiteEngine * engine)
+{
+  engine->libhandle = dlopen ("libtensorflowlite_c.so", RTLD_NOW | RTLD_LOCAL);
+  if (engine->libhandle == NULL) {
+    GST_ERROR ("Failed to open TFLite library, error: %s!", dlerror());
+    return FALSE;
+  }
+
+  auto success = load_symbol ((gpointer*)&engine->GpuDelegateOptionsV2Default,
+      engine->libhandle, "TfLiteGpuDelegateOptionsV2Default");
+  success &= load_symbol ((gpointer*)&engine->XNNPackDelegateOptionsDefault,
+      engine->libhandle, "TfLiteXNNPackDelegateOptionsDefault");
+
+  success &= load_symbol ((gpointer*)&engine->GpuDelegateV2Create,
+      engine->libhandle, "TfLiteGpuDelegateV2Create");
+  success &= load_symbol ((gpointer*)&engine->GpuDelegateV2Delete,
+      engine->libhandle, "TfLiteGpuDelegateV2Delete");
+
+  success &= load_symbol ((gpointer*)&engine->XNNPackDelegateCreate,
+      engine->libhandle, "TfLiteXNNPackDelegateCreate");
+  success &= load_symbol ((gpointer*)&engine->XNNPackDelegateDelete,
+      engine->libhandle, "TfLiteXNNPackDelegateDelete");
+
+  success &= load_symbol ((gpointer*)&engine->ExternalDelegateOptionsDefault,
+      engine->libhandle, "TfLiteExternalDelegateOptionsDefault");
+
+  success &= load_symbol ((gpointer*)&engine->ExternalDelegateCreate,
+      engine->libhandle, "TfLiteExternalDelegateCreate");
+  success &= load_symbol ((gpointer*)&engine->ExternalDelegateDelete,
+      engine->libhandle, "TfLiteExternalDelegateDelete");
+
+  success &= load_symbol ((gpointer*)&engine->ModelCreateFromFile,
+      engine->libhandle, "TfLiteModelCreateFromFile");
+  success &= load_symbol ((gpointer*)&engine->ModelDelete,
+      engine->libhandle, "TfLiteModelDelete");
+
+  success &= load_symbol ((gpointer*)&engine->InterpreterOptionsCreate,
+      engine->libhandle, "TfLiteInterpreterOptionsCreate");
+  success &= load_symbol ((gpointer*)&engine->InterpreterOptionsDelete,
+      engine->libhandle, "TfLiteInterpreterOptionsDelete");
+
+  success &= load_symbol ((gpointer*)&engine->InterpreterCreate,
+      engine->libhandle, "TfLiteInterpreterCreate");
+  success &= load_symbol ((gpointer*)&engine->InterpreterDelete,
+      engine->libhandle, "TfLiteInterpreterDelete");
+
+  success &= load_symbol ((gpointer*)&engine->InterpreterOptionsSetNumThreads,
+      engine->libhandle, "TfLiteInterpreterOptionsSetNumThreads");
+  success &= load_symbol ((gpointer*)&engine->InterpreterOptionsAddDelegate,
+      engine->libhandle, "TfLiteInterpreterOptionsAddDelegate");
+  success &= load_symbol ((gpointer*)&engine->InterpreterAllocateTensors,
+      engine->libhandle, "TfLiteInterpreterAllocateTensors");
+  success &= load_symbol ((gpointer*)&engine->InterpreterGetInputTensorCount,
+      engine->libhandle, "TfLiteInterpreterGetInputTensorCount");
+  success &= load_symbol ((gpointer*)&engine->InterpreterGetInputTensor,
+      engine->libhandle, "TfLiteInterpreterGetInputTensor");
+  success &= load_symbol ((gpointer*)&engine->InterpreterGetOutputTensorCount,
+      engine->libhandle, "TfLiteInterpreterGetOutputTensorCount");
+  success &= load_symbol ((gpointer*)&engine->InterpreterGetOutputTensor,
+      engine->libhandle, "TfLiteInterpreterGetOutputTensor");
+  success &= load_symbol ((gpointer*)&engine->InterpreterModifyGraphWithDelegate,
+      engine->libhandle, "TfLiteInterpreterModifyGraphWithDelegate");
+  success &= load_symbol ((gpointer*)&engine->InterpreterInvoke,
+      engine->libhandle, "TfLiteInterpreterInvoke");
+
+  success &= load_symbol ((gpointer*)&engine->TensorType,
+      engine->libhandle, "TfLiteTensorType");
+  success &= load_symbol ((gpointer*)&engine->TensorNumDims,
+      engine->libhandle, "TfLiteTensorNumDims");
+  success &= load_symbol ((gpointer*)&engine->TensorDim,
+      engine->libhandle, "TfLiteTensorDim");
+  success &= load_symbol ((gpointer*)&engine->TensorData,
+      engine->libhandle, "TfLiteTensorData");
+
+  success &= load_symbol ((gpointer*)&engine->Version,
+      engine->libhandle, "TfLiteVersion");
+
+  std::string version_str = engine->Version ();
+
+  engine->major = std::stoi (version_str);
+
+  version_str.erase (
+    version_str.begin (),
+    version_str.begin () + version_str.find (".") + 1
+  );
+
+  engine->minor = std::stoi (version_str);
+
+  version_str.erase (
+    version_str.begin (),
+    version_str.begin () + version_str.find (".") + 1
+  );
+
+  engine->patch = std::stoi (version_str);
+
+  return success;
+}
+
 static TfLiteDelegate *
-gst_ml_tflite_engine_delegate_new (GstStructure * settings)
+gst_ml_tflite_engine_delegate_new (GstMLTFLiteEngine * engine,
+    GstStructure * settings)
 {
   TfLiteDelegate *delegate = NULL;
   gint type = GET_OPT_DELEGATE (settings);
 
   switch (type) {
-    case GST_ML_TFLITE_DELEGATE_NNAPI_DSP:
-    {
-      tflite::StatefulNnApiDelegate::Options options;
-
-      options.accelerator_name       = "libunifiedhal-driver.so2";
-      // Save power and maintain high accuracy of inference
-      options.execution_preference   =
-          tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
-      // Burst computation as same delegate is used for all inputs in pipeline
-      options.use_burst_computation  = true;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
-      if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
-        GST_WARNING ("Failed to create NN Framework DSP delegate!");
-        break;
-      }
-
-      GST_INFO ("Using NN Framework DSP delegate");
-      return delegate;
-    }
-    case GST_ML_TFLITE_DELEGATE_NNAPI_GPU:
-    {
-      tflite::StatefulNnApiDelegate::Options options;
-
-      options.accelerator_name       = "libunifiedhal-driver.so1";
-      // Save power and maintain high accuracy of inference
-      options.execution_preference   =
-          tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
-      // Burst computation as same delegate is used for all inputs in pipeline
-      options.use_burst_computation  = true;
-      // Allow quant types to be converted to fp16 instead of fp32
-      options.allow_fp16             = true;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
-      if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
-        GST_WARNING ("Failed to create NN Framework DSP delegate!");
-        break;
-      }
-
-      GST_INFO ("Using NN Framework GPU delegate");
-      return delegate;
-    }
-    case GST_ML_TFLITE_DELEGATE_NNAPI_NPU:
-    {
-      tflite::StatefulNnApiDelegate::Options options;
-
-      options.accelerator_name       = "libunifiedhal-driver.so0";
-      // Save power and maintain high accuracy of inference
-      options.execution_preference   =
-          tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
-      // Burst computation as same delegate is used for all inputs in pipeline
-      options.use_burst_computation  = true;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
-      if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
-        GST_WARNING ("Failed to create NN Framework NPU delegate!");
-        break;
-      }
-
-      GST_INFO ("Using NN Framework NPU delegate");
-      return delegate;
-    }
-#ifdef HAVE_HEXAGON_DELEGATE_H
-    case GST_ML_TFLITE_DELEGATE_HEXAGON:
-    {
-      TfLiteHexagonDelegateOptions options = {};
-
-      // Initialize the Hexagon unit.
-      TfLiteHexagonInit();
-
-      options.debug_level = 0;
-      options.powersave_level = 0;
-      options.print_graph_profile = false;
-      options.print_graph_debug = false;
-
-      if ((delegate = TfLiteHexagonDelegateCreate (&options)) == NULL) {
-        GST_WARNING ("Failed to create Hexagon delegate!");
-        break;
-      }
-
-      GST_INFO ("Using Hexagon delegate");
-      return delegate;
-    }
-#endif // HAVE_HEXAGON_DELEGATE_H
     case GST_ML_TFLITE_DELEGATE_GPU:
     {
-      TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
+      auto options = engine->GpuDelegateOptionsV2Default ();
 
       // Prefer minimum latency and memory usage with precision lower than fp32
       options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
@@ -358,7 +459,7 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
       options.inference_preference =
           TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
 
-      if ((delegate = TfLiteGpuDelegateV2Create (&options)) == NULL) {
+      if ((delegate = engine->GpuDelegateV2Create (&options)) == NULL) {
         GST_WARNING ("Failed to create GPU delegate!");
         break;
       }
@@ -368,9 +469,9 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
     }
     case GST_ML_TFLITE_DELEGATE_XNNPACK:
     {
-      TfLiteXNNPackDelegateOptions options = TfLiteXNNPackDelegateOptionsDefault();
+      auto options = engine->XNNPackDelegateOptionsDefault ();
 
-      if ((delegate = TfLiteXNNPackDelegateCreate(&options)) == NULL) {
+      if ((delegate = engine->XNNPackDelegateCreate (&options)) == NULL) {
         GST_WARNING ("Failed to create XNNPACK delegate!");
         break;
       }
@@ -378,9 +479,13 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
       GST_INFO ("Using XNNPACK delegate");
       return delegate;
     }
-#ifdef HAVE_EXTERNAL_DELEGATE_H
     case GST_ML_TFLITE_DELEGATE_EXTERNAL:
     {
+      if ((engine->major < 2) || (engine->major == 2 && engine->minor < 10)) {
+        GST_WARNING("External delegate is not supported !");
+        break;
+      }
+
       const gchar * path = GET_OPT_EXT_DELEGATE_PATH (settings);
       GstStructure * opts = GET_OPT_EXT_DELEGATE_OPTS (settings);
 
@@ -390,8 +495,7 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
         break;
       }
 
-      TfLiteExternalDelegateOptions options =
-          TfLiteExternalDelegateOptionsDefault(path);
+      auto options = engine->ExternalDelegateOptionsDefault (path);
       auto n_opts = gst_structure_n_fields(opts);
 
       for (auto idx = 0; idx < n_opts; idx++) {
@@ -402,7 +506,7 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
         options.insert(&options, name, value);
       }
 
-      if ((delegate = TfLiteExternalDelegateCreate(&options)) == NULL) {
+      if ((delegate = engine->ExternalDelegateCreate (&options)) == NULL) {
         GST_WARNING("Failed to create external delegate");
         break;
       }
@@ -410,7 +514,6 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
       GST_INFO("Using external delegate");
       return delegate;
     }
-#endif // HAVE_EXTERNAL_DELEGATE_H
     default:
       GST_INFO ("No delegate will be used");
       break;
@@ -420,34 +523,22 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
 }
 
 static void
-gst_ml_tflite_engine_delegate_free (TfLiteDelegate * delegate, gint type)
+gst_ml_tflite_engine_delegate_free (GstMLTFLiteEngine * engine,
+    TfLiteDelegate * delegate, gint type)
 {
   if (NULL == delegate)
     return;
 
   switch (type) {
-    case GST_ML_TFLITE_DELEGATE_NNAPI_DSP:
-    case GST_ML_TFLITE_DELEGATE_NNAPI_GPU:
-    case GST_ML_TFLITE_DELEGATE_NNAPI_NPU:
-      delete reinterpret_cast<tflite::StatefulNnApiDelegate*>(delegate);
-      break;
-#ifdef HAVE_HEXAGON_DELEGATE_H
-    case GST_ML_TFLITE_DELEGATE_HEXAGON:
-      TfLiteHexagonDelegateDelete (delegate);
-      TfLiteHexagonTearDown ();
-      break;
-#endif // HAVE_HEXAGON_DELEGATE_H
     case GST_ML_TFLITE_DELEGATE_GPU:
-      TfLiteGpuDelegateV2Delete (delegate);
+      engine->GpuDelegateV2Delete (delegate);
       break;
     case GST_ML_TFLITE_DELEGATE_XNNPACK:
-      TfLiteXNNPackDelegateDelete (delegate);
+      engine->XNNPackDelegateDelete (delegate);
       break;
-#ifdef HAVE_EXTERNAL_DELEGATE_H
     case GST_ML_TFLITE_DELEGATE_EXTERNAL:
-      TfLiteExternalDelegateDelete(delegate);
+      engine->ExternalDelegateDelete (delegate);
       break;
-#endif // HAVE_EXTERNAL_DELEGATE_H
     default:
       break;
   }
@@ -460,15 +551,20 @@ gst_ml_tflite_engine_new (GstStructure * settings)
 {
   GstMLTFLiteEngine *engine = NULL;
   const gchar *filename = NULL;
-  gint idx = 0, num = 0, n_threads = 1;
-
-  tflite::ops::builtin::BuiltinOpResolver resolver;
+  guint idx = 0;
+  gint num = 0, n_threads = 1;
 
   engine = g_slice_new0 (GstMLTFLiteEngine);
   g_return_val_if_fail (engine != NULL, NULL);
 
   engine->ininfo = gst_ml_info_new ();
   engine->outinfo = gst_ml_info_new ();
+
+  auto success = gst_ml_tflite_initialize_library (engine);
+
+  GST_ML_RETURN_VAL_IF_FAIL_WITH_CLEAN (success, NULL,
+      gst_ml_tflite_engine_free (engine),
+      "Failed to initialize tflite library!");
 
   engine->settings = gst_structure_copy (settings);
   gst_structure_free (settings);
@@ -477,47 +573,61 @@ gst_ml_tflite_engine_new (GstStructure * settings)
   GST_ML_RETURN_VAL_IF_FAIL_WITH_CLEAN (filename != NULL, NULL,
       gst_ml_tflite_engine_free (engine), "No model file name!");
 
-  engine->model = tflite::FlatBufferModel::BuildFromFile (filename).release();
+  engine->model = engine->ModelCreateFromFile (filename);
+
   GST_ML_RETURN_VAL_IF_FAIL_WITH_CLEAN (engine->model, NULL,
       gst_ml_tflite_engine_free (engine), "Failed to load model file '%s'!",
       filename);
 
   GST_DEBUG ("Loaded model file '%s'!", filename);
 
-  std::unique_ptr<tflite::Interpreter> interpreter;
-  tflite::InterpreterBuilder builder (engine->model->GetModel(), resolver);
+  TfLiteInterpreterOptions* options = engine->InterpreterOptionsCreate ();
 
-  builder (&interpreter);
-  engine->interpreter = interpreter.release();
+  engine->interpreter = engine->InterpreterCreate (engine->model, options);
 
   GST_ML_RETURN_VAL_IF_FAIL_WITH_CLEAN (engine->interpreter, NULL,
       gst_ml_tflite_engine_free (engine), "Failed to construct interpreter!");
 
   n_threads = GET_OPT_STHREADS (engine->settings);
 
-  engine->interpreter->SetNumThreads(n_threads);
+  engine->InterpreterOptionsSetNumThreads (options, n_threads);
   GST_DEBUG ("Number of interpreter threads: %u", n_threads);
 
-  engine->delegate = gst_ml_tflite_engine_delegate_new(engine->settings);
+  engine->delegate = gst_ml_tflite_engine_delegate_new (engine,
+      engine->settings);
+
+  if (engine->delegate != NULL)
+    engine->InterpreterOptionsAddDelegate (options, engine->delegate);
+
+  engine->InterpreterOptionsDelete (options);
 
   if (engine->delegate != NULL) {
     TfLiteStatus status =
-        engine->interpreter->ModifyGraphWithDelegate(engine->delegate);
+        engine->InterpreterModifyGraphWithDelegate(engine->interpreter,
+            engine->delegate);
 
-    if (status != TfLiteStatus::kTfLiteOk)
+    if (status != TfLiteStatus::kTfLiteOk) {
       GST_WARNING ("Failed to modify graph with delegate!");
+      gst_ml_tflite_engine_free (engine);
+      return NULL;
+    }
   }
 
-  GST_ML_RETURN_VAL_IF_FAIL_WITH_CLEAN (
-      engine->interpreter->AllocateTensors() == kTfLiteOk, NULL,
-      gst_ml_tflite_engine_free (engine), "Failed to allocate tensors!");
+  GST_ML_RETURN_VAL_IF_FAIL_WITH_CLEAN (engine->InterpreterAllocateTensors (
+      engine->interpreter) == kTfLiteOk, NULL, gst_ml_tflite_engine_free (
+          engine), "Failed to allocate tensors!");
 
-  engine->ininfo->n_tensors = engine->interpreter->inputs().size();
-  engine->outinfo->n_tensors = engine->interpreter->outputs().size();
+  engine->ininfo->n_tensors = engine->InterpreterGetInputTensorCount (
+      engine->interpreter);
+  engine->outinfo->n_tensors = engine->InterpreterGetOutputTensorCount (
+      engine->interpreter);
 
-  idx = engine->interpreter->inputs()[0];
+  TfLiteTensor* input_tensor = engine->InterpreterGetInputTensor (
+      engine->interpreter, 0);
 
-  switch (engine->interpreter->tensor(idx)->type) {
+  TfLiteType input_tensor_type = engine->TensorType (input_tensor);
+
+  switch (input_tensor_type) {
     case kTfLiteFloat16:
       engine->ininfo->type = GST_ML_TYPE_FLOAT16;
       break;
@@ -544,9 +654,12 @@ gst_ml_tflite_engine_new (GstStructure * settings)
       return NULL;
   }
 
-  idx = engine->interpreter->outputs()[0];
+  const TfLiteTensor* output_tensor = engine->InterpreterGetOutputTensor (
+      engine->interpreter, 0);
 
-  switch (engine->interpreter->tensor(idx)->type) {
+  TfLiteType output_tensor_type = engine->TensorType (output_tensor);
+
+  switch (output_tensor_type) {
     case kTfLiteFloat16:
       engine->outinfo->type = GST_ML_TYPE_FLOAT16;
       break;
@@ -578,13 +691,15 @@ gst_ml_tflite_engine_new (GstStructure * settings)
       gst_ml_type_to_string (engine->ininfo->type));
 
   for (idx = 0; idx < engine->ininfo->n_tensors; ++idx) {
-    gint input = engine->interpreter->inputs()[idx];
-    TfLiteIntArray* dimensions = engine->interpreter->tensor(input)->dims;
+    TfLiteTensor* tensor = engine->InterpreterGetInputTensor (
+        engine->interpreter, idx);
 
-    engine->ininfo->n_dimensions[idx] = dimensions->size;
+    auto dimensions_size = engine->TensorNumDims (tensor);
 
-    for (num = 0; num < dimensions->size; ++num) {
-      engine->ininfo->tensors[idx][num] = dimensions->data[num];
+    engine->ininfo->n_dimensions[idx] = dimensions_size;
+
+    for (num = 0; num < dimensions_size; ++num) {
+      engine->ininfo->tensors[idx][num] = engine->TensorDim (tensor, num);
       GST_DEBUG ("Input tensor[%u] Dimension[%u]: %u", idx, num,
           engine->ininfo->tensors[idx][num]);
     }
@@ -595,13 +710,15 @@ gst_ml_tflite_engine_new (GstStructure * settings)
       gst_ml_type_to_string (engine->outinfo->type));
 
   for (idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
-    gint output = engine->interpreter->outputs()[idx];
-    TfLiteIntArray* dimensions = engine->interpreter->tensor(output)->dims;
+    const TfLiteTensor* tensor =
+        engine->InterpreterGetOutputTensor (engine->interpreter, idx);
 
-    engine->outinfo->n_dimensions[idx] = dimensions->size;
+    auto dimensions_size = engine->TensorNumDims (tensor);
 
-    for (num = 0; num < dimensions->size; ++num) {
-      engine->outinfo->tensors[idx][num] = dimensions->data[num];
+    engine->outinfo->n_dimensions[idx] = dimensions_size;
+
+    for (num = 0; num < dimensions_size; ++num) {
+      engine->outinfo->tensors[idx][num] = engine->TensorDim (tensor, num);
       GST_DEBUG ("Output tensor[%u] Dimension[%u]: %u", idx, num,
           engine->outinfo->tensors[idx][num]);
     }
@@ -618,13 +735,16 @@ gst_ml_tflite_engine_free (GstMLTFLiteEngine * engine)
     return;
 
   if (engine->interpreter != NULL)
-    delete engine->interpreter;
+    engine->InterpreterDelete (engine->interpreter);
 
   if (engine->model != NULL)
-    delete engine->model;
+    engine->ModelDelete (engine->model);
 
-  gst_ml_tflite_engine_delegate_free (engine->delegate,
+  gst_ml_tflite_engine_delegate_free (engine, engine->delegate,
       GET_OPT_DELEGATE (engine->settings));
+
+  if (engine->libhandle != NULL)
+    dlclose(engine->libhandle);
 
   if (engine->outinfo != NULL) {
     gst_ml_info_free (engine->outinfo);
@@ -643,18 +763,6 @@ gst_ml_tflite_engine_free (GstMLTFLiteEngine * engine)
 
   GST_INFO ("Destroyed MLE TFLite engine: %p", engine);
   g_slice_free (GstMLTFLiteEngine, engine);
-}
-
-const GstMLInfo *
-gst_ml_tflite_engine_get_input_info  (GstMLTFLiteEngine * engine)
-{
-  return (engine == NULL) ? NULL : engine->ininfo;
-}
-
-const GstMLInfo *
-gst_ml_tflite_engine_get_output_info  (GstMLTFLiteEngine * engine)
-{
-  return (engine == NULL) ? NULL : engine->outinfo;
 }
 
 gboolean
@@ -681,22 +789,27 @@ gst_ml_tflite_engine_execute (GstMLTFLiteEngine * engine,
   }
 
   for (idx = 0; idx < engine->ininfo->n_tensors; ++idx) {
-    gint input = engine->interpreter->inputs()[idx];
-    TfLiteTensor *tensor = engine->interpreter->tensor(input);
+    TfLiteTensor* tensor = engine->InterpreterGetInputTensor (
+        engine->interpreter, idx);
 
-    memcpy (tensor->data.raw, GST_ML_FRAME_BLOCK_DATA (inframe, idx),
+    memcpy (engine->TensorData (tensor), GST_ML_FRAME_BLOCK_DATA (inframe, idx),
         GST_ML_FRAME_BLOCK_SIZE (inframe, idx));
   }
 
-  if (!(success = (engine->interpreter->Invoke() == 0)))
+  success = (0 == engine->InterpreterInvoke (
+      engine->interpreter));
+
+  if (!success) {
     GST_ERROR ("Model execution failed!");
+    return FALSE;
+  }
 
   for (idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
-    gint output = engine->interpreter->outputs()[idx];
-    TfLiteTensor *tensor = engine->interpreter->tensor(output);
+    const TfLiteTensor* tensor = engine->InterpreterGetOutputTensor (
+        engine->interpreter, idx);
 
-    memcpy (GST_ML_FRAME_BLOCK_DATA (outframe, idx), tensor->data.raw,
-        GST_ML_FRAME_BLOCK_SIZE (outframe, idx));
+    memcpy (GST_ML_FRAME_BLOCK_DATA (outframe, idx),
+        engine->TensorData (tensor), GST_ML_FRAME_BLOCK_SIZE (outframe, idx));
   }
 
   return success;
