@@ -115,16 +115,25 @@ gst_meta_module_process (gpointer instance, GstBuffer * buffer)
     GArray *records = NULL;
     GstStructure *objparam = NULL, *lblparam = NULL;
     GArray *labels = NULL;
-    gpointer key = NULL;
     GstClassLabel *label = NULL, *toplabel = NULL;
+    gpointer key = NULL;
+    guint tracking_id = 0;
 
     // Skip if ROI is a ImageRegion with actual data (populated by vsplit).
     // This is primary used for blitting only pixels with actual data.
     if (roimeta->roi_type == g_quark_from_static_string ("ImageRegion"))
       continue;
 
-    // Fetch the temporal records for this ROI meta.
-    key = GUINT_TO_POINTER (roimeta->id);
+    objparam = gst_video_region_of_interest_meta_get_param (roimeta,
+        "ObjectDetection");
+
+    if (!gst_structure_has_field (objparam, "tracking-id"))
+      continue;
+
+    gst_structure_get_uint (objparam, "tracking-id", &tracking_id);
+
+    // Fetch the temporal records for this ROI meta. // here?
+    key = GUINT_TO_POINTER (tracking_id);
     records = g_hash_table_lookup (submodule->roi_label_records, key);
 
     // No records for this ROI meta, create a records queue.
@@ -133,8 +142,8 @@ gst_meta_module_process (gpointer instance, GstBuffer * buffer)
       g_hash_table_insert (submodule->roi_label_records, key, records);
     }
 
-    GST_TRACE ("Received root ROI meta %s and ID %u",
-        g_quark_to_string (roimeta->roi_type), roimeta->id);
+    GST_TRACE ("Received root ROI meta %s and ID [0x%X], tracking-id: %u",
+        g_quark_to_string (roimeta->roi_type), roimeta->id, tracking_id);
 
     lblparam = gst_video_region_of_interest_meta_get_param (roimeta,
         "ImageClassification");
@@ -175,8 +184,6 @@ gst_meta_module_process (gpointer instance, GstBuffer * buffer)
         g_quark_to_string (label->name), label->confidence, label->color);
 
     // Update the color of the root ROI meta.
-    objparam = gst_video_region_of_interest_meta_get_param (roimeta,
-        "ObjectDetection");
     gst_structure_set (objparam, "color", G_TYPE_UINT, label->color, NULL);
 
     // ImageClassification doesn't exist, add new param.
