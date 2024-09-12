@@ -121,33 +121,33 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options, gchar * c
   }
 
   if (options->file_path != NULL) {
-    g_free (options->file_path);
+    g_free ((gpointer)options->file_path);
   }
 
   if (options->rtsp_ip_port != NULL) {
-    g_free (options->rtsp_ip_port);
+    g_free ((gpointer)options->rtsp_ip_port);
   }
 
-  if (options->model_path != DEFAULT_SNPE_SEGMENTATION_MODEL &&
-      options->model_path != DEFAULT_TFLITE_SEGMENTATION_MODEL &&
-      options->model_path != DEFAULT_QNN_SEGMENTATION_MODEL &&
+  if (options->model_path != (gchar *)(&DEFAULT_SNPE_SEGMENTATION_MODEL) &&
+      options->model_path != (gchar *)(&DEFAULT_TFLITE_SEGMENTATION_MODEL) &&
+      options->model_path != (gchar *)(&DEFAULT_QNN_SEGMENTATION_MODEL) &&
       options->model_path != NULL) {
-    g_free (options->model_path);
+    g_free ((gpointer)options->model_path);
   }
 
-  if (options->labels_path != DEFAULT_SEGMENTATION_LABELS &&
+  if (options->labels_path != (gchar *)(&DEFAULT_SEGMENTATION_LABELS) &&
       options->labels_path != NULL) {
-    g_free (options->labels_path);
+    g_free ((gpointer)options->labels_path);
   }
 
-  if (options->constants != DEFAULT_CONSTANTS &&
+  if (options->constants != (gchar *)(&DEFAULT_CONSTANTS) &&
       options->constants != NULL) {
-    g_free (options->constants);
+    g_free ((gpointer)options->constants);
   }
 
   if (config_file != NULL &&
-      config_file != DEFAULT_CONFIG_FILE) {
-    g_free (config_file);
+      config_file != (gchar *)(&DEFAULT_CONFIG_FILE)) {
+    g_free ((gpointer)config_file);
     config_file = NULL;
   }
 
@@ -760,7 +760,6 @@ gint
 parse_json(gchar * config_file, GstAppOptions * options)
 {
   JsonParser *parser = NULL;
-  JsonArray *pipeline_info = NULL;
   JsonNode *root = NULL;
   JsonObject *root_obj = NULL;
   GError *error = NULL;
@@ -803,7 +802,7 @@ parse_json(gchar * config_file, GstAppOptions * options)
   }
 
   if (json_object_has_member (root_obj, "ml-framework")) {
-    gchar* framework =
+    const gchar* framework =
         json_object_get_string_member (root_obj, "ml-framework");
     if (g_strcmp0 (framework, "snpe") == 0)
       options->model_type = GST_MODEL_TYPE_SNPE;
@@ -835,7 +834,7 @@ parse_json(gchar * config_file, GstAppOptions * options)
   }
 
   if (json_object_has_member (root_obj, "runtime")) {
-    gchar* delegate =
+    const gchar* delegate =
         json_object_get_string_member (root_obj, "runtime");
 
     if (g_strcmp0 (delegate, "cpu") == 0)
@@ -869,7 +868,6 @@ main (gint argc, gchar * argv[])
   guint intrpt_watch_id = 0;
   GstAppOptions options = {};
   gchar *config_file = NULL;
-  GError *error = NULL;
 
   // Set Display environment variables
   setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
@@ -901,10 +899,10 @@ main (gint argc, gchar * argv[])
 
     gboolean camera_is_available = is_camera_available ();
 
-  gchar camera_description[255] = {};
+  gchar camera_description[128] = {};
 
   if (camera_is_available) {
-    snprintf (camera_description, 255,
+    snprintf (camera_description, 128,
       "  camera: 0 or 1\n"
       "      Select (0) for Primary Camera and (1) for secondary one.\n"
     );
@@ -942,7 +940,7 @@ main (gint argc, gchar * argv[])
       "  runtime: \"cpu\" or \"gpu\" or \"dsp\"\n"
       "      This is an optional parameter. If not filled, "
       "then default dsp runtime is selected\n",
-      app_name, DEFAULT_CONFIG_FILE);
+      app_name, DEFAULT_CONFIG_FILE, camera_description);
   help_description[2047] = '\0';
 
   // Parse command line entries.

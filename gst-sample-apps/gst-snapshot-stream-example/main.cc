@@ -266,25 +266,25 @@ main (gint argc, gchar * argv[])
   GOptionEntry entries[] = {
     { "input_width", 'W', 0, G_OPTION_ARG_INT,
       &appctx->input_width,
-      "camera input width  -Default width:1280"
+      "camera input width", "-Default width:1280"
     },
     { "input_height", 'H', 0, G_OPTION_ARG_INT,
       &appctx->input_height,
-      "camera input height  -Default height:720"
+      "camera input height", "-Default height:720"
     },
     { "snap_width", 'w', 0, G_OPTION_ARG_INT,
       &appctx->snap_width,
-      "snapshot image width  -Default width:3840"
+      "snapshot image width", "-Default width:3840"
     },
     { "snap_height", 'h', 0, G_OPTION_ARG_INT,
       &appctx->snap_height,
-      "snapshot image height  -Default height:2160"
+      "snapshot image height", "-Default height:2160"
     },
     { "snapcount", 'c', 0, G_OPTION_ARG_INT,
       &appctx->snapcount,
-      "max number of snapshot count  -Default count:5"
+      "max number of snapshot count", "-Default count:5"
     },
-    { NULL }
+    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   // Parse command line entries.

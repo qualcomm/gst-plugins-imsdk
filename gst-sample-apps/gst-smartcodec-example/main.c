@@ -430,12 +430,12 @@ main (gint argc, gchar * argv[])
   {"height", 'h', 0, G_OPTION_ARG_INT, &appctx->height, "height",
       "image height"},
   {"output_file", 'o', 0, G_OPTION_ARG_STRING, &appctx->output_file,
-      "Output Filename , \
-          -o /opt/video.mp4"},
+    "Output Filename",
+    "-o /opt/video.mp4"},
   {"input_file", 'i', 0, G_OPTION_ARG_FILENAME, &appctx->input_file,
-      "Input Filename - i/p mp4 file path and name"
-        "e.g. -i /opt/<file_name>.mp4"},
-  {NULL}
+    "Input Filename - i/p mp4 file path and name",
+    "e.g. -i /opt/<file_name>.mp4"},
+  { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   // Parse command line entries.

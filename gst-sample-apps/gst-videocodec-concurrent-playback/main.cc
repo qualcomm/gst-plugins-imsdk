@@ -225,7 +225,7 @@ main (gint argc, gchar * argv[])
       "Output Filename",
       "  e.g. -o /opt/<filename>.yuv"
     },
-    { NULL }
+    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   // Parse command line entries.

@@ -678,7 +678,6 @@ main (gint argc, gchar * argv[])
   gchar *output = NULL;
   GstCameraAppContext appctx = {};
   guint intrpt_watch_id = 0;
-  gboolean ret = FALSE;
 
   appctx.stream_cnt = 0;
   appctx.use_display = FALSE;

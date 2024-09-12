@@ -138,21 +138,21 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
   }
 
   if (options->file_path != NULL) {
-    g_free (options->file_path);
+    g_free ((gpointer)options->file_path);
   }
 
   if (options->rtsp_ip_port != NULL) {
-    g_free (options->rtsp_ip_port);
+    g_free ((gpointer)options->rtsp_ip_port);
   }
 
-  if (options->model_path != DEFAULT_QNN_FACE_DETECTION_MODEL &&
+  if (options->model_path != (gchar *)(&DEFAULT_QNN_FACE_DETECTION_MODEL) &&
       options->model_path != NULL) {
-    g_free (options->model_path);
+    g_free ((gpointer)options->model_path);
   }
 
-  if (options->labels_path != DEFAULT_FACE_DETECTION_LABELS &&
+  if (options->labels_path != (gchar *)(&DEFAULT_FACE_DETECTION_LABELS) &&
       options->labels_path != NULL) {
-    g_free (options->labels_path);
+    g_free ((gpointer)options->labels_path);
   }
 
   if (appctx->pipeline != NULL) {
@@ -446,7 +446,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   g_object_set (G_OBJECT (waylandsink), "fullscreen", TRUE, NULL);
 
   // 2.10 Set the caps filter for detection_filter
-  pad_filter = gst_caps_new_simple ("text/x-raw", NULL);
+  pad_filter = gst_caps_new_simple ("text/x-raw", NULL, NULL);
   g_object_set (G_OBJECT (detection_filter), "caps", pad_filter, NULL);
   gst_caps_unref (pad_filter);
 

@@ -88,7 +88,7 @@ gst_app_context_new ()
   ctx->plugins = NULL;
   ctx->mloop = NULL;
   ctx->input_file = NULL;
-  ctx->output_file = DEFAULT_OUTPUT_FILENAME;
+  ctx->output_file = const_cast<gchar *> (DEFAULT_OUTPUT_FILENAME);
   ctx->input_format = GST_VCODEC_NONE;
 
   return ctx;
@@ -134,13 +134,14 @@ gst_app_context_free (GstTranscodeAppContext * appctx)
   }
 
   if (appctx->input_file != NULL)
-    g_free (appctx->input_file);
+    g_free ((gpointer)appctx->input_file);
 
-  if (!appctx->output_file && appctx->output_file != DEFAULT_OUTPUT_FILENAME)
-    g_free (appctx->output_file);
+  if (appctx->output_file != NULL &&
+    appctx->output_file != (gchar *)(&DEFAULT_OUTPUT_FILENAME))
+    g_free ((gpointer)appctx->output_file);
 
   if (appctx != NULL)
-    g_free (appctx);
+    g_free ((gpointer)appctx);
 }
 /**
  * Function to link the dynamic video pad of demux to queue:
@@ -154,13 +155,12 @@ on_pad_added (GstElement * element, GstPad * pad, gpointer data)
 {
   GstPad *sinkpad;
   GstElement *queue = (GstElement *) data;
-  GstPadLinkReturn ret;
 
   // Get the static sink pad from the queue
   sinkpad = gst_element_get_static_pad (queue, "sink");
 
   // Link the source pad to the sink pad
-  ret = gst_pad_link (pad, sinkpad);
+  gst_pad_link (pad, sinkpad);
   gst_object_unref (sinkpad);
 }
 
@@ -178,7 +178,6 @@ create_pipe (GstTranscodeAppContext * appctx)
   // Declare the elements of the pipeline
   GstElement *filesrc, *qtdemux, *queue, *encoder, *enc_parse, *dec_parse,
       *decoder, *mp4mux, *filesink;
-  GstCaps *filtercaps;
   GstStructure *fcontrols;
   gboolean ret = FALSE;
 
@@ -307,16 +306,16 @@ main (gint argc, gchar *argv[])
   // Configure input parameters
   GOptionEntry entries[] = {
     { "input_file", 'i', 0, G_OPTION_ARG_FILENAME, &appctx->input_file,
-      "Input Filename - i/p AVC/HEVC mp4 file path and name \
-          -i /opt/<h264_file/h265_file>.mp4" },
+      "Input Filename - i/p AVC/HEVC mp4 file path and name",
+      "-i /opt/<h264_file/h265_file>.mp4" },
     { "input_codec", 'c', 0, G_OPTION_ARG_INT, &appctx->input_format,
-      "Input codec type - AVC/HEVC \
-       -c 1(AVC)/2(HEVC)" },
+      "Input codec type - AVC/HEVC",
+       "-c 1(AVC)/2(HEVC)" },
     { "output_file", 'o', 0, G_OPTION_ARG_FILENAME, &appctx->output_file,
       "Output Filename - o/p filename & path where user want to \
-        store AVC/HEVC stream \
-        -o /opt/<h264_file/h265_file>.mp4 " },
-    { NULL }
+      store AVC/HEVC stream",
+      "-o /opt/<h264_file/h265_file>.mp4 " },
+    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   // Parse command line entries.

@@ -16,6 +16,9 @@ pkg_check_modules(GST
 # GStreamer gst-usb-single-camera-app
 set(GST_EXAMPLE_BIN gst-usb-single-camera-app)
 
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
+
 add_executable(${GST_EXAMPLE_BIN}
   main.c
 )

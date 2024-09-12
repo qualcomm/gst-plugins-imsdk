@@ -213,11 +213,11 @@ main (gint argc, gchar *argv[])
   // Configure input parameters
   GOptionEntry entries[] = {
     { "stream_cnt", 'c', 0, G_OPTION_ARG_INT, &appctx->stream_cnt,
-      "No of stream for decode and composition 2, 4, 8 or 16" },
+      "No of stream for decode and composition", "2, 4, 8 or 16" },
     { "input_file", 'i', 0, G_OPTION_ARG_FILENAME_ARRAY, &appctx->input_files,
-      "Input AVC Filenames - Path of AVC files to be played with filenames, \
-      e.g. -i /opt/<h264_file>.mp4 -i /opt/<h264_file>.mp4" },
-    { NULL }
+      "Input AVC Filenames - Path of AVC files to be played with filenames",
+      "e.g. -i /opt/<h264_file>.mp4 -i /opt/<h264_file>.mp4" },
+    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   // Parse the command line entries
@@ -252,8 +252,15 @@ main (gint argc, gchar *argv[])
   // Check the input parameters from the user
   if (!appctx->input_files || (appctx->stream_cnt == 0) ||
       (appctx->stream_cnt & (appctx->stream_cnt-1))) {
-    g_printerr ("\n one of input param is not valid: count %d input file %s\n",
-        appctx->stream_cnt, appctx->input_files);
+    g_printerr ("\n one of input param is not valid: count %d input files:\n",
+        appctx->stream_cnt);
+
+    gint idx = 0;
+    while (appctx->input_files && (appctx->input_files[idx] != NULL)) {
+      g_printerr ("%s, ", appctx->input_files[idx]);
+      idx++;
+    }
+
     g_print ("\n usage: gst-concurrent-videoplay-composition --help \n");
     gst_app_context_free (appctx);
     return -1;

@@ -135,8 +135,8 @@ gst_app_context_new ()
   ctx->rotate = DEFAULT_ROTATION;
   ctx->input_width = DEFAULT_INPUT_WIDTH;
   ctx->input_height = DEFAULT_INPUT_HEIGHT;
-  ctx->output_width = NULL;
-  ctx->output_height = NULL;
+  ctx->output_width = 0;
+  ctx->output_height = 0;
   ctx->flip_type = GST_FLIP_TYPE_NONE;
 
   return ctx;
@@ -161,13 +161,15 @@ gst_app_context_free (GstTransformAppContext * appctx)
   }
 
   if (appctx->input_file != NULL)
-    g_free (appctx->input_file);
+    g_free ((gpointer)appctx->input_file);
 
-  if (appctx->output_file != NULL && appctx->output_file != DEFAULT_OUTPUT_FILE)
-    g_free (appctx->output_file);
+  if (appctx->output_file != NULL &&
+    appctx->output_file != (gchar *)(&DEFAULT_OUTPUT_FILE))
+    g_free ((gpointer)appctx->output_file);
+
 
   if (appctx != NULL)
-    g_free (appctx);
+    g_free ((gpointer)appctx);
 }
 
 /**
@@ -203,7 +205,7 @@ static gboolean
 create_transform_pipeline (GstTransformAppContext * appctx)
 {
   GstElement *qtiqmmfsrc, *qmmfsrc_filter, *scale_filter, *tee;
-  GstElement *filesrc, *qtdemux, *vparse, *vdecoder, *vtransform;
+  GstElement *filesrc, *qtdemux, *vparse, *vdecoder;
   GstElement *qtivtransform, *encoder, *h264parse, *pqueue;
   GstElement *queue[QUEUE_COUNT];
   GstElement *mp4mux, *filesink, *waylandsink;
@@ -347,7 +349,7 @@ create_transform_pipeline (GstTransformAppContext * appctx)
     gst_caps_unref (filtercaps);
   }
   // Configure the scale stream capabilities based on width and height
-  if (appctx->output_width == NULL && appctx->output_height == NULL) {
+  if (appctx->output_width == 0 && appctx->output_height == 0) {
     appctx->output_width = appctx->input_width;
     appctx->output_height = appctx->input_height;
   }
@@ -431,8 +433,9 @@ error:
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     gst_bin_remove_many (GST_BIN (appctx->pipeline), queue[i], NULL);
-    return FALSE;
   }
+
+  return FALSE;
 }
 
 gint
@@ -471,8 +474,8 @@ main (gint argc, gchar ** argv)
     memcpy (camera_entries, temp_camera_entries, 2 * sizeof (GOptionEntry));
   } else {
     GOptionEntry temp_camera_entries[] = {
-      NULL,
-      NULL,
+      { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL },
+      { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
     };
 
     memcpy (camera_entries, temp_camera_entries, 2 * sizeof (GOptionEntry));
@@ -488,15 +491,15 @@ main (gint argc, gchar ** argv)
   {"output_width", 'w', 0, G_OPTION_ARG_INT, &app_ctx->output_width, "Width",
       "image scale output width, default 1920"},
   {"output_height", 'h', 0, G_OPTION_ARG_INT, &app_ctx->output_height, "Height",
-      "image scale output height, default 1080"},
+      "image scale output height default 1080"},
   {"input_file", 'i', 0, G_OPTION_ARG_FILENAME, &app_ctx->input_file,
-      "Input Filename - i/p mp4 file path and name"
+      "Input Filename - i/p mp4 file path and name",
       "e.g. -i /opt/<file_name>.mp4"},
   {"output_file", 'o', 0, G_OPTION_ARG_STRING, &app_ctx->output_file,
       "Output Filename", "default - /opt/video_AVC_transform.mp4"},
   camera_entries[0],
   camera_entries[1],
-  {NULL}
+  { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   // Parse the command line entries
