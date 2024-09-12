@@ -106,26 +106,26 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
     appctx->pipeline = NULL;
   }
 
-  if (options->constants != DEFAULT_CONSTANTS &&
+  if (options->constants != (gchar *)(&DEFAULT_CONSTANTS) &&
       options->constants != NULL) {
-    g_free (options->constants);
+    g_free ((gpointer)options->constants);
     options->constants = NULL;
   }
 
-  if (options->model_path != DEFAULT_TFLITE_MODEL &&
+  if (options->model_path != (gchar *)(&DEFAULT_TFLITE_MODEL) &&
       options->model_path != NULL) {
-    g_free (options->model_path);
+    g_free ((gpointer)options->model_path);
     options->model_path = NULL;
   }
 
-  if (options->input_file_path != DEFAULT_INPUT_FILE_PATH &&
+  if (options->input_file_path != (gchar *)(&DEFAULT_INPUT_FILE_PATH) &&
       options->input_file_path != NULL) {
-    g_free (options->input_file_path);
+    g_free ((gpointer)options->input_file_path);
     options->input_file_path = NULL;
   }
 
   if (options->output_file_path != NULL) {
-    g_free (options->output_file_path);
+    g_free ((gpointer)options->output_file_path);
     options->output_file_path = NULL;
   }
 }
@@ -591,6 +591,7 @@ main (gint argc, gchar * argv[])
     { "display", 'd', 0, G_OPTION_ARG_NONE,
       &options.display,
       "Display stream on wayland (Default).",
+      "enable flag"
     },
     { "output-file", 'o', 0, G_OPTION_ARG_STRING,
       &options.output_file_path,

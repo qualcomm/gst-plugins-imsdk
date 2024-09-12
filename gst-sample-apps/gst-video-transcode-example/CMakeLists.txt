@@ -16,6 +16,9 @@ pkg_check_modules(GST
 # gst-video-transcode-example
 set(GST_EXAMPLE_BIN gst-video-transcode-example)
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
+
 add_executable(${GST_EXAMPLE_BIN}
   main.cc
 )

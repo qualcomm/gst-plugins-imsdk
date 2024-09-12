@@ -194,7 +194,6 @@ static gboolean
 handle_app_interrupt_signal (gpointer userdata)
 {
   GstActivateDeactivateAppContext *appctx = (GstActivateDeactivateAppContext *) userdata;
-  guint idx = 0;
   GstState state, pending;
 
   g_print ("\n\nReceived an interrupt signal, send EOS ...\n");
@@ -640,7 +639,6 @@ static GstStreamInf *
 create_stream (GstActivateDeactivateAppContext * appctx, gboolean dummy,
     gint x, gint y, gint w, gint h)
 {
-  gchar temp_str[100];
   gboolean ret = FALSE;
   GstStreamInf *stream = g_new0 (GstStreamInf, 1);
 
@@ -1143,7 +1141,6 @@ main (gint argc, gchar * argv[])
   GOptionContext *ctx = NULL;
   GstActivateDeactivateAppContext *appctx = NULL;
   GMainLoop *mloop = NULL;
-  GstCaps *filtercaps;
   GstElement *pipeline = NULL;
   GstElement *qtiqmmfsrc = NULL;
   GstBus *bus = NULL;
@@ -1172,7 +1169,7 @@ main (gint argc, gchar * argv[])
       "What output to use",
       "Accepted values: \"File\" or \"Display\""
     },
-    { NULL }
+    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   // Parse command line entries.

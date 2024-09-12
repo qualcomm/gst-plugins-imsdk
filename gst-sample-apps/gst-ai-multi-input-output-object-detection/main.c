@@ -137,34 +137,34 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
     appctx->mloop = NULL;
   }
 
-  if (options->rtsp_ip_port != DEFAULT_RTSP_IP_PORT &&
+  if (options->rtsp_ip_port != (gchar *)(&DEFAULT_RTSP_IP_PORT) &&
       options->rtsp_ip_port != NULL) {
-    g_free (options->rtsp_ip_port);
+    g_free ((gpointer)options->rtsp_ip_port);
   }
 
-  if (options->model_path != DEFAULT_TFLITE_YOLOV5_MODEL &&
+  if (options->model_path != (gchar *)(&DEFAULT_TFLITE_YOLOV5_MODEL) &&
       options->model_path != NULL) {
-    g_free (options->model_path);
+    g_free ((gpointer)options->model_path);
   }
 
-  if (options->labels_path != DEFAULT_YOLOV5_LABELS &&
+  if (options->labels_path != (gchar *)(&DEFAULT_YOLOV5_LABELS) &&
       options->labels_path != NULL) {
-    g_free (options->labels_path);
+    g_free ((gpointer)options->labels_path);
   }
 
-  if (options->constants != DEFAULT_CONSTANTS &&
+  if (options->constants != (gchar *)(&DEFAULT_CONSTANTS) &&
       options->constants != NULL) {
-    g_free (options->constants);
+    g_free ((gpointer)options->constants);
   }
 
-  if (options->ip_address != DEFAULT_IP &&
+  if (options->ip_address != (gchar *)(&DEFAULT_IP) &&
       options->ip_address != NULL) {
-    g_free (options->ip_address);
+    g_free ((gpointer)options->ip_address);
   }
 
   if (options->port_num != DEFAULT_PORT &&
-      options->port_num != NULL) {
-    g_free (options->port_num);
+      options->port_num != 0) {
+    options->port_num = 0;
   }
 
   if (appctx->pipeline != NULL) {
@@ -1173,8 +1173,8 @@ main (gint argc, gchar * argv[])
     memcpy (camera_entries, temp_camera_entries, 2 * sizeof (GOptionEntry));
   } else {
     GOptionEntry temp_camera_entries[] = {
-      NULL,
-      NULL,
+      { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL },
+      { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
     };
 
     memcpy (camera_entries, temp_camera_entries, 2 * sizeof (GOptionEntry));
@@ -1247,15 +1247,17 @@ main (gint argc, gchar * argv[])
     },
     { "ip", 'i', 0, G_OPTION_ARG_STRING,
       &options.ip_address,
-      "Valid IP address in case of RSTP streaming output"
+      "RSTP server listening address.",
+      "Valid IP Address"
     },
     { "port", 'p', 0, G_OPTION_ARG_INT,
       &options.port_num,
-      "Valid port number in case of RSTP streaming output"
+      "RSTP server listening port",
+      "Port number."
     },
     camera_entries[0],
     camera_entries[1],
-    { NULL }
+    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];

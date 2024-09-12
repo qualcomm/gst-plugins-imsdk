@@ -128,7 +128,6 @@ static gboolean
 handle_bus_message (GstBus * bus, GstMessage * message, gpointer userdata)
 {
   GstAppContext *appctx = GST_APP_CONTEXT_CAST (userdata);
-  static GstState target_state = GST_STATE_VOID_PENDING;
 
   switch (GST_MESSAGE_TYPE (message)) {
     case GST_MESSAGE_ERROR:
@@ -188,7 +187,6 @@ handle_bus_message (GstBus * bus, GstMessage * message, gpointer userdata)
           gst_element_state_get_name (state), name);
 
       gst_element_set_state (appctx->pipeline, state);
-      target_state = state;
 
       g_free (name);
 
@@ -456,8 +454,6 @@ query_position (GstAppContext * appctx)
 static gboolean
 perform_seek (GstAppContext * appctx, gdouble rate, gint64 position)
 {
-  GstEvent *seek_event;
-
   // If rate > 0, seek segment will be from given pos to end of stream.
   // Whereas if rate < 0 (playing backwards), seek segment will be from
   // start of stream to given pos.
@@ -480,7 +476,6 @@ handle_ffr_menu (GstAppContext * appctx, gint * opt)
   gchar *str = NULL, *endptr;
   gint64 pos = 0;
   gint input = 0;
-  guint bitrate = 0;
   gint mul = (*opt == GST_REWIND_OPTION ? -1 : 1);
 
   print_ffr_menu (*opt);
@@ -650,8 +645,8 @@ main (gint argc, gchar *argv[])
     {"eos-on-shutdown", 'e', 0, G_OPTION_ARG_NONE, &eos_on_shutdown,
      "Send EOS event before transition from PLAYING to READY/NULL state.",
      NULL},
-    {G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_STRING_ARRAY, &pipeline, NULL},
-    {NULL}
+    {G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_STRING_ARRAY, &pipeline, NULL, NULL},
+    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   optctx = g_option_context_new ("<pipeline>");

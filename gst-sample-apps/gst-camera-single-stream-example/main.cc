@@ -107,7 +107,7 @@ gst_app_context_new ()
   ctx->mloop = NULL;
   ctx->plugins = NULL;
   ctx->output_file = NULL;
-  ctx->ip_address = DEFAULT_IP;
+  ctx->ip_address = const_cast<gchar *> (DEFAULT_IP);
   ctx->port_num = DEFAULT_PORT;
   ctx->sinktype = GST_WAYLANDSINK;
   ctx->width = DEFAULT_WIDTH;
@@ -233,7 +233,7 @@ create_pipe (GstCameraAppContext * appctx)
     }
   } else if (appctx->sinktype == GST_YUV_DUMP) {
     // set the output file location for filesink element
-    appctx->output_file = DEFAULT_OP_YUV_FILENAME;
+    appctx->output_file = const_cast<gchar *> (DEFAULT_OP_YUV_FILENAME);
     filesink = gst_element_factory_make ("multifilesink", "filesink");
     g_object_set (G_OBJECT (filesink), "location", appctx->output_file, NULL);
     g_object_set (G_OBJECT (filesink), "enable-last-sample", false, NULL);
@@ -301,7 +301,7 @@ create_pipe (GstCameraAppContext * appctx)
       mp4mux = gst_element_factory_make ("mp4mux", "mp4mux");
 
       // Create filesink element for storing the encoding stream
-      appctx->output_file = DEFAULT_OP_MP4_FILENAME;
+      appctx->output_file = const_cast<gchar *> (DEFAULT_OP_MP4_FILENAME);
       filesink = gst_element_factory_make ("filesink", "filesink");
       g_object_set (G_OBJECT (filesink), "location", appctx->output_file, NULL);
 
@@ -382,18 +382,18 @@ main (gint argc, gchar *argv[])
     { "height", 'h', 0, G_OPTION_ARG_INT, &appctx->height, "height",
       "camera height" },
     { "output", 'o', 0, G_OPTION_ARG_INT, &appctx->sinktype,
-      "Sinktype"
+      "Sinktype",
       "\n\t0-WAYLANDSINK"
       "\n\t1-VIDEOENCODING"
       "\n\t2-YUVDUMP"
       "\n\t3-RTSPSTREAMING" },
     { "ip", 'i', 0, G_OPTION_ARG_STRING,
       &appctx->ip_address,
-      "Valid IP address in case of RSTP streaming output" },
+      "RSTP server listening address.", "Valid IP Address" },
     { "port", 'p', 0, G_OPTION_ARG_INT,
       &appctx->port_num,
-      "Valid port number in case of RSTP streaming output" },
-    { NULL }
+      "RSTP server listening port", "Port number." },
+    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
     };
 
   // Parse command line entries.

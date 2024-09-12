@@ -144,39 +144,39 @@ gst_app_context_free
   }
 
   if (options->file_path != NULL) {
-    g_free (options->file_path);
+    g_free ((gpointer)options->file_path);
   }
 
   if (options->rtsp_ip_port != NULL) {
-    g_free (options->rtsp_ip_port);
+    g_free ((gpointer)options->rtsp_ip_port);
   }
 
-  if (options->model_path != DEFAULT_SNPE_YOLOV5_MODEL &&
-      options->model_path != DEFAULT_SNPE_YOLOV8_MODEL &&
-      options->model_path != DEFAULT_SNPE_YOLONAS_MODEL &&
-      options->model_path != DEFAULT_TFLITE_YOLOV8_MODEL &&
-      options->model_path != DEFAULT_TFLITE_YOLOV5_MODEL &&
-      options->model_path != DEFAULT_QNN_YOLOV8_MODEL &&
+  if (options->model_path != (gchar *)(&DEFAULT_SNPE_YOLOV5_MODEL) &&
+      options->model_path != (gchar *)(&DEFAULT_SNPE_YOLOV8_MODEL) &&
+      options->model_path != (gchar *)(&DEFAULT_SNPE_YOLONAS_MODEL) &&
+      options->model_path != (gchar *)(&DEFAULT_TFLITE_YOLOV8_MODEL) &&
+      options->model_path != (gchar *)(&DEFAULT_TFLITE_YOLOV5_MODEL) &&
+      options->model_path != (gchar *)(&DEFAULT_QNN_YOLOV8_MODEL) &&
       options->model_path != NULL) {
-    g_free (options->model_path);
+    g_free ((gpointer)options->model_path);
   }
 
-  if (options->labels_path != DEFAULT_YOLOV5_LABELS &&
-      options->labels_path != DEFAULT_YOLOV8_LABELS &&
-      options->labels_path != DEFAULT_YOLONAS_LABELS &&
+  if (options->labels_path != (gchar *)(&DEFAULT_YOLOV5_LABELS) &&
+      options->labels_path != (gchar *)(&DEFAULT_YOLOV8_LABELS) &&
+      options->labels_path != (gchar *)(&DEFAULT_YOLONAS_LABELS) &&
       options->labels_path != NULL) {
-    g_free (options->labels_path);
+    g_free ((gpointer)options->labels_path);
   }
 
-  if (options->constants != DEFAULT_CONSTANTS_YOLOV5 &&
-      options->constants != DEFAULT_CONSTANTS_YOLOV8 &&
+  if (options->constants != (gchar *)(&DEFAULT_CONSTANTS_YOLOV5) &&
+      options->constants != (gchar *)(&DEFAULT_CONSTANTS_YOLOV8) &&
       options->constants != NULL) {
-    g_free (options->constants);
+    g_free ((gpointer)options->constants);
   }
 
   if (config_file != NULL &&
-      config_file != DEFAULT_CONFIG_FILE) {
-    g_free (config_file);
+      config_file != (gchar *)(&DEFAULT_CONFIG_FILE)) {
+    g_free ((gpointer)config_file);
     config_file = NULL;
   }
 
@@ -917,7 +917,6 @@ gint
 parse_json (gchar * config_file, GstAppOptions * options)
 {
   JsonParser *parser = NULL;
-  JsonArray *pipeline_info = NULL;
   JsonNode *root = NULL;
   JsonObject *root_obj = NULL;
   GError *error = NULL;
@@ -961,7 +960,7 @@ parse_json (gchar * config_file, GstAppOptions * options)
   }
 
   if (json_object_has_member (root_obj, "yolo-model-type")) {
-    gchar* yolo_model_type =
+    const gchar* yolo_model_type =
         json_object_get_string_member (root_obj, "yolo-model-type");
     if (g_strcmp0 (yolo_model_type, "yolov5") == 0)
       options->yolo_model_type = GST_YOLO_TYPE_V5;
@@ -978,7 +977,7 @@ parse_json (gchar * config_file, GstAppOptions * options)
   }
 
   if (json_object_has_member (root_obj, "ml-framework")) {
-    gchar* framework =
+    const gchar* framework =
         json_object_get_string_member (root_obj, "ml-framework");
     if (g_strcmp0 (framework, "snpe") == 0)
       options->model_type = GST_MODEL_TYPE_SNPE;
@@ -1016,7 +1015,7 @@ parse_json (gchar * config_file, GstAppOptions * options)
   }
 
   if (json_object_has_member (root_obj, "runtime")) {
-    gchar* delegate =
+    const gchar* delegate =
         json_object_get_string_member (root_obj, "runtime");
 
     if (g_strcmp0 (delegate, "cpu") == 0)
@@ -1045,12 +1044,11 @@ main (gint argc, gchar * argv[])
   GOptionContext *ctx = NULL;
   const gchar *app_name = NULL;
   GstAppContext appctx = {};
-  gchar help_description[2048];
+  gchar help_description[4096];
   gboolean ret = FALSE;
   guint intrpt_watch_id = 0;
   GstAppOptions options = {};
   gchar *config_file = NULL;
-  GError *error = NULL;
 
   // Set Display environment variables
   setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
@@ -1084,16 +1082,16 @@ main (gint argc, gchar * argv[])
 
   gboolean camera_is_available = is_camera_available ();
 
-  gchar camera_description[255] = {};
+  gchar camera_description[128] = {};
 
   if (camera_is_available) {
-    snprintf (camera_description, 255,
+    snprintf (camera_description, 128,
       "  camera: 0 or 1\n"
       "      Select (0) for Primary Camera and (1) for secondary one.\n"
     );
   }
 
-  snprintf (help_description, 2047, "\nExample:\n"
+  snprintf (help_description, 4095, "\nExample:\n"
       "  %s --config-file=%s\n"
       "\nThis Sample App demonstrates Object Detection on Input Stream\n"
       "\nConfig file Fields:\n"
@@ -1138,7 +1136,7 @@ main (gint argc, gchar * argv[])
       "      This is an optional parameter. If not filled, "
       "then default dsp runtime is selected\n",
       app_name, DEFAULT_CONFIG_FILE, camera_description);
-  help_description[2047] = '\0';
+  help_description[4095] = '\0';
 
     // Parse command line entries
   if ((ctx = g_option_context_new (help_description)) != NULL) {

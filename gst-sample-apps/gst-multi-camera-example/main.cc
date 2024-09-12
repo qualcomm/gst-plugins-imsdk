@@ -168,7 +168,7 @@ static gboolean
 create_camera_wayland_pipe (GstMultiCamAppContext * appctx)
 {
   // Declare the elements of the pipeline
-  GstElement *pipeline, *qtiqmmf_cam1, *waylandsink, *capsfilter_cam1;
+  GstElement *qtiqmmf_cam1, *waylandsink, *capsfilter_cam1;
   GstElement *qtiqmmf_cam2, *qtivcomposer, *capsfilter_cam2;
   GstCaps *filtercaps_cam1, *filtercaps_cam2;
   GstPad *composer_sink_1, *composer_sink_2;
@@ -478,7 +478,7 @@ main (gint argc, gchar *argv[])
       "\t\t\t\t\t   output",
       "\n\t0-DISPLAY"
       "\n\t1-FILE" },
-    { NULL }
+    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
     };
 
   // Parse command line entries.

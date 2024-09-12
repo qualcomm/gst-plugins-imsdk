@@ -269,31 +269,35 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
   }
 
   if (options->file_path != NULL) {
-    g_free (options->file_path);
+    g_free ((gpointer)options->file_path);
   }
 
   if (options->rtsp_ip_port != NULL) {
-    g_free (options->rtsp_ip_port);
+    g_free ((gpointer)options->rtsp_ip_port);
   }
 
-  if (options->object_detection_constants != DEFAULT_CONSTANTS_OBJECT_DETECTION &&
+  if (options->object_detection_constants != (gchar *)(
+      &DEFAULT_CONSTANTS_OBJECT_DETECTION) &&
       options->object_detection_constants != NULL) {
-    g_free (options->object_detection_constants);
+    g_free ((gpointer)options->object_detection_constants);
   }
 
-  if (options->pose_detection_constants != DEFAULT_CONSTANTS_POSE_DETECTION &&
+  if (options->pose_detection_constants != (gchar *)(
+      &DEFAULT_CONSTANTS_POSE_DETECTION) &&
       options->pose_detection_constants != NULL) {
-    g_free (options->pose_detection_constants);
+    g_free ((gpointer)options->pose_detection_constants);
   }
 
-  if (options->segmentation_constants != DEFAULT_CONSTANTS_SEGMENTATION &&
+  if (options->segmentation_constants != (gchar *)(
+      &DEFAULT_CONSTANTS_SEGMENTATION) &&
       options->segmentation_constants != NULL) {
-    g_free (options->segmentation_constants);
+    g_free ((gpointer)options->segmentation_constants);
   }
 
-  if (options->classification_constants != DEFAULT_CONSTANTS_CLASSIFICATION &&
+  if (options->classification_constants != (gchar *)(
+      &DEFAULT_CONSTANTS_CLASSIFICATION) &&
       options->classification_constants != NULL) {
-    g_free (options->classification_constants);
+    g_free ((gpointer)options->classification_constants);
   }
 
   if (appctx->pipeline != NULL) {
@@ -328,8 +332,6 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   gboolean ret = FALSE;
   gchar element_name[128];
   gint module_id;
-  gint width = DEFAULT_CAMERA_OUTPUT_WIDTH;
-  gint height = DEFAULT_CAMERA_OUTPUT_HEIGHT;
   gint framerate = DEFAULT_CAMERA_FRAME_RATE;
 
   update_window_grid (coordinates);

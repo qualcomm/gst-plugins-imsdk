@@ -159,8 +159,8 @@ update_window_grid (GstVideoRectangle *positions, guint x, guint y)
   win_w = width / x;
   win_h = height / y;
 
-  for (gint i = 0; i < x; i++) {
-    for (gint j = 0; j < y; j++) {
+  for (guint i = 0; i < x; i++) {
+    for (guint j = 0; j < y; j++) {
       positions[i*x+j].x = win_w*j;
       positions[i*x+j].y = win_h*i;
       positions[i*x+j].w = win_w;
@@ -1001,7 +1001,7 @@ main (gint argc, gchar * argv[])
   GError *error = NULL;
   GstAppContext appctx = {};
   GstAppOptions options[MAX_SRCS_COUNT] = {{ 0 }};
-  GstSourceCount source_count = {{ 0 }};
+  GstSourceCount source_count = { 0 };
   struct rlimit rl;
   guint intrpt_watch_id = 0;
   gboolean ret = FALSE;
@@ -1108,8 +1108,8 @@ main (gint argc, gchar * argv[])
   // Extract pipeline-info array
   pipeline_info = json_object_get_array_member (root_obj, "pipeline-info");
   streams = json_array_get_length (pipeline_info);
-  for (guint i = 0; i < streams; i++) {
-    gchar file_name[1024] = {NULL};
+  for (gint i = 0; i < streams; i++) {
+    gchar file_name[1024] = {};
     JsonObject *info = NULL, *input_file_info = NULL;
     gint id;
     const gchar *input_type = NULL;
@@ -1203,7 +1203,7 @@ main (gint argc, gchar * argv[])
     return -EINVAL;
   }
 
-  for (guint id = 0; id < streams; id++) {
+  for (gint id = 0; id < streams; id++) {
     if (!file_exists (options[id].model_path)) {
       g_printerr ("Invalid model file path: %s\n", options[id].model_path);
       gst_app_context_free (&appctx, options, source_count, streams);

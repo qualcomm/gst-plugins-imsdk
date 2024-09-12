@@ -100,7 +100,7 @@ gst_app_context_new ()
   ctx->width = DEFAULT_OUTPUT_WIDTH;
   ctx->height = DEFAULT_OUTPUT_HEIGHT;
   ctx->input_format = GST_VCODEC_AVC;
-  ctx->output_file = DEFAULT_OUTPUT_FILENAME;
+  ctx->output_file = const_cast<gchar *> (DEFAULT_OUTPUT_FILENAME);
 
   return ctx;
 }
@@ -124,10 +124,11 @@ gst_app_context_free (GstAudioVideoAppContext * ctx)
     ctx->pipeline = NULL;
   }
 
-  if (ctx->output_file != NULL && ctx->output_file != DEFAULT_OUTPUT_FILENAME)
-    g_free (ctx->output_file);
+  if (ctx->output_file != NULL &&
+    ctx->output_file != (gchar *)(&DEFAULT_OUTPUT_FILENAME))
+    g_free ((gpointer)ctx->output_file);
 
-  g_free (ctx);
+  g_free ((gpointer)ctx);
 }
 
 /**
@@ -227,11 +228,12 @@ main (gint argc, gchar *argv[])
     { "height", 'h', 0, G_OPTION_ARG_INT, &appctx->height,
       "height", "camera height" },
     { "input_videocodec", 'c', 0, G_OPTION_ARG_INT, &appctx->input_format,
+      "input video codec",
       "-c 1(AVC)/2(HEVC)" },
     { "output_file", 'o', 0, G_OPTION_ARG_STRING, &appctx->output_file,
-      "output filename \
-      e.g. -o /opt/audiovideo.mp4" },
-    { NULL }
+      "output filename",
+      "e.g. -o /opt/audiovideo.mp4" },
+    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
     };
 
   // Parse the command line entries

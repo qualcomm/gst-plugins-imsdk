@@ -983,7 +983,7 @@ gst_ml_qnn_engine_new (GstStructure *settings)
 
     // TODO: Workaround! Need to handle tensors of different data type to avoid
     // buffer allocation and buffer copy
-    for (auto dim = 0; dim < QNN_TENSOR_RANK (output_tensor); dim++) {
+    for (uint32_t dim = 0; dim < QNN_TENSOR_RANK (output_tensor); dim++) {
       value = QNN_TENSOR_DIMENSION (output_tensor, dim);
       value = (value == 0) ? 1 : value;
       size = (size != 0) ? (size * value) : value;
@@ -1001,7 +1001,7 @@ gst_ml_qnn_engine_new (GstStructure *settings)
     if (output_list != NULL) {
       std::string tensor_name = (gchar*)(g_list_nth_data (output_list, idx));
 
-      for (auto num = 0; num < graph_info->numOutputTensors; num++) {
+      for (uint32_t num = 0; num < graph_info->numOutputTensors; num++) {
         output_tensor = &(graph_info->outputTensors[num]);
 
         // Record the graph tensor indices of the output tensors

@@ -151,8 +151,8 @@ update_window_grid (GstVideoRectangle *positions, guint x, guint y)
   win_w = width / x;
   win_h = height / y;
 
-  for (gint i = 0; i < x; i++) {
-    for (gint j = 0; j < y; j++) {
+  for (guint i = 0; i < x; i++) {
+    for (guint j = 0; j < y; j++) {
       GstVideoRectangle window = {win_w*j, win_h*i, win_w, win_h};
       positions[i*x+j] = window;
     }
@@ -364,39 +364,40 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
   }
 
   if (options->rtsp_ip_port != NULL &&
-      options->rtsp_ip_port != DEFAULT_RTSP_IP_PORT) {
-    g_free (options->rtsp_ip_port);
+      options->rtsp_ip_port != (gchar *)(&DEFAULT_RTSP_IP_PORT)) {
+    g_free ((gpointer)options->rtsp_ip_port);
     options->rtsp_ip_port = NULL;
   }
 
   if (options->model_path != NULL &&
-    options->model_path != DEFAULT_TFLITE_YOLOV8_MODEL &&
-    options->model_path != DEFAULT_TFLITE_INCEPTIONV3_MODEL) {
-    g_free (options->model_path);
+    options->model_path != (gchar *)(&DEFAULT_TFLITE_YOLOV8_MODEL) &&
+    options->model_path != (gchar *)(&DEFAULT_TFLITE_INCEPTIONV3_MODEL)) {
+    g_free ((gpointer)options->model_path);
     options->model_path = NULL;
   }
 
   if (options->labels_path != NULL &&
-    options->labels_path != DEFAULT_YOLOV8_LABELS &&
-    options->labels_path != DEFAULT_CLASSIFICATION_LABELS) {
-    g_free (options->labels_path);
+    options->labels_path != (gchar *)(&DEFAULT_YOLOV8_LABELS) &&
+    options->labels_path != (gchar *)(&DEFAULT_CLASSIFICATION_LABELS)) {
+    g_free ((gpointer)options->labels_path);
     options->labels_path = NULL;
   }
 
   if (options->out_file != NULL) {
-    g_free (options->out_file);
+    g_free ((gpointer)options->out_file);
     options->out_file = NULL;
   }
 
   if (options->constants != NULL &&
-    options->constants != DEFAULT_DETECTION_CONSTANTS &&
-    options->constants != DEFAULT_CLASSIFICATION_CONSTANTS) {
-    g_free (options->constants);
+    options->constants != (gchar *)(&DEFAULT_DETECTION_CONSTANTS) &&
+    options->constants != (gchar *)(&DEFAULT_CLASSIFICATION_CONSTANTS)) {
+    g_free ((gpointer)options->constants);
     options->constants = NULL;
   }
 
-  if (options->ip_address != NULL && options->ip_address != DEFAULT_IP) {
-    g_free (options->ip_address);
+  if (options->ip_address != NULL &&
+    options->ip_address != (gchar *)(&DEFAULT_IP)) {
+    g_free ((gpointer)options->ip_address);
     options->ip_address = NULL;
   }
 
@@ -1241,8 +1242,8 @@ main (gint argc, gchar * argv[])
     memcpy (camera_entries, temp_camera_entries, 2 * sizeof (GOptionEntry));
   } else {
     GOptionEntry temp_camera_entries[] = {
-      NULL,
-      NULL,
+      { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL },
+      { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
     };
 
     memcpy (camera_entries, temp_camera_entries, 2 * sizeof (GOptionEntry));
@@ -1326,15 +1327,17 @@ main (gint argc, gchar * argv[])
     },
     { "ip", 'i', 0, G_OPTION_ARG_STRING,
       &options.ip_address,
-      "Valid IP address in case of RSTP streaming output"
+      "RSTP server listening address.",
+      "Valid IP Address"
     },
     { "port", 'p', 0, G_OPTION_ARG_INT,
       &options.port_num,
-      "Valid port number in case of RSTP streaming output"
+      "RSTP server listening port",
+      "Port number."
     },
     camera_entries[0],
     camera_entries[1],
-    { NULL }
+    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];

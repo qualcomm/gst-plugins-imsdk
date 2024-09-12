@@ -74,7 +74,6 @@ static gboolean
 handle_interrupt_signal (gpointer userdata)
 {
   GstAppContext *appctx = (GstAppContext *) userdata;
-  guint idx = 0;
   GstState state, pending;
 
   g_print ("\n\nReceived an interrupt signal, send EOS ...\n");
@@ -415,7 +414,6 @@ release_display_stream (GstAppContext * appctx, GstStreamInf * stream)
 static GstStreamInf *
 create_stream (GstAppContext * appctx, gint x, gint y, gint w, gint h)
 {
-  gchar temp_str[100];
   gboolean ret = FALSE;
   GstStreamInf *stream = g_new0 (GstStreamInf, 1);
 
@@ -591,7 +589,7 @@ thread_fn (gpointer user_data)
   // After the successful link, will syncronize the state of the new elements
   // to the pipeline state.
   g_print ("Create 480p stream\n\n");
-  GstStreamInf *stream_inf_3 = create_stream (appctx, 0, 610, 640, 480);
+  create_stream (appctx, 0, 610, 640, 480);
 
   sleep (5);
 
@@ -671,10 +669,8 @@ main (gint argc, gchar * argv[])
   GMainLoop *mloop = NULL;
   GstBus *bus = NULL;
   guint intrpt_watch_id = 0;
-  GstCaps *filtercaps;
   GstElement *pipeline = NULL;
   GstElement *qtiqmmfsrc = NULL;
-  gboolean ret = FALSE;
   gchar *output = NULL;
   GstAppContext appctx = {};
   appctx.stream_cnt = 0;
@@ -690,7 +686,7 @@ main (gint argc, gchar * argv[])
       "What output to use",
       "Accepted values: \"File\" or \"Display\""
     },
-    { NULL }
+    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   // Parse command line entries.
