@@ -50,9 +50,23 @@ queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
   if (GST_IS_METAMUX_SRC_PAD (pad)) {
     GstMetaMuxSrcPad *srcpad = GST_METAMUX_SRC_PAD_CAST (pad);
     GST_METAMUX_PAD_SIGNAL_IDLE (srcpad, FALSE);
+
+    // Limiting the output queue
+    if (visible >= srcpad->buffers_limit) {
+      GST_TRACE_OBJECT (pad, "Queue limit reached of %d buffers!",
+          srcpad->buffers_limit);
+      return TRUE;
+    }
   } else if (GST_IS_METAMUX_SINK_PAD (pad)) {
     GstMetaMuxSinkPad *sinkpad = GST_METAMUX_SINK_PAD_CAST (pad);
     GST_METAMUX_PAD_SIGNAL_IDLE (sinkpad, FALSE);
+
+    // Limiting the input queue
+    if (visible >= sinkpad->buffers_limit) {
+      GST_TRACE_OBJECT (pad, "Queue limit reached of %d buffers!",
+          sinkpad->buffers_limit);
+      return TRUE;
+    }
   }
 
   return FALSE;
@@ -276,6 +290,7 @@ gst_metamux_sink_pad_init (GstMetaMuxSinkPad * pad)
   pad->buffers =
       gst_data_queue_new (queue_is_full_cb, NULL, queue_empty_cb, pad);
   pad->is_idle = TRUE;
+  pad->buffers_limit = 0;
 }
 
 static void
@@ -312,5 +327,6 @@ gst_metamux_src_pad_init (GstMetaMuxSrcPad * pad)
   pad->buffers =
       gst_data_queue_new (queue_is_full_cb, NULL, queue_empty_cb, pad);
   pad->is_idle = TRUE;
+  pad->buffers_limit = 0;
 }
 
