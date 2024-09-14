@@ -106,6 +106,7 @@ struct _GstMetaMux
   /// Properties.
   GstMetaMuxMode    mode;
   GstClockTime      latency;
+  guint             queue_size;
 };
 
 struct _GstMetaMuxClass {
