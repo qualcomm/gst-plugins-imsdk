@@ -1262,19 +1262,24 @@ main (gint argc, gchar * argv[])
     { "model", 'm', 0, G_OPTION_ARG_STRING,
       &options.model_path,
       "This parameter overrides default model file path\n"
-      "      Default model path for YOLOV8 TFLITE: " DEFAULT_TFLITE_YOLOV8_MODEL,
+      "      Default model path for YOLOV8 TFLITE: "
+      DEFAULT_TFLITE_YOLOV8_MODEL "\n"
+      "      Default model path for INCEPTIONv3 TFLITE: "
+      DEFAULT_TFLITE_INCEPTIONV3_MODEL,
       "/PATH"
     },
     { "labels", 'l', 0, G_OPTION_ARG_STRING,
       &options.labels_path,
       "This parameter overrides default labels file path\n"
-      "      Default labels path for YOLOV8: " DEFAULT_YOLOV8_LABELS,
+      "      Default labels path for YOLOV8: " DEFAULT_YOLOV8_LABELS "\n"
+      "      Default labels path for INCEPTIONv3: "
+      DEFAULT_CLASSIFICATION_LABELS,
       "/PATH"
     },
     { "constants", 'k', 0, G_OPTION_ARG_STRING,
       &options.constants,
       "Constants, offsets and coefficients used by the chosen module \n"
-      "for post-processing of incoming tensors."
+      "      for post-processing of incoming tensors."
       " Applicable only for some modules\n"
       "      Default constants: " DEFAULT_DETECTION_CONSTANTS,
       "/CONSTANTS"
