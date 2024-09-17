@@ -175,6 +175,9 @@ struct _GstMetaMuxSinkPad {
 
   /// Queue for managing incoming video/audio buffers.
   GstDataQueue *buffers;
+
+  /// The count of buffers the queue can hold.
+  guint        buffers_limit;
 };
 
 struct _GstMetaMuxSinkPadClass {
@@ -199,6 +202,9 @@ struct _GstMetaMuxSrcPad {
 
   /// Queue for output buffers.
   GstDataQueue *buffers;
+
+  /// The count of buffers the queue can hold.
+  guint        buffers_limit;
 };
 
 struct _GstMetaMuxSrcPadClass {

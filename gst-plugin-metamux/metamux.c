@@ -77,6 +77,7 @@ G_DEFINE_TYPE (GstMetaMux, gst_metamux, GST_TYPE_ELEMENT);
 
 #define DEFAULT_PROP_MODE           GST_METAMUX_MODE_ASYNC
 #define DEFAULT_PROP_LATENCY        0
+#define DEFAULT_PROP_QUEUE_SIZE     10
 
 #define GST_METAMUX_MEDIA_CAPS \
     "video/x-raw(ANY); "       \
@@ -91,6 +92,7 @@ enum
   PROP_0,
   PROP_MODE,
   PROP_LATENCY,
+  PROP_QUEUE_SIZE,
 };
 
 
@@ -1688,6 +1690,11 @@ gst_metamux_set_property (GObject * object, guint prop_id,
     case PROP_LATENCY:
       muxer->latency = g_value_get_uint64 (value);
       break;
+    case PROP_QUEUE_SIZE:
+      muxer->queue_size = g_value_get_uint (value);
+      muxer->sinkpad->buffers_limit = muxer->queue_size;
+      muxer->srcpad->buffers_limit = muxer->queue_size;
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -1706,6 +1713,9 @@ gst_metamux_get_property (GObject * object, guint prop_id,
       break;
     case PROP_LATENCY:
       g_value_set_uint64 (value, muxer->latency);
+      break;
+    case PROP_QUEUE_SIZE:
+      g_value_set_uint (value, muxer->queue_size);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1761,6 +1771,12 @@ gst_metamux_class_init (GstMetaMuxClass *klass)
           0, G_MAXUINT64, DEFAULT_PROP_LATENCY,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (object, PROP_QUEUE_SIZE,
+      g_param_spec_uint ("queue-size", "Input and output queue size",
+          "Set the size of the input and output queues.",
+          3, G_MAXUINT, DEFAULT_PROP_QUEUE_SIZE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
 
   gst_element_class_set_static_metadata (element,
       "Meta muxer", "Video/Audio/Text/Muxer",
@@ -1797,6 +1813,7 @@ gst_metamux_init (GstMetaMux * muxer)
 
   muxer->mode = DEFAULT_PROP_MODE;
   muxer->latency = DEFAULT_PROP_LATENCY;
+  muxer->queue_size = DEFAULT_PROP_QUEUE_SIZE;
 
   template = gst_static_pad_template_get (&gst_metamux_media_sink_template);
   muxer->sinkpad = g_object_new (GST_TYPE_METAMUX_SINK_PAD, "name", "sink",
@@ -1810,6 +1827,7 @@ gst_metamux_init (GstMetaMux * muxer)
   gst_pad_set_chain_function (GST_PAD (muxer->sinkpad),
       GST_DEBUG_FUNCPTR (gst_metamux_main_sink_pad_chain));
   gst_element_add_pad (GST_ELEMENT (muxer), GST_PAD (muxer->sinkpad));
+  muxer->sinkpad->buffers_limit = muxer->queue_size;
 
   template = gst_static_pad_template_get (&gst_metamux_src_template);
   muxer->srcpad = g_object_new (GST_TYPE_METAMUX_SRC_PAD, "name", "src",
@@ -1823,6 +1841,7 @@ gst_metamux_init (GstMetaMux * muxer)
   gst_pad_set_activatemode_function (GST_PAD (muxer->srcpad),
       GST_DEBUG_FUNCPTR (gst_metamux_src_pad_activate_mode));
   gst_element_add_pad (GST_ELEMENT (muxer), GST_PAD (muxer->srcpad));
+  muxer->srcpad->buffers_limit = muxer->queue_size;
 }
 
 static gboolean
