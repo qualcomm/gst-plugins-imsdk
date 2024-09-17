@@ -25,32 +25,35 @@ include(CheckIncludeFileCXX)
 # Check for external delegate header
 check_include_file("tensorflow/lite/delegates/external/external_delegate.h" HAVE_EXTERNAL_DELEGATE_H)
 
+# Support for the External delegate appears after the tensorflow lite 2.10.0
+# the reason is to determine if we are on a new or old version of tflite
+# and on elder versions dynamic loading is not supported
 if(HAVE_EXTERNAL_DELEGATE_H)
+  list(APPEND GST_QTI_ML_TFLITE_SRC
+    ml-tflite-engine-c-api.cc
+  )
+
   # Check whether the C API header for the TFLITE library is present.
   check_include_file("tensorflow/lite/core/c/c_api.h" HAVE_CORE_C_API_H)
   check_include_file("tensorflow/lite/c/c_api.h" HAVE_C_API_H)
 
-  # Check for hexagon delegate header
-  check_include_file_cxx("tensorflow/lite/delegates/hexagon/hexagon_delegate.h" HAVE_HEXAGON_DELEGATE_H)
-  check_include_file_cxx("tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h" HAVE_HEXAGON_EXPERIMENTAL_DELEGATE_H)
-
-  # Check for nnapi delegate header
-  check_include_file_cxx("tensorflow/lite/delegates/nnapi/nnapi_delegate_c_api.h" HAVE_NNAPI_H)
-
   list(APPEND TARGET_COMPILE_DEFINITIONS
     $<$<BOOL:${HAVE_C_API_H}>:HAVE_C_API_H>
     $<$<BOOL:${HAVE_CORE_C_API_H}>:HAVE_CORE_C_API_H>
-    $<$<BOOL:${HAVE_HEXAGON_EXPERIMENTAL_DELEGATE_H}>:HAVE_HEXAGON_EXPERIMENTAL_DELEGATE_H>
-    $<$<BOOL:${HAVE_NNAPI_H}>:HAVE_NNAPI_H>
   )
+
   list(APPEND TARGET_INCS
-    ${SYSROOT_INCDIR}/tflite
     ${SYSROOT_INCDIR}/tensorflow
   )
+
   list(APPEND TARGET_LIBRARIES
     ${CMAKE_DL_LIBS}
   )
 else()
+  list(APPEND GST_QTI_ML_TFLITE_SRC
+    ml-tflite-engine.cc
+  )
+
   # Prefer the prebuilt TFLite package.
   pkg_check_modules(TFLITE tensorflow-lite-prebuilt)
   if(NOT TFLITE_FOUND)
@@ -95,7 +98,7 @@ set(GST_QTI_ML_TFLITE gstqtimltflite)
 
 add_library(${GST_QTI_ML_TFLITE} SHARED
   mltflite.c
-  ml-tflite-engine.cc
+  ${GST_QTI_ML_TFLITE_SRC}
 )
 
 target_compile_definitions(${GST_QTI_ML_TFLITE} PRIVATE
