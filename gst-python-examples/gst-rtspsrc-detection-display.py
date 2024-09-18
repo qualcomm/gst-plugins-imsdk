@@ -11,170 +11,143 @@ gi.require_version("GLib", "2.0")
 from gi.repository import Gst, GLib
 
 
+def create_element(factory_name, name):
+    """Create a GStreamer element."""
+    element = Gst.ElementFactory.make(factory_name, name)
+    if not element:
+        raise Exception(f"Failed to create {factory_name} named {name}!")
+    return element
+
+
+def link_elements(link_orders, elements):
+    """Link elements in the specified orders."""
+    for link_order in link_orders:
+        src = None
+        for element in link_order:
+            dest = elements[element]
+            if src and not src.link(dest):
+                raise Exception(
+                    f"Failed to link element\
+                    {src.get_name()} with {dest.get_name()}"
+                )
+            src = dest
+
+
 def construct_pipeline(pipe):
+    """Initialize and link elements for the GStreamer pipeline."""
     # Create all elements
-    rtspsrc = Gst.ElementFactory.make("rtspsrc")
-    Gst.util_set_object_arg(rtspsrc, "location", "rtsp://127.0.0.1:8900/live")
+    # fmt: off
+    elements = {
+        "rtspsrc":      create_element("rtspsrc", "rtspsrc"),
+        "rtph264depay": create_element("rtph264depay", "rtph264depay"),
+        "capsfilter_0": create_element("capsfilter", "rtph264depaycaps"),
+        "h264parse":    create_element("h264parse", "h264parser"),
+        "v4l2h264dec":  create_element("v4l2h264dec", "v4l2h264decoder"),
+        "tee":          create_element("tee", "split"),
+        "mlvconverter": create_element("qtimlvconverter", "converter"),
+        "queue_0":      create_element("queue", "queue0"),
+        "mltflite":     create_element("qtimltflite", "inference"),
+        "queue_1":      create_element("queue", "queue1"),
+        "mlvdetection": create_element("qtimlvdetection", "detection"),
+        "capsfilter_1": create_element("capsfilter", "metamuxmetacaps"),
+        "queue_2":      create_element("queue", "queue2"),
+        "metamux":      create_element("qtimetamux", "metamux"),
+        "overlay":      create_element("qtivoverlay", "overlay"),
+        "queue_4":      create_element("queue", "queue4"),
+        "display":      create_element("waylandsink", "display")
+    }
+    # fmt: on
 
-    rtph264depay = Gst.ElementFactory.make("rtph264depay")
-
-    capsfilter_rtph264depay = Gst.ElementFactory.make("capsfilter")
+    # Set element properties
     Gst.util_set_object_arg(
-        capsfilter_rtph264depay,
+        elements["rtspsrc"], "location", "rtsp://127.0.0.1:8900/live"
+    )
+
+    Gst.util_set_object_arg(
+        elements["capsfilter_0"],
         "caps",
         "video/x-h264,colorimetry=bt709",
     )
 
-    h264parse_decoder = Gst.ElementFactory.make("h264parse")
+    Gst.util_set_object_arg(elements["h264parse"], "config-interval", "1")
 
-    v4l2h264dec = Gst.ElementFactory.make("v4l2h264dec")
-    Gst.util_set_object_arg(v4l2h264dec, "capture-io-mode", "5")
-    Gst.util_set_object_arg(v4l2h264dec, "output-io-mode", "5")
+    Gst.util_set_object_arg(elements["v4l2h264dec"], "capture-io-mode", "5")
+    Gst.util_set_object_arg(elements["v4l2h264dec"], "output-io-mode", "5")
 
-    # queue after decoder
-    queue_0 = Gst.ElementFactory.make("queue")
-
-    tee = Gst.ElementFactory.make("tee", "split")
-
-    metamux = Gst.ElementFactory.make("qtimetamux", "metamux")
-
-    mlvconverter = Gst.ElementFactory.make("qtimlvconverter", "preproc")
-
-    # queue after preprocess
-    queue_1 = Gst.ElementFactory.make("queue")
-
-    mltflite = Gst.ElementFactory.make("qtimltflite", "inference")
-    Gst.util_set_object_arg(mltflite, "delegate", "external")
+    Gst.util_set_object_arg(elements["mltflite"], "delegate", "external")
     Gst.util_set_object_arg(
-        mltflite, "external-delegate-path", "libQnnTFLiteDelegate.so"
+        elements["mltflite"],
+        "external-delegate-path",
+        "libQnnTFLiteDelegate.so",
     )
     Gst.util_set_object_arg(
-        mltflite,
+        elements["mltflite"],
         "external-delegate-options",
         "QNNExternalDelegate,backend_type=htp;",
     )
     Gst.util_set_object_arg(
-        mltflite, "model", "/opt/data/YoloV8N_Detection_Quantized.tflite"
+        elements["mltflite"],
+        "model",
+        "/opt/data/YoloV8N_Detection_Quantized.tflite",
     )
 
-    # queue after inference
-    queue_2 = Gst.ElementFactory.make("queue")
-
-    mlvdetection = Gst.ElementFactory.make("qtimlvdetection", "postprocess")
-    Gst.util_set_object_arg(mlvdetection, "threshold", "75.0")
-    Gst.util_set_object_arg(mlvdetection, "results", "4")
-    Gst.util_set_object_arg(mlvdetection, "module", "yolov8")
+    Gst.util_set_object_arg(elements["mlvdetection"], "threshold", "75.0")
+    Gst.util_set_object_arg(elements["mlvdetection"], "results", "4")
+    Gst.util_set_object_arg(elements["mlvdetection"], "module", "yolov8")
     Gst.util_set_object_arg(
-        mlvdetection,
+        elements["mlvdetection"],
         "constants",
-        "YoloV8,q-offsets=<-107.0,-128.0,0.0>,q-scales=<3.093529462814331,0.00390625,1.0>;",
+        "YoloV8,q-offsets=<-107.0,-128.0,0.0>,\
+        q-scales=<3.093529462814331,0.00390625,1.0>;",
     )
-    Gst.util_set_object_arg(mlvdetection, "labels", "/opt/data/yolov8n.labels")
-
-    capsfilter_postprocess = Gst.ElementFactory.make(
-        "capsfilter", "postproc_caps"
+    Gst.util_set_object_arg(
+        elements["mlvdetection"], "labels", "/opt/data/yolov8n.labels"
     )
-    Gst.util_set_object_arg(capsfilter_postprocess, "caps", "text/x-raw")
 
-    # queue between postprocess and metamux
-    queue_3 = Gst.ElementFactory.make("queue")
+    Gst.util_set_object_arg(elements["capsfilter_1"], "caps", "text/x-raw")
 
-    # queue after metamux
-    queue_4 = Gst.ElementFactory.make("queue")
+    Gst.util_set_object_arg(elements["overlay"], "engine", "gles")
 
-    overlay = Gst.ElementFactory.make("qtioverlay")
-    Gst.util_set_object_arg(overlay, "engine", "gles")
-
-    display = Gst.ElementFactory.make("waylandsink")
-    Gst.util_set_object_arg(display, "sync", "false")
-    Gst.util_set_object_arg(display, "fullscreen", "true")
-
-    if (
-        not rtspsrc
-        or not rtph264depay
-        or not capsfilter_rtph264depay
-        or not h264parse_decoder
-        or not v4l2h264dec
-        or not queue_0
-        or not tee
-        or not metamux
-        or not mlvconverter
-        or not queue_1
-        or not mltflite
-        or not queue_2
-        or not mlvdetection
-        or not capsfilter_postprocess
-        or not queue_3
-        or not queue_4
-        or not overlay
-        or not display
-    ):
-        print("Failed to create all elements!")
-        sys.exit(1)
+    Gst.util_set_object_arg(elements["display"], "sync", "false")
+    Gst.util_set_object_arg(elements["display"], "fullscreen", "true")
 
     # Add all elements
-    pipe.add(rtspsrc)
-    pipe.add(rtph264depay)
-    pipe.add(capsfilter_rtph264depay)
-    pipe.add(h264parse_decoder)
-    pipe.add(v4l2h264dec)
-    pipe.add(queue_0)
-    pipe.add(tee)
-    pipe.add(metamux)
-    pipe.add(mlvconverter)
-    pipe.add(queue_1)
-    pipe.add(mltflite)
-    pipe.add(queue_2)
-    pipe.add(mlvdetection)
-    pipe.add(capsfilter_postprocess)
-    pipe.add(queue_3)
-    pipe.add(queue_4)
-    pipe.add(overlay)
-    pipe.add(display)
+    for element in elements.values():
+        pipe.add(element)
 
-    # Link most of the elements
-    linked = True
+    # Link all elements
+    # fmt: off
+    link_orders = [
+        [
+            "rtph264depay", "capsfilter_0", "h264parse", "v4l2h264dec",
+            "tee", "metamux", "overlay", "queue_4", "display"
+        ],
+        [
+            "tee", "mlvconverter", "queue_0", "mltflite", "queue_1",
+            "mlvdetection", "capsfilter_1", "queue_2", "metamux"
+        ]
+    ]
+    # fmt: on
+    link_elements(link_orders, elements)
 
-    # rtspsrc will link with rtph264depay
-    linked = linked and rtph264depay.link(capsfilter_rtph264depay)
-    linked = linked and capsfilter_rtph264depay.link(h264parse_decoder)
-    linked = linked and h264parse_decoder.link(v4l2h264dec)
-    linked = linked and v4l2h264dec.link(queue_0)
-    linked = linked and queue_0.link(tee)
-
-    linked = linked and tee.link(metamux)
-    linked = linked and tee.link(mlvconverter)
-
-    linked = linked and mlvconverter.link(queue_1)
-    linked = linked and queue_1.link(mltflite)
-    linked = linked and mltflite.link(queue_2)
-    linked = linked and queue_2.link(mlvdetection)
-    linked = linked and mlvdetection.link(capsfilter_postprocess)
-    linked = linked and capsfilter_postprocess.link(queue_3)
-    linked = linked and queue_3.link(metamux)
-
-    linked = linked and metamux.link(queue_4)
-    linked = linked and queue_4.link(overlay)
-    linked = linked and overlay.link(display)
-
-    if not linked:
-        print("Failed to link all elements!")
-        sys.exit(1)
-
-    # Link rtsp stream to rtph264depay
-    def on_pad_added(elem, pad):
+    def on_pad_added(elem, pad, dest):
         if "rtp" in pad.get_name():
-            rtph264depay_sink_pad = rtph264depay.get_static_pad("sink")
-            if pad.link(rtph264depay_sink_pad) != Gst.PadLinkReturn.OK:
-                print("Failed to link rtsp stream!")
-                sys.exit(1)
+            sink_pad = dest.get_static_pad("sink")
+            if (
+                not sink_pad.is_linked()
+                and pad.link(sink_pad) != Gst.PadLinkReturn.OK
+            ):
+                raise (
+                    f"Failed to link {elem.get_name()} with {dest.get_name()}!"
+                )
 
-    rtspsrc.connect("pad-added", on_pad_added)
-
-    return pipe
+    elements["rtspsrc"].connect(
+        "pad-added", on_pad_added, elements["rtph264depay"]
+    )
 
 
 def quit_mainloop(loop):
+    """Quit the mainloop if it is running."""
     if loop.is_running():
         print("Quitting mainloop!")
         loop.quit()
@@ -182,10 +155,11 @@ def quit_mainloop(loop):
         print("Loop is not running!")
 
 
-def bus_call(bus, message, loop):
+def bus_call(_, message, loop):
+    """Handle bus messages."""
     message_type = message.type
     if message_type == Gst.MessageType.EOS:
-        print("EoS received")
+        print("EoS received!")
         quit_mainloop(loop)
     elif message_type == Gst.MessageType.ERROR:
         error, debug_info = message.parse_error()
@@ -197,13 +171,15 @@ def bus_call(bus, message, loop):
 
 
 def handle_interrupt_signal(pipe, loop):
+    """Handle ctrl+C signal."""
     _, state, _ = pipe.get_state(Gst.CLOCK_TIME_NONE)
     if state == Gst.State.PLAYING:
-        print("Sending EoS!")
         event = Gst.Event.new_eos()
-        success = pipe.send_event(event)
-        if success == False:
+        if pipe.send_event(event):
+            print("EoS sent!")
+        else:
             print("Failed to send EoS event to the pipeline!")
+            quit_mainloop(loop)
     else:
         print("Pipeline is not playing, terminating!")
         quit_mainloop(loop)
@@ -211,18 +187,27 @@ def handle_interrupt_signal(pipe, loop):
 
 
 def main():
+    """Main function to set up and run the GStreamer pipeline."""
     os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
     os.environ["WAYLAND_DISPLAY"] = "wayland-1"
 
     Gst.init(None)
-    pipe = Gst.Pipeline.new()
-    construct_pipeline(pipe)
+
+    try:
+        pipe = Gst.Pipeline()
+        if not pipe:
+            raise Exception("Failed to create pipeline!")
+        construct_pipeline(pipe)
+    except Exception as e:
+        print(f"{e}")
+        Gst.deinit()
+        return 1
+
     loop = GLib.MainLoop()
 
     bus = pipe.get_bus()
     bus.add_signal_watch()
     bus.connect("message", bus_call, loop)
-    bus = None
 
     interrupt_watch_id = GLib.unix_signal_add(
         GLib.PRIORITY_HIGH, signal.SIGINT, handle_interrupt_signal, pipe, loop
@@ -232,10 +217,16 @@ def main():
     loop.run()
 
     GLib.source_remove(interrupt_watch_id)
+    bus.remove_signal_watch()
+    bus = None
+
     pipe.set_state(Gst.State.NULL)
     loop = None
     pipe = None
+
     Gst.deinit()
+
+    return 0
 
 
 if __name__ == "__main__":
