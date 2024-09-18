@@ -40,6 +40,7 @@
 #define DEFAULT_SNPE_YOLONAS_MODEL "/opt/yolonas.dlc"
 #define DEFAULT_YOLONAS_LABELS "/opt/yolonas.labels"
 #define DEFAULT_TFLITE_YOLOV8_MODEL "/opt/yolov8_det_quantized.tflite"
+#define DEFAULT_TFLITE_YOLOV5_MODEL "/opt/yolov5.tflite"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
@@ -54,8 +55,14 @@
 /**
  * Default constants to dequantize values
  */
-#define DEFAULT_CONSTANTS \
-    "YOLOv8,q-offsets=<-107.0, -128.0, 0.0>,q-scales=<3.093529462814331, 0.00390625, 0.0>;"
+#define DEFAULT_CONSTANTS_YOLOV8 \
+    "YOLOv8,q-offsets=<-107.0, -128.0, 0.0>,q-scales=<3.093529462814331, 0.00390625, 1.0>;"
+
+/**
+ * Default constants to dequantize values
+ */
+#define DEFAULT_CONSTANTS_YOLOV5 \
+    "YoloV5,q-offsets=<3.0>,q-scales=<0.005047998391091824>;"
 
 /**
  * Number of Queues used for buffer caching between elements
@@ -125,6 +132,7 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
       options->model_path != DEFAULT_SNPE_YOLOV8_MODEL &&
       options->model_path != DEFAULT_SNPE_YOLONAS_MODEL &&
       options->model_path != DEFAULT_TFLITE_YOLOV8_MODEL &&
+      options->model_path != DEFAULT_TFLITE_YOLOV5_MODEL &&
       options->model_path != NULL) {
     g_free (options->model_path);
   }
@@ -136,7 +144,8 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
     g_free (options->labels_path);
   }
 
-  if (options->constants != DEFAULT_CONSTANTS &&
+  if (options->constants != DEFAULT_CONSTANTS_YOLOV5 &&
+      options->constants != DEFAULT_CONSTANTS_YOLOV8 &&
       options->constants != NULL) {
     g_free (options->constants);
   }
@@ -581,9 +590,27 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         g_object_set (G_OBJECT (qtimlvdetection), "constants",
             options->constants, NULL);
         break;
-
+      // YOLO_V5 specific settings
+      case GST_YOLO_TYPE_V5:
+        // set qtimlvdetection properties
+        g_object_set (G_OBJECT (qtimlvdetection), "labels",
+            options->labels_path, NULL);
+        module_id = get_enum_value (qtimlvdetection, "module", "yolov5");
+        if (module_id != -1) {
+            g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
+        } else {
+          g_printerr ("Module yolov5 is not available in qtimlvdetection\n");
+          goto error_clean_elements;
+        }
+        g_object_set (G_OBJECT (qtimlvdetection), "threshold",
+            options->threshold, NULL);
+        g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
+        g_object_set (G_OBJECT (qtimlvdetection), "constants",
+            options->constants, NULL);
+        break;
       default:
-        g_printerr ("Unsupported TFLITE model, Use YoloV8 TFLITE model\n");
+        g_printerr ("Unsupported TFLITE model, Use YoloV5 or"
+            "YoloV8 TFLITE model\n");
         goto error_clean_elements;
     }
   } else {
@@ -764,7 +791,6 @@ main (gint argc, gchar * argv[])
   // set default value
   options.file_path = NULL;
   options.rtsp_ip_port = NULL;
-  options.constants = DEFAULT_CONSTANTS;
   options.use_cpu = FALSE, options.use_gpu = FALSE, options.use_dsp = FALSE;
   options.use_file = FALSE, options.use_rtsp = FALSE, options.use_camera = FALSE;
   options.threshold = DEFAULT_THRESHOLD_VALUE;
@@ -774,6 +800,7 @@ main (gint argc, gchar * argv[])
   options.yolo_model_type = GST_YOLO_TYPE_NAS;
   options.model_path = NULL;
   options.labels_path = NULL;
+  options.constants = NULL;
 
   // Structure to define the user options selected
   GOptionEntry entries[] = {
@@ -803,7 +830,7 @@ main (gint argc, gchar * argv[])
       "[Default]",
       "1 or 2 or 3"
     },
-    { "model-type", 'f', 0, G_OPTION_ARG_INT,
+    { "ml-framework", 'f', 0, G_OPTION_ARG_INT,
       &options.model_type,
       "Execute Model in SNPE DLC (1) or TFlite (2) format",
       "1 or 2"
@@ -814,6 +841,7 @@ main (gint argc, gchar * argv[])
       "    Default model path for YOLOV5 DLC: "DEFAULT_SNPE_YOLOV5_MODEL"\n"
       "    Default model path for YOLOV8 DLC: "DEFAULT_SNPE_YOLOV8_MODEL"\n"
       "    Default model path for YOLO NAS DLC: "DEFAULT_SNPE_YOLONAS_MODEL"\n"
+      "    Default model path for YOLOV5 TFLITE: "DEFAULT_TFLITE_YOLOV5_MODEL"\n"
       "    Default model path for YOLOV8 TFLITE: "DEFAULT_TFLITE_YOLOV8_MODEL"\n",
       "/PATH"
     },
@@ -830,7 +858,8 @@ main (gint argc, gchar * argv[])
       "Constants, offsets and coefficients used by the chosen module \n"
       "      for post-processing of incoming tensors."
       " Applicable only for some modules\n"
-      "      Default constants: " DEFAULT_CONSTANTS,
+      "      Default constants for YOLOV5: " DEFAULT_CONSTANTS_YOLOV5"\n"
+      "      Default constants for YOLOV8: " DEFAULT_CONSTANTS_YOLOV8"\n",
       "/CONSTANTS"
     },
     { "threshold", 'p', 0, G_OPTION_ARG_DOUBLE,
@@ -860,14 +889,14 @@ main (gint argc, gchar * argv[])
 
   snprintf (help_description, 1023, "\nExample:\n"
 #ifdef ENABLE_CAMERA
-      "  %s --model-type=1\n"
+      "  %s --ml-framework=1\n"
       "  %s -t 2 -f 2 --model=%s --labels=%s -k \"%s\"\n"
 #endif // ENABLE_CAMERA
       "  %s -s <file path> -t 3 --model=%s --labels=%s\n"
       "\nThis Sample App demonstrates Object Detection on Live Stream\n",
 #ifdef ENABLE_CAMERA
       app_name, app_name, DEFAULT_TFLITE_YOLOV8_MODEL, DEFAULT_YOLOV8_LABELS,
-      DEFAULT_CONSTANTS,
+      DEFAULT_CONSTANTS_YOLOV8,
 #endif // ENABLE_CAMERA
       app_name, DEFAULT_SNPE_YOLONAS_MODEL,
       DEFAULT_YOLONAS_LABELS);
@@ -1015,9 +1044,13 @@ main (gint argc, gchar * argv[])
           DEFAULT_SNPE_YOLOV8_MODEL :
           DEFAULT_SNPE_YOLONAS_MODEL));
     } else if (options.model_type == GST_MODEL_TYPE_TFLITE) {
-      g_print ("No tflite model provided, Using default Model\n");
-      options.model_path = DEFAULT_TFLITE_YOLOV8_MODEL;
-      options.yolo_model_type = GST_YOLO_TYPE_V8;
+      if (options.yolo_model_type == GST_YOLO_TYPE_V5) {
+        options.model_path = DEFAULT_TFLITE_YOLOV5_MODEL;
+      } else {
+        g_print ("No tflite model provided, Using default Yolov8 Model\n");
+        options.model_path = DEFAULT_TFLITE_YOLOV8_MODEL;
+        options.yolo_model_type = GST_YOLO_TYPE_V8;
+      }
     } else {
       g_printerr ("Invalid ml_framework\n");
       gst_app_context_free (&appctx, &options);
@@ -1031,6 +1064,12 @@ main (gint argc, gchar * argv[])
         (options.yolo_model_type == GST_YOLO_TYPE_V5 ? DEFAULT_YOLOV5_LABELS :
         (options.yolo_model_type == GST_YOLO_TYPE_V8 ? DEFAULT_YOLOV8_LABELS :
         DEFAULT_YOLONAS_LABELS));
+  }
+
+  if (options.model_type == GST_MODEL_TYPE_TFLITE && options.constants == NULL) {
+    options.constants =
+        (options.yolo_model_type == GST_YOLO_TYPE_V5 ? DEFAULT_CONSTANTS_YOLOV5:
+        DEFAULT_CONSTANTS_YOLOV8);
   }
 
   if (!file_exists (options.model_path)) {
