@@ -27,7 +27,7 @@
  *     Pre process: qtimlvconverter
  *     ML Framework: qtimlsnpe/qtimltflite
  *     Post process: qtimlvdetection -> detection_filter
- *     Sink: waylandsink (Display)/filesink/rtsp server
+ *     Sink: fpsdisplaysink (Display)/filesink/rtsp server
  */
 
 #include <stdio.h>
@@ -51,6 +51,12 @@
  * Default rtsp input port address, if not provided by user
  */
 #define DEFAULT_RTSP_IP_PORT "127.0.0.1:8554"
+
+/**
+ * Default constants to dequantize values
+ */
+#define DEFAULT_CONSTANTS \
+    "YoloV5,q-offsets=<3.0>,q-scales=<0.005047998391091824>;"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
@@ -89,6 +95,7 @@ typedef struct {
   gchar *labels_path;
   gchar *out_file;
   gchar *ip_address;
+  gchar *constants;
   gint num_camera;
   gint num_file;
   gint num_rtsp;
@@ -144,6 +151,26 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
       options->labels_path != NULL) {
     g_free (options->labels_path);
   }
+
+  if (options->constants != DEFAULT_CONSTANTS &&
+      options->constants != NULL) {
+    g_free (options->constants);
+  }
+
+  if (options->ip_address != DEFAULT_IP &&
+      options->ip_address != NULL) {
+    g_free (options->ip_address);
+  }
+
+  if (options->port_num != DEFAULT_PORT &&
+      options->port_num != NULL) {
+    g_free (options->port_num);
+  }
+
+  if (appctx->pipeline != NULL) {
+    gst_object_unref (appctx->pipeline);
+    appctx->pipeline = NULL;
+  }
 }
 
 /**
@@ -185,8 +212,7 @@ set_ml_params (GstElement * qtimlelement, GstElement * qtimlvdetection,
   }
 
   g_object_set (G_OBJECT (qtimlvdetection), "threshold", 50.0, "results", 10,
-      "constants", "YoloV5,q-offsets=<3.0>,q-scales=<0.005047998391091824>;",
-      NULL);
+      "constants", options->constants, NULL);
 
   // Set the properties of pad_filter for negotiation with qtivcomposer
   pad_filter = gst_caps_new_simple ("video/x-raw",
@@ -349,18 +375,65 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstElement *rtsp_qtimlvdetection[options->num_rtsp];
   GstElement *rtsp_detection_filter[options->num_rtsp];
   // Elements for sinks
-  GstElement *queue[QUEUE_COUNT], *qtivcomposer, *composer_caps, *composer_tee;
-  GstElement *waylandsink;
-  GstElement *v4l2h264enc, *enc_h264parse, *enc_tee;
-  GstElement *mp4mux, *filesink;
-  GstElement *rtph264pay, *udpsink;
-  GstCaps *filtercaps;
-  GstStructure *fcontrols;
+  GstElement *queue[QUEUE_COUNT], *qtivcomposer = NULL;
+  GstElement *composer_caps = NULL, *composer_tee = NULL;
+  GstElement *waylandsink = NULL, *fpsdisplaysink = NULL;
+  GstElement *v4l2h264enc = NULL, *enc_h264parse = NULL, *enc_tee = NULL;
+  GstElement *mp4mux = NULL, *filesink = NULL;
+  GstElement *rtph264pay = NULL, *udpsink = NULL;
+  GstCaps *filtercaps = NULL;
+  GstStructure *fcontrols = NULL;
   gint width = DEFAULT_CAMERA_OUTPUT_WIDTH;
   gint height = DEFAULT_CAMERA_OUTPUT_HEIGHT;
   gint framerate = DEFAULT_CAMERA_FRAME_RATE;
   gchar element_name[128];
   gboolean ret = FALSE;
+
+  for (gint i=0; i<options->num_camera; i++) {
+    camsrc[i] = NULL;
+    cam_caps[i] = NULL;
+    cam_tee[i] = NULL;
+    cam_qtimlvconverter[i] = NULL;
+    cam_qtimlelement[i] = NULL;
+    cam_qtimlvdetection[i] = NULL;
+    cam_detection_filter[i] = NULL;
+    for (gint j=0; j<QUEUE_COUNT; j++) {
+      cam_queue[i][j] = NULL;
+    }
+  }
+
+  for (gint i=0; i<options->num_file; i++) {
+    filesrc[i] = NULL;
+    qtdemux[i] = NULL;
+    file_dec_h264parse[i] = NULL;
+    file_dec_tee[i] = NULL;
+    file_qtimlvconverter[i] = NULL;
+    file_qtimlelement[i] = NULL;
+    file_qtimlvdetection[i] = NULL;
+    file_detection_filter[i] = NULL;
+    for (gint j=0; j<QUEUE_COUNT ;j++) {
+      file_queue[i][j] = NULL;
+    }
+  }
+
+  for (gint i=0; i<options->num_rtsp; i++) {
+    rtspsrc[i] = NULL;
+    rtph264depay[i] = NULL;
+    rtsp_dec_h264parse[i] = NULL;
+    rtsp_v4l2h264dec[i] = NULL;
+    rtsp_dec_tee[i] = NULL;
+    rtsp_qtimlvconverter[i] = NULL;
+    rtsp_qtimlelement[i] = NULL;
+    rtsp_qtimlvdetection[i] = NULL;
+    rtsp_detection_filter[i] = NULL;
+    for (gint j=0; j<QUEUE_COUNT; j++) {
+      rtsp_queue[i][j] = NULL;
+    }
+  }
+
+  for (gint i = 0; i <QUEUE_COUNT; i++) {
+    queue[i] = NULL;
+  }
 
   g_print ("IN Options: camera: %d (id: %d), file: %d, rtsp: %d (%s)\n",
       options->num_camera, options->camera_id, options->num_file,
@@ -375,7 +448,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     camsrc[i] = gst_element_factory_make ("qtiqmmfsrc", element_name);
     if (!camsrc[i]) {
       g_printerr ("Failed to create camsrc-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     // Use capsfilter to define the camera output settings
@@ -383,7 +456,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     cam_caps[i] = gst_element_factory_make ("capsfilter", element_name);
     if (!cam_caps[i]) {
       g_printerr ("Failed to create cam_caps-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     for (gint j=0; j < QUEUE_COUNT; j++) {
@@ -391,7 +464,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       cam_queue[i][j] = gst_element_factory_make ("queue", element_name);
       if (!cam_queue[i][j]) {
         g_printerr ("Failed to create cam_queue-%d-%d\n", i, j);
-        return FALSE;
+        goto error_clean_elements;
       }
     }
 
@@ -399,7 +472,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     cam_tee[i] = gst_element_factory_make ("tee", element_name);
     if (!cam_tee[i]) {
       g_printerr ("Failed to create cam_tee-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     // Create pre processing plugin
@@ -408,7 +481,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         "qtimlvconverter", element_name);
     if (!cam_qtimlvconverter[i]) {
       g_printerr ("Failed to create cam_qtimlvconverter-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     // Create ML Framework Plugin
@@ -417,7 +490,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         options->mlframework, element_name);
     if (!cam_qtimlelement[i]) {
       g_printerr ("Failed to create cam_qtimlelement-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     // Create post processing plugin
@@ -426,7 +499,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         "qtimlvdetection", element_name);
     if (!cam_qtimlvdetection[i]) {
       g_printerr ("Failed to create cam_qtimlvdetection-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     // Capsfilter to get matching params of ML post proc o/p and qtivcomposer
@@ -435,7 +508,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         "capsfilter", element_name);
     if (!cam_detection_filter[i]) {
       g_printerr ("Failed to create cam_detection_filter-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
   }
 
@@ -445,7 +518,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     filesrc[i] = gst_element_factory_make ("filesrc", element_name);
     if (!filesrc[i]) {
       g_printerr ("Failed to create filesrc-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     // Create demuxer for video container parsing
@@ -453,7 +526,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     qtdemux[i] = gst_element_factory_make ("qtdemux", element_name);
     if (!qtdemux[i]) {
       g_printerr ("Failed to create qtdemux-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     for (gint j=0; j < QUEUE_COUNT; j++) {
@@ -461,7 +534,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       file_queue[i][j] = gst_element_factory_make ("queue", element_name);
       if (!file_queue[i][j]) {
         g_printerr ("Failed to create file_queue-%d-%d\n", i, j);
-        return FALSE;
+        goto error_clean_elements;
       }
     }
 
@@ -470,7 +543,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     file_dec_h264parse[i] = gst_element_factory_make ("h264parse", element_name);
     if (!file_dec_h264parse[i]) {
       g_printerr ("Failed to create file_dec_h264parse-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     // Create H.264 Decoder Plugin
@@ -478,14 +551,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     file_v4l2h264dec[i] = gst_element_factory_make ("v4l2h264dec", element_name);
     if (!file_v4l2h264dec[i]) {
       g_printerr ("Failed to create file_v4l2h264dec-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     snprintf (element_name, 127, "file_dec_tee-%d", i);
     file_dec_tee[i] = gst_element_factory_make ("tee", element_name);
     if (!file_dec_tee[i]) {
       g_printerr ("Failed to create file_dec_tee-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     // Create pre processing plugin
@@ -494,7 +567,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         "qtimlvconverter", element_name);
     if (!file_qtimlvconverter[i]) {
       g_printerr ("Failed to create file_qtimlvconverter-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     // Create ML Framework Plugin
@@ -503,7 +576,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         options->mlframework, element_name);
     if (!file_qtimlelement[i]) {
       g_printerr ("Failed to create file_qtimlelement-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     // Create post processing plugin
@@ -512,7 +585,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         "qtimlvdetection", element_name);
     if (!file_qtimlvdetection[i]) {
       g_printerr ("Failed to create file_qtimlvdetection-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     // Capsfilter to get matching params of ML post proc o/p and qtivcomposer
@@ -521,7 +594,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         "capsfilter", element_name);
     if (!file_detection_filter[i]) {
       g_printerr ("Failed to create file_detection_filter-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
   }
 
@@ -531,7 +604,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     rtspsrc[i] = gst_element_factory_make ("rtspsrc", element_name);
     if (!rtspsrc[i]) {
       g_printerr ("Failed to create rtspsrc-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     // Create rtph264depay plugin for rtsp payload parsing
@@ -539,7 +612,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     rtph264depay[i] = gst_element_factory_make ("rtph264depay", element_name);
     if (!rtph264depay[i]) {
       g_printerr ("Failed to create rtph264depay-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     for (gint j=0; j < QUEUE_COUNT; j++) {
@@ -547,7 +620,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       rtsp_queue[i][j] = gst_element_factory_make ("queue", element_name);
       if (!rtsp_queue[i][j]) {
         g_printerr ("Failed to create rtsp_queue-%d-%d\n", i, j);
-        return FALSE;
+        goto error_clean_elements;
       }
     }
 
@@ -556,7 +629,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     rtsp_dec_h264parse[i] = gst_element_factory_make ("h264parse", element_name);
     if (!rtsp_dec_h264parse[i]) {
       g_printerr ("Failed to create rtsp_dec_h264parse-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     // Create H.264 Decoder Plugin
@@ -564,14 +637,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     rtsp_v4l2h264dec[i] = gst_element_factory_make ("v4l2h264dec", element_name);
     if (!rtsp_v4l2h264dec[i]) {
       g_printerr ("Failed to create rtsp_v4l2h264dec-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     snprintf (element_name, 127, "rtsp_dec_tee-%d", i);
     rtsp_dec_tee[i] = gst_element_factory_make ("tee", element_name);
     if (!rtsp_dec_tee[i]) {
       g_printerr ("Failed to create rtsp_dec_tee-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     // Create pre processing plugin
@@ -580,7 +653,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         "qtimlvconverter", element_name);
     if (!rtsp_qtimlvconverter[i]) {
       g_printerr ("Failed to create rtsp_qtimlvconverter-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     // Create ML Framework Plugin
@@ -589,7 +662,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         options->mlframework, element_name);
     if (!rtsp_qtimlelement[i]) {
       g_printerr ("Failed to create rtsp_qtimlelement-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     // Create post processing plugin
@@ -598,7 +671,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         "qtimlvdetection", element_name);
     if (!rtsp_qtimlvdetection[i]) {
       g_printerr ("Failed to create rtsp_qtimlvdetection-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
 
     // Capsfilter to get matching params of ML post proc o/p and qtivcomposer
@@ -607,7 +680,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         "capsfilter", element_name);
     if (!rtsp_detection_filter[i]) {
       g_printerr ("Failed to create rtsp_detection_filter-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
   }
 
@@ -616,7 +689,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     queue[i] = gst_element_factory_make ("queue", element_name);
     if (!queue[i]) {
       g_printerr ("Failed to create queue-%d\n", i);
-      return FALSE;
+      goto error_clean_elements;
     }
   }
 
@@ -624,20 +697,20 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   qtivcomposer = gst_element_factory_make ("qtivcomposer", "qtivcomposer");
   if (!qtivcomposer) {
     g_printerr ("Failed to create qtivcomposer\n");
-    return FALSE;
+    goto error_clean_elements;
   }
 
   // Use capsfilter to define the composer output settings
   composer_caps = gst_element_factory_make ("capsfilter", "composer_caps");
   if (!composer_caps) {
     g_printerr ("Failed to create composer_caps\n");
-    return FALSE;
+    goto error_clean_elements;
   }
 
   composer_tee = gst_element_factory_make ("tee", "composer_tee");
   if (!composer_tee) {
     g_printerr ("Failed to create composer tee\n");
-    return FALSE;
+    goto error_clean_elements;
   }
 
   if (options->out_display) {
@@ -645,7 +718,16 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     waylandsink = gst_element_factory_make ("waylandsink", "waylandsink");
     if (!waylandsink) {
       g_printerr ("Failed to create waylandsink \n");
-      return FALSE;
+      goto error_clean_elements;
+    }
+
+    // Create fpsdisplaysink to display the current and
+    // average framerate as a text overlay
+    fpsdisplaysink = gst_element_factory_make ("fpsdisplaysink",
+        "fpsdisplaysink");
+    if (!fpsdisplaysink) {
+      g_printerr ("Failed to create fpsdisplaysink\n");
+      goto error_clean_elements;
     }
   }
 
@@ -654,20 +736,20 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     v4l2h264enc = gst_element_factory_make ("v4l2h264enc", "v4l2h264enc");
     if (!v4l2h264enc) {
       g_printerr ("Failed to create v4l2h264enc\n");
-      return FALSE;
+      goto error_clean_elements;
     }
 
     // Create H.264 frame parser plugin
     enc_h264parse = gst_element_factory_make ("h264parse", "enc_h264parse");
     if (!enc_h264parse) {
       g_printerr ("Failed to create enc_h264parse\n");
-      return FALSE;
+      goto error_clean_elements;
     }
 
     enc_tee = gst_element_factory_make ("tee", "enc_tee");
     if (!enc_tee) {
       g_printerr ("Failed to create enc_tee\n");
-      return FALSE;
+      goto error_clean_elements;
     }
 
     if (options->out_file) {
@@ -675,14 +757,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       mp4mux = gst_element_factory_make ("mp4mux", "mp4mux");
       if (!mp4mux) {
         g_printerr ("Failed to create mp4mux\n");
-        return FALSE;
+        goto error_clean_elements;
       }
 
       // Generic filesink plugin to write file on disk
       filesink = gst_element_factory_make ("filesink", "filesink");
       if (!filesink) {
         g_printerr ("Failed to create filesink\n");
-        return FALSE;
+        goto error_clean_elements;
       }
     }
 
@@ -691,85 +773,15 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       rtph264pay = gst_element_factory_make ("rtph264pay", "rtph264pay");
       if (!rtph264pay) {
         g_printerr ("Failed to create rtph264pay\n");
-        return FALSE;
+        goto error_clean_elements;
       }
 
       // Generic udpsink plugin for streaming
       udpsink = gst_element_factory_make ("udpsink", "udpsink");
       if (!udpsink) {
         g_printerr ("Failed to create udpsink\n");
-        return FALSE;
+        goto error_clean_elements;
       }
-    }
-  }
-
-  // 1.1 Append all elements in a list for cleanup
-  appctx->plugins = NULL;
-  for (gint i = 0; i < options->num_camera; i++) {
-    appctx->plugins = g_list_append (appctx->plugins, camsrc[i]);
-    appctx->plugins = g_list_append (appctx->plugins, cam_caps[i]);
-    appctx->plugins = g_list_append (appctx->plugins, cam_tee[i]);
-    appctx->plugins = g_list_append (appctx->plugins, cam_qtimlvconverter[i]);
-    appctx->plugins = g_list_append (appctx->plugins, cam_qtimlelement[i]);
-    appctx->plugins = g_list_append (appctx->plugins, cam_qtimlvdetection[i]);
-    appctx->plugins = g_list_append (appctx->plugins, cam_detection_filter[i]);
-    for (gint j = 0; j < QUEUE_COUNT; j++) {
-      appctx->plugins = g_list_append (appctx->plugins, cam_queue[i][j]);
-    }
-  }
-
-  for (gint i = 0; i < options->num_file; i++) {
-    appctx->plugins = g_list_append (appctx->plugins, filesrc[i]);
-    appctx->plugins = g_list_append (appctx->plugins, qtdemux[i]);
-    appctx->plugins = g_list_append (appctx->plugins, file_dec_h264parse[i]);
-    appctx->plugins = g_list_append (appctx->plugins, file_v4l2h264dec[i]);
-    appctx->plugins = g_list_append (appctx->plugins, file_dec_tee[i]);
-    appctx->plugins = g_list_append (appctx->plugins, file_qtimlvconverter[i]);
-    appctx->plugins = g_list_append (appctx->plugins, file_qtimlelement[i]);
-    appctx->plugins = g_list_append (appctx->plugins, file_qtimlvdetection[i]);
-    appctx->plugins = g_list_append (appctx->plugins, file_detection_filter[i]);
-    for (gint j = 0; j < QUEUE_COUNT; j++) {
-      appctx->plugins = g_list_append (appctx->plugins, file_queue[i][j]);
-    }
-  }
-
-  for (gint i = 0; i < options->num_rtsp; i++) {
-    appctx->plugins = g_list_append (appctx->plugins, rtspsrc[i]);
-    appctx->plugins = g_list_append (appctx->plugins, rtph264depay[i]);
-    appctx->plugins = g_list_append (appctx->plugins, rtsp_dec_h264parse[i]);
-    appctx->plugins = g_list_append (appctx->plugins, rtsp_v4l2h264dec[i]);
-    appctx->plugins = g_list_append (appctx->plugins, rtsp_dec_tee[i]);
-    appctx->plugins = g_list_append (appctx->plugins, rtsp_qtimlvconverter[i]);
-    appctx->plugins = g_list_append (appctx->plugins, rtsp_qtimlelement[i]);
-    appctx->plugins = g_list_append (appctx->plugins, rtsp_qtimlvdetection[i]);
-    appctx->plugins = g_list_append (appctx->plugins, rtsp_detection_filter[i]);
-    for (gint j = 0; j < QUEUE_COUNT; j++) {
-      appctx->plugins = g_list_append (appctx->plugins, rtsp_queue[i][j]);
-    }
-  }
-
-  for (gint i = 0; i < QUEUE_COUNT; i++) {
-    appctx->plugins = g_list_append (appctx->plugins, queue[i]);
-  }
-  appctx->plugins = g_list_append (appctx->plugins, qtivcomposer);
-  appctx->plugins = g_list_append (appctx->plugins, composer_caps);
-  appctx->plugins = g_list_append (appctx->plugins, composer_tee);
-
-  if (options->out_display) {
-    appctx->plugins = g_list_append (appctx->plugins, waylandsink);
-  }
-
-  if (options->out_file || options->out_rtsp) {
-    appctx->plugins = g_list_append (appctx->plugins, v4l2h264enc);
-    appctx->plugins = g_list_append (appctx->plugins, enc_h264parse);
-    appctx->plugins = g_list_append (appctx->plugins, enc_tee);
-    if (options->out_file) {
-      appctx->plugins = g_list_append (appctx->plugins, mp4mux);
-      appctx->plugins = g_list_append (appctx->plugins, filesink);
-    }
-    if (options->out_rtsp) {
-      appctx->plugins = g_list_append (appctx->plugins, rtph264pay);
-      appctx->plugins = g_list_append (appctx->plugins, udpsink);
     }
   }
 
@@ -792,7 +804,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     gst_caps_unref (filtercaps);
     if (!set_ml_params (cam_qtimlelement[i], cam_qtimlvdetection[i],
         cam_detection_filter[i], options)) {
-      goto error;
+      goto error_clean_elements;
     }
   }
 
@@ -803,7 +815,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         "output-io-mode", 5, NULL);
     if (!set_ml_params (file_qtimlelement[i], file_qtimlvdetection[i],
         file_detection_filter[i], options)) {
-      goto error;
+      goto error_clean_elements;
     }
   }
 
@@ -816,7 +828,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         "output-io-mode", 5, NULL);
     if (!set_ml_params (rtsp_qtimlelement[i], rtsp_qtimlvdetection[i],
         rtsp_detection_filter[i], options)) {
-      goto error;
+      goto error_clean_elements;
     }
   }
 
@@ -833,6 +845,13 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   // 2.5 Set the properties for Wayland compositor
   if (options->out_display) {
     g_object_set (G_OBJECT (waylandsink), "fullscreen", TRUE, NULL);
+    g_object_set (G_OBJECT (waylandsink), "sync", TRUE, NULL);
+
+    g_object_set (G_OBJECT (fpsdisplaysink), "sync", TRUE, NULL);
+    g_object_set (G_OBJECT (fpsdisplaysink), "signal-fps-measurements",
+        TRUE, NULL);
+    g_object_set (G_OBJECT (fpsdisplaysink), "text-overlay", TRUE, NULL);
+    g_object_set (G_OBJECT (fpsdisplaysink), "video-sink", waylandsink, NULL);
   }
 
   // 2.5 Set the properties for file/rtsp sink
@@ -896,7 +915,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       composer_caps, composer_tee, NULL);
 
   if (options->out_display) {
-    gst_bin_add_many (GST_BIN (appctx->pipeline), waylandsink, NULL);
+    gst_bin_add_many (GST_BIN (appctx->pipeline), waylandsink,
+        fpsdisplaysink, NULL);
   }
 
   if (options->out_file || options->out_rtsp) {
@@ -919,13 +939,13 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for %d"
           " camsrc -> cam_tee.\n", i);
-      goto error;
+      goto error_clean_pipeline;
     }
     ret = gst_element_link_many (cam_tee[i], cam_queue[i][1], qtivcomposer, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for %d"
           " cam_tee -> qtivcomposer.\n", i);
-      goto error;
+      goto error_clean_pipeline;
     }
     ret = gst_element_link_many (cam_tee[i], cam_queue[i][2],
         cam_qtimlvconverter[i], cam_queue[i][3], cam_qtimlelement[i],
@@ -934,7 +954,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for %d"
           " cam: pre proc -> ml framework -> post proc -> composer.\n", i);
-      goto error;
+      goto error_clean_pipeline;
     }
   }
 
@@ -943,7 +963,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for %d"
           " filesrc -> qtdemux.\n", i);
-      goto error;
+      goto error_clean_pipeline;
     }
     // qtdemux -> file_queue[i][0] link is not created here as it is a
     // dymanic link using on_pad_added callback
@@ -952,14 +972,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for %d"
           " file_queue -> file_dec_tee.\n", i);
-      goto error;
+      goto error_clean_pipeline;
     }
     ret = gst_element_link_many (file_dec_tee[i], file_queue[i][2], qtivcomposer,
         NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for %d"
           "file_dec_tee -> qtivcomposer.\n", i);
-      goto error;
+      goto error_clean_pipeline;
     }
     ret = gst_element_link_many (file_dec_tee[i], file_queue[i][3],
         file_qtimlvconverter[i], file_queue[i][4], file_qtimlelement[i],
@@ -968,7 +988,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for %d"
           " file: pre proc -> ml framework -> post proc -> composer.\n", i);
-      goto error;
+      goto error_clean_pipeline;
     }
   }
 
@@ -981,14 +1001,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for %d"
           " rtsp_queue -> rtsp_tee.\n", i);
-      goto error;
+      goto error_clean_pipeline;
     }
     ret = gst_element_link_many (rtsp_dec_tee[i], rtsp_queue[i][2], qtivcomposer,
         NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for %d"
           " rtsp_tee -> qtivcomposer.\n", i);
-      goto error;
+      goto error_clean_pipeline;
     }
     ret = gst_element_link_many (rtsp_dec_tee[i], rtsp_queue[i][3],
         rtsp_qtimlvconverter[i], rtsp_queue[i][4], rtsp_qtimlelement[i],
@@ -997,24 +1017,36 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for %d"
           " rtsp: pre proc -> ml framework -> post proc -> composer.\n", i);
-      goto error;
+      goto error_clean_pipeline;
     }
   }
 
-  ret = gst_element_link_many (
-      qtivcomposer, queue[0], composer_caps, composer_tee, NULL);
-  if (!ret) {
-    g_printerr ("Pipeline elements cannot be linked for"
-        " qtivcomposer -> composer_tee.\n");
-    goto error;
+  if (options->out_display) {
+    ret = gst_element_link_many (
+        qtivcomposer, queue[0], composer_tee, NULL);
+    if (!ret) {
+      g_printerr ("Pipeline elements cannot be linked for"
+          " qtivcomposer -> composer_tee.\n");
+      goto error_clean_pipeline;
+    }
+  }
+
+  if (options->out_file || options->out_rtsp) {
+    ret = gst_element_link_many (
+        qtivcomposer, queue[0], composer_caps, composer_tee, NULL);
+    if (!ret) {
+      g_printerr ("Pipeline elements cannot be linked for"
+          " qtivcomposer -> composer_tee.\n");
+      goto error_clean_pipeline;
+    }
   }
 
   if (options->out_display) {
-    ret = gst_element_link_many (composer_tee, queue[1], waylandsink, NULL);
+    ret = gst_element_link_many (composer_tee, queue[1], fpsdisplaysink, NULL);
     if (!ret) {
-    g_printerr ("Pipeline elements cannot be linked for"
-        " composer_tee -> waylandsink.\n");
-      goto error;
+      g_printerr ("Pipeline elements cannot be linked for"
+          " composer_tee -> fpsdisplaysink.\n");
+      goto error_clean_pipeline;
     }
   }
 
@@ -1024,7 +1056,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
           " composer_tee -> encoder -> enc_tee.\n");
-      goto error;
+      goto error_clean_pipeline;
     }
 
     if (options->out_file) {
@@ -1032,7 +1064,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       if (!ret) {
         g_printerr ("Pipeline elements cannot be linked for"
             " enc_tee -> mp4mux -> filesink.\n");
-        goto error;
+        goto error_clean_pipeline;
       }
     }
 
@@ -1042,7 +1074,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       if (!ret) {
         g_printerr ("Pipeline elements cannot be linked for"
             " enc_tee -> udpsink.\n");
-        goto error;
+        goto error_clean_pipeline;
       }
     }
   }
@@ -1059,88 +1091,53 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   if (!set_composer_params (qtivcomposer, options)) {
     g_printerr ("failed to set composer params.\n");
-    goto error;
+    goto error_clean_pipeline;
   }
 
   return TRUE;
 
-error:
+error_clean_pipeline:
+  gst_object_unref (appctx->pipeline);
+  return FALSE;
+
+error_clean_elements:
+  cleanup_gst (&qtivcomposer, &composer_caps, &composer_tee, &waylandsink,
+      &fpsdisplaysink, &v4l2h264enc, &enc_h264parse, &enc_tee, &mp4mux,
+      &filesink, &rtph264pay, &udpsink, NULL);
+
   for (gint i = 0; i < options->num_camera; i++) {
-    gst_bin_remove_many (GST_BIN (appctx->pipeline), camsrc[i], cam_caps[i],
-        cam_tee[i], cam_qtimlvconverter[i], cam_qtimlelement[i],
-        cam_qtimlvdetection[i], cam_detection_filter[i], NULL);
-    for (gint j = 0; j < QUEUE_COUNT; j++) {
-      gst_bin_remove_many (GST_BIN (appctx->pipeline), cam_queue[i][j], NULL);
+    cleanup_gst (&camsrc[i], &cam_caps[i], &cam_tee[i], &cam_qtimlvconverter[i],
+        &cam_qtimlelement[i], &cam_qtimlvdetection[i], &cam_detection_filter[i],
+        NULL);
+    for (gint j=0; j<QUEUE_COUNT; j++) {
+      cleanup_gst (&cam_queue[i][j], NULL);
     }
   }
 
-  for (gint i = 0; i < options->num_file; i++) {
-    gst_bin_remove_many (GST_BIN (appctx->pipeline), filesrc[i], qtdemux[i],
-        file_dec_h264parse[i], file_v4l2h264dec[i], file_dec_tee[i],
-        file_qtimlvconverter[i], file_qtimlelement[i], file_qtimlvdetection[i],
-        file_detection_filter[i], NULL);
-    for (gint j = 0; j < QUEUE_COUNT; j++) {
-      gst_bin_remove_many (GST_BIN (appctx->pipeline), file_queue[i][j], NULL);
+  for (gint i=0; i<options->num_file; i++) {
+    cleanup_gst (&filesrc[i], &qtdemux[i], &file_dec_h264parse[i],
+        &file_dec_tee[i], &file_qtimlvconverter[i], &file_qtimlelement[i],
+        &file_qtimlvdetection[i], &file_detection_filter[i], NULL);
+    for (gint j=0; j<QUEUE_COUNT ;j++) {
+      cleanup_gst (&file_queue[i][j], NULL);
     }
   }
 
-  for (gint i = 0; i < options->num_rtsp; i++) {
-    gst_bin_remove_many (GST_BIN (appctx->pipeline), rtspsrc[i], rtph264depay[i],
-        rtsp_dec_h264parse[i], rtsp_v4l2h264dec[i], rtsp_dec_tee[i],
-        rtsp_qtimlvconverter[i], rtsp_qtimlelement[i], rtsp_qtimlvdetection[i],
-        rtsp_detection_filter[i], NULL);
-    for (gint j = 0; j < QUEUE_COUNT; j++) {
-      gst_bin_remove_many (GST_BIN (appctx->pipeline), rtsp_queue[i][j], NULL);
+  for (gint i=0; i<options->num_rtsp; i++) {
+    cleanup_gst (&rtspsrc[i], &rtph264depay[i], &rtsp_dec_h264parse[i],
+        &rtsp_v4l2h264dec[i], &rtsp_dec_tee[i], &rtsp_qtimlvconverter[i],
+        &rtsp_qtimlelement[i], &rtsp_qtimlvdetection[i],
+        &rtsp_detection_filter[i], NULL);
+    for (gint j=0; j<QUEUE_COUNT; j++) {
+      cleanup_gst (&rtsp_queue[i][j], NULL);
     }
   }
 
-  for (gint i = 0; i < QUEUE_COUNT; i++) {
-    gst_bin_remove_many (GST_BIN (appctx->pipeline), queue[i], NULL);
-  }
-
-  gst_bin_remove_many (GST_BIN (appctx->pipeline), qtivcomposer,
-      composer_caps, composer_tee, NULL);
-
-  if (options->out_display) {
-    gst_bin_remove_many (GST_BIN (appctx->pipeline), waylandsink, NULL);
-  }
-
-  if (options->out_file || options->out_rtsp) {
-    gst_bin_remove_many (GST_BIN (appctx->pipeline), v4l2h264enc, enc_h264parse,
-        enc_tee, NULL);
-    if (options->out_file) {
-      gst_bin_remove_many (GST_BIN (appctx->pipeline), mp4mux, filesink, NULL);
-    }
-    if (options->out_rtsp) {
-      gst_bin_remove_many (GST_BIN (appctx->pipeline), rtph264pay, udpsink, NULL);
-    }
+  for (gint i=0; i<QUEUE_COUNT ; i++) {
+    cleanup_gst (&queue[i], NULL);
   }
 
   return FALSE;
-}
-
-/**
- * Unlinks and removes all elements.
- *
- * @param appctx Application Context Pointer.
- */
-static void
-destroy_pipe (GstAppContext * appctx)
-{
-  GstElement *curr = (GstElement *) appctx->plugins->data;
-  GstElement *next;
-
-  GList *list = appctx->plugins->next;
-  for ( ; list != NULL; list = list->next) {
-    next = (GstElement *) list->data;
-    gst_element_unlink (curr, next);
-    gst_bin_remove (GST_BIN (appctx->pipeline), curr);
-    curr = next;
-  }
-  gst_bin_remove (GST_BIN (appctx->pipeline), curr);
-  g_list_free (appctx->plugins);
-  appctx->plugins = NULL;
-  gst_object_unref (appctx->pipeline);
 }
 
 gint
@@ -1179,6 +1176,7 @@ main (gint argc, gchar * argv[])
   //Set default IP and Port
   options.ip_address = DEFAULT_IP;
   options.port_num = DEFAULT_PORT;
+  options.constants = DEFAULT_CONSTANTS;
 
   // Structure to define the user options selection
   GOptionEntry entries[] = {
@@ -1230,6 +1228,14 @@ main (gint argc, gchar * argv[])
       "      Default labels path for YOLOV5: " DEFAULT_YOLOV5_LABELS,
       "/PATH"
     },
+    { "constants", 'k', 0, G_OPTION_ARG_STRING,
+      &options.constants,
+      "Constants, offsets and coefficients used by the chosen module \n"
+      "      for post-processing of incoming tensors."
+      " Applicable only for some modules\n"
+      "      Default constants: " DEFAULT_CONSTANTS,
+      "/CONSTANTS"
+    },
     { "display", 'd', 0, G_OPTION_ARG_NONE,
       &options.out_display,
       "Display on screen",
@@ -1244,9 +1250,9 @@ main (gint argc, gchar * argv[])
       &options.out_rtsp,
       "Encode and stream on rtsp\n"
       "      Run below command on a separate shell to start the rtsp server:\n"
-      "          gst-rtsp-server -p 8900 -a <device_ip> -m /live \"( udpsrc name=pay0 port=<port>"
-      " caps=\\\"application/x-rtp,media=video,clock-rate=90000,"
-      "encoding-name=H264,payload=96\\\" )\"\n"
+      "          gst-rtsp-server -p 8900 -a <device_ip> -m /live \"( udpsrc "
+      "name=pay0 port=<port> caps=\\\"application/x-rtp,media=video,"
+      "clock-rate=90000,encoding-name=H264,payload=96\\\" )\"\n"
       "      Live URL on port 8900: rtsp://<device_ip>/live\n"
       "          Change IP address to match your network settings",
       NULL
@@ -1269,7 +1275,6 @@ main (gint argc, gchar * argv[])
   options.model_path = DEFAULT_TFLITE_YOLOV5_MODEL;
   options.labels_path = DEFAULT_YOLOV5_LABELS;
 
-
   snprintf (help_description, 1023, "\nExample:\n"
       "  %s --num-file=6\n"
 #ifdef ENABLE_CAMERA
@@ -1278,7 +1283,7 @@ main (gint argc, gchar * argv[])
 #endif // ENABLE_CAMERA
       "  %s --num-file=4 -d -f /opt/app.mp4 --out-rtsp -i <ip> -p <port>\n"
       "\nThis Sample App demonstrates Object Detection with various input/output"
-      " stream combinations",
+      " stream combinations\n",
       app_name,
 #ifdef ENABLE_CAMERA
       app_name, app_name, DEFAULT_TFLITE_YOLOV5_MODEL,
@@ -1432,7 +1437,6 @@ main (gint argc, gchar * argv[])
   if (!ret) {
     g_printerr ("ERROR: failed to create GST pipe.\n");
     gst_app_context_free (&appctx, &options);
-    destroy_pipe (&appctx);
     return -1;
   }
 
@@ -1440,7 +1444,6 @@ main (gint argc, gchar * argv[])
   if ((mloop = g_main_loop_new (NULL, FALSE)) == NULL) {
     g_printerr ("ERROR: Failed to create Main loop!\n");
     gst_app_context_free (&appctx, &options);
-    destroy_pipe (&appctx);
     return -1;
   }
   appctx.mloop = mloop;
@@ -1450,7 +1453,6 @@ main (gint argc, gchar * argv[])
   if ((bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline))) == NULL) {
     g_printerr ("ERROR: Failed to retrieve pipeline bus!\n");
     gst_app_context_free (&appctx, &options);
-    destroy_pipe (&appctx);
     return -1;
   }
 
@@ -1502,11 +1504,8 @@ error:
   g_print ("Set pipeline to NULL state ...\n");
   gst_element_set_state (pipeline, GST_STATE_NULL);
 
-  g_print ("Destroy gst_app_context_free\n");
-  gst_app_context_free (&appctx, &options);
   g_print ("Destroy pipeline\n");
-
-  destroy_pipe (&appctx);
+  gst_app_context_free (&appctx, &options);
 
   g_print ("gst_deinit\n");
   gst_deinit ();
