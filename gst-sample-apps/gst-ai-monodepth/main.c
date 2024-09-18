@@ -106,7 +106,7 @@
 /**
  * Number of Queues used for buffer caching between elements
  */
-#define QUEUE_COUNT 6
+#define QUEUE_COUNT 7
 
 /**
  * Number of Stream in Pipeline
@@ -831,8 +831,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
     ret = gst_element_link_many (queue[2], h264parse[1], v4l2h264dec[1], queue[3],
         videorate[1], videorate_caps[1], qtimlvconverter, queue[4],
-        qtimlelement, qtimlvsegmentation, segmentation_filter,
-        qtivtransform, transform_filter, queue[5], fpsdisplaysink, NULL);
+        qtimlelement, queue[5], qtimlvsegmentation, segmentation_filter,
+        qtivtransform, transform_filter, queue[6], fpsdisplaysink, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
       "parse->fpsdisplaysink\n");
@@ -874,9 +874,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     // Linking RTSP source AI Processing stream
     ret = gst_element_link_many (queue[2], rtph264depay[1], h264parse[1],
         v4l2h264dec[1], queue[3], videorate[1], videorate_caps[1],
-        qtimlvconverter, queue[4], qtimlelement, qtimlvsegmentation,
+        qtimlvconverter, queue[4], qtimlelement, queue[5], qtimlvsegmentation,
         segmentation_filter, qtivtransform, transform_filter,
-        queue[5], fpsdisplaysink, NULL);
+        queue[6], fpsdisplaysink, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
           "rtspsource->fpsdisplaysink\n");
@@ -895,9 +895,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
     // Linking Monodepth AI Processing stream
     ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps_monodepth,
-       qtimlvconverter, queue[0], qtimlelement, qtimlvsegmentation,
+       qtimlvconverter, queue[0], qtimlelement, queue[1], qtimlvsegmentation,
        segmentation_filter, qtivtransform, transform_filter,
-       queue[1], fpsdisplaysink, NULL);
+       queue[2], fpsdisplaysink, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for monodepth stream, from"
           "qmmfsource->fpsdisplaysink\n");
