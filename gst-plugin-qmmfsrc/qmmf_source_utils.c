@@ -768,6 +768,39 @@ gst_qmmfsrc_cam_opmode_get_type (void)
   return gtype;
 }
 
+GType
+gst_qmmfsrc_pad_logical_stream_type_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { GST_PAD_LOGICAL_STREAM_TYPE_NONE,
+        "None", "none"
+    },
+    { GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_0,
+        "The stream uses specific physical camera with the index 0.",
+        "camera-index-0"
+    },
+    { GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_1,
+        "The stream uses specific physical camera with the index 1.",
+        "camera-index-1"
+    },
+    { GST_PAD_LOGICAL_STREAM_TYPE_SIDEBYSIDE,
+        "The stream uses all physical cameras and stitch images side by side.",
+        "sidebyside"
+    },
+    { GST_PAD_LOGICAL_STREAM_TYPE_PANORAMA,
+        "The stream uses all physical cameras and stitch images to panorama.",
+        "panorama"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstQmmfSrcPadLogicalStreamType", variants);
+
+  return gtype;
+}
+
 guchar
 gst_qmmfsrc_control_mode_android_value (const guint value)
 {
