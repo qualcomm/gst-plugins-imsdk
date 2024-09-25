@@ -158,8 +158,6 @@ struct _GstQmmfSrcVideoPad {
 
   /// ID of the QMMF Recorder track which belongs to this pad.
   guint               id;
-  /// Session ID of the QMMF Recorder track which belongs to this pad.
-  guint               session_id;
   /// QMMF Recorder track width, set by the pad capabilities.
   gint                width;
   /// QMMF Recorder track height, set by the pad capabilities.
