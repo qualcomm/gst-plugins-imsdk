@@ -177,8 +177,11 @@ set_ml_params (GstElement * qtimlelement, GstElement * qtimlpostprocess,
   const gchar *module = NULL;
 
   // Set delegate and model for AI framework
-  delegate_options = gst_structure_from_string (
-      "QNNExternalDelegate,backend_type=htp;", NULL);
+    delegate_options = gst_structure_from_string (
+      "QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,\
+      htp_performance_mode=(string)2,htp_precision=(string)1;",
+      NULL);
+
   g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
       "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
   g_object_set (G_OBJECT (qtimlelement),
