@@ -626,7 +626,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   // 2.3 Set the properties of Wayland compositor
   for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
     GstVideoRectangle pos = pipeline_data[i].position;
-    g_object_set (G_OBJECT (waylandsink[i]), "sync", TRUE, NULL);
+    g_object_set (G_OBJECT (waylandsink[i]), "sync", FALSE, NULL);
     g_object_set (G_OBJECT (waylandsink[i]), "x", pos.x, NULL);
     g_object_set (G_OBJECT (waylandsink[i]), "y", pos.y, NULL);
     g_object_set (G_OBJECT (waylandsink[i]), "width", pos.w, NULL);
@@ -636,7 +636,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   // 2.4 Set the properties of fpsdisplaysink plugin- sync,
   // signal-fps-measurements, text-overlay and video-sink
   for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
-    g_object_set (G_OBJECT (fpsdisplaysink[i]), "sync", TRUE, NULL);
+    g_object_set (G_OBJECT (fpsdisplaysink[i]), "sync", FALSE, NULL);
     g_object_set (G_OBJECT (fpsdisplaysink[i]), "signal-fps-measurements",
         TRUE, NULL);
     g_object_set (G_OBJECT (fpsdisplaysink[i]), "text-overlay", TRUE, NULL);
