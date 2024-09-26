@@ -298,8 +298,7 @@ gst_metamux_process_detection_metadata (GstMetaMux * muxer, GstBuffer * buffer,
   GstStructure *entry = NULL;
   const GValue *bboxes = NULL, *value = NULL;
   gchar *label = NULL;
-  gfloat left = 0.0, right = 0.0, top = 0.0, bottom = 0.0;
-  gint x = 0, y = 0, width = 0, height = 0;
+  gfloat x = 0, y = 0, width = 0, height = 0;
   guint id = 0, idx = 0, num = 0, size = 0, length = 0, color = 0;
 
   // If result is derived from a ROI, use it the recalculate dimensions.
@@ -327,21 +326,21 @@ gst_metamux_process_detection_metadata (GstMetaMux * muxer, GstBuffer * buffer,
     // Fetch bounding box rectangle if it exists and fill ROI coordinates.
     value = gst_structure_get_value (entry, "rectangle");
 
-    top = g_value_get_float (gst_value_array_get_value (value, 0));
-    left = g_value_get_float (gst_value_array_get_value (value, 1));
-    bottom = g_value_get_float (gst_value_array_get_value (value, 2));
-    right = g_value_get_float (gst_value_array_get_value (value, 3));
+    x = g_value_get_float (gst_value_array_get_value (value, 0));
+    y = g_value_get_float (gst_value_array_get_value (value, 1));
+    width = g_value_get_float (gst_value_array_get_value (value, 2));
+    height = g_value_get_float (gst_value_array_get_value (value, 3));
 
     if (parent_roimeta != NULL) {
-      x = (left * parent_roimeta->w) + parent_roimeta->x;
-      y = (top * parent_roimeta->h) + parent_roimeta->y;
-      width = (right - left) * parent_roimeta->w;
-      height = (bottom - top) * parent_roimeta->h;
+      x = (x * parent_roimeta->w) + parent_roimeta->x;
+      y = (y * parent_roimeta->h) + parent_roimeta->y;
+      width = width * parent_roimeta->w;
+      height = height * parent_roimeta->h;
     } else { // (parent_roimeta == NULL)
-      x = left * GST_VIDEO_INFO_WIDTH (muxer->vinfo);
-      y = top * GST_VIDEO_INFO_HEIGHT (muxer->vinfo);
-      width = (right - left) * GST_VIDEO_INFO_WIDTH (muxer->vinfo);
-      height = (bottom - top) * GST_VIDEO_INFO_HEIGHT (muxer->vinfo);
+      x = x * GST_VIDEO_INFO_WIDTH (muxer->vinfo);
+      y = y * GST_VIDEO_INFO_HEIGHT (muxer->vinfo);
+      width = width * GST_VIDEO_INFO_WIDTH (muxer->vinfo);
+      height = height * GST_VIDEO_INFO_HEIGHT (muxer->vinfo);
     }
 
     // Get the optional bbox landmarks in GValue format.

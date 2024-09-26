@@ -614,6 +614,7 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
   GValue list = G_VALUE_INIT, bboxes = G_VALUE_INIT;
   GValue array = G_VALUE_INIT, value = G_VALUE_INIT;
   guint idx = 0, num = 0, mrk = 0, n_entries = 0, sequence_idx = 0, id = 0;
+  gfloat x = 0.0, y = 0.0, width = 0.0, height = 0.0;
   gsize length = 0;
 
   g_value_init (&list, GST_TYPE_LIST);
@@ -637,10 +638,14 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
 
       id = GST_META_ID (detection->stage_id, sequence_idx, num);
 
+      x = entry->left;
+      y = entry->top;
+      width = entry->right - entry->left;
+      height = entry->bottom - entry->top;
+
       GST_TRACE_OBJECT (detection, "Batch: %u, ID: %X, Label: %s, Confidence: "
           "%.1f%%, Box [%.2f %.2f %.2f %.2f]", prediction->batch_idx, id,
-          g_quark_to_string (entry->name), entry->confidence, entry->top,
-          entry->left, entry->bottom, entry->right);
+          g_quark_to_string (entry->name), entry->confidence, x, y, width, height);
 
       // Replace empty spaces otherwise subsequent stream parse call will fail.
       name = g_strdup (g_quark_to_string (entry->name));
@@ -653,16 +658,16 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
 
       g_value_init (&value, G_TYPE_FLOAT);
 
-      g_value_set_float (&value, entry->top);
+      g_value_set_float (&value, x);
       gst_value_array_append_value (&array, &value);
 
-      g_value_set_float (&value, entry->left);
+      g_value_set_float (&value, y);
       gst_value_array_append_value (&array, &value);
 
-      g_value_set_float (&value, entry->bottom);
+      g_value_set_float (&value, width);
       gst_value_array_append_value (&array, &value);
 
-      g_value_set_float (&value, entry->right);
+      g_value_set_float (&value, height);
       gst_value_array_append_value (&array, &value);
 
       gst_structure_set_value (structure, "rectangle", &array);
