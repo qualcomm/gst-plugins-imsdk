@@ -27,7 +27,7 @@
  *     Pre process: qtimlvconverter
  *     ML Framework: qtimlsnpe/qtimltflite
  *     Post process: qtimlvdetection -> detection_filter
- *     Sink: fpsdisplaysink (Display)/filesink/rtsp server
+ *     Sink: waylandsink (Display)/filesink/rtsp server
  */
 
 #include <stdio.h>
@@ -191,7 +191,8 @@ set_ml_params (GstElement * qtimlelement, GstElement * qtimlvdetection,
 
   // Set delegate and model for AI framework
   delegate_options = gst_structure_from_string (
-      "QNNExternalDelegate,backend_type=htp;", NULL);
+      "QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,\
+      htp_performance_mode=(string)2,htp_precision=(string)1;", NULL);
   g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
       "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
   g_object_set (G_OBJECT (qtimlelement),
@@ -377,7 +378,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   // Elements for sinks
   GstElement *queue[QUEUE_COUNT], *qtivcomposer = NULL;
   GstElement *composer_caps = NULL, *composer_tee = NULL;
-  GstElement *waylandsink = NULL, *fpsdisplaysink = NULL;
+  GstElement *waylandsink = NULL;
   GstElement *v4l2h264enc = NULL, *enc_h264parse = NULL, *enc_tee = NULL;
   GstElement *mp4mux = NULL, *filesink = NULL;
   GstElement *rtph264pay = NULL, *udpsink = NULL;
@@ -720,15 +721,6 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       g_printerr ("Failed to create waylandsink \n");
       goto error_clean_elements;
     }
-
-    // Create fpsdisplaysink to display the current and
-    // average framerate as a text overlay
-    fpsdisplaysink = gst_element_factory_make ("fpsdisplaysink",
-        "fpsdisplaysink");
-    if (!fpsdisplaysink) {
-      g_printerr ("Failed to create fpsdisplaysink\n");
-      goto error_clean_elements;
-    }
   }
 
   if (options->out_file || options->out_rtsp) {
@@ -845,13 +837,6 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   // 2.5 Set the properties for Wayland compositor
   if (options->out_display) {
     g_object_set (G_OBJECT (waylandsink), "fullscreen", TRUE, NULL);
-    g_object_set (G_OBJECT (waylandsink), "sync", TRUE, NULL);
-
-    g_object_set (G_OBJECT (fpsdisplaysink), "sync", TRUE, NULL);
-    g_object_set (G_OBJECT (fpsdisplaysink), "signal-fps-measurements",
-        TRUE, NULL);
-    g_object_set (G_OBJECT (fpsdisplaysink), "text-overlay", TRUE, NULL);
-    g_object_set (G_OBJECT (fpsdisplaysink), "video-sink", waylandsink, NULL);
   }
 
   // 2.5 Set the properties for file/rtsp sink
@@ -915,8 +900,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       composer_caps, composer_tee, NULL);
 
   if (options->out_display) {
-    gst_bin_add_many (GST_BIN (appctx->pipeline), waylandsink,
-        fpsdisplaysink, NULL);
+    gst_bin_add_many (GST_BIN (appctx->pipeline), waylandsink, NULL);
   }
 
   if (options->out_file || options->out_rtsp) {
@@ -1021,31 +1005,19 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     }
   }
 
-  if (options->out_display) {
-    ret = gst_element_link_many (
-        qtivcomposer, queue[0], composer_tee, NULL);
-    if (!ret) {
-      g_printerr ("Pipeline elements cannot be linked for"
-          " qtivcomposer -> composer_tee.\n");
-      goto error_clean_pipeline;
-    }
-  }
-
-  if (options->out_file || options->out_rtsp) {
-    ret = gst_element_link_many (
-        qtivcomposer, queue[0], composer_caps, composer_tee, NULL);
-    if (!ret) {
-      g_printerr ("Pipeline elements cannot be linked for"
-          " qtivcomposer -> composer_tee.\n");
-      goto error_clean_pipeline;
-    }
+  ret = gst_element_link_many (
+      qtivcomposer, queue[0], composer_caps, composer_tee, NULL);
+  if (!ret) {
+    g_printerr ("Pipeline elements cannot be linked for"
+        " qtivcomposer -> composer_tee.\n");
+    goto error_clean_pipeline;
   }
 
   if (options->out_display) {
-    ret = gst_element_link_many (composer_tee, queue[1], fpsdisplaysink, NULL);
+    ret = gst_element_link_many (composer_tee, queue[1], waylandsink, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
-          " composer_tee -> fpsdisplaysink.\n");
+          " composer_tee -> waylandsink.\n");
       goto error_clean_pipeline;
     }
   }
@@ -1102,7 +1074,7 @@ error_clean_pipeline:
 
 error_clean_elements:
   cleanup_gst (&qtivcomposer, &composer_caps, &composer_tee, &waylandsink,
-      &fpsdisplaysink, &v4l2h264enc, &enc_h264parse, &enc_tee, &mp4mux,
+      &v4l2h264enc, &enc_h264parse, &enc_tee, &mp4mux,
       &filesink, &rtph264pay, &udpsink, NULL);
 
   for (gint i = 0; i < options->num_camera; i++) {
