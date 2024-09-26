@@ -333,15 +333,15 @@ gst_metamux_process_detection_metadata (GstMetaMux * muxer, GstBuffer * buffer,
     right = g_value_get_float (gst_value_array_get_value (value, 3));
 
     if (parent_roimeta != NULL) {
-      x = (ABS (left) * parent_roimeta->w) + parent_roimeta->x;
-      y = (ABS (top) * parent_roimeta->h) + parent_roimeta->y;
-      width = (ABS (right - left) * parent_roimeta->w);
-      height = (ABS (bottom - top) * parent_roimeta->h);
+      x = (left * parent_roimeta->w) + parent_roimeta->x;
+      y = (top * parent_roimeta->h) + parent_roimeta->y;
+      width = (right - left) * parent_roimeta->w;
+      height = (bottom - top) * parent_roimeta->h;
     } else { // (parent_roimeta == NULL)
-      x = ABS (left) * GST_VIDEO_INFO_WIDTH (muxer->vinfo);
-      y = ABS (top) * GST_VIDEO_INFO_HEIGHT (muxer->vinfo);
-      width = ABS (right - left) * GST_VIDEO_INFO_WIDTH (muxer->vinfo);
-      height = ABS (bottom - top) * GST_VIDEO_INFO_HEIGHT (muxer->vinfo);
+      x = left * GST_VIDEO_INFO_WIDTH (muxer->vinfo);
+      y = top * GST_VIDEO_INFO_HEIGHT (muxer->vinfo);
+      width = (right - left) * GST_VIDEO_INFO_WIDTH (muxer->vinfo);
+      height = (bottom - top) * GST_VIDEO_INFO_HEIGHT (muxer->vinfo);
     }
 
     // Get the optional bbox landmarks in GValue format.
