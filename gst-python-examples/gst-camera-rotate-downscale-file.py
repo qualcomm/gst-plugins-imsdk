@@ -7,7 +7,8 @@ import signal
 import gi
 
 gi.require_version("Gst", "1.0")
-from gi.repository import Gst
+gi.require_version("GLib", "2.0")
+from gi.repository import Gst, GLib
 
 
 def construct_pipeline(pipe):
@@ -102,52 +103,68 @@ def construct_pipeline(pipe):
     return pipe
 
 
+def quit_mainloop(loop):
+    if loop.is_running():
+        print("Quitting mainloop!")
+        loop.quit()
+    else:
+        print("Loop is not running!")
+
+
+def bus_call(bus, message, loop):
+    message_type = message.type
+    if message_type == Gst.MessageType.EOS:
+        print("EoS received")
+        quit_mainloop(loop)
+    elif message_type == Gst.MessageType.ERROR:
+        error, debug_info = message.parse_error()
+        print("ERROR:", message.src.get_name(), " ", error.message)
+        if debug_info:
+            print("debugging info:", debug_info)
+        quit_mainloop(loop)
+    return True
+
+
+def handle_interrupt_signal(pipe, loop):
+    _, state, _ = pipe.get_state(Gst.CLOCK_TIME_NONE)
+    if state == Gst.State.PLAYING:
+        print("Sending EoS!")
+        event = Gst.Event.new_eos()
+        success = pipe.send_event(event)
+        if success == False:
+            print("Failed to send EoS event to the pipeline!")
+    else:
+        print("Pipeline is not playing, terminating!")
+        quit_mainloop(loop)
+    return GLib.SOURCE_CONTINUE
+
+
 def main():
     os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
     os.environ["WAYLAND_DISPLAY"] = "wayland-1"
 
     Gst.init(None)
-
     pipe = Gst.Pipeline.new()
-    pipe = construct_pipeline(pipe)
-
-    def handle_interrupt_signal(signal, frame):
-        event = Gst.Event.new_eos()
-        success = pipe.send_event(event)
-        if success == False:
-            print("Failed to send EoS event to the pipeline!")
-
-    signal.signal(signal.SIGINT, handle_interrupt_signal)
-
-    pipe.set_state(Gst.State.PLAYING)
+    construct_pipeline(pipe)
+    loop = GLib.MainLoop()
 
     bus = pipe.get_bus()
-    while True:
-        message = bus.timed_pop_filtered(
-            100 * Gst.MSECOND, Gst.MessageType.EOS | Gst.MessageType.ERROR
-        )
+    bus.add_signal_watch()
+    bus.connect("message", bus_call, loop)
+    bus = None
 
-        if not message:
-            continue
+    interrupt_watch_id = GLib.unix_signal_add(
+        GLib.PRIORITY_HIGH, signal.SIGINT, handle_interrupt_signal, pipe, loop
+    )
 
-        message_type = message.type
-        if message_type == Gst.MessageType.ERROR:
-            error, debug_info = message.parse_error()
-            print("ERROR:", message.src.get_name(), " ", error.message)
-            if debug_info:
-                print("debugging info:", debug_info)
-            terminate = True
-        elif message_type == Gst.MessageType.EOS:
-            print("EoS received")
-            terminate = True
-        else:
-            print("ERROR: Unexpected message received")
-            break
+    pipe.set_state(Gst.State.PLAYING)
+    loop.run()
 
-        if terminate:
-            break
-
+    GLib.source_remove(interrupt_watch_id)
     pipe.set_state(Gst.State.NULL)
+    loop = None
+    pipe = None
+    Gst.deinit()
 
 
 if __name__ == "__main__":
