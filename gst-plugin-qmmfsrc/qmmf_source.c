@@ -73,6 +73,7 @@
 #include <gst/gstpadtemplate.h>
 #include <gst/gstelementfactory.h>
 #include <gst/allocators/allocators.h>
+#include <gst/video/video-utils.h>
 #ifdef ENABLE_RUNTIME_PARSER
 #include <gst/utils/runtime-flags-parser-c-api.h>
 #endif // ENABLE_RUNTIME_PARSER
@@ -437,76 +438,6 @@ qmmfsrc_init_src_templates ()
   qmmfsrc_image_src_template.presence = GST_PAD_REQUEST;
   qmmfsrc_image_src_template.static_caps = static_image_caps;
 }
-
-#else
-static GstStaticPadTemplate qmmfsrc_video_src_template =
-    GST_STATIC_PAD_TEMPLATE("video_%u",
-        GST_PAD_SRC,
-        GST_PAD_REQUEST,
-        GST_STATIC_CAPS (
-            QMMFSRC_VIDEO_JPEG_CAPS "; "
-            QMMFSRC_VIDEO_RAW_CAPS (
-                "{ NV12, NV16"
-#ifdef GST_VIDEO_YUY2_FORMAT_ENABLE
-                ", YUY2"
-#endif // GST_VIDEO_YUY2_FORMAT_ENABLE
-#ifdef GST_VIDEO_UYVY_FORMAT_ENABLE
-                ", UYVY"
-#endif // GST_VIDEO_UYVY_FORMAT_ENABLE
-#ifdef GST_VIDEO_P010_10LE_FORMAT_ENABLE
-                ", P010_10LE"
-#endif // GST_VIDEO_P010_10LE_FORMAT_ENABLE
-#ifdef GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
-                ", NV12_10LE32"
-#endif // GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
-                " }") "; "
-            QMMFSRC_VIDEO_RAW_CAPS_WITH_FEATURES (
-                GST_CAPS_FEATURE_MEMORY_GBM,
-                "{ NV12, NV16"
-#ifdef GST_VIDEO_YUY2_FORMAT_ENABLE
-                ", YUY2"
-#endif // GST_VIDEO_YUY2_FORMAT_ENABLE
-#ifdef GST_VIDEO_UYVY_FORMAT_ENABLE
-                ", UYVY"
-#endif // GST_VIDEO_UYVY_FORMAT_ENABLE
-#ifdef GST_VIDEO_P010_10LE_FORMAT_ENABLE
-                ", P010_10LE"
-#endif // GST_VIDEO_P010_10LE_FORMAT_ENABLE
-#ifdef GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
-                ", NV12_10LE32"
-#endif // GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
-                " }") "; "
-            QMMFSRC_VIDEO_BAYER_CAPS (
-                "{ bggr, rggb, gbrg, grbg, mono }",
-                "{ 8, 10, 12, 16 }")
-        )
-    );
-
-static GstStaticPadTemplate qmmfsrc_image_src_template =
-    GST_STATIC_PAD_TEMPLATE("image_%u",
-        GST_PAD_SRC,
-        GST_PAD_REQUEST,
-        GST_STATIC_CAPS (
-            QMMFSRC_IMAGE_JPEG_CAPS "; "
-            QMMFSRC_IMAGE_RAW_CAPS (
-                "{ NV21"
-#ifdef GST_IMAGE_NV12_FORMAT_ENABLE
-                ", NV12"
-#endif // GST_IMAGE_NV12_FORMAT_ENABLE
-                " }") "; "
-            QMMFSRC_IMAGE_RAW_CAPS_WITH_FEATURES (
-                GST_CAPS_FEATURE_MEMORY_GBM,
-                "{ NV21"
-#ifdef GST_IMAGE_NV12_FORMAT_ENABLE
-                ", NV12"
-#endif // GST_IMAGE_NV12_FORMAT_ENABLE
-                " }") "; "
-            QMMFSRC_IMAGE_BAYER_CAPS (
-                "{ bggr, rggb, gbrg, grbg, mono }",
-                "{ 8, 10, 12, 16 }")
-        )
-    );
-
 #endif // ENABLE_RUNTIME_PARSER
 
 static gboolean
@@ -808,6 +739,113 @@ qmmfsrc_release_pad (GstElement * element, GstPad * pad)
   GST_DEBUG_OBJECT (qmmfsrc, "Deleted pad %d", index);
 
   GST_QMMFSRC_UNLOCK (qmmfsrc);
+}
+
+static GstStaticCaps gst_qmmfsrc_video_static_src_caps =
+    GST_STATIC_CAPS (QMMFSRC_VIDEO_JPEG_CAPS "; "
+        QMMFSRC_VIDEO_RAW_CAPS (
+                "{ NV12, NV16"
+#ifdef GST_VIDEO_YUY2_FORMAT_ENABLE
+                ", YUY2"
+#endif // GST_VIDEO_YUY2_FORMAT_ENABLE
+#ifdef GST_VIDEO_UYVY_FORMAT_ENABLE
+                ", UYVY"
+#endif // GST_VIDEO_UYVY_FORMAT_ENABLE
+#ifdef GST_VIDEO_P010_10LE_FORMAT_ENABLE
+                ", P010_10LE"
+#endif // GST_VIDEO_P010_10LE_FORMAT_ENABLE
+#ifdef GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
+                ", NV12_10LE32"
+#endif // GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
+                " }"));
+
+static GstStaticCaps gst_qmmfsrc_image_static_src_caps =
+    GST_STATIC_CAPS (QMMFSRC_IMAGE_JPEG_CAPS "; "
+        QMMFSRC_IMAGE_RAW_CAPS (
+                "{ NV21"
+#ifdef GST_IMAGE_NV12_FORMAT_ENABLE
+                ", NV12"
+#endif // GST_IMAGE_NV12_FORMAT_ENABLE
+                " }") "; "
+            QMMFSRC_IMAGE_BAYER_CAPS (
+                "{ bggr, rggb, gbrg, grbg, mono }",
+                "{ 8, 10, 12, 16 }"));
+
+static GstCaps *
+gst_qmmfsrc_video_src_caps (void)
+{
+  static GstCaps *caps = NULL;
+  static gsize inited = 0;
+
+  if (g_once_init_enter (&inited)) {
+    caps = gst_static_caps_get (&gst_qmmfsrc_video_static_src_caps);
+
+    if (gst_is_gbm_supported()) {
+      GstCaps *tmplcaps = gst_caps_from_string (
+          GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
+              "{ NV12, NV16"
+#ifdef GST_VIDEO_YUY2_FORMAT_ENABLE
+                ", YUY2"
+#endif // GST_VIDEO_YUY2_FORMAT_ENABLE
+#ifdef GST_VIDEO_UYVY_FORMAT_ENABLE
+                ", UYVY"
+#endif // GST_VIDEO_UYVY_FORMAT_ENABLE
+#ifdef GST_VIDEO_P010_10LE_FORMAT_ENABLE
+                ", P010_10LE"
+#endif // GST_VIDEO_P010_10LE_FORMAT_ENABLE
+#ifdef GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
+                ", NV12_10LE32"
+#endif // GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
+                " }"));
+
+      caps = gst_caps_make_writable (caps);
+      gst_caps_append (caps, tmplcaps);
+    }
+
+    g_once_init_leave (&inited, 1);
+  }
+  return caps;
+}
+
+static GstCaps *
+gst_qmmfsrc_image_src_caps (void)
+{
+  static GstCaps *caps = NULL;
+  static gsize inited = 0;
+
+  if (g_once_init_enter (&inited)) {
+    caps = gst_static_caps_get (&gst_qmmfsrc_image_static_src_caps);
+
+    if (gst_is_gbm_supported()) {
+      GstCaps *tmplcaps = gst_caps_from_string (
+          QMMFSRC_IMAGE_RAW_CAPS_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
+                "{ NV21"
+#ifdef GST_IMAGE_NV12_FORMAT_ENABLE
+                ", NV12"
+#endif // GST_IMAGE_NV12_FORMAT_ENABLE
+                " }"));
+
+      caps = gst_caps_make_writable (caps);
+      gst_caps_append (caps, tmplcaps);
+    }
+
+    g_once_init_leave (&inited, 1);
+  }
+  return caps;
+}
+
+static GstPadTemplate *
+gst_qmmfsrc_video_src_template (void)
+{
+  return gst_pad_template_new_with_gtype ("video_%u", GST_PAD_SRC, GST_PAD_REQUEST,
+      gst_qmmfsrc_video_src_caps (), GST_TYPE_QMMFSRC_VIDEO_PAD);
+}
+
+static GstPadTemplate *
+gst_qmmfsrc_image_src_template (void)
+{
+  return gst_pad_template_new_with_gtype ("image_%u", GST_PAD_SRC, GST_PAD_REQUEST,
+      gst_qmmfsrc_image_src_caps (), GST_TYPE_QMMFSRC_IMAGE_PAD);
 }
 
 static void
@@ -1747,12 +1785,16 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
 
 #ifdef ENABLE_RUNTIME_PARSER
   qmmfsrc_init_src_templates ();
-#endif // ENABLE_RUNTIME_PARSER
-
   gst_element_class_add_static_pad_template_with_gtype (gstelement,
       &qmmfsrc_video_src_template, GST_TYPE_QMMFSRC_VIDEO_PAD);
   gst_element_class_add_static_pad_template_with_gtype (gstelement,
       &qmmfsrc_image_src_template, GST_TYPE_QMMFSRC_IMAGE_PAD);
+#endif // ENABLE_RUNTIME_PARSER
+
+  gst_element_class_add_pad_template (gstelement,
+      gst_qmmfsrc_video_src_template ());
+  gst_element_class_add_pad_template (gstelement,
+      gst_qmmfsrc_image_src_template ());
 
   gst_element_class_set_static_metadata (
       gstelement, "QMMF Video Source", "Source/Video",
