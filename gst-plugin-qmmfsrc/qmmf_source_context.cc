@@ -99,6 +99,17 @@ qmmf_context_debug_category (void)
   return (GstDebugCategory *) catgonce;
 }
 
+struct _GstQmmfLogicalCamInfo {
+  gboolean        is_logical_cam;
+  gint            phy_cam_num;
+  gchar*          phy_cam_name_list[16];
+};
+
+struct _GstQmmfCameraSwitchInfo {
+  gint            phy_cam_id_for_switch;
+  gint            input_req_id;
+};
+
 struct _GstQmmfContext {
   /// Global mutex lock.
   GMutex            lock;
@@ -213,6 +224,11 @@ struct _GstQmmfContext {
   gboolean          input_roi_enable;
   /// Number of Input ROI's
   gint32            input_roi_count;
+
+  /// Logical Camera Information
+  GstQmmfLogicalCamInfo logical_cam_info;
+  /// Sensor Switch Information
+  GstQmmfCameraSwitchInfo camera_switch_info;
 
   /// QMMF Recorder instance.
   ::qmmf::recorder::Recorder *recorder;
@@ -1161,6 +1177,11 @@ gst_qmmf_context_new (GstCameraEventCb eventcb, GstCameraMetaCb metacb,
   context->mwbsettings =
       gst_structure_new_empty ("org.codeaurora.qcamera3.manualWB");
 
+  // logical camera and sensor switch info init
+  context->logical_cam_info.is_logical_cam = FALSE;
+  context->logical_cam_info.phy_cam_num = 0;
+  context->camera_switch_info.input_req_id = -1;
+
   GST_INFO ("Created QMMF context: %p", context);
   return context;
 }
@@ -1177,8 +1198,65 @@ gst_qmmf_context_free (GstQmmfContext * context)
   gst_structure_free (context->nrtuning);
   gst_structure_free (context->mwbsettings);
 
+  if (context->logical_cam_info.is_logical_cam == TRUE) {
+    for (int i = 0; i < context->logical_cam_info.phy_cam_num; i++)
+      g_free (context->logical_cam_info.phy_cam_name_list[i]);
+  }
+
   GST_INFO ("Destroyed QMMF context: %p", context);
   g_slice_free (GstQmmfContext, context);
+}
+
+void
+gst_qmmf_context_parse_logical_cam_info (GstQmmfContext *context,
+    ::camera::CameraMetadata meta)
+{
+  camera_metadata_entry entry;
+  GstQmmfLogicalCamInfo *pinfo = &context->logical_cam_info;
+
+  entry = meta.find (ANDROID_REQUEST_AVAILABLE_CAPABILITIES);
+
+  if (entry.count != 0) {
+    guint8 *cap_req_keys = entry.data.u8;
+    size_t i = 0;
+
+    GST_INFO ("Found request available caps tag");
+
+    for (i = 0; i < entry.count; i++) {
+      if (ANDROID_REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA ==
+          cap_req_keys[i]) {
+        pinfo->is_logical_cam = TRUE;
+        break;
+      }
+    }
+  }
+
+  if (pinfo->is_logical_cam == TRUE) {
+    entry = meta.find (ANDROID_LOGICAL_MULTI_CAMERA_PHYSICAL_IDS);
+
+    if (entry.count != 0) {
+      size_t i = 0;
+      guchar *pids = entry.data.u8;
+      gchar  *pname = (gchar *)pids;
+
+      for (i = 0; i < entry.count; i++) {
+        // data format example:
+        // '0''\0''1''\0''2''\0'
+        if (pids[i] == '\0') {
+          pinfo->phy_cam_name_list[pinfo->phy_cam_num] = g_strdup (pname);
+          pinfo->phy_cam_num++;
+          pname = (gchar *)&pids[i+1];
+
+          GST_INFO ("Get physical camera %s in logical camera (%d)",
+              pinfo->phy_cam_name_list[pinfo->phy_cam_num - 1],
+              context->camera_id);
+        }
+      }
+
+      GST_INFO ("Found %d physical camera in logical camera %d",
+          pinfo->phy_cam_num, context->camera_id);
+    }
+  }
 }
 
 gboolean
@@ -1345,6 +1423,8 @@ gst_qmmf_context_open (GstQmmfContext * context)
     context->zoom.w = context->sensorsize.w;
     context->zoom.h = context->sensorsize.h;
   }
+
+  gst_qmmf_context_parse_logical_cam_info(context, meta);
 
   context->state = GST_STATE_READY;
 
@@ -2533,6 +2613,62 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       }
       break;
     }
+    case PARAM_CAMERA_PHYISICAL_CAMERA_SWITCH:
+    {
+      if (context->logical_cam_info.is_logical_cam == TRUE) {
+        gint input, output;
+
+        input = g_value_get_int (value);
+        output = -1;
+
+        // input is -1, select next valid phy camera id automatically
+        // or input is in the range of [0, physical camera number], select
+        // itself as output.
+        if (input < -1) {
+            GST_ERROR ("Invalid id (%d) for phy camera switch", input);
+        } else if (input == -1) {
+          context->camera_switch_info.phy_cam_id_for_switch++;
+          if (context->camera_switch_info.phy_cam_id_for_switch >=
+              context->logical_cam_info.phy_cam_num)
+            context->camera_switch_info.phy_cam_id_for_switch = 0;
+
+          output = context->camera_switch_info.phy_cam_id_for_switch;
+          context->camera_switch_info.input_req_id = input;
+        } else {
+          if (input < context->logical_cam_info.phy_cam_num) {
+            context->camera_switch_info.input_req_id = input;
+            context->camera_switch_info.phy_cam_id_for_switch = input;
+            output = input;
+          } else {
+            GST_ERROR ("id (%d) out of range for phy camera switch", input);
+          }
+        }
+
+        if (output != -1) {
+          GST_INFO ("phy camera switch target (%d)", output);
+
+          guint tag_id = get_vendor_tag_by_name (
+              "com.qti.chi.multicameraswitchControl", "activeCameraIndex");
+
+          if (tag_id != 0) {
+            guint8 val = (guint8) output;
+            gint32 ret;
+
+            ret = meta.update (tag_id, &val, 1);
+            if (ret != 0) {
+              GST_ERROR ("physical camera switch tag update error");
+            } else {
+              GST_INFO ("physical camera switch tag update success");
+            }
+          } else {
+            GST_ERROR ("physical camera switch tag not found ");
+          }
+        }
+      } else {
+        GST_ERROR ("not logical camera, phy camera id switch not supported");
+      }
+      break;
+    }
   }
 
   if (!context->slave && (context->state >= GST_STATE_READY)) {
@@ -2843,6 +2979,11 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
         gst_value_array_append_value (value, &val);
       }
 
+      break;
+    }
+    case PARAM_CAMERA_PHYISICAL_CAMERA_SWITCH:
+    {
+      g_value_set_int (value, context->camera_switch_info.input_req_id);
       break;
     }
   }

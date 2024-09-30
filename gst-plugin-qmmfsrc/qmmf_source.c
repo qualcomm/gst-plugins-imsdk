@@ -126,6 +126,7 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
 #define DEFAULT_PROP_CAMERA_IFE_DIRECT_STREAM         FALSE
 #define DEFAULT_PROP_CAMERA_OPERATION_MODE            CAM_OPMODE_NONE
 #define DEFAULT_PROP_CAMERA_MULTI_ROI                 FALSE
+#define DEFAULT_PROP_CAMERA_PHYSICAL_CAMERA_SWITCH    -1
 
 static void gst_qmmfsrc_child_proxy_init (gpointer g_iface, gpointer data);
 
@@ -197,6 +198,7 @@ enum
   PROP_CAMERA_OPERATION_MODE,
   PROP_CAMERA_INPUT_ROI,
   PROP_CAMERA_INPUT_ROI_INFO,
+  PROP_CAMERA_PHYSICAL_CAMERA_SWITCH,
 };
 
 static GstStaticPadTemplate qmmfsrc_video_src_template =
@@ -1160,6 +1162,10 @@ qmmfsrc_set_property (GObject * object, guint property_id,
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_INPUT_ROI_INFO, value);
       break;
+    case PROP_CAMERA_PHYSICAL_CAMERA_SWITCH:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_PHYISICAL_CAMERA_SWITCH, value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -1352,6 +1358,10 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
     case PROP_CAMERA_INPUT_ROI_INFO:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_INPUT_ROI_INFO, value);
+      break;
+    case PROP_CAMERA_PHYSICAL_CAMERA_SWITCH:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_PHYISICAL_CAMERA_SWITCH, value);
       break;
 
     default:
@@ -1709,6 +1719,23 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
               G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS),
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
+#if defined (FEATURE_LOGICAL_CAMERA_SUPPORT) && \
+  defined (FEATURE_LOGICAL_CAMERA_SENSOR_SWITCH)
+  g_object_class_install_property (gobject, PROP_CAMERA_PHYSICAL_CAMERA_SWITCH,
+      g_param_spec_int ("camera-switch-index", "set camera index for "
+          "logical camera", "logica camera is a camera having a group of two"
+          "or more physical sensors. logical camera includes several modes, "
+          "SAT mode is where logical camera output the same size as any one of "
+          "the physical sensor. the property is used to switch physical sensor's "
+          "index within logical camera's all available physical sensors in SAT mode"
+          "this property can be used to switch between different physical camera"
+          "by their indexes. for example, camera-index=-1 will set "
+          "next valid physical camera index, and camera-index=2 will select"
+          "physical camera index 2", -1, 10,
+          DEFAULT_PROP_CAMERA_PHYSICAL_CAMERA_SWITCH,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+#endif
 
   signals[SIGNAL_CAPTURE_IMAGE] =
       g_signal_new_class_handler ("capture-image", G_TYPE_FROM_CLASS (klass),
