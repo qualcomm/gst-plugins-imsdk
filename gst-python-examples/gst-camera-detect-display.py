@@ -27,7 +27,7 @@ def handle_interrupt_signal(pipeline, mloop):
     """Handle Ctrl+C."""
     global waiting_for_eos
 
-    _, state, _ = pipeline.get_state(0)
+    _, state, _ = pipeline.get_state(Gst.CLOCK_TIME_NONE)
     if state != Gst.State.PLAYING or waiting_for_eos:
         mloop.quit()
         return GLib.SOURCE_CONTINUE
@@ -66,29 +66,17 @@ def create_element(factory_name, name):
     return element
 
 
-def link_elements(elements):
+def link_elements(elements, link_orders):
     """Link elements in the specified order."""
-    link_orders = [
-        [
-           "camsrc", "cam_caps", "queue0", "split"
-        ],
-        [
-            "split", "queue1", "metamux", "overlay", "display"
-        ],
-        [
-            "split", "converter", "queue2", "tflite", "queue3", "detection",
-            "tensor_caps", "queue4", "metamux"
-        ]
-    ]
     for link_order in link_orders:
         src = None  # Initialize src to None at the start of each link_order
         for element in link_order:
             dest = elements[element]
             if src and not src.link(dest):
-                    raise Exception(
-                        f"Unable to link element "
-                        f"{src.get_name()} to {dest.get_name()}"
-                    )
+                raise Exception(
+                    f"Unable to link element "
+                    f"{src.get_name()} to {dest.get_name()}"
+                )
             src = dest  # Update src to the current dest for the next iteration
 
 def create_pipeline(pipeline):
@@ -138,7 +126,7 @@ def create_pipeline(pipeline):
         )
     )
 
-    elements["overlay"].set_property("engine", 2)
+    elements["overlay"].set_property("engine", "gles")
 
     elements["tflite"].set_property("delegate", "external")
     elements["tflite"].set_property("external-delegate-path", DELEGATE_PATH)
@@ -169,7 +157,19 @@ def create_pipeline(pipeline):
         pipeline.add(element)
 
     # Link elements
-    link_elements(elements)
+    link_orders = [
+        [
+           "camsrc", "cam_caps", "queue0", "split"
+        ],
+        [
+            "split", "queue1", "metamux", "overlay", "display"
+        ],
+        [
+            "split", "converter", "queue2", "tflite", "queue3", "detection",
+            "tensor_caps", "queue4", "metamux"
+        ]
+    ]
+    link_elements(elements, link_orders)
 
 def main():
     """Main function to set up and run the GStreamer pipeline."""
@@ -189,7 +189,7 @@ def main():
         create_pipeline(pipeline)
     except Exception as e:
         print(f"{e}, exiting...")
-        exit(-1)
+        return -1
 
     # Handle Ctrl+C
     interrupt_watch_id = GLib.unix_signal_add(

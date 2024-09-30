@@ -28,7 +28,7 @@ def handle_interrupt_signal(pipeline, mloop):
     """Handle Ctrl+C."""
     global waiting_for_eos
 
-    _, state, _ = pipeline.get_state(0)
+    _, state, _ = pipeline.get_state(Gst.CLOCK_TIME_NONE)
     if state != Gst.State.PLAYING or waiting_for_eos:
         mloop.quit()
         return GLib.SOURCE_CONTINUE
@@ -74,21 +74,8 @@ def on_pad_added(_, pad, target):
             if pad.link(sink_pad) != Gst.PadLinkReturn.OK:
                 raise Exception(f"Failed linking demux to queue")
 
-def link_elements(elements):
+def link_elements(elements, link_orders):
     """Link elements in the specified order."""
-    link_orders = [
-        [
-            "filesrc", "demux", "queue0", "parse", "decoder", "queue1", "split"
-        ],
-        [
-            "split", "queue2", "metamux", "overlay", "display"
-        ],
-        [
-            "split", "converter", "queue3", "tflite", "queue4", "detection",
-            "tensor_caps", "queue5", "metamux"
-        ]
-    ]
-
     for link_order in link_orders:
         src = None  # Initialize src to None at the start of each link_order
         for element in link_order:
@@ -155,7 +142,7 @@ def create_pipeline(pipeline):
     elements["decoder"].set_property("capture-io-mode", 5)
     elements["decoder"].set_property("output-io-mode", 5)
 
-    elements["overlay"].set_property("engine", 2)
+    elements["overlay"].set_property("engine", "gles")
 
     elements["tflite"].set_property("delegate", "external")
     elements["tflite"].set_property("external-delegate-path", DELEGATE_PATH)
@@ -187,7 +174,19 @@ def create_pipeline(pipeline):
         pipeline.add(element)
 
     # Link elements
-    link_elements(elements)
+    link_orders = [
+        [
+            "filesrc", "demux", "queue0", "parse", "decoder", "queue1", "split"
+        ],
+        [
+            "split", "queue2", "metamux", "overlay", "display"
+        ],
+        [
+            "split", "converter", "queue3", "tflite", "queue4", "detection",
+            "tensor_caps", "queue5", "metamux"
+        ]
+    ]
+    link_elements(elements, link_orders)
 
 def main():
     """Main function to set up and run the GStreamer pipeline."""
@@ -207,7 +206,7 @@ def main():
         create_pipeline(pipeline)
     except Exception as e:
         print(f"{e}, exiting...")
-        exit(-1)
+        return -1
 
     # Handle Ctrl+C
     interrupt_watch_id = GLib.unix_signal_add(
