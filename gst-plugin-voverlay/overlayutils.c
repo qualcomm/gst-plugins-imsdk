@@ -262,7 +262,6 @@ gst_extract_timestamps (const GValue * value, GArray * timestamps)
   const GValue *position = NULL;
   guint idx = 0, num = 0, size = 0;
   gint x = -1, y = -1, color = 0, fontsize = 0;
-  gboolean changed = FALSE;
 
   size = gst_value_list_get_size (value);
 
@@ -348,9 +347,6 @@ gst_extract_timestamps (const GValue * value, GArray * timestamps)
       x = g_value_get_int (gst_value_array_get_value (position, 0));
       y = g_value_get_int (gst_value_array_get_value (position, 1));
 
-      // Raise the flag for clearing cached blit if position is different.
-      changed |= (timestamp->position.x != x) || (timestamp->position.y != y);
-
       timestamp->position.x = x;
       timestamp->position.y = y;
     }
@@ -360,10 +356,6 @@ gst_extract_timestamps (const GValue * value, GArray * timestamps)
 
     if (gst_structure_has_field (structure, "color")) {
       gst_structure_get_int (structure, "color", &color);
-
-      // Raise the flag for clearing cached blit if color is different.
-      changed |= timestamp->color != color;
-
       timestamp->color = color;
     }
 
@@ -371,18 +363,10 @@ gst_extract_timestamps (const GValue * value, GArray * timestamps)
 
     if (gst_structure_has_field (structure, "fontsize")) {
       gst_structure_get_int (structure, "fontsize", &fontsize);
-
-      // Raise the flag for clearing cached blit if font size is different.
-      changed |= timestamp->fontsize != fontsize;
-
       timestamp->fontsize = fontsize;
     }
 
     GST_TRACE ("%s: Font size: %d", name, timestamp->fontsize);
-
-    // Clear the cached blit if the flag has been raised.
-    if (changed && (timestamp->blit.frame != NULL))
-      gst_video_blit_release (&(timestamp->blit));
 
     if (gst_structure_has_field (structure, "enable"))
       gst_structure_get_boolean (structure, "enable", &(timestamp)->enable);
