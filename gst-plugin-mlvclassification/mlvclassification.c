@@ -538,10 +538,10 @@ gst_ml_video_classification_fill_text_output (
 
     gst_structure_get_uint (prediction->info, "sequence-index", &sequence_idx);
 
+    id = GST_META_ID (classification->stage_id, sequence_idx, 0);
+
     for (num = 0; num < n_entries; num++) {
       entry = &(g_array_index (prediction->entries, GstMLClassEntry, num));
-
-      id = GST_META_ID (classification->stage_id, sequence_idx, num);
 
       GST_TRACE_OBJECT (classification, "Batch: %u, ID: %X, Label: %s, "
           "Confidence: %.1f%%", prediction->batch_idx, id,
