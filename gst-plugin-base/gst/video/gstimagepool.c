@@ -677,6 +677,22 @@ gst_image_buffer_pool_alloc (GstBufferPool * pool, GstBuffer ** buffer,
     );
   }
 
+  // Initially map the buffer
+  // If KEEP_MAPPED flag is set do initially map the buffer with READ and WRITE
+  // access. This will solve the issue where if someone map the buffer with
+  // READ only access at the begining after that it cannot be mapped with
+  // WRITE access.
+  if (priv->memflags & GST_FD_MEMORY_FLAG_KEEP_MAPPED) {
+    GstMapInfo map;
+
+    GST_DEBUG_OBJECT (vpool, "Initially map the buffer");
+    if (!gst_buffer_map (newbuffer, &map, GST_MAP_READWRITE)) {
+      GST_ERROR ("Failed to map GST buffer!");
+      return GST_FLOW_ERROR;
+    }
+    gst_buffer_unmap (newbuffer, &map);
+  }
+
   *buffer = newbuffer;
   return GST_FLOW_OK;
 }

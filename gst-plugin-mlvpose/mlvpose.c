@@ -255,6 +255,8 @@ gst_ml_video_pose_create_pool (GstMLVideoPose * vpose, GstCaps * caps)
 
     gst_buffer_pool_config_add_option (structure,
         GST_BUFFER_POOL_OPTION_VIDEO_META);
+    gst_buffer_pool_config_add_option (structure,
+        GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
   }
 
   if (!gst_buffer_pool_set_config (pool, structure)) {

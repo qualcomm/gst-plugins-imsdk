@@ -147,6 +147,9 @@ gst_jpeg_enc_create_pool (GstJPEGEncoder * jpegenc, GstCaps * caps)
   allocator = gst_fd_allocator_new ();
   gst_buffer_pool_config_set_allocator (config, allocator, NULL);
 
+  gst_buffer_pool_config_add_option (config,
+      GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
+
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING_OBJECT (jpegenc, "Failed to set pool configuration!");
     g_object_unref (pool);
