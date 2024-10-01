@@ -28,7 +28,7 @@ def handle_interrupt_signal(pipeline, mloop):
     """Handle Ctrl+C."""
     global waiting_for_eos
 
-    _, state, _ = pipeline.get_state(0)
+    _, state, _ = pipeline.get_state(Gst.CLOCK_TIME_NONE)
     if state != Gst.State.PLAYING or waiting_for_eos:
         mloop.quit()
         return GLib.SOURCE_CONTINUE
@@ -69,12 +69,11 @@ def link_elements(link_orders, elements):
         src = None  # Initialize src to None at the start of each link_order
         for element in link_order:
             dest = elements[element]
-            if src:
-                if not src.link(dest):
-                    raise Exception(
-                        f"Unable to link element {src.get_name()} to "
-                        f"{dest.get_name()}"
-                    )
+            if src and not src.link(dest):
+                raise Exception(
+                    f"Unable to link element {src.get_name()} to "
+                    f"{dest.get_name()}"
+                )
             src = dest  # Update src to the current dest for the next iteration
 
 def create_pipeline(pipeline):
@@ -131,7 +130,7 @@ def create_pipeline(pipeline):
         )
     )
 
-    elements["overlay"].set_property("engine", 2)
+    elements["overlay"].set_property("engine", "gles")
 
     elements["encoder"].set_property("capture-io-mode", 5)
     elements["encoder"].set_property("output-io-mode", 5)
@@ -198,7 +197,7 @@ def main():
         create_pipeline(pipeline)
     except Exception as e:
         print(f"{e} Exiting...")
-        exit(-1)
+        return -1
 
     # Handle Ctrl+C
     interrupt_watch_id = GLib.unix_signal_add(
