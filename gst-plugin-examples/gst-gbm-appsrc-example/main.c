@@ -128,6 +128,8 @@ gst_app_create_pool (GstCaps *caps, guint frame_size)
     gst_buffer_pool_config_set_allocator(config, allocator, NULL);
     g_object_unref(allocator);
     gst_buffer_pool_config_add_option(config, GST_BUFFER_POOL_OPTION_VIDEO_META);
+    gst_buffer_pool_config_add_option (config,
+        GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
   }
 
   if (!gst_buffer_pool_set_config (pool, config)) {
