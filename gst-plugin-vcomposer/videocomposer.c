@@ -348,6 +348,7 @@ gst_buffer_transfer_video_landmarks_meta (GstBuffer * buffer,
     GstVideoRectangle * source, GstVideoRectangle * destination,
     GstVideoLandmarksMeta * lmkmeta)
 {
+  GstVideoLandmarksMeta *newmeta = NULL;
   GArray *keypoints = NULL, *links = NULL;
   gdouble w_scale = 0.0, h_scale = 0.0;
   guint num = 0;
@@ -366,17 +367,38 @@ gst_buffer_transfer_video_landmarks_meta (GstBuffer * buffer,
     kp->y = (kp->y * h_scale) + destination->y;
   }
 
-  gst_buffer_add_video_landmarks_meta (buffer, lmkmeta->confidence, keypoints,
-      links);
+  newmeta = gst_buffer_add_video_landmarks_meta (buffer, lmkmeta->confidence,
+      keypoints, links);
+  newmeta->id = lmkmeta->id;
+
+  if (lmkmeta->xtraparams != NULL)
+    newmeta->xtraparams = gst_structure_copy (lmkmeta->xtraparams);
 }
 
 static inline void
 gst_buffer_transfer_video_classification_meta (GstBuffer * buffer,
     GstVideoClassificationMeta * classmeta)
 {
+  GstVideoClassificationMeta *newmeta = NULL;
   GArray *labels = g_array_copy (classmeta->labels);
+  guint idx = 0;
 
-  gst_buffer_add_video_classification_meta (buffer, labels);
+  // The GArray copy above naturally doesn't copy the data in pointers.
+  // Iterate over the labels and deep copy any extra params.
+  for (idx = 0; idx < labels->len; idx++) {
+    GstClassLabel *label = &(g_array_index (labels, GstClassLabel, idx));
+
+    if (label->xtraparams == NULL)
+      continue;
+
+    label->xtraparams = gst_structure_copy (label->xtraparams);
+  }
+
+  g_array_set_clear_func (labels,
+      (GDestroyNotify) gst_video_classification_label_cleanup);
+
+  newmeta = gst_buffer_add_video_classification_meta (buffer, labels);
+  newmeta->id = classmeta->id;
 }
 
 static void

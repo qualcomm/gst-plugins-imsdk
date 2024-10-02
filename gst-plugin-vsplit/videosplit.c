@@ -405,6 +405,9 @@ gst_buffer_transfer_video_landmarks_meta (GstBuffer * buffer,
       keypoints, links);
   newmeta->id = lmkmeta->id;
 
+  if (lmkmeta->xtraparams != NULL)
+    newmeta->xtraparams = gst_structure_copy (lmkmeta->xtraparams);
+
   return newmeta;
 }
 
@@ -413,9 +416,24 @@ gst_buffer_transfer_video_classification_meta (GstBuffer * buffer,
     GstVideoClassificationMeta * classmeta)
 {
   GstVideoClassificationMeta *newmeta = NULL;
+  GArray *labels = g_array_copy (classmeta->labels);
+  guint idx = 0;
 
-  newmeta = gst_buffer_add_video_classification_meta (buffer,
-      g_array_copy (classmeta->labels));
+  // The GArray copy above naturally doesn't copy the data in pointers.
+  // Iterate over the labels and deep copy any extra params.
+  for (idx = 0; idx < labels->len; idx++) {
+    GstClassLabel *label = &(g_array_index (labels, GstClassLabel, idx));
+
+    if (label->xtraparams == NULL)
+      continue;
+
+    label->xtraparams = gst_structure_copy (label->xtraparams);
+  }
+
+  g_array_set_clear_func (labels,
+      (GDestroyNotify) gst_video_classification_label_cleanup);
+
+  newmeta = gst_buffer_add_video_classification_meta (buffer, labels);
   newmeta->id = classmeta->id;
 
   return newmeta;
@@ -487,18 +505,39 @@ gst_video_split_composition_populate_metas (GstVideoSplitSrcPad * srcpad,
           keypoints, links);
       gst_structure_get_uint (structure, "id", &(lmkmeta->id));
 
+      if ((value = gst_structure_get_value (structure, "xtraparams")) != NULL) {
+        GstStructure *xtraparams = GST_STRUCTURE (g_value_get_boxed (value));
+        lmkmeta->xtraparams = gst_structure_copy (xtraparams);
+      }
+
       GST_TRACE_OBJECT (srcpad, "Attached derived 'VideoLandmarks' meta "
           "with ID[0x%X] to buffer %p", lmkmeta->id, outbuffer);
     } else if (id == g_quark_from_static_string ("ImageClassification")) {
       GstVideoClassificationMeta *classmeta = NULL;
       GArray *labels = NULL;
       const GValue *value = NULL;
+      guint idx = 0;
 
       value = gst_structure_get_value (structure, "labels");
       labels = g_array_copy (g_value_get_boxed (value));
 
+      // The GArray copy above naturally doesn't copy the data in pointers.
+      // Iterate over the labels and deep copy any extra params.
+      for (idx = 0; idx < labels->len; idx++) {
+        GstClassLabel *label = &(g_array_index (labels, GstClassLabel, idx));
+
+        if (label->xtraparams == NULL)
+          continue;
+
+        label->xtraparams = gst_structure_copy (label->xtraparams);
+      }
+
+      g_array_set_clear_func (labels,
+          (GDestroyNotify) gst_video_classification_label_cleanup);
+
       classmeta = gst_buffer_add_video_classification_meta (outbuffer, labels);
       gst_structure_get_uint (structure, "id", &(classmeta->id));
+
       GST_TRACE_OBJECT (srcpad, "Attached derived 'ImageClassification' meta "
           "with ID[0x%X] to buffer %p", classmeta->id, outbuffer);
     }
@@ -514,8 +553,8 @@ gst_video_split_composition_populate_metas (GstVideoSplitSrcPad * srcpad,
       GstVideoClassificationMeta *classmeta =
           GST_VIDEO_CLASSIFICATION_META_CAST (meta);
 
-      classmeta = gst_buffer_transfer_video_classification_meta (outbuffer,
-          classmeta);
+      classmeta =
+          gst_buffer_transfer_video_classification_meta (outbuffer, classmeta);
 
       GST_TRACE_OBJECT (srcpad, "Transferred 'ImageClassification' meta "
           "with ID[0x%X] to buffer %p", classmeta->id, outbuffer);
@@ -575,8 +614,19 @@ gst_video_split_composition_update_regions (GstVideoSplitSrcPad * srcpad,
 
   // Propagate the original IDs of the ROI meta via the image region.
   if (roimeta != NULL) {
+    GstStructure *structure = NULL;
+
     rmeta->id = roimeta->id;
     rmeta->parent_id = roimeta->parent_id;
+
+    // Transfer the additional ObjectDetection parameters if present.
+    structure = gst_video_region_of_interest_meta_get_param (roimeta,
+        "ObjectDetection");
+
+    if (structure != NULL) {
+      structure = gst_structure_copy (structure);
+      gst_video_region_of_interest_meta_add_param (rmeta, structure);
+    }
   }
 
   GST_TRACE_OBJECT (srcpad, "Attached 'ImageRegion' meta with ID[0x%X] parent "
