@@ -71,6 +71,9 @@ gst_ml_box_entry_cleanup (GstMLBoxEntry * entry)
 {
   if (entry->landmarks != NULL)
     g_array_free (entry->landmarks, TRUE);
+
+  if (entry->xtraparams != NULL)
+    gst_structure_free (entry->xtraparams);
 }
 
 void

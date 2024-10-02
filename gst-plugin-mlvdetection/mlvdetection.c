@@ -699,8 +699,8 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
       structure = gst_structure_new (name, "id", G_TYPE_UINT, id, "confidence",
           G_TYPE_DOUBLE, entry->confidence, "color", G_TYPE_UINT, entry->color,
           NULL);
-      g_free (name);
 
+      g_free (name);
       g_value_init (&value, G_TYPE_FLOAT);
 
       g_value_set_float (&value, x);
@@ -746,6 +746,15 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
 
         gst_structure_set_value (structure, "landmarks", &array);
         g_value_reset (&array);
+      }
+
+      if (entry->xtraparams != NULL) {
+        GstStructure *xtraparams = g_steal_pointer (&(entry->xtraparams));
+
+        g_value_take_boxed (&value, xtraparams);
+        gst_structure_set_value (structure, "xtraparams", &value);
+
+        g_value_reset (&value);
       }
 
       g_value_take_boxed (&value, structure);
@@ -1550,7 +1559,7 @@ gst_ml_video_detection_init (GstMLVideoDetection * detection)
   detection->stashedmlboxes = NULL;
   detection->stage_id = 0;
 
-  detection->predictions = g_array_new (FALSE, FALSE, sizeof (GstMLBoxPrediction));
+  detection->predictions = g_array_new (FALSE, TRUE, sizeof (GstMLBoxPrediction));
   g_return_if_fail (detection->predictions != NULL);
 
   g_array_set_clear_func (detection->predictions,

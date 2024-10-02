@@ -138,7 +138,7 @@ gst_meta_module_process (gpointer instance, GstBuffer * buffer)
 
     // No records for this ROI meta, create a records queue.
     if (records == NULL) {
-      records = g_array_new (FALSE, FALSE, sizeof (GstClassLabel));
+      records = g_array_new (FALSE, TRUE, sizeof (GstClassLabel));
       g_hash_table_insert (submodule->roi_label_records, key, records);
     }
 
@@ -161,7 +161,7 @@ gst_meta_module_process (gpointer instance, GstBuffer * buffer)
       while (records->len > submodule->maxrecords)
         records = g_array_remove_index (records, 0);
     } else {
-      labels = g_array_sized_new (FALSE, FALSE, sizeof (GstClassLabel), 1);
+      labels = g_array_sized_new (FALSE, TRUE, sizeof (GstClassLabel), 1);
       g_array_set_size (labels, 1);
 
       label = &(g_array_index (labels, GstClassLabel, 0));

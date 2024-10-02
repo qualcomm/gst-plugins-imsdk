@@ -556,6 +556,15 @@ gst_ml_video_classification_fill_text_output (
           NULL);
       g_free (name);
 
+      if (entry->xtraparams != NULL) {
+        GstStructure *xtraparams = g_steal_pointer (&(entry->xtraparams));
+
+        g_value_take_boxed (&value, xtraparams);
+        gst_structure_set_value (structure, "xtraparams", &value);
+
+        g_value_reset (&value);
+      }
+
       g_value_take_boxed (&value, structure);
       gst_value_array_append_value (&labels, &value);
       g_value_reset (&value);
