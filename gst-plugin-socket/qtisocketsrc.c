@@ -791,7 +791,7 @@ gst_socket_src_create (GstPushSrc * psrc, GstBuffer ** outbuf)
 
   if (!src->thread_done || src->stop_thread) {
     g_mutex_unlock (&src->mutex);
-    return GST_FLOW_EOS;
+    return GST_FLOW_FLUSHING;
   }
 
   g_mutex_unlock (&src->mutex);
