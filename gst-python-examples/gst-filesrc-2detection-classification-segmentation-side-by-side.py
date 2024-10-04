@@ -5,10 +5,47 @@ import os
 import sys
 import signal
 import gi
+import argparse
 
 gi.require_version("Gst", "1.0")
 gi.require_version("GLib", "2.0")
 from gi.repository import Gst, GLib
+
+DESCRIPTION = """
+The application uses:
+- YOLOv8 TFLite model to identify the object in scene from video file and
+overlay the bounding boxes over the detected objects
+- YOLOv8 TFLite model to identify the object in scene from video file and
+overlay the bounding boxes over the detected objects
+- Resnet101 TFLite model to classify scene from video file and overlay the
+classification labels on the top left corner
+- FFNet40S TFLite model to produce semantic segmentations for video file
+Then the results are shown side by side on the display.
+
+The file paths are hard coded in the python script as follows:
+- Detection model (YOLOv8): /opt/data/YoloV8N_Detection_Quantized.tflite
+- Detection labels: /opt/data/yolov8n.labels
+- Classification model: /opt/data/Resnet101_Quantized.tflite
+- Classification labels: /opt/data/resnet101.labels
+- Segmentation model: /opt/data/ffnet_40s_quantized.tflite
+- Segmentation labels: /opt/data/dv3-argmax.labels
+- Input video for detection: /opt/data/Draw_720p_180s_30FPS.mp4
+- Input video for classification: /opt/data/Animals_000_720p_180s_30FPS.mp4
+- Input video for segmentation: /opt/data/Street_Bridge_720p_180s_30FPS.MOV
+"""
+
+DEFAULT_INPUT_DETECTION_0 = "/opt/data/Draw_720p_180s_30FPS.mp4"
+DEFAULT_INPUT_DETECTION_1 = "/opt/data/Draw_720p_180s_30FPS.mp4"
+DEFAULT_INPUT_CLASSIFICATION = "/opt/data/Animals_000_720p_180s_30FPS.mp4"
+DEFAULT_INPUT_SEGMENTATION = "/opt/data/Street_Bridge_720p_180s_30FPS.MOV"
+DEFAULT_DETECTION_MODEL_0 = "/opt/data/YoloV8N_Detection_Quantized.tflite"
+DEFAULT_DETECTION_LABELS_0 = "/opt/data/yolov8n.labels"
+DEFAULT_DETECTION_MODEL_1 = "/opt/data/YoloV8N_Detection_Quantized.tflite"
+DEFAULT_DETECTION_LABELS_1 = "/opt/data/yolov8n.labels"
+DEFAULT_CLASSIFICATION_MODEL = "/opt/data/Resnet101_Quantized.tflite"
+DEFAULT_CLASSIFICATION_LABELS = "/opt/data/resnet101.labels"
+DEFAULT_SEGMENTATION_MODEL = "/opt/data/ffnet_40s_quantized.tflite"
+DEFAULT_SEGMENTATION_LABELS = "/opt/data/dv3-argmax.labels"
 
 
 def create_element(factory_name, name):
@@ -35,6 +72,29 @@ def link_elements(link_orders, elements):
 
 def construct_pipeline(pipe):
     """Initialize and link elements for the GStreamer pipeline."""
+    # Parse arguments
+    parser = argparse.ArgumentParser(
+        add_help=False,
+        formatter_class=type(
+            "CustomFormatter",
+            (
+                argparse.ArgumentDefaultsHelpFormatter,
+                argparse.RawTextHelpFormatter,
+            ),
+            {},
+        ),
+    )
+
+    parser.add_argument(
+        "-h",
+        "--help",
+        action="help",
+        default=argparse.SUPPRESS,
+        help=DESCRIPTION,
+    )
+
+    args = parser.parse_args()
+
     # Create all elements
     # fmt: off
     elements = {
@@ -107,7 +167,7 @@ def construct_pipeline(pipe):
     # Set element properties
     # Stream 0
     Gst.util_set_object_arg(
-        elements["filesrc_0"], "location", "/opt/data/Draw_720p_180s_30FPS.mp4"
+        elements["filesrc_0"], "location", DEFAULT_INPUT_DETECTION_0
     )
 
     Gst.util_set_object_arg(elements["h264parse_0"], "config-interval", "1")
@@ -129,14 +189,14 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["mltflite_0"],
         "model",
-        "/opt/data/YoloV8N_Detection_Quantized.tflite",
+        DEFAULT_DETECTION_MODEL_0,
     )
 
     Gst.util_set_object_arg(elements["mlvdetection_0"], "threshold", "75.0")
     Gst.util_set_object_arg(elements["mlvdetection_0"], "results", "4")
     Gst.util_set_object_arg(elements["mlvdetection_0"], "module", "yolov8")
     Gst.util_set_object_arg(
-        elements["mlvdetection_0"], "labels", "/opt/data/yolov8n.labels"
+        elements["mlvdetection_0"], "labels", DEFAULT_DETECTION_LABELS_0
     )
     Gst.util_set_object_arg(
         elements["mlvdetection_0"],
@@ -151,7 +211,7 @@ def construct_pipeline(pipe):
 
     # Stream 1
     Gst.util_set_object_arg(
-        elements["filesrc_1"], "location", "/opt/data/Draw_720p_180s_30FPS.mp4"
+        elements["filesrc_1"], "location", DEFAULT_INPUT_DETECTION_1
     )
 
     Gst.util_set_object_arg(elements["h264parse_1"], "config-interval", "1")
@@ -173,14 +233,14 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["mltflite_1"],
         "model",
-        "/opt/data/YoloV8N_Detection_Quantized.tflite",
+        DEFAULT_DETECTION_MODEL_1,
     )
 
     Gst.util_set_object_arg(elements["mlvdetection_1"], "threshold", "75.0")
     Gst.util_set_object_arg(elements["mlvdetection_1"], "results", "4")
     Gst.util_set_object_arg(elements["mlvdetection_1"], "module", "yolov8")
     Gst.util_set_object_arg(
-        elements["mlvdetection_1"], "labels", "/opt/data/yolov8n.labels"
+        elements["mlvdetection_1"], "labels", DEFAULT_DETECTION_LABELS_1
     )
     Gst.util_set_object_arg(
         elements["mlvdetection_1"],
@@ -197,7 +257,7 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["filesrc_2"],
         "location",
-        "/opt/data/Animals_000_720p_180s_30FPS.mp4",
+        DEFAULT_INPUT_CLASSIFICATION,
     )
 
     Gst.util_set_object_arg(elements["h264parse_2"], "config-interval", "2")
@@ -217,7 +277,7 @@ def construct_pipeline(pipe):
         "QNNExternalDelegate,backend_type=htp;",
     )
     Gst.util_set_object_arg(
-        elements["mltflite_2"], "model", "/opt/data/Resnet101_Quantized.tflite"
+        elements["mltflite_2"], "model", DEFAULT_CLASSIFICATION_MODEL
     )
 
     Gst.util_set_object_arg(elements["mlvclassification"], "threshold", "51.0")
@@ -226,7 +286,7 @@ def construct_pipeline(pipe):
         elements["mlvclassification"], "module", "mobilenet"
     )
     Gst.util_set_object_arg(
-        elements["mlvclassification"], "labels", "/opt/data/resnet101.labels"
+        elements["mlvclassification"], "labels", DEFAULT_CLASSIFICATION_LABELS
     )
     Gst.util_set_object_arg(
         elements["mlvclassification"], "extra-operation", "softmax"
@@ -245,7 +305,7 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["filesrc_3"],
         "location",
-        "/opt/data/Street_Bridge_720p_180s_30FPS.MOV",
+        DEFAULT_INPUT_SEGMENTATION,
     )
 
     Gst.util_set_object_arg(elements["h264parse_3"], "config-interval", "2")
@@ -265,14 +325,14 @@ def construct_pipeline(pipe):
         "QNNExternalDelegate,backend_type=htp;",
     )
     Gst.util_set_object_arg(
-        elements["mltflite_3"], "model", "/opt/data/ffnet_40s_quantized.tflite"
+        elements["mltflite_3"], "model", DEFAULT_SEGMENTATION_MODEL
     )
 
     Gst.util_set_object_arg(
         elements["mlvsegmentation"], "module", "deeplab-argmax"
     )
     Gst.util_set_object_arg(
-        elements["mlvsegmentation"], "labels", "/opt/data/dv3-argmax.labels"
+        elements["mlvsegmentation"], "labels", DEFAULT_SEGMENTATION_LABELS
     )
     Gst.util_set_object_arg(
         elements["mlvsegmentation"],
