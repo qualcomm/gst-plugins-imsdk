@@ -5,10 +5,26 @@ import os
 import sys
 import signal
 import gi
+import argparse
 
 gi.require_version("Gst", "1.0")
 gi.require_version("GLib", "2.0")
 from gi.repository import Gst, GLib
+
+DESCRIPTION = """
+The application receives an RTSP stream as source, decodes it, uses YOLOv8
+TFLite model to identify the object in scene from camera stream and overlay
+the bounding boxes over the detected objects. The results are shown on the
+display.
+
+The file paths are hard coded in the python script as follows:
+- Detection model (YOLOv8): /opt/data/YoloV8N_Detection_Quantized.tflite
+- Detection labels: /opt/data/yolov8n.labels
+"""
+
+DEFAULT_RTSP_SRC = "rtsp://127.0.0.1:8900/live"
+DEFAULT_DETECTION_MODEL = "/opt/data/YoloV8N_Detection_Quantized.tflite"
+DEFAULT_DETECTION_LABELS = "/opt/data/yolov8n.labels"
 
 
 def create_element(factory_name, name):
@@ -35,6 +51,29 @@ def link_elements(link_orders, elements):
 
 def construct_pipeline(pipe):
     """Initialize and link elements for the GStreamer pipeline."""
+    # Parse arguments
+    parser = argparse.ArgumentParser(
+        add_help=False,
+        formatter_class=type(
+            "CustomFormatter",
+            (
+                argparse.ArgumentDefaultsHelpFormatter,
+                argparse.RawTextHelpFormatter,
+            ),
+            {},
+        ),
+    )
+
+    parser.add_argument(
+        "-h",
+        "--help",
+        action="help",
+        default=argparse.SUPPRESS,
+        help=DESCRIPTION,
+    )
+
+    args = parser.parse_args()
+
     # Create all elements
     # fmt: off
     elements = {
@@ -59,9 +98,7 @@ def construct_pipeline(pipe):
     # fmt: on
 
     # Set element properties
-    Gst.util_set_object_arg(
-        elements["rtspsrc"], "location", "rtsp://127.0.0.1:8900/live"
-    )
+    Gst.util_set_object_arg(elements["rtspsrc"], "location", DEFAULT_RTSP_SRC)
 
     Gst.util_set_object_arg(
         elements["capsfilter_0"],
@@ -88,7 +125,7 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["mltflite"],
         "model",
-        "/opt/data/YoloV8N_Detection_Quantized.tflite",
+        DEFAULT_DETECTION_MODEL,
     )
 
     Gst.util_set_object_arg(elements["mlvdetection"], "threshold", "75.0")
@@ -101,7 +138,7 @@ def construct_pipeline(pipe):
         q-scales=<3.093529462814331,0.00390625,1.0>;",
     )
     Gst.util_set_object_arg(
-        elements["mlvdetection"], "labels", "/opt/data/yolov8n.labels"
+        elements["mlvdetection"], "labels", DEFAULT_DETECTION_LABELS
     )
 
     Gst.util_set_object_arg(elements["capsfilter_1"], "caps", "text/x-raw")
