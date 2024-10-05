@@ -176,7 +176,7 @@ struct _GstQmmfSrcVideoPad {
   GstVideoCodec       codec;
 
   /// Crop region.
-  GstVideoRectangle   crop;
+  GstVideoRectangle    crop;
   /// Additional buffers that are going to be allocated.
   guint               xtrabufs;
 
@@ -186,8 +186,8 @@ struct _GstQmmfSrcVideoPad {
   /// Queue for GStreamer buffers wrappers around QMMF Recorder buffers.
   GstDataQueue        *buffers;
 
-  /// QMMF Recorder Video Type
-  gint                type;
+  /// QMMF Recorder video stream type
+  guint               type;
 
   /// Rotate property for stream orientation
   gint                rotate;
@@ -197,6 +197,9 @@ struct _GstQmmfSrcVideoPad {
 
   /// Video colorimetry name
   gchar               *colorimetry;
+
+  /// Select physical camera or layout to stitch images
+  glong               log_stream_type;
 };
 
 struct _GstQmmfSrcVideoPadClass {
