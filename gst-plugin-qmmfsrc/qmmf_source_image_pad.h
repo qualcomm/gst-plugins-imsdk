@@ -176,6 +176,9 @@ struct _GstQmmfSrcImagePad {
 
   /// Buffer pool
   GstBufferPool     *pool;
+
+  /// Select physical camera or layout to stitch images
+  glong             log_stream_type;
 };
 
 struct _GstQmmfSrcImagePadClass {

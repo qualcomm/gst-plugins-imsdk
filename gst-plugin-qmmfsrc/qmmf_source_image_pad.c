@@ -86,14 +86,15 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_image_pad_debug);
 #define DEFAULT_IMAGE_BAYER_FORMAT   "bggr"
 #define DEFAULT_IMAGE_BAYER_BPP      "10"
 
-#define DEFAULT_PROP_QUALITY            85
-#define DEFAULT_PROP_THUMBNAIL_WIDTH    0
-#define DEFAULT_PROP_THUMBNAIL_HEIGHT   0
-#define DEFAULT_PROP_THUMBNAIL_QUALITY  85
-#define DEFAULT_PROP_SCREENNAIL_WIDTH   0
-#define DEFAULT_PROP_SCREENNAIL_HEIGHT  0
-#define DEFAULT_PROP_SCREENNAIL_QUALITY 85
-#define DEFAULT_PROP_ROTATE             ROTATE_NONE
+#define DEFAULT_PROP_QUALITY             85
+#define DEFAULT_PROP_THUMBNAIL_WIDTH     0
+#define DEFAULT_PROP_THUMBNAIL_HEIGHT    0
+#define DEFAULT_PROP_THUMBNAIL_QUALITY   85
+#define DEFAULT_PROP_SCREENNAIL_WIDTH    0
+#define DEFAULT_PROP_SCREENNAIL_HEIGHT   0
+#define DEFAULT_PROP_SCREENNAIL_QUALITY  85
+#define DEFAULT_PROP_ROTATE              ROTATE_NONE
+#define DEFAULT_PROP_LOGICAL_STREAM_TYPE GST_PAD_LOGICAL_STREAM_TYPE_NONE
 
 enum
 {
@@ -105,6 +106,7 @@ enum
 {
   PROP_0,
   PROP_IMAGE_ROTATE,
+  PROP_IMAGE_LOGICAL_STREAM_TYPE,
 };
 
 static guint signals[LAST_SIGNAL];
@@ -577,6 +579,9 @@ image_pad_set_property (GObject * object, guint property_id,
     case PROP_IMAGE_ROTATE:
       pad->rotate = g_value_get_enum (value);
       break;
+    case PROP_IMAGE_LOGICAL_STREAM_TYPE:
+      pad->log_stream_type = (glong) g_value_get_enum (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -596,6 +601,9 @@ image_pad_get_property (GObject * object, guint property_id, GValue * value,
   switch (property_id) {
     case PROP_IMAGE_ROTATE:
       g_value_set_enum (value, pad->rotate);
+      break;
+    case PROP_IMAGE_LOGICAL_STREAM_TYPE:
+      g_value_set_enum (value, (GstPadLogicalStreamType) pad->log_stream_type);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -644,10 +652,20 @@ qmmfsrc_image_pad_class_init (GstQmmfSrcImagePadClass * klass)
   gobject->finalize     = GST_DEBUG_FUNCPTR (image_pad_finalize);
 
   g_object_class_install_property (gobject, PROP_IMAGE_ROTATE,
-    g_param_spec_enum ("rotate", "Rotate",
-        "Set Orientation Angle for Image Stream",
-        GST_TYPE_QMMFSRC_ROTATE, DEFAULT_PROP_ROTATE,
-        G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+      g_param_spec_enum ("rotate", "Rotate",
+          "Set Orientation Angle for Image Stream",
+          GST_TYPE_QMMFSRC_ROTATE, DEFAULT_PROP_ROTATE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+#ifdef FEATURE_LOGICAL_CAMERA_SUPPORT
+  g_object_class_install_property (gobject, PROP_IMAGE_LOGICAL_STREAM_TYPE,
+      g_param_spec_enum ("logical-stream-type", "Stream type for logical camera",
+          "Type of stream to select specific physical camera or layout to "
+          "stitch images.",
+          GST_TYPE_QMMFSRC_PAD_LOGICAL_STREAM_TYPE,
+          DEFAULT_PROP_LOGICAL_STREAM_TYPE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PAUSED));
+#endif // FEATURE_LOGICAL_CAMERA_SUPPORT
 
   signals[SIGNAL_PAD_RECONFIGURE] =
       g_signal_new ("reconfigure", G_TYPE_FROM_CLASS (klass),
