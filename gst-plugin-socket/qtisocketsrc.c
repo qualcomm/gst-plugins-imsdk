@@ -420,16 +420,6 @@ gst_socket_src_start (GstBaseSrc * bsrc)
 }
 
 static gboolean
-gst_socket_src_stop (GstBaseSrc * bsrc)
-{
-  GstFdSocketSrc *src = GST_SOCKET_SRC (bsrc);
-
-  gst_socket_src_socket_release (src);
-
-  return TRUE;
-}
-
-static gboolean
 gst_socket_src_query (GstBaseSrc * basesrc, GstQuery * query)
 {
   return GST_BASE_SRC_CLASS (parent_class)->query (basesrc, query);
@@ -457,6 +447,65 @@ gst_socket_src_buffer_release (GstBufferReleaseData * release_data)
   g_free (release_data);
 }
 
+static void
+gst_socket_src_flush_socket_queue (GstFdSocketSrc * src)
+{
+  gint ret;
+
+  do {
+    struct pollfd poll_fd;
+
+    poll_fd.fd = src->client_sock;
+    poll_fd.events = POLLIN;
+
+    ret = poll (&poll_fd, 1, 0);
+
+    if (poll_fd.revents & POLLHUP ||
+        poll_fd.revents & POLLERR) {
+      break;
+    }
+
+    if (ret > 0) {
+      GstBufferReleaseData * release_data = g_malloc0 (sizeof (GstBufferReleaseData));
+      GstPayloadInfo pl_info = {
+        .mem_block_info = g_ptr_array_new (),
+        .protection_metadata_info = g_ptr_array_new ()
+      };
+
+      gint fds[GST_MAX_MEM_BLOCKS] = {0};
+
+      pl_info.fds = fds;
+
+      release_data->socket = src->client_sock;
+
+      if (receive_socket_message (src->client_sock, &pl_info, 0) < 0) {
+        g_free (release_data);
+        free_pl_struct (&pl_info);
+        break;
+      }
+
+      if (pl_info.fd_count != NULL) {
+        release_data->n_fds = pl_info.fd_count->n_fds;
+      } else {
+        release_data->n_fds = pl_info.mem_block_info->len;
+      }
+
+      if (GST_PL_INFO_IS_MESSAGE (&pl_info, MESSAGE_EOS)) {
+        g_free (release_data);
+        free_pl_struct (&pl_info);
+        break;
+      }
+
+      for (guint i = 0; i < pl_info.mem_block_info->len; i++) {
+        release_data->buf_id[i] = pl_info.buffer_info->buf_id[i];
+      }
+
+      gst_socket_src_buffer_release (release_data);
+    }
+
+  } while (ret > 0);
+}
+
 static GstFlowReturn
 gst_socket_src_fill_buffer (GstFdSocketSrc * src, GstBuffer ** outbuf)
 {
@@ -475,7 +524,7 @@ gst_socket_src_fill_buffer (GstFdSocketSrc * src, GstBuffer ** outbuf)
   pl_info.fds = fds;
 
   release_data->socket = src->client_sock;
-  if (receive_socket_message (src->client_sock, &pl_info, 0) < 0) {
+  if (receive_socket_message (src->client_sock, &pl_info, 0) <= 0) {
     g_free (release_data);
     free_pl_struct (&pl_info);
     return GST_FLOW_ERROR;
@@ -739,6 +788,10 @@ gst_socket_src_change_state (GstElement * element, GstStateChange transition)
   GstStateChangeReturn ret = GST_STATE_CHANGE_SUCCESS;
 
   switch (transition) {
+    case GST_STATE_CHANGE_READY_TO_NULL:
+      gst_socket_src_flush_socket_queue (src);
+      gst_socket_src_socket_release (src);
+      break;
     case GST_STATE_CHANGE_PLAYING_TO_PAUSED:
       msg_info.message = &disc_msg;
       if (send_socket_message (src->client_sock, &msg_info) < 0) {
@@ -870,7 +923,6 @@ gst_socket_src_class_init (GstFdSocketSrcClass * klass)
   gst_element_class_add_static_pad_template (gstelement, &socket_src_template);
 
   gstbasesrc->start = GST_DEBUG_FUNCPTR (gst_socket_src_start);
-  gstbasesrc->stop = GST_DEBUG_FUNCPTR (gst_socket_src_stop);
   gstbasesrc->query = GST_DEBUG_FUNCPTR (gst_socket_src_query);
   gstbasesrc->unlock = GST_DEBUG_FUNCPTR (gst_socket_src_unlock);
 
