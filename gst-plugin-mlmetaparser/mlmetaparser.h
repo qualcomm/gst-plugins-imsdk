@@ -30,8 +30,6 @@ typedef struct _GstMlMetaParserClass GstMlMetaParserClass;
 struct _GstMlMetaParser {
   GstBaseTransform parent;
 
-  /// Buffer pools.
-  GstBufferPool   *outpool;
   /// Parsing ML data module
   GstParserModule *module;
 
