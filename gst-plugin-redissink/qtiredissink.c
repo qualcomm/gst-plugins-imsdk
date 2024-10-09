@@ -68,11 +68,15 @@ gst_redis_sink_render (GstBaseSink * bsink, GstBuffer * buffer)
 
   sink = GST_REDIS_SINK (bsink);
 
-  if (sink->redis == NULL || sink->redis->err)
+  if (sink->redis == NULL)
     sink->redis = redisConnect (sink->host, sink->port);
 
   if (sink->redis == NULL || sink->redis->err) {
     GST_WARNING_OBJECT (sink, "Not connected to REDIS service!");
+    if (sink->redis) {
+      redisFree (sink->redis);
+      sink->redis = NULL;
+    }
     return GST_FLOW_OK;
   }
 
