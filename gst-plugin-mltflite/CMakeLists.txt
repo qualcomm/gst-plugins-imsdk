@@ -25,17 +25,18 @@ include(CheckIncludeFileCXX)
 # Check for external delegate header
 check_include_file("tensorflow/lite/delegates/external/external_delegate.h" HAVE_EXTERNAL_DELEGATE_H)
 
+# Check whether the C API header for the TFLITE library is present.
+check_include_file("tensorflow/lite/core/c/c_api.h" HAVE_CORE_C_API_H)
+check_include_file("tensorflow/lite/c/c_api.h" HAVE_C_API_H)
+
 # Support for the External delegate appears after the tensorflow lite 2.10.0
 # the reason is to determine if we are on a new or old version of tflite
 # and on elder versions dynamic loading is not supported
-if(HAVE_EXTERNAL_DELEGATE_H)
+# Either one of c_api header files is required for dynamic loading
+if(HAVE_EXTERNAL_DELEGATE_H AND (HAVE_CORE_C_API_H OR HAVE_C_API_H))
   list(APPEND GST_QTI_ML_TFLITE_SRC
     ml-tflite-engine-c-api.cc
   )
-
-  # Check whether the C API header for the TFLITE library is present.
-  check_include_file("tensorflow/lite/core/c/c_api.h" HAVE_CORE_C_API_H)
-  check_include_file("tensorflow/lite/c/c_api.h" HAVE_C_API_H)
 
   list(APPEND TARGET_COMPILE_DEFINITIONS
     $<$<BOOL:${HAVE_C_API_H}>:HAVE_C_API_H>
