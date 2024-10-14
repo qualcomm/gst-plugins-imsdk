@@ -772,28 +772,38 @@ GType
 gst_qmmfsrc_pad_logical_stream_type_get_type (void)
 {
   static GType gtype = 0;
-  static const GEnumValue variants[] = {
-    { GST_PAD_LOGICAL_STREAM_TYPE_NONE,
-        "None", "none"
-    },
-    { GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_0,
-        "The stream uses specific physical camera with the index 0.",
-        "camera-index-0"
-    },
-    { GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_1,
-        "The stream uses specific physical camera with the index 1.",
-        "camera-index-1"
-    },
-    { GST_PAD_LOGICAL_STREAM_TYPE_SIDEBYSIDE,
-        "The stream uses all physical cameras and stitch images side by side.",
-        "sidebyside"
-    },
-    { GST_PAD_LOGICAL_STREAM_TYPE_PANORAMA,
-        "The stream uses all physical cameras and stitch images to panorama.",
-        "panorama"
-    },
-    {0, NULL, NULL},
-  };
+  static GEnumValue variants[GST_PAD_LOGICAL_STREAM_TYPE_MAX];
+  gint i;
+  gint index_num = (GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_MAX -
+      GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_MIN + 1);
+
+  // Physical camera index enum
+  for (i = 0; i < index_num; ++i) {
+    variants[i].value = i;
+    variants[i].value_name = g_strdup_printf (
+        "The stream uses specific physical camera with the index %d.", i);
+    variants[i].value_nick = g_strdup_printf (
+        "camera-index-%d", i);
+  }
+
+  // Stitch layout enum
+  variants[i].value = GST_PAD_LOGICAL_STREAM_TYPE_SIDEBYSIDE;
+  variants[i].value_name =
+      "The stream uses all physical cameras and stitch images side by side.";
+  variants[i++].value_nick = "sidebyside";
+
+  variants[i].value = GST_PAD_LOGICAL_STREAM_TYPE_PANORAMA;
+  variants[i].value_name =
+      "The stream uses all physical cameras and stitch images to panorama.";
+  variants[i++].value_nick = "panorama";
+
+  variants[i].value = GST_PAD_LOGICAL_STREAM_TYPE_NONE;
+  variants[i].value_name = "None";
+  variants[i++].value_nick = "none";
+
+  variants[i].value = 0;
+  variants[i].value_name = NULL;
+  variants[i].value_nick = NULL;
 
   if (!gtype)
     gtype = g_enum_register_static ("GstQmmfSrcPadLogicalStreamType", variants);

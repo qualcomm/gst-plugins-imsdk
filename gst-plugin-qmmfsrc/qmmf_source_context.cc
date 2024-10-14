@@ -1589,47 +1589,41 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
   } else {
     ::qmmf::recorder::StreamCameraId cam_id;
     ::qmmf::recorder::StitchLayoutSelect layout;
+    GstQmmfLogicalCamInfo *pinfo = &context->logical_cam_info;
     gchar *info_name = NULL;
 
-    switch (vpad->log_stream_type) {
-      case GST_PAD_LOGICAL_STREAM_TYPE_NONE:
-        break;
-      case GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_0:
-        info_name = context->logical_cam_info.phy_cam_name_list[0];
-        if (!info_name) {
-          GST_ERROR ("Physical camera name is null.");
-          break;
-        } else {
-          GST_DEBUG ("Physical camera name: %s", info_name);
-        }
+    if (vpad->log_stream_type < GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_MIN) {
+      GST_ERROR ("Invalid logical stream type.");
+    } else if (vpad->log_stream_type <=
+        GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_MAX) {
+      info_name = pinfo->phy_cam_name_list[vpad->log_stream_type -
+          GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_MIN];
 
-        g_strlcpy (cam_id.stream_camera_id, info_name, MAX_CAM_NAME_SIZE);
-        extraparam.Update(::qmmf::recorder::QMMF_STREAM_CAMERA_ID, cam_id);
-        break;
-      case GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_1:
-        info_name = context->logical_cam_info.phy_cam_name_list[1];
-        if (!info_name) {
-          GST_ERROR ("Physical camera name is null.");
-          break;
-        } else {
-          GST_DEBUG ("Physical camera name: %s", info_name);
-        }
+      if (!info_name) {
+        GST_ERROR ("Physical camera name is null.");
+      } else {
+        GST_DEBUG ("Physical camera name: %s", info_name);
+      }
 
-        g_strlcpy (cam_id.stream_camera_id, info_name, MAX_CAM_NAME_SIZE);
-        extraparam.Update(::qmmf::recorder::QMMF_STREAM_CAMERA_ID, cam_id);
-        break;
-      case GST_PAD_LOGICAL_STREAM_TYPE_SIDEBYSIDE:
-        layout.stitch_layout = ::qmmf::recorder::StitchLayout::kSideBySide;
-        extraparam.Update(::qmmf::recorder::QMMF_STITCH_LAYOUT, layout);
-        break;
-      case GST_PAD_LOGICAL_STREAM_TYPE_PANORAMA:
-        layout.stitch_layout = ::qmmf::recorder::StitchLayout::kPanorama;
-        extraparam.Update(::qmmf::recorder::QMMF_STITCH_LAYOUT, layout);
-        break;
-      default:
-        GST_ERROR ("Unknown logical-stream-type(%ld) of stream.",
-            vpad->log_stream_type);
-        break;
+      g_strlcpy (cam_id.stream_camera_id, info_name, MAX_CAM_NAME_SIZE);
+      extraparam.Update(::qmmf::recorder::QMMF_STREAM_CAMERA_ID, cam_id);
+    } else if (vpad->log_stream_type < GST_PAD_LOGICAL_STREAM_TYPE_NONE) {
+      switch (vpad->log_stream_type) {
+        case GST_PAD_LOGICAL_STREAM_TYPE_SIDEBYSIDE:
+          GST_DEBUG ("Stitch layout is selected: SideBySide.");
+          layout.stitch_layout = ::qmmf::recorder::StitchLayout::kSideBySide;
+          break;
+        case GST_PAD_LOGICAL_STREAM_TYPE_PANORAMA:
+          GST_DEBUG ("Stitch layout is selected: Panorama.");
+          layout.stitch_layout = ::qmmf::recorder::StitchLayout::kPanorama;
+          break;
+        default:
+          break;
+      }
+      extraparam.Update(::qmmf::recorder::QMMF_STITCH_LAYOUT, layout);
+    } else {
+      GST_ERROR ("Unknown logical-stream-type(%ld) of stream.",
+          vpad->log_stream_type);
     }
   }
 #endif // FEATURE_LOGICAL_CAMERA_SUPPORT
@@ -1830,47 +1824,41 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad)
   } else {
     ::qmmf::recorder::StreamCameraId cam_id;
     ::qmmf::recorder::StitchLayoutSelect layout;
+    GstQmmfLogicalCamInfo *pinfo = &context->logical_cam_info;
     gchar *info_name = NULL;
 
-    switch (ipad->log_stream_type) {
-      case GST_PAD_LOGICAL_STREAM_TYPE_NONE:
-        break;
-      case GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_0:
-        info_name = context->logical_cam_info.phy_cam_name_list[0];
-        if (!info_name) {
-          GST_ERROR ("Physical camera name is null.");
-          break;
-        } else {
-          GST_DEBUG ("Physical camera name: %s", info_name);
-        }
+    if (ipad->log_stream_type < GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_MIN) {
+      GST_ERROR ("Invalid logical stream type.");
+    } else if (ipad->log_stream_type <=
+        GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_MAX) {
+      info_name = pinfo->phy_cam_name_list[ipad->log_stream_type -
+          GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_MIN];
 
-        g_strlcpy (cam_id.stream_camera_id, info_name, MAX_CAM_NAME_SIZE);
-        xtraparam.Update(::qmmf::recorder::QMMF_STREAM_CAMERA_ID, cam_id);
-        break;
-      case GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_1:
-        info_name = context->logical_cam_info.phy_cam_name_list[1];
-        if (!info_name) {
-          GST_ERROR ("Physical camera name is null.");
-          break;
-        } else {
-          GST_DEBUG ("Physical camera name: %s", info_name);
-        }
+      if (!info_name) {
+        GST_ERROR ("Physical camera name is null.");
+      } else {
+        GST_DEBUG ("Physical camera name: %s", info_name);
+      }
 
-        g_strlcpy (cam_id.stream_camera_id, info_name, MAX_CAM_NAME_SIZE);
-        xtraparam.Update(::qmmf::recorder::QMMF_STREAM_CAMERA_ID, cam_id);
-        break;
-      case GST_PAD_LOGICAL_STREAM_TYPE_SIDEBYSIDE:
-        layout.stitch_layout = ::qmmf::recorder::StitchLayout::kSideBySide;
-        xtraparam.Update(::qmmf::recorder::QMMF_STITCH_LAYOUT, layout);
-        break;
-      case GST_PAD_LOGICAL_STREAM_TYPE_PANORAMA:
-        layout.stitch_layout = ::qmmf::recorder::StitchLayout::kPanorama;
-        xtraparam.Update(::qmmf::recorder::QMMF_STITCH_LAYOUT, layout);
-        break;
-      default:
-        GST_ERROR ("Unknown logical-stream-type(%ld) of stream.",
-            ipad->log_stream_type);
-        break;
+      g_strlcpy (cam_id.stream_camera_id, info_name, MAX_CAM_NAME_SIZE);
+      xtraparam.Update(::qmmf::recorder::QMMF_STREAM_CAMERA_ID, cam_id);
+    } else if (ipad->log_stream_type < GST_PAD_LOGICAL_STREAM_TYPE_NONE) {
+      switch (ipad->log_stream_type) {
+        case GST_PAD_LOGICAL_STREAM_TYPE_SIDEBYSIDE:
+          GST_DEBUG ("Stitch layout is selected: SideBySide.");
+          layout.stitch_layout = ::qmmf::recorder::StitchLayout::kSideBySide;
+          break;
+        case GST_PAD_LOGICAL_STREAM_TYPE_PANORAMA:
+          GST_DEBUG ("Stitch layout is selected: Panorama.");
+          layout.stitch_layout = ::qmmf::recorder::StitchLayout::kPanorama;
+          break;
+        default:
+          break;
+      }
+      xtraparam.Update(::qmmf::recorder::QMMF_STITCH_LAYOUT, layout);
+    } else {
+      GST_ERROR ("Unknown logical-stream-type(%ld) of stream.",
+          ipad->log_stream_type);
     }
   }
 #endif // FEATURE_LOGICAL_CAMERA_SUPPORT
