@@ -179,15 +179,22 @@ update_window_grid (GstVideoRectangle *positions, guint x, guint y)
  */
 static gboolean
 set_ml_params (GstElement * qtimlpostprocess,
-    GstElement * filter, GstElement * qtielement, GstAppOptions options)
+    GstElement * filter, GstElement * qtielement, GstAppOptions options,
+    guint htp_id)
 {
   GstCaps *pad_filter;
   const gchar *module = NULL;
   GstStructure *delegate_options = NULL;
   gint module_id;
+  gchar delegate_string[128];
+
+  snprintf (delegate_string, 127, "QNNExternalDelegate,backend_type=htp,\
+    htp_device_id=(string)%u,htp_performance_mode=(string)2,\
+    htp_precision=(string)1;", htp_id);
 
   delegate_options = gst_structure_from_string (
-      "QNNExternalDelegate,backend_type=htp;", NULL);
+    delegate_string, NULL);
+
   g_object_set (G_OBJECT (qtielement), "model", options.model_path,
       "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
   g_object_set (G_OBJECT (qtielement),
@@ -692,7 +699,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions  options[],
           "capture-io-mode", 5,"output-io-mode", 5, NULL);
       if (!set_ml_params (file_qtimlpostprocess[i*DEFAULT_BATCH_SIZE + j],
           file_filter[i*DEFAULT_BATCH_SIZE + j],
-          file_qtimlelement[i], options[i])) {
+          file_qtimlelement[i], options[i], i%2)) {
         g_printerr ("Failed to set_ml_params\n");
         goto error_clean_elements;
       }
