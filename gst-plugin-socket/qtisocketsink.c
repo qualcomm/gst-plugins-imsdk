@@ -43,12 +43,18 @@
 
 #include "qtifdsocket.h"
 
+#include <gst/ml/gstmlmeta.h>
+
 
 #define gst_socket_sink_parent_class parent_class
 G_DEFINE_TYPE (GstFdSocketSink, gst_socket_sink, GST_TYPE_BASE_SINK);
 
 GST_DEBUG_CATEGORY_STATIC (gst_socket_sink_debug);
 #define GST_CAT_DEFAULT gst_socket_sink_debug
+
+#define GST_SOCKET_SINK_CAPS \
+    "neural-network/tensors;" \
+    "video/x-raw(ANY)"
 
 enum
 {
@@ -60,7 +66,7 @@ static GstStaticPadTemplate socket_sink_template =
     GST_STATIC_PAD_TEMPLATE ("sink",
         GST_PAD_SINK,
         GST_PAD_ALWAYS,
-        GST_STATIC_CAPS_ANY);
+        GST_STATIC_CAPS (GST_SOCKET_SINK_CAPS));
 
 static gboolean
 gst_socket_sink_set_location (GstFdSocketSink * sink, const gchar * location)
@@ -144,7 +150,9 @@ gst_socket_sink_try_connect (GstFdSocketSink * sink)
   if (connect (sink->socket,
       (struct sockaddr *) &address, sizeof (address)) < 0) {
     close (sink->socket);
+    sink->socket = 0;
     g_mutex_unlock (&sink->socklock);
+    GST_DEBUG_OBJECT (sink, "connect unsuccessfull");
     return FALSE;
   }
 
@@ -193,6 +201,7 @@ gst_socket_sink_disconnect (GstFdSocketSink * sink)
   shutdown (sink->socket, SHUT_RDWR);
   close (sink->socket);
   unlink (sink->sockfile);
+  sink->socket = 0;
 
   gst_task_stop (sink->task);
   g_atomic_int_set (&sink->should_stop, FALSE);
@@ -208,12 +217,13 @@ static GstFlowReturn
 gst_socket_sink_render (GstBaseSink * bsink, GstBuffer * buffer)
 {
   GstFdSocketSink *sink = GST_SOCKET_SINK (bsink);
-  GstVideoMeta *meta = NULL;
   GstMemory *memory = NULL;
 
   gint buffer_fd = 0;
   GstFdMessage info = {0};
   gint mcount = 0;
+
+  GST_DEBUG_OBJECT (sink, "gst_socket_sink_render");
 
   if (g_atomic_int_get (&sink->should_stop))
     return GST_FLOW_OK;
@@ -233,33 +243,52 @@ gst_socket_sink_render (GstBaseSink * bsink, GstBuffer * buffer)
     return GST_FLOW_ERROR;
   }
 
-  buffer_fd = gst_fd_memory_get_fd (memory);
+  if (sink->mode == INPUT_MODE_VIDEO) {
+    buffer_fd = gst_fd_memory_get_fd (memory);
 
-  meta = gst_buffer_get_video_meta (buffer);
-  if (meta == NULL) {
-    GST_ERROR_OBJECT (sink, "Invalid video meta");
+    GstVideoMeta *meta = gst_buffer_get_video_meta (buffer);
+    if (meta == NULL) {
+      GST_ERROR_OBJECT (sink, "Invalid video meta");
+      return GST_FLOW_ERROR;
+    }
+
+    info.id = MESSAGE_NEW_FRAME;
+    info.new_frame.buf_id = buffer_fd;
+    info.new_frame.width = meta->width;
+    info.new_frame.height = meta->height;
+    info.new_frame.size = gst_memory_get_sizes (memory, NULL, &info.new_frame.maxsize);
+    info.new_frame.format = meta->format;
+    info.new_frame.flags = meta->flags;
+    info.new_frame.n_planes = meta->n_planes;
+    info.new_frame.use_buffer_pool = buffer->pool != NULL;
+
+    for (guint i = 0; i < meta->n_planes; i++) {
+      info.new_frame.stride[i] = meta->stride[i];
+      info.new_frame.offset[i] = meta->offset[i];
+    }
+
+    GST_DEBUG_OBJECT (sink,
+        "Buffer: %p w: %d h: %d buf_id: %d size: %" G_GSIZE_FORMAT, buffer,
+        meta->width, meta->height, info.new_frame.buf_id, info.new_frame.size);
+  } else if (sink->mode == INPUT_MODE_TENSOR) {
+    buffer_fd = gst_fd_memory_get_fd (memory);
+
+    GstMLTensorMeta *mlmeta =
+      gst_buffer_get_ml_tensor_meta (buffer);
+
+    info.id = MESSAGE_NEW_TENSOR_FRAME;
+    info.tensor_frame.buf_id = buffer_fd;
+    info.tensor_frame.meta = *mlmeta;
+    info.tensor_frame.size = gst_memory_get_sizes (memory, NULL, &info.tensor_frame.maxsize);
+
+    GST_DEBUG_OBJECT (sink,
+        "Buffer ML meta buf_id: %d", info.tensor_frame.buf_id);
+  } else {
+    GST_ERROR_OBJECT (sink, "Unsupported mode: %d", sink->mode);
     return GST_FLOW_ERROR;
   }
 
-  info.id = MESSAGE_NEW_FRAME;
-  info.new_frame.buf_id = buffer_fd;
-  info.new_frame.width = meta->width;
-  info.new_frame.height = meta->height;
-  info.new_frame.size = gst_memory_get_sizes (memory, NULL, &info.new_frame.maxsize);
-  info.new_frame.format = meta->format;
-  info.new_frame.flags = meta->flags;
-  info.new_frame.n_planes = meta->n_planes;
-  info.new_frame.use_buffer_pool = buffer->pool != NULL;
-
-  for (guint i = 0; i < meta->n_planes; i++) {
-    info.new_frame.stride[i] = meta->stride[i];
-    info.new_frame.offset[i] = meta->offset[i];
-  }
   info.new_frame.timestamp = GST_BUFFER_TIMESTAMP (buffer);
-
-  GST_DEBUG_OBJECT (sink,
-      "Buffer: %p w: %d h: %d buf_id: %d size: %" G_GSIZE_FORMAT, buffer,
-      meta->width, meta->height, info.new_frame.buf_id, info.new_frame.size);
 
   g_mutex_lock (&sink->bufmaplock);
   // Transfer FDs if source does not use buffer pool or
@@ -281,6 +310,23 @@ gst_socket_sink_render (GstBaseSink * bsink, GstBuffer * buffer)
   }
 
   return GST_FLOW_OK;
+}
+
+static void
+gst_socket_sink_connect_loop (gpointer user_data)
+{
+  GstFdSocketSink *sink = GST_SOCKET_SINK (user_data);
+
+  if (g_atomic_int_get (&sink->should_stop)) {
+    gst_task_stop (sink->connect_task);
+    return;
+  }
+
+  if (gst_socket_sink_try_connect (sink)) {
+    gst_task_stop (sink->connect_task);
+    return;
+  }
+  sleep(1);
 }
 
 static void
@@ -344,8 +390,9 @@ gst_socket_sink_start (GstBaseSink * basesink)
   sink->task = gst_task_new (gst_socket_sink_wait_buffer_loop, sink, NULL);
   gst_task_set_lock (sink->task, &sink->tasklock);
 
-  if (!gst_socket_sink_try_connect (sink))
-    GST_INFO_OBJECT (sink, "Socket is not connected.");
+  sink->connect_task = gst_task_new (gst_socket_sink_connect_loop, sink, NULL);
+  gst_task_set_lock (sink->connect_task, &sink->connect_tasklock);
+  gst_task_start (sink->connect_task);
 
   return TRUE;
 }
@@ -359,6 +406,17 @@ gst_socket_sink_stop (GstBaseSink * basesink)
 
   g_atomic_int_set (&sink->should_stop, TRUE);
 
+  // Handle the case where the socket is still not conected
+  g_mutex_lock (&sink->socklock);
+  if (gst_task_get_state (sink->task) == GST_TASK_STOPPED && sink->socket > 0) {
+      shutdown (sink->socket, SHUT_RDWR);
+      close (sink->socket);
+      unlink (sink->sockfile);
+      sink->socket = 0;
+  }
+  g_mutex_unlock (&sink->socklock);
+
+  gst_task_join (sink->connect_task);
   gst_task_join (sink->task);
   sink->task = NULL;
 
@@ -366,6 +424,9 @@ gst_socket_sink_stop (GstBaseSink * basesink)
 
   g_mutex_clear (&sink->bufmaplock);
   g_mutex_clear (&sink->socklock);
+
+  if (sink->mlinfo != NULL)
+    gst_ml_info_free (sink->mlinfo);
 
   return TRUE;
 }
@@ -399,6 +460,8 @@ gst_socket_sink_event (GstBaseSink *bsink, GstEvent *event)
   GstFdMessage msg = {0};
   gint fd = 0;
 
+  GST_DEBUG_OBJECT (sink, "GST EVENT: %d", GST_EVENT_TYPE (event));
+
   switch (GST_EVENT_TYPE (event)) {
     case GST_EVENT_EOS:
       GST_INFO_OBJECT (sink, "EOS event");
@@ -412,6 +475,7 @@ gst_socket_sink_event (GstBaseSink *bsink, GstEvent *event)
     default:
       break;
   }
+
   return GST_BASE_SINK_CLASS (parent_class)->event (bsink, event);
 }
 
@@ -430,11 +494,47 @@ static void
 gst_socket_sink_init (GstFdSocketSink * sink)
 {
   sink->task = NULL;
+  sink->connect_task = NULL;
   sink->socket = 0;
+  sink->mode = INPUT_MODE_NONE;
   g_atomic_int_set (&sink->should_stop, FALSE);
 
   GST_DEBUG_CATEGORY_INIT (gst_socket_sink_debug, "qtisocketsink", 0,
     "qtisocketsink object");
+}
+
+static gboolean
+gst_socket_sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
+{
+  GstFdSocketSink *sink = GST_SOCKET_SINK (bsink);
+
+  GstStructure *structure = NULL;
+  GstMLInfo mlinfo;
+
+  GST_INFO_OBJECT (sink, "Input caps: %" GST_PTR_FORMAT, caps);
+
+  structure = gst_caps_get_structure (caps, 0);
+
+  if (gst_structure_has_name (structure, "video/x-raw")) {
+    sink->mode = INPUT_MODE_VIDEO;
+  } else if (gst_structure_has_name (structure, "text/x-raw")) {
+    sink->mode = INPUT_MODE_TEXT;
+  } else if (gst_structure_has_name (structure, "neural-network/tensors")) {
+     GST_INFO_OBJECT (sink, "TENSOR caps");
+     sink->mode = INPUT_MODE_TENSOR;
+    if (!gst_ml_info_from_caps (&mlinfo, caps)) {
+      GST_ERROR_OBJECT (sink, "Failed to get input ML info from caps %"
+          GST_PTR_FORMAT "!", caps);
+      return FALSE;
+    }
+
+    if (sink->mlinfo != NULL)
+      gst_ml_info_free (sink->mlinfo);
+
+    sink->mlinfo = gst_ml_info_copy (&mlinfo);
+  }
+
+  return TRUE;
 }
 
 static void
@@ -469,6 +569,7 @@ gst_socket_sink_class_init (GstFdSocketSinkClass * klass)
   gstbasesink->stop = GST_DEBUG_FUNCPTR (gst_socket_sink_stop);
   gstbasesink->query = GST_DEBUG_FUNCPTR (gst_socket_sink_query);
   gstbasesink->event = GST_DEBUG_FUNCPTR (gst_socket_sink_event);
+  gstbasesink->set_caps = GST_DEBUG_FUNCPTR (gst_socket_sink_set_caps);
 }
 
 static gboolean

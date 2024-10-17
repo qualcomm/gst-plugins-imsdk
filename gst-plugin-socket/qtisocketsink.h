@@ -25,6 +25,11 @@
 * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
 * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*
+* Changes from Qualcomm Innovation Center are provided under the following license:
+*
+* Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
 #ifndef __GST_QTI_SOCKET_SINK_H__
@@ -32,6 +37,7 @@
 
 #include <gst/gst.h>
 #include <gst/base/gstbasesink.h>
+#include <gst/ml/ml-info.h>
 
 G_BEGIN_DECLS
 
@@ -50,6 +56,13 @@ G_BEGIN_DECLS
 typedef struct _GstFdSocketSink GstFdSocketSink;
 typedef struct _GstFdSocketSinkClass GstFdSocketSinkClass;
 
+typedef enum {
+  INPUT_MODE_NONE,
+  INPUT_MODE_VIDEO,
+  INPUT_MODE_TENSOR,
+  INPUT_MODE_TEXT
+} GstFdSocketSinkInputType;
+
 struct _GstFdSocketSink
 {
   GstBaseSink parent;
@@ -59,6 +72,9 @@ struct _GstFdSocketSink
   GstTask *task;
   GRecMutex tasklock;
 
+  GstTask *connect_task;
+  GRecMutex connect_tasklock;
+
   gint socket;
   GMutex socklock;
 
@@ -67,6 +83,10 @@ struct _GstFdSocketSink
   gint bufcount;
 
   gint should_stop;
+
+  GstMLInfo *mlinfo;
+
+  GstFdSocketSinkInputType mode;
 };
 
 struct _GstFdSocketSinkClass
