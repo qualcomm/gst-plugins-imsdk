@@ -252,7 +252,7 @@ gst_socket_src_connection_handler (gpointer userdata)
 
   g_mutex_lock (&src->mutex);
 
-  src->socket = socket (AF_UNIX, SOCK_STREAM, 0);
+  src->socket = socket (AF_UNIX, SOCK_SEQPACKET, 0);
   if (src->socket < 0) {
     GST_ERROR_OBJECT (src, "Socket creation error");
     g_mutex_unlock (&src->mutex);
@@ -438,7 +438,7 @@ gst_socket_src_query (GstBaseSrc * basesrc, GstQuery * query)
 static void
 gst_socket_src_buffer_release (GstBufferReleaseData * release_data)
 {
-  GstPayloadInfo pl_info = {NULL, NULL, NULL, NULL, NULL, NULL};
+  GstPayloadInfo pl_info = {0};
   GstReturnBufferPayload ret_pl;
   GstFdCountPayload fd_count = { .identity = MESSAGE_FD_COUNT,
       .n_fds = release_data->n_fds};
@@ -464,8 +464,11 @@ gst_socket_src_fill_buffer (GstFdSocketSrc * src, GstBuffer ** outbuf)
   GstMemory *gstmemory = NULL;
   GstBuffer *gstbuffer = NULL;
   GstBufferReleaseData * release_data = g_malloc0 (sizeof (GstBufferReleaseData));
-  GstPayloadInfo pl_info = {NULL, NULL, NULL, NULL, NULL,
-      .mem_block_info = g_ptr_array_new ()};
+  GstPayloadInfo pl_info = {
+      .mem_block_info = g_ptr_array_new (),
+      .protection_metadata_info = g_ptr_array_new ()
+  };
+
   gint fds[GST_MAX_MEM_BLOCKS] = {0};
   gint n_fds = 0;
 
@@ -672,6 +675,17 @@ gst_socket_src_fill_buffer (GstFdSocketSrc * src, GstBuffer ** outbuf)
       release_data, (GDestroyNotify) gst_socket_src_buffer_release
   );
 
+  for (guint i = 0; i < pl_info.protection_metadata_info->len; i++) {
+    GstStructure *pmeta = NULL;
+    GstTextPayload *pmeta_pl = (GstTextPayload *) g_ptr_array_index (
+        pl_info.protection_metadata_info, i);
+
+    GST_DEBUG_OBJECT (src, "Protection meta added: %s", pmeta_pl->contents);
+
+    pmeta = gst_structure_from_string (pmeta_pl->contents, NULL);
+    gst_buffer_add_protection_meta (gstbuffer, pmeta);
+  }
+
   free_pl_struct (&pl_info);
 
   *outbuf = gstbuffer;
@@ -720,7 +734,7 @@ static GstStateChangeReturn
 gst_socket_src_change_state (GstElement * element, GstStateChange transition)
 {
   GstFdSocketSrc *src = GST_SOCKET_SRC (element);
-  GstPayloadInfo msg_info = {NULL, NULL, NULL, NULL, NULL, NULL};
+  GstPayloadInfo msg_info = {0};
   GstMessagePayload disc_msg = { .identity = MESSAGE_DISCONNECT};
   GstStateChangeReturn ret = GST_STATE_CHANGE_SUCCESS;
 

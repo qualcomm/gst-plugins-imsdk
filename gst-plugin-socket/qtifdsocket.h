@@ -73,6 +73,7 @@ typedef struct _GstTextPayload GstTextPayload;
 typedef struct _GstReturnBufferPayload GstReturnBufferPayload;
 typedef struct _GstFdCountPayload GstFdCountPayload;
 typedef struct _GstPayloadInfo GstPayloadInfo;
+typedef struct _GstProtectionMetadataPayload GstProtectionMetadataPayload;
 
 struct __attribute__((packed, aligned(4))) _GstMessagePayload {
   guint32 identity; // Message identity / type
@@ -130,6 +131,14 @@ struct __attribute__((packed, aligned(4))) _GstFdCountPayload {
   gint    n_fds;
 };
 
+struct __attribute__((packed, aligned(4))) _GstProtectionMetadataPayload {
+  guint32 identity; // Message identity / type
+  gchar   contents[1024];
+
+  gsize   size;
+  gsize   maxsize;
+};
+
 // Struct used to pass info to send and receive functions.
 // message carries a message (EOS/DISCONNECT).
 // buffer_info is the buffer description (BUFFER).
@@ -142,6 +151,7 @@ struct __attribute__((packed, aligned(4))) _GstPayloadInfo {
   GstFdCountPayload *      fd_count;
   gint *                   fds;
   GPtrArray *              mem_block_info;
+  GPtrArray *              protection_metadata_info;
 };
 
 // List of message identities
@@ -154,7 +164,8 @@ enum
   MESSAGE_TENSOR,         //4
   MESSAGE_TEXT,           //5
   MESSAGE_RETURN_BUFFER,  //6
-  MESSAGE_FD_COUNT        //7
+  MESSAGE_FD_COUNT,       //7
+  MESSAGE_PROTECTION_META //8
 };
 
 void
