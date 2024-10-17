@@ -42,6 +42,14 @@
  */
 #define GST_ML_QNN_ENGINE_OPT_BACKEND_DEVICE_ID "GstMLQNNEngine.backend_device_id"
 
+/**
+ * GST_ML_QNN_ENGINE_OPT_OUTPUTS:
+ *
+ * #G_TYPE_POINTER, list of output configurations
+ * Default: NULL
+ */
+#define GST_ML_QNN_ENGINE_OPT_OUTPUTS "GstMLQNNEngine.outputs"
+
 #define GET_OPT_MODEL(s) \
   gst_structure_get_string (s, GST_ML_QNN_ENGINE_OPT_MODEL)
 #define GET_OPT_BACKEND(s) \
