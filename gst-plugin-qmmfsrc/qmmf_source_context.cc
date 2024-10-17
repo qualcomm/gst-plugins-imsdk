@@ -1417,11 +1417,6 @@ gst_qmmf_context_open (GstQmmfContext * context)
         meta.find (ANDROID_SENSOR_INFO_ACTIVE_ARRAY_SIZE).data.i32[2];
     context->sensorsize.h =
         meta.find (ANDROID_SENSOR_INFO_ACTIVE_ARRAY_SIZE).data.i32[3];
-    // Set default zoom values to active array size.
-    context->zoom.x = context->sensorsize.x;
-    context->zoom.y = context->sensorsize.y;
-    context->zoom.w = context->sensorsize.w;
-    context->zoom.h = context->sensorsize.h;
   }
 
   gst_qmmf_context_parse_logical_cam_info(context, meta);
