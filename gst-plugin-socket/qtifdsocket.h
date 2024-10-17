@@ -54,6 +54,7 @@ struct __attribute__((packed, aligned(4))) _GstNewFrameMgs
   gint stride[GST_VIDEO_MAX_PLANES];
   guint flags;
   guint64 timestamp;
+  gboolean use_buffer_pool;
 };
 
 struct __attribute__((packed, aligned(4))) _GstReturnFrameMsg
