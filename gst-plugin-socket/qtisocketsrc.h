@@ -39,6 +39,8 @@
 #include <gst/base/gstpushsrc.h>
 #include <gst/ml/ml-info.h>
 
+#include "qtifdsocket.h"
+
 G_BEGIN_DECLS
 
 #define GST_TYPE_SOCKET_SRC \
@@ -55,6 +57,7 @@ G_BEGIN_DECLS
 
 typedef struct _GstFdSocketSrc GstFdSocketSrc;
 typedef struct _GstFdSocketSrcClass GstFdSocketSrcClass;
+typedef struct _GstBufferReleaseData GstBufferReleaseData;
 
 /* Bufferpool */
 #define GST_TYPE_SOCKET_SRC_BUFFER_POOL (gst_socketsrc_buffer_pool_get_type())
@@ -67,13 +70,12 @@ typedef struct _GstFdSocketSrcClass GstFdSocketSrcClass;
 typedef struct _GstSocketSrcBufferPool GstSocketSrcBufferPool;
 typedef struct _GstSocketSrcBufferPoolClass GstSocketSrcBufferPoolClass;
 
-struct _GstFdSocketSrc
-{
+struct _GstFdSocketSrc {
   GstPushSrc element;
 
   GThread *thread;
-  GCond cond;
-  GMutex mutex;
+  GCond    cond;
+  GMutex   mutex;
   gboolean thread_done;
   gboolean stop_thread;
   gboolean release_done;
@@ -86,33 +88,38 @@ struct _GstFdSocketSrc
   gint client_sock;
 
   GHashTable *fdmap;
-  GMutex fdmaplock;
+  GMutex      fdmaplock;
 
   GstBufferPool *pool;
 
   GstSegment segment;
 
   GstMLInfo *mlinfo;
+
+  GstFdSocketDataType mode;
 };
 
-struct _GstFdSocketSrcClass
-{
+struct _GstFdSocketSrcClass {
   GstPushSrcClass parent_class;
 };
 
-struct _GstSocketSrcBufferPool
-{
+struct _GstSocketSrcBufferPool {
   GstBufferPool bufferpool;
 };
 
-struct _GstSocketSrcBufferPoolClass
-{
+struct _GstSocketSrcBufferPoolClass {
   GstBufferPoolClass parent_class;
 };
 
 GType gst_socketsrc_buffer_pool_get_type (void);
 
 GstBufferPool * gst_socketsrc_buffer_pool_new (void);
+
+struct _GstBufferReleaseData {
+  gint  socket;
+  guint n_fds;
+  gint  buf_id[GST_MAX_MEM_BLOCKS];
+};
 
 G_GNUC_INTERNAL GType gst_socket_src_get_type (void);
 
