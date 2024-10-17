@@ -39,10 +39,11 @@
 #include <gst/base/gstbasesink.h>
 #include <gst/ml/ml-info.h>
 
+#include "qtifdsocket.h"
+
 G_BEGIN_DECLS
 
-#define GST_TYPE_SOCKET_SINK \
-  (gst_socket_sink_get_type())
+#define GST_TYPE_SOCKET_SINK (gst_socket_sink_get_type())
 #define GST_SOCKET_SINK(obj) \
   (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_SOCKET_SINK,GstFdSocketSink))
 #define GST_SOCKET_SINK_CLASS(klass) \
@@ -51,46 +52,37 @@ G_BEGIN_DECLS
   (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_SOCKET_SINK))
 #define GST_IS_SOCKET_SINK_CLASS(klass) \
   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_SOCKET_SINK))
-#define GST_SOCKET_SINK_CAST(obj)       ((GstFdSocketSink *)(obj))
+#define GST_SOCKET_SINK_CAST(obj) ((GstFdSocketSink *)(obj))
 
 typedef struct _GstFdSocketSink GstFdSocketSink;
 typedef struct _GstFdSocketSinkClass GstFdSocketSinkClass;
 
-typedef enum {
-  INPUT_MODE_NONE,
-  INPUT_MODE_VIDEO,
-  INPUT_MODE_TENSOR,
-  INPUT_MODE_TEXT
-} GstFdSocketSinkInputType;
-
-struct _GstFdSocketSink
-{
+struct _GstFdSocketSink {
   GstBaseSink parent;
 
   gchar *sockfile;
 
-  GstTask *task;
+  GstTask  *task;
   GRecMutex tasklock;
 
-  GstTask *connect_task;
+  GstTask  *connect_task;
   GRecMutex connect_tasklock;
 
-  gint socket;
+  gint   socket;
   GMutex socklock;
 
   GHashTable *bufmap;
-  GMutex bufmaplock;
-  gint bufcount;
+  GMutex      bufmaplock;
+  gint        bufcount;
 
   gint should_stop;
 
   GstMLInfo *mlinfo;
 
-  GstFdSocketSinkInputType mode;
+  GstFdSocketDataType mode;
 };
 
-struct _GstFdSocketSinkClass
-{
+struct _GstFdSocketSinkClass {
   GstBaseSinkClass parent_class;
 };
 

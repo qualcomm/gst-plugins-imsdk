@@ -45,14 +45,16 @@
 #include <gst/video/video-frame.h>
 #include <gst/utils/common-utils.h>
 
-#include "qtifdsocket.h"
-
-
 #define DEFAULT_SOCKET   NULL
 #define DEFAULT_TIMEOUT  1000
 
 #define gst_socket_src_parent_class parent_class
 G_DEFINE_TYPE (GstFdSocketSrc, gst_socket_src, GST_TYPE_PUSH_SRC);
+
+#define GST_SOCKET_SRC_CAPS \
+    "neural-network/tensors;" \
+    "video/x-raw(ANY);" \
+    "text/x-raw"
 
 GST_DEBUG_CATEGORY_STATIC (gst_socket_src_debug);
 #define GST_CAT_DEFAULT gst_socket_src_debug
@@ -68,7 +70,7 @@ static GstStaticPadTemplate socket_src_template =
   GST_STATIC_PAD_TEMPLATE ("src",
       GST_PAD_SRC,
       GST_PAD_ALWAYS,
-      GST_STATIC_CAPS_ANY);
+      GST_STATIC_CAPS (GST_SOCKET_SRC_CAPS));
 
 
 // Declare SocketSrc buffer pool
@@ -146,6 +148,7 @@ gst_socket_src_set_location (GstFdSocketSrc * src, const gchar * location)
   } else {
     src->sockfile = NULL;
   }
+
   return TRUE;
 }
 
@@ -154,6 +157,7 @@ gst_socket_src_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
 {
   GstFdSocketSrc *src = GST_SOCKET_SRC (object);
+  GstClockTime timeout;
   const gchar *propname = g_param_spec_get_name (pspec);
   GstState state = GST_STATE (src);
 
@@ -170,14 +174,50 @@ gst_socket_src_set_property (GObject * object, guint prop_id,
       break;
     case PROP_TIMEOUT:
       src->timeout = g_value_get_uint64 (value);
+      timeout = (src->timeout > 0) ?
+          src->timeout * GST_USECOND : GST_CLOCK_TIME_NONE;
+
       GST_DEBUG_OBJECT (src, "Socket poll timeout %" GST_TIME_FORMAT,
-          GST_TIME_ARGS (src->timeout));
+          GST_TIME_ARGS (timeout));
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
   }
   GST_OBJECT_UNLOCK (src);
+}
+
+static gboolean
+gst_socket_src_set_caps (GstBaseSrc * bsrc, GstCaps * caps)
+{
+  GstFdSocketSrc *src = GST_SOCKET_SRC (bsrc);
+  GstStructure *structure = NULL;
+  GstMLInfo mlinfo;
+
+  GST_INFO_OBJECT (src, "Input caps: %" GST_PTR_FORMAT, caps);
+
+  structure = gst_caps_get_structure (caps, 0);
+
+  if (gst_structure_has_name (structure, "video/x-raw")) {
+    src->mode = DATA_MODE_VIDEO;
+  } else if (gst_structure_has_name (structure, "text/x-raw")) {
+    src->mode = DATA_MODE_TEXT;
+  } else if (gst_structure_has_name (structure, "neural-network/tensors")) {
+     src->mode = DATA_MODE_TENSOR;
+
+    if (!gst_ml_info_from_caps (&mlinfo, caps)) {
+      GST_ERROR_OBJECT (src, "Failed to get input ML info from caps %"
+          GST_PTR_FORMAT "!", caps);
+      return FALSE;
+    }
+
+    if (src->mlinfo != NULL)
+      gst_ml_info_free (src->mlinfo);
+
+    src->mlinfo = gst_ml_info_copy (&mlinfo);
+  }
+
+  return TRUE;
 }
 
 static void
@@ -224,7 +264,8 @@ gst_socket_src_connection_handler (gpointer userdata)
   address.sun_family = AF_UNIX;
   g_strlcpy (address.sun_path, src->sockfile, sizeof (address.sun_path));
 
-  if (bind (src->socket, (struct sockaddr *) &address, sizeof (address)) < 0) {
+  addrlen = sizeof (address);
+  if (bind (src->socket, (struct sockaddr *) &address, addrlen) < 0) {
     GST_ERROR_OBJECT (src, "Socket bind failed");
     src->stop_thread = TRUE;
     g_mutex_unlock (&src->mutex);
@@ -232,7 +273,7 @@ gst_socket_src_connection_handler (gpointer userdata)
   }
 
   if (listen (src->socket, 3) < 0) {
-    GST_ERROR_OBJECT (src, "Socket bind failed");
+    GST_ERROR_OBJECT (src, "Socket listen failed");
     unlink (src->sockfile);
     src->socket = 0;
     src->stop_thread = TRUE;
@@ -246,6 +287,7 @@ gst_socket_src_connection_handler (gpointer userdata)
 
   src->client_sock = accept (src->socket,
       (struct sockaddr *) &address, (socklen_t *) &addrlen);
+
   if (src->client_sock < 0) {
     GST_WARNING_OBJECT (src, "Socket accept failed");
     src->client_sock = 0;
@@ -394,26 +436,25 @@ gst_socket_src_query (GstBaseSrc * basesrc, GstQuery * query)
 }
 
 static void
-gst_socket_src_buffer_release (GstStructure * structure)
+gst_socket_src_buffer_release (GstBufferReleaseData * release_data)
 {
-  GstFdMessage info = {0};
-  gint fd = 0;
-  gint socket = 0;
+  GstPayloadInfo pl_info = {NULL, NULL, NULL, NULL, NULL, NULL};
+  GstReturnBufferPayload ret_pl;
+  GstFdCountPayload fd_count = { .identity = MESSAGE_FD_COUNT,
+      .n_fds = release_data->n_fds};
 
-  GST_DEBUG ("%s", gst_structure_to_string (structure));
+  ret_pl.identity = MESSAGE_RETURN_BUFFER;
+  for (guint i = 0; i < release_data->n_fds; i++) {
+    ret_pl.buf_id[i] = release_data->buf_id[i];
+  }
+  pl_info.return_buffer = &ret_pl;
+  pl_info.fd_count = &fd_count;
 
-  gst_structure_get_int (structure, "socket", &socket);
-  gst_structure_get_int (structure, "fd", &fd);
-  gst_structure_get_int (structure, "bufid", &info.return_frame.buf_id);
-
-  info.id = MESSAGE_RETURN_FRAME;
-
-  GST_DEBUG ("Return buffer %d", info.return_frame.buf_id);
-
-  if (send_fd_message (socket, &info, sizeof (info), -1) < 0)
+  if (send_socket_message (release_data->socket, &pl_info) < 0) {
     GST_ERROR ("Unable to release buffer");
+  }
 
-  gst_structure_free (structure);
+  g_free (release_data);
 }
 
 static GstFlowReturn
@@ -422,160 +463,216 @@ gst_socket_src_fill_buffer (GstFdSocketSrc * src, GstBuffer ** outbuf)
   GstAllocator *allocator = NULL;
   GstMemory *gstmemory = NULL;
   GstBuffer *gstbuffer = NULL;
-  GstStructure *structure = NULL;
-  gint fd = 0;
-  GstFdMessage info = {0};
-  guint64 timestamp = 0;
-  gint buf_id = 0;
+  GstBufferReleaseData * release_data = g_malloc0 (sizeof (GstBufferReleaseData));
+  GstPayloadInfo pl_info = {NULL, NULL, NULL, NULL, NULL,
+      .mem_block_info = g_ptr_array_new ()};
+  gint fds[GST_MAX_MEM_BLOCKS] = {0};
+  gint n_fds = 0;
 
-  if (receive_fd_message (src->client_sock, &info, sizeof (info), &fd) < 0) {
-    GST_ERROR_OBJECT (src, "Unable to receive fd message");
+  pl_info.fds = fds;
+
+  release_data->socket = src->client_sock;
+  if (receive_socket_message (src->client_sock, &pl_info, 0) < 0) {
+    g_free (release_data);
+    free_pl_struct (&pl_info);
     return GST_FLOW_ERROR;
   }
 
-  if (info.id == MESSAGE_EOS) {
-    GST_DEBUG_OBJECT (src, "MESSAGE_EOS");
+  if (pl_info.fd_count != NULL) {
+    n_fds = pl_info.fd_count->n_fds;
+    release_data->n_fds = pl_info.fd_count->n_fds;
+  } else {
+    n_fds = 0;
+    // we need this to know how many buffers to unref
+    release_data->n_fds = pl_info.mem_block_info->len;
+  }
+
+  if (GST_PL_INFO_IS_MESSAGE (&pl_info, MESSAGE_EOS)) {
+    GST_INFO_OBJECT (src, "MESSAGE_EOS");
+    g_free (release_data);
+    free_pl_struct (&pl_info);
     return GST_FLOW_EOS;
   }
 
-  g_return_val_if_fail (info.id == MESSAGE_NEW_FRAME ||
-      info.id == MESSAGE_NEW_TENSOR_FRAME, GST_FLOW_ERROR);
+  for (guint i = 0; i < pl_info.mem_block_info->len; i++) {
+    gpointer ptr = g_ptr_array_index (pl_info.mem_block_info, i);
 
-  GST_DEBUG_OBJECT (src,
-      "info: msg_id: %d, buf_id %d, fd: %d, width: %d, height: %d pool: %d",
-      info.id, info.new_frame.buf_id, fd, info.new_frame.width,
-      info.new_frame.height, info.new_frame.use_buffer_pool);
-
-  if (fd <= 0) {
-    g_mutex_lock (&src->fdmaplock);
-    fd = GPOINTER_TO_INT (g_hash_table_lookup (src->fdmap,
-        GINT_TO_POINTER (info.new_frame.buf_id)));
-    g_mutex_unlock (&src->fdmaplock);
-
-    if (fd <= 0) {
-      GST_ERROR_OBJECT (src, "Unable to get fd");
+    if (get_payload_size (ptr) == -1) {
+      g_free (release_data);
+      free_pl_struct (&pl_info);
       return GST_FLOW_ERROR;
     }
   }
 
   // Create or acquire a GstBuffer.
-  if (info.new_frame.use_buffer_pool) {
+  if (pl_info.buffer_info->use_buffer_pool) {
     gst_buffer_pool_acquire_buffer (src->pool, &gstbuffer, NULL);
   } else {
     gstbuffer = gst_buffer_new ();
   }
+
   g_return_val_if_fail (gstbuffer != NULL, GST_FLOW_ERROR);
 
-  // Create a FD backed allocator.
-  allocator = gst_fd_allocator_new ();
-  if (allocator == NULL) {
-    gst_buffer_unref (gstbuffer);
-    GST_ERROR_OBJECT (src, "Failed to create FD allocator!");
-    return GST_FLOW_ERROR;
+  if (src->mode != DATA_MODE_TEXT) {
+    // Create a FD backed allocator.
+    allocator = gst_fd_allocator_new ();
+    if (allocator == NULL) {
+      gst_buffer_unref (gstbuffer);
+      g_free (release_data);
+      free_pl_struct (&pl_info);
+      GST_ERROR_OBJECT (src, "Failed to create FD allocator!");
+      return GST_FLOW_ERROR;
+    }
   }
 
-  // Wrap our buffer memory block in FD backed memory.
-  gstmemory = gst_fd_allocator_alloc (allocator, fd, info.new_frame.maxsize,
-      info.new_frame.use_buffer_pool ?
+  if (pl_info.buffer_info == NULL)
+    GST_ERROR_OBJECT (src, "Didn't receive GstBufferPayload");
+
+  //Start logic for batching from here
+  for (guint i = 0; i < pl_info.mem_block_info->len; i++) {
+    release_data->buf_id[i] = pl_info.buffer_info->buf_id[i];
+
+    if (src->mode == DATA_MODE_TEXT) {
+      GstTextPayload *text_pl =
+          (GstTextPayload *) g_ptr_array_index (pl_info.mem_block_info, i);
+
+      gpointer data = g_malloc0 (text_pl->size);
+      memmove (data, text_pl->contents, text_pl->size);
+
+      gstmemory = gst_memory_new_wrapped (
+          GST_MEMORY_FLAG_ZERO_PADDED & GST_MEMORY_FLAG_ZERO_PREFIXED,
+          data, text_pl->maxsize, 0, text_pl->size, NULL, NULL);
+    }
+
+    if (src->mode == DATA_MODE_TENSOR) {
+      GstTensorPayload *tensor_pl =
+          (GstTensorPayload *) g_ptr_array_index (pl_info.mem_block_info, i);
+
+      GST_DEBUG_OBJECT (src,
+          "info: msg_id: %d, buf_id %d, pool: %d",
+          tensor_pl->identity, pl_info.buffer_info->buf_id[i],
+          pl_info.buffer_info->use_buffer_pool);
+
+      // number of fds should match number of memory blocks
+      if (n_fds == 0) {
+        g_mutex_lock (&src->fdmaplock);
+        fds[i] = GPOINTER_TO_INT (g_hash_table_lookup (src->fdmap,
+            GINT_TO_POINTER (pl_info.buffer_info->buf_id[i])));
+        g_mutex_unlock (&src->fdmaplock);
+
+        if (fds[i] < 0) {
+          GST_ERROR_OBJECT (src, "Unable to get fd; Received value: %d", fds[i]);
+          return GST_FLOW_ERROR;
+        }
+      }
+      else {
+        g_mutex_lock (&src->fdmaplock);
+        g_hash_table_insert (src->fdmap,
+            GINT_TO_POINTER (pl_info.buffer_info->buf_id[i]),
+            GINT_TO_POINTER (fds[i]));
+        g_mutex_unlock (&src->fdmaplock);
+      }
+
+      // Wrap our buffer memory block in FD backed memory.
+      gstmemory = gst_fd_allocator_alloc (allocator, fds[i], tensor_pl->maxsize,
+          pl_info.buffer_info->use_buffer_pool ?
           GST_FD_MEMORY_FLAG_DONT_CLOSE : GST_FD_MEMORY_FLAG_NONE);
-  if (gstmemory == NULL) {
-    gst_buffer_unref (gstbuffer);
-    gst_object_unref (allocator);
-    GST_ERROR_OBJECT (src, "Failed to allocate FD memory block!");
-    return GST_FLOW_ERROR;
-  }
+      if (gstmemory == NULL) {
+        gst_buffer_unref (gstbuffer);
+        gst_object_unref (allocator);
+        g_free (release_data);
+        free_pl_struct (&pl_info);
+        GST_ERROR_OBJECT (src, "Failed to allocate FD memory block!");
+        return GST_FLOW_ERROR;
+      }
 
-  if (info.id == MESSAGE_NEW_FRAME) {
-    GST_DEBUG_OBJECT (src, "MESSAGE_NEW_FRAME");
+      // Set the actual size filled with data.
+      gst_memory_resize (gstmemory, 0, tensor_pl->size);
 
-    GST_DEBUG_OBJECT (src, "info: msg_id: %d, buf_id %d, width: %d, height: %d",
-        info.id, info.new_frame.buf_id, info.new_frame.width, info.new_frame.height);
-
-    // Wrap our buffer memory block in FD backed memory.
-    gstmemory = gst_fd_allocator_alloc (allocator, fd, info.new_frame.maxsize,
-        GST_FD_MEMORY_FLAG_DONT_CLOSE);
-    if (gstmemory == NULL) {
-      gst_buffer_unref (gstbuffer);
-      gst_object_unref (allocator);
-      GST_ERROR_OBJECT (src, "Failed to allocate FD memory block!");
-      return GST_FLOW_ERROR;
+      gst_buffer_add_ml_tensor_meta (gstbuffer,
+          tensor_pl->type ,
+          tensor_pl->n_dimensions,
+          tensor_pl->dimensions);
     }
 
-    // Set the actual size filled with data.
-    gst_memory_resize (gstmemory, 0, info.new_frame.size);
+    if (src->mode == DATA_MODE_VIDEO) {
+      GstFramePayload *frame_pl =
+          (GstFramePayload *) g_ptr_array_index (pl_info.mem_block_info, i);
 
-    // Set GStreamer buffer video metadata.
-    gst_buffer_add_video_meta_full (
+      GST_DEBUG_OBJECT (src, "info: msg_id: %d, buf_id %d",
+          frame_pl->identity, pl_info.buffer_info->buf_id[i]);
+
+      // number of fds should match number of memory blocks
+      if (n_fds == 0) {
+        g_mutex_lock (&src->fdmaplock);
+        fds[i] = GPOINTER_TO_INT (g_hash_table_lookup (src->fdmap,
+            GINT_TO_POINTER (pl_info.buffer_info->buf_id[i])));
+        g_mutex_unlock (&src->fdmaplock);
+
+        if (fds[i] < 0) {
+          GST_ERROR_OBJECT (src, "Unable to get fd; Received value: %d", fds[i]);
+          return GST_FLOW_ERROR;
+        }
+      }
+      else {
+        g_mutex_lock (&src->fdmaplock);
+        g_hash_table_insert (src->fdmap,
+            GINT_TO_POINTER (pl_info.buffer_info->buf_id[i]),
+            GINT_TO_POINTER (fds[i]));
+        g_mutex_unlock (&src->fdmaplock);
+      }
+
+      // Wrap our buffer memory block in FD backed memory.
+      gstmemory = gst_fd_allocator_alloc (allocator, fds[i], frame_pl->maxsize,
+          pl_info.buffer_info->use_buffer_pool ?
+          GST_FD_MEMORY_FLAG_DONT_CLOSE : GST_FD_MEMORY_FLAG_NONE);
+      if (gstmemory == NULL) {
+        gst_buffer_unref (gstbuffer);
+        gst_object_unref (allocator);
+        g_free (release_data);
+        free_pl_struct (&pl_info);
+        GST_ERROR_OBJECT (src, "Failed to allocate FD memory block!");
+        return GST_FLOW_ERROR;
+      }
+
+      // Set the actual size filled with data.
+      gst_memory_resize (gstmemory, 0, frame_pl->size);
+
+      gst_buffer_add_video_meta_full (
         gstbuffer, GST_VIDEO_FRAME_FLAG_NONE,
-        (GstVideoFormat)info.new_frame.format, info.new_frame.width,
-        info.new_frame.height, info.new_frame.n_planes,
-        info.new_frame.offset,info.new_frame.stride
-    );
-
-    buf_id = info.new_frame.buf_id;
-    timestamp =  info.new_frame.timestamp;
-  } else if (info.id == MESSAGE_NEW_TENSOR_FRAME) {
-    GST_DEBUG_OBJECT (src, "MESSAGE_NEW_TENSOR_FRAME size = %zu", info.tensor_frame.size);
-
-    GST_DEBUG_OBJECT (src, "info: msg_id: %d, buf_id %d",
-        info.id, info.tensor_frame.buf_id);
-
-    // Wrap our buffer memory block in FD backed memory.
-    gstmemory = gst_fd_allocator_alloc (allocator, fd, info.tensor_frame.maxsize,
-        GST_FD_MEMORY_FLAG_DONT_CLOSE);
-    if (gstmemory == NULL) {
-      gst_buffer_unref (gstbuffer);
-      gst_object_unref (allocator);
-      GST_ERROR_OBJECT (src, "Failed to allocate FD memory block!");
-      return GST_FLOW_ERROR;
+        (GstVideoFormat) frame_pl->format, frame_pl->width,
+        frame_pl->height, frame_pl->n_planes,
+        frame_pl->offset, frame_pl->stride);
     }
 
-    // Set the actual size filled with data.
-    gst_memory_resize (gstmemory, 0, info.tensor_frame.size);
-
-    gst_buffer_add_ml_tensor_meta (gstbuffer,
-        info.tensor_frame.meta.type ,
-        info.tensor_frame.meta.n_dimensions,
-        info.tensor_frame.meta.dimensions);
-
-    buf_id = info.tensor_frame.buf_id;
-    timestamp = info.tensor_frame.timestamp;
+    // Append the FD backed memory to the newly created GstBuffer.
+    gst_buffer_append_memory (gstbuffer, gstmemory);
   }
 
-  // Append the FD backed memory to the newly created GstBuffer.
-  gst_buffer_append_memory (gstbuffer, gstmemory);
-
-  // Unreference the allocator so that it is owned only by the gstmemory.
-  gst_object_unref (allocator);
-
-  GST_BUFFER_PTS (gstbuffer) = timestamp;
-  GST_BUFFER_DTS (gstbuffer) = GST_CLOCK_TIME_NONE;
-
-  // GSreamer structure for later recreating the sink buffer to be returned.
-  structure = gst_structure_new_empty ("SOCKET_BUFFER");
-  if (structure == NULL) {
-    gst_buffer_unref (gstbuffer);
-    GST_ERROR_OBJECT (src, "Failed to create buffer structure!");
-    return GST_FLOW_ERROR;
+  if (src->mode != DATA_MODE_TEXT) {
+    // Unreference the allocator so that it is owned only by the gstmemory.
+    gst_object_unref (allocator);
   }
 
-  // info needed to return buffer
-  gst_structure_set (structure,
-      "socket", G_TYPE_INT, src->client_sock,
-      "fd", G_TYPE_INT, fd,
-      "bufid", G_TYPE_INT, buf_id,
-      NULL);
+  if (pl_info.buffer_info->pts != ~0LU) {
+    GST_BUFFER_PTS (gstbuffer) = pl_info.buffer_info->pts;
+    GST_BUFFER_DTS (gstbuffer) = GST_CLOCK_TIME_NONE;
+    GST_BUFFER_DURATION (gstbuffer) = pl_info.buffer_info->duration;
+
+    if (GST_FORMAT_UNDEFINED == src->segment.format) {
+      gst_segment_init (&src->segment, GST_FORMAT_TIME);
+      GstPad *pad = gst_element_get_static_pad (GST_ELEMENT(src), "src");
+      gst_pad_push_event (pad, gst_event_new_segment (&src->segment));
+    }
+  }
 
   // Set a notification function to signal when the buffer is no longer used.
   gst_mini_object_set_qdata (
       GST_MINI_OBJECT (gstbuffer), socket_buffer_qdata_quark (),
-      structure, (GDestroyNotify) gst_socket_src_buffer_release
+      release_data, (GDestroyNotify) gst_socket_src_buffer_release
   );
 
-  g_mutex_lock (&src->fdmaplock);
-  g_hash_table_insert (src->fdmap, GINT_TO_POINTER (info.new_frame.buf_id),
-      GINT_TO_POINTER (fd));
-  g_mutex_unlock (&src->fdmaplock);
+  free_pl_struct (&pl_info);
 
   *outbuf = gstbuffer;
 
@@ -591,17 +688,15 @@ gst_socket_src_wait_buffer (GstFdSocketSrc * src)
   struct pollfd poll_fd;
 
   timeout = (src->timeout > 0) ? src->timeout * GST_USECOND : GST_CLOCK_TIME_NONE;
-
   do {
     retry = FALSE;
 
-    GST_DEBUG_OBJECT (src, "socket poll timeout %" GST_TIME_FORMAT,
-        GST_TIME_ARGS (src->timeout));
+    GST_DEBUG_OBJECT (src, "socket poll timeout %" GST_TIME_FORMAT ", fd: %d",
+        GST_TIME_ARGS (timeout), src->client_sock);
 
     poll_fd.fd = src->client_sock;
     poll_fd.events = POLLIN;
-    retval = poll (&poll_fd, 1, timeout);
-
+    retval = poll (&poll_fd, 1, src->timeout);
     if (G_UNLIKELY (retval < 0)) {
       if (errno == EINTR || errno == EAGAIN) {
         retry = TRUE;
@@ -615,6 +710,7 @@ gst_socket_src_wait_buffer (GstFdSocketSrc * src)
       retry = TRUE;
       GST_DEBUG_OBJECT (src, "Socket polling timeout.");
     }
+
   } while (G_UNLIKELY (retry));
 
   return GST_FLOW_OK;
@@ -624,13 +720,16 @@ static GstStateChangeReturn
 gst_socket_src_change_state (GstElement * element, GstStateChange transition)
 {
   GstFdSocketSrc *src = GST_SOCKET_SRC (element);
+  GstPayloadInfo msg_info = {NULL, NULL, NULL, NULL, NULL, NULL};
+  GstMessagePayload disc_msg = { .identity = MESSAGE_DISCONNECT};
   GstStateChangeReturn ret = GST_STATE_CHANGE_SUCCESS;
-  GstFdMessage msg = {0};
+
   switch (transition) {
     case GST_STATE_CHANGE_PLAYING_TO_PAUSED:
-      msg.id = MESSAGE_DISCONNECT;
-      if (send_fd_message (src->client_sock, &msg, sizeof (msg), -1) < 0)
-        GST_DEBUG_OBJECT (src, "Unable to send disconnect message.");
+      msg_info.message = &disc_msg;
+      if (send_socket_message (src->client_sock, &msg_info) < 0) {
+        GST_INFO_OBJECT (src, "Unable to send disconnect message.");
+      }
       break;
     default:
       break;
@@ -667,9 +766,12 @@ gst_socket_src_create (GstPushSrc * psrc, GstBuffer ** outbuf)
 {
   GstFdSocketSrc *src = GST_SOCKET_SRC (psrc);
 
+  GST_INFO_OBJECT (src, "Creating src out");
+
   g_mutex_lock (&src->mutex);
 
   while (!src->thread_done && !src->stop_thread) {
+    GST_INFO_OBJECT (src, "Waiting for thread");
     g_cond_wait (&src->cond, &src->mutex);
   }
 
@@ -708,6 +810,7 @@ gst_socket_src_init (GstFdSocketSrc * src)
   src->thread_done = FALSE;
   src->mlinfo = NULL;
   src->pool = NULL;
+  src->mode = DATA_MODE_NONE;
 
   g_cond_init (&src->cond);
   g_mutex_init (&src->mutex);
@@ -744,7 +847,7 @@ gst_socket_src_class_init (GstFdSocketSrcClass * klass)
     g_param_spec_uint64 ("timeout", "Socket timeout",
         "Socket post timeout", 0, G_MAXUINT64, DEFAULT_TIMEOUT,
         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-        GST_PARAM_MUTABLE_READY));
+        GST_PARAM_MUTABLE_READY | G_PARAM_CONSTRUCT));
 
   gst_element_class_set_static_metadata (gstelement,
       "QTI Socket Source Element", "Socket Source Element",
@@ -758,8 +861,8 @@ gst_socket_src_class_init (GstFdSocketSrcClass * klass)
   gstbasesrc->unlock = GST_DEBUG_FUNCPTR (gst_socket_src_unlock);
 
   gstpush_src->create = GST_DEBUG_FUNCPTR (gst_socket_src_create);
-
   gstelement->change_state = GST_DEBUG_FUNCPTR (gst_socket_src_change_state);
+  gstbasesrc->set_caps = GST_DEBUG_FUNCPTR (gst_socket_src_set_caps);
 }
 
 static gboolean
