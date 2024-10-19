@@ -1285,22 +1285,331 @@ gst_overlay_populate_video_blit (GstVOverlay * overlay, guint ovltype,
 }
 
 static gboolean
-gst_overlay_draw_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
-    GstVideoComposition * composition)
+gst_overlay_draw_metadata_entries (GstVOverlay * overlay,
+    GstVideoComposition * composition, guint * index)
 {
+  GstBuffer *outbuffer = composition->frame->buffer;
   GstMeta *meta = NULL;
   gpointer state = NULL;
-  guint idx = 0, n_entries = 0;
+  gboolean success = TRUE;
+
+  // Iterate over the buffer meta and process the supported entries.
+  while ((meta = gst_buffer_iterate_meta (outbuffer, &state)) != NULL) {
+    guint ovltype = gst_meta_overlay_type (meta);
+    guint n_blits = 1;
+
+    switch (ovltype) {
+      case GST_OVERLAY_TYPE_DETECTION:
+      {
+        // Two blit objects, one for bounding box and one for the labels.
+        GstVideoBlit *blit = &(composition->blits[(*index)]);
+        GstVideoBlit *auxblit = &(composition->blits[(*index) + 1]);
+
+        success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
+        g_return_val_if_fail (success, FALSE);
+
+        ovltype = GST_OVERLAY_TYPE_CLASSIFICATION;
+        success = gst_overlay_populate_video_blit (overlay, ovltype, auxblit);
+        g_return_val_if_fail (success, FALSE);
+
+        success = gst_overlay_handle_detection_entry (overlay, blit, auxblit,
+            GST_VIDEO_ROI_META_CAST (meta));
+
+        n_blits = 2;
+        break;
+      }
+      case GST_OVERLAY_TYPE_CLASSIFICATION:
+      {
+        GstVideoBlit *blit = &(composition->blits[(*index)]);
+        GArray *labels = GST_VIDEO_CLASSIFICATION_META_CAST (meta)->labels;
+
+        success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
+        g_return_val_if_fail (success, FALSE);
+
+        success = gst_overlay_handle_classification_entry (overlay, blit, labels);
+        break;
+      }
+      case GST_OVERLAY_TYPE_POSE_ESTIMATION:
+      {
+        GstVideoBlit *blit = &(composition->blits[*index]);
+        GArray *keypoints = GST_VIDEO_LANDMARKS_META_CAST (meta)->keypoints;
+        GArray *links = GST_VIDEO_LANDMARKS_META_CAST (meta)->links;
+
+        success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
+        g_return_val_if_fail (success, FALSE);
+
+        success = gst_overlay_handle_pose_entry (overlay, blit, keypoints, links);
+        break;
+      }
+      case GST_OVERLAY_TYPE_OPTCLFLOW:
+      {
+        GstVideoBlit *blit = &(composition->blits[(*index)]);
+        GArray *mvectors = GST_CV_OPTCLFLOW_META_CAST (meta)->mvectors;
+        GArray *stats = GST_CV_OPTCLFLOW_META_CAST (meta)->stats;
+
+        success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
+        g_return_val_if_fail (success, FALSE);
+
+        success = gst_overlay_handle_optclflow_entry (overlay, blit,
+            mvectors, stats);
+        break;
+      }
+      default:
+        // Skip meta entries that are not among the supported overlay types.
+        continue;
+    }
+
+    if (!success) {
+      GST_ERROR_OBJECT (overlay, "Failed to process meta %u!", (*index));
+      return FALSE;
+    }
+
+    // Increase the index with the number of populated blit objects.
+    *index += n_blits;
+  }
+
+  return TRUE;
+}
+
+static gboolean
+gst_overlay_draw_bbox_entries (GstVOverlay * overlay,
+    GstVideoComposition * composition, guint * index)
+{
+  guint num = 0;
+  gboolean success = TRUE;
+
+  for (num = 0; num < overlay->bboxes->len; num++) {
+    GstOverlayBBox *bbox = &g_array_index (overlay->bboxes, GstOverlayBBox, num);
+
+    // Skip this bounding box entry as it has been disabled.
+    if (!bbox->enable)
+      continue;
+
+    if (bbox->blit.frame != NULL) {
+      // Take the blit parameters from the cached object.
+      composition->blits[(*index)] = bbox->blit;
+    } else {
+      GstVideoBlit *blit = &(composition->blits[(*index)]);
+      guint ovltype = GST_OVERLAY_TYPE_BBOX;
+
+      success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
+      g_return_val_if_fail (success, FALSE);
+
+      success = gst_overlay_handle_bbox_entry (overlay, blit, bbox);
+      if (!success) {
+        GST_ERROR_OBJECT (overlay, "Failed to process bounding box %u!", num);
+        return FALSE;
+      }
+
+      // Save the blit parameters for this entry until something changes.
+      bbox->blit = composition->blits[(*index)];
+      // Increase the buffer refcount, this will be used as indicator that
+      // the blit object has been cached and its parameters won't be freed.
+      gst_buffer_ref (bbox->blit.frame->buffer);
+    }
+
+    // Increase the index with the number of populated blit objects.
+    *index += 1;
+  }
+
+  return TRUE;
+}
+
+static gboolean
+gst_overlay_draw_timestamp_entries (GstVOverlay * overlay,
+    GstVideoComposition * composition, guint * index)
+{
+  guint num = 0;
+  gboolean success = TRUE;
+
+  for (num = 0; num < overlay->timestamps->len; num++) {
+    GstOverlayTimestamp *timestamp =
+        &g_array_index (overlay->timestamps, GstOverlayTimestamp, num);
+
+    // Skip this timstamp entry as it has been disabled.
+    if (!timestamp->enable)
+      continue;
+
+    if (timestamp->blit.frame != NULL) {
+      // Take the blit parameters from the cached object.
+      composition->blits[(*index)] = timestamp->blit;
+    } else {
+      GstVideoBlit *blit = &(composition->blits[(*index)]);
+      guint ovltype = GST_OVERLAY_TYPE_TIMESTAMP;
+
+      success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
+      g_return_val_if_fail (success, FALSE);
+
+      success = gst_overlay_handle_timestamp_entry (overlay, blit, timestamp);
+      if (!success) {
+        GST_ERROR_OBJECT (overlay, "Failed to process timestamp %u!", num);
+        return FALSE;
+      }
+
+      // Save the blit parameters for this entry until something changes.
+      timestamp->blit = composition->blits[(*index)];
+      // Increase the buffer refcount, this will be used as indicator that
+      // the blit object has been cached and its parameters won't be freed.
+      gst_buffer_ref (timestamp->blit.frame->buffer);
+    }
+
+    // Increase the index with the number of populated blit objects.
+    *index += 1;
+  }
+
+  return TRUE;
+}
+
+static gboolean
+gst_overlay_draw_string_entries (GstVOverlay * overlay,
+    GstVideoComposition * composition, guint * index)
+{
+  guint num = 0;
+  gboolean success = TRUE;
+
+  for (num = 0; num < overlay->strings->len; num++) {
+    GstOverlayString *string =
+        &g_array_index (overlay->strings, GstOverlayString, num);
+
+    // Skip this text entry as it has been disabled.
+    if (!string->enable)
+      continue;
+
+    if (string->blit.frame != NULL) {
+      // Take the blit parameters from the cached object.
+      composition->blits[(*index)] = string->blit;
+    } else {
+      GstVideoBlit *blit = &(composition->blits[(*index)]);
+      guint ovltype = GST_OVERLAY_TYPE_STRING;
+
+      success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
+      g_return_val_if_fail (success, FALSE);
+
+      success = gst_overlay_handle_string_entry (overlay, blit, string);
+      if (!success) {
+        GST_ERROR_OBJECT (overlay, "Failed to process string %u!", num);
+        return FALSE;
+      }
+
+      // Save the blit parameters for this entry until something changes.
+      string->blit = composition->blits[(*index)];
+      // Increase the buffer refcount, this will be used as indicator that
+      // the blit object has been cached and its parameters won't be freed.
+      gst_buffer_ref (string->blit.frame->buffer);
+    }
+
+    // Increase the index with the number of populated blit objects.
+    *index += 1;
+  }
+
+  return TRUE;
+}
+
+static gboolean
+gst_overlay_draw_mask_entries (GstVOverlay * overlay,
+    GstVideoComposition * composition, guint * index)
+{
+  guint num = 0;
+  gboolean success = TRUE;
+
+  for (num = 0; num < overlay->masks->len; num++) {
+    GstOverlayMask *mask = &g_array_index (overlay->masks, GstOverlayMask, num);
+
+    // Skip this privacy mask entry as it has been disabled.
+    if (!mask->enable)
+      continue;
+
+    if (mask->blit.frame != NULL) {
+      // Take the blit parameters from the cached object.
+      composition->blits[(*index)] = mask->blit;
+    } else {
+      GstVideoBlit *blit = &(composition->blits[(*index)]);
+      guint ovltype = GST_OVERLAY_TYPE_MASK;
+
+      success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
+      g_return_val_if_fail (success, FALSE);
+
+      success = gst_overlay_handle_mask_entry (overlay, blit, mask);
+      if (!success) {
+        GST_ERROR_OBJECT (overlay, "Failed to process privacy mask %u!", num);
+        return FALSE;
+      }
+
+      // Save the blit parameters for this entry until something changes.
+      mask->blit = composition->blits[(*index)];
+      // Increase the buffer refcount, this will be used as indicator that
+      // the blit object has been cached and its parameters won't be freed.
+      gst_buffer_ref (mask->blit.frame->buffer);
+    }
+
+    // Increase the index with the number of populated blit objects.
+    *index += 1;
+  }
+
+  return TRUE;
+}
+
+static gboolean
+gst_overlay_draw_static_image_entries (GstVOverlay * overlay,
+    GstVideoComposition * composition, guint * index)
+{
+  guint num = 0;
+  gboolean success = TRUE;
+
+  for (num = 0; num < overlay->simages->len; num++) {
+    GstOverlayImage *simage =
+        &g_array_index (overlay->simages, GstOverlayImage, num);
+
+    // Skip this static image entry as it has been disabled.
+    if (!simage->enable)
+      continue;
+
+    if (simage->blit.frame != NULL) {
+      // Take the blit parameters from the cached object.
+      composition->blits[(*index)] = simage->blit;
+    } else {
+      GstVideoBlit *blit = &(composition->blits[(*index)]);
+      guint ovltype = GST_OVERLAY_TYPE_IMAGE;
+
+      success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
+      g_return_val_if_fail (success, FALSE);
+
+      success = gst_overlay_handle_image_entry (overlay, blit, simage);
+      if (!success) {
+        GST_ERROR_OBJECT (overlay, "Failed to process static image %u!", num);
+        return FALSE;
+      }
+
+      // Save the blit parameters for this entry until something changes.
+      simage->blit = composition->blits[(*index)];
+      // Increase the buffer refcount, this will be used as indicator that
+      // the blit object has been cached and its parameters won't be freed.
+      gst_buffer_ref (simage->blit.frame->buffer);
+    }
+
+    // Increase the index with the number of populated blit objects.
+    *index += 1;
+  }
+
+  return TRUE;
+}
+
+static gboolean
+gst_overlay_draw_ovelay_blits (GstVOverlay * overlay,
+    GstVideoComposition * composition)
+{
+  GstBuffer *outbuffer = composition->frame->buffer;
+  guint index = 0;
   gboolean success = TRUE;
 
   // Add the total number of meta entries that needs to be processed.
-  composition->n_blits = 2 * gst_buffer_get_n_meta (buffer,
+  composition->n_blits = 2 * gst_buffer_get_n_meta (outbuffer,
       GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE);
-  composition->n_blits += gst_buffer_get_n_meta (buffer,
+  composition->n_blits += gst_buffer_get_n_meta (outbuffer,
       GST_VIDEO_CLASSIFICATION_META_API_TYPE);
-  composition->n_blits += gst_buffer_get_n_meta (buffer,
+  composition->n_blits += gst_buffer_get_n_meta (outbuffer,
       GST_VIDEO_LANDMARKS_META_API_TYPE);
-  composition->n_blits += gst_buffer_get_n_meta (buffer,
+  composition->n_blits += gst_buffer_get_n_meta (outbuffer,
       GST_CV_OPTCLFLOW_META_API_TYPE);
 
   GST_OVERLAY_LOCK (overlay);
@@ -1320,254 +1629,57 @@ gst_overlay_draw_ovelay_blits (GstVOverlay * overlay, GstBuffer * buffer,
   composition->blits = g_new0 (GstVideoBlit, composition->n_blits);
 
   // Iterate over the buffer meta and process the supported entries.
-  while ((meta = gst_buffer_iterate_meta (buffer, &state)) != NULL) {
-    guint ovltype = gst_meta_overlay_type (meta), n_blits = 1;
+  success = gst_overlay_draw_metadata_entries (overlay, composition, &index);
 
-    switch (ovltype) {
-      case GST_OVERLAY_TYPE_DETECTION:
-      {
-        GstVideoBlit *blit = &(composition->blits[n_entries]);
-        GstVideoBlit *auxblit = &(composition->blits[n_entries + 1]);
-
-        success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
-        g_return_val_if_fail (success, FALSE);
-
-        ovltype = GST_OVERLAY_TYPE_CLASSIFICATION;
-        success = gst_overlay_populate_video_blit (overlay, ovltype, auxblit);
-        g_return_val_if_fail (success, FALSE);
-
-        success = gst_overlay_handle_detection_entry (overlay, blit, auxblit,
-            GST_VIDEO_ROI_META_CAST (meta));
-
-        n_blits = 2;
-        break;
-      }
-      case GST_OVERLAY_TYPE_CLASSIFICATION:
-      {
-        GstVideoBlit *blit = &(composition->blits[n_entries]);
-        GArray *labels = GST_VIDEO_CLASSIFICATION_META_CAST (meta)->labels;
-
-        success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
-        g_return_val_if_fail (success, FALSE);
-
-        success = gst_overlay_handle_classification_entry (overlay, blit, labels);
-        break;
-      }
-      case GST_OVERLAY_TYPE_POSE_ESTIMATION:
-      {
-        GstVideoBlit *blit = &(composition->blits[n_entries]);
-        GArray *keypoints = GST_VIDEO_LANDMARKS_META_CAST (meta)->keypoints;
-        GArray *links = GST_VIDEO_LANDMARKS_META_CAST (meta)->links;
-
-        success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
-        g_return_val_if_fail (success, FALSE);
-
-        success = gst_overlay_handle_pose_entry (overlay, blit, keypoints, links);
-        break;
-      }
-      case GST_OVERLAY_TYPE_OPTCLFLOW:
-      {
-        GstVideoBlit *blit = &(composition->blits[n_entries]);
-        GArray *mvectors = GST_CV_OPTCLFLOW_META_CAST (meta)->mvectors;
-        GArray *stats = GST_CV_OPTCLFLOW_META_CAST (meta)->stats;
-
-        success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
-        g_return_val_if_fail (success, FALSE);
-
-        success =
-            gst_overlay_handle_optclflow_entry (overlay, blit, mvectors, stats);
-        break;
-      }
-      default:
-        // Skip meta entries that are not among the supported overlay types.
-        continue;
-    }
-
-    if (!success) {
-      GST_ERROR_OBJECT (overlay, "Failed to process meta %u!", n_entries);
-      goto cleanup;
-    }
-
-    n_entries += n_blits;
+  if (!success) {
+    GST_ERROR_OBJECT (overlay, "Failed to process metatada blits!");
+    goto cleanup;
   }
 
   // Process manually set bounding boxes.
-  for (idx = 0; idx < overlay->bboxes->len; idx++) {
-    GstOverlayBBox *bbox = &g_array_index (overlay->bboxes, GstOverlayBBox, idx);
+  success = gst_overlay_draw_bbox_entries (overlay, composition, &index);
 
-    // Skip this bounding box entry as it has been disabled.
-    if (!bbox->enable)
-      continue;
-
-    if (bbox->blit.frame != NULL) {
-      // Take the blit parameters from the cached object.
-      composition->blits[n_entries] = bbox->blit;
-    } else {
-      GstVideoBlit *blit = &(composition->blits[n_entries]);
-      guint ovltype = GST_OVERLAY_TYPE_BBOX;
-
-      success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
-      g_return_val_if_fail (success, FALSE);
-
-      success = gst_overlay_handle_bbox_entry (overlay, blit, bbox);
-      if (!success) {
-        GST_ERROR_OBJECT (overlay, "Failed to process bounding box %u!", idx);
-        goto cleanup;
-      }
-
-      // Save the blit parameters for this entry until something changes.
-      bbox->blit = composition->blits[n_entries];
-      // Increase the buffer refcount, this will be used as indicator that
-      // the blit object has been cached and its parameters won't be freed.
-      gst_buffer_ref (bbox->blit.frame->buffer);
-    }
-
-    n_entries++;
+  if (!success) {
+    GST_ERROR_OBJECT (overlay, "Failed to process bbox blits!");
+    goto cleanup;
   }
 
   // Process manually set timestamps.
-  for (idx = 0; idx < overlay->timestamps->len; idx++) {
-    GstOverlayTimestamp *timestamp =
-        &g_array_index (overlay->timestamps, GstOverlayTimestamp, idx);
+  success = gst_overlay_draw_timestamp_entries (overlay, composition, &index);
 
-    // Skip this timstamp entry as it has been disabled.
-    if (!timestamp->enable)
-      continue;
-
-    if (timestamp->blit.frame != NULL) {
-      // Take the blit parameters from the cached object.
-      composition->blits[n_entries] = timestamp->blit;
-    } else {
-      GstVideoBlit *blit = &(composition->blits[n_entries]);
-      guint ovltype = GST_OVERLAY_TYPE_TIMESTAMP;
-
-      success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
-      g_return_val_if_fail (success, FALSE);
-
-      success = gst_overlay_handle_timestamp_entry (overlay, blit, timestamp);
-      if (!success) {
-        GST_ERROR_OBJECT (overlay, "Failed to process timestamp %u!", idx);
-        goto cleanup;
-      }
-
-      // Save the blit parameters for this entry until something changes.
-      timestamp->blit = composition->blits[n_entries];
-      // Increase the buffer refcount, this will be used as indicator that
-      // the blit object has been cached and its parameters won't be freed.
-      gst_buffer_ref (timestamp->blit.frame->buffer);
-    }
-
-    n_entries++;
+  if (!success) {
+    GST_ERROR_OBJECT (overlay, "Failed to process timestamps blits!");
+    goto cleanup;
   }
 
   // Process manually set strings.
-  for (idx = 0; idx < overlay->strings->len; idx++) {
-    GstOverlayString *string =
-        &g_array_index (overlay->strings, GstOverlayString, idx);
+  success = gst_overlay_draw_string_entries (overlay, composition, &index);
 
-    // Skip this text entry as it has been disabled.
-    if (!string->enable)
-      continue;
-
-    if (string->blit.frame != NULL) {
-      // Take the blit parameters from the cached object.
-      composition->blits[n_entries] = string->blit;
-    } else {
-      GstVideoBlit *blit = &(composition->blits[n_entries]);
-      guint ovltype = GST_OVERLAY_TYPE_STRING;
-
-      success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
-      g_return_val_if_fail (success, FALSE);
-
-      success = gst_overlay_handle_string_entry (overlay, blit, string);
-      if (!success) {
-        GST_ERROR_OBJECT (overlay, "Failed to process string %u!", idx);
-        goto cleanup;
-      }
-
-      // Save the blit parameters for this entry until something changes.
-      string->blit = composition->blits[n_entries];
-      // Increase the buffer refcount, this will be used as indicator that
-      // the blit object has been cached and its parameters won't be freed.
-      gst_buffer_ref (string->blit.frame->buffer);
-    }
-
-    n_entries++;
+  if (!success) {
+    GST_ERROR_OBJECT (overlay, "Failed to process strings blits!");
+    goto cleanup;
   }
 
   // Process manually set privacy masks.
-  for (idx = 0; idx < overlay->masks->len; idx++) {
-    GstOverlayMask *mask = &g_array_index (overlay->masks, GstOverlayMask, idx);
+  success = gst_overlay_draw_mask_entries (overlay, composition, &index);
 
-    // Skip this privacy mask entry as it has been disabled.
-    if (!mask->enable)
-      continue;
-
-    if (mask->blit.frame != NULL) {
-      // Take the blit parameters from the cached object.
-      composition->blits[n_entries] = mask->blit;
-    } else {
-      GstVideoBlit *blit = &(composition->blits[n_entries]);
-      guint ovltype = GST_OVERLAY_TYPE_MASK;
-
-      success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
-      g_return_val_if_fail (success, FALSE);
-
-      success = gst_overlay_handle_mask_entry (overlay, blit, mask);
-      if (!success) {
-        GST_ERROR_OBJECT (overlay, "Failed to process privacy mask %u!", idx);
-        goto cleanup;
-      }
-
-      // Save the blit parameters for this entry until something changes.
-      mask->blit = composition->blits[n_entries];
-      // Increase the buffer refcount, this will be used as indicator that
-      // the blit object has been cached and its parameters won't be freed.
-      gst_buffer_ref (mask->blit.frame->buffer);
-    }
-
-    n_entries++;
+  if (!success) {
+    GST_ERROR_OBJECT (overlay, "Failed to process masks blits!");
+    goto cleanup;
   }
 
   // Process manually set static images.
-  for (idx = 0; idx < overlay->simages->len; idx++) {
-    GstOverlayImage *simage =
-        &g_array_index (overlay->simages, GstOverlayImage, idx);
+  success = gst_overlay_draw_static_image_entries (overlay, composition, &index);
 
-    // Skip this static image entry as it has been disabled.
-    if (!simage->enable)
-      continue;
-
-    if (simage->blit.frame != NULL) {
-      // Take the blit parameters from the cached object.
-      composition->blits[n_entries] = simage->blit;
-    } else {
-      GstVideoBlit *blit = &(composition->blits[n_entries]);
-      guint ovltype = GST_OVERLAY_TYPE_IMAGE;
-
-      success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
-      g_return_val_if_fail (success, FALSE);
-
-      success = gst_overlay_handle_image_entry (overlay, blit, simage);
-      if (!success) {
-        GST_ERROR_OBJECT (overlay, "Failed to process static image %u!", idx);
-        goto cleanup;
-      }
-
-      // Save the blit parameters for this entry until something changes.
-      simage->blit = composition->blits[n_entries];
-      // Increase the buffer refcount, this will be used as indicator that
-      // the blit object has been cached and its parameters won't be freed.
-      gst_buffer_ref (simage->blit.frame->buffer);
-    }
-
-    n_entries++;
+  if (!success) {
+    GST_ERROR_OBJECT (overlay, "Failed to process static image blits!");
+    goto cleanup;
   }
 
   // Resize the blits array as actual number is less then the maximum.
-  if (n_entries < composition->n_blits) {
-    composition->blits = g_renew (GstVideoBlit, composition->blits, n_entries);
-    composition->n_blits = n_entries;
+  if (index < composition->n_blits) {
+    composition->blits = g_renew (GstVideoBlit, composition->blits, index);
+    composition->n_blits = index;
   }
 
 cleanup:
@@ -1767,16 +1879,6 @@ gst_overlay_transform_ip (GstBaseTransform * base, GstBuffer * buffer)
 
   time = gst_util_get_timestamp ();
 
-  // Extract metadata entries from the buffer and create overlay blit objects.
-  if (!gst_overlay_draw_ovelay_blits (overlay, buffer, &composition)) {
-    GST_ERROR_OBJECT (overlay, "Failed to draw overlay frames!");
-    return GST_FLOW_ERROR;
-  }
-
-  // Check if there is need for applying any overlay frames.
-  if ((composition.blits == NULL) && (composition.n_blits == 0))
-    return GST_FLOW_OK;
-
   if (!gst_video_frame_map (&outframe, overlay->vinfo, buffer,
           GST_MAP_READWRITE  | GST_VIDEO_FRAME_MAP_FLAG_NO_REF)) {
     GST_ERROR_OBJECT (overlay, "Failed to map input buffer!");
@@ -1784,6 +1886,18 @@ gst_overlay_transform_ip (GstBaseTransform * base, GstBuffer * buffer)
   }
 
   composition.frame = &outframe;
+
+  // Extract metadata entries from the buffer and create overlay blit objects.
+  if (!gst_overlay_draw_ovelay_blits (overlay, &composition)) {
+    GST_ERROR_OBJECT (overlay, "Failed to draw overlay frames!");
+    return GST_FLOW_ERROR;
+  }
+
+  // Check if there is need for applying any overlay frames.
+  if ((composition.blits == NULL) && (composition.n_blits == 0)) {
+    gst_video_frame_unmap (&outframe);
+    return GST_FLOW_OK;
+  }
 
   success = gst_video_converter_engine_compose (overlay->converter,
       &composition, 1, NULL);
