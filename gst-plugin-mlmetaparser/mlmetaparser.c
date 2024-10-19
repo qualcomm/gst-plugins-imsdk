@@ -68,91 +68,11 @@ gst_ml_meta_parser_modules_get_type (void)
   return gtype;
 }
 
-static GstBufferPool *
-gst_ml_meta_parser_create_pool (GstMlMetaParser * mlmetaparser, GstCaps * caps)
-{
-  GstBufferPool *pool = NULL;
-  GstStructure *structure = NULL;
-  guint size = 0;
-
-  GST_INFO_OBJECT (mlmetaparser, "Uses SYSTEM memory");
-
-  if ((pool = gst_buffer_pool_new ()) == NULL) {
-    GST_ERROR_OBJECT (mlmetaparser, "Failed to create buffer pool!");
-    return NULL;
-  }
-
-  size = DEFAULT_TEXT_BUFFER_SIZE;
-
-  structure = gst_buffer_pool_get_config (pool);
-  gst_buffer_pool_config_set_params (structure, caps, size,
-      DEFAULT_MIN_BUFFERS, DEFAULT_MAX_BUFFERS);
-
-  if (!gst_buffer_pool_set_config (pool, structure)) {
-    GST_WARNING_OBJECT (mlmetaparser, "Failed to set pool configuration!");
-    g_object_unref (pool);
-    pool = NULL;
-  }
-
-  return pool;
-}
-
-static gboolean
-gst_ml_meta_parser_decide_allocation (GstBaseTransform * base, GstQuery * query)
-{
-  GstMlMetaParser *mlmetaparser = GST_ML_META_PARSER (base);
-  GstCaps *caps = NULL;
-  GstBufferPool *pool = NULL;
-  GstStructure *config = NULL;
-  GstAllocator *allocator = NULL;
-  guint size, minbuffers, maxbuffers;
-  GstAllocationParams params;
-
-  gst_query_parse_allocation (query, &caps, NULL);
-  if (!caps) {
-    GST_ERROR_OBJECT (mlmetaparser, "Failed to parse the allocation caps!");
-    return FALSE;
-  }
-
-  // Invalidate the cached pool if there is an allocation_query.
-  if (mlmetaparser->outpool)
-    g_clear_pointer (&(mlmetaparser->outpool), gst_object_unref);
-
-  // Create a new buffer pool.
-  if ((pool = gst_ml_meta_parser_create_pool (mlmetaparser, caps)) == NULL) {
-    GST_ERROR_OBJECT (mlmetaparser, "Failed to create buffer pool!");
-    return FALSE;
-  }
-
-  mlmetaparser->outpool = pool;
-
-  // Get the configured pool properties in order to set in query.
-  config = gst_buffer_pool_get_config (pool);
-  gst_buffer_pool_config_get_params (config, &caps, &size, &minbuffers,
-      &maxbuffers);
-
-  if (gst_buffer_pool_config_get_allocator (config, &allocator, &params))
-    gst_query_add_allocation_param (query, allocator, &params);
-
-  gst_structure_free (config);
-
-  // Check whether the query has pool.
-  if (gst_query_get_n_allocation_pools (query) > 0)
-    gst_query_set_nth_allocation_pool (query, 0, pool, size, minbuffers,
-        maxbuffers);
-  else
-    gst_query_add_allocation_pool (query, pool, size, minbuffers,
-        maxbuffers);
-
-  return TRUE;
-}
-
 static GstFlowReturn
 gst_ml_meta_parser_prepare_output_buffer (GstBaseTransform * base,
     GstBuffer * inbuffer, GstBuffer ** outbuffer)
 {
   GstMlMetaParser *mlmetaparser = GST_ML_META_PARSER (base);
-  GstBufferPool *pool = mlmetaparser->outpool;
 
   if (gst_base_transform_is_passthrough (base)) {
     GST_DEBUG_OBJECT (mlmetaparser, "Passthrough, no need to do anything");
@@ -160,22 +80,7 @@ gst_ml_meta_parser_prepare_output_buffer (GstBaseTransform * base,
     return GST_FLOW_OK;
   }
 
-  if (!gst_buffer_pool_is_active (pool) &&
-      !gst_buffer_pool_set_active (pool, TRUE)) {
-    GST_ERROR_OBJECT (mlmetaparser, "Failed to activate output buffer pool!");
-    return GST_FLOW_ERROR;
-  }
-
-  // Input is marked as GAP, nothing to process. Create a GAP output buffer.
-  if (gst_buffer_get_size (inbuffer) == 0 &&
-      GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP))
-    *outbuffer = gst_buffer_new ();
-
-  if ((*outbuffer == NULL) &&
-      gst_buffer_pool_acquire_buffer (pool, outbuffer, NULL) != GST_FLOW_OK) {
-    GST_ERROR_OBJECT (mlmetaparser, "Failed to create output buffer!");
-    return GST_FLOW_ERROR;
-  }
+  *outbuffer = gst_buffer_new ();
 
   // Copy the timestamps from the input buffer.
   gst_buffer_copy_into (*outbuffer, inbuffer, GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
@@ -251,6 +156,7 @@ gst_ml_meta_parser_set_caps (GstBaseTransform * base, GstCaps * incaps,
   GEnumClass *eclass = NULL;
   GEnumValue *evalue = NULL;
   GstStructure *structure;
+  gboolean success = FALSE;
 
   // TODO Could be used for some initialization of a core component.
   // If not used should be removed.
@@ -272,7 +178,10 @@ gst_ml_meta_parser_set_caps (GstBaseTransform * base, GstCaps * incaps,
       GST_PARSER_MODULE_OPT_CAPS, GST_TYPE_CAPS, incaps,
       NULL);
 
-  if (!gst_parser_module_set_opts (mlmetaparser->module, structure)) {
+  success = gst_parser_module_set_opts (mlmetaparser->module, structure);
+  gst_structure_free (structure);
+
+  if (!success) {
     GST_ELEMENT_ERROR (mlmetaparser, RESOURCE, FAILED, (NULL),
         ("Failed to set module options!"));
     return FALSE;
@@ -286,35 +195,33 @@ gst_ml_meta_parser_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     GstBuffer * outbuffer)
 {
   GstMlMetaParser *mlmetaparser = GST_ML_META_PARSER (base);
+  GstMemory *mem = NULL;
   gchar *output_string = NULL;
   gsize output_size = 0;
-  GstMapInfo outmap = { 0, };
   GstClockTime time = GST_CLOCK_TIME_NONE;
+  gboolean success = FALSE;
 
   // GAP buffer, nothing to do. Propagate output buffer downstream.
   if (gst_buffer_get_size (outbuffer) == 0 &&
       GST_BUFFER_FLAG_IS_SET (outbuffer, GST_BUFFER_FLAG_GAP))
     return GST_FLOW_OK;
 
-  if (!gst_buffer_map (outbuffer, &outmap, GST_MAP_READWRITE)) {
-    GST_ERROR ("Unable to map buffer!");
+  time = gst_util_get_timestamp ();
+
+  success = gst_parser_module_execute (mlmetaparser->module, inbuffer,
+      &output_string);
+  if (!success) {
+    GST_ERROR_OBJECT(mlmetaparser, "Failed to parse metadata, sending empty buffer!");
     return GST_FLOW_ERROR;
   }
 
-  time = gst_util_get_timestamp ();
+  output_size = strlen (output_string) + 1;
+  mem = gst_memory_new_wrapped (
+      GST_MEMORY_FLAG_ZERO_PADDED & GST_MEMORY_FLAG_ZERO_PREFIXED,
+      output_string, output_size, 0, output_size, output_string, g_free);
+  gst_buffer_append_memory (outbuffer, mem);
 
-  gst_parser_module_execute (mlmetaparser->module, inbuffer, &output_string);
-
-  if (output_string) {
-    output_size = strlen (output_string) + 1;
-    g_strlcpy ((gchar *) outmap.data, output_string, output_size);
-    GST_LOG_OBJECT (mlmetaparser, "module output: %s", output_string);
-    g_free (output_string);
-  }
-
-  gst_buffer_unmap (outbuffer, &outmap);
-  gst_buffer_resize (outbuffer, 0, output_size);
-
+  GST_TRACE_OBJECT (mlmetaparser, "module output: %s", output_string);
   GST_LOG_OBJECT (mlmetaparser, "output buffer size %zu", output_size);
 
   time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
@@ -362,10 +269,6 @@ static void
 gst_ml_meta_parser_finalize (GObject * object)
 {
   GstMlMetaParser *mlmetaparser = GST_ML_META_PARSER (object);
-
-  if (mlmetaparser->outpool != NULL)
-    gst_object_unref (mlmetaparser->outpool);
-
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (mlmetaparser));
 }
 
@@ -394,8 +297,6 @@ gst_ml_meta_parser_class_init (GstMlMetaParserClass * klass)
   gst_element_class_add_pad_template (element,
       gst_static_pad_template_get (&gst_ml_meta_parser_src_template));
 
-  base->decide_allocation =
-      GST_DEBUG_FUNCPTR (gst_ml_meta_parser_decide_allocation);
   base->prepare_output_buffer =
       GST_DEBUG_FUNCPTR (gst_ml_meta_parser_prepare_output_buffer);
 
@@ -409,8 +310,6 @@ gst_ml_meta_parser_class_init (GstMlMetaParserClass * klass)
 static void
 gst_ml_meta_parser_init (GstMlMetaParser * mlmetaparser)
 {
-  mlmetaparser->outpool = NULL;
-
   // Handle buffers with GAP flag internally.
   gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM (mlmetaparser), TRUE);
 
