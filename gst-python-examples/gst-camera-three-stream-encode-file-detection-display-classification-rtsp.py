@@ -5,491 +5,300 @@ import os
 import sys
 import signal
 import gi
+import argparse
 
 gi.require_version("Gst", "1.0")
 gi.require_version("GLib", "2.0")
 from gi.repository import Gst, GLib
 
+DESCRIPTION = """
+The application:
+- Encodes camera stream and dump the output.
+- Uses YOLOv8 TFLite model to identify the object in scene from camera stream
+and overlay the bounding boxes over the detected objects. The results are shown
+on the display.
+- Uses Resnet101 TFLite model to classify scene from video file and overlay the
+classification labels on the top left corner. The results are streamed over RTSP
+(rtsp://127.0.0.1:8900/live)
+
+The file paths are hard coded in the python script as follows:
+- Detection model: /opt/data/YoloV8N_Detection_Quantized.tflite
+- Detection labels: /opt/data/yolov8n.labels
+- Classification model: /opt/data/Resnet101_Quantized.tflite
+- Classification labels: /opt/data/resnet101.labels
+"""
+
+DEFAULT_DETECTION_MODEL = "/opt/data/YoloV8N_Detection_Quantized.tflite"
+DEFAULT_DETECTION_LABELS = "/opt/data/yolov8n.labels"
+DEFAULT_CLASSIFICATION_MODEL = "/opt/data/Resnet101_Quantized.tflite"
+DEFAULT_CLASSIFICATION_LABELS = "/opt/data/resnet101.labels"
+DEFAULT_OUTPUT_FILE = "/opt/data/test.mp4"
+DEFAULT_RTSP_ADDRESS = "127.0.0.1"
+DEFAULT_RTSP_PORT = "8900"
+DEFAULT_RTSP_MPOINT = "/live"
+
+
+def create_element(factory_name, name):
+    """Create a GStreamer element."""
+    element = Gst.ElementFactory.make(factory_name, name)
+    if not element:
+        raise Exception(f"Failed to create {factory_name} named {name}!")
+    return element
+
+
+def link_elements(link_orders, elements):
+    """Link elements in the specified orders."""
+    for link_order in link_orders:
+        src = None
+        for element in link_order:
+            dest = elements[element]
+            if src and not src.link(dest):
+                raise Exception(
+                    f"Failed to link element\
+                    {src.get_name()} with {dest.get_name()}"
+                )
+            src = dest
+
 
 def construct_pipeline(pipe):
-    # Create all elements
-    qmmfsrc = Gst.ElementFactory.make("qtiqmmfsrc")
-    Gst.util_set_object_arg(qmmfsrc, "camera", "0")
+    """Initialize and link elements for the GStreamer pipeline."""
+    # Parse arguments
+    parser = argparse.ArgumentParser(
+        add_help=False,
+        formatter_class=type(
+            "CustomFormatter",
+            (
+                argparse.ArgumentDefaultsHelpFormatter,
+                argparse.RawTextHelpFormatter,
+            ),
+            {},
+        ),
+    )
 
-    # Camera stream 0
-    capsfilter_preview = Gst.ElementFactory.make("capsfilter", "preview_caps")
+    parser.add_argument(
+        "-h",
+        "--help",
+        action="help",
+        default=argparse.SUPPRESS,
+        help=DESCRIPTION,
+    )
+    parser.add_argument(
+        "--output_path",
+        type=str,
+        default=DEFAULT_OUTPUT_FILE,
+        help="Pipeline Output Path",
+    )
+
+    args = parser.parse_args()
+
+    # Create all elements
+    # fmt: off
+    elements = {
+        "qmmfsrc":           create_element("qtiqmmfsrc", "camsrc"),
+        # Stream 0
+        "capsfilter_0":      create_element("capsfilter", "camout0caps"),
+        "queue_0":           create_element("queue", "queue0"),
+        "v4l2h264enc_0":     create_element("v4l2h264enc", "v4l2h264encoder0"),
+        "h264parse_0":       create_element("h264parse", "h264parser0"),
+        "mp4mux":            create_element("mp4mux", "mp4muxer"),
+        "filesink":          create_element("filesink", "filesink"),
+        # Stream 1
+        "capsfilter_1":      create_element("capsfilter", "camout1caps"),
+        "queue_1":           create_element("queue", "queue1"),
+        "tee_0":             create_element("tee", "split0"),
+        "mlvconverter_0":    create_element("qtimlvconverter", "converter0"),
+        "queue_2":           create_element("queue", "queue2"),
+        "mltflite_0":        create_element("qtimltflite", "inference0"),
+        "queue_3":           create_element("queue", "queue3"),
+        "mlvdetection":      create_element("qtimlvdetection", "detection"),
+        "capsfilter_2":      create_element("capsfilter", "metamux0metacaps"),
+        "queue_4":           create_element("queue", "queue4"),
+        "metamux_0":         create_element("qtimetamux", "metamux0"),
+        "overlay_0":         create_element("qtivoverlay", "overlay0"),
+        "queue_5":           create_element("queue", "queue5"),
+        "display":           create_element("waylandsink", "display"),
+        # Stream 2
+        "capsfilter_3":      create_element("capsfilter", "camout3caps"),
+        "queue_6":           create_element("queue", "queue6"),
+        "tee_1":             create_element("tee", "split1"),
+        "mlvconverter_1":    create_element("qtimlvconverter", "converter1"),
+        "queue_7":           create_element("queue", "queue7"),
+        "mltflite_1":        create_element("qtimltflite", "inference1"),
+        "queue_8":           create_element("queue", "queue8"),
+        "mlvclassification": create_element("qtimlvclassification", "classification"),
+        "capsfilter_4":      create_element("capsfilter", "metamux1metacaps"),
+        "queue_9":           create_element("queue", "queue9"),
+        "metamux_1":         create_element("qtimetamux", "metamux1"),
+        "overlay_1":         create_element("qtivoverlay", "overlay1"),
+        "v4l2h264enc_1":     create_element("v4l2h264enc", "v4l2h264encoder1"),
+        "h264parse_1":       create_element("h264parse", "h264parser1"),
+        "rtspbin":           create_element("qtirtspbin", "rtspbin")
+    }
+    # fmt: on
+
+    # Set element properties
+    Gst.util_set_object_arg(elements["qmmfsrc"], "camera", "0")
+
+    # Stream 0
     Gst.util_set_object_arg(
-        capsfilter_preview,
+        elements["capsfilter_0"],
         "caps",
         "video/x-raw(memory:GBM),format=NV12,compression=ubwc,\
         width=1920,height=1080,framerate=30/1,colorimetry=bt709",
     )
 
-    # queue after camera source for preview
-    queue_0 = Gst.ElementFactory.make("queue")
+    Gst.util_set_object_arg(elements["v4l2h264enc_0"], "capture-io-mode", "5")
+    Gst.util_set_object_arg(elements["v4l2h264enc_0"], "output-io-mode", "5")
 
-    v4l2h264enc_0 = Gst.ElementFactory.make("v4l2h264enc", "v4l2h264enc_0")
-    Gst.util_set_object_arg(v4l2h264enc_0, "capture-io-mode", "5")
-    Gst.util_set_object_arg(v4l2h264enc_0, "output-io-mode", "5")
+    Gst.util_set_object_arg(elements["h264parse_0"], "config-interval", "1")
 
-    # queue after encoder
-    queue_1 = Gst.ElementFactory.make("queue")
+    Gst.util_set_object_arg(elements["filesink"], "location", args.output_path)
 
-    h264parse_0 = Gst.ElementFactory.make("h264parse")
-    Gst.util_set_object_arg(h264parse_0, "config-interval", "1")
-
-    mp4mux = Gst.ElementFactory.make("mp4mux")
-
-    # Save Camera stream 0 in file
-    filesink = Gst.ElementFactory.make("filesink")
-    Gst.util_set_object_arg(filesink, "location", "/opt/data/test.mp4")
-
-    # Camera stream 1
-    capsfilter_video_0 = Gst.ElementFactory.make("capsfilter", "video_caps_0")
+    # Stream 1
     Gst.util_set_object_arg(
-        capsfilter_video_0,
+        elements["capsfilter_1"],
         "caps",
         "video/x-raw\(memory:GBM\),format=NV12,\
         width=640,height=360,framerate=30/1",
     )
 
-    # queue after camera source for video 0
-    queue_2 = Gst.ElementFactory.make("queue")
-
-    tee_0 = Gst.ElementFactory.make("tee", "split_0")
-
-    # queue between tee_0 and metamux_0
-    queue_3 = Gst.ElementFactory.make("queue")
-
-    metamux_0 = Gst.ElementFactory.make("qtimetamux", "metamux_0")
-
-    mlvconverter_0 = Gst.ElementFactory.make("qtimlvconverter", "converter_0")
-
-    # queue after preprocess
-    queue_4 = Gst.ElementFactory.make("queue")
-
-    mltflite_0 = Gst.ElementFactory.make("qtimltflite", "inference_0")
-    Gst.util_set_object_arg(mltflite_0, "delegate", "external")
+    Gst.util_set_object_arg(elements["mltflite_0"], "delegate", "external")
     Gst.util_set_object_arg(
-        mltflite_0, "external-delegate-path", "libQnnTFLiteDelegate.so"
+        elements["mltflite_0"],
+        "external-delegate-path",
+        "libQnnTFLiteDelegate.so",
     )
     Gst.util_set_object_arg(
-        mltflite_0,
+        elements["mltflite_0"],
         "external-delegate-options",
         "QNNExternalDelegate,backend_type=htp;",
     )
     Gst.util_set_object_arg(
-        mltflite_0, "model", "/opt/data/YoloV8N_Detection_Quantized.tflite"
+        elements["mltflite_0"],
+        "model",
+        DEFAULT_DETECTION_MODEL,
     )
 
-    # queue after inference
-    queue_5 = Gst.ElementFactory.make("queue")
-
-    mlvdetection = Gst.ElementFactory.make("qtimlvdetection")
-    Gst.util_set_object_arg(mlvdetection, "threshold", "75.0")
-    Gst.util_set_object_arg(mlvdetection, "results", "4")
-    Gst.util_set_object_arg(mlvdetection, "module", "yolov8")
+    Gst.util_set_object_arg(elements["mlvdetection"], "threshold", "75.0")
+    Gst.util_set_object_arg(elements["mlvdetection"], "results", "4")
+    Gst.util_set_object_arg(elements["mlvdetection"], "module", "yolov8")
     Gst.util_set_object_arg(
-        mlvdetection,
+        elements["mlvdetection"],
         "constants",
         "YoloV8,q-offsets=<-107.0,-128.0,0.0>,\
         q-scales=<3.093529462814331,0.00390625,1.0>;",
     )
-    Gst.util_set_object_arg(mlvdetection, "labels", "/opt/data/yolov8n.labels")
-
-    capsfilter_postprocess_0 = Gst.ElementFactory.make(
-        "capsfilter", "postproc_caps_0"
-    )
-    Gst.util_set_object_arg(capsfilter_postprocess_0, "caps", "text/x-raw")
-
-    # queue between postprocess and metamux_0
-    queue_6 = Gst.ElementFactory.make("queue")
-
-    # queue after metamux_0
-    queue_7 = Gst.ElementFactory.make("queue")
-
-    overlay_0 = Gst.ElementFactory.make("qtioverlay", "overlay_0")
-    Gst.util_set_object_arg(overlay_0, "engine", "gles")
-
-    # queue after overlay_0
-    queue_8 = Gst.ElementFactory.make("queue")
-
-    display = Gst.ElementFactory.make("waylandsink")
-    Gst.util_set_object_arg(display, "sync", "false")
-    Gst.util_set_object_arg(display, "async", "false")
-    Gst.util_set_object_arg(display, "fullscreen", "true")
-
-    # Camera stream 2
-    capsfilter_video_1 = Gst.ElementFactory.make("capsfilter", "video_caps_1")
     Gst.util_set_object_arg(
-        capsfilter_video_1,
+        elements["mlvdetection"], "labels", DEFAULT_DETECTION_LABELS
+    )
+
+    Gst.util_set_object_arg(elements["capsfilter_2"], "caps", "text/x-raw")
+
+    Gst.util_set_object_arg(elements["overlay_0"], "engine", "gles")
+
+    Gst.util_set_object_arg(elements["display"], "sync", "false")
+    Gst.util_set_object_arg(elements["display"], "fullscreen", "true")
+
+    # Stream 2
+    Gst.util_set_object_arg(
+        elements["capsfilter_3"],
         "caps",
         "video/x-raw\(memory:GBM\),format=NV12,\
         width=640,height=360,framerate=30/1",
     )
 
-    # queue after camera source for video 1
-    queue_9 = Gst.ElementFactory.make("queue")
-
-    tee_1 = Gst.ElementFactory.make("tee", "split_1")
-
-    # queue between tee_1 and metamux_1
-    queue_10 = Gst.ElementFactory.make("queue")
-
-    metamux_1 = Gst.ElementFactory.make("qtimetamux", "metamux_1")
-
-    mlvconverter_1 = Gst.ElementFactory.make("qtimlvconverter", "converter_1")
-
-    # queue after preprocess
-    queue_11 = Gst.ElementFactory.make("queue")
-
-    mltflite_1 = Gst.ElementFactory.make("qtimltflite", "inference_1")
-    Gst.util_set_object_arg(mltflite_1, "delegate", "external")
+    Gst.util_set_object_arg(elements["mltflite_1"], "delegate", "external")
     Gst.util_set_object_arg(
-        mltflite_1, "external-delegate-path", "libQnnTFLiteDelegate.so"
+        elements["mltflite_1"],
+        "external-delegate-path",
+        "libQnnTFLiteDelegate.so",
     )
     Gst.util_set_object_arg(
-        mltflite_1,
+        elements["mltflite_1"],
         "external-delegate-options",
         "QNNExternalDelegate,backend_type=htp;",
     )
     Gst.util_set_object_arg(
-        mltflite_1, "model", "/opt/data/Resnet101_Quantized.tflite"
+        elements["mltflite_1"], "model", DEFAULT_CLASSIFICATION_MODEL
     )
 
-    # queue after inference
-    queue_12 = Gst.ElementFactory.make("queue")
-
-    mlvclassification = Gst.ElementFactory.make("qtimlvclassification")
-    Gst.util_set_object_arg(mlvclassification, "threshold", "51.0")
-    Gst.util_set_object_arg(mlvclassification, "results", "5")
-    Gst.util_set_object_arg(mlvclassification, "module", "mobilenet")
+    Gst.util_set_object_arg(elements["mlvclassification"], "threshold", "51.0")
+    Gst.util_set_object_arg(elements["mlvclassification"], "results", "5")
     Gst.util_set_object_arg(
-        mlvclassification, "labels", "/opt/data/resnet101.labels"
+        elements["mlvclassification"], "module", "mobilenet"
     )
-    Gst.util_set_object_arg(mlvclassification, "extra-operation", "softmax")
     Gst.util_set_object_arg(
-        mlvclassification,
+        elements["mlvclassification"], "labels", DEFAULT_CLASSIFICATION_LABELS
+    )
+    Gst.util_set_object_arg(
+        elements["mlvclassification"], "extra-operation", "softmax"
+    )
+    Gst.util_set_object_arg(
+        elements["mlvclassification"],
         "constants",
         "Mobilenet,q-offsets=<-82.0>,q-scales=<0.21351955831050873>;",
     )
-    capsfilter_postprocess_1 = Gst.ElementFactory.make(
-        "capsfilter", "postproc_caps_1"
+
+    Gst.util_set_object_arg(elements["capsfilter_4"], "caps", "text/x-raw")
+
+    Gst.util_set_object_arg(elements["overlay_1"], "engine", "gles")
+
+    Gst.util_set_object_arg(elements["v4l2h264enc_1"], "capture-io-mode", "5")
+    Gst.util_set_object_arg(elements["v4l2h264enc_1"], "output-io-mode", "5")
+
+    Gst.util_set_object_arg(elements["h264parse_1"], "config-interval", "1")
+
+    Gst.util_set_object_arg(
+        elements["rtspbin"], "address", DEFAULT_RTSP_ADDRESS
     )
-    Gst.util_set_object_arg(capsfilter_postprocess_1, "caps", "text/x-raw")
-
-    # queue between postprocess and metamux_1
-    queue_13 = Gst.ElementFactory.make("queue")
-
-    # queue after metamux_1
-    queue_14 = Gst.ElementFactory.make("queue")
-
-    overlay_1 = Gst.ElementFactory.make("qtioverlay", "overlay_1")
-    Gst.util_set_object_arg(overlay_1, "engine", "gles")
-
-    # queue after overlay_1
-    queue_15 = Gst.ElementFactory.make("queue")
-
-    v4l2h264enc_1 = Gst.ElementFactory.make("v4l2h264enc", "v4l2h264enc_1")
-    Gst.util_set_object_arg(v4l2h264enc_1, "capture-io-mode", "5")
-    Gst.util_set_object_arg(v4l2h264enc_1, "output-io-mode", "5")
-
-    # queue after encoder
-    queue_16 = Gst.ElementFactory.make("queue")
-
-    h264parse_1 = Gst.ElementFactory.make("h264parse", "h264parse_1")
-    Gst.util_set_object_arg(h264parse_1, "config-interval", "1")
-
-    queue_17 = Gst.ElementFactory.make("queue")
-
-    rtspbin = Gst.ElementFactory.make("qtirtspbin")
-
-    if (
-        not qmmfsrc
-        or not capsfilter_preview
-        or not queue_0
-        or not v4l2h264enc_0
-        or not queue_1
-        or not h264parse_0
-        or not mp4mux
-        or not filesink
-        or not capsfilter_video_0
-        or not queue_2
-        or not tee_0
-        or not queue_3
-        or not metamux_0
-        or not mlvconverter_0
-        or not queue_4
-        or not mltflite_0
-        or not queue_5
-        or not mlvdetection
-        or not capsfilter_postprocess_0
-        or not queue_6
-        or not queue_7
-        or not overlay_0
-        or not queue_8
-        or not display
-        or not capsfilter_video_1
-        or not queue_9
-        or not tee_1
-        or not queue_10
-        or not metamux_1
-        or not mlvconverter_1
-        or not queue_11
-        or not mltflite_1
-        or not queue_12
-        or not mlvclassification
-        or not capsfilter_postprocess_1
-        or not queue_13
-        or not queue_14
-        or not overlay_1
-        or not queue_15
-        or not v4l2h264enc_1
-        or not queue_16
-        or not h264parse_1
-        or not queue_17
-        or not rtspbin
-    ):
-        print("Failed to create all elements!")
-        sys.exit(1)
+    Gst.util_set_object_arg(elements["rtspbin"], "port", DEFAULT_RTSP_PORT)
+    Gst.util_set_object_arg(elements["rtspbin"], "mpoint", DEFAULT_RTSP_MPOINT)
 
     # Add all elements
-    pipe.add(qmmfsrc)
-    pipe.add(capsfilter_preview)
-    pipe.add(queue_0)
-    pipe.add(v4l2h264enc_0)
-    pipe.add(queue_1)
-    pipe.add(h264parse_0)
-    pipe.add(mp4mux)
-    pipe.add(filesink)
-    pipe.add(capsfilter_video_0)
-    pipe.add(queue_2)
-    pipe.add(tee_0)
-    pipe.add(queue_3)
-    pipe.add(metamux_0)
-    pipe.add(mlvconverter_0)
-    pipe.add(queue_4)
-    pipe.add(mltflite_0)
-    pipe.add(queue_5)
-    pipe.add(mlvdetection)
-    pipe.add(queue_6)
-    pipe.add(capsfilter_postprocess_0)
-    pipe.add(queue_7)
-    pipe.add(queue_8)
-    pipe.add(overlay_0)
-    pipe.add(display)
-    pipe.add(capsfilter_video_1)
-    pipe.add(queue_9)
-    pipe.add(tee_1)
-    pipe.add(queue_10)
-    pipe.add(metamux_1)
-    pipe.add(mlvconverter_1)
-    pipe.add(queue_11)
-    pipe.add(mltflite_1)
-    pipe.add(queue_12)
-    pipe.add(mlvclassification)
-    pipe.add(capsfilter_postprocess_1)
-    pipe.add(queue_13)
-    pipe.add(queue_14)
-    pipe.add(overlay_1)
-    pipe.add(queue_15)
-    pipe.add(v4l2h264enc_1)
-    pipe.add(queue_16)
-    pipe.add(h264parse_1)
-    pipe.add(queue_17)
-    pipe.add(rtspbin)
+    for element in elements.values():
+        pipe.add(element)
 
-    # Link most of the elements
-    linked = True
+    # Link all elements
+    # fmt: off
+    link_orders = [
+        [
+            "qmmfsrc", "capsfilter_0", "queue_0", "v4l2h264enc_0",
+            "h264parse_0", "mp4mux", "filesink"
+        ],
+        [
+            "qmmfsrc", "capsfilter_1", "queue_1", "tee_0", "metamux_0",
+            "overlay_0", "queue_5", "display"
+        ],
+        [
+            "tee_0", "mlvconverter_0", "queue_2", "mltflite_0", "queue_3",
+            "mlvdetection", "capsfilter_2", "queue_4", "metamux_0"
+        ],
+        [
+            "qmmfsrc", "capsfilter_3", "queue_6", "tee_1", "metamux_1",
+            "overlay_1", "v4l2h264enc_1", "h264parse_1", "rtspbin"
+        ],
+        [
+            "tee_1", "mlvconverter_1", "queue_7", "mltflite_1", "queue_8",
+            "mlvclassification", "capsfilter_4", "queue_9", "metamux_1"
+        ]
+    ]
+    # fmt: on
+    link_elements(link_orders, elements)
 
-    # Link elements of the first stream
-    # qmmfsrc stream 0 will link with capsfilter_preview
-    linked = linked and capsfilter_preview.link(queue_0)
-    linked = linked and queue_0.link(v4l2h264enc_0)
-    linked = linked and v4l2h264enc_0.link(queue_1)
-    linked = linked and queue_1.link(h264parse_0)
-    linked = linked and h264parse_0.link(mp4mux)
-    linked = linked and mp4mux.link(filesink)
-
-    # Link elements of the second stream
-    # qmmfsrc stream 1 will link with capsfilter_video_0
-    linked = linked and capsfilter_video_0.link(queue_2)
-    linked = linked and queue_2.link(tee_0)
-
-    # tee_0 will link with metamux_0 video pad
-    linked = linked and queue_3.link(metamux_0)
-
-    # tee_0 will link with mlvconverter_0
-    linked = linked and mlvconverter_0.link(queue_4)
-    linked = linked and queue_4.link(mltflite_0)
-    linked = linked and mltflite_0.link(queue_5)
-    linked = linked and queue_5.link(mlvdetection)
-    linked = linked and mlvdetection.link(capsfilter_postprocess_0)
-    linked = linked and capsfilter_postprocess_0.link(queue_6)
-
-    # detection will link with metamux_0
-    linked = linked and metamux_0.link(queue_7)
-    linked = linked and queue_7.link(overlay_0)
-    linked = linked and overlay_0.link(queue_8)
-    linked = linked and queue_8.link(display)
-
-    # Link elements of the third stream
-    # qmmfsrc stream 2 will link with capsfilter_video_1
-    linked = linked and capsfilter_video_1.link(queue_9)
-    linked = linked and queue_9.link(tee_1)
-
-    # tee_1 will link with metamux_1 video pad
-    linked = linked and queue_10.link(metamux_1)
-
-    # tee_1 will link with mlvconverter_1
-    linked = linked and mlvconverter_1.link(queue_11)
-    linked = linked and queue_11.link(mltflite_1)
-    linked = linked and mltflite_1.link(queue_12)
-    linked = linked and queue_12.link(mlvclassification)
-    linked = linked and mlvclassification.link(capsfilter_postprocess_1)
-    linked = linked and capsfilter_postprocess_1.link(queue_13)
-
-    # classification will link with metamux_1
-    linked = linked and metamux_1.link(queue_14)
-    linked = linked and queue_14.link(overlay_1)
-    linked = linked and overlay_1.link(queue_15)
-    linked = linked and queue_15.link(v4l2h264enc_1)
-    linked = linked and v4l2h264enc_1.link(queue_16)
-    linked = linked and queue_16.link(h264parse_1)
-    linked = linked and h264parse_1.link(queue_17)
-    linked = linked and queue_17.link(rtspbin)
-
-    # Link qmmfsrc
-    qmmf_src_pad_template = qmmfsrc.get_pad_template("video_%u")
-    qmmf_preview_src_pad = qmmfsrc.request_pad(
-        qmmf_src_pad_template, None, None
-    )
-    qmmf_video_0_src_pad = qmmfsrc.request_pad(
-        qmmf_src_pad_template, None, None
-    )
-    qmmf_video_1_src_pad = qmmfsrc.request_pad(
-        qmmf_src_pad_template, None, None
-    )
-
-    if (
-        not qmmf_preview_src_pad
-        or not qmmf_video_0_src_pad
-        or not qmmf_video_1_src_pad
-    ):
-        print("Failed to request pads for qmmfsrc!")
-        sys.exit(1)
-
-    Gst.util_set_object_arg(qmmf_preview_src_pad, "type", "preview")
-    Gst.util_set_object_arg(qmmf_video_0_src_pad, "type", "video")
-    Gst.util_set_object_arg(qmmf_video_1_src_pad, "type", "video")
-
-    capsfilter_preview_sink_pad = capsfilter_preview.get_static_pad("sink")
-    capsfilter_video_0_sink_pad = capsfilter_video_0.get_static_pad("sink")
-    capsfilter_video_1_sink_pad = capsfilter_video_1.get_static_pad("sink")
-
-    if (
-        qmmf_preview_src_pad.link(capsfilter_preview_sink_pad)
-        != Gst.PadLinkReturn.OK
-        or qmmf_video_0_src_pad.link(capsfilter_video_0_sink_pad)
-        != Gst.PadLinkReturn.OK
-        or qmmf_video_1_src_pad.link(capsfilter_video_1_sink_pad)
-        != Gst.PadLinkReturn.OK
-    ):
-        print("Failed to link qmmfsrc!")
-        sys.exit(1)
-
-    # Link tee_0 and metamux_0
-    # Link tee_0 and mlvconverter_0
-    tee_0_src_pad_template = tee_0.get_pad_template("src_%u")
-    tee_0_queue_3_src_pad = tee_0.request_pad(
-        tee_0_src_pad_template, None, None
-    )
-    tee_0_mlvconverter_0_src_pad = tee_0.request_pad(
-        tee_0_src_pad_template, None, None
-    )
-
-    if not tee_0_queue_3_src_pad or not tee_0_mlvconverter_0_src_pad:
-        print("Failed to request pads for tee_0!")
-        sys.exit(1)
-
-    queue_3_sink_pad = queue_3.get_static_pad("sink")
-    mlvconverter_0_sink_pad = mlvconverter_0.get_static_pad("sink")
-
-    if (
-        tee_0_queue_3_src_pad.link(queue_3_sink_pad) != Gst.PadLinkReturn.OK
-        or tee_0_mlvconverter_0_src_pad.link(mlvconverter_0_sink_pad)
-        != Gst.PadLinkReturn.OK
-    ):
-        print("Failed to link tee_0!")
-        sys.exit(1)
-
-    # Link detection and metamux_0
-    metamux_0_sink_pad_template = metamux_0.get_pad_template("data_%u")
-    metamux_0_metadata_sink_pad = metamux_0.request_pad(
-        metamux_0_sink_pad_template, None, None
-    )
-
-    if not metamux_0_metadata_sink_pad:
-        print("Failed to request pad for metamux_0!")
-        sys.exit(1)
-
-    queue_6_src_pad = queue_6.get_static_pad("src")
-
-    if (
-        queue_6_src_pad.link(metamux_0_metadata_sink_pad)
-        != Gst.PadLinkReturn.OK
-    ):
-        print("Failed to link metamux_0!")
-        sys.exit(1)
-
-    # Link tee_1 and metamux_1
-    # Link tee_1 and mlvconverter_1
-    tee_1_src_pad_template = tee_1.get_pad_template("src_%u")
-    tee_1_queue_10_src_pad = tee_1.request_pad(
-        tee_1_src_pad_template, None, None
-    )
-    tee_1_mlvconverter_1_src_pad = tee_1.request_pad(
-        tee_1_src_pad_template, None, None
-    )
-
-    if not tee_1_queue_10_src_pad or not tee_1_mlvconverter_1_src_pad:
-        print("Failed to request pads for tee_1!")
-        sys.exit(1)
-
-    queue_10_sink_pad = queue_10.get_static_pad("sink")
-    mlvconverter_1_sink_pad = mlvconverter_1.get_static_pad("sink")
-
-    if (
-        tee_1_queue_10_src_pad.link(queue_10_sink_pad) != Gst.PadLinkReturn.OK
-        or tee_1_mlvconverter_1_src_pad.link(mlvconverter_1_sink_pad)
-        != Gst.PadLinkReturn.OK
-    ):
-        print("Failed to link tee_1!")
-        sys.exit(1)
-
-    # Link classification and metamux_1
-    metamux_1_sink_pad_template = metamux_1.get_pad_template("data_%u")
-    metamux_1_metadata_sink_pad = metamux_1.request_pad(
-        metamux_1_sink_pad_template, None, None
-    )
-
-    if not metamux_1_metadata_sink_pad:
-        print("Failed to request pad for metamux_1!")
-        sys.exit(1)
-
-    queue_13_src_pad = queue_13.get_static_pad("src")
-
-    if (
-        queue_13_src_pad.link(metamux_1_metadata_sink_pad)
-        != Gst.PadLinkReturn.OK
-    ):
-        print("Failed to link metamux_1!")
-        sys.exit(1)
-
-    return pipe
+    # Set pad properties
+    qmmf_video_0 = elements["qmmfsrc"].get_static_pad("video_0")
+    qmmf_video_1 = elements["qmmfsrc"].get_static_pad("video_1")
+    qmmf_video_2 = elements["qmmfsrc"].get_static_pad("video_2")
+    Gst.util_set_object_arg(qmmf_video_0, "type", "preview")
+    Gst.util_set_object_arg(qmmf_video_1, "type", "video")
+    Gst.util_set_object_arg(qmmf_video_2, "type", "video")
+    qmmf_video_0 = None
+    qmmf_video_1 = None
+    qmmf_video_2 = None
 
 
 def quit_mainloop(loop):
+    """Quit the mainloop if it is running."""
     if loop.is_running():
         print("Quitting mainloop!")
         loop.quit()
@@ -497,10 +306,11 @@ def quit_mainloop(loop):
         print("Loop is not running!")
 
 
-def bus_call(bus, message, loop):
+def bus_call(_, message, loop):
+    """Handle bus messages."""
     message_type = message.type
     if message_type == Gst.MessageType.EOS:
-        print("EoS received")
+        print("EoS received!")
         quit_mainloop(loop)
     elif message_type == Gst.MessageType.ERROR:
         error, debug_info = message.parse_error()
@@ -512,13 +322,15 @@ def bus_call(bus, message, loop):
 
 
 def handle_interrupt_signal(pipe, loop):
+    """Handle ctrl+C signal."""
     _, state, _ = pipe.get_state(Gst.CLOCK_TIME_NONE)
     if state == Gst.State.PLAYING:
-        print("Sending EoS!")
         event = Gst.Event.new_eos()
-        success = pipe.send_event(event)
-        if success == False:
+        if pipe.send_event(event):
+            print("EoS sent!")
+        else:
             print("Failed to send EoS event to the pipeline!")
+            quit_mainloop(loop)
     else:
         print("Pipeline is not playing, terminating!")
         quit_mainloop(loop)
@@ -526,18 +338,27 @@ def handle_interrupt_signal(pipe, loop):
 
 
 def main():
+    """Main function to set up and run the GStreamer pipeline."""
     os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
     os.environ["WAYLAND_DISPLAY"] = "wayland-1"
 
     Gst.init(None)
-    pipe = Gst.Pipeline.new()
-    construct_pipeline(pipe)
+
+    try:
+        pipe = Gst.Pipeline()
+        if not pipe:
+            raise Exception("Failed to create pipeline!")
+        construct_pipeline(pipe)
+    except Exception as e:
+        print(f"{e}")
+        Gst.deinit()
+        return 1
+
     loop = GLib.MainLoop()
 
     bus = pipe.get_bus()
     bus.add_signal_watch()
     bus.connect("message", bus_call, loop)
-    bus = None
 
     interrupt_watch_id = GLib.unix_signal_add(
         GLib.PRIORITY_HIGH, signal.SIGINT, handle_interrupt_signal, pipe, loop
@@ -547,10 +368,16 @@ def main():
     loop.run()
 
     GLib.source_remove(interrupt_watch_id)
+    bus.remove_signal_watch()
+    bus = None
+
     pipe.set_state(Gst.State.NULL)
     loop = None
     pipe = None
+
     Gst.deinit()
+
+    return 0
 
 
 if __name__ == "__main__":
