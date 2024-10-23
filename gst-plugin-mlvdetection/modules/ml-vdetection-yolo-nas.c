@@ -61,7 +61,13 @@
     "dimensions = (int) < <1, 4, [21, 42840]>, <1, [1, 1001], [21, 42840]> >; " \
     "neural-network/tensors, " \
     "type = (string) { INT8, UINT8, FLOAT32 }, " \
-    "dimensions = (int) < <1, [5, 1005], [21, 42840]> > "
+    "dimensions = (int) < <1, [5, 1005], [21, 42840]> >; " \
+    "neural-network/tensors, " \
+    "type = (string) { UINT8, FLOAT32 }, " \
+    "dimensions = (int) < <1, [21, 42840], [1, 1001]>, <1, [21, 42840], 4> >; " \
+    "neural-network/tensors, " \
+    "type = (string) { UINT8, FLOAT32 }, " \
+    "dimensions = (int) < <1, [21, 42840], 4>, <1, [21, 42840], [1,1001]> >; "
 
 // Module caps instance
 static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
