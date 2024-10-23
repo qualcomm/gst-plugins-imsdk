@@ -962,18 +962,10 @@ gst_overlay_handle_timestamp_entry (GstVOverlay * overlay, GstVideoBlit * blit,
     }
     case GST_OVERLAY_TIMESTAMP_PTS_DTS:
     {
-      GstClockTime time = GST_CLOCK_TIME_NONE;
-      guint hours = 0, mins = 0, secs = 0, usecs = 0;
-
-      time = GST_BUFFER_DTS_IS_VALID (vframe->buffer) ?
+      GstClockTime time = GST_BUFFER_DTS_IS_VALID (vframe->buffer) ?
           GST_BUFFER_DTS (vframe->buffer) : GST_BUFFER_PTS (vframe->buffer);
 
-      hours = (guint) (time / (GST_SECOND * 60 * 60));
-      mins = (guint) ((time / (GST_SECOND * 60)) % 60);
-      secs = (guint) ((time / GST_SECOND) % 60);
-      usecs = (guint) ((time % GST_SECOND) / 1000);
-
-      text = g_strdup_printf ("%u:%02u:%02u.%06u", hours, mins, secs, usecs);
+      text = g_strdup_printf ("%" GST_TIME_FORMAT, GST_TIME_ARGS (time));
       break;
     }
     default:
@@ -985,7 +977,7 @@ gst_overlay_handle_timestamp_entry (GstVOverlay * overlay, GstVideoBlit * blit,
 
   // Limit the fontsize if it is not possible to put the text in the buffer.
   fontsize =
-      MIN ((GST_VIDEO_FRAME_WIDTH (vframe) / n_chars) * 9.0 / 5.0, fontsize);
+      MIN ((GST_VIDEO_FRAME_WIDTH (vframe) / n_chars) * 5.0 / 3.0, fontsize);
 
   if ((GST_VIDEO_FRAME_HEIGHT (vframe) / fontsize) < 1.0)
     fontsize = GST_VIDEO_FRAME_HEIGHT (vframe);
@@ -1045,7 +1037,7 @@ gst_overlay_handle_string_entry (GstVOverlay * overlay, GstVideoBlit * blit,
 
   // Limit the fontsize if it is not possible to put the text in the buffer.
   fontsize =
-      MIN ((GST_VIDEO_FRAME_WIDTH (vframe) / n_chars) * 9.0 / 5.0, fontsize);
+      MIN ((GST_VIDEO_FRAME_WIDTH (vframe) / n_chars) * 5.0 / 3.0, fontsize);
 
   if ((GST_VIDEO_FRAME_HEIGHT (vframe) / fontsize) < 1.0)
     fontsize = GST_VIDEO_FRAME_HEIGHT (vframe);
@@ -1419,7 +1411,8 @@ static gboolean
 gst_overlay_draw_timestamp_entries (GstVOverlay * overlay,
     GstVideoComposition * composition, guint * index)
 {
-  guint num = 0;
+  GstVideoBlit *blit = NULL;
+  guint ovltype = GST_OVERLAY_TYPE_TIMESTAMP, num = 0;
   gboolean success = TRUE;
 
   for (num = 0; num < overlay->timestamps->len; num++) {
@@ -1430,27 +1423,20 @@ gst_overlay_draw_timestamp_entries (GstVOverlay * overlay,
     if (!timestamp->enable)
       continue;
 
-    if (timestamp->blit.frame != NULL) {
-      // Take the blit parameters from the cached object.
-      composition->blits[(*index)] = timestamp->blit;
-    } else {
-      GstVideoBlit *blit = &(composition->blits[(*index)]);
-      guint ovltype = GST_OVERLAY_TYPE_TIMESTAMP;
+    blit = &(composition->blits[(*index)]);
 
-      success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
-      g_return_val_if_fail (success, FALSE);
+    success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
+    g_return_val_if_fail (success, FALSE);
 
-      success = gst_overlay_handle_timestamp_entry (overlay, blit, timestamp);
-      if (!success) {
-        GST_ERROR_OBJECT (overlay, "Failed to process timestamp %u!", num);
-        return FALSE;
-      }
+    GST_BUFFER_DTS (blit->frame->buffer) =
+        GST_BUFFER_DTS (composition->frame->buffer);
+    GST_BUFFER_PTS (blit->frame->buffer) =
+        GST_BUFFER_PTS (composition->frame->buffer);
 
-      // Save the blit parameters for this entry until something changes.
-      timestamp->blit = composition->blits[(*index)];
-      // Increase the buffer refcount, this will be used as indicator that
-      // the blit object has been cached and its parameters won't be freed.
-      gst_buffer_ref (timestamp->blit.frame->buffer);
+    success = gst_overlay_handle_timestamp_entry (overlay, blit, timestamp);
+    if (!success) {
+      GST_ERROR_OBJECT (overlay, "Failed to process timestamp %u!", num);
+      return FALSE;
     }
 
     // Increase the index with the number of populated blit objects.

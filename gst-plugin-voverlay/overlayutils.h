@@ -159,7 +159,6 @@ struct _GstOverlayBBox {
  * @position: Top left corner of the overlay frame (in pixels).
  * @color: Color code in hex format - 0xRRGGBBAA.
  * @enable: Whether or not to apply the overlay object.
- * @blit: Cached overlay blit with the drawn object.
  *
  * Timestamp overlay. String representing either the buffer PTS/DTS or the
  * DATE/TIME timestamp with formatting, font size, color and position defined
@@ -175,7 +174,6 @@ struct _GstOverlayTimestamp {
   gint32         color;
 
   gboolean       enable;
-  GstVideoBlit   blit;
 };
 
 /**
