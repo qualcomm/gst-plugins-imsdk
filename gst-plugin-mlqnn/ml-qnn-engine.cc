@@ -540,6 +540,21 @@ gst_ml_qnn_engine_setup_backend (GstMLQnnEngine *engine)
 
   engine->interface = providers[0]->QNN_INTERFACE_VER_NAME;
 
+  GST_DEBUG ("Interface Provider core api version : %d.%d.%d",
+      providers[0]->apiVersion.coreApiVersion.major,
+      providers[0]->apiVersion.coreApiVersion.minor,
+      providers[0]->apiVersion.coreApiVersion.patch);
+  GST_DEBUG ("Interface Provider backend api version : %d.%d.%d",
+      providers[0]->apiVersion.backendApiVersion.major,
+      providers[0]->apiVersion.backendApiVersion.minor,
+      providers[0]->apiVersion.backendApiVersion.patch);
+
+  const char* ver = nullptr;
+  Qnn_ApiVersion_t *p_api = const_cast<Qnn_ApiVersion_t *>(&(providers[0]->apiVersion));
+  QNN_INTERFACE_VER_TYPE *p_iface = reinterpret_cast<QNN_INTERFACE_VER_TYPE *>(p_api + 1);
+  p_iface->backendGetBuildId(&ver);
+  GST_DEBUG ("Interface Provider build id : %s", ver);
+
   // Register callback for various log messages.
   auto status = engine->interface.logCreate(gst_ml_qnn_log_callback,
       QNN_LOG_LEVEL_VERBOSE, &(engine->logger));
@@ -701,6 +716,17 @@ gst_ml_qnn_engine_setup_cached_graphs (GstMLQnnEngine *engine)
   }
   GST_DEBUG ("Read binary info from bin file");
 
+  GST_DEBUG ("Binary info core api version : %d.%d.%d",
+      binary_info->contextBinaryInfoV1.coreApiVersion.major,
+      binary_info->contextBinaryInfoV1.coreApiVersion.minor,
+      binary_info->contextBinaryInfoV1.coreApiVersion.patch);
+  GST_DEBUG ("Binary info backend api version : %d.%d.%d",
+      binary_info->contextBinaryInfoV1.backendApiVersion.major,
+      binary_info->contextBinaryInfoV1.backendApiVersion.minor,
+      binary_info->contextBinaryInfoV1.backendApiVersion.patch);
+  GST_DEBUG ("Binary info build id : %s",
+      binary_info->contextBinaryInfoV1.buildId);
+
   // populate GraphInfo_t based on binary info
   res = gst_ml_qnn_graph_info_from_binary_info (binary_info,
       engine->graph_infos, engine->n_graphs);
@@ -781,6 +807,13 @@ gst_ml_qnn_engine_setup_uncached_graphs (GstMLQnnEngine *engine)
   if (!success) {
     GST_ERROR ("Could not load symbols to compose graph!");
     return FALSE;
+  }
+
+  char** qnn_sdk_version;
+  success = load_symbol ((gpointer*)&qnn_sdk_version, engine->model,
+      "QNN_SDK_VERSION");
+  if (nullptr != qnn_sdk_version) {
+    GST_DEBUG ("Model build id : %s", *qnn_sdk_version);
   }
 
   // Set up any context configs that are necessary.
