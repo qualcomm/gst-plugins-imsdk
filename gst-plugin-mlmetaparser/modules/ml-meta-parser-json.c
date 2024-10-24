@@ -553,7 +553,7 @@ gst_detection_text_metadata_to_json_append (JsonBuilder *builder,
     GstStructure *entry = NULL;
     const gchar *label = NULL;
     gdouble confidence = 0.0;
-    guint color = 0x000000FF;
+    guint color = 0x000000FF, tracking_id = 0;
     gdouble x = 0.0, y = 0.0, width = 0.0, height = 0.0;
     gint length = 0;
 
@@ -573,6 +573,12 @@ gst_detection_text_metadata_to_json_append (JsonBuilder *builder,
     gst_structure_get_uint (entry, "color", &color);
 
     json_builder_begin_object (builder);
+
+    if (gst_structure_has_field (entry, "tracking-id")) {
+      gst_structure_get_uint (entry, "tracking-id", &tracking_id);
+      json_builder_set_member_name (builder, "tracking_id");
+      json_builder_add_int_value (builder, tracking_id);
+    }
 
     json_builder_set_member_name (builder, "label");
     json_builder_add_string_value (builder, label);
@@ -976,6 +982,8 @@ gst_parser_module_process (gpointer instance, GstBuffer * inbuffer,
     GValue value = G_VALUE_INIT;
     GValue list = G_VALUE_INIT;
     guint idx = 0;
+    gchar *input_text = NULL;
+    gboolean success = FALSE;
 
     g_value_init (&meta_list, GST_TYPE_LIST);
     g_value_init (&value, GST_TYPE_STRUCTURE);
@@ -986,12 +994,18 @@ gst_parser_module_process (gpointer instance, GstBuffer * inbuffer,
       return FALSE;
     }
 
-    if (memmap.data == NULL) {
-      GST_DEBUG ("Null data");
-      return FALSE;
-    }
+    GST_TRACE ("Text metadata: %s", memmap.data);
 
-    if (!gst_value_deserialize (&list, (gpointer) memmap.data)) {
+    // Copy of the buffer's data is needed because gst_value_deserialize()
+    // modifies the given data by placing null character at the end of the string.
+    // This causes data loss when two plugins are modifying the same buffer data.
+    input_text = g_strndup ((gchar *) memmap.data, memmap.size);
+    gst_buffer_unmap (inbuffer, &memmap);
+
+    success = gst_value_deserialize (&list, input_text);
+    g_free (input_text);
+
+    if (!success) {
       GST_WARNING ("Failed to deserialize");
       return FALSE;
     }
@@ -1076,10 +1090,6 @@ gst_parser_module_process (gpointer instance, GstBuffer * inbuffer,
     json_builder_end_object (json_builder);
 
     gst_parser_module_set_output (json_builder, output);
-
-    GST_DEBUG ("Text metadata: %s",  memmap.data);
-
-    gst_buffer_unmap (inbuffer, &memmap);
 
   } else if (submodule->data_type == GST_DATA_TYPE_VIDEO) {
     GstMeta *meta = NULL;
