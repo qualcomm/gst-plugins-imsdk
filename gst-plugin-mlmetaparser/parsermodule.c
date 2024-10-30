@@ -162,7 +162,7 @@ gst_parser_module_execute (GstParserModule * module, GstBuffer * inbuffer,
 }
 
 GEnumValue *
-gst_ml_enumarate_modules (const gchar * type)
+gst_parser_enumarate_modules (const gchar * type)
 {
   GEnumValue *variants = NULL;
   GDir *directory = NULL;

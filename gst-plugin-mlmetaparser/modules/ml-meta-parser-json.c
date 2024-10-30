@@ -5,7 +5,7 @@
 
 #include <math.h>
 
-#include "../parsermodule.h"
+#include "parsermodule.h"
 
 #include <gst/utils/common-utils.h>
 #include <gst/video/gstvideoclassificationmeta.h>
@@ -44,16 +44,9 @@ GST_DEBUG_CATEGORY (gst_parser_module_debug);
 
 typedef struct _GstParserSubModule GstParserSubModule;
 
-typedef enum {
-  GST_DATA_TYPE_NONE,
-  GST_DATA_TYPE_VIDEO,
-  GST_DATA_TYPE_TEXT,
-} GstDataType;
-
 struct _GstParserSubModule {
   GstDataType data_type;
 };
-
 
 static gboolean
 gst_structure_to_json_append (JsonBuilder * builder,
@@ -64,7 +57,8 @@ gst_array_to_json_append (JsonBuilder * builder,
     const GValue * value, const gchar * name);
 
 static gboolean
-gst_gvalue_to_json_append (JsonBuilder * builder, const GValue * value, gboolean is_name)
+gst_gvalue_to_json_append (JsonBuilder * builder,
+    const GValue * value, gboolean is_name)
 {
   if (G_VALUE_TYPE (value) == G_TYPE_STRING) {
     json_builder_add_string_value (builder, g_value_get_string (value));
@@ -99,7 +93,7 @@ gst_array_to_json_append (JsonBuilder * builder,
   json_builder_begin_array (builder);
 
   for (idx = 0; idx < size; idx++) {
-    const GValue * val = gst_value_array_get_value (value, idx);
+    const GValue *val = gst_value_array_get_value (value, idx);
     gst_gvalue_to_json_append (builder, val, TRUE);
   }
 
@@ -160,9 +154,6 @@ gst_parser_module_detection_meta_to_json_append (JsonBuilder * builder,
   GstVideoRegionOfInterestMeta *rmeta;
   GList *list = NULL;
   GArray *lndmrks = NULL;
-  GValue value = G_VALUE_INIT;
-  GValue landmark = G_VALUE_INIT;
-  GValue classification = G_VALUE_INIT;
   gpointer state = NULL;
   gdouble confidence = 0.0;
   guint color = 0x000000FF;
@@ -170,13 +161,7 @@ gst_parser_module_detection_meta_to_json_append (JsonBuilder * builder,
   guint tracking_id = 0;
   gboolean nested_detection = FALSE;
   gboolean has_landmarks = FALSE;
-  gboolean has_image_classigication = FALSE;
-
-  g_return_val_if_fail (builder != NULL, FALSE);
-
-  g_value_init (&landmark, GST_TYPE_LIST);
-  g_value_init (&classification, GST_TYPE_LIST);
-  g_value_init (&value, GST_TYPE_STRUCTURE);
+  gboolean has_image_classification = FALSE;
 
   structure = gst_video_region_of_interest_meta_get_param (roimeta,
       OBJECT_DETECTION_NAME);
@@ -253,7 +238,7 @@ gst_parser_module_detection_meta_to_json_append (JsonBuilder * builder,
   for (list = roimeta->params; list != NULL; list = g_list_next (list)) {
     param = GST_STRUCTURE_CAST (list->data);
     if (gst_structure_has_name (param, IMAGE_CLASSIFICATION_NAME)) {
-      has_image_classigication = TRUE;
+      has_image_classification = TRUE;
       break;
     }
   }
@@ -331,7 +316,7 @@ gst_parser_module_detection_meta_to_json_append (JsonBuilder * builder,
         json_builder_end_array (builder);
 
         if (gst_structure_has_field (param, "xtraparams")) {
-          GstStructure * xtraparams = NULL;
+          GstStructure *xtraparams = NULL;
 
           xtraparams = GST_STRUCTURE (
               g_value_get_boxed (gst_structure_get_value (param, "xtraparams")));
@@ -346,7 +331,7 @@ gst_parser_module_detection_meta_to_json_append (JsonBuilder * builder,
     json_builder_end_array (builder);
   }
 
-  if (has_image_classigication) {
+  if (has_image_classification) {
     json_builder_set_member_name (builder, "image_classification");
     json_builder_begin_array (builder);
 
@@ -428,8 +413,6 @@ gst_parser_module_image_classification_meta_to_json_append (JsonBuilder * builde
 {
   gint num = 0, length = 0;
 
-  g_return_val_if_fail (builder != NULL, FALSE);
-
   length = (meta->labels != NULL) ? (meta->labels)->len : 0;
 
   for (num = 0; num < length; num++) {
@@ -465,8 +448,6 @@ gst_parser_module_pose_estimation_meta_to_json_append (JsonBuilder * builder,
   GArray *links = GST_VIDEO_LANDMARKS_META_CAST (meta)->links;
   GstStructure *xtraparams = GST_VIDEO_LANDMARKS_META_CAST (meta)->xtraparams;
   gint num = 0, length = 0;
-
-  g_return_val_if_fail (builder != NULL, FALSE);
 
   json_builder_begin_object (builder);
 
@@ -534,8 +515,8 @@ gst_parser_module_pose_estimation_meta_to_json_append (JsonBuilder * builder,
 }
 
 gboolean
-gst_detection_text_metadata_to_json_append (JsonBuilder *builder,
-    GstStructure *structure)
+gst_detection_text_metadata_to_json_append (JsonBuilder * builder,
+    GstStructure * structure)
 {
   const GValue *bboxes = NULL;
   guint size = 0, idx = 0;
@@ -646,11 +627,10 @@ gst_detection_text_metadata_to_json_append (JsonBuilder *builder,
       }
 
       json_builder_end_object (builder);
-
     }
 
     if (gst_structure_has_field (entry, "xtraparams")) {
-      GstStructure * xtraparams = NULL;
+      GstStructure *xtraparams = NULL;
 
       xtraparams = GST_STRUCTURE (
           g_value_get_boxed (gst_structure_get_value (entry, "xtraparams")));
@@ -660,14 +640,13 @@ gst_detection_text_metadata_to_json_append (JsonBuilder *builder,
     }
 
     json_builder_end_object (builder);
-
   }
   return TRUE;
 }
 
 gboolean
-gst_classigication_text_metadata_to_json_append (JsonBuilder *builder,
-    GstStructure *structure)
+gst_classification_text_metadata_to_json_append (JsonBuilder * builder,
+    GstStructure * structure)
 {
   const GValue *value;
   guint idx = 0;
@@ -683,7 +662,7 @@ gst_classigication_text_metadata_to_json_append (JsonBuilder *builder,
   if (size == 0) return TRUE;
 
   for (idx = 0; idx < size; idx++) {
-    const GValue * val = NULL;
+    const GValue *val = NULL;
     GstStructure *entry = NULL;
     const gchar *name = NULL;
     gdouble confidence = 0.0;
@@ -709,7 +688,7 @@ gst_classigication_text_metadata_to_json_append (JsonBuilder *builder,
     json_builder_add_int_value (builder, color);
 
     if (gst_structure_has_field (entry, "xtraparams")) {
-      GstStructure * xtraparams = NULL;
+      GstStructure *xtraparams = NULL;
 
       xtraparams = GST_STRUCTURE (
           g_value_get_boxed (gst_structure_get_value (entry, "xtraparams")));
@@ -725,7 +704,7 @@ gst_classigication_text_metadata_to_json_append (JsonBuilder *builder,
 }
 
 gint
-gst_find_keypoint_index (const GValue * value, const gchar *name)
+gst_find_keypoint_index (const GValue * value, const gchar * name)
 {
   gint num = 0, length = 0;
 
@@ -752,8 +731,8 @@ gst_find_keypoint_index (const GValue * value, const gchar *name)
 }
 
 gboolean
-gst_pose_estimation_text_metadata_to_json_append (JsonBuilder *builder,
-    GstStructure *structure)
+gst_pose_estimation_text_metadata_to_json_append (JsonBuilder * builder,
+    GstStructure * structure)
 {
   const GValue *value;
   guint idx = 0;
@@ -769,7 +748,7 @@ gst_pose_estimation_text_metadata_to_json_append (JsonBuilder *builder,
   if (size == 0) return TRUE;
 
   for (idx = 0; idx < size; idx++) {
-    const GValue * val = NULL, *kp_value = NULL;
+    const GValue *val = NULL, *kp_value = NULL;
     GstStructure *pose = NULL;
     guint length = 0;
     guint num = 0;
@@ -853,7 +832,7 @@ gst_pose_estimation_text_metadata_to_json_append (JsonBuilder *builder,
     json_builder_end_array (builder);
 
     if (gst_structure_has_field (pose, "xtraparams")) {
-      GstStructure * xtraparams = NULL;
+      GstStructure *xtraparams = NULL;
 
       xtraparams = GST_STRUCTURE (
           g_value_get_boxed (gst_structure_get_value (pose, "xtraparams")));
@@ -874,11 +853,16 @@ gst_parser_module_set_output (JsonBuilder * builder, gchar ** output)
   JsonNode *root = NULL;
   JsonGenerator *generator = NULL;
 
-  g_return_val_if_fail (builder != NULL, FALSE);
-  g_return_val_if_fail (output != NULL, FALSE);
-
   root = json_builder_get_root (builder);
+  g_return_val_if_fail (root != NULL, FALSE);
+
   generator = json_generator_new ();
+  if (NULL == generator) {
+    GST_ERROR ("Failed to create JSON generator!");
+    json_node_free (root);
+    return FALSE;
+  }
+
   json_generator_set_root (generator, root);
   *output = json_generator_to_data (generator, NULL);
 
@@ -918,9 +902,6 @@ gst_parser_module_close (gpointer instance)
 {
   GstParserSubModule *submodule = GST_PARSER_SUB_MODULE_CAST (instance);
 
-  if (NULL == submodule)
-    return;
-
   g_slice_free (GstParserSubModule, submodule);
 }
 
@@ -928,34 +909,15 @@ gboolean
 gst_parser_module_configure (gpointer instance, GstStructure * settings)
 {
   GstParserSubModule *submodule = GST_PARSER_SUB_MODULE_CAST (instance);
-  GstCaps *caps = NULL;
-  GstStructure *structure = NULL;
-  const gchar *caps_name = NULL;
+  GstDataType data_type;
 
   g_return_val_if_fail (settings != NULL, FALSE);
   g_return_val_if_fail (submodule != NULL, FALSE);
 
-  if (!gst_structure_has_field (settings, GST_PARSER_MODULE_OPT_CAPS)) {
-    GST_ERROR ("Settings stucture does not contain configuration caps!");
-    return FALSE;
-  }
+  gst_structure_get (settings, GST_PARSER_MODULE_OPT_DATA_TYPE, G_TYPE_ENUM,
+      &data_type, NULL);
 
-  gst_structure_get (settings, GST_PARSER_MODULE_OPT_CAPS, GST_TYPE_CAPS,
-      &caps, NULL);
-
-  structure = gst_caps_get_structure (caps, 0);
-
-  caps_name = gst_structure_get_name (structure);
-
-  GST_LOG ("Caps: %s", caps_name);
-
-  if (gst_structure_has_name (structure, "text/x-raw")) {
-    submodule->data_type = GST_DATA_TYPE_TEXT;
-  } else if (gst_structure_has_name (structure, "video/x-raw")) {
-    submodule->data_type = GST_DATA_TYPE_VIDEO;
-  } else {
-    submodule->data_type = GST_DATA_TYPE_NONE;
-  }
+  submodule->data_type = data_type;
 
   return TRUE;
 }
@@ -970,28 +932,25 @@ gst_parser_module_process (gpointer instance, GstBuffer * inbuffer,
   gboolean has_object_detection = FALSE;
   gboolean has_image_classification = FALSE;
   gboolean has_posenet = FALSE;
+  gboolean success = TRUE;
 
   json_builder = json_builder_new ();
+  g_return_val_if_fail (json_builder != NULL, FALSE);
 
   timestamp = g_strdup_printf("%lu", GST_BUFFER_PTS (inbuffer));
 
   if (submodule->data_type == GST_DATA_TYPE_TEXT) {
     GstStructure *structure = NULL;
     GstMapInfo memmap;
-    GValue meta_list = G_VALUE_INIT;
-    GValue value = G_VALUE_INIT;
     GValue list = G_VALUE_INIT;
     guint idx = 0;
     gchar *input_text = NULL;
-    gboolean success = FALSE;
 
-    g_value_init (&meta_list, GST_TYPE_LIST);
-    g_value_init (&value, GST_TYPE_STRUCTURE);
-    g_value_init (&list, GST_TYPE_LIST);
+    success = gst_buffer_map (inbuffer, &memmap, GST_MAP_READ);
 
-    if (!gst_buffer_map (inbuffer, &memmap, GST_MAP_READ)) {
+    if (!success) {
       GST_ERROR ("Unable to map buffer!");
-      return FALSE;
+      goto cleanup;
     }
 
     GST_TRACE ("Text metadata: %s", memmap.data);
@@ -1002,12 +961,14 @@ gst_parser_module_process (gpointer instance, GstBuffer * inbuffer,
     input_text = g_strndup ((gchar *) memmap.data, memmap.size);
     gst_buffer_unmap (inbuffer, &memmap);
 
+    g_value_init (&list, GST_TYPE_LIST);
     success = gst_value_deserialize (&list, input_text);
     g_free (input_text);
 
     if (!success) {
-      GST_WARNING ("Failed to deserialize");
-      return FALSE;
+      GST_ERROR ("Failed to deserialize");
+      g_value_unset (&list);
+      goto cleanup;
     }
 
     for (idx = 0; idx < gst_value_list_get_size (&list); idx++) {
@@ -1034,9 +995,9 @@ gst_parser_module_process (gpointer instance, GstBuffer * inbuffer,
 
         id = gst_structure_get_name_id (structure);
 
-        if (IS_OBJECT_DETECTION (id)) {
+        if (IS_OBJECT_DETECTION (id))
           gst_detection_text_metadata_to_json_append (json_builder, structure);
-        }
+
       }
 
       json_builder_end_array (json_builder);
@@ -1053,10 +1014,10 @@ gst_parser_module_process (gpointer instance, GstBuffer * inbuffer,
 
         id = gst_structure_get_name_id (structure);
 
-        if (IS_CLASSIFICATION (id)) {
-          gst_classigication_text_metadata_to_json_append (
-              json_builder, structure);
-        }
+        if (IS_CLASSIFICATION (id))
+          gst_classification_text_metadata_to_json_append (json_builder,
+              structure);
+
       }
 
       json_builder_end_array (json_builder);
@@ -1073,9 +1034,10 @@ gst_parser_module_process (gpointer instance, GstBuffer * inbuffer,
 
         id = gst_structure_get_name_id (structure);
 
-        if (IS_POSE_ESTIMATION (id)) {
-          gst_pose_estimation_text_metadata_to_json_append (json_builder, structure);
-        }
+        if (IS_POSE_ESTIMATION (id))
+          gst_pose_estimation_text_metadata_to_json_append (json_builder,
+              structure);
+
       }
 
       json_builder_end_array (json_builder);
@@ -1089,7 +1051,13 @@ gst_parser_module_process (gpointer instance, GstBuffer * inbuffer,
 
     json_builder_end_object (json_builder);
 
-    gst_parser_module_set_output (json_builder, output);
+    g_value_unset (&list);
+
+    success = gst_parser_module_set_output (json_builder, output);
+    if (!success) {
+      GST_ERROR ("Failed to set module output for text mode!");
+      goto cleanup;
+    }
 
   } else if (submodule->data_type == GST_DATA_TYPE_VIDEO) {
     GstMeta *meta = NULL;
@@ -1098,16 +1066,20 @@ gst_parser_module_process (gpointer instance, GstBuffer * inbuffer,
     gpointer state = NULL;
 
     vmeta = gst_buffer_get_video_meta (inbuffer);
-    g_return_val_if_fail (vmeta != NULL, FALSE);
+    if (NULL == vmeta) {
+      GST_ERROR ("Failed to get video meta!");
+      goto cleanup;
+    }
 
     while ((meta = gst_buffer_iterate_meta (inbuffer, &state)) != NULL) {
-      if (GST_META_IS_OBJECT_DETECTION (meta)) {
+
+      if (GST_META_IS_OBJECT_DETECTION (meta))
         has_object_detection = TRUE;
-      } else if (GST_META_IS_IMAGE_CLASSIFICATION (meta)) {
+      else if (GST_META_IS_IMAGE_CLASSIFICATION (meta))
         has_image_classification = TRUE;
-      } else if (GST_META_IS_POSE_ESTIMATION (meta)) {
+      else if (GST_META_IS_POSE_ESTIMATION (meta))
         has_posenet = TRUE;
-      }
+
     }
 
     json_builder_begin_object (json_builder);
@@ -1121,10 +1093,10 @@ gst_parser_module_process (gpointer instance, GstBuffer * inbuffer,
         if (GST_META_IS_OBJECT_DETECTION (meta)) {
           rmeta = GST_VIDEO_ROI_META_CAST (meta);
 
-          if (rmeta->parent_id == -1) {
+          if (rmeta->parent_id == -1)
             gst_parser_module_detection_meta_to_json_append (json_builder,
                 inbuffer, vmeta, GST_VIDEO_ROI_META_CAST (meta));
-          }
+
         }
       }
 
@@ -1137,10 +1109,10 @@ gst_parser_module_process (gpointer instance, GstBuffer * inbuffer,
 
       state = NULL;
       while ((meta = gst_buffer_iterate_meta (inbuffer, &state)) != NULL) {
-        if (GST_META_IS_IMAGE_CLASSIFICATION (meta)) {
+        if (GST_META_IS_IMAGE_CLASSIFICATION (meta))
           gst_parser_module_image_classification_meta_to_json_append (
             json_builder, GST_VIDEO_CLASSIFICATION_META_CAST (meta));
-        }
+
       }
 
       json_builder_end_array (json_builder);
@@ -1152,10 +1124,10 @@ gst_parser_module_process (gpointer instance, GstBuffer * inbuffer,
 
       state = NULL;
       while ((meta = gst_buffer_iterate_meta (inbuffer, &state)) != NULL) {
-        if (GST_META_IS_POSE_ESTIMATION (meta)) {
+        if (GST_META_IS_POSE_ESTIMATION (meta))
           gst_parser_module_pose_estimation_meta_to_json_append (
             json_builder, vmeta, GST_VIDEO_LANDMARKS_META_CAST (meta));
-        }
+
       }
 
       json_builder_end_array (json_builder);
@@ -1169,11 +1141,16 @@ gst_parser_module_process (gpointer instance, GstBuffer * inbuffer,
 
     json_builder_end_object (json_builder);
 
-    gst_parser_module_set_output (json_builder, output);
+    success = gst_parser_module_set_output (json_builder, output);
+    if (!success) {
+      GST_ERROR ("Failed to set module output for video mode!");
+      goto cleanup;
+    }
   }
 
+cleanup:
   g_free (timestamp);
   g_object_unref (json_builder);
 
-  return TRUE;
+  return success ? TRUE : FALSE;
 }
