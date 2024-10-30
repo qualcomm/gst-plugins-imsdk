@@ -124,7 +124,7 @@ struct _GstMLSnpeEngine
   std::unique_ptr<zdl::SNPE::SNPE> interpreter;
 
   // List with SNPE User Buffers.
-  std::map<const char *, std::unique_ptr<zdl::DlSystem::IUserBuffer>> usrbuffers;
+  std::map<std::string, std::unique_ptr<zdl::DlSystem::IUserBuffer>> usrbuffers;
 
   // Map between SNPE input tensor names and corresponding User Buffer.
   zdl::DlSystem::UserBufferMap inputs;
@@ -748,20 +748,21 @@ gst_ml_snpe_engine_execute (GstMLSnpeEngine * engine,
     return FALSE;
   }
 
-  zdl::DlSystem::Optional <zdl::DlSystem::StringList> optnames =
+  const zdl::DlSystem::Optional <zdl::DlSystem::StringList> inoptnames =
       engine->interpreter->getInputTensorNames();
 
   for (idx = 0; idx < engine->ininfo->n_tensors; ++idx) {
     zdl::DlSystem::IUserBuffer *usrbuffer =
-        engine->inputs.getUserBuffer((*optnames).at(idx));
+        engine->usrbuffers[(*inoptnames).at(idx)].get();
     usrbuffer->setBufferAddress(GST_ML_FRAME_BLOCK_DATA (inframe, idx));
   }
 
-  optnames = engine->interpreter->getOutputTensorNames();
+  const zdl::DlSystem::Optional <zdl::DlSystem::StringList> outoptnames =
+      engine->interpreter->getOutputTensorNames();
 
   for (idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
     zdl::DlSystem::IUserBuffer *usrbuffer =
-        engine->outputs.getUserBuffer((*optnames).at(idx));
+        engine->usrbuffers[(*outoptnames).at(idx)].get();
     usrbuffer->setBufferAddress(GST_ML_FRAME_BLOCK_DATA (outframe, idx));
   }
 
