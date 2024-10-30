@@ -777,6 +777,9 @@ gst_qmmfsrc_pad_logical_stream_type_get_type (void)
   gint index_num = (GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_MAX -
       GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_MIN + 1);
 
+  if (gtype != 0)
+    return gtype;
+
   // Physical camera index enum
   for (i = 0; i < index_num; ++i) {
     variants[i].value = i;
@@ -805,8 +808,7 @@ gst_qmmfsrc_pad_logical_stream_type_get_type (void)
   variants[i].value_name = NULL;
   variants[i].value_nick = NULL;
 
-  if (!gtype)
-    gtype = g_enum_register_static ("GstQmmfSrcPadLogicalStreamType", variants);
+  gtype = g_enum_register_static ("GstQmmfSrcPadLogicalStreamType", variants);
 
   return gtype;
 }
