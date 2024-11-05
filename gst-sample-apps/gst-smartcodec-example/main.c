@@ -467,16 +467,16 @@ main (gint argc, gchar * argv[])
   }
 
   // Check for input source
-  #ifdef ENABLE_CAMERA
+  if (is_camera_available ()) {
     g_print ("TARGET Can support file and camera source\n");
-  #else
+  } else {
     g_print ("TARGET Can only support file source.\n");
     if (appctx->input_file == NULL){
       g_print ("User need to give proper input file as source\n");
       gst_app_context_free (appctx);
       return ret;
     }
-  #endif // ENABLE_CAMERA
+  }
 
   // set the Output Filename
   if (appctx->output_file == NULL)

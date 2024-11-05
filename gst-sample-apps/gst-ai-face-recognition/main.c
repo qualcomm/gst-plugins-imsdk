@@ -762,16 +762,28 @@ main (gint argc, gchar * argv[])
   options.use_rtsp = FALSE, options.use_camera = FALSE;
   options.camera_type = GST_CAMERA_TYPE_NONE;
 
-  // Structure to define the user options selection
-  GOptionEntry entries[] = {
-#ifdef ENABLE_CAMERA
-    { "camera", 'c', 0, G_OPTION_ARG_INT,
+  GOptionEntry camera_entry = {};
+
+  gboolean camera_is_available = is_camera_available ();
+
+  if (camera_is_available) {
+    GOptionEntry temp_camera_entry = {
+      "camera", 'c', 0, G_OPTION_ARG_INT,
       &options.camera_type,
       "Select (0) for Primary Camera and (1) for secondary one.\n"
       "      invalid camera id will switch to primary camera",
       "0 or 1"
-    },
-#endif // ENABLE_CAMERA
+    };
+
+    camera_entry = temp_camera_entry;
+  } else {
+    GOptionEntry temp_camera_entry = { NULL };
+
+    camera_entry = temp_camera_entry;
+  }
+
+  // Structure to define the user options selection
+  GOptionEntry entries[] = {
     { "rtsp-ip-port", 0, 0, G_OPTION_ARG_STRING,
       &options.rtsp_ip_port,
       "Use this parameter to provide the rtsp input.\n"
@@ -820,20 +832,27 @@ main (gint argc, gchar * argv[])
       DEFAULT_FACE_RECOGNITION_LABELS,
       "/PATH"
     },
+    camera_entry,
     { NULL }
   };
 
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
 
+  gchar camera_description[255] = {};
+
+  if (camera_is_available) {
+    snprintf (camera_description, 255,
+      "  %s \n",
+      app_name);
+
+    camera_description[255] = '\0';
+  }
+
   snprintf (help_description, 1023, "\nExample:\n"
-#ifdef ENABLE_CAMERA
       "  %s \n"
-#endif // ENABLE_CAMERA
       "  %s --rtsp-ip-port rtsp://<ip>:<port>/<stream>\n"
       "\nThis Sample App demonstrates Face recognition on Video Stream",
-#ifdef ENABLE_CAMERA
-      app_name,
-#endif // ENABLE_CAMERA
+      camera_description,
       app_name);
   help_description[1023] = '\0';
 
@@ -865,17 +884,17 @@ main (gint argc, gchar * argv[])
     return -EFAULT;
   }
 
-// Check for input source
-#ifdef ENABLE_CAMERA
-  g_print ("TARGET Can support file source, RTSP source and camera source\n");
-#else
-  g_print ("TARGET Can only support file source and RTSP source.\n");
-  if (options.rtsp_ip_port == NULL) {
-    g_print ("User need to give proper RTSP as source\n");
-    gst_app_context_free (&appctx, &options);
-    return -EINVAL;
+  // Check for input source
+  if (camera_is_available) {
+    g_print ("TARGET Can support file source, RTSP source and camera source\n");
+  } else {
+    g_print ("TARGET Can only support file source and RTSP source.\n");
+    if (options.rtsp_ip_port == NULL) {
+      g_print ("User need to give proper RTSP as source\n");
+      gst_app_context_free (&appctx, &options);
+      return -EINVAL;
+    }
   }
-#endif // ENABLE_CAMERA
 
   if (options.rtsp_ip_port != NULL) {
     options.use_rtsp = TRUE;

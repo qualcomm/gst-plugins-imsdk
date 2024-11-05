@@ -1005,11 +1005,13 @@ parse_json(gchar * config_file, GstAppOptions * options)
         g_strdup (json_object_get_string_member (root_obj, "rtsp-ip-port"));
   }
 
-#ifdef ENABLE_CAMERA
-  if ((!json_object_has_member (root_obj, "rtsp-ip-port")) &&
-      (!json_object_has_member (root_obj, "input-file")))
-    options->camera_source = TRUE;
-#endif
+  gboolean camera_is_available = is_camera_available ();
+
+  if (camera_is_available) {
+    if ((!json_object_has_member (root_obj, "rtsp-ip-port")) &&
+        (!json_object_has_member (root_obj, "input-file")))
+      options->camera_source = TRUE;
+  }
 
   if (json_object_has_member (root_obj, "detection-model")) {
     options->detection_model_path =
@@ -1085,6 +1087,17 @@ main (gint argc, gchar * argv[])
 
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
 
+  gboolean camera_is_available = is_camera_available ();
+
+  gchar camera_description[255] = {};
+
+  if (camera_is_available) {
+    snprintf (camera_description, 255,
+      "  If neither input-file nor rtsp-ip-port are provided, "
+      "then camera input will be selected\n\n"
+    );
+  }
+
   snprintf (help_description, 2047, "\nExample:\n"
       "  %s --config-file=%s\n"
       "\nThis Sample App demonstrates Daisy chain of "
@@ -1097,10 +1110,7 @@ main (gint argc, gchar * argv[])
       "      Use this parameter to provide the rtsp input.\n"
       "      Input should be provided as rtsp://<ip>:<port>/<stream>,\n"
       "      eg: rtsp://192.168.1.110:8554/live.mkv\n"
-#ifdef ENABLE_CAMERA
-      "  If neither input-file nor rtsp-ip-port are provided, "
-      "then camera input will be selected\n\n"
-#endif
+      "  %s"
       "  detection-model: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path "
       "for YOLOV5 detection model\n"
@@ -1122,7 +1132,7 @@ main (gint argc, gchar * argv[])
       "  detection-constants: \"CONSTANTS\"\n"
       "      Constants, offsets and coefficients for YOLOV5 TFLITE model \n"
       "      Default constants for YOLOV5: "YOLOV5_CONSTANT"\n",
-      app_name, DEFAULT_CONFIG_FILE);
+      app_name, DEFAULT_CONFIG_FILE, camera_description);
   help_description[2047] = '\0';
 
   // Parse command line entries.
@@ -1168,17 +1178,17 @@ main (gint argc, gchar * argv[])
     return -EINVAL;
   }
 
-// Check for input source
-#ifdef ENABLE_CAMERA
-  g_print ("TARGET can support file source, RTSP source and camera source\n");
-#else
-  g_print ("TARGET can only support file source and RTSP source.\n");
-  if (options.file_path == NULL && options.rtsp_ip_port == NULL) {
-    g_print ("User need to give proper input as source\n");
-    gst_app_context_free (&appctx, &options, config_file);
-    return -EINVAL;
+  // Check for input source
+  if (camera_is_available) {
+    g_print ("TARGET can support file source, RTSP source and camera source\n");
+  } else {
+    g_print ("TARGET can only support file source and RTSP source.\n");
+    if (options.file_path == NULL && options.rtsp_ip_port == NULL) {
+      g_print ("User need to give proper input as source\n");
+      gst_app_context_free (&appctx, &options, config_file);
+      return -EINVAL;
+    }
   }
-#endif // ENABLE_CAMERA
 
   if ((options.camera_source && options.file_path) ||
       (options.camera_source && options.rtsp_ip_port) ||
@@ -1198,15 +1208,15 @@ main (gint argc, gchar * argv[])
     g_print ("RTSP source is selected.\n");
     options.source_type = GST_STREAM_TYPE_RTSP;
   } else {
-#ifdef ENABLE_CAMERA
-    g_print ("No source is selected. "
-        "Camera is set as Default\n");
-    options.source_type = GST_STREAM_TYPE_CAMERA;
-#else
-    g_print ("User need to give proper input file as source\n");
-    gst_app_context_free (&appctx, &options, config_file);
-    return -EINVAL;
-#endif
+  if (camera_is_available) {
+      g_print ("No source is selected. "
+          "Camera is set as Default\n");
+      options.source_type = GST_STREAM_TYPE_CAMERA;
+    } else {
+      g_print ("User need to give proper input file as source\n");
+      gst_app_context_free (&appctx, &options, config_file);
+      return -EINVAL;
+    }
   }
 
   if (options.source_type == GST_STREAM_TYPE_FILE) {

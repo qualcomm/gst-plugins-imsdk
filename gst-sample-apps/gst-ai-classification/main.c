@@ -803,10 +803,12 @@ parse_json(gchar * config_file, GstAppOptions * options)
 
   root_obj = json_node_get_object (root);
 
-#ifdef ENABLE_CAMERA
-  if (json_object_has_member (root_obj, "camera"))
-    options->camera_type = json_object_get_int_member (root_obj, "camera");
-#endif
+  gboolean camera_is_available = is_camera_available ();
+
+  if (camera_is_available) {
+    if (json_object_has_member (root_obj, "camera"))
+      options->camera_type = json_object_get_int_member (root_obj, "camera");
+  }
 
   if (json_object_has_member (root_obj, "file-path")) {
     options->file_path =
@@ -921,14 +923,22 @@ main (gint argc, gchar * argv[])
 
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
 
+  gboolean camera_is_available = is_camera_available ();
+
+  gchar camera_description[255] = {};
+
+  if (camera_is_available) {
+    snprintf (camera_description, 255,
+        "  camera: 0 or 1\n"
+        "      Select (0) for Primary Camera and (1) for secondary one.\n"
+    );
+  }
+
   snprintf (help_description, 2047, "\nExample:\n"
       "  %s --config-file=%s\n"
       "\nTThis Sample App demonstrates Classification on Stream\n"
       "\nConfig file Fields:\n"
-#ifdef ENABLE_CAMERA
-      "  camera: 0 or 1\n"
-      "      Select (0) for Primary Camera and (1) for secondary one.\n"
-#endif
+      "  %s"
       "  file-path: \"/PATH\"\n"
       "      File source path\n"
       "  rtsp-ip-port: \"rtsp://<ip>:<port>/<stream>\"\n"
@@ -959,7 +969,7 @@ main (gint argc, gchar * argv[])
       "  runtime: \"cpu\" or \"gpu\" or \"dsp\"\n"
       "      This is an optional parameter. If not filled, "
       "then default dsp runtime is selected\n",
-      app_name, DEFAULT_CONFIG_FILE);
+      app_name, DEFAULT_CONFIG_FILE, camera_description);
   help_description[2047] = '\0';
 
   // Parse command line entries.
@@ -1005,17 +1015,17 @@ main (gint argc, gchar * argv[])
     return -EINVAL;
   }
 
-// Check for input source
-#ifdef ENABLE_CAMERA
-  g_print ("TARGET Can support file source, RTSP source and camera source\n");
-#else
-  g_print ("TARGET Can only support file source and RTSP source.\n");
-  if (options.file_path == NULL && options.rtsp_ip_port == NULL) {
-    g_print ("User need to give proper input file as source\n");
-    gst_app_context_free (&appctx, &options, config_file);
-    return -EINVAL;
+  // Check for input source
+  if (camera_is_available) {
+    g_print ("TARGET Can support file source, RTSP source and camera source\n");
+  } else {
+    g_print ("TARGET Can only support file source and RTSP source.\n");
+    if (options.file_path == NULL && options.rtsp_ip_port == NULL) {
+      g_print ("User need to give proper input file as source\n");
+        gst_app_context_free (&appctx, &options, config_file);
+      return -EINVAL;
+    }
   }
-#endif // ENABLE_CAMERA
 
   if (options.file_path != NULL) {
     options.use_file = TRUE;
