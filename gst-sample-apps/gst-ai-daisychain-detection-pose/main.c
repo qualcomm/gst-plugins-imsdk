@@ -1142,15 +1142,27 @@ main (gint argc, gchar * argv[])
   setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
   setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
 
-  // Structure to define the user options selection
-  GOptionEntry entries[] = {
-#ifdef ENABLE_CAMERA
-    { "camera", 'c', 0, G_OPTION_ARG_NONE,
+  GOptionEntry camera_entry = {};
+
+  gboolean camera_is_available = is_camera_available ();
+
+  if (camera_is_available) {
+    GOptionEntry temp_camera_entry = {
+      "camera", 'c', 0, G_OPTION_ARG_NONE,
       &options.camera_source,
       "Camera source (Default)",
       NULL
-    },
-#endif // ENABLE_CAMERA
+    };
+
+    camera_entry = temp_camera_entry;
+  } else {
+    GOptionEntry temp_camera_entry = { NULL };
+
+    camera_entry = temp_camera_entry;
+  }
+
+  // Structure to define the user options selection
+  GOptionEntry entries[] = {
     { "input-file", 's', 0, G_OPTION_ARG_STRING,
       &options.input_file_path,
       "File source path",
@@ -1214,17 +1226,26 @@ main (gint argc, gchar * argv[])
       "Output file path.\n",
       "/PATH"
     },
+    camera_entry,
     { NULL }
   };
 
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
 
-  snprintf (help_description, 1023, "\nExample:\n"
-#ifdef ENABLE_CAMERA
+  gchar camera_description[255] = {};
+
+  if (camera_is_available) {
+    snprintf (camera_description, 255,
       "  %s \n"
       "  %s --camera --display\n"
-      "  %s --camera --output-file=/opt/out.mp4\n"
-#endif // ENABLE_CAMERA
+      "  %s --camera --output-file=/opt/out.mp4\n",
+      app_name, app_name, app_name);
+
+    camera_description[255] = '\0';
+  }
+
+  snprintf (help_description, 1023, "\nExample:\n"
+      "  %s\n"
       "  %s --input-file=/opt/video.mp4 --display\n"
       "  %s --input-file=/opt/video.mp4 --output-file=/opt/out.mp4\n"
       "  %s --rtsp-ip-port=\"rtsp://<ip>:port/<stream>\" --display\n"
@@ -1236,9 +1257,7 @@ main (gint argc, gchar * argv[])
       "Object detection:  %-32s  %-32s\n"
       "Pose  :  %-32s  %-32s\n"
       "\nTo use your own model and labels replace at the default paths\n",
-#ifdef ENABLE_CAMERA
-      app_name, app_name, app_name,
-#endif // ENABLE_CAMERA
+      camera_description,
       app_name, app_name, app_name, app_name,
       DEFAULT_TFLITE_YOLOV8_MODEL, DEFAULT_YOLOV8_LABELS,
       DEFAULT_TFLITE_POSE_MODEL, DEFAULT_POSE_LABELS);
@@ -1294,18 +1313,17 @@ main (gint argc, gchar * argv[])
       (options.input_file_path && options.rtsp_ip_port))
   {
     g_printerr ("Multiple sources are provided as input.\n");
-#ifdef ENABLE_CAMERA
-    g_printerr ("Select either Camera or File or RTSP source\n");
-#else
-    g_printerr ("Select either File or RTSP source\n");
-#endif // ENABLE_CAMERA
+
+    if (camera_is_available) {
+      g_printerr ("Select either Camera or File or RTSP source\n");
+    } else {
+      g_printerr ("Select either File or RTSP source\n");
+    }
     gst_app_context_free (&appctx, &options);
     return -EINVAL;
-#ifdef ENABLE_CAMERA
-  } else if (options.camera_source) {
+  } else if (camera_is_available && options.camera_source) {
     g_print ("Camera source is selected.\n");
     options.source_type = GST_STREAM_TYPE_CAMERA;
-#endif // ENABLE_CAMERA
   } else if (options.input_file_path) {
     g_print ("File source is selected.\n");
     options.source_type = GST_STREAM_TYPE_FILE;
@@ -1313,15 +1331,15 @@ main (gint argc, gchar * argv[])
     g_print ("RTSP source is selected.\n");
     options.source_type = GST_STREAM_TYPE_RTSP;
   } else {
-#ifdef ENABLE_CAMERA
-    g_print ("No source is selected."
-        "Camera is set as Default\n");
-    options.source_type = GST_STREAM_TYPE_CAMERA;
-#else
-    g_printerr ("Select File or RTSP source\n");
-    gst_app_context_free (&appctx, &options);
-    return -EINVAL;
-#endif // ENABLE_CAMERA
+    if (camera_is_available) {
+      g_print ("No source is selected."
+          "Camera is set as Default\n");
+      options.source_type = GST_STREAM_TYPE_CAMERA;
+    } else {
+      g_printerr ("Select File or RTSP source\n");
+      gst_app_context_free (&appctx, &options);
+      return -EINVAL;
+    }
   }
 
   if (options.source_type == GST_STREAM_TYPE_FILE) {

@@ -447,6 +447,9 @@ unref_elements(void *first_elem, ...);
 void
 cleanup_gst (void * first_elem, ...);
 
+gboolean
+is_camera_available ();
+
 G_END_DECLS
 
 #endif //GST_SAMPLE_APPS_UTILS_H

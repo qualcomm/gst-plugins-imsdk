@@ -1218,22 +1218,38 @@ main (gint argc, gchar * argv[])
   options.camera_id = -1;
   options.rtsp_ip_port = DEFAULT_RTSP_IP_PORT;
 
+  GOptionEntry camera_entries[2] = {};
+
+  gboolean camera_is_available = is_camera_available ();
+
+  if (camera_is_available) {
+    GOptionEntry temp_camera_entries[] = {
+      { "num-camera", 0, 0, G_OPTION_ARG_INT,
+        &options.num_camera,
+        "Number of cameras to be used (range: 1-" TO_STR (MAX_CAMSRCS) ")",
+        NULL
+      },
+      { "camera-id", 'c', 0, G_OPTION_ARG_INT,
+        &options.camera_id,
+        "Use provided camera id as source\n"
+        "      Default input camera 0 if no other input selected\n"
+        "      This parameter is ignored if num-camera=" TO_STR (MAX_CAMSRCS),
+        "0 or 1"
+      }
+    };
+
+    memcpy (camera_entries, temp_camera_entries, 2 * sizeof (GOptionEntry));
+  } else {
+    GOptionEntry temp_camera_entries[] = {
+      NULL,
+      NULL,
+    };
+
+    memcpy (camera_entries, temp_camera_entries, 2 * sizeof (GOptionEntry));
+  }
+
   // Structure to define the user options selection
   GOptionEntry entries[] = {
-#ifdef ENABLE_CAMERA
-    { "num-camera", 0, 0, G_OPTION_ARG_INT,
-      &options.num_camera,
-      "Number of cameras to be used (range: 1-" TO_STR (MAX_CAMSRCS) ")",
-      NULL
-    },
-    { "camera-id", 'c', 0, G_OPTION_ARG_INT,
-      &options.camera_id,
-      "Use provided camera id as source\n"
-      "      Default input camera 0 if no other input selected\n"
-      "      This parameter is ignored if num-camera=" TO_STR (MAX_CAMSRCS),
-      "0 or 1"
-    },
-#endif // ENABLE_CAMERA
     { "num-file", 0, 0, G_OPTION_ARG_INT,
       &options.num_file,
       "Number of input files to be used (range: 1-" TO_STR (MAX_FILESRCS) ")\n"
@@ -1316,24 +1332,32 @@ main (gint argc, gchar * argv[])
       &options.port_num,
       "Valid port number in case of RSTP streaming output"
     },
+    camera_entries[0],
+    camera_entries[1],
     { NULL }
   };
 
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
 
+  gchar camera_description[255] = {};
+
+  if (camera_is_available) {
+    snprintf (camera_description, 255,
+      "  %s --use-case 1 --num-camera=2 --display\n",
+      app_name);
+
+    camera_description[255] = '\0';
+  }
+
   snprintf (help_description, 1023, "\nExample:\n"
       "  %s --num-file=6 --use-case 0\n"
-#ifdef ENABLE_CAMERA
-      "  %s --use-case 1 --num-camera=2 --display\n"
-#endif // ENABLE_CAMERA
+      "  %s\n"
       "  %s --use-case 0 --model=%s --labels=%s\n"
       "  %s --num-file=4 -u 0 -d -f /opt/app.mp4 --out-rtsp -i <ip> -p <port>\n"
       "\nThis Sample App demonstrates Object Detection on 16 stream with various "
       " input/output stream combinations",
       app_name,
-#ifdef ENABLE_CAMERA
-      app_name,
-#endif // ENABLE_CAMERA
+      camera_description,
       app_name, DEFAULT_TFLITE_YOLOV8_MODEL,
       DEFAULT_YOLOV8_LABELS, app_name);
   help_description[1023] = '\0';
@@ -1433,15 +1457,15 @@ main (gint argc, gchar * argv[])
 
   if (options.input_count == 0 ||
       (options.camera_id != -1 && options.num_camera == 0)) {
-#ifdef ENABLE_CAMERA
-    g_print ("No stream provided in options, defaulting to 1 camera stream.\n");
-    options.num_camera = 1;
-    options.input_count++;
-#else
-    g_printerr ("Select either File or RTSP source\n");
-    gst_app_context_free (&appctx, &options);
-    return -EINVAL;
-#endif // ENABLE_CAMERA
+    if (camera_is_available) {
+      g_print ("No stream provided in options, defaulting to 1 camera stream.\n");
+      options.num_camera = 1;
+      options.input_count++;
+    } else {
+      g_printerr ("Select either File or RTSP source\n");
+      gst_app_context_free (&appctx, &options);
+      return -EINVAL;
+    }
   }
 
   if (options.camera_id == -1 || options.num_camera == 2) {

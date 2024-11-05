@@ -636,16 +636,28 @@ main (gint argc, gchar * argv[])
   options.use_file = FALSE, options.use_rtsp = FALSE, options.use_camera = FALSE;
   options.camera_type = GST_CAMERA_TYPE_NONE;
 
-  // Structure to define the user options selection
-  GOptionEntry entries[] = {
-#ifdef ENABLE_CAMERA
-    { "camera", 'c', 0, G_OPTION_ARG_INT,
+  GOptionEntry camera_entry = {};
+
+  gboolean camera_is_available = is_camera_available ();
+
+  if (camera_is_available) {
+    GOptionEntry temp_camera_entry = {
+      "camera", 'c', 0, G_OPTION_ARG_INT,
       &options.camera_type,
       "Select (0) for Primary Camera and (1) for secondary one.\n"
       "      invalid camera id will switch to primary camera",
       "0 or 1"
-    },
-#endif // ENABLE_CAMERA
+    };
+
+    camera_entry = temp_camera_entry;
+  } else {
+    GOptionEntry temp_camera_entry = { NULL };
+
+    camera_entry = temp_camera_entry;
+  }
+
+  // Structure to define the user options selection
+  GOptionEntry entries[] = {
     { "file-path", 's', 0, G_OPTION_ARG_STRING,
       &options.file_path,
       "File source path",
@@ -676,21 +688,27 @@ main (gint argc, gchar * argv[])
       "This is an optional parameter and overides default threshold value 51",
       "0 to 100"
     },
+    camera_entry,
     { NULL }
   };
 
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
 
+  gchar camera_description[255] = {};
+
+  if (camera_is_available) {
+    snprintf (camera_description, 255,
+      "  %s --model=%s --labels=%s\n",
+      app_name, DEFAULT_QNN_FACE_DETECTION_MODEL, DEFAULT_FACE_DETECTION_LABELS);
+
+    camera_description[255] = '\0';
+  }
+
   snprintf (help_description, 1023, "\nExample:\n"
-#ifdef ENABLE_CAMERA
-      "  %s --model=%s --labels=%s\n"
-#endif // ENABLE_CAMERA
+      "  %s \n"
       "  %s -s <file_path>\n"
       "\nThis Sample App demonstrates Face detection on Video Stream",
-#ifdef ENABLE_CAMERA
-      app_name, DEFAULT_QNN_FACE_DETECTION_MODEL,
-      DEFAULT_FACE_DETECTION_LABELS,
-#endif // ENABLE_CAMERA
+      camera_description,
       app_name);
   help_description[1023] = '\0';
 
@@ -722,17 +740,17 @@ main (gint argc, gchar * argv[])
     return -EFAULT;
   }
 
-// Check for input source
-#ifdef ENABLE_CAMERA
-  g_print ("TARGET Can support file source, RTSP source and camera source\n");
-#else
-  g_print ("TARGET Can only support file source and RTSP source.\n");
-  if (options.file_path == NULL && options.rtsp_ip_port == NULL) {
-    g_print ("User need to give proper input file or RTSP as source\n");
-    gst_app_context_free (&appctx, &options);
-    return -EINVAL;
+  // Check for input source
+  if (camera_is_available) {
+    g_print ("TARGET Can support file source, RTSP source and camera source\n");
+  } else {
+    g_print ("TARGET Can only support file source and RTSP source.\n");
+    if (options.file_path == NULL && options.rtsp_ip_port == NULL) {
+      g_print ("User need to give proper input file or RTSP as source\n");
+      gst_app_context_free (&appctx, &options);
+      return -EINVAL;
+    }
   }
-#endif // ENABLE_CAMERA
 
   if (options.file_path != NULL) {
     options.use_file = TRUE;

@@ -293,3 +293,34 @@ cleanup_gst (void * first_elem, ...)
   }
   va_end (args);
 }
+
+gboolean
+is_camera_available ()
+{
+  gboolean is_qmmf_on = FALSE;
+
+  GError *error = NULL;
+
+  GOptionEntry entries[] = { { NULL } };
+  GOptionContext * ctx = g_option_context_new ("Dummy context");
+  g_option_context_add_main_entries (ctx, entries, NULL);
+  g_option_context_add_group (ctx, gst_init_get_option_group ());
+
+  g_option_context_parse (ctx, NULL, NULL, &error);
+  g_option_context_free (ctx);
+
+  GstRegistry * gst_reg = gst_registry_get ();
+
+  GstPlugin * gst_plugin = NULL;
+
+  if (gst_reg)
+    gst_plugin = gst_registry_find_plugin (gst_reg, "qtiqmmfsrc");
+
+  if (gst_plugin) {
+    gst_object_unref (gst_plugin);
+
+    is_qmmf_on = TRUE;
+  }
+
+  return is_qmmf_on;
+}

@@ -1150,22 +1150,38 @@ main (gint argc, gchar * argv[])
   options.port_num = DEFAULT_PORT;
   options.constants = DEFAULT_CONSTANTS;
 
+  GOptionEntry camera_entries[2] = {};
+
+  gboolean camera_is_available = is_camera_available ();
+
+  if (camera_is_available) {
+    GOptionEntry temp_camera_entries[] = {
+      { "num-camera", 0, 0, G_OPTION_ARG_INT,
+        &options.num_camera,
+        "Number of cameras to be used (range: 0-" TO_STR (MAX_CAMSRCS) ")",
+        NULL
+      },
+      { "camera-id", 'c', 0, G_OPTION_ARG_INT,
+        &options.camera_id,
+        "Use provided camera id as source\n"
+        "      Default input camera 0 if no other input selected\n"
+        "      This parameter is ignored if num-camera=" TO_STR (MAX_CAMSRCS),
+        "0 or 1"
+      }
+    };
+
+    memcpy (camera_entries, temp_camera_entries, 2 * sizeof (GOptionEntry));
+  } else {
+    GOptionEntry temp_camera_entries[] = {
+      NULL,
+      NULL,
+    };
+
+    memcpy (camera_entries, temp_camera_entries, 2 * sizeof (GOptionEntry));
+  }
+
   // Structure to define the user options selection
   GOptionEntry entries[] = {
-#ifdef ENABLE_CAMERA
-    { "num-camera", 0, 0, G_OPTION_ARG_INT,
-      &options.num_camera,
-      "Number of cameras to be used (range: 0-" TO_STR (MAX_CAMSRCS) ")",
-      NULL
-    },
-    { "camera-id", 'c', 0, G_OPTION_ARG_INT,
-      &options.camera_id,
-      "Use provided camera id as source\n"
-      "      Default input camera 0 if no other input selected\n"
-      "      This parameter is ignored if num-camera=" TO_STR (MAX_CAMSRCS),
-      "0 or 1"
-    },
-#endif // ENABLE_CAMERA
     { "num-file", 0, 0, G_OPTION_ARG_INT,
       &options.num_file,
       "Number of input files to be used (range: 0-" TO_STR (MAX_FILESRCS) ")\n"
@@ -1237,6 +1253,8 @@ main (gint argc, gchar * argv[])
       &options.port_num,
       "Valid port number in case of RSTP streaming output"
     },
+    camera_entries[0],
+    camera_entries[1],
     { NULL }
   };
 
@@ -1247,20 +1265,26 @@ main (gint argc, gchar * argv[])
   options.model_path = DEFAULT_TFLITE_YOLOV5_MODEL;
   options.labels_path = DEFAULT_YOLOV5_LABELS;
 
+  gchar camera_description[255] = {};
+
+  if (camera_is_available) {
+    snprintf (camera_description, 255,
+      "  %s --num-camera=2 --display\n"
+      "  %s --model=%s --labels=%s\n",
+      app_name, app_name, DEFAULT_TFLITE_YOLOV5_MODEL,
+      DEFAULT_YOLOV5_LABELS);
+
+    camera_description[255] = '\0';
+  }
+
   snprintf (help_description, 1023, "\nExample:\n"
       "  %s --num-file=6\n"
-#ifdef ENABLE_CAMERA
-      "  %s --num-camera=2 --display\n"
-      "  %s --model=%s --labels=%s\n"
-#endif // ENABLE_CAMERA
+      "  %s\n"
       "  %s --num-file=4 -d -f /opt/app.mp4 --out-rtsp -i <ip> -p <port>\n"
       "\nThis Sample App demonstrates Object Detection with various input/output"
       " stream combinations\n",
       app_name,
-#ifdef ENABLE_CAMERA
-      app_name, app_name, DEFAULT_TFLITE_YOLOV5_MODEL,
-      DEFAULT_YOLOV5_LABELS,
-#endif // ENABLE_CAMERA
+      camera_description,
       app_name);
   help_description[1023] = '\0';
 
@@ -1292,17 +1316,17 @@ main (gint argc, gchar * argv[])
     return -EFAULT;
   }
 
-// Check for input source
-#ifdef ENABLE_CAMERA
-  g_print ("TARGET Can support file source, RTSP source and camera source\n");
-#else
-  g_print ("TARGET Can only support file source and RTSP source.\n");
-  if (options.num_file == 0 && options.num_rtsp == 0) {
-    g_print ("User need to give proper input file as source\n");
-    gst_app_context_free (&appctx, &options);
-    return -EINVAL;
+  // Check for input source
+  if (camera_is_available) {
+    g_print ("TARGET Can support file source, RTSP source and camera source\n");
+  } else {
+    g_print ("TARGET Can only support file source and RTSP source.\n");
+    if (options.num_file == 0 && options.num_rtsp == 0) {
+      g_print ("User need to give proper input file as source\n");
+      gst_app_context_free (&appctx, &options);
+      return -EINVAL;
+    }
   }
-#endif // ENABLE_CAMERA
 
   if (options.num_camera > MAX_CAMSRCS) {
     g_printerr ("Number of camera streams cannot be more than 2\n");
