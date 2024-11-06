@@ -8,6 +8,7 @@
 #include <numeric>
 #include <vector>
 #include <filesystem>
+#include <string>
 
 #include <dlfcn.h>
 
@@ -87,6 +88,9 @@
 #define QNN_TENSOR_DIMENSION(tensor, idx) \
     (QNN_GET_TENSOR (tensor).dimensions[(idx)])
 
+#define QNN_TENSOR_NAME(tensor) \
+    (QNN_GET_TENSOR (tensor).name)
+
 #define QNN_TENSOR_RANK(tensor) \
     (QNN_GET_TENSOR (tensor).rank)
 
@@ -127,6 +131,7 @@ struct _GstMLQnnEngine
 {
   GstMLInfo                      *ininfo;
   GstMLInfo                      *outinfo;
+  GArray                         *graphindices;
 
   GstStructure                   *settings;
 
@@ -863,7 +868,10 @@ gst_ml_qnn_engine_new (GstStructure *settings)
   const GraphInfo_t *graph_info = NULL;
   Qnn_Tensor_t *input_tensor = NULL;
   Qnn_Tensor_t *output_tensor = NULL;
+  GList * output_list = NULL;
   gboolean success = TRUE;
+  guint idx, value;
+  gsize size;
 
   GST_DEBUG ("Creating engine");
 
@@ -921,7 +929,7 @@ gst_ml_qnn_engine_new (GstStructure *settings)
   GST_DEBUG ("Input tensors type: %s",
       gst_ml_type_to_string (GST_ML_INFO_TYPE (engine->ininfo)));
 
-  for (auto idx = 0; idx < engine->ininfo->n_tensors; ++idx) {
+  for (idx = 0; idx < engine->ininfo->n_tensors; ++idx) {
     input_tensor = &(graph_info->inputTensors[idx]);
 
     if (!QNN_TENSOR_VERSION_SUPPORTED (input_tensor)) {
@@ -944,6 +952,15 @@ gst_ml_qnn_engine_new (GstStructure *settings)
   // Translate information about output tensors to GstMLInfo.
   engine->outinfo->n_tensors = graph_info->numOutputTensors;
 
+  gst_structure_get (engine->settings, GST_ML_QNN_ENGINE_OPT_OUTPUTS,
+      G_TYPE_POINTER, &output_list, NULL);
+
+  // User specified order and number for the output tensors.
+  if (output_list != NULL) {
+    engine->outinfo->n_tensors = g_list_length (output_list);
+    engine->graphindices = g_array_new (FALSE, FALSE, sizeof (guint));
+  }
+
   // TODO: Workaround! Need to handle the tensors of different type. For now,
   // negotiate with float32 and convert from tensor type to float.
   engine->outinfo->type = GST_ML_TYPE_FLOAT32;
@@ -953,12 +970,55 @@ gst_ml_qnn_engine_new (GstStructure *settings)
   GST_DEBUG ("Output tensors type: %s",
       gst_ml_type_to_string (GST_ML_INFO_TYPE (engine->outinfo)));
 
-  for (auto idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
+  // Calculate and allocate memory for output client buffers.
+  for (idx = 0; idx < graph_info->numOutputTensors; idx++) {
     output_tensor = &(graph_info->outputTensors[idx]);
 
     if (!QNN_TENSOR_VERSION_SUPPORTED (output_tensor)) {
       GST_ERROR ("Not supported tensor version!");
       goto cleanup;
+    }
+
+    value = 0, size = 0;
+
+    // TODO: Workaround! Need to handle tensors of different data type to avoid
+    // buffer allocation and buffer copy
+    for (auto dim = 0; dim < QNN_TENSOR_RANK (output_tensor); dim++) {
+      value = QNN_TENSOR_DIMENSION (output_tensor, dim);
+      value = (value == 0) ? 1 : value;
+      size = (size != 0) ? (size * value) : value;
+    }
+
+    // Use the tensor type from the graph
+    size *= kDataTypeToSize.find(QNN_TENSOR_DATA_TYPE (output_tensor))->second;
+
+    QNN_TENSOR_CLIENTBUF (output_tensor).data = g_malloc (size);
+    QNN_TENSOR_CLIENTBUF (output_tensor).dataSize = size;
+  }
+
+  // Populate tensor info in outinfo
+  for (idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
+    if (output_list != NULL) {
+      std::string tensor_name = (gchar*)(g_list_nth_data (output_list, idx));
+
+      for (auto num = 0; num < graph_info->numOutputTensors; num++) {
+        output_tensor = &(graph_info->outputTensors[num]);
+
+        // Record the graph tensor indices of the output tensors
+        if (tensor_name == QNN_TENSOR_NAME (output_tensor)) {
+          g_array_insert_val (engine->graphindices, idx, num);
+          break;
+        }
+      }
+
+      if (engine->graphindices->len <= idx) {
+        GST_ERROR("Output tensor name '%s' not found in graph info.",
+            tensor_name.c_str());
+        goto cleanup;
+      }
+    } else {
+      // Standard order as given by the loaded model
+      output_tensor = &(graph_info->outputTensors[idx]);
     }
 
     engine->outinfo->n_dimensions[idx] = QNN_TENSOR_RANK (output_tensor);
@@ -969,17 +1029,6 @@ gst_ml_qnn_engine_new (GstStructure *settings)
       GST_DEBUG ("Output tensor[%u] Dimension[%u]: %u", idx, num,
           engine->outinfo->tensors[idx][num]);
     }
-
-    // TODO: Workaround! Need to handle tensors of different data type to avoid
-    // buffer allocation and buffer copy
-    gsize size = gst_ml_info_tensor_size (engine->outinfo, idx);
-
-    // Use the tensor type from the graph instead of that from MLInfo
-    size /= gst_ml_type_get_size (engine->outinfo->type);
-    size *= kDataTypeToSize.find(QNN_TENSOR_DATA_TYPE (output_tensor))->second;
-
-    QNN_TENSOR_CLIENTBUF (output_tensor).data = g_malloc (size);
-    QNN_TENSOR_CLIENTBUF (output_tensor).dataSize = size;
   }
 
   GST_INFO ("Created MLE QNN engine: %p", engine);
@@ -1069,6 +1118,9 @@ gst_ml_qnn_engine_free (GstMLQnnEngine * engine)
   if (engine->syslibhandle != NULL)
     dlclose (engine->syslibhandle);
 
+  if (engine->graphindices != NULL)
+    g_array_free (engine->graphindices, TRUE);
+
   GST_INFO ("Destroyed MLE QNN engine: %p", engine);
   g_free (engine);
 }
@@ -1090,6 +1142,7 @@ gst_ml_qnn_engine_execute (GstMLQnnEngine *engine, GstMLFrame *inframe,
     GstMLFrame *outframe)
 {
   const GraphInfo_t *graph_info = engine->graph_infos[0];
+  guint idx;
 
   if (GST_ML_FRAME_N_BLOCKS (inframe) != engine->ininfo->n_tensors) {
     GST_WARNING ("Input buffer has %u memory blocks but engine requires %u!",
@@ -1104,7 +1157,7 @@ gst_ml_qnn_engine_execute (GstMLQnnEngine *engine, GstMLFrame *inframe,
   }
 
   // populate input tensor data
-  for (size_t idx = 0; idx < graph_info->numInputTensors; idx++) {
+  for (idx = 0; idx < graph_info->numInputTensors; idx++) {
     Qnn_Tensor_t *tensor = &(graph_info->inputTensors[idx]);
 
     QNN_TENSOR_CLIENTBUF (tensor).data = GST_ML_FRAME_BLOCK_DATA (inframe, idx);
@@ -1122,8 +1175,13 @@ gst_ml_qnn_engine_execute (GstMLQnnEngine *engine, GstMLFrame *inframe,
     return FALSE;
   }
 
-  for (size_t idx = 0; idx < graph_info->numOutputTensors; idx++) {
+  for (idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
     Qnn_Tensor_t *tensor = &(graph_info->outputTensors[idx]);
+
+    if (engine->graphindices != NULL) {
+      guint num = g_array_index (engine->graphindices, guint, idx);
+      tensor = &(graph_info->outputTensors[num]);
+    }
 
     // TODO: Workaround! Need to handle tensors of different data type to avoid
     // buffer allocation and buffer copy
