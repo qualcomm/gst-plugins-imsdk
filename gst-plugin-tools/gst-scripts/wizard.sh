@@ -6,6 +6,7 @@
 echo "Pipeline builder script initiated!"
 pipeline='export XDG_RUNTIME_DIR=/dev/socket/weston && export WAYLAND_DISPLAY=wayland-1 && gst-launch-1.0 -e --gst-debug=2 '
 help="In order to run the pipeline:\n"
+usbsrc=false
 
 echo "Select pipeline input:"
 echo "1) Video file"
@@ -25,9 +26,10 @@ do
             ;;
         "2")
             echo "Selected input: USB camera!"
-            read -p 'Please enter the ID for the USB video device (as in "/dev/videoX"):' device_id
-            pipeline+='v4l2src io-mode=dmabuf-import device="/dev/video'${device_id}'" ! video/x-raw,width=1280,height=720 ! qtivtransform ! '
+            read -p 'Please enter the video node for the USB video device (for ex:"/dev/video2"):' device_id
+            pipeline+='v4l2src io-mode=dmabuf-import device="'${device_id}'" ! video/x-raw,width=1280,height=720 ! qtivtransform ! '
             livesrc=true
+            usbsrc=true
             help+="Make sure the video device mentioned in v4l2src's device property is the USB camera.\n"
             help+="\n"
             unset device_id
@@ -35,7 +37,7 @@ do
             ;;
         "3")
             echo "Selected input: RTSP source!"
-            read -p 'Please specify the RTSP source URI (as in "rtsp://admin:qualcomm1@192.168.0.10:554/Streaming/Channels/101"):' rtsp_src
+            read -p 'Please specify the RTSP source URI (for ex: "rtsp://admin:qualcomm1@192.168.0.10:554/Streaming/Channels/101"):' rtsp_src
             echo "${rtsp_src}"
             pipeline+="rtspsrc location=${rtsp_src} ! queue ! rtpptdemux ! rtph264depay ! h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! "
             livesrc=true
@@ -55,7 +57,7 @@ do
 done
 
 echo "Select pipeline model:"
-echo "1) Detection - YOLOv8 Quantized"
+echo "1) Detection - FootTrackNet Quantized"
 echo "2) Classification - ResNet101 Quantized"
 echo "3) Segmentation - FFNet-40S Quantized"
 
@@ -63,42 +65,42 @@ while read input
 do
     case $input in
         "1")
-            echo "Selected model: Detection - YOLOv8 Quantized!"
-            pipeline+='tee name=t_split_0 t_split_0. ! qtimetamux name=metamux t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/opt/data/YoloV8_Detection_Quantized.tflite ! queue ! qtimlvdetection threshold=75.0 results=4 module=yolov8 constants="YoloV8,q-offsets=<-107.0,-128.0,0.0>,q-scales=<3.093529462814331,0.00390625,1.0>;" labels=/opt/data/yolov8.labels ! text/x-raw ! queue ! metamux. metamux. ! qtivoverlay engine=gles ! queue ! '
-            help+="Please download the model and label files from here: https://aihub.qualcomm.com/models/yolov8_det_quantized\n"
+            echo "Selected model: Detection - FootTrackNet Quantized!"
+            pipeline+='tee name=t_split_0 t_split_0. ! qtimetamux name=metamux t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/opt/data/foot_track_net_quantized.tflite ! queue ! qtimlvdetection threshold=90.0 results=10 module=qpd constants="qpd,q-offsets=<0.0,25.0,114.0,0.0>,q-scales=<0.0035636962857097387,1.2998489141464233,2.1744511127471924,0.00390625>;" labels=/opt/labels/gst-wizard/foot_track_net.labels ! text/x-raw ! queue ! metamux. metamux. ! qtivoverlay engine=gles ! queue ! '
+            help+="Please download the model and label files from here: https://aihub.qualcomm.com/models/foot_track_net\n"
             help+="Make sure to select your device and set TorchScript -> TFLite before downloading!\n"
-            help+="Push the files on the device:\n"
-            help+="Model file in '/opt/data/' and name it 'YoloV8_Detection_Quantized.tflite'\n"
-            help+="Label file in '/opt/data/' and name it 'yolov8.labels'\n"
+            help+="Push the Model file on the device at'/opt/data/' and name it 'foot_track_net_quantized.tflite'\n"
+            help+="Make sure the label file is present at'/opt/labels/gst-wizard/foot_track_net.labels\n"
             help+="\n"
             break
             ;;
         "2")
             echo "Selected model: Classification - ResNet101 Quantized!"
-            pipeline+='tee name=t_split_0 t_split_0. ! qtimetamux name=metamux t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/opt/data/ResNet101_Quantized.tflite ! queue ! qtimlvclassification threshold=51.0 results=5 module=mobilenet labels=/opt/data/resnet101.labels extra-operation=softmax constants="Mobilenet,q-offsets=<-82.0>,q-scales=<0.21351955831050873>;" ! text/x-raw ! queue ! metamux. metamux. ! qtivoverlay engine=gles ! queue ! '
+            pipeline+='tee name=t_split_0 t_split_0. ! qtimetamux name=metamux t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/opt/data/resnet101_quantized.tflite ! queue ! qtimlvclassification threshold=51.0 results=5 module=mobilenet labels=/opt/labels/gst-wizard/resnet101.labels extra-operation=softmax constants="Mobilenet,q-offsets=<-82.0>,q-scales=<0.21351955831050873>;" ! text/x-raw ! queue ! metamux. metamux. ! qtivoverlay engine=gles ! queue ! '
             help+="Please download the model and label files from here: https://aihub.qualcomm.com/models/resnet101_quantized\n"
             help+="Make sure to select your device and set TorchScript -> TFLite before downloading!\n"
-            help+="Push the files on the device:\n"
-            help+="Model file in '/opt/data/' and name it 'ResNet101_Quantized.tflite'\n"
-            help+="Label file in '/opt/data/' and name it 'resnet101.labels'\n"
+            help+="Push the Model file on the device at'/opt/data/' and name it 'resnet101_quantized.tflite'\n"
+            help+="Make sure the label file is present at'/opt/labels/gst-wizard/resnet101.labels\n"
             help+="\n"
             break
             ;;
         "3")
             echo "Selected model: Segmentation - FFNet-40S Quantized!"
-            pipeline+='tee name=t_split_0 t_split_0. ! queue ! mixer. t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/opt/data/FFNet_40S_quantized.tflite ! queue ! qtimlvsegmentation module=deeplab-argmax labels=/opt/data/dv3-argmax.labels constants="FFNet-40S,q-offsets=<50.0>,q-scales=<0.31378185749053955>;" ! queue ! mixer. qtivcomposer name=mixer background=0 sink_0::position="<0, 0>" sink_0::dimensions="<1280, 720>" sink_1::position="<0, 0>" sink_1::dimensions="<1280, 720>" sink_1::alpha=0.5 mixer. ! queue ! '
+            if [ "$usbsrc" = true ]; then
+                pipeline+='video/x-raw\,format=RGB ! '
+            fi
+            pipeline+='tee name=t_split_0 t_split_0. ! queue ! mixer. t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/opt/data/ffnet_40s_quantized.tflite ! queue ! qtimlvsegmentation module=deeplab-argmax labels=/opt/labels/gst-wizard/dv3-argmax.labels constants="FFNet-40S,q-offsets=<50.0>,q-scales=<0.31378185749053955>;" ! queue ! mixer. qtivcomposer name=mixer background=0 sink_0::position="<0, 0>" sink_0::dimensions="<1280, 720>" sink_1::position="<0, 0>" sink_1::dimensions="<1280, 720>" sink_1::alpha=0.5 mixer. ! queue ! '
             help+="Please download the model and label files from here: https://aihub.qualcomm.com/models/ffnet_40s_quantized\n"
             help+="Make sure to select your device and set TorchScript -> TFLite before downloading!\n"
-            help+="Push the files on the device:\n"
-            help+="Model file in '/opt/data/' and name it 'FFNet_40S_quantized.tflite'\n"
-            help+="Label file in '/opt/data/' and name it 'dv3-argmax.labels'\n"
+            help+="Push the Model file on the device at'/opt/data/' and name it 'ffnet_40s_quantized.tflite'\n"
+            help+="Make sure the label file is present at'/opt/labels/gst-wizard/dv3-argmax.labels\n"
             help+="\n"
             break
             ;;
         *)
             echo "Invalid input!"
             echo "Select pipeline model:"
-            echo "1) Detection - YOLOv8 Quantized"
+            echo "1) Detection - FootTrackNet Quantized"
             echo "2) Classification - ResNet101 Quantized"
             echo "3) Segmentation - FFNet-40S Quantized"
             ;;
@@ -116,7 +118,7 @@ do
         "1")
             echo "Selected output: HDMI - Display!"
             if [ $livesrc = "true" ]; then
-                pipeline+='waylandsink fullscreen=true'
+                pipeline+='waylandsink sync=false async=false fullscreen=true'
             elif [ $livesrc = "false" ]; then
                 pipeline+='waylandsink sync=true async=false fullscreen=true'
             else
@@ -130,15 +132,15 @@ do
             ;;
         "2")
             echo "Selected output: Video file!"
-            pipeline+='v4l2h264enc capture-io-mode=5 output-io-mode=5 ! h264parse config-interval=1 ! mp4mux ! filesink location=/opt/data/output.mp4'
-            help+="The output from the pipeline will be saved in '/opt/data/' as 'output.mp4'\n"
+            pipeline+='v4l2h264enc capture-io-mode=5 output-io-mode=5 ! h264parse config-interval=1 ! mp4mux ! filesink location=/opt/data/gst-wizard/output.mp4'
+            help+="The output from the pipeline will be saved in '/opt/data/gst-wizard/' as 'output.mp4'\n"
             help+="\n"
             break
             ;;
         "3")
             echo "Selected output: RTSP out!"
             pipeline+='v4l2h264enc capture-io-mode=5 output-io-mode=5 ! queue ! h264parse config-interval=1 ! queue ! qtirtspbin address=0.0.0.0 port=8900'
-            help+="The RTSP out stream is available on port 8900.\n"
+            help+="The RTSP out stream is available on port=8900 and mount-point=live (For ex: rtsp://<Device-IP>:8900/live).\n"
             help+="\n"
             break
             ;;
@@ -156,14 +158,13 @@ echo -e "\n\n\n"
 echo Pipeline built:
 echo $pipeline
 
-mkdir -p /opt/data
-echo "#!/bin/bash" > /opt/data/gst_wizard_pipeline.sh
-echo $pipeline >> /opt/data/gst_wizard_pipeline.sh
-chmod 777 gst_wizard_pipeline.sh
+mkdir -p /opt/scripts
+echo "#!/bin/bash" > /opt/scripts/gst_wizard_pipeline.sh
+echo $pipeline >> /opt/scripts/gst_wizard_pipeline.sh
 
 echo -e "\n"
-echo "The pipeline built is saved at /opt/data/gst_wizard_pipeline.sh"
-help+="The pipeline can be run using \"bash /opt/data/gst_wizard_pipeline.sh\""
+echo "The pipeline built is saved at /opt/scripts/gst_wizard_pipeline.sh"
+help+="The pipeline can be run using \"bash /opt/scripts/gst_wizard_pipeline.sh\""
 help+="\n"
 
 echo -e "\n\n"
