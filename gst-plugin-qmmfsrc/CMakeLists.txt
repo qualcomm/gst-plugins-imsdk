@@ -73,7 +73,7 @@ target_compile_definitions(${GST_QMMFSRC_PLUGIN} PRIVATE
 
 target_include_directories(${GST_QMMFSRC_PLUGIN} PRIVATE
   ${GST_INCLUDE_DIRS}
-  $<$<STREQUAL:${CAMERA_SERVICE},LECAM>:${SYSROOT_INCDIR}/camx-api/camx/service>
+  ${SYSROOT_INCDIR}/camx-api/camx/service
 )
 
 if (ENABLE_RUNTIME_PARSER)
