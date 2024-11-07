@@ -87,6 +87,8 @@
 #include <glib-unix.h>
 #include <gst/gst.h>
 #include <gst/video/video.h>
+#include <glib.h>
+#include <json-glib/json-glib.h>
 
 #include <gst/sampleapps/gst_sample_apps_utils.h>
 
@@ -98,6 +100,11 @@
     "/opt/inceptionv3.tflite"
 #define DEFAULT_YOLOV5_LABELS "/opt/yolov5.labels"
 #define DEFAULT_CLASSIFICATION_LABELS "/opt/classification.labels"
+
+/**
+ * Default path of config file
+ */
+#define DEFAULT_CONFIG_FILE "/opt/config_daisychain_detection_classification.json"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
@@ -127,6 +134,22 @@
 #define YOLOV5_CONSTANT "YoloV5,q-offsets=<3.0>,q-scales=<0.005047998391091824>;"
 
 /**
+ * Structure for various application specific options
+ */
+typedef struct {
+  gboolean camera_source;
+  gchar *file_path;
+  gchar *rtsp_ip_port;
+  gchar *detection_model_path;
+  gchar *classification_model_path;
+  gchar *detection_labels_path;
+  gchar *classification_labels_path;
+  gchar *detection_constants;
+  GstStreamSourceType source_type;
+} GstAppOptions;
+
+
+/**
  * GstDaisyChainModelType:
  * @GST_DETECTION_TYPE_YOLO            : Yolov5 Object Detection Model.
  * @GST_CLASSIFICATION_TYPE_INCEPTION  : Inception Classification Model.
@@ -153,8 +176,8 @@ static GstVideoRectangle composer_sink_position[COMPOSER_SINK_COUNT] = {
  * @param appctx Application Context object
  */
 static void
-gst_app_context_free (GstAppContext * appctx,  gchar *file_source,
-    gchar *rtsp_source)
+gst_app_context_free (
+    GstAppContext * appctx, GstAppOptions * options, gchar * config_file)
 {
   // If specific pointer is not NULL, unref it
   if (appctx->mloop != NULL) {
@@ -162,12 +185,50 @@ gst_app_context_free (GstAppContext * appctx,  gchar *file_source,
     appctx->mloop = NULL;
   }
 
-  if (file_source != NULL) {
-    g_free (file_source);
+  if (options->file_path != NULL) {
+    g_free (options->file_path);
+    options->file_path = NULL;
   }
 
-  if (rtsp_source != NULL) {
-    g_free (rtsp_source);
+  if (options->rtsp_ip_port != NULL) {
+    g_free (options->rtsp_ip_port);
+    options->rtsp_ip_port = NULL;
+  }
+
+  if (options->detection_model_path != NULL &&
+      options->detection_model_path != DEFAULT_TFLITE_YOLOV5_MODEL) {
+    g_free (options->detection_model_path);
+    options->detection_model_path = NULL;
+  }
+
+  if (options->classification_model_path != NULL &&
+      options->classification_model_path != DEFAULT_TFLITE_CLASSIFICATION_MODEL) {
+    g_free (options->classification_model_path);
+    options->classification_model_path = NULL;
+  }
+
+  if (options->detection_labels_path != NULL &&
+      options->detection_labels_path != DEFAULT_YOLOV5_LABELS) {
+    g_free (options->detection_labels_path);
+    options->detection_labels_path = NULL;
+  }
+
+  if (options->classification_labels_path != NULL &&
+      options->classification_labels_path != DEFAULT_CLASSIFICATION_LABELS) {
+    g_free (options->classification_labels_path);
+    options->classification_labels_path = NULL;
+  }
+
+  if (options->detection_constants != NULL &&
+      options->detection_constants != YOLOV5_CONSTANT) {
+    g_free (options->detection_constants);
+    options->detection_constants = NULL;
+  }
+
+  if (config_file != NULL &&
+      config_file != DEFAULT_CONFIG_FILE) {
+    g_free (config_file);
+    config_file = NULL;
   }
 
   if (appctx->pipeline != NULL) {
@@ -249,8 +310,7 @@ on_pad_added (GstElement * element, GstPad * pad, gpointer data)
  * @param rtsp_source RTSP stream.
  */
 static gboolean
-create_pipe (GstAppContext * appctx, GstStreamSourceType source_type,
-    const gchar * file_source, const gchar * rtsp_source)
+create_pipe (GstAppContext * appctx, const GstAppOptions options)
 {
   GstElement *qtiqmmfsrc = NULL, *qmmfsrc_caps = NULL;
   GstElement *queue[QUEUE_COUNT] = {NULL}, *qmmfsrc_caps_preview = NULL;
@@ -266,6 +326,7 @@ create_pipe (GstAppContext * appctx, GstStreamSourceType source_type,
   GstElement *rtspsrc = NULL, *rtph264depay = NULL, *v4l2h264dec = NULL;
   GstCaps *pad_filter = NULL, *filtercaps = NULL;
   GstStructure *delegate_options = NULL;
+  GstPad *qtiqmmfsrc_type = NULL;
   gboolean ret = FALSE;
   gchar element_name[128];
   gint daisychain_width = DEFAULT_CAMERA_DAISYCHAIN_OUTPUT_WIDTH;
@@ -275,11 +336,10 @@ create_pipe (GstAppContext * appctx, GstStreamSourceType source_type,
   gint framerate = DEFAULT_CAMERA_FRAME_RATE;
   gint module_id;
   gint pos_vals[2], dim_vals[2];
-  GstPad *qtiqmmfsrc_type = NULL;
   GValue video_type = G_VALUE_INIT;
 
   // 1. Create the elements or Plugins
-  if (source_type == GST_STREAM_TYPE_CAMERA) {
+  if (options.source_type == GST_STREAM_TYPE_CAMERA) {
     // Create qtiqmmfsrc plugin for camera stream
     qtiqmmfsrc = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
     if (!qtiqmmfsrc) {
@@ -301,7 +361,7 @@ create_pipe (GstAppContext * appctx, GstStreamSourceType source_type,
       g_printerr ("Failed to create qmmfsrc_caps_preview\n");
       goto error_clean_elements;
     }
-  } else if (source_type == GST_STREAM_TYPE_FILE) {
+  } else if (options.source_type == GST_STREAM_TYPE_FILE) {
     // Create file source element for file stream
     filesrc = gst_element_factory_make ("filesrc", "filesrc");
     if (!filesrc ) {
@@ -329,7 +389,7 @@ create_pipe (GstAppContext * appctx, GstStreamSourceType source_type,
       g_printerr ("Failed to create v4l2h264dec\n");
       goto error_clean_elements;
     }
-  } else if (source_type == GST_STREAM_TYPE_RTSP) {
+  } else if (options.source_type == GST_STREAM_TYPE_RTSP) {
     // Create rtspsrc plugin for rtsp input
     rtspsrc = gst_element_factory_make ("rtspsrc", "rtspsrc");
     if (!rtspsrc) {
@@ -471,7 +531,7 @@ create_pipe (GstAppContext * appctx, GstStreamSourceType source_type,
   }
 
   // 2. Set properties for all GST plugin elements
-  if (source_type == GST_STREAM_TYPE_CAMERA) {
+  if (options.source_type == GST_STREAM_TYPE_CAMERA) {
     // 2.1 Set the capabilities of camera stream for daisychain
     filtercaps = gst_caps_new_simple ("video/x-raw",
       "format", G_TYPE_STRING, "NV12",
@@ -495,14 +555,14 @@ create_pipe (GstAppContext * appctx, GstStreamSourceType source_type,
         gst_caps_features_new ("memory:GBM", NULL));
     g_object_set (G_OBJECT (qmmfsrc_caps_preview), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
-  } else if (source_type == GST_STREAM_TYPE_FILE) {
+  } else if (options.source_type == GST_STREAM_TYPE_FILE) {
     // 2.3 Set the capabilities of file stream
-    g_object_set (G_OBJECT (filesrc), "location", file_source, NULL);
+    g_object_set (G_OBJECT (filesrc), "location", options.file_path, NULL);
     g_object_set (G_OBJECT (v4l2h264dec), "capture-io-mode", 5, NULL);
     g_object_set (G_OBJECT (v4l2h264dec), "output-io-mode", 5, NULL);
-  } else if (source_type == GST_STREAM_TYPE_RTSP) {
+  } else if (options.source_type == GST_STREAM_TYPE_RTSP) {
     // 2.3 Set the capabilities of file stream
-    g_object_set (G_OBJECT (rtspsrc), "location", rtsp_source, NULL);
+    g_object_set (G_OBJECT (rtspsrc), "location", options.rtsp_ip_port, NULL);
     g_object_set (G_OBJECT (v4l2h264dec), "capture-io-mode", 5, NULL);
     g_object_set (G_OBJECT (v4l2h264dec), "output-io-mode", 5, NULL);
   }
@@ -523,13 +583,13 @@ create_pipe (GstAppContext * appctx, GstStreamSourceType source_type,
     if (i == GST_DETECTION_TYPE_YOLO)
     {
       g_object_set (G_OBJECT (qtimlelement[i]),
-          "model", DEFAULT_TFLITE_YOLOV5_MODEL,
+          "model", options.detection_model_path,
           "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
     }
     else
     {
       g_object_set (G_OBJECT (qtimlelement[i]),
-          "model", DEFAULT_TFLITE_CLASSIFICATION_MODEL,
+          "model", options.classification_model_path,
           "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
     }
     delegate_options = gst_structure_from_string (
@@ -548,8 +608,8 @@ create_pipe (GstAppContext * appctx, GstStreamSourceType source_type,
     if (module_id != -1) {
       g_object_set (G_OBJECT (qtimlvdetection[i]),
           "threshold", 40.0, "results", 4,
-          "module", module_id, "labels", DEFAULT_YOLOV5_LABELS,
-          "constants", YOLOV5_CONSTANT,
+          "module", module_id, "labels", options.detection_labels_path,
+          "constants", options.detection_constants,
           NULL);
       }
     else {
@@ -565,7 +625,8 @@ create_pipe (GstAppContext * appctx, GstStreamSourceType source_type,
     if (module_id != -1) {
       g_object_set (G_OBJECT (qtimlvclassification[i]),
           "threshold", 40.0, "results", 2,
-          "module", module_id, "labels", DEFAULT_CLASSIFICATION_LABELS, NULL);
+          "module", module_id,
+          "labels", options.classification_labels_path, NULL);
       }
     else {
       g_printerr ("Module mobilenet is not available in qtimlvclassification.\n");
@@ -587,13 +648,13 @@ create_pipe (GstAppContext * appctx, GstStreamSourceType source_type,
   // 3. Setup the pipeline
   g_print ("Adding all elements to the pipeline...\n");
 
-  if (source_type == GST_STREAM_TYPE_CAMERA) {
+  if (options.source_type == GST_STREAM_TYPE_CAMERA) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, qmmfsrc_caps,
         qmmfsrc_caps_preview, NULL);
-  } else if (source_type == GST_STREAM_TYPE_FILE) {
+  } else if (options.source_type == GST_STREAM_TYPE_FILE) {
     gst_bin_add_many (GST_BIN (appctx->pipeline),
         filesrc, qtdemux, h264parse, v4l2h264dec, NULL);
-  } else if (source_type == GST_STREAM_TYPE_RTSP) {
+  } else if (options.source_type == GST_STREAM_TYPE_RTSP) {
     gst_bin_add_many (GST_BIN (appctx->pipeline),
         rtspsrc, rtph264depay, h264parse, v4l2h264dec, NULL);
   }
@@ -628,7 +689,7 @@ create_pipe (GstAppContext * appctx, GstStreamSourceType source_type,
 
   // 3.1 Create pipeline for Parallel Inferencing
   g_print ("Linking elements...\n");
-  if (source_type == GST_STREAM_TYPE_CAMERA) {
+  if (options.source_type == GST_STREAM_TYPE_CAMERA) {
     ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps,
         queue[1], NULL);
     if (!ret) {
@@ -644,7 +705,7 @@ create_pipe (GstAppContext * appctx, GstStreamSourceType source_type,
           " -> qtimetamux cannot be linked. Exiting.\n");
       goto error_clean_pipeline;
     }
-  } else if (source_type == GST_STREAM_TYPE_FILE) {
+  } else if (options.source_type == GST_STREAM_TYPE_FILE) {
     ret = gst_element_link_many (filesrc, qtdemux, NULL);
     if (!ret) {
       g_printerr ("\n pipeline elements filesrc -> qtdemux elements "
@@ -666,7 +727,7 @@ create_pipe (GstAppContext * appctx, GstStreamSourceType source_type,
           "Exiting.\n");
       goto error_clean_pipeline;
     }
-  } else if (source_type == GST_STREAM_TYPE_RTSP) {
+  } else if (options.source_type == GST_STREAM_TYPE_RTSP) {
     ret = gst_element_link_many (queue[0], rtph264depay, h264parse,
         v4l2h264dec, tee[0], qtimetamux, NULL);
     if (!ret) {
@@ -763,7 +824,7 @@ create_pipe (GstAppContext * appctx, GstStreamSourceType source_type,
 
   g_print ("All elements are linked successfully\n");
 
-  if (source_type == GST_STREAM_TYPE_CAMERA) {
+  if (options.source_type == GST_STREAM_TYPE_CAMERA) {
     // Setting Up qtiqmmfsrc streamtype property
     qtiqmmfsrc_type = gst_element_get_static_pad (qtiqmmfsrc, "video_0");
     if (!qtiqmmfsrc_type) {
@@ -776,10 +837,10 @@ create_pipe (GstAppContext * appctx, GstStreamSourceType source_type,
     g_object_set_property (G_OBJECT (qtiqmmfsrc_type), "type", &video_type);
     g_value_unset (&video_type);
     gst_object_unref (qtiqmmfsrc_type);
-  } else if (source_type == GST_STREAM_TYPE_FILE) {
+  } else if (options.source_type == GST_STREAM_TYPE_FILE) {
     // 3.3 Set pad to link dynamic video to queue
     g_signal_connect (qtdemux, "pad-added", G_CALLBACK (on_pad_added), queue[0]);
-  } else if (source_type == GST_STREAM_TYPE_RTSP) {
+  } else if (options.source_type == GST_STREAM_TYPE_RTSP) {
     // 3.3 Set pad to link dynamic video to queue
     g_signal_connect (rtspsrc, "pad-added", G_CALLBACK (on_pad_added), queue[0]);
   }
@@ -842,12 +903,12 @@ error_clean_pipeline:
 
 error_clean_elements:
   g_printerr ("Pipeline elements cannot be linked\n");
-  if (source_type == GST_STREAM_TYPE_CAMERA) {
+  if (options.source_type == GST_STREAM_TYPE_CAMERA) {
     cleanup_gst (&qtiqmmfsrc, &qmmfsrc_caps, &qmmfsrc_caps_preview, NULL);
-  } else if (source_type == GST_STREAM_TYPE_FILE) {
+  } else if (options.source_type == GST_STREAM_TYPE_FILE) {
     cleanup_gst (&filesrc, &qtdemux, &h264parse, &v4l2h264dec,
         &qtimetamux, NULL);
-  } else if (source_type == GST_STREAM_TYPE_RTSP) {
+  } else if (options.source_type == GST_STREAM_TYPE_RTSP) {
     cleanup_gst (&rtspsrc, &rtph264depay, &h264parse, &v4l2h264dec,
         &qtimetamux, NULL);
   }
@@ -899,6 +960,89 @@ error_clean_elements:
   return FALSE;
 }
 
+/**
+ * Parse JSON file to read input parameters
+ *
+ * @param config_file Path to config file
+ * @param options Application specific options
+ */
+gint
+parse_json(gchar * config_file, GstAppOptions * options)
+{
+  JsonParser *parser = NULL;
+  JsonArray *pipeline_info = NULL;
+  JsonNode *root = NULL;
+  JsonObject *root_obj = NULL;
+  GError *error = NULL;
+
+  parser = json_parser_new ();
+
+  // Load the JSON file
+  if (!json_parser_load_from_file (parser, config_file, &error)) {
+    g_printerr ("Unable to parse JSON file: %s\n", error->message);
+    g_error_free (error);
+    g_object_unref (parser);
+    return -1;
+  }
+
+  // Get the root object
+  root = json_parser_get_root (parser);
+  if (!JSON_NODE_HOLDS_OBJECT (root)) {
+    gst_printerr ("Failed to load json object\n");
+    g_object_unref (parser);
+    return -1;
+  }
+
+  root_obj = json_node_get_object (root);
+
+  if (json_object_has_member (root_obj, "input-file")) {
+    options->file_path =
+        g_strdup (json_object_get_string_member (root_obj, "input-file"));
+  }
+
+  if (json_object_has_member (root_obj, "rtsp-ip-port")) {
+    options->rtsp_ip_port =
+        g_strdup (json_object_get_string_member (root_obj, "rtsp-ip-port"));
+  }
+
+#ifdef ENABLE_CAMERA
+  if ((!json_object_has_member (root_obj, "rtsp-ip-port")) &&
+      (!json_object_has_member (root_obj, "input-file")))
+    options->camera_source = TRUE;
+#endif
+
+  if (json_object_has_member (root_obj, "detection-model")) {
+    options->detection_model_path =
+        g_strdup (json_object_get_string_member (root_obj, "detection-model"));
+  }
+
+  if (json_object_has_member (root_obj, "detection-labels")) {
+    options->detection_labels_path =
+        g_strdup (json_object_get_string_member (root_obj, "detection-labels"));
+  }
+
+  if (json_object_has_member (root_obj, "classification-model")) {
+    options->classification_model_path =
+        g_strdup (
+            json_object_get_string_member (root_obj, "classification-model"));
+  }
+
+  if (json_object_has_member (root_obj, "classification-labels")) {
+    options->classification_labels_path =
+        g_strdup (
+            json_object_get_string_member (root_obj, "classification-labels"));
+  }
+
+  if (json_object_has_member (root_obj, "detection-constants")) {
+    options->detection_constants =
+        g_strdup (
+            json_object_get_string_member (root_obj, "detection-constants"));
+  }
+
+  g_object_unref (parser);
+  return 0;
+}
+
 gint
 main (gint argc, gchar * argv[])
 {
@@ -907,14 +1051,23 @@ main (gint argc, gchar * argv[])
   GstElement *pipeline = NULL;
   GOptionContext *ctx = NULL;
   const gchar *app_name = NULL;
-  gchar *file_source = NULL;
-  gchar *rtsp_source = NULL;
-  gboolean camera_source = FALSE;
+  GstAppOptions options = {};
   GstAppContext appctx = {};
   GstStreamSourceType source_type;
   gboolean ret = FALSE;
-  gchar help_description[1024];
+  gchar help_description[2048];
   guint intrpt_watch_id = 0;
+  gchar *config_file = NULL;
+  GError *error = NULL;
+
+  options.file_path = NULL;
+  options.rtsp_ip_port = NULL;
+  options.camera_source = FALSE;
+  options.detection_model_path = NULL;
+  options.classification_model_path = NULL;
+  options.detection_labels_path = NULL;
+  options.classification_labels_path = NULL;
+  options.detection_constants = NULL;
 
   // Set Display environment variables
   setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
@@ -922,48 +1075,55 @@ main (gint argc, gchar * argv[])
 
   // Structure to define the user options selection
   GOptionEntry entries[] = {
-#ifdef ENABLE_CAMERA
-    { "camera", 'c', 0, G_OPTION_ARG_NONE,
-      &camera_source,
-      "Camera source (Default)",
+    { "config-file", 0, 0, G_OPTION_ARG_STRING,
+      &config_file,
+      "Path to config file\n",
       NULL
-    },
-#endif // ENABLE_CAMERA
-    { "file", 'f', 0, G_OPTION_ARG_STRING,
-      &file_source,
-      "File source path",
-      "/PATH"
-    },
-    { "rtsp-source", 'r', 0, G_OPTION_ARG_STRING,
-      &rtsp_source,
-      "RTSP source\n",
-      "/PATH"
     },
     { NULL }
   };
 
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
 
-  snprintf (help_description, 1023, "\nExample:\n"
-#ifdef ENABLE_CAMERA
-      "  %s \n"
-      "  %s --camera\n"
-#endif // ENABLE_CAMERA
-      "  %s --file=/opt/video.mp4\n"
-      "  %s --rtsp-source=\"rtsp://<ip>:port/<node>\"\n"
+  snprintf (help_description, 2047, "\nExample:\n"
+      "  %s --config-file=%s\n"
       "\nThis Sample App demonstrates Daisy chain of "
       "Object Detection and Classification\n"
-      "\nDefault Path for model and labels used are as below:\n"
-      "Object detection:  %-32s  %-32s\n"
-      "Classification  :  %-32s  %-32s\n"
-      "\nTo use your own model and labels replace at the default paths\n",
+      "\nConfig file Fields:\n"
+
+      "  input-file: \"/PATH\"\n"
+      "      Input File path\n"
+      "  rtsp-ip-port: \"rtsp://<ip>:<port>/<stream>\"\n"
+      "      Use this parameter to provide the rtsp input.\n"
+      "      Input should be provided as rtsp://<ip>:<port>/<stream>,\n"
+      "      eg: rtsp://192.168.1.110:8554/live.mkv\n"
 #ifdef ENABLE_CAMERA
-      app_name,
-#endif // ENABLE_CAMERA
-      app_name, app_name, app_name, DEFAULT_TFLITE_YOLOV5_MODEL,
-      DEFAULT_YOLOV5_LABELS, DEFAULT_TFLITE_CLASSIFICATION_MODEL,
-      DEFAULT_CLASSIFICATION_LABELS);
-  help_description[1023] = '\0';
+      "  If neither input-file nor rtsp-ip-port are provided, "
+      "then camera input will be selected\n\n"
+#endif
+      "  detection-model: \"/PATH\"\n"
+      "      This is an optional parameter and overrides default path "
+      "for YOLOV5 detection model\n"
+      "      Default path for YOLOV5 model: "DEFAULT_TFLITE_YOLOV5_MODEL"\n"
+      "  detection-labels: \"/PATH\"\n"
+      "      This is an optional parameter and overrides default path "
+      " for YOLOV5 labels\n"
+      "      Default path for YOLOV5 labels: "DEFAULT_YOLOV5_LABELS"\n"
+      "  classification-model: \"/PATH\"\n"
+      "      This is an optional parameter and overrides default path "
+      "for classification model\n"
+      "      Default path for Classification model: "
+      DEFAULT_TFLITE_CLASSIFICATION_MODEL"\n"
+      "  classification-labels: \"/PATH\"\n"
+      "      This is an optional parameter and overrides default path "
+      " for classification labels\n"
+      "      Default path for classification labels: "
+      DEFAULT_CLASSIFICATION_LABELS"\n"
+      "  detection-constants: \"CONSTANTS\"\n"
+      "      Constants, offsets and coefficients for YOLOV5 TFLITE model \n"
+      "      Default constants for YOLOV5: "YOLOV5_CONSTANT"\n",
+      app_name, DEFAULT_CONFIG_FILE);
+  help_description[2047] = '\0';
 
   // Parse command line entries.
   if ((ctx = g_option_context_new (help_description)) != NULL) {
@@ -980,96 +1140,133 @@ main (gint argc, gchar * argv[])
       g_printerr ("Failed to parse command line options: %s!\n",
           GST_STR_NULL (error->message));
       g_clear_error (&error);
-      gst_app_context_free (&appctx, file_source, rtsp_source);
+      gst_app_context_free (&appctx, &options, config_file);
       return -EFAULT;
     } else if (!success && (NULL == error)) {
       g_printerr ("Initializing: Unknown error!\n");
-      gst_app_context_free (&appctx, file_source, rtsp_source);
+      gst_app_context_free (&appctx, &options, config_file);
       return -EFAULT;
     }
   } else {
     g_printerr ("Failed to create options context!\n");
-    gst_app_context_free (&appctx, file_source, rtsp_source);
+    gst_app_context_free (&appctx, &options, config_file);
     return -EFAULT;
+  }
+
+  if (config_file == NULL) {
+    config_file = DEFAULT_CONFIG_FILE;
+  }
+
+  if (!file_exists (config_file)) {
+    g_printerr ("Invalid config file path: %s\n", config_file);
+    gst_app_context_free (&appctx, &options, config_file);
+    return -EINVAL;
+  }
+
+  if (parse_json (config_file, &options) != 0) {
+    gst_app_context_free (&appctx, &options, config_file);
+    return -EINVAL;
   }
 
 // Check for input source
 #ifdef ENABLE_CAMERA
-  g_print ("TARGET Can support file source, RTSP source and camera source\n");
+  g_print ("TARGET can support file source, RTSP source and camera source\n");
 #else
-  g_print ("TARGET Can only support file source and RTSP source.\n");
-  if (file_source == NULL && rtsp_source == NULL) {
-    g_print ("User need to give proper input file as source\n");
-    gst_app_context_free (&appctx, file_source, rtsp_source);
+  g_print ("TARGET can only support file source and RTSP source.\n");
+  if (options.file_path == NULL && options.rtsp_ip_port == NULL) {
+    g_print ("User need to give proper input as source\n");
+    gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
 #endif // ENABLE_CAMERA
 
-  if ((camera_source && file_source) ||
-      (camera_source && rtsp_source) ||
-      (file_source && rtsp_source))
+  if ((options.camera_source && options.file_path) ||
+      (options.camera_source && options.rtsp_ip_port) ||
+      (options.file_path && options.rtsp_ip_port))
   {
     g_printerr ("Multiple sources are provided as input.\n"
-        "Select either Camera or File or RTSP source\n");
-    gst_app_context_free (&appctx, file_source, rtsp_source);
+        "Select only one input source\n");
+    gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
-  } else if (camera_source) {
+  } else if (options.camera_source) {
     g_print ("Camera source is selected.\n");
-    source_type = GST_STREAM_TYPE_CAMERA;
-  } else if (file_source) {
+    options.source_type = GST_STREAM_TYPE_CAMERA;
+  } else if (options.file_path) {
     g_print ("File source is selected.\n");
-    source_type = GST_STREAM_TYPE_FILE;
-  } else if (rtsp_source) {
+    options.source_type = GST_STREAM_TYPE_FILE;
+  } else if (options.rtsp_ip_port) {
     g_print ("RTSP source is selected.\n");
-    source_type = GST_STREAM_TYPE_RTSP;
+    options.source_type = GST_STREAM_TYPE_RTSP;
   } else {
-    g_print ("No source is selected."
+#ifdef ENABLE_CAMERA
+    g_print ("No source is selected. "
         "Camera is set as Default\n");
-    source_type = GST_STREAM_TYPE_CAMERA;
+    options.source_type = GST_STREAM_TYPE_CAMERA;
+#else
+    g_print ("User need to give proper input file as source\n");
+    gst_app_context_free (&appctx, &options, config_file);
+    return -EINVAL;
+#endif
   }
 
-  if (source_type == GST_STREAM_TYPE_FILE) {
-    if (!file_exists (file_source)) {
-      g_printerr ("Invalid video file source path: %s\n", file_source);
-      gst_app_context_free (&appctx, file_source, rtsp_source);
+  if (options.source_type == GST_STREAM_TYPE_FILE) {
+    if (!file_exists (options.file_path)) {
+      g_printerr ("Invalid video file source path: %s\n", options.file_path);
+      gst_app_context_free (&appctx, &options, config_file);
       return -EINVAL;
     }
   }
 
-  if (!file_exists (DEFAULT_TFLITE_YOLOV5_MODEL)) {
+  if(options.detection_model_path == NULL) {
+    options.detection_model_path = DEFAULT_TFLITE_YOLOV5_MODEL;
+  }
+  if (!file_exists (options.detection_model_path)) {
     g_printerr ("Invalid detection model file path: %s\n",
-        DEFAULT_TFLITE_YOLOV5_MODEL);
-    gst_app_context_free (&appctx, file_source, rtsp_source);
+        options.detection_model_path);
+    gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
 
-  if (!file_exists (DEFAULT_TFLITE_CLASSIFICATION_MODEL)) {
+  if(options.classification_model_path == NULL) {
+    options.classification_model_path = DEFAULT_TFLITE_CLASSIFICATION_MODEL;
+  }
+  if (!file_exists (options.classification_model_path)) {
     g_printerr ("Invalid classification model file path: %s\n",
-        DEFAULT_TFLITE_CLASSIFICATION_MODEL);
-    gst_app_context_free (&appctx, file_source, rtsp_source);
+        options.classification_model_path);
+    gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
 
-  if (!file_exists (DEFAULT_YOLOV5_LABELS)) {
+  if(options.detection_labels_path == NULL) {
+    options.detection_labels_path = DEFAULT_YOLOV5_LABELS;
+  }
+  if (!file_exists (options.detection_labels_path)) {
     g_printerr ("Invalid detection labels file path: %s\n",
-        DEFAULT_YOLOV5_LABELS);
-    gst_app_context_free (&appctx, file_source, rtsp_source);
+        options.detection_labels_path);
+    gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
 
-  if (!file_exists (DEFAULT_CLASSIFICATION_LABELS)) {
+  if(options.classification_labels_path == NULL) {
+    options.classification_labels_path = DEFAULT_CLASSIFICATION_LABELS;
+  }
+  if (!file_exists (options.classification_labels_path)) {
     g_printerr ("Invalid classification labels file path: %s\n",
-        DEFAULT_CLASSIFICATION_LABELS);
-    gst_app_context_free (&appctx, file_source, rtsp_source);
+        options.classification_labels_path);
+    gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
 
   g_print ("Running app with\n"
       "For Detection model: %s labels: %s\n"
       "For Classification model: %s labels: %s\n",
-      DEFAULT_TFLITE_YOLOV5_MODEL, DEFAULT_YOLOV5_LABELS,
-      DEFAULT_TFLITE_CLASSIFICATION_MODEL,
-      DEFAULT_CLASSIFICATION_LABELS);
+      options.detection_model_path, options.detection_labels_path,
+      options.classification_model_path,
+      options.classification_labels_path);
+
+  if (options.detection_constants == NULL) {
+    options.detection_constants = YOLOV5_CONSTANT;
+  }
 
   // Initialize GST library.
   gst_init (&argc, &argv);
@@ -1078,24 +1275,24 @@ main (gint argc, gchar * argv[])
   pipeline = gst_pipeline_new (app_name);
   if (!pipeline) {
     g_printerr ("ERROR: failed to create pipeline.\n");
-    gst_app_context_free (&appctx, file_source, rtsp_source);
+    gst_app_context_free (&appctx, &options, config_file);
     return -1;
   }
 
   appctx.pipeline = pipeline;
 
   // Build the pipeline, link all elements in the pipeline
-  ret = create_pipe (&appctx, source_type, file_source, rtsp_source);
+  ret = create_pipe (&appctx, options);
   if (!ret) {
     g_printerr ("ERROR: failed to create GST pipe.\n");
-    gst_app_context_free (&appctx, file_source, rtsp_source);
+    gst_app_context_free (&appctx, &options, config_file);
     return -1;
   }
 
   // Initialize main loop.
   if ((mloop = g_main_loop_new (NULL, FALSE)) == NULL) {
     g_printerr ("ERROR: Failed to create Main loop!\n");
-    gst_app_context_free (&appctx, file_source, rtsp_source);
+    gst_app_context_free (&appctx, &options, config_file);
     return -1;
   }
   appctx.mloop = mloop;
@@ -1104,7 +1301,7 @@ main (gint argc, gchar * argv[])
   // Bus is message queue for getting callback from gstreamer pipeline
   if ((bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline))) == NULL) {
     g_printerr ("ERROR: Failed to retrieve pipeline bus!\n");
-    gst_app_context_free (&appctx, file_source, rtsp_source);
+    gst_app_context_free (&appctx, &options, config_file);
     return -1;
   }
 
@@ -1155,7 +1352,7 @@ error:
 
   g_print ("Set pipeline to NULL state ...\n");
   gst_element_set_state (pipeline, GST_STATE_NULL);
-  gst_app_context_free (&appctx, file_source, rtsp_source);
+  gst_app_context_free (&appctx, &options, config_file);
 
   g_print ("gst_deinit\n");
   gst_deinit ();
