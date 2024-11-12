@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <dlfcn.h>
+#include <assert.h>
 
 #include "mosquitto.h"
 #include "mqtt_protocol.h"
@@ -42,30 +44,33 @@ GST_DEBUG_CATEGORY (gst_mqtt_debug);
 #define DEFAULT_MQTT_SOCKS5_PASSWORD    NULL
 #define DEFAULT_ADAPTOR_SUB_CALLBACK    NULL
 
+typedef struct _MosquittoHandler MosquittoHandler;
+static MosquittoHandler * mosquitto_handler = NULL;
+
 // Macro to wrap functions in libmosquitto
-#define MOSQUITTO_LIB_INIT                  mosquitto_lib_init
-#define MOSQUITTO_NEW                       mosquitto_new
-#define MOSQUITTO_CONNECT_BIND              mosquitto_connect_bind_v5
-#define MOSQUITTO_DISCONNECT                mosquitto_disconnect_v5
-#define MOSQUITTO_LOOP_START                mosquitto_loop_start
-#define MOSQUITTO_LOOP_STOP                 mosquitto_loop_stop
-#define MOSQUITTO_PUBLISH                   mosquitto_publish_v5
-#define MOSQUITTO_SUBSCRIBE                 mosquitto_subscribe_v5
-#define MOSQUITTO_DESTROY                   mosquitto_destroy
-#define MOSQUITTO_LIB_CLEANUP               mosquitto_lib_cleanup
-#define MOSQUITTO_INT_OPTION                mosquitto_int_option
-#define MOSQUITTO_WILL_SET                  mosquitto_will_set_v5
-#define MOSQUITTO_USERNAME_PW_SET           mosquitto_username_pw_set
-#define MOSQUITTO_SOCKS5_SET                mosquitto_socks5_set
-#define MOSQUITTO_CONNECT_CALLBACK_SET      mosquitto_connect_v5_callback_set
-#define MOSQUITTO_DISCONNECT_CALLBACK_SET   mosquitto_disconnect_v5_callback_set
-#define MOSQUITTO_PUBLISH_CALLBACK_SET      mosquitto_publish_v5_callback_set
-#define MOSQUITTO_SUBSCRIBE_CALLBACK_SET    mosquitto_subscribe_v5_callback_set
-#define MOSQUITTO_MESSAGE_CALLBACK_SET      mosquitto_message_v5_callback_set
-#define MOSQUITTO_TOPIC_MATCHES_SUB         mosquitto_topic_matches_sub
-#define MOSQUITTO_CONACK_STRING             mosquitto_connack_string
-#define MOSQUITTO_REASON_STRING             mosquitto_reason_string
-#define MOSQUITTO_STRERROR                  mosquitto_strerror
+#define MOSQUITTO_LIB_INIT                mosquitto_handler->lib_init
+#define MOSQUITTO_NEW                     mosquitto_handler->new
+#define MOSQUITTO_CONNECT_BIND            mosquitto_handler->connect_bind_v5
+#define MOSQUITTO_DISCONNECT              mosquitto_handler->disconnect_v5
+#define MOSQUITTO_LOOP_START              mosquitto_handler->loop_start
+#define MOSQUITTO_LOOP_STOP               mosquitto_handler->loop_stop
+#define MOSQUITTO_PUBLISH                 mosquitto_handler->publish_v5
+#define MOSQUITTO_SUBSCRIBE               mosquitto_handler->subscribe_v5
+#define MOSQUITTO_DESTROY                 mosquitto_handler->destroy
+#define MOSQUITTO_LIB_CLEANUP             mosquitto_handler->lib_cleanup
+#define MOSQUITTO_INT_OPTION              mosquitto_handler->int_option
+#define MOSQUITTO_WILL_SET                mosquitto_handler->will_set_v5
+#define MOSQUITTO_USERNAME_PW_SET         mosquitto_handler->username_pw_set
+#define MOSQUITTO_SOCKS5_SET              mosquitto_handler->socks5_set
+#define MOSQUITTO_CONNECT_CALLBACK_SET    mosquitto_handler->connect_v5_callback_set
+#define MOSQUITTO_DISCONNECT_CALLBACK_SET mosquitto_handler->disconnect_v5_callback_set
+#define MOSQUITTO_PUBLISH_CALLBACK_SET    mosquitto_handler->publish_v5_callback_set
+#define MOSQUITTO_SUBSCRIBE_CALLBACK_SET  mosquitto_handler->subscribe_v5_callback_set
+#define MOSQUITTO_MESSAGE_CALLBACK_SET    mosquitto_handler->message_v5_callback_set
+#define MOSQUITTO_TOPIC_MATCHES_SUB       mosquitto_handler->topic_matches_sub
+#define MOSQUITTO_CONACK_STRING           mosquitto_handler->connack_string
+#define MOSQUITTO_REASON_STRING           mosquitto_handler->reason_string
+#define MOSQUITTO_STRERROR                mosquitto_handler->strerror
 
 // Global structure used in dlsym to parse
 GstProtocolCommonFunc GST_PROTOCOL_CFUNC_SYMBOL = {
@@ -176,6 +181,173 @@ struct _GstMqtt {
   /// Callback to bring data to adaptor
   GstAdaptorSubscribeCallback   callback;
 };
+
+typedef struct mosquitto mosquitto;
+
+struct _MosquittoHandler {
+  // mosquitto library handle.
+  gpointer                      lib_handle;
+
+  // mosquitto library APIs.
+  libmosq_EXPORT int                (*lib_init)                   (void);
+  libmosq_EXPORT mosquitto *        (*new)                        (const char *,
+      bool, void *);
+  libmosq_EXPORT int                (*connect_bind_v5)            (mosquitto *,
+      const char *, int, int, const char *, const mosquitto_property *);
+  libmosq_EXPORT int                (*disconnect_v5)              (mosquitto *,
+      int, const mosquitto_property *);
+  libmosq_EXPORT int                (*loop_start)                 (mosquitto *);
+  libmosq_EXPORT int                (*loop_stop)                  (mosquitto *,
+      bool);
+  libmosq_EXPORT int                (*publish_v5)                 (mosquitto *,
+      int*, const char*, int, const void*, int ,bool , const mosquitto_property*);
+  libmosq_EXPORT int                (*subscribe_v5)               (mosquitto *,
+      int *, const char *, int, int, const mosquitto_property *);
+  libmosq_EXPORT void               (*destroy)                    (mosquitto *);
+  libmosq_EXPORT int                (*lib_cleanup)                (void);
+  libmosq_EXPORT int                (*int_option)                 (mosquitto *,
+      enum mosq_opt_t, int);
+  libmosq_EXPORT int                (*will_set_v5)                (mosquitto *,
+      const char *, int, const void *, int, bool, mosquitto_property *);
+  libmosq_EXPORT int                (*username_pw_set)            (mosquitto *,
+      const char *, const char *);
+  libmosq_EXPORT int                (*socks5_set)                 (mosquitto *,
+      const char *, int, const char *, const char *);
+  libmosq_EXPORT void               (*connect_v5_callback_set)    (mosquitto *,
+      void (*on_connect)(mosquitto*, void*, int, int, const mosquitto_property*));
+  libmosq_EXPORT void               (*disconnect_v5_callback_set) (mosquitto *,
+      void (*on_disconnect)(mosquitto*, void*, int, const mosquitto_property*));
+  libmosq_EXPORT void               (*publish_v5_callback_set)    (mosquitto *,
+      void (*on_publish)(mosquitto*, void*, int, int, const mosquitto_property*));
+  libmosq_EXPORT void               (*subscribe_v5_callback_set)  (mosquitto *,
+      void (*on_subscribe)(mosquitto*, void*, int, int, const int*,
+          const mosquitto_property*));
+  libmosq_EXPORT void               (*message_v5_callback_set)    (mosquitto *,
+      void (*on_message)(mosquitto*, void*, const struct mosquitto_message*,
+          const mosquitto_property*));
+  libmosq_EXPORT int                (*topic_matches_sub)          (const char *,
+      const char *, bool *);
+  libmosq_EXPORT const char *       (*connack_string)             (int);
+  libmosq_EXPORT const char *       (*reason_string)              (int);
+  libmosq_EXPORT const char *       (*strerror)                   (int);
+};
+
+gboolean
+load_symbol (gpointer* method, gpointer handle, const gchar* name)
+{
+  gboolean success = TRUE;
+
+  *(method) = dlsym (handle, name);
+  if (NULL == *(method)) {
+    GST_ERROR ("Failed to find symbol %s, error: %s!", name, dlerror ());
+    success = FALSE;
+  }
+
+  return success;
+}
+
+static __attribute__((constructor))
+void gst_mosquitto_handler_init ()
+{
+  mosquitto_handler = (MosquittoHandler *) g_malloc (sizeof(MosquittoHandler));
+
+  if (NULL == mosquitto_handler) {
+    GST_ERROR ("Failed to allocate memory for MosquittoHandler !");
+  }
+
+  assert (NULL != mosquitto_handler);
+
+  mosquitto_handler->lib_handle = dlopen ("libmosquitto.so", RTLD_NOW | RTLD_LOCAL);
+
+  if (NULL == mosquitto_handler->lib_handle) {
+    GST_ERROR ("Failed to open mosquitto library, error: %s!", dlerror ());
+  }
+
+  assert (NULL != mosquitto_handler->lib_handle);
+
+  gboolean success = load_symbol ((gpointer*)&MOSQUITTO_LIB_INIT,
+      mosquitto_handler->lib_handle, "mosquitto_lib_init");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_NEW,
+      mosquitto_handler->lib_handle, "mosquitto_new");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_CONNECT_BIND,
+      mosquitto_handler->lib_handle, "mosquitto_connect_bind_v5");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_DISCONNECT,
+      mosquitto_handler->lib_handle, "mosquitto_disconnect_v5");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_LOOP_START,
+      mosquitto_handler->lib_handle, "mosquitto_loop_start");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_LOOP_STOP,
+      mosquitto_handler->lib_handle, "mosquitto_loop_stop");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_PUBLISH,
+      mosquitto_handler->lib_handle, "mosquitto_publish_v5");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_SUBSCRIBE,
+      mosquitto_handler->lib_handle, "mosquitto_subscribe_v5");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_DESTROY,
+      mosquitto_handler->lib_handle, "mosquitto_destroy");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_LIB_CLEANUP,
+      mosquitto_handler->lib_handle, "mosquitto_lib_cleanup");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_INT_OPTION,
+      mosquitto_handler->lib_handle, "mosquitto_int_option");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_WILL_SET,
+      mosquitto_handler->lib_handle, "mosquitto_will_set_v5");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_USERNAME_PW_SET,
+      mosquitto_handler->lib_handle, "mosquitto_username_pw_set");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_SOCKS5_SET,
+      mosquitto_handler->lib_handle, "mosquitto_socks5_set");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_CONNECT_CALLBACK_SET,
+      mosquitto_handler->lib_handle, "mosquitto_connect_v5_callback_set");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_DISCONNECT_CALLBACK_SET,
+      mosquitto_handler->lib_handle, "mosquitto_disconnect_v5_callback_set");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_PUBLISH_CALLBACK_SET,
+      mosquitto_handler->lib_handle, "mosquitto_publish_v5_callback_set");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_SUBSCRIBE_CALLBACK_SET,
+      mosquitto_handler->lib_handle, "mosquitto_subscribe_v5_callback_set");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_MESSAGE_CALLBACK_SET,
+      mosquitto_handler->lib_handle, "mosquitto_message_v5_callback_set");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_TOPIC_MATCHES_SUB,
+      mosquitto_handler->lib_handle, "mosquitto_topic_matches_sub");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_CONACK_STRING,
+      mosquitto_handler->lib_handle, "mosquitto_connack_string");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_REASON_STRING,
+      mosquitto_handler->lib_handle, "mosquitto_reason_string");
+
+  success &= load_symbol ((gpointer*)&MOSQUITTO_STRERROR,
+      mosquitto_handler->lib_handle, "mosquitto_strerror");
+
+  assert (FALSE != success);
+}
+
+static __attribute__((destructor))
+void gst_mosquitto_handler_deinit ()
+{
+  if (mosquitto_handler->lib_handle != NULL)
+    dlclose (mosquitto_handler->lib_handle);
+
+  if (mosquitto_handler != NULL) {
+    g_free (mosquitto_handler);
+    mosquitto_handler = NULL;
+  }
+}
 
 static inline void
 gst_mqtt_init_debug_category (void)
@@ -456,7 +628,7 @@ config_parse (GstMqtt *mqtt, gchar *prop, gchar *value)
 {
   g_return_if_fail (mqtt != NULL);
   g_return_if_fail (prop != NULL);
-  g_return_if_fail (value != NULL); 
+  g_return_if_fail (value != NULL);
 
   GST_DEBUG ("prop: %s, value: %s.", prop, value);
 
