@@ -694,7 +694,8 @@ find_tag_by_name (const gchar * section_name, const gchar * tag_name,
 
   // Determine data type of the tag.
   if (*tag_id < VENDOR_SECTION_START)
-    tag_type = get_camera_metadata_tag_type (*tag_id);
+    tag_type =
+        ::camera::CameraMetadata::get_camera_metadata_tag_type (*tag_id);
   else
     tag_type = vtags->getTagType (*tag_id);
 
