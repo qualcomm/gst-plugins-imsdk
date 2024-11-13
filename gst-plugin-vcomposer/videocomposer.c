@@ -449,6 +449,8 @@ gst_video_composer_create_pool (GstVideoComposer * vcomposer, GstCaps * caps)
   allocator = gst_fd_allocator_new ();
   gst_buffer_pool_config_set_allocator (config, allocator, NULL);
   gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
+  gst_buffer_pool_config_add_option (config,
+      GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
 
   if (gst_caps_has_compression (caps, "ubwc")) {
     gst_buffer_pool_config_add_option (config,
