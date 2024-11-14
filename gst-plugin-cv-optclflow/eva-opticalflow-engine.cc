@@ -69,8 +69,9 @@
 #define EVA_MV_X_FIELD_SIZE           16
 #define EVA_MV_Y_FIELD_SIZE           16
 
-#define EVA_PAXEL_WIDTH               4
-#define EVA_PAXEL_HEIGHT              4
+#define STEP_SIZE                     1
+#define EVA_PAXEL_WIDTH               (1 << STEP_SIZE)
+#define EVA_PAXEL_HEIGHT              (1 << STEP_SIZE)
 
 #define DEFAULT_OPT_VIDEO_WIDTH       0
 #define DEFAULT_OPT_VIDEO_HEIGHT      0
@@ -196,7 +197,7 @@ gst_eva_append_custom_meta (GstCvOptclFlowEngine * engine, GstBuffer * buffer)
 
   // Add the number of paxels in a single row and column to the info structure.
   g_value_set_uint (&value,
-      GST_ROUND_UP_64 (GET_OPT_WIDTH (engine->settings)) / EVA_PAXEL_WIDTH);
+      GST_ROUND_UP_64 (GET_OPT_WIDTH (engine->settings) / EVA_PAXEL_WIDTH));
   gst_structure_set_value (info, "mv-paxels-row-length", &value);
   g_value_set_uint (&value,
       GET_OPT_HEIGHT (engine->settings) / EVA_PAXEL_HEIGHT);
@@ -313,7 +314,7 @@ gst_cv_optclflow_engine_new (GstStructure * settings)
   evaOFAmFilterConfig amfconf;
 
   amfconf.nConfThresh = 255;
-  amfconf.nStepSize = 2;
+  amfconf.nStepSize = STEP_SIZE;
   amfconf.nUpScale = 0;
   amfconf.nOutputIntOnly = 1;
   amfconf.nOutputFormat = 0;
