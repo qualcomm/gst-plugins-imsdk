@@ -27,7 +27,7 @@ do
         "2")
             echo "Selected input: USB camera!"
             read -p 'Please enter the video node for the USB video device (for ex:"/dev/video2"):' device_id
-            pipeline+='v4l2src io-mode=dmabuf-import device="'${device_id}'" ! video/x-raw,width=1280,height=720 ! qtivtransform ! '
+            pipeline+='v4l2src io-mode=dmabuf-import device="'${device_id}'" ! video/x-raw,width=1920,height=1080 ! qtivtransform ! '
             livesrc=true
             usbsrc=true
             help+="Make sure the video device mentioned in v4l2src's device property is the USB camera.\n"
@@ -66,21 +66,21 @@ do
     case $input in
         "1")
             echo "Selected model: Detection - FootTrackNet Quantized!"
-            pipeline+='tee name=t_split_0 t_split_0. ! qtimetamux name=metamux t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/opt/data/foot_track_net_quantized.tflite ! queue ! qtimlvdetection threshold=90.0 results=10 module=qpd constants="qpd,q-offsets=<0.0,25.0,114.0,0.0>,q-scales=<0.0035636962857097387,1.2998489141464233,2.1744511127471924,0.00390625>;" labels=/opt/labels/gst-wizard/foot_track_net.labels ! text/x-raw ! queue ! metamux. metamux. ! qtivoverlay engine=gles ! queue ! '
+            pipeline+='tee name=t_split_0 t_split_0. ! qtimetamux name=metamux t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/opt/data/foot_track_net_quantized.tflite ! queue ! qtimlvdetection threshold=90.0 results=10 module=qpd constants="qpd,q-offsets=<0.0,25.0,114.0,0.0>,q-scales=<0.0035636962857097387,1.2998489141464233,2.1744511127471924,0.00390625>;" labels=/opt/labels/foot_track_net.labels ! text/x-raw ! queue ! metamux. metamux. ! qtivoverlay engine=gles ! queue ! '
             help+="Please download the model and label files from here: https://aihub.qualcomm.com/models/foot_track_net\n"
             help+="Make sure to select your device and set TorchScript -> TFLite before downloading!\n"
-            help+="Push the Model file on the device at'/opt/data/' and name it 'foot_track_net_quantized.tflite'\n"
-            help+="Make sure the label file is present at'/opt/labels/gst-wizard/foot_track_net.labels\n"
+            help+="Push the Model file on the device at '/opt/data/' and name it 'foot_track_net_quantized.tflite'\n"
+            help+="Make sure the label file is present at '/opt/labels/foot_track_net.labels'\n"
             help+="\n"
             break
             ;;
         "2")
             echo "Selected model: Classification - ResNet101 Quantized!"
-            pipeline+='tee name=t_split_0 t_split_0. ! qtimetamux name=metamux t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/opt/data/resnet101_quantized.tflite ! queue ! qtimlvclassification threshold=51.0 results=5 module=mobilenet labels=/opt/labels/gst-wizard/resnet101.labels extra-operation=softmax constants="Mobilenet,q-offsets=<-82.0>,q-scales=<0.21351955831050873>;" ! text/x-raw ! queue ! metamux. metamux. ! qtivoverlay engine=gles ! queue ! '
+            pipeline+='tee name=t_split_0 t_split_0. ! qtimetamux name=metamux t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/opt/data/resnet101_quantized.tflite ! queue ! qtimlvclassification threshold=51.0 results=5 module=mobilenet labels=/opt/labels/resnet101.labels extra-operation=softmax constants="Mobilenet,q-offsets=<-82.0>,q-scales=<0.21351955831050873>;" ! text/x-raw ! queue ! metamux. metamux. ! qtioverlay engine=gles ! queue ! '
             help+="Please download the model and label files from here: https://aihub.qualcomm.com/models/resnet101_quantized\n"
             help+="Make sure to select your device and set TorchScript -> TFLite before downloading!\n"
-            help+="Push the Model file on the device at'/opt/data/' and name it 'resnet101_quantized.tflite'\n"
-            help+="Make sure the label file is present at'/opt/labels/gst-wizard/resnet101.labels\n"
+            help+="Push the Model file on the device at '/opt/data/' and name it 'resnet101_quantized.tflite'\n"
+            help+="Make sure the label file is present at '/opt/labels/resnet101.labels'\n"
             help+="\n"
             break
             ;;
@@ -89,11 +89,11 @@ do
             if [ "$usbsrc" = true ]; then
                 pipeline+='video/x-raw\,format=RGB ! '
             fi
-            pipeline+='tee name=t_split_0 t_split_0. ! queue ! mixer. t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/opt/data/ffnet_40s_quantized.tflite ! queue ! qtimlvsegmentation module=deeplab-argmax labels=/opt/labels/gst-wizard/dv3-argmax.labels constants="FFNet-40S,q-offsets=<50.0>,q-scales=<0.31378185749053955>;" ! queue ! mixer. qtivcomposer name=mixer background=0 sink_0::position="<0, 0>" sink_0::dimensions="<1280, 720>" sink_1::position="<0, 0>" sink_1::dimensions="<1280, 720>" sink_1::alpha=0.5 mixer. ! queue ! '
+            pipeline+='tee name=t_split_0 t_split_0. ! queue ! mixer. t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/opt/data/ffnet_40s_quantized.tflite ! queue ! qtimlvsegmentation module=deeplab-argmax labels=/opt/labels/dv3-argmax.labels constants="FFNet-40S,q-offsets=<50.0>,q-scales=<0.31378185749053955>;" ! queue ! mixer. qtivcomposer name=mixer background=0 sink_0::position="<0, 0>" sink_0::dimensions="<1280, 720>" sink_1::position="<0, 0>" sink_1::dimensions="<1280, 720>" sink_1::alpha=0.5 mixer. ! queue ! '
             help+="Please download the model and label files from here: https://aihub.qualcomm.com/models/ffnet_40s_quantized\n"
             help+="Make sure to select your device and set TorchScript -> TFLite before downloading!\n"
-            help+="Push the Model file on the device at'/opt/data/' and name it 'ffnet_40s_quantized.tflite'\n"
-            help+="Make sure the label file is present at'/opt/labels/gst-wizard/dv3-argmax.labels\n"
+            help+="Push the Model file on the device at '/opt/data/' and name it 'ffnet_40s_quantized.tflite'\n"
+            help+="Make sure the label file is present at '/opt/labels/dv3-argmax.labels'\n"
             help+="\n"
             break
             ;;
@@ -132,8 +132,8 @@ do
             ;;
         "2")
             echo "Selected output: Video file!"
-            pipeline+='v4l2h264enc capture-io-mode=5 output-io-mode=5 ! h264parse config-interval=1 ! mp4mux ! filesink location=/opt/data/gst-wizard/output.mp4'
-            help+="The output from the pipeline will be saved in '/opt/data/gst-wizard/' as 'output.mp4'\n"
+            pipeline+='v4l2h264enc capture-io-mode=5 output-io-mode=5 ! h264parse config-interval=1 ! mp4mux ! filesink location=/opt/data/output.mp4'
+            help+="The output from the pipeline will be saved in '/opt/data/' as 'output.mp4'\n"
             help+="\n"
             break
             ;;
@@ -158,16 +158,19 @@ echo -e "\n\n\n"
 echo Pipeline built:
 echo $pipeline
 
-mkdir -p /opt/scripts
-echo "#!/bin/bash" > /opt/scripts/gst_wizard_pipeline.sh
-echo $pipeline >> /opt/scripts/gst_wizard_pipeline.sh
+[ -d "/opt/data" ] || mkdir -p /opt/data
+echo "#!/bin/bash" > /opt/data/gst_wizard_pipeline.sh
+echo $pipeline >> /opt/data/gst_wizard_pipeline.sh
+chmod 777 /opt/data/gst_wizard_pipeline.sh
 
 echo -e "\n"
-echo "The pipeline built is saved at /opt/scripts/gst_wizard_pipeline.sh"
-help+="The pipeline can be run using \"bash /opt/scripts/gst_wizard_pipeline.sh\""
+echo "The pipeline built is saved at /opt/data/gst_wizard_pipeline.sh"
+help+="The pipeline can be run using \"bash /opt/data/gst_wizard_pipeline.sh\""
+help+="\n"
+help+="If you want to run AI pipeline with your own video files, AI model and labels, then push them to location '/opt/data' and update GST launch command accordingly to update name of the Model file, label file and sample video file\n"
 help+="\n"
 
 echo -e "\n\n"
 echo -e $help
 
-unset pipeline help input livesrc
+unset pipeline help input livesrc usbsrc
