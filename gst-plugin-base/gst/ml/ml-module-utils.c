@@ -83,7 +83,7 @@ gst_ml_tensor_extract_value (GstMLType mltype, gpointer data, guint idx,
     case GST_ML_TYPE_UINT32:
       return (GUINT32_PTR_CAST (data))[idx];
     case GST_ML_TYPE_FLOAT32:
-      return (GFLOAT_PTR_CAST (data))[idx];
+      return ((GFLOAT_PTR_CAST (data))[idx] - offset) * scale;
     default:
       break;
   }

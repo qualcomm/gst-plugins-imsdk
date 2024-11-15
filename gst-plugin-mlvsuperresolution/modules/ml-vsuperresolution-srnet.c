@@ -174,7 +174,8 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   }
 
   if ((GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_INT8) ||
-      (GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_UINT8)) {
+      (GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_UINT8) ||
+      (GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_FLOAT32)) {
     GstStructure *constants = NULL;
     const GValue *qoffsets = NULL, *qscales = NULL;
     guint idx = 0, n_tensors = 0;
