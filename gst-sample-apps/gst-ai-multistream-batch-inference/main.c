@@ -100,7 +100,7 @@
 /**
  * Number of Queues used for buffer caching between elements
  */
-#define QUEUE_COUNT 5
+#define QUEUE_COUNT 6
 
 /**
  * Default threshold values
@@ -465,6 +465,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions  options[],
   // Elements for file source
   GstElement *filesrc[source_count->num_file], *qtdemux[source_count->num_file];
   GstElement *file_queue[source_count->num_file][QUEUE_COUNT];
+  GstElement *file_queue2[source_count->num_file][3];
   GstElement *file_dec_h264parse[source_count->num_file];
   GstElement *file_v4l2h264dec[source_count->num_file];
   GstElement *file_dec_tee[source_count->num_file];
@@ -511,6 +512,15 @@ create_pipe (GstAppContext * appctx, const GstAppOptions  options[],
       file_queue[i][j] = gst_element_factory_make ("queue", element_name);
       if (!file_queue[i][j]) {
         g_printerr ("Failed to create file_queue-%d-%d\n", i, j);
+        goto error_clean_elements;
+      }
+    }
+
+    for (gint j=0; j < 3; j++) {
+      snprintf (element_name, 127, "file_queue2-%d-%d", i, j);
+      file_queue2[i][j] = gst_element_factory_make ("queue", element_name);
+      if (!file_queue2[i][j]) {
+        g_printerr ("Failed to create file_queue2-%d-%d\n", i, j);
         goto error_clean_elements;
       }
     }
@@ -753,6 +763,11 @@ create_pipe (GstAppContext * appctx, const GstAppOptions  options[],
         file_dec_h264parse[i], file_v4l2h264dec[i], file_dec_tee[i],
         file_qtimlpostprocess[i], file_filter[i],
         NULL);
+
+    for (gint j = 0; j < 3; j++) {
+      gst_bin_add_many (GST_BIN (appctx->pipeline), file_queue2[i][j], NULL);
+    }
+
     for (gint j = 0; j < QUEUE_COUNT; j++) {
       gst_bin_add_many (GST_BIN (appctx->pipeline), file_queue[i][j], NULL);
     }
@@ -827,6 +842,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions  options[],
       }
 
       ret = gst_element_link_many (qtimldemux[i],
+          file_queue[i*DEFAULT_BATCH_SIZE + j][4],
           file_qtimlpostprocess[i*DEFAULT_BATCH_SIZE + j], NULL);
       if (!ret) {
         g_printerr ("Pipeline elements cannot be linked for %d"
@@ -837,7 +853,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions  options[],
       ret = gst_element_link_many (
           file_qtimlpostprocess[i*DEFAULT_BATCH_SIZE + j],
           file_filter[i*DEFAULT_BATCH_SIZE + j],
-          file_queue[i*DEFAULT_BATCH_SIZE + j][4], qtivcomposer, NULL);
+          file_queue[i*DEFAULT_BATCH_SIZE + j][5], qtivcomposer, NULL);
       if (!ret) {
         g_printerr ("Pipeline elements cannot be linked for %d"
             " file: post proc -> composer.\n", i);
@@ -845,11 +861,12 @@ create_pipe (GstAppContext * appctx, const GstAppOptions  options[],
       }
     }
 
-    gst_element_link_many (qtibatch[i], file_qtimlvconverter[i],
-        file_qtimlelement[i], qtimldemux[i], NULL);
+    ret = gst_element_link_many (qtibatch[i], file_queue2[i][0],
+        file_qtimlvconverter[i], file_queue2[i][1], file_qtimlelement[i],
+        file_queue2[i][2], qtimldemux[i], NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for %d"
-          " file: qtibatch-> file_qtimlelement.\n", i);
+          " file: qtibatch-> file_qtimlvconverter.\n", i);
       goto error_clean_pipeline;
     }
   }
@@ -923,6 +940,9 @@ error_clean_elements:
         &file_qtimlpostprocess[i], &file_filter[i], NULL);
     for (gint j = 0; j < QUEUE_COUNT; j++) {
       cleanup_gst (&file_queue[i][j], NULL);
+    }
+    for (gint j = 0; j < 3; j++) {
+      cleanup_gst (&file_queue2[i][j], NULL);
     }
   }
 
