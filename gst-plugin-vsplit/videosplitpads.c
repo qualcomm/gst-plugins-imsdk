@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -34,6 +34,9 @@
 
 #include "videosplitpads.h"
 
+#include <gst/video/gstqtibufferpool.h>
+#include <gst/video/gstqtiallocator.h>
+#include <gst/video/video-utils.h>
 #include <gst/video/gstimagepool.h>
 #include <gst/utils/common-utils.h>
 
@@ -143,30 +146,61 @@ gst_video_split_create_pool (GstPad * pad, GstCaps * caps)
     return NULL;
   }
 
-  // If downstream allocation query supports GBM, allocate gbm memory.
-  if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
-    GST_INFO_OBJECT (pad, "Uses GBM memory");
-    pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
+  if (gst_is_gbm_supported ()) {
+    // If downstream allocation query supports GBM, allocate gbm memory.
+    if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
+      GST_INFO_OBJECT (pad, "Uses GBM memory");
+      pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
+    } else {
+      GST_INFO_OBJECT (pad, "Uses ION memory");
+      pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
+    }
+
+    config = gst_buffer_pool_get_config (pool);
+    allocator = gst_fd_allocator_new ();
+
   } else {
-    GST_INFO_OBJECT (pad, "Uses ION memory");
-    pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
+    GstVideoFormat format;
+    GstVideoAlignment align;
+    gboolean success;
+    guint width, height;
+    gint stride, scanline;
+
+    width = GST_VIDEO_INFO_WIDTH (&info);
+    height = GST_VIDEO_INFO_HEIGHT (&info);
+    format = GST_VIDEO_INFO_FORMAT (&info);
+
+    success = gst_adreno_utils_compute_alignment (width, height, format,
+        &stride, &scanline);
+    if (!success) {
+      GST_ERROR_OBJECT(pad,"Failed to get alignment");
+      return NULL;
+    }
+
+    pool = gst_qti_buffer_pool_new ();
+    config = gst_buffer_pool_get_config (pool);
+
+    gst_video_alignment_reset (&align);
+    align.padding_bottom = scanline - height;
+    align.padding_right = stride - width;
+
+    gst_video_info_align (&info, &align);
+    gst_buffer_pool_config_add_option (config,
+        GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
+    gst_buffer_pool_config_set_video_alignment (config, &align);
+
+    allocator = gst_qti_allocator_new (NULL);
+    if (allocator == NULL) {
+      GST_ERROR_OBJECT (pad, "Failed to create QTI allocator");
+      gst_clear_object (&pool);
+      return NULL;
+    }
   }
 
-  config = gst_buffer_pool_get_config (pool);
   gst_buffer_pool_config_set_params (config, caps, info.size,
       DEFAULT_PROP_MIN_BUFFERS, DEFAULT_PROP_MAX_BUFFERS);
-
-  allocator = gst_fd_allocator_new ();
-
   gst_buffer_pool_config_set_allocator (config, allocator, NULL);
   gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
-  gst_buffer_pool_config_add_option (config,
-      GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
-
-  if (gst_caps_has_compression (caps, "ubwc")) {
-    gst_buffer_pool_config_add_option (config,
-        GST_IMAGE_BUFFER_POOL_OPTION_UBWC_MODE);
-  }
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING_OBJECT (pad, "Failed to set pool configuration!");
@@ -815,7 +849,6 @@ gst_video_split_sinkpad_init (GstVideoSplitSinkPad * pad)
   pad->is_idle = TRUE;
 
   pad->info = NULL;
-  pad->isubwc = FALSE;
 
   pad->requests =
       gst_data_queue_new (queue_is_full_cb, NULL, queue_empty_cb, pad);
@@ -837,7 +870,7 @@ gst_video_split_srcpad_fixate_caps (GstVideoSplitSrcPad * srcpad,
     mviewmode = GST_VIDEO_MULTIVIEW_MODE_MULTIVIEW_FRAME_BY_FRAME;
 
   // Prefer caps with feature memory:GBM and removeall others.
-  if (gst_caps_has_feature (outcaps, GST_CAPS_FEATURE_MEMORY_GBM))
+  if (gst_is_gbm_supported () && gst_caps_has_feature (outcaps, GST_CAPS_FEATURE_MEMORY_GBM))
     features = gst_caps_features_new (GST_CAPS_FEATURE_MEMORY_GBM, NULL);
   else
     features = gst_caps_features_new_empty ();
@@ -1019,7 +1052,6 @@ gst_video_split_srcpad_setcaps (GstVideoSplitSrcPad * srcpad, GstCaps * incaps)
     gst_video_info_free (srcpad->info);
 
   srcpad->info = gst_video_info_copy (&info);
-  srcpad->isubwc = gst_caps_has_compression (outcaps, "ubwc");
 
   // Enable passthrough if mode is 'none' and the sink and source caps intersect.
   srcpad->passthrough = (srcpad->mode == GST_VSPLIT_MODE_NONE) &&
@@ -1128,7 +1160,6 @@ gst_video_split_srcpad_init (GstVideoSplitSrcPad * pad)
   pad->is_idle = TRUE;
 
   pad->info = NULL;
-  pad->isubwc = FALSE;
   pad->passthrough = FALSE;
 
   pad->pool = NULL;
