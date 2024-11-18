@@ -12,7 +12,7 @@
  * The application takes video stream from camera/file/rtsp and gives same
  * to 4 Ch parallel processing by AI models (Classification, Pose detection and
  * Object detection and Segmentation) and display scaled down preview with
- * overlayed AI models output composed as 2x2 matrix
+ * overlayed AI models output composed as 2x2 matrix.
  *
  * Pipeline for Gstreamer Parallel Inferencing (4 Stream) below:
  *
@@ -21,28 +21,24 @@
  * qtiqmmfsrc (Camera) -> qmmfsrc_caps -> tee (SPLIT)
  *
  * 2. For File source:
- * filesrc -> qtdemux -> h264parse -> tee (SPLIT)
+ * filesrc -> qtdemux -> h264parse -> v4l2h264dec -> tee (SPLIT)
  *
  * 3. For RTSP source:
- * rtspsrc -> rtph264depay -> h264parse -> tee (SPLIT)
+ * rtspsrc -> rtph264depay -> h264parse -> v4l2h264dec -> tee (SPLIT)
  *
  * Pipeline after tee is common for all
- * sources (qtiqmmfsrc/filesrc/rtspsrc)
+ *     | tee -> qtivcomposer
+ *     |     -> Pre process-> ML Framework -> Post process -> qtivcomposer
+ *     | tee -> qtivcomposer
+ *     |     -> Pre process-> ML Framework -> Post process -> qtivcomposer
+ *     | tee -> qtivcomposer
+ *     |     -> Pre process-> ML Framework -> Post process -> qtivcomposer
+ *     | tee -> qtivcomposer
+ *     |     -> Pre process-> ML Framework -> Post process -> qtivcomposer
+ *     qtivcomposer (COMPOSITION) -> fpsdisplaysink (Display)
  *
- *     | tee -> qtivcomposer
- *     |     -> Pre process-> ML Framework -> Post process -> qtivcomposer
- *     |  qtivcomposer (COMPOSITION) -> fpsdisplaysink (Display)
- *     | tee -> qtivcomposer
- *     |     -> Pre process-> ML Framework -> Post process -> qtivcomposer
- *     |  qtivcomposer (COMPOSITION) -> fpsdisplaysink (Display)
- *     | tee -> qtivcomposer
- *     |     -> Pre process-> ML Framework -> Post process -> qtivcomposer
- *     | qtivcomposer (COMPOSITION) -> fpsdisplaysink (Display)
- *     | tee -> qtivcomposer
- *     |     -> Pre process-> ML Framework -> Post process -> qtivcomposer
- *     | qtivcomposer (COMPOSITION) -> fpsdisplaysink (Display)
  *     Pre process: qtimlvconverter
- *     ML Framework: qtimlsnpe/qtimltflite
+ *     ML Framework: qtimltflite
  *     Post process: qtimlvdetection/qtimlclassification/
  *                   qtimlvsegmentation/qtimlvpose -> detection_filter
  */
@@ -58,15 +54,17 @@
 /**
  * Default models path and labels path
  */
-#define DEFAULT_SNPE_OBJECT_DETECTION_MODEL "/opt/yolonas.dlc"
-#define DEFAULT_OBJECT_DETECTION_LABELS "/opt/yolonas.labels"
+#define DEFAULT_TFLITE_OBJECT_DETECTION_MODEL \
+    "/opt/YOLOv8-Detection-Quantized.tflite"
+#define DEFAULT_OBJECT_DETECTION_LABELS "/opt/yolov8.labels"
 #define DEFAULT_TFLITE_CLASSIFICATION_MODEL \
     "/opt/inception_v3_quantized.tflite"
 #define DEFAULT_CLASSIFICATION_LABELS "/opt/classification.labels"
 #define DEFAULT_TFLITE_POSE_DETECTION_MODEL \
     "/opt/hrnet_pose_quantized.tflite"
-#define DEFAULT_POSE_DETECTION_LABELS "/opt/posenet_mobilenet_v1.labels"
-#define DEFAULT_SNPE_SEGMENTATION_MODEL "/opt/deeplabv3_resnet50.dlc"
+#define DEFAULT_POSE_DETECTION_LABELS "/opt/hrnet_pose.labels"
+#define DEFAULT_TFLITE_SEGMENTATION_MODEL \
+    "/opt/deeplabv3_plus_mobilenet_quantized.tflite"
 #define DEFAULT_SEGMENTATION_LABELS "/opt/deeplabv3_resnet50.labels"
 
 /**
@@ -86,6 +84,30 @@
 #define DEFAULT_DISPLAY_HEIGHT 1080
 
 /**
+ * Default constants to dequantize values for classification stream
+ */
+#define DEFAULT_CONSTANTS_CLASSIFICATION \
+    "Mobilenet,q-offsets=<-95.0>,q-scales=<0.18740029633045197>;"
+
+/**
+ * Default constants to dequantize values for object detection stream
+ */
+#define DEFAULT_CONSTANTS_OBJECT_DETECTION \
+    "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,q-scales=<3.093529462814331, 0.00390625, 1.0>;"
+
+/**
+ * Default constants to dequantize values for pose detection stream
+ */
+#define DEFAULT_CONSTANTS_POSE_DETECTION \
+    "Posenet,q-offsets=<8.0>,q-scales=<0.0040499246679246426>;"
+
+/**
+ * Default constants to dequantize values for segmentation stream
+ */
+#define DEFAULT_CONSTANTS_SEGMENTATION \
+    "deeplab,q-offsets=<61.0>,q-scales=<0.06232302635908127>;"
+
+/**
  * Number of Queues used for buffer caching between elements
  */
 #define QUEUE_COUNT 25
@@ -97,13 +119,13 @@
 
 /**
  * PipelineData:
- * @model: Path to model file
- * @labels: Path to label file
- * @mlframework: ML inference plugin
- * @postproc: Post processing plugin
- * @delegate: ML Execution Core.
+ * @model: Path to model file.
+ * @labels: Path to label file.
+ * @preproc: Pre processing plugin.
+ * @mlframework: ML inference plugin.
+ * @postproc: Post processing plugin.
  * @position: Window Dimension and Co-ordinate.
- * @constants: Offset and scale values
+ * @delegate: ML Execution Core.
  *
  * Pipeline Data context to use plugins and path of Model, Labels.
  */
@@ -113,9 +135,7 @@ typedef struct {
   const gchar * preproc;
   const gchar * mlframework;
   const gchar * postproc;
-  GstVideoRectangle position;
   gint delegate;
-  const gchar * constants;
 } GstPipelineData;
 
 /**
@@ -124,6 +144,10 @@ typedef struct {
 typedef struct {
   gchar *file_path;
   gchar *rtsp_ip_port;
+  gchar *object_detection_constants;
+  gchar *pose_detection_constants;
+  gchar *segmentation_constants;
+  gchar *classification_constants;
   GstCameraSourceType camera_type;
   gboolean use_file;
   gboolean use_rtsp;
@@ -135,20 +159,18 @@ typedef struct {
  * Classification, Posture detection and Segmentation
  */
 static GstPipelineData pipeline_data[GST_PIPELINE_CNT] = {
-  {DEFAULT_SNPE_OBJECT_DETECTION_MODEL, DEFAULT_OBJECT_DETECTION_LABELS,
-      "qtimlvconverter", "qtimlsnpe", "qtimlvdetection",
-      {0, 0, 960, 540}, GST_ML_SNPE_DELEGATE_DSP},
+  {DEFAULT_TFLITE_OBJECT_DETECTION_MODEL, DEFAULT_OBJECT_DETECTION_LABELS,
+      "qtimlvconverter", "qtimltflite", "qtimlvdetection",
+      GST_ML_TFLITE_DELEGATE_EXTERNAL},
   {DEFAULT_TFLITE_CLASSIFICATION_MODEL, DEFAULT_CLASSIFICATION_LABELS,
       "qtimlvconverter", "qtimltflite", "qtimlvclassification",
-      {960, 0, 960, 540}, GST_ML_TFLITE_DELEGATE_EXTERNAL,
-      "Mobilenet,q-offsets=<-95.0>,q-scales=<0.18740029633045197>;"},
+      GST_ML_TFLITE_DELEGATE_EXTERNAL},
   {DEFAULT_TFLITE_POSE_DETECTION_MODEL, DEFAULT_POSE_DETECTION_LABELS,
       "qtimlvconverter", "qtimltflite", "qtimlvpose",
-      {0, 540, 960, 540}, GST_ML_TFLITE_DELEGATE_EXTERNAL,
-      "Posenet,q-offsets=<8.0>,q-scales=<0.0040499246679246426>;"},
-  {DEFAULT_SNPE_SEGMENTATION_MODEL, DEFAULT_SEGMENTATION_LABELS,
-      "qtimlvconverter", "qtimlsnpe", "qtimlvsegmentation",
-      {960, 540, 960, 540}, GST_ML_SNPE_DELEGATE_DSP}
+      GST_ML_TFLITE_DELEGATE_EXTERNAL},
+  {DEFAULT_TFLITE_SEGMENTATION_MODEL, DEFAULT_SEGMENTATION_LABELS,
+      "qtimlvconverter", "qtimltflite", "qtimlvsegmentation",
+      GST_ML_TFLITE_DELEGATE_EXTERNAL}
 };
 
 /**
@@ -177,7 +199,7 @@ build_pad_property (GValue * property, gint values[], gint num)
  * Change position of grid as per display resolution
  */
 static void
-update_window_grid ()
+update_window_grid (GstVideoRectangle position[GST_PIPELINE_CNT])
 {
   gint width, height;
   gint win_w, win_h;
@@ -200,48 +222,36 @@ update_window_grid ()
   };
 
   for (gint idx = 0; idx < GST_PIPELINE_CNT; idx++) {
-    pipeline_data[idx].position = window_grid[idx];
+    position[idx] = window_grid[idx];
   }
 }
 
+
 /**
- * Callback function used for demuxer dynamic pad.
+ * Function to link the dynamic video pad of demux to queue:
  *
- * @param element Plugin supporting dynamic pad.
- * @param pad The source pad that is added.
- * @param data Userdata set at callback registration.
+ * @param element GStreamer source element
+ * @param pad GStreamer source element pad
+ * @param data sink element object
  */
 static void
 on_pad_added (GstElement * element, GstPad * pad, gpointer data)
 {
-  GstPad *sinkpad = NULL;
-  gchar *caps_str = NULL;
+  GstPad *sinkpad;
   GstElement *queue = (GstElement *) data;
-  GstCaps *caps = gst_pad_get_current_caps (pad);
-  if (!caps) {
-    caps = gst_pad_query_caps (pad, NULL);
+  GstPadLinkReturn ret;
+
+  // Get the static sink pad from the queue
+  sinkpad = gst_element_get_static_pad (queue, "sink");
+
+  // Link the source pad to the sink pad
+  ret = gst_pad_link (pad, sinkpad);
+  if (!ret)
+  {
+    g_printerr ("Failed to link pad to sinkpad\n");
   }
 
-  if (caps) {
-    caps_str = gst_caps_to_string (caps);
-  } else {
-    g_print ("No caps available for this pad\n");
-  }
-
-  // Check if caps contains video
-  if (caps_str) {
-    if (g_strrstr (caps_str, "video")) {
-      // Get the static sink pad from the queue
-      sinkpad = gst_element_get_static_pad (queue, "sink");
-      // Get the static sink pad from the queue
-      g_assert (gst_pad_link (pad, sinkpad) == GST_PAD_LINK_OK);
-      gst_object_unref (sinkpad);
-    } else {
-      g_print ("Ignoring caps\n");
-    }
-  }
-  g_free (caps_str);
-  gst_caps_unref (caps);
+  gst_object_unref (sinkpad);
 }
 
 /**
@@ -266,6 +276,26 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
     g_free (options->rtsp_ip_port);
   }
 
+  if (options->object_detection_constants != DEFAULT_CONSTANTS_OBJECT_DETECTION &&
+      options->object_detection_constants != NULL) {
+    g_free (options->object_detection_constants);
+  }
+
+  if (options->pose_detection_constants != DEFAULT_CONSTANTS_POSE_DETECTION &&
+      options->pose_detection_constants != NULL) {
+    g_free (options->pose_detection_constants);
+  }
+
+  if (options->segmentation_constants != DEFAULT_CONSTANTS_SEGMENTATION &&
+      options->segmentation_constants != NULL) {
+    g_free (options->segmentation_constants);
+  }
+
+  if (options->classification_constants != DEFAULT_CONSTANTS_CLASSIFICATION &&
+      options->classification_constants != NULL) {
+    g_free (options->classification_constants);
+  }
+
   if (appctx->pipeline != NULL) {
     gst_object_unref (appctx->pipeline);
     appctx->pipeline = NULL;
@@ -284,17 +314,16 @@ static gboolean
 create_pipe (GstAppContext * appctx, GstAppOptions * options)
 {
   GstElement *qtiqmmfsrc = NULL, *qmmfsrc_caps = NULL;
+  GstElement *filesrc = NULL, *rtspsrc = NULL, *qtdemux = NULL, *h264parse = NULL;
+  GstElement *v4l2h264dec = NULL, *rtph264depay = NULL, *qtivcomposer = NULL;
+  GstElement *fpsdisplaysink = NULL, *waylandsink = NULL;
   GstElement *qtimlvconverter[GST_PIPELINE_CNT] = {NULL};
   GstElement *qtimlelement[GST_PIPELINE_CNT] = {NULL};
   GstElement *qtimlvpostproc[GST_PIPELINE_CNT] = {NULL};
   GstElement *detection_filter[GST_PIPELINE_CNT] = {NULL};
-  GstElement *qtivcomposer[GST_PIPELINE_CNT] = {NULL};
-  GstElement *waylandsink[GST_PIPELINE_CNT] = {NULL};
-  GstElement *fpsdisplaysink[GST_PIPELINE_CNT] = {NULL};
-  GstElement *queue[QUEUE_COUNT] = {NULL}, *tee = NULL;;
-  GstElement *filesrc = NULL, *qtdemux = NULL, *h264parse = NULL;
-  GstElement *v4l2h264dec = NULL, *rtspsrc = NULL, *rtph264depay = NULL;
+  GstElement *queue[QUEUE_COUNT] = {NULL}, *tee = NULL;
   GstStructure *delegate_options = NULL;
+  GstVideoRectangle coordinates[GST_PIPELINE_CNT];
   GstCaps *filtercaps = NULL;
   gboolean ret = FALSE;
   gchar element_name[128];
@@ -303,7 +332,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   gint height = DEFAULT_CAMERA_OUTPUT_HEIGHT;
   gint framerate = DEFAULT_CAMERA_FRAME_RATE;
 
-  update_window_grid ();
+  update_window_grid (coordinates);
 
  if (options->use_file) {
     // Create file source element for file stream
@@ -388,13 +417,10 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   // Composer to combine 4 input streams as 2x2 matrix in single display
-  for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
-    snprintf (element_name, 127, "qtivcomposer-%d", i);
-    qtivcomposer[i] = gst_element_factory_make ("qtivcomposer", element_name);
-    if (!qtivcomposer[i]) {
-      g_printerr ("Failed to create qtivcomposer\n");
-      goto error_clean_elements;
-    }
+  qtivcomposer = gst_element_factory_make ("qtivcomposer", "qtivcomposer");
+  if (!qtivcomposer) {
+    g_printerr ("Failed to create qtivcomposer\n");
+    goto error_clean_elements;
   }
 
   // Create 4 pipelines for AI inferencing on same camera stream
@@ -411,7 +437,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       goto error_clean_elements;
     }
 
-    // Create the ML inferencing plugin SNPE/TFLite
+    // Create the ML inferencing plugin TFLite
     snprintf (element_name, 127, "%s-%d", mlframework, i);
     qtimlelement[i] = gst_element_factory_make (mlframework, element_name);
     if (!qtimlelement[i]) {
@@ -448,25 +474,19 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   // Create Wayland compositor to render output on Display
-  for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
-    snprintf (element_name, 127, "waylandsink-%d", i);
-    waylandsink[i] = gst_element_factory_make ("waylandsink", element_name);
-    if (!waylandsink[i]) {
-      g_printerr ("Failed to create waylandsink \n");
-      goto error_clean_elements;
-    }
+  waylandsink = gst_element_factory_make ("waylandsink", "waylandsink");
+  if (!waylandsink) {
+    g_printerr ("Failed to create waylandsink \n");
+    goto error_clean_elements;
   }
 
   // Creating fpsdisplaysink to display the current and
   // average framerate as a text overlay
-  for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
-    snprintf (element_name, 127, "fpsdisplaysink-%d", i);
-    fpsdisplaysink[i] = gst_element_factory_make ("fpsdisplaysink",
-        element_name);
-    if (!fpsdisplaysink[i]) {
-      g_printerr ("Failed to create fpsdisplaysink \n");
-      goto error_clean_elements;
-    }
+  fpsdisplaysink = gst_element_factory_make ("fpsdisplaysink",
+      "fpsdisplaysink");
+  if (!fpsdisplaysink) {
+    g_printerr ("Failed to create fpsdisplaysink \n");
+    goto error_clean_elements;
   }
 
   // 2. Set properties for all GST plugin elements
@@ -480,7 +500,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     g_object_set (G_OBJECT (v4l2h264dec), "output-io-mode", 5, NULL);
     g_object_set (G_OBJECT (rtspsrc), "location", options->rtsp_ip_port, NULL);
   } else {
-    g_object_set (G_OBJECT (qtiqmmfsrc), "camera",options->camera_type, NULL);
+    g_object_set (G_OBJECT (qtiqmmfsrc), "camera", options->camera_type, NULL);
 
     if (options->camera_type == GST_CAMERA_TYPE_PRIMARY) {
       // 2.2 Set the capabilities of camera plugin output
@@ -507,15 +527,13 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
-    GValue layers = G_VALUE_INIT;
-    GValue value = G_VALUE_INIT;
-
     // Set ML plugin properties: HW, Model, Labels
     g_object_set (G_OBJECT (qtimlelement[i]),
         "delegate", pipeline_data[i].delegate, NULL);
     if (pipeline_data[i].delegate == GST_ML_TFLITE_DELEGATE_EXTERNAL) {
       delegate_options = gst_structure_from_string (
-          "QNNExternalDelegate,backend_type=htp;", NULL);
+          "QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,\
+          htp_performance_mode=(string)2;", NULL);
       g_object_set (G_OBJECT (qtimlelement[i]),
           "external-delegate-path", "libQnnTFLiteDelegate.so", NULL);
       g_object_set (G_OBJECT (qtimlelement[i]),
@@ -531,25 +549,18 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     // Set properties for ML postproc plugins- module, layers, threshold
     switch (i) {
       case GST_OBJECT_DETECTION:
-        g_value_init (&layers, GST_TYPE_ARRAY);
-        g_value_init (&value, G_TYPE_STRING);
-        g_value_set_string (&value, "/heads/Mul");
-        gst_value_array_append_value (&layers, &value);
-        g_value_set_string (&value, "/heads/Sigmoid");
-        gst_value_array_append_value (&layers, &value);
-        g_object_set_property (G_OBJECT (qtimlelement[i]), "layers", &layers);
-
-        module_id = get_enum_value (qtimlvpostproc[i], "module", "yolo-nas");
+        module_id = get_enum_value (qtimlvpostproc[i], "module", "yolov8");
         if (module_id != -1) {
           g_object_set (G_OBJECT (qtimlvpostproc[i]),
               "module", module_id, NULL);
         } else {
-          g_printerr ("Module yolo-nas is not available in qtimlvdetection\n");
+          g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
           goto error_clean_elements;
         }
         // Set the object detection module threshold limit
         g_object_set (G_OBJECT (qtimlvpostproc[GST_OBJECT_DETECTION]),
-            "threshold", 40.0, "results", 10, NULL);
+            "threshold", 40.0, "results", 10, "constants",
+            options->object_detection_constants, NULL);
         break;
 
       case GST_CLASSIFICATION:
@@ -558,7 +569,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
           g_object_set (G_OBJECT (qtimlvpostproc[i]), "threshold", 40.0,
               "results", 2, "module", module_id,
               "extra-operation", GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX,
-              "constants", pipeline_data[i].constants,
+              "constants", options->classification_constants,
               NULL);
         } else {
           g_printerr ("Module mobilenet not available in "
@@ -572,7 +583,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         if (module_id != -1) {
           g_object_set (G_OBJECT (qtimlvpostproc[i]), "threshold", 40.0,
               "results", 2, "module", module_id,
-              "constants", pipeline_data[i].constants,
+              "constants", options->pose_detection_constants,
               NULL);
         } else {
           g_printerr ("Module hrnet is not available in qtimlvpose\n");
@@ -585,19 +596,20 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
             "deeplab-argmax");
         if (module_id != -1) {
           g_object_set (G_OBJECT (qtimlvpostproc[i]),
-              "module", module_id, NULL);
+              "module", module_id, "constants", options->segmentation_constants,
+               NULL);
         } else {
           g_printerr ("Module deeplab-argmax is not available in "
               "qtimlvsegmentation\n");
           goto error_clean_elements;
         }
         break;
+
       default:
         g_printerr ("Cannot be here");
         goto error_clean_elements;
     }
   }
-
 
   // Set the properties of pad_filter for negotiation with qtivcomposer
   filtercaps = gst_caps_new_simple ("video/x-raw",
@@ -624,44 +636,37 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   gst_caps_unref (filtercaps);
 
   // 2.3 Set the properties of Wayland compositor
-  for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
-    GstVideoRectangle pos = pipeline_data[i].position;
-    g_object_set (G_OBJECT (waylandsink[i]), "sync", FALSE, NULL);
-    g_object_set (G_OBJECT (waylandsink[i]), "x", pos.x, NULL);
-    g_object_set (G_OBJECT (waylandsink[i]), "y", pos.y, NULL);
-    g_object_set (G_OBJECT (waylandsink[i]), "width", pos.w, NULL);
-    g_object_set (G_OBJECT (waylandsink[i]), "height", pos.h, NULL);
-  }
+  g_object_set (G_OBJECT (waylandsink), "sync", TRUE, NULL);
+  g_object_set (G_OBJECT (waylandsink), "fullscreen", TRUE, NULL);
 
   // 2.4 Set the properties of fpsdisplaysink plugin- sync,
   // signal-fps-measurements, text-overlay and video-sink
-  for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
-    g_object_set (G_OBJECT (fpsdisplaysink[i]), "sync", FALSE, NULL);
-    g_object_set (G_OBJECT (fpsdisplaysink[i]), "signal-fps-measurements",
-        TRUE, NULL);
-    g_object_set (G_OBJECT (fpsdisplaysink[i]), "text-overlay", TRUE, NULL);
-    g_object_set (G_OBJECT (fpsdisplaysink[i]), "video-sink",
-        waylandsink[i], NULL);
-  }
+  g_object_set (G_OBJECT (fpsdisplaysink), "sync", TRUE, NULL);
+  g_object_set (G_OBJECT (fpsdisplaysink), "signal-fps-measurements",
+      TRUE, NULL);
+  g_object_set (G_OBJECT (fpsdisplaysink), "text-overlay", TRUE, NULL);
+  g_object_set (G_OBJECT (fpsdisplaysink), "video-sink",
+      waylandsink, NULL);
 
   // 3. Setup the pipeline
   g_print ("Adding all elements to the pipeline...\n");
 
   if (options->use_file) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), filesrc,  qtdemux,
-        h264parse,v4l2h264dec, tee, NULL);
+        h264parse, v4l2h264dec, tee, qtivcomposer, fpsdisplaysink, waylandsink,
+        NULL);
   } else if (options->use_rtsp) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), rtspsrc,
-        rtph264depay, h264parse, v4l2h264dec, tee, NULL);
+        rtph264depay, h264parse, v4l2h264dec, tee, qtivcomposer, waylandsink,
+        fpsdisplaysink, NULL);
   } else {
     gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc,  qmmfsrc_caps,
-        tee, NULL);
+        tee, qtivcomposer, fpsdisplaysink, waylandsink, NULL);
   }
 
   for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), qtimlvconverter[i],
-        qtimlelement[i], qtimlvpostproc[i], detection_filter[i],
-        qtivcomposer[i], fpsdisplaysink[i], NULL);
+        qtimlelement[i], qtimlvpostproc[i], detection_filter[i], NULL);
   }
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
@@ -692,8 +697,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       "rtspsource->rtph264depay\n");
       goto error_clean_pipeline;
     }
-  }
-  else {
+  } else {
     ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps, queue[0],
         tee, NULL);
     if (!ret) {
@@ -704,29 +708,29 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   // 3.2 Create links for all 4 streams
   for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
     ret = gst_element_link_many (
-        tee, queue[6*i + 1], qtivcomposer[i], NULL);
+        tee, queue[6*i + 1], qtivcomposer, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for object detection\n");
-      goto error_clean_pipeline;
-    }
-
-    ret = gst_element_link_many (qtivcomposer[i], queue[6*i + 2],
-        fpsdisplaysink[i], NULL);
-    if (!ret) {
-      g_printerr ("Pipeline elements cannot be linked for "
-      "composer->fpsdisplaysink.\n");
       goto error_clean_pipeline;
     }
 
     ret = gst_element_link_many (
-        tee, queue[6*i + 3], qtimlvconverter[i], queue[6*i + 4],
-        qtimlelement[i], queue[6*i + 5],
+        tee, queue[6*i + 2], qtimlvconverter[i], queue[6*i + 3],
+        qtimlelement[i], queue[6*i + 4],
         qtimlvpostproc[i],
-        detection_filter[i], queue[6*i + 6], qtivcomposer[i], NULL);
+        detection_filter[i], queue[6*i + 5], qtivcomposer, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for object detection\n");
       goto error_clean_pipeline;
     }
+  }
+
+  ret = gst_element_link_many (qtivcomposer, queue[24],
+      fpsdisplaysink, NULL);
+  if (!ret) {
+    g_printerr ("Pipeline elements cannot be linked for "
+        "composer->fpsdisplaysink.\n");
+    goto error_clean_pipeline;
   }
 
   g_print ("All elements are linked successfully\n");
@@ -741,67 +745,80 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         queue[0]);
   }
 
-  // 3.5 Set position of Object Classification window and alpha channel
-  // value for Segmentation overlay window
+  // 3.5 Set position and dimension for all four stream, and Classification window
+  // and alpha channel for classification and segmentation stream respectively.
   for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
-    GstPad *composer_sink;
+    GstPad *composer_sink[2];
     GValue position = G_VALUE_INIT;
     GValue dimension = G_VALUE_INIT;
     gdouble alpha_value;
     gint pos_vals[2], dim_vals[2];
 
+    // Create 2 composer pads for each pipeline
+    // One pad to receive the image from source,
+    // other pad to receive the model output to overlay over it.
+    for (gint j = 0; j < 2; j++) {
+      snprintf (element_name, 127, "sink_%d", (i*2 + j));
+      composer_sink[j] = gst_element_get_static_pad (qtivcomposer, element_name);
+      if (!composer_sink[j]) {
+        g_printerr ("Sink pad %d of vcomposer couldn't be retrieved\n",
+            (i*2 + j));
+        goto error_clean_pipeline;
+      }
+    }
+
+    g_value_init (&position, GST_TYPE_ARRAY);
+    g_value_init (&dimension, GST_TYPE_ARRAY);
+    pos_vals[0] = coordinates[i].x; pos_vals[1] = coordinates[i].y;
+    dim_vals[0] = coordinates[i].w; dim_vals[1] = coordinates[i].h;
+    build_pad_property (&position, pos_vals, 2);
+    build_pad_property (&dimension, dim_vals, 2);
+
+    g_object_set_property (G_OBJECT (composer_sink[0]),
+        "position", &position);
+    g_object_set_property (G_OBJECT (composer_sink[0]),
+        "dimensions", &dimension);
+
     switch (i) {
       case GST_CLASSIFICATION:
-        g_value_init (&position, GST_TYPE_ARRAY);
-        g_value_init (&dimension, GST_TYPE_ARRAY);
-        pos_vals[0] = 30; pos_vals[1] = 45;
-        dim_vals[0] = 320; dim_vals[1] = 180;
-        composer_sink = gst_element_get_static_pad (
-            qtivcomposer[GST_CLASSIFICATION], "sink_1");
-        if (!composer_sink) {
-          g_printerr ("Sink pad 1 of Classification composer couldn't "
-              "be retrieved\n");
-          goto error_clean_pipeline;
-        }
-
-        build_pad_property (&position, pos_vals, 2);
-        build_pad_property (&dimension, dim_vals, 2);
-        g_object_set_property (G_OBJECT (composer_sink),
-            "position", &position);
-        g_object_set_property (G_OBJECT (composer_sink),
-            "dimensions", &dimension);
+        // Reset the value for dimensions to have smaller text on 1/3 screen
         g_value_unset (&position);
         g_value_unset (&dimension);
-        gst_object_unref (composer_sink);
+        g_value_init (&position, GST_TYPE_ARRAY);
+        g_value_init (&dimension, GST_TYPE_ARRAY);
+        pos_vals[0] = (coordinates[i].w + 30); pos_vals[1] = 45;
+        dim_vals[0] = coordinates[i].w/3; dim_vals[1] = coordinates[i].h/3;
+        build_pad_property (&position, pos_vals, 2);
+        build_pad_property (&dimension, dim_vals, 2);
         break;
       case GST_SEGMENTATION:
-        // Create 1 composer pads for segmentation pipeline
-        // to assign alpha channel value.
-        composer_sink = gst_element_get_static_pad (
-            qtivcomposer[GST_SEGMENTATION], "sink_1");
-        if (!composer_sink) {
-          g_printerr ("Sink pad 1 of Segmentation composer couldn't "
-              "be retrieved\n");
-          goto error_clean_pipeline;
-        }
-
+        // Set alpha channel value for Segmentation overlay window
         alpha_value = 0.5;
-        g_object_set (composer_sink, "alpha", &alpha_value, NULL);
-        gst_object_unref (composer_sink);
+        g_object_set (composer_sink[1], "alpha", &alpha_value, NULL);
         break;
     }
+
+    g_object_set_property (G_OBJECT (composer_sink[1]),
+        "dimensions", &dimension);
+    g_object_set_property (G_OBJECT (composer_sink[1]),
+        "position", &position);
+
+    g_value_unset (&position);
+    g_value_unset (&dimension);
+    gst_object_unref (composer_sink[0]);
+    gst_object_unref (composer_sink[1]);
   }
 
   return TRUE;
 
 error_clean_elements:
   cleanup_gst (&qtiqmmfsrc, &qmmfsrc_caps, &filesrc, &qtdemux,
-      &h264parse, &v4l2h264dec, &rtspsrc, &rtph264depay, &tee, NULL);
+      &h264parse, &v4l2h264dec, &rtspsrc, &rtph264depay, &tee,
+      &qtivcomposer, &fpsdisplaysink, NULL);
 
   for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
     cleanup_gst (GST_BIN (appctx->pipeline), qtimlvconverter[i],
-        qtimlelement[i], qtimlvpostproc[i], detection_filter[i],
-        qtivcomposer[i], fpsdisplaysink[i], NULL);
+        qtimlelement[i], qtimlvpostproc[i], detection_filter[i], NULL);
   }
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
@@ -832,6 +849,10 @@ main (gint argc, gchar * argv[])
   options.camera_type = GST_CAMERA_TYPE_NONE;
   options.file_path = NULL;
   options.rtsp_ip_port = NULL;
+  options.object_detection_constants = DEFAULT_CONSTANTS_OBJECT_DETECTION;
+  options.pose_detection_constants = DEFAULT_CONSTANTS_POSE_DETECTION;
+  options.segmentation_constants = DEFAULT_CONSTANTS_SEGMENTATION;
+  options.classification_constants = DEFAULT_CONSTANTS_CLASSIFICATION;
   options.use_file = FALSE;
   options.use_rtsp = FALSE;
   options.use_camera = FALSE;
@@ -864,6 +885,38 @@ main (gint argc, gchar * argv[])
       "      eg: rtsp://192.168.1.110:8554/live.mkv",
       "rtsp://<ip>:<port>/<stream>"
     },
+    { "object-detection-constants", 0, 0, G_OPTION_ARG_STRING,
+      &options.object_detection_constants,
+      "Constants, offsets and coefficients used by the object detection module \n"
+      "      for post-processing of incoming tensors."
+      " Applicable only for some modules\n"
+      "      Default constants: " DEFAULT_CONSTANTS_OBJECT_DETECTION,
+      "/CONSTANTS"
+    },
+    { "pose-detection-constants", 0, 0, G_OPTION_ARG_STRING,
+      &options.pose_detection_constants,
+      "Constants, offsets and coefficients used by the pose detection module \n"
+      "      for post-processing of incoming tensors."
+      " Applicable only for some modules\n"
+      "      Default constants: " DEFAULT_CONSTANTS_POSE_DETECTION,
+      "/CONSTANTS"
+    },
+    { "segmentation-constants", 0, 0, G_OPTION_ARG_STRING,
+      &options.segmentation_constants,
+      "Constants, offsets and coefficients used by the segmentation module \n"
+      "      for post-processing of incoming tensors."
+      " Applicable only for some modules\n"
+      "      Default constants: " DEFAULT_CONSTANTS_SEGMENTATION,
+      "/CONSTANTS"
+    },
+    { "classification-constants", 0, 0, G_OPTION_ARG_STRING,
+      &options.classification_constants,
+      "Constants, offsets and coefficients used by the classification module \n"
+      "      for post-processing of incoming tensors."
+      " Applicable only for some modules\n"
+      "      Default constants: " DEFAULT_CONSTANTS_CLASSIFICATION,
+      "/CONSTANTS"
+    },
     { NULL }
   };
 
@@ -894,9 +947,9 @@ main (gint argc, gchar * argv[])
       app_name,
 #endif // ENABLE_CAMERA
       app_name, app_name, "Model", "Labels",
-      DEFAULT_SNPE_OBJECT_DETECTION_MODEL, DEFAULT_OBJECT_DETECTION_LABELS,
+      DEFAULT_TFLITE_OBJECT_DETECTION_MODEL, DEFAULT_OBJECT_DETECTION_LABELS,
       DEFAULT_TFLITE_POSE_DETECTION_MODEL,DEFAULT_POSE_DETECTION_LABELS,
-      DEFAULT_SNPE_SEGMENTATION_MODEL, DEFAULT_SEGMENTATION_LABELS,
+      DEFAULT_TFLITE_SEGMENTATION_MODEL, DEFAULT_SEGMENTATION_LABELS,
       DEFAULT_TFLITE_CLASSIFICATION_MODEL, DEFAULT_CLASSIFICATION_LABELS);
   help_description[2047] = '\0';
 
@@ -915,7 +968,7 @@ main (gint argc, gchar * argv[])
       g_printerr ("Failed to parse command line options: %s!\n",
           GST_STR_NULL (error->message));
       g_clear_error (&error);
-      // gst_app_context_free (&appctx, &options);
+      gst_app_context_free (&appctx, &options);
       return -EFAULT;
     } else if (!success && (NULL == error)) {
       g_printerr ("Initializing: Unknown error!\n");
