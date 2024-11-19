@@ -120,7 +120,7 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["mltflite"],
         "external-delegate-options",
-        "QNNExternalDelegate,backend_type=htp;",
+        "QNNExternalDelegate,backend_type=htp,htp_precision=(string)1;",
     )
     Gst.util_set_object_arg(
         elements["mltflite"],
