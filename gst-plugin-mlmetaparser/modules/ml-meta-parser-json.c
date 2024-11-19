@@ -54,6 +54,102 @@ struct _GstParserSubModule {
   GstDataType data_type;
 };
 
+
+static gboolean
+gst_structure_to_json_append (JsonBuilder * builder,
+    GstStructure * structure, gboolean is_name);
+
+static gboolean
+gst_array_to_json_append (JsonBuilder * builder,
+    const GValue * value, const gchar * name);
+
+static gboolean
+gst_gvalue_to_json_append (JsonBuilder * builder, const GValue * value, gboolean is_name)
+{
+  if (G_VALUE_TYPE (value) == G_TYPE_STRING) {
+    json_builder_add_string_value (builder, g_value_get_string (value));
+  } else if (G_VALUE_TYPE (value) == GST_TYPE_STRUCTURE) {
+    GstStructure *structure = GST_STRUCTURE (g_value_get_boxed (value));
+    gst_structure_to_json_append (builder, structure, is_name);
+  } else if (G_VALUE_TYPE (value) == GST_TYPE_ARRAY) {
+    gst_array_to_json_append (builder, value, NULL);
+  } else if (G_VALUE_TYPE (value) == G_TYPE_INT) {
+    json_builder_add_int_value (builder, g_value_get_int (value));
+  } else if (G_VALUE_TYPE (value) == G_TYPE_UINT) {
+    json_builder_add_int_value (builder, g_value_get_uint (value));
+  } else if (G_VALUE_TYPE (value) == G_TYPE_DOUBLE) {
+    json_builder_add_double_value (builder, g_value_get_double (value));
+  } else if (G_VALUE_TYPE (value) == G_TYPE_FLOAT) {
+    json_builder_add_double_value (builder, g_value_get_float (value));
+  } else {
+    json_builder_add_string_value (builder, gst_value_serialize (value));
+  }
+  return TRUE;
+}
+
+static gboolean
+gst_array_to_json_append (JsonBuilder * builder,
+    const GValue * value, const gchar * name)
+{
+  guint idx;
+  guint size = gst_value_array_get_size (value);
+
+  if (name != NULL) json_builder_set_member_name (builder, name);
+
+  json_builder_begin_array (builder);
+
+  for (idx = 0; idx < size; idx++) {
+    const GValue * val = gst_value_array_get_value (value, idx);
+    gst_gvalue_to_json_append (builder, val, TRUE);
+  }
+
+  json_builder_end_array (builder);
+
+  return TRUE;
+}
+
+static gboolean
+gst_structure_json_serialize (GQuark field, const GValue * value,
+    gpointer userdata)
+{
+  JsonBuilder *builder = (JsonBuilder *) userdata;
+
+  const gchar *name = g_quark_to_string (field);
+
+  g_return_val_if_fail (builder != NULL, FALSE);
+  g_return_val_if_fail (value != NULL, FALSE);
+
+  if (name) json_builder_set_member_name (builder, name);
+
+  gst_gvalue_to_json_append (builder, value, FALSE);
+
+  return TRUE;
+}
+
+static gboolean
+gst_structure_to_json_append (JsonBuilder * builder,
+    GstStructure * structure, gboolean is_name)
+{
+  const gchar *name = NULL;
+
+  g_return_val_if_fail (structure != NULL, FALSE);
+
+  name = gst_structure_get_name (structure);
+
+  json_builder_begin_object (builder);
+
+  if (is_name) {
+    json_builder_set_member_name (builder, "name");
+    json_builder_add_string_value (builder, name);
+  }
+
+  gst_structure_foreach (structure, gst_structure_json_serialize, builder);
+
+  json_builder_end_object (builder);
+
+  return TRUE;
+}
+
 static gboolean
 gst_parser_module_detection_meta_to_json_append (JsonBuilder * builder,
     GstBuffer * buffer, GstVideoMeta * vmeta,
@@ -234,6 +330,16 @@ gst_parser_module_detection_meta_to_json_append (JsonBuilder * builder,
 
         json_builder_end_array (builder);
 
+        if (gst_structure_has_field (param, "xtraparams")) {
+          GstStructure * xtraparams = NULL;
+
+          xtraparams = GST_STRUCTURE (
+              g_value_get_boxed (gst_structure_get_value (param, "xtraparams")));
+
+          json_builder_set_member_name (builder, "xtraparams");
+          gst_structure_to_json_append (builder, xtraparams, FALSE);
+        }
+
         json_builder_end_object (builder);
       }
     }
@@ -268,6 +374,11 @@ gst_parser_module_detection_meta_to_json_append (JsonBuilder * builder,
           json_builder_set_member_name (builder, "color");
           json_builder_add_int_value (builder, label->color);
 
+          if (label->xtraparams != NULL) {
+            json_builder_set_member_name (builder, "xtraparams");
+            gst_structure_to_json_append (builder, label->xtraparams, FALSE);
+          }
+
           json_builder_end_object (builder);
         }
       }
@@ -294,6 +405,16 @@ gst_parser_module_detection_meta_to_json_append (JsonBuilder * builder,
 
   if (nested_detection == TRUE) {
     json_builder_end_array (builder);
+  }
+
+  if (gst_structure_has_field (structure, "xtraparams")) {
+    GstStructure * xtraparams = NULL;
+
+    xtraparams = GST_STRUCTURE (
+        g_value_get_boxed (gst_structure_get_value (structure, "xtraparams")));
+
+    json_builder_set_member_name (builder, "xtraparams");
+    gst_structure_to_json_append (builder, xtraparams, FALSE);
   }
 
   json_builder_end_object (builder);
@@ -325,6 +446,11 @@ gst_parser_module_image_classification_meta_to_json_append (JsonBuilder * builde
     json_builder_set_member_name (builder, "color");
     json_builder_add_int_value (builder, label->color);
 
+    if (label->xtraparams != NULL) {
+      json_builder_set_member_name (builder, "xtraparams");
+      gst_structure_to_json_append (builder, label->xtraparams, FALSE);
+    }
+
     json_builder_end_object (builder);
   }
 
@@ -337,6 +463,7 @@ gst_parser_module_pose_estimation_meta_to_json_append (JsonBuilder * builder,
 {
   GArray *keypoints = GST_VIDEO_LANDMARKS_META_CAST (meta)->keypoints;
   GArray *links = GST_VIDEO_LANDMARKS_META_CAST (meta)->links;
+  GstStructure *xtraparams = GST_VIDEO_LANDMARKS_META_CAST (meta)->xtraparams;
   gint num = 0, length = 0;
 
   g_return_val_if_fail (builder != NULL, FALSE);
@@ -395,6 +522,12 @@ gst_parser_module_pose_estimation_meta_to_json_append (JsonBuilder * builder,
   }
 
   json_builder_end_array (builder);
+
+  if (xtraparams != NULL) {
+    json_builder_set_member_name (builder, "xtraparams");
+    gst_structure_to_json_append (builder, xtraparams, FALSE);
+  }
+
   json_builder_end_object (builder);
 
   return TRUE;
@@ -510,6 +643,16 @@ gst_detection_text_metadata_to_json_append (JsonBuilder *builder,
 
     }
 
+    if (gst_structure_has_field (entry, "xtraparams")) {
+      GstStructure * xtraparams = NULL;
+
+      xtraparams = GST_STRUCTURE (
+          g_value_get_boxed (gst_structure_get_value (entry, "xtraparams")));
+
+      json_builder_set_member_name (builder, "xtraparams");
+      gst_structure_to_json_append (builder, xtraparams, FALSE);
+    }
+
     json_builder_end_object (builder);
 
   }
@@ -558,6 +701,16 @@ gst_classigication_text_metadata_to_json_append (JsonBuilder *builder,
 
     json_builder_set_member_name (builder, "color");
     json_builder_add_int_value (builder, color);
+
+    if (gst_structure_has_field (entry, "xtraparams")) {
+      GstStructure * xtraparams = NULL;
+
+      xtraparams = GST_STRUCTURE (
+          g_value_get_boxed (gst_structure_get_value (entry, "xtraparams")));
+
+      json_builder_set_member_name (builder, "xtraparams");
+      gst_structure_to_json_append (builder, xtraparams, FALSE);
+    }
 
     json_builder_end_object (builder);
   }
@@ -692,6 +845,16 @@ gst_pose_estimation_text_metadata_to_json_append (JsonBuilder *builder,
     }
 
     json_builder_end_array (builder);
+
+    if (gst_structure_has_field (pose, "xtraparams")) {
+      GstStructure * xtraparams = NULL;
+
+      xtraparams = GST_STRUCTURE (
+          g_value_get_boxed (gst_structure_get_value (pose, "xtraparams")));
+
+      json_builder_set_member_name (builder, "xtraparams");
+      gst_structure_to_json_append (builder, xtraparams, FALSE);
+    }
 
     json_builder_end_object (builder);
   }
