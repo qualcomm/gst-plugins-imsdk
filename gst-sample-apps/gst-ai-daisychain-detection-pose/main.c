@@ -49,17 +49,17 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_TFLITE_YOLOV8_MODEL "/opt/yolov8_det_quantized.tflite"
+#define DEFAULT_TFLITE_YOLOV8_MODEL "/opt/YOLOv8-Detection-Quantized.tflite"
 #define DEFAULT_TFLITE_POSE_MODEL \
     "/opt/hrnet_pose_quantized.tflite"
 #define DEFAULT_YOLOV8_LABELS "/opt/yolov8.labels"
-#define DEFAULT_POSE_LABELS "/opt/hrnetpose.labels"
+#define DEFAULT_POSE_LABELS "/opt/hrnet_pose.labels"
 
 /**
  * Default Scale and Offset constants
  */
-#define DEFAULT_YOLOV8_CONSTANT "YoloV8,q-offsets=<-107.0,-128.0,0.0>,\
-    q-scales=<3.093529462814331,0.00390625,1.0>;"
+#define DEFAULT_YOLOV8_CONSTANT "YoloV8,q-offsets=<21.0, 0.0, 0.0>,\
+    q-scales=<3.093529462814331, 0.00390625, 1.0>"
 #define DEFAULT_HRNET_CONSTANT "hrnet,q-offsets=<8.0>,\
     q-scales=<0.0040499246679246426>;"
 
@@ -179,6 +179,12 @@ typedef struct {
   gchar *input_file_path;
   gchar *output_file_path;
   gchar *rtsp_ip_port;
+  gchar *yolov8_model_path;
+  gchar *hrnet_model_pathh;
+  gchar *yolov8_labels_path;
+  gchar *hrnet_labels_path;
+  gchar *yolov8_constants;
+  gchar *hrnet_constants;
   enum GstSinkType sink_type;
   GstStreamSourceType source_type;
   gboolean display;
@@ -269,6 +275,36 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
     options->rtsp_ip_port = NULL;
   }
 
+  if (options->yolov8_model_path != DEFAULT_TFLITE_YOLOV8_MODEL &&
+      options->yolov8_model_path != NULL) {
+    g_free (options->yolov8_model_path);
+  }
+
+  if (options->hrnet_model_pathh != DEFAULT_TFLITE_POSE_MODEL &&
+      options->hrnet_model_pathh != NULL) {
+    g_free (options->hrnet_model_pathh);
+  }
+
+  if (options->yolov8_labels_path != DEFAULT_YOLOV8_LABELS &&
+      options->yolov8_labels_path != NULL) {
+    g_free (options->yolov8_labels_path);
+  }
+
+  if (options->hrnet_labels_path != DEFAULT_POSE_LABELS &&
+      options->hrnet_labels_path != NULL) {
+    g_free (options->hrnet_labels_path);
+  }
+
+  if (options->yolov8_constants != DEFAULT_YOLOV8_CONSTANT &&
+      options->yolov8_constants != NULL) {
+    g_free (options->yolov8_constants);
+  }
+
+  if (options->hrnet_constants != DEFAULT_HRNET_CONSTANT &&
+      options->hrnet_constants != NULL) {
+    g_free (options->hrnet_constants);
+  }
+
   if (options->output_file_path != NULL) {
     g_free (options->output_file_path);
     options->output_file_path = NULL;
@@ -290,7 +326,7 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
  * @param options GstAppOptions object
  */
 static gboolean
-create_pipe (GstAppContext * appctx, const GstAppOptions options)
+create_pipe (GstAppContext * appctx, const GstAppOptions *options)
 {
   GstElement *qtiqmmfsrc = NULL, *qmmfsrc_caps = NULL;
   GstElement *queue[QUEUE_COUNT] = {NULL};
@@ -322,7 +358,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   GValue value = G_VALUE_INIT;
 
   // 1. Create the elements or Plugins
-  if (options.source_type == GST_STREAM_TYPE_CAMERA) {
+  if (options->source_type == GST_STREAM_TYPE_CAMERA) {
     // Create qtiqmmfsrc plugin for camera stream
     qtiqmmfsrc = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
     if (!qtiqmmfsrc) {
@@ -336,7 +372,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
       g_printerr ("Failed to create qmmfsrc_caps\n");
       goto error_clean_elements;
     }
-  } else if (options.source_type == GST_STREAM_TYPE_FILE) {
+  } else if (options->source_type == GST_STREAM_TYPE_FILE) {
     // Create file source element for file stream
     filesrc = gst_element_factory_make ("filesrc", "filesrc");
     if (!filesrc ) {
@@ -365,7 +401,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
       g_printerr ("Failed to create v4l2h264dec\n");
       goto error_clean_elements;
     }
-  } else if (options.source_type == GST_STREAM_TYPE_RTSP) {
+  } else if (options->source_type == GST_STREAM_TYPE_RTSP) {
     // Create rtspsrc plugin for rtsp input
     rtspsrc = gst_element_factory_make ("rtspsrc", "rtspsrc");
     if (!rtspsrc) {
@@ -513,7 +549,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     goto error_clean_elements;
   }
 
-  if (options.sink_type == GST_WAYLANDSINK) {
+  if (options->sink_type == GST_WAYLANDSINK) {
     // Create Wayland compositor to render output on Display
     waylandsink = gst_element_factory_make ("waylandsink", "waylandsink");
     if (!waylandsink) {
@@ -529,7 +565,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
       g_printerr ("Failed to create fpsdisplaysink\n");
       goto error_clean_elements;
     }
-  } else if (options.sink_type == GST_VIDEO_ENCODE) {
+  } else if (options->sink_type == GST_VIDEO_ENCODE) {
      // Create h264parse element for parsing the stream
     h264parse_encode = gst_element_factory_make ("h264parse", "h264parse_encode");
     if (!h264parse_encode) {
@@ -565,7 +601,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   }
 
   // 2. Set properties for all GST plugin elements
-  if (options.source_type == GST_STREAM_TYPE_CAMERA) {
+  if (options->source_type == GST_STREAM_TYPE_CAMERA) {
     // 2.1 Set the capabilities of camera stream
     filtercaps = gst_caps_new_simple ("video/x-raw",
       "format", G_TYPE_STRING, "NV12",
@@ -577,14 +613,14 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
         gst_caps_features_new ("memory:GBM", NULL));
     g_object_set (G_OBJECT (qmmfsrc_caps), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
-  } else if (options.source_type == GST_STREAM_TYPE_FILE) {
+  } else if (options->source_type == GST_STREAM_TYPE_FILE) {
     // 2.2 Set the capabilities of file stream
-    g_object_set (G_OBJECT (filesrc), "location", options.input_file_path, NULL);
+    g_object_set (G_OBJECT (filesrc), "location", options->input_file_path, NULL);
     g_object_set (G_OBJECT (v4l2h264dec), "capture-io-mode", 5, NULL);
     g_object_set (G_OBJECT (v4l2h264dec), "output-io-mode", 5, NULL);
-  } else if (options.source_type == GST_STREAM_TYPE_RTSP) {
+  } else if (options->source_type == GST_STREAM_TYPE_RTSP) {
     // 2.3 Set the capabilities of rtsp stream
-    g_object_set (G_OBJECT (rtspsrc), "location", options.rtsp_ip_port, NULL);
+    g_object_set (G_OBJECT (rtspsrc), "location", options->rtsp_ip_port, NULL);
     g_object_set (G_OBJECT (v4l2h264dec), "capture-io-mode", 5, NULL);
     g_object_set (G_OBJECT (v4l2h264dec), "output-io-mode", 5, NULL);
   }
@@ -613,13 +649,13 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     if (i == GST_DETECTION_TYPE_YOLO)
     {
       g_object_set (G_OBJECT (qtimlelement[i]),
-          "model", DEFAULT_TFLITE_YOLOV8_MODEL,
+          "model", options->yolov8_model_path,
           "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
     }
     else
     {
       g_object_set (G_OBJECT (qtimlelement[i]),
-          "model", DEFAULT_TFLITE_POSE_MODEL,
+          "model", options->hrnet_model_pathh,
           "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
     }
     delegate_options = gst_structure_from_string (
@@ -658,8 +694,8 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     if (module_id != -1) {
       g_object_set (G_OBJECT (qtimlvdetection[i]),
           "threshold", 40.0, "results", 4,
-          "module", module_id, "labels", DEFAULT_YOLOV8_LABELS,
-          "constants", DEFAULT_YOLOV8_CONSTANT,
+          "module", module_id, "labels", options->yolov8_labels_path,
+          "constants", options->yolov8_constants,
           NULL);
       }
     else {
@@ -675,8 +711,8 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     if (module_id != -1) {
       g_object_set (G_OBJECT (qtimlvpose[i]),
           "threshold", 51.0, "results", 1,
-          "module", module_id, "labels", DEFAULT_POSE_LABELS,
-          "constants", DEFAULT_HRNET_CONSTANT,
+          "module", module_id, "labels", options->hrnet_labels_path,
+          "constants", options->hrnet_constants,
           NULL);
       }
     else {
@@ -691,7 +727,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   g_object_set_property (G_OBJECT (qtioverlay), "engine", &value);
   g_value_unset (&value);
 
-  if (options.sink_type == GST_WAYLANDSINK) {
+  if (options->sink_type == GST_WAYLANDSINK) {
     // 2.11 Set the properties of Wayland compositor
     g_object_set (G_OBJECT (waylandsink), "sync", TRUE, NULL);
     g_object_set (G_OBJECT (waylandsink), "fullscreen", TRUE, NULL);
@@ -703,7 +739,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
         TRUE, NULL);
     g_object_set (G_OBJECT (fpsdisplaysink), "text-overlay", TRUE, NULL);
     g_object_set (G_OBJECT (fpsdisplaysink), "video-sink", waylandsink, NULL);
-  } else if (options.sink_type == GST_VIDEO_ENCODE) {
+  } else if (options->sink_type == GST_VIDEO_ENCODE) {
     // 2.13 Set the properties of filesink
     g_object_set (G_OBJECT (v4l2h264enc), "capture-io-mode", 5,
         "output-io-mode", 5, NULL);
@@ -719,7 +755,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     g_object_set (G_OBJECT (sink_filter), "caps", pad_filter, NULL);
     gst_caps_unref (pad_filter);
 
-    g_object_set (G_OBJECT (filesink), "location", options.output_file_path,
+    g_object_set (G_OBJECT (filesink), "location", options->output_file_path,
         NULL);
   }
 
@@ -727,13 +763,13 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   // 3.1 Adding elements to pipeline
   g_print ("Adding all elements to the pipeline...\n");
 
-  if (options.source_type == GST_STREAM_TYPE_CAMERA) {
+  if (options->source_type == GST_STREAM_TYPE_CAMERA) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, qmmfsrc_caps,
         NULL);
-  } else if (options.source_type == GST_STREAM_TYPE_FILE) {
+  } else if (options->source_type == GST_STREAM_TYPE_FILE) {
     gst_bin_add_many (GST_BIN (appctx->pipeline),
         filesrc, qtdemux, h264parse_decode, v4l2h264dec, NULL);
-  } else if (options.source_type == GST_STREAM_TYPE_RTSP) {
+  } else if (options->source_type == GST_STREAM_TYPE_RTSP) {
     gst_bin_add_many (GST_BIN (appctx->pipeline),
         rtspsrc, rtph264depay, h264parse_decode, v4l2h264dec, NULL);
   }
@@ -741,10 +777,10 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   gst_bin_add_many (GST_BIN (appctx->pipeline),
       qtivsplit, qtioverlay, qtivcomposer, NULL);
 
-  if (options.sink_type == GST_WAYLANDSINK) {
+  if (options->sink_type == GST_WAYLANDSINK) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), fpsdisplaysink,
         waylandsink, NULL);
-  } else if (options.sink_type == GST_VIDEO_ENCODE) {
+  } else if (options->sink_type == GST_VIDEO_ENCODE) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), sink_filter,
         v4l2h264enc, h264parse_encode, mp4mux, filesink, NULL);
   }
@@ -777,7 +813,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
 
   // 3.2 Link pipeline elements for Inferencing
   g_print ("Linking elements...\n");
-  if (options.source_type == GST_STREAM_TYPE_CAMERA) {
+  if (options->source_type == GST_STREAM_TYPE_CAMERA) {
     ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps,
         tee[0], qtimetamux[0], NULL);
     if (!ret) {
@@ -792,7 +828,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
           "Exiting.\n");
       goto error_clean_pipeline;
     }
-  } else if (options.source_type == GST_STREAM_TYPE_FILE) {
+  } else if (options->source_type == GST_STREAM_TYPE_FILE) {
     ret = gst_element_link_many (filesrc, qtdemux, NULL);
     if (!ret) {
       g_printerr ("\n pipeline elements filesrc -> qtdemux elements "
@@ -814,7 +850,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
           "Exiting.\n");
       goto error_clean_pipeline;
     }
-  } else if (options.source_type == GST_STREAM_TYPE_RTSP) {
+  } else if (options->source_type == GST_STREAM_TYPE_RTSP) {
     ret = gst_element_link_many (queue[0], rtph264depay, h264parse_decode,
         v4l2h264dec, tee[0], qtimetamux[0], NULL);
     if (!ret) {
@@ -911,7 +947,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     }
   }
 
-  if (options.sink_type == GST_WAYLANDSINK) {
+  if (options->sink_type == GST_WAYLANDSINK) {
     ret = gst_element_link_many (qtivcomposer, qtioverlay, fpsdisplaysink,
         NULL);
     if (!ret) {
@@ -919,7 +955,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
           "fpsdisplaysink cannot be linked. Exiting.\n");
       goto error_clean_pipeline;
     }
-  } else if (options.sink_type == GST_VIDEO_ENCODE) {
+  } else if (options->sink_type == GST_VIDEO_ENCODE) {
     ret = gst_element_link_many (qtivcomposer, qtioverlay,
         sink_filter, v4l2h264enc, h264parse_encode, mp4mux, filesink,
         NULL);
@@ -932,11 +968,11 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
 
   g_print ("All elements are linked successfully\n");
 
-  if (options.source_type == GST_STREAM_TYPE_FILE) {
+  if (options->source_type == GST_STREAM_TYPE_FILE) {
     // 3.3 Setup dynamic pad to link qtdemux to queue
     g_signal_connect (qtdemux, "pad-added", G_CALLBACK (on_pad_added),
         queue[0]);
-  } else if (options.source_type == GST_STREAM_TYPE_RTSP) {
+  } else if (options->source_type == GST_STREAM_TYPE_RTSP) {
     // 3.4 Setup dynamic pad to link rtspsrc to queue
     g_signal_connect (rtspsrc, "pad-added", G_CALLBACK (on_pad_added),
         queue[0]);
@@ -1007,18 +1043,18 @@ error_clean_pipeline:
 
 error_clean_elements:
   g_printerr ("Pipeline elements cannot be linked\n");
-  if (options.source_type == GST_STREAM_TYPE_CAMERA) {
+  if (options->source_type == GST_STREAM_TYPE_CAMERA) {
     cleanup_gst (&qtiqmmfsrc, &qmmfsrc_caps, NULL);
-  } else if (options.source_type == GST_STREAM_TYPE_FILE) {
+  } else if (options->source_type == GST_STREAM_TYPE_FILE) {
     cleanup_gst (&filesrc, &qtdemux, &h264parse_decode, &v4l2h264dec, NULL);
-  } else if (options.source_type == GST_STREAM_TYPE_RTSP) {
+  } else if (options->source_type == GST_STREAM_TYPE_RTSP) {
     cleanup_gst (&rtspsrc, &rtph264depay, &h264parse_decode, &v4l2h264dec,
         NULL);
   }
 
-  if (options.sink_type == GST_WAYLANDSINK) {
+  if (options->sink_type == GST_WAYLANDSINK) {
     cleanup_gst (&fpsdisplaysink, &waylandsink, NULL);
-  } else if (options.sink_type == GST_VIDEO_ENCODE) {
+  } else if (options->sink_type == GST_VIDEO_ENCODE) {
     cleanup_gst (&sink_filter, &v4l2h264enc, &h264parse_encode, &mp4mux,
         &filesink, NULL);
   }
@@ -1093,6 +1129,12 @@ main (gint argc, gchar * argv[])
   options.input_file_path = NULL;
   options.output_file_path = NULL;
   options.rtsp_ip_port = NULL;
+  options.yolov8_model_path = DEFAULT_TFLITE_YOLOV8_MODEL;
+  options.hrnet_model_pathh = DEFAULT_TFLITE_POSE_MODEL;
+  options.yolov8_labels_path = DEFAULT_YOLOV8_LABELS;
+  options.hrnet_labels_path = DEFAULT_POSE_LABELS;
+  options.yolov8_constants = DEFAULT_YOLOV8_CONSTANT;
+  options.hrnet_constants = DEFAULT_HRNET_CONSTANT;
   options.camera_source = FALSE;
   options.display = FALSE;
 
@@ -1120,6 +1162,48 @@ main (gint argc, gchar * argv[])
       "      Input should be provided as rtsp://<ip>:<port>/<stream>,\n"
       "      eg: rtsp://192.168.1.110:8554/live.mkv",
       "rtsp://<ip>:<port>/<stream>"
+    },
+    { "object-detection-model", 0, 0, G_OPTION_ARG_STRING,
+      &options.yolov8_model_path,
+      "This is an optional parameter and overrides default path\n"
+      "      Default model path for Object detection TFLITE Model: "
+      DEFAULT_TFLITE_YOLOV8_MODEL,
+      "/PATH"
+    },
+    { "pose-detection-model", 0, 0, G_OPTION_ARG_STRING,
+      &options.hrnet_model_pathh,
+      "This is an optional parameter and overrides default path\n"
+      "      Default model path for Pose detection TFLITE Model: "
+      DEFAULT_TFLITE_POSE_MODEL,
+      "/PATH"
+    },
+    { "object-detection-labels", 0, 0, G_OPTION_ARG_STRING,
+      &options.yolov8_labels_path,
+      "This is an optional parameter and overrides default path\n"
+      "      Default Object detection labels path: "
+      DEFAULT_YOLOV8_LABELS,
+      "/PATH"
+    },
+    { "pose-detection-labels", 0, 0, G_OPTION_ARG_STRING,
+      &options.hrnet_labels_path,
+      "This is an optional parameter and overrides default path\n"
+      "      Default Pose detection labels path: "
+      DEFAULT_POSE_LABELS,
+      "/PATH"
+    },
+    { "object-detection-constants", 0, 0, G_OPTION_ARG_STRING,
+      &options.yolov8_constants,
+      "Constants, offsets and coefficients used by detection module \n"
+      "      for post-processing of incoming tensors.\n"
+      "      Default constants: " DEFAULT_YOLOV8_CONSTANT,
+      "/CONSTANTS"
+    },
+    { "pose-detection-constants", 0, 0, G_OPTION_ARG_STRING,
+      &options.hrnet_constants,
+      "Constants, offsets and coefficients used pose module \n"
+      "      for post-processing of incoming tensors.\n"
+      "      Default constants: " DEFAULT_HRNET_CONSTANT,
+      "/CONSTANTS"
     },
     { "display", 'd', 0, G_OPTION_ARG_NONE,
       &options.display,
@@ -1249,29 +1333,29 @@ main (gint argc, gchar * argv[])
     }
   }
 
-  if (!file_exists (DEFAULT_TFLITE_YOLOV8_MODEL)) {
+  if (!file_exists (options.yolov8_model_path)) {
     g_printerr ("Invalid detection model file path: %s\n",
-        DEFAULT_TFLITE_YOLOV8_MODEL);
+        options.yolov8_model_path);
     gst_app_context_free (&appctx, &options);
     return -EINVAL;
   }
 
-  if (!file_exists (DEFAULT_TFLITE_POSE_MODEL)) {
+  if (!file_exists (options.hrnet_model_pathh)) {
     g_printerr ("Invalid pose model file path: %s\n",
-        DEFAULT_TFLITE_POSE_MODEL);
+        options.hrnet_model_pathh);
     return -EINVAL;
   }
 
-  if (!file_exists (DEFAULT_YOLOV8_LABELS)) {
+  if (!file_exists (options.yolov8_labels_path)) {
     g_printerr ("Invalid detection labels file path: %s\n",
-        DEFAULT_YOLOV8_LABELS);
+        options.yolov8_labels_path);
     gst_app_context_free (&appctx, &options);
     return -EINVAL;
   }
 
-  if (!file_exists (DEFAULT_POSE_LABELS)) {
+  if (!file_exists (options.hrnet_labels_path)) {
     g_printerr ("Invalid pose labels file path: %s\n",
-        DEFAULT_POSE_LABELS);
+        options.hrnet_labels_path);
     gst_app_context_free (&appctx, &options);
     return -EINVAL;
   }
@@ -1287,9 +1371,8 @@ main (gint argc, gchar * argv[])
   g_print ("Running app with\n"
       "For Detection model: %s labels: %s\n"
       "For Pose model: %s labels: %s\n",
-      DEFAULT_TFLITE_YOLOV8_MODEL, DEFAULT_YOLOV8_LABELS,
-      DEFAULT_TFLITE_POSE_MODEL,
-      DEFAULT_POSE_LABELS);
+      options.yolov8_model_path, options.yolov8_labels_path,
+      options.hrnet_model_pathh, options.hrnet_labels_path);
 
   // Initialize GST library.
   gst_init (&argc, &argv);
@@ -1305,7 +1388,7 @@ main (gint argc, gchar * argv[])
   appctx.pipeline = pipeline;
 
   // Build the pipeline, link all elements in the pipeline
-  ret = create_pipe (&appctx, options);
+  ret = create_pipe (&appctx, &options);
   if (!ret) {
     g_printerr ("ERROR: failed to create GST pipe.\n");
     gst_app_context_free (&appctx, &options);

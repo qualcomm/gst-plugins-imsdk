@@ -47,13 +47,15 @@ typedef struct
  * @GST_MODEL_TYPE_NONE  : Invalid Model Type.
  * @GST_MODEL_TYPE_SNPE  : SNPE DLC Container.
  * @GST_MODEL_TYPE_TFLITE: TFLITE Container.
+ * @GST_MODEL_TYPE_QNN   : QNN Container.
  *
  * Type of Model container for the Runtime.
  */
 typedef enum {
   GST_MODEL_TYPE_NONE,
   GST_MODEL_TYPE_SNPE,
-  GST_MODEL_TYPE_TFLITE
+  GST_MODEL_TYPE_TFLITE,
+  GST_MODEL_TYPE_QNN
 } GstModelType;
 
 /**

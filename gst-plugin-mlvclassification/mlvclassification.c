@@ -286,6 +286,8 @@ gst_ml_video_classification_create_pool (
 
     gst_buffer_pool_config_add_option (structure,
         GST_BUFFER_POOL_OPTION_VIDEO_META);
+    gst_buffer_pool_config_add_option (structure,
+        GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
   }
 
   if (!gst_buffer_pool_set_config (pool, structure)) {
