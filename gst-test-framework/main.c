@@ -176,8 +176,8 @@ int main (int argc, char **argv)
   appctx.iteration = iteration;
   appctx.duration = duration;
 
-  // TODO: run suite
-  gst_plugin_run_suites(&appctx);
+  // Run suites
+  gst_plugin_run_suites (&appctx);
 
 exit:
   if (snames != NULL)
@@ -188,4 +188,3 @@ exit:
 
   return 0;
 }
-
