@@ -911,10 +911,6 @@ gst_venc_bin_change_state (GstElement * element, GstStateChange transition)
       gst_data_queue_set_flushing (vencbin->ctrl_frames, TRUE);
       gst_data_queue_flush (vencbin->ctrl_frames);
       break;
-    case GST_STATE_CHANGE_PLAYING_TO_PAUSED:
-      GST_DEBUG_OBJECT (vencbin, "Engine flush");
-      gst_smartcodec_engine_flush (vencbin->engine);
-      break;
     default:
       break;
   }
@@ -1107,6 +1103,11 @@ gst_venc_bin_finalize (GObject * object)
   if (vencbin->roi_qualitys != NULL)
     gst_structure_free (vencbin->roi_qualitys);
 
+  if (vencbin->engine) {
+    gst_smartcodec_engine_free (vencbin->engine);
+    vencbin->engine = NULL;
+  }
+
   if (vencbin->ctrl_frames != NULL) {
     gst_data_queue_set_flushing (vencbin->ctrl_frames, TRUE);
     gst_data_queue_flush (vencbin->ctrl_frames);
@@ -1128,11 +1129,6 @@ gst_venc_bin_finalize (GObject * object)
 
   if (vencbin->encoders)
     gst_plugin_feature_list_free (vencbin->encoders);
-
-  if (vencbin->engine) {
-    gst_smartcodec_engine_free (vencbin->engine);
-    vencbin->engine = NULL;
-  }
 
   g_mutex_clear (&vencbin->lock);
   g_rec_mutex_clear (&vencbin->worklock);
