@@ -8,6 +8,7 @@ add_library(${GST_QTI_VIDEO_BASE} SHARED
   video-converter-engine.c
   gstqtiallocator.c
   gstqtibufferpool.c
+  video-utils.c
   $<$<BOOL:${HAVE_ADRENO_C2D2_H}>:c2d-video-converter.c>
   $<$<BOOL:${HAVE_IOT_CORE_IB2C_H}>:gles-video-converter.cc>
   $<$<BOOL:${HAVE_FASTCV_H}>:fcv-video-converter.c>
@@ -20,6 +21,7 @@ set(GST_QTI_VIDEO_BASE_HEADERS
   video-converter-engine.h
   gstqtiallocator.h
   gstqtibufferpool.h
+  video-utils.h
 )
 
 set_target_properties(${GST_QTI_VIDEO_BASE} PROPERTIES PUBLIC_HEADER
