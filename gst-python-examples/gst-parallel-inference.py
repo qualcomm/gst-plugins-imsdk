@@ -39,7 +39,7 @@ DEFAULT_CONSTANTS_SEGMENTATION = "deeplab,q-offsets=<61.0>,\
 
 GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX = 1
 
-QUEUE_COUNT = 25
+QUEUE_COUNT = 22
 GST_PIPELINE_CNT = 4
 
 GST_OBJECT_DETECTION=0
@@ -107,10 +107,10 @@ def link_elements(elements, link_orders):
             if src:
                 if "qtdemux" in elements.keys() and src == elements["qtdemux"]:
                     src.connect("pad-added", on_pad_added, dest)
-                    print("Connected")
-                if "rtspsrc" in elements.keys() and src == elements["rtspsrc"]:
+                    print(f"{src.get_name()} linked to {dest.get_name()}")
+                elif "rtspsrc" in elements.keys() and src == elements["rtspsrc"]:
                     src.connect("pad-added", on_pad_added, dest)
-                    print("Connected")
+                    print(f"{src.get_name()} linked to {dest.get_name()}")
                 elif not src.link(dest):
                     raise Exception(
                         f"Unable to link element "
@@ -227,7 +227,7 @@ def create_pipeline(pipeline):
         # Create capsfilter to define camera output settings
         elements["qmmfsrc_caps"] = create_element("capsfilter", "qmmfsrc_caps")
 
-    if args.file:
+    elif args.file:
         # Create file source element for file stream
         elements["filesrc"] = create_element("filesrc", "filesrc")
 
@@ -240,7 +240,7 @@ def create_pipeline(pipeline):
         # Create v4l2h264dec element for decoding the stream
         elements["v4l2h264dec"] = create_element("v4l2h264dec", "v4l2h264dec")
 
-    if args.rtsp:
+    elif args.rtsp:
         # Create rtspsrc for rtsp input
         elements["rtspsrc"] = create_element("rtspsrc", "rtspsrc")
 
@@ -252,6 +252,10 @@ def create_pipeline(pipeline):
 
         # Create v4l2h264dec element for decoding the stream
         elements["v4l2h264dec"] = create_element("v4l2h264dec", "v4l2h264dec")
+
+    else:
+        print("No input source selected, exiting...")
+        sys.exit(1)
 
     # Add tee to split single stream into multiple streams (inference, preview)
     elements["tee"] = create_element("tee", "tee")
@@ -281,7 +285,7 @@ def create_pipeline(pipeline):
 
     # Create queue to decouple processing on sink and source pads
     for i in range(QUEUE_COUNT):
-        element_name = "queue"+f"-{i}"
+        element_name = "queue" + f"-{i}"
         elements[f"queue{i}"] = create_element("queue", element_name)
 
     # Create fpsdisplaysink to display current and average fps
@@ -298,19 +302,22 @@ def create_pipeline(pipeline):
         elements["v4l2h264dec"].set_property("output-io-mode", 5)
         elements["filesrc"].set_property("location", args.file)
 
-    if args.rtsp:
+    elif args.rtsp:
         elements["v4l2h264dec"].set_property("capture-io-mode", 5)
         elements["v4l2h264dec"].set_property("output-io-mode", 5)
         elements["rtspsrc"].set_property("location", args.rtsp)
 
-    if args.camera:
+    elif args.camera:
         elements["qmmfsrc_caps"].set_property(
             "caps", Gst.Caps.from_string(
                 "video/x-raw(memory:GBM),format=NV12,width=1920,height=1080,"
                 "framerate=30/1,compression=ubwc"
             )
         )
-        print("Camera properties set successfully")
+
+    else:
+        print("No input source selected, exiting...")
+        sys.exit(1)
 
     for i in range(GST_PIPELINE_CNT):
         elements[f"qtimlelement{i}"].set_property(
@@ -371,9 +378,12 @@ def create_pipeline(pipeline):
                     "video/x-raw,format=BGRA,width=640,height=360"
                 )
             )
+
+    # Set sync to False to override default value
     waylandsink.set_property("sync", True)
     waylandsink.set_property("fullscreen", True)
 
+    # Set sync to False to override default value
     elements["fpsdisplaysink"].set_property("sync", True)
     elements["fpsdisplaysink"].set_property("signal-fps-measurements", True)
     elements["fpsdisplaysink"].set_property("text-overlay", True)
@@ -390,87 +400,90 @@ def create_pipeline(pipeline):
         link_orders+= [
             ["qtiqmmfsrc", "qmmfsrc_caps", "queue0", "tee"]
         ]
-    if args.file:
+    elif args.file:
         link_orders+= [
             [
                 "filesrc", "qtdemux", "queue0", "h264parse", "v4l2h264dec", "tee"
             ],
         ]
-    if args.rtsp:
+    elif args.rtsp:
         link_orders+= [
             [
                 "rtspsrc", "queue0", "rtph264depay",
                 "h264parse", "v4l2h264dec", "tee",
             ],
         ]
+    else:
+        print("No input source selected, exiting...")
+        sys.exit(1)
 
     for i in range(GST_PIPELINE_CNT):
         link_orders+= [
             [
-                "tee", f"queue{6*i+1}", "qtivcomposer"
+                "tee", f"queue{5 * i + 1}", "qtivcomposer"
             ],
             [
-                "tee", f"queue{6*i+2}", f"qtimlvconverter{i}", f"queue{6*i+3}",
-                f"qtimlelement{i}", f"queue{6*i+4}", f"qtimlvpostproc{i}",
-                f"capsfilter{i}", f"queue{6*i+5}", "qtivcomposer"
+                "tee", f"queue{5 * i + 2}", f"qtimlvconverter{i}", f"queue{5 * i + 3}",
+                f"qtimlelement{i}", f"queue{5 * i + 4}", f"qtimlvpostproc{i}",
+                f"capsfilter{i}", f"queue{5 * i + 5}", "qtivcomposer"
             ]
         ]
 
     link_orders+= [
         [
-            "qtivcomposer", "queue24", "fpsdisplaysink"
+            "qtivcomposer", "queue21", "fpsdisplaysink"
         ]
     ]
 
     link_elements(elements, link_orders)
 
     # Set position and dimension for each output stream
-    composer_sink_pads = [elements["qtivcomposer"].get_static_pad(f"sink_{i}") for i in range(2*GST_PIPELINE_CNT)]
+    composer_sink_pads = [elements["qtivcomposer"].get_static_pad(f"sink_{i}") for i in range(2 * GST_PIPELINE_CNT)]
 
     for i in range(GST_PIPELINE_CNT):
         Gst.util_set_object_arg(
-            composer_sink_pads[2*i],
+            composer_sink_pads[2 * i],
             "position",
             f"<{composer_coords[i][0]}, {composer_coords[i][1]}>"
         )
         Gst.util_set_object_arg(
-            composer_sink_pads[2*i],
+            composer_sink_pads[2 * i],
             "dimensions",
             f"<{composer_coords[i][2]}, {composer_coords[i][3]}>"
         )
 
         if i == GST_CLASSIFICATION:
             Gst.util_set_object_arg(
-                composer_sink_pads[2*i+1],
+                composer_sink_pads[2 * i + 1],
                 "position",
-                f"<{composer_coords[i][0]+30}, {composer_coords[i][1]+45}>"
+                f"<{composer_coords[i][0] + 30}, {composer_coords[i][1] + 45}>"
             )
             Gst.util_set_object_arg(
-                composer_sink_pads[2*i+1],
+                composer_sink_pads[2 * i + 1],
                 "dimensions",
-                f"<{composer_coords[i][2]//3}, {composer_coords[i][3]//3}>"
+                f"<{composer_coords[i][2] // 3}, {composer_coords[i][3] // 3}>"
             )
         elif i == GST_SEGMENTATION:
             alpha = 0.5
-            composer_sink_pads[2*i+1].set_property("alpha", alpha)
+            composer_sink_pads[2 * i + 1].set_property("alpha", alpha)
             Gst.util_set_object_arg(
-                composer_sink_pads[2*i+1],
+                composer_sink_pads[2 * i + 1],
                 "position",
                 f"<{composer_coords[i][0]}, {composer_coords[i][1]}>"
             )
             Gst.util_set_object_arg(
-                composer_sink_pads[2*i+1],
+                composer_sink_pads[2 * i + 1],
                 "dimensions",
                 f"<{composer_coords[i][2]}, {composer_coords[i][3]}>"
             )
         else:
             Gst.util_set_object_arg(
-                composer_sink_pads[2*i+1],
+                composer_sink_pads[2 * i + 1],
                 "position",
                 f"<{composer_coords[i][0]}, {composer_coords[i][1]}>"
             )
             Gst.util_set_object_arg(
-                composer_sink_pads[2*i+1],
+                composer_sink_pads[2 * i + 1],
                 "dimensions",
                 f"<{composer_coords[i][2]}, {composer_coords[i][3]}>"
             )
@@ -520,7 +533,6 @@ def main():
     mloop = None
     pipeline = None
     Gst.deinit()
-    print("App execution successful")
 
 if __name__ == "__main__":
     sys.exit(main())
