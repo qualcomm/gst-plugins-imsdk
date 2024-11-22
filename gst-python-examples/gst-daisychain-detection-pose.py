@@ -91,10 +91,10 @@ def link_elements(elements, link_orders):
             if src:
                 if "qtdemux" in elements.keys() and src == elements["qtdemux"]:
                     src.connect("pad-added", on_pad_added, dest)
-                    print("Connected")
-                if "rtspsrc" in elements.keys() and src == elements["rtspsrc"]:
+                    print(f"{src.get_name()} linked to {dest.get_name()}")
+                elif "rtspsrc" in elements.keys() and src == elements["rtspsrc"]:
                     src.connect("pad-added", on_pad_added, dest)
-                    print("Connected")
+                    print(f"{src.get_name()} linked to {dest.get_name()}")
                 elif not src.link(dest):
                     raise Exception(
                         f"Unable to link element "
@@ -153,7 +153,7 @@ def create_pipeline(pipeline):
         # Create capsfilter to define camera output settings
         elements["qmmfsrc_caps"] = create_element("capsfilter", "qmmfsrc_caps")
 
-    if args.file:
+    elif args.file:
         # Create file source element for file stream
         elements["filesrc"] = create_element("filesrc", "filesrc")
 
@@ -166,7 +166,7 @@ def create_pipeline(pipeline):
         # Create v4l2h264dec element for decoding the stream
         elements["v4l2h264dec"] = create_element("v4l2h264dec", "v4l2h264dec")
 
-    if args.rtsp:
+    elif args.rtsp:
         # Create rtspsrc for rtsp input
         elements["rtspsrc"] = create_element("rtspsrc", "rtspsrc")
 
@@ -178,6 +178,10 @@ def create_pipeline(pipeline):
 
         # Create v4l2h264dec element for decoding the stream
         elements["v4l2h264dec"] = create_element("v4l2h264dec", "v4l2h264dec")
+
+    else:
+        print("No input source selected, exiting...")
+        sys.exit(1)
 
     # Add tee to split single stream into multiple streams (inference, preview)
     elements["tee0"] = create_element("tee", "tee-0")
@@ -195,7 +199,7 @@ def create_pipeline(pipeline):
     elements["qtivsplit"] = create_element("qtivsplit", "qtivsplit")
     # Create queue to decouple processing on sink and source pads
     for i in range(QUEUE_COUNT):
-        element_name = "queue"+f"-{i}"
+        element_name = "queue" + f"-{i}"
         elements[f"queue{i}"] = create_element("queue", element_name)
 
     # Create capsfilter
@@ -238,7 +242,7 @@ def create_pipeline(pipeline):
         elements["v4l2h264dec"].set_property("output-io-mode", 5)
         elements["filesrc"].set_property("location", args.file)
 
-    if args.camera:
+    elif args.camera:
         elements["qmmfsrc_caps"].set_property(
             "caps", Gst.Caps.from_string(
                 "video/x-raw(memory:GBM),format=NV12,width=1920,height=1080,"
@@ -246,10 +250,14 @@ def create_pipeline(pipeline):
             )
         )
 
-    if args.rtsp:
+    elif args.rtsp:
         elements["v4l2h264dec"].set_property("capture-io-mode", 5)
         elements["v4l2h264dec"].set_property("output-io-mode", 5)
         elements["rtspsrc"].set_property("location", args.rtsp)
+
+    else:
+        print("No input source selected, exiting...")
+        sys.exit(1)
 
     elements["filter0"].set_property(
         "caps", Gst.Caps.from_string(
@@ -316,9 +324,11 @@ def create_pipeline(pipeline):
 
     elements["qtioverlay"].set_property("engine", "gles")
 
+    # Set sync to False to override default value
     waylandsink.set_property("sync", True)
     waylandsink.set_property("fullscreen", True)
 
+    # Set sync to False to override default value
     elements["fpsdisplaysink"].set_property("sync", True)
     elements["fpsdisplaysink"].set_property("signal-fps-measurements", True)
     elements["fpsdisplaysink"].set_property("text-overlay", True)
@@ -337,20 +347,23 @@ def create_pipeline(pipeline):
                 "qtiqmmfsrc", "qmmfsrc_caps", "tee0", "qtimetamux0"
             ]
         ]
-    if args.file:
+    elif args.file:
         link_orders+= [
             [
                 "filesrc", "qtdemux", "queue0", "h264parse",
                 "v4l2h264dec", "tee0", "qtimetamux0"
             ],
         ]
-    if args.rtsp:
+    elif args.rtsp:
         link_orders+= [
             [
                 "rtspsrc", "queue0", "rtph264depay", "h264parse",
                 "v4l2h264dec", "tee0", "qtimetamux0"
             ],
         ]
+    else:
+        print("No input source selected, exiting...")
+        sys.exit(1)
 
     link_orders+= [
         [
@@ -442,7 +455,7 @@ def main():
 
     # Create the pipeline
     try:
-        pipeline = Gst.Pipeline.new("gst-ai-daisychain-detection-classification")
+        pipeline = Gst.Pipeline.new("gst-ai-daisychain-detection-pose")
         if not pipeline:
             raise Exception(f"Unable to create pipeline")
         create_pipeline(pipeline)
@@ -475,7 +488,6 @@ def main():
     mloop = None
     pipeline = None
     Gst.deinit()
-    print("App execution successful")
 
 if __name__ == "__main__":
     sys.exit(main())
