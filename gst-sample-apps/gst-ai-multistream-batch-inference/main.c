@@ -169,6 +169,20 @@ update_window_grid (GstVideoRectangle *positions, guint x, guint y)
   }
 }
 
+/*
+ * Read HTP core count
+ */
+static gint
+get_num_cdsp_backends ()
+{
+  gint num_cdsp_backends = 1;
+
+  if (access ("/dev/fastrpc-cdsp1", F_OK) == 0)
+    num_cdsp_backends = 2;
+
+  return num_cdsp_backends;
+}
+
 /**
  * Set parameters for ML Framework Elements.
  *
@@ -460,7 +474,7 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions options[],
  */
 static gboolean
 create_pipe (GstAppContext * appctx, const GstAppOptions  options[],
-    GstSourceCount *source_count, gint batch_elements)
+    GstSourceCount *source_count, gint batch_elements, guint htp_count)
 {
   // Elements for file source
   GstElement *filesrc[source_count->num_file], *qtdemux[source_count->num_file];
@@ -709,7 +723,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions  options[],
           "capture-io-mode", 5,"output-io-mode", 5, NULL);
       if (!set_ml_params (file_qtimlpostprocess[i*DEFAULT_BATCH_SIZE + j],
           file_filter[i*DEFAULT_BATCH_SIZE + j],
-          file_qtimlelement[i], options[i], i%2)) {
+          file_qtimlelement[i], options[i], i%htp_count)) {
         g_printerr ("Failed to set_ml_params\n");
         goto error_clean_elements;
       }
@@ -993,6 +1007,7 @@ main (gint argc, gchar * argv[])
   gboolean ret = FALSE;
   gchar help_description[1024];
   gint streams = 0;
+  gint htp_count = 1;
 
   // Define the new limit
   rl.rlim_cur = 4096; // Soft limit
@@ -1011,6 +1026,9 @@ main (gint argc, gchar * argv[])
   // Set Display environment variables
   setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
   setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
+
+  // Read HTP Core Count
+  htp_count = get_num_cdsp_backends();
 
   // Structure to define the user options selection
   GOptionEntry entries[] = {
@@ -1232,7 +1250,7 @@ main (gint argc, gchar * argv[])
   appctx.pipeline = pipeline;
 
   // Build the pipeline, link all elements in the pipeline
-  ret = create_pipe (&appctx, options, &source_count, streams);
+  ret = create_pipe (&appctx, options, &source_count, streams, htp_count);
   if (!ret) {
     g_printerr ("ERROR: failed to create GST pipe.\n");
     gst_app_context_free (&appctx, options, source_count, streams);
