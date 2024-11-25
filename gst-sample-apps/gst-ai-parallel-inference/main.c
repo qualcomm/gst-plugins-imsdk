@@ -890,7 +890,7 @@ main (gint argc, gchar * argv[])
       "Constants, offsets and coefficients used by the object detection module \n"
       "      for post-processing of incoming tensors."
       " Applicable only for some modules\n"
-      "      Default constants: " DEFAULT_CONSTANTS_OBJECT_DETECTION,
+      "      Default constants: \"" DEFAULT_CONSTANTS_OBJECT_DETECTION "\"",
       "/CONSTANTS"
     },
     { "pose-detection-constants", 0, 0, G_OPTION_ARG_STRING,
@@ -898,7 +898,7 @@ main (gint argc, gchar * argv[])
       "Constants, offsets and coefficients used by the pose detection module \n"
       "      for post-processing of incoming tensors."
       " Applicable only for some modules\n"
-      "      Default constants: " DEFAULT_CONSTANTS_POSE_DETECTION,
+      "      Default constants: \"" DEFAULT_CONSTANTS_POSE_DETECTION "\"",
       "/CONSTANTS"
     },
     { "segmentation-constants", 0, 0, G_OPTION_ARG_STRING,
@@ -906,7 +906,7 @@ main (gint argc, gchar * argv[])
       "Constants, offsets and coefficients used by the segmentation module \n"
       "      for post-processing of incoming tensors."
       " Applicable only for some modules\n"
-      "      Default constants: " DEFAULT_CONSTANTS_SEGMENTATION,
+      "      Default constants: \"" DEFAULT_CONSTANTS_SEGMENTATION "\"",
       "/CONSTANTS"
     },
     { "classification-constants", 0, 0, G_OPTION_ARG_STRING,
@@ -914,7 +914,7 @@ main (gint argc, gchar * argv[])
       "Constants, offsets and coefficients used by the classification module \n"
       "      for post-processing of incoming tensors."
       " Applicable only for some modules\n"
-      "      Default constants: " DEFAULT_CONSTANTS_CLASSIFICATION,
+      "      Default constants: \"" DEFAULT_CONSTANTS_CLASSIFICATION "\"",
       "/CONSTANTS"
     },
     { NULL }
