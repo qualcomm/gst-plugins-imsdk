@@ -32,6 +32,7 @@ DEFAULT_CONSTANTS_POSE_DETECTION = "hrnet,q-offsets=<8.0>,\
 QUEUE_COUNT = 6
 
 waiting_for_eos = False
+eos_received = False
 def handle_interrupt_signal(pipeline, mloop):
     """Handle Ctrl+C."""
     global waiting_for_eos
@@ -53,6 +54,7 @@ def handle_interrupt_signal(pipeline, mloop):
 
 def handle_bus_message(bus, message, mloop):
     """Handle messages posted on pipeline bus."""
+    global eos_received
 
     if message.type == Gst.MessageType.ERROR:
         error, debug_info = message.parse_error()
@@ -62,6 +64,7 @@ def handle_bus_message(bus, message, mloop):
         mloop.quit()
     elif message.type == Gst.MessageType.EOS:
         print("EoS received")
+        eos_received = True
         mloop.quit()
 
     return True
@@ -103,6 +106,20 @@ def link_elements(elements, link_orders):
             src = dest  # Update src to the current dest for the next iteration
 
 def create_pipeline(pipeline):
+    # Check if all model and label files are present
+    if not os.path.exists(DEFAULT_TFLITE_YOLOV8_MODEL):
+        print(f"File {DEFAULT_TFLITE_YOLOV8_MODEL} does not exist")
+        sys.exit(1)
+    if not os.path.exists(DEFAULT_YOLOV8_LABELS):
+        print(f"File {DEFAULT_YOLOV8_LABELS} does not exist")
+        sys.exit(1)
+    if not os.path.exists(DEFAULT_TFLITE_POSE_MODEL):
+        print(f"File {DEFAULT_TFLITE_POSE_MODEL} does not exist")
+        sys.exit(1)
+    if not os.path.exists(DEFAULT_POSE_LABELS):
+        print(f"File {DEFAULT_POSE_LABELS} does not exist")
+        sys.exit(1)
+
     # Parse command line arguments
     parser = argparse.ArgumentParser(
         description=DESCRIPTION,
@@ -488,6 +505,8 @@ def main():
     mloop = None
     pipeline = None
     Gst.deinit()
+    if eos_received:
+        print("App execution successful")
 
 if __name__ == "__main__":
     sys.exit(main())
