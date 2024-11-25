@@ -17,7 +17,7 @@ This app sets up GStreamer pipeline for video recording.
 Initializes and links elements for capturing live stream from camera
 and saving the encoded video as OUTPUT.
 """
-DEFAULT_OUTPUT_FILE = "/opt/data/recording_720p.mp4"
+DEFAULT_OUTPUT_FILE = "/opt/data/recording.mp4"
 
 waiting_for_eos = False
 def handle_interrupt_signal(pipeline, mloop):
@@ -71,8 +71,8 @@ def link_elements(link_order, elements):
             )
         src = dest  # Update src to the current dest for the next iteration
 
-def create_pipeline(pipeline):
-    # Parse command line arguments
+def parse_arguments():
+    """Parse command line arguments."""
     parser = argparse.ArgumentParser(
         description=DESCRIPTION,
         formatter_class=type(
@@ -81,12 +81,33 @@ def create_pipeline(pipeline):
             {}
         )
     )
+
+    parser.add_argument(
+        '-c', '--camera', type=int, choices=[0, 1], default=0,
+        help='Select (0) for Primary Camera and (1) for Secondary Camera.'
+    )
+    parser.add_argument(
+        '-cw', '--width', type=int, default=1280,
+        help='Camera Output Width'
+    )
+    parser.add_argument(
+        '-ch', '--height', type=int, default=720,
+        help='Camera Output Height'
+    )
+    parser.add_argument(
+        '-cf', '--framerate', type=str, default='30/1',
+        help='Camera Output Framerate (fraction)'
+    )
+
     parser.add_argument(
         "--output", type=str, default=DEFAULT_OUTPUT_FILE,
         help="Output File Path"
     )
-    args = parser.parse_args()
 
+    return parser.parse_args()
+
+def create_pipeline(pipeline, args):
+    """Initialize and link elements for the GStreamer pipeline."""
     # Create elements
     elements = {
         "camsrc" : create_element("qtiqmmfsrc", "camsrc"),
@@ -103,10 +124,12 @@ def create_pipeline(pipeline):
         elements[queue_name] = create_element("queue", queue_name)
 
     # Set properties
+    elements["camsrc"].set_property("camera", args.camera)
     elements["camcaps"].set_property(
         "caps", Gst.Caps.from_string(
-            "video/x-raw(memory:GBM),format=NV12,width=1280,height=720,"
-            "framerate=30/1,compression=ubwc"
+            "video/x-raw(memory:GBM),format=NV12,"
+            f"width={args.width},height={args.height},"
+            f"framerate={args.framerate},compression=ubwc"
         )
     )
 
@@ -137,12 +160,15 @@ def main():
     Gst.init(None)
     mloop = GLib.MainLoop()
 
+    # Parse arguments
+    args = parse_arguments()
+
     # Create the pipeline
     try:
         pipeline = Gst.Pipeline.new("video-recording-pipeline")
         if not pipeline:
             raise Exception(f"Unable to create video recording pipeline")
-        create_pipeline(pipeline)
+        create_pipeline(pipeline, args)
     except Exception as e:
         print(f"{e} Exiting...")
         return -1
