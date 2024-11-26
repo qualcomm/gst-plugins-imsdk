@@ -73,6 +73,9 @@
 #include <gst/gstpadtemplate.h>
 #include <gst/gstelementfactory.h>
 #include <gst/allocators/allocators.h>
+#ifdef ENABLE_RUNTIME_PARSER
+#include <gst/utils/runtime-flags-parser-c-api.h>
+#endif // ENABLE_RUNTIME_PARSER
 
 #include "qmmf_source_utils.h"
 #include "qmmf_source_image_pad.h"
@@ -201,6 +204,230 @@ enum
   PROP_CAMERA_PHYSICAL_CAMERA_SWITCH,
 };
 
+#ifdef ENABLE_RUNTIME_PARSER
+
+#define CAPS_SIZE 255
+
+static GstStaticPadTemplate qmmfsrc_video_src_template;
+static GstStaticPadTemplate qmmfsrc_image_src_template;
+
+static void
+qmmfsrc_deinit_src_templates ()
+{
+  if (NULL != qmmfsrc_video_src_template.static_caps.string)
+    g_free (qmmfsrc_video_src_template.static_caps.string);
+
+  if (NULL != qmmfsrc_image_src_template.static_caps.string)
+    g_free (qmmfsrc_image_src_template.static_caps.string);
+}
+
+static void
+qmmfsrc_init_src_templates ()
+{
+  void* qmmfsrc_parser = get_qmmfsrc_parser ();
+
+  gint video_max_width  = get_flag_as_int (qmmfsrc_parser, "GST_VIDEO_MAX_WIDTH");
+  gint video_max_height = get_flag_as_int (qmmfsrc_parser, "GST_VIDEO_MAX_HEIGHT");
+  gint video_max_fps    = get_flag_as_int (qmmfsrc_parser, "GST_VIDEO_MAX_FPS");
+
+  gchar* common_video_caps = (gchar *) g_malloc (CAPS_SIZE * sizeof (gchar));
+
+  snprintf (common_video_caps, CAPS_SIZE,
+      "width = (int) [ 16, " "%d" " ], "
+      "height = (int) [ 16," "%d" " ], "
+      "framerate = (fraction) [ 0/1, " "%d" " ] ; ",
+      video_max_width,
+      video_max_height,
+      video_max_fps
+  );
+
+  gchar* video_jpeg_caps = (gchar *) g_malloc (CAPS_SIZE * sizeof (gchar));
+
+  snprintf (video_jpeg_caps, CAPS_SIZE,
+      "image/jpeg,"
+      "%s",
+      common_video_caps
+  );
+
+  gchar* video_raw_caps = (gchar *) g_malloc (CAPS_SIZE * sizeof (gchar));
+
+  snprintf (video_raw_caps, CAPS_SIZE,
+      "video/x-raw, "
+      "format = (string) "
+      "{ NV12, NV16"
+#ifdef GST_VIDEO_YUY2_FORMAT_ENABLE
+      ", YUY2"
+#endif // GST_VIDEO_YUY2_FORMAT_ENABLE
+#ifdef GST_VIDEO_UYVY_FORMAT_ENABLE
+      ", UYVY"
+#endif // GST_VIDEO_UYVY_FORMAT_ENABLE
+#ifdef GST_VIDEO_P010_10LE_FORMAT_ENABLE
+      ", P010_10LE"
+#endif // GST_VIDEO_P010_10LE_FORMAT_ENABLE
+#ifdef GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
+      ", NV12_10LE32"
+#endif // GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
+      " }" ", "
+      "%s",
+      common_video_caps
+  );
+
+  gchar* video_raw_caps_with_features = (gchar *) g_malloc (
+      CAPS_SIZE * sizeof (gchar));
+
+  snprintf (video_raw_caps_with_features, CAPS_SIZE,
+      "video/x-raw(" GST_CAPS_FEATURE_MEMORY_GBM "), "
+      "format = (string) "
+      "{ NV12, NV16"
+#ifdef GST_VIDEO_YUY2_FORMAT_ENABLE
+      ", YUY2"
+#endif // GST_VIDEO_YUY2_FORMAT_ENABLE
+#ifdef GST_VIDEO_UYVY_FORMAT_ENABLE
+      ", UYVY"
+#endif // GST_VIDEO_UYVY_FORMAT_ENABLE
+#ifdef GST_VIDEO_P010_10LE_FORMAT_ENABLE
+      ", P010_10LE"
+#endif // GST_VIDEO_P010_10LE_FORMAT_ENABLE
+#ifdef GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
+      ", NV12_10LE32"
+#endif // GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
+      " }" ", "
+      "%s",
+      common_video_caps
+  );
+
+  gchar* video_bayer_caps = (gchar *) g_malloc (CAPS_SIZE * sizeof (gchar));
+
+  snprintf (video_bayer_caps, CAPS_SIZE,
+      "video/x-bayer, "
+      "format = (string) " "{ bggr, rggb, gbrg, grbg, mono }" ", "
+      "bpp = (string) " "{ 8, 10, 12, 16 }" ", "
+      "%s",
+      common_video_caps
+  );
+
+  const gchar* qmmfsrc_all_video_caps = (const gchar *) g_malloc (
+      4 * CAPS_SIZE * sizeof (gchar));
+
+  snprintf ((gchar *) qmmfsrc_all_video_caps, 4 * CAPS_SIZE,
+      "%s"
+      "%s"
+      "%s"
+      "%s",
+      video_jpeg_caps,
+      video_raw_caps,
+      video_raw_caps_with_features,
+      video_bayer_caps
+  );
+
+  g_free (video_jpeg_caps);
+  g_free (video_raw_caps);
+  g_free (video_raw_caps_with_features);
+  g_free (video_bayer_caps);
+
+  GstStaticCaps static_video_caps = {
+    .caps = NULL,
+    .string = qmmfsrc_all_video_caps,
+    ._gst_reserved = { NULL }
+  };
+
+  qmmfsrc_video_src_template.name_template = "video_%u";
+  qmmfsrc_video_src_template.direction = GST_PAD_SRC;
+  qmmfsrc_video_src_template.presence = GST_PAD_REQUEST;
+  qmmfsrc_video_src_template.static_caps = static_video_caps;
+
+  gint image_max_width  = get_flag_as_int (qmmfsrc_parser, "GST_IMAGE_MAX_WIDTH");
+  gint image_max_height = get_flag_as_int (qmmfsrc_parser, "GST_IMAGE_MAX_HEIGHT");
+
+  gchar* common_image_caps = (gchar *) g_malloc (CAPS_SIZE * sizeof (gchar));
+
+  snprintf (common_image_caps, CAPS_SIZE,
+      "width = (int) [ 16, " "%d" " ], "
+      "height = (int) [ 16," "%d" " ], "
+      "framerate = (fraction) [ 0/1, 30/1 ] ; ",
+      image_max_width,
+      image_max_height
+  );
+
+  gchar* image_jpeg_caps = (gchar *) g_malloc (CAPS_SIZE * sizeof (gchar));
+
+  snprintf (image_jpeg_caps, CAPS_SIZE,
+      "image/jpeg,"
+      "%s",
+      common_image_caps
+  );
+
+  gchar* image_raw_caps = (gchar *) g_malloc (CAPS_SIZE * sizeof (gchar));
+
+  snprintf (image_raw_caps, CAPS_SIZE,
+      "video/x-raw, "
+      "format = (string) "
+      "{ NV21"
+#ifdef GST_IMAGE_NV12_FORMAT_ENABLE
+      ", NV12"
+#endif // GST_IMAGE_NV12_FORMAT_ENABLE
+      " }" ", "
+      "%s",
+      common_image_caps
+  );
+
+  gchar* image_raw_caps_with_features = (gchar *) g_malloc (
+      CAPS_SIZE * sizeof (gchar));
+
+  snprintf (image_raw_caps_with_features, CAPS_SIZE,
+      "video/x-raw(" GST_CAPS_FEATURE_MEMORY_GBM "), "
+      "format = (string) "
+      "{ NV21"
+#ifdef GST_IMAGE_NV12_FORMAT_ENABLE
+      ", NV12"
+#endif // GST_IMAGE_NV12_FORMAT_ENABLE
+      " }" ", "
+      "%s",
+      common_image_caps
+  );
+
+  gchar* image_bayer_caps = (gchar *) g_malloc (CAPS_SIZE * sizeof (gchar));
+
+  snprintf (image_bayer_caps, CAPS_SIZE,
+      "video/x-bayer, "
+      "format = (string) " "{ bggr, rggb, gbrg, grbg, mono }" ", "
+      "bpp = (string) " "{ 8, 10, 12, 16 }" ", "
+      "%s",
+      common_image_caps
+  );
+
+  const gchar* qmmfsrc_all_image_caps = (const gchar *) g_malloc (
+      4 * CAPS_SIZE * sizeof (gchar));
+
+  snprintf ((gchar *) qmmfsrc_all_image_caps, 4 * CAPS_SIZE,
+      "%s"
+      "%s"
+      "%s"
+      "%s",
+      image_jpeg_caps,
+      image_raw_caps,
+      image_raw_caps_with_features,
+      image_bayer_caps
+  );
+
+  g_free (image_jpeg_caps);
+  g_free (image_raw_caps);
+  g_free (image_raw_caps_with_features);
+  g_free (image_bayer_caps);
+
+  GstStaticCaps static_image_caps = {
+    .caps = NULL,
+    .string = qmmfsrc_all_image_caps,
+    ._gst_reserved = { NULL }
+  };
+
+  qmmfsrc_image_src_template.name_template = "image_%u";
+  qmmfsrc_image_src_template.direction = GST_PAD_SRC;
+  qmmfsrc_image_src_template.presence = GST_PAD_REQUEST;
+  qmmfsrc_image_src_template.static_caps = static_image_caps;
+}
+
+#else
 static GstStaticPadTemplate qmmfsrc_video_src_template =
     GST_STATIC_PAD_TEMPLATE("video_%u",
         GST_PAD_SRC,
@@ -268,6 +495,8 @@ static GstStaticPadTemplate qmmfsrc_image_src_template =
                 "{ 8, 10, 12, 16 }")
         )
     );
+
+#endif // ENABLE_RUNTIME_PARSER
 
 static gboolean
 qmmfsrc_pad_push_event (GstElement * element, GstPad * pad, gpointer data)
@@ -1397,6 +1626,10 @@ qmmfsrc_finalize (GObject * object)
     qmmfsrc->context = NULL;
   }
 
+#ifdef ENABLE_RUNTIME_PARSER
+  qmmfsrc_deinit_src_templates ();
+#endif // ENABLE_RUNTIME_PARSER
+
   G_OBJECT_CLASS (qmmfsrc_parent_class)->finalize (object);
 }
 
@@ -1410,6 +1643,10 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
   gobject->set_property = GST_DEBUG_FUNCPTR (qmmfsrc_set_property);
   gobject->get_property = GST_DEBUG_FUNCPTR (qmmfsrc_get_property);
   gobject->finalize     = GST_DEBUG_FUNCPTR (qmmfsrc_finalize);
+
+#ifdef ENABLE_RUNTIME_PARSER
+  qmmfsrc_init_src_templates ();
+#endif // ENABLE_RUNTIME_PARSER
 
   gst_element_class_add_static_pad_template_with_gtype (gstelement,
       &qmmfsrc_video_src_template, GST_TYPE_QMMFSRC_VIDEO_PAD);
@@ -1680,6 +1917,26 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           "like IPE",
           DEFAULT_PROP_CAMERA_IFE_DIRECT_STREAM,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+#ifdef ENABLE_RUNTIME_PARSER
+  void* qmmfsrc_parser = get_qmmfsrc_parser ();
+
+  gboolean multi_camera_enable = get_flag_as_bool (qmmfsrc_parser,
+      "MULTI_CAMERA_ENABLE");
+
+  if (multi_camera_enable) {
+    g_object_class_install_property (gobject, PROP_CAMERA_MULTI_CAM_EXPOSURE_TIME,
+        gst_param_spec_array ("multi-camera-exp-time", "Multi Camera Exposure Time",
+            "The exposure time (in nano-seconds) for each camera in multi camera"
+            " setup ('<exp-time-1, exp-time-2>') and it is used only when"
+            " exposure-mode is OFF",
+            g_param_spec_int ("exp-time", "Exposure Time",
+                "One of exp-time-1, exp-time-2 value.", 0, G_MAXINT, 0,
+                G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS),
+            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+            GST_PARAM_MUTABLE_PLAYING));
+  }
+#else
 #ifdef MULTI_CAMERA_ENABLE // MULTI_CAMERA_ENABLE
   g_object_class_install_property (gobject, PROP_CAMERA_MULTI_CAM_EXPOSURE_TIME,
       gst_param_spec_array ("multi-camera-exp-time", "Multi Camera Exposure Time",
@@ -1692,6 +1949,7 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
 #endif  // MULTI_CAMERA_ENABLE
+#endif // ENABLE_RUNTIME_PARSER
 
   g_object_class_install_property (gobject, PROP_CAMERA_OPERATION_MODE,
       g_param_spec_flags ("op-mode", "Camera operation mode",

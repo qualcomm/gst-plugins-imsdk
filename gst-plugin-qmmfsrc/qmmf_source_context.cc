@@ -67,6 +67,9 @@
 
 #include "qmmf_source_context.h"
 
+#ifdef ENABLE_RUNTIME_PARSER
+#include <gst/utils/runtime-flags-parser-c-api.h>
+#endif // ENABLE_RUNTIME_PARSER
 #include <gst/allocators/allocators.h>
 #include <qmmf-sdk/qmmf_recorder.h>
 #include <qmmf-sdk/qmmf_recorder_extra_param_tags.h>
@@ -1569,10 +1572,21 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
       colorimetry, rotate, vpad->xtrabufs
   );
 
+#ifdef ENABLE_RUNTIME_PARSER
+  void* qmmfsrc_parser = get_qmmfsrc_parser ();
+
+  gboolean gst_video_type_support = get_flag_as_bool (qmmfsrc_parser,
+      "GST_VIDEO_TYPE_SUPPORT");
+
+  if (gst_video_type_support && (vpad->type == VIDEO_TYPE_PREVIEW))
+    params.flags |= ::qmmf::recorder::VideoFlags::kPreview;
+
+#else
 #ifdef GST_VIDEO_TYPE_SUPPORT
   if (vpad->type == VIDEO_TYPE_PREVIEW)
     params.flags |= ::qmmf::recorder::VideoFlags::kPreview;
 #endif // GST_VIDEO_TYPE_SUPPORT
+#endif // ENABLE_RUNTIME_PARSER
 
   if (vpad->reprocess_enable)
     params.flags |= ::qmmf::recorder::VideoFlags::kReproc;
