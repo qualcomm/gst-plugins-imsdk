@@ -1221,7 +1221,7 @@ main (gint argc, gchar * argv[])
       "Constants, offsets and coefficients used by the chosen module \n"
       "      for post-processing of incoming tensors."
       " Applicable only for some modules\n"
-      "      Default constants: " DEFAULT_CONSTANTS,
+      "      Default constants: \"" DEFAULT_CONSTANTS "\"",
       "/CONSTANTS"
     },
     { "display", 'd', 0, G_OPTION_ARG_NONE,
