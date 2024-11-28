@@ -36,7 +36,7 @@
  *  | tee -> qtivcomposer
  *        -> qtivsplit (2 SPLIT) -> filter -> qtivcomposer
  *                               -> filter -> qtivcomposer
- *  | qtivcomposer (COMPOSITION) -> qtioverlay -> fpsdisplaysink (Display)
+ *  | qtivcomposer (COMPOSITION) -> qtivoverlay -> fpsdisplaysink (Display)
  */
 
 #include <stdio.h>
@@ -82,7 +82,7 @@
 /**
  * Maximum count of various sources possible to configure
  */
-#define QUEUE_COUNT 6
+#define QUEUE_COUNT 20
 #define TEE_COUNT 3
 #define DETECTION_COUNT 1
 #define DETECTION_FILTER_COUNT 2
@@ -158,18 +158,18 @@ typedef enum {
 } GstVideoSplitMode;
 
 /**
- * GstOverlayEngine:
- * @C2D    : C2D blit engine.
- * @OPENCL : OpenCL blit engine.
- * @GLES   : GLES blit engine.
+ * GstVideoConvBackend:
+ * @C2D    : Use C2D based video converter
+ * @GLES   : Use OpenGLES based video converter.
+ * @FCV    : Use FastCV based video converter.
  *
- * Type of Overlay Engine.
+ * The backend of the video converter engine.
  */
 typedef enum {
   C2D,
-  OPENCL,
-  GLES
-} GstOverlayEngine;
+  GLES,
+  FCV
+} GstVideoConvBackend;
 
 /**
  * Structure for various application specific options
@@ -180,7 +180,7 @@ typedef struct {
   gchar *output_file_path;
   gchar *rtsp_ip_port;
   gchar *yolov8_model_path;
-  gchar *hrnet_model_pathh;
+  gchar *hrnet_model_path;
   gchar *yolov8_labels_path;
   gchar *hrnet_labels_path;
   gchar *yolov8_constants;
@@ -280,9 +280,9 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
     g_free (options->yolov8_model_path);
   }
 
-  if (options->hrnet_model_pathh != DEFAULT_TFLITE_POSE_MODEL &&
-      options->hrnet_model_pathh != NULL) {
-    g_free (options->hrnet_model_pathh);
+  if (options->hrnet_model_path != DEFAULT_TFLITE_POSE_MODEL &&
+      options->hrnet_model_path != NULL) {
+    g_free (options->hrnet_model_path);
   }
 
   if (options->yolov8_labels_path != DEFAULT_YOLOV8_LABELS &&
@@ -339,7 +339,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
   GstElement *qtimlvpose[POSE_COUNT] = {NULL};
   GstElement *qtimetamux[TFLITE_ELEMENT_COUNT] = {NULL};
   GstElement  *fpsdisplaysink = NULL, *waylandsink = NULL;
-  GstElement *qtivsplit = NULL, *qtivcomposer = NULL, *qtioverlay = NULL;
+  GstElement *qtivsplit = NULL, *qtivcomposer = NULL, *qtivoverlay = NULL;
   GstElement *filesrc = NULL, *qtdemux = NULL, *h264parse_decode = NULL;
   GstElement *rtspsrc = NULL, *rtph264depay = NULL, *v4l2h264dec = NULL;
   GstElement *v4l2h264enc = NULL, *mp4mux = NULL, *filesink = NULL;
@@ -542,10 +542,10 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
     }
   }
 
-  // Create qtioverlay to draw bounding box and pose estimation
-  qtioverlay = gst_element_factory_make ("qtioverlay", "qtioverlay");
-  if (!qtioverlay) {
-    g_printerr ("Failed to create qtioverlay \n");
+  // Create qtivoverlay to draw bounding box and pose estimation
+  qtivoverlay = gst_element_factory_make ("qtivoverlay", "qtivoverlay");
+  if (!qtivoverlay) {
+    g_printerr ("Failed to create qtivoverlay \n");
     goto error_clean_elements;
   }
 
@@ -655,7 +655,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
     else
     {
       g_object_set (G_OBJECT (qtimlelement[i]),
-          "model", options->hrnet_model_pathh,
+          "model", options->hrnet_model_path,
           "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
     }
     delegate_options = gst_structure_from_string (
@@ -724,7 +724,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
   // 2.10 Set properties backend engine
   g_value_init (&value, G_TYPE_INT);
   g_value_set_int (&value, GLES);
-  g_object_set_property (G_OBJECT (qtioverlay), "engine", &value);
+  g_object_set_property (G_OBJECT (qtivoverlay), "engine", &value);
   g_value_unset (&value);
 
   if (options->sink_type == GST_WAYLANDSINK) {
@@ -775,7 +775,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
   }
 
   gst_bin_add_many (GST_BIN (appctx->pipeline),
-      qtivsplit, qtioverlay, qtivcomposer, NULL);
+      qtivsplit, qtivoverlay, qtivcomposer, NULL);
 
   if (options->sink_type == GST_WAYLANDSINK) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), fpsdisplaysink,
@@ -807,6 +807,10 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
     gst_bin_add_many (GST_BIN (appctx->pipeline), qtimlvdetection[i], NULL);
   }
 
+  for (gint i = 0; i < DETECTION_FILTER_COUNT; i++) {
+    gst_bin_add_many (GST_BIN (appctx->pipeline), detection_filter[i], NULL);
+  }
+
   for (gint i = 0; i < POSE_COUNT; i++) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), qtimlvpose[i], NULL);
   }
@@ -814,15 +818,15 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
   // 3.2 Link pipeline elements for Inferencing
   g_print ("Linking elements...\n");
   if (options->source_type == GST_STREAM_TYPE_CAMERA) {
-    ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps,
-        tee[0], qtimetamux[0], NULL);
+    ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps, queue[0],
+        tee[0], NULL);
     if (!ret) {
       g_printerr ("\n pipeline elements qtiqmmfsrc -> qmmfsrc_caps"
           "cannot be linked. Exiting.\n");
       goto error_clean_pipeline;
     }
 
-    ret = gst_element_link_many (tee[0], queue[1], NULL);
+    ret = gst_element_link_many (tee[0], queue[1], qtimetamux[0], NULL);
     if (!ret) {
       g_printerr ("\n pipeline elements tee and queue cannot be linked."
           "Exiting.\n");
@@ -837,14 +841,14 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
     }
 
     ret = gst_element_link_many (queue[0], h264parse_decode, v4l2h264dec,
-        tee[0], qtimetamux[0], NULL);
+        queue[1], tee[0], NULL);
     if (!ret) {
       g_printerr ("\n pipeline elements qtdemux -> h264parse -> v4l2h264dec"
           " ->qtimetamux  cannot be linked. Exiting.\n");
       goto error_clean_pipeline;
     }
 
-    ret = gst_element_link_many (tee[0], queue[1], NULL);
+    ret = gst_element_link_many (tee[0], queue[2], qtimetamux[0], NULL);
     if (!ret) {
       g_printerr ("\n pipeline elements tee -> queue cannot be linked."
           "Exiting.\n");
@@ -852,14 +856,14 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
     }
   } else if (options->source_type == GST_STREAM_TYPE_RTSP) {
     ret = gst_element_link_many (queue[0], rtph264depay, h264parse_decode,
-        v4l2h264dec, tee[0], qtimetamux[0], NULL);
+        v4l2h264dec, queue[1], tee[0], NULL);
     if (!ret) {
       g_printerr ("\n pipeline elements rtph264depay -> h264parse -> "
           "v4l2h264dec -> qtimetamux cannot be linked.Exiting.\n");
       goto error_clean_pipeline;
     }
 
-    ret = gst_element_link_many (tee[0], queue[1], NULL);
+    ret = gst_element_link_many (tee[0], queue[2], qtimetamux[0], NULL);
     if (!ret) {
       g_printerr ("\n pipeline elements tee and queue cannot be linked."
           "Exiting.\n");
@@ -867,70 +871,53 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
     }
   }
 
-  ret = gst_element_link_many (queue[1], qtimlvconverter[0], qtimlelement[0],
-      qtimlvdetection[0], NULL);
+  ret = gst_element_link_many (tee[0], queue[3], qtimlvconverter[0], queue[4],
+      qtimlelement[0], queue[5], qtimlvdetection[0], detection_filter[0],
+      queue[6], qtimetamux[0], NULL);
   if (!ret) {
     g_printerr ("\n pipeline elements src -> qtimlvconverter -> qtimlelement "
-        " -> qtimlvdetection cannot be linked. Exiting.\n");
+        " -> qtimlvdetection -> qtimetamux  cannot be linked. Exiting.\n");
     goto error_clean_pipeline;
   }
 
-  filtercaps = gst_caps_from_string ("text/x-raw");
-  ret = gst_element_link_filtered (qtimlvdetection[0] , qtimetamux[0],
-      filtercaps);
-  if (!ret) {
-    g_printerr ("\n pipeline elements qtimlvdetection -> qtimetamux "
-        "cannot be linked. Exiting.\n");
-    goto error_clean_pipeline;
-  }
-  gst_caps_unref (filtercaps);
-
-  ret = gst_element_link_many (qtimetamux[0], tee[1], NULL);
+  ret = gst_element_link_many (qtimetamux[0], queue[7], tee[1], NULL);
   if (!ret) {
     g_printerr ("\n pipeline element qtimetamux -> tee "
         "cannot be linked. Exiting.\n");
     goto error_clean_pipeline;
   }
 
-  ret = gst_element_link_many (tee[1], qtimetamux[1], NULL);
+  ret = gst_element_link_many (tee[1], queue[8], qtimetamux[1], NULL);
   if (!ret) {
     g_printerr ("\n pipeline elements qtdemux -> h264parse -> v4l2h264dec"
         " ->qtimetamux  cannot be linked. Exiting.\n");
     goto error_clean_pipeline;
   }
 
-  ret = gst_element_link_many (tee[1], queue[2], qtimlvconverter[1],
-      qtimlelement[1], qtimlvpose[0], NULL);
+  ret = gst_element_link_many (tee[1], queue[9], qtimlvconverter[1], queue[10],
+      qtimlelement[1], queue[11], qtimlvpose[0], detection_filter[1], queue[12],
+      qtimetamux[1], NULL);
   if (!ret) {
     g_printerr ("\n pipeline elements src -> qtimlvconverter -> qtimlelement "
         " -> qtimlvdetection cannot be linked. Exiting.\n");
     goto error_clean_pipeline;
   }
 
-  filtercaps = gst_caps_from_string ("text/x-raw");
-  ret = gst_element_link_filtered (qtimlvpose[0] , qtimetamux[1], filtercaps);
-  if (!ret) {
-    g_printerr ("\n pipeline elements qtimlvdetection -> qtimetamux "
-        "cannot be linked. Exiting.\n");
-    goto error_clean_pipeline;
-  }
-  gst_caps_unref (filtercaps);
-
-  ret = gst_element_link_many (qtimetamux[1], tee[2], NULL);
+  ret = gst_element_link_many (qtimetamux[1], queue[13], tee[2], NULL);
   if (!ret) {
     g_printerr ("\n pipeline element qtimetamux -> tee "
         "cannot be linked. Exiting.\n");
     goto error_clean_pipeline;
   }
 
-  ret = gst_element_link_many (tee[2], queue[3], qtivcomposer, NULL);
+  ret = gst_element_link_many (tee[2], queue[14], qtivcomposer, NULL);
   if (!ret) {
     g_printerr ("\n pipeline elements tee -> qtivcomposer "
         "cannot be linked. Exiting.\n");
     goto error_clean_pipeline;
   }
 
-  ret = gst_element_link_many (tee[2], qtivsplit, NULL);
+  ret = gst_element_link_many (tee[2], queue[15], qtivsplit, NULL);
   if (!ret) {
     g_printerr ("\n pipeline elements tee -> qtivsplit "
         "cannot be linked. Exiting.\n");
@@ -938,7 +925,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
   }
 
   for (gint i = 0; i < SPLIT_COUNT; i++) {
-    ret = gst_element_link_many (qtivsplit, filter[i], queue[4 +i],
+    ret = gst_element_link_many (qtivsplit, filter[i], queue[16 + i],
         qtivcomposer, NULL);
     if (!ret) {
       g_printerr ("\n pipeline elements qtivsplit -> filter -> qtivcomposer "
@@ -948,16 +935,16 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
   }
 
   if (options->sink_type == GST_WAYLANDSINK) {
-    ret = gst_element_link_many (qtivcomposer, qtioverlay, fpsdisplaysink,
-        NULL);
+    ret = gst_element_link_many (qtivcomposer, queue[18], qtivoverlay, queue[19],
+    fpsdisplaysink, NULL);
     if (!ret) {
-      g_printerr ("\n pipeline elements qtivcomposer -> qtioverlay-> "
+      g_printerr ("\n pipeline elements qtivcomposer -> qtivoverlay-> "
           "fpsdisplaysink cannot be linked. Exiting.\n");
       goto error_clean_pipeline;
     }
   } else if (options->sink_type == GST_VIDEO_ENCODE) {
-    ret = gst_element_link_many (qtivcomposer, qtioverlay,
-        sink_filter, v4l2h264enc, h264parse_encode, mp4mux, filesink,
+    ret = gst_element_link_many (qtivcomposer, queue[18], qtivoverlay,
+        sink_filter, v4l2h264enc, h264parse_encode, mp4mux, queue[19], filesink,
         NULL);
     if (!ret) {
       g_printerr ("\n pipeline elements tee -> qtivcomposer -> encode"
@@ -1089,6 +1076,9 @@ error_clean_elements:
     if (qtimlvdetection[i]) {
       gst_object_unref (qtimlvdetection[i]);
     }
+    if (detection_filter[i]) {
+      gst_object_unref (detection_filter[i]);
+    }
   }
 
   for (gint i = 0; i < POSE_COUNT; i++) {
@@ -1130,7 +1120,7 @@ main (gint argc, gchar * argv[])
   options.output_file_path = NULL;
   options.rtsp_ip_port = NULL;
   options.yolov8_model_path = DEFAULT_TFLITE_YOLOV8_MODEL;
-  options.hrnet_model_pathh = DEFAULT_TFLITE_POSE_MODEL;
+  options.hrnet_model_path = DEFAULT_TFLITE_POSE_MODEL;
   options.yolov8_labels_path = DEFAULT_YOLOV8_LABELS;
   options.hrnet_labels_path = DEFAULT_POSE_LABELS;
   options.yolov8_constants = DEFAULT_YOLOV8_CONSTANT;
@@ -1183,7 +1173,7 @@ main (gint argc, gchar * argv[])
       "/PATH"
     },
     { "pose-detection-model", 0, 0, G_OPTION_ARG_STRING,
-      &options.hrnet_model_pathh,
+      &options.hrnet_model_path,
       "This is an optional parameter and overrides default path\n"
       "      Default model path for Pose detection TFLITE Model: "
       DEFAULT_TFLITE_POSE_MODEL,
@@ -1358,9 +1348,9 @@ main (gint argc, gchar * argv[])
     return -EINVAL;
   }
 
-  if (!file_exists (options.hrnet_model_pathh)) {
+  if (!file_exists (options.hrnet_model_path)) {
     g_printerr ("Invalid pose model file path: %s\n",
-        options.hrnet_model_pathh);
+        options.hrnet_model_path);
     return -EINVAL;
   }
 
@@ -1390,7 +1380,7 @@ main (gint argc, gchar * argv[])
       "For Detection model: %s labels: %s\n"
       "For Pose model: %s labels: %s\n",
       options.yolov8_model_path, options.yolov8_labels_path,
-      options.hrnet_model_pathh, options.hrnet_labels_path);
+      options.hrnet_model_path, options.hrnet_labels_path);
 
   // Initialize GST library.
   gst_init (&argc, &argv);
