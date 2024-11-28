@@ -914,13 +914,23 @@ qmmfsrc_create_stream (GstQmmfSrc * qmmfsrc)
   gpointer key;
   GstPad *pad = NULL;
   GList *list = NULL;
+  GValue sframerate = G_VALUE_INIT;
+
+  g_value_init (&sframerate, G_TYPE_INT);
 
   GST_TRACE_OBJECT (qmmfsrc, "Create stream");
 
   // Iterate over the video pads, fixate caps and create streams.
   for (list = qmmfsrc->vidindexes; list != NULL; list = list->next) {
+    GstQmmfSrcVideoPad *vpad = NULL;
+
     key = list->data;
     pad = GST_PAD (g_hash_table_lookup (qmmfsrc->srcpads, key));
+    vpad = GST_QMMFSRC_VIDEO_PAD (pad);
+
+    gst_qmmf_context_get_camera_param (qmmfsrc->context,
+        PARAM_CAMERA_SUPER_FRAMERATE, &sframerate);
+    vpad->superframerate = g_value_get_int(&sframerate);
 
     success = qmmfsrc_video_pad_fixate_caps (pad);
     QMMFSRC_RETURN_VAL_IF_FAIL (qmmfsrc, success, FALSE,
@@ -1731,7 +1741,6 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
     case PROP_CAMERA_PAD_ACTIVATION_MODE:
       g_value_set_enum(value, qmmfsrc->pad_activation_mode);
       break;
-
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
