@@ -54,6 +54,7 @@
 #define DEFAULT_YOLONAS_LABELS "/opt/yolonas.labels"
 #define DEFAULT_TFLITE_YOLOV8_MODEL "/opt/YOLOv8-Detection-Quantized.tflite"
 #define DEFAULT_TFLITE_YOLOV5_MODEL "/opt/yolov5.tflite"
+#define DEFAULT_QNN_YOLOV8_MODEL "/opt/yolov8_det_quantized.bin"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
@@ -155,6 +156,7 @@ gst_app_context_free
       options->model_path != DEFAULT_SNPE_YOLONAS_MODEL &&
       options->model_path != DEFAULT_TFLITE_YOLOV8_MODEL &&
       options->model_path != DEFAULT_TFLITE_YOLOV5_MODEL &&
+      options->model_path != DEFAULT_QNN_YOLOV8_MODEL &&
       options->model_path != NULL) {
     g_free (options->model_path);
   }
@@ -391,6 +393,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     qtimlelement = gst_element_factory_make ("qtimlsnpe", "qtimlsnpe");
   } else if (options->model_type == GST_MODEL_TYPE_TFLITE) {
     qtimlelement = gst_element_factory_make ("qtimltflite", "qtimlelement");
+  } else if (options->model_type == GST_MODEL_TYPE_QNN) {
+    qtimlelement = gst_element_factory_make ("qtimlqnn", "qtimlelement");
   } else {
     g_printerr ("Invalid model type\n");
     goto error_clean_elements;
@@ -532,6 +536,10 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       g_printerr ("Invalid Runtime Selected\n");
       goto error_clean_elements;
     }
+  } else if (options->model_type == GST_MODEL_TYPE_QNN) {
+    g_print ("Using DSP delegate\n");
+    g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
+        "backend", "/usr/lib/libQnnHtp.so", NULL);
   } else {
     g_printerr ("Invalid model type\n");
     goto error_clean_elements;
@@ -665,6 +673,31 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       default:
         g_printerr ("Unsupported TFLITE model, Use YoloV5 or "
             "YoloV8 TFLITE model\n");
+        goto error_clean_elements;
+    }
+  } else if (options->model_type == GST_MODEL_TYPE_QNN) {
+    switch (options->yolo_model_type) {
+      // YOLOv8 specific settings
+      case GST_YOLO_TYPE_V8:
+        // set qtimlvdetection properties
+        g_object_set (G_OBJECT (qtimlvdetection), "labels",
+            options->labels_path, NULL);
+        module_id = get_enum_value (qtimlvdetection, "module", "yolov8");
+        if (module_id != -1) {
+            g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
+        } else {
+          g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
+          goto error_clean_elements;
+        }
+        g_object_set (G_OBJECT (qtimlvdetection), "threshold",
+            options->threshold, NULL);
+        g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
+        g_object_set (G_OBJECT (qtimlvdetection), "constants",
+            options->constants, NULL);
+        break;
+
+      default:
+        g_printerr ("Unsupported QNN model, use YoloV8 QNN model\n");
         goto error_clean_elements;
     }
   } else {
@@ -951,9 +984,12 @@ parse_json (gchar * config_file, GstAppOptions * options)
       options->model_type = GST_MODEL_TYPE_SNPE;
     else if (g_strcmp0 (framework, "tflite") == 0)
       options->model_type = GST_MODEL_TYPE_TFLITE;
+    else if (g_strcmp0 (framework, "qnn") == 0) {
+      options->model_type = GST_MODEL_TYPE_QNN;
+    }
     else {
       gst_printerr ("ml-framework can only be one of "
-          "\"snpe\", \"tflite\"\n");
+          "\"snpe\", \"tflite\" or \"qnn\"\n");
       g_object_unref (parser);
       return -1;
     }
@@ -1071,7 +1107,7 @@ main (gint argc, gchar * argv[])
       "  yolo-model-type: \"yolov5\" or \"yolov8\" or \"yolonas\"\n"
       "      Yolo Model version to Execute: Yolov5, Yolov8 or YoloNas "
       "[Default]\n"
-      "  ml-framework: \"snpe\" or \"tflite\"\n"
+      "  ml-framework: \"snpe\" or \"tflite\" or \"qnn\"\n"
       "      Execute Model in SNPE DLC [Default] or TFlite format\n"
       "  model: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
@@ -1082,6 +1118,8 @@ main (gint argc, gchar * argv[])
       DEFAULT_TFLITE_YOLOV5_MODEL"\n"
       "      Default model path for YOLOV8 TFLITE: "
       DEFAULT_TFLITE_YOLOV8_MODEL"\n"
+      "      Default model path for YOLOV8 QNN: "
+      DEFAULT_QNN_YOLOV8_MODEL"\n"
       "  labels: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
       "      Default labels path for YOLOV5: "DEFAULT_YOLOV5_LABELS"\n"
@@ -1099,7 +1137,7 @@ main (gint argc, gchar * argv[])
       "  runtime: \"cpu\" or \"gpu\" or \"dsp\"\n"
       "      This is an optional parameter. If not filled, "
       "then default dsp runtime is selected\n",
-      app_name, DEFAULT_CONFIG_FILE), camera_description;
+      app_name, DEFAULT_CONFIG_FILE, camera_description);
   help_description[2047] = '\0';
 
     // Parse command line entries
@@ -1206,12 +1244,13 @@ main (gint argc, gchar * argv[])
   }
 
   if (options.model_type < GST_MODEL_TYPE_SNPE ||
-      options.model_type > GST_MODEL_TYPE_TFLITE) {
+      options.model_type > GST_MODEL_TYPE_QNN) {
     g_printerr ("Invalid ml-framework option selected\n"
         "Available options:\n"
         "    SNPE: %d\n"
-        "    TFLite: %d\n",
-        GST_MODEL_TYPE_SNPE, GST_MODEL_TYPE_TFLITE);
+        "    TFLite: %d\n"
+        "    QNN: %d\n",
+        GST_MODEL_TYPE_SNPE, GST_MODEL_TYPE_TFLITE, GST_MODEL_TYPE_QNN);
     gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
@@ -1233,6 +1272,14 @@ main (gint argc, gchar * argv[])
         "Threshold Value lies between: \n"
         "    Min: 0\n"
         "    Max: 100\n");
+    gst_app_context_free (&appctx, &options, config_file);
+    return -EINVAL;
+  }
+
+  if (options.model_type == GST_MODEL_TYPE_QNN && (options.use_cpu == TRUE ||
+      options.use_gpu == TRUE)) {
+    g_printerr ("QNN Serialized binary is demonstrated only with DSP"
+        " runtime.\n");
     gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
@@ -1266,7 +1313,16 @@ main (gint argc, gchar * argv[])
         options.model_path = DEFAULT_TFLITE_YOLOV8_MODEL;
         options.yolo_model_type = GST_YOLO_TYPE_V8;
       }
-    } else {
+    } else if (options.model_type == GST_MODEL_TYPE_QNN) {
+      if (options.yolo_model_type == GST_YOLO_TYPE_V8) {
+        options.model_path = DEFAULT_QNN_YOLOV8_MODEL;
+      } else {
+        g_printerr ("Only YOLOV8 model is supported with QNN runtime\n");
+        gst_app_context_free (&appctx, &options, config_file);
+        return -EINVAL;
+      }
+    }
+    else {
       g_printerr ("Invalid ml_framework\n");
       gst_app_context_free (&appctx, &options, config_file);
       return -EINVAL;
@@ -1285,6 +1341,9 @@ main (gint argc, gchar * argv[])
     options.constants =
         (options.yolo_model_type == GST_YOLO_TYPE_V5 ? DEFAULT_CONSTANTS_YOLOV5:
         DEFAULT_CONSTANTS_YOLOV8);
+  } else if (options.model_type == GST_MODEL_TYPE_QNN
+      && options.constants == NULL) {
+    options.constants = DEFAULT_CONSTANTS_YOLOV8;
   }
 
   if (!file_exists (options.model_path)) {
