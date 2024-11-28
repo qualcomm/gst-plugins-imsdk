@@ -1207,14 +1207,14 @@ main (gint argc, gchar * argv[])
       &options.yolov8_constants,
       "Constants, offsets and coefficients used by detection module \n"
       "      for post-processing of incoming tensors.\n"
-      "      Default constants: " DEFAULT_YOLOV8_CONSTANT,
+      "      Default constants: \"" DEFAULT_YOLOV8_CONSTANT "\"",
       "/CONSTANTS"
     },
     { "pose-detection-constants", 0, 0, G_OPTION_ARG_STRING,
       &options.hrnet_constants,
       "Constants, offsets and coefficients used pose module \n"
       "      for post-processing of incoming tensors.\n"
-      "      Default constants: " DEFAULT_HRNET_CONSTANT,
+      "      Default constants: \"" DEFAULT_HRNET_CONSTANT "\"",
       "/CONSTANTS"
     },
     { "display", 'd', 0, G_OPTION_ARG_NONE,
