@@ -13,7 +13,7 @@ target_include_directories(${MQTT} PRIVATE
 
 target_link_libraries(${MQTT} PRIVATE
   ${GST_LIBRARIES}
-  mosquitto
+  ${CMAKE_DL_LIBS}
 )
 
 install(
