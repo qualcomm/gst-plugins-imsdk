@@ -265,6 +265,33 @@ gst_caps_has_subformat (const GstCaps * caps, const gchar * subformat)
   return (g_strcmp0 (string, subformat) == 0) ? TRUE : FALSE;
 }
 
+static guint
+gst_caps_get_num_super_frames (const GstCaps * caps)
+{
+  GstStructure *structure = gst_caps_get_structure (caps, 0);
+  gint n_super_frames = 0;
+  const gchar *multiview_mode = NULL;
+
+  multiview_mode = gst_structure_get_string (structure, "multiview-mode");
+  if (multiview_mode == NULL)
+    return 0;
+
+  switch (gst_video_multiview_mode_from_caps_string (multiview_mode)) {
+    case GST_VIDEO_MULTIVIEW_MODE_MONO:
+      if (!gst_structure_get_int (structure, "views", &n_super_frames)) {
+        GST_ERROR ("Failed to get views in multiview(mode: mono).");
+        return 0;
+      }
+      GST_DEBUG ("Number of super frames: %d.", n_super_frames);
+      break;
+    default:
+      GST_WARNING ("Unsupported multiview mode(%s).", multiview_mode);
+      break;
+  }
+
+  return (guint)n_super_frames;
+}
+
 static gboolean
 gst_c2_venc_trigger_iframe (GstC2VEncoder * c2venc)
 {
@@ -695,6 +722,15 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
     return FALSE;
   }
 
+  if (c2venc->n_super_frames != 0) {
+    success = gst_c2_engine_set_parameter (c2venc->engine,
+        GST_C2_PARAM_SUPER_FRAME, GPOINTER_CAST (&c2venc->n_super_frames));
+    if (!success) {
+      GST_ERROR_OBJECT (c2venc, "Failed to set super frame!");
+      return FALSE;
+    }
+  }
+
   return TRUE;
 }
 
@@ -838,7 +874,8 @@ gst_c2_venc_buffer_available (GstBuffer * buffer, gpointer userdata)
   } else if (c2venc->headers != NULL) {
     gst_video_encoder_set_headers (GST_VIDEO_ENCODER (c2venc), c2venc->headers);
     c2venc->headers = NULL;
-  } else if (!GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_MARKER)) {
+  } else if (c2venc->isheif &&
+      !GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_MARKER)) {
     gst_buffer_list_add (c2venc->incomplete_buffers, buffer);
     return;
   }
@@ -902,10 +939,27 @@ gst_c2_venc_buffer_available (GstBuffer * buffer, gpointer userdata)
     frame->output_buffer = buffer;
   }
 
+  if (c2venc->n_super_frames > 0) {
+    // PTS was passed to codec2 backend as timestamp while encoding
+    frame->pts = GST_BUFFER_TIMESTAMP (buffer);
+
+    GST_DEBUG_OBJECT (c2venc, "VideoCodecFrame PTS updated to %." GST_TIME_FORMAT,
+        GST_TIME_ARGS (frame->pts));
+  }
+
   gst_video_codec_frame_unref (frame);
 
   GST_TRACE_OBJECT (c2venc, "Encoded %" GST_PTR_FORMAT, buffer);
+
+#if (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
+  if (!GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_MARKER)) {
+    ret = gst_video_encoder_finish_subframe (GST_VIDEO_ENCODER (c2venc), frame);
+  } else {
+    ret = gst_video_encoder_finish_frame (GST_VIDEO_ENCODER (c2venc), frame);
+  }
+#else
   ret = gst_video_encoder_finish_frame (GST_VIDEO_ENCODER (c2venc), frame);
+#endif //(GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
 
   if (ret != GST_FLOW_OK) {
     GST_LOG_OBJECT (c2venc, "Failed to finish frame!");
@@ -1269,6 +1323,8 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
     c2venc->duration = gst_util_uint64_scale_int (GST_SECOND,
         GST_VIDEO_INFO_FPS_D (info), GST_VIDEO_INFO_FPS_N (info));
   }
+
+  c2venc->n_super_frames = gst_caps_get_num_super_frames (state->caps);
 
   if (!gst_c2_venc_setup_parameters (c2venc, state, outstate)) {
     GST_ERROR_OBJECT (c2venc, "Failed to setup parameters!");
@@ -1998,6 +2054,8 @@ gst_c2_venc_init (GstC2VEncoder * c2venc)
   c2venc->priority = DEFAULT_PROP_PRIORITY;
   c2venc->temp_layer.n_layers = DEFAULT_PROP_TEMPORAL_LAYER_NUM;
   c2venc->temp_layer.n_blayers = DEFAULT_PROP_TEMPORAL_LAYER_NUM;
+
+  c2venc->n_super_frames = 0;
 
   GST_DEBUG_CATEGORY_INIT (c2_venc_debug, "qtic2venc", 0,
       "QTI c2venc encoder");
