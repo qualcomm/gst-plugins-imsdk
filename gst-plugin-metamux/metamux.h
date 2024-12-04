@@ -100,8 +100,10 @@ struct _GstMetaMux
   gboolean          active;
   /// Condition for push/pop buffers from the queues.
   GCond             wakeup;
-  /// The timestamp until which the worker task will wait for synced data.
-  gint64            timeout;
+  /// The timestamp of the first buffer, used to calcculate the elapsed time.
+  GstClockTime      basetime;
+  /// The sync time initialized at first buffer and used to wait for synced data.
+  gint64            synctime;
 
   /// Properties.
   GstMetaMuxMode    mode;
