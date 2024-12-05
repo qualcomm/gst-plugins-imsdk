@@ -70,7 +70,10 @@
 #include <string>
 #include <dlfcn.h>
 
-#if defined(HAVE_CORE_C_API_H)
+#if defined(HAVE_CORE_SHIMS_C_API_H)
+#include <tensorflow/lite/core/shims/c/c_api.h>
+#include <tensorflow/lite/core/shims/c/c_api_experimental.h>
+#elif defined(HAVE_CORE_C_API_H)
 #include <tensorflow/lite/core/c/c_api.h>
 #include <tensorflow/lite/core/c/c_api_experimental.h>
 #elif defined(HAVE_C_API_H)
