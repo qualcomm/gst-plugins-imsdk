@@ -52,7 +52,8 @@ check_include_file("linux/dma-buf.h" HAVE_LINUX_DMA_BUF_H)
 
 # Common compiler flags.
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
 
 # GStreamer plugin.
 set(GST_QTI_OVERLAY qtioverlay)

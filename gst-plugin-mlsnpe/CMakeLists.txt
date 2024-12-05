@@ -34,6 +34,8 @@ check_include_file_cxx("SNPE/SNPE.h" HAVE_SNPE_H)
 # Common compiler flags.
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
 
 # GStreamer ML TFLite plugin.
 set(GST_QTI_ML_SNPE gstqtimlsnpe)

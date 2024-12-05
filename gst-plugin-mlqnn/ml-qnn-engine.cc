@@ -276,7 +276,7 @@ gst_ml_qnn_convert_to_float (GstMLFrame *mlframe, guint idx,
       int32_t offset = QNN_TENSOR_QUANTIZE_PARAMS (tensor).scaleOffsetEncoding.offset;
       float scale = QNN_TENSOR_QUANTIZE_PARAMS (tensor).scaleOffsetEncoding.scale;
 
-      for (auto idx = 0; idx < n_elements; idx++)
+      for (size_t idx = 0; idx < n_elements; idx++)
         output[idx] = (float)(data[idx] + offset) * scale;
 
       break;
@@ -287,7 +287,7 @@ gst_ml_qnn_convert_to_float (GstMLFrame *mlframe, guint idx,
       int32_t offset = QNN_TENSOR_QUANTIZE_PARAMS (tensor).scaleOffsetEncoding.offset;
       float scale = QNN_TENSOR_QUANTIZE_PARAMS (tensor).scaleOffsetEncoding.scale;
 
-      for (auto idx = 0; idx < n_elements; idx++)
+      for (size_t idx = 0; idx < n_elements; idx++)
         output[idx] = (float)(data[idx] + offset) * scale;
 
       break;
@@ -296,7 +296,7 @@ gst_ml_qnn_convert_to_float (GstMLFrame *mlframe, guint idx,
     {
       uint8_t *data = reinterpret_cast<uint8_t *>(QNN_TENSOR_CLIENTBUF (tensor).data);
 
-      for (auto idx = 0; idx < n_elements; idx++)
+      for (size_t idx = 0; idx < n_elements; idx++)
         output[idx] = static_cast<float>(data[idx]);
 
       break;
@@ -305,7 +305,7 @@ gst_ml_qnn_convert_to_float (GstMLFrame *mlframe, guint idx,
     {
       uint16_t *data = reinterpret_cast<uint16_t *>(QNN_TENSOR_CLIENTBUF (tensor).data);
 
-      for (auto idx = 0; idx < n_elements; idx++)
+      for (size_t idx = 0; idx < n_elements; idx++)
         output[idx] = static_cast<float>(data[idx]);
 
       break;
@@ -314,7 +314,7 @@ gst_ml_qnn_convert_to_float (GstMLFrame *mlframe, guint idx,
     {
       uint32_t *data = reinterpret_cast<uint32_t *>(QNN_TENSOR_CLIENTBUF (tensor).data);
 
-      for (auto idx = 0; idx < n_elements; idx++)
+      for (size_t idx = 0; idx < n_elements; idx++)
         output[idx] = static_cast<float>(data[idx]);
 
       break;
@@ -323,7 +323,7 @@ gst_ml_qnn_convert_to_float (GstMLFrame *mlframe, guint idx,
     {
       int8_t *data = reinterpret_cast<int8_t *>(QNN_TENSOR_CLIENTBUF (tensor).data);
 
-      for (auto idx = 0; idx < n_elements; idx++)
+      for (size_t idx = 0; idx < n_elements; idx++)
         output[idx] = static_cast<float>(data[idx]);
 
       break;
@@ -332,7 +332,7 @@ gst_ml_qnn_convert_to_float (GstMLFrame *mlframe, guint idx,
     {
       int16_t *data = reinterpret_cast<int16_t *>(QNN_TENSOR_CLIENTBUF (tensor).data);
 
-      for (auto idx = 0; idx < n_elements; idx++)
+      for (size_t idx = 0; idx < n_elements; idx++)
         output[idx] = static_cast<float>(data[idx]);
 
       break;
@@ -341,7 +341,7 @@ gst_ml_qnn_convert_to_float (GstMLFrame *mlframe, guint idx,
     {
       int32_t *data = reinterpret_cast<int32_t *>(QNN_TENSOR_CLIENTBUF (tensor).data);
 
-      for (auto idx = 0; idx < n_elements; idx++)
+      for (size_t idx = 0; idx < n_elements; idx++)
         output[idx] = static_cast<float>(data[idx]);
 
       break;
@@ -350,7 +350,7 @@ gst_ml_qnn_convert_to_float (GstMLFrame *mlframe, guint idx,
     {
       uint8_t *data = reinterpret_cast<uint8_t *>(QNN_TENSOR_CLIENTBUF (tensor).data);
 
-      for (auto idx = 0; idx < n_elements; idx++)
+      for (size_t idx = 0; idx < n_elements; idx++)
         output[idx] = static_cast<float>(data[idx]);
 
       break;
@@ -445,7 +445,6 @@ gst_ml_qnn_create_device_config (GstMLQnnEngine *engine,
     QnnDevice_Config_t**& dev_configs)
 {
   QnnDevice_PlatformInfo_t* device_platform_info = nullptr;
-  QnnDevice_HardwareDeviceInfo_t* p_hw_device_info = nullptr;
 
   Qnn_ErrorHandle_t error = engine->interface.deviceGetPlatformInfo(nullptr,
       &(engine->device_platform));
@@ -929,7 +928,7 @@ gst_ml_qnn_engine_new (GstStructure *settings)
   GST_DEBUG ("Input tensors type: %s",
       gst_ml_type_to_string (GST_ML_INFO_TYPE (engine->ininfo)));
 
-  for (idx = 0; idx < engine->ininfo->n_tensors; ++idx) {
+  for (guint idx = 0; idx < engine->ininfo->n_tensors; ++idx) {
     input_tensor = &(graph_info->inputTensors[idx]);
 
     if (!QNN_TENSOR_VERSION_SUPPORTED (input_tensor)) {
@@ -940,7 +939,7 @@ gst_ml_qnn_engine_new (GstStructure *settings)
     engine->ininfo->n_dimensions[idx] =
         QNN_TENSOR_RANK (input_tensor);
 
-    for (auto num = 0; num < engine->ininfo->n_dimensions[idx]; ++num) {
+    for (guint num = 0; num < engine->ininfo->n_dimensions[idx]; ++num) {
       engine->ininfo->tensors[idx][num] =
           QNN_TENSOR_DIMENSION (input_tensor, num);
 
@@ -1023,7 +1022,7 @@ gst_ml_qnn_engine_new (GstStructure *settings)
 
     engine->outinfo->n_dimensions[idx] = QNN_TENSOR_RANK (output_tensor);
 
-    for (auto num = 0; num < engine->outinfo->n_dimensions[idx]; ++num) {
+    for (guint num = 0; num < engine->outinfo->n_dimensions[idx]; ++num) {
       engine->outinfo->tensors[idx][num] = QNN_TENSOR_DIMENSION (output_tensor, num);
 
       GST_DEBUG ("Output tensor[%u] Dimension[%u]: %u", idx, num,
@@ -1031,7 +1030,7 @@ gst_ml_qnn_engine_new (GstStructure *settings)
     }
   }
 
-  GST_INFO ("Created MLE QNN engine: %p", engine);
+  GST_INFO ("Created MLE QNN engine: %p", reinterpret_cast<void *>(engine));
   return engine;
 
 cleanup:
@@ -1064,13 +1063,13 @@ gst_ml_qnn_engine_free (GstMLQnnEngine * engine)
     const GraphInfo_t *graph_info = engine->graph_infos[0];
     Qnn_Tensor_t *tensor;
 
-    for (auto idx = 0; idx < graph_info->numInputTensors; idx++) {
+    for (guint idx = 0; idx < graph_info->numInputTensors; idx++) {
       tensor = &(graph_info->inputTensors[idx]);
       QNN_TENSOR_CLIENTBUF (tensor).data = NULL;
       QNN_TENSOR_CLIENTBUF (tensor).dataSize = 0;
     }
 
-    for (auto idx = 0; idx < graph_info->numOutputTensors; ++idx) {
+    for (guint idx = 0; idx < graph_info->numOutputTensors; ++idx) {
       tensor = &(graph_info->outputTensors[idx]);
       g_free (QNN_TENSOR_CLIENTBUF (tensor).data);
       QNN_TENSOR_CLIENTBUF (tensor).data = NULL;
@@ -1121,7 +1120,7 @@ gst_ml_qnn_engine_free (GstMLQnnEngine * engine)
   if (engine->graphindices != NULL)
     g_array_free (engine->graphindices, TRUE);
 
-  GST_INFO ("Destroyed MLE QNN engine: %p", engine);
+  GST_INFO ("Destroyed MLE QNN engine: %p", reinterpret_cast<void *>(engine));
   g_free (engine);
 }
 
