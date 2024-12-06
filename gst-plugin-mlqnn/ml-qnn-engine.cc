@@ -40,7 +40,16 @@
 
 #endif
 
-#if defined(QNN_SYSTEM_CONTEXT_GRAPH_INFO_V2_INIT)
+#if defined(QNN_SYSTEM_CONTEXT_GRAPH_INFO_V3_INIT)
+
+#define QNN_GET_SYSTEM_CONTEXT_GRAPH_INFO(graphInfo) \
+    ((graphInfo)->graphInfoV3)
+#define QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_SUPPORTED(graphInfo) \
+    (((graphInfo)->version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_1) || \
+        ((graphInfo)->version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_2)|| \
+        ((graphInfo)->version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_3))
+
+#elif defined(QNN_SYSTEM_CONTEXT_GRAPH_INFO_V2_INIT)
 
 #define QNN_GET_SYSTEM_CONTEXT_GRAPH_INFO(graphInfo) \
     ((graphInfo)->graphInfoV2)
@@ -61,7 +70,16 @@
 
 #endif
 
-#if defined(QNN_SYSTEM_CONTEXT_BINARY_INFO_V2_INIT)
+#if defined(QNN_SYSTEM_CONTEXT_BINARY_INFO_V3_INIT)
+
+#define QNN_GET_SYSTEM_CONTEXT_BINARY_INFO(binary_info) \
+    ((binary_info)->contextBinaryInfoV3)
+#define QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_SUPPORTED(binary_info) \
+    (((binary_info)->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_1) || \
+        ((binary_info)->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_2) || \
+        ((binary_info)->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_3))
+
+#elif defined(QNN_SYSTEM_CONTEXT_BINARY_INFO_V2_INIT)
 
 #define QNN_GET_SYSTEM_CONTEXT_BINARY_INFO(binary_info) \
     ((binary_info)->contextBinaryInfoV2)
