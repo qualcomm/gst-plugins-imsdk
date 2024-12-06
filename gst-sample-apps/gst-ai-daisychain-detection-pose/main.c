@@ -1226,13 +1226,11 @@ main (gint argc, gchar * argv[])
   gchar camera_description[255] = {};
 
   if (camera_is_available) {
-    snprintf (camera_description, 255,
+    snprintf (camera_description, sizeof (camera_description),
       "  %s \n"
       "  %s --camera --display\n"
       "  %s --camera --output-file=/opt/out.mp4\n",
       app_name, app_name, app_name);
-
-    camera_description[255] = '\0';
   }
 
   snprintf (help_description, 1023, "\nExample:\n"
