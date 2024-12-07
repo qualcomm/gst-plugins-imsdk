@@ -1085,7 +1085,7 @@ main (gint argc, gchar * argv[])
   gchar camera_description[128] = {};
 
   if (camera_is_available) {
-    snprintf (camera_description, 128,
+    snprintf (camera_description, sizeof (camera_description),
       "  camera: 0 or 1\n"
       "      Select (0) for Primary Camera and (1) for secondary one.\n"
     );

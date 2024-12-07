@@ -940,11 +940,9 @@ main (gint argc, gchar * argv[])
   gchar camera_description[255] = {};
 
   if (camera_is_available) {
-    snprintf (camera_description, 255,
+    snprintf (camera_description, sizeof (camera_description),
       "  %s --camera=0\n",
       app_name);
-
-    camera_description[255] = '\0';
   }
 
   snprintf (help_description, 2047, "\nExample:\n"

@@ -1089,7 +1089,7 @@ main (gint argc, gchar * argv[])
   gchar camera_description[255] = {};
 
   if (camera_is_available) {
-    snprintf (camera_description, 255,
+    snprintf (camera_description, sizeof (camera_description),
       "  If neither input-file nor rtsp-ip-port are provided, "
       "then camera input will be selected\n\n"
     );

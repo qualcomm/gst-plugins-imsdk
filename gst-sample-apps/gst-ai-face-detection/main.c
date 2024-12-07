@@ -697,11 +697,9 @@ main (gint argc, gchar * argv[])
   gchar camera_description[255] = {};
 
   if (camera_is_available) {
-    snprintf (camera_description, 255,
+    snprintf (camera_description, sizeof (camera_description),
       "  %s --model=%s --labels=%s\n",
       app_name, DEFAULT_QNN_FACE_DETECTION_MODEL, DEFAULT_FACE_DETECTION_LABELS);
-
-    camera_description[255] = '\0';
   }
 
   snprintf (help_description, 1023, "\nExample:\n"
