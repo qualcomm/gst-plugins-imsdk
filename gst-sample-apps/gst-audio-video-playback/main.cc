@@ -166,8 +166,11 @@ static gboolean
 create_pipe (GstVideoAppContext *appctx)
 {
   // Declare the elements of the pipeline
-  GstElement *filesrc, *qtdemux, *queue1, *vparse, *vdecoder, *queue2, *aparse,
-      *adecoder, *pulsesink, *vsink;
+  GstElement *filesrc, *qtdemux, *queue1,  *queue2, *pulsesink, *vsink;
+  GstElement *vparse = NULL;
+  GstElement *vdecoder = NULL;
+  GstElement *aparse = NULL;
+  GstElement *adecoder = NULL;
   gboolean ret = FALSE;
 
   // Create Source element for reading from a file

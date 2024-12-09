@@ -130,7 +130,9 @@ static gboolean
 create_pipe (GstAudioAppContext * appctx)
 {
   // Declare the elements of the pipeline
-  GstElement *filesrc, *parse, *decoder, *audiosink;
+  GstElement *filesrc, *audiosink;
+  GstElement *parse = NULL;
+  GstElement *decoder = NULL;
   gboolean ret = FALSE;
   appctx->plugins = NULL;
 
