@@ -458,7 +458,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   // Elements for sinks
   GstElement *queue[QUEUE_COUNT] = {NULL}, *qtivcomposer = NULL;
   GstElement *waylandsink = NULL, *composer_caps = NULL, *composer_tee = NULL;
-  GstElement *v4l2h264enc = NULL, *enc_h264parse = NULL, *enc_tee = NULL;
+  GstElement *v4l2h264enc = NULL, *enc_tee = NULL;
+  GstElement *file_enc_h264parse = NULL, *rtsp_enc_h264parse = NULL;
   GstElement *mp4mux = NULL, *filesink = NULL;
   GstElement *qtirtspbin = NULL;
   GstCaps *filtercaps = NULL;
@@ -786,13 +787,6 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       goto error_clean_elements;
     }
 
-    // Create H.264 frame parser plugin
-    enc_h264parse = gst_element_factory_make ("h264parse", "enc_h264parse");
-    if (!enc_h264parse) {
-      g_printerr ("Failed to create enc_h264parse\n");
-      goto error_clean_elements;
-    }
-
     enc_tee = gst_element_factory_make ("tee", "enc_tee");
     if (!enc_tee) {
       g_printerr ("Failed to create enc_tee\n");
@@ -807,6 +801,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         goto error_clean_elements;
       }
 
+      // Create H.264 frame parser plugin
+      file_enc_h264parse = gst_element_factory_make ("h264parse",
+          "file_enc_h264parse");
+      if (!file_enc_h264parse) {
+        g_printerr ("Failed to create file_enc_h264parse\n");
+        goto error_clean_elements;
+      }
+
       // Generic filesink plugin to write file on disk
       filesink = gst_element_factory_make ("filesink", "filesink");
       if (!filesink) {
@@ -816,6 +818,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     }
 
     if (options->out_rtsp) {
+      // Create H.264 frame parser plugin
+      rtsp_enc_h264parse = gst_element_factory_make ("h264parse",
+          "rtsp_enc_h264parse");
+      if (!rtsp_enc_h264parse) {
+        g_printerr ("Failed to create rtsp_enc_h264parse\n");
+        goto error_clean_elements;
+      }
+
       // Generic qtirtspbin plugin for streaming
       qtirtspbin = gst_element_factory_make ("qtirtspbin", "qtirtspbin");
       if (!qtirtspbin) {
@@ -902,7 +912,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
     if (options->out_rtsp) {
       g_print (" ip = %s, port = %s\n", options->ip_address, options->port_num);
-      g_object_set (G_OBJECT (enc_h264parse), "config-interval", 1, NULL);
+      g_object_set (G_OBJECT (rtsp_enc_h264parse), "config-interval", 1, NULL);
       g_object_set (G_OBJECT (qtirtspbin), "address", options->ip_address,
           "port", options->port_num, NULL);
     }
@@ -952,13 +962,15 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   if (options->out_file || options->out_rtsp) {
-    gst_bin_add_many (GST_BIN (appctx->pipeline), v4l2h264enc, enc_h264parse,
+    gst_bin_add_many (GST_BIN (appctx->pipeline), v4l2h264enc,
         enc_tee, NULL);
     if (options->out_file) {
-      gst_bin_add_many (GST_BIN (appctx->pipeline), mp4mux, filesink, NULL);
+      gst_bin_add_many (GST_BIN (appctx->pipeline), mp4mux, file_enc_h264parse,
+          filesink, NULL);
     }
     if (options->out_rtsp) {
-      gst_bin_add_many (GST_BIN (appctx->pipeline), qtirtspbin, NULL);
+      gst_bin_add_many (GST_BIN (appctx->pipeline), rtsp_enc_h264parse,
+          qtirtspbin, NULL);
     }
   }
 
@@ -1072,7 +1084,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   if (options->out_file || options->out_rtsp) {
     ret = gst_element_link_many (composer_tee, queue[2], v4l2h264enc, queue[3],
-        enc_h264parse, enc_tee, NULL);
+        enc_tee, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
           " composer_tee -> encoder -> enc_tee.\n");
@@ -1080,7 +1092,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     }
 
     if (options->out_file) {
-      ret = gst_element_link_many (enc_tee, queue[4], mp4mux, filesink, NULL);
+      ret = gst_element_link_many (enc_tee, queue[4], file_enc_h264parse,
+          mp4mux, filesink, NULL);
       if (!ret) {
         g_printerr ("Pipeline elements cannot be linked for"
             " enc_tee -> mp4mux -> filesink.\n");
@@ -1089,8 +1102,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     }
 
     if (options->out_rtsp) {
-      ret = gst_element_link_many (
-          enc_tee, queue[5], qtirtspbin, NULL);
+      ret = gst_element_link_many (enc_tee, queue[5], rtsp_enc_h264parse, queue[6],
+          qtirtspbin, NULL);
       if (!ret) {
         g_printerr ("Pipeline elements cannot be linked for"
             " enc_tee -> qtirtspbin.\n");
@@ -1162,13 +1175,12 @@ error_clean_elements:
   }
 
   if (options->out_file || options->out_rtsp) {
-    cleanup_gst (&v4l2h264enc, &enc_h264parse,
-        &enc_tee, NULL);
+    cleanup_gst (&v4l2h264enc, &enc_tee, NULL);
     if (options->out_file) {
-      cleanup_gst (&mp4mux, &filesink, NULL);
+      cleanup_gst (&mp4mux, &file_enc_h264parse, &filesink, NULL);
     }
     if (options->out_rtsp) {
-      cleanup_gst (&qtirtspbin, NULL);
+      cleanup_gst (&rtsp_enc_h264parse, &qtirtspbin, NULL);
     }
   }
 
@@ -1339,7 +1351,7 @@ main (gint argc, gchar * argv[])
 
   if (camera_is_available) {
     snprintf (camera_description, sizeof (camera_description),
-      "  %s --use-case 1 --num-camera=2 --display\n",
+      "%s --use-case 1 --num-camera=2 --display",
       app_name);
   }
 
