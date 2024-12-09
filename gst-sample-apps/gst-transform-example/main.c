@@ -204,9 +204,15 @@ on_pad_added (GstElement * element[0], GstPad * pad, gpointer data)
 static gboolean
 create_transform_pipeline (GstTransformAppContext * appctx)
 {
-  GstElement *qtiqmmfsrc, *qmmfsrc_filter, *scale_filter, *tee;
-  GstElement *filesrc, *qtdemux, *vparse, *vdecoder;
-  GstElement *qtivtransform, *encoder, *h264parse, *pqueue;
+  GstElement *scale_filter, *tee;
+  GstElement *qtiqmmfsrc = NULL;
+  GstElement *qmmfsrc_filter = NULL;
+  GstElement *filesrc = NULL;
+  GstElement *qtdemux = NULL;
+  GstElement *vparse = NULL;
+  GstElement *vdecoder = NULL;
+  GstElement *qtivtransform, *encoder, *h264parse;
+  GstElement *pqueue = NULL;
   GstElement *queue[QUEUE_COUNT];
   GstElement *mp4mux, *filesink, *waylandsink;
   GstCaps *filtercaps;

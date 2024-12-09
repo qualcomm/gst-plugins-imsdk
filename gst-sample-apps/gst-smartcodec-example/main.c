@@ -157,9 +157,17 @@ on_pad_added (GstElement * element[0], GstPad * pad, gpointer data)
 static gboolean
 create_pipe (GstSmartCodecContext * appctx)
 {
-  GstElement *qtiqmmfsrc, *capsfilter_ctrl, *capsfilter_enc, *qtismartvencbin,
-      *filesrc, *qtdemux, *vparse, *vdecoder, *pqueue, *queue, *tee, *h264parse,
-      *mp4mux, *filesink, *queue_ctrl, *queue_sc;
+  GstElement *qtismartvencbin, *h264parse, *mp4mux, *filesink, *queue_ctrl, *queue_sc;
+  GstElement *qtiqmmfsrc = NULL;
+  GstElement *capsfilter_ctrl = NULL;
+  GstElement *capsfilter_enc = NULL;
+  GstElement *filesrc = NULL;
+  GstElement *qtdemux = NULL;
+  GstElement *vparse = NULL;
+  GstElement *vdecoder = NULL;
+  GstElement *pqueue = NULL;
+  GstElement *queue = NULL;
+  GstElement *tee = NULL;
   GstCaps *filtercaps;
   GstPad *qmmf_pad, *sc_src, *ctrl_src, *sc_sink, *ctrl_sink;
   gboolean ret = FALSE;
