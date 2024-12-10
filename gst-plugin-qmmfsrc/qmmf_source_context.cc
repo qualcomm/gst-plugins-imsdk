@@ -2766,7 +2766,7 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
           }
         }
       } else {
-        GST_ERROR ("not logical camera, phy camera id switch not supported");
+        GST_INFO ("not logical camera, phy camera id switch not supported");
       }
       break;
     }
