@@ -131,9 +131,14 @@ gst_app_context_free (GstSmartCodecContext * appctx)
   if (appctx->input_file != NULL)
     g_free (appctx->input_file);
 
-  g_free (appctx->output_file);
-  g_free (appctx->model_path);
-  g_free (appctx->labels_path);
+  if (appctx->output_file != NULL)
+    g_free ((gpointer)appctx->output_file);
+
+  if (appctx->model_path != NULL)
+    g_free ((gpointer)appctx->model_path);
+
+  if (appctx->labels_path != NULL)
+    g_free (appctx->labels_path);
 
   if (appctx != NULL)
     g_free (appctx);
