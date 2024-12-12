@@ -105,7 +105,7 @@
  * Default constants to dequantize values for segmentation stream
  */
 #define DEFAULT_CONSTANTS_SEGMENTATION \
-    "deeplab,q-offsets=<61.0>,q-scales=<0.06232302635908127>;"
+    "deeplab,q-offsets=<0.0>,q-scales=<1.0>;"
 
 /**
  * Number of Queues used for buffer caching between elements
