@@ -78,6 +78,14 @@ def construct_pipeline(pipe):
         default=DEFAULT_OUTPUT_FILE,
         help="Pipeline Output Path",
     )
+    parser.add_argument("--tflite_detection_model", type=str,
+        default=DEFAULT_DETECTION_MODEL,
+        help="Path to TfLite detection model"
+    )
+    parser.add_argument("--detection_labels", type=str,
+        default=DEFAULT_DETECTION_LABELS,
+        help="Path to detection labels"
+    )
 
     args = parser.parse_args()
 
@@ -150,7 +158,7 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["mltflite"],
         "model",
-        DEFAULT_DETECTION_MODEL,
+        args.tflite_detection_model,
     )
 
     Gst.util_set_object_arg(elements["mlvdetection"], "threshold", "75.0")
@@ -163,7 +171,7 @@ def construct_pipeline(pipe):
         q-scales=<3.093529462814331,0.00390625,1.0>;",
     )
     Gst.util_set_object_arg(
-        elements["mlvdetection"], "labels", DEFAULT_DETECTION_LABELS
+        elements["mlvdetection"], "labels", args.detection_labels
     )
 
     Gst.util_set_object_arg(elements["capsfilter_2"], "caps", "text/x-raw")

@@ -77,6 +77,23 @@ def construct_pipeline(pipe):
         help=DESCRIPTION,
     )
 
+    parser.add_argument("--tflite_object_detection_model", type=str,
+        default=DEFAULT_DETECTION_MODEL,
+        help="Path to TfLite object detection model"
+    )
+    parser.add_argument("--tflite_object_detection_labels", type=str,
+        default=DEFAULT_DETECTION_LABELS,
+        help="Path to TfLite object detection labels"
+    )
+    parser.add_argument("--tflite_classification_model", type=str,
+        default=DEFAULT_CLASSIFICATION_MODEL,
+        help="Path to TfLite classification model"
+    )
+    parser.add_argument("--tflite_classification_labels", type=str,
+        default=DEFAULT_CLASSIFICATION_LABELS,
+        help="Path to TfLite classification labels"
+    )
+
     args = parser.parse_args()
 
     # Create all elements
@@ -141,14 +158,14 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["mltflite_0"],
         "model",
-        DEFAULT_DETECTION_MODEL,
+        args.tflite_object_detection_model,
     )
 
     Gst.util_set_object_arg(elements["mlvdetection"], "threshold", "75.0")
     Gst.util_set_object_arg(elements["mlvdetection"], "results", "4")
     Gst.util_set_object_arg(elements["mlvdetection"], "module", "yolov8")
     Gst.util_set_object_arg(
-        elements["mlvdetection"], "labels", DEFAULT_DETECTION_LABELS
+        elements["mlvdetection"], "labels", args.tflite_object_detection_labels
     )
     Gst.util_set_object_arg(
         elements["mlvdetection"],
@@ -181,7 +198,7 @@ def construct_pipeline(pipe):
         "QNNExternalDelegate,backend_type=htp;",
     )
     Gst.util_set_object_arg(
-        elements["mltflite_1"], "model", DEFAULT_CLASSIFICATION_MODEL
+        elements["mltflite_1"], "model", args.tflite_classification_model
     )
 
     Gst.util_set_object_arg(elements["mlvclassification"], "threshold", "51.0")
@@ -190,7 +207,7 @@ def construct_pipeline(pipe):
         elements["mlvclassification"], "module", "mobilenet"
     )
     Gst.util_set_object_arg(
-        elements["mlvclassification"], "labels", DEFAULT_CLASSIFICATION_LABELS
+        elements["mlvclassification"], "labels", args.tflite_classification_labels
     )
     Gst.util_set_object_arg(
         elements["mlvclassification"], "extra-operation", "softmax"
