@@ -196,7 +196,7 @@ set_ml_params (GstElement * qtimlpostprocess,
     GstElement * filter, GstElement * qtielement, GstAppOptions options,
     guint htp_id)
 {
-  GstCaps *pad_filter;
+  GstCaps *pad_filter = NULL;
   const gchar *module = NULL;
   GstStructure *delegate_options = NULL;
   gint module_id;

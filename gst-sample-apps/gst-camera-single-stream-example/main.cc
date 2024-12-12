@@ -170,8 +170,14 @@ static gboolean
 create_pipe (GstCameraAppContext * appctx)
 {
   // Declare the elements of the pipeline
-  GstElement *qtiqmmfsrc, *capsfilter, *waylandsink, *filesink, *v4l2h264enc;
-  GstElement *h264parse, *mp4mux, *rtph264pay, *udpsink;
+  GstElement *qtiqmmfsrc, *capsfilter;
+  GstElement *waylandsink = NULL;
+  GstElement *filesink = NULL;
+  GstElement *v4l2h264enc = NULL;
+  GstElement *h264parse = NULL;
+  GstElement *mp4mux = NULL;
+  GstElement *rtph264pay = NULL;
+  GstElement *udpsink = NULL;
   GstCaps *filtercaps;
   GstStructure *fcontrols;
   gboolean ret = FALSE;

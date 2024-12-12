@@ -176,8 +176,11 @@ static gboolean
 create_pipe (GstTranscodeAppContext * appctx)
 {
   // Declare the elements of the pipeline
-  GstElement *filesrc, *qtdemux, *queue, *encoder, *enc_parse, *dec_parse,
-      *decoder, *mp4mux, *filesink;
+  GstElement *filesrc, *qtdemux, *queue, *mp4mux, *filesink;
+  GstElement *encoder = NULL;
+  GstElement *enc_parse = NULL;
+  GstElement *dec_parse = NULL;
+  GstElement *decoder = NULL;
   GstStructure *fcontrols;
   gboolean ret = FALSE;
 
