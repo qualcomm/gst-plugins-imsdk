@@ -241,8 +241,12 @@ create_pipe (GstSmartCodecContext * appctx)
 
   // Set properties for ML element
   g_print ("Using DSP delegate\n");
-  delegate_options =
-      gst_structure_from_string ("QNNExternalDelegate,backend_type=htp", NULL);
+
+  // Set delegate and model for AI framework
+  delegate_options = gst_structure_from_string (
+    "QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,\
+    htp_performance_mode=(string)2,htp_precision=(string)1;",
+    NULL);
   g_object_set (G_OBJECT (qtimlelement), "model", appctx->model_path, "delegate",
       GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
   g_object_set (G_OBJECT (qtimlelement), "external_delegate_path",
