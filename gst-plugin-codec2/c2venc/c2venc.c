@@ -1329,6 +1329,11 @@ gst_c2_venc_handle_frame (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
       ", dts: %" GST_TIME_FORMAT, frame->system_frame_number,
       GST_TIME_ARGS (frame->pts), GST_TIME_ARGS (frame->dts));
 
+  if (GST_VIDEO_CODEC_FRAME_IS_FORCE_KEYFRAME (frame)) {
+    GST_DEBUG_OBJECT (c2venc, "Forcing a keyframe");
+    gst_c2_venc_trigger_iframe (c2venc);
+  }
+
   gst_c2_venc_handle_region_encode (c2venc, frame);
 
   if (c2venc->isubwc)
