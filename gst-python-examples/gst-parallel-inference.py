@@ -12,12 +12,6 @@ gi.require_version("GLib", "2.0")
 from gi.repository import Gst, GLib
 
 # Constants
-DESCRIPTION = """
-This app sets up GStreamer pipeline to carry out Object Detection,
-Classification, Segmentation and Pose Detection on live stream.
-Initializes and links elements for reading, performing inference
-using MODEL and LABELS files, and rendering video on display.
-"""
 DEFAULT_TFLITE_OBJECT_DETECTION_MODEL = "/opt/YOLOv8-Detection-Quantized.tflite"
 DEFAULT_OBJECT_DETECTION_LABELS = "/opt/yolov8.labels"
 DEFAULT_TFLITE_CLASSIFICATION_MODEL = "/opt/inception_v3_quantized.tflite"
@@ -34,8 +28,24 @@ DEFAULT_CONSTANTS_OBJECT_DETECTION = "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,\
     q-scales=<3.093529462814331, 0.00390625, 1.0>;"
 DEFAULT_CONSTANTS_POSE_DETECTION = "Posenet,q-offsets=<8.0>,\
     q-scales=<0.0040499246679246426>;"
-DEFAULT_CONSTANTS_SEGMENTATION = "deeplab,q-offsets=<61.0>,\
-    q-scales=<0.06232302635908127>;"
+DEFAULT_CONSTANTS_SEGMENTATION = "deeplab,q-offsets=<0.0>,\
+    q-scales=<1.0>;"
+
+DESCRIPTION = f"""
+This app sets up GStreamer pipeline to carry out Object Detection,
+Classification, Segmentation and Pose Detection on live stream.
+Initializes and links elements for reading, performing inference
+using MODEL and LABELS files, and rendering video on display.
+
+Default Object Detection model:    {DEFAULT_TFLITE_OBJECT_DETECTION_MODEL}
+Default Object Detection labels:   {DEFAULT_OBJECT_DETECTION_LABELS}
+Default Classification model:      {DEFAULT_TFLITE_CLASSIFICATION_MODEL}
+Default Classification labels:     {DEFAULT_CLASSIFICATION_LABELS}
+Default Pose Detection model:      {DEFAULT_TFLITE_POSE_DETECTION_MODEL}
+Default Pose Detection labels:     {DEFAULT_POSE_DETECTION_LABELS}
+Default Segmentation model:        {DEFAULT_TFLITE_SEGMENTATION_MODEL}
+Default Segmentation Labels:       {DEFAULT_SEGMENTATION_LABELS}
+"""
 
 GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX = 1
 
@@ -122,32 +132,6 @@ def link_elements(elements, link_orders):
             src = dest  # Update src to the current dest for the next iteration
 
 def create_pipeline(pipeline):
-    # Check if all model and label files are present
-    if not os.path.exists(DEFAULT_TFLITE_OBJECT_DETECTION_MODEL):
-        print(f"File {DEFAULT_TFLITE_OBJECT_DETECTION_MODEL} does not exist")
-        sys.exit(1)
-    if not os.path.exists(DEFAULT_OBJECT_DETECTION_LABELS):
-        print(f"File {DEFAULT_OBJECT_DETECTION_LABELS} does not exist")
-        sys.exit(1)
-    if not os.path.exists(DEFAULT_TFLITE_CLASSIFICATION_MODEL):
-        print(f"File {DEFAULT_TFLITE_CLASSIFICATION_MODEL} does not exist")
-        sys.exit(1)
-    if not os.path.exists(DEFAULT_CLASSIFICATION_LABELS):
-        print(f"File {DEFAULT_CLASSIFICATION_LABELS} does not exist")
-        sys.exit(1)
-    if not os.path.exists(DEFAULT_TFLITE_POSE_DETECTION_MODEL):
-        print(f"File {DEFAULT_TFLITE_POSE_DETECTION_MODEL} does not exist")
-        sys.exit(1)
-    if not os.path.exists(DEFAULT_POSE_DETECTION_LABELS):
-        print(f"File {DEFAULT_POSE_DETECTION_LABELS} does not exist")
-        sys.exit(1)
-    if not os.path.exists(DEFAULT_TFLITE_SEGMENTATION_MODEL):
-        print(f"File {DEFAULT_TFLITE_SEGMENTATION_MODEL} does not exist")
-        sys.exit(1)
-    if not os.path.exists(DEFAULT_SEGMENTATION_LABELS):
-        print(f"File {DEFAULT_SEGMENTATION_LABELS} does not exist")
-        sys.exit(1)
-
     # Parse command line arguments
     parser = argparse.ArgumentParser(
         description=DESCRIPTION,
@@ -157,7 +141,6 @@ def create_pipeline(pipeline):
             {}
         )
     )
-
     group = parser.add_mutually_exclusive_group()
     group.add_argument(
         "--camera", action="store_true",
@@ -187,11 +170,95 @@ def create_pipeline(pipeline):
         default=DEFAULT_CONSTANTS_SEGMENTATION,
         help="Constants for Object detection model"
     )
+    parser.add_argument("--tflite_object_detection_model", type=str,
+        default=DEFAULT_TFLITE_OBJECT_DETECTION_MODEL,
+        help="Path to TfLite object detection model"
+    )
+    parser.add_argument("--object_detection_labels", type=str,
+        default=DEFAULT_OBJECT_DETECTION_LABELS,
+        help="Path to TfLite object detection labels"
+    )
+    parser.add_argument("--tflite_classification_model", type=str,
+        default=DEFAULT_TFLITE_CLASSIFICATION_MODEL,
+        help="Path to TfLite classification model"
+    )
+    parser.add_argument("--tflite_classification_labels", type=str,
+        default=DEFAULT_CLASSIFICATION_LABELS,
+        help="Path to TfLite classification labels"
+    )
+    parser.add_argument("--tflite_pose_detection_model", type=str,
+        default=DEFAULT_TFLITE_POSE_DETECTION_MODEL,
+        help="Path to TfLite pose detection model"
+    )
+    parser.add_argument("--tflite_pose_detection_labels", type=str,
+        default=DEFAULT_POSE_DETECTION_LABELS,
+        help="Path to TfLite pose detection labels"
+    )
+    parser.add_argument("--tflite_segmentation_model", type=str,
+        default=DEFAULT_TFLITE_SEGMENTATION_MODEL,
+        help="Path to TfLite segmentation model"
+    )
+    parser.add_argument("--tflite_segmentation_labels", type=str,
+        default=DEFAULT_SEGMENTATION_LABELS,
+        help="Path to TfLite segmentation labels"
+    )
+
     args = parser.parse_args()
+
+    # Check if all model and label files are present
+    if not os.path.exists(args.tflite_object_detection_model):
+        print(f"File {args.tflite_object_detection_model} does not exist")
+        sys.exit(1)
+    if not os.path.exists(args.object_detection_labels):
+        print(f"File {args.object_detection_labels} does not exist")
+        sys.exit(1)
+    if not os.path.exists(args.tflite_classification_model):
+        print(f"File {args.tflite_classification_model} does not exist")
+        sys.exit(1)
+    if not os.path.exists(args.tflite_classification_labels):
+        print(f"File {args.tflite_classification_labels} does not exist")
+        sys.exit(1)
+    if not os.path.exists(args.tflite_pose_detection_model):
+        print(f"File {args.tflite_pose_detection_model} does not exist")
+        sys.exit(1)
+    if not os.path.exists(args.tflite_pose_detection_labels):
+        print(f"File {args.tflite_pose_detection_labels} does not exist")
+        sys.exit(1)
+    if not os.path.exists(args.tflite_segmentation_model):
+        print(f"File {args.tflite_segmentation_model} does not exist")
+        sys.exit(1)
+    if not os.path.exists(args.tflite_segmentation_labels):
+        print(f"File {args.tflite_segmentation_labels} does not exist")
+        sys.exit(1)
 
     if not args.camera and args.file is None and args.rtsp is None:
         args.camera = True
 
+    # Check if all model and label files are present
+    if not os.path.exists(DEFAULT_TFLITE_OBJECT_DETECTION_MODEL):
+        print(f"File {DEFAULT_TFLITE_OBJECT_DETECTION_MODEL} does not exist")
+        sys.exit(1)
+    if not os.path.exists(DEFAULT_OBJECT_DETECTION_LABELS):
+        print(f"File {DEFAULT_OBJECT_DETECTION_LABELS} does not exist")
+        sys.exit(1)
+    if not os.path.exists(DEFAULT_TFLITE_CLASSIFICATION_MODEL):
+        print(f"File {DEFAULT_TFLITE_CLASSIFICATION_MODEL} does not exist")
+        sys.exit(1)
+    if not os.path.exists(DEFAULT_CLASSIFICATION_LABELS):
+        print(f"File {DEFAULT_CLASSIFICATION_LABELS} does not exist")
+        sys.exit(1)
+    if not os.path.exists(DEFAULT_TFLITE_POSE_DETECTION_MODEL):
+        print(f"File {DEFAULT_TFLITE_POSE_DETECTION_MODEL} does not exist")
+        sys.exit(1)
+    if not os.path.exists(DEFAULT_POSE_DETECTION_LABELS):
+        print(f"File {DEFAULT_POSE_DETECTION_LABELS} does not exist")
+        sys.exit(1)
+    if not os.path.exists(DEFAULT_TFLITE_SEGMENTATION_MODEL):
+        print(f"File {DEFAULT_TFLITE_SEGMENTATION_MODEL} does not exist")
+        sys.exit(1)
+    if not os.path.exists(DEFAULT_SEGMENTATION_LABELS):
+        print(f"File {DEFAULT_SEGMENTATION_LABELS} does not exist")
+        sys.exit(1)
     if args.file:
         if not os.path.exists(args.file):
             print(f"Input file {args.file} does not exist")
@@ -199,32 +266,32 @@ def create_pipeline(pipeline):
 
     pipeline_data = [
         {
-            "model": DEFAULT_TFLITE_OBJECT_DETECTION_MODEL,
-            "labels": DEFAULT_OBJECT_DETECTION_LABELS,
+            "model": args.tflite_object_detection_model,
+            "labels": args.object_detection_labels,
             "preproc": "qtimlvconverter",
             "mlframework": "qtimltflite",
             "postproc": "qtimlvdetection",
             "delegate": "external"
         },
         {
-            "model": DEFAULT_TFLITE_CLASSIFICATION_MODEL,
-            "labels": DEFAULT_CLASSIFICATION_LABELS,
+            "model": args.tflite_classification_model,
+            "labels": args.tflite_classification_labels,
             "preproc": "qtimlvconverter",
             "mlframework": "qtimltflite",
             "postproc": "qtimlvclassification",
             "delegate": "external"
         },
         {
-            "model": DEFAULT_TFLITE_POSE_DETECTION_MODEL,
-            "labels": DEFAULT_POSE_DETECTION_LABELS,
+            "model": args.tflite_pose_detection_model,
+            "labels": args.tflite_pose_detection_labels,
             "preproc": "qtimlvconverter",
             "mlframework": "qtimltflite",
             "postproc": "qtimlvpose",
             "delegate": "external"
         },
         {
-            "model": DEFAULT_TFLITE_SEGMENTATION_MODEL,
-            "labels": DEFAULT_SEGMENTATION_LABELS,
+            "model": args.tflite_segmentation_model,
+            "labels": args.tflite_segmentation_labels,
             "preproc": "qtimlvconverter",
             "mlframework": "qtimltflite",
             "postproc": "qtimlvsegmentation",

@@ -121,8 +121,6 @@ static gboolean
 handle_interrupt_signal (gpointer userdata)
 {
   GstAppContext *appctx = (GstAppContext *) userdata;
-  guint idx = 0;
-  GstState state, pending;
 
   g_print ("\n\nReceived an interrupt signal, send EOS ...\n");
 
@@ -187,7 +185,6 @@ static void
 eos_cb (GstBus * bus, GstMessage * message, gpointer userdata)
 {
   GstAppContext *appctx = (GstAppContext *) userdata;
-  static guint eoscnt = 0;
 
   g_print ("\nReceived End-of-Stream from '%s' ...\n",
       GST_MESSAGE_SRC_NAME (message));
@@ -261,8 +258,6 @@ new_sample (GstElement * element, gpointer userdata)
 {
   GstAppContext *appctx = (GstAppContext *)userdata;
   GstSample *sample = NULL;
-  GstBuffer *buffer = NULL;
-  GError *error = NULL;
   GstElement *appsrc = NULL;
 
   // New sample is available, retrieve the buffer from the sink.
@@ -294,11 +289,8 @@ static void
 on_incoming_stream (GstElement * webrtc, GstPad * pad, gpointer userdata)
 {
   GstAppContext *appctx = (GstAppContext *) userdata;
-  GstElement *rtph264depay, *decoder, *waylandsink, *h264parse,
-      *queue1, *queue2, *appsink, *appsrc;
+  GstElement *appsink, *appsrc;
   GstPad *sinkpad;
-  GstCaps *filtercaps;
-  GstElement *depay = NULL;
   GstCaps *caps = NULL;
 
   gst_print ("Incoming stream received\n");
@@ -471,7 +463,7 @@ data_channel_on_error (GObject * dc, gpointer userdata)
 static void
 data_channel_on_open (GObject * dc, gpointer userdata)
 {
-  GstAppContext *appctx = (GstAppContext *) userdata;
+  (void) userdata;
   GBytes *bytes = g_bytes_new ("data", strlen ("data"));
   gst_print ("data channel opened\n");
   g_signal_emit_by_name (dc, "send-string", "Test msg sent");
@@ -510,8 +502,6 @@ static gboolean
 start_pipeline (GstAppContext * appctx, gboolean create_offer)
 {
   GObject *send_channel = NULL;
-  gboolean ret = FALSE;
-  GstBus *bus = NULL;
 
   appctx->create_offer = create_offer;
 
@@ -961,12 +951,10 @@ main (gint argc, gchar * argv[])
 {
   GOptionContext *optctx;
   guint intrpt_watch_id = 0;
-  gboolean ret = FALSE;
   GstBus *bus = NULL;
   GstAppContext *appctx = NULL;
   gint status = -1;
   GError *error = NULL;
-  GThread *mthread = NULL;
   gchar *primary_stream_str = NULL;
   gchar *secondary_stream_str = NULL;
   gchar *remote_id = NULL;

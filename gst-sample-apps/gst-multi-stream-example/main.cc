@@ -81,7 +81,7 @@ gst_app_context_new ()
   ctx->width = DEFAULT_WIDTH;
   ctx->height = DEFAULT_HEIGHT;
   ctx->stream_count = DEFAULT_NUM_OF_STREAM;
-  ctx->output_file = DEFAULT_OUTPUT_FILENAME;
+  ctx->output_file = const_cast<gchar *> (DEFAULT_OUTPUT_FILENAME);
   return ctx;
 }
 
@@ -124,11 +124,12 @@ gst_app_context_free (GstMultiStreamAppContext * appctx)
     appctx->pipeline = NULL;
   }
 
-  if (appctx->output_file != NULL && appctx->output_file != DEFAULT_OUTPUT_FILENAME)
-    g_free (appctx->output_file);
+  if (appctx->output_file != NULL &&
+    appctx->output_file != (gchar *)(&DEFAULT_OUTPUT_FILENAME))
+    g_free ((gpointer)appctx->output_file);
 
   if (appctx != NULL)
-    g_free (appctx);
+    g_free ((gpointer)appctx);
 }
 
 /**
@@ -318,9 +319,9 @@ main (gint argc, gchar *argv[])
     { "num_of_streams", 'n', DEFAULT_NUM_OF_STREAM, G_OPTION_ARG_INT,
       &appctx->stream_count, "num_of_streams", "Stream count for single camera" },
     { "output_file", 'o', 0, G_OPTION_ARG_STRING, &appctx->output_file,
-      "Output Filename , \
-          -o /opt/video.mp4" },
-    { NULL }
+      "Output Filename",
+      "-o /opt/video.mp4" },
+    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
     };
 
   // Parse command line entries.

@@ -147,11 +147,11 @@ gst_app_context_free (GstVideoAppContext *appctx)
   }
 
   if (appctx->input_file != NULL)
-    g_free (appctx->input_file);
+    g_free ((gpointer)appctx->input_file);
 
   // Finally, free the application context itself
   if (appctx != NULL)
-    g_free (appctx);
+    g_free ((gpointer)appctx);
 }
 
 /**
@@ -166,8 +166,11 @@ static gboolean
 create_pipe (GstVideoAppContext *appctx)
 {
   // Declare the elements of the pipeline
-  GstElement *filesrc, *qtdemux, *queue1, *vparse, *vdecoder, *queue2, *aparse,
-      *adecoder, *pulsesink, *vsink;
+  GstElement *filesrc, *qtdemux, *queue1,  *queue2, *pulsesink, *vsink;
+  GstElement *vparse = NULL;
+  GstElement *vdecoder = NULL;
+  GstElement *aparse = NULL;
+  GstElement *adecoder = NULL;
   gboolean ret = FALSE;
 
   // Create Source element for reading from a file
@@ -314,18 +317,18 @@ main (gint argc, gchar *argv[])
   GOptionEntry entries[] = {
     { "video_codec", 'v', 0,
       G_OPTION_ARG_INT, &appctx->vc_format,
-      "Select Video codec type -v 1 (AVC) or -v 2 (HEVC)"
+      "Select Video codec type", "-v 1 (AVC) or -v 2 (HEVC)"
     },
     { "audio_codec", 'a', 0,
       G_OPTION_ARG_INT, &appctx->ac_format,
-      "Select Audio codec type -a 1 (FLAC) or -a 2 (MP3)"
+      "Select Audio codec type", "-a 1 (FLAC) or -a 2 (MP3)"
     },
     { "input_file", 'i', 0,
       G_OPTION_ARG_FILENAME, &appctx->input_file,
-      "Input Filename - i/p mp4 file path and name"
-      "  e.g. -i /opt/<file_name>.mp4"
+      "Input Filename - i/p mp4 file path and name",
+      "e.g. -i /opt/<file_name>.mp4"
     },
-    { NULL }
+    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   // Parse the command line entries

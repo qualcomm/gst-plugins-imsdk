@@ -262,10 +262,10 @@ main (gint argc, gchar *argv[])
   // Configure input parameters
   GOptionEntry entries[] = {
       {"width", 'w', 0, G_OPTION_ARG_INT, &appctx->width,
-       "Supported camera width   -Default width:1280"},
+       "Supported camera width", "-Default width:1280"},
       {"height", 'h', 0, G_OPTION_ARG_INT, &appctx->height,
-       "Supported camera height  -Default height:720"},
-      {NULL}
+       "Supported camera height", "-Default height:720"},
+      { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   // Parse command line entries.

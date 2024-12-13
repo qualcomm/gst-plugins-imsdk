@@ -106,7 +106,7 @@
  * rstp sink configuration
  */
 #define DEFAULT_IP "127.0.0.1"
-#define DEFAULT_PORT 8554
+#define DEFAULT_PORT "8554"
 #define DEFAULT_RTSP_IP_PORT "127.0.0.1:8554"
 
 /**
@@ -120,12 +120,12 @@ typedef struct {
   gchar *out_file;
   gchar *constants;
   gchar *ip_address;
+  gchar *port_num;
   gint num_camera;
   gint num_file;
   gint num_rtsp;
   gint camera_id;
   gint input_count;
-  gint port_num;
   gboolean out_display;
   gboolean out_rtsp;
   gint use_case;
@@ -151,8 +151,8 @@ update_window_grid (GstVideoRectangle *positions, guint x, guint y)
   win_w = width / x;
   win_h = height / y;
 
-  for (gint i = 0; i < x; i++) {
-    for (gint j = 0; j < y; j++) {
+  for (guint i = 0; i < x; i++) {
+    for (guint j = 0; j < y; j++) {
       GstVideoRectangle window = {win_w*j, win_h*i, win_w, win_h};
       positions[i*x+j] = window;
     }
@@ -364,40 +364,46 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
   }
 
   if (options->rtsp_ip_port != NULL &&
-      options->rtsp_ip_port != DEFAULT_RTSP_IP_PORT) {
-    g_free (options->rtsp_ip_port);
+      options->rtsp_ip_port != (gchar *)(&DEFAULT_RTSP_IP_PORT)) {
+    g_free ((gpointer)options->rtsp_ip_port);
     options->rtsp_ip_port = NULL;
   }
 
   if (options->model_path != NULL &&
-    options->model_path != DEFAULT_TFLITE_YOLOV8_MODEL &&
-    options->model_path != DEFAULT_TFLITE_INCEPTIONV3_MODEL) {
-    g_free (options->model_path);
+    options->model_path != (gchar *)(&DEFAULT_TFLITE_YOLOV8_MODEL) &&
+    options->model_path != (gchar *)(&DEFAULT_TFLITE_INCEPTIONV3_MODEL)) {
+    g_free ((gpointer)options->model_path);
     options->model_path = NULL;
   }
 
   if (options->labels_path != NULL &&
-    options->labels_path != DEFAULT_YOLOV8_LABELS &&
-    options->labels_path != DEFAULT_CLASSIFICATION_LABELS) {
-    g_free (options->labels_path);
+    options->labels_path != (gchar *)(&DEFAULT_YOLOV8_LABELS) &&
+    options->labels_path != (gchar *)(&DEFAULT_CLASSIFICATION_LABELS)) {
+    g_free ((gpointer)options->labels_path);
     options->labels_path = NULL;
   }
 
   if (options->out_file != NULL) {
-    g_free (options->out_file);
+    g_free ((gpointer)options->out_file);
     options->out_file = NULL;
   }
 
   if (options->constants != NULL &&
-    options->constants != DEFAULT_DETECTION_CONSTANTS &&
-    options->constants != DEFAULT_CLASSIFICATION_CONSTANTS) {
-    g_free (options->constants);
+    options->constants != (gchar *)(&DEFAULT_DETECTION_CONSTANTS) &&
+    options->constants != (gchar *)(&DEFAULT_CLASSIFICATION_CONSTANTS)) {
+    g_free ((gpointer)options->constants);
     options->constants = NULL;
   }
 
-  if (options->ip_address != NULL && options->ip_address != DEFAULT_IP) {
-    g_free (options->ip_address);
+  if (options->ip_address != NULL &&
+    options->ip_address != (gchar *)(&DEFAULT_IP)) {
+    g_free ((gpointer)options->ip_address);
     options->ip_address = NULL;
+  }
+
+  if (options->port_num != (gchar *)(&DEFAULT_PORT) &&
+      options->port_num != 0) {
+    g_free ((gpointer)options->port_num);
   }
 
   if (appctx->pipeline != NULL) {
@@ -452,9 +458,10 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   // Elements for sinks
   GstElement *queue[QUEUE_COUNT] = {NULL}, *qtivcomposer = NULL;
   GstElement *waylandsink = NULL, *composer_caps = NULL, *composer_tee = NULL;
-  GstElement *v4l2h264enc = NULL, *enc_h264parse = NULL, *enc_tee = NULL;
+  GstElement *v4l2h264enc = NULL, *enc_tee = NULL;
+  GstElement *file_enc_h264parse = NULL, *rtsp_enc_h264parse = NULL;
   GstElement *mp4mux = NULL, *filesink = NULL;
-  GstElement *rtph264pay = NULL, *udpsink = NULL;
+  GstElement *qtirtspbin = NULL;
   GstCaps *filtercaps = NULL;
   GstStructure *fcontrols = NULL;
   gint width = DEFAULT_CAMERA_OUTPUT_WIDTH;
@@ -780,13 +787,6 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       goto error_clean_elements;
     }
 
-    // Create H.264 frame parser plugin
-    enc_h264parse = gst_element_factory_make ("h264parse", "enc_h264parse");
-    if (!enc_h264parse) {
-      g_printerr ("Failed to create enc_h264parse\n");
-      goto error_clean_elements;
-    }
-
     enc_tee = gst_element_factory_make ("tee", "enc_tee");
     if (!enc_tee) {
       g_printerr ("Failed to create enc_tee\n");
@@ -801,6 +801,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         goto error_clean_elements;
       }
 
+      // Create H.264 frame parser plugin
+      file_enc_h264parse = gst_element_factory_make ("h264parse",
+          "file_enc_h264parse");
+      if (!file_enc_h264parse) {
+        g_printerr ("Failed to create file_enc_h264parse\n");
+        goto error_clean_elements;
+      }
+
       // Generic filesink plugin to write file on disk
       filesink = gst_element_factory_make ("filesink", "filesink");
       if (!filesink) {
@@ -810,17 +818,18 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     }
 
     if (options->out_rtsp) {
-      // Plugin to create rtsp payload to stream over network
-      rtph264pay = gst_element_factory_make ("rtph264pay", "rtph264pay");
-      if (!rtph264pay) {
-        g_printerr ("Failed to create rtph264pay\n");
+      // Create H.264 frame parser plugin
+      rtsp_enc_h264parse = gst_element_factory_make ("h264parse",
+          "rtsp_enc_h264parse");
+      if (!rtsp_enc_h264parse) {
+        g_printerr ("Failed to create rtsp_enc_h264parse\n");
         goto error_clean_elements;
       }
 
-      // Generic udpsink plugin for streaming
-      udpsink = gst_element_factory_make ("udpsink", "udpsink");
-      if (!udpsink) {
-        g_printerr ("Failed to create udpsink\n");
+      // Generic qtirtspbin plugin for streaming
+      qtirtspbin = gst_element_factory_make ("qtirtspbin", "qtirtspbin");
+      if (!qtirtspbin) {
+        g_printerr ("Failed to create qtirtspbin\n");
         goto error_clean_elements;
       }
     }
@@ -902,10 +911,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     }
 
     if (options->out_rtsp) {
-      g_print (" ip = %s, port = %d\n", options->ip_address,options->port_num);
-      g_object_set (G_OBJECT (enc_h264parse), "config-interval", -1, NULL);
-      g_object_set (G_OBJECT (rtph264pay), "pt", 96, NULL);
-      g_object_set (G_OBJECT (udpsink), "host", options->ip_address,
+      g_print (" ip = %s, port = %s\n", options->ip_address, options->port_num);
+      g_object_set (G_OBJECT (rtsp_enc_h264parse), "config-interval", 1, NULL);
+      g_object_set (G_OBJECT (qtirtspbin), "address", options->ip_address,
           "port", options->port_num, NULL);
     }
   }
@@ -954,13 +962,15 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   if (options->out_file || options->out_rtsp) {
-    gst_bin_add_many (GST_BIN (appctx->pipeline), v4l2h264enc, enc_h264parse,
+    gst_bin_add_many (GST_BIN (appctx->pipeline), v4l2h264enc,
         enc_tee, NULL);
     if (options->out_file) {
-      gst_bin_add_many (GST_BIN (appctx->pipeline), mp4mux, filesink, NULL);
+      gst_bin_add_many (GST_BIN (appctx->pipeline), mp4mux, file_enc_h264parse,
+          filesink, NULL);
     }
     if (options->out_rtsp) {
-      gst_bin_add_many (GST_BIN (appctx->pipeline), rtph264pay, udpsink, NULL);
+      gst_bin_add_many (GST_BIN (appctx->pipeline), rtsp_enc_h264parse,
+          qtirtspbin, NULL);
     }
   }
 
@@ -1074,7 +1084,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   if (options->out_file || options->out_rtsp) {
     ret = gst_element_link_many (composer_tee, queue[2], v4l2h264enc, queue[3],
-        enc_h264parse, enc_tee, NULL);
+        enc_tee, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
           " composer_tee -> encoder -> enc_tee.\n");
@@ -1082,7 +1092,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     }
 
     if (options->out_file) {
-      ret = gst_element_link_many (enc_tee, queue[4], mp4mux, filesink, NULL);
+      ret = gst_element_link_many (enc_tee, queue[4], file_enc_h264parse,
+          mp4mux, filesink, NULL);
       if (!ret) {
         g_printerr ("Pipeline elements cannot be linked for"
             " enc_tee -> mp4mux -> filesink.\n");
@@ -1091,11 +1102,11 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     }
 
     if (options->out_rtsp) {
-      ret = gst_element_link_many (
-          enc_tee, queue[5], rtph264pay, udpsink, NULL);
+      ret = gst_element_link_many (enc_tee, queue[5], rtsp_enc_h264parse, queue[6],
+          qtirtspbin, NULL);
       if (!ret) {
         g_printerr ("Pipeline elements cannot be linked for"
-            " enc_tee -> udpsink.\n");
+            " enc_tee -> qtirtspbin.\n");
         goto error_clean_pipeline;
       }
     }
@@ -1164,13 +1175,12 @@ error_clean_elements:
   }
 
   if (options->out_file || options->out_rtsp) {
-    cleanup_gst (&v4l2h264enc, &enc_h264parse,
-        &enc_tee, NULL);
+    cleanup_gst (&v4l2h264enc, &enc_tee, NULL);
     if (options->out_file) {
-      cleanup_gst (&mp4mux, &filesink, NULL);
+      cleanup_gst (&mp4mux, &file_enc_h264parse, &filesink, NULL);
     }
     if (options->out_rtsp) {
-      cleanup_gst (&rtph264pay, &udpsink, NULL);
+      cleanup_gst (&rtsp_enc_h264parse, &qtirtspbin, NULL);
     }
   }
 
@@ -1241,8 +1251,8 @@ main (gint argc, gchar * argv[])
     memcpy (camera_entries, temp_camera_entries, 2 * sizeof (GOptionEntry));
   } else {
     GOptionEntry temp_camera_entries[] = {
-      NULL,
-      NULL,
+      { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL },
+      { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
     };
 
     memcpy (camera_entries, temp_camera_entries, 2 * sizeof (GOptionEntry));
@@ -1315,38 +1325,34 @@ main (gint argc, gchar * argv[])
     },
     { "out-rtsp", 'r', 0, G_OPTION_ARG_NONE,
       &options.out_rtsp,
-      "Encode and stream on rtsp\n"
-      "      Run below command on a separate shell to start the rtsp server:\n"
-      "          gst-rtsp-server -p 8900 -a <device_ip> -m /live "
-      "\" ( udpsrc name=pay0 port=<port> caps=\\\"application/x-rtp,"
-      "media=video,clock-rate=90000,encoding-name=H264,payload=96\\\" )\"\n"
-      "      Live URL on port 8900: rtsp://<device_ip>:8900/live\n"
-      "          Change IP address to match your network settings",
+      "Encode and stream on rtsp. Connect device and host on same network, and\n"
+      "      change ip address and port to override the defualt ip address and\n"
+      "      Port number.",
       NULL
     },
     { "ip", 'i', 0, G_OPTION_ARG_STRING,
       &options.ip_address,
-      "Valid IP address in case of RSTP streaming output"
+      "RSTP server listening address.",
+      "Valid IP Address"
     },
-    { "port", 'p', 0, G_OPTION_ARG_INT,
+    { "port", 'p', 0, G_OPTION_ARG_STRING,
       &options.port_num,
-      "Valid port number in case of RSTP streaming output"
+      "RSTP server listening port",
+      "Port number."
     },
     camera_entries[0],
     camera_entries[1],
-    { NULL }
+    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
 
-  gchar camera_description[255] = {};
+  gchar camera_description[256] = {};
 
   if (camera_is_available) {
-    snprintf (camera_description, 255,
-      "  %s --use-case 1 --num-camera=2 --display\n",
+    snprintf (camera_description, sizeof (camera_description),
+      "%s --use-case 1 --num-camera=2 --display",
       app_name);
-
-    camera_description[255] = '\0';
   }
 
   snprintf (help_description, 1023, "\nExample:\n"

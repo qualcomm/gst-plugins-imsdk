@@ -186,48 +186,48 @@ gst_app_context_free (
   }
 
   if (options->file_path != NULL) {
-    g_free (options->file_path);
+    g_free ((gpointer)options->file_path);
     options->file_path = NULL;
   }
 
   if (options->rtsp_ip_port != NULL) {
-    g_free (options->rtsp_ip_port);
+    g_free ((gpointer)options->rtsp_ip_port);
     options->rtsp_ip_port = NULL;
   }
 
-  if (options->detection_model_path != NULL &&
-      options->detection_model_path != DEFAULT_TFLITE_YOLOV5_MODEL) {
-    g_free (options->detection_model_path);
+    if (options->detection_model_path != NULL &&
+      options->detection_model_path != (gchar *)(&DEFAULT_TFLITE_YOLOV5_MODEL)) {
+    g_free ((gpointer)options->detection_model_path);
     options->detection_model_path = NULL;
   }
 
   if (options->classification_model_path != NULL &&
-      options->classification_model_path != DEFAULT_TFLITE_CLASSIFICATION_MODEL) {
-    g_free (options->classification_model_path);
+      options->classification_model_path != (gchar *)(&DEFAULT_TFLITE_CLASSIFICATION_MODEL)) {
+    g_free ((gpointer)options->classification_model_path);
     options->classification_model_path = NULL;
   }
 
   if (options->detection_labels_path != NULL &&
-      options->detection_labels_path != DEFAULT_YOLOV5_LABELS) {
-    g_free (options->detection_labels_path);
+      options->detection_labels_path != (gchar *)(&DEFAULT_YOLOV5_LABELS)) {
+    g_free ((gpointer)options->detection_labels_path);
     options->detection_labels_path = NULL;
   }
 
   if (options->classification_labels_path != NULL &&
-      options->classification_labels_path != DEFAULT_CLASSIFICATION_LABELS) {
-    g_free (options->classification_labels_path);
+      options->classification_labels_path != (gchar *)(&DEFAULT_CLASSIFICATION_LABELS)) {
+    g_free ((gpointer)options->classification_labels_path);
     options->classification_labels_path = NULL;
   }
 
   if (options->detection_constants != NULL &&
-      options->detection_constants != YOLOV5_CONSTANT) {
-    g_free (options->detection_constants);
+      options->detection_constants != (gchar *)(&YOLOV5_CONSTANT)) {
+    g_free ((gpointer)options->detection_constants);
     options->detection_constants = NULL;
   }
 
   if (config_file != NULL &&
-      config_file != DEFAULT_CONFIG_FILE) {
-    g_free (config_file);
+      config_file != (gchar *)(&DEFAULT_CONFIG_FILE)) {
+    g_free ((gpointer)config_file);
     config_file = NULL;
   }
 
@@ -970,7 +970,6 @@ gint
 parse_json(gchar * config_file, GstAppOptions * options)
 {
   JsonParser *parser = NULL;
-  JsonArray *pipeline_info = NULL;
   JsonNode *root = NULL;
   JsonObject *root_obj = NULL;
   GError *error = NULL;
@@ -1055,12 +1054,10 @@ main (gint argc, gchar * argv[])
   const gchar *app_name = NULL;
   GstAppOptions options = {};
   GstAppContext appctx = {};
-  GstStreamSourceType source_type;
   gboolean ret = FALSE;
   gchar help_description[2048];
   guint intrpt_watch_id = 0;
   gchar *config_file = NULL;
-  GError *error = NULL;
 
   options.file_path = NULL;
   options.rtsp_ip_port = NULL;
@@ -1092,7 +1089,7 @@ main (gint argc, gchar * argv[])
   gchar camera_description[255] = {};
 
   if (camera_is_available) {
-    snprintf (camera_description, 255,
+    snprintf (camera_description, sizeof (camera_description),
       "  If neither input-file nor rtsp-ip-port are provided, "
       "then camera input will be selected\n\n"
     );

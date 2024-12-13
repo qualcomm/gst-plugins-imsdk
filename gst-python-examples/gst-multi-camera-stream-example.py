@@ -108,6 +108,17 @@ def create_pipeline(pipeline, cameraid):
         "--framerate", "-F", type=str, default='30/1', help="framerate(fraction)")
     parser.add_argument(
         "--display", "-D", action='store_false', help="Output Sink type as wayland")
+    parser.add_argument(
+        "--output_of_primary_cam", type=str,
+        default=DEFAULT_OUTPUT_FILE_PRIMARY_CAMERA,
+        help="Output file of priamry camera stream"
+    )
+    parser.add_argument(
+        "--output_of_secondary_cam", type=str,
+        default=DEFAULT_OUTPUT_FILE_SECONDARY_CAMERA,
+        help="Output file of secondary camera stream"
+    )
+
     args = parser.parse_args()
 
     capsvalues = "video/x-raw(memory:GBM),format=NV12,width=" + str(
@@ -171,12 +182,12 @@ def create_pipeline(pipeline, cameraid):
         if (cameraid == DEFAULT_PRIMARY_CAMERA_ID):
             elements["camsrc"].set_property("camera", DEFAULT_PRIMARY_CAMERA_ID)
             elements["sink"].set_property(
-                "location", DEFAULT_OUTPUT_FILE_PRIMARY_CAMERA)
+                "location", args.output_of_primary_cam)
         else:
             elements["camsrc"].set_property(
                 "camera", DEFAULT_SECONDARY_CAMERA_ID)
             elements["sink"].set_property(
-                "location", DEFAULT_OUTPUT_FILE_SECONDARY_CAMERA)
+                "location", args.output_of_secondary_cam)
             capsvalues = "video/x-raw(memory:GBM),format=NV12,width=" + str(
                 DEFAULT_WIDTH) + ",height=" + str(DEFAULT_HEIGHT) + ",framerate="+str(args.framerate)+",compression=ubwc"
 

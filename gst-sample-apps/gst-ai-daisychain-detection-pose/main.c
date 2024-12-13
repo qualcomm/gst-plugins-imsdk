@@ -266,43 +266,43 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
   }
 
   if (options->input_file_path != NULL) {
-    g_free (options->input_file_path);
+    g_free ((gpointer)options->input_file_path);
     options->input_file_path = NULL;
   }
 
   if (options->rtsp_ip_port != NULL) {
-    g_free (options->rtsp_ip_port);
+    g_free ((gpointer)options->rtsp_ip_port);
     options->rtsp_ip_port = NULL;
   }
 
-  if (options->yolov8_model_path != DEFAULT_TFLITE_YOLOV8_MODEL &&
+  if (options->yolov8_model_path != (gchar *)(&DEFAULT_TFLITE_YOLOV8_MODEL) &&
       options->yolov8_model_path != NULL) {
-    g_free (options->yolov8_model_path);
+    g_free ((gpointer)options->yolov8_model_path);
   }
 
-  if (options->hrnet_model_path != DEFAULT_TFLITE_POSE_MODEL &&
+  if (options->hrnet_model_path != (gchar *)(&DEFAULT_TFLITE_POSE_MODEL) &&
       options->hrnet_model_path != NULL) {
-    g_free (options->hrnet_model_path);
+    g_free ((gpointer)options->hrnet_model_path);
   }
 
-  if (options->yolov8_labels_path != DEFAULT_YOLOV8_LABELS &&
+  if (options->yolov8_labels_path != (gchar *)(&DEFAULT_YOLOV8_LABELS) &&
       options->yolov8_labels_path != NULL) {
-    g_free (options->yolov8_labels_path);
+    g_free ((gpointer)options->yolov8_labels_path);
   }
 
-  if (options->hrnet_labels_path != DEFAULT_POSE_LABELS &&
+  if (options->hrnet_labels_path != (gchar *)(&DEFAULT_POSE_LABELS) &&
       options->hrnet_labels_path != NULL) {
-    g_free (options->hrnet_labels_path);
+    g_free ((gpointer)options->hrnet_labels_path);
   }
 
-  if (options->yolov8_constants != DEFAULT_YOLOV8_CONSTANT &&
+  if (options->yolov8_constants != (gchar *)(&DEFAULT_YOLOV8_CONSTANT) &&
       options->yolov8_constants != NULL) {
-    g_free (options->yolov8_constants);
+    g_free ((gpointer)options->yolov8_constants);
   }
 
-  if (options->hrnet_constants != DEFAULT_HRNET_CONSTANT &&
+  if (options->hrnet_constants != (gchar *)(&DEFAULT_HRNET_CONSTANT) &&
       options->hrnet_constants != NULL) {
-    g_free (options->hrnet_constants);
+    g_free ((gpointer)options->hrnet_constants);
   }
 
   if (options->output_file_path != NULL) {
@@ -638,7 +638,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
   gst_caps_unref (pad_filter);
 
   // 2.5 Set the properties of pad_filter for detection
-  pad_filter = gst_caps_new_simple ("text/x-raw", NULL);
+  pad_filter = gst_caps_new_simple ("text/x-raw", NULL, NULL);
   for (gint i = 0; i < DETECTION_FILTER_COUNT; i++) {
     g_object_set (G_OBJECT (detection_filter[i]), "caps", pad_filter, NULL);
   }
@@ -1210,6 +1210,7 @@ main (gint argc, gchar * argv[])
     { "display", 'd', 0, G_OPTION_ARG_NONE,
       &options.display,
       "Display stream on wayland (Default).",
+      "enable flag"
     },
     { "output-file", 'o', 0, G_OPTION_ARG_STRING,
       &options.output_file_path,
@@ -1217,7 +1218,7 @@ main (gint argc, gchar * argv[])
       "/PATH"
     },
     camera_entry,
-    { NULL }
+    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
@@ -1225,13 +1226,11 @@ main (gint argc, gchar * argv[])
   gchar camera_description[255] = {};
 
   if (camera_is_available) {
-    snprintf (camera_description, 255,
+    snprintf (camera_description, sizeof (camera_description),
       "  %s \n"
       "  %s --camera --display\n"
       "  %s --camera --output-file=/opt/out.mp4\n",
       app_name, app_name, app_name);
-
-    camera_description[255] = '\0';
   }
 
   snprintf (help_description, 1023, "\nExample:\n"

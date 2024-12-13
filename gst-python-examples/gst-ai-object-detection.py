@@ -30,6 +30,7 @@ ML_PLUGINS = {
 }
 
 waiting_for_eos = False
+eos_received = False
 def handle_interrupt_signal(pipeline, mloop):
     """Handle Ctrl+C."""
     global waiting_for_eos
@@ -50,6 +51,7 @@ def handle_interrupt_signal(pipeline, mloop):
 
 def handle_bus_message(bus, message, mloop):
     """Handle messages posted on pipeline bus."""
+    global eos_received
 
     if message.type == Gst.MessageType.ERROR:
         error, debug_info = message.parse_error()
@@ -59,6 +61,7 @@ def handle_bus_message(bus, message, mloop):
         mloop.quit()
     elif message.type == Gst.MessageType.EOS:
         print("EoS received")
+        eos_received = True
         mloop.quit()
     return True
 
@@ -274,6 +277,13 @@ def create_link_orders(args):
 
 def create_pipeline(pipeline, args):
     """Initialize and link elements for the GStreamer pipeline."""
+    # Check if model and label files are present
+    if not os.path.exists(args.model):
+        print(f"File {args.model} does not exist")
+        sys.exit(1)
+    if not os.path.exists(args.labels):
+        print(f"File {args.model} does not exist")
+        sys.exit(1)
 
     # Create elements
     elements = {
@@ -372,6 +382,8 @@ def main():
     mloop = None
     pipeline = None
     Gst.deinit()
+    if eos_received:
+        print("App execution successful")
 
 if __name__ == "__main__":
     sys.exit(main())

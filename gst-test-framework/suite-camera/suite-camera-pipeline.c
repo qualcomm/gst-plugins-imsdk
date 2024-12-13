@@ -32,7 +32,7 @@ camera_pipeline (GstCapsParameters * params1,
 
   fail_unless (pipeline && qtiqmmfsrc && capsfilter1 && sink1);
 
- // Configure caps of video stream1.
+  // Configure caps of video stream1.
   filtercaps = gst_caps_new_simple ("video/x-raw",
       "format", G_TYPE_STRING, params1->format,
       "width", G_TYPE_INT, params1->width,
@@ -107,9 +107,8 @@ camera_pipeline (GstCapsParameters * params1,
 
     // Configure caps of jpeg snapshot stream.
     filtercaps = gst_caps_new_simple ("image/jpeg",
-        "width", G_TYPE_INT, rawparams->width,
-        "height", G_TYPE_INT, rawparams->height,
-        //"framerate", GST_TYPE_FRACTION, jpegconfig->fps, 1,
+        "width", G_TYPE_INT, jpegparams->width,
+        "height", G_TYPE_INT, jpegparams->height,
         NULL);
     g_object_set (G_OBJECT (capsfilter4), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
@@ -444,4 +443,3 @@ camera_composer_display_pipeline (GstCapsParameters * params1,
       GST_STATE_CHANGE_SUCCESS);
   gst_object_unref (pipeline);
 }
-

@@ -136,11 +136,11 @@ gst_app_context_free (GstComposeAppContext * appctx)
   }
 
   if (appctx->input_file != NULL)
-    g_free (appctx->input_file);
+    g_free ((gpointer)appctx->input_file);
 
   // Finally, free the application context itself
   if (appctx != NULL)
-    g_free (appctx);
+    g_free ((gpointer)appctx);
 }
 
 /**
@@ -195,7 +195,7 @@ static gboolean
 create_pipe_waylandsink (GstComposeAppContext * appctx)
 {
   // Declare the elements of the pipeline
-  GstElement *pipeline, *qtiqmmfsrc, *capsfilter, *waylandsink_cam,
+  GstElement *qtiqmmfsrc, *capsfilter, *waylandsink_cam,
       *filesrc, *qtdemux, *h264parse, *v4l2h264dec, *waylandsink_filesrc;
   GstCaps *filtercaps;
 
@@ -327,7 +327,7 @@ static gboolean
 create_pipe_qtivcomposer (GstComposeAppContext * appctx)
 {
   // Declare the elements of the pipeline
-  GstElement *pipeline, *qtiqmmfsrc, *waylandsink, *capsfilter;
+  GstElement *qtiqmmfsrc, *waylandsink, *capsfilter;
   GstElement *filesrc, *qtdemux, *h264parse, *v4l2h264dec, *qtivcomposer;
   GstCaps *filtercaps;
   guint ret = FALSE;
@@ -504,7 +504,7 @@ main (gint argc, gchar *argv[])
   // Configure input parameters
   GOptionEntry entries[] = {
     { "composer", 'c', 0, G_OPTION_ARG_INT, &appctx->composer,
-      "Select the composer Wayland or qtivcomposer"
+      "Select the composer Wayland or qtivcomposer",
       "\n\t0 - Wayland"
       "\n\t1 - Qtivcomposer"
       "  e.g. -c 0 or -c 1 "
@@ -516,10 +516,10 @@ main (gint argc, gchar *argv[])
       "  e.g. -t 0 or -t 1 "
     },
     { "input_file", 'i', 0, G_OPTION_ARG_FILENAME, &appctx->input_file,
-      "input AVC mp4 Filename"
+      "input AVC mp4 Filename",
       "  e.g. -i /opt/<h264_file>.mp4"
     },
-    { NULL }
+    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   // Parse command line entries.
