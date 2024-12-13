@@ -26,7 +26,7 @@ DEFAULT_RTSP_SRC = "rtsp://127.0.0.1:8900/live"
 DEFAULT_DETECTION_MODEL = "/opt/data/YoloV8N_Detection_Quantized.tflite"
 DEFAULT_DETECTION_LABELS = "/opt/data/yolov8n.labels"
 
-
+eos_received = False
 def create_element(factory_name, name):
     """Create a GStreamer element."""
     element = Gst.ElementFactory.make(factory_name, name)
@@ -71,8 +71,32 @@ def construct_pipeline(pipe):
         default=argparse.SUPPRESS,
         help=DESCRIPTION,
     )
+    parser.add_argument("--rtsp", type=str,
+        default=DEFAULT_RTSP_SRC,
+        help="RTSP URL"
+    )
+    parser.add_argument("--detection_model", type=str,
+        default=DEFAULT_DETECTION_MODEL,
+        help="Path to object detection model"
+    )
+    parser.add_argument("--detection_labels", type=str,
+        default=DEFAULT_DETECTION_LABELS,
+        help="Path to object detection labels"
+    )
 
     args = parser.parse_args()
+
+    if args.rtsp is None:
+        print("No input rtsp source selected, exiting...")
+        sys.exit(1)
+
+    # Check if all model and label files are present
+    if not os.path.exists(args.detection_model):
+        print(f"File {args.detection_model} does not exist")
+        sys.exit(1)
+    if not os.path.exists(args.detection_labels):
+        print(f"File {args.detection_labels} does not exist")
+        sys.exit(1)
 
     # Create all elements
     # fmt: off
@@ -98,7 +122,7 @@ def construct_pipeline(pipe):
     # fmt: on
 
     # Set element properties
-    Gst.util_set_object_arg(elements["rtspsrc"], "location", DEFAULT_RTSP_SRC)
+    Gst.util_set_object_arg(elements["rtspsrc"], "location", args.rtsp)
 
     Gst.util_set_object_arg(
         elements["capsfilter_0"],
@@ -125,7 +149,7 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["mltflite"],
         "model",
-        DEFAULT_DETECTION_MODEL,
+        args.detection_model,
     )
 
     Gst.util_set_object_arg(elements["mlvdetection"], "threshold", "75.0")
@@ -138,7 +162,7 @@ def construct_pipeline(pipe):
         q-scales=<3.093529462814331,0.00390625,1.0>;",
     )
     Gst.util_set_object_arg(
-        elements["mlvdetection"], "labels", DEFAULT_DETECTION_LABELS
+        elements["mlvdetection"], "labels", args.detection_labels
     )
 
     Gst.util_set_object_arg(elements["capsfilter_1"], "caps", "text/x-raw")
@@ -194,9 +218,12 @@ def quit_mainloop(loop):
 
 def bus_call(_, message, loop):
     """Handle bus messages."""
+    global eos_received
+
     message_type = message.type
     if message_type == Gst.MessageType.EOS:
         print("EoS received!")
+        eos_received = True
         quit_mainloop(loop)
     elif message_type == Gst.MessageType.ERROR:
         error, debug_info = message.parse_error()
@@ -262,6 +289,8 @@ def main():
     pipe = None
 
     Gst.deinit()
+    if eos_received:
+        print("App execution successful")
 
     return 0
 

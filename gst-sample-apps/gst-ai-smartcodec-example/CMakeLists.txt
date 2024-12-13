@@ -16,13 +16,11 @@ pkg_check_modules(GST
 # ggst-smartcodec-example
 set(GST_EXAMPLE_BIN gst-ai-smartcodec-example)
 
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
+
 add_executable(${GST_EXAMPLE_BIN}
   main.c
-)
-
-# Add target specific precompiler defintions.
-target_compile_definitions(${GST_EXAMPLE_BIN} PRIVATE
-  $<$<BOOL:${ENABLE_CAMERA}>:ENABLE_CAMERA>
 )
 
 target_include_directories(${GST_EXAMPLE_BIN} PRIVATE

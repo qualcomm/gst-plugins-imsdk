@@ -184,6 +184,8 @@ create_pipe (GstSmartCodecContext * appctx)
   gint module_id;
   gboolean ret = FALSE;
 
+  detection_filter = NULL;
+
   // Create qtismartvencbin element for the smart encoder
   qtismartvencbin = gst_element_factory_make ("qtismartvencbin",
       "qtismartvencbin");
@@ -263,7 +265,7 @@ create_pipe (GstSmartCodecContext * appctx)
       NULL);
 
   // Set the properties of pad_filter for detection
-  pad_filter = gst_caps_new_simple ("text/x-raw", NULL);
+  pad_filter = gst_caps_new_simple ("text/x-raw", NULL, NULL);
   g_object_set (G_OBJECT (detection_filter), "caps", pad_filter, NULL);
   gst_caps_unref (pad_filter);
 
@@ -545,20 +547,20 @@ main (gint argc, gchar * argv[])
   {"height", 'h', 0, G_OPTION_ARG_INT, &appctx->height, "height",
       "image height"},
   {"output_file", 'o', 0, G_OPTION_ARG_STRING, &appctx->output_file,
-      "Output Filename , \
-          -o /opt/video.mp4"},
+      "Output Filename" ,
+      "-o /opt/video.mp4"},
   {"input_file", 'i', 0, G_OPTION_ARG_FILENAME, &appctx->input_file,
-      "Input Filename - i/p mp4 file path and name"
+      "Input Filename - i/p mp4 file path and name",
         "e.g. -i /opt/<file_name>.mp4"},
   { "model", 'm', 0, G_OPTION_ARG_STRING,
     &appctx->model_path,
-    "This is an optional parameter and overrides default path\n"
+    "This is an optional parameter and overrides default path\n",
     "    Default model path for YOLOV8 TFLITE: "DEFAULT_MODEL"\n",},
   { "labels", 'l', 0, G_OPTION_ARG_STRING,
     &appctx->labels_path,
-    "This is an optional parameter and overrides default path\n"
+    "This is an optional parameter and overrides default path\n",
     "    Default labels path for YOLOV8: "DEFAULT_LABELS"\n"},
-  {NULL}
+  { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   // Parse command line entries.
@@ -608,10 +610,10 @@ main (gint argc, gchar * argv[])
     appctx->output_file = g_strdup (DEFAULT_OUTPUT_FILENAME);
 
   if (appctx->model_path == NULL)
-    appctx->model_path == g_strdup (DEFAULT_MODEL);
+    appctx->model_path = g_strdup (DEFAULT_MODEL);
 
   if (appctx->labels_path == NULL)
-    appctx->labels_path == g_strdup (DEFAULT_LABELS);
+    appctx->labels_path = g_strdup (DEFAULT_LABELS);
 
   // Initialize GST library.
   gst_init (&argc, &argv);

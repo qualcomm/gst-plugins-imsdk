@@ -16,6 +16,9 @@ pkg_check_modules(GST
 # GStreamer gst-add-remove-streams-runtime
 set(GST_EXAMPLE_BIN gst-add-remove-streams-runtime)
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
+
 add_executable(${GST_EXAMPLE_BIN}
   main.cc
 )

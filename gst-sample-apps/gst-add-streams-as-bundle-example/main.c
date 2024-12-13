@@ -42,6 +42,8 @@
   "content displayed on the screen, \n" \
   "with File option encoded stream will be stored at /opt/video_%d.mp4" \
 
+#define DEFAULT_OUTPUT_PATH "/opt"
+
 #define STREAM_COUNT 3
 typedef struct _GstStreamInf GstStreamInf;
 
@@ -67,6 +69,7 @@ struct _GstCameraAppContext {
   gboolean exit;
   GCond eos_signal;
   gboolean use_display;
+  gchar *output_path;
 };
 
 typedef struct _GstCameraAppContext GstCameraAppContext;
@@ -308,7 +311,8 @@ create_stream_encode (GstCameraAppContext *appctx, gint x, gint y, gint w, gint 
   g_object_set (G_OBJECT (stream->mp4mux), "reserved-max-duration", 1000000000,
       NULL);
 
-  snprintf (temp_str, sizeof (temp_str), "/opt/video_%d.mp4", appctx->stream_cnt);
+  snprintf (temp_str, sizeof (temp_str), "%s/video_%d.mp4",
+      appctx->output_path, appctx->stream_cnt);
   g_object_set (G_OBJECT (stream->filesink), "location", temp_str, NULL);
 
   // Add the elements to the pipeline
@@ -468,6 +472,12 @@ release_all_streams (GstCameraAppContext *appctx)
     GstStreamInf *stream = (GstStreamInf *) list->data;
     release_stream (appctx, stream, count);
     count++;
+  }
+
+  if (appctx->output_path != (gchar *)(
+      &DEFAULT_OUTPUT_PATH) &&
+      appctx->output_path != NULL) {
+    g_free ((gpointer)appctx->output_path);
   }
 }
 
@@ -678,7 +688,6 @@ main (gint argc, gchar * argv[])
   gchar *output = NULL;
   GstCameraAppContext appctx = {};
   guint intrpt_watch_id = 0;
-  gboolean ret = FALSE;
 
   appctx.stream_cnt = 0;
   appctx.use_display = FALSE;
@@ -692,6 +701,11 @@ main (gint argc, gchar * argv[])
       &output,
       "What output to use",
       "Accepted values: \"File\" or \"Display\""
+    },
+    { "output_file_path", 'p', 0, G_OPTION_ARG_STRING,
+      &appctx.output_path,
+      "Path to save video files",
+      "Custom directory to save app output when file output selected."
     },
     { NULL }
   };
@@ -729,9 +743,14 @@ main (gint argc, gchar * argv[])
     appctx.use_display = TRUE;
     g_print ("Output to display\n");
   } else {
-    g_print ("Output to file");
+    g_print ("Output to file\n");
   }
   g_free (output);
+
+  // By default output files are stored in /opt
+  if (NULL == appctx.output_path) {
+    appctx.output_path = DEFAULT_OUTPUT_PATH;
+  }
 
   // Initialize GST library.
   gst_init (&argc, &argv);
@@ -792,8 +811,9 @@ main (gint argc, gchar * argv[])
   g_print ("Setting pipeline to NULL state ...\n");
   gst_element_set_state (pipeline, GST_STATE_NULL);
 
-  if (!appctx.use_display)
-    g_print ("Output to file: /opt/video_*.mp4\n");
+  if (appctx.use_display == FALSE) {
+    g_print ("Any output files saved to: %s/video_*.mp4\n", appctx.output_path);
+  }
 
   g_source_remove (intrpt_watch_id);
   g_main_loop_unref (mloop);

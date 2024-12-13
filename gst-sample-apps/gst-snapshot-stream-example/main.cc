@@ -43,7 +43,8 @@
 
 #define ARRAY_LENGTH 100
 
-#define SNAP_OUTPUT_FILE "/opt/snapshot%d.jpg"
+#define DEFAULT_SNAP_OUTPUT_PATH "/opt"
+#define SNAP_OUTPUT_FILE "snapshot%d.jpg"
 
 #define DEFAULT_MAX_SNAPSHOTS 5
 
@@ -57,7 +58,7 @@
   "\nOutput:\n" \
   "  Upon execution, the application will generate an output for preview " \
   "on the display. \n  Once the use case concludes, snapshot output files will" \
-  " be available at the '/opt/' directory."
+  " be available at the '/opt/' directory unless custom output directory set."
 
 // Structure to hold the application context
 struct GstSnapshotAppContext : GstAppContext {
@@ -66,6 +67,7 @@ struct GstSnapshotAppContext : GstAppContext {
   gint input_height;
   gint snap_width;
   gint snap_height;
+  gchar *output_path;
 };
 
 /**
@@ -136,6 +138,12 @@ gst_app_context_free (GstSnapshotAppContext * appctx)
     appctx->pipeline = NULL;
   }
 
+  if (appctx->output_path != (gchar *)(
+      &DEFAULT_SNAP_OUTPUT_PATH) &&
+      appctx->output_path != NULL) {
+    g_free ((gpointer)appctx->output_path);
+  }
+
   if (appctx != NULL)
     g_free (appctx);
 }
@@ -155,6 +163,7 @@ create_pipe (GstSnapshotAppContext * appctx)
   GstElement *multifilesink, *waylandsink;
   GstCaps *filtercaps;
   gboolean ret = FALSE;
+  gchar temp_str[100];
 
   // Create camera source and the element capability
   qtiqmmfsrc = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
@@ -188,7 +197,9 @@ create_pipe (GstSnapshotAppContext * appctx)
   g_object_set (G_OBJECT (waylandsink), "fullscreen", true, NULL);
 
   // Set location and max file limit properties to multifilesink
-  g_object_set (G_OBJECT (multifilesink), "location", SNAP_OUTPUT_FILE, NULL);
+  snprintf (temp_str, sizeof (temp_str), "%s/%s",
+      appctx->output_path, SNAP_OUTPUT_FILE);
+  g_object_set (G_OBJECT (multifilesink), "location", temp_str, NULL);
   g_object_set (G_OBJECT (multifilesink), "enable-last-sample", false, NULL);
   g_object_set (G_OBJECT (multifilesink), "max-files", appctx->snapcount, NULL);
 
@@ -266,25 +277,30 @@ main (gint argc, gchar * argv[])
   GOptionEntry entries[] = {
     { "input_width", 'W', 0, G_OPTION_ARG_INT,
       &appctx->input_width,
-      "camera input width  -Default width:1280"
+      "camera input width", "-Default width:1280"
     },
     { "input_height", 'H', 0, G_OPTION_ARG_INT,
       &appctx->input_height,
-      "camera input height  -Default height:720"
+      "camera input height", "-Default height:720"
     },
     { "snap_width", 'w', 0, G_OPTION_ARG_INT,
       &appctx->snap_width,
-      "snapshot image width  -Default width:3840"
+      "snapshot image width", "-Default width:3840"
     },
     { "snap_height", 'h', 0, G_OPTION_ARG_INT,
       &appctx->snap_height,
-      "snapshot image height  -Default height:2160"
+      "snapshot image height", "-Default height:2160"
     },
     { "snapcount", 'c', 0, G_OPTION_ARG_INT,
       &appctx->snapcount,
-      "max number of snapshot count  -Default count:5"
+      "max number of snapshot count", "-Default count:5"
     },
-    { NULL }
+    { "output_path", 'o', 0, G_OPTION_ARG_STRING,
+      &appctx->output_path,
+      "Path to save snapshot images to.",
+      "-Default path: /opt"
+    },
+    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   // Parse command line entries.
@@ -313,6 +329,11 @@ main (gint argc, gchar * argv[])
     g_printerr ("Failed to create options context!\n");
     gst_app_context_free (appctx);
     return ret;
+  }
+
+  // Set default snap output path if none set in arguments.
+  if (NULL == appctx->output_path) {
+    appctx->output_path = (gchar *)DEFAULT_SNAP_OUTPUT_PATH;
   }
 
   // Initialize GST library.

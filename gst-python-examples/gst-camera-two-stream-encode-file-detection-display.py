@@ -27,7 +27,7 @@ DEFAULT_DETECTION_MODEL = "/opt/data/YoloV8N_Detection_Quantized.tflite"
 DEFAULT_DETECTION_LABELS = "/opt/data/yolov8n.labels"
 DEFAULT_OUTPUT_FILE = "/opt/data/test.mp4"
 
-
+eos_received = False
 def create_element(factory_name, name):
     """Create a GStreamer element."""
     element = Gst.ElementFactory.make(factory_name, name)
@@ -77,6 +77,14 @@ def construct_pipeline(pipe):
         type=str,
         default=DEFAULT_OUTPUT_FILE,
         help="Pipeline Output Path",
+    )
+    parser.add_argument("--tflite_detection_model", type=str,
+        default=DEFAULT_DETECTION_MODEL,
+        help="Path to TfLite detection model"
+    )
+    parser.add_argument("--detection_labels", type=str,
+        default=DEFAULT_DETECTION_LABELS,
+        help="Path to detection labels"
     )
 
     args = parser.parse_args()
@@ -150,7 +158,7 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["mltflite"],
         "model",
-        DEFAULT_DETECTION_MODEL,
+        args.tflite_detection_model,
     )
 
     Gst.util_set_object_arg(elements["mlvdetection"], "threshold", "75.0")
@@ -163,7 +171,7 @@ def construct_pipeline(pipe):
         q-scales=<3.093529462814331,0.00390625,1.0>;",
     )
     Gst.util_set_object_arg(
-        elements["mlvdetection"], "labels", DEFAULT_DETECTION_LABELS
+        elements["mlvdetection"], "labels", args.detection_labels
     )
 
     Gst.util_set_object_arg(elements["capsfilter_2"], "caps", "text/x-raw")
@@ -216,9 +224,12 @@ def quit_mainloop(loop):
 
 def bus_call(_, message, loop):
     """Handle bus messages."""
+    global eos_received
+
     message_type = message.type
     if message_type == Gst.MessageType.EOS:
         print("EoS received!")
+        eos_received = True
         quit_mainloop(loop)
     elif message_type == Gst.MessageType.ERROR:
         error, debug_info = message.parse_error()
@@ -284,6 +295,8 @@ def main():
     pipe = None
 
     Gst.deinit()
+    if eos_received:
+        print("App execution successful")
 
     return 0
 

@@ -31,7 +31,7 @@ DEFAULT_DETECTION_LABELS = "/opt/data/yolov8n.labels"
 DEFAULT_CLASSIFICATION_MODEL = "/opt/data/Resnet101_Quantized.tflite"
 DEFAULT_CLASSIFICATION_LABELS = "/opt/data/resnet101.labels"
 
-
+eos_received = False
 def create_element(factory_name, name):
     """Create a GStreamer element."""
     element = Gst.ElementFactory.make(factory_name, name)
@@ -75,6 +75,23 @@ def construct_pipeline(pipe):
         action="help",
         default=argparse.SUPPRESS,
         help=DESCRIPTION,
+    )
+
+    parser.add_argument("--tflite_object_detection_model", type=str,
+        default=DEFAULT_DETECTION_MODEL,
+        help="Path to TfLite object detection model"
+    )
+    parser.add_argument("--tflite_object_detection_labels", type=str,
+        default=DEFAULT_DETECTION_LABELS,
+        help="Path to TfLite object detection labels"
+    )
+    parser.add_argument("--tflite_classification_model", type=str,
+        default=DEFAULT_CLASSIFICATION_MODEL,
+        help="Path to TfLite classification model"
+    )
+    parser.add_argument("--tflite_classification_labels", type=str,
+        default=DEFAULT_CLASSIFICATION_LABELS,
+        help="Path to TfLite classification labels"
     )
 
     args = parser.parse_args()
@@ -141,14 +158,14 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["mltflite_0"],
         "model",
-        DEFAULT_DETECTION_MODEL,
+        args.tflite_object_detection_model,
     )
 
     Gst.util_set_object_arg(elements["mlvdetection"], "threshold", "75.0")
     Gst.util_set_object_arg(elements["mlvdetection"], "results", "4")
     Gst.util_set_object_arg(elements["mlvdetection"], "module", "yolov8")
     Gst.util_set_object_arg(
-        elements["mlvdetection"], "labels", DEFAULT_DETECTION_LABELS
+        elements["mlvdetection"], "labels", args.tflite_object_detection_labels
     )
     Gst.util_set_object_arg(
         elements["mlvdetection"],
@@ -181,7 +198,7 @@ def construct_pipeline(pipe):
         "QNNExternalDelegate,backend_type=htp;",
     )
     Gst.util_set_object_arg(
-        elements["mltflite_1"], "model", DEFAULT_CLASSIFICATION_MODEL
+        elements["mltflite_1"], "model", args.tflite_classification_model
     )
 
     Gst.util_set_object_arg(elements["mlvclassification"], "threshold", "51.0")
@@ -190,7 +207,7 @@ def construct_pipeline(pipe):
         elements["mlvclassification"], "module", "mobilenet"
     )
     Gst.util_set_object_arg(
-        elements["mlvclassification"], "labels", DEFAULT_CLASSIFICATION_LABELS
+        elements["mlvclassification"], "labels", args.tflite_classification_labels
     )
     Gst.util_set_object_arg(
         elements["mlvclassification"], "extra-operation", "softmax"
@@ -268,9 +285,12 @@ def quit_mainloop(loop):
 
 def bus_call(_, message, loop):
     """Handle bus messages."""
+    global eos_received
+
     message_type = message.type
     if message_type == Gst.MessageType.EOS:
         print("EoS received!")
+        eos_received = True
         quit_mainloop(loop)
     elif message_type == Gst.MessageType.ERROR:
         error, debug_info = message.parse_error()
@@ -336,6 +356,8 @@ def main():
     pipe = None
 
     Gst.deinit()
+    if eos_received:
+        print("App execution successful")
 
     return 0
 

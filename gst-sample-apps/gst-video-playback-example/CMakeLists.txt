@@ -16,6 +16,9 @@ pkg_check_modules(GST
 # GStreamer video playback example
 set(GST_EXAMPLE_BIN gst-video-playback-example)
 
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
+
 add_executable(${GST_EXAMPLE_BIN}
   main.c
 )

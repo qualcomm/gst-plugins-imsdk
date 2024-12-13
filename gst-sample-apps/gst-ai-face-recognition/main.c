@@ -171,37 +171,41 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
   }
 
   if (options->rtsp_ip_port != NULL) {
-    g_free (options->rtsp_ip_port);
+    g_free ((gpointer)options->rtsp_ip_port);
   }
 
-  if (options->face_detection_model_path != DEFAULT_QNN_FACE_DETECTION_MODEL &&
+  if (options->face_detection_model_path != (gchar *)(
+      &DEFAULT_QNN_FACE_DETECTION_MODEL) &&
       options->face_detection_model_path != NULL) {
-    g_free (options->face_detection_model_path);
+    g_free ((gpointer)options->face_detection_model_path);
   }
 
-  if (options->three_dmm_model_path != DEFAULT_QNN_3DMM_MODEL &&
+  if (options->three_dmm_model_path != (gchar *)(&DEFAULT_QNN_3DMM_MODEL) &&
       options->three_dmm_model_path != NULL) {
-    g_free (options->three_dmm_model_path);
+    g_free ((gpointer)options->three_dmm_model_path);
   }
 
-  if (options->face_recognition_model_path != DEFAULT_QNN_FACE_RECOGNITION_MODEL
-      && options->face_recognition_model_path != NULL) {
-    g_free (options->face_recognition_model_path);
+  if (options->face_recognition_model_path != (gchar *)(
+      &DEFAULT_QNN_FACE_RECOGNITION_MODEL) &&
+      options->face_recognition_model_path != NULL) {
+    g_free ((gpointer)options->face_recognition_model_path);
   }
 
-  if (options->face_detection_labels_path != DEFAULT_FACE_DETECTION_LABELS &&
+  if (options->face_detection_labels_path != (gchar *)(
+      &DEFAULT_FACE_DETECTION_LABELS) &&
       options->face_detection_labels_path != NULL) {
-    g_free (options->face_detection_labels_path);
+    g_free ((gpointer)options->face_detection_labels_path);
   }
 
-  if (options->three_dmm_labels_path != DEFAULT_3DMM_LABELS &&
+  if (options->three_dmm_labels_path != (gchar *)(&DEFAULT_3DMM_LABELS) &&
       options->three_dmm_labels_path != NULL) {
-    g_free (options->three_dmm_labels_path);
+    g_free ((gpointer)options->three_dmm_labels_path);
   }
 
-  if (options->face_recognition_labels_path != DEFAULT_FACE_RECOGNITION_LABELS &&
+  if (options->face_recognition_labels_path != (gchar *)(
+      &DEFAULT_FACE_RECOGNITION_LABELS) &&
       options->face_recognition_labels_path != NULL) {
-    g_free (options->face_recognition_labels_path);
+    g_free ((gpointer)options->face_recognition_labels_path);
   }
 
   if (appctx->pipeline != NULL) {
@@ -536,7 +540,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   g_object_set (G_OBJECT (waylandsink), "fullscreen", TRUE, NULL);
 
   // 2.9 Set the caps filter for detection_filter
-  pad_filter = gst_caps_new_simple ("text/x-raw", NULL);
+  pad_filter = gst_caps_new_simple ("text/x-raw", NULL, NULL);
   for (gint i = 0; i < DETECTION_FILTER_COUNT; i++) {
     g_object_set (G_OBJECT (detection_filter[i]), "caps", pad_filter, NULL);
   }
@@ -841,11 +845,9 @@ main (gint argc, gchar * argv[])
   gchar camera_description[255] = {};
 
   if (camera_is_available) {
-    snprintf (camera_description, 255,
+    snprintf (camera_description, sizeof (camera_description),
       "  %s \n",
       app_name);
-
-    camera_description[255] = '\0';
   }
 
   snprintf (help_description, 1023, "\nExample:\n"

@@ -71,7 +71,7 @@ gst_app_context_new ()
   ctx->pipeline = NULL;
   ctx->mloop = NULL;
   ctx->plugins = NULL;
-  ctx->output_file = DEFAULT_OUTPUT_FILENAME;
+  ctx->output_file = const_cast<gchar *> (DEFAULT_OUTPUT_FILENAME);
   ctx->format = GST_AENCODE_FLAC;
 
   return ctx;
@@ -115,12 +115,13 @@ gst_app_context_free (GstAudioAppContext * appctx)
     appctx->pipeline = NULL;
   }
 
-  if (appctx->output_file != NULL && appctx->output_file != DEFAULT_OUTPUT_FILENAME)
-    g_free (appctx->output_file);
+  if (appctx->output_file != NULL &&
+    appctx->output_file != (gchar *)(&DEFAULT_OUTPUT_FILENAME))
+    g_free ((gpointer)appctx->output_file);
 
   // Finally, free the application context itself
   if (appctx != NULL)
-    g_free (appctx);
+    g_free ((gpointer)appctx);
 }
 
 /**
@@ -135,8 +136,8 @@ static gboolean
 create_pipe (GstAudioAppContext * appctx)
 {
   // Declare the elements of the pipeline
-  GstElement *pipeline, *pulsesrc, *main_capsfilter, *encoder, *audioconvert,
-      *filesink;
+  GstElement *pulsesrc, *encoder, *audioconvert, *filesink;
+  GstElement *main_capsfilter = NULL;
   GstCaps *filtercaps;
   gboolean ret = FALSE;
   appctx->plugins = NULL;
@@ -242,10 +243,10 @@ main (gint argc, gchar *argv[])
        "\n\t2-GST_AENCODE_WAV"
       },
       {"output_file", 'o', 0, G_OPTION_ARG_STRING, &appctx->output_file,
-       "Output Filename , \
-       -o /opt/<audiofile>"
+       "Output Filename",
+       "-o /opt/<audiofile>"
       },
-      {NULL}
+      { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   // Parse the command line entries

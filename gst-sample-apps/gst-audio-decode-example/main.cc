@@ -130,7 +130,9 @@ static gboolean
 create_pipe (GstAudioAppContext * appctx)
 {
   // Declare the elements of the pipeline
-  GstElement *pipeline, *filesrc, *parse, *decoder, *audiosink;
+  GstElement *filesrc, *audiosink;
+  GstElement *parse = NULL;
+  GstElement *decoder = NULL;
   gboolean ret = FALSE;
   appctx->plugins = NULL;
 
@@ -251,10 +253,10 @@ main (gint argc, gchar *argv[])
        "\n\t3-FLAC"
       },
       {"input_file", 'i', 0, G_OPTION_ARG_STRING, &appctx->input_file,
-       "Input Filename , \
-       -i /opt/<audiofile>"
+       "Input Filename" ,
+       "-i /opt/<audiofile>"
       },
-      {NULL}
+      { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   // Parse the command line entries

@@ -164,4 +164,3 @@ void gst_plugin_get_camera_suite(GstPluginSuite* psuite)
   psuite->name = "camera";
   psuite->suite = camera_suite (psuite->iteration, psuite->duration);
 }
-

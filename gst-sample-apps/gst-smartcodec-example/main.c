@@ -157,9 +157,17 @@ on_pad_added (GstElement * element[0], GstPad * pad, gpointer data)
 static gboolean
 create_pipe (GstSmartCodecContext * appctx)
 {
-  GstElement *qtiqmmfsrc, *capsfilter_ctrl, *capsfilter_enc, *qtismartvencbin,
-      *filesrc, *qtdemux, *vparse, *vdecoder, *pqueue, *queue, *tee, *h264parse,
-      *mp4mux, *filesink, *queue_ctrl, *queue_sc;
+  GstElement *qtismartvencbin, *h264parse, *mp4mux, *filesink, *queue_ctrl, *queue_sc;
+  GstElement *qtiqmmfsrc = NULL;
+  GstElement *capsfilter_ctrl = NULL;
+  GstElement *capsfilter_enc = NULL;
+  GstElement *filesrc = NULL;
+  GstElement *qtdemux = NULL;
+  GstElement *vparse = NULL;
+  GstElement *vdecoder = NULL;
+  GstElement *pqueue = NULL;
+  GstElement *queue = NULL;
+  GstElement *tee = NULL;
   GstCaps *filtercaps;
   GstPad *qmmf_pad, *sc_src, *ctrl_src, *sc_sink, *ctrl_sink;
   gboolean ret = FALSE;
@@ -430,12 +438,12 @@ main (gint argc, gchar * argv[])
   {"height", 'h', 0, G_OPTION_ARG_INT, &appctx->height, "height",
       "image height"},
   {"output_file", 'o', 0, G_OPTION_ARG_STRING, &appctx->output_file,
-      "Output Filename , \
-          -o /opt/video.mp4"},
+    "Output Filename",
+    "-o /opt/video.mp4"},
   {"input_file", 'i', 0, G_OPTION_ARG_FILENAME, &appctx->input_file,
-      "Input Filename - i/p mp4 file path and name"
-        "e.g. -i /opt/<file_name>.mp4"},
-  {NULL}
+    "Input Filename - i/p mp4 file path and name",
+    "e.g. -i /opt/<file_name>.mp4"},
+  { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
   // Parse command line entries.

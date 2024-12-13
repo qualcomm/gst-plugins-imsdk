@@ -116,7 +116,7 @@ static GOptionEntry entries[] = {
     "\n\t1 - YUV"
     "\n\t2 - RAW/BAYER\n"
   },
-  { NULL }
+  { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
 };
 
 static void
@@ -222,7 +222,7 @@ capture_thread (gpointer userdata)
   // Capture burst of images with AE bracketing.
   if (smeta->exists(ANDROID_CONTROL_AE_COMPENSATION_RANGE)) {
     camera_metadata_entry entry = {};
-    gint32 idx = 0, compensation = 0, step = 0;
+    gint32 compensation = 0, step = 0;
 
     entry = smeta->find(ANDROID_CONTROL_AE_COMPENSATION_RANGE);
 
@@ -336,7 +336,7 @@ handle_interrupt_signal (gpointer userdata)
 static void
 warning_cb (GstBus * bus, GstMessage * message, gpointer userdata)
 {
-  GstAppContext *ctx = (GstAppContext *)userdata;
+  (void)userdata;
   GError *error = NULL;
   gchar *debug = NULL;
 
@@ -650,7 +650,6 @@ link_wayland_output (GstCaps * stream_caps, GstElement * pipeline,
 {
   GstElement *waylandsink, *filter_caps_elem;
   gboolean success;
-  gint x, y;
 
   filter_caps_elem = gst_element_factory_make ("capsfilter", "capsfilter-0");
   waylandsink = gst_element_factory_make ("waylandsink", "waylandsink-0");
@@ -705,7 +704,7 @@ main (int argc, char * * argv)
   GstElement *pipeline = NULL, *qtiqmmfsrc;
   GstBus *bus = NULL;
   guint intrpt_watch_id = 0;
-  GstAppContext app_ctx = {0};
+  GstAppContext app_ctx = {};
   GMainLoop *loop = NULL;
   GstStateChangeReturn change_ret;
   GThread *mthread = NULL;
