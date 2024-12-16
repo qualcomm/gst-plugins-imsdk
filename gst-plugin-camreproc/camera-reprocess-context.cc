@@ -7,7 +7,7 @@
 #include "config.h"
 #endif
 
-#include "offline-camera-context.h"
+#include "camera-reprocess-context.h"
 
 #include <gst/allocators/allocators.h>
 #include <system/graphics.h>
@@ -19,7 +19,7 @@
 
 namespace camera = qmmf;
 
-#define GST_CAT_DEFAULT offline_camera_context_debug_category()
+#define GST_CAT_DEFAULT camera_reprocess_context_debug_category()
 
 #define PROCESS_MODE_OFFSET     4
 
@@ -37,36 +37,31 @@ typedef enum {
 } ProcessMode;
 
 static GstDebugCategory *
-offline_camera_context_debug_category (void)
+camera_reprocess_context_debug_category (void)
 {
   static gsize catgonce = 0;
 
   if (g_once_init_enter (&catgonce)) {
-    gsize catdone = (gsize) _gst_debug_category_new ("qtiofflinecamera", 0,
-        "Offline camera context");
+    gsize catdone = (gsize) _gst_debug_category_new ("qticamreproc", 0,
+        "Camera reprocess context");
     g_once_init_leave (&catgonce, catdone);
   }
   return (GstDebugCategory *) catgonce;
 }
 
 // Data Structure
-struct _GstOfflineCameraContext {
+struct _GstCameraReprocessContext {
   /// QMMF Recorder instance
   ::qmmf::recorder::Recorder      *recorder;
 
-  /// QMMF Offline Camera Input Buffer params
-  qmmf::OfflineCameraBufferParams inbuf_params;
-  /// QMMF Offline Camera Output Buffer params
-  qmmf::OfflineCameraBufferParams outbuf_params;
+  /// Callback to bring event to CameraReprocessContext
+  GstCameraReprocessEventCb       event_cb;
 
-  /// Callback to bring event to OfflineCameraContext
-  GstOfflineCameraEventCb         event_cb;
-
-  /// Callback to bring data to OfflineCameraContext
-  GstOfflineCameraDataCb          data_cb;
+  /// Callback to bring data to CameraReprocessContext
+  GstCameraReprocessDataCb        data_cb;
 
   /// Plugin instance
-  gpointer                        offcam;
+  gpointer                        camreproc;
 
   /// Table recording all requests
   GHashTable                      *requests;
@@ -86,14 +81,14 @@ struct _GstOfflineCameraContext {
   guint                           req_meta_step;
 
   /// Electronic Image Stabilization
-  GstOfflineCameraEis             eis;
+  GstCameraReprocessEis           eis;
 
   /// Session metadata
   camera::CameraMetadata          *session_metadata;
 };
 
 static void
-event_callback (GstOfflineCameraContext * context,
+event_callback (GstCameraReprocessContext * context,
     ::qmmf::recorder::EventType type, void * payload, size_t size)
 {
   guint event = 0;
@@ -130,21 +125,21 @@ event_callback (GstOfflineCameraContext * context,
       return;
   }
 
-  context->event_cb (event, context->offcam);
+  context->event_cb (event, context->camreproc);
 }
 
-GstOfflineCameraContext*
-gst_offline_camera_context_new ()
+GstCameraReprocessContext*
+gst_camera_reprocess_context_new ()
 {
-  GstOfflineCameraContext *context = NULL;
+  GstCameraReprocessContext *context = NULL;
 
-  context = g_slice_new0 (GstOfflineCameraContext);
+  context = g_slice_new0 (GstCameraReprocessContext);
   g_return_val_if_fail (context != NULL, NULL);
 
   context->recorder = new ::qmmf::recorder::Recorder ();
   if (!context->recorder) {
     GST_ERROR ("Failed to create Recorder.");
-    g_slice_free (GstOfflineCameraContext, context);
+    g_slice_free (GstCameraReprocessContext, context);
     return NULL;
   }
 
@@ -159,8 +154,8 @@ gst_offline_camera_context_new ()
 }
 
 gboolean
-gst_offline_camera_context_connect (GstOfflineCameraContext *context,
-    GstOfflineCameraEventCb callback, gpointer userdata)
+gst_camera_reprocess_context_connect (GstCameraReprocessContext *context,
+    GstCameraReprocessEventCb callback, gpointer userdata)
 {
   ::qmmf::recorder::RecorderCb cbs;
 
@@ -183,13 +178,13 @@ gst_offline_camera_context_connect (GstOfflineCameraContext *context,
   GST_INFO ("Connected to QMMF Recorder.");
 
   context->event_cb = callback;
-  context->offcam = userdata;
+  context->camreproc = userdata;
 
   return TRUE;
 }
 
 gboolean
-gst_offline_camera_context_disconnect (GstOfflineCameraContext *context)
+gst_camera_reprocess_context_disconnect (GstCameraReprocessContext *context)
 {
   g_return_val_if_fail (context != NULL, FALSE);
   g_return_val_if_fail (context->recorder != NULL, FALSE);
@@ -207,7 +202,7 @@ gst_offline_camera_context_disconnect (GstOfflineCameraContext *context)
 }
 
 void
-gst_offline_camera_context_free (GstOfflineCameraContext *context)
+gst_camera_reprocess_context_free (GstCameraReprocessContext *context)
 {
   delete context->recorder;
   context->recorder = NULL;
@@ -223,44 +218,40 @@ gst_offline_camera_context_free (GstOfflineCameraContext *context)
 
   g_free (context->req_meta_path);
 
-  g_slice_free (GstOfflineCameraContext, context);
+  g_slice_free (GstCameraReprocessContext, context);
 
-  GST_INFO ("GstOfflineCameraContext freed.");
+  GST_INFO ("GstCameraReprocessContext freed.");
 }
 
 static void
-data_callback (GstOfflineCameraContext *context, guint fd, guint size)
+data_callback (GstCameraReprocessContext *context, guint fd, guint size)
 {
-  GstBuffer *outbuf = NULL;
-  GstBuffer *inbuf = NULL;
   GPtrArray *array = NULL;
 
   g_return_if_fail (context != NULL);
-  g_return_if_fail (context->offcam != NULL);
+  g_return_if_fail (context->camreproc != NULL);
 
   GST_LOG ("Callback calling, outbuf fd(%u).", fd);
 
   g_mutex_lock (&context->lock);
+
   array = (GPtrArray *) g_hash_table_lookup (context->requests,
       GINT_TO_POINTER (fd));
-
-  inbuf = (GstBuffer *) g_ptr_array_index (array, 0);
-  outbuf = (GstBuffer *) g_ptr_array_index (array, 1);
-  g_ptr_array_free (array, FALSE);
-  gst_buffer_unref (inbuf);
-
-  if (!outbuf) {
+  if (!array) {
     GST_WARNING ("Got uncached outbuf fd %u, func return.", fd);
     g_mutex_unlock (&context->lock);
     return;
   }
 
   // Callback will invoke gst_pad_push to push data downstream
-  context->data_cb (outbuf, context->offcam);
+  context->data_cb ((gpointer *)array, context->camreproc);
+
+  g_ptr_array_free (array, FALSE);
 
   g_hash_table_remove (context->requests, GINT_TO_POINTER (fd));
   if (g_hash_table_size (context->requests) == 0)
     g_cond_signal (&context->requests_clear);
+
   g_mutex_unlock (&context->lock);
 }
 
@@ -276,7 +267,7 @@ parse_process_mode (GstVideoFormat in_format, GstVideoFormat out_format)
       in_flag = PROCESS_MODE_FLAG_YUV;
       break;
     default:
-      GST_WARNING ("Unsupported input format(%s) for offline camera.",
+      GST_WARNING ("Unsupported input format(%s) for camera reprocess.",
           gst_video_format_to_string (in_format));
       break;
   }
@@ -286,7 +277,7 @@ parse_process_mode (GstVideoFormat in_format, GstVideoFormat out_format)
       out_flag = PROCESS_MODE_FLAG_YUV;
       break;
     default:
-      GST_WARNING ("Unsupported output format(%s) for offline camera.",
+      GST_WARNING ("Unsupported output format(%s) for camera reprocess.",
           gst_video_format_to_string (out_format));
       break;
   }
@@ -297,18 +288,24 @@ parse_process_mode (GstVideoFormat in_format, GstVideoFormat out_format)
 }
 
 static guint
-convert_video_format_to_graphic_format (GstVideoFormat format)
+convert_to_graphic_format (const GstCameraReprocessBufferParams param)
 {
   guint ret = 0;
 
-  switch (format) {
+  switch (param.format) {
     case GST_VIDEO_FORMAT_NV12:
+      if (param.isubwc) {
+        ret = HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED;
+        break;
+      }
       ret = HAL_PIXEL_FORMAT_YCBCR_420_888;
       break;
     default:
-      GST_ERROR ("Unsupported format(%s).", gst_video_format_to_string (format));
+      GST_ERROR ("Unsupported format(%s).",
+          gst_video_format_to_string (param.format));
       break;
   }
+
   return ret;
 }
 
@@ -335,18 +332,18 @@ retrieve_vendor_tag_by_name (::camera::CameraMetadata *meta, const gchar * name)
 }
 
 static void
-fill_metadata_from_properties (GstOfflineCameraContext *context,
+fill_metadata_from_properties (GstCameraReprocessContext *context,
     ::camera::CameraMetadata *meta)
 {
   g_return_if_fail (context->recorder != NULL);
 
   // Eis
   switch (context->eis) {
-    case GST_OFFLINE_CAMERA_EIS_NONE:
+    case GST_CAMERA_REPROCESS_EIS_NONE:
     {
       break;
     }
-    case GST_OFFLINE_CAMERA_EIS_V2:
+    case GST_CAMERA_REPROCESS_EIS_V2:
     {
       guint tag = 0;
       guint8 val = 1;
@@ -361,7 +358,7 @@ fill_metadata_from_properties (GstOfflineCameraContext *context,
       }
       break;
     }
-    case GST_OFFLINE_CAMERA_EIS_V3:
+    case GST_CAMERA_REPROCESS_EIS_V3:
     {
       guint tag = 0;
       guint8 val = 1;
@@ -385,11 +382,11 @@ fill_metadata_from_properties (GstOfflineCameraContext *context,
 }
 
 gboolean
-gst_offline_camera_context_create (GstOfflineCameraContext *context,
-    const GstOfflineCameraBufferParams params[2],
-    GstOfflineCameraDataCb callback)
+gst_camera_reprocess_context_create (GstCameraReprocessContext *context,
+    const GstCameraReprocessBufferParams params[2],
+    GstCameraReprocessDataCb callback)
 {
-  qmmf::OfflineCameraCreateParams offcam_params;
+  qmmf::OfflineCameraCreateParams offcam_params = {};
   ProcessMode process_mode = PROCESS_MODE_INVALID;
   const gchar *req_meta_path = NULL;
   ::camera::CameraMetadata meta;
@@ -406,18 +403,24 @@ gst_offline_camera_context_create (GstOfflineCameraContext *context,
   g_return_val_if_fail (offcam_params.in_buffer.width > 0, FALSE);
   offcam_params.in_buffer.height = params[0].height;
   g_return_val_if_fail (offcam_params.in_buffer.height > 0, FALSE);
-  offcam_params.in_buffer.format =
-      convert_video_format_to_graphic_format (params[0].format);
+  offcam_params.in_buffer.format = convert_to_graphic_format (params[0]);
   g_return_val_if_fail (offcam_params.in_buffer.format > 0, FALSE);
+
+  GST_DEBUG ("InputParam: %u x %u, %s, UBWC: %d",
+      offcam_params.in_buffer.width, offcam_params.in_buffer.height,
+      gst_video_format_to_string (params[0].format), params[0].isubwc);
 
     // BufferParams of output
   offcam_params.out_buffer.width = params[1].width;
   g_return_val_if_fail (offcam_params.out_buffer.width > 0, FALSE);
   offcam_params.out_buffer.height = params[1].height;
   g_return_val_if_fail (offcam_params.out_buffer.height > 0, FALSE);
-  offcam_params.out_buffer.format =
-      convert_video_format_to_graphic_format (params[1].format);
+  offcam_params.out_buffer.format = convert_to_graphic_format (params[1]);
   g_return_val_if_fail (offcam_params.out_buffer.format > 0, FALSE);
+
+  GST_DEBUG ("OutputParam: %u x %u, %s, UBWC: %d",
+      offcam_params.out_buffer.width, offcam_params.out_buffer.height,
+      gst_video_format_to_string (params[1].format), params[1].isubwc);
 
     // Process mode
   process_mode = parse_process_mode (params[0].format, params[1].format);
@@ -469,7 +472,7 @@ gst_offline_camera_context_create (GstOfflineCameraContext *context,
 }
 
 gboolean
-gst_offline_camera_context_process (GstOfflineCameraContext *context,
+gst_camera_reprocess_context_process (GstCameraReprocessContext *context,
     GstBuffer *inbuf, GstBuffer *outbuf)
 {
   GstMemory *inmem = NULL;
@@ -530,7 +533,7 @@ gst_offline_camera_context_process (GstOfflineCameraContext *context,
 }
 
 gboolean
-gst_offline_camera_context_destroy (GstOfflineCameraContext *context)
+gst_camera_reprocess_context_destroy (GstCameraReprocessContext *context)
 {
   guint size = 0;
 
@@ -562,7 +565,7 @@ gst_offline_camera_context_destroy (GstOfflineCameraContext *context)
 }
 
 void
-gst_offline_camera_context_set_property (GstOfflineCameraContext *context,
+gst_camera_reprocess_context_set_property (GstCameraReprocessContext *context,
     guint param_id, const GValue *value)
 {
   switch (param_id) {
@@ -576,20 +579,20 @@ gst_offline_camera_context_set_property (GstOfflineCameraContext *context,
       context->req_meta_step = g_value_get_uint (value);
       break;
     case PARAM_EIS:
-      context->eis = (GstOfflineCameraEis)g_value_get_enum (value);
+      context->eis = (GstCameraReprocessEis)g_value_get_enum (value);
       break;
     case PARAM_SESSION_METADATA:
       context->session_metadata =
           (camera::CameraMetadata *)g_value_get_pointer (value);
       break;
     default:
-      GST_ERROR ("OfflineCameraContext doesn't support this property.");
+      GST_ERROR ("CameraReprocessContext doesn't support this property.");
       break;
   }
 }
 
 void
-gst_offline_camera_context_get_property (GstOfflineCameraContext *context,
+gst_camera_reprocess_context_get_property (GstCameraReprocessContext *context,
     guint param_id, GValue *value)
 {
   switch (param_id) {
@@ -609,7 +612,7 @@ gst_offline_camera_context_get_property (GstOfflineCameraContext *context,
       g_value_set_pointer (value, (gpointer)context->session_metadata);
       break;
     default:
-      GST_ERROR ("OfflineCameraContext doesn't support this property.");
+      GST_ERROR ("CameraReprocessContext doesn't support this property.");
       break;
   }
 }
