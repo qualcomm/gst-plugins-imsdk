@@ -1362,16 +1362,12 @@ bool GstC2Utils::ImportHandleInfo(GstBuffer* buffer,
       break;
     case C2PixelFormat::kP010:
       handle->mInts.format = GBM_FORMAT_YCbCr_420_P010_VENUS;
-      // TODO Workaround due to issues in codec2 implementation, REMOVE IT.
-      stride = stride / 2;
       handle->mInts.slice_height =
           MMM_COLOR_FMT_Y_SCANLINES(MMM_COLOR_FMT_P010, height);
       break;
     case C2PixelFormat::kTP10UBWC:
       handle->mInts.format = GBM_FORMAT_YCbCr_420_TP10_UBWC;
       handle->mInts.usage_lo |= GBM_BO_USAGE_UBWC_ALIGNED_QTI;
-      // TODO Workaround due to issues in codec2 implementation, REMOVE IT.
-      stride = stride * 3 / 4;
       handle->mInts.slice_height =
           MMM_COLOR_FMT_Y_SCANLINES(MMM_COLOR_FMT_NV12_BPP10_UBWC, height);
       break;
