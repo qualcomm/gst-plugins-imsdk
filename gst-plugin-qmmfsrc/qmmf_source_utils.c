@@ -813,6 +813,26 @@ gst_qmmfsrc_pad_logical_stream_type_get_type (void)
   return gtype;
 }
 
+GType
+gst_qmmfsrc_pad_activation_mode_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { GST_PAD_ACTIVATION_MODE_NORMAL,
+        "Pad activation normal mode", "normal"
+    },
+    { GST_PAD_ACTIVATION_MODE_SIGNAL,
+        "Pad activation by signal", "signal"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstPadActivationMode", variants);
+
+  return gtype;
+}
+
 guchar
 gst_qmmfsrc_control_mode_android_value (const guint value)
 {
