@@ -185,11 +185,6 @@ gst_c2_aenc_stop (GstAudioEncoder * encoder)
   GstC2AEncoder *c2aenc = GST_C2_AENC (encoder);
   GST_DEBUG_OBJECT (c2aenc, "Stop engine");
 
-  if ((c2aenc->engine != NULL) && !gst_c2_engine_drain (c2aenc->engine, TRUE)) {
-    GST_ERROR_OBJECT (c2aenc, "Failed to flush engine");
-    return FALSE;
-  }
-
   if ((c2aenc->engine != NULL) && !gst_c2_engine_stop (c2aenc->engine)) {
     GST_ERROR_OBJECT (c2aenc, "Failed to stop engine");
     return FALSE;
@@ -455,7 +450,7 @@ gst_c2_aenc_handle_frame (GstAudioEncoder * encoder, GstBuffer * inbuf)
   // At this point we should wait all queued buffers to be processed
   if (!inbuf) {
     GST_INFO_OBJECT(c2aenc, "Encoder is draining");
-    gst_c2_aenc_finish (encoder);
+    gst_audio_encoder_finish_frame (encoder, NULL, -1);
     return GST_FLOW_OK;
   }
 
