@@ -874,7 +874,6 @@ qmmfsrc_video_pad_init (GstQmmfSrcVideoPad * pad)
   gst_segment_init (&pad->segment, GST_FORMAT_UNDEFINED);
   pad->stream_start    = FALSE;
 
-  pad->session_id      = 0;
   pad->index           = -1;
   pad->srcidx          = -1;
 
