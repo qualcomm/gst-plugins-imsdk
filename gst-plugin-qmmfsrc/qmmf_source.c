@@ -214,11 +214,15 @@ static GstStaticPadTemplate qmmfsrc_image_src_template;
 static void
 qmmfsrc_deinit_src_templates ()
 {
-  if (NULL != qmmfsrc_video_src_template.static_caps.string)
+  if (NULL != qmmfsrc_video_src_template.static_caps.string) {
     g_free (qmmfsrc_video_src_template.static_caps.string);
+    qmmfsrc_video_src_template.static_caps.string = NULL;
+  }
 
-  if (NULL != qmmfsrc_image_src_template.static_caps.string)
+  if (NULL != qmmfsrc_image_src_template.static_caps.string) {
     g_free (qmmfsrc_image_src_template.static_caps.string);
+    qmmfsrc_image_src_template.static_caps.string = NULL;
+  }
 }
 
 static void
@@ -305,6 +309,8 @@ qmmfsrc_init_src_templates ()
       "%s",
       common_video_caps
   );
+
+  g_free (common_video_caps);
 
   const gchar* qmmfsrc_all_video_caps = (const gchar *) g_malloc (
       4 * CAPS_SIZE * sizeof (gchar));
@@ -395,6 +401,8 @@ qmmfsrc_init_src_templates ()
       "%s",
       common_image_caps
   );
+
+  g_free (common_image_caps);
 
   const gchar* qmmfsrc_all_image_caps = (const gchar *) g_malloc (
       4 * CAPS_SIZE * sizeof (gchar));
