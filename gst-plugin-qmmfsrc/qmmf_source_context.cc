@@ -1616,7 +1616,7 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
           break;
       }
       extraparam.Update(::qmmf::recorder::QMMF_STITCH_LAYOUT, layout);
-    } else {
+    } else if (vpad->log_stream_type > GST_PAD_LOGICAL_STREAM_TYPE_NONE) {
       GST_ERROR ("Unknown logical-stream-type(%ld) of stream.",
           vpad->log_stream_type);
     }
@@ -1846,7 +1846,7 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad)
           break;
       }
       xtraparam.Update(::qmmf::recorder::QMMF_STITCH_LAYOUT, layout);
-    } else {
+    } else if (ipad->log_stream_type > GST_PAD_LOGICAL_STREAM_TYPE_NONE) {
       GST_ERROR ("Unknown logical-stream-type(%ld) of stream.",
           ipad->log_stream_type);
     }
