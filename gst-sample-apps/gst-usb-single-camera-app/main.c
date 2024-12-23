@@ -167,7 +167,6 @@ find_usb_camera_node (GstCameraAppContext * appctx)
   while (idx < MAX_VID_DEV_CNT) {
     memset (appctx->dev_video, 0, sizeof (appctx->dev_video));
 
-    // start idx with 2 as 0 and 1 are already allocated nodes for camx
     ret = snprintf (appctx->dev_video, sizeof (appctx->dev_video), "/dev/video%d",
         idx);
     if (ret <= 0) {
@@ -186,8 +185,17 @@ find_usb_camera_node (GstCameraAppContext * appctx)
 
     if (ioctl (mFd, VIDIOC_QUERYCAP, &v2cap) == 0) {
       g_print ("ID_V4L_CAPABILITIES=: %s", v2cap.driver);
-      if (strcmp ((const char *)v2cap.driver, "uvcvideo") != 0)
+      if (strcmp ((const char *)v2cap.driver, "uvcvideo") != 0) {
+        idx++;
+        close (mFd);
         continue;
+      }
+    } else {
+      g_printerr ("Failed to QUERYCAP device: %s (%s)\n", appctx->dev_video,
+          strerror (errno));
+      idx++;
+      close (mFd);
+      continue;
     }
     break;
   }
