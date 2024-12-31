@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022,2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -42,6 +42,9 @@
 #include <stdlib.h>
 #include <math.h>
 
+#include <gst/video/gstqtibufferpool.h>
+#include <gst/video/gstqtiallocator.h>
+#include <gst/video/video-utils.h>
 #include <cairo/cairo.h>
 #include <gst/video/gstimagepool.h>
 
@@ -61,19 +64,7 @@ G_DEFINE_TYPE (GstVOverlay, gst_overlay, GST_TYPE_BASE_TRANSFORM);
 #endif
 
 #define GST_OVERLAY_VIDEO_FORMATS \
-  "{ NV12, NV21, YUY2, RGBA, BGRA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR }"
-
-#define GST_OVERLAY_SRC_CAPS                            \
-    "video/x-raw, "                                     \
-    "format = (string) " GST_OVERLAY_VIDEO_FORMATS "; " \
-    "video/x-raw(" GST_CAPS_FEATURE_MEMORY_GBM "), "    \
-    "format = (string) " GST_OVERLAY_VIDEO_FORMATS
-
-#define GST_OVERLAY_SINK_CAPS                           \
-    "video/x-raw, "                                     \
-    "format = (string) " GST_OVERLAY_VIDEO_FORMATS "; " \
-    "video/x-raw(" GST_CAPS_FEATURE_MEMORY_GBM "), "    \
-    "format = (string) " GST_OVERLAY_VIDEO_FORMATS
+  "{ NV12, NV21, YUY2, RGBA, BGRA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR, NV12_Q08C }"
 
 #define DEFAULT_PROP_ENGINE_BACKEND (gst_video_converter_default_backend())
 
@@ -93,13 +84,6 @@ enum
   PROP_STATIC_IMAGES,
 };
 
-static GstStaticCaps gst_overlay_static_sink_caps =
-    GST_STATIC_CAPS (GST_OVERLAY_SINK_CAPS);
-
-static GstStaticCaps gst_overlay_static_src_caps =
-    GST_STATIC_CAPS (GST_OVERLAY_SRC_CAPS);
-
-
 static GstCaps *
 gst_overlay_sink_caps (void)
 {
@@ -107,7 +91,17 @@ gst_overlay_sink_caps (void)
   static gsize inited = 0;
 
   if (g_once_init_enter (&inited)) {
-    caps = gst_static_caps_get (&gst_overlay_static_sink_caps);
+    caps = gst_caps_from_string (GST_VIDEO_CAPS_MAKE (GST_OVERLAY_VIDEO_FORMATS));
+
+    if (gst_is_gbm_supported ()) {
+      GstCaps *tmplcaps = gst_caps_from_string (
+          GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
+              GST_OVERLAY_VIDEO_FORMATS));
+
+      caps = gst_caps_make_writable (caps);
+      gst_caps_append (caps, tmplcaps);
+    }
+
     g_once_init_leave (&inited, 1);
   }
   return caps;
@@ -120,7 +114,17 @@ gst_overlay_src_caps (void)
   static gsize inited = 0;
 
   if (g_once_init_enter (&inited)) {
-    caps = gst_static_caps_get (&gst_overlay_static_src_caps);
+    caps = gst_caps_from_string (GST_VIDEO_CAPS_MAKE (GST_OVERLAY_VIDEO_FORMATS));
+
+    if (gst_is_gbm_supported ()) {
+      GstCaps *tmplcaps = gst_caps_from_string (
+          GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
+              GST_OVERLAY_VIDEO_FORMATS));
+
+      caps = gst_caps_make_writable (caps);
+      gst_caps_append (caps, tmplcaps);
+    }
+
     g_once_init_leave (&inited, 1);
   }
   return caps;
@@ -500,29 +504,62 @@ gst_overlay_create_pool (GstVOverlay * overlay, GstCaps * caps)
     return NULL;
   }
 
-  if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
-    GST_INFO_OBJECT (overlay, "Uses GBM memory");
-    pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
+  if (gst_is_gbm_supported ()) {
+    if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
+      GST_INFO_OBJECT (overlay, "Uses GBM memory");
+      pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
+    } else {
+      GST_INFO_OBJECT (overlay, "Uses ION memory");
+      pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
+    }
+
+    config = gst_buffer_pool_get_config (pool);
+    allocator = gst_fd_allocator_new ();
+
+    gst_buffer_pool_config_add_option (config,
+        GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
   } else {
-    GST_INFO_OBJECT (overlay, "Uses ION memory");
-    pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
+    GstVideoFormat format;
+    GstVideoAlignment align;
+    gboolean success;
+    guint width, height;
+    gint stride, scanline;
+
+    width = GST_VIDEO_INFO_WIDTH (&info);
+    height = GST_VIDEO_INFO_HEIGHT (&info);
+    format = GST_VIDEO_INFO_FORMAT (&info);
+
+    success = gst_adreno_utils_compute_alignment (width, height, format,
+        &stride, &scanline);
+    if (!success) {
+      GST_ERROR_OBJECT(overlay,"Failed to get alignment");
+      return NULL;
+    }
+
+    pool = gst_qti_buffer_pool_new ();
+    config = gst_buffer_pool_get_config (pool);
+
+    gst_video_alignment_reset (&align);
+    align.padding_bottom = scanline - height;
+    align.padding_right = stride - width;
+    gst_video_info_align (&info, &align);
+
+    gst_buffer_pool_config_add_option (config,
+        GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
+    gst_buffer_pool_config_set_video_alignment (config, &align);
+
+    allocator = gst_qti_allocator_new (NULL);
+    if (allocator == NULL) {
+      GST_ERROR_OBJECT (overlay, "Failed to create QTI allocator");
+      gst_clear_object (&pool);
+      return NULL;
+    }
   }
 
-  config = gst_buffer_pool_get_config (pool);
   gst_buffer_pool_config_set_params (config, caps, info.size,
       DEFAULT_MIN_BUFFERS, DEFAULT_MAX_BUFFERS);
-
-  allocator = gst_fd_allocator_new ();
   gst_buffer_pool_config_set_allocator (config, allocator, NULL);
-
   gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
-  gst_buffer_pool_config_add_option (config,
-      GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
-
-  if (gst_caps_has_compression (caps, "ubwc")) {
-    gst_buffer_pool_config_add_option (config,
-        GST_IMAGE_BUFFER_POOL_OPTION_UBWC_MODE);
-  }
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING_OBJECT (overlay, "Failed to set pool configuration!");
