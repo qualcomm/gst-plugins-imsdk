@@ -88,7 +88,6 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
 #define DEFAULT_VIDEO_STREAM_FPS_NUM  30
 #define DEFAULT_VIDEO_STREAM_FPS_DEN  1
 #define DEFAULT_VIDEO_RAW_FORMAT      "NV12"
-#define DEFAULT_VIDEO_RAW_COMPRESSION "none"
 #define DEFAULT_VIDEO_BAYER_FORMAT    "bggr"
 #define DEFAULT_VIDEO_BAYER_BPP       "10"
 
@@ -417,17 +416,6 @@ video_pad_update_params (GstPad * pad, GstStructure * structure)
   vpad->format = format;
   vpad->codec = codec;
 
-  if (gst_structure_has_field (structure, "compression")) {
-    const gchar *string = gst_structure_get_string (structure, "compression");
-    GstVideoCompression compression = (g_strcmp0 (string, "ubwc") == 0) ?
-        GST_VIDEO_COMPRESSION_UBWC : GST_VIDEO_COMPRESSION_NONE;
-
-    // Raise the reconfiguation flag if format compression changed.
-    reconfigure |= (compression != vpad->compression);
-
-    vpad->compression = compression;
-  }
-
   if (gst_structure_has_field (structure, "colorimetry")) {
     const gchar *string = gst_structure_get_string (structure, "colorimetry");
 
@@ -576,18 +564,6 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
           DEFAULT_VIDEO_BAYER_BPP);
       GST_DEBUG_OBJECT (pad, "BPP not set, using default value: %s",
           DEFAULT_VIDEO_BAYER_BPP);
-    }
-  }
-
-  if (gst_structure_has_field (structure, "compression")) {
-    const gchar *compression =
-        gst_structure_get_string (structure, "compression");
-
-    if (!compression) {
-      gst_structure_fixate_field_string (structure, "compression",
-            DEFAULT_VIDEO_RAW_COMPRESSION);
-      GST_DEBUG_OBJECT (pad, "Compression not set, using default value: %s",
-            DEFAULT_VIDEO_RAW_COMPRESSION);
     }
   }
 
@@ -881,7 +857,6 @@ qmmfsrc_video_pad_init (GstQmmfSrcVideoPad * pad)
   pad->height          = -1;
   pad->framerate       = 0.0;
   pad->format          = GST_VIDEO_FORMAT_UNKNOWN;
-  pad->compression     = GST_VIDEO_COMPRESSION_NONE;
   pad->codec           = GST_VIDEO_CODEC_UNKNOWN;
   pad->colorimetry     = NULL;
 
