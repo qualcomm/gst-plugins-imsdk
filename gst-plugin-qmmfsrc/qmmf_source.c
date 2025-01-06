@@ -744,7 +744,7 @@ qmmfsrc_release_pad (GstElement * element, GstPad * pad)
 static GstStaticCaps gst_qmmfsrc_video_static_src_caps =
     GST_STATIC_CAPS (QMMFSRC_VIDEO_JPEG_CAPS "; "
         QMMFSRC_VIDEO_RAW_CAPS (
-                "{ NV12, NV16"
+                "{ NV12, NV16, NV12_Q08C"
 #ifdef GST_VIDEO_YUY2_FORMAT_ENABLE
                 ", YUY2"
 #endif // GST_VIDEO_YUY2_FORMAT_ENABLE
@@ -783,7 +783,7 @@ gst_qmmfsrc_video_src_caps (void)
     if (gst_is_gbm_supported()) {
       GstCaps *tmplcaps = gst_caps_from_string (
           GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
-              "{ NV12, NV16"
+              "{ NV12, NV16, NV12_Q08C"
 #ifdef GST_VIDEO_YUY2_FORMAT_ENABLE
                 ", YUY2"
 #endif // GST_VIDEO_YUY2_FORMAT_ENABLE
