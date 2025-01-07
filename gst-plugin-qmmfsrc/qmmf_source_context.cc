@@ -915,6 +915,13 @@ video_data_callback (GstQmmfContext * context, GstPad * pad,
   GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
   ::qmmf::recorder::Recorder *recorder = context->recorder;
 
+  // when pad is under deactive mode, return buffers directly
+  // to avoid vpad->segment.format to be initialized unexpectly
+  if (gst_pad_get_task_state (pad) != GST_TASK_STARTED) {
+    recorder->ReturnTrackBuffer (vpad->id, buffers);
+    return;
+  }
+
   guint idx = 0, numplanes = 0;
   gsize offset[GST_VIDEO_MAX_PLANES] = { 0, 0, 0, 0 };
   gint  stride[GST_VIDEO_MAX_PLANES] = { 0, 0, 0, 0 };

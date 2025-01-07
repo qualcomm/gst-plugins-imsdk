@@ -130,6 +130,7 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
 #define DEFAULT_PROP_CAMERA_OPERATION_MODE            CAM_OPMODE_NONE
 #define DEFAULT_PROP_CAMERA_MULTI_ROI                 FALSE
 #define DEFAULT_PROP_CAMERA_PHYSICAL_CAMERA_SWITCH    -1
+#define DEFAULT_PROP_CAMERA_PAD_ACTIVAION_MODE        GST_PAD_ACTIVATION_MODE_NORMAL
 
 static void gst_qmmfsrc_child_proxy_init (gpointer g_iface, gpointer data);
 
@@ -145,6 +146,7 @@ enum
   SIGNAL_CANCEL_CAPTURE,
   SIGNAL_RESULT_METADATA,
   SIGNAL_URGENT_METADATA,
+  SIGNAL_VIDEO_PADS_ACTIVATION,
   LAST_SIGNAL
 };
 
@@ -202,6 +204,7 @@ enum
   PROP_CAMERA_INPUT_ROI,
   PROP_CAMERA_INPUT_ROI_INFO,
   PROP_CAMERA_PHYSICAL_CAMERA_SWITCH,
+  PROP_CAMERA_PAD_ACTIVATION_MODE,
 };
 
 #ifdef ENABLE_RUNTIME_PARSER
@@ -626,7 +629,8 @@ qmmfsrc_pad_activation (GstPad * pad, gboolean active, GstElement * element)
     return;
   }
 
-  if (state != GST_STATE_PLAYING)
+  if (state != GST_STATE_PLAYING ||
+      qmmfsrc->pad_activation_mode != GST_PAD_ACTIVATION_MODE_NORMAL)
     return;
 
   ids = g_array_new (FALSE, FALSE, sizeof (guint));
@@ -634,10 +638,12 @@ qmmfsrc_pad_activation (GstPad * pad, gboolean active, GstElement * element)
 
   if (active) {
     success = gst_qmmf_context_start_video_streams (qmmfsrc->context, ids);
-    QMMFSRC_RETURN_IF_FAIL (qmmfsrc, success, "Stream start failed!");
+    QMMFSRC_RETURN_IF_FAIL_WITH_CLEAN (qmmfsrc, success,
+        { g_array_free (ids, FALSE); }, "Stream start failed!");
   } else {
     success = gst_qmmf_context_stop_video_streams (qmmfsrc->context, ids);
-    QMMFSRC_RETURN_IF_FAIL (qmmfsrc, success, "Stream stop failed!");
+    QMMFSRC_RETURN_IF_FAIL_WITH_CLEAN (qmmfsrc, success,
+        { g_array_free (ids, FALSE); }, "Stream stop failed!");
   }
 
   g_array_free (ids, TRUE);
@@ -1064,6 +1070,73 @@ qmmfsrc_cancel_capture (GstQmmfSrc * qmmfsrc)
   return TRUE;
 }
 
+static gboolean
+qmmfsrc_match_srcpad (gpointer key, gpointer value, gpointer user_data)
+{
+  return g_str_equal (GST_PAD_NAME (GST_PAD (value)), (gchar *)user_data);
+}
+
+static gboolean
+qmmfsrc_signal_video_pads_activation (GstQmmfSrc * qmmfsrc, gboolean activate,
+    GPtrArray * padnames)
+{
+  GstElement *element = GST_ELEMENT (qmmfsrc);
+  GstState state = GST_STATE_VOID_PENDING;
+  GList *list = NULL;
+  GArray *ids = NULL;
+  guint array_index = 0;
+  gboolean success = TRUE;
+
+  GST_INFO_OBJECT (qmmfsrc, "video-pads-activation signal received (%s)",
+      activate ? "activate" : "deactivate");
+
+  if (qmmfsrc->pad_activation_mode != GST_PAD_ACTIVATION_MODE_SIGNAL) {
+    GST_INFO_OBJECT (qmmfsrc, "pad activation mode is normal, "
+        "video-pads-activation signal not enabled");
+    return FALSE;
+  }
+
+  if (gst_element_get_state (element, &state, NULL, 0) ==
+      GST_STATE_CHANGE_FAILURE) {
+    GST_ERROR_OBJECT (element, "Failed to retrieve pipeline state!");
+    return FALSE;
+  }
+
+  if (state != GST_STATE_PLAYING && state != GST_STATE_PAUSED) {
+    GST_ERROR_OBJECT (element, "Video streams activation signal can only "
+        "be triggered on PLAYING / PAUSED state");
+    return FALSE;
+  }
+
+  ids = g_array_new (FALSE, FALSE, sizeof (guint));
+
+  for (array_index = 0; array_index < padnames->len; array_index++) {
+    gchar *pad_name = g_ptr_array_index (padnames, array_index);
+    GstPad *pad = NULL;
+
+    pad = g_hash_table_find (qmmfsrc->srcpads, qmmfsrc_match_srcpad, pad_name);
+
+    if (!(success = (pad != NULL))) {
+      GST_INFO_OBJECT (qmmfsrc, "pad %s is invalid", pad_name);
+      goto cleanup;
+    }
+
+    ids = g_array_append_val (ids, GST_QMMFSRC_VIDEO_PAD (pad)->id);
+  }
+
+  if (activate)
+    success = gst_qmmf_context_start_video_streams (qmmfsrc->context, ids);
+  else
+    success = gst_qmmf_context_stop_video_streams (qmmfsrc->context, ids);
+
+  if (!success)
+    GST_ERROR_OBJECT (qmmfsrc, "Streams %s failed!", activate ? "start" : "stop");
+
+cleanup:
+  g_array_free (ids, FALSE);
+  return success;
+}
+
 static GstStateChangeReturn
 qmmfsrc_change_state (GstElement * element, GstStateChange transition)
 {
@@ -1417,6 +1490,9 @@ qmmfsrc_set_property (GObject * object, guint property_id,
       gst_qmmf_context_set_camera_param (qmmfsrc->context,
           PARAM_CAMERA_PHYISICAL_CAMERA_SWITCH, value);
       break;
+    case PROP_CAMERA_PAD_ACTIVATION_MODE:
+      qmmfsrc->pad_activation_mode = g_value_get_enum(value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -1613,6 +1689,9 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
     case PROP_CAMERA_PHYSICAL_CAMERA_SWITCH:
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_PHYISICAL_CAMERA_SWITCH, value);
+      break;
+    case PROP_CAMERA_PAD_ACTIVATION_MODE:
+      g_value_set_enum(value, qmmfsrc->pad_activation_mode);
       break;
 
     default:
@@ -2016,6 +2095,15 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
 #endif
+  g_object_class_install_property (gobject, PROP_CAMERA_PAD_ACTIVATION_MODE,
+      g_param_spec_enum ("video-pads-activation-mode", "Video Pad Activation Mode",
+          "set video pad activation mode, by default is normal, use \"signal\" to "
+          "control video pad activation by plugin signal \"video-pads-activation\" "
+          "together with gst_pad_set_active() ",
+          GST_TYPE_QMMFSRC_PAD_ACTIVATION_MODE,
+          DEFAULT_PROP_CAMERA_PAD_ACTIVAION_MODE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
 
   signals[SIGNAL_CAPTURE_IMAGE] =
       g_signal_new_class_handler ("capture-image", G_TYPE_FROM_CLASS (klass),
@@ -2026,6 +2114,12 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
       g_signal_new_class_handler ("cancel-capture", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION, G_CALLBACK (qmmfsrc_cancel_capture),
       NULL, NULL, NULL, G_TYPE_BOOLEAN, 0);
+
+  signals[SIGNAL_VIDEO_PADS_ACTIVATION] =
+      g_signal_new_class_handler ("video-pads-activation",
+      G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION,
+      G_CALLBACK (qmmfsrc_signal_video_pads_activation), NULL, NULL, NULL,
+      G_TYPE_BOOLEAN, 2, G_TYPE_BOOLEAN, G_TYPE_PTR_ARRAY);
 
   signals[SIGNAL_RESULT_METADATA] =
       g_signal_new ("result-metadata", G_TYPE_FROM_CLASS (klass),

@@ -140,6 +140,8 @@ G_BEGIN_DECLS
 #endif // VHDR_MODES_ENABLE
 #define GST_TYPE_QMMFSRC_PAD_LOGICAL_STREAM_TYPE \
     (gst_qmmfsrc_pad_logical_stream_type_get_type())
+#define GST_TYPE_QMMFSRC_PAD_ACTIVATION_MODE \
+    (gst_qmmfsrc_pad_activation_mode_get_type())
 
 #define GST_BAYER_FORMAT_OFFSET 0x1000
 
@@ -340,6 +342,11 @@ typedef enum {
   GST_PAD_LOGICAL_STREAM_TYPE_MAX,
 } GstPadLogicalStreamType;
 
+typedef enum {
+  GST_PAD_ACTIVATION_MODE_NORMAL = 0,
+  GST_PAD_ACTIVATION_MODE_SIGNAL = 1,
+} GstQmmfSrcPadActivationMode;
+
 GType gst_qmmfsrc_control_mode_get_type (void);
 
 GType gst_qmmfsrc_effect_mode_get_type (void);
@@ -379,6 +386,8 @@ GType gst_qmmfsrc_rotate_get_type (void);
 GType gst_qmmfsrc_cam_opmode_get_type (void);
 
 GType gst_qmmfsrc_pad_logical_stream_type_get_type (void);
+
+GType gst_qmmfsrc_pad_activation_mode_get_type (void);
 
 guchar gst_qmmfsrc_control_mode_android_value (const guint value);
 
