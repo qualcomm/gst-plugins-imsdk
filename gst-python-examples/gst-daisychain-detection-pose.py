@@ -259,8 +259,8 @@ def create_pipeline(pipeline):
     # Create capsfilter for detection
     elements["detection_filter"] = create_element("capsfilter", "capsfilter")
 
-    # Create qtioverlay
-    elements["qtioverlay"] = create_element("qtioverlay", "qtioverlay")
+    # Create qtivoverlay
+    elements["qtivoverlay"] = create_element("qtivoverlay", "qtivoverlay")
 
     # Create fpsdisplaysink to display current and average fps
     # as a text overlay
@@ -356,7 +356,7 @@ def create_pipeline(pipeline):
     elements["qtimlvpose"].set_property("labels", args.pose_labels)
     elements["qtimlvpose"].set_property("constants", args.constants_pose)
 
-    elements["qtioverlay"].set_property("engine", "gles")
+    elements["qtivoverlay"].set_property("engine", "gles")
 
     # Set sync to False to override default value
     waylandsink.set_property("sync", True)
@@ -429,7 +429,7 @@ def create_pipeline(pipeline):
 
     link_orders+= [
         [
-            "qtivcomposer", "qtioverlay", "fpsdisplaysink"
+            "qtivcomposer", "qtivoverlay", "fpsdisplaysink"
         ]
     ]
 
