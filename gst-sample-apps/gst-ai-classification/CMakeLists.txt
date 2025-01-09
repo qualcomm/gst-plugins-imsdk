@@ -24,7 +24,7 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 set(GST_EXAMPLE_BIN gst-ai-classification)
 
 # Add destination directory for config file
-set(DEST_DIR /opt)
+set(DEST_DIR /etc/configs)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
 

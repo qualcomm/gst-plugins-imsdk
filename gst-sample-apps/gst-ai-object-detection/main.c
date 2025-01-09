@@ -46,15 +46,15 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_SNPE_YOLOV5_MODEL "/opt/yolov5.dlc"
-#define DEFAULT_YOLOV5_LABELS "/opt/yolov5.labels"
-#define DEFAULT_SNPE_YOLOV8_MODEL "/opt/yolov8.dlc"
-#define DEFAULT_YOLOV8_LABELS "/opt/yolov8.labels"
-#define DEFAULT_SNPE_YOLONAS_MODEL "/opt/yolonas.dlc"
-#define DEFAULT_YOLONAS_LABELS "/opt/yolonas.labels"
-#define DEFAULT_TFLITE_YOLOV8_MODEL "/opt/YOLOv8-Detection-Quantized.tflite"
-#define DEFAULT_TFLITE_YOLOV5_MODEL "/opt/yolov5.tflite"
-#define DEFAULT_QNN_YOLOV8_MODEL "/opt/yolov8_det_quantized.bin"
+#define DEFAULT_SNPE_YOLOV5_MODEL "/etc/models/yolov5.dlc"
+#define DEFAULT_YOLOV5_LABELS "/etc/labels/yolov5.labels"
+#define DEFAULT_SNPE_YOLOV8_MODEL "/etc/models/yolov8.dlc"
+#define DEFAULT_YOLOV8_LABELS "/etc/labels/yolov8.labels"
+#define DEFAULT_SNPE_YOLONAS_MODEL "/etc/models/yolonas.dlc"
+#define DEFAULT_YOLONAS_LABELS "/etc/labels/yolonas.labels"
+#define DEFAULT_TFLITE_YOLOV8_MODEL "/etc/models/YOLOv8-Detection-Quantized.tflite"
+#define DEFAULT_TFLITE_YOLOV5_MODEL "/etc/models/yolov5.tflite"
+#define DEFAULT_QNN_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.bin"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
@@ -71,7 +71,7 @@
 /**
  * Default path of config file
  */
-#define DEFAULT_CONFIG_FILE "/opt/config_detection.json"
+#define DEFAULT_CONFIG_FILE "/etc/configs/config_detection.json"
 
 /**
  * Default constants to dequantize values

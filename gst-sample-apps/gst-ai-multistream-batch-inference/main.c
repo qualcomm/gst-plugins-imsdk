@@ -40,7 +40,7 @@
     "output-type":"wayland",
 
     # Output path to save file, if "output-type":"filesink"
-    "out-file":"/opt/out.mp4",
+    "out-file":"/etc/media/out.mp4",
 
     "pipeline-info":[
         {
@@ -53,10 +53,10 @@
           # 4 file stream path for batching
           "input-file-path":[
             {
-                "stream-0":"/opt/Draw_720p_180s_30FPS.mp4",
-                "stream-1":"/opt/Animals_000_720p_180s_30FPS.mp4",
-                "stream-2":"/opt/Draw_720p_180s_30FPS.mp4",
-                "stream-3":"/opt/Street_Bridge_720p_180s_30FPS.mp4"
+                "stream-0"/etc/media/Draw_720p_180s_30FPS.mp4",
+                "stream-1":"/etc/media/Animals_000_720p_180s_30FPS.mp4",
+                "stream-2":"/etc/media/Draw_720p_180s_30FPS.mp4",
+                "stream-3":"/etc/media/Street_Bridge_720p_180s_30FPS.mp4"
             }
           ],
 
@@ -64,10 +64,10 @@
           "mlframework":"qtimltflite",
 
           # Batch model path for Inference
-          "model-path":"/opt/deeplabv3_plus_mobilenet_quantized.tflite",
+          "model-path":"/etc/models/deeplabv3_plus_mobilenet_quantized.tflite",
 
           # Labels path
-          "labels-path":"/opt/deeplabv3_resnet50.labels",
+          "labels-path":"/etc/labels/deeplabv3_resnet50.labels",
 
           # Constant values from model
           "constants":"deeplab,q-offsets=<92.0>,q-scales=<0.04518842324614525>;",
@@ -113,7 +113,7 @@
 #define DEFAULT_DISPLAY_WIDTH 1920
 #define DEFAULT_DISPLAY_HEIGHT 1080
 
-#define DEFAULT_CONFIG_FILE "/opt/batch_config.json"
+#define DEFAULT_CONFIG_FILE "/etc/configs/batch_config.json"
 
 /**
  * Structure for various application specific options

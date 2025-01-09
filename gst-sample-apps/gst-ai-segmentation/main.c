@@ -46,12 +46,12 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_SNPE_SEGMENTATION_MODEL "/opt/deeplabv3_resnet50.dlc"
+#define DEFAULT_SNPE_SEGMENTATION_MODEL "/etc/models/deeplabv3_resnet50.dlc"
 #define DEFAULT_TFLITE_SEGMENTATION_MODEL \
-    "/opt/deeplabv3_plus_mobilenet_quantized.tflite"
+    "/etc/models/deeplabv3_plus_mobilenet_quantized.tflite"
 #define DEFAULT_QNN_SEGMENTATION_MODEL \
-    "/opt/deeplabv3_plus_mobilenet_quantized.bin"
-#define DEFAULT_SEGMENTATION_LABELS "/opt/deeplabv3_resnet50.labels"
+    "/etc/models/deeplabv3_plus_mobilenet_quantized.bin"
+#define DEFAULT_SEGMENTATION_LABELS "/etc/labels/deeplabv3_resnet50.labels"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
@@ -68,7 +68,7 @@
 /**
  * Default path of config file
  */
-#define DEFAULT_CONFIG_FILE "/opt/config_segmentation.json"
+#define DEFAULT_CONFIG_FILE "/etc/configs/config_segmentation.json"
 
 /**
  * Default constants to dequantize values

@@ -47,11 +47,11 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_SNPE_CLASSIFICATION_MODEL "/opt/inceptionv3.dlc"
+#define DEFAULT_SNPE_CLASSIFICATION_MODEL "/etc/models/inceptionv3.dlc"
 #define DEFAULT_TFLITE_CLASSIFICATION_MODEL \
-    "/opt/inception_v3_quantized.tflite"
-#define DEFAULT_QNN_CLASSIFICATION_MODEL "/opt/inception_v3_quantized.bin"
-#define DEFAULT_CLASSIFICATION_LABELS "/opt/classification.labels"
+    "/etc/models/inception_v3_quantized.tflite"
+#define DEFAULT_QNN_CLASSIFICATION_MODEL "/etc/models/inception_v3_quantized.bin"
+#define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/classification.labels"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
@@ -68,7 +68,7 @@
 /**
  * Default path of config file
  */
-#define DEFAULT_CONFIG_FILE "/opt/config_classification.json"
+#define DEFAULT_CONFIG_FILE "/etc/configs/config_classification.json"
 
 /**
  * To enable softmax operation for post processing

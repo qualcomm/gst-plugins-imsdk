@@ -43,8 +43,8 @@
  * Default model and video, if not provided by user
  */
 #define DEFAULT_TFLITE_MODEL \
-    "/opt/quicksrnetsmall_quantized.tflite"
-#define DEFAULT_INPUT_FILE_PATH "/opt/video.mp4"
+    "/etc/models/quicksrnetsmall_quantized.tflite"
+#define DEFAULT_INPUT_FILE_PATH "/etc/media/video.mp4"
 
 /**
  * Number of Queues used for buffer caching between elements
@@ -604,11 +604,11 @@ main (gint argc, gchar * argv[])
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
 
   snprintf (help_description, 1023, "\nExample:\n"
-      "  %s --input-file=/opt/video.mp4\n"
-      "  %s --input-file=/opt/video.mp4 --display\n"
-      "  %s --input-file=/opt/video.mp4 --output-file=/opt/out.mp4\n"
-      "  %s --input-file=/opt/video.mp4 --model=%s\n"
-      "  %s --input-file=/opt/video.mp4 --model=%s --constants=\"%s\"\n"
+      "  %s --input-file=/etc/media/video.mp4\n"
+      "  %s --input-file=/etc/media/video.mp4 --display\n"
+      "  %s --input-file=/etc/media/video.mp4 --output-file=/etc/media/out.mp4\n"
+      "  %s --input-file=/etc/media/video.mp4 --model=%s\n"
+      "  %s --input-file=/etc/media/video.mp4 --model=%s --constants=\"%s\"\n"
       "\nThis Sample App demonstrates super resolution \n", app_name, app_name,
       app_name, app_name, DEFAULT_TFLITE_MODEL,
       app_name, DEFAULT_TFLITE_MODEL, DEFAULT_CONSTANTS);

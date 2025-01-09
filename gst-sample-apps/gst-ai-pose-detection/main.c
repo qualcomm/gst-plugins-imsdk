@@ -44,9 +44,9 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_TFLITE_POSE_DETECTION_MODEL "/opt/hrnet_pose_quantized.tflite"
-#define DEFAULT_QNN_POSE_DETECTION_MODEL "/opt/hrnet_pose_quantized.bin"
-#define DEFAULT_POSE_DETECTION_LABELS "/opt/hrnet_pose.labels"
+#define DEFAULT_TFLITE_POSE_DETECTION_MODEL "/etc/models/hrnet_pose_quantized.tflite"
+#define DEFAULT_QNN_POSE_DETECTION_MODEL "/etc/models/hrnet_pose_quantized.bin"
+#define DEFAULT_POSE_DETECTION_LABELS "/etc/labels/hrnet_pose.labels"
 
 #define DEFAULT_CONSTANTS \
     "hrnet,q-offsets=<8.0>,q-scales=<0.0040499246679246426>;"
@@ -66,7 +66,7 @@
 /**
  * Default path of config file
  */
-#define DEFAULT_CONFIG_FILE "/opt/config_pose.json"
+#define DEFAULT_CONFIG_FILE "/etc/configs/config_pose.json"
 
 /**
  * Number of Queues used for buffer caching between elements

@@ -43,11 +43,11 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_TFLITE_YOLOV8_MODEL "/opt/yolov8_det_quantized.tflite"
-#define DEFAULT_YOLOV8_LABELS "/opt/yolov8.labels"
+#define DEFAULT_TFLITE_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.tflite"
+#define DEFAULT_YOLOV8_LABELS "/etc/labels/yolov8.labels"
 #define DEFAULT_TFLITE_INCEPTIONV3_MODEL \
-    "/opt/inception_v3_quantized.tflite"
-#define DEFAULT_CLASSIFICATION_LABELS "/opt/classification.labels"
+    "/etc/models/inception_v3_quantized.tflite"
+#define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/classification.labels"
 
 /**
  * Default constants to dequantize values
@@ -859,7 +859,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   for (gint i = 0; i < options->num_file; i++) {
-    snprintf (element_name, 127, "/opt/video%d.mp4", i+1);
+    snprintf (element_name, 127, "/etc/media/video%d.mp4", i+1);
     g_object_set (G_OBJECT (filesrc[i]), "location", element_name, NULL);
     g_object_set (G_OBJECT (file_v4l2h264dec[i]), "capture-io-mode", 5,
         "output-io-mode", 5, NULL);
@@ -1263,7 +1263,7 @@ main (gint argc, gchar * argv[])
     { "num-file", 0, 0, G_OPTION_ARG_INT,
       &options.num_file,
       "Number of input files to be used (range: 1-" TO_STR (MAX_FILESRCS) ")\n"
-      "      Copy the H.264 encoded files to /opt and name"
+      "      Copy the H.264 encoded files to /etc/media and name"
       " as video1.mp4, video2.mp4 and so on",
       NULL
     },
@@ -1359,7 +1359,7 @@ main (gint argc, gchar * argv[])
       "  %s --num-file=6 --use-case 0\n"
       "  %s\n"
       "  %s --use-case 0 --model=%s --labels=%s\n"
-      "  %s --num-file=4 -u 0 -d -f /opt/app.mp4 --out-rtsp -i <ip> -p <port>\n"
+      "  %s --num-file=4 -u 0 -d -f /etc/media/app.mp4 --out-rtsp -i <ip> -p <port>\n"
       "\nThis Sample App demonstrates Object Detection on 16 stream with various "
       " input/output stream combinations",
       app_name,
@@ -1485,7 +1485,7 @@ main (gint argc, gchar * argv[])
 
   for (gint i = 0; i < options.num_file; i++) {
     gchar file_name[128];
-    snprintf (file_name, 127, "/opt/video%d.mp4", i+1);
+    snprintf (file_name, 127, "/etc/media/video%d.mp4", i+1);
     if (!file_exists (file_name)) {
       g_printerr ("video file doesnot exist at path: %s\n", file_name);
       gst_app_context_free (&appctx, &options);

@@ -51,8 +51,8 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_QNN_FACE_DETECTION_MODEL "/opt/face_detection.so"
-#define DEFAULT_FACE_DETECTION_LABELS "/opt/face_detection.labels"
+#define DEFAULT_QNN_FACE_DETECTION_MODEL "/etc/models/face_detection.so"
+#define DEFAULT_FACE_DETECTION_LABELS "/etc/labels/face_detection.labels"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output

@@ -52,12 +52,12 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_QNN_FACE_DETECTION_MODEL "/opt/face_detection.so"
-#define DEFAULT_QNN_3DMM_MODEL "/opt/three_dmm.so"
-#define DEFAULT_QNN_FACE_RECOGNITION_MODEL "/opt/face_recognition.so"
-#define DEFAULT_FACE_DETECTION_LABELS "/opt/face_detection.labels"
-#define DEFAULT_3DMM_LABELS "/opt/three_dmm.labels"
-#define DEFAULT_FACE_RECOGNITION_LABELS "/opt/face_recognition.labels"
+#define DEFAULT_QNN_FACE_DETECTION_MODEL "/etc/models/face_detection.so"
+#define DEFAULT_QNN_3DMM_MODEL "/etc/models/three_dmm.so"
+#define DEFAULT_QNN_FACE_RECOGNITION_MODEL "/etc/models/face_recognition.so"
+#define DEFAULT_FACE_DETECTION_LABELS "/etc/labels/face_detection.labels"
+#define DEFAULT_3DMM_LABELS "/etc/labels/three_dmm.labels"
+#define DEFAULT_FACE_RECOGNITION_LABELS "/etc/labels/face_recognition.labels"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output

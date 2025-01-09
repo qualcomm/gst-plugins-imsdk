@@ -55,17 +55,17 @@
  * Default models path and labels path
  */
 #define DEFAULT_TFLITE_OBJECT_DETECTION_MODEL \
-    "/opt/YOLOv8-Detection-Quantized.tflite"
-#define DEFAULT_OBJECT_DETECTION_LABELS "/opt/yolov8.labels"
+    "/etc/models/YOLOv8-Detection-Quantized.tflite"
+#define DEFAULT_OBJECT_DETECTION_LABELS "/etc/labels/yolov8.labels"
 #define DEFAULT_TFLITE_CLASSIFICATION_MODEL \
-    "/opt/inception_v3_quantized.tflite"
-#define DEFAULT_CLASSIFICATION_LABELS "/opt/classification.labels"
+    "/etc/models/inception_v3_quantized.tflite"
+#define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/classification.labels"
 #define DEFAULT_TFLITE_POSE_DETECTION_MODEL \
-    "/opt/hrnet_pose_quantized.tflite"
-#define DEFAULT_POSE_DETECTION_LABELS "/opt/hrnet_pose.labels"
+    "/etc/models/hrnet_pose_quantized.tflite"
+#define DEFAULT_POSE_DETECTION_LABELS "/etc/labels/hrnet_pose.labels"
 #define DEFAULT_TFLITE_SEGMENTATION_MODEL \
-    "/opt/deeplabv3_plus_mobilenet_quantized.tflite"
-#define DEFAULT_SEGMENTATION_LABELS "/opt/deeplabv3_resnet50.labels"
+    "/etc/models/deeplabv3_plus_mobilenet_quantized.tflite"
+#define DEFAULT_SEGMENTATION_LABELS "/etc/labels/deeplabv3_resnet50.labels"
 
 /**
  * Length of string for when models path and labels path need to be
@@ -1170,7 +1170,7 @@ main (gint argc, gchar * argv[])
 
   snprintf (help_description, 2047, "\nExample:\n"
       "  %s\n"
-      "  %s --file-path=\"/opt/video.mp4\"\n"
+      "  %s --file-path=\"/etc/media/video.mp4\"\n"
       "  %s --rtsp-ip-port=\"rtsp://<ip>:<port>/<stream>\"\n"
       "\nThis Sample App demonstrates Classification, Segmemtation"
       "Object Detection, Pose Detection On Live Stream "

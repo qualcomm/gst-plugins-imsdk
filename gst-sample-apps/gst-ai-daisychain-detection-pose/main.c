@@ -49,11 +49,11 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_TFLITE_YOLOV8_MODEL "/opt/YOLOv8-Detection-Quantized.tflite"
+#define DEFAULT_TFLITE_YOLOV8_MODEL "/etc/models/YOLOv8-Detection-Quantized.tflite"
 #define DEFAULT_TFLITE_POSE_MODEL \
-    "/opt/hrnet_pose_quantized.tflite"
-#define DEFAULT_YOLOV8_LABELS "/opt/yolov8.labels"
-#define DEFAULT_POSE_LABELS "/opt/hrnet_pose.labels"
+    "/etc/models/hrnet_pose_quantized.tflite"
+#define DEFAULT_YOLOV8_LABELS "/etc/labels/yolov8.labels"
+#define DEFAULT_POSE_LABELS "/etc/labels/hrnet_pose.labels"
 
 /**
  * Default Scale and Offset constants
@@ -1229,17 +1229,17 @@ main (gint argc, gchar * argv[])
     snprintf (camera_description, sizeof (camera_description),
       "  %s \n"
       "  %s --camera --display\n"
-      "  %s --camera --output-file=/opt/out.mp4\n",
+      "  %s --camera --output-file=/etc/media/out.mp4\n",
       app_name, app_name, app_name);
   }
 
   snprintf (help_description, 1023, "\nExample:\n"
       "  %s\n"
-      "  %s --input-file=/opt/video.mp4 --display\n"
-      "  %s --input-file=/opt/video.mp4 --output-file=/opt/out.mp4\n"
+      "  %s --input-file=/etc/media/video.mp4 --display\n"
+      "  %s --input-file=/etc/media/video.mp4 --output-file=/etc/media/out.mp4\n"
       "  %s --rtsp-ip-port=\"rtsp://<ip>:port/<stream>\" --display\n"
       "  %s --rtsp-ip-port=\"rtsp://<ip>:port/<stream>\""
-      " --output-file=/opt/out.mp4\n"
+      " --output-file=/etc/media/out.mp4\n"
       "\nThis Sample App demonstrates Daisy chain of "
       "Object Detection and Pose\n"
       "\nDefault Path for model and labels used are as below:\n"

@@ -52,15 +52,15 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_SNPE_MONODEPTH_MODEL "/opt/midasv2.dlc"
-#define DEFAULT_TFLITE_MONODEPTH_MODEL "/opt/Midas-V2-Quantized.tflite"
-#define DEFAULT_QNN_MONODEPTH_MODEL "/opt/midas_quantized.bin"
-#define DEFAULT_MONODEPTH_LABELS "/opt/monodepth.labels"
+#define DEFAULT_SNPE_MONODEPTH_MODEL "/etc/models/midasv2.dlc"
+#define DEFAULT_TFLITE_MONODEPTH_MODEL "/etc/models/Midas-V2-Quantized.tflite"
+#define DEFAULT_QNN_MONODEPTH_MODEL "/etc/models/midas_quantized.bin"
+#define DEFAULT_MONODEPTH_LABELS "/etc/labels/monodepth.labels"
 
 /**
  * Default path of config file
  */
-#define DEFAULT_CONFIG_FILE "/opt/config_monodepth.json"
+#define DEFAULT_CONFIG_FILE "/etc/configs/config_monodepth.json"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output

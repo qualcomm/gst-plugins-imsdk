@@ -95,16 +95,16 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_TFLITE_YOLOV5_MODEL "/opt/yolov5.tflite"
+#define DEFAULT_TFLITE_YOLOV5_MODEL "/etc/models/yolov5.tflite"
 #define DEFAULT_TFLITE_CLASSIFICATION_MODEL \
-    "/opt/inceptionv3.tflite"
-#define DEFAULT_YOLOV5_LABELS "/opt/yolov5.labels"
-#define DEFAULT_CLASSIFICATION_LABELS "/opt/classification.labels"
+    "/etc/models/inceptionv3.tflite"
+#define DEFAULT_YOLOV5_LABELS "/etc/labels/yolov5.labels"
+#define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/classification.labels"
 
 /**
  * Default path of config file
  */
-#define DEFAULT_CONFIG_FILE "/opt/config_daisychain_detection_classification.json"
+#define DEFAULT_CONFIG_FILE "/etc/configs/config_daisychain_detection_classification.json"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
