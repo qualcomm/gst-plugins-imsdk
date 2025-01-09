@@ -135,7 +135,7 @@ def create_pipeline(pipeline):
     )
     parser.add_argument("--constants_pose", type=str,
         default=DEFAULT_CONSTANTS_POSE_DETECTION,
-        help="Constants for Object detection model"
+        help="Constants for Pose detection model"
     )
     parser.add_argument("--tflite_yolov8_model", type=str,
         default=DEFAULT_TFLITE_YOLOV8_MODEL,
