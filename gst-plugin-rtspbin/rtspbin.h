@@ -44,8 +44,6 @@ struct _GstRtspBin
   GstRTSPServer       *server;
   /// RTSP factory instance
   GstRTSPMediaFactory *factory;
-  /// Prepared flag
-  gboolean            media_prepared;
 
   /// Properties.
   gchar               *address;

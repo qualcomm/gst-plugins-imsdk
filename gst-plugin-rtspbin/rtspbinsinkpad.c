@@ -28,6 +28,8 @@ gst_rtsp_bin_sinkpad_finalize (GObject * object)
     sinkpad->appsrc = NULL;
   }
 
+  gst_object_unref (GST_OBJECT_CAST (sinkpad->buffers));
+
   G_OBJECT_CLASS (gst_rtsp_bin_sinkpad_parent_class)->finalize(object);
 }
 
@@ -42,6 +44,14 @@ gst_rtsp_bin_sinkpad_class_init (GstRtspBinSinkPadClass * klass)
       "qtirtspbin", 0, "QTI Rtsp Bin sink pad");
 }
 
+static gboolean
+queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
+                  guint64 time, gpointer checkdata)
+{
+  // There won't be any condition limiting for the buffer queue size.
+  return FALSE;
+}
+
 static void
 gst_rtsp_bin_sinkpad_init (GstRtspBinSinkPad * sinkpad)
 {
@@ -50,6 +60,8 @@ gst_rtsp_bin_sinkpad_init (GstRtspBinSinkPad * sinkpad)
   sinkpad->index = 0;
   sinkpad->caps = NULL;
   sinkpad->appsrc = NULL;
-  sinkpad->pts_offset = -1;
-  sinkpad->dts_offset = -1;
+  sinkpad->current_timestamp = 0;
+  sinkpad->last_timestamp = 0;
+
+  sinkpad->buffers = gst_data_queue_new (queue_is_full_cb, NULL, NULL, NULL);
 }
