@@ -113,7 +113,7 @@
 #define DEFAULT_DISPLAY_WIDTH 1920
 #define DEFAULT_DISPLAY_HEIGHT 1080
 
-#define DEFAULT_CONFIG_FILE "/etc/configs/batch_config.json"
+#define DEFAULT_CONFIG_FILE "/etc/configs/config_multistream-batch-inference.json"
 
 /**
  * Structure for various application specific options
