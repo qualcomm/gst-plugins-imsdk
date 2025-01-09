@@ -257,21 +257,6 @@ gst_converter_request_unref (GstConverterRequest * request)
 }
 
 static inline void
-gst_video_composition_cleanup (GstVideoComposition * composition)
-{
-  guint idx = 0;
-
-  // Free only source/destination rectangles, frames are owned by the request.
-  for (idx = 0; idx < composition->n_blits; idx++) {
-    g_slice_free (GstVideoRectangle, composition->blits[idx].sources);
-    g_slice_free (GstVideoRectangle, composition->blits[idx].destinations);
-  }
-
-  // Free only video blits, output frame is owned by the request.
-  g_free (composition->blits);
-}
-
-static inline void
 gst_data_queue_item_free (gpointer data)
 {
   GstDataQueueItem *item = data;
@@ -417,8 +402,8 @@ gst_video_composition_populate_output_metas (GstVideoComposition * composition)
   for (idx = 0; idx < composition->n_blits; idx++) {
     inbuffer = composition->blits[idx].frame->buffer;
 
-    source = &(composition->blits[idx].sources[0]);
-    destination = &(composition->blits[idx].destinations[0]);
+    source = &(composition->blits[idx].source);
+    destination = &(composition->blits[idx].destination);
 
     while ((meta = gst_buffer_iterate_meta (inbuffer, &state))) {
       if (meta->info->api == GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE) {
@@ -696,18 +681,17 @@ gst_video_composer_populate_frames_and_composition (
     blit->flip = gst_video_composer_translate_flip (sinkpad->flip_h, sinkpad->flip_v);
     blit->rotate = gst_video_composer_translate_rotation (sinkpad->rotation);
 
-    blit->sources = g_slice_dup (GstVideoRectangle, &(sinkpad->crop));
-    blit->destinations = g_slice_dup (GstVideoRectangle, &(sinkpad->destination));
-    blit->n_regions = 1;
+    blit->source = sinkpad->crop;
+    blit->destination = sinkpad->destination;
 
-    if ((blit->sources[0].w == 0) && (blit->sources[0].h == 0)) {
-      blit->sources[0].w = GST_VIDEO_FRAME_WIDTH (blit->frame);
-      blit->sources[0].h = GST_VIDEO_FRAME_HEIGHT (blit->frame);
+    if ((blit->source.w == 0) && (blit->source.h == 0)) {
+      blit->source.w = GST_VIDEO_FRAME_WIDTH (blit->frame);
+      blit->source.h = GST_VIDEO_FRAME_HEIGHT (blit->frame);
     }
 
-    if ((blit->destinations[0].w == 0) && (blit->destinations[0].h == 0)) {
-      blit->destinations[0].w = GST_VIDEO_INFO_WIDTH (vcomposer->outinfo);
-      blit->destinations[0].h = GST_VIDEO_INFO_HEIGHT (vcomposer->outinfo);
+    if ((blit->destination.w == 0) && (blit->destination.h == 0)) {
+      blit->destination.w = GST_VIDEO_INFO_WIDTH (vcomposer->outinfo);
+      blit->destination.h = GST_VIDEO_INFO_HEIGHT (vcomposer->outinfo);
     }
 
     GST_VIDEO_COMPOSER_SINKPAD_UNLOCK (sinkpad);
@@ -1440,7 +1424,7 @@ gst_video_composer_aggregate (GstAggregator * aggregator, gboolean timeout)
       request->inframes, request->outframe, &composition);
 
   if (!success) {
-    gst_video_composition_cleanup (&composition);
+    g_free (composition.blits);
     gst_converter_request_unref (request);
     return GST_AGGREGATOR_FLOW_NEED_DATA;
   }
@@ -1451,7 +1435,7 @@ gst_video_composer_aggregate (GstAggregator * aggregator, gboolean timeout)
   if ((composition.blits != NULL) && (composition.n_blits != 0)) {
     success = gst_video_converter_engine_compose (vcomposer->converter,
         &composition, 1, &(request->fence));
-    gst_video_composition_cleanup (&composition);
+    g_free (composition.blits);
   }
 
   if (!success) {

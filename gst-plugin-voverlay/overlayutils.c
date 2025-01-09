@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -62,12 +62,11 @@ gst_video_blit_release (GstVideoBlit * blit)
 {
   GstBuffer *buffer = NULL;
 
-  g_slice_free (GstVideoRectangle, blit->sources);
-  g_slice_free (GstVideoRectangle, blit->destinations);
+  blit->source.x = blit->source.y = 0;
+  blit->source.w = blit->source.h = 0;
 
-  blit->sources = NULL;
-  blit->destinations = NULL;
-  blit->n_regions = 0;
+  blit->destination.x = blit->destination.y = 0;
+  blit->destination.w = blit->destination.h = 0;
 
   buffer = blit->frame->buffer;
   gst_video_frame_unmap (blit->frame);

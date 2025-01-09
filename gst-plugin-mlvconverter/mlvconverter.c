@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -515,24 +515,22 @@ gst_ml_video_converter_update_destination (GstMLVideoConverter * mlconverter,
   destination->y += (maxheight - destination->h) / 2;
 }
 
-static guint
+static gint
 gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
-    const guint index)
+    GstBuffer * inbuffer)
 {
   GstVideoComposition *composition = NULL;
-  GstVideoBlit *blit = NULL;
-  GstBuffer *inbuffer = NULL, *outbuffer = NULL;
+  GstVideoBlit *vblit = NULL;
+  GstBuffer *outbuffer = NULL;
   GstVideoRectangle *source = NULL, *destination = NULL;
   GstVideoRegionOfInterestMeta *roimeta = NULL;
   gpointer state = NULL;
   gint maxwidth = 0, maxheight = 0, offset = 0;
-  guint num = 0, n_batch = 0;
+  guint idx = 0, num = 0, n_batch = 0, n_regions = 1;
+  gboolean success = FALSE;
 
   composition = &(mlconverter->composition);
-  blit = &(composition->blits[index]);
-
   outbuffer = composition->frame->buffer;
-  inbuffer = blit->frame->buffer;
 
   // Expected tensor batch size.
   n_batch = GST_ML_INFO_TENSOR_DIM (mlconverter->mlinfo, 0, 0);
@@ -541,34 +539,28 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
   maxwidth = GST_VIDEO_FRAME_WIDTH (composition->frame);
   maxheight = GST_VIDEO_FRAME_HEIGHT (composition->frame) / n_batch;
 
-  // Set the initial number of src/dest regions depending on the mode.
-  blit->n_regions = 1;
-
   if GST_CONVERSION_MODE_IS_ROI (mlconverter->mode) {
-    blit->n_regions = gst_buffer_get_region_of_interest_n_meta (inbuffer,
+    n_regions = gst_buffer_get_region_of_interest_n_meta (inbuffer,
         mlconverter->roi_stage_ids);
   }
 
   GST_TRACE_OBJECT (mlconverter, "Number of Source/Destination regions "
-      "(Initial): [%u]", blit->n_regions);
+      "(Initial): [%u]", n_regions);
 
   // Decrease the regions if some of them were previously processed.
   if (mlconverter->next_roi_id != -1) {
-    blit->n_regions -= gst_buffer_get_region_of_interest_meta_index (inbuffer,
+    n_regions -= gst_buffer_get_region_of_interest_meta_index (inbuffer,
         mlconverter->next_roi_id, mlconverter->roi_stage_ids);
   }
 
   GST_TRACE_OBJECT (mlconverter, "Number of Source/Destination regions "
-      "(Intermediary): [%u]", blit->n_regions);
+      "(Intermediary): [%u]", n_regions);
 
   // Limit the regions to the number of remaining batch positions if necessary.
-  blit->n_regions = MIN ((n_batch - mlconverter->batch_idx), blit->n_regions);
+  n_regions = MIN ((n_batch - mlconverter->batch_idx), n_regions);
 
   GST_TRACE_OBJECT (mlconverter, "Number of Source/Destination regions "
-      "(Final): [%u]", blit->n_regions);
-
-  blit->sources = g_new (GstVideoRectangle, blit->n_regions);
-  blit->destinations = g_new (GstVideoRectangle, blit->n_regions);
+      "(Final): [%u]", n_regions);
 
   do {
     // Add protection meta containing information for decryption downstream.
@@ -594,8 +586,21 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
           GST_BUFFER_DTS (inbuffer), NULL);
     }
 
-    source = &(blit->sources[num]);
-    destination = &(blit->destinations[num]);
+    // Set the index for next blit.
+    idx = composition->n_blits;
+
+    // Convinient pointer to the frame in current blit object.
+    vblit = &(composition->blits[idx]);
+
+    success = gst_video_frame_map (vblit->frame, mlconverter->ininfo, inbuffer,
+        GST_MAP_READ);
+    if (!success) {
+      GST_ERROR_OBJECT (mlconverter, "Failed to map input frame!");
+      return -1;
+    }
+
+    source = &(vblit->source);
+    destination = &(vblit->destination);
 
     if (GST_CONVERSION_MODE_IS_ROI (mlconverter->mode)) {
       roimeta = GST_BUFFER_ITERATE_ROI_METAS (inbuffer, state);
@@ -635,8 +640,8 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
         source->h = roimeta->h;
       } else {
         source->x = source->y = 0;
-        source->w = GST_VIDEO_FRAME_WIDTH (blit->frame);
-        source->h = GST_VIDEO_FRAME_HEIGHT (blit->frame);
+        source->w = GST_VIDEO_FRAME_WIDTH (vblit->frame);
+        source->h = GST_VIDEO_FRAME_HEIGHT (vblit->frame);
       }
     }
 
@@ -653,7 +658,7 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
 
     GST_TRACE_OBJECT (mlconverter, "Sequence [%u / %u] Batch[%u] Region[%u]: "
         "[%d %d %d %d] -> [%d %d %d %d]", mlconverter->seq_idx,
-        mlconverter->n_seq_entries, mlconverter->batch_idx, num, source->x,
+        mlconverter->n_seq_entries, mlconverter->batch_idx, idx, source->x,
         source->y, source->w, source->h, destination->x, destination->y,
         destination->w, destination->h);
 
@@ -674,8 +679,11 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
     // Set the bit for the filled batch position and increment the batch index.
     GST_BUFFER_OFFSET (outbuffer) |= 1 << mlconverter->batch_idx++;
 
+    // Increament the number of populated blits.
+    composition->n_blits++;
+
     // Increment the index for src/dest regions and loop if it's within range.
-  } while (++num < blit->n_regions);
+  } while (++num < n_regions);
 
   // Stash the next suitable ROI meta ID if not all ROI metas were processed.
   if (mlconverter->mode == GST_ML_CONVERSION_MODE_ROI_CUMULATIVE) {
@@ -691,7 +699,7 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
   GST_TRACE_OBJECT (mlconverter, "Stashed ROI ID [%d]", mlconverter->next_roi_id);
 
   // Return the number of filled batch positions (regions).
-  return blit->n_regions;
+  return n_regions;
 }
 
 static void
@@ -699,7 +707,6 @@ gst_ml_video_converter_cleanup_composition (GstMLVideoConverter * mlconverter)
 {
   GstVideoComposition *composition = NULL;
   GstVideoBlit *blit = NULL;
-  GstBuffer *buffer = NULL;
   guint idx = 0;
 
   composition = &(mlconverter->composition);
@@ -711,17 +718,11 @@ gst_ml_video_converter_cleanup_composition (GstMLVideoConverter * mlconverter)
   for (idx = 0; idx < composition->n_blits; idx++) {
     blit = &(composition->blits[idx]);
 
-    g_clear_pointer (&(blit->sources), g_free);
-    g_clear_pointer (&(blit->destinations), g_free);
-    blit->n_regions = 0;
-
-    if ((buffer = blit->frame->buffer) != NULL) {
+    if (blit->frame->buffer != NULL)
       gst_video_frame_unmap_and_reset (blit->frame);
-      gst_buffer_unref (buffer);
-    }
   }
 
-  if ((buffer = composition->frame->buffer) != NULL)
+  if (composition->frame->buffer != NULL)
     gst_video_frame_unmap_and_reset (composition->frame);
 }
 
@@ -731,10 +732,9 @@ gst_ml_video_converter_setup_composition (GstMLVideoConverter * mlconverter,
 {
   GstVideoComposition *composition = NULL;
   GstBuffer *inbuffer = NULL, *buffer = NULL;
-  GstVideoFrame *vframe = NULL;
   GstVideoMultiviewMode mview_mode = GST_VIDEO_MULTIVIEW_MODE_NONE;
-  guint n_batch = 0, idx = 0;
-  gint n_memory = 0, mem_idx = 0, n_roi_meta = 0;
+  guint n_batch = 0;
+  gint n_memory = 0, mem_idx = 0, n_roi_meta = 0, n_filled_positions = 0;
   gboolean success = FALSE;
 
   composition = &(mlconverter->composition);
@@ -801,22 +801,19 @@ gst_ml_video_converter_setup_composition (GstMLVideoConverter * mlconverter,
             GST_PTR_FORMAT, mem_idx, buffer);
       }
 
-      // Convinient pointer to the frame in current blit object.
-      vframe = composition->blits[idx].frame;
+      n_filled_positions =
+          gst_ml_video_converter_update_blit_params (mlconverter, buffer);
 
-      success = gst_video_frame_map (vframe, mlconverter->ininfo, buffer,
-          GST_MAP_READ | GST_VIDEO_FRAME_MAP_FLAG_NO_REF);
-      if (!success) {
-        GST_ERROR_OBJECT (mlconverter, "Failed to map input frame for video "
-            "blit at index '%u'!", idx);
+      if (!(success = (n_filled_positions > -1)))
         goto cleanup;
-      }
 
       // Decrease the batch size with the number of filled positions.
-      n_batch -= gst_ml_video_converter_update_blit_params (mlconverter, idx);
+      n_batch -= n_filled_positions;
 
-      // Increament the number of populated blits and set the index for next blit.
-      idx = ++(composition->n_blits);
+      // Release the reference to the child input buffer, no longer needed.
+      // Child buffer will be fully released when the associated blits are reset.
+      if (mview_mode == GST_VIDEO_MULTIVIEW_MODE_SEPARATED)
+        gst_buffer_unref (buffer);
 
       // Process until batch is filled or no more buffers.
     } while ((++mem_idx < n_memory) && (n_batch != 0));
@@ -832,10 +829,9 @@ gst_ml_video_converter_setup_composition (GstMLVideoConverter * mlconverter,
     GST_TRACE_OBJECT (mlconverter, "Stashed memory index [%d]",
         mlconverter->next_mem_idx);
 
-    // Release the reference to the parent muxed buffer, no longer needed.
-    // The buffer will be fully relesed when all of his children are released.
-    if (mview_mode == GST_VIDEO_MULTIVIEW_MODE_SEPARATED)
-      gst_buffer_unref (inbuffer);
+    // Release the reference to the main input buffer, no longer needed.
+    // The buffer will be fully released when all video blits have finished.
+    gst_buffer_unref (inbuffer);
   }
 
   // Reset the global tracker for batch position for next setup call..
