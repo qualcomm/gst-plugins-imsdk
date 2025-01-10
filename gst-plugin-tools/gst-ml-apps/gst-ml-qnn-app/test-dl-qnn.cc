@@ -66,9 +66,11 @@ main(int argc, char* argv[])
 
   const QnnInterface_t** providers = nullptr;
   uint32_t n_providers{0};
+  uint64_t rc_get_providers = GetProviders (&providers, &n_providers);
 
-  if (!GetProviders (&providers, &n_providers)) {
+  if (0 != rc_get_providers) {
     std::cerr << "Failed to get interface providers." << std::endl;
+    std::cerr << "GetProviders return code: " << rc_get_providers << std::endl;
     return EXIT_FAILURE;
   }
 
