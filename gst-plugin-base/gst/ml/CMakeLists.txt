@@ -14,6 +14,7 @@ add_library(${GST_QTI_ML_BASE} SHARED
   ml-module-video-pose.c
   ml-module-video-segmentation.c
   ml-module-video-super-resolution.c
+  ml-module-audio-classification.c
 )
 
 set(GST_QTI_ML_BASE_HEADERS
@@ -29,6 +30,7 @@ set(GST_QTI_ML_BASE_HEADERS
   ml-module-video-pose.h
   ml-module-video-segmentation.h
   ml-module-video-super-resolution.h
+  ml-module-audio-classification.h
 )
 
 set_target_properties(${GST_QTI_ML_BASE} PROPERTIES PUBLIC_HEADER
