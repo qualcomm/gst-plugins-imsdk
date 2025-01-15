@@ -34,6 +34,9 @@ check_include_file_cxx("iot-core-algs/ib2c.h" HAVE_IOT_CORE_IB2C_H)
 # Check whether FastCV header is present.
 check_include_file("fastcv/fastcv.h" HAVE_FASTCV_H)
 
+# Check whether GBM header is present.
+check_include_file("gbm_priv.h" HAVE_GBM_PRIV_H)
+
 # Common compiler flags.
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
