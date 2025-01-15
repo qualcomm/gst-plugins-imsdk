@@ -69,6 +69,7 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 
+#ifdef HAVE_GBM_PRIV_H
 #include <gbm.h>
 #include <gbm_priv.h>
 
@@ -83,6 +84,7 @@
 #define MMM_COLOR_FMT_Y_META_STRIDE VENUS_Y_META_STRIDE
 #define MMM_COLOR_FMT_Y_META_SCANLINES VENUS_Y_META_SCANLINES
 #endif // HAVE_MMM_COLOR_FMT_H
+#endif // HAVE_GBM_PRIV_H
 
 #if defined(HAVE_LINUX_DMA_HEAP_H)
 #include <linux/dma-heap.h>
@@ -117,8 +119,12 @@ struct _GstImageBufferPoolPrivate
 
   // GBM library handle;
   gpointer            gbmhandle;
+#ifdef HAVE_GBM_PRIV_H
   // GBM device handle;
   struct gbm_device   *gbmdevice;
+#else
+  void *gbmdevice;
+#endif // HAVE_GBM_PRIV_H
 
   // Map of data FDs and ION handles on case ION memory is used OR
   // map of data FDs and GBM buffer objects if GBM memory is used.
@@ -126,6 +132,7 @@ struct _GstImageBufferPoolPrivate
   // Mutex for protecting insert/remove from the data map.
   GMutex              lock;
 
+#ifdef HAVE_GBM_PRIV_H
   // GBM library APIs
   struct gbm_device * (*gbm_create_device) (gint fd);
   void (*gbm_device_destroy)(struct gbm_device * gbm);
@@ -134,6 +141,16 @@ struct _GstImageBufferPoolPrivate
   void (*gbm_bo_destroy) (struct gbm_bo * bo);
   gint (*gbm_bo_get_fd) (struct gbm_bo *bo);
   gint (*gbm_perform) (int operation,...);
+#else
+  // STUB library APIs
+  void * (*gbm_create_device) (gint fd);
+  void (*gbm_device_destroy)(void * gbm);
+  void * (*gbm_bo_create) (void * gbm, guint width,
+                                    guint height, guint format, guint flags);
+  void (*gbm_bo_destroy) (void * bo);
+  gint (*gbm_bo_get_fd) (void *bo);
+  gint (*gbm_perform) (int operation,...);
+#endif // HAVE_GBM_PRIV_H
 };
 
 #define gst_image_buffer_pool_parent_class parent_class
@@ -144,6 +161,7 @@ static gint
 gst_video_format_to_gbm_format (GstVideoFormat format)
 {
   switch (format) {
+#ifdef HAVE_GBM_PRIV_H
     case GST_VIDEO_FORMAT_NV12:
       return GBM_FORMAT_NV12;
     case GST_VIDEO_FORMAT_NV21:
@@ -181,6 +199,7 @@ gst_video_format_to_gbm_format (GstVideoFormat format)
     case GST_VIDEO_FORMAT_GRAY8:
       return GBM_FORMAT_R8;
 #endif // GBM_FORMAT_R8
+#endif // HAVE_GBM_PRIV_H
     default:
       GST_ERROR ("Unsupported format %s!", gst_video_format_to_string (format));
   }
@@ -295,12 +314,17 @@ static GstMemory *
 gbm_device_alloc (GstImageBufferPool * vpool)
 {
   GstImageBufferPoolPrivate *priv = vpool->priv;
+#ifdef HAVE_GBM_PRIV_H
   struct gbm_bo *bo = NULL;
+#else
+  void *bo = NULL;
+#endif // HAVE_GBM_PRIV_H
   gint fd = -1, format = 0, usage = 0;
 
   format = gst_video_format_to_gbm_format (GST_VIDEO_INFO_FORMAT (&priv->info));
   g_return_val_if_fail (format >= 0, NULL);
 
+#ifdef HAVE_GBM_PRIV_H
   if (GST_VIDEO_INFO_FORMAT (&priv->info) == GST_VIDEO_FORMAT_P010_10LE)
     usage |= GBM_BO_USAGE_10BIT_QTI;
   else if (GST_VIDEO_INFO_FORMAT (&priv->info) == GST_VIDEO_FORMAT_NV12_10LE32)
@@ -308,6 +332,7 @@ gbm_device_alloc (GstImageBufferPool * vpool)
 
   if (priv->isubwc)
     usage |= GBM_BO_USAGE_UBWC_ALIGNED_QTI;
+#endif // HAVE_GBM_PRIV_H
 
   bo = priv->gbm_bo_create (priv->gbmdevice, GST_VIDEO_INFO_WIDTH (&priv->info),
        GST_VIDEO_INFO_HEIGHT (&priv->info), format, usage);
@@ -332,12 +357,17 @@ static void
 gbm_device_free (GstImageBufferPool * vpool, gint fd)
 {
   GstImageBufferPoolPrivate *priv = vpool->priv;
+#ifdef HAVE_GBM_PRIV_H
+  struct gbm_bo *bo = NULL;
+#else
+  void *bo = NULL;
+#endif // HAVE_GBM_PRIV_H
 
   GST_DEBUG_OBJECT (vpool, "Closing GBM memory FD %d", fd);
 
   g_mutex_lock (&priv->lock);
 
-  struct gbm_bo *bo = g_hash_table_lookup (priv->datamap, GINT_TO_POINTER (fd));
+  bo = g_hash_table_lookup (priv->datamap, GINT_TO_POINTER (fd));
   g_hash_table_remove (priv->datamap, GINT_TO_POINTER (fd));
 
   g_mutex_unlock (&priv->lock);
@@ -552,6 +582,7 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
   if (keepmapped)
     priv->memflags |= GST_FD_MEMORY_FLAG_KEEP_MAPPED;
 
+#ifdef HAVE_GBM_PRIV_H
   // GBM library has its own alignment for the allocated buffers so update
   // the size, stride and offset for the buffer planes in the video info.
   if (GST_IS_GBM_MEMORY_TYPE (vpool->priv->memtype)) {
@@ -621,6 +652,7 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
 
     priv->info.size = MAX (size, priv->info.size);
   }
+#endif // HAVE_GBM_PRIV_H
 
   // Remove cached allocator.
   if (priv->allocator)
