@@ -69,13 +69,14 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 
-#ifdef HAVE_GBM_PRIV_H
 #include <gbm.h>
+#ifdef HAVE_GBM_PRIV_H
 #include <gbm_priv.h>
+#endif // HAVE_GBM_PRIV_H
 
 #ifdef HAVE_MMM_COLOR_FMT_H
 #include <display/media/mmm_color_fmt.h>
-#else
+#elif defined(HAVE_MSM_MEDIA_INFO_H)
 #include <media/msm_media_info.h>
 #define MMM_COLOR_FMT_NV12_UBWC COLOR_FMT_NV12_UBWC
 #define MMM_COLOR_FMT_NV12_BPP10_UBWC COLOR_FMT_NV12_BPP10_UBWC
@@ -84,7 +85,7 @@
 #define MMM_COLOR_FMT_Y_META_STRIDE VENUS_Y_META_STRIDE
 #define MMM_COLOR_FMT_Y_META_SCANLINES VENUS_Y_META_SCANLINES
 #endif // HAVE_MMM_COLOR_FMT_H
-#endif // HAVE_GBM_PRIV_H
+
 
 #if defined(HAVE_LINUX_DMA_HEAP_H)
 #include <linux/dma-heap.h>
@@ -119,12 +120,9 @@ struct _GstImageBufferPoolPrivate
 
   // GBM library handle;
   gpointer            gbmhandle;
-#ifdef HAVE_GBM_PRIV_H
+
   // GBM device handle;
   struct gbm_device   *gbmdevice;
-#else
-  void *gbmdevice;
-#endif // HAVE_GBM_PRIV_H
 
   // Map of data FDs and ION handles on case ION memory is used OR
   // map of data FDs and GBM buffer objects if GBM memory is used.
@@ -132,7 +130,6 @@ struct _GstImageBufferPoolPrivate
   // Mutex for protecting insert/remove from the data map.
   GMutex              lock;
 
-#ifdef HAVE_GBM_PRIV_H
   // GBM library APIs
   struct gbm_device * (*gbm_create_device) (gint fd);
   void (*gbm_device_destroy)(struct gbm_device * gbm);
@@ -141,16 +138,6 @@ struct _GstImageBufferPoolPrivate
   void (*gbm_bo_destroy) (struct gbm_bo * bo);
   gint (*gbm_bo_get_fd) (struct gbm_bo *bo);
   gint (*gbm_perform) (int operation,...);
-#else
-  // STUB library APIs
-  void * (*gbm_create_device) (gint fd);
-  void (*gbm_device_destroy)(void * gbm);
-  void * (*gbm_bo_create) (void * gbm, guint width,
-                                    guint height, guint format, guint flags);
-  void (*gbm_bo_destroy) (void * bo);
-  gint (*gbm_bo_get_fd) (void *bo);
-  gint (*gbm_perform) (int operation,...);
-#endif // HAVE_GBM_PRIV_H
 };
 
 #define gst_image_buffer_pool_parent_class parent_class
@@ -314,11 +301,7 @@ static GstMemory *
 gbm_device_alloc (GstImageBufferPool * vpool)
 {
   GstImageBufferPoolPrivate *priv = vpool->priv;
-#ifdef HAVE_GBM_PRIV_H
   struct gbm_bo *bo = NULL;
-#else
-  void *bo = NULL;
-#endif // HAVE_GBM_PRIV_H
   gint fd = -1, format = 0, usage = 0;
 
   format = gst_video_format_to_gbm_format (GST_VIDEO_INFO_FORMAT (&priv->info));
@@ -357,11 +340,7 @@ static void
 gbm_device_free (GstImageBufferPool * vpool, gint fd)
 {
   GstImageBufferPoolPrivate *priv = vpool->priv;
-#ifdef HAVE_GBM_PRIV_H
   struct gbm_bo *bo = NULL;
-#else
-  void *bo = NULL;
-#endif // HAVE_GBM_PRIV_H
 
   GST_DEBUG_OBJECT (vpool, "Closing GBM memory FD %d", fd);
 
