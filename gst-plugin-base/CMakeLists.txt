@@ -22,6 +22,9 @@ include(CheckIncludeFileCXX)
 # Check whether MMM color format header is present.
 check_include_file("display/media/mmm_color_fmt.h" HAVE_MMM_COLOR_FMT_H)
 
+# Check whether MSM media info header is present.
+check_include_file("media/msm_media_info.h" HAVE_MSM_MEDIA_INFO_H)
+
 # Check whether DMA HEAP header is present.
 check_include_file("linux/dma-heap.h" HAVE_LINUX_DMA_HEAP_H)
 
