@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -63,6 +63,7 @@
 
 #include "videocomposersinkpad.h"
 
+#include <gst/video/video-utils.h>
 #include <gst/utils/common-utils.h>
 
 GST_DEBUG_CATEGORY_STATIC (gst_video_composer_sinkpad_debug);
@@ -117,7 +118,7 @@ gst_video_composer_sinkpad_transform_caps (GstAggregatorPad * pad,
   result = gst_caps_new_empty ();
 
   // In case there is no featureless or memory:GBM caps structure add one.
-  if (!gst_caps_is_empty (caps) &&
+  if (gst_is_gbm_supported () && !gst_caps_is_empty (caps) &&
       !gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
     structure = gst_caps_get_structure (caps, 0);
     features = gst_caps_features_new (GST_CAPS_FEATURE_MEMORY_GBM, NULL);
@@ -350,8 +351,6 @@ gst_video_composer_sinkpad_setcaps (GstAggregatorPad * pad,
     gst_video_info_free (GST_VIDEO_COMPOSER_SINKPAD (pad)->info);
 
   GST_VIDEO_COMPOSER_SINKPAD (pad)->info = gst_video_info_copy (&info);
-  GST_VIDEO_COMPOSER_SINKPAD (pad)->isubwc =
-      gst_caps_has_compression (caps, "ubwc");
 
   return TRUE;
 }
@@ -642,7 +641,6 @@ gst_video_composer_sinkpad_init (GstVideoComposerSinkPad * sinkpad)
 
   sinkpad->index  = 0;
   sinkpad->info   = NULL;
-  sinkpad->isubwc = FALSE;
 
   sinkpad->zorder        = DEFAULT_PROP_Z_ORDER;
   sinkpad->crop.x        = DEFAULT_PROP_CROP_X;
