@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 
 echo "Pipeline builder script initiated!"
-pipeline='export XDG_RUNTIME_DIR=/dev/socket/weston && export WAYLAND_DISPLAY=wayland-1 && gst-launch-1.0 -e --gst-debug=2 '
+pipeline='export XDG_RUNTIME_DIR=/dev/socket/weston && export WAYLAND_DISPLAY=wayland-1 && gst-launch-1.0 -e '
 help="In order to run the pipeline:\n"
 usbsrc=false
 segmentation=false
@@ -13,6 +13,7 @@ echo "Select pipeline input:"
 echo "1) Video file"
 echo "2) USB camera"
 echo "3) RTSP Source"
+echo "4) Built-in camera"
 
 while read input
 do
@@ -47,12 +48,23 @@ do
             unset rtsp_src
             break
             ;;
+        "4")
+            echo "Selected input: Built-in camera!"
+            read -p 'Please specify the camera id for qtiqmmfsrc camera property (for ex: 0):' cam_id
+            pipeline+="qtiqmmfsrc camera=${cam_id} ! video/x-raw, format=NV12, width=1920, height=1080, framerate=30/1 ! "
+            livesrc=true
+            help+="Please make sure that the camera id for qtiqmmfsrc camera property matches an existing camera.\n"
+            help+="\n"
+            unset cam_id
+            break
+            ;;
         *)
             echo "Invalid input!"
             echo "Select pipeline input:"
             echo "1) Video file"
             echo "2) USB camera"
             echo "3) RTSP source"
+            echo "4) Built-in camera"
             ;;
     esac
 done
@@ -68,8 +80,8 @@ do
         "1")
             echo "Selected model: Detection - FootTrackNet Quantized!"
             pipeline+='tee name=t_split_0 t_split_0. ! qtimetamux name=metamux t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/etc/models/foot_track_net_quantized.tflite ! queue ! qtimlvdetection threshold=90.0 results=10 module=qpd constants="qpd,q-offsets=<0.0,95.0,114.0,0.0>,q-scales=<0.0037073439452797174,0.4590655267238617,2.336696147918701,0.00390625>;" labels=/etc/labels/foot_track_net.labels ! text/x-raw ! queue ! metamux. metamux. ! qtivoverlay engine=gles ! queue ! '
-            help+="Please download the model and label files from here: https://aihub.qualcomm.com/models/foot_track_net_quantized\n"
-            help+="Make sure to select your device and set TorchScript -> TFLite before downloading!\n"
+            help+="Please download the model and label files from here: https://aihub.qualcomm.com/models/foot_track_net\n"
+            help+="Make sure to select your device, then select 'TFLite' under 'Choose runtime' and 'w8a8' under 'Choose Precision' before downloading!\n"
             help+="Push the Model file on the device at '/etc/models/' and name it 'foot_track_net_quantized.tflite'\n"
             help+="Push the label file on the device at '/etc/labels/foot_track_net.labels'\n"
             help+="\n"
@@ -78,8 +90,8 @@ do
         "2")
             echo "Selected model: Classification - ResNet101 Quantized!"
             pipeline+='tee name=t_split_0 t_split_0. ! qtimetamux name=metamux t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/etc/models/resnet101_quantized.tflite ! queue ! qtimlvclassification threshold=51.0 results=5 module=mobilenet labels=/etc/labels/resnet101.labels extra-operation=softmax constants="Mobilenet,q-offsets=<51.0>,q-scales=<0.14674407243728638>;" ! text/x-raw ! queue ! metamux. metamux. ! qtioverlay engine=gles ! queue ! '
-            help+="Please download the model and label files from here: https://aihub.qualcomm.com/models/resnet101_quantized\n"
-            help+="Make sure to select your device and set TorchScript -> TFLite before downloading!\n"
+            help+="Please download the model and label files from here: https://aihub.qualcomm.com/models/resnet101\n"
+            help+="Make sure to select your device, then select 'TFLite' under 'Choose runtime' and 'w8a8' under 'Choose Precision' before downloading!\n"
             help+="Push the Model file on the device at '/etc/models/' and name it 'resnet101_quantized.tflite'\n"
             help+="Push the label file on the device at '/etc/labels/resnet101.labels'\n"
             help+="\n"
@@ -92,8 +104,8 @@ do
             fi
             segmentation=true
             pipeline+='tee name=t_split_0 t_split_0. ! queue ! mixer. t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/etc/models/ffnet_40s_quantized.tflite ! queue ! qtimlvsegmentation module=deeplab-argmax labels=/etc/labels/dv3-argmax.labels constants="FFNet-40S,q-offsets=<178.0>,q-scales=<0.34114333987236023>;" ! queue ! mixer. qtivcomposer name=mixer background=0 sink_0::position="<0, 0>" sink_0::dimensions="<1280, 720>" sink_1::position="<0, 0>" sink_1::dimensions="<1280, 720>" sink_1::alpha=0.5 mixer. ! queue ! '
-            help+="Please download the model and label files from here: https://aihub.qualcomm.com/models/ffnet_40s_quantized\n"
-            help+="Make sure to select your device and set TorchScript -> TFLite before downloading!\n"
+            help+="Please download the model and label files from here: https://aihub.qualcomm.com/models/ffnet_40s\n"
+            help+="Make sure to select your device, then select 'TFLite' under 'Choose runtime' and 'w8a8' under 'Choose Precision' before downloading!\n"
             help+="Push the Model file on the device at '/etc/models/' and name it 'ffnet_40s_quantized.tflite'\n"
             help+="Push the label file on the device at '/etc/labels/dv3-argmax.labels'\n"
             help+="\n"
@@ -110,7 +122,7 @@ do
 done
 
 echo "Select pipeline output:"
-echo "1) HDMI - Display"
+echo "1) Display"
 echo "2) Video file"
 echo "3) RTSP out"
 
@@ -118,7 +130,7 @@ while read input
 do
     case $input in
         "1")
-            echo "Selected output: HDMI - Display!"
+            echo "Selected output: Display!"
             if [ $segmentation = "true" -o $livesrc = "true" ]; then
                 pipeline+='waylandsink sync=false async=false fullscreen=true'
             elif [ $livesrc = "false" ]; then
@@ -149,7 +161,7 @@ do
         *)
             echo "Invalid input!"
             echo "Select pipeline output:"
-            echo "1) HDMI - Display"
+            echo "1) Display"
             echo "2) Video file"
             echo "3) RTSP out"
             ;;
