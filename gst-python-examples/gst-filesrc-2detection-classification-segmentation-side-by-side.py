@@ -22,30 +22,52 @@ classification labels on the top left corner
 - FFNet40S TFLite model to produce semantic segmentations for video file
 Then the results are shown side by side on the display.
 
-The file paths are hard coded in the python script as follows:
+The default file paths in the python script are as follows:
 - Detection model (YOLOv8): /opt/data/YoloV8N_Detection_Quantized.tflite
 - Detection labels: /opt/data/yolov8n.labels
 - Classification model: /opt/data/Resnet101_Quantized.tflite
 - Classification labels: /opt/data/resnet101.labels
 - Segmentation model: /opt/data/ffnet_40s_quantized.tflite
 - Segmentation labels: /opt/data/dv3-argmax.labels
-- Input video for detection: /opt/data/Draw_720p_180s_30FPS.mp4
-- Input video for classification: /opt/data/Animals_000_720p_180s_30FPS.mp4
-- Input video for segmentation: /opt/data/Street_Bridge_720p_180s_30FPS.MOV
+- Input video for detection: /opt/data/detection_input.mp4
+- Input video for classification: /opt/data/classification_input.mp4
+- Input video for segmentation: /opt/data/segmentation_input.MOV
+
+To override the default settings,
+please configure the corresponding module and constants as well.
 """
 
-DEFAULT_INPUT_DETECTION_0 = "/opt/data/Draw_720p_180s_30FPS.mp4"
-DEFAULT_INPUT_DETECTION_1 = "/opt/data/Draw_720p_180s_30FPS.mp4"
-DEFAULT_INPUT_CLASSIFICATION = "/opt/data/Animals_000_720p_180s_30FPS.mp4"
-DEFAULT_INPUT_SEGMENTATION = "/opt/data/Street_Bridge_720p_180s_30FPS.MOV"
+# Configurations for Detection (0)
+DEFAULT_DETECTION_INPUT_0 = "/opt/data/detection_input.mp4"
 DEFAULT_DETECTION_MODEL_0 = "/opt/data/YoloV8N_Detection_Quantized.tflite"
+DEFAULT_DETECTION_MODULE_0 = "yolov8"
 DEFAULT_DETECTION_LABELS_0 = "/opt/data/yolov8n.labels"
+DEFAULT_DETECTION_CONSTANTS_0 = "YoloV8,q-offsets=<-107.0,-128.0,0.0>,\
+    q-scales=<3.093529462814331,0.00390625,1.0>;"
+
+# Configurations for Detection (1)
+DEFAULT_DETECTION_INPUT_1 = "/opt/data/detection_input.mp4"
 DEFAULT_DETECTION_MODEL_1 = "/opt/data/YoloV8N_Detection_Quantized.tflite"
+DEFAULT_DETECTION_MODULE_1 = "yolov8"
 DEFAULT_DETECTION_LABELS_1 = "/opt/data/yolov8n.labels"
+DEFAULT_DETECTION_CONSTANTS_1 = "YoloV8,q-offsets=<-107.0,-128.0,0.0>,\
+    q-scales=<3.093529462814331,0.00390625,1.0>;"
+
+# Configurations for Classification
+DEFAULT_CLASSIFICATION_INPUT = "/opt/data/classification_input.mp4"
 DEFAULT_CLASSIFICATION_MODEL = "/opt/data/Resnet101_Quantized.tflite"
+DEFAULT_CLASSIFICATION_MODULE = "mobilenet"
 DEFAULT_CLASSIFICATION_LABELS = "/opt/data/resnet101.labels"
+DEFAULT_CLASSIFICATION_CONSTANTS = "Mobilenet,q-offsets=<-82.0>,\
+    q-scales=<0.21351955831050873>;"
+
+# Configurations for Segmentation
+DEFAULT_SEGMENTATION_INPUT = "/opt/data/segmentation_input.MOV"
 DEFAULT_SEGMENTATION_MODEL = "/opt/data/ffnet_40s_quantized.tflite"
+DEFAULT_SEGMENTATION_MODULE = "deeplab-argmax"
 DEFAULT_SEGMENTATION_LABELS = "/opt/data/dv3-argmax.labels"
+DEFAULT_SEGMENTATION_CONSTANTS = "FFNet-40S,q-offsets=<50.0>,\
+    q-scales=<0.31378185749053955>;"
 
 eos_received = False
 def create_element(factory_name, name):
@@ -92,8 +114,119 @@ def construct_pipeline(pipe):
         default=argparse.SUPPRESS,
         help=DESCRIPTION,
     )
+    parser.add_argument(
+        "--detection_input_0", type=str, default=DEFAULT_DETECTION_INPUT_0,
+        help="Input File Path for Detection (0)"
+    )
+    parser.add_argument(
+        "--detection_model_0", type=str, default=DEFAULT_DETECTION_MODEL_0,
+        help="Path to TfLite Object Detection Model (0)"
+    )
+    parser.add_argument(
+        "--detection_module_0", type=str, default=DEFAULT_DETECTION_MODULE_0,
+        help="Object Detection module for post-procesing (0)"
+    )
+    parser.add_argument(
+        "--detection_labels_0", type=str, default=DEFAULT_DETECTION_LABELS_0,
+        help="Path to TfLite Object Detection Labels (0)"
+    )
+    parser.add_argument(
+        "--detection_constants_0", type=str, default=DEFAULT_DETECTION_CONSTANTS_0,
+        help="Constants for TfLite Object Detection Model (0)"
+    )
+    parser.add_argument(
+        "--detection_input_1", type=str, default=DEFAULT_DETECTION_INPUT_1,
+        help="Input File Path for Detection (1)"
+    )
+    parser.add_argument(
+        "--detection_model_1", type=str, default=DEFAULT_DETECTION_MODEL_1,
+        help="Path to TfLite Object Detection Model (1)"
+    )
+    parser.add_argument(
+        "--detection_module_1", type=str, default=DEFAULT_DETECTION_MODULE_1,
+        help="Object Detection module for post-procesing (1)"
+    )
+    parser.add_argument(
+        "--detection_labels_1", type=str, default=DEFAULT_DETECTION_LABELS_1,
+        help="Path to TfLite Object Detection Labels (1)"
+    )
+    parser.add_argument(
+        "--detection_constants_1", type=str, default=DEFAULT_DETECTION_CONSTANTS_1,
+        help="Constants for TfLite Object Detection Model (1)"
+    )
+    parser.add_argument(
+        "--classification_input", type=str, default=DEFAULT_CLASSIFICATION_INPUT,
+        help="Input File Path for Classification"
+    )
+    parser.add_argument(
+        "--classification_model", type=str, default=DEFAULT_CLASSIFICATION_MODEL,
+        help="Path to TfLite Classification Model"
+    )
+    parser.add_argument(
+        "--classification_module", type=str, default=DEFAULT_CLASSIFICATION_MODULE,
+        help="Classification module for post-procesing"
+    )
+    parser.add_argument(
+        "--classification_labels", type=str, default=DEFAULT_CLASSIFICATION_LABELS,
+        help="Path to TfLite Classification Labels"
+    )
+    parser.add_argument(
+        "--classification_constants", type=str, default=DEFAULT_CLASSIFICATION_CONSTANTS,
+        help="Constants for TfLite Classification Model"
+    )
+    parser.add_argument(
+        "--segmentation_input", type=str, default=DEFAULT_SEGMENTATION_INPUT,
+        help="Input File Path for Segmentation"
+    )
+    parser.add_argument(
+        "--segmentation_model", type=str, default=DEFAULT_SEGMENTATION_MODEL,
+        help="Path to TfLite Segmentation Model"
+    )
+    parser.add_argument(
+        "--segmentation_module", type=str, default=DEFAULT_SEGMENTATION_MODULE,
+        help="Segmentation module for post-procesing"
+    )
+    parser.add_argument(
+        "--segmentation_labels", type=str, default=DEFAULT_SEGMENTATION_LABELS,
+        help="Path to TfLite Segmentation Labels"
+    )
+    parser.add_argument(
+        "--segmentation_constants", type=str, default=DEFAULT_SEGMENTATION_CONSTANTS,
+        help="Constants for TfLite Segmentation Model"
+    )
 
     args = parser.parse_args()
+
+    detection = [
+        {
+        "input": args.detection_input_0,
+        "model": args.detection_model_0,
+        "module": args.detection_module_0,
+        "labels": args.detection_labels_0,
+        "constants": args.detection_constants_0
+        },
+        {
+        "input": args.detection_input_1,
+        "model": args.detection_model_1,
+        "module": args.detection_module_1,
+        "labels": args.detection_labels_1,
+        "constants": args.detection_constants_1
+        }
+    ]
+    classification = {
+        "input": args.classification_input,
+        "model": args.classification_model,
+        "module": args.classification_module,
+        "labels": args.classification_labels,
+        "constants": args.classification_constants
+    }
+    segmentation = {
+        "input": args.segmentation_input,
+        "model": args.segmentation_model,
+        "module": args.segmentation_module,
+        "labels": args.segmentation_labels,
+        "constants": args.segmentation_constants
+    }
 
     # Create all elements
     # fmt: off
@@ -167,7 +300,7 @@ def construct_pipeline(pipe):
     # Set element properties
     # Stream 0
     Gst.util_set_object_arg(
-        elements["filesrc_0"], "location", DEFAULT_INPUT_DETECTION_0
+        elements["filesrc_0"], "location", detection[0]["input"]
     )
 
     Gst.util_set_object_arg(elements["h264parse_0"], "config-interval", "1")
@@ -189,20 +322,19 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["mltflite_0"],
         "model",
-        DEFAULT_DETECTION_MODEL_0,
+        detection[0]["model"],
     )
 
     Gst.util_set_object_arg(elements["mlvdetection_0"], "threshold", "75.0")
     Gst.util_set_object_arg(elements["mlvdetection_0"], "results", "4")
-    Gst.util_set_object_arg(elements["mlvdetection_0"], "module", "yolov8")
     Gst.util_set_object_arg(
-        elements["mlvdetection_0"], "labels", DEFAULT_DETECTION_LABELS_0
+        elements["mlvdetection_0"], "module", detection[0]["module"]
     )
     Gst.util_set_object_arg(
-        elements["mlvdetection_0"],
-        "constants",
-        "YoloV8,q-offsets=<-107.0,-128.0,0.0>,\
-        q-scales=<3.093529462814331,0.00390625,1.0>;",
+        elements["mlvdetection_0"], "labels", detection[0]["labels"]
+    )
+    Gst.util_set_object_arg(
+        elements["mlvdetection_0"], "constants", detection[0]["constants"],
     )
 
     Gst.util_set_object_arg(elements["capsfilter_0"], "caps", "text/x-raw")
@@ -211,7 +343,7 @@ def construct_pipeline(pipe):
 
     # Stream 1
     Gst.util_set_object_arg(
-        elements["filesrc_1"], "location", DEFAULT_INPUT_DETECTION_1
+        elements["filesrc_1"], "location", detection[1]["input"]
     )
 
     Gst.util_set_object_arg(elements["h264parse_1"], "config-interval", "1")
@@ -233,20 +365,17 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["mltflite_1"],
         "model",
-        DEFAULT_DETECTION_MODEL_1,
+        detection[1]["model"],
     )
 
     Gst.util_set_object_arg(elements["mlvdetection_1"], "threshold", "75.0")
     Gst.util_set_object_arg(elements["mlvdetection_1"], "results", "4")
-    Gst.util_set_object_arg(elements["mlvdetection_1"], "module", "yolov8")
+    Gst.util_set_object_arg(elements["mlvdetection_1"], "module", detection[1]["module"])
     Gst.util_set_object_arg(
-        elements["mlvdetection_1"], "labels", DEFAULT_DETECTION_LABELS_1
+        elements["mlvdetection_1"], "labels", detection[1]["labels"]
     )
     Gst.util_set_object_arg(
-        elements["mlvdetection_1"],
-        "constants",
-        "YoloV8,q-offsets=<-107.0,-128.0,0.0>,\
-        q-scales=<3.093529462814331,0.00390625,1.0>;",
+        elements["mlvdetection_1"], "constants", detection[1]["constants"],
     )
 
     Gst.util_set_object_arg(elements["capsfilter_1"], "caps", "text/x-raw")
@@ -255,9 +384,7 @@ def construct_pipeline(pipe):
 
     # Stream 2
     Gst.util_set_object_arg(
-        elements["filesrc_2"],
-        "location",
-        DEFAULT_INPUT_CLASSIFICATION,
+        elements["filesrc_2"], "location", classification["input"],
     )
 
     Gst.util_set_object_arg(elements["h264parse_2"], "config-interval", "2")
@@ -277,24 +404,22 @@ def construct_pipeline(pipe):
         "QNNExternalDelegate,backend_type=htp;",
     )
     Gst.util_set_object_arg(
-        elements["mltflite_2"], "model", DEFAULT_CLASSIFICATION_MODEL
+        elements["mltflite_2"], "model", classification["model"]
     )
 
     Gst.util_set_object_arg(elements["mlvclassification"], "threshold", "51.0")
     Gst.util_set_object_arg(elements["mlvclassification"], "results", "5")
     Gst.util_set_object_arg(
-        elements["mlvclassification"], "module", "mobilenet"
+        elements["mlvclassification"], "module", classification["module"]
     )
     Gst.util_set_object_arg(
-        elements["mlvclassification"], "labels", DEFAULT_CLASSIFICATION_LABELS
+        elements["mlvclassification"], "labels", classification["labels"]
     )
     Gst.util_set_object_arg(
         elements["mlvclassification"], "extra-operation", "softmax"
     )
     Gst.util_set_object_arg(
-        elements["mlvclassification"],
-        "constants",
-        "Mobilenet,q-offsets=<-82.0>,q-scales=<0.21351955831050873>;",
+        elements["mlvclassification"], "constants", classification["constants"],
     )
 
     Gst.util_set_object_arg(elements["capsfilter_2"], "caps", "text/x-raw")
@@ -303,9 +428,7 @@ def construct_pipeline(pipe):
 
     # Stream 3
     Gst.util_set_object_arg(
-        elements["filesrc_3"],
-        "location",
-        DEFAULT_INPUT_SEGMENTATION,
+        elements["filesrc_3"], "location", segmentation["input"],
     )
 
     Gst.util_set_object_arg(elements["h264parse_3"], "config-interval", "2")
@@ -325,19 +448,17 @@ def construct_pipeline(pipe):
         "QNNExternalDelegate,backend_type=htp;",
     )
     Gst.util_set_object_arg(
-        elements["mltflite_3"], "model", DEFAULT_SEGMENTATION_MODEL
+        elements["mltflite_3"], "model", segmentation["model"]
     )
 
     Gst.util_set_object_arg(
-        elements["mlvsegmentation"], "module", "deeplab-argmax"
+        elements["mlvsegmentation"], "module", segmentation["module"]
     )
     Gst.util_set_object_arg(
-        elements["mlvsegmentation"], "labels", DEFAULT_SEGMENTATION_LABELS
+        elements["mlvsegmentation"], "labels", segmentation["labels"]
     )
     Gst.util_set_object_arg(
-        elements["mlvsegmentation"],
-        "constants",
-        "FFNet-40S,q-offsets=<50.0>,q-scales=<0.31378185749053955>;",
+        elements["mlvsegmentation"], "constants", segmentation["constants"],
     )
 
     # Side by side all streams

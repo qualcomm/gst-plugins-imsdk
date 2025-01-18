@@ -87,6 +87,7 @@
   g_string_append_printf (string, " %.*s Pipeline Controls %.*s\n", \
       30, EQUAL_LINE, 30, EQUAL_LINE);
 
+#define NON_ML_VIDEO_MODE_OPTION     "n"
 #define ML_FRAMING_ENABLE_OPTION     "f"
 #define ML_FRAMING_POS_THOLD_OPTION  "p"
 #define ML_FRAMING_DIMS_THOLD_OPTION "d"
@@ -100,13 +101,18 @@
 #define PIPELINE_EOS_MESSAGE   "PIPELINE_EOS_MSG"
 #define PIPELINE_ERROR_MESSAGE "PIPELINE_ERROR_MSG"
 
-#define GST_VIDEO_PIPELINE "qtiqmmfsrc name=camsrc " \
+#define GST_ML_VIDEO_PIPELINE "qtiqmmfsrc name=camsrc " \
     "camsrc. ! capsfilter name=mlfilter caps=video/x-raw(memory:GBM),format=NV12,width=1280,height=720,framerate=30/1 ! " \
     "queue name=camsrc_queue ! qtimlvconverter name=mlvconverter ! queue name=mlvconverter_queue ! " \
     "qtimltflite name=mltflite delegate=hexagon model=/data/yolov5m-320x320-int8.tflite ! queue name=mltflite_queue ! " \
     "qtimlvdetection name=mlvdetection threshold=60.0 results=1 module=yolov5 labels=/data/yolov5m.labels " \
     "constants=\"YoloV5,q-offsets=<3.0>,q-scales=<0.005047998391091824>;\" ! " \
     "capsfilter name=mldetection_filter caps=text/x-raw ! queue name=mlvdetection_queue ! appsink name=mlsink " \
+    "camsrc. ! capsfilter name=umdvfilter ! queue name=vqueue ! qtivtransform name=vtransform ! queue name=umdvqueue ! " \
+    "appsink name=umdvsink"
+
+#define GST_NON_ML_VIDEO_PIPELINE "qtiqmmfsrc name=camsrc " \
+    "camsrc. ! capsfilter name=mlfilter caps=video/x-raw(memory:GBM),format=NV12,width=1280,height=720,framerate=30/1 ! fakesink " \
     "camsrc. ! capsfilter name=umdvfilter ! queue name=vqueue ! qtivtransform name=vtransform ! queue name=umdvqueue ! " \
     "appsink name=umdvsink"
 
@@ -192,17 +198,24 @@ static AutoFrmOps afrmops = {
 
 struct _MainOps
 {
-  gchar * video;
-  gchar * audiosrc;
-  gchar * audiosink;
-  gchar * cfgfile;
+  gchar    *video;
+  gchar    *audiosrc;
+  gchar    *audiosink;
+  gchar    *cfgfile;
+  gboolean nonmlmode;
 };
 
 static MainOps mainops = {
-  NULL, NULL, NULL, NULL
+  NULL, NULL, NULL, NULL, FALSE
 };
 
 static const GOptionEntry entries[] = {
+    { "non-ml-video-mode", 'n', 0, G_OPTION_ARG_NONE,
+      &mainops.nonmlmode,
+      "Use non-ML or Machine Learning GST video pipeline "
+      "(default: false)",
+      NULL
+    },
     { "uvc", 'v', 0, G_OPTION_ARG_STRING,
       &mainops.video,
       "UVC device "
@@ -1373,7 +1386,11 @@ create_video_pipeline (GstServiceContext * srvctx)
   GError *error = NULL;
 
   // Create the empty video pipeline.
-  srvctx->vpipeline = gst_parse_launch (GST_VIDEO_PIPELINE, &error);
+  if (mainops.nonmlmode) {
+    srvctx->vpipeline = gst_parse_launch (GST_NON_ML_VIDEO_PIPELINE, &error);
+  } else {
+    srvctx->vpipeline = gst_parse_launch (GST_ML_VIDEO_PIPELINE, &error);
+  }
 
   if (srvctx->vpipeline == NULL) {
     g_printerr ("\nPipeline could not be created, error: %s!\n",
@@ -1664,7 +1681,8 @@ static gboolean umd_reconfigure_pipeline (GstServiceContext *srvctx, uint32_t fo
   // Add vtransform plugin only if ML is enabled and crop is external.
   nextplugin = c2vqueue ? c2vqueue : umdvqueue;
 
-  if (afrmops.enable && (afrmops.croptype == ML_CROP_EXTERNAL) &&
+  if (!mainops.nonmlmode && afrmops.enable &&
+      (afrmops.croptype == ML_CROP_EXTERNAL) &&
       (NULL == vtrans) && (NULL == vqueue)) {
     vtrans = gst_element_factory_make ("qtivtransform", "vtransform");
     vqueue = gst_element_factory_make ("queue", "vqueue");
@@ -1685,7 +1703,8 @@ static gboolean umd_reconfigure_pipeline (GstServiceContext *srvctx, uint32_t fo
 
     success =
         gst_element_link_many (umdvfilter, vqueue, vtrans, nextplugin, NULL);
-  } else if ((!afrmops.enable || (afrmops.croptype == ML_CROP_INTERNAL)) &&
+  } else if ((mainops.nonmlmode || !afrmops.enable ||
+             (afrmops.croptype == ML_CROP_INTERNAL)) &&
              (vtrans != NULL) && (vqueue != NULL)) {
     gst_bin_remove (GST_BIN (srvctx->vpipeline), vtrans);
     gst_bin_remove (GST_BIN (srvctx->vpipeline), vqueue);
@@ -1889,7 +1908,7 @@ setup_camera_stream (UmdVideoSetup * stmsetup, void * userdata)
   // Reset the crop parameters.
   set_crop_rectangle (srvctx->vpipeline, 0, 0, 0, 0);
 
-  if (!ml_reconfigure_pipeline (srvctx, afrmops.enable)) {
+  if (!ml_reconfigure_pipeline (srvctx, afrmops.enable && !mainops.nonmlmode)) {
     g_printerr ("\nFailed to reconfigure pipeline ML elements!\n");
     return false;
   }
@@ -3120,6 +3139,10 @@ mle_ops_menu (GAsyncQueue * messages)
 
   APPEND_CONTROLS_SECTION (options);
   g_string_append_printf (options, "   (%s) %-35s: %s\n",
+      NON_ML_VIDEO_MODE_OPTION, "Non-ML Video Mode",
+      "Choose UVC video pipeline between ml mode and non-ml mode. "
+      "In non-ml mode, gst-umd-daemon ML function cannot work ");
+  g_string_append_printf (options, "   (%s) %-35s: %s\n",
       ML_FRAMING_ENABLE_OPTION, "ML Auto Framing",
       "Enable/Disable Machine Learning based auto framing algorithm");
   g_string_append_printf (options, "   (%s) %-35s: %s\n",
@@ -3230,6 +3253,20 @@ mle_ops_menu (GAsyncQueue * messages)
       extract_integer_value (input, 0, 1, &value);
 
     afrmops.croptype = value;
+  } else if (g_str_equal (input, NON_ML_VIDEO_MODE_OPTION)) {
+    gint64 value = mainops.nonmlmode;
+
+    g_print ("\nCurrent value: %d - [0 - ml, 1 - nonml]\n",
+        mainops.nonmlmode);
+    g_print ("\nEnter new value (or press Enter to keep current one): ");
+
+    if (!wait_stdin_message (messages, &input))
+      return FALSE;
+
+    if (!g_str_equal (input, ""))
+      extract_integer_value (input, 0, 1, &value);
+
+    mainops.nonmlmode = value;
   }
 
   g_free (input);

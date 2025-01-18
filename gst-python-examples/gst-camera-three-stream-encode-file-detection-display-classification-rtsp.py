@@ -17,25 +17,39 @@ The application:
 - Uses YOLOv8 TFLite model to identify the object in scene from camera stream
 and overlay the bounding boxes over the detected objects. The results are shown
 on the display.
-- Uses Resnet101 TFLite model to classify scene from video file and overlay the
-classification labels on the top left corner. The results are streamed over RTSP
-(rtsp://127.0.0.1:8900/live)
+- Uses Resnet101 TFLite model to classify scene from camera stream and overlay
+the classification labels on the top left corner. The results are streamed over
+RTSP (rtsp://127.0.0.1:8900/live)
 
-The file paths are hard coded in the python script as follows:
+The default file paths in the python script are as follows:
 - Detection model: /opt/data/YoloV8N_Detection_Quantized.tflite
 - Detection labels: /opt/data/yolov8n.labels
 - Classification model: /opt/data/Resnet101_Quantized.tflite
 - Classification labels: /opt/data/resnet101.labels
+
+To override the default settings,
+please configure the corresponding module and constants as well.
 """
 
+# Configurations for Detection
 DEFAULT_DETECTION_MODEL = "/opt/data/YoloV8N_Detection_Quantized.tflite"
 DEFAULT_DETECTION_LABELS = "/opt/data/yolov8n.labels"
+DEFAULT_DETECTION_MODULE = "yolov8"
+DEFAULT_DETECTION_CONSTANTS = "YoloV8,q-offsets=<-107.0,-128.0,0.0>,\
+    q-scales=<3.093529462814331,0.00390625,1.0>;"
+
+# Configurations for Classification
 DEFAULT_CLASSIFICATION_MODEL = "/opt/data/Resnet101_Quantized.tflite"
 DEFAULT_CLASSIFICATION_LABELS = "/opt/data/resnet101.labels"
-DEFAULT_OUTPUT_FILE = "/opt/data/test.mp4"
+DEFAULT_CLASSIFICATION_MODULE = "mobilenet"
+DEFAULT_CLASSIFICATION_CONSTANTS = "Mobilenet,q-offsets=<-82.0>,\
+    q-scales=<0.21351955831050873>;"
+
 DEFAULT_RTSP_ADDRESS = "127.0.0.1"
 DEFAULT_RTSP_PORT = "8900"
 DEFAULT_RTSP_MPOINT = "/live"
+
+DEFAULT_OUTPUT_FILE = "/opt/data/test.mp4"
 
 eos_received = False
 def create_element(factory_name, name):
@@ -88,8 +102,53 @@ def construct_pipeline(pipe):
         default=DEFAULT_OUTPUT_FILE,
         help="Pipeline Output Path",
     )
+    parser.add_argument(
+        "--detection_model", type=str, default=DEFAULT_DETECTION_MODEL,
+        help="Path to TfLite Object Detection Model"
+    )
+    parser.add_argument(
+        "--detection_module", type=str, default=DEFAULT_DETECTION_MODULE,
+        help="Object Detection module for post-procesing"
+    )
+    parser.add_argument(
+        "--detection_labels", type=str, default=DEFAULT_DETECTION_LABELS,
+        help="Path to TfLite Object Detection Labels"
+    )
+    parser.add_argument(
+        "--detection_constants", type=str, default=DEFAULT_DETECTION_CONSTANTS,
+        help="Constants for TfLite Object Detection Model"
+    )
+    parser.add_argument(
+        "--classification_model", type=str, default=DEFAULT_CLASSIFICATION_MODEL,
+        help="Path to TfLite Classification Model"
+    )
+    parser.add_argument(
+        "--classification_module", type=str, default=DEFAULT_CLASSIFICATION_MODULE,
+        help="Classification module for post-procesing"
+    )
+    parser.add_argument(
+        "--classification_labels", type=str, default=DEFAULT_CLASSIFICATION_LABELS,
+        help="Path to TfLite Classification Labels"
+    )
+    parser.add_argument(
+        "--classification_constants", type=str, default=DEFAULT_CLASSIFICATION_CONSTANTS,
+        help="Constants for TfLite Classification Model"
+    )
 
     args = parser.parse_args()
+
+    detection = {
+        "model": args.detection_model,
+        "module": args.detection_module,
+        "labels": args.detection_labels,
+        "constants": args.detection_constants
+    }
+    classification = {
+        "model": args.classification_model,
+        "module": args.classification_module,
+        "labels": args.classification_labels,
+        "constants": args.classification_constants
+    }
 
     # Create all elements
     # fmt: off
@@ -176,20 +235,17 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["mltflite_0"],
         "model",
-        DEFAULT_DETECTION_MODEL,
+        detection["model"],
     )
 
     Gst.util_set_object_arg(elements["mlvdetection"], "threshold", "75.0")
     Gst.util_set_object_arg(elements["mlvdetection"], "results", "4")
-    Gst.util_set_object_arg(elements["mlvdetection"], "module", "yolov8")
+    Gst.util_set_object_arg(elements["mlvdetection"], "module", detection["module"])
     Gst.util_set_object_arg(
-        elements["mlvdetection"],
-        "constants",
-        "YoloV8,q-offsets=<-107.0,-128.0,0.0>,\
-        q-scales=<3.093529462814331,0.00390625,1.0>;",
+        elements["mlvdetection"], "constants", detection["constants"],
     )
     Gst.util_set_object_arg(
-        elements["mlvdetection"], "labels", DEFAULT_DETECTION_LABELS
+        elements["mlvdetection"], "labels", detection["labels"]
     )
 
     Gst.util_set_object_arg(elements["capsfilter_2"], "caps", "text/x-raw")
@@ -219,24 +275,22 @@ def construct_pipeline(pipe):
         "QNNExternalDelegate,backend_type=htp;",
     )
     Gst.util_set_object_arg(
-        elements["mltflite_1"], "model", DEFAULT_CLASSIFICATION_MODEL
+        elements["mltflite_1"], "model", classification["model"]
     )
 
     Gst.util_set_object_arg(elements["mlvclassification"], "threshold", "51.0")
     Gst.util_set_object_arg(elements["mlvclassification"], "results", "5")
     Gst.util_set_object_arg(
-        elements["mlvclassification"], "module", "mobilenet"
+        elements["mlvclassification"], "module", classification["module"]
     )
     Gst.util_set_object_arg(
-        elements["mlvclassification"], "labels", DEFAULT_CLASSIFICATION_LABELS
+        elements["mlvclassification"], "labels", classification["labels"]
     )
     Gst.util_set_object_arg(
         elements["mlvclassification"], "extra-operation", "softmax"
     )
     Gst.util_set_object_arg(
-        elements["mlvclassification"],
-        "constants",
-        "Mobilenet,q-offsets=<-82.0>,q-scales=<0.21351955831050873>;",
+        elements["mlvclassification"], "constants", classification["constants"],
     )
 
     Gst.util_set_object_arg(elements["capsfilter_4"], "caps", "text/x-raw")

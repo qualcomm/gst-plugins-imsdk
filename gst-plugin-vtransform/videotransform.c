@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -67,6 +67,9 @@
 
 #include "videotransform.h"
 
+#include <gst/video/gstqtibufferpool.h>
+#include <gst/video/gstqtiallocator.h>
+#include <gst/video/video-utils.h>
 #include <gst/video/gstimagepool.h>
 #include <gst/utils/common-utils.h>
 
@@ -111,10 +114,10 @@ G_DEFINE_TYPE (GstVideoTransform, gst_video_transform, GST_TYPE_BASE_TRANSFORM);
 #define GST_VIDEO_FPS_RANGE "(fraction) [ 0, 255 ]"
 
 #define GST_SINK_VIDEO_FORMATS \
-  "{ NV12, NV21, YUY2, P010_10LE, NV12_10LE32, RGBA, BGRA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR, GRAY8 }"
+  "{ NV12, NV21, YUY2, P010_10LE, NV12_10LE32, RGBA, BGRA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR, GRAY8, NV12_Q08C }"
 
 #define GST_SRC_VIDEO_FORMATS \
-  "{ NV12, NV21, YUY2, P010_10LE, RGBA, BGRA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR, GRAY8 }"
+  "{ NV12, NV21, YUY2, P010_10LE, RGBA, BGRA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR, GRAY8, NV12_Q08C }"
 
 enum
 {
@@ -127,14 +130,6 @@ enum
   PROP_DESTINATION,
   PROP_BACKGROUND,
 };
-
-static GstStaticCaps gst_video_transform_static_sink_caps =
-    GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_SINK_VIDEO_FORMATS) ";"
-    GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM, GST_SINK_VIDEO_FORMATS));
-
-static GstStaticCaps gst_video_transform_static_src_caps =
-    GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_SRC_VIDEO_FORMATS) ";"
-    GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM, GST_SRC_VIDEO_FORMATS));
 
 static GType
 gst_video_trasform_rotate_get_type (void)
@@ -167,8 +162,19 @@ gst_video_transform_sink_caps (void)
 {
   static GstCaps *caps = NULL;
   static gsize inited = 0;
+
   if (g_once_init_enter (&inited)) {
-    caps = gst_static_caps_get (&gst_video_transform_static_sink_caps);
+    caps = gst_caps_from_string (GST_VIDEO_CAPS_MAKE (GST_SINK_VIDEO_FORMATS));
+
+    if (gst_is_gbm_supported()) {
+      GstCaps *tmplcaps = gst_caps_from_string (
+          GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
+              GST_SINK_VIDEO_FORMATS));
+
+      caps = gst_caps_make_writable (caps);
+      gst_caps_append (caps, tmplcaps);
+    }
+
     g_once_init_leave (&inited, 1);
   }
   return caps;
@@ -181,7 +187,17 @@ gst_video_transform_src_caps (void)
   static gsize inited = 0;
 
   if (g_once_init_enter (&inited)) {
-    caps = gst_static_caps_get (&gst_video_transform_static_src_caps);
+    caps = gst_caps_from_string (GST_VIDEO_CAPS_MAKE (GST_SRC_VIDEO_FORMATS));
+
+    if (gst_is_gbm_supported()) {
+      GstCaps *tmplcaps = gst_caps_from_string (
+          GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
+              GST_SRC_VIDEO_FORMATS));
+
+      caps = gst_caps_make_writable (caps);
+      gst_caps_append (caps, tmplcaps);
+    }
+
     g_once_init_leave (&inited, 1);
   }
   return caps;
@@ -262,7 +278,6 @@ gst_video_transform_determine_passthrough (GstVideoTransform * vtrans)
   passthrough &= vtrans->rotation == GST_VIDEO_TRANSFORM_ROTATE_NONE;
 
   passthrough &= vtrans->outfeature == vtrans->infeature;
-  passthrough &= vtrans->outubwc == vtrans->inubwc;
 
   GST_DEBUG_OBJECT (vtrans, "Passthrough has been %s",
       passthrough ? "enabled" : "disabled");
@@ -283,29 +298,64 @@ gst_video_transform_create_pool (GstVideoTransform * vtrans, GstCaps * caps)
     return NULL;
   }
 
-  // If downstream allocation query supports GBM, allocate gbm memory.
-  if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
-    GST_INFO_OBJECT (vtrans, "Uses GBM memory");
-    pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
+  if (gst_is_gbm_supported()) {
+    // If downstream allocation query supports GBM, allocate gbm memory.
+    if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
+      GST_INFO_OBJECT (vtrans, "Uses GBM memory");
+      pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
+    } else {
+      GST_INFO_OBJECT (vtrans, "Uses ION memory");
+      pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
+    }
+
+    config = gst_buffer_pool_get_config (pool);
+
+    allocator = gst_fd_allocator_new ();
+
+    gst_buffer_pool_config_add_option (config,
+      GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
   } else {
-    GST_INFO_OBJECT (vtrans, "Uses ION memory");
-    pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
+    GstVideoFormat format;
+    GstVideoAlignment align;
+    gboolean success;
+    guint width, height;
+    gint stride, scanline;
+
+    width = GST_VIDEO_INFO_WIDTH (&info);
+    height = GST_VIDEO_INFO_HEIGHT (&info);
+    format = GST_VIDEO_INFO_FORMAT (&info);
+
+    success = gst_adreno_utils_compute_alignment(width, height, format,
+        &stride, &scanline);
+    if (!success) {
+      GST_ERROR_OBJECT(vtrans,"Failed to get alignment");
+      return NULL;
+    }
+
+    pool = gst_qti_buffer_pool_new ();
+    config = gst_buffer_pool_get_config (pool);
+
+    gst_video_alignment_reset (&align);
+    align.padding_bottom = scanline - height;
+    align.padding_right = stride - width;
+    gst_video_info_align (&info, &align);
+
+    gst_buffer_pool_config_add_option (config,
+        GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
+    gst_buffer_pool_config_set_video_alignment (config, &align);
+
+    allocator = gst_qti_allocator_new (NULL);
+    if (allocator == NULL) {
+      GST_ERROR_OBJECT (vtrans, "Failed to create QTI allocator");
+      gst_clear_object (&pool);
+      return NULL;
+    }
   }
 
-  config = gst_buffer_pool_get_config (pool);
   gst_buffer_pool_config_set_params (config, caps, info.size,
       DEFAULT_PROP_MIN_BUFFERS, DEFAULT_PROP_MAX_BUFFERS);
-
-  allocator = gst_fd_allocator_new ();
   gst_buffer_pool_config_set_allocator (config, allocator, NULL);
   gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
-  gst_buffer_pool_config_add_option (config,
-      GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
-
-  if (gst_caps_has_compression (caps, "ubwc")) {
-    gst_buffer_pool_config_add_option (config,
-        GST_IMAGE_BUFFER_POOL_OPTION_UBWC_MODE);
-  }
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING_OBJECT (vtrans, "Failed to set pool configuration!");
@@ -356,12 +406,16 @@ gst_video_transform_propose_allocation (GstBaseTransform * base,
 
   if (needpool) {
     GstStructure *structure = NULL;
+    GstAllocator *allocator = NULL;
 
     pool = gst_video_transform_create_pool (vtrans, caps);
     structure = gst_buffer_pool_get_config (pool);
 
     // Set caps and size in query.
     gst_buffer_pool_config_set_params (structure, caps, size, 0, 0);
+
+    gst_buffer_pool_config_get_allocator (structure, &allocator, NULL);
+    gst_query_add_allocation_param (outquery, allocator, NULL);
 
     if (!gst_buffer_pool_set_config (pool, structure)) {
       GST_ERROR_OBJECT (vtrans, "Failed to set buffer pool configuration!");
@@ -499,8 +553,9 @@ gst_video_transform_transform_caps (GstBaseTransform * base,
   result = gst_caps_new_empty ();
 
   // In case there is no memory:GBM caps structure prepend one.
-  if (!gst_caps_is_empty (caps) &&
+  if (gst_is_gbm_supported() && !gst_caps_is_empty (caps) &&
       !gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
+    // Make a copy that will be modified.
     structure = gst_caps_get_structure (caps, 0);
     features = gst_caps_features_new (GST_CAPS_FEATURE_MEMORY_GBM, NULL);
 
@@ -644,9 +699,6 @@ gst_video_transform_set_caps (GstBaseTransform * base, GstCaps * incaps,
   feature = gst_caps_has_feature (outcaps, GST_CAPS_FEATURE_MEMORY_GBM) ?
       GST_CAPS_FEATURE_MEMORY_GBM : NULL;
   vtrans->outfeature = g_quark_from_static_string (feature);
-
-  vtrans->inubwc = gst_caps_has_compression (incaps, "ubwc");
-  vtrans->outubwc = gst_caps_has_compression (outcaps, "ubwc");
 
   if ((vtrans->crop.w == 0) && (vtrans->crop.h == 0)) {
     vtrans->crop.w = GST_VIDEO_INFO_WIDTH (vtrans->ininfo);
@@ -1577,7 +1629,8 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   GST_VIDEO_TRANSFORM_LOCK (vtrans);
 
   blit.frame = &inframe;
-  blit.isubwc = vtrans->inubwc;
+  blit.isubwc = GST_VIDEO_INFO_FORMAT(vtrans->ininfo) == GST_VIDEO_FORMAT_NV12_Q08C ?
+      TRUE : FALSE;
 
   blit.sources = &(vtrans->crop);
   blit.destinations = &(vtrans->destination);
@@ -1590,7 +1643,8 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   composition.n_blits = 1;
 
   composition.frame = &outframe;
-  composition.isubwc = vtrans->outubwc;
+  composition.isubwc = GST_VIDEO_INFO_FORMAT(vtrans->outinfo) ==
+      GST_VIDEO_FORMAT_NV12_Q08C ? TRUE : FALSE;
   composition.flags = 0;
 
   composition.bgcolor = vtrans->background;
@@ -1913,9 +1967,6 @@ gst_video_transform_init (GstVideoTransform * vtrans)
 
   vtrans->infeature = g_quark_from_static_string (NULL);
   vtrans->outfeature = g_quark_from_static_string (NULL);
-
-  vtrans->inubwc = FALSE;
-  vtrans->outubwc = FALSE;
 
   vtrans->outpool = NULL;
 }
