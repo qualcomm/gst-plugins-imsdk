@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2023 - 2024 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -36,19 +36,6 @@
 * Application:
 * gst-fastswitch-exmaple
 *
-* Usage:
-* --pwidth, Preview stream width
-* --pheight, Preview stream height
-* --prate, Preview stream framerate
-* --v1width, Video stream 1 width
-* --v1height, Video stream 1 height
-* --v1rate, Video stream 1 framerate
-* --v2width, Video stream 2 width
-* --v2height, Video stream 2 height
-* --v2rate, Video stream 2 framerate
-* --switch_delay, Delay of switch
-* --round, Round to Switch
-*
 * Description:
 * Switch bewteen preview stream and preview + video stream.
 */
@@ -57,910 +44,2189 @@
 
 #include <gst/gst.h>
 #include <glib-unix.h>
+#include <qmmf-sdk/qmmf_camera_metadata.h>
+#include <qmmf-sdk/qmmf_vendor_tag_descriptor.h>
 
-// Macro defination
-#define DEFAULT_VIDEOSTREAM_NUMBER 1
-#define DEFAULT_VIDEOSTREAM_FORMAT "NV12"
-#define DEFAULT_VIDEOSTREAM_WIDTH 1920
-#define DEFAULT_VIDEOSTREAM_HEIGHT 1080
-#define DEFAULT_VIDEOSTREAM_FPS_NUMERATOR 30
-#define DEFAULT_VIDEOSTREAM_FPS_DENOMINATOR 1
-#define DEFAULT_VIDEOSTREAM_FILE_LOCATION "/data/fast-switch_%d.mp4"
-#define DEFAULT_PREVIEWSTREAM_FORMAT "NV12"
-#define DEFAULT_PREVIEWSTREAM_WIDTH 1920
-#define DEFAULT_PREVIEWSTREAM_HEIGHT 1080
-#define DEFAULT_PREVIEWSTREAM_FPS_NUMERATOR 30
-#define DEFAULT_PREVIEWSTREAM_FPS_DENOMINATOR 1
-#define DEFAULT_SWITCH_DELAY 5
-#define DEFAULT_ROUND G_MININT32
-#define DEFAULT_OPMODE "fastswitch"
+namespace camera = qmmf;
 
-// Global variable
-static gchar *opmode = (gchar *)DEFAULT_OPMODE;
-static gboolean frameselection_enabled = FALSE;
+#ifdef G_HAVE_ISO_VARARGS
+#define SWITCH_VERBOSE(...) do { \
+  if (g_debug_level > 2) { \
+    g_print ("[Debug] " __VA_ARGS__); \
+  } \
+} while (0)
+#define SWITCH_DEBUG(...) do { \
+  if (g_debug_level > 1) { \
+    g_print ("[Debug] " __VA_ARGS__); \
+  } \
+} while (0)
+#define SWITCH_INFO(...) do { \
+  if (g_debug_level > 0) { \
+    g_print ("[INFO] " __VA_ARGS__); \
+  } \
+} while (0)
+#define SWITCH_MSG(...) do { \
+  g_print ("[MSG] " __VA_ARGS__); \
+} while (0)
+#define SWITCH_ERROR(...) do { \
+  g_printerr ("[ERROR] " __VA_ARGS__); \
+} while (0)
+#define SWITCH_GST_DEBUG(...) do { \
+  if (g_debug_level > 0) { \
+    GST_DEBUG ("[Debug]: " __VA_ARGS__); \
+  } \
+} while (0)
+#else
+#define SWITCH_VERBOSE(...)
+#define SWITCH_DEBUG (...)
+#define SWITCH_INFO(...)
+#define SWITCH_MSG(...)
+#define SWITCH_ERROR(...)
+#define SWITCH_GST_DEBUG (...)
+#endif
 
-typedef struct _GstAppContext GstAppContext;
-typedef struct _GstVideoStreamInfo GstVideoStreamInfo;
-typedef struct _GstPreviewStreamInfo GstPreviewStreamInfo;
-typedef struct _MetaInfo MetaInfo;
+#define MAX_PREVIEW_STEAM_NUM       3
+#define MAX_VIDEO_STREAM_NUM        3
+#define STRING_SIZE                 64
 
-enum {
+// pipeline default params
+#define DEFAULT_PIPELINE_CAMERA_ID      0
+#define DEFAULT_PIPELINE_ROUND          10
+#define DEFAULT_PIPELINE_DURATION       5
+#define DEFAULT_PIPELINE_FRAMESELECTION FALSE
+#define DEFAULT_PIPELINE_VIDEO_SYNC     FALSE
+#define DEFAULT_PIPELINE_SENSOR_SWITCH  FALSE
+#define DEFAULT_PIPELINE_SENSOR_NUM     2
+
+#define PIPELINE_SENSOR_SWITCH_SHIFT_MS 1000
+
+// stream default params
+#define DEFAULT_PREVIEW_STREAM_WIDTH    1920
+#define DEFAULT_PREVIEW_STREAM_HEIGHT   1080
+#define DEFAULT_PREVIEW_STREAM_FPS      30
+#define DEFAULT_VIDEO_STREAM_WIDTH      1920
+#define DEFAULT_VIDEO_STREAM_HEIGHT     1080
+#define DEFAULT_VIDEO_STREAM_FPS        30
+
+#define DEFAULT_MULTI_DISPLAY_WIDTH     960
+#define DEFAULT_MULTI_DISPLAY_HEIGHT    540
+
+#define STREAM_TO_DISPLAY_STREAM_BIN(stream) (&((GstUnifiedSwitchStream *)stream)->bin.dbin)
+#define STREAM_TO_FILE_STREAM_BIN(stream) (&((GstUnifiedSwitchStream *)stream)->bin.fbin)
+
+#define IS_STREAM_ACTIVE(stream) ((stream->info.src_width != 0) && \
+    (stream->info.src_height != 0) && (stream->info.src_fps != 0))
+
+typedef struct _GstSwitchPipelineInfo       GstSwitchPipelineInfo;
+typedef struct _GstSwitchStreamInfo         GstSwitchStreamInfo;
+typedef struct _DisplayControl              DisplayControl;
+typedef struct _GstDisplayBin               GstDisplayBin;
+typedef struct _GstFileBin                  GstFileBin;
+typedef struct _GstSwitchStream             GstSwitchStream;
+typedef struct _GstUnifiedSwitchStream      GstUnifiedSwitchStream;
+typedef struct _GstSwitchPipelineControl    GstSwitchPipelineControl;
+typedef struct _GstSwitchPipeline           GstSwitchPipeline;
+
+typedef enum {
+  GST_SWITCHSTREAM_TYPE_PREVIEW,
+  GST_SWITCHSTREAM_TYPE_VIDEO,
+} GstSwitchStreamType;
+
+typedef enum {
+  GST_STREAM_PIPELINE_DISPLAY,
+  GST_STREAM_PIPELINE_FILE,
+} GstStreamPipelineType;
+
+typedef enum {
   CAM_OPMODE_NONE               = (1 << 0),
   CAM_OPMODE_FRAMESELECTION     = (1 << 1),
   CAM_OPMODE_FASTSWITCH         = (1 << 2),
+} GstSwitchOpMode;
+
+typedef enum {
+  GST_QMMFSRC_VIDEO_PAD_TYPE_VIDEO    = 0,
+  GST_QMMFSRC_VIDEO_PAD_TYPE_PREVIEW  = 1,
+} GstQmmfsrcVideoPadType;
+
+typedef enum {
+  GST_SWITCH_RUN_MODE_PREVIEW,
+  GST_SWITCH_RUN_MODE_PREVIEW_PLUS_VIDEO,
+} GstSwitchRunMode;
+
+typedef enum {
+  GST_LOGICAL_CAMERA_MODE_NONE    = -1,
+  GST_LOGICAL_CAMERA_MODE_SAT     = 0,
+  GST_LOGICAL_CAMERA_MODE_RTB     = 1,
+} GstLogCamMode;
+
+typedef enum {
+  GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_MIN = 0,
+  GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_MAX = 15,
+  GST_PAD_LOGICAL_STREAM_TYPE_SIDEBYSIDE,
+  GST_PAD_LOGICAL_STREAM_TYPE_PANORAMA,
+  GST_PAD_LOGICAL_STREAM_TYPE_NONE,
+  GST_PAD_LOGICAL_STREAM_TYPE_MAX,
+} GstPadLogicalStreamType;
+
+typedef enum {
+  GST_CAMERA_STREAM_FORMAT_NV12 = 0,
+  GST_CAMERA_STREAM_FORMAT_P010_10LE,
+  GST_CAMERA_STREAM_FORMAT_MAX,
+} GstCameraStreamFormat;
+
+typedef enum {
+  GST_PAD_ACTIVATION_MODE_NORMAL = 0,
+  GST_PAD_ACTIVATION_MODE_SIGNAL = 1,
+} GstQmmfSrcPadActivationMode;
+
+const gchar *CameraStreamMaps[] = {
+  [GST_CAMERA_STREAM_FORMAT_NV12] = "NV12",
+  [GST_CAMERA_STREAM_FORMAT_P010_10LE] = "P010_10LE",
 };
 
-/*** Data Structure ***/
-struct _MetaInfo {
-  gint width;
-  gint height;
-  gint framerate;
+struct _GstSwitchPipelineInfo {
+  gint                  camera_id;
+  gint                  round;
+  gint                  duration;
+  gboolean              frameselection;
+  gboolean              video_sync;
+  gboolean              sensor_switch;
+  gint                  sensor_num;
+  GstLogCamMode         log_cam_mode;
+  GOptionEntry          *options;
 };
 
-struct _GstVideoStreamInfo {
-  GstPad* qmmf_pad;
-  GstCaps* qmmf_caps;
-  GstElement* capsfilter;
-  GstElement* encoder;
-  GstElement* capsfilter_dfps;
-  GstElement* parser;
-  GstElement* muxer;
-  GstElement* filesinker;
-  MetaInfo meta;
+struct _GstSwitchStreamInfo {
+  gchar                 name[STRING_SIZE];
+  GstSwitchStreamType   stype;
+  GstStreamPipelineType ptype;
+  gint                  src_width;
+  gint                  src_height;
+  gint                  src_fps;
+  GOptionEntry          *options;
+  gint                  option_num;
+  gint                  phy_cam_idx;
+  gboolean              sbs;
+  GstCameraStreamFormat cam_stream_format;
+  gboolean              ubwc;
 };
 
-struct _GstPreviewStreamInfo {
-  GstPad* qmmf_pad;
-  GstCaps* qmmf_caps;
-  GstElement* capsfilter;
-  GstElement* displayer;
-  MetaInfo meta;
+struct _DisplayControl {
+  gboolean    fullscreen;
+  gint        x;
+  gint        y;
+  gint        width;
+  gint        height;
 };
 
-struct _GstAppContext {
-  GMainLoop* mloop;
-  GstElement* pipeline;
-  GstElement* source;
-  GList* vstreams_list;
-  GstPreviewStreamInfo* previewstream;
-  gboolean exit;
-  gint round;
+struct _GstDisplayBin {
+  GstPad      *camera_pad;
+  GstElement  *camera_capsfilter;
+  GstElement  *display;
+
+  DisplayControl display_control;
 };
 
-/*** Function ***/
-// Declaration
-static gboolean source_add (GstAppContext* appctx);
-static void source_remove (GstAppContext* appctx);
-static gboolean appcontext_create (GstAppContext* appctx,
-    const gint vnum);
-static void appcontext_delete (GstAppContext* appctx);
-static gboolean interrupt_handler (gpointer userdata);
-static gboolean streams_create (GstAppContext* appctx);
-static void streams_delete (GstAppContext* appctx);
-static gboolean switch_func (gpointer userdata);
-static void stream_meta_configure (MetaInfo* meta,
-    const gint width, const gint height, const gint fps);
-static gboolean signal_add (GstAppContext* appctx);
+struct _GstFileBin {
+  GstPad        *camera_pad;
+  GstElement    *camera_capsfilter;
+  GstElement    *encoder;
+  GstElement    *encoder_capsfilter;
+  GstElement    *h264parser;
+  GstElement    *mp4mux;
+  GstElement    *filesink;
+};
 
+struct _GstSwitchStream {
+  GstSwitchStreamInfo   info;
+  GstSwitchPipeline     *pipeline;
+  gint                  index;
+  gboolean              linked;
+};
 
-// Add source element
-static gboolean
-source_add (GstAppContext* appctx)
+struct _GstUnifiedSwitchStream {
+  GstSwitchStream basic;
+  union {
+    GstDisplayBin dbin;
+    GstFileBin fbin;
+  } bin;
+};
+
+struct _GstSwitchPipelineControl {
+  GMainLoop           *mloop;
+  gint                current_round;
+  gboolean            exit;
+  GstSwitchRunMode    mode;
+  gboolean            pipeline_runing;
+
+  gint                sensor_switch_index;
+  gint                sensor_switch_duration_ms;
+
+  guint               unix_signal;
+
+  GstElement          *pipeline;
+  GstElement          *camera;
+
+  gint                pstream_num;
+  GstSwitchStream     *preview_streams[MAX_PREVIEW_STEAM_NUM];
+
+  gint                vstream_num;
+  GstSwitchStream     *video_streams[MAX_PREVIEW_STEAM_NUM];
+};
+
+struct _GstSwitchPipeline {
+  GstSwitchPipelineInfo       info;
+  GstSwitchPipelineControl    control;
+};
+
+gint g_debug_level = 0;
+GOptionEntry debug_option[] = {
+  { "log", 0, 0, G_OPTION_ARG_INT,
+    &g_debug_level,
+    "log level, default 0, info=1, debug=2",
+    NULL
+  },
+  { NULL }
+};
+
+GstSwitchPipeline *
+pipeline_alloc (void)
 {
-  gchar *propname = (gchar *)"op-mode";
-  guint32 flags = CAM_OPMODE_NONE;
+  GstSwitchPipeline *ret = NULL;
 
-  if (frameselection_enabled)
-    flags = CAM_OPMODE_FRAMESELECTION |  CAM_OPMODE_FASTSWITCH;
-  else
-    flags = CAM_OPMODE_FASTSWITCH;
+  ret = g_new0 (GstSwitchPipeline, 1);
 
-  appctx->source = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
+  if (ret != NULL) {
+    ret->info.camera_id       = DEFAULT_PIPELINE_CAMERA_ID;
+    ret->info.round           = DEFAULT_PIPELINE_ROUND;
+    ret->info.duration        = DEFAULT_PIPELINE_DURATION;
+    ret->info.frameselection  = DEFAULT_PIPELINE_FRAMESELECTION;
+    ret->info.video_sync      = DEFAULT_PIPELINE_VIDEO_SYNC;
+    ret->info.sensor_switch   = DEFAULT_PIPELINE_SENSOR_SWITCH;
+    ret->info.sensor_num      = DEFAULT_PIPELINE_SENSOR_NUM;
+    ret->info.log_cam_mode    = GST_LOGICAL_CAMERA_MODE_NONE;
 
-  if (!appctx->source) {
-    g_printerr ("ERROR: failed to create qtiqmmfsrc.\n");
-    return FALSE;
+    SWITCH_DEBUG ("alloc pipeline success\n");
   }
 
-  g_object_set (G_OBJECT (appctx->source), "op-mode", flags, NULL);
+  return ret;
+}
 
-  if (!gst_bin_add (GST_BIN (appctx->pipeline), appctx->source)) {
-    g_printerr ("ERROR: failed to add source to bin.\n");
-    return FALSE;
+void
+pipeline_free (GstSwitchPipeline *pipeline)
+{
+  g_return_if_fail (pipeline != NULL);
+
+  g_free (pipeline);
+}
+
+GOptionEntry *
+pipeline_alloc_options (GstSwitchPipeline *pipeline)
+{
+  GOptionEntry *entries;
+
+  // allocate option number + 1, last one should be { NULL }
+  entries = g_new0 (GOptionEntry, 9);
+
+  if (entries != NULL) {
+    entries[0].long_name = "cameraid";
+    entries[0].short_name = 'c';
+    entries[0].arg = G_OPTION_ARG_INT;
+    entries[0].arg_data = (gpointer) &pipeline->info.camera_id;
+    entries[0].description = "camera id";
+
+    entries[1].long_name = "round";
+    entries[1].short_name = 'r';
+    entries[1].arg = G_OPTION_ARG_INT;
+    entries[1].arg_data = (gpointer) &pipeline->info.round;
+    entries[1].description = "switch round";
+
+    entries[2].long_name = "duration";
+    entries[2].short_name = 'd';
+    entries[2].arg = G_OPTION_ARG_INT;
+    entries[2].arg_data = (gpointer) &pipeline->info.duration;
+    entries[2].description = "duration (seconds) for each streaming ";
+
+    entries[3].long_name = "frameselection";
+    entries[3].short_name = 'f';
+    entries[3].arg = G_OPTION_ARG_NONE;
+    entries[3].arg_data = (gpointer) &pipeline->info.frameselection;
+    entries[3].description = "enable frameselection";
+
+    entries[4].long_name = "video-sync";
+    entries[4].short_name = 'v';
+    entries[4].arg = G_OPTION_ARG_NONE;
+    entries[4].arg_data = (gpointer) &pipeline->info.video_sync;
+    entries[4].description = "video streams start / stop sync";
+
+    entries[5].long_name = "sensor-switch";
+    entries[5].short_name = 's';
+    entries[5].arg = G_OPTION_ARG_NONE;
+    entries[5].arg_data = (gpointer) &pipeline->info.sensor_switch;
+    entries[5].description = "sensor switch in SAT mode for logical camera";
+
+    entries[6].long_name = "sensor-num";
+    entries[6].short_name = 'n';
+    entries[6].arg = G_OPTION_ARG_INT;
+    entries[6].arg_data = (gpointer) &pipeline->info.sensor_num;
+    entries[6].description = "sensor num in SAT mode for logical camera";
+
+    entries[7].long_name = "logical-camera-mode";
+    entries[7].short_name = 'l';
+    entries[7].arg = G_OPTION_ARG_INT;
+    entries[7].arg_data = (gpointer) &pipeline->info.log_cam_mode;
+    entries[7].description = "logical camera mode, 0=SAT, 1=RTB, default none";
+
+    pipeline->info.options = entries;
+  }
+
+  return entries;
+}
+
+void
+pipeline_free_options (GstSwitchPipeline *pipeline)
+{
+  g_return_if_fail (pipeline != NULL);
+  g_return_if_fail (pipeline->info.options != NULL);
+
+  g_free (pipeline->info.options);
+  pipeline->info.options = NULL;
+}
+
+GstSwitchStream *
+switchstream_alloc (GstSwitchPipeline *pipeline,
+                    GstSwitchStreamType stype)
+{
+  GstSwitchStream *ret = NULL;
+  GstSwitchPipelineControl *pcontrol = &pipeline->control;
+  GstSwitchPipelineInfo *pinfo = &pipeline->info;
+
+  ret = (GstSwitchStream *)g_new0 (GstUnifiedSwitchStream, 1);
+  ret->info.ptype = (stype == GST_SWITCHSTREAM_TYPE_VIDEO) ?
+    (GST_STREAM_PIPELINE_FILE) : (GST_STREAM_PIPELINE_DISPLAY);
+
+  g_return_val_if_fail (ret != NULL, NULL);
+
+  ret->pipeline = pipeline;
+  ret->info.stype = stype;
+  ret->info.phy_cam_idx = -1;
+  ret->info.sbs = FALSE;
+  ret->info.cam_stream_format = GST_CAMERA_STREAM_FORMAT_NV12;
+  ret->info.ubwc = FALSE;
+
+  if (stype == GST_SWITCHSTREAM_TYPE_VIDEO) {
+    g_snprintf(ret->info.name, STRING_SIZE, "v%d",
+        pcontrol->vstream_num + 1);
+    ret->index = pcontrol->vstream_num;
+    pcontrol->video_streams[pcontrol->vstream_num++] = ret;
+
+    // in this example, at least one video stream is required.
+    // so generate default stream configuration for video stream 0
+    if (ret->index == 0) {
+      ret->info.src_width = DEFAULT_VIDEO_STREAM_WIDTH;
+      ret->info.src_height = DEFAULT_VIDEO_STREAM_HEIGHT;
+      ret->info.src_fps = DEFAULT_VIDEO_STREAM_FPS;
+    }
+  } else {
+    g_snprintf(ret->info.name, STRING_SIZE, "p%d",
+        pcontrol->pstream_num + 1);
+    ret->index = pcontrol->pstream_num;
+    pcontrol->preview_streams[pcontrol->pstream_num++] = ret;
+
+    // in this example, at least one preview stream is required.
+    // so generate default stream configuration for preview stream 0
+    if (ret->index == 0) {
+      ret->info.src_width = DEFAULT_PREVIEW_STREAM_WIDTH;
+      ret->info.src_height = DEFAULT_PREVIEW_STREAM_HEIGHT;
+      ret->info.src_fps = DEFAULT_PREVIEW_STREAM_FPS;
+    }
+  }
+
+  SWITCH_DEBUG ("alloc stream stype(%d) ptype(%d) index(%d) success\n",
+      ret->info.stype, ret->info.ptype, ret->index);
+
+  return ret;
+}
+
+void
+switchstream_free (GstSwitchStream *stream)
+{
+  GstSwitchPipeline *pipeline = NULL;
+  GstSwitchPipelineControl *pcontrol = NULL;
+  gint stream_num;
+
+  g_return_if_fail (stream != NULL);
+  g_return_if_fail (stream->pipeline);
+
+  SWITCH_DEBUG ("free stream stype(%d) ptype(%d) idx(%d)\n",
+      stream->info.stype, stream->info.ptype, stream->index);
+
+  pipeline = stream->pipeline;
+  pcontrol = &pipeline->control;
+
+  if (stream->info.stype == GST_SWITCHSTREAM_TYPE_VIDEO)
+    pcontrol->video_streams[stream->index] = NULL;
+  else
+    pcontrol->preview_streams[stream->index] = NULL;
+
+  g_free (stream);
+}
+
+GOptionEntry *
+switchstream_alloc_options (GstSwitchStream *stream)
+{
+  GOptionEntry *entries = NULL;
+  GstSwitchStreamInfo *info = &stream->info;
+  // allocate option number + 1, keep last one { NULL }
+  gint option_num = 6;
+  gint option_idx = 0;
+
+  // preview stream can choose to display on screen or store to file
+  if (stream->index != 0 && info->stype == GST_SWITCHSTREAM_TYPE_PREVIEW)
+    option_num++;
+
+  // video stream can be part of logical camera stream, so physical camera id
+  // and side-by-side will be enabled
+  if (info->stype == GST_SWITCHSTREAM_TYPE_VIDEO)
+    option_num += 2;
+
+  entries = g_new0 (GOptionEntry, option_num);
+
+  g_return_val_if_fail (entries != NULL, NULL);
+
+  entries[option_idx].long_name = g_strdup_printf ("%swidth", info->name);
+  entries[option_idx].arg = G_OPTION_ARG_INT;
+  entries[option_idx].arg_data = (gpointer) &info->src_width;
+  entries[option_idx].description = g_strdup_printf ("%s stream width", info->name);
+  option_idx++;
+
+  entries[option_idx].long_name = g_strdup_printf ("%sheight", info->name);
+  entries[option_idx].arg = G_OPTION_ARG_INT;
+  entries[option_idx].arg_data = (gpointer) &info->src_height;
+  entries[option_idx].description = g_strdup_printf ("%s stream height", info->name);
+  option_idx++;
+
+  entries[option_idx].long_name = g_strdup_printf ("%sfps", info->name);
+  entries[option_idx].arg = G_OPTION_ARG_INT;
+  entries[option_idx].arg_data = (gpointer) &info->src_fps;
+  entries[option_idx].description = g_strdup_printf ("%s stream fps", info->name);
+  option_idx++;
+
+  entries[option_idx].long_name = g_strdup_printf ("%sformat", info->name);
+  entries[option_idx].arg = G_OPTION_ARG_INT;
+  entries[option_idx].arg_data = (gpointer) &info->cam_stream_format;
+  entries[option_idx].description = g_strdup_printf ("%s stream camera format "
+      "0:NV12, 1:P010_10LE, default 0", info->name);
+  option_idx++;
+
+  entries[option_idx].long_name = g_strdup_printf ("%s-ubwc", info->name);
+  entries[option_idx].arg = G_OPTION_ARG_NONE;
+  entries[option_idx].arg_data = (gpointer) &info->ubwc;
+  entries[option_idx].description = g_strdup_printf ("%s enable ubwc compression",
+      info->name);
+  option_idx++;
+
+  if (stream->index != 0 && info->stype == GST_SWITCHSTREAM_TYPE_PREVIEW) {
+    entries[option_idx].long_name = g_strdup_printf ("%sptype", info->name);
+    entries[option_idx].arg = G_OPTION_ARG_INT;
+    entries[option_idx].arg_data = (gpointer) &info->ptype;
+    entries[option_idx].description = g_strdup_printf ("%s pipeline type,"
+        " 0=display, 1=encode to file, default 0", info->name);
+    option_idx++;
+  }
+
+  if (info->stype == GST_SWITCHSTREAM_TYPE_VIDEO) {
+    entries[option_idx].long_name = g_strdup_printf ("%s-cam-idx", info->name);
+    entries[option_idx].arg = G_OPTION_ARG_INT;
+    entries[option_idx].arg_data = (gpointer) &info->phy_cam_idx;
+    entries[option_idx].description = g_strdup_printf ("%s physical camera id "
+        "attached to this stream, default -1", info->name);
+    option_idx++;
+
+    entries[option_idx].long_name = g_strdup_printf ("%s-sbs", info->name);
+    entries[option_idx].arg = G_OPTION_ARG_NONE;
+    entries[option_idx].arg_data = (gpointer) &info->sbs;
+    entries[option_idx].description = g_strdup_printf ("%s side by side stream "
+        "default 0 (false)", info->name);
+    option_idx++;
+  }
+
+  info->options = entries;
+  info->option_num = option_idx;
+
+  return entries;
+}
+
+void
+switchstream_free_options (GstSwitchStream *stream)
+{
+  gint option_idx;
+  GstSwitchStreamInfo *info = NULL;
+  GOptionEntry *entries = NULL;
+
+  g_return_if_fail (stream != NULL);
+  g_return_if_fail (stream->info.options != NULL);
+
+  info = &stream->info;
+  entries = info->options;
+
+  for (option_idx = 0; option_idx < info->option_num; option_idx++) {
+    g_free ((gpointer)entries[option_idx].long_name);
+    g_free ((gpointer)entries[option_idx].description);
+  }
+
+  g_free (entries);
+  info->options = NULL;
+}
+
+void
+pipeline_streams_free (GstSwitchPipeline *pipeline)
+{
+  gint index;
+  GstSwitchPipelineControl *pcontrol = &pipeline->control;
+
+  g_return_if_fail (pipeline != NULL);
+
+  SWITCH_DEBUG ("free streams and pipeline\n");
+
+  for (index = 0; index < pcontrol->pstream_num; index++)
+    switchstream_free (pcontrol->preview_streams[index]);
+
+  for (index = 0; index < pcontrol->vstream_num; index++)
+    switchstream_free (pcontrol->video_streams[index]);
+
+  g_free (pipeline);
+}
+
+GstSwitchPipeline *
+pipeline_streams_alloc (gint pnum, gint vnum)
+{
+  GstSwitchPipeline *ret = NULL;
+  gint i;
+
+  ret = pipeline_alloc ();
+  g_return_val_if_fail (ret != NULL, NULL);
+
+  for (i = 0; i < pnum; i++) {
+    if (switchstream_alloc (ret, GST_SWITCHSTREAM_TYPE_PREVIEW) == NULL) {
+      pipeline_streams_free (ret);
+      return NULL;
+    }
+  }
+
+  for (i = 0; i < vnum; i++) {
+    if (switchstream_alloc (ret, GST_SWITCHSTREAM_TYPE_VIDEO) == NULL) {
+      pipeline_streams_free (ret);
+      return NULL;
+    }
+  }
+
+  return ret;
+}
+
+gboolean
+pipeline_streams_alloc_options (GOptionContext *ctx,
+                                         GstSwitchPipeline *pipeline)
+{
+  GstSwitchPipelineControl *pcontrol = NULL;
+  GOptionEntry *entries = NULL;
+  gint index;
+
+  g_return_val_if_fail (ctx != NULL, FALSE);
+  g_return_val_if_fail (pipeline != NULL, FALSE);
+
+  pcontrol = &pipeline->control;
+  entries = pipeline_alloc_options (pipeline);
+  if (entries != NULL)
+    g_option_context_add_main_entries (ctx, entries, NULL);
+
+  for (index = 0; index < pcontrol->pstream_num; index++) {
+    entries = switchstream_alloc_options (pcontrol->preview_streams[index]);
+    if (entries != NULL)
+      g_option_context_add_main_entries (ctx, entries, NULL);
+  }
+
+  for (index = 0; index < pcontrol->vstream_num; index++) {
+    entries = switchstream_alloc_options (pcontrol->video_streams[index]);
+    if (entries != NULL)
+      g_option_context_add_main_entries (ctx, entries, NULL);
   }
 
   return TRUE;
 }
 
-// Remove source element
-static void
-source_remove (GstAppContext* appctx)
+void
+pipeline_streams_free_options (GstSwitchPipeline *pipeline)
 {
-  gst_bin_remove (GST_BIN (appctx->pipeline), appctx->source);
+  GstSwitchPipelineControl *pcontrol = NULL;
+  gint index;
 
-  return;
+  g_return_if_fail (pipeline != NULL);
+
+  pcontrol = &pipeline->control;
+
+  for (index = 0; index < pcontrol->pstream_num; index++)
+    switchstream_free_options(pcontrol->preview_streams[index]);
+
+  for (index = 0; index < pcontrol->vstream_num; index++)
+    switchstream_free_options(pcontrol->video_streams[index]);
+
+  pipeline_free_options (pipeline);
 }
 
-// Init GstAppContext
-static gboolean
-appcontext_create (GstAppContext* appctx, const gint vnum)
+gboolean
+check_pipeline_streams_options (GstSwitchPipeline *pipeline)
 {
-  appctx->mloop = NULL;
-  appctx->pipeline = NULL;
-  appctx->source = NULL;
-  appctx->vstreams_list = NULL;
-  appctx->previewstream = NULL;
-  appctx->exit = FALSE;
-  appctx->round = DEFAULT_ROUND;
+  GstSwitchPipelineControl *pcontrol;
+  GstSwitchPipelineInfo *pinfo;
+  gint valid_pstreams, valid_vstreams;
+  gint display_pipeline_num;
 
-  appctx->mloop = g_main_loop_new (NULL, FALSE);
-  if (!appctx->mloop) {
-    g_printerr ("ERROR: failed to create main loop.\n");
-    return FALSE;
+  g_return_val_if_fail (pipeline != NULL, FALSE);
+  pcontrol = &pipeline->control;
+  pinfo = &pipeline->info;
+
+  SWITCH_MSG ("***************************************************\n");
+
+  SWITCH_MSG ("general options: camera(%d) round(%d) duration(%d)\n",
+      pinfo->camera_id, pinfo->round, pinfo->duration);
+
+  SWITCH_MSG ("general options: frameselection(%d) video-sync(%d)\n",
+      pinfo->frameselection, pinfo->video_sync);
+
+  SWITCH_MSG ("general options: sensor-switch(%d) logical camera mode (%d)\n",
+      pinfo->sensor_switch, pinfo->log_cam_mode);
+
+  valid_pstreams = valid_vstreams = 0;
+  display_pipeline_num = 0;
+
+  for (int i = 0; i < pcontrol->pstream_num; i++) {
+    GstSwitchStream *stream = pcontrol->preview_streams[i];
+
+    if (IS_STREAM_ACTIVE (stream)) {
+      SWITCH_MSG ("\n");
+      SWITCH_MSG ("preview stream index(%d) options:\n", stream->index);
+
+      SWITCH_MSG ("\twidth(%d) height(%d) fps(%d) pipeline(%s)\n",
+          stream->info.src_width, stream->info.src_height, stream->info.src_fps,
+          stream->info.ptype == GST_STREAM_PIPELINE_DISPLAY ? "display" : "file");
+
+      SWITCH_MSG ("\tstream format(%s) ubwc(%d)\n",
+          CameraStreamMaps[stream->info.cam_stream_format], stream->info.ubwc);
+      valid_pstreams++;
+
+      if (stream->info.ptype == GST_STREAM_PIPELINE_DISPLAY) {
+        GstDisplayBin *dbin = STREAM_TO_DISPLAY_STREAM_BIN (stream);
+
+        dbin->display_control.fullscreen = TRUE;
+        dbin->display_control.x = 0;
+        dbin->display_control.y = 0;
+        dbin->display_control.width = 0;
+        dbin->display_control.height = 0;
+
+        display_pipeline_num++;
+      }
+    }
   }
 
-  appctx->pipeline = gst_pipeline_new ("gst-fastswitch-example");
-  if (!appctx->pipeline) {
-    g_printerr ("ERROR: failed to create pipeline.\n");
-    return FALSE;
+  for (int i = 0; i < pcontrol->vstream_num; i++) {
+    GstSwitchStream *stream = pcontrol->video_streams[i];
+
+    if (IS_STREAM_ACTIVE (stream)) {
+      SWITCH_MSG ("\n");
+      SWITCH_MSG ("video stream index(%d) options:\n", stream->index);
+
+      SWITCH_MSG ("\twidth(%d) height(%d) fps(%d) pipeline(%s)\n",
+          stream->info.src_width, stream->info.src_height, stream->info.src_fps,
+          stream->info.ptype == GST_STREAM_PIPELINE_DISPLAY ? "display" : "file");
+
+      SWITCH_MSG ("\tstream format(%s) ubwc(%d)\n",
+          CameraStreamMaps[stream->info.cam_stream_format], stream->info.ubwc);
+
+      SWITCH_MSG ("\tphy-cam-id(%d) side-by-side(%d)\n",
+          stream->info.phy_cam_idx, stream->info.sbs);
+
+      if (stream->info.phy_cam_idx != -1 && stream->info.sbs == TRUE) {
+        SWITCH_ERROR ("video stream index (%d) can not have both physical"
+            " camera id and side-by-side set\n", stream->index);
+
+        return FALSE;
+      }
+
+      valid_vstreams++;
+    }
   }
 
-  if (!source_add (appctx)) {
-    g_printerr ("ERROR: failed to add source.\n");
-    return FALSE;
+  SWITCH_MSG ("\n");
+  SWITCH_MSG ("valid preview streams (%d) valid video streams (%d)\n",
+      valid_pstreams, valid_vstreams);
+
+  if (display_pipeline_num > 1) {
+    gint last_y = 0;
+
+    for (int i = 0; i < pcontrol->pstream_num; i++) {
+      GstSwitchStream *stream = pcontrol->preview_streams[i];
+
+      if (IS_STREAM_ACTIVE (stream) &&
+          (stream->info.ptype == GST_STREAM_PIPELINE_DISPLAY)) {
+        GstDisplayBin *dbin = STREAM_TO_DISPLAY_STREAM_BIN (stream);
+
+        dbin->display_control.fullscreen = FALSE;
+        dbin->display_control.x = 0;
+        dbin->display_control.y = last_y;
+        dbin->display_control.width = DEFAULT_MULTI_DISPLAY_WIDTH;
+        dbin->display_control.height = DEFAULT_MULTI_DISPLAY_HEIGHT;
+
+        last_y = last_y + dbin->display_control.height;
+
+        SWITCH_MSG ("\n");
+        SWITCH_MSG ("preview stream index(%d) display params:\n",
+            stream->index);
+
+        SWITCH_MSG ("\tx(%d) y(%d) width(%d) height(%d)\n",
+            dbin->display_control.x,
+            dbin->display_control.y,
+            dbin->display_control.width,
+            dbin->display_control.height);
+      }
+    }
   }
 
-  for (gint i = 1; i <= vnum; ++i) {
-    GstVideoStreamInfo* videostream = NULL;
-    videostream = g_new0 (GstVideoStreamInfo, 1);
-    if (!videostream) {
-      g_printerr ("ERROR: failed to allocate videostream.\n");
+  if (pinfo->sensor_switch) {
+    if ((pinfo->sensor_num * 1000 + PIPELINE_SENSOR_SWITCH_SHIFT_MS) >
+        (pinfo->duration * 1000)) {
+      SWITCH_ERROR ("duration is too short for sensor switch\n");
+
       return FALSE;
     }
-    appctx->vstreams_list = g_list_append (appctx->vstreams_list, videostream);
-  }
-  if (!appctx->vstreams_list) {
-    g_printerr ("ERROR: failed to create video streams list.\n");
-    return FALSE;
+
+    pcontrol->sensor_switch_index = 0;
+    pcontrol->sensor_switch_duration_ms =
+      ((pinfo->duration * 1000 - PIPELINE_SENSOR_SWITCH_SHIFT_MS) / pinfo->sensor_num);
+
+    SWITCH_MSG ("\n");
+    SWITCH_MSG ("sensor switch enabled:\n");
+    SWITCH_MSG ("\tsensor num(%d) switch duration (%d)ms\n",
+        pinfo->sensor_num, pcontrol->sensor_switch_duration_ms);
   }
 
-  appctx->previewstream = g_new0 (GstPreviewStreamInfo, 1);
-  if (!appctx->previewstream) {
-    g_printerr ("ERROR: failed to allocate previewstream.\n");
+  SWITCH_MSG ("\n");
+  SWITCH_MSG ("***************************************************\n");
+
+  if ((valid_pstreams > 0) && (valid_vstreams > 0))
+    return TRUE;
+  else
     return FALSE;
+}
+
+gboolean
+pipeline_init (GstSwitchPipeline *pipeline)
+{
+  GstSwitchPipelineControl *pcontrol = NULL;
+  GstSwitchPipelineInfo *pinfo = NULL;
+  gint opmode = CAM_OPMODE_FASTSWITCH;
+
+  g_return_val_if_fail (pipeline != NULL, FALSE);
+  pcontrol = &pipeline->control;
+  pinfo = &pipeline->info;
+
+  pcontrol->mloop = g_main_loop_new (NULL, FALSE);
+  g_return_val_if_fail (pcontrol->mloop != NULL, FALSE);
+
+  pcontrol->pipeline = gst_pipeline_new ("gst-fastswitch-example");
+  if (pcontrol->pipeline == NULL) {
+    SWITCH_ERROR ("creating gst pipeline failed\n");
+    goto free_pipeline;
   }
+
+  pcontrol->camera = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
+  if (pcontrol->camera == NULL) {
+    SWITCH_ERROR ("creating gst camera plugin failed\n");
+    goto free_pipeline;
+  }
+
+  if (pinfo->frameselection)
+    opmode |= CAM_OPMODE_FRAMESELECTION;
+
+  // configure camera plugin
+  g_object_set (G_OBJECT (pcontrol->camera),
+      "camera", pinfo->camera_id,
+      "op-mode", opmode,
+      "video-pads-activation-mode", pinfo->video_sync ?
+        GST_PAD_ACTIVATION_MODE_SIGNAL : GST_PAD_ACTIVATION_MODE_NORMAL,
+      NULL);
+
+  if (! gst_bin_add (GST_BIN (pcontrol->pipeline), pcontrol->camera)) {
+    SWITCH_ERROR ("failed to add camera to pipeline.\n");
+    goto free_pipeline;
+  }
+  pcontrol->current_round = 0;
+
+  SWITCH_DEBUG ("pipeline create succesfully, add camera into pipeline\n");
 
   return TRUE;
-}
 
-// Deinit GstAppContext
-static void
-appcontext_delete (GstAppContext* appctx)
-{
-  GList* list = g_list_first (appctx->vstreams_list);
-
-  // Remove the source element
-  source_remove (appctx);
-
-  if (appctx->mloop)
-    g_main_loop_unref (appctx->mloop);
-
-  if (appctx->pipeline)
-    gst_object_unref (appctx->pipeline);
-
-  for (list = appctx->vstreams_list; list != NULL; list = list->next) {
-    g_free (list->data);
+free_pipeline:
+  if (pcontrol->camera) {
+    gst_object_unref (pcontrol->camera);
+    pcontrol->camera = NULL;
   }
 
-  if (appctx->previewstream)
-    g_free (appctx->previewstream);
+  if (pcontrol->pipeline) {
+    gst_object_unref (pcontrol->pipeline);
+    pcontrol->pipeline = NULL;
+  }
 
-  g_free (appctx);
+  if (pcontrol->mloop) {
+    g_main_loop_unref (pcontrol->mloop);
+    pcontrol->mloop = NULL;
+  }
 
-  return;
+  return FALSE;
 }
 
-// Callback to handle state change, just print state
-static void
-state_change_callback (GstBus* bus, GstMessage* message, gpointer userdata)
+void
+pipeline_deinit (GstSwitchPipeline *pipeline)
 {
-  GstElement* pipe = GST_ELEMENT (userdata);
-  GstState oldstate = GST_STATE_NULL, newstate = GST_STATE_NULL;
-  GstState pendingstate = GST_STATE_NULL;
+  GstSwitchPipelineControl *pcontrol = NULL;
+  GstSwitchPipelineInfo *pinfo = NULL;
 
-  // Only handle state change message from pipeline
-  if (GST_MESSAGE_SRC (message) != GST_OBJECT_CAST (pipe))
+  g_return_if_fail (pipeline != NULL);
+  pcontrol = &pipeline->control;
+  pinfo = &pipeline->info;
+
+  // remove element will unref it
+  gst_bin_remove_many (GST_BIN (pcontrol->pipeline), pcontrol->camera, NULL);
+  pcontrol->camera = NULL;
+
+  gst_object_unref (pcontrol->pipeline);
+  pcontrol->pipeline = NULL;
+
+  g_main_loop_unref (pcontrol->mloop);
+  pcontrol->mloop = NULL;
+}
+
+gboolean
+switchstream_display_init (GstUnifiedSwitchStream *ustream)
+{
+  GstSwitchPipeline *pipeline = NULL;
+  GstSwitchPipelineControl *pcontrol = NULL;
+  GstSwitchPipelineInfo *pinfo = NULL;
+  GstSwitchStream *stream = NULL;
+  GstSwitchStreamInfo *sinfo = NULL;
+  GstDisplayBin *dbin = NULL;
+  GstCaps *caps = NULL;
+
+  g_return_val_if_fail (ustream != NULL, FALSE);
+  stream = &ustream->basic;
+  pipeline = stream->pipeline;
+  pcontrol = &pipeline->control;
+  pinfo = &pipeline->info;
+  sinfo = &stream->info;
+  dbin = &ustream->bin.dbin;
+
+  // only preview stream will use display pipeline
+  g_assert (sinfo->stype == GST_SWITCHSTREAM_TYPE_PREVIEW);
+
+  dbin->camera_pad = gst_element_request_pad (pcontrol->camera,
+      gst_element_class_get_pad_template(
+          GST_ELEMENT_GET_CLASS (pcontrol->camera),
+          "video_%u"),
+      "video_%u",
+      NULL);
+
+  if (dbin->camera_pad == NULL) {
+    SWITCH_ERROR ("request pad for stream(stype:%d ptype:%d index:%d) failed\n",
+        sinfo->stype, sinfo->ptype, stream->index);
+
+    return FALSE;
+  }
+
+  SWITCH_INFO ("request pad %s for stream(stype:%d ptype:%d index:%d)\n",
+      GST_PAD_NAME (dbin->camera_pad), sinfo->stype,
+      sinfo->ptype, stream->index);
+
+  g_object_set (dbin->camera_pad, "type",
+      GST_QMMFSRC_VIDEO_PAD_TYPE_PREVIEW, NULL);
+
+  caps = gst_caps_new_simple ("video/x-raw",
+      "format", G_TYPE_STRING, CameraStreamMaps[sinfo->cam_stream_format],
+      "width", G_TYPE_INT, sinfo->src_width,
+      "height", G_TYPE_INT, sinfo->src_height,
+      "framerate", GST_TYPE_FRACTION, sinfo->src_fps, 1,
+      NULL);
+
+  if (sinfo->ubwc == TRUE)
+    gst_caps_set_simple (caps, "compression", G_TYPE_STRING, "ubwc", NULL);
+
+  gst_caps_set_features (caps, 0, gst_caps_features_new ("memory:GBM", NULL));
+
+  dbin->camera_capsfilter = gst_element_factory_make ("capsfilter", NULL);
+  if (dbin->camera_capsfilter == NULL) {
+    SWITCH_ERROR ("create caps filter for stream(stype:%d ptype:%d index:%d) "
+        "failed\n", sinfo->stype, sinfo->ptype, stream->index);
+    goto free_dbin;
+  }
+  g_object_set (G_OBJECT (dbin->camera_capsfilter), "caps", caps, NULL);
+  gst_caps_unref (caps);
+
+  dbin->display = gst_element_factory_make ("waylandsink", NULL);
+  if (dbin->display == NULL) {
+    SWITCH_ERROR ("create waylandsink for stream(stype:%d ptype:%d index:%d) "
+        "failed\n", sinfo->stype, sinfo->ptype, stream->index);
+    goto free_dbin;
+  }
+  g_object_set (G_OBJECT (dbin->display), "sync", FALSE, NULL);
+
+  if (dbin->display_control.fullscreen == FALSE)
+    g_object_set (G_OBJECT (dbin->display),
+        "x", dbin->display_control.x,
+        "y", dbin->display_control.y,
+        "width", dbin->display_control.width,
+        "height", dbin->display_control.height,
+        NULL);
+  else
+    g_object_set (G_OBJECT (dbin->display),
+        "fullscreen", TRUE,
+        NULL);
+
+  gst_bin_add_many (GST_BIN (pcontrol->pipeline),
+      dbin->camera_capsfilter, dbin->display, NULL);
+
+  if (!gst_element_link_many (dbin->camera_capsfilter, dbin->display, NULL)) {
+    SWITCH_ERROR ("link stream (stype:%d ptype:%d index:%d) elements failed\n",
+        sinfo->stype, sinfo->ptype, stream->index);
+    goto remove_dbin;
+  }
+
+  SWITCH_INFO ("stream (stype:%d ptype:%d index:%d) "
+      "init ,add to bin and link succesfully\n",
+      sinfo->stype, sinfo->ptype, stream->index);
+
+  return TRUE;
+
+remove_dbin:
+  // remove will unref elements
+  gst_bin_remove_many (GST_BIN (pipeline->control.pipeline),
+      dbin->camera_capsfilter,
+      dbin->display,
+      NULL);
+  dbin->camera_capsfilter = NULL;
+  dbin->display = NULL;
+
+  gst_element_release_request_pad (pcontrol->camera, dbin->camera_pad);
+  dbin->camera_pad = NULL;
+
+  return FALSE;
+
+free_dbin:
+  if (dbin->display != NULL) {
+    gst_object_unref (dbin->display);
+    dbin->display = NULL;
+  }
+
+  if (dbin->camera_capsfilter != NULL) {
+    gst_object_unref (dbin->camera_capsfilter);
+    dbin->camera_capsfilter = NULL;
+  }
+
+  if (dbin->camera_pad != NULL) {
+    gst_element_release_request_pad (pcontrol->camera, dbin->camera_pad);
+    dbin->camera_pad = NULL;
+  }
+
+  return FALSE;
+}
+
+void
+switchstream_display_deinit (GstUnifiedSwitchStream *ustream)
+{
+  GstDisplayBin *dbin = NULL;
+  GstSwitchPipeline *pipeline = NULL;
+  GstSwitchPipelineControl *pcontrol = NULL;
+
+  g_return_if_fail (ustream != NULL);
+  dbin = &ustream->bin.dbin;
+  pipeline = ustream->basic.pipeline;
+  pcontrol = &pipeline->control;
+
+  if (dbin->camera_capsfilter == NULL) {
+    SWITCH_DEBUG ("stream stype(%d) ptype(%d) index(%d) already deinit\n",
+        ustream->basic.info.stype,
+        ustream->basic.info.ptype,
+        ustream->basic.index);
+
     return;
+  }
 
-  gst_message_parse_state_changed (message, &oldstate, &newstate, &pendingstate);
+  gst_element_unlink_many (dbin->camera_capsfilter, dbin->display, NULL);
 
-  g_print ("\nPipeline state changed from %s to %s, pending:%s\n",
-      gst_element_state_get_name (oldstate),
-      gst_element_state_get_name (newstate),
-      gst_element_state_get_name (pendingstate));
+  // remove will unref elements
+  gst_bin_remove_many (GST_BIN (pipeline->control.pipeline),
+      dbin->camera_capsfilter,
+      dbin->display,
+      NULL);
+  dbin->camera_capsfilter = NULL;
+  dbin->display = NULL;
+
+  gst_element_release_request_pad (pcontrol->camera, dbin->camera_pad);
+  dbin->camera_pad = NULL;
 }
 
-// Callback to handle warning
-static void
-warning_callback (GstBus* bus, GstMessage* message, gpointer userdata)
+gboolean
+switchstream_file_init (GstUnifiedSwitchStream *ustream)
 {
-  GError *error = NULL;
-  gchar *debug = NULL;
+  GstSwitchPipeline *pipeline = NULL;
+  GstSwitchPipelineControl *pcontrol = NULL;
+  GstSwitchPipelineInfo *pinfo = NULL;
+  GstSwitchStream *stream = NULL;
+  GstSwitchStreamInfo *sinfo = NULL;
+  GstFileBin *fbin = NULL;
+  GstCaps *caps = NULL;
+  gchar *location = NULL;
 
-  gst_message_parse_warning (message, &error, &debug);
-  gst_object_default_error (GST_MESSAGE_SRC (message), error, debug);
+  g_return_val_if_fail (ustream != NULL, FALSE);
+  stream = &ustream->basic;
+  pipeline = stream->pipeline;
+  pcontrol = &pipeline->control;
+  pinfo = &pipeline->info;
+  sinfo = &stream->info;
+  fbin = &ustream->bin.fbin;
 
-  g_free (debug);
-  g_error_free (error);
-}
+  fbin->camera_pad = gst_element_request_pad (pcontrol->camera,
+      gst_element_class_get_pad_template(
+          GST_ELEMENT_GET_CLASS (pcontrol->camera),
+          "video_%u"),
+      "video_%u",
+      NULL);
 
-// Callback to handle error
-static void
-error_callback (GstBus* bus, GstMessage* message, gpointer userdata)
-{
-  GMainLoop *mloop = (GMainLoop*) userdata;
-  GError *error = NULL;
-  gchar *debug = NULL;
+  if (fbin->camera_pad == NULL) {
+    SWITCH_ERROR ("request pad for stream(stype:%d ptype:%d index:%d) failed\n",
+        sinfo->stype, sinfo->ptype, stream->index);
 
-  gst_message_parse_error (message, &error, &debug);
-  gst_object_default_error (GST_MESSAGE_SRC (message), error, debug);
-
-  g_free (debug);
-  g_error_free (error);
-  g_main_loop_quit (mloop);
-}
-
-// Callback to handle eos
-static void
-eos_callback (GstBus* bus, GstMessage* message, gpointer userdata)
-{
-  GMainLoop *mloop = (GMainLoop*) userdata;
-
-  g_print ("\n\nReceived End-of-Stream from '%s' ...\n\n",
-      GST_MESSAGE_SRC_NAME (message));
-
-  g_main_loop_quit (mloop);
-}
-
-// Retrieve bus and add signals
-static gboolean
-signal_add (GstAppContext* appctx)
-{
-  GstBus* bus = NULL;
-
-  bus = gst_pipeline_get_bus (GST_PIPELINE (appctx->pipeline));
-  if (!bus) {
-    g_printerr ("ERROR: failed to retrieve bus from pipeline.\n");
     return FALSE;
   }
 
-  // Add signal for bus
-  gst_bus_add_signal_watch (bus);
+  SWITCH_INFO ("request pad %s for stream(stype:%d ptype:%d index:%d)\n",
+      GST_PAD_NAME (fbin->camera_pad), sinfo->stype,
+      sinfo->ptype, stream->index);
 
-  g_signal_connect (bus, "message::state-changed",
-      G_CALLBACK (state_change_callback), appctx->pipeline);
-  g_signal_connect (bus, "message::warning",
-      G_CALLBACK (warning_callback), NULL);
-  g_signal_connect (bus, "message::error",
-      G_CALLBACK (error_callback), appctx->mloop);
-  g_signal_connect (bus, "message::eos",
-      G_CALLBACK (eos_callback), appctx->mloop);
+  if (sinfo->stype == GST_SWITCHSTREAM_TYPE_PREVIEW)
+    g_object_set (fbin->camera_pad, "type",
+        GST_QMMFSRC_VIDEO_PAD_TYPE_PREVIEW, NULL);
+  else
+    g_object_set (fbin->camera_pad, "type",
+        GST_QMMFSRC_VIDEO_PAD_TYPE_VIDEO, NULL);
 
-  gst_object_unref (bus);
+  if (sinfo->sbs)
+    g_object_set (fbin->camera_pad, "logical-stream-type",
+        GST_PAD_LOGICAL_STREAM_TYPE_SIDEBYSIDE,
+        NULL);
+  else if (sinfo->phy_cam_idx != -1)
+    g_object_set (fbin->camera_pad, "logical-stream-type",
+        (sinfo->phy_cam_idx + GST_PAD_LOGICAL_STREAM_TYPE_CAMERA_INDEX_MIN),
+        NULL);
+  else
+    ;
+
+  caps = gst_caps_new_simple ("video/x-raw",
+      "format", G_TYPE_STRING, CameraStreamMaps[sinfo->cam_stream_format],
+      "width", G_TYPE_INT, sinfo->src_width,
+      "height", G_TYPE_INT, sinfo->src_height,
+      "framerate", GST_TYPE_FRACTION, sinfo->src_fps, 1,
+      NULL);
+
+  if (pipeline->info.frameselection == TRUE)
+    gst_caps_set_simple (caps, "max-framerate", GST_TYPE_FRACTION, 1,
+        sinfo->src_fps, NULL);
+
+  if (sinfo->ubwc == TRUE)
+    gst_caps_set_simple (caps, "compression", G_TYPE_STRING, "ubwc", NULL);
+
+  gst_caps_set_features (caps, 0, gst_caps_features_new ("memory:GBM", NULL));
+
+  fbin->camera_capsfilter = gst_element_factory_make ("capsfilter", NULL);
+  if (fbin->camera_capsfilter == NULL) {
+    SWITCH_ERROR ("create caps filter for stream(stype:%d ptype:%d index:%d) "
+        "failed\n", sinfo->stype, sinfo->ptype, stream->index);
+    goto free_fbin;
+  }
+  g_object_set (G_OBJECT (fbin->camera_capsfilter), "caps", caps, NULL);
+  gst_caps_unref (caps);
+
+  fbin->encoder = gst_element_factory_make ("qtic2venc", NULL);
+  if (fbin->encoder == NULL) {
+    SWITCH_ERROR ("create encoder for stream(stype:%d ptype:%d index:%d) "
+        "failed\n", sinfo->stype, sinfo->ptype, stream->index);
+    goto free_fbin;
+  }
+  g_object_set (G_OBJECT (fbin->encoder), "control-rate", 3,
+      "priority", 0,
+      "min-quant-i-frames", 30,
+      "min-quant-p-frames", 30,
+      "max-quant-i-frames", 51,
+      "max-quant-p-frames", 51,
+      "quant-i-frames", 30,
+      "quant-p-frames", 30,
+      NULL);
+
+  if (sinfo->cam_stream_format == GST_CAMERA_STREAM_FORMAT_P010_10LE)
+    g_object_set (G_OBJECT (fbin->encoder), "target-bitrate", 80000000, NULL);
+  else
+    g_object_set (G_OBJECT (fbin->encoder), "target-bitrate", 30000000, NULL);
+
+  fbin->encoder_capsfilter = gst_element_factory_make ("capsfilter", NULL);
+  if (fbin->encoder_capsfilter == NULL) {
+    SWITCH_ERROR ("create encoder capsfilter for "
+        "stream(stype:%d ptype:%d index:%d) failed\n",
+        sinfo->stype, sinfo->ptype, stream->index);
+    goto free_fbin;
+  }
+
+  if (pipeline->info.frameselection) {
+    caps= gst_caps_new_simple ("video/x-h264",
+        "framerate", GST_TYPE_FRACTION, sinfo->src_fps, 1,
+        NULL);
+    g_object_set (G_OBJECT (fbin->encoder_capsfilter),
+        "caps", caps, NULL);
+    gst_caps_unref (caps);
+  }
+
+  if (sinfo->cam_stream_format == GST_CAMERA_STREAM_FORMAT_P010_10LE) {
+    SWITCH_MSG ("use h265parse for stream %s\n", sinfo->name);
+    fbin->h264parser = gst_element_factory_make ("h265parse", NULL);
+  } else {
+    fbin->h264parser = gst_element_factory_make ("h264parse", NULL);
+  }
+
+  if (fbin->h264parser == NULL) {
+    SWITCH_ERROR ("create h264parser for stream(stype:%d ptype:%d index:%d) "
+        "failed\n", sinfo->stype, sinfo->ptype, stream->index);
+    goto free_fbin;
+  }
+
+  fbin->mp4mux = gst_element_factory_make ("mp4mux", NULL);
+  if (fbin->mp4mux == NULL) {
+    SWITCH_ERROR ("create mp4mux for stream(stype:%d ptype:%d index:%d) "
+        "failed\n", sinfo->stype, sinfo->ptype, stream->index);
+    goto free_fbin;
+  }
+
+  fbin->filesink = gst_element_factory_make ("filesink", NULL);
+  if (fbin->filesink == NULL) {
+    SWITCH_ERROR ("create filesink for stream(stype:%d ptype:%d index:%d) "
+        "failed\n", sinfo->stype, sinfo->ptype, stream->index);
+    goto free_fbin;
+  }
+  location = g_strdup_printf ("/data/fastswitch-%s.mp4", sinfo->name);
+  g_object_set (G_OBJECT (fbin->filesink), "location", location,
+      "async", FALSE, NULL);
+  g_free (location);
+
+  gst_bin_add_many (GST_BIN (pcontrol->pipeline),
+      fbin->camera_capsfilter, fbin->encoder,
+      fbin->encoder_capsfilter, fbin->h264parser,
+      fbin->mp4mux, fbin->filesink, NULL);
+
+  if (!gst_element_link_many (fbin->camera_capsfilter, fbin->encoder,
+        fbin->encoder_capsfilter, fbin->h264parser,
+        fbin->mp4mux, fbin->filesink, NULL)) {
+    SWITCH_ERROR ("link stream (stype:%d ptype:%d index:%d) failed\n",
+        sinfo->stype, sinfo->ptype, stream->index);
+    goto remove_fbin;
+  }
+
+  SWITCH_INFO ("stream (stype:%d ptype:%d index:%d) "
+      "init and add to pipeline succesfully\n",
+      sinfo->stype, sinfo->ptype, stream->index);
 
   return TRUE;
+
+remove_fbin:
+  // remove will unref elements
+  gst_bin_remove_many (GST_BIN (pipeline->control.pipeline),
+      fbin->camera_capsfilter,
+      fbin->encoder,
+      fbin->encoder_capsfilter,
+      fbin->h264parser,
+      fbin->mp4mux,
+      fbin->filesink,
+      NULL);
+
+  fbin->camera_capsfilter = NULL;
+  fbin->encoder = NULL;
+  fbin->h264parser = NULL;
+  fbin->mp4mux = NULL;
+  fbin->filesink = NULL;
+
+  gst_element_release_request_pad (pcontrol->camera, fbin->camera_pad);
+  fbin->camera_pad = NULL;
+
+  return FALSE;
+
+free_fbin:
+
+  if (fbin->filesink) {
+    gst_object_unref (fbin->filesink);
+    fbin->filesink = NULL;
+  }
+
+  if (fbin->mp4mux) {
+    gst_object_unref (fbin->mp4mux);
+    fbin->mp4mux = NULL;
+  }
+
+  if (fbin->h264parser) {
+    gst_object_unref (fbin->h264parser);
+    fbin->h264parser = NULL;
+  }
+
+  if (fbin->encoder_capsfilter) {
+    gst_object_unref (fbin->encoder_capsfilter);
+    fbin->encoder_capsfilter = NULL;
+  }
+
+  if (fbin->encoder) {
+    gst_object_unref (fbin->encoder);
+    fbin->encoder = NULL;
+  }
+
+  if (fbin->camera_capsfilter) {
+    gst_object_unref (fbin->camera_capsfilter);
+    fbin->camera_capsfilter = NULL;
+  }
+
+  if (fbin->camera_pad) {
+    gst_element_release_request_pad (pcontrol->camera, fbin->camera_pad);
+    fbin->camera_pad = NULL;
+  }
+
+  return FALSE;
 }
 
-// Handler for CtrlC
-static gboolean
-interrupt_handler (gpointer userdata)
+void
+switchstream_file_deinit (GstUnifiedSwitchStream *ustream)
 {
-  GstAppContext* appctx = (GstAppContext*) userdata;
-  GstState state = GST_STATE_NULL;
-  gboolean ret = FALSE;
+  GstFileBin *fbin = NULL;
+  GstSwitchPipeline *pipeline = NULL;
+  GstSwitchPipelineControl *pcontrol = NULL;
 
-  // Set exit to true
-  appctx->exit = TRUE;
+  g_return_if_fail (ustream != NULL);
+  fbin = &ustream->bin.fbin;
+  pipeline = ustream->basic.pipeline;
+  pcontrol = &pipeline->control;
 
-  g_print ("\n\nReceived an interrupt signal, sending EOS...\n\n");
+  if (fbin->camera_capsfilter == NULL) {
+    SWITCH_DEBUG ("stream stype(%d) ptype(%d) index(%d) already deinit\n",
+        ustream->basic.info.stype,
+        ustream->basic.info.ptype,
+        ustream->basic.index);
 
-  // Check state of pipeline and send EOS only in PLAYING state
-  gst_element_get_state (appctx->pipeline, &state, NULL, GST_CLOCK_TIME_NONE);
-  if (state == GST_STATE_PLAYING) {
-    gst_element_send_event (appctx->pipeline, gst_event_new_eos ());
+    return;
+  }
+
+  gst_element_unlink_many (fbin->camera_capsfilter,
+      fbin->encoder,
+      fbin->encoder_capsfilter,
+      fbin->h264parser,
+      fbin->mp4mux,
+      fbin->filesink,
+      NULL);
+
+  // remove will unref elements
+  gst_bin_remove_many (GST_BIN (pipeline->control.pipeline),
+      fbin->camera_capsfilter,
+      fbin->encoder,
+      fbin->encoder_capsfilter,
+      fbin->h264parser,
+      fbin->mp4mux,
+      fbin->filesink,
+      NULL);
+
+  fbin->camera_capsfilter = NULL;
+  fbin->encoder = NULL;
+  fbin->h264parser = NULL;
+  fbin->mp4mux = NULL;
+  fbin->filesink = NULL;
+
+  gst_element_release_request_pad (pcontrol->camera, fbin->camera_pad);
+  fbin->camera_pad = NULL;
+}
+
+gboolean
+switchstream_init (GstSwitchStream *stream)
+{
+  GstUnifiedSwitchStream *ustream = (GstUnifiedSwitchStream *)stream;
+
+  if (stream->info.ptype == GST_STREAM_PIPELINE_DISPLAY)
+    return switchstream_display_init (ustream);
+  else
+    return switchstream_file_init (ustream);
+}
+
+void
+switchstream_deinit (GstSwitchStream *stream)
+{
+  GstUnifiedSwitchStream *ustream = (GstUnifiedSwitchStream *)stream;
+
+  if (stream->info.ptype == GST_STREAM_PIPELINE_DISPLAY)
+    switchstream_display_deinit (ustream);
+  else
+    switchstream_file_deinit (ustream);
+}
+
+gboolean
+pipeline_streams_init (GstSwitchPipeline *pipeline)
+{
+  gint pidx, vidx;
+  GstSwitchPipelineControl *pcontrol;
+
+  g_return_val_if_fail(pipeline != NULL, FALSE);
+  pcontrol = &pipeline->control;
+
+  if (! pipeline_init (pipeline)) {
+    SWITCH_ERROR ("pipeline init failed\n");
+    return FALSE;
+  }
+
+  for (pidx = 0; pidx < pcontrol->pstream_num; pidx++) {
+    if (IS_STREAM_ACTIVE (pcontrol->preview_streams[pidx])) {
+      if (! switchstream_init (pcontrol->preview_streams[pidx])) {
+        SWITCH_ERROR ("init preview stream (%d) failed\n", pidx);
+        goto deinit_preview_streams;
+      }
+    }
+  }
+
+  for (vidx = 0; vidx < pcontrol->vstream_num; vidx++) {
+    if (IS_STREAM_ACTIVE (pcontrol->video_streams[vidx])) {
+      if (! switchstream_init (pcontrol->video_streams[vidx])) {
+        SWITCH_ERROR ("init video stream (%d) failed\n", vidx);
+        goto deinit_video_streams;
+      }
+    }
+  }
+
+  return TRUE;
+
+deinit_video_streams:
+  vidx--;
+  while (vidx >= 0) {
+    switchstream_deinit (pcontrol->video_streams[vidx]);
+    vidx--;
+  }
+
+deinit_preview_streams:
+  pidx--;
+  while (pidx >= 0) {
+    switchstream_deinit (pcontrol->preview_streams[pidx]);
+    pidx--;
+  }
+
+  return FALSE;
+}
+
+void
+pipeline_streams_deinit (GstSwitchPipeline *pipeline)
+{
+  gint pidx, vidx;
+  GstSwitchPipelineControl *pcontrol;
+
+  g_return_if_fail(pipeline != NULL);
+  pcontrol = &pipeline->control;
+
+  for (vidx = 0; vidx < pcontrol->vstream_num; vidx++) {
+    if (IS_STREAM_ACTIVE (pcontrol->video_streams[vidx])) {
+      SWITCH_INFO ("deinit video stream (%d)\n", vidx);
+      switchstream_deinit (pcontrol->video_streams[vidx]);
+    }
+  }
+
+  for (pidx = 0; pidx < pcontrol->pstream_num; pidx++) {
+    if (IS_STREAM_ACTIVE (pcontrol->preview_streams[pidx])) {
+      SWITCH_INFO ("deinit preview stream (%d)\n", pidx);
+      switchstream_deinit (pcontrol->preview_streams[pidx]);
+    }
+  }
+
+  pipeline_deinit (pipeline);
+}
+
+gboolean
+pipeline_add_stream (GstSwitchPipeline *pipeline, GstSwitchStream *stream)
+{
+  GstSwitchPipelineControl *pcontrol;
+  GstSwitchStreamInfo *sinfo = NULL;
+  GstDisplayBin *dbin = NULL;
+  GstFileBin *fbin = NULL;
+  GstPad *camera_pad = NULL;
+  GstElement *link_target = NULL;
+
+  g_return_val_if_fail (pipeline != NULL, FALSE);
+  g_return_val_if_fail (stream != NULL, FALSE);
+  pcontrol = &pipeline->control;
+  sinfo = &stream->info;
+  g_return_val_if_fail (pcontrol->pipeline, FALSE);
+
+  if (stream->linked == TRUE) {
+    SWITCH_DEBUG ("stream stype(%d) ptype(%d) index(%d) already linked\n",
+        sinfo->stype, sinfo->ptype, stream->index);
+
     return TRUE;
   }
 
-  g_main_loop_quit (appctx->mloop);
-
-  return TRUE;
-}
-
-// Configure meta of stream
-static void
-stream_meta_configure (MetaInfo* meta,
-    const gint width, const gint height, const gint fps) {
-  meta->width = width;
-  meta->height = height;
-  meta->framerate = fps;
-}
-
-// Create Preview stream
-static gboolean
-preview_stream_create (GstAppContext* appctx)
-{
-  GstPreviewStreamInfo* previewstream = NULL;
-  GstElementClass* qtiqmmfsrc_klass = NULL;
-  GstPadTemplate* qtiqmmfsrc_template = NULL;
-  gboolean ret = FALSE;
-
-  // Get qtiqmmfsrc element pad template
-  qtiqmmfsrc_klass = GST_ELEMENT_GET_CLASS (appctx->source);
-  qtiqmmfsrc_template =
-      gst_element_class_get_pad_template (qtiqmmfsrc_klass, "video_%u");
-
-  // Create and link for preview stream
-  previewstream = (GstPreviewStreamInfo*)(appctx->previewstream);
-  g_print ("Create preview stream: %d x %d, %d fps\n",
-      previewstream->meta.width, previewstream->meta.height,
-      previewstream->meta.framerate);
-
-  previewstream->qmmf_caps = gst_caps_new_simple ("video/x-raw",
-      "format", G_TYPE_STRING, DEFAULT_PREVIEWSTREAM_FORMAT,
-      "width", G_TYPE_INT, previewstream->meta.width,
-      "height", G_TYPE_INT, previewstream->meta.height,
-      "framerate", GST_TYPE_FRACTION,
-      previewstream->meta.framerate, DEFAULT_PREVIEWSTREAM_FPS_DENOMINATOR,
-      NULL);
-  gst_caps_set_features (previewstream->qmmf_caps, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
-
-  previewstream->qmmf_pad = gst_element_request_pad (appctx->source,
-      qtiqmmfsrc_template, "video_%u", previewstream->qmmf_caps);
-  if (!previewstream->qmmf_pad) {
-    g_printerr ("ERROR: failed to request a pad of preview stream.\n");
-    return FALSE;
-  }
-
-  g_print ("Pad requested - %s\n", gst_pad_get_name (previewstream->qmmf_pad));
-
-  // Create other elements of preview stream
-  previewstream->capsfilter = gst_element_factory_make ("capsfilter", NULL);
-  previewstream->displayer = gst_element_factory_make ("waylandsink", NULL);
-
-  if (!previewstream->capsfilter || !previewstream->displayer) {
-    g_printerr ("ERROR: elements in preview stream could not created.\n");
-    return FALSE;
-  }
-
-  // Set properties of elements
-  g_object_set (G_OBJECT (previewstream->qmmf_pad),
-      "type", 1, NULL);
-
-  g_object_set (G_OBJECT (previewstream->capsfilter),
-      "caps", previewstream->qmmf_caps, NULL);
-
-  g_object_set (G_OBJECT (previewstream->displayer), "sync", FALSE, NULL);
-
-  // Add elements to bin
-  gst_bin_add_many(GST_BIN (appctx->pipeline), appctx->source,
-      previewstream->capsfilter, previewstream->displayer, NULL);
-
-  // Link elements
-  ret = gst_element_link_pads_full (
-      appctx->source, gst_pad_get_name (previewstream->qmmf_pad),
-      previewstream->capsfilter, NULL, GST_PAD_LINK_CHECK_DEFAULT);
-
-  ret = gst_element_link_many (previewstream->capsfilter,
-      previewstream->displayer, NULL);
-
-  if (!ret) {
-    g_printerr ("ERROR: failed to link preview stream.\n");
-    return FALSE;
-  }
-
-  return TRUE;
-}
-
-// Create Video stream
-static gboolean
-video_stream_create (GstAppContext* appctx)
-{
-  GList* list = NULL;
-  GstVideoStreamInfo* videostream = NULL;
-  GstElementClass* qtiqmmfsrc_klass = NULL;
-  GstPadTemplate* qtiqmmfsrc_template = NULL;
-  gboolean ret = FALSE;
-  gchar location[] = DEFAULT_VIDEOSTREAM_FILE_LOCATION;
-  guint index = 0;
-
-  // Get qtiqmmfsrc element pad template
-  qtiqmmfsrc_klass = GST_ELEMENT_GET_CLASS (appctx->source);
-  qtiqmmfsrc_template =
-      gst_element_class_get_pad_template (qtiqmmfsrc_klass, "video_%u");
-
-  for (list = appctx->vstreams_list; list != NULL; list = list->next) {
-    videostream = (GstVideoStreamInfo*) (list->data);
-
-    // Create and link for video stream
-    g_print ("Create video stream: %d x %d, %d fps\n",
-        videostream->meta.width, videostream->meta.height,
-        videostream->meta.framerate);
-
-    if (!frameselection_enabled)
-      videostream->qmmf_caps = gst_caps_new_simple ("video/x-raw",
-          "format", G_TYPE_STRING, DEFAULT_VIDEOSTREAM_FORMAT,
-          "width", G_TYPE_INT, videostream->meta.width,
-          "height", G_TYPE_INT, videostream->meta.height,
-          "framerate", GST_TYPE_FRACTION,
-          videostream->meta.framerate, DEFAULT_VIDEOSTREAM_FPS_DENOMINATOR,
-          NULL);
-    else
-      videostream->qmmf_caps = gst_caps_new_simple ("video/x-raw",
-          "format", G_TYPE_STRING, DEFAULT_VIDEOSTREAM_FORMAT,
-          "width", G_TYPE_INT, videostream->meta.width,
-          "height", G_TYPE_INT, videostream->meta.height,
-          "framerate", GST_TYPE_FRACTION, 0, 1,
-          "max-framerate", GST_TYPE_FRACTION,
-          videostream->meta.framerate, DEFAULT_VIDEOSTREAM_FPS_DENOMINATOR,
-          NULL);
-
-    gst_caps_set_features (videostream->qmmf_caps, 0,
-        gst_caps_features_new ("memory:GBM", NULL));
-
-    videostream->qmmf_pad = gst_element_request_pad (appctx->source,
-        qtiqmmfsrc_template, "video_%u", videostream->qmmf_caps);
-    if (!videostream->qmmf_pad) {
-      g_printerr ("ERROR: failed to request a pad of video stream.\n");
-      return FALSE;
-    }
-
-    g_print ("Pad requested - %s\n", gst_pad_get_name (videostream->qmmf_pad));
-
-    // Create other elements of video stream
-    videostream->capsfilter = gst_element_factory_make ("capsfilter", NULL);
-    videostream->encoder = gst_element_factory_make ("qtic2venc", NULL);
-    videostream->capsfilter_dfps = gst_element_factory_make ("capsfilter", NULL);
-    videostream->parser = gst_element_factory_make ("h264parse", NULL);
-    videostream->muxer = gst_element_factory_make ("mp4mux", NULL);
-    videostream->filesinker = gst_element_factory_make ("filesink", NULL);
-
-    if (!videostream->capsfilter || !videostream->encoder ||
-        !videostream->parser || !videostream->muxer ||
-        !videostream->filesinker) {
-      g_printerr ("ERROR: elements in video stream could not created.\n");
-      return FALSE;
-    }
-
-    // Set properties of elements
-    g_object_set (G_OBJECT (videostream->capsfilter),
-        "caps", videostream->qmmf_caps, NULL);
-
-    snprintf (location, sizeof (location), DEFAULT_VIDEOSTREAM_FILE_LOCATION, index);
-    ++index;
-    g_object_set (G_OBJECT (videostream->filesinker),
-        "location", location, NULL);
-
-    g_object_set (G_OBJECT (videostream->encoder), "control-rate", 3, NULL);
-    g_object_set (G_OBJECT (videostream->encoder), "target-bitrate", 30000000, NULL);
-    g_object_set (G_OBJECT (videostream->encoder), "priority", 0, NULL);
-    g_object_set (G_OBJECT (videostream->encoder), "min-quant-i-frames",
-        30, NULL);
-    g_object_set (G_OBJECT (videostream->encoder), "min-quant-p-frames",
-        30, NULL);
-    g_object_set (G_OBJECT (videostream->encoder), "max-quant-i-frames",
-        51, NULL);
-    g_object_set (G_OBJECT (videostream->encoder), "max-quant-p-frames",
-        51, NULL);
-    g_object_set (G_OBJECT (videostream->encoder), "quant-i-frames",
-        30, NULL);
-    g_object_set (G_OBJECT (videostream->encoder), "quant-p-frames",
-        30, NULL);
-
-    if (frameselection_enabled) {
-      GstCaps* caps_dfps = NULL;
-
-      caps_dfps = gst_caps_new_simple ("video/x-h264",
-          "framerate", GST_TYPE_FRACTION,
-          videostream->meta.framerate, DEFAULT_VIDEOSTREAM_FPS_DENOMINATOR,
-          NULL);
-      g_object_set (G_OBJECT (videostream->capsfilter_dfps),
-          "caps", caps_dfps, NULL);
-      gst_caps_unref (caps_dfps);
-    }
-
-    // Add elements to bin
-    gst_bin_add_many (GST_BIN (appctx->pipeline),
-        appctx->source, videostream->capsfilter,
-        videostream->encoder, videostream->capsfilter_dfps,
-        videostream->parser, videostream->muxer, videostream->filesinker, NULL);
-
-    // Link elements
-    ret = gst_element_link_pads_full (
-        appctx->source, gst_pad_get_name (videostream->qmmf_pad),
-        videostream->capsfilter, NULL, GST_PAD_LINK_CHECK_DEFAULT);
-
-    ret = gst_element_link_many (videostream->capsfilter, videostream->encoder,
-        videostream->capsfilter_dfps, videostream->parser, videostream->muxer,
-        videostream->filesinker, NULL);
-
-    if (!ret) {
-      g_printerr ("ERROR: failed to link video stream.\n");
-      return FALSE;
-    }
-  }
-
-  return TRUE;
-}
-
-// Create streams and set to PAUSED to configure_streams once
-static gboolean
-streams_create (GstAppContext* appctx)
-{
-  // Create preview stream
-  if (!preview_stream_create (appctx)) {
-    g_printerr ("ERROR: failed to create preview stream.\n");
-    return FALSE;
-  }
-
-  // Create video stream
-  if (!video_stream_create (appctx)) {
-    g_printerr ("ERROR: failed to create video stream.\n");
-    return FALSE;
-  }
-
-  // Set pipeline to PAUSED state to configure_streams
-  g_print ("Set pipeline to PAUSED state\n");
-  gst_element_set_state (appctx->pipeline, GST_STATE_PAUSED);
-
-  return TRUE;
-}
-
-// Delete streams
-static void
-streams_delete(GstAppContext* appctx) {
-  GList* list = NULL;
-  GstPreviewStreamInfo* previewstream = appctx->previewstream;
-
-  for (list = appctx->vstreams_list; list != NULL; list = list->next) {
-    GstVideoStreamInfo* videostream = (GstVideoStreamInfo*) (list->data);
-
-    if (videostream->qmmf_pad)
-      gst_element_release_request_pad (appctx->source, videostream->qmmf_pad);
-
-    gst_bin_remove_many (GST_BIN (appctx->pipeline),
-        videostream->capsfilter, videostream->encoder,
-        videostream->capsfilter_dfps, videostream->parser,
-        videostream->muxer, videostream->filesinker, NULL);
-  }
-
-  if (previewstream->qmmf_pad)
-    gst_element_release_request_pad (appctx->source, previewstream->qmmf_pad);
-
-  gst_bin_remove_many (GST_BIN (appctx->pipeline),
-      previewstream->capsfilter, previewstream->displayer, NULL);
-}
-
-// Function to switch operation mode
-static gboolean
-switch_func (gpointer userdata) {
-  GstAppContext* appctx = (GstAppContext*) userdata;
-  GList* list = NULL;
-  GstState state_encoder = GST_STATE_NULL;
-  static GstState state = GST_STATE_NULL;
-  gboolean ret = FALSE;
-
-  // Check exit
-  if (appctx->exit)
-    return FALSE;
-
-  // Round of Switch to exit
-  if (appctx->round != DEFAULT_ROUND && appctx->round >= 0) {
-    --(appctx->round);
-  } else if (appctx->round != DEFAULT_ROUND && appctx->round < 0) {
-    interrupt_handler (appctx);
-    return FALSE;
-  }
-
-  list = appctx->vstreams_list;
-  // Check pad activation to link or unlink video stream
-  if (gst_pad_is_active (((GstVideoStreamInfo*) (list->data))->qmmf_pad)) {
-    g_print ("Preview + Video stream end.\n");
-
-    for (list = appctx->vstreams_list; list != NULL; list = list->next) {
-      GstVideoStreamInfo* videostream = (GstVideoStreamInfo*) (list->data);
-
-      // Unlink video stream
-      gst_element_unlink_many (appctx->source, videostream->capsfilter, NULL);
-
-        // Send eos in PLAYING state
-      gst_element_get_state (videostream->encoder,
-          &state_encoder, NULL, GST_CLOCK_TIME_NONE);
-
-      if (state_encoder == GST_STATE_PLAYING)
-        gst_element_send_event (videostream->encoder, gst_event_new_eos ());
-
-      gst_element_set_state (videostream->capsfilter, GST_STATE_NULL);
-      gst_element_set_state (videostream->encoder, GST_STATE_NULL);
-      gst_element_set_state (videostream->capsfilter_dfps, GST_STATE_NULL);
-      gst_element_set_state (videostream->parser, GST_STATE_NULL);
-      gst_element_set_state (videostream->muxer, GST_STATE_NULL);
-      gst_element_set_state (videostream->filesinker, GST_STATE_NULL);
-
-      gst_element_unlink_many (videostream->capsfilter, videostream->encoder,
-          videostream->capsfilter_dfps, videostream->parser, videostream->muxer,
-          videostream->filesinker, NULL);
-
-        // Reference to keep usage after remove from bin
-      gst_object_ref (videostream->capsfilter);
-      gst_object_ref (videostream->encoder);
-      gst_object_ref (videostream->capsfilter_dfps);
-      gst_object_ref (videostream->parser);
-      gst_object_ref (videostream->muxer);
-      gst_object_ref (videostream->filesinker);
-
-        // Remove from bin
-      gst_bin_remove_many (GST_BIN (appctx->pipeline),
-          videostream->capsfilter, videostream->encoder,
-          videostream->capsfilter_dfps, videostream->parser,
-          videostream->muxer, videostream->filesinker, NULL);
-
-        // Deactivate the pad
-      gst_pad_set_active (videostream->qmmf_pad, FALSE);
-    }
-
-    // Set to PLAYING if not
-    if (state != GST_STATE_PLAYING) {
-      gst_element_set_state (appctx->pipeline, GST_STATE_PLAYING);
-
-      gst_element_get_state (appctx->pipeline, &state, NULL, GST_CLOCK_TIME_NONE);
-      if (state != GST_STATE_PLAYING) {
-        g_print ("ERROR: failed to set pipeline to PLAYING state.\n");
-        return FALSE;
-      }
-    }
-
-    g_print ("Preview stream start.\n");
+  if (stream->info.ptype == GST_STREAM_PIPELINE_DISPLAY) {
+    dbin = STREAM_TO_DISPLAY_STREAM_BIN (stream);
+    camera_pad = dbin->camera_pad;
+    link_target = dbin->camera_capsfilter;
   } else {
-    g_print ("Preview stream end.\n");
+    fbin = STREAM_TO_FILE_STREAM_BIN (stream);
+    camera_pad = fbin->camera_pad;
+    link_target = fbin->camera_capsfilter;
+  }
 
-    for (list = appctx->vstreams_list; list != NULL; list = list->next) {
-      GstVideoStreamInfo* videostream = (GstVideoStreamInfo*) (list->data);
+  if (! gst_element_link_pads_full (pcontrol->camera, GST_PAD_NAME (camera_pad),
+      link_target, NULL, GST_PAD_LINK_CHECK_DEFAULT)) {
+    stream->linked = FALSE;
+    SWITCH_ERROR ("link stream stype(%d) ptype(%d) index(%d) pad(%s) "
+        "to pipeline failed\n", sinfo->stype, sinfo->ptype, stream->index,
+        GST_PAD_NAME (camera_pad));
+    return FALSE;
+  } else {
+    stream->linked = TRUE;
+    SWITCH_DEBUG ("link stream stype(%d) ptype(%d) index(%d) pad(%s) "
+        "to pipeline success\n", sinfo->stype, sinfo->ptype, stream->index,
+        GST_PAD_NAME (camera_pad));
+    return TRUE;
+  }
+}
 
-      // Link video stream
-        // Activate the pad
-      gst_pad_set_active (videostream->qmmf_pad, TRUE);
+void
+pipeline_remove_stream (GstSwitchPipeline *pipeline, GstSwitchStream *stream)
+{
+  GstSwitchPipelineControl *pcontrol;
+  GstSwitchStreamInfo *sinfo = NULL;
+  GstDisplayBin *dbin = NULL;
+  GstFileBin *fbin = NULL;
+  GstElement *unlink_target = NULL;
+  GstPad *pad = NULL;
 
-        // Add into bin
-      gst_bin_add_many (GST_BIN (appctx->pipeline),
-          videostream->capsfilter, videostream->encoder,
-          videostream->capsfilter_dfps, videostream->parser,
-          videostream->muxer, videostream->filesinker, NULL);
+  g_return_if_fail (pipeline != NULL);
+  g_return_if_fail (stream != NULL);
+  pcontrol = &pipeline->control;
+  sinfo = &stream->info;
+  g_return_if_fail (pcontrol->pipeline);
 
-        // Sync state
-      gst_element_sync_state_with_parent (videostream->capsfilter);
-      gst_element_sync_state_with_parent (videostream->encoder);
-      gst_element_sync_state_with_parent (videostream->capsfilter_dfps);
-      gst_element_sync_state_with_parent (videostream->parser);
-      gst_element_sync_state_with_parent (videostream->muxer);
-      gst_element_sync_state_with_parent (videostream->filesinker);
+  if (stream->linked == FALSE) {
+    SWITCH_DEBUG ("stream stype(%d) ptype(%d) index(%d) already unlinked\n",
+        sinfo->stype, sinfo->ptype, stream->index);
 
-        // Link elements
-      ret = gst_element_link_pads_full (
-          appctx->source, gst_pad_get_name (videostream->qmmf_pad),
-          videostream->capsfilter, NULL, GST_PAD_LINK_CHECK_DEFAULT);
+    return;
+  }
 
-      if (!ret) {
-        g_printerr ("ERROR: failed to link video pad.\n");
-        return FALSE;
-      }
-      ret = gst_element_link_many (videostream->capsfilter,
-          videostream->encoder, videostream->capsfilter_dfps,
-          videostream->parser, videostream->muxer, videostream->filesinker,
-          NULL);
+  if (stream->info.ptype == GST_STREAM_PIPELINE_DISPLAY) {
+    dbin = STREAM_TO_DISPLAY_STREAM_BIN (stream);
+    unlink_target = dbin->camera_capsfilter;
+    pad = dbin->camera_pad;
+  } else {
+    fbin = STREAM_TO_FILE_STREAM_BIN (stream);
+    unlink_target = fbin->camera_capsfilter;
+    pad = fbin->camera_pad;
+  }
 
-      if (!ret) {
-        g_printerr ("ERROR: failed to link video stream.\n");
-        return FALSE;
+  SWITCH_DEBUG ("remove stream stype(%d) ptype(%d) index(%d) pad(%s) "
+      "from pipeline\n",
+      sinfo->stype, sinfo->ptype, stream->index, GST_PAD_NAME (pad));
+
+  gst_element_unlink (pcontrol->camera, unlink_target);
+  stream->linked = FALSE;
+}
+
+gboolean
+pipeline_add_streams (GstSwitchPipeline *pipeline)
+{
+  GstSwitchPipelineControl *pcontrol;
+  GstSwitchStream *stream;
+  gint pidx, vidx;
+
+  g_return_val_if_fail (pipeline != NULL, FALSE);
+  pcontrol = &pipeline->control;
+
+  for (pidx = 0; pidx < pcontrol->pstream_num; pidx++) {
+    stream = pcontrol->preview_streams[pidx];
+
+    if (IS_STREAM_ACTIVE (stream)) {
+      if (! pipeline_add_stream (pipeline, stream))
+        goto remove_preview_streams;
+    }
+  }
+
+  for (vidx = 0; vidx < pcontrol->vstream_num; vidx++) {
+    stream = pcontrol->video_streams[vidx];
+
+    if (IS_STREAM_ACTIVE (stream)) {
+      if (! pipeline_add_stream (pipeline, stream))
+        goto remove_video_streams;
+    }
+  }
+
+  SWITCH_DEBUG ("add all streams to pipeline success\n");
+
+  return TRUE;
+
+remove_video_streams:
+  while (vidx >= 0) {
+    pipeline_remove_stream (pipeline, pcontrol->video_streams[vidx]);
+    vidx--;
+  }
+
+remove_preview_streams:
+  while (pidx >= 0) {
+    pipeline_remove_stream (pipeline, pcontrol->preview_streams[pidx]);
+    pidx--;
+  }
+
+  return FALSE;
+}
+
+void
+pipeline_remove_streams (GstSwitchPipeline *pipeline)
+{
+  GstSwitchPipelineControl *pcontrol = NULL;
+  gint pidx, vidx;
+
+  g_return_if_fail (pipeline != NULL);
+  pcontrol = &pipeline->control;
+
+  SWITCH_DEBUG ("remove all streams from pipeline\n");
+
+  for (pidx = 0; pidx < pcontrol->pstream_num; pidx++) {
+    if (IS_STREAM_ACTIVE (pcontrol->preview_streams[pidx]))
+      pipeline_remove_stream (pipeline, pcontrol->preview_streams[pidx]);
+  }
+
+  for (vidx = 0; vidx < pcontrol->vstream_num; vidx++) {
+    if (IS_STREAM_ACTIVE (pcontrol->video_streams[vidx]))
+      pipeline_remove_stream (pipeline, pcontrol->video_streams[vidx]);
+  }
+}
+
+void
+pipeline_remove_video_streams (GstSwitchPipeline *pipeline)
+{
+  GstSwitchPipelineControl *pcontrol = NULL;
+  gint vidx;
+
+  g_return_if_fail (pipeline != NULL);
+  pcontrol = &pipeline->control;
+
+  SWITCH_DEBUG ("remove all video streams from pipeline\n");
+
+  for (vidx = 0; vidx < pcontrol->vstream_num; vidx++) {
+    if (IS_STREAM_ACTIVE (pcontrol->video_streams[vidx]))
+      pipeline_remove_stream (pipeline, pcontrol->video_streams[vidx]);
+  }
+}
+
+gboolean
+pipeline_add_video_streams (GstSwitchPipeline *pipeline)
+{
+  GstSwitchPipelineControl *pcontrol;
+  GstSwitchStream *stream;
+  gint vidx;
+
+  g_return_val_if_fail (pipeline != NULL, FALSE);
+  pcontrol = &pipeline->control;
+
+  for (vidx = 0; vidx < pcontrol->vstream_num; vidx++) {
+    stream = pcontrol->video_streams[vidx];
+
+    if (IS_STREAM_ACTIVE (stream)) {
+      if (! pipeline_add_stream (pipeline, stream))
+        goto remove_video_streams;
+    }
+  }
+
+  SWITCH_DEBUG ("add all video streams to pipeline success\n");
+
+  return TRUE;
+
+remove_video_streams:
+  while (vidx >= 0) {
+    pipeline_remove_stream (pipeline, pcontrol->video_streams[vidx]);
+    vidx--;
+  }
+
+  return FALSE;
+}
+
+void
+switchstream_source_activate (GstSwitchStream *stream,
+                       gboolean activate)
+{
+  GstDisplayBin *dbin = NULL;
+  GstFileBin *fbin = NULL;
+  GstPad *camera_pad = NULL;
+
+  g_return_if_fail (stream != NULL);
+  if (stream->info.ptype == GST_STREAM_PIPELINE_DISPLAY) {
+    dbin = STREAM_TO_DISPLAY_STREAM_BIN (stream);
+    camera_pad = dbin->camera_pad;
+  } else {
+    fbin = STREAM_TO_FILE_STREAM_BIN (stream);
+    camera_pad = fbin->camera_pad;
+  }
+
+  SWITCH_DEBUG ("stream stype(%d) ptype(%d) index(%d) pad(%s) activate(%d)\n",
+      stream->info.stype, stream->info.ptype, stream->index,
+      GST_PAD_NAME (camera_pad), activate);
+
+  gst_pad_set_active (camera_pad, activate);
+}
+
+void
+switchstream_source_add_to_array (GstSwitchStream *stream,
+                                  GPtrArray *pads)
+{
+  GstDisplayBin *dbin = NULL;
+  GstFileBin *fbin = NULL;
+
+  GstPad *camera_pad = NULL;
+
+  g_return_if_fail (stream != NULL);
+  if (stream->info.ptype == GST_STREAM_PIPELINE_DISPLAY) {
+    dbin = STREAM_TO_DISPLAY_STREAM_BIN (stream);
+    camera_pad = dbin->camera_pad;
+  } else {
+    fbin = STREAM_TO_FILE_STREAM_BIN (stream);
+    camera_pad = fbin->camera_pad;
+  }
+
+  SWITCH_DEBUG ("add to array: stream stype(%d) ptype(%d) index(%d) pad(%s) \n",
+      stream->info.stype, stream->info.ptype, stream->index,
+      GST_PAD_NAME (camera_pad));
+
+  g_ptr_array_add (pads, (gpointer)(GST_PAD_NAME (camera_pad)));
+}
+
+void
+pipeline_activate_video_streams_sources(GstSwitchPipeline *pipeline,
+                                        gboolean activate)
+{
+  GstSwitchPipelineControl *pcontrol = NULL;
+  GstSwitchPipelineInfo *pinfo = NULL;
+  gint vidx;
+
+  g_return_if_fail (pipeline != NULL);
+  pcontrol = &pipeline->control;
+  pinfo = &pipeline->info;
+
+  if (pinfo->video_sync) {
+    GPtrArray *pads = NULL;
+    gboolean success = FALSE;
+
+    pads = g_ptr_array_new();
+    for (vidx = 0; vidx < pcontrol->vstream_num; vidx++) {
+      if (IS_STREAM_ACTIVE (pcontrol->video_streams[vidx])) {
+        // gst_pad_set_active to update pad state
+        // then use signal to submit these pads to qmmf backend
+        switchstream_source_activate (pcontrol->video_streams[vidx], activate);
+        switchstream_source_add_to_array (pcontrol->video_streams[vidx], pads);
       }
     }
+    g_signal_emit_by_name (pcontrol->camera, "video-pads-activation",
+        activate, pads, &success);
 
-    g_print ("Preview + Video stream start.\n");
+    if (success)
+      SWITCH_DEBUG ("signal sent success\n");
+    else
+      SWITCH_DEBUG ("signal sent failed\n");
+
+    g_ptr_array_free (pads, FALSE);
+  } else  {
+    for (vidx = 0; vidx < pcontrol->vstream_num; vidx++) {
+      if (IS_STREAM_ACTIVE (pcontrol->video_streams[vidx])) {
+        switchstream_source_activate (pcontrol->video_streams[vidx], activate);
+      }
+    }
   }
+}
+
+void
+switchstream_video_control (GstSwitchStream *stream, gboolean on)
+{
+  GstFileBin *fbin = NULL;
+  GstSwitchPipelineControl *pcontrol = NULL;
+  GstState encoder_state, e_state_pending;
+
+  g_return_if_fail (stream != NULL);
+  g_return_if_fail (stream->info.stype == GST_SWITCHSTREAM_TYPE_VIDEO);
+
+  // video streams should always use file pipeline
+  fbin = STREAM_TO_FILE_STREAM_BIN (stream);
+  pcontrol = &stream->pipeline->control;
+
+  if (on) {
+    SWITCH_DEBUG ("stream stype(%d) ptype(%d) idx(%d) video on,"
+        "set all plugins to Playing state\n",
+        stream->info.stype, stream->info.ptype, stream->index);
+
+    gst_bin_add_many (GST_BIN (pcontrol->pipeline),
+        fbin->camera_capsfilter, fbin->encoder,
+        fbin->encoder_capsfilter, fbin->h264parser,
+        fbin->mp4mux, fbin->filesink, NULL);
+
+    gst_element_link_many (fbin->camera_capsfilter, fbin->encoder,
+            fbin->encoder_capsfilter, fbin->h264parser,
+            fbin->mp4mux, fbin->filesink, NULL);
+
+    gst_element_set_state (fbin->camera_capsfilter, GST_STATE_PLAYING);
+    gst_element_set_state (fbin->encoder, GST_STATE_PLAYING);
+    gst_element_set_state (fbin->encoder_capsfilter, GST_STATE_PLAYING);
+    gst_element_set_state (fbin->h264parser, GST_STATE_PLAYING);
+    gst_element_set_state (fbin->mp4mux, GST_STATE_PLAYING);
+    gst_element_set_state (fbin->filesink, GST_STATE_PLAYING);
+
+  } else {
+    SWITCH_DEBUG ("stream stype(%d) ptype(%d) idx(%d) video off\n",
+        stream->info.stype, stream->info.ptype, stream->index);
+
+    gst_element_get_state (fbin->encoder, &encoder_state, &e_state_pending,
+        GST_CLOCK_TIME_NONE);
+
+    if (encoder_state == GST_STATE_PLAYING) {
+      SWITCH_DEBUG ("stream stype(%d) ptype(%d) idx(%d) send EoS to encoder\n",
+          stream->info.stype, stream->info.ptype, stream->index);
+      gst_element_send_event (fbin->encoder, gst_event_new_eos ());
+    }
+
+    gst_element_set_state (fbin->camera_capsfilter, GST_STATE_NULL);
+    gst_element_set_state (fbin->encoder, GST_STATE_NULL);
+    gst_element_set_state (fbin->encoder_capsfilter, GST_STATE_NULL);
+    gst_element_set_state (fbin->h264parser, GST_STATE_NULL);
+    gst_element_set_state (fbin->mp4mux, GST_STATE_NULL);
+    gst_element_set_state (fbin->filesink, GST_STATE_NULL);
+
+    gst_element_unlink_many (fbin->camera_capsfilter,
+        fbin->encoder,
+        fbin->encoder_capsfilter,
+        fbin->h264parser,
+        fbin->mp4mux,
+        fbin->filesink,
+        NULL);
+
+    gst_object_ref (fbin->camera_capsfilter);
+    gst_object_ref (fbin->encoder);
+    gst_object_ref (fbin->encoder_capsfilter);
+    gst_object_ref (fbin->h264parser);
+    gst_object_ref (fbin->mp4mux);
+    gst_object_ref (fbin->filesink);
+
+    gst_bin_remove_many (GST_BIN (pcontrol->pipeline),
+        fbin->camera_capsfilter,
+        fbin->encoder,
+        fbin->encoder_capsfilter,
+        fbin->h264parser,
+        fbin->mp4mux,
+        fbin->filesink,
+        NULL);
+  }
+}
+
+void
+pipeline_switchstream_video_control (GstSwitchPipeline *pipeline, gboolean on)
+{
+  GstSwitchPipelineControl *pcontrol = NULL;
+  gint vidx;
+
+  g_return_if_fail (pipeline != NULL);
+
+  pcontrol = &pipeline->control;
+  for (vidx = 0; vidx < pcontrol->vstream_num; vidx++) {
+    if (IS_STREAM_ACTIVE (pcontrol->video_streams[vidx]))
+      switchstream_video_control (pcontrol->video_streams[vidx], on);
+  }
+}
+
+void
+pipeline_switch_camera_sensor (GstSwitchPipeline *pipeline, gint index)
+{
+  GstSwitchPipelineControl *pcontrol = &pipeline->control;
+  GstSwitchPipelineInfo *pinfo = &pipeline->info;
+
+  g_return_if_fail (index > -2 && index < pinfo->sensor_num);
+
+  SWITCH_MSG ("switch to sensor index (%d)\n", index);
+
+  g_object_set (G_OBJECT (pcontrol->camera),
+      "camera-switch-index", index, NULL);
+}
+
+gboolean
+pipeline_sensor_switch_tmr_func(gpointer userdata)
+{
+  GstSwitchPipeline *pipeline = (GstSwitchPipeline *)userdata;
+  GstSwitchPipelineControl *pcontrol = &pipeline->control;
+  GstSwitchPipelineInfo *pinfo = &pipeline->info;
+
+  SWITCH_DEBUG ("enter %s\n", __func__);
+
+  if (pcontrol->exit)
+    return FALSE;
+
+  if (pcontrol->sensor_switch_index == 0) {
+    pipeline_switch_camera_sensor (pipeline, pcontrol->sensor_switch_index);
+    pcontrol->sensor_switch_index++;
+
+    g_timeout_add (pcontrol->sensor_switch_duration_ms,
+        pipeline_sensor_switch_tmr_func, pipeline);
+
+    return FALSE;
+  } else if (pcontrol->sensor_switch_index < (pinfo->sensor_num - 1)) {
+    pipeline_switch_camera_sensor (pipeline, pcontrol->sensor_switch_index);
+    pcontrol->sensor_switch_index++;
+
+    return TRUE;
+  } else if (pcontrol->sensor_switch_index == (pinfo->sensor_num - 1)) {
+    pipeline_switch_camera_sensor (pipeline, pcontrol->sensor_switch_index);
+    pcontrol->sensor_switch_index = 0;
+
+    return FALSE;
+  } else {
+    return FALSE;
+  }
+}
+
+gboolean
+pipeline_switch_tmr_func (gpointer userdata)
+{
+  GstSwitchPipeline *pipeline = (GstSwitchPipeline *)userdata;
+  GstSwitchPipelineControl *pcontrol = &pipeline->control;
+  GstSwitchPipelineInfo *pinfo = &pipeline->info;
+
+  SWITCH_DEBUG ("enter %s\n", __func__);
+
+  if (pcontrol->exit)
+    return FALSE;
+
+  if (pcontrol->mode == GST_SWITCH_RUN_MODE_PREVIEW) {
+    SWITCH_DEBUG ("Switching to Preview Plus Video start\n");
+    pipeline_activate_video_streams_sources (pipeline, TRUE);
+    pipeline_switchstream_video_control (pipeline, TRUE);
+    pipeline_add_video_streams (pipeline);
+    SWITCH_DEBUG ("Switching to Preview Plus Video finish\n");
+    pcontrol->mode = GST_SWITCH_RUN_MODE_PREVIEW_PLUS_VIDEO;
+  } else {
+    SWITCH_DEBUG ("Switching to Preview start\n");
+    pipeline_remove_video_streams (pipeline);
+    pipeline_switchstream_video_control (pipeline, FALSE);
+    pipeline_activate_video_streams_sources (pipeline, FALSE);
+    SWITCH_DEBUG ("Switching to Preview finish\n");
+    pcontrol->mode = GST_SWITCH_RUN_MODE_PREVIEW;
+  }
+
+  if (pinfo->sensor_switch)
+    g_timeout_add (PIPELINE_SENSOR_SWITCH_SHIFT_MS,
+        pipeline_sensor_switch_tmr_func, pipeline);
+
+  if (pcontrol->mode == GST_SWITCH_RUN_MODE_PREVIEW) {
+    pcontrol->current_round++;
+    if (pcontrol->current_round >= pinfo->round) {
+      SWITCH_MSG ("Max round(%d) reached, exit\n", pcontrol->current_round);
+      pcontrol->exit = TRUE;
+      gst_element_send_event (pcontrol->pipeline, gst_event_new_eos ());
+      return  FALSE;
+    } else {
+      SWITCH_MSG ("%d round start\n", pcontrol->current_round + 1);
+    }
+  }
+
+  if (pcontrol->mode == GST_SWITCH_RUN_MODE_PREVIEW_PLUS_VIDEO)
+    SWITCH_MSG ("*** Current Mode: Preview Plus Video ***\n");
+  else
+    SWITCH_MSG ("*** Current Mode: Preview ***\n");
 
   return TRUE;
 }
+
+gboolean
+system_signal_handler (gpointer userdata)
+{
+  GstSwitchPipeline *pipeline = (GstSwitchPipeline *)userdata;
+  GstSwitchPipelineControl *pcontrol = &pipeline->control;
+
+  SWITCH_MSG ("Receive CTRL+C, send EoS to pipeline\n");
+
+  gst_element_send_event (pcontrol->pipeline, gst_event_new_eos ());
+  pcontrol->exit = TRUE;
+  if (! pcontrol->pipeline_runing)
+    g_main_loop_quit (pcontrol->mloop);
+
+  return TRUE;
+}
+
+void
+gst_signal_handler(GstBus *bus, GstMessage *message, gpointer userdata)
+{
+  GstSwitchPipeline *pipeline = (GstSwitchPipeline *)userdata;
+  GstSwitchPipelineControl *pcontrol = &pipeline->control;
+
+  if (GST_MESSAGE_SRC (message) != GST_OBJECT_CAST (pcontrol->pipeline))
+    return;
+
+  SWITCH_VERBOSE ("receive message from pipeline, type(%x)\n",
+      GST_MESSAGE_TYPE (message));
+
+  switch (GST_MESSAGE_TYPE (message)) {
+    case GST_MESSAGE_EOS:
+      {
+        SWITCH_DEBUG ("Get EoS from piepline\n");
+        pcontrol->exit = TRUE;
+        g_main_loop_quit (pcontrol->mloop);
+      }
+      break;
+    case GST_MESSAGE_WARNING:
+      {
+        GError *gerror;
+        gchar *debug;
+
+        gst_message_parse_warning (message, &gerror, &debug);
+        gst_object_default_error (GST_MESSAGE_SRC (message), gerror, debug);
+        g_error_free (gerror);
+        g_free (debug);
+      }
+      break;
+    case GST_MESSAGE_ERROR:
+      {
+        GError *gerror;
+        gchar *debug;
+
+        gst_message_parse_error (message, &gerror, &debug);
+        gst_object_default_error (GST_MESSAGE_SRC (message), gerror, debug);
+        g_error_free (gerror);
+        g_free (debug);
+        g_main_loop_quit (pcontrol->mloop);
+      }
+      break;
+    case GST_MESSAGE_STATE_CHANGED:
+      {
+        GstState s_old, s_new, s_pending;
+        gst_message_parse_state_changed (message, &s_old, &s_new, &s_pending);
+
+        SWITCH_DEBUG ("Pipeline state change from %s to %s, pending %s\n",
+            gst_element_state_get_name (s_old),
+            gst_element_state_get_name (s_new),
+            gst_element_state_get_name (s_pending));
+
+        if (s_new == GST_STATE_PLAYING)
+          pcontrol->pipeline_runing = TRUE;
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+gboolean
+pipeline_signals_register (GstSwitchPipeline *pipeline)
+{
+  GstBus *bus = NULL;
+  GstSwitchPipelineControl *pcontrol = NULL;
+  GstSwitchPipelineInfo *pinfo = NULL;
+
+  g_return_val_if_fail (pipeline != NULL, FALSE);
+  pcontrol = &pipeline->control;
+  pinfo = &pipeline->info;
+
+  // add bus signal handler
+  bus = gst_pipeline_get_bus (GST_PIPELINE (pcontrol->pipeline));
+
+  if (bus == NULL) {
+    SWITCH_ERROR ("fail to get bus from pipeline\n");
+    return FALSE;
+  }
+
+  gst_bus_add_signal_watch (bus);
+
+  g_signal_connect (bus, "message::eos",
+      G_CALLBACK(gst_signal_handler), pipeline);
+  g_signal_connect (bus, "message::state-changed",
+      G_CALLBACK(gst_signal_handler), pipeline);
+  g_signal_connect (bus, "message::warning",
+      G_CALLBACK(gst_signal_handler), pipeline);
+  g_signal_connect (bus, "message::error",
+      G_CALLBACK(gst_signal_handler), pipeline);
+
+  gst_object_unref (bus);
+
+  // add CTRL+C handler
+  pcontrol->unix_signal = g_unix_signal_add (SIGINT,
+      system_signal_handler, pipeline);
+
+  return TRUE;
+}
+
+gboolean
+pipeline_prepare_to_run (GstSwitchPipeline *pipeline)
+{
+  GstSwitchPipelineControl *pcontrol = NULL;
+  GstSwitchPipelineInfo *pinfo = NULL;
+  GstStateChangeReturn ret;
+  GstState state, pending;
+  ::camera::CameraMetadata session_metadata(128, 128);
+  ::camera::CameraMetadata *pstatic_meta = nullptr;
+  uint32_t tag;
+  uint8_t tag_val;
+  gboolean metadata_update = FALSE;
+
+  g_return_val_if_fail (pipeline != NULL, FALSE);
+  pcontrol = &pipeline->control;
+  pinfo = &pipeline->info;
+
+  ret = gst_element_set_state (pcontrol->pipeline, GST_STATE_PAUSED);
+  SWITCH_MSG ("set pipeline to PAUSED state, return val(%d)\n", ret);
+
+  // prepare static meta data for vendor tags searching
+  g_object_get (G_OBJECT (pcontrol->camera), "static-metadata",
+      &pstatic_meta, NULL);
+
+  if (pinfo->log_cam_mode != GST_LOGICAL_CAMERA_MODE_NONE) {
+    gint ret;
+
+    ret = pstatic_meta->getTagFromName ("android.control.extendedSceneMode",
+        NULL, &tag);
+
+    if (ret == 0) {
+
+      SWITCH_MSG ("extendedSceneMode (%d) found, set to %s\n", tag,
+          pinfo->log_cam_mode == GST_LOGICAL_CAMERA_MODE_SAT ? "SAT" : "RTB");
+
+      tag_val = (uint8_t)pinfo->log_cam_mode;
+      session_metadata.update (tag, &tag_val, 1);
+      metadata_update = TRUE;
+    } else {
+      SWITCH_MSG ("extendedSceneMode not found\n");
+    }
+  }
+
+  if (metadata_update == TRUE)
+    g_object_set (G_OBJECT (pcontrol->camera), "session-metadata",
+        &session_metadata, NULL);
+
+  pipeline_remove_video_streams (pipeline);
+  pipeline_switchstream_video_control (pipeline, FALSE);
+  pipeline_activate_video_streams_sources (pipeline, FALSE);
+  SWITCH_MSG ("remove video streams\n");
+
+  ret = gst_element_set_state (pcontrol->pipeline, GST_STATE_PLAYING);
+  SWITCH_MSG ("set pipeline to PLAYING state, return val(%d)\n", ret);
+  gst_element_get_state (pcontrol->pipeline, &state, &pending,
+        GST_CLOCK_TIME_NONE);
+
+  pcontrol->mode = GST_SWITCH_RUN_MODE_PREVIEW;
+  SWITCH_MSG ("%d round start\n", pcontrol->current_round + 1);
+  SWITCH_MSG ("*** Current Mode: Preview ***\n");
+
+  // add timer function to execute streams switch
+  g_timeout_add (pinfo->duration * 1000, pipeline_switch_tmr_func, pipeline);
+
+  if (pinfo->sensor_switch)
+    g_timeout_add (PIPELINE_SENSOR_SWITCH_SHIFT_MS,
+        pipeline_sensor_switch_tmr_func, pipeline);
+
+  return TRUE;
+}
+
 
 gint
 main (gint argc, gchar* argv[])
 {
-  GstAppContext* appctx = NULL;
-  guint interrupt = 0;
-  GOptionContext* ctx = NULL;
-  gint previewfps = DEFAULT_PREVIEWSTREAM_FPS_NUMERATOR;
-  gint previewwidth = DEFAULT_PREVIEWSTREAM_WIDTH;
-  gint previewheight = DEFAULT_PREVIEWSTREAM_HEIGHT;
-  gint vnum = DEFAULT_VIDEOSTREAM_NUMBER;
-  gint videowidth_1 = DEFAULT_VIDEOSTREAM_WIDTH;
-  gint videoheight_1 = DEFAULT_VIDEOSTREAM_HEIGHT;
-  gint videofps_1 = DEFAULT_VIDEOSTREAM_FPS_NUMERATOR;
-  gint videowidth_2 = DEFAULT_VIDEOSTREAM_WIDTH;
-  gint videoheight_2 = DEFAULT_VIDEOSTREAM_HEIGHT;
-  gint videofps_2 = DEFAULT_VIDEOSTREAM_FPS_NUMERATOR;
-  gint switchdelay = DEFAULT_SWITCH_DELAY;
-  gint round = DEFAULT_ROUND;
+  GOptionContext *ctx;
+  GstSwitchPipeline *pipeline;
+  GError *error = NULL;
+  gint ret = 0;
 
-  // Configure input parameters
-  GOptionEntry entries[] = {
-    { "pwidth", 0, 0, G_OPTION_ARG_INT,
-      &previewwidth,
-      "previewwidth",
-      "Preview Stream Width"
-    },
-    { "pheight", 0, 0, G_OPTION_ARG_INT,
-      &previewheight,
-      "previewheight",
-      "Preview Stream Height"
-    },
-    { "prate", 0, 0, G_OPTION_ARG_INT,
-      &previewfps,
-      "previewfps",
-      "Preview Stream Framerate"
-    },
-    { "vnum", 0, 0, G_OPTION_ARG_INT,
-      &vnum,
-      "videonumber",
-      "Video Stream Number"
-    },
-    { "v1width", 0, 0, G_OPTION_ARG_INT,
-      &videowidth_1,
-      "video1width",
-      "Video Stream 1 Width"
-    },
-    { "v1height", 0, 0, G_OPTION_ARG_INT,
-      &videoheight_1,
-      "video1height",
-      "Video Stream 1 Height"
-    },
-    { "v1rate", 0, 0, G_OPTION_ARG_INT,
-      &videofps_1,
-      "video1fps",
-      "Video Stream 1 Framerate"
-    },
-    { "v2width", 0, 0, G_OPTION_ARG_INT,
-      &videowidth_2,
-      "video2width",
-      "Video Stream 2 Width"
-    },
-    { "v2height", 0, 0, G_OPTION_ARG_INT,
-      &videoheight_2,
-      "video2height",
-      "Video Stream 2 Height"
-    },
-    { "v2rate", 0, 0, G_OPTION_ARG_INT,
-      &videofps_2,
-      "video2fps",
-      "Video Stream 2 Framerate"
-    },
-    { "switch_delay", 0, 0, G_OPTION_ARG_INT,
-      &switchdelay,
-      "switchdelay",
-      "Switch Delay"
-    },
-    { "round", 0, 0, G_OPTION_ARG_INT,
-      &round,
-      "round",
-      "Round to Switch"
-    },
-    { "op-mode", 0, 0, G_OPTION_ARG_STRING,
-      &opmode,
-      "opmode",
-      "Operation mode of camera, interval with comma"
-    },
-    { NULL }
-  };
+  gst_init (&argc, &argv);
 
-  // Parse command line entries.
-  if ((ctx = g_option_context_new ("DESCRIPTION")) != NULL) {
-    gboolean success = FALSE;
-    GError *error = NULL;
+  pipeline = pipeline_streams_alloc (3, 3);
 
-    g_option_context_add_main_entries (ctx, entries, NULL);
-    g_option_context_add_group (ctx, gst_init_get_option_group ());
-
-    success = g_option_context_parse (ctx, &argc, &argv, &error);
-    g_option_context_free (ctx);
-
-    if (!success && (error != NULL)) {
-      g_printerr ("ERROR: Failed to parse command line options: %s!\n",
-          GST_STR_NULL (error->message));
-      g_clear_error (&error);
-      return -EFAULT;
-    } else if (!success && (NULL == error)) {
-      g_printerr ("ERROR: Initializing: Unknown error!\n");
-      return -EFAULT;
-    }
-  } else {
-    g_printerr ("ERROR: Failed to create options context!\n");
+  if (pipeline == NULL) {
+    SWITCH_ERROR ("fail to allocate pipeline and streams\n");
     return -EFAULT;
   }
 
-  // Check op-mode
-  frameselection_enabled = (strstr (opmode, "frameselection")) ? TRUE : FALSE;
-  g_print ("frameselection: %d\n", frameselection_enabled);
-
-
-  // Init GST Library
-  gst_init (&argc, &argv);
-
-  appctx = g_new0 (GstAppContext, 1);
-  if (!appctx) {
-    g_printerr ("ERROR: failed to allocate AppContext.\n");
-    return 0;
+  ctx = g_option_context_new ("fastswitch example options\n");
+  if (ctx == NULL) {
+    SWITCH_ERROR ("create option context fail\n");
+    ret = -EFAULT;
+    goto free0;
   }
 
-  // Create GstAppContext
-  if (!appcontext_create (appctx, vnum)) {
-    g_printerr ("ERROR: failed to init GstAppContext.\n");
-    goto cleanup;
+  // add --debug
+  g_option_context_add_main_entries (ctx, debug_option, NULL);
+
+  // add pipeline and stream options
+  pipeline_streams_alloc_options (ctx, pipeline);
+
+  // add system default options
+  g_option_context_add_group (ctx, gst_init_get_option_group());
+
+  // parse options
+  if (! g_option_context_parse (ctx, &argc, &argv, &error)) {
+    g_option_context_free (ctx);
+    SWITCH_ERROR ("failed to parse command line options:%s!\n",
+        GST_STR_NULL (error->message));
+    g_clear_error (&error);
+    ret = -EFAULT;
+    goto free1;
+  }
+  g_option_context_free (ctx);
+
+  if (! check_pipeline_streams_options (pipeline)) {
+    SWITCH_ERROR ("check options failed\n");
+    ret = -EFAULT;
+    goto free1;
   }
 
-  // Add signals
-  if (!signal_add (appctx))
-    goto cleanup;
-
-  // Register function to handle CtrlC (unix signal:SIGINT)
-  interrupt = g_unix_signal_add (SIGINT, interrupt_handler, appctx);
-
-  // Configure meta of stream
-  stream_meta_configure (&appctx->previewstream->meta,
-      previewwidth, previewheight, previewfps);
-  if (vnum == 1) {
-    GList* list = g_list_nth (appctx->vstreams_list, 0);
-    stream_meta_configure (&(((GstVideoStreamInfo*)(list->data))->meta),
-        videowidth_1, videoheight_1, videofps_1);
-  } else if (vnum == 2) {
-    GList* list = g_list_nth (appctx->vstreams_list, 0);
-    stream_meta_configure (&(((GstVideoStreamInfo*)(list->data))->meta),
-        videowidth_1, videoheight_1, videofps_1);
-    list = g_list_nth (appctx->vstreams_list, 1);
-    stream_meta_configure (&(((GstVideoStreamInfo*)(list->data))->meta),
-        videowidth_2, videoheight_2, videofps_2);
-  } else {
-    g_print ("ERROR: wrong video stream number, Select between 1 or 2.\n");
-    goto cleanup;
+  if (! pipeline_streams_init (pipeline)) {
+    SWITCH_ERROR ("pipeline and streams init failed\n");
+    ret = -EFAULT;
+    goto free1;
   }
 
-  // Create Streams
-  if (!streams_create (appctx)) {
-    streams_delete (appctx);
-    goto cleanup;
+  if (! pipeline_add_streams (pipeline)) {
+    SWITCH_ERROR ("pipeline add streams failed\n");
+    ret = -EFAULT;
+    goto free2;
   }
 
-  // Call once to skip the first round of delay
-  appctx->round = round;
-  switch_func (appctx);
+  if (! pipeline_signals_register (pipeline)) {
+    SWITCH_ERROR ("pipeline register signals failed\n");
+    ret = -EFAULT;
+    goto free3;
+  }
 
-  // Add function to switch
-  g_timeout_add (switchdelay * 1000, switch_func, appctx);
+  if (! pipeline_prepare_to_run (pipeline)) {
+    SWITCH_ERROR ("prepare pipeline to run failed\n");
+    ret = -EFAULT;
+    goto free3;
+  }
 
-  // Run main loop
-  g_print ("g_main_loop_run starts\n");
-  g_main_loop_run (appctx->mloop);
-  g_print ("g_main_loop_run ends\n");
+  g_main_loop_run (pipeline->control.mloop);
 
-  // Set pipeline to NULL
-  g_print ("Setting pipeline to NULL state.\n");
-  gst_element_set_state (appctx->pipeline, GST_STATE_NULL);
+  gst_element_set_state (pipeline->control.pipeline, GST_STATE_NULL);
 
-  // Clean
-  g_source_remove (interrupt);
+free3:
+  pipeline_remove_streams (pipeline);
 
-cleanup:
-  appcontext_delete (appctx);
+free2:
+  pipeline_streams_deinit (pipeline);
 
-  gst_deinit ();
-  g_print ("Main: exit.\n");
+free1:
+  pipeline_streams_free_options (pipeline);
 
-  return 0;
+free0:
+  pipeline_streams_free (pipeline);
+
+  return ret;
 }

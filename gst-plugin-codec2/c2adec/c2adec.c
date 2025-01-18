@@ -157,11 +157,6 @@ gst_c2_adec_stop (GstAudioDecoder * decoder)
   GstC2adecoder *c2adec = GST_C2_ADEC (decoder);
   GST_DEBUG_OBJECT (c2adec, "Stop engine");
 
-  if ((c2adec->engine != NULL) && !gst_c2_engine_drain (c2adec->engine, TRUE)) {
-    GST_ERROR_OBJECT (c2adec, "Failed to drain engine");
-    return FALSE;
-  }
-
   if ((c2adec->engine != NULL) && !gst_c2_engine_stop (c2adec->engine)) {
     GST_ERROR_OBJECT (c2adec, "Failed to stop engine");
     return FALSE;

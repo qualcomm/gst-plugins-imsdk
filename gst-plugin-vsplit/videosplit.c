@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -41,6 +41,7 @@
 #include <stdio.h>
 
 #include <gst/utils/common-utils.h>
+#include <gst/video/video-utils.h>
 #include <gst/video/gstvideoclassificationmeta.h>
 #include <gst/video/gstvideolandmarksmeta.h>
 
@@ -74,7 +75,7 @@ G_DEFINE_TYPE_WITH_CODE (GstVideoSplit, gst_video_split, GST_TYPE_ELEMENT,
 #define GST_VIDEO_FPS_RANGE "(fraction) [ 0, 255 ]"
 
 #define GST_VIDEO_FORMATS \
-  "{ NV12, NV21, UYVY, YUY2, RGBA, BGRA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR, GRAY8 }"
+  "{ NV12, NV21, UYVY, YUY2, RGBA, BGRA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR, GRAY8, NV12_Q08C }"
 
 static GType gst_vsplit_request_get_type(void);
 #define GST_TYPE_VSPLIT_REQUEST  (gst_vsplit_request_get_type())
@@ -85,22 +86,6 @@ enum
   PROP_0,
   PROP_ENGINE_BACKEND,
 };
-
-static GstStaticPadTemplate gst_video_split_sink_template =
-    GST_STATIC_PAD_TEMPLATE("sink",
-        GST_PAD_SINK,
-        GST_PAD_ALWAYS,
-        GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS) ";"
-            GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM, GST_VIDEO_FORMATS))
-    );
-
-static GstStaticPadTemplate gst_video_split_src_template =
-    GST_STATIC_PAD_TEMPLATE("src_%u",
-        GST_PAD_SRC,
-        GST_PAD_REQUEST,
-        GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS) ";"
-            GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM, GST_VIDEO_FORMATS))
-    );
 
 typedef struct _GstVideoCoords GstVideoCoords;
 typedef struct _GstVSplitRequest GstVSplitRequest;
@@ -126,6 +111,66 @@ struct _GstVSplitRequest {
 };
 
 GST_DEFINE_MINI_OBJECT_TYPE (GstVSplitRequest, gst_vsplit_request);
+
+static GstCaps *
+gst_video_split_sink_caps (void)
+{
+  static GstCaps *caps = NULL;
+  static gsize inited = 0;
+
+  if (g_once_init_enter (&inited)) {
+    caps = gst_caps_from_string (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS));
+
+    if (gst_is_gbm_supported ()) {
+      GstCaps *tmplcaps = gst_caps_from_string (
+          GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
+              GST_VIDEO_FORMATS));
+
+      caps = gst_caps_make_writable (caps);
+      gst_caps_append (caps, tmplcaps);
+    }
+
+    g_once_init_leave (&inited, 1);
+  }
+  return caps;
+}
+
+static GstCaps *
+gst_video_split_src_caps (void)
+{
+  static GstCaps *caps = NULL;
+  static gsize inited = 0;
+
+  if (g_once_init_enter (&inited)) {
+    caps = gst_caps_from_string (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS));
+
+    if (gst_is_gbm_supported ()) {
+      GstCaps *tmplcaps = gst_caps_from_string (
+          GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
+              GST_VIDEO_FORMATS));
+
+      caps = gst_caps_make_writable (caps);
+      gst_caps_append (caps, tmplcaps);
+    }
+
+    g_once_init_leave (&inited, 1);
+  }
+  return caps;
+}
+
+static GstPadTemplate *
+gst_video_split_sink_template (void)
+{
+  return gst_pad_template_new_with_gtype ("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
+      gst_video_split_sink_caps (), GST_TYPE_VIDEO_SPLIT_SINKPAD);
+}
+
+static GstPadTemplate *
+gst_video_split_src_template (void)
+{
+  return gst_pad_template_new_with_gtype ("src_%u", GST_PAD_SRC, GST_PAD_REQUEST,
+      gst_video_split_src_caps (), GST_TYPE_VIDEO_SPLIT_SRCPAD);
+}
 
 static void
 gst_vsplit_request_free (GstVSplitRequest * request)
@@ -861,7 +906,8 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
       composition = &(g_array_index (compositions, GstVideoComposition, id));
 
       composition->frame = outframe;
-      composition->isubwc = srcpad->isubwc;
+      composition->isubwc =
+          GST_VIDEO_INFO_FORMAT(srcpad->info) == GST_VIDEO_FORMAT_NV12_Q08C ? TRUE : FALSE;
       composition->flags = 0;
 
       composition->bgcolor = 0x00000000;
@@ -877,7 +923,8 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
 
       composition->blits[0].frame = inframe;
       composition->blits[0].isubwc =
-          GST_VIDEO_SPLIT_SINKPAD (vsplit->sinkpad)->isubwc;
+          GST_VIDEO_INFO_FORMAT (GST_VIDEO_SPLIT_SINKPAD (vsplit->sinkpad)->info) ==
+              GST_VIDEO_FORMAT_NV12_Q08C ? TRUE : FALSE;
 
       composition->blits[0].alpha = G_MAXUINT8;
       composition->blits[0].rotate = GST_VCE_ROTATE_0;
@@ -1055,7 +1102,6 @@ gst_video_split_sinkpad_setcaps (GstVideoSplit * vsplit, GstPad * pad,
     gst_video_info_free (GST_VIDEO_SPLIT_SINKPAD (pad)->info);
 
   GST_VIDEO_SPLIT_SINKPAD (pad)->info = gst_video_info_copy (&info);
-  GST_VIDEO_SPLIT_SINKPAD (pad)->isubwc = gst_caps_has_compression (caps, "ubwc");
 
   GST_VIDEO_SPLIT_LOCK (vsplit);
 
@@ -1557,10 +1603,10 @@ gst_video_split_class_init (GstVideoSplitClass * klass)
       "Split single video stream into multiple streams", "QTI"
   );
 
-  gst_element_class_add_static_pad_template_with_gtype (element,
-      &gst_video_split_sink_template, GST_TYPE_VIDEO_SPLIT_SINKPAD);
-  gst_element_class_add_static_pad_template_with_gtype (element,
-      &gst_video_split_src_template, GST_TYPE_VIDEO_SPLIT_SRCPAD);
+  gst_element_class_add_pad_template (element,
+      gst_video_split_sink_template ());
+  gst_element_class_add_pad_template (element,
+      gst_video_split_src_template ());
 
   element->request_new_pad = GST_DEBUG_FUNCPTR (gst_video_split_request_pad);
   element->release_pad = GST_DEBUG_FUNCPTR (gst_video_split_release_pad);
@@ -1582,7 +1628,7 @@ gst_video_split_init (GstVideoSplit * vsplit)
 
   vsplit->backend = DEFAULT_PROP_ENGINE_BACKEND;
 
-  template = gst_static_pad_template_get (&gst_video_split_sink_template);
+  template = gst_video_split_sink_template ();
   vsplit->sinkpad = g_object_new (GST_TYPE_VIDEO_SPLIT_SINKPAD, "name", "sink",
       "direction", template->direction, "template", template, NULL);
   gst_object_unref (template);

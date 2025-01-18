@@ -131,9 +131,14 @@ gst_app_context_free (GstSmartCodecContext * appctx)
   if (appctx->input_file != NULL)
     g_free (appctx->input_file);
 
-  g_free (appctx->output_file);
-  g_free (appctx->model_path);
-  g_free (appctx->labels_path);
+  if (appctx->output_file != NULL)
+    g_free ((gpointer)appctx->output_file);
+
+  if (appctx->model_path != NULL)
+    g_free ((gpointer)appctx->model_path);
+
+  if (appctx->labels_path != NULL)
+    g_free (appctx->labels_path);
 
   if (appctx != NULL)
     g_free (appctx);
@@ -241,8 +246,12 @@ create_pipe (GstSmartCodecContext * appctx)
 
   // Set properties for ML element
   g_print ("Using DSP delegate\n");
-  delegate_options =
-      gst_structure_from_string ("QNNExternalDelegate,backend_type=htp", NULL);
+
+  // Set delegate and model for AI framework
+  delegate_options = gst_structure_from_string (
+    "QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,\
+    htp_performance_mode=(string)2,htp_precision=(string)1;",
+    NULL);
   g_object_set (G_OBJECT (qtimlelement), "model", appctx->model_path, "delegate",
       GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
   g_object_set (G_OBJECT (qtimlelement), "external_delegate_path",

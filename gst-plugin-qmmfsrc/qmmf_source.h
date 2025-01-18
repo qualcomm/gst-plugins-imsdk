@@ -83,6 +83,10 @@ struct _GstQmmfSrc {
 
   /// Camera device state
   gboolean       isplugged;
+
+  /// Pad Activation mode
+  gint pad_activation_mode;
+
 };
 
 struct _GstQmmfSrcClass {

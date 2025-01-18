@@ -17,6 +17,7 @@ target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
 
 target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_LIBRARIES}
+  qmmf_camera_metadata
 )
 
 install(

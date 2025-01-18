@@ -915,6 +915,13 @@ video_data_callback (GstQmmfContext * context, GstPad * pad,
   GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
   ::qmmf::recorder::Recorder *recorder = context->recorder;
 
+  // when pad is under deactive mode, return buffers directly
+  // to avoid vpad->segment.format to be initialized unexpectly
+  if (gst_pad_get_task_state (pad) != GST_TASK_STARTED) {
+    recorder->ReturnTrackBuffer (vpad->id, buffers);
+    return;
+  }
+
   guint idx = 0, numplanes = 0;
   gsize offset[GST_VIDEO_MAX_PLANES] = { 0, 0, 0, 0 };
   gint  stride[GST_VIDEO_MAX_PLANES] = { 0, 0, 0, 0 };
@@ -1482,31 +1489,17 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
       return FALSE;
   }
 
-  if (vpad->compression != GST_VIDEO_COMPRESSION_NONE &&
-      vpad->format != GST_VIDEO_FORMAT_NV12 &&
-      vpad->format != GST_VIDEO_FORMAT_NV12_10LE32) {
-    GST_ERROR ("Compresion is not supported for %s format!",
-        gst_qmmf_video_format_to_string (vpad->format));
-    GST_QMMFSRC_VIDEO_PAD_UNLOCK (vpad);
-    return FALSE;
-  }
-
   switch (vpad->format) {
     case GST_VIDEO_FORMAT_NV12:
-      format = (vpad->compression == GST_VIDEO_COMPRESSION_UBWC) ?
-          ::qmmf::recorder::VideoFormat::kNV12UBWC :
-          ::qmmf::recorder::VideoFormat::kNV12;
+      format = ::qmmf::recorder::VideoFormat::kNV12;
+      break;
+    case GST_VIDEO_FORMAT_NV12_Q08C:
+      format = ::qmmf::recorder::VideoFormat::kNV12UBWC;
       break;
     case GST_VIDEO_FORMAT_P010_10LE:
       format = ::qmmf::recorder::VideoFormat::kP010;
       break;
     case GST_VIDEO_FORMAT_NV12_10LE32:
-      if (vpad->compression != GST_VIDEO_COMPRESSION_UBWC) {
-        GST_ERROR ("Only UBWC commpresion is supported for %s format!",
-            gst_qmmf_video_format_to_string (vpad->format));
-        GST_QMMFSRC_VIDEO_PAD_UNLOCK (vpad);
-        return FALSE;
-      }
       format = ::qmmf::recorder::VideoFormat::kTP10UBWC;
       break;
     case GST_VIDEO_FORMAT_NV16:
@@ -1616,7 +1609,7 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
           break;
       }
       extraparam.Update(::qmmf::recorder::QMMF_STITCH_LAYOUT, layout);
-    } else {
+    } else if (vpad->log_stream_type > GST_PAD_LOGICAL_STREAM_TYPE_NONE) {
       GST_ERROR ("Unknown logical-stream-type(%ld) of stream.",
           vpad->log_stream_type);
     }
@@ -1846,7 +1839,7 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad)
           break;
       }
       xtraparam.Update(::qmmf::recorder::QMMF_STITCH_LAYOUT, layout);
-    } else {
+    } else if (ipad->log_stream_type > GST_PAD_LOGICAL_STREAM_TYPE_NONE) {
       GST_ERROR ("Unknown logical-stream-type(%ld) of stream.",
           ipad->log_stream_type);
     }
@@ -2738,7 +2731,7 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
           }
         }
       } else {
-        GST_ERROR ("not logical camera, phy camera id switch not supported");
+        GST_INFO ("not logical camera, phy camera id switch not supported");
       }
       break;
     }

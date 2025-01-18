@@ -91,6 +91,7 @@ gst_video_format_to_ib2c_format (GstVideoFormat format)
 {
   switch (format) {
     case GST_VIDEO_FORMAT_NV12:
+    case GST_VIDEO_FORMAT_NV12_Q08C:
       return ::ib2c::ColorFormat::kNV12;
     case GST_VIDEO_FORMAT_NV21:
       return ::ib2c::ColorFormat::kNV21;

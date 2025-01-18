@@ -70,11 +70,13 @@
 #include <sys/ioctl.h>
 
 #include <gbm.h>
+#ifdef HAVE_GBM_PRIV_H
 #include <gbm_priv.h>
+#endif // HAVE_GBM_PRIV_H
 
 #ifdef HAVE_MMM_COLOR_FMT_H
 #include <display/media/mmm_color_fmt.h>
-#else
+#elif defined(HAVE_MSM_MEDIA_INFO_H)
 #include <media/msm_media_info.h>
 #define MMM_COLOR_FMT_NV12_UBWC COLOR_FMT_NV12_UBWC
 #define MMM_COLOR_FMT_NV12_BPP10_UBWC COLOR_FMT_NV12_BPP10_UBWC
@@ -83,6 +85,7 @@
 #define MMM_COLOR_FMT_Y_META_STRIDE VENUS_Y_META_STRIDE
 #define MMM_COLOR_FMT_Y_META_SCANLINES VENUS_Y_META_SCANLINES
 #endif // HAVE_MMM_COLOR_FMT_H
+
 
 #if defined(HAVE_LINUX_DMA_HEAP_H)
 #include <linux/dma-heap.h>
@@ -117,6 +120,7 @@ struct _GstImageBufferPoolPrivate
 
   // GBM library handle;
   gpointer            gbmhandle;
+
   // GBM device handle;
   struct gbm_device   *gbmdevice;
 
@@ -144,6 +148,7 @@ static gint
 gst_video_format_to_gbm_format (GstVideoFormat format)
 {
   switch (format) {
+#ifdef HAVE_GBM_PRIV_H
     case GST_VIDEO_FORMAT_NV12:
       return GBM_FORMAT_NV12;
     case GST_VIDEO_FORMAT_NV21:
@@ -181,6 +186,7 @@ gst_video_format_to_gbm_format (GstVideoFormat format)
     case GST_VIDEO_FORMAT_GRAY8:
       return GBM_FORMAT_R8;
 #endif // GBM_FORMAT_R8
+#endif // HAVE_GBM_PRIV_H
     default:
       GST_ERROR ("Unsupported format %s!", gst_video_format_to_string (format));
   }
@@ -301,6 +307,7 @@ gbm_device_alloc (GstImageBufferPool * vpool)
   format = gst_video_format_to_gbm_format (GST_VIDEO_INFO_FORMAT (&priv->info));
   g_return_val_if_fail (format >= 0, NULL);
 
+#ifdef HAVE_GBM_PRIV_H
   if (GST_VIDEO_INFO_FORMAT (&priv->info) == GST_VIDEO_FORMAT_P010_10LE)
     usage |= GBM_BO_USAGE_10BIT_QTI;
   else if (GST_VIDEO_INFO_FORMAT (&priv->info) == GST_VIDEO_FORMAT_NV12_10LE32)
@@ -308,6 +315,7 @@ gbm_device_alloc (GstImageBufferPool * vpool)
 
   if (priv->isubwc)
     usage |= GBM_BO_USAGE_UBWC_ALIGNED_QTI;
+#endif // HAVE_GBM_PRIV_H
 
   bo = priv->gbm_bo_create (priv->gbmdevice, GST_VIDEO_INFO_WIDTH (&priv->info),
        GST_VIDEO_INFO_HEIGHT (&priv->info), format, usage);
@@ -332,12 +340,13 @@ static void
 gbm_device_free (GstImageBufferPool * vpool, gint fd)
 {
   GstImageBufferPoolPrivate *priv = vpool->priv;
+  struct gbm_bo *bo = NULL;
 
   GST_DEBUG_OBJECT (vpool, "Closing GBM memory FD %d", fd);
 
   g_mutex_lock (&priv->lock);
 
-  struct gbm_bo *bo = g_hash_table_lookup (priv->datamap, GINT_TO_POINTER (fd));
+  bo = g_hash_table_lookup (priv->datamap, GINT_TO_POINTER (fd));
   g_hash_table_remove (priv->datamap, GINT_TO_POINTER (fd));
 
   g_mutex_unlock (&priv->lock);
@@ -552,6 +561,7 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
   if (keepmapped)
     priv->memflags |= GST_FD_MEMORY_FLAG_KEEP_MAPPED;
 
+#ifdef HAVE_GBM_PRIV_H
   // GBM library has its own alignment for the allocated buffers so update
   // the size, stride and offset for the buffer planes in the video info.
   if (GST_IS_GBM_MEMORY_TYPE (vpool->priv->memtype)) {
@@ -621,6 +631,7 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
 
     priv->info.size = MAX (size, priv->info.size);
   }
+#endif // HAVE_GBM_PRIV_H
 
   // Remove cached allocator.
   if (priv->allocator)

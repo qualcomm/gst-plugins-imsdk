@@ -120,11 +120,6 @@ typedef enum {
   GST_VIDEO_CODEC_JPEG,
 } GstVideoCodec;
 
-typedef enum {
-  GST_VIDEO_COMPRESSION_NONE,
-  GST_VIDEO_COMPRESSION_UBWC,
-} GstVideoCompression;
-
 enum
 {
   VIDEO_TYPE_VIDEO,
@@ -168,8 +163,6 @@ struct _GstQmmfSrcVideoPad {
   gint                format;
   /// GStreamer video pad output bayer format bits per pixel.
   guint               bpp;
-  /// Video format compression (none or ubwc).
-  GstVideoCompression compression;
   /// Whether the GStreamer stream is uncompressed or compressed and its type.
   GstVideoCodec       codec;
 

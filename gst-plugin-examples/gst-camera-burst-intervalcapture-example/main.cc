@@ -50,9 +50,9 @@ struct _GstAppContext {
 
 /*** Data Structure ***/
 enum {
-  CAM_OPMODE_NONE,
-  CAM_OPMODE_FRAMESELECTION,
-  CAM_OPMODE_FASTSWITCH,
+  CAM_OPMODE_NONE               = (1 << 0),
+  CAM_OPMODE_FRAMESELECTION     = (1 << 1),
+  CAM_OPMODE_FASTSWITCH         = (1 << 2),
 };
 
 typedef enum {
