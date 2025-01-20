@@ -74,6 +74,9 @@
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
 #include <gst/ml/ml-module-utils.h>
+#include <gst/video/gstqtibufferpool.h>
+#include <gst/video/gstqtiallocator.h>
+#include <gst/video/video-utils.h>
 #include <gst/video/gstimagepool.h>
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
@@ -106,8 +109,6 @@ G_DEFINE_TYPE (GstMLVideoPose, gst_ml_video_pose,
 #define GST_ML_VIDEO_POSE_SRC_CAPS                             \
     "video/x-raw, "                                            \
     "format = (string) " GST_ML_VIDEO_POSE_VIDEO_FORMATS  "; " \
-    "video/x-raw(" GST_CAPS_FEATURE_MEMORY_GBM "), "           \
-    "format = (string) " GST_ML_VIDEO_POSE_VIDEO_FORMATS "; "  \
     "text/x-raw, "                                             \
     "format = (string) " GST_ML_VIDEO_POSE_TEXT_FORMATS
 
@@ -144,9 +145,6 @@ enum {
 static GstStaticCaps gst_ml_video_pose_static_sink_caps =
   GST_STATIC_CAPS (GST_ML_VIDEO_POSE_SINK_CAPS);
 
-static GstStaticCaps gst_ml_video_pose_static_src_caps =
-  GST_STATIC_CAPS (GST_ML_VIDEO_POSE_SRC_CAPS);
-
 
 static GstCaps *
 gst_ml_video_pose_sink_caps (void)
@@ -168,7 +166,16 @@ gst_ml_video_pose_src_caps (void)
   static gsize inited = 0;
 
   if (g_once_init_enter (&inited)) {
-    caps = gst_static_caps_get (&gst_ml_video_pose_static_src_caps);
+    caps = gst_caps_from_string (GST_ML_VIDEO_POSE_SRC_CAPS);
+
+    if (gst_is_gbm_supported ()) {
+      GstCaps *tmplcaps = gst_caps_from_string (
+          GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
+              GST_ML_VIDEO_POSE_VIDEO_FORMATS));
+
+      gst_caps_append (caps, tmplcaps);
+    }
+
     g_once_init_leave (&inited, 1);
   }
   return caps;
@@ -208,7 +215,7 @@ gst_ml_video_pose_create_pool (GstMLVideoPose * vpose, GstCaps * caps)
 {
   GstStructure *structure = gst_caps_get_structure (caps, 0);
   GstBufferPool *pool = NULL;
-  guint size = 0;
+  GstAllocator *allocator = NULL;
 
   if (gst_structure_has_name (structure, "video/x-raw")) {
     GstVideoInfo info;
@@ -217,21 +224,72 @@ gst_ml_video_pose_create_pool (GstMLVideoPose * vpose, GstCaps * caps)
       GST_ERROR_OBJECT (vpose, "Invalid caps %" GST_PTR_FORMAT, caps);
       return NULL;
     }
-    // If downstream allocation query supports GBM, allocate gbm memory.
-    if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
-      GST_INFO_OBJECT (vpose, "Uses GBM memory");
-      pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
+
+    if (gst_is_gbm_supported ()) {
+      // If downstream allocation query supports GBM, allocate gbm memory.
+      if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
+        GST_INFO_OBJECT (vpose, "Uses GBM memory");
+        pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
+      } else {
+        GST_INFO_OBJECT (vpose, "Uses ION memory");
+        pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
+      }
+
+      if (NULL == pool) {
+        GST_ERROR_OBJECT (vpose, "Failed to create buffer pool!");
+        return NULL;
+      }
+
+      structure = gst_buffer_pool_get_config (pool);
+      allocator = gst_fd_allocator_new ();
+
+      gst_buffer_pool_config_add_option (structure,
+          GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
     } else {
-      GST_INFO_OBJECT (vpose, "Uses ION memory");
-      pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
+      GstVideoFormat format;
+      GstVideoAlignment align;
+      gboolean success;
+      guint width, height;
+      gint stride, scanline;
+
+      width = GST_VIDEO_INFO_WIDTH (&info);
+      height = GST_VIDEO_INFO_HEIGHT (&info);
+      format = GST_VIDEO_INFO_FORMAT (&info);
+
+      success = gst_adreno_utils_compute_alignment (width, height, format,
+          &stride, &scanline);
+      if (!success) {
+        GST_ERROR_OBJECT(vpose,"Failed to get alignment");
+        return NULL;
+      }
+
+      pool = gst_qti_buffer_pool_new ();
+      structure = gst_buffer_pool_get_config (pool);
+
+      gst_video_alignment_reset (&align);
+      align.padding_bottom = scanline - height;
+      align.padding_right = stride - width;
+      gst_video_info_align (&info, &align);
+
+      gst_buffer_pool_config_add_option (structure,
+          GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
+      gst_buffer_pool_config_set_video_alignment (structure, &align);
+
+      allocator = gst_qti_allocator_new (NULL);
+      if (allocator == NULL) {
+        GST_ERROR_OBJECT (vpose, "Failed to create QTI allocator");
+        gst_clear_object (&pool);
+        return NULL;
+      }
     }
 
-    if (NULL == pool) {
-      GST_ERROR_OBJECT (vpose, "Failed to create buffer pool!");
-      return NULL;
-    }
+    gst_buffer_pool_config_set_params (structure, caps, info.size,
+      DEFAULT_MIN_BUFFERS, DEFAULT_MAX_BUFFERS);
+    gst_buffer_pool_config_add_option (structure,
+        GST_BUFFER_POOL_OPTION_VIDEO_META);
+    gst_buffer_pool_config_set_allocator (structure, allocator, NULL);
+    g_object_unref (allocator);
 
-    size = GST_VIDEO_INFO_SIZE (&info);
   } else if (gst_structure_has_name (structure, "text/x-raw")) {
     GST_INFO_OBJECT (vpose, "Uses SYSTEM memory");
 
@@ -240,23 +298,9 @@ gst_ml_video_pose_create_pool (GstMLVideoPose * vpose, GstCaps * caps)
       return NULL;
     }
 
-    size = DEFAULT_TEXT_BUFFER_SIZE;
-  }
-
-  structure = gst_buffer_pool_get_config (pool);
-  gst_buffer_pool_config_set_params (structure, caps, size,
-      DEFAULT_MIN_BUFFERS, DEFAULT_MAX_BUFFERS);
-
-  if (GST_IS_IMAGE_BUFFER_POOL (pool)) {
-    GstAllocator *allocator = gst_fd_allocator_new ();
-
-    gst_buffer_pool_config_set_allocator (structure, allocator, NULL);
-    g_object_unref (allocator);
-
-    gst_buffer_pool_config_add_option (structure,
-        GST_BUFFER_POOL_OPTION_VIDEO_META);
-    gst_buffer_pool_config_add_option (structure,
-        GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
+    structure = gst_buffer_pool_get_config (pool);
+    gst_buffer_pool_config_set_params (structure, caps, DEFAULT_TEXT_BUFFER_SIZE,
+        DEFAULT_MIN_BUFFERS, DEFAULT_MAX_BUFFERS);
   }
 
   if (!gst_buffer_pool_set_config (pool, structure)) {
