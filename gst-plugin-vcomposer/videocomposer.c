@@ -689,8 +689,6 @@ gst_video_composer_populate_frames_and_composition (
     GST_VIDEO_COMPOSER_SINKPAD_LOCK (sinkpad);
 
     blit->alpha = sinkpad->alpha * G_MAXUINT8;
-    blit->isubwc = GST_VIDEO_INFO_FORMAT(sinkpad->info) == GST_VIDEO_FORMAT_NV12_Q08C ?
-        TRUE : FALSE;
 
     blit->flip = gst_video_composer_translate_flip (sinkpad->flip_h, sinkpad->flip_v);
     blit->rotate = gst_video_composer_translate_rotation (sinkpad->rotation);
@@ -729,8 +727,6 @@ gst_video_composer_populate_frames_and_composition (
   GST_VIDEO_COMPOSER_LOCK (vcomposer);
 
   composition->bgcolor = vcomposer->background;
-  composition->isubwc = GST_VIDEO_INFO_FORMAT(vcomposer->outinfo) == GST_VIDEO_FORMAT_NV12_Q08C ?
-      TRUE : FALSE;
 
   GST_VIDEO_COMPOSER_UNLOCK (vcomposer);
 

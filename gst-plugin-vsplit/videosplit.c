@@ -906,8 +906,6 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
       composition = &(g_array_index (compositions, GstVideoComposition, id));
 
       composition->frame = outframe;
-      composition->isubwc =
-          GST_VIDEO_INFO_FORMAT(srcpad->info) == GST_VIDEO_FORMAT_NV12_Q08C ? TRUE : FALSE;
       composition->flags = 0;
 
       composition->bgcolor = 0x00000000;
@@ -922,9 +920,6 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
       composition->n_blits = 1;
 
       composition->blits[0].frame = inframe;
-      composition->blits[0].isubwc =
-          GST_VIDEO_INFO_FORMAT (GST_VIDEO_SPLIT_SINKPAD (vsplit->sinkpad)->info) ==
-              GST_VIDEO_FORMAT_NV12_Q08C ? TRUE : FALSE;
 
       composition->blits[0].alpha = G_MAXUINT8;
       composition->blits[0].rotate = GST_VCE_ROTATE_0;

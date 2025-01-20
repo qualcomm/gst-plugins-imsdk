@@ -91,8 +91,9 @@ gst_video_format_to_ib2c_format (GstVideoFormat format)
 {
   switch (format) {
     case GST_VIDEO_FORMAT_NV12:
-    case GST_VIDEO_FORMAT_NV12_Q08C:
       return ::ib2c::ColorFormat::kNV12;
+    case GST_VIDEO_FORMAT_NV12_Q08C:
+      return ::ib2c::ColorFormat::kNV12 | ::ib2c::ColorMode::kUBWC;
     case GST_VIDEO_FORMAT_NV21:
       return ::ib2c::ColorFormat::kNV21;
     case GST_VIDEO_FORMAT_NV16:
@@ -144,7 +145,7 @@ gst_video_format_to_ib2c_format (GstVideoFormat format)
 
 static guint64
 gst_gles_create_surface (GstGlesVideoConverter * convert, const gchar * direction,
-    const GstVideoFrame * frame, const gboolean isubwc, const guint64 flags)
+    const GstVideoFrame * frame, const guint64 flags)
 {
   GstMemory *memory = NULL;
   const gchar *format = NULL, *mode = "";
@@ -171,11 +172,7 @@ gst_gles_create_surface (GstGlesVideoConverter * convert, const gchar * directio
   surface.size = gst_buffer_get_size (frame->buffer);
   surface.nplanes = GST_VIDEO_FRAME_N_PLANES (frame);
 
-  // In case the format has UBWC enabled append additional format mask.
-  if (isubwc) {
-    surface.format |= ::ib2c::ColorMode::kUBWC;
-    mode = " UBWC";
-  } else if (flags == GST_VCE_FLAG_F16_FORMAT) {
+  if (flags == GST_VCE_FLAG_F16_FORMAT) {
     surface.format |= ::ib2c::ColorMode::kFloat16;
     mode = " FLOAT16";
   } else if (flags == GST_VCE_FLAG_F32_FORMAT) {
@@ -442,7 +439,7 @@ gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
 static guint64
 gst_gles_retrieve_surface_id (GstGlesVideoConverter * convert,
     GHashTable * surfaces, const gchar * direction,
-    const GstVideoFrame * vframe, const gboolean isubwc, const guint64 flags)
+    const GstVideoFrame * vframe, const guint64 flags)
 {
   GstMemory *memory = NULL;
   GstGlesSurface *glsurface = NULL;
@@ -463,7 +460,7 @@ gst_gles_retrieve_surface_id (GstGlesVideoConverter * convert,
   if (!g_hash_table_contains (surfaces, GUINT_TO_POINTER (fd))) {
     // Create an input surface and add its ID to the input hash table.
     surface_id =
-        gst_gles_create_surface (convert, direction, vframe, isubwc, flags);
+        gst_gles_create_surface (convert, direction, vframe, flags);
 
     if (surface_id == 0) {
       GST_ERROR ("Failed to create surface!");
@@ -522,7 +519,7 @@ gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
       GST_GLES_LOCK (convert);
 
       surface_id = gst_gles_retrieve_surface_id (convert, convert->insurfaces,
-          "Input", blit->frame, blit->isubwc, 0);
+          "Input", blit->frame, 0);
 
       GST_GLES_UNLOCK (convert);
 
@@ -558,7 +555,7 @@ gst_gles_video_converter_compose (GstGlesVideoConverter * convert,
     GST_GLES_LOCK (convert);
 
     surface_id = gst_gles_retrieve_surface_id (convert, convert->outsurfaces,
-        "Output", outframe, compositions[idx].isubwc, compositions[idx].flags);
+        "Output", outframe, compositions[idx].flags);
 
     GST_GLES_UNLOCK (convert);
 
