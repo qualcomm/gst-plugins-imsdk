@@ -72,6 +72,9 @@
 #include <dlfcn.h>
 #include <unistd.h>
 
+#include <gst/video/gstqtibufferpool.h>
+#include <gst/video/gstqtiallocator.h>
+#include <gst/video/video-utils.h>
 #include <gst/video/gstimagepool.h>
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
@@ -130,12 +133,6 @@ G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
 #define GST_ML_VIDEO_FORMATS \
     "{ RGBA, BGRA, ABGR, ARGB, RGBx, BGRx, xRGB, xBGR, BGR, RGB, GRAY8, NV12, NV21, YUY2, UYVY }"
 
-#define GST_ML_VIDEO_CONVERTER_SINK_CAPS                          \
-    "video/x-raw, "                                               \
-    "format = (string) " GST_ML_VIDEO_FORMATS "; "                \
-    "video/x-raw(" GST_CAPS_FEATURE_MEMORY_GBM "), "              \
-    "format = (string) " GST_ML_VIDEO_FORMATS
-
 #define GST_ML_TENSOR_TYPES "{ INT8, UINT8, INT32, UINT32, FLOAT16, FLOAT32 }"
 
 #define GST_ML_VIDEO_CONVERTER_SRC_CAPS    \
@@ -153,9 +150,6 @@ enum
   PROP_SIGMA,
 };
 
-static GstStaticCaps gst_ml_video_converter_static_sink_caps =
-    GST_STATIC_CAPS (GST_ML_VIDEO_CONVERTER_SINK_CAPS);
-
 static GstStaticCaps gst_ml_video_converter_static_src_caps =
     GST_STATIC_CAPS (GST_ML_VIDEO_CONVERTER_SRC_CAPS);
 
@@ -167,7 +161,16 @@ gst_ml_video_converter_sink_caps (void)
   static gsize inited = 0;
 
   if (g_once_init_enter (&inited)) {
-    caps = gst_static_caps_get (&gst_ml_video_converter_static_sink_caps);
+    caps = gst_caps_from_string (GST_VIDEO_CAPS_MAKE (GST_ML_VIDEO_FORMATS));
+
+    if (gst_is_gbm_supported ()) {
+      GstCaps *tmplcaps = gst_caps_from_string (
+          GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
+              GST_ML_VIDEO_FORMATS));
+
+      gst_caps_append (caps, tmplcaps);
+    }
+
     g_once_init_leave (&inited, 1);
   }
   return caps;
@@ -1070,9 +1073,12 @@ gst_ml_video_converter_translate_ml_caps (GstMLVideoConverter * mlconverter,
 
   tmplcaps = gst_caps_new_empty ();
 
-  gst_caps_append_structure_full (tmplcaps,
-      gst_structure_new_empty ("video/x-raw"),
-      gst_caps_features_new (GST_CAPS_FEATURE_MEMORY_GBM, NULL));
+  if (gst_is_gbm_supported ()) {
+    gst_caps_append_structure_full (tmplcaps,
+        gst_structure_new_empty ("video/x-raw"),
+        gst_caps_features_new (GST_CAPS_FEATURE_MEMORY_GBM, NULL));
+  }
+
   gst_caps_append_structure (tmplcaps,
       gst_structure_new_empty ("video/x-raw"));
 
@@ -1267,6 +1273,124 @@ gst_ml_video_converter_create_pool (GstMLVideoConverter * mlconverter,
   g_object_unref (allocator);
 
   return pool;
+}
+
+static gboolean
+gst_ml_video_converter_propose_allocation (GstBaseTransform * base,
+    GstQuery * inquery, GstQuery * outquery)
+{
+  GstMLVideoConverter *mlconverter = GST_ML_VIDEO_CONVERTER (base);
+  GstCaps *caps = NULL;
+  GstBufferPool *pool = NULL;
+  GstVideoInfo info;
+  guint size = 0;
+  gboolean needpool = FALSE;
+
+  if (!GST_BASE_TRANSFORM_CLASS (parent_class)->propose_allocation (
+        base, inquery, outquery))
+    return FALSE;
+
+  // No input query, nothing to do.
+  if (NULL == inquery)
+    return TRUE;
+
+  // // Extract caps from the query.
+  gst_query_parse_allocation (outquery, &caps, &needpool);
+
+  if (NULL == caps) {
+    GST_ERROR_OBJECT (mlconverter, "Failed to extract caps from query!");
+    return FALSE;
+  }
+
+  if (!gst_video_info_from_caps (&info, caps)) {
+    GST_ERROR_OBJECT (mlconverter, "Failed to get video info!");
+    return FALSE;
+  }
+
+  // Get the size from video info.
+  size = GST_VIDEO_INFO_SIZE (&info);
+
+  if (needpool) {
+    GstStructure *config = NULL;
+    GstAllocator *allocator = NULL;
+
+    if (gst_is_gbm_supported ()) {
+      // If downstream allocation query supports GBM, allocate gbm memory.
+      if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
+        GST_INFO_OBJECT (mlconverter, "Uses GBM memory");
+        pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
+      } else {
+        GST_INFO_OBJECT (mlconverter, "Uses ION memory");
+        pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
+      }
+
+      config = gst_buffer_pool_get_config (pool);
+
+      allocator = gst_fd_allocator_new ();
+
+      gst_buffer_pool_config_add_option (config,
+          GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
+    } else {
+      GstVideoFormat format;
+      GstVideoAlignment align;
+      gboolean success;
+      guint width, height;
+      gint stride, scanline;
+
+      width = GST_VIDEO_INFO_WIDTH (&info);
+      height = GST_VIDEO_INFO_HEIGHT (&info);
+      format = GST_VIDEO_INFO_FORMAT (&info);
+
+      success = gst_adreno_utils_compute_alignment (width, height, format,
+          &stride, &scanline);
+      if (!success) {
+        GST_ERROR_OBJECT (mlconverter,"Failed to get alignment");
+        return FALSE;
+      }
+
+      pool = gst_qti_buffer_pool_new ();
+      config = gst_buffer_pool_get_config (pool);
+
+      gst_video_alignment_reset (&align);
+      align.padding_bottom = scanline - height;
+      align.padding_right = stride - width;
+      gst_video_info_align (&info, &align);
+
+      gst_buffer_pool_config_add_option (config,
+          GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
+      gst_buffer_pool_config_set_video_alignment (config, &align);
+
+      allocator = gst_qti_allocator_new (NULL);
+      if (allocator == NULL) {
+        GST_ERROR_OBJECT (mlconverter, "Failed to create QTI allocator");
+        gst_clear_object (&pool);
+        return FALSE;
+      }
+    }
+
+    gst_buffer_pool_config_set_params (config, caps, info.size,
+        DEFAULT_PROP_MIN_BUFFERS, DEFAULT_PROP_MAX_BUFFERS);
+    gst_buffer_pool_config_set_allocator (config, allocator, NULL);
+    gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
+    gst_query_add_allocation_param (outquery, allocator, NULL);
+    g_object_unref (allocator);
+
+    if (!gst_buffer_pool_set_config (pool, config)) {
+      GST_WARNING_OBJECT (mlconverter, "Failed to set pool configuration!");
+      g_object_unref (pool);
+      pool = NULL;
+      return FALSE;
+    }
+  }
+
+  // If upstream does't have a pool requirement, set only size in query.
+  gst_query_add_allocation_pool (outquery, needpool ? pool : NULL, size, 0, 0);
+
+  if (pool != NULL)
+    gst_object_unref (pool);
+
+  gst_query_add_allocation_meta (outquery, GST_VIDEO_META_API_TYPE, NULL);
+  return TRUE;
 }
 
 static gboolean
@@ -1580,7 +1704,6 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
     GstVideoBlit *blit = &(mlconverter->composition.blits[idx]);
 
     blit->frame = g_slice_new0 (GstVideoFrame);
-    blit->isubwc = gst_caps_has_compression (incaps, "ubwc") ? TRUE : FALSE;
 
     blit->alpha = G_MAXUINT8;
 
@@ -1589,7 +1712,6 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
   }
 
   mlconverter->composition.frame = g_slice_new0 (GstVideoFrame);
-  mlconverter->composition.isubwc = FALSE;
   mlconverter->composition.flags = 0;
 
   mlconverter->composition.bgcolor = 0x00000000;
@@ -2036,6 +2158,8 @@ gst_ml_video_converter_class_init (GstMLVideoConverterClass * klass)
   gst_element_class_add_pad_template (element,
       gst_ml_video_converter_src_template ());
 
+  base->propose_allocation =
+      GST_DEBUG_FUNCPTR (gst_ml_video_converter_propose_allocation);
   base->decide_allocation =
       GST_DEBUG_FUNCPTR (gst_ml_video_converter_decide_allocation);
 
