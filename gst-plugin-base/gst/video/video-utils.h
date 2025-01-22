@@ -134,6 +134,18 @@ gst_video_region_of_interest_coordinates_correction (
 GST_VIDEO_API gboolean
 gst_buffer_has_valid_parent_meta (GstBuffer * buffer, gint parent_id);
 
+/**
+ * gst_video_point_affine_correction:
+ * @point: #GstVideoPoint to which the affine matrix will be applied.
+ * @matrix: Affine transformation matrix.
+ *
+ * Helper function for adjusting coordinates of a 2D point with affine matrix.
+ *
+ * return: NONE
+ */
+GST_VIDEO_API void
+gst_video_point_affine_correction (GstVideoPoint * point, gdouble matrix[3][3]);
+
 G_END_DECLS
 
 #endif // __GST_QTI_VIDEO_UTILS_H__
