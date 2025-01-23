@@ -229,6 +229,10 @@ struct _GstQmmfContext {
   gboolean          input_roi_enable;
   /// Number of Input ROI's
   gint32            input_roi_count;
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+  /// Offline IFE enable for multicamera usecase
+  gboolean          multicamera_hint;
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
 
   /// Logical Camera Information
   GstQmmfLogicalCamInfo logical_cam_info;
@@ -1370,6 +1374,13 @@ gst_qmmf_context_open (GstQmmfContext * context)
   qmmf_input_roi.enable = context->input_roi_enable;
   xtraparam.Update (::qmmf::recorder::QMMF_INPUT_ROI, qmmf_input_roi);
 
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+  // Offline IFE
+  ::qmmf::recorder::OfflineIFE qmmf_offline_ife;
+  qmmf_offline_ife.enable = context->multicamera_hint;
+  xtraparam.Update (::qmmf::recorder::QMMF_OFFLINE_IFE, qmmf_offline_ife);
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
+
   // Camera Operation Mode
   ::qmmf::recorder::CamOpModeControl cam_opmode;
   gint extra_param_entry = 0;
@@ -2209,6 +2220,11 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_INPUT_ROI:
       context->input_roi_enable = g_value_get_boolean (value);
       return;
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+    case PARAM_CAMERA_MULTICAMERA_HINT:
+      context->multicamera_hint = g_value_get_boolean (value);
+      return;
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
   }
 
   if (context->state >= GST_STATE_READY &&
@@ -2889,6 +2905,11 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       }
       break;
     }
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+    case PARAM_CAMERA_MULTICAMERA_HINT:
+      g_value_set_boolean (value, context->multicamera_hint);
+      break;
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
     case PARAM_CAMERA_MANUAL_WB_SETTINGS:
     {
       gchar *string = NULL;
