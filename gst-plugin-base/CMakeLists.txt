@@ -19,6 +19,14 @@ pkg_check_modules(GST_VIDEO
 include(CheckIncludeFile)
 include(CheckIncludeFileCXX)
 
+# These will be the only header search paths used by check_include_file,
+# the contents of the include_directories property will be ignored.
+set(CMAKE_REQUIRED_INCLUDES
+  ${KERNEL_BUILDDIR}/usr/include
+  ${KERNEL_BUILDDIR}/usr/include/vidc
+  ${KERNEL_BUILDDIR}/usr/include/uapi
+)
+
 # Check whether MMM color format header is present.
 check_include_file("display/media/mmm_color_fmt.h" HAVE_MMM_COLOR_FMT_H)
 
