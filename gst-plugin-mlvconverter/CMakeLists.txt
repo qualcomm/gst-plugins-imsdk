@@ -59,6 +59,7 @@ target_link_libraries(${GST_QTI_ML_VIDEO_CONVERTER} PRIVATE
   gstqtimlbase
   gstqtivideobase
   gstqtiutilsbase
+  gstqtiallocatorsbase
 )
 
 install(

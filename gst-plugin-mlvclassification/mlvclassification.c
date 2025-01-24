@@ -77,7 +77,7 @@
 #include <gst/ml/gstmlmeta.h>
 #include <gst/ml/ml-module-utils.h>
 #include <gst/video/gstqtibufferpool.h>
-#include <gst/video/gstqtiallocator.h>
+#include <gst/allocators/gstqtiallocator.h>
 #include <gst/video/video-utils.h>
 #include <gst/video/gstimagepool.h>
 #include <gst/memory/gstmempool.h>
@@ -305,7 +305,7 @@ gst_ml_video_classification_create_pool (
           GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
       gst_buffer_pool_config_set_video_alignment (structure, &align);
 
-      allocator = gst_qti_allocator_new (NULL);
+      allocator = gst_qti_allocator_new ();
       if (allocator == NULL) {
         GST_ERROR_OBJECT (classification, "Failed to create QTI allocator");
         gst_clear_object (&pool);
