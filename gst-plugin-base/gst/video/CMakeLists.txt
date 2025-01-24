@@ -6,7 +6,6 @@ add_library(${GST_QTI_VIDEO_BASE} SHARED
   gstvideoclassificationmeta.c
   gstvideolandmarksmeta.c
   video-converter-engine.c
-  gstqtiallocator.c
   gstqtibufferpool.c
   video-utils.c
   $<$<BOOL:${HAVE_ADRENO_C2D2_H}>:c2d-video-converter.c>
@@ -19,7 +18,6 @@ set(GST_QTI_VIDEO_BASE_HEADERS
   gstvideoclassificationmeta.h
   gstvideolandmarksmeta.h
   video-converter-engine.h
-  gstqtiallocator.h
   gstqtibufferpool.h
   video-utils.h
 )
@@ -60,6 +58,7 @@ target_link_libraries(${GST_QTI_VIDEO_BASE} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
+  gstqtiallocatorsbase
 )
 
 install(
