@@ -52,6 +52,12 @@
 
 #ifdef HAVE_MMM_COLOR_FMT_H
 #include <display/media/mmm_color_fmt.h>
+#elif defined(HAVE_MSM_MEDIA_INFO_H)
+#include <media/msm_media_info.h>
+#define MMM_COLOR_FMT_NV12_UBWC COLOR_FMT_NV12_UBWC
+#define MMM_COLOR_FMT_ALIGN MSM_MEDIA_ALIGN
+#define MMM_COLOR_FMT_Y_META_STRIDE VENUS_Y_META_STRIDE
+#define MMM_COLOR_FMT_Y_META_SCANLINES VENUS_Y_META_SCANLINES
 #endif // HAVE_MMM_COLOR_FMT_H
 
 #include "tools.h"
