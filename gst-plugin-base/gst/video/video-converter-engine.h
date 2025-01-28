@@ -22,9 +22,9 @@ GST_DEBUG_CATEGORY_EXTERN (gst_video_converter_engine_debug);
 #define GST_VCE_FLAG_I8_FORMAT       (5)
 
 #define GST_VCE_BLIT_INIT \
-    { NULL, FALSE, NULL, NULL, 0, 255, GST_VCE_ROTATE_0, GST_VCE_FLIP_NONE }
+    { NULL, NULL, NULL, 0, 255, GST_VCE_ROTATE_0, GST_VCE_FLIP_NONE }
 #define GST_VCE_COMPOSITION_INIT \
-    { NULL, 0, NULL, FALSE, 0, FALSE, { 0.0, 0.0, 0.0, 0.0 }, \
+    { NULL, 0, NULL, 0, FALSE, { 0.0, 0.0, 0.0, 0.0 }, \
         { 1.0, 1.0, 1.0, 1.0 }, 0 }
 
 // Maximum number of image channels, used for normalization offsets and scales.
@@ -110,7 +110,6 @@ typedef enum {
 /**
  * GstVideoBlit:
  * @frame: Input video frame.
- * @isubwc: Whether the frame has Universal Bandwidth Compression.
  * @sources: Source regions in the frame.
  * @destinations: Destination regions in the frame.
  * @n_regions: Number of Source - Destination region pairs.
@@ -124,7 +123,6 @@ typedef enum {
 struct _GstVideoBlit
 {
   GstVideoFrame      *frame;
-  gboolean           isubwc;
 
   GstVideoRectangle  *sources;
   GstVideoRectangle  *destinations;
@@ -140,7 +138,6 @@ struct _GstVideoBlit
  * @blits: Array of blit objects.
  * @n_blits: Number of blit objects.
  * @frame: Output video frame where the blit objects will be placed.
- * @isubwc: Whether the frame has Universal Bandwidth Compression.
  * @bgcolor: Background color to be applied if bgfill is set to TRUE.
  * @bgfill: Whether to fill the background of the frame image with bgcolor.
  * @offsets: Channel offset factors, used in normalize float operation.
@@ -155,7 +152,6 @@ struct _GstVideoComposition
   guint         n_blits;
 
   GstVideoFrame *frame;
-  gboolean      isubwc;
 
   guint32       bgcolor;
   gboolean      bgfill;
