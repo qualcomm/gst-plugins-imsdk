@@ -166,7 +166,7 @@ gst_video_transform_sink_caps (void)
   if (g_once_init_enter (&inited)) {
     caps = gst_caps_from_string (GST_VIDEO_CAPS_MAKE (GST_SINK_VIDEO_FORMATS));
 
-    if (gst_is_gbm_supported()) {
+    if (gst_is_gbm_supported ()) {
       GstCaps *tmplcaps = gst_caps_from_string (
           GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
               GST_SINK_VIDEO_FORMATS));
@@ -189,7 +189,7 @@ gst_video_transform_src_caps (void)
   if (g_once_init_enter (&inited)) {
     caps = gst_caps_from_string (GST_VIDEO_CAPS_MAKE (GST_SRC_VIDEO_FORMATS));
 
-    if (gst_is_gbm_supported()) {
+    if (gst_is_gbm_supported ()) {
       GstCaps *tmplcaps = gst_caps_from_string (
           GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
               GST_SRC_VIDEO_FORMATS));
@@ -298,7 +298,7 @@ gst_video_transform_create_pool (GstVideoTransform * vtrans, GstCaps * caps)
     return NULL;
   }
 
-  if (gst_is_gbm_supported()) {
+  if (gst_is_gbm_supported ()) {
     // If downstream allocation query supports GBM, allocate gbm memory.
     if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
       GST_INFO_OBJECT (vtrans, "Uses GBM memory");
@@ -313,7 +313,7 @@ gst_video_transform_create_pool (GstVideoTransform * vtrans, GstCaps * caps)
     allocator = gst_fd_allocator_new ();
 
     gst_buffer_pool_config_add_option (config,
-      GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
+        GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
   } else {
     GstVideoFormat format;
     GstVideoAlignment align;
@@ -325,7 +325,7 @@ gst_video_transform_create_pool (GstVideoTransform * vtrans, GstCaps * caps)
     height = GST_VIDEO_INFO_HEIGHT (&info);
     format = GST_VIDEO_INFO_FORMAT (&info);
 
-    success = gst_adreno_utils_compute_alignment(width, height, format,
+    success = gst_adreno_utils_compute_alignment (width, height, format,
         &stride, &scanline);
     if (!success) {
       GST_ERROR_OBJECT(vtrans,"Failed to get alignment");
@@ -553,7 +553,7 @@ gst_video_transform_transform_caps (GstBaseTransform * base,
   result = gst_caps_new_empty ();
 
   // In case there is no memory:GBM caps structure prepend one.
-  if (gst_is_gbm_supported() && !gst_caps_is_empty (caps) &&
+  if (gst_is_gbm_supported () && !gst_caps_is_empty (caps) &&
       !gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
     // Make a copy that will be modified.
     structure = gst_caps_get_structure (caps, 0);
@@ -1629,8 +1629,6 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   GST_VIDEO_TRANSFORM_LOCK (vtrans);
 
   blit.frame = &inframe;
-  blit.isubwc = GST_VIDEO_INFO_FORMAT(vtrans->ininfo) == GST_VIDEO_FORMAT_NV12_Q08C ?
-      TRUE : FALSE;
 
   blit.sources = &(vtrans->crop);
   blit.destinations = &(vtrans->destination);
@@ -1643,8 +1641,6 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   composition.n_blits = 1;
 
   composition.frame = &outframe;
-  composition.isubwc = GST_VIDEO_INFO_FORMAT(vtrans->outinfo) ==
-      GST_VIDEO_FORMAT_NV12_Q08C ? TRUE : FALSE;
   composition.flags = 0;
 
   composition.bgcolor = vtrans->background;
