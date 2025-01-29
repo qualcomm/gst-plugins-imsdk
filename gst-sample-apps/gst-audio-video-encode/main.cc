@@ -46,7 +46,7 @@
 
 #define GST_PIPELINE_AUDIO_VIDEO_AVC \
   "qtiqmmfsrc name=qmmf ! capsfilter name=caps ! \
-  queue ! v4l2h264enc capture-io-mode=5 output-io-mode=5 ! queue ! h264parse ! \
+  queue ! v4l2h264enc capture-io-mode=4 output-io-mode=5 ! queue ! h264parse ! \
   muxer. pulsesrc do-timestamp=true provide-clock=false volume=10 ! \
   audio/x-raw,format=S16LE,channels=1,rate=48000 ! audioconvert ! queue ! \
   lamemp3enc ! muxer. mp4mux name=muxer ! queue ! filesink name=mp4sink \
@@ -54,7 +54,7 @@
 
 #define GST_PIPELINE_AUDIO_VIDEO_HEVC \
   "qtiqmmfsrc name=qmmf ! capsfilter name=caps ! \
-  queue ! v4l2h265enc capture-io-mode=5 output-io-mode=5 ! queue ! h265parse ! \
+  queue ! v4l2h265enc capture-io-mode=4 output-io-mode=5 ! queue ! h265parse ! \
   muxer. pulsesrc do-timestamp=true provide-clock=false volume=10 ! \
   audio/x-raw,format=S16LE,channels=1,rate=48000 ! audioconvert ! queue ! \
   lamemp3enc ! muxer. mp4mux name=muxer ! queue ! filesink name=mp4sink \
@@ -178,12 +178,9 @@ create_pipe (GstAudioVideoAppContext * appctx)
         "width", G_TYPE_INT, appctx->width,
         "height", G_TYPE_INT, appctx->height,
         "framerate", GST_TYPE_FRACTION, 30, 1,
-        "compression", G_TYPE_STRING, "ubwc",
         "interlace-mode", G_TYPE_STRING, "progressive",
         "colorimetry", G_TYPE_STRING, "bt601",
         NULL);
-    GstCapsFeatures *feature = gst_caps_features_new ("memory:GBM", NULL);
-    gst_caps_set_features (filtercaps, 0, feature);
     g_object_set (G_OBJECT (caps), "caps", filtercaps, NULL);
     gst_object_unref (caps);
     gst_object_unref (filtercaps);

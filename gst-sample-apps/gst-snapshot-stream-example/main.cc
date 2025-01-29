@@ -209,10 +209,8 @@ create_pipe (GstSnapshotAppContext * appctx)
       "width", G_TYPE_INT, appctx->input_width,
       "height", G_TYPE_INT, appctx->input_height,
       "framerate", GST_TYPE_FRACTION, 30, 1,
-      "compression", G_TYPE_STRING, "ubwc",
       NULL);
-  gst_caps_set_features (filtercaps, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
+
   g_object_set (G_OBJECT (capsfilter_prev), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
