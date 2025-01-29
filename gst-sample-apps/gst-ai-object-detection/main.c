@@ -273,6 +273,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstElement *qtivcomposer = NULL, *fpsdisplaysink = NULL, *waylandsink = NULL;
   GstElement *filesrc = NULL, *qtdemux = NULL, *h264parse = NULL;
   GstElement *v4l2h264dec = NULL, *rtspsrc = NULL, *rtph264depay = NULL;
+  GstElement *v4l2h264dec_caps = NULL;
   GstCaps *pad_filter = NULL, *filtercaps = NULL;
   GstPad *vcomposer_sink;
   GstStructure *delegate_options = NULL;
@@ -326,6 +327,13 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       goto error_clean_elements;
     }
 
+    v4l2h264dec_caps = gst_element_factory_make (
+        "capsfilter", "v4l2h264dec_caps");
+    if (!v4l2h264dec_caps) {
+      g_printerr ("Failed to create v4l2h264dec_caps\n");
+      goto error_clean_elements;
+    }
+
   } else if (options->use_rtsp) {
     // create rtspsrc plugin for rtsp input
     rtspsrc = gst_element_factory_make ("rtspsrc", "rtspsrc");
@@ -352,6 +360,13 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     v4l2h264dec = gst_element_factory_make ("v4l2h264dec", "v4l2h264dec");
     if (!v4l2h264dec) {
       g_printerr ("Failed to create v4l2h264dec\n");
+      goto error_clean_elements;
+    }
+
+    v4l2h264dec_caps = gst_element_factory_make (
+        "capsfilter", "v4l2h264dec_caps");
+    if (!v4l2h264dec_caps) {
+      g_printerr ("Failed to create v4l2h264dec_caps\n");
       goto error_clean_elements;
     }
 
@@ -466,14 +481,22 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   // 2. Set properties for all GST plugin elements
   if (options->use_file) {
     // 2.1 Set up the capabilities of file stream
-    g_object_set (G_OBJECT (v4l2h264dec), "capture-io-mode", 5, NULL);
-    g_object_set (G_OBJECT (v4l2h264dec), "output-io-mode", 5, NULL);
+    gst_element_set_enum_property (v4l2h264dec, "capture-io-mode", "dmabuf");
+    gst_element_set_enum_property (v4l2h264dec, "output-io-mode", "dmabuf");
     g_object_set (G_OBJECT (filesrc), "location", options->file_path, NULL);
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, "NV12", NULL);
+    g_object_set (G_OBJECT (v4l2h264dec_caps), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
   } else if (options->use_rtsp) {
     //2.2 Set the capabilities of RTSP stream
-    g_object_set (G_OBJECT (v4l2h264dec), "capture-io-mode", 5, NULL);
-    g_object_set (G_OBJECT (v4l2h264dec), "output-io-mode", 5, NULL);
+    gst_element_set_enum_property (v4l2h264dec, "capture-io-mode", "dmabuf");
+    gst_element_set_enum_property (v4l2h264dec, "output-io-mode", "dmabuf");
     g_object_set (G_OBJECT (rtspsrc), "location", options->rtsp_ip_port, NULL);
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, "NV12", NULL);
+    g_object_set (G_OBJECT (v4l2h264dec_caps), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
   } else if (options->use_camera) {
     //2.3 Set user provided Camera ID
     g_object_set (G_OBJECT (qtiqmmfsrc), "camera", options->camera_type, NULL);
@@ -484,18 +507,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
           "format", G_TYPE_STRING, "NV12",
           "width", G_TYPE_INT, primary_camera_width,
           "height", G_TYPE_INT, primary_camera_height,
-          "framerate", GST_TYPE_FRACTION, framerate, 1,
-          "compression", G_TYPE_STRING, "ubwc", NULL);
+          "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
     } else {
       filtercaps = gst_caps_new_simple ("video/x-raw",
           "format", G_TYPE_STRING, "NV12",
           "width", G_TYPE_INT, secondary_camera_width,
           "height", G_TYPE_INT, secondary_camera_height,
-          "framerate", GST_TYPE_FRACTION, framerate, 1,
-          "compression", G_TYPE_STRING, "ubwc", NULL);
+          "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
     }
-    gst_caps_set_features (filtercaps, 0,
-        gst_caps_features_new ("memory:GBM", NULL));
     g_object_set (G_OBJECT (qmmfsrc_caps_preview), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
 
@@ -504,10 +523,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         "format", G_TYPE_STRING, "NV12",
         "width", G_TYPE_INT, inference_width,
         "height", G_TYPE_INT, inference_height,
-        "framerate", GST_TYPE_FRACTION, framerate, 1,
-        "compression", G_TYPE_STRING, "ubwc", NULL);
-    gst_caps_set_features (filtercaps, 0,
-        gst_caps_features_new ("memory:GBM", NULL));
+        "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
     g_object_set (G_OBJECT (qmmfsrc_caps), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
   } else {
@@ -788,10 +804,10 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   if (options->use_file) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), filesrc,
-      qtdemux, h264parse, v4l2h264dec, tee, NULL);
+      qtdemux, h264parse, v4l2h264dec, v4l2h264dec_caps, tee, NULL);
   } else if (options->use_rtsp) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), rtspsrc,
-        rtph264depay, h264parse, v4l2h264dec, tee, NULL);
+        rtph264depay, h264parse, v4l2h264dec, v4l2h264dec_caps, tee, NULL);
   } else if (options->use_camera) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc,
         qmmfsrc_caps, qmmfsrc_caps_preview, NULL);
@@ -820,14 +836,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     }
 
     ret = gst_element_link_many (queue[0], h264parse,
-        v4l2h264dec, queue[1], tee, NULL);
+        v4l2h264dec, v4l2h264dec_caps, queue[1], tee, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements could not be linked for parse->tee\n");
       goto error_clean_pipeline;
     }
   } else if (options->use_rtsp) {
     ret = gst_element_link_many (queue[0], rtph264depay, h264parse,
-        v4l2h264dec, queue[1], tee, NULL);
+        v4l2h264dec, v4l2h264dec_caps, queue[1], tee, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
           "rtspsource->rtph264depay\n");
@@ -955,8 +971,8 @@ error_clean_pipeline:
 
 error_clean_elements:
   cleanup_gst (&qtiqmmfsrc, &qmmfsrc_caps, &qmmfsrc_caps_preview,
-      &filesrc, &qtdemux, &h264parse, &v4l2h264dec, &rtspsrc,
-      &rtph264depay, &tee, &qtimlvconverter, &qtimlelement,
+      &filesrc, &qtdemux, &h264parse, &v4l2h264dec, &v4l2h264dec_caps,
+      &rtspsrc, &rtph264depay, &tee, &qtimlvconverter, &qtimlelement,
       &qtimlvdetection, &qtivcomposer, &detection_filter,
       &waylandsink, &fpsdisplaysink, NULL);
   for (gint i = 0; i < QUEUE_COUNT; i++) {

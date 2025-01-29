@@ -324,6 +324,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   GstElement *qtivsplit = NULL, *qtivcomposer = NULL;
   GstElement *filesrc = NULL, *qtdemux = NULL, *h264parse = NULL;
   GstElement *rtspsrc = NULL, *rtph264depay = NULL, *v4l2h264dec = NULL;
+  GstElement *v4l2h264dec_caps = NULL;
   GstCaps *pad_filter = NULL, *filtercaps = NULL;
   GstStructure *delegate_options = NULL;
   GstPad *qtiqmmfsrc_type = NULL;
@@ -389,6 +390,13 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
       g_printerr ("Failed to create v4l2h264dec\n");
       goto error_clean_elements;
     }
+
+    // Create caps for v4l2h264dec stream
+    v4l2h264dec_caps = gst_element_factory_make ("capsfilter", "v4l2h264dec_caps");
+    if (!v4l2h264dec_caps) {
+      g_printerr ("Failed to create v4l2h264dec_caps\n");
+      goto error_clean_elements;
+    }
   } else if (options.source_type == GST_STREAM_TYPE_RTSP) {
     // Create rtspsrc plugin for rtsp input
     rtspsrc = gst_element_factory_make ("rtspsrc", "rtspsrc");
@@ -415,6 +423,13 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     v4l2h264dec = gst_element_factory_make ("v4l2h264dec", "v4l2h264dec");
     if (!v4l2h264dec) {
       g_printerr ("Failed to create v4l2h264dec\n");
+      goto error_clean_elements;
+    }
+
+    // Create caps for v4l2h264dec stream
+    v4l2h264dec_caps = gst_element_factory_make ("capsfilter", "v4l2h264dec_caps");
+    if (!v4l2h264dec_caps) {
+      g_printerr ("Failed to create v4l2h264dec_caps\n");
       goto error_clean_elements;
     }
   }
@@ -537,10 +552,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
       "format", G_TYPE_STRING, "NV12",
       "width", G_TYPE_INT, daisychain_width,
       "height", G_TYPE_INT, daisychain_height,
-      "framerate", GST_TYPE_FRACTION, framerate, 1,
-      "compression", G_TYPE_STRING, "ubwc", NULL);
-    gst_caps_set_features (filtercaps, 0,
-        gst_caps_features_new ("memory:GBM", NULL));
+      "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
     g_object_set (G_OBJECT (qmmfsrc_caps), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
 
@@ -549,22 +561,27 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
       "format", G_TYPE_STRING, "NV12",
       "width", G_TYPE_INT, preview_width,
       "height", G_TYPE_INT, preview_height,
-      "framerate", GST_TYPE_FRACTION, framerate, 1,
-      "compression", G_TYPE_STRING, "ubwc", NULL);
-    gst_caps_set_features (filtercaps, 0,
-        gst_caps_features_new ("memory:GBM", NULL));
+      "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
     g_object_set (G_OBJECT (qmmfsrc_caps_preview), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
   } else if (options.source_type == GST_STREAM_TYPE_FILE) {
     // 2.3 Set the capabilities of file stream
     g_object_set (G_OBJECT (filesrc), "location", options.file_path, NULL);
-    g_object_set (G_OBJECT (v4l2h264dec), "capture-io-mode", 5, NULL);
-    g_object_set (G_OBJECT (v4l2h264dec), "output-io-mode", 5, NULL);
+    gst_element_set_enum_property (v4l2h264dec, "capture-io-mode", "dmabuf");
+    gst_element_set_enum_property (v4l2h264dec, "output-io-mode", "dmabuf");
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, "NV12", NULL);
+    g_object_set (G_OBJECT (v4l2h264dec_caps), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
   } else if (options.source_type == GST_STREAM_TYPE_RTSP) {
     // 2.3 Set the capabilities of file stream
     g_object_set (G_OBJECT (rtspsrc), "location", options.rtsp_ip_port, NULL);
-    g_object_set (G_OBJECT (v4l2h264dec), "capture-io-mode", 5, NULL);
-    g_object_set (G_OBJECT (v4l2h264dec), "output-io-mode", 5, NULL);
+    gst_element_set_enum_property (v4l2h264dec, "capture-io-mode", "dmabuf");
+    gst_element_set_enum_property (v4l2h264dec, "output-io-mode", "dmabuf");
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, "NV12", NULL);
+    g_object_set (G_OBJECT (v4l2h264dec_caps), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
   }
 
   // 2.3 Set the properties of pad_filter for negotiation with qtivcomposer
@@ -653,10 +670,10 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
         qmmfsrc_caps_preview, NULL);
   } else if (options.source_type == GST_STREAM_TYPE_FILE) {
     gst_bin_add_many (GST_BIN (appctx->pipeline),
-        filesrc, qtdemux, h264parse, v4l2h264dec, NULL);
+        filesrc, qtdemux, h264parse, v4l2h264dec, v4l2h264dec_caps, NULL);
   } else if (options.source_type == GST_STREAM_TYPE_RTSP) {
     gst_bin_add_many (GST_BIN (appctx->pipeline),
-        rtspsrc, rtph264depay, h264parse, v4l2h264dec, NULL);
+        rtspsrc, rtph264depay, h264parse, v4l2h264dec, v4l2h264dec_caps, NULL);
   }
 
   gst_bin_add_many (GST_BIN (appctx->pipeline),
@@ -714,7 +731,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     }
 
     ret = gst_element_link_many (queue[0], h264parse, v4l2h264dec,
-        tee[0], qtimetamux, NULL);
+        v4l2h264dec_caps, tee[0], qtimetamux, NULL);
     if (!ret) {
       g_printerr ("\n pipeline elements qtdemux -> h264parse -> v4l2h264dec"
           " ->qtimetamux  cannot be linked. Exiting.\n");
@@ -729,7 +746,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     }
   } else if (options.source_type == GST_STREAM_TYPE_RTSP) {
     ret = gst_element_link_many (queue[0], rtph264depay, h264parse,
-        v4l2h264dec, tee[0], qtimetamux, NULL);
+        v4l2h264dec, v4l2h264dec_caps, tee[0], qtimetamux, NULL);
     if (!ret) {
       g_printerr ("\n pipeline elements rtph264depay -> h264parse -> v4l2h264dec"
           " -> qtimetamux cannot be linked.Exiting.\n");
@@ -907,10 +924,10 @@ error_clean_elements:
     cleanup_gst (&qtiqmmfsrc, &qmmfsrc_caps, &qmmfsrc_caps_preview, NULL);
   } else if (options.source_type == GST_STREAM_TYPE_FILE) {
     cleanup_gst (&filesrc, &qtdemux, &h264parse, &v4l2h264dec,
-        &qtimetamux, NULL);
+        &v4l2h264dec_caps, &qtimetamux, NULL);
   } else if (options.source_type == GST_STREAM_TYPE_RTSP) {
     cleanup_gst (&rtspsrc, &rtph264depay, &h264parse, &v4l2h264dec,
-        &qtimetamux, NULL);
+        &v4l2h264dec_caps, &qtimetamux, NULL);
   }
 
   cleanup_gst (&qtivsplit, &qtivcomposer, &fpsdisplaysink, NULL);
