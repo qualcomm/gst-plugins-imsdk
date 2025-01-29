@@ -17,6 +17,8 @@ stream and dump the output.
 """
 
 DEFAULT_OUTPUT_FILE = "/opt/data/test.mp4"
+GST_V4L2_IO_DMABUF = 4
+GST_V4L2_IO_DMABUF_IMPORT = 5
 
 eos_received = False
 def create_element(factory_name, name):
@@ -92,7 +94,7 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["capsfilter_0"],
         "caps",
-        "video/x-raw(memory:GBM),format=NV12,\
+        "video/x-raw,format=NV12,\
         width=1920,height=1080,framerate=30/1",
     )
 
@@ -101,11 +103,11 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["capsfilter_1"],
         "caps",
-        "video/x-raw(memory:GBM),width=480,height=640,colorimetry=bt709",
+        "video/x-raw,width=480,height=640,colorimetry=bt709",
     )
 
-    Gst.util_set_object_arg(elements["v4l2h264enc"], "capture-io-mode", "5")
-    Gst.util_set_object_arg(elements["v4l2h264enc"], "output-io-mode", "5")
+    Gst.util_set_object_arg(elements["v4l2h264enc"], "capture-io-mode", "GST_V4L2_IO_DMABUF")
+    Gst.util_set_object_arg(elements["v4l2h264enc"], "output-io-mode", "GST_V4L2_IO_DMABUF_IMPORT")
 
     Gst.util_set_object_arg(elements["h264parse"], "config-interval", "1")
 
