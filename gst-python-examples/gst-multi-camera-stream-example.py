@@ -1,7 +1,6 @@
 # Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 
-from gi.repository import Gst, GLib
 import os
 import sys
 import signal
@@ -10,6 +9,7 @@ import argparse
 import gi
 gi.require_version('Gst', '1.0')
 gi.require_version("GLib", "2.0")
+from gi.repository import Gst, GLib
 
 # Constants
 DESCRIPTION = """
@@ -18,9 +18,9 @@ on waylandsink or Dumping encoder output i.e. mp4 on device
 
 Usage:
 For Preview on Display:
-python3 gst-multi-camera-stream-example.py  --width=1920 --height=1080
+python3 gst-multi-camera-stream-example.py -D 1 --width=1920 --height=1080
 For Video Encoder mp4 on device:
-python3 gst-multi-camera-stream-example.py --file --width=1920 --height=1080
+python3 gst-multi-camera-stream-example.py --width=1920 --height=1080 -- output_of_primary_cam=<cam_0.mp4> --output_of_secondary_cam==<cam_1.mp4>
 Help:
 python3 gst-multi-camera-stream-example.py --help
 """
@@ -31,6 +31,8 @@ DEFAULT_WIDTH = 1280
 DEFAULT_HEIGHT = 720
 DEFAULT_PRIMARY_CAMERA_ID = 0
 DEFAULT_SECONDARY_CAMERA_ID = 1
+GST_V4L2_IO_DMABUF = 4
+GST_V4L2_IO_DMABUF_IMPORT = 5
 
 waiting_for_eos = False
 
@@ -77,18 +79,18 @@ def create_element(factory_name, name):
     return element
 
 
-def link_elements(link_order, elements):
-    """Link elements in the specified order."""
-    src = None  # Initialize src to None at the start of each link_order
-    for element in link_order:
-        dest = elements[element]
-        if src and not src.link(dest):
-            raise Exception(
-                f"Unable to link element {src.get_name()} to "
-                f"{dest.get_name()}"
-            )
-        src = dest  # Update src to the current dest for the next iteration
-
+def link_elements(link_orders, elements):
+    """Link elements in the specified orders."""
+    for link_order in link_orders:
+        src = None
+        for element in link_order:
+            dest = elements[element]
+            if src and not src.link(dest):
+                raise Exception(
+                    f"Failed to link element\
+                    {src.get_name()} with {dest.get_name()}"
+                )
+            src = dest
 
 def create_pipeline(pipeline, cameraid):
     # Parse command line arguments
@@ -107,7 +109,7 @@ def create_pipeline(pipeline, cameraid):
     parser.add_argument(
         "--framerate", "-F", type=str, default='30/1', help="framerate(fraction)")
     parser.add_argument(
-        "--display", "-D", action='store_false', help="Output Sink type as wayland")
+        "--display", "-D", type=int, default=0, help="Output Sink type as preview else default filesink")
     parser.add_argument(
         "--output_of_primary_cam", type=str,
         default=DEFAULT_OUTPUT_FILE_PRIMARY_CAMERA,
@@ -121,57 +123,73 @@ def create_pipeline(pipeline, cameraid):
 
     args = parser.parse_args()
 
-    capsvalues = "video/x-raw(memory:GBM),format=NV12,width=" + str(
-        args.width) + ",height=" + str(args.height) + ",framerate=" + str(args.framerate) + ",compression=ubwc"
-
     if(args.display):
+        print("Preview Enabled")
         elements = {
-            "camsrc": create_element("qtiqmmfsrc", "camsrc"),
-            "camcaps": create_element("capsfilter", "camcaps"),
+            "camsrc_0": create_element("qtiqmmfsrc", "camsrc_0"),
+            "camsrc_1": create_element("qtiqmmfsrc", "camsrc_1"),
+            "camcaps_0": create_element("capsfilter", "camcaps_0"),
+            "camcaps_1": create_element("capsfilter", "camcaps_1"),
+            "composer": create_element("qtivcomposer", "composer"),
             "sink": create_element("waylandsink", "sink")
         }
 
-        if (cameraid == DEFAULT_PRIMARY_CAMERA_ID):
-            elements["camsrc"].set_property("camera", DEFAULT_PRIMARY_CAMERA_ID)
-            elements["sink"].set_property("x", 0)
-            elements["sink"].set_property("y", 0)
-            elements["sink"].set_property("width", 640)
-            elements["sink"].set_property("height", 480)
-        else:
-            elements["camsrc"].set_property(
-                "camera", DEFAULT_SECONDARY_CAMERA_ID)
-            elements["sink"].set_property("x", 640)
-            elements["sink"].set_property("y", 0)
-            elements["sink"].set_property("width", 640)
-            elements["sink"].set_property("height", 480)
+        elements["camsrc_0"].set_property("camera", DEFAULT_PRIMARY_CAMERA_ID)
+        capsvalues = "video/x-raw,format=NV12,width=" + str(
+            args.width) + ",height=" + str(args.height) + ",framerate=" + str(args.framerate)
+        elements["camcaps_0"].set_property("caps", Gst.Caps.from_string(capsvalues))
 
-            capsvalues = "video/x-raw(memory:GBM),format=NV12,width="+str(
-                DEFAULT_WIDTH) + ",height="+str(DEFAULT_HEIGHT) + ",framerate="+str(args.framerate)+",compression=ubwc"
+        elements["camsrc_1"].set_property("camera", DEFAULT_SECONDARY_CAMERA_ID)
+        capsvalues = "video/x-raw,format=NV12,width="+str(
+            DEFAULT_WIDTH) + ",height="+str(DEFAULT_HEIGHT) + ",framerate="+str(args.framerate)
+        elements["camcaps_1"].set_property("caps", Gst.Caps.from_string(capsvalues))
 
-        elements["camcaps"].set_property(
-            "caps", Gst.Caps.from_string(capsvalues))
-        elements["sink"].set_property("async", False)
-        elements["sink"].set_property("sync", False)
+        Gst.util_set_object_arg(elements["sink"], "fullscreen", "true")
 
+        print("Add elements to the pipeline")
         # Add elements to the pipeline
         for element in elements.values():
             pipeline.add(element)
 
+        print("Set composer position")
         # Link elements
         link_order = [
-            "camsrc", "camcaps", "sink"
+            [
+                "camsrc_0", "camcaps_0", "composer", "sink"
+            ],
+            [
+                "camsrc_1", "camcaps_1", "composer"
+            ]
         ]
+
         link_elements(link_order, elements)
 
+        # Set pad properties
+        composer_sink_0 = elements["composer"].get_static_pad("sink_0")
+        Gst.util_set_object_arg(composer_sink_0, "position", "<0, 0>")
+        Gst.util_set_object_arg(composer_sink_0, "dimensions", "<640, 360>")
+        composer_sink_0 = None
+
+        composer_sink_1 = elements["composer"].get_static_pad("sink_1")
+        Gst.util_set_object_arg(composer_sink_1, "position", "<640, 0>")
+        Gst.util_set_object_arg(composer_sink_1, "dimensions", "<640, 360>")
+        composer_sink_1 = None
     else:
+        print("Filesink Enabled")
         # Create elements
         elements = {
-            "camsrc": create_element("qtiqmmfsrc", "camsrc"),
-            "camcaps": create_element("capsfilter", "camcaps"),
-            "encoder": create_element("v4l2h264enc", "encoder"),
-            "parser": create_element("h264parse", "parser"),
-            "mux": create_element("mp4mux", "mux"),
-            "sink": create_element("filesink", "sink")
+            "camsrc_0": create_element("qtiqmmfsrc", "camsrc_0"),
+            "camsrc_1": create_element("qtiqmmfsrc", "camsrc_1"),
+            "camcaps_0": create_element("capsfilter", "camcaps_0"),
+            "camcaps_1": create_element("capsfilter", "camcaps_1"),
+            "encoder_0": create_element("v4l2h264enc", "encoder_0"),
+            "parser_0": create_element("h264parse", "parser_0"),
+            "mux_0": create_element("mp4mux", "mux_0"),
+            "sink_0": create_element("filesink", "sink_0"),
+            "encoder_1": create_element("v4l2h264enc", "encoder_1"),
+            "parser_1": create_element("h264parse", "parser_1"),
+            "mux_1": create_element("mp4mux", "mux_1"),
+            "sink_1": create_element("filesink", "sink_1")
         }
 
         queue_count = 2
@@ -179,27 +197,31 @@ def create_pipeline(pipeline, cameraid):
             queue_name = f"queue{i}"
             elements[queue_name] = create_element("queue", queue_name)
 
-        if (cameraid == DEFAULT_PRIMARY_CAMERA_ID):
-            elements["camsrc"].set_property("camera", DEFAULT_PRIMARY_CAMERA_ID)
-            elements["sink"].set_property(
-                "location", args.output_of_primary_cam)
-        else:
-            elements["camsrc"].set_property(
-                "camera", DEFAULT_SECONDARY_CAMERA_ID)
-            elements["sink"].set_property(
-                "location", args.output_of_secondary_cam)
-            capsvalues = "video/x-raw(memory:GBM),format=NV12,width=" + str(
-                DEFAULT_WIDTH) + ",height=" + str(DEFAULT_HEIGHT) + ",framerate="+str(args.framerate)+",compression=ubwc"
-
-        elements["encoder"].set_property("capture-io-mode", 5)
-        elements["encoder"].set_property("output-io-mode", 5)
-        elements["mux"].set_property("reserved-moov-update-period", 1000000)
-        elements["mux"].set_property("reserved-bytes-per-sec", 10000)
-        elements["mux"].set_property("reserved-max-duration", 1000000000)
-
         # Set properties
-        elements["camcaps"].set_property(
-            "caps", Gst.Caps.from_string(capsvalues))
+        elements["camsrc_0"].set_property("camera", DEFAULT_PRIMARY_CAMERA_ID)
+        capsvalues = "video/x-raw,format=NV12,width=" + str(
+            args.width) + ",height=" + str(args.height) + ",framerate=" + str(args.framerate)
+        elements["camcaps_0"].set_property("caps", Gst.Caps.from_string(capsvalues))
+
+        elements["camsrc_1"].set_property("camera", DEFAULT_SECONDARY_CAMERA_ID)
+        capsvalues = "video/x-raw,format=NV12,width="+str(
+            DEFAULT_WIDTH) + ",height="+str(DEFAULT_HEIGHT) + ",framerate="+str(args.framerate)
+        elements["camcaps_1"].set_property("caps", Gst.Caps.from_string(capsvalues))
+
+        elements["sink_0"].set_property("location", args.output_of_primary_cam)
+        elements["sink_1"].set_property("location", args.output_of_secondary_cam)
+
+        elements["encoder_0"].set_property("capture-io-mode", GST_V4L2_IO_DMABUF)
+        elements["encoder_0"].set_property("output-io-mode", GST_V4L2_IO_DMABUF_IMPORT)
+        elements["mux_0"].set_property("reserved-moov-update-period", 1000000)
+        elements["mux_0"].set_property("reserved-bytes-per-sec", 10000)
+        elements["mux_0"].set_property("reserved-max-duration", 1000000000)
+
+        elements["encoder_1"].set_property("capture-io-mode", GST_V4L2_IO_DMABUF)
+        elements["encoder_1"].set_property("output-io-mode", GST_V4L2_IO_DMABUF_IMPORT)
+        elements["mux_1"].set_property("reserved-moov-update-period", 1000000)
+        elements["mux_1"].set_property("reserved-bytes-per-sec", 10000)
+        elements["mux_1"].set_property("reserved-max-duration", 1000000000)
 
         # Add elements to the pipeline
         for element in elements.values():
@@ -207,10 +229,16 @@ def create_pipeline(pipeline, cameraid):
 
         # Link elements
         link_order = [
-            "camsrc", "camcaps", "encoder", "parser", "queue0",
-            "mux", "queue1", "sink"
+            [    "camsrc_0", "camcaps_0", "encoder_0", "parser_0",
+                "mux_0", "queue0", "sink_0"
+            ],
+            [    "camsrc_1", "camcaps_1", "encoder_1", "parser_1",
+                "mux_1", "queue1", "sink_1"
+            ]
         ]
         link_elements(link_order, elements)
+        print("Camera 0 Filesink output", args.output_of_primary_cam)
+        print("Camera 0 Filesink output", args.output_of_secondary_cam)
 
 
 def main():
@@ -227,12 +255,10 @@ def main():
     # Create the pipelines
     try:
         pipelinecam_id0 = Gst.Pipeline.new("video-recording-pipeline0")
-        pipelinecam_id1 = Gst.Pipeline.new("video-recording-pipeline1")
-        if not (pipelinecam_id0 and pipelinecam_id1):
+        if not (pipelinecam_id0):
             raise Exception(f"Unable to create pipelines")
 
         create_pipeline(pipelinecam_id0, DEFAULT_PRIMARY_CAMERA_ID)
-        create_pipeline(pipelinecam_id1, DEFAULT_SECONDARY_CAMERA_ID)
 
     except Exception as e:
         print(f"{e} Exiting...")
@@ -242,38 +268,26 @@ def main():
     interrupt_watch_id_cam0 = GLib.unix_signal_add(
         GLib.PRIORITY_HIGH, signal.SIGINT, handle_interrupt_signal, pipelinecam_id0, mloop
     )
-    interrupt_watch_id_cam1 = GLib.unix_signal_add(
-        GLib.PRIORITY_HIGH, signal.SIGINT, handle_interrupt_signal, pipelinecam_id1, mloop
-    )
 
     # Wait until error or EOS
     bus_cam0 = pipelinecam_id0.get_bus()
-    bus_cam1 = pipelinecam_id1.get_bus()
     bus_cam0.add_signal_watch()
-    bus_cam1.add_signal_watch()
     bus_cam0.connect("message", handle_bus_message, mloop)
-    bus_cam1.connect("message", handle_bus_message, mloop)
 
     # Start playing
     print("Setting to PLAYING...")
     pipelinecam_id0.set_state(Gst.State.PLAYING)
-    pipelinecam_id1.set_state(Gst.State.PLAYING)
     mloop.run()
 
     GLib.source_remove(interrupt_watch_id_cam0)
-    GLib.source_remove(interrupt_watch_id_cam1)
     bus_cam0.remove_signal_watch()
-    bus_cam1.remove_signal_watch()
     bus_cam0 = None
-    bus_cam1 = None
 
     print("Setting to NULL...")
     pipelinecam_id0.set_state(Gst.State.NULL)
-    pipelinecam_id1.set_state(Gst.State.NULL)
 
     mloop = None
     pipelinecam_id0 = None
-    pipelinecam_id1 = None
     Gst.deinit()
 
 

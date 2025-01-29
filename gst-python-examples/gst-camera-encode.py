@@ -18,6 +18,8 @@ Initializes and links elements for capturing live stream from camera
 and saving the encoded video as OUTPUT.
 """
 DEFAULT_OUTPUT_FILE = "/opt/data/recording.mp4"
+GST_V4L2_IO_DMABUF = 4
+GST_V4L2_IO_DMABUF_IMPORT = 5
 
 waiting_for_eos = False
 eos_received = False
@@ -130,14 +132,14 @@ def create_pipeline(pipeline, args):
     elements["camsrc"].set_property("camera", args.camera)
     elements["camcaps"].set_property(
         "caps", Gst.Caps.from_string(
-            "video/x-raw(memory:GBM),format=NV12,"
+            "video/x-raw,format=NV12,"
             f"width={args.width},height={args.height},"
-            f"framerate={args.framerate},compression=ubwc"
+            f"framerate={args.framerate}"
         )
     )
 
-    elements["encoder"].set_property("capture-io-mode", 5)
-    elements["encoder"].set_property("output-io-mode", 5)
+    elements["encoder"].set_property("capture-io-mode", GST_V4L2_IO_DMABUF)
+    elements["encoder"].set_property("output-io-mode", GST_V4L2_IO_DMABUF_IMPORT)
 
     elements["sink"].set_property("location", args.output)
 
