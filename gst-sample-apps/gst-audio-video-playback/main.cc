@@ -171,6 +171,8 @@ create_pipe (GstVideoAppContext *appctx)
   GstElement *vdecoder = NULL;
   GstElement *aparse = NULL;
   GstElement *adecoder = NULL;
+  GstElement *capsfilter = NULL;
+  GstCaps *filtercaps;
   gboolean ret = FALSE;
 
   // Create Source element for reading from a file
@@ -178,6 +180,12 @@ create_pipe (GstVideoAppContext *appctx)
 
   // Create Demuxer element to get audio and video tracks
   qtdemux = gst_element_factory_make ("qtdemux", "qtdemux");
+  capsfilter = gst_element_factory_make ("capsfilter", "capsfilter");
+  filtercaps = gst_caps_new_simple ("video/x-raw", "format",
+     G_TYPE_STRING, "NV12", NULL);
+
+  g_object_set (G_OBJECT (capsfilter), "caps", filtercaps, NULL);
+  gst_caps_unref (filtercaps);
 
   // create the video decoder and parse element based on codec type
   if (appctx->vc_format == GST_VCODEC_AVC) {
@@ -211,7 +219,7 @@ create_pipe (GstVideoAppContext *appctx)
 
   // Check if all elements are created successfully
   if (!filesrc || !qtdemux || !queue1 || !vparse || !vdecoder || !queue2 ||
-      !aparse || !adecoder || !pulsesink || !vsink) {
+      !aparse || !adecoder || !pulsesink || !vsink || !capsfilter) {
     g_printerr ("One element could not be created. Exiting.\n");
     return FALSE;
   }
@@ -230,8 +238,8 @@ create_pipe (GstVideoAppContext *appctx)
   appctx->plugins = g_list_append (appctx->plugins, vsink);
 
   // Set decoder properties
-  g_object_set (G_OBJECT (vdecoder), "capture-io-mode", 5, NULL);
-  g_object_set (G_OBJECT (vdecoder), "output-io-mode", 5, NULL);
+  g_object_set (G_OBJECT (vdecoder), "capture-io-mode", GST_V4L2_IO_DMABUF, NULL);
+  g_object_set (G_OBJECT (vdecoder), "output-io-mode", GST_V4L2_IO_DMABUF_IMPORT, NULL);
 
   // Set location
   g_object_set (G_OBJECT (filesrc), "location", appctx->input_file, NULL);
@@ -243,7 +251,7 @@ create_pipe (GstVideoAppContext *appctx)
   // Add elements to the pipeline and link them
   g_print ("Adding all elements to the pipeline...\n");
   gst_bin_add_many (GST_BIN (appctx->pipeline), filesrc, qtdemux, queue1, vparse,
-      vdecoder, queue2, aparse, adecoder, pulsesink, vsink, NULL);
+      vdecoder, queue2, aparse, adecoder, pulsesink, capsfilter, vsink, NULL);
 
   // Linking the src and demux element
   g_print ("Linking the streams elements...\n");
@@ -256,11 +264,11 @@ create_pipe (GstVideoAppContext *appctx)
   }
 
   // Linking video streams
-  ret = gst_element_link_many (queue1, vparse, vdecoder, vsink, NULL);
+  ret = gst_element_link_many (queue1, vparse, vdecoder, capsfilter, vsink, NULL);
   if (!ret) {
     g_printerr ("Pipeline elements(queue1) cannot be linked. Exiting.\n");
     gst_bin_remove_many (GST_BIN (appctx->pipeline), filesrc, qtdemux, vsink, queue1,
-        vparse, vdecoder, queue2, aparse, adecoder, pulsesink, NULL);
+        vparse, vdecoder, queue2, aparse, adecoder, pulsesink, capsfilter, NULL);
     return FALSE;
   }
 
@@ -269,7 +277,7 @@ create_pipe (GstVideoAppContext *appctx)
   if (!ret) {
     g_printerr ("Pipeline elements(queue2) cannot be linked. Exiting.\n");
     gst_bin_remove_many (GST_BIN (appctx->pipeline), filesrc, qtdemux, vsink, queue1,
-        vparse, vdecoder, queue2, aparse, adecoder, pulsesink, NULL);
+        vparse, vdecoder, queue2, aparse, adecoder, pulsesink, capsfilter, NULL);
     return FALSE;
   }
 
