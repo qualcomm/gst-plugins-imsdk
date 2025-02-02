@@ -149,6 +149,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 {
   GstMLSubModule *submodule = GST_ML_SUB_MODULE_CAST (instance);
   GArray *predictions = (GArray *) output;
+  GstProtectionMeta *pmeta = NULL;
   GstMLClassPrediction *prediction = NULL;
   guint8 *data = NULL;
   guint idx = 0, n_inferences = 0;
@@ -158,7 +159,11 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   g_return_val_if_fail (mlframe != NULL, FALSE);
   g_return_val_if_fail (predictions != NULL, FALSE);
 
+  pmeta = gst_buffer_get_protection_meta_id (mlframe->buffer,
+      gst_batch_channel_name (0));
+
   prediction = &(g_array_index (predictions, GstMLClassPrediction, 0));
+  prediction->info = pmeta->info;
 
   n_inferences = GST_ML_FRAME_DIM (mlframe, 0, 1);
   data = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
