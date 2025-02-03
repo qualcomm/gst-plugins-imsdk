@@ -5,6 +5,12 @@
 
 #include "common-utils.h"
 
+#include <gst/allocators/allocators.h>
+
+#ifdef HAVE_LINUX_DMA_BUF_H
+#include <sys/ioctl.h>
+#include <linux/dma-buf.h>
+#endif // HAVE_LINUX_DMA_BUF_H
 
 static const gchar* mux_stream_names[] = {
     "mux-stream-00", "mux-stream-01", "mux-stream-02", "mux-stream-03",
@@ -17,6 +23,39 @@ static const gchar* mux_stream_names[] = {
     "mux-stream-28", "mux-stream-29", "mux-stream-30", "mux-stream-31",
 };
 
+void
+gst_buffer_dma_sync_start (GstBuffer * buffer)
+{
+#ifdef HAVE_LINUX_DMA_BUF_H
+  if (!gst_is_fd_memory (gst_buffer_peek_memory (buffer, 0)))
+    return;
+
+  struct dma_buf_sync bufsync;
+  gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (buffer, 0));
+
+  bufsync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
+
+  if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
+    GST_WARNING ("DMA IOCTL SYNC Start failed!");
+#endif // HAVE_LINUX_DMA_BUF_H
+}
+
+void
+gst_buffer_dma_sync_end (GstBuffer * buffer)
+{
+#ifdef HAVE_LINUX_DMA_BUF_H
+  if (!gst_is_fd_memory (gst_buffer_peek_memory (buffer, 0)))
+    return;
+
+  struct dma_buf_sync bufsync;
+  gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (buffer, 0));
+
+  bufsync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
+
+  if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
+    GST_WARNING ("DMA IOCTL SYNC End failed!");
+#endif // HAVE_LINUX_DMA_BUF_H
+}
 
 const gchar *
 gst_mux_stream_name (guint index)
