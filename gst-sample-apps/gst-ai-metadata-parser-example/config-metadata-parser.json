@@ -1,0 +1,8 @@
+{
+  "file-path": "/etc/media/video.mp4",
+  "model": "/etc/models/detection-model.tflite",
+  "labels": "/etc/labels/detection.labels",
+  "constants": "model,q-offsets=<21.0, 0.0, 0.0>,q-scales=<3.093529462814331, 0.00390625, 1.0>;",
+  "threshold": 40,
+  "runtime": "dsp"
+}
