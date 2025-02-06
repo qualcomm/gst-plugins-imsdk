@@ -329,9 +329,11 @@ gst_buffer_transfer_video_region_of_interest_meta (GstBuffer * buffer,
         kp->y = kp->y * h_scale;
       }
 
-      structure = gst_structure_new ("VideoLandmarks",
-          "keypoints", G_TYPE_ARRAY, keypoints, "links", G_TYPE_ARRAY, links,
-          "confidence", G_TYPE_DOUBLE, confidence, NULL);
+      structure = gst_structure_copy (structure);
+      gst_structure_set (structure, "keypoints", G_TYPE_ARRAY, keypoints,
+          "links", G_TYPE_ARRAY, links, "confidence", G_TYPE_DOUBLE,
+          confidence, NULL);
+
       gst_video_region_of_interest_meta_add_param (newmeta, structure);
     } else if (id == g_quark_from_static_string ("ImageClassification")) {
       structure = gst_structure_copy (structure);
