@@ -504,13 +504,13 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     // 2.4 Set the capabilities of camera plugin output
     if (options->camera_type == GST_CAMERA_TYPE_PRIMARY) {
       filtercaps = gst_caps_new_simple ("video/x-raw",
-          "format", G_TYPE_STRING, "NV12",
+          "format", G_TYPE_STRING, "NV12_Q08C",
           "width", G_TYPE_INT, primary_camera_width,
           "height", G_TYPE_INT, primary_camera_height,
           "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
     } else {
       filtercaps = gst_caps_new_simple ("video/x-raw",
-          "format", G_TYPE_STRING, "NV12",
+          "format", G_TYPE_STRING, "NV12_Q08C",
           "width", G_TYPE_INT, secondary_camera_width,
           "height", G_TYPE_INT, secondary_camera_height,
           "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);

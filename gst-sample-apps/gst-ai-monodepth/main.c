@@ -504,7 +504,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       // 2.4 Set the capabilities of primary and secondary camera preview
       // stream camera plugin output
       filtercaps = gst_caps_new_simple ("video/x-raw",
-          "format", G_TYPE_STRING, "NV12",
+          "format", G_TYPE_STRING, "NV12_Q08C",
           "width", G_TYPE_INT, primary_camera_preview_width,
           "height", G_TYPE_INT, primary_camera_preview_height,
           "framerate", GST_TYPE_FRACTION, camera_framerate, 1, NULL);
@@ -512,7 +512,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       gst_caps_unref (filtercaps);
     } else {
       filtercaps = gst_caps_new_simple ("video/x-raw",
-          "format", G_TYPE_STRING, "NV12",
+          "format", G_TYPE_STRING, "NV12_Q08C",
           "width", G_TYPE_INT, secondary_camera_preview_width,
           "height", G_TYPE_INT, secondary_camera_preview_height,
           "framerate", GST_TYPE_FRACTION, camera_framerate, 1, NULL);
