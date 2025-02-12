@@ -200,6 +200,29 @@ state_changed_cb (GstBus * bus, GstMessage * message, gpointer userdata)
 }
 
 /**
+ * Sets an enum property on a GstElement
+ *
+ * @param element The GstElement on which to set the property.
+ * @param propname The name of the property to set.
+ * @param valname The value to set the property to.
+ *
+ */
+void
+gst_element_set_enum_property (GstElement * element, const gchar * propname,
+    const gchar * valname)
+{
+  GValue value = G_VALUE_INIT;
+  GParamSpec *propspecs = NULL;
+
+  propspecs = g_object_class_find_property (G_OBJECT_GET_CLASS (element), propname);
+  g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+  gst_value_deserialize (&value, valname);
+
+  g_object_set_property (G_OBJECT (element), propname, &value);
+  g_value_unset (&value);
+}
+
+/**
  * Get enum for property nick name
  *
  * @param element Plugin to query the property.
