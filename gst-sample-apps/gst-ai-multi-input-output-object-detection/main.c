@@ -44,8 +44,8 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_TFLITE_YOLOV5_MODEL "/opt/yolov5.tflite"
-#define DEFAULT_YOLOV5_LABELS "/opt/yolov5.labels"
+#define DEFAULT_TFLITE_YOLOV5_MODEL "/etc/models/yolov5.tflite"
+#define DEFAULT_YOLOV5_LABELS "/etc/labels/yolov5.labels"
 
 /**
  * Default rtsp input port address, if not provided by user
@@ -360,6 +360,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstElement *file_queue[options->num_file][QUEUE_COUNT];
   GstElement *file_dec_h264parse[options->num_file];
   GstElement *file_v4l2h264dec[options->num_file];
+  GstElement *file_decode_caps[options->num_file];
   GstElement *file_dec_tee[options->num_file];
   GstElement *file_qtimlvconverter[options->num_file];
   GstElement *file_qtimlelement[options->num_file];
@@ -370,6 +371,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstElement *rtsp_queue[options->num_rtsp][QUEUE_COUNT];
   GstElement *rtsp_dec_h264parse[options->num_rtsp];
   GstElement *rtsp_v4l2h264dec[options->num_rtsp];
+  GstElement *rtsp_decode_caps[options->num_rtsp];
   GstElement *rtsp_dec_tee[options->num_rtsp];
   GstElement *rtsp_qtimlvconverter[options->num_rtsp];
   GstElement *rtsp_qtimlelement[options->num_rtsp];
@@ -408,11 +410,13 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     filesrc[i] = NULL;
     qtdemux[i] = NULL;
     file_dec_h264parse[i] = NULL;
+    file_v4l2h264dec[i] = NULL;
     file_dec_tee[i] = NULL;
     file_qtimlvconverter[i] = NULL;
     file_qtimlelement[i] = NULL;
     file_qtimlvdetection[i] = NULL;
     file_detection_filter[i] = NULL;
+    file_decode_caps[i] = NULL;
     for (gint j=0; j<QUEUE_COUNT ;j++) {
       file_queue[i][j] = NULL;
     }
@@ -428,6 +432,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     rtsp_qtimlelement[i] = NULL;
     rtsp_qtimlvdetection[i] = NULL;
     rtsp_detection_filter[i] = NULL;
+    rtsp_decode_caps[i] = NULL;
     for (gint j=0; j<QUEUE_COUNT; j++) {
       rtsp_queue[i][j] = NULL;
     }
@@ -598,6 +603,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       g_printerr ("Failed to create file_detection_filter-%d\n", i);
       goto error_clean_elements;
     }
+
+    snprintf (element_name, 127, "file_decode_caps-%d", i);
+    file_decode_caps[i] = gst_element_factory_make (
+        "capsfilter", element_name);
+    if (!file_decode_caps[i]) {
+      g_printerr ("Failed to create file_decode_caps-%d\n", i);
+      goto error_clean_elements;
+    }
   }
 
   for (gint i = 0; i < options->num_rtsp; i++) {
@@ -682,6 +695,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         "capsfilter", element_name);
     if (!rtsp_detection_filter[i]) {
       g_printerr ("Failed to create rtsp_detection_filter-%d\n", i);
+      goto error_clean_elements;
+    }
+
+    snprintf (element_name, 127, "rtsp_decode_caps-%d", i);
+    rtsp_decode_caps[i] = gst_element_factory_make (
+        "capsfilter", element_name);
+    if (!rtsp_decode_caps[i]) {
+      g_printerr ("Failed to create rtsp_decode_caps-%d\n", i);
       goto error_clean_elements;
     }
   }
@@ -789,10 +810,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         "format", G_TYPE_STRING, "NV12",
         "width", G_TYPE_INT, width,
         "height", G_TYPE_INT, height,
-        "framerate", GST_TYPE_FRACTION, framerate, 1,
-        "compression", G_TYPE_STRING, "ubwc", NULL);
-    gst_caps_set_features (filtercaps, 0,
-        gst_caps_features_new ("memory:GBM", NULL));
+        "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
     g_object_set (G_OBJECT (cam_caps[i]), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
     if (!set_ml_params (cam_qtimlelement[i], cam_qtimlvdetection[i],
@@ -802,10 +820,17 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   for (gint i = 0; i < options->num_file; i++) {
-    snprintf (element_name, 127, "/opt/video%d.mp4", i+1);
+    snprintf (element_name, 127, "/etc/media/video%d.mp4", i+1);
     g_object_set (G_OBJECT (filesrc[i]), "location", element_name, NULL);
-    g_object_set (G_OBJECT (file_v4l2h264dec[i]), "capture-io-mode", 5,
-        "output-io-mode", 5, NULL);
+    gst_element_set_enum_property (file_v4l2h264dec[i], "capture-io-mode",
+        "dmabuf");
+    gst_element_set_enum_property (file_v4l2h264dec[i], "output-io-mode",
+        "dmabuf");
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, "NV12",
+        "colorimetry", G_TYPE_STRING, "bt601",NULL);
+    g_object_set (G_OBJECT (file_decode_caps[i]), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
     if (!set_ml_params (file_qtimlelement[i], file_qtimlvdetection[i],
         file_detection_filter[i], options)) {
       goto error_clean_elements;
@@ -817,8 +842,15 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         i+1);
     g_object_set (G_OBJECT (rtspsrc[i]), "location", element_name,
         NULL);
-    g_object_set (G_OBJECT (rtsp_v4l2h264dec[i]), "capture-io-mode", 5,
-        "output-io-mode", 5, NULL);
+    gst_element_set_enum_property (rtsp_v4l2h264dec[i], "capture-io-mode",
+        "dmabuf");
+    gst_element_set_enum_property (rtsp_v4l2h264dec[i], "output-io-mode",
+        "dmabuf");
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, "NV12",
+        "colorimetry", G_TYPE_STRING, "bt601",NULL);
+    g_object_set (G_OBJECT (rtsp_decode_caps[i]), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
     if (!set_ml_params (rtsp_qtimlelement[i], rtsp_qtimlvdetection[i],
         rtsp_detection_filter[i], options)) {
       goto error_clean_elements;
@@ -830,8 +862,6 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       "format", G_TYPE_STRING, "NV12",
       "interlace-mode", G_TYPE_STRING, "progressive",
       "colorimetry", G_TYPE_STRING, "bt601", NULL);
-  gst_caps_set_features (filtercaps, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
   g_object_set (G_OBJECT (composer_caps), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
@@ -842,8 +872,10 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   // 2.5 Set the properties for file/rtsp sink
   if (options->out_file || options->out_rtsp) {
-    g_object_set (G_OBJECT (v4l2h264enc), "capture-io-mode", 5,
-        "output-io-mode", 5, NULL);
+    gst_element_set_enum_property (v4l2h264enc, "capture-io-mode",
+        "dmabuf");
+    gst_element_set_enum_property (v4l2h264enc, "output-io-mode",
+        "dmabuf-import");
     // Set bitrate for streaming usecase
     fcontrols = gst_structure_from_string (
         "fcontrols,video_bitrate=6000000,video_bitrate_mode=0", NULL);
@@ -874,7 +906,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     gst_bin_add_many (GST_BIN (appctx->pipeline), filesrc[i], qtdemux[i],
         file_dec_h264parse[i], file_v4l2h264dec[i], file_dec_tee[i],
         file_qtimlvconverter[i], file_qtimlelement[i], file_qtimlvdetection[i],
-        file_detection_filter[i], NULL);
+        file_detection_filter[i], file_decode_caps[i], NULL);
     for (gint j = 0; j < QUEUE_COUNT; j++) {
       gst_bin_add_many (GST_BIN (appctx->pipeline), file_queue[i][j], NULL);
     }
@@ -884,7 +916,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     gst_bin_add_many (GST_BIN (appctx->pipeline), rtspsrc[i], rtph264depay[i],
         rtsp_dec_h264parse[i], rtsp_v4l2h264dec[i], rtsp_dec_tee[i],
         rtsp_qtimlvconverter[i], rtsp_qtimlelement[i], rtsp_qtimlvdetection[i],
-        rtsp_detection_filter[i], NULL);
+        rtsp_detection_filter[i], rtsp_decode_caps[i], NULL);
     for (gint j = 0; j < QUEUE_COUNT; j++) {
       gst_bin_add_many (GST_BIN (appctx->pipeline), rtsp_queue[i][j], NULL);
     }
@@ -951,7 +983,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     // qtdemux -> file_queue[i][0] link is not created here as it is a
     // dymanic link using on_pad_added callback
     ret = gst_element_link_many (file_queue[i][0], file_dec_h264parse[i],
-        file_v4l2h264dec[i], file_queue[i][1], file_dec_tee[i], NULL);
+        file_v4l2h264dec[i], file_decode_caps[i], file_queue[i][1],
+        file_dec_tee[i], NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for %d"
           " file_queue -> file_dec_tee.\n", i);
@@ -979,8 +1012,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     // rtspsrc -> rtsp_queue[i][0] link is not created here as it is a
     // dymanic link using on_pad_added callback
     ret = gst_element_link_many (rtsp_queue[i][0], rtph264depay[i],
-        rtsp_dec_h264parse[i], rtsp_v4l2h264dec[i], rtsp_queue[i][1],
-        rtsp_dec_tee[i], NULL);
+        rtsp_dec_h264parse[i], rtsp_v4l2h264dec[i], rtsp_decode_caps[i],
+        rtsp_queue[i][1], rtsp_dec_tee[i], NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for %d"
           " rtsp_queue -> rtsp_tee.\n", i);
@@ -1089,7 +1122,8 @@ error_clean_elements:
   for (gint i=0; i<options->num_file; i++) {
     cleanup_gst (&filesrc[i], &qtdemux[i], &file_dec_h264parse[i],
         &file_dec_tee[i], &file_qtimlvconverter[i], &file_qtimlelement[i],
-        &file_qtimlvdetection[i], &file_detection_filter[i], NULL);
+        &file_qtimlvdetection[i], &file_detection_filter[i],
+        &file_decode_caps[i], NULL);
     for (gint j=0; j<QUEUE_COUNT ;j++) {
       cleanup_gst (&file_queue[i][j], NULL);
     }
@@ -1099,7 +1133,7 @@ error_clean_elements:
     cleanup_gst (&rtspsrc[i], &rtph264depay[i], &rtsp_dec_h264parse[i],
         &rtsp_v4l2h264dec[i], &rtsp_dec_tee[i], &rtsp_qtimlvconverter[i],
         &rtsp_qtimlelement[i], &rtsp_qtimlvdetection[i],
-        &rtsp_detection_filter[i], NULL);
+        &rtsp_detection_filter[i], &rtsp_decode_caps[i], NULL);
     for (gint j=0; j<QUEUE_COUNT; j++) {
       cleanup_gst (&rtsp_queue[i][j], NULL);
     }
@@ -1185,7 +1219,7 @@ main (gint argc, gchar * argv[])
     { "num-file", 0, 0, G_OPTION_ARG_INT,
       &options.num_file,
       "Number of input files to be used (range: 0-" TO_STR (MAX_FILESRCS) ")\n"
-      "      Copy the H.264 encoded files to /opt and name"
+      "      Copy the H.264 encoded files to /etc/media and name"
       " as video1.mp4, video2.mp4 and so on",
       NULL
     },
@@ -1275,7 +1309,7 @@ main (gint argc, gchar * argv[])
   snprintf (help_description, 1023, "\nExample:\n"
       "  %s --num-file=6\n"
       "  %s\n"
-      "  %s --num-file=4 -d -f /opt/app.mp4 --out-rtsp -i <ip> -p <port>\n"
+      "  %s --num-file=4 -d -f /etc/media/app.mp4 --out-rtsp -i <ip> -p <port>\n"
       "\nThis Sample App demonstrates Object Detection with various input/output"
       " stream combinations\n",
       app_name,
@@ -1382,7 +1416,7 @@ main (gint argc, gchar * argv[])
 
   for (gint i = 0; i < options.num_file; i++) {
     gchar file_name[128];
-    snprintf (file_name, 127, "/opt/video%d.mp4", i+1);
+    snprintf (file_name, 127, "/etc/media/video%d.mp4", i+1);
     if (!file_exists (file_name)) {
       g_printerr ("video file doesnot exist at path: %s\n", file_name);
       gst_app_context_free (&appctx, &options);

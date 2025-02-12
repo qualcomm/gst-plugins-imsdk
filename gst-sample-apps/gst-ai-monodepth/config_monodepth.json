@@ -1,8 +1,8 @@
 {
-  "file-path": "/opt/video.mp4",
+  "file-path": "/etc/media/video.mp4",
   "ml-framework": "tflite",
-  "model": "/opt/Midas-V2-Quantized.tflite",
-  "labels": "/opt/monodepth.labels",
+  "model": "/etc/models/Midas-V2-Quantized.tflite",
+  "labels": "/etc/labels/monodepth.labels",
   "constants": "Midas,q-offsets=<0.0>,q-scales=<4.716535568237305>;",
   "runtime": "dsp"
 }

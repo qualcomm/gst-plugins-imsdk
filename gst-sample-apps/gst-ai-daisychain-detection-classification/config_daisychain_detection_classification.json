@@ -1,8 +1,8 @@
 {
-  "input-file": "/opt/video.mp4",
-  "detection-model": "/opt/yolov5.tflite",
-  "detection-labels": "/opt/yolov5.labels",
-  "classification-model": "/opt/inceptionv3.tflite",
-  "classification-labels": "/opt/classification.labels",
+  "input-file": "/etc/media/video.mp4",
+  "detection-model": "/etc/models/yolov5.tflite",
+  "detection-labels": "/etc/labels/yolov5.labels",
+  "classification-model": "/etc/models/inceptionv3.tflite",
+  "classification-labels": "/etc/labels/classification.labels",
   "detection-constants": "YoloV5,q-offsets=<3.0>,q-scales=<0.005047998391091824>;"
 }

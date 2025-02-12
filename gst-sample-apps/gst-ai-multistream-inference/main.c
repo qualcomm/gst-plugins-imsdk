@@ -9,7 +9,7 @@
  *
  * Description:
  * The application takes video stream from camera/file/rtsp and maximum of
- * 16 streams in parallel and give to AI models for inference and
+ * 24 streams in parallel and give to AI models for inference and
  * AI Model output overlayed on incoming videos are arranged in a grid pattern
  * to be displayed on HDMI Screen, save as h264 encoded mp4 file or streamed
  * over rtsp server running on device.
@@ -17,7 +17,7 @@
  * options. Camera default resolution is set to 1280x720. Display will be
  * full screen for 1 input stream, divided into 2x2 grid for 2-4 input streams,
  * divided into 3x3 grid for 5-9 streams and divided into 4x4 grid for 10-16
- * stream.
+ * and 5x5 for 17-24 stream.
  *
  * Pipeline for Gstreamer:
  * Source -> tee (SPLIT)
@@ -37,17 +37,19 @@
 #include <sys/resource.h>
 #include <gst/gst.h>
 #include <gst/video/video.h>
+#include <glib.h>
+#include <json-glib/json-glib.h>
 
 #include <gst/sampleapps/gst_sample_apps_utils.h>
 
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_TFLITE_YOLOV8_MODEL "/opt/yolov8_det_quantized.tflite"
-#define DEFAULT_YOLOV8_LABELS "/opt/yolov8.labels"
+#define DEFAULT_TFLITE_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.tflite"
+#define DEFAULT_YOLOV8_LABELS "/etc/labels/yolov8.labels"
 #define DEFAULT_TFLITE_INCEPTIONV3_MODEL \
-    "/opt/inception_v3_quantized.tflite"
-#define DEFAULT_CLASSIFICATION_LABELS "/opt/classification.labels"
+    "/etc/models/inception_v3_quantized.tflite"
+#define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/classification.labels"
 
 /**
  * Default constants to dequantize values
@@ -75,15 +77,15 @@
  * Maximum count of various sources possible to configure
  */
 #define MAX_CAMSRCS 2
-#define MAX_FILESRCS 16
-#define MAX_RTSPSRCS 16
-#define MAX_SRCS_COUNT 16
+#define MAX_FILESRCS 24
+#define MAX_RTSPSRCS 24
+#define MAX_SRCS_COUNT 24
 #define COMPOSER_SINK_COUNT 2
 
 /**
  * Number of Queues used for buffer caching between elements
  */
-#define QUEUE_COUNT 16
+#define QUEUE_COUNT 24
 
 /**
  * Default threshold values
@@ -107,13 +109,16 @@
  */
 #define DEFAULT_IP "127.0.0.1"
 #define DEFAULT_PORT "8554"
-#define DEFAULT_RTSP_IP_PORT "127.0.0.1:8554"
+
+/**
+ * Default path for config file
+ */
+#define DEFAULT_CONFIG_FILE "/etc/configs/config-multistream-inference.json"
 
 /**
  * Structure for various application specific options
  */
 typedef struct {
-  gchar *rtsp_ip_port;
   gchar *mlframework;
   gchar *model_path;
   gchar *labels_path;
@@ -129,6 +134,8 @@ typedef struct {
   gboolean out_display;
   gboolean out_rtsp;
   gint use_case;
+  gchar *input_file_path[MAX_FILESRCS];
+  gchar *input_rtsp_path[MAX_RTSPSRCS];
 } GstAppOptions;
 
 /*
@@ -159,6 +166,20 @@ update_window_grid (GstVideoRectangle *positions, guint x, guint y)
   }
 }
 
+/*
+ * Read HTP core count
+ */
+static gint
+get_num_cdsp_backends ()
+{
+  gint num_cdsp_backends = 1;
+
+  if (access ("/dev/fastrpc-cdsp1", F_OK) == 0)
+    num_cdsp_backends = 2;
+
+  return num_cdsp_backends;
+}
+
 /**
  * Set parameters for ML Framework Elements.
  *
@@ -169,18 +190,20 @@ update_window_grid (GstVideoRectangle *positions, guint x, guint y)
  */
 static gboolean
 set_ml_params (GstElement * qtimlelement, GstElement * qtimlpostprocess,
-    GstElement * detection_filter, GstAppOptions * options)
+    GstElement * detection_filter, GstAppOptions * options, guint htp_id)
 {
   GstStructure *delegate_options;
   GstCaps *pad_filter;
   gint module_id;
   const gchar *module = NULL;
+  gchar delegate_string[128];
 
-  // Set delegate and model for AI framework
-    delegate_options = gst_structure_from_string (
-      "QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,\
-      htp_performance_mode=(string)2,htp_precision=(string)1;",
-      NULL);
+  snprintf (delegate_string, 127, "QNNExternalDelegate,backend_type=htp,"
+      "htp_device_id=(string)%u,htp_performance_mode=(string)2,"
+      "htp_precision=(string)1;", htp_id);
+
+  delegate_options = gst_structure_from_string (
+    delegate_string, NULL);
 
   g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
       "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
@@ -265,8 +288,10 @@ set_composer_params (GstElement * qtivcomposer, GstAppOptions * options)
     update_window_grid (positions, 2, 2);
   } else if (options->input_count <= 9) {
     update_window_grid (positions, 3, 3);
-  } else {
+  } else if (options->input_count <= 16) {
     update_window_grid (positions, 4, 4);
+  } else {
+    update_window_grid (positions, 5, 5);
   }
 
   // Set Window Position and Size for each input stream
@@ -355,18 +380,13 @@ on_pad_added (GstElement * element, GstPad * pad, gpointer data)
  * @param appctx Application Context object
  */
 static void
-gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
+gst_app_context_free
+(GstAppContext * appctx, GstAppOptions * options, gchar * config_file)
 {
   // If specific pointer is not NULL, unref it
   if (appctx->mloop != NULL) {
     g_main_loop_unref (appctx->mloop);
     appctx->mloop = NULL;
-  }
-
-  if (options->rtsp_ip_port != NULL &&
-      options->rtsp_ip_port != (gchar *)(&DEFAULT_RTSP_IP_PORT)) {
-    g_free ((gpointer)options->rtsp_ip_port);
-    options->rtsp_ip_port = NULL;
   }
 
   if (options->model_path != NULL &&
@@ -402,8 +422,24 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
   }
 
   if (options->port_num != (gchar *)(&DEFAULT_PORT) &&
-      options->port_num != 0) {
+      options->port_num != NULL) {
     g_free ((gpointer)options->port_num);
+    options->port_num = NULL;
+  }
+
+  if (config_file != NULL &&
+      config_file != (gchar *)(&DEFAULT_CONFIG_FILE)) {
+    g_free ((gpointer)config_file);
+    config_file = NULL;
+  }
+
+  for (gint i = 0; i < options->num_file; i++) {
+    g_free ((gpointer)options->input_file_path[i]);
+    options->input_file_path[i] = NULL;
+  }
+  for (gint i = 0; i < options->num_rtsp; i++) {
+    g_free ((gpointer)options->input_rtsp_path[i]);
+    options->input_rtsp_path[i] = NULL;
   }
 
   if (appctx->pipeline != NULL) {
@@ -422,7 +458,7 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
  * @param options Application specific options.
  */
 static gboolean
-create_pipe (GstAppContext * appctx, GstAppOptions * options)
+create_pipe (GstAppContext * appctx, GstAppOptions * options, guint htp_count)
 {
   // Elements for camera source
   GstElement *camsrc[options->num_camera], *cam_caps[options->num_camera];
@@ -438,6 +474,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstElement *file_queue[options->num_file][QUEUE_COUNT];
   GstElement *file_dec_h264parse[options->num_file];
   GstElement *file_v4l2h264dec[options->num_file];
+  GstElement *file_decode_caps[options->num_file];
   GstElement *file_dec_tee[options->num_file];
   GstElement *file_qtimlvconverter[options->num_file];
   GstElement *file_qtimlelement[options->num_file];
@@ -449,6 +486,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstElement *rtsp_queue[options->num_rtsp][QUEUE_COUNT];
   GstElement *rtsp_dec_h264parse[options->num_rtsp];
   GstElement *rtsp_v4l2h264dec[options->num_rtsp];
+  GstElement *rtsp_decode_caps[options->num_rtsp];
   GstElement *rtsp_dec_tee[options->num_rtsp];
   GstElement *rtsp_qtimlvconverter[options->num_rtsp];
   GstElement *rtsp_qtimlelement[options->num_rtsp];
@@ -460,7 +498,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstElement *waylandsink = NULL, *composer_caps = NULL, *composer_tee = NULL;
   GstElement *v4l2h264enc = NULL, *enc_tee = NULL;
   GstElement *file_enc_h264parse = NULL, *rtsp_enc_h264parse = NULL;
-  GstElement *mp4mux = NULL, *filesink = NULL;
+  GstElement *mp4mux = NULL, *filesink = NULL, *fpsdisplaysink = NULL;
   GstElement *qtirtspbin = NULL;
   GstCaps *filtercaps = NULL;
   GstStructure *fcontrols = NULL;
@@ -470,9 +508,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   gchar element_name[128];
   gboolean ret = FALSE;
 
-  g_print ("IN Options: camera: %d (id: %d), file: %d, rtsp: %d (%s)\n",
+  g_print ("IN Options: camera: %d (id: %d), file: %d, rtsp: %d\n",
       options->num_camera, options->camera_id, options->num_file,
-      options->num_rtsp, options->rtsp_ip_port);
+      options->num_rtsp);
   g_print ("OUT Options: display: %d, file: %s, rtsp: %d\n",
       options->out_display, options->out_file, options->out_rtsp);
 
@@ -596,6 +634,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       goto error_clean_elements;
     }
 
+    // Create caps for H.264 Decoder
+    snprintf (element_name, 127, "file_decode_caps-%d", i);
+    file_decode_caps[i] = gst_element_factory_make ("capsfilter", element_name);
+    if (!file_decode_caps[i]) {
+      g_printerr ("Failed to create file_decode_caps-%d\n", i);
+      goto error_clean_elements;
+    }
+
     snprintf (element_name, 127, "file_dec_tee-%d", i);
     file_dec_tee[i] = gst_element_factory_make ("tee", element_name);
     if (!file_dec_tee[i]) {
@@ -690,6 +736,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       goto error_clean_elements;
     }
 
+    // Create caps for H.264 Decoder Plugin
+    snprintf (element_name, 127, "rtsp_decode_caps-%d", i);
+    rtsp_decode_caps[i] = gst_element_factory_make ("capsfilter", element_name);
+    if (!rtsp_decode_caps[i]) {
+      g_printerr ("Failed to create rtsp_decode_caps-%d\n", i);
+      goto error_clean_elements;
+    }
+
     snprintf (element_name, 127, "rtsp_dec_tee-%d", i);
     rtsp_dec_tee[i] = gst_element_factory_make ("tee", element_name);
     if (!rtsp_dec_tee[i]) {
@@ -777,6 +831,15 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       g_printerr ("Failed to create waylandsink \n");
       goto error_clean_elements;
     }
+
+    // Create fpsdisplaysink to display the current and
+    // average framerate as a text overlay
+    fpsdisplaysink = gst_element_factory_make ("fpsdisplaysink",
+        "fpsdisplaysink");
+    if (!fpsdisplaysink) {
+      g_printerr ("Failed to create fpsdisplaysink\n");
+      goto error_clean_elements;
+    }
   }
 
   if (options->out_file || options->out_rtsp) {
@@ -846,61 +909,73 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         "format", G_TYPE_STRING, "NV12",
         "width", G_TYPE_INT, width,
         "height", G_TYPE_INT, height,
-        "framerate", GST_TYPE_FRACTION, framerate, 1,
-        "compression", G_TYPE_STRING, "ubwc", NULL);
-    gst_caps_set_features (filtercaps, 0,
-        gst_caps_features_new ("memory:GBM", NULL));
+        "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
     g_object_set (G_OBJECT (cam_caps[i]), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
     if (!set_ml_params (cam_qtimlelement[i], cam_qtimlpostprocess[i],
-        cam_detection_filter[i], options)) {
+        cam_detection_filter[i], options, i%htp_count)) {
       goto error_clean_elements;
     }
   }
 
   for (gint i = 0; i < options->num_file; i++) {
-    snprintf (element_name, 127, "/opt/video%d.mp4", i+1);
-    g_object_set (G_OBJECT (filesrc[i]), "location", element_name, NULL);
-    g_object_set (G_OBJECT (file_v4l2h264dec[i]), "capture-io-mode", 5,
-        "output-io-mode", 5, NULL);
+    g_object_set (G_OBJECT (filesrc[i]), "location",
+        options->input_file_path[i], NULL);
+    gst_element_set_enum_property (file_v4l2h264dec[i], "capture-io-mode",
+        "dmabuf");
+    gst_element_set_enum_property (file_v4l2h264dec[i], "output-io-mode",
+        "dmabuf");
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, "NV12", NULL);
+    g_object_set (G_OBJECT (file_decode_caps[i]), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
     if (!set_ml_params (file_qtimlelement[i], file_qtimlpostprocess[i],
-        file_detection_filter[i], options)) {
+        file_detection_filter[i], options, i%htp_count)) {
       goto error_clean_elements;
     }
   }
 
   for (gint i = 0; i < options->num_rtsp; i++) {
-    snprintf (element_name, 127, "rtsp://%s/live%d.mkv", options->rtsp_ip_port,
-        i+1);
-    g_object_set (G_OBJECT (rtspsrc[i]), "location", element_name,
-        NULL);
-    g_object_set (G_OBJECT (rtsp_v4l2h264dec[i]), "capture-io-mode", 5,
-        "output-io-mode", 5, NULL);
+    g_object_set (G_OBJECT (rtspsrc[i]), "location",
+        options->input_rtsp_path[i], NULL);
+    gst_element_set_enum_property (rtsp_v4l2h264dec[i], "capture-io-mode",
+        "dmabuf");
+    gst_element_set_enum_property (rtsp_v4l2h264dec[i], "output-io-mode",
+        "dmabuf");
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, "NV12", NULL);
+    g_object_set (G_OBJECT (rtsp_decode_caps[i]), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
     if (!set_ml_params (rtsp_qtimlelement[i], rtsp_qtimlpostprocess[i],
-        rtsp_detection_filter[i], options)) {
+        rtsp_detection_filter[i], options, i%htp_count)) {
       goto error_clean_elements;
     }
   }
 
   // 2.4 Set the properties for composer output
   filtercaps = gst_caps_new_simple ("video/x-raw",
-      "format", G_TYPE_STRING, "NV12",
-      "interlace-mode", G_TYPE_STRING, "progressive",
-      "colorimetry", G_TYPE_STRING, "bt601", NULL);
-  gst_caps_set_features (filtercaps, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
+      "format", G_TYPE_STRING, "NV12", NULL);
   g_object_set (G_OBJECT (composer_caps), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
-  // 2.5 Set the properties for Wayland compositor
+  // 2.5 Set the properties for Wayland compositor and fpsdisplay
   if (options->out_display) {
     g_object_set (G_OBJECT (waylandsink), "fullscreen", TRUE, NULL);
+    g_object_set (G_OBJECT (waylandsink), "sync", FALSE, NULL);
+
+    g_object_set (G_OBJECT (fpsdisplaysink), "sync", FALSE, NULL);
+    g_object_set (G_OBJECT (fpsdisplaysink), "signal-fps-measurements", TRUE,
+        NULL);
+    g_object_set (G_OBJECT (fpsdisplaysink), "text-overlay", TRUE, NULL);
+    g_object_set (G_OBJECT (fpsdisplaysink), "video-sink", waylandsink, NULL);
   }
 
   // 2.5 Set the properties for file/rtsp sink
   if (options->out_file || options->out_rtsp) {
-    g_object_set (G_OBJECT (v4l2h264enc), "capture-io-mode", 5,
-        "output-io-mode", 5, NULL);
+    gst_element_set_enum_property (v4l2h264enc, "capture-io-mode",
+        "dmabuf");
+    gst_element_set_enum_property (v4l2h264enc, "output-io-mode",
+        "dmabuf-import");
     // Set bitrate for streaming usecase
     fcontrols = gst_structure_from_string (
         "fcontrols,video_bitrate=6000000,video_bitrate_mode=0", NULL);
@@ -932,9 +1007,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   for (gint i = 0; i < options->num_file; i++) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), filesrc[i], qtdemux[i],
-        file_dec_h264parse[i], file_v4l2h264dec[i], file_dec_tee[i],
-        file_qtimlvconverter[i], file_qtimlelement[i], file_qtimlpostprocess[i],
-        file_detection_filter[i], NULL);
+        file_dec_h264parse[i], file_v4l2h264dec[i], file_decode_caps[i],
+        file_dec_tee[i], file_qtimlvconverter[i], file_qtimlelement[i],
+        file_qtimlpostprocess[i], file_detection_filter[i], NULL);
     for (gint j = 0; j < QUEUE_COUNT; j++) {
       gst_bin_add_many (GST_BIN (appctx->pipeline), file_queue[i][j], NULL);
     }
@@ -942,9 +1017,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   for (gint i = 0; i < options->num_rtsp; i++) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), rtspsrc[i], rtph264depay[i],
-        rtsp_dec_h264parse[i], rtsp_v4l2h264dec[i], rtsp_dec_tee[i],
-        rtsp_qtimlvconverter[i], rtsp_qtimlelement[i], rtsp_qtimlpostprocess[i],
-        rtsp_detection_filter[i], NULL);
+        rtsp_dec_h264parse[i], rtsp_v4l2h264dec[i], rtsp_decode_caps[i],
+        rtsp_dec_tee[i], rtsp_qtimlvconverter[i], rtsp_qtimlelement[i],
+        rtsp_qtimlpostprocess[i], rtsp_detection_filter[i], NULL);
     for (gint j = 0; j < QUEUE_COUNT; j++) {
       gst_bin_add_many (GST_BIN (appctx->pipeline), rtsp_queue[i][j], NULL);
     }
@@ -958,7 +1033,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       composer_caps, composer_tee, NULL);
 
   if (options->out_display) {
-    gst_bin_add_many (GST_BIN (appctx->pipeline), waylandsink, NULL);
+    gst_bin_add_many (GST_BIN (appctx->pipeline), waylandsink,
+        fpsdisplaysink, NULL);
   }
 
   if (options->out_file || options->out_rtsp) {
@@ -1012,7 +1088,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     // qtdemux -> file_queue[i][0] link is not created here as it is a
     // dymanic link using on_pad_added callback
     ret = gst_element_link_many (file_queue[i][0], file_dec_h264parse[i],
-        file_v4l2h264dec[i], file_queue[i][1], file_dec_tee[i], NULL);
+        file_v4l2h264dec[i], file_decode_caps[i],
+        file_queue[i][1], file_dec_tee[i], NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for %d"
           " file_queue -> file_dec_tee.\n", i);
@@ -1040,8 +1117,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     // rtspsrc -> rtsp_queue[i][0] link is not created here as it is a
     // dymanic link using on_pad_added callback
     ret = gst_element_link_many (rtsp_queue[i][0], rtph264depay[i],
-        rtsp_dec_h264parse[i], rtsp_v4l2h264dec[i], rtsp_queue[i][1],
-        rtsp_dec_tee[i], NULL);
+        rtsp_dec_h264parse[i], rtsp_v4l2h264dec[i], rtsp_decode_caps[i],
+        rtsp_queue[i][1], rtsp_dec_tee[i], NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for %d"
           " rtsp_queue -> rtsp_tee.\n", i);
@@ -1074,7 +1151,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   if (options->out_display) {
-    ret = gst_element_link_many (composer_tee, queue[1], waylandsink, NULL);
+    ret = gst_element_link_many (composer_tee, queue[1], fpsdisplaysink, NULL);
     if (!ret) {
     g_printerr ("Pipeline elements cannot be linked for"
         " composer_tee -> waylandsink.\n");
@@ -1146,7 +1223,7 @@ error_clean_elements:
   for (gint i = 0; i < options->num_file; i++) {
     cleanup_gst (&filesrc[i], &qtdemux[i],
         &file_dec_h264parse[i], &file_v4l2h264dec[i], &file_dec_tee[i],
-        &file_qtimlvconverter[i], &file_qtimlelement[i],
+        &file_qtimlvconverter[i], &file_qtimlelement[i], &file_decode_caps[i],
         &file_qtimlpostprocess[i], &file_detection_filter[i], NULL);
     for (gint j = 0; j < QUEUE_COUNT; j++) {
       cleanup_gst (&file_queue[i][j], NULL);
@@ -1156,7 +1233,7 @@ error_clean_elements:
   for (gint i = 0; i < options->num_rtsp; i++) {
     cleanup_gst (&rtspsrc[i], &rtph264depay[i],
         &rtsp_dec_h264parse[i], &rtsp_v4l2h264dec[i], &rtsp_dec_tee[i],
-        &rtsp_qtimlvconverter[i], &rtsp_qtimlelement[i],
+        &rtsp_qtimlvconverter[i], &rtsp_qtimlelement[i], &rtsp_decode_caps[i],
          &rtsp_qtimlpostprocess[i], &rtsp_detection_filter[i], NULL);
     for (gint j = 0; j < QUEUE_COUNT; j++) {
       cleanup_gst (&rtsp_queue[i][j], NULL);
@@ -1187,6 +1264,123 @@ error_clean_elements:
   return FALSE;
 }
 
+/**
+ * Parse JSON file to read input parameters
+ *
+ * @param config_file Path to config file
+ * @param options Application specific options
+ */
+gint
+parse_json (gchar * config_file, GstAppOptions * options)
+{
+  JsonParser *parser = NULL;
+  JsonNode *root = NULL;
+  JsonObject *root_obj = NULL;
+  GError *error = NULL;
+  JsonArray *files_info = NULL;
+  JsonArray *rtsp_info = NULL;
+
+  parser = json_parser_new ();
+
+  // Load the JSON file
+  if (!json_parser_load_from_file (parser, config_file, &error)) {
+    g_printerr ("Unable to parse JSON file: %s\n", error->message);
+    g_error_free (error);
+    g_object_unref (parser);
+    return -1;
+  }
+
+  // Get the root object
+  root = json_parser_get_root (parser);
+  if (!JSON_NODE_HOLDS_OBJECT (root)) {
+    gst_printerr ("Failed to load json object\n");
+    g_object_unref (parser);
+    return -1;
+  }
+
+  root_obj = json_node_get_object (root);
+
+  gboolean camera_is_available = is_camera_available ();
+
+  if (camera_is_available) {
+    if (json_object_has_member (root_obj, "num_camera"))
+      options->num_camera = json_object_get_int_member (root_obj, "camera");
+  }
+
+  if (json_object_has_member (root_obj, "input-file-path")) {
+    files_info = json_object_get_array_member (root_obj, "input-file-path");
+    options->num_file = json_array_get_length (files_info);
+    if (options->num_file > MAX_FILESRCS) {
+      gst_printerr ("Number of input files has to be <= %d\n", MAX_FILESRCS);
+      g_object_unref (parser);
+      return -1;
+    }
+    for (gint i = 0; i < options->num_file; i++) {
+      options->input_file_path[i] =
+          g_strdup (json_array_get_string_element (files_info, i));
+    }
+  }
+
+  if (json_object_has_member (root_obj, "input-rtsp-path")) {
+    rtsp_info = json_object_get_array_member (root_obj, "input-rtsp-path");
+    options->num_rtsp = json_array_get_length (rtsp_info);
+    if (options->num_rtsp > MAX_RTSPSRCS) {
+      gst_printerr ("Number of rtsp sources has to be <= %d\n", MAX_RTSPSRCS);
+      g_object_unref (parser);
+      return -1;
+    }
+    for (gint i = 0; i < options->num_rtsp; i++) {
+      options->input_rtsp_path[i] =
+          g_strdup (json_array_get_string_element (rtsp_info, i));
+    }
+  }
+
+  if (json_object_has_member (root_obj, "model")) {
+    options->model_path =
+        g_strdup (json_object_get_string_member (root_obj, "model"));
+  }
+
+  if (json_object_has_member (root_obj, "labels")) {
+    options->labels_path =
+        g_strdup (json_object_get_string_member (root_obj, "labels"));
+  }
+
+  if (json_object_has_member (root_obj, "constants")) {
+    options->constants =
+        g_strdup (json_object_get_string_member (root_obj, "constants"));
+  }
+
+  if (json_object_has_member (root_obj, "output-file-path")) {
+    options->out_file =
+        g_strdup (json_object_get_string_member (root_obj, "output-file-path"));
+  }
+
+  if (json_object_has_member (root_obj, "output-ip-address")) {
+    options->out_rtsp = TRUE;
+    options->ip_address =
+        g_strdup (json_object_get_string_member (root_obj, "output-ip-address"));
+  }
+
+  if (json_object_has_member (root_obj, "output-port-number")) {
+    options->out_rtsp = TRUE;
+    options->port_num =
+        g_strdup (json_object_get_string_member (root_obj, "output-port-number"));
+  }
+
+  if (json_object_has_member (root_obj, "output-display")) {
+    options->out_display =
+        json_object_get_boolean_member (root_obj, "output-display");
+  }
+
+  if (json_object_has_member (root_obj, "use-case")) {
+    options->use_case =
+        json_object_get_int_member (root_obj, "use-case");
+  }
+
+  g_object_unref (parser);
+  return 0;
+}
+
 gint
 main (gint argc, gchar * argv[])
 {
@@ -1195,12 +1389,14 @@ main (gint argc, gchar * argv[])
   GstElement *pipeline = NULL;
   GOptionContext *ctx = NULL;
   const gchar *app_name = NULL;
+  gchar *config_file = NULL;
   GstAppContext appctx = {};
   GstAppOptions options = {};
   struct rlimit rl;
   guint intrpt_watch_id = 0;
   gboolean ret = FALSE;
-  gchar help_description[1024];
+  gchar help_description[4096];
+  gint htp_count = 1;
 
   // Define the new limit
   rl.rlim_cur = 4096; // Soft limit
@@ -1226,123 +1422,20 @@ main (gint argc, gchar * argv[])
   options.use_case = GST_OBJECT_DETECTION;
   options.mlframework = "qtimltflite";
   options.camera_id = -1;
-  options.rtsp_ip_port = DEFAULT_RTSP_IP_PORT;
-
-  GOptionEntry camera_entries[2] = {};
 
   gboolean camera_is_available = is_camera_available ();
 
-  if (camera_is_available) {
-    GOptionEntry temp_camera_entries[] = {
-      { "num-camera", 0, 0, G_OPTION_ARG_INT,
-        &options.num_camera,
-        "Number of cameras to be used (range: 1-" TO_STR (MAX_CAMSRCS) ")",
-        NULL
-      },
-      { "camera-id", 'c', 0, G_OPTION_ARG_INT,
-        &options.camera_id,
-        "Use provided camera id as source\n"
-        "      Default input camera 0 if no other input selected\n"
-        "      This parameter is ignored if num-camera=" TO_STR (MAX_CAMSRCS),
-        "0 or 1"
-      }
-    };
-
-    memcpy (camera_entries, temp_camera_entries, 2 * sizeof (GOptionEntry));
-  } else {
-    GOptionEntry temp_camera_entries[] = {
-      { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL },
-      { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
-    };
-
-    memcpy (camera_entries, temp_camera_entries, 2 * sizeof (GOptionEntry));
-  }
+  htp_count = get_num_cdsp_backends();
+  g_print ("HTP Core Count = %d\n", htp_count);
 
   // Structure to define the user options selection
   GOptionEntry entries[] = {
-    { "num-file", 0, 0, G_OPTION_ARG_INT,
-      &options.num_file,
-      "Number of input files to be used (range: 1-" TO_STR (MAX_FILESRCS) ")\n"
-      "      Copy the H.264 encoded files to /opt and name"
-      " as video1.mp4, video2.mp4 and so on",
+    { "config-file", 0, 0, G_OPTION_ARG_STRING,
+      &config_file,
+      "Path to config file\n",
       NULL
     },
-    { "num-rtsp", 0, 0, G_OPTION_ARG_INT,
-      &options.num_rtsp,
-      "Number of input rtsp streams to be used"
-      " (range: 0-" TO_STR (MAX_RTSPSRCS) ")\n"
-      "      rtsp server should provide H.264 encoded streams"
-      " /live1.mkv, /live2.mkv and so on",
-      NULL
-    },
-    { "rtsp-ip-port", 0, 0, G_OPTION_ARG_STRING,
-      &options.rtsp_ip_port,
-      "This parameter overrides default ip:port\n"
-      "      Should be provided as ip:port combination\n"
-      "      Default ip:port is 127.0.0.1:8554",
-      "ip:port"
-    },
-    { "use-case", 'u', 0, G_OPTION_ARG_INT,
-      &options.use_case,
-      "Option to select use case 0: Detection, 1: Classification\n"
-      "      Detection is enabled by default",
-      NULL
-    },
-    { "model", 'm', 0, G_OPTION_ARG_STRING,
-      &options.model_path,
-      "This parameter overrides default model file path\n"
-      "      Default model path for YOLOV8 TFLITE: "
-      DEFAULT_TFLITE_YOLOV8_MODEL "\n"
-      "      Default model path for INCEPTIONv3 TFLITE: "
-      DEFAULT_TFLITE_INCEPTIONV3_MODEL,
-      "/PATH"
-    },
-    { "labels", 'l', 0, G_OPTION_ARG_STRING,
-      &options.labels_path,
-      "This parameter overrides default labels file path\n"
-      "      Default labels path for YOLOV8: " DEFAULT_YOLOV8_LABELS "\n"
-      "      Default labels path for INCEPTIONv3: "
-      DEFAULT_CLASSIFICATION_LABELS,
-      "/PATH"
-    },
-    { "constants", 'k', 0, G_OPTION_ARG_STRING,
-      &options.constants,
-      "Constants, offsets and coefficients used by the chosen module \n"
-      "      for post-processing of incoming tensors."
-      " Applicable only for some modules\n"
-      "      Default constants: \"" DEFAULT_DETECTION_CONSTANTS "\"",
-      "/CONSTANTS"
-    },
-    { "display", 'd', 0, G_OPTION_ARG_NONE,
-      &options.out_display,
-      "Display on screen",
-      NULL
-    },
-    { "out-file", 'f', 0, G_OPTION_ARG_STRING,
-      &options.out_file,
-      "Path to save H.264 Encoded file",
-      "/PATH"
-    },
-    { "out-rtsp", 'r', 0, G_OPTION_ARG_NONE,
-      &options.out_rtsp,
-      "Encode and stream on rtsp. Connect device and host on same network, and\n"
-      "      change ip address and port to override the defualt ip address and\n"
-      "      Port number.",
-      NULL
-    },
-    { "ip", 'i', 0, G_OPTION_ARG_STRING,
-      &options.ip_address,
-      "RSTP server listening address.",
-      "Valid IP Address"
-    },
-    { "port", 'p', 0, G_OPTION_ARG_STRING,
-      &options.port_num,
-      "RSTP server listening port",
-      "Port number."
-    },
-    camera_entries[0],
-    camera_entries[1],
-    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
+    { NULL }
   };
 
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
@@ -1351,22 +1444,61 @@ main (gint argc, gchar * argv[])
 
   if (camera_is_available) {
     snprintf (camera_description, sizeof (camera_description),
-      "%s --use-case 1 --num-camera=2 --display",
-      app_name);
+      "  num_camera: 1 or 2"
+      "      Number of camera streams (max: %d)\n", MAX_CAMSRCS);
   }
 
-  snprintf (help_description, 1023, "\nExample:\n"
-      "  %s --num-file=6 --use-case 0\n"
-      "  %s\n"
-      "  %s --use-case 0 --model=%s --labels=%s\n"
-      "  %s --num-file=4 -u 0 -d -f /opt/app.mp4 --out-rtsp -i <ip> -p <port>\n"
-      "\nThis Sample App demonstrates Object Detection on 16 stream with various "
-      " input/output stream combinations",
-      app_name,
-      camera_description,
-      app_name, DEFAULT_TFLITE_YOLOV8_MODEL,
-      DEFAULT_YOLOV8_LABELS, app_name);
-  help_description[1023] = '\0';
+  snprintf (help_description, 4095, "\nExample:\n"
+      "  %s --config-file=%s\n"
+      "\nThis Sample App demonstrates Object Detection on upto 24 stream "
+      "with various input/output stream combinations\n"
+      "\nConfig file fields:\n"
+      "%s"
+      "  input-file-path: <json array>\n"
+      "      json array of input files. Eg:\n"
+      "      [\"/etc/media/video1.mp4\", \"/etc/media/video2.mp4\"]\n"
+      "      max number of input files: %d\n"
+      "  input-rtsp-path: <json array>\n"
+      "      json array of input rtsp streams. Eg:\n"
+      "      [\"rtsp://127.0.0.1:8554/live1.mkv\", "
+      "\"rtsp://127.0.0.1:8554/live2.mkv\"]\n"
+      "      max number of rtsp input streams: %d\n"
+      "  Maximum number of input streams: %d\n"
+      "  model: path to model file\n"
+      "      This is an optional parameter and overrides default path\n"
+      "      Default detection model path: " DEFAULT_TFLITE_YOLOV8_MODEL "\n"
+      "      Default classification model path: "
+      DEFAULT_TFLITE_INCEPTIONV3_MODEL "\n"
+      "  labels: path to labels file\n"
+      "      This is an optional parameter and overrides default path\n"
+      "      Default detection labels path: " DEFAULT_YOLOV8_LABELS "\n"
+      "      Default classification model path: "
+      DEFAULT_CLASSIFICATION_LABELS "\n"
+      "  constants: \"CONSTANTS\"\n"
+      "      Constants, offsets and coefficients used by the chosen module "
+      "      for post-processing of incoming tensors.\n"
+      "      Applicable only for some modules\n"
+      "      Default detection constants: " DEFAULT_DETECTION_CONSTANTS "\n"
+      "      Default classification path: "
+      DEFAULT_CLASSIFICATION_CONSTANTS "\n"
+      "  output-file-path: /PATH\n"
+      "      Path to save H.264 Encoded file\n"
+      "  output-ip-address: valid IP address\n"
+      "      RTSP server listening address.\n"
+      "      default IP address: " DEFAULT_IP "\n"
+      "  output-port-number: \"port number\"\n"
+      "      RTSP server listening port number.\n"
+      "      default port number: " DEFAULT_PORT "\n"
+      "  adding either output-ip-address or output-port-number or both\n"
+      "  enables output through rtsp stream\n"
+      "  output-display: boolean\n"
+      "      Put value as true to enable output on wayland display\n"
+      "  If no output is selected, wayland output is selected as default\n"
+      "  use-case: 0 or 1\n"
+      "      0: detection, 1: classification\n",
+      app_name, DEFAULT_CONFIG_FILE, camera_description,
+      MAX_FILESRCS, MAX_RTSPSRCS, MAX_SRCS_COUNT);
+  help_description[4095] = '\0';
 
   // Parse command line entries.
   if ((ctx = g_option_context_new (help_description)) != NULL) {
@@ -1383,11 +1515,11 @@ main (gint argc, gchar * argv[])
       g_printerr ("Failed to parse command line options: %s!\n",
           GST_STR_NULL (error->message));
       g_clear_error (&error);
-      gst_app_context_free (&appctx, &options);
+      gst_app_context_free (&appctx, &options, config_file);
       return -EFAULT;
     } else if (!success && (NULL == error)) {
       g_printerr ("Initializing: Unknown error!\n");
-      gst_app_context_free (&appctx, &options);
+      gst_app_context_free (&appctx, &options, config_file);
       return -EFAULT;
     }
   } else {
@@ -1395,10 +1527,25 @@ main (gint argc, gchar * argv[])
     return -EFAULT;
   }
 
+  if (config_file == NULL) {
+    config_file = DEFAULT_CONFIG_FILE;
+  }
+
+  if (!file_exists (config_file)) {
+    g_printerr ("Invalid config file path: %s\n", config_file);
+    gst_app_context_free (&appctx, &options, config_file);
+    return -EINVAL;
+  }
+
+  if (parse_json (config_file, &options) != 0) {
+    gst_app_context_free (&appctx, &options, config_file);
+    return -EINVAL;
+  }
+
   if ((options.use_case != GST_OBJECT_DETECTION) &&
       (options.use_case != GST_CLASSIFICATION)) {
     g_printerr ("Invalid usecase selected, Select Detection or Classification\n");
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
 
@@ -1425,25 +1572,25 @@ main (gint argc, gchar * argv[])
 
   if (options.num_camera > MAX_CAMSRCS) {
     g_printerr ("Number of camera streams cannot be more than 2\n");
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -1;
   }
 
   if (options.num_file > MAX_FILESRCS) {
     g_printerr ("Number of file streams cannot be more than %d\n", MAX_FILESRCS);
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -1;
   }
 
   if (options.num_rtsp > MAX_RTSPSRCS) {
     g_printerr ("Number of rtsp streams cannot be more than %d\n", MAX_RTSPSRCS);
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -1;
   }
 
   if (options.num_camera < 0 || options.num_file < 0 || options.num_rtsp < 0) {
     g_printerr ("Negative count for any input is not supported\n");
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -1;
   }
 
@@ -1451,13 +1598,13 @@ main (gint argc, gchar * argv[])
 
   if (options.input_count > MAX_SRCS_COUNT) {
     g_printerr ("Maximum supported streams: %d\n", MAX_SRCS_COUNT);
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
 
   if (options.camera_id < -1 || options.camera_id > 1) {
     g_printerr ("invalid camera id: %d\n", options.camera_id);
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
 
@@ -1469,7 +1616,7 @@ main (gint argc, gchar * argv[])
       options.input_count++;
     } else {
       g_printerr ("Select either File or RTSP source\n");
-      gst_app_context_free (&appctx, &options);
+      gst_app_context_free (&appctx, &options, config_file);
       return -EINVAL;
     }
   }
@@ -1485,29 +1632,29 @@ main (gint argc, gchar * argv[])
 
   for (gint i = 0; i < options.num_file; i++) {
     gchar file_name[128];
-    snprintf (file_name, 127, "/opt/video%d.mp4", i+1);
+    snprintf (file_name, 127, "/etc/media/video%d.mp4", i+1);
     if (!file_exists (file_name)) {
       g_printerr ("video file doesnot exist at path: %s\n", file_name);
-      gst_app_context_free (&appctx, &options);
+      gst_app_context_free (&appctx, &options, config_file);
       return -EINVAL;
     }
   }
 
   if (!file_exists (options.model_path)) {
     g_printerr ("Invalid model file path: %s\n", options.model_path);
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
 
   if (!file_exists (options.labels_path)) {
     g_printerr ("Invalid labels file path: %s\n", options.labels_path);
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
 
   if (options.out_file && !file_location_exists (options.out_file)) {
     g_printerr ("Invalid output file location: %s\n", options.out_file);
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
 
@@ -1522,24 +1669,24 @@ main (gint argc, gchar * argv[])
   pipeline = gst_pipeline_new (app_name);
   if (!pipeline) {
     g_printerr ("ERROR: failed to create pipeline.\n");
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -1;
   }
 
   appctx.pipeline = pipeline;
 
   // Build the pipeline, link all elements in the pipeline
-  ret = create_pipe (&appctx, &options);
+  ret = create_pipe (&appctx, &options, htp_count);
   if (!ret) {
     g_printerr ("ERROR: failed to create GST pipe.\n");
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -1;
   }
 
   // Initialize main loop.
   if ((mloop = g_main_loop_new (NULL, FALSE)) == NULL) {
     g_printerr ("ERROR: Failed to create Main loop!\n");
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -1;
   }
   appctx.mloop = mloop;
@@ -1548,7 +1695,7 @@ main (gint argc, gchar * argv[])
   // Bus is message queue for getting callback from gstreamer pipeline
   if ((bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline))) == NULL) {
     g_printerr ("ERROR: Failed to retrieve pipeline bus!\n");
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -1;
   }
 
@@ -1599,7 +1746,7 @@ error:
   gst_element_set_state (pipeline, GST_STATE_NULL);
 
   g_print ("Destroy pipeline\n");
-  gst_app_context_free (&appctx, &options);
+  gst_app_context_free (&appctx, &options, config_file);
 
   g_print ("gst_deinit\n");
   gst_deinit ();
