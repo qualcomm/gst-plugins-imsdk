@@ -234,6 +234,26 @@ enum GstVideoPlayerCodecType {
 };
 
 /**
+ * GstV4l2IOMode:
+ * @GST_V4L2_IO_AUTO: Default IO Mode.
+ * @GST_V4L2_IO_RW: RW IO Mode.
+ * @GST_V4L2_IO_MMAP: MMAP IO Mode.
+ * @GST_V4L2_IO_USERPTR: USERPTR IO Mode.
+ * @GST_V4L2_IO_DMABUF: DMABUF IO Mode.
+ * @GST_V4L2_IO_DMABUF_IMPORT: DMABUF_IMPORT IO Mode.
+ *
+ * Type of Video Codec for AV Player.
+ */
+typedef enum {
+  GST_V4L2_IO_AUTO          = 0,
+  GST_V4L2_IO_RW            = 1,
+  GST_V4L2_IO_MMAP          = 2,
+  GST_V4L2_IO_USERPTR       = 3,
+  GST_V4L2_IO_DMABUF        = 4,
+  GST_V4L2_IO_DMABUF_IMPORT = 5
+} GstV4l2IOMode;
+
+/**
  * GstAudioPlayerCodecType:
  * @GST_ACODEC_NONE: Default Audio Codec Type.
  * @GST_ACODEC_FLAC: Audio flac Codec Type.

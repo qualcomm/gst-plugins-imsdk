@@ -17,9 +17,11 @@
   "mixer. ! queue ! " \
   "waylandsink enable-last-sample=false fullscreen=true " \
   "filesrc name=source0 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source1 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! "\
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
 
 #define GST_PIPELINE_4STREAM "qtivcomposer name=mixer " \
   "sink_0::position=\"<0, 0>\" sink_0::dimensions=\"<960, 540>\" " \
@@ -29,13 +31,17 @@
   "mixer. ! queue ! " \
   "waylandsink enable-last-sample=false fullscreen=true " \
   "filesrc name=source0 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source1 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source2 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source3 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
 
 #define GST_PIPELINE_8STREAM "qtivcomposer name=mixer " \
   "sink_0::position=\"<0, 0>\" sink_0::dimensions=\"<480, 540>\" " \
@@ -49,21 +55,29 @@
   "mixer. ! queue ! " \
   "waylandsink enable-last-sample=false fullscreen=true " \
   "filesrc name=source0 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source1 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source2 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source3 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source4 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source5 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source6 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source7 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
 
 #define GST_PIPELINE_16STREAM "qtivcomposer name=mixer " \
   "sink_0::position=\"<0, 0>\" sink_0::dimensions=\"<480, 270>\" " \
@@ -85,36 +99,52 @@
   "mixer. ! queue ! " \
   "waylandsink enable-last-sample=false fullscreen=true " \
   "filesrc name=source0 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source1 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source2 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source3 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source4 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source5 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source6 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source7 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source8 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source9 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source10 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source11 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source12 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source13 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source14 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
   "filesrc name=source15 location=FILESOURCE ! qtdemux ! queue ! " \
-  "h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! queue ! mixer. " \
+  "h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
+  "video/x-raw,format=NV12 ! queue ! mixer. " \
 
 #endif //GST_SAMPLE_APPS_PIPELINE_H
