@@ -70,16 +70,16 @@ namespace camera = qmmf;
 #define MENU_BACK_OPTION               "b"
 
 #define GST_CAMERA_PIPELINE "qtiqmmfsrc name=camera " \
-    "video_0::type=preview ! video/x-raw(memory:GBM),format=NV12,width=1280,height=720,framerate=30/1, " \
-    "compression=ubwc,interlace-mode=progressive,colorimetry=bt601 ! " \
+    "video_0::type=preview ! video/x-raw,format=NV12_Q08C,width=1280,height=720,framerate=30/1, " \
+    "interlace-mode=progressive,colorimetry=bt601 ! " \
     "queue ! appsink name=sink emit-signals=true async=false enable-last-sample=false"
 
 #define GST_CAMERA_PIPELINE_DISPLAY "qtiqmmfsrc name=camera " \
-    "video_0::type=preview ! video/x-raw(memory:GBM),format=NV12,width=1280,height=720,framerate=30/1, " \
-    "compression=ubwc,interlace-mode=progressive,colorimetry=bt601 ! " \
+    "video_0::type=preview ! video/x-raw,format=NV12_Q08C,width=1280,height=720,framerate=30/1, " \
+    "interlace-mode=progressive,colorimetry=bt601 ! " \
     "queue ! appsink name=sink emit-signals=true async=false enable-last-sample=false " \
-    "camera.video_1 ! video/x-raw(memory:GBM),format=NV12,width=1280,height=720,framerate=30/1, " \
-    "compression=ubwc,interlace-mode=progressive,colorimetry=bt601 ! " \
+    "camera.video_1 ! video/x-raw,format=NV12,width=1280,height=720,framerate=30/1, " \
+    "interlace-mode=progressive,colorimetry=bt601 ! " \
     "queue ! waylandsink fullscreen=true"
 
 #define TERMINATE_MESSAGE      "APP_TERMINATE_MSG"
