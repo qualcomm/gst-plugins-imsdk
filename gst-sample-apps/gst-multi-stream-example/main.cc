@@ -185,8 +185,8 @@ create_two_stream_pipe (GstMultiStreamAppContext * appctx)
 
   // Create v4l2h264enc element and set the properties
   v4l2h264enc = gst_element_factory_make ("v4l2h264enc", "v4l2h264enc");
-  g_object_set (G_OBJECT (v4l2h264enc), "capture-io-mode", 5, NULL);
-  g_object_set (G_OBJECT (v4l2h264enc), "output-io-mode", 5, NULL);
+  g_object_set (G_OBJECT (v4l2h264enc), "capture-io-mode", GST_V4L2_IO_DMABUF, NULL);
+  g_object_set (G_OBJECT (v4l2h264enc), "output-io-mode", GST_V4L2_IO_DMABUF_IMPORT, NULL);
   controls = gst_structure_from_string (
       "controls,video_bitrate_mode=0", NULL);
   g_object_set (G_OBJECT (v4l2h264enc), "extra-controls", controls, NULL);
@@ -232,10 +232,8 @@ create_two_stream_pipe (GstMultiStreamAppContext * appctx)
       "width", G_TYPE_INT, appctx->width,
       "height", G_TYPE_INT, appctx->height,
       "framerate", GST_TYPE_FRACTION, 30, 1,
-      "compression", G_TYPE_STRING, "ubwc",
       NULL);
-  gst_caps_set_features (filtercaps, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
+
   g_object_set (G_OBJECT (capsfilter_dis), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
@@ -245,13 +243,10 @@ create_two_stream_pipe (GstMultiStreamAppContext * appctx)
       "width", G_TYPE_INT, appctx->width,
       "height", G_TYPE_INT, appctx->height,
       "framerate", GST_TYPE_FRACTION, 30, 1,
-      "compression", G_TYPE_STRING, "ubwc",
       "interlace-mode", G_TYPE_STRING, "progressive",
       "colorimetry", G_TYPE_STRING, "bt601",
       NULL);
 
-  gst_caps_set_features (filtercaps, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
   g_object_set (G_OBJECT (capsfilter_enc), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 

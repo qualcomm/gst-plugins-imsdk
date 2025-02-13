@@ -187,30 +187,16 @@ create_pipe (GstCameraAppContext * appctx)
   qtiqmmfsrc = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
   capsfilter = gst_element_factory_make ("capsfilter", "capsfilter");
 
-  // Set the source elements capability and in case YUV dump disable UBWC
-  if (appctx->sinktype == GST_YUV_DUMP) {
-    filtercaps = gst_caps_new_simple ("video/x-raw",
-        "format", G_TYPE_STRING, "NV12",
-        "width", G_TYPE_INT, appctx->width,
-        "height", G_TYPE_INT, appctx->height,
-        "framerate", GST_TYPE_FRACTION, 30, 1,
-        "interlace-mode", G_TYPE_STRING, "progressive",
-        "colorimetry", G_TYPE_STRING, "bt601",
-        NULL);
-  } else {
-    filtercaps = gst_caps_new_simple ("video/x-raw",
-        "format", G_TYPE_STRING, "NV12",
-        "width", G_TYPE_INT, appctx->width,
-        "height", G_TYPE_INT, appctx->height,
-        "framerate", GST_TYPE_FRACTION, 30, 1,
-        "compression", G_TYPE_STRING, "ubwc",
-        "interlace-mode", G_TYPE_STRING, "progressive",
-        "colorimetry", G_TYPE_STRING, "bt601",
-        NULL);
-  }
+  // Set the source elements capability
+  filtercaps = gst_caps_new_simple ("video/x-raw",
+      "format", G_TYPE_STRING, "NV12",
+      "width", G_TYPE_INT, appctx->width,
+      "height", G_TYPE_INT, appctx->height,
+      "framerate", GST_TYPE_FRACTION, 30, 1,
+      "interlace-mode", G_TYPE_STRING, "progressive",
+      "colorimetry", G_TYPE_STRING, "bt601",
+      NULL);
 
-  gst_caps_set_features (filtercaps, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
   g_object_set (G_OBJECT (capsfilter), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
@@ -266,8 +252,8 @@ create_pipe (GstCameraAppContext * appctx)
       appctx->sinktype == GST_RTSP_STREAMING) {
     // Create v4l2h264enc element and set the properties
     v4l2h264enc = gst_element_factory_make ("v4l2h264enc", "v4l2h264enc");
-    g_object_set (G_OBJECT (v4l2h264enc), "capture-io-mode", 5, NULL);
-    g_object_set (G_OBJECT (v4l2h264enc), "output-io-mode", 5, NULL);
+    g_object_set (G_OBJECT (v4l2h264enc), "capture-io-mode", GST_V4L2_IO_DMABUF, NULL);
+    g_object_set (G_OBJECT (v4l2h264enc), "output-io-mode", GST_V4L2_IO_DMABUF_IMPORT, NULL);
 
     // Create h264parse element for parsing the stream
     h264parse = gst_element_factory_make ("h264parse", "h264parse");

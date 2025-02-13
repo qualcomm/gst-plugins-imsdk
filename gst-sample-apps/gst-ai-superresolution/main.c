@@ -43,8 +43,8 @@
  * Default model and video, if not provided by user
  */
 #define DEFAULT_TFLITE_MODEL \
-    "/opt/quicksrnetsmall_quantized.tflite"
-#define DEFAULT_INPUT_FILE_PATH "/opt/video.mp4"
+    "/etc/models/quicksrnetsmall_quantized.tflite"
+#define DEFAULT_INPUT_FILE_PATH "/etc/media/video.mp4"
 
 /**
  * Number of Queues used for buffer caching between elements
@@ -205,6 +205,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
 {
   GstElement *filesrc = NULL, *qtdemux = NULL, *h264parse_decode = NULL;
   GstElement *v4l2h264dec = NULL, *tee = NULL, *qtivcomposer = NULL;
+  GstElement *v4l2h264dec_caps = NULL;
   GstElement *fpsdisplaysink = NULL, *waylandsink = NULL;
   GstElement *qtimlvconverter = NULL, *qtimlelement = NULL;
   GstElement *qtimlvsuperresolution = NULL, *sink_filter = NULL;
@@ -244,6 +245,12 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   v4l2h264dec = gst_element_factory_make ("v4l2h264dec", "v4l2h264dec");
   if (!v4l2h264dec) {
     g_printerr ("Failed to create v4l2h264dec\n");
+    goto error_clean_elements;
+  }
+
+  v4l2h264dec_caps = gst_element_factory_make ("capsfilter", "v4l2h264dec_caps");
+  if (!v4l2h264dec_caps) {
+    g_printerr ("Failed to create v4l2h264dec_caps\n");
     goto error_clean_elements;
   }
 
@@ -354,8 +361,12 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   // 2. Set properties for all GST plugin elements
   // 2.1 Set the capabilities of file stream
   g_object_set (G_OBJECT (filesrc), "location", options.input_file_path, NULL);
-  g_object_set (G_OBJECT (v4l2h264dec), "capture-io-mode", 5, NULL);
-  g_object_set (G_OBJECT (v4l2h264dec), "output-io-mode", 5, NULL);
+  gst_element_set_enum_property (v4l2h264dec, "capture-io-mode", "dmabuf");
+  gst_element_set_enum_property (v4l2h264dec, "output-io-mode", "dmabuf");
+  pad_filter = gst_caps_new_simple ("video/x-raw",
+      "format", G_TYPE_STRING, "NV12", NULL);
+  g_object_set (G_OBJECT (v4l2h264dec_caps), "caps", pad_filter, NULL);
+  gst_caps_unref (pad_filter);
 
   // 2.2 Select the HW to DSP for model inferencing using delegate property
   g_object_set (G_OBJECT (qtimlelement),
@@ -399,8 +410,8 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     g_object_set (G_OBJECT (fpsdisplaysink), "text-overlay", TRUE, NULL);
     g_object_set (G_OBJECT (fpsdisplaysink), "video-sink", waylandsink, NULL);
   } else if (options.sink_type == GST_VIDEO_ENCODE) {
-    g_object_set (G_OBJECT (v4l2h264enc), "capture-io-mode", 5,
-        "output-io-mode", 5, NULL);
+    gst_element_set_enum_property (v4l2h264enc, "capture-io-mode", "dmabuf");
+    gst_element_set_enum_property (v4l2h264enc, "output-io-mode", "dmabuf-import");
 
     pad_filter = gst_caps_new_simple ("video/x-raw",
         "format", G_TYPE_STRING, "NV12",
@@ -408,8 +419,6 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
         "height", G_TYPE_INT, OUTPUT_HEIGHT,
         "interlace-mode", G_TYPE_STRING, "progressive",
         "colorimetry", G_TYPE_STRING, "bt601", NULL);
-    gst_caps_set_features (pad_filter, 0,
-        gst_caps_features_new ("memory:GBM", NULL));
     g_object_set (G_OBJECT (sink_filter), "caps", pad_filter, NULL);
     gst_caps_unref (pad_filter);
 
@@ -422,7 +431,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   g_print ("Adding all elements to the pipeline...\n");
 
   gst_bin_add_many (GST_BIN (appctx->pipeline),
-      filesrc, qtdemux, h264parse_decode, v4l2h264dec,
+      filesrc, qtdemux, h264parse_decode, v4l2h264dec, v4l2h264dec_caps,
       tee, qtimlelement, qtimlvconverter, qtimlvsuperresolution,
       filter, qtivcomposer, NULL);
 
@@ -448,7 +457,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   }
 
   ret = gst_element_link_many (queue[0], h264parse_decode, v4l2h264dec,
-      tee, NULL);
+      v4l2h264dec_caps, tee, NULL);
   if (!ret) {
     g_printerr ("\n pipeline elements qtdemux -> v4l2h264dec cannot be linked."
         "Exiting.\n");
@@ -529,9 +538,9 @@ error_clean_pipeline:
 error_clean_elements:
   g_printerr ("Error: Pipeline elements cannot be created\n");
 
-  cleanup_gst (&filesrc, &qtdemux, &h264parse_decode, &v4l2h264dec, &tee,
-      &qtivcomposer, &fpsdisplaysink, &waylandsink, &qtimlvconverter,
-      &qtimlelement, &qtimlvsuperresolution, &filter,
+  cleanup_gst (&filesrc, &qtdemux, &h264parse_decode, &v4l2h264dec,
+      &v4l2h264dec_caps, &tee, &qtivcomposer, &fpsdisplaysink, &waylandsink,
+      &qtimlvconverter, &qtimlelement, &qtimlvsuperresolution, &filter,
       &sink_filter, &v4l2h264enc, &h264parse_encode, &mp4mux, &filesink, NULL);
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
@@ -604,11 +613,11 @@ main (gint argc, gchar * argv[])
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
 
   snprintf (help_description, 1023, "\nExample:\n"
-      "  %s --input-file=/opt/video.mp4\n"
-      "  %s --input-file=/opt/video.mp4 --display\n"
-      "  %s --input-file=/opt/video.mp4 --output-file=/opt/out.mp4\n"
-      "  %s --input-file=/opt/video.mp4 --model=%s\n"
-      "  %s --input-file=/opt/video.mp4 --model=%s --constants=\"%s\"\n"
+      "  %s --input-file=/etc/media/video.mp4\n"
+      "  %s --input-file=/etc/media/video.mp4 --display\n"
+      "  %s --input-file=/etc/media/video.mp4 --output-file=/etc/media/out.mp4\n"
+      "  %s --input-file=/etc/media/video.mp4 --model=%s\n"
+      "  %s --input-file=/etc/media/video.mp4 --model=%s --constants=\"%s\"\n"
       "\nThis Sample App demonstrates super resolution \n", app_name, app_name,
       app_name, app_name, DEFAULT_TFLITE_MODEL,
       app_name, DEFAULT_TFLITE_MODEL, DEFAULT_CONSTANTS);

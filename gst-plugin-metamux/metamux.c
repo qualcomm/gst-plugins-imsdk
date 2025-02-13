@@ -1825,6 +1825,9 @@ gst_metamux_init (GstMetaMux * muxer)
       GST_DEBUG_FUNCPTR (gst_metamux_main_sink_pad_query));
   gst_pad_set_chain_function (GST_PAD (muxer->sinkpad),
       GST_DEBUG_FUNCPTR (gst_metamux_main_sink_pad_chain));
+
+  GST_OBJECT_FLAG_SET (muxer->sinkpad, GST_PAD_FLAG_PROXY_ALLOCATION);
+
   gst_element_add_pad (GST_ELEMENT (muxer), GST_PAD (muxer->sinkpad));
   muxer->sinkpad->buffers_limit = muxer->queue_size;
 

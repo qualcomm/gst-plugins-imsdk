@@ -9,6 +9,9 @@ link_directories(${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR})
 
 find_package(PkgConfig)
 
+# Add config files
+file(GLOB CONFIG_FILE *.json)
+
 # Get the pkgconfigs exported by the automake tools
 pkg_check_modules(GST
   REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
@@ -20,6 +23,7 @@ set(GST_EXAMPLE_BIN gst-ai-multistream-batch-inference)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
+set(DEST_DIR /etc/configs)
 
 add_executable(${GST_EXAMPLE_BIN}
   main.c
@@ -43,3 +47,5 @@ install(
               GROUP_EXECUTE GROUP_READ
               WORLD_EXECUTE WORLD_READ
 )
+
+install(FILES ${CONFIG_FILE} DESTINATION ${DEST_DIR})

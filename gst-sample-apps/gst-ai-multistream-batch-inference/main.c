@@ -40,7 +40,7 @@
     "output-type":"wayland",
 
     # Output path to save file, if "output-type":"filesink"
-    "out-file":"/opt/out.mp4",
+    "out-file":"/etc/media/out.mp4",
 
     "pipeline-info":[
         {
@@ -53,10 +53,10 @@
           # 4 file stream path for batching
           "input-file-path":[
             {
-                "stream-0":"/opt/Draw_720p_180s_30FPS.mp4",
-                "stream-1":"/opt/Animals_000_720p_180s_30FPS.mp4",
-                "stream-2":"/opt/Draw_720p_180s_30FPS.mp4",
-                "stream-3":"/opt/Street_Bridge_720p_180s_30FPS.mp4"
+                "stream-0"/etc/media/Draw_720p_180s_30FPS.mp4",
+                "stream-1":"/etc/media/Animals_000_720p_180s_30FPS.mp4",
+                "stream-2":"/etc/media/Draw_720p_180s_30FPS.mp4",
+                "stream-3":"/etc/media/Street_Bridge_720p_180s_30FPS.mp4"
             }
           ],
 
@@ -64,10 +64,10 @@
           "mlframework":"qtimltflite",
 
           # Batch model path for Inference
-          "model-path":"/opt/deeplabv3_plus_mobilenet_quantized.tflite",
+          "model-path":"/etc/models/deeplabv3_plus_mobilenet_quantized.tflite",
 
           # Labels path
-          "labels-path":"/opt/deeplabv3_resnet50.labels",
+          "labels-path":"/etc/labels/deeplabv3_resnet50.labels",
 
           # Constant values from model
           "constants":"deeplab,q-offsets=<92.0>,q-scales=<0.04518842324614525>;",
@@ -113,7 +113,7 @@
 #define DEFAULT_DISPLAY_WIDTH 1920
 #define DEFAULT_DISPLAY_HEIGHT 1080
 
-#define DEFAULT_CONFIG_FILE "/opt/batch_config.json"
+#define DEFAULT_CONFIG_FILE "/etc/configs/config-multistream-batch-inference.json"
 
 /**
  * Structure for various application specific options
@@ -482,6 +482,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions  options[],
   GstElement *file_queue2[source_count->num_file][3];
   GstElement *file_dec_h264parse[source_count->num_file];
   GstElement *file_v4l2h264dec[source_count->num_file];
+  GstElement *file_v4l2h264dec_caps[source_count->num_file];
   GstElement *file_dec_tee[source_count->num_file];
   GstElement *file_qtimlvconverter[batch_elements];
   GstElement *file_qtimlelement[batch_elements];
@@ -554,6 +555,15 @@ create_pipe (GstAppContext * appctx, const GstAppOptions  options[],
         element_name);
     if (!file_v4l2h264dec[i]) {
       g_printerr ("Failed to create file_v4l2h264dec-%d\n", i);
+      goto error_clean_elements;
+    }
+
+    // Create caps for H.264 frameparser plugin
+    snprintf (element_name, 127, "file_v4l2h264dec_caps-%d", i);
+    file_v4l2h264dec_caps[i] = gst_element_factory_make ("capsfilter",
+        element_name);
+    if (!file_v4l2h264dec_caps[i]) {
+      g_printerr ("Failed to create file_v4l2h264dec_caps-%d\n", i);
       goto error_clean_elements;
     }
 
@@ -719,8 +729,14 @@ create_pipe (GstAppContext * appctx, const GstAppOptions  options[],
     for (gint j = 0; j < DEFAULT_BATCH_SIZE; j++) {
       g_object_set (G_OBJECT (filesrc[i*DEFAULT_BATCH_SIZE + j]), "location",
           options[i].file_path[j], NULL);
-      g_object_set (G_OBJECT (file_v4l2h264dec[i*DEFAULT_BATCH_SIZE + j]),
-          "capture-io-mode", 5,"output-io-mode", 5, NULL);
+      gst_element_set_enum_property (file_v4l2h264dec[i*DEFAULT_BATCH_SIZE + j],
+          "capture-io-mode", "dmabuf");
+      gst_element_set_enum_property (file_v4l2h264dec[i*DEFAULT_BATCH_SIZE + j],
+          "output-io-mode", "dmabuf");
+      filtercaps = gst_caps_new_simple ("video/x-raw",
+          "format", G_TYPE_STRING, "NV12", NULL);
+      g_object_set (G_OBJECT (file_v4l2h264dec_caps[i*DEFAULT_BATCH_SIZE + j]),
+          "caps", filtercaps, NULL);
       if (!set_ml_params (file_qtimlpostprocess[i*DEFAULT_BATCH_SIZE + j],
           file_filter[i*DEFAULT_BATCH_SIZE + j],
           file_qtimlelement[i], options[i], i%htp_count)) {
@@ -736,8 +752,6 @@ create_pipe (GstAppContext * appctx, const GstAppOptions  options[],
         "format", G_TYPE_STRING, "NV12",
         "interlace-mode", G_TYPE_STRING, "progressive",
         "colorimetry", G_TYPE_STRING, "bt601", NULL);
-    gst_caps_set_features (filtercaps, 0,
-        gst_caps_features_new ("memory:GBM", NULL));
     g_object_set (G_OBJECT (composer_caps), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
   }
@@ -756,8 +770,10 @@ create_pipe (GstAppContext * appctx, const GstAppOptions  options[],
 
   // 2.4 Set the properties for file sink
   if (source_count->out_file) {
-    g_object_set (G_OBJECT (v4l2h264enc), "capture-io-mode", 5,
-        "output-io-mode", 5, NULL);
+    gst_element_set_enum_property (v4l2h264enc, "capture-io-mode",
+        "dmabuf");
+    gst_element_set_enum_property (v4l2h264enc, "output-io-mode",
+        "dmabuf-import");
     // Set bitrate for streaming usecase
     fcontrols = gst_structure_from_string (
         "fcontrols,video_bitrate=6000000,video_bitrate_mode=0", NULL);
@@ -775,7 +791,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions  options[],
   for (gint i = 0; i < source_count->num_file; i++) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), filesrc[i], qtdemux[i],
         file_dec_h264parse[i], file_v4l2h264dec[i], file_dec_tee[i],
-        file_qtimlpostprocess[i], file_filter[i],
+        file_v4l2h264dec_caps[i], file_qtimlpostprocess[i], file_filter[i],
         NULL);
 
     for (gint j = 0; j < 3; j++) {
@@ -831,6 +847,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions  options[],
       ret = gst_element_link_many (file_queue[i*DEFAULT_BATCH_SIZE + j][0],
           file_dec_h264parse[i*DEFAULT_BATCH_SIZE + j],
           file_v4l2h264dec[i*DEFAULT_BATCH_SIZE + j],
+          file_v4l2h264dec_caps[i*DEFAULT_BATCH_SIZE + j],
           file_queue[i*DEFAULT_BATCH_SIZE + j][1],
           file_dec_tee[i*DEFAULT_BATCH_SIZE + j], NULL);
       if (!ret) {
@@ -950,8 +967,8 @@ error_clean_pipeline:
 error_clean_elements:
   for (gint i = 0; i < source_count->num_file; i++) {
     cleanup_gst (&filesrc[i], &qtdemux[i],
-        &file_dec_h264parse[i], &file_v4l2h264dec[i], &file_dec_tee[i],
-        &file_qtimlpostprocess[i], &file_filter[i], NULL);
+        &file_dec_h264parse[i], &file_v4l2h264dec[i], &file_v4l2h264dec_caps[i],
+        &file_dec_tee[i], &file_qtimlpostprocess[i], &file_filter[i], NULL);
     for (gint j = 0; j < QUEUE_COUNT; j++) {
       cleanup_gst (&file_queue[i][j], NULL);
     }
