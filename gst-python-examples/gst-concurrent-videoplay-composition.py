@@ -17,6 +17,8 @@ This app sets up GStreamer pipeline for concurrent video playback
 composition. Parse mutiple input video files and stream concurrent
 videoplay and composite to display.
 """
+GST_V4L2_IO_DMABUF = "4"
+GST_V4L2_IO_DMABUF_IMPORT = "5"
 
 GST_PIPELINE_CONCURRENT_STREAM = "qtivcomposer name=mixer sink_0::position=\"<0, 0>\" sink_0::dimensions=\"<480, 270>\" sink_1::position=\"<480, 0>\" sink_1::dimensions=\"<480, 270>\" sink_2::position=\"<480, 270>\" sink_2::dimensions=\"<480, 270>\" sink_3::position=\"<0, 270>\" sink_3::dimensions=\"<480, 270>\" sink_4::position=\"<480, 540>\" sink_4::dimensions=\"<480, 270>\" sink_5::position=\"<0, 540>\" sink_5::dimensions=\"<480, 270>\"  sink_6::position=\"<480, 810>\" sink_6::dimensions=\"<480, 270>\" sink_7::position=\"<0, 810>\" sink_7::dimensions=\"<480, 270>\"  sink_8::position=\"<960, 0>\" sink_8::dimensions=\"<480, 270>\" sink_9::position=\"<1440, 0>\" sink_9::dimensions=\"<480, 270>\"  sink_10::position=\"<960, 270>\" sink_10::dimensions=\"<480, 270>\" sink_11::position=\"<1440, 270>\" sink_11::dimensions=\"<480, 270>\" sink_12::position=\"<960, 540>\" sink_12::dimensions=\"<480, 270>\" sink_13::position=\"<1440, 540>\" sink_13::dimensions=\"<480, 270>\" sink_14::position=\"<960, 810>\" sink_14::dimensions=\"<480, 270>\" sink_15::position=\"<1440, 810>\" sink_15::dimensions=\"<480, 270>\" mixer. ! queue ! waylandsink enable-last-sample=false fullscreen=true"
 
@@ -26,7 +28,7 @@ def concurrent_stream(iterations, filename):
     srcfile = ""
     for i in range(iterations):
         file = " filesrc name=source" + str(i) + " location=" + filename + \
-            " ! qtdemux ! queue ! h264parse ! v4l2h264dec capture-io-mode=5 output-io-mode=5 ! mixer. "
+            " ! qtdemux ! queue ! h264parse ! v4l2h264dec capture-io-mode=" + GST_V4L2_IO_DMABUF +" output-io-mode=" + GST_V4L2_IO_DMABUF + " ! video/x-raw,format=NV12 ! mixer. "
         srcfile = srcfile + file
     return GST_PIPELINE_CONCURRENT_STREAM + srcfile
 
