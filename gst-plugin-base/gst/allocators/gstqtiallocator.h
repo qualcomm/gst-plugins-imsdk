@@ -27,8 +27,6 @@ G_BEGIN_DECLS
   (G_TYPE_INSTANCE_GET_CLASS ((obj), GST_TYPE_QTI_ALLOCATOR, \
       GstQtiAllocatorClass))
 
-#define DMA_HEAP_SYSTEM "/dev/dma_heap/system"
-
 typedef struct _GstQtiAllocator GstQtiAllocator;
 typedef struct _GstQtiAllocatorClass GstQtiAllocatorClass;
 typedef struct _GstQtiAllocatorPrivate GstQtiAllocatorPrivate;
@@ -46,13 +44,14 @@ struct _GstQtiAllocatorClass
 };
 
 GST_EXPORT
-GType          gst_qti_allocator_get_type (void) G_GNUC_CONST;
+GType          gst_qti_allocator_get_type (void);
 
 GST_EXPORT
-GstAllocator * gst_qti_allocator_new (const gchar * dma_heap_name);
+GstAllocator * gst_qti_allocator_new (void);
 
 GST_EXPORT
-void           gst_qti_allocator_start (GstQtiAllocator * qtiallocator, guint max_memory_blocks);
+void           gst_qti_allocator_start (GstQtiAllocator * qtiallocator,
+                                        guint max_memory_blocks);
 
 GST_EXPORT
 gboolean       gst_qti_allocator_stop (GstQtiAllocator * qtiallocator);
