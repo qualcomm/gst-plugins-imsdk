@@ -68,7 +68,7 @@
 #include "videocomposer.h"
 
 #include <gst/video/gstqtibufferpool.h>
-#include <gst/video/gstqtiallocator.h>
+#include <gst/allocators/gstqtiallocator.h>
 #include <gst/video/video-utils.h>
 #include <gst/utils/common-utils.h>
 #include <gst/video/gstimagepool.h>
@@ -525,7 +525,7 @@ gst_video_composer_create_pool (GstVideoComposer * vcomposer, GstCaps * caps)
         GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
     gst_buffer_pool_config_set_video_alignment (config, &align);
 
-    allocator = gst_qti_allocator_new (NULL);
+    allocator = gst_qti_allocator_new ();
     if (allocator == NULL) {
       GST_ERROR_OBJECT (vcomposer, "Failed to create QTI allocator");
       gst_clear_object (&pool);

@@ -58,6 +58,7 @@ target_link_libraries(${GST_QTI_VIDEO_SPLIT} PRIVATE
   ${GST_ALLOC_LIBRARIES}
   gstqtivideobase
   gstqtiutilsbase
+  gstqtiallocatorsbase
 )
 
 install(
