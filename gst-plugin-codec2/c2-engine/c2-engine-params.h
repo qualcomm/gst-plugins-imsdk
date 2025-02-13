@@ -116,6 +116,7 @@ enum {
   GST_C2_PARAM_OUT_AAC_FORMAT,       // GstC2AACStreamFormat
   GST_C2_PARAM_DOWN_SCALAR,          // GstC2Resolution
   GST_C2_PARAM_HIER_BPRECONDITIONS,  // gboolean
+  GST_C2_PARAM_SUPER_FRAME,          // guint32
 };
 
 typedef enum {
