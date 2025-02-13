@@ -244,7 +244,7 @@ create_pipe (GstCameraAppContext * appctx)
   g_object_set (G_OBJECT (camerasrc), "device", appctx->dev_video, NULL);
   g_object_set (G_OBJECT (qtivtransform), "rotate", 0, NULL);
 
-  // Set the source elements capability and in case YUV dump disable UBWC
+  // Set the source elements capability
   filtercaps = gst_caps_new_simple ("video/x-raw",
       "format", G_TYPE_STRING, "NV12",
       "width", G_TYPE_INT, appctx->width,
@@ -252,8 +252,6 @@ create_pipe (GstCameraAppContext * appctx)
       "framerate", GST_TYPE_FRACTION, appctx->framerate, 1,
       NULL);
 
-  gst_caps_set_features (filtercaps, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
   g_object_set (G_OBJECT (capsfilter), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
@@ -314,8 +312,8 @@ create_pipe (GstCameraAppContext * appctx)
       g_printerr ("\n Video Encoder elements could not be created \n");
       return FALSE;
     }
-    g_object_set (G_OBJECT (v4l2h264enc), "capture-io-mode", 5, NULL);
-    g_object_set (G_OBJECT (v4l2h264enc), "output-io-mode", 5, NULL);
+    g_object_set (G_OBJECT (v4l2h264enc), "capture-io-mode", GST_V4L2_IO_DMABUF, NULL);
+    g_object_set (G_OBJECT (v4l2h264enc), "output-io-mode", GST_V4L2_IO_DMABUF_IMPORT, NULL);
     g_object_set (G_OBJECT (h264parse), "config-interval", -1, NULL);
 
     if (appctx->sinktype == GST_RTSP_STREAMING) {

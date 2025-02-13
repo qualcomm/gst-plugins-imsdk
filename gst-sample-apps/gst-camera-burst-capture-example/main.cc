@@ -38,6 +38,8 @@ namespace camera = qmmf;
 #define N_SNAPSHOTS 3
 #define N_STILLS 5
 #define TIMEOUT_S 10
+#define GST_V4L2_IO_DMABUF 4
+#define GST_V4L2_IO_DMABUF_IMPORT 5
 
 #define FILE_MP4 "/opt/Video.mp4"
 
@@ -409,8 +411,6 @@ create_stream_caps (gint width, gint height)
       "height", G_TYPE_INT, height,
       "framerate", GST_TYPE_FRACTION, 30, 1,
       NULL);
-  gst_caps_set_features (filter_caps, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
 
   return filter_caps;
 }
@@ -594,8 +594,8 @@ link_avc_output (GstCaps * stream_caps, GstElement * pipeline,
   filesink = gst_element_factory_make ("filesink", "filesink-0");
   // Create encoder element and set the properties
   encoder = gst_element_factory_make ("v4l2h264enc", "v4l2h264enc");
-  g_object_set (G_OBJECT (encoder), "capture-io-mode", 5, NULL);
-  g_object_set (G_OBJECT (encoder), "output-io-mode", 5, NULL);
+  g_object_set (G_OBJECT (encoder), "capture-io-mode", GST_V4L2_IO_DMABUF, NULL);
+  g_object_set (G_OBJECT (encoder), "output-io-mode", GST_V4L2_IO_DMABUF_IMPORT, NULL);
 
   h264parse = gst_element_factory_make ("h264parse", "h264parse-0");
   mp4mux = gst_element_factory_make ("mp4mux", "mp4mux-0");

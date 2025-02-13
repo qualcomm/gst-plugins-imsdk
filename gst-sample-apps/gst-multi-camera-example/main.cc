@@ -189,10 +189,8 @@ create_camera_wayland_pipe (GstMultiCamAppContext * appctx)
       "width", G_TYPE_INT, appctx->width,
       "height", G_TYPE_INT, appctx->height,
       "framerate", GST_TYPE_FRACTION, 30, 1,
-      "compression", G_TYPE_STRING, "ubwc",
       NULL);
-  gst_caps_set_features (filtercaps_cam1, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
+
   g_object_set (G_OBJECT (capsfilter_cam1), "caps", filtercaps_cam1, NULL);
   gst_caps_unref (filtercaps_cam1);
 
@@ -203,10 +201,8 @@ create_camera_wayland_pipe (GstMultiCamAppContext * appctx)
       "width", G_TYPE_INT, 1280,
       "height", G_TYPE_INT, 720,
       "framerate", GST_TYPE_FRACTION, 30, 1,
-      "compression", G_TYPE_STRING, "ubwc",
       NULL);
-  gst_caps_set_features (filtercaps_cam2, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
+
   g_object_set (G_OBJECT (capsfilter_cam2), "caps", filtercaps_cam2, NULL);
   gst_caps_unref (filtercaps_cam2);
 
@@ -337,12 +333,10 @@ create_camera_video_pipe (GstMultiCamAppContext * appctx)
       "width", G_TYPE_INT, appctx->width,
       "height", G_TYPE_INT, appctx->height,
       "framerate", GST_TYPE_FRACTION, 30, 1,
-      "compression", G_TYPE_STRING, "ubwc",
       "interlace-mode", G_TYPE_STRING, "progressive",
       "colorimetry", G_TYPE_STRING, "bt601",
       NULL);
-  gst_caps_set_features (filtercaps_cam1, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
+
   g_object_set (G_OBJECT (capsfilter_cam1), "caps", filtercaps_cam1, NULL);
   gst_caps_unref (filtercaps_cam1);
 
@@ -353,19 +347,17 @@ create_camera_video_pipe (GstMultiCamAppContext * appctx)
       "width", G_TYPE_INT, 1280,
       "height", G_TYPE_INT, 720,
       "framerate", GST_TYPE_FRACTION, 30, 1,
-      "compression", G_TYPE_STRING, "ubwc",
       "interlace-mode", G_TYPE_STRING, "progressive",
       "colorimetry", G_TYPE_STRING, "bt601",
       NULL);
-  gst_caps_set_features (filtercaps_cam2, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
+
   g_object_set (G_OBJECT (capsfilter_cam2), "caps", filtercaps_cam2, NULL);
   gst_caps_unref (filtercaps_cam2);
 
   // Create v4l2h264enc element for first source and set the element properties
   v4l2h264enc_cam1 = gst_element_factory_make ("v4l2h264enc", "v4l2h264enc_cam1");
-  g_object_set (G_OBJECT (v4l2h264enc_cam1), "capture-io-mode", 5, NULL);
-  g_object_set (G_OBJECT (v4l2h264enc_cam1), "output-io-mode", 5, NULL);
+  g_object_set (G_OBJECT (v4l2h264enc_cam1), "capture-io-mode", GST_V4L2_IO_DMABUF, NULL);
+  g_object_set (G_OBJECT (v4l2h264enc_cam1), "output-io-mode", GST_V4L2_IO_DMABUF_IMPORT, NULL);
   fcontrols = gst_structure_from_string (
       "fcontrols,video_bitrate_mode=0", NULL);
   g_object_set (G_OBJECT (v4l2h264enc_cam1), "extra-controls", fcontrols, NULL);
@@ -378,8 +370,8 @@ create_camera_video_pipe (GstMultiCamAppContext * appctx)
 
   // Create v4l2h264enc element for second source and set the element properties
   v4l2h264enc_cam2 = gst_element_factory_make ("v4l2h264enc", "v4l2h264enc_cam2");
-  g_object_set (G_OBJECT (v4l2h264enc_cam2), "capture-io-mode", 5, NULL);
-  g_object_set (G_OBJECT (v4l2h264enc_cam2), "output-io-mode", 5, NULL);
+  g_object_set (G_OBJECT (v4l2h264enc_cam2), "capture-io-mode", GST_V4L2_IO_DMABUF, NULL);
+  g_object_set (G_OBJECT (v4l2h264enc_cam2), "output-io-mode", GST_V4L2_IO_DMABUF_IMPORT, NULL);
 
   scontrols = gst_structure_from_string (
       "scontrols,video_bitrate_mode=0", NULL);

@@ -1,9 +1,9 @@
 {
-  "file-path": "/opt/video.mp4",
+  "file-path": "/etc/media/video.mp4",
   "ml-framework": "tflite",
   "yolo-model-type": "yolov8",
-  "model": "/opt/YOLOv8-Detection-Quantized.tflite",
-  "labels": "/opt/yolov8.labels",
+  "model": "/etc/models/YOLOv8-Detection-Quantized.tflite",
+  "labels": "/etc/labels/yolov8.labels",
   "constants": "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,q-scales=<3.093529462814331, 0.00390625, 1.0>;",
   "threshold": 40,
   "runtime": "dsp"

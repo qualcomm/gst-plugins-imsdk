@@ -182,11 +182,8 @@ create_pipe (GstCameraAppContext * appctx)
       "format", G_TYPE_STRING, "NV12",
       "width", G_TYPE_INT, appctx->width,
       "height", G_TYPE_INT, appctx->height,
-      "framerate", GST_TYPE_FRACTION, 30, 1,
-      "compression", G_TYPE_STRING, "ubwc", NULL);
+      "framerate", GST_TYPE_FRACTION, 30, 1, NULL);
 
-  gst_caps_set_features (filtercaps, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
   g_object_set (G_OBJECT (capsfilter), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 

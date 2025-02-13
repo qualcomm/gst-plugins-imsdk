@@ -55,17 +55,17 @@
  * Default models path and labels path
  */
 #define DEFAULT_TFLITE_OBJECT_DETECTION_MODEL \
-    "/opt/YOLOv8-Detection-Quantized.tflite"
-#define DEFAULT_OBJECT_DETECTION_LABELS "/opt/yolov8.labels"
+    "/etc/models/YOLOv8-Detection-Quantized.tflite"
+#define DEFAULT_OBJECT_DETECTION_LABELS "/etc/labels/yolov8.labels"
 #define DEFAULT_TFLITE_CLASSIFICATION_MODEL \
-    "/opt/inception_v3_quantized.tflite"
-#define DEFAULT_CLASSIFICATION_LABELS "/opt/classification.labels"
+    "/etc/models/inception_v3_quantized.tflite"
+#define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/classification.labels"
 #define DEFAULT_TFLITE_POSE_DETECTION_MODEL \
-    "/opt/hrnet_pose_quantized.tflite"
-#define DEFAULT_POSE_DETECTION_LABELS "/opt/hrnet_pose.labels"
+    "/etc/models/hrnet_pose_quantized.tflite"
+#define DEFAULT_POSE_DETECTION_LABELS "/etc/labels/hrnet_pose.labels"
 #define DEFAULT_TFLITE_SEGMENTATION_MODEL \
-    "/opt/deeplabv3_plus_mobilenet_quantized.tflite"
-#define DEFAULT_SEGMENTATION_LABELS "/opt/deeplabv3_resnet50.labels"
+    "/etc/models/deeplabv3_plus_mobilenet_quantized.tflite"
+#define DEFAULT_SEGMENTATION_LABELS "/etc/labels/deeplabv3_resnet50.labels"
 
 /**
  * Length of string for when models path and labels path need to be
@@ -471,6 +471,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstElement *qtiqmmfsrc = NULL, *qmmfsrc_caps = NULL;
   GstElement *filesrc = NULL, *rtspsrc = NULL, *qtdemux = NULL, *h264parse = NULL;
   GstElement *v4l2h264dec = NULL, *rtph264depay = NULL, *qtivcomposer = NULL;
+  GstElement *v4l2h264dec_caps = NULL;
   GstElement *fpsdisplaysink = NULL, *waylandsink = NULL;
   GstElement *qtimlvconverter[GST_PIPELINE_CNT] = {NULL};
   GstElement *qtimlelement[GST_PIPELINE_CNT] = {NULL};
@@ -516,6 +517,11 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       goto error_clean_elements;
     }
 
+    v4l2h264dec_caps = gst_element_factory_make ("capsfilter", "v4l2h264dec_caps");
+    if (!v4l2h264dec_caps) {
+      g_printerr ("Failed to create v4l2h264dec_caps\n");
+      goto error_clean_elements;
+    }
   } else if (options->use_rtsp) {
     // Create rtspsrc plugin for rtsp input
     rtspsrc = gst_element_factory_make ("rtspsrc", "rtspsrc");
@@ -542,6 +548,12 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     v4l2h264dec = gst_element_factory_make ("v4l2h264dec", "v4l2h264dec");
     if (!v4l2h264dec) {
       g_printerr ("Failed to create v4l2h264dec\n");
+      goto error_clean_elements;
+    }
+
+    v4l2h264dec_caps = gst_element_factory_make ("capsfilter", "v4l2h264dec_caps");
+    if (!v4l2h264dec_caps) {
+      g_printerr ("Failed to create v4l2h264dec_caps\n");
       goto error_clean_elements;
     }
   } else {
@@ -645,13 +657,21 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   // 2. Set properties for all GST plugin elements
   // 2.1 set properties for 4 AI pipelines, like HW, Model, Post proc
   if (options->use_file) {
-    g_object_set (G_OBJECT (v4l2h264dec), "capture-io-mode", 5, NULL);
-    g_object_set (G_OBJECT (v4l2h264dec), "output-io-mode", 5, NULL);
+    gst_element_set_enum_property (v4l2h264dec, "capture-io-mode", "dmabuf");
+    gst_element_set_enum_property (v4l2h264dec, "output-io-mode", "dmabuf");
     g_object_set (G_OBJECT (filesrc), "location", options->file_path, NULL);
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, "NV12", NULL);
+    g_object_set (G_OBJECT (v4l2h264dec_caps), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
   } else if (options->use_rtsp) {
-    g_object_set (G_OBJECT (v4l2h264dec), "capture-io-mode", 5, NULL);
-    g_object_set (G_OBJECT (v4l2h264dec), "output-io-mode", 5, NULL);
+    gst_element_set_enum_property (v4l2h264dec, "capture-io-mode", "dmabuf");
+    gst_element_set_enum_property (v4l2h264dec, "output-io-mode", "dmabuf");
     g_object_set (G_OBJECT (rtspsrc), "location", options->rtsp_ip_port, NULL);
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, "NV12", NULL);
+    g_object_set (G_OBJECT (v4l2h264dec_caps), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
   } else {
     g_object_set (G_OBJECT (qtiqmmfsrc), "camera", options->camera_type, NULL);
 
@@ -661,19 +681,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
           "format", G_TYPE_STRING, "NV12",
           "width", G_TYPE_INT, DEFAULT_CAMERA_OUTPUT_WIDTH,
           "height", G_TYPE_INT, DEFAULT_CAMERA_OUTPUT_HEIGHT,
-          "framerate", GST_TYPE_FRACTION, framerate, 1,
-          "compression", G_TYPE_STRING, "ubwc", NULL);
+          "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
     } else {
       filtercaps = gst_caps_new_simple ("video/x-raw",
           "format", G_TYPE_STRING, "NV12",
           "width", G_TYPE_INT, SECONDARY_CAMERA_OUTPUT_WIDTH,
           "height", G_TYPE_INT, SECONDARY_CAMERA_OUTPUT_HEIGHT,
-          "framerate", GST_TYPE_FRACTION, framerate, 1,
-          "compression", G_TYPE_STRING, "ubwc", NULL);
+          "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
     }
-
-    gst_caps_set_features (filtercaps, 0,
-        gst_caps_features_new ("memory:GBM", NULL));
 
     g_object_set (G_OBJECT (qmmfsrc_caps), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
@@ -806,12 +821,12 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   if (options->use_file) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), filesrc,  qtdemux,
-        h264parse, v4l2h264dec, tee, qtivcomposer, fpsdisplaysink, waylandsink,
-        NULL);
+        h264parse, v4l2h264dec, v4l2h264dec_caps, tee,
+        qtivcomposer, fpsdisplaysink, waylandsink, NULL);
   } else if (options->use_rtsp) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), rtspsrc,
-        rtph264depay, h264parse, v4l2h264dec, tee, qtivcomposer, waylandsink,
-        fpsdisplaysink, NULL);
+        rtph264depay, h264parse, v4l2h264dec, v4l2h264dec_caps,
+        tee, qtivcomposer, waylandsink, fpsdisplaysink, NULL);
   } else {
     gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc,  qmmfsrc_caps,
         tee, qtivcomposer, fpsdisplaysink, waylandsink, NULL);
@@ -837,14 +852,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       goto error_clean_pipeline;
     }
     ret = gst_element_link_many (queue[0], h264parse, v4l2h264dec,
-        tee, NULL);
+        v4l2h264dec_caps, tee, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for parse->tee\n");
       goto error_clean_pipeline;
     }
   } else if (options->use_rtsp) {
     ret = gst_element_link_many (queue[0], rtph264depay, h264parse,
-        v4l2h264dec, tee, NULL);
+        v4l2h264dec, v4l2h264dec_caps, tee, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
       "rtspsource->rtph264depay\n");
@@ -966,8 +981,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
 error_clean_elements:
   cleanup_gst (&qtiqmmfsrc, &qmmfsrc_caps, &filesrc, &qtdemux,
-      &h264parse, &v4l2h264dec, &rtspsrc, &rtph264depay, &tee,
-      &qtivcomposer, &fpsdisplaysink, NULL);
+      &h264parse, &v4l2h264dec, &v4l2h264dec_caps, &rtspsrc,
+      &rtph264depay, &tee, &qtivcomposer, &fpsdisplaysink, NULL);
 
   for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
     cleanup_gst (GST_BIN (appctx->pipeline), qtimlvconverter[i],
@@ -1170,7 +1185,7 @@ main (gint argc, gchar * argv[])
 
   snprintf (help_description, 2047, "\nExample:\n"
       "  %s\n"
-      "  %s --file-path=\"/opt/video.mp4\"\n"
+      "  %s --file-path=\"/etc/media/video.mp4\"\n"
       "  %s --rtsp-ip-port=\"rtsp://<ip>:<port>/<stream>\"\n"
       "\nThis Sample App demonstrates Classification, Segmemtation"
       "Object Detection, Pose Detection On Live Stream "

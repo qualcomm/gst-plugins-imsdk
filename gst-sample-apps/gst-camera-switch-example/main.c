@@ -217,12 +217,10 @@ create_pipe (GstCameraSwitchCtx *cameraswitchctx)
       "width", G_TYPE_INT, DEFAULT_WIDTH,
       "height", G_TYPE_INT, DEFAULT_HEIGHT,
       "framerate", GST_TYPE_FRACTION, 30, 1,
-      "compression", G_TYPE_STRING, "ubwc",
       "interlace-mode", G_TYPE_STRING, "progressive",
       "colorimetry", G_TYPE_STRING, "bt601",
       NULL);
-  gst_caps_set_features (filtercaps, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
+
   g_object_set (G_OBJECT (capsfilter), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
@@ -268,8 +266,8 @@ create_pipe (GstCameraSwitchCtx *cameraswitchctx)
     }
 
     // Set encoder properties
-    g_object_set (G_OBJECT (encoder), "capture-io-mode", 5, NULL);
-    g_object_set (G_OBJECT (encoder), "output-io-mode", 5, NULL);
+    g_object_set (G_OBJECT (encoder), "capture-io-mode", GST_V4L2_IO_DMABUF, NULL);
+    g_object_set (G_OBJECT (encoder), "output-io-mode", GST_V4L2_IO_DMABUF_IMPORT, NULL);
 
     g_object_set (G_OBJECT (h264parse), "name", "h264parse", NULL);
     g_object_set (G_OBJECT (mp4mux), "name", "mp4mux", NULL);
