@@ -62,6 +62,7 @@ target_link_libraries(${GST_QTI_ML_VIDEO_SUPER_RESOLUTION} PRIVATE
   gstqtimlbase
   gstqtiutilsbase
   gstqtivideobase
+  gstqtiallocatorsbase
 )
 
 install(

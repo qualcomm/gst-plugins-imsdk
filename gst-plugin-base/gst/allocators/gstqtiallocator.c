@@ -24,6 +24,13 @@
 GST_DEBUG_CATEGORY_STATIC (gst_qtiallocator_debug);
 #define GST_CAT_DEFAULT gst_qtiallocator_debug
 
+/**
+ * GST_QTI_ALLOCATOR_DMA_QCOM_HEAP_SYSTEM:
+ *
+ * Memory will be allocated from the system DMA heap.
+ */
+#define GST_QTI_ALLOCATOR_DMA_QCOM_HEAP_SYSTEM "/dev/dma_heap/qcom,system"
+
 enum
 {
   PROP_0,
@@ -211,19 +218,17 @@ gst_qti_allocator_init (GstQtiAllocator * qtialloc)
 }
 
 GstAllocator *
-gst_qti_allocator_new (const gchar *dma_heap_name)
+gst_qti_allocator_new ()
 {
   GstQtiAllocator *alloc = NULL;
 
   alloc = g_object_new (GST_TYPE_QTI_ALLOCATOR, NULL);
 
-  if (dma_heap_name == NULL)
-    dma_heap_name = DMA_HEAP_SYSTEM;
-
-  alloc->priv->devfd = open (dma_heap_name, O_RDONLY | O_CLOEXEC);
+  alloc->priv->devfd = open (GST_QTI_ALLOCATOR_DMA_QCOM_HEAP_SYSTEM,
+      O_RDONLY | O_CLOEXEC);
   if (alloc->priv->devfd < 0) {
-    GST_ERROR_OBJECT (alloc, "Failed to open %s : %s", dma_heap_name,
-        g_strerror (errno));
+    GST_ERROR_OBJECT (alloc, "Failed to open %s, error: %s",
+        GST_QTI_ALLOCATOR_DMA_QCOM_HEAP_SYSTEM, g_strerror (errno));
     gst_object_unref (alloc);
     return NULL;
   }

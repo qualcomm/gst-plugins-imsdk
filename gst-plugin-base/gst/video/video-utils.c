@@ -206,7 +206,12 @@ gst_is_gbm_supported (void)
     }
 
     if (success) {
-      fd = open ("/dev/dma_heap/qcom,system", O_RDWR | O_CLOEXEC);
+      fd = open ("/dev/dma_heap/qcom,system", O_RDONLY | O_CLOEXEC);
+
+      // Fallback to ION
+      if (fd < 0)
+        fd = open ("/dev/ion", O_RDONLY | O_CLOEXEC);
+
       success = (fd >= 0) ? TRUE : FALSE;
     }
 
