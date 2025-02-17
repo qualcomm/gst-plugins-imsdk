@@ -55,7 +55,7 @@
 
 namespace camera = qmmf;
 
-#define PIPELINE_MAIN "qtiqmmfsrc name=camsrc camsrc.video_0 ! " \
+#define PIPELINE_MAIN "qtiqmmfsrc name=camsrc video_0::type=preview ! " \
     "video/x-raw(memory:GBM),format=NV12,width=1280,height=720,framerate=30/1 ! " \
     "fakesink " \
     "camsrc.image_1 ! video/x-raw(memory:GBM),format=NV12," \
