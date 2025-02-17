@@ -468,7 +468,8 @@ gst_video_composer_index_compare (const GstVideoComposerSinkPad * pad,
 }
 
 static GstBufferPool *
-gst_video_composer_create_pool (GstVideoComposer * vcomposer, GstCaps * caps)
+gst_video_composer_create_pool (GstVideoComposer * vcomposer, GstCaps * caps,
+    GstVideoAlignment * align)
 {
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
@@ -496,34 +497,12 @@ gst_video_composer_create_pool (GstVideoComposer * vcomposer, GstCaps * caps)
         GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
 
   } else {
-    GstVideoFormat format;
-    GstVideoAlignment align;
-    gboolean success;
-    guint width, height;
-    gint stride, scanline;
-
-    width = GST_VIDEO_INFO_WIDTH (&info);
-    height = GST_VIDEO_INFO_HEIGHT (&info);
-    format = GST_VIDEO_INFO_FORMAT (&info);
-
-    success = gst_adreno_utils_compute_alignment (width, height, format,
-       &stride, &scanline);
-    if (!success) {
-      GST_ERROR_OBJECT(vcomposer,"Failed to get alignment");
-      return NULL;
-    }
-
     pool = gst_qti_buffer_pool_new ();
     config = gst_buffer_pool_get_config (pool);
 
-    gst_video_alignment_reset (&align);
-    align.padding_bottom = scanline - height;
-    align.padding_right = stride - width;
-    gst_video_info_align (&info, &align);
-
     gst_buffer_pool_config_add_option (config,
         GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
-    gst_buffer_pool_config_set_video_alignment (config, &align);
+    gst_buffer_pool_config_set_video_alignment (config, align);
 
     allocator = gst_qti_allocator_new ();
     if (allocator == NULL) {
@@ -736,16 +715,34 @@ gst_video_composer_populate_frames_and_composition (
   return TRUE;
 }
 
+static void
+gst_video_composer_get_align (GstVideoInfo * info, GstVideoAlignment * align)
+{
+  GstVideoFormat format;
+  gboolean success;
+  guint width, height;
+  gint stride, scanline;
+
+  width = GST_VIDEO_INFO_WIDTH (info);
+  height = GST_VIDEO_INFO_HEIGHT (info);
+  format = GST_VIDEO_INFO_FORMAT (info);
+
+  success = gst_adreno_utils_compute_alignment (width, height, format,
+     &stride, &scanline);
+  if (success) {
+    align->padding_bottom = scanline - height;
+    align->padding_right = stride - width;
+  }
+}
+
 static gboolean
 gst_video_composer_propose_allocation (GstAggregator * aggregator,
     GstAggregatorPad * pad, GstQuery * inquery, GstQuery * outquery)
 {
   GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER_CAST (aggregator);
-
   GstCaps *caps = NULL;
   GstBufferPool *pool = NULL;
   GstVideoInfo info;
-  guint size = 0;
   gboolean needpool = FALSE;
 
   GST_DEBUG_OBJECT (vcomposer, "Pad %s:%s", GST_DEBUG_PAD_NAME (pad));
@@ -763,18 +760,19 @@ gst_video_composer_propose_allocation (GstAggregator * aggregator,
     return FALSE;
   }
 
-  // Get the size from video info.
-  size = GST_VIDEO_INFO_SIZE (&info);
-
   if (needpool) {
     GstStructure *structure = NULL;
     GstAllocator *allocator = NULL;
+    GstVideoAlignment align = { 0, };
 
-    pool = gst_video_composer_create_pool (vcomposer, caps);
+    gst_video_composer_get_align (&info, &align);
+    gst_video_info_align (&info, &align);
+
+    pool = gst_video_composer_create_pool (vcomposer, caps, &align);
     structure = gst_buffer_pool_get_config (pool);
 
     // Set caps and size in query.
-    gst_buffer_pool_config_set_params (structure, caps, size, 0, 0);
+    gst_buffer_pool_config_set_params (structure, caps, info.size, 0, 0);
 
     gst_buffer_pool_config_get_allocator (structure, &allocator, NULL);
     gst_query_add_allocation_param (outquery, allocator, NULL);
@@ -787,7 +785,7 @@ gst_video_composer_propose_allocation (GstAggregator * aggregator,
   }
 
   // If upstream does't have a pool requirement, set only size in query.
-  gst_query_add_allocation_pool (outquery, needpool ? pool : NULL, size, 0, 0);
+  gst_query_add_allocation_pool (outquery, pool, info.size, 0, 0);
 
   if (pool != NULL)
     gst_object_unref (pool);
@@ -796,14 +794,36 @@ gst_video_composer_propose_allocation (GstAggregator * aggregator,
   return TRUE;
 }
 
+GstVideoAlignment
+gst_video_calculate_common_alignment (GstVideoAlignment * l_align,
+    GstVideoAlignment * r_align)
+{
+  GstVideoAlignment align = { 0, };
+
+  // Take the highest number of additional lines in height.
+  align.padding_bottom = MAX (l_align->padding_bottom, r_align->padding_bottom);
+
+  // TODO: Workaround: Also assume that other fields are equal.
+  align.padding_top = l_align->padding_top;
+  align.padding_left = l_align->padding_left;
+
+  // TODO: Workaround: Considering the alignments are power of 2.
+  align.padding_right = MAX (l_align->padding_right, r_align->padding_right);
+
+  return align;
+}
+
 static gboolean
 gst_video_composer_decide_allocation (GstAggregator * aggregator,
     GstQuery * query)
 {
   GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER_CAST (aggregator);
   GstCaps *caps = NULL;
+  GstVideoInfo info;
+  GstVideoAlignment align = { 0, }, ds_align = { 0, };
   GstBufferPool *pool = NULL;
-  guint size, minbuffers, maxbuffers;
+  guint size = 0, minbuffers = 0, maxbuffers = 0, idx = 0;
+  const GstStructure *params = NULL;
 
   gst_query_parse_allocation (query, &caps, NULL);
   if (!caps) {
@@ -814,17 +834,43 @@ gst_video_composer_decide_allocation (GstAggregator * aggregator,
   // Invalidate the cached pool if there is an allocation_query.
   if (vcomposer->outpool) {
     gst_buffer_pool_set_active (vcomposer->outpool, FALSE);
-    gst_object_unref (vcomposer->outpool);
+    gst_clear_object (&vcomposer->outpool);
   }
 
-  // Create a new buffer pool.
-  pool = gst_video_composer_create_pool (vcomposer, caps);
-  vcomposer->outpool = pool;
+  if (!gst_video_info_from_caps (&info, caps)) {
+    GST_ERROR_OBJECT (vcomposer, "Invalid caps %" GST_PTR_FORMAT, caps);
+    return FALSE;
+  }
+
+  gst_video_composer_get_align (&info, &align);
+
+  if (gst_query_find_allocation_meta (query, GST_VIDEO_META_API_TYPE, &idx)) {
+    gst_query_parse_nth_allocation_meta (query, idx, &params);
+    GST_DEBUG_OBJECT (vcomposer, "Allocation video meta %" GST_PTR_FORMAT,
+        params);
+  }
+
+  if (params) {
+    gst_structure_get_uint (params, "padding-top", &ds_align.padding_top);
+    gst_structure_get_uint (params, "padding-bottom", &ds_align.padding_bottom);
+    gst_structure_get_uint (params, "padding-left", &ds_align.padding_left);
+    gst_structure_get_uint (params, "padding-right", &ds_align.padding_right);
+
+    GST_DEBUG_OBJECT (vcomposer, "Downstream requested padding (top: %u "
+        "bottom: %u left: %u right: %u)", ds_align.padding_top,
+        ds_align.padding_bottom, ds_align.padding_left, ds_align.padding_right);
+
+    // Find the most the appropriate alignment between us and downstream.
+    align = gst_video_calculate_common_alignment (&align, &ds_align);
+  }
 
   {
     GstStructure *config = NULL;
     GstAllocator *allocator = NULL;
     GstAllocationParams params;
+
+    GST_DEBUG_OBJECT (vcomposer, "Creating our own pool");
+    pool = gst_video_composer_create_pool (vcomposer, caps, &align);
 
     // Get the configured pool properties in order to set in query.
     config = gst_buffer_pool_get_config (pool);
@@ -846,6 +892,11 @@ gst_video_composer_decide_allocation (GstAggregator * aggregator,
         maxbuffers);
 
   gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL);
+
+  vcomposer->outpool = pool;
+
+  GST_DEBUG_OBJECT (vcomposer, "Output pool: %" GST_PTR_FORMAT,
+      vcomposer->outpool);
 
   return TRUE;
 }
