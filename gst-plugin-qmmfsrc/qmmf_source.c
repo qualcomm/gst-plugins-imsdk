@@ -132,6 +132,9 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
 #define DEFAULT_PROP_CAMERA_MULTI_ROI                 FALSE
 #define DEFAULT_PROP_CAMERA_PHYSICAL_CAMERA_SWITCH    -1
 #define DEFAULT_PROP_CAMERA_PAD_ACTIVAION_MODE        GST_PAD_ACTIVATION_MODE_NORMAL
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+#define DEFAULT_PROP_CAMERA_MULTICAMERA_HINT          FALSE
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
 
 static void gst_qmmfsrc_child_proxy_init (gpointer g_iface, gpointer data);
 
@@ -206,6 +209,9 @@ enum
   PROP_CAMERA_INPUT_ROI_INFO,
   PROP_CAMERA_PHYSICAL_CAMERA_SWITCH,
   PROP_CAMERA_PAD_ACTIVATION_MODE,
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+  PROP_CAMERA_MULTICAMERA_HINT,
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
 };
 
 #ifdef ENABLE_RUNTIME_PARSER
@@ -1541,6 +1547,12 @@ qmmfsrc_set_property (GObject * object, guint property_id,
     case PROP_CAMERA_PAD_ACTIVATION_MODE:
       qmmfsrc->pad_activation_mode = g_value_get_enum(value);
       break;
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+    case PROP_CAMERA_MULTICAMERA_HINT:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_MULTICAMERA_HINT, value);
+      break;
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -1741,6 +1753,12 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
     case PROP_CAMERA_PAD_ACTIVATION_MODE:
       g_value_set_enum(value, qmmfsrc->pad_activation_mode);
       break;
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+    case PROP_CAMERA_MULTICAMERA_HINT:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_MULTICAMERA_HINT, value);
+      break;
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -2155,6 +2173,15 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           DEFAULT_PROP_CAMERA_PAD_ACTIVAION_MODE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+  g_object_class_install_property (gobject, PROP_CAMERA_MULTICAMERA_HINT,
+      g_param_spec_boolean ("multicamera-hint", "multicamera-hint",
+          "multicamera-hint if enabled, this flag will make camera hardwares "
+          "to work in offline which is useful when camera sensors are more then "
+          "camera hardwares, it has impact on memory usage and latency.",
+          DEFAULT_PROP_CAMERA_MULTICAMERA_HINT,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
 
   signals[SIGNAL_CAPTURE_IMAGE] =
       g_signal_new_class_handler ("capture-image", G_TYPE_FROM_CLASS (klass),
