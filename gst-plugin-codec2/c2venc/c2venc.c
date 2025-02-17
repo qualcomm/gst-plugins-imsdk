@@ -1004,6 +1004,21 @@ gst_c2_venc_stop (GstVideoEncoder * encoder)
 }
 
 static gboolean
+gst_c2_venc_close (GstVideoEncoder * encoder)
+{
+  GstC2VEncoder *c2venc = GST_C2_VENC (encoder);
+  GST_DEBUG_OBJECT (c2venc, "Close engine");
+
+  if (c2venc->engine != NULL) {
+    gst_c2_engine_free(c2venc->engine);
+    c2venc->engine = NULL;
+  }
+
+  GST_DEBUG_OBJECT (c2venc, "Engine closed");
+  return TRUE;
+}
+
+static gboolean
 gst_c2_venc_flush (GstVideoEncoder * encoder)
 {
   GstC2VEncoder *c2venc = GST_C2_VENC (encoder);
@@ -1993,6 +2008,7 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
 
   venc_class->start = GST_DEBUG_FUNCPTR (gst_c2_venc_start);
   venc_class->stop = GST_DEBUG_FUNCPTR (gst_c2_venc_stop);
+  venc_class->close = GST_DEBUG_FUNCPTR (gst_c2_venc_close);
   venc_class->flush = GST_DEBUG_FUNCPTR (gst_c2_venc_flush);
   venc_class->getcaps = GST_DEBUG_FUNCPTR (gst_c2_venc_getcaps);
   venc_class->set_format = GST_DEBUG_FUNCPTR (gst_c2_venc_set_format);
