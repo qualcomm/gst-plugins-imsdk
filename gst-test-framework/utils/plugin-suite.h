@@ -39,6 +39,9 @@ struct _GstPluginSuite {
 GST_API void
 gst_plugin_get_camera_suite (GstPluginSuite* psuite);
 
+GST_API void
+gst_plugin_get_ml_suite (GstPluginSuite* psuite);
+
 G_END_DECLS
 
 #endif /* __GST_PLUGIN_SUITE_H__ */
