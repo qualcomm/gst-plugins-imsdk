@@ -102,7 +102,7 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_video_pad_debug);
 #define DEFAULT_PROP_VIDEO_TYPE          VIDEO_TYPE_VIDEO
 #define DEFAULT_PROP_ROTATE              ROTATE_NONE
 #define DEFAULT_PROP_LOGICAL_STREAM_TYPE GST_PAD_LOGICAL_STREAM_TYPE_NONE
-
+#define DEFAULT_PROP_SUPER_BUFFER        FALSE
 
 enum
 {
@@ -119,6 +119,7 @@ enum
   PROP_VIDEO_FRAMERATE,
   PROP_VIDEO_CROP,
   PROP_VIDEO_EXTRA_BUFFERS,
+  PROP_VIDEO_SUPER_BUFFER,
   PROP_VIDEO_TYPE,
   PROP_VIDEO_ROTATE,
   PROP_VIDEO_LOGICAL_STREAM_TYPE,
@@ -488,12 +489,44 @@ qmmfsrc_release_video_pad (GstElement * element, GstPad * pad)
 }
 
 gboolean
+video_pad_set_super_buffer_mode (GstPad * pad, GstStructure *structure)
+{
+  GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
+  gint fps_n, fps_d, fps;
+
+  gst_structure_get_fraction (structure, "framerate", &fps_n, &fps_d);
+  vpad->duration = gst_util_uint64_scale_int (GST_SECOND, fps_d, fps_n);
+  fps = 1 / GST_TIME_AS_SECONDS (gst_guint64_to_gdouble (vpad->duration));
+
+  if (vpad->super_buffer_mode == TRUE &&
+      !((fps == 120) || (fps == 240) || (fps == 480))) {
+    GST_ERROR_OBJECT(pad, "Don't support super buffer mode for this framerate");
+    return FALSE;
+  }
+
+  if (vpad->super_buffer_mode == TRUE) {
+    const gchar *viewmode;
+    guint super_frames;
+
+    super_frames = fps / vpad->superframerate;
+    viewmode = gst_video_multiview_mode_to_caps_string (
+        GST_VIDEO_MULTIVIEW_MODE_MONO);
+      gst_structure_set (structure,
+          "multiview-mode", G_TYPE_STRING, viewmode,
+              "views", G_TYPE_INT, super_frames, NULL);
+  }
+
+  return TRUE;
+}
+
+gboolean
 qmmfsrc_video_pad_fixate_caps (GstPad * pad)
 {
   GstCaps *caps;
   GstStructure *structure;
   gint width = 0, height = 0;
   const GValue *framerate;
+  GstQmmfSrcVideoPad *vpad = GST_QMMFSRC_VIDEO_PAD (pad);
 
   // Get the negotiated caps between the pad and its peer.
   caps = gst_pad_get_allowed_caps (pad);
@@ -501,6 +534,9 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
 
   // Immediately return the fetched caps if they are fixed.
   if (gst_caps_is_fixed (caps)) {
+    if (!video_pad_set_super_buffer_mode (pad, gst_caps_get_structure (caps, 0)))
+      return FALSE;
+
     video_pad_send_stream_start (pad);
     gst_pad_set_caps (pad, caps);
 
@@ -538,6 +574,11 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
   }
 
   if (!gst_value_is_fixed (framerate)) {
+    if (vpad->super_buffer_mode == TRUE) {
+      GST_ERROR_OBJECT(pad, "Don't support super buffer mode"
+          " when framerate value is not fixed");
+      return FALSE;
+    }
     gst_structure_fixate_field_nearest_fraction (structure, "framerate",
         DEFAULT_VIDEO_STREAM_FPS_NUM, DEFAULT_VIDEO_STREAM_FPS_DEN);
     GST_DEBUG_OBJECT (pad, "Framerate not set, using default value: %d/%d",
@@ -581,6 +622,9 @@ qmmfsrc_video_pad_fixate_caps (GstPad * pad)
   // Always fixate pixel aspect ratio to 1/1.
   gst_structure_set (structure, "pixel-aspect-ratio", GST_TYPE_FRACTION,
         1, 1, NULL);
+
+  if (!video_pad_set_super_buffer_mode (pad, structure))
+    return FALSE;
 
   video_pad_send_stream_start (pad);
   caps = gst_caps_fixate (caps);
@@ -648,6 +692,9 @@ video_pad_set_property (GObject * object, guint property_id,
     case PROP_VIDEO_EXTRA_BUFFERS:
       pad->xtrabufs = g_value_get_uint (value);
       break;
+    case PROP_VIDEO_SUPER_BUFFER:
+      pad->super_buffer_mode = g_value_get_boolean(value);
+      break;
     case PROP_VIDEO_TYPE:
       pad->type = g_value_get_enum(value);
       break;
@@ -706,6 +753,9 @@ video_pad_get_property (GObject * object, guint property_id, GValue * value,
     }
     case PROP_VIDEO_EXTRA_BUFFERS:
       g_value_set_uint (value, pad->xtrabufs);
+      break;
+    case PROP_VIDEO_SUPER_BUFFER:
+      g_value_set_boolean (value, pad->super_buffer_mode);
       break;
     case PROP_VIDEO_TYPE:
       g_value_set_enum(value, pad->type);
@@ -797,6 +847,16 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
           GST_TYPE_QMMFSRC_ROTATE, DEFAULT_PROP_ROTATE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
+  g_object_class_install_property (gobject, PROP_VIDEO_SUPER_BUFFER,
+      g_param_spec_boolean ("super-buffer-mode", "Super Buffer Mode",
+          "Enable Super Buffer Mode for HFR mode, in this mode, each video pad"
+          "works on super buffer mode, allowing one buffer to hold multiple frames"
+          "of data. The number of frames in a single super buffer is determined by"
+          "the ratio of the framerate to the superframerate. The default superframerate"
+          "is 60fps", DEFAULT_PROP_SUPER_BUFFER,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS
+	  | GST_PARAM_MUTABLE_READY));
+
 #ifdef ENABLE_RUNTIME_PARSER
   void* qmmfsrc_parser = get_qmmfsrc_parser ();
 
@@ -856,6 +916,8 @@ qmmfsrc_video_pad_init (GstQmmfSrcVideoPad * pad)
   pad->width           = -1;
   pad->height          = -1;
   pad->framerate       = 0.0;
+  pad->superframerate  = 60;
+  pad->super_buffer_mode = FALSE;
   pad->format          = GST_VIDEO_FORMAT_UNKNOWN;
   pad->codec           = GST_VIDEO_CODEC_UNKNOWN;
   pad->colorimetry     = NULL;

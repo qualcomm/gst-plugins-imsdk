@@ -163,6 +163,10 @@ struct _GstQmmfSrcVideoPad {
   gint                format;
   /// GStreamer video pad output bayer format bits per pixel.
   guint               bpp;
+  /// superframerate is used to calculate super_frames (framerate/superframerate).
+  gint                superframerate;
+  /// super buffer mode enable flag for each pad.
+  gboolean            super_buffer_mode;
   /// Whether the GStreamer stream is uncompressed or compressed and its type.
   GstVideoCodec       codec;
 
