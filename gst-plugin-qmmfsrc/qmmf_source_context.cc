@@ -88,6 +88,8 @@ namespace camera = qmmf;
 #define GST_QMMF_CONTEXT_UNLOCK(obj) \
   g_mutex_unlock(GST_QMMF_CONTEXT_GET_LOCK(obj))
 
+#define GST_QMMF_CONTEXT_HFR_FPS_THRESHOLD 120
+
 #define GST_CAT_DEFAULT qmmf_context_debug_category()
 static GstDebugCategory *
 qmmf_context_debug_category (void)
@@ -227,6 +229,10 @@ struct _GstQmmfContext {
   gboolean          input_roi_enable;
   /// Number of Input ROI's
   gint32            input_roi_count;
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+  /// Offline IFE enable for multicamera usecase
+  gboolean          multicamera_hint;
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
 
   /// Logical Camera Information
   GstQmmfLogicalCamInfo logical_cam_info;
@@ -1368,6 +1374,13 @@ gst_qmmf_context_open (GstQmmfContext * context)
   qmmf_input_roi.enable = context->input_roi_enable;
   xtraparam.Update (::qmmf::recorder::QMMF_INPUT_ROI, qmmf_input_roi);
 
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+  // Offline IFE
+  ::qmmf::recorder::OfflineIFE qmmf_offline_ife;
+  qmmf_offline_ife.enable = context->multicamera_hint;
+  xtraparam.Update (::qmmf::recorder::QMMF_OFFLINE_IFE, qmmf_offline_ife);
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
+
   // Camera Operation Mode
   ::qmmf::recorder::CamOpModeControl cam_opmode;
   gint extra_param_entry = 0;
@@ -1489,12 +1502,21 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
       return FALSE;
   }
 
+  if (vpad->super_buffer_mode &&
+      !(vpad->format == GST_VIDEO_FORMAT_NV12_Q08C &&
+          vpad->framerate >= GST_QMMF_CONTEXT_HFR_FPS_THRESHOLD)) {
+    GST_ERROR ("Super buffer mode enabled but negotiated caps are not proper!");
+    GST_QMMFSRC_VIDEO_PAD_UNLOCK (vpad);
+    return FALSE;
+  }
+
   switch (vpad->format) {
     case GST_VIDEO_FORMAT_NV12:
       format = ::qmmf::recorder::VideoFormat::kNV12;
       break;
     case GST_VIDEO_FORMAT_NV12_Q08C:
-      format = ::qmmf::recorder::VideoFormat::kNV12UBWC;
+      format = !vpad->super_buffer_mode ? ::qmmf::recorder::VideoFormat::kNV12UBWC :
+          ::qmmf::recorder::VideoFormat::kNV12UBWCFLEX;
       break;
     case GST_VIDEO_FORMAT_P010_10LE:
       format = ::qmmf::recorder::VideoFormat::kP010;
@@ -1640,6 +1662,12 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
     linked_track_slave_mode.enable = true;
     extraparam.Update(::qmmf::recorder::QMMF_USE_LINKED_TRACK_IN_SLAVE_MODE,
         linked_track_slave_mode);
+  }
+
+  if (vpad->super_buffer_mode) {
+    ::qmmf::recorder::SuperFrames super_frames;
+    super_frames.n_frames = vpad->framerate / vpad->superframerate;
+    extraparam.Update(::qmmf::recorder::QMMF_SUPER_FRAMES, super_frames);
   }
 
   status = recorder->CreateVideoTrack (
@@ -2192,6 +2220,11 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_INPUT_ROI:
       context->input_roi_enable = g_value_get_boolean (value);
       return;
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+    case PARAM_CAMERA_MULTICAMERA_HINT:
+      context->multicamera_hint = g_value_get_boolean (value);
+      return;
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
   }
 
   if (context->state >= GST_STATE_READY &&
@@ -2852,6 +2885,31 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
     case PARAM_CAMERA_INPUT_ROI:
       g_value_set_boolean (value, context->input_roi_enable);
       break;
+    case PARAM_CAMERA_SUPER_FRAMERATE:
+    {
+      ::camera::CameraMetadata meta;
+      static gint superframerate;
+
+      if (superframerate != 0) {
+        g_value_set_int (value, superframerate);
+      } else {
+        if (context->state >= GST_STATE_READY)
+          recorder->GetCameraParam (context->camera_id, meta);
+
+        guint tag_id = get_vendor_tag_by_name(
+            "org.codeaurora.qcamera3.platformCapabilities", "HFRPreviewFPS");
+        if (tag_id > 0) {
+          superframerate = meta.find(tag_id).data.i32[0];
+          g_value_set_int (value, superframerate);
+        }
+      }
+      break;
+    }
+#ifdef FEATURE_OFFLINE_IFE_SUPPORT
+    case PARAM_CAMERA_MULTICAMERA_HINT:
+      g_value_set_boolean (value, context->multicamera_hint);
+      break;
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
     case PARAM_CAMERA_MANUAL_WB_SETTINGS:
     {
       gchar *string = NULL;

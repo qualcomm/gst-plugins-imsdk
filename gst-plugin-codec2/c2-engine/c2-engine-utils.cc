@@ -450,7 +450,9 @@ C2PixelFormat GstC2Utils::PixelFormat(GstVideoFormat format, bool isubwc) {
   if (format == GST_VIDEO_FORMAT_RGBA) {
     return isubwc ? C2PixelFormat::kRGBA_UBWC : C2PixelFormat::kRGBA;
   } else if (format == GST_VIDEO_FORMAT_NV12) {
-    return isubwc ? C2PixelFormat::kNV12UBWC : C2PixelFormat::kNV12;
+    return C2PixelFormat::kNV12;
+  } else if (format == GST_VIDEO_FORMAT_NV12_Q08C) {
+    return C2PixelFormat::kNV12UBWC;
   } else if (format == GST_VIDEO_FORMAT_YV12) {
     return C2PixelFormat::kYV12;
   } else if (format == GST_VIDEO_FORMAT_P010_10LE) {
@@ -471,7 +473,7 @@ std::tuple<GstVideoFormat, bool> GstC2Utils::VideoFormat(C2PixelFormat format) {
   } else if (format == C2PixelFormat::kRGBA) {
     return std::make_tuple(GST_VIDEO_FORMAT_RGBA, false);
   } else if (format == C2PixelFormat::kNV12UBWC) {
-    return std::make_tuple(GST_VIDEO_FORMAT_NV12, true);
+    return std::make_tuple(GST_VIDEO_FORMAT_NV12_Q08C, true);
   } else if (format == C2PixelFormat::kNV12) {
     return std::make_tuple(GST_VIDEO_FORMAT_NV12, false);
   } else if (format == C2PixelFormat::kYV12) {
