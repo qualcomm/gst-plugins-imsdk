@@ -238,8 +238,8 @@ create_pipe (GstVideoAppContext *appctx)
   appctx->plugins = g_list_append (appctx->plugins, vsink);
 
   // Set decoder properties
-  g_object_set (G_OBJECT (vdecoder), "capture-io-mode", GST_V4L2_IO_DMABUF, NULL);
-  g_object_set (G_OBJECT (vdecoder), "output-io-mode", GST_V4L2_IO_DMABUF_IMPORT, NULL);
+  g_object_set (G_OBJECT (vdecoder), "capture-io-mode", "dmabuf", NULL);
+  g_object_set (G_OBJECT (vdecoder), "output-io-mode", "dmabuf", NULL);
 
   // Set location
   g_object_set (G_OBJECT (filesrc), "location", appctx->input_file, NULL);
