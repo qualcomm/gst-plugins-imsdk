@@ -428,8 +428,8 @@ gst_ml_video_pose_fill_video_output (GstMLVideoPose * vpose, GstBuffer * buffer)
     for (num = 0; num < n_entries; num++) {
       entry = &(g_array_index (prediction->entries, GstMLPoseEntry, num));
 
-      GST_TRACE_OBJECT (vpose, "Batch: %u, confidence: %.2f",
-          prediction->batch_idx, entry->confidence);
+      GST_TRACE_OBJECT (vpose, "Batch: %u, confidence: %.2f", idx,
+          entry->confidence);
 
       // Draw pose keypoints.
       for (m = 0; m < entry->keypoints->len; ++m) {
@@ -597,8 +597,8 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
       structure = gst_structure_new ("pose", "id", G_TYPE_UINT, id,
           "confidence", G_TYPE_DOUBLE, entry->confidence, NULL);
 
-      GST_TRACE_OBJECT (vpose, "Batch: %u, ID: %X, Confidence: %.1f%%",
-          prediction->batch_idx, id, entry->confidence);
+      GST_TRACE_OBJECT (vpose, "Batch: %u, ID: %X, Confidence: %.1f%%", idx,
+          id, entry->confidence);
 
       gst_structure_set_value (structure, "keypoints", &keypoints);
       gst_structure_set_value (structure, "connections", &links);
@@ -623,8 +623,7 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
       g_value_unset (&value);
     }
 
-    structure = gst_structure_new ("PoseEstimation",
-        "batch-index", G_TYPE_UINT, prediction->batch_idx, NULL);
+    structure = gst_structure_new_empty ("PoseEstimation");
 
     gst_structure_set_value (structure, "poses", &poses);
     g_value_reset (&poses);
@@ -1113,10 +1112,8 @@ gst_ml_video_pose_set_caps (GstBaseTransform * base, GstCaps * incaps,
         &(g_array_index (vpose->predictions, GstMLPosePrediction, idx));
 
     prediction->entries = g_array_new (FALSE, TRUE, sizeof (GstMLPoseEntry));
-    g_array_set_clear_func (
-        prediction->entries, (GDestroyNotify) gst_ml_pose_entry_cleanup);
-
-    prediction->batch_idx = idx;
+    g_array_set_clear_func (prediction->entries,
+        (GDestroyNotify) gst_ml_pose_entry_cleanup);
   }
 
   GST_DEBUG_OBJECT (vpose, "Input caps: %" GST_PTR_FORMAT, incaps);

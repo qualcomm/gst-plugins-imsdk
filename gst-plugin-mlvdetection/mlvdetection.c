@@ -619,9 +619,8 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
       g_return_val_if_fail (CAIRO_STATUS_SUCCESS == cairo_status (context), FALSE);
 
       GST_TRACE_OBJECT (detection, "Batch: %u, label: %s, confidence: %.1f%%, "
-          "[%.2f %.2f %.2f %.2f]", prediction->batch_idx,
-          g_quark_to_string (entry->name), entry->confidence,
-          entry->top, entry->left, entry->bottom, entry->right);
+          "[%.2f %.2f %.2f %.2f]", idx, g_quark_to_string (entry->name),
+          entry->confidence, entry->top, entry->left, entry->bottom, entry->right);
 
       // Flush to ensure all writing to the surface has been done.
       cairo_surface_flush (surface);
@@ -689,7 +688,7 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
       height = entry->bottom - entry->top;
 
       GST_TRACE_OBJECT (detection, "Batch: %u, ID: %X, Label: %s, Confidence: "
-          "%.1f%%, Box [%.2f %.2f %.2f %.2f]", prediction->batch_idx, id,
+          "%.1f%%, Box [%.2f %.2f %.2f %.2f]", idx, id,
           g_quark_to_string (entry->name), entry->confidence, x, y, width, height);
 
       // Replace empty spaces otherwise subsequent stream parse call will fail.
@@ -762,8 +761,7 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
       g_value_unset (&value);
     }
 
-    structure = gst_structure_new ("ObjectDetection",
-        "batch-index", G_TYPE_UINT, prediction->batch_idx, NULL);
+    structure = gst_structure_new_empty ("ObjectDetection");
 
     gst_structure_set_value (structure, "bounding-boxes", &bboxes);
     g_value_reset (&bboxes);
@@ -1320,7 +1318,6 @@ gst_ml_video_detection_set_caps (GstBaseTransform * base, GstCaps * incaps,
         &(g_array_index (detection->predictions, GstMLBoxPrediction, idx));
 
     prediction->entries = g_array_new (FALSE, TRUE, sizeof (GstMLBoxEntry));
-    prediction->batch_idx = idx;
 
     g_array_set_clear_func (prediction->entries,
         (GDestroyNotify) gst_ml_box_entry_cleanup);
