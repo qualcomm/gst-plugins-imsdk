@@ -21,7 +21,6 @@ pkg_check_modules(GST_JSON
 
 set(GST_EXAMPLE_BIN gst-ai-multistream-inference)
 
-set(DEST_DIR /etc/configs)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
 
@@ -48,4 +47,4 @@ install(
               WORLD_EXECUTE WORLD_READ
 )
 
-install(FILES ${CONFIG_FILE} DESTINATION ${DEST_DIR})
+install(FILES ${CONFIG_FILE} DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_CONFIG})
