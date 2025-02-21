@@ -41,6 +41,8 @@ G_DEFINE_TYPE (GstMLAudioConverter, gst_ml_audio_converter,
 #define DEFAULT_PROP_MIN_BUFFERS     2
 #define DEFAULT_PROP_MAX_BUFFERS     24
 #define DEFAULT_PROP_SAMPLE_RATE     16000
+#define DEFAULT_PROP_CONVERSION_FEATURE   GST_AUDIO_FEATURE_RAW
+#define DEFAULT_PROP_PARAMS          NULL
 
 #define GST_AUDIO_FORMATS_SUPPORTED "{ "  \
     "S32LE, U32LE, "    \
@@ -69,7 +71,47 @@ static GstStaticPadTemplate src_template = GST_STATIC_PAD_TEMPLATE ("src",
 enum {
   PROP_0,
   PROP_SAMPLE_RATE,
+  PROP_CONVERSION_FEATURE,
+  PROP_PARAMS,
 };
+
+GType
+gst_ml_audio_conversion_feature_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { GST_AUDIO_FEATURE_RAW,
+        "Raw Audio samples will be converted to tensors without further"
+        "preprocessing",
+        GST_AUDIO_FEATURE_RAW_NAME
+    },
+    { GST_AUDIO_FEATURE_SPECTROGRAM,
+      "Raw Audio samples will be sampled with FFT and transformed into"
+      "time-frequency readings marking the amplitude and phase of different"
+      "frequencies centered around sequence of time points",
+      GST_AUDIO_FEATURE_SPECTROGRAM_NAME
+    },
+    { GST_AUDIO_FEATURE_MFE,
+        "Spectrogram of audio samples will be subjected to a filter by melbands",
+        GST_AUDIO_FEATURE_MFE_NAME
+    },
+    { GST_AUDIO_FEATURE_LMFE,
+        "Log of melspectrogram is prepared from audio samples"
+        "and a repesentation that is close to human auditory system is prepared",
+        GST_AUDIO_FEATURE_LMFE_NAME
+    },
+    { GST_AUDIO_FEATURE_MFCC,
+        "Mel Frequency cepstral coefficients, compressed representation when compared to lmfe",
+        GST_AUDIO_FEATURE_MFCC_NAME
+    },
+    { 0, NULL, NULL },
+  };
+
+  if (!gtype)
+  gtype = g_enum_register_static ("GstMLAudioFeatureMode", variants);
+
+  return gtype;
+}
 
 static GstCaps *
 gst_ml_audio_converter_translate_audio_caps (GstMLAudioConverter * mlconverter,
@@ -393,27 +435,22 @@ gst_ml_audio_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
   }
 
   structure = gst_structure_new ("options",
-      GST_ML_AUDIO_CONVERTER_OPT_SAMPLE_RATE, G_TYPE_INT,
-      GST_AUDIO_INFO_RATE(&ininfo),
-      GST_ML_AUDIO_CONVERTER_OPT_BPS, G_TYPE_INT,
-      GST_AUDIO_INFO_BPS(&ininfo),
-      GST_ML_AUDIO_CONVERTER_OPT_FORMAT, G_TYPE_STRING,
-      gst_audio_format_to_string (GST_AUDIO_INFO_FORMAT(&ininfo)),
-      GST_ML_AUDIO_CONVERTER_OPT_TENSORTYPE, G_TYPE_STRING,
-      gst_ml_type_to_string (GST_ML_INFO_TYPE(&mlinfo)),
+      GST_AUDIO_CONVERTER_OPT_INCAPS, GST_TYPE_CAPS, incaps,
+      GST_AUDIO_CONVERTER_OPT_MLCAPS, GST_TYPE_CAPS, outcaps,
+      GST_AUDIO_CONVERTER_OPT_FEATURE, G_TYPE_STRING,
+      gst_audio_feature_to_string (mlconverter->feature),
+      GST_AUDIO_CONVERTER_OPT_PARAMS, G_TYPE_STRING,
+      gst_structure_to_string (mlconverter->params),
       NULL);
-
-  if (GST_ML_INFO_N_TENSORS(&mlinfo) == 1 &&
-      GST_ML_INFO_N_DIMENSIONS(&mlinfo, 0) == 1) {
-    gst_structure_set (structure, GST_ML_AUDIO_CONVERTER_OPT_MODE, G_TYPE_INT,
-        GST_AUDIO_CONV_MODE_RAW, NULL);
-    gst_structure_set (structure, GST_ML_AUDIO_CONVERTER_OPT_SAMPLE_NUMBER,
-        G_TYPE_INT, GST_ML_INFO_TENSOR_DIM(&mlinfo, 0, 0), NULL);
-  }
 
   mlconverter->engine = gst_mlaconverter_engine_new ((const GstStructure *)structure);
 
-  return TRUE;
+  gst_structure_free (structure);
+
+  if (mlconverter->engine == NULL)
+    return FALSE;
+  else
+    return TRUE;
 }
 
 static GstFlowReturn
@@ -566,6 +603,29 @@ gst_ml_audio_converter_set_property (GObject * object, guint prop_id,
       mlconverter->sample_rate = g_value_get_int (value);
       break;
     }
+    case PROP_CONVERSION_FEATURE:
+    {
+      mlconverter->feature = g_value_get_enum (value);
+      break;
+    }
+    case PROP_PARAMS:
+    {
+      GValue structure = G_VALUE_INIT;
+
+      g_value_init (&structure, GST_TYPE_STRUCTURE);
+
+      if (!gst_parse_string_property_value (value, &structure)) {
+        GST_ERROR_OBJECT (mlconverter, "Failed to parse zone configuration!");
+        break;
+      }
+
+      if (mlconverter->params != NULL)
+        gst_structure_free (mlconverter->params);
+
+      mlconverter->params = GST_STRUCTURE (g_value_dup_boxed (&structure));
+      g_value_unset (&structure);
+      break;
+    }
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -582,6 +642,22 @@ gst_ml_audio_converter_get_property (GObject * object, guint prop_id,
     case PROP_SAMPLE_RATE:
     {
       g_value_set_int (value, mlconverter->sample_rate);
+      break;
+    }
+    case PROP_CONVERSION_FEATURE:
+    {
+      g_value_set_enum (value, mlconverter->feature);
+      break;
+    }
+    case PROP_PARAMS:
+    {
+      gchar *string = NULL;
+
+      if (mlconverter->params != NULL)
+        string = gst_structure_to_string (mlconverter->params);
+
+      g_value_set_string (value, string);
+      g_free (string);
       break;
     }
     default:
@@ -607,6 +683,9 @@ gst_ml_audio_converter_finalize (GObject * object)
   if (mlconverter->audio_info != NULL)
     gst_audio_info_free (mlconverter->audio_info);
 
+  if (mlconverter->params != NULL)
+    gst_structure_free (mlconverter->params);
+
   gst_ml_stage_unregister_unique_index (mlconverter->stage_id);
 
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (mlconverter));
@@ -631,6 +710,19 @@ gst_ml_audio_converter_class_init (GstMLAudioConverterClass * klass)
           "Audio sample rate converter expects", G_MININT, G_MAXINT,
           DEFAULT_PROP_SAMPLE_RATE, G_PARAM_CONSTRUCT | G_PARAM_READWRITE |
           G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property (gobject, PROP_PARAMS,
+      g_param_spec_string ("params", "Preprocessor feature parameters",
+          "Preprocessor configuration"
+          "The format is in GstStructure string. Example params can be passed as"
+          "params=\"params,nfft=512,nhop=5,nmels=80;\"",
+          DEFAULT_PROP_PARAMS, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property (gobject, PROP_CONVERSION_FEATURE,
+      g_param_spec_enum ("feature", "Audio Preprocessing feature",
+          "Preprocessing function to run on raw audio samples",
+          GST_TYPE_ML_AUDIO_CONVERSION_FEATURE, DEFAULT_PROP_CONVERSION_FEATURE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_set_static_metadata (element,
       "Machine Learning Audio Converter", "Audio",
@@ -660,8 +752,10 @@ gst_ml_audio_converter_init (GstMLAudioConverter * mlconverter)
   mlconverter->engine  = NULL;
   mlconverter->outpool = NULL;
   mlconverter->ml_info = NULL;
-  mlconverter->audio_info = NULL;
-  mlconverter->sample_rate = DEFAULT_AUDIO_SAMPLE_RATE;
+  mlconverter->audio_info  = NULL;
+  mlconverter->sample_rate = DEFAULT_PROP_SAMPLE_RATE;
+  mlconverter->feature  = DEFAULT_PROP_CONVERSION_FEATURE;
+  mlconverter->params   = gst_structure_new_empty ("params");
   mlconverter->stage_id = gst_ml_stage_get_unique_index ();
 
   gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM (mlconverter), TRUE);
