@@ -827,8 +827,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     gst_element_set_enum_property (file_v4l2h264dec[i], "output-io-mode",
         "dmabuf");
     filtercaps = gst_caps_new_simple ("video/x-raw",
-        "format", G_TYPE_STRING, "NV12",
-        "colorimetry", G_TYPE_STRING, "bt601",NULL);
+        "format", G_TYPE_STRING, "NV12", NULL);
     g_object_set (G_OBJECT (file_decode_caps[i]), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
     if (!set_ml_params (file_qtimlelement[i], file_qtimlvdetection[i],
@@ -847,8 +846,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     gst_element_set_enum_property (rtsp_v4l2h264dec[i], "output-io-mode",
         "dmabuf");
     filtercaps = gst_caps_new_simple ("video/x-raw",
-        "format", G_TYPE_STRING, "NV12",
-        "colorimetry", G_TYPE_STRING, "bt601",NULL);
+        "format", G_TYPE_STRING, "NV12", NULL);
     g_object_set (G_OBJECT (rtsp_decode_caps[i]), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
     if (!set_ml_params (rtsp_qtimlelement[i], rtsp_qtimlvdetection[i],
@@ -859,9 +857,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   // 2.4 Set the properties for composer output
   filtercaps = gst_caps_new_simple ("video/x-raw",
-      "format", G_TYPE_STRING, "NV12",
-      "interlace-mode", G_TYPE_STRING, "progressive",
-      "colorimetry", G_TYPE_STRING, "bt601", NULL);
+      "format", G_TYPE_STRING, "NV12", NULL);
   g_object_set (G_OBJECT (composer_caps), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
