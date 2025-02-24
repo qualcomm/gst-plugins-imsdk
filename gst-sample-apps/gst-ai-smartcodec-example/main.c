@@ -47,7 +47,7 @@
 #define DEFAULT_RESULTS              5
 #define DEFAULT_LABELS               "/etc/labels/coco_labels.txt"
 #define DEFAULT_CONSTANTS_YOLOV8 \
-  "YOLOv8,q-offsets=<-107.0, -128.0, 0.0>,q-scales=<3.093529462814331, 0.00390625, 1.0>;"
+  "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,q-scales=<3.0546178817749023, 0.003793874057009816, 1.0>;"
 #define QUEUE_COUNT 6
 
 #define GST_APP_SUMMARY                                                   \

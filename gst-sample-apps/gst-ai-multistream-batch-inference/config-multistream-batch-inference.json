@@ -16,7 +16,7 @@
       "mlframework":"qtimltflite",
       "model-path":"/etc/models/model-batch-4.tflite",
       "labels-path":"/etc/labels/model.labels",
-      "constants":"deeplab,q-offsets=<24.0, 0.0, 0.0>,q-scales=<3.0782077312469482, 0.0038126581348478794, 1.0>;",
+      "constants":"deeplab,q-offsets=<0.0>,q-scales=<1.0>;",
       "post-process-plugin": "qtimlvdetection"
     }
   ]

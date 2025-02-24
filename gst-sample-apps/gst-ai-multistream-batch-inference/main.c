@@ -70,7 +70,7 @@
           "labels-path":"/etc/labels/deeplabv3_resnet50.labels",
 
           # Constant values from model
-          "constants":"deeplab,q-offsets=<92.0>,q-scales=<0.04518842324614525>;",
+          "constants":"deeplab,q-offsets=<0.0>,q-scales=<1.0>;",
 
           # Post process plugin qtimlvsegmentation/qtimlvdetection
           "post-process-plugin": "qtimlvsegmentation"

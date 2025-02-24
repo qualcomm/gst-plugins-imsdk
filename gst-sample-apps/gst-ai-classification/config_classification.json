@@ -3,7 +3,7 @@
   "ml-framework": "tflite",
   "model": "/etc/models/inception_v3_quantized.tflite",
   "labels": "/etc/labels/classification.labels",
-  "constants": "Mobilenet,q-offsets=<38.0>,q-scales=<0.15008972585201263>;",
+  "constants": "Inceptionv3,q-offsets=<38.0>,q-scales=<0.17039915919303894>;",
   "threshold": 40,
   "runtime": "dsp"
 }

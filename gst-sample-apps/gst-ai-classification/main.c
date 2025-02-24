@@ -59,8 +59,8 @@
  */
 #define DEFAULT_INFERENCE_WIDTH 640
 #define DEFAULT_INFERENCE_HEIGHT 360
-#define DEFAULT_CAMERA_OUTPUT_WIDTH 1920
-#define DEFAULT_CAMERA_OUTPUT_HEIGHT 1080
+#define DEFAULT_CAMERA_OUTPUT_WIDTH 1280
+#define DEFAULT_CAMERA_OUTPUT_HEIGHT 720
 #define SECONDARY_CAMERA_OUTPUT_WIDTH 1280
 #define SECONDARY_CAMERA_OUTPUT_HEIGHT 720
 #define DEFAULT_CAMERA_FRAME_RATE 30
@@ -79,7 +79,7 @@
  * Default constants to dequantize values
  */
 #define DEFAULT_CONSTANTS \
-    "Mobilenet,q-offsets=<38.0>,q-scales=<0.15008972585201263>;"
+    "Inceptionv3,q-offsets=<38.0>,q-scales=<0.17039915919303894>;"
 
 /**
  * Number of Queues used for buffer caching between elements

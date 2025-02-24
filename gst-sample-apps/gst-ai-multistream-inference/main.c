@@ -54,11 +54,10 @@
 /**
  * Default constants to dequantize values
  */
-#define DEFAULT_DETECTION_CONSTANTS \
-    "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,\
-    q-scales=<3.093529462814331, 0.00390625, 1.0>;"
+#define DEFAULT_DETECTION_CONSTANTS "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,\
+    q-scales=<3.0546178817749023, 0.003793874057009816, 1.0>;"
 #define DEFAULT_CLASSIFICATION_CONSTANTS \
-    "Mobilenet,q-offsets=<38.0>,q-scales=<0.17039915919303894>;"
+    "Inceptionv3,q-offsets=<38.0>,q-scales=<0.17039915919303894>;"
 
 /**
  * To enable softmax operation for post processing

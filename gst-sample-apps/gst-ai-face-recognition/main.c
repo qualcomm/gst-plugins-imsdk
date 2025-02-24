@@ -63,8 +63,8 @@
  * Default settings of camera output resolution, Scaling of camera output
  * will be done in qtimlvconverter based on model input
  */
-#define PRIMARY_CAMERA_PREVIEW_OUTPUT_WIDTH 1920
-#define PRIMARY_CAMERA_PREVIEW_OUTPUT_HEIGHT 1080
+#define PRIMARY_CAMERA_PREVIEW_OUTPUT_WIDTH 1280
+#define PRIMARY_CAMERA_PREVIEW_OUTPUT_HEIGHT 720
 #define SECONDARY_CAMERA_PREVIEW_OUTPUT_WIDTH 1280
 #define SECONDARY_CAMERA_PREVIEW_OUTPUT_HEIGHT 720
 #define DEFAULT_CAMERA_FRAME_RATE 30
