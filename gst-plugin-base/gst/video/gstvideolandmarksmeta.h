@@ -37,8 +37,8 @@ struct _GstVideoKeypoint {
   gdouble confidence;
   guint32 color;
 
-  guint   x;
-  guint   y;
+  gint    x;
+  gint    y;
 };
 
 /**
