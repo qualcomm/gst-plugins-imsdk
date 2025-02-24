@@ -239,3 +239,22 @@ gst_is_gbm_supported (void)
 
   return supported;
 }
+
+GstVideoAlignment
+gst_video_calculate_common_alignment (GstVideoAlignment * l_align,
+    GstVideoAlignment * r_align)
+{
+  GstVideoAlignment align = { 0, };
+
+  // Take the highest number of additional lines in height.
+  align.padding_bottom = MAX (l_align->padding_bottom, r_align->padding_bottom);
+
+  // TODO: Workaround: Also assume that other fields are equal.
+  align.padding_top = l_align->padding_top;
+  align.padding_left = l_align->padding_left;
+
+  // TODO: Workaround: Considering the alignments are power of 2.
+  align.padding_right = MAX (l_align->padding_right, r_align->padding_right);
+
+  return align;
+}
