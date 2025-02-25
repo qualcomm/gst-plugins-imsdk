@@ -1,5 +1,9 @@
-# Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+#!/usr/bin/env python3
+
+################################################################################
+# Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
+################################################################################
 
 import os
 import sys
@@ -17,9 +21,7 @@ This app sets up GStreamer pipeline for video recording.
 Initializes and links elements for capturing live stream from camera
 and saving the encoded video as OUTPUT.
 """
-DEFAULT_OUTPUT_FILE = "/opt/data/recording.mp4"
-GST_V4L2_IO_DMABUF = 4
-GST_V4L2_IO_DMABUF_IMPORT = 5
+DEFAULT_OUTPUT_FILE = "/etc/media/recording.mp4"
 
 waiting_for_eos = False
 eos_received = False
@@ -138,8 +140,8 @@ def create_pipeline(pipeline, args):
         )
     )
 
-    elements["encoder"].set_property("capture-io-mode", GST_V4L2_IO_DMABUF)
-    elements["encoder"].set_property("output-io-mode", GST_V4L2_IO_DMABUF_IMPORT)
+    elements["encoder"].set_property("capture-io-mode", "dmabuf")
+    elements["encoder"].set_property("output-io-mode", "dmabuf-import")
 
     elements["sink"].set_property("location", args.output)
 
@@ -154,12 +156,23 @@ def create_pipeline(pipeline, args):
     ]
     link_elements(link_order, elements)
 
+def is_linux():
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if "Linux" in line:
+                    return True
+    except FileNotFoundError:
+        return False
+    return False
+
 def main():
     """Main function to set up and run the GStreamer pipeline."""
 
     # Set the environment
-    os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
-    os.environ["WAYLAND_DISPLAY"] = "wayland-1"
+    if is_linux():
+        os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
+        os.environ["WAYLAND_DISPLAY"] = "wayland-1"
 
     # Initialize GStreamer
     Gst.init(None)

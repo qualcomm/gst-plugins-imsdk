@@ -1,5 +1,9 @@
-# Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+#!/usr/bin/env python3
+
+################################################################################
+# Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
+################################################################################
 
 import os
 import sys
@@ -22,25 +26,25 @@ the classification labels on the top left corner. The results are streamed over
 RTSP (rtsp://127.0.0.1:8900/live)
 
 The default file paths in the python script are as follows:
-- Detection model: /opt/data/YoloV8N_Detection_Quantized.tflite
-- Detection labels: /opt/data/yolov8n.labels
-- Classification model: /opt/data/Resnet101_Quantized.tflite
-- Classification labels: /opt/data/resnet101.labels
+- Detection model: /etc/models/YoloV8N_Detection_Quantized.tflite
+- Detection labels: /etc/labels/yolov8n.labels
+- Classification model: /etc/models/Resnet101_Quantized.tflite
+- Classification labels: /etc/labels/resnet101.labels
 
 To override the default settings,
 please configure the corresponding module and constants as well.
 """
 
 # Configurations for Detection
-DEFAULT_DETECTION_MODEL = "/opt/data/YoloV8N_Detection_Quantized.tflite"
-DEFAULT_DETECTION_LABELS = "/opt/data/yolov8n.labels"
+DEFAULT_DETECTION_MODEL = "/etc/models/YoloV8N_Detection_Quantized.tflite"
+DEFAULT_DETECTION_LABELS = "/etc/labels/yolov8n.labels"
 DEFAULT_DETECTION_MODULE = "yolov8"
 DEFAULT_DETECTION_CONSTANTS = "YoloV8,q-offsets=<-107.0,-128.0,0.0>,\
     q-scales=<3.093529462814331,0.00390625,1.0>;"
 
 # Configurations for Classification
-DEFAULT_CLASSIFICATION_MODEL = "/opt/data/Resnet101_Quantized.tflite"
-DEFAULT_CLASSIFICATION_LABELS = "/opt/data/resnet101.labels"
+DEFAULT_CLASSIFICATION_MODEL = "/etc/models/Resnet101_Quantized.tflite"
+DEFAULT_CLASSIFICATION_LABELS = "/etc/labels/resnet101.labels"
 DEFAULT_CLASSIFICATION_MODULE = "mobilenet"
 DEFAULT_CLASSIFICATION_CONSTANTS = "Mobilenet,q-offsets=<-82.0>,\
     q-scales=<0.21351955831050873>;"
@@ -49,7 +53,7 @@ DEFAULT_RTSP_ADDRESS = "127.0.0.1"
 DEFAULT_RTSP_PORT = "8900"
 DEFAULT_RTSP_MPOINT = "/live"
 
-DEFAULT_OUTPUT_FILE = "/opt/data/test.mp4"
+DEFAULT_OUTPUT_FILE = "/etc/media/test.mp4"
 
 eos_received = False
 def create_element(factory_name, name):
@@ -202,12 +206,12 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["capsfilter_0"],
         "caps",
-        "video/x-raw(memory:GBM),format=NV12,compression=ubwc,\
+        "video/x-raw,format=NV12_Q08C,\
         width=1920,height=1080,framerate=30/1,colorimetry=bt709",
     )
 
-    Gst.util_set_object_arg(elements["v4l2h264enc_0"], "capture-io-mode", "5")
-    Gst.util_set_object_arg(elements["v4l2h264enc_0"], "output-io-mode", "5")
+    Gst.util_set_object_arg(elements["v4l2h264enc_0"], "capture-io-mode", "dmabuf")
+    Gst.util_set_object_arg(elements["v4l2h264enc_0"], "output-io-mode", "dmabuf-import")
 
     Gst.util_set_object_arg(elements["h264parse_0"], "config-interval", "1")
 
@@ -217,7 +221,7 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["capsfilter_1"],
         "caps",
-        "video/x-raw\(memory:GBM\),format=NV12,\
+        "video/x-raw,format=NV12,\
         width=640,height=360,framerate=30/1",
     )
 
@@ -259,7 +263,7 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["capsfilter_3"],
         "caps",
-        "video/x-raw\(memory:GBM\),format=NV12,\
+        "video/x-raw,format=NV12,\
         width=640,height=360,framerate=30/1",
     )
 
@@ -297,8 +301,8 @@ def construct_pipeline(pipe):
 
     Gst.util_set_object_arg(elements["overlay_1"], "engine", "gles")
 
-    Gst.util_set_object_arg(elements["v4l2h264enc_1"], "capture-io-mode", "5")
-    Gst.util_set_object_arg(elements["v4l2h264enc_1"], "output-io-mode", "5")
+    Gst.util_set_object_arg(elements["v4l2h264enc_1"], "capture-io-mode", "dmabuf")
+    Gst.util_set_object_arg(elements["v4l2h264enc_1"], "output-io-mode", "dmabuf")
 
     Gst.util_set_object_arg(elements["h264parse_1"], "config-interval", "1")
 
@@ -393,11 +397,23 @@ def handle_interrupt_signal(pipe, loop):
         quit_mainloop(loop)
     return GLib.SOURCE_CONTINUE
 
+def is_linux():
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if "Linux" in line:
+                    return True
+    except FileNotFoundError:
+        return False
+    return False
 
 def main():
     """Main function to set up and run the GStreamer pipeline."""
-    os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
-    os.environ["WAYLAND_DISPLAY"] = "wayland-1"
+
+    # Set the environment
+    if is_linux():
+        os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
+        os.environ["WAYLAND_DISPLAY"] = "wayland-1"
 
     Gst.init(None)
 

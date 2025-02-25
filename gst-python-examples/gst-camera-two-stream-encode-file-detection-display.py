@@ -1,5 +1,9 @@
-# Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+#!/usr/bin/env python3
+
+################################################################################
+# Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
+################################################################################
 
 import os
 import sys
@@ -19,21 +23,21 @@ and overlay the bounding boxes over the detected objects. The results are shown
 on the display.
 
 The default file paths in the python script are as follows:
-- Detection model (YOLOv8): /opt/data/YoloV8N_Detection_Quantized.tflite
-- Detection labels: /opt/data/yolov8n.labels
+- Detection model (YOLOv8): /etc/models/YoloV8N_Detection_Quantized.tflite
+- Detection labels: /etc/labels/yolov8n.labels
 
 To override the default settings,
 please configure the corresponding module and constants as well.
 """
 
 # Configurations for Detection
-DEFAULT_DETECTION_MODEL = "/opt/data/YoloV8N_Detection_Quantized.tflite"
+DEFAULT_DETECTION_MODEL = "/etc/models/YoloV8N_Detection_Quantized.tflite"
 DEFAULT_DETECTION_MODULE = "yolov8"
-DEFAULT_DETECTION_LABELS = "/opt/data/yolov8n.labels"
+DEFAULT_DETECTION_LABELS = "/etc/labels/yolov8n.labels"
 DEFAULT_DETECTION_CONSTANTS = "YoloV8,q-offsets=<-107.0,-128.0,0.0>,\
     q-scales=<3.093529462814331,0.00390625,1.0>;"
 
-DEFAULT_OUTPUT_FILE = "/opt/data/test.mp4"
+DEFAULT_OUTPUT_FILE = "/etc/media/test.mp4"
 
 eos_received = False
 def create_element(factory_name, name):
@@ -148,12 +152,12 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["capsfilter_0"],
         "caps",
-        "video/x-raw(memory:GBM),format=NV12,compression=ubwc,\
+        "video/x-raw,format=NV12_Q08C,\
         width=1920,height=1080,framerate=30/1,colorimetry=bt709",
     )
 
-    Gst.util_set_object_arg(elements["v4l2h264enc"], "capture-io-mode", "5")
-    Gst.util_set_object_arg(elements["v4l2h264enc"], "output-io-mode", "5")
+    Gst.util_set_object_arg(elements["v4l2h264enc"], "capture-io-mode", "dmabuf")
+    Gst.util_set_object_arg(elements["v4l2h264enc"], "output-io-mode", "dmabuf-import")
 
     Gst.util_set_object_arg(elements["h264parse"], "config-interval", "1")
 
@@ -163,7 +167,7 @@ def construct_pipeline(pipe):
     Gst.util_set_object_arg(
         elements["capsfilter_1"],
         "caps",
-        "video/x-raw\(memory:GBM\),format=NV12,\
+        "video/x-raw,format=NV12,\
         width=640,height=360,framerate=30/1",
     )
 
@@ -273,11 +277,23 @@ def handle_interrupt_signal(pipe, loop):
         quit_mainloop(loop)
     return GLib.SOURCE_CONTINUE
 
+def is_linux():
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if "Linux" in line:
+                    return True
+    except FileNotFoundError:
+        return False
+    return False
 
 def main():
     """Main function to set up and run the GStreamer pipeline."""
-    os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
-    os.environ["WAYLAND_DISPLAY"] = "wayland-1"
+
+    # Set the environment
+    if is_linux():
+        os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
+        os.environ["WAYLAND_DISPLAY"] = "wayland-1"
 
     Gst.init(None)
 
