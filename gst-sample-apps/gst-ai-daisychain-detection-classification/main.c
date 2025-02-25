@@ -95,11 +95,11 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_TFLITE_YOLOV5_MODEL "/etc/models/yolov5.tflite"
+#define DEFAULT_TFLITE_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.tflite"
 #define DEFAULT_TFLITE_CLASSIFICATION_MODEL \
-    "/etc/models/inceptionv3.tflite"
-#define DEFAULT_YOLOV5_LABELS "/etc/labels/yolov5.labels"
-#define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/classification.labels"
+    "/etc/models/mobilenet_v2_quantized.tflite"
+#define DEFAULT_DETECTION_LABELS "/etc/labels/coco_labels.txt"
+#define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/imagenet_labels.txt"
 
 /**
  * Default path of config file
@@ -112,31 +112,44 @@
  */
 #define DEFAULT_CAMERA_DAISYCHAIN_OUTPUT_WIDTH 640
 #define DEFAULT_CAMERA_DAISYCHAIN_OUTPUT_HEIGHT 360
-#define DEFAULT_CAMERA_PREVIEW_OUTPUT_WIDTH 1920
-#define DEFAULT_CAMERA_PREVIEW_OUTPUT_HEIGHT 1080
+#define DEFAULT_CAMERA_PREVIEW_OUTPUT_WIDTH 1280
+#define DEFAULT_CAMERA_PREVIEW_OUTPUT_HEIGHT 720
 #define DEFAULT_CAMERA_FRAME_RATE 30
 
 /**
  * Maximum count of various sources possible to configure
  */
 #define QUEUE_COUNT 8
-#define TEE_COUNT 6
-#define DETECTION_COUNT 1
+#define TEE_COUNT 7
+#define DETECTION_COUNT 2
 #define CLASSIFICATION_COUNT 4
 #define TFLITE_ELEMENT_COUNT 5
 #define SPLIT_COUNT 4
-#define COMPOSER_SINK_COUNT 9
+#define COMPOSER_SINK_COUNT 10
 #define SINGLE_ROI_META 2
 
 /**
- * Scale and Offset valu for YOLOV5 for post processing
+ * To enable softmax operation for post processing
  */
-#define YOLOV5_CONSTANT "YoloV5,q-offsets=<3.0>,q-scales=<0.005047998391091824>;"
+#define GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX 1
+
+/**
+ * Scale and Offset value for YOLOV8 for post processing
+ */
+#define YOLOV8_CONSTANT \
+    "YOLOv8,q-offsets=<-107.0, -128.0, 0.0>,q-scales=<3.093529462814331, 0.00390625, 1.0>;"
+
+/**
+ * Scale and Offset valu for Mobilenet for post processing
+ */
+#define MOBILENETV2_CONSTANT \
+    "Mobilenet,q-offsets=<-59.0>,q-scales=<0.2386164367198944>;"
 
 /**
  * Structure for various application specific options
  */
-typedef struct {
+typedef struct
+{
   gboolean camera_source;
   gchar *file_path;
   gchar *rtsp_ip_port;
@@ -145,18 +158,20 @@ typedef struct {
   gchar *detection_labels_path;
   gchar *classification_labels_path;
   gchar *detection_constants;
+  gchar *classification_constants;
   GstStreamSourceType source_type;
 } GstAppOptions;
 
 
 /**
  * GstDaisyChainModelType:
- * @GST_DETECTION_TYPE_YOLO            : Yolov5 Object Detection Model.
+ * @GST_DETECTION_TYPE_YOLO            : Yolov8 Object Detection Model.
  * @GST_CLASSIFICATION_TYPE_INCEPTION  : Inception Classification Model.
  *
  * Type of Usecase.
  */
-typedef enum {
+typedef enum
+{
   GST_DETECTION_TYPE_YOLO,
   GST_CLASSIFICATION_TYPE_INCEPTION
 } GstDaisyChainModelType;
@@ -165,7 +180,7 @@ typedef enum {
  * Static grid points to display 4 split stream
  */
 static GstVideoRectangle composer_sink_position[COMPOSER_SINK_COUNT] = {
-  {0, 0, 1280, 720}, {0, 0, 384, 216}, {896, 0, 384, 216},
+  {0, 0, 1280, 720}, {0, 0, 1280, 720}, {0, 0, 384, 216}, {896, 0, 384, 216},
   {0, 504, 384, 216}, {896, 504, 384, 216}, {0, 0, 384, 40},
   {896, 0, 384, 40}, {0, 504, 384, 40}, {896, 504, 384, 40},
 };
@@ -176,8 +191,8 @@ static GstVideoRectangle composer_sink_position[COMPOSER_SINK_COUNT] = {
  * @param appctx Application Context object
  */
 static void
-gst_app_context_free (
-    GstAppContext * appctx, GstAppOptions * options, gchar * config_file)
+gst_app_context_free (GstAppContext * appctx, GstAppOptions * options,
+    gchar * config_file)
 {
   // If specific pointer is not NULL, unref it
   if (appctx->mloop != NULL) {
@@ -186,48 +201,56 @@ gst_app_context_free (
   }
 
   if (options->file_path != NULL) {
-    g_free ((gpointer)options->file_path);
+    g_free ((gpointer) options->file_path);
     options->file_path = NULL;
   }
 
   if (options->rtsp_ip_port != NULL) {
-    g_free ((gpointer)options->rtsp_ip_port);
+    g_free ((gpointer) options->rtsp_ip_port);
     options->rtsp_ip_port = NULL;
   }
 
-    if (options->detection_model_path != NULL &&
-      options->detection_model_path != (gchar *)(&DEFAULT_TFLITE_YOLOV5_MODEL)) {
-    g_free ((gpointer)options->detection_model_path);
+  if (options->detection_model_path != NULL &&
+      options->detection_model_path !=
+      (gchar *) (&DEFAULT_TFLITE_YOLOV8_MODEL)) {
+    g_free ((gpointer) options->detection_model_path);
     options->detection_model_path = NULL;
   }
 
   if (options->classification_model_path != NULL &&
-      options->classification_model_path != (gchar *)(&DEFAULT_TFLITE_CLASSIFICATION_MODEL)) {
-    g_free ((gpointer)options->classification_model_path);
+      options->classification_model_path !=
+      (gchar *) (&DEFAULT_TFLITE_CLASSIFICATION_MODEL)) {
+    g_free ((gpointer) options->classification_model_path);
     options->classification_model_path = NULL;
   }
 
   if (options->detection_labels_path != NULL &&
-      options->detection_labels_path != (gchar *)(&DEFAULT_YOLOV5_LABELS)) {
+      options->detection_labels_path != (gchar *)(&DEFAULT_DETECTION_LABELS)) {
     g_free ((gpointer)options->detection_labels_path);
     options->detection_labels_path = NULL;
   }
 
   if (options->classification_labels_path != NULL &&
-      options->classification_labels_path != (gchar *)(&DEFAULT_CLASSIFICATION_LABELS)) {
-    g_free ((gpointer)options->classification_labels_path);
+      options->classification_labels_path !=
+      (gchar *) (&DEFAULT_CLASSIFICATION_LABELS)) {
+    g_free ((gpointer) options->classification_labels_path);
     options->classification_labels_path = NULL;
   }
 
   if (options->detection_constants != NULL &&
-      options->detection_constants != (gchar *)(&YOLOV5_CONSTANT)) {
+      options->detection_constants != (gchar *)(&YOLOV8_CONSTANT)) {
     g_free ((gpointer)options->detection_constants);
     options->detection_constants = NULL;
   }
 
-  if (config_file != NULL &&
-      config_file != (gchar *)(&DEFAULT_CONFIG_FILE)) {
-    g_free ((gpointer)config_file);
+  if (options->classification_constants != NULL &&
+      options->classification_constants != (gchar *)(&MOBILENETV2_CONSTANT)) {
+    g_free ((gpointer)options->classification_constants);
+    options->classification_constants = NULL;
+  }
+
+  if (config_file != NULL && config_file != (gchar *) (&DEFAULT_CONFIG_FILE)) {
+    g_free ((gpointer) config_file);
     config_file = NULL;
   }
 
@@ -313,18 +336,18 @@ static gboolean
 create_pipe (GstAppContext * appctx, const GstAppOptions options)
 {
   GstElement *qtiqmmfsrc = NULL, *qmmfsrc_caps = NULL;
-  GstElement *queue[QUEUE_COUNT] = {NULL}, *qmmfsrc_caps_preview = NULL;
-  GstElement *tee[TEE_COUNT] = {NULL};
-  GstElement *qtimlvconverter[TFLITE_ELEMENT_COUNT] = {NULL};
-  GstElement *qtimlelement[TFLITE_ELEMENT_COUNT] = {NULL};
-  GstElement *classification_filter[CLASSIFICATION_COUNT] = {NULL};
-  GstElement *qtimlvdetection[DETECTION_COUNT] = {NULL} ;
-  GstElement *qtimlvclassification[CLASSIFICATION_COUNT] = {NULL} ;
-  GstElement  *fpsdisplaysink = NULL, *waylandsink = NULL, *qtimetamux = NULL;
+  GstElement *queue[QUEUE_COUNT] = { NULL }, *qmmfsrc_caps_preview = NULL;
+  GstElement *tee[TEE_COUNT] = { NULL };
+  GstElement *qtimlvconverter[TFLITE_ELEMENT_COUNT] = { NULL };
+  GstElement *qtimlelement[TFLITE_ELEMENT_COUNT] = { NULL };
+  GstElement *classification_filter[CLASSIFICATION_COUNT] = { NULL };
+  GstElement *qtimlvdetection[DETECTION_COUNT] = { NULL };
+  GstElement *qtimlvclassification[CLASSIFICATION_COUNT] = { NULL };
+  GstElement *fpsdisplaysink = NULL, *waylandsink = NULL, *qtimetamux = NULL;
   GstElement *qtivsplit = NULL, *qtivcomposer = NULL;
   GstElement *filesrc = NULL, *qtdemux = NULL, *h264parse = NULL;
   GstElement *rtspsrc = NULL, *rtph264depay = NULL, *v4l2h264dec = NULL;
-  GstElement *v4l2h264dec_caps = NULL;
+  GstElement *v4l2h264dec_caps = NULL, *video_caps_filter = NULL;
   GstCaps *pad_filter = NULL, *filtercaps = NULL;
   GstStructure *delegate_options = NULL;
   GstPad *qtiqmmfsrc_type = NULL;
@@ -392,7 +415,8 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     }
 
     // Create caps for v4l2h264dec stream
-    v4l2h264dec_caps = gst_element_factory_make ("capsfilter", "v4l2h264dec_caps");
+    v4l2h264dec_caps =
+        gst_element_factory_make ("capsfilter", "v4l2h264dec_caps");
     if (!v4l2h264dec_caps) {
       g_printerr ("Failed to create v4l2h264dec_caps\n");
       goto error_clean_elements;
@@ -427,7 +451,8 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     }
 
     // Create caps for v4l2h264dec stream
-    v4l2h264dec_caps = gst_element_factory_make ("capsfilter", "v4l2h264dec_caps");
+    v4l2h264dec_caps =
+        gst_element_factory_make ("capsfilter", "v4l2h264dec_caps");
     if (!v4l2h264dec_caps) {
       g_printerr ("Failed to create v4l2h264dec_caps\n");
       goto error_clean_elements;
@@ -452,6 +477,14 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   qtivsplit = gst_element_factory_make ("qtivsplit", "qtivsplit");
   if (!qtivsplit) {
     g_printerr ("Failed to create qtivsplit\n");
+    goto error_clean_elements;
+  }
+
+  // Capsfilter to get matching params of ML post proc o/p and qtivcomposer
+  video_caps_filter = gst_element_factory_make ("capsfilter",
+      "video_caps_filter");
+  if (!video_caps_filter) {
+    g_printerr ("Failed to create video_caps_filter\n");
     goto error_clean_elements;
   }
 
@@ -549,19 +582,19 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   if (options.source_type == GST_STREAM_TYPE_CAMERA) {
     // 2.1 Set the capabilities of camera stream for daisychain
     filtercaps = gst_caps_new_simple ("video/x-raw",
-      "format", G_TYPE_STRING, "NV12",
-      "width", G_TYPE_INT, daisychain_width,
-      "height", G_TYPE_INT, daisychain_height,
-      "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
+        "format", G_TYPE_STRING, "NV12",
+        "width", G_TYPE_INT, daisychain_width,
+        "height", G_TYPE_INT, daisychain_height,
+        "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
     g_object_set (G_OBJECT (qmmfsrc_caps), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
 
     // 2.2 Set the capabilities of camera stream for preview
     filtercaps = gst_caps_new_simple ("video/x-raw",
-      "format", G_TYPE_STRING, "NV12",
-      "width", G_TYPE_INT, preview_width,
-      "height", G_TYPE_INT, preview_height,
-      "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
+        "format", G_TYPE_STRING, "NV12_Q08C",
+        "width", G_TYPE_INT, preview_width,
+        "height", G_TYPE_INT, preview_height,
+        "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
     g_object_set (G_OBJECT (qmmfsrc_caps_preview), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
   } else if (options.source_type == GST_STREAM_TYPE_FILE) {
@@ -587,50 +620,50 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   // 2.3 Set the properties of pad_filter for negotiation with qtivcomposer
   // for classification
   pad_filter = gst_caps_new_simple ("video/x-raw",
-      "width", G_TYPE_INT, 384,
-      "height", G_TYPE_INT, 40, NULL);
+      "width", G_TYPE_INT, 384, "height", G_TYPE_INT, 40, NULL);
   for (gint i = 0; i < CLASSIFICATION_COUNT; i++) {
-    g_object_set (G_OBJECT (classification_filter[i]), "caps", pad_filter, NULL);
-
+    g_object_set (G_OBJECT (classification_filter[i]), "caps", pad_filter,
+        NULL);
   }
+  gst_caps_unref (pad_filter);
+
+  pad_filter = gst_caps_new_simple ("video/x-raw",
+      "width", G_TYPE_INT, 512, "height", G_TYPE_INT, 288, NULL);
+  g_object_set (G_OBJECT (video_caps_filter), "caps", pad_filter, NULL);
   gst_caps_unref (pad_filter);
 
   // 2.4 Select the HW to DSP for model inferencing using delegate property
   for (gint i = 0; i < TFLITE_ELEMENT_COUNT; i++) {
-    if (i == GST_DETECTION_TYPE_YOLO)
-    {
+    if (i == GST_DETECTION_TYPE_YOLO) {
       g_object_set (G_OBJECT (qtimlelement[i]),
           "model", options.detection_model_path,
           "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
-    }
-    else
-    {
+    } else {
       g_object_set (G_OBJECT (qtimlelement[i]),
           "model", options.classification_model_path,
           "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
     }
-    delegate_options = gst_structure_from_string (
-        "QNNExternalDelegate,backend_type=htp;", NULL);
-    g_object_set (G_OBJECT (qtimlelement[i]),
-        "external-delegate-path", "libQnnTFLiteDelegate.so", NULL);
-    g_object_set (G_OBJECT (qtimlelement[i]),
-        "external-delegate-options", delegate_options, NULL);
+    delegate_options =
+        gst_structure_from_string ("QNNExternalDelegate,backend_type=htp;",
+        NULL);
+    g_object_set (G_OBJECT (qtimlelement[i]), "external-delegate-path",
+        "libQnnTFLiteDelegate.so", NULL);
+    g_object_set (G_OBJECT (qtimlelement[i]), "external-delegate-options",
+        delegate_options, NULL);
     gst_structure_free (delegate_options);
   }
 
   // 2.5 Set properties for detection postproc plugins- module, labels,
   // threshold, constants
   for (gint i = 0; i < DETECTION_COUNT; i++) {
-    module_id = get_enum_value (qtimlvdetection[i], "module", "yolov5");
+    module_id = get_enum_value (qtimlvdetection[i], "module", "yolov8");
     if (module_id != -1) {
       g_object_set (G_OBJECT (qtimlvdetection[i]),
-          "threshold", 40.0, "results", 4,
+          "threshold", 75.0, "results", 4,
           "module", module_id, "labels", options.detection_labels_path,
-          "constants", options.detection_constants,
-          NULL);
-      }
-    else {
-      g_printerr ("Module yolov5 is not available in qtimlvdetection.\n");
+          "constants", options.detection_constants, NULL);
+    } else {
+      g_printerr ("Module yolov8 is not available in qtimlvdetection.\n");
       goto error_clean_elements;
     }
   }
@@ -641,12 +674,14 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     module_id = get_enum_value (qtimlvclassification[i], "module", "mobilenet");
     if (module_id != -1) {
       g_object_set (G_OBJECT (qtimlvclassification[i]),
-          "threshold", 40.0, "results", 2,
+          "threshold", 60.0, "results", 3,
           "module", module_id,
-          "labels", options.classification_labels_path, NULL);
-      }
-    else {
-      g_printerr ("Module mobilenet is not available in qtimlvclassification.\n");
+          "labels", options.classification_labels_path,
+          "constants", options.classification_constants,
+          "extra-operation", GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX, NULL);
+    } else {
+      g_printerr
+          ("Module mobilenet is not available in qtimlvclassification.\n");
       goto error_clean_elements;
     }
   }
@@ -658,7 +693,8 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   // 2.8 Set the properties of fpsdisplaysink plugin- sync,
   // signal-fps-measurements, text-overlay and video-sink
   g_object_set (G_OBJECT (fpsdisplaysink), "sync", TRUE, NULL);
-  g_object_set (G_OBJECT (fpsdisplaysink), "signal-fps-measurements", TRUE, NULL);
+  g_object_set (G_OBJECT (fpsdisplaysink), "signal-fps-measurements", TRUE,
+      NULL);
   g_object_set (G_OBJECT (fpsdisplaysink), "text-overlay", TRUE, NULL);
   g_object_set (G_OBJECT (fpsdisplaysink), "video-sink", waylandsink, NULL);
 
@@ -677,7 +713,8 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   }
 
   gst_bin_add_many (GST_BIN (appctx->pipeline),
-      qtimetamux, qtivsplit, qtivcomposer, fpsdisplaysink, NULL);
+      qtimetamux, qtivsplit, qtivcomposer, fpsdisplaysink, video_caps_filter,
+          NULL);
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), queue[i], NULL);
@@ -688,7 +725,8 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   }
 
   for (gint i = 0; i < CLASSIFICATION_COUNT; i++) {
-    gst_bin_add_many (GST_BIN (appctx->pipeline), classification_filter[i], NULL);
+    gst_bin_add_many (GST_BIN (appctx->pipeline), classification_filter[i],
+        NULL);
   }
 
   for (gint i = 0; i < TFLITE_ELEMENT_COUNT; i++) {
@@ -701,14 +739,14 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   }
 
   for (gint i = 0; i < CLASSIFICATION_COUNT; i++) {
-    gst_bin_add_many (GST_BIN (appctx->pipeline), qtimlvclassification[i], NULL);
+    gst_bin_add_many (GST_BIN (appctx->pipeline), qtimlvclassification[i],
+        NULL);
   }
 
   // 3.1 Create pipeline for Parallel Inferencing
   g_print ("Linking elements...\n");
   if (options.source_type == GST_STREAM_TYPE_CAMERA) {
-    ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps,
-        queue[1], NULL);
+    ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps, queue[1], NULL);
     if (!ret) {
       g_printerr ("\n pipeline elements qtiqmmfsrc -> qmmfsrc_caps"
           "cannot be linked. Exiting.\n");
@@ -716,7 +754,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     }
 
     ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps_preview,
-      qtimetamux, NULL);
+        qtimetamux, NULL);
     if (!ret) {
       g_printerr ("\n pipeline elements qtiqmmfsrc -> qmmfsrc_caps_preview"
           " -> qtimetamux cannot be linked. Exiting.\n");
@@ -748,7 +786,8 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     ret = gst_element_link_many (queue[0], rtph264depay, h264parse,
         v4l2h264dec, v4l2h264dec_caps, tee[0], qtimetamux, NULL);
     if (!ret) {
-      g_printerr ("\n pipeline elements rtph264depay -> h264parse -> v4l2h264dec"
+      g_printerr
+          ("\n pipeline elements rtph264depay -> h264parse -> v4l2h264dec"
           " -> qtimetamux cannot be linked.Exiting.\n");
       goto error_clean_pipeline;
     }
@@ -761,8 +800,9 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     }
   }
 
-  ret = gst_element_link_many (queue[1], qtimlvconverter[0], qtimlelement[0],
-      qtimlvdetection[0], NULL);
+  ret =
+      gst_element_link_many (queue[1], qtimlvconverter[0], qtimlelement[0],
+      tee[1], qtimlvdetection[0], NULL);
   if (!ret) {
     g_printerr ("\n pipeline elements src -> qtimlvconverter -> qtimlelement "
         " -> qtimlvdetection cannot be linked. Exiting.\n");
@@ -770,7 +810,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   }
 
   filtercaps = gst_caps_from_string ("text/x-raw");
-  ret = gst_element_link_filtered (qtimlvdetection[0] , qtimetamux, filtercaps);
+  ret = gst_element_link_filtered (qtimlvdetection[0], qtimetamux, filtercaps);
   if (!ret) {
     g_printerr ("\n pipeline elements qtimlvdetection -> qtimetamux "
         "cannot be linked. Exiting.\n");
@@ -778,21 +818,29 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   }
   gst_caps_unref (filtercaps);
 
-  ret = gst_element_link_many (qtimetamux, tee[1], NULL);
+  ret = gst_element_link_many (qtimetamux, tee[2], NULL);
   if (!ret) {
     g_printerr ("\n pipeline element qtimetamux -> tee "
         "cannot be linked. Exiting.\n");
     goto error_clean_pipeline;
   }
 
-  ret = gst_element_link_many (tee[1], queue[2], qtivcomposer, NULL);
+  ret = gst_element_link_many (tee[2], queue[2], qtivcomposer, NULL);
   if (!ret) {
     g_printerr ("\n pipeline elements tee -> qtivcomposer "
         "cannot be linked. Exiting.\n");
     goto error_clean_pipeline;
   }
 
-  ret = gst_element_link_many (tee[1], qtivsplit, NULL);
+  ret = gst_element_link_many (tee[1], qtimlvdetection[1], video_caps_filter,
+      qtivcomposer, NULL);
+  if (!ret) {
+    g_printerr ("\n pipeline elements tee -> qtimlvdetection ->"
+        " video_caps_filter cannot be linked. Exiting.\n");
+    goto error_clean_pipeline;
+  }
+
+  ret = gst_element_link_many (tee[2], qtivsplit, NULL);
   if (!ret) {
     g_printerr ("\n pipeline elements tee -> qtivsplit "
         "cannot be linked. Exiting.\n");
@@ -800,8 +848,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   }
 
   for (gint i = 0; i < CLASSIFICATION_COUNT; i++) {
-    ret = gst_element_link_many (qtivsplit, tee[i + 2],
-        NULL);
+    ret = gst_element_link_many (qtivsplit, tee[i + 3], NULL);
     if (!ret) {
       g_printerr ("\n pipeline elements qtivsplit -> tee "
           "cannot be linked. Exiting.\n");
@@ -811,7 +858,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
 
   // 3.2 Create links for all 4 splits
   for (gint i = 0; i < CLASSIFICATION_COUNT; i++) {
-    ret = gst_element_link_many (tee[i + 2], queue[i + 3], qtivcomposer, NULL);
+    ret = gst_element_link_many (tee[i + 3], queue[i + 3], qtivcomposer, NULL);
     if (!ret) {
       g_printerr ("\n pipeline elements tee -> qtivcomposer "
           "cannot be linked. Exiting.\n");
@@ -820,10 +867,9 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   }
 
   for (gint i = 0; i < CLASSIFICATION_COUNT; i++) {
-    ret = gst_element_link_many (tee[i + 2],
-      qtimlvconverter[i + 1], qtimlelement[i + 1],
-      qtimlvclassification[i], classification_filter[i],
-      qtivcomposer, NULL);
+    ret = gst_element_link_many (tee[i + 3],
+        qtimlvconverter[i + 1], qtimlelement[i + 1],
+        qtimlvclassification[i], classification_filter[i], qtivcomposer, NULL);
     if (!ret) {
       g_printerr ("\n pipeline elements qtimlvconverter -> qtimlelement "
           " -> qtimlvclassification and  qtivcomposer cannot be linked. "
@@ -850,16 +896,30 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     }
 
     g_value_init (&video_type, G_TYPE_INT);
+    g_value_set_int (&video_type, GST_SOURCE_STREAM_TYPE_VIDEO);
+    g_object_set_property (G_OBJECT (qtiqmmfsrc_type), "type", &video_type);
+    g_value_unset (&video_type);
+    gst_object_unref (qtiqmmfsrc_type);
+
+    qtiqmmfsrc_type = gst_element_get_static_pad (qtiqmmfsrc, "video_1");
+    if (!qtiqmmfsrc_type) {
+      g_printerr ("video_1 of qtiqmmfsrc couldn't be retrieved\n");
+      goto error_clean_pipeline;
+    }
+
+    g_value_init (&video_type, G_TYPE_INT);
     g_value_set_int (&video_type, GST_SOURCE_STREAM_TYPE_PREVIEW);
     g_object_set_property (G_OBJECT (qtiqmmfsrc_type), "type", &video_type);
     g_value_unset (&video_type);
     gst_object_unref (qtiqmmfsrc_type);
   } else if (options.source_type == GST_STREAM_TYPE_FILE) {
     // 3.3 Set pad to link dynamic video to queue
-    g_signal_connect (qtdemux, "pad-added", G_CALLBACK (on_pad_added), queue[0]);
+    g_signal_connect (qtdemux, "pad-added", G_CALLBACK (on_pad_added),
+        queue[0]);
   } else if (options.source_type == GST_STREAM_TYPE_RTSP) {
     // 3.3 Set pad to link dynamic video to queue
-    g_signal_connect (rtspsrc, "pad-added", G_CALLBACK (on_pad_added), queue[0]);
+    g_signal_connect (rtspsrc, "pad-added", G_CALLBACK (on_pad_added),
+        queue[0]);
   }
 
   // 3.4 Set src properties of qtivsplit for all splits
@@ -890,7 +950,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     snprintf (element_name, 127, "sink_%d", i);
     vcomposer_sink = gst_element_get_static_pad (qtivcomposer, element_name);
     if (vcomposer_sink == NULL) {
-      g_printerr ("Sink pad %d of vcomposer couldn't be retrieved\n",i);
+      g_printerr ("Sink pad %d of vcomposer couldn't be retrieved\n", i);
       goto error_clean_pipeline;
     }
 
@@ -930,7 +990,8 @@ error_clean_elements:
         &v4l2h264dec_caps, &qtimetamux, NULL);
   }
 
-  cleanup_gst (&qtivsplit, &qtivcomposer, &fpsdisplaysink, NULL);
+  cleanup_gst (&qtivsplit, &qtivcomposer, &fpsdisplaysink,
+      &video_caps_filter, NULL);
 
   for (gint i = 0; i < CLASSIFICATION_COUNT; i++) {
     if (classification_filter[i]) {
@@ -984,7 +1045,7 @@ error_clean_elements:
  * @param options Application specific options
  */
 gint
-parse_json(gchar * config_file, GstAppOptions * options)
+parse_json (gchar * config_file, GstAppOptions * options)
 {
   JsonParser *parser = NULL;
   JsonNode *root = NULL;
@@ -1041,20 +1102,26 @@ parse_json(gchar * config_file, GstAppOptions * options)
 
   if (json_object_has_member (root_obj, "classification-model")) {
     options->classification_model_path =
-        g_strdup (
-            json_object_get_string_member (root_obj, "classification-model"));
+        g_strdup (json_object_get_string_member (root_obj,
+            "classification-model"));
   }
 
   if (json_object_has_member (root_obj, "classification-labels")) {
     options->classification_labels_path =
-        g_strdup (
-            json_object_get_string_member (root_obj, "classification-labels"));
+        g_strdup (json_object_get_string_member (root_obj,
+            "classification-labels"));
   }
 
   if (json_object_has_member (root_obj, "detection-constants")) {
     options->detection_constants =
-        g_strdup (
-            json_object_get_string_member (root_obj, "detection-constants"));
+        g_strdup (json_object_get_string_member (root_obj,
+            "detection-constants"));
+  }
+
+  if (json_object_has_member (root_obj, "classification-constants")) {
+    options->classification_constants =
+        g_strdup (json_object_get_string_member (root_obj,
+            "classification-constants"));
   }
 
   g_object_unref (parser);
@@ -1069,8 +1136,8 @@ main (gint argc, gchar * argv[])
   GstElement *pipeline = NULL;
   GOptionContext *ctx = NULL;
   const gchar *app_name = NULL;
-  GstAppOptions options = {};
-  GstAppContext appctx = {};
+  GstAppOptions options = { };
+  GstAppContext appctx = { };
   gboolean ret = FALSE;
   gchar help_description[2048];
   guint intrpt_watch_id = 0;
@@ -1084,6 +1151,7 @@ main (gint argc, gchar * argv[])
   options.detection_labels_path = NULL;
   options.classification_labels_path = NULL;
   options.detection_constants = NULL;
+  options.classification_constants = NULL;
 
   // Set Display environment variables
   setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
@@ -1107,9 +1175,8 @@ main (gint argc, gchar * argv[])
 
   if (camera_is_available) {
     snprintf (camera_description, sizeof (camera_description),
-      "  If neither input-file nor rtsp-ip-port are provided, "
-      "then camera input will be selected\n\n"
-    );
+        "  If neither input-file nor rtsp-ip-port are provided, "
+        "then camera input will be selected\n\n");
   }
 
   snprintf (help_description, 2047, "\nExample:\n"
@@ -1127,12 +1194,12 @@ main (gint argc, gchar * argv[])
       "  %s"
       "  detection-model: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path "
-      "for YOLOV5 detection model\n"
-      "      Default path for YOLOV5 model: "DEFAULT_TFLITE_YOLOV5_MODEL"\n"
+      "for YOLOV8 detection model\n"
+      "      Default path for YOLOV8 model: "DEFAULT_TFLITE_YOLOV8_MODEL"\n"
       "  detection-labels: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path "
-      " for YOLOV5 labels\n"
-      "      Default path for YOLOV5 labels: "DEFAULT_YOLOV5_LABELS"\n"
+      " for YOLOV8 labels\n"
+      "      Default path for YOLOV8 labels: "DEFAULT_DETECTION_LABELS"\n"
       "  classification-model: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path "
       "for classification model\n"
@@ -1144,8 +1211,8 @@ main (gint argc, gchar * argv[])
       "      Default path for classification labels: "
       DEFAULT_CLASSIFICATION_LABELS"\n"
       "  detection-constants: \"CONSTANTS\"\n"
-      "      Constants, offsets and coefficients for YOLOV5 TFLITE model \n"
-      "      Default constants for YOLOV5: "YOLOV5_CONSTANT"\n",
+      "      Constants, offsets and coefficients for YOLOV8 TFLITE model \n"
+      "      Default constants for YOLOV8: "YOLOV8_CONSTANT"\n",
       app_name, DEFAULT_CONFIG_FILE, camera_description);
   help_description[2047] = '\0';
 
@@ -1206,8 +1273,7 @@ main (gint argc, gchar * argv[])
 
   if ((options.camera_source && options.file_path) ||
       (options.camera_source && options.rtsp_ip_port) ||
-      (options.file_path && options.rtsp_ip_port))
-  {
+      (options.file_path && options.rtsp_ip_port)) {
     g_printerr ("Multiple sources are provided as input.\n"
         "Select only one input source\n");
     gst_app_context_free (&appctx, &options, config_file);
@@ -1222,9 +1288,8 @@ main (gint argc, gchar * argv[])
     g_print ("RTSP source is selected.\n");
     options.source_type = GST_STREAM_TYPE_RTSP;
   } else {
-  if (camera_is_available) {
-      g_print ("No source is selected. "
-          "Camera is set as Default\n");
+    if (camera_is_available) {
+      g_print ("No source is selected. " "Camera is set as Default\n");
       options.source_type = GST_STREAM_TYPE_CAMERA;
     } else {
       g_print ("User need to give proper input file as source\n");
@@ -1241,8 +1306,8 @@ main (gint argc, gchar * argv[])
     }
   }
 
-  if(options.detection_model_path == NULL) {
-    options.detection_model_path = DEFAULT_TFLITE_YOLOV5_MODEL;
+  if (options.detection_model_path == NULL) {
+    options.detection_model_path = DEFAULT_TFLITE_YOLOV8_MODEL;
   }
   if (!file_exists (options.detection_model_path)) {
     g_printerr ("Invalid detection model file path: %s\n",
@@ -1251,7 +1316,7 @@ main (gint argc, gchar * argv[])
     return -EINVAL;
   }
 
-  if(options.classification_model_path == NULL) {
+  if (options.classification_model_path == NULL) {
     options.classification_model_path = DEFAULT_TFLITE_CLASSIFICATION_MODEL;
   }
   if (!file_exists (options.classification_model_path)) {
@@ -1261,8 +1326,8 @@ main (gint argc, gchar * argv[])
     return -EINVAL;
   }
 
-  if(options.detection_labels_path == NULL) {
-    options.detection_labels_path = DEFAULT_YOLOV5_LABELS;
+  if (options.detection_labels_path == NULL) {
+    options.detection_labels_path = DEFAULT_DETECTION_LABELS;
   }
   if (!file_exists (options.detection_labels_path)) {
     g_printerr ("Invalid detection labels file path: %s\n",
@@ -1271,7 +1336,7 @@ main (gint argc, gchar * argv[])
     return -EINVAL;
   }
 
-  if(options.classification_labels_path == NULL) {
+  if (options.classification_labels_path == NULL) {
     options.classification_labels_path = DEFAULT_CLASSIFICATION_LABELS;
   }
   if (!file_exists (options.classification_labels_path)) {
@@ -1285,11 +1350,14 @@ main (gint argc, gchar * argv[])
       "For Detection model: %s labels: %s\n"
       "For Classification model: %s labels: %s\n",
       options.detection_model_path, options.detection_labels_path,
-      options.classification_model_path,
-      options.classification_labels_path);
+      options.classification_model_path, options.classification_labels_path);
 
   if (options.detection_constants == NULL) {
-    options.detection_constants = YOLOV5_CONSTANT;
+    options.detection_constants = YOLOV8_CONSTANT;
+  }
+
+  if (options.classification_constants == NULL) {
+    options.classification_constants = MOBILENETV2_CONSTANT;
   }
 
   // Initialize GST library.
