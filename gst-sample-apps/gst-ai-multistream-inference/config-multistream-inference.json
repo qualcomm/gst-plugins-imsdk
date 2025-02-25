@@ -21,7 +21,7 @@
 
     "model": "/etc/models/model-detection.tflite",
     "labels": "/etc/labels/detection.labels",
-    "constants": "YOLOv8,q-offsets=<12.0, 0.0, 0.0>, q-scales=<2.8047633171081543, 0.00390625, 1.0>;",
+    "constants": "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,q-scales=<3.0546178817749023, 0.003793874057009816, 1.0>;",
     "output-display": true,
     "use-case": 0
 }

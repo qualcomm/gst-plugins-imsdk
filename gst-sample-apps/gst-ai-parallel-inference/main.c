@@ -55,7 +55,7 @@
  * Default models path and labels path
  */
 #define DEFAULT_TFLITE_OBJECT_DETECTION_MODEL \
-    "/etc/models/YOLOv8-Detection-Quantized.tflite"
+    "/etc/models/yolov8_det_quantized.tflite"
 #define DEFAULT_OBJECT_DETECTION_LABELS "/etc/labels/yolov8.labels"
 #define DEFAULT_TFLITE_CLASSIFICATION_MODEL \
     "/etc/models/inception_v3_quantized.tflite"
@@ -79,8 +79,8 @@
  * Default settings of camera output resolution, Scaling of camera output
  * will be done in qtimlvconverter based on model input size
  */
-#define DEFAULT_CAMERA_OUTPUT_WIDTH 1920
-#define DEFAULT_CAMERA_OUTPUT_HEIGHT 1080
+#define DEFAULT_CAMERA_OUTPUT_WIDTH 1280
+#define DEFAULT_CAMERA_OUTPUT_HEIGHT 720
 #define SECONDARY_CAMERA_OUTPUT_WIDTH 1280
 #define SECONDARY_CAMERA_OUTPUT_HEIGHT 720
 #define DEFAULT_CAMERA_FRAME_RATE 30
@@ -95,13 +95,14 @@
  * Default constants to dequantize values for classification stream
  */
 #define DEFAULT_CONSTANTS_CLASSIFICATION \
-    "Mobilenet,q-offsets=<-95.0>,q-scales=<0.18740029633045197>;"
+    "Inceptionv3,q-offsets=<38.0>,q-scales=<0.17039915919303894>;"
 
 /**
  * Default constants to dequantize values for object detection stream
  */
 #define DEFAULT_CONSTANTS_OBJECT_DETECTION \
-    "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,q-scales=<3.093529462814331, 0.00390625, 1.0>;"
+    "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,\
+    q-scales=<3.0546178817749023, 0.003793874057009816, 1.0>;"
 
 /**
  * Default constants to dequantize values for pose detection stream

@@ -59,8 +59,8 @@
  */
 #define DEFAULT_INFERENCE_WIDTH 640
 #define DEFAULT_INFERENCE_HEIGHT 360
-#define DEFAULT_CAMERA_OUTPUT_WIDTH 1920
-#define DEFAULT_CAMERA_OUTPUT_HEIGHT 1080
+#define DEFAULT_CAMERA_OUTPUT_WIDTH 1280
+#define DEFAULT_CAMERA_OUTPUT_HEIGHT 720
 #define SECONDARY_CAMERA_OUTPUT_WIDTH 1280
 #define SECONDARY_CAMERA_OUTPUT_HEIGHT 720
 #define DEFAULT_CAMERA_FRAME_RATE 30
@@ -74,7 +74,7 @@
  * Default constants to dequantize values
  */
 #define DEFAULT_CONSTANTS \
-    "deeplab,q-offsets=<8.0>,q-scales=<0.0040499246679246426>;"
+    "deeplab,q-offsets=<0.0>,q-scales=<1.0>;"
 
 /**
  * Number of Queues used for buffer caching between elements

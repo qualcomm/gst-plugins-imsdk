@@ -136,14 +136,14 @@
 /**
  * Scale and Offset value for YOLOV8 for post processing
  */
-#define YOLOV8_CONSTANT \
-    "YOLOv8,q-offsets=<-107.0, -128.0, 0.0>,q-scales=<3.093529462814331, 0.00390625, 1.0>;"
+#define YOLOV8_CONSTANT "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,\
+    q-scales=<3.0546178817749023, 0.003793874057009816, 1.0>;"
 
 /**
  * Scale and Offset valu for Mobilenet for post processing
  */
 #define MOBILENETV2_CONSTANT \
-    "Mobilenet,q-offsets=<-59.0>,q-scales=<0.2386164367198944>;"
+    "Inceptionv3,q-offsets=<38.0>,q-scales=<0.17039915919303894>;"
 
 /**
  * Structure for various application specific options

@@ -65,8 +65,8 @@
  */
 #define DEFAULT_INFERENCE_WIDTH 640
 #define DEFAULT_INFERENCE_HEIGHT 360
-#define DEFAULT_CAMERA_OUTPUT_WIDTH 1920
-#define DEFAULT_CAMERA_OUTPUT_HEIGHT 1080
+#define DEFAULT_CAMERA_OUTPUT_WIDTH 1280
+#define DEFAULT_CAMERA_OUTPUT_HEIGHT 720
 #define SECONDARY_CAMERA_OUTPUT_WIDTH 1280
 #define SECONDARY_CAMERA_OUTPUT_HEIGHT 720
 #define DEFAULT_CAMERA_FRAME_RATE 30
@@ -79,9 +79,8 @@
 /**
  * Default constants to dequantize values
  */
-#define DEFAULT_CONSTANTS_YOLOV8 \
-    "YOLOv8,q-offsets=<21.0, 0.0, 0.0>, \
-    q-scales=<3.093529462814331, 0.00390625, 1.0>;"
+#define DEFAULT_CONSTANTS_YOLOV8 "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,\
+    q-scales=<3.0546178817749023, 0.003793874057009816, 1.0>;"
 
 /**
  * Default constants to dequantize values
@@ -100,8 +99,8 @@
  * Default constants to dequantize values
  */
 #define DEFAULT_CONSTANTS_YOLOV7 \
-    "YoloNas,q-offsets=<35.0, 0.0, 0.0>,q-scales=<3.42205548286438, \
-    0.0023370725102722645, 1.0>;"
+    "Yolov7,q-offsets=<30.0, 0.0, 0.0>,q-scales=<3.320857286453247, \
+    0.0037717572413384914, 1.0>;"
 
 /**
  * Number of Queues used for buffer caching between elements
