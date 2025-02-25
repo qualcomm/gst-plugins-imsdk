@@ -16,18 +16,18 @@ gi.require_version("GLib", "2.0")
 from gi.repository import Gst, GLib
 
 # Constants
-DEFAULT_TFLITE_OBJECT_DETECTION_MODEL = "/opt/YOLOv8-Detection-Quantized.tflite"
-DEFAULT_OBJECT_DETECTION_LABELS = "/opt/yolov8.labels"
-DEFAULT_TFLITE_CLASSIFICATION_MODEL = "/opt/inception_v3_quantized.tflite"
-DEFAULT_CLASSIFICATION_LABELS = "/opt/classification.labels"
-DEFAULT_TFLITE_POSE_DETECTION_MODEL = "/opt/hrnet_pose_quantized.tflite"
-DEFAULT_POSE_DETECTION_LABELS = "/opt/posenet_mobilenet_v1.labels"
-DEFAULT_TFLITE_SEGMENTATION_MODEL = "/opt/deeplabv3_plus_mobilenet_quantized.tflite"
-DEFAULT_SEGMENTATION_LABELS = "/opt/deeplabv3_resnet50.labels"
+DEFAULT_TFLITE_OBJECT_DETECTION_MODEL = "/etc/models/YOLOv8-Detection-Quantized.tflite"
+DEFAULT_OBJECT_DETECTION_LABELS = "/etc/labels/yolov8.labels"
+DEFAULT_TFLITE_CLASSIFICATION_MODEL = "/etc/models/inception_v3_quantized.tflite"
+DEFAULT_CLASSIFICATION_LABELS = "/etc/labels/classification.labels"
+DEFAULT_TFLITE_POSE_DETECTION_MODEL = "/etc/models/hrnet_pose_quantized.tflite"
+DEFAULT_POSE_DETECTION_LABELS = "/etc/labels/posenet_mobilenet_v1.labels"
+DEFAULT_TFLITE_SEGMENTATION_MODEL = "/etc/models/deeplabv3_plus_mobilenet_quantized.tflite"
+DEFAULT_SEGMENTATION_LABELS = "/etc/labels/deeplabv3_resnet50.labels"
 DELEGATE_PATH = "libQnnTFLiteDelegate.so"
 
 DEFAULT_CONSTANTS_CLASSIFICATION = "Mobilenet,q-offsets=<38.0>,\
-    q-scales=<0.15008972585201263>;"
+    q-scales=<0.17039915919303894>;"
 DEFAULT_CONSTANTS_OBJECT_DETECTION = "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,\
     q-scales=<3.093529462814331, 0.00390625, 1.0>;"
 DEFAULT_CONSTANTS_POSE_DETECTION = "Posenet,q-offsets=<8.0>,\
@@ -158,51 +158,51 @@ def create_pipeline(pipeline):
         "--rtsp", type=str, default=None,
         help="RTSP URL"
     )
-    parser.add_argument("--constants_detection", type=str,
+    parser.add_argument("--constants-detection", type=str,
         default=DEFAULT_CONSTANTS_OBJECT_DETECTION,
         help="Constants for Object detection model"
     )
-    parser.add_argument("--constants_classification", type=str,
+    parser.add_argument("--constants-classification", type=str,
         default=DEFAULT_CONSTANTS_CLASSIFICATION,
         help="Constants for Object detection model"
     )
-    parser.add_argument("--constants_pose", type=str,
+    parser.add_argument("--constants-pose", type=str,
         default=DEFAULT_CONSTANTS_POSE_DETECTION,
         help="Constants for Object detection model"
     )
-    parser.add_argument("--constants_segmentation", type=str,
+    parser.add_argument("--constants-segmentation", type=str,
         default=DEFAULT_CONSTANTS_SEGMENTATION,
         help="Constants for Object detection model"
     )
-    parser.add_argument("--tflite_object_detection_model", type=str,
+    parser.add_argument("--tflite-object-detection-model", type=str,
         default=DEFAULT_TFLITE_OBJECT_DETECTION_MODEL,
         help="Path to TfLite object detection model"
     )
-    parser.add_argument("--object_detection_labels", type=str,
+    parser.add_argument("--object-detection-labels", type=str,
         default=DEFAULT_OBJECT_DETECTION_LABELS,
         help="Path to TfLite object detection labels"
     )
-    parser.add_argument("--tflite_classification_model", type=str,
+    parser.add_argument("--tflite-classification-model", type=str,
         default=DEFAULT_TFLITE_CLASSIFICATION_MODEL,
         help="Path to TfLite classification model"
     )
-    parser.add_argument("--tflite_classification_labels", type=str,
+    parser.add_argument("--tflite-classification-labels", type=str,
         default=DEFAULT_CLASSIFICATION_LABELS,
         help="Path to TfLite classification labels"
     )
-    parser.add_argument("--tflite_pose_detection_model", type=str,
+    parser.add_argument("--tflite-pose-detection-model", type=str,
         default=DEFAULT_TFLITE_POSE_DETECTION_MODEL,
         help="Path to TfLite pose detection model"
     )
-    parser.add_argument("--tflite_pose_detection_labels", type=str,
+    parser.add_argument("--tflite-pose-detection-labels", type=str,
         default=DEFAULT_POSE_DETECTION_LABELS,
         help="Path to TfLite pose detection labels"
     )
-    parser.add_argument("--tflite_segmentation_model", type=str,
+    parser.add_argument("--tflite-segmentation-model", type=str,
         default=DEFAULT_TFLITE_SEGMENTATION_MODEL,
         help="Path to TfLite segmentation model"
     )
-    parser.add_argument("--tflite_segmentation_labels", type=str,
+    parser.add_argument("--tflite-segmentation-labels", type=str,
         default=DEFAULT_SEGMENTATION_LABELS,
         help="Path to TfLite segmentation labels"
     )
@@ -340,6 +340,10 @@ def create_pipeline(pipeline):
         # Create v4l2h264dec element for decoding the stream
         elements["v4l2h264dec"] = create_element("v4l2h264dec", "v4l2h264dec")
 
+        # Create caps for v4l2h264dec
+        elements["v4l2h264dec_caps"] = create_element(
+            "capsfilter", "v4l2h264dec_caps")
+
     elif args.rtsp:
         # Create rtspsrc for rtsp input
         elements["rtspsrc"] = create_element("rtspsrc", "rtspsrc")
@@ -352,6 +356,10 @@ def create_pipeline(pipeline):
 
         # Create v4l2h264dec element for decoding the stream
         elements["v4l2h264dec"] = create_element("v4l2h264dec", "v4l2h264dec")
+
+        # Create caps for v4l2h264dec
+        elements["v4l2h264dec_caps"] = create_element(
+            "capsfilter", "v4l2h264dec_caps")
 
     else:
         print("No input source selected, exiting...")
@@ -398,20 +406,26 @@ def create_pipeline(pipeline):
 
     # Set properties
     if args.file:
-        elements["v4l2h264dec"].set_property("capture-io-mode", 5)
-        elements["v4l2h264dec"].set_property("output-io-mode", 5)
+        elements["v4l2h264dec"].set_property("capture-io-mode", "dmabuf")
+        elements["v4l2h264dec"].set_property("output-io-mode", "dmabuf")
         elements["filesrc"].set_property("location", args.file)
+        elements["v4l2h264dec_caps"].set_property(
+            "caps", Gst.Caps.from_string("video/x-raw,format=NV12")
+        )
 
     elif args.rtsp:
-        elements["v4l2h264dec"].set_property("capture-io-mode", 5)
-        elements["v4l2h264dec"].set_property("output-io-mode", 5)
+        elements["v4l2h264dec"].set_property("capture-io-mode", "dmabuf")
+        elements["v4l2h264dec"].set_property("output-io-mode", "dmabuf")
         elements["rtspsrc"].set_property("location", args.rtsp)
+        elements["v4l2h264dec_caps"].set_property(
+            "caps", Gst.Caps.from_string("video/x-raw,format=NV12")
+        )
 
     elif args.camera:
         elements["qmmfsrc_caps"].set_property(
             "caps", Gst.Caps.from_string(
-                "video/x-raw(memory:GBM),format=NV12,width=1920,height=1080,"
-                "framerate=30/1,compression=ubwc"
+                "video/x-raw,format=NV12,width=1920,height=1080,"
+                "framerate=30/1"
             )
         )
 
@@ -503,14 +517,15 @@ def create_pipeline(pipeline):
     elif args.file:
         link_orders+= [
             [
-                "filesrc", "qtdemux", "queue0", "h264parse", "v4l2h264dec", "tee"
+                "filesrc", "qtdemux", "queue0", "h264parse",
+                "v4l2h264dec", "v4l2h264dec_caps", "tee"
             ],
         ]
     elif args.rtsp:
         link_orders+= [
             [
-                "rtspsrc", "queue0", "rtph264depay",
-                "h264parse", "v4l2h264dec", "tee",
+                "rtspsrc", "queue0", "rtph264depay", "h264parse"
+                "v4l2h264dec", "v4l2h264dec_caps", "tee",
             ],
         ]
     else:
