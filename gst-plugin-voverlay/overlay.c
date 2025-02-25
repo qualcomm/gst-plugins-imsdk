@@ -71,7 +71,8 @@ G_DEFINE_TYPE (GstVOverlay, gst_overlay, GST_TYPE_BASE_TRANSFORM);
 #define DEFAULT_MIN_BUFFERS         1
 #define DEFAULT_MAX_BUFFERS         30
 
-#define MAX_TEXT_LENGTH             48
+#define MAX_LABEL_LENGTH            48
+#define LABEL_FONTSIZE              24
 
 enum
 {
@@ -597,64 +598,48 @@ gst_overlay_create_pool (GstVOverlay * overlay, GstCaps * caps)
 
 static gboolean
 gst_overlay_handle_classification_entry (GstVOverlay * overlay,
-    GstVideoBlit * blit, GArray * labels)
+    GstVideoBlit * blit, GstClassLabel * label)
 {
   cairo_surface_t *surface = NULL;
   cairo_t *context = NULL;
-  GstVideoFrame *vframe = NULL;
-  gchar text[MAX_TEXT_LENGTH] = { 0, };
+  gchar text[MAX_LABEL_LENGTH] = { 0, };
   GstVideoRectangle *source = NULL, *destination = NULL;
-  gdouble x = 1.0, y = 1.0, fontsize = 24.0;
-  guint num = 0, length = 0, maxlength = 0, color = 0xFFFFFFFF;
+  gdouble x = 1.0, y = 1.0, fontsize = LABEL_FONTSIZE;
+  guint length = 0, color = 0xFFFFFFFF;
   gboolean success = TRUE;
 
   success = gst_cairo_draw_setup (blit->frame, &surface, &context);
   g_return_val_if_fail (success, FALSE);
 
-  vframe = blit->frame;
   source = &(blit->source);
   destination = &(blit->destination);
 
   destination->w = source->w;
   destination->h = source->h;
 
-  if ((labels == NULL) || (labels->len == 0))
-    return TRUE;
+  length = g_snprintf (text, MAX_LABEL_LENGTH, "%s",
+      g_quark_to_string (label->name));
 
-  for (num = 0; num < labels->len; num++, y += fontsize) {
-    GstClassLabel *label = &(g_array_index (labels, GstClassLabel, num));
+  color = label->color;
 
-    if (y > GST_VIDEO_FRAME_HEIGHT (vframe))
-      break;
+  GST_TRACE_OBJECT (overlay, "Label: %s, Color: 0x%X, Position: [%.2f %.2f],"
+      " Fontsize: %.2f", text, color, x, y, fontsize);
 
-    length = g_snprintf (text, MAX_TEXT_LENGTH, "%s",
-        g_quark_to_string (label->name));
+  cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
+      EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
+      EXTRACT_FLOAT_ALPHA_COLOR (color));
+  cairo_paint (context);
 
-    if (length > maxlength)
-      maxlength = length;
+  // Choose the best contrasting color to the background.
+  color = EXTRACT_ALPHA_COLOR (color);
+  color += ((EXTRACT_RED_COLOR (label->color) > 0x7F) ? 0x00 : 0xFF) << 8;
+  color += ((EXTRACT_GREEN_COLOR (label->color) > 0x7F) ? 0x00 : 0xFF) << 16;
+  color += ((EXTRACT_BLUE_COLOR (label->color) > 0x7F) ? 0x00 : 0xFF) << 24;
 
-    color = label->color;
-
-    GST_TRACE_OBJECT (overlay, "Label: %s, Color: 0x%X, Position: [%.2f %.2f],"
-        " Fontsize: %.2f", text, color, x, y, fontsize);
-
-    cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
-        EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
-        EXTRACT_FLOAT_ALPHA_COLOR (color));
-    cairo_paint (context);
-
-    // Choose the best contrasting color to the background.
-    color = EXTRACT_ALPHA_COLOR (color);
-    color += ((EXTRACT_RED_COLOR (label->color) > 0x7F) ? 0x00 : 0xFF) << 8;
-    color += ((EXTRACT_GREEN_COLOR (label->color) > 0x7F) ? 0x00 : 0xFF) << 16;
-    color += ((EXTRACT_BLUE_COLOR (label->color) > 0x7F) ? 0x00 : 0xFF) << 24;
-
-    success &= gst_cairo_draw_text (context, color, x, y, text, fontsize);
-  }
+  success = gst_cairo_draw_text (context, color, x, y, text, fontsize);
 
   // Update the source and destination with the actual text dimensions.
-  destination->w = source->w = ceil (maxlength * fontsize * 3.0F / 5.0F);
-  destination->h = source->h = ceil (num * fontsize);
+  destination->w = source->w = ceil (length * fontsize * 3.0F / 5.0F);
 
   // The default value is for 1080p resolution, scale up/down based on that.
   destination->w *= (GST_VIDEO_INFO_HEIGHT (overlay->vinfo) / 1080.0F);
@@ -825,12 +810,13 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, GstVideoBlit * blit,
     id = gst_structure_get_name_id (param);
 
     if (id == g_quark_from_static_string ("ImageClassification")) {
-      GArray *labels = NULL;
+      GArray *labels = g_value_get_boxed (gst_structure_get_value (param, "labels"));
 
-      labels = g_value_get_boxed (gst_structure_get_value (param, "labels"));
-      success &= gst_overlay_handle_classification_entry (overlay, auxblit, labels);
-
-      haslabel = ((labels != NULL) && (labels->len > 0)) ? TRUE : FALSE;
+      if ((labels != NULL) && (labels->len > 0)) {
+        GstClassLabel *label = &(g_array_index (labels, GstClassLabel, 0));
+        success &= gst_overlay_handle_classification_entry (overlay, auxblit, label);
+        haslabel = TRUE;
+      }
     } else if (id == g_quark_from_static_string ("VideoLandmarks")) {
       GArray *keypoints = NULL, *links = NULL;
 
@@ -894,20 +880,13 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   }
 
   if (!haslabel) {
-    // TODO: Optimize!
-    GArray *labels = g_array_sized_new (FALSE, TRUE, sizeof (GstClassLabel), 1);
-    GstClassLabel *label = NULL;
+    GstClassLabel label = { 0, };
 
-    g_array_set_size (labels, 1);
-    label = &(g_array_index (labels, GstClassLabel, 0));
+    label.name = roimeta->roi_type;
+    label.color = color;
+    gst_structure_get_double (objparam, "confidence", &(label.confidence));
 
-    label->name = roimeta->roi_type;
-    label->color = color;
-
-    gst_structure_get_double (objparam, "confidence", &(label->confidence));
-
-    success &= gst_overlay_handle_classification_entry (overlay, auxblit, labels);
-    g_array_free (labels, TRUE);
+    success &= gst_overlay_handle_classification_entry (overlay, auxblit, &label);
   }
 
   source = &(auxblit->source);
@@ -1362,13 +1341,26 @@ gst_overlay_draw_metadata_entries (GstVOverlay * overlay,
       }
       case GST_OVERLAY_TYPE_CLASSIFICATION:
       {
-        GstVideoBlit *blit = &(composition->blits[(*index)]);
         GArray *labels = GST_VIDEO_CLASSIFICATION_META_CAST (meta)->labels;
+        guint num = 0, offset = 0;
 
-        success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
-        g_return_val_if_fail (success, FALSE);
+        for (num = 0; (labels != NULL) && (num < labels->len); num++) {
+          GstVideoBlit *blit = &(composition->blits[(*index) + num]);
+          GstClassLabel *label = &(g_array_index (labels, GstClassLabel, num));
 
-        success = gst_overlay_handle_classification_entry (overlay, blit, labels);
+          success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
+          g_return_val_if_fail (success, FALSE);
+
+          // Set Y axis offset due to the multiple labels.
+          blit->destination.y = offset;
+
+          success &= gst_overlay_handle_classification_entry (overlay, blit, label);
+
+          // Increase the Y axis offset for the next label blit.
+          offset += blit->destination.h;
+        }
+
+        n_blits = (labels != NULL) ? labels->len : 0;
         break;
       }
       case GST_OVERLAY_TYPE_POSE_ESTIMATION:
@@ -1645,18 +1637,26 @@ gst_overlay_draw_ovelay_blits (GstVOverlay * overlay,
     GstVideoComposition * composition)
 {
   GstBuffer *outbuffer = composition->frame->buffer;
+  GstMeta *meta = NULL;
+  gpointer state = NULL;
   guint index = 0;
   gboolean success = TRUE;
 
   // Add the total number of meta entries that needs to be processed.
+  // Allocate 2 blits for ROI meta, 1for boundig box and 1 for label.
   composition->n_blits = 2 * gst_buffer_get_n_meta (outbuffer,
       GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE);
-  composition->n_blits += gst_buffer_get_n_meta (outbuffer,
-      GST_VIDEO_CLASSIFICATION_META_API_TYPE);
   composition->n_blits += gst_buffer_get_n_meta (outbuffer,
       GST_VIDEO_LANDMARKS_META_API_TYPE);
   composition->n_blits += gst_buffer_get_n_meta (outbuffer,
       GST_CV_OPTCLFLOW_META_API_TYPE);
+
+  // For classification the number of blits depend on the number of labels.
+  while ((meta = gst_buffer_iterate_meta_filtered (outbuffer, &state,
+              GST_VIDEO_CLASSIFICATION_META_API_TYPE)) != NULL) {
+    GstVideoClassificationMeta *classmeta = GST_VIDEO_CLASSIFICATION_META_CAST (meta);
+    composition->n_blits += (classmeta->labels != NULL) ? classmeta->labels->len : 0;
+  }
 
   GST_OVERLAY_LOCK (overlay);
 
@@ -1676,7 +1676,6 @@ gst_overlay_draw_ovelay_blits (GstVOverlay * overlay,
 
   // Iterate over the buffer meta and process the supported entries.
   success = gst_overlay_draw_metadata_entries (overlay, composition, &index);
-
   if (!success) {
     GST_ERROR_OBJECT (overlay, "Failed to process metatada blits!");
     goto cleanup;
@@ -1684,7 +1683,6 @@ gst_overlay_draw_ovelay_blits (GstVOverlay * overlay,
 
   // Process manually set bounding boxes.
   success = gst_overlay_draw_bbox_entries (overlay, composition, &index);
-
   if (!success) {
     GST_ERROR_OBJECT (overlay, "Failed to process bbox blits!");
     goto cleanup;
@@ -1692,7 +1690,6 @@ gst_overlay_draw_ovelay_blits (GstVOverlay * overlay,
 
   // Process manually set timestamps.
   success = gst_overlay_draw_timestamp_entries (overlay, composition, &index);
-
   if (!success) {
     GST_ERROR_OBJECT (overlay, "Failed to process timestamps blits!");
     goto cleanup;
@@ -1700,7 +1697,6 @@ gst_overlay_draw_ovelay_blits (GstVOverlay * overlay,
 
   // Process manually set strings.
   success = gst_overlay_draw_string_entries (overlay, composition, &index);
-
   if (!success) {
     GST_ERROR_OBJECT (overlay, "Failed to process strings blits!");
     goto cleanup;
@@ -1708,7 +1704,6 @@ gst_overlay_draw_ovelay_blits (GstVOverlay * overlay,
 
   // Process manually set privacy masks.
   success = gst_overlay_draw_mask_entries (overlay, composition, &index);
-
   if (!success) {
     GST_ERROR_OBJECT (overlay, "Failed to process masks blits!");
     goto cleanup;
@@ -1716,7 +1711,6 @@ gst_overlay_draw_ovelay_blits (GstVOverlay * overlay,
 
   // Process manually set static images.
   success = gst_overlay_draw_static_image_entries (overlay, composition, &index);
-
   if (!success) {
     GST_ERROR_OBJECT (overlay, "Failed to process static image blits!");
     goto cleanup;
@@ -1839,9 +1833,9 @@ gst_overlay_set_caps (GstBaseTransform * base, GstCaps * incaps,
       width = GST_ROUND_UP_128 (MAX (width / 6, 256));
       height = GST_ROUND_UP_4 (width / 4);
     } else if (ovltype == GST_OVERLAY_TYPE_CLASSIFICATION) {
-      // For classification overlay resolution with aspect ratio 32:10 is optimal.
-      width = GST_ROUND_UP_128 (MAX (width / 6, 512));
-      height = GST_ROUND_UP_4 ((width * 10) / 32);
+      // For classification overlay resolution based on max characters.
+      width = GST_ROUND_UP_128 ((MAX_LABEL_LENGTH * LABEL_FONTSIZE * 3) / 5);
+      height = GST_ROUND_UP_4 (LABEL_FONTSIZE);
     } else if (ovltype == GST_OVERLAY_TYPE_OPTCLFLOW) {
       // For optical flow a 4 times lower resolution seems to be optimal.
       gst_recalculate_dimensions (&width, &height, num, denum, 2);
