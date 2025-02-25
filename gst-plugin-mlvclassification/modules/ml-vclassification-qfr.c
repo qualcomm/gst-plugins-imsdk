@@ -24,7 +24,7 @@
 
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
-    "type = (string) { FLOAT32 }, " \
+    "type = (string) { UINT8, FLOAT32 }, " \
     "dimensions = (int) < <1, 512>, <1, 32>, <1, 2>, <1, 2>, <1, 2>, <1, 2> > "
 
 // Module caps instance
