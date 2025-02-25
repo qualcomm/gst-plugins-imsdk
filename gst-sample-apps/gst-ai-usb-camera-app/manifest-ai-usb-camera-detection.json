@@ -1,0 +1,24 @@
+{
+  "Version": "1.0",
+  "ApplicationName": "gst-ai-usb-camera-detection",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "AIModelsNeededByApplication": [
+    {
+      "ModelName": "yolov8_det_quantized.tflite",
+      "ModelLabelDownloadURL": "",
+      "LabelFile": "detection.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
+    }
+  ],
+  "AIModelsSupportedByApplication": [],
+  "AIModelLocation": "/etc/models/",
+  "AILabelLocation": "/etc/labels/",
+  "ConfigFile": "config_daisychain_detection_classification.json",
+  "ConfigFileLocation": "/etc/configs/",
+  "ApplicationKeyWords": [
+    "ObjectDetection",
+    "Detection"
+  ],
+  "ApplicationTextDescription": "This application is designed to enables you to detect objects within images and videos. The use cases show the execution of YOLOv5, YOLOv8, and YOLO-NAS on Qualcomm AI HW accelerator"
+}

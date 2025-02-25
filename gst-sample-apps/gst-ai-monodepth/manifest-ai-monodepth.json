@@ -1,0 +1,25 @@
+{
+  "Version": "1.0",
+  "ApplicationName": "gst-ai-monodepth",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "AIModelsNeededByApplication": [
+    {
+      "ModelName": "Midas-V2-Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Midas-V2-Quantized/resolve/main/Midas-V2-Quantized.tflite",
+      "LabelFile": "monodepth.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/monodepth.labels"
+    }
+  ],
+  "AIModelsSupportedByApplication": [],
+  "AIModelLocation": "/etc/models/",
+  "AILabelLocation": "/etc/labels/",
+  "ConfigFile": "config_monodepth.json",
+  "ConfigFileLocation": "/etc/configs/",
+  "ApplicationKeyWords": [
+    "DepthEstimation",
+    "MidasV2",
+    "Monodepth"
+  ],
+  "ApplicationTextDescription": "This application is designed to enables you to infer depth of a source feed from a live camera stream, file, or an RTSP stream."
+}

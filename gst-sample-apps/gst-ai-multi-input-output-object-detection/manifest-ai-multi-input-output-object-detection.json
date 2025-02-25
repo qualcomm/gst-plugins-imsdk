@@ -1,0 +1,24 @@
+{
+  "Version": "1.0",
+  "ApplicationName": "gst-ai-multi-input-output-object-detection",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "AIModelsNeededByApplication": [
+    {
+      "ModelName": "yolov5.tflite",
+      "ModelLabelDownloadURL": "",
+      "LabelFile": "detection.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
+    }
+  ],
+  "AIModelsSupportedByApplication": [],
+  "AIModelLocation": "/etc/models/",
+  "AILabelLocation": "/etc/labels/",
+  "ConfigFile": "",
+  "ConfigFileLocation": "",
+  "ApplicationKeyWords": [
+    "MultiInputOuputObjectDetection",
+    "MultiInputOutputInferencing"
+  ],
+  "ApplicationTextDescription": "This application demonstrates object detection over multiple input/output stream combinations. Input streams can come from camera/file/rtsp and output can be display or file or rtsp"
+}
