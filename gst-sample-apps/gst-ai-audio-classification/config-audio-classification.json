@@ -1,0 +1,8 @@
+{
+    "file-path": "/etc/media/video.mp4",
+    "model": "/etc/models/yamnet.tflite",
+    "labels": "/etc/labels/yamnet.labels",
+    "threshold": 10,
+    "codec": "mp3",
+    "runtime": "gpu"
+}
