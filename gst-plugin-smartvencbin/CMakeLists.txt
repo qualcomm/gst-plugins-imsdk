@@ -50,6 +50,7 @@ target_link_libraries(${GST_SMART_VENC_BIN} PRIVATE
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
   ${GST_PBUTILS_LIBRARIES}
+  gstqtivideobase
 )
 
 install(
