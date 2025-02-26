@@ -35,11 +35,19 @@
 
 #include <stdbool.h>
 #include <string.h>
-
 #include <dlfcn.h>
 #include <fcntl.h>
-#include <gbm.h>
 #include <unistd.h>
+
+#include <gbm.h>
+
+// Function pointers for the Adreno Utils library.
+typedef unsigned int (*get_gpu_pixel_alignment)(void);
+
+// Function pointers for the GBM library.
+typedef struct gbm_device* (*gbm_create_device_func)(int fd);
+typedef void (*gbm_device_destroy_func)(struct gbm_device *device);
+typedef const char* (*gbm_device_get_backend_name_func)(struct gbm_device *device);
 
 //TODO: Workaround due to Adreno not exporting the formats.
 typedef enum {
@@ -83,9 +91,6 @@ typedef enum {
   ADRENO_PIXELFORMAT_TP10 = 654,      // YUV 4:2:0 planar 10 bits/comp (2 planes)
 } ADRENOPIXELFORMAT;
 
-typedef struct gbm_device* (*gbm_create_device_func)(int fd);
-typedef void (*gbm_device_destroy_func)(struct gbm_device *device);
-typedef const char* (*gbm_device_get_backend_name_func)(struct gbm_device *device);
 typedef void (*adreno_utils_compute_alignment)(int width, int height, int plane_id,
     ADRENOPIXELFORMAT format, int num_samples, int tile_mode, int raster_mode,
     int padding_threshold, int *stride, int *scanline);
@@ -144,39 +149,43 @@ load_symbol (gpointer* method, gpointer handle, const gchar* name)
   return TRUE;
 }
 
-gboolean
-gst_adreno_utils_compute_alignment (guint width, guint height,
-    GstVideoFormat format, gint *stride, gint *scanline)
+static gint
+gst_adreno_get_pixel_alignment ()
 {
+  static GMutex mutex;
+  static gint alignment = 0;
   void *handle = NULL;
-  adreno_utils_compute_alignment compute_alignment = NULL;
-  ADRENOPIXELFORMAT gpu_pixel_format = ADRENO_PIXELFORMAT_UNKNOWN;
+  get_gpu_pixel_alignment GetGpuPixelAlignment = NULL;
   gboolean success = FALSE;
 
-  gpu_pixel_format = gst_video_format_to_pixel_format (format);
-  if (gpu_pixel_format == ADRENO_PIXELFORMAT_UNKNOWN) {
-    GST_ERROR("Gpu pixel format is unknown");
-    return FALSE;
+  g_mutex_lock (&mutex);
+
+  // Alignment has already been set, just return its value.
+  if (alignment != 0) {
+    g_mutex_unlock (&mutex);
+    return alignment;
   }
 
-  handle = dlopen ("libadreno_utils.so", RTLD_NOW);
-  if (handle == NULL) {
-    GST_ERROR("Failed to load Adreno utils lib, error: %s", dlerror());
-    return FALSE;
+  if ((handle = dlopen ("libadreno_utils.so", RTLD_NOW)) == NULL) {
+    GST_ERROR ("Failed to load Adreno utils lib, error: %s", dlerror());
+    return -1;
   }
 
-  success = load_symbol ((gpointer*)&compute_alignment, handle,
-      "compute_fmt_aligned_width_and_height");
+  success = load_symbol ((gpointer*)&GetGpuPixelAlignment, handle,
+      "get_gpu_pixel_alignment");
   if (success == FALSE) {
-    GST_ERROR("Failed to load Adreno utils symbol, error: %s", dlerror());
     dlclose (handle);
-    return FALSE;
+    return -1;
   }
 
-  compute_alignment (width, height, 0 , gpu_pixel_format, 1,
-      0, 0, 512, stride, scanline);
+  // Fetch the GPU Pixel Alignment.
+  alignment = GetGpuPixelAlignment();
+
+  // Close the library as it is no longer needed.
   dlclose (handle);
-  return TRUE;
+
+  g_mutex_unlock (&mutex);
+  return alignment;
 }
 
 gboolean
@@ -238,6 +247,64 @@ gst_gbm_qcom_backend_is_supported (void)
   }
 
   return supported;
+}
+
+gboolean
+gst_adreno_utils_compute_alignment (guint width, guint height,
+    GstVideoFormat format, gint *stride, gint *scanline)
+{
+  void *handle = NULL;
+  adreno_utils_compute_alignment compute_alignment = NULL;
+  ADRENOPIXELFORMAT gpu_pixel_format = ADRENO_PIXELFORMAT_UNKNOWN;
+  gboolean success = FALSE;
+
+  gpu_pixel_format = gst_video_format_to_pixel_format (format);
+  if (gpu_pixel_format == ADRENO_PIXELFORMAT_UNKNOWN) {
+    GST_ERROR("Gpu pixel format is unknown");
+    return FALSE;
+  }
+
+  handle = dlopen ("libadreno_utils.so", RTLD_NOW);
+  if (handle == NULL) {
+    GST_ERROR("Failed to load Adreno utils lib, error: %s", dlerror());
+    return FALSE;
+  }
+
+  success = load_symbol ((gpointer*)&compute_alignment, handle,
+      "compute_fmt_aligned_width_and_height");
+  if (success == FALSE) {
+    GST_ERROR("Failed to load Adreno utils symbol, error: %s", dlerror());
+    dlclose (handle);
+    return FALSE;
+  }
+
+  compute_alignment (width, height, 0 , gpu_pixel_format, 1,
+      0, 0, 512, stride, scanline);
+  dlclose (handle);
+  return TRUE;
+}
+
+gboolean
+gst_video_retrieve_gpu_alignment (GstVideoInfo * info, GstVideoAlignment * align)
+{
+  const GstVideoFormatInfo *vfinfo = info->finfo;
+  guint num = 0;
+
+  for (num = 0; num < GST_VIDEO_INFO_N_PLANES (info); num++) {
+    gint alignment = gst_adreno_get_pixel_alignment ();
+    gint comp[GST_VIDEO_MAX_COMPONENTS] = { 0, };
+
+    if (alignment == -1)
+      return FALSE;
+
+    gst_video_format_info_component (vfinfo, num, comp);
+    alignment = GST_VIDEO_FORMAT_INFO_SCALE_WIDTH (vfinfo, comp[0], alignment);
+    alignment *= GST_VIDEO_FORMAT_INFO_PSTRIDE (vfinfo, comp[0]);
+
+    align->stride_align[num] = alignment - 1;
+  }
+
+  return gst_video_info_align (info, align);
 }
 
 GstVideoAlignment
