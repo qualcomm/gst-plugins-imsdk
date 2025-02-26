@@ -46,6 +46,18 @@ gst_adreno_utils_compute_alignment(guint width, guint height,
                                    gint * scanline);
 
 /**
+ * gst_video_retrieve_gpu_alignment:
+ * @info: #GstVideoInfo structure which will be adjusted with the alignment.
+ * @align: #GstVideoAlignment structure which will populated.
+ *
+ * Helper function for retrieving the alignment requirements of the GPU.
+ *
+ * return: TRUE if supported or FALSE if not supported
+ */
+GST_VIDEO_API gboolean
+gst_video_retrieve_gpu_alignment (GstVideoInfo * info, GstVideoAlignment * align);
+
+/**
  * gst_video_calculate_common_alignment:
  *
  * Helper function for calculating the commmon alignment between two video
