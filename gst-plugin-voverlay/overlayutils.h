@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -265,9 +265,6 @@ gst_overlay_string_free (GstOverlayString * string);
 
 void
 gst_overlay_image_free (GstOverlayImage * simage);
-
-guint
-gst_meta_overlay_type (GstMeta * meta);
 
 gboolean
 gst_extract_bboxes (const GValue * value, GArray * bboxes);

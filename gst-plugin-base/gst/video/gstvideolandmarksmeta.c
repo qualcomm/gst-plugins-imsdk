@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -12,6 +12,7 @@ gst_video_landmarks_meta_init (GstMeta * meta, gpointer params,
   GstVideoLandmarksMeta *vlmeta = GST_VIDEO_LANDMARKS_META_CAST (meta);
 
   vlmeta->id = 0;
+  vlmeta->parent_id = -1;
 
   vlmeta->confidence = 0.0;
   vlmeta->keypoints = NULL;
@@ -62,6 +63,7 @@ gst_video_landmarks_meta_transform (GstBuffer * transbuffer, GstMeta * meta,
   }
 
   dmeta->id = smeta->id;
+  dmeta->parent_id = smeta->parent_id;
 
   if (smeta->xtraparams != NULL)
     dmeta->xtraparams = gst_structure_copy (smeta->xtraparams);
@@ -156,4 +158,60 @@ gst_buffer_get_video_landmarks_meta_id (GstBuffer * buffer, guint id)
     }
   }
   return NULL;
+}
+
+GList *
+gst_buffer_get_video_landmarks_metas_parent_id (GstBuffer * buffer,
+    const gint parent_id)
+{
+  GList *metalist = NULL;
+  gpointer state = NULL;
+  GstMeta *meta = NULL;
+
+  while ((meta = gst_buffer_iterate_meta (buffer, &state))) {
+    if (meta->info->api != GST_VIDEO_LANDMARKS_META_API_TYPE)
+      continue;
+
+    if (GST_VIDEO_LANDMARKS_META_CAST (meta)->parent_id == parent_id)
+      metalist = g_list_prepend (metalist, meta);
+  }
+  return metalist;
+}
+
+GstVideoLandmarksMeta *
+gst_buffer_copy_video_landmarks_meta (GstBuffer * buffer,
+    GstVideoLandmarksMeta * meta)
+{
+  GstVideoLandmarksMeta *newmeta = NULL;
+
+  newmeta = gst_buffer_add_video_landmarks_meta (buffer, meta->confidence,
+      g_array_copy (meta->keypoints), g_array_copy (meta->links));
+
+  newmeta->id = meta->id;
+  newmeta->parent_id = meta->parent_id;
+
+  if (meta->xtraparams != NULL)
+    newmeta->xtraparams = gst_structure_copy (meta->xtraparams);
+
+  return newmeta;
+}
+
+void
+gst_video_landmarks_coordinates_correction (GstVideoLandmarksMeta * meta,
+    GstVideoRectangle * source, GstVideoRectangle * destination)
+{
+  GstVideoKeypoint *kp = NULL;
+  gdouble w_scale = 0.0, h_scale = 0.0;
+  guint idx = 0;
+
+  gst_util_fraction_to_double (destination->w, source->w, &w_scale);
+  gst_util_fraction_to_double (destination->h, source->h, &h_scale);
+
+  // Correct the X and Y of each keypoint bases on the regions.
+  for (idx = 0; idx < meta->keypoints->len; idx++) {
+    kp = &(g_array_index (meta->keypoints, GstVideoKeypoint, idx));
+
+    kp->x = ((kp->x - source->x) * w_scale) + destination->x;
+    kp->y = ((kp->y - source->y) * h_scale) + destination->y;
+  }
 }

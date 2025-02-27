@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -69,23 +69,23 @@ typedef gboolean  (*GstParserModuleConfigure) (gpointer submodule,
 /**
  * GstParserModuleProcess:
  * @submodule: Pointer to the private parser module instance.
- * @inbuffer: GstBuffer containing ml metadata.
- * @output: String containing json format parsed metadata.
+ * @inbuffer: #GstBuffer containing ml metadata.
+ * @outbuffer: #GstBuffer containing parsed metadata in string format.
  *
  * Parses incoming buffer containing ml metadata and converts that
- * information into a json format string.
+ * information into a string format.
  *
  * Parser module must implement function called 'gst_parser_module_process'
  * with the same arguments.
  *
- * The type of the 'output' argument is plugin specific. Refer to the plugin
+ * The type of the 'outbuffer' argument is plugin specific. Refer to the plugin
  * module header for detailed information.
  *
  * return: TRUE on success or FALSE on failure
  */
 typedef gboolean  (*GstParserModuleProcess) (gpointer submodule,
                                              GstBuffer * inbuffer,
-                                             gchar ** output);
+                                             GstBuffer * outbuffer);
 
 /**
  * gst_parser_module_new:
@@ -139,18 +139,18 @@ gst_parser_module_set_opts (GstParserModule * module, GstStructure * options);
 /**
  * gst_parser_module_execute:
  * @module: Pointer to the private parser module instance.
- * @inbuffer: GstBuffer containing ml metadata.
- * @output: String containing json format parsed metadata.
+ * @inbuffer: #GstBuffer containing ml metadata.
+ * @outbuffer: #GstBuffer containing parsed metadata in string format.
  *
  * Convenient wrapper function used on plugin level to call the submodule
- * 'gst_parser_module_process' API in order to process input metadata and produce
- * json format output.
+ * 'gst_parser_module_process' API in order to process input metadata and
+ * produce string format output.
  *
  * return: TRUE on success or FALSE on failure
  */
 GST_API gboolean
 gst_parser_module_execute  (GstParserModule * module, GstBuffer * inbuffer,
-                            gchar ** output);
+                            GstBuffer * outbuffer);
 
 /**
  * gst_parser_enumarate_modules:
