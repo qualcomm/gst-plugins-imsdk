@@ -17,10 +17,11 @@ from gi.repository import Gst, GLib
 
 # Constants
 DESCRIPTION = """
-This app sets up GStreamer pipeline to carry out Object Detection,
-Classification, Segmentation and Pose Detection on live stream.
-Initializes and links elements for reading, performing inference
-using MODEL and LABELS files, and rendering video on display.
+This app sets up GStreamer pipeline to perform daisychain of
+Object detection and Pose estimation on input coming from
+camera, file and rtsp stream.
+The pipeline reads input, performs inference and displays
+output with preview on wayland display.
 """
 DEFAULT_TFLITE_YOLOV8_MODEL = "/etc/models/YOLOv8-Detection-Quantized.tflite"
 DEFAULT_YOLOV8_LABELS = "/etc/labels/yolov8.labels"
@@ -177,6 +178,7 @@ def create_pipeline(pipeline):
     if not args.camera and args.file is None and args.rtsp is None:
         args.camera = True
 
+    # Check if file is present in case of file input
     if args.file:
         if not os.path.exists(args.file):
             print(f"Input file {args.file} does not exist")

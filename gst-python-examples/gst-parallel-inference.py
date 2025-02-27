@@ -499,7 +499,7 @@ def create_pipeline(pipeline):
     elif args.rtsp:
         link_orders+= [
             [
-                "rtspsrc", "queue0", "rtph264depay", "h264parse"
+                "rtspsrc", "queue0", "rtph264depay", "h264parse",
                 "v4l2h264dec", "v4l2h264dec_caps", "tee",
             ],
         ]
