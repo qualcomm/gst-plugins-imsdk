@@ -528,9 +528,9 @@ streams_usecase (GstAppContext * appctx)
   // State transition for PLAYING state to READY
   // After that we can add a number of streams using one configure streams
   gst_element_send_event (appctx->pipeline, gst_event_new_eos ());
-  g_print ("Set pipeline to GST_STATE_READY state\n");
+  g_print ("Set pipeline to GST_STATE_PAUSED state\n");
   if (GST_STATE_CHANGE_ASYNC ==
-      gst_element_set_state (appctx->pipeline, GST_STATE_READY)) {
+      gst_element_set_state (appctx->pipeline, GST_STATE_PAUSED)) {
     wait_for_state_change (appctx);
   }
 
