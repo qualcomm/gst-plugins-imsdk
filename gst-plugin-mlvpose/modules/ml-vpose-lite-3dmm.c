@@ -405,11 +405,11 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   // The rotational angles along the 3 axis in radians.
   // TODO: What are those coefficients ??
   roll = gst_ml_tensor_extract_value (mltype, vertices, n_vertices - 5,
-      submodule->qoffsets[1], submodule->qscales[1]) * 1.5708F;
+      submodule->qoffsets[1], submodule->qscales[1]) * M_PI / 2;
   yaw = gst_ml_tensor_extract_value (mltype, vertices, n_vertices - 6,
-      submodule->qoffsets[1], submodule->qscales[1]) * 1.5708F;
+      submodule->qoffsets[1], submodule->qscales[1]) * M_PI / 2;
   pitch = (gst_ml_tensor_extract_value (mltype, vertices, n_vertices - 7,
-      submodule->qoffsets[1], submodule->qscales[1]) * 1.5708F) + M_PI;
+      submodule->qoffsets[1], submodule->qscales[1]) * M_PI / 2) + M_PI;
 
   GST_LOG ("Roll[%f] Yaw[%f] Pitch[%f]", roll, yaw, pitch);
 
@@ -520,6 +520,9 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     GST_TRACE ("Keypoint: %u [%f x %f], confidence %f", idx / 2, kp->x, kp->y,
         kp->confidence);
   }
+
+  entry->xtraparams = gst_structure_new ("ExtraParams", "roll", G_TYPE_FLOAT,
+      roll, "yaw", G_TYPE_FLOAT, yaw, "pitch", G_TYPE_FLOAT, pitch, NULL);
 
   return TRUE;
 }
