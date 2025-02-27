@@ -609,6 +609,15 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
       g_value_unset (&value);
       g_value_init (&value, GST_TYPE_STRUCTURE);
 
+      if (entry->xtraparams != NULL) {
+        GstStructure *xtraparams = g_steal_pointer (&(entry->xtraparams));
+
+        g_value_take_boxed (&value, xtraparams);
+        gst_structure_set_value (structure, "xtraparams", &value);
+
+        g_value_reset (&value);
+      }
+
       g_value_take_boxed (&value, structure);
       gst_value_array_append_value (&poses, &value);
       g_value_unset (&value);
@@ -1321,7 +1330,7 @@ gst_ml_video_pose_init (GstMLVideoPose * vpose)
 
   vpose->stage_id = 0;
 
-  vpose->predictions = g_array_new (FALSE, FALSE, sizeof (GstMLPosePrediction));
+  vpose->predictions = g_array_new (FALSE, TRUE, sizeof (GstMLPosePrediction));
   g_return_if_fail (vpose->predictions != NULL);
 
   g_array_set_clear_func (vpose->predictions,

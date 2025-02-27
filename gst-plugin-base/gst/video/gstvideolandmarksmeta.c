@@ -16,6 +16,7 @@ gst_video_landmarks_meta_init (GstMeta * meta, gpointer params,
   vlmeta->confidence = 0.0;
   vlmeta->keypoints = NULL;
   vlmeta->links = NULL;
+  vlmeta->xtraparams = NULL;
 
   return TRUE;
 }
@@ -29,6 +30,9 @@ gst_video_landmarks_meta_free (GstMeta * meta, GstBuffer * buffer)
 
   if (NULL != vlmeta->links)
     g_array_free (vlmeta->links, TRUE);
+
+  if (NULL != vlmeta->xtraparams)
+    gst_structure_free (vlmeta->xtraparams);
 }
 
 static gboolean
@@ -58,6 +62,9 @@ gst_video_landmarks_meta_transform (GstBuffer * transbuffer, GstMeta * meta,
   }
 
   dmeta->id = smeta->id;
+
+  if (smeta->xtraparams != NULL)
+    dmeta->xtraparams = gst_structure_copy (smeta->xtraparams);
 
   GST_DEBUG ("Duplicate Video Landmarks metadata");
   return TRUE;

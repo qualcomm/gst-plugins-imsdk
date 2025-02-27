@@ -60,17 +60,20 @@ struct _GstVideoKeypointLink {
  * @confidence: Confidence score for the landmarks group as a whole.
  * @keypoints: A #GArray of #GstVideoKeypoint
  * @links: A #GArray of #GstVideoKeypointLink
+ * @xtraparams: #GstStructure containing additional parameters.
  *
  * Extra buffer metadata describing multiple video keypoints and their linkages.
  */
 struct _GstVideoLandmarksMeta {
-  GstMeta meta;
+  GstMeta      meta;
 
-  guint   id;
+  guint        id;
 
-  gdouble confidence;
-  GArray  *keypoints;
-  GArray  *links;
+  gdouble      confidence;
+  GArray       *keypoints;
+  GArray       *links;
+
+  GstStructure *xtraparams;
 };
 
 GST_VIDEO_API GType
