@@ -485,6 +485,7 @@ gst_video_split_composition_populate_metas (GstVideoSplitSrcPad * srcpad,
 
       lmkmeta = gst_buffer_add_video_landmarks_meta (outbuffer, confidence,
           keypoints, links);
+      gst_structure_get_uint (structure, "id", &(lmkmeta->id));
 
       GST_TRACE_OBJECT (srcpad, "Attached derived 'VideoLandmarks' meta "
           "with ID[0x%X] to buffer %p", lmkmeta->id, outbuffer);
@@ -497,6 +498,7 @@ gst_video_split_composition_populate_metas (GstVideoSplitSrcPad * srcpad,
       labels = g_array_copy (g_value_get_boxed (value));
 
       classmeta = gst_buffer_add_video_classification_meta (outbuffer, labels);
+      gst_structure_get_uint (structure, "id", &(classmeta->id));
       GST_TRACE_OBJECT (srcpad, "Attached derived 'ImageClassification' meta "
           "with ID[0x%X] to buffer %p", classmeta->id, outbuffer);
     }
