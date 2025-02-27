@@ -877,7 +877,7 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, GstVideoBlit * blit,
 
   if (!haslabel) {
     // TODO: Optimize!
-    GArray *labels = g_array_sized_new (FALSE, FALSE, sizeof (GstClassLabel), 1);
+    GArray *labels = g_array_sized_new (FALSE, TRUE, sizeof (GstClassLabel), 1);
     GstClassLabel *label = NULL;
 
     g_array_set_size (labels, 1);

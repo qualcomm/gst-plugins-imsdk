@@ -64,8 +64,18 @@
 #include "ml-module-video-classification.h"
 
 void
+gst_ml_class_entry_cleanup (GstMLClassEntry * entry)
+{
+  if (entry->xtraparams != NULL)
+    gst_structure_free (entry->xtraparams);
+}
+
+void
 gst_ml_class_prediction_cleanup (GstMLClassPrediction * prediction)
 {
+  g_array_set_clear_func (prediction->entries,
+      (GDestroyNotify) gst_ml_class_entry_cleanup);
+
   if (prediction->entries != NULL)
     g_array_free (prediction->entries, TRUE);
 }

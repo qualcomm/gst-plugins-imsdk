@@ -426,8 +426,8 @@ gst_metamux_process_landmarks_metadata (GstMetaMux * muxer, GstBuffer * buffer,
   GstVideoLandmarksMeta *meta = NULL;
   GstVideoRegionOfInterestMeta *roimeta = NULL;
   GArray *keypoints = NULL, *links = NULL;
-  const GValue *poses = NULL, *value = NULL, *entry = NULL;
-  GstStructure *params = NULL, *landmark = NULL;
+  const GValue *poses = NULL, *value = NULL, *subvalue = NULL;
+  GstStructure *params = NULL, *entry = NULL;
   gdouble confidence = 0.0, x = 0.0, y = 0.0;
   guint id = 0, idx = 0, num = 0, seqnum = 0, size = 0, length = 0;
 
@@ -451,12 +451,12 @@ gst_metamux_process_landmarks_metadata (GstMetaMux * muxer, GstBuffer * buffer,
 
   for (seqnum = 0; seqnum < size; seqnum++) {
     value = gst_value_array_get_value (poses, seqnum);
-    landmark = GST_STRUCTURE (g_value_get_boxed (value));
+    entry = GST_STRUCTURE (g_value_get_boxed (value));
 
-    gst_structure_get_double (landmark, "confidence", &confidence);
+    gst_structure_get_double (entry, "confidence", &confidence);
 
     // Get the keypoints.
-    value = gst_structure_get_value (landmark, "keypoints");
+    value = gst_structure_get_value (entry, "keypoints");
     length = gst_value_array_get_size (value);
 
     // Allocate memory for the keypoints.
@@ -467,8 +467,8 @@ gst_metamux_process_landmarks_metadata (GstMetaMux * muxer, GstBuffer * buffer,
       GstVideoKeypoint *kp = &(g_array_index (keypoints, GstVideoKeypoint, idx));
       gchar *name = NULL;
 
-      entry = gst_value_array_get_value (value, idx);
-      params = GST_STRUCTURE (g_value_get_boxed (entry));
+      subvalue = gst_value_array_get_value (value, idx);
+      params = GST_STRUCTURE (g_value_get_boxed (subvalue));
 
       name = g_strdup (gst_structure_get_name (params));
       name = g_strdelimit (name, ".", ' ');
@@ -493,7 +493,7 @@ gst_metamux_process_landmarks_metadata (GstMetaMux * muxer, GstBuffer * buffer,
     }
 
     // Get the keypoint connections/links.
-    value = gst_structure_get_value (landmark, "connections");
+    value = gst_structure_get_value (entry, "connections");
     length = gst_value_array_get_size (value);
 
     // Allocate memory for the links.
@@ -505,13 +505,13 @@ gst_metamux_process_landmarks_metadata (GstMetaMux * muxer, GstBuffer * buffer,
       const gchar *string = NULL;
       GQuark s_name, d_name;
 
-      entry = gst_value_array_get_value (value, idx);
+      subvalue = gst_value_array_get_value (value, idx);
 
       // Extract the names of the source and destination keypoints.
-      string = g_value_get_string (gst_value_array_get_value (entry, 0));
+      string = g_value_get_string (gst_value_array_get_value (subvalue, 0));
       s_name = g_quark_from_string (string);
 
-      string = g_value_get_string (gst_value_array_get_value (entry, 1));
+      string = g_value_get_string (gst_value_array_get_value (subvalue, 1));
       d_name = g_quark_from_string (string);
 
       // TODO: Maybe 10-15 points. Optimize with binary search?
@@ -525,18 +525,30 @@ gst_metamux_process_landmarks_metadata (GstMetaMux * muxer, GstBuffer * buffer,
       }
     }
 
-    gst_structure_get_uint (landmark, "id", &id);
+    gst_structure_get_uint (entry, "id", &id);
+
+    // Remove the already unnecessary fields.
+    gst_structure_remove_fields (entry, "id", "confidence", "keypoints",
+        "connection", NULL);
 
     if (roimeta == NULL) {
       // Result is not derived from ROI, attach a new meta item.
-      meta = gst_buffer_add_video_landmarks_meta (buffer, confidence, keypoints,
-          links);
+      meta = gst_buffer_add_video_landmarks_meta (buffer, confidence,
+          keypoints, links);
       meta->id = id;
+
+      if ((value = gst_structure_get_value (entry, "xtraparams")) != NULL) {
+        GstStructure *xtraparams = GST_STRUCTURE (g_value_get_boxed (value));
+        meta->xtraparams = gst_structure_copy (xtraparams);
+      }
 
       GST_TRACE_OBJECT (muxer, "Attached 'VideoLandmarks' meta with ID[0x%X] "
           "to buffer %p", meta->id, buffer);
     } else { // (roimeta != NULL)
-      params = gst_structure_new ("VideoLandmarks",
+      params = gst_structure_copy (entry);
+      gst_structure_set_name (params, "VideoLandmarks");
+
+      gst_structure_set (params,
           "keypoints", G_TYPE_ARRAY, keypoints, "links", G_TYPE_ARRAY, links,
           "confidence", G_TYPE_DOUBLE, confidence, "id", G_TYPE_UINT, id, NULL);
       gst_video_region_of_interest_meta_add_param (roimeta, params);
@@ -571,8 +583,11 @@ gst_metamux_process_classification_metadata (GstMetaMux * muxer,
   }
 
   // Allocate memory for the labels.
-  labels = g_array_sized_new (FALSE, FALSE, sizeof (GstClassLabel), size);
+  labels = g_array_sized_new (FALSE, TRUE, sizeof (GstClassLabel), size);
   g_array_set_size (labels, size);
+
+  g_array_set_clear_func (labels,
+      (GDestroyNotify) gst_video_classification_label_cleanup);
 
   for (idx = 0; idx < size; idx++) {
     GstClassLabel *label = &(g_array_index (labels, GstClassLabel, idx));
@@ -589,6 +604,12 @@ gst_metamux_process_classification_metadata (GstMetaMux * muxer,
 
     gst_structure_get_double (params, "confidence", &(label->confidence));
     gst_structure_get_uint (params, "color", &(label->color));
+
+    if (gst_structure_has_field (params, "xtraparams")) {
+      value = gst_structure_get_value (params, "xtraparams");
+      label->xtraparams = gst_structure_copy (
+          GST_STRUCTURE (g_value_get_boxed (value)));
+    }
 
     // The meta ID is the same for every entry in the list. Get the first one.
     if (idx == 0)

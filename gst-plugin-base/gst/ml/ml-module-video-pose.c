@@ -71,6 +71,9 @@ gst_ml_pose_entry_cleanup (GstMLPoseEntry * entry)
 
   // if (entry->connections != NULL)
   //   g_array_free (entry->connections, TRUE);
+
+  if (entry->xtraparams != NULL)
+    gst_structure_free (entry->xtraparams);
 }
 
 void

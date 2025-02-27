@@ -114,15 +114,23 @@ struct _GstMLKeypointsLink {
  * @confidence: The overall confidence for the estimated pose.
  * @keypoints: List of #GstMLKeypoint.
  * @connections: List of #GstMLKeypointsLink.
+ * @xtraparams: Optional custom parameters. The names for the custom parameters
+ *          inside the #GstStructure must be lower case with dash ('-') for
+ *          whitepace e.g. "param-example-name". The following parameter names
+ *          are forbidden: 'confidence', 'keypoints' and 'connections'.
+ *          The name given to the structure on creation must use the reserved
+ *          naming "ExtraParams".
  *
  * Information describing prediction result from pose estimation models.
  * All fields are mandatory and need to be filled by the submodule.
  */
 struct _GstMLPoseEntry {
-  gdouble confidence;
+  gdouble      confidence;
 
-  GArray  *keypoints;
-  GArray  *connections;
+  GArray       *keypoints;
+  GArray       *connections;
+
+  GstStructure *xtraparams;
 };
 
 /**
