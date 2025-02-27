@@ -538,7 +538,7 @@ gst_metamux_process_landmarks_metadata (GstMetaMux * muxer, GstBuffer * buffer,
     } else { // (roimeta != NULL)
       params = gst_structure_new ("VideoLandmarks",
           "keypoints", G_TYPE_ARRAY, keypoints, "links", G_TYPE_ARRAY, links,
-          "confidence", G_TYPE_DOUBLE, confidence, NULL);
+          "confidence", G_TYPE_DOUBLE, confidence, "id", G_TYPE_UINT, id, NULL);
       gst_video_region_of_interest_meta_add_param (roimeta, params);
 
       GST_TRACE_OBJECT (muxer, "Attached 'VideoLandmarks' param with ID[0x%X] "
@@ -590,11 +590,10 @@ gst_metamux_process_classification_metadata (GstMetaMux * muxer,
     gst_structure_get_double (params, "confidence", &(label->confidence));
     gst_structure_get_uint (params, "color", &(label->color));
 
-    // The meta ID will be the ID of the first entry in the list.
+    // The meta ID is the same for every entry in the list. Get the first one.
     if (idx == 0)
       gst_structure_get_uint (params, "id", &id);
   }
-
 
   if (!(value = gst_structure_get_value (structure, "source-region-id"))) {
     // Result is not derived from ROI, attach a new meta item.
@@ -613,7 +612,7 @@ gst_metamux_process_classification_metadata (GstMetaMux * muxer,
         g_value_get_int (value));
 
     params = gst_structure_new ("ImageClassification",
-        "labels", G_TYPE_ARRAY, labels, NULL);
+        "labels", G_TYPE_ARRAY, labels, "id", G_TYPE_UINT, id, NULL);
     gst_video_region_of_interest_meta_add_param (roimeta, params);
 
     GST_TRACE_OBJECT (muxer, "Attached 'ImageClassification' param with ID[0x%X]"

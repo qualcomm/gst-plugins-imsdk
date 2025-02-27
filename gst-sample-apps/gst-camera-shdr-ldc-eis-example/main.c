@@ -137,10 +137,19 @@ thread_fn (gpointer user_data)
   sleep (10);
 
   if (appctx->shdr) {
-    // Run the stream with all setting off
+    // Run the stream with all setting ON
     g_print ("Run the stream with all setting ON \n");
     g_object_set (G_OBJECT (qtiqmmfsrc), "vhdr", DEFAULT_ENABLE, NULL);
     g_print ("Enable SHDR on stream %d \n", appctx->shdr);
+  }
+
+  // wait for 10sec
+  sleep (10);
+
+  if (appctx->shdr) {
+    // Run the stream with all setting off
+    g_object_set (G_OBJECT (qtiqmmfsrc), "vhdr", DEFAULT_DISABLE, NULL);
+    g_print ("Disable SHDR on stream %d \n", appctx->shdr);
   }
 
   return NULL;
@@ -161,7 +170,6 @@ create_pipe (GstCameraAppContext * appctx)
   GstElement *qtiqmmfsrc, *capsfilter, *waylandsink;
   GstCaps *filtercaps;
   gboolean ret = FALSE;
-  GstPad *pad = NULL;
 
   // Create camera source element
   qtiqmmfsrc = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
@@ -190,25 +198,6 @@ create_pipe (GstCameraAppContext * appctx)
   // setting sink element properties
   g_object_set (G_OBJECT (waylandsink), "sync", false, NULL);
   g_object_set (G_OBJECT (waylandsink), "fullscreen", true, NULL);
-
-  // Get qmmfsrc Element class
-  GstElementClass *qtiqmmfsrc_klass = GST_ELEMENT_GET_CLASS (qtiqmmfsrc);
-
-  // Get qmmfsrc pad template
-  GstPadTemplate *qtiqmmfsrc_template =
-      gst_element_class_get_pad_template (qtiqmmfsrc_klass, "video_%u");
-
-  // Request a pad from qmmfsrc
-  pad = gst_element_request_pad (qtiqmmfsrc, qtiqmmfsrc_template,
-      "video_%u", NULL);
-  if (!pad) {
-    g_printerr ("Error: pad cannot be retrieved from qmmfsrc!\n");
-    return FALSE;
-  }
-  g_print ("Pad received - %s\n", gst_pad_get_name (pad));
-
-  g_object_set (G_OBJECT (pad), "type", DEFAULT_ENABLE, NULL);
-  gst_object_unref (pad);
 
   if (appctx->ldc) {
     g_object_set (G_OBJECT (qtiqmmfsrc), "ldc", DEFAULT_ENABLE, NULL);

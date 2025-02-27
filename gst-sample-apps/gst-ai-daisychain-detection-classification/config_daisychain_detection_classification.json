@@ -1,8 +1,9 @@
 {
   "input-file": "/etc/media/video.mp4",
-  "detection-model": "/etc/models/yolov5.tflite",
-  "detection-labels": "/etc/labels/yolov5.labels",
-  "classification-model": "/etc/models/inceptionv3.tflite",
-  "classification-labels": "/etc/labels/classification.labels",
-  "detection-constants": "YoloV5,q-offsets=<3.0>,q-scales=<0.005047998391091824>;"
+  "detection-model": "/etc/models/yolov8_det_quantized.tflite",
+  "detection-labels": "/etc/labels/coco_labels.txt",
+  "classification-model": "/etc/models/mobilenet_v2_quantized.tflite",
+  "classification-labels": "/etc/labels/imagenet_labels.txt",
+  "detection-constants": "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,q-scales=<3.0546178817749023, 0.003793874057009816, 1.0>;",
+  "classification-constants": "Inceptionv3,q-offsets=<38.0>,q-scales=<0.17039915919303894>;"
 }

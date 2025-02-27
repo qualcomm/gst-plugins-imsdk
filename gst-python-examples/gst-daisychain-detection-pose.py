@@ -1,5 +1,9 @@
-# Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+#!/usr/bin/env python3
+
+################################################################################
+# Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
+################################################################################
 
 import os
 import sys
@@ -18,10 +22,10 @@ Classification, Segmentation and Pose Detection on live stream.
 Initializes and links elements for reading, performing inference
 using MODEL and LABELS files, and rendering video on display.
 """
-DEFAULT_TFLITE_YOLOV8_MODEL = "/opt/YOLOv8-Detection-Quantized.tflite"
-DEFAULT_YOLOV8_LABELS = "/opt/yolov8.labels"
-DEFAULT_TFLITE_POSE_MODEL = "/opt/hrnet_pose_quantized.tflite"
-DEFAULT_POSE_LABELS = "/opt/hrnet_pose.labels"
+DEFAULT_TFLITE_YOLOV8_MODEL = "/etc/models/YOLOv8-Detection-Quantized.tflite"
+DEFAULT_YOLOV8_LABELS = "/etc/labels/yolov8.labels"
+DEFAULT_TFLITE_POSE_MODEL = "/etc/models/hrnet_pose_quantized.tflite"
+DEFAULT_POSE_LABELS = "/etc/labels/hrnet_pose.labels"
 DELEGATE_PATH = "libQnnTFLiteDelegate.so"
 
 DEFAULT_CONSTANTS_OBJECT_DETECTION = "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,\
@@ -129,27 +133,27 @@ def create_pipeline(pipeline):
         "--rtsp", type=str, default=None,
         help="RTSP URL"
     )
-    parser.add_argument("--constants_detection", type=str,
+    parser.add_argument("--constants-detection", type=str,
         default=DEFAULT_CONSTANTS_OBJECT_DETECTION,
         help="Constants for Object detection model"
     )
-    parser.add_argument("--constants_pose", type=str,
+    parser.add_argument("--constants-pose", type=str,
         default=DEFAULT_CONSTANTS_POSE_DETECTION,
         help="Constants for Pose detection model"
     )
-    parser.add_argument("--tflite_yolov8_model", type=str,
+    parser.add_argument("--tflite-yolov8-model", type=str,
         default=DEFAULT_TFLITE_YOLOV8_MODEL,
         help="Path to YOLOv8 TFLite model"
     )
-    parser.add_argument("--yolov8_labels", type=str,
+    parser.add_argument("--yolov8-labels", type=str,
         default=DEFAULT_YOLOV8_LABELS,
         help="Path to YOLOv8 labels"
     )
-    parser.add_argument("--tflite_pose_model", type=str,
+    parser.add_argument("--tflite-pose-model", type=str,
         default=DEFAULT_TFLITE_POSE_MODEL,
         help="Path to pose TFLite model"
     )
-    parser.add_argument("--pose_labels", type=str,
+    parser.add_argument("--pose-labels", type=str,
         default=DEFAULT_POSE_LABELS,
         help="Path to pose labels"
     )
@@ -200,6 +204,10 @@ def create_pipeline(pipeline):
         # Create v4l2h264dec element for decoding the stream
         elements["v4l2h264dec"] = create_element("v4l2h264dec", "v4l2h264dec")
 
+        # Create caps for v4l2h264dec
+        elements["v4l2h264dec_caps"] = create_element(
+            "capsfilter", "v4l2h264dec_caps")
+
     elif args.rtsp:
         # Create rtspsrc for rtsp input
         elements["rtspsrc"] = create_element("rtspsrc", "rtspsrc")
@@ -212,6 +220,10 @@ def create_pipeline(pipeline):
 
         # Create v4l2h264dec element for decoding the stream
         elements["v4l2h264dec"] = create_element("v4l2h264dec", "v4l2h264dec")
+
+        # Create caps for v4l2h264dec
+        elements["v4l2h264dec_caps"] = create_element(
+            "capsfilter", "v4l2h264dec_caps")
 
     else:
         print("No input source selected, exiting...")
@@ -272,22 +284,28 @@ def create_pipeline(pipeline):
 
     # Set properties
     if args.file:
-        elements["v4l2h264dec"].set_property("capture-io-mode", 5)
-        elements["v4l2h264dec"].set_property("output-io-mode", 5)
+        elements["v4l2h264dec"].set_property("capture-io-mode", "dmabuf")
+        elements["v4l2h264dec"].set_property("output-io-mode", "dmabuf")
         elements["filesrc"].set_property("location", args.file)
+        elements["v4l2h264dec_caps"].set_property(
+            "caps", Gst.Caps.from_string("video/x-raw,format=NV12")
+        )
 
     elif args.camera:
         elements["qmmfsrc_caps"].set_property(
             "caps", Gst.Caps.from_string(
-                "video/x-raw(memory:GBM),format=NV12,width=1920,height=1080,"
-                "framerate=30/1,compression=ubwc"
+                "video/x-raw,format=NV12,width=1920,height=1080,"
+                "framerate=30/1"
             )
         )
 
     elif args.rtsp:
-        elements["v4l2h264dec"].set_property("capture-io-mode", 5)
-        elements["v4l2h264dec"].set_property("output-io-mode", 5)
+        elements["v4l2h264dec"].set_property("capture-io-mode", "dmabuf")
+        elements["v4l2h264dec"].set_property("output-io-mode", "dmabuf")
         elements["rtspsrc"].set_property("location", args.rtsp)
+        elements["v4l2h264dec_caps"].set_property(
+            "caps", Gst.Caps.from_string("video/x-raw,format=NV12")
+        )
 
     else:
         print("No input source selected, exiting...")
@@ -295,12 +313,12 @@ def create_pipeline(pipeline):
 
     elements["filter0"].set_property(
         "caps", Gst.Caps.from_string(
-            "video/x-raw(memory:GBM),format=RGBA,width=240,height=480"
+            "video/x-raw,format=RGBA,width=240,height=480"
         )
     )
     elements["filter1"].set_property(
         "caps", Gst.Caps.from_string(
-            "video/x-raw(memory:GBM),format=RGBA,width=240,height=480"
+            "video/x-raw,format=RGBA,width=240,height=480"
         )
     )
 
@@ -385,14 +403,14 @@ def create_pipeline(pipeline):
         link_orders+= [
             [
                 "filesrc", "qtdemux", "queue0", "h264parse",
-                "v4l2h264dec", "tee0", "qtimetamux0"
+                "v4l2h264dec", "v4l2h264dec_caps", "tee0", "qtimetamux0"
             ],
         ]
     elif args.rtsp:
         link_orders+= [
             [
                 "rtspsrc", "queue0", "rtph264depay", "h264parse",
-                "v4l2h264dec", "tee0", "qtimetamux0"
+                "v4l2h264dec", "v4l2h264dec_caps", "tee0", "qtimetamux0"
             ],
         ]
     else:
@@ -477,11 +495,23 @@ def create_pipeline(pipeline):
         "dimensions", "<240, 480>"
     )
 
+def is_linux():
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if "Linux" in line:
+                    return True
+    except FileNotFoundError:
+        return False
+    return False
+
 def main():
     """Main function to set up and run the GStreamer pipeline."""
 
-    os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
-    os.environ["WAYLAND_DISPLAY"] = "wayland-1"
+    # Set the environment
+    if is_linux():
+        os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
+        os.environ["WAYLAND_DISPLAY"] = "wayland-1"
 
     # Initialize GStreamer
     Gst.init(None)

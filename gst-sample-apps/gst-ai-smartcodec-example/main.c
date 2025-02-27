@@ -47,7 +47,7 @@
 #define DEFAULT_RESULTS              5
 #define DEFAULT_LABELS               "/etc/labels/coco_labels.txt"
 #define DEFAULT_CONSTANTS_YOLOV8 \
-  "YOLOv8,q-offsets=<-107.0, -128.0, 0.0>,q-scales=<3.093529462814331, 0.00390625, 1.0>;"
+  "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,q-scales=<3.0546178817749023, 0.003793874057009816, 1.0>;"
 #define QUEUE_COUNT 6
 
 #define GST_APP_SUMMARY                                                   \
@@ -303,18 +303,15 @@ create_pipe (GstSmartCodecContext * appctx)
     filtercaps = gst_caps_new_simple ("video/x-raw", "format", G_TYPE_STRING,
         "NV12", "width", G_TYPE_INT, 1280, "height", G_TYPE_INT, 720, "framerate",
         GST_TYPE_FRACTION, 15, 1, NULL);
-    gst_caps_set_features (filtercaps, 0,
-        gst_caps_features_new ("memory:GBM", NULL));
+
     g_object_set (G_OBJECT (capsfilter_ctrl), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
 
     // Configure the encode stream caps
     filtercaps = gst_caps_new_simple ("video/x-raw", "format", G_TYPE_STRING,
         "NV12", "width", G_TYPE_INT, appctx->width, "height", G_TYPE_INT,
-        appctx->height, "framerate", GST_TYPE_FRACTION, 30, 1, "compression",
-        G_TYPE_STRING, "ubwc", NULL);
-    gst_caps_set_features (filtercaps, 0,
-        gst_caps_features_new ("memory:GBM", NULL));
+        appctx->height, "framerate", GST_TYPE_FRACTION, 30, 1, NULL);
+
     g_object_set (G_OBJECT (capsfilter_enc), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
 
@@ -438,8 +435,8 @@ create_pipe (GstSmartCodecContext * appctx)
     qtivtransform = gst_element_factory_make ("qtivtransform", "qtivtransform");
 
     // Set capture I/O mode for decoder
-    g_object_set (G_OBJECT (vdecoder), "capture-io-mode", 5, NULL);
-    g_object_set (G_OBJECT (vdecoder), "output-io-mode", 5, NULL);
+    gst_element_set_enum_property (vdecoder, "capture-io-mode", "dmabuf");
+    gst_element_set_enum_property (vdecoder, "output-io-mode", "dmabuf");
 
     if (!filesrc || !qtdemux || !vparse || !pqueue || !vdecoder) {
       g_printerr ("\n One element could not be created. Exiting experiment.\n");

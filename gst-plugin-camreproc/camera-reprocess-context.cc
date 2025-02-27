@@ -246,7 +246,7 @@ data_callback (GstCameraReprocessContext *context, guint fd, guint size)
   // Callback will invoke gst_pad_push to push data downstream
   context->data_cb ((gpointer *)array, context->camreproc);
 
-  g_ptr_array_free (array, FALSE);
+  g_ptr_array_unref(array);
 
   g_hash_table_remove (context->requests, GINT_TO_POINTER (fd));
   if (g_hash_table_size (context->requests) == 0)
@@ -511,8 +511,9 @@ gst_camera_reprocess_context_process (GstCameraReprocessContext *context,
     GST_ERROR ("Failed to allocate GPtrArray.");
     return FALSE;
   }
-  g_ptr_array_index (ptr_array, 0) = inbuf;
-  g_ptr_array_index (ptr_array, 1) = outbuf;
+
+  g_ptr_array_add (ptr_array, inbuf);
+  g_ptr_array_add (ptr_array, outbuf);
 
   g_mutex_lock (&context->lock);
 
@@ -522,7 +523,7 @@ gst_camera_reprocess_context_process (GstCameraReprocessContext *context,
   if (context->recorder->ProcessOfflineCamera (params) != 0) {
     GST_ERROR ("Failed to ProcessOfflineCamera.");
     g_hash_table_remove (context->requests, GINT_TO_POINTER (params.out_buf_fd));
-    g_ptr_array_free (ptr_array, FALSE);
+    g_ptr_array_free (ptr_array, TRUE);
     g_mutex_unlock (&context->lock);
     return FALSE;
   }

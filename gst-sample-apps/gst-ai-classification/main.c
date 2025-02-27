@@ -59,8 +59,8 @@
  */
 #define DEFAULT_INFERENCE_WIDTH 640
 #define DEFAULT_INFERENCE_HEIGHT 360
-#define DEFAULT_CAMERA_OUTPUT_WIDTH 1920
-#define DEFAULT_CAMERA_OUTPUT_HEIGHT 1080
+#define DEFAULT_CAMERA_OUTPUT_WIDTH 1280
+#define DEFAULT_CAMERA_OUTPUT_HEIGHT 720
 #define SECONDARY_CAMERA_OUTPUT_WIDTH 1280
 #define SECONDARY_CAMERA_OUTPUT_HEIGHT 720
 #define DEFAULT_CAMERA_FRAME_RATE 30
@@ -79,7 +79,7 @@
  * Default constants to dequantize values
  */
 #define DEFAULT_CONSTANTS \
-    "Mobilenet,q-offsets=<38.0>,q-scales=<0.15008972585201263>;"
+    "Inceptionv3,q-offsets=<38.0>,q-scales=<0.17039915919303894>;"
 
 /**
  * Number of Queues used for buffer caching between elements
@@ -476,13 +476,13 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     // 2.4 Set the capabilities of camera plugin output
     if (options->camera_type == GST_CAMERA_TYPE_PRIMARY) {
       filtercaps = gst_caps_new_simple ("video/x-raw",
-          "format", G_TYPE_STRING, "NV12",
+          "format", G_TYPE_STRING, "NV12_Q08C",
           "width", G_TYPE_INT, primary_camera_width,
           "height", G_TYPE_INT, primary_camera_height,
           "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
     } else {
       filtercaps = gst_caps_new_simple ("video/x-raw",
-          "format", G_TYPE_STRING, "NV12",
+          "format", G_TYPE_STRING, "NV12_Q08C",
           "width", G_TYPE_INT, secondary_camera_width,
           "height", G_TYPE_INT, secondary_camera_height,
           "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
@@ -629,7 +629,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       goto error_clean_pipeline;
     }
     ret = gst_element_link_many (queue[0], h264parse, v4l2h264dec,
-	    v4l2h264dec_caps, queue[1], tee, NULL);
+        v4l2h264dec_caps, queue[1], tee, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for parse->tee\n");
       goto error_clean_pipeline;
@@ -696,7 +696,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         queue[5], qtimlelement, queue[6], qtimlvclassification,
         classification_filter, queue[7], qtivcomposer, NULL);
     if (!ret) {
-      g_printerr ("Pipeline elements cannot be linked for"
+      g_printerr ("Pipeline elements cannot be linked for "
           "pre proc -> ml framework -> post proc.\n");
       goto error_clean_pipeline;
     }

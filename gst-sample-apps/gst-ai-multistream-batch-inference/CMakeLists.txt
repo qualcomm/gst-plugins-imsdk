@@ -23,7 +23,6 @@ set(GST_EXAMPLE_BIN gst-ai-multistream-batch-inference)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
-set(DEST_DIR /etc/configs)
 
 add_executable(${GST_EXAMPLE_BIN}
   main.c
@@ -48,4 +47,4 @@ install(
               WORLD_EXECUTE WORLD_READ
 )
 
-install(FILES ${CONFIG_FILE} DESTINATION ${DEST_DIR})
+install(FILES ${CONFIG_FILE} DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_CONFIG})

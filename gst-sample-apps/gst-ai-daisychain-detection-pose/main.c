@@ -49,7 +49,7 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_TFLITE_YOLOV8_MODEL "/etc/models/YOLOv8-Detection-Quantized.tflite"
+#define DEFAULT_TFLITE_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.tflite"
 #define DEFAULT_TFLITE_POSE_MODEL \
     "/etc/models/hrnet_pose_quantized.tflite"
 #define DEFAULT_YOLOV8_LABELS "/etc/labels/yolov8.labels"
@@ -58,8 +58,8 @@
 /**
  * Default Scale and Offset constants
  */
-#define DEFAULT_YOLOV8_CONSTANT "YoloV8,q-offsets=<21.0, 0.0, 0.0>,\
-    q-scales=<3.093529462814331, 0.00390625, 1.0>"
+#define DEFAULT_YOLOV8_CONSTANT "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,\
+    q-scales=<3.0546178817749023, 0.003793874057009816, 1.0>;"
 #define DEFAULT_HRNET_CONSTANT "hrnet,q-offsets=<8.0>,\
     q-scales=<0.0040499246679246426>;"
 
@@ -67,8 +67,8 @@
  * Default settings of camera output resolution, Scaling of camera output
  * will be done in qtimlvconverter based on model input
  */
-#define DEFAULT_CAMERA_PREVIEW_OUTPUT_WIDTH 1920
-#define DEFAULT_CAMERA_PREVIEW_OUTPUT_HEIGHT 1080
+#define DEFAULT_CAMERA_PREVIEW_OUTPUT_WIDTH 1280
+#define DEFAULT_CAMERA_PREVIEW_OUTPUT_HEIGHT 720
 #define DEFAULT_CAMERA_FRAME_RATE 30
 #define DEFAULT_DAISYCHAIN_OUTPUT_WIDTH 240
 #define DEFAULT_DAISYCHAIN_OUTPUT_HEIGHT 480

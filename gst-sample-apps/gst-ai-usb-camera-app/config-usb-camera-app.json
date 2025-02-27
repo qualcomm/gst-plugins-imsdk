@@ -1,0 +1,17 @@
+{
+  "width": 640,
+  "height": 480,
+  "framerate": 30,
+  "format": "YUY2",
+  "output": "PREVIEW",
+  "ip-address":"127.0.0.1",
+  "port":"8900",
+  "enable-object-detection": "TRUE",
+  "ml-framework": "tflite",
+  "yolo-model-type": "yolov8",
+  "model": "/etc/models/model-detection.tflite",
+  "labels": "/etc/labels/detection.labels",
+  "constants": "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,q-scales=<3.093529462814331, 0.00390625, 1.0>;",
+  "threshold": 40,
+  "runtime": "dsp"
+}

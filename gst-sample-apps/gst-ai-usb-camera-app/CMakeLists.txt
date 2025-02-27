@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8.2)
-project(GST-AI-SEGMENTATION LANGUAGES C CXX)
+project(GST-ACTIVATE-DEACTIVATE-STREAM-RUNTIME LANGUAGES C CXX)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
@@ -9,9 +9,6 @@ link_directories(${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR})
 
 find_package(PkgConfig)
 
-# Add config files
-file(GLOB CONFIG_FILE *.json)
-
 # Get the pkgconfigs exported by the automake tools
 pkg_check_modules(GST
   REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
@@ -19,8 +16,11 @@ pkg_check_modules(GST
 pkg_check_modules(GST_JSON
   REQUIRED json-glib-1.0)
 
-set(GST_EXAMPLE_BIN gst-ai-segmentation)
+# Add config files
+file(GLOB CONFIG_FILE *.json)
 
+# GStreamer gst-ai-usb-camera-app
+set(GST_EXAMPLE_BIN gst-ai-usb-camera-app)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
 

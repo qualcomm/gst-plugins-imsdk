@@ -53,7 +53,7 @@
  * Default models and labels path, if not provided by user
  */
 #define DEFAULT_SNPE_MONODEPTH_MODEL "/etc/models/midasv2.dlc"
-#define DEFAULT_TFLITE_MONODEPTH_MODEL "/etc/models/Midas-V2-Quantized.tflite"
+#define DEFAULT_TFLITE_MONODEPTH_MODEL "/etc/models/midas_quantized.tflite"
 #define DEFAULT_QNN_MONODEPTH_MODEL "/etc/models/midas_quantized.bin"
 #define DEFAULT_MONODEPTH_LABELS "/etc/labels/monodepth.labels"
 
@@ -66,8 +66,8 @@
  * Default settings of camera output resolution, Scaling of camera output
  * will be done in qtimlvconverter based on model input
  */
-#define PRIMARY_CAMERA_PREVIEW_OUTPUT_WIDTH 1920
-#define PRIMARY_CAMERA_PREVIEW_OUTPUT_HEIGHT 1080
+#define PRIMARY_CAMERA_PREVIEW_OUTPUT_WIDTH 1280
+#define PRIMARY_CAMERA_PREVIEW_OUTPUT_HEIGHT 720
 #define SECONDARY_CAMERA_PREVIEW_OUTPUT_WIDTH 1280
 #define SECONDARY_CAMERA_PREVIEW_OUTPUT_HEIGHT 720
 #define MONODEPTH_OUTPUT_WIDTH 640
@@ -84,7 +84,7 @@
  * Default constants to dequantize values
  */
 #define DEFAULT_CONSTANTS \
-    "Midas,q-offsets=<0.0>,q-scales=<4.716535568237305>;"
+    "Midas,q-offsets=<0.0>,q-scales=<6.846843242645264>;"
 
 /**
  * Number of Queues used for buffer caching between elements
@@ -504,7 +504,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       // 2.4 Set the capabilities of primary and secondary camera preview
       // stream camera plugin output
       filtercaps = gst_caps_new_simple ("video/x-raw",
-          "format", G_TYPE_STRING, "NV12",
+          "format", G_TYPE_STRING, "NV12_Q08C",
           "width", G_TYPE_INT, primary_camera_preview_width,
           "height", G_TYPE_INT, primary_camera_preview_height,
           "framerate", GST_TYPE_FRACTION, camera_framerate, 1, NULL);
@@ -512,7 +512,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       gst_caps_unref (filtercaps);
     } else {
       filtercaps = gst_caps_new_simple ("video/x-raw",
-          "format", G_TYPE_STRING, "NV12",
+          "format", G_TYPE_STRING, "NV12_Q08C",
           "width", G_TYPE_INT, secondary_camera_preview_width,
           "height", G_TYPE_INT, secondary_camera_preview_height,
           "framerate", GST_TYPE_FRACTION, camera_framerate, 1, NULL);
