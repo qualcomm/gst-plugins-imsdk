@@ -366,6 +366,16 @@ typedef enum {
   GST_ROTATE_TYPE_180
 } GstRotateVideoType;
 
+/**
+ * GstInputStreamType:
+ * @GST_INPUT_STREAM_H264: H264 input stream encoding
+ * @GST_INPUT_STREAM_H265: H265 input stream encoding
+ */
+typedef enum {
+  GST_INPUT_STREAM_H264,
+  GST_INPUT_STREAM_H265
+} GstInputStreamType;
+
 /*
  * Check if File Exists
  *

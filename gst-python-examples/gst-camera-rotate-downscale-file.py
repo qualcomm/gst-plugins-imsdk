@@ -1,5 +1,9 @@
-# Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+#!/usr/bin/env python3
+
+################################################################################
+# Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
+################################################################################
 
 import os
 import sys
@@ -16,9 +20,7 @@ The application records, downscales and rotates and encodes a single camera
 stream and dump the output.
 """
 
-DEFAULT_OUTPUT_FILE = "/opt/data/test.mp4"
-GST_V4L2_IO_DMABUF = 4
-GST_V4L2_IO_DMABUF_IMPORT = 5
+DEFAULT_OUTPUT_FILE = "/etc/media/test.mp4"
 
 eos_received = False
 def create_element(factory_name, name):
@@ -106,8 +108,8 @@ def construct_pipeline(pipe):
         "video/x-raw,width=480,height=640,colorimetry=bt709",
     )
 
-    Gst.util_set_object_arg(elements["v4l2h264enc"], "capture-io-mode", "GST_V4L2_IO_DMABUF")
-    Gst.util_set_object_arg(elements["v4l2h264enc"], "output-io-mode", "GST_V4L2_IO_DMABUF_IMPORT")
+    Gst.util_set_object_arg(elements["v4l2h264enc"], "capture-io-mode", "dmabuf")
+    Gst.util_set_object_arg(elements["v4l2h264enc"], "output-io-mode", "dmabuf-import")
 
     Gst.util_set_object_arg(elements["h264parse"], "config-interval", "1")
 
@@ -171,11 +173,23 @@ def handle_interrupt_signal(pipe, loop):
         quit_mainloop(loop)
     return GLib.SOURCE_CONTINUE
 
+def is_linux():
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if "Linux" in line:
+                    return True
+    except FileNotFoundError:
+        return False
+    return False
 
 def main():
     """Main function to set up and run the GStreamer pipeline."""
-    os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
-    os.environ["WAYLAND_DISPLAY"] = "wayland-1"
+
+    # Set the environment
+    if is_linux():
+        os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
+        os.environ["WAYLAND_DISPLAY"] = "wayland-1"
 
     Gst.init(None)
 

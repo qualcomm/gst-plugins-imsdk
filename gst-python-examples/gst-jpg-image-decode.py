@@ -1,9 +1,5 @@
-#!/usr/bin/env python3
-
-################################################################################
-# Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+# Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
-################################################################################
 
 import os
 import sys
@@ -17,11 +13,12 @@ from gi.repository import Gst, GLib
 
 # Constants
 DESCRIPTION = """
-This app sets up GStreamer pipeline for video recording.
-Initializes and links elements for capturing live stream from camera
-and saving the encoded video as OUTPUT.
+This app sets up GStreamer pipeline to read the jpg images and display.
+Usage:
+For Preview on Display:
+python3 /usr/bin/gst-jpg-image-decode.py -i /opt/media/frame%d.JPG
 """
-DEFAULT_OUTPUT_FILE = "/etc/media/recording.mp4"
+DEFAULT_OUTPUT_FILE = "/opt/media/frame%d.JPG"
 
 waiting_for_eos = False
 eos_received = False
@@ -90,25 +87,8 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        '-c', '--camera', type=int, choices=[0, 1], default=0,
-        help='Select (0) for Primary Camera and (1) for Secondary Camera.'
-    )
-    parser.add_argument(
-        '-cw', '--width', type=int, default=1280,
-        help='Camera Output Width'
-    )
-    parser.add_argument(
-        '-ch', '--height', type=int, default=720,
-        help='Camera Output Height'
-    )
-    parser.add_argument(
-        '-cf', '--framerate', type=str, default='30/1',
-        help='Camera Output Framerate (fraction)'
-    )
-
-    parser.add_argument(
-        "--output", type=str, default=DEFAULT_OUTPUT_FILE,
-        help="Output File Path"
+        '-i', "--filepath", type=str, default=DEFAULT_OUTPUT_FILE,
+        help="Output File Path /opt/media/frame%d.JPG"
     )
 
     return parser.parse_args()
@@ -117,33 +97,23 @@ def create_pipeline(pipeline, args):
     """Initialize and link elements for the GStreamer pipeline."""
     # Create elements
     elements = {
-        "camsrc" : create_element("qtiqmmfsrc", "camsrc"),
-        "camcaps": create_element("capsfilter", "camcaps"),
-        "encoder": create_element("v4l2h264enc", "encoder"),
-        "parser" : create_element("h264parse", "parser"),
-        "mux"    : create_element("mp4mux", "mux"),
-        "sink"   : create_element("filesink", "sink")
+        "multifilesrc" : create_element("multifilesrc", "multifilesrc"),
+        "caps": create_element("capsfilter", "caps"),
+        "jpegdec": create_element("jpegdec", "jpegdec"),
+        "videoconvert" : create_element("videoconvert", "videoconvert"),
+        "sink"   : create_element("autovideosink", "sink")
     }
 
-    queue_count = 2
-    for i in range(queue_count):
-        queue_name = f"queue{i}"
-        elements[queue_name] = create_element("queue", queue_name)
-
     # Set properties
-    elements["camsrc"].set_property("camera", args.camera)
-    elements["camcaps"].set_property(
+    elements["multifilesrc"].set_property('location', args.filepath)
+    elements["multifilesrc"].set_property('index', 1)
+
+    # Create the caps filter
+    elements["caps"].set_property(
         "caps", Gst.Caps.from_string(
-            "video/x-raw,format=NV12,"
-            f"width={args.width},height={args.height},"
-            f"framerate={args.framerate}"
+            'image/jpeg,width=1280,height=720,framerate=2/1'
         )
     )
-
-    elements["encoder"].set_property("capture-io-mode", "dmabuf")
-    elements["encoder"].set_property("output-io-mode", "dmabuf-import")
-
-    elements["sink"].set_property("location", args.output)
 
     # Add elements to the pipeline
     for element in elements.values():
@@ -151,28 +121,16 @@ def create_pipeline(pipeline, args):
 
     # Link elements
     link_order = [
-        "camsrc", "camcaps", "encoder", "parser", "queue0",
-        "mux", "queue1", "sink"
+        "multifilesrc", "caps", "jpegdec", "videoconvert", "sink",
     ]
     link_elements(link_order, elements)
-
-def is_linux():
-    try:
-        with open("/etc/os-release") as f:
-            for line in f:
-                if "Linux" in line:
-                    return True
-    except FileNotFoundError:
-        return False
-    return False
 
 def main():
     """Main function to set up and run the GStreamer pipeline."""
 
     # Set the environment
-    if is_linux():
-        os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
-        os.environ["WAYLAND_DISPLAY"] = "wayland-1"
+    os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
+    os.environ["WAYLAND_DISPLAY"] = "wayland-1"
 
     # Initialize GStreamer
     Gst.init(None)

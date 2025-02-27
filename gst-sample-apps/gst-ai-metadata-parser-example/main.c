@@ -1,21 +1,24 @@
 /**
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 /**
  * Application:
- * AI based Object Detection on Live stream.
+ * Metadata parsing example for AI inferencing
+ * Object Detection and Human Counting on live stream
  *
  * Description:
  * The application takes live video stream from camera/file/rtsp and gives same
- * to Detection TensorFlow Lite or SNPE DLC Model for object detection and
- * display preview with overlayed AI Model output with detection labels.
+ * to Object Detection LiteRT model. Postprocessing is carried out on the output
+ * of the Object Detection model, and the detection labels and bounding boxes
+ * are overlayed over original stream for display preview.
+ * Metadata obtained from post-processing is extracted and processed to obtain
+ * count of people in each frame
  *
  * Pipeline for Gstreamer with Camera:
  * qtiqmmfsrc  -> | qmmfsrc_caps (Preview)    -> qtivcomposer
  *                | qmmfsrc_caps (Inference)  -> Pre-process -> Inference
- *                  ->  Post-process          -> qtivcomposer
  *
  * Pipeline for Gstreamer with File source:
  * filesrc -> qtdemux -> h264parse -> v4l2h264dec -> tee (SPLIT)
@@ -25,9 +28,13 @@
  * Pipeline for Gstreamer with RTSP source:
  * rtspsrc -> rtph264depay -> h264parse -> v4l2h264dec -> tee (SPLIT)
  *     | tee -> qtivcomposer
- *     |     -> Pre-process -> Inference -> Post-process -> qtivcomposer
+ *     |     -> Pre-process -> Inference
+ *
+ *     Inference -> | Post-process -> qtivcomposer
+ *                  | Post-process -> appsink (parse metadata)
  *
  *     qtivcomposer (COMPOSITION) -> fpsdisplaysink (Display)
+ *
  *     Pre-process: qtimlvconverter
  *     ML Framework: qtimlsnpe/qtimltflite
  *     Post-process: qtimlvdetection -> detection_filter
@@ -40,24 +47,13 @@
 #include <gst/video/video.h>
 #include <glib.h>
 #include <json-glib/json-glib.h>
-
 #include <gst/sampleapps/gst_sample_apps_utils.h>
 
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_SNPE_YOLOV5_MODEL "/etc/models/yolov5.dlc"
-#define DEFAULT_YOLOV5_LABELS "/etc/labels/yolov5.labels"
-#define DEFAULT_SNPE_YOLOV8_MODEL "/etc/models/yolov8.dlc"
-#define DEFAULT_YOLOV8_LABELS "/etc/labels/yolov8.labels"
-#define DEFAULT_SNPE_YOLONAS_MODEL "/etc/models/yolonas.dlc"
-#define DEFAULT_YOLONAS_LABELS "/etc/labels/yolonas.labels"
-#define DEFAULT_TFLITE_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.tflite"
-#define DEFAULT_TFLITE_YOLOV5_MODEL "/etc/models/yolov5.tflite"
-#define DEFAULT_TFLITE_YOLONAS_MODEL "/etc/models/yolonas_quantized.tflite"
-#define DEFAULT_YOLOV7_LABELS "/etc/labels/yolov7.labels"
-#define DEFAULT_TFLITE_YOLOV7_MODEL "/etc/models/Yolo-v7-Quantized.tflite"
-#define DEFAULT_QNN_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.bin"
+#define DEFAULT_TFLITE_MODEL "/etc/models/detection-model.tflite"
+#define DEFAULT_LABELS "/etc/labels/detection.labels"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
@@ -65,42 +61,29 @@
  */
 #define DEFAULT_INFERENCE_WIDTH 640
 #define DEFAULT_INFERENCE_HEIGHT 360
-#define DEFAULT_CAMERA_OUTPUT_WIDTH 1280
-#define DEFAULT_CAMERA_OUTPUT_HEIGHT 720
+#define DEFAULT_CAMERA_OUTPUT_WIDTH 1920
+#define DEFAULT_CAMERA_OUTPUT_HEIGHT 1080
 #define SECONDARY_CAMERA_OUTPUT_WIDTH 1280
 #define SECONDARY_CAMERA_OUTPUT_HEIGHT 720
 #define DEFAULT_CAMERA_FRAME_RATE 30
 
 /**
+ * Default wayland display width and height
+ */
+#define DEFAULT_DISPLAY_WIDTH 1920
+#define DEFAULT_DISPLAY_HEIGHT 1080
+
+/**
  * Default path of config file
  */
-#define DEFAULT_CONFIG_FILE "/etc/configs/config_detection.json"
+#define DEFAULT_CONFIG_FILE "/etc/configs/config-metadata-parser.json"
 
 /**
  * Default constants to dequantize values
  */
-#define DEFAULT_CONSTANTS_YOLOV8 "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,\
-    q-scales=<3.0546178817749023, 0.003793874057009816, 1.0>;"
-
-/**
- * Default constants to dequantize values
- */
-#define DEFAULT_CONSTANTS_YOLOV5 \
-    "YoloV5,q-offsets=<3.0>,q-scales=<0.005047998391091824>;"
-
-/**
- * Default constants to dequantize values
- */
-#define DEFAULT_CONSTANTS_YOLONAS \
-    "YoloNas,q-offsets=<37.0, 0.0, 0.0>,q-scales=<3.416602611541748, \
-    0.00390625, 1.0>;"
-
-/**
- * Default constants to dequantize values
- */
-#define DEFAULT_CONSTANTS_YOLOV7 \
-    "Yolov7,q-offsets=<30.0, 0.0, 0.0>,q-scales=<3.320857286453247, \
-    0.0037717572413384914, 1.0>;"
+#define DEFAULT_CONSTANTS \
+    "model,q-offsets=<21.0, 0.0, 0.0>, \
+    q-scales=<3.093529462814331, 0.00390625, 1.0>;"
 
 /**
  * Number of Queues used for buffer caching between elements
@@ -108,36 +91,28 @@
 #define QUEUE_COUNT 8
 
 /**
+ * Number of post-processing plugins used
+ */
+#define DETECTION_COUNT 2
+
+/**
  * Defalut value of threshold
  */
 #define DEFAULT_THRESHOLD_VALUE  40.0
 
 /**
- * default value of delegate
- */
-#define DEFAULT_SNPE_DELEGATE GST_ML_SNPE_DELEGATE_DSP
-
-/**
- * Default value of delegate
- */
-#define DEFAULT_SNPE_DELEGATE GST_ML_SNPE_DELEGATE_DSP
-
-/**
  * Structure for various application specific options
  */
-typedef struct {
+typedef struct
+{
   gchar *file_path;
   gchar *rtsp_ip_port;
   gchar *model_path;
   gchar *labels_path;
   gchar *constants;
-  gchar **snpe_layers;
   GstCameraSourceType camera_type;
-  GstModelType model_type;
-  GstYoloModelType yolo_model_type;
   gdouble threshold;
   gint delegate_type;
-  gint snpe_layer_count;
   gboolean use_cpu;
   gboolean use_gpu;
   gboolean use_dsp;
@@ -153,7 +128,7 @@ typedef struct {
  */
 static void
 gst_app_context_free
-(GstAppContext * appctx, GstAppOptions * options, gchar * config_file)
+    (GstAppContext * appctx, GstAppOptions * options, gchar * config_file)
 {
   // If specific pointer is not NULL, unref it
   if (appctx->mloop != NULL) {
@@ -162,51 +137,30 @@ gst_app_context_free
   }
 
   if (options->file_path != NULL) {
-    g_free ((gpointer)options->file_path);
+    g_free ((gpointer) options->file_path);
   }
 
   if (options->rtsp_ip_port != NULL) {
-    g_free ((gpointer)options->rtsp_ip_port);
+    g_free ((gpointer) options->rtsp_ip_port);
   }
 
-  if (options->model_path != (gchar *)(&DEFAULT_SNPE_YOLOV5_MODEL) &&
-      options->model_path != (gchar *)(&DEFAULT_SNPE_YOLOV8_MODEL) &&
-      options->model_path != (gchar *)(&DEFAULT_SNPE_YOLONAS_MODEL) &&
-      options->model_path != (gchar *)(&DEFAULT_TFLITE_YOLOV8_MODEL) &&
-      options->model_path != (gchar *)(&DEFAULT_TFLITE_YOLOV5_MODEL) &&
-      options->model_path != (gchar *)(&DEFAULT_TFLITE_YOLONAS_MODEL) &&
-      options->model_path != (gchar *)(&DEFAULT_TFLITE_YOLOV7_MODEL) &&
-      options->model_path != (gchar *)(&DEFAULT_QNN_YOLOV8_MODEL) &&
+  if (options->model_path != (gchar *) (&DEFAULT_TFLITE_MODEL) &&
       options->model_path != NULL) {
-    g_free ((gpointer)options->model_path);
+    g_free ((gpointer) options->model_path);
   }
 
-  if (options->labels_path != (gchar *)(&DEFAULT_YOLOV5_LABELS) &&
-      options->labels_path != (gchar *)(&DEFAULT_YOLOV8_LABELS) &&
-      options->labels_path != (gchar *)(&DEFAULT_YOLONAS_LABELS) &&
-      options->labels_path != (gchar *)(&DEFAULT_YOLOV7_LABELS) &&
+  if (options->labels_path != (gchar *) (&DEFAULT_LABELS) &&
       options->labels_path != NULL) {
-    g_free ((gpointer)options->labels_path);
+    g_free ((gpointer) options->labels_path);
   }
 
-  if (options->constants != (gchar *)(&DEFAULT_CONSTANTS_YOLOV5) &&
-      options->constants != (gchar *)(&DEFAULT_CONSTANTS_YOLOV8) &&
-      options->constants != (gchar *)(&DEFAULT_CONSTANTS_YOLONAS) &&
-      options->constants != (gchar *)(&DEFAULT_CONSTANTS_YOLOV7) &&
+  if (options->constants != (gchar *) (&DEFAULT_CONSTANTS) &&
       options->constants != NULL) {
-    g_free ((gpointer)options->constants);
+    g_free ((gpointer) options->constants);
   }
 
-  if (options->snpe_layers != NULL) {
-    for (gint i = 0; i < options->snpe_layer_count; i++) {
-      g_free ((gpointer)options->snpe_layers[i]);
-    }
-    g_free ((gpointer)options->snpe_layers);
-  }
-
-  if (config_file != NULL &&
-      config_file != (gchar *)(&DEFAULT_CONFIG_FILE)) {
-    g_free ((gpointer)config_file);
+  if (config_file != NULL && config_file != (gchar *) (&DEFAULT_CONFIG_FILE)) {
+    g_free ((gpointer) config_file);
     config_file = NULL;
   }
 
@@ -233,7 +187,7 @@ on_pad_added (GstElement * element, GstPad * pad, gpointer data)
   // Get the static sink pad from the queue
   sinkpad = gst_element_get_static_pad (queue, "sink");
   ret = gst_pad_link (pad, sinkpad);
-  if (!ret){
+  if (!ret) {
     g_printerr ("Failed to link pad to sinkpad\n");
   }
 
@@ -262,6 +216,126 @@ build_pad_property (GValue * property, gint values[], gint num)
 }
 
 /**
+ * Callback function for appsink to parse metadata obtained from
+ * post-processing plugin
+ *
+ * @param appsink Appsink which receives metadata
+ * @param user_data Pointer to allow user to pass data to callback function
+ */
+GstFlowReturn
+appsink_callback (GstElement * appsink, gpointer user_data)
+{
+  GValue vlist = G_VALUE_INIT;
+  GstMapInfo memmap = { };
+  GstSample *sample = NULL;
+  GstBuffer *buffer = NULL;
+  GstStructure *entry = NULL;
+  const GValue *bboxes = NULL, *value = NULL;
+  const GValue *bbox_value = NULL;
+  GstStructure *bbox_entry = NULL;
+  gchar *label = NULL, *ctx = NULL;
+  gchar *data = NULL, *token = NULL;
+  GstFlowReturn ret = GST_FLOW_OK;
+  guint size = 0, idx = 0, people_count = 0;
+  gint display_width, display_height;
+
+  g_signal_emit_by_name (appsink, "pull-sample", &sample, &ret);
+  if (ret != GST_FLOW_OK) {
+    g_printerr ("Cannot pull GstSample\n");
+    goto exit;
+  }
+
+  if (sample) {
+    buffer = gst_sample_get_buffer (sample);
+    if (buffer == NULL) {
+      g_printerr ("Cannot get buffer from sample");
+      goto exit;
+    }
+
+    if (!gst_buffer_map (buffer, &memmap, GST_MAP_READ)) {
+      g_print ("buffer mapping failed");
+      goto exit;
+    }
+
+    if (!get_active_display_mode (&display_width, &display_height)) {
+      g_warning
+          ("Failed to get active display mode, using 1080p default config");
+      display_width = DEFAULT_DISPLAY_WIDTH;
+      display_height = DEFAULT_DISPLAY_HEIGHT;
+    }
+
+    size = memmap.size + 1;
+    data = g_new0 (gchar, size);
+    memcpy ((gpointer) (data), memmap.data, memmap.size);
+
+    token = strtok_r (data, "\n", &ctx);
+
+    g_value_init (&vlist, GST_TYPE_LIST);
+    if (!gst_value_deserialize (&vlist, token)) {
+      g_printerr ("Deserialization failed\n");
+      goto exit;
+    }
+
+    size = gst_value_list_get_size (&vlist);
+    g_print ("Size: %d\n", size);
+    people_count = 0;
+    for (idx = 0; idx < size; idx++) {
+      value = gst_value_list_get_value (&vlist, idx);
+      entry = GST_STRUCTURE (g_value_get_boxed (value));
+
+      guint seqnum = 0, n_entries = 0;
+      gst_structure_get_uint (entry, "sequence-index", &seqnum);
+      gst_structure_get_uint (entry, "sequence-num-entries", &n_entries);
+      GST_INFO_OBJECT (appsink, "seqnum: %d, n_entries: %d", seqnum, n_entries);
+
+      bboxes = gst_structure_get_value (entry, "bounding-boxes");
+      guint bbox_size = gst_value_array_get_size (bboxes);
+      for (guint i = 0; i < bbox_size; i++) {
+        gfloat x = 0, y = 0, width = 0, height = 0;
+        gdouble confidence;
+
+        value = gst_value_array_get_value (bboxes, i);
+        bbox_entry = GST_STRUCTURE (g_value_get_boxed (value));
+
+        label = g_strdup (gst_structure_get_name (bbox_entry));
+        GST_INFO_OBJECT (appsink, "Bounding box label: %s", label);
+
+        gst_structure_get_double (bbox_entry, "confidence", &confidence);
+        GST_INFO_OBJECT (appsink, "Confidence: %f", confidence);
+
+        bbox_value = gst_structure_get_value (bbox_entry, "rectangle");
+        x = g_value_get_float (gst_value_array_get_value (bbox_value, 0));
+        y = g_value_get_float (gst_value_array_get_value (bbox_value, 1));
+        width = g_value_get_float (gst_value_array_get_value (bbox_value, 2));
+        height = g_value_get_float (gst_value_array_get_value (bbox_value, 3));
+        GST_INFO_OBJECT (appsink, "Box: [x: %d, y: %d, width: %d, height: %d]",
+            (gint) (x * display_width), (gint) (y * display_height),
+            (gint) (width * display_width), (gint) (height * display_height));
+
+        if (g_strcmp0 (label, "person") == 0) {
+          people_count++;
+        }
+      }
+    }
+
+    g_print ("People count in frame: %d\n", people_count);
+  }
+
+  g_free (token);
+  g_free (label);
+  g_value_unset (&vlist);
+
+exit:
+  if (buffer) {
+    gst_buffer_unmap (buffer, &memmap);
+  }
+  if (sample) {
+    gst_sample_unref (sample);
+  }
+  return GST_FLOW_OK;
+}
+
+/**
  * Create GST pipeline: has 3 main steps
  * 1. Create all elements/GST plugins
  * 2. Set Parameters for each plugin
@@ -277,12 +351,13 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstElement *qmmfsrc_caps_preview = NULL;
   GstElement *queue[QUEUE_COUNT], *tee = NULL;
   GstElement *qtimlvconverter = NULL, *qtimlelement = NULL;
-  GstElement *qtimlvdetection = NULL, *detection_filter = NULL;
+  GstElement *qtimlvdetection[DETECTION_COUNT], *detection_filter = NULL;
   GstElement *qtivcomposer = NULL, *fpsdisplaysink = NULL, *waylandsink = NULL;
   GstElement *filesrc = NULL, *qtdemux = NULL, *h264parse = NULL;
   GstElement *v4l2h264dec = NULL, *rtspsrc = NULL, *rtph264depay = NULL;
   GstElement *v4l2h264dec_caps = NULL;
-  GstCaps *pad_filter = NULL, *filtercaps = NULL;
+  GstElement *detection_tee = NULL, *appsink_caps = NULL, *appsink = NULL;
+  GstCaps *pad_filter = NULL, *filtercaps = NULL, *appsink_filter = NULL;
   GstPad *vcomposer_sink;
   GstStructure *delegate_options = NULL;
   GstPad *qtiqmmfsrc_type = NULL;
@@ -303,6 +378,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     queue[i] = NULL;
+  }
+  for (gint i = 0; i < DETECTION_COUNT; i++) {
+    qtimlvdetection[i] = NULL;
   }
 
   // 1. Create the elements or Plugins
@@ -335,8 +413,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       goto error_clean_elements;
     }
 
-    v4l2h264dec_caps = gst_element_factory_make (
-        "capsfilter", "v4l2h264dec_caps");
+    // Create caps for v4l2h264dec element
+    v4l2h264dec_caps =
+        gst_element_factory_make ("capsfilter", "v4l2h264dec_caps");
     if (!v4l2h264dec_caps) {
       g_printerr ("Failed to create v4l2h264dec_caps\n");
       goto error_clean_elements;
@@ -371,8 +450,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       goto error_clean_elements;
     }
 
-    v4l2h264dec_caps = gst_element_factory_make (
-        "capsfilter", "v4l2h264dec_caps");
+    // Create caps for v4l2h264dec element
+    v4l2h264dec_caps =
+        gst_element_factory_make ("capsfilter", "v4l2h264dec_caps");
     if (!v4l2h264dec_caps) {
       g_printerr ("Failed to create v4l2h264dec_caps\n");
       goto error_clean_elements;
@@ -417,7 +497,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   // Use tee to send data same data buffer for file and rtsp use cases
   // one for AI inferencing, one for Display composition
-  if (options->use_rtsp || options->use_file){
+  if (options->use_rtsp || options->use_file) {
     tee = gst_element_factory_make ("tee", "tee");
     if (!tee) {
       g_printerr ("Failed to create tee\n");
@@ -433,28 +513,23 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     goto error_clean_elements;
   }
 
-  // Create the ML inferencing plugin SNPE/TFLITE
-  if (options->model_type == GST_MODEL_TYPE_SNPE) {
-    qtimlelement = gst_element_factory_make ("qtimlsnpe", "qtimlsnpe");
-  } else if (options->model_type == GST_MODEL_TYPE_TFLITE) {
-    qtimlelement = gst_element_factory_make ("qtimltflite", "qtimlelement");
-  } else if (options->model_type == GST_MODEL_TYPE_QNN) {
-    qtimlelement = gst_element_factory_make ("qtimlqnn", "qtimlelement");
-  } else {
-    g_printerr ("Invalid model type\n");
-    goto error_clean_elements;
-  }
+  // Create the ML inferencing plugin for TFLITE
+  qtimlelement = gst_element_factory_make ("qtimltflite", "qtimlelement");
+
   if (!qtimlelement) {
     g_printerr ("Failed to create qtimlelement\n");
     goto error_clean_elements;
   }
 
   // Create plugin for ML postprocessing for object detection
-  qtimlvdetection = gst_element_factory_make ("qtimlvdetection",
-      "qtimlvdetection");
-  if (!qtimlvdetection) {
-    g_printerr ("Failed to create qtimlvdetection\n");
-    goto error_clean_elements;
+  for (gint i = 0; i < DETECTION_COUNT; i++) {
+    snprintf (element_name, 127, "qtimlvdetection-%d", i);
+    qtimlvdetection[i] = gst_element_factory_make ("qtimlvdetection",
+        element_name);
+    if (!queue[i]) {
+      g_printerr ("Failed to create qtimlvdetection %d\n", i);
+      goto error_clean_elements;
+    }
   }
 
   // Composer to combine camera output with ML post proc output
@@ -465,7 +540,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   // Used to negotiate between ML post proc o/p and qtivcomposer
-  detection_filter = gst_element_factory_make ("capsfilter", "detection_filter");
+  detection_filter =
+      gst_element_factory_make ("capsfilter", "detection_filter");
   if (!detection_filter) {
     g_printerr ("Failed to create detection_filter\n");
     goto error_clean_elements;
@@ -480,9 +556,31 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   // Create fpsdisplaysink to display the current and
   // average framerate as a text overlay
-  fpsdisplaysink = gst_element_factory_make ("fpsdisplaysink", "fpsdisplaysink");
-  if ( !fpsdisplaysink) {
+  fpsdisplaysink =
+      gst_element_factory_make ("fpsdisplaysink", "fpsdisplaysink");
+  if (!fpsdisplaysink) {
     g_printerr ("Failed to create fpsdisplaysink\n");
+    goto error_clean_elements;
+  }
+
+  // Create tee to split output of ML inference
+  detection_tee = gst_element_factory_make ("tee", "detection_tee");
+  if (!detection_tee) {
+    g_printerr ("Failed to create detection_tee\n");
+    goto error_clean_elements;
+  }
+
+  // Create caps to enable text output from detection plugin
+  appsink_caps = gst_element_factory_make ("capsfilter", "appsink_caps");
+  if (!appsink_caps) {
+    g_printerr ("Failed to create appsink_caps\n");
+    goto error_clean_elements;
+  }
+
+  // Create appsink to obtain metadata from detection plugin
+  appsink = gst_element_factory_make ("appsink", "appsink");
+  if (!appsink) {
+    g_printerr ("Failed to create appsink\n");
     goto error_clean_elements;
   }
 
@@ -541,224 +639,55 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   // 2.5 Select the HW to DSP/GPU/CPU for model inferencing using
   // delegate property
-  if (options->model_type == GST_MODEL_TYPE_SNPE) {
-    GstMLSnpeDelegate snpe_delegate;
-    if (options->use_cpu) {
-      snpe_delegate = GST_ML_SNPE_DELEGATE_NONE;
-      g_print ("Using CPU delegate\n");
-    } else if (options->use_gpu) {
-      snpe_delegate = GST_ML_SNPE_DELEGATE_GPU;
-      g_print ("Using GPU delegate\n");
-    } else {
-      snpe_delegate = GST_ML_SNPE_DELEGATE_DSP;
-      g_print ("Using DSP delegate\n");
-    }
+  GstMLTFLiteDelegate tflite_delegate;
+  if (options->use_cpu) {
+    tflite_delegate = GST_ML_TFLITE_DELEGATE_NONE;
+    g_print ("Using CPU Delegate\n");
     g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
-        "delegate", snpe_delegate, NULL);
-  } else if (options->model_type == GST_MODEL_TYPE_TFLITE) {
-    GstMLTFLiteDelegate tflite_delegate;
-    if (options->use_cpu) {
-      tflite_delegate = GST_ML_TFLITE_DELEGATE_NONE;
-      g_print ("Using CPU Delegate\n");
-      g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
-          "delegate", tflite_delegate, NULL);
-    } else if (options->use_gpu) {
-      g_print ("Using GPU delegate\n");
-      tflite_delegate = GST_ML_TFLITE_DELEGATE_GPU;
-      g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
-          "delegate", tflite_delegate, NULL);
-    } else if (options->use_dsp) {
-      g_print ("Using DSP delegate\n");
-      delegate_options = gst_structure_from_string (
-          "QNNExternalDelegate,backend_type=htp", NULL);
-      g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
-          "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
-      g_object_set (G_OBJECT (qtimlelement),
-          "external_delegate_path", "libQnnTFLiteDelegate.so", NULL);
-      g_object_set (G_OBJECT (qtimlelement),
-          "external_delegate_options", delegate_options, NULL);
-      gst_structure_free (delegate_options);
-    } else {
-      g_printerr ("Invalid Runtime Selected\n");
-      goto error_clean_elements;
-    }
-  } else if (options->model_type == GST_MODEL_TYPE_QNN) {
+        "delegate", tflite_delegate, NULL);
+  } else if (options->use_gpu) {
+    g_print ("Using GPU delegate\n");
+    tflite_delegate = GST_ML_TFLITE_DELEGATE_GPU;
+    g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
+        "delegate", tflite_delegate, NULL);
+  } else if (options->use_dsp) {
     g_print ("Using DSP delegate\n");
+    delegate_options =
+        gst_structure_from_string ("QNNExternalDelegate,backend_type=htp",
+        NULL);
     g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
-        "backend", "/usr/lib/libQnnHtp.so", NULL);
-  } else {
-    g_printerr ("Invalid model type\n");
-    goto error_clean_elements;
+        "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
+    g_object_set (G_OBJECT (qtimlelement), "external_delegate_path",
+        "libQnnTFLiteDelegate.so", NULL);
+    g_object_set (G_OBJECT (qtimlelement), "external_delegate_options",
+        delegate_options, NULL);
+    gst_structure_free (delegate_options);
   }
 
   // 2.6 Set properties for ML postproc plugins - module, layers, threshold
-  if (options->model_type == GST_MODEL_TYPE_SNPE) {
-    g_object_set (G_OBJECT (qtimlelement), "model",
-        options->model_path, NULL);
+  g_value_init (&layers, GST_TYPE_ARRAY);
+  g_value_init (&value, G_TYPE_STRING);
 
-    g_value_init (&layers, GST_TYPE_ARRAY);
-    g_value_init (&value, G_TYPE_STRING);
-    for (gint i = 0; i < options->snpe_layer_count; i++) {
-      g_value_set_string (&value, options->snpe_layers[i]);
-      gst_value_array_append_value (&layers, &value);
-    }
-    g_object_set_property (G_OBJECT (qtimlelement), "layers", &layers);
-
-    // set qtimlvdetection properties
-    g_object_set (G_OBJECT (qtimlvdetection), "labels",
+  // YOLO_V8 specific settings
+  for (gint i = 0; i < DETECTION_COUNT; i++) {
+    g_object_set (G_OBJECT (qtimlvdetection[i]), "labels",
         options->labels_path, NULL);
-    g_object_set (G_OBJECT (qtimlvdetection), "threshold",
-        options->threshold, NULL);
-    g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
-
-    switch (options->yolo_model_type) {
-      // YOLO_V5 specific settings
-      case GST_YOLO_TYPE_V5:
-        // get enum values of module properties from qtimlvdetection plugin
-        module_id = get_enum_value (qtimlvdetection, "module", "yolov5");
-        if (module_id != -1) {
-          g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
-        } else {
-          g_printerr ("Module yolov5 is not available in qtimlvdetection\n");
-          goto error_clean_elements;
-        }
-        break;
-
-      // YOLO_V8 specific settings
-      case GST_YOLO_TYPE_V8:
-        // get enum values of module property frrom qtimlvdetection plugin
-        module_id = get_enum_value (qtimlvdetection, "module", "yolov8");
-        if (module_id != -1){
-          g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
-        } else {
-          g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
-          goto error_clean_elements;
-        }
-        break;
-
-      // YOLO_NAS specific settings
-      case GST_YOLO_TYPE_NAS:
-        // get enum values of module property frrom qtimlvdetection plugin
-        module_id = get_enum_value (qtimlvdetection, "module", "yolo-nas");
-        if (module_id != -1) {
-          g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
-        } else {
-          g_printerr ("Module yolo-nas is not available in qtimlvdetection\n");
-          goto error_clean_elements;
-        }
-        break;
-
-      default:
-        g_printerr ("Invalid Yolo Model type\n");
-        goto error_clean_elements;
-    }
-  } else if (options->model_type == GST_MODEL_TYPE_TFLITE) {
-    switch (options->yolo_model_type) {
-      // YOLO_V8 specific settings
-      case GST_YOLO_TYPE_V8:
-        // set qtimlvdetection properties
-        g_object_set (G_OBJECT (qtimlvdetection), "labels",
-            options->labels_path, NULL);
-        module_id = get_enum_value (qtimlvdetection, "module", "yolov8");
-        if (module_id != -1) {
-            g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
-        } else {
-          g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
-          goto error_clean_elements;
-        }
-        g_object_set (G_OBJECT (qtimlvdetection), "threshold",
-            options->threshold, NULL);
-        g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
-        g_object_set (G_OBJECT (qtimlvdetection), "constants",
-            options->constants, NULL);
-        break;
-      // YOLO_V5 specific settings
-      case GST_YOLO_TYPE_V5:
-        // set qtimlvdetection properties
-        g_object_set (G_OBJECT (qtimlvdetection), "labels",
-            options->labels_path, NULL);
-        module_id = get_enum_value (qtimlvdetection, "module", "yolov5");
-        if (module_id != -1) {
-            g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
-        } else {
-          g_printerr ("Module yolov5 is not available in qtimlvdetection\n");
-          goto error_clean_elements;
-        }
-        g_object_set (G_OBJECT (qtimlvdetection), "threshold",
-            options->threshold, NULL);
-        g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
-        g_object_set (G_OBJECT (qtimlvdetection), "constants",
-            options->constants, NULL);
-        break;
-        // YOLO_NAS specific settings
-      case GST_YOLO_TYPE_NAS:
-        // set qtimlvdetection properties
-        g_object_set (G_OBJECT (qtimlvdetection), "labels",
-            options->labels_path, NULL);
-        module_id = get_enum_value (qtimlvdetection, "module", "yolo-nas");
-        if (module_id != -1) {
-          g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
-        } else {
-          g_printerr ("Module yolonas is not available in qtimlvdetection\n");
-          goto error_clean_elements;
-        }
-        g_object_set (G_OBJECT (qtimlvdetection), "threshold",
-            options->threshold, NULL);
-        g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
-        g_object_set (G_OBJECT (qtimlvdetection), "constants",
-            options->constants, NULL);
-        break;
-        // YOLOV7 specific settings
-      case GST_YOLO_TYPE_V7:
-        // set qtimlvdetection properties
-        g_object_set (G_OBJECT (qtimlvdetection), "labels",
-            options->labels_path, NULL);
-        module_id = get_enum_value (qtimlvdetection, "module", "yolov8");
-        if (module_id != -1) {
-          g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
-        } else {
-          g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
-          goto error_clean_elements;
-        }
-        g_object_set (G_OBJECT (qtimlvdetection), "threshold",
-            options->threshold, NULL);
-        g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
-        g_object_set (G_OBJECT (qtimlvdetection), "constants",
-            options->constants, NULL);
-        break;
-      default:
-        g_printerr ("Unsupported TFLITE model, Use YoloV5 or "
-            "YoloV8 or YoloNas or Yolov7 TFLITE model\n");
-        goto error_clean_elements;
-    }
-  } else if (options->model_type == GST_MODEL_TYPE_QNN) {
-    switch (options->yolo_model_type) {
-      // YOLOv8 specific settings
-      case GST_YOLO_TYPE_V8:
-        // set qtimlvdetection properties
-        g_object_set (G_OBJECT (qtimlvdetection), "labels",
-            options->labels_path, NULL);
-        module_id = get_enum_value (qtimlvdetection, "module", "yolov8");
-        if (module_id != -1) {
-            g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
-        } else {
-          g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
-          goto error_clean_elements;
-        }
-        g_object_set (G_OBJECT (qtimlvdetection), "threshold",
-            options->threshold, NULL);
-        g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
-        g_object_set (G_OBJECT (qtimlvdetection), "constants",
-            options->constants, NULL);
-        break;
-
-      default:
-        g_printerr ("Unsupported QNN model, use YoloV8 QNN model\n");
-        goto error_clean_elements;
+  }
+  module_id = get_enum_value (qtimlvdetection[0], "module", "yolov8");
+  if (module_id != -1) {
+    for (gint i = 0; i < DETECTION_COUNT; i++) {
+      g_object_set (G_OBJECT (qtimlvdetection[i]), "module", module_id, NULL);
     }
   } else {
-    g_printerr ("Invalid model_type or yolo_model_type\n");
+    g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
     goto error_clean_elements;
+  }
+  for (gint i = 0; i < DETECTION_COUNT; i++) {
+    g_object_set (G_OBJECT (qtimlvdetection[i]), "threshold",
+        options->threshold, NULL);
+    g_object_set (G_OBJECT (qtimlvdetection[i]), "results", 10, NULL);
+    g_object_set (G_OBJECT (qtimlvdetection[i]), "constants",
+        options->constants, NULL);
   }
 
   // 2.7 Set the properties for Wayland compositer
@@ -775,18 +704,25 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   // 2.9 Set the properties of pad_filter for negotiation with qtivcomposer
   pad_filter = gst_caps_new_simple ("video/x-raw",
       "format", G_TYPE_STRING, "BGRA",
-      "width", G_TYPE_INT, 640,
-      "height", G_TYPE_INT, 360, NULL);
+      "width", G_TYPE_INT, 640, "height", G_TYPE_INT, 360, NULL);
 
   g_object_set (G_OBJECT (detection_filter), "caps", pad_filter, NULL);
   gst_caps_unref (pad_filter);
+
+  // 2.10 Set the properties for appsink_filter to obtain bounding metadata
+  appsink_filter = gst_caps_new_simple ("text/x-raw", NULL, NULL);
+  g_object_set (G_OBJECT (appsink_caps), "caps", appsink_filter, NULL);
+  gst_caps_unref (appsink_filter);
+
+  // 2.11 enable appsink to send signals for new-sample
+  g_object_set (G_OBJECT (appsink), "emit-signals", TRUE, NULL);
 
   // 3. Setup the pipeline
   g_print ("Adding all elements to the pipeline...\n");
 
   if (options->use_file) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), filesrc,
-      qtdemux, h264parse, v4l2h264dec, v4l2h264dec_caps, tee, NULL);
+        qtdemux, h264parse, v4l2h264dec, v4l2h264dec_caps, tee, NULL);
   } else if (options->use_rtsp) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), rtspsrc,
         rtph264depay, h264parse, v4l2h264dec, v4l2h264dec_caps, tee, NULL);
@@ -799,8 +735,11 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   gst_bin_add_many (GST_BIN (appctx->pipeline), qtimlvconverter,
-      qtimlelement, qtimlvdetection, detection_filter,
+      qtimlelement, qtimlvdetection[0], qtimlvdetection[1], detection_filter,
       qtivcomposer, fpsdisplaysink, waylandsink, NULL);
+
+  gst_bin_add_many (GST_BIN (appctx->pipeline), appsink,
+      appsink_caps, detection_tee, NULL);
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), queue[i], NULL);
@@ -808,7 +747,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   g_print ("Linking elements...\n");
 
-  // Create pipeline for object detection
+  // Create pipeline for object detection and mdetadata parsing
   if (options->use_file) {
     ret = gst_element_link_many (filesrc, qtdemux, NULL);
     if (!ret) {
@@ -851,7 +790,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   if (options->use_rtsp || options->use_file) {
     ret = gst_element_link_many (tee, queue[2], qtivcomposer, NULL);
     if (!ret) {
-      g_printerr ("Pipeline elements cannot be linked for tee->qtivcomposer.\n");
+      g_printerr
+          ("Pipeline elements cannot be linked for tee->qtivcomposer.\n");
       goto error_clean_pipeline;
     }
   } else if (options->use_camera) {
@@ -875,20 +815,18 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   if (options->use_rtsp || options->use_file) {
     ret = gst_element_link_many (tee, queue[4], qtimlvconverter,
-        queue[5], qtimlelement, queue[6], qtimlvdetection,
-        detection_filter, queue[7], qtivcomposer, NULL);
+        queue[5], qtimlelement, queue[6], detection_tee, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
-          "pre proc -> ml framework -> post proc.\n");
+          "pre proc -> ml framework -> detection_tee\n");
       goto error_clean_pipeline;
     }
   } else if (options->use_camera) {
     ret = gst_element_link_many (queue[4], qtimlvconverter,
-        queue[5], qtimlelement, queue[6], qtimlvdetection,
-        detection_filter, queue[7], qtivcomposer, NULL);
+        queue[5], qtimlelement, queue[6], detection_tee, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
-          "pre proc -> ml framework -> post proc.\n");
+          "pre proc -> ml framework -> detection_tee\n");
       goto error_clean_pipeline;
     }
   } else {
@@ -896,12 +834,30 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     goto error_clean_elements;
   }
 
+  ret = gst_element_link_many (detection_tee, qtimlvdetection[0],
+      detection_filter, queue[7], qtivcomposer, NULL);
+  if (!ret) {
+    g_printerr ("Pipeline elements cannot be linked for "
+        "detection_tee -> post-proc -> composer.\n");
+    goto error_clean_pipeline;
+  }
+
+  ret = gst_element_link_many (detection_tee, qtimlvdetection[1],
+      appsink_caps, appsink, NULL);
+  if (!ret) {
+    g_printerr ("Pipeline elements cannot be linked for "
+        "detection_tee -> post proc -> appsink.\n");
+    goto error_clean_pipeline;
+  }
+
   if (options->use_file) {
-    g_signal_connect (qtdemux, "pad-added", G_CALLBACK (on_pad_added), queue[0]);
+    g_signal_connect (qtdemux, "pad-added", G_CALLBACK (on_pad_added),
+        queue[0]);
   }
 
   if (options->use_rtsp) {
-    g_signal_connect (rtspsrc ,"pad-added", G_CALLBACK (on_pad_added), queue[0]);
+    g_signal_connect (rtspsrc, "pad-added", G_CALLBACK (on_pad_added),
+        queue[0]);
   }
 
   if (options->use_camera) {
@@ -918,6 +874,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     gst_object_unref (qtiqmmfsrc_type);
   }
 
+  // Connect callback function to appsink
+  g_signal_connect (appsink, "new-sample", G_CALLBACK (appsink_callback), NULL);
+
   // Set overlay window size for Detection to display text labels
   vcomposer_sink = gst_element_get_static_pad (qtivcomposer, "sink_0");
   if (vcomposer_sink == NULL) {
@@ -931,8 +890,10 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   g_value_init (&position, GST_TYPE_ARRAY);
   g_value_init (&dimension, GST_TYPE_ARRAY);
 
-  pos_vals[0] = 0; pos_vals[1] = 0;
-  dim_vals[0] = 1920; dim_vals[1] = 1080;
+  pos_vals[0] = 0;
+  pos_vals[1] = 0;
+  dim_vals[0] = 1920;
+  dim_vals[1] = 1080;
 
   build_pad_property (&position, pos_vals, 2);
   build_pad_property (&dimension, dim_vals, 2);
@@ -953,12 +914,15 @@ error_clean_pipeline:
 
 error_clean_elements:
   cleanup_gst (&qtiqmmfsrc, &qmmfsrc_caps, &qmmfsrc_caps_preview,
-      &filesrc, &qtdemux, &h264parse, &v4l2h264dec, &v4l2h264dec_caps,
-      &rtspsrc, &rtph264depay, &tee, &qtimlvconverter, &qtimlelement,
-      &qtimlvdetection, &qtivcomposer, &detection_filter,
-      &waylandsink, &fpsdisplaysink, NULL);
+      &filesrc, &qtdemux, &h264parse, &v4l2h264dec, &rtph264depay, &rtspsrc,
+      &rtph264depay, &tee, &v4l2h264dec_caps, &qtimlvconverter, &qtimlelement,
+      &qtivcomposer, &detection_filter, &waylandsink,
+      &fpsdisplaysink, &appsink, &appsink_caps, &detection_tee, NULL);
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     gst_object_unref (queue[i]);
+  }
+  for (gint i = 0; i < DETECTION_COUNT; i++) {
+    gst_object_unref (qtimlvdetection[i]);
   }
   return FALSE;
 }
@@ -975,7 +939,6 @@ parse_json (gchar * config_file, GstAppOptions * options)
   JsonParser *parser = NULL;
   JsonNode *root = NULL;
   JsonObject *root_obj = NULL;
-  JsonArray *snpe_layers = NULL;
   GError *error = NULL;
 
   parser = json_parser_new ();
@@ -1000,7 +963,6 @@ parse_json (gchar * config_file, GstAppOptions * options)
 
   gboolean camera_is_available = is_camera_available ();
 
-
   if (camera_is_available) {
     if (json_object_has_member (root_obj, "camera"))
       options->camera_type = json_object_get_int_member (root_obj, "camera");
@@ -1014,43 +976,6 @@ parse_json (gchar * config_file, GstAppOptions * options)
   if (json_object_has_member (root_obj, "rtsp-ip-port")) {
     options->rtsp_ip_port =
         g_strdup (json_object_get_string_member (root_obj, "rtsp-ip-port"));
-  }
-
-  if (json_object_has_member (root_obj, "yolo-model-type")) {
-    const gchar* yolo_model_type =
-        json_object_get_string_member (root_obj, "yolo-model-type");
-    if (g_strcmp0 (yolo_model_type, "yolov5") == 0)
-      options->yolo_model_type = GST_YOLO_TYPE_V5;
-    else if (g_strcmp0 (yolo_model_type, "yolov8") == 0)
-      options->yolo_model_type = GST_YOLO_TYPE_V8;
-    else if (g_strcmp0 (yolo_model_type, "yolonas") == 0)
-      options->yolo_model_type = GST_YOLO_TYPE_NAS;
-    else if (g_strcmp0 (yolo_model_type, "yolov7") == 0)
-      options->yolo_model_type = GST_YOLO_TYPE_V7;
-    else {
-      gst_printerr ("yolo-model-type can only be one of "
-          "\"yolov5\", \"yolov8\" or \"yolonas\" or \"yolov7\"\n");
-      g_object_unref (parser);
-      return -1;
-    }
-  }
-
-  if (json_object_has_member (root_obj, "ml-framework")) {
-    const gchar* framework =
-        json_object_get_string_member (root_obj, "ml-framework");
-    if (g_strcmp0 (framework, "snpe") == 0)
-      options->model_type = GST_MODEL_TYPE_SNPE;
-    else if (g_strcmp0 (framework, "tflite") == 0)
-      options->model_type = GST_MODEL_TYPE_TFLITE;
-    else if (g_strcmp0 (framework, "qnn") == 0) {
-      options->model_type = GST_MODEL_TYPE_QNN;
-    }
-    else {
-      gst_printerr ("ml-framework can only be one of "
-          "\"snpe\", \"tflite\" or \"qnn\"\n");
-      g_object_unref (parser);
-      return -1;
-    }
   }
 
   if (json_object_has_member (root_obj, "model")) {
@@ -1069,13 +994,11 @@ parse_json (gchar * config_file, GstAppOptions * options)
   }
 
   if (json_object_has_member (root_obj, "threshold")) {
-    options->threshold =
-        json_object_get_int_member (root_obj, "threshold");
+    options->threshold = json_object_get_int_member (root_obj, "threshold");
   }
 
   if (json_object_has_member (root_obj, "runtime")) {
-    const gchar* delegate =
-        json_object_get_string_member (root_obj, "runtime");
+    const gchar *delegate = json_object_get_string_member (root_obj, "runtime");
 
     if (g_strcmp0 (delegate, "cpu") == 0)
       options->use_cpu = TRUE;
@@ -1084,21 +1007,10 @@ parse_json (gchar * config_file, GstAppOptions * options)
     else if (g_strcmp0 (delegate, "gpu") == 0)
       options->use_gpu = TRUE;
     else {
-      gst_printerr ("Runtime can only be one of \"cpu\", \"dsp\" and \"gpu\"\n");
+      gst_printerr
+          ("Runtime can only be one of \"cpu\", \"dsp\" and \"gpu\"\n");
       g_object_unref (parser);
       return -1;
-    }
-  }
-
-  if (json_object_has_member (root_obj, "snpe-layers")) {
-    snpe_layers = json_object_get_array_member (root_obj, "snpe-layers");
-    options->snpe_layer_count = json_array_get_length (snpe_layers);
-    options->snpe_layers = (gchar **) g_malloc (
-        sizeof (gchar **) * options->snpe_layer_count);
-
-    for (gint i = 0; i < options->snpe_layer_count; i++) {
-      options->snpe_layers[i] =
-          g_strdup (json_array_get_string_element (snpe_layers, i));
     }
   }
 
@@ -1114,11 +1026,11 @@ main (gint argc, gchar * argv[])
   GstElement *pipeline = NULL;
   GOptionContext *ctx = NULL;
   const gchar *app_name = NULL;
-  GstAppContext appctx = {};
+  GstAppContext appctx = { };
   gchar help_description[4096];
   gboolean ret = FALSE;
   guint intrpt_watch_id = 0;
-  GstAppOptions options = {};
+  GstAppOptions options = { };
   gchar *config_file = NULL;
 
   // Set Display environment variables
@@ -1129,16 +1041,13 @@ main (gint argc, gchar * argv[])
   options.file_path = NULL;
   options.rtsp_ip_port = NULL;
   options.use_cpu = FALSE, options.use_gpu = FALSE, options.use_dsp = FALSE;
-  options.use_file = FALSE, options.use_rtsp = FALSE, options.use_camera = FALSE;
+  options.use_file = FALSE, options.use_rtsp = FALSE, options.use_camera =
+      FALSE;
   options.threshold = DEFAULT_THRESHOLD_VALUE;
-  options.delegate_type = DEFAULT_SNPE_DELEGATE;
-  options.model_type = GST_MODEL_TYPE_SNPE;
   options.camera_type = GST_CAMERA_TYPE_NONE;
-  options.yolo_model_type = GST_YOLO_TYPE_NAS;
   options.model_path = NULL;
   options.labels_path = NULL;
   options.constants = NULL;
-  options.snpe_layers = NULL;
 
   // Structure to define the user options selected
   GOptionEntry entries[] = {
@@ -1165,62 +1074,37 @@ main (gint argc, gchar * argv[])
 
   snprintf (help_description, 4095, "\nExample:\n"
       "  %s --config-file=%s\n"
-      "\nThis Sample App demonstrates Object Detection on Input Stream\n"
+      "\nThis Sample App demonstrates Metadata Parsing "
+      "obtained from Object Detection on Input Stream\n"
       "\nConfig file Fields:\n"
-      "  %s"
+      "%s"
       "  file-path: \"/PATH\"\n"
       "      File source path\n"
       "  rtsp-ip-port: \"rtsp://<ip>:<port>/<stream>\"\n"
       "      Use this parameter to provide the rtsp input.\n"
       "      Input should be provided as rtsp://<ip>:<port>/<stream>,\n"
       "      eg: rtsp://192.168.1.110:8554/live.mkv\n"
-      "  yolo-model-type: \"yolov5\" or \"yolov8\" or \"yolonas\"\n"
-      "      Yolo Model version to Execute: Yolov5, Yolov8 or YoloNas "
-      "[Default]\n"
-      "  ml-framework: \"snpe\" or \"tflite\" or \"qnn\"\n"
-      "      Execute Model in SNPE DLC [Default] or TFlite format\n"
       "  model: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
-      "      Default model path for YOLOV5 DLC: "DEFAULT_SNPE_YOLOV5_MODEL"\n"
-      "      Default model path for YOLOV8 DLC: "DEFAULT_SNPE_YOLOV8_MODEL"\n"
-      "      Default model path for YOLO NAS DLC: "DEFAULT_SNPE_YOLONAS_MODEL"\n"
-      "      Default model path for YOLOV5 TFLITE: "
-      DEFAULT_TFLITE_YOLOV5_MODEL"\n"
-      "      Default model path for YOLOV8 TFLITE: "
-      DEFAULT_TFLITE_YOLOV8_MODEL"\n"
-      "      Default model path for YOLO NAS TFLITE: "
-      DEFAULT_TFLITE_YOLONAS_MODEL"\n"
-      "      Default model path for YOLO_V7 TFLITE: "
-      DEFAULT_TFLITE_YOLOV7_MODEL"\n"
-      "      Default model path for YOLOV8 QNN: "
-      DEFAULT_QNN_YOLOV8_MODEL"\n"
+      "      Default model path: " DEFAULT_TFLITE_MODEL "\n"
       "  labels: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
-      "      Default labels path for YOLOV5: "DEFAULT_YOLOV5_LABELS"\n"
-      "      Default labels path for YOLOV8: "DEFAULT_YOLOV8_LABELS"\n"
-      "      Default labels path for YOLO NAS: "DEFAULT_YOLONAS_LABELS"\n"
-      "      Default labels path for YOLOV7: "DEFAULT_YOLOV7_LABELS"\n"
+      "      Default labels path: " DEFAULT_LABELS "\n"
       "  constants: \"CONSTANTS\"\n"
       "      Constants, offsets and coefficients used by the chosen module \n"
       "      for post-processing of incoming tensors."
       " Applicable only for some modules\n"
-      "      Default constants for YOLOV5: " DEFAULT_CONSTANTS_YOLOV5"\n"
-      "      Default constants for YOLOV8: " DEFAULT_CONSTANTS_YOLOV8"\n"
-      "      Default constants for YOLO NAS: " DEFAULT_CONSTANTS_YOLONAS"\n"
-      "      Default constants for YOLOV7: " DEFAULT_CONSTANTS_YOLOV7"\n"
+      "      Default constants: " DEFAULT_CONSTANTS "\n"
       "  threshold: 0 to 100\n"
       "      This is an optional parameter and overides "
       "default threshold value 40\n"
       "  runtime: \"cpu\" or \"gpu\" or \"dsp\"\n"
       "      This is an optional parameter. If not filled, "
-      "then default dsp runtime is selected\n"
-      "  snpe-layers: <json array>\n"
-      "      Set output layers for SNPE model. Example:\n"
-      "      [\"/heads/Mul\", \"/heads/Sigmoid\"]\n",
+      "then default dsp runtime is selected\n",
       app_name, DEFAULT_CONFIG_FILE, camera_description);
   help_description[4095] = '\0';
 
-    // Parse command line entries
+  // Parse command line entries
   if ((ctx = g_option_context_new (help_description)) != NULL) {
     GError *error = NULL;
     gboolean success = FALSE;
@@ -1297,8 +1181,7 @@ main (gint argc, gchar * argv[])
         "Available options:\n"
         "    PRIMARY: %d\n"
         "    SECONDARY %d\n",
-        GST_CAMERA_TYPE_PRIMARY,
-        GST_CAMERA_TYPE_SECONDARY);
+        GST_CAMERA_TYPE_PRIMARY, GST_CAMERA_TYPE_SECONDARY);
     gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
@@ -1323,44 +1206,11 @@ main (gint argc, gchar * argv[])
     g_print ("Camera Source is Selected\n");
   }
 
-  if (options.model_type < GST_MODEL_TYPE_SNPE ||
-      options.model_type > GST_MODEL_TYPE_QNN) {
-    g_printerr ("Invalid ml-framework option selected\n"
-        "Available options:\n"
-        "    SNPE: %d\n"
-        "    TFLite: %d\n"
-        "    QNN: %d\n",
-        GST_MODEL_TYPE_SNPE, GST_MODEL_TYPE_TFLITE, GST_MODEL_TYPE_QNN);
-    gst_app_context_free (&appctx, &options, config_file);
-    return -EINVAL;
-  }
-
-  if (options.yolo_model_type < GST_YOLO_TYPE_V5 ||
-      options.yolo_model_type > GST_YOLO_TYPE_V7) {
-    g_printerr ("Invalid model-version option selected\n"
-        "Available options:\n"
-        "    Yolov5: %d\n"
-        "    Yolov8: %d\n"
-        "    YoloNas: %d\n"
-        "    Yolov7: %d\n",
-        GST_YOLO_TYPE_V5, GST_YOLO_TYPE_V8, GST_YOLO_TYPE_NAS, GST_YOLO_TYPE_V7);
-    gst_app_context_free (&appctx, &options, config_file);
-    return -EINVAL;
-  }
-
   if (options.threshold < 0 || options.threshold > 100) {
     g_printerr ("Invalid threshold value selected\n"
         "Threshold Value lies between: \n"
         "    Min: 0\n"
         "    Max: 100\n");
-    gst_app_context_free (&appctx, &options, config_file);
-    return -EINVAL;
-  }
-
-  if (options.model_type == GST_MODEL_TYPE_QNN && (options.use_cpu == TRUE ||
-      options.use_gpu == TRUE)) {
-    g_printerr ("QNN Serialized binary is demonstrated only with DSP"
-        " runtime.\n");
     gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
@@ -1379,84 +1229,16 @@ main (gint argc, gchar * argv[])
 
   // Set model path for execution
   if (options.model_path == NULL) {
-    if (options.model_type == GST_MODEL_TYPE_SNPE) {
-      options.model_path =
-          (options.yolo_model_type == GST_YOLO_TYPE_V5 ?
-          DEFAULT_SNPE_YOLOV5_MODEL :
-          (options.yolo_model_type == GST_YOLO_TYPE_V8 ?
-          DEFAULT_SNPE_YOLOV8_MODEL :
-          DEFAULT_SNPE_YOLONAS_MODEL));
-    } else if (options.model_type == GST_MODEL_TYPE_TFLITE) {
-      if (options.yolo_model_type == GST_YOLO_TYPE_V5) {
-        options.model_path = DEFAULT_TFLITE_YOLOV5_MODEL;
-      } else if (options.yolo_model_type == GST_YOLO_TYPE_NAS) {
-        options.model_path = DEFAULT_TFLITE_YOLONAS_MODEL;
-      } else if (options.yolo_model_type == GST_YOLO_TYPE_V7) {
-        options.model_path = DEFAULT_TFLITE_YOLOV7_MODEL;
-      } else {
-        g_print ("No tflite model provided, Using default Yolov8 Model\n");
-        options.model_path = DEFAULT_TFLITE_YOLOV8_MODEL;
-        options.yolo_model_type = GST_YOLO_TYPE_V8;
-      }
-    } else if (options.model_type == GST_MODEL_TYPE_QNN) {
-      if (options.yolo_model_type == GST_YOLO_TYPE_V8) {
-        options.model_path = DEFAULT_QNN_YOLOV8_MODEL;
-      } else {
-        g_printerr ("Only YOLOV8 model is supported with QNN runtime\n");
-        gst_app_context_free (&appctx, &options, config_file);
-        return -EINVAL;
-      }
-    }
-    else {
-      g_printerr ("Invalid ml_framework\n");
-      gst_app_context_free (&appctx, &options, config_file);
-      return -EINVAL;
-    }
-  }
-
-  // Set default layers for SNPE models if not provided
-  if (options.snpe_layers == NULL && options.model_type == GST_MODEL_TYPE_SNPE) {
-    if (options.yolo_model_type == GST_YOLO_TYPE_V5) {
-      options.snpe_layer_count = 3;
-      options.snpe_layers = (gchar **) g_malloc (
-          sizeof (gchar **) * options.snpe_layer_count);
-      options.snpe_layers[0] = g_strdup ("Conv_198");
-      options.snpe_layers[1] = g_strdup ("Conv_232");
-      options.snpe_layers[2] = g_strdup ("Conv_266");
-    } else if (options.yolo_model_type == GST_YOLO_TYPE_V8) {
-      options.snpe_layer_count = 2;
-      options.snpe_layers = (gchar **) g_malloc (
-          sizeof (gchar **) * options.snpe_layer_count);
-      options.snpe_layers[0] = g_strdup ("Mul_248");
-      options.snpe_layers[1] = g_strdup ("Sigmoid_249");
-    } else if (options.yolo_model_type == GST_YOLO_TYPE_NAS) {
-      options.snpe_layer_count = 2;
-      options.snpe_layers = (gchar **) g_malloc (
-          sizeof (gchar **) * options.snpe_layer_count);
-      options.snpe_layers[0] = g_strdup ("/heads/Mul");
-      options.snpe_layers[1] = g_strdup ("/heads/Sigmoid");
-    } else {
-      g_printerr ("Given YOLO model type is not supported by SNPE framework\n");
-      gst_app_context_free (&appctx, &options, config_file);
-      return -EINVAL;
-    }
+    options.model_path = DEFAULT_TFLITE_MODEL;
   }
 
   // Set default label path for execution
   if (options.labels_path == NULL) {
-    options.labels_path =
-        (options.yolo_model_type == GST_YOLO_TYPE_V5 ? DEFAULT_YOLOV5_LABELS :
-        (options.yolo_model_type == GST_YOLO_TYPE_V8 ? DEFAULT_YOLOV8_LABELS :
-        (options.yolo_model_type == GST_YOLO_TYPE_V7 ? DEFAULT_YOLOV7_LABELS :
-        DEFAULT_YOLONAS_LABELS)));
+    options.labels_path = DEFAULT_LABELS;
   }
 
-  if (options.model_type == GST_MODEL_TYPE_TFLITE && options.constants == NULL) {
-    options.constants =
-        (options.yolo_model_type == GST_YOLO_TYPE_V5 ? DEFAULT_CONSTANTS_YOLOV5:
-        options.yolo_model_type == GST_YOLO_TYPE_NAS ? DEFAULT_CONSTANTS_YOLONAS:
-        options.yolo_model_type == GST_YOLO_TYPE_V7 ? DEFAULT_CONSTANTS_YOLOV7:
-        DEFAULT_CONSTANTS_YOLOV8);
+  if (options.constants == NULL) {
+    options.constants = DEFAULT_CONSTANTS;
   }
 
   if (!file_exists (options.model_path)) {

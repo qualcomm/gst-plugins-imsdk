@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8.2)
-project(GST-AI-SEGMENTATION LANGUAGES C CXX)
+project(GST-AI-METADATA-PARSER-EXAMPLE LANGUAGES C CXX)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
@@ -19,7 +19,7 @@ pkg_check_modules(GST
 pkg_check_modules(GST_JSON
   REQUIRED json-glib-1.0)
 
-set(GST_EXAMPLE_BIN gst-ai-segmentation)
+set(GST_EXAMPLE_BIN gst-ai-metadata-parser-example)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
