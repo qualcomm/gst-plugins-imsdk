@@ -29,38 +29,47 @@ add_definitions(-DHAVE_CONFIG_H)
 # Common compiler flags.
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
+
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined")
 
 # GStreamer DFS plugin.
 set(GST_DFS gstqtidfs)
 
-add_library(${GST_DFS} SHARED
-  dfs.c
-  dfs-engine.cc
-)
+include(CheckIncludeFileCXX)
+check_include_file_cxx("dfs_factory.h" HAVE_DFS_FACTORY_H)
 
-# Add target specific precompiler defintions.
-add_definitions(-DRVSDK_API_VERSION=${RVSDK_API_VERSION})
+if(HAVE_DFS_FACTORY_H)
 
-target_include_directories(${GST_DFS} PRIVATE
-  ${GST_INCLUDE_DIRS}
-  ${CMAKE_SOURCE_DIR}
-)
+  add_library(${GST_DFS} SHARED
+    dfs.c
+    dfs-engine.cc
+  )
 
-target_link_libraries(${GST_DFS} PRIVATE
-  ${GST_LIBRARIES}
-  ${GST_BASE_LIBRARIES}
-  ${GST_ALLOC_LIBRARIES}
-  ${GST_VIDEO_LIBRARIES}
-  gstqtivideobase
-  rv
-  fastcvopt
-  $<$<STREQUAL:${RVSDK_API_VERSION},0x202307>:mv1>
-)
+  # Add target specific precompiler defintions.
+  add_definitions(-DRVSDK_API_VERSION=${RVSDK_API_VERSION})
 
-install(
-  TARGETS ${GST_DFS}
-  LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0
-  PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
-              GROUP_EXECUTE GROUP_READ
-              WORLD_EXECUTE WORLD_READ
-)
+  target_include_directories(${GST_DFS} PRIVATE
+    ${GST_INCLUDE_DIRS}
+    ${CMAKE_SOURCE_DIR}
+  )
+
+  target_link_libraries(${GST_DFS} PRIVATE
+    ${GST_LIBRARIES}
+    ${GST_BASE_LIBRARIES}
+    ${GST_ALLOC_LIBRARIES}
+    ${GST_VIDEO_LIBRARIES}
+    ${CMAKE_DL_LIBS}
+    gstqtivideobase
+  )
+
+  install(
+    TARGETS ${GST_DFS}
+    LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0
+    PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
+                GROUP_EXECUTE GROUP_READ
+                WORLD_EXECUTE WORLD_READ
+  )
+
+endif()
