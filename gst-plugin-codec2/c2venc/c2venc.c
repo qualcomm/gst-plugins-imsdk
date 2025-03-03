@@ -1297,10 +1297,18 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
 
     gst_structure_get_fraction (structure, "framerate", &fps_n, &fps_d);
 
-    if ((fps_n == 0) && (fps_d == 1))
+    if ((fps_n == 0) && (fps_d == 1)) {
       outstate->info.flags |= GST_VIDEO_FLAG_VARIABLE_FPS;
-    else if ((fps_n != 0) && (fps_d != 0))
+    } else if ((fps_n != 0) && (fps_d != 0)) {
       outstate->info.flags &= ~(GST_VIDEO_FLAG_VARIABLE_FPS);
+
+      // Check if fps_n and fps_d need to be updated.
+      if ((fps_n != info->fps_n) || (fps_d != info->fps_d)) {
+        outstate->info.fps_n = fps_n;
+        outstate->info.fps_d = fps_d;
+        GST_DEBUG_OBJECT (c2venc, "Set output frame rate %d/%d", fps_n, fps_d);
+      }
+    }
   }
 
   // Check if output width need to be updated.
@@ -1341,10 +1349,16 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   GST_DEBUG_OBJECT (c2venc, "Output state caps: %" GST_PTR_FORMAT, outstate->caps);
 
   // Variable input fps and fixed output fps, get the duration for timestamp adjustment.
-  if ((state->info.flags & GST_VIDEO_FLAG_VARIABLE_FPS) &&
-      !(outstate->info.flags & GST_VIDEO_FLAG_VARIABLE_FPS)) {
+  if (((state->info.flags & GST_VIDEO_FLAG_VARIABLE_FPS) &&
+      !(outstate->info.flags & GST_VIDEO_FLAG_VARIABLE_FPS)) ||
+      ((outstate->info.fps_n != state->info.fps_n) ||
+      (outstate->info.fps_d != state->info.fps_d))) {
     c2venc->duration = gst_util_uint64_scale_int (GST_SECOND,
-        GST_VIDEO_INFO_FPS_D (info), GST_VIDEO_INFO_FPS_N (info));
+        GST_VIDEO_INFO_FPS_D (&outstate->info),
+        GST_VIDEO_INFO_FPS_N (&outstate->info));
+
+    GST_DEBUG_OBJECT (c2venc, "Different framerate. Set duration to %"
+        GST_TIME_FORMAT, GST_TIME_ARGS (c2venc->duration));
   }
 
   c2venc->n_super_frames = gst_caps_get_num_super_frames (state->caps);
@@ -1390,7 +1404,6 @@ gst_c2_venc_handle_frame (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   }
 
   if (c2venc->duration != GST_CLOCK_TIME_NONE) {
-
     GST_LOG_OBJECT (c2venc, "Adjust timestamp! Expected %" GST_TIME_FORMAT
         " but received frame %u with %" GST_TIME_FORMAT " !",
         GST_TIME_ARGS (c2venc->prevts + c2venc->duration),
