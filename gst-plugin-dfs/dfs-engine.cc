@@ -38,6 +38,10 @@
 
 #include<iomanip>
 #include<iostream>
+#include<string>
+#include<sstream>
+
+#include <dlfcn.h>
 
 // DFS lib is looking for those symbols
 int RV_LOG_LEVEL = 0;
@@ -45,6 +49,38 @@ bool RV_STDERR_LOGGING = true;
 
 #if (RVSDK_API_VERSION >= 0x202403)
 typedef rv_dfs::PointCloudType<float> PointCloudType;
+#endif // RVSDK_API_VERSION
+
+using rvVersion_fn = decltype (rvVersion);
+
+#if (RVSDK_API_VERSION >= 0x202403)
+using rvDFS_InitializeF32_fn = decltype (rvDFS_InitializeF32);
+using rvDFS_InitializeU16_fn = decltype (rvDFS_InitializeU16);
+
+using rvDFS_ComputeF32_fn = decltype (rvDFS_ComputeF32);
+using rvDFS_ComputeU16_fn = decltype (rvDFS_ComputeU16);
+
+using rvDFS_UpdateStereoCameraParamF32_fn = decltype (
+    rvDFS_UpdateStereoCameraParamF32);
+using rvDFS_UpdateStereoCameraParamU16_fn = decltype (
+    rvDFS_UpdateStereoCameraParamU16);
+
+using rvDFS_GetRectCameraParamF32_fn = decltype (rvDFS_GetRectCameraParamF32);
+using rvDFS_GetRectCameraParamU16_fn = decltype (rvDFS_GetRectCameraParamU16);
+
+using rvDFS_Depth2PointCloudF32_fn = decltype (rvDFS_Depth2PointCloudF32);
+using rvDFS_Depth2PointCloudU16_fn = decltype (rvDFS_Depth2PointCloudU16);
+
+using rvDFS_DeinitializeF32_fn = decltype (rvDFS_DeinitializeF32);
+using rvDFS_DeinitializeU16_fn = decltype (rvDFS_DeinitializeU16);
+
+#else
+
+using rvDFS_Initialize_fn = decltype (rvDFS_Initialize);
+using rvDFS_Deinitialize_fn = decltype (rvDFS_Deinitialize);
+using rvDFS_CalculateDisparity_fn = decltype (rvDFS_CalculateDisparity);
+using rvDFS_CalculatePointCloud_fn = decltype (rvDFS_CalculatePointCloud);
+
 #endif // RVSDK_API_VERSION
 
 struct _GstDfsEngine
@@ -57,7 +93,122 @@ struct _GstDfsEngine
   guint32 height;
   guint32 stride;
   guint point_cloud_size;
+
+  gint rv_version;
+
+  void* libhandle;
+
+#if (RVSDK_API_VERSION >= 0x202403)
+  rvDFS_InitializeF32_fn* InitializeF32;
+  rvDFS_InitializeU16_fn* InitializeU16;
+  rvDFS_ComputeF32_fn* ComputeF32;
+  rvDFS_ComputeU16_fn* ComputeU16;
+  rvDFS_UpdateStereoCameraParamF32_fn* UpdateStereoCameraParamF32;
+  rvDFS_UpdateStereoCameraParamU16_fn* UpdateStereoCameraParamU16;
+  rvDFS_GetRectCameraParamF32_fn* GetRectCameraParamF32;
+  rvDFS_GetRectCameraParamU16_fn* GetRectCameraParamU16;
+  rvDFS_Depth2PointCloudF32_fn* Depth2PointCloudF32;
+  rvDFS_Depth2PointCloudU16_fn* Depth2PointCloudU16;
+  rvDFS_DeinitializeF32_fn* DeinitializeF32;
+  rvDFS_DeinitializeU16_fn* DeinitializeU16;
+#else
+  rvDFS_Initialize_fn* Initialize;
+  rvDFS_Deinitialize_fn* Deinitialize;
+  rvDFS_CalculateDisparity_fn* CalculateDisparity;
+  rvDFS_CalculatePointCloud_fn* CalculatePointCloud;
+#endif // RVSDK_API_VERSION
+
+  rvVersion_fn* Version;
 };
+
+static gboolean
+load_symbol (gpointer* method, gpointer handle, const gchar* name)
+{
+  *(method) = dlsym (handle, name);
+  if (NULL == *(method)) {
+    GST_ERROR ("Failed to find symbol %s, error: %s!", name, dlerror ());
+    return FALSE;
+  }
+  return TRUE;
+}
+
+static gboolean
+gst_dfs_initialize_library (GstDfsEngine * engine)
+{
+  engine->libhandle = dlopen ("librv.so", RTLD_NOW | RTLD_LOCAL);
+  if (engine->libhandle == NULL) {
+    GST_ERROR ("Failed to open rvsdk library, error: %s!", dlerror ());
+    return FALSE;
+  }
+
+  auto success = load_symbol ((gpointer *)&engine->Version,
+      engine->libhandle, "rvVersion");
+
+  if (!success) {
+    GST_ERROR ("Failed to load rvVersion symbol, error: %s!", dlerror ());
+    return FALSE;
+  }
+
+  std::string rvsdk_version = engine->Version ();
+
+  std::string fragment_to_remove = "rvSDK";
+
+  std::string::size_type i = rvsdk_version.find (fragment_to_remove);
+
+  if (i != std::string::npos) {
+    rvsdk_version.erase (i, fragment_to_remove.size ());
+  }
+
+  std::stringstream version_as_string_stream;
+  version_as_string_stream << rvsdk_version;
+
+  int version_as_hex = 0;
+  version_as_string_stream >> std::hex >> version_as_hex;
+
+  if (version_as_hex != RVSDK_API_VERSION) {
+    GST_ERROR ("Unsupported rvsdk version: %s",
+        version_as_string_stream.str ().c_str ());
+    return FALSE;
+  }
+
+#if (RVSDK_API_VERSION >= 0x202307)
+  success &= load_symbol ((gpointer *)&engine->InitializeF32,
+      engine->libhandle, "rvDFS_InitializeF32");
+  success &= load_symbol ((gpointer *)&engine->InitializeU16,
+      engine->libhandle, "rvDFS_InitializeU16");
+  success &= load_symbol ((gpointer *)&engine->ComputeF32,
+      engine->libhandle, "rvDFS_ComputeF32");
+  success &= load_symbol ((gpointer *)&engine->ComputeU16,
+      engine->libhandle, "rvDFS_ComputeU16");
+  success &= load_symbol ((gpointer *)&engine->UpdateStereoCameraParamF32,
+      engine->libhandle, "rvDFS_UpdateStereoCameraParamF32");
+  success &= load_symbol ((gpointer *)&engine->UpdateStereoCameraParamU16,
+      engine->libhandle, "rvDFS_UpdateStereoCameraParamU16");
+  success &= load_symbol ((gpointer *)&engine->GetRectCameraParamF32,
+      engine->libhandle, "rvDFS_GetRectCameraParamF32");
+  success &= load_symbol ((gpointer *)&engine->GetRectCameraParamU16,
+      engine->libhandle, "rvDFS_GetRectCameraParamU16");
+  success &= load_symbol ((gpointer *)&engine->Depth2PointCloudF32,
+      engine->libhandle, "rvDFS_Depth2PointCloudF32");
+  success &= load_symbol ((gpointer *)&engine->Depth2PointCloudU16,
+      engine->libhandle, "rvDFS_Depth2PointCloudU16");
+  success &= load_symbol ((gpointer *)&engine->DeinitializeF32,
+      engine->libhandle, "rvDFS_DeinitializeF32");
+  success &= load_symbol ((gpointer *)&engine->DeinitializeU16,
+      engine->libhandle, "rvDFS_DeinitializeU16");
+#else
+  success &= load_symbol ((gpointer *)&engine->Initialize,
+      engine->libhandle, "rvDFS_Initialize");
+  success &= load_symbol ((gpointer *)&engine->Deinitialize,
+      engine->libhandle, "rvDFS_Deinitialize");
+  success &= load_symbol ((gpointer *)&engine->CalculateDisparity,
+      engine->libhandle, "rvDFS_CalculateDisparity");
+  success &= load_symbol ((gpointer *)&engine->CalculatePointCloud,
+      engine->libhandle, "rvDFS_CalculatePointCloud");
+#endif // RVSDK_API_VERSION
+
+  return success;
+}
 
 static inline rvDFSMode
 gst_rv_translate_mode (const DFSMode mode)
@@ -232,16 +383,24 @@ gst_dfs_engine_new (DfsInitSettings * settings)
     return NULL;
   }
 
+  auto success = gst_dfs_initialize_library (engine);
+  guint posix_memalign_success = 1;
+
+  if (!success) {
+    GST_ERROR ("Failed to initialize rvsdk library!");
+    goto cleanup;
+  }
+
   engine->mode = settings->mode;
   engine->format = settings->format;
   engine->width = settings->stereo_frame_width / 2;
   engine->height = settings->stereo_frame_height;
   engine->stride = settings->stride;
 
-
-  posix_memalign (reinterpret_cast < void **>(&engine->out_work_buffer), 128,
-      engine->width * engine->height * sizeof (float));
-  if (!engine->out_work_buffer) {
+  posix_memalign_success =
+      posix_memalign (reinterpret_cast < void **>(&engine->out_work_buffer),
+          128, engine->width * engine->height * sizeof (float));
+  if (!engine->out_work_buffer || posix_memalign_success != 0) {
     GST_ERROR ("Failed to allocate memory for output work buffer");
     goto cleanup;
   }
@@ -281,12 +440,10 @@ gst_dfs_engine_new (DfsInitSettings * settings)
       dfs_param.doRectification ? "enable" : "disable");
 
 #if (RVSDK_API_VERSION >= 0x202403)
-  engine->handle =
-      rvDFS_InitializeF32 (dfs_param, stereo_param);
+  engine->handle = engine->InitializeF32 (dfs_param, stereo_param);
 #else
-  engine->handle =
-      rvDFS_Initialize ((rvDFSMode) settings->dfs_mode, engine->width,
-      engine->height, engine->stride, dfs_param, stereo_param);
+  engine->handle = engine->Initialize ((rvDFSMode) settings->dfs_mode,
+      engine->width, engine->height, engine->stride, dfs_param, stereo_param);
 #endif // RVSDK_API_VERSION
 
   if (!engine->handle) {
@@ -295,7 +452,7 @@ gst_dfs_engine_new (DfsInitSettings * settings)
   }
 
 
-  GST_INFO ("DFS mode: %d dimension: %dx%d stride: %d", settings->dfs_mode,
+  GST_WARNING ("DFS mode: %d dimension: %dx%d stride: %d", settings->dfs_mode,
       engine->width, engine->height, engine->stride);
 
   return engine;
@@ -303,12 +460,12 @@ gst_dfs_engine_new (DfsInitSettings * settings)
 cleanup:
 #if (RVSDK_API_VERSION >= 0x202403)
   if (engine->handle) {
-    rvDFS_DeinitializeF32 (engine->handle);
+    engine->DeinitializeF32 (engine->handle);
     engine->handle = NULL;
   }
 #else
   if (engine->handle) {
-    rvDFS_Deinitialize (engine->handle);
+    engine->Deinitialize (engine->handle);
     engine->handle = NULL;
   }
 #endif // RVSDK_API_VERSION
@@ -317,6 +474,9 @@ cleanup:
     free (engine->out_work_buffer);
     engine->out_work_buffer = NULL;
   }
+
+  dlclose (engine->libhandle);
+
   g_free (engine);
   return NULL;
 }
@@ -327,7 +487,7 @@ gst_dfs_normalize_disparity_map (GstDfsEngine * engine, float *disparity_map,
 {
   float min = disparity_map[0];
   float max = disparity_map[0];
-  for (int x = 1; x < engine->width * engine->height; x++) {
+  for (guint32 x = 1; x < engine->width * engine->height; x++) {
     if (disparity_map[x] > max) {
       max = disparity_map[x];
     }
@@ -338,7 +498,7 @@ gst_dfs_normalize_disparity_map (GstDfsEngine * engine, float *disparity_map,
   float scale = 255.0 / (max - min);
 
   uint8_t *dst = output ? (uint8_t *) output : (uint8_t *) disparity_map;
-  for (int x = 0; x < engine->width * engine->height; x++) {
+  for (guint32 x = 0; x < engine->width * engine->height; x++) {
     dst[x] = (uint8_t) (((disparity_map[x]) - min) * scale);
   }
 }
@@ -350,7 +510,7 @@ gst_dfs_convert_to_rgb_image (GstDfsEngine * engine, float *map,
   uint8_t *dst = (uint8_t *) output;
   uint8_t *src = (uint8_t *) map;
 
-  for (int x = 0; x < engine->width * engine->height; x++) {
+  for (guint32 x = 0; x < engine->width * engine->height; x++) {
     uint8_t r = 0, g = 0, b = 0;
     uint8_t val = src[x];
 
@@ -481,11 +641,13 @@ gst_dfs_engine_execute (GstDfsEngine * engine,
   dfs_output.outV1.mapOfDepth = NULL;
 
   if (engine->mode == OUTPUT_MODE_VIDEO) {
+
     disparity_map = (float *) engine->out_work_buffer;
     dfs_output.outV1.mapOfDisparity = (void *)disparity_map;
 
-    ret = rvDFS_ComputeF32 (engine->handle,
+    ret = engine->ComputeF32 (engine->handle,
         &dfs_input, &dfs_output);
+
     if (!ret) {
       GST_ERROR ("Error in DFS process function");
       return ret;
@@ -493,21 +655,25 @@ gst_dfs_engine_execute (GstDfsEngine * engine,
 
     gst_dfs_convert_disparity_map_to_image (engine, disparity_map, output);
   } else if (engine->mode == OUTPUT_MODE_DISPARITY) {
+
     disparity_map = (float *) output;
     dfs_output.outV1.mapOfDisparity = disparity_map;
 
-    ret = rvDFS_ComputeF32 (engine->handle,
+    ret = engine->ComputeF32 (engine->handle,
         &dfs_input, &dfs_output);
+
     if (!ret) {
       GST_ERROR ("Error in DFS process function");
       return ret;
     }
   } else if (engine->mode == OUTPUT_MODE_POINT_CLOUD) {
+
     PointCloudType pcl;
     dfs_output.outV1.pointBuffer = &pcl;
 
-    ret = rvDFS_ComputeF32 (engine->handle,
+    ret = engine->ComputeF32 (engine->handle,
         &dfs_input, &dfs_output);
+
     if (!ret) {
       GST_ERROR ("Error in DFS process function");
       return ret;
@@ -526,7 +692,7 @@ gst_dfs_engine_execute (GstDfsEngine * engine,
   if (engine->mode == OUTPUT_MODE_VIDEO) {
     disparity_map = (float *) engine->out_work_buffer;
 
-    ret = rvDFS_CalculateDisparity (engine->handle,
+    ret = engine->CalculateDisparity (engine->handle,
         (uint8_t *) img_left, nullptr, disparity_map);
     if (!ret) {
       GST_ERROR ("Error in DFS process function");
@@ -537,7 +703,7 @@ gst_dfs_engine_execute (GstDfsEngine * engine,
   } else if (engine->mode == OUTPUT_MODE_DISPARITY) {
     disparity_map = (float *) output;
 
-    ret = rvDFS_CalculateDisparity (engine->handle,
+    ret = engine->CalculateDisparity (engine->handle,
         (uint8_t *) img_left, nullptr, disparity_map);
     if (!ret) {
       GST_ERROR ("Error in DFS process function");
@@ -546,7 +712,7 @@ gst_dfs_engine_execute (GstDfsEngine * engine,
   } else if (engine->mode == OUTPUT_MODE_POINT_CLOUD) {
     PointCloudType pcl;
 
-    ret = rvDFS_CalculatePointCloud (engine->handle,
+    ret = engine->CalculatePointCloud (engine->handle,
         (uint8_t *) img_left, nullptr, &pcl);
     if (!ret) {
       GST_ERROR ("Error in DFS process function");
@@ -575,15 +741,17 @@ gst_dfs_engine_free (GstDfsEngine * engine)
 
 #if (RVSDK_API_VERSION >= 0x202403)
   if (engine->handle) {
-    rvDFS_DeinitializeF32 (engine->handle);
+    engine->DeinitializeF32 (engine->handle);
     engine->handle = NULL;
   }
 #else
   if (engine->handle) {
-    rvDFS_Deinitialize (engine->handle);
+    engine->Deinitialize (engine->handle);
     engine->handle = NULL;
   }
 #endif // RVSDK_API_VERSION
+
+  dlclose (engine->libhandle);
 
   g_free (engine);
 }

@@ -29,8 +29,9 @@ static gboolean
 gst_video_classification_meta_transform (GstBuffer * transbuffer, GstMeta * meta,
     GstBuffer * buffer, GQuark type, gpointer data)
 {
-  GstVideoClassificationMeta *dmeta, *smeta;
+  GstVideoClassificationMeta *dmeta = NULL, *smeta = NULL;
   GArray *labels = NULL;
+  guint idx = 0;
 
   if (!GST_META_TRANSFORM_IS_COPY (type)) {
     // Return FALSE, if transform type is not supported.
@@ -39,6 +40,20 @@ gst_video_classification_meta_transform (GstBuffer * transbuffer, GstMeta * meta
 
   smeta = GST_VIDEO_CLASSIFICATION_META_CAST (meta);
   labels = g_array_copy (smeta->labels);
+
+  // The GArray copy above naturally doesn't copy the data in pointers.
+  // Iterate over the labels and deep copy any extra params.
+  for (idx = 0; idx < labels->len; idx++) {
+     GstClassLabel *label = &(g_array_index (labels, GstClassLabel, idx));
+
+    if (label->xtraparams == NULL)
+      continue;
+
+    label->xtraparams = gst_structure_copy (label->xtraparams);
+  }
+
+  g_array_set_clear_func (labels,
+      (GDestroyNotify) gst_video_classification_label_cleanup);
 
   dmeta = gst_buffer_add_video_classification_meta (transbuffer, labels);
 
@@ -51,6 +66,13 @@ gst_video_classification_meta_transform (GstBuffer * transbuffer, GstMeta * meta
 
   GST_DEBUG ("Duplicate Video Classification metadata");
   return TRUE;
+}
+
+void
+gst_video_classification_label_cleanup (GstClassLabel * label)
+{
+  if (label->xtraparams != NULL)
+    gst_structure_free (label->xtraparams);
 }
 
 GType

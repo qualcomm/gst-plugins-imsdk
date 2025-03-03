@@ -26,13 +26,15 @@ typedef struct _GstVideoClassificationMeta GstVideoClassificationMeta;
  * @name: Label name.
  * @confidence: Confidence score.
  * @color: Optional color value.
+ * @xtraparams: #GstStructure containing additional parameters.
  *
  * Generic helper structure representing a class label.
  */
 struct _GstClassLabel {
-  GQuark  name;
-  gdouble confidence;
-  guint32 color;
+  GQuark       name;
+  gdouble      confidence;
+  guint32      color;
+  GstStructure *xtraparams;
 };
 
 /**
@@ -50,6 +52,9 @@ struct _GstVideoClassificationMeta {
 
   GArray  *labels;
 };
+
+GST_VIDEO_API void
+gst_video_classification_label_cleanup (GstClassLabel * label);
 
 GST_VIDEO_API GType
 gst_video_classification_meta_api_get_type (void);

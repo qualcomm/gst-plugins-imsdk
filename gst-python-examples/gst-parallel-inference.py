@@ -238,31 +238,6 @@ def create_pipeline(pipeline):
     if not args.camera and args.file is None and args.rtsp is None:
         args.camera = True
 
-    # Check if all model and label files are present
-    if not os.path.exists(DEFAULT_TFLITE_OBJECT_DETECTION_MODEL):
-        print(f"File {DEFAULT_TFLITE_OBJECT_DETECTION_MODEL} does not exist")
-        sys.exit(1)
-    if not os.path.exists(DEFAULT_OBJECT_DETECTION_LABELS):
-        print(f"File {DEFAULT_OBJECT_DETECTION_LABELS} does not exist")
-        sys.exit(1)
-    if not os.path.exists(DEFAULT_TFLITE_CLASSIFICATION_MODEL):
-        print(f"File {DEFAULT_TFLITE_CLASSIFICATION_MODEL} does not exist")
-        sys.exit(1)
-    if not os.path.exists(DEFAULT_CLASSIFICATION_LABELS):
-        print(f"File {DEFAULT_CLASSIFICATION_LABELS} does not exist")
-        sys.exit(1)
-    if not os.path.exists(DEFAULT_TFLITE_POSE_DETECTION_MODEL):
-        print(f"File {DEFAULT_TFLITE_POSE_DETECTION_MODEL} does not exist")
-        sys.exit(1)
-    if not os.path.exists(DEFAULT_POSE_DETECTION_LABELS):
-        print(f"File {DEFAULT_POSE_DETECTION_LABELS} does not exist")
-        sys.exit(1)
-    if not os.path.exists(DEFAULT_TFLITE_SEGMENTATION_MODEL):
-        print(f"File {DEFAULT_TFLITE_SEGMENTATION_MODEL} does not exist")
-        sys.exit(1)
-    if not os.path.exists(DEFAULT_SEGMENTATION_LABELS):
-        print(f"File {DEFAULT_SEGMENTATION_LABELS} does not exist")
-        sys.exit(1)
     if args.file:
         if not os.path.exists(args.file):
             print(f"Input file {args.file} does not exist")
@@ -524,7 +499,7 @@ def create_pipeline(pipeline):
     elif args.rtsp:
         link_orders+= [
             [
-                "rtspsrc", "queue0", "rtph264depay", "h264parse"
+                "rtspsrc", "queue0", "rtph264depay", "h264parse",
                 "v4l2h264dec", "v4l2h264dec_caps", "tee",
             ],
         ]
