@@ -258,3 +258,51 @@ gst_video_calculate_common_alignment (GstVideoAlignment * l_align,
 
   return align;
 }
+
+void
+gst_video_utils_get_gpu_align (GstVideoInfo * info, GstVideoAlignment * align)
+{
+  GstVideoFormat format;
+  gboolean success;
+  guint width, height;
+  gint stride, scanline;
+
+  width = GST_VIDEO_INFO_WIDTH (info);
+  height = GST_VIDEO_INFO_HEIGHT (info);
+  format = GST_VIDEO_INFO_FORMAT (info);
+
+  success = gst_adreno_utils_compute_alignment (width, height, format,
+     &stride, &scanline);
+  if (success) {
+    align->padding_bottom = scanline - height;
+    align->padding_right = stride - width;
+  }
+}
+
+gboolean
+gst_query_get_video_alignment (GstQuery * query, GstVideoAlignment * align)
+{
+  const GstStructure *params = NULL;
+  guint idx = 0;
+
+  g_return_val_if_fail (query != NULL, FALSE);
+  g_return_val_if_fail (align != NULL, FALSE);
+
+  if (!gst_query_find_allocation_meta (query, GST_VIDEO_META_API_TYPE, &idx))
+    return FALSE;
+
+  gst_query_parse_nth_allocation_meta (query, idx, &params);
+
+  if (params != NULL)
+    return gst_structure_get (params,
+        "padding-top", G_TYPE_UINT, &align->padding_top,
+        "padding-bottom", G_TYPE_UINT, &align->padding_bottom,
+        "padding-left", G_TYPE_UINT, &align->padding_left,
+        "padding-right", G_TYPE_UINT, &align->padding_right,
+        "stride-align0", G_TYPE_UINT, &align->stride_align[0],
+        "stride-align1", G_TYPE_UINT, &align->stride_align[1],
+        "stride-align2", G_TYPE_UINT, &align->stride_align[2],
+        "stride-align3", G_TYPE_UINT, &align->stride_align[3], NULL);
+
+  return TRUE;
+}
