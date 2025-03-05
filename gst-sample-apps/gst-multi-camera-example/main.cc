@@ -348,8 +348,8 @@ create_camera_video_pipe (GstMultiCamAppContext * appctx)
 
   // Create v4l2h264enc element for first source and set the element properties
   v4l2h264enc_cam1 = gst_element_factory_make ("v4l2h264enc", "v4l2h264enc_cam1");
-  g_object_set (G_OBJECT (v4l2h264enc_cam1), "capture-io-mode", "dmabuf", NULL);
-  g_object_set (G_OBJECT (v4l2h264enc_cam1), "output-io-mode", "dmabuf-import", NULL);
+  gst_element_set_enum_property (v4l2h264enc_cam1, "capture-io-mode", "dmabuf");
+  gst_element_set_enum_property (v4l2h264enc_cam1, "output-io-mode", "dmabuf-import");
   fcontrols = gst_structure_from_string (
       "fcontrols,video_bitrate_mode=0", NULL);
   g_object_set (G_OBJECT (v4l2h264enc_cam1), "extra-controls", fcontrols, NULL);
@@ -362,9 +362,8 @@ create_camera_video_pipe (GstMultiCamAppContext * appctx)
 
   // Create v4l2h264enc element for second source and set the element properties
   v4l2h264enc_cam2 = gst_element_factory_make ("v4l2h264enc", "v4l2h264enc_cam2");
-  g_object_set (G_OBJECT (v4l2h264enc_cam2), "capture-io-mode", "dmabuf", NULL);
-  g_object_set (G_OBJECT (v4l2h264enc_cam2), "output-io-mode", "dmabuf-import", NULL);
-
+  gst_element_set_enum_property (v4l2h264enc_cam2, "capture-io-mode", "dmabuf");
+  gst_element_set_enum_property (v4l2h264enc_cam2, "output-io-mode", "dmabuf-import");
   scontrols = gst_structure_from_string (
       "scontrols,video_bitrate_mode=0", NULL);
   g_object_set (G_OBJECT (v4l2h264enc_cam2), "extra-controls", scontrols, NULL);
