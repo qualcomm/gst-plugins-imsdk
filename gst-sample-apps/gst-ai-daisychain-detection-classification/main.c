@@ -13,10 +13,10 @@
  * for classifcation, displays preview with overlayed
  * AI Model output Labels.
  *
-* Pipeline for Gstreamer with Camera:
- * qtiqmmfsrc (Preview)     -> qmmfsrc_caps  -> qtimetamux
- * qtiqmmfsrc (Daisychain)  -> qmmfsrc_caps  -> Pre process-> ML Framework
- *                                           -> Post process -> qtimetamux
+ * Pipeline for Gstreamer with Camera:
+ * qtiqmmfsrc   -> qmmfsrc_caps  -> tee
+ *     tee -> qtimetamux
+ *     tee  -> Pre process-> ML Framework -> Post process -> qtimetamux
  *                          |-> qtivcomposer
  *     qtimetamux -> tee -> |
  *                          |-> qtivsplit ->tee (4 splits)
@@ -110,8 +110,6 @@
  * Default settings of camera output resolution, Scaling of camera output
  * will be done in qtimlvconverter based on model input
  */
-#define DEFAULT_CAMERA_DAISYCHAIN_OUTPUT_WIDTH 640
-#define DEFAULT_CAMERA_DAISYCHAIN_OUTPUT_HEIGHT 360
 #define DEFAULT_CAMERA_PREVIEW_OUTPUT_WIDTH 1280
 #define DEFAULT_CAMERA_PREVIEW_OUTPUT_HEIGHT 720
 #define DEFAULT_CAMERA_FRAME_RATE 30
@@ -336,7 +334,7 @@ static gboolean
 create_pipe (GstAppContext * appctx, const GstAppOptions options)
 {
   GstElement *qtiqmmfsrc = NULL, *qmmfsrc_caps = NULL;
-  GstElement *queue[QUEUE_COUNT] = { NULL }, *qmmfsrc_caps_preview = NULL;
+  GstElement *queue[QUEUE_COUNT] = { NULL };
   GstElement *tee[TEE_COUNT] = { NULL };
   GstElement *qtimlvconverter[TFLITE_ELEMENT_COUNT] = { NULL };
   GstElement *qtimlelement[TFLITE_ELEMENT_COUNT] = { NULL };
@@ -350,17 +348,13 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   GstElement *v4l2h264dec_caps = NULL, *video_caps_filter = NULL;
   GstCaps *pad_filter = NULL, *filtercaps = NULL;
   GstStructure *delegate_options = NULL;
-  GstPad *qtiqmmfsrc_type = NULL;
   gboolean ret = FALSE;
   gchar element_name[128];
-  gint daisychain_width = DEFAULT_CAMERA_DAISYCHAIN_OUTPUT_WIDTH;
-  gint daisychain_height = DEFAULT_CAMERA_DAISYCHAIN_OUTPUT_HEIGHT;
   gint preview_width = DEFAULT_CAMERA_PREVIEW_OUTPUT_WIDTH;
   gint preview_height = DEFAULT_CAMERA_PREVIEW_OUTPUT_HEIGHT;
   gint framerate = DEFAULT_CAMERA_FRAME_RATE;
   gint module_id;
   gint pos_vals[2], dim_vals[2];
-  GValue video_type = G_VALUE_INIT;
 
   // 1. Create the elements or Plugins
   if (options.source_type == GST_STREAM_TYPE_CAMERA) {
@@ -371,18 +365,11 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
       goto error_clean_elements;
     }
 
-    // Use capsfilter to define the camera output settings for daisychain
-    qmmfsrc_caps = gst_element_factory_make ("capsfilter", "qmmfsrc_caps");
+    // Use capsfilter to define the camera output settings
+    qmmfsrc_caps = gst_element_factory_make ("capsfilter",
+        "qmmfsrc_caps");
     if (!qmmfsrc_caps) {
       g_printerr ("Failed to create qmmfsrc_caps\n");
-      goto error_clean_elements;
-    }
-
-    // Use capsfilter to define the camera output settings for preview
-    qmmfsrc_caps_preview = gst_element_factory_make ("capsfilter",
-        "qmmfsrc_caps_preview");
-    if (!qmmfsrc_caps_preview) {
-      g_printerr ("Failed to create qmmfsrc_caps_preview\n");
       goto error_clean_elements;
     }
   } else if (options.source_type == GST_STREAM_TYPE_FILE) {
@@ -580,25 +567,16 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
 
   // 2. Set properties for all GST plugin elements
   if (options.source_type == GST_STREAM_TYPE_CAMERA) {
-    // 2.1 Set the capabilities of camera stream for daisychain
+    // 2.1 Set the capabilities of camera stream
     filtercaps = gst_caps_new_simple ("video/x-raw",
         "format", G_TYPE_STRING, "NV12",
-        "width", G_TYPE_INT, daisychain_width,
-        "height", G_TYPE_INT, daisychain_height,
-        "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
-    g_object_set (G_OBJECT (qmmfsrc_caps), "caps", filtercaps, NULL);
-    gst_caps_unref (filtercaps);
-
-    // 2.2 Set the capabilities of camera stream for preview
-    filtercaps = gst_caps_new_simple ("video/x-raw",
-        "format", G_TYPE_STRING, "NV12_Q08C",
         "width", G_TYPE_INT, preview_width,
         "height", G_TYPE_INT, preview_height,
         "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
-    g_object_set (G_OBJECT (qmmfsrc_caps_preview), "caps", filtercaps, NULL);
+    g_object_set (G_OBJECT (qmmfsrc_caps), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
   } else if (options.source_type == GST_STREAM_TYPE_FILE) {
-    // 2.3 Set the capabilities of file stream
+    // 2.2 Set the capabilities of file stream
     g_object_set (G_OBJECT (filesrc), "location", options.file_path, NULL);
     gst_element_set_enum_property (v4l2h264dec, "capture-io-mode", "dmabuf");
     gst_element_set_enum_property (v4l2h264dec, "output-io-mode", "dmabuf");
@@ -617,7 +595,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     gst_caps_unref (filtercaps);
   }
 
-  // 2.3 Set the properties of pad_filter for negotiation with qtivcomposer
+  // 2.4 Set the properties of pad_filter for negotiation with qtivcomposer
   // for classification
   pad_filter = gst_caps_new_simple ("video/x-raw",
       "width", G_TYPE_INT, 384, "height", G_TYPE_INT, 40, NULL);
@@ -632,7 +610,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   g_object_set (G_OBJECT (video_caps_filter), "caps", pad_filter, NULL);
   gst_caps_unref (pad_filter);
 
-  // 2.4 Select the HW to DSP for model inferencing using delegate property
+  // 2.5 Select the HW to DSP for model inferencing using delegate property
   for (gint i = 0; i < TFLITE_ELEMENT_COUNT; i++) {
     if (i == GST_DETECTION_TYPE_YOLO) {
       g_object_set (G_OBJECT (qtimlelement[i]),
@@ -653,7 +631,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     gst_structure_free (delegate_options);
   }
 
-  // 2.5 Set properties for detection postproc plugins- module, labels,
+  // 2.6 Set properties for detection postproc plugins- module, labels,
   // threshold, constants
   for (gint i = 0; i < DETECTION_COUNT; i++) {
     module_id = get_enum_value (qtimlvdetection[i], "module", "yolov8");
@@ -668,7 +646,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     }
   }
 
-  // 2.6 Set properties for classification postproc plugins- module, labels,
+  // 2.7 Set properties for classification postproc plugins- module, labels,
   // threshold
   for (gint i = 0; i < CLASSIFICATION_COUNT; i++) {
     module_id = get_enum_value (qtimlvclassification[i], "module", "mobilenet");
@@ -686,11 +664,11 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     }
   }
 
-  // 2.7 Set the properties of Wayland compositor
+  // 2.8 Set the properties of Wayland compositor
   g_object_set (G_OBJECT (waylandsink), "sync", TRUE, NULL);
   g_object_set (G_OBJECT (waylandsink), "fullscreen", TRUE, NULL);
 
-  // 2.8 Set the properties of fpsdisplaysink plugin- sync,
+  // 2.9 Set the properties of fpsdisplaysink plugin- sync,
   // signal-fps-measurements, text-overlay and video-sink
   g_object_set (G_OBJECT (fpsdisplaysink), "sync", TRUE, NULL);
   g_object_set (G_OBJECT (fpsdisplaysink), "signal-fps-measurements", TRUE,
@@ -702,8 +680,8 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   g_print ("Adding all elements to the pipeline...\n");
 
   if (options.source_type == GST_STREAM_TYPE_CAMERA) {
-    gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, qmmfsrc_caps,
-        qmmfsrc_caps_preview, NULL);
+    gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc,
+        qmmfsrc_caps, NULL);
   } else if (options.source_type == GST_STREAM_TYPE_FILE) {
     gst_bin_add_many (GST_BIN (appctx->pipeline),
         filesrc, qtdemux, h264parse, v4l2h264dec, v4l2h264dec_caps, NULL);
@@ -746,18 +724,24 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   // 3.1 Create pipeline for Parallel Inferencing
   g_print ("Linking elements...\n");
   if (options.source_type == GST_STREAM_TYPE_CAMERA) {
-    ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps, queue[1], NULL);
+    ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps, tee[0], NULL);
     if (!ret) {
-      g_printerr ("\n pipeline elements qtiqmmfsrc -> qmmfsrc_caps"
-          "cannot be linked. Exiting.\n");
+      g_printerr ("\n pipeline elements qtiqmmfsrc -> qmmfsrc_caps "
+          " -> tee cannot be linked. Exiting.\n");
       goto error_clean_pipeline;
     }
 
-    ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps_preview,
-        qtimetamux, NULL);
+    ret = gst_element_link_many (tee[0], queue[0], qtimetamux, NULL);
     if (!ret) {
-      g_printerr ("\n pipeline elements qtiqmmfsrc -> qmmfsrc_caps_preview"
-          " -> qtimetamux cannot be linked. Exiting.\n");
+      g_printerr ("\n pipeline elements tee-> qtimetamux"
+          " cannot be linked. Exiting.\n");
+      goto error_clean_pipeline;
+    }
+
+    ret = gst_element_link_many (tee[0], queue[1], NULL);
+    if (!ret) {
+      g_printerr ("\n pipeline elements tee -> queue cannot be linked."
+          "Exiting.\n");
       goto error_clean_pipeline;
     }
   } else if (options.source_type == GST_STREAM_TYPE_FILE) {
@@ -887,32 +871,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
 
   g_print ("All elements are linked successfully\n");
 
-  if (options.source_type == GST_STREAM_TYPE_CAMERA) {
-    // Setting Up qtiqmmfsrc streamtype property
-    qtiqmmfsrc_type = gst_element_get_static_pad (qtiqmmfsrc, "video_0");
-    if (!qtiqmmfsrc_type) {
-      g_printerr ("video_0 of qtiqmmfsrc couldn't be retrieved\n");
-      goto error_clean_pipeline;
-    }
-
-    g_value_init (&video_type, G_TYPE_INT);
-    g_value_set_int (&video_type, GST_SOURCE_STREAM_TYPE_VIDEO);
-    g_object_set_property (G_OBJECT (qtiqmmfsrc_type), "type", &video_type);
-    g_value_unset (&video_type);
-    gst_object_unref (qtiqmmfsrc_type);
-
-    qtiqmmfsrc_type = gst_element_get_static_pad (qtiqmmfsrc, "video_1");
-    if (!qtiqmmfsrc_type) {
-      g_printerr ("video_1 of qtiqmmfsrc couldn't be retrieved\n");
-      goto error_clean_pipeline;
-    }
-
-    g_value_init (&video_type, G_TYPE_INT);
-    g_value_set_int (&video_type, GST_SOURCE_STREAM_TYPE_PREVIEW);
-    g_object_set_property (G_OBJECT (qtiqmmfsrc_type), "type", &video_type);
-    g_value_unset (&video_type);
-    gst_object_unref (qtiqmmfsrc_type);
-  } else if (options.source_type == GST_STREAM_TYPE_FILE) {
+  if (options.source_type == GST_STREAM_TYPE_FILE) {
     // 3.3 Set pad to link dynamic video to queue
     g_signal_connect (qtdemux, "pad-added", G_CALLBACK (on_pad_added),
         queue[0]);
@@ -958,8 +917,10 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     g_value_init (&dimension, GST_TYPE_ARRAY);
 
     GstVideoRectangle pos = composer_sink_position[i];
-    pos_vals[0] = pos.x; pos_vals[1] = pos.y;
-    dim_vals[0] = pos.w; dim_vals[1] = pos.h;
+    pos_vals[0] = pos.x;
+    pos_vals[1] = pos.y;
+    dim_vals[0] = pos.w;
+    dim_vals[1] = pos.h;
 
     build_pad_property (&position, pos_vals, 2);
     build_pad_property (&dimension, dim_vals, 2);
@@ -981,7 +942,7 @@ error_clean_pipeline:
 error_clean_elements:
   g_printerr ("Pipeline elements cannot be linked\n");
   if (options.source_type == GST_STREAM_TYPE_CAMERA) {
-    cleanup_gst (&qtiqmmfsrc, &qmmfsrc_caps, &qmmfsrc_caps_preview, NULL);
+    cleanup_gst (&qtiqmmfsrc, &qmmfsrc_caps, NULL);
   } else if (options.source_type == GST_STREAM_TYPE_FILE) {
     cleanup_gst (&filesrc, &qtdemux, &h264parse, &v4l2h264dec,
         &v4l2h264dec_caps, &qtimetamux, NULL);
@@ -1212,7 +1173,10 @@ main (gint argc, gchar * argv[])
       DEFAULT_CLASSIFICATION_LABELS"\n"
       "  detection-constants: \"CONSTANTS\"\n"
       "      Constants, offsets and coefficients for YOLOV8 TFLITE model \n"
-      "      Default constants for YOLOV8: "YOLOV8_CONSTANT"\n",
+      "      Default constants for YOLOV8: "YOLOV8_CONSTANT"\n"
+      "  classification-constants: \"CONSTANTS\"\n"
+      "      Constants, offsets and coefficients for MOBILENETV2 TFLITE model \n"
+      "      Default constants for MOBILENETV2: "MOBILENETV2_CONSTANT"\n",
       app_name, DEFAULT_CONFIG_FILE, camera_description);
   help_description[2047] = '\0';
 
