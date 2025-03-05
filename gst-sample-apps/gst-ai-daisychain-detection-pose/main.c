@@ -686,18 +686,6 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
   // 2.7 Set the properties of qtimlvconverter of pose plugin- mode
   // and image-disposition
   g_value_init (&value, G_TYPE_INT);
-  g_value_set_int (&value, IMAGE_BATCH_NON_CUMULATIVE);
-  g_object_set_property (G_OBJECT (qtimlvconverter[GST_DETECTION_TYPE_YOLO]),
-      "mode", &value);
-  g_value_unset (&value);
-
-  g_value_init (&value, G_TYPE_INT);
-  g_value_set_int (&value, ROI_BATCH_CUMULATIVE);
-  g_object_set_property (G_OBJECT (qtimlvconverter[GST_POSE_TYPE_HRNET]),
-      "mode", &value);
-  g_value_unset (&value);
-
-  g_value_init (&value, G_TYPE_INT);
   g_value_set_int (&value, CENTRE);
   g_object_set_property (G_OBJECT (qtimlvconverter[GST_POSE_TYPE_HRNET]),
       "image-disposition", &value);
@@ -709,7 +697,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
     module_id = get_enum_value (qtimlvdetection[i], "module", "yolov8");
     if (module_id != -1) {
       g_object_set (G_OBJECT (qtimlvdetection[i]),
-          "threshold", 40.0, "results", 4,
+          "threshold", 75.0, "results", 4,
           "module", module_id, "labels", options->yolov8_labels_path,
           "constants", options->yolov8_constants,
           NULL);
