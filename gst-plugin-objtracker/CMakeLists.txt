@@ -27,6 +27,7 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 add_definitions(-DHAVE_CONFIG_H)
 
 # Common compiler flags.
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
 
@@ -34,17 +35,22 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
 set(GST_QTI_OBJTRACKER gstqtiobjtracker)
 
 add_library(${GST_QTI_OBJTRACKER} SHARED
-  objtracker.cc
-  byte-tracker/BYTETracker.cpp
-  byte-tracker/utils.cpp
-  byte-tracker/lapjv.cpp
-  byte-tracker/STrack.cpp
-  byte-tracker/kalmanFilter.cpp
+  objtracker.c
+  objtracker-algo.cc
+)
+
+set(GST_QTI_OBJTRACKER_ALGO gstqitobjtrackeralgo)
+add_library(${GST_QTI_OBJTRACKER_ALGO} INTERFACE)
+target_include_directories(${GST_QTI_OBJTRACKER_ALGO} INTERFACE
+  ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_include_directories(${GST_QTI_OBJTRACKER} PUBLIC
   ${GST_INCLUDE_DIRS}
-  ${SYSROOT_INCDIR}/eigen3
+)
+
+target_compile_definitions(${GST_QTI_OBJTRACKER} PRIVATE
+  GST_QTI_OBJTRACKER_ALGORITHM="${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0/algorithm"
 )
 
 target_link_libraries(${GST_QTI_OBJTRACKER} PRIVATE
@@ -62,3 +68,5 @@ install(
               GROUP_EXECUTE GROUP_READ
               WORLD_EXECUTE WORLD_READ
 )
+
+add_subdirectory(algorithm/bytetrack)

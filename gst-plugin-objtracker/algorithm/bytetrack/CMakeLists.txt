@@ -1,0 +1,46 @@
+set(GST_QTI_OBJTRACKER_BYTETRACK  objtracker-bytetrack)
+
+set(LIB_NAME ${GST_QTI_OBJTRACKER_BYTETRACK})
+set(LIB_DESCRIPTION "GStreamer QTI Bytetrack Algorithm library")
+
+add_library(${GST_QTI_OBJTRACKER_BYTETRACK} SHARED
+  bytetrack-objtracker.cc
+  BYTETracker.cpp
+  utils.cpp
+  lapjv.cpp
+  STrack.cpp
+  kalmanFilter.cpp
+)
+
+set_target_properties(${GST_QTI_OBJTRACKER_BYTETRACK} PROPERTIES
+  VERSION ${PROJECT_VERSION}
+  SOVERSION ${PROJECT_VERSION_MAJOR}
+)
+
+target_include_directories(${GST_QTI_OBJTRACKER_BYTETRACK} PRIVATE
+  ${GST_INCLUDE_DIRS}
+  ${SYSROOT_INCDIR}/eigen3
+)
+
+target_link_libraries(${GST_QTI_OBJTRACKER_BYTETRACK} PRIVATE
+  ${GST_QTI_OBJTRACKER_ALGO}
+)
+
+configure_file(
+  ${CMAKE_SOURCE_DIR}/algorithm/common.pc.in
+  ${CMAKE_CURRENT_BINARY_DIR}/${GST_QTI_OBJTRACKER_BYTETRACK}.pc
+  @ONLY
+)
+
+install(
+  TARGETS ${GST_QTI_OBJTRACKER_BYTETRACK}
+  LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0/algorithm
+  PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
+              GROUP_EXECUTE GROUP_READ
+              WORLD_EXECUTE WORLD_READ
+)
+
+install(
+  FILES ${CMAKE_CURRENT_BINARY_DIR}/${GST_QTI_OBJTRACKER_BYTETRACK}.pc
+  DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0/algorithm/pkgconfig
+)
