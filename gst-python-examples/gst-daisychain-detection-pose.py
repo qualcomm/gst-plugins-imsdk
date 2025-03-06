@@ -34,7 +34,7 @@ DEFAULT_CONSTANTS_OBJECT_DETECTION = "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,\
 DEFAULT_CONSTANTS_POSE_DETECTION = "hrnet,q-offsets=<8.0>,\
     q-scales=<0.0040499246679246426>;"
 
-QUEUE_COUNT = 6
+QUEUE_COUNT = 20
 
 waiting_for_eos = False
 eos_received = False
@@ -398,21 +398,22 @@ def create_pipeline(pipeline):
     if args.camera:
         link_orders+= [
             [
-                "qtiqmmfsrc", "qmmfsrc_caps", "tee0", "qtimetamux0"
+                "qtiqmmfsrc", "qmmfsrc_caps", "queue0",
+                "tee0", "queue1", "qtimetamux0"
             ]
         ]
     elif args.file:
         link_orders+= [
             [
-                "filesrc", "qtdemux", "queue0", "h264parse",
-                "v4l2h264dec", "v4l2h264dec_caps", "tee0", "qtimetamux0"
+                "filesrc", "qtdemux", "queue0", "h264parse", "v4l2h264dec",
+                "v4l2h264dec_caps", "queue1", "tee0", "queue2", "qtimetamux0"
             ],
         ]
     elif args.rtsp:
         link_orders+= [
             [
-                "rtspsrc", "queue0", "rtph264depay", "h264parse",
-                "v4l2h264dec", "v4l2h264dec_caps", "tee0", "qtimetamux0"
+                "rtspsrc", "queue0", "rtph264depay", "h264parse", "v4l2h264dec",
+                "v4l2h264dec_caps", "queue1", "tee0", "queue2", "qtimetamux0"
             ],
         ]
     else:
@@ -421,35 +422,35 @@ def create_pipeline(pipeline):
 
     link_orders+= [
         [
-            "tee0", "queue1"
+            "tee0", "queue3"
         ],
         [
-            "queue1", "qtimlvconverter0", "qtimltflite0",
-            "qtimlvdetection", "qtimetamux_filter0",
-            "qtimetamux0", "tee1", "qtimetamux1"
+            "queue3", "qtimlvconverter0", "queue4", "qtimltflite0",
+            "queue5", "qtimlvdetection", "qtimetamux_filter0", "queue6",
+            "qtimetamux0", "queue7", "tee1", "queue8", "qtimetamux1"
         ],
         [
-            "tee1", "queue2", "qtimlvconverter1", "qtimltflite1",
-            "qtimlvpose", "qtimetamux_filter1",
-            "qtimetamux1", "tee2"
+            "tee1", "queue9", "qtimlvconverter1", "queue10", "qtimltflite1",
+            "queue11", "qtimlvpose", "qtimetamux_filter1", "queue12",
+            "qtimetamux1", "queue13", "tee2"
         ],
         [
-            "tee2", "queue3", "qtivcomposer"
+            "tee2", "queue14", "qtivcomposer"
         ],
         [
-            "tee2", "qtivsplit"
+            "tee2", "queue15", "qtivsplit"
         ],
         [
-            "qtivsplit", "filter0", "queue4", "qtivcomposer"
+            "qtivsplit", "filter0", "queue16", "qtivcomposer"
         ],
         [
-            "qtivsplit", "filter1", "queue5", "qtivcomposer"
+            "qtivsplit", "filter1", "queue17", "qtivcomposer"
         ]
     ]
 
     link_orders+= [
         [
-            "qtivcomposer", "qtivoverlay", "fpsdisplaysink"
+            "qtivcomposer", "queue18", "qtivoverlay", "queue19", "fpsdisplaysink"
         ]
     ]
 
