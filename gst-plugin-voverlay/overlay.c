@@ -59,10 +59,6 @@ GST_DEBUG_CATEGORY (gst_overlay_debug);
 #define gst_overlay_parent_class parent_class
 G_DEFINE_TYPE (GstVOverlay, gst_overlay, GST_TYPE_BASE_TRANSFORM);
 
-#ifndef GST_CAPS_FEATURE_MEMORY_GBM
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
-#endif
-
 #define GST_OVERLAY_VIDEO_FORMATS \
   "{ NV12, NV21, YUY2, RGBA, BGRA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR, NV12_Q08C }"
 
@@ -94,7 +90,7 @@ gst_overlay_sink_caps (void)
   if (g_once_init_enter (&inited)) {
     caps = gst_caps_from_string (GST_VIDEO_CAPS_MAKE (GST_OVERLAY_VIDEO_FORMATS));
 
-    if (gst_is_gbm_supported ()) {
+    if (gst_gbm_qcom_backend_is_supported ()) {
       GstCaps *tmplcaps = gst_caps_from_string (
           GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
               GST_OVERLAY_VIDEO_FORMATS));
@@ -117,7 +113,7 @@ gst_overlay_src_caps (void)
   if (g_once_init_enter (&inited)) {
     caps = gst_caps_from_string (GST_VIDEO_CAPS_MAKE (GST_OVERLAY_VIDEO_FORMATS));
 
-    if (gst_is_gbm_supported ()) {
+    if (gst_gbm_qcom_backend_is_supported ()) {
       GstCaps *tmplcaps = gst_caps_from_string (
           GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
               GST_OVERLAY_VIDEO_FORMATS));
@@ -529,7 +525,7 @@ gst_overlay_create_pool (GstVOverlay * overlay, GstCaps * caps)
     return NULL;
   }
 
-  if (gst_is_gbm_supported ()) {
+  if (gst_gbm_qcom_backend_is_supported ()) {
     if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
       GST_INFO_OBJECT (overlay, "Uses GBM memory");
       pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);

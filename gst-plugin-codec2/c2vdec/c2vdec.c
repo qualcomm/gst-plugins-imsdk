@@ -40,16 +40,13 @@
 #include "c2vdec.h"
 
 #include <gst/utils/common-utils.h>
+#include <gst/video/video-utils.h>
 
 GST_DEBUG_CATEGORY_STATIC (gst_c2_vdec_debug_category);
 #define GST_CAT_DEFAULT gst_c2_vdec_debug_category
 
 #define gst_c2_vdec_parent_class parent_class
 G_DEFINE_TYPE (GstC2VDecoder, gst_c2_vdec, GST_TYPE_VIDEO_DECODER);
-
-#ifndef GST_CAPS_FEATURE_MEMORY_GBM
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
-#endif
 
 #define GST_VIDEO_FORMATS "{ NV12, P010_10LE, NV12_Q08C, NV12_Q10LE32C }"
 

@@ -126,10 +126,6 @@ G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
       mode == GST_ML_CONVERSION_MODE_ROI_CUMULATIVE)
 
 
-#ifndef GST_CAPS_FEATURE_MEMORY_GBM
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
-#endif
-
 #define GST_ML_VIDEO_FORMATS \
     "{ RGBA, BGRA, ABGR, ARGB, RGBx, BGRx, xRGB, xBGR, BGR, RGB, GRAY8, NV12, NV21, YUY2, UYVY, NV12_Q08C }"
 
@@ -163,7 +159,7 @@ gst_ml_video_converter_sink_caps (void)
   if (g_once_init_enter (&inited)) {
     caps = gst_caps_from_string (GST_VIDEO_CAPS_MAKE (GST_ML_VIDEO_FORMATS));
 
-    if (gst_is_gbm_supported ()) {
+    if (gst_gbm_qcom_backend_is_supported ()) {
       GstCaps *tmplcaps = gst_caps_from_string (
           GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
               GST_ML_VIDEO_FORMATS));
@@ -1067,7 +1063,7 @@ gst_ml_video_converter_translate_ml_caps (GstMLVideoConverter * mlconverter,
 
   tmplcaps = gst_caps_new_empty ();
 
-  if (gst_is_gbm_supported ()) {
+  if (gst_gbm_qcom_backend_is_supported ()) {
     gst_caps_append_structure_full (tmplcaps,
         gst_structure_new_empty ("video/x-raw"),
         gst_caps_features_new (GST_CAPS_FEATURE_MEMORY_GBM, NULL));
@@ -1308,7 +1304,7 @@ gst_ml_video_converter_propose_allocation (GstBaseTransform * base,
     GstStructure *config = NULL;
     GstAllocator *allocator = NULL;
 
-    if (gst_is_gbm_supported ()) {
+    if (gst_gbm_qcom_backend_is_supported ()) {
       // If downstream allocation query supports GBM, allocate gbm memory.
       if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
         GST_INFO_OBJECT (mlconverter, "Uses GBM memory");

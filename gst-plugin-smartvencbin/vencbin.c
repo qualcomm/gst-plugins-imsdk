@@ -47,10 +47,6 @@ enum
   PROP_MIN_BUFFERS,
 };
 
-#ifndef GST_CAPS_FEATURE_MEMORY_GBM
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
-#endif
-
 #define GST_VIDEO_FORMATS "{ NV12, NV12_Q08C }"
 
 #define GST_ML_VIDEO_DETECTION_TEXT_FORMATS \
@@ -67,7 +63,7 @@ gst_venc_bin_sink_caps (void)
     static gsize inited = 0;
     if (g_once_init_enter (&inited)) {
         caps = gst_caps_from_string (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS));
-        if (gst_is_gbm_supported ()) {
+        if (gst_gbm_qcom_backend_is_supported ()) {
             GstCaps *tmplcaps = gst_caps_from_string (
                 GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
                 GST_VIDEO_FORMATS));

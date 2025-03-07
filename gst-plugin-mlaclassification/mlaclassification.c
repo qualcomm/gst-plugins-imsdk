@@ -17,6 +17,7 @@
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
 #include <gst/video/gstimagepool.h>
+#include <gst/video/video-utils.h>
 #include <gst/memory/gstmempool.h>
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
@@ -35,10 +36,6 @@ G_DEFINE_TYPE (GstMLAudioClassification, gst_ml_audio_classification,
     GST_TYPE_BASE_TRANSFORM);
 
 #define GST_TYPE_ML_MODULES (gst_ml_modules_get_type())
-
-#ifndef GST_CAPS_FEATURE_MEMORY_GBM
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
-#endif
 
 #define GST_ML_AUDIO_CLASSIFICATION_VIDEO_FORMATS \
     "{ BGRA, BGRx, BGR16 }"

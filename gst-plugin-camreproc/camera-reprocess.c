@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -11,6 +11,7 @@
 
 #include <gst/video/gstimagepool.h>
 #include <gst/utils/common-utils.h>
+#include <gst/video/video-utils.h>
 
 #define GST_CAT_DEFAULT camera_reprocess_debug
 GST_DEBUG_CATEGORY_STATIC (camera_reprocess_debug);
@@ -26,7 +27,6 @@ GST_DEBUG_CATEGORY_STATIC (camera_reprocess_debug);
 
 // Pad Template
 #define GST_CAPS_FORMATS "{ NV12, NV12_Q08C }"
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
 
 // GType
 #define GST_TYPE_CAMERA_REPROCESS_EIS (gst_camera_reprocess_eis_get_type())

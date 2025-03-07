@@ -39,6 +39,7 @@
 #include "c2venc.h"
 
 #include <gst/utils/common-utils.h>
+#include <gst/video/video-utils.h>
 
 #define GST_CAT_DEFAULT c2_venc_debug
 GST_DEBUG_CATEGORY_STATIC (c2_venc_debug);
@@ -78,10 +79,6 @@ G_DEFINE_TYPE (GstC2VEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 #define DEFAULT_PROP_NUM_LTR_FRAMES       (0xffffffff)
 #define DEFAULT_PROP_PRIORITY             (0xffffffff)
 #define DEFAULT_PROP_TEMPORAL_LAYER_NUM   (0xffffffff)
-
-#ifndef GST_CAPS_FEATURE_MEMORY_GBM
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
-#endif
 
 #define GST_VIDEO_FORMATS "{ NV12, P010_10LE, NV12_Q08C, NV12_Q10LE32C }"
 

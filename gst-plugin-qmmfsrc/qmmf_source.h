@@ -53,10 +53,6 @@ G_BEGIN_DECLS
 #define GST_QMMFSRC_LOCK(obj)       g_mutex_lock(GST_QMMFSRC_GET_LOCK(obj))
 #define GST_QMMFSRC_UNLOCK(obj)     g_mutex_unlock(GST_QMMFSRC_GET_LOCK(obj))
 
-#ifndef GST_CAPS_FEATURE_MEMORY_GBM
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
-#endif
-
 typedef struct _GstQmmfSrc      GstQmmfSrc;
 typedef struct _GstQmmfSrcClass GstQmmfSrcClass;
 

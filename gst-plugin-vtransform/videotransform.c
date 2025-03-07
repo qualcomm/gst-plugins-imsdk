@@ -103,10 +103,6 @@ G_DEFINE_TYPE (GstVideoTransform, gst_video_transform, GST_TYPE_BASE_TRANSFORM);
 #define DEFAULT_PROP_MIN_BUFFERS      2
 #define DEFAULT_PROP_MAX_BUFFERS      24
 
-#ifndef GST_CAPS_FEATURE_MEMORY_GBM
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
-#endif
-
 #undef GST_VIDEO_SIZE_RANGE
 #define GST_VIDEO_SIZE_RANGE "(int) [ 1, 32767 ]"
 
@@ -166,7 +162,7 @@ gst_video_transform_sink_caps (void)
   if (g_once_init_enter (&inited)) {
     caps = gst_caps_from_string (GST_VIDEO_CAPS_MAKE (GST_SINK_VIDEO_FORMATS));
 
-    if (gst_is_gbm_supported ()) {
+    if (gst_gbm_qcom_backend_is_supported ()) {
       GstCaps *tmplcaps = gst_caps_from_string (
           GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
               GST_SINK_VIDEO_FORMATS));
@@ -189,7 +185,7 @@ gst_video_transform_src_caps (void)
   if (g_once_init_enter (&inited)) {
     caps = gst_caps_from_string (GST_VIDEO_CAPS_MAKE (GST_SRC_VIDEO_FORMATS));
 
-    if (gst_is_gbm_supported ()) {
+    if (gst_gbm_qcom_backend_is_supported ()) {
       GstCaps *tmplcaps = gst_caps_from_string (
           GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
               GST_SRC_VIDEO_FORMATS));
@@ -299,7 +295,7 @@ gst_video_transform_create_pool (GstVideoTransform * vtrans, GstCaps * caps,
     return NULL;
   }
 
-  if (gst_is_gbm_supported ()) {
+  if (gst_gbm_qcom_backend_is_supported ()) {
     // If downstream allocation query supports GBM, allocate gbm memory.
     if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
       GST_INFO_OBJECT (vtrans, "Uses GBM memory");
@@ -546,7 +542,7 @@ gst_video_transform_transform_caps (GstBaseTransform * base,
   result = gst_caps_new_empty ();
 
   // In case there is no memory:GBM caps structure prepend one.
-  if (gst_is_gbm_supported () && !gst_caps_is_empty (caps) &&
+  if (gst_gbm_qcom_backend_is_supported () && !gst_caps_is_empty (caps) &&
       !gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
     // Make a copy that will be modified.
     structure = gst_caps_get_structure (caps, 0);

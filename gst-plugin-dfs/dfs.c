@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -37,8 +37,10 @@
 #endif
 
 #include "dfs.h"
+
 #include <gst/video/gstimagepool.h>
 #include <gst/video/video.h>
+#include <gst/video/video-utils.h>
 
 #define GST_CAT_DEFAULT gst_dfs_debug
 GST_DEBUG_CATEGORY_STATIC (gst_dfs_debug);
@@ -83,10 +85,6 @@ enum
   PROP_CONFIG_PATH,
   PROP_PPLEVEL,
 };
-
-#ifndef GST_CAPS_FEATURE_MEMORY_GBM
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
-#endif
 
 #define GST_SINK_VIDEO_FORMATS "{ NV12, NV21 }"
 
