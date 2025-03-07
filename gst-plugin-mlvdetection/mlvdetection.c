@@ -317,7 +317,7 @@ gst_ml_video_detection_create_pool (GstMLVideoDetection * detection,
           GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
       gst_buffer_pool_config_set_video_alignment (structure, &align);
 
-      allocator = gst_qti_allocator_new ();
+      allocator = gst_qti_allocator_new (GST_FD_MEMORY_FLAG_KEEP_MAPPED);
       if (allocator == NULL) {
         GST_ERROR_OBJECT (detection, "Failed to create QTI allocator");
         gst_clear_object (&pool);
