@@ -369,8 +369,10 @@ gst_video_composer_propose_allocation (GstAggregator * aggregator,
     GstAllocator *allocator = NULL;
     GstVideoAlignment align = { 0, };
 
-    gst_video_utils_get_gpu_align (&info, &align);
-    gst_video_info_align (&info, &align);
+    if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
+      GST_ERROR_OBJECT (vcomposer, "Failed to get alignment!");
+      return FALSE;
+    }
 
     pool = gst_video_composer_create_pool (vcomposer, caps, &align, NULL);
     structure = gst_buffer_pool_get_config (pool);
@@ -427,9 +429,27 @@ gst_video_composer_decide_allocation (GstAggregator * aggregator,
     return FALSE;
   }
 
-  gst_video_utils_get_gpu_align (&info, &align);
-  gst_query_get_video_alignment (query, &ds_align);
-  align = gst_video_calculate_common_alignment (&align, &ds_align);
+  if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
+    GST_ERROR_OBJECT (vcomposer, "Failed to get alignment!");
+    return FALSE;
+  }
+
+  if (gst_query_get_video_alignment (query, &ds_align)) {
+    GST_DEBUG_OBJECT (vcomposer, "Downstream alignment: padding (top: %u bottom:"
+        " %u left: %u right: %u) stride (%u, %u, %u, %u)", ds_align.padding_top,
+        ds_align.padding_bottom, ds_align.padding_left, ds_align.padding_right,
+        ds_align.stride_align[0], ds_align.stride_align[1],
+        ds_align.stride_align[2], ds_align.stride_align[3]);
+
+    // Find the most the appropriate alignment between us and downstream.
+    align = gst_video_calculate_common_alignment (&align, &ds_align);
+
+    GST_DEBUG_OBJECT (vcomposer, "Common alignment: padding (top: %u bottom: "
+        "%u left: %u right: %u) stride (%u, %u, %u, %u)", align.padding_top,
+        align.padding_bottom, align.padding_left, align.padding_right,
+        align.stride_align[0], align.stride_align[1], align.stride_align[2],
+        align.stride_align[3]);
+  }
 
   if (gst_query_get_n_allocation_params (query))
     gst_query_parse_nth_allocation_param (query, 0, NULL, &params);
@@ -438,7 +458,6 @@ gst_video_composer_decide_allocation (GstAggregator * aggregator,
     GstStructure *config = NULL;
     GstAllocator *allocator = NULL;
 
-    GST_DEBUG_OBJECT (vcomposer, "Creating our own pool");
     pool = gst_video_composer_create_pool (vcomposer, caps, &align, &params);
 
     // Get the configured pool properties in order to set in query.
