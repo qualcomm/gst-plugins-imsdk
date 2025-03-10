@@ -34,7 +34,6 @@
 
 #include "videosplitpads.h"
 
-#include <gst/video/gstqtibufferpool.h>
 #include <gst/allocators/gstqtiallocator.h>
 #include <gst/video/video-utils.h>
 #include <gst/video/gstimagepool.h>

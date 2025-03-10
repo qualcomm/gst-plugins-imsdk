@@ -42,7 +42,6 @@
 #include <stdlib.h>
 #include <math.h>
 
-#include <gst/video/gstqtibufferpool.h>
 #include <gst/allocators/gstqtiallocator.h>
 #include <gst/video/video-utils.h>
 #include <cairo/cairo.h>
