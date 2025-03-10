@@ -286,55 +286,53 @@ gst_video_composer_create_pool (GstVideoComposer * vcomposer, GstCaps * caps,
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
   GstAllocator *allocator = NULL;
-  GstVideoInfo info;
+  GstVideoInfo info = {0,};
 
   if (!gst_video_info_from_caps (&info, caps)) {
     GST_ERROR_OBJECT (vcomposer, "Invalid caps %" GST_PTR_FORMAT, caps);
     return NULL;
   }
 
-  if (gst_gbm_qcom_backend_is_supported ()) {
-    if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
-      GST_INFO_OBJECT (vcomposer, "Uses GBM memory");
-      pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
-    } else {
-      GST_INFO_OBJECT (vcomposer, "Uses ION memory");
-      pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
-    }
-
-    config = gst_buffer_pool_get_config (pool);
-    allocator = gst_fd_allocator_new ();
-
-    gst_buffer_pool_config_add_option (config,
-        GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
-
-  } else {
-    pool = gst_qti_buffer_pool_new ();
-    config = gst_buffer_pool_get_config (pool);
-
-    gst_buffer_pool_config_add_option (config,
-        GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
-    gst_buffer_pool_config_set_video_alignment (config, align);
-
-    allocator = gst_qti_allocator_new (GST_FD_MEMORY_FLAG_KEEP_MAPPED);
-    if (allocator == NULL) {
-      GST_ERROR_OBJECT (vcomposer, "Failed to create QTI allocator");
-      gst_clear_object (&pool);
-      return NULL;
-    }
+  if ((pool = gst_image_buffer_pool_new ()) == NULL) {
+    GST_ERROR_OBJECT (vcomposer, "Failed to create image pool!");
+    return NULL;
   }
+
+  if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
+    allocator = gst_fd_allocator_new ();
+    GST_INFO_OBJECT (vcomposer, "Buffer pool uses GBM memory");
+  } else {
+    allocator = gst_qti_allocator_new (GST_FD_MEMORY_FLAG_KEEP_MAPPED);
+    GST_INFO_OBJECT (vcomposer, "Buffer pool uses DMA memory");
+  }
+
+  if (allocator == NULL) {
+    GST_ERROR_OBJECT (vcomposer, "Failed to create allocator");
+    gst_clear_object (&pool);
+    return NULL;
+  }
+
+  config = gst_buffer_pool_get_config (pool);
+
+  gst_buffer_pool_config_set_allocator (config, allocator, params);
+  g_object_unref (allocator);
+
+  gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
+  gst_buffer_pool_config_add_option (config,
+      GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
+
+  gst_buffer_pool_config_add_option (config,
+      GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
+  gst_buffer_pool_config_set_video_alignment (config, align);
+  gst_video_info_align (&info, align);
 
   gst_buffer_pool_config_set_params (config, caps, info.size,
       DEFAULT_PROP_MIN_BUFFERS, DEFAULT_PROP_MAX_BUFFERS);
-  gst_buffer_pool_config_set_allocator (config, allocator, params);
-  gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING_OBJECT (vcomposer, "Failed to set pool configuration!");
     g_clear_object (&pool);
   }
-
-  g_object_unref (allocator);
 
   return pool;
 }
@@ -408,7 +406,6 @@ gst_video_composer_decide_allocation (GstAggregator * aggregator,
   GstCaps *caps = NULL;
   GstVideoInfo info;
   GstVideoAlignment align = { 0, }, ds_align = { 0, };
-  GstAllocationParams params = { 0, };
   GstBufferPool *pool = NULL;
   guint size = 0, minbuffers = 0, maxbuffers = 0;
 
@@ -451,12 +448,13 @@ gst_video_composer_decide_allocation (GstAggregator * aggregator,
         align.stride_align[3]);
   }
 
-  if (gst_query_get_n_allocation_params (query))
-    gst_query_parse_nth_allocation_param (query, 0, NULL, &params);
-
   {
     GstStructure *config = NULL;
     GstAllocator *allocator = NULL;
+    GstAllocationParams params = {0,};
+
+    if (gst_query_get_n_allocation_params (query))
+      gst_query_parse_nth_allocation_param (query, 0, NULL, &params);
 
     pool = gst_video_composer_create_pool (vcomposer, caps, &align, &params);
 
