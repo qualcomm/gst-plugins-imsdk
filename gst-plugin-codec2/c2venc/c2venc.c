@@ -266,10 +266,10 @@ gst_caps_has_subformat (const GstCaps * caps, const gchar * subformat)
 }
 
 static guint
-gst_caps_get_num_super_frames (const GstCaps * caps)
+gst_caps_get_num_subframes (const GstCaps * caps)
 {
   GstStructure *structure = gst_caps_get_structure (caps, 0);
-  gint n_super_frames = 0;
+  gint n_subframes = 0;
   const gchar *multiview_mode = NULL;
 
   multiview_mode = gst_structure_get_string (structure, "multiview-mode");
@@ -278,18 +278,18 @@ gst_caps_get_num_super_frames (const GstCaps * caps)
 
   switch (gst_video_multiview_mode_from_caps_string (multiview_mode)) {
     case GST_VIDEO_MULTIVIEW_MODE_MONO:
-      if (!gst_structure_get_int (structure, "views", &n_super_frames)) {
+      if (!gst_structure_get_int (structure, "views", &n_subframes)) {
         GST_ERROR ("Failed to get views in multiview(mode: mono).");
         return 0;
       }
-      GST_DEBUG ("Number of super frames: %d.", n_super_frames);
+      GST_DEBUG ("Number of subframes: %d.", n_subframes);
       break;
     default:
       GST_WARNING ("Unsupported multiview mode(%s).", multiview_mode);
       break;
   }
 
-  return (guint)n_super_frames;
+  return (guint)n_subframes;
 }
 
 static gboolean
@@ -331,7 +331,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
     GstVideoCodecState * instate, GstVideoCodecState * outstate)
 {
   GstVideoInfo *info = &instate->info;
-  GstC2PixelInfo pixinfo = { GST_VIDEO_FORMAT_UNKNOWN, FALSE };
+  GstC2PixelInfo pixinfo = { GST_VIDEO_FORMAT_UNKNOWN, FALSE, 0 };
   GstC2Resolution inresolution = { 0, 0 };
   GstC2Resolution outresolution = { 0, 0 };
   GstC2Gop gop = { 0, 0 };
@@ -342,6 +342,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
 
   pixinfo.format = GST_VIDEO_INFO_FORMAT (info);
   pixinfo.isubwc = c2venc->isubwc;
+  pixinfo.n_subframes = c2venc->n_subframes;
 
   success = gst_c2_engine_set_parameter (c2venc->engine,
       GST_C2_PARAM_IN_PIXEL_FORMAT, GPOINTER_CAST (&pixinfo));
@@ -730,9 +731,9 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
     return FALSE;
   }
 
-  if (c2venc->n_super_frames != 0) {
+  if (c2venc->n_subframes != 0) {
     success = gst_c2_engine_set_parameter (c2venc->engine,
-        GST_C2_PARAM_SUPER_FRAME, GPOINTER_CAST (&c2venc->n_super_frames));
+        GST_C2_PARAM_SUPER_FRAME, GPOINTER_CAST (&c2venc->n_subframes));
     if (!success) {
       GST_ERROR_OBJECT (c2venc, "Failed to set super frame!");
       return FALSE;
@@ -947,7 +948,7 @@ gst_c2_venc_buffer_available (GstBuffer * buffer, gpointer userdata)
     frame->output_buffer = buffer;
   }
 
-  if (c2venc->n_super_frames > 0) {
+  if (c2venc->n_subframes > 0) {
     // PTS was passed to codec2 backend as timestamp while encoding
     frame->pts = GST_BUFFER_TIMESTAMP (buffer);
 
@@ -1347,7 +1348,7 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
         GST_VIDEO_INFO_FPS_D (info), GST_VIDEO_INFO_FPS_N (info));
   }
 
-  c2venc->n_super_frames = gst_caps_get_num_super_frames (state->caps);
+  c2venc->n_subframes = gst_caps_get_num_subframes (state->caps);
 
   if (!gst_c2_venc_setup_parameters (c2venc, state, outstate)) {
     GST_ERROR_OBJECT (c2venc, "Failed to setup parameters!");
@@ -1431,6 +1432,7 @@ gst_c2_venc_handle_frame (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   item.buffer = frame->input_buffer;
   item.index = frame->system_frame_number;
   item.userdata = gst_video_codec_frame_get_user_data (frame);
+  item.n_subframes = c2venc->n_subframes;
 
   if (!gst_c2_engine_queue (c2venc->engine, &item)) {
     GST_ERROR_OBJECT(c2venc, "Failed to send input frame to be emptied!");
@@ -2079,7 +2081,7 @@ gst_c2_venc_init (GstC2VEncoder * c2venc)
   c2venc->temp_layer.n_layers = DEFAULT_PROP_TEMPORAL_LAYER_NUM;
   c2venc->temp_layer.n_blayers = DEFAULT_PROP_TEMPORAL_LAYER_NUM;
 
-  c2venc->n_super_frames = 0;
+  c2venc->n_subframes = 0;
 
   GST_DEBUG_CATEGORY_INIT (c2_venc_debug, "qtic2venc", 0,
       "QTI c2venc encoder");

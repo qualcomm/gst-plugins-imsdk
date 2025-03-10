@@ -445,14 +445,27 @@ const char* GstC2Utils::ParamName(uint32_t type) {
   return kParamNameMap.at(type);
 }
 
-C2PixelFormat GstC2Utils::PixelFormat(GstVideoFormat format, bool isubwc) {
+C2PixelFormat GstC2Utils::PixelFormat(GstVideoFormat format, bool isubwc,
+    guint32 n_subframes) {
 
   if (format == GST_VIDEO_FORMAT_RGBA) {
     return isubwc ? C2PixelFormat::kRGBA_UBWC : C2PixelFormat::kRGBA;
   } else if (format == GST_VIDEO_FORMAT_NV12) {
     return C2PixelFormat::kNV12;
   } else if (format == GST_VIDEO_FORMAT_NV12_Q08C) {
-    return C2PixelFormat::kNV12UBWC;
+    switch (n_subframes) {
+      case 0:
+        return C2PixelFormat::kNV12UBWC;
+      case 2:
+        return C2PixelFormat::kNV12UBWC_FLEX_2_BATCH;
+      case 4:
+        return C2PixelFormat::kNV12UBWC_FLEX_4_BATCH;
+      case 8:
+        return C2PixelFormat::kNV12UBWC_FLEX_8_BATCH;
+      default:
+        GST_ERROR ("Unsupported batch number: %u!", n_subframes);
+        return C2PixelFormat::kUnknown;
+    }
   } else if (format == GST_VIDEO_FORMAT_YV12) {
     return C2PixelFormat::kYV12;
   } else if (format == GST_VIDEO_FORMAT_P010_10LE) {
@@ -466,27 +479,34 @@ C2PixelFormat GstC2Utils::PixelFormat(GstVideoFormat format, bool isubwc) {
   return C2PixelFormat::kUnknown;
 }
 
-std::tuple<GstVideoFormat, bool> GstC2Utils::VideoFormat(C2PixelFormat format) {
+std::tuple<GstVideoFormat, bool, uint32_t> GstC2Utils::VideoFormat(
+    C2PixelFormat format) {
 
   if (format == C2PixelFormat::kRGBA_UBWC) {
-    return std::make_tuple(GST_VIDEO_FORMAT_RGBA, true);
+    return std::make_tuple(GST_VIDEO_FORMAT_RGBA, true, 0);
   } else if (format == C2PixelFormat::kRGBA) {
-    return std::make_tuple(GST_VIDEO_FORMAT_RGBA, false);
+    return std::make_tuple(GST_VIDEO_FORMAT_RGBA, false, 0);
   } else if (format == C2PixelFormat::kNV12UBWC) {
-    return std::make_tuple(GST_VIDEO_FORMAT_NV12_Q08C, true);
+    return std::make_tuple(GST_VIDEO_FORMAT_NV12_Q08C, true, 0);
+  } else if (format == C2PixelFormat::kNV12UBWC_FLEX_2_BATCH) {
+    return std::make_tuple(GST_VIDEO_FORMAT_NV12_Q08C, true, 2);
+  } else if (format == C2PixelFormat::kNV12UBWC_FLEX_4_BATCH) {
+    return std::make_tuple(GST_VIDEO_FORMAT_NV12_Q08C, true, 4);
+  } else if (format == C2PixelFormat::kNV12UBWC_FLEX_8_BATCH) {
+    return std::make_tuple(GST_VIDEO_FORMAT_NV12_Q08C, true, 8);
   } else if (format == C2PixelFormat::kNV12) {
-    return std::make_tuple(GST_VIDEO_FORMAT_NV12, false);
+    return std::make_tuple(GST_VIDEO_FORMAT_NV12, false, 0);
   } else if (format == C2PixelFormat::kYV12) {
-    return std::make_tuple(GST_VIDEO_FORMAT_YV12, false);
+    return std::make_tuple(GST_VIDEO_FORMAT_YV12, false, 0);
   } else if (format == C2PixelFormat::kP010) {
-    return std::make_tuple(GST_VIDEO_FORMAT_P010_10LE, false);
+    return std::make_tuple(GST_VIDEO_FORMAT_P010_10LE, false, 0);
   } else if (format == C2PixelFormat::kTP10UBWC) {
-    return std::make_tuple(GST_VIDEO_FORMAT_NV12_10LE32, true);
+    return std::make_tuple(GST_VIDEO_FORMAT_NV12_10LE32, true, 0);
   } else {
     GST_ERROR ("Unsupported format: %u!", format);
   }
 
-  return std::make_tuple(GST_VIDEO_FORMAT_UNKNOWN, false);
+  return std::make_tuple(GST_VIDEO_FORMAT_UNKNOWN, false, 0);
 }
 
 bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
@@ -498,7 +518,8 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       GstC2PixelInfo *pixinfo = reinterpret_cast<GstC2PixelInfo*>(payload);
 
       pixformat.value = static_cast<uint32_t>(
-          GstC2Utils::PixelFormat(pixinfo->format, pixinfo->isubwc));
+          GstC2Utils::PixelFormat(pixinfo->format,
+              pixinfo->isubwc, pixinfo->n_subframes));
       c2param = C2Param::Copy(pixformat);
       break;
     }
@@ -507,7 +528,8 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       GstC2PixelInfo *pixinfo = reinterpret_cast<GstC2PixelInfo*>(payload);
 
       pixformat.value = static_cast<uint32_t>(
-          GstC2Utils::PixelFormat(pixinfo->format, pixinfo->isubwc));
+          GstC2Utils::PixelFormat(pixinfo->format,
+              pixinfo->isubwc, pixinfo->n_subframes));
       c2param = C2Param::Copy(pixformat);
       break;
     }
@@ -927,10 +949,10 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       break;
     }
     case GST_C2_PARAM_SUPER_FRAME: {
-      qc2::C2VideoSuperFrameSetting::input n_super_frames;
+      qc2::C2VideoSuperFrameSetting::input superframe;
 
-      n_super_frames.value = *(reinterpret_cast<guint32*>(payload));
-      c2param = C2Param::Copy(n_super_frames);
+      superframe.value = *(reinterpret_cast<guint32*>(payload));
+      c2param = C2Param::Copy(superframe);
       break;
     }
     default:
@@ -948,25 +970,29 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
     case GST_C2_PARAM_IN_PIXEL_FORMAT: {
       auto pixformat =
           reinterpret_cast<C2StreamPixelFormatInfo::input*>(c2param.get());
-      std::tuple<GstVideoFormat, bool> tuple =
+      std::tuple<GstVideoFormat, bool, uint32_t> tuple =
           GstC2Utils::VideoFormat(static_cast<C2PixelFormat>(pixformat->value));
 
       reinterpret_cast<GstC2PixelInfo*>(payload)->format =
           std::get<GstVideoFormat>(tuple);
       reinterpret_cast<GstC2PixelInfo*>(payload)->isubwc =
           std::get<bool>(tuple) ? TRUE : FALSE;
+      reinterpret_cast<GstC2PixelInfo*>(payload)->n_subframes =
+          std::get<uint32_t>(tuple);
       break;
     }
     case GST_C2_PARAM_OUT_PIXEL_FORMAT: {
       auto pixformat =
           reinterpret_cast<C2StreamPixelFormatInfo::output*>(c2param.get());
-      std::tuple<GstVideoFormat, bool> tuple =
+      std::tuple<GstVideoFormat, bool, uint32_t> tuple =
           GstC2Utils::VideoFormat(static_cast<C2PixelFormat>(pixformat->value));
 
       reinterpret_cast<GstC2PixelInfo*>(payload)->format =
           std::get<GstVideoFormat>(tuple);
       reinterpret_cast<GstC2PixelInfo*>(payload)->isubwc =
           std::get<bool>(tuple) ? TRUE : FALSE;
+      reinterpret_cast<GstC2PixelInfo*>(payload)->n_subframes =
+          std::get<uint32_t>(tuple);
       break;
     }
     case GST_C2_PARAM_IN_RESOLUTION: {
@@ -1326,10 +1352,10 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
       break;
     }
     case GST_C2_PARAM_SUPER_FRAME: {
-      auto n_super_frames =
+      auto superframe =
           reinterpret_cast<qc2::C2VideoSuperFrameSetting::input*>(c2param.get());
 
-      *(reinterpret_cast<guint32*>(payload)) = n_super_frames->value;
+      *(reinterpret_cast<guint32*>(payload)) = superframe->value;
       break;
     }
     default:
@@ -1341,7 +1367,8 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
 }
 
 bool GstC2Utils::ImportHandleInfo(GstBuffer* buffer,
-                                  ::android::C2HandleGBM* handle) {
+                                  ::android::C2HandleGBM* handle,
+                                  uint32_t n_subframes) {
 
   GstVideoMeta *vmeta = gst_buffer_get_video_meta (buffer);
   uint32_t size = gst_buffer_get_size (buffer);
@@ -1349,7 +1376,7 @@ bool GstC2Utils::ImportHandleInfo(GstBuffer* buffer,
   int32_t meta_fd = -1;
 
   gboolean isubwc = GST_BUFFER_FLAG_IS_SET (buffer, GST_VIDEO_BUFFER_FLAG_UBWC);
-  C2PixelFormat format = GstC2Utils::PixelFormat(vmeta->format, isubwc);
+  C2PixelFormat format = GstC2Utils::PixelFormat(vmeta->format, isubwc, n_subframes);
 
   uint32_t width = vmeta->width;
   uint32_t height = vmeta->height;
@@ -1374,6 +1401,14 @@ bool GstC2Utils::ImportHandleInfo(GstBuffer* buffer,
       }
       break;
     case C2PixelFormat::kNV12UBWC:
+      handle->mInts.format = GBM_FORMAT_NV12;
+      handle->mInts.usage_lo |= GBM_BO_USAGE_UBWC_ALIGNED_QTI;
+      handle->mInts.slice_height =
+          MMM_COLOR_FMT_Y_SCANLINES(MMM_COLOR_FMT_NV12_UBWC, height);
+      break;
+    case C2PixelFormat::kNV12UBWC_FLEX_2_BATCH:
+    case C2PixelFormat::kNV12UBWC_FLEX_4_BATCH:
+    case C2PixelFormat::kNV12UBWC_FLEX_8_BATCH:
       handle->mInts.format = GBM_FORMAT_NV12;
       handle->mInts.usage_lo |= GBM_BO_USAGE_UBWC_ALIGNED_QTI;
       handle->mInts.slice_height =
@@ -1690,14 +1725,15 @@ private:
   C2Allocator::id_t    allocator_id_;
 };
 
-std::shared_ptr<C2Buffer> GstC2Utils::ImportGraphicBuffer(GstBuffer* buffer) {
+std::shared_ptr<C2Buffer> GstC2Utils::ImportGraphicBuffer(GstBuffer* buffer,
+    uint32_t n_subframes) {
 
   GstVideoMeta *vmeta = gst_buffer_get_video_meta (buffer);
   g_return_val_if_fail (vmeta != NULL, nullptr);
 
   ::android::C2HandleGBM *handle = new android::C2HandleGBM();
 
-  if (!GstC2Utils::ImportHandleInfo(buffer, handle)) {
+  if (!GstC2Utils::ImportHandleInfo(buffer, handle, n_subframes)) {
     GST_ERROR ("Failed to import handle info !");
     delete handle;
 

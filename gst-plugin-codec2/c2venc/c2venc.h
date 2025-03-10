@@ -84,8 +84,8 @@ struct _GstC2VEncoder {
   /// List of incomplete buffers.
   GstBufferList        *incomplete_buffers;
 
-  /// Number of subframes contained in one superframe.
-  guint32              n_super_frames;
+  /// Number of subframes contained in one buffer.
+  guint32              n_subframes;
 
   /// Properties
   GstC2VideoRotate     rotate;
