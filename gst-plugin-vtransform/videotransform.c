@@ -315,8 +315,6 @@ gst_video_transform_create_pool (GstVideoTransform * vtrans, GstCaps * caps,
     pool = gst_qti_buffer_pool_new ();
     config = gst_buffer_pool_get_config (pool);
 
-    gst_video_info_align (&info, align);
-
     gst_buffer_pool_config_add_option (config,
         GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
     gst_buffer_pool_config_set_video_alignment (config, align);
@@ -381,8 +379,10 @@ gst_video_transform_propose_allocation (GstBaseTransform * base,
     GstAllocator *allocator = NULL;
     GstVideoAlignment align = { 0, };
 
-    gst_video_utils_get_gpu_align (&info, &align);
-    gst_video_info_align (&info, &align);
+    if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
+      GST_ERROR_OBJECT (vtrans, "Failed to get alignment!");
+      return FALSE;
+    }
 
     pool = gst_video_transform_create_pool (vtrans, caps, &align, NULL);
     structure = gst_buffer_pool_get_config (pool);
@@ -441,9 +441,27 @@ gst_video_transform_decide_allocation (GstBaseTransform * base,
     return FALSE;
   }
 
-  gst_video_utils_get_gpu_align (&info, &align);
-  gst_query_get_video_alignment (query, &ds_align);
-  align = gst_video_calculate_common_alignment (&align, &ds_align);
+  if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
+    GST_ERROR_OBJECT (vtrans, "Failed to get alignment!");
+    return FALSE;
+  }
+
+  if (gst_query_get_video_alignment (query, &ds_align)) {
+    GST_DEBUG_OBJECT (vtrans, "Downstream alignment: padding (top: %u bottom: "
+        "%u left: %u right: %u) stride (%u, %u, %u, %u)", ds_align.padding_top,
+        ds_align.padding_bottom, ds_align.padding_left, ds_align.padding_right,
+        ds_align.stride_align[0], ds_align.stride_align[1],
+        ds_align.stride_align[2], ds_align.stride_align[3]);
+
+    // Find the most the appropriate alignment between us and downstream.
+    align = gst_video_calculate_common_alignment (&align, &ds_align);
+
+    GST_DEBUG_OBJECT (vtrans, "Common alignment: padding (top: %u bottom: %u "
+        "left: %u right: %u) stride (%u, %u, %u, %u)", align.padding_top,
+        align.padding_bottom, align.padding_left, align.padding_right,
+        align.stride_align[0], align.stride_align[1], align.stride_align[2],
+        align.stride_align[3]);
+  }
 
   if (gst_query_get_n_allocation_params (query))
     gst_query_parse_nth_allocation_param (query, 0, NULL, &params);

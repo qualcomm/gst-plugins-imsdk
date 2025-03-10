@@ -992,8 +992,10 @@ gst_video_split_sinkpad_query (GstPad * pad, GstObject * parent,
         GstStructure *structure = NULL;
         GstVideoAlignment align = { 0, };
 
-        gst_video_utils_get_gpu_align (&info, &align);
-        gst_video_info_align (&info, &align);
+        if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
+          GST_ERROR_OBJECT (pad, "Failed to get alignment!");
+          return FALSE;
+        }
 
         pool = gst_video_split_create_pool (pad, caps, &align, NULL);
         structure = gst_buffer_pool_get_config (pool);

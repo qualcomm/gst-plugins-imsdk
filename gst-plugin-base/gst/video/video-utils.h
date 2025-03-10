@@ -25,27 +25,6 @@ GST_VIDEO_API gboolean
 gst_gbm_qcom_backend_is_supported (void);
 
 /**
- * gst_adreno_utils_compute_alignment:
- * @width: Width of the image in pixels.
- * @height: Height of the image in pixels.
- * @format: The format of the image.
- * @stride: Calculated width with alignment in bytes.
- * @scanline: Calculated height with alignment in bytes.
- *
- * Helper function for calculating stride and scanline for given image width
- * and height based on the format and alignment requirements of the adreno GPU.
- *
- * TODO: This function needs to be replaced with a function for properly
- * requesting the hardware alignment requirements.
- *
- * return: TRUE on success or FALSE on failure
- */
-GST_VIDEO_API gboolean
-gst_adreno_utils_compute_alignment(guint width, guint height,
-                                   GstVideoFormat format, gint * stride,
-                                   gint * scanline);
-
-/**
  * gst_video_retrieve_gpu_alignment:
  * @info: #GstVideoInfo structure which will be adjusted with the alignment.
  * @align: #GstVideoAlignment structure which will populated.
@@ -70,23 +49,12 @@ gst_video_calculate_common_alignment (GstVideoAlignment * l_align,
                                       GstVideoAlignment * r_align);
 
 /**
- * gst_video_utils_get_gpu_align:
- * @info: #GstVideoInfo
- * @align: GPU alignment for given video info
- *
- * Helper function to get GPU alignment for given video info
- */
-GST_VIDEO_API void
-gst_video_utils_get_gpu_align (GstVideoInfo * info, GstVideoAlignment * align);
-
-/**
  * gst_query_get_video_alignment:
- * @query: #GstQuery
- * @align: Common alignment from all GST_VIDEO_META from the query
+ * @query: #GstQuery with allocation information.
+ * @align: #GstVideoAlignment from the GST_VIDEO_META in the query.
  *
  * Helper function to parse the query to get video alignment from allocation
- * meta. If multiple video alignments present, it gives the common alignment
- * of all.
+ * meta.
  *
  * return: TRUE on success or FALSE on failure
  */
