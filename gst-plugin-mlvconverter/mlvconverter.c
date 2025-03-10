@@ -1272,7 +1272,7 @@ gst_ml_video_converter_propose_allocation (GstBaseTransform * base,
   GstMLVideoConverter *mlconverter = GST_ML_VIDEO_CONVERTER (base);
   GstCaps *caps = NULL;
   GstBufferPool *pool = NULL;
-  GstVideoInfo info;
+  GstVideoInfo info = {0,};
   guint size = 0;
   gboolean needpool = FALSE;
 
@@ -1297,66 +1297,61 @@ gst_ml_video_converter_propose_allocation (GstBaseTransform * base,
     return FALSE;
   }
 
-  // Get the size from video info.
-  size = GST_VIDEO_INFO_SIZE (&info);
-
   if (needpool) {
     GstStructure *config = NULL;
     GstAllocator *allocator = NULL;
+    GstVideoAlignment align = {0,};
 
-    if (gst_gbm_qcom_backend_is_supported ()) {
-      // If downstream allocation query supports GBM, allocate gbm memory.
-      if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
-        GST_INFO_OBJECT (mlconverter, "Uses GBM memory");
-        pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
-      } else {
-        GST_INFO_OBJECT (mlconverter, "Uses ION memory");
-        pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
-      }
+    if ((pool = gst_image_buffer_pool_new ()) == NULL) {
+      GST_ERROR_OBJECT (mlconverter, "Failed to create image pool!");
+      return FALSE;
+    }
 
-      config = gst_buffer_pool_get_config (pool);
-
+    if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
       allocator = gst_fd_allocator_new ();
-
-      gst_buffer_pool_config_add_option (config,
-          GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
+      GST_INFO_OBJECT (mlconverter, "Buffer pool uses GBM memory");
     } else {
-      GstVideoAlignment align = {0,};
-
-      if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
-        GST_ERROR_OBJECT (mlconverter, "Failed to get alignment!");
-        return FALSE;
-      }
-
-      pool = gst_qti_buffer_pool_new ();
-      config = gst_buffer_pool_get_config (pool);
-
-      gst_buffer_pool_config_add_option (config,
-          GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
-      gst_buffer_pool_config_set_video_alignment (config, &align);
-
       allocator = gst_qti_allocator_new (GST_FD_MEMORY_FLAG_KEEP_MAPPED);
-      if (allocator == NULL) {
-        GST_ERROR_OBJECT (mlconverter, "Failed to create QTI allocator");
-        gst_clear_object (&pool);
-        return FALSE;
-      }
+      GST_INFO_OBJECT (mlconverter, "Buffer pool uses DMA memory");
+    }
+
+    if (allocator == NULL) {
+      GST_ERROR_OBJECT (mlconverter, "Failed to create allocator");
+      gst_clear_object (&pool);
+      return FALSE;
+    }
+
+    config = gst_buffer_pool_get_config (pool);
+
+    gst_buffer_pool_config_set_allocator (config, allocator, NULL);
+    g_object_unref (allocator);
+
+    gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
+    gst_buffer_pool_config_add_option (config,
+        GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
+
+    if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
+      GST_ERROR_OBJECT (mlconverter, "Failed to get alignment!");
+      gst_clear_object (&pool);
+      return FALSE;
     }
 
     gst_buffer_pool_config_set_params (config, caps, info.size,
         DEFAULT_PROP_MIN_BUFFERS, DEFAULT_PROP_MAX_BUFFERS);
-    gst_buffer_pool_config_set_allocator (config, allocator, NULL);
-    gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
-    gst_query_add_allocation_param (outquery, allocator, NULL);
-    g_object_unref (allocator);
+
+    gst_buffer_pool_config_add_option (config,
+        GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
+    gst_buffer_pool_config_set_video_alignment (config, &align);
 
     if (!gst_buffer_pool_set_config (pool, config)) {
       GST_WARNING_OBJECT (mlconverter, "Failed to set pool configuration!");
-      g_object_unref (pool);
-      pool = NULL;
+      gst_clear_object (&pool);
       return FALSE;
     }
   }
+
+  // Get the size from video info.
+  size = GST_VIDEO_INFO_SIZE (&info);
 
   // If upstream does't have a pool requirement, set only size in query.
   gst_query_add_allocation_pool (outquery, needpool ? pool : NULL, size, 0, 0);
