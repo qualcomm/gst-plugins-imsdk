@@ -294,7 +294,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   } else if (GST_ML_FRAME_N_TENSORS (mlframe) == 3) {
     // Check whether the first tensor contains the bounding boxes.
     if (GST_ML_FRAME_DIM (mlframe, 0, 3) == 4) {
-      // Thrid tensor represents confidence scores.
+      // Third tensor represents confidence scores.
       scores_idx = 2;
       // First tensor represents the coordinates of the bounding boxes.
       bboxes_idx = 0;
@@ -306,7 +306,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     } else {
       // First tensor represents confidence scores.
       scores_idx = 0;
-      // Thrid tensor represents the coordinates of the bounding boxes.
+      // Third tensor represents the coordinates of the bounding boxes.
       bboxes_idx = 2;
     }
     // Second tensor represents the landmarks (left eye, right ear, etc.).
@@ -316,6 +316,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   scores = GST_ML_FRAME_BLOCK_DATA (mlframe, scores_idx);
   landmarks = GST_ML_FRAME_BLOCK_DATA (mlframe, landmarks_idx);
   bboxes = GST_ML_FRAME_BLOCK_DATA (mlframe, bboxes_idx);
+
   n_classes = GST_ML_FRAME_DIM (mlframe, scores_idx, 3);
   n_landmarks = GST_ML_FRAME_DIM (mlframe, landmarks_idx, 3) / 2;
 
@@ -330,16 +331,19 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     GstMLBoxEntry entry = { 0, };
     gfloat left = G_MAXFLOAT, right = 0.0, top = G_MAXFLOAT, bottom = 0.0;
     gfloat x = 0.0, y = 0.0, tx = 0.0, ty = 0.0, width = 0.0, height = 0.0;
-    gfloat bbox_x = 0.0, bbox_y = 0.0, bbox_w = 0.0, bbox_h = 0.0, hm_pool_val = 0.0;
+    gfloat bbox_x = 0.0, bbox_y = 0.0, bbox_w = 0.0, bbox_h = 0.0;
 
     confidence = gst_ml_tensor_extract_value (mltype, scores, idx,
         submodule->qoffsets[scores_idx], submodule->qscales[scores_idx]);
 
-    // Discard invalid results.
-    hm_pool_val = gst_ml_tensor_extract_value (mltype, hm_pool, idx,
-        submodule->qoffsets[1], submodule->qscales[1]);
-    if ((hm_pool != NULL) && confidence != hm_pool_val)
-      continue;
+    if (hm_pool != NULL) {
+      gfloat score = gst_ml_tensor_extract_value (mltype, hm_pool, idx,
+          submodule->qoffsets[1], submodule->qscales[1]);
+
+      // Discard invalid results.
+      if (confidence != score)
+        continue;
+    }
 
     // Discard results below the minimum score threshold.
     if (confidence < submodule->threshold)
