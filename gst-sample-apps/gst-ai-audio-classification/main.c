@@ -199,7 +199,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstElement *v4l2h264dec_caps = NULL;
   GstCaps *pad_filter = NULL, *filtercaps = NULL;
   GstPad *vcomposer_sink[2];
-  GstStructure *delegate_options = NULL;
+  GstStructure *delegate_options = NULL, *converter_params = NULL;
   gboolean ret = FALSE;
   gchar element_name[128];
   gint pos_vals[2], dim_vals[2];
@@ -398,6 +398,15 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   // 2.4 Set properties of qtimlaconverter
   g_object_set (G_OBJECT (qtimlaconverter), "sample-rate", 16000, NULL);
+
+  gst_element_set_enum_property (qtimlaconverter, "feature", "lmfe");
+
+  converter_params = gst_structure_from_string (
+      "params,nfft=512,nhop=160,nmels=64,chunklen=0.96;", NULL);
+
+  g_object_set (G_OBJECT (qtimlaconverter),
+      "params", converter_params, NULL);
+  gst_structure_free (converter_params);
 
   // 2.5 Select the HW to GPU/CPU for model inferencing using
   // delegate property
