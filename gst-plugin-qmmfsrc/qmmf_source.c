@@ -279,7 +279,7 @@ qmmfsrc_init_src_templates ()
       ", P010_10LE"
 #endif // GST_VIDEO_P010_10LE_FORMAT_ENABLE
 #ifdef GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
-      ", NV12_10LE32"
+      ", NV12_Q10LE32C"
 #endif // GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
       " }" ", "
       "%s",
@@ -303,7 +303,7 @@ qmmfsrc_init_src_templates ()
       ", P010_10LE"
 #endif // GST_VIDEO_P010_10LE_FORMAT_ENABLE
 #ifdef GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
-      ", NV12_10LE32"
+      ", NV12_Q10LE32C"
 #endif // GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
       " }" ", "
       "%s",
@@ -761,7 +761,7 @@ static GstStaticCaps gst_qmmfsrc_video_static_src_caps =
                 ", P010_10LE"
 #endif // GST_VIDEO_P010_10LE_FORMAT_ENABLE
 #ifdef GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
-                ", NV12_10LE32"
+                ", NV12_Q10LE32C"
 #endif // GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
                 " }") "; "
             QMMFSRC_VIDEO_BAYER_CAPS (
@@ -803,7 +803,7 @@ gst_qmmfsrc_video_src_caps (void)
                 ", P010_10LE"
 #endif // GST_VIDEO_P010_10LE_FORMAT_ENABLE
 #ifdef GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
-                ", NV12_10LE32"
+                ",  NV12_Q10LE32C"
 #endif // GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
                 " }"));
 
