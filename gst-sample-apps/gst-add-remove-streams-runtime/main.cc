@@ -31,9 +31,6 @@
 typedef struct _GstAppContext GstAppContext;
 typedef struct _GstStreamInf GstStreamInf;
 
-#define GST_V4L2_IO_DMABUF 4
-#define GST_V4L2_IO_DMABUF_IMPORT 5
-
 // Contains information for used plugins in the stream
 struct _GstStreamInf
 {
@@ -70,6 +67,29 @@ check_for_exit (GstAppContext * appctx) {
     return TRUE;
   }
   return FALSE;
+}
+
+/**
+ * Sets an enum property on a GstElement
+ *
+ * @param element The GstElement on which to set the property.
+ * @param propname The name of the property to set.
+ * @param valname The value to set the property to.
+ *
+ */
+void
+gst_element_set_enum_property (GstElement * element, const gchar * propname,
+    const gchar * valname)
+{
+  GValue value = G_VALUE_INIT;
+  GParamSpec *propspecs = NULL;
+
+  propspecs = g_object_class_find_property (G_OBJECT_GET_CLASS (element), propname);
+  g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+  gst_value_deserialize (&value, valname);
+
+  g_object_set_property (G_OBJECT (element), propname, &value);
+  g_value_unset (&value);
 }
 
 // Hangles interrupt signals like Ctrl+C etc.
@@ -201,8 +221,8 @@ create_encoder_stream (GstAppContext * appctx, GstStreamInf * stream,
   gst_caps_unref (stream->qmmf_caps);
 
   // Set encoder properties
-  g_object_set (G_OBJECT (stream->encoder), "capture-io-mode", GST_V4L2_IO_DMABUF, NULL);
-  g_object_set (G_OBJECT (stream->encoder), "output-io-mode", GST_V4L2_IO_DMABUF_IMPORT, NULL);
+  gst_element_set_enum_property (stream->encoder, "capture-io-mode", "dmabuf");
+  gst_element_set_enum_property (stream->encoder, "output-io-mode", "dmabuf-import");
 
   // Set mp4mux in robust mode
   g_object_set (G_OBJECT (stream->mp4mux), "reserved-moov-update-period",
@@ -327,15 +347,6 @@ create_display_stream (GstAppContext * appctx, GstStreamInf * stream,
   // Set caps the the caps filter
   g_object_set (G_OBJECT (stream->capsfilter), "caps", stream->qmmf_caps, NULL);
   gst_caps_unref (stream->qmmf_caps);
-
-  // Set waylandsink properties
-  g_object_set (G_OBJECT (stream->waylandsink), "x", x, NULL);
-  g_object_set (G_OBJECT (stream->waylandsink), "y", y, NULL);
-  g_object_set (G_OBJECT (stream->waylandsink), "width", 640, NULL);
-  g_object_set (G_OBJECT (stream->waylandsink), "height", 480, NULL);
-  g_object_set (G_OBJECT (stream->waylandsink), "async", TRUE, NULL);
-  g_object_set (G_OBJECT (stream->waylandsink), "enable-last-sample", FALSE,
-      NULL);
 
   // Add the elements to the pipeline
   gst_bin_add_many (GST_BIN (appctx->pipeline),
