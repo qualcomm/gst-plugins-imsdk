@@ -125,7 +125,7 @@ G_DEFINE_TYPE (GstMLVideoDetection, gst_ml_video_detection,
 
 #define DEFAULT_MIN_BUFFERS      2
 #define DEFAULT_MAX_BUFFERS      10
-#define DEFAULT_TEXT_BUFFER_SIZE 8192
+#define DEFAULT_TEXT_BUFFER_SIZE 204840
 #define DEFAULT_VIDEO_WIDTH      320
 #define DEFAULT_VIDEO_HEIGHT     240
 
@@ -1505,7 +1505,7 @@ gst_ml_video_detection_class_init (GstMLVideoDetectionClass * klass)
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_NUM_RESULTS,
       g_param_spec_uint ("results", "Results",
-          "Number of results to display", 0, 10, DEFAULT_PROP_NUM_RESULTS,
+          "Number of results to display", 0, 50, DEFAULT_PROP_NUM_RESULTS,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_THRESHOLD,
       g_param_spec_double ("threshold", "Threshold",
