@@ -234,6 +234,8 @@ struct _GstQmmfContext {
   gboolean          multicamera_hint;
 #endif // FEATURE_OFFLINE_IFE_SUPPORT
   gboolean          sw_tnr;
+  /// Capabilities of each camera
+  GHashTable        *static_metas;
 
   /// Logical Camera Information
   GstQmmfLogicalCamInfo logical_cam_info;
@@ -597,6 +599,25 @@ get_vendor_tags (const gchar * section, const gchar * names[], guint n_names,
     gst_structure_set_value (structure, name, &value);
     g_value_unset (&value);
   }
+}
+
+static gint
+gst_qmmf_context_get_cam_static_info (GstQmmfContext * context)
+{
+  ::qmmf::recorder::Recorder *recorder = context->recorder;
+  std::vector<::camera::CameraMetadata> infolist;
+
+  int32_t ret = recorder->GetCamStaticInfo (infolist);
+  if (ret != 0)
+    return ret;
+
+  context->static_metas = g_hash_table_new (NULL, NULL);
+  for (guint i = 0; i < infolist.size(); ++i) {
+    g_hash_table_insert (context->static_metas,
+        GUINT_TO_POINTER (i), &(infolist[i]));
+  }
+
+  return ret;
 }
 
 static gboolean
@@ -1196,6 +1217,11 @@ gst_qmmf_context_new (GstCameraEventCb eventcb, GstCameraMetaCb metacb,
   context->logical_cam_info.is_logical_cam = FALSE;
   context->logical_cam_info.phy_cam_num = 0;
   context->camera_switch_info.input_req_id = -1;
+
+  status = gst_qmmf_context_get_cam_static_info (context);
+  QMMFSRC_RETURN_VAL_IF_FAIL_WITH_CLEAN (NULL, status == 0,
+      delete context->recorder; g_slice_free (GstQmmfContext, context);,
+      NULL, "Get Camera Static Info failed!");
 
   GST_INFO ("Created QMMF context: %p", context);
   return context;
@@ -2923,6 +2949,9 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
 #endif // FEATURE_OFFLINE_IFE_SUPPORT
     case PARAM_CAMERA_SW_TNR:
       g_value_set_boolean (value, context->sw_tnr);
+      break;
+    case PARAM_CAMERA_STATIC_METADATAS:
+      g_value_set_boxed (value, context->static_metas);
       break;
     case PARAM_CAMERA_MANUAL_WB_SETTINGS:
     {
