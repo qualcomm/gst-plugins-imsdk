@@ -151,14 +151,6 @@ create_stream_display (GstCameraAppContext *appctx, gint x, gint y, gint w, gint
   g_object_set (G_OBJECT (stream->capsfilter), "caps", qmmf_caps, NULL);
   gst_caps_unref (qmmf_caps);
 
-  // Set waylandsink properties
-  g_object_set (G_OBJECT (stream->waylandsink), "x", x, NULL);
-  g_object_set (G_OBJECT (stream->waylandsink), "y", y, NULL);
-  g_object_set (G_OBJECT (stream->waylandsink), "width", 640, NULL);
-  g_object_set (G_OBJECT (stream->waylandsink), "height", 480, NULL);
-  g_object_set (G_OBJECT (stream->waylandsink), "async", TRUE, NULL);
-  g_object_set (G_OBJECT (stream->waylandsink), "enable-last-sample", FALSE, NULL);
-
   // Add the elements to the pipeline
   gst_bin_add_many (GST_BIN (appctx->pipeline), stream->capsfilter,
       stream->waylandsink, NULL);
@@ -297,8 +289,8 @@ create_stream_encode (GstCameraAppContext *appctx, gint x, gint y, gint w, gint 
   gst_caps_unref (qmmf_caps);
 
   // Set encoder properties
-  g_object_set (G_OBJECT (stream->encoder), "capture-io-mode", GST_V4L2_IO_DMABUF, NULL);
-  g_object_set (G_OBJECT (stream->encoder), "output-io-mode", GST_V4L2_IO_DMABUF_IMPORT, NULL);
+  gst_element_set_enum_property (stream->encoder, "capture-io-mode", "dmabuf");
+  gst_element_set_enum_property (stream->encoder, "output-io-mode", "dmabuf-import");
 
   // Set mp4mux in robust mode
   g_object_set (G_OBJECT (stream->mp4mux), "reserved-moov-update-period", 1000000,
