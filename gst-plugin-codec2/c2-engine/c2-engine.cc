@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -526,9 +526,7 @@ gst_c2_engine_queue (GstC2Engine * engine, GstC2QueueItem * item)
     GstVideoMeta *vmeta = gst_buffer_get_video_meta (buffer);
     g_return_val_if_fail (vmeta != NULL, FALSE);
 
-    gboolean isubwc = GST_BUFFER_FLAG_IS_SET (buffer, GST_VIDEO_BUFFER_FLAG_UBWC);
-    C2PixelFormat format = GstC2Utils::PixelFormat(vmeta->format, isubwc,
-        n_subframes);
+    C2PixelFormat format = GstC2Utils::PixelFormat(vmeta->format, n_subframes);
 
     uint32_t width = vmeta->width;
     uint32_t height = vmeta->height;

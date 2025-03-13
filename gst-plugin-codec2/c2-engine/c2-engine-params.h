@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -42,12 +42,10 @@ G_BEGIN_DECLS
 
 // GST Buffer flag for key/sync frame.
 #define GST_VIDEO_BUFFER_FLAG_SYNC (GST_VIDEO_BUFFER_FLAG_LAST << 0)
-// GST Buffer flag for frame with UBWC.
-#define GST_VIDEO_BUFFER_FLAG_UBWC (GST_VIDEO_BUFFER_FLAG_LAST << 1)
 // GST Buffer flag for frame with HEIC encoding.
-#define GST_VIDEO_BUFFER_FLAG_HEIC (GST_VIDEO_BUFFER_FLAG_LAST << 2)
+#define GST_VIDEO_BUFFER_FLAG_HEIC (GST_VIDEO_BUFFER_FLAG_LAST << 1)
 // GST Buffer flag for frame with GBM format.
-#define GST_VIDEO_BUFFER_FLAG_GBM  (GST_VIDEO_BUFFER_FLAG_LAST << 3)
+#define GST_VIDEO_BUFFER_FLAG_GBM  (GST_VIDEO_BUFFER_FLAG_LAST << 2)
 
 
 // Maximum number of regions for encoding.
@@ -310,7 +308,6 @@ typedef enum {
 
 struct _GstC2PixelInfo {
   GstVideoFormat format;
-  gboolean       isubwc;
   guint32        n_subframes;
 };
 
