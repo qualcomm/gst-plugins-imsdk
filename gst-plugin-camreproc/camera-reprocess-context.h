@@ -45,7 +45,6 @@ struct _GstCameraReprocessBufferParams {
   gint           width;
   gint           height;
   GstVideoFormat format;
-  gboolean       isubwc;
 };
 
 /**

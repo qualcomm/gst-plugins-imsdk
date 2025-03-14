@@ -108,7 +108,6 @@ struct _GstImageBufferPoolPrivate
 {
   GstVideoInfo        info;
   gboolean            addmeta;
-  gboolean            isubwc;
   GstFdMemoryFlags    memflags;
 
   GstAllocator        *allocator;
@@ -151,6 +150,8 @@ gst_video_format_to_gbm_format (GstVideoFormat format)
 #ifdef HAVE_GBM_PRIV_H
     case GST_VIDEO_FORMAT_NV12:
       return GBM_FORMAT_NV12;
+    case GST_VIDEO_FORMAT_NV12_Q08C:
+      return GBM_FORMAT_YCbCr_420_SP_VENUS_UBWC;
     case GST_VIDEO_FORMAT_NV21:
       return GBM_FORMAT_NV21_ZSL;
     case GST_VIDEO_FORMAT_YUY2:
@@ -159,8 +160,7 @@ gst_video_format_to_gbm_format (GstVideoFormat format)
       return GBM_FORMAT_UYVY;
     case GST_VIDEO_FORMAT_P010_10LE:
       return GBM_FORMAT_YCbCr_420_P010_VENUS;
-    case GST_VIDEO_FORMAT_NV12_10LE32:
-      // TODO: Hack due to missing TP10 format
+    case GST_VIDEO_FORMAT_NV12_Q10LE32C:
       return GBM_FORMAT_YCbCr_420_TP10_UBWC;
     case GST_VIDEO_FORMAT_BGRx:
       return GBM_FORMAT_BGRX8888;
@@ -308,13 +308,14 @@ gbm_device_alloc (GstImageBufferPool * vpool)
   g_return_val_if_fail (format >= 0, NULL);
 
 #ifdef HAVE_GBM_PRIV_H
-  if (GST_VIDEO_INFO_FORMAT (&priv->info) == GST_VIDEO_FORMAT_P010_10LE)
+  if (GST_VIDEO_INFO_FORMAT (&priv->info) == GST_VIDEO_FORMAT_P010_10LE) {
     usage |= GBM_BO_USAGE_10BIT_QTI;
-  else if (GST_VIDEO_INFO_FORMAT (&priv->info) == GST_VIDEO_FORMAT_NV12_10LE32)
-    usage |= GBM_BO_USAGE_10BIT_TP_QTI;
-
-  if (priv->isubwc)
+  } else if (GST_VIDEO_INFO_FORMAT (&priv->info) == GST_VIDEO_FORMAT_NV12_Q08C) {
     usage |= GBM_BO_USAGE_UBWC_ALIGNED_QTI;
+  } else if (GST_VIDEO_INFO_FORMAT (&priv->info) == GST_VIDEO_FORMAT_NV12_Q10LE32C) {
+    usage |= GBM_BO_USAGE_10BIT_TP_QTI;
+    usage |= GBM_BO_USAGE_UBWC_ALIGNED_QTI;
+  }
 #endif // HAVE_GBM_PRIV_H
 
   bo = priv->gbm_bo_create (priv->gbmdevice, GST_VIDEO_INFO_WIDTH (&priv->info),
@@ -486,7 +487,6 @@ gst_image_buffer_pool_get_options (GstBufferPool * pool)
 {
   static const gchar *options[] = {
     GST_BUFFER_POOL_OPTION_VIDEO_META,
-    GST_IMAGE_BUFFER_POOL_OPTION_UBWC_MODE,
     GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED,
     NULL
   };
@@ -550,10 +550,6 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
   info.size = MAX (size, info.size);
   priv->info = info;
 
-  // Check whether we should allocate ubwc buffers.
-  priv->isubwc = gst_buffer_pool_config_has_option (config,
-      GST_IMAGE_BUFFER_POOL_OPTION_UBWC_MODE);
-
   // Check whether we should keep buffer memory mapped.
   keepmapped = gst_buffer_pool_config_has_option (config,
       GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
@@ -573,13 +569,14 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
     bufinfo.format = gst_video_format_to_gbm_format (
         GST_VIDEO_INFO_FORMAT (&priv->info));
 
-    if (GST_VIDEO_INFO_FORMAT (&priv->info) == GST_VIDEO_FORMAT_P010_10LE)
+    if (GST_VIDEO_INFO_FORMAT (&priv->info) == GST_VIDEO_FORMAT_P010_10LE) {
       usage |= GBM_BO_USAGE_10BIT_QTI;
-    else if (GST_VIDEO_INFO_FORMAT (&priv->info) == GST_VIDEO_FORMAT_NV12_10LE32)
+    } else if (GST_VIDEO_INFO_FORMAT (&priv->info) == GST_VIDEO_FORMAT_NV12_Q10LE32C) {
       usage |= GBM_BO_USAGE_10BIT_TP_QTI;
-
-    if (priv->isubwc)
       usage |= GBM_BO_USAGE_UBWC_ALIGNED_QTI;
+    } else if (GST_VIDEO_INFO_FORMAT (&priv->info) == GST_VIDEO_FORMAT_NV12_Q08C) {
+      usage |= GBM_BO_USAGE_UBWC_ALIGNED_QTI;
+    }
 
     priv->gbm_perform (GBM_PERFORM_GET_BUFFER_STRIDE_SCANLINE_SIZE, &bufinfo,
         usage, &stride, &scanline, &size);
@@ -593,7 +590,7 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
       GST_VIDEO_INFO_PLANE_OFFSET (&priv->info, 1) = stride * scanline;
 
       // For UBWC formats there is very specific UV plane offset.
-      if (priv->isubwc && (bufinfo.format == GBM_FORMAT_NV12)) {
+      if (bufinfo.format == GBM_FORMAT_YCbCr_420_SP_VENUS_UBWC) {
         guint metastride, metascanline;
 
         metastride = MMM_COLOR_FMT_Y_META_STRIDE (
@@ -604,18 +601,18 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
         GST_VIDEO_INFO_PLANE_OFFSET (&priv->info, 1) =
             MMM_COLOR_FMT_ALIGN (stride * scanline, DEFAULT_PAGE_ALIGNMENT) +
             MMM_COLOR_FMT_ALIGN (metastride * metascanline, DEFAULT_PAGE_ALIGNMENT);
-      } else if (priv->isubwc && (bufinfo.format == GBM_FORMAT_YCbCr_420_TP10_UBWC)) {
+      } else if (bufinfo.format == GBM_FORMAT_YCbCr_420_TP10_UBWC) {
         guint metastride, metascanline;
 
         metastride = MMM_COLOR_FMT_Y_META_STRIDE (
             MMM_COLOR_FMT_NV12_BPP10_UBWC, bufinfo.width);
         metascanline = MMM_COLOR_FMT_Y_META_SCANLINES (
-            MMM_COLOR_FMT_NV12_BPP10_UBWC,bufinfo.height);
+            MMM_COLOR_FMT_NV12_BPP10_UBWC, bufinfo.height);
 
         GST_VIDEO_INFO_PLANE_OFFSET (&priv->info, 1) =
             MMM_COLOR_FMT_ALIGN (stride * scanline, DEFAULT_PAGE_ALIGNMENT) +
             MMM_COLOR_FMT_ALIGN (metastride * metascanline, DEFAULT_PAGE_ALIGNMENT);
-      } else if (priv->isubwc && (bufinfo.format == GBM_FORMAT_P010)) {
+      } else if (bufinfo.format == GBM_FORMAT_YCbCr_420_P010_VENUS) {
         guint metastride, metascanline;
 
         metastride = MMM_COLOR_FMT_Y_META_STRIDE (

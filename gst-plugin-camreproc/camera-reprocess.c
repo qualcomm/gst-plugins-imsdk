@@ -25,7 +25,7 @@ GST_DEBUG_CATEGORY_STATIC (camera_reprocess_debug);
 #define DEFAULT_PROP_EIS                   GST_CAMERA_REPROCESS_EIS_NONE
 
 // Pad Template
-#define GST_CAPS_FORMATS "{ NV12 }"
+#define GST_CAPS_FORMATS "{ NV12, NV12_Q08C }"
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
 
 // GType
@@ -311,7 +311,6 @@ gst_camera_reprocess_set_caps (GstBaseTransform *base, GstCaps *incaps,
   gst_structure_get_int (in, "height", &params[0].height);
   params[0].format = gst_video_format_from_string (
       gst_structure_get_string (in, "format"));
-  params[0].isubwc = gst_caps_has_compression (incaps, "ubwc");
 
   // Output BufferParams
   out = gst_caps_get_structure (outcaps, 0);
@@ -319,7 +318,6 @@ gst_camera_reprocess_set_caps (GstBaseTransform *base, GstCaps *incaps,
   gst_structure_get_int (out, "height", &params[1].height);
   params[1].format = gst_video_format_from_string (
       gst_structure_get_string (out, "format"));
-  params[1].isubwc = gst_caps_has_compression (outcaps, "ubwc");
 
   GST_DEBUG_OBJECT (camreproc, "Creating camera reprocess module.");
 
@@ -365,11 +363,9 @@ gst_camera_reprocess_create_buffer_pool (GstCameraReprocess *camreproc,
   gst_buffer_pool_config_set_allocator (config, allocator, NULL);
   gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
 
-  if (gst_caps_has_compression (caps, "ubwc")) {
-    GST_DEBUG_OBJECT (camreproc, "Buffer pool uses ubwc mode.");
-    gst_buffer_pool_config_add_option (config,
-        GST_IMAGE_BUFFER_POOL_OPTION_UBWC_MODE);
-  }
+  if (GST_VIDEO_INFO_FORMAT (&info) == GST_VIDEO_FORMAT_NV12_Q08C ||
+      GST_VIDEO_INFO_FORMAT (&info) == GST_VIDEO_FORMAT_NV12_Q10LE32C)
+    GST_DEBUG_OBJECT (camreproc, "Buffer pool uses UBWC mode.");
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_ERROR_OBJECT (camreproc, "Failed to set pool configuration!");
@@ -490,7 +486,7 @@ gst_camera_reprocess_transform_caps (GstBaseTransform *base,
       gst_structure_set (structure, "height", GST_TYPE_INT_RANGE, 1, G_MAXINT,
         NULL);
 
-    gst_structure_remove_fields (structure, "compression", NULL);
+    gst_structure_remove_fields (structure, "format", NULL);
 
     gst_caps_append_structure_full (result, structure,
         gst_caps_features_new (GST_CAPS_FEATURE_MEMORY_GBM, NULL));
