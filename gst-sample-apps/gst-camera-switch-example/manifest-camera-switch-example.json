@@ -1,0 +1,9 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-camera-switch-example",
+  "ApplicationType": "Camera",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "This application uses the two cameras of the device and switch them without changing the state of the pipeline. The switching is done in playing state every 5 seconds."
+}
+

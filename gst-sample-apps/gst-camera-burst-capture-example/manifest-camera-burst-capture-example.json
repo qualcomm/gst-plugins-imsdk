@@ -1,0 +1,9 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-camera-burst-capture-example",
+  "ApplicationType": "Camera",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "This app connects the camera with appsink element,once an appsink callback is connected to the new-sample signal,it saves buffer to device storage based on the capture type."
+}
+

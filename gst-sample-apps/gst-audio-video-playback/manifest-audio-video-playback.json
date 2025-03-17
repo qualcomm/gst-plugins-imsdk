@@ -1,0 +1,9 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-audio-video-playback",
+  "ApplicationType": "AudioVideo",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "This is an application to demonstrate to use of audio video playback. In this example we are decoding the AVC/HEVC video codec and FLAC/mp3 audio codec content."
+}
+

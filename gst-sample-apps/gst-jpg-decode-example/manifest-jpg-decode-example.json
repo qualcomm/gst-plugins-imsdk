@@ -1,0 +1,9 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-jpg-decode-example",
+  "ApplicationType": "Jpeg",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "This application Demonstrates in decoding the JPEG files on waylandsink."
+}
+

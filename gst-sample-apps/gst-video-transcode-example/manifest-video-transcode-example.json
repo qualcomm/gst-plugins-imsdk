@@ -1,0 +1,9 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-video-transcode-example",
+  "ApplicationType": "Video",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "This is an application to demonstrate video transcoding. Application can accept the user input file of video codec AVC or HEVC and transcode to other codec format."
+}
+
