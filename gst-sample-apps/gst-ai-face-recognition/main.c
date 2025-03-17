@@ -9,7 +9,7 @@
  *
  * Description:
  * The application takes video stream from camera/rtsp and gives same to
- * QNN Model for face detection and splits frame based on bounding box for
+ * Tflite/QNN Model for face detection and splits frame based on bounding box for
  * 3DMM and is further split for face recognition, displays preview with
  * overlayed AI Model output.
  *
@@ -32,10 +32,10 @@
  *  | qtimetamux[1] -> tee
  *  | tee -> qtimetamux[2]
  *        -> Pre process-> qtimltflite -> qtimlvclassification -> qtimetamux[2]
- *  | qtimetamux[2] -> qtivoverlay -> waylandsink
+ *  | qtimetamux[2] -> waylandsink
  *
  *     Pre process: qtimlvconverter
- *     ML Framework: qtimlqnn
+ *     ML Framework: qtimltflite/qtimlqnn
  *     Post process: qtimlvdetection/ qtimlvpose/ qtimlvclassification ->
  *     detection_filter
  */
@@ -46,18 +46,43 @@
 #include <stdarg.h>
 #include <gst/gst.h>
 #include <gst/video/video.h>
+#include <glib.h>
+#include <json-glib/json-glib.h>
 
 #include <gst/sampleapps/gst_sample_apps_utils.h>
 
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_QNN_FACE_DETECTION_MODEL "/etc/models/face_detection.so"
-#define DEFAULT_QNN_3DMM_MODEL "/etc/models/three_dmm.so"
-#define DEFAULT_QNN_FACE_RECOGNITION_MODEL "/etc/models/face_recognition.so"
+#define DEFAULT_QNN_FACE_DETECTION_MODEL "/etc/models/face_det_lite_quantized.bin"
+#define DEFAULT_QNN_FACE_LANDMARK_MODEL "/etc/models/facemap_3dmm_quantized.bin"
+#define DEFAULT_QNN_FACE_RECOGNITION_MODEL "/etc/models/face_attrib_net_quantized.bin"
+#define DEFAULT_TFLITE_FACE_DETECTION_MODEL "/etc/models/face_det_lite_quantized.tflite"
+#define DEFAULT_TFLITE_FACE_LANDMARK_MODEL "/etc/models/facemap_3dmm_quantized.tflite"
+#define DEFAULT_TFLITE_FACE_RECOGNITION_MODEL "/etc/models/face_attrib_net_quantized.tflite"
 #define DEFAULT_FACE_DETECTION_LABELS "/etc/labels/face_detection.labels"
-#define DEFAULT_3DMM_LABELS "/etc/labels/three_dmm.labels"
+#define DEFAULT_FACE_LANDMARK_LABELS "/etc/labels/face_landmark.labels"
 #define DEFAULT_FACE_RECOGNITION_LABELS "/etc/labels/face_recognition.labels"
+
+/**
+ * Default constants to dequantize values
+ */
+#define DEFAULT_FACE_DETECTION_MODEL_CONSTANTS \
+    "DET,q-offsets=<178.0, 0.0, 102.0>,\
+    q-scales=<0.03400895744562149, 0.21995200216770172, 0.1414264440536499>;"
+
+/**
+ * Default constants to dequantize values
+ */
+#define DEFAULT_FACE_LANDMARK_MODEL_CONSTANTS \
+    "DMM,q-offsets=<211.0>,q-scales=<0.06002333015203476>;"
+
+/**
+ * Default constants to dequantize values
+ */
+#define DEFAULT_FACE_RECOGNITION_MODEL_CONSTANTS \
+    "qfr,q-offsets=<124.0, 153.0, 125.0, 133.0, 126.0, 0.0>,\
+    q-scales=<0.1948956549167633, 0.00791067536920309, 0.06736132502555847, 0.029019491747021675, 0.08928389847278595, 0.00390625>;"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
@@ -68,6 +93,11 @@
 #define SECONDARY_CAMERA_PREVIEW_OUTPUT_WIDTH 1280
 #define SECONDARY_CAMERA_PREVIEW_OUTPUT_HEIGHT 720
 #define DEFAULT_CAMERA_FRAME_RATE 30
+
+/**
+ * Default path of config file
+ */
+#define DEFAULT_CONFIG_FILE "/etc/configs/config-face-recognition.json"
 
 /**
  * Default value of Threshold for qtimlvdetection Plugin
@@ -90,7 +120,7 @@
 #define QUEUE_COUNT 21
 #define TEE_COUNT 3
 #define DETECTION_FILTER_COUNT 3
-#define QNN_ELEMENT_COUNT 3
+#define INFERENCE_ELEMENT_COUNT 3
 
 /**
  * GstConversionMode:
@@ -105,7 +135,8 @@
  *
  * Mode of Conversion.
  */
-typedef enum {
+typedef enum
+{
   IMAGE_BATCH_NON_CUMULATIVE,
   IMAGE_BATCH_CUMULATIVE,
   ROI_BATCH_NON_CUMULATIVE,
@@ -113,45 +144,37 @@ typedef enum {
 } GstConversionMode;
 
 /**
- * GstOverlayEngine:
- * @C2D    : C2D blit engine.
- * @GLES   : GLES blit engine.
- * @OPENCL : OpenCL blit engine.
- *
- * Type of Overlay Engine.
- */
-typedef enum {
-  C2D,
-  GLES,
-  OPENCL
-} GstOverlayEngine;
-
-/**
  * GstDaisyChainModelType:
  * @GST_FACE_DETECTION       : Face Detection Model.
- * @GST_FACE_MM              : 3D MM Model.
+ * @GST_FACE_LANDMARK        : Face Landmark Model.
  * @GST_FACE_RECOGNITION     : Face Recognition Model.
  *
  * Type of Usecase.
  */
-typedef enum {
+typedef enum
+{
   GST_FACE_DETECTION,
-  GST_FACE_MM,
+  GST_FACE_LANDMARK,
   GST_FACE_RECOGNITION
 } GstDaisyChainModelType;
 
 /**
  * Structure for various application specific options
  */
-typedef struct {
+typedef struct
+{
   gchar *rtsp_ip_port;
   gchar *face_detection_model_path;
-  gchar *three_dmm_model_path;
+  gchar *face_landmark_model_path;
   gchar *face_recognition_model_path;
   gchar *face_detection_labels_path;
-  gchar *three_dmm_labels_path;
+  gchar *face_landmark_labels_path;
   gchar *face_recognition_labels_path;
+  gchar *face_detection_model_constants;
+  gchar *face_landmark_model_constants;
+  gchar *face_recognition_model_constants;
   GstCameraSourceType camera_type;
+  GstModelType model_type;
   gboolean use_rtsp;
   gboolean use_camera;
 } GstAppOptions;
@@ -162,7 +185,8 @@ typedef struct {
  * @param appctx Application Context object
  */
 static void
-gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
+gst_app_context_free (GstAppContext * appctx, GstAppOptions * options,
+    gchar * config_file)
 {
   // If specific pointer is not NULL, unref it
   if (appctx->mloop != NULL) {
@@ -174,38 +198,58 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options)
     g_free ((gpointer)options->rtsp_ip_port);
   }
 
-  if (options->face_detection_model_path != (gchar *)(
-      &DEFAULT_QNN_FACE_DETECTION_MODEL) &&
-      options->face_detection_model_path != NULL) {
-    g_free ((gpointer)options->face_detection_model_path);
+  if (options->face_detection_model_path !=
+      (gchar *) (&DEFAULT_QNN_FACE_DETECTION_MODEL)
+      && options->face_detection_model_path != NULL) {
+    g_free ((gpointer) options->face_detection_model_path);
   }
 
-  if (options->three_dmm_model_path != (gchar *)(&DEFAULT_QNN_3DMM_MODEL) &&
-      options->three_dmm_model_path != NULL) {
-    g_free ((gpointer)options->three_dmm_model_path);
+  if (options->face_landmark_model_path !=
+      (gchar *) (&DEFAULT_QNN_FACE_LANDMARK_MODEL)
+      && options->face_landmark_model_path != NULL) {
+    g_free ((gpointer) options->face_landmark_model_path);
   }
 
-  if (options->face_recognition_model_path != (gchar *)(
-      &DEFAULT_QNN_FACE_RECOGNITION_MODEL) &&
-      options->face_recognition_model_path != NULL) {
-    g_free ((gpointer)options->face_recognition_model_path);
+  if (options->face_recognition_model_path !=
+      (gchar *) (&DEFAULT_QNN_FACE_RECOGNITION_MODEL)
+      && options->face_recognition_model_path != NULL) {
+    g_free ((gpointer) options->face_recognition_model_path);
   }
 
-  if (options->face_detection_labels_path != (gchar *)(
-      &DEFAULT_FACE_DETECTION_LABELS) &&
-      options->face_detection_labels_path != NULL) {
-    g_free ((gpointer)options->face_detection_labels_path);
+  if (options->face_detection_labels_path !=
+      (gchar *) (&DEFAULT_FACE_DETECTION_LABELS)
+      && options->face_detection_labels_path != NULL) {
+    g_free ((gpointer) options->face_detection_labels_path);
   }
 
-  if (options->three_dmm_labels_path != (gchar *)(&DEFAULT_3DMM_LABELS) &&
-      options->three_dmm_labels_path != NULL) {
-    g_free ((gpointer)options->three_dmm_labels_path);
+  if (options->face_landmark_labels_path !=
+      (gchar *) (&DEFAULT_FACE_LANDMARK_LABELS)
+      && options->face_landmark_labels_path != NULL) {
+    g_free ((gpointer) options->face_landmark_labels_path);
   }
 
-  if (options->face_recognition_labels_path != (gchar *)(
-      &DEFAULT_FACE_RECOGNITION_LABELS) &&
-      options->face_recognition_labels_path != NULL) {
-    g_free ((gpointer)options->face_recognition_labels_path);
+  if (options->face_recognition_labels_path !=
+      (gchar *) (&DEFAULT_FACE_RECOGNITION_LABELS)
+      && options->face_recognition_labels_path != NULL) {
+    g_free ((gpointer) options->face_recognition_labels_path);
+  }
+
+  if (options->face_detection_model_constants !=
+      (gchar *) (&DEFAULT_FACE_DETECTION_MODEL_CONSTANTS)
+      && options->face_detection_model_constants != NULL) {
+    g_free ((gpointer) options->face_detection_model_constants);
+  }
+
+  if (options->face_landmark_model_constants !=
+      (gchar *) (&DEFAULT_FACE_LANDMARK_MODEL_CONSTANTS)
+      && options->face_landmark_model_constants != NULL) {
+    g_free ((gpointer) options->face_landmark_model_constants);
+  }
+
+  if (options->face_recognition_model_constants !=
+      (gchar *) (&DEFAULT_FACE_RECOGNITION_MODEL_CONSTANTS)
+      && options->face_recognition_model_constants != NULL) {
+    g_free ((gpointer) options->face_recognition_model_constants);
   }
 
   if (appctx->pipeline != NULL) {
@@ -233,8 +277,7 @@ on_pad_added (GstElement * element, GstPad * pad, gpointer data)
 
   // Link the source pad to the sink pad
   ret = gst_pad_link (pad, sinkpad);
-  if (!ret)
-  {
+  if (!ret) {
     g_printerr ("Failed to link pad to sinkpad\n");
   }
 
@@ -254,18 +297,19 @@ static gboolean
 create_pipe (GstAppContext * appctx, GstAppOptions * options)
 {
   GstElement *qtiqmmfsrc = NULL, *qmmfsrc_caps = NULL;
-  GstElement *tee[TEE_COUNT] = {NULL};
-  GstElement *qtimlvconverter[QNN_ELEMENT_COUNT] = {NULL};
-  GstElement *queue[QUEUE_COUNT] = {NULL};
-  GstElement *qtimlqnn[QNN_ELEMENT_COUNT] = {NULL};
-  GstElement *qtimetamux[QNN_ELEMENT_COUNT] = {NULL};
+  GstElement *tee[TEE_COUNT] = { NULL };
+  GstElement *qtimlvconverter[INFERENCE_ELEMENT_COUNT] = { NULL };
+  GstElement *queue[QUEUE_COUNT] = { NULL };
+  GstElement *qtimlelement[INFERENCE_ELEMENT_COUNT] = { NULL };
+  GstElement *qtimetamux[INFERENCE_ELEMENT_COUNT] = { NULL };
   GstElement *qtimlvdetection = NULL, *qtimlvpose = NULL;
   GstElement *qtimlvclassification = NULL;
-  GstElement *detection_filter[DETECTION_FILTER_COUNT] = {NULL};
+  GstElement *detection_filter[DETECTION_FILTER_COUNT] = { NULL };
   GstElement *rtspsrc = NULL, *rtph264depay = NULL, *qtivoverlay = NULL;
   GstElement *v4l2h264dec_caps = NULL;
   GstElement *h264parse = NULL, *v4l2h264dec = NULL, *waylandsink = NULL;
-  GstCaps *pad_filter = NULL , *filtercaps = NULL;
+  GstCaps *pad_filter = NULL, *filtercaps = NULL;
+  GstStructure *delegate_options = NULL;
   gboolean ret = FALSE;
   gchar element_name[128];
   gint primary_camera_preview_width = PRIMARY_CAMERA_PREVIEW_OUTPUT_WIDTH;
@@ -306,7 +350,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       goto error_clean_elements;
     }
 
-    v4l2h264dec_caps = gst_element_factory_make ("capsfilter", "v4l2h264dec_caps");
+    v4l2h264dec_caps =
+        gst_element_factory_make ("capsfilter", "v4l2h264dec_caps");
     if (!v4l2h264dec_caps) {
       g_printerr ("Failed to create v4l2h264dec_caps\n");
       goto error_clean_elements;
@@ -318,10 +363,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       g_printerr ("Failed to create qtiqmmfsrc\n");
       goto error_clean_elements;
     }
-
     // Use capsfilter to define the preview stream camera output settings
-    qmmfsrc_caps = gst_element_factory_make ("capsfilter",
-        "qmmfsrc_caps");
+    qmmfsrc_caps = gst_element_factory_make ("capsfilter", "qmmfsrc_caps");
     if (!qmmfsrc_caps) {
       g_printerr ("Failed to create qmmfsrc_caps\n");
       goto error_clean_elements;
@@ -352,7 +395,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     }
   }
 
-  for (gint i = 0; i < QNN_ELEMENT_COUNT; i++) {
+  for (gint i = 0; i < INFERENCE_ELEMENT_COUNT; i++) {
     // Create qtimlvconverter for Input preprocessing
     snprintf (element_name, 127, "qtimlvconverter-%d", i);
     qtimlvconverter[i] = gst_element_factory_make ("qtimlvconverter",
@@ -361,15 +404,21 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       g_printerr ("Failed to create qtimlvconverter %d\n", i);
       goto error_clean_elements;
     }
-
-    // Create the ML inferencing plugin QNN
-    snprintf (element_name, 127, "qtimlqnn-%d", i);
-    qtimlqnn[i] = gst_element_factory_make ("qtimlqnn", element_name);
-    if (!qtimlqnn[i]) {
-      g_printerr ("Failed to create qtimlqnn %d\n", i);
+    // Create the ML inferencing plugin TFLITE/QNN
+    if (options->model_type == GST_MODEL_TYPE_TFLITE) {
+      snprintf (element_name, 127, "qtimltflite-%d", i);
+      qtimlelement[i] = gst_element_factory_make ("qtimltflite", element_name);
+    } else if (options->model_type == GST_MODEL_TYPE_QNN) {
+      snprintf (element_name, 127, "qtimlqnn-%d", i);
+      qtimlelement[i] = gst_element_factory_make ("qtimlqnn", element_name);
+    } else {
+      g_printerr ("Invalid Model Type\n");
       goto error_clean_elements;
     }
-
+    if (!qtimlelement[i]) {
+      g_printerr ("Failed to create qtimlelement\n");
+      goto error_clean_elements;
+    }
     // To associate/attach ML string based postprocessing results
     snprintf (element_name, 127, "qtimetamux-%d", i);
     qtimetamux[i] = gst_element_factory_make ("qtimetamux", element_name);
@@ -386,15 +435,12 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     g_printerr ("Failed to create qtimlvdetection \n");
     goto error_clean_elements;
   }
-
   // Create plugin for ML postprocessing for Pose estimation
-  qtimlvpose = gst_element_factory_make ("qtimlvpose",
-      "qtimlvpose");
+  qtimlvpose = gst_element_factory_make ("qtimlvpose", "qtimlvpose");
   if (!qtimlvpose) {
     g_printerr ("Failed to create qtimlvpose \n");
     goto error_clean_elements;
   }
-
   // Create plugin for ML postprocessing for Classification
   qtimlvclassification = gst_element_factory_make ("qtimlvclassification",
       "qtimlvclassification");
@@ -402,18 +448,15 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     g_printerr ("Failed to create qtimlvclassification \n");
     goto error_clean_elements;
   }
-
   // Used to negotiate between ML post proc o/p and qtimetamux
   for (gint i = 0; i < DETECTION_FILTER_COUNT; i++) {
     snprintf (element_name, 127, "detection_filter-%d", i);
-    detection_filter[i] = gst_element_factory_make ("capsfilter",
-        element_name);
+    detection_filter[i] = gst_element_factory_make ("capsfilter", element_name);
     if (!detection_filter[i]) {
       g_printerr ("Failed to create detection_filter %d\n", i);
       goto error_clean_elements;
     }
   }
-
   // Hardware accelerated in-place image draw plug-in for drawing
   // overlays on top of images.
   qtivoverlay = gst_element_factory_make ("qtivoverlay", "qtivoverlay");
@@ -421,21 +464,18 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     g_printerr ("Failed to create qtivoverlay\n");
     goto error_clean_elements;
   }
-
   // Create Wayland compositor to render preview output on Display
   waylandsink = gst_element_factory_make ("waylandsink", "waylandsink");
   if (!waylandsink) {
     g_printerr ("Failed to create waylandsink\n");
     goto error_clean_elements;
   }
-
   // 2. Set properties for all GST plugin elements
   if (options->use_rtsp) {
     // 2.1 Set the capabilities of RTSP stream
     gst_element_set_enum_property (v4l2h264dec, "capture-io-mode", "dmabuf");
     gst_element_set_enum_property (v4l2h264dec, "output-io-mode", "dmabuf");
-    g_object_set (G_OBJECT (rtspsrc), "location",
-        options->rtsp_ip_port, NULL);
+    g_object_set (G_OBJECT (rtspsrc), "location", options->rtsp_ip_port, NULL);
     filtercaps = gst_caps_new_simple ("video/x-raw",
         "format", G_TYPE_STRING, "NV12", NULL);
     g_object_set (G_OBJECT (v4l2h264dec_caps), "caps", filtercaps, NULL);
@@ -478,7 +518,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   g_value_init (&value, G_TYPE_INT);
   g_value_set_int (&value, ROI_BATCH_CUMULATIVE);
-  g_object_set_property (G_OBJECT (qtimlvconverter[GST_FACE_MM]),
+  g_object_set_property (G_OBJECT (qtimlvconverter[GST_FACE_LANDMARK]),
       "mode", &value);
   g_value_unset (&value);
 
@@ -494,7 +534,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     g_object_set (G_OBJECT (qtimlvdetection),
         "threshold", DEFAULT_DETECTION_THRESHOLD_VALUE, "results", 6,
         "stabilization", FALSE, "module", module_id, "labels",
-        options->face_detection_labels_path, NULL);
+        options->face_detection_labels_path, "constants",
+        options->face_detection_model_constants, NULL);
   } else {
     g_printerr ("Module qfd is not available in qtimlvdetection.\n");
     goto error_clean_elements;
@@ -504,8 +545,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   if (module_id != -1) {
     g_object_set (G_OBJECT (qtimlvpose),
         "threshold", DEFAULT_POSE_THRESHOLD_VALUE, "results", 6,
-        "module", module_id, "labels", options->three_dmm_labels_path,
-        NULL);
+        "module", module_id, "labels", options->face_landmark_labels_path,
+        "constants", options->face_landmark_model_constants, NULL);
   } else {
     g_printerr ("Module lite-3dmm is not available in qtimlvpose.\n");
     goto error_clean_elements;
@@ -516,37 +557,45 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     g_object_set (G_OBJECT (qtimlvclassification),
         "threshold", DEFAULT_CLASSIFICATION_THRESHOLD_VALUE, "results", 6,
         "module", module_id, "labels", options->face_recognition_labels_path,
-        NULL);
+        "constants", options->face_recognition_model_constants, NULL);
   } else {
     g_printerr ("Module qfr is not available in qtimlvclassification.\n");
     goto error_clean_elements;
   }
 
-  // 2.6 set the property of qtimlqnn
-  g_object_set (G_OBJECT (qtimlqnn[GST_FACE_DETECTION]), "model",
+  // 2.6 set the property of qtimlelement
+  g_object_set (G_OBJECT (qtimlelement[GST_FACE_DETECTION]), "model",
       options->face_detection_model_path, NULL);
-  g_object_set (G_OBJECT (qtimlqnn[GST_FACE_MM]), "model",
-      options->three_dmm_model_path, NULL);
-  g_object_set (G_OBJECT (qtimlqnn[GST_FACE_RECOGNITION]), "model",
+  g_object_set (G_OBJECT (qtimlelement[GST_FACE_LANDMARK]), "model",
+      options->face_landmark_model_path, NULL);
+  g_object_set (G_OBJECT (qtimlelement[GST_FACE_RECOGNITION]), "model",
       options->face_recognition_model_path, NULL);
 
-  for (gint i = 0; i < QNN_ELEMENT_COUNT; i++) {
-    g_object_set (G_OBJECT (qtimlqnn[i]), "backend", "/usr/lib/libQnnHtp.so",
-        NULL);
+  for (gint i = 0; i < INFERENCE_ELEMENT_COUNT; i++) {
+    if (options->model_type == GST_MODEL_TYPE_QNN) {
+      g_object_set (G_OBJECT (qtimlelement[i]), "backend",
+          "/usr/lib/libQnnHtp.so", NULL);
+    } else {
+      g_print ("Using DSP Delegate\n");
+      delegate_options =
+          gst_structure_from_string ("QNNExternalDelegate,backend_type=htp;",
+          NULL);
+      g_object_set (G_OBJECT (qtimlelement[i]), "delegate",
+          GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
+      g_object_set (G_OBJECT (qtimlelement[i]), "external-delegate-path",
+          "libQnnTFLiteDelegate.so", NULL);
+      g_object_set (G_OBJECT (qtimlelement[i]), "external-delegate-options",
+          delegate_options, NULL);
+      gst_structure_free (delegate_options);
+    }
   }
 
-  // 2.7 Set properties backend engine
-  g_value_init (&value, G_TYPE_INT);
-  g_value_set_int (&value, GLES);
-  g_object_set_property (G_OBJECT (qtivoverlay), "engine", &value);
-  g_value_unset (&value);
-
-  // 2.8 Set the properties of waylandsink
+  // 2.7 Set the properties of waylandsink
   g_object_set (G_OBJECT (waylandsink), "sync", FALSE, NULL);
   g_object_set (G_OBJECT (waylandsink), "async", FALSE, NULL);
   g_object_set (G_OBJECT (waylandsink), "fullscreen", TRUE, NULL);
 
-  // 2.9 Set the caps filter for detection_filter
+  // 2.8 Set the caps filter for detection_filter
   pad_filter = gst_caps_new_simple ("text/x-raw", NULL, NULL);
   for (gint i = 0; i < DETECTION_FILTER_COUNT; i++) {
     g_object_set (G_OBJECT (detection_filter[i]), "caps", pad_filter, NULL);
@@ -571,9 +620,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   gst_bin_add_many (GST_BIN (appctx->pipeline), qtimlvdetection,
       qtimlvclassification, qtimlvpose, qtivoverlay, waylandsink, NULL);
 
-  for (gint i = 0; i < QNN_ELEMENT_COUNT; i++) {
+  for (gint i = 0; i < INFERENCE_ELEMENT_COUNT; i++) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), qtimlvconverter[i],
-        qtimlqnn[i], qtimetamux[i], NULL);
+        qtimlelement[i], qtimetamux[i], NULL);
   }
 
   for (gint i = 0; i < TEE_COUNT; i++) {
@@ -622,7 +671,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   ret = gst_element_link_many (tee[GST_FACE_DETECTION], queue[3],
       qtimlvconverter[GST_FACE_DETECTION], queue[4],
-      qtimlqnn[GST_FACE_DETECTION], queue[5], qtimlvdetection,
+      qtimlelement[GST_FACE_DETECTION], queue[5], qtimlvdetection,
       detection_filter[GST_FACE_DETECTION], queue[6],
       qtimetamux[GST_FACE_DETECTION], NULL);
   if (!ret) {
@@ -633,32 +682,33 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   ret = gst_element_link_many (qtimetamux[GST_FACE_DETECTION],
-      queue[7], tee[GST_FACE_MM], NULL);
+      queue[7], tee[GST_FACE_LANDMARK], NULL);
   if (!ret) {
     g_printerr ("Pipeline elements cannot be linked from"
         "qtimetamux_face_detection->tee_face_mm\n");
     goto error_clean_pipeline;
   }
 
-  ret = gst_element_link_many (tee[GST_FACE_MM], queue[8],
-      qtimetamux[GST_FACE_MM], NULL);
+  ret = gst_element_link_many (tee[GST_FACE_LANDMARK], queue[8],
+      qtimetamux[GST_FACE_LANDMARK], NULL);
   if (!ret) {
     g_printerr ("Pipeline elements cannot be linked from"
         "tee_face_mm->qtimetamux_face_mm\n");
     goto error_clean_pipeline;
   }
 
-  ret = gst_element_link_many (tee[GST_FACE_MM], queue[9],
-      qtimlvconverter[GST_FACE_MM], queue[10], qtimlqnn[GST_FACE_MM],
-      queue[11], qtimlvpose, detection_filter[GST_FACE_MM], queue[12],
-      qtimetamux[GST_FACE_MM], NULL);
+  ret = gst_element_link_many (tee[GST_FACE_LANDMARK], queue[9],
+      qtimlvconverter[GST_FACE_LANDMARK], queue[10],
+      qtimlelement[GST_FACE_LANDMARK], queue[11], qtimlvpose,
+      detection_filter[GST_FACE_LANDMARK], queue[12],
+      qtimetamux[GST_FACE_LANDMARK], NULL);
   if (!ret) {
     g_printerr ("Pipeline elements cannot be linked from"
         "tee_face_mm->face_mm_inference->qtimetamux_face_mm\n");
     goto error_clean_pipeline;
   }
 
-  ret = gst_element_link_many (qtimetamux[GST_FACE_MM], queue[13],
+  ret = gst_element_link_many (qtimetamux[GST_FACE_LANDMARK], queue[13],
       tee[GST_FACE_RECOGNITION], NULL);
   if (!ret) {
     g_printerr ("Pipeline elements cannot be linked from"
@@ -676,7 +726,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   ret = gst_element_link_many (tee[GST_FACE_RECOGNITION], queue[15],
       qtimlvconverter[GST_FACE_RECOGNITION], queue[16],
-      qtimlqnn[GST_FACE_RECOGNITION], queue[17], qtimlvclassification,
+      qtimlelement[GST_FACE_RECOGNITION], queue[17], qtimlvclassification,
       detection_filter[GST_FACE_RECOGNITION], queue[18],
       qtimetamux[GST_FACE_RECOGNITION], NULL);
   if (!ret) {
@@ -695,7 +745,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   if (options->use_rtsp) {
-    g_signal_connect (rtspsrc, "pad-added", G_CALLBACK (on_pad_added), queue[0]);
+    g_signal_connect (rtspsrc, "pad-added", G_CALLBACK (on_pad_added),
+        queue[0]);
   }
 
   return TRUE;
@@ -706,8 +757,8 @@ error_clean_pipeline:
 
 error_clean_elements:
   cleanup_gst (&qtiqmmfsrc, &qmmfsrc_caps, &qtimlvdetection, &qtimlvpose,
-      &qtimlvclassification, &rtspsrc, &rtph264depay, &qtivoverlay, &h264parse,
-      &v4l2h264dec, &v4l2h264dec_caps, &waylandsink, NULL);
+      &qtimlvclassification, &rtspsrc, &rtph264depay, &h264parse,
+      &v4l2h264dec, &v4l2h264dec_caps, &qtivoverlay, &waylandsink, NULL);
 
   for (gint i = 0; i < TEE_COUNT; i++) {
     if (tee[i]) {
@@ -715,13 +766,13 @@ error_clean_elements:
     }
   }
 
-  for (gint i = 0; i < QNN_ELEMENT_COUNT; i++) {
+  for (gint i = 0; i < INFERENCE_ELEMENT_COUNT; i++) {
     if (qtimlvconverter[i]) {
       gst_object_unref (qtimlvconverter[i]);
     }
 
-    if (qtimlqnn[i]) {
-      gst_object_unref (qtimlqnn[i]);
+    if (qtimlelement[i]) {
+      gst_object_unref (qtimlelement[i]);
     }
 
     if (qtimetamux[i]) {
@@ -744,6 +795,124 @@ error_clean_elements:
   return FALSE;
 }
 
+/**
+ * Parse JSON file to read input parameters
+ *
+ * @param config_file Path to config file
+ * @param options Application specific options
+ */
+gint
+parse_json (gchar * config_file, GstAppOptions * options)
+{
+  JsonParser *parser = NULL;
+  JsonNode *root = NULL;
+  JsonObject *root_obj = NULL;
+  GError *error = NULL;
+
+  parser = json_parser_new ();
+
+  // Load the JSON file
+  if (!json_parser_load_from_file (parser, config_file, &error)) {
+    g_printerr ("Unable to parse JSON file: %s\n", error->message);
+    g_error_free (error);
+    g_object_unref (parser);
+    return -1;
+  }
+  // Get the root object
+  root = json_parser_get_root (parser);
+  if (!JSON_NODE_HOLDS_OBJECT (root)) {
+    gst_printerr ("Failed to load json object\n");
+    g_object_unref (parser);
+    return -1;
+  }
+
+  root_obj = json_node_get_object (root);
+
+  gboolean camera_is_available = is_camera_available ();
+
+  if (camera_is_available) {
+    if (json_object_has_member (root_obj, "camera"))
+      options->camera_type = json_object_get_int_member (root_obj, "camera");
+  }
+
+  if (json_object_has_member (root_obj, "rtsp-ip-port")) {
+    options->rtsp_ip_port =
+        g_strdup (json_object_get_string_member (root_obj, "rtsp-ip-port"));
+  }
+
+  if (json_object_has_member (root_obj, "ml-framework")) {
+    const gchar *framework =
+        json_object_get_string_member (root_obj, "ml-framework");
+    if (g_strcmp0 (framework, "tflite") == 0)
+      options->model_type = GST_MODEL_TYPE_TFLITE;
+    else if (g_strcmp0 (framework, "qnn") == 0)
+      options->model_type = GST_MODEL_TYPE_QNN;
+    else {
+      gst_printerr ("ml-framework can only be one of "
+          "\"tflite\" or \"qnn\"\n");
+      g_object_unref (parser);
+      return -1;
+    }
+  }
+
+  if (json_object_has_member (root_obj, "face-detection-model")) {
+    options->face_detection_model_path =
+        g_strdup (json_object_get_string_member (root_obj,
+            "face-detection-model"));
+  }
+
+  if (json_object_has_member (root_obj, "face-landmark-model")) {
+    options->face_landmark_model_path =
+        g_strdup (json_object_get_string_member (root_obj,
+            "face-landmark-model"));
+  }
+
+  if (json_object_has_member (root_obj, "face-recognition-model")) {
+    options->face_recognition_model_path =
+        g_strdup (json_object_get_string_member (root_obj,
+            "face-recognition-model"));
+  }
+
+  if (json_object_has_member (root_obj, "face-detection-labels")) {
+    options->face_detection_labels_path =
+        g_strdup (json_object_get_string_member (root_obj,
+            "face-detection-labels"));
+  }
+
+  if (json_object_has_member (root_obj, "face-landmark-labels")) {
+    options->face_landmark_labels_path =
+        g_strdup (json_object_get_string_member (root_obj,
+            "face-landmark-labels"));
+  }
+
+  if (json_object_has_member (root_obj, "face-recognition-labels")) {
+    options->face_recognition_labels_path =
+        g_strdup (json_object_get_string_member (root_obj,
+            "face-recognition-labels"));
+  }
+
+  if (json_object_has_member (root_obj, "face-detection-constants")) {
+    options->face_detection_model_constants =
+        g_strdup (json_object_get_string_member (root_obj,
+            "face-detection-constants"));
+  }
+
+  if (json_object_has_member (root_obj, "face-landmark-constants")) {
+    options->face_landmark_model_constants =
+        g_strdup (json_object_get_string_member (root_obj,
+            "face-landmark-constants"));
+  }
+
+  if (json_object_has_member (root_obj, "face-recognition-constants")) {
+    options->face_recognition_model_constants =
+        g_strdup (json_object_get_string_member (root_obj,
+            "face-recognition-constants"));
+  }
+
+  g_object_unref (parser);
+  return 0;
+}
+
 gint
 main (gint argc, gchar * argv[])
 {
@@ -752,11 +921,12 @@ main (gint argc, gchar * argv[])
   GstElement *pipeline = NULL;
   GOptionContext *ctx = NULL;
   const gchar *app_name = NULL;
-  GstAppContext appctx = {};
+  GstAppContext appctx = { };
   gboolean ret = FALSE;
-  gchar help_description[1024];
+  gchar help_description[8192];
   guint intrpt_watch_id = 0;
-  GstAppOptions options = {};
+  GstAppOptions options = { };
+  gchar *config_file = NULL;
 
   // Set Display environment variables
   setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
@@ -764,106 +934,108 @@ main (gint argc, gchar * argv[])
 
   // Set default value
   options.rtsp_ip_port = NULL;
-  options.face_detection_model_path = DEFAULT_QNN_FACE_DETECTION_MODEL;
-  options.three_dmm_model_path = DEFAULT_QNN_3DMM_MODEL;
-  options.face_recognition_model_path = DEFAULT_QNN_FACE_RECOGNITION_MODEL;
+  options.face_detection_model_path = NULL;
+  options.face_landmark_model_path = NULL;
+  options.face_recognition_model_path = NULL;
   options.face_detection_labels_path = DEFAULT_FACE_DETECTION_LABELS;
-  options.three_dmm_labels_path = DEFAULT_3DMM_LABELS;
+  options.face_landmark_labels_path = DEFAULT_FACE_LANDMARK_LABELS;
   options.face_recognition_labels_path = DEFAULT_FACE_RECOGNITION_LABELS;
+  options.face_detection_model_constants =
+      DEFAULT_FACE_DETECTION_MODEL_CONSTANTS;
+  options.face_landmark_model_constants = DEFAULT_FACE_LANDMARK_MODEL_CONSTANTS;
+  options.face_recognition_model_constants =
+      DEFAULT_FACE_RECOGNITION_MODEL_CONSTANTS;
   options.use_rtsp = FALSE, options.use_camera = FALSE;
+  options.model_type = GST_MODEL_TYPE_TFLITE;
   options.camera_type = GST_CAMERA_TYPE_NONE;
-
-  GOptionEntry camera_entry = {};
-
-  gboolean camera_is_available = is_camera_available ();
-
-  if (camera_is_available) {
-    GOptionEntry temp_camera_entry = {
-      "camera", 'c', 0, G_OPTION_ARG_INT,
-      &options.camera_type,
-      "Select (0) for Primary Camera and (1) for secondary one.\n"
-      "      invalid camera id will switch to primary camera",
-      "0 or 1"
-    };
-
-    camera_entry = temp_camera_entry;
-  } else {
-    GOptionEntry temp_camera_entry = { NULL };
-
-    camera_entry = temp_camera_entry;
-  }
 
   // Structure to define the user options selection
   GOptionEntry entries[] = {
-    { "rtsp-ip-port", 0, 0, G_OPTION_ARG_STRING,
-      &options.rtsp_ip_port,
-      "Use this parameter to provide the rtsp input.\n"
-      "      Input should be provided as rtsp://<ip>:<port>/<stream>,\n"
-      "      eg: rtsp://192.168.1.110:8554/live.mkv",
-      "rtsp://<ip>:<port>/<stream>"
+    { "config-file", 0, 0, G_OPTION_ARG_STRING,
+      &config_file,
+      "Path to config file\n",
+      NULL
     },
-    { "face-detection-model", 0, 0, G_OPTION_ARG_STRING,
-      &options.face_detection_model_path,
-      "This is an optional parameter and overrides default path\n"
-      "      Default model path for face detection QNN Model: "
-      DEFAULT_QNN_FACE_DETECTION_MODEL,
-      "/PATH"
-    },
-    { "three-dmm-model", 0, 0, G_OPTION_ARG_STRING,
-      &options.three_dmm_model_path,
-      "This is an optional parameter and overrides default path\n"
-      "      Default model path for three_dmm_model QNN Model: "
-      DEFAULT_QNN_3DMM_MODEL,
-      "/PATH"
-    },
-    { "face-recognition-model", 0, 0, G_OPTION_ARG_STRING,
-      &options.face_recognition_model_path,
-      "This is an optional parameter and overrides default path\n"
-      "      Default model path for face recognition QNN Model: "
-      DEFAULT_QNN_FACE_RECOGNITION_MODEL,
-      "/PATH"
-    },
-    { "face-detection-labels", 0, 0, G_OPTION_ARG_STRING,
-      &options.face_detection_labels_path,
-      "This is an optional parameter and overrides default path\n"
-      "      Default labels path for face detection labels: "
-      DEFAULT_FACE_DETECTION_LABELS,
-      "/PATH"
-    },
-    { "three-dmm-labels", 0, 0, G_OPTION_ARG_STRING,
-      &options.three_dmm_labels_path,
-      "This is an optional parameter and overrides default path\n"
-      "      Default labels path for three dmm labels: " DEFAULT_3DMM_LABELS,
-      "/PATH"
-    },
-    { "face-recognition-labels", 0, 0, G_OPTION_ARG_STRING,
-      &options.face_recognition_labels_path,
-      "This is an optional parameter and overrides default path\n"
-      "      Default labels path for face recognition labels:"
-      DEFAULT_FACE_RECOGNITION_LABELS,
-      "/PATH"
-    },
-    camera_entry,
     { NULL }
   };
 
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
 
-  gchar camera_description[255] = {};
+  gboolean camera_is_available = is_camera_available ();
+
+  gchar camera_description[255] = { };
 
   if (camera_is_available) {
     snprintf (camera_description, sizeof (camera_description),
-      "  %s \n",
-      app_name);
+        "  camera: 0 or 1\n"
+        "      Select (0) for Primary Camera and (1) for secondary one.\n");
   }
 
-  snprintf (help_description, 1023, "\nExample:\n"
-      "  %s \n"
-      "  %s --rtsp-ip-port rtsp://<ip>:<port>/<stream>\n"
-      "\nThis Sample App demonstrates Face recognition on Video Stream",
-      camera_description,
-      app_name);
-  help_description[1023] = '\0';
+  snprintf (help_description, 8191, "\nExample:\n"
+      "  %s --config-file=%s\n"
+      "\nThis Sample App demonstrates Face Recognition on Live Stream\n"
+      "\nConfig file Fields:\n"
+      "  %s"
+      "  rtsp-ip-port: \"rtsp://<ip>:<port>/<stream>\"\n"
+      "      Use this parameter to provide the rtsp input.\n"
+      "      Input should be provided as rtsp://<ip>:<port>/<stream>,\n"
+      "      eg: rtsp://192.168.1.110:8554/live.mkv\n"
+      "  ml-framework: \"tflite\" or \"qnn\"\n"
+      "      Execute Model in TFlite [Default] or QNN format\n"
+      "  Tflite Face detection model: \"/PATH\"\n"
+      "      This is an optional parameter and overrides default path\n"
+      "      Default model path for Face detection TFLITE Model: "
+      DEFAULT_TFLITE_FACE_DETECTION_MODEL "\n"
+      "  Tflite Face landmark model: \"/PATH\"\n"
+      "      This is an optional parameter and overrides default path\n"
+      "      Default model path for Face landmark TFLITE Model: "
+      DEFAULT_TFLITE_FACE_LANDMARK_MODEL "\n"
+      "  Tflite Face recognition model: \"/PATH\"\n"
+      "      This is an optional parameter and overrides default path\n"
+      "      Default model path for Face landmark TFLITE Model: "
+      DEFAULT_TFLITE_FACE_RECOGNITION_MODEL "\n"
+      "  QNN Face detection model: \"/PATH\"\n"
+      "      This is an optional parameter and overrides default path\n"
+      "      Default model path for Face detection QNN Model: "
+      DEFAULT_QNN_FACE_DETECTION_MODEL "\n"
+      "  QNN Face landmark model: \"/PATH\"\n"
+      "      This is an optional parameter and overrides default path\n"
+      "      Default model path for Face landmark QNN Model: "
+      DEFAULT_QNN_FACE_LANDMARK_MODEL "\n"
+      "  QNN Face recognition model: \"/PATH\"\n"
+      "      This is an optional parameter and overrides default path\n"
+      "      Default model path for Face recognition QNN Model: "
+      DEFAULT_QNN_FACE_RECOGNITION_MODEL "\n"
+      "  Face detection labels: \"/PATH\"\n"
+      "      This is an optional parameter and overrides default path\n"
+      "      Default Face detection labels path: " DEFAULT_FACE_DETECTION_LABELS
+      "\n" "  Face landmark labels: \"/PATH\"\n"
+      "      This is an optional parameter and overrides default path\n"
+      "      Default Face landmark labels path: " DEFAULT_FACE_LANDMARK_LABELS
+      "\n" "  Face recognition labels: \"/PATH\"\n"
+      "      This is an optional parameter and overrides default path\n"
+      "      Default Face recognition labels path: "
+      DEFAULT_FACE_RECOGNITION_LABELS "\n"
+      "  Face detection constants: \"CONSTANTS\"\n"
+      "      Constants, offsets and coefficients used by the chosen module\n"
+      "      for post-processing of incoming tensors.\n"
+      "      Applicable only for some modules.\n"
+      "      Default Face detection constants: "
+      DEFAULT_FACE_DETECTION_MODEL_CONSTANTS "\n"
+      "  Face landmark constants: \"CONSTANTS\"\n"
+      "      Constants, offsets and coefficients used by the chosen module\n"
+      "      for post-processing of incoming tensors.\n"
+      "      Applicable only for some modules.\n"
+      "      Default Face landmark constants: "
+      DEFAULT_FACE_LANDMARK_MODEL_CONSTANTS "\n"
+      "  Face recognition constants: \"CONSTANTS\"\n"
+      "      Constants, offsets and coefficients used by the chosen module\n"
+      "      for post-processing of incoming tensors.\n"
+      "      Applicable only for some modules.\n"
+      "      Default Face recognition constants: "
+      DEFAULT_FACE_RECOGNITION_MODEL_CONSTANTS "\n", app_name,
+      DEFAULT_CONFIG_FILE, camera_description);
+  help_description[8191] = '\0';
 
   // Parse command line entries.
   if ((ctx = g_option_context_new (help_description)) != NULL) {
@@ -880,27 +1052,41 @@ main (gint argc, gchar * argv[])
       g_printerr ("Failed to parse command line options: %s!\n",
           GST_STR_NULL (error->message));
       g_clear_error (&error);
-      gst_app_context_free (&appctx, &options);
+      gst_app_context_free (&appctx, &options, config_file);
       return -EFAULT;
     } else if (!success && (NULL == error)) {
       g_printerr ("Initializing: Unknown error!\n");
-      gst_app_context_free (&appctx, &options);
+      gst_app_context_free (&appctx, &options, config_file);
       return -EFAULT;
     }
   } else {
     g_printerr ("Failed to create options context!\n");
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -EFAULT;
   }
 
+  if (config_file == NULL) {
+    config_file = DEFAULT_CONFIG_FILE;
+  }
+
+  if (!file_exists (config_file)) {
+    g_printerr ("Invalid config file path: %s\n", config_file);
+    gst_app_context_free (&appctx, &options, config_file);
+    return -EINVAL;
+  }
+
+  if (parse_json (config_file, &options) != 0) {
+    gst_app_context_free (&appctx, &options, config_file);
+    return -EINVAL;
+  }
   // Check for input source
   if (camera_is_available) {
     g_print ("TARGET Can support file source, RTSP source and camera source\n");
   } else {
     g_print ("TARGET Can only support file source and RTSP source.\n");
     if (options.rtsp_ip_port == NULL) {
-      g_print ("User need to give proper RTSP as source\n");
-      gst_app_context_free (&appctx, &options);
+      g_print ("User need to give RTSP as source\n");
+      gst_app_context_free (&appctx, &options, config_file);
       return -EINVAL;
     }
   }
@@ -908,14 +1094,12 @@ main (gint argc, gchar * argv[])
   if (options.rtsp_ip_port != NULL) {
     options.use_rtsp = TRUE;
   }
-
   // Use camera by default if user does not set anything
-  if (! ((options.camera_type != GST_CAMERA_TYPE_NONE) || options.use_rtsp)) {
+  if (!((options.camera_type != GST_CAMERA_TYPE_NONE) || options.use_rtsp)) {
     options.use_camera = TRUE;
     options.camera_type = GST_CAMERA_TYPE_PRIMARY;
     g_print ("Using PRIMARY camera by default, Not valid camera id selected\n");
   }
-
   // Checking camera id passed by user.
   if (options.camera_type < GST_CAMERA_TYPE_NONE ||
       options.camera_type > GST_CAMERA_TYPE_SECONDARY) {
@@ -923,12 +1107,10 @@ main (gint argc, gchar * argv[])
         "Available options:\n"
         "    PRIMARY: %d\n"
         "    SECONDARY %d\n",
-        GST_CAMERA_TYPE_PRIMARY,
-        GST_CAMERA_TYPE_SECONDARY);
-    gst_app_context_free (&appctx, &options);
+        GST_CAMERA_TYPE_PRIMARY, GST_CAMERA_TYPE_SECONDARY);
+    gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
-
   // Enable camera flag if user set the camera property
   if (options.camera_type == GST_CAMERA_TYPE_SECONDARY ||
       options.camera_type == GST_CAMERA_TYPE_PRIMARY)
@@ -936,8 +1118,8 @@ main (gint argc, gchar * argv[])
 
   // Terminate if more than one source are there.
   if (options.use_camera + options.use_rtsp > 1) {
-     g_printerr ("Select anyone source type either Camera or RTSP\n");
-    gst_app_context_free (&appctx, &options);
+    g_printerr ("Select anyone source type either Camera or File or RTSP\n");
+    gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
 
@@ -947,56 +1129,91 @@ main (gint argc, gchar * argv[])
     g_print ("Camera Source is Selected\n");
   }
 
+  if (options.model_type < GST_MODEL_TYPE_TFLITE ||
+      options.model_type > GST_MODEL_TYPE_QNN) {
+    g_printerr ("Invalid ml-framework option selected\n"
+        "Available options:\n"
+        "    TFLite: %d\n"
+        "    QNN: %d\n", GST_MODEL_TYPE_TFLITE, GST_MODEL_TYPE_QNN);
+    gst_app_context_free (&appctx, &options, config_file);
+    return -EINVAL;
+  }
+  // Set model path for execution
+  if (options.face_detection_model_path == NULL) {
+    if (options.model_type == GST_MODEL_TYPE_QNN) {
+      options.face_detection_model_path = DEFAULT_QNN_FACE_DETECTION_MODEL;
+    } else {
+      options.face_detection_model_path = DEFAULT_TFLITE_FACE_DETECTION_MODEL;
+    }
+  }
+
+  if (options.face_landmark_model_path == NULL) {
+    if (options.model_type == GST_MODEL_TYPE_QNN) {
+      options.face_landmark_model_path = DEFAULT_QNN_FACE_LANDMARK_MODEL;
+    } else {
+      options.face_landmark_model_path = DEFAULT_TFLITE_FACE_LANDMARK_MODEL;
+    }
+  }
+
+  if (options.face_recognition_model_path == NULL) {
+    if (options.model_type == GST_MODEL_TYPE_QNN) {
+      options.face_recognition_model_path = DEFAULT_QNN_FACE_RECOGNITION_MODEL;
+    } else {
+      options.face_recognition_model_path =
+          DEFAULT_TFLITE_FACE_RECOGNITION_MODEL;
+    }
+  }
+
   if (!file_exists (options.face_detection_model_path)) {
-    g_print ("Invalid face detection model file path: %s\n",
+    g_print ("Invalid model file path: %s\n",
         options.face_detection_model_path);
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
 
-  if (!file_exists (options.three_dmm_model_path)) {
-    g_print ("Invalid three_dmm model file path: %s\n",
-        options.three_dmm_model_path);
-    gst_app_context_free (&appctx, &options);
+  if (!file_exists (options.face_landmark_model_path)) {
+    g_print ("Invalid model file path: %s\n", options.face_landmark_model_path);
+    gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
 
   if (!file_exists (options.face_recognition_model_path)) {
-    g_print ("Invalid face recognition model file path: %s\n",
+    g_print ("Invalid model file path: %s\n",
         options.face_recognition_model_path);
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
 
   if (!file_exists (options.face_detection_labels_path)) {
-    g_print ("Invalid face detection labels file path: %s\n",
+    g_print ("Invalid labels file path: %s\n",
         options.face_detection_labels_path);
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
+    return -EINVAL;
+  }
+
+  if (!file_exists (options.face_landmark_labels_path)) {
+    g_print ("Invalid labels file path: %s\n",
+        options.face_landmark_labels_path);
+    gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
 
   if (!file_exists (options.face_recognition_labels_path)) {
-    g_print ("Invalid face recognition labels file path: %s\n",
+    g_print ("Invalid labels file path: %s\n",
         options.face_recognition_labels_path);
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
 
-  if (!file_exists (options.three_dmm_labels_path)) {
-    g_print ("Invalid three_dmm labels file path: %s\n",
-        options.three_dmm_labels_path);
-    gst_app_context_free (&appctx, &options);
-    return -EINVAL;
-  }
-
-  g_print ("Running app with face detection model: %s and labels: %s\n",
+  g_print ("Running app with Face detection model: %s and labels: %s\n",
       options.face_detection_model_path, options.face_detection_labels_path);
 
-  g_print ("Running app with 3dmm model: %s and labels: %s\n",
-      options.three_dmm_model_path, options.three_dmm_labels_path);
+  g_print ("Running app with Face landmark model: %s and labels: %s\n",
+      options.face_landmark_model_path, options.face_landmark_labels_path);
 
-  g_print ("Running app with face recognition model: %s and labels: %s\n",
-      options.face_recognition_model_path, options.face_recognition_labels_path);
+  g_print ("Running app with Face recognition model: %s and labels: %s\n",
+      options.face_recognition_model_path,
+      options.face_recognition_labels_path);
 
   // Initialize GST library.
   gst_init (&argc, &argv);
@@ -1005,7 +1222,7 @@ main (gint argc, gchar * argv[])
   pipeline = gst_pipeline_new (app_name);
   if (!pipeline) {
     g_printerr ("ERROR: failed to create pipeline.\n");
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -1;
   }
 
@@ -1015,14 +1232,13 @@ main (gint argc, gchar * argv[])
   ret = create_pipe (&appctx, &options);
   if (!ret) {
     g_printerr ("ERROR: failed to create GST pipe.\n");
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -1;
   }
-
   // Initialize main loop.
   if ((mloop = g_main_loop_new (NULL, FALSE)) == NULL) {
     g_printerr ("ERROR: Failed to create Main loop!\n");
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -1;
   }
   appctx.mloop = mloop;
@@ -1031,10 +1247,9 @@ main (gint argc, gchar * argv[])
   // Bus is message queue for getting callback from gstreamer pipeline
   if ((bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline))) == NULL) {
     g_printerr ("ERROR: Failed to retrieve pipeline bus!\n");
-    gst_app_context_free (&appctx, &options);
+    gst_app_context_free (&appctx, &options, config_file);
     return -1;
   }
-
   // Watch for messages on the pipeline's bus.
   gst_bus_add_signal_watch (bus);
 
@@ -1084,7 +1299,7 @@ error:
   gst_element_set_state (pipeline, GST_STATE_NULL);
 
   g_print ("Destroy pipeline\n");
-  gst_app_context_free (&appctx, &options);
+  gst_app_context_free (&appctx, &options, config_file);
 
   g_print ("gst_deinit\n");
   gst_deinit ();
