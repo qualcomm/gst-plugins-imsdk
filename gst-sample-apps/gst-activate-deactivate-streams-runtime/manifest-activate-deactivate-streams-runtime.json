@@ -1,0 +1,8 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-activate-deactivate-streams-runtime",
+  "ApplicationType": "Camera",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "This application demonstrate the ability of the qmmfsrc to activate and deactivate the streams runtime, without a reconfiguration and gap on already activated streams."
+}

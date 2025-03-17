@@ -1,0 +1,9 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-videocodec-concurrent-playback",
+  "ApplicationType": "Video",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "This application to demonstrate to use of different codec simultaneously. In this example we are using the HEVC and AVC coded content to decode. AVC content will go to display and HEVC content will be dumped into file."
+}
+

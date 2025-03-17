@@ -1,0 +1,9 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-ai-smartcodec-example",
+  "ApplicationType": "Camera",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "This Application Smartly reduce network bandwidth/storage from camera input with AIML and  filesource using Qualcomm GStreamer plugins."
+}
+

@@ -1,0 +1,9 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-multi-stream-example",
+  "ApplicationType": "Camera",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "This Application Demonstrates in viewing camera Live on the waylandsink and Dump Video Encoder output."
+}
+

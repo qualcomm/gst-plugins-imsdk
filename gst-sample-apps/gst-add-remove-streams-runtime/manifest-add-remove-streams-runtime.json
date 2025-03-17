@@ -1,0 +1,9 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-add-remove-streams-runtime",
+  "ApplicationType": "Camera",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "This application demonstrate the ability of the qmmfsrc to add or remove the streams runtime with camera reconfiguration."
+}
+

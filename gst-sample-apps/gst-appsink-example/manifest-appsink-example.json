@@ -1,0 +1,9 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-appsink-example",
+  "ApplicationType": "Camera",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "This application Demonstrates executing of appsink when new sample is available in the pipeline then application extracts the buffer from the sample for further processing."
+}
+
