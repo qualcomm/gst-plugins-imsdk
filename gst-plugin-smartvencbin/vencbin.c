@@ -44,6 +44,7 @@ enum
   PROP_MAX_GOP_LENGTH,
   PROP_LEVELS_OVERRIDE,
   PROP_ROI_QUALITY_CFG,
+  PROP_MIN_BUFFERS,
 };
 
 #ifndef GST_CAPS_FEATURE_MEMORY_GBM
@@ -704,7 +705,7 @@ gst_venc_bin_worker_task (gpointer user_data)
   GST_VENC_BIN_LOCK (vencbin);
 
   gst_data_queue_get_level (vencbin->main_frames, &queuelevel);
-  if (queuelevel.visible >= vencbin->buff_cnt_delay) {
+  if (queuelevel.visible >= vencbin->min_buffers) {
     if (!gst_data_queue_pop (vencbin->main_frames, &item)) {
       GST_INFO_OBJECT (vencbin, "buffers_queue flushing");
       GST_VENC_BIN_UNLOCK (vencbin);
@@ -1024,6 +1025,11 @@ gst_venc_bin_set_property (GObject * object, guint prop_id,
       g_value_unset (&value);
       break;
     }
+    case PROP_MIN_BUFFERS:
+    {
+      vencbin->min_buffers = g_value_get_uint (value);
+      break;
+    }
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -1079,6 +1085,11 @@ gst_venc_bin_get_property (GObject * object, guint prop_id, GValue * value,
         g_free (string);
       }
 
+      break;
+    }
+    case PROP_MIN_BUFFERS:
+    {
+      g_value_set_uint (value, vencbin->min_buffers);
       break;
     }
     default:
@@ -1205,6 +1216,12 @@ gst_venc_bin_class_init (GstVideoEncBinClass *klass)
           "ROI Quality Config "
           "e.g. \"ROIQPs,car=2,person=1,tree=-2;\"",
           NULL, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject, PROP_MIN_BUFFERS,
+      g_param_spec_uint ("min-buffers", "Min Buffers",
+          "Min buffers the enc requires to adapt to the set enc properties. "
+          "The default value is overriden based on the video stream.",
+          0, G_MAXUINT, 0, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
 
   gst_element_class_set_static_metadata (element, "Smart Video Encode Bin",
       "Generic/Bin/Encoder", "Smart control over video encoding", "QTI");
@@ -1313,7 +1330,7 @@ gst_venc_bin_init (GstVideoEncBin * vencbin)
   }
 
   // Get buffer count delay
-  vencbin->buff_cnt_delay =
+  vencbin->min_buffers =
       gst_smartcodec_engine_get_buff_cnt_delay (vencbin->engine);
 }
 
