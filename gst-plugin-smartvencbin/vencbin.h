@@ -73,7 +73,7 @@ struct _GstVideoEncBin
   SmartCodecEngine  *engine;
   // Properties.
   GstBinEncoderType encoder_type;
-  guint             buff_cnt_delay;
+  guint             min_buffers;
   guint             max_bitrate;
   gboolean          smart_framerate_en;
   gboolean          smart_gop_en;
