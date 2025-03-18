@@ -377,7 +377,7 @@ gst_mem_buffer_pool_reset (GstBufferPool * pool, GstBuffer * buffer)
   length = gst_buffer_n_memory (buffer);
 
   // Sanity check.
-  g_return_if_fail (length == g_list_length (priv->memsizes));
+  g_return_if_fail (length <= g_list_length (priv->memsizes));
 
   // Resize the buffer to the original size otherwise it will be discarded
   // due to the mismatch during the default implementation of release_buffer.

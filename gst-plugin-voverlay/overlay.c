@@ -163,8 +163,6 @@ gst_video_blits_release (GstVideoBlit * blits, guint n_blits)
     }
 
     g_slice_free (GstVideoFrame, blits[idx].frame);
-    g_slice_free (GstVideoRectangle, blits[idx].sources);
-    g_slice_free (GstVideoRectangle, blits[idx].destinations);
   }
 
   g_free (blits);
@@ -588,8 +586,8 @@ gst_overlay_handle_classification_entry (GstVOverlay * overlay,
   g_return_val_if_fail (success, FALSE);
 
   vframe = blit->frame;
-  source = &(blit->sources[0]);
-  destination = &(blit->destinations[0]);
+  source = &(blit->source);
+  destination = &(blit->destination);
 
   destination->w = source->w;
   destination->h = source->h;
@@ -658,8 +656,8 @@ gst_overlay_handle_pose_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   success = gst_cairo_draw_setup (blit->frame, &surface, &context);
   g_return_val_if_fail (success, FALSE);
 
-  source = &(blit->sources[0]);
-  destination = &(blit->destinations[0]);
+  source = &(blit->source);
+  destination = &(blit->destination);
 
   gst_util_fraction_to_double (source->w, destination->w, &xscale);
   gst_util_fraction_to_double (source->h, destination->h, &yscale);
@@ -730,8 +728,8 @@ gst_overlay_handle_optclflow_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   g_return_val_if_fail (success, FALSE);
 
   vframe = blit->frame;
-  source = &(blit->sources[0]);
-  destination = &(blit->destinations[0]);
+  source = &(blit->source);
+  destination = &(blit->destination);
 
   GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
       "[%d %d %d %d]", source->x, source->y, source->w, source->h,
@@ -786,8 +784,8 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   g_return_val_if_fail (success, FALSE);
 
   vframe = blit->frame;
-  source = &(blit->sources[0]);
-  destination = &(blit->destinations[0]);
+  source = &(blit->source);
+  destination = &(blit->destination);
 
   destination->x = roimeta->x;
   destination->y = roimeta->y;
@@ -799,8 +797,8 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   gst_overlay_update_rectangle_dimensions (overlay, vframe, source);
 
   // Initialize the destination X/Y of the auxiliary blit for labels.
-  auxblit->destinations[0].x = roimeta->x;
-  auxblit->destinations[0].y = roimeta->y;
+  auxblit->destination.x = roimeta->x;
+  auxblit->destination.y = roimeta->y;
 
   // Process attached meta entries that were derived from this ROI.
   for (list = roimeta->params; list != NULL; list = g_list_next (list)) {
@@ -892,8 +890,8 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, GstVideoBlit * blit,
     g_array_free (labels, TRUE);
   }
 
-  source = &(auxblit->sources[0]);
-  destination = &(auxblit->destinations[0]);
+  source = &(auxblit->source);
+  destination = &(auxblit->destination);
 
   // Correct the destination of the auxiliary blit for labels.
   if ((destination->y -= destination->h) < 0)
@@ -926,8 +924,8 @@ gst_overlay_handle_bbox_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   g_return_val_if_fail (success, FALSE);
 
   vframe = blit->frame;
-  source = &(blit->sources[0]);
-  destination = &(blit->destinations[0]);
+  source = &(blit->source);
+  destination = &(blit->destination);
 
   destination->x = bbox->destination.x;
   destination->y = bbox->destination.y;
@@ -977,8 +975,8 @@ gst_overlay_handle_timestamp_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   g_return_val_if_fail (success, FALSE);
 
   vframe = blit->frame;
-  source = &(blit->sources[0]);
-  destination = &(blit->destinations[0]);
+  source = &(blit->source);
+  destination = &(blit->destination);
 
   destination->x = timestamp->position.x;
   destination->y = timestamp->position.y;
@@ -1057,8 +1055,8 @@ gst_overlay_handle_string_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   g_return_val_if_fail (success, FALSE);
 
   vframe = blit->frame;
-  source = &(blit->sources[0]);
-  destination = &(blit->destinations[0]);
+  source = &(blit->source);
+  destination = &(blit->destination);
 
   destination->x = string->position.x;
   destination->y = string->position.y;
@@ -1116,8 +1114,8 @@ gst_overlay_handle_mask_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   g_return_val_if_fail (success, FALSE);
 
   vframe = blit->frame;
-  source = &(blit->sources[0]);
-  destination = &(blit->destinations[0]);
+  source = &(blit->source);
+  destination = &(blit->destination);
 
   switch (mask->type) {
     case GST_OVERLAY_MASK_RECTANGLE:
@@ -1215,13 +1213,13 @@ gst_overlay_handle_image_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   gint x = 0, num = 0, id = 0;
 
   vframe = blit->frame;
-  source = &(blit->sources[0]);
+  source = &(blit->source);
 
   source->w = simage->width;
   source->h = simage->height;
 
-  blit->destinations[0] = simage->destination;
-  destination = &(blit->destinations[0]);
+  blit->destination = simage->destination;
+  destination = &(blit->destination);
 
   GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
       "[%d %d %d %d]", source->x, source->y, source->w, source->h,
@@ -1295,20 +1293,15 @@ gst_overlay_populate_video_blit (GstVOverlay * overlay, guint ovltype,
 
   blit->alpha = G_MAXUINT8;
 
-  // Allocate and intialize source and destination rectangles.
-  blit->sources = g_slice_new (GstVideoRectangle);
-  blit->destinations = g_slice_new (GstVideoRectangle);
-  blit->n_regions = 1;
-
   // Initialize the blit source rectangle.
-  blit->sources[0].x = blit->sources[0].y = 0;
-  blit->sources[0].w = GST_VIDEO_FRAME_WIDTH (blit->frame);
-  blit->sources[0].h = GST_VIDEO_FRAME_HEIGHT (blit->frame);
+  blit->source.x = blit->source.y = 0;
+  blit->source.w = GST_VIDEO_FRAME_WIDTH (blit->frame);
+  blit->source.h = GST_VIDEO_FRAME_HEIGHT (blit->frame);
 
   // Initialize the blit destination rectangle.
-  blit->destinations[0].x = blit->destinations[0].y = 0;
-  blit->destinations[0].w = GST_VIDEO_INFO_WIDTH (overlay->vinfo);
-  blit->destinations[0].h = GST_VIDEO_INFO_HEIGHT (overlay->vinfo);
+  blit->destination.x = blit->destination.y = 0;
+  blit->destination.w = GST_VIDEO_INFO_WIDTH (overlay->vinfo);
+  blit->destination.h = GST_VIDEO_INFO_HEIGHT (overlay->vinfo);
 
   return TRUE;
 }

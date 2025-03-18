@@ -18,8 +18,11 @@
 
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
-    "type = (string) { FLOAT32 }, " \
-    "dimensions = (int) < <1, 512>, <1, 265> >"
+    "type = (string) { UINT8, FLOAT32 }, " \
+    "dimensions = (int) < <1, 512>, <1, 265> >; " \
+    "neural-network/tensors, " \
+    "type = (string) { UINT8, FLOAT32 }, " \
+    "dimensions = (int) < <1, 265> >"
 
 #define ALPHA_ID_SIZE          219
 #define ALPHA_EXP_SIZE         39
@@ -379,9 +382,15 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
   mltype = GST_ML_FRAME_TYPE (mlframe);
 
-  // Convenient pointer to the landmark vertices inside the 2nd tensor.
-  vertices = GST_ML_FRAME_BLOCK_DATA (mlframe, 1);
-  n_vertices = GST_ML_FRAME_DIM (mlframe, 1, 1);
+  if (GST_ML_INFO_N_TENSORS (&(submodule->mlinfo)) == 2) {
+    // Convenient pointer to the landmark vertices inside the 2nd tensor.
+    vertices = GST_ML_FRAME_BLOCK_DATA (mlframe, 1);
+    n_vertices = GST_ML_FRAME_DIM (mlframe, 1, 1);
+  } else if (GST_ML_INFO_N_TENSORS (&(submodule->mlinfo)) == 1) {
+    // Convenient pointer to the landmark vertices inside the 1st tensor.
+    vertices = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
+    n_vertices = GST_ML_FRAME_DIM (mlframe, 0, 1);
+  }
 
   confidence = gst_ml_tensor_extract_value (mltype, vertices, n_vertices - 1,
         submodule->qoffsets[1], submodule->qscales[1]);

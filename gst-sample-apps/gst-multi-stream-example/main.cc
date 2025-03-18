@@ -184,8 +184,8 @@ create_two_stream_pipe (GstMultiStreamAppContext * appctx)
 
   g_print ("Preview Pad received - %s\n",  gst_pad_get_name (ppad));
 
-  g_object_set (G_OBJECT (vpad), "type", "video", NULL);
-  g_object_set (G_OBJECT (ppad), "type", "preview", NULL);
+  g_object_set (G_OBJECT (vpad), "type", 0, NULL);
+  g_object_set (G_OBJECT (ppad), "type", 1, NULL);
   gst_object_unref (vpad);
   gst_object_unref (ppad);
 

@@ -1630,9 +1630,8 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 
   blit.frame = &inframe;
 
-  blit.sources = &(vtrans->crop);
-  blit.destinations = &(vtrans->destination);
-  blit.n_regions = 1;
+  blit.source = vtrans->crop;
+  blit.destination = vtrans->destination;
 
   blit.flip = gst_video_transform_translate_flip (vtrans->flip_h, vtrans->flip_v);
   blit.rotate = gst_video_transform_translate_rotation (vtrans->rotation);

@@ -88,7 +88,7 @@ GST_DEBUG_CATEGORY_STATIC (gst_video_composer_sinkpad_debug);
 #endif
 
 G_DEFINE_TYPE (GstVideoComposerSinkPad, gst_video_composer_sinkpad,
-               GST_TYPE_AGGREGATOR_PAD);
+               GST_TYPE_VIDEO_AGGREGATOR_PAD);
 
 enum
 {
@@ -331,50 +331,33 @@ gst_video_composer_sinkpad_getcaps (GstAggregatorPad * pad,
   GST_DEBUG_OBJECT (pad, "Returning caps: %" GST_PTR_FORMAT, sinkcaps);
   return sinkcaps;
 }
-
-gboolean
-gst_video_composer_sinkpad_setcaps (GstAggregatorPad * pad,
-    GstAggregator * aggregator, GstCaps * caps)
+#if (GST_VERSION_MAJOR == 1 && GST_VERSION_MINOR < 16)
+static gboolean
+gst_video_composer_sinkpad_prepare_frame (GstVideoAggregatorPad * pad,
+    GstVideoAggregator * vaggregator)
 {
-  GstVideoInfo info;
+  GstVideoFrame *frame = NULL;
 
-  g_return_val_if_fail (gst_caps_is_fixed (caps), FALSE);
+  if (pad->buffer == NULL)
+    return TRUE;
 
-  GST_DEBUG_OBJECT (pad, "Caps %" GST_PTR_FORMAT, caps);
+  // GAP event, nothing to do.
+  if (gst_buffer_get_size (pad->buffer) == 0 &&
+      GST_BUFFER_FLAG_IS_SET (pad->buffer, GST_BUFFER_FLAG_GAP))
+    return TRUE;
 
-  if (!gst_video_info_from_caps (&info, caps)) {
-    GST_DEBUG_OBJECT (pad, "Failed get video info from caps!");
+  frame = g_slice_new0 (GstVideoFrame);
+
+  if (!gst_video_frame_map (frame, &pad->info, pad->buffer, GST_MAP_READ)) {
+    GST_WARNING_OBJECT (vaggregator, "Could not map input buffer");
+    g_slice_free (GstVideoFrame, frame);
     return FALSE;
   }
 
-  if (GST_VIDEO_COMPOSER_SINKPAD (pad)->info != NULL)
-    gst_video_info_free (GST_VIDEO_COMPOSER_SINKPAD (pad)->info);
-
-  GST_VIDEO_COMPOSER_SINKPAD (pad)->info = gst_video_info_copy (&info);
-
+  pad->aggregated_frame = frame;
   return TRUE;
 }
-
-static gboolean
-gst_video_composer_sinkpad_skip_buffer (GstAggregatorPad * pad,
-    GstAggregator * aggregator, GstBuffer * buffer)
-{
-  GstSegment *segment = &GST_AGGREGATOR_PAD (aggregator->srcpad)->segment;
-
-  if (segment->position != GST_CLOCK_TIME_NONE
-      && GST_BUFFER_DURATION (buffer) != GST_CLOCK_TIME_NONE) {
-    GstClockTime timestamp, position;
-
-    timestamp = gst_segment_to_running_time (&pad->segment, GST_FORMAT_TIME,
-        GST_BUFFER_PTS (buffer)) + GST_BUFFER_DURATION (buffer);
-    position = gst_segment_to_running_time (segment, GST_FORMAT_TIME,
-        segment->position);
-
-    return (timestamp < position);
-  }
-
-  return FALSE;
-}
+#endif // (GST_VERSION_MAJOR == 1 && GST_VERSION_MINOR < 16)
 
 static void
 gst_video_composer_sinkpad_set_property (GObject * object, guint property_id,
@@ -556,9 +539,6 @@ gst_video_composer_sinkpad_finalize (GObject * object)
 
   g_mutex_clear (&sinkpad->lock);
 
-  if (sinkpad->info != NULL)
-    gst_video_info_free (sinkpad->info);
-
   G_OBJECT_CLASS (gst_video_composer_sinkpad_parent_class)->finalize(object);
 }
 
@@ -566,7 +546,9 @@ static void
 gst_video_composer_sinkpad_class_init (GstVideoComposerSinkPadClass * klass)
 {
   GObjectClass *gobject = G_OBJECT_CLASS (klass);
-  GstAggregatorPadClass *aggpad = (GstAggregatorPadClass *) klass;
+#if (GST_VERSION_MAJOR == 1 && GST_VERSION_MINOR < 16)
+  GstVideoAggregatorPadClass *vaggpad = (GstVideoAggregatorPadClass *) klass;
+#endif // (GST_VERSION_MAJOR == 1 && GST_VERSION_MINOR < 16)
 
   gobject->finalize = GST_DEBUG_FUNCPTR (gst_video_composer_sinkpad_finalize);
   gobject->get_property =
@@ -627,8 +609,10 @@ gst_video_composer_sinkpad_class_init (GstVideoComposerSinkPadClass * klass)
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING | G_PARAM_EXPLICIT_NOTIFY));
 
-  aggpad->skip_buffer =
-      GST_DEBUG_FUNCPTR (gst_video_composer_sinkpad_skip_buffer);
+#if (GST_VERSION_MAJOR == 1 && GST_VERSION_MINOR < 16)
+  vaggpad->prepare_frame =
+      GST_DEBUG_FUNCPTR (gst_video_composer_sinkpad_prepare_frame);
+#endif // (GST_VERSION_MAJOR == 1 && GST_VERSION_MINOR < 16)
 
   GST_DEBUG_CATEGORY_INIT (gst_video_composer_sinkpad_debug,
       "qtivcomposer", 0, "QTI Video Composer sink pad");
@@ -639,8 +623,7 @@ gst_video_composer_sinkpad_init (GstVideoComposerSinkPad * sinkpad)
 {
   g_mutex_init (&sinkpad->lock);
 
-  sinkpad->index  = 0;
-  sinkpad->info   = NULL;
+  sinkpad->index         = 0;
 
   sinkpad->zorder        = DEFAULT_PROP_Z_ORDER;
   sinkpad->crop.x        = DEFAULT_PROP_CROP_X;

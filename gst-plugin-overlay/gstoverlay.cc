@@ -37,6 +37,7 @@
 #endif
 
 #include <string.h>
+#include <string>
 
 #include <gst/allocators/gstfdmemory.h>
 #include <ml-meta/ml_meta.h>
