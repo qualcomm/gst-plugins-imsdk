@@ -1,6 +1,7 @@
 {
-  "Version": "1.0",
+  "Version": "1.4",
   "ApplicationName": "gst-ai-usb-camera-detection",
+  "ApplicationType": "AI",
   "ApplicationSourceCheckSum": "",
   "ApplicationIcon": "",
   "AIModelsNeededByApplication": [

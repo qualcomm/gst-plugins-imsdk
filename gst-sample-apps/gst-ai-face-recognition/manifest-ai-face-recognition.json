@@ -1,0 +1,36 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-ai-face-recognition",
+  "ApplicationType": "AI",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "AIModelsNeededByApplication": [
+    {
+      "ModelName": "Facial-Attribute-Detection-Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Facial-Attribute-Detection-Quantized/resolve/main/Facial-Attribute-Detection-Quantized.tflite",
+      "LabelFile": "face_recognition.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/face_recognition.labels"
+    },
+    {
+      "ModelName": "Lightweight-Face-Detection-Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Lightweight-Face-Detection-Quantized/resolve/main/Lightweight-Face-Detection-Quantized.tflite",
+      "LabelFile": "face-detection.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/face-detection.labels"
+    },
+    {
+      "ModelName": "Facial-Landmark-Detection-Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Facial-Landmark-Detection-Quantized/resolve/main/Facial-Landmark-Detection-Quantized.tflite",
+      "LabelFile": "face_landmark.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/face_landmark.labels"
+    }
+  ],
+  "AIModelsSupportedByApplication": [],
+  "AIModelLocation": "/etc/models/",
+  "AILabelLocation": "/etc/labels/",
+  "ConfigFile": "config-face-recognition.json",
+  "ConfigFileLocation": "/etc/configs/",
+  "ApplicationKeyWords": [
+    "Face Recognition"
+  ],
+  "ApplicationTextDescription": "The gst-ai-face-recognition application collects the live video input from a camera or an RTSP stream and shares this input for face detection and recognition."
+}
