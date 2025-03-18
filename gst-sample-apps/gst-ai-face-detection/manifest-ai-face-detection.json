@@ -1,0 +1,24 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-ai-face-detection",
+  "ApplicationType": "AI",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "AIModelsNeededByApplication": [
+    {
+      "ModelName": "Lightweight-Face-Detection-Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Lightweight-Face-Detection-Quantized/resolve/main/Lightweight-Face-Detection-Quantized.tflite",
+      "LabelFile": "face_detection.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/face_detection.labels"
+    }
+  ],
+  "AIModelsSupportedByApplication": [],
+  "AIModelLocation": "/etc/models/",
+  "AILabelLocation": "/etc/labels/",
+  "ConfigFile": "",
+  "ConfigFileLocation": "",
+  "ApplicationKeyWords": [
+    "FaceDetection"
+  ],
+  "ApplicationTextDescription": "This application is designed to enables you to infer depth of a source feed from a live camera stream, file, or an RTSP stream."
+}
