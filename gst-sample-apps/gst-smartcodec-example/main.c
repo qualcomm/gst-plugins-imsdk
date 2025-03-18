@@ -9,7 +9,7 @@
  *
  * Description:
  * This Application Smartly reduce network bandwidth/storage
- * from camera input and filesource using Qualcomm GStreamer plugins.
+ * from camera input using Qualcomm GStreamer plugins.
  *
  * Usage:
  * gst-smartcodec-example --width=1920 --height=1080
@@ -22,13 +22,6 @@
  *             |capsfilter->sink_ctrl(qtismartvencbin)
  * qtiqmmfsrc->|
  *             |capsfilter->sink(qtismartvencbin)->v4l2h264enc->h264parse->mp4mux->filesink
- *
- * Pipeline for file source:
- *             |tee->queue->sink_ctrl(qtismartvencbin)
- * filesrc->|
- *             |qtdemux->queue->h264parse->v4l2h264dec->queue->tee->
- *              ->sink(qtismartvencbin)->->v4l2h264enc->h264parse->mp4mux->filesink
- *
  * *******************************************************************
  */
 
@@ -42,6 +35,7 @@
 #define DEFAULT_HEIGHT          720
 #define NOISE_REDUCTION_HIGH_QUALITY 2
 #define STREAM_TYPE_PREVIEW     1       // camera preview stream
+#define STREAM_TYPE_VIDEO     0
 
 #define GST_APP_SUMMARY                                                        \
   "This Application Smartly reduce network \n"                                \
@@ -49,8 +43,6 @@
   " using Qualcomm Streamer plugins"                                           \
   "\nCommand For camera source :\n"                                            \
   "gst-smartcodec-example -w 1920 -h 1080 -o video.mp4 \n"                     \
-  "\nCommand For file source :\n"                                              \
-  " gst -smartcodec - example - w 1920 -h 1080 -i <video>.mp4 -o video.mp4\n"  \
   "\nOutput :\n"                                                               \
   " Upon execution,application will generates output as encoded mp4 file"      \
 
@@ -60,7 +52,6 @@ struct _GstSmartCodecContext
   GstElement *pipeline;
   GMainLoop *mloop;
   gchar *output_file;
-  gchar *input_file;
   gint width;
   gint height;
 };
@@ -91,7 +82,6 @@ gst_app_context_new ()
   ctx->width = DEFAULT_WIDTH;
   ctx->height = DEFAULT_HEIGHT;
   ctx->output_file = NULL;
-  ctx->input_file = NULL;
   return ctx;
 }
 
@@ -115,34 +105,10 @@ gst_app_context_free (GstSmartCodecContext * appctx)
     appctx->pipeline = NULL;
   }
 
-  if (appctx->input_file != NULL)
-    g_free (appctx->input_file);
-
   g_free (appctx->output_file);
 
   if (appctx != NULL)
     g_free (appctx);
-}
-
-/**
- * Create pad property parser callback
- *
- * @param Gst Element parser
- * @param pad to link with sinkpad
- * @param data pointer
- */
-static void
-on_pad_added (GstElement * element[0], GstPad * pad, gpointer data)
-{
-  GstPad *sinkpad;
-  GstElement *pqueue = (GstElement *) data;
-
-  sinkpad = gst_element_get_static_pad (pqueue, "sink");
-
-  if (gst_pad_link (pad, sinkpad) != GST_PAD_LINK_OK)
-    g_printerr ("Linking pads");
-
-  gst_object_unref (sinkpad);
 }
 
 /**
@@ -161,101 +127,74 @@ create_pipe (GstSmartCodecContext * appctx)
   GstElement *qtiqmmfsrc = NULL;
   GstElement *capsfilter_ctrl = NULL;
   GstElement *capsfilter_enc = NULL;
-  GstElement *filesrc = NULL;
-  GstElement *qtdemux = NULL;
-  GstElement *vparse = NULL;
-  GstElement *vdecoder = NULL;
-  GstElement *pqueue = NULL;
-  GstElement *queue = NULL;
-  GstElement *tee = NULL;
   GstCaps *filtercaps;
-  GstPad *qmmf_pad, *sc_src, *ctrl_src, *sc_sink, *ctrl_sink;
+  GstPad *qmmf_pad, *pqmmf_pad,*sc_src, *ctrl_src, *sc_sink, *ctrl_sink;
   gboolean ret = FALSE;
 
-  if (appctx->input_file == NULL) {
-    // Create first source element set the first camera
-    qtiqmmfsrc = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
+  // Create first source element set the first camera
+  qtiqmmfsrc = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
 
-    // Create capsfilter element for the encoder to set properties
-    capsfilter_enc = gst_element_factory_make ("capsfilter", "capsfilter_enc");
+  // Create capsfilter element for the encoder to set properties
+  capsfilter_enc = gst_element_factory_make ("capsfilter", "capsfilter_enc");
 
-    capsfilter_ctrl =
-        gst_element_factory_make ("capsfilter", "capsfilter_ctrl");
+  capsfilter_ctrl =
+      gst_element_factory_make ("capsfilter", "capsfilter_ctrl");
 
-    if (!qtiqmmfsrc || !capsfilter_ctrl || !capsfilter_enc) {
-      g_printerr ("\n One element could not be created. Exiting experiment.\n");
-      return FALSE;
-    }
-    // Configure the capsfilter_ctrl stream caps
-    filtercaps = gst_caps_new_simple ("video/x-raw", "format", G_TYPE_STRING,
-        "NV12", "width", G_TYPE_INT, 1280, "height", G_TYPE_INT, 720,
-        "framerate", GST_TYPE_FRACTION, 15, 1, NULL);
-
-    g_object_set (G_OBJECT (capsfilter_ctrl), "caps", filtercaps, NULL);
-    gst_caps_unref (filtercaps);
-
-    // Configure the encode stream caps
-    filtercaps = gst_caps_new_simple ("video/x-raw", "format", G_TYPE_STRING,
-        "NV12", "width", G_TYPE_INT, appctx->width, "height", G_TYPE_INT,
-        appctx->height, "framerate", GST_TYPE_FRACTION, 30, 1, "compression",
-        NULL);
-
-    g_object_set (G_OBJECT (capsfilter_enc), "caps", filtercaps, NULL);
-    gst_caps_unref (filtercaps);
-
-    // Get qmmfsrc Element class
-    GstElementClass *qtiqmmfsrc_klass = GST_ELEMENT_GET_CLASS (qtiqmmfsrc);
-
-    // Get qmmfsrc pad template
-    GstPadTemplate *qtiqmmfsrc_template =
-        gst_element_class_get_pad_template (qtiqmmfsrc_klass,
-        "video_%u");
-
-    // Request a pad from qmmfsrc
-    qmmf_pad = gst_element_request_pad (qtiqmmfsrc, qtiqmmfsrc_template,
-        "video_%u", NULL);
-    if (!qmmf_pad) {
-      g_printerr ("Error: pad cannot be retrieved from qmmfsrc!\n");
-    }
-    g_print ("Pad received - %s\n", gst_pad_get_name (qmmf_pad));
-
-    g_object_set (G_OBJECT (qmmf_pad), "type", STREAM_TYPE_PREVIEW, NULL);
-    g_object_set (G_OBJECT (qmmf_pad), "extra-buffers", 20, NULL);
-    g_object_set (G_OBJECT (qtiqmmfsrc), "noise-reduction", NOISE_REDUCTION_HIGH_QUALITY, NULL);
-    gst_object_unref (qmmf_pad);
-
-  } else {
-    // create file source and set location
-    filesrc = gst_element_factory_make ("filesrc", "filesrc");
-    g_object_set (G_OBJECT (filesrc), "location", appctx->input_file, NULL);
-    g_print ("input file = %s\n", appctx->input_file);
-
-    // creating tee element to split the data
-    tee = gst_element_factory_make ("tee", "tee");
-
-    // Create Demuxer and Parser elements to get video tracks
-    qtdemux = gst_element_factory_make ("qtdemux", "qtdemux");
-
-    // Create Parser elements to get video tracks
-    vparse = gst_element_factory_make ("h264parse", "vparse");
-
-    // creating queue elements
-    pqueue = gst_element_factory_make ("queue", "pqueue");
-    queue = gst_element_factory_make ("queue", "queue");
-
-    // Create video decoder element
-    vdecoder = gst_element_factory_make ("v4l2h264dec", "vdecoder");
-
-    // Set capture I/O mode for decoder
-    g_object_set (G_OBJECT (vdecoder), "capture-io-mode", GST_V4L2_IO_DMABUF, NULL);
-    g_object_set (G_OBJECT (vdecoder), "output-io-mode", GST_V4L2_IO_DMABUF, NULL);
-
-    if (!filesrc || !tee || !qtdemux || !vparse || !pqueue || !queue ||
-        !vdecoder) {
-      g_printerr ("\n One element could not be created. Exiting experiment.\n");
-      return FALSE;
-    }
+  if (!qtiqmmfsrc || !capsfilter_ctrl || !capsfilter_enc) {
+    g_printerr ("\n One element could not be created. Exiting experiment.\n");
+    return FALSE;
   }
+  // Configure the capsfilter_ctrl stream caps
+  filtercaps = gst_caps_new_simple ("video/x-raw", "format", G_TYPE_STRING,
+      "NV12", "width", G_TYPE_INT, 640, "height", G_TYPE_INT, 480,
+      "framerate", GST_TYPE_FRACTION, 15, 1, NULL);
+
+  g_object_set (G_OBJECT (capsfilter_ctrl), "caps", filtercaps, NULL);
+  gst_caps_unref (filtercaps);
+
+  // Configure the encode stream caps
+  filtercaps = gst_caps_new_simple ("video/x-raw", "format", G_TYPE_STRING,
+      "NV12", "width", G_TYPE_INT, appctx->width, "height", G_TYPE_INT,
+      appctx->height, "framerate", GST_TYPE_FRACTION, 30, 1, NULL);
+
+  g_object_set (G_OBJECT (capsfilter_enc), "caps", filtercaps, NULL);
+  gst_caps_unref (filtercaps);
+
+  // Get qmmfsrc Element class
+  GstElementClass *qtiqmmfsrc_klass = GST_ELEMENT_GET_CLASS (qtiqmmfsrc);
+
+  // Get qmmfsrc pad template
+  GstPadTemplate *qtiqmmfsrc_template =
+      gst_element_class_get_pad_template (qtiqmmfsrc_klass,
+      "video_%u");
+
+  // Request a pad from qmmfsrc
+  qmmf_pad = gst_element_request_pad (qtiqmmfsrc, qtiqmmfsrc_template,
+      "video_%u", NULL);
+  if (!qmmf_pad) {
+    g_printerr ("Error: pad cannot be retrieved from qmmfsrc!\n");
+  }
+  g_print ("Pad received - %s\n", gst_pad_get_name (qmmf_pad));
+
+  // Get qmmfsrc pad template
+  GstPadTemplate *pqtiqmmfsrc_template =
+      gst_element_class_get_pad_template (qtiqmmfsrc_klass,
+      "video_%u");
+
+  // Request a pad from qmmfsrc
+  pqmmf_pad = gst_element_request_pad (qtiqmmfsrc, pqtiqmmfsrc_template,
+      "video_%u", NULL);
+  if (!pqmmf_pad) {
+    g_printerr ("Error: pad cannot be retrieved from qmmfsrc!\n");
+  }
+  g_print ("Pad received - %s\n", gst_pad_get_name (pqmmf_pad));
+
+  g_object_set (G_OBJECT (pqmmf_pad), "type", STREAM_TYPE_PREVIEW, NULL);
+  g_object_set (G_OBJECT (qmmf_pad), "type", STREAM_TYPE_VIDEO, NULL);
+  g_object_set (G_OBJECT (pqmmf_pad), "extra-buffers", 20, NULL);
+  g_object_set (G_OBJECT (qtiqmmfsrc), "noise-reduction", NOISE_REDUCTION_HIGH_QUALITY, NULL);
+  gst_object_unref (qmmf_pad);
+  gst_object_unref (pqmmf_pad);
   // Create capsfilter element
   queue_ctrl = gst_element_factory_make ("queue", "queue_ctrl");
   queue_sc = gst_element_factory_make ("queue", "queue_sc");
@@ -280,123 +219,62 @@ create_pipe (GstSmartCodecContext * appctx)
     return FALSE;
   }
 
-  // Set properties for qtismartvencbin
-  g_object_set (G_OBJECT (qtismartvencbin), "default-gop", 30, NULL);
-  g_object_set (G_OBJECT (qtismartvencbin), "max-gop", 600, NULL);
-  g_object_set (G_OBJECT (qtismartvencbin), "levels-override",
-      "LevelsOverride,bitrate_static=160000,bitrate_low=358000,bitrate_medium=700000,bitrate_high=1400000,fr_static=16,fr_low=4,fr_medium=2,fr_high=1;",
-      NULL);
-  g_object_set (G_OBJECT (qtismartvencbin), "roi-quality-cfg",
-      "ROIQPs,car=2,person=1,tree=-2;", NULL);
-
-  g_object_set (G_OBJECT (qtismartvencbin), "encoder", 2, NULL);
-  g_object_set (G_OBJECT (qtismartvencbin), "max-bitrate", 4200000, NULL);
+   g_object_set (G_OBJECT (qtismartvencbin), "encoder", 2, NULL);
+   g_object_set (G_OBJECT (qtismartvencbin), "min-buffers", 10, NULL);
 
   // Set filesink_enc properties
   g_object_set (G_OBJECT (filesink), "location", appctx->output_file, NULL);
 
   // Add elements to the pipeline and link them based on input streams
-  if (appctx->input_file == NULL) {
-    g_print ("\n Adding all elements to the pipeline...\n");
-    gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter_ctrl,
-        capsfilter_enc, h264parse, mp4mux, filesink, queue_sc, queue_ctrl,
-        qtismartvencbin, NULL);
 
-    g_print ("\n Link Smart Codec elements...\n");
-    // Linking the encoder stream
-    ret = gst_element_link_many (qtiqmmfsrc, capsfilter_enc, queue_sc, NULL);
-    if (!ret) {
-      g_printerr
-          ("\n Video Smart Codec Pipeline elements cannot be linked. Exiting.\n");
-      gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc,
-          capsfilter_enc, queue_sc, NULL);
-      return FALSE;
-    }
+  g_print ("\n Adding all elements to the pipeline...\n");
+  gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter_ctrl,
+      capsfilter_enc, h264parse, mp4mux, filesink, queue_sc, queue_ctrl,
+      qtismartvencbin, NULL);
 
-    g_print ("\n Link encoder elements...\n");
-    // Linking the encoder stream
-    ret = gst_element_link_many (qtismartvencbin, h264parse, mp4mux, filesink,
-        NULL);
-    if (!ret) {
-      g_printerr
-          ("\n Video Encoder Pipeline elements cannot be linked. Exiting.\n");
-      gst_bin_remove_many (GST_BIN (appctx->pipeline), qtismartvencbin,
-          h264parse, mp4mux, filesink, NULL);
-      return FALSE;
-    }
-
-    sc_src = gst_element_get_static_pad (queue_sc, "src");
-    sc_sink = gst_element_get_static_pad (qtismartvencbin, "sink");
-    g_print ("\n smart code pad link %d \n", gst_pad_link (sc_src, sc_sink));
-
-    g_print ("\n Link sink_ctrl elements...\n");
-    // Linking the display stream
-    ret = gst_element_link_many (qtiqmmfsrc, capsfilter_ctrl, queue_ctrl, NULL);
-    if (!ret) {
-      g_printerr
-          ("\n sink_ctrl Pipeline elements cannot be linked. Exiting.\n");
-      gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc,
-          capsfilter_ctrl, queue_ctrl, NULL);
-      return FALSE;
-    }
-
-    ctrl_src = gst_element_get_static_pad (queue_ctrl, "src");
-    ctrl_sink = gst_element_get_static_pad (qtismartvencbin, "sink_ctrl");
-    g_print ("\n smart code pad link %d \n", gst_pad_link (ctrl_src,
-            ctrl_sink));
-  } else {
-    g_print ("\n Adding all elements to the pipeline...\n");
-    gst_bin_add_many (GST_BIN (appctx->pipeline), filesrc, qtdemux, vparse,
-        vdecoder, pqueue, queue, tee, qtismartvencbin, h264parse, mp4mux,
-        filesink, queue_sc, queue_ctrl, NULL);
-
-    // Link the filesource and qtdemux
-    ret = gst_element_link (filesrc, qtdemux);
-    if (!ret) {
-      g_printerr ("\n filesource and qtdemux cannot be linked. Exiting.\n");
-      gst_bin_remove_many (GST_BIN (appctx->pipeline), filesrc, qtdemux, NULL);
-      return FALSE;
-    }
-
-    ret = gst_element_link_many (pqueue, vparse, vdecoder, tee, queue_sc, NULL);
-    if (!ret) {
-      g_printerr
-          ("\n sink_ctrl Pipeline elements cannot be linked. Exiting.\n");
-      gst_bin_remove_many (GST_BIN (appctx->pipeline), pqueue, vparse, vdecoder,
-          tee, queue_sc, NULL);
-      return FALSE;
-    }
-
-    ret = gst_element_link_many (qtismartvencbin, h264parse, mp4mux, filesink,
-        NULL);
-    if (!ret) {
-      g_printerr
-          ("\n sink_ctrl Pipeline elements cannot be linked. Exiting.\n");
-      gst_bin_remove_many (GST_BIN (appctx->pipeline), qtismartvencbin,
-          h264parse, mp4mux, filesink, NULL);
-      return FALSE;
-    }
-
-    g_signal_connect (qtdemux, "pad-added", G_CALLBACK (on_pad_added), pqueue);
-
-    sc_src = gst_element_get_static_pad (queue_sc, "src");
-    sc_sink = gst_element_get_static_pad (qtismartvencbin, "sink");
-
-    g_print ("\n smart code pad link %d \n", gst_pad_link (sc_src,
-            sc_sink));
-
-    ret = gst_element_link_many (tee, queue_ctrl, NULL);
-    if (!ret) {
-      g_printerr
-          ("\n sink_ctrl Pipeline elements cannot be linked. Exiting.\n");
-      gst_bin_remove_many (GST_BIN (appctx->pipeline), tee, queue_ctrl, NULL);
-      return FALSE;
-    }
-    ctrl_src = gst_element_get_static_pad (queue_ctrl, "src");
-    ctrl_sink = gst_element_get_static_pad (qtismartvencbin, "sink_ctrl");
-    g_print ("\n smart code pad link %d \n",
-        gst_pad_link (ctrl_src, ctrl_sink));
+  g_print ("\n Link Smart Codec elements...\n");
+  // Linking the encoder stream
+  ret = gst_element_link_many (qtiqmmfsrc, capsfilter_enc, queue_sc, NULL);
+  if (!ret) {
+    g_printerr
+        ("\n Video Smart Codec Pipeline elements cannot be linked. Exiting.\n");
+    gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc,
+        capsfilter_enc, queue_sc, NULL);
+    return FALSE;
   }
+
+  g_print ("\n Link encoder elements...\n");
+  // Linking the encoder stream
+  ret = gst_element_link_many (qtismartvencbin, h264parse, mp4mux, filesink,
+      NULL);
+  if (!ret) {
+    g_printerr
+        ("\n Video Encoder Pipeline elements cannot be linked. Exiting.\n");
+    gst_bin_remove_many (GST_BIN (appctx->pipeline), qtismartvencbin,
+        h264parse, mp4mux, filesink, NULL);
+    return FALSE;
+  }
+
+  sc_src = gst_element_get_static_pad (queue_sc, "src");
+  sc_sink = gst_element_get_static_pad (qtismartvencbin, "sink");
+  g_print ("\n smart code pad link %d \n", gst_pad_link (sc_src, sc_sink));
+
+  g_print ("\n Link sink_ctrl elements...\n");
+  // Linking the display stream
+  ret = gst_element_link_many (qtiqmmfsrc, capsfilter_ctrl, queue_ctrl, NULL);
+  if (!ret) {
+    g_printerr
+        ("\n sink_ctrl Pipeline elements cannot be linked. Exiting.\n");
+    gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc,
+        capsfilter_ctrl, queue_ctrl, NULL);
+    return FALSE;
+  }
+
+  ctrl_src = gst_element_get_static_pad (queue_ctrl, "src");
+  ctrl_sink = gst_element_get_static_pad (qtismartvencbin, "sink_ctrl");
+  g_print ("\n smart code pad link %d \n", gst_pad_link (ctrl_src,
+          ctrl_sink));
+
   gst_object_unref (sc_src);
   gst_object_unref (sc_sink);
   gst_object_unref (ctrl_src);
@@ -438,9 +316,6 @@ main (gint argc, gchar * argv[])
   {"output_file", 'o', 0, G_OPTION_ARG_STRING, &appctx->output_file,
     "Output Filename",
     "-o /opt/video.mp4"},
-  {"input_file", 'i', 0, G_OPTION_ARG_FILENAME, &appctx->input_file,
-    "Input Filename - i/p mp4 file path and name",
-    "e.g. -i /opt/<file_name>.mp4"},
   { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
@@ -474,14 +349,7 @@ main (gint argc, gchar * argv[])
 
   // Check for input source
   if (is_camera_available ()) {
-    g_print ("TARGET Can support file and camera source\n");
-  } else {
-    g_print ("TARGET Can only support file source.\n");
-    if (appctx->input_file == NULL){
-      g_print ("User need to give proper input file as source\n");
-      gst_app_context_free (appctx);
-      return ret;
-    }
+    g_print ("TARGET Can support camera source only \n");
   }
 
   // set the Output Filename
