@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -59,6 +59,10 @@ namespace camera = qmmf;
   g_string_append_printf (string, " %.*s Pipeline Controls %.*s\n", \
       30, EQUAL_LINE, 30, EQUAL_LINE);
 
+#define APPEND_ELEMENT_PROPERTIES_SECTION(string) \
+  g_string_append_printf (string, " %.*s Plugin Properties %.*s\n", \
+      30, EQUAL_LINE, 30, EQUAL_LINE);
+
 #define APPEND_ELEMENT_SIGNALS_SECTION(string) \
   g_string_append_printf (string, " %.*s Plugin Signals %.*s\n", \
       31, EQUAL_LINE, 32, EQUAL_LINE);
@@ -67,6 +71,12 @@ namespace camera = qmmf;
   g_string_append_printf (string, " %.*s Other %.*s\n", \
       36, EQUAL_LINE, 36, EQUAL_LINE);
 
+#define GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE(pspec, state) \
+    ((pspec->flags & GST_PARAM_MUTABLE_PLAYING) ? (state <= GST_STATE_PLAYING) \
+        : ((pspec->flags & GST_PARAM_MUTABLE_PAUSED) ? (state <= GST_STATE_PAUSED) \
+            : ((pspec->flags & GST_PARAM_MUTABLE_READY) ? (state <= GST_STATE_READY) \
+                : (state <= GST_STATE_NULL))))
+
 #define MAX_SIZE                       200
 #define NULL_STATE_OPTION              "0"
 #define READY_STATE_OPTION             "1"
@@ -74,7 +84,7 @@ namespace camera = qmmf;
 #define PLAYING_STATE_OPTION           "3"
 #define CHECK_METADATA_OPTION          "4"
 
-#define CAPTURE_MODE_OPTION            "c"
+#define QMMFSRC_MODE_OPTION            "c"
 #define QUIT_OPTION                    "q"
 #define MENU_BACK_OPTION               "b"
 
@@ -1721,8 +1731,8 @@ print_pipeline_options (GstElement * pipeline)
   APPEND_OTHER_OPTS_SECTION (options);
   g_string_append_printf (options, "   (%s) %-25s: %s\n", CHECK_METADATA_OPTION,
       "META", "Check or set metadata in READY/PAUSED/PLAYING state");
-  g_string_append_printf (options, "   (%s) %-25s: %s\n", CAPTURE_MODE_OPTION,
-      "Capture Options", "Choose a capture option (pipeline should support)");
+  g_string_append_printf (options, "   (%s) %-25s: %s\n", QMMFSRC_MODE_OPTION,
+      "Qmmfsrc Mode", "Choose an option in qmmfsrc to control");
   g_string_append_printf (options, "   (%s) %-25s: %s\n", QUIT_OPTION,
       "Quit", "Exit the application");
 
@@ -1790,7 +1800,7 @@ gst_pipeline_menu (GstAppContext *appctx, GstElement ** element, gchar ** prop)
       goto exit;
     }
 
-  } else if (g_str_equal (input, CAPTURE_MODE_OPTION)) {
+  } else if (g_str_equal (input, QMMFSRC_MODE_OPTION)) {
     *element = get_element_from_pipeline (pipeline, "qtiqmmfsrc");
     if (NULL == *element) {
       g_printerr ("No qtiqmmfsrc found in pipeline.\n");
@@ -1809,6 +1819,46 @@ gst_pipeline_menu (GstAppContext *appctx, GstElement ** element, gchar ** prop)
 exit:
   g_free (input);
   return active;
+}
+
+static void
+get_object_properties (GObject * object, GstState state, guint * index,
+    GstStructure * props, GString * options)
+{
+  GParamSpec **propspecs;
+  guint i = 0, nprops = 0;
+
+  propspecs = g_object_class_list_properties (
+      G_OBJECT_GET_CLASS (object), &nprops);
+
+  for (i = 0; i < nprops; i++) {
+    GParamSpec *param = propspecs[i];
+    gchar *field = NULL, *property = NULL;
+    const gchar *name = NULL;
+
+    // List only the properties that are mutable in current state.
+    if (!GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE (param, state))
+      continue;
+
+    name = g_param_spec_get_name (param);
+
+    field = g_strdup_printf ("%u", (*index));
+    property = !GST_IS_PAD (object) ? g_strdup (name) :
+        g_strdup_printf ("%s::%s", GST_PAD_NAME (object), name);
+
+    gst_structure_set (props, field, G_TYPE_STRING, property, NULL);
+
+    g_string_append_printf (options, "   (%2u) %-25s: %s\n", (*index),
+        name, g_param_spec_get_blurb (param));
+
+    g_free (property);
+    g_free (field);
+
+    // Increment the index for the next option.
+    (*index)++;
+  }
+
+  return;
 }
 
 static void
@@ -1873,14 +1923,22 @@ get_object_signals (GObject * object, guint * index, GstStructure * signals,
 }
 
 static void
-print_element_options (GstElement * element, GstStructure * signals)
+print_element_options (GstElement * element, GstStructure * props,
+    GstStructure * signals)
 {
   GString *options = g_string_new (NULL);
+  GstState state = GST_STATE_VOID_PENDING;
   guint index = 0;
 
   APPEND_MENU_HEADER (options);
 
-  // Remove "Plugin Properties" and "Pad" here.
+  // Get the current state of the element.
+  gst_element_get_state (element, &state, NULL, 0);
+
+  // Get the plugin element properties.
+  APPEND_ELEMENT_PROPERTIES_SECTION (options);
+  get_object_properties (G_OBJECT (element), state, &index, props, options);
+
   // Get the plugin element signals.
   APPEND_ELEMENT_SIGNALS_SECTION (options);
   get_object_signals (G_OBJECT (element), &index, signals, options);
@@ -1891,6 +1949,235 @@ print_element_options (GstElement * element, GstStructure * signals)
 
   g_print ("%s", options->str);
   g_string_free (options, TRUE);
+}
+
+static void
+print_property_info (GObject * object, GParamSpec *propspecs)
+{
+  GString *info = g_string_new (NULL);
+
+  APPEND_SECTION_SEPARATOR (info);
+
+  switch (G_PARAM_SPEC_VALUE_TYPE (propspecs)) {
+    case G_TYPE_UINT:
+    {
+      guint value;
+      GParamSpecUInt *range = G_PARAM_SPEC_UINT (propspecs);
+      g_object_get (object, propspecs->name, &value, NULL);
+
+      g_string_append_printf (info, " Current value: %u, Range: %u - %u\n",
+          value, range->minimum, range->maximum);
+      break;
+    }
+    case G_TYPE_INT:
+    {
+      gint value;
+      GParamSpecInt *range = G_PARAM_SPEC_INT (propspecs);
+      g_object_get (object, propspecs->name, &value, NULL);
+
+      g_string_append_printf (info, " Current value: %d, Range: %d - %d\n",
+          value, range->minimum, range->maximum);
+      break;
+    }
+    case G_TYPE_ULONG:
+    {
+      gulong value;
+      GParamSpecULong *range = G_PARAM_SPEC_ULONG (propspecs);
+      g_object_get (object, propspecs->name, &value, NULL);
+
+      g_string_append_printf (info, " Current value: %lu, Range: %lu - %lu\n",
+          value, range->minimum, range->maximum);
+      break;
+    }
+    case G_TYPE_LONG:
+    {
+      glong value;
+      GParamSpecLong *range = G_PARAM_SPEC_LONG (propspecs);
+      g_object_get (object, propspecs->name, &value, NULL);
+
+      g_string_append_printf (info, " Current value: %ld, Range: %ld - %ld\n",
+          value, range->minimum, range->maximum);
+      break;
+    }
+    case G_TYPE_UINT64:
+    {
+      guint64 value;
+      GParamSpecUInt64 *range = G_PARAM_SPEC_UINT64 (propspecs);
+      g_object_get (object, propspecs->name, &value, NULL);
+
+      g_string_append_printf (info, " Current value: %" G_GUINT64_FORMAT ", "
+          "Range: %" G_GUINT64_FORMAT " - %" G_GUINT64_FORMAT "\n", value,
+          range->minimum, range->maximum);
+      break;
+    }
+    case G_TYPE_INT64:
+    {
+      gint64 value;
+      GParamSpecInt64 *range = G_PARAM_SPEC_INT64 (propspecs);
+      g_object_get (object, propspecs->name, &value, NULL);
+
+      g_string_append_printf (info, " Current value: %" G_GINT64_FORMAT ", "
+          "Range: %" G_GINT64_FORMAT " - %" G_GINT64_FORMAT "\n", value,
+          range->minimum, range->maximum);
+      break;
+    }
+    case G_TYPE_FLOAT:
+    {
+      gfloat value;
+      GParamSpecFloat *range = G_PARAM_SPEC_FLOAT (propspecs);
+      g_object_get (object, propspecs->name, &value, NULL);
+
+      g_string_append_printf (info, " Current value: %15.7g, "
+          "Range: %15.7g - %15.7g\n", value, range->minimum, range->maximum);
+      break;
+    }
+    case G_TYPE_DOUBLE:
+    {
+      gdouble value;
+      GParamSpecDouble *range = G_PARAM_SPEC_DOUBLE (propspecs);
+      g_object_get (object, propspecs->name, &value, NULL);
+
+      g_string_append_printf (info, " Current value: %15.7g, "
+          "Range: %15.7g - %15.7g\n", value, range->minimum, range->maximum);
+      break;
+    }
+    case G_TYPE_BOOLEAN:
+    {
+      gboolean value;
+      g_object_get (object, propspecs->name, &value, NULL);
+
+      g_string_append_printf (info, " Current value: %s, Possible values: "
+          "0(false), 1(true)\n", value ? "true" : "false");
+      break;
+    }
+    case G_TYPE_STRING:
+    {
+      gchar *value;
+      g_object_get (object, propspecs->name, &value, NULL);
+      g_string_append_printf (info, " Current value: %s\n", value);
+      break;
+    }
+    default:
+      if (G_IS_PARAM_SPEC_ENUM (propspecs)) {
+        GEnumClass *enumklass = NULL;
+        const gchar *nick = "";
+        gint value = 0;
+        guint idx = 0;
+
+        g_object_get (object, propspecs->name, &value, NULL);
+        enumklass = G_ENUM_CLASS (g_type_class_ref (propspecs->value_type));
+
+        for (idx = 0; idx < enumklass->n_values; idx++) {
+          GEnumValue *genum = &(enumklass->values[idx]);
+
+          if (genum->value == value)
+            nick = genum->value_nick;
+
+          g_string_append_printf (info, "   (%d): %-16s - %s\n",
+              genum->value, genum->value_nick, genum->value_name);
+        }
+
+        g_type_class_unref (enumklass);
+
+        g_string_append_printf (info, "\n Current value: %d, \"%s\"\n",
+            value, nick);
+      } else if (propspecs->value_type == GST_TYPE_ARRAY) {
+        GValue value = G_VALUE_INIT;
+        gchar *string = NULL;
+
+        g_value_init (&value, GST_TYPE_ARRAY);
+        g_object_get_property (object, propspecs->name, &value);
+
+        string = gst_value_serialize (&value);
+        g_string_append_printf (info, "\n Current value: %s\n", string);
+
+        g_value_unset (&value);
+        g_free (string);
+      } else if (propspecs->value_type == GST_TYPE_STRUCTURE) {
+        GValue value = G_VALUE_INIT;
+        GstStructure *structure = NULL;
+        gchar *string = NULL;
+
+        g_value_init (&value, GST_TYPE_STRUCTURE);
+        g_object_get_property (object, propspecs->name, &value);
+
+        structure = GST_STRUCTURE (g_value_dup_boxed (&value));
+        g_value_unset (&value);
+
+        string = gst_structure_to_string (structure);
+        gst_structure_free (structure);
+
+        g_string_append_printf (info, "\n Current value: %s\n", string);
+        g_free (string);
+      } else {
+        g_string_append_printf (info, "Unknown type %ld \"%s\"\n",
+            (glong) propspecs->value_type, g_type_name (propspecs->value_type));
+      }
+      break;
+  }
+
+  APPEND_SECTION_SEPARATOR (info);
+
+  g_print ("%s", info->str);
+  g_string_free (info, TRUE);
+}
+
+static gboolean
+gst_property_menu (GstElement * element, GAsyncQueue * messages,
+    const gchar * propname)
+{
+  GObject *object = NULL;
+  GParamSpec *propspecs = NULL;
+  gchar *input = NULL, **strings = NULL;
+
+  // Split the string in order to check whether it is pad property.
+  strings = g_strsplit (propname, "::", 2);
+
+  // In case property belongs to a pad get reference to that pad by name.
+  object = (g_strv_length (strings) != 2) ? G_OBJECT (element) :
+      G_OBJECT (gst_element_get_static_pad (element, strings[0]));
+
+  // In case property belongs to a pad get pad property name.
+  propname = (g_strv_length (strings) != 2) ? propname : strings[1];
+
+  // Get the property specs structure.
+  propspecs =
+      g_object_class_find_property (G_OBJECT_GET_CLASS (object), propname);
+
+  print_property_info (object, propspecs);
+
+  if (propspecs->flags & G_PARAM_WRITABLE) {
+    g_print ("\nEnter value (or press Enter to keep current one): ");
+
+    // If FALSE is returned termination signal has been issued.
+    if (!wait_stdin_message (messages, &input)) {
+      if (GST_IS_PAD (object))
+        gst_object_unref (object);
+
+      g_strfreev (strings);
+      return FALSE;
+    }
+
+    // If it's not an empty string deserialize the string to a GValue.
+    if (!g_str_equal (input, "")) {
+      GValue value = G_VALUE_INIT;
+      g_value_init (&value, G_PARAM_SPEC_VALUE_TYPE (propspecs));
+
+      if (gst_value_deserialize (&value, input))
+        g_object_set_property (object, propname, &value);
+    }
+  } else if (propspecs->flags & G_PARAM_READABLE) {
+    g_print ("\nRead-Only property. Press Enter to continue...");
+  }
+
+  g_free (input);
+
+  // Unreference in case the object was a pad.
+  if (GST_IS_PAD (object))
+    gst_object_unref (object);
+
+  g_strfreev (strings);
+  return TRUE;
 }
 
 static gboolean
@@ -1982,13 +2269,14 @@ gst_signal_menu (GstElement * element, GAsyncQueue * messages,
 static gboolean
 gst_element_menu (GstElement ** element, GAsyncQueue * messages)
 {
-  GstStructure *signals = NULL;
+  GstStructure *props = NULL, *signals = NULL;
   gchar *input = NULL;
   gboolean active = TRUE;
 
+  props = gst_structure_new_empty ("properties");
   signals = gst_structure_new_empty ("signals");
 
-  print_element_options (*element, signals);
+  print_element_options (*element, props, signals);
 
   g_print ("\n\nChoose an option: ");
 
@@ -1996,7 +2284,11 @@ gst_element_menu (GstElement ** element, GAsyncQueue * messages)
   active = wait_stdin_message (messages, &input);
 
   // Handle the chosen option if not signalled to quit.
-  if (active && gst_structure_has_field (signals, input)) {
+  if (active && gst_structure_has_field (props, input)) {
+    const gchar *name = gst_structure_get_string (props, input);
+
+    active = gst_property_menu (*element, messages, name);
+  } else if (active && gst_structure_has_field (signals, input)) {
     guint signal_id = 0;
 
     gst_structure_get_uint (signals, input, &signal_id);
