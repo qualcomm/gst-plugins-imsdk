@@ -763,7 +763,10 @@ static GstStaticCaps gst_qmmfsrc_video_static_src_caps =
 #ifdef GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
                 ", NV12_10LE32"
 #endif // GST_VIDEO_NV12_10LE32_FORMAT_ENABLE
-                " }"));
+                " }") "; "
+            QMMFSRC_VIDEO_BAYER_CAPS (
+                "{ bggr, rggb, gbrg, grbg, mono }",
+                "{ 8, 10, 12, 16 }"));
 
 static GstStaticCaps gst_qmmfsrc_image_static_src_caps =
     GST_STATIC_CAPS (QMMFSRC_IMAGE_JPEG_CAPS "; "

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -463,30 +463,28 @@ gst_fcv_regions_overlapping_area (GstVideoRectangle * l_rect,
 
 static inline guint
 gst_fcv_composition_blit_area (GstVideoFrame * outframe, GstVideoBlit * blits,
-    guint index, guint r_idx)
+    guint index)
 {
   GstVideoBlit *blit = NULL;
   GstVideoRectangle *region = NULL, *l_region = NULL;
-  guint num = 0, n = 0, area = 0;
+  guint num = 0, area = 0;
 
   // Fetch the blit at current index to which we will compare all others.
   blit = &(blits[index]);
 
-  // If there are no destination regions then the whole frame is the region.
-  if (r_idx >= blit->n_regions)
+  // If there are no destination region then the whole frame is the region.
+  if ((blit->destination.w == 0) || (blit->destination.h == 0))
     return GST_VIDEO_FRAME_WIDTH (outframe) * GST_VIDEO_FRAME_HEIGHT (outframe);
 
   // Calculate the destination area filled with frame content.
-  region = &(blit->destinations[r_idx]);
+  region = &(blit->destination);
   area = region->w * region->h;
 
   // Iterate destination region for each blit and subtract overlapping area.
   for (num = 0; num < index; num++) {
     // Subtract overlapping are of the destination regions in that blit object.
-    for (n = 0; n < blits[num].n_regions; n++) {
-      l_region = &(blits[num].destinations[n]);
-      area -= gst_fcv_regions_overlapping_area (region, l_region);
-    }
+    l_region = &(blits[num].destination);
+    area -= gst_fcv_regions_overlapping_area (region, l_region);
   }
 
   return area;
@@ -522,7 +520,7 @@ gst_fcv_update_object (GstFcvObject * object, const gchar * type,
   height = GST_VIDEO_FRAME_HEIGHT (frame);
 
   // Take the region values only if they are valid.
-  if ((region != NULL) && (region->w != 0) && (region->h != 0) &&
+  if ((region->w != 0) && (region->h != 0) &&
       (width >= (region->x + region->w)) && (height >= (region->y + region->h))) {
     x = region->x;
     y = region->y;
@@ -2042,39 +2040,31 @@ gst_fcv_video_converter_compose (GstFcvVideoConverter * convert,
     // Iterate over the input blit entries and update each FCV object.
     for (num = 0; num < n_blits; num++) {
       GstVideoBlit *blit = &(blits[num]);
-      guint r_idx = 0;
+      GstFcvObject *object = NULL;
 
-      // Update a new FCV object (at least 1) for each source/destnation pair.
-      do {
-        GstFcvObject *object = NULL;
-        GstVideoRectangle *region = NULL;
+      if (n_objects >= GST_FCV_MAX_DRAW_OBJECTS) {
+        GST_ERROR ("Number of objects exceeds %d!", GST_FCV_MAX_DRAW_OBJECTS);
+        return FALSE;
+      }
 
-        if (n_objects >= GST_FCV_MAX_DRAW_OBJECTS) {
-          GST_ERROR ("Number of objects exceeds %d!", GST_FCV_MAX_DRAW_OBJECTS);
-          return FALSE;
-        }
+      // Intialization of the source FCV object.
+      object = &(objects[n_objects]);
 
-        // Intialization of the source FCV object.
-        object = &(objects[n_objects]);
-        region = (r_idx < blit->n_regions) ? &(blit->sources[r_idx]) : NULL;
+      gst_fcv_update_object (object, "Source", blit->frame, &(blit->source),
+          blit->flip, blit->rotate, 0);
 
-        gst_fcv_update_object (object, "Source", blit->frame, region,
-            blit->flip, blit->rotate, 0);
+      // Intialization of the destination FCV object.
+      object = &(objects[n_objects + 1]);
 
-        // Intialization of the destination FCV object.
-        object = &(objects[n_objects + 1]);
-        region = (r_idx < blit->n_regions) ? &(blit->destinations[r_idx]) : NULL;
+      gst_fcv_update_object (object, "Destination", outframe, &(blit->destination),
+          GST_VCE_FLIP_NONE, GST_VCE_ROTATE_0, compositions[idx].flags);
 
-        gst_fcv_update_object (object, "Destination", outframe, region,
-            GST_VCE_FLIP_NONE, GST_VCE_ROTATE_0, compositions[idx].flags);
+      // Subtract blit area from total area.
+      if (area != 0)
+        area -= gst_fcv_composition_blit_area (outframe, blits, num);
 
-        // Subtract blit area from total area.
-        if (area != 0)
-          area -= gst_fcv_composition_blit_area (outframe, blits, num, r_idx);
-
-        // Increment the objects counter by 2 for for Source/Destination pair.
-        n_objects += 2;
-      } while (++r_idx < blit->n_regions);
+      // Increment the objects counter by 2 for for Source/Destination pair.
+      n_objects += 2;
     }
 
     if (compositions[idx].bgfill && (area > 0)) {
