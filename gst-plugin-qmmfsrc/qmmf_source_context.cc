@@ -28,7 +28,7 @@
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
 *
-* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -233,6 +233,7 @@ struct _GstQmmfContext {
   /// Offline IFE enable for multicamera usecase
   gboolean          multicamera_hint;
 #endif // FEATURE_OFFLINE_IFE_SUPPORT
+  gboolean          sw_tnr;
 
   /// Logical Camera Information
   GstQmmfLogicalCamInfo logical_cam_info;
@@ -1381,6 +1382,13 @@ gst_qmmf_context_open (GstQmmfContext * context)
   xtraparam.Update (::qmmf::recorder::QMMF_OFFLINE_IFE, qmmf_offline_ife);
 #endif // FEATURE_OFFLINE_IFE_SUPPORT
 
+  // SW TNR
+#ifdef FEATURE_SW_TNR
+  ::qmmf::recorder::SWTNR sw_tnr;
+  sw_tnr.enable = context->sw_tnr;
+  xtraparam.Update (::qmmf::recorder::QMMF_SW_TNR, sw_tnr);
+#endif // FEATURE_OFFLINE_IFE_SUPPORT
+
   // Camera Operation Mode
   ::qmmf::recorder::CamOpModeControl cam_opmode;
   gint extra_param_entry = 0;
@@ -2225,6 +2233,9 @@ gst_qmmf_context_set_camera_param (GstQmmfContext * context, guint param_id,
       context->multicamera_hint = g_value_get_boolean (value);
       return;
 #endif // FEATURE_OFFLINE_IFE_SUPPORT
+    case PARAM_CAMERA_SW_TNR:
+      context->sw_tnr = g_value_get_boolean (value);
+      return;
   }
 
   if (context->state >= GST_STATE_READY &&
@@ -2910,6 +2921,9 @@ gst_qmmf_context_get_camera_param (GstQmmfContext * context, guint param_id,
       g_value_set_boolean (value, context->multicamera_hint);
       break;
 #endif // FEATURE_OFFLINE_IFE_SUPPORT
+    case PARAM_CAMERA_SW_TNR:
+      g_value_set_boolean (value, context->sw_tnr);
+      break;
     case PARAM_CAMERA_MANUAL_WB_SETTINGS:
     {
       gchar *string = NULL;
