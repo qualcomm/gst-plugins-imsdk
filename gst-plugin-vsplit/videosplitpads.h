@@ -178,7 +178,7 @@ gst_video_split_srcpad_setcaps (GstVideoSplitSrcPad * srcpad, GstCaps * incaps);
 
 GstBufferPool *
 gst_video_split_create_pool (GstPad * pad, GstCaps * caps,
-    GstVideoAlignment * align);
+    GstVideoAlignment * align, GstAllocationParams * params);
 
 G_END_DECLS
 
