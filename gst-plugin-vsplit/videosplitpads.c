@@ -135,7 +135,7 @@ gst_video_split_mode_get_type (void)
 
 GstBufferPool *
 gst_video_split_create_pool (GstPad * pad, GstCaps * caps,
-    GstVideoAlignment * align)
+    GstVideoAlignment * align, GstAllocationParams * params)
 {
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
@@ -179,7 +179,7 @@ gst_video_split_create_pool (GstPad * pad, GstCaps * caps,
 
   gst_buffer_pool_config_set_params (config, caps, info.size,
       DEFAULT_PROP_MIN_BUFFERS, DEFAULT_PROP_MAX_BUFFERS);
-  gst_buffer_pool_config_set_allocator (config, allocator, NULL);
+  gst_buffer_pool_config_set_allocator (config, allocator, params);
   gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
 
   if (!gst_buffer_pool_set_config (pool, config)) {
@@ -934,7 +934,7 @@ gst_video_split_srcpad_decide_allocation (GstVideoSplitSrcPad * pad,
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
   GstAllocator *allocator = NULL;
-  GstAllocationParams params;
+  GstAllocationParams params = { 0, };
   guint size = 0, minbuffers = 0, maxbuffers = 0;
   GstVideoInfo info;
   GstVideoAlignment align = { 0, }, ds_align = { 0, };
@@ -961,8 +961,12 @@ gst_video_split_srcpad_decide_allocation (GstVideoSplitSrcPad * pad,
   gst_query_get_video_alignment (query, &ds_align);
   align = gst_video_calculate_common_alignment (&align, &ds_align);
 
+  if (gst_query_get_n_allocation_params (query))
+    gst_query_parse_nth_allocation_param (query, 0, NULL, &params);
+
   // Create a new buffer pool.
-  if ((pool = gst_video_split_create_pool (GST_PAD (pad), caps, &align)) == NULL) {
+  pool = gst_video_split_create_pool (GST_PAD (pad), caps, &align, &params);
+  if (pool == NULL) {
     GST_ERROR_OBJECT (pad, "Failed to create buffer pool!");
     return FALSE;
   }

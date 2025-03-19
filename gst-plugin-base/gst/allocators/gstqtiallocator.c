@@ -81,6 +81,7 @@ gst_qti_allocator_alloc (GstAllocator * allocator, gsize size,
   GstMemory *mem = NULL;
   GstMapInfo map_info;
   gint res = 0;
+  gsize maxsize = size + params->prefix + params->padding;
 
   while (priv->mem_queue) {
     mem = gst_atomic_queue_pop (priv->mem_queue);
@@ -123,7 +124,8 @@ gst_qti_allocator_alloc (GstAllocator * allocator, gsize size,
     alloc_data.flags = ION_FLAG_CACHED;
 #endif // HAVE_LINUX_DMA_HEAP_H
     alloc_data.fd = 0;
-    alloc_data.len = size;
+
+    alloc_data.len = maxsize;
 
 #ifdef HAVE_LINUX_DMA_HEAP_H
     res = ioctl (priv->devfd, DMA_HEAP_IOCTL_ALLOC, &alloc_data);
@@ -138,7 +140,7 @@ gst_qti_allocator_alloc (GstAllocator * allocator, gsize size,
     }
 
     mem = gst_fd_allocator_alloc (allocator, alloc_data.fd,
-        size, GST_FD_MEMORY_FLAG_KEEP_MAPPED);
+        maxsize, GST_FD_MEMORY_FLAG_KEEP_MAPPED);
 
     // TODO: As a precaution map the memory as READ/WRITE when keep_mapped flag
     // is set to avoid case where the memory is mapped with READ only access
@@ -147,11 +149,19 @@ gst_qti_allocator_alloc (GstAllocator * allocator, gsize size,
       GST_ERROR_OBJECT (qtiallocator, "Failed to map gst memory %p", mem);
       return NULL;
     }
+
+    if (params->prefix && (params->flags & GST_MEMORY_FLAG_ZERO_PREFIXED))
+      memset (map_info.data, 0, params->prefix);
+
+    if (params->padding && (params->flags & GST_MEMORY_FLAG_ZERO_PADDED))
+      memset (map_info.data + params->prefix + size, 0, params->padding);
+
     gst_memory_unmap (mem, &map_info);
 
-    GST_DEBUG_OBJECT (qtiallocator, "Allocated memory %p of size %"G_GSIZE_FORMAT
-        ", flags %d, align %"G_GSIZE_FORMAT", prefix %"G_GSIZE_FORMAT" fd %d",
-        mem, size, params->flags, params->align, params->prefix, alloc_data.fd);
+    GST_DEBUG_OBJECT (qtiallocator, "Allocated memory %p of size %" G_GSIZE_FORMAT
+        ", flags %d, align %" G_GSIZE_FORMAT ", prefix %" G_GSIZE_FORMAT
+        ", padding %" G_GSIZE_FORMAT " fd %d", mem, maxsize, params->flags,
+        params->align, params->prefix, params->padding, alloc_data.fd);
 
     if (priv->mem_queue) {
       g_return_val_if_fail (mem->mini_object.dispose == NULL, NULL);
