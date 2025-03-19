@@ -15,32 +15,6 @@ gi.require_version("Gst", "1.0")
 gi.require_version("GLib", "2.0")
 from gi.repository import Gst, GLib
 
-DESCRIPTION = """
-The application uses:
-- YOLOv8 TFLite model to identify the object in scene from video file and
-overlay the bounding boxes over the detected objects
-- YOLOv8 TFLite model to identify the object in scene from video file and
-overlay the bounding boxes over the detected objects
-- Resnet101 TFLite model to classify scene from video file and overlay the
-classification labels on the top left corner
-- FFNet40S TFLite model to produce semantic segmentations for video file
-Then the results are shown side by side on the display.
-
-The default file paths in the python script are as follows:
-- Detection model (YOLOv8): /etc/models/YoloV8N_Detection_Quantized.tflite
-- Detection labels: /etc/labels/yolov8n.labels
-- Classification model: /etc/models/Resnet101_Quantized.tflite
-- Classification labels: /etc/labels/resnet101.labels
-- Segmentation model: /etc/models/ffnet_40s_quantized.tflite
-- Segmentation labels: /etc/labels/dv3-argmax.labels
-- Input video for detection: /etc/media/detection_input.mp4
-- Input video for classification: /etc/media/classification_input.mp4
-- Input video for segmentation: /etc/media/segmentation_input.MOV
-
-To override the default settings,
-please configure the corresponding module and constants as well.
-"""
-
 # Configurations for Detection (0)
 DEFAULT_DETECTION_INPUT_0 = "/etc/media/detection_input.mp4"
 DEFAULT_DETECTION_MODEL_0 = "/etc/models/YoloV8N_Detection_Quantized.tflite"
@@ -73,6 +47,32 @@ DEFAULT_SEGMENTATION_LABELS = "/etc/labels/dv3-argmax.labels"
 DEFAULT_SEGMENTATION_CONSTANTS = "FFNet-40S,q-offsets=<50.0>,\
     q-scales=<0.31378185749053955>;"
 
+DESCRIPTION = f"""
+The application uses:
+- YOLOv8 TFLite model to identify the object in scene from video file and
+overlay the bounding boxes over the detected objects
+- YOLOv8 TFLite model to identify the object in scene from video file and
+overlay the bounding boxes over the detected objects
+- Resnet101 TFLite model to classify scene from video file and overlay the
+classification labels on the top left corner
+- FFNet40S TFLite model to produce semantic segmentations for video file
+Then the results are shown side by side on the display.
+
+The default file paths in the python script are as follows:
+- Input video for detection:      {DEFAULT_DETECTION_INPUT_0}
+- Detection model (YOLOv8):       {DEFAULT_DETECTION_MODEL_0}
+- Detection labels:               {DEFAULT_DETECTION_LABELS_0}
+- Input video for classification: {DEFAULT_CLASSIFICATION_INPUT}
+- Classification model:           {DEFAULT_CLASSIFICATION_MODEL}
+- Classification labels:          {DEFAULT_CLASSIFICATION_LABELS}
+- Input video for segmentation:   {DEFAULT_SEGMENTATION_INPUT}
+- Segmentation model:             {DEFAULT_SEGMENTATION_MODEL}
+- Segmentation labels:            {DEFAULT_SEGMENTATION_LABELS}
+
+To override the default settings,
+please configure the corresponding module and constants as well.
+"""
+
 eos_received = False
 def create_element(factory_name, name):
     """Create a GStreamer element."""
@@ -100,24 +100,14 @@ def construct_pipeline(pipe):
     """Initialize and link elements for the GStreamer pipeline."""
     # Parse arguments
     parser = argparse.ArgumentParser(
-        add_help=False,
+        description=DESCRIPTION,
         formatter_class=type(
-            "CustomFormatter",
-            (
-                argparse.ArgumentDefaultsHelpFormatter,
-                argparse.RawTextHelpFormatter,
-            ),
-            {},
-        ),
+            'CustomFormatter',
+            (argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter),
+            {}
+        )
     )
 
-    parser.add_argument(
-        "-h",
-        "--help",
-        action="help",
-        default=argparse.SUPPRESS,
-        help=DESCRIPTION,
-    )
     parser.add_argument(
         "--detection_input_0", type=str, default=DEFAULT_DETECTION_INPUT_0,
         help="Input File Path for Detection (0)"
