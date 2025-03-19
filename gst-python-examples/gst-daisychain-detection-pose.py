@@ -296,7 +296,7 @@ def create_pipeline(pipeline):
     elif args.camera:
         elements["qmmfsrc_caps"].set_property(
             "caps", Gst.Caps.from_string(
-                "video/x-raw,format=NV12,width=1920,height=1080,"
+                "video/x-raw,format=NV12,width=1280,height=720,"
                 "framerate=30/1"
             )
         )
