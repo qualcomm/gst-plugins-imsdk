@@ -657,6 +657,46 @@ gst_socket_sink_stop (GstBaseSink * basesink)
 }
 
 static gboolean
+gst_socket_sink_query (GstBaseSink * bsink, GstQuery * query)
+{
+  GstFdSocketSink *sink = GST_SOCKET_SINK (bsink);
+  gboolean retval = FALSE;
+
+  switch (GST_QUERY_TYPE (query)) {
+    case GST_QUERY_ALLOCATION:
+    {
+      GstCaps *caps = NULL;
+      GstStructure *structure = NULL;
+      gboolean needpool = FALSE;
+
+      gst_query_parse_allocation (query, &caps, &needpool);
+      if (NULL == caps) {
+        GST_ERROR_OBJECT (sink, "Failed to extract caps from query!");
+        retval = FALSE;
+        break;
+      }
+
+      structure = gst_caps_get_structure (caps, 0);
+
+      if (gst_structure_has_name (structure, "video/x-raw") ||
+          gst_structure_has_name (structure, "neural-network/tensors"))
+        gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL);
+
+      retval = TRUE;
+      break;
+    }
+    default:
+      retval = FALSE;
+      break;
+  }
+
+  if (!retval)
+    retval = GST_BASE_SINK_CLASS (parent_class)->query (bsink, query);
+
+  return retval;
+}
+
+static gboolean
 gst_socket_sink_event (GstBaseSink *bsink, GstEvent *event)
 {
   GstFdSocketSink *sink = GST_SOCKET_SINK (bsink);
@@ -774,6 +814,7 @@ gst_socket_sink_class_init (GstFdSocketSinkClass * klass)
   gstbasesink->render = GST_DEBUG_FUNCPTR (gst_socket_sink_render);
   gstbasesink->start = GST_DEBUG_FUNCPTR (gst_socket_sink_start);
   gstbasesink->stop = GST_DEBUG_FUNCPTR (gst_socket_sink_stop);
+  gstbasesink->query = GST_DEBUG_FUNCPTR (gst_socket_sink_query);
   gstbasesink->event = GST_DEBUG_FUNCPTR (gst_socket_sink_event);
   gstbasesink->set_caps = GST_DEBUG_FUNCPTR (gst_socket_sink_set_caps);
 }
