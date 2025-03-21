@@ -234,6 +234,7 @@ gst_batch_update_src_caps (GstBatch * batch)
   GList *list = NULL;
   GValue framerate = G_VALUE_INIT;
   guint idx = 0, length = 0;
+  gboolean success = FALSE;
 
   // In case the RECONFIGURE flag was not set just return immediately.
   if (!gst_pad_check_reconfigure (batch->srcpad))
@@ -368,7 +369,10 @@ gst_batch_update_src_caps (GstBatch * batch)
   }
 
   // Propagate fixates caps to the peer of the source pad.
-  return gst_pad_set_caps (batch->srcpad, srccaps);
+  success = gst_pad_set_caps (batch->srcpad, srccaps);
+  g_cond_broadcast (&(batch)->qwait);
+
+  return success;
 }
 
 static gboolean
@@ -466,10 +470,8 @@ gst_batch_worker_task (gpointer userdata)
 
   GST_BATCH_LOCK (batch);
 
-  // Initial block until all sink pads have negotiated their caps and
-  // 1st buffers have arrived on all sink pads or until signaled to stop.
-  while (batch->active && (!gst_batch_sink_caps_negotiated (batch) ||
-      !gst_batch_sink_buffers_available (batch)) && !srcpad->stmstart)
+  // Initial block until all sink pads have negotiated their caps.
+  while (batch->active && !gst_batch_sink_caps_negotiated (batch))
     g_cond_wait (&batch->wakeup, &(batch)->lock);
 
   GST_BATCH_UNLOCK (batch);
@@ -479,6 +481,15 @@ gst_batch_worker_task (gpointer userdata)
         ("Output format not negotiated"));
     return;
   }
+
+  GST_BATCH_LOCK (batch);
+
+  // Wait until 1st buffers have arrived on all sink pads or signaled to stop.
+  while (batch->active && (GST_FORMAT_UNDEFINED == srcpad->segment.format) &&
+      !gst_batch_sink_buffers_available (batch))
+    g_cond_wait (&batch->wakeup, &(batch)->lock);
+
+  GST_BATCH_UNLOCK (batch);
 
   GST_BATCH_SRC_LOCK (srcpad);
 
@@ -817,6 +828,16 @@ gst_batch_sink_query (GstPad * pad, GstObject * parent, GstQuery * query)
 
       gst_data_queue_set_flushing (sinkpad->buffers, FALSE);
       return TRUE;
+    case GST_QUERY_ALLOCATION:
+      GST_BATCH_LOCK (batch);
+
+      // Hold the allocation query until srcpad caps are negotiated
+      while (batch->active && !gst_pad_has_current_caps (batch->srcpad))
+        g_cond_wait (&batch->qwait, &(batch)->lock);
+
+      GST_BATCH_UNLOCK (batch);
+
+      return gst_pad_peer_query (batch->srcpad, query);
     default:
       break;
   }
@@ -843,6 +864,7 @@ gst_batch_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
       success = gst_batch_sink_setcaps (batch, pad, caps);
       gst_event_unref (event);
 
+      g_cond_signal (&(batch)->wakeup);
       return success;
     }
     case GST_EVENT_SEGMENT:
@@ -1098,6 +1120,7 @@ gst_batch_finalize (GObject * object)
 
   g_rec_mutex_clear (&batch->worklock);
   g_cond_clear (&batch->wakeup);
+  g_cond_clear (&batch->qwait);
 
   g_mutex_clear (&batch->lock);
 
@@ -1147,6 +1170,7 @@ gst_batch_init (GstBatch * batch)
 
   g_rec_mutex_init (&batch->worklock);
   g_cond_init (&batch->wakeup);
+  g_cond_init (&batch->qwait);
 
   template = gst_static_pad_template_get (&gst_batch_src_template);
   batch->srcpad = g_object_new (GST_TYPE_BATCH_SRC_PAD, "name", "src",
