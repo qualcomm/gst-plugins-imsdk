@@ -81,6 +81,8 @@ struct _GstBatch
   GRecMutex      worklock;
   /// Condition for push/pop buffers from the queues.
   GCond          wakeup;
+  /// Condition to hold allocation query until src caps are negotiated.
+  GCond          qwait;
 };
 
 struct _GstBatchClass {
