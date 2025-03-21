@@ -300,15 +300,15 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       g_printerr ("Failed to create pulsesrc\n");
       goto error_clean_elements;
     }
+
+    // Create caps to negotiate b/w source and audiobuffersplit
+    audio_caps = gst_element_factory_make ("capsfilter", "audio_caps");
+    if (!audio_caps) {
+      g_printerr ("Failed to create audio_caps\n");
+      goto error_clean_elements;
+    }
   } else {
     g_printerr ("Invalid source type\n");
-    goto error_clean_elements;
-  }
-
-  // Create caps to negotiate b/w source and audiobuffersplit
-  audio_caps = gst_element_factory_make ("capsfilter", "audio_caps");
-  if (!audio_caps) {
-    g_printerr ("Failed to create audio_caps\n");
     goto error_clean_elements;
   }
 
@@ -385,13 +385,13 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         "format", G_TYPE_STRING, "NV12", NULL);
     g_object_set (G_OBJECT (v4l2h264dec_caps), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
+  } else if (options->use_pulsesrc) {
+    // 2.2 Set properties for audio stream
+    filtercaps = gst_caps_new_simple ("audio/x-raw",
+        "format", G_TYPE_STRING, "S16LE", NULL);
+    g_object_set (G_OBJECT (audio_caps), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
   }
-
-  // 2.2 Set properties for audio stream
-  filtercaps = gst_caps_new_simple ("audio/x-raw",
-      "format", G_TYPE_STRING, "S16LE", NULL);
-  g_object_set (G_OBJECT (audio_caps), "caps", filtercaps, NULL);
-  gst_caps_unref (filtercaps);
 
   // 2.3 Set properties of audiobuffersplit
   g_object_set (G_OBJECT (audiobuffersplit), "output-buffer-size", 31200, NULL);
@@ -464,13 +464,13 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     gst_bin_add_many (GST_BIN (appctx->pipeline), audio_parse,
         audio_dec, audioconvert, audioresample, NULL);
   } else if (options->use_pulsesrc) {
-    gst_bin_add_many (GST_BIN (appctx->pipeline), pulsesrc, NULL);
+    gst_bin_add_many (GST_BIN (appctx->pipeline), pulsesrc, audio_caps, NULL);
   } else {
     g_printerr ("Incorrect input source type\n");
     goto error_clean_elements;
   }
 
-  gst_bin_add_many (GST_BIN (appctx->pipeline), audio_caps, audiobuffersplit,
+  gst_bin_add_many (GST_BIN (appctx->pipeline), audiobuffersplit,
       qtimlaconverter, qtimltflite, qtimlaclassification,
       classification_filter, qtivcomposer, waylandsink, NULL);
 
@@ -496,8 +496,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     }
 
     ret = gst_element_link_many (queue[2], audio_parse, audio_dec,
-        queue[3], audioconvert, audio_caps,
-        audioresample, audiobuffersplit, NULL);
+        queue[3], audioconvert, audioresample, audiobuffersplit, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for audio_parse->"
           "audio_dec->audioconvert->audioresample->audiobuffersplit\n");
