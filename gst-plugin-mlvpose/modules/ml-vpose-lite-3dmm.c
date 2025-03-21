@@ -360,6 +360,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   gfloat tx = 0.0, ty = 0.0, tf = 0.0, x = 0.0, y = 0.0, z = 0.0;
   gfloat tmp_x = 0.0, tmp_y = 0.0, tmp_z = 0.0;
   guint n_vertices = 0, idx = 0, num = 0, id = 0;
+  guint vertices_idx = 0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);
@@ -382,18 +383,14 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
   mltype = GST_ML_FRAME_TYPE (mlframe);
 
-  if (GST_ML_INFO_N_TENSORS (&(submodule->mlinfo)) == 2) {
-    // Convenient pointer to the landmark vertices inside the 2nd tensor.
-    vertices = GST_ML_FRAME_BLOCK_DATA (mlframe, 1);
-    n_vertices = GST_ML_FRAME_DIM (mlframe, 1, 1);
-  } else if (GST_ML_INFO_N_TENSORS (&(submodule->mlinfo)) == 1) {
-    // Convenient pointer to the landmark vertices inside the 1st tensor.
-    vertices = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
-    n_vertices = GST_ML_FRAME_DIM (mlframe, 0, 1);
-  }
+  if (GST_ML_INFO_N_TENSORS (&(submodule->mlinfo)) == 2)
+    vertices_idx = 1;
+
+  vertices = GST_ML_FRAME_BLOCK_DATA (mlframe, vertices_idx);
+  n_vertices = GST_ML_FRAME_DIM (mlframe, vertices_idx, 1);
 
   confidence = gst_ml_tensor_extract_value (mltype, vertices, n_vertices - 1,
-        submodule->qoffsets[1], submodule->qscales[1]);
+        submodule->qoffsets[vertices_idx], submodule->qscales[vertices_idx]);
 
   GST_LOG ("Confidence[%f]", confidence);
 
@@ -403,22 +400,28 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   // Translation values on the Z, Y and X axis respectively.
   // TODO: What is tf ?? What are those coefficients ??
   tf = (gst_ml_tensor_extract_value (mltype, vertices, n_vertices - 2,
-      submodule->qoffsets[1], submodule->qscales[1]) * 150.0F) + 450.0F;
+      submodule->qoffsets[vertices_idx], submodule->qscales[vertices_idx])
+      * 150.0F) + 450.0F;
   ty = gst_ml_tensor_extract_value (mltype, vertices, n_vertices - 3,
-      submodule->qoffsets[1], submodule->qscales[1]) * 60.0F;
+      submodule->qoffsets[vertices_idx], submodule->qscales[vertices_idx])
+      * 60.0F;
   tx = gst_ml_tensor_extract_value (mltype, vertices, n_vertices - 4,
-      submodule->qoffsets[1], submodule->qscales[1]) * 60.0F;
+      submodule->qoffsets[vertices_idx], submodule->qscales[vertices_idx])
+      * 60.0F;
 
   GST_LOG ("Translation coordinates X[%f] Y[%f] F[%f]", tx, ty, tf);
 
   // The rotational angles along the 3 axis in radians.
   // TODO: What are those coefficients ??
   roll = gst_ml_tensor_extract_value (mltype, vertices, n_vertices - 5,
-      submodule->qoffsets[1], submodule->qscales[1]) * M_PI / 2;
+      submodule->qoffsets[vertices_idx], submodule->qscales[vertices_idx])
+      * M_PI / 2;
   yaw = gst_ml_tensor_extract_value (mltype, vertices, n_vertices - 6,
-      submodule->qoffsets[1], submodule->qscales[1]) * M_PI / 2;
+      submodule->qoffsets[vertices_idx], submodule->qscales[vertices_idx])
+      * M_PI / 2;
   pitch = (gst_ml_tensor_extract_value (mltype, vertices, n_vertices - 7,
-      submodule->qoffsets[1], submodule->qscales[1]) * M_PI / 2) + M_PI;
+      submodule->qoffsets[vertices_idx], submodule->qscales[vertices_idx])
+      * M_PI / 2) + M_PI;
 
   GST_LOG ("Roll[%f] Yaw[%f] Pitch[%f]", roll, yaw, pitch);
 
@@ -494,7 +497,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
     for (num = 0; num < ALPHA_EXP_SIZE; num++) {
       value = (gst_ml_tensor_extract_value (mltype, vertices, ALPHA_ID_SIZE + num,
-          submodule->qoffsets[1], submodule->qscales[1]) * 0.5F) + 0.5F;
+          submodule->qoffsets[vertices_idx], submodule->qscales[vertices_idx])
+          * 0.5F) + 0.5F;
 
       id = idx * 3 * ALPHA_EXP_SIZE + num;
       x += value * g_array_index (submodule->blendshape, gfloat, id);
