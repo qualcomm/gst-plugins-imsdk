@@ -12,31 +12,6 @@
 
 G_BEGIN_DECLS
 
-typedef void (* ConvertFunc) (const void * s, void * d, size_t in, size_t out);
-
-#define DEFINE_CONVERTER(srctype, max_val, desttype)                        \
-static void                                                                 \
-do_convert_##srctype##_##desttype (const void * s, void * d,                \
-    size_t in, size_t out)                                                  \
-{                                                                           \
-  size_t i = (out < in) ? out : in;                                         \
-  const srctype *src = (srctype *)s;                                        \
-  desttype *dest = (desttype *)d;                                           \
-  while (i-- > 0) {                                                         \
-    *dest++ = ((desttype)(*src++)) / (max_val);                             \
-  }                                                                         \
-  while (in < out) {                                                        \
-    *dest++ = 0.0;                                                          \
-    in++;                                                                   \
-  }                                                                         \
-} extern void glib_dummy_decl (void)
-
-DEFINE_CONVERTER (gint8, G_MAXINT8, gfloat);
-DEFINE_CONVERTER (guint8, G_MAXUINT8, gfloat);
-DEFINE_CONVERTER (gint16, G_MAXINT16, gfloat);
-DEFINE_CONVERTER (guint16, G_MAXUINT16, gfloat);
-DEFINE_CONVERTER (gint32, G_MAXINT32, gfloat);
-DEFINE_CONVERTER (guint32, G_MAXUINT32, gfloat);
 
 #define DEFAULT_AUDIO_SAMPLE_NUMBER  (15600)
 #define DEFAULT_AUDIO_SAMPLE_RATE    (16000)
@@ -98,14 +73,14 @@ DEFINE_CONVERTER (guint32, G_MAXUINT32, gfloat);
 
 typedef struct _GstAudioConvEngine GstAudioConvEngine;
 
-GST_API gpointer
+GST_AUDIO_API GstAudioConvEngine *
 gst_mlaconverter_engine_new (const GstStructure * settings);
 
-GST_API void
-gst_mlaconverter_engine_free (gpointer engine);
+GST_AUDIO_API void
+gst_mlaconverter_engine_free (GstAudioConvEngine * engine);
 
-GST_API gboolean
-gst_mlaconverter_engine_process (gpointer engine,
+GST_AUDIO_API gboolean
+gst_mlaconverter_engine_process (GstAudioConvEngine * engine,
     GstAudioBuffer * audioframe, GstMLFrame * mlframe);
 
 G_END_DECLS

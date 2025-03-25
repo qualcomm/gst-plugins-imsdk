@@ -11,7 +11,7 @@
 #include <gst/base/gstbasetransform.h>
 #include <gst/ml/ml-frame.h>
 
-#include "mlaconverter-engine.h"
+#include "audio-converter-engine.h"
 
 G_BEGIN_DECLS
 
@@ -39,19 +39,23 @@ typedef struct _GstMLAudioConverterClass GstMLAudioConverterClass;
 struct _GstMLAudioConverter {
   GstBaseTransform            parent;
 
-  //property
-  guint                       sample_rate;
-
-  /// Conversion Engine handle
-  GstAudioConvEngine          *engine;
-
   /// input audio information
   GstAudioInfo                *audio_info;
   /// output ml information
   GstMLInfo                   *ml_info;
 
-  /// Buffer pools
+  /// Buffer pool
   GstBufferPool               *outpool;
+
+  /// Inference pipeline Stage ID
+  guint                       stage_id;
+
+  /// Conversion Engine handle
+  GstAudioConvEngine          *engine;
+
+  ///property
+  guint                       sample_rate;
+
 };
 
 struct _GstMLAudioConverterClass {
