@@ -1,0 +1,9 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-video-playback-example",
+  "ApplicationType": "Video",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "This application enables users to create and utilize a video pipeline for playback. It provides essential playback features such as play, pause, fast forward, and rewind."
+}
+

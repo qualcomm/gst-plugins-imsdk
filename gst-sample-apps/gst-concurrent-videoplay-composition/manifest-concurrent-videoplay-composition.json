@@ -1,0 +1,9 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-concurrent-videoplay-composition",
+  "ApplicationType": "Video",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "This is an application to demonstrate the Concurrent video playback of any supported resolution and composition on display (Video wall)."
+}
+
