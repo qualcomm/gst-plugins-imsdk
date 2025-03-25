@@ -1,0 +1,9 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-audio-decode-example",
+  "ApplicationType": "Audio",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "This application Decodes the audio i.e. mp3 and raw files"
+}
+

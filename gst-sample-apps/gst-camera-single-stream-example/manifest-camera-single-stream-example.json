@@ -1,0 +1,9 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-camera-single-stream-example",
+  "ApplicationType": "Camera",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "This application Demonstrates single camera usecases with possible outputs, Live Camera Preview on Display, Store the Video encoder output, Dump the Camera YUV, Live RTSP streaming"
+}
+

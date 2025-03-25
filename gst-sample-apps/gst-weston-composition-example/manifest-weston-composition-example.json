@@ -1,0 +1,9 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-weston-composition-example",
+  "ApplicationType": "Camera",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "This application Demonstrates compostion using qtivcomposer for both picture in picture and side by side usecases. One input is from camera source and other is from AVC mp4 file source."
+}
+
