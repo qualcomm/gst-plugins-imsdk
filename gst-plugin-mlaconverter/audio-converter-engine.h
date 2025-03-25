@@ -15,73 +15,89 @@ G_BEGIN_DECLS
 
 #define DEFAULT_AUDIO_SAMPLE_NUMBER  (15600)
 #define DEFAULT_AUDIO_SAMPLE_RATE    (16000)
-#define DEFAULT_AUDIO_BPS            (4)
-#define GST_AUDIO_CONV_MODE_RAW      (0)
-#define GST_AUDIO_CONV_MODE_MELSPECTROGRAM (1)
-/*
-* GST_ML_AUDIO_CONVERTER_OPT_SAMPLE_RATE
-*
-* G_TYPE_INT
-* Pass sample rate to converter
-* default value is DEFAULT_AUDIO_SAMPLE_RATE
-*/
-#define GST_ML_AUDIO_CONVERTER_OPT_SAMPLE_RATE "rate"
 
-/*
-* GST_ML_AUDIO_CONVERTER_OPT_SAMPLE_NUMBER
-*
-* G_TYPE_INT
-* Pass sample numbers that converter has to work on
-* default value is DEFAULT_AUDIO_SAMPLE_NUMBER
-*/
-#define GST_ML_AUDIO_CONVERTER_OPT_SAMPLE_NUMBER "sample-number"
+#define GST_AUDIO_FEATURE_RAW_NAME    "raw"
+#define GST_AUDIO_FEATURE_STFT_NAME   "stft"
+#define GST_AUDIO_FEATURE_SPECTROGRAM_NAME "spectrogram"
+#define GST_AUDIO_FEATURE_MFE_NAME         "mfe"
+#define GST_AUDIO_FEATURE_LMFE_NAME        "lmfe"
+#define GST_AUDIO_FEATURE_MFCC_NAME        "mfcc"
 
-/*
-* GST_ML_AUDIO_CONVERTER_OPT_BPS
-*
-* G_TYPE_INT
-* Pass bytes per sample to converter
-* default value is DEFAULT_AUDIO_BPS
-*/
-#define GST_ML_AUDIO_CONVERTER_OPT_BPS "bps"
+/**
+ * GST_AUDIO_CONVERTER_OPT_INCAPS
+ * #GST_TYPE_CAPS: A fixated set of Audio input caps. converter will expect
+ *                 to receive Audio frames with the fixated caps layout for
+ *                 processing.
+ * Default: NULL
+ */
+#define GST_AUDIO_CONVERTER_OPT_INCAPS "audiocaps"
 
-/*
-* GST_ML_AUDIO_CONVERTER_OPT_FORMAT
-*
-* G_TYPE_STRING
-* Pass format string of sample to converter
-*/
-#define GST_ML_AUDIO_CONVERTER_OPT_FORMAT "format"
+/**
+ * GST_AUDIO_CONVERTER_OPT_MLCAPS
+ * #GST_TYPE_CAPS: A fixated set of ML output caps. converter will expect
+ *                 to figure out some of the preprocessing information like
+ *                 output tensor type etc.
+ * Default: NULL
+ */
+#define GST_AUDIO_CONVERTER_OPT_MLCAPS "mlcaps"
 
-/*
-* GST_ML_AUDIO_CONVERTER_OPT_TENSORTYPE
-*
-* G_TYPE_STRING
-* Pass type of expected tensors to converter
-*/
-#define GST_ML_AUDIO_CONVERTER_OPT_TENSORTYPE "tensortype"
+/**
+ * GST_AUDIO_CONVERTER_OPT_FEATURE
+ * #G_TYPE_STRING
+ * Audio Preprocessing feature that converter needs to run on the Audio samples.
+ */
 
-/*
-* GST_ML_AUDIO_CONVERTER_OPT_MODE
-*
-* G_TYPE_INT
-* set the conversion mode
-*/
-#define GST_ML_AUDIO_CONVERTER_OPT_MODE "mode"
+#define GST_AUDIO_CONVERTER_OPT_FEATURE "feature"
+/**
+ * GST_AUDIO_CONVERTER_OPT_PARAMS
+ *
+ * #G_TYPE_STRING
+ * preprocessor specific parameters. Converted back to GstStructure
+ */
+#define GST_AUDIO_CONVERTER_OPT_PARAMS "parameters"
 
-#define DEFAULT_CONVERTER_MODE (GST_AUDIO_CONV_MODE_RAW)
+/**
+ * GstAudioFeature
+ * GST_AUDIO_FEATURE_RAW : the raw samples are produced
+ * GST_AUDIO_FEATURE_STFT : Short time Fourier Transformation of raw audio
+ * GST_AUDIO_FEATURE_SPECTROGRAM: Energy mel bank representation of Audio signal
+ * GST_AUDIO_FEATURE_MFE: Energy representation filtered with coefficients
+ * GST_AUDIO_FEATURE_LMFE: log representation of mfe, representation
+ *    closer to human auditory system.
+ * GST_AUDIO_FEATURE_MFCC: Compute MFCC features from an audio signal
+ *
+ * Defines the kind of audio features available to a preprocessor
+ */
+typedef enum
+{
+  GST_AUDIO_FEATURE_UNKNOWN,
+  GST_AUDIO_FEATURE_RAW,
+  GST_AUDIO_FEATURE_STFT,
+  GST_AUDIO_FEATURE_SPECTROGRAM,
+  // MFE is also known as MelSpectrogram
+  GST_AUDIO_FEATURE_MFE,
+  // LMFE is also known as LogMelSpectrogram
+  GST_AUDIO_FEATURE_LMFE,
+  GST_AUDIO_FEATURE_MFCC,
+} GstAudioFeature;
 
 typedef struct _GstAudioConvEngine GstAudioConvEngine;
 
-GST_AUDIO_API GstAudioConvEngine *
-gst_mlaconverter_engine_new (const GstStructure * settings);
+GST_AUDIO_API
+GstAudioConvEngine * gst_mlaconverter_engine_new (const GstStructure * settings);
 
-GST_AUDIO_API void
-gst_mlaconverter_engine_free (GstAudioConvEngine * engine);
+GST_AUDIO_API
+void gst_mlaconverter_engine_free (GstAudioConvEngine * engine);
 
-GST_AUDIO_API gboolean
-gst_mlaconverter_engine_process (GstAudioConvEngine * engine,
+GST_AUDIO_API
+gboolean gst_mlaconverter_engine_process (GstAudioConvEngine * engine,
     GstAudioBuffer * audioframe, GstMLFrame * mlframe);
+
+GST_AUDIO_API
+const gchar * gst_audio_feature_to_string (GstAudioFeature);
+
+GST_AUDIO_API
+GstAudioFeature gst_audio_feature_from_string (const gchar * feature);
 
 G_END_DECLS
 
