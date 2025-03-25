@@ -675,7 +675,8 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
           "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
     }
     delegate_options = gst_structure_from_string (
-        "QNNExternalDelegate,backend_type=htp;", NULL);
+        "QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,\
+        htp_performance_mode=(string)2;", NULL);
     g_object_set (G_OBJECT (qtimlelement[i]),
         "external-delegate-path", "libQnnTFLiteDelegate.so", NULL);
     g_object_set (G_OBJECT (qtimlelement[i]),
@@ -685,6 +686,18 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
 
   // 2.7 Set the properties of qtimlvconverter of pose plugin- mode
   // and image-disposition
+  g_value_init (&value, G_TYPE_INT);
+  g_value_set_int (&value, IMAGE_BATCH_NON_CUMULATIVE);
+  g_object_set_property (G_OBJECT (qtimlvconverter[GST_DETECTION_TYPE_YOLO]),
+      "mode", &value);
+  g_value_unset (&value);
+
+  g_value_init (&value, G_TYPE_INT);
+  g_value_set_int (&value, ROI_BATCH_CUMULATIVE);
+  g_object_set_property (G_OBJECT (qtimlvconverter[GST_POSE_TYPE_HRNET]),
+      "mode", &value);
+  g_value_unset (&value);
+
   g_value_init (&value, G_TYPE_INT);
   g_value_set_int (&value, CENTRE);
   g_object_set_property (G_OBJECT (qtimlvconverter[GST_POSE_TYPE_HRNET]),
