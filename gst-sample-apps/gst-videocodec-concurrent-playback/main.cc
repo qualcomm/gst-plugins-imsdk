@@ -45,7 +45,7 @@
   "v4l2h264dec capture-io-mode=4 output-io-mode=4 ! " \
   "video/x-raw,format=NV12 ! queue ! waylandsink enable-last-sample=false fullscreen=true " \
   "filesrc name=source2 location=DEFAULT_HEVC_FILESOURCE ! qtdemux ! " \
-  "h265parse ! v4l2h265dec capture-io-mode=4 output-io-mode=4 ! " \
+  "h265parse ! v4l2h265dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! " \
   "filesink name=sink_yuv enable-last-sample=false location=DEFAULT_YUV_FILESINK " \
 
 #define GST_APP_SUMMARY \
