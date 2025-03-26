@@ -28,7 +28,7 @@
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
 *
-* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -135,6 +135,7 @@ GST_DEBUG_CATEGORY_STATIC (qmmfsrc_debug);
 #ifdef FEATURE_OFFLINE_IFE_SUPPORT
 #define DEFAULT_PROP_CAMERA_MULTICAMERA_HINT          FALSE
 #endif // FEATURE_OFFLINE_IFE_SUPPORT
+#define DEFAULT_PROP_CAMERA_SW_TNR                    FALSE
 
 static void gst_qmmfsrc_child_proxy_init (gpointer g_iface, gpointer data);
 
@@ -212,6 +213,7 @@ enum
 #ifdef FEATURE_OFFLINE_IFE_SUPPORT
   PROP_CAMERA_MULTICAMERA_HINT,
 #endif // FEATURE_OFFLINE_IFE_SUPPORT
+  PROP_CAMERA_SW_TNR,
 };
 
 #ifdef ENABLE_RUNTIME_PARSER
@@ -1556,6 +1558,10 @@ qmmfsrc_set_property (GObject * object, guint property_id,
           PARAM_CAMERA_MULTICAMERA_HINT, value);
       break;
 #endif // FEATURE_OFFLINE_IFE_SUPPORT
+    case PROP_CAMERA_SW_TNR:
+      gst_qmmf_context_set_camera_param (qmmfsrc->context,
+           PARAM_CAMERA_SW_TNR, value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -1762,6 +1768,10 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
           PARAM_CAMERA_MULTICAMERA_HINT, value);
       break;
 #endif // FEATURE_OFFLINE_IFE_SUPPORT
+    case PROP_CAMERA_SW_TNR:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_SW_TNR, value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -2185,6 +2195,13 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           DEFAULT_PROP_CAMERA_MULTICAMERA_HINT,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 #endif // FEATURE_OFFLINE_IFE_SUPPORT
+#ifdef FEATURE_SW_TNR
+  g_object_class_install_property (gobject, PROP_CAMERA_SW_TNR,
+      g_param_spec_boolean ("sw-tnr", "SW TNR",
+          "this flag will enable sw based TNR.",
+          DEFAULT_PROP_CAMERA_SW_TNR,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+#endif // FEATURE_SW_TNR
 
   signals[SIGNAL_CAPTURE_IMAGE] =
       g_signal_new_class_handler ("capture-image", G_TYPE_FROM_CLASS (klass),
