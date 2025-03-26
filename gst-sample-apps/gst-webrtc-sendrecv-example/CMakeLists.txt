@@ -14,12 +14,29 @@ pkg_check_modules(GST
   REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_JSON
   REQUIRED json-glib-1.0)
-pkg_check_modules(GST_SOUP
-  REQUIRED libsoup-2.4)
 pkg_check_modules(GST_WEBRTC
   REQUIRED gstreamer-webrtc-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_SDP
   REQUIRED gstreamer-sdp-1.0>=${GST_VERSION_REQUIRED})
+
+# Check for libsoup version
+pkg_search_module(GST_SOUP QUIET libsoup-3.0)
+if (GST_SOUP_FOUND)
+  set(GST_SOUP3 TRUE)
+  message(STATUS "Using libsoup-3.0")
+else ()
+  pkg_search_module(GST_SOUP QUIET libsoup-2.4)
+  if (GST_SOUP_FOUND)
+    set(GST_SOUP3 FALSE)
+    message(STATUS "Using libsoup-2.4")
+  else ()
+    message(FATAL_ERROR "No libsoup modules found")
+  endif()
+endif()
+
+if(GST_SOUP3)
+add_definitions(-DGST_SOUP3)
+endif()
 
 # GStreamer gst-webrtc-sendrecv-example
 set(GST_EXAMPLE_BIN gst-webrtc-sendrecv-example)
