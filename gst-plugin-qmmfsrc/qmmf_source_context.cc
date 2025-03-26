@@ -319,12 +319,10 @@ validate_bayer_params (GstQmmfContext * context, GstPad * pad)
       QMMFSRC_RETURN_VAL_IF_FAIL (NULL, format == GST_BAYER_FORMAT_RGGB,
           FALSE, "Invalid bayer matrix format, expected format 'rggb' !");
       break;
-#if defined(CAMERA_METADATA_1_1) || defined(CAMERA_METADATA_1_0_NS)
     case ANDROID_SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_MONO:
       QMMFSRC_RETURN_VAL_IF_FAIL (NULL, format == GST_BAYER_FORMAT_MONO,
           FALSE, "Invalid bayer matrix format, expected format 'mono' !");
       break;
-#endif
     default:
       GST_WARNING ("Unsupported sensor filter arrangement!");
       return FALSE;
