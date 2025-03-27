@@ -4,6 +4,26 @@
   "ApplicationType": "Camera",
   "ApplicationSourceCheckSum": "",
   "ApplicationIcon": "",
+  "AIModelsNeededByApplication": [
+    {
+      "ModelName": "object_detection.tflite",
+      "ModelLabelDownloadURL": "",
+      "LabelFile": "coco_labels.txt",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
+    }
+  ],
+  "AIModelsSupportedByApplication": [
+    {
+      "ModelName": "object_detection.tflite",
+      "ModelLabelDownloadURL": "",
+      "LabelFile": "coco_labels.txt",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
+    }
+  ],
+  "AIModelLocation": "/etc/models/",
+  "AILabelLocation": "/etc/labels/",
+  "ConfigFile": "",
+  "ConfigFileLocation": "",
   "ApplicationTextDescription": "This Application Smartly reduce network bandwidth/storage from camera input with AIML and  filesource using Qualcomm GStreamer plugins."
 }
 

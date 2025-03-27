@@ -6,7 +6,7 @@
   "ApplicationIcon": "",
   "AIModelsNeededByApplication": [
     {
-      "ModelName": "HRNetPoseQuantized.tflite",
+      "ModelName": "hrnet_pose_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/HRNetPoseQuantized/resolve/main/HRNetPoseQuantized.tflite",
       "LabelFile": "hrnet_pose.labels",
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/hrnet_pose.labels"

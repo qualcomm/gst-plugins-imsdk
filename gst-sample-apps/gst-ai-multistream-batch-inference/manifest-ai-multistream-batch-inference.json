@@ -6,11 +6,13 @@
   "ApplicationIcon": "",
   "AIModelsNeededByApplication": [
     {
-      "ModelName": "yolov8_det_quantized.tflite",
+      "ModelName": "model-batch-4.tflite",
       "ModelLabelDownloadURL": "",
-      "LabelFile": "detection.labels",
+      "LabelFile": "model.labels",
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
-    },
+    }
+  ],
+  "AIModelsSupportedByApplication": [
     {
       "ModelName": "deeplabv3_plus_mobilenet_quantized.tflite",
       "ModelLabelDownloadURL": "",
@@ -18,10 +20,9 @@
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/deeplabv3_resnet50.labels"
     }
   ],
-  "AIModelsSupportedByApplication": [],
   "AIModelLocation": "/etc/models/",
   "AILabelLocation": "/etc/labels/",
-  "ConfigFile": "config_batch.json",
+  "ConfigFile": "config-multistream-batch-inference.json",
   "ConfigFileLocation": "/etc/configs/",
   "ApplicationKeyWords": [
     "MultistreamInference",

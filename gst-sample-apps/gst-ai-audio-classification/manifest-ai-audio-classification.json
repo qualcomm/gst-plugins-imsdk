@@ -6,7 +6,7 @@
   "ApplicationIcon": "",
   "AIModelsNeededByApplication": [
     {
-      "ModelName": "YamNet.tflite",
+      "ModelName": "yamnet.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/YamNet/resolve/main/YamNet.tflite",
       "LabelFile": "yamnet.labels",
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/yamnet.labels"
@@ -14,7 +14,7 @@
   ],
   "AIModelsSupportedByApplication": [
     {
-      "ModelName": "YamNet.tflite",
+      "ModelName": "yamnet.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/YamNet/resolve/main/YamNet.tflite",
       "LabelFile": "yamnet.labels",
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/yamnet.labels"

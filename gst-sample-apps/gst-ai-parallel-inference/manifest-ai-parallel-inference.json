@@ -2,31 +2,31 @@
   "Version": "1.4",
   "ApplicationName": "gst-ai-parallel-inference",
   "ApplicationType": "AI",
- "ApplicationSourceCheckSum": "",
+  "ApplicationSourceCheckSum": "",
   "ApplicationIcon": "",
   "AIModelsNeededByApplication": [
     {
-      "ModelName": "DeepLabV3-Plus-MobileNet-Quantized.tflite",
+      "ModelName": "deeplabv3_plus_mobilenet_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/DeepLabV3-Plus-MobileNet-Quantized/resolve/main/DeepLabV3-Plus-MobileNet-Quantized.tflite",
       "LabelFile": "deeplabv3_resnet50.labels",
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/deeplabv3_resnet50.labels"
     },
     {
-      "ModelName": "HRNetPoseQuantized.tflite",
+      "ModelName": "hrnet_pose_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/HRNetPoseQuantized/resolve/main/HRNetPoseQuantized.tflite",
       "LabelFile": "hrnet_pose.labels",
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/hrnet_pose.labels"
     },
     {
-      "ModelName": "YOLOv8-Detection-Quantized.tflite",
-      "ModelLabelDownloadURL": "model needs to be added here",
-      "LabelFile": "detection.labels",
+      "ModelName": "yolov8_det_quantized.tflite",
+      "ModelLabelDownloadURL": "",
+      "LabelFile": "yolov8.labels",
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
     },
     {
-      "ModelName": "Inception-v3-Quantized.tflite",
+      "ModelName": "inception_v3_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Inception-v3-Quantized/resolve/main/Inception-v3-Quantized.tflite",
-      "LabelFile": "imagenet_labels.txt",
+      "LabelFile": "classification.labels",
       "LabelDownloadURL": "https://github.com/quic/ai-hub-models/blob/main/qai_hub_models/labels/imagenet_labels.txt"
     }
   ],
