@@ -1,0 +1,42 @@
+{
+  "Version": "1.0",
+  "ApplicationName": "gst-ai-parallel-inference",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "AIModelsNeededByApplication": [
+    {
+      "ModelName": "DeepLabV3-Plus-MobileNet-Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/DeepLabV3-Plus-MobileNet-Quantized/resolve/main/DeepLabV3-Plus-MobileNet-Quantized.tflite",
+      "LabelFile": "deeplabv3_resnet50.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/deeplabv3_resnet50.labels"
+    },
+    {
+      "ModelName": "HRNetPoseQuantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/HRNetPoseQuantized/resolve/main/HRNetPoseQuantized.tflite",
+      "LabelFile": "hrnet_pose.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/hrnet_pose.labels"
+    },
+    {
+      "ModelName": "YOLOv8-Detection-Quantized.tflite",
+      "ModelLabelDownloadURL": "model needs to be added here",
+      "LabelFile": "detection.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
+    },
+    {
+      "ModelName": "Inception-v3-Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Inception-v3-Quantized/resolve/main/Inception-v3-Quantized.tflite",
+      "LabelFile": "imagenet_labels.txt",
+      "LabelDownloadURL": "https://github.com/quic/ai-hub-models/blob/main/qai_hub_models/labels/imagenet_labels.txt"
+    }
+  ],
+  "AIModelsSupportedByApplication": [],
+  "AIModelLocation": "/etc/models/",
+  "AILabelLocation": "/etc/labels/",
+  "ConfigFile": "",
+  "ConfigFileLocation": "",
+  "ApplicationKeyWords": [
+    "ParallelInference.",
+    "ParallelAIFusion"
+  ],
+  "ApplicationTextDescription": "This application enables you to perform object detection, object classification, pose detection, and image segmentation on an input stream"
+}

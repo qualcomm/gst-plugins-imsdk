@@ -1,0 +1,25 @@
+{
+  "Version": "1.0",
+  "ApplicationName": "gst-ai-pose-detection",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "AIModelsNeededByApplication": [
+    {
+      "ModelName": "HRNetPoseQuantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/HRNetPoseQuantized/resolve/main/HRNetPoseQuantized.tflite",
+      "LabelFile": "hrnet_pose.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/hrnet_pose.labels"
+    }
+  ],
+  "AIModelsSupportedByApplication": [],
+  "AIModelLocation": "/etc/models/",
+  "AILabelLocation": "/etc/labels/",
+  "ConfigFile": "config_pose.json",
+  "ConfigFileLocation": "/etc/configs/",
+  "ApplicationKeyWords": [
+    "PoseDetection",
+    "HRNetPose",
+    "Pose"
+  ],
+  "ApplicationTextDescription": "This application allows Pose Detection of human target using Camera, File and RTSP "
+}
