@@ -6,7 +6,7 @@
   "ApplicationIcon": "",
   "AIModelsNeededByApplication": [
     {
-      "Modelme": "QuickSRNetSmall-Quantized.tflite",
+      "ModelName": "quicksrnetsmall_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/QuickSRNetSmall-Quantized/resolve/main/QuickSRNetSmall-Quantized.tflite",
       "LabelFile": "",
       "LabelDownloadURL": ""
@@ -14,19 +14,19 @@
   ],
   "AIModelsSupportedByApplication": [
     {
-      "Modelme": "QuickSRNetMedium-Quantized.tflite",
+      "ModelName": "QuickSRNetMedium-Quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/QuickSRNetMedium-Quantized/resolve/main/QuickSRNetMedium-Quantized.tflite",
       "LabelFile": "",
       "LabelDownloadURL": ""
     },
     {
-      "Modelme": "QuickSRNetLarge-Quantized.tflite",
+      "ModelName": "QuickSRNetLarge-Quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/QuickSRNetLarge-Quantized/resolve/main/QuickSRNetLarge-Quantized.tflite",
       "LabelFile": "",
       "LabelDownloadURL": ""
     },
     {
-      "Modelme": "XLSR-Quantized.tflite",
+      "ModelName": "XLSR-Quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/XLSR-Quantized/resolve/main/XLSR-Quantized.tflite",
       "LabelFile": "",
       "LabelDownloadURL": ""

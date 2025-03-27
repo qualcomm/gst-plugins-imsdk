@@ -12,7 +12,7 @@
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
     },
     {
-      "ModelName": "MobileNet-v2-Quantized.tflite",
+      "ModelName": "mobilenet_v2_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/MobileNet-v2-Quantized/resolve/main/MobileNet-v2-Quantized.tflite",
       "LabelFile": "imagenet_labels.txt",
       "LabelDownloadURL": "https://github.com/quic/ai-hub-models/blob/main/qai_hub_models/labels/imagenet_labels.txt"

@@ -6,9 +6,9 @@
   "ApplicationIcon": "",
   "AIModelsNeededByApplication": [
     {
-      "ModelName": "Inception-v3-Quantized.tflite",
+      "ModelName": "inception_v3_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Inception-v3-Quantized/resolve/main/Inception-v3-Quantized.tflite",
-      "LabelFile": "imagenet_labels.txt",
+      "LabelFile": "classification.labels",
       "LabelDownloadURL": "https://github.com/quic/ai-hub-models/blob/main/qai_hub_models/labels/imagenet_labels.txt"
     }
   ],

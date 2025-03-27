@@ -8,7 +8,7 @@
     {
       "ModelName": "yolov5.tflite",
       "ModelLabelDownloadURL": "",
-      "LabelFile": "detection.labels",
+      "LabelFile": "yolov5.labels",
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
     }
   ],

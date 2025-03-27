@@ -6,7 +6,7 @@
   "ApplicationIcon": "",
   "AIModelsNeededByApplication": [
     {
-      "ModelName": "Lightweight-Face-Detection-Quantized.tflite",
+      "ModelName": "face_det_lite_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Lightweight-Face-Detection-Quantized/resolve/main/Lightweight-Face-Detection-Quantized.tflite",
       "LabelFile": "face_detection.labels",
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/face_detection.labels"
@@ -15,8 +15,8 @@
   "AIModelsSupportedByApplication": [],
   "AIModelLocation": "/etc/models/",
   "AILabelLocation": "/etc/labels/",
-  "ConfigFile": "",
-  "ConfigFileLocation": "",
+  "ConfigFile": "config_face_detection.json",
+  "ConfigFileLocation": "/etc/configs/",
   "ApplicationKeyWords": [
     "FaceDetection"
   ],
