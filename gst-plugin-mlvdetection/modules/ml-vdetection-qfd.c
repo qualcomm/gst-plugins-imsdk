@@ -298,19 +298,23 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       scores_idx = 2;
       // First tensor represents the coordinates of the bounding boxes.
       bboxes_idx = 0;
+      // Second tensor represents the landmarks (left eye, right ear, etc.).
+      landmarks_idx = 1;
     } else if (GST_ML_FRAME_DIM (mlframe, 1, 3) == 4) {
       // First tensor represents confidence scores.
       scores_idx = 0;
       // 2nd tensor represents the coordinates of the bounding boxes.
       bboxes_idx = 1;
+      // third tensor represents the landmarks (left eye, right ear, etc.).
+      landmarks_idx = 2;
     } else {
       // First tensor represents confidence scores.
       scores_idx = 0;
       // Thrid tensor represents the coordinates of the bounding boxes.
       bboxes_idx = 2;
+      // Second tensor represents the landmarks (left eye, right ear, etc.).
+      landmarks_idx = 1;
     }
-    // Second tensor represents the landmarks (left eye, right ear, etc.).
-    landmarks_idx = 1;
   }
 
   scores = GST_ML_FRAME_BLOCK_DATA (mlframe, scores_idx);
