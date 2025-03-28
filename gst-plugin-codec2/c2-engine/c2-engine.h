@@ -65,6 +65,8 @@ struct _GstC2QueueItem {
   guint64   index;
   /// Frame user data
   gpointer  userdata;
+  /// Number of subframes in one buffer
+  guint32   n_subframes;
 };
 
 struct _GstC2Callbacks {

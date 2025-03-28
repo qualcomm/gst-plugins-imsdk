@@ -311,6 +311,7 @@ typedef enum {
 struct _GstC2PixelInfo {
   GstVideoFormat format;
   gboolean       isubwc;
+  guint32        n_subframes;
 };
 
 struct _GstC2Resolution {
