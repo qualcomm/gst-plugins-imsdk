@@ -1,7 +1,8 @@
 {
-  "Version": "1.0",
+  "Version": "1.4",
   "ApplicationName": "gst-ai-parallel-inference",
-  "ApplicationSourceCheckSum": "",
+  "ApplicationType": "AI",
+ "ApplicationSourceCheckSum": "",
   "ApplicationIcon": "",
   "AIModelsNeededByApplication": [
     {

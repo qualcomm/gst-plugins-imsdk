@@ -1,0 +1,32 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-ai-audio-classification",
+  "ApplicationType": "AI",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "AIModelsNeededByApplication": [
+    {
+      "ModelName": "YamNet.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/YamNet/resolve/main/YamNet.tflite",
+      "LabelFile": "yamnet.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/yamnet.labels"
+    }
+  ],
+  "AIModelsSupportedByApplication": [
+    {
+      "ModelName": "YamNet.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/YamNet/resolve/main/YamNet.tflite",
+      "LabelFile": "yamnet.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/yamnet.labels"
+    }
+  ],
+  "ConfigFile": "config-audio-classification.json",
+  "AIModelLocation": "/etc/models/",
+  "AILabelLocation": "/etc/labels/",
+  "ConfigFileLocation": "/etc/configs/",
+  "ApplicationKeyWords": [
+    "Audio Classification",
+    "YamNet"
+  ],
+  "ApplicationTextDescription": "The gst-ai-audio-classification application shows the audio classification using the input from a file source and microphone. The classification results and video preview are displayed."
+}
