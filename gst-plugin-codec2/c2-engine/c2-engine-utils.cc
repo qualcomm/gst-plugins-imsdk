@@ -161,6 +161,10 @@ static const std::unordered_map<uint32_t, C2Param::Index> kParamIndexMap = {
       qc2::C2StreamHierBPreconditions::output::PARAM_TYPE },
   { GST_C2_PARAM_SUPER_FRAME,
       qc2::C2VideoSuperFrameSetting::input::PARAM_TYPE },
+  { GST_C2_PARAM_LTR_USE,
+      qc2::C2VideoLTRUseTuning::input::PARAM_TYPE},
+  { GST_C2_PARAM_FLIP,
+      qc2::C2VideoMirrorTuning::input::PARAM_TYPE },
 };
 
 // Convenient map for printing the engine parameter name in string form.
@@ -212,6 +216,8 @@ static const std::unordered_map<uint32_t, const char*> kParamNameMap = {
   { GST_C2_PARAM_DOWN_SCALAR, "DOWN_SCALAR" },
   { GST_C2_PARAM_HIER_BPRECONDITIONS, "HIER_BPREDCONDITIONS" },
   { GST_C2_PARAM_SUPER_FRAME, "SUPER_FRAME" },
+  { GST_C2_PARAM_LTR_USE, "LTR_USE" },
+  { GST_C2_PARAM_FLIP, "FLIP" },
 };
 
 // Map for the GST_C2_PARAM_PROFILE_LEVEL parameter.
@@ -433,6 +439,14 @@ static const std::unordered_map<uint32_t, uint32_t> kPictureTypeMap = {
   { GST_C2_I_FRAME,    C2Config::I_FRAME },
   { GST_C2_P_FRAME,    C2Config::P_FRAME },
   { GST_C2_B_FRAME,    C2Config::B_FRAME },
+};
+
+// Map for the GstC2VideoFlip.
+static const std::unordered_map<uint32_t, qc2::QCMirrorType> kFlipMap = {
+  { GST_C2_FLIP_NONE,       Qc2MirrorNone },
+  { GST_C2_FLIP_VERTICAL,   Qc2MirrorVertical },
+  { GST_C2_FLIP_HORIZONTAL, Qc2MirrorHorizontal },
+  { GST_C2_FLIP_BOTH,       Qc2MirrorBoth },
 };
 
 C2Param::Index GstC2Utils::ParamIndex(uint32_t type) {
@@ -947,6 +961,21 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       c2param = C2Param::Copy(superframe);
       break;
     }
+    case GST_C2_PARAM_LTR_USE: {
+      qc2::C2VideoLTRUseTuning::input ltruse;
+      ltruse.frameid = *(reinterpret_cast<guint32*>(payload));
+
+      c2param = C2Param::Copy(ltruse);
+      break;
+    }
+    case GST_C2_PARAM_FLIP: {
+      qc2::C2VideoMirrorTuning::input mirror;
+      uint32_t flip = *(reinterpret_cast<GstC2VideoFlip*>(payload));
+
+      mirror.mirrorType = kFlipMap.at (flip);
+      c2param = C2Param::Copy(mirror);
+      break;
+    }
     default:
       GST_ERROR ("Unsupported parameter: %u!", type);
       return FALSE;
@@ -1344,6 +1373,24 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
           reinterpret_cast<qc2::C2VideoSuperFrameSetting::input*>(c2param.get());
 
       *(reinterpret_cast<guint32*>(payload)) = superframe->value;
+      break;
+    }
+    case GST_C2_PARAM_LTR_USE: {
+      auto ltruse =
+          reinterpret_cast<qc2::C2VideoLTRUseTuning::input*>(c2param.get());
+
+      *(reinterpret_cast<guint32*>(payload)) = ltruse->frameid;
+      break;
+    }
+    case GST_C2_PARAM_FLIP: {
+      auto mirror =
+          reinterpret_cast<qc2::C2VideoMirrorTuning::input*>(c2param.get());
+
+      auto result = std::find_if(kFlipMap.begin(), kFlipMap.end(),
+          [&](const auto& m) { return m.second == mirror->mirrorType; });
+
+      *(reinterpret_cast<GstC2VideoFlip*>(payload)) =
+          static_cast<GstC2VideoFlip>(result->first);
       break;
     }
     default:

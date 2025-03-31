@@ -87,6 +87,7 @@ struct _GstC2VEncoder {
 
   /// Properties
   GstC2VideoRotate     rotate;
+  GstC2VideoFlip       flip;
   GstC2RateControl     control_rate;
   guint32              target_bitrate;
 
