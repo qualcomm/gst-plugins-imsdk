@@ -38,10 +38,7 @@ camera_pipeline (GstCapsParameters * params1,
       "width", G_TYPE_INT, params1->width,
       "height", G_TYPE_INT, params1->height,
       "framerate", GST_TYPE_FRACTION, params1->fps, 1,
-      "compression", G_TYPE_STRING, "ubwc",
       NULL);
-  gst_caps_set_features (filtercaps, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
   g_object_set (G_OBJECT (capsfilter1), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
@@ -62,10 +59,7 @@ camera_pipeline (GstCapsParameters * params1,
         "width", G_TYPE_INT, params2->width,
         "height", G_TYPE_INT, params2->height,
         "framerate", GST_TYPE_FRACTION, params2->fps, 1,
-        "compression", G_TYPE_STRING, "ubwc",
         NULL);
-    gst_caps_set_features (filtercaps, 0,
-        gst_caps_features_new ("memory:GBM", NULL));
     g_object_set (G_OBJECT (capsfilter2), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
 
@@ -133,13 +127,13 @@ camera_pipeline (GstCapsParameters * params1,
         sink2, NULL));
 
   if (rawparams != NULL) {
-    fail_unless (gst_element_link_pads (qtiqmmfsrc, "image_1",
+    fail_unless (gst_element_link_pads (qtiqmmfsrc, "image_2",
         capsfilter3, NULL));
     fail_unless (gst_element_link_many (capsfilter3, sink3, NULL));
   }
 
   if (jpegparams != NULL) {
-    fail_unless (gst_element_link_pads (qtiqmmfsrc, "image_2",
+    fail_unless (gst_element_link_pads (qtiqmmfsrc, "image_3",
         capsfilter4, NULL));
     fail_unless (gst_element_link_many (capsfilter4, sink4, NULL));
   }
@@ -196,9 +190,6 @@ camera_display_encode_pipeline (GstCapsParameters * params1,
   fail_unless (pipeline && qtiqmmfsrc && capsfilter1 && capsfilter2 &&
       wayland && venc && parse && mp4mux && filesink);
 
-  g_object_set (G_OBJECT (venc), "capture-io-mode", 5,
-      "output-io-mode", 5, NULL);
-
   // Set filesink properties
   g_object_set (G_OBJECT (filesink), "location", "/opt/mux.mp4", NULL);
   g_object_set (G_OBJECT (filesink), "enable-last-sample", FALSE, NULL);
@@ -209,10 +200,7 @@ camera_display_encode_pipeline (GstCapsParameters * params1,
       "width", G_TYPE_INT, params1->width,
       "height", G_TYPE_INT, params1->height,
       "framerate", GST_TYPE_FRACTION, params1->fps, 1,
-      "compression", G_TYPE_STRING, "ubwc",
       NULL);
-  gst_caps_set_features (filtercaps, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
   g_object_set (G_OBJECT (capsfilter1), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
@@ -222,10 +210,7 @@ camera_display_encode_pipeline (GstCapsParameters * params1,
       "width", G_TYPE_INT, params2->width,
       "height", G_TYPE_INT, params2->height,
       "framerate", GST_TYPE_FRACTION, params2->fps, 1,
-      "compression", G_TYPE_STRING, "ubwc",
       NULL);
-  gst_caps_set_features (filtercaps, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
   g_object_set (G_OBJECT (capsfilter2), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
@@ -300,10 +285,7 @@ camera_transform_display_pipeline (GstCapsParameters * params1,
       "width", G_TYPE_INT, params1->width,
       "height", G_TYPE_INT, params1->height,
       "framerate", GST_TYPE_FRACTION, params1->fps, 1,
-      "compression", G_TYPE_STRING, "ubwc",
       NULL);
-  gst_caps_set_features (filtercaps, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
   g_object_set (G_OBJECT (capsfilter1), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
@@ -388,10 +370,7 @@ camera_composer_display_pipeline (GstCapsParameters * params1,
       "width", G_TYPE_INT, params1->width,
       "height", G_TYPE_INT, params1->height,
       "framerate", GST_TYPE_FRACTION, params1->fps, 1,
-      "compression", G_TYPE_STRING, "ubwc",
       NULL);
-  gst_caps_set_features (filtercaps, 0,
-      gst_caps_features_new ("memory:GBM", NULL));
   g_object_set (G_OBJECT (capsfilter), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
