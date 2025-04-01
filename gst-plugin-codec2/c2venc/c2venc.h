@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -66,8 +66,6 @@ struct _GstC2VEncoder {
 
   /// Negotiated input resolution, format, etc.
   GstVideoCodecState   *instate;
-  /// TRUE if the negotiated input format is UBWC.
-  gboolean             isubwc;
   /// TRUE if the negotiated input subformat is heif.
   gboolean             isheif;
   /// TRUE if the negotiated input feature is GBM.

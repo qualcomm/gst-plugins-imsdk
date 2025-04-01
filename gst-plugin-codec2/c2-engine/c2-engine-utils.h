@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -78,25 +78,23 @@ class GstC2Utils {
 
   /** PixelFormat
    * @format: GStreamer video format.
-   * @isubwc: Whetehr the format has Universal Bandwidth Compression.
    * @n_subframes: The number of subframes inside one buffer.
    *
    * Get the equivalent Codec2 pixel format.
    *
    * return: The corresponding Codec2 pixel format.
    **/
-  static C2PixelFormat PixelFormat(GstVideoFormat format, bool isubwc,
-                                   guint32 n_subframes);
+  static C2PixelFormat PixelFormat(GstVideoFormat format, guint32 n_subframes);
 
   /** VideoFormat
    * @format: Codec2 pixel format.
    *
    * Get the equivalent GStreamer video format.
    *
-   * return: Tuple with corresponding GStreamer video format, UBWC and
+   * return: Tuple with corresponding GStreamer video format and
    * number of subframes inside one buffer.
    **/
-  static std::tuple<GstVideoFormat, bool, uint32_t> VideoFormat(C2PixelFormat format);
+  static std::tuple<GstVideoFormat, uint32_t> VideoFormat(C2PixelFormat format);
 
   /** UnpackPayload
    * @type: Engine parameter type.

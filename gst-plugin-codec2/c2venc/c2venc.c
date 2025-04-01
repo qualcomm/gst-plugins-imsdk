@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -83,7 +83,7 @@ G_DEFINE_TYPE (GstC2VEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
 #endif
 
-#define GST_VIDEO_FORMATS "{ NV12, NV12_10LE32, P010_10LE, NV12_Q08C }"
+#define GST_VIDEO_FORMATS "{ NV12, P010_10LE, NV12_Q08C, NV12_Q10LE32C }"
 
 enum
 {
@@ -278,14 +278,12 @@ gst_caps_get_num_subframes (const GstCaps * caps)
 
   switch (gst_video_multiview_mode_from_caps_string (multiview_mode)) {
     case GST_VIDEO_MULTIVIEW_MODE_MONO:
-      if (!gst_structure_get_int (structure, "views", &n_subframes)) {
-        GST_ERROR ("Failed to get views in multiview(mode: mono).");
+      if (!gst_structure_get_int (structure, "views", &n_subframes))
         return 0;
-      }
+
       GST_DEBUG ("Number of subframes: %d.", n_subframes);
       break;
     default:
-      GST_WARNING ("Unsupported multiview mode(%s).", multiview_mode);
       break;
   }
 
@@ -331,7 +329,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
     GstVideoCodecState * instate, GstVideoCodecState * outstate)
 {
   GstVideoInfo *info = &instate->info;
-  GstC2PixelInfo pixinfo = { GST_VIDEO_FORMAT_UNKNOWN, FALSE, 0 };
+  GstC2PixelInfo pixinfo = { GST_VIDEO_FORMAT_UNKNOWN, 0 };
   GstC2Resolution inresolution = { 0, 0 };
   GstC2Resolution outresolution = { 0, 0 };
   GstC2Gop gop = { 0, 0 };
@@ -341,7 +339,6 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
   gboolean success = FALSE;
 
   pixinfo.format = GST_VIDEO_INFO_FORMAT (info);
-  pixinfo.isubwc = c2venc->isubwc;
   pixinfo.n_subframes = c2venc->n_subframes;
 
   success = gst_c2_engine_set_parameter (c2venc->engine,
@@ -911,8 +908,6 @@ gst_c2_venc_buffer_available (GstBuffer * buffer, gpointer userdata)
 
   // Unset the custom SYNC flag if present.
   GST_BUFFER_FLAG_UNSET (buffer, GST_VIDEO_BUFFER_FLAG_SYNC);
-  // Unset the custom UBWC flag if present.
-  GST_BUFFER_FLAG_UNSET (buffer, GST_VIDEO_BUFFER_FLAG_UBWC);
   // Unset the custom HEIC flag if present.
   GST_BUFFER_FLAG_UNSET (buffer, GST_VIDEO_BUFFER_FLAG_HEIC);
   // Unset the custom GBM flag if present.
@@ -1146,16 +1141,13 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   gint32 outwidth = 0, outheight = 0;
   gboolean success = FALSE;
 
-  c2venc->isubwc = gst_caps_has_compression (state->caps, "ubwc");
-
   c2venc->isheif = gst_caps_has_subformat(state->caps, "heif");
 
   c2venc->isgbm = gst_caps_features_contains
       (gst_caps_get_features (state->caps, 0), GST_CAPS_FEATURE_MEMORY_GBM);
 
-  GST_DEBUG_OBJECT (c2venc, "Setting new format %s%s",
-      gst_video_format_to_string (GST_VIDEO_INFO_FORMAT (info)),
-      c2venc->isubwc ? " UBWC" : "");
+  GST_DEBUG_OBJECT (c2venc, "Input format %s",
+      gst_video_format_to_string (GST_VIDEO_INFO_FORMAT (info)));
 
   if ((c2venc->instate != NULL) &&
       !gst_video_info_is_equal (info, &(c2venc->instate->info))) {
@@ -1428,9 +1420,6 @@ gst_c2_venc_handle_frame (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   }
 
   gst_c2_venc_handle_region_encode (c2venc, frame);
-
-  if (c2venc->isubwc)
-    GST_BUFFER_FLAG_SET (frame->input_buffer, GST_VIDEO_BUFFER_FLAG_UBWC);
 
   if (c2venc->isheif)
     GST_BUFFER_FLAG_SET (frame->input_buffer, GST_VIDEO_BUFFER_FLAG_HEIC);
@@ -2046,7 +2035,6 @@ gst_c2_venc_init (GstC2VEncoder * c2venc)
   c2venc->engine = NULL;
 
   c2venc->instate = NULL;
-  c2venc->isubwc = FALSE;
   c2venc->isheif = FALSE;
   c2venc->isgbm = FALSE;
   c2venc->headers = NULL;

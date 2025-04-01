@@ -1,6 +1,6 @@
 
 /*
-* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -51,7 +51,7 @@ G_DEFINE_TYPE (GstC2VDecoder, gst_c2_vdec, GST_TYPE_VIDEO_DECODER);
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
 #endif
 
-#define GST_VIDEO_FORMATS "{ NV12, NV12_10LE32, P010_10LE }"
+#define GST_VIDEO_FORMATS "{ NV12, P010_10LE, NV12_Q08C, NV12_Q10LE32C }"
 
 enum
 {
@@ -120,14 +120,15 @@ gst_c2_vdec_get_output_format (GstC2VDecoder * c2vdec,
   }
 
   if (bit_depth_luma == 8 && bit_depth_chroma == 8) {
-    format = GST_VIDEO_FORMAT_NV12;
+    if (format != GST_VIDEO_FORMAT_NV12 &&
+        format != GST_VIDEO_FORMAT_NV12_Q08C) {
+      GST_ERROR_OBJECT (c2vdec, "Unsupported 8 bit-depth format, use NV12");
+      return GST_VIDEO_FORMAT_NV12;
+    }
   } else if (bit_depth_luma == 10 && bit_depth_chroma == 10) {
-    if (format != GST_VIDEO_FORMAT_NV12_10LE32 && !c2vdec->isubwc) {
-      format = GST_VIDEO_FORMAT_P010_10LE;
-    } else if (format == GST_VIDEO_FORMAT_NV12_10LE32 && c2vdec->isubwc) {
-      format = GST_VIDEO_FORMAT_NV12_10LE32;
-    } else {
-      GST_ERROR_OBJECT (c2vdec, "Unsupported format");
+    if (format != GST_VIDEO_FORMAT_P010_10LE &&
+        format != GST_VIDEO_FORMAT_NV12_Q10LE32C) {
+      GST_ERROR_OBJECT (c2vdec, "Unsupported 10-bit depth format");
       return GST_VIDEO_FORMAT_UNKNOWN;
     }
   }
@@ -145,7 +146,6 @@ gst_c2_vdec_setup_parameters (GstC2VDecoder * c2vdec,
   gboolean success = FALSE;
 
   pixinfo.format = GST_VIDEO_INFO_FORMAT (info);
-  pixinfo.isubwc = c2vdec->isubwc;
 
   success = gst_c2_engine_set_parameter (c2vdec->engine,
       GST_C2_PARAM_OUT_PIXEL_FORMAT, GPOINTER_CAST (&pixinfo));
@@ -393,7 +393,6 @@ gst_c2_vdec_set_format (GstVideoDecoder * decoder, GstVideoCodecState * state)
   caps = gst_pad_get_allowed_caps (GST_VIDEO_DECODER_SRC_PAD (c2vdec));
 
   structure = gst_caps_get_structure (caps, 0);
-  c2vdec->isubwc = gst_caps_has_compression (caps, "ubwc");
 
   if ((string = gst_structure_get_string (structure, "format")) != NULL)
     format = gst_video_format_from_string (string);
@@ -672,7 +671,6 @@ gst_c2_vdec_init (GstC2VDecoder *c2vdec)
   c2vdec->engine = NULL;
 
   c2vdec->outstate = NULL;
-  c2vdec->isubwc = FALSE;
 
   GST_DEBUG_CATEGORY_INIT (gst_c2_vdec_debug_category, "qtic2vdec", 0,
       "QTI c2vdec decoder");
