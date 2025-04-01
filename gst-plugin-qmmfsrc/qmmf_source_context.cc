@@ -1555,7 +1555,7 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
     case GST_VIDEO_FORMAT_P010_10LE:
       format = ::qmmf::recorder::VideoFormat::kP010;
       break;
-    case GST_VIDEO_FORMAT_NV12_10LE32:
+    case GST_VIDEO_FORMAT_NV12_Q10LE32C:
       format = ::qmmf::recorder::VideoFormat::kTP10UBWC;
       break;
     case GST_VIDEO_FORMAT_NV16:
