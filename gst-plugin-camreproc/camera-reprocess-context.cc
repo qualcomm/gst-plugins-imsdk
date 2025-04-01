@@ -264,6 +264,7 @@ parse_process_mode (GstVideoFormat in_format, GstVideoFormat out_format)
 
   switch (in_format) {
     case GST_VIDEO_FORMAT_NV12:
+    case GST_VIDEO_FORMAT_NV12_Q08C:
       in_flag = PROCESS_MODE_FLAG_YUV;
       break;
     default:
@@ -274,6 +275,7 @@ parse_process_mode (GstVideoFormat in_format, GstVideoFormat out_format)
 
   switch (out_format) {
     case GST_VIDEO_FORMAT_NV12:
+    case GST_VIDEO_FORMAT_NV12_Q08C:
       out_flag = PROCESS_MODE_FLAG_YUV;
       break;
     default:
@@ -294,11 +296,10 @@ convert_to_graphic_format (const GstCameraReprocessBufferParams param)
 
   switch (param.format) {
     case GST_VIDEO_FORMAT_NV12:
-      if (param.isubwc) {
-        ret = HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED;
-        break;
-      }
       ret = HAL_PIXEL_FORMAT_YCBCR_420_888;
+      break;
+    case GST_VIDEO_FORMAT_NV12_Q08C:
+      ret = HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED;
       break;
     default:
       GST_ERROR ("Unsupported format(%s).",
@@ -406,9 +407,9 @@ gst_camera_reprocess_context_create (GstCameraReprocessContext *context,
   offcam_params.in_buffer.format = convert_to_graphic_format (params[0]);
   g_return_val_if_fail (offcam_params.in_buffer.format > 0, FALSE);
 
-  GST_DEBUG ("InputParam: %u x %u, %s, UBWC: %d",
+  GST_DEBUG ("InputParam: %u x %u, %s",
       offcam_params.in_buffer.width, offcam_params.in_buffer.height,
-      gst_video_format_to_string (params[0].format), params[0].isubwc);
+      gst_video_format_to_string (params[0].format));
 
     // BufferParams of output
   offcam_params.out_buffer.width = params[1].width;
@@ -418,9 +419,9 @@ gst_camera_reprocess_context_create (GstCameraReprocessContext *context,
   offcam_params.out_buffer.format = convert_to_graphic_format (params[1]);
   g_return_val_if_fail (offcam_params.out_buffer.format > 0, FALSE);
 
-  GST_DEBUG ("OutputParam: %u x %u, %s, UBWC: %d",
+  GST_DEBUG ("OutputParam: %u x %u, %s",
       offcam_params.out_buffer.width, offcam_params.out_buffer.height,
-      gst_video_format_to_string (params[1].format), params[1].isubwc);
+      gst_video_format_to_string (params[1].format));
 
     // Process mode
   process_mode = parse_process_mode (params[0].format, params[1].format);

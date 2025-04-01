@@ -84,13 +84,6 @@ G_BEGIN_DECLS
 #define GST_IMAGE_BUFFER_POOL_CAST(obj) ((GstImageBufferPool*)(obj))
 
 /**
- * GST_IMAGE_BUFFER_POOL_OPTION_UBWC_MODE:
- *
- * An option indicating that the allocated buffer must be UBWC.
- */
-#define GST_IMAGE_BUFFER_POOL_OPTION_UBWC_MODE "GstBufferPoolOptionUBWCMode"
-
-/**
  * GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED:
  *
  * An option indicating that once the buffer memory is mapped it will be
