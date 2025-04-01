@@ -214,6 +214,7 @@ enum
   PROP_CAMERA_MULTICAMERA_HINT,
 #endif // FEATURE_OFFLINE_IFE_SUPPORT
   PROP_CAMERA_SW_TNR,
+  PROP_CAMERA_STATIC_METADATAS,
 };
 
 #ifdef ENABLE_RUNTIME_PARSER
@@ -1780,6 +1781,10 @@ qmmfsrc_get_property (GObject * object, guint property_id, GValue * value,
       gst_qmmf_context_get_camera_param (qmmfsrc->context,
           PARAM_CAMERA_SW_TNR, value);
       break;
+    case PROP_CAMERA_STATIC_METADATAS:
+      gst_qmmf_context_get_camera_param (qmmfsrc->context,
+          PARAM_CAMERA_STATIC_METADATAS, value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -2108,6 +2113,11 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
           "like IPE",
           DEFAULT_PROP_CAMERA_IFE_DIRECT_STREAM,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject, PROP_CAMERA_STATIC_METADATAS,
+      g_param_spec_boxed ("static-metas", "Static Metadata's",
+          "It contains the map of each connected camera and its metadata",
+          G_TYPE_HASH_TABLE,
+          G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
 
 #ifdef ENABLE_RUNTIME_PARSER
   void* qmmfsrc_parser = get_qmmfsrc_parser ();
