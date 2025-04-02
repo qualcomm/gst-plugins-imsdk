@@ -1218,7 +1218,7 @@ gst_video_split_sinkpad_query (GstPad * pad, GstObject * parent,
         gst_video_utils_get_gpu_align (&info, &align);
         gst_video_info_align (&info, &align);
 
-        pool = gst_video_split_create_pool (pad, caps, &align);
+        pool = gst_video_split_create_pool (pad, caps, &align, NULL);
         structure = gst_buffer_pool_get_config (pool);
 
         // Set caps and size in query.
