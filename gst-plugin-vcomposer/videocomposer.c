@@ -394,7 +394,7 @@ gst_video_composer_index_compare (const GstVideoComposerSinkPad * pad,
 
 static GstBufferPool *
 gst_video_composer_create_pool (GstVideoComposer * vcomposer, GstCaps * caps,
-    GstVideoAlignment * align)
+    GstVideoAlignment * align, GstAllocationParams * params)
 {
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
@@ -439,7 +439,7 @@ gst_video_composer_create_pool (GstVideoComposer * vcomposer, GstCaps * caps,
 
   gst_buffer_pool_config_set_params (config, caps, info.size,
       DEFAULT_PROP_MIN_BUFFERS, DEFAULT_PROP_MAX_BUFFERS);
-  gst_buffer_pool_config_set_allocator (config, allocator, NULL);
+  gst_buffer_pool_config_set_allocator (config, allocator, params);
   gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
 
   if (!gst_buffer_pool_set_config (pool, config)) {
@@ -485,7 +485,7 @@ gst_video_composer_propose_allocation (GstAggregator * aggregator,
     gst_video_utils_get_gpu_align (&info, &align);
     gst_video_info_align (&info, &align);
 
-    pool = gst_video_composer_create_pool (vcomposer, caps, &align);
+    pool = gst_video_composer_create_pool (vcomposer, caps, &align, NULL);
     structure = gst_buffer_pool_get_config (pool);
 
     // Set caps and size in query.
@@ -519,6 +519,7 @@ gst_video_composer_decide_allocation (GstAggregator * aggregator,
   GstCaps *caps = NULL;
   GstVideoInfo info;
   GstVideoAlignment align = { 0, }, ds_align = { 0, };
+  GstAllocationParams params = { 0, };
   GstBufferPool *pool = NULL;
   guint size = 0, minbuffers = 0, maxbuffers = 0;
 
@@ -543,13 +544,15 @@ gst_video_composer_decide_allocation (GstAggregator * aggregator,
   gst_query_get_video_alignment (query, &ds_align);
   align = gst_video_calculate_common_alignment (&align, &ds_align);
 
+  if (gst_query_get_n_allocation_params (query))
+    gst_query_parse_nth_allocation_param (query, 0, NULL, &params);
+
   {
     GstStructure *config = NULL;
     GstAllocator *allocator = NULL;
-    GstAllocationParams params;
 
     GST_DEBUG_OBJECT (vcomposer, "Creating our own pool");
-    pool = gst_video_composer_create_pool (vcomposer, caps, &align);
+    pool = gst_video_composer_create_pool (vcomposer, caps, &align, &params);
 
     // Get the configured pool properties in order to set in query.
     config = gst_buffer_pool_get_config (pool);

@@ -287,7 +287,7 @@ gst_video_transform_determine_passthrough (GstVideoTransform * vtrans)
 
 static GstBufferPool *
 gst_video_transform_create_pool (GstVideoTransform * vtrans, GstCaps * caps,
-    GstVideoAlignment * align)
+    GstVideoAlignment * align, GstAllocationParams * params)
 {
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
@@ -335,7 +335,7 @@ gst_video_transform_create_pool (GstVideoTransform * vtrans, GstCaps * caps,
 
   gst_buffer_pool_config_set_params (config, caps, info.size,
       DEFAULT_PROP_MIN_BUFFERS, DEFAULT_PROP_MAX_BUFFERS);
-  gst_buffer_pool_config_set_allocator (config, allocator, NULL);
+  gst_buffer_pool_config_set_allocator (config, allocator, params);
   gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
 
   if (!gst_buffer_pool_set_config (pool, config)) {
@@ -388,7 +388,7 @@ gst_video_transform_propose_allocation (GstBaseTransform * base,
     gst_video_utils_get_gpu_align (&info, &align);
     gst_video_info_align (&info, &align);
 
-    pool = gst_video_transform_create_pool (vtrans, caps, &align);
+    pool = gst_video_transform_create_pool (vtrans, caps, &align, NULL);
     structure = gst_buffer_pool_get_config (pool);
 
     // Set caps and size in query.
@@ -424,7 +424,7 @@ gst_video_transform_decide_allocation (GstBaseTransform * base,
   GstStructure *config = NULL;
   GstAllocator *allocator = NULL;
   guint size = 0, minbuffers = 0, maxbuffers = 0;
-  GstAllocationParams params;
+  GstAllocationParams params = { 0, };
   GstVideoInfo info;
   GstVideoAlignment align = { 0, }, ds_align = { 0, };
 
@@ -449,8 +449,11 @@ gst_video_transform_decide_allocation (GstBaseTransform * base,
   gst_query_get_video_alignment (query, &ds_align);
   align = gst_video_calculate_common_alignment (&align, &ds_align);
 
+  if (gst_query_get_n_allocation_params (query))
+    gst_query_parse_nth_allocation_param (query, 0, NULL, &params);
+
   // Create a new buffer pool.
-  pool = gst_video_transform_create_pool (vtrans, caps, &align);
+  pool = gst_video_transform_create_pool (vtrans, caps, &align, &params);
   vtrans->outpool = pool;
 
   // Get the configured pool properties in order to set in query.
