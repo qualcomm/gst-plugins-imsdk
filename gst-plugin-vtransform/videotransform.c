@@ -286,7 +286,8 @@ gst_video_transform_determine_passthrough (GstVideoTransform * vtrans)
 }
 
 static GstBufferPool *
-gst_video_transform_create_pool (GstVideoTransform * vtrans, GstCaps * caps)
+gst_video_transform_create_pool (GstVideoTransform * vtrans, GstCaps * caps,
+    GstVideoAlignment * align)
 {
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
@@ -315,34 +316,14 @@ gst_video_transform_create_pool (GstVideoTransform * vtrans, GstCaps * caps)
     gst_buffer_pool_config_add_option (config,
         GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
   } else {
-    GstVideoFormat format;
-    GstVideoAlignment align;
-    gboolean success;
-    guint width, height;
-    gint stride, scanline;
-
-    width = GST_VIDEO_INFO_WIDTH (&info);
-    height = GST_VIDEO_INFO_HEIGHT (&info);
-    format = GST_VIDEO_INFO_FORMAT (&info);
-
-    success = gst_adreno_utils_compute_alignment (width, height, format,
-        &stride, &scanline);
-    if (!success) {
-      GST_ERROR_OBJECT(vtrans,"Failed to get alignment");
-      return NULL;
-    }
-
     pool = gst_qti_buffer_pool_new ();
     config = gst_buffer_pool_get_config (pool);
 
-    gst_video_alignment_reset (&align);
-    align.padding_bottom = scanline - height;
-    align.padding_right = stride - width;
-    gst_video_info_align (&info, &align);
+    gst_video_info_align (&info, align);
 
     gst_buffer_pool_config_add_option (config,
         GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
-    gst_buffer_pool_config_set_video_alignment (config, &align);
+    gst_buffer_pool_config_set_video_alignment (config, align);
 
     allocator = gst_qti_allocator_new ();
     if (allocator == NULL) {
@@ -373,11 +354,9 @@ gst_video_transform_propose_allocation (GstBaseTransform * base,
     GstQuery * inquery, GstQuery * outquery)
 {
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM_CAST (base);
-
   GstCaps *caps = NULL;
   GstBufferPool *pool = NULL;
   GstVideoInfo info;
-  guint size = 0;
   gboolean needpool = FALSE;
 
   if (!GST_BASE_TRANSFORM_CLASS (parent_class)->propose_allocation (
@@ -401,18 +380,19 @@ gst_video_transform_propose_allocation (GstBaseTransform * base,
     return FALSE;
   }
 
-  // Get the size from video info.
-  size = GST_VIDEO_INFO_SIZE (&info);
-
   if (needpool) {
     GstStructure *structure = NULL;
     GstAllocator *allocator = NULL;
+    GstVideoAlignment align = { 0, };
 
-    pool = gst_video_transform_create_pool (vtrans, caps);
+    gst_video_utils_get_gpu_align (&info, &align);
+    gst_video_info_align (&info, &align);
+
+    pool = gst_video_transform_create_pool (vtrans, caps, &align);
     structure = gst_buffer_pool_get_config (pool);
 
     // Set caps and size in query.
-    gst_buffer_pool_config_set_params (structure, caps, size, 0, 0);
+    gst_buffer_pool_config_set_params (structure, caps, info.size, 0, 0);
 
     gst_buffer_pool_config_get_allocator (structure, &allocator, NULL);
     gst_query_add_allocation_param (outquery, allocator, NULL);
@@ -425,7 +405,7 @@ gst_video_transform_propose_allocation (GstBaseTransform * base,
   }
 
   // If upstream does't have a pool requirement, set only size in query.
-  gst_query_add_allocation_pool (outquery, needpool ? pool : NULL, size, 0, 0);
+  gst_query_add_allocation_pool (outquery, pool, info.size, 0, 0);
 
   if (pool != NULL)
     gst_object_unref (pool);
@@ -439,13 +419,14 @@ gst_video_transform_decide_allocation (GstBaseTransform * base,
     GstQuery * query)
 {
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM_CAST (base);
-
   GstCaps *caps = NULL;
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
   GstAllocator *allocator = NULL;
-  guint size, minbuffers, maxbuffers;
+  guint size = 0, minbuffers = 0, maxbuffers = 0;
   GstAllocationParams params;
+  GstVideoInfo info;
+  GstVideoAlignment align = { 0, }, ds_align = { 0, };
 
   gst_query_parse_allocation (query, &caps, NULL);
   if (!caps) {
@@ -456,11 +437,20 @@ gst_video_transform_decide_allocation (GstBaseTransform * base,
   // Invalidate the cached pool if there is an allocation_query.
   if (vtrans->outpool) {
     gst_buffer_pool_set_active (vtrans->outpool, FALSE);
-    gst_object_unref (vtrans->outpool);
+    gst_clear_object (&vtrans->outpool);
   }
 
+  if (!gst_video_info_from_caps (&info, caps)) {
+    GST_ERROR_OBJECT (vtrans, "Invalid caps %" GST_PTR_FORMAT, caps);
+    return FALSE;
+  }
+
+  gst_video_utils_get_gpu_align (&info, &align);
+  gst_query_get_video_alignment (query, &ds_align);
+  align = gst_video_calculate_common_alignment (&align, &ds_align);
+
   // Create a new buffer pool.
-  pool = gst_video_transform_create_pool (vtrans, caps);
+  pool = gst_video_transform_create_pool (vtrans, caps, &align);
   vtrans->outpool = pool;
 
   // Get the configured pool properties in order to set in query.

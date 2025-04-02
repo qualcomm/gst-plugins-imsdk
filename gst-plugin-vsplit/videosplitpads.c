@@ -134,7 +134,8 @@ gst_video_split_mode_get_type (void)
 }
 
 GstBufferPool *
-gst_video_split_create_pool (GstPad * pad, GstCaps * caps)
+gst_video_split_create_pool (GstPad * pad, GstCaps * caps,
+    GstVideoAlignment * align)
 {
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
@@ -160,34 +161,13 @@ gst_video_split_create_pool (GstPad * pad, GstCaps * caps)
     allocator = gst_fd_allocator_new ();
 
   } else {
-    GstVideoFormat format;
-    GstVideoAlignment align;
-    gboolean success;
-    guint width, height;
-    gint stride, scanline;
-
-    width = GST_VIDEO_INFO_WIDTH (&info);
-    height = GST_VIDEO_INFO_HEIGHT (&info);
-    format = GST_VIDEO_INFO_FORMAT (&info);
-
-    success = gst_adreno_utils_compute_alignment (width, height, format,
-        &stride, &scanline);
-    if (!success) {
-      GST_ERROR_OBJECT(pad,"Failed to get alignment");
-      return NULL;
-    }
-
     pool = gst_qti_buffer_pool_new ();
     config = gst_buffer_pool_get_config (pool);
 
-    gst_video_alignment_reset (&align);
-    align.padding_bottom = scanline - height;
-    align.padding_right = stride - width;
-
-    gst_video_info_align (&info, &align);
+    gst_video_info_align (&info, align);
     gst_buffer_pool_config_add_option (config,
         GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
-    gst_buffer_pool_config_set_video_alignment (config, &align);
+    gst_buffer_pool_config_set_video_alignment (config, align);
 
     allocator = gst_qti_allocator_new ();
     if (allocator == NULL) {
@@ -955,7 +935,9 @@ gst_video_split_srcpad_decide_allocation (GstVideoSplitSrcPad * pad,
   GstStructure *config = NULL;
   GstAllocator *allocator = NULL;
   GstAllocationParams params;
-  guint size, minbuffers, maxbuffers;
+  guint size = 0, minbuffers = 0, maxbuffers = 0;
+  GstVideoInfo info;
+  GstVideoAlignment align = { 0, }, ds_align = { 0, };
 
   gst_query_parse_allocation (query, &caps, NULL);
 
@@ -967,11 +949,20 @@ gst_video_split_srcpad_decide_allocation (GstVideoSplitSrcPad * pad,
   // Invalidate the cached pool if there is an allocation_query.
   if (pad->pool != NULL) {
     gst_buffer_pool_set_active (pad->pool, FALSE);
-    gst_object_unref (pad->pool);
+    gst_clear_object (&pad->pool);
   }
 
+  if (!gst_video_info_from_caps (&info, caps)) {
+    GST_ERROR_OBJECT (pad, "Invalid caps %" GST_PTR_FORMAT, caps);
+    return FALSE;
+  }
+
+  gst_video_utils_get_gpu_align (&info, &align);
+  gst_query_get_video_alignment (query, &ds_align);
+  align = gst_video_calculate_common_alignment (&align, &ds_align);
+
   // Create a new buffer pool.
-  if ((pool = gst_video_split_create_pool (GST_PAD (pad), caps)) == NULL) {
+  if ((pool = gst_video_split_create_pool (GST_PAD (pad), caps, &align)) == NULL) {
     GST_ERROR_OBJECT (pad, "Failed to create buffer pool!");
     return FALSE;
   }
