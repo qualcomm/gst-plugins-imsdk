@@ -177,7 +177,8 @@ gboolean
 gst_video_split_srcpad_setcaps (GstVideoSplitSrcPad * srcpad, GstCaps * incaps);
 
 GstBufferPool *
-gst_video_split_create_pool (GstPad * pad, GstCaps * caps);
+gst_video_split_create_pool (GstPad * pad, GstCaps * caps,
+    GstVideoAlignment * align);
 
 G_END_DECLS
 

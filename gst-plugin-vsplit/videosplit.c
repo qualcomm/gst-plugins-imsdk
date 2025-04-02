@@ -1196,7 +1196,6 @@ gst_video_split_sinkpad_query (GstPad * pad, GstObject * parent,
       GstCaps *caps = NULL;
       GstBufferPool *pool = NULL;
       GstVideoInfo info;
-      guint size = 0;
       gboolean needpool = FALSE;
 
       // Extract caps from the query.
@@ -1212,17 +1211,18 @@ gst_video_split_sinkpad_query (GstPad * pad, GstObject * parent,
         return FALSE;
       }
 
-      // Get the size from video info.
-      size = GST_VIDEO_INFO_SIZE (&info);
-
       if (needpool) {
         GstStructure *structure = NULL;
+        GstVideoAlignment align = { 0, };
 
-        pool = gst_video_split_create_pool (pad, caps);
+        gst_video_utils_get_gpu_align (&info, &align);
+        gst_video_info_align (&info, &align);
+
+        pool = gst_video_split_create_pool (pad, caps, &align);
         structure = gst_buffer_pool_get_config (pool);
 
         // Set caps and size in query.
-        gst_buffer_pool_config_set_params (structure, caps, size, 0, 0);
+        gst_buffer_pool_config_set_params (structure, caps, info.size, 0, 0);
 
         if (!gst_buffer_pool_set_config (pool, structure)) {
           GST_ERROR_OBJECT (pad, "Failed to set buffer pool configuration!");
@@ -1232,7 +1232,7 @@ gst_video_split_sinkpad_query (GstPad * pad, GstObject * parent,
       }
 
       // If upstream does't have a pool requirement, set only size in query.
-      gst_query_add_allocation_pool (query, needpool ? pool : NULL, size, 0, 0);
+      gst_query_add_allocation_pool (query, pool, info.size, 0, 0);
 
       if (pool != NULL)
         gst_object_unref (pool);

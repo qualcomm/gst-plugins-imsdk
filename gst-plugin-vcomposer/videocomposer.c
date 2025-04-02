@@ -180,26 +180,6 @@ gst_video_composer_src_template (void)
       gst_video_composer_src_caps (), GST_TYPE_AGGREGATOR_PAD);
 }
 
-static void
-gst_video_composer_get_align (GstVideoInfo * info, GstVideoAlignment * align)
-{
-  GstVideoFormat format;
-  gboolean success;
-  guint width, height;
-  gint stride, scanline;
-
-  width = GST_VIDEO_INFO_WIDTH (info);
-  height = GST_VIDEO_INFO_HEIGHT (info);
-  format = GST_VIDEO_INFO_FORMAT (info);
-
-  success = gst_adreno_utils_compute_alignment (width, height, format,
-     &stride, &scanline);
-  if (success) {
-    align->padding_bottom = scanline - height;
-    align->padding_right = stride - width;
-  }
-}
-
 static inline void
 gst_buffer_transfer_video_region_of_interest_meta (GstBuffer * buffer,
     GstVideoRectangle * source, GstVideoRectangle * destination,
@@ -502,7 +482,7 @@ gst_video_composer_propose_allocation (GstAggregator * aggregator,
     GstAllocator *allocator = NULL;
     GstVideoAlignment align = { 0, };
 
-    gst_video_composer_get_align (&info, &align);
+    gst_video_utils_get_gpu_align (&info, &align);
     gst_video_info_align (&info, &align);
 
     pool = gst_video_composer_create_pool (vcomposer, caps, &align);
@@ -540,8 +520,7 @@ gst_video_composer_decide_allocation (GstAggregator * aggregator,
   GstVideoInfo info;
   GstVideoAlignment align = { 0, }, ds_align = { 0, };
   GstBufferPool *pool = NULL;
-  guint size = 0, minbuffers = 0, maxbuffers = 0, idx = 0;
-  const GstStructure *params = NULL;
+  guint size = 0, minbuffers = 0, maxbuffers = 0;
 
   gst_query_parse_allocation (query, &caps, NULL);
   if (!caps) {
@@ -560,27 +539,9 @@ gst_video_composer_decide_allocation (GstAggregator * aggregator,
     return FALSE;
   }
 
-  gst_video_composer_get_align (&info, &align);
-
-  if (gst_query_find_allocation_meta (query, GST_VIDEO_META_API_TYPE, &idx)) {
-    gst_query_parse_nth_allocation_meta (query, idx, &params);
-    GST_DEBUG_OBJECT (vcomposer, "Allocation video meta %" GST_PTR_FORMAT,
-        params);
-  }
-
-  if (params != NULL) {
-    gst_structure_get_uint (params, "padding-top", &ds_align.padding_top);
-    gst_structure_get_uint (params, "padding-bottom", &ds_align.padding_bottom);
-    gst_structure_get_uint (params, "padding-left", &ds_align.padding_left);
-    gst_structure_get_uint (params, "padding-right", &ds_align.padding_right);
-
-    GST_DEBUG_OBJECT (vcomposer, "Downstream requested padding (top: %u "
-        "bottom: %u left: %u right: %u)", ds_align.padding_top,
-        ds_align.padding_bottom, ds_align.padding_left, ds_align.padding_right);
-
-    // Find the most the appropriate alignment between us and downstream.
-    align = gst_video_calculate_common_alignment (&align, &ds_align);
-  }
+  gst_video_utils_get_gpu_align (&info, &align);
+  gst_query_get_video_alignment (query, &ds_align);
+  align = gst_video_calculate_common_alignment (&align, &ds_align);
 
   {
     GstStructure *config = NULL;
