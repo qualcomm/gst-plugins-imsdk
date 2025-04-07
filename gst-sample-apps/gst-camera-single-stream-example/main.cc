@@ -19,10 +19,10 @@
  * gst-camera-single-stream-example  -o 0--width=1920 --height=1080
  * For Encoder dump on device:
  * gst-camera-single-stream-example  -o 1--width=1920 --height=1080 -f
- * /opt/video.mp4
+ * /etc/media/video.mp4
  * For YUV dump on device:
  * gst-camera-single-stream-example -o 2--width=1920 --height=1080 -f
- * /opt/file%d.yuv
+ * /etc/media/file%d.yuv
  * For RTSP STREAMING on device:
  * gst-camera-single-stream-example -o 3 --width=1920 --height=1080 -i <ip> -p <port>
  *
@@ -48,8 +48,8 @@
 
 #include <gst/sampleapps/gst_sample_apps_utils.h>
 
-#define DEFAULT_OP_YUV_FILENAME "/opt/yuv_dump%d.yuv"
-#define DEFAULT_OP_MP4_FILENAME "/opt/video.mp4"
+#define DEFAULT_OP_YUV_FILENAME "/etc/media/yuv_dump%d.yuv"
+#define DEFAULT_OP_MP4_FILENAME "/etc/media/video.mp4"
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
 #define DEFAULT_IP "127.0.0.1"
@@ -72,8 +72,8 @@
   "encoding-name=H264,payload=96\\\" )\"\n" \
   "\nOutput:\n" \
   "  Upon execution, application will generates output as user selected. \n" \
-  "  In case Video Encoding the output video stored at /opt/video.mp4 \n" \
-  "  In case YUV dump the output video stored at /opt/yuv_dump%d.yuv" \
+  "  In case Video Encoding the output video stored at /etc/media/video.mp4 \n" \
+  "  In case YUV dump the output video stored at /etc/media/yuv_dump%d.yuv" \
 
 // Structure to hold the application context
 struct GstCameraAppContext : GstAppContext {

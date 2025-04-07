@@ -325,7 +325,7 @@ create_pipe (GstCameraSwitchCtx *cameraswitchctx)
     g_object_set (G_OBJECT (h264parse), "name", "h264parse", NULL);
     g_object_set (G_OBJECT (mp4mux), "name", "mp4mux", NULL);
     g_object_set (G_OBJECT (filesink), "name", "filesink", NULL);
-    g_object_set (G_OBJECT (filesink), "location", "/opt/mux.mp4", NULL);
+    g_object_set (G_OBJECT (filesink), "location", "/etc/media/mux.mp4", NULL);
     g_object_set (G_OBJECT (filesink), "enable-last-sample", false, NULL);
 
     // Add qmmfsrc to the pipeline

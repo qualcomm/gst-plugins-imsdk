@@ -15,9 +15,9 @@
  *
  * Usage:
  * For Transcoding AVC to HEVC:
- * gst-video-transcode-example -i /opt/avc.mp4 -c 1 -o /opt/hevc.mp4
+ * gst-video-transcode-example -i /etc/media/avc.mp4 -c 1 -o /etc/media/hevc.mp4
  * For Transcoding HEVC to AVC:
- * gst-video-transcode-example -i /opt/hevc.mp4 -c 2 -o /opt/avc.mp4
+ * gst-video-transcode-example -i /etc/media/hevc.mp4 -c 2 -o /etc/media/avc.mp4
  *
  * Help:
  * gst-video-transcode-example --help
@@ -45,7 +45,7 @@
 
 #include <gst/sampleapps/gst_sample_apps_utils.h>
 
-#define DEFAULT_OUTPUT_FILENAME "/opt/transcoded_video.mp4"
+#define DEFAULT_OUTPUT_FILENAME "/etc/media/transcoded_video.mp4"
 
 #define GST_APP_SUMMARY "This application is designed to showcase video "\
   "transcoding capabilities. It can accept user input files encoded in" \
@@ -53,9 +53,9 @@
   "or AVC format.\n" \
   "\nCommand:\n" \
   "For AVC to HEVC transcode\n" \
-  "  gst-video-transcode-example -i /opt/avc.mp4 -c 1 -o /opt/hevc.mp4 \n" \
+  "  gst-video-transcode-example -i /etc/media/avc.mp4 -c 1 -o /etc/media/hevc.mp4 \n" \
   "For HEVC to AVC transcode\n" \
-  "  gst-video-transcode-example -i /opt/hevc.mp4 -c 2 -o /opt/avc.mp4 \n" \
+  "  gst-video-transcode-example -i /etc/media/hevc.mp4 -c 2 -o /etc/media/avc.mp4 \n" \
   "\nOutput:\n" \
   "  Upon execution, application will generates output mp4 file at given path"
 
@@ -310,14 +310,14 @@ main (gint argc, gchar *argv[])
   GOptionEntry entries[] = {
     { "input_file", 'i', 0, G_OPTION_ARG_FILENAME, &appctx->input_file,
       "Input Filename - i/p AVC/HEVC mp4 file path and name",
-      "-i /opt/<h264_file/h265_file>.mp4" },
+      "-i /etc/media/<h264_file/h265_file>.mp4" },
     { "input_codec", 'c', 0, G_OPTION_ARG_INT, &appctx->input_format,
       "Input codec type - AVC/HEVC",
        "-c 1(AVC)/2(HEVC)" },
     { "output_file", 'o', 0, G_OPTION_ARG_FILENAME, &appctx->output_file,
       "Output Filename - o/p filename & path where user want to \
       store AVC/HEVC stream",
-      "-o /opt/<h264_file/h265_file>.mp4 " },
+      "-o /etc/media/<h264_file/h265_file>.mp4 " },
     { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
