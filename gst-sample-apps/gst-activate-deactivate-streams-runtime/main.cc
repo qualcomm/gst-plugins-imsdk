@@ -286,7 +286,7 @@ create_encoder_stream (GstActivateDeactivateAppContext * appctx, GstStreamInf * 
   g_object_set (G_OBJECT (stream->mp4mux), "reserved-max-duration", 1000000000,
       NULL);
 
-  snprintf (temp_str, sizeof (temp_str), "/opt/video_%d.mp4", output_cnt++);
+  snprintf (temp_str, sizeof (temp_str), "/etc/media/video_%d.mp4", output_cnt++);
   g_object_set (G_OBJECT (stream->filesink), "location", temp_str, NULL);
 
   gst_bin_add_many (GST_BIN (appctx->pipeline),

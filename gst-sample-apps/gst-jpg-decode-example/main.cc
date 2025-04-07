@@ -14,7 +14,7 @@
 * gst-jpg-decode-example --help
 *
 * Usage:
-* gst-jpg-decode-example -w 1280 -h 720 -i /opt/imagefiles_%d.jpg
+* gst-jpg-decode-example -w 1280 -h 720 -i /etc/media/imagefiles_%d.jpg
 *
 * ***********************************************************************
 * For Decoding of JPG files: pipeline:
@@ -33,7 +33,7 @@
 #define GST_APP_SUMMARY                                                       \
   "This application showcases the decoding of JPG files on waylandsink  " \
    "\nCommand:\n" \
-  "\n gst-jpg-decode-example -w 1280 -h 720 -i /opt/<imagefiles_%d>.jpg \n" \
+  "\n gst-jpg-decode-example -w 1280 -h 720 -i /etc/media/<imagefiles_%d>.jpg \n" \
   "\n File names must be <imagefiles_1>.jpg,<imagefiles_2>.jpg,<imagefiles_3>.jpg and many"
 
 // Structure to hold the application context

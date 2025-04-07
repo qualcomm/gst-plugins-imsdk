@@ -30,7 +30,7 @@
 #include <gst/gst.h>
 #include <gst/sampleapps/gst_sample_apps_utils.h>
 
-#define DEFAULT_OUTPUT_FILENAME "/opt/video.mp4"
+#define DEFAULT_OUTPUT_FILENAME "/etc/media/video.mp4"
 #define DEFAULT_WIDTH           1280
 #define DEFAULT_HEIGHT          720
 #define NOISE_REDUCTION_HIGH_QUALITY 2
@@ -314,7 +314,7 @@ main (gint argc, gchar * argv[])
       "image height"},
   {"output_file", 'o', 0, G_OPTION_ARG_STRING, &appctx->output_file,
     "Output Filename",
-    "-o /opt/video.mp4"},
+    "-o /etc/media/video.mp4"},
   { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
