@@ -15,20 +15,6 @@ gi.require_version("Gst", "1.0")
 gi.require_version("GLib", "2.0")
 from gi.repository import Gst, GLib
 
-DESCRIPTION = """
-The application receives an RTSP stream as source, decodes it, uses YOLOv8
-TFLite model to identify the object in scene from camera stream and overlay
-the bounding boxes over the detected objects. The results are shown on the
-display.
-
-The default file paths in the python script are as follows:
-- Detection model (YOLOv8): /etc/models/YoloV8N_Detection_Quantized.tflite
-- Detection labels: /etc/labels/yolov8n.labels
-
-To override the default settings,
-please configure the corresponding module and constants as well.
-"""
-
 DEFAULT_RTSP_SRC = "rtsp://127.0.0.1:8900/live"
 
 # Configurations for Detection
@@ -37,6 +23,20 @@ DEFAULT_DETECTION_MODULE = "yolov8"
 DEFAULT_DETECTION_LABELS = "/etc/labels/yolov8n.labels"
 DEFAULT_DETECTION_CONSTANTS = "YoloV8,q-offsets=<-107.0,-128.0,0.0>,\
     q-scales=<3.093529462814331,0.00390625,1.0>;"
+
+DESCRIPTION = f"""
+The application receives an RTSP stream as source, decodes it, uses YOLOv8
+TFLite model to identify the object in scene from camera stream and overlay
+the bounding boxes over the detected objects. The results are shown on the
+display.
+
+The default file paths in the python script are as follows:
+- Detection model (YOLOv8): {DEFAULT_DETECTION_MODEL}
+- Detection labels:         {DEFAULT_DETECTION_LABELS}
+
+To override the default settings,
+please configure the corresponding module and constants as well.
+"""
 
 eos_received = False
 def create_element(factory_name, name):
@@ -65,23 +65,14 @@ def construct_pipeline(pipe):
     """Initialize and link elements for the GStreamer pipeline."""
     # Parse arguments
     parser = argparse.ArgumentParser(
-        add_help=False,
+        description=DESCRIPTION,
         formatter_class=type(
-            "CustomFormatter",
-            (
-                argparse.ArgumentDefaultsHelpFormatter,
-                argparse.RawTextHelpFormatter,
-            ),
-            {},
-        ),
+            'CustomFormatter',
+            (argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter),
+            {}
+        )
     )
-    parser.add_argument(
-        "-h",
-        "--help",
-        action="help",
-        default=argparse.SUPPRESS,
-        help=DESCRIPTION,
-    )
+
     parser.add_argument(
         "--rtsp", type=str, default=DEFAULT_RTSP_SRC,
         help="RTSP URL"
