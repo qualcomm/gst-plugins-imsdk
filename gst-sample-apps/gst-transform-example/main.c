@@ -337,7 +337,8 @@ create_transform_pipeline (GstTransformAppContext * appctx)
     // Configure the main stream capabilities based on width and height
     filtercaps = gst_caps_new_simple ("video/x-raw", "format", G_TYPE_STRING,
         "NV12", "width", G_TYPE_INT, appctx->input_width, "height", G_TYPE_INT,
-        appctx->input_height, "framerate", GST_TYPE_FRACTION, 30, 1, NULL);
+        appctx->input_height, "framerate", GST_TYPE_FRACTION, 30, 1,
+        "colorimetry", G_TYPE_STRING, "bt601", NULL);
 
     g_object_set (G_OBJECT (qmmfsrc_filter), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
