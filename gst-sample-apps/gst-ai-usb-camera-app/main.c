@@ -18,7 +18,7 @@
 *      --Object detection and Live Camera Preview on Display
  *
  * Usage:
- * gst-ai-usb-camera-app --od-config-file=/etc/config/config-usb-camera-app.json
+ * gst-ai-usb-camera-app --od-config-file=/etc/configs/config-usb-camera-app.json
  *
  * Help:
  * gst-ai-usb-camera-app --help
@@ -654,8 +654,6 @@ create_od_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
   GValue value = G_VALUE_INIT;
   gdouble alpha_value;
   gint pos_vals[2], dim_vals[2];
-  gint primary_camera_width = DEFAULT_WIDTH;
-  gint primary_camera_height = DEFAULT_HEIGHT;
   gint inference_width = DEFAULT_WIDTH;
   gint inference_height = DEFAULT_HEIGHT;
   gint framerate = DEFAULT_FRAMERATE;
@@ -777,8 +775,8 @@ create_od_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
   // 2.4 Set the capabilities of camera plugin output
   filtercaps = gst_caps_new_simple ("video/x-raw",
       "format", G_TYPE_STRING, "YUY2",
-      "width", G_TYPE_INT, primary_camera_width,
-      "height", G_TYPE_INT, primary_camera_height,
+      "width", G_TYPE_INT, appctx->width,
+      "height", G_TYPE_INT, appctx->height,
       "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
   g_object_set (G_OBJECT (camsrc_caps_preview), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
