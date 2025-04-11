@@ -191,7 +191,7 @@ create_pipe (GstSmartCodecContext * appctx)
 
   g_object_set (G_OBJECT (pqmmf_pad), "type", STREAM_TYPE_PREVIEW, NULL);
   g_object_set (G_OBJECT (qmmf_pad), "type", STREAM_TYPE_VIDEO, NULL);
-  g_object_set (G_OBJECT (pqmmf_pad), "extra-buffers", 20, NULL);
+  g_object_set (G_OBJECT (qmmf_pad), "extra-buffers", 20, NULL);
   g_object_set (G_OBJECT (qtiqmmfsrc), "noise-reduction", NOISE_REDUCTION_HIGH_QUALITY, NULL);
   gst_object_unref (qmmf_pad);
   gst_object_unref (pqmmf_pad);
@@ -220,7 +220,6 @@ create_pipe (GstSmartCodecContext * appctx)
   }
 
    g_object_set (G_OBJECT (qtismartvencbin), "encoder", 2, NULL);
-   g_object_set (G_OBJECT (qtismartvencbin), "min-buffers", 10, NULL);
 
   // Set filesink_enc properties
   g_object_set (G_OBJECT (filesink), "location", appctx->output_file, NULL);
