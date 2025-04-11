@@ -1,0 +1,25 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-ai-metadata-parser-example",
+  "ApplicationType": "AI",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "AIModelsNeededByApplication": [
+    {
+      "ModelName": "detection-model.tflite",
+      "ModelLabelDownloadURL": "",
+      "LabelFile": "detection.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
+    }
+  ],
+  "AIModelsSupportedByApplication": [],
+  "AIModelLocation": "/etc/models/",
+  "AILabelLocation": "/etc/labels/",
+  "ConfigFile": "config-metadata-parser.json",
+  "ConfigFileLocation": "/etc/configs/",
+  "ApplicationKeyWords": [
+    "MetadataParser",
+    "MetadataParserExample"
+  ],
+  "ApplicationTextDescription": "This application demonstrates parsing of metadata obtained from result of Object Detection to obtain people count in input coming from camera, file or rtsp stream"
+}

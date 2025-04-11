@@ -1,0 +1,9 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-audio-video-encode",
+  "ApplicationType": "AudioVideo",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "This is an application to demonstrate the Audio Video Encode and store into the user provided file."
+}
+

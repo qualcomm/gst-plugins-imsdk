@@ -57,16 +57,24 @@ G_BEGIN_DECLS
 typedef struct _GstFdSocketSink GstFdSocketSink;
 typedef struct _GstFdSocketSinkClass GstFdSocketSinkClass;
 
+typedef enum {
+  GST_SOCKET_TRY_CONNECT,
+  GST_SOCKET_RUNNING,
+  GST_SOCKET_DISCONNECT
+} GstSocketState;
+
 struct _GstFdSocketSink {
   GstBaseSink parent;
 
   gchar *sockfile;
 
-  GstTask  *task;
-  GRecMutex tasklock;
+  GThread *msg_thread;
+  GMutex msglock;
 
-  GstTask  *connect_task;
-  GRecMutex connect_tasklock;
+  GstSocketState state;
+
+  gint connected;
+  gint should_disconnect;
 
   gint   socket;
   GMutex socklock;

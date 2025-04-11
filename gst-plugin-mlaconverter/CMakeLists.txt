@@ -18,7 +18,7 @@ pkg_check_modules(GST_BASE
   REQUIRED gstreamer-base-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_ALLOC
   REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
-  pkg_check_modules(GST_AUDIO
+pkg_check_modules(GST_AUDIO
   REQUIRED gstreamer-audio-1.0>=${GST_VERSION_REQUIRED})
 
 # Generate configuration header file.
@@ -30,11 +30,11 @@ add_definitions(-DHAVE_CONFIG_H)
 
 # Common compiler flags.
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter -Wno-unused-function")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter -Wno-unused-function")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
 
 include(CheckIncludeFile)
 check_include_file("linux/dma-buf.h" HAVE_LINUX_DMA_BUF_H)
@@ -44,7 +44,7 @@ set(GST_QTI_ML_AUDIO_CONVERTER gstqtimlaconverter)
 
 add_library(${GST_QTI_ML_AUDIO_CONVERTER} SHARED
   mlaconverter.c
-  mlaconverter-engine.cc
+  audio-converter-engine.cc
 )
 
 target_include_directories(${GST_QTI_ML_AUDIO_CONVERTER} PUBLIC
@@ -61,6 +61,7 @@ target_link_libraries(${GST_QTI_ML_AUDIO_CONVERTER} PRIVATE
   ${GST_ALLOC_LIBRARIES}
   ${GST_AUDIO_LIBRARIES}
   gstqtimlbase
+  gstqtiutilsbase
 )
 
 install(

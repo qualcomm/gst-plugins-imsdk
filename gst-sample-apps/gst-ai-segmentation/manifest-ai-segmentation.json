@@ -1,0 +1,45 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-ai-segmentation",
+  "ApplicationType": "AI",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "AIModelsNeededByApplication": [
+    {
+      "ModelName": "deeplabv3_plus_mobilenet_quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/DeepLabV3-Plus-MobileNet-Quantized/resolve/main/DeepLabV3-Plus-MobileNet-Quantized.tflite",
+      "LabelFile": "deeplabv3_resnet50.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/deeplabv3_resnet50.labels"
+    }
+  ],
+  "AIModelsSupportedByApplication": [
+    {
+      "ModelName": "FFNet-40S-Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/FFNet-40S-Quantized/resolve/main/FFNet-40S-Quantized.tflite",
+      "LabelFile": "deeplabv3_resnet50.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/deeplabv3_resnet50.labels"
+    },
+    {
+      "ModelName": "FFNet-54S-Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/FFNet-54S-Quantized/resolve/main/FFNet-54S-Quantized.tflite",
+      "LabelFile": "deeplabv3_resnet50.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/deeplabv3_resnet50.labels"
+    },
+    {
+      "ModelName": "FFNet-78S-Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/FFNet-78S-Quantized/resolve/main/FFNet-78S-Quantized.tflite",
+      "LabelFile": "deeplabv3_resnet50.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/deeplabv3_resnet50.labels"
+    }
+  ],
+  "AIModelLocation": "/etc/models/",
+  "AILabelLocation": "/etc/labels/",
+  "ConfigFile": "config_segmentation.json",
+  "ConfigFileLocation": "/etc/configs/",
+  "ApplicationKeyWords": [
+    "SemanticSegmentation.",
+    "DeeplabV3",
+    "FFNet"
+  ],
+  "ApplicationTextDescription": "This application enables you to divide an image into different and meaningful parts or segments and assign a label to each homogenous segment based on the similarity of the attributes."
+}

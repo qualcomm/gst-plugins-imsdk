@@ -51,7 +51,7 @@
 //Person detection model output parameters
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
-    "type = (string) { UINT8 }, " \
+    "type = (string) { UINT8, FLOAT32 }, " \
     "dimensions = (int) < < 1, 120, 160, 3 >, < 1, 120, 160, 12 >, < 1, 120, 160, 34 >, < 1, 120, 160, 17 > >; "
 
 // Module caps instance

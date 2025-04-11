@@ -1,0 +1,9 @@
+{
+  "file-path": "/etc/media/video.mp4",
+  "ml-framework": "tflite",
+  "model": "/etc/models/face_det_lite_quantized.tflite",
+  "labels": "/etc/labels/face_detection.labels",
+  "constants": "qfd,q-offsets=<204.0, 12.0, 102.0>,q-scales=<0.0365355908870697,0.23025865852832794, 0.10316766798496246>;",
+  "threshold": 51,
+  "runtime": "dsp"
+}

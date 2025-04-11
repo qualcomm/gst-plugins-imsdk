@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -83,7 +83,7 @@ G_DEFINE_TYPE (GstC2VEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 #define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
 #endif
 
-#define GST_VIDEO_FORMATS "{ NV12, NV12_10LE32, P010_10LE, NV12_Q08C }"
+#define GST_VIDEO_FORMATS "{ NV12, P010_10LE, NV12_Q08C, NV12_Q10LE32C }"
 
 enum
 {
@@ -266,10 +266,10 @@ gst_caps_has_subformat (const GstCaps * caps, const gchar * subformat)
 }
 
 static guint
-gst_caps_get_num_super_frames (const GstCaps * caps)
+gst_caps_get_num_subframes (const GstCaps * caps)
 {
   GstStructure *structure = gst_caps_get_structure (caps, 0);
-  gint n_super_frames = 0;
+  gint n_subframes = 0;
   const gchar *multiview_mode = NULL;
 
   multiview_mode = gst_structure_get_string (structure, "multiview-mode");
@@ -278,18 +278,16 @@ gst_caps_get_num_super_frames (const GstCaps * caps)
 
   switch (gst_video_multiview_mode_from_caps_string (multiview_mode)) {
     case GST_VIDEO_MULTIVIEW_MODE_MONO:
-      if (!gst_structure_get_int (structure, "views", &n_super_frames)) {
-        GST_ERROR ("Failed to get views in multiview(mode: mono).");
+      if (!gst_structure_get_int (structure, "views", &n_subframes))
         return 0;
-      }
-      GST_DEBUG ("Number of super frames: %d.", n_super_frames);
+
+      GST_DEBUG ("Number of subframes: %d.", n_subframes);
       break;
     default:
-      GST_WARNING ("Unsupported multiview mode(%s).", multiview_mode);
       break;
   }
 
-  return (guint)n_super_frames;
+  return (guint)n_subframes;
 }
 
 static gboolean
@@ -331,7 +329,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
     GstVideoCodecState * instate, GstVideoCodecState * outstate)
 {
   GstVideoInfo *info = &instate->info;
-  GstC2PixelInfo pixinfo = { GST_VIDEO_FORMAT_UNKNOWN, FALSE };
+  GstC2PixelInfo pixinfo = { GST_VIDEO_FORMAT_UNKNOWN, 0 };
   GstC2Resolution inresolution = { 0, 0 };
   GstC2Resolution outresolution = { 0, 0 };
   GstC2Gop gop = { 0, 0 };
@@ -341,7 +339,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
   gboolean success = FALSE;
 
   pixinfo.format = GST_VIDEO_INFO_FORMAT (info);
-  pixinfo.isubwc = c2venc->isubwc;
+  pixinfo.n_subframes = c2venc->n_subframes;
 
   success = gst_c2_engine_set_parameter (c2venc->engine,
       GST_C2_PARAM_IN_PIXEL_FORMAT, GPOINTER_CAST (&pixinfo));
@@ -730,9 +728,9 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
     return FALSE;
   }
 
-  if (c2venc->n_super_frames != 0) {
+  if (c2venc->n_subframes != 0) {
     success = gst_c2_engine_set_parameter (c2venc->engine,
-        GST_C2_PARAM_SUPER_FRAME, GPOINTER_CAST (&c2venc->n_super_frames));
+        GST_C2_PARAM_SUPER_FRAME, GPOINTER_CAST (&c2venc->n_subframes));
     if (!success) {
       GST_ERROR_OBJECT (c2venc, "Failed to set super frame!");
       return FALSE;
@@ -910,8 +908,6 @@ gst_c2_venc_buffer_available (GstBuffer * buffer, gpointer userdata)
 
   // Unset the custom SYNC flag if present.
   GST_BUFFER_FLAG_UNSET (buffer, GST_VIDEO_BUFFER_FLAG_SYNC);
-  // Unset the custom UBWC flag if present.
-  GST_BUFFER_FLAG_UNSET (buffer, GST_VIDEO_BUFFER_FLAG_UBWC);
   // Unset the custom HEIC flag if present.
   GST_BUFFER_FLAG_UNSET (buffer, GST_VIDEO_BUFFER_FLAG_HEIC);
   // Unset the custom GBM flag if present.
@@ -947,7 +943,7 @@ gst_c2_venc_buffer_available (GstBuffer * buffer, gpointer userdata)
     frame->output_buffer = buffer;
   }
 
-  if (c2venc->n_super_frames > 0) {
+  if (c2venc->n_subframes > 0) {
     // PTS was passed to codec2 backend as timestamp while encoding
     frame->pts = GST_BUFFER_TIMESTAMP (buffer);
 
@@ -1145,16 +1141,13 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   gint32 outwidth = 0, outheight = 0;
   gboolean success = FALSE;
 
-  c2venc->isubwc = gst_caps_has_compression (state->caps, "ubwc");
-
   c2venc->isheif = gst_caps_has_subformat(state->caps, "heif");
 
   c2venc->isgbm = gst_caps_features_contains
       (gst_caps_get_features (state->caps, 0), GST_CAPS_FEATURE_MEMORY_GBM);
 
-  GST_DEBUG_OBJECT (c2venc, "Setting new format %s%s",
-      gst_video_format_to_string (GST_VIDEO_INFO_FORMAT (info)),
-      c2venc->isubwc ? " UBWC" : "");
+  GST_DEBUG_OBJECT (c2venc, "Input format %s",
+      gst_video_format_to_string (GST_VIDEO_INFO_FORMAT (info)));
 
   if ((c2venc->instate != NULL) &&
       !gst_video_info_is_equal (info, &(c2venc->instate->info))) {
@@ -1297,10 +1290,18 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
 
     gst_structure_get_fraction (structure, "framerate", &fps_n, &fps_d);
 
-    if ((fps_n == 0) && (fps_d == 1))
+    if ((fps_n == 0) && (fps_d == 1)) {
       outstate->info.flags |= GST_VIDEO_FLAG_VARIABLE_FPS;
-    else if ((fps_n != 0) && (fps_d != 0))
+    } else if ((fps_n != 0) && (fps_d != 0)) {
       outstate->info.flags &= ~(GST_VIDEO_FLAG_VARIABLE_FPS);
+
+      // Check if fps_n and fps_d need to be updated.
+      if ((fps_n != info->fps_n) || (fps_d != info->fps_d)) {
+        outstate->info.fps_n = fps_n;
+        outstate->info.fps_d = fps_d;
+        GST_DEBUG_OBJECT (c2venc, "Set output frame rate %d/%d", fps_n, fps_d);
+      }
+    }
   }
 
   // Check if output width need to be updated.
@@ -1341,13 +1342,19 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   GST_DEBUG_OBJECT (c2venc, "Output state caps: %" GST_PTR_FORMAT, outstate->caps);
 
   // Variable input fps and fixed output fps, get the duration for timestamp adjustment.
-  if ((state->info.flags & GST_VIDEO_FLAG_VARIABLE_FPS) &&
-      !(outstate->info.flags & GST_VIDEO_FLAG_VARIABLE_FPS)) {
+  if (((state->info.flags & GST_VIDEO_FLAG_VARIABLE_FPS) &&
+      !(outstate->info.flags & GST_VIDEO_FLAG_VARIABLE_FPS)) ||
+      ((outstate->info.fps_n != state->info.fps_n) ||
+      (outstate->info.fps_d != state->info.fps_d))) {
     c2venc->duration = gst_util_uint64_scale_int (GST_SECOND,
-        GST_VIDEO_INFO_FPS_D (info), GST_VIDEO_INFO_FPS_N (info));
+        GST_VIDEO_INFO_FPS_D (&outstate->info),
+        GST_VIDEO_INFO_FPS_N (&outstate->info));
+
+    GST_DEBUG_OBJECT (c2venc, "Different framerate. Set duration to %"
+        GST_TIME_FORMAT, GST_TIME_ARGS (c2venc->duration));
   }
 
-  c2venc->n_super_frames = gst_caps_get_num_super_frames (state->caps);
+  c2venc->n_subframes = gst_caps_get_num_subframes (state->caps);
 
   if (!gst_c2_venc_setup_parameters (c2venc, state, outstate)) {
     GST_ERROR_OBJECT (c2venc, "Failed to setup parameters!");
@@ -1390,7 +1397,6 @@ gst_c2_venc_handle_frame (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   }
 
   if (c2venc->duration != GST_CLOCK_TIME_NONE) {
-
     GST_LOG_OBJECT (c2venc, "Adjust timestamp! Expected %" GST_TIME_FORMAT
         " but received frame %u with %" GST_TIME_FORMAT " !",
         GST_TIME_ARGS (c2venc->prevts + c2venc->duration),
@@ -1415,9 +1421,6 @@ gst_c2_venc_handle_frame (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
 
   gst_c2_venc_handle_region_encode (c2venc, frame);
 
-  if (c2venc->isubwc)
-    GST_BUFFER_FLAG_SET (frame->input_buffer, GST_VIDEO_BUFFER_FLAG_UBWC);
-
   if (c2venc->isheif)
     GST_BUFFER_FLAG_SET (frame->input_buffer, GST_VIDEO_BUFFER_FLAG_HEIC);
 
@@ -1431,6 +1434,7 @@ gst_c2_venc_handle_frame (GstVideoEncoder * encoder, GstVideoCodecFrame * frame)
   item.buffer = frame->input_buffer;
   item.index = frame->system_frame_number;
   item.userdata = gst_video_codec_frame_get_user_data (frame);
+  item.n_subframes = c2venc->n_subframes;
 
   if (!gst_c2_engine_queue (c2venc->engine, &item)) {
     GST_ERROR_OBJECT(c2venc, "Failed to send input frame to be emptied!");
@@ -2031,7 +2035,6 @@ gst_c2_venc_init (GstC2VEncoder * c2venc)
   c2venc->engine = NULL;
 
   c2venc->instate = NULL;
-  c2venc->isubwc = FALSE;
   c2venc->isheif = FALSE;
   c2venc->isgbm = FALSE;
   c2venc->headers = NULL;
@@ -2079,7 +2082,7 @@ gst_c2_venc_init (GstC2VEncoder * c2venc)
   c2venc->temp_layer.n_layers = DEFAULT_PROP_TEMPORAL_LAYER_NUM;
   c2venc->temp_layer.n_blayers = DEFAULT_PROP_TEMPORAL_LAYER_NUM;
 
-  c2venc->n_super_frames = 0;
+  c2venc->n_subframes = 0;
 
   GST_DEBUG_CATEGORY_INIT (c2_venc_debug, "qtic2venc", 0,
       "QTI c2venc encoder");

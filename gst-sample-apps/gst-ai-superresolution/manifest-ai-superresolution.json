@@ -1,0 +1,43 @@
+{
+  "Version": "1.4",
+  "Applicationme": "gst-ai-superresolution",
+  "ApplicationType": "AI",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "AIModelsNeededByApplication": [
+    {
+      "ModelName": "quicksrnetsmall_quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/QuickSRNetSmall-Quantized/resolve/main/QuickSRNetSmall-Quantized.tflite",
+      "LabelFile": "",
+      "LabelDownloadURL": ""
+    }
+  ],
+  "AIModelsSupportedByApplication": [
+    {
+      "ModelName": "QuickSRNetMedium-Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/QuickSRNetMedium-Quantized/resolve/main/QuickSRNetMedium-Quantized.tflite",
+      "LabelFile": "",
+      "LabelDownloadURL": ""
+    },
+    {
+      "ModelName": "QuickSRNetLarge-Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/QuickSRNetLarge-Quantized/resolve/main/QuickSRNetLarge-Quantized.tflite",
+      "LabelFile": "",
+      "LabelDownloadURL": ""
+    },
+    {
+      "ModelName": "XLSR-Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/XLSR-Quantized/resolve/main/XLSR-Quantized.tflite",
+      "LabelFile": "",
+      "LabelDownloadURL": ""
+    }
+  ],
+  "AIModelLocation": "/etc/models/",
+  "AILabelLocation": "",
+  "ConfigFile": "",
+  "ConfigFileLocation": "",
+  "ApplicationKeyWords": [
+    "Superresolution"
+  ],
+  "ApplicationTextDescription": "This application demonstrates video super resolution on input file stream, and outputs the result as file or as display preview"
+}

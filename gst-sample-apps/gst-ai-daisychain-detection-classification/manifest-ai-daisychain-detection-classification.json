@@ -1,0 +1,92 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-ai-daisychain-detection-classification",
+  "ApplicationType": "AI",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "AIModelsNeededByApplication": [
+    {
+      "ModelName": "yolov8_det_quantized.tflite",
+      "ModelLabelDownloadURL": "",
+      "LabelFile": "detection.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
+    },
+    {
+      "ModelName": "mobilenet_v2_quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/MobileNet-v2-Quantized/resolve/main/MobileNet-v2-Quantized.tflite",
+      "LabelFile": "imagenet_labels.txt",
+      "LabelDownloadURL": "https://github.com/quic/ai-hub-models/blob/main/qai_hub_models/labels/imagenet_labels.txt"
+    }
+  ],
+  "AIModelsSupportedByApplication": [
+    {
+      "ModelName": "Inception-v3-Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Inception-v3-Quantized/resolve/main/Inception-v3-Quantized.tflite",
+      "LabelFile": "imagenet_labels.txt",
+      "LabelDownloadURL": "https://github.com/quic/ai-hub-models/blob/main/qai_hub_models/labels/imagenet_labels.txt"
+    },
+    {
+      "ModelName": "ResNet101Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/ResNet101Quantized/resolve/main/ResNet101Quantized.tflite",
+      "LabelFile": "imagenet_labels.txt",
+      "LabelDownloadURL": "https://github.com/quic/ai-hub-models/blob/main/qai_hub_models/labels/imagenet_labels.txt"
+    },
+    {
+      "ModelName": "GoogLeNetQuantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/GoogLeNetQuantized/resolve/main/GoogLeNetQuantized.tflite",
+      "LabelFile": "imagenet_labels.txt",
+      "LabelDownloadURL": "https://github.com/quic/ai-hub-models/blob/main/qai_hub_models/labels/imagenet_labels.txt"
+    },
+    {
+      "ModelName": "MobileNet-v3-Large-Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/MobileNet-v3-Large-Quantized/resolve/main/MobileNet-v3-Large-Quantized.tflite",
+      "LabelFile": "imagenet_labels.txt",
+      "LabelDownloadURL": "https://github.com/quic/ai-hub-models/blob/main/qai_hub_models/labels/imagenet_labels.txt"
+    },
+    {
+      "ModelName": "ResNet18Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/ResNet18Quantized/resolve/main/ResNet18Quantized.tflite",
+      "LabelFile": "imagenet_labels.txt",
+      "LabelDownloadURL": "https://github.com/quic/ai-hub-models/blob/main/qai_hub_models/labels/imagenet_labels.txt"
+    },
+    {
+      "ModelName": "ResNeXt50Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/ResNeXt50Quantized/resolve/main/ResNeXt50Quantized.tflite",
+      "LabelFile": "imagenet_labels.txt",
+      "LabelDownloadURL": "https://github.com/quic/ai-hub-models/blob/main/qai_hub_models/labels/imagenet_labels.txt"
+    },
+    {
+      "ModelName": "ResNeXt101Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/ResNeXt101Quantized/resolve/main/ResNeXt101Quantized.tflite",
+      "LabelFile": "imagenet_labels.txt",
+      "LabelDownloadURL": "https://github.com/quic/ai-hub-models/blob/main/qai_hub_models/labels/imagenet_labels.txt"
+    },
+    {
+      "ModelName": "SqueezeNet-1_1Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/SqueezeNet-1_1Quantized/resolve/main/SqueezeNet-1_1Quantized.tflite",
+      "LabelFile": "imagenet_labels.txt",
+      "LabelDownloadURL": "https://github.com/quic/ai-hub-models/blob/main/qai_hub_models/labels/imagenet_labels.txt"
+    },
+    {
+      "ModelName": "WideResNet50-Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/WideResNet50-Quantized/resolve/main/WideResNet50-Quantized.tflite",
+      "LabelFile": "imagenet_labels.txt",
+      "LabelDownloadURL": "https://github.com/quic/ai-hub-models/blob/main/qai_hub_models/labels/imagenet_labels.txt"
+    },
+    {
+      "ModelName": "Shufflenet-v2Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Shufflenet-v2Quantized/resolve/main/Shufflenet-v2Quantized.tflite",
+      "LabelFile": "imagenet_labels.txt",
+      "LabelDownloadURL": "https://github.com/quic/ai-hub-models/blob/main/qai_hub_models/labels/imagenet_labels.txt"
+    }
+  ],
+  "AIModelLocation": "/etc/models/",
+  "AILabelLocation": "/etc/labels/",
+  "ConfigFile": "config_daisychain_detection_classification.json",
+  "ConfigFileLocation": "/etc/configs/",
+  "ApplicationKeyWords": [
+    "DaisychainDetectionClassification",
+    "DaisychainDetection"
+  ],
+  "ApplicationTextDescription": "This application demonstrates Daisychain of object detection and object classification for input coming from camera/file/rtsp"
+}

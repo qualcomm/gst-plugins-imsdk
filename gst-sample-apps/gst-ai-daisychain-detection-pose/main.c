@@ -675,7 +675,8 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
           "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
     }
     delegate_options = gst_structure_from_string (
-        "QNNExternalDelegate,backend_type=htp;", NULL);
+        "QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,\
+        htp_performance_mode=(string)2;", NULL);
     g_object_set (G_OBJECT (qtimlelement[i]),
         "external-delegate-path", "libQnnTFLiteDelegate.so", NULL);
     g_object_set (G_OBJECT (qtimlelement[i]),
@@ -709,7 +710,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
     module_id = get_enum_value (qtimlvdetection[i], "module", "yolov8");
     if (module_id != -1) {
       g_object_set (G_OBJECT (qtimlvdetection[i]),
-          "threshold", 40.0, "results", 4,
+          "threshold", 75.0, "results", 4,
           "module", module_id, "labels", options->yolov8_labels_path,
           "constants", options->yolov8_constants,
           NULL);

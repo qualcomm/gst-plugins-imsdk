@@ -200,8 +200,8 @@ create_two_stream_pipe (GstMultiStreamAppContext * appctx)
 
   // Create v4l2h264enc element and set the properties
   v4l2h264enc = gst_element_factory_make ("v4l2h264enc", "v4l2h264enc");
-  g_object_set (G_OBJECT (v4l2h264enc), "capture-io-mode", "dmabuf", NULL);
-  g_object_set (G_OBJECT (v4l2h264enc), "output-io-mode", "dmabuf-import", NULL);
+  gst_element_set_enum_property (v4l2h264enc, "capture-io-mode", "dmabuf");
+  gst_element_set_enum_property (v4l2h264enc, "output-io-mode", "dmabuf-import");
   controls = gst_structure_from_string (
       "controls,video_bitrate_mode=0", NULL);
   g_object_set (G_OBJECT (v4l2h264enc), "extra-controls", controls, NULL);

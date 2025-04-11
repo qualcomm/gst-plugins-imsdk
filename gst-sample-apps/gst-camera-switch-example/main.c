@@ -65,6 +65,27 @@ struct GstCameraSwitchCtxStruct {
 typedef struct GstCameraSwitchCtxStruct GstCameraSwitchCtx;
 
 /**
+ * Build Property for pad.
+ *
+ * @param property Property Name.
+ * @param values Value of Property.
+ * @param num count of Property Values.
+ */
+static void
+build_pad_property (GValue * property, gint values[], gint num)
+{
+  GValue val = G_VALUE_INIT;
+  g_value_init (&val, G_TYPE_INT);
+
+  for (gint idx = 0; idx < num; idx++) {
+    g_value_set_int (&val, values[idx]);
+    gst_value_array_append_value (property, &val);
+  }
+
+  g_value_unset (&val);
+}
+
+/**
  * In case of ASYNC state change it will properly wait for state change
  *
  * @param element gst element object.
@@ -112,11 +133,9 @@ switch_camera (GstCameraSwitchCtx *cameraswitchctx)
   // Adding qmmfsrc
   gst_bin_add (GST_BIN (cameraswitchctx->pipeline), new_camsrc);
 
-  // Sync the elements state to the curtent pipeline state
-  gst_element_sync_state_with_parent (new_camsrc);
-
   // Unlink the current camera stream
   g_print ("Unlinking current camera stream...\n");
+
   gst_element_unlink (current_camsrc, cameraswitchctx->capsfilter);
   g_print ("Unlinked current camera stream successfully \n");
 
@@ -127,6 +146,9 @@ switch_camera (GstCameraSwitchCtx *cameraswitchctx)
     return FALSE;
   }
   g_print ("Linked next camera stream successfully \n");
+
+  // Sync the elements state to the curtent pipeline state
+  gst_element_sync_state_with_parent (new_camsrc);
 
   // Set NULL state to the unlinked elemets
   gst_element_set_state (current_camsrc, GST_STATE_NULL);
@@ -189,11 +211,13 @@ create_pipe (GstCameraSwitchCtx *cameraswitchctx)
   GstCaps *filtercaps;
   GstElement *camsrc = NULL;
   GstElement *capsfilter = NULL;
+  GstElement *qtivcomposer = NULL;
   GstElement *waylandsink = NULL;
   GstElement *encoder = NULL;
   GstElement *filesink = NULL;
   GstElement *h264parse = NULL;
   GstElement *mp4mux = NULL;
+  GstPad *composer_sink= NULL;
 
   // Create qmmfsrc element
   camsrc = gst_element_factory_make ("qtiqmmfsrc", "camsrc");
@@ -217,12 +241,13 @@ create_pipe (GstCameraSwitchCtx *cameraswitchctx)
       "width", G_TYPE_INT, DEFAULT_WIDTH,
       "height", G_TYPE_INT, DEFAULT_HEIGHT,
       "framerate", GST_TYPE_FRACTION, 30, 1,
-      "interlace-mode", G_TYPE_STRING, "progressive",
-      "colorimetry", G_TYPE_STRING, "bt601",
       NULL);
 
   g_object_set (G_OBJECT (capsfilter), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
+
+  // create qtivcomposer element to combine 2 i/p streams as in single display
+  qtivcomposer = gst_element_factory_make ("qtivcomposer", "qtivcomposer");
 
   cameraswitchctx->current_camsrc = camsrc;
   cameraswitchctx->capsfilter = capsfilter;
@@ -238,21 +263,49 @@ create_pipe (GstCameraSwitchCtx *cameraswitchctx)
     cameraswitchctx->waylandsink = waylandsink;
     // Set waylandsink properties
     g_object_set (G_OBJECT (waylandsink), "name", "waylandsink", NULL);
-    g_object_set (G_OBJECT (waylandsink), "x", 0, NULL);
-    g_object_set (G_OBJECT (waylandsink), "y", 0, NULL);
-    g_object_set (G_OBJECT (waylandsink), "width", 600, NULL);
-    g_object_set (G_OBJECT (waylandsink), "height", 400, NULL);
     g_object_set (G_OBJECT (waylandsink), "enable-last-sample", false, NULL);
 
     // Add qmmfsrc to the pipeline
     gst_bin_add_many (GST_BIN (cameraswitchctx->pipeline), camsrc, capsfilter,
-        waylandsink, NULL);
+        qtivcomposer, waylandsink, NULL);
 
     // Link the elements
-    if (!gst_element_link_many (camsrc, capsfilter, waylandsink, NULL)) {
+    if (!gst_element_link_many (camsrc, capsfilter, qtivcomposer, waylandsink, NULL)) {
       g_printerr ("Error: Link cannot be done!\n");
       return FALSE;
     }
+
+    // As we have camera stream to compose create pad/ports for qtivcomposer
+    composer_sink = gst_element_get_static_pad (qtivcomposer, "sink_0");
+
+    if (composer_sink == NULL) {
+      g_printerr ("\n sink pads are not available");
+      gst_bin_remove_many (GST_BIN (cameraswitchctx->pipeline), camsrc, capsfilter,
+          qtivcomposer, waylandsink, NULL);
+      return FALSE;
+   }
+
+    // Create and set the position and dimensions for qtivcomposer
+    GValue pos1 = G_VALUE_INIT, dim1 = G_VALUE_INIT;
+    g_value_init (&pos1, GST_TYPE_ARRAY);
+    g_value_init (&dim1, GST_TYPE_ARRAY);
+
+    // check the composition type and set the position and dimensions for sink1
+    gint pos1_vals[] = { 0, 0 };
+    gint dim1_vals[] = { 600, 400 };
+
+    build_pad_property (&pos1, pos1_vals, 2);
+    build_pad_property (&dim1, dim1_vals, 2);
+
+    g_object_set_property (G_OBJECT (composer_sink), "position", &pos1);
+    g_object_set_property (G_OBJECT (composer_sink), "dimensions", &dim1);
+
+    // unref the sink pads after use
+    gst_object_unref (composer_sink);
+
+    g_value_unset (&pos1);
+    g_value_unset (&dim1);
+
   } else {
     encoder = gst_element_factory_make ("v4l2h264enc", "v4l2h264enc");
     filesink = gst_element_factory_make ("filesink", "filesink");
@@ -266,8 +319,8 @@ create_pipe (GstCameraSwitchCtx *cameraswitchctx)
     }
 
     // Set encoder properties
-    g_object_set (G_OBJECT (encoder), "capture-io-mode", GST_V4L2_IO_DMABUF, NULL);
-    g_object_set (G_OBJECT (encoder), "output-io-mode", GST_V4L2_IO_DMABUF_IMPORT, NULL);
+    gst_element_set_enum_property (encoder, "capture-io-mode", "dmabuf");
+    gst_element_set_enum_property (encoder, "output-io-mode", "dmabuf-import");
 
     g_object_set (G_OBJECT (h264parse), "name", "h264parse", NULL);
     g_object_set (G_OBJECT (mp4mux), "name", "mp4mux", NULL);

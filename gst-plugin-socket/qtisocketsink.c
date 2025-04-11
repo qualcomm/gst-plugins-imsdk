@@ -145,7 +145,8 @@ gst_socket_sink_try_connect (GstFdSocketSink * sink)
   struct sockaddr_un address = {0};
 
   g_mutex_lock (&sink->socklock);
-  if (gst_task_get_state (sink->task) == GST_TASK_STARTED) {
+
+  if (g_atomic_int_get (&sink->connected)) {
     g_mutex_unlock (&sink->socklock);
     return TRUE;
   }
@@ -162,20 +163,18 @@ gst_socket_sink_try_connect (GstFdSocketSink * sink)
   if (connect (sink->socket,
       (struct sockaddr *) &address, sizeof (address)) < 0) {
     close (sink->socket);
-    sink->socket = -1;
+    sink->socket = 0;
     errno = 0;
     g_mutex_unlock (&sink->socklock);
-    GST_INFO_OBJECT (sink, "connect unsuccessfull");
+    GST_DEBUG_OBJECT (sink, "connect unsuccessfull");
     return FALSE;
   }
 
-  g_rec_mutex_lock (&sink->tasklock);
-  gst_task_start (sink->task);
-  g_rec_mutex_unlock (&sink->tasklock);
-
   g_mutex_unlock (&sink->socklock);
 
-  GST_INFO_OBJECT (sink, "Socket connected");
+  g_atomic_int_set (&sink->connected, TRUE);
+
+  GST_DEBUG_OBJECT (sink, "Socket connected");
 
   return TRUE;
 }
@@ -187,7 +186,7 @@ gst_socket_deinitialize_for_buffers (GstFdSocketSink * sink)
 
   g_mutex_lock (&sink->bufmaplock);
 
-  GST_INFO_OBJECT (sink, "Cleaning potential buffers %p", sink->bufmap);
+  GST_DEBUG_OBJECT (sink, "Cleaning potential buffers %p", sink->bufmap);
 
   keys_list = g_hash_table_get_keys (sink->bufmap);
   for (GList *element = keys_list; element; element = element->next) {
@@ -199,43 +198,13 @@ gst_socket_deinitialize_for_buffers (GstFdSocketSink * sink)
 
     if (buffer) {
       gst_buffer_unref (buffer);
-      sink->bufcount--;
     }
 
-    GST_INFO_OBJECT (sink, "Cleanup buffer: %p, buf_id: %d", buffer, buf_id);
+    GST_DEBUG_OBJECT (sink, "Cleanup buffer: %p, buf_id: %d", buffer, buf_id);
   }
+
   g_list_free (keys_list);
   g_mutex_unlock (&sink->bufmaplock);
-}
-
-static gboolean
-gst_socket_sink_disconnect (GstFdSocketSink * sink)
-{
-  GST_INFO_OBJECT (sink, "Enter gst_socket_sink_disconnect");
-
-  g_mutex_lock (&sink->socklock);
-
-  if (gst_task_get_state (sink->task) == GST_TASK_STOPPED) {
-    g_mutex_unlock (&sink->socklock);
-    return TRUE;
-  }
-
-  gst_socket_deinitialize_for_buffers (sink);
-
-  shutdown (sink->socket, SHUT_RDWR);
-  close (sink->socket);
-  unlink (sink->sockfile);
-  sink->socket = 0;
-
-  gst_task_stop (sink->task);
-
-  g_atomic_int_set (&sink->should_stop, FALSE);
-
-  g_mutex_unlock (&sink->socklock);
-
-  GST_INFO_OBJECT (sink, "Socket disconnected");
-
-  return TRUE;
 }
 
 static GstFlowReturn
@@ -254,11 +223,14 @@ gst_socket_sink_render (GstBaseSink * bsink, GstBuffer * buffer)
 
   GST_DEBUG_OBJECT (sink, "gst_socket_sink_render %d", sink->mode);
 
-  if (g_atomic_int_get (&sink->should_stop))
+  g_mutex_lock (&sink->socklock);
+  if (!g_atomic_int_get (&sink->connected) ||
+       g_atomic_int_get (&sink->should_disconnect) ||
+       g_atomic_int_get (&sink->should_stop)) {
+    g_mutex_unlock (&sink->socklock);
     return GST_FLOW_OK;
-
-  if (!gst_socket_sink_try_connect (sink))
-    return GST_FLOW_OK;
+  }
+  g_mutex_unlock (&sink->socklock);
 
   pl_info.protection_metadata_info = g_ptr_array_new_full (
       gst_socket_sink_get_protection_meta_count (buffer), g_free);
@@ -451,108 +423,171 @@ gst_socket_sink_render (GstBaseSink * bsink, GstBuffer * buffer)
     }
 
     free_pl_struct (&pl_info);
-    gst_socket_sink_disconnect (sink);
+
     return GST_FLOW_ERROR;
   }
 
   free_pl_struct (&pl_info);
 
-  GST_INFO_OBJECT (sink, "Sent data of type %d; Number of mem blocks sent: %d",
+  GST_DEBUG_OBJECT (sink, "Sent data of type %d; Number of mem blocks sent: %d",
       sink->mode, n_memory_send);
 
   return GST_FLOW_OK;
 }
 
-static void
-gst_socket_sink_connect_loop (gpointer user_data)
-{
-  GstFdSocketSink *sink = GST_SOCKET_SINK (user_data);
-
-  if (g_atomic_int_get (&sink->should_stop)) {
-    GST_INFO_OBJECT (sink, "Stopping connected task");
-    gst_task_stop (sink->connect_task);
-    return;
-  }
-
-  if (gst_socket_sink_try_connect (sink)) {
-    gst_task_stop (sink->connect_task);
-    return;
-  }
-
-  sleep(1);
-}
-
-static void
+static gpointer
 gst_socket_sink_wait_message_loop (gpointer user_data)
 {
   GstFdSocketSink *sink = GST_SOCKET_SINK (user_data);
   GstBuffer *buffer = NULL;
   GstPayloadInfo pl_info = {0};
+  struct pollfd poll_fd;
+  gint ret = 0;
+  gboolean running = TRUE;
 
-  if (g_atomic_int_get (&sink->should_stop)) {
-    if (sink->mode != DATA_MODE_TEXT) {
-      g_mutex_lock (&sink->bufmaplock);
+  while (running) {
+    switch (sink->state) {
 
-      if (sink->bufcount == 0) {
-        GST_INFO_OBJECT (sink, "Stopping buffer loop");
-        g_mutex_unlock (&sink->bufmaplock);
-        gst_socket_sink_disconnect (sink);
-        GST_INFO_OBJECT (sink, "Buffer loop stop");
-        return;
+      case GST_SOCKET_TRY_CONNECT: {
+        if (g_atomic_int_get (&sink->should_stop)) {
+          running = FALSE;
+          break;
+        }
+
+        if (gst_socket_sink_try_connect (sink)) {
+          sink->state = GST_SOCKET_RUNNING;
+          break;
+        }
+
+        usleep (10000);
+        break;
       }
 
-      g_mutex_unlock (&sink->bufmaplock);
-    } else {
-      GST_INFO_OBJECT (sink, "Stopping buffer loop");
-      gst_socket_sink_disconnect (sink);
-      GST_INFO_OBJECT (sink, "Buffer loop stop");
-      return;
+      case GST_SOCKET_RUNNING: {
+        if (g_atomic_int_get (&sink->should_disconnect)) {
+          if (sink->mode == DATA_MODE_VIDEO ||
+              sink->mode == DATA_MODE_TENSOR) {
+
+            g_mutex_lock (&sink->bufmaplock);
+            if (sink->bufcount == 0) {
+              g_mutex_unlock (&sink->bufmaplock);
+              sink->state = GST_SOCKET_DISCONNECT;
+              break;
+            }
+            g_mutex_unlock (&sink->bufmaplock);
+
+          } else {
+            sink->state = GST_SOCKET_DISCONNECT;
+            break;
+          }
+        }
+
+        poll_fd.fd = sink->socket;
+        poll_fd.events = POLLIN;
+
+        ret = poll (&poll_fd, 1, 1000);
+        if (ret < 0) {
+          GST_DEBUG_OBJECT (sink, "Socket poll error");
+
+          free_pl_struct (&pl_info);
+          sink->state = GST_SOCKET_DISCONNECT;
+          break;
+        } else if (ret == 0) {
+          GST_DEBUG_OBJECT (sink, "Socket poll timeout");
+
+          free_pl_struct (&pl_info);
+          sink->state = GST_SOCKET_DISCONNECT;
+
+          break;
+        } else {
+          if (poll_fd.revents & POLLHUP ||
+              poll_fd.revents & POLLERR) {
+            GST_DEBUG_OBJECT (sink, "Socket closed");
+
+            free_pl_struct (&pl_info);
+            sink->state = GST_SOCKET_DISCONNECT;
+
+            break;
+          }
+        }
+
+        if (receive_socket_message (sink->socket, &pl_info, 0) == -1) {
+          GST_INFO_OBJECT (sink, "Socket mesage receive failed");
+          free_pl_struct (&pl_info);
+          break;
+        }
+
+        if (GST_PL_INFO_IS_MESSAGE (&pl_info, MESSAGE_DISCONNECT)) {
+          GST_DEBUG_OBJECT (sink, "MESSAGE_DISCONNECT");
+          g_atomic_int_set (&sink->should_disconnect, TRUE);
+          free_pl_struct (&pl_info);
+          break;
+        }
+
+        if (pl_info.return_buffer != NULL) {
+          if (sink->mode == DATA_MODE_TEXT) {
+            GST_WARNING_OBJECT (sink,
+                "Received return buffer, but text mode was chosen!");
+            free_pl_struct (&pl_info);
+            break;
+          }
+
+          if (pl_info.fd_count == NULL) {
+            GST_ERROR_OBJECT (sink, "Received return buffer, but no fd_count");
+            free_pl_struct (&pl_info);
+            break;
+          }
+
+          GST_DEBUG_OBJECT (sink, "Number of returned fds: %d", pl_info.fd_count->n_fds);
+
+          for (gint i = 0; i < pl_info.fd_count->n_fds; i++) {
+            gint buf_id = pl_info.return_buffer->buf_id[i];
+
+            g_mutex_lock (&sink->bufmaplock);
+            buffer = g_hash_table_lookup (sink->bufmap, GINT_TO_POINTER (buf_id));
+            g_hash_table_insert (sink->bufmap, GINT_TO_POINTER (buf_id), NULL);
+            sink->bufcount--;
+            g_mutex_unlock (&sink->bufmaplock);
+            gst_buffer_unref (buffer);
+
+            GST_DEBUG_OBJECT (sink, "Buffer returned %p, buf_id: %d, count: %d",
+                buffer, buf_id, sink->bufcount);
+          }
+        }
+
+        free_pl_struct (&pl_info);
+        break;
+      }
+
+      case GST_SOCKET_DISCONNECT: {
+        g_mutex_lock (&sink->socklock);
+
+        g_atomic_int_set (&sink->connected, FALSE);
+
+        if (sink->socket > 0) {
+          shutdown (sink->socket, SHUT_RDWR);
+          close (sink->socket);
+          unlink (sink->sockfile);
+          sink->socket = 0;
+        }
+        g_mutex_unlock (&sink->socklock);
+
+        gst_socket_deinitialize_for_buffers (sink);
+
+        g_atomic_int_set (&sink->should_disconnect, FALSE);
+
+        if (sink->should_stop) {
+          running = FALSE;
+        }
+
+        sink->state = GST_SOCKET_TRY_CONNECT;
+
+        break;
+      }
     }
   }
 
-  if (receive_socket_message (sink->socket, &pl_info, 0) == -1) {
-    GST_INFO_OBJECT (sink, "Socket mesage receive failed");
-    gst_socket_sink_disconnect (sink);
-    free_pl_struct (&pl_info);
-    return;
-  }
-
-  if (GST_PL_INFO_IS_MESSAGE (&pl_info, MESSAGE_DISCONNECT)) {
-    g_atomic_int_set (&sink->should_stop, TRUE);
-    GST_INFO_OBJECT (sink, "MESSAGE_DISCONNECT");
-    free_pl_struct (&pl_info);
-    return;
-  }
-
-  if (pl_info.return_buffer != NULL) {
-    if (sink->mode == DATA_MODE_TEXT) {
-      GST_WARNING_OBJECT (sink, "Received return buffer, but text mode was chosen!");
-      return;
-    }
-
-    if (pl_info.fd_count == NULL) {
-      GST_ERROR_OBJECT (sink, "Received return buffer, but no fd_count");
-      return;
-    }
-
-    GST_DEBUG_OBJECT (sink, "Number of returned fds: %d", pl_info.fd_count->n_fds);
-
-    for (gint i = 0; i < pl_info.fd_count->n_fds; i++) {
-      gint buf_id = pl_info.return_buffer->buf_id[i];
-
-      g_mutex_lock (&sink->bufmaplock);
-      buffer = g_hash_table_lookup (sink->bufmap, GINT_TO_POINTER (buf_id));
-      g_hash_table_insert (sink->bufmap, GINT_TO_POINTER (buf_id), NULL);
-      sink->bufcount--;
-      g_mutex_unlock (&sink->bufmaplock);
-      gst_buffer_unref (buffer);
-
-      GST_DEBUG_OBJECT (sink, "Buffer returned %p, buf_id: %d, count: %d",
-          buffer, buf_id, sink->bufcount);
-    }
-  }
-
-  free_pl_struct (&pl_info);
+  return NULL;
 }
 
 static gboolean
@@ -560,25 +595,34 @@ gst_socket_sink_start (GstBaseSink * basesink)
 {
   GstFdSocketSink *sink = GST_SOCKET_SINK (basesink);
 
-  GST_INFO_OBJECT (sink, "Socket file : %s", sink->sockfile);
+  GST_DEBUG_OBJECT (sink, "Socket file : %s", sink->sockfile);
 
   g_object_set (G_OBJECT (basesink), "sync", FALSE, NULL);
 
   sink->bufmap = g_hash_table_new (NULL, NULL);
+  sink->bufcount = 0;
 
   g_mutex_init (&sink->bufmaplock);
-  sink->bufcount = 0;
   g_mutex_init (&sink->socklock);
-  g_rec_mutex_init (&sink->tasklock);
-  g_rec_mutex_init (&sink->connect_tasklock);
+  g_mutex_init (&sink->msglock);
 
   g_atomic_int_set (&sink->should_stop, FALSE);
-  sink->task = gst_task_new (gst_socket_sink_wait_message_loop, sink, NULL);
-  gst_task_set_lock (sink->task, &sink->tasklock);
+  g_atomic_int_set (&sink->should_disconnect, FALSE);
+  g_atomic_int_set (&sink->connected, FALSE);
 
-  sink->connect_task = gst_task_new (gst_socket_sink_connect_loop, sink, NULL);
-  gst_task_set_lock (sink->connect_task, &sink->connect_tasklock);
-  gst_task_start (sink->connect_task);
+  sink->msg_thread = NULL;
+
+  sink->state = GST_SOCKET_TRY_CONNECT;
+
+  g_mutex_lock (&sink->msglock);
+  if (sink->msg_thread == NULL) {
+    if ((sink->msg_thread = g_thread_new ("Msg thread",
+        gst_socket_sink_wait_message_loop, sink)) == NULL) {
+      g_mutex_unlock (&sink->msglock);
+      return FALSE;
+    }
+  }
+  g_mutex_unlock (&sink->msglock);
 
   return TRUE;
 }
@@ -588,23 +632,15 @@ gst_socket_sink_stop (GstBaseSink * basesink)
 {
   GstFdSocketSink *sink = GST_SOCKET_SINK (basesink);
 
-  GST_INFO_OBJECT (sink, "Stop");
+  GST_DEBUG_OBJECT (sink, "Stop");
 
+  g_atomic_int_set (&sink->should_disconnect, TRUE);
   g_atomic_int_set (&sink->should_stop, TRUE);
 
-  // Handle the case where the socket is still not conected
-  g_mutex_lock (&sink->socklock);
-  if (gst_task_get_state (sink->task) == GST_TASK_STOPPED && sink->socket > 0) {
-      shutdown (sink->socket, SHUT_RDWR);
-      close (sink->socket);
-      unlink (sink->sockfile);
-      sink->socket = 0;
+  if (sink->msg_thread) {
+    g_thread_join (sink->msg_thread);
+    sink->msg_thread = NULL;
   }
-  g_mutex_unlock (&sink->socklock);
-
-  gst_task_join (sink->connect_task);
-  gst_task_join (sink->task);
-  sink->task = NULL;
 
   if (sink->bufmap) {
     g_hash_table_destroy (sink->bufmap);
@@ -627,10 +663,28 @@ gst_socket_sink_query (GstBaseSink * bsink, GstQuery * query)
   gboolean retval = FALSE;
 
   switch (GST_QUERY_TYPE (query)) {
-    case GST_QUERY_FORMATS:
-      gst_query_set_formats (query, 2, GST_FORMAT_DEFAULT, GST_FORMAT_BYTES);
+    case GST_QUERY_ALLOCATION:
+    {
+      GstCaps *caps = NULL;
+      GstStructure *structure = NULL;
+      gboolean needpool = FALSE;
+
+      gst_query_parse_allocation (query, &caps, &needpool);
+      if (NULL == caps) {
+        GST_ERROR_OBJECT (sink, "Failed to extract caps from query!");
+        retval = FALSE;
+        break;
+      }
+
+      structure = gst_caps_get_structure (caps, 0);
+
+      if (gst_structure_has_name (structure, "video/x-raw") ||
+          gst_structure_has_name (structure, "neural-network/tensors"))
+        gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL);
+
       retval = TRUE;
       break;
+    }
     default:
       retval = FALSE;
       break;
@@ -660,9 +714,8 @@ gst_socket_sink_event (GstBaseSink *bsink, GstEvent *event)
       msg.identity = MESSAGE_EOS;
       pl_info.message = &msg;
 
-      if ((gst_task_get_state (sink->task) == GST_TASK_STARTED) &&
+      if (g_atomic_int_get (&sink->connected) &&
             (send_socket_message (sink->socket, &pl_info) < 0)) {
-        gst_socket_sink_disconnect (sink);
         GST_WARNING_OBJECT (sink, "Unable to send EOS message.");
       }
       break;
@@ -687,8 +740,7 @@ gst_socket_sink_dispose (GObject * obj)
 static void
 gst_socket_sink_init (GstFdSocketSink * sink)
 {
-  sink->task = NULL;
-  sink->connect_task = NULL;
+  sink->msg_thread = NULL;
   sink->socket = -1;
   sink->mode = DATA_MODE_NONE;
 

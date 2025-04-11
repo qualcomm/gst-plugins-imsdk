@@ -56,6 +56,30 @@ GST_VIDEO_API GstVideoAlignment
 gst_video_calculate_common_alignment (GstVideoAlignment * l_align,
                                       GstVideoAlignment * r_align);
 
+/**
+ * gst_video_utils_get_gpu_align:
+ * @info: #GstVideoInfo
+ * @align: GPU alignment for given video info
+ *
+ * Helper function to get GPU alignment for given video info
+ */
+GST_VIDEO_API void
+gst_video_utils_get_gpu_align (GstVideoInfo * info, GstVideoAlignment * align);
+
+/**
+ * gst_query_get_video_alignment:
+ * @query: #GstQuery
+ * @align: Common alignment from all GST_VIDEO_META from the query
+ *
+ * Helper function to parse the query to get video alignment from allocation
+ * meta. If multiple video alignments present, it gives the common alignment
+ * of all.
+ *
+ * return: TRUE on success or FALSE on failure
+ */
+GST_VIDEO_API gboolean
+gst_query_get_video_alignment (GstQuery * query, GstVideoAlignment * align);
+
 G_END_DECLS
 
 #endif // __GST_QTI_VIDEO_UTILS_H__

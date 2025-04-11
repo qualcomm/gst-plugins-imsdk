@@ -1,0 +1,33 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-ai-multistream-batch-inference",
+  "ApplicationType": "AI",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "AIModelsNeededByApplication": [
+    {
+      "ModelName": "model-batch-4.tflite",
+      "ModelLabelDownloadURL": "",
+      "LabelFile": "model.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
+    }
+  ],
+  "AIModelsSupportedByApplication": [
+    {
+      "ModelName": "deeplabv3_plus_mobilenet_quantized.tflite",
+      "ModelLabelDownloadURL": "",
+      "LabelFile": "deeplabv3_resnet50.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/deeplabv3_resnet50.labels"
+    }
+  ],
+  "AIModelLocation": "/etc/models/",
+  "AILabelLocation": "/etc/labels/",
+  "ConfigFile": "config-multistream-batch-inference.json",
+  "ConfigFileLocation": "/etc/configs/",
+  "ApplicationKeyWords": [
+    "MultistreamInference",
+    "BatchInference",
+    "MultistreamBatchInference"
+  ],
+  "ApplicationTextDescription": "This application demonstrates batched object detection/image segmentation on upto 24 input files streams"
+}

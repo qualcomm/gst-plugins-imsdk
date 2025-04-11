@@ -872,15 +872,14 @@ connect_to_websocket_server_async (GstAppContext * appctx)
 {
   SoupLogger *logger;
   SoupSession *session;
-  const char *https_aliases[] = { "wss", NULL };
 
-  session =
-      soup_session_new_with_options (SOUP_SESSION_SSL_STRICT, FALSE,
-      SOUP_SESSION_SSL_USE_SYSTEM_CA_FILE, TRUE,
-      //SOUP_SESSION_SSL_CA_FILE, "/etc/ssl/certs/ca-certificates.crt",
-      SOUP_SESSION_HTTPS_ALIASES, https_aliases, NULL);
+  session = soup_session_new ();
 
+#ifdef GST_SOUP3
+  logger = soup_logger_new (SOUP_LOGGER_LOG_BODY);
+#else
   logger = soup_logger_new (SOUP_LOGGER_LOG_BODY, -1);
+#endif
   soup_session_add_feature (session, SOUP_SESSION_FEATURE (logger));
   g_object_unref (logger);
 
@@ -889,8 +888,15 @@ connect_to_websocket_server_async (GstAppContext * appctx)
   gst_print ("Connecting to server...\n");
 
   // Connect to the signaling server
+#ifdef GST_SOUP3
   soup_session_websocket_connect_async (session, appctx->soup_message, NULL,
-      NULL, NULL, (GAsyncReadyCallback) on_server_connected, appctx);
+      NULL, G_PRIORITY_DEFAULT, NULL,
+      (GAsyncReadyCallback) on_server_connected, appctx);
+#else
+  soup_session_websocket_connect_async (session, appctx->soup_message, NULL,
+      NULL, NULL,
+      (GAsyncReadyCallback) on_server_connected, appctx);
+#endif
   appctx->app_state = SERVER_CONNECTING;
 }
 

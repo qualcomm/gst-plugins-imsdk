@@ -15,24 +15,6 @@ gi.require_version("Gst", "1.0")
 gi.require_version("GLib", "2.0")
 from gi.repository import Gst, GLib
 
-DESCRIPTION = """
-The application uses:
-- YOLOv8 TFLite model to identify the object in scene from camera stream and
-overlay the bounding boxes over the detected objects
-- Resnet101 TFLite model to classify scene from camera stream and overlay the
-classification labels on the top left corner.
-Then the results are shown side by side on the display.
-
-The default file paths in the python script are as follows:
-- Detection model: /etc/models/YoloV8N_Detection_Quantized.tflite
-- Detection labels: /etc/labels/yolov8n.labels
-- Classification model: /etc/models/Resnet101_Quantized.tflite
-- Classification labels: /etc/labels/resnet101.labels
-
-To override the default settings,
-please configure the corresponding module and constants as well.
-"""
-
 # Configurations for Detection
 DEFAULT_DETECTION_MODEL = "/etc/models/YoloV8N_Detection_Quantized.tflite"
 DEFAULT_DETECTION_MODULE = "yolov8"
@@ -46,6 +28,24 @@ DEFAULT_CLASSIFICATION_MODULE = "mobilenet"
 DEFAULT_CLASSIFICATION_LABELS = "/etc/labels/resnet101.labels"
 DEFAULT_CLASSIFICATION_CONSTANTS = "Mobilenet,q-offsets=<-82.0>,\
     q-scales=<0.21351955831050873>;"
+
+DESCRIPTION = f"""
+The application uses:
+- YOLOv8 TFLite model to identify the object in scene from camera stream and
+overlay the bounding boxes over the detected objects
+- Resnet101 TFLite model to classify scene from camera stream and overlay the
+classification labels on the top left corner.
+Then the results are shown side by side on the display.
+
+The default file paths in the python script are as follows:
+- Detection model:       {DEFAULT_DETECTION_MODEL}
+- Detection labels:      {DEFAULT_DETECTION_LABELS}
+- Classification model:  {DEFAULT_CLASSIFICATION_MODEL}
+- Classification labels: {DEFAULT_CLASSIFICATION_LABELS}
+
+To override the default settings,
+please configure the corresponding module and constants as well.
+"""
 
 eos_received = False
 def create_element(factory_name, name):
@@ -74,24 +74,14 @@ def construct_pipeline(pipe):
     """Initialize and link elements for the GStreamer pipeline."""
     # Parse arguments
     parser = argparse.ArgumentParser(
-        add_help=False,
+        description=DESCRIPTION,
         formatter_class=type(
-            "CustomFormatter",
-            (
-                argparse.ArgumentDefaultsHelpFormatter,
-                argparse.RawTextHelpFormatter,
-            ),
-            {},
-        ),
+            'CustomFormatter',
+            (argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter),
+            {}
+        )
     )
 
-    parser.add_argument(
-        "-h",
-        "--help",
-        action="help",
-        default=argparse.SUPPRESS,
-        help=DESCRIPTION,
-    )
     parser.add_argument(
         "--detection_model", type=str, default=DEFAULT_DETECTION_MODEL,
         help="Path to TfLite Object Detection Model"

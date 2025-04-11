@@ -19,13 +19,16 @@
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
 #include <gst/ml/ml-frame.h>
+#include <gst/ml/ml-module-utils.h>
+#include <gst/utils/common-utils.h>
+#include <gst/utils/batch-utils.h>
 
 #ifdef HAVE_LINUX_DMA_BUF_H
 #include <sys/ioctl.h>
 #include <linux/dma-buf.h>
 #endif // HAVE_LINUX_DMA_BUF_H
 
-#include "mlaconverter-engine.h"
+#include "audio-converter-engine.h"
 #include "mlaconverter.h"
 
 #define GST_CAT_DEFAULT gst_ml_audio_converter_debug
@@ -38,11 +41,18 @@ G_DEFINE_TYPE (GstMLAudioConverter, gst_ml_audio_converter,
 #define DEFAULT_PROP_MIN_BUFFERS     2
 #define DEFAULT_PROP_MAX_BUFFERS     24
 #define DEFAULT_PROP_SAMPLE_RATE     16000
+#define DEFAULT_PROP_CONVERSION_FEATURE   GST_AUDIO_FEATURE_RAW
+#define DEFAULT_PROP_PARAMS          NULL
+
+#define GST_AUDIO_FORMATS_SUPPORTED "{ "  \
+    "S32LE, U32LE, "    \
+    "S16LE, U16LE, "    \
+    "S8, U8, F32LE }"
 
 static GstStaticPadTemplate sink_template = GST_STATIC_PAD_TEMPLATE ("sink",
     GST_PAD_SINK,
     GST_PAD_ALWAYS,
-    GST_STATIC_CAPS (GST_AUDIO_CAPS_MAKE (GST_AUDIO_FORMATS_ALL)
+    GST_STATIC_CAPS (GST_AUDIO_CAPS_MAKE (GST_AUDIO_FORMATS_SUPPORTED)
         ", layout = (string) interleaved, channels = (int) 1")
     );
 
@@ -61,7 +71,89 @@ static GstStaticPadTemplate src_template = GST_STATIC_PAD_TEMPLATE ("src",
 enum {
   PROP_0,
   PROP_SAMPLE_RATE,
+  PROP_CONVERSION_FEATURE,
+  PROP_PARAMS,
 };
+
+GType
+gst_ml_audio_conversion_feature_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { GST_AUDIO_FEATURE_RAW,
+        "Raw Audio samples will be converted to tensors without further"
+        "preprocessing",
+        GST_AUDIO_FEATURE_RAW_NAME
+    },
+    { GST_AUDIO_FEATURE_SPECTROGRAM,
+      "Raw Audio samples will be sampled with FFT and transformed into"
+      "time-frequency readings marking the amplitude and phase of different"
+      "frequencies centered around sequence of time points",
+      GST_AUDIO_FEATURE_SPECTROGRAM_NAME
+    },
+    { GST_AUDIO_FEATURE_MFE,
+        "Spectrogram of audio samples will be subjected to a filter by melbands",
+        GST_AUDIO_FEATURE_MFE_NAME
+    },
+    { GST_AUDIO_FEATURE_LMFE,
+        "Log of melspectrogram is prepared from audio samples"
+        "and a repesentation that is close to human auditory system is prepared",
+        GST_AUDIO_FEATURE_LMFE_NAME
+    },
+    { GST_AUDIO_FEATURE_MFCC,
+        "Mel Frequency cepstral coefficients, compressed representation when compared to lmfe",
+        GST_AUDIO_FEATURE_MFCC_NAME
+    },
+    { 0, NULL, NULL },
+  };
+
+  if (!gtype)
+  gtype = g_enum_register_static ("GstMLAudioFeatureMode", variants);
+
+  return gtype;
+}
+
+static GstCaps *
+gst_ml_audio_converter_translate_audio_caps (GstMLAudioConverter * mlconverter,
+  GstCaps * caps)
+{
+  GstCaps *result = NULL;
+  GstStructure *structure = NULL;
+  GValue dimensions = G_VALUE_INIT, entry = G_VALUE_INIT, dimension = G_VALUE_INIT;
+  const GValue *value;
+
+  if (gst_caps_is_empty (caps) || gst_caps_is_any (caps))
+    return gst_caps_new_empty_simple ("neural-network/tensors");
+
+  result = gst_caps_new_simple ("neural-network/tensors",
+      "type", G_TYPE_STRING, gst_ml_type_to_string (GST_ML_TYPE_FLOAT32),
+      NULL);
+
+  structure = gst_caps_get_structure (caps, 0);
+
+  g_value_init (&dimensions, GST_TYPE_ARRAY);
+  g_value_init (&entry, GST_TYPE_ARRAY);
+  g_value_init (&dimension, G_TYPE_INT);
+
+  g_value_set_int (&dimension, mlconverter->sample_rate);
+
+  gst_value_array_append_value (&entry, &dimension);
+  g_value_unset (&dimension);
+
+  gst_value_array_append_value (&dimensions, &entry);
+  g_value_unset (&entry);
+
+  gst_caps_set_value (result, "dimensions", &dimensions);
+  g_value_unset (&dimensions);
+
+  value = gst_structure_get_value (structure, "rate");
+
+  if (value != NULL)
+    gst_caps_set_value (result, "sample-rate", value);
+
+  GST_DEBUG_OBJECT (mlconverter, "Returning caps: %" GST_PTR_FORMAT, result);
+  return result;
+}
 
 static GstBufferPool *
 gst_ml_audio_converter_create_pool (GstMLAudioConverter * mlconverter,
@@ -77,7 +169,7 @@ gst_ml_audio_converter_create_pool (GstMLAudioConverter * mlconverter,
     return NULL;
   }
 
-  GST_DEBUG_OBJECT (mlconverter, "create buffer pool based on caps: %"
+  GST_DEBUG_OBJECT (mlconverter, "Create buffer pool based on caps: %"
       GST_PTR_FORMAT, caps);
 
   GST_INFO ("Uses ION memory");
@@ -95,8 +187,7 @@ gst_ml_audio_converter_create_pool (GstMLAudioConverter * mlconverter,
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING ("Failed to set pool configuration!");
-    g_object_unref (pool);
-    pool = NULL;
+    g_clear_object (&pool);
   }
   g_object_unref (allocator);
 
@@ -159,14 +250,41 @@ gst_ml_audio_converter_decide_allocation (GstBaseTransform * base,
   return TRUE;
 }
 
+static gboolean
+gst_ml_audio_converter_query (GstBaseTransform * base,
+    GstPadDirection direction, GstQuery * query)
+{
+  GstMLAudioConverter *mlconverter = GST_ML_AUDIO_CONVERTER (base);
+
+  switch (GST_QUERY_TYPE (query)) {
+    case GST_QUERY_CUSTOM:{
+      GstStructure *structure = gst_query_writable_structure (query);
+      // Not a supported custom event, pass it to the default handling function.
+      if ((structure == NULL) ||
+          !gst_structure_has_name (structure, "ml-preprocess-information"))
+        break;
+
+      gst_structure_set (structure, "stage-id", G_TYPE_UINT,
+          mlconverter->stage_id, NULL);
+
+      GST_DEBUG_OBJECT (mlconverter, "Audio Preprocess Stage ID %u",
+          mlconverter->stage_id);
+      return TRUE;
+    }
+    default:
+      break;
+  }
+
+  return GST_BASE_TRANSFORM_CLASS (parent_class)->query (base, direction, query);
+}
+
 static GstCaps *
 gst_ml_audio_converter_transform_caps (GstBaseTransform * base,
     GstPadDirection direction, GstCaps * caps, GstCaps * filter)
 {
   GstMLAudioConverter *mlconverter = GST_ML_AUDIO_CONVERTER (base);
-  GstCaps *res = NULL;
+  GstCaps *result = NULL;
   GstPad *trans_pad = NULL;
-  //const GValue *value = NULL;
 
   GST_DEBUG_OBJECT (mlconverter, "Transforming caps: %" GST_PTR_FORMAT
       " in direction %s", caps, (direction == GST_PAD_SINK) ? "sink" : "src");
@@ -179,40 +297,46 @@ gst_ml_audio_converter_transform_caps (GstBaseTransform * base,
 
   // caps result should be intersected from pad static caps and
   // filter caps and adjusted based on caps event direction
+  result = gst_pad_get_pad_template_caps (trans_pad);
 
-  res = gst_pad_get_pad_template_caps (trans_pad);
-
-  GST_DEBUG_OBJECT (mlconverter, "pad caps %" GST_PTR_FORMAT, res);
+  GST_DEBUG_OBJECT (mlconverter, "pad caps %" GST_PTR_FORMAT, result);
 
   // Extract the rate and set it to property value in result sink caps.
+  // Extract the sample-rate and set it to property value in result source caps.
   if (!gst_caps_is_empty (caps)) {
 
     gint idx = 0, length = 0;
 
-    res = gst_caps_make_writable (res);
-    length = gst_caps_get_size (res);
+    result = gst_caps_make_writable (result);
+    length = gst_caps_get_size (result);
 
     if (direction == GST_PAD_SRC)
       for (idx = 0; idx < length; idx++) {
-        GstStructure *structure = gst_caps_get_structure (res, idx);
+        GstStructure *structure = gst_caps_get_structure (result, idx);
         gst_structure_set (structure, "rate", G_TYPE_INT,
             mlconverter->sample_rate, NULL);
       }
+    else if (direction == GST_PAD_SINK)
+    for (idx = 0; idx < length; idx++) {
+      GstStructure *structure = gst_caps_get_structure (result, idx);
+      gst_structure_set (structure, "sample-rate", G_TYPE_INT,
+          mlconverter->sample_rate, NULL);
+    }
   }
 
   if (filter != NULL) {
     GstCaps *intersection;
 
     intersection =
-      gst_caps_intersect_full (res, filter, GST_CAPS_INTERSECT_FIRST);
+      gst_caps_intersect_full (result, filter, GST_CAPS_INTERSECT_FIRST);
 
-    gst_caps_unref (res);
-    res = intersection;
+    gst_caps_unref (result);
+    result = intersection;
   }
 
-  GST_DEBUG_OBJECT (mlconverter, "Returning caps: %" GST_PTR_FORMAT, res);
+  GST_DEBUG_OBJECT (mlconverter, "Returning caps: %" GST_PTR_FORMAT, result);
 
-  return res;
+  return result;
 }
 
 static GstCaps *
@@ -220,7 +344,8 @@ gst_ml_audio_converter_fixate_caps (GstBaseTransform * base,
     GstPadDirection direction, GstCaps * caps, GstCaps * othercaps)
 {
   GstMLAudioConverter *mlconverter = GST_ML_AUDIO_CONVERTER (base);
-  const GValue *val = NULL;
+  GstCaps *mlcaps = NULL;
+  const GValue *value = NULL;
   GstStructure *caps_struct = NULL;
 
   g_return_val_if_fail (mlconverter != NULL, NULL);
@@ -235,13 +360,35 @@ gst_ml_audio_converter_fixate_caps (GstBaseTransform * base,
   othercaps = gst_caps_make_writable (othercaps);
 
   if (direction == GST_PAD_SRC) {
-  caps_struct = gst_caps_get_structure (othercaps, 0);
+    caps_struct = gst_caps_get_structure (othercaps, 0);
 
-  val = gst_structure_get_value (caps_struct, "rate");
+    value = gst_structure_get_value (caps_struct, "rate");
 
-  if (val != NULL || !gst_value_is_fixed (val))
-    gst_structure_set (caps_struct, "rate",
-        G_TYPE_INT, mlconverter->sample_rate, NULL);
+    if (value != NULL || !gst_value_is_fixed (value))
+      gst_structure_set (caps_struct, "rate",
+          G_TYPE_INT, mlconverter->sample_rate, NULL);
+
+  } else if (direction == GST_PAD_SINK) {
+    mlcaps = gst_ml_audio_converter_translate_audio_caps (mlconverter, caps);
+    caps_struct = gst_caps_get_structure (othercaps, 0);
+
+    value = gst_structure_get_value (caps_struct, "dimensions");
+
+    if (NULL == value || !gst_value_is_fixed (value)) {
+      value = gst_structure_get_value (
+        gst_caps_get_structure (mlcaps, 0), "dimensions");
+      gst_caps_set_value (othercaps, "dimensions", value);
+    }
+
+    value = gst_structure_get_value (caps_struct, "type");
+
+    if (NULL == value || !gst_value_is_fixed (value)) {
+      value = gst_structure_get_value (
+          gst_caps_get_structure (mlcaps, 0), "type");
+      gst_caps_set_value (othercaps, "type", value);
+    }
+
+    gst_caps_unref (mlcaps);
   }
 
   return gst_caps_fixate (othercaps);
@@ -288,27 +435,22 @@ gst_ml_audio_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
   }
 
   structure = gst_structure_new ("options",
-      GST_ML_AUDIO_CONVERTER_OPT_SAMPLE_RATE, G_TYPE_INT,
-      GST_AUDIO_INFO_RATE(&ininfo),
-      GST_ML_AUDIO_CONVERTER_OPT_BPS, G_TYPE_INT,
-      GST_AUDIO_INFO_BPS(&ininfo),
-      GST_ML_AUDIO_CONVERTER_OPT_FORMAT, G_TYPE_STRING,
-      gst_audio_format_to_string (GST_AUDIO_INFO_FORMAT(&ininfo)),
-      GST_ML_AUDIO_CONVERTER_OPT_TENSORTYPE, G_TYPE_STRING,
-      gst_ml_type_to_string (GST_ML_INFO_TYPE(&mlinfo)),
+      GST_AUDIO_CONVERTER_OPT_INCAPS, GST_TYPE_CAPS, incaps,
+      GST_AUDIO_CONVERTER_OPT_MLCAPS, GST_TYPE_CAPS, outcaps,
+      GST_AUDIO_CONVERTER_OPT_FEATURE, G_TYPE_STRING,
+      gst_audio_feature_to_string (mlconverter->feature),
+      GST_AUDIO_CONVERTER_OPT_PARAMS, G_TYPE_STRING,
+      gst_structure_to_string (mlconverter->params),
       NULL);
-
-  if (GST_ML_INFO_N_TENSORS(&mlinfo) == 1 &&
-      GST_ML_INFO_N_DIMENSIONS(&mlinfo, 0) == 1) {
-    gst_structure_set (structure, GST_ML_AUDIO_CONVERTER_OPT_MODE, G_TYPE_INT,
-        GST_AUDIO_CONV_MODE_RAW, NULL);
-    gst_structure_set (structure, GST_ML_AUDIO_CONVERTER_OPT_SAMPLE_NUMBER,
-        G_TYPE_INT, GST_ML_INFO_TENSOR_DIM(&mlinfo, 0, 0), NULL);
-  }
 
   mlconverter->engine = gst_mlaconverter_engine_new ((const GstStructure *)structure);
 
-  return TRUE;
+  gst_structure_free (structure);
+
+  if (mlconverter->engine == NULL)
+    return FALSE;
+  else
+    return TRUE;
 }
 
 static GstFlowReturn
@@ -350,7 +492,16 @@ gst_ml_audio_converter_prepare_output_buffer (GstBaseTransform * base,
   // Copy the offset field as it may contain channels data for batched buffers.
   GST_BUFFER_OFFSET (*outbuffer) = GST_BUFFER_OFFSET (inbuffer);
 
-  //TBD: copy meta information if any
+  GstProtectionMeta *pmeta = gst_buffer_add_protection_meta (*outbuffer,
+      gst_structure_new_empty (gst_batch_channel_name (0)));
+
+  gst_structure_set (pmeta->info,
+      "timestamp", G_TYPE_UINT64, GST_BUFFER_TIMESTAMP (inbuffer),
+      "sequence-index", G_TYPE_UINT, 1,
+      "sequence-num-entries", G_TYPE_UINT, 1, NULL);
+
+  if (gst_buffer_get_size (*outbuffer) == 0)
+      GST_BUFFER_FLAG_SET (*outbuffer, GST_BUFFER_FLAG_GAP);
 
   return GST_FLOW_OK;
 }
@@ -363,8 +514,7 @@ gst_ml_audio_converter_transform (GstBaseTransform * base,
   GstMLFrame outframe;
   GstAudioBuffer inframe;
   GstFlowReturn ret = GST_FLOW_OK;
-  GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
-  GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
+  GstClockTime time = GST_CLOCK_TIME_NONE;
   gboolean success = TRUE;
 
   // GAP buffer, nothing to do. Propagate output buffer downstream.
@@ -400,13 +550,11 @@ gst_ml_audio_converter_transform (GstBaseTransform * base,
     goto unmap_audio;
   }
 
-  ts_begin = gst_util_get_timestamp ();
+  time = gst_util_get_timestamp ();
 
   success = gst_mlaconverter_engine_process (mlconverter->engine, &inframe, &outframe);
 
-  ts_end = gst_util_get_timestamp ();
-
-  tsdelta = GST_CLOCK_DIFF (ts_begin, ts_end);
+  time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
 
 #ifdef HAVE_LINUX_DMA_BUF_H
   if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
@@ -430,8 +578,8 @@ gst_ml_audio_converter_transform (GstBaseTransform * base,
   }
 
   GST_LOG ("Execute took %" G_GINT64_FORMAT ".%03"
-      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (tsdelta),
-      (GST_TIME_AS_USECONDS (tsdelta) % 1000));
+      G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
+      (GST_TIME_AS_USECONDS (time) % 1000));
 
   ret = GST_FLOW_OK;
 
@@ -455,6 +603,29 @@ gst_ml_audio_converter_set_property (GObject * object, guint prop_id,
       mlconverter->sample_rate = g_value_get_int (value);
       break;
     }
+    case PROP_CONVERSION_FEATURE:
+    {
+      mlconverter->feature = g_value_get_enum (value);
+      break;
+    }
+    case PROP_PARAMS:
+    {
+      GValue structure = G_VALUE_INIT;
+
+      g_value_init (&structure, GST_TYPE_STRUCTURE);
+
+      if (!gst_parse_string_property_value (value, &structure)) {
+        GST_ERROR_OBJECT (mlconverter, "Failed to parse zone configuration!");
+        break;
+      }
+
+      if (mlconverter->params != NULL)
+        gst_structure_free (mlconverter->params);
+
+      mlconverter->params = GST_STRUCTURE (g_value_dup_boxed (&structure));
+      g_value_unset (&structure);
+      break;
+    }
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -471,6 +642,22 @@ gst_ml_audio_converter_get_property (GObject * object, guint prop_id,
     case PROP_SAMPLE_RATE:
     {
       g_value_set_int (value, mlconverter->sample_rate);
+      break;
+    }
+    case PROP_CONVERSION_FEATURE:
+    {
+      g_value_set_enum (value, mlconverter->feature);
+      break;
+    }
+    case PROP_PARAMS:
+    {
+      gchar *string = NULL;
+
+      if (mlconverter->params != NULL)
+        string = gst_structure_to_string (mlconverter->params);
+
+      g_value_set_string (value, string);
+      g_free (string);
       break;
     }
     default:
@@ -495,6 +682,13 @@ gst_ml_audio_converter_finalize (GObject * object)
 
   if (mlconverter->audio_info != NULL)
     gst_audio_info_free (mlconverter->audio_info);
+
+  if (mlconverter->params != NULL)
+    gst_structure_free (mlconverter->params);
+
+  gst_ml_stage_unregister_unique_index (mlconverter->stage_id);
+
+  G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (mlconverter));
 }
 
 static void
@@ -517,6 +711,19 @@ gst_ml_audio_converter_class_init (GstMLAudioConverterClass * klass)
           DEFAULT_PROP_SAMPLE_RATE, G_PARAM_CONSTRUCT | G_PARAM_READWRITE |
           G_PARAM_STATIC_STRINGS));
 
+  g_object_class_install_property (gobject, PROP_PARAMS,
+      g_param_spec_string ("params", "Preprocessor feature parameters",
+          "Preprocessor configuration"
+          "The format is in GstStructure string. Example params can be passed as"
+          "params=\"params,nfft=512,nhop=5,nmels=80;\"",
+          DEFAULT_PROP_PARAMS, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property (gobject, PROP_CONVERSION_FEATURE,
+      g_param_spec_enum ("feature", "Audio Preprocessing feature",
+          "Preprocessing function to run on raw audio samples",
+          GST_TYPE_ML_AUDIO_CONVERSION_FEATURE, DEFAULT_PROP_CONVERSION_FEATURE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
   gst_element_class_set_static_metadata (element,
       "Machine Learning Audio Converter", "Audio",
       "Parse an Audio stream into a ML stream", "QTI");
@@ -528,6 +735,7 @@ gst_ml_audio_converter_class_init (GstMLAudioConverterClass * klass)
 
   base->decide_allocation =
     GST_DEBUG_FUNCPTR (gst_ml_audio_converter_decide_allocation);
+  base->query = GST_DEBUG_FUNCPTR (gst_ml_audio_converter_query);
   base->transform_caps =
     GST_DEBUG_FUNCPTR (gst_ml_audio_converter_transform_caps);
   base->fixate_caps =
@@ -544,8 +752,13 @@ gst_ml_audio_converter_init (GstMLAudioConverter * mlconverter)
   mlconverter->engine  = NULL;
   mlconverter->outpool = NULL;
   mlconverter->ml_info = NULL;
-  mlconverter->audio_info = NULL;
-  mlconverter->sample_rate = DEFAULT_AUDIO_SAMPLE_RATE;
+  mlconverter->audio_info  = NULL;
+  mlconverter->sample_rate = DEFAULT_PROP_SAMPLE_RATE;
+  mlconverter->feature  = DEFAULT_PROP_CONVERSION_FEATURE;
+  mlconverter->params   = gst_structure_new_empty ("params");
+  mlconverter->stage_id = gst_ml_stage_get_unique_index ();
+
+  gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM (mlconverter), TRUE);
 }
 
 static gboolean

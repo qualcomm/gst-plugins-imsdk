@@ -1,0 +1,9 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-snapshot-stream-example",
+  "ApplicationType": "Camera",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "This application creates one preview stream and snapshot stream. One stream preview to display and another stream capture snapshots and dump to a file in JPEG format. Number of snapshot count is user defined."
+}
+

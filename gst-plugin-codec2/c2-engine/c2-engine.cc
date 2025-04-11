@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -512,6 +512,7 @@ gst_c2_engine_queue (GstC2Engine * engine, GstC2QueueItem * item)
   uint64_t index = item->index;
   uint64_t timestamp = 0;
   uint32_t flags = 0;
+  uint32_t n_subframes = item->n_subframes;
 
   // Check and wait in case maximum number of pending frames has been reached.
   GST_C2_ENGINE_CHECK_AND_WAIT_PENDING_WORK (engine, MAX_NUM_PENDING_WORK);
@@ -519,14 +520,13 @@ gst_c2_engine_queue (GstC2Engine * engine, GstC2QueueItem * item)
   if (GST_C2_MODE_VIDEO_ENCODE (engine) && (gst_buffer_n_memory (buffer) > 0) &&
       gst_is_fd_memory (gst_buffer_peek_memory (buffer, 0))) {
 
-    c2buffer = GstC2Utils::ImportGraphicBuffer (buffer);
+    c2buffer = GstC2Utils::ImportGraphicBuffer (buffer, n_subframes);
   } else if (GST_C2_MODE_VIDEO_ENCODE (engine) &&
             gst_buffer_n_memory (buffer) > 0) {
     GstVideoMeta *vmeta = gst_buffer_get_video_meta (buffer);
     g_return_val_if_fail (vmeta != NULL, FALSE);
 
-    gboolean isubwc = GST_BUFFER_FLAG_IS_SET (buffer, GST_VIDEO_BUFFER_FLAG_UBWC);
-    C2PixelFormat format = GstC2Utils::PixelFormat(vmeta->format, isubwc);
+    C2PixelFormat format = GstC2Utils::PixelFormat(vmeta->format, n_subframes);
 
     uint32_t width = vmeta->width;
     uint32_t height = vmeta->height;

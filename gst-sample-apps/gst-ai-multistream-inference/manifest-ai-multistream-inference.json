@@ -1,0 +1,31 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-ai-multistream-inference",
+  "ApplicationType": "AI",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "AIModelsNeededByApplication": [
+    {
+      "ModelName": "model-detection.tflite",
+      "ModelLabelDownloadURL": "",
+      "LabelFile": "detection.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
+    }
+  ],
+  "AIModelsSupportedByApplication": [
+    {
+      "ModelName": "inception_v3_quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Inception-v3-Quantized/resolve/main/Inception-v3-Quantized.tflite",
+      "LabelFile": "classification.labels",
+      "LabelDownloadURL": "https://github.com/quic/ai-hub-models/blob/main/qai_hub_models/labels/imagenet_labels.txt"
+    }
+  ],
+  "AIModelLocation": "/etc/models/",
+  "AILabelLocation": "/etc/labels/",
+  "ConfigFile": "config-multistream-inference.json",
+  "ConfigFileLocation": "/etc/configs/",
+  "ApplicationKeyWords": [
+    "MultistreamInference"
+  ],
+  "ApplicationTextDescription": "This application demonstrates object detection/classification on upto 32 input streams coming from camera and/or files and/or rtsp streams"
+}

@@ -1,0 +1,31 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-ai-daisychain-detection-pose",
+  "ApplicationType": "AI",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "AIModelsNeededByApplication": [
+    {
+      "ModelName": "yolov8_det_quantized.tflite",
+      "ModelLabelDownloadURL": "",
+      "LabelFile": "yolov8.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
+    },
+    {
+      "ModelName": "hrnet_pose_quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/HRNetPoseQuantized/resolve/main/HRNetPoseQuantized.tflite",
+      "LabelFile": "hrnet_pose.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/hrnet_pose.labels"
+    }
+  ],
+  "AIModelsSupportedByApplication": [],
+  "AIModelLocation": "/etc/models/",
+  "AILabelLocation": "/etc/labels/",
+  "ConfigFile": "",
+  "ConfigFileLocation": "",
+  "ApplicationKeyWords": [
+    "DaisychainDetectionPose",
+    "DaisychainDetection"
+  ],
+  "ApplicationTextDescription": "This application demonstrates Daisychain of object detection and pose detection for input coming from camera/file/rtsp"
+}
