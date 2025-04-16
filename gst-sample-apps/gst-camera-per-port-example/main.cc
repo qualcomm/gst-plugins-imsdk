@@ -511,13 +511,13 @@ change_state_pipelines (std::vector < GstPerPortCtx > &ctx,
 {
   GstStateChangeReturn ret;
   guint i = 1;
+  ::camera::CameraMetadata * static_meta = NULL;
+  ::camera::CameraMetadata * session_meta = NULL;
 
   for (; i < ctx.size (); ++i) {
     // Only for first camera of group, send the session param
     if (i == 1) {
       GstElement *camsrc = NULL;
-      ::camera::CameraMetadata * static_meta = NULL;
-      ::camera::CameraMetadata * session_meta = NULL;
       if ((camsrc =
               get_element_from_pipeline (ctx[i].pipeline,
                   "qtiqmmfsrc")) == NULL) {
