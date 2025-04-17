@@ -12,29 +12,29 @@
  * This application Demonstrates USB camera usecases with below possible
  * outputs:
  *     --Live Camera Preview on Display
- *     --Store the Video encoder output
- *     --Dump the Camera YUV to a file
- *     --Live RTSP streaming
-*      --Object detection and Live Camera Preview on Display
+ *     --Dump the Camera Preview to a file
+ *     --Stream Camera Preview to RTSP
+ *     --Object detection output on Display
+ *     --Dump Object detection output to file
+ *     --Stream Object detection output to RTSP
  *
  * Usage:
- * gst-ai-usb-camera-app --od-config-file=/etc/configs/config-usb-camera-app.json
+ * gst-ai-usb-camera-app --config-file=/etc/configs/config-usb-camera-app.json
  *
  * Help:
  * gst-ai-usb-camera-app --help
  *
  * *******************************************************************************
- * Dump the Camera YUV to a filesink:
- *     camerasrc->qtivtransform->capsfilter->filesink
  * Live Camera Preview on Display:
- *     camerasrc->qtivtransform->capsfilter->waylandsink
- * Pipeline For the Video Encoding:
- * camerasrc->qtivtransform->capsfilter->v4l2h264enc->h264parse->mp4mux->filesink
- * Pipeline For the RTSPSTREAMING:
- * camerasrc->qtivtransform->capsfilter->v4l2h264enc->h264parse->qtirtspbin
- *Object detection and Live Camera Preview on Display
- *camerasrc->capsfilter->tee->qtivcomposer-->waylandsink
- *  tee->qtivtransform-->qtimlvconverter-->qtimlplugin-->qtimlvdetection-->caps
+ *     camerasrc->capsfilter->waylandsink
+ * Dump the Camera YUV to a filesink:
+ *     camerasrc->capsfilter->qtivtransform->v4l2h264enc->h264parse->filesink
+ * Pipeline For the Rtsp Streaming:
+ *     camerasrc->capsfilter->qtivtransform ->v4l2h264enc->h264parse->qtirtspbin
+ * Object detection and Live Camera Preview on Display
+ * camerasrc->capsfilter->tee-> |  qtivcomposer-->waylandsink
+ *                              |  tee-->qtimlvconverter-->qtimlplugin-->
+ *                              |   qtimlvdetection-->caps-->qtivcomposer
  * *******************************************************************************
  */
 
@@ -48,29 +48,31 @@
 
 #include <gst/sampleapps/gst_sample_apps_utils.h>
 
-#define DEFAULT_OP_YUV_FILENAME "/etc/media/yuv_dump%d.yuv"
-#define DEFAULT_OP_MP4_FILENAME "/etc/media/video.mp4"
-#define DEFAULT_WIDTH 640
-#define DEFAULT_HEIGHT 480
+#define DEFAULT_WIDTH 1280
+#define DEFAULT_HEIGHT 720
 #define DEFAULT_FRAMERATE 30
+#define DEFAULT_OUTPUT_FILENAME "/etc/media/video.mp4"
 #define DEFAULT_IP "127.0.0.1"
 #define DEFAULT_PORT "8900"
 #define DEFAULT_PROP_MPOINT "/live"
 #define DEFAULT_CONFIG_FILE "/etc/configs/config-usb-camera-app.json"
 #define MAX_VID_DEV_CNT 64
 
-#define GST_APP_SUMMARY                                                       \
-  "This app enables the users to use USB camera with different o/p          "\
-  "  as PREVIEW,encode(MP4),YUVDUMP & RTSP or object-detection with PREVIEW \n"\
-  "\nCommand:\n"                                                              \
-  "  gst-ai-usb-camera-app --od-config-file=/etc/config/config-usb-camera-app.json"\
-  "\nOutput:\n"                                                               \
-  "  Upon execution, application will generates output as user selected. \n"  \
-  "  In case of a PREVIEW, the output video will be displayed. \n"            \
-  "  In case of a object detection enable, the o/p video will be displayed. \n"\
-  "  In case Video Encoding(MP4) the o/p stored at /etc/media/video.mp4 \n" \
-  "  In RTSP Streaming the o/p video stream is generated to play on host.\n"\
-  "  In case YUVDUMP the output video stored at /etc/media/yuv_dump%d.yuv"
+/**
+ * Default models and labels path, if not provided by user
+ */
+#define DEFAULT_SNPE_YOLOV5_MODEL "/etc/models/yolov5.dlc"
+#define DEFAULT_YOLOV5_LABELS "/etc/labels/yolov5.labels"
+#define DEFAULT_SNPE_YOLOV8_MODEL "/etc/models/yolov8.dlc"
+#define DEFAULT_YOLOV8_LABELS "/etc/labels/yolov8.labels"
+#define DEFAULT_SNPE_YOLONAS_MODEL "/etc/models/yolonas.dlc"
+#define DEFAULT_YOLONAS_LABELS "/etc/labels/yolonas.labels"
+#define DEFAULT_TFLITE_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.tflite"
+#define DEFAULT_TFLITE_YOLOV5_MODEL "/etc/models/yolov5.tflite"
+#define DEFAULT_TFLITE_YOLONAS_MODEL "/etc/models/yolonas_quantized.tflite"
+#define DEFAULT_YOLOV7_LABELS "/etc/labels/yolov7.labels"
+#define DEFAULT_TFLITE_YOLOV7_MODEL "/etc/models/yolov7_quantized.tflite"
+#define DEFAULT_QNN_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.bin"
 
 /**
  * Number of Queues used for buffer caching between elements
@@ -80,12 +82,39 @@
 /**
  * Defalut value of threshold
  */
-#define DEFAULT_THRESHOLD_VALUE  40.0
+#define DEFAULT_THRESHOLD_VALUE  75.0
 
 /**
  * default value of delegate
  */
 #define DEFAULT_SNPE_DELEGATE GST_ML_SNPE_DELEGATE_DSP
+
+/**
+ * Default constants to dequantize values
+ */
+#define DEFAULT_CONSTANTS_YOLOV8 \
+ "YOLOv8,q-offsets=<12.0, 0.0, 0.0>,q-scales=<2.8047633171081543, \
+ 0.00390625, 0.0>;"
+
+/**
+ * Default constants to dequantize values
+ */
+#define DEFAULT_CONSTANTS_YOLOV5 \
+ "YoloV5,q-offsets=<3.0>,q-scales=<0.005047998391091824>;"
+
+/**
+* Default constants to dequantize values
+*/
+#define DEFAULT_CONSTANTS_YOLONAS \
+ "YoloNas,q-offsets=<37.0, 0.0, 0.0>,q-scales=<3.416602611541748, \
+ 0.00390625, 1.0>;"
+
+/**
+* Default constants to dequantize values
+*/
+#define DEFAULT_CONSTANTS_YOLOV7 \
+ "Yolov7,q-offsets=<30.0, 0.0, 0.0>,q-scales=<3.320857286453247, \
+ 0.0037717572413384914, 1.0>;"
 
 // Structure to hold the application context
 struct GstCameraAppCtx
@@ -140,13 +169,12 @@ gst_app_context_new ()
     g_printerr ("\n Unable to create App Context");
     return NULL;
   }
-
   // Initialize the context fields
   ctx->pipeline = NULL;
   ctx->mloop = NULL;
-  ctx->output_file = NULL;
-  ctx->ip_address = NULL;
-  ctx->port_num = NULL;
+  ctx->output_file = DEFAULT_OUTPUT_FILENAME;
+  ctx->ip_address = DEFAULT_IP;
+  ctx->port_num = DEFAULT_PORT;
   ctx->sinktype = GST_WAYLANDSINK;
   ctx->width = DEFAULT_WIDTH;
   ctx->height = DEFAULT_HEIGHT;
@@ -160,11 +188,10 @@ gst_app_context_new ()
  * @param appctx Application Context object
  */
 static void
-gst_app_context_free
+    gst_app_context_free
     (GstCameraAppContext * appctx, GstAppOptions * options, gchar * config_file)
 {
   // If specific pointer is not NULL, unref it
-
   if (appctx->mloop != NULL) {
     g_main_loop_unref (appctx->mloop);
     appctx->mloop = NULL;
@@ -174,53 +201,57 @@ gst_app_context_free
     g_free ((gpointer) options->file_path);
   }
 
-  if (options->model_path != NULL) {
+  if (options->model_path != (gchar *) (&DEFAULT_SNPE_YOLOV5_MODEL) &&
+      options->model_path != (gchar *) (&DEFAULT_SNPE_YOLOV8_MODEL) &&
+      options->model_path != (gchar *) (&DEFAULT_SNPE_YOLONAS_MODEL) &&
+      options->model_path != (gchar *) (&DEFAULT_TFLITE_YOLOV8_MODEL) &&
+      options->model_path != (gchar *) (&DEFAULT_TFLITE_YOLOV5_MODEL) &&
+      options->model_path != (gchar *) (&DEFAULT_TFLITE_YOLONAS_MODEL) &&
+      options->model_path != (gchar *) (&DEFAULT_TFLITE_YOLOV7_MODEL) &&
+      options->model_path != (gchar *) (&DEFAULT_QNN_YOLOV8_MODEL) &&
+      options->model_path != NULL) {
     g_free ((gpointer) options->model_path);
   }
 
-  if (options->labels_path != NULL) {
+  if (options->labels_path != (gchar *) (&DEFAULT_YOLOV5_LABELS) &&
+      options->labels_path != (gchar *) (&DEFAULT_YOLOV8_LABELS) &&
+      options->labels_path != (gchar *) (&DEFAULT_YOLONAS_LABELS) &&
+      options->labels_path != (gchar *) (&DEFAULT_YOLOV7_LABELS) &&
+      options->labels_path != NULL) {
     g_free ((gpointer) options->labels_path);
   }
 
-  if (options->constants != NULL) {
+  if (options->constants != (gchar *) (&DEFAULT_CONSTANTS_YOLOV5) &&
+      options->constants != (gchar *) (&DEFAULT_CONSTANTS_YOLOV8) &&
+      options->constants != (gchar *) (&DEFAULT_CONSTANTS_YOLONAS) &&
+      options->constants != (gchar *) (&DEFAULT_CONSTANTS_YOLOV7) &&
+      options->constants != NULL) {
     g_free ((gpointer) options->constants);
   }
 
-  if (config_file != NULL) {
+  if (config_file != NULL && config_file != (gchar *) (&DEFAULT_CONFIG_FILE)) {
     g_free ((gpointer) config_file);
+    config_file = NULL;
   }
 
-  g_free (appctx->ip_address);
-  g_free (appctx->port_num);
+  if (appctx->ip_address != (gchar *) (&DEFAULT_IP) &&
+      appctx->ip_address != NULL) {
+    g_free ((gpointer) appctx->ip_address);
+  }
+
+  if (appctx->port_num != (gchar *) (&DEFAULT_PORT) && appctx->port_num != NULL) {
+    g_free ((gpointer) appctx->port_num);
+  }
+
+  if (config_file != NULL && config_file != (gchar *) (&DEFAULT_CONFIG_FILE)) {
+    g_free ((gpointer) config_file);
+    config_file = NULL;
+  }
 
   if (appctx->pipeline != NULL) {
     gst_object_unref (appctx->pipeline);
     appctx->pipeline = NULL;
   }
-
-  if (appctx != NULL)
-    g_free (appctx);
-}
-
-/**
- * Build Property for pad.
- *
- * @param property Property Name.
- * @param values Value of Property.
- * @param num count of Property Values.
- */
-static void
-build_pad_property (GValue * property, gint values[], gint num)
-{
-  GValue val = G_VALUE_INIT;
-  g_value_init (&val, G_TYPE_INT);
-
-  for (gint idx = 0; idx < num; idx++) {
-    g_value_set_int (&val, values[idx]);
-    gst_value_array_append_value (property, &val);
-  }
-
-  g_value_unset (&val);
 }
 
 /**
@@ -246,7 +277,6 @@ parse_json (gchar * file, GstAppOptions * options, GstCameraAppContext * appctx)
     g_object_unref (parser);
     return -1;
   }
-
   // Get the root object
   root = json_parser_get_root (parser);
   if (!JSON_NODE_HOLDS_OBJECT (root)) {
@@ -257,51 +287,54 @@ parse_json (gchar * file, GstAppOptions * options, GstCameraAppContext * appctx)
 
   root_obj = json_node_get_object (root);
 
-  gboolean camera_is_available = is_camera_available ();
-
-  if (camera_is_available) {
-    if (json_object_has_member (root_obj, "camera"))
-      options->camera_type = json_object_get_int_member (root_obj, "camera");
-  }
-
-  if (json_object_has_member (root_obj, "file-path")) {
-    options->file_path =
-        g_strdup (json_object_get_string_member (root_obj, "file-path"));
-  }
-
   if (json_object_has_member (root_obj, "width")) {
     appctx->width = json_object_get_int_member (root_obj, "width");
+    g_print ("Width : %d\n", appctx->width);
   }
 
   if (json_object_has_member (root_obj, "height")) {
     appctx->height = json_object_get_int_member (root_obj, "height");
+    g_print ("Height : %d\n", appctx->height);
   }
 
   if (json_object_has_member (root_obj, "framerate")) {
     appctx->framerate = json_object_get_int_member (root_obj, "framerate");
+    g_print ("Frame Rate : %d\n", appctx->framerate);
   }
 
   if (json_object_has_member (root_obj, "output")) {
     const gchar *output_type =
         g_strdup (json_object_get_string_member (root_obj, "output"));
-    if (g_strcmp0 (output_type, "PREVIEW") == 0)
+    if (g_strcmp0 (output_type, "waylandsink") == 0)
       appctx->sinktype = GST_WAYLANDSINK;
-    else if (g_strcmp0 (output_type, "MP4") == 0 )
+    else if (g_strcmp0 (output_type, "filesink") == 0)
       appctx->sinktype = GST_VIDEO_ENCODE;
-    else if (g_strcmp0 (output_type, "YUVDUMP") == 0 )
-      appctx->sinktype = GST_YUV_DUMP;
-    else if (g_strcmp0 (output_type, "RTSP") == 0 )
+    else if (g_strcmp0 (output_type, "rtspsink") == 0)
       appctx->sinktype = GST_RTSP_STREAMING;
+    else {
+      gst_printerr ("output can only be one of "
+          "\"waylandsink\", \"filesink\" or \"rtspsink\"\n");
+      g_object_unref (parser);
+      return -1;
+    }
+  }
+
+  if (json_object_has_member (root_obj, "output-file")) {
+    appctx->output_file =
+        g_strdup (json_object_get_string_member (root_obj, "output-file"));
+    g_print ("Output File Name : %s\n", appctx->output_file);
   }
 
   if (json_object_has_member (root_obj, "ip-address")) {
     appctx->ip_address =
         g_strdup (json_object_get_string_member (root_obj, "ip-address"));
+    g_print ("Ip Address : %s\n", appctx->ip_address);
   }
 
   if (json_object_has_member (root_obj, "port")) {
     appctx->port_num =
         g_strdup (json_object_get_string_member (root_obj, "port"));
+    g_print ("Port Number : %s\n", appctx->port_num);
   }
 
   if (json_object_has_member (root_obj, "enable-object-detection")) {
@@ -330,65 +363,64 @@ parse_json (gchar * file, GstAppOptions * options, GstCameraAppContext * appctx)
       }
       g_print ("yolo-model-type : %s\n", yolo_model_type);
     }
+  }
 
-    if (json_object_has_member (root_obj, "ml-framework")) {
-      const gchar *framework =
-          json_object_get_string_member (root_obj, "ml-framework");
-      if (g_strcmp0 (framework, "snpe") == 0)
-        options->model_type = GST_MODEL_TYPE_SNPE;
-      else if (g_strcmp0 (framework, "tflite") == 0)
-        options->model_type = GST_MODEL_TYPE_TFLITE;
-      else if (g_strcmp0 (framework, "qnn") == 0) {
-        options->model_type = GST_MODEL_TYPE_QNN;
-      } else {
-        gst_printerr ("ml-framework can only be one of "
-            "\"snpe\", \"tflite\" or \"qnn\"\n");
-        g_object_unref (parser);
-        return -1;
-      }
-      g_print ("ml-framework : %s\n", framework);
+  if (json_object_has_member (root_obj, "ml-framework")) {
+    const gchar *framework =
+        json_object_get_string_member (root_obj, "ml-framework");
+    if (g_strcmp0 (framework, "snpe") == 0)
+      options->model_type = GST_MODEL_TYPE_SNPE;
+    else if (g_strcmp0 (framework, "tflite") == 0)
+      options->model_type = GST_MODEL_TYPE_TFLITE;
+    else if (g_strcmp0 (framework, "qnn") == 0) {
+      options->model_type = GST_MODEL_TYPE_QNN;
+    } else {
+      gst_printerr ("ml-framework can only be one of "
+          "\"snpe\", \"tflite\" or \"qnn\"\n");
+      g_object_unref (parser);
+      return -1;
     }
+    g_print ("ml-framework : %s\n", framework);
+  }
 
-    if (json_object_has_member (root_obj, "model")) {
-      options->model_path =
-          g_strdup (json_object_get_string_member (root_obj, "model"));
-      g_print ("model_path : %s\n", options->model_path);
+  if (json_object_has_member (root_obj, "model")) {
+    options->model_path =
+        g_strdup (json_object_get_string_member (root_obj, "model"));
+    g_print ("model_path : %s\n", options->model_path);
+  }
+
+  if (json_object_has_member (root_obj, "labels")) {
+    options->labels_path =
+        g_strdup (json_object_get_string_member (root_obj, "labels"));
+  }
+
+  if (json_object_has_member (root_obj, "constants")) {
+    options->constants =
+        g_strdup (json_object_get_string_member (root_obj, "constants"));
+    g_print ("constants : %s\n", options->constants);
+  }
+
+  if (json_object_has_member (root_obj, "threshold")) {
+    options->threshold = json_object_get_int_member (root_obj, "threshold");
+    g_print ("threshold : %f\n", options->threshold);
+  }
+
+  if (json_object_has_member (root_obj, "runtime")) {
+    const gchar *delegate = json_object_get_string_member (root_obj, "runtime");
+
+    if (g_strcmp0 (delegate, "cpu") == 0)
+      options->use_cpu = TRUE;
+    else if (g_strcmp0 (delegate, "dsp") == 0)
+      options->use_dsp = TRUE;
+    else if (g_strcmp0 (delegate, "gpu") == 0)
+      options->use_gpu = TRUE;
+    else {
+      gst_printerr
+          ("Runtime can only be one of \"cpu\", \"dsp\" and \"gpu\"\n");
+      g_object_unref (parser);
+      return -1;
     }
-
-    if (json_object_has_member (root_obj, "labels")) {
-      options->labels_path =
-          g_strdup (json_object_get_string_member (root_obj, "labels"));
-    }
-
-    if (json_object_has_member (root_obj, "constants")) {
-      options->constants =
-          g_strdup (json_object_get_string_member (root_obj, "constants"));
-      g_print ("constants : %s\n", options->constants);
-    }
-
-    if (json_object_has_member (root_obj, "threshold")) {
-      options->threshold = json_object_get_int_member (root_obj, "threshold");
-      g_print ("threshold : %f\n", options->threshold);
-    }
-
-    if (json_object_has_member (root_obj, "runtime")) {
-      const gchar *delegate =
-          json_object_get_string_member (root_obj, "runtime");
-
-      if (g_strcmp0 (delegate, "cpu") == 0)
-        options->use_cpu = TRUE;
-      else if (g_strcmp0 (delegate, "dsp") == 0)
-        options->use_dsp = TRUE;
-      else if (g_strcmp0 (delegate, "gpu") == 0)
-        options->use_gpu = TRUE;
-      else {
-        gst_printerr
-            ("Runtime can only be one of \"cpu\", \"dsp\" and \"gpu\"\n");
-        g_object_unref (parser);
-        return -1;
-      }
-      g_print ("delegate : %s\n", delegate);
-    }
+    g_print ("delegate : %s\n", delegate);
   }
 
   g_object_unref (parser);
@@ -409,7 +441,8 @@ find_usb_camera_node (GstCameraAppContext * appctx)
   while (idx < MAX_VID_DEV_CNT) {
     memset (appctx->dev_video, 0, sizeof (appctx->dev_video));
 
-    ret = snprintf (appctx->dev_video, sizeof (appctx->dev_video), "/dev/video%d",
+    ret =
+        snprintf (appctx->dev_video, sizeof (appctx->dev_video), "/dev/video%d",
         idx);
     if (ret <= 0) {
       return FALSE;
@@ -462,169 +495,252 @@ find_usb_camera_node (GstCameraAppContext * appctx)
  * @param appctx Application Context Object.
  */
 static gboolean
-create_pipe (GstCameraAppContext * appctx)
+create_preview_pipe (GstCameraAppContext * appctx)
 {
-  // Declare the elements of the pipeline
-  GstElement *camerasrc, *capsfilter, *waylandsink, *filesink, *v4l2h264enc;
-  GstElement *qtivtransform, *h264parse, *mp4mux, *queue, *qtirtspbin;
-  GstCaps *filtercaps;
-  GstStructure *fcontrols;
+  GstElement *v4l2src = NULL, *capsfilter = NULL, *waylandsink = NULL;
+  GstElement *filesink = NULL, *v4l2h264enc = NULL, *h264parse = NULL;
+  GstElement *mp4mux = NULL, *queue[QUEUE_COUNT] = { NULL }, *qtirtspbin = NULL;
+  GstElement *qtivtransform = NULL, *transform_capsfilter = NULL;
+  GstCaps *filtercaps = NULL;
   gboolean ret = FALSE;
+  gchar element_name[128];
 
-  // Create comman element
-  camerasrc = gst_element_factory_make ("v4l2src", "camerasrc");
-  qtivtransform = gst_element_factory_make ("qtivtransform", "qtivtransform");
+  // 1. Create the camsrc plugin
+  v4l2src = gst_element_factory_make ("v4l2src", "v4l2src");
+  if (!v4l2src) {
+    g_printerr ("Failed to create v4l2src\n");
+    goto error_clean_elements;
+  }
+  // Use capsfilter to define the camera output settings
   capsfilter = gst_element_factory_make ("capsfilter", "capsfilter");
-
-  if (!camerasrc || !capsfilter || !qtivtransform) {
-    g_printerr ("\n YUV dump elements could not be created. Exiting.\n");
-    return FALSE;
+  if (!capsfilter) {
+    g_printerr ("Failed to create capsfilter\n");
+    goto error_clean_elements;
+  }
+  // Create queue to decouple the processing on sink and source pad.
+  for (gint i = 0; i < QUEUE_COUNT; i++) {
+    snprintf (element_name, 127, "queue-%d", i);
+    queue[i] = gst_element_factory_make ("queue", element_name);
+    if (!queue[i]) {
+      g_printerr ("Failed to create queue %d\n", i);
+      goto error_clean_elements;
+    }
   }
 
-  // Set properties for element
-  g_object_set (G_OBJECT (camerasrc), "io-mode", "dmabuf-import", NULL);
-  g_object_set (G_OBJECT (camerasrc), "device", appctx->dev_video, NULL);
-  g_object_set (G_OBJECT (qtivtransform), "rotate", 0, NULL);
+  if (appctx->sinktype == GST_VIDEO_ENCODE) {
+    // Generic filesink plugin to write file on disk
+    filesink = gst_element_factory_make ("filesink", "filesink");
+    if (!filesink) {
+      g_printerr ("Failed to create filesink\n");
+      goto error_clean_elements;
+    }
 
-  // Set the source elements capability
-  filtercaps = gst_caps_new_simple ("video/x-raw",
-      "format", G_TYPE_STRING, "NV12",
-      "width", G_TYPE_INT, appctx->width,
-      "height", G_TYPE_INT, appctx->height,
-      "framerate", GST_TYPE_FRACTION, appctx->framerate, 1, NULL);
+    qtivtransform = gst_element_factory_make ("qtivtransform", "qtivtransform");
+    if (!qtivtransform) {
+      g_printerr ("Failed to create qtivtransform\n");
+      goto error_clean_elements;
+    }
+    // Create Encoder plugin
+    v4l2h264enc = gst_element_factory_make ("v4l2h264enc", "v4l2h264enc");
+    if (!v4l2h264enc) {
+      g_printerr ("Failed to create v4l2h264enc\n");
+      goto error_clean_elements;
+    }
+    // Create frame parser plugin
+    h264parse = gst_element_factory_make ("h264parse", "h264parse");
+    if (!h264parse) {
+      g_printerr ("Failed to create h264parse\n");
+      goto error_clean_elements;
+    }
+    //transform filter caps
+    transform_capsfilter =
+        gst_element_factory_make ("capsfilter", "transform_capsfilter");
+    if (!transform_capsfilter) {
+      g_printerr ("Failed to create transform_capsfilter\n");
+      goto error_clean_elements;
+    }
+    // Create mp4mux plugin to save file in mp4 container
+    mp4mux = gst_element_factory_make ("mp4mux", "mp4mux");
+    if (!mp4mux) {
+      g_printerr ("Failed to create mp4mux\n");
+      goto error_clean_elements;
+    }
 
-  g_object_set (G_OBJECT (capsfilter), "caps", filtercaps, NULL);
-  gst_caps_unref (filtercaps);
+  } else if (appctx->sinktype == GST_RTSP_STREAMING) {
+    // Create Encoder plugin
+    v4l2h264enc = gst_element_factory_make ("v4l2h264enc", "v4l2h264enc");
+    if (!v4l2h264enc) {
+      g_printerr ("Failed to create v4l2h264enc\n");
+      goto error_clean_elements;
+    }
 
-  // check the sink type and create the sink elements
-  if (appctx->sinktype == GST_WAYLANDSINK) {
+    qtivtransform = gst_element_factory_make ("qtivtransform", "qtivtransform");
+    if (!qtivtransform) {
+      g_printerr ("Failed to create qtivtransform\n");
+      goto error_clean_elements;
+    }
+    //transform filter caps
+    transform_capsfilter =
+        gst_element_factory_make ("capsfilter", "transform_capsfilter");
+    if (!transform_capsfilter) {
+      g_printerr ("Failed to create transform_capsfilter\n");
+      goto error_clean_elements;
+    }
+    // Create frame parser plugin
+    h264parse = gst_element_factory_make ("h264parse", "h264parse");
+    if (!h264parse) {
+      g_printerr ("Failed to create h264parse\n");
+      goto error_clean_elements;
+    }
+    // Generic qtirtspbin plugin for streaming
+    qtirtspbin = gst_element_factory_make ("qtirtspbin", "qtirtspbin");
+    if (!qtirtspbin) {
+      g_printerr ("Failed to create qtirtspbin\n");
+      goto error_clean_elements;
+    }
+
+  } else {
+    // Create Weston compositor to render the output on Display
     waylandsink = gst_element_factory_make ("waylandsink", "waylandsink");
     if (!waylandsink) {
-      g_printerr ("\n waylandsink element not created. Exiting.\n");
-      return FALSE;
+      g_printerr ("Failed to create waylandsink\n");
+      goto error_clean_elements;
     }
-    g_object_set (G_OBJECT (waylandsink), "fullscreen", TRUE, NULL);
+  }
 
-    gst_bin_add_many (GST_BIN (appctx->pipeline), camerasrc, qtivtransform,
+  // check the sink type and set properties of elements
+  if (appctx->sinktype == GST_RTSP_STREAMING) {
+    // Set properties for v4l2src
+    g_object_set (G_OBJECT (v4l2src), "io-mode", "dmabuf", NULL);
+    g_object_set (G_OBJECT (v4l2src), "device", appctx->dev_video, NULL);
+    // Set properties for qtirtspbin
+    g_object_set (G_OBJECT (qtirtspbin), "address", appctx->ip_address, "port",
+        appctx->port_num, NULL);
+    //g_object_set (G_OBJECT (qtirtspbin),  NULL);
+    // Set the capabilities of camera plugin output
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, "YUY2",
+        "width", G_TYPE_INT, appctx->width,
+        "height", G_TYPE_INT, appctx->height,
+        "framerate", GST_TYPE_FRACTION, appctx->framerate, 1, NULL);
+    g_object_set (G_OBJECT (capsfilter), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
+    // Set the capabilities of transform filter
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, "NV12", NULL);
+    g_object_set (G_OBJECT (transform_capsfilter), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
+    // set the property of v4l2h264enc
+    gst_element_set_enum_property (v4l2h264enc, "capture-io-mode", "dmabuf");
+    gst_element_set_enum_property (v4l2h264enc, "output-io-mode",
+        "dmabuf-import");
+    // set the property of h264parse
+    g_object_set (G_OBJECT (h264parse), "config-interval", 1, NULL);
+
+    // Setup the pipeline
+    g_print ("Adding all elements to the pipeline...\n");
+    gst_bin_add_many (GST_BIN (appctx->pipeline), v4l2src, capsfilter,
+        qtivtransform, transform_capsfilter, v4l2h264enc, h264parse, qtirtspbin,
+        NULL);
+    for (gint i = 0; i < QUEUE_COUNT; i++) {
+      gst_bin_add_many (GST_BIN (appctx->pipeline), queue[i], NULL);
+    }
+
+    g_print ("Linking elements...\n");
+    ret =
+        gst_element_link_many (v4l2src, capsfilter, qtivtransform,
+        transform_capsfilter, queue[0], v4l2h264enc, queue[1], h264parse,
+        queue[2], qtirtspbin, NULL);
+    if (!ret) {
+      g_printerr
+          ("\n Pipeline elements cannot be linked from v4l2src to qtirtspbin.\n");
+      goto error_clean_pipeline;
+    }
+
+  } else if (appctx->sinktype == GST_VIDEO_ENCODE) {
+    // Set properties for v4l2src
+    g_object_set (G_OBJECT (v4l2src), "io-mode", "dmabuf", NULL);
+    g_object_set (G_OBJECT (v4l2src), "device", appctx->dev_video, NULL);
+    // set the output file location for filesink element
+    g_object_set (G_OBJECT (filesink), "location", appctx->output_file, NULL);
+    // Set the camera source elements capability
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, "YUY2",
+        "width", G_TYPE_INT, appctx->width,
+        "height", G_TYPE_INT, appctx->height,
+        "framerate", GST_TYPE_FRACTION, appctx->framerate, 1, NULL);
+    g_object_set (G_OBJECT (capsfilter), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
+    // Set the property of transform filter
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, "NV12", NULL);
+    g_object_set (G_OBJECT (transform_capsfilter), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
+    // set the property of v4l2h264enc
+    gst_element_set_enum_property (v4l2h264enc, "capture-io-mode", "dmabuf");
+    gst_element_set_enum_property (v4l2h264enc, "output-io-mode",
+        "dmabuf-import");
+    // Setup the pipeline
+    g_print ("Adding all elements to the pipeline...\n");
+    gst_bin_add_many (GST_BIN (appctx->pipeline), v4l2src, capsfilter,
+        qtivtransform, transform_capsfilter, v4l2h264enc, h264parse, mp4mux,
+        filesink, NULL);
+    for (gint i = 0; i < QUEUE_COUNT; i++) {
+      gst_bin_add_many (GST_BIN (appctx->pipeline), queue[i], NULL);
+    }
+
+    g_print ("Linking elements...\n");
+    ret =
+        gst_element_link_many (v4l2src, capsfilter, qtivtransform,
+        transform_capsfilter, queue[0], v4l2h264enc, h264parse, queue[1],
+        mp4mux, queue[2], filesink, NULL);
+    if (!ret) {
+      g_printerr
+          ("\n Pipeline elements cannot be linked from v4l2src to filesink.\n");
+      goto error_clean_pipeline;
+    }
+  } else {
+    // Set properties for v4l2src
+    g_object_set (G_OBJECT (v4l2src), "io-mode", "dmabuf-import", NULL);
+    g_object_set (G_OBJECT (v4l2src), "device", appctx->dev_video, NULL);
+    // Set the camera source output property
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, "NV12",
+        "width", G_TYPE_INT, appctx->width,
+        "height", G_TYPE_INT, appctx->height,
+        "framerate", GST_TYPE_FRACTION, appctx->framerate, 1, NULL);
+    g_object_set (G_OBJECT (capsfilter), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
+
+    g_object_set (G_OBJECT (waylandsink), "fullscreen", TRUE, NULL);
+    // Setup the pipeline
+    g_print ("Adding all elements to the pipeline...\n");
+    gst_bin_add_many (GST_BIN (appctx->pipeline), v4l2src,
         capsfilter, waylandsink, NULL);
 
-    g_print ("\n Link pipeline for display elements ..\n");
-
-    ret = gst_element_link_many (camerasrc, qtivtransform, capsfilter,
-        waylandsink, NULL);
+    g_print ("Linking elements...\n");
+    ret = gst_element_link_many (v4l2src, capsfilter, waylandsink, NULL);
     if (!ret) {
-      g_printerr ("\n Display Pipeline elements cannot be linked. Exiting.\n");
-      gst_bin_remove_many (GST_BIN (appctx->pipeline), camerasrc, capsfilter,
-          qtivtransform, waylandsink, NULL);
-      return FALSE;
-    }
-  } else if (appctx->sinktype == GST_YUV_DUMP) {
-    // set the output file location for filesink element
-    appctx->output_file = DEFAULT_OP_YUV_FILENAME;
-    filesink = gst_element_factory_make ("multifilesink", "filesink");
-    if (!filesink) {
-      g_printerr ("\n YUV dump elements could not be created. Exiting.\n");
-      return FALSE;
-    }
-    g_object_set (G_OBJECT (filesink), "location", appctx->output_file, NULL);
-    g_object_set (G_OBJECT (filesink), "enable-last-sample", FALSE, NULL);
-    g_object_set (G_OBJECT (filesink), "max-files", 2, NULL);
-
-    gst_bin_add_many (GST_BIN (appctx->pipeline), camerasrc, qtivtransform,
-        capsfilter, filesink, NULL);
-
-    g_print ("\n Link pipeline elements for yuv dump..\n");
-
-    ret = gst_element_link_many (camerasrc, qtivtransform, capsfilter, filesink,
-        NULL);
-    if (!ret) {
-      g_printerr ("\n Pipeline elements cannot be linked. Exiting.\n");
-      gst_bin_remove_many (GST_BIN (appctx->pipeline), camerasrc, capsfilter,
-          qtivtransform, filesink, NULL);
-      return FALSE;
-    }
-  } else if (appctx->sinktype == GST_VIDEO_ENCODE ||
-      appctx->sinktype == GST_RTSP_STREAMING) {
-    // Create v4l2h264enc element and set the properties
-    v4l2h264enc = gst_element_factory_make ("v4l2h264enc", "v4l2h264enc");
-    // Create h264parse element for parsing the stream
-    h264parse = gst_element_factory_make ("h264parse", "h264parse");
-    if (!v4l2h264enc || !h264parse) {
-      g_printerr ("\n Video Encoder elements could not be created \n");
-      return FALSE;
-    }
-    g_object_set (G_OBJECT (v4l2h264enc), "capture-io-mode", GST_V4L2_IO_DMABUF,
-        NULL);
-    g_object_set (G_OBJECT (v4l2h264enc), "output-io-mode",
-        GST_V4L2_IO_DMABUF_IMPORT, NULL);
-    g_object_set (G_OBJECT (h264parse), "config-interval", -1, NULL);
-
-    if (appctx->sinktype == GST_RTSP_STREAMING) {
-      // Set bitrate for streaming usecase
-      fcontrols =
-          gst_structure_from_string
-          ("fcontrols,video_bitrate=10000000,video_bitrate_mode=0", NULL);
-      g_object_set (G_OBJECT (v4l2h264enc), "extra-controls", fcontrols, NULL);
-
-      queue = gst_element_factory_make ("queue", "queue");
-      qtirtspbin = gst_element_factory_make ("qtirtspbin", "qtirtspbin");
-      if (!queue || !qtirtspbin) {
-        g_printerr ("\n Video Streaming elements could not be created \n");
-        return FALSE;
-      }
-      g_object_set (G_OBJECT (qtirtspbin), "address", appctx->ip_address, NULL);
-      g_object_set (G_OBJECT (qtirtspbin), "port", appctx->port_num, NULL);
-
-      gst_bin_add_many (GST_BIN (appctx->pipeline), camerasrc, qtivtransform,
-          capsfilter, v4l2h264enc, h264parse, queue, qtirtspbin, NULL);
-
-      g_print ("\n Link pipeline for video streaming elements ..\n");
-
-      ret = gst_element_link_many (camerasrc, qtivtransform, capsfilter,
-          v4l2h264enc, h264parse, queue, qtirtspbin, NULL);
-      if (!ret) {
-        g_printerr
-            ("\n Pipeline video streaming elements cannot be linked. Exiting.\n");
-        gst_bin_remove_many (GST_BIN (appctx->pipeline), camerasrc, capsfilter,
-            v4l2h264enc, qtivtransform, h264parse, queue, qtirtspbin, NULL);
-        return FALSE;
-      }
-    } else if (appctx->sinktype == GST_VIDEO_ENCODE) {
-      fcontrols = gst_structure_from_string ("fcontrols,video_bitrate_mode=0",
-          NULL);
-      g_object_set (G_OBJECT (v4l2h264enc), "extra-controls", fcontrols, NULL);
-      // Create mp4mux element for muxing the stream
-      mp4mux = gst_element_factory_make ("mp4mux", "mp4mux");
-
-      // Create filesink element for storing the encoding stream
-      filesink = gst_element_factory_make ("filesink", "filesink");
-      if (!mp4mux || !filesink) {
-        g_printerr ("\n Elements for video storage could not be created \n");
-        return FALSE;
-      }
-      appctx->output_file = DEFAULT_OP_MP4_FILENAME;
-      g_object_set (G_OBJECT (filesink), "location", appctx->output_file, NULL);
-
-      gst_bin_add_many (GST_BIN (appctx->pipeline), camerasrc, qtivtransform,
-          capsfilter, v4l2h264enc, h264parse, mp4mux, filesink, NULL);
-
-      g_print ("\n Link pipeline elements for encoder..\n");
-
-      // Linking the encoder stream
-      ret = gst_element_link_many (camerasrc, qtivtransform, capsfilter,
-          v4l2h264enc, h264parse, mp4mux, filesink, NULL);
-      if (!ret) {
-        g_printerr
-            ("\n Video Encoder Pipeline elements cannot be linked. Exiting.\n");
-        gst_bin_remove_many (GST_BIN (appctx->pipeline), camerasrc, capsfilter,
-            qtivtransform, v4l2h264enc, h264parse, mp4mux, filesink, NULL);
-        return FALSE;
-      }
+      g_printerr
+          ("\n Pipeline elements cannot be linked from v4l2src to waylandsink. \n");
+      goto error_clean_pipeline;
     }
   }
 
   g_print ("\n All elements are linked successfully\n");
   return TRUE;
+error_clean_elements:
+  cleanup_gst (&v4l2src, &capsfilter, &qtivtransform, &transform_capsfilter,
+      &waylandsink, &filesink, &v4l2h264enc, &h264parse, &mp4mux, &queue,
+      &qtirtspbin, NULL);
+  for (gint i = 0; i < QUEUE_COUNT; i++) {
+    gst_object_unref (queue[i]);
+  }
+  return FALSE;
+
+error_clean_pipeline:
+  gst_object_unref (appctx->pipeline);
+  return FALSE;
 }
 
 /**
@@ -637,56 +753,40 @@ create_pipe (GstCameraAppContext * appctx)
  * @param options Application specific options
  */
 static gboolean
-create_od_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
+create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
 {
-  GstElement *camsrc = NULL, *camsrc_caps = NULL, *qtivtransform = NULL;
-  GstElement *camsrc_caps_preview = NULL;
+  GstElement *v4l2src = NULL, *v4l2src_caps = NULL;
   GstElement *queue[QUEUE_COUNT], *tee = NULL;
   GstElement *qtimlvconverter = NULL, *qtimlelement = NULL;
   GstElement *qtimlvdetection = NULL, *detection_filter = NULL;
   GstElement *qtivcomposer = NULL, *fpsdisplaysink = NULL, *waylandsink = NULL;
+  GstElement *filesink = NULL, *v4l2h264enc = NULL, *h264parse = NULL;
+  GstElement *mp4mux = NULL, *qtirtspbin = NULL;
   GstCaps *pad_filter = NULL, *filtercaps = NULL;
-  GstPad *vcomposer_sink;
+  GstStructure *fcontrols = NULL;
   GstStructure *delegate_options = NULL;
   gboolean ret = FALSE;
   gchar element_name[128];
   GValue layers = G_VALUE_INIT;
   GValue value = G_VALUE_INIT;
-  gdouble alpha_value;
-  gint pos_vals[2], dim_vals[2];
-  gint inference_width = DEFAULT_WIDTH;
-  gint inference_height = DEFAULT_HEIGHT;
-  gint framerate = DEFAULT_FRAMERATE;
   gint module_id;
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     queue[i] = NULL;
   }
 
-  // 1. Create the elements or Plugins
-  camsrc = gst_element_factory_make ("v4l2src", "camsrc");
-  if (!camsrc) {
-    g_printerr ("Failed to create camsrc\n");
+  // 1. Create v4l2src plugin
+  v4l2src = gst_element_factory_make ("v4l2src", "v4l2src");
+  if (!v4l2src) {
+    g_printerr ("Failed to create v4l2src\n");
     goto error_clean_elements;
   }
-
-  // Use capsfilter to define the camera output settings for inference
-  camsrc_caps = gst_element_factory_make ("capsfilter", "camsrc_caps");
-  if (!camsrc_caps) {
-    g_printerr ("Failed to create camsrc_caps\n");
+  // Use capsfilter to define the camera output settings
+  v4l2src_caps = gst_element_factory_make ("capsfilter", "v4l2src_caps");
+  if (!v4l2src_caps) {
+    g_printerr ("Failed to create v4l2src_caps\n");
     goto error_clean_elements;
   }
-
-  // Use capsfilter to define the camera output settings for preview
-  camsrc_caps_preview = gst_element_factory_make ("capsfilter",
-      "camsrc_caps_preview");
-  if (!camsrc_caps_preview) {
-    g_printerr ("Failed to create camsrc_caps_preview\n");
-    goto error_clean_elements;
-  }
-
-  qtivtransform = gst_element_factory_make ("qtivtransform", "qtivtransform");
-
   // Create queue to decouple the processing on sink and source pad
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     snprintf (element_name, 127, "queue-%d", i);
@@ -703,8 +803,6 @@ create_od_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
     g_printerr ("Failed to create tee\n");
     goto error_clean_elements;
   }
-
-
   // Create qtimlconverter for Input preprocessing
   qtimlvconverter = gst_element_factory_make ("qtimlvconverter",
       "qtimlvconverter");
@@ -712,7 +810,6 @@ create_od_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
     g_printerr ("Failed to create qtimlvconverter\n");
     goto error_clean_elements;
   }
-
   // Create the ML inferencing plugin SNPE/TFLITE
   if (options->model_type == GST_MODEL_TYPE_SNPE) {
     qtimlelement = gst_element_factory_make ("qtimlsnpe", "qtimlelement");
@@ -721,14 +818,13 @@ create_od_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
   } else if (options->model_type == GST_MODEL_TYPE_QNN) {
     qtimlelement = gst_element_factory_make ("qtimlqnn", "qtimlelement");
   } else {
-    g_printerr ("Invalid model type for plugin SNPE/TFLITE \n");
+    g_printerr ("Invalid model type for plugin SNPE/TFLITE/QNN \n");
     goto error_clean_elements;
   }
   if (!qtimlelement) {
     g_printerr ("Failed to create qtimlelement\n");
     goto error_clean_elements;
   }
-
   // Create plugin for ML postprocessing for object detection
   qtimlvdetection = gst_element_factory_make ("qtimlvdetection",
       "qtimlvdetection");
@@ -743,7 +839,6 @@ create_od_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
     g_printerr ("Failed to create qtivcomposer\n");
     goto error_clean_elements;
   }
-
   // Used to negotiate between ML post proc o/p and qtivcomposer
   detection_filter =
       gst_element_factory_make ("capsfilter", "detection_filter");
@@ -752,42 +847,110 @@ create_od_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
     goto error_clean_elements;
   }
 
-  // Create Wayland composer compositor to render output on Display
-  waylandsink = gst_element_factory_make ("waylandsink", "waylandsink");
-  if (!waylandsink) {
-    g_printerr ("Failed to create waylandsink");
-    goto error_clean_elements;
-  }
+  if (appctx->sinktype == GST_VIDEO_ENCODE) {
+    // Generic filesink plugin to write file on disk
+    filesink = gst_element_factory_make ("filesink", "filesink");
+    if (!filesink) {
+      g_printerr ("Failed to create filesink\n");
+      goto error_clean_elements;
+    }
+    // Create H.264 Encoder plugin for file output
+    v4l2h264enc = gst_element_factory_make ("v4l2h264enc", "v4l2h264enc");
+    if (!v4l2h264enc) {
+      g_printerr ("Failed to create v4l2h264enc\n");
+      goto error_clean_elements;
+    }
+    // Create H.264 frame parser plugin
+    h264parse = gst_element_factory_make ("h264parse", "h264parse");
+    if (!h264parse) {
+      g_printerr ("Failed to create h264parse\n");
+      goto error_clean_elements;
+    }
+    // Create mp4mux plugin to save file in mp4 container
+    mp4mux = gst_element_factory_make ("mp4mux", "mp4mux");
+    if (!mp4mux) {
+      g_printerr ("Failed to create mp4mux\n");
+      goto error_clean_elements;
+    }
 
-  // Create fpsdisplaysink to display the current and
-  // average framerate as a text overlay
-  fpsdisplaysink =
-      gst_element_factory_make ("fpsdisplaysink", "fpsdisplaysink");
-  if (!fpsdisplaysink) {
-    g_printerr ("Failed to create fpsdisplaysink\n");
-    goto error_clean_elements;
+  } else if (appctx->sinktype == GST_RTSP_STREAMING) {
+    // Create H.264 Encoder plugin for file output
+    v4l2h264enc = gst_element_factory_make ("v4l2h264enc", "v4l2h264enc");
+    if (!v4l2h264enc) {
+      g_printerr ("Failed to create v4l2h264enc\n");
+      goto error_clean_elements;
+    }
+    // Create H.264 frame parser plugin
+    h264parse = gst_element_factory_make ("h264parse", "h264parse");
+    if (!h264parse) {
+      g_printerr ("Failed to create h264parse\n");
+      goto error_clean_elements;
+    }
+    // Generic qtirtspbin plugin for streaming
+    qtirtspbin = gst_element_factory_make ("qtirtspbin", "qtirtspbin");
+    if (!qtirtspbin) {
+      g_printerr ("Failed to create qtirtspbin\n");
+      goto error_clean_elements;
+    }
+
+  } else {
+    // Create Wayland composer compositor to render output on Display
+    waylandsink = gst_element_factory_make ("waylandsink", "waylandsink");
+    if (!waylandsink) {
+      g_printerr ("Failed to create waylandsink");
+      goto error_clean_elements;
+    }
+    // Create fpsdisplaysink to display the current and
+    // average framerate as a text overlay
+    fpsdisplaysink =
+        gst_element_factory_make ("fpsdisplaysink", "fpsdisplaysink");
+    if (!fpsdisplaysink) {
+      g_printerr ("Failed to create fpsdisplaysink\n");
+      goto error_clean_elements;
+    }
   }
 
   // 2. Set properties for all GST plugin elements
-  g_object_set (G_OBJECT (camsrc), "io-mode", "dmabuf-import", NULL);
-  g_object_set (G_OBJECT (camsrc), "device", appctx->dev_video, NULL);
+  g_object_set (G_OBJECT (v4l2src), "io-mode", "dmabuf-import", NULL);
+  g_object_set (G_OBJECT (v4l2src), "device", appctx->dev_video, NULL);
 
-  // 2.4 Set the capabilities of camera plugin output
-  filtercaps = gst_caps_new_simple ("video/x-raw",
-      "format", G_TYPE_STRING, "YUY2",
-      "width", G_TYPE_INT, appctx->width,
-      "height", G_TYPE_INT, appctx->height,
-      "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
-  g_object_set (G_OBJECT (camsrc_caps_preview), "caps", filtercaps, NULL);
-  gst_caps_unref (filtercaps);
+  if (appctx->sinktype == GST_VIDEO_ENCODE
+      || appctx->sinktype == GST_RTSP_STREAMING) {
+    gst_element_set_enum_property (v4l2h264enc, "capture-io-mode", "dmabuf");
+    gst_element_set_enum_property (v4l2h264enc, "output-io-mode",
+        "dmabuf-import");
+    // Set bitrate for streaming usecase
+    fcontrols =
+        gst_structure_from_string
+        ("fcontrols,video_bitrate=6000000,video_bitrate_mode=0", NULL);
+    g_object_set (G_OBJECT (v4l2h264enc), "extra-controls", fcontrols, NULL);
+    if (appctx->sinktype == GST_VIDEO_ENCODE) {
+      g_object_set (G_OBJECT (filesink), "location", appctx->output_file, NULL);
+    }
+    if (appctx->sinktype == GST_RTSP_STREAMING) {
+      g_object_set (G_OBJECT (h264parse), "config-interval", 1, NULL);
+      g_object_set (G_OBJECT (qtirtspbin), "address", appctx->ip_address,
+          "port", appctx->port_num, NULL);
+    }
+  } else {
+    // 2.7 Set the properties for Wayland compositer
+    g_object_set (G_OBJECT (waylandsink), "sync", TRUE, NULL);
+    g_object_set (G_OBJECT (waylandsink), "fullscreen", TRUE, NULL);
+
+    // 2.8 Set the properties of fpsdisplaysink plugin- sync,
+    // signal-fps-measurements, text-overlay and video-sink
+    g_object_set (G_OBJECT (fpsdisplaysink), "text-overlay", TRUE, NULL);
+    g_object_set (G_OBJECT (fpsdisplaysink), "sync", TRUE, NULL);
+    g_object_set (G_OBJECT (fpsdisplaysink), "video-sink", waylandsink, NULL);
+  }
 
   // 2.4 Set the capabilities of camera plugin output for inference
   filtercaps = gst_caps_new_simple ("video/x-raw",
       "format", G_TYPE_STRING, "NV12",
-      "width", G_TYPE_INT, inference_width,
-      "height", G_TYPE_INT, inference_height,
-      "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
-  g_object_set (G_OBJECT (camsrc_caps), "caps", filtercaps, NULL);
+      "width", G_TYPE_INT, appctx->width,
+      "height", G_TYPE_INT, appctx->height,
+      "framerate", GST_TYPE_FRACTION, appctx->framerate, 1, NULL);
+  g_object_set (G_OBJECT (v4l2src_caps), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
   // 2.5 Select the HW to DSP/GPU/CPU for model inferencing using
@@ -954,6 +1117,7 @@ create_od_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
         g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
         g_object_set (G_OBJECT (qtimlvdetection), "constants",
             options->constants, NULL);
+        g_printerr ("%s\n", options->constants);
         break;
         // YOLO_V5 specific settings
       case GST_YOLO_TYPE_V5:
@@ -1047,34 +1211,29 @@ create_od_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
     goto error_clean_elements;
   }
 
-  // 2.7 Set the properties for Wayland compositer
-  g_object_set (G_OBJECT (waylandsink), "sync", FALSE, NULL);
-  g_object_set (G_OBJECT (waylandsink), "fullscreen", TRUE, NULL);
-
-  // 2.8 Set the properties of fpsdisplaysink plugin- sync,
-  // signal-fps-measurements, text-overlay and video-sink
-  g_object_set (G_OBJECT (fpsdisplaysink), "signal-fps-measurements",
-      TRUE, NULL);
-  g_object_set (G_OBJECT (fpsdisplaysink), "text-overlay", TRUE, NULL);
-  g_object_set (G_OBJECT (fpsdisplaysink), "video-sink", waylandsink, NULL);
-
   // 2.9 Set the properties of pad_filter for negotiation with qtivcomposer
   pad_filter = gst_caps_new_simple ("video/x-raw",
       "format", G_TYPE_STRING, "BGRA",
-      "width", G_TYPE_INT, 640,
-      "height", G_TYPE_INT, 360, NULL);
+      "width", G_TYPE_INT, 640, "height", G_TYPE_INT, 360, NULL);
 
   g_object_set (G_OBJECT (detection_filter), "caps", pad_filter, NULL);
   gst_caps_unref (pad_filter);
 
   // 3. Setup the pipeline
   g_print ("Adding all elements to the pipeline...\n");
-  gst_bin_add_many (GST_BIN (appctx->pipeline), camsrc,
-      camsrc_caps, camsrc_caps_preview, tee, qtivtransform, NULL);
-
-  gst_bin_add_many (GST_BIN (appctx->pipeline), qtimlvconverter,
-      qtimlelement, qtimlvdetection, detection_filter,
-      qtivcomposer, fpsdisplaysink, waylandsink, NULL);
+  if (appctx->sinktype == GST_VIDEO_ENCODE) {
+    gst_bin_add_many (GST_BIN (appctx->pipeline), filesink, v4l2h264enc,
+        h264parse, mp4mux, NULL);
+  } else if (appctx->sinktype == GST_RTSP_STREAMING) {
+    gst_bin_add_many (GST_BIN (appctx->pipeline), v4l2h264enc, h264parse,
+        qtirtspbin, NULL);
+  } else {
+    gst_bin_add_many (GST_BIN (appctx->pipeline), fpsdisplaysink, waylandsink,
+        NULL);
+  }
+  gst_bin_add_many (GST_BIN (appctx->pipeline), v4l2src, v4l2src_caps,
+      tee, qtimlvconverter, qtimlelement, qtimlvdetection, detection_filter,
+      qtivcomposer, NULL);
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), queue[i], NULL);
@@ -1083,73 +1242,53 @@ create_od_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
   g_print ("Linking elements...\n");
 
   // Create pipeline for object detection
-  ret = gst_element_link_many (camsrc, camsrc_caps_preview,
-      queue[1], tee, NULL);
+  ret = gst_element_link_many (v4l2src, v4l2src_caps, queue[0], tee, NULL);
   if (!ret) {
     g_printerr ("Pipeline elements cannot be linked for "
         "qmmfsource->composer\n");
     goto error_clean_pipeline;
   }
 
-  ret = gst_element_link_many (tee, qtivtransform, camsrc_caps, queue[4], NULL);
+  ret = gst_element_link_many (tee, queue[1], qtivcomposer, NULL);
   if (!ret) {
     g_printerr ("Pipeline elements cannot be linked for "
         "qmmfsource->converter\n");
     goto error_clean_pipeline;
   }
 
-  ret = gst_element_link_many (tee, queue[2], qtivcomposer, NULL);
-  if (!ret) {
-    g_printerr ("Pipeline elements cannot be linked for"
-        " camsrc_caps_preview -> qtivcomposer.\n");
-    goto error_clean_pipeline;
-  }
-
-  ret = gst_element_link_many (queue[4], qtimlvconverter,
-      queue[5], qtimlelement, queue[6], qtimlvdetection,
-      detection_filter, queue[7], qtivcomposer, NULL);
+  ret = gst_element_link_many (tee, queue[2], qtimlvconverter,
+      queue[3], qtimlelement, queue[4], qtimlvdetection,
+      detection_filter, queue[5], qtivcomposer, NULL);
   if (!ret) {
     g_printerr ("Pipeline elements cannot be linked for"
         "pre proc -> ml framework -> post proc.\n");
     goto error_clean_pipeline;
   }
 
-  ret = gst_element_link_many (qtivcomposer, queue[3], fpsdisplaysink, NULL);
-  if (!ret) {
-    g_printerr ("Pipeline elements cannot be linked for"
-        "qtivcomposer->fpsdisplaysink.\n");
-    goto error_clean_pipeline;
+  if (appctx->sinktype == GST_VIDEO_ENCODE) {
+    ret = gst_element_link_many (qtivcomposer, queue[6], v4l2h264enc, h264parse,
+        mp4mux, filesink, NULL);
+    if (!ret) {
+      g_printerr ("Pipeline elements cannot be linked for"
+          "qtivcomposer->fpsdisplaysink.\n");
+      goto error_clean_pipeline;
+    }
+  } else if (appctx->sinktype == GST_RTSP_STREAMING) {
+    ret = gst_element_link_many (qtivcomposer, queue[6], v4l2h264enc, h264parse,
+        qtirtspbin, NULL);
+    if (!ret) {
+      g_printerr ("Pipeline elements cannot be linked for"
+          "qtivcomposer->fpsdisplaysink.\n");
+      goto error_clean_pipeline;
+    }
+  } else {
+    ret = gst_element_link_many (qtivcomposer, queue[6], fpsdisplaysink, NULL);
+    if (!ret) {
+      g_printerr ("Pipeline elements cannot be linked for"
+          "qtivcomposer->fpsdisplaysink.\n");
+      goto error_clean_pipeline;
+    }
   }
-
-  // Set overlay window size for Detection to display text labels
-  vcomposer_sink = gst_element_get_static_pad (qtivcomposer, "sink_1");
-  if (vcomposer_sink == NULL) {
-    g_printerr ("Sink pad 0 of vcomposer couldnt' be retrieved\n");
-    goto error_clean_pipeline;
-  }
-
-  GValue position = G_VALUE_INIT;
-  GValue dimension = G_VALUE_INIT;
-
-  g_value_init (&position, GST_TYPE_ARRAY);
-  g_value_init (&dimension, GST_TYPE_ARRAY);
-
-  pos_vals[0] = 0; pos_vals[1] = 0;
-  dim_vals[0] = 640; dim_vals[1] = 480;
-
-  build_pad_property (&position, pos_vals, 2);
-  build_pad_property (&dimension, dim_vals, 2);
-
-  g_object_set_property (G_OBJECT (vcomposer_sink), "position", &position);
-  g_object_set_property (G_OBJECT (vcomposer_sink), "dimensions", &dimension);
-
-  // Set the alpha channel value for object segmentation.
-  alpha_value = 0.5;
-  g_object_set (vcomposer_sink, "alpha", &alpha_value, NULL);
-
-  g_value_unset (&position);
-  g_value_unset (&dimension);
-  gst_object_unref (vcomposer_sink);
 
   return TRUE;
 
@@ -1159,10 +1298,10 @@ error_clean_pipeline:
   return FALSE;
 
 error_clean_elements:
-  cleanup_gst (&camsrc, &camsrc_caps, &camsrc_caps_preview,
-      &tee, &qtimlvconverter, &qtimlelement,
-      &qtimlvdetection, &qtivcomposer, &detection_filter,
-      &waylandsink, &fpsdisplaysink, NULL);
+  cleanup_gst (&v4l2src, &v4l2src_caps, &tee, &qtimlvconverter,
+      &qtimlelement, &qtimlvdetection, &qtivcomposer, &detection_filter,
+      &waylandsink, &fpsdisplaysink, &filesink, &mp4mux, &qtirtspbin,
+      &h264parse, &v4l2h264enc, NULL);
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     gst_object_unref (queue[i]);
   }
@@ -1177,6 +1316,8 @@ main (gint argc, gchar * argv[])
   GstBus *bus = NULL;
   GstElement *pipeline = NULL;
   GstCameraAppContext *appctx = NULL;
+  const gchar *app_name = NULL;
+  gchar help_description[4096];
   GstAppOptions options = { };
   gchar *config_file = NULL;
   gboolean ret = FALSE;
@@ -1192,7 +1333,6 @@ main (gint argc, gchar * argv[])
     g_printerr ("\n Failed app context Initializing: Unknown error!\n");
     return -1;
   }
-
   // set default value
   options.file_path = NULL;
   options.use_cpu = FALSE, options.use_gpu = FALSE, options.use_dsp = FALSE;
@@ -1205,16 +1345,79 @@ main (gint argc, gchar * argv[])
   options.labels_path = NULL;
   options.constants = NULL;
 
-  // Configure input parameters
+  // Structure to define the user options selected
   GOptionEntry entries[] = {
-    { "od-config-file", 'c', 0, G_OPTION_ARG_STRING, &config_file,
-      "Path to config file for object detection\n",
-      "/etc/configs/config-usb-camera-app.json", },
-    { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
+    {"config-file", 0, 0, G_OPTION_ARG_STRING,
+          &config_file,
+          "Path to config file\n",
+        NULL},
+    {NULL}
   };
 
+  app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
+
+  snprintf (help_description, 4095, "\nExample:\n"
+      "  %s --config-file=%s\n"
+      "\nThis Sample App demonstrates Object Detection or Preview on"
+      " Input Stream from USB Camera\n"
+      "\nConfig file Fields:\n"
+      "  width: USB Camera Resolution width\n"
+      "  height: USB Camera Resolution Height\n"
+      "  framerate: USB Camera Frame Rate\n"
+      "  output: It can be either be waylandsink, filesink or rtspsink\n"
+      "  output-file: Use this Parameter to set output file path\n"
+      "      Default output file path is:" DEFAULT_OUTPUT_FILENAME "\n"
+      "  ip-address: Use this parameter to provide the rtsp output address.\n"
+      "      eg: 127.0.0.1\n"
+      "      Default ip is:" DEFAULT_IP "\n"
+      "  port: Use this parameter to provide the rtsp output port.\n"
+      "      eg: 8900\n"
+      "      Default port is:" DEFAULT_PORT "\n"
+      "  enable-object-detection: Use this parameter to enable object detection.\n"
+      "      eg: TRUE or FALSE\n"
+      "  yolo-model-type: \"yolov5\" or \"yolov8\" or \"yolonas\"\n"
+      "      Yolo Model version to Execute: Yolov5, Yolov8 or YoloNas\n"
+      "      Yolov7 Tflite Model works with yolov8 yolo-model-type\n"
+      "  ml-framework: \"snpe\" or \"tflite\" or \"qnn\"\n"
+      "      Execute Model in SNPE DLC or TFlite [Default] or QNN format\n"
+      "  model: \"/PATH\"\n"
+      "      This is an optional parameter and overrides default path\n"
+      "      Default model path for YOLOV5 DLC: " DEFAULT_SNPE_YOLOV5_MODEL "\n"
+      "      Default model path for YOLOV8 DLC: " DEFAULT_SNPE_YOLOV8_MODEL "\n"
+      "      Default model path for YOLO NAS DLC: " DEFAULT_SNPE_YOLONAS_MODEL
+      "\n" "      Default model path for YOLOV5 TFLITE: "
+      DEFAULT_TFLITE_YOLOV5_MODEL "\n"
+      "      Default model path for YOLOV8 TFLITE: " DEFAULT_TFLITE_YOLOV8_MODEL
+      "\n" "      Default model path for YOLO NAS TFLITE: "
+      DEFAULT_TFLITE_YOLONAS_MODEL "\n"
+      "      Default model path for YOLO_V7 TFLITE: "
+      DEFAULT_TFLITE_YOLOV7_MODEL "\n"
+      "      Default model path for YOLOV8 QNN: " DEFAULT_QNN_YOLOV8_MODEL "\n"
+      "  labels: \"/PATH\"\n"
+      "      This is an optional parameter and overrides default path\n"
+      "      Default labels path for YOLOV5: " DEFAULT_YOLOV5_LABELS "\n"
+      "      Default labels path for YOLOV8: " DEFAULT_YOLOV8_LABELS "\n"
+      "      Default labels path for YOLO NAS: " DEFAULT_YOLONAS_LABELS "\n"
+      "      Default labels path for YOLOV7: " DEFAULT_YOLOV7_LABELS "\n"
+      "  constants: \"CONSTANTS\"\n"
+      "      Constants, offsets and coefficients used by the chosen module \n"
+      "      for post-processing of incoming tensors."
+      "  Applicable only for some modules\n"
+      "      Default constants for YOLOV5: " DEFAULT_CONSTANTS_YOLOV5 "\n"
+      "      Default constants for YOLOV8: " DEFAULT_CONSTANTS_YOLOV8 "\n"
+      "      Default constants for YOLO NAS: " DEFAULT_CONSTANTS_YOLONAS "\n"
+      "      Default constants for YOLOV7: " DEFAULT_CONSTANTS_YOLOV7 "\n"
+      "  threshold: 0 to 100\n"
+      "      This is an optional parameter and overides "
+      "  default threshold value 40\n"
+      "  runtime: \"cpu\" or \"gpu\" or \"dsp\"\n"
+      "      This is an optional parameter. If not filled, "
+      "  then default dsp runtime is selected\n", app_name,
+      DEFAULT_CONFIG_FILE);
+  help_description[4095] = '\0';
+
   // Parse command line entries.
-  if ((ctx = g_option_context_new (GST_APP_SUMMARY)) != NULL) {
+  if ((ctx = g_option_context_new (help_description)) != NULL) {
     gboolean success = FALSE;
     GError *error = NULL;
 
@@ -1241,6 +1444,9 @@ main (gint argc, gchar * argv[])
     return -1;
   }
 
+  if (config_file == NULL) {
+    config_file = DEFAULT_CONFIG_FILE;
+  }
   // Initialize GST library.
   gst_init (&argc, &argv);
 
@@ -1250,7 +1456,6 @@ main (gint argc, gchar * argv[])
     gst_app_context_free (appctx, &options, config_file);
     return -1;
   }
-
   // Create the pipeline
   pipeline = gst_pipeline_new ("pipeline");
   if (!pipeline) {
@@ -1267,7 +1472,6 @@ main (gint argc, gchar * argv[])
     gst_app_context_free (appctx, &options, config_file);
     return -1;
   }
-
   // Build the pipeline
   if (!file_exists (config_file)) {
     g_printerr ("Invalid config file path: %s\n", config_file);
@@ -1280,7 +1484,7 @@ main (gint argc, gchar * argv[])
     return -EINVAL;
   }
 
-  if (g_strcmp0 (appctx->enable_ml, "TRUE") == 0 ) {
+  if (g_strcmp0 (appctx->enable_ml, "TRUE") == 0) {
     // check file config param
     if (options.model_type < GST_MODEL_TYPE_SNPE ||
         options.model_type > GST_MODEL_TYPE_QNN) {
@@ -1325,11 +1529,91 @@ main (gint argc, gchar * argv[])
       return -EINVAL;
     }
 
+    if(options.constants == NULL) {
+      g_print ("Using default Constants\n");
+      options.constants = DEFAULT_CONSTANTS_YOLOV8;
+    }
+
+    if (options.model_path == NULL) {
+      if (options.model_type == GST_MODEL_TYPE_SNPE) {
+        options.model_path =
+            (options.yolo_model_type == GST_YOLO_TYPE_V5 ?
+            DEFAULT_SNPE_YOLOV5_MODEL :
+            (options.yolo_model_type == GST_YOLO_TYPE_V8 ?
+                DEFAULT_SNPE_YOLOV8_MODEL : DEFAULT_SNPE_YOLONAS_MODEL));
+      } else if (options.model_type == GST_MODEL_TYPE_TFLITE) {
+        if (options.yolo_model_type == GST_YOLO_TYPE_V5) {
+          options.model_path = DEFAULT_TFLITE_YOLOV5_MODEL;
+        } else if (options.yolo_model_type == GST_YOLO_TYPE_NAS) {
+          options.model_path = DEFAULT_TFLITE_YOLONAS_MODEL;
+        } else if (options.yolo_model_type == GST_YOLO_TYPE_V7) {
+          options.model_path = DEFAULT_TFLITE_YOLOV7_MODEL;
+        } else {
+          g_print ("No tflite model provided, Using default Yolov8 Model\n");
+          options.model_path = DEFAULT_TFLITE_YOLOV8_MODEL;
+          options.yolo_model_type = GST_YOLO_TYPE_V8;
+        }
+      } else if (options.model_type == GST_MODEL_TYPE_QNN) {
+        if (options.yolo_model_type == GST_YOLO_TYPE_V8) {
+          options.model_path = DEFAULT_QNN_YOLOV8_MODEL;
+        } else {
+          g_printerr ("Only YOLOV8 model is supported with QNN runtime\n");
+          gst_app_context_free (appctx, &options, config_file);
+          return -EINVAL;
+        }
+      } else {
+        g_printerr ("Invalid ml_framework\n");
+        gst_app_context_free (appctx, &options, config_file);
+        return -EINVAL;
+      }
+    }
+    // Set default label path for execution
+    if (options.labels_path == NULL) {
+      options.labels_path =
+          (options.yolo_model_type == GST_YOLO_TYPE_V5 ? DEFAULT_YOLOV5_LABELS :
+          (options.yolo_model_type == GST_YOLO_TYPE_V8 ? DEFAULT_YOLOV8_LABELS :
+              (options.yolo_model_type ==
+                  GST_YOLO_TYPE_V7 ? DEFAULT_YOLOV7_LABELS :
+                  DEFAULT_YOLONAS_LABELS)));
+    }
+
+    if (options.model_type == GST_MODEL_TYPE_TFLITE
+        && options.constants == NULL) {
+      options.constants =
+          (options.yolo_model_type ==
+          GST_YOLO_TYPE_V5 ? DEFAULT_CONSTANTS_YOLOV5 : options.yolo_model_type
+          ==
+          GST_YOLO_TYPE_NAS ? DEFAULT_CONSTANTS_YOLONAS :
+          options.yolo_model_type ==
+          GST_YOLO_TYPE_V7 ? DEFAULT_CONSTANTS_YOLOV7 :
+          DEFAULT_CONSTANTS_YOLOV8);
+    }
+
+    if (!file_exists (options.model_path)) {
+      g_print ("Invalid model file path: %s\n", options.model_path);
+      gst_app_context_free (appctx, &options, config_file);
+      return -EINVAL;
+    }
+
+    if (!file_exists (options.labels_path)) {
+      g_print ("Invalid labels file path: %s\n", options.labels_path);
+      gst_app_context_free (appctx, &options, config_file);
+      return -EINVAL;
+    }
+
+    if (options.file_path != NULL) {
+      if (!file_exists (options.file_path)) {
+        g_print ("Invalid file source path: %s\n", options.file_path);
+        gst_app_context_free (appctx, &options, config_file);
+        return -EINVAL;
+      }
+    }
+
     g_print ("Running app with model: %s and labels: %s\n",
         options.model_path, options.labels_path);
-    ret = create_od_pipe (appctx, &options);
+    ret = create_pipe (appctx, &options);
   } else {
-    ret = create_pipe (appctx);
+    ret = create_preview_pipe (appctx);
   }
 
   if (!ret) {
@@ -1337,7 +1621,6 @@ main (gint argc, gchar * argv[])
     gst_app_context_free (appctx, &options, config_file);
     return -1;
   }
-
   // Initialize main loop.
   if ((mloop = g_main_loop_new (NULL, FALSE)) == NULL) {
     g_printerr ("\n Failed to create Main loop!\n");
@@ -1347,70 +1630,63 @@ main (gint argc, gchar * argv[])
   appctx->mloop = mloop;
 
   // Retrieve reference to the pipeline's bus.
+  // Bus is message queue for getting callback from gstreamer pipeline
   if ((bus = gst_pipeline_get_bus (GST_PIPELINE (pipeline))) == NULL) {
-    g_printerr ("\n Failed to retrieve pipeline bus!\n");
+    g_printerr ("ERROR: Failed to retrieve pipeline bus!\n");
     gst_app_context_free (appctx, &options, config_file);
     return -1;
   }
-
-  // Watch for messages on the pipeline's bus
+  // Watch for messages on the pipeline's bus.
   gst_bus_add_signal_watch (bus);
+
+  // Register respective callback function based on message
   g_signal_connect (bus, "message::state-changed",
       G_CALLBACK (state_changed_cb), pipeline);
-  g_signal_connect (bus, "message::warning", G_CALLBACK (warning_cb), NULL);
+
   g_signal_connect (bus, "message::error", G_CALLBACK (error_cb), mloop);
+  g_signal_connect (bus, "message::warning", G_CALLBACK (warning_cb), mloop);
+
   g_signal_connect (bus, "message::eos", G_CALLBACK (eos_cb), mloop);
   gst_object_unref (bus);
 
-  // Register function for handling interrupt signals with the main loop
+  // Register function for handling interrupt signals with the main loop.
   intrpt_watch_id = g_unix_signal_add (SIGINT, handle_interrupt_signal, appctx);
 
-  // Set the pipeline to the PAUSED state, On successful transition
-  // move application state to PLAYING state in state_changed_cb function
-  g_print ("\n Setting pipeline to PAUSED state ...\n");
+  // On successful transition to PAUSED state, state_changed_cb is called.
+  // state_changed_cb callback is used to send pipeline to play state.
+  g_print ("Set pipeline to PAUSED state ...\n");
   switch (gst_element_set_state (pipeline, GST_STATE_PAUSED)) {
     case GST_STATE_CHANGE_FAILURE:
-      g_printerr ("\n Failed to transition to PAUSED state!\n");
-      if (intrpt_watch_id)
-        g_source_remove (intrpt_watch_id);
-      gst_app_context_free (appctx, &options, config_file);
-      return -1;
+      g_printerr ("ERROR: Failed to transition to PAUSED state!\n");
+      goto error;
     case GST_STATE_CHANGE_NO_PREROLL:
-      g_print ("\n Pipeline is live and does not need PREROLL.\n");
+      g_print ("Pipeline is live and does not need PREROLL.\n");
       break;
     case GST_STATE_CHANGE_ASYNC:
-      g_print ("\n Pipeline is PREROLLING ...\n");
+      g_print ("Pipeline is PREROLLING ...\n");
       break;
     case GST_STATE_CHANGE_SUCCESS:
-      g_print ("\n Pipeline state change was successful\n");
+      g_print ("Pipeline state change was successful\n");
       break;
   }
 
-  // Start the main loop
-  g_print ("\n Application is running... \n");
-
-  if (appctx->sinktype == GST_RTSP_STREAMING)
-    g_print ("\n Stream ready at rtsp://%s:%s%s \n",
-        appctx->ip_address, appctx->port_num, DEFAULT_PROP_MPOINT);
-
+  // Wait till pipeline encounters an error or EOS
+  g_print ("g_main_loop_run\n");
   g_main_loop_run (mloop);
+  g_print ("g_main_loop_run ends\n");
 
+error:
   // Remove the interrupt signal handler
   if (intrpt_watch_id)
     g_source_remove (intrpt_watch_id);
 
-  // Set the pipeline to the NULL state
-  g_print ("\n Setting pipeline to NULL state ...\n");
-  gst_element_set_state (appctx->pipeline, GST_STATE_NULL);
-  if (appctx->output_file)
-    g_print ("\n Video file will be stored at %s\n", appctx->output_file);
+  g_print ("Set pipeline to NULL state ...\n");
+  gst_element_set_state (pipeline, GST_STATE_NULL);
 
-  // Free the application context
-  g_print ("\n Free the Application context\n");
+  g_print ("Destroy pipeline\n");
   gst_app_context_free (appctx, &options, config_file);
 
-  // Deinitialize the GST library
-  g_print ("\n gst_deinit\n");
+  g_print ("gst_deinit\n");
   gst_deinit ();
 
   return 0;
