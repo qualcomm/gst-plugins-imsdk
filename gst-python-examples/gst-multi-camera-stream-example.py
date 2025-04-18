@@ -219,13 +219,13 @@ def create_pipeline(pipeline, cameraid):
         elements["encoder_0"].set_property("output-io-mode", GST_V4L2_IO_DMABUF_IMPORT)
         elements["mux_0"].set_property("reserved-moov-update-period", 1000000)
         elements["mux_0"].set_property("reserved-bytes-per-sec", 10000)
-        elements["mux_0"].set_property("reserved-max-duration", 1000000000)
+        elements["mux_0"].set_property("reserved-max-duration",  20000000000)
 
         elements["encoder_1"].set_property("capture-io-mode", GST_V4L2_IO_DMABUF)
         elements["encoder_1"].set_property("output-io-mode", GST_V4L2_IO_DMABUF_IMPORT)
         elements["mux_1"].set_property("reserved-moov-update-period", 1000000)
         elements["mux_1"].set_property("reserved-bytes-per-sec", 10000)
-        elements["mux_1"].set_property("reserved-max-duration", 1000000000)
+        elements["mux_1"].set_property("reserved-max-duration",  20000000000)
 
         # Add elements to the pipeline
         for element in elements.values():
