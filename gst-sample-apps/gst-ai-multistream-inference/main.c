@@ -87,6 +87,11 @@
 #define QUEUE_COUNT 32
 
 /**
+ * Maximum number of windows in the vcomposer grid
+ */
+#define MAX_GRID_SIZE 36
+
+/**
  * Default threshold values
  */
 #define DEFAULT_THRESHOLD_VALUE 40.0
@@ -279,7 +284,7 @@ build_pad_property (GValue * property, gint values[], gint num)
 static gboolean
 set_composer_params (GstElement * qtivcomposer, GstAppOptions * options)
 {
-  GstVideoRectangle positions[MAX_SRCS_COUNT];
+  GstVideoRectangle positions[MAX_GRID_SIZE];
   gchar element_name[128];
 
   if (options->input_count == 1) {
