@@ -259,6 +259,7 @@ gst_metamux_flush_metadata_queues (GstMetaMux * muxer)
 
     g_clear_pointer (&(dpad)->strcache, g_free);
     g_clear_pointer (&(dpad)->prtlmeta, gst_metadata_item_free);
+    g_clear_pointer (&(dpad)->lastmeta, gst_metadata_item_free);
   }
 
   g_cond_signal (&(muxer)->wakeup);
@@ -383,9 +384,6 @@ gst_metamux_process_detection_metadata (GstMetaMux * muxer, GstBuffer * buffer,
 
       // Overwrite the landmarks field with the updated coordinates.
       gst_structure_set (entry, "landmarks", G_TYPE_ARRAY, lndmrks, NULL);
-    } else {
-      // Make sure there are no landmarks if their size is 0.
-      gst_structure_remove_field (entry, "landmarks");
     }
 
     // Clip width and height if it outside the frame limits.
@@ -407,12 +405,13 @@ gst_metamux_process_detection_metadata (GstMetaMux * muxer, GstBuffer * buffer,
     // Set the parent ID of the newly added ROI meta.
     roimeta->parent_id = (parent_roimeta != NULL) ? parent_roimeta->id : (-1);
 
+    entry = gst_structure_copy (entry);
+
     // Remove the already unnecessary fields.
     gst_structure_remove_fields (entry, "rectangle", "id", NULL);
     gst_structure_set_name (entry, "ObjectDetection");
 
-    gst_video_region_of_interest_meta_add_param (roimeta,
-        gst_structure_copy (entry));
+    gst_video_region_of_interest_meta_add_param (roimeta, entry);
 
     GST_TRACE_OBJECT (muxer, "Attached 'ObjectDetection' meta with ID[0x%X] "
         "parent ID[0x%X] to buffer %p", roimeta->id, roimeta->parent_id, buffer);
@@ -527,10 +526,6 @@ gst_metamux_process_landmarks_metadata (GstMetaMux * muxer, GstBuffer * buffer,
 
     gst_structure_get_uint (entry, "id", &id);
 
-    // Remove the already unnecessary fields.
-    gst_structure_remove_fields (entry, "id", "confidence", "keypoints",
-        "connection", NULL);
-
     if (roimeta == NULL) {
       // Result is not derived from ROI, attach a new meta item.
       meta = gst_buffer_add_video_landmarks_meta (buffer, confidence,
@@ -546,6 +541,10 @@ gst_metamux_process_landmarks_metadata (GstMetaMux * muxer, GstBuffer * buffer,
           "to buffer %p", meta->id, buffer);
     } else { // (roimeta != NULL)
       params = gst_structure_copy (entry);
+
+      // Remove the already unnecessary fields.
+      gst_structure_remove_fields (entry, "id", "confidence", "keypoints",
+          "connection", NULL);
       gst_structure_set_name (params, "VideoLandmarks");
 
       gst_structure_set (params,
@@ -653,20 +652,22 @@ gst_metamux_process_meta_entries (GstMetaMux * muxer, GstBuffer * buffer,
 
   for (list = muxer->metapads; list != NULL; list = g_list_next (list)) {
     GstMetaMuxDataPad *dpad = GST_METAMUX_DATA_PAD (list->data);
-    GstMetaItem *item = NULL;
+    GstMetaItem *item = g_queue_peek_head (dpad->queue);
 
-    if ((item = g_queue_peek_head (dpad->queue)) == NULL)
-      continue;
-
-    if (GST_CLOCK_TIME_IS_VALID (timestamp)) {
+    if ((item != NULL) && GST_CLOCK_TIME_IS_VALID (timestamp)) {
       GstClockTimeDiff delta = GST_CLOCK_DIFF (item->timestamp, timestamp);
 
-      // Timestamp delta is above the threshold, continue with next pad.
+      // Timestamp delta is above the threshold, use last meta entry.
       if (ABS (delta) > TIMESTAMP_DELTA_THRESHOLD)
-        continue;
+        item = NULL;
     }
 
-    item = g_queue_pop_head (dpad->queue);
+    // Use the last meta entry if there are no items in the queue.
+    item = (item != NULL) ? g_queue_pop_head (dpad->queue) : dpad->lastmeta;
+
+    // There is no entry in the queue nor recorded last meta, skip this pad.
+    if (item == NULL)
+      continue;
 
     GST_TRACE_OBJECT (dpad, "Processing item with timestamp %" GST_TIME_FORMAT
       " for %" GST_PTR_FORMAT, GST_TIME_ARGS (item->timestamp), buffer);
@@ -684,7 +685,11 @@ gst_metamux_process_meta_entries (GstMetaMux * muxer, GstBuffer * buffer,
         gst_metamux_process_classification_metadata (muxer, buffer, structure);
     }
 
-    gst_metadata_item_free (item);
+    // Overwrite previous last meta entry with the new currently processed one.
+    if (item != dpad->lastmeta) {
+      g_clear_pointer (&(dpad->lastmeta), gst_metadata_item_free);
+      dpad->lastmeta = item;
+    }
   }
 
   return TRUE;

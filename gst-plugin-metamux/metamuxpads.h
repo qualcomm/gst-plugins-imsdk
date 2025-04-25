@@ -152,6 +152,10 @@ struct _GstMetaMuxDataPad {
   /// Variable for temporarily storing incomplete string data(meta).
   gchar        *strcache;
 
+  /// Variable for storing the last received full meta entry. This will be
+  /// attached when in sync mode, a timeout happens and there is no new entry.
+  GstMetaItem  *lastmeta;
+
   /// Queue for managing parsed #GstMetaItem data.
   GQueue       *queue;
 };
