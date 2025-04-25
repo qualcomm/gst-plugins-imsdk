@@ -697,6 +697,7 @@ gst_metamux_worker_task (gpointer userdata)
   GstDataQueueItem *item = NULL;
   GstBuffer *buffer = NULL;
   GstClockTime timestamp = GST_CLOCK_TIME_NONE;
+  gint64 timeout = GST_CLOCK_TIME_NONE;
   gboolean success = FALSE;
 
   if (!gst_data_queue_peek (muxer->sinkpad->buffers, &item))
@@ -721,18 +722,30 @@ gst_metamux_worker_task (gpointer userdata)
     case GST_METAMUX_MODE_SYNC:
       timestamp = GST_BUFFER_TIMESTAMP (buffer);
 
-      // Initialize the timeout variable when the 1st buffer arrives.
-      if (muxer->timeout == (gint64) GST_CLOCK_TIME_NONE)
-        muxer->timeout = g_get_monotonic_time ();
+      // Initialize the synctime variable when the 1st buffer arrives.
+      if (muxer->synctime == (gint64) GST_CLOCK_TIME_NONE)
+        muxer->synctime = g_get_monotonic_time ();
+
+      // Initialize the base time with the timestamp of the 1st arrived buffer.
+      if (muxer->basetime == GST_CLOCK_TIME_NONE)
+        muxer->basetime = timestamp;
+
+      // Calculate the base value of the timeout base on the buffer timestamp.
+      timeout = timestamp - muxer->basetime;
+      // Increase the timeout with buffer duration and any additional latency.
+      timeout += GST_BUFFER_DURATION (buffer) + muxer->latency;
+      // Convert to microseconds because of condition wait and add sync time.
+      timeout = muxer->synctime + GST_TIME_AS_USECONDS (timeout);
 
       while (muxer->active && !gst_metamux_is_meta_available (muxer, timestamp)) {
-        // Increase the timeout with buffer duration and any additional latency.
-        muxer->timeout += GST_TIME_AS_USECONDS (muxer->latency) +
-            GST_TIME_AS_USECONDS (GST_BUFFER_DURATION (buffer));
+        success = g_cond_wait_until (&(muxer)->wakeup,
+            GST_METAMUX_GET_LOCK (muxer), timeout);
 
-        if (!g_cond_wait_until (&(muxer)->wakeup, GST_METAMUX_GET_LOCK (muxer),
-                muxer->timeout))
-          GST_WARNING_OBJECT (muxer, "Timeout while waiting for metadata!");
+        if (!success) {
+          GST_WARNING_OBJECT (muxer, "Timeout while waiting for metadata, "
+              "not all metadat pads have data available!");
+          break;
+        }
       }
       break;
     default:
@@ -763,6 +776,10 @@ gst_metamux_worker_task (gpointer userdata)
   item->destroy = gst_data_queue_free_item;
 
   GST_TRACE_OBJECT (muxer, "Submitting %" GST_PTR_FORMAT, buffer);
+
+  GST_METAMUX_SRC_LOCK (muxer->srcpad);
+  muxer->srcpad->segment.position = GST_BUFFER_TIMESTAMP (buffer);
+  GST_METAMUX_SRC_UNLOCK (muxer->srcpad);
 
   // Push the buffer into the queue or free it on failure.
   if (!gst_data_queue_push (muxer->srcpad->buffers, item))
@@ -832,10 +849,10 @@ gst_metamux_stop_worker_task (GstMetaMux * muxer)
   GST_INFO_OBJECT (muxer, "Removing task %p", muxer->worktask);
 
   gst_object_unref (muxer->worktask);
-
   muxer->worktask = NULL;
-  muxer->timeout = GST_CLOCK_TIME_NONE;
 
+  muxer->synctime = GST_CLOCK_TIME_NONE;
+  muxer->basetime = GST_CLOCK_TIME_NONE;
   return TRUE;
 }
 
@@ -1825,10 +1842,12 @@ gst_metamux_init (GstMetaMux * muxer)
 
   muxer->active = FALSE;
   muxer->worktask = NULL;
-  muxer->timeout = GST_CLOCK_TIME_NONE;
 
   g_rec_mutex_init (&muxer->worklock);
   g_cond_init (&muxer->wakeup);
+
+  muxer->synctime = GST_CLOCK_TIME_NONE;
+  muxer->basetime = GST_CLOCK_TIME_NONE;
 
   muxer->mode = DEFAULT_PROP_MODE;
   muxer->latency = DEFAULT_PROP_LATENCY;
