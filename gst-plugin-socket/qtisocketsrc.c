@@ -134,6 +134,7 @@ gst_socketsrc_buffer_pool_class_init (GstSocketSrcBufferPoolClass * klass)
 static void
 gst_socketsrc_buffer_pool_init (GstSocketSrcBufferPool * pool)
 {
+  (void) pool;
   GST_DEBUG ("Initializing pool!");
 }
 
@@ -469,7 +470,10 @@ gst_socket_src_flush_socket_queue (GstFdSocketSrc * src)
       GstBufferReleaseData * release_data = g_malloc0 (sizeof (GstBufferReleaseData));
       GstPayloadInfo pl_info = {
         .mem_block_info = g_ptr_array_new (),
-        .protection_metadata_info = g_ptr_array_new ()
+        .protection_metadata_info = g_ptr_array_new (),
+        .roi_meta_info = g_ptr_array_new (),
+        .class_meta_info = g_ptr_array_new (),
+        .lm_meta_info = g_ptr_array_new ()
       };
 
       gint fds[GST_MAX_MEM_BLOCKS] = {0};
@@ -515,7 +519,10 @@ gst_socket_src_fill_buffer (GstFdSocketSrc * src, GstBuffer ** outbuf)
   GstBufferReleaseData * release_data = g_malloc0 (sizeof (GstBufferReleaseData));
   GstPayloadInfo pl_info = {
       .mem_block_info = g_ptr_array_new (),
-      .protection_metadata_info = g_ptr_array_new ()
+      .protection_metadata_info = g_ptr_array_new (),
+      .roi_meta_info = g_ptr_array_new (),
+      .class_meta_info = g_ptr_array_new (),
+      .lm_meta_info = g_ptr_array_new ()
   };
 
   gint fds[GST_MAX_MEM_BLOCKS] = {0};
@@ -695,6 +702,139 @@ gst_socket_src_fill_buffer (GstFdSocketSrc * src, GstBuffer ** outbuf)
         (GstVideoFormat) frame_pl->format, frame_pl->width,
         frame_pl->height, frame_pl->n_planes,
         frame_pl->offset, frame_pl->stride);
+
+      for (guint idx = 0; idx < pl_info.roi_meta_info->len; idx++) {
+        GstVideoRoiMetaPayload *roi_meta_pl =
+            (GstVideoRoiMetaPayload *) g_ptr_array_index (
+                pl_info.roi_meta_info, idx);
+
+        GstVideoRegionOfInterestMeta *roi_meta =
+            gst_buffer_add_video_region_of_interest_meta_id (
+                gstbuffer,
+                g_quark_from_string (roi_meta_pl->label),
+                roi_meta_pl->x,
+                roi_meta_pl->y,
+                roi_meta_pl->w,
+                roi_meta_pl->h);
+
+        roi_meta->id = roi_meta_pl->id;
+        roi_meta->parent_id = roi_meta_pl->parent_id;
+
+        if (roi_meta_pl->det_size) {
+          GstStructure *param =
+              gst_structure_from_string (roi_meta_pl->det_meta, NULL);
+          if (param) {
+            gst_video_region_of_interest_meta_add_param (roi_meta, param);
+          }
+          else {
+            GST_WARNING_OBJECT (src,
+                "Parsing detection meta from string failed!");
+          }
+        }
+
+        if (roi_meta_pl->xtraparams_size) {
+          GstStructure *param =
+              gst_structure_from_string (roi_meta_pl->xtraparams, NULL);
+          if (param) {
+            gst_video_region_of_interest_meta_add_param (roi_meta, param);
+          }
+          else {
+            GST_WARNING_OBJECT (src,
+                "Parsing detection xtraparams from string failed!");
+          }
+        }
+      }
+
+      for (guint idx = 0; idx < pl_info.class_meta_info->len; idx++) {
+        GstVideoClassMetaPayload *class_meta_pl =
+            (GstVideoClassMetaPayload *) g_ptr_array_index (
+                pl_info.class_meta_info, idx);
+        GstVideoClassificationMeta *class_meta = NULL;
+
+        GArray *labels = g_array_sized_new (FALSE, FALSE,
+            sizeof (GstClassLabel), class_meta_pl->size);
+        g_array_set_size (labels, class_meta_pl->size);
+
+        for (guint i = 0; i < class_meta_pl->size; i++) {
+          GstClassLabel *label = &(g_array_index (labels, GstClassLabel, i));
+          label->name = g_quark_from_string(class_meta_pl->labels[i].name);
+          label->confidence = class_meta_pl->labels[i].confidence;
+          label->color = class_meta_pl->labels[i].color;
+
+          if (class_meta_pl->labels[i].xtraparams_size) {
+            GstStructure *param =
+                gst_structure_from_string (
+                    class_meta_pl->labels[i].xtraparams, NULL);
+            if (param) {
+              label->xtraparams = param;
+            }
+            else {
+              GST_WARNING_OBJECT (src,
+                  "Parsing label xtraparams from string failed!");
+            }
+          }
+        }
+
+        class_meta =
+            gst_buffer_add_video_classification_meta (gstbuffer, labels);
+
+        class_meta->id = class_meta_pl->id;
+        class_meta->parent_id = class_meta_pl->parent_id;
+      }
+
+      for (guint idx = 0; idx < pl_info.lm_meta_info->len; idx++) {
+        GstVideoLmMetaPayload *lm_meta_pl =
+            (GstVideoLmMetaPayload *) g_ptr_array_index (
+                pl_info.lm_meta_info, idx);
+        GstVideoLandmarksMeta *lm_meta = NULL;
+
+        GArray *kps = g_array_sized_new (FALSE, FALSE,
+            sizeof (GstVideoKeypoint), lm_meta_pl->kps_size);
+
+        g_array_set_size (kps, lm_meta_pl->kps_size);
+
+        for (guint i = 0; i < lm_meta_pl->kps_size; i++) {
+          GstVideoKeypoint *kp = &(g_array_index (kps, GstVideoKeypoint, i));
+          kp->name = g_quark_from_string(lm_meta_pl->kps[i].name);
+          kp->confidence = lm_meta_pl->kps[i].confidence;
+          kp->color = lm_meta_pl->kps[i].color;
+          kp->x = lm_meta_pl->kps[i].x;
+          kp->y = lm_meta_pl->kps[i].y;
+        }
+
+        GArray *links = g_array_sized_new (FALSE, FALSE,
+            sizeof (GstVideoKeypointLink), lm_meta_pl->links_size);
+        g_array_set_size (links, lm_meta_pl->links_size);
+
+        for (guint i = 0; i < lm_meta_pl->links_size; i++) {
+          GstVideoKeypointLink *l =
+              &(g_array_index (links, GstVideoKeypointLink, i));
+          l->s_kp_idx = lm_meta_pl->links[i].s_kp_idx;
+          l->d_kp_idx = lm_meta_pl->links[i].d_kp_idx;
+        }
+
+        lm_meta =
+            gst_buffer_add_video_landmarks_meta (
+                gstbuffer,
+                lm_meta_pl->confidence,
+                kps,
+                links);
+
+        lm_meta->id = lm_meta_pl->id;
+        lm_meta->parent_id = lm_meta_pl->parent_id;
+
+        if (lm_meta_pl->xtraparams_size) {
+          GstStructure *param =
+              gst_structure_from_string (lm_meta_pl->xtraparams, NULL);
+          if (param) {
+            lm_meta->xtraparams = param;
+          }
+          else {
+            GST_WARNING_OBJECT (src,
+                "Parsing landmarks xtraparams from string failed!");
+          }
+        }
+      }
     }
 
     // Append the FD backed memory to the newly created GstBuffer.

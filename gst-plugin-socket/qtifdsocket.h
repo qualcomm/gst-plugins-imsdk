@@ -41,6 +41,8 @@
 #include <poll.h>
 
 #include <gst/video/gstvideometa.h>
+#include <gst/video/gstvideoclassificationmeta.h>
+#include <gst/video/gstvideolandmarksmeta.h>
 #include <gst/ml/gstmlmeta.h>
 
 #define GST_SOCKET_MSG_IDENTITY(payload) \
@@ -57,6 +59,11 @@
     (socket->mode == DATA_MODE_TEXT || socket->mode == DATA_MODE_VIDEO ? 1 : 0))
 
 #define GST_MAX_MEM_BLOCKS 10
+#define GST_SERIALIZED_QUARK_MAX_SIZE 32
+#define GST_SERIALIZED_STRUCUTRE_MAX_SZIE 256
+#define GST_MAX_LABELS 32
+#define GST_MAX_KEYPOINTS 64
+#define GST_MAX_KEYPOINT_LINKS 64
 
 typedef enum {
   DATA_MODE_NONE,
@@ -74,6 +81,12 @@ typedef struct _GstReturnBufferPayload GstReturnBufferPayload;
 typedef struct _GstFdCountPayload GstFdCountPayload;
 typedef struct _GstPayloadInfo GstPayloadInfo;
 typedef struct _GstProtectionMetadataPayload GstProtectionMetadataPayload;
+typedef struct _GstClassLabelSer GstClassLabelSer;
+typedef struct _GstVideoKeypointSer GstVideoKeypointSer;
+typedef struct _GstVideoKeypointLinkSer GstVideoKeypointLinkSer;
+typedef struct _GstVideoRoiMetaPayload GstVideoRoiMetaPayload;
+typedef struct _GstVideoClassMetaPayload GstVideoClassMetaPayload;
+typedef struct _GstVideoLmMetaPayload GstVideoLmMetaPayload;
 
 struct __attribute__((packed, aligned(4))) _GstMessagePayload {
   guint32 identity; // Message identity / type
@@ -139,6 +152,74 @@ struct __attribute__((packed, aligned(4))) _GstProtectionMetadataPayload {
   gsize   maxsize;
 };
 
+struct __attribute__((packed, aligned(4))) _GstClassLabelSer {
+  gchar   name[GST_SERIALIZED_QUARK_MAX_SIZE];
+  gdouble confidence;
+  guint32 color;
+  gchar   xtraparams[GST_SERIALIZED_STRUCUTRE_MAX_SZIE];
+  gsize   xtraparams_size;
+};
+
+struct __attribute__((packed, aligned(4))) _GstVideoKeypointSer {
+  gchar   name[GST_SERIALIZED_QUARK_MAX_SIZE];
+  gdouble confidence;
+  guint32 color;
+  guint   x;
+  guint   y;
+};
+
+struct __attribute__((packed, aligned(4))) _GstVideoKeypointLinkSer {
+  guint s_kp_idx;
+  guint d_kp_idx;
+};
+
+struct __attribute__((packed, aligned(4))) _GstVideoRoiMetaPayload {
+  guint32 identity; // Message identity / type
+
+  // ROI Metadata
+  gchar label[GST_SERIALIZED_QUARK_MAX_SIZE];
+  gint  id;
+  gint  parent_id;
+
+  guint x;
+  guint y;
+  guint w;
+  guint h;
+
+  gchar det_meta[GST_SERIALIZED_STRUCUTRE_MAX_SZIE];
+  gsize det_size;
+
+  gchar xtraparams[GST_SERIALIZED_STRUCUTRE_MAX_SZIE];
+  gsize xtraparams_size;
+};
+
+struct __attribute__((packed, aligned(4))) _GstVideoClassMetaPayload {
+  guint32 identity; // Message identity / type
+
+  guint id;
+  gint parent_id;
+
+  GstClassLabelSer labels[GST_MAX_LABELS];
+  gsize            size;
+};
+
+struct __attribute__((packed, aligned(4))) _GstVideoLmMetaPayload {
+  guint32 identity; // Message identity / type
+
+  guint   id;
+  gint    parent_id;
+  gdouble confidence;
+
+  GstVideoKeypointSer kps[GST_MAX_KEYPOINTS];
+  gsize               kps_size;
+
+  GstVideoKeypointLinkSer links[GST_MAX_KEYPOINT_LINKS];
+  gsize                   links_size;
+
+  gchar xtraparams[GST_SERIALIZED_STRUCUTRE_MAX_SZIE];
+  gsize xtraparams_size;
+};
+
 // Struct used to pass info to send and receive functions.
 // message carries a message (EOS/DISCONNECT).
 // buffer_info is the buffer description (BUFFER).
@@ -152,20 +233,26 @@ struct __attribute__((packed, aligned(4))) _GstPayloadInfo {
   gint *                   fds;
   GPtrArray *              mem_block_info;
   GPtrArray *              protection_metadata_info;
+  GPtrArray *              roi_meta_info;
+  GPtrArray *              class_meta_info;
+  GPtrArray *              lm_meta_info;
 };
 
 // List of message identities
 enum
 {
-  MESSAGE_EOS,            //0
-  MESSAGE_DISCONNECT,     //1
-  MESSAGE_BUFFER_INFO,    //2
-  MESSAGE_FRAME,          //3
-  MESSAGE_TENSOR,         //4
-  MESSAGE_TEXT,           //5
-  MESSAGE_RETURN_BUFFER,  //6
-  MESSAGE_FD_COUNT,       //7
-  MESSAGE_PROTECTION_META //8
+  MESSAGE_EOS,             //0
+  MESSAGE_DISCONNECT,      //1
+  MESSAGE_BUFFER_INFO,     //2
+  MESSAGE_FRAME,           //3
+  MESSAGE_TENSOR,          //4
+  MESSAGE_TEXT,            //5
+  MESSAGE_RETURN_BUFFER,   //6
+  MESSAGE_FD_COUNT,        //7
+  MESSAGE_PROTECTION_META, //8
+  MESSAGE_VIDEO_ROI_META,  //9
+  MESSAGE_VIDEO_CLASS_META,//10
+  MESSAGE_VIDEO_LM_META    //11
 };
 
 void
