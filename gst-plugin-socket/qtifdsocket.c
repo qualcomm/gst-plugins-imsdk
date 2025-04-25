@@ -37,23 +37,50 @@
 void
 free_pl_struct (GstPayloadInfo * pl_info)
 {
-  if (pl_info->fd_count != NULL)
+  if (pl_info->fd_count != NULL) {
     g_free (pl_info->fd_count);
+    pl_info->fd_count = NULL;
+  }
 
-  if (pl_info->message != NULL)
+  if (pl_info->message != NULL) {
     g_free (pl_info->message);
+    pl_info->message = NULL;
+  }
 
-  if (pl_info->buffer_info != NULL)
+  if (pl_info->buffer_info != NULL) {
     g_free (pl_info->buffer_info);
+    pl_info->buffer_info = NULL;
+  }
 
-  if (pl_info->return_buffer != NULL)
+  if (pl_info->return_buffer != NULL) {
     g_free (pl_info->return_buffer);
+    pl_info->return_buffer = NULL;
+  }
 
-  if (pl_info->mem_block_info != NULL)
+  if (pl_info->mem_block_info != NULL) {
     g_ptr_array_free (pl_info->mem_block_info, TRUE);
+    pl_info->mem_block_info = NULL;
+  }
 
-  if (pl_info->protection_metadata_info != NULL)
+  if (pl_info->protection_metadata_info != NULL) {
     g_ptr_array_free (pl_info->protection_metadata_info, TRUE);
+    pl_info->protection_metadata_info = NULL;
+  }
+
+  if (pl_info->roi_meta_info != NULL) {
+    g_ptr_array_free (pl_info->roi_meta_info, TRUE);
+    pl_info->roi_meta_info = NULL;
+  }
+
+  if (pl_info->class_meta_info != NULL) {
+    g_ptr_array_free (pl_info->class_meta_info, TRUE);
+    pl_info->class_meta_info = NULL;
+  }
+
+  if (pl_info->lm_meta_info != NULL) {
+    g_ptr_array_free (pl_info->lm_meta_info, TRUE);
+    pl_info->lm_meta_info = NULL;
+  }
 }
 
 gint
@@ -89,6 +116,24 @@ send_socket_message (gint sock, GstPayloadInfo * pl_info)
   if (pl_info->protection_metadata_info != NULL) {
     for (guint i = 0; i < pl_info->protection_metadata_info->len; i++) {
       g_ptr_array_add (send_arr, g_ptr_array_index (pl_info->protection_metadata_info, i));
+    }
+  }
+
+  if (pl_info->roi_meta_info != NULL) {
+    for (guint i = 0; i < pl_info->roi_meta_info->len; i++) {
+      g_ptr_array_add (send_arr, g_ptr_array_index (pl_info->roi_meta_info, i));
+    }
+  }
+
+  if (pl_info->class_meta_info != NULL) {
+    for (guint i = 0; i < pl_info->class_meta_info->len; i++) {
+      g_ptr_array_add (send_arr, g_ptr_array_index (pl_info->class_meta_info, i));
+    }
+  }
+
+  if (pl_info->lm_meta_info != NULL) {
+    for (guint i = 0; i < pl_info->lm_meta_info->len; i++) {
+      g_ptr_array_add (send_arr, g_ptr_array_index (pl_info->lm_meta_info, i));
     }
   }
 
@@ -135,7 +180,7 @@ receive_socket_message (gint sock, GstPayloadInfo * pl_info, int msg_flags)
 {
   struct msghdr msg = {0};
   struct iovec io;
-  gchar io_buf[16384];
+  gchar io_buf[65536];
   gchar buf[CMSG_SPACE (sizeof (gint) * GST_MAX_MEM_BLOCKS)] = {0};
   gint data_size;
 
@@ -184,6 +229,12 @@ receive_socket_message (gint sock, GstPayloadInfo * pl_info, int msg_flags)
       pl_info->fd_count = (GstFdCountPayload *) ptr;
     } else if (GST_SOCKET_MSG_IDENTITY (ptr) == MESSAGE_PROTECTION_META) {
       g_ptr_array_add (pl_info->protection_metadata_info, ptr);
+    } else if (GST_SOCKET_MSG_IDENTITY (ptr) == MESSAGE_VIDEO_ROI_META) {
+      g_ptr_array_add (pl_info->roi_meta_info, ptr);
+    } else if (GST_SOCKET_MSG_IDENTITY (ptr) == MESSAGE_VIDEO_CLASS_META) {
+      g_ptr_array_add (pl_info->class_meta_info, ptr);
+    } else if (GST_SOCKET_MSG_IDENTITY (ptr) == MESSAGE_VIDEO_LM_META) {
+      g_ptr_array_add (pl_info->lm_meta_info, ptr);
     } else {
       g_ptr_array_add (pl_info->mem_block_info, ptr);
     }
@@ -233,6 +284,15 @@ get_payload_size (gpointer payload) {
       break;
     case MESSAGE_PROTECTION_META:
       return sizeof (GstProtectionMetadataPayload);
+      break;
+    case MESSAGE_VIDEO_ROI_META:
+      return sizeof (GstVideoRoiMetaPayload);
+      break;
+    case MESSAGE_VIDEO_CLASS_META:
+      return sizeof (GstVideoClassMetaPayload);
+      break;
+    case MESSAGE_VIDEO_LM_META:
+      return sizeof (GstVideoLmMetaPayload);
       break;
 
     default:
