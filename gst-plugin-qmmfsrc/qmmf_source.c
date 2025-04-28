@@ -753,7 +753,7 @@ qmmfsrc_release_pad (GstElement * element, GstPad * pad)
 static GstStaticCaps gst_qmmfsrc_video_static_src_caps =
     GST_STATIC_CAPS (QMMFSRC_VIDEO_JPEG_CAPS "; "
         QMMFSRC_VIDEO_RAW_CAPS (
-                "{ NV12, NV16, NV12_Q08C"
+                "{ NV12, NV16, NV12_Q08C, RGB"
 #ifdef GST_VIDEO_YUY2_FORMAT_ENABLE
                 ", YUY2"
 #endif // GST_VIDEO_YUY2_FORMAT_ENABLE

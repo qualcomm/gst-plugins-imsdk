@@ -1567,6 +1567,9 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
     case GST_VIDEO_FORMAT_UYVY:
       format = ::qmmf::recorder::VideoFormat::kUYVY;
       break;
+    case GST_VIDEO_FORMAT_RGB:
+      format = ::qmmf::recorder::VideoFormat::kRGB;
+      break;
     case GST_BAYER_FORMAT_BGGR:
     case GST_BAYER_FORMAT_RGGB:
     case GST_BAYER_FORMAT_GBRG:
