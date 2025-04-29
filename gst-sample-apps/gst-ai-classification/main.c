@@ -122,7 +122,7 @@ typedef struct {
 */
 static GstVideoRectangle position_data[2] = {
   {0, 0, 1920, 1080},
-  {30, 30, 480, 270}
+  {30, 30, 480, 360}
 };
 
 /**
@@ -730,7 +730,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   // Set overlay window size for Classification to display text labels
   vcomposer_sink[0] = gst_element_get_static_pad (qtivcomposer, "sink_0");
   if (vcomposer_sink[0] == NULL) {
-    g_printerr ("Sink pad 1 of vcomposer couldn't be retrieved\n");
+    g_printerr ("Sink pad 0 of vcomposer couldn't be retrieved\n");
     goto error_clean_pipeline;
   }
 
