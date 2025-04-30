@@ -337,10 +337,10 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
     value = gst_structure_get_value (pmeta->info, "sequence-num-entries");
     gst_structure_set_value (structure, "sequence-num-entries", value);
 
-    if ((value = gst_structure_get_value (pmeta->info, "source-region-id"))) {
+    if ((value = gst_structure_get_value (pmeta->info, "parent-id"))) {
       // Remove the stream ID prefix from the muxed ROI ID.
       gint id = g_value_get_int (value) && (~GST_MUX_STREAM_ID_MASK);
-      gst_structure_set (structure, "source-region-id", G_TYPE_INT, id, NULL);
+      gst_structure_set (structure, "parent-id", G_TYPE_INT, id, NULL);
     }
 
     if ((value = gst_structure_get_value (pmeta->info, "input-tensor-width")))

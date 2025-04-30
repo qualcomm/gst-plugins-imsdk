@@ -303,7 +303,7 @@ gst_metamux_process_detection_metadata (GstMetaMux * muxer, GstBuffer * buffer,
   guint id = 0, idx = 0, num = 0, size = 0, length = 0, color = 0;
 
   // If result is derived from a ROI, use it the recalculate dimensions.
-  if ((value = gst_structure_get_value (structure, "source-region-id"))) {
+  if ((value = gst_structure_get_value (structure, "parent-id"))) {
     parent_roimeta = gst_buffer_get_video_region_of_interest_meta_id (buffer,
         g_value_get_int (value));
   }
@@ -431,7 +431,7 @@ gst_metamux_process_landmarks_metadata (GstMetaMux * muxer, GstBuffer * buffer,
   guint id = 0, idx = 0, num = 0, seqnum = 0, size = 0, length = 0;
 
   // If result is derived from a ROI, attach this result to that ROI meta.
-  if ((value = gst_structure_get_value (structure, "source-region-id"))) {
+  if ((value = gst_structure_get_value (structure, "parent-id"))) {
     roimeta = gst_buffer_get_video_region_of_interest_meta_id (buffer,
         g_value_get_int (value));
   }
@@ -615,7 +615,7 @@ gst_metamux_process_classification_metadata (GstMetaMux * muxer,
       gst_structure_get_uint (params, "id", &id);
   }
 
-  if (!(value = gst_structure_get_value (structure, "source-region-id"))) {
+  if (!(value = gst_structure_get_value (structure, "parent-id"))) {
     // Result is not derived from ROI, attach a new meta item.
     meta = gst_buffer_add_video_classification_meta (buffer, labels);
 

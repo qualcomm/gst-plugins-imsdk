@@ -643,8 +643,8 @@ gst_ml_video_pose_fill_text_output (GstMLVideoPose * vpose, GstBuffer * buffer)
     if ((val = gst_structure_get_value (prediction->info, "stream-timestamp")))
       gst_structure_set_value (structure, "stream-timestamp", val);
 
-    if ((val = gst_structure_get_value (prediction->info, "source-region-id")))
-      gst_structure_set_value (structure, "source-region-id", val);
+    if ((val = gst_structure_get_value (prediction->info, "parent-id")))
+      gst_structure_set_value (structure, "parent-id", val);
 
     g_value_init (&value, GST_TYPE_STRUCTURE);
     g_value_take_boxed (&value, structure);

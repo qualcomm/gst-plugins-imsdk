@@ -620,8 +620,7 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
       source->h = roimeta->h;
 
       // Propagate the ID of the ROI from which this batch position was created.
-      gst_structure_set (pmeta->info, "source-region-id", G_TYPE_INT,
-          roimeta->id, NULL);
+      gst_structure_set (pmeta->info, "parent-id", G_TYPE_INT, roimeta->id, NULL);
     } else { // GST_CONVERSION_MODE_IS_IMAGE (mlconverter->mode)
       // Check whether the image was produced as a split from some base image.
       while ((roimeta = GST_BUFFER_ITERATE_ROI_METAS (inbuffer, state)) != NULL) {
@@ -631,8 +630,7 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
 
       if (roimeta != NULL) {
         // Propagate the ID of the ROI from which this batch position was created.
-        gst_structure_set (pmeta->info, "source-region-id", G_TYPE_INT,
-            roimeta->id, NULL);
+        gst_structure_set (pmeta->info, "parent-id", G_TYPE_INT, roimeta->id, NULL);
 
         source->x = roimeta->x;
         source->y = roimeta->y;
