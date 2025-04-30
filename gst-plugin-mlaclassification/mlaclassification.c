@@ -336,8 +336,7 @@ gst_ml_audio_classification_fill_video_output (
             g_quark_to_string (entry->name), entry->confidence);
 
       GST_TRACE_OBJECT (classification, "Batch: %u, label: %s, confidence: "
-            "%.1f%%", prediction->batch_idx, g_quark_to_string (entry->name),
-            entry->confidence);
+            "%.1f%%", idx, g_quark_to_string (entry->name), entry->confidence);
 
       // Set text color.
       cairo_set_source_rgba (context,
@@ -412,9 +411,8 @@ gst_ml_audio_classification_fill_text_output (
 
       id = GST_META_ID (classification->stage_id, sequence_idx, num);
 
-      GST_TRACE_OBJECT (classification, "Batch: %u, ID: %u, label: %s,"
-          "confidence: %.1f%%", prediction->batch_idx, id,
-          g_quark_to_string (entry->name), entry->confidence);
+      GST_TRACE_OBJECT (classification, "ID: %u, label: %s, confidence: %.1f%%",
+          id, g_quark_to_string (entry->name), entry->confidence);
 
       // Replace empty spaces otherwise subsequent stream parse call will fail.
       name = g_strdup (g_quark_to_string (entry->name));
@@ -430,8 +428,7 @@ gst_ml_audio_classification_fill_text_output (
       g_value_reset (&value);
     }
 
-    structure = gst_structure_new ("AudioClassification",
-        "batch-index", G_TYPE_UINT, prediction->batch_idx, NULL);
+    structure = gst_structure_new_empty ("AudioClassification");
 
     val = gst_structure_get_value (prediction->info, "timestamp");
     gst_structure_set_value (structure, "timestamp", val);
@@ -908,7 +905,6 @@ gst_ml_audio_classification_set_caps (GstBaseTransform * base, GstCaps * incaps,
         &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
 
     prediction->entries = g_array_new (FALSE, FALSE, sizeof (GstMLClassEntry));
-    prediction->batch_idx = idx;
   }
 
   GST_DEBUG_OBJECT (classification, "Input caps: %" GST_PTR_FORMAT, incaps);

@@ -451,8 +451,7 @@ gst_ml_video_classification_fill_video_output (
         break;
 
       GST_TRACE_OBJECT (classification, "Batch: %u, label: %s, confidence: "
-          "%.1f%%", prediction->batch_idx, g_quark_to_string (entry->name),
-          entry->confidence);
+          "%.1f%%", idx, g_quark_to_string (entry->name), entry->confidence);
 
       color = entry->color;
 
@@ -544,8 +543,8 @@ gst_ml_video_classification_fill_text_output (
       entry = &(g_array_index (prediction->entries, GstMLClassEntry, num));
 
       GST_TRACE_OBJECT (classification, "Batch: %u, ID: %X, Label: %s, "
-          "Confidence: %.1f%%", prediction->batch_idx, id,
-          g_quark_to_string (entry->name), entry->confidence);
+          "Confidence: %.1f%%", idx, id, g_quark_to_string (entry->name),
+          entry->confidence);
 
       // Replace empty spaces otherwise subsequent stream parse call will fail.
       name = g_strdup (g_quark_to_string (entry->name));
@@ -570,8 +569,7 @@ gst_ml_video_classification_fill_text_output (
       g_value_reset (&value);
     }
 
-    structure = gst_structure_new ("ImageClassification",
-        "batch-index", G_TYPE_UINT, prediction->batch_idx, NULL);
+    structure = gst_structure_new_empty ("ImageClassification");
 
     gst_structure_set_value (structure, "labels", &labels);
     g_value_reset (&labels);
@@ -1078,7 +1076,6 @@ gst_ml_video_classification_set_caps (GstBaseTransform * base, GstCaps * incaps,
         &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
 
     prediction->entries = g_array_new (FALSE, TRUE, sizeof (GstMLClassEntry));
-    prediction->batch_idx = idx;
   }
 
   GST_DEBUG_OBJECT (classification, "Input caps: %" GST_PTR_FORMAT, incaps);
