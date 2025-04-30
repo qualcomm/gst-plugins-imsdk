@@ -185,6 +185,32 @@ gst_recalculate_dimensions (guint * width, guint * height, gint num, gint denum,
   }
 }
 
+static inline void
+gst_video_keypoints_calculate_region (GArray * keypoints, GstVideoRectangle * region)
+{
+  GstVideoKeypoint *kp = NULL;
+  guint idx = 0;
+
+  region->x = region->y = G_MAXINT;
+  region->w = region->h = 0;
+
+  // Find the coordinates of the rectangle in which the keypoints fit.
+  for (idx = 0; idx < keypoints->len; idx++) {
+    kp = &(g_array_index (keypoints, GstVideoKeypoint, idx));
+
+    region->x = MIN (region->x, kp->x);
+    region->y = MIN (region->y, kp->y);
+    region->w = MAX (region->w, kp->x);
+    region->h = MAX (region->h, kp->y);
+  }
+
+  // Adjust keypoints region with small margins.
+  region->x -= 2;
+  region->y -= 2;
+  region->w -= region->x - 2;
+  region->h -= region->y - 2;
+}
+
 static inline gboolean
 gst_cairo_draw_text (cairo_t * context, guint color, gdouble x, gdouble y,
     gchar * text, gdouble fontsize)
@@ -455,7 +481,7 @@ gst_overlay_update_rectangle_dimensions (GstVOverlay * overlay,
 {
   gint width = 0, height = 0, num = 0, denum = 0;
 
-  // Calculate the aspect ration of the bounding box rectangle.
+  // Calculate the aspect ratio of the bounding box rectangle.
   gst_util_fraction_multiply (rectangle->w, rectangle->h, 1, 1, &num, &denum);
 
   // Initial values for bounding box width and height, used adjustment.
@@ -649,8 +675,8 @@ gst_overlay_handle_pose_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   cairo_surface_t *surface = NULL;
   cairo_t *context = NULL;
   GstVideoRectangle *source = NULL, *destination = NULL;
-  gdouble x = 0.0, y = 0.0, dx = 0.0, dy = 0.0, xscale = 1.0, yscale = 1.0;
-  guint num = 0, length = 0;
+  gdouble x = 0.0, y = 0.0, dx = 0.0, dy = 0.0, scale = 0.0, linewidth = 0.0;
+  guint idx = 0;
   gboolean success = TRUE;
 
   success = gst_cairo_draw_setup (blit->frame, &surface, &context);
@@ -659,47 +685,43 @@ gst_overlay_handle_pose_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   source = &(blit->source);
   destination = &(blit->destination);
 
-  gst_util_fraction_to_double (source->w, destination->w, &xscale);
-  gst_util_fraction_to_double (source->h, destination->h, &yscale);
+  // Set the most appropriate box line width based on frame and box dimensions.
+  gst_util_fraction_to_double (destination->w, source->w, &scale);
+  linewidth = (scale > 1.0F) ? (4.0F / scale) : 4.0F;
 
-  length = (keypoints != NULL) ? keypoints->len : 0;
+  for (idx = 0; idx < keypoints->len; idx++) {
+    GstVideoKeypoint *kp = &(g_array_index (keypoints, GstVideoKeypoint, idx));
 
-  for (num = 0; num < length; num++) {
-    GstVideoKeypoint *kp =
-        &(g_array_index (keypoints, GstVideoKeypoint, num));
-
-    x = kp->x * xscale;
-    y = kp->y * yscale;
+    x = (kp->x - destination->x) / scale;
+    y = (kp->y - destination->y) / scale;
 
     GST_TRACE_OBJECT (overlay, "Keypoint: %s, Position: [%.2f %.2f], "
         "Confidence: %.2f, Color: 0x%X", g_quark_to_string (kp->name), x, y,
         kp->confidence, kp->color);
 
     success &=
-        gst_cairo_draw_circle (context, kp->color, x, y, 2.0, 1.0, TRUE);
+        gst_cairo_draw_circle (context, kp->color, x, y, 2.0, linewidth, TRUE);
   }
 
-  length = (links != NULL) ? links->len : 0;
-
-  for (num = 0; num < length; num++) {
+  for (idx = 0; (links != NULL) && (idx < links->len); idx++) {
     GstVideoKeypointLink *link = NULL;
     GstVideoKeypoint *s_kp = NULL, *d_kp = NULL;
 
-    link = &(g_array_index (links, GstVideoKeypointLink, num));
+    link = &(g_array_index (links, GstVideoKeypointLink, idx));
     s_kp = &(g_array_index (keypoints, GstVideoKeypoint, link->s_kp_idx));
     d_kp = &(g_array_index (keypoints, GstVideoKeypoint, link->d_kp_idx));
 
-    x = s_kp->x * xscale;
-    y = s_kp->y * yscale;
+    x = (s_kp->x - destination->x) / scale;
+    y = (s_kp->y - destination->y) / scale;
 
-    dx = d_kp->x * xscale;
-    dy = d_kp->y * yscale;
+    dx = (d_kp->x - destination->x) / scale;
+    dy = (d_kp->y - destination->y) / scale;
 
     GST_TRACE_OBJECT (overlay, "Link: %s [%.2f %.2f] <---> %s [%.2f %.2f]",
         g_quark_to_string (s_kp->name), x, y, g_quark_to_string (d_kp->name),
         dx, dy);
 
-    success &= gst_cairo_draw_line (context, s_kp->color, x, y, dx, dy, 1.0);
+    success &= gst_cairo_draw_line (context, s_kp->color, x, y, dx, dy, linewidth);
   }
 
   GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
@@ -772,7 +794,6 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, GstVideoBlit * blit,
 {
   cairo_surface_t *surface = NULL;
   cairo_t *context = NULL;
-  GstVideoFrame *vframe = NULL;
   GstStructure *param = NULL, *objparam;
   GList *list = NULL;
   GstVideoRectangle *source = NULL, *destination = NULL;
@@ -783,18 +804,14 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   success = gst_cairo_draw_setup (blit->frame, &surface, &context);
   g_return_val_if_fail (success, FALSE);
 
-  vframe = blit->frame;
   source = &(blit->source);
   destination = &(blit->destination);
-
-  destination->x = roimeta->x;
-  destination->y = roimeta->y;
 
   source->w = destination->w = roimeta->w;
   source->h = destination->h = roimeta->h;
 
   // Adjust bbox dimensions so that it fits inside the overlay frame.
-  gst_overlay_update_rectangle_dimensions (overlay, vframe, source);
+  gst_overlay_update_rectangle_dimensions (overlay, blit->frame, source);
 
   // Initialize the destination X/Y of the auxiliary blit for labels.
   auxblit->destination.x = roimeta->x;
@@ -833,6 +850,9 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, GstVideoBlit * blit,
     }
   }
 
+  destination->x = roimeta->x;
+  destination->y = roimeta->y;
+
   // Extract the structure containing ROI parameters.
   objparam = gst_video_region_of_interest_meta_get_param (roimeta,
       "ObjectDetection");
@@ -864,7 +884,7 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, GstVideoBlit * blit,
       kp = &(g_array_index (landmarks, GstVideoKeypoint, idx));
 
       // Additionally adjust coordinates with source to destination ratio.
-      x = kp->x  * (source->w / (gfloat) destination->w);
+      x = kp->x * (source->w / (gfloat) destination->w);
       y = kp->y * (source->h / (gfloat) destination->h);
 
       GST_TRACE_OBJECT (overlay, "Landmark: [%.2f %.2f]", x, y);
@@ -1243,7 +1263,7 @@ gst_overlay_handle_image_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   }
 
   if (!g_file_get_contents (simage->path, &contents, NULL, &error)) {
-    GST_WARNING_OBJECT (overlay, "Failed to laod static image file '%s', "
+    GST_WARNING_OBJECT (overlay, "Failed to load static image file '%s', "
         "error: %s!", simage->path, GST_STR_NULL (error->message));
 
     g_clear_error (&error);
@@ -1359,6 +1379,16 @@ gst_overlay_draw_metadata_entries (GstVOverlay * overlay,
 
         success = gst_overlay_populate_video_blit (overlay, ovltype, blit);
         g_return_val_if_fail (success, FALSE);
+
+        // Find the coordinates of the rectangle in which the pose fits.
+        gst_video_keypoints_calculate_region (keypoints, &(blit->destination));
+
+        blit->source.w = blit->destination.w;
+        blit->source.h = blit->destination.h;
+
+        // Adjust pose rectangle so that it fits inside the overlay frame.
+        gst_overlay_update_rectangle_dimensions (overlay, blit->frame,
+            &(blit->source));
 
         success = gst_overlay_handle_pose_entry (overlay, blit, keypoints, links);
         break;
@@ -1796,15 +1826,13 @@ gst_overlay_set_caps (GstBaseTransform * base, GstCaps * incaps,
 
     if ((ovltype == GST_OVERLAY_TYPE_BBOX) ||
         (ovltype == GST_OVERLAY_TYPE_DETECTION) ||
-        (ovltype == GST_OVERLAY_TYPE_MASK)) {
+        (ovltype == GST_OVERLAY_TYPE_MASK) ||
+        (ovltype == GST_OVERLAY_TYPE_POSE_ESTIMATION)) {
       // Square resolution of atleats 256 is most optimal.
       width = height = GST_ROUND_UP_128 (MAX (MAX (width, height) / 8, 256));
     } else if (ovltype == GST_OVERLAY_TYPE_IMAGE) {
       // Square resolution 4 times smaller than the frame is most optimal.
       width = height = GST_ROUND_UP_128 (MAX (width, height) / 4);
-    } else if (ovltype == GST_OVERLAY_TYPE_POSE_ESTIMATION) {
-      // For pose estimation a 8 times lower resolution seems to be optimal.
-      gst_recalculate_dimensions (&width, &height, num, denum, 4);
     } else if ((ovltype == GST_OVERLAY_TYPE_STRING) ||
                (ovltype == GST_OVERLAY_TYPE_TIMESTAMP)) {
       // For custom text overlay resolution with aspect ratio 4:1 is optimal.
