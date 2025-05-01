@@ -53,10 +53,6 @@ GST_DEBUG_CATEGORY_EXTERN (gst_video_split_debug);
 #define DEFAULT_PROP_MAX_BUFFERS    20
 #define GST_VSPLIT_MAX_QUEUE_LEN    16
 
-#ifndef GST_CAPS_FEATURE_MEMORY_GBM
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
-#endif
-
 enum
 {
   PROP_0,
@@ -147,7 +143,7 @@ gst_video_split_create_pool (GstPad * pad, GstCaps * caps,
     return NULL;
   }
 
-  if (gst_is_gbm_supported ()) {
+  if (gst_gbm_qcom_backend_is_supported ()) {
     // If downstream allocation query supports GBM, allocate gbm memory.
     if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
       GST_INFO_OBJECT (pad, "Uses GBM memory");
@@ -850,7 +846,8 @@ gst_video_split_srcpad_fixate_caps (GstVideoSplitSrcPad * srcpad,
     mviewmode = GST_VIDEO_MULTIVIEW_MODE_MULTIVIEW_FRAME_BY_FRAME;
 
   // Prefer caps with feature memory:GBM and removeall others.
-  if (gst_is_gbm_supported () && gst_caps_has_feature (outcaps, GST_CAPS_FEATURE_MEMORY_GBM))
+  if (gst_gbm_qcom_backend_is_supported () &&
+      gst_caps_has_feature (outcaps, GST_CAPS_FEATURE_MEMORY_GBM))
     features = gst_caps_features_new (GST_CAPS_FEATURE_MEMORY_GBM, NULL);
   else
     features = gst_caps_features_new_empty ();

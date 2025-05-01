@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -94,10 +94,6 @@ G_DEFINE_TYPE (GstMLVideoSegmentation, gst_ml_video_segmentation,
 
 #define GST_TYPE_ML_MODULES (gst_ml_modules_get_type())
 
-#ifndef GST_CAPS_FEATURE_MEMORY_GBM
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
-#endif
-
 #define GST_ML_VIDEO_SEGMENTATION_VIDEO_FORMATS \
     "{ RGBA, BGRA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR }"
 
@@ -148,7 +144,7 @@ gst_ml_video_segmentation_src_caps (void)
   if (g_once_init_enter (&inited)) {
     caps = gst_caps_from_string (GST_ML_VIDEO_SEGMENTATION_SRC_CAPS);
 
-    if (gst_is_gbm_supported ()) {
+    if (gst_gbm_qcom_backend_is_supported ()) {
       GstCaps *tmplcaps = gst_caps_from_string (
           GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
               GST_ML_VIDEO_SEGMENTATION_VIDEO_FORMATS));
@@ -223,7 +219,7 @@ gst_ml_video_segmentation_create_pool (GstMLVideoSegmentation * segmentation,
     return NULL;
   }
 
-  if (gst_is_gbm_supported ()) {
+  if (gst_gbm_qcom_backend_is_supported ()) {
     // If downstream allocation query supports GBM, allocate gbm memory.
     if (caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
       GST_INFO_OBJECT (segmentation, "Uses GBM memory");
