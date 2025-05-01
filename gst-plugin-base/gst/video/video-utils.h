@@ -10,6 +10,8 @@
 
 G_BEGIN_DECLS
 
+#define GST_VIDEO_ROI_META_CAST(obj)     ((GstVideoRegionOfInterestMeta *) obj)
+
 /**
  * gst_is_gbm_supported:
  *
@@ -79,6 +81,50 @@ gst_video_utils_get_gpu_align (GstVideoInfo * info, GstVideoAlignment * align);
  */
 GST_VIDEO_API gboolean
 gst_query_get_video_alignment (GstQuery * query, GstVideoAlignment * align);
+
+/**
+ * gst_buffer_get_video_region_of_interest_metas_parent_id:
+ * @buffer: The #GstBuffer to which to copy the meta.
+ * @parent_id: The metadata parent ID for which to check.
+ *
+ * Helper function for finding all GstVideoRegionOfInterestMeta on buffer with
+ * the given parent id.
+ *
+ * return: Pointer to list of #GstVideoRegionOfInterestMeta if any where found
+ */
+GST_VIDEO_API GList *
+gst_buffer_get_video_region_of_interest_metas_parent_id (GstBuffer * buffer,
+                                                         const gint parent_id);
+
+/**
+ * gst_buffer_copy_video_region_of_interest_meta:
+ * @buffer: The #GstBuffer to which to copy the meta.
+ * @meta: The #GstVideoRegionOfInterestMeta which will be copied.
+ *
+ * Helper function for copying ROI meta belonging to a different buffer into another.
+ *
+ * return: Pointer to the newly allocated ROI meta
+ */
+GST_VIDEO_API GstVideoRegionOfInterestMeta *
+gst_buffer_copy_video_region_of_interest_meta (GstBuffer * buffer,
+                                               GstVideoRegionOfInterestMeta * meta);
+
+/**
+ * gst_video_region_of_interest_coordinates_correction:
+ * @meta: The #GstVideoRegionOfInterestMeta whos coordinates will be corrected.
+ * @source: Source offset coordinates and dimensions for scale calculation.
+ * @destination: Destination offset coordinates and dimensions for scale calculation.
+ *
+ * Helper function for correcting region coordinates based on a source and
+ * destionation rectangles. Used primarily when transfering ROI meta from one
+ * buffer into another with some source to destination transformation.
+ *
+ * return: NONE
+ */
+GST_VIDEO_API void
+gst_video_region_of_interest_coordinates_correction (
+    GstVideoRegionOfInterestMeta * roimeta, GstVideoRectangle * source,
+    GstVideoRectangle * destination);
 
 G_END_DECLS
 

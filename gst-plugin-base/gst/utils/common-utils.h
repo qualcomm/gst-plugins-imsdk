@@ -23,7 +23,6 @@ G_BEGIN_DECLS
 
 #define GPOINTER_CAST(obj)               ((gpointer) obj)
 #define GST_PROTECTION_META_CAST(obj)    ((GstProtectionMeta *) obj)
-#define GST_VIDEO_ROI_META_CAST(obj)     ((GstVideoRegionOfInterestMeta *) obj)
 
 #define EXTRACT_RED_COLOR(color)         ((color >> 24) & 0xFF)
 #define EXTRACT_GREEN_COLOR(color)       ((color >> 16) & 0xFF)

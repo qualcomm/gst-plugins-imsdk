@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -51,7 +51,7 @@ gst_parser_module_initialize_debug_category (void)
 
   if (g_once_init_enter (&catonce)) {
     GST_DEBUG_CATEGORY_INIT (gst_parser_module_debug,
-        "mlmetaparsermodule", 0, "QTI ML meta parser module");
+        "ml-metaparser-module", 0, "QTI ML meta parser module");
     g_once_init_leave (&catonce, TRUE);
   }
 }
@@ -152,13 +152,13 @@ gst_parser_module_set_opts (GstParserModule * module, GstStructure * options)
 
 gboolean
 gst_parser_module_execute (GstParserModule * module, GstBuffer * inbuffer,
-    gchar ** output)
+    GstBuffer * outbuffer)
 {
   g_return_val_if_fail (module != NULL, FALSE);
   g_return_val_if_fail (inbuffer != NULL, FALSE);
-  g_return_val_if_fail (output != NULL, FALSE);
+  g_return_val_if_fail (outbuffer != NULL, FALSE);
 
-  return module->process (module->submodule, inbuffer, output);
+  return module->process (module->submodule, inbuffer, outbuffer);
 }
 
 GEnumValue *

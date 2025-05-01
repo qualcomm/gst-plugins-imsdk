@@ -7,8 +7,9 @@
 #include <stdlib.h>
 
 #include <gst/gst.h>
-#include <gst/video/video.h>
 #include <gst/utils/common-utils.h>
+#include <gst/video/video.h>
+#include <gst/video/video-utils.h>
 #include <gst/video/gstvideoclassificationmeta.h>
 
 // Set the default debug category.
@@ -112,10 +113,11 @@ gst_meta_module_process (gpointer instance, GstBuffer * buffer)
 
   // Iterate over the metas available in the buffer and process them.
   while ((roimeta = GST_BUFFER_ITERATE_ROI_METAS (buffer, state)) != NULL) {
-    GArray *records = NULL;
-    GstStructure *objparam = NULL, *lblparam = NULL;
-    GArray *labels = NULL;
+    GstVideoClassificationMeta *classmeta = NULL;
+    GstStructure *objparam = NULL;
     GstClassLabel *label = NULL, *toplabel = NULL;
+    GArray *records = NULL,  *labels = NULL;
+    GList *metalist = NULL;
     gpointer key = NULL;
     guint tracking_id = 0;
 
@@ -145,12 +147,13 @@ gst_meta_module_process (gpointer instance, GstBuffer * buffer)
     GST_TRACE ("Received root ROI meta %s and ID [0x%X], tracking-id: %u",
         g_quark_to_string (roimeta->roi_type), roimeta->id, tracking_id);
 
-    lblparam = gst_video_region_of_interest_meta_get_param (roimeta,
-        "ImageClassification");
+    metalist =
+        gst_buffer_get_video_classification_metas_parent_id (buffer, roimeta->id);
 
-    if (lblparam != NULL) {
-      labels = g_value_get_boxed (gst_structure_get_value (lblparam, "labels"));
-      label = &(g_array_index (labels, GstClassLabel, 0));
+    // Expecting at the most a single classification meta.
+    if (metalist != NULL) {
+      classmeta = GST_VIDEO_CLASSIFICATION_META_CAST (metalist->data);
+      label = &(g_array_index (classmeta->labels, GstClassLabel, 0));
 
       GST_TRACE ("Current label %s, confidence %.2f, color %X",
           g_quark_to_string (label->name), label->confidence, label->color);
@@ -166,6 +169,8 @@ gst_meta_module_process (gpointer instance, GstBuffer * buffer)
 
       label = &(g_array_index (labels, GstClassLabel, 0));
     }
+
+    g_list_free (metalist);
 
     // Find the what is the ROI type according to the accumulated records.
     toplabel = gst_region_label_records_majority_vote (records);
@@ -186,14 +191,11 @@ gst_meta_module_process (gpointer instance, GstBuffer * buffer)
     // Update the color of the root ROI meta.
     gst_structure_set (objparam, "color", G_TYPE_UINT, label->color, NULL);
 
-    // ImageClassification doesn't exist, add new param.
-    if (lblparam == NULL) {
-      lblparam = gst_structure_new_empty ("ImageClassification");
-      gst_video_region_of_interest_meta_add_param (roimeta, lblparam);
+    // ImageClassification doesn't exist, add new metadata into the buffer.
+    if (labels != NULL) {
+      classmeta = gst_buffer_add_video_classification_meta (buffer, labels);
+      classmeta->parent_id = roimeta->id;
     }
-
-    // Add the labels to the root ROI meta ImageClassification param.
-    gst_structure_set (lblparam, "labels", G_TYPE_ARRAY, labels, NULL);
   }
 
   return TRUE;

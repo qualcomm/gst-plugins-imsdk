@@ -306,3 +306,63 @@ gst_query_get_video_alignment (GstQuery * query, GstVideoAlignment * align)
 
   return TRUE;
 }
+
+GstVideoRegionOfInterestMeta *
+gst_buffer_copy_video_region_of_interest_meta (GstBuffer * buffer,
+    GstVideoRegionOfInterestMeta * roimeta)
+{
+  GstVideoRegionOfInterestMeta *newmeta = NULL;
+  GList *list = NULL;
+
+  // Add ROI meta with the actual part of the buffer filled with image data.
+  newmeta = gst_buffer_add_video_region_of_interest_meta_id (buffer,
+      roimeta->roi_type, roimeta->x, roimeta->y, roimeta->w, roimeta->h);
+
+  newmeta->id = roimeta->id;
+  newmeta->parent_id = roimeta->parent_id;
+
+  for (list = roimeta->params; list != NULL; list = list->next) {
+    GstStructure *structure = gst_structure_copy (GST_STRUCTURE_CAST (list->data));
+    gst_video_region_of_interest_meta_add_param (newmeta, structure);
+  }
+
+  return newmeta;
+}
+
+GList *
+gst_buffer_get_video_region_of_interest_metas_parent_id (GstBuffer * buffer,
+    const gint parent_id)
+{
+  GList *metalist = NULL;
+  gpointer state = NULL;
+  GstMeta *meta = NULL;
+
+  while ((meta = gst_buffer_iterate_meta (buffer, &state))) {
+    if (meta->info->api != GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE)
+      continue;
+
+    if (GST_VIDEO_ROI_META_CAST (meta)->roi_type ==
+            g_quark_from_static_string ("ImageRegion"))
+      continue;
+
+    if (GST_VIDEO_ROI_META_CAST (meta)->parent_id == parent_id)
+      metalist = g_list_prepend (metalist, meta);
+  }
+  return metalist;
+}
+
+void
+gst_video_region_of_interest_coordinates_correction (
+    GstVideoRegionOfInterestMeta * roimeta, GstVideoRectangle * source,
+    GstVideoRectangle * destination)
+{
+  gdouble w_scale = 0.0, h_scale = 0.0;
+
+  gst_util_fraction_to_double (destination->w, source->w, &w_scale);
+  gst_util_fraction_to_double (destination->h, source->h, &h_scale);
+
+  roimeta->w = roimeta->w * w_scale;
+  roimeta->h = roimeta->h * h_scale;
+  roimeta->x = ((roimeta->x - source->x) * w_scale) + destination->x;
+  roimeta->y = ((roimeta->y - source->y) * h_scale) + destination->y;
+}
