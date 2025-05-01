@@ -33,15 +33,15 @@
 */
 
 #include "dfs-engine.h"
+
+#include <iomanip>
+#include <iostream>
+#include <string>
+#include <sstream>
+#include <dlfcn.h>
+
 #include <dfs_factory.h>
 #include <rvDFS.h>
-
-#include<iomanip>
-#include<iostream>
-#include<string>
-#include<sstream>
-
-#include <dlfcn.h>
 
 // DFS lib is looking for those symbols
 int RV_LOG_LEVEL = 0;

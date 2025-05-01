@@ -10,20 +10,19 @@
 
 G_BEGIN_DECLS
 
-#define GST_VIDEO_ROI_META_CAST(obj)     ((GstVideoRegionOfInterestMeta *) obj)
+#define GST_VIDEO_ROI_META_CAST(obj) ((GstVideoRegionOfInterestMeta *) obj)
+
+#define GST_CAPS_FEATURE_MEMORY_GBM  "memory:GBM"
 
 /**
- * gst_is_gbm_supported:
+ * gst_gbm_qcom_backend_is_supported:
  *
  * Helper function for checking whether the QCOM GBM backend is supported.
- *
- * TODO: Rename the function to gst_gbm_qcom_backend_is_supported in order to
- * better reflect its purpose.
  *
  * return: TRUE if supported or FALSE if not supported
  */
 GST_VIDEO_API gboolean
-gst_is_gbm_supported (void);
+gst_gbm_qcom_backend_is_supported (void);
 
 /**
  * gst_adreno_utils_compute_alignment:

@@ -180,7 +180,7 @@ gst_adreno_utils_compute_alignment (guint width, guint height,
 }
 
 gboolean
-gst_is_gbm_supported (void)
+gst_gbm_qcom_backend_is_supported (void)
 {
   static gboolean supported = FALSE;
   static gsize inited = 0;

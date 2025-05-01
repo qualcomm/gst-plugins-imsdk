@@ -100,10 +100,6 @@ G_DEFINE_TYPE_WITH_CODE (GstVideoComposer, gst_video_composer,
 
 #define GST_VCOMPOSER_MAX_QUEUE_LEN 16
 
-#ifndef GST_CAPS_FEATURE_MEMORY_GBM
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
-#endif
-
 #undef GST_VIDEO_SIZE_RANGE
 #define GST_VIDEO_SIZE_RANGE "(int) [ 1, 32767 ]"
 
@@ -129,7 +125,7 @@ gst_video_composer_sink_caps (void)
   if (g_once_init_enter (&inited)) {
     caps = gst_caps_from_string (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS));
 
-    if (gst_is_gbm_supported ()) {
+    if (gst_gbm_qcom_backend_is_supported ()) {
       GstCaps *tmplcaps = gst_caps_from_string (
           GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
               GST_VIDEO_FORMATS));
@@ -152,7 +148,7 @@ gst_video_composer_src_caps (void)
   if (g_once_init_enter (&inited)) {
     caps = gst_caps_from_string (GST_VIDEO_CAPS_MAKE (GST_VIDEO_FORMATS));
 
-    if (gst_is_gbm_supported ()) {
+    if (gst_gbm_qcom_backend_is_supported ()) {
       GstCaps *tmplcaps = gst_caps_from_string (
           GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
               GST_VIDEO_FORMATS));
@@ -297,7 +293,7 @@ gst_video_composer_create_pool (GstVideoComposer * vcomposer, GstCaps * caps,
     return NULL;
   }
 
-  if (gst_is_gbm_supported ()) {
+  if (gst_gbm_qcom_backend_is_supported ()) {
     if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
       GST_INFO_OBJECT (vcomposer, "Uses GBM memory");
       pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
