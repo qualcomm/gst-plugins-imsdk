@@ -102,7 +102,7 @@ static gboolean gst_plugin_get_suite (GstPluginSuite * psuite)
       break;
     default:
       ret = FALSE;
-      GST_WARNING("Unknown suite index %d.", psuite->idx);
+      GST_WARNING ("Unknown suite index %d.", psuite->idx);
       break;
   }
 
@@ -165,6 +165,9 @@ int main (int argc, char **argv)
     return -1;
   }
   g_option_context_free (optctx);
+
+  // Initialize GST library.
+  gst_init (&argc, &argv);
 
   // Process options.
   appctx.enabledsuites = NULL;

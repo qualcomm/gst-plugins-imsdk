@@ -8,11 +8,18 @@
 #include "plugin-suite.h"
 #include "suite-camera-pipeline.h"
 
-gint runningtime = 3; // Default running time 3 seconds.
+gint runningtime = 10; // Default running time 10 seconds.
 
 GST_START_TEST (test_stream_NV12_1920x1080_30fps)
 {
   GstCapsParameters params = { "NV12_Q08C", 1920, 1080, 30};
+  camera_pipeline (&params, NULL, NULL, NULL, runningtime);
+}
+GST_END_TEST;
+
+GST_START_TEST (test_stream_NV12_1280x720_30fps)
+{
+  GstCapsParameters params = { "NV12_Q08C", 1280, 720, 30};
   camera_pipeline (&params, NULL, NULL, NULL, runningtime);
 }
 GST_END_TEST;
@@ -77,9 +84,9 @@ GST_START_TEST (test_streams_NV12_1920x1080_VTRANS_BGRA_1280x720_30fps_R90_DISPL
 }
 GST_END_TEST;
 
-GST_START_TEST (test_streams_FILESRC_DECODER_DISPLAY)
+GST_START_TEST (test_streams_1080P_NV12_DECODER_DISPLAY)
 {
-  camera_decoder_display_pipeline (runningtime);
+  camera_decoder_display_pipeline ("Draw_1080p_180s_30FPS.mp4", runningtime);
 }
 GST_END_TEST;
 
@@ -90,7 +97,7 @@ camera_suite (gint iteration, gint duration)
   TCase *tc;
   int start = 0, end = 1;
   // TCase timeout in seconds.
-  int tctimeout = 5;
+  int tctimeout = 0;
 
   if (iteration > 0)
     end = iteration;
@@ -98,16 +105,23 @@ camera_suite (gint iteration, gint duration)
   if (duration > 0)
     runningtime = duration;
 
-  tctimeout = runningtime + 5;
+  // Add extra time for other module initialization.
+  tctimeout = runningtime + 30;
 
   g_setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", FALSE);
   g_setenv ("WAYLAND_DISPLAY", "wayland-1", FALSE);
 
-  tc = tcase_create ("onevideostream");
+  tc = tcase_create ("onevideostream1080P");
   suite_add_tcase (s, tc);
   tcase_set_timeout (tc, tctimeout);
   // Add test to TCase.
   tcase_add_loop_test (tc, test_stream_NV12_1920x1080_30fps, start, end);
+
+  tc = tcase_create ("onevideostream720P");
+  suite_add_tcase (s, tc);
+  tcase_set_timeout (tc, tctimeout);
+  // Add test to TCase.
+  tcase_add_loop_test (tc, test_stream_NV12_1280x720_30fps, start, end);
 
   tc = tcase_create ("onevideo+jpeg");
   suite_add_tcase (s, tc);
@@ -163,7 +177,7 @@ camera_suite (gint iteration, gint duration)
   suite_add_tcase (s, tc);
   tcase_set_timeout (tc, tctimeout);
   tcase_add_loop_test (tc,
-      test_streams_FILESRC_DECODER_DISPLAY, start, end);
+      test_streams_1080P_NV12_DECODER_DISPLAY, start, end);
 
   return s;
 }
