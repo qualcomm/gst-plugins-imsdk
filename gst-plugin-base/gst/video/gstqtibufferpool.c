@@ -192,15 +192,13 @@ gst_qti_buffer_pool_stop (GstBufferPool * pool)
   GstQtiBufferPool *qpool = GST_QTI_BUFFER_POOL (pool);
   GstQtiBufferPoolPrivate *priv = qpool->priv;
   GstBufferPoolClass *pclass = GST_BUFFER_POOL_CLASS (parent_class);
-  gboolean success;
 
   GST_DEBUG_OBJECT (qpool, "Stopping pool");
 
-  success = pclass->stop (pool);
-  if (success && GST_IS_QTI_ALLOCATOR (priv->allocator))
-    success = gst_qti_allocator_stop (GST_QTI_ALLOCATOR (priv->allocator));
+  if (GST_IS_QTI_ALLOCATOR (priv->allocator))
+    gst_qti_allocator_stop (GST_QTI_ALLOCATOR (priv->allocator));
 
-  return success;
+  return pclass->stop (pool);
 }
 
 static void
