@@ -1321,30 +1321,15 @@ gst_ml_video_converter_propose_allocation (GstBaseTransform * base,
       gst_buffer_pool_config_add_option (config,
           GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
     } else {
-      GstVideoFormat format;
-      GstVideoAlignment align;
-      gboolean success;
-      guint width, height;
-      gint stride, scanline;
+      GstVideoAlignment align = {0,};
 
-      width = GST_VIDEO_INFO_WIDTH (&info);
-      height = GST_VIDEO_INFO_HEIGHT (&info);
-      format = GST_VIDEO_INFO_FORMAT (&info);
-
-      success = gst_adreno_utils_compute_alignment (width, height, format,
-          &stride, &scanline);
-      if (!success) {
-        GST_ERROR_OBJECT (mlconverter,"Failed to get alignment");
+      if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
+        GST_ERROR_OBJECT (mlconverter, "Failed to get alignment!");
         return FALSE;
       }
 
       pool = gst_qti_buffer_pool_new ();
       config = gst_buffer_pool_get_config (pool);
-
-      gst_video_alignment_reset (&align);
-      align.padding_bottom = scanline - height;
-      align.padding_right = stride - width;
-      gst_video_info_align (&info, &align);
 
       gst_buffer_pool_config_add_option (config,
           GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
