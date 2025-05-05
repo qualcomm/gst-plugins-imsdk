@@ -66,6 +66,7 @@
 
 #include <gst/video/video.h>
 #include <gst/allocators/allocators.h>
+#include <gst/allocators/gstqtiallocator.h>
 
 G_BEGIN_DECLS
 
@@ -91,20 +92,6 @@ G_BEGIN_DECLS
  */
 #define GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED "GstBufferPoolOptionKeepMapped"
 
-/**
- * GST_IMAGE_BUFFER_POOL_TYPE_ION:
- *
- * Type of memory that the pool will use for allocating buffers.
- */
-#define GST_IMAGE_BUFFER_POOL_TYPE_ION "GstBufferPoolTypeIonMemory"
-
-/**
- * GST_IMAGE_BUFFER_POOL_TYPE_GBM:
- *
- * Type of memory that the pool will use for allocating buffers.
- */
-#define GST_IMAGE_BUFFER_POOL_TYPE_GBM "GstBufferPoolTypeGbmMemory"
-
 typedef struct _GstImageBufferPool GstImageBufferPool;
 typedef struct _GstImageBufferPoolClass GstImageBufferPoolClass;
 typedef struct _GstImageBufferPoolPrivate GstImageBufferPoolPrivate;
@@ -124,7 +111,7 @@ struct _GstImageBufferPoolClass
 GType gst_image_buffer_pool_get_type (void);
 
 /// Creates a buffer pool for managing video frames.
-GstBufferPool * gst_image_buffer_pool_new (const gchar * type);
+GstBufferPool * gst_image_buffer_pool_new (void);
 
 /// Retrieve current set video configuration.
 const GstVideoInfo * gst_image_buffer_pool_get_info (GstBufferPool * pool);

@@ -41,6 +41,7 @@
 #include <gst/video/gstimagepool.h>
 #include <gst/video/video.h>
 #include <gst/video/video-utils.h>
+#include <gst/utils/common-utils.h>
 
 #define GST_CAT_DEFAULT gst_dfs_debug
 GST_DEBUG_CATEGORY_STATIC (gst_dfs_debug);
@@ -148,24 +149,6 @@ gst_dfs_src_template (void)
 {
   return gst_pad_template_new ("src", GST_PAD_SRC, GST_PAD_ALWAYS,
       gst_dfs_src_caps ());
-}
-
-static gboolean
-caps_has_feature (const GstCaps * caps, const gchar * feature)
-{
-  guint idx = 0;
-
-  while (idx != gst_caps_get_size (caps)) {
-    GstCapsFeatures *const features = gst_caps_get_features (caps, idx);
-
-    // Skip ANY caps and return immediately if feature is present.
-    if (!gst_caps_features_is_any (features) &&
-        gst_caps_features_contains (features, feature))
-      return TRUE;
-
-    idx++;
-  }
-  return FALSE;
 }
 
 static gboolean
@@ -340,6 +323,7 @@ gst_dfs_create_pool (GstDfs * dfs, GstCaps * caps)
 {
   GstStructure *structure = gst_caps_get_structure (caps, 0);
   GstBufferPool *pool = NULL;
+  GstAllocator *allocator = NULL;
   guint size = 0;
   GstVideoInfo info;
 
@@ -348,20 +332,28 @@ gst_dfs_create_pool (GstDfs * dfs, GstCaps * caps)
       GST_ERROR_OBJECT (dfs, "Invalid caps %" GST_PTR_FORMAT, caps);
       return NULL;
     }
-    // If downstream allocation query supports GBM, allocate gbm memory.
-    if (caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
-      GST_INFO_OBJECT (dfs, "Uses GBM memory");
-      pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
-    } else {
-      GST_INFO_OBJECT (dfs, "Uses ION memory");
-      pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
-    }
-    if (NULL == pool) {
-      GST_ERROR_OBJECT (dfs, "Failed to create buffer pool!");
+
+    if ((pool = gst_image_buffer_pool_new ()) == NULL) {
+      GST_ERROR_OBJECT (dfs, "Failed to create image pool!");
       return NULL;
     }
-    size = GST_VIDEO_INFO_SIZE (&info);
 
+    // If downstream allocation query supports GBM, allocate gbm memory.
+    if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
+      allocator = gst_fd_allocator_new ();
+      GST_INFO_OBJECT (dfs, "Buffer pool uses GBM memory");
+    } else {
+      allocator = gst_qti_allocator_new (GST_FD_MEMORY_FLAG_KEEP_MAPPED);
+      GST_INFO_OBJECT (dfs, "Buffer pool uses DMA memory");
+    }
+
+    if (allocator == NULL) {
+      GST_ERROR_OBJECT (dfs, "Failed to create allocator");
+      gst_clear_object (&pool);
+      return NULL;
+    }
+
+    size = GST_VIDEO_INFO_SIZE (&info);
   } else if (gst_structure_has_name (structure, "cvp/x-disparity")) {
     GST_INFO_OBJECT (dfs, "Uses SYSTEM memory");
     pool = gst_buffer_pool_new ();
@@ -383,9 +375,7 @@ gst_dfs_create_pool (GstDfs * dfs, GstCaps * caps)
   gst_buffer_pool_config_set_params (structure, caps, size,
       DEFAULT_MIN_BUFFERS, DEFAULT_MAX_BUFFERS);
 
-  if (GST_IS_IMAGE_BUFFER_POOL (pool)) {
-    GstAllocator *allocator = gst_fd_allocator_new ();
-
+  if (allocator != NULL) {
     gst_buffer_pool_config_set_allocator (structure, allocator, NULL);
     g_object_unref (allocator);
 

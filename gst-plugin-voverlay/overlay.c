@@ -518,62 +518,60 @@ gst_overlay_create_pool (GstVOverlay * overlay, GstCaps * caps)
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
   GstAllocator *allocator = NULL;
-  GstVideoInfo info;
+  GstVideoInfo info = {0,};
+  GstVideoAlignment align = {0,};
 
   if (!gst_video_info_from_caps (&info, caps)) {
     GST_ERROR_OBJECT (overlay, "Invalid caps %" GST_PTR_FORMAT, caps);
     return NULL;
   }
 
-  if (gst_gbm_qcom_backend_is_supported ()) {
-    if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
-      GST_INFO_OBJECT (overlay, "Uses GBM memory");
-      pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
-    } else {
-      GST_INFO_OBJECT (overlay, "Uses ION memory");
-      pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
-    }
-
-    config = gst_buffer_pool_get_config (pool);
-    allocator = gst_fd_allocator_new ();
-
-    gst_buffer_pool_config_add_option (config,
-        GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
-  } else {
-    GstVideoAlignment align = {0,};
-
-    if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
-      GST_ERROR_OBJECT (overlay, "Failed to get alignment!");
-      return NULL;
-    }
-
-    pool = gst_qti_buffer_pool_new ();
-    config = gst_buffer_pool_get_config (pool);
-
-    gst_buffer_pool_config_add_option (config,
-        GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
-    gst_buffer_pool_config_set_video_alignment (config, &align);
-
-    allocator = gst_qti_allocator_new (GST_FD_MEMORY_FLAG_KEEP_MAPPED);
-    if (allocator == NULL) {
-      GST_ERROR_OBJECT (overlay, "Failed to create QTI allocator");
-      gst_clear_object (&pool);
-      return NULL;
-    }
+  if ((pool = gst_image_buffer_pool_new ()) == NULL) {
+    GST_ERROR_OBJECT (overlay, "Failed to create image pool!");
+    return NULL;
   }
+
+  if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
+    allocator = gst_fd_allocator_new ();
+    GST_INFO_OBJECT (overlay, "Buffer pool uses GBM memory");
+  } else {
+    allocator = gst_qti_allocator_new (GST_FD_MEMORY_FLAG_KEEP_MAPPED);
+    GST_INFO_OBJECT (overlay, "Buffer pool uses DMA memory");
+  }
+
+  if (allocator == NULL) {
+    GST_ERROR_OBJECT (overlay, "Failed to create allocator");
+    gst_clear_object (&pool);
+    return NULL;
+  }
+
+  config = gst_buffer_pool_get_config (pool);
+
+  gst_buffer_pool_config_set_allocator (config, allocator, NULL);
+  g_object_unref (allocator);
+
+  gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
+  gst_buffer_pool_config_add_option (config,
+      GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
+
+  if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
+    GST_ERROR_OBJECT (overlay, "Failed to get alignment!");
+    gst_clear_object (&pool);
+    return NULL;
+  }
+
+  gst_buffer_pool_config_add_option (config,
+      GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
+  gst_buffer_pool_config_set_video_alignment (config, &align);
 
   gst_buffer_pool_config_set_params (config, caps, info.size,
       DEFAULT_MIN_BUFFERS, DEFAULT_MAX_BUFFERS);
-  gst_buffer_pool_config_set_allocator (config, allocator, NULL);
-  gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING_OBJECT (overlay, "Failed to set pool configuration!");
-    g_object_unref (pool);
-    pool = NULL;
+    gst_clear_object (&pool);
   }
 
-  g_object_unref (allocator);
   return pool;
 }
 

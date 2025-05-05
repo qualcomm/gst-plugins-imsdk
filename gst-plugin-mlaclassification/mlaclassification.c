@@ -147,6 +147,7 @@ gst_ml_audio_classification_create_pool (
 {
   GstStructure *structure = gst_caps_get_structure (caps, 0);
   GstBufferPool *pool = NULL;
+  GstAllocator *allocator = NULL;
   guint size = 0;
 
   if (gst_structure_has_name (structure, "video/x-raw")) {
@@ -157,17 +158,22 @@ gst_ml_audio_classification_create_pool (
       return NULL;
     }
 
-    // If downstream allocation query supports GBM, allocate gbm memory.
-    if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
-      GST_INFO_OBJECT (classification, "Uses GBM memory");
-      pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
-    } else {
-      GST_INFO_OBJECT (classification, "Uses ION memory");
-      pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
+    if ((pool = gst_image_buffer_pool_new ()) == NULL) {
+      GST_ERROR_OBJECT (classification, "Failed to create image pool!");
+      return NULL;
     }
 
-    if (NULL == pool) {
-      GST_ERROR_OBJECT (classification, "Failed to create buffer pool!");
+    if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
+      allocator = gst_fd_allocator_new ();
+      GST_INFO_OBJECT (classification, "Buffer pool uses GBM memory");
+    } else {
+      allocator = gst_qti_allocator_new (GST_FD_MEMORY_FLAG_KEEP_MAPPED);
+      GST_INFO_OBJECT (classification, "Buffer pool uses DMA memory");
+    }
+
+    if (allocator == NULL) {
+      GST_ERROR_OBJECT (classification, "Failed to create allocator");
+      gst_clear_object (&pool);
       return NULL;
     }
 
@@ -188,9 +194,7 @@ gst_ml_audio_classification_create_pool (
   gst_buffer_pool_config_set_params (structure, caps, size,
       DEFAULT_MIN_BUFFERS, DEFAULT_MAX_BUFFERS);
 
-  if (GST_IS_IMAGE_BUFFER_POOL (pool)) {
-    GstAllocator *allocator = gst_fd_allocator_new ();
-
+  if (allocator != NULL) {
     gst_buffer_pool_config_set_allocator (structure, allocator, NULL);
     g_object_unref (allocator);
 
@@ -200,8 +204,7 @@ gst_ml_audio_classification_create_pool (
 
   if (!gst_buffer_pool_set_config (pool, structure)) {
     GST_WARNING_OBJECT (classification, "Failed to set pool configuration!");
-    g_object_unref (pool);
-    pool = NULL;
+    gst_clear_object (&pool);
   }
 
   return pool;

@@ -140,8 +140,7 @@ create_image_pool (GstCameraSwitchCtx *cameraswitchctx)
     return FALSE;
   }
 
-  cameraswitchctx->pool =
-      gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
+  cameraswitchctx->pool = gst_image_buffer_pool_new ();
   if (!cameraswitchctx->pool) {
     gst_printerr ("Failed to ccreate a new pool!");
     return FALSE;
