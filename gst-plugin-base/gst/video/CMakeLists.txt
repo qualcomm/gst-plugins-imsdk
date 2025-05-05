@@ -6,7 +6,6 @@ add_library(${GST_QTI_VIDEO_BASE} SHARED
   gstvideoclassificationmeta.c
   gstvideolandmarksmeta.c
   video-converter-engine.c
-  gstqtibufferpool.c
   video-utils.c
   $<$<BOOL:${HAVE_ADRENO_C2D2_H}>:c2d-video-converter.c>
   $<$<BOOL:${HAVE_IOT_CORE_IB2C_H}>:gles-video-converter.cc>
@@ -18,7 +17,6 @@ set(GST_QTI_VIDEO_BASE_HEADERS
   gstvideoclassificationmeta.h
   gstvideolandmarksmeta.h
   video-converter-engine.h
-  gstqtibufferpool.h
   video-utils.h
 )
 
