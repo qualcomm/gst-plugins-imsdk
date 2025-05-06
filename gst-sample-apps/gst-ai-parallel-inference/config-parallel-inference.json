@@ -1,0 +1,15 @@
+{
+    "file-path": "/etc/media/video.mp4",
+    "detection-model": "/etc/models/yolov8_det_quantized.tflite",
+    "detection-labels": "/etc/labels/yolov8.labels",
+    "detection-constants": "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,q-scales=<3.0546178817749023, 0.003793874057009816, 1.0>;",
+    "pose-model": "/etc/models/hrnet_pose_quantized.tflite",
+    "pose-labels": "/etc/labels/hrnet_pose.labels",
+    "pose-constants" : "Posenet,q-offsets=<8.0>,q-scales=<0.0040499246679246426>;",
+    "segmentation-model": "/etc/models/deeplabv3_plus_mobilenet_quantized.tflite",
+    "segmentation-labels": "/etc/labels/deeplabv3_resnet50.labels",
+    "segmentation-constants": "deeplab,q-offsets=<0.0>,q-scales=<1.0>;",
+    "classification-model": "/etc/models/inception_v3_quantized.tflite",
+    "classification-labels": "/etc/labels/classification.labels",
+    "classification-constants": "Inceptionv3,q-offsets=<38.0>,q-scales=<0.17039915919303894>;"
+}
