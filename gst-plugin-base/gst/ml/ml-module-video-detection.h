@@ -130,7 +130,6 @@ struct _GstMLBoxEntry {
 
 /**
  * GstMLBoxPrediction:
- * @batch_idx: Position of the entries in the batch.
  * @entries: GArray of #GstMLBoxEntry.
  * @info: Additonal info structure, beloging to the batch #GstProtectionMeta
  *        in the ML tensor buffer from which the prediction result was produced.
@@ -140,7 +139,6 @@ struct _GstMLBoxEntry {
  * All fields are mandatory and need to be filled by the submodule.
  */
 struct _GstMLBoxPrediction {
-  guint8             batch_idx;
   GArray             *entries;
   const GstStructure *info;
 };

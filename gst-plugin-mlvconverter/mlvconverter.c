@@ -72,7 +72,6 @@
 #include <dlfcn.h>
 #include <unistd.h>
 
-#include <gst/video/gstqtibufferpool.h>
 #include <gst/allocators/gstqtiallocator.h>
 #include <gst/video/video-utils.h>
 #include <gst/video/gstimagepool.h>
@@ -126,10 +125,6 @@ G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
       mode == GST_ML_CONVERSION_MODE_ROI_CUMULATIVE)
 
 
-#ifndef GST_CAPS_FEATURE_MEMORY_GBM
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
-#endif
-
 #define GST_ML_VIDEO_FORMATS \
     "{ RGBA, BGRA, ABGR, ARGB, RGBx, BGRx, xRGB, xBGR, BGR, RGB, GRAY8, NV12, NV21, YUY2, UYVY, NV12_Q08C }"
 
@@ -163,7 +158,7 @@ gst_ml_video_converter_sink_caps (void)
   if (g_once_init_enter (&inited)) {
     caps = gst_caps_from_string (GST_VIDEO_CAPS_MAKE (GST_ML_VIDEO_FORMATS));
 
-    if (gst_is_gbm_supported ()) {
+    if (gst_gbm_qcom_backend_is_supported ()) {
       GstCaps *tmplcaps = gst_caps_from_string (
           GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
               GST_ML_VIDEO_FORMATS));
@@ -620,8 +615,7 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
       source->h = roimeta->h;
 
       // Propagate the ID of the ROI from which this batch position was created.
-      gst_structure_set (pmeta->info, "source-region-id", G_TYPE_INT,
-          roimeta->id, NULL);
+      gst_structure_set (pmeta->info, "parent-id", G_TYPE_INT, roimeta->id, NULL);
     } else { // GST_CONVERSION_MODE_IS_IMAGE (mlconverter->mode)
       // Check whether the image was produced as a split from some base image.
       while ((roimeta = GST_BUFFER_ITERATE_ROI_METAS (inbuffer, state)) != NULL) {
@@ -631,8 +625,7 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
 
       if (roimeta != NULL) {
         // Propagate the ID of the ROI from which this batch position was created.
-        gst_structure_set (pmeta->info, "source-region-id", G_TYPE_INT,
-            roimeta->id, NULL);
+        gst_structure_set (pmeta->info, "parent-id", G_TYPE_INT, roimeta->id, NULL);
 
         source->x = roimeta->x;
         source->y = roimeta->y;
@@ -1069,7 +1062,7 @@ gst_ml_video_converter_translate_ml_caps (GstMLVideoConverter * mlconverter,
 
   tmplcaps = gst_caps_new_empty ();
 
-  if (gst_is_gbm_supported ()) {
+  if (gst_gbm_qcom_backend_is_supported ()) {
     gst_caps_append_structure_full (tmplcaps,
         gst_structure_new_empty ("video/x-raw"),
         gst_caps_features_new (GST_CAPS_FEATURE_MEMORY_GBM, NULL));
@@ -1278,7 +1271,7 @@ gst_ml_video_converter_propose_allocation (GstBaseTransform * base,
   GstMLVideoConverter *mlconverter = GST_ML_VIDEO_CONVERTER (base);
   GstCaps *caps = NULL;
   GstBufferPool *pool = NULL;
-  GstVideoInfo info;
+  GstVideoInfo info = {0,};
   guint size = 0;
   gboolean needpool = FALSE;
 
@@ -1303,81 +1296,61 @@ gst_ml_video_converter_propose_allocation (GstBaseTransform * base,
     return FALSE;
   }
 
-  // Get the size from video info.
-  size = GST_VIDEO_INFO_SIZE (&info);
-
   if (needpool) {
     GstStructure *config = NULL;
     GstAllocator *allocator = NULL;
+    GstVideoAlignment align = {0,};
 
-    if (gst_is_gbm_supported ()) {
-      // If downstream allocation query supports GBM, allocate gbm memory.
-      if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
-        GST_INFO_OBJECT (mlconverter, "Uses GBM memory");
-        pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
-      } else {
-        GST_INFO_OBJECT (mlconverter, "Uses ION memory");
-        pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
-      }
+    if ((pool = gst_image_buffer_pool_new ()) == NULL) {
+      GST_ERROR_OBJECT (mlconverter, "Failed to create image pool!");
+      return FALSE;
+    }
 
-      config = gst_buffer_pool_get_config (pool);
-
+    if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
       allocator = gst_fd_allocator_new ();
-
-      gst_buffer_pool_config_add_option (config,
-          GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
+      GST_INFO_OBJECT (mlconverter, "Buffer pool uses GBM memory");
     } else {
-      GstVideoFormat format;
-      GstVideoAlignment align;
-      gboolean success;
-      guint width, height;
-      gint stride, scanline;
+      allocator = gst_qti_allocator_new (GST_FD_MEMORY_FLAG_KEEP_MAPPED);
+      GST_INFO_OBJECT (mlconverter, "Buffer pool uses DMA memory");
+    }
 
-      width = GST_VIDEO_INFO_WIDTH (&info);
-      height = GST_VIDEO_INFO_HEIGHT (&info);
-      format = GST_VIDEO_INFO_FORMAT (&info);
+    if (allocator == NULL) {
+      GST_ERROR_OBJECT (mlconverter, "Failed to create allocator");
+      gst_clear_object (&pool);
+      return FALSE;
+    }
 
-      success = gst_adreno_utils_compute_alignment (width, height, format,
-          &stride, &scanline);
-      if (!success) {
-        GST_ERROR_OBJECT (mlconverter,"Failed to get alignment");
-        return FALSE;
-      }
+    config = gst_buffer_pool_get_config (pool);
 
-      pool = gst_qti_buffer_pool_new ();
-      config = gst_buffer_pool_get_config (pool);
+    gst_buffer_pool_config_set_allocator (config, allocator, NULL);
+    g_object_unref (allocator);
 
-      gst_video_alignment_reset (&align);
-      align.padding_bottom = scanline - height;
-      align.padding_right = stride - width;
-      gst_video_info_align (&info, &align);
+    gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
+    gst_buffer_pool_config_add_option (config,
+        GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
 
-      gst_buffer_pool_config_add_option (config,
-          GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
-      gst_buffer_pool_config_set_video_alignment (config, &align);
-
-      allocator = gst_qti_allocator_new ();
-      if (allocator == NULL) {
-        GST_ERROR_OBJECT (mlconverter, "Failed to create QTI allocator");
-        gst_clear_object (&pool);
-        return FALSE;
-      }
+    if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
+      GST_ERROR_OBJECT (mlconverter, "Failed to get alignment!");
+      gst_clear_object (&pool);
+      return FALSE;
     }
 
     gst_buffer_pool_config_set_params (config, caps, info.size,
         DEFAULT_PROP_MIN_BUFFERS, DEFAULT_PROP_MAX_BUFFERS);
-    gst_buffer_pool_config_set_allocator (config, allocator, NULL);
-    gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
-    gst_query_add_allocation_param (outquery, allocator, NULL);
-    g_object_unref (allocator);
+
+    gst_buffer_pool_config_add_option (config,
+        GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
+    gst_buffer_pool_config_set_video_alignment (config, &align);
 
     if (!gst_buffer_pool_set_config (pool, config)) {
       GST_WARNING_OBJECT (mlconverter, "Failed to set pool configuration!");
-      g_object_unref (pool);
-      pool = NULL;
+      gst_clear_object (&pool);
       return FALSE;
     }
   }
+
+  // Get the size from video info.
+  size = GST_VIDEO_INFO_SIZE (&info);
 
   // If upstream does't have a pool requirement, set only size in query.
   gst_query_add_allocation_pool (outquery, needpool ? pool : NULL, size, 0, 0);

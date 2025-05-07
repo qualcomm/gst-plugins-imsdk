@@ -1,85 +1,37 @@
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef __GST_PARSER_MODULE_H__
 #define __GST_PARSER_MODULE_H__
 
-#include <gst/ml/ml-info.h>
-#include <gst/ml/ml-frame.h>
-#include <gst/ml/gstmlmeta.h>
+#include <gst/gst.h>
 
 G_BEGIN_DECLS
 
-#define GST_PARSER_MODULE_CAST(obj) ((GstParserModule*)(obj))
-
 /**
- * GST_PARSER_MODULE_OPT_CAPS
+ * GST_PARSER_MODULE_OPT_DATA_TYPE:
  *
- * #GST_TYPE_CAPS: A fixated set of ML caps. Submodule will expect to receive
- *                 ML frames with the fixated caps layout for processing.
- * Default: NULL
- *
- * To be used as a mandatory option for 'gst_parser_module_configure'.
+ * #GstDataType, The type of the data expected in the incoming buffers.
+ * Default: #GST_DATA_TYPE_NONE.
  */
-#define GST_PARSER_MODULE_OPT_CAPS "GstParserModule.caps"
-
-/**
- * GST_PARSER_MODULE_OPT_LABELS
- *
- * #G_TYPE_STRING: Path and name of the file containing the ML labels.
- * Default: NULL
- *
- * To be used as a possible option for 'gst_parser_module_configure'.
- */
-#define GST_PARSER_MODULE_OPT_LABELS "GstParserModule.labels"
-
-/**
- * GST_PARSER_MODULE_OPT_THRESHOLD
- *
- * #G_TYPE_DOUBLE: The confidence threshold value in the range of 0.0 to 100.0,
- *                 below which prediction results will be discarded.
- * Default: 0.0
- *
- * To be used as a possible option for 'gst_parser_module_configure'.
- */
-#define GST_PARSER_MODULE_OPT_THRESHOLD "GstParserModule.threshold"
-
-/**
- * GST_PARSER_MODULE_OPT_CONSTANTS
- *
- * #GST_TYPE_STRUCTURE: A structure containing module and caps specific
- *                      constants, offsets and/or coefficients used for
- *                      processing incoming tensors.
- *                      May not be applicable for all modules.
- * Default: NULL
- *
- * To be used as a possible option for 'gst_parser_module_configure'.
- */
-#define GST_PARSER_MODULE_OPT_CONSTANTS "GstParserModule.constants"
-
-/**
- * GST_PARSER_MODULE_OPT_XTRA_OPERATION
- *
- * #G_TYPE_ENUM: Operation enum value contains extra operations to perform
- *               on the data.
- *               May not be applicable for all modules.
- * Default: NULL
- *
- * To be used as a possible option for 'gst_parser_module_configure'.
- */
-#define GST_PARSER_MODULE_OPT_XTRA_OPERATION "GstParserModule.xtra-operation"
+#define GST_PARSER_MODULE_OPT_DATA_TYPE "GstParserModule.data-type"
 
 typedef struct _GstParserModule GstParserModule;
-typedef struct _GstMLLabel GstMLLabel;
+
+typedef enum {
+  GST_DATA_TYPE_NONE,
+  GST_DATA_TYPE_VIDEO,
+  GST_DATA_TYPE_TEXT,
+} GstDataType;
 
 /**
  * GstParserModuleOpen:
  *
- * Create a new instance of the private ML post-processing module structure.
+ * Create a new instance of the private parser module structure.
  *
- * Post-processing module must implement function called 'gst_parser_module_open'
+ * Parser module must implement function called 'gst_parser_module_open'
  * with the same arguments and return types.
  *
  * return: Pointer to private module instance on success or NULL on failure
@@ -88,11 +40,11 @@ typedef gpointer  (*GstParserModuleOpen)      (void);
 
 /**
  * GstParserModuleClose:
- * @submodule: Pointer to the private ML post-processing module instance.
+ * @submodule: Pointer to the private parser module instance.
  *
- * Deinitialize and free the private ML post-processing module instance.
+ * Deinitialize and free the private parser module instance.
  *
- * Post-processing module must implement function called 'gst_parser_module_close'
+ * Parser module must implement function called 'gst_parser_module_close'
  * with the same arguments.
  *
  * return: NONE
@@ -101,67 +53,55 @@ typedef void      (*GstParserModuleClose)     (gpointer submodule);
 
 /**
  * GstParserModuleConfigure:
- * @submodule: Pointer to the private ML post-processing module instance.
+ * @submodule: Pointer to the private parser module instance.
  * @settings: Pointer to GStreamer structure containing the settings.
  *
  * Configure the module with a set of options.
  *
- * Post-processing module must implement function called 'gst_parser_module_configure'
+ * Parser module must implement function called 'gst_parser_module_configure'
  * with the same arguments.
  *
  * return: TRUE on success or FALSE on failure
  */
 typedef gboolean  (*GstParserModuleConfigure) (gpointer submodule,
-                                           GstStructure * settings);
+                                               GstStructure * settings);
 
 /**
  * GstParserModuleProcess:
- * @submodule: Pointer to the private ML post-processing module instance.
- * @frame: Frame containing mapped tensor memory blocks that need processing.
- * @output: Plugin specific output, refer to the module header of that plugin.
+ * @submodule: Pointer to the private parser module instance.
+ * @inbuffer: #GstBuffer containing ml metadata.
+ * @outbuffer: #GstBuffer containing parsed metadata in string format.
  *
- * Parses incoming buffer containing result tensors and converts that
- * information into a plugin specific output.
+ * Parses incoming buffer containing ml metadata and converts that
+ * information into a string format.
  *
- * Post-processing module must implement function called 'gst_parser_module_process'
+ * Parser module must implement function called 'gst_parser_module_process'
  * with the same arguments.
  *
- * The the type the 'output' argument is plugin specific. Refer to the plugin
+ * The type of the 'outbuffer' argument is plugin specific. Refer to the plugin
  * module header for detailed information.
  *
  * return: TRUE on success or FALSE on failure
  */
 typedef gboolean  (*GstParserModuleProcess) (gpointer submodule,
-                                            GstBuffer * inbuffer,
-                                            gchar ** output);
-
-/**
- * GstMLLabel:
- * @name: The label name.
- * @color: Color of the label is present, otherwise is set to 0x00000000.
- *
- * Machine learning label used for post-processing.
- */
-struct _GstMLLabel {
-  gchar *name;
-  guint color;
-};
+                                             GstBuffer * inbuffer,
+                                             GstBuffer * outbuffer);
 
 /**
  * gst_parser_module_new:
  * @name: Name of the module.
  *
- * Allocate an instance of ML post-processing module.
+ * Allocate an instance of parser module.
  * Usable only at plugin level.
  *
- * return: Pointer to ML post-processing module on success or NULL on failure
+ * return: Pointer to parser module on success or NULL on failure
  */
 GST_API GstParserModule *
 gst_parser_module_new      (const gchar * name);
 
 /**
  * gst_parser_module_free:
- * @module: Pointer to the ML post-processing module.
+ * @module: Pointer to the parser module.
  *
  * De-initialize and free the memory associated with the module.
  * Usable only at plugin level.
@@ -173,7 +113,7 @@ gst_parser_module_free     (GstParserModule * module);
 
 /**
  * gst_parser_module_init:
- * @module: Pointer to ML post-processing module.
+ * @module: Pointer to parser module.
  *
  * Convenient wrapper function used on plugin level to call the submodule
  * 'gst_parser_module_open' API.
@@ -185,7 +125,7 @@ gst_parser_module_init     (GstParserModule * module);
 
 /**
  * gst_parser_module_set_opts:
- * @module: Pointer to ML post-processing module.
+ * @module: Pointer to parser module.
  * @options: Pointer to GStreamer structure containing the settings.
  *
  * Convenient wrapper function used on plugin level to call the submodule
@@ -198,22 +138,22 @@ gst_parser_module_set_opts (GstParserModule * module, GstStructure * options);
 
 /**
  * gst_parser_module_execute:
- * @module: Pointer to ML post-processing module.
- * @inbuffer: Buffer of tensor memory blocks that need processing.
- * @output: Plugin specific output, refer to the module header of that plugin.
+ * @module: Pointer to the private parser module instance.
+ * @inbuffer: #GstBuffer containing ml metadata.
+ * @outbuffer: #GstBuffer containing parsed metadata in string format.
  *
  * Convenient wrapper function used on plugin level to call the submodule
- * 'gst_parser_module_process' API in order to process input tensors and produce
- * a plugin specific output.
+ * 'gst_parser_module_process' API in order to process input metadata and
+ * produce string format output.
  *
  * return: TRUE on success or FALSE on failure
  */
 GST_API gboolean
 gst_parser_module_execute  (GstParserModule * module, GstBuffer * inbuffer,
-                            gchar ** output);
+                            GstBuffer * outbuffer);
 
 /**
- * gst_ml_enumarate_modules:
+ * gst_parser_enumarate_modules:
  * @type: String containing the prefix used to identify the modules type.
  *
  * Helper function to find all modules of the given type and create an array
@@ -222,7 +162,7 @@ gst_parser_module_execute  (GstParserModule * module, GstBuffer * inbuffer,
  * return: Pointer to Array of GEnumValue on success or NULL on failure
  */
 GEnumValue *
-gst_ml_enumarate_modules (const gchar * type);
+gst_parser_enumarate_modules (const gchar * type);
 
 G_END_DECLS
 

@@ -132,8 +132,10 @@ gst_jpeg_enc_create_pool (GstJPEGEncoder * jpegenc, GstCaps * caps)
     return NULL;
   }
 
-  GST_INFO_OBJECT (jpegenc, "Jpeg encoder uses ION memory");
-  pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
+  pool = gst_image_buffer_pool_new ();
+
+  allocator = gst_fd_allocator_new ();
+  GST_INFO_OBJECT (jpegenc, "Buffer pool uses DMA memory");
 
   // Align size to 64 lines
   gint alignedw = (GST_VIDEO_INFO_WIDTH (&info) + 64-1) & ~(64-1);
@@ -152,8 +154,7 @@ gst_jpeg_enc_create_pool (GstJPEGEncoder * jpegenc, GstCaps * caps)
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING_OBJECT (jpegenc, "Failed to set pool configuration!");
-    g_object_unref (pool);
-    pool = NULL;
+    gst_clear_object (&pool);
   }
 
   g_object_unref (allocator);

@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -74,7 +74,6 @@
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
 #include <gst/ml/ml-module-utils.h>
-#include <gst/video/gstqtibufferpool.h>
 #include <gst/allocators/gstqtiallocator.h>
 #include <gst/video/video-utils.h>
 #include <gst/video/gstimagepool.h>
@@ -96,10 +95,6 @@ G_DEFINE_TYPE (GstMLVideoDetection, gst_ml_video_detection,
     GST_TYPE_BASE_TRANSFORM);
 
 #define GST_TYPE_ML_MODULES (gst_ml_modules_get_type())
-
-#ifndef GST_CAPS_FEATURE_MEMORY_GBM
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
-#endif
 
 #define GST_ML_VIDEO_DETECTION_VIDEO_FORMATS \
     "{ BGRA, BGRx, BGR16 }"
@@ -176,7 +171,7 @@ gst_ml_video_detection_src_caps (void)
   if (g_once_init_enter (&inited)) {
     caps = gst_caps_from_string (GST_ML_VIDEO_DETECTION_SRC_CAPS);
 
-    if (gst_is_gbm_supported ()) {
+    if (gst_gbm_qcom_backend_is_supported ()) {
       GstCaps *tmplcaps = gst_caps_from_string (
           GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
               GST_ML_VIDEO_DETECTION_VIDEO_FORMATS));
@@ -279,78 +274,55 @@ gst_ml_video_detection_create_pool (GstMLVideoDetection * detection,
   GstAllocator *allocator = NULL;
 
   if (gst_structure_has_name (structure, "video/x-raw")) {
-    GstVideoInfo info;
+    GstVideoInfo info = {0,};
+    GstVideoAlignment align = {0,};
 
     if (!gst_video_info_from_caps (&info, caps)) {
       GST_ERROR_OBJECT (detection, "Invalid caps %" GST_PTR_FORMAT, caps);
       return NULL;
     }
 
-    if (gst_is_gbm_supported ()) {
-      // If downstream allocation query supports GBM, allocate gbm memory.
-      if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
-        GST_INFO_OBJECT (detection, "Uses GBM memory");
-        pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
-      } else {
-        GST_INFO_OBJECT (detection, "Uses ION memory");
-        pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
-      }
-
-      if (NULL == pool) {
-        GST_ERROR_OBJECT (detection, "Failed to create buffer pool!");
-        return NULL;
-      }
-
-      structure = gst_buffer_pool_get_config (pool);
-      allocator = gst_fd_allocator_new ();
-
-      gst_buffer_pool_config_add_option (structure,
-          GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
-    } else {
-      GstVideoFormat format;
-      GstVideoAlignment align;
-      gboolean success;
-      guint width, height;
-      gint stride, scanline;
-
-      width = GST_VIDEO_INFO_WIDTH (&info);
-      height = GST_VIDEO_INFO_HEIGHT (&info);
-      format = GST_VIDEO_INFO_FORMAT (&info);
-
-      success = gst_adreno_utils_compute_alignment (width, height, format,
-          &stride, &scanline);
-      if (!success) {
-        GST_ERROR_OBJECT(detection,"Failed to get alignment");
-        return NULL;
-      }
-
-      pool = gst_qti_buffer_pool_new ();
-      structure = gst_buffer_pool_get_config (pool);
-
-      gst_video_alignment_reset (&align);
-      align.padding_bottom = scanline - height;
-      align.padding_right = stride - width;
-      gst_video_info_align (&info, &align);
-
-      gst_buffer_pool_config_add_option (structure,
-          GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
-      gst_buffer_pool_config_set_video_alignment (structure, &align);
-
-      allocator = gst_qti_allocator_new ();
-      if (allocator == NULL) {
-        GST_ERROR_OBJECT (detection, "Failed to create QTI allocator");
-        gst_clear_object (&pool);
-        return NULL;
-      }
+    if ((pool = gst_image_buffer_pool_new ()) == NULL) {
+      GST_ERROR_OBJECT (detection, "Failed to create image pool!");
+      return NULL;
     }
 
-    gst_buffer_pool_config_set_params (structure, caps, info.size,
-      DEFAULT_MIN_BUFFERS, DEFAULT_MAX_BUFFERS);
-    gst_buffer_pool_config_add_option (structure,
-        GST_BUFFER_POOL_OPTION_VIDEO_META);
+    if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
+      allocator = gst_fd_allocator_new ();
+      GST_INFO_OBJECT (detection, "Buffer pool uses GBM memory");
+    } else {
+      allocator = gst_qti_allocator_new (GST_FD_MEMORY_FLAG_KEEP_MAPPED);
+      GST_INFO_OBJECT (detection, "Buffer pool uses DMA memory");
+    }
+
+    if (allocator == NULL) {
+      GST_ERROR_OBJECT (detection, "Failed to create allocator");
+      gst_clear_object (&pool);
+      return NULL;
+    }
+
+    structure = gst_buffer_pool_get_config (pool);
+
     gst_buffer_pool_config_set_allocator (structure, allocator, NULL);
     g_object_unref (allocator);
 
+    gst_buffer_pool_config_add_option (structure,
+        GST_BUFFER_POOL_OPTION_VIDEO_META);
+    gst_buffer_pool_config_add_option (structure,
+        GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
+
+    if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
+      GST_ERROR_OBJECT (detection, "Failed to get alignment!");
+      gst_clear_object (&pool);
+      return NULL;
+    }
+
+    gst_buffer_pool_config_add_option (structure,
+        GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
+    gst_buffer_pool_config_set_video_alignment (structure, &align);
+
+    gst_buffer_pool_config_set_params (structure, caps, info.size,
+        DEFAULT_MIN_BUFFERS, DEFAULT_MAX_BUFFERS);
   } else if (gst_structure_has_name (structure, "text/x-raw")) {
     GST_INFO_OBJECT (detection, "Uses SYSTEM memory");
     pool = gst_mem_buffer_pool_new (GST_MEMORY_BUFFER_POOL_TYPE_SYSTEM);
@@ -367,8 +339,7 @@ gst_ml_video_detection_create_pool (GstMLVideoDetection * detection,
 
   if (!gst_buffer_pool_set_config (pool, structure)) {
     GST_WARNING_OBJECT (detection, "Failed to set pool configuration!");
-    g_object_unref (pool);
-    pool = NULL;
+    gst_clear_object (&pool);
   }
 
   return pool;
@@ -619,9 +590,8 @@ gst_ml_video_detection_fill_video_output (GstMLVideoDetection * detection,
       g_return_val_if_fail (CAIRO_STATUS_SUCCESS == cairo_status (context), FALSE);
 
       GST_TRACE_OBJECT (detection, "Batch: %u, label: %s, confidence: %.1f%%, "
-          "[%.2f %.2f %.2f %.2f]", prediction->batch_idx,
-          g_quark_to_string (entry->name), entry->confidence,
-          entry->top, entry->left, entry->bottom, entry->right);
+          "[%.2f %.2f %.2f %.2f]", idx, g_quark_to_string (entry->name),
+          entry->confidence, entry->top, entry->left, entry->bottom, entry->right);
 
       // Flush to ensure all writing to the surface has been done.
       cairo_surface_flush (surface);
@@ -689,7 +659,7 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
       height = entry->bottom - entry->top;
 
       GST_TRACE_OBJECT (detection, "Batch: %u, ID: %X, Label: %s, Confidence: "
-          "%.1f%%, Box [%.2f %.2f %.2f %.2f]", prediction->batch_idx, id,
+          "%.1f%%, Box [%.2f %.2f %.2f %.2f]", idx, id,
           g_quark_to_string (entry->name), entry->confidence, x, y, width, height);
 
       // Replace empty spaces otherwise subsequent stream parse call will fail.
@@ -762,8 +732,7 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
       g_value_unset (&value);
     }
 
-    structure = gst_structure_new ("ObjectDetection",
-        "batch-index", G_TYPE_UINT, prediction->batch_idx, NULL);
+    structure = gst_structure_new_empty ("ObjectDetection");
 
     gst_structure_set_value (structure, "bounding-boxes", &bboxes);
     g_value_reset (&bboxes);
@@ -783,8 +752,8 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
     if ((val = gst_structure_get_value (prediction->info, "stream-timestamp")))
       gst_structure_set_value (structure, "stream-timestamp", val);
 
-    if ((val = gst_structure_get_value (prediction->info, "source-region-id")))
-      gst_structure_set_value (structure, "source-region-id", val);
+    if ((val = gst_structure_get_value (prediction->info, "parent-id")))
+      gst_structure_set_value (structure, "parent-id", val);
 
     g_value_init (&value, GST_TYPE_STRUCTURE);
     g_value_take_boxed (&value, structure);
@@ -1320,7 +1289,6 @@ gst_ml_video_detection_set_caps (GstBaseTransform * base, GstCaps * incaps,
         &(g_array_index (detection->predictions, GstMLBoxPrediction, idx));
 
     prediction->entries = g_array_new (FALSE, TRUE, sizeof (GstMLBoxEntry));
-    prediction->batch_idx = idx;
 
     g_array_set_clear_func (prediction->entries,
         (GDestroyNotify) gst_ml_box_entry_cleanup);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -12,6 +12,7 @@ gst_video_classification_meta_init (GstMeta * meta, gpointer params,
   GstVideoClassificationMeta *classmeta = GST_VIDEO_CLASSIFICATION_META_CAST (meta);
 
   classmeta->id = 0;
+  classmeta->parent_id = -1;
   classmeta->labels = NULL;
 
   return TRUE;
@@ -63,6 +64,7 @@ gst_video_classification_meta_transform (GstBuffer * transbuffer, GstMeta * meta
   }
 
   dmeta->id = smeta->id;
+  dmeta->parent_id = smeta->parent_id;
 
   GST_DEBUG ("Duplicate Video Classification metadata");
   return TRUE;
@@ -158,4 +160,52 @@ gst_buffer_get_video_classification_meta_id (GstBuffer * buffer, guint id)
     }
   }
   return NULL;
+}
+
+GList *
+gst_buffer_get_video_classification_metas_parent_id (GstBuffer * buffer,
+    const gint parent_id)
+{
+  GList *metalist = NULL;
+  gpointer state = NULL;
+  GstMeta *meta = NULL;
+
+  while ((meta = gst_buffer_iterate_meta (buffer, &state))) {
+    if (meta->info->api != GST_VIDEO_CLASSIFICATION_META_API_TYPE)
+      continue;
+
+    if (GST_VIDEO_CLASSIFICATION_META_CAST (meta)->parent_id == parent_id)
+      metalist = g_list_prepend (metalist, meta);
+  }
+  return metalist;
+}
+
+GstVideoClassificationMeta *
+gst_buffer_copy_video_classification_meta (GstBuffer * buffer,
+    GstVideoClassificationMeta * meta)
+{
+  GstVideoClassificationMeta *newmeta = NULL;
+  GArray *labels = g_array_copy (meta->labels);
+  guint idx = 0;
+
+  // The GArray copy above naturally doesn't copy the data in pointers.
+  // Iterate over the labels and deep copy any extra params.
+  for (idx = 0; idx < labels->len; idx++) {
+    GstClassLabel *label = &(g_array_index (labels, GstClassLabel, idx));
+
+    if (label->xtraparams == NULL)
+      continue;
+
+    label->xtraparams = gst_structure_copy (label->xtraparams);
+  }
+
+  g_array_set_clear_func (labels,
+      (GDestroyNotify) gst_video_classification_label_cleanup);
+
+  newmeta = gst_buffer_add_video_classification_meta (buffer, labels);
+
+  newmeta->id = meta->id;
+  newmeta->parent_id = meta->parent_id;
+
+  return newmeta;
 }

@@ -62,6 +62,8 @@ if(HAVE_DFS_FACTORY_H)
     ${GST_VIDEO_LIBRARIES}
     ${CMAKE_DL_LIBS}
     gstqtivideobase
+    gstqtiutilsbase
+    gstqtiallocatorsbase
   )
 
   install(

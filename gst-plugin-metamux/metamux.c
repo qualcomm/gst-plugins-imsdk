@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -259,6 +259,7 @@ gst_metamux_flush_metadata_queues (GstMetaMux * muxer)
 
     g_clear_pointer (&(dpad)->strcache, g_free);
     g_clear_pointer (&(dpad)->prtlmeta, gst_metadata_item_free);
+    g_clear_pointer (&(dpad)->lastmeta, gst_metadata_item_free);
   }
 
   g_cond_signal (&(muxer)->wakeup);
@@ -280,9 +281,8 @@ gst_metamux_process_opticalflow_metadata (GstMetaMux * muxer,
     return;
   }
 
-  gst_structure_get (structure,
-      "mvectors", G_TYPE_ARRAY, &mvectors, "mvstats", G_TYPE_ARRAY, &mvstats,
-      NULL);
+  gst_structure_get (structure, "mvectors", G_TYPE_ARRAY, &mvectors,
+      "mvstats", G_TYPE_ARRAY, &mvstats, NULL);
 
   meta = gst_buffer_add_cv_optclflow_meta (buffer, mvectors, mvstats);
 
@@ -302,7 +302,7 @@ gst_metamux_process_detection_metadata (GstMetaMux * muxer, GstBuffer * buffer,
   guint id = 0, idx = 0, num = 0, size = 0, length = 0, color = 0;
 
   // If result is derived from a ROI, use it the recalculate dimensions.
-  if ((value = gst_structure_get_value (structure, "source-region-id"))) {
+  if ((value = gst_structure_get_value (structure, "parent-id")) != NULL) {
     parent_roimeta = gst_buffer_get_video_region_of_interest_meta_id (buffer,
         g_value_get_int (value));
   }
@@ -331,6 +331,7 @@ gst_metamux_process_detection_metadata (GstMetaMux * muxer, GstBuffer * buffer,
     width = g_value_get_float (gst_value_array_get_value (value, 2));
     height = g_value_get_float (gst_value_array_get_value (value, 3));
 
+    // Translate relative coordinates to absolute.
     if (parent_roimeta != NULL) {
       x = (x * parent_roimeta->w) + parent_roimeta->x;
       y = (y * parent_roimeta->h) + parent_roimeta->y;
@@ -377,15 +378,12 @@ gst_metamux_process_detection_metadata (GstMetaMux * muxer, GstBuffer * buffer,
         gst_structure_get_double (param, "y", &ly);
 
         // Translate relative coordinates to absolute.
-        kp->x = lx * width;
-        kp->y = ly * height;
+        kp->x = (lx * width) + x;
+        kp->y = (ly * height) + y;
       }
 
       // Overwrite the landmarks field with the updated coordinates.
       gst_structure_set (entry, "landmarks", G_TYPE_ARRAY, lndmrks, NULL);
-    } else {
-      // Make sure there are no landmarks if their size is 0.
-      gst_structure_remove_field (entry, "landmarks");
     }
 
     // Clip width and height if it outside the frame limits.
@@ -407,12 +405,13 @@ gst_metamux_process_detection_metadata (GstMetaMux * muxer, GstBuffer * buffer,
     // Set the parent ID of the newly added ROI meta.
     roimeta->parent_id = (parent_roimeta != NULL) ? parent_roimeta->id : (-1);
 
+    entry = gst_structure_copy (entry);
+
     // Remove the already unnecessary fields.
     gst_structure_remove_fields (entry, "rectangle", "id", NULL);
     gst_structure_set_name (entry, "ObjectDetection");
 
-    gst_video_region_of_interest_meta_add_param (roimeta,
-        gst_structure_copy (entry));
+    gst_video_region_of_interest_meta_add_param (roimeta, entry);
 
     GST_TRACE_OBJECT (muxer, "Attached 'ObjectDetection' meta with ID[0x%X] "
         "parent ID[0x%X] to buffer %p", roimeta->id, roimeta->parent_id, buffer);
@@ -429,10 +428,10 @@ gst_metamux_process_landmarks_metadata (GstMetaMux * muxer, GstBuffer * buffer,
   const GValue *poses = NULL, *value = NULL, *subvalue = NULL;
   GstStructure *params = NULL, *entry = NULL;
   gdouble confidence = 0.0, x = 0.0, y = 0.0;
-  guint id = 0, idx = 0, num = 0, seqnum = 0, size = 0, length = 0;
+  guint idx = 0, num = 0, seqnum = 0, size = 0, length = 0;
 
   // If result is derived from a ROI, attach this result to that ROI meta.
-  if ((value = gst_structure_get_value (structure, "source-region-id"))) {
+  if ((value = gst_structure_get_value (structure, "parent-id")) != NULL) {
     roimeta = gst_buffer_get_video_region_of_interest_meta_id (buffer,
         g_value_get_int (value));
   }
@@ -484,8 +483,8 @@ gst_metamux_process_landmarks_metadata (GstMetaMux * muxer, GstBuffer * buffer,
 
       // Translate relative coordinates to absolute.
       if (roimeta != NULL) {
-        kp->x = x * roimeta->w;
-        kp->y = y * roimeta->h;
+        kp->x = roimeta->x + (x * roimeta->w);
+        kp->y = roimeta->y + (y * roimeta->h);
       } else { // (roimeta == NULL)
         kp->x = x * GST_VIDEO_INFO_WIDTH (muxer->vinfo);
         kp->y = y * GST_VIDEO_INFO_HEIGHT (muxer->vinfo);
@@ -525,37 +524,20 @@ gst_metamux_process_landmarks_metadata (GstMetaMux * muxer, GstBuffer * buffer,
       }
     }
 
-    gst_structure_get_uint (entry, "id", &id);
+    meta = gst_buffer_add_video_landmarks_meta (buffer, confidence,
+        keypoints, links);
+    gst_structure_get_uint (entry, "id", &(meta->id));
 
-    // Remove the already unnecessary fields.
-    gst_structure_remove_fields (entry, "id", "confidence", "keypoints",
-        "connection", NULL);
+    // Check if result is not derived from ROI, overwrite the parent_id field.
+    meta->parent_id = (roimeta != NULL) ? roimeta->id : (-1);
 
-    if (roimeta == NULL) {
-      // Result is not derived from ROI, attach a new meta item.
-      meta = gst_buffer_add_video_landmarks_meta (buffer, confidence,
-          keypoints, links);
-      meta->id = id;
-
-      if ((value = gst_structure_get_value (entry, "xtraparams")) != NULL) {
-        GstStructure *xtraparams = GST_STRUCTURE (g_value_get_boxed (value));
-        meta->xtraparams = gst_structure_copy (xtraparams);
-      }
-
-      GST_TRACE_OBJECT (muxer, "Attached 'VideoLandmarks' meta with ID[0x%X] "
-          "to buffer %p", meta->id, buffer);
-    } else { // (roimeta != NULL)
-      params = gst_structure_copy (entry);
-      gst_structure_set_name (params, "VideoLandmarks");
-
-      gst_structure_set (params,
-          "keypoints", G_TYPE_ARRAY, keypoints, "links", G_TYPE_ARRAY, links,
-          "confidence", G_TYPE_DOUBLE, confidence, "id", G_TYPE_UINT, id, NULL);
-      gst_video_region_of_interest_meta_add_param (roimeta, params);
-
-      GST_TRACE_OBJECT (muxer, "Attached 'VideoLandmarks' param with ID[0x%X] "
-          "to ROI meta with ID[0x%X] in buffer %p", id, roimeta->id, buffer);
+    if ((value = gst_structure_get_value (entry, "xtraparams")) != NULL) {
+      GstStructure *xtraparams = GST_STRUCTURE (g_value_get_boxed (value));
+      meta->xtraparams = gst_structure_copy (xtraparams);
     }
+
+    GST_TRACE_OBJECT (muxer, "Attached 'VideoLandmarks' meta with ID[0x%X] "
+        "and parent ID[0x%X] to buffer %p", meta->id, meta->parent_id, buffer);
   }
 }
 
@@ -565,12 +547,12 @@ gst_metamux_process_classification_metadata (GstMetaMux * muxer,
 {
   GstVideoClassificationMeta *meta = NULL;
   GArray *labels = NULL;
-  const GValue *value = NULL, *entry = NULL;
+  const GValue *value = NULL, *list = NULL;
   GstStructure *params = NULL;
   guint idx = 0, size = 0, id = 0;
 
-  value = gst_structure_get_value (structure, "labels");
-  size = gst_value_array_get_size (value);
+  list = gst_structure_get_value (structure, "labels");
+  size = gst_value_array_get_size (list);
 
   // No classification label results for this buffer, nothing to do.
   if (size == 0)
@@ -593,8 +575,8 @@ gst_metamux_process_classification_metadata (GstMetaMux * muxer,
     GstClassLabel *label = &(g_array_index (labels, GstClassLabel, idx));
     gchar *name = NULL;
 
-    entry = gst_value_array_get_value (value, idx);
-    params = GST_STRUCTURE (g_value_get_boxed (entry));
+    value = gst_value_array_get_value (list, idx);
+    params = GST_STRUCTURE (g_value_get_boxed (value));
 
     name = g_strdup (gst_structure_get_name (params));
     name = g_strdelimit (name, ".", ' ');
@@ -605,10 +587,9 @@ gst_metamux_process_classification_metadata (GstMetaMux * muxer,
     gst_structure_get_double (params, "confidence", &(label->confidence));
     gst_structure_get_uint (params, "color", &(label->color));
 
-    if (gst_structure_has_field (params, "xtraparams")) {
-      value = gst_structure_get_value (params, "xtraparams");
-      label->xtraparams = gst_structure_copy (
-          GST_STRUCTURE (g_value_get_boxed (value)));
+    if ((value = gst_structure_get_value (params, "xtraparams")) != NULL) {
+      GstStructure *xtraparams = GST_STRUCTURE (g_value_get_boxed (value));
+      label->xtraparams = gst_structure_copy (xtraparams);
     }
 
     // The meta ID is the same for every entry in the list. Get the first one.
@@ -616,29 +597,15 @@ gst_metamux_process_classification_metadata (GstMetaMux * muxer,
       gst_structure_get_uint (params, "id", &id);
   }
 
-  if (!(value = gst_structure_get_value (structure, "source-region-id"))) {
-    // Result is not derived from ROI, attach a new meta item.
-    meta = gst_buffer_add_video_classification_meta (buffer, labels);
+  meta = gst_buffer_add_video_classification_meta (buffer, labels);
+  meta->id = id;
 
-    // Use the batch index as meta ID.
-    meta->id = id;
+  // Check if result is not derived from ROI, overwrite the parent_id field.
+  if ((value = gst_structure_get_value (structure, "parent-id")) != NULL)
+    meta->parent_id = g_value_get_int (value);
 
-    GST_TRACE_OBJECT (muxer, "Attached 'ImageClassification' meta with ID[0x%X]"
-        " to buffer %p", meta->id, buffer);
-  } else {
-    GstVideoRegionOfInterestMeta *roimeta = NULL;
-
-    // Result is derived from a ROI, attach this result to that ROI meta.
-    roimeta = gst_buffer_get_video_region_of_interest_meta_id (buffer,
-        g_value_get_int (value));
-
-    params = gst_structure_new ("ImageClassification",
-        "labels", G_TYPE_ARRAY, labels, "id", G_TYPE_UINT, id, NULL);
-    gst_video_region_of_interest_meta_add_param (roimeta, params);
-
-    GST_TRACE_OBJECT (muxer, "Attached 'ImageClassification' param with ID[0x%X]"
-        " to ROI meta with ID[0x%X] in buffer %p", id, roimeta->id, buffer);
-  }
+  GST_TRACE_OBJECT (muxer, "Attached 'ImageClassification' meta with ID[0x%X]"
+      " and parent ID[0x%X] to buffer %p", meta->id, meta->parent_id, buffer);
 }
 
 static gboolean
@@ -653,20 +620,22 @@ gst_metamux_process_meta_entries (GstMetaMux * muxer, GstBuffer * buffer,
 
   for (list = muxer->metapads; list != NULL; list = g_list_next (list)) {
     GstMetaMuxDataPad *dpad = GST_METAMUX_DATA_PAD (list->data);
-    GstMetaItem *item = NULL;
+    GstMetaItem *item = g_queue_peek_head (dpad->queue);
 
-    if ((item = g_queue_peek_head (dpad->queue)) == NULL)
-      continue;
-
-    if (GST_CLOCK_TIME_IS_VALID (timestamp)) {
+    if ((item != NULL) && GST_CLOCK_TIME_IS_VALID (timestamp)) {
       GstClockTimeDiff delta = GST_CLOCK_DIFF (item->timestamp, timestamp);
 
-      // Timestamp delta is above the threshold, continue with next pad.
+      // Timestamp delta is above the threshold, use last meta entry.
       if (ABS (delta) > TIMESTAMP_DELTA_THRESHOLD)
-        continue;
+        item = NULL;
     }
 
-    item = g_queue_pop_head (dpad->queue);
+    // Use the last meta entry if there are no items in the queue.
+    item = (item != NULL) ? g_queue_pop_head (dpad->queue) : dpad->lastmeta;
+
+    // There is no entry in the queue nor recorded last meta, skip this pad.
+    if (item == NULL)
+      continue;
 
     GST_TRACE_OBJECT (dpad, "Processing item with timestamp %" GST_TIME_FORMAT
       " for %" GST_PTR_FORMAT, GST_TIME_ARGS (item->timestamp), buffer);
@@ -684,7 +653,11 @@ gst_metamux_process_meta_entries (GstMetaMux * muxer, GstBuffer * buffer,
         gst_metamux_process_classification_metadata (muxer, buffer, structure);
     }
 
-    gst_metadata_item_free (item);
+    // Overwrite previous last meta entry with the new currently processed one.
+    if (item != dpad->lastmeta) {
+      g_clear_pointer (&(dpad->lastmeta), gst_metadata_item_free);
+      dpad->lastmeta = item;
+    }
   }
 
   return TRUE;
@@ -697,6 +670,7 @@ gst_metamux_worker_task (gpointer userdata)
   GstDataQueueItem *item = NULL;
   GstBuffer *buffer = NULL;
   GstClockTime timestamp = GST_CLOCK_TIME_NONE;
+  gint64 timeout = GST_CLOCK_TIME_NONE;
   gboolean success = FALSE;
 
   if (!gst_data_queue_peek (muxer->sinkpad->buffers, &item))
@@ -721,18 +695,30 @@ gst_metamux_worker_task (gpointer userdata)
     case GST_METAMUX_MODE_SYNC:
       timestamp = GST_BUFFER_TIMESTAMP (buffer);
 
-      // Initialize the timeout variable when the 1st buffer arrives.
-      if (muxer->timeout == (gint64) GST_CLOCK_TIME_NONE)
-        muxer->timeout = g_get_monotonic_time ();
+      // Initialize the synctime variable when the 1st buffer arrives.
+      if (muxer->synctime == (gint64) GST_CLOCK_TIME_NONE)
+        muxer->synctime = g_get_monotonic_time ();
+
+      // Initialize the base time with the timestamp of the 1st arrived buffer.
+      if (muxer->basetime == GST_CLOCK_TIME_NONE)
+        muxer->basetime = timestamp;
+
+      // Calculate the base value of the timeout base on the buffer timestamp.
+      timeout = timestamp - muxer->basetime;
+      // Increase the timeout with buffer duration and any additional latency.
+      timeout += GST_BUFFER_DURATION (buffer) + muxer->latency;
+      // Convert to microseconds because of condition wait and add sync time.
+      timeout = muxer->synctime + GST_TIME_AS_USECONDS (timeout);
 
       while (muxer->active && !gst_metamux_is_meta_available (muxer, timestamp)) {
-        // Increase the timeout with buffer duration and any additional latency.
-        muxer->timeout += GST_TIME_AS_USECONDS (muxer->latency) +
-            GST_TIME_AS_USECONDS (GST_BUFFER_DURATION (buffer));
+        success = g_cond_wait_until (&(muxer)->wakeup,
+            GST_METAMUX_GET_LOCK (muxer), timeout);
 
-        if (!g_cond_wait_until (&(muxer)->wakeup, GST_METAMUX_GET_LOCK (muxer),
-                muxer->timeout))
-          GST_WARNING_OBJECT (muxer, "Timeout while waiting for metadata!");
+        if (!success) {
+          GST_WARNING_OBJECT (muxer, "Timeout while waiting for metadata, "
+              "not all metadat pads have data available!");
+          break;
+        }
       }
       break;
     default:
@@ -763,6 +749,10 @@ gst_metamux_worker_task (gpointer userdata)
   item->destroy = gst_data_queue_free_item;
 
   GST_TRACE_OBJECT (muxer, "Submitting %" GST_PTR_FORMAT, buffer);
+
+  GST_METAMUX_SRC_LOCK (muxer->srcpad);
+  muxer->srcpad->segment.position = GST_BUFFER_TIMESTAMP (buffer);
+  GST_METAMUX_SRC_UNLOCK (muxer->srcpad);
 
   // Push the buffer into the queue or free it on failure.
   if (!gst_data_queue_push (muxer->srcpad->buffers, item))
@@ -832,10 +822,10 @@ gst_metamux_stop_worker_task (GstMetaMux * muxer)
   GST_INFO_OBJECT (muxer, "Removing task %p", muxer->worktask);
 
   gst_object_unref (muxer->worktask);
-
   muxer->worktask = NULL;
-  muxer->timeout = GST_CLOCK_TIME_NONE;
 
+  muxer->synctime = GST_CLOCK_TIME_NONE;
+  muxer->basetime = GST_CLOCK_TIME_NONE;
   return TRUE;
 }
 
@@ -1825,10 +1815,12 @@ gst_metamux_init (GstMetaMux * muxer)
 
   muxer->active = FALSE;
   muxer->worktask = NULL;
-  muxer->timeout = GST_CLOCK_TIME_NONE;
 
   g_rec_mutex_init (&muxer->worklock);
   g_cond_init (&muxer->wakeup);
+
+  muxer->synctime = GST_CLOCK_TIME_NONE;
+  muxer->basetime = GST_CLOCK_TIME_NONE;
 
   muxer->mode = DEFAULT_PROP_MODE;
   muxer->latency = DEFAULT_PROP_LATENCY;

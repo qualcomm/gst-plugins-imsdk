@@ -97,33 +97,26 @@
 GST_DEBUG_CATEGORY_STATIC (gst_image_pool_debug);
 #define GST_CAT_DEFAULT gst_image_pool_debug
 
-#define GST_IS_GBM_MEMORY_TYPE(type) \
-    (type == g_quark_from_static_string (GST_IMAGE_BUFFER_POOL_TYPE_GBM))
-#define GST_IS_ION_MEMORY_TYPE(type) \
-    (type == g_quark_from_static_string (GST_IMAGE_BUFFER_POOL_TYPE_ION))
-
 #define DEFAULT_PAGE_ALIGNMENT 4096
 
 struct _GstImageBufferPoolPrivate
 {
   GstVideoInfo        info;
+  GstVideoAlignment   align;
+
   gboolean            addmeta;
   GstFdMemoryFlags    memflags;
 
   GstAllocator        *allocator;
   GstAllocationParams params;
-  GQuark              memtype;
 
-  // Either ION, DMA or GBM device FD.
-  gint                devfd;
-
+  // GBM device FD.
+  gint                gbmfd;
   // GBM library handle;
   gpointer            gbmhandle;
-
   // GBM device handle;
   struct gbm_device   *gbmdevice;
 
-  // Map of data FDs and ION handles on case ION memory is used OR
   // map of data FDs and GBM buffer objects if GBM memory is used.
   GHashTable          *datamap;
   // Mutex for protecting insert/remove from the data map.
@@ -205,7 +198,7 @@ load_symbol (gpointer* method, gpointer handle, const gchar* name)
 }
 
 static void
-close_gbm_device (GstImageBufferPool * vpool)
+gbm_device_close (GstImageBufferPool * vpool)
 {
   GstImageBufferPoolPrivate *priv = vpool->priv;
 
@@ -214,9 +207,9 @@ close_gbm_device (GstImageBufferPool * vpool)
     priv->gbm_device_destroy (priv->gbmdevice);
   }
 
-  if (priv->devfd >= 0) {
-    GST_INFO_OBJECT (vpool, "Closing GBM device FD %d", priv->devfd);
-    close (priv->devfd);
+  if (priv->gbmfd >= 0) {
+    GST_INFO_OBJECT (vpool, "Closing GBM device FD %d", priv->gbmfd);
+    close (priv->gbmfd);
   }
 
   if (priv->gbmhandle != NULL) {
@@ -224,11 +217,12 @@ close_gbm_device (GstImageBufferPool * vpool)
     dlclose (priv->gbmhandle);
   }
 
-  g_hash_table_destroy (priv->datamap);
+  if (priv->datamap != NULL)
+    g_hash_table_destroy (priv->datamap);
 }
 
 static gboolean
-open_gbm_device (GstImageBufferPool * vpool)
+gbm_device_open (GstImageBufferPool * vpool)
 {
   GstImageBufferPoolPrivate *priv = vpool->priv;
   gboolean success = TRUE;
@@ -256,30 +250,30 @@ open_gbm_device (GstImageBufferPool * vpool)
       "gbm_perform");
 
   if (!success) {
-    close_gbm_device (vpool);
+    gbm_device_close (vpool);
     return FALSE;
   }
 
   GST_INFO_OBJECT (vpool, "Open /dev/dma_heap/qcom,system");
-  priv->devfd = open ("/dev/dma_heap/qcom,system", O_RDONLY | O_CLOEXEC);
+  priv->gbmfd = open ("/dev/dma_heap/qcom,system", O_RDONLY | O_CLOEXEC);
 
-  if (priv->devfd < 0) {
+  if (priv->gbmfd < 0) {
     GST_WARNING_OBJECT (vpool, "Falling back to /dev/ion");
-    priv->devfd = open ("/dev/ion", O_RDONLY | O_CLOEXEC);
+    priv->gbmfd = open ("/dev/ion", O_RDONLY | O_CLOEXEC);
   }
 
-  if (priv->devfd < 0) {
+  if (priv->gbmfd < 0) {
     GST_ERROR_OBJECT (vpool, "Failed to open GBM device FD!");
-    close_gbm_device (vpool);
+    gbm_device_close (vpool);
     return FALSE;
   }
 
-  GST_INFO_OBJECT (vpool, "Opened GBM device FD %d", priv->devfd);
+  GST_INFO_OBJECT (vpool, "Opened GBM device FD %d", priv->gbmfd);
 
-  priv->gbmdevice = priv->gbm_create_device (priv->devfd);
+  priv->gbmdevice = priv->gbm_create_device (priv->gbmfd);
   if (NULL == priv->gbmdevice) {
     GST_ERROR_OBJECT (vpool, "Failed to create GBM device!");
-    close_gbm_device (vpool);
+    gbm_device_close (vpool);
     return FALSE;
   }
 
@@ -355,138 +349,12 @@ gbm_device_free (GstImageBufferPool * vpool, gint fd)
   priv->gbm_bo_destroy (bo);
 }
 
-static gboolean
-open_ion_device (GstImageBufferPool * vpool)
-{
-  GstImageBufferPoolPrivate *priv = vpool->priv;
-
-  GST_INFO_OBJECT (vpool, "Open /dev/dma_heap/qcom,system");
-  priv->devfd = open ("/dev/dma_heap/qcom,system", O_RDONLY | O_CLOEXEC);
-
-  if (priv->devfd < 0) {
-    GST_WARNING_OBJECT (vpool, "Falling back to /dev/ion");
-    priv->devfd = open ("/dev/ion", O_RDONLY | O_CLOEXEC);
-  }
-
-  if (priv->devfd < 0) {
-    GST_ERROR_OBJECT (vpool, "Failed to open ION device FD!");
-    return FALSE;
-  }
-
-#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
-  priv->datamap = g_hash_table_new (NULL, NULL);
-#endif // TARGET_ION_ABI_VERSION
-
-  GST_INFO_OBJECT (vpool, "Opened ION device FD %d", priv->devfd);
-  return TRUE;
-}
-
-static void
-close_ion_device (GstImageBufferPool * vpool)
-{
-  GstImageBufferPoolPrivate *priv = vpool->priv;
-
-  if (priv->devfd >= 0) {
-    GST_INFO_OBJECT (vpool, "Closing ION device FD %d", priv->devfd);
-    close (priv->devfd);
-  }
-
-#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
-  g_hash_table_destroy (priv->datamap);
-#endif // TARGET_ION_ABI_VERSION
-}
-
-static GstMemory *
-ion_device_alloc (GstImageBufferPool * vpool)
-{
-  GstImageBufferPoolPrivate *priv = vpool->priv;
-  gint result = 0, fd = -1;
-
-#if defined(HAVE_LINUX_DMA_HEAP_H)
-  struct dma_heap_allocation_data alloc_data;
-#else
-  struct ion_allocation_data alloc_data;
-#if !defined(TARGET_ION_ABI_VERSION)
-  struct ion_fd_data fd_data;
-#endif // TARGET_ION_ABI_VERSION
-#endif
-
-  alloc_data.fd = 0;
-  alloc_data.len = GST_VIDEO_INFO_SIZE (&priv->info);
-
-#if defined(HAVE_LINUX_DMA_HEAP_H)
-  // Permissions for the memory to be allocated.
-  alloc_data.fd_flags = O_RDWR | O_CLOEXEC;
-  alloc_data.heap_flags = 0;
-#else
-  alloc_data.heap_id_mask = ION_HEAP(ION_SYSTEM_HEAP_ID);
-  alloc_data.flags = ION_FLAG_CACHED;
-
-#if !defined(TARGET_ION_ABI_VERSION)
-  alloc_data.align = DEFAULT_PAGE_ALIGNMENT;
-#endif // TARGET_ION_ABI_VERSION
-#endif
-
-#if defined(HAVE_LINUX_DMA_HEAP_H)
-  result = ioctl (priv->devfd, DMA_HEAP_IOCTL_ALLOC, &alloc_data);
-#else
-  result = ioctl (priv->devfd, ION_IOC_ALLOC, &alloc_data);
-#endif
-
-  if (result != 0) {
-    GST_ERROR_OBJECT (vpool, "Failed to allocate ION memory!");
-    return NULL;
-  }
-
-#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
-  fd_data.handle = alloc_data.handle;
-
-  result = ioctl (priv->devfd, ION_IOC_MAP, &fd_data);
-  if (result != 0) {
-    GST_ERROR_OBJECT (vpool, "Failed to map memory to FD!");
-    ioctl (priv->devfd, ION_IOC_FREE, &alloc_data.handle);
-    return NULL;
-  }
-
-  fd = fd_data.fd;
-
-  g_hash_table_insert (priv->datamap, GINT_TO_POINTER (fd),
-      GSIZE_TO_POINTER (alloc_data.handle));
-#else
-  fd = alloc_data.fd;
-#endif // TARGET_ION_ABI_VERSION
-
-  GST_DEBUG_OBJECT (vpool, "Allocated ION memory FD %d", fd);
-
-  // Wrap the allocated FD in FD backed allocator.
-  return gst_fd_allocator_alloc (priv->allocator, fd, priv->info.size,
-      priv->memflags);
-}
-
-static void
-ion_device_free (GstImageBufferPool * vpool, gint fd)
-{
-  GST_DEBUG_OBJECT (vpool, "Closing ION memory FD %d", fd);
-
-#if !defined(HAVE_LINUX_DMA_HEAP_H) && !defined(TARGET_ION_ABI_VERSION)
-  ion_user_handle_t handle = GPOINTER_TO_SIZE (
-      g_hash_table_lookup (vpool->priv->datamap, GINT_TO_POINTER (fd)));
-
-  if (ioctl (vpool->priv->devfd, ION_IOC_FREE, &handle) < 0) {
-    GST_ERROR_OBJECT (vpool, "Failed to free handle for memory FD %d!", fd);
-  }
-
-  g_hash_table_remove (vpool->priv->datamap, GINT_TO_POINTER (fd));
-#endif // TARGET_ION_ABI_VERSION
-
-  close (fd);
-}
-
 static const gchar **
 gst_image_buffer_pool_get_options (GstBufferPool * pool)
 {
   static const gchar *options[] = {
     GST_BUFFER_POOL_OPTION_VIDEO_META,
+    GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT,
     GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED,
     NULL
   };
@@ -500,10 +368,10 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
   GstImageBufferPoolPrivate *priv = vpool->priv;
   GstCaps *caps = NULL;
   GstAllocator *allocator = NULL;
-  GstVideoInfo info;
-  GstAllocationParams params;
+  GstVideoInfo info = {0,};
+  GstAllocationParams params = {0,};
   guint size = 0, minbuffers = 0, maxbuffers = 0;
-  gboolean success = FALSE, keepmapped = FALSE;
+  gboolean success = FALSE, keepmapped = FALSE, need_alignment = FALSE;
 
   success = gst_buffer_pool_config_get_params (config, &caps, &size,
       &minbuffers, &maxbuffers);
@@ -527,18 +395,25 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
     return FALSE;
   }
 
+  // Check whether we should keep buffer memory mapped.
+  keepmapped = gst_buffer_pool_config_has_option (config,
+    GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
+
+  if (keepmapped)
+    priv->memflags |= GST_FD_MEMORY_FLAG_KEEP_MAPPED;
+
   if (!gst_buffer_pool_config_get_allocator (config, &allocator, &params)) {
     GST_ERROR_OBJECT (vpool, "Allocator missing from configuration!");
     return FALSE;
   } else if (NULL == allocator) {
-    // No allocator set in configuration, create default FD allocator.
-    if (NULL == (allocator = gst_fd_allocator_new ())) {
-      GST_ERROR_OBJECT (vpool, "Failed to create FD allocator!");
+    // No allocator set in configuration, create default QTI allocator.
+    if (NULL == (allocator = gst_qti_allocator_new (priv->memflags))) {
+      GST_ERROR_OBJECT (vpool, "Failed to create QTI allocator!");
       return FALSE;
     }
   }
 
-  if (!GST_IS_FD_ALLOCATOR (allocator)) {
+  if (!(GST_IS_FD_ALLOCATOR (allocator) || GST_IS_QTI_ALLOCATOR (allocator))) {
      GST_ERROR_OBJECT (vpool, "Allocator %p is not FD backed!", allocator);
      return FALSE;
   }
@@ -546,21 +421,39 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
   GST_DEBUG_OBJECT (pool, "Video dimensions %dx%d, caps %" GST_PTR_FORMAT,
       info.width, info.height, caps);
 
+  // Enable metadata based on configuration of the pool.
+  priv->addmeta = gst_buffer_pool_config_has_option (config,
+      GST_BUFFER_POOL_OPTION_VIDEO_META);
+
+  need_alignment = gst_buffer_pool_config_has_option (config,
+      GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
+
+  if (need_alignment && priv->addmeta) {
+    gst_buffer_pool_config_get_video_alignment (config, &priv->align);
+
+    if (!gst_video_info_align (&info, &priv->align)) {
+      GST_ERROR_OBJECT (vpool, "Failed to align video info!");
+      return FALSE;
+    }
+
+    gst_buffer_pool_config_set_video_alignment (config, &priv->align);
+  }
+
   priv->params = params;
   info.size = MAX (size, info.size);
   priv->info = info;
 
-  // Check whether we should keep buffer memory mapped.
-  keepmapped = gst_buffer_pool_config_has_option (config,
-      GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
-
-  if (keepmapped)
-    priv->memflags |= GST_FD_MEMORY_FLAG_KEEP_MAPPED;
+  // Allocate GBM memory when the allocator is FD backed but not QTI allocator.
+  if (!GST_IS_QTI_ALLOCATOR (allocator) && !gbm_device_open (vpool)) {
+    GST_ERROR_OBJECT (vpool, "Failed to open GBM device!");
+    return FALSE;
+  }
 
 #ifdef HAVE_GBM_PRIV_H
   // GBM library has its own alignment for the allocated buffers so update
   // the size, stride and offset for the buffer planes in the video info.
-  if (GST_IS_GBM_MEMORY_TYPE (vpool->priv->memtype)) {
+  // Use only if the allocator is not a QTI allocator.
+  if (!GST_IS_QTI_ALLOCATOR (allocator)) {
     struct gbm_buf_info bufinfo = { 0, };
     guint stride, scanline, usage = 0;
 
@@ -630,16 +523,9 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
   }
 #endif // HAVE_GBM_PRIV_H
 
-  // Remove cached allocator.
-  if (priv->allocator)
-    gst_object_unref (priv->allocator);
-
-  priv->allocator = allocator;
-  gst_object_ref (priv->allocator);
-
-  // Enable metadata based on configuration of the pool.
-  priv->addmeta = gst_buffer_pool_config_has_option (config,
-      GST_BUFFER_POOL_OPTION_VIDEO_META);
+  // Remove cached allocator and take the new one.
+  gst_clear_object (&(priv->allocator));
+  priv->allocator = gst_object_ref (allocator);
 
   gst_buffer_pool_config_set_params (config, caps, priv->info.size, minbuffers,
       maxbuffers);
@@ -657,32 +543,38 @@ gst_image_buffer_pool_alloc (GstBufferPool * pool, GstBuffer ** buffer,
   GstMemory *memory = NULL;
   GstBuffer *newbuffer = NULL;
 
-  if (GST_IS_GBM_MEMORY_TYPE (priv->memtype)) {
-    memory = gbm_device_alloc (vpool);
-  } else if (GST_IS_ION_MEMORY_TYPE (priv->memtype)) {
-    memory = ion_device_alloc (vpool);
+  if (GST_IS_QTI_ALLOCATOR (priv->allocator)) {
+    newbuffer = gst_buffer_new_allocate (priv->allocator, info->size,
+        &priv->params);
+
+    if (newbuffer == NULL) {
+      GST_ERROR_OBJECT (vpool, "Failed to allocate new buffer");
+      return GST_FLOW_ERROR;
+    }
+  } else {
+    if ((memory = gbm_device_alloc (vpool)) == NULL) {
+      GST_WARNING_OBJECT (pool, "Failed to allocate memory!");
+      return GST_FLOW_ERROR;
+    }
+
+    // Create a GstBuffer and Append the FD backed memory to it.
+    newbuffer = gst_buffer_new ();
+    gst_buffer_append_memory(newbuffer, memory);
   }
-
-  if (NULL == memory) {
-    GST_WARNING_OBJECT (pool, "Failed to allocate memory!");
-    return GST_FLOW_ERROR;
-  }
-
-  // Create a GstBuffer.
-  newbuffer = gst_buffer_new ();
-
-  // Append the FD backed memory to the newly created GstBuffer.
-  gst_buffer_append_memory(newbuffer, memory);
 
   if (priv->addmeta) {
+    GstVideoMeta *vmeta = NULL;
+
     GST_DEBUG_OBJECT (vpool, "Adding GstVideoMeta");
 
-    gst_buffer_add_video_meta_full (
+    vmeta = gst_buffer_add_video_meta_full (
         newbuffer, GST_VIDEO_FRAME_FLAG_NONE,
         GST_VIDEO_INFO_FORMAT (info), GST_VIDEO_INFO_WIDTH (info),
         GST_VIDEO_INFO_HEIGHT (info), GST_VIDEO_INFO_N_PLANES (info),
         info->offset, info->stride
     );
+
+    gst_video_meta_set_alignment (vmeta, priv->align);
   }
 
   // Initially map the buffer
@@ -690,6 +582,7 @@ gst_image_buffer_pool_alloc (GstBufferPool * pool, GstBuffer ** buffer,
   // access. This will solve the issue where if someone map the buffer with
   // READ only access at the begining after that it cannot be mapped with
   // WRITE access.
+  // TODO: Remove once versions 1.16 and below are no longer supported.
   if (priv->memflags & GST_FD_MEMORY_FLAG_KEEP_MAPPED) {
     GstMapInfo map;
 
@@ -709,13 +602,13 @@ static void
 gst_image_buffer_pool_free (GstBufferPool * pool, GstBuffer * buffer)
 {
   GstImageBufferPool *vpool = GST_IMAGE_BUFFER_POOL (pool);
-  gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (buffer, 0));
+  GstImageBufferPoolPrivate *priv = vpool->priv;
 
-  if (GST_IS_GBM_MEMORY_TYPE (vpool->priv->memtype)) {
+  if (!GST_IS_QTI_ALLOCATOR (priv->allocator)) {
+    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (buffer, 0));
     gbm_device_free (vpool, fd);
-  } else if (GST_IS_ION_MEMORY_TYPE (vpool->priv->memtype)) {
-    ion_device_free (vpool, fd);
   }
+
   gst_buffer_unref (buffer);
 }
 
@@ -731,6 +624,38 @@ gst_image_buffer_pool_reset (GstBufferPool * pool, GstBuffer * buffer)
   GST_BUFFER_POOL_CLASS (parent_class)->reset_buffer (pool, buffer);
 }
 
+static gboolean
+gst_image_buffer_pool_start (GstBufferPool * pool)
+{
+  GstImageBufferPool *vpool = GST_IMAGE_BUFFER_POOL (pool);
+  GstImageBufferPoolPrivate *priv = vpool->priv;
+
+  if (GST_IS_QTI_ALLOCATOR (priv->allocator)) {
+    GstStructure *config = NULL;
+    guint maxbuffers = 0;
+
+    config = gst_buffer_pool_get_config (pool);
+    gst_buffer_pool_config_get_params (config, NULL, NULL, NULL, &maxbuffers);
+    gst_structure_free (config);
+
+    gst_qti_allocator_start (GST_QTI_ALLOCATOR (priv->allocator), maxbuffers);
+  }
+
+  return GST_BUFFER_POOL_CLASS (parent_class)->start (pool);
+}
+
+static gboolean
+gst_image_buffer_pool_stop (GstBufferPool * pool)
+{
+  GstImageBufferPool *vpool = GST_IMAGE_BUFFER_POOL (pool);
+  GstImageBufferPoolPrivate *priv = vpool->priv;
+
+  if (GST_IS_QTI_ALLOCATOR (priv->allocator))
+    gst_qti_allocator_stop (GST_QTI_ALLOCATOR (priv->allocator));
+
+  return GST_BUFFER_POOL_CLASS (parent_class)->stop (pool);
+}
+
 static void
 gst_image_buffer_pool_finalize (GObject * object)
 {
@@ -739,15 +664,12 @@ gst_image_buffer_pool_finalize (GObject * object)
 
   GST_INFO_OBJECT (vpool, "Finalize video buffer pool %p", vpool);
 
+  if (!GST_IS_QTI_ALLOCATOR (priv->allocator))
+    gbm_device_close (vpool);
+
   if (priv->allocator) {
     GST_INFO_OBJECT (vpool, "Free buffer pool allocator %p", priv->allocator);
     gst_object_unref (priv->allocator);
-  }
-
-  if (GST_IS_GBM_MEMORY_TYPE (priv->memtype)) {
-    close_gbm_device (vpool);
-  } else if (GST_IS_ION_MEMORY_TYPE (priv->memtype)) {
-    close_ion_device (vpool);
   }
 
   g_mutex_clear (&priv->lock);
@@ -768,6 +690,8 @@ gst_image_buffer_pool_class_init (GstImageBufferPoolClass * klass)
   pool->alloc_buffer = gst_image_buffer_pool_alloc;
   pool->free_buffer = gst_image_buffer_pool_free;
   pool->reset_buffer = gst_image_buffer_pool_reset;
+  pool->start = gst_image_buffer_pool_start;
+  pool->stop = gst_image_buffer_pool_stop;
 
   GST_DEBUG_CATEGORY_INIT (gst_image_pool_debug, "image-pool", 0,
       "image-pool object");
@@ -777,39 +701,21 @@ static void
 gst_image_buffer_pool_init (GstImageBufferPool * vpool)
 {
   vpool->priv = gst_image_buffer_pool_get_instance_private (vpool);
-  vpool->priv->devfd = -1;
+  vpool->priv->gbmfd = -1;
   vpool->priv->memflags = GST_FD_MEMORY_FLAG_DONT_CLOSE;
 
+  gst_video_alignment_reset (&vpool->priv->align);
   g_mutex_init (&vpool->priv->lock);
 }
 
 
 GstBufferPool *
-gst_image_buffer_pool_new (const gchar * type)
+gst_image_buffer_pool_new ()
 {
   GstImageBufferPool *vpool;
-  gboolean success = FALSE;
 
   vpool = g_object_new (GST_TYPE_IMAGE_BUFFER_POOL, NULL);
-
-  vpool->priv->memtype = g_quark_from_string (type);
-
-  if (GST_IS_GBM_MEMORY_TYPE (vpool->priv->memtype)) {
-    GST_INFO_OBJECT (vpool, "Using GBM memory");
-    success = open_gbm_device (vpool);
-  } else if (GST_IS_ION_MEMORY_TYPE (vpool->priv->memtype)) {
-    GST_INFO_OBJECT (vpool, "Using ION memory");
-    success = open_ion_device (vpool);
-  } else {
-    GST_ERROR_OBJECT (vpool, "Invalid memory type %s!",
-        g_quark_to_string (vpool->priv->memtype));
-    success = FALSE;
-  }
-
-  if (!success) {
-    gst_object_unref (vpool);
-    return NULL;
-  }
+  g_return_val_if_fail (vpool != NULL, NULL);
 
   GST_INFO_OBJECT (vpool, "New video buffer pool %p", vpool);
   return GST_BUFFER_POOL_CAST (vpool);

@@ -106,13 +106,17 @@ static GstBufferPool*
 gst_app_create_pool (GstCaps *caps, guint frame_size)
 {
   GstBufferPool *pool = NULL;
+  GstAllocator *allocator = NULL;
   GstStructure *config = NULL;
 
-  // Create new buffer pool using GBM buffers
-  pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
+  if ((pool = gst_image_buffer_pool_new ()) == NULL) {
+    GST_ERROR ("Failed to create image pool!");
+    return NULL;
+  }
 
-  if (NULL == pool) {
-    GST_ERROR ("Failed to create GstImageBufferPool.");
+  if ((allocator = gst_fd_allocator_new ()) == NULL) {
+    GST_ERROR ("Failed to create allocator");
+    gst_clear_object (&pool);
     return NULL;
   }
 
@@ -121,22 +125,18 @@ gst_app_create_pool (GstCaps *caps, guint frame_size)
   gst_buffer_pool_config_set_params (config, caps, frame_size,
       DEFAULT_MIN_BUFFERS, DEFAULT_MAX_BUFFERS);
 
-  if (GST_IS_IMAGE_BUFFER_POOL (pool)) {
-    // Returns an allocator with fd-backed memory
-    GstAllocator *allocator = gst_fd_allocator_new();
-    // Set allocator to configure according to default parameters provided by the pool
-    gst_buffer_pool_config_set_allocator(config, allocator, NULL);
-    g_object_unref(allocator);
-    gst_buffer_pool_config_add_option(config, GST_BUFFER_POOL_OPTION_VIDEO_META);
-    gst_buffer_pool_config_add_option (config,
-        GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
-  }
+  gst_buffer_pool_config_set_allocator(config, allocator, NULL);
+  g_object_unref(allocator);
+
+  gst_buffer_pool_config_add_option(config, GST_BUFFER_POOL_OPTION_VIDEO_META);
+  gst_buffer_pool_config_add_option (config,
+      GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_ERROR_OBJECT (pool, "Failed to set configuration for buffer pool.");
-    g_object_unref (pool);
-    pool = NULL;
+    gst_clear_object (&pool);
   }
+
   return pool;
 }
 
