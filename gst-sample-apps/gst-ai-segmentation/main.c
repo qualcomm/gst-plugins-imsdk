@@ -89,7 +89,8 @@
 /**
  * Structure for various application specific options
  */
-typedef struct {
+typedef struct
+{
   gchar *file_path;
   gchar *rtsp_ip_port;
   gchar *model_path;
@@ -97,6 +98,7 @@ typedef struct {
   gchar *constants;
   GstCameraSourceType camera_type;
   GstModelType model_type;
+  GstVideoDisposition video_disposition;
   gint delegate_type;
   gboolean use_cpu;
   gboolean use_gpu;
@@ -112,7 +114,8 @@ typedef struct {
  * @param appctx Application Context object
  */
 static void
-gst_app_context_free (GstAppContext * appctx, GstAppOptions * options, gchar * config_file)
+gst_app_context_free (GstAppContext * appctx, GstAppOptions * options,
+    gchar * config_file)
 {
   // If specific pointer is not NULL, unref it
   if (appctx->mloop != NULL) {
@@ -121,33 +124,32 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options, gchar * c
   }
 
   if (options->file_path != NULL) {
-    g_free ((gpointer)options->file_path);
+    g_free ((gpointer) options->file_path);
   }
 
   if (options->rtsp_ip_port != NULL) {
-    g_free ((gpointer)options->rtsp_ip_port);
+    g_free ((gpointer) options->rtsp_ip_port);
   }
 
-  if (options->model_path != (gchar *)(&DEFAULT_SNPE_SEGMENTATION_MODEL) &&
-      options->model_path != (gchar *)(&DEFAULT_TFLITE_SEGMENTATION_MODEL) &&
-      options->model_path != (gchar *)(&DEFAULT_QNN_SEGMENTATION_MODEL) &&
+  if (options->model_path != (gchar *) (&DEFAULT_SNPE_SEGMENTATION_MODEL) &&
+      options->model_path != (gchar *) (&DEFAULT_TFLITE_SEGMENTATION_MODEL) &&
+      options->model_path != (gchar *) (&DEFAULT_QNN_SEGMENTATION_MODEL) &&
       options->model_path != NULL) {
-    g_free ((gpointer)options->model_path);
+    g_free ((gpointer) options->model_path);
   }
 
-  if (options->labels_path != (gchar *)(&DEFAULT_SEGMENTATION_LABELS) &&
+  if (options->labels_path != (gchar *) (&DEFAULT_SEGMENTATION_LABELS) &&
       options->labels_path != NULL) {
-    g_free ((gpointer)options->labels_path);
+    g_free ((gpointer) options->labels_path);
   }
 
-  if (options->constants != (gchar *)(&DEFAULT_CONSTANTS) &&
+  if (options->constants != (gchar *) (&DEFAULT_CONSTANTS) &&
       options->constants != NULL) {
-    g_free ((gpointer)options->constants);
+    g_free ((gpointer) options->constants);
   }
 
-  if (config_file != NULL &&
-      config_file != (gchar *)(&DEFAULT_CONFIG_FILE)) {
-    g_free ((gpointer)config_file);
+  if (config_file != NULL && config_file != (gchar *) (&DEFAULT_CONFIG_FILE)) {
+    g_free ((gpointer) config_file);
     config_file = NULL;
   }
 
@@ -197,8 +199,7 @@ on_pad_added (GstElement * element, GstPad * pad, gpointer data)
 
   // Link the source pad to the sink pad
   ret = gst_pad_link (pad, sinkpad);
-  if (!ret)
-  {
+  if (!ret) {
     g_printerr ("Failed to link pad to sinkpad\n");
   }
 
@@ -257,21 +258,18 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       g_printerr ("Failed to create filesrc\n");
       goto error_clean_elements;
     }
-
     // Create qtdemux for demuxing the filesrc
     qtdemux = gst_element_factory_make ("qtdemux", "qtdemux");
     if (!qtdemux) {
       g_printerr ("Failed to create qtdemux\n");
       goto error_clean_elements;
     }
-
     // Create h264parse element for parsing the stream
     h264parse = gst_element_factory_make ("h264parse", "h264parse");
     if (!h264parse) {
       g_printerr ("Failed to create h264parse\n");
       goto error_clean_elements;
     }
-
     // Create v4l2h264dec element for encoding the stream
     v4l2h264dec = gst_element_factory_make ("v4l2h264dec", "v4l2h264dec");
     if (!v4l2h264dec) {
@@ -279,7 +277,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       goto error_clean_elements;
     }
 
-    v4l2h264dec_caps = gst_element_factory_make ("capsfilter", "v4l2h264dec_caps");
+    v4l2h264dec_caps =
+        gst_element_factory_make ("capsfilter", "v4l2h264dec_caps");
     if (!v4l2h264dec_caps) {
       g_printerr ("Failed to create v4l2h264dec_caps\n");
       goto error_clean_elements;
@@ -292,21 +291,18 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       g_printerr ("Failed to create rtspsrc\n");
       goto error_clean_elements;
     }
-
     // Create rtph264depay plugin for rtsp payload parsing
     rtph264depay = gst_element_factory_make ("rtph264depay", "rtph264depay");
     if (!rtph264depay) {
       g_printerr ("Failed to create rtph264depay\n");
       goto error_clean_elements;
     }
-
     // Create h264parse element for parsing the stream
     h264parse = gst_element_factory_make ("h264parse", "h264parse");
     if (!h264parse) {
       g_printerr ("Failed to create h264parse\n");
       goto error_clean_elements;
     }
-
     // Create v4l2h264dec element for encoding the stream
     v4l2h264dec = gst_element_factory_make ("v4l2h264dec", "v4l2h264dec");
     if (!v4l2h264dec) {
@@ -314,7 +310,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       goto error_clean_elements;
     }
 
-    v4l2h264dec_caps = gst_element_factory_make ("capsfilter", "v4l2h264dec_caps");
+    v4l2h264dec_caps =
+        gst_element_factory_make ("capsfilter", "v4l2h264dec_caps");
     if (!v4l2h264dec_caps) {
       g_printerr ("Failed to create v4l2h264dec_caps\n");
       goto error_clean_elements;
@@ -327,14 +324,12 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       g_printerr ("Failed to create qtiqmmfsrc\n");
       goto error_clean_elements;
     }
-
     // Use capsfilter to define the camera output settings for inference
     qmmfsrc_caps = gst_element_factory_make ("capsfilter", "qmmfsrc_caps");
-      if (!qmmfsrc_caps) {
-        g_printerr ("Failed to create qmmfsrc_caps\n");
-        goto error_clean_elements;
+    if (!qmmfsrc_caps) {
+      g_printerr ("Failed to create qmmfsrc_caps\n");
+      goto error_clean_elements;
     }
-
     // Use capsfilter to define the camera output settings for preview
     qmmfsrc_caps_preview = gst_element_factory_make ("capsfilter",
         "qmmfsrc_caps_preview");
@@ -360,14 +355,13 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   // Use tee to send same data buffer for file and rtsp use cases
   // one for AI inferencing, one for Display composition
-  if (options->use_rtsp || options->use_file){
+  if (options->use_rtsp || options->use_file) {
     tee = gst_element_factory_make ("tee", "tee");
     if (!tee) {
       g_printerr ("Failed to create tee\n");
       goto error_clean_elements;
     }
   }
-
   // Create qtimlvconverter for Input preprocessing
   qtimlvconverter = gst_element_factory_make ("qtimlvconverter",
       "qtimlvconverter");
@@ -375,7 +369,6 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     g_printerr ("Failed to create qtimlvconverter\n");
     goto error_clean_elements;
   }
-
   // Create the ML inferencing plugin SNPE/TFLITE
   if (options->model_type == GST_MODEL_TYPE_SNPE) {
     qtimlelement = gst_element_factory_make ("qtimlsnpe", "qtimlsnpe");
@@ -391,7 +384,6 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     g_printerr ("Failed to create qtimlelement\n");
     goto error_clean_elements;
   }
-
   // Create plugin for ML postprocessing for segmentation
   qtimlvsegmentation = gst_element_factory_make ("qtimlvsegmentation",
       "qtimlvsegmentation");
@@ -399,14 +391,12 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     g_printerr ("Failed to create qtimlvsegmentation\n");
     goto error_clean_elements;
   }
-
   // Composer to combine camera output with ML post proc output
   qtivcomposer = gst_element_factory_make ("qtivcomposer", "qtivcomposer");
   if (!qtivcomposer) {
     g_printerr ("Failed to create qtivcomposer\n");
     goto error_clean_elements;
   }
-
   // Used to negotiate between ML post proc o/p and qtivcomposer
   segmentation_filter = gst_element_factory_make ("capsfilter",
       "segmentation_filter");
@@ -414,22 +404,20 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     g_printerr ("Failed to create segmentation_filter\n");
     goto error_clean_elements;
   }
-
   // Create Wayland compositor to render output on Display
   waylandsink = gst_element_factory_make ("waylandsink", "waylandsink");
   if (!waylandsink) {
     g_printerr ("Failed to create waylandsink \n");
     goto error_clean_elements;
   }
-
   // Create fpsdisplaysink to display the current and
   // average framerate as a text overlay
-  fpsdisplaysink = gst_element_factory_make ("fpsdisplaysink", "fpsdisplaysink");
+  fpsdisplaysink =
+      gst_element_factory_make ("fpsdisplaysink", "fpsdisplaysink");
   if (!fpsdisplaysink) {
     g_printerr ("Failed to create fpsdisplaysink\n");
     goto error_clean_elements;
   }
-
   // 2. Set properties for all GST plugin elements
   if (options->use_file) {
     // 2.1 Set the capabilities of file stream
@@ -453,7 +441,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   } else if (options->use_camera) {
     // 2.3 Set user provided Camera ID
-    g_object_set (G_OBJECT (qtiqmmfsrc), "camera",options->camera_type, NULL);
+    g_object_set (G_OBJECT (qtiqmmfsrc), "camera", options->camera_type, NULL);
     // 2.4 Set the capabilities of camera plugin output
     if (options->camera_type == GST_CAMERA_TYPE_PRIMARY) {
       filtercaps = gst_caps_new_simple ("video/x-raw",
@@ -479,6 +467,20 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         "framerate", GST_TYPE_FRACTION, framerate, 1, NULL);
     g_object_set (G_OBJECT (qmmfsrc_caps), "caps", filtercaps, NULL);
     gst_caps_unref (filtercaps);
+  } else {
+    g_printerr ("Invalid Source Type\n");
+    goto error_clean_elements;
+  }
+
+  if (options->video_disposition == GST_ML_VIDEO_DISPOSITION_TOP_LEFT) {
+    g_object_set (G_OBJECT (qtimlvconverter), "image-disposition",
+        GST_ML_VIDEO_DISPOSITION_TOP_LEFT, NULL);
+  } else if (options->video_disposition == GST_ML_VIDEO_DISPOSITION_CENTRE) {
+    g_object_set (G_OBJECT (qtimlvconverter), "image-disposition",
+        GST_ML_VIDEO_DISPOSITION_CENTRE, NULL);
+  } else if (options->video_disposition == GST_ML_VIDEO_DISPOSITION_STRETCH) {
+    g_object_set (G_OBJECT (qtimlvconverter), "image-disposition",
+        GST_ML_VIDEO_DISPOSITION_STRETCH, NULL);
   } else {
     g_printerr ("Invalid Source Type\n");
     goto error_clean_elements;
@@ -517,14 +519,15 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
           "delegate", tflite_delegate, NULL);
     } else if (options->use_dsp) {
       g_print ("Using DSP Delegate");
-      delegate_options = gst_structure_from_string (
-          "QNNExternalDelegate,backend_type=htp;", NULL);
+      delegate_options =
+          gst_structure_from_string ("QNNExternalDelegate,backend_type=htp;",
+          NULL);
       g_object_set (G_OBJECT (qtimlelement), "model", options->model_path,
           "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
-      g_object_set (G_OBJECT (qtimlelement),
-          "external-delegate-path", "libQnnTFLiteDelegate.so", NULL);
-      g_object_set (G_OBJECT (qtimlelement),
-          "external-delegate-options", delegate_options, NULL);
+      g_object_set (G_OBJECT (qtimlelement), "external-delegate-path",
+          "libQnnTFLiteDelegate.so", NULL);
+      g_object_set (G_OBJECT (qtimlelement), "external-delegate-options",
+          delegate_options, NULL);
       gst_structure_free (delegate_options);
     } else {
       g_printerr ("Invalid Runtime Selected\n");
@@ -550,7 +553,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
           "constants", options->constants, NULL);
     }
   } else {
-    g_printerr ("Module deeplab-argmax is not available in qtimlvsegmentation\n");
+    g_printerr
+        ("Module deeplab-argmax is not available in qtimlvsegmentation\n");
     goto error_clean_elements;
   }
 
@@ -561,15 +565,15 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   // 2.8 Set the properties of fpsdisplaysink plugin- sync,
   // signal-fps-measurements, text-overlay and video-sink
   g_object_set (G_OBJECT (fpsdisplaysink), "sync", TRUE, NULL);
-  g_object_set (G_OBJECT (fpsdisplaysink), "signal-fps-measurements", TRUE, NULL);
+  g_object_set (G_OBJECT (fpsdisplaysink), "signal-fps-measurements", TRUE,
+      NULL);
   g_object_set (G_OBJECT (fpsdisplaysink), "text-overlay", TRUE, NULL);
   g_object_set (G_OBJECT (fpsdisplaysink), "video-sink", waylandsink, NULL);
 
   // Set the properties of pad_filter for negotiation with qtivcomposer
   pad_filter = gst_caps_new_simple ("video/x-raw",
       "format", G_TYPE_STRING, "BGRA",
-      "width", G_TYPE_INT, 256,
-      "height", G_TYPE_INT, 144, NULL);
+      "width", G_TYPE_INT, 256, "height", G_TYPE_INT, 144, NULL);
 
   g_object_set (G_OBJECT (segmentation_filter), "caps", pad_filter, NULL);
   gst_caps_unref (pad_filter);
@@ -604,7 +608,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   if (options->use_file) {
     ret = gst_element_link_many (filesrc, qtdemux, NULL);
     if (!ret) {
-      g_printerr ("Pipeline elements cannot be linked for filesource->qtdemux\n");
+      g_printerr
+          ("Pipeline elements cannot be linked for filesource->qtdemux\n");
       goto error_clean_pipeline;
     }
     ret = gst_element_link_many (queue[0], h264parse, v4l2h264dec,
@@ -618,20 +623,22 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         v4l2h264dec, v4l2h264dec_caps, queue[1], tee, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
-      "rtspsource->rtph264depay\n");
+          "rtspsource->rtph264depay\n");
       goto error_clean_pipeline;
     }
   } else {
     ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps_preview,
         queue[2], NULL);
     if (!ret) {
-      g_printerr ("Pipeline elements cannot be linked for qtiqmmfsrc->composer\n");
+      g_printerr
+          ("Pipeline elements cannot be linked for qtiqmmfsrc->composer\n");
       goto error_clean_pipeline;
     }
 
     ret = gst_element_link_many (qtiqmmfsrc, qmmfsrc_caps, queue[4], NULL);
     if (!ret) {
-      g_printerr ("Pipeline elements cannot be linked for qtiqmmfsrc->converter\n");
+      g_printerr
+          ("Pipeline elements cannot be linked for qtiqmmfsrc->converter\n");
       goto error_clean_pipeline;
     }
   }
@@ -639,7 +646,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   if (options->use_rtsp || options->use_file) {
     ret = gst_element_link_many (tee, queue[2], qtivcomposer, NULL);
     if (!ret) {
-      g_printerr ("Pipeline elements cannot be linked for tee->qtivcomposer.\n");
+      g_printerr
+          ("Pipeline elements cannot be linked for tee->qtivcomposer.\n");
       goto error_clean_pipeline;
     }
   } else if (options->use_camera) {
@@ -662,8 +670,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   if (options->use_rtsp || options->use_file) {
-    ret = gst_element_link_many (
-        tee, queue[4], qtimlvconverter, queue[5],
+    ret = gst_element_link_many (tee, queue[4], qtimlvconverter, queue[5],
         qtimlelement, queue[6], qtimlvsegmentation,
         segmentation_filter, queue[7], qtivcomposer, NULL);
     if (!ret) {
@@ -672,8 +679,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       goto error_clean_pipeline;
     }
   } else if (options->use_camera) {
-    ret = gst_element_link_many (
-        queue[4], qtimlvconverter, queue[5],
+    ret = gst_element_link_many (queue[4], qtimlvconverter, queue[5],
         qtimlelement, queue[6], qtimlvsegmentation,
         segmentation_filter, queue[7], qtivcomposer, NULL);
     if (!ret) {
@@ -687,11 +693,13 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   if (options->use_file) {
-    g_signal_connect (qtdemux, "pad-added", G_CALLBACK (on_pad_added), queue[0]);
+    g_signal_connect (qtdemux, "pad-added", G_CALLBACK (on_pad_added),
+        queue[0]);
   }
 
   if (options->use_rtsp) {
-    g_signal_connect (rtspsrc, "pad-added", G_CALLBACK (on_pad_added), queue[0]);
+    g_signal_connect (rtspsrc, "pad-added", G_CALLBACK (on_pad_added),
+        queue[0]);
   }
 
   if (options->use_camera) {
@@ -707,7 +715,6 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     g_value_unset (&video_type);
     gst_object_unref (qtiqmmfsrc_type);
   }
-
   // Get the pad properties of qtivcomposer to set Alpha Channel Value, and
   // overlay window size.
   vcomposer_sink[0] = gst_element_get_static_pad (qtivcomposer, "sink_0");
@@ -721,13 +728,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     g_printerr ("Sink pad 1 of vcomposer couldn't be retrieved\n");
     goto error_clean_pipeline;
   }
-
   // Set overlay window size for Segmentation to display
   g_value_init (&position, GST_TYPE_ARRAY);
   g_value_init (&dimension, GST_TYPE_ARRAY);
 
-  pos_vals[0] = 0; pos_vals[1] = 0;
-  dim_vals[0] = 1920; dim_vals[1] = 1080;
+  pos_vals[0] = 0;
+  pos_vals[1] = 0;
+  dim_vals[0] = 1920;
+  dim_vals[1] = 1080;
 
   build_pad_property (&position, pos_vals, 2);
   build_pad_property (&dimension, dim_vals, 2);
@@ -753,7 +761,7 @@ error_clean_pipeline:
   return FALSE;
 
 error_clean_elements:
-  cleanup_gst (&qtiqmmfsrc, &qmmfsrc_caps,&qmmfsrc_caps_preview,
+  cleanup_gst (&qtiqmmfsrc, &qmmfsrc_caps, &qmmfsrc_caps_preview,
       &filesrc, &qtdemux, &h264parse, &v4l2h264dec, &v4l2h264dec_caps,
       &rtspsrc, &rtph264depay, &tee, &qtimlvconverter, &qtimlelement,
       &qtimlvsegmentation, &qtivcomposer, &segmentation_filter,
@@ -771,7 +779,7 @@ error_clean_elements:
  * @param options Application specific options
  */
 gint
-parse_json(gchar * config_file, GstAppOptions * options)
+parse_json (gchar * config_file, GstAppOptions * options)
 {
   JsonParser *parser = NULL;
   JsonNode *root = NULL;
@@ -787,7 +795,6 @@ parse_json(gchar * config_file, GstAppOptions * options)
     g_object_unref (parser);
     return -1;
   }
-
   // Get the root object
   root = json_parser_get_root (parser);
   if (!JSON_NODE_HOLDS_OBJECT (root)) {
@@ -815,8 +822,26 @@ parse_json(gchar * config_file, GstAppOptions * options)
         g_strdup (json_object_get_string_member (root_obj, "rtsp-ip-port"));
   }
 
+  if (json_object_has_member (root_obj, "video-disposition")) {
+    const gchar *disposition =
+        g_strdup (json_object_get_string_member (root_obj,
+            "video-disposition"));
+    if (g_strcmp0 (disposition, "top-left") == 0)
+      options->video_disposition = GST_ML_VIDEO_DISPOSITION_TOP_LEFT;
+    else if (g_strcmp0 (disposition, "centre") == 0)
+      options->video_disposition = GST_ML_VIDEO_DISPOSITION_CENTRE;
+    else if (g_strcmp0 (disposition, "stretch") == 0)
+      options->video_disposition = GST_ML_VIDEO_DISPOSITION_STRETCH;
+    else {
+      gst_printerr ("ml-framework can only be one of "
+          "\"top-left\", \"centre\" or \"stretch\"\n");
+      g_object_unref (parser);
+      return -1;
+    }
+  }
+
   if (json_object_has_member (root_obj, "ml-framework")) {
-    const gchar* framework =
+    const gchar *framework =
         json_object_get_string_member (root_obj, "ml-framework");
     if (g_strcmp0 (framework, "snpe") == 0)
       options->model_type = GST_MODEL_TYPE_SNPE;
@@ -848,8 +873,7 @@ parse_json(gchar * config_file, GstAppOptions * options)
   }
 
   if (json_object_has_member (root_obj, "runtime")) {
-    const gchar* delegate =
-        json_object_get_string_member (root_obj, "runtime");
+    const gchar *delegate = json_object_get_string_member (root_obj, "runtime");
 
     if (g_strcmp0 (delegate, "cpu") == 0)
       options->use_cpu = TRUE;
@@ -858,7 +882,8 @@ parse_json(gchar * config_file, GstAppOptions * options)
     else if (g_strcmp0 (delegate, "gpu") == 0)
       options->use_gpu = TRUE;
     else {
-      gst_printerr ("Runtime can only be one of \"cpu\", \"dsp\" and \"gpu\"\n");
+      gst_printerr
+          ("Runtime can only be one of \"cpu\", \"dsp\" and \"gpu\"\n");
       g_object_unref (parser);
       return -1;
     }
@@ -876,11 +901,11 @@ main (gint argc, gchar * argv[])
   GstElement *pipeline = NULL;
   GOptionContext *ctx = NULL;
   const gchar *app_name = NULL;
-  GstAppContext appctx = {};
+  GstAppContext appctx = { };
   gboolean ret = FALSE;
   gchar help_description[2048];
   guint intrpt_watch_id = 0;
-  GstAppOptions options = {};
+  GstAppOptions options = { };
   gchar *config_file = NULL;
 
   // Set Display environment variables
@@ -894,32 +919,32 @@ main (gint argc, gchar * argv[])
   options.labels_path = DEFAULT_SEGMENTATION_LABELS;
   options.constants = DEFAULT_CONSTANTS;
   options.use_cpu = FALSE, options.use_gpu = FALSE, options.use_dsp = FALSE;
-  options.use_file = FALSE, options.use_rtsp = FALSE, options.use_camera = FALSE;
+  options.use_file = FALSE, options.use_rtsp = FALSE, options.use_camera =
+      FALSE;
   options.delegate_type = DEFAULT_TFLITE_DELEGATE;
   options.model_type = GST_MODEL_TYPE_TFLITE;
   options.camera_type = GST_CAMERA_TYPE_NONE;
+  options.video_disposition = GST_ML_VIDEO_DISPOSITION_STRETCH;
 
   // Structure to define the user options selection
   GOptionEntry entries[] = {
-    { "config-file", 0, 0, G_OPTION_ARG_STRING,
-      &config_file,
-      "Path to config file\n",
-      NULL
-    },
-    { NULL }
+    {"config-file", 0, 0, G_OPTION_ARG_STRING,
+          &config_file,
+          "Path to config file\n",
+        NULL},
+    {NULL}
   };
 
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
 
-    gboolean camera_is_available = is_camera_available ();
+  gboolean camera_is_available = is_camera_available ();
 
-  gchar camera_description[128] = {};
+  gchar camera_description[128] = { };
 
   if (camera_is_available) {
     snprintf (camera_description, sizeof (camera_description),
-      "  camera: 0 or 1\n"
-      "      Select (0) for Primary Camera and (1) for secondary one.\n"
-    );
+        "  camera: 0 or 1\n"
+        "      Select (0) for Primary Camera and (1) for secondary one.\n");
   }
 
   snprintf (help_description, 2047, "\nExample:\n"
@@ -938,22 +963,22 @@ main (gint argc, gchar * argv[])
       "format\n"
       "  model: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
-      "      Default model path for SNPE DLC: "DEFAULT_SNPE_SEGMENTATION_MODEL"\n"
-      "      Default model path for TFlite Model: "
-      DEFAULT_TFLITE_SEGMENTATION_MODEL"\n"
-      "      Default model path for QNN Model: "
-      DEFAULT_QNN_SEGMENTATION_MODEL"\n"
-      "  labels: \"/PATH\"\n"
+      "      Default model path for SNPE DLC: " DEFAULT_SNPE_SEGMENTATION_MODEL
+      "\n" "      Default model path for TFlite Model: "
+      DEFAULT_TFLITE_SEGMENTATION_MODEL "\n"
+      "      Default model path for QNN Model: " DEFAULT_QNN_SEGMENTATION_MODEL
+      "\n" "  labels: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
-      "      Default labels path: "DEFAULT_SEGMENTATION_LABELS"\n"
+      "      Default labels path: " DEFAULT_SEGMENTATION_LABELS "\n"
       "  constants: \"CONSTANTS\"\n"
       "      Constants, offsets and coefficients used by the chosen module \n"
       "      for post-processing of incoming tensors.\n"
-      "      Applicable only for some modules\n"
-      "      Default constants: " DEFAULT_CONSTANTS"\n"
-      "  runtime: \"cpu\" or \"gpu\" or \"dsp\"\n"
+      "      Applicable only for some modules\n" "      Default constants: "
+      DEFAULT_CONSTANTS "\n" "  runtime: \"cpu\" or \"gpu\" or \"dsp\"\n"
       "      This is an optional parameter. If not filled, "
-      "then default dsp runtime is selected\n",
+      "      then default dsp runtime is selected\n"
+      "  video-disposition: Use this parameter to provide video disposition type.\n"
+      "      It can take either top-left or centre or stretch. Default it is stretch\n",
       app_name, DEFAULT_CONFIG_FILE, camera_description);
   help_description[2047] = '\0';
 
@@ -999,7 +1024,6 @@ main (gint argc, gchar * argv[])
     gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
-
   // Check for input source
   if (camera_is_available) {
     g_print ("TARGET Can support file source, RTSP source and camera source\n");
@@ -1019,15 +1043,13 @@ main (gint argc, gchar * argv[])
   if (options.rtsp_ip_port != NULL) {
     options.use_rtsp = TRUE;
   }
-
   // Use camera by default if user does not set anything
-  if (! (options.use_file || (options.camera_type != GST_CAMERA_TYPE_NONE) ||
-      options.use_rtsp)) {
+  if (!(options.use_file || (options.camera_type != GST_CAMERA_TYPE_NONE) ||
+          options.use_rtsp)) {
     options.use_camera = TRUE;
     options.camera_type = GST_CAMERA_TYPE_PRIMARY;
     g_print ("Using PRIMARY camera by default, Not valid camera id selected\n");
   }
-
   // Checking camera id passed by user.
   if (options.camera_type < GST_CAMERA_TYPE_NONE ||
       options.camera_type > GST_CAMERA_TYPE_SECONDARY) {
@@ -1035,12 +1057,10 @@ main (gint argc, gchar * argv[])
         "Available options:\n"
         "    PRIMARY: %d\n"
         "    SECONDARY %d\n",
-        GST_CAMERA_TYPE_PRIMARY,
-        GST_CAMERA_TYPE_SECONDARY);
+        GST_CAMERA_TYPE_PRIMARY, GST_CAMERA_TYPE_SECONDARY);
     gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
-
   // Enable camera flag if user set the camera property
   if (options.camera_type == GST_CAMERA_TYPE_SECONDARY ||
       options.camera_type == GST_CAMERA_TYPE_PRIMARY)
@@ -1048,7 +1068,7 @@ main (gint argc, gchar * argv[])
 
   // Terminate if more than one source are there.
   if (options.use_file + options.use_camera + options.use_rtsp > 1) {
-     g_printerr ("Select anyone source type either Camera or File or RTSP\n");
+    g_printerr ("Select anyone source type either Camera or File or RTSP\n");
     gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
@@ -1073,6 +1093,19 @@ main (gint argc, gchar * argv[])
     return -EINVAL;
   }
 
+  if (options.video_disposition < GST_ML_VIDEO_DISPOSITION_TOP_LEFT ||
+      options.video_disposition > GST_ML_VIDEO_DISPOSITION_STRETCH) {
+    g_printerr ("Invalid video-disposition option selected\n"
+        "Available options:\n"
+        "    top-left: %d\n"
+        "    centre: %d\n"
+        "    stretch: %d\n",
+        GST_ML_VIDEO_DISPOSITION_TOP_LEFT, GST_ML_VIDEO_DISPOSITION_CENTRE,
+        GST_ML_VIDEO_DISPOSITION_STRETCH);
+    gst_app_context_free (&appctx, &options, config_file);
+    return -EINVAL;
+  }
+
   if ((options.use_cpu + options.use_gpu + options.use_dsp) > 1) {
     g_print ("Select any one runtime from CPU or GPU or DSP\n");
     gst_app_context_free (&appctx, &options, config_file);
@@ -1086,13 +1119,12 @@ main (gint argc, gchar * argv[])
   }
 
   if (options.model_type == GST_MODEL_TYPE_QNN && (options.use_cpu == TRUE ||
-      options.use_gpu == TRUE )) {
+          options.use_gpu == TRUE)) {
     g_printerr ("QNN Serialized binary is demonstrated only with DSP"
         " runtime.\n");
     gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
-
   // Set model path for execution
   if (options.model_path == NULL) {
     if (options.model_type == GST_MODEL_TYPE_SNPE)
@@ -1147,7 +1179,6 @@ main (gint argc, gchar * argv[])
     gst_app_context_free (&appctx, &options, config_file);
     return -1;
   }
-
   // Initialize main loop.
   if ((mloop = g_main_loop_new (NULL, FALSE)) == NULL) {
     g_printerr ("ERROR: Failed to create Main loop!\n");
@@ -1163,7 +1194,6 @@ main (gint argc, gchar * argv[])
     gst_app_context_free (&appctx, &options, config_file);
     return -1;
   }
-
   // Watch for messages on the pipeline's bus.
   gst_bus_add_signal_watch (bus);
 
