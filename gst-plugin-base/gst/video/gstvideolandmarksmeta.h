@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -37,8 +37,8 @@ struct _GstVideoKeypoint {
   gdouble confidence;
   guint32 color;
 
-  guint   x;
-  guint   y;
+  gint    x;
+  gint    y;
 };
 
 /**
@@ -57,6 +57,7 @@ struct _GstVideoKeypointLink {
  * GstVideoLandmarksMeta:
  * @meta: Parent #GstMeta
  * @id: ID corresponding to the memory index inside GstBuffer.
+ * @parent_id: Identifier of its parent ROI, used when this meta was derived.
  * @confidence: Confidence score for the landmarks group as a whole.
  * @keypoints: A #GArray of #GstVideoKeypoint
  * @links: A #GArray of #GstVideoKeypointLink
@@ -68,6 +69,7 @@ struct _GstVideoLandmarksMeta {
   GstMeta      meta;
 
   guint        id;
+  gint         parent_id;
 
   gdouble      confidence;
   GArray       *keypoints;
@@ -91,6 +93,19 @@ gst_buffer_get_video_landmarks_meta (GstBuffer * buffer);
 
 GST_VIDEO_API GstVideoLandmarksMeta *
 gst_buffer_get_video_landmarks_meta_id (GstBuffer * buffer, guint id);
+
+GST_VIDEO_API GList *
+gst_buffer_get_video_landmarks_metas_parent_id (GstBuffer * buffer,
+                                                const gint parent_id);
+
+GST_VIDEO_API GstVideoLandmarksMeta *
+gst_buffer_copy_video_landmarks_meta (GstBuffer * buffer,
+                                      GstVideoLandmarksMeta * meta);
+
+GST_VIDEO_API void
+gst_video_landmarks_coordinates_correction (GstVideoLandmarksMeta * meta,
+                                            GstVideoRectangle * source,
+                                            GstVideoRectangle * destination);
 
 G_END_DECLS
 

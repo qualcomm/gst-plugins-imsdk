@@ -753,7 +753,7 @@ qmmfsrc_release_pad (GstElement * element, GstPad * pad)
 static GstStaticCaps gst_qmmfsrc_video_static_src_caps =
     GST_STATIC_CAPS (QMMFSRC_VIDEO_JPEG_CAPS "; "
         QMMFSRC_VIDEO_RAW_CAPS (
-                "{ NV12, NV16, NV12_Q08C"
+                "{ NV12, NV16, NV12_Q08C, RGB"
 #ifdef GST_VIDEO_YUY2_FORMAT_ENABLE
                 ", YUY2"
 #endif // GST_VIDEO_YUY2_FORMAT_ENABLE
@@ -792,7 +792,7 @@ gst_qmmfsrc_video_src_caps (void)
   if (g_once_init_enter (&inited)) {
     caps = gst_static_caps_get (&gst_qmmfsrc_video_static_src_caps);
 
-    if (gst_is_gbm_supported()) {
+    if (gst_gbm_qcom_backend_is_supported ()) {
       GstCaps *tmplcaps = gst_caps_from_string (
           GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
               "{ NV12, NV16, NV12_Q08C"
@@ -828,7 +828,7 @@ gst_qmmfsrc_image_src_caps (void)
   if (g_once_init_enter (&inited)) {
     caps = gst_static_caps_get (&gst_qmmfsrc_image_static_src_caps);
 
-    if (gst_is_gbm_supported()) {
+    if (gst_gbm_qcom_backend_is_supported ()) {
       GstCaps *tmplcaps = gst_caps_from_string (
           QMMFSRC_IMAGE_RAW_CAPS_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GBM,
                 "{ NV21"

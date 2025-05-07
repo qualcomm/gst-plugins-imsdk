@@ -17,6 +17,7 @@
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
 #include <gst/video/gstimagepool.h>
+#include <gst/video/video-utils.h>
 #include <gst/memory/gstmempool.h>
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
@@ -35,10 +36,6 @@ G_DEFINE_TYPE (GstMLAudioClassification, gst_ml_audio_classification,
     GST_TYPE_BASE_TRANSFORM);
 
 #define GST_TYPE_ML_MODULES (gst_ml_modules_get_type())
-
-#ifndef GST_CAPS_FEATURE_MEMORY_GBM
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
-#endif
 
 #define GST_ML_AUDIO_CLASSIFICATION_VIDEO_FORMATS \
     "{ BGRA, BGRx, BGR16 }"
@@ -150,6 +147,7 @@ gst_ml_audio_classification_create_pool (
 {
   GstStructure *structure = gst_caps_get_structure (caps, 0);
   GstBufferPool *pool = NULL;
+  GstAllocator *allocator = NULL;
   guint size = 0;
 
   if (gst_structure_has_name (structure, "video/x-raw")) {
@@ -160,17 +158,22 @@ gst_ml_audio_classification_create_pool (
       return NULL;
     }
 
-    // If downstream allocation query supports GBM, allocate gbm memory.
-    if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
-      GST_INFO_OBJECT (classification, "Uses GBM memory");
-      pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
-    } else {
-      GST_INFO_OBJECT (classification, "Uses ION memory");
-      pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
+    if ((pool = gst_image_buffer_pool_new ()) == NULL) {
+      GST_ERROR_OBJECT (classification, "Failed to create image pool!");
+      return NULL;
     }
 
-    if (NULL == pool) {
-      GST_ERROR_OBJECT (classification, "Failed to create buffer pool!");
+    if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
+      allocator = gst_fd_allocator_new ();
+      GST_INFO_OBJECT (classification, "Buffer pool uses GBM memory");
+    } else {
+      allocator = gst_qti_allocator_new (GST_FD_MEMORY_FLAG_KEEP_MAPPED);
+      GST_INFO_OBJECT (classification, "Buffer pool uses DMA memory");
+    }
+
+    if (allocator == NULL) {
+      GST_ERROR_OBJECT (classification, "Failed to create allocator");
+      gst_clear_object (&pool);
       return NULL;
     }
 
@@ -191,9 +194,7 @@ gst_ml_audio_classification_create_pool (
   gst_buffer_pool_config_set_params (structure, caps, size,
       DEFAULT_MIN_BUFFERS, DEFAULT_MAX_BUFFERS);
 
-  if (GST_IS_IMAGE_BUFFER_POOL (pool)) {
-    GstAllocator *allocator = gst_fd_allocator_new ();
-
+  if (allocator != NULL) {
     gst_buffer_pool_config_set_allocator (structure, allocator, NULL);
     g_object_unref (allocator);
 
@@ -203,8 +204,7 @@ gst_ml_audio_classification_create_pool (
 
   if (!gst_buffer_pool_set_config (pool, structure)) {
     GST_WARNING_OBJECT (classification, "Failed to set pool configuration!");
-    g_object_unref (pool);
-    pool = NULL;
+    gst_clear_object (&pool);
   }
 
   return pool;
@@ -336,8 +336,7 @@ gst_ml_audio_classification_fill_video_output (
             g_quark_to_string (entry->name), entry->confidence);
 
       GST_TRACE_OBJECT (classification, "Batch: %u, label: %s, confidence: "
-            "%.1f%%", prediction->batch_idx, g_quark_to_string (entry->name),
-            entry->confidence);
+            "%.1f%%", idx, g_quark_to_string (entry->name), entry->confidence);
 
       // Set text color.
       cairo_set_source_rgba (context,
@@ -412,9 +411,8 @@ gst_ml_audio_classification_fill_text_output (
 
       id = GST_META_ID (classification->stage_id, sequence_idx, num);
 
-      GST_TRACE_OBJECT (classification, "Batch: %u, ID: %u, label: %s,"
-          "confidence: %.1f%%", prediction->batch_idx, id,
-          g_quark_to_string (entry->name), entry->confidence);
+      GST_TRACE_OBJECT (classification, "ID: %u, label: %s, confidence: %.1f%%",
+          id, g_quark_to_string (entry->name), entry->confidence);
 
       // Replace empty spaces otherwise subsequent stream parse call will fail.
       name = g_strdup (g_quark_to_string (entry->name));
@@ -430,8 +428,7 @@ gst_ml_audio_classification_fill_text_output (
       g_value_reset (&value);
     }
 
-    structure = gst_structure_new ("AudioClassification",
-        "batch-index", G_TYPE_UINT, prediction->batch_idx, NULL);
+    structure = gst_structure_new_empty ("AudioClassification");
 
     val = gst_structure_get_value (prediction->info, "timestamp");
     gst_structure_set_value (structure, "timestamp", val);
@@ -908,7 +905,6 @@ gst_ml_audio_classification_set_caps (GstBaseTransform * base, GstCaps * incaps,
         &(g_array_index (classification->predictions, GstMLClassPrediction, idx));
 
     prediction->entries = g_array_new (FALSE, FALSE, sizeof (GstMLClassEntry));
-    prediction->batch_idx = idx;
   }
 
   GST_DEBUG_OBJECT (classification, "Input caps: %" GST_PTR_FORMAT, incaps);

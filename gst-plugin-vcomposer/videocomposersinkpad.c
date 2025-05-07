@@ -83,10 +83,6 @@ GST_DEBUG_CATEGORY_STATIC (gst_video_composer_sinkpad_debug);
 #define DEFAULT_PROP_FLIP_VERTICAL      FALSE
 #define DEFAULT_PROP_ROTATE             GST_VIDEO_COMPOSER_ROTATE_NONE
 
-#ifndef GST_CAPS_FEATURE_MEMORY_GBM
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
-#endif
-
 G_DEFINE_TYPE (GstVideoComposerSinkPad, gst_video_composer_sinkpad,
                GST_TYPE_VIDEO_AGGREGATOR_PAD);
 
@@ -118,7 +114,7 @@ gst_video_composer_sinkpad_transform_caps (GstAggregatorPad * pad,
   result = gst_caps_new_empty ();
 
   // In case there is no featureless or memory:GBM caps structure add one.
-  if (gst_is_gbm_supported () && !gst_caps_is_empty (caps) &&
+  if (gst_gbm_qcom_backend_is_supported () && !gst_caps_is_empty (caps) &&
       !gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
     structure = gst_caps_get_structure (caps, 0);
     features = gst_caps_features_new (GST_CAPS_FEATURE_MEMORY_GBM, NULL);

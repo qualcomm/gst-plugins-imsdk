@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -11,6 +11,7 @@
 
 #include <gst/video/gstimagepool.h>
 #include <gst/utils/common-utils.h>
+#include <gst/video/video-utils.h>
 
 #define GST_CAT_DEFAULT camera_reprocess_debug
 GST_DEBUG_CATEGORY_STATIC (camera_reprocess_debug);
@@ -26,7 +27,6 @@ GST_DEBUG_CATEGORY_STATIC (camera_reprocess_debug);
 
 // Pad Template
 #define GST_CAPS_FORMATS "{ NV12, NV12_Q08C }"
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
 
 // GType
 #define GST_TYPE_CAMERA_REPROCESS_EIS (gst_camera_reprocess_eis_get_type())
@@ -346,20 +346,29 @@ gst_camera_reprocess_create_buffer_pool (GstCameraReprocess *camreproc,
     return NULL;
   }
 
-  // If downstream allocation query supports GBM, allocate gbm memory.
+  if ((pool = gst_image_buffer_pool_new ()) == NULL) {
+    GST_ERROR_OBJECT (camreproc, "Failed to create image pool!");
+    return NULL;
+  }
+
   if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
-    pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
+    allocator = gst_fd_allocator_new ();
     GST_INFO_OBJECT (camreproc, "Buffer pool uses GBM memory");
   } else {
-    pool = gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_ION);
-    GST_INFO_OBJECT (camreproc, "Buffer pool uses ION memory");
+    allocator = gst_qti_allocator_new (GST_FD_MEMORY_FLAG_KEEP_MAPPED);
+    GST_INFO_OBJECT (camreproc, "Buffer pool uses DMA memory");
+  }
+
+  if (allocator == NULL) {
+    GST_ERROR_OBJECT (camreproc, "Failed to create allocator");
+    gst_clear_object (&pool);
+    return NULL;
   }
 
   config = gst_buffer_pool_get_config (pool);
   gst_buffer_pool_config_set_params (config, caps, info.size,
       DEFAULT_POOL_MIN_BUFFERS, DEFAULT_POOL_MAX_BUFFERS);
 
-  allocator = gst_fd_allocator_new ();
   gst_buffer_pool_config_set_allocator (config, allocator, NULL);
   gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
 
@@ -369,8 +378,7 @@ gst_camera_reprocess_create_buffer_pool (GstCameraReprocess *camreproc,
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_ERROR_OBJECT (camreproc, "Failed to set pool configuration!");
-    gst_object_unref (pool);
-    pool = NULL;
+    gst_clear_object (&pool);
   }
 
   gst_object_unref (allocator);

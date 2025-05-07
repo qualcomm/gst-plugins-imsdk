@@ -140,8 +140,7 @@ create_image_pool (GstCameraSwitchCtx *cameraswitchctx)
     return FALSE;
   }
 
-  cameraswitchctx->pool =
-      gst_image_buffer_pool_new (GST_IMAGE_BUFFER_POOL_TYPE_GBM);
+  cameraswitchctx->pool = gst_image_buffer_pool_new ();
   if (!cameraswitchctx->pool) {
     gst_printerr ("Failed to ccreate a new pool!");
     return FALSE;
@@ -430,8 +429,14 @@ buffers_task_func (gpointer userdata)
   GstMemory *memory = NULL;
   static GstClockTime local_timestamp = 0;
   static GstClockTime duration = 0;
+  GstFlowReturn ret = GST_FLOW_ERROR;
 
   g_mutex_lock (&cameraswitchctx->lock);
+
+  if (cameraswitchctx->exit) {
+    g_mutex_unlock (&cameraswitchctx->lock);
+    return;
+  }
 
   if (cameraswitchctx->pipeline_stopping &&
       gst_data_queue_is_empty (cameraswitchctx->buffers_queue)) {
@@ -504,17 +509,11 @@ buffers_task_func (gpointer userdata)
     gst_memory_unref (memory);
   }
 
-  if (!cameraswitchctx->exit) {
-    // Push buffer to appsrc
-    GstFlowReturn ret =
-        gst_app_src_push_buffer (GST_APP_SRC (cameraswitchctx->appsrc), buffer);
-    if (ret != GST_FLOW_OK) {
-      g_printerr ("ERROR: gst_app_src_push_buffer!\n");
-    }
-  } else {
-    g_print ("EOS, release buffer\n");
-    gst_buffer_unref (buffer);
-  }
+  // Push buffer to appsrc
+  ret = gst_app_src_push_buffer (GST_APP_SRC (cameraswitchctx->appsrc), buffer);
+
+  if (ret != GST_FLOW_OK)
+    g_printerr ("ERROR: gst_app_src_push_buffer!\n");
 
   g_mutex_unlock (&cameraswitchctx->lock);
 
@@ -1074,19 +1073,28 @@ main (gint argc, gchar * argv[])
   gst_data_queue_set_flushing (cameraswitchctx.buffers_queue, TRUE);
 
   // Stop tasks
-  gst_task_stop (workertask);
-  gst_task_stop (bufferstask);
+  if (!gst_task_stop (workertask))
+    g_printerr ("Failed to stop workertask!\n");
 
+  if (!gst_task_stop (bufferstask))
+    g_printerr ("Failed to stop bufferstask!\n");
+
+  g_print ("Run mutex lock for workerlock\n");
   // Make sure task is not running.
   g_rec_mutex_lock (&workerlock);
   g_rec_mutex_unlock (&workerlock);
 
+  g_print ("Run mutex lock for bufferslock\n");
   // Make sure task is not running.
   g_rec_mutex_lock (&bufferslock);
   g_rec_mutex_unlock (&bufferslock);
 
-  gst_task_join (workertask);
-  gst_task_join (bufferstask);
+  if (!gst_task_join (workertask))
+    g_printerr ("Failed to join workertask!\n");
+
+  if (!gst_task_join (bufferstask))
+    g_printerr ("Failed to join bufferstask!\n");
+
   g_rec_mutex_clear (&workerlock);
   g_rec_mutex_clear (&bufferslock);
   gst_object_unref (workertask);

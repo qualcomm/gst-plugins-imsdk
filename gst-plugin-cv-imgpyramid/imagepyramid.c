@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -9,6 +9,7 @@
 
 #include <gst/memory/gstmempool.h>
 #include <gst/utils/common-utils.h>
+#include <gst/video/video-utils.h>
 
 #ifdef HAVE_LINUX_DMA_BUF_H
 #include <sys/ioctl.h>
@@ -39,10 +40,6 @@ G_DEFINE_TYPE (GstCvImgPyramid, gst_cv_imgpyramid, GST_TYPE_ELEMENT);
 #define GST_VIDEO_SIZE_RANGE "(int) [ 1, 32767 ]"
 
 #define GST_VIDEO_FORMATS "{ NV12 }"
-
-#ifndef GST_CAPS_FEATURE_MEMORY_GBM
-#define GST_CAPS_FEATURE_MEMORY_GBM "memory:GBM"
-#endif
 
 static GType gst_cv_request_get_type (void);
 #define GST_TYPE_CV_REQUEST  (gst_cv_request_get_type())
