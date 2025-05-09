@@ -1069,9 +1069,6 @@ main (gint argc, gchar * argv[])
   g_main_loop_run (mloop);
   g_print ("main loop ends\n");
 
-  // Disable buffers queue
-  gst_data_queue_set_flushing (cameraswitchctx.buffers_queue, TRUE);
-
   // Stop tasks
   if (!gst_task_stop (workertask))
     g_printerr ("Failed to stop workertask!\n");
@@ -1083,6 +1080,9 @@ main (gint argc, gchar * argv[])
   // Make sure task is not running.
   g_rec_mutex_lock (&workerlock);
   g_rec_mutex_unlock (&workerlock);
+
+  // Disable buffers queue
+  gst_data_queue_set_flushing (cameraswitchctx.buffers_queue, TRUE);
 
   g_print ("Run mutex lock for bufferslock\n");
   // Make sure task is not running.
