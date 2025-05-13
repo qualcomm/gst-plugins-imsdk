@@ -103,7 +103,7 @@ def create_pipeline(pipeline, args):
         "caps": create_element("capsfilter", "caps"),
         "jpegdec": create_element("jpegdec", "jpegdec"),
         "videoconvert" : create_element("videoconvert", "videoconvert"),
-        "sink"   : create_element("autovideosink", "sink")
+        "sink"   : create_element("waylandsink", "sink")
     }
 
     # Set properties
@@ -116,6 +116,9 @@ def create_pipeline(pipeline, args):
             'image/jpeg,width=1280,height=720,framerate=2/1'
         )
     )
+
+    # Set sink properties
+    Gst.util_set_object_arg(elements["sink"], "fullscreen", "true")
 
     # Add elements to the pipeline
     for element in elements.values():
