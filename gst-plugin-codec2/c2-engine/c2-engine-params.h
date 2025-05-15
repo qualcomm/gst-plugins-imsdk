@@ -115,6 +115,8 @@ enum {
   GST_C2_PARAM_DOWN_SCALAR,          // GstC2Resolution
   GST_C2_PARAM_HIER_BPRECONDITIONS,  // gboolean
   GST_C2_PARAM_SUPER_FRAME,          // guint32
+  GST_C2_PARAM_LTR_USE,              // guint32
+  GST_C2_PARAM_FLIP,                 // GstC2VideoFlip
 };
 
 typedef enum {
@@ -305,6 +307,13 @@ typedef enum {
   GST_C2_AAC_PACKAGING_RAW,
   GST_C2_AAC_PACKAGING_ADTS,
 } GstC2AACStreamFormat;
+
+typedef enum {
+  GST_C2_FLIP_NONE,
+  GST_C2_FLIP_VERTICAL,
+  GST_C2_FLIP_HORIZONTAL,
+  GST_C2_FLIP_BOTH,
+} GstC2VideoFlip;
 
 struct _GstC2PixelInfo {
   GstVideoFormat format;
