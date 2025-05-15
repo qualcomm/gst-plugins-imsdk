@@ -32,6 +32,7 @@
 #include <gst/webrtc/webrtc.h>
 
 #include <libsoup/soup.h>
+#include <gio/gio.h>
 #include <json-glib/json-glib.h>
 
 #include <string.h>
@@ -866,6 +867,13 @@ on_server_connected (SoupSession * session, GAsyncResult * res,
   g_free (hello_str);
 }
 
+static gboolean
+accept_certificate_cb (SoupMessage * msg, GTlsCertificate * certificate,
+    GTlsCertificateFlags tls_errors, gpointer user_data)
+{
+  return TRUE;
+}
+
 // Connect to the signalling server
 static void
 connect_to_websocket_server_async (GstAppContext * appctx)
@@ -884,6 +892,9 @@ connect_to_websocket_server_async (GstAppContext * appctx)
   g_object_unref (logger);
 
   appctx->soup_message = soup_message_new (SOUP_METHOD_GET, SIGNALING_SERVER);
+
+  g_signal_connect (appctx->soup_message, "accept-certificate",
+      G_CALLBACK (accept_certificate_cb), NULL);
 
   gst_print ("Connecting to server...\n");
 
