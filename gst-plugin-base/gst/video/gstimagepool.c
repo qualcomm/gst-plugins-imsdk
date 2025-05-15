@@ -28,7 +28,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -501,17 +501,6 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
             MMM_COLOR_FMT_NV12_BPP10_UBWC, bufinfo.width);
         metascanline = MMM_COLOR_FMT_Y_META_SCANLINES (
             MMM_COLOR_FMT_NV12_BPP10_UBWC, bufinfo.height);
-
-        GST_VIDEO_INFO_PLANE_OFFSET (&priv->info, 1) =
-            MMM_COLOR_FMT_ALIGN (stride * scanline, DEFAULT_PAGE_ALIGNMENT) +
-            MMM_COLOR_FMT_ALIGN (metastride * metascanline, DEFAULT_PAGE_ALIGNMENT);
-      } else if (bufinfo.format == GBM_FORMAT_YCbCr_420_P010_VENUS) {
-        guint metastride, metascanline;
-
-        metastride = MMM_COLOR_FMT_Y_META_STRIDE (
-            MMM_COLOR_FMT_P010_UBWC, bufinfo.width);
-        metascanline = MMM_COLOR_FMT_Y_META_SCANLINES (
-            MMM_COLOR_FMT_P010_UBWC, bufinfo.height);
 
         GST_VIDEO_INFO_PLANE_OFFSET (&priv->info, 1) =
             MMM_COLOR_FMT_ALIGN (stride * scanline, DEFAULT_PAGE_ALIGNMENT) +
