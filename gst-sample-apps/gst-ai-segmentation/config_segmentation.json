@@ -4,5 +4,6 @@
   "model": "/etc/models/deeplabv3_plus_mobilenet_quantized.tflite",
   "labels": "/etc/labels/deeplabv3_resnet50.labels",
   "constants": "deeplab,q-offsets=<0.0>,q-scales=<1.0>;",
-  "runtime": "dsp"
+  "runtime": "dsp",
+  "video-disposition":"stretch"
 }
