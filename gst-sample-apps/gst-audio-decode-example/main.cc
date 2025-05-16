@@ -34,9 +34,9 @@
   "This audio decoding application allows users to decode audio files " \
   "such as MP3, WAV, or FLAC. \n" \
   "\nCommand \n" \
-  "  For mp3: gst-audio-decode-example -i /opt/<filename>.mp3  -f 1 \n" \
-  "  For wav: gst-audio-decode-example -i /opt/<filename>.wav  -f 2 \n" \
-  "  For flac: gst-audio-decode-example -i /opt/<filename>.flac  -f 3" \
+  "  For mp3: gst-audio-decode-example -i /etc/media/<filename>.mp3  -f 1 \n" \
+  "  For wav: gst-audio-decode-example -i /etc/media/<filename>.wav  -f 2 \n" \
+  "  For flac: gst-audio-decode-example -i /etc/media/<filename>.flac  -f 3" \
   "\nOutput:\n" \
   "\n  Upon executing the application user can perceive the audio over speaker"
 
@@ -254,7 +254,7 @@ main (gint argc, gchar *argv[])
       },
       {"input_file", 'i', 0, G_OPTION_ARG_STRING, &appctx->input_file,
        "Input Filename" ,
-       "-i /opt/<audiofile>"
+       "-i /etc/media/<audiofile>"
       },
       { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };

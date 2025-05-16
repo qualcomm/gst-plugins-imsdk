@@ -40,9 +40,9 @@
   "\nOutput:\n" \
   "  Upon executing the application, with Display option user will observe " \
   "content displayed on the screen, \n" \
-  "with File option encoded stream will be stored at /opt/video_%d.mp4" \
+  "with File option encoded stream will be stored at /etc/media/video_%d.mp4" \
 
-#define DEFAULT_OUTPUT_PATH "/opt"
+#define DEFAULT_OUTPUT_PATH "/etc/media"
 
 #define STREAM_COUNT 3
 typedef struct _GstStreamInf GstStreamInf;
@@ -735,7 +735,7 @@ main (gint argc, gchar * argv[])
   }
   g_free (output);
 
-  // By default output files are stored in /opt
+  // By default output files are stored in /etc/media
   if (NULL == appctx.output_path) {
     appctx.output_path = DEFAULT_OUTPUT_PATH;
   }

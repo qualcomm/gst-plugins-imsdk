@@ -13,9 +13,9 @@
  *
  * Usage:
  * For AVC:Audio Video Encode:
- * gst-audio-video-encode -w 1920 -h 1080 -c 1 -o /opt/audiovideo.mp4
+ * gst-audio-video-encode -w 1920 -h 1080 -c 1 -o /etc/media/audiovideo.mp4
  * For HEVC:Audio Video Encode:
- * gst-audio-video-encode -w 1920 -h 1080 -c 2 -o /opt/audiovideo.mp4
+ * gst-audio-video-encode -w 1920 -h 1080 -c 2 -o /etc/media/audiovideo.mp4
  *
  * Help:
  * gst-audio-video-encode --help
@@ -40,7 +40,7 @@
 
 #include <gst/sampleapps/gst_sample_apps_utils.h>
 
-#define DEFAULT_OUTPUT_FILENAME "/opt/audiovideo.mp4"
+#define DEFAULT_OUTPUT_FILENAME "/etc/media/audiovideo.mp4"
 #define DEFAULT_OUTPUT_WIDTH 1280
 #define DEFAULT_OUTPUT_HEIGHT 720
 
@@ -64,9 +64,9 @@
   "This Application will execute the usecase of AudioVideo Encode"     \
   "\nCommand:" \
   "\nFor AVC: Audio Video Encode:\n"                                   \
-  "gst-audio-video-encode -w 1920 -h 1080 -c 1 -o /opt/audiovideo.mp4" \
+  "gst-audio-video-encode -w 1920 -h 1080 -c 1 -o /etc/media/audiovideo.mp4" \
   "\nFor HEVC: Audio Video Encode:\n"                                  \
-  "gst-audio-video-encode -w 1920 -h 1080 -c 2 -o /opt/audiovideo.mp4" \
+  "gst-audio-video-encode -w 1920 -h 1080 -c 2 -o /etc/media/audiovideo.mp4" \
   "\nOutput\n:" \
   "Upon executing the application user finds encoded file in output location" \
 
@@ -229,7 +229,7 @@ main (gint argc, gchar *argv[])
       "-c 1(AVC)/2(HEVC)" },
     { "output_file", 'o', 0, G_OPTION_ARG_STRING, &appctx->output_file,
       "output filename",
-      "e.g. -o /opt/audiovideo.mp4" },
+      "e.g. -o /etc/media/audiovideo.mp4" },
     { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
     };
 

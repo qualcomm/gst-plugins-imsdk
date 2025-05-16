@@ -17,9 +17,9 @@
 *
 * Usage:
 * For qtivcomposer composing picture in picture:
-* gst-weston-composition-example -t 0 -i /opt/<h264_file>.mp4
+* gst-weston-composition-example -t 0 -i /etc/media/<h264_file>.mp4
 * For qtivcomposer composing side by side:
-* gst-weston-composition-example -t 1 -i /opt/<h264_file>.mp4
+* gst-weston-composition-example -t 1 -i /etc/media/<h264_file>.mp4
 *
 * ***********************************************************************
 *
@@ -45,9 +45,9 @@
   "  The choice of composition is performed using qtivcomposer plugins  .\n" \
   "\nCommand:\n"                                                             \
   "\nFor qtivcomposer composing picture in picture:\n"                        \
-  "  gst-weston-composition-example -t 0 -i /opt/<h264_file>.mp4\n"           \
+  "  gst-weston-composition-example -t 0 -i /etc/media/<h264_file>.mp4\n"           \
   "\nFor qtivcomposer composing side by side:\n"                              \
-  "  gst-weston-composition-example -t 1 -i /opt/<h264_file>.mp4\n"           \
+  "  gst-weston-composition-example -t 1 -i /etc/media/<h264_file>.mp4\n"           \
   "\nOutput:\n"                                                               \
   "  Upon executing the application, the offline video and live camera "      \
   "composition can be observed on the display."
@@ -378,7 +378,7 @@ main (gint argc, gchar *argv[])
     },
     { "input_file", 'i', 0, G_OPTION_ARG_FILENAME, &appctx->input_file,
       "input AVC mp4 Filename",
-      "  e.g. -i /opt/<h264_file>.mp4"
+      "  e.g. -i /etc/media/<h264_file>.mp4"
     },
     { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };

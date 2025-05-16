@@ -18,9 +18,9 @@ DESCRIPTION = """
 This app sets up GStreamer pipeline to read the jpg images and display.
 Usage:
 For Preview on Display:
-python3 /usr/bin/gst-jpg-image-decode.py -i /opt/media/frame%d.JPG
+python3 /usr/bin/gst-jpg-image-decode.py -i /etc/media/frame%d.JPG
 """
-DEFAULT_OUTPUT_FILE = "/opt/media/frame%d.JPG"
+DEFAULT_OUTPUT_FILE = "/etc/media/frame%d.JPG"
 
 waiting_for_eos = False
 eos_received = False
@@ -90,7 +90,7 @@ def parse_arguments():
 
     parser.add_argument(
         '-i', "--filepath", type=str, default=DEFAULT_OUTPUT_FILE,
-        help="Output File Path /opt/media/frame%d.JPG"
+        help="Output File Path /etc/media/frame%d.JPG"
     )
 
     return parser.parse_args()
