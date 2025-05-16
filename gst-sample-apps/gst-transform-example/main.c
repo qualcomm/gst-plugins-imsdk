@@ -55,7 +55,7 @@
 
 #include <gst/sampleapps/gst_sample_apps_utils.h>
 
-#define DEFAULT_OUTPUT_FILE  "/opt/video_transform.mp4"
+#define DEFAULT_OUTPUT_FILE  "/etc/media/video_transform.mp4"
 
 #define DEFAULT_INPUT_WIDTH  1920
 #define DEFAULT_INPUT_HEIGHT 1080
@@ -78,18 +78,18 @@
   "\nCommand:\n"                                                                     \
   "All three operations with camera source\n"                                        \
   "  gst-transform-example -r 90 -f 2 --input_width 3840 --input_height 2160 "       \
-  "--output_width 1920 --output_height 1080 -o /opt/video_transform.mp4 \n"          \
+  "--output_width 1920 --output_height 1080 -o /etc/media/video_transform.mp4 \n"          \
   "All three operations with filesource       \n"                                    \
   "  gst-transform-example -r 90 -f 2 --output_width 1920 --output_height 1080 "     \
-  " -o /opt/video_transform.mp4 -i <inputfile>.mp4 \n"                               \
+  " -o /etc/media/video_transform.mp4 -i <inputfile>.mp4 \n"                               \
   "Execute rotations with camera source \n"                                          \
-  "  gst-transform-example -r 270 -o /opt/video_transform.mp4 \n"                    \
+  "  gst-transform-example -r 270 -o /etc/media/video_transform.mp4 \n"                    \
   "Execute rotations with file source \n"                                            \
-  "  gst-transform-example -r 270 -o /opt/video_transform.mp4 -i <inputfile>.mp4 \n" \
+  "  gst-transform-example -r 270 -o /etc/media/video_transform.mp4 -i <inputfile>.mp4 \n" \
   "\nOutput:\n"                                                                      \
   "  Upon execution, the application presents the output for preview on the "        \
   "display. Once the use case concludes, the recorded output file is saved "         \
-  "at the specified path.(/opt/)"
+  "at the specified path.(/etc/media/)"
 
 // Structure to hold the application context
 struct _GstTransformAppContext
@@ -492,9 +492,9 @@ main (gint argc, gchar ** argv)
       "image scale output height default 1080"},
   {"input_file", 'i', 0, G_OPTION_ARG_FILENAME, &app_ctx->input_file,
       "Input Filename - i/p mp4 file path and name",
-      "e.g. -i /opt/<file_name>.mp4"},
+      "e.g. -i /etc/media/<file_name>.mp4"},
   {"output_file", 'o', 0, G_OPTION_ARG_STRING, &app_ctx->output_file,
-      "Output Filename", "default - /opt/video_AVC_transform.mp4"},
+      "Output Filename", "default - /etc/media/video_AVC_transform.mp4"},
   camera_entries[0],
   camera_entries[1],
   { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }

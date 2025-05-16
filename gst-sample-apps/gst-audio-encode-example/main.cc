@@ -33,16 +33,16 @@
 
 #include <gst/sampleapps/gst_sample_apps_utils.h>
 
-#define DEFAULT_OUTPUT_FILENAME "/opt/audio_record.flac"
+#define DEFAULT_OUTPUT_FILENAME "/etc/media/audio_record.flac"
 
 #define GST_APP_SUMMARY "This app enables the users to encode audio with " \
   "wav or flac format.\n" \
   "\nCommand:\n" \
-  "flac: gst-audio-encode-example -o /opt/<filename>.flac --audio_format=1 \n" \
-  "wav:  gst-audio-encode-example -o /opt/<filename>.wav  --audio_format=2 \n" \
+  "flac: gst-audio-encode-example -o /etc/media/<filename>.flac --audio_format=1 \n" \
+  "wav:  gst-audio-encode-example -o /etc/media/<filename>.wav  --audio_format=2 \n" \
   "\nOutput:\n" \
   "  Upon execution, application will generates recorded audio files " \
-  "at output path (/opt/)."
+  "at output path (/etc/media/)."
 
 // Structure to hold the application context
 struct GstAudioAppContext : GstAppContext {
@@ -244,7 +244,7 @@ main (gint argc, gchar *argv[])
       },
       {"output_file", 'o', 0, G_OPTION_ARG_STRING, &appctx->output_file,
        "Output Filename",
-       "-o /opt/<audiofile>"
+       "-o /etc/media/<audiofile>"
       },
       { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };

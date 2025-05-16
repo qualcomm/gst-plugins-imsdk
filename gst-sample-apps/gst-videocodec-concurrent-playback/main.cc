@@ -35,9 +35,9 @@
 
 #define ARRAY_LENGTH 20
 #define STREAM_CNT 2
-#define DEFAULT_AVC_FILESOURCE "/opt/Animals_000_720p_180s_30FPS.mp4"
-#define DEFAULT_HEVC_FILESOURCE "/opt/Animals_000_720p_180s_30FPS.mp4"
-#define DEFAULT_YUV_FILESINK "/opt/h265_dump.yuv"
+#define DEFAULT_AVC_FILESOURCE "/etc/media/Animals_000_720p_180s_30FPS.mp4"
+#define DEFAULT_HEVC_FILESOURCE "/etc/media/Animals_000_720p_180s_30FPS.mp4"
+#define DEFAULT_YUV_FILESINK "/etc/media/h265_dump.yuv"
 
 
 #define GST_PIPELINE_2STREAM_VIDEO "filesrc name=source1 " \
@@ -218,12 +218,12 @@ main (gint argc, gchar * argv[])
     { "input_file", 'i', 0,
       G_OPTION_ARG_FILENAME_ARRAY, &appctx->in_files,
       " Two mp4 Input Filenames - First is AVC & second HEVC codec in order.",
-      "  e.g. -i /opt/<h264_file>.mp4 -i /opt/<h265_file>.mp4"
+      "  e.g. -i /etc/media/<h264_file>.mp4 -i /etc/media/<h265_file>.mp4"
     },
     { "output_file", 'o', 0,
       G_OPTION_ARG_FILENAME, &appctx->out_file,
       "Output Filename",
-      "  e.g. -o /opt/<filename>.yuv"
+      "  e.g. -o /etc/media/<filename>.yuv"
     },
     { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
