@@ -24,7 +24,7 @@
 gboolean
 file_exists (const gchar * path)
 {
-  FILE *fp = fopen (path, "r+");
+  FILE *fp = fopen (path, "r");
   if (fp) {
     fclose (fp);
     return TRUE;
