@@ -8,7 +8,7 @@
 
 #include "suite-utils.h"
 
-#define CASE_DECODE_DISPLAT_FILE "/etc/media/Draw_1080p_180s_30FPS.mp4"
+#define CAMERA_FILE_PREFIX       "/etc/media"
 
 G_BEGIN_DECLS
 
@@ -76,6 +76,7 @@ camera_composer_display_pipeline (GstCapsParameters * params1,
 
 /**
  * camera_decoder_display_pipeline:
+ * @filename: file source name, it should be Mp4 file.
  * @duration: The pipeline running time in seconds.
  *
  * Function for decode MP4 videos to display.
@@ -83,7 +84,7 @@ camera_composer_display_pipeline (GstCapsParameters * params1,
  * return: None
  */
 void
-camera_decoder_display_pipeline (guint duration);
+camera_decoder_display_pipeline (gchar *filename, guint duration);
 
 G_END_DECLS
 
