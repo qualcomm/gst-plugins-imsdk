@@ -352,6 +352,20 @@ typedef enum {
 } GstFlipVideoType;
 
 /**
+ * GstMLVideoDisposition:
+ * @GST_ML_VIDEO_DISPOSITION_TOP_LEFT: Top Left disposition.
+ * @GST_ML_VIDEO_DISPOSITION_CENTRE: Centre disposition.
+ * @GST_ML_VIDEO_DISPOSITION_STRETCH: Stretch disposition
+ * Options to select Video disposition type.
+ */
+typedef enum
+{
+  GST_ML_VIDEO_DISPOSITION_TOP_LEFT,
+  GST_ML_VIDEO_DISPOSITION_CENTRE,
+  GST_ML_VIDEO_DISPOSITION_STRETCH
+} GstVideoDisposition;
+
+/**
  * GstRotateVideoType:
  * @GST_ROTATE_TYPE_NONE: No video rotation.
  * @GST_ROTATE_TYPE_90CW: 90 degree video rotation.
