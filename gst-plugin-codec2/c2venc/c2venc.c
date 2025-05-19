@@ -58,7 +58,7 @@ G_DEFINE_TYPE (GstC2VEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 #define DEFAULT_PROP_ROTATE               (GST_C2_ROTATE_NONE)
 #define DEFAULT_PROP_RATE_CONTROL         (GST_C2_RATE_CTRL_DISABLE)
 #define DEFAULT_PROP_TARGET_BITRATE       (0xffffffff)
-#define DEFAULT_PROP_IDR_INTERVAL         (0xffffffff)
+#define DEFAULT_PROP_IDR_INTERVAL         (0x7fffffff)
 #define DEFAULT_PROP_INTRA_REFRESH_MODE   (0xffffffff)
 #define DEFAULT_PROP_INTRA_REFRESH_PERIOD (0)
 #define DEFAULT_PROP_B_FRAMES             (0xffffffff)
@@ -526,7 +526,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
       GST_C2_PARAM_GOP_CONFIG, GPOINTER_CAST (&gop));
   if (success) {
     if (c2venc->idr_interval != DEFAULT_PROP_IDR_INTERVAL)
-      gop.n_pframes = c2venc->idr_interval;
+      gop.n_pframes = (guint32)c2venc->idr_interval;
 
     if (c2venc->bframes != DEFAULT_PROP_B_FRAMES)
       gop.n_bframes = c2venc->bframes;
@@ -1550,7 +1550,7 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
       break;
     }
     case PROP_IDR_INTERVAL: {
-      c2venc->idr_interval = g_value_get_uint (value);
+      c2venc->idr_interval = g_value_get_int (value);
 
       if ((c2venc->engine != NULL) && (c2venc->instate != NULL) &&
           (c2venc->idr_interval != DEFAULT_PROP_IDR_INTERVAL)) {
@@ -1731,7 +1731,7 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
       g_value_set_uint (value, c2venc->target_bitrate);
       break;
     case PROP_IDR_INTERVAL:
-      g_value_set_uint (value, c2venc->idr_interval);
+      g_value_set_int (value, c2venc->idr_interval);
       break;
     case PROP_INTRA_REFRESH_MODE:
       g_value_set_enum (value, c2venc->intra_refresh.mode);
@@ -1904,10 +1904,11 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
           0, G_MAXUINT, DEFAULT_PROP_TARGET_BITRATE,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_IDR_INTERVAL,
-      g_param_spec_uint ("idr-interval", "IDR Interval",
-          "Periodicity of IDR frames. When set to 0 all frames will be I frames "
-          "(0xffffffff=component default)",
-          0, G_MAXUINT, DEFAULT_PROP_IDR_INTERVAL,
+      g_param_spec_int ("idr-interval", "IDR Interval",
+          "Periodicity of IDR/I frames (0x7fffffff=component default). "
+          "When set to -1, only the first frame will be IDR/I frame. "
+          "When set to 0 or 1, all frames will be IDR/I frame.",
+          -1, G_MAXINT, DEFAULT_PROP_IDR_INTERVAL,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject, PROP_INTRA_REFRESH_MODE,
       g_param_spec_enum ("intra-refresh-mode", "Intra refresh mode",
