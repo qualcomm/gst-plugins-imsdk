@@ -100,6 +100,19 @@ class DemoWindow(Gtk.Window):
         vbox.pack_start(grid, True, True, 0)
         self.add(vbox)
 
+        # select the source
+        self.src_label = Gtk.Label(label="Source")
+        sources = [
+            "On-Device-Camera",
+            "USB-Camera",
+        ]
+        self.src_select = Gtk.ComboBoxText()
+        for src in sources:
+            self.src_select.append_text(src)
+
+        # Set the default active application
+        self.src_select.set_active(0)
+
         # select the application
         self.app_label = Gtk.Label(label="Applications")
         applications = [
@@ -128,19 +141,21 @@ class DemoWindow(Gtk.Window):
         grid.attach(self.ssid_value, 1, 1, 1, 1)
         grid.attach(self.ip_label, 0, 2, 1, 1)
         grid.attach(self.ip_value, 1, 2, 1, 1)
-        grid.attach(self.app_label, 0, 3, 1, 1)
+        grid.attach(self.src_label, 0, 3, 1, 1)
+        grid.attach(self.app_label, 0, 4, 1, 1)
 
         # Add the ComboBoxText to the grid
-        grid.attach(self.application_select, 1, 3, 1, 1)
+        grid.attach(self.src_select, 1, 3, 1, 1)
+        grid.attach(self.application_select, 1, 4, 1, 1)
 
         # Attach the "Start" button to the grid
-        grid.attach(self.start, 1, 4, 1, 1)
+        grid.attach(self.start, 1, 5, 1, 1)
 
         # Attach the "Exit" button to the grid
-        grid.attach(self.exit_app, 1, 5, 1, 1)
+        grid.attach(self.exit_app, 1, 6, 1, 1)
 
         # Add an empty label to create a gap
-        grid.attach(Gtk.Label(), 1, 6, 1, 1)
+        grid.attach(Gtk.Label(), 1, 7, 1, 1)
 
         # Add the grid to the window
         self.add(grid)
@@ -378,23 +393,78 @@ class DemoWindow(Gtk.Window):
         # Returning False to stop the timeout
         return False
 
-    def create_pipeline(self, application):
+    def check_usb_driver(self):
+        for i in range(11):
+            device = f'/dev/video{i}'
+            try:
+                # Run the udevadm command and capture the output
+                result = subprocess.run(['udevadm', 'info', '-n', device], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+                # Check if the command was successful
+                if result.returncode != 0:
+                    print(f"Error running udevadm for {device}: {result.stderr}")
+                    continue
+
+                # Check if the ID_USB_DRIVER=uvcvideo field is present in the output
+                if 'ID_USB_DRIVER=uvcvideo' in result.stdout:
+                    print(f"The device {device} is using the uvcvideo driver.")
+                    return device
+                else:
+                    print(f"The device {device} is not using the uvcvideo driver.")
+            except Exception as e:
+                print(f"An error occurred while checking {device}: {e}")
+
+        # If no device is found, show a GTK pop-up window
+        class MessageWindow(Gtk.Window):
+            def __init__(self):
+                Gtk.Window.__init__(self, title="USB Camera Not Found")
+                self.set_border_width(10)
+                self.set_default_size(300, 100)
+
+                label = Gtk.Label(label="No USB camera found. Please attach a USB camera.")
+
+                vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+                vbox.pack_start(label, True, True, 0)
+
+                self.add(vbox)
+
+        win = MessageWindow()
+        win.connect("destroy", Gtk.main_quit)
+        win.show_all()
+        Gtk.main()
+
+        return None
+
+    def create_pipeline(self, application, src):
         if self.check_download is not None:
             self.check_download.join()
-
         pipeline = None
+
+        if src == "USB-Camera":
+            found_device = self.check_usb_driver()
+            if found_device == None:
+                return None
+            in_src = f"v4l2src io-mode=dmabuf-import device={found_device} ! video/x-raw ! queue ! qtivtransform ! video/x-raw,format=NV12"
+        elif src == "On-Device-Camera":
+            in_src = "qtiqmmfsrc name=camsrc ! video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1"
+
         if application == "Record live video":
-           pipeline = "gst-launch-1.0 qtiqmmfsrc name=camsrc camera=0 ! video/x-raw,format=NV12,width=1280,height=720,framerate=30/1 ! queue ! tee name=split \
-                ! queue ! qtivcomposer sink_0::position='<0, 0>' sink_0::dimensions='<1280, 720>' ! queue ! gtksink \
-                split. ! queue ! video/x-raw,format=NV12,width=1280,height=720,interlace-mode=progressive,colorimetry=bt601 ! v4l2h264enc capture-io-mode=4 output-io-mode=5 ! \
+           pipeline = "gst-launch-1.0 " + in_src + " ! queue ! tee name=split ! queue ! qtivcomposer ! queue ! \
+                gtksink split. ! queue ! video/x-raw,format=NV12,interlace-mode=progressive,colorimetry=bt601 ! v4l2h264enc capture-io-mode=4 output-io-mode=5 ! \
                 h264parse ! mp4mux reserved-moov-update-period=1000000 reserved-bytes-per-sec=10000 reserved-max-duration=1000000000 ! filesink location=/etc/media/video.mp4"
 
-        elif application == "DashCamera":
-            pipeline = "gst-launch-1.0 qtivcomposer name=mix sink_0::position='<0, 0>' sink_0::dimensions='<640, 360>' \
+        elif application == "DashCamera" and src == "On-Device-Camera":
+            pipeline = "gst-launch-1.0 -e qtivcomposer name=mix sink_0::position='<0, 0>' sink_0::dimensions='<640, 360>' \
                 sink_1::position='<640, 0>' sink_1::dimensions='<640, 360>' \
                 mix. ! queue ! gtksink \
                 qtiqmmfsrc name=camsrc camera=0 ! video/x-raw,format=NV12,width=1280,height=720,framerate=30/1 ! queue ! mix. \
                 qtiqmmfsrc name=camsrc1 camera=1 ! video/x-raw,format=NV12,width=1280,height=720,framerate=30/1 ! queue ! mix. "
+
+        elif application == "DashCamera" and src == "USB-Camera":
+            pipeline = f"gst-launch-1.0 -e qtivcomposer name=mix sink_0::position='<0, 0>' sink_0::dimensions='<640, 360>' \
+                sink_1::position='<640, 0>' sink_1::dimensions='<640, 360>' \
+                mix. ! queue ! gtksink " + in_src + "! queue ! tee name=split ! queue ! mix. \
+                split. ! queue ! mix. "
 
         elif application == "VideoWall":
             pipeline = "gst-launch-1.0 -e qtivcomposer name=mix \
@@ -412,7 +482,7 @@ class DemoWindow(Gtk.Window):
             pipeline = "gst-launch-1.0 " + "videotestsrc" + " ! " + "video/x-raw,width=640" + ",height=480" + " ! " + "gtksink"
 
         if self.download_artifacts is True:
-            if application == "Parallel-AI-Fusion":
+            if application == "Parallel-AI-Fusion" :
                 pipeline = "gst-launch-1.0 \
                     qtivcomposer name=mixer \
                     sink_0::position='<0, 0>' sink_0::dimensions='<960, 540>' \
@@ -423,8 +493,7 @@ class DemoWindow(Gtk.Window):
                     sink_5::position='<0, 540>' sink_5::dimensions='<960, 540>' \
                     sink_6::position='<960, 540>' sink_6::dimensions='<960, 540>' \
                     sink_7::position='<960, 540>' sink_7::dimensions='<960, 540>' sink_7::alpha=0.5 \
-                    mixer. ! queue ! fpsdisplaysink sync=true signal-fps-measurements=true text-overlay=true video-sink='gtksink' \
-                    qtiqmmfsrc name=camsrc ! video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1 ! queue ! tee name=split \
+                    mixer. ! queue ! fpsdisplaysink sync=true signal-fps-measurements=true text-overlay=true video-sink='gtksink' " + in_src + "! queue ! tee name=split \
                     split. ! queue ! mixer. \
                     split. ! queue ! qtimlvconverter ! queue ! qtimlsnpe delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/models/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
                     split. ! queue ! mixer. \
@@ -435,8 +504,7 @@ class DemoWindow(Gtk.Window):
                     split. ! queue ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options='QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,htp_performance_mode=(string)2' model=/etc/models/deeplabv3_plus_mobilenet_quantized.tflite ! queue ! qtimlvsegmentation module=deeplab-argmax labels=/etc/models/deeplabv3_resnet50.labels constants='deeplab,q-offsets=<0.0>,q-scales=<1.0>;' ! video/x-raw,format=BGRA,width=256,height=144 ! queue ! mixer. \
                     "
             elif application == "ObjectDetection":
-                pipeline = "gst-launch-1.0 -e \
-                    qtiqmmfsrc name=camsrc ! video/x-raw,format=NV12,width=1280,height=720,framerate=30/1 ! queue ! tee name=split \
+                pipeline = "gst-launch-1.0 " + in_src + "! queue ! tee name=split \
                     split. ! queue ! qtivcomposer name=mixer ! queue ! gtksink \
                     split. ! queue ! qtimlvconverter ! queue ! qtimlsnpe delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' ! queue ! \
                     qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/models/yolonas.labels ! \
@@ -502,6 +570,7 @@ class DemoWindow(Gtk.Window):
 
         # Get the selected application
         application = self.application_select.get_active_text()
+        src = self.src_select.get_active_text()
 
         # Download models and labels
         if((application == "ObjectDetection") or (application == "Parallel-AI-Fusion")):
@@ -511,7 +580,7 @@ class DemoWindow(Gtk.Window):
             self.popup.destroy()
 
         # Start the application pipeline in a separate thread
-        threading.Thread(target=self.create_pipeline, args=(application,)).start()
+        threading.Thread(target=self.create_pipeline, args=(application,src,)).start()
 
     def on_cancel_button_clicked(self, widget):
         # Close the popup window
