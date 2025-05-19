@@ -45,14 +45,15 @@ gst_smartcodec_engine_new ()
   SmartCodecEngine *engine = NULL;
   ::videoctrl::NewIEngine NewVideoCtrlEngine;
 
+  std::string libname = "libVideoCtrl.so." + std::string(VIDEO_CTRL_VERSION);
+
   engine = g_new0 (SmartCodecEngine, 1);
   g_return_val_if_fail (engine != NULL, NULL);
 
   engine->last_buffer_ts = -1;
   gst_video_info_init (&engine->video_info);
 
-  if ((engine->videoctrlhandle =
-      dlopen ("libVideoCtrl.so", RTLD_NOW)) == NULL) {
+  if ((engine->videoctrlhandle = dlopen (libname.c_str(), RTLD_NOW)) == NULL) {
     GST_ERROR ("Failed to open VideoCtrl library, error: %s!", dlerror());
     goto cleanup;
   }
