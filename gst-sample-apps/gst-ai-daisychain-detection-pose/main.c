@@ -131,24 +131,6 @@ typedef enum {
 } GstConversionMode;
 
 /**
- * GstVideoDisposition:
- * @TOP_LEFT : Preserve the source Aspect Ratio during scaledown and
- *     place it in the top-left corner of the output tensor.
- * @CENTRE   : Preserve the source Aspect Ratio during scaledown and
- *     place it in the centre of the output tensor.
- * @STRETCH  :  Ignore the source image Aspect Ratio and if required
- *     stretch its Aspect Ratio in order to fit completely inside the
- *     output tensor
- *
- * Type of Video Disposition.
- */
-typedef enum {
-  TOP_LEFT,
-  CENTRE,
-  STRETCH
-} GstVideoDisposition;
-
-/**
  * GstVideoSplitMode:
  * @NONE            : Buffer is rescaled and color conversion.
  * @FORCE_TRANSFORM : Buffer is rescaled and color conversion.
@@ -711,7 +693,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
   g_value_unset (&value);
 
   g_value_init (&value, G_TYPE_INT);
-  g_value_set_int (&value, CENTRE);
+  g_value_set_int (&value, GST_ML_VIDEO_DISPOSITION_CENTRE);
   g_object_set_property (G_OBJECT (qtimlvconverter[GST_POSE_TYPE_HRNET]),
       "image-disposition", &value);
   g_value_unset (&value);
