@@ -38,8 +38,8 @@
 
 #include <gst/sampleapps/gst_sample_apps_utils.h>
 
-#define DEFAULT_OUTPUT_FILENAME_CAM1 "/opt/cam1_vid.mp4"
-#define DEFAULT_OUTPUT_FILENAME_CAM2 "/opt/cam2_vid.mp4"
+#define DEFAULT_OUTPUT_FILENAME_CAM1 "/etc/media/cam1_vid.mp4"
+#define DEFAULT_OUTPUT_FILENAME_CAM2 "/etc/media/cam2_vid.mp4"
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
 

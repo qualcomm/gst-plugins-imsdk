@@ -225,7 +225,7 @@ def construct_pipeline(pipe):
         elements["capsfilter_0"],
         "caps",
         "video/x-raw,format=NV12_Q08C,\
-        width=1920,height=1080,framerate=30/1,colorimetry=bt709",
+        width=1280,height=720,framerate=30/1,colorimetry=bt709",
     )
 
     Gst.util_set_object_arg(elements["v4l2h264enc_0"], "capture-io-mode", "dmabuf")

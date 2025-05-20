@@ -29,8 +29,8 @@ Help:
 python3 gst-multi-camera-stream-example.py --help
 """
 
-DEFAULT_OUTPUT_FILE_PRIMARY_CAMERA = "/opt/cam_0.mp4"
-DEFAULT_OUTPUT_FILE_SECONDARY_CAMERA = "/opt/cam_1.mp4"
+DEFAULT_OUTPUT_FILE_PRIMARY_CAMERA = "/etc/media/cam_0.mp4"
+DEFAULT_OUTPUT_FILE_SECONDARY_CAMERA = "/etc/media/cam_1.mp4"
 DEFAULT_WIDTH = 1280
 DEFAULT_HEIGHT = 720
 DEFAULT_PRIMARY_CAMERA_ID = 0

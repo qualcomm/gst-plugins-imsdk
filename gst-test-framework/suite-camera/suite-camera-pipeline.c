@@ -12,7 +12,7 @@
 #include <gst/pbutils/pbutils.h>
 
 void
-print_tags (const GstTagList *tags, gchar *tag) {
+mp4_print_tags (const GstTagList *tags, gchar *tag) {
   GValue val = G_VALUE_INIT;
   gchar *str;
 
@@ -30,11 +30,11 @@ print_tags (const GstTagList *tags, gchar *tag) {
 }
 
 gboolean
-mp4_check_video_info (GstDiscovererStreamInfo *stream_info,
+mp4_check_video_info (GstDiscovererStreamInfo *info,
     gint inwidth, gint inheight, gdouble inframerate, gdouble diff) {
   GList *tmp, *streams;
   streams = gst_discoverer_container_info_get_streams (
-      GST_DISCOVERER_CONTAINER_INFO (stream_info));
+      GST_DISCOVERER_CONTAINER_INFO (info));
 
   for (tmp = streams; tmp; tmp = tmp->next) {
     GstDiscovererStreamInfo *tmpinf = (GstDiscovererStreamInfo *) tmp->data;
@@ -61,16 +61,23 @@ mp4_check_video_info (GstDiscovererStreamInfo *stream_info,
 }
 
 gboolean
-mp4_check (gchar *location, gint width, gint height,
+mp4_verification (gchar *location, gint width, gint height,
     gdouble framerate, gdouble diff, guint induration) {
-
-  fail_unless_equals_int (g_file_test (location,
-      G_FILE_TEST_EXISTS), TRUE);
-
   gchar *prefix = "file://";
   gchar *expand_location = g_strconcat(prefix, location, NULL);
+  gboolean ret = TRUE;
+
+  if (!g_file_test (location, G_FILE_TEST_EXISTS)) {
+    ret = FALSE;
+    goto DONE;
+  }
 
   GstDiscoverer *discoverer = gst_discoverer_new (GST_SECOND, NULL);
+  if (!discoverer) {
+    ret = FALSE;
+    goto DONE;
+  }
+
   GstDiscovererInfo *info = gst_discoverer_discover_uri (discoverer,
     expand_location, NULL);
   GST_DEBUG ("Done discovering %s\n", gst_discoverer_info_get_uri (info));
@@ -78,46 +85,68 @@ mp4_check (gchar *location, gint width, gint height,
   if (info) {
     GstClockTime duration = gst_discoverer_info_get_duration (info);
     GST_DEBUG ("Duration: %" GST_TIME_FORMAT "\n", GST_TIME_ARGS (duration));
-    // if induration not 0, means check duration
-    if (!induration) {
-      if ((guint) duration != induration)
-        g_free (expand_location);
-        gst_discoverer_info_unref (info);
-        g_object_unref (discoverer);
-        return FALSE;
+
+    // Check Mp4 duration.
+    if (induration && (guint) duration != induration) {
+      ret = FALSE;
+      goto DONE;
     }
 
     const GstTagList *tags = gst_discoverer_info_get_tags (info);
-    if (tags) {
-      gst_tag_list_foreach (tags, print_tags, NULL);
-    } else {
+    if (tags)
+      gst_tag_list_foreach (tags, mp4_print_tags, NULL);
+    else
       GST_DEBUG ("No tags found\n");
-    }
 
     GstDiscovererStreamInfo *sinfo = gst_discoverer_info_get_stream_info (info);
     if (sinfo) {
       if (!mp4_check_video_info (sinfo, width, height, framerate, diff)) {
-        g_free (expand_location);
-        gst_discoverer_info_unref (info);
-        g_object_unref (discoverer);
-        return FALSE;
+        ret = FALSE;
+        goto DONE;
       }
     } else {
       GST_DEBUG ("No streams found\n");
+      ret = FALSE;
+      goto DONE;
     }
   } else {
-      g_free(expand_location);
-      gst_discoverer_info_unref (info);
-      g_object_unref (discoverer);
-
-      GST_DEBUG ("No info found\n");
-      return FALSE;
+    GST_DEBUG ("Mp4 info is not found.");
+    ret = FALSE;
+    goto DONE;
   }
 
-  g_free(expand_location);
-  gst_discoverer_info_unref (info);
-  g_object_unref (discoverer);
-  return TRUE;
+DONE:
+  if (expand_location)
+    g_free(expand_location);
+
+  if (info)
+    gst_discoverer_info_unref (info);
+
+  if (discoverer)
+    g_object_unref (discoverer);
+
+  return ret;
+}
+
+void on_pad_added (GstElement *element, GstPad *pad, gpointer data)
+{
+  GstPad *sink_pad = gst_element_get_static_pad ((GstElement *)data, "sink");
+  if (gst_pad_is_linked (sink_pad)) {
+    g_object_unref (sink_pad);
+    return;
+  }
+
+  GstCaps *new_pad_caps = gst_pad_get_current_caps (pad);
+  GstStructure *new_pad_struct = gst_caps_get_structure (new_pad_caps, 0);
+  const gchar *new_pad_type = gst_structure_get_name (new_pad_struct);
+
+  if (g_str_has_prefix (new_pad_type, "video/x-h264") ||
+      g_str_has_prefix (new_pad_type, "video/x-h265")) {
+    gst_pad_link(pad, sink_pad);
+  }
+
+  gst_caps_unref (new_pad_caps);
+  g_object_unref (sink_pad);
 }
 
 void
@@ -279,9 +308,9 @@ camera_pipeline (GstCapsParameters * params1,
 void
 camera_display_encode_pipeline (GstCapsParameters * params1,
     GstCapsParameters * params2, guint duration) {
-
   GstElement *pipeline, *qtiqmmfsrc, *capsfilter1, *wayland;
   GstElement *capsfilter2, *filesink, *venc, *parse, *mp4mux;
+  gchar *filename = NULL;
   GstPad *previewpad;
   GstCaps *filtercaps;
   GstMessage *msg;
@@ -301,7 +330,9 @@ camera_display_encode_pipeline (GstCapsParameters * params1,
       wayland && venc && parse && mp4mux && filesink);
 
   // Set filesink properties
-  g_object_set (G_OBJECT (filesink), "location", "/opt/mux.mp4", NULL);
+  filename = g_strdup_printf ("%s/encode_%dx%d.mp4",
+      CAMERA_FILE_PREFIX, params2->width, params2->height);
+  g_object_set (G_OBJECT (filesink), "location", filename, NULL);
   g_object_set (G_OBJECT (filesink), "enable-last-sample", FALSE, NULL);
 
   // Configure the stream caps
@@ -356,6 +387,19 @@ camera_display_encode_pipeline (GstCapsParameters * params1,
     fail_unless_equals_int (GST_MESSAGE_TYPE (msg), GST_MESSAGE_EOS);
     gst_message_unref (msg);
   }
+
+  // Send eos to pipeline.
+  gst_element_send_event (pipeline, gst_event_new_eos ());
+  msg = gst_bus_timed_pop_filtered (GST_ELEMENT_BUS (pipeline),
+      1 * GST_SECOND, GST_MESSAGE_EOS | GST_MESSAGE_ERROR);
+  // Expect EOS message.
+  fail_unless (msg);
+  fail_unless_equals_int (GST_MESSAGE_TYPE (msg), GST_MESSAGE_EOS);
+  gst_message_unref (msg);
+
+  // Verify the output Mp4.
+  fail_unless_equals_int (mp4_verification (filename,
+      params2->width, params2->height, params2->fps, 0.5f, 0), 1);
 
   fail_unless_equals_int (gst_element_set_state (pipeline, GST_STATE_PAUSED),
       GST_STATE_CHANGE_NO_PREROLL);
@@ -450,7 +494,6 @@ camera_transform_display_pipeline (GstCapsParameters * params1,
 void
 camera_composer_display_pipeline (GstCapsParameters * params1,
     gchar *location, guint duration) {
-
   GstElement *pipeline, *qtiqmmfsrc, *capsfilter, *vcomps, *wayland;
   GstElement *filesrc, *demux, *parse, *vdec, *queue1, *queue2;
   GstPad *sink0, *sink1;
@@ -531,37 +574,16 @@ camera_composer_display_pipeline (GstCapsParameters * params1,
   fail_unless_equals_int (gst_element_set_state (pipeline, GST_STATE_NULL),
       GST_STATE_CHANGE_SUCCESS);
   gst_object_unref (pipeline);
-
-}
-
-void on_pad_added (GstElement *element, GstPad *pad, gpointer data)
-{
-
-  GstPad *sink_pad = gst_element_get_static_pad ((GstElement *)data, "sink");
-  if (gst_pad_is_linked (sink_pad)) {
-    g_object_unref (sink_pad);
-    return;
-  }
-
-  GstCaps *new_pad_caps = gst_pad_get_current_caps (pad);
-  GstStructure *new_pad_struct = gst_caps_get_structure (new_pad_caps, 0);
-  const gchar *new_pad_type = gst_structure_get_name (new_pad_struct);
-
-  if (g_str_has_prefix (new_pad_type, "video/x-h264") ||
-      g_str_has_prefix (new_pad_type, "video/x-h265")) {
-    gst_pad_link(pad, sink_pad);
-  }
-
-  gst_caps_unref (new_pad_caps);
-  g_object_unref (sink_pad);
 }
 
 void
-camera_decoder_display_pipeline (guint duration)
+camera_decoder_display_pipeline (gchar *filename, guint duration)
 {
-
-  GstElement *pipeline, *filesrc, *demux, *parse, *vdec, *wayland;
+  GstElement *pipeline, *filesrc, *demux, *parse, *vdec, *queue, *wayland;
   GstMessage *msg;
+  gchar *location = g_strdup_printf ("%s/%s", CAMERA_FILE_PREFIX, filename);
+  fail_unless_equals_int (mp4_verification (location,
+      1920, 1080, 30.0f, 0.5f, 0), 1);
 
   pipeline = gst_pipeline_new (NULL);
   // Create all elements
@@ -569,21 +591,20 @@ camera_decoder_display_pipeline (guint duration)
   demux = gst_element_factory_make ("qtdemux", NULL);
   parse = gst_element_factory_make ("h264parse", NULL);
   vdec = gst_element_factory_make ("v4l2h264dec", NULL);
+  queue = gst_element_factory_make ("queue", NULL);
   wayland = gst_element_factory_make ("waylandsink", "waylandsink");
 
-  fail_unless (pipeline && filesrc && demux && parse && vdec && wayland);
-  fail_unless_equals_int (mp4_check (CASE_DECODE_DISPLAT_FILE,
-      1920, 1080, 30.0f, 0.5f, 180014), 1);
+  fail_unless (pipeline && filesrc && demux && parse && vdec && queue && wayland);
 
   // Configure the stream
-  g_object_set (filesrc, "location", CASE_DECODE_DISPLAT_FILE, NULL);
+  g_object_set (filesrc, "location", location, NULL);
   g_object_set (wayland, "sync", TRUE, NULL);
 
   // Add elements to the pipeline and link them
   gst_bin_add_many (GST_BIN (pipeline), filesrc, demux, parse,
-      vdec, wayland, NULL);
+      vdec, queue, wayland, NULL);
   fail_unless (gst_element_link (filesrc, demux));
-  fail_unless (gst_element_link_many (parse, vdec, wayland, NULL));
+  fail_unless (gst_element_link_many (parse, vdec, queue, wayland, NULL));
   g_signal_connect (demux, "pad-added", G_CALLBACK (on_pad_added), parse);
 
   fail_unless_equals_int (gst_element_set_state (pipeline, GST_STATE_PLAYING),

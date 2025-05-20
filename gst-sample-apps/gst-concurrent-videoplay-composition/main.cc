@@ -216,7 +216,7 @@ main (gint argc, gchar *argv[])
       "No of stream for decode and composition", "2, 4, 8 or 16" },
     { "input_file", 'i', 0, G_OPTION_ARG_FILENAME_ARRAY, &appctx->input_files,
       "Input AVC Filenames - Path of AVC files to be played with filenames",
-      "e.g. -i /opt/<h264_file>.mp4 -i /opt/<h264_file>.mp4" },
+      "e.g. -i /etc/media/<h264_file>.mp4 -i /etc/media/<h264_file>.mp4" },
     { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 

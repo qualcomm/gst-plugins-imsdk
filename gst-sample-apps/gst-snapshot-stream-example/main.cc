@@ -43,7 +43,7 @@
 
 #define ARRAY_LENGTH 100
 
-#define DEFAULT_SNAP_OUTPUT_PATH "/opt"
+#define DEFAULT_SNAP_OUTPUT_PATH "/etc/media"
 #define SNAP_OUTPUT_FILE "snapshot%d.jpg"
 
 #define DEFAULT_MAX_SNAPSHOTS 5
@@ -58,7 +58,7 @@
   "\nOutput:\n" \
   "  Upon execution, the application will generate an output for preview " \
   "on the display. \n  Once the use case concludes, snapshot output files will" \
-  " be available at the '/opt/' directory unless custom output directory set."
+  " be available at the '/etc/media/' directory unless custom output directory set."
 
 // Structure to hold the application context
 struct GstSnapshotAppContext : GstAppContext {
@@ -296,7 +296,7 @@ main (gint argc, gchar * argv[])
     { "output_path", 'o', 0, G_OPTION_ARG_STRING,
       &appctx->output_path,
       "Path to save snapshot images to.",
-      "-Default path: /opt"
+      "-Default path: /etc/media"
     },
     { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };

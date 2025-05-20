@@ -100,6 +100,19 @@ class DemoWindow(Gtk.Window):
         vbox.pack_start(grid, True, True, 0)
         self.add(vbox)
 
+        # select the source
+        self.src_label = Gtk.Label(label="Source")
+        sources = [
+            "On-Device-Camera",
+            "USB-Camera",
+        ]
+        self.src_select = Gtk.ComboBoxText()
+        for src in sources:
+            self.src_select.append_text(src)
+
+        # Set the default active application
+        self.src_select.set_active(0)
+
         # select the application
         self.app_label = Gtk.Label(label="Applications")
         applications = [
@@ -108,6 +121,9 @@ class DemoWindow(Gtk.Window):
             "VideoWall",
             "ObjectDetection",
             "Parallel-AI-Fusion",
+            "Face Detection",
+            "Daisychain Pose",
+            "Multistream",
             "VideoTestSrc"
         ]
         self.application_select = Gtk.ComboBoxText()
@@ -128,19 +144,21 @@ class DemoWindow(Gtk.Window):
         grid.attach(self.ssid_value, 1, 1, 1, 1)
         grid.attach(self.ip_label, 0, 2, 1, 1)
         grid.attach(self.ip_value, 1, 2, 1, 1)
-        grid.attach(self.app_label, 0, 3, 1, 1)
+        grid.attach(self.src_label, 0, 3, 1, 1)
+        grid.attach(self.app_label, 0, 4, 1, 1)
 
         # Add the ComboBoxText to the grid
-        grid.attach(self.application_select, 1, 3, 1, 1)
+        grid.attach(self.src_select, 1, 3, 1, 1)
+        grid.attach(self.application_select, 1, 4, 1, 1)
 
         # Attach the "Start" button to the grid
-        grid.attach(self.start, 1, 4, 1, 1)
+        grid.attach(self.start, 1, 5, 1, 1)
 
         # Attach the "Exit" button to the grid
-        grid.attach(self.exit_app, 1, 5, 1, 1)
+        grid.attach(self.exit_app, 1, 6, 1, 1)
 
         # Add an empty label to create a gap
-        grid.attach(Gtk.Label(), 1, 6, 1, 1)
+        grid.attach(Gtk.Label(), 1, 7, 1, 1)
 
         # Add the grid to the window
         self.add(grid)
@@ -264,6 +282,9 @@ class DemoWindow(Gtk.Window):
             "<b>VideoWall</b>: Multichannel video decoding and composition. Creates four instances of a video. Ensure 'Record Live Video' is executed beforehand.\n\n"
             "<b>ObjectDetection</b>: Object detection on input streams from a camera.\n\n"
             "<b>Parallel-AI-Fusion</b>: Parallel AI inferences (Detection, Classification, Pose estimation and Segmentation) from a camera.\n\n"
+            "<b>Face Detection</b>: Face detection on input streams from a camera.\n\n"
+            "<b>Daisychain Pose</b>: Daisychain of detection and pose estimation from a camera.\n\n"
+            "<b>Multistream</b>: Multistream inference from a camera and 7 file streams.\n\n"
         )
         dialog.run()
         dialog.destroy()
@@ -280,12 +301,15 @@ class DemoWindow(Gtk.Window):
         DEFAULT_TFLITE_CLASSIFICATION_MODEL = "/etc/models/inception_v3_quantized.tflite"
         DEFAULT_TFLITE_POSE_DETECTION_MODEL = "/etc/models/hrnet_pose_quantized.tflite"
         DEFAULT_TFLITE_SEGMENTATION_MODEL = "/etc/models/deeplabv3_plus_mobilenet_quantized.tflite"
-        DEFAULT_OBJECT_DETECTION_LABELS = "/etc/models/yolonas.labels"
-        DEFAULT_CLASSIFICATION_LABELS = "/etc/models/classification.labels"
-        DEFAULT_POSE_DETECTION_LABELS = "/etc/models/posenet_mobilenet_v1.labels"
-        DEFAULT_SEGMENTATION_LABELS = "/etc/models/deeplabv3_resnet50.labels"
+        DEFAULT_TFLITE_FACE_DETECTION_MODEL = "/etc/models/face_det_lite_quantized.tflite"
+        DEFAULT_OBJECT_DETECTION_LABELS = "/etc/labels/yolonas.labels"
+        DEFAULT_CLASSIFICATION_LABELS = "/etc/labels/classification.labels"
+        DEFAULT_POSE_DETECTION_LABELS = "/etc/labels/posenet_mobilenet_v1.labels"
+        DEFAULT_SEGMENTATION_LABELS = "/etc/labels/deeplabv3_resnet50.labels"
+        DEFAULT_FACE_DETECTION_LABELS = "/etc/labels/face_detection.labels"
+        DEFAULT_INPUT_VIDEO = "/etc/media/video.mp4"
 
-        version = "GA1.3-rel"
+        version = "GA1.4-rel"
         target = "QCS6490"
         output_path = "/etc/models/"
 
@@ -295,10 +319,13 @@ class DemoWindow(Gtk.Window):
                 and os.path.exists(DEFAULT_TFLITE_CLASSIFICATION_MODEL) \
                 and os.path.exists(DEFAULT_TFLITE_POSE_DETECTION_MODEL) \
                 and os.path.exists(DEFAULT_TFLITE_SEGMENTATION_MODEL) \
+                and os.path.exists(DEFAULT_TFLITE_FACE_DETECTION_MODEL) \
                 and os.path.exists(DEFAULT_OBJECT_DETECTION_LABELS) \
                 and os.path.exists(DEFAULT_CLASSIFICATION_LABELS) \
                 and os.path.exists(DEFAULT_POSE_DETECTION_LABELS) \
-                and os.path.exists(DEFAULT_SEGMENTATION_LABELS):
+                and os.path.exists(DEFAULT_SEGMENTATION_LABELS) \
+                and os.path.exists(DEFAULT_FACE_DETECTION_LABELS) \
+                and os.path.exists(DEFAULT_INPUT_VIDEO):
             print("Artifacts already exist.")
             # Close the popup window
             self.popup.destroy()
@@ -378,41 +405,122 @@ class DemoWindow(Gtk.Window):
         # Returning False to stop the timeout
         return False
 
-    def create_pipeline(self, application):
+    def check_usb_driver(self):
+        for i in range(11):
+            device = f'/dev/video{i}'
+            try:
+                # Run the udevadm command and capture the output
+                result = subprocess.run(['udevadm', 'info', '-n', device], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+                # Check if the command was successful
+                if result.returncode != 0:
+                    print(f"Error running udevadm for {device}: {result.stderr}")
+                    continue
+
+                # Check if the ID_USB_DRIVER=uvcvideo field is present in the output
+                if 'ID_USB_DRIVER=uvcvideo' in result.stdout:
+                    print(f"The device {device} is using the uvcvideo driver.")
+                    return device
+                else:
+                    print(f"The device {device} is not using the uvcvideo driver.")
+            except Exception as e:
+                print(f"An error occurred while checking {device}: {e}")
+
+        # If no device is found, show a GTK pop-up window
+        class MessageWindow(Gtk.Window):
+            def __init__(self):
+                Gtk.Window.__init__(self, title="USB Camera Not Found")
+                self.set_border_width(10)
+                self.set_default_size(300, 100)
+
+                label = Gtk.Label(label="No USB camera found. Please attach a USB camera.")
+
+                vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+                vbox.pack_start(label, True, True, 0)
+
+                self.add(vbox)
+
+        win = MessageWindow()
+        win.connect("destroy", Gtk.main_quit)
+        win.show_all()
+        Gtk.main()
+
+        return None
+
+    def create_pipeline(self, application, src):
         if self.check_download is not None:
             self.check_download.join()
-
         pipeline = None
-        if application == "Record live video":
-           pipeline = "gst-launch-1.0 qtiqmmfsrc name=camsrc camera=0 ! video/x-raw,format=NV12,width=1280,height=720,framerate=30/1 ! queue ! tee name=split \
-                ! queue ! qtivcomposer sink_0::position='<0, 0>' sink_0::dimensions='<1280, 720>' ! queue ! gtksink \
-                split. ! queue ! video/x-raw,format=NV12,width=1280,height=720,interlace-mode=progressive,colorimetry=bt601 ! v4l2h264enc capture-io-mode=4 output-io-mode=5 ! \
-                h264parse ! mp4mux reserved-moov-update-period=1000000 reserved-bytes-per-sec=10000 reserved-max-duration=1000000000 ! filesink location=/etc/media/video.mp4"
 
-        elif application == "DashCamera":
-            pipeline = "gst-launch-1.0 qtivcomposer name=mix sink_0::position='<0, 0>' sink_0::dimensions='<640, 360>' \
+        if src == "USB-Camera":
+            found_device = self.check_usb_driver()
+            if found_device == None:
+                return None
+            in_src = f"v4l2src io-mode=dmabuf-import device={found_device} ! video/x-raw ! queue ! qtivtransform ! video/x-raw,format=NV12"
+        elif src == "On-Device-Camera":
+            in_src = "qtiqmmfsrc name=camsrc ! video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1"
+
+        if application == "Record live video":
+           pipeline = "gst-launch-1.0 " + in_src + " ! queue ! tee name=split ! queue ! qtivcomposer ! queue ! \
+                gtksink split. ! queue ! video/x-raw,format=NV12,interlace-mode=progressive,colorimetry=bt601 ! v4l2h264enc capture-io-mode=4 output-io-mode=5 ! \
+                h264parse ! mp4mux reserved-moov-update-period=1000000 reserved-bytes-per-sec=10000 reserved-max-duration=1000000000 ! filesink location=/etc/media/video_out.mp4"
+
+        elif application == "DashCamera" and src == "On-Device-Camera":
+            pipeline = "gst-launch-1.0 -e qtivcomposer name=mix sink_0::position='<0, 0>' sink_0::dimensions='<640, 360>' \
                 sink_1::position='<640, 0>' sink_1::dimensions='<640, 360>' \
                 mix. ! queue ! gtksink \
                 qtiqmmfsrc name=camsrc camera=0 ! video/x-raw,format=NV12,width=1280,height=720,framerate=30/1 ! queue ! mix. \
                 qtiqmmfsrc name=camsrc1 camera=1 ! video/x-raw,format=NV12,width=1280,height=720,framerate=30/1 ! queue ! mix. "
 
-        elif application == "VideoWall":
-            pipeline = "gst-launch-1.0 -e qtivcomposer name=mix \
-                sink_0::position='<0, 0>' sink_0::dimensions='<640, 360>' \
+        elif application == "DashCamera" and src == "USB-Camera":
+            pipeline = f"gst-launch-1.0 -e qtivcomposer name=mix sink_0::position='<0, 0>' sink_0::dimensions='<640, 360>' \
                 sink_1::position='<640, 0>' sink_1::dimensions='<640, 360>' \
-                sink_2::position='<0, 360>' sink_2::dimensions='<640, 360>' \
-                sink_3::position='<640, 360>' sink_3::dimensions='<640, 360>' \
-                mix. ! queue ! gtksink \
-                filesrc location=/etc/media/video.mp4 ! qtdemux ! queue ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! queue ! mix. \
-                filesrc location=/etc/media/video.mp4 ! qtdemux ! queue ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! queue ! mix. \
-                filesrc location=/etc/media/video.mp4 ! qtdemux ! queue ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! queue ! mix. \
-                filesrc location=/etc/media/video.mp4 ! qtdemux ! queue ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! queue ! mix."
+                mix. ! queue ! gtksink " + in_src + "! queue ! tee name=split ! queue ! mix. \
+                split. ! queue ! mix. "
+
+        elif application == "VideoWall":
+            if not os.path.exists("/etc/media/video_out.mp4"):
+                # Create a new popup window
+                popup = Gtk.Window(type=Gtk.WindowType.POPUP)
+
+                # Set the parent window for the new popup
+                popup.set_transient_for(self)
+
+                # Set the default size of the new popup window
+                popup.set_default_size(400, 50)
+
+                # Position the new popup window at the center of the parent window
+                popup.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
+
+                # Move the new popup window to a specific location
+                popup.move(20, 250)
+
+                # Add a label to the new popup window
+                label = Gtk.Label(label="Input file is missing. Execute 'Record live video' to save file")
+                popup.add(label)
+
+                # Show all widgets in the new popup window
+                popup.show_all()
+
+                # Closes after 3 seconds
+                GLib.timeout_add_seconds(2, popup.destroy)
+            else:
+                pipeline = "gst-launch-1.0 -e qtivcomposer name=mix \
+                    sink_0::position='<0, 0>' sink_0::dimensions='<640, 360>' \
+                    sink_1::position='<640, 0>' sink_1::dimensions='<640, 360>' \
+                    sink_2::position='<0, 360>' sink_2::dimensions='<640, 360>' \
+                    sink_3::position='<640, 360>' sink_3::dimensions='<640, 360>' \
+                    mix. ! queue ! gtksink \
+                    filesrc location=/etc/media/video_out.mp4 ! qtdemux ! queue ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! queue ! mix. \
+                    filesrc location=/etc/media/video_out.mp4 ! qtdemux ! queue ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! queue ! mix. \
+                    filesrc location=/etc/media/video_out.mp4 ! qtdemux ! queue ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! queue ! mix. \
+                    filesrc location=/etc/media/video_out.mp4 ! qtdemux ! queue ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! queue ! mix."
 
         elif application == "VideoTestSrc":
             pipeline = "gst-launch-1.0 " + "videotestsrc" + " ! " + "video/x-raw,width=640" + ",height=480" + " ! " + "gtksink"
 
         if self.download_artifacts is True:
-            if application == "Parallel-AI-Fusion":
+            if application == "Parallel-AI-Fusion" :
                 pipeline = "gst-launch-1.0 \
                     qtivcomposer name=mixer \
                     sink_0::position='<0, 0>' sink_0::dimensions='<960, 540>' \
@@ -423,24 +531,98 @@ class DemoWindow(Gtk.Window):
                     sink_5::position='<0, 540>' sink_5::dimensions='<960, 540>' \
                     sink_6::position='<960, 540>' sink_6::dimensions='<960, 540>' \
                     sink_7::position='<960, 540>' sink_7::dimensions='<960, 540>' sink_7::alpha=0.5 \
-                    mixer. ! queue ! fpsdisplaysink sync=true signal-fps-measurements=true text-overlay=true video-sink='gtksink' \
-                    qtiqmmfsrc name=camsrc ! video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1 ! queue ! tee name=split \
+                    mixer. ! queue ! fpsdisplaysink sync=true signal-fps-measurements=true text-overlay=true video-sink='gtksink' " + in_src + "! queue ! tee name=split \
                     split. ! queue ! mixer. \
-                    split. ! queue ! qtimlvconverter ! queue ! qtimlsnpe delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/models/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    split. ! queue ! qtimlvconverter ! queue ! qtimlsnpe delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
                     split. ! queue ! mixer. \
-                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options='QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,htp_performance_mode=(string)2' model=/etc/models/inception_v3_quantized.tflite ! queue ! qtimlvclassification extra-operation=1 threshold=40.0 results=2 module=mobilenet labels=/etc/models/classification.labels constants='Mobilenet,q-offsets=<38.0>,q-scales=<0.15008972585201263>;' ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options='QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,htp_performance_mode=(string)2' model=/etc/models/inception_v3_quantized.tflite ! queue ! qtimlvclassification extra-operation=1 threshold=40.0 results=2 module=mobilenet labels=/etc/labels/classification.labels constants='Mobilenet,q-offsets=<38.0>,q-scales=<0.15008972585201263>;' ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
                     split. ! queue ! mixer. \
-                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options='QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,htp_performance_mode=(string)2' model=/etc/models/hrnet_pose_quantized.tflite ! queue ! qtimlvpose threshold=51.0 results=2 module=hrnet labels=/etc/models/posenet_mobilenet_v1.labels constants='hrnet,q-offsets=<8.0>,q-scales=<0.0040499246679246426>;' ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options='QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,htp_performance_mode=(string)2' model=/etc/models/hrnet_pose_quantized.tflite ! queue ! qtimlvpose threshold=51.0 results=2 module=hrnet labels=/etc/labels/posenet_mobilenet_v1.labels constants='hrnet,q-offsets=<8.0>,q-scales=<0.0040499246679246426>;' ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
                     split. ! queue ! mixer. \
-                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options='QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,htp_performance_mode=(string)2' model=/etc/models/deeplabv3_plus_mobilenet_quantized.tflite ! queue ! qtimlvsegmentation module=deeplab-argmax labels=/etc/models/deeplabv3_resnet50.labels constants='deeplab,q-offsets=<0.0>,q-scales=<1.0>;' ! video/x-raw,format=BGRA,width=256,height=144 ! queue ! mixer. \
+                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options='QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,htp_performance_mode=(string)2' model=/etc/models/deeplabv3_plus_mobilenet_quantized.tflite ! queue ! qtimlvsegmentation module=deeplab-argmax labels=/etc/labels/deeplabv3_resnet50.labels constants='deeplab,q-offsets=<0.0>,q-scales=<1.0>;' ! video/x-raw,format=BGRA,width=256,height=144 ! queue ! mixer. \
                     "
             elif application == "ObjectDetection":
-                pipeline = "gst-launch-1.0 -e \
-                    qtiqmmfsrc name=camsrc ! video/x-raw,format=NV12,width=1280,height=720,framerate=30/1 ! queue ! tee name=split \
+                pipeline = "gst-launch-1.0 " + in_src + "! queue ! tee name=split \
                     split. ! queue ! qtivcomposer name=mixer ! queue ! gtksink \
                     split. ! queue ! qtimlvconverter ! queue ! qtimlsnpe delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' ! queue ! \
-                    qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/models/yolonas.labels ! \
+                    qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! \
                     video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer."
+            elif application == "Face Detection":
+                if src == "On-Device-Camera":
+                    in_src = "qtiqmmfsrc name=camsrc ! video/x-raw,format=NV12,width=1920,height=1440,framerate=30/1"
+                pipeline = "gst-launch-1.0 -e \
+                    qtimlvconverter name=stage_01_preproc mode=image-batch-non-cumulative \
+                    qtimltflite name=stage_01_inference model=/etc/models/face_det_lite_quantized.tflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options='QNNExternalDelegate,backend_type=htp;' \
+                    qtimlvdetection name=stage_01_postproc stabilization=false threshold=51.0 results=6 module=qfd labels=/etc/labels/face_detection.labels constants='qfd,q-offsets=<178.0, 0.0, 102.0>,q-scales=<0.03400895744562149, 0.21995200216770172, 0.1414264440536499>;' \
+                    " + in_src + " ! queue ! tee name=split ! queue ! qtivcomposer name=mixer ! queue ! gtksink \
+                    split. ! queue ! stage_01_preproc. stage_01_preproc. ! queue ! stage_01_inference. stage_01_inference. ! queue ! stage_01_postproc. stage_01_postproc. ! video/x-raw ! queue ! mixer."
+            elif application == "Daisychain Pose":
+                pipeline = "gst-launch-1.0 -e \
+                    qtimlvconverter name=stage_01_preproc mode=image-batch-non-cumulative \
+                    qtimlsnpe name=stage_01_inference delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' \
+                    qtimlvdetection name=stage_01_postproc threshold=51.0 results=4 module=yolo-nas labels=/etc/labels/yolonas.labels \
+                    qtimlvconverter name=stage_02_preproc mode=roi-batch-cumulative image-disposition=centre  \
+                    qtimltflite name=stage_02_inference delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options='QNNExternalDelegate,backend_type=htp;' model=/etc/models/hrnet_pose_quantized.tflite \
+                    qtimlvpose name=stage_02_postproc threshold=51.0 results=1 module=hrnet constants='hrnet,q-offsets=<0.0>,q-scales=<0.0035696658305823803>;' labels=/etc/labels/hrnet_pose.labels \
+                    " + in_src + " ! queue ! tee name=t_split_1 \
+                    t_split_1. ! queue ! metamux_1. \
+                    t_split_1. ! queue ! stage_01_preproc. stage_01_preproc. ! queue ! stage_01_inference. stage_01_inference. ! queue ! stage_01_postproc. stage_01_postproc. ! text/x-raw ! queue ! metamux_1. \
+                    qtimetamux name=metamux_1 ! queue ! tee name=t_split_2 \
+                    t_split_2. ! queue ! metamux_2. \
+                    t_split_2. ! queue ! stage_02_preproc. stage_02_preproc. ! queue ! stage_02_inference. stage_02_inference. ! queue ! stage_02_postproc. stage_02_postproc. ! text/x-raw ! queue ! metamux_2. \
+                    qtimetamux name=metamux_2 ! queue ! tee name=t_split_3 \
+                    t_split_3. ! queue ! mixer. \
+                    t_split_3. ! queue ! qtivsplit name=vsplit src_0::mode=single-roi-meta src_1::mode=single-roi-meta \
+                    vsplit. ! video/x-raw,width=240,height=480,format=RGBA ! queue ! mixer. \
+                    vsplit. ! video/x-raw,width=240,height=480,format=RGBA ! queue ! mixer. \
+                    qtivcomposer name=mixer \
+                    sink_0::position='<0, 0>' sink_0::dimensions='<1920, 1080>' \
+                    sink_1::position='<0, 0>' sink_1::dimensions='<240, 480>' \
+                    sink_2::position='<1680, 0>' sink_2::dimensions='<240, 480>' \
+                    mixer. ! queue ! qtivoverlay  engine=gles ! gtksink"
+            elif application == "Multistream":
+                pipeline = "gst-launch-1.0 -e qtivcomposer name=mixer \
+                    sink_0::position='<0, 0>' sink_0::dimensions='<480, 540>' \
+                    sink_1::position='<480, 0>' sink_2::dimensions='<480, 540>' \
+                    sink_2::position='<960, 0>' sink_4::dimensions='<480, 540>' \
+                    sink_3::position='<1440, 0>' sink_6::dimensions='<480, 540>' \
+                    sink_4::position='<0, 540>' sink_8::dimensions='<480, 540>' \
+                    sink_5::position='<480, 540>' sink_10::dimensions='<480, 540>' \
+                    sink_6::position='<960, 540>' sink_1::dimensions='<480, 540>' \
+                    sink_7::position='<1440, 540>' sink_3::dimensions='<480, 540>' \
+                    sink_8::position='<0, 0>' sink_5::dimensions='<480, 540>' \
+                    sink_9::position='<480, 0>' sink_7::dimensions='<480, 540>' \
+                    sink_10::position='<960, 0>' sink_9::dimensions='<480, 540>' \
+                    sink_11::position='<1440, 0>' sink_11::dimensions='<480, 540>' \
+                    sink_12::position='<0, 540>' sink_12::dimensions='<480, 540>' \
+                    sink_13::position='<480, 540>' sink_13::dimensions='<480, 540>' \
+                    sink_14::position='<960, 540>' sink_14::dimensions='<480, 540>' \
+                    sink_15::position='<1440, 540>' sink_15::dimensions='<480, 540>' \
+                    mixer. ! queue ! gtksink \
+                    split_1. ! qtimlvconverter ! qtimlsnpe name=stage_01_inference delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' \
+                    split_2. ! qtimlvconverter ! qtimlsnpe name=stage_02_inference delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' \
+                    split_3. ! qtimlvconverter ! qtimlsnpe name=stage_03_inference delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' \
+                    split_4. ! qtimlvconverter ! qtimlsnpe name=stage_04_inference delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' \
+                    split_5. ! qtimlvconverter ! qtimlsnpe name=stage_05_inference delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' \
+                    split_6. ! qtimlvconverter ! qtimlsnpe name=stage_06_inference delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' \
+                    split_7. ! qtimlvconverter ! qtimlsnpe name=stage_07_inference delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' \
+                    split_8. ! qtimlvconverter ! qtimlsnpe name=stage_08_inference delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' \
+                    " + in_src + " ! tee name=split_1 ! queue ! mixer. \
+                    filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_2 ! queue ! mixer. \
+                    filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_3 ! queue ! mixer. \
+                    filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_4 ! queue ! mixer. \
+                    filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_5 ! queue ! mixer. \
+                    filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_6 ! queue ! mixer. \
+                    filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_7 ! queue ! mixer. \
+                    filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_8 ! queue ! mixer. \
+                    stage_01_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! queue ! mixer. \
+                    stage_02_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! queue ! mixer. \
+                    stage_03_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! queue ! mixer. \
+                    stage_04_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! queue ! mixer. \
+                    stage_05_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! queue ! mixer. \
+                    stage_06_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! queue ! mixer. \
+                    stage_07_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! queue ! mixer. \
+                    stage_08_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! queue ! mixer. "
 
         if pipeline is not None:
             pipeline_thread = threading.Thread(target=self.execute, args=(pipeline,))
@@ -502,16 +684,19 @@ class DemoWindow(Gtk.Window):
 
         # Get the selected application
         application = self.application_select.get_active_text()
+        src = self.src_select.get_active_text()
 
         # Download models and labels
-        if((application == "ObjectDetection") or (application == "Parallel-AI-Fusion")):
+        if((application == "ObjectDetection") or (application == "Parallel-AI-Fusion") \
+            or (application == "Face Detection") or (application == "Daisychain Pose") \
+            or (application == "Multistream")):
             self.check_download = threading.Thread(target=self.download_assets)
             self.check_download.start()
         else:
             self.popup.destroy()
 
         # Start the application pipeline in a separate thread
-        threading.Thread(target=self.create_pipeline, args=(application,)).start()
+        threading.Thread(target=self.create_pipeline, args=(application,src,)).start()
 
     def on_cancel_button_clicked(self, widget):
         # Close the popup window

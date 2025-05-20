@@ -334,7 +334,7 @@ main (gint argc, gchar *argv[])
     { "input_file", 'i', 0,
       G_OPTION_ARG_FILENAME, &appctx->input_file,
       "Input Filename - i/p mp4 file path and name",
-      "e.g. -i /opt/<file_name>.mp4"
+      "e.g. -i /etc/media/<file_name>.mp4"
     },
     { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };

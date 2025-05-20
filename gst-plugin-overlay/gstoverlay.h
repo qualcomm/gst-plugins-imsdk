@@ -63,6 +63,7 @@
 #ifndef __GST_QTI_OVERLAY_H__
 #define __GST_QTI_OVERLAY_H__
 
+#include <string>
 #include <gmodule.h>
 #include <gst/gst.h>
 #include <gst/video/video.h>

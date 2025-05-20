@@ -41,7 +41,7 @@ namespace camera = qmmf;
 #define GST_V4L2_IO_DMABUF 4
 #define GST_V4L2_IO_DMABUF_IMPORT 5
 
-#define FILE_MP4 "/opt/Video.mp4"
+#define FILE_MP4 "/etc/media/Video.mp4"
 
 enum _GstPreviewOutput
 {
@@ -73,7 +73,7 @@ struct _GstAppContext {
 #define GST_APP_SUMMARY \
   "This application captures 5 burst snapshots\n"\
   "delayed by a 10s timer then quits the app\n"\
-  "in file path starting with /opt/frame_ \n"\
+  "in file path starting with /etc/media/frame_ \n"\
   "preview is shown either on display or avc\n"\
   "capture is either in jpeg, yuv, raw/bayer\n" \
   "\nCommand:\n" \
@@ -513,7 +513,7 @@ new_sample (GstElement * element, gpointer userdata)
   timestamp = GST_BUFFER_OFFSET_END (buffer);
   g_print ("Camera timestamp: %" G_GUINT64_FORMAT "\n", timestamp);
 
-  filename = g_strdup_printf ("/opt/frame_%" G_GUINT64_FORMAT "%s", timestamp,
+  filename = g_strdup_printf ("/etc/media/frame_%" G_GUINT64_FORMAT "%s", timestamp,
       ctx->file_ext);
 
   if (!g_file_set_contents (filename, (const gchar*) memmap.data, memmap.size,
