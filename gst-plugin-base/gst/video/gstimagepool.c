@@ -229,7 +229,7 @@ gbm_device_open (GstImageBufferPool * vpool)
   guint32 dubplicate = 0;
 
   // Load GBM library.
-  priv->gbmhandle = dlopen("libgbm.so", RTLD_NOW);
+  priv->gbmhandle = dlopen ("libgbm.so.1", RTLD_NOW);
   if (NULL == priv->gbmhandle) {
     GST_ERROR ("Failed to open GBM library, error: %s!", dlerror());
     return FALSE;
