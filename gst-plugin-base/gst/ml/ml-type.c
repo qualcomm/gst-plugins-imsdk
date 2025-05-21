@@ -31,6 +31,8 @@
 
 #define GST_ML_TYPE_INT8_NAME    "INT8"
 #define GST_ML_TYPE_UINT8_NAME   "UINT8"
+#define GST_ML_TYPE_INT16_NAME   "INT16"
+#define GST_ML_TYPE_UINT16_NAME  "UINT16"
 #define GST_ML_TYPE_INT32_NAME   "INT32"
 #define GST_ML_TYPE_UINT32_NAME  "UINT32"
 #define GST_ML_TYPE_FLOAT16_NAME "FLOAT16"
@@ -43,6 +45,8 @@ gst_ml_type_get_size (GstMLType type)
     case GST_ML_TYPE_INT8:
     case GST_ML_TYPE_UINT8:
       return 1;
+    case GST_ML_TYPE_INT16:
+    case GST_ML_TYPE_UINT16:
     case GST_ML_TYPE_FLOAT16:
       return 2;
     case GST_ML_TYPE_INT32:
@@ -66,6 +70,10 @@ gst_ml_type_from_string (const gchar * type)
     return GST_ML_TYPE_INT8;
   else if (strcmp (GST_ML_TYPE_UINT8_NAME, type) == 0)
     return GST_ML_TYPE_UINT8;
+  else if (strcmp (GST_ML_TYPE_INT16_NAME, type) == 0)
+    return GST_ML_TYPE_INT16;
+  else if (strcmp (GST_ML_TYPE_UINT16_NAME, type) == 0)
+    return GST_ML_TYPE_UINT16;
   else if (strcmp (GST_ML_TYPE_INT32_NAME, type) == 0)
     return GST_ML_TYPE_INT32;
   else if (strcmp (GST_ML_TYPE_UINT32_NAME, type) == 0)
@@ -87,6 +95,10 @@ gst_ml_type_to_string (GstMLType type)
     return GST_ML_TYPE_INT8_NAME;
   else if (GST_ML_TYPE_UINT8 == type)
     return GST_ML_TYPE_UINT8_NAME;
+  else if (GST_ML_TYPE_INT16 == type)
+    return GST_ML_TYPE_INT16_NAME;
+  else if (GST_ML_TYPE_UINT16 == type)
+    return GST_ML_TYPE_UINT16_NAME;
   else if (GST_ML_TYPE_INT32 == type)
     return GST_ML_TYPE_INT32_NAME;
   else if (GST_ML_TYPE_UINT32 == type)
