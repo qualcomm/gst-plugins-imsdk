@@ -55,7 +55,7 @@
 /**
 * Number of Queues used for buffer caching between elements
 */
-#define QUEUE_COUNT 8
+#define QUEUE_COUNT 5
 
 /**
 * Default value of Threshold
@@ -199,7 +199,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstElement *v4l2h264dec_caps = NULL;
   GstCaps *pad_filter = NULL, *filtercaps = NULL;
   GstPad *vcomposer_sink[2];
-  GstStructure *delegate_options = NULL, *converter_params = NULL;
+  GstStructure *delegate_options = NULL;
   gboolean ret = FALSE;
   gchar element_name[128];
   gint pos_vals[2], dim_vals[2];
@@ -401,12 +401,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   gst_element_set_enum_property (qtimlaconverter, "feature", "lmfe");
 
-  converter_params = gst_structure_from_string (
-      "params,nfft=512,nhop=160,nmels=64,chunklen=0.96;", NULL);
-
   g_object_set (G_OBJECT (qtimlaconverter),
-      "params", converter_params, NULL);
-  gst_structure_free (converter_params);
+      "params", "params,nfft=96,nhop=160,nmels=64,chunklen=0.96;", NULL);
 
   // 2.5 Select the HW to GPU/CPU for model inferencing using
   // delegate property
@@ -489,14 +485,14 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       goto error_clean_pipeline;
     }
     ret = gst_element_link_many (queue[0], h264parse, v4l2h264dec,
-        v4l2h264dec_caps, queue[1], NULL);
+        v4l2h264dec_caps, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for parse->queue\n");
       goto error_clean_pipeline;
     }
 
-    ret = gst_element_link_many (queue[2], audio_parse, audio_dec,
-        queue[3], audioconvert, audioresample, audiobuffersplit, NULL);
+    ret = gst_element_link_many (queue[1], audio_parse, audio_dec,
+        audioconvert, audioresample, audiobuffersplit, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for audio_parse->"
           "audio_dec->audioconvert->audioresample->audiobuffersplit\n");
@@ -516,16 +512,16 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     goto error_clean_elements;
   }
 
-  ret = gst_element_link_many (audiobuffersplit, queue[4], qtimlaconverter,
-      queue[5], qtimltflite, qtimlaclassification,
-      classification_filter, queue[6], NULL);
+  ret = gst_element_link_many (audiobuffersplit, queue[2], qtimlaconverter,
+      qtimltflite, qtimlaclassification,
+      classification_filter, queue[3], NULL);
   if (!ret) {
     g_printerr ("Pipeline elements cannot be linked for audiobuffersplit->"
         "mlaconverter->mlelement->mlaclassification\n");
     goto error_clean_elements;
   }
   if (options->use_file) {
-    ret = gst_element_link_many (queue[1], qtivcomposer, NULL);
+    ret = gst_element_link_many (v4l2h264dec_caps, qtivcomposer, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for "
           "v4l2h264dec->qtivcomposer.\n");
@@ -534,15 +530,15 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   if (options->use_file) {
-    ret = gst_element_link_many (queue[6], qtivcomposer,
-        queue[7], waylandsink, NULL);
+    ret = gst_element_link_many (queue[3], qtivcomposer,
+        queue[4], waylandsink, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
           "mlaclassification->qtivcomposer->waylandsink\n");
       goto error_clean_pipeline;
     }
   } else if (options->use_pulsesrc) {
-    ret = gst_element_link_many (queue[6], waylandsink, NULL);
+    ret = gst_element_link_many (queue[3], waylandsink, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
           "mlaclassification->waylandsink\n");
@@ -555,9 +551,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   if (options->use_file) {
     g_signal_connect (qtdemux, "pad-added", G_CALLBACK (on_pad_added),
-        queue[0]);
+        queue[1]);
     g_signal_connect (qtdemux, "pad-added", G_CALLBACK (on_pad_added),
-        queue[2]);
+        queue[0]);
 
     // Set overlay window size for Classification to display text labels
     vcomposer_sink[0] = gst_element_get_static_pad (qtivcomposer, "sink_0");
