@@ -61,18 +61,23 @@ def read_file():
         if out.isOpened():
             print("videowriter open success")
 
-        while True:
-            ret_val, frame = cap.read()
-            if not ret_val:
-                break
-            out.write(frame)
-            cv2.waitKey(1)
+        try:
+            while True:
+                ret_val, frame = cap.read()
+                if not ret_val:
+                    break
+                out.write(frame)
+                cv2.waitKey(1)
+        except KeyboardInterrupt:
+            print("\nInterrupted by user. Exiting gracefully...")
+        finally:
+            cap.release()
+            out.release()
+            cv2.destroyAllWindows()
+
     else:
         print("Capture API failed")
 
-    cap.release()
-    out.release()
-    cv2.destroyAllWindows()
 
 
 def main():
