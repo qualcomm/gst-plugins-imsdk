@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -132,10 +132,10 @@ gst_jpeg_enc_create_pool (GstJPEGEncoder * jpegenc, GstCaps * caps)
     return NULL;
   }
 
-  pool = gst_image_buffer_pool_new ();
-
-  allocator = gst_fd_allocator_new ();
-  GST_INFO_OBJECT (jpegenc, "Buffer pool uses DMA memory");
+  if ((pool = gst_image_buffer_pool_new ()) == NULL) {
+    GST_ERROR_OBJECT (jpegenc, "Failed to create image pool!");
+    return NULL;
+  }
 
   // Align size to 64 lines
   gint alignedw = (GST_VIDEO_INFO_WIDTH (&info) + 64-1) & ~(64-1);
@@ -146,11 +146,15 @@ gst_jpeg_enc_create_pool (GstJPEGEncoder * jpegenc, GstCaps * caps)
   gst_buffer_pool_config_set_params (config, caps, aligned_size,
       DEFAULT_PROP_MIN_BUFFERS, DEFAULT_PROP_MAX_BUFFERS);
 
-  allocator = gst_fd_allocator_new ();
-  gst_buffer_pool_config_set_allocator (config, allocator, NULL);
+  allocator = gst_qti_allocator_new (GST_FD_MEMORY_FLAG_KEEP_MAPPED);
+  if (allocator == NULL) {
+    GST_ERROR_OBJECT (jpegenc, "Failed to create allocator");
+    gst_clear_object (&pool);
+    return NULL;
+  }
 
-  gst_buffer_pool_config_add_option (config,
-      GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
+  GST_INFO_OBJECT (jpegenc, "Buffer pool uses DMA memory");
+  gst_buffer_pool_config_set_allocator (config, allocator, NULL);
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING_OBJECT (jpegenc, "Failed to set pool configuration!");
