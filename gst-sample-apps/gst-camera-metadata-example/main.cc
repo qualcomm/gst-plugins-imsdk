@@ -120,6 +120,13 @@ typedef enum {
 
 typedef struct _GstAppContext GstAppContext;
 
+typedef struct {
+    const gchar *section;
+    const gchar *tag;
+    FILE *fp;
+    GMutex lock;
+} MetadataContext;
+
 struct _GstAppContext
 {
   // Main application event loop.
@@ -130,6 +137,10 @@ struct _GstAppContext
 
   // Asynchronous queue thread communication.
   GAsyncQueue *messages;
+
+  // Metadata context for handling camera metadata.
+  MetadataContext *metactx;
+
 };
 
 // Command line option variables
@@ -145,6 +156,7 @@ gst_app_context_new ()
   ctx->mloop = NULL;
   ctx->pipeline = NULL;
   ctx->messages = g_async_queue_new_full ((GDestroyNotify) gst_structure_free);
+  ctx->metactx = NULL;
 
   return ctx;
 }
@@ -160,6 +172,15 @@ gst_app_context_free (GstAppContext * ctx)
 
   g_async_queue_unref (ctx->messages);
 
+  if (ctx->metactx != NULL) {
+    if (ctx->metactx->fp != NULL) {
+      g_mutex_lock (&ctx->metactx->lock);
+      fclose (ctx->metactx->fp);
+      ctx->metactx->fp = NULL;
+      g_mutex_unlock (&ctx->metactx->lock);
+    }
+    g_mutex_clear (&ctx->metactx->lock);
+  }
   g_free (ctx);
   return;
 }
@@ -1943,6 +1964,33 @@ main_menu (gpointer userdata)
   return NULL;
 }
 
+static void
+result_metadata (GstElement *element, gpointer metadata, gpointer userdata)
+{
+  GstAppContext *appctx = GST_APP_CONTEXT_CAST (userdata);
+  gchar *type = NULL, *value = NULL;
+  guint32 frame_number = 0;
+  ::camera::CameraMetadata *meta =
+      static_cast<::camera::CameraMetadata*> (metadata);
+  MetadataContext *metactx = appctx->metactx;
+  const gchar *section_name = metactx->section;
+  const gchar *tag_name = metactx->tag;
+  FILE *rmeta_file = metactx->fp;
+
+  if (meta->exists (ANDROID_REQUEST_FRAME_COUNT))
+    frame_number = meta->find (ANDROID_REQUEST_FRAME_COUNT).data.i32[0];
+
+  value = get_tag (section_name, tag_name, meta, &type);
+
+  g_mutex_lock(&metactx->lock);
+  if (rmeta_file != NULL)
+    fprintf (rmeta_file, "Frame Number: %d Value: %s\n", frame_number, value);
+  g_mutex_unlock(&metactx->lock);
+
+  g_free (value);
+  g_free (type);
+}
+
 gint
 main (gint argc, gchar *argv[])
 {
@@ -1953,10 +2001,11 @@ main (gint argc, gchar *argv[])
   GIOChannel *gio = NULL;
   GThread *mthread = NULL;
   GError *error = NULL;
-  FILE *ts_file = NULL;
-  gchar *pipeline = NULL, *ts_path = NULL;
+  FILE *ts_file = NULL, *rmeta_file = NULL;
+  gchar *pipeline = NULL, *ts_path = NULL, *meta_tag = NULL;
   guint bus_watch_id = 0, intrpt_watch_id = 0, stdin_watch_id = 0;
   gint status = -1;
+  gchar *section = NULL, *tag = NULL;
 
   g_set_prgname ("gst-camera-metadata-example");
 
@@ -1970,6 +2019,9 @@ main (gint argc, gchar *argv[])
         "Show preview on display", NULL},
     {"timestamps-location", 't', 0, G_OPTION_ARG_FILENAME, &ts_path,
         "File in which original timestamps will be recorded", NULL},
+    { "dump-result-meta-tag-values", 'r', 0, G_OPTION_ARG_STRING, &meta_tag,
+      "Enter section name and tag name separated by space within quotes"
+      " e.g. \"SectionName TagName\"", NULL},
     { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
   };
 
@@ -2044,6 +2096,33 @@ main (gint argc, gchar *argv[])
     goto exit;
   }
 
+  if (meta_tag != NULL) {
+    g_print ("\n\nValues will be saved to /tmp/result_meta_output.txt\n");
+
+    // Open the file
+    rmeta_file = fopen ("/tmp/result_meta_output.txt", "w");
+    if (rmeta_file == NULL) {
+        g_printerr ("Failed to open file for writing.");
+        goto exit;
+    }
+
+    fprintf (rmeta_file, "Per frame values for %s vendor tag\n\n", meta_tag);
+
+    if (!validate_input_tag (meta_tag, &section, &tag))
+      goto exit;
+
+    // Allocate and populate context
+    appctx->metactx = g_new0 (MetadataContext, 1);
+    g_mutex_init (&appctx->metactx->lock);
+    appctx->metactx->section = section;
+    appctx->metactx->tag = tag;
+    appctx->metactx->fp = rmeta_file;
+
+    g_signal_connect (element, "result-metadata",
+        G_CALLBACK (result_metadata), appctx);
+
+  }
+
   gst_object_unref (element);
 
   // Initialize main loop.
@@ -2101,6 +2180,12 @@ exit:
 
   if (ts_file != NULL)
     fclose (ts_file);
+
+  if (meta_tag !=NULL) {
+    g_free (section);
+    g_free (tag);
+    g_free (meta_tag);
+  }
 
   gst_app_context_free (appctx);
 
