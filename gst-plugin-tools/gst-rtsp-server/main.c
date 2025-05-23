@@ -27,6 +27,7 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <glib-unix.h>
 #include <gst/gst.h>
 #include <gst/rtsp-server/rtsp-server.h>
 
