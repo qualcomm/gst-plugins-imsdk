@@ -225,6 +225,130 @@ gst_ml_tflite_delegate_get_type (void)
 }
 
 static const gchar *
+gst_ml_tflite_type_to_string (TfLiteType type)
+{
+  switch (type) {
+    case kTfLiteUInt8:
+      return "UINT8";
+    case kTfLiteInt8:
+      return "INT8";
+    case kTfLiteUInt16:
+      return "UINT16";
+    case kTfLiteInt16:
+      return "INT16";
+#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+    case kTfLiteUInt32:
+      return "UINT32";
+#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+    case kTfLiteInt32:
+      return "INT32";
+    case kTfLiteFloat16:
+      return "FLOAT16";
+    case kTfLiteFloat32:
+      return "FLOAT32";
+    default:
+      return "Unknown type";
+  }
+}
+
+static void
+gst_ml_tflite_convert_to_float (GstMLFrame *mlframe, guint idx,
+    void *tensor_data, TfLiteType type, float scale, float offset)
+{
+  float *output = NULL;
+  size_t n_elements = 0;
+
+  output = reinterpret_cast<float *>(GST_ML_FRAME_BLOCK_DATA (mlframe, idx));
+  n_elements = gst_ml_info_tensor_size (&(mlframe->info), idx);
+  n_elements /= gst_ml_type_get_size (mlframe->info.type);
+
+  GST_LOG ("Dequantization params: scale %f, offset %f", scale, offset);
+  GST_LOG ("Converting original tensor from %s to FLOAT32",
+      gst_ml_tflite_type_to_string (type));
+
+  switch (type) {
+    case kTfLiteUInt8:
+    {
+      uint8_t *data = reinterpret_cast<uint8_t *>(tensor_data);
+
+      for (size_t idx = 0; idx < n_elements; idx++)
+        output[idx] = (static_cast<float>(data[idx]) - offset) * scale;
+
+      break;
+    }
+    case kTfLiteInt8:
+    {
+      int8_t *data = reinterpret_cast<int8_t *>(tensor_data);
+
+      for (size_t idx = 0; idx < n_elements; idx++)
+        output[idx] = (static_cast<float>(data[idx]) - offset) * scale;
+
+      break;
+    }
+    case kTfLiteUInt16:
+    {
+      uint16_t *data = reinterpret_cast<uint16_t *>(tensor_data);
+
+      for (size_t idx = 0; idx < n_elements; idx++)
+        output[idx] = (static_cast<float>(data[idx]) - offset) * scale;
+
+      break;
+    }
+    case kTfLiteInt16:
+    {
+      int16_t *data = reinterpret_cast<int16_t *>(tensor_data);
+
+      for (size_t idx = 0; idx < n_elements; idx++)
+        output[idx] = (static_cast<float>(data[idx]) - offset) * scale;
+
+      break;
+    }
+#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+    case kTfLiteUInt32:
+    {
+      uint32_t *data = reinterpret_cast<uint32_t *>(tensor_data);
+
+      for (size_t idx = 0; idx < n_elements; idx++)
+        output[idx] = (static_cast<float>(data[idx]) - offset) * scale;
+
+      break;
+    }
+#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+    case kTfLiteInt32:
+    {
+      int32_t *data = reinterpret_cast<int32_t *>(tensor_data);
+
+      for (size_t idx = 0; idx < n_elements; idx++)
+        output[idx] = (static_cast<float>(data[idx]) - offset) * scale;
+
+      break;
+    }
+#if defined(__ARM_FP16_FORMAT_IEEE)
+    case kTfLiteFloat16:
+    {
+      __fp16 *data = reinterpret_cast<__fp16 *>(tensor_data);
+
+      for (size_t idx = 0; idx < n_elements; idx++)
+        output[idx] = data[idx];
+
+      break;
+    }
+#endif  // defined(__ARM_FP16_FORMAT_IEEE)
+    case kTfLiteFloat32:
+    {
+      memcpy (output, tensor_data, sizeof (float) * n_elements);
+
+      break;
+    }
+    default:
+      GST_ERROR ("Data type not supported yet!");
+      break;
+  }
+
+  return;
+}
+
+static const gchar *
 get_opt_string (GstStructure * settings, const gchar * opt)
 {
   return gst_structure_get_string (settings, opt);
@@ -647,22 +771,54 @@ gst_ml_tflite_engine_free (GstMLTFLiteEngine * engine)
   g_slice_free (GstMLTFLiteEngine, engine);
 }
 
-const GstMLInfo *
-gst_ml_tflite_engine_get_input_info  (GstMLTFLiteEngine * engine)
+GstCaps *
+gst_ml_tflite_engine_get_input_caps (GstMLTFLiteEngine * engine)
 {
-  return (engine == NULL) ? NULL : engine->ininfo;
+  if (engine == NULL)
+    return NULL;
+
+  return gst_ml_info_to_caps (engine->ininfo);
 }
 
-const GstMLInfo *
-gst_ml_tflite_engine_get_output_info  (GstMLTFLiteEngine * engine)
+GstCaps *
+gst_ml_tflite_engine_get_output_caps  (GstMLTFLiteEngine * engine)
 {
-  return (engine == NULL) ? NULL : engine->outinfo;
+  GstCaps *caps = NULL;
+  GValue list = G_VALUE_INIT, value = G_VALUE_INIT;
+
+  if (engine == NULL)
+    return NULL;
+
+  caps = gst_ml_info_to_caps (engine->outinfo);
+
+  // If current type is already FLOAT, return immediately.
+  if (GST_ML_INFO_TYPE (engine->outinfo) == GST_ML_TYPE_FLOAT32)
+    return caps;
+
+  g_value_init (&list, GST_TYPE_LIST);
+  g_value_init (&value, G_TYPE_STRING);
+
+  g_value_set_string (&value, gst_ml_type_to_string (GST_ML_TYPE_FLOAT32));
+  gst_value_list_append_value (&list, &value);
+
+  g_value_set_string (&value,
+      gst_ml_type_to_string (GST_ML_INFO_TYPE (engine->outinfo)));
+  gst_value_list_append_value (&list, &value);
+
+  // Overwrite the type field by adding FLOAT in addition to current type.
+  gst_caps_set_value (caps, "type", &list);
+
+  g_value_unset (&value);
+  g_value_unset (&list);
+
+  return caps;
 }
 
 gboolean
 gst_ml_tflite_engine_execute (GstMLTFLiteEngine * engine,
     GstMLFrame * inframe, GstMLFrame * outframe)
 {
+  GstMLTensorMeta *mlmeta = NULL;
   gboolean success = FALSE;
   guint idx = 0;
 
@@ -696,9 +852,28 @@ gst_ml_tflite_engine_execute (GstMLTFLiteEngine * engine,
   for (idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
     gint output = engine->interpreter->outputs()[idx];
     TfLiteTensor *tensor = engine->interpreter->tensor(output);
+    gfloat scale = 1.0f, offset = 0.0f;
 
-    memcpy (GST_ML_FRAME_BLOCK_DATA (outframe, idx), tensor->data.raw,
-        GST_ML_FRAME_BLOCK_SIZE (outframe, idx));
+    if (tensor->quantization.type != kTfLiteNoQuantization) {
+      scale = tensor->params.scale;
+      offset = tensor->params.zero_point;
+    }
+
+    gst_ml_tflite_convert_to_float (outframe, idx, tensor->data.raw,
+        tensor->type, scale, offset);
+
+    mlmeta = gst_buffer_get_ml_tensor_meta_id (outframe->buffer, idx);
+
+    if (mlmeta == NULL) {
+      GST_ERROR ("Invalid tensor meta: %p", mlmeta);
+      return FALSE;
+    }
+
+    if (outframe->info.type != GST_ML_TYPE_FLOAT32 &&
+        outframe->info.type != GST_ML_TYPE_FLOAT16) {
+      mlmeta->qscale = scale;
+      mlmeta->qoffset = offset;
+    }
   }
 
   return success;
