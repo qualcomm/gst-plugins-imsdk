@@ -73,10 +73,10 @@
 
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
-    "type = (string) { INT8, UINT8, INT32, FLOAT32 }, " \
+    "type = (string) { FLOAT32 }, " \
     "dimensions = (int) < <1, [32, 2048], [32, 2048]> >; " \
     "neural-network/tensors, " \
-    "type = (string) { INT8, UINT8, INT32, FLOAT32 }, " \
+    "type = (string) { FLOAT32 }, " \
     "dimensions = (int) < <1, [32, 2048], [32, 2048], [1, 21]> >"
 
 // Module caps instance
@@ -95,27 +95,15 @@ struct _GstMLSubModule {
 
   // List of segmentation labels.
   GHashTable *labels;
-
-  // Offset values for each of the tensors for dequantization of some tensors.
-  gdouble    qoffsets[GST_ML_MAX_TENSORS];
-  // Scale values for each of the tensors for dequantization of some tensors.
-  gdouble    qscales[GST_ML_MAX_TENSORS];
 };
 
 gpointer
 gst_ml_module_open (void)
 {
   GstMLSubModule *submodule = NULL;
-  guint idx = 0;
 
   submodule = g_slice_new0 (GstMLSubModule);
   g_return_val_if_fail (submodule != NULL, NULL);
-
-  // Initialize the quantization offsets and scales.
-  for (idx = 0; idx < GST_ML_MAX_TENSORS; idx++) {
-    submodule->qoffsets[idx] = 0.0;
-    submodule->qscales[idx] = 1.0;
-  }
 
   return (gpointer) submodule;
 }
@@ -195,52 +183,6 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   // Labels funtion will print error message if it fails, simply goto cleanup.
   success = (submodule->labels != NULL);
 
-
-  if ((GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_INT8) ||
-      (GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_UINT8)) {
-    GstStructure *constants = NULL;
-    const GValue *qoffsets = NULL, *qscales = NULL;
-    guint idx = 0, n_tensors = 0;
-
-    success = gst_structure_has_field (settings, GST_ML_MODULE_OPT_CONSTANTS);
-    if (!success) {
-      GST_ERROR ("Settings stucture does not contain constants value!");
-      goto cleanup;
-    }
-
-    constants = GST_STRUCTURE (g_value_get_boxed (
-        gst_structure_get_value (settings, GST_ML_MODULE_OPT_CONSTANTS)));
-
-    if (!(success = gst_structure_has_field (constants, "q-offsets"))) {
-      GST_ERROR ("Missing quantization offsets coefficients!");
-      goto cleanup;
-    } else if (!(success = gst_structure_has_field (constants, "q-scales"))) {
-      GST_ERROR ("Missing quantization scales coefficients!");
-      goto cleanup;
-    }
-
-    qoffsets = gst_structure_get_value (constants, "q-offsets");
-    qscales = gst_structure_get_value (constants, "q-scales");
-    n_tensors = GST_ML_INFO_N_TENSORS (&(submodule->mlinfo));
-
-    if (!(success = (gst_value_array_get_size (qoffsets) == n_tensors))) {
-      GST_ERROR ("Expecting %u dequantization offsets entries but received "
-          "only %u!", n_tensors, gst_value_array_get_size (qoffsets));
-      goto cleanup;
-    } else if (!(success = (gst_value_array_get_size (qscales) == n_tensors))) {
-      GST_ERROR ("Expecting %u dequantization scales entries but received "
-          "only %u!", n_tensors, gst_value_array_get_size (qscales));
-      goto cleanup;
-    }
-
-    for (idx = 0; idx < n_tensors; idx++) {
-      submodule->qoffsets[idx] =
-          g_value_get_double (gst_value_array_get_value (qoffsets, idx));
-      submodule->qscales[idx] =
-          g_value_get_double (gst_value_array_get_value (qscales, idx));
-    }
-  }
-
 cleanup:
   if (caps != NULL)
     gst_caps_unref (caps);
@@ -258,7 +200,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GstVideoFrame *vframe = (GstVideoFrame *) output;
   GstProtectionMeta *pmeta = NULL;
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
-  guint8 *indata = NULL, *outdata = NULL;
+  gfloat *indata = NULL;
+  guint8 *outdata = NULL;
   GstVideoRectangle region = { 0, };
   guint idx = 0, num = 0, id = 0, bpp = 0, padding = 0, color = 0, n_scores = 0;
   gint row = 0, column = 0, width = 0, height = 0;
@@ -277,7 +220,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   // Calculate the row padding in bytes.
   padding = GST_VIDEO_FRAME_PLANE_STRIDE (vframe, 0) - (width * bpp);
 
-  indata = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
+  indata = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
   outdata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
   mltype = GST_ML_FRAME_TYPE (mlframe);
 
@@ -326,8 +269,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
       // If there is no 4th dimension the tensor pixel contains the class ID.
       if (n_scores == 1)
-        id = gst_ml_tensor_extract_value (mltype, indata, id,
-            submodule->qoffsets[0], submodule->qscales[0]);
+        id = indata[id];
       else
         id = (id - idx);
 
