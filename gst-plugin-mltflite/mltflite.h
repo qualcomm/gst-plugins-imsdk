@@ -96,6 +96,9 @@ struct _GstMLTFLite {
   /// Machine learning engine.
   GstMLTFLiteEngine   *engine;
 
+  GstMLInfo           *ininfo;
+  GstMLInfo           *outinfo;
+
   /// Properties.
   gchar               *model;
 #ifdef HAVE_EXTERNAL_DELEGATE_H
