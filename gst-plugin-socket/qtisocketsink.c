@@ -42,6 +42,7 @@
 #include <gst/utils/common-utils.h>
 
 #include <gst/ml/gstmlmeta.h>
+#include <gst/video/video-utils.h>
 
 #include <errno.h>
 
@@ -55,6 +56,8 @@ GST_DEBUG_CATEGORY_STATIC (gst_socket_sink_debug);
     "neural-network/tensors;" \
     "video/x-raw(ANY);" \
     "text/x-raw"
+
+#define POLL_TIMEOUT_MS 100000
 
 enum
 {
@@ -207,6 +210,224 @@ gst_socket_deinitialize_for_buffers (GstFdSocketSink * sink)
   g_mutex_unlock (&sink->bufmaplock);
 }
 
+static GstVideoRoiMetaPayload*
+gst_socket_serialize_roi_meta (GstVideoRegionOfInterestMeta * roi_meta)
+{
+  GstVideoRoiMetaPayload *roi_meta_pl =
+      g_malloc (sizeof (GstVideoRoiMetaPayload));
+  const GstStructure *object_detection = NULL, *xtraparams = NULL;
+  gchar *label = NULL;
+  gsize label_size = 0, label_maxsize = 0;
+
+  roi_meta_pl->identity = MESSAGE_VIDEO_ROI_META;
+  roi_meta_pl->id = roi_meta->id;
+  roi_meta_pl->parent_id = roi_meta->parent_id;
+
+  label = g_quark_to_string(roi_meta->roi_type);
+  label_size = strlen (label) + 1;
+  label_maxsize = sizeof (roi_meta_pl->label);
+
+  if (label_size > label_maxsize) {
+    GST_WARNING ("Detection label too long, cut at %lu symbols", label_maxsize);
+    label_size = label_maxsize;
+  }
+
+  memmove (roi_meta_pl->label, label, label_size);
+  roi_meta_pl->label[label_size - 1] = '\0';
+
+  roi_meta_pl->x = roi_meta->x;
+  roi_meta_pl->y = roi_meta->y;
+  roi_meta_pl->w = roi_meta->w;
+  roi_meta_pl->h = roi_meta->h;
+
+  roi_meta_pl->det_size = 0;
+  object_detection =
+      gst_video_region_of_interest_meta_get_param (roi_meta, "ObjectDetection");
+  if (object_detection) {
+    gchar *meta = gst_structure_to_string (object_detection);
+    gsize meta_size = strlen (meta) + 1;
+    gsize meta_maxsize = sizeof (roi_meta_pl->det_meta);
+
+    if (meta_size > meta_maxsize) {
+      GST_WARNING ("Detection meta too long, cut at %lu symbols", meta_maxsize);
+      meta_size = meta_maxsize;
+    }
+
+    memmove (roi_meta_pl->det_meta, meta, meta_size);
+    roi_meta_pl->det_meta[meta_size - 1] = '\0';
+    g_free (meta);
+    roi_meta_pl->det_size = meta_size;
+  }
+
+  roi_meta_pl->xtraparams_size = 0;
+  xtraparams =
+      gst_video_region_of_interest_meta_get_param (roi_meta, "xtraparams");
+  if (xtraparams) {
+    gchar *xp = gst_structure_to_string (xtraparams);
+    gsize xp_size = strlen (xp) + 1;
+    gsize xp_maxsize = sizeof (roi_meta_pl->xtraparams);
+
+    if (xp_size > xp_maxsize) {
+      GST_WARNING ("Detection xtraparams too long, cut at %lu symbols",
+          xp_maxsize);
+      xp_size = xp_maxsize;
+    }
+
+    memmove (roi_meta_pl->xtraparams, xp, xp_size);
+    roi_meta_pl->det_meta[xp_size - 1] = '\0';
+    g_free (xp);
+    roi_meta_pl->xtraparams_size = xp_size;
+  }
+
+  return roi_meta_pl;
+}
+
+static GstVideoClassMetaPayload*
+gst_socket_serialize_class_meta (GstVideoClassificationMeta * class_meta)
+{
+  GstVideoClassMetaPayload *class_meta_pl =
+      g_malloc (sizeof (GstVideoClassMetaPayload));
+  GArray *labels = NULL;
+  gsize labels_maxsize = 0;
+
+  class_meta_pl->identity = MESSAGE_VIDEO_CLASS_META;
+  class_meta_pl->id = class_meta->id;
+  class_meta_pl->parent_id = class_meta->parent_id;
+
+  labels = class_meta->labels;
+  class_meta_pl->size = labels->len;
+  labels_maxsize = sizeof (class_meta_pl->labels) / sizeof (GstClassLabelSer);
+
+  if (class_meta_pl->size > labels_maxsize) {
+    GST_WARNING ("Too many labels, cut at %lu labels", labels_maxsize);
+    class_meta_pl->size = labels_maxsize;
+  }
+
+  for (guint i = 0; i < labels->len && i < labels_maxsize; i++) {
+    GstClassLabel *l = &(g_array_index (labels, GstClassLabel, i));
+
+    gchar *label = g_quark_to_string(l->name);
+    gsize label_size = strlen (label) + 1;
+    gsize label_maxsize = sizeof (class_meta_pl->labels[i].name);
+
+    if (label_size > label_maxsize) {
+      GST_WARNING ("Classification label too long, cut at %lu symbols",
+          label_maxsize);
+      label_size = label_maxsize;
+    }
+
+    memmove (class_meta_pl->labels[i].name, label, label_size);
+    class_meta_pl->labels[i].name[label_size - 1] = '\0';
+
+    class_meta_pl->labels[i].confidence = l->confidence;
+    class_meta_pl->labels[i].color = l->color;
+
+    class_meta_pl->labels[i].xtraparams_size = 0;
+    if (l->xtraparams) {
+      gchar *xtraparams = gst_structure_to_string (l->xtraparams);
+      gsize xtraparams_size = strlen (xtraparams) + 1;
+      gsize xtraparams_maxsize = sizeof (class_meta_pl->labels[i].xtraparams);
+
+      if (xtraparams_size > xtraparams_maxsize) {
+        GST_WARNING ("Label xtraparams too long, cut at %lu symbols",
+            xtraparams_maxsize);
+        xtraparams_size = xtraparams_maxsize;
+      }
+
+      memmove (class_meta_pl->labels[i].xtraparams, xtraparams,
+          xtraparams_size);
+      class_meta_pl->labels[i].xtraparams[xtraparams_size - 1] = '\0';
+      g_free (xtraparams);
+      class_meta_pl->labels[i].xtraparams_size = xtraparams_size;
+    }
+  }
+
+  return class_meta_pl;
+}
+
+static GstVideoLmMetaPayload*
+gst_socket_serialize_lm_meta (GstVideoLandmarksMeta *lm_meta)
+{
+  GstVideoLmMetaPayload *lm_meta_pl =
+      g_malloc (sizeof (GstVideoLmMetaPayload));
+  GArray *kps = NULL, *links = NULL;
+  gsize kps_maxsize = 0, links_maxsize = 0;
+
+  lm_meta_pl->identity = MESSAGE_VIDEO_LM_META;
+  lm_meta_pl->id = lm_meta->id;
+  lm_meta_pl->parent_id = lm_meta->parent_id;
+
+  lm_meta_pl->confidence = lm_meta->confidence;
+
+  kps = lm_meta->keypoints;
+  lm_meta_pl->kps_size = kps->len;
+  kps_maxsize = sizeof (lm_meta_pl->kps) / sizeof (GstVideoKeypointSer);
+
+  if (lm_meta_pl->kps_size > kps_maxsize) {
+    GST_WARNING ("Too many keypoints, cut at %lu keypoints", kps_maxsize);
+    lm_meta_pl->kps_size = kps_maxsize;
+  }
+
+  for (guint i = 0; i < kps->len && i < kps_maxsize; i++) {
+    GstVideoKeypoint *kp = &(g_array_index (kps, GstVideoKeypoint, i));
+
+    gchar *keypoint = g_quark_to_string(kp->name);
+    gsize keypoint_size = strlen (keypoint) + 1;
+    gsize keypoint_maxsize = sizeof (lm_meta_pl->kps[i].name);
+
+    if (keypoint_size > keypoint_maxsize) {
+      GST_WARNING ("Keypoint label too long, cut at %lu symbols",
+          keypoint_maxsize);
+      keypoint_size = keypoint_maxsize;
+    }
+
+    memmove (lm_meta_pl->kps[i].name, keypoint, keypoint_size);
+    lm_meta_pl->kps[i].name[keypoint_size - 1] = '\0';
+
+    lm_meta_pl->kps[i].confidence = kp->confidence;
+    lm_meta_pl->kps[i].color = kp->color;
+    lm_meta_pl->kps[i].x = kp->x;
+    lm_meta_pl->kps[i].y = kp->y;
+  }
+
+  links = lm_meta->links;
+  lm_meta_pl->links_size = links->len;
+  links_maxsize = sizeof (lm_meta_pl->links) / sizeof (GstVideoKeypointLinkSer);
+
+  if (lm_meta_pl->links_size > links_maxsize) {
+    GST_WARNING ("Too many links, cut at %lu links", links_maxsize);
+    lm_meta_pl->links_size = links_maxsize;
+  }
+
+  for (guint i = 0; i < links->len && i < links_maxsize; i++) {
+    GstVideoKeypointLinkSer *l =
+        &(g_array_index (links, GstVideoKeypointLinkSer, i));
+
+    lm_meta_pl->links[i].s_kp_idx = l->s_kp_idx;
+    lm_meta_pl->links[i].d_kp_idx = l->d_kp_idx;
+  }
+
+  lm_meta_pl->xtraparams_size = 0;
+  if (lm_meta->xtraparams) {
+    gchar *xtraparams = gst_structure_to_string (lm_meta->xtraparams);
+    gsize xtraparams_size = strlen (xtraparams) + 1;
+    gsize xtraparams_maxsize = sizeof (lm_meta_pl->xtraparams);
+
+    if (xtraparams_size > xtraparams_maxsize) {
+      GST_WARNING ("Landmarks xtraparams too long, cut at %lu symbols",
+          xtraparams_maxsize);
+      xtraparams_size = xtraparams_maxsize;
+    }
+
+    memmove (lm_meta_pl->xtraparams, xtraparams, xtraparams_size);
+    lm_meta_pl->xtraparams[xtraparams_size - 1] = '\0';
+    g_free (xtraparams);
+    lm_meta_pl->xtraparams_size = xtraparams_size;
+  }
+
+  return lm_meta_pl;
+}
+
 static GstFlowReturn
 gst_socket_sink_render (GstBaseSink * bsink, GstBuffer * buffer)
 {
@@ -351,6 +572,7 @@ gst_socket_sink_render (GstBaseSink * bsink, GstBuffer * buffer)
 
     if (sink->mode == DATA_MODE_VIDEO) {
       GstFramePayload * frame_pl = NULL;
+      GstMeta *meta_i = NULL;
 
       memory_fds[i] = gst_fd_memory_get_fd (memory);
       buffer_pl->buf_id[i] = memory_fds[i];
@@ -378,6 +600,34 @@ gst_socket_sink_render (GstBaseSink * bsink, GstBuffer * buffer)
       frame_pl->size = size;
       frame_pl->maxsize = maxsize;
       g_ptr_array_add (pl_info.mem_block_info, frame_pl);
+
+      pl_info.roi_meta_info = g_ptr_array_new ();
+      pl_info.class_meta_info = g_ptr_array_new ();
+      pl_info.lm_meta_info = g_ptr_array_new ();
+
+      while ((meta_i = gst_buffer_iterate_meta (buffer, &state))) {
+        if (meta_i->info->api == GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE) {
+          GstVideoRegionOfInterestMeta *roi_meta =
+              GST_VIDEO_ROI_META_CAST (meta_i);
+          GstVideoRoiMetaPayload *roi_meta_pl =
+              gst_socket_serialize_roi_meta (roi_meta);
+          g_ptr_array_add (pl_info.roi_meta_info, roi_meta_pl);
+        }
+        else if (meta_i->info->api == GST_VIDEO_CLASSIFICATION_META_API_TYPE) {
+          GstVideoClassificationMeta *class_meta =
+              GST_VIDEO_CLASSIFICATION_META_CAST (meta_i);
+          GstVideoClassMetaPayload *class_meta_pl =
+              gst_socket_serialize_class_meta (class_meta);
+          g_ptr_array_add (pl_info.class_meta_info, class_meta_pl);
+        }
+        else if (meta_i->info->api == GST_VIDEO_LANDMARKS_META_API_TYPE) {
+          GstVideoLandmarksMeta *lm_meta =
+              GST_VIDEO_LANDMARKS_META_CAST (meta_i);
+          GstVideoLmMetaPayload *lm_meta_pl =
+              gst_socket_serialize_lm_meta (lm_meta);
+          g_ptr_array_add (pl_info.lm_meta_info, lm_meta_pl);
+        }
+      }
     }
 
     if (sink->mode != DATA_MODE_TEXT &&
@@ -485,7 +735,7 @@ gst_socket_sink_wait_message_loop (gpointer user_data)
         poll_fd.fd = sink->socket;
         poll_fd.events = POLLIN;
 
-        ret = poll (&poll_fd, 1, 1000);
+        ret = poll (&poll_fd, 1, POLL_TIMEOUT_MS);
         if (ret < 0) {
           GST_DEBUG_OBJECT (sink, "Socket poll error");
 
