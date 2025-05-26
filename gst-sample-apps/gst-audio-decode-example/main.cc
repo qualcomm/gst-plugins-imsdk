@@ -40,6 +40,8 @@
   "\nOutput:\n" \
   "\n  Upon executing the application user can perceive the audio over speaker"
 
+#define INPUT_WAV_FILE "/etc/media/audio.wav"
+
 // Structure to hold the application context
 struct GstAudioAppContext : GstAppContext {
   gchar *input_file;
@@ -67,8 +69,8 @@ gst_app_context_new ()
   ctx->pipeline = NULL;
   ctx->mloop = NULL;
   ctx->plugins = NULL;
-  ctx->input_file = NULL;
-  ctx->format = GST_ADECODE_NONE;
+  ctx->input_file = const_cast<gchar *> (INPUT_WAV_FILE);
+  ctx->format = GST_ADECODE_WAV;
 
   return ctx;
 }

@@ -81,8 +81,8 @@ gst_app_context_new ()
 
   ctx->pipeline = NULL;
   ctx->mloop = NULL;
-  ctx->in_files = NULL;
-  ctx->out_file = NULL;
+  ctx->in_files = g_new0 (gchar*, STREAM_CNT);;
+  ctx->out_file = g_strdup (DEFAULT_YUV_FILESINK);
 
   return ctx;
 }
@@ -143,6 +143,17 @@ create_pipe (GstVideoAppContext *appctx, gint stream_cnt)
     return FALSE;
   }
 
+  // set input file count to default if no input passed
+  for (gint i = 0; i < stream_cnt; i++) {
+    if (appctx->in_files[i] == NULL) {
+      if (i == 0) {
+        appctx->in_files[i] = g_strdup (DEFAULT_AVC_FILESOURCE);
+      } else {
+        appctx->in_files[i] = g_strdup (DEFAULT_HEVC_FILESOURCE);
+      }
+    }
+  }
+
   // Get source element from pipeline Set input file location
   for (int i = 1; i <= stream_cnt; i++)
   {
@@ -195,12 +206,6 @@ main (gint argc, gchar * argv[])
   guint intrpt_watch_id = 0;
   gint stream_cnt = STREAM_CNT;
   gboolean ret = FALSE;
-
-  // If the user only provided the application name, print the help option
-  if (argc < 2) {
-    g_print ("\n usage: gst-videocodec-concurrent-playback --help \n");
-    return -1;
-  }
 
   // Setting Display environment variables
   setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);

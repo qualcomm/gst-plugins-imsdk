@@ -38,6 +38,8 @@
 
 #include <gst/sampleapps/gst_sample_apps_utils.h>
 
+#define INPUT_FILE_PATH "/etc/media/video.mp4"
+
 #define GST_APP_SUMMARY                                                       \
   "This application showcases the composition of various sources,           " \
   "specifically live camera input and an offline file. \n  The composition " \
@@ -79,7 +81,7 @@ gst_app_context_new ()
   ctx->pipeline = NULL;
   ctx->mloop = NULL;
   ctx->plugins = NULL;
-  ctx->input_file = NULL;
+  ctx->input_file = g_strdup (INPUT_FILE_PATH);
   ctx->composition = GST_PIP_COMPOSE;
   return ctx;
 }
@@ -121,7 +123,7 @@ gst_app_context_free (GstComposeAppContext * appctx)
   }
 
   if (appctx->input_file != NULL)
-    g_free ((gpointer)appctx->input_file);
+    g_free (appctx->input_file);
 
   // Finally, free the application context itself
   if (appctx != NULL)
@@ -350,12 +352,6 @@ main (gint argc, gchar *argv[])
   GstComposeAppContext *appctx = NULL;
   gboolean ret = FALSE;
   guint intrpt_watch_id = 0;
-
-  // If the user only provided the application name, print the help option
-  if (argc < 2) {
-    g_print ("\n usage: gst-weston-composition-example -h \n");
-    return -1;
-  }
 
   // Setting Display environment variables
   setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
