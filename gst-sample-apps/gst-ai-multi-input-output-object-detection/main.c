@@ -80,7 +80,7 @@
 #define QUEUE_COUNT 7
 
 /**
- * rstp sink configuration
+ * rtsp sink configuration
  */
 #define DEFAULT_IP "127.0.0.1"
 #define DEFAULT_PORT "8554"
