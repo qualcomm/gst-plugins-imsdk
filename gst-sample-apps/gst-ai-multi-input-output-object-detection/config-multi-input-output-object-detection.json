@@ -11,8 +11,5 @@
     "model": "/etc/models/yolov5.tflite",
     "labels": "/etc/labels/yolov5.labels",
     "constants": "YoloV5,q-offsets=<3.0>,q-scales=<0.005047998391091824>;",
-    "output-display": true,
-    "output-file-path": "/etc/media/output.mp4",
-    "output-ip-address": "127.0.0.1",
-    "output-port-number": "8554"
+    "output-display": true
 }
