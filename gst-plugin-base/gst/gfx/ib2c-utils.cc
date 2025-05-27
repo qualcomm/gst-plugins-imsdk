@@ -101,33 +101,25 @@ bool IsAligned(const Surface& surface) {
 
 std::tuple<uint32_t, uint32_t> AlignedDimensions(const Surface& surface) {
 
-  uint32_t n_channels = Format::NumChannels(surface.format);
-  uint32_t n_bytes = Format::BytesPerChannel(surface.format);
+#if defined(ANDROID)
+  uint32_t width = surface.buffer->width;
+  uint32_t stride = surface.buffer->stride;
+#else // ANDROID
+  uint32_t width = surface.width;
+  uint32_t stride = surface.stride0;
+#endif // !ANDROID
 
   uint32_t alignment = GetGpuAlignment();
 
-#if defined(ANDROID)
-  uint32_t width = surface.buffer->width;
-#else // ANDROID
-  uint32_t width = surface.width;
-#endif // !ANDROID
+  uint32_t n_bytes = Format::BytesPerChannel(surface.format);
+  // Channels is 4 because output compute texture is 4 channaled (RGBA).
+  uint32_t n_channels = 4;
 
-  // Find the equivalent width alignment based on the GPU stride alignment.
-  // TODO Channels is 4 because staged texture is GL_RGBA8.
-  while ((alignment % (4 * n_bytes)) != 0)
-    alignment += GetGpuAlignment();
+  // Align stride and calculate the width for the compute texture.
+  stride = ((stride + (alignment - 1)) & ~(alignment - 1));
+  width = stride / (n_channels * n_bytes);
 
-  alignment /= (4 * n_bytes);
-  width = (((width) + (alignment - 1)) & ~(alignment - 1));
-
-  uint32_t xgroup = n_channels * 32;
-
-  // Loop until there is a width value, multiple of alignment, which is
-  // divisible by the size of a compute shader X group with no remainder.
-  while ((width % xgroup) != 0)
-    width += alignment;
-
-  // Calculate the aligned height value rounded up.
+  // Calculate the aligned height value rounded up based on surface size.
   uint32_t height = std::ceil(
       (surface.size / (n_channels * n_bytes)) / static_cast<float>(width));
 

@@ -12,6 +12,19 @@
 
 namespace ib2c {
 
+#define EXCEPTION_IF_COMPILE_FAILED(shader, ...)          \
+do {                                                      \
+  GLint success;                                          \
+  glGetShaderiv(shader, GL_COMPILE_STATUS, &success);     \
+                                                          \
+  if (!success) {                                         \
+    char info[512];                                       \
+    glGetShaderInfoLog(shader, 512, NULL, info);          \
+                                                          \
+    throw Exception(__VA_ARGS__, ", log: ", info, " !");  \
+  }                                                       \
+} while (false)
+
 ShaderProgram::ShaderProgram(const std::string& vshader, const std::string& fshader) {
 
   GLuint vertex = 0, fragment = 0;
@@ -27,7 +40,7 @@ ShaderProgram::ShaderProgram(const std::string& vshader, const std::string& fsha
   EXCEPTION_IF_GL_ERROR ("Failed to set GL vertex shader code");
 
   glCompileShader(vertex);
-  EXCEPTION_IF_GL_ERROR ("Failed to compile GL vertex shader");
+  EXCEPTION_IF_COMPILE_FAILED (vertex, "Failed to compile GL vertex shader");
 
   if ((fragment = glCreateShader(GL_FRAGMENT_SHADER)) == 0) {
     throw Exception("Failed to create GL fragment shader, error: ",
@@ -40,7 +53,7 @@ ShaderProgram::ShaderProgram(const std::string& vshader, const std::string& fsha
   EXCEPTION_IF_GL_ERROR ("Failed to set GL fragment shader code");
 
   glCompileShader(fragment);
-  EXCEPTION_IF_GL_ERROR ("Failed to compile GL fragment shader");
+  EXCEPTION_IF_COMPILE_FAILED (fragment, "Failed to compile GL fragment shader");
 
   if ((id_ = glCreateProgram()) == 0) {
     throw Exception("Failed to create GL program, error: ",
@@ -75,7 +88,7 @@ ShaderProgram::ShaderProgram(const std::string& cshader) {
   EXCEPTION_IF_GL_ERROR ("Failed to set GL compute shader code");
 
   glCompileShader(compute);
-  EXCEPTION_IF_GL_ERROR ("Failed to compile GL compute shader");
+  EXCEPTION_IF_COMPILE_FAILED (compute, "Failed to compile GL compute shader");
 
   if ((id_ = glCreateProgram()) == 0) {
     throw Exception("Failed to create GL program, error: ",
