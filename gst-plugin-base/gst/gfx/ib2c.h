@@ -24,6 +24,9 @@ namespace ib2c {
 enum ColorFormat : uint32_t {
   kGRAY8,
 
+  kRG88,
+  kGR88,
+
   kRGB565,
   kBGR565,
 

@@ -13,6 +13,8 @@ enum class ShaderType : uint32_t {
   kNone,
   kRGB,
   kYUV,
+  kLuma,
+  kChroma,
   kUnaligned8,
   kUnaligned16F,
   kUnaligned32F,
@@ -119,6 +121,91 @@ void main() {
     }
 
     outColor = vec4(rgb_2_yuv(source.rgb, csStandard), 1.0);
+}
+)";
+
+static const std::string kLumaFragmentShader = R"(
+#version 320 es
+#extension GL_OES_EGL_image_external_essl3 : require
+
+precision mediump samplerExternalOES;
+precision mediump float;
+
+uniform samplerExternalOES extTex;
+
+uniform int colorSpace;
+uniform float globalAlpha;
+
+in vec2 texCoord;
+
+layout(location = 0) out vec4 lumaColor;
+
+void main() {
+    vec4 source = texture(extTex, texCoord);
+    source = clamp(source, 0.0, 1.0);
+
+    float luminosity = 0.0;
+
+    switch (colorSpace)
+    {
+        case (1 << 9):
+            luminosity = 0.299 * source.r + 0.587 * source.g + 0.114 * source.b;
+            break;
+        case (2 << 9):
+            luminosity = 0.299 * source.r + 0.587 * source.g + 0.114 * source.b;
+            break;
+        case (3 << 9):
+            luminosity = 0.2126 * source.r + 0.7152 * source.g + 0.0722 * source.b;
+            break;
+    }
+
+    float alpha = source.a * globalAlpha;
+    lumaColor = vec4(luminosity, 0.0, 0.0, alpha);
+}
+)";
+
+static const std::string kChromaFragmentShader = R"(
+#version 320 es
+#extension GL_OES_EGL_image_external_essl3 : require
+
+precision mediump samplerExternalOES;
+precision mediump float;
+
+uniform samplerExternalOES extTex;
+
+uniform bool rbSwapped;
+uniform int colorSpace;
+uniform float globalAlpha;
+
+in vec2 texCoord;
+
+layout(location = 0) out vec4 chromaColor;
+
+void main() {
+    vec4 source = texture(extTex, texCoord);
+    source = clamp(source, 0.0, 1.0);
+
+    float cr = 0.0;
+    float cb = 0.0;
+
+    switch (colorSpace)
+    {
+        case (1 << 9):
+            cr = -0.147 * source.r - 0.289 * source.g + 0.436 * source.b + 0.5;
+            cb = 0.615 * source.r - 0.515 * source.g - 0.100 * source.b + 0.5;
+            break;
+        case (2 << 9):
+            cr = -0.169 * source.r - 0.331 * source.g + 0.500 * source.b + 0.5;
+            cb = 0.500 * source.r - 0.419 * source.g - 0.081 * source.b + 0.5;
+            break;
+        case (3 << 9):
+            cr = -0.1146 * source.r - 0.3854 * source.g + 0.5000 * source.b + 0.5;
+            cb = 0.5000 * source.r - 0.4542 * source.g - 0.0458 * source.b + 0.5;
+            break;
+    }
+
+    float alpha = source.a * globalAlpha;
+    chromaColor = rbSwapped ? vec4(cb, cr, 0.0, alpha) : vec4(cr, cb, 0.0, alpha);
 }
 )";
 
