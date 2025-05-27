@@ -12,6 +12,8 @@
 
 namespace ib2c {
 
+namespace gl {
+
 #define EXCEPTION_IF_COMPILE_FAILED(shader, ...)          \
 do {                                                      \
   GLint success;                                          \
@@ -173,5 +175,7 @@ GLint ShaderProgram::GetAttribLocation(const char* name) const {
 
   return value;
 }
+
+} // namespace gl
 
 } // namespace ib2c

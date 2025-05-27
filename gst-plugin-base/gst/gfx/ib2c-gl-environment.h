@@ -19,14 +19,15 @@
 
 namespace ib2c {
 
-class EglEnvironment {
- public:
-  static std::string NewEglEnvironment(
-      std::unique_ptr<EglEnvironment>& environment,
-      EGLContext shrctx = EGL_NO_CONTEXT);
+namespace gl {
 
-  EglEnvironment() = default;
-  ~EglEnvironment();
+class Environment {
+ public:
+  static std::string NewEnvironment(std::unique_ptr<Environment>& environment,
+                                    EGLContext shrctx = EGL_NO_CONTEXT);
+
+  Environment() = default;
+  ~Environment();
 
   EGLDisplay Display() const { return display_; }
   const EGLContext& Context() const { return context_; }
@@ -47,5 +48,7 @@ class EglEnvironment {
   /// EGL rendering context.
   EGLContext        context_;
 };
+
+} // namespace gl
 
 } // namespace ib2c

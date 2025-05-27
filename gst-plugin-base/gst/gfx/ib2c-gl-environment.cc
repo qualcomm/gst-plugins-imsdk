@@ -10,18 +10,20 @@
 
 namespace ib2c {
 
-std::mutex EglEnvironment::mutex_;
-EGLDisplay EglEnvironment::display_= EGL_NO_DISPLAY;
-uint32_t EglEnvironment::refcnt_ = 0;
+namespace gl {
 
-std::string EglEnvironment::NewEglEnvironment(
-      std::unique_ptr<EglEnvironment>& environment, EGLContext shrctx) {
+std::mutex Environment::mutex_;
+EGLDisplay Environment::display_= EGL_NO_DISPLAY;
+uint32_t Environment::refcnt_ = 0;
 
-  environment = std::make_unique<EglEnvironment>();
+std::string Environment::NewEnvironment(
+      std::unique_ptr<Environment>& environment, EGLContext shrctx) {
+
+  environment = std::make_unique<Environment>();
   return environment->Initialize(shrctx);
 }
 
-EglEnvironment::~EglEnvironment() {
+Environment::~Environment() {
 
   if (display_ != EGL_NO_DISPLAY)
     eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -33,7 +35,7 @@ EglEnvironment::~EglEnvironment() {
   if ((--refcnt_) == 0) eglTerminate(display_);
 }
 
-std::string EglEnvironment::Initialize(EGLContext shrctx) {
+std::string Environment::Initialize(EGLContext shrctx) {
 
   std::lock_guard<std::mutex> lk(mutex_);
 
@@ -57,7 +59,7 @@ std::string EglEnvironment::Initialize(EGLContext shrctx) {
   refcnt_++;
 
   // Set the rendering API in current thread.
-  if (!eglBindAPI (EGL_OPENGL_ES_API)) {
+  if (!eglBindAPI(EGL_OPENGL_ES_API)) {
     throw Exception("Failed to set rendering API, error: ", std::hex,
                     eglGetError(), "!");
   }
@@ -65,7 +67,7 @@ std::string EglEnvironment::Initialize(EGLContext shrctx) {
   const EGLint attribs[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
 
   // Create EGL rendering context.
-  context_ = eglCreateContext (display_, EGL_NO_CONFIG_KHR, shrctx, attribs);
+  context_ = eglCreateContext(display_, EGL_NO_CONFIG_KHR, shrctx, attribs);
 
   if (context_ == EGL_NO_CONTEXT) {
     throw Exception("Failed to create EGL context, error: ", std::hex,
@@ -75,7 +77,7 @@ std::string EglEnvironment::Initialize(EGLContext shrctx) {
   return std::string();
 }
 
-std::string EglEnvironment::BindContext(EGLSurface draw, EGLSurface read) {
+std::string Environment::BindContext(EGLSurface draw, EGLSurface read) {
 
   if (context_ == eglGetCurrentContext())
     return std::string();
@@ -89,7 +91,7 @@ std::string EglEnvironment::BindContext(EGLSurface draw, EGLSurface read) {
   return std::string();
 }
 
-std::string EglEnvironment::UnbindContext() {
+std::string Environment::UnbindContext() {
 
   // Set the rendering API in current thread.
   if ((eglQueryAPI() != EGL_OPENGL_ES_API) && !eglBindAPI (EGL_OPENGL_ES_API)) {
@@ -107,5 +109,7 @@ std::string EglEnvironment::UnbindContext() {
 
   return std::string();
 }
+
+} // namespace gl
 
 } // namespace ib2c
