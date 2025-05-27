@@ -31,6 +31,10 @@ const uint32_t Format::kPixelTypeMask = (0b11 << 11);
 const std::map<uint32_t, Format::RgbColorTuple> Format::kRgbColorTable = {
   { ColorFormat::kGRAY8,
       { DRM_FORMAT_R8,            1, false, false } },
+  { ColorFormat::kRG88,
+      { DRM_FORMAT_GR88,          2, false, false } },
+  { ColorFormat::kGR88,
+      { DRM_FORMAT_GR88,          2, false, true  } },
   { ColorFormat::kRGB565,
       { DRM_FORMAT_RGB565,        3, false, false } },
   { ColorFormat::kBGR565,

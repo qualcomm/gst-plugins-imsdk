@@ -141,8 +141,29 @@ Engine::Engine() {
   glEnableVertexAttribArray(shader->GetAttribLocation("inTexCoord"));
   EXCEPTION_IF_GL_ERROR("Failed to enable texture coords attribute array");
 
-  shader = std::make_shared<ShaderProgram>(kVertexShader, kYuvFragmentShader);
-  shaders_.emplace(ShaderType::kYUV, shader);
+  if (IsExtensionSupported("GL_EXT_YUV_target")) {
+    // Create shader for direct rendering to YUV only if it is supported.
+    shader = std::make_shared<ShaderProgram>(kVertexShader, kYuvFragmentShader);
+    shaders_.emplace(ShaderType::kYUV, shader);
+
+    glEnableVertexAttribArray(shader->GetAttribLocation("vPosition"));
+    EXCEPTION_IF_GL_ERROR("Failed to enable possition attribute array");
+
+    glEnableVertexAttribArray(shader->GetAttribLocation("inTexCoord"));
+    EXCEPTION_IF_GL_ERROR("Failed to enable texture coords attribute array");
+  }
+
+  shader = std::make_shared<ShaderProgram>(kVertexShader, kLumaFragmentShader);
+  shaders_.emplace(ShaderType::kLuma, shader);
+
+  glEnableVertexAttribArray(shader->GetAttribLocation("vPosition"));
+  EXCEPTION_IF_GL_ERROR("Failed to enable position attribute array");
+
+  glEnableVertexAttribArray(shader->GetAttribLocation("inTexCoord"));
+  EXCEPTION_IF_GL_ERROR("Failed to enable texture coords attribute array");
+
+  shader = std::make_shared<ShaderProgram>(kVertexShader, kChromaFragmentShader);
+  shaders_.emplace(ShaderType::kChroma, shader);
 
   glEnableVertexAttribArray(shader->GetAttribLocation("vPosition"));
   EXCEPTION_IF_GL_ERROR("Failed to enable position attribute array");
@@ -227,7 +248,7 @@ uint64_t Engine::CreateSurface(const Surface& surface, uint32_t flags) {
   std::vector<GraphicTuple> graphics = ImportLinuxSurface(surface, flags);
 #endif // !ANDROID
 
-  SurfaceTuple stuple = std::make_tuple(std::move(graphics), surface);
+  SurfaceTuple stuple = std::make_tuple(std::move(graphics), surface, flags);
   surfaces_.emplace(surface_id, std::move(stuple));
 
   error = m_egl_env_->UnbindContext();
@@ -333,17 +354,22 @@ std::uintptr_t Engine::Compose(const Compositions& compositions,
     if ((stgtex == 0) && Format::IsYuv(surface.format)) {
       uint32_t colorspace = Format::ColorSpace(surface.format);
 
-      error = RenderYuvTexture(graphics, color, colorspace, clean, objects);
+      error = RenderYuvTexture(graphics, clean, color, colorspace, objects);
       if (!error.empty()) throw std::runtime_error(error);
     } else if ((stgtex == 0) && Format::IsRgb(surface.format)) {
-      error = RenderRgbTexture(graphics, color, clean, normalize, objects);
+      bool inverted = Format::IsInverted(surface.format);
+      bool swapped = Format::IsSwapped(surface.format);
+
+      error = RenderRgbTexture(graphics, clean, color, inverted, swapped,
+                               normalize, objects);
       if (!error.empty()) throw std::runtime_error(error);
     } else if (stgtex != 0) {
-      // Pass the inverted and swapped flag from main format to stage texture.
-      bool invert = Format::IsInverted(surface.format);
-      bool swap = Format::IsSwapped(surface.format);
+      // Pass the inverted and swapped flags from main format to stage texture.
+      bool inverted = Format::IsInverted(surface.format);
+      bool swapped = Format::IsSwapped(surface.format);
 
-      error = RenderStageTexture(stgtex, color, invert, swap, normalize, objects);
+      error = RenderStageTexture(stgtex, color, inverted, swapped, normalize,
+                                 objects);
       if (!error.empty()) throw std::runtime_error(error);
     }
 
@@ -409,73 +435,107 @@ void Engine::Finish(std::uintptr_t fence) {
 }
 
 std::string Engine::RenderYuvTexture(std::vector<GraphicTuple>& graphics,
-                                     uint32_t color, uint32_t colorspace,
-                                     bool clean, Objects& objects) {
+                                     bool clean, uint32_t color,
+                                     uint32_t colorspace, Objects& objects) {
+
+  uint32_t maxwidth = 0, maxheight = 0;
 
   // Convert RGB color code to YUV channel values if output surface is YUV.
   color = ToYuvColorCode(color, colorspace);
 
-  GraphicTuple& gltuple = graphics.at(0);
-  GLuint& texture = std::get<GLuint>(gltuple);
+  for (auto& gltuple : graphics) {
+    GLuint& texture = std::get<GLuint>(gltuple);
+    ImageParam& imgparam = std::get<ImageParam>(gltuple);
 
-  // Attach output/staging texture to the rendering frame buffer.
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                         GL_TEXTURE_EXTERNAL_OES, texture, 0);
-  RETURN_IF_GL_ERROR("Failed to attach output texture ", texture,
-                     " to frame buffer");
+    uint32_t width = std::get<0>(imgparam);
+    uint32_t height = std::get<1>(imgparam);
+    uint32_t format = std::get<2>(imgparam);
 
-  if (clean) {
-    GLfloat luma = EXTRACT_RED_COLOR(color), alpha = EXTRACT_ALPHA_COLOR(color);
-    GLfloat cr = EXTRACT_GREEN_COLOR(color), cb = EXTRACT_BLUE_COLOR(color);
+    maxwidth = std::max(maxwidth, width);
+    maxheight = std::max(maxheight, height);
 
-    // Set/Clear the background of the texture attached to the frame buffer.
-    glClearColor(luma, cr, cb, alpha);
+    GLenum textarget = GL_TEXTURE_2D;
 
-    glClear(GL_COLOR_BUFFER_BIT);
-    RETURN_IF_GL_ERROR("Failed to clear buffer color bit");
-  }
+    // Overwrite if direct YUV rendering is supported as FramebufferTexture2D
+    // does not accept texture EXTERNAL_OES without that extension.
+    if (shaders_.count(ShaderType::kYUV) != 0)
+      textarget = GL_TEXTURE_EXTERNAL_OES;
 
-  // Choose shader based on the image texture format.
-  std::shared_ptr<ShaderProgram> shader = shaders_.at(ShaderType::kYUV);
-  shader->Use();
+    // Attach output texture to the rendering frame buffer.
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                           textarget, texture, 0);
+    RETURN_IF_GL_ERROR("Failed to attach output texture ", texture, " to frame "
+                       "buffer at color attachment 0 for YUV rendering");
 
-  shader->SetBool("stageInput", false);
-  shader->SetInt("stageTex", 1);
+    if (clean) {
+      GLfloat luma = EXTRACT_RED_COLOR(color), alpha = EXTRACT_ALPHA_COLOR(color);
+      GLfloat cr = EXTRACT_GREEN_COLOR(color), cb = EXTRACT_BLUE_COLOR(color);
 
-  shader->SetInt("colorSpace", colorspace);
-  shader->SetInt("extTex", 0);
+      // Set/Clear the background of the texture attached to the frame buffer.
+      if (format == ColorFormat::kGRAY8)
+        glClearColor(luma, 0.0, 0.0, alpha);
+      else if (format == ColorFormat::kRG88 || format == ColorFormat::kGR88)
+        glClearColor(cr, cb, 0.0, alpha);
+      else
+        glClearColor(luma, cr, cb, alpha);
 
-  glActiveTexture(GL_TEXTURE0);
-  RETURN_IF_GL_ERROR("Failed to set active texture unit 0");
+      glClear(GL_COLOR_BUFFER_BIT);
+      RETURN_IF_GL_ERROR("Failed to clear buffer color bit");
+    }
 
-  for (auto& object : objects) {
-    const Region& destination = object.destination;
+    // Choose shader based on the image texture format.
+    ShaderType stype = ShaderType::kYUV;
 
-    glViewport(destination.x, destination.y, destination.w, destination.h);
-    RETURN_IF_GL_ERROR("Failed to set destination viewport");
+    if (format == ColorFormat::kGRAY8)
+      stype = ShaderType::kLuma;
+    else if (format == ColorFormat::kRG88 || format == ColorFormat::kGR88)
+      stype = ShaderType::kChroma;
 
-    std::string error = DrawObject(shader, object);
-    if (!error.empty()) return error;
+    std::shared_ptr<ShaderProgram> shader = shaders_.at(stype);
+    shader->Use();
+
+    shader->SetBool("stageInput", false);
+    shader->SetInt("stageTex", 1);
+
+    shader->SetBool("rbSwapped", Format::IsSwapped(format));
+    shader->SetInt("colorSpace", colorspace);
+
+    shader->SetInt("extTex", 0);
+
+    glActiveTexture(GL_TEXTURE0);
+    RETURN_IF_GL_ERROR("Failed to set active texture unit 0");
+
+    // Depending on the format the plane image may have different size.
+    float wscale = static_cast<float>(width) / maxwidth;
+    float hscale = static_cast<float>(height) / maxheight;
+
+    for (auto& object : objects) {
+      // Adjust destination coordinates which will be used for the view port.
+      glViewport(object.destination.x * wscale, object.destination.y * hscale,
+                 object.destination.w * wscale, object.destination.h * hscale);
+      RETURN_IF_GL_ERROR("Failed to set destination viewport");
+
+      std::string error = DrawObject(shader, object);
+      if (!error.empty()) return error;
+    }
   }
 
   return std::string();
 }
 
 std::string Engine::RenderRgbTexture(std::vector<GraphicTuple>& graphics,
-                                     uint32_t color, bool clean,
-                                     Normalization& normalize, Objects& objects) {
+                                     bool clean, uint32_t color, bool inverted,
+                                     bool swapped, Normalization& normalize,
+                                     Objects& objects) {
 
   GraphicTuple& gltuple = graphics.at(0);
   GLuint& texture = std::get<GLuint>(gltuple);
-  ImageParam& imgparam = std::get<ImageParam>(gltuple);
 
-  uint32_t format = std::get<2>(imgparam);
-
-  // Attach output/staging texture to the rendering frame buffer.
+  // Attach output texture to the rendering frame buffer.
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                         GL_TEXTURE_EXTERNAL_OES, texture, 0);
-  RETURN_IF_GL_ERROR("Failed to attach output texture ", texture,
-                     " to frame buffer");
+                         GL_TEXTURE_2D, texture, 0);
+  RETURN_IF_GL_ERROR("Failed to attach output texture ", texture, " to frame "
+                     "buffer at color attachment 0 for RGB rendering");
 
   if (clean) {
     // Set/Clear the background of the texture attached to the frame buffer.
@@ -493,8 +553,8 @@ std::string Engine::RenderRgbTexture(std::vector<GraphicTuple>& graphics,
   shader->SetVec4("rgbaOffset", normalize[0].offset, normalize[1].offset,
                   normalize[2].offset, normalize[3].offset);
 
-  shader->SetBool("rgbaInverted", Format::IsInverted(format));
-  shader->SetBool("rbSwapped", Format::IsSwapped(format));
+  shader->SetBool("rgbaInverted", inverted);
+  shader->SetBool("rbSwapped", swapped);
 
   shader->SetInt("extTex", 0);
 
@@ -518,17 +578,15 @@ std::string Engine::RenderStageTexture(GLuint texture, uint32_t color,
                                        bool inverted, bool swapped,
                                        Normalization& normalize, Objects& objects) {
 
-  GLenum textarget = GL_TEXTURE_2D;
-
-  // Attach output/staging texture to the rendering frame buffer.
+  // Attach staging texture to the rendering frame buffer.
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                         textarget, texture, 0);
-  RETURN_IF_GL_ERROR("Failed to attach stage texture ", texture,
-                     " to frame buffer");
+                         GL_TEXTURE_2D, texture, 0);
+  RETURN_IF_GL_ERROR("Failed to attach stage texture ", texture, " to frame "
+                     "buffer at color attachment 0 for intermediary rendering");
 
   // Set/Clear the background of the texture attached to the frame buffer.
   glClearColor(EXTRACT_RED_COLOR(color), EXTRACT_GREEN_COLOR(color),
-              EXTRACT_BLUE_COLOR(color), EXTRACT_ALPHA_COLOR(color));
+               EXTRACT_BLUE_COLOR(color), EXTRACT_ALPHA_COLOR(color));
   glClear(GL_COLOR_BUFFER_BIT);
   RETURN_IF_GL_ERROR("Failed to clear buffer color bit");
 
@@ -564,11 +622,12 @@ std::string Engine::RenderStageTexture(GLuint texture, uint32_t color,
 std::string Engine::DrawObject(std::shared_ptr<ShaderProgram>& shader,
                                const Object& object) {
 
-  SurfaceTuple& intuple = surfaces_.at(object.id);
-  Surface& insurface = std::get<Surface>(intuple);
-  auto& graphics = std::get<std::vector<GraphicTuple>>(intuple);
+  SurfaceTuple& stuple = surfaces_.at(object.id);
 
-  auto& gltuple = graphics.at(0);
+  Surface& insurface = std::get<Surface>(stuple);
+  auto& graphics = std::get<std::vector<GraphicTuple>>(stuple);
+
+  GraphicTuple& gltuple = graphics.at(0);
   GLuint& intexture = std::get<GLuint>(gltuple);
 
   // Bind the input surface texture to EXTERNAL_OES for current active texture.
@@ -686,8 +745,8 @@ std::string Engine::ColorTransmute(GLuint stgtex, Surface& surface,
 
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                          GL_TEXTURE_EXTERNAL_OES, otexture, 0);
-  RETURN_IF_GL_ERROR("Failed to attach output texture ", otexture,
-      " to stage frame buffer");
+  RETURN_IF_GL_ERROR("Failed to attach output texture ", otexture, " to frame "
+                     "buffer at color attachment 0 for color transmute");
 
 #if defined(ANDROID)
   uint32_t width = surface.buffer->width;
@@ -791,7 +850,10 @@ bool Engine::IsSurfaceRenderable(const Surface& surface) {
 
 GLuint Engine::GetStageTexture(const Surface& surface, const Objects& objects) {
 
-  if (Format::IsRgb(surface.format) && IsSurfaceRenderable(surface))
+  // Stage texture is not required if surface is RGB and is renderable or
+  // output surface is YUV and direct rendering into YUV is not supported.
+  if ((Format::IsRgb(surface.format) && IsSurfaceRenderable(surface)) ||
+      (Format::IsYuv(surface.format) && (shaders_.count(ShaderType::kYUV) == 0)))
     return 0;
 
   // Iterate over the objects and determine if alpha blending is required.
@@ -808,6 +870,7 @@ GLuint Engine::GetStageTexture(const Surface& surface, const Objects& objects) {
 
   bool blending = (iter != objects.end()) ? true : false;
 
+  // Stage texture needed when blending and direct rendering into YUV is supported.
   if (Format::IsYuv(surface.format) && !blending)
     return 0;
 
@@ -964,6 +1027,13 @@ std::vector<GraphicTuple> Engine::ImportLinuxSurface(const Surface& surface,
 
     GLenum textarget = GL_TEXTURE_EXTERNAL_OES;
 
+    // Overwrite if surface is output and format is RGB or it is YUV but direct
+    // rendering into YUV textures is not supported as FramebufferTexture2D
+    // doesn't accept texture EXTERNAL_OES without that extension.
+    if ((flags & SurfaceFlags::kOutput) && (Format::IsRgb(surface.format) ||
+        (Format::IsYuv(surface.format) && (shaders_.count(ShaderType::kYUV) == 0))))
+      textarget = GL_TEXTURE_2D;
+
     glBindTexture(textarget, texture);
     EXCEPTION_IF_GL_ERROR("Failed to bind output texture ", texture);
 
@@ -985,8 +1055,48 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
 
   std::vector<Surface> imgsurfaces;
 
-  if ((flags & SurfaceFlags::kOutput) && Format::IsRgb(surface.format) &&
-      !IsSurfaceRenderable(surface)) {
+  if ((flags & SurfaceFlags::kOutput) && Format::IsYuv(surface.format) &&
+      (shaders_.count(ShaderType::kYUV) == 0)) {
+    // Direct rendering into YUV buffer is not supported and output is YUV.
+    // A separate image must be created for each plane of the YUV surface.
+    imgsurfaces.resize(surface.nplanes);
+
+    // First image will contain only Luminosity info.
+    imgsurfaces[0].fd = surface.fd;
+    imgsurfaces[0].width = surface.width;
+    imgsurfaces[0].height = surface.height;
+    imgsurfaces[0].format = ColorFormat::kGRAY8;
+    imgsurfaces[0].nplanes = 1;
+    imgsurfaces[0].stride0 = surface.stride0;
+    imgsurfaces[0].offset0 = surface.offset0;
+
+    // Second image will represent the chroma info.
+    if (surface.nplanes >= 2) {
+      imgsurfaces[1].fd = surface.fd;
+      imgsurfaces[1].width = surface.width;
+      imgsurfaces[1].height = surface.height;
+      imgsurfaces[1].nplanes = 1;
+      imgsurfaces[1].stride0 = surface.stride1;
+      imgsurfaces[1].offset0 = surface.offset1;
+
+      imgsurfaces[1].format = ColorFormat::kRG88;
+
+      if ((surface.format == ColorFormat::kNV21) ||
+          (surface.format == ColorFormat::kNV61))
+        imgsurfaces[1].format = ColorFormat::kGR88;
+
+      // Depending on the surface format the chroma plane has different size.
+      if (surface.format == ColorFormat::kNV12 ||
+          surface.format == ColorFormat::kNV21) {
+        imgsurfaces[1].width /= 2;
+        imgsurfaces[1].height /= 2;
+      } else if (surface.format == ColorFormat::kNV16 ||
+                 surface.format == ColorFormat::kNV61) {
+        imgsurfaces[1].width /= 2;
+      }
+    }
+  } else if ((flags & SurfaceFlags::kOutput) && Format::IsRgb(surface.format) &&
+             !IsSurfaceRenderable(surface)) {
     // Non-renderable RGB(A) output, reshape its dimensions and format.
     Surface subsurface(surface);
 

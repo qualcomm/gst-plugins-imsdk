@@ -34,8 +34,8 @@ typedef std::tuple<uint32_t, uint32_t, uint32_t> ImageParam;
 // Tuple of <GL texture, EGL image, Image Parameters>
 typedef std::tuple<GLuint, EGLImageKHR, ImageParam> GraphicTuple;
 
-// Tuple of <<List of GL textures, EGL images, Texture Parameters>, Surface>
-typedef std::tuple<std::vector<GraphicTuple>, Surface> SurfaceTuple;
+// Tuple of <<List of GL textures, EGL images, Image Parameters>, Surface, Flags>
+typedef std::tuple<std::vector<GraphicTuple>, Surface, uint32_t> SurfaceTuple;
 
 class Engine : public IEngine {
  public:
@@ -50,11 +50,11 @@ class Engine : public IEngine {
   void Finish(std::uintptr_t fence) override;
 
  private:
-  std::string RenderYuvTexture(std::vector<GraphicTuple>& graphics,
-                               uint32_t color, uint32_t colorspace, bool clean,
+  std::string RenderYuvTexture(std::vector<GraphicTuple>& graphics, bool clean,
+                               uint32_t color, uint32_t colorspace,
                                Objects& objects);
-  std::string RenderRgbTexture(std::vector<GraphicTuple>& graphics,
-                               uint32_t color, bool clean,
+  std::string RenderRgbTexture(std::vector<GraphicTuple>& graphics, bool clean,
+                               uint32_t color, bool inverted, bool swapped,
                                Normalization& normalize, Objects& objects);
   std::string RenderStageTexture(GLuint texture, uint32_t color, bool inverted,
                                  bool swapped, Normalization& normalize,
