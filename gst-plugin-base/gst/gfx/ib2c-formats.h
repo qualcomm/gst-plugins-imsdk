@@ -17,7 +17,7 @@ namespace ib2c {
 
 class Format {
  public:
-  static std::tuple<uint32_t, uint64_t> ToInternal(uint32_t format, bool aligned);
+  static std::tuple<uint32_t, uint64_t> ToInternal(uint32_t format);
   static GLenum ToGL(uint32_t format);
 
   static bool IsRgb(uint32_t format);
@@ -28,8 +28,11 @@ class Format {
 
   static bool IsInverted(uint32_t format);
   static bool IsSwapped(uint32_t format);
-  static bool IsFloat(uint32_t format);
+
   static bool IsSigned(uint32_t format);
+  static bool IsFloat(uint32_t format);
+  static bool IsFloat16(uint32_t format);
+  static bool IsFloat32(uint32_t format);
 
   static uint32_t ColorSpace(uint32_t format);
 

@@ -29,7 +29,7 @@ static const std::map<uint32_t, ColorCoeffcients> kColorSpaceCoefficients = {
 static uint32_t kAlignment = 0;
 static std::mutex kAlignmentLock;
 
-static inline uint32_t GetGpuAlignment() {
+uint32_t GetAlignment() {
 
   std::lock_guard<std::mutex> lk(kAlignmentLock);
 
@@ -65,8 +65,7 @@ static inline uint32_t GetGpuAlignment() {
   return kAlignment;
 }
 
-// Convert RGB color code to YUV color code.
-uint32_t RgbToYuv(uint32_t color, uint32_t standard) {
+uint32_t ToYuvColorCode(uint32_t color, uint32_t standard) {
 
   auto& coeffcients = kColorSpaceCoefficients.at(standard);
 
@@ -86,44 +85,6 @@ uint32_t RgbToYuv(uint32_t color, uint32_t standard) {
       (blue * (-(kb / (1.0 - kr)) / 2));
 
   return (y << 24) + (u << 16) + (v << 8) + alpha;
-}
-
-bool IsAligned(const Surface& surface) {
-
-  uint32_t alignment = GetGpuAlignment();
-
-#if defined(ANDROID)
-  return ((surface.buffer->stride % alignment) == 0) ? true : false;
-#else // ANDROID
-  return ((surface.stride0 % alignment) == 0) ? true : false;
-#endif // !ANDROID
-}
-
-std::tuple<uint32_t, uint32_t> AlignedDimensions(const Surface& surface) {
-
-#if defined(ANDROID)
-  uint32_t width = surface.buffer->width;
-  uint32_t stride = surface.buffer->stride;
-#else // ANDROID
-  uint32_t width = surface.width;
-  uint32_t stride = surface.stride0;
-#endif // !ANDROID
-
-  uint32_t alignment = GetGpuAlignment();
-
-  uint32_t n_bytes = Format::BytesPerChannel(surface.format);
-  // Channels is 4 because output compute texture is 4 channaled (RGBA).
-  uint32_t n_channels = 4;
-
-  // Align stride and calculate the width for the compute texture.
-  stride = ((stride + (alignment - 1)) & ~(alignment - 1));
-  width = stride / (n_channels * n_bytes);
-
-  // Calculate the aligned height value rounded up based on surface size.
-  uint32_t height = std::ceil(
-      (surface.size / (n_channels * n_bytes)) / static_cast<float>(width));
-
-  return std::make_tuple(width, height);
 }
 
 } // namespace ib2c

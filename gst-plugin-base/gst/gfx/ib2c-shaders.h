@@ -50,8 +50,10 @@ static const std::string kRgbFragmentShaderCode = R"(
 precision mediump float;
 
 uniform samplerExternalOES extTex;
+
 uniform vec4 rgbaOffset;
 uniform vec4 rgbaScale;
+
 uniform bool rgbaInverted;
 uniform bool rbSwapped;
 uniform float globalAlpha;
@@ -90,6 +92,7 @@ precision highp int;
 
 uniform sampler2D stageTex;
 uniform samplerExternalOES extTex;
+
 uniform int colorSpace;
 uniform bool stageInput;
 
@@ -127,7 +130,7 @@ static const std::string kComputeHeader = R"(
 #version 320 es
 
 uniform int targetWidth;
-uniform int alignedWidth;
+uniform int imageWidth;
 uniform int numPixels;
 uniform int numChannels;
 
@@ -174,10 +177,10 @@ void main() {
             vec4 out2 = vec4(p2.x, p2.y, p2.z, p2.w);
             vec4 out3 = vec4(p3.x, p3.y, p3.z, p3.w);
 
-            ivec2 outPos0 = ivec2(pixelId % alignedWidth, pixelId / alignedWidth);
-            ivec2 outPos1 = ivec2((pixelId + 1) % alignedWidth, (pixelId + 1) / alignedWidth);
-            ivec2 outPos2 = ivec2((pixelId + 2) % alignedWidth, (pixelId + 2) / alignedWidth);
-            ivec2 outPos3 = ivec2((pixelId + 3) % alignedWidth, (pixelId + 3) / alignedWidth);
+            ivec2 outPos0 = ivec2(pixelId % imageWidth, pixelId / imageWidth);
+            ivec2 outPos1 = ivec2((pixelId + 1) % imageWidth, (pixelId + 1) / imageWidth);
+            ivec2 outPos2 = ivec2((pixelId + 2) % imageWidth, (pixelId + 2) / imageWidth);
+            ivec2 outPos3 = ivec2((pixelId + 3) % imageWidth, (pixelId + 3) / imageWidth);
 
             imageStore(outTex, outPos0, out0);
             imageStore(outTex, outPos1, out1);
@@ -193,9 +196,9 @@ void main() {
              vec4 out1 = vec4(p1.y, p1.z, p2.x, p2.y);
              vec4 out2 = vec4(p2.z, p3.x, p3.y, p3.z);
 
-            ivec2 outPos0 = ivec2(pixelId % alignedWidth, pixelId / alignedWidth);
-            ivec2 outPos1 = ivec2((pixelId + 1) % alignedWidth, (pixelId + 1) / alignedWidth);
-            ivec2 outPos2 = ivec2((pixelId + 2) % alignedWidth, (pixelId + 2) / alignedWidth);
+            ivec2 outPos0 = ivec2(pixelId % imageWidth, pixelId / imageWidth);
+            ivec2 outPos1 = ivec2((pixelId + 1) % imageWidth, (pixelId + 1) / imageWidth);
+            ivec2 outPos2 = ivec2((pixelId + 2) % imageWidth, (pixelId + 2) / imageWidth);
 
             imageStore(outTex, outPos0, out0);
             imageStore(outTex, outPos1, out1);
