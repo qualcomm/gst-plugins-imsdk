@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -8,9 +8,9 @@
 #ifdef HAVE_ADRENO_C2D2_H
 #include "c2d-video-converter.h"
 #endif // HAVE_ADRENO_C2D2_H
-#ifdef HAVE_IOT_CORE_IB2C_H
+#ifdef HAVE_GLES2_H
 #include "gles-video-converter.h"
-#endif // HAVE_IOT_CORE_IB2C_H
+#endif // HAVE_GLES2_H
 #ifdef HAVE_FASTCV_H
 #include "fcv-video-converter.h"
 #endif // HAVE_FASTCV_H
@@ -116,9 +116,9 @@ gst_video_converter_backend_get_type (void)
 #ifdef HAVE_ADRENO_C2D2_H
     { GST_VCE_BACKEND_C2D, "Use C2D based video converter", "c2d" },
 #endif // HAVE_ADRENO_C2D2_H
-#ifdef HAVE_IOT_CORE_IB2C_H
+#ifdef HAVE_GLES2_H
     { GST_VCE_BACKEND_GLES, "Use OpenGLES based video converter", "gles" },
-#endif // HAVE_IOT_CORE_IB2C_H
+#endif // HAVE_GLES2_H
 #ifdef HAVE_FASTCV_H
     { GST_VCE_BACKEND_FCV, "Use FastCV based video converter", "fcv" },
 #endif // HAVE_FASTCV_H
@@ -136,11 +136,11 @@ gst_video_converter_default_backend (void)
 {
   GstVideoConvBackend backend = GST_VCE_BACKEND_FCV;
 
-#if defined(HAVE_IOT_CORE_IB2C_H)
+#if defined(HAVE_GLES2_H)
   backend = GST_VCE_BACKEND_GLES;
 #elif defined(HAVE_ADRENO_C2D2_H)
   backend = GST_VCE_BACKEND_C2D;
-#endif // !HAVE_IOT_CORE_IB2C_H && !HAVE_ADRENO_C2D2_H
+#endif // !HAVE_GLES2_H && !HAVE_ADRENO_C2D2_H
 
   return backend;
 }
@@ -169,7 +169,7 @@ gst_video_converter_engine_new (GstVideoConvBackend backend,
       engine->flush = (GstVideoConvFlushFunction) gst_c2d_video_converter_flush;
       break;
 #endif // HAVE_ADRENO_C2D2_H
-#ifdef HAVE_IOT_CORE_IB2C_H
+#ifdef HAVE_GLES2_H
     case GST_VCE_BACKEND_GLES:
       engine->new = (GstVideoConvNewFunction) gst_gles_video_converter_new;
       engine->free = (GstVideoConvFreeFunction) gst_gles_video_converter_free;
@@ -179,7 +179,7 @@ gst_video_converter_engine_new (GstVideoConvBackend backend,
           (GstVideoConvWaitFenceFunction) gst_gles_video_converter_wait_fence;
       engine->flush = (GstVideoConvFlushFunction) gst_gles_video_converter_flush;
       break;
-#endif // HAVE_IOT_CORE_IB2C_H
+#endif // HAVE_GLES2_H
 #ifdef HAVE_FASTCV_H
     case GST_VCE_BACKEND_FCV:
       engine->new = (GstVideoConvNewFunction) gst_fcv_video_converter_new;

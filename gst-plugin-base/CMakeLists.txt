@@ -39,8 +39,8 @@ check_include_file("linux/dma-heap.h" HAVE_LINUX_DMA_HEAP_H)
 # Check whether Adreno C2D header is present.
 check_include_file("adreno/c2d2.h" HAVE_ADRENO_C2D2_H)
 
-# Check whether IOT CORE IB2C header is present.
-check_include_file_cxx("iot-core-algs/ib2c.h" HAVE_IOT_CORE_IB2C_H)
+# Check whether GLES2 header is present.
+check_include_file("GLES2/gl2.h" HAVE_GLES2_H)
 
 # Check whether FastCV header is present.
 check_include_file("fastcv/fastcv.h" HAVE_FASTCV_H)
@@ -53,7 +53,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
 
 # Common CXX compiler flags.
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
 
@@ -61,6 +61,10 @@ include_directories(
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/gstreamer-1.0>
 )
+
+if(HAVE_GLES2_H)
+  add_subdirectory(gst/gfx)
+endif(HAVE_GLES2_H)
 
 add_subdirectory(gst/utils)
 add_subdirectory(gst/video)

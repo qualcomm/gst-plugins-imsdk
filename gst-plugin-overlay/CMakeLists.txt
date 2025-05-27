@@ -32,7 +32,7 @@ check_include_file("adreno/c2d2.h" HAVE_C2D_H)
 
 # Check whether IB2C header is present.
 include(CheckIncludeFileCXX)
-check_include_file_cxx("iot-core-algs/ib2c.h" HAVE_GLES_H)
+check_include_file_cxx("gstreamer-1.0/gst/gfx/ib2c.h" HAVE_GLES_H)
 
 # Check whether CL EXT header is present.
 include(CheckIncludeFile)
