@@ -13,7 +13,7 @@ add_library(${TARGET_NAME} SHARED
   video-converter-engine.c
   video-utils.c
   $<$<BOOL:${HAVE_ADRENO_C2D2_H}>:c2d-video-converter.c>
-  $<$<BOOL:${HAVE_IOT_CORE_IB2C_H}>:gles-video-converter.cc>
+  $<$<BOOL:${HAVE_GLES2_H}>:gles-video-converter.cc>
   $<$<BOOL:${HAVE_FASTCV_H}>:fcv-video-converter.c>
 )
 
@@ -36,7 +36,7 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
   $<$<BOOL:${HAVE_MSM_MEDIA_INFO_H}>:HAVE_MSM_MEDIA_INFO_H>
   $<$<BOOL:${HAVE_LINUX_DMA_HEAP_H}>:HAVE_LINUX_DMA_HEAP_H>
   $<$<BOOL:${HAVE_ADRENO_C2D2_H}>:HAVE_ADRENO_C2D2_H>
-  $<$<BOOL:${HAVE_IOT_CORE_IB2C_H}>:HAVE_IOT_CORE_IB2C_H>
+  $<$<BOOL:${HAVE_GLES2_H}>:HAVE_GLES2_H>
   $<$<BOOL:${HAVE_FASTCV_H}>:HAVE_FASTCV_H>
   $<$<BOOL:${HAVE_GBM_PRIV_H}>:HAVE_GBM_PRIV_H>
 )
@@ -64,6 +64,7 @@ target_link_libraries(${TARGET_NAME} PRIVATE
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
   gstqtiallocatorsbase
+  gstqtigfxbase
 )
 
 install(

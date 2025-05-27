@@ -44,6 +44,7 @@ target_link_libraries(overlay_lib
   cairo
   $<$<BOOL:${HAVE_C2D_H}>:C2D2>
   ${GST_LIBRARIES}
+  $<$<BOOL:${HAVE_GLES_H}>:gstqtigfxbase>
 )
 
 install(
