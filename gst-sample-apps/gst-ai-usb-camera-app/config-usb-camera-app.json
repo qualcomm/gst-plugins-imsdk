@@ -3,6 +3,7 @@
   "height": 1080,
   "framerate": 30,
   "output":"waylandsink",
+  "video-format":"yuy2",
   "model":"/etc/models/yolov8_det_quantized.tflite",
   "labels":"/etc/labels/yolov8.labels",
   "output-file":"/etc/media/output.mp4",

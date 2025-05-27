@@ -390,6 +390,18 @@ typedef enum {
   GST_INPUT_STREAM_H265
 } GstInputStreamType;
 
+/**
+ * GstVideoFormat:
+ * @GST_NV12_VIDEO_FORMAT: NV12 Format
+ * @GST_YUV2_VIDEO_FORMAT: YUY2 Format
+ * @GST_MJPEG_VIDEO_FORMAT: MJPEG Video Format
+ */
+ enum GstVideoFormat{
+  GST_NV12_VIDEO_FORMAT,
+  GST_YUV2_VIDEO_FORMAT,
+  GST_MJPEG_VIDEO_FORMAT
+};
+
 /*
  * Check if File Exists
  *
