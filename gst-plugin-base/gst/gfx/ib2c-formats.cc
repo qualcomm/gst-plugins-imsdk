@@ -177,9 +177,8 @@ std::tuple<uint32_t, uint64_t> Format::ToInternal(uint32_t format, bool aligned)
     modifier = DRM_FORMAT_MOD_QCOM_COMPRESSED;
 
   // First check whether it is YUV format or not.
-  if (kYuvColorTable.count(external) != 0) {
+  if (kYuvColorTable.count(external) != 0)
     return {kYuvColorTable.at(external), modifier};
-  }
 
   external = format & (kFormatMask | kPixelTypeMask);
 

@@ -23,12 +23,11 @@ static const std::string kVertexShaderCode = R"(
 
 precision mediump float;
 
-uniform float xPosFactor;
-uniform float yPosFactor;
 uniform float rotationAngle;
 
-in vec2 position;
+in vec2 vPosition;
 in vec2 inTexCoord;
+
 out vec2 texCoord;
 
 void main() {
@@ -39,9 +38,7 @@ void main() {
                       0.0,                0.0, 0.0, 1.0
     );
 
-    vec4 vPos = vec4(xPosFactor * position.x, yPosFactor * position.y, 0.0, 1.0);
-
-    gl_Position = rotationMatrix * vPos;
+    gl_Position = rotationMatrix * vec4(vPosition.x, vPosition.y, 0.0, 1.0);
     texCoord = vec2(inTexCoord.x, inTexCoord.y);
 }
 )";

@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <algorithm>
+#include <array>
 
 #include "ib2c-engine.h"
 #include "ib2c-formats.h"
@@ -14,26 +15,78 @@ namespace ib2c {
 // Prefix for the higher 32 bits of the surface ID.
 static const uint64_t kSurfaceIdPrefix = 0x00001B2C00000000;
 
-static const float kPositions[] = {
-  -1.0f, -1.0f,
-  -1.0f,  1.0f,
-   1.0f, -1.0f,
-   1.0f,  1.0f,
+/** X and Y axis vertex coordinates depending on the flip flags in the mask.
+ *
+ *            Y|
+ *   -1,1      |      1,1
+ *     +-------+-------+
+ *     |       |       |
+ *     |       |       |
+ * ----+-------+-------+----
+ *     |       |0,0    |   X
+ *     |       |       |
+ *     +-------+-------+
+ *   -1,-1     |      1,-1
+ *             |
+ */
+static const std::map<uint32_t, std::array<float, 8>> kVertices = {
+  { 0,
+    {
+      -1.0f,  1.0f,
+      -1.0f, -1.0f,
+       1.0f,  1.0f,
+       1.0f, -1.0f,
+    }
+  },
+  { ConfigMask::kHFlip,
+    {
+       1.0f,  1.0f,
+       1.0f, -1.0f,
+      -1.0f,  1.0f,
+      -1.0f, -1.0f,
+    }
+  },
+  { ConfigMask::kVFlip,
+    {
+      -1.0f, -1.0f,
+      -1.0f,  1.0f,
+       1.0f, -1.0f,
+       1.0f,  1.0f,
+    }
+  },
+  { ConfigMask::kHFlip | ConfigMask::kVFlip,
+    {
+       1.0f, -1.0f,
+       1.0f,  1.0f,
+      -1.0f, -1.0f,
+      -1.0f,  1.0f,
+    }
+  },
 };
 
-static const float kTextureCoords[] = {
-  0.0f, 0.0f,
+/** Default X and Y axis vertex coordinates for textures.
+ *
+ * 0,1           1,1
+ *  +-------------+
+ *  |             |
+ *  |             |
+ *  |             |
+ *  +-------------+
+ * 0,0           1,0
+ */
+static const std::array<float, 8> kTextureCoords = {
   0.0f, 1.0f,
-  1.0f, 0.0f,
+  0.0f, 0.0f,
   1.0f, 1.0f,
+  1.0f, 0.0f,
 };
 
-// X and Y axis coordinates multipliers depending on the configuration mask.
-const std::map<uint32_t, std::pair<float, float>> kPosFactors = {
-  { 0,                                       {  1.0f, -1.0f } },
-  { ConfigMask::kHFlip,                      { -1.0f, -1.0f } },
-  { ConfigMask::kVFlip,                      {  1.0f,  1.0f } },
-  { ConfigMask::kHFlip | ConfigMask::kVFlip, { -1.0f,  1.0f } },
+// Default/Identity matrix layout.
+static const std::array<float, 16> kMatrix = {
+  1.0, 0.0, 0.0, 0.0,
+  0.0, 1.0, 0.0, 0.0,
+  0.0, 0.0, 1.0, 0.0,
+  0.0, 0.0, 0.0, 1.0,
 };
 
 Engine::Engine() {
@@ -65,20 +118,18 @@ Engine::Engine() {
   shader->SetBool("rbSwapped", false);
   shader->SetFloat("globalAlpha", 1.0);
 
-  shader->SetFloat("xPosFactor", std::get<0>(kPosFactors.at(0)));
-  shader->SetFloat("yPosFactor", std::get<1>(kPosFactors.at(0)));
-  shader->SetFloat("rotationAngle", 0);
+  shader->SetFloat("rotationAngle", 0.0);
 
-  GLuint pos    = shader->GetAttribLocation("position");
+  GLuint pos    = shader->GetAttribLocation("vPosition");
   GLuint coords = shader->GetAttribLocation("inTexCoord");
 
-  glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, 0, kPositions);
+  glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, 0, kVertices.at(0).data());
   EXCEPTION_IF_GL_ERROR("Failed to define position data");
 
   glEnableVertexAttribArray(pos);
   EXCEPTION_IF_GL_ERROR("Failed to enable position attribute array");
 
-  glVertexAttribPointer(coords, 2, GL_FLOAT, GL_FALSE, 0, kTextureCoords);
+  glVertexAttribPointer(coords, 2, GL_FLOAT, GL_FALSE, 0, kTextureCoords.data());
   EXCEPTION_IF_GL_ERROR("Failed to define texture coords attribute array");
 
   glEnableVertexAttribArray(coords);
@@ -94,20 +145,18 @@ Engine::Engine() {
   shader->SetInt("colorSpace", ColorMode::kBT601);
   shader->SetBool("stageInput", false);
 
-  shader->SetFloat("xPosFactor", std::get<0>(kPosFactors.at(0)));
-  shader->SetFloat("yPosFactor", std::get<1>(kPosFactors.at(0)));
-  shader->SetFloat("rotationAngle", 0);
+  shader->SetFloat("rotationAngle", 0.0);
 
-  pos    = shader->GetAttribLocation("position");
+  pos    = shader->GetAttribLocation("vPosition");
   coords = shader->GetAttribLocation("inTexCoord");
 
-  glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, 0, kPositions);
+  glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, 0, kVertices.at(0).data());
   EXCEPTION_IF_GL_ERROR("Failed to define position attribute array");
 
   glEnableVertexAttribArray(pos);
   EXCEPTION_IF_GL_ERROR("Failed to enable position attribute array");
 
-  glVertexAttribPointer(coords, 2, GL_FLOAT, GL_FALSE, 0, kTextureCoords);
+  glVertexAttribPointer(coords, 2, GL_FLOAT, GL_FALSE, 0, kTextureCoords.data());
   EXCEPTION_IF_GL_ERROR("Failed to define texture coords attribute array");
 
   glEnableVertexAttribArray(coords);
@@ -181,15 +230,8 @@ uint64_t Engine::CreateSurface(const Surface& surface, uint32_t flags) {
       eglCreateImageKHR(m_egl_env_->Display(), EGL_NO_CONTEXT,
                         EGL_NATIVE_BUFFER_ANDROID, surface.buffer, NULL);
 #else // ANDROID
-  EGLint attribs[32] = {
-    EGL_WIDTH, 0,
-    EGL_HEIGHT, 0,
-    EGL_LINUX_DRM_FOURCC_EXT, 0,
-    EGL_DMA_BUF_PLANE0_FD_EXT, 0,
-    EGL_DMA_BUF_PLANE0_PITCH_EXT, 0,
-    EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
-    EGL_NONE
-  };
+  EGLint attribs[64] = { EGL_NONE };
+  uint32_t index = 0;
 
   bool aligned = IsAligned(surface);
 
@@ -197,12 +239,22 @@ uint64_t Engine::CreateSurface(const Surface& surface, uint32_t flags) {
   std::tuple<uint32_t, uint64_t> internal =
       Format::ToInternal(surface.format, aligned);
 
-  attribs[1] = surface.width;
-  attribs[3] = surface.height;
-  attribs[5] = std::get<0>(internal);
-  attribs[7] = surface.fd;
-  attribs[9] = surface.stride0;
-  attribs[11] = surface.offset0;
+  attribs[index++] = EGL_WIDTH;
+  attribs[index++] = surface.width;
+  attribs[index++] = EGL_HEIGHT;
+  attribs[index++] = surface.height;
+  attribs[index++] = EGL_LINUX_DRM_FOURCC_EXT;
+  attribs[index++] = std::get<0>(internal);
+  attribs[index++] = EGL_DMA_BUF_PLANE0_FD_EXT;
+  attribs[index++] = surface.fd;
+  attribs[index++] = EGL_DMA_BUF_PLANE0_PITCH_EXT;
+  attribs[index++] = surface.stride0;
+  attribs[index++] = EGL_DMA_BUF_PLANE0_OFFSET_EXT;
+  attribs[index++] = surface.offset0;
+  attribs[index++] = EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT;
+  attribs[index++] = std::get<1>(internal) & 0xFFFFFFFF;
+  attribs[index++] = EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT;
+  attribs[index++] = std::get<1>(internal) >> 32;
 
   // Adjust width, height and stride values for unaligned RGB(A) images.
   if ((flags & SurfaceFlags::kOutput) && Format::IsRgb(surface.format) &&
@@ -219,28 +271,28 @@ uint64_t Engine::CreateSurface(const Surface& surface, uint32_t flags) {
   }
 
   if (surface.nplanes >= 2) {
-    attribs[12] = EGL_DMA_BUF_PLANE1_PITCH_EXT;
-    attribs[13] = surface.stride1;
-    attribs[14] = EGL_DMA_BUF_PLANE1_OFFSET_EXT;
-    attribs[15] = surface.offset1;
-    attribs[16] = EGL_NONE;
-
-    if (std::get<1>(internal) != 0) {
-      attribs[16] = EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT;
-      attribs[17] = std::get<1>(internal) & 0xFFFFFFFF;
-      attribs[18] = EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT;
-      attribs[19] = std::get<1>(internal) >> 32;
-      attribs[20] = EGL_NONE;
-    }
+    attribs[index++] = EGL_DMA_BUF_PLANE1_PITCH_EXT;
+    attribs[index++] = surface.stride1;
+    attribs[index++] = EGL_DMA_BUF_PLANE1_OFFSET_EXT;
+    attribs[index++] = surface.offset1;
+    attribs[index++] = EGL_DMA_BUF_PLANE1_MODIFIER_LO_EXT;
+    attribs[index++] = std::get<1>(internal) & 0xFFFFFFFF;
+    attribs[index++] = EGL_DMA_BUF_PLANE1_MODIFIER_HI_EXT;
+    attribs[index++] = std::get<1>(internal) >> 32;
   }
 
   if (surface.nplanes == 3) {
-    attribs[16] = EGL_DMA_BUF_PLANE2_PITCH_EXT;
-    attribs[17] = surface.stride2;
-    attribs[18] = EGL_DMA_BUF_PLANE2_OFFSET_EXT;
-    attribs[19] = surface.offset2;
-    attribs[20] = EGL_NONE;
+    attribs[index++] = EGL_DMA_BUF_PLANE2_PITCH_EXT;
+    attribs[index++] = surface.stride2;
+    attribs[index++] = EGL_DMA_BUF_PLANE2_OFFSET_EXT;
+    attribs[index++] = surface.offset2;
+    attribs[index++] = EGL_DMA_BUF_PLANE2_MODIFIER_LO_EXT;
+    attribs[index++] = std::get<1>(internal) & 0xFFFFFFFF;
+    attribs[index++] = EGL_DMA_BUF_PLANE2_MODIFIER_HI_EXT;
+    attribs[index++] = std::get<1>(internal) >> 32;
   }
+
+  attribs[index] = EGL_NONE;
 
   EGLImageKHR image =
       eglCreateImageKHR (m_egl_env_->Display(), EGL_NO_CONTEXT,
@@ -503,15 +555,17 @@ std::string Engine::DrawObject(std::shared_ptr<ShaderProgram>& shader,
   if (shader->HasVariable("globalAlpha"))
     shader->SetFloat("globalAlpha", (object.alpha / 255.0));
 
-  auto mask = object.mask & (ConfigMask::kHFlip | ConfigMask::kVFlip);
-  shader->SetFloat("xPosFactor", std::get<0>(kPosFactors.at(mask)));
-  shader->SetFloat("yPosFactor", std::get<1>(kPosFactors.at(mask)));
-
   // Rotation angle in radians.
-  shader->SetFloat("rotationAngle", (object.rotation * M_PI / 180));
+  shader->SetFloat("rotationAngle", object.rotation * M_PI / 180);
+
+  auto mask = object.mask & (ConfigMask::kHFlip | ConfigMask::kVFlip);
+  GLuint pos = shader->GetAttribLocation("vPosition");
+
+  glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, 0, kVertices.at(mask).data());
+  RETURN_IF_GL_ERROR("Failed to define main vertex array");
 
   const Region& source = object.source;
-  float coords[8] = { 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0 };
+  std::array<float, 8> coords = kTextureCoords;
 
 #if defined(ANDROID)
   uint32_t width = insurface.buffer->width;
@@ -534,8 +588,8 @@ std::string Engine::DrawObject(std::shared_ptr<ShaderProgram>& shader,
 
   // Load the vertex position.
   GLuint texcoord = shader->GetAttribLocation("inTexCoord");
-  glVertexAttribPointer(texcoord, 2, GL_FLOAT, GL_FALSE, 0, coords);
-  RETURN_IF_GL_ERROR("Failed to define vertex array");
+  glVertexAttribPointer(texcoord, 2, GL_FLOAT, GL_FALSE, 0, coords.data());
+  RETURN_IF_GL_ERROR("Failed to define texture vertex array");
 
   glEnableVertexAttribArray(texcoord);
   RETURN_IF_GL_ERROR("Failed to enable vertex array");
@@ -630,9 +684,9 @@ std::string Engine::Transform(GLuint& stgtex, GLuint& texture,
 
   // Load the vertex position.
   GLuint texcoord = shader->GetAttribLocation("inTexCoord");
+  std::array<float, 8> coords = kTextureCoords;
 
-  float coords[8] = { 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0 };
-  glVertexAttribPointer(texcoord, 2, GL_FLOAT, GL_FALSE, 0, coords);
+  glVertexAttribPointer(texcoord, 2, GL_FLOAT, GL_FALSE, 0, coords.data());
   RETURN_IF_GL_ERROR("Failed to define vertex array");
 
   glEnableVertexAttribArray(texcoord);
