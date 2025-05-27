@@ -5,7 +5,7 @@
 
 #include <cstring>
 
-#include "ib2c-egl-environment.h"
+#include "ib2c-gl-environment.h"
 #include "ib2c-utils.h"
 
 namespace ib2c {

@@ -14,8 +14,8 @@
 
 #include "ib2c.h"
 #include "ib2c-utils.h"
-#include "ib2c-egl-environment.h"
-#include "ib2c-shader-program.h"
+#include "ib2c-gl-environment.h"
+#include "ib2c-gl-shader-program.h"
 #include "ib2c-shaders.h"
 
 namespace ib2c {

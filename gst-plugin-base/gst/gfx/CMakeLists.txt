@@ -7,9 +7,9 @@ project(gstreamer-qcom-gfx-1.0
 set(TARGET_NAME gstqtigfxbase)
 
 add_library(${TARGET_NAME} SHARED
-  ib2c-egl-environment.cc
-  ib2c-engine.cc
-  ib2c-shader-program.cc
+  ib2c-gl-environment.cc
+  ib2c-gl-engine.cc
+  ib2c-gl-shader-program.cc
   ib2c-formats.cc
   ib2c-utils.cc
 )

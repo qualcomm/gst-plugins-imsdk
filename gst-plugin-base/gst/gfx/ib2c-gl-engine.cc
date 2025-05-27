@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <array>
 
-#include "ib2c-engine.h"
+#include "ib2c-gl-engine.h"
 #include "ib2c-formats.h"
 
 namespace ib2c {

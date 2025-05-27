@@ -7,7 +7,7 @@
 #include <EGL/eglext.h>
 #include <GLES3/gl32.h>
 
-#include "ib2c-shader-program.h"
+#include "ib2c-gl-shader-program.h"
 #include "ib2c-utils.h"
 
 namespace ib2c {
