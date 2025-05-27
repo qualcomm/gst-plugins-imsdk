@@ -162,19 +162,28 @@ Engine::Engine() {
   glEnableVertexAttribArray(coords);
   EXCEPTION_IF_GL_ERROR("Failed to enable texture coords attribute array");
 
-  shader = std::make_shared<ShaderProgram>(kUnaligned8CShaderCode);
+  // Construct shader code for 8-bit unaligned RGB(A) output textures.
+  std::string code = kComputeHeader + kComputeOutputRgba8 + kComputeMainUnaligned;
+
+  shader = std::make_shared<ShaderProgram>(code);
   shaders_.emplace(ShaderType::kUnaligned8, shader);
 
   shader->Use();
   shader->SetInt("inTex", 2);
 
-  shader = std::make_shared<ShaderProgram>(kUnaligned16FCShaderCode);
+  // Construct shader code for 16-bit float unaligned RGB(A) output textures.
+  code = kComputeHeader + kComputeOutputRgba16F + kComputeMainUnaligned;
+
+  shader = std::make_shared<ShaderProgram>(code);
   shaders_.emplace(ShaderType::kUnaligned16F, shader);
 
   shader->Use();
   shader->SetInt("inTex", 2);
 
-  shader = std::make_shared<ShaderProgram>(kUnaligned32FCShaderCode);
+  // Construct shader code for 32-bit float unaligned RGB(A) output textures.
+  code = kComputeHeader + kComputeOutputRgba32F + kComputeMainUnaligned;
+
+  shader = std::make_shared<ShaderProgram>(code);
   shaders_.emplace(ShaderType::kUnaligned32F, shader);
 
   shader->Use();
@@ -266,7 +275,7 @@ uint64_t Engine::CreateSurface(const Surface& surface, uint32_t flags) {
     attribs[1] = std::get<0>(dims);
     attribs[3] = std::get<1>(dims);
 
-    // TODO Channels is 4 because staged texture is GL_RGBA8.
+    // Channels is 4 because output texture for compute is (RGBA).
     attribs[9] = std::get<0>(dims) * 4 * Format::BytesPerChannel(surface.format);
   }
 
@@ -304,11 +313,23 @@ uint64_t Engine::CreateSurface(const Surface& surface, uint32_t flags) {
                     eglGetError(), "!");
   }
 
+  glActiveTexture(GL_TEXTURE0);
+  EXCEPTION_IF_GL_ERROR("Failed to set active texture unit 0");
+
   GLuint texture;
 
   // Create GL texture to the image will be binded.
   glGenTextures (1, &texture);
   EXCEPTION_IF_GL_ERROR("Failed to generate GL texture!");
+
+  // Bind the surface texture to EXTERNAL_OES.
+  glBindTexture(GL_TEXTURE_EXTERNAL_OES, texture);
+  EXCEPTION_IF_GL_ERROR("Failed to bind output texture ", texture);
+
+  glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES,
+                               reinterpret_cast<GLeglImageOES>(image));
+  EXCEPTION_IF_GL_ERROR("Failed to associate image ", image,
+      " with external texture ", texture);
 
   uint64_t surface_id = kSurfaceIdPrefix | fd;
   graphics_.emplace(
@@ -363,7 +384,6 @@ std::uintptr_t Engine::Compose(const Compositions& compositions,
     GraphicTuple& otuple = graphics_.at(surface_id);
 
     GLuint& otexture = std::get<0>(otuple);
-    EGLImageKHR& oimage = std::get<1>(otuple);
     Surface& osurface = std::get<2>(otuple);
 
     glActiveTexture(GL_TEXTURE0);
@@ -372,11 +392,6 @@ std::uintptr_t Engine::Compose(const Compositions& compositions,
     // Bind the output surface texture to EXTERNAL_OES for current active texture.
     glBindTexture(GL_TEXTURE_EXTERNAL_OES, otexture);
     EXCEPTION_IF_GL_ERROR("Failed to bind output texture ", otexture);
-
-    glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES,
-                                 reinterpret_cast<GLeglImageOES>(oimage));
-    EXCEPTION_IF_GL_ERROR("Failed to associate output image ", oimage,
-        " with external texture");
 
     // Get the staging texture if required.
     GLuint stgtex = GetStageTexture(osurface, objects);
@@ -539,18 +554,12 @@ std::string Engine::DrawObject(std::shared_ptr<ShaderProgram>& shader,
   RETURN_IF_GL_ERROR("Failed to set destination viewport");
 
   GraphicTuple& intuple = graphics_.at(object.id);
-
   GLuint& intexture = std::get<GLuint>(intuple);
-  EGLImageKHR& inimage = std::get<EGLImageKHR>(intuple);
   Surface& insurface = std::get<Surface>(intuple);
 
   // Bind the input surface texture to EXTERNAL_OES for current active texture.
   glBindTexture(GL_TEXTURE_EXTERNAL_OES, intexture);
   RETURN_IF_GL_ERROR("Failed to bind input texture ", intexture);
-
-  glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES,
-                               reinterpret_cast<GLeglImageOES>(inimage));
-  RETURN_IF_GL_ERROR("Failed to associate input image ", inimage);
 
   if (shader->HasVariable("globalAlpha"))
     shader->SetFloat("globalAlpha", (object.alpha / 255.0));
@@ -613,23 +622,25 @@ std::string Engine::DispatchCompute(GLuint& stgtex, GLuint& texture,
     shader = shaders_.at(ShaderType::kUnaligned8);
   }
 
-  glActiveTexture(GL_TEXTURE2);
-  RETURN_IF_GL_ERROR("Failed to set active texture unit 2");
+#if defined(ANDROID)
+  uint32_t width = surface.buffer->width;
+  uint32_t height = surface.buffer->height;
+#else   // ANDROID
+  uint32_t width = surface.width;
+  uint32_t height = surface.height;
+#endif  // !ANDROID
 
   auto dims = AlignedDimensions(surface);
 
   shader->Use();
 
-#if defined(ANDROID)
-  shader->SetInt("targetWidth", surface.buffer->width);
-  shader->SetInt("targetHeight", surface.buffer->height);
-#else   // ANDROID
-  shader->SetInt("targetWidth", surface.width);
-  shader->SetInt("targetHeight", surface.height);
-#endif  // !ANDROID
-
+  shader->SetInt("targetWidth", width);
   shader->SetInt("alignedWidth", std::get<0>(dims));
+  shader->SetInt("numPixels", (width * height));
   shader->SetInt("numChannels", Format::NumChannels(surface.format));
+
+  glActiveTexture(GL_TEXTURE2);
+  RETURN_IF_GL_ERROR("Failed to set active texture unit 2");
 
   glBindTexture(GL_TEXTURE_2D, stgtex);
   RETURN_IF_GL_ERROR("Failed to bind staging texture ", stgtex);
@@ -639,10 +650,13 @@ std::string Engine::DispatchCompute(GLuint& stgtex, GLuint& texture,
   glBindImageTexture(1, texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, format);
   RETURN_IF_GL_ERROR("Failed to bind output image texture ", texture);
 
-  GLuint xgroups = std::get<0>(dims) / (Format::NumChannels(surface.format) * 32);
-  GLuint ygroups = std::get<1>(dims);
+  // Align to the divisor for the number of X groups explained below.
+  uint32_t n_pixels = (((width * height) + ((32 * 4) - 1)) & ~((32 * 4) - 1));
 
-  glDispatchCompute(xgroups, ygroups, 1);
+  // 32 because of the local size and 4 pixels are processed at a time.
+  GLuint xgroups = n_pixels / (32 * 4);
+
+  glDispatchCompute(xgroups, 1, 1);
   RETURN_IF_GL_ERROR("Failed to dispatch compute");
 
   return std::string();
