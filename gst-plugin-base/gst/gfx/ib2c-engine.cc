@@ -102,64 +102,26 @@ Engine::Engine() {
   error = m_egl_env_->BindContext(EGL_NO_SURFACE, EGL_NO_SURFACE);
   if (!error.empty()) throw std::runtime_error(error);
 
-  // Generate staging frame buffer.
-  glGenFramebuffers(1, &stage_fbo_);
+  // Generate frame buffer.
+  glGenFramebuffers(1, &fbo_);
   EXCEPTION_IF_GL_ERROR("Failed to generate stage frame buffer");
 
-  auto shader =
-      std::make_shared<ShaderProgram>(kVertexShaderCode, kRgbFragmentShaderCode);
+  auto shader = std::make_shared<ShaderProgram>(kVertexShader, kRgbFragmentShader);
   shaders_.emplace(ShaderType::kRGB, shader);
 
-  shader->Use();
-  shader->SetInt("extTex", 0);
-  shader->SetVec4("rgbaScale", 0, 0, 0, 0);
-  shader->SetVec4("rgbaOffset", 0, 0, 0, 0);
-  shader->SetBool("rgbaInverted", false);
-  shader->SetBool("rbSwapped", false);
-  shader->SetFloat("globalAlpha", 1.0);
-
-  shader->SetFloat("rotationAngle", 0.0);
-
-  GLuint pos    = shader->GetAttribLocation("vPosition");
-  GLuint coords = shader->GetAttribLocation("inTexCoord");
-
-  glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, 0, kVertices.at(0).data());
-  EXCEPTION_IF_GL_ERROR("Failed to define position data");
-
-  glEnableVertexAttribArray(pos);
+  glEnableVertexAttribArray(shader->GetAttribLocation("vPosition"));
   EXCEPTION_IF_GL_ERROR("Failed to enable position attribute array");
 
-  glVertexAttribPointer(coords, 2, GL_FLOAT, GL_FALSE, 0, kTextureCoords.data());
-  EXCEPTION_IF_GL_ERROR("Failed to define texture coords attribute array");
-
-  glEnableVertexAttribArray(coords);
+  glEnableVertexAttribArray(shader->GetAttribLocation("inTexCoord"));
   EXCEPTION_IF_GL_ERROR("Failed to enable texture coords attribute array");
 
-  shader =
-      std::make_shared<ShaderProgram>(kVertexShaderCode, kYuvFragmentShaderCode);
+  shader = std::make_shared<ShaderProgram>(kVertexShader, kYuvFragmentShader);
   shaders_.emplace(ShaderType::kYUV, shader);
 
-  shader->Use();
-  shader->SetInt("extTex", 0);
-  shader->SetInt("stageTex", 1);
-  shader->SetInt("colorSpace", ColorMode::kBT601);
-  shader->SetBool("stageInput", false);
-
-  shader->SetFloat("rotationAngle", 0.0);
-
-  pos    = shader->GetAttribLocation("vPosition");
-  coords = shader->GetAttribLocation("inTexCoord");
-
-  glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, 0, kVertices.at(0).data());
-  EXCEPTION_IF_GL_ERROR("Failed to define position attribute array");
-
-  glEnableVertexAttribArray(pos);
+  glEnableVertexAttribArray(shader->GetAttribLocation("vPosition"));
   EXCEPTION_IF_GL_ERROR("Failed to enable position attribute array");
 
-  glVertexAttribPointer(coords, 2, GL_FLOAT, GL_FALSE, 0, kTextureCoords.data());
-  EXCEPTION_IF_GL_ERROR("Failed to define texture coords attribute array");
-
-  glEnableVertexAttribArray(coords);
+  glEnableVertexAttribArray(shader->GetAttribLocation("inTexCoord"));
   EXCEPTION_IF_GL_ERROR("Failed to enable texture coords attribute array");
 
   // Construct shader code for 8-bit unaligned RGB(A) output textures.
@@ -168,26 +130,17 @@ Engine::Engine() {
   shader = std::make_shared<ShaderProgram>(code);
   shaders_.emplace(ShaderType::kUnaligned8, shader);
 
-  shader->Use();
-  shader->SetInt("inTex", 2);
-
   // Construct shader code for 16-bit float unaligned RGB(A) output textures.
   code = kComputeHeader + kComputeOutputRgba16F + kComputeMainUnaligned;
 
   shader = std::make_shared<ShaderProgram>(code);
   shaders_.emplace(ShaderType::kUnaligned16F, shader);
 
-  shader->Use();
-  shader->SetInt("inTex", 2);
-
   // Construct shader code for 32-bit float unaligned RGB(A) output textures.
   code = kComputeHeader + kComputeOutputRgba32F + kComputeMainUnaligned;
 
   shader = std::make_shared<ShaderProgram>(code);
   shaders_.emplace(ShaderType::kUnaligned32F, shader);
-
-  shader->Use();
-  shader->SetInt("inTex", 2);
 
   error = m_egl_env_->UnbindContext();
   if (!error.empty()) throw std::runtime_error(error);
@@ -216,7 +169,7 @@ Engine::~Engine() {
     }
   }
 
-  glDeleteFramebuffers(1, &stage_fbo_);
+  glDeleteFramebuffers(1, &fbo_);
 
   m_egl_env_->UnbindContext();
 }
@@ -238,6 +191,9 @@ uint64_t Engine::CreateSurface(const Surface& surface, uint32_t flags) {
 
   std::string error = m_egl_env_->BindContext(EGL_NO_SURFACE, EGL_NO_SURFACE);
   if (!error.empty()) throw std::runtime_error(error);
+
+  glActiveTexture(GL_TEXTURE0);
+  EXCEPTION_IF_GL_ERROR("Failed to set active texture unit 0");
 
 #if defined(ANDROID)
   std::vector<GraphicTuple> graphics = ImportAndroidSurface(surface, flags);
@@ -291,115 +247,77 @@ std::uintptr_t Engine::Compose(const Compositions& compositions,
   std::string error = m_egl_env_->BindContext(EGL_NO_SURFACE, EGL_NO_SURFACE);
   if (!error.empty()) throw std::runtime_error(error);
 
+  glBindFramebuffer(GL_FRAMEBUFFER, fbo_);
+  EXCEPTION_IF_GL_ERROR("Failed to bind frame buffer");
+
   for (auto const& composition : compositions) {
     auto surface_id = std::get<uint64_t>(composition);
     auto color = std::get<uint32_t>(composition);
     auto clean = std::get<bool>(composition);
-    auto normalization = std::get<Normalization>(composition);
+    auto normalize = std::get<Normalization>(composition);
     auto objects = std::get<Objects>(composition);
 
-    SurfaceTuple& otuple = surfaces_.at(surface_id);
-    Surface& osurface = std::get<Surface>(otuple);
-    auto& graphics = std::get<std::vector<GraphicTuple>>(otuple);
+    SurfaceTuple& stuple = surfaces_.at(surface_id);
 
-    auto& gltuple = graphics.at(0);
-    GLuint& otexture = std::get<GLuint>(gltuple);
+    Surface& surface = std::get<Surface>(stuple);
+    auto& graphics = std::get<std::vector<GraphicTuple>>(stuple);
 
-    glActiveTexture(GL_TEXTURE0);
-    EXCEPTION_IF_GL_ERROR("Failed to set active texture unit 0");
+    // Resize normalization length and apply conversion neeed for shaders.
+    if (normalize.size() != 4) { normalize.resize(4); }
 
-    // Bind the output surface texture to EXTERNAL_OES for current active texture.
-    glBindTexture(GL_TEXTURE_EXTERNAL_OES, otexture);
-    EXCEPTION_IF_GL_ERROR("Failed to bind output texture ", otexture);
+    std::transform(normalize.begin(), normalize.end(), normalize.begin(),
+                  [&surface](Normalize n) {
+        // Adjust data range to match to fragment sharer data representation.
+        n.offset /= 255.0;
+        // Adjust date range for signed RGB format
+        n.scale *= Format::IsSigned(surface.format) ? 2.0 : 1.0;
+        return n;
+    });
 
-    // Get the staging texture if required.
-    GLuint stgtex = GetStageTexture(osurface, objects);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, stage_fbo_);
-    EXCEPTION_IF_GL_ERROR("Failed to bind frame buffer");
-
-    // Attach output/staging texture to the rendering frame buffer.
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                           ((stgtex == 0) ? GL_TEXTURE_EXTERNAL_OES : GL_TEXTURE_2D),
-                           ((stgtex == 0) ? otexture : stgtex), 0);
-    EXCEPTION_IF_GL_ERROR("Failed to attach output texture ",
-        (stgtex == 0) ? otexture : stgtex, " to stage frame buffer");
-
-    if (clean || (stgtex != 0)) {
-      // Convert RGB to YUV channel values of output is directly to YUV.
-      if ((stgtex == 0) && Format::IsYuv(osurface.format))
-        color = ToYuvColorCode(color, Format::ColorSpace(osurface.format));
-
-      // Set/Clear the background of the texture attached to the frame buffer.
-      glClearColor(EXTRACT_RED_COLOR(color), EXTRACT_GREEN_COLOR(color),
-                   EXTRACT_BLUE_COLOR(color), EXTRACT_ALPHA_COLOR(color));
-      glClear(GL_COLOR_BUFFER_BIT);
-      EXCEPTION_IF_GL_ERROR("Failed to clear buffer color bit");
-    }
+    // Use intermediary texture only if output surface is not renderable or
+    // blending required and output is YUV as this combination is not suppoted.
+    GLuint stgtex = GetStageTexture(surface, objects);
 
     // Insert internal blit object for the inplace surface at the begining.
+    // Required only when there is intermediary stage texture and clean is false.
     if (!clean && (stgtex != 0)) {
       objects.insert(objects.begin(), Object());
 
-      objects[0].id = surface_id;
-
 #if defined(ANDROID)
-      objects[0].source.w = objects[0].destination.w = osurface.buffer->width;
-      objects[0].source.h = objects[0].destination.h = osurface.buffer->height;
+      objects[0].source.w = objects[0].destination.w = surface.buffer->width;
+      objects[0].source.h = objects[0].destination.h = surface.buffer->height;
 #else   // ANDROID
-      objects[0].source.w = objects[0].destination.w = osurface.width;
-      objects[0].source.h = objects[0].destination.h = osurface.height;
+      objects[0].source.w = objects[0].destination.w = surface.width;
+      objects[0].source.h = objects[0].destination.h = surface.height;
 #endif  // !ANDROID
+
+      objects[0].id = surface_id;
     }
 
-    std::shared_ptr<ShaderProgram> shader;
-
-    // Get the main shader depending on the configuration.
-    if ((stgtex != 0) || Format::IsRgb(osurface.format)) {
+    // Blending is not supported in combination with direct rendering into YUV.
+    if (Format::IsRgb(surface.format) || (stgtex != 0) ||
+        (Format::IsYuv(surface.format) && shaders_.count(ShaderType::kYUV) == 0)) {
       glEnable(GL_BLEND);
       EXCEPTION_IF_GL_ERROR("Failed to enable blend capability");
 
       glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
       EXCEPTION_IF_GL_ERROR("Failed to set blend function");
-
-      Normalization normalize = std::get<Normalization>(composition);
-
-      if (normalize.size() != 4) { normalize.resize(4); }
-
-      std::transform(normalize.begin(), normalize.end(), normalize.begin(),
-                     [&osurface](Normalize n) {
-          // Adjust data range to match to fragment sharer data representation.
-          n.offset /= 255.0;
-          // Adjust date range for signed RGB format
-          n.scale *= Format::IsSigned(osurface.format) ? 2.0 : 1.0;
-          return n;
-      });
-
-      shader = shaders_.at(ShaderType::kRGB);
-      shader->Use();
-
-      shader->SetVec4("rgbaScale", normalize[0].scale, normalize[1].scale,
-                      normalize[2].scale, normalize[3].scale);
-      shader->SetVec4("rgbaOffset", normalize[0].offset, normalize[1].offset,
-                      normalize[2].offset, normalize[3].offset);
-
-      shader->SetBool("rgbaInverted", Format::IsInverted(osurface.format));
-      shader->SetBool("rbSwapped", Format::IsSwapped(osurface.format));
-    } else if (Format::IsYuv(osurface.format)) {
-      // Blending does not work for YUV output formats.
-      glDisable(GL_BLEND);
-      EXCEPTION_IF_GL_ERROR("Failed to disable blend capability");
-
-      shader = shaders_.at(ShaderType::kYUV);
-      shader->Use();
-
-      shader->SetInt("colorSpace", Format::ColorSpace(osurface.format));
-      shader->SetBool("stageInput", false);
     }
 
-    // Iterate over the objects and dispatch draw commands.
-    for (auto const& object : objects) {
-      error = DrawObject(shader, object);
+    if ((stgtex == 0) && Format::IsYuv(surface.format)) {
+      uint32_t colorspace = Format::ColorSpace(surface.format);
+
+      error = RenderYuvTexture(graphics, color, colorspace, clean, objects);
+      if (!error.empty()) throw std::runtime_error(error);
+    } else if ((stgtex == 0) && Format::IsRgb(surface.format)) {
+      error = RenderRgbTexture(graphics, color, clean, normalize, objects);
+      if (!error.empty()) throw std::runtime_error(error);
+    } else if (stgtex != 0) {
+      // Pass the inverted and swapped flag from main format to stage texture.
+      bool invert = Format::IsInverted(surface.format);
+      bool swap = Format::IsSwapped(surface.format);
+
+      error = RenderStageTexture(stgtex, color, invert, swap, normalize, objects);
       if (!error.empty()) throw std::runtime_error(error);
     }
 
@@ -408,14 +326,14 @@ std::uintptr_t Engine::Compose(const Compositions& compositions,
     EXCEPTION_IF_GL_ERROR("Failed to disable blend capability");
 
     // In case output is unaligned RGB, apply compute shader.
-    if ((stgtex != 0) && Format::IsRgb(osurface.format)) {
-      error = DispatchCompute(stgtex, otexture, osurface);
+    if ((stgtex != 0) && Format::IsRgb(surface.format)) {
+      error = DispatchCompute(stgtex, surface, graphics);
       if (!error.empty()) throw std::runtime_error(error);
     }
 
-    // Transform the intermediary BGRA texture to YUV.
-    if ((stgtex != 0) && Format::IsYuv(osurface.format)) {
-      error = Transform(stgtex, otexture, osurface);
+    // Transmute the intermediary BGRA texture to YUV.
+    if ((stgtex != 0) && Format::IsYuv(surface.format)) {
+      error = ColorTransmute(stgtex, surface, graphics);
       if (!error.empty()) throw std::runtime_error(error);
     }
   }
@@ -464,13 +382,161 @@ void Engine::Finish(std::uintptr_t fence) {
   if (!error.empty()) throw std::runtime_error(error);
 }
 
+std::string Engine::RenderYuvTexture(std::vector<GraphicTuple>& graphics,
+                                     uint32_t color, uint32_t colorspace,
+                                     bool clean, Objects& objects) {
+
+  // Convert RGB color code to YUV channel values if output surface is YUV.
+  color = ToYuvColorCode(color, colorspace);
+
+  GraphicTuple& gltuple = graphics.at(0);
+  GLuint& texture = std::get<GLuint>(gltuple);
+
+  // Attach output/staging texture to the rendering frame buffer.
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                         GL_TEXTURE_EXTERNAL_OES, texture, 0);
+  RETURN_IF_GL_ERROR("Failed to attach output texture ", texture,
+                     " to frame buffer");
+
+  if (clean) {
+    GLfloat luma = EXTRACT_RED_COLOR(color), alpha = EXTRACT_ALPHA_COLOR(color);
+    GLfloat cr = EXTRACT_GREEN_COLOR(color), cb = EXTRACT_BLUE_COLOR(color);
+
+    // Set/Clear the background of the texture attached to the frame buffer.
+    glClearColor(luma, cr, cb, alpha);
+
+    glClear(GL_COLOR_BUFFER_BIT);
+    RETURN_IF_GL_ERROR("Failed to clear buffer color bit");
+  }
+
+  // Choose shader based on the image texture format.
+  std::shared_ptr<ShaderProgram> shader = shaders_.at(ShaderType::kYUV);
+  shader->Use();
+
+  shader->SetBool("stageInput", false);
+  shader->SetInt("stageTex", 1);
+
+  shader->SetInt("colorSpace", colorspace);
+  shader->SetInt("extTex", 0);
+
+  glActiveTexture(GL_TEXTURE0);
+  RETURN_IF_GL_ERROR("Failed to set active texture unit 0");
+
+  for (auto& object : objects) {
+    const Region& destination = object.destination;
+
+    glViewport(destination.x, destination.y, destination.w, destination.h);
+    RETURN_IF_GL_ERROR("Failed to set destination viewport");
+
+    std::string error = DrawObject(shader, object);
+    if (!error.empty()) return error;
+  }
+
+  return std::string();
+}
+
+std::string Engine::RenderRgbTexture(std::vector<GraphicTuple>& graphics,
+                                     uint32_t color, bool clean,
+                                     Normalization& normalize, Objects& objects) {
+
+  GraphicTuple& gltuple = graphics.at(0);
+  GLuint& texture = std::get<GLuint>(gltuple);
+  ImageParam& imgparam = std::get<ImageParam>(gltuple);
+
+  uint32_t format = std::get<2>(imgparam);
+
+  // Attach output/staging texture to the rendering frame buffer.
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                         GL_TEXTURE_EXTERNAL_OES, texture, 0);
+  RETURN_IF_GL_ERROR("Failed to attach output texture ", texture,
+                     " to frame buffer");
+
+  if (clean) {
+    // Set/Clear the background of the texture attached to the frame buffer.
+    glClearColor(EXTRACT_RED_COLOR(color), EXTRACT_GREEN_COLOR(color),
+                 EXTRACT_BLUE_COLOR(color), EXTRACT_ALPHA_COLOR(color));
+    glClear(GL_COLOR_BUFFER_BIT);
+    RETURN_IF_GL_ERROR("Failed to clear buffer color bit");
+  }
+
+  std::shared_ptr<ShaderProgram> shader = shaders_.at(ShaderType::kRGB);
+  shader->Use();
+
+  shader->SetVec4("rgbaScale", normalize[0].scale, normalize[1].scale,
+                  normalize[2].scale, normalize[3].scale);
+  shader->SetVec4("rgbaOffset", normalize[0].offset, normalize[1].offset,
+                  normalize[2].offset, normalize[3].offset);
+
+  shader->SetBool("rgbaInverted", Format::IsInverted(format));
+  shader->SetBool("rbSwapped", Format::IsSwapped(format));
+
+  shader->SetInt("extTex", 0);
+
+  glActiveTexture(GL_TEXTURE0);
+  RETURN_IF_GL_ERROR("Failed to set active texture unit 0");
+
+  for (auto& object : objects) {
+    const Region& destination = object.destination;
+
+    glViewport(destination.x, destination.y, destination.w, destination.h);
+    RETURN_IF_GL_ERROR("Failed to set destination viewport");
+
+    std::string error = DrawObject(shader, object);
+    if (!error.empty()) return error;
+  }
+
+  return std::string();
+}
+
+std::string Engine::RenderStageTexture(GLuint texture, uint32_t color,
+                                       bool inverted, bool swapped,
+                                       Normalization& normalize, Objects& objects) {
+
+  GLenum textarget = GL_TEXTURE_2D;
+
+  // Attach output/staging texture to the rendering frame buffer.
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                         textarget, texture, 0);
+  RETURN_IF_GL_ERROR("Failed to attach stage texture ", texture,
+                     " to frame buffer");
+
+  // Set/Clear the background of the texture attached to the frame buffer.
+  glClearColor(EXTRACT_RED_COLOR(color), EXTRACT_GREEN_COLOR(color),
+              EXTRACT_BLUE_COLOR(color), EXTRACT_ALPHA_COLOR(color));
+  glClear(GL_COLOR_BUFFER_BIT);
+  RETURN_IF_GL_ERROR("Failed to clear buffer color bit");
+
+  std::shared_ptr<ShaderProgram> shader = shaders_.at(ShaderType::kRGB);
+  shader->Use();
+
+  shader->SetVec4("rgbaScale", normalize[0].scale, normalize[1].scale,
+                  normalize[2].scale, normalize[3].scale);
+  shader->SetVec4("rgbaOffset", normalize[0].offset, normalize[1].offset,
+                  normalize[2].offset, normalize[3].offset);
+
+  shader->SetBool("rgbaInverted", inverted);
+  shader->SetBool("rbSwapped", swapped);
+
+  shader->SetInt("extTex", 0);
+
+  glActiveTexture(GL_TEXTURE0);
+  RETURN_IF_GL_ERROR("Failed to set active texture unit 0");
+
+  for (auto& object : objects) {
+    const Region& destination = object.destination;
+
+    glViewport(destination.x, destination.y, destination.w, destination.h);
+    RETURN_IF_GL_ERROR("Failed to set destination viewport");
+
+    std::string error = DrawObject(shader, object);
+    if (!error.empty()) return error;
+  }
+
+  return std::string();
+}
+
 std::string Engine::DrawObject(std::shared_ptr<ShaderProgram>& shader,
                                const Object& object) {
-
-  const Region& destination = object.destination;
-
-  glViewport(destination.x, destination.y, destination.w, destination.h);
-  RETURN_IF_GL_ERROR("Failed to set destination viewport");
 
   SurfaceTuple& intuple = surfaces_.at(object.id);
   Surface& insurface = std::get<Surface>(intuple);
@@ -531,8 +597,8 @@ std::string Engine::DrawObject(std::shared_ptr<ShaderProgram>& shader,
   return std::string();
 }
 
-std::string Engine::DispatchCompute(GLuint& stgtex, GLuint& texture,
-                                    Surface& surface) {
+std::string Engine::DispatchCompute(GLuint stgtex, Surface& surface,
+                                    std::vector<GraphicTuple>& graphics) {
 
   ShaderType stype = ShaderType::kUnaligned8;
 
@@ -548,28 +614,31 @@ std::string Engine::DispatchCompute(GLuint& stgtex, GLuint& texture,
 #if defined(ANDROID)
   uint32_t width = surface.buffer->width;
   uint32_t height = surface.buffer->height;
-  uint32_t imgwidth = width;
 #else   // ANDROID
   uint32_t width = surface.width;
   uint32_t height = surface.height;
-  uint32_t imgwidth = GetImageParams(surface, SurfaceFlags::kOutput).width;
 #endif  // !ANDROID
 
+  auto& gltuple = graphics.at(0);
+  GLuint& otexture = std::get<GLuint>(gltuple);
+  ImageParam& imgparam = std::get<ImageParam>(gltuple);
+
   shader->SetInt("targetWidth", width);
-  shader->SetInt("imageWidth", imgwidth);
+  shader->SetInt("imageWidth", std::get<0>(imgparam));
   shader->SetInt("numPixels", (width * height));
   shader->SetInt("numChannels", Format::NumChannels(surface.format));
+  shader->SetInt("inTex", 1);
 
-  glActiveTexture(GL_TEXTURE2);
-  RETURN_IF_GL_ERROR("Failed to set active texture unit 2");
+  glActiveTexture(GL_TEXTURE1);
+  RETURN_IF_GL_ERROR("Failed to set active texture unit 1");
 
   glBindTexture(GL_TEXTURE_2D, stgtex);
-  RETURN_IF_GL_ERROR("Failed to bind staging texture ", stgtex);
+  RETURN_IF_GL_ERROR("Failed to bind staging texture");
 
-  GLenum format = Format::ToGL(surface.format);
+  GLenum format = Format::ToGL(std::get<2>(imgparam));
 
-  glBindImageTexture(1, texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, format);
-  RETURN_IF_GL_ERROR("Failed to bind output image texture ", texture);
+  glBindImageTexture(1, otexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, format);
+  RETURN_IF_GL_ERROR("Failed to bind output image texture ", otexture);
 
   // Align to the divisor for the number of X groups explained below.
   uint32_t n_pixels = (((width * height) + ((32 * 4) - 1)) & ~((32 * 4) - 1));
@@ -583,41 +652,43 @@ std::string Engine::DispatchCompute(GLuint& stgtex, GLuint& texture,
   return std::string();
 }
 
-std::string Engine::Transform(GLuint& stgtex, GLuint& texture,
-                              Surface& surface) {
+std::string Engine::ColorTransmute(GLuint stgtex, Surface& surface,
+                                   std::vector<GraphicTuple>& graphics) {
 
-  std::shared_ptr<ShaderProgram> shader = shaders_.at(ShaderType::kYUV);
-
-  glActiveTexture(GL_TEXTURE1);
-  RETURN_IF_GL_ERROR("Failed to set active texture unit 1");
-
-  glBindTexture(GL_TEXTURE_2D, stgtex);
-  RETURN_IF_GL_ERROR("Failed to bind staging texture");
-
-  glBindTexture(GL_TEXTURE_EXTERNAL_OES, texture);
-  RETURN_IF_GL_ERROR("Failed to bind output texture ", texture);
-
-#if defined(ANDROID)
-  glViewport(0, 0, surface.buffer->width, surface.buffer->height);
-#else   // ANDROID
-  glViewport(0, 0, surface.width, surface.height);
-#endif  // !ANDROID
-
-  RETURN_IF_GL_ERROR("Failed to set destination viewport");
-
-  glBindFramebuffer(GL_FRAMEBUFFER, stage_fbo_);
-  RETURN_IF_GL_ERROR("Failed to bind frame buffer");
+  auto& gltuple = graphics.at(0);
+  GLuint& otexture = std::get<GLuint>(gltuple);
 
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                         GL_TEXTURE_EXTERNAL_OES, texture, 0);
-  RETURN_IF_GL_ERROR("Failed to attach output texture ", texture,
+                         GL_TEXTURE_EXTERNAL_OES, otexture, 0);
+  RETURN_IF_GL_ERROR("Failed to attach output texture ", otexture,
       " to stage frame buffer");
 
+#if defined(ANDROID)
+  uint32_t width = surface.buffer->width;
+  uint32_t height = surface.buffer->height;
+#else   // ANDROID
+  uint32_t width = surface.width;
+  uint32_t height = surface.height;
+#endif  // !ANDROID
+
+  glViewport(0, 0, width, height);
+  RETURN_IF_GL_ERROR("Failed to set destination viewport");
+
+  std::shared_ptr<ShaderProgram> shader = shaders_.at(ShaderType::kYUV);
   shader->Use();
-  shader->SetInt("colorSpace", Format::ColorSpace(surface.format));
+
+  shader->SetInt("stageTex", 1);
   shader->SetBool("stageInput", true);
+  shader->SetInt("colorSpace", Format::ColorSpace(surface.format));
+  shader->SetFloat("rotationAngle", 0);
 
   // Load the vertex position.
+  GLuint pos = shader->GetAttribLocation("vPosition");
+
+  glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, 0, kVertices.at(0).data());
+  RETURN_IF_GL_ERROR("Failed to define main vertex array");
+
+  // Load texture coordinates.
   GLuint texcoord = shader->GetAttribLocation("inTexCoord");
   std::array<float, 8> coords = kTextureCoords;
 
@@ -627,6 +698,12 @@ std::string Engine::Transform(GLuint& stgtex, GLuint& texture,
   glEnableVertexAttribArray(texcoord);
   RETURN_IF_GL_ERROR("Failed to enable vertex array");
 
+  glActiveTexture(GL_TEXTURE1);
+  RETURN_IF_GL_ERROR("Failed to set active texture unit 1");
+
+  glBindTexture(GL_TEXTURE_2D, stgtex);
+  RETURN_IF_GL_ERROR("Failed to bind staging texture");
+
   glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
   RETURN_IF_GL_ERROR("Failed to render array data");
 
@@ -635,10 +712,6 @@ std::string Engine::Transform(GLuint& stgtex, GLuint& texture,
 
 bool Engine::IsSurfaceRenderable(const Surface& surface) {
 
-  // Currently this check concerns only RGB surfaces.
-  if (!Format::IsRgb(surface.format))
-    return true;
-
   uint32_t alignment = GetAlignment();
 
 #if defined(ANDROID)
@@ -646,6 +719,10 @@ bool Engine::IsSurfaceRenderable(const Surface& surface) {
 #else // ANDROID
   bool aligned = ((surface.stride0 % alignment) == 0) ? true : false;
 #endif // !ANDROID
+
+  // For YUV surfaces check only if it satisfies GPU alignment requirement.
+  if (Format::IsYuv(surface.format))
+    return aligned;
 
   uint32_t n_channels = Format::NumChannels(surface.format);
 
@@ -666,7 +743,7 @@ GLuint Engine::GetStageTexture(const Surface& surface, const Objects& objects) {
         SurfaceTuple& stuple = surfaces_.at(obj.id);
         uint32_t format = std::get<Surface>(stuple).format;
 
-        // Enable blending if atleast one object has mask or is RGB with alpha.
+        // Enable blending if atleast one object has global alpha or is RGBA.
         return (obj.alpha != 0xFF) ||
             (Format::IsRgb(format) && Format::NumChannels(format) == 4);
       }
@@ -674,7 +751,7 @@ GLuint Engine::GetStageTexture(const Surface& surface, const Objects& objects) {
 
   bool blending = (iter != objects.end()) ? true : false;
 
-  if ((Format::IsYuv(surface.format) && !blending))
+  if (Format::IsYuv(surface.format) && !blending)
     return 0;
 
 #if defined(ANDROID)
@@ -703,6 +780,9 @@ GLuint Engine::GetStageTexture(const Surface& surface, const Objects& objects) {
 
   glGenTextures(1, &texture);
   EXCEPTION_IF_GL_ERROR ("Failed to generate staging texture");
+
+  glActiveTexture(GL_TEXTURE0);
+  EXCEPTION_IF_GL_ERROR("Failed to set active texture unit 0");
 
   glBindTexture(GL_TEXTURE_2D, texture);
   EXCEPTION_IF_GL_ERROR ("Failed to bind staging texture");
@@ -743,154 +823,151 @@ std::vector<GraphicTuple> Engine::ImportAndroidSurface(const Surface& surface,
   EXCEPTION_IF_GL_ERROR("Failed to bind output texture ", texture);
 
   glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES,
-                                reinterpret_cast<GLeglImageOES>(image));
+                               reinterpret_cast<GLeglImageOES>(image));
   EXCEPTION_IF_GL_ERROR("Failed to associate image ", image,
       " with external texture ", texture);
 
-  return { std::make_tuple(texture, image) };
+  ImageParam imgparam = std::make_tuple(
+      surface.buffer->width, surface.buffer->height, surface.format);
+
+  return { std::make_tuple(texture, image, std::move(imgparam)) };
 }
 #else // !ANDROID
 std::vector<GraphicTuple> Engine::ImportLinuxSurface(const Surface& surface,
                                                      uint32_t flags) {
 
-  ImageParam imgparam = GetImageParams(surface, flags);
+  std::vector<Surface> imgsurfaces = GetImageSurfaces(surface, flags);
+  std::vector<GraphicTuple> graphics;
 
-  // Retrieve the tuple of DRM format and its modifier.
-  std::tuple<uint32_t, uint64_t> internal = Format::ToInternal(imgparam.format);
+  for (auto& subsurface : imgsurfaces) {
+    // Retrieve the tuple of DRM format and its modifier.
+    std::tuple<uint32_t, uint64_t> internal = Format::ToInternal(subsurface.format);
 
-  EGLint attribs[64] = { EGL_NONE };
-  uint32_t index = 0;
+    EGLint attribs[64] = { EGL_NONE };
+    uint32_t index = 0;
 
-  attribs[index++] = EGL_WIDTH;
-  attribs[index++] = imgparam.width;
-  attribs[index++] = EGL_HEIGHT;
-  attribs[index++] = imgparam.height;
-  attribs[index++] = EGL_LINUX_DRM_FOURCC_EXT;
-  attribs[index++] = std::get<0>(internal);
-  attribs[index++] = EGL_DMA_BUF_PLANE0_FD_EXT;
-  attribs[index++] = surface.fd;
-  attribs[index++] = EGL_DMA_BUF_PLANE0_PITCH_EXT;
-  attribs[index++] = imgparam.planes[0].stride;
-  attribs[index++] = EGL_DMA_BUF_PLANE0_OFFSET_EXT;
-  attribs[index++] = imgparam.planes[0].offset;
-  attribs[index++] = EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT;
-  attribs[index++] = std::get<1>(internal) & 0xFFFFFFFF;
-  attribs[index++] = EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT;
-  attribs[index++] = std::get<1>(internal) >> 32;
-
-  if (imgparam.planes.size() >= 2) {
-    attribs[index++] = EGL_DMA_BUF_PLANE1_PITCH_EXT;
-    attribs[index++] = imgparam.planes[1].stride;
-    attribs[index++] = EGL_DMA_BUF_PLANE1_OFFSET_EXT;
-    attribs[index++] = imgparam.planes[1].offset;
-    attribs[index++] = EGL_DMA_BUF_PLANE1_MODIFIER_LO_EXT;
+    attribs[index++] = EGL_WIDTH;
+    attribs[index++] = subsurface.width;
+    attribs[index++] = EGL_HEIGHT;
+    attribs[index++] = subsurface.height;
+    attribs[index++] = EGL_LINUX_DRM_FOURCC_EXT;
+    attribs[index++] = std::get<0>(internal);
+    attribs[index++] = EGL_DMA_BUF_PLANE0_FD_EXT;
+    attribs[index++] = subsurface.fd;
+    attribs[index++] = EGL_DMA_BUF_PLANE0_PITCH_EXT;
+    attribs[index++] = subsurface.stride0;
+    attribs[index++] = EGL_DMA_BUF_PLANE0_OFFSET_EXT;
+    attribs[index++] = subsurface.offset0;
+    attribs[index++] = EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT;
     attribs[index++] = std::get<1>(internal) & 0xFFFFFFFF;
-    attribs[index++] = EGL_DMA_BUF_PLANE1_MODIFIER_HI_EXT;
+    attribs[index++] = EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT;
     attribs[index++] = std::get<1>(internal) >> 32;
+
+    if (subsurface.nplanes >= 2) {
+      attribs[index++] = EGL_DMA_BUF_PLANE1_FD_EXT;
+      attribs[index++] = subsurface.fd;
+      attribs[index++] = EGL_DMA_BUF_PLANE1_PITCH_EXT;
+      attribs[index++] = subsurface.stride1;
+      attribs[index++] = EGL_DMA_BUF_PLANE1_OFFSET_EXT;
+      attribs[index++] = subsurface.offset1;
+      attribs[index++] = EGL_DMA_BUF_PLANE1_MODIFIER_LO_EXT;
+      attribs[index++] = std::get<1>(internal) & 0xFFFFFFFF;
+      attribs[index++] = EGL_DMA_BUF_PLANE1_MODIFIER_HI_EXT;
+      attribs[index++] = std::get<1>(internal) >> 32;
+    }
+
+    if (subsurface.nplanes == 3) {
+      attribs[index++] = EGL_DMA_BUF_PLANE2_FD_EXT;
+      attribs[index++] = subsurface.fd;
+      attribs[index++] = EGL_DMA_BUF_PLANE2_PITCH_EXT;
+      attribs[index++] = subsurface.stride2;
+      attribs[index++] = EGL_DMA_BUF_PLANE2_OFFSET_EXT;
+      attribs[index++] = subsurface.offset2;
+      attribs[index++] = EGL_DMA_BUF_PLANE2_MODIFIER_LO_EXT;
+      attribs[index++] = std::get<1>(internal) & 0xFFFFFFFF;
+      attribs[index++] = EGL_DMA_BUF_PLANE2_MODIFIER_HI_EXT;
+      attribs[index++] = std::get<1>(internal) >> 32;
+    }
+
+    attribs[index] = EGL_NONE;
+
+    EGLImageKHR image = eglCreateImageKHR(m_egl_env_->Display(), EGL_NO_CONTEXT,
+                                          EGL_LINUX_DMA_BUF_EXT, NULL, attribs);
+
+    if (image == EGL_NO_IMAGE) {
+      throw Exception("Failed to create EGL image, error: ", std::hex,
+                      eglGetError(), "!");
+    }
+
+    GLuint texture;
+
+    // Create GL texture to the image will be binded.
+    glGenTextures (1, &texture);
+    EXCEPTION_IF_GL_ERROR("Failed to generate GL texture!");
+
+    GLenum textarget = GL_TEXTURE_EXTERNAL_OES;
+
+    glBindTexture(textarget, texture);
+    EXCEPTION_IF_GL_ERROR("Failed to bind output texture ", texture);
+
+    glEGLImageTargetTexture2DOES(textarget, reinterpret_cast<GLeglImageOES>(image));
+    EXCEPTION_IF_GL_ERROR("Failed to associate image ", image,
+        " with external texture ", texture);
+
+    ImageParam imgparam = std::make_tuple(
+        subsurface.width, subsurface.height, subsurface.format);
+
+    graphics.emplace_back(texture, image, std::move(imgparam));
   }
 
-  if (imgparam.planes.size() == 3) {
-    attribs[index++] = EGL_DMA_BUF_PLANE2_PITCH_EXT;
-    attribs[index++] = imgparam.planes[2].stride;
-    attribs[index++] = EGL_DMA_BUF_PLANE2_OFFSET_EXT;
-    attribs[index++] = imgparam.planes[2].offset;
-    attribs[index++] = EGL_DMA_BUF_PLANE2_MODIFIER_LO_EXT;
-    attribs[index++] = std::get<1>(internal) & 0xFFFFFFFF;
-    attribs[index++] = EGL_DMA_BUF_PLANE2_MODIFIER_HI_EXT;
-    attribs[index++] = std::get<1>(internal) >> 32;
-  }
-
-  attribs[index] = EGL_NONE;
-
-  EGLImageKHR image = eglCreateImageKHR(m_egl_env_->Display(), EGL_NO_CONTEXT,
-                                        EGL_LINUX_DMA_BUF_EXT, NULL, attribs);
-
-  if (image == EGL_NO_IMAGE) {
-    throw Exception("Failed to create EGL image, error: ", std::hex,
-                    eglGetError(), "!");
-  }
-
-  glActiveTexture(GL_TEXTURE0);
-  EXCEPTION_IF_GL_ERROR("Failed to set active texture unit 0");
-
-  GLuint texture;
-
-  // Create GL texture to the image will be binded.
-  glGenTextures (1, &texture);
-  EXCEPTION_IF_GL_ERROR("Failed to generate GL texture!");
-
-  // Bind the surface texture to EXTERNAL_OES.
-  glBindTexture(GL_TEXTURE_EXTERNAL_OES, texture);
-  EXCEPTION_IF_GL_ERROR("Failed to bind output texture ", texture);
-
-  glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES,
-                               reinterpret_cast<GLeglImageOES>(image));
-  EXCEPTION_IF_GL_ERROR("Failed to associate image ", image,
-      " with external texture ", texture);
-
-  return { std::make_tuple(texture, image) };
+  return graphics;
 }
 
-ImageParam Engine::GetImageParams(const Surface& surface, uint32_t flags) {
+std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
+                                              uint32_t flags) {
 
-  ImageParam param;
+  std::vector<Surface> imgsurfaces;
 
-  param.width = surface.width;
-  param.height = surface.height;
-  param.format = surface.format;
+  if ((flags & SurfaceFlags::kOutput) && Format::IsRgb(surface.format) &&
+      !IsSurfaceRenderable(surface)) {
+    // Non-renderable RGB(A) output, reshape its dimensions and format.
+    Surface subsurface(surface);
 
-  param.planes.emplace_back(surface.stride0, surface.offset0);
+    // Overwrite the 3 channeled format to corresponding 4 channeled format.
+    // This will make it compatible for creating EGL image and use in compute.
+    if (Format::NumChannels(surface.format) == 3) {
+      subsurface.format = ColorFormat::kRGBA8888;
 
-  if (surface.nplanes >= 2)
-    param.planes.emplace_back(surface.stride1, surface.offset1);
+      if (Format::IsFloat16(surface.format))
+        subsurface.format |= ColorMode::kFloat16;
+      else if (Format::IsFloat32(surface.format))
+        subsurface.format |= ColorMode::kFloat32;
+    }
 
-  if (surface.nplanes >= 3)
-    param.planes.emplace_back(surface.stride2, surface.offset2);
+    uint32_t alignment = GetAlignment();
 
-  // If surface is input then there is no need for any reshaping of its params.
-  // If output surface is not renderable, reshape its dimensions and format.
-  // This will make it compatible for creating EGL image and use in compute.
-  if ((flags & SurfaceFlags::kInput) ||
-      ((flags & SurfaceFlags::kOutput) && IsSurfaceRenderable(surface)))
-    return param;
+    uint32_t n_bytes = Format::BytesPerChannel(subsurface.format);
+    uint32_t n_channels = Format::NumChannels(subsurface.format);
 
-  // Overwrite the 3 channeled format to corresponding 4 channeled format.
-  if (Format::NumChannels(surface.format) == 3) {
-    param.format = ColorFormat::kRGBA8888;
+    // Adjust width, height and stride values for non-renderable RGB(A) surface.
+    // Align stride and calculate the width for the compute texture.
+    subsurface.stride0 =
+        ((subsurface.stride0 + (alignment - 1)) & ~(alignment - 1));
+    subsurface.width = subsurface.stride0 / (n_channels * n_bytes);
 
-    if (Format::IsFloat16(surface.format))
-      param.format |= ColorMode::kFloat16;
-    else if (Format::IsFloat32(surface.format))
-      param.format |= ColorMode::kFloat32;
+    uint32_t size = subsurface.size - subsurface.offset0;
+
+    // Calculate the aligned height value rounded up based on surface size.
+    subsurface.height = std::ceil(
+        (size / (n_channels * n_bytes)) / static_cast<float>(subsurface.width));
+
+    imgsurfaces.push_back(subsurface);
+  } else {
+    // Surface is either input or renderable output, no reshape is required.
+    imgsurfaces.push_back(surface);
   }
 
-  // Adjust width, height and stride values for non-renderable RGB(A) surface.
-  uint32_t width = surface.width;
-  uint32_t stride = surface.stride0;
-  uint32_t offset = surface.offset0;
-
-  uint32_t alignment = GetAlignment();
-
-  uint32_t n_bytes = Format::BytesPerChannel(param.format);
-  uint32_t n_channels = Format::NumChannels(param.format);
-
-  // Align stride and calculate the width for the compute texture.
-  stride = ((stride + (alignment - 1)) & ~(alignment - 1));
-  width = stride / (n_channels * n_bytes);
-
-  uint32_t size = surface.size - offset;
-
-  // Calculate the aligned height value rounded up based on surface size.
-  uint32_t height = std::ceil(
-      (size / (n_channels * n_bytes)) / static_cast<float>(width));
-
-  param.width = width;
-  param.height = height;
-
-  param.planes[0].stride = stride;
-  param.planes[0].offset = offset;
-
-  return param;
+  return imgsurfaces;
 }
 #endif // defined(ANDROID)
 

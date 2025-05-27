@@ -13,10 +13,6 @@
 #include <chrono>
 #include <iomanip>
 
-#include <GLES3/gl32.h>
-
-#include "ib2c.h"
-
 namespace ib2c {
 
 #define EXTRACT_RED_COLOR(color)   (((color >> 24) & 0xFF) / 255.0)

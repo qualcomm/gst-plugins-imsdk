@@ -18,7 +18,7 @@ enum class ShaderType : uint32_t {
   kUnaligned32F,
 };
 
-static const std::string kVertexShaderCode = R"(
+static const std::string kVertexShader = R"(
 #version 320 es
 
 precision mediump float;
@@ -43,10 +43,11 @@ void main() {
 }
 )";
 
-static const std::string kRgbFragmentShaderCode = R"(
+static const std::string kRgbFragmentShader = R"(
 #version 320 es
 #extension GL_OES_EGL_image_external_essl3 : require
 
+precision mediump samplerExternalOES;
 precision mediump float;
 
 uniform samplerExternalOES extTex;
@@ -80,15 +81,13 @@ void main() {
 }
 )";
 
-static const std::string kYuvFragmentShaderCode = R"(
+static const std::string kYuvFragmentShader = R"(
 #version 320 es
 #extension GL_OES_EGL_image_external_essl3 : require
 #extension GL_EXT_YUV_target : require
 
-precision highp sampler2D;
-precision highp samplerExternalOES;
-precision highp float;
-precision highp int;
+precision mediump samplerExternalOES;
+precision mediump float;
 
 uniform sampler2D stageTex;
 uniform samplerExternalOES extTex;
@@ -97,26 +96,24 @@ uniform int colorSpace;
 uniform bool stageInput;
 
 in vec2 texCoord;
+
 layout(yuv) out vec4 outColor;
 
 void main() {
     vec4 source = stageInput ? texture(stageTex, texCoord) : texture(extTex, texCoord);
     source = clamp(source, 0.0, 1.0);
 
-    yuvCscStandardEXT csStandard;
+    yuvCscStandardEXT csStandard = itu_601;
 
     switch (colorSpace)
     {
-        case (1 << 11):
+        case (1 << 9):
             csStandard = itu_601;
             break;
-        case (2 << 11):
+        case (2 << 9):
             csStandard = itu_601_full_range;
             break;
-        case (3 << 11):
-            csStandard = itu_709;
-            break;
-        default:
+        case (3 << 9):
             csStandard = itu_709;
             break;
     }
@@ -124,7 +121,6 @@ void main() {
     outColor = vec4(rgb_2_yuv(source.rgb, csStandard), 1.0);
 }
 )";
-
 
 static const std::string kComputeHeader = R"(
 #version 320 es
@@ -188,13 +184,13 @@ void main() {
             imageStore(outTex, outPos3, out3);
         } else {
             // Recalculate the pixelId for the output 3 channeled (RGB) texture.
-            // 3 / 4 because we process 4 pixels form the stage RGBA input texture which are
+            // 3 / 4 because we process 4 pixels from the stage RGBA input texture which are
             // then compressed in 3 pixels of the output RGBA texture which is actually RGB.
             pixelId = (pixelId * 3) / 4;
 
-             vec4 out0 = vec4(p0.x, p0.y, p0.z, p1.x);
-             vec4 out1 = vec4(p1.y, p1.z, p2.x, p2.y);
-             vec4 out2 = vec4(p2.z, p3.x, p3.y, p3.z);
+            vec4 out0 = vec4(p0.x, p0.y, p0.z, p1.x);
+            vec4 out1 = vec4(p1.y, p1.z, p2.x, p2.y);
+            vec4 out2 = vec4(p2.z, p3.x, p3.y, p3.z);
 
             ivec2 outPos0 = ivec2(pixelId % imageWidth, pixelId / imageWidth);
             ivec2 outPos1 = ivec2((pixelId + 1) % imageWidth, (pixelId + 1) / imageWidth);
