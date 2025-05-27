@@ -67,7 +67,7 @@ G_DEFINE_TYPE (GstVOverlay, gst_overlay, GST_TYPE_BASE_TRANSFORM);
 #define DEFAULT_MAX_BUFFERS         30
 
 #define MAX_LABEL_LENGTH            48
-#define LABEL_FONTSIZE              24
+#define LABEL_FONTSIZE              40
 
 enum
 {
