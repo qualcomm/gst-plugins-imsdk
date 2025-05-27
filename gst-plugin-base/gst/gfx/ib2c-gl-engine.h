@@ -20,6 +20,8 @@
 
 namespace ib2c {
 
+namespace gl {
+
 // Tuple of <width, height, format>
 typedef std::tuple<GLsizei, GLsizei, GLenum> TextureTuple;
 
@@ -84,9 +86,9 @@ class Engine : public IEngine {
   std::mutex                       mutex_;
 
   /// Main EGL environment.
-  std::unique_ptr<EglEnvironment>  m_egl_env_;
+  std::unique_ptr<Environment>     m_egl_env_;
   /// Secondary/Auxiliary EGL environment, used for waiting GLsync objects.
-  std::unique_ptr<EglEnvironment>  s_egl_env_;
+  std::unique_ptr<Environment>     s_egl_env_;
 
   /// GL frame buffer for rendering.
   GLuint                           fbo_;
@@ -100,5 +102,7 @@ class Engine : public IEngine {
   /// Map of surface_id and its GL textures, EGL images and Surface.
   std::map<uint64_t, SurfaceTuple> surfaces_;
 };
+
+} // namespace gl
 
 } // namespace ib2c

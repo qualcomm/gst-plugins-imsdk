@@ -344,6 +344,6 @@ class IEngine {
  *
  * return: Pointer to new engine instance.
  **/
-extern "C" IEngine* NewGlEngine();
+IEngine* NewGlEngine();
 
 } // namespace ib2c

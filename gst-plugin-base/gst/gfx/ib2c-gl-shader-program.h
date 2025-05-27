@@ -13,6 +13,8 @@
 
 namespace ib2c {
 
+namespace gl {
+
 class ShaderProgram {
  public:
   ShaderProgram(const std::string& vshader, const std::string& fshader);
@@ -38,5 +40,7 @@ class ShaderProgram {
   /// GL program identification.
   GLuint id_;
 };
+
+} // namespace gl
 
 } // namespace ib2c

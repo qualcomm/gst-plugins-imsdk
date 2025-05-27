@@ -12,6 +12,8 @@
 
 namespace ib2c {
 
+namespace gl {
+
 // Prefix for the higher 32 bits of the surface ID.
 static const uint64_t kSurfaceIdPrefix = 0x00001B2C00000000;
 
@@ -92,11 +94,11 @@ static const std::array<float, 16> kMatrix = {
 Engine::Engine() {
 
   // Initialize main instance of the EGL environment.
-  std::string error = EglEnvironment::NewEglEnvironment(m_egl_env_);
+  std::string error = Environment::NewEnvironment(m_egl_env_);
   if (!error.empty()) throw std::runtime_error(error);
 
   // Initialize secondary/auxiliary instance of the EGL environment.
-  error = EglEnvironment::NewEglEnvironment(s_egl_env_, m_egl_env_->Context());
+  error = Environment::NewEnvironment(s_egl_env_, m_egl_env_->Context());
   if (!error.empty()) throw std::runtime_error(error);
 
   error = m_egl_env_->BindContext(EGL_NO_SURFACE, EGL_NO_SURFACE);
@@ -971,9 +973,11 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
 }
 #endif // defined(ANDROID)
 
+} // namespace gl
+
 IEngine* NewGlEngine() {
 
-  return new Engine();
+  return new gl::Engine();
 }
 
 } // namespace ib2c
