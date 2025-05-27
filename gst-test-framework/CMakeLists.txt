@@ -20,10 +20,11 @@ pkg_check_modules(GST_VIDEO
 pkg_check_modules(GST_PBUTILS
   REQUIRED gstreamer-pbutils-1.0>=${GST_VERSION_REQUIRED})
 
-include_directories(inc)
+include_directories(utils)
 
 add_executable(${GST_TEST_FRAMEWORK}
   main.c
+  utils/suite-utils.c
   suite-camera/suite-camera-case.c
   suite-camera/suite-camera-pipeline.c
 )
