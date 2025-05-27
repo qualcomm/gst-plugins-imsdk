@@ -204,12 +204,16 @@ Engine::~Engine() {
     glDeleteTextures(1, &texture);
   }
 
-  for (auto& pair : graphics_) {
-    auto image = std::get<EGLImageKHR>(pair.second);
-    eglDestroyImageKHR(m_egl_env_->Display(), image);
+  for (auto& pair : surfaces_) {
+    auto graphics = std::get<std::vector<GraphicTuple>>(pair.second);
 
-    auto texture = std::get<GLuint>(pair.second);
-    glDeleteTextures(1, &texture);
+    for (auto& gltuple : graphics) {
+      auto image = std::get<EGLImageKHR>(gltuple);
+      auto texture = std::get<GLuint>(gltuple);
+
+      eglDestroyImageKHR(m_egl_env_->Display(), image);
+      glDeleteTextures(1, &texture);
+    }
   }
 
   glDeleteFramebuffers(1, &stage_fbo_);
@@ -229,19 +233,20 @@ uint64_t Engine::CreateSurface(const Surface& surface, uint32_t flags) {
 
   uint64_t surface_id = kSurfaceIdPrefix | fd;
 
-  if (graphics_.count(surface_id) != 0)
+  if (surfaces_.count(surface_id) != 0)
     return surface_id;
 
   std::string error = m_egl_env_->BindContext(EGL_NO_SURFACE, EGL_NO_SURFACE);
   if (!error.empty()) throw std::runtime_error(error);
 
 #if defined(ANDROID)
-  GraphicTuple gltuple = ImportAndroidSurface(surface, flags);
+  std::vector<GraphicTuple> graphics = ImportAndroidSurface(surface, flags);
 #else // ANDROID
-  GraphicTuple gltuple = ImportLinuxSurface(surface, flags);
+  std::vector<GraphicTuple> graphics = ImportLinuxSurface(surface, flags);
 #endif // !ANDROID
 
-  graphics_.emplace(surface_id, std::move(gltuple));
+  SurfaceTuple stuple = std::make_tuple(std::move(graphics), surface);
+  surfaces_.emplace(surface_id, std::move(stuple));
 
   error = m_egl_env_->UnbindContext();
   if (!error.empty()) throw std::runtime_error(error);
@@ -253,22 +258,26 @@ void Engine::DestroySurface(uint64_t id) {
 
   std::lock_guard<std::mutex> lk(mutex_);
 
-  auto tuple = std::move(graphics_.at(id));
-  graphics_.erase(id);
-
   std::string error = m_egl_env_->BindContext(EGL_NO_SURFACE, EGL_NO_SURFACE);
   if (!error.empty()) throw std::runtime_error(error);
 
-  EGLImageKHR image = std::get<1>(tuple);
-  if (!eglDestroyImageKHR(m_egl_env_->Display(), image)) {
-    throw Exception("Failed to destroy EGL image, error: ", std::hex,
-                    eglGetError(), "!");
+  auto stuple = std::move(surfaces_.at(id));
+  surfaces_.erase(id);
+
+  auto& graphics = std::get<std::vector<GraphicTuple>>(stuple);
+
+  for (auto& gltuple : graphics) {
+    auto image = std::get<EGLImageKHR>(gltuple);
+    auto texture = std::get<GLuint>(gltuple);
+
+    if (!eglDestroyImageKHR(m_egl_env_->Display(), image)) {
+      throw Exception("Failed to destroy EGL image, error: ", std::hex,
+                      eglGetError(), "!");
+    }
+
+    glDeleteTextures(1, &texture);
+    EXCEPTION_IF_GL_ERROR("Failed to delete GL texture!");
   }
-
-  GLuint texture= std::get<0>(tuple);
-
-  glDeleteTextures(1, &texture);
-  EXCEPTION_IF_GL_ERROR("Failed to delete GL texture!");
 
   error = m_egl_env_->UnbindContext();
   if (!error.empty()) throw std::runtime_error(error);
@@ -289,10 +298,12 @@ std::uintptr_t Engine::Compose(const Compositions& compositions,
     auto normalization = std::get<Normalization>(composition);
     auto objects = std::get<Objects>(composition);
 
-    GraphicTuple& otuple = graphics_.at(surface_id);
+    SurfaceTuple& otuple = surfaces_.at(surface_id);
+    Surface& osurface = std::get<Surface>(otuple);
+    auto& graphics = std::get<std::vector<GraphicTuple>>(otuple);
 
-    GLuint& otexture = std::get<0>(otuple);
-    Surface& osurface = std::get<2>(otuple);
+    auto& gltuple = graphics.at(0);
+    GLuint& otexture = std::get<GLuint>(gltuple);
 
     glActiveTexture(GL_TEXTURE0);
     EXCEPTION_IF_GL_ERROR("Failed to set active texture unit 0");
@@ -461,9 +472,12 @@ std::string Engine::DrawObject(std::shared_ptr<ShaderProgram>& shader,
   glViewport(destination.x, destination.y, destination.w, destination.h);
   RETURN_IF_GL_ERROR("Failed to set destination viewport");
 
-  GraphicTuple& intuple = graphics_.at(object.id);
-  GLuint& intexture = std::get<GLuint>(intuple);
+  SurfaceTuple& intuple = surfaces_.at(object.id);
   Surface& insurface = std::get<Surface>(intuple);
+  auto& graphics = std::get<std::vector<GraphicTuple>>(intuple);
+
+  auto& gltuple = graphics.at(0);
+  GLuint& intexture = std::get<GLuint>(gltuple);
 
   // Bind the input surface texture to EXTERNAL_OES for current active texture.
   glBindTexture(GL_TEXTURE_EXTERNAL_OES, intexture);
@@ -648,14 +662,14 @@ GLuint Engine::GetStageTexture(const Surface& surface, const Objects& objects) {
 
   // Iterate over the objects and determine if alpha blending is required.
   auto iter = std::find_if(objects.begin(), objects.end(),
-    [&](const Object& obj) -> bool {
-        GraphicTuple& tuple = graphics_.at(obj.id);
-        uint32_t format = std::get<Surface>(tuple).format;
+      [&](const Object& obj) -> bool {
+        SurfaceTuple& stuple = surfaces_.at(obj.id);
+        uint32_t format = std::get<Surface>(stuple).format;
 
         // Enable blending if atleast one object has mask or is RGB with alpha.
         return (obj.alpha != 0xFF) ||
             (Format::IsRgb(format) && Format::NumChannels(format) == 4);
-    }
+      }
   );
 
   bool blending = (iter != objects.end()) ? true : false;
@@ -703,8 +717,8 @@ GLuint Engine::GetStageTexture(const Surface& surface, const Objects& objects) {
 }
 
 #if defined(ANDROID)
-GraphicTuple Engine::ImportAndroidSurface(const Surface& surface,
-                                          uint32_t flags) {
+std::vector<GraphicTuple> Engine::ImportAndroidSurface(const Surface& surface,
+                                                       uint32_t flags) {
 
   EGLImageKHR image =
       eglCreateImageKHR(m_egl_env_->Display(), EGL_NO_CONTEXT,
@@ -733,11 +747,11 @@ GraphicTuple Engine::ImportAndroidSurface(const Surface& surface,
   EXCEPTION_IF_GL_ERROR("Failed to associate image ", image,
       " with external texture ", texture);
 
-  return std::make_tuple(texture, image, surface);
+  return { std::make_tuple(texture, image) };
 }
 #else // !ANDROID
-GraphicTuple Engine::ImportLinuxSurface(const Surface& surface,
-                                        uint32_t flags) {
+std::vector<GraphicTuple> Engine::ImportLinuxSurface(const Surface& surface,
+                                                     uint32_t flags) {
 
   ImageParam imgparam = GetImageParams(surface, flags);
 
@@ -810,11 +824,11 @@ GraphicTuple Engine::ImportLinuxSurface(const Surface& surface,
   EXCEPTION_IF_GL_ERROR("Failed to bind output texture ", texture);
 
   glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES,
-                                reinterpret_cast<GLeglImageOES>(image));
+                               reinterpret_cast<GLeglImageOES>(image));
   EXCEPTION_IF_GL_ERROR("Failed to associate image ", image,
       " with external texture ", texture);
 
-  return std::make_tuple(texture, image, surface);
+  return { std::make_tuple(texture, image) };
 }
 
 ImageParam Engine::GetImageParams(const Surface& surface, uint32_t flags) {
