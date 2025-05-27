@@ -3,8 +3,6 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
-#include <cstring>
-
 #include "ib2c-gl-environment.h"
 #include "ib2c-utils.h"
 

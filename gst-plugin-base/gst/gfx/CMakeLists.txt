@@ -25,8 +25,6 @@ target_include_directories(${TARGET_NAME} PRIVATE
 )
 
 target_compile_definitions(${TARGET_NAME} PRIVATE
-  EGL_EGLEXT_PROTOTYPES
-  GL_GLEXT_PROTOTYPES
   $<$<BOOL:${HAVE_GBM_PRIV_H}>:HAVE_GBM_PRIV_H>
 )
 

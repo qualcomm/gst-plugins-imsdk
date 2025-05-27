@@ -68,6 +68,7 @@ class Engine : public IEngine {
   std::string ColorTransmute(GLuint stgtex, Surface& surface,
                              std::vector<GraphicTuple>& graphics);
 
+  bool IsExtensionSupported(const std::string extname);
   bool IsSurfaceRenderable(const Surface& surface);
 
   GLuint GetStageTexture(const Surface& surface, const Objects& objects);
@@ -81,6 +82,13 @@ class Engine : public IEngine {
 
   std::vector<Surface> GetImageSurfaces(const Surface& surface, uint32_t flags);
 #endif // defined(ANDROID)
+
+  /// EGL function pointers for create/destroy image.
+  PFNEGLCREATEIMAGEKHRPROC            CreateImageKHR;
+  PFNEGLDESTROYIMAGEKHRPROC           DestroyImageKHR;
+
+  /// GL function pointer for associating image with external texture.
+  PFNGLEGLIMAGETARGETTEXTURE2DOESPROC ImageTargetTexture2DOES;
 
   /// Global mutex protecting EGL context switching and internal variables.
   std::mutex                       mutex_;

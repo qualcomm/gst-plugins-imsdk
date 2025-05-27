@@ -4,6 +4,7 @@
  */
 
 #include <cmath>
+#include <cstring>
 #include <algorithm>
 #include <array>
 
@@ -104,6 +105,29 @@ Engine::Engine() {
   error = m_egl_env_->BindContext(EGL_NO_SURFACE, EGL_NO_SURFACE);
   if (!error.empty()) throw std::runtime_error(error);
 
+  bool supported = IsExtensionSupported("EGL_EXT_image_dma_buf_import");
+  if (!supported) throw Exception("EGL_EXT_image_dma_buf_import not supported !");
+
+  supported = IsExtensionSupported("EGL_KHR_image_base");
+  if (!supported) throw Exception("EGL_KHR_image_base not supported !");
+
+  supported = IsExtensionSupported("GL_OES_EGL_image_external");
+  if (!supported) throw Exception("GL_OES_EGL_image_external not supported !");
+
+  CreateImageKHR = reinterpret_cast<PFNEGLCREATEIMAGEKHRPROC>(
+      eglGetProcAddress("eglCreateImageKHR"));
+  DestroyImageKHR = reinterpret_cast<PFNEGLDESTROYIMAGEKHRPROC>(
+      eglGetProcAddress("eglDestroyImageKHR"));
+
+  ImageTargetTexture2DOES =
+      reinterpret_cast<PFNGLEGLIMAGETARGETTEXTURE2DOESPROC>(
+          eglGetProcAddress("glEGLImageTargetTexture2DOES"));
+
+  if (CreateImageKHR == nullptr || DestroyImageKHR == nullptr ||
+      ImageTargetTexture2DOES == nullptr) {
+    throw Exception("Failed to load extention function pointers !");
+  }
+
   // Generate frame buffer.
   glGenFramebuffers(1, &fbo_);
   EXCEPTION_IF_GL_ERROR("Failed to generate stage frame buffer");
@@ -166,7 +190,7 @@ Engine::~Engine() {
       auto image = std::get<EGLImageKHR>(gltuple);
       auto texture = std::get<GLuint>(gltuple);
 
-      eglDestroyImageKHR(m_egl_env_->Display(), image);
+      DestroyImageKHR(m_egl_env_->Display(), image);
       glDeleteTextures(1, &texture);
     }
   }
@@ -228,7 +252,7 @@ void Engine::DestroySurface(uint64_t id) {
     auto image = std::get<EGLImageKHR>(gltuple);
     auto texture = std::get<GLuint>(gltuple);
 
-    if (!eglDestroyImageKHR(m_egl_env_->Display(), image)) {
+    if (!DestroyImageKHR(m_egl_env_->Display(), image)) {
       throw Exception("Failed to destroy EGL image, error: ", std::hex,
                       eglGetError(), "!");
     }
@@ -712,6 +736,37 @@ std::string Engine::ColorTransmute(GLuint stgtex, Surface& surface,
   return std::string();
 }
 
+
+bool Engine::IsExtensionSupported(const std::string extname) {
+
+  auto extensions =
+      reinterpret_cast<const char *>(
+          eglQueryString(m_egl_env_->Display(), EGL_EXTENSIONS));
+
+  if (extensions == nullptr) {
+    throw Exception("Failed to query extensions, error: ", std::hex,
+                    eglGetError(), "!");
+  }
+
+  if (strstr(extensions, extname.c_str()) != nullptr)
+    return true;
+
+  GLint n_extensions;
+
+  glGetIntegerv(GL_NUM_EXTENSIONS, &n_extensions);
+  EXCEPTION_IF_GL_ERROR ("Failed to get number of supported extensions");
+
+  for (GLint idx = 0; idx < n_extensions; idx++) {
+    auto name = reinterpret_cast<const char *>(glGetStringi(GL_EXTENSIONS, idx));
+    EXCEPTION_IF_GL_ERROR ("Failed to get name of extension at index ", idx);
+
+    if (extname.compare(name) == 0)
+      return true;
+  }
+
+  return false;
+}
+
 bool Engine::IsSurfaceRenderable(const Surface& surface) {
 
   uint32_t alignment = GetAlignment();
@@ -803,8 +858,8 @@ std::vector<GraphicTuple> Engine::ImportAndroidSurface(const Surface& surface,
                                                        uint32_t flags) {
 
   EGLImageKHR image =
-      eglCreateImageKHR(m_egl_env_->Display(), EGL_NO_CONTEXT,
-                        EGL_NATIVE_BUFFER_ANDROID, surface.buffer, NULL);
+      CreateImageKHR(m_egl_env_->Display(), EGL_NO_CONTEXT,
+                     EGL_NATIVE_BUFFER_ANDROID, surface.buffer, NULL);
 
   if (image == EGL_NO_IMAGE) {
     throw Exception("Failed to create EGL image, error: ", std::hex,
@@ -824,8 +879,8 @@ std::vector<GraphicTuple> Engine::ImportAndroidSurface(const Surface& surface,
   glBindTexture(GL_TEXTURE_EXTERNAL_OES, texture);
   EXCEPTION_IF_GL_ERROR("Failed to bind output texture ", texture);
 
-  glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES,
-                               reinterpret_cast<GLeglImageOES>(image));
+  ImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES,
+                          reinterpret_cast<GLeglImageOES>(image));
   EXCEPTION_IF_GL_ERROR("Failed to associate image ", image,
       " with external texture ", texture);
 
@@ -893,8 +948,8 @@ std::vector<GraphicTuple> Engine::ImportLinuxSurface(const Surface& surface,
 
     attribs[index] = EGL_NONE;
 
-    EGLImageKHR image = eglCreateImageKHR(m_egl_env_->Display(), EGL_NO_CONTEXT,
-                                          EGL_LINUX_DMA_BUF_EXT, NULL, attribs);
+    EGLImageKHR image = CreateImageKHR(m_egl_env_->Display(), EGL_NO_CONTEXT,
+                                       EGL_LINUX_DMA_BUF_EXT, NULL, attribs);
 
     if (image == EGL_NO_IMAGE) {
       throw Exception("Failed to create EGL image, error: ", std::hex,
@@ -912,7 +967,7 @@ std::vector<GraphicTuple> Engine::ImportLinuxSurface(const Surface& surface,
     glBindTexture(textarget, texture);
     EXCEPTION_IF_GL_ERROR("Failed to bind output texture ", texture);
 
-    glEGLImageTargetTexture2DOES(textarget, reinterpret_cast<GLeglImageOES>(image));
+    ImageTargetTexture2DOES(textarget, reinterpret_cast<GLeglImageOES>(image));
     EXCEPTION_IF_GL_ERROR("Failed to associate image ", image,
         " with external texture ", texture);
 
