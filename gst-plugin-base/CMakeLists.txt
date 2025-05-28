@@ -62,10 +62,7 @@ include_directories(
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/gstreamer-1.0>
 )
 
-if(HAVE_GLES2_H)
-  add_subdirectory(gst/gfx)
-endif(HAVE_GLES2_H)
-
+add_subdirectory(gst/gfx)
 add_subdirectory(gst/utils)
 add_subdirectory(gst/video)
 add_subdirectory(gst/memory)

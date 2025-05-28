@@ -7,28 +7,36 @@ project(gstreamer-qcom-gfx-1.0
 set(TARGET_NAME gstqtigfxbase)
 
 add_library(${TARGET_NAME} SHARED
-  ib2c-gl-environment.cc
-  ib2c-gl-engine.cc
-  ib2c-gl-shader-program.cc
-  ib2c-formats.cc
-  ib2c-utils.cc
+  $<$<BOOL:${HAVE_GLES2_H}>:ib2c-gl-environment.cc>
+  $<$<BOOL:${HAVE_GLES2_H}>:ib2c-gl-engine.cc>
+  $<$<BOOL:${HAVE_GLES2_H}>:ib2c-gl-shader-program.cc>
+  $<$<BOOL:${HAVE_GLES2_H}>:ib2c-formats.cc>
+  $<$<BOOL:${HAVE_GLES2_H}>:ib2c-utils.cc>
+  gfx-utils.cc
+)
+
+set(TARGET_HEADERS
+  $<$<BOOL:${HAVE_GLES2_H}>:${CMAKE_CURRENT_SOURCE_DIR}/ib2c.h>
+  gfx-utils.h
 )
 
 set_target_properties(${TARGET_NAME} PROPERTIES
   VERSION ${PROJECT_VERSION}
   SOVERSION ${PROJECT_VERSION_MAJOR}
-  PUBLIC_HEADER ib2c.h
+  PUBLIC_HEADER "${TARGET_HEADERS}"
 )
 
 target_include_directories(${TARGET_NAME} PRIVATE
-  ${KERNEL_BUILDDIR}/usr/include
+  ${GST_INCLUDE_DIRS}
 )
 
 target_compile_definitions(${TARGET_NAME} PRIVATE
+  $<$<BOOL:${HAVE_GLES2_H}>:HAVE_GLES2_H>
   $<$<BOOL:${HAVE_GBM_PRIV_H}>:HAVE_GBM_PRIV_H>
 )
 
 target_link_libraries(${TARGET_NAME} PRIVATE
+  ${GST_LIBRARIES}
   EGL
   GLESv2
 )
