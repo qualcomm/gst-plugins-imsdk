@@ -66,10 +66,7 @@ template<typename ...Args> std::string Error(Args&&... args) {
   return s.str();
 }
 
-// Return the stride alignment requirement in bytes.
-uint32_t GetAlignment();
-
-// Convert RGB color code to YUV color code.
-uint32_t ToYuvColorCode(uint32_t color, uint32_t standard);
+// Return Adreno alignment requirement in bytes.
+int32_t QueryAlignment();
 
 } // namespace ib2c

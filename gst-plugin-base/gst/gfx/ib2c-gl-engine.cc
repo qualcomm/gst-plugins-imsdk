@@ -441,7 +441,7 @@ std::string Engine::RenderYuvTexture(std::vector<GraphicTuple>& graphics,
   uint32_t maxwidth = 0, maxheight = 0;
 
   // Convert RGB color code to YUV channel values if output surface is YUV.
-  color = ToYuvColorCode(color, colorspace);
+  color = Format::ToYuvColor(color, colorspace);
 
   for (auto& gltuple : graphics) {
     GLuint& texture = std::get<GLuint>(gltuple);
@@ -828,7 +828,7 @@ bool Engine::IsExtensionSupported(const std::string extname) {
 
 bool Engine::IsSurfaceRenderable(const Surface& surface) {
 
-  uint32_t alignment = GetAlignment();
+  uint32_t alignment = QueryAlignment();
 
 #if defined(ANDROID)
   bool aligned = ((surface.buffer->stride % alignment) == 0) ? true : false;
@@ -1111,7 +1111,7 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
         subsurface.format |= ColorMode::kFloat32;
     }
 
-    uint32_t alignment = GetAlignment();
+    uint32_t alignment = QueryAlignment();
 
     uint32_t n_bytes = Format::BytesPerChannel(subsurface.format);
     uint32_t n_channels = Format::NumChannels(subsurface.format);

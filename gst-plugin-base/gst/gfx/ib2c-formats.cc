@@ -172,6 +172,13 @@ const std::map<uint32_t, uint32_t> Format::kYuvColorTable = {
   { ColorFormat::kYVU444, DRM_FORMAT_YVU444 },
 };
 
+// Color channel coefficients based on the YUV color space.
+const std::map<uint32_t, Format::ColorCoeffcients> Format::kColorSpaceCoefficients = {
+  { ColorMode::kBT601,          { 0.299, 0.587, 0.114 } },
+  { ColorMode::kBT601FullRange, { 0.299, 0.587, 0.114 } },
+  { ColorMode::kBT709,          { 0.2126, 0.7152, 0.0722 } }
+};
+
 std::tuple<uint32_t, uint64_t> Format::ToInternal(uint32_t format) {
 
   uint32_t external = format & kFormatMask;
@@ -307,6 +314,28 @@ uint32_t Format::ColorSpace(uint32_t format) {
 
   // By default use BT601 color space if none was set.
   return (colorspace != 0) ? colorspace : ColorMode::kBT601;
+}
+
+uint32_t Format::ToYuvColor(uint32_t color, uint32_t colorspace) {
+
+  auto& coeffcients = kColorSpaceCoefficients.at(colorspace);
+
+  float kr = std::get<0>(coeffcients);
+  float kg = std::get<1>(coeffcients);
+  float kb = std::get<2>(coeffcients);
+
+  uint8_t red = (color >> 24) & 0xFF;
+  uint8_t green = (color >> 16) & 0xFF;
+  uint8_t blue = (color >> 8) & 0xFF;
+  uint8_t alpha = color & 0xFF;
+
+  uint32_t y = (red * kr) + (green * kg) + (blue * kb);
+  uint32_t u = 128 + (red * (-(kr / (1.0 - kb)) / 2)) +
+      (green * (-(kg / (1.0 - kb)) / 2)) + (blue * 0.5);
+  uint32_t v = 128 + (red * 0.5) + (green * (-(kg / (1.0 - kr)) / 2)) +
+      (blue * (-(kb / (1.0 - kr)) / 2));
+
+  return (y << 24) + (u << 16) + (v << 8) + alpha;
 }
 
 } // namespace ib2c

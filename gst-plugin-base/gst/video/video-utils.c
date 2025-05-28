@@ -40,11 +40,7 @@
 #include <unistd.h>
 
 #include <gbm.h>
-
-#define GST_GPU_DEFAULT_ALIGNMENT    4
-
-// Function pointers for the Adreno Utils library.
-typedef unsigned int (*get_gpu_pixel_alignment)(void);
+#include <gst/gfx/gfx-utils.h>
 
 // Function pointers for the GBM library.
 typedef struct gbm_device* (*gbm_create_device_func)(int fd);
@@ -60,46 +56,6 @@ load_symbol (gpointer* method, gpointer handle, const gchar* name)
     return FALSE;
   }
   return TRUE;
-}
-
-static gint
-gst_adreno_get_pixel_alignment ()
-{
-  static GMutex mutex;
-  static gint alignment = -1;
-  void *handle = NULL;
-  get_gpu_pixel_alignment GetGpuPixelAlignment = NULL;
-  gboolean success = FALSE;
-
-  g_mutex_lock (&mutex);
-
-  // Alignment has already been set, just return its value.
-  if (alignment != -1)
-    goto cleanup;
-
-  if ((handle = dlopen ("libadreno_utils.so", RTLD_NOW)) == NULL) {
-    GST_WARNING ("Failed to load Adreno utils lib using default alignment,"
-        " error: %s", dlerror());
-    alignment = GST_GPU_DEFAULT_ALIGNMENT;
-    goto cleanup;
-  }
-
-  success = load_symbol ((gpointer*)&GetGpuPixelAlignment, handle,
-      "get_gpu_pixel_alignment");
-  if (success == FALSE) {
-    dlclose (handle);
-    goto cleanup;
-  }
-
-  // Fetch the GPU Pixel Alignment.
-  alignment = GetGpuPixelAlignment();
-
-  // Close the library as it is no longer needed.
-  dlclose (handle);
-
-cleanup:
-  g_mutex_unlock (&mutex);
-  return alignment;
 }
 
 gboolean
@@ -170,7 +126,7 @@ gst_video_retrieve_gpu_alignment (GstVideoInfo * info, GstVideoAlignment * align
   guint num = 0;
 
   for (num = 0; num < GST_VIDEO_INFO_N_PLANES (info); num++) {
-    gint alignment = gst_adreno_get_pixel_alignment ();
+    gint alignment = gst_gfx_adreno_get_alignment ();
     gint comp[GST_VIDEO_MAX_COMPONENTS] = { 0, };
 
     gst_video_format_info_component (vfinfo, num, comp);
