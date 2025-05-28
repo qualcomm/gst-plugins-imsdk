@@ -21,13 +21,11 @@
 GST_DEBUG_CATEGORY (gst_mlmeta_extractor_debug);
 
 #define gst_mlmeta_extractor_parent_class parent_class
-G_DEFINE_TYPE (GstMlMetaExtractor, gst_mlmeta_extractor, GST_TYPE_ELEMENT);
+G_DEFINE_TYPE (GstMLMetaExtractor, gst_mlmeta_extractor, GST_TYPE_BASE_TRANSFORM);
 
 #define OBJECT_DETECTION_NAME     "ObjectDetection"
 #define IMAGE_CLASSIFICATION_NAME "ImageClassification"
 #define POSE_ESTIMATION_NAME      "VideoLandmarks"
-
-#define GST_PARSER_SUB_MODULE_CAST(obj) ((GstParserSubModule*)(obj))
 
 #define GST_META_IS_OBJECT_DETECTION(meta) \
     ((meta->info->api == GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE) && \
@@ -40,187 +38,109 @@ G_DEFINE_TYPE (GstMlMetaExtractor, gst_mlmeta_extractor, GST_TYPE_ELEMENT);
 #define GST_META_IS_POSE_ESTIMATION(meta) \
     (meta->info->api == GST_VIDEO_LANDMARKS_META_API_TYPE)
 
-#define IS_OBJECT_DETECTION(id) \
-    (id == g_quark_from_static_string (OBJECT_DETECTION_NAME))
+#define GST_MLMETA_EXTRACTOR_SINK_CAPS \
+    "video/x-raw(ANY)"
 
-#define IS_CLASSIFICATION(id) \
-    (id == g_quark_from_static_string (IMAGE_CLASSIFICATION_NAME))
-
-#define IS_POSE_ESTIMATION(id) \
-    (id == g_quark_from_static_string (POSE_ESTIMATION_NAME))
+#define GST_MLMETA_EXTRACTOR_SRC_CAPS \
+    "text/x-raw, format = (string) utf8"
 
 enum
 {
   PROP_0,
 };
 
-enum
-{
-  PROCESS_TYPE_DETECTION,
-  PROCESS_TYPE_POSE,
-  PROCESS_TYPE_CLASSIFICATION,
-};
-
 static GstStaticPadTemplate gst_mlmeta_extractor_sink_template =
     GST_STATIC_PAD_TEMPLATE("sink",
         GST_PAD_SINK,
         GST_PAD_ALWAYS,
-        GST_STATIC_CAPS ("video/x-raw(ANY)")
+        GST_STATIC_CAPS (GST_MLMETA_EXTRACTOR_SINK_CAPS)
     );
 
-static GstStaticPadTemplate gst_mlmeta_extractor_video_src_template =
-    GST_STATIC_PAD_TEMPLATE("video",
+static GstStaticPadTemplate gst_mlmeta_extractor_src_template =
+    GST_STATIC_PAD_TEMPLATE("src",
         GST_PAD_SRC,
         GST_PAD_ALWAYS,
-        GST_STATIC_CAPS ("video/x-raw(ANY)")
+        GST_STATIC_CAPS (GST_MLMETA_EXTRACTOR_SRC_CAPS)
     );
-
-static GstStaticPadTemplate gst_mlmeta_extractor_meta_src_template =
-    GST_STATIC_PAD_TEMPLATE("meta",
-        GST_PAD_SRC,
-        GST_PAD_ALWAYS,
-        GST_STATIC_CAPS ("text/x-raw, format = (string) utf8")
-    );
-
-static void
-gst_data_queue_free_item (gpointer userdata)
-{
-  GstDataQueueItem *item = userdata;
-  gst_buffer_unref (GST_BUFFER (item->object));
-  g_slice_free (GstDataQueueItem, item);
-}
-
-static gboolean
-gst_mlmeta_extractor_src_pad_push_event (GstElement * element, GstPad * pad,
-    gpointer userdata)
-{
-  GstMlMetaExtractor *extractor = GST_MLMETA_EXTRACTOR (element);
-  GstEvent *event = GST_EVENT (userdata);
-
-  // On EOS wait until all queued buffers have been pushed before propagating it.
-  if (GST_EVENT_TYPE (event) == GST_EVENT_EOS)
-    GST_MLMETA_EXTRACTOR_PAD_WAIT_IDLE (GST_MLMETA_EXTRACTOR_SRCPAD_CAST (pad));
-
-  GST_TRACE_OBJECT (extractor, "Event: %s", GST_EVENT_TYPE_NAME (event));
-  return gst_pad_push_event (pad, gst_event_ref (event));
-}
 
 static GstCaps *
-gst_mlmeta_extractor_sink_getcaps (GstPad * pad, GstCaps * filter)
+gst_mlmeta_extractor_transform_caps (GstBaseTransform * base,
+    GstPadDirection direction, GstCaps * caps, GstCaps * filter)
 {
-  GstCaps *caps = NULL, *intersect = NULL;
+  GstMLMetaExtractor *extractor = GST_MLMETA_EXTRACTOR (base);
+  GstCaps *result = NULL;
 
-  if (!(caps = gst_pad_get_current_caps (pad)))
-    caps = gst_pad_get_pad_template_caps (pad);
+  GST_DEBUG_OBJECT (extractor, "Transforming caps: %" GST_PTR_FORMAT
+      " in direction %s", caps, (direction == GST_PAD_SINK) ? "sink" : "src");
+  GST_DEBUG_OBJECT (extractor, "Filter caps: %" GST_PTR_FORMAT, filter);
 
-  GST_DEBUG_OBJECT (pad, "Current caps: %" GST_PTR_FORMAT, caps);
+  if (direction == GST_PAD_SRC) {
+    GstPad *pad = GST_BASE_TRANSFORM_SINK_PAD (base);
+    result = gst_pad_get_pad_template_caps (pad);
+  } else if (direction == GST_PAD_SINK) {
+    GstPad *pad = GST_BASE_TRANSFORM_SRC_PAD (base);
+    result = gst_pad_get_pad_template_caps (pad);
+  }
 
   if (filter != NULL) {
-    GST_DEBUG_OBJECT (pad, "Filter caps: %" GST_PTR_FORMAT, caps);
-    intersect = gst_caps_intersect_full (filter, caps, GST_CAPS_INTERSECT_FIRST);
-
-    gst_caps_unref (caps);
-    caps = intersect;
+    GstCaps *intersection  =
+        gst_caps_intersect_full (filter, result, GST_CAPS_INTERSECT_FIRST);
+    gst_caps_unref (result);
+    result = intersection;
   }
 
-  GST_DEBUG_OBJECT (pad, "Returning caps: %" GST_PTR_FORMAT, caps);
-  return caps;
+  GST_DEBUG_OBJECT (extractor, "Returning caps: %" GST_PTR_FORMAT, result);
+  return result;
 }
 
 static gboolean
-gst_mlmeta_extractor_sink_acceptcaps (GstPad * pad, GstCaps * caps)
+gst_mlmeta_extractor_set_caps (GstBaseTransform * base, GstCaps * incaps,
+    GstCaps * outcaps)
 {
-  GstCaps *tmplcaps = NULL;
-  gboolean success = TRUE;
-
-  GST_DEBUG_OBJECT (pad, "Caps %" GST_PTR_FORMAT, caps);
-
-  tmplcaps = gst_pad_get_pad_template_caps (GST_PAD (pad));
-  GST_DEBUG_OBJECT (pad, "Template: %" GST_PTR_FORMAT, tmplcaps);
-
-  success &= gst_caps_can_intersect (caps, tmplcaps);
-  gst_caps_unref (tmplcaps);
-
-  if (!success) {
-    GST_WARNING_OBJECT (pad, "Caps can't intersect with template!");
-    return FALSE;
-  }
-
-  return TRUE;
-}
-
-static gboolean
-gst_mlmeta_extractor_sink_setcaps (GstMlMetaExtractor * extractor, GstPad * pad, GstCaps * caps)
-{
-  GstCaps *srccaps = NULL, *intersect = NULL;
-
-  GST_DEBUG_OBJECT (pad, "Setting caps %" GST_PTR_FORMAT, caps);
+  GstMLMetaExtractor *extractor = GST_MLMETA_EXTRACTOR (base);
 
   GST_MLMETA_EXTRACTOR_LOCK (extractor);
 
-  // Get the negotiated caps between the video srcpad and its peer.
-  srccaps = gst_pad_get_allowed_caps (GST_PAD (extractor->vpad));
-  GST_DEBUG_OBJECT (pad, "Source caps %" GST_PTR_FORMAT, srccaps);
-
-  intersect = gst_caps_intersect (srccaps, caps);
-  GST_DEBUG_OBJECT (pad, "Intersected caps %" GST_PTR_FORMAT, intersect);
-
-  gst_caps_unref (srccaps);
-  srccaps = intersect;
-
-  if ((intersect == NULL) || gst_caps_is_empty (intersect)) {
-    GST_ELEMENT_ERROR (extractor, CORE, NEGOTIATION, (NULL),
-        ("Source %s and sink caps do not intersect!", GST_PAD_NAME (extractor->vpad)));
-
-    if (intersect != NULL)
-      gst_caps_unref (intersect);
-
-    GST_MLMETA_EXTRACTOR_UNLOCK (extractor);
-    return FALSE;
-  }
-
-  if (!gst_pad_set_caps (GST_PAD (extractor->vpad), srccaps)) {
-    GST_ELEMENT_ERROR (GST_ELEMENT (extractor), CORE, NEGOTIATION, (NULL),
-        ("Failed to set caps to %s!", GST_PAD_NAME (extractor->vpad)));
-    GST_MLMETA_EXTRACTOR_UNLOCK (extractor);
-    return FALSE;
-  }
-
-  GST_DEBUG_OBJECT (pad, "Negotiated caps at source pad %s: %" GST_PTR_FORMAT,
-      GST_PAD_NAME (extractor->vpad), srccaps);
-
   // Extract video information from caps.
-  if (!gst_video_info_from_caps (&extractor->vinfo, caps)) {
-    GST_ERROR_OBJECT (pad, "Invalid caps %" GST_PTR_FORMAT, caps);
-    gst_caps_unref (caps);
+  if (!gst_video_info_from_caps (&extractor->vinfo, incaps)) {
+    GST_ERROR_OBJECT (extractor, "Invalid caps %" GST_PTR_FORMAT, incaps);
     return FALSE;
   }
 
   GST_MLMETA_EXTRACTOR_UNLOCK (extractor);
 
+  GST_DEBUG_OBJECT (extractor, "Input caps: %" GST_PTR_FORMAT, incaps);
   return TRUE;
 }
 
-static void
-gst_mlmeta_extractor_src_pad_worker_task (gpointer userdata)
+static GstFlowReturn
+gst_mlmeta_extractor_prepare_output_buffer (GstBaseTransform * base,
+    GstBuffer * inbuffer, GstBuffer ** outbuffer)
 {
-  GstMlMetaExtractorSrcPad *srcpad = GST_MLMETA_EXTRACTOR_SRCPAD (userdata);
-  GstDataQueueItem *item = NULL;
+  GstMLMetaExtractor *extractor = GST_MLMETA_EXTRACTOR (base);
 
-  if (gst_data_queue_pop (srcpad->buffers, &item)) {
-    GstBuffer *buffer = gst_buffer_ref (GST_BUFFER (item->object));
-    item->destroy (item);
+  // Create a new buffer wrapper to hold a reference to input buffer.
+  *outbuffer = gst_buffer_new ();
 
-    GST_TRACE_OBJECT (srcpad, "Submitting %" GST_PTR_FORMAT, buffer);
-    gst_pad_push (GST_PAD (srcpad), buffer);
-  } else {
-    GST_INFO_OBJECT (srcpad, "Pause worker task!");
-    gst_pad_pause_task (GST_PAD (srcpad));
+  if (*outbuffer == NULL) {
+    GST_ERROR_OBJECT (extractor, "Failed to create output buffer!");
+    return GST_FLOW_ERROR;
   }
+
+  // If input is a GAP buffer set the GAP flag for the output buffer.
+  if (gst_buffer_get_size (inbuffer) == 0 &&
+      GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP))
+    GST_BUFFER_FLAG_SET (*outbuffer, GST_BUFFER_FLAG_GAP);
+
+  // Copy the flags and timestamps from the input buffer.
+  gst_buffer_copy_into (*outbuffer, inbuffer, GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
+
+  return GST_FLOW_OK;
 }
 
 static gint
-gst_mlmeta_extractor_group_buffer_metas (GstMlMetaExtractor * extractor, GstBuffer * buffer)
+gst_mlmeta_extractor_group_buffer_metas (GstMLMetaExtractor * extractor,
+    GstBuffer * buffer)
 {
   gpointer state = NULL;
   GstMeta *meta = NULL;
@@ -288,32 +208,27 @@ gst_mlmeta_extractor_seek_parent_meta (GHashTable * roimetas, gint parent_id)
 static void
 g_hash_table_free_glists (gpointer key, gpointer data, gpointer userdata)
 {
-  GstMlMetaExtractor *extractor = GST_MLMETA_EXTRACTOR (userdata);
+  GstMLMetaExtractor *extractor = GST_MLMETA_EXTRACTOR (userdata);
   gint parent_id = GPOINTER_TO_INT (key);
   GList *metalist = (GList *) data;
 
   if (metalist != NULL)
     g_list_free (metalist);
 
-  GST_TRACE_OBJECT (extractor, "Freed GList %p; parent_id %d", metalist, parent_id);
+  GST_TRACE_OBJECT (extractor, "Freed GList %p; parent_id %d", metalist,
+      parent_id);
 }
 
-static gboolean
-gst_mlmeta_extractor_add_class_structs_to_list (GstMlMetaExtractorParams * extractor_params)
+static guint
+gst_mlmeta_extractor_add_class_structs_to_list (GstMLMetaExtractor * extractor,
+    GList * cmeta_list, gint parent_id, guint current_idx, guint n_entries,
+    guint timestamp, GValue * output_list)
 {
-  GstMlMetaExtractor *extractor = extractor_params->extractor;
-  GValue *output_list = extractor_params->output_list;
-  GstBuffer *inbuffer = extractor_params->inbuffer;
   GstStructure *structure = NULL;
-  GList *cmeta_list = extractor_params->metalist, *list = NULL;
+  GList *list = NULL;
   GValue labels = G_VALUE_INIT, value = G_VALUE_INIT;
-  gint current_idx = *(extractor_params->seq_index);
-  gint n_entries = extractor_params->n_entries;
-  gint parent_id = extractor_params->parent_id;
 
-  (*(extractor_params->seq_index))++;
-
-  GST_DEBUG_OBJECT (extractor, "Going to process %d class metas with parent_id %d",
+  GST_DEBUG_OBJECT (extractor, "Received %d class metas with parent_id %d",
       g_list_length (cmeta_list), parent_id);
 
   g_value_init (&labels, GST_TYPE_ARRAY);
@@ -327,8 +242,8 @@ gst_mlmeta_extractor_add_class_structs_to_list (GstMlMetaExtractorParams * extra
       continue;
 
     GST_DEBUG_OBJECT (extractor,
-        "Processing Classification meta with ID: [0x%X], parent_id: [0x%X] "
-        "from buffer: %p", cmeta->id, parent_id, inbuffer);
+        "Processing Classification meta with ID: [0x%X], parent_id: [0x%X]",
+        cmeta->id, parent_id);
 
     for (index = 0; index < cmeta->labels->len; index++) {
       GstClassLabel clabel = g_array_index (cmeta->labels, GstClassLabel, index);
@@ -369,8 +284,8 @@ gst_mlmeta_extractor_add_class_structs_to_list (GstMlMetaExtractorParams * extra
   g_value_unset (&labels);
 
   gst_structure_set (structure,
-      "timestamp", G_TYPE_UINT64, GST_BUFFER_PTS (inbuffer),
-      "sequence-index", G_TYPE_UINT, current_idx,
+      "timestamp", G_TYPE_UINT64, timestamp,
+      "sequence-index", G_TYPE_UINT, current_idx++,
       "sequence-num-entries", G_TYPE_UINT, n_entries,
       "parent-id", G_TYPE_INT, parent_id,
       NULL);
@@ -383,29 +298,24 @@ gst_mlmeta_extractor_add_class_structs_to_list (GstMlMetaExtractorParams * extra
   gst_value_list_append_value (output_list, &value);
   g_value_unset (&value);
 
-  return TRUE;
+  return current_idx;
 }
 
-static gboolean
-gst_mlmeta_extractor_add_pose_structs_to_list (GstMlMetaExtractorParams * extractor_params)
+static guint
+gst_mlmeta_extractor_add_pose_structs_to_list (GstMLMetaExtractor * extractor,
+    GList * pmeta_list, gint parent_id, guint current_idx, guint n_entries,
+    guint timestamp, GValue * output_list)
 {
-  GstMlMetaExtractor *extractor = extractor_params->extractor;
   GstVideoRegionOfInterestMeta * parent_meta = NULL;
-  GValue *output_list = extractor_params->output_list;
-  GstBuffer *inbuffer = extractor_params->inbuffer;
   GstStructure *structure = NULL;
-  GList *pmeta_list = extractor_params->metalist, *list = NULL;
+  GList *list = NULL;
   GValue poses = G_VALUE_INIT, value = G_VALUE_INIT;
-  gint current_idx = *(extractor_params->seq_index);
-  gint n_entries = extractor_params->n_entries;
-  gint parent_id = extractor_params->parent_id;
 
   if (parent_id != -1)
-    parent_meta = gst_mlmeta_extractor_seek_parent_meta (extractor->roimetas, parent_id);
+    parent_meta = gst_mlmeta_extractor_seek_parent_meta (extractor->roimetas,
+        parent_id);
 
-  (*(extractor_params->seq_index))++;
-
-  GST_DEBUG_OBJECT (extractor, "Going to process %d pose metas with parent_id %d",
+  GST_DEBUG_OBJECT (extractor, "Received %d pose metas with parent_id %d",
       g_list_length (pmeta_list), parent_id);
 
   g_value_init (&poses, GST_TYPE_ARRAY);
@@ -421,8 +331,8 @@ gst_mlmeta_extractor_add_pose_structs_to_list (GstMlMetaExtractorParams * extrac
       continue;
 
     GST_DEBUG_OBJECT (extractor,
-        "Processing Pose meta with ID: [0x%X], parent_id: [0x%X] from buffer: %p",
-        pmeta->id, parent_id, inbuffer);
+        "Processing Pose meta with ID: [0x%X], parent_id: [0x%X]", pmeta->id,
+        parent_id);
 
     if (parent_meta != NULL) {
       parent_w = parent_meta->w;
@@ -525,8 +435,8 @@ gst_mlmeta_extractor_add_pose_structs_to_list (GstMlMetaExtractorParams * extrac
   g_value_unset (&poses);
 
   gst_structure_set (structure,
-      "timestamp", G_TYPE_UINT64, GST_BUFFER_PTS (inbuffer),
-      "sequence-index", G_TYPE_UINT, current_idx,
+      "timestamp", G_TYPE_UINT64, timestamp,
+      "sequence-index", G_TYPE_UINT, current_idx++,
       "sequence-num-entries", G_TYPE_UINT, n_entries,
       "parent-id", G_TYPE_INT, parent_id,
       NULL);
@@ -539,29 +449,24 @@ gst_mlmeta_extractor_add_pose_structs_to_list (GstMlMetaExtractorParams * extrac
   gst_value_list_append_value (output_list, &value);
   g_value_unset (&value);
 
-  return TRUE;
+  return current_idx;
 }
 
-static gboolean
-gst_mlmeta_extractor_add_detection_structs_to_list (GstMlMetaExtractorParams * extractor_params)
+static guint
+gst_mlmeta_extractor_add_detection_structs_to_list (GstMLMetaExtractor *extractor,
+    GList * roimeta_list, gint parent_id, guint current_idx, guint n_entries,
+    guint timestamp, GValue * output_list)
 {
-  GstMlMetaExtractor *extractor = extractor_params->extractor;
   GstVideoRegionOfInterestMeta *parent_meta = NULL;
-  GValue *output_list = extractor_params->output_list;
-  GstBuffer *inbuffer = extractor_params->inbuffer;
   GstStructure *structure = NULL;
-  GList *roimeta_list = extractor_params->metalist, *list = NULL;
+  GList *list = NULL;
   GValue bboxes = G_VALUE_INIT, value = G_VALUE_INIT;
-  gint current_idx = *(extractor_params->seq_index);
-  gint n_entries = extractor_params->n_entries;
-  gint parent_id = extractor_params->parent_id;
 
   if (parent_id != -1)
-    parent_meta = gst_mlmeta_extractor_seek_parent_meta (extractor->roimetas, parent_id);
+    parent_meta = gst_mlmeta_extractor_seek_parent_meta (extractor->roimetas,
+        parent_id);
 
-  (*(extractor_params->seq_index))++;
-
-  GST_DEBUG_OBJECT (extractor, "Going to process %d roi metas with parent_id %d",
+  GST_DEBUG_OBJECT (extractor, "Received %d roi metas with parent_id %d",
       g_list_length (roimeta_list), parent_id);
 
   g_value_init (&bboxes, GST_TYPE_ARRAY);
@@ -581,8 +486,8 @@ gst_mlmeta_extractor_add_detection_structs_to_list (GstMlMetaExtractorParams * e
       continue;
 
     GST_DEBUG_OBJECT (extractor,
-        "Processing Detection meta with ID: [0x%X], parent_id: [0x%X] from"
-        "buffer: %p", roimeta->id, parent_id, inbuffer);
+        "Processing Detection meta with ID: [0x%X], parent_id: [0x%X]",
+        roimeta->id, parent_id);
 
     if (parent_meta != NULL) {
       parent_w = parent_meta->w;
@@ -690,8 +595,8 @@ gst_mlmeta_extractor_add_detection_structs_to_list (GstMlMetaExtractorParams * e
   g_value_unset (&bboxes);
 
   gst_structure_set (structure,
-      "timestamp", G_TYPE_UINT64, GST_BUFFER_PTS (inbuffer),
-      "sequence-index", G_TYPE_UINT, current_idx,
+      "timestamp", G_TYPE_UINT64, timestamp,
+      "sequence-index", G_TYPE_UINT, current_idx++,
       "sequence-num-entries", G_TYPE_UINT, n_entries,
       "parent-id", G_TYPE_INT, parent_id,
       NULL);
@@ -704,95 +609,80 @@ gst_mlmeta_extractor_add_detection_structs_to_list (GstMlMetaExtractorParams * e
   gst_value_list_append_value (output_list, &value);
   g_value_unset (&value);
 
-  return TRUE;
+  return current_idx;
 }
 
-static void
-gst_mlmeta_extractor_process_meta_entry (gpointer key, gpointer data, gpointer params)
+static guint
+gst_mlmeta_extractor_process_metas (GstMLMetaExtractor * extractor,
+    GHashTable * metatable, guint seqidx, guint n_entries,
+    GstClockTime timestamp, GValue * outlist)
 {
-  GstMlMetaExtractorParams *extractor_params = (GstMlMetaExtractorParams *) params;
-  extractor_params->parent_id = GPOINTER_TO_INT (key);
-  extractor_params->metalist = (GList *) data;
+  gpointer key = NULL, value = NULL;
+  GList *metalist = NULL;
+  GHashTableIter iter;
+  gint parent_id = -1;
 
-  if (extractor_params->metalist == NULL)
-    return;
+  g_hash_table_iter_init (&iter, metatable);
 
-  switch (extractor_params->process_type) {
-    case PROCESS_TYPE_DETECTION:
-      gst_mlmeta_extractor_add_detection_structs_to_list (extractor_params);
-      break;
+  while (g_hash_table_iter_next (&iter, &key, &value)) {
+    parent_id = GPOINTER_TO_INT (key);
+    metalist = (GList *) value;
 
-    case PROCESS_TYPE_POSE:
-      gst_mlmeta_extractor_add_pose_structs_to_list (extractor_params);
-      break;
+    if (metalist == NULL)
+      return seqidx;
 
-    case PROCESS_TYPE_CLASSIFICATION:
-      gst_mlmeta_extractor_add_class_structs_to_list (extractor_params);
-      break;
+    GstMeta *meta = GST_META_CAST ((g_list_first (metalist))->data);
 
-    default:
-      break;
+    if (GST_META_IS_OBJECT_DETECTION (meta)) {
+      seqidx = gst_mlmeta_extractor_add_detection_structs_to_list (extractor,
+          metalist, parent_id, seqidx, n_entries, timestamp, outlist);
+    } else if (GST_META_IS_POSE_ESTIMATION (meta)) {
+      seqidx = gst_mlmeta_extractor_add_pose_structs_to_list (extractor,
+          metalist, parent_id, seqidx, n_entries, timestamp, outlist);
+    } else if (GST_META_IS_IMAGE_CLASSIFICATION (meta)) {
+      seqidx = gst_mlmeta_extractor_add_class_structs_to_list (extractor,
+          metalist, parent_id, seqidx, n_entries, timestamp, outlist);
+    } else {
+      GST_WARNING_OBJECT (extractor, "Unsupported meta detected in metalist!");
+    }
   }
+
+  return seqidx;
 }
 
 static GstFlowReturn
-gst_mlmeta_extractor_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
+gst_mlmeta_extractor_transform (GstBaseTransform * base, GstBuffer * inbuffer,
+    GstBuffer * outbuffer)
 {
-  GstMlMetaExtractor *extractor = GST_MLMETA_EXTRACTOR (parent);
-  GstBuffer *outbuffer = NULL;
-  GstDataQueueItem *item = NULL;
+  GstMLMetaExtractor *extractor = GST_MLMETA_EXTRACTOR (base);
   GstMemory *mem = NULL;
   GValue output_list = G_VALUE_INIT;
-  GstMlMetaExtractorParams extractor_params;
   gchar *output_string = NULL;
   gint string_len = 0;
   gint n_entries = 0, seq_index = 1;
+  guint timestamp = GST_BUFFER_PTS (inbuffer);
 
-  GST_TRACE_OBJECT (pad, "Received %" GST_PTR_FORMAT, inbuffer);
+  GST_TRACE_OBJECT (extractor, "Received %" GST_PTR_FORMAT, inbuffer);
 
   GST_MLMETA_EXTRACTOR_LOCK (extractor);
-
-  // Adjust the source pad segment position.
-  extractor->segment.position = GST_BUFFER_TIMESTAMP (inbuffer) +
-      GST_BUFFER_DURATION (inbuffer);
-
-  // Create a new buffer wrapper to hold a reference to input buffer.
-  outbuffer = gst_buffer_new ();
-
-  // If input is a GAP buffer set the GAP flag for the output buffer.
-  if (gst_buffer_get_size (inbuffer) == 0 &&
-      GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP))
-    GST_BUFFER_FLAG_SET (outbuffer, GST_BUFFER_FLAG_GAP);
-
-  gst_buffer_copy_into (outbuffer, inbuffer, GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
 
   n_entries = gst_mlmeta_extractor_group_buffer_metas (extractor, inbuffer);
 
   g_value_init (&output_list, GST_TYPE_LIST);
 
-  extractor_params.extractor = extractor;
-  extractor_params.output_list = &output_list;
-  extractor_params.inbuffer = inbuffer;
-  extractor_params.metalist = NULL;
-  extractor_params.process_type = PROCESS_TYPE_DETECTION;
-  extractor_params.n_entries = n_entries;
-  extractor_params.seq_index = &seq_index;
-  extractor_params.parent_id = -1;
+  seq_index = gst_mlmeta_extractor_process_metas (extractor,
+      extractor->roimetas, seq_index, n_entries, timestamp, &output_list);
+  seq_index = gst_mlmeta_extractor_process_metas (extractor,
+      extractor->ldmrkmetas, seq_index, n_entries, timestamp, &output_list);
+  seq_index = gst_mlmeta_extractor_process_metas (extractor,
+      extractor->classmetas, seq_index, n_entries, timestamp, &output_list);
 
-  g_hash_table_foreach (extractor->roimetas, gst_mlmeta_extractor_process_meta_entry,
-      &extractor_params);
-
-  extractor_params.process_type = PROCESS_TYPE_POSE;
-  g_hash_table_foreach (extractor->ldmrkmetas, gst_mlmeta_extractor_process_meta_entry,
-      &extractor_params);
-
-  extractor_params.process_type = PROCESS_TYPE_CLASSIFICATION;
-  g_hash_table_foreach (extractor->classmetas, gst_mlmeta_extractor_process_meta_entry,
-      &extractor_params);
-
-  g_hash_table_foreach (extractor->roimetas, g_hash_table_free_glists, extractor);
-  g_hash_table_foreach (extractor->ldmrkmetas, g_hash_table_free_glists, extractor);
-  g_hash_table_foreach (extractor->classmetas, g_hash_table_free_glists, extractor);
+  g_hash_table_foreach (extractor->roimetas, g_hash_table_free_glists,
+      extractor);
+  g_hash_table_foreach (extractor->ldmrkmetas, g_hash_table_free_glists,
+      extractor);
+  g_hash_table_foreach (extractor->classmetas, g_hash_table_free_glists,
+      extractor);
 
   g_hash_table_remove_all (extractor->roimetas);
   g_hash_table_remove_all (extractor->ldmrkmetas);
@@ -826,306 +716,26 @@ gst_mlmeta_extractor_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * i
   g_value_unset (&output_list);
 
   if (output_string == NULL) {
-    GST_ERROR_OBJECT (pad, "Failed to serialize detection structure!");
+    GST_ERROR_OBJECT (extractor, "Failed to serialize detection structure!");
     return GST_FLOW_ERROR;
   }
 
   string_len = strlen (output_string) + 1;
   output_string[string_len - 1] = '\n';
 
-  GST_TRACE_OBJECT (pad, "Serialized output string: %s", output_string);
-
   mem = gst_memory_new_wrapped (GST_MEMORY_FLAG_ZERO_PADDED,
       output_string, string_len, 0, string_len, output_string, g_free);
   gst_buffer_append_memory (outbuffer, mem);
 
-  item = g_slice_new0 (GstDataQueueItem);
-  item->object = GST_MINI_OBJECT (outbuffer);
-  item->size = gst_buffer_get_size (outbuffer);
-  item->duration = GST_BUFFER_DURATION (outbuffer);
-  item->visible = TRUE;
-  item->destroy = gst_data_queue_free_item;
-
-  // Push the input buffer into the queue or free it on failure.
-  if (!gst_data_queue_push (extractor->metapad->buffers, item))
-    item->destroy (item);
-
-  item = g_slice_new0 (GstDataQueueItem);
-  item->object = GST_MINI_OBJECT (inbuffer);
-  item->size = gst_buffer_get_size (inbuffer);
-  item->duration = GST_BUFFER_DURATION (inbuffer);
-  item->visible = TRUE;
-  item->destroy = gst_data_queue_free_item;
-
-  // Push the buffer into the queue or free it on failure.
-  if (!gst_data_queue_push (extractor->vpad->buffers, item))
-    item->destroy (item);
-
   GST_MLMETA_EXTRACTOR_UNLOCK (extractor);
 
-  GST_DEBUG_OBJECT (pad, "Finishing");
-
   return GST_FLOW_OK;
-}
-
-static gboolean
-gst_mlmeta_extractor_sink_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
-{
-  GstMlMetaExtractor *extractor = GST_MLMETA_EXTRACTOR (parent);
-
-  GST_TRACE_OBJECT (pad, "Received %s query: %" GST_PTR_FORMAT,
-      GST_QUERY_TYPE_NAME (query), query);
-
-  switch (GST_QUERY_TYPE (query)) {
-    case GST_QUERY_CAPS:
-    {
-      GstCaps *caps = NULL, *filter = NULL, *intersect = NULL;
-
-      gst_query_parse_caps (query, &filter);
-      caps = gst_mlmeta_extractor_sink_getcaps (pad, filter);
-
-      // Get the negotiated caps between the video srcpad and its peer.
-      filter = gst_pad_get_allowed_caps (GST_PAD (extractor->vpad));
-      GST_DEBUG_OBJECT (pad, "Source caps %" GST_PTR_FORMAT, filter);
-
-      if (filter != NULL) {
-        intersect = gst_caps_intersect_full (filter, caps,
-            GST_CAPS_INTERSECT_FIRST);
-
-        gst_caps_unref (caps);
-        caps = intersect;
-      }
-
-      gst_query_set_caps_result (query, caps);
-      gst_caps_unref (caps);
-
-      return TRUE;
-    }
-    case GST_QUERY_ACCEPT_CAPS:
-    {
-      GstCaps *caps = NULL;
-      gboolean success = FALSE;
-
-      gst_query_parse_accept_caps (query, &caps);
-      success = gst_mlmeta_extractor_sink_acceptcaps (pad, caps);
-
-      gst_query_set_accept_caps_result (query, success);
-      return TRUE;
-    }
-    case GST_QUERY_ALLOCATION:
-    {
-      return gst_pad_peer_query (GST_PAD (extractor->vpad), query);
-    }
-    default:
-      break;
-  }
-
-  return gst_pad_query_default (pad, parent, query);
-}
-
-static gboolean
-gst_mlmeta_extractor_sink_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
-{
-  GstMlMetaExtractor *extractor = GST_MLMETA_EXTRACTOR (parent);
-  gboolean success = FALSE;
-
-  GST_TRACE_OBJECT (pad, "Received %s event: %" GST_PTR_FORMAT,
-      GST_EVENT_TYPE_NAME (event), event);
-
-  switch (GST_EVENT_TYPE (event)) {
-    case GST_EVENT_CAPS:
-    {
-      GstCaps *caps = NULL;
-
-      gst_event_parse_caps (event, &caps);
-      success = gst_mlmeta_extractor_sink_setcaps (extractor, pad, caps);
-      gst_event_unref (event);
-
-      return success;
-    }
-    case GST_EVENT_SEGMENT:
-    {
-      GstSegment segment;
-
-      gst_event_copy_segment (event, &segment);
-      gst_event_unref (event);
-
-      GST_DEBUG_OBJECT (pad, "Got segment: %" GST_SEGMENT_FORMAT, &segment);
-
-      if (segment.format == GST_FORMAT_BYTES) {
-        gst_segment_init (&(extractor->segment), GST_FORMAT_TIME);
-        extractor->segment.start = segment.start;
-
-        GST_DEBUG_OBJECT (pad, "Converted incoming segment to TIME: %"
-            GST_SEGMENT_FORMAT, &(extractor->segment));
-      } else if (segment.format == GST_FORMAT_TIME) {
-        GST_DEBUG_OBJECT (pad, "Replacing previous segment: %"
-            GST_SEGMENT_FORMAT, &(extractor->segment));
-        gst_segment_copy_into (&segment, &(extractor->segment));
-      } else {
-        GST_ERROR_OBJECT (pad, "Unsupported SEGMENT format: %s!",
-            gst_format_get_name (segment.format));
-        return FALSE;
-      }
-
-      // Initialize and send the source segments for synchronization.
-      event = gst_event_new_segment (&(extractor->segment));
-
-      success = gst_element_foreach_src_pad (GST_ELEMENT (extractor),
-          gst_mlmeta_extractor_src_pad_push_event, event);
-      gst_event_unref (event);
-
-      return success;
-    }
-    case GST_EVENT_STREAM_START:
-      success = gst_element_foreach_src_pad (GST_ELEMENT (extractor),
-          gst_mlmeta_extractor_src_pad_push_event, event);
-      return success;
-    case GST_EVENT_FLUSH_START:
-      success = gst_element_foreach_src_pad (GST_ELEMENT (extractor),
-          gst_mlmeta_extractor_src_pad_push_event, event);
-      return success;
-    case GST_EVENT_FLUSH_STOP:
-      gst_segment_init (&(extractor->segment), GST_FORMAT_UNDEFINED);
-
-      success = gst_element_foreach_src_pad (GST_ELEMENT (extractor),
-          gst_mlmeta_extractor_src_pad_push_event, event);
-      return success;
-    case GST_EVENT_EOS:
-      success = gst_element_foreach_src_pad (GST_ELEMENT (extractor),
-          gst_mlmeta_extractor_src_pad_push_event, event);
-      return success;
-    default:
-      break;
-  }
-
-  return gst_pad_event_default (pad, parent, event);
-}
-
-gboolean
-gst_mlmeta_extractor_src_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
-{
-  GstMlMetaExtractorSrcPad *srcpad = GST_MLMETA_EXTRACTOR_SRCPAD (pad);
-
-  GST_TRACE_OBJECT (srcpad, "Received %s event: %" GST_PTR_FORMAT,
-      GST_EVENT_TYPE_NAME (event), event);
-
-  return gst_pad_event_default (pad, parent, event);
-}
-
-gboolean
-gst_mlmeta_extractor_src_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
-{
-  GstMlMetaExtractor *extractor = GST_MLMETA_EXTRACTOR (parent);
-  GstMlMetaExtractorSrcPad *srcpad = GST_MLMETA_EXTRACTOR_SRCPAD (pad);
-
-  GST_TRACE_OBJECT (srcpad, "Received %s query: %" GST_PTR_FORMAT,
-      GST_QUERY_TYPE_NAME (query), query);
-
-  switch (GST_QUERY_TYPE (query)) {
-    case GST_QUERY_CAPS:
-    {
-      GstCaps *caps = NULL, *filter = NULL;
-
-      caps = gst_pad_get_pad_template_caps (pad);
-      GST_DEBUG_OBJECT (srcpad, "Current caps: %" GST_PTR_FORMAT, caps);
-
-      gst_query_parse_caps (query, &filter);
-      GST_DEBUG_OBJECT (srcpad, "Filter caps: %" GST_PTR_FORMAT, filter);
-
-      if (filter != NULL) {
-        GstCaps *intersection  =
-            gst_caps_intersect_full (filter, caps, GST_CAPS_INTERSECT_FIRST);
-        gst_caps_unref (caps);
-        caps = intersection;
-      }
-
-      gst_query_set_caps_result (query, caps);
-      gst_caps_unref (caps);
-      return TRUE;
-    }
-    case GST_QUERY_POSITION:
-    {
-      GstSegment *segment = &(extractor->segment);
-      GstFormat format = GST_FORMAT_UNDEFINED;
-
-      gst_query_parse_position (query, &format, NULL);
-
-      if (format != GST_FORMAT_TIME) {
-        GST_ERROR_OBJECT (srcpad, "Unsupported POSITION format: %s!",
-            gst_format_get_name (format));
-        return FALSE;
-      }
-
-      gst_query_set_position (query, format,
-          gst_segment_to_stream_time (segment, format, segment->position));
-      return TRUE;
-    }
-    case GST_QUERY_SEGMENT:
-    {
-      GstSegment *segment = &(extractor->segment);
-      gint64 start = 0, stop = 0;
-
-      start = gst_segment_to_stream_time (segment, segment->format,
-          segment->start);
-
-      stop = (segment->stop == GST_CLOCK_TIME_NONE) ? segment->duration :
-          gst_segment_to_stream_time (segment, segment->format, segment->stop);
-
-      gst_query_set_segment (query, segment->rate, segment->format, start, stop);
-      return TRUE;
-    }
-    default:
-      break;
-  }
-
-  return gst_pad_query_default (pad, parent, query);
-}
-
-gboolean
-gst_mlmeta_extractor_src_pad_activate_mode (GstPad * pad, GstObject * parent,
-    GstPadMode mode, gboolean active)
-{
-  gboolean success = TRUE;
-
-  GST_INFO_OBJECT (pad, "%s worker task", active ? "Activating" : "Deactivating");
-
-  switch (mode) {
-    case GST_PAD_MODE_PUSH:
-      if (active) {
-        // Disable requests queue in flushing state to enable normal work.
-        gst_data_queue_set_flushing (GST_MLMETA_EXTRACTOR_SRCPAD (pad)->buffers, FALSE);
-        gst_data_queue_flush (GST_MLMETA_EXTRACTOR_SRCPAD (pad)->buffers);
-
-        success = gst_pad_start_task (pad, gst_mlmeta_extractor_src_pad_worker_task,
-            pad, NULL);
-      } else {
-        gst_data_queue_set_flushing (GST_MLMETA_EXTRACTOR_SRCPAD (pad)->buffers, TRUE);
-        gst_data_queue_flush (GST_MLMETA_EXTRACTOR_SRCPAD (pad)->buffers);
-        // TODO wait for all requests.
-        success = gst_pad_stop_task (pad);
-      }
-      break;
-    default:
-      break;
-  }
-
-  if (!success) {
-    GST_ERROR_OBJECT (pad, "Failed to %s worker task!",
-        active ? "activate" : "deactivate");
-    return FALSE;
-  }
-
-  GST_INFO_OBJECT (pad, "Worker task %s", active ? "activated" : "deactivated");
-
-  // Call the default pad handler for activate mode.
-  return gst_pad_activate_mode (pad, mode, active);
 }
 
 static void
 gst_mlmeta_extractor_finalize (GObject * object)
 {
-  GstMlMetaExtractor *extractor = GST_MLMETA_EXTRACTOR (object);
+  GstMLMetaExtractor *extractor = GST_MLMETA_EXTRACTOR (object);
 
   g_hash_table_destroy (extractor->classmetas);
   g_hash_table_destroy (extractor->ldmrkmetas);
@@ -1137,81 +747,48 @@ gst_mlmeta_extractor_finalize (GObject * object)
 }
 
 static void
-gst_mlmeta_extractor_class_init (GstMlMetaExtractorClass * klass)
+gst_mlmeta_extractor_class_init (GstMLMetaExtractorClass * klass)
 {
   GObjectClass *object = G_OBJECT_CLASS (klass);
   GstElementClass *element = GST_ELEMENT_CLASS (klass);
+  GstBaseTransformClass *base = GST_BASE_TRANSFORM_CLASS (klass);
 
-  object->finalize     = GST_DEBUG_FUNCPTR (gst_mlmeta_extractor_finalize);
-
-  gst_element_class_add_static_pad_template_with_gtype (element,
-      &gst_mlmeta_extractor_sink_template, GST_TYPE_PAD);
-  gst_element_class_add_static_pad_template_with_gtype (element,
-      &gst_mlmeta_extractor_video_src_template, GST_TYPE_MLMETA_EXTRACTOR_SRCPAD);
-  gst_element_class_add_static_pad_template_with_gtype (element,
-      &gst_mlmeta_extractor_meta_src_template, GST_TYPE_MLMETA_EXTRACTOR_SRCPAD);
+  object->finalize = GST_DEBUG_FUNCPTR (gst_mlmeta_extractor_finalize);
 
   gst_element_class_set_static_metadata (element,
-      "Video mlmeta extractor", "Video/Demuxer/Converter",
-      "Extract and copy mlmeta from video buffers into text buffers", "QTI"
+      "Video mlmeta extractor", "Filter/Demuxer/Converter",
+      "Extract mlmeta from video buffers into text buffers", "QTI"
   );
 
-  // Initializes a new ML extractor GstDebugCategory with the given properties.
-  GST_DEBUG_CATEGORY_INIT (gst_mlmeta_extractor_debug, "qtimlmetaextractor", 0,
-      "QTI ML Meta Extractor");
+  gst_element_class_add_pad_template (element,
+      gst_static_pad_template_get (&gst_mlmeta_extractor_sink_template));
+  gst_element_class_add_pad_template (element,
+      gst_static_pad_template_get (&gst_mlmeta_extractor_src_template));
+
+  base->prepare_output_buffer =
+      GST_DEBUG_FUNCPTR (gst_mlmeta_extractor_prepare_output_buffer);
+
+  base->transform_caps = GST_DEBUG_FUNCPTR (gst_mlmeta_extractor_transform_caps);
+  base->set_caps = GST_DEBUG_FUNCPTR (gst_mlmeta_extractor_set_caps);
+
+  base->transform = GST_DEBUG_FUNCPTR (gst_mlmeta_extractor_transform);
 }
 
 static void
-gst_mlmeta_extractor_init (GstMlMetaExtractor * extractor)
+gst_mlmeta_extractor_init (GstMLMetaExtractor * extractor)
 {
-  GstPadTemplate *template = NULL;
-  GstPad *sinkpad = NULL;
-
   g_mutex_init (&(extractor)->lock);
 
   extractor->roimetas = g_hash_table_new_full (NULL, NULL, NULL, NULL);
   extractor->ldmrkmetas = g_hash_table_new_full (NULL, NULL, NULL, NULL);
   extractor->classmetas = g_hash_table_new_full (NULL, NULL, NULL, NULL);
 
-  template = gst_static_pad_template_get (&gst_mlmeta_extractor_sink_template);
-  sinkpad = g_object_new (GST_TYPE_PAD, "name", "sink",
-      "direction", template->direction, "template", template, NULL);
-  gst_object_unref (template);
+  // Handle buffers with GAP flag internally.
+  gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM (extractor), TRUE);
 
-  template = gst_static_pad_template_get (&gst_mlmeta_extractor_video_src_template);
-  extractor->vpad = g_object_new (GST_TYPE_MLMETA_EXTRACTOR_SRCPAD, "name", "video",
-      "direction", template->direction, "template", template, NULL);
-  gst_object_unref (template);
-
-  template = gst_static_pad_template_get (&gst_mlmeta_extractor_meta_src_template);
-  extractor->metapad = g_object_new (GST_TYPE_MLMETA_EXTRACTOR_SRCPAD, "name", "meta",
-      "direction", template->direction, "template", template, NULL);
-  gst_object_unref (template);
-
-  gst_pad_set_chain_function (sinkpad,
-      GST_DEBUG_FUNCPTR (gst_mlmeta_extractor_sink_chain));
-  gst_pad_set_query_function (sinkpad,
-      GST_DEBUG_FUNCPTR (gst_mlmeta_extractor_sink_pad_query));
-  gst_pad_set_event_function (sinkpad,
-      GST_DEBUG_FUNCPTR (gst_mlmeta_extractor_sink_pad_event));
-
-  gst_pad_set_query_function (GST_PAD (extractor->vpad),
-      GST_DEBUG_FUNCPTR (gst_mlmeta_extractor_src_pad_query));
-  gst_pad_set_event_function (GST_PAD (extractor->vpad),
-      GST_DEBUG_FUNCPTR (gst_mlmeta_extractor_src_pad_event));
-  gst_pad_set_activatemode_function (GST_PAD (extractor->vpad),
-      GST_DEBUG_FUNCPTR (gst_mlmeta_extractor_src_pad_activate_mode));
-
-  gst_pad_set_query_function (GST_PAD (extractor->metapad),
-      GST_DEBUG_FUNCPTR (gst_mlmeta_extractor_src_pad_query));
-  gst_pad_set_event_function (GST_PAD (extractor->metapad),
-      GST_DEBUG_FUNCPTR (gst_mlmeta_extractor_src_pad_event));
-  gst_pad_set_activatemode_function (GST_PAD (extractor->metapad),
-      GST_DEBUG_FUNCPTR (gst_mlmeta_extractor_src_pad_activate_mode));
-
-  gst_element_add_pad (GST_ELEMENT (extractor), sinkpad);
-  gst_element_add_pad (GST_ELEMENT (extractor), GST_PAD (extractor->vpad));
-  gst_element_add_pad (GST_ELEMENT (extractor), GST_PAD (extractor->metapad));
+  // Initializes a new ML extractor GstDebugCategory with the given properties.
+  GST_DEBUG_CATEGORY_INIT (gst_mlmeta_extractor_debug, "qtimlmetaextractor", 0,
+      "QTI ML Meta Extractor");
 }
 
 static gboolean

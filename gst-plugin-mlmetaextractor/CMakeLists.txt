@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.8.2)
 project(GST_PLUGIN_QTI_OSS_MLMETA_EXTRACTOR
-  VERSION ${GST_PLUGINS_QTI_OSS_VERSION} LANGUAGES C
+  VERSION ${GST_PLUGINS_QTI_OSS_VERSION}
+  LANGUAGES C
 )
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -34,7 +35,6 @@ set(GST_QTI_MLMETA_EXTRACTOR gstqtimlmetaextractor)
 
 add_library(${GST_QTI_MLMETA_EXTRACTOR} SHARED
   mlmetaextractor.c
-  mlmetaextractorpads.c
 )
 
 target_include_directories(${GST_QTI_MLMETA_EXTRACTOR} PUBLIC
