@@ -120,7 +120,6 @@ G_DEFINE_TYPE (GstMLVideoDetection, gst_ml_video_detection,
 
 #define DEFAULT_MIN_BUFFERS      2
 #define DEFAULT_MAX_BUFFERS      10
-#define DEFAULT_TEXT_BUFFER_SIZE 204840
 #define DEFAULT_VIDEO_WIDTH      320
 #define DEFAULT_VIDEO_HEIGHT     240
 
@@ -272,70 +271,55 @@ gst_ml_video_detection_create_pool (GstMLVideoDetection * detection,
   GstStructure *structure = gst_caps_get_structure (caps, 0);
   GstBufferPool *pool = NULL;
   GstAllocator *allocator = NULL;
+  GstVideoInfo info = {0,};
+  GstVideoAlignment align = {0,};
 
-  if (gst_structure_has_name (structure, "video/x-raw")) {
-    GstVideoInfo info = {0,};
-    GstVideoAlignment align = {0,};
-
-    if (!gst_video_info_from_caps (&info, caps)) {
-      GST_ERROR_OBJECT (detection, "Invalid caps %" GST_PTR_FORMAT, caps);
-      return NULL;
-    }
-
-    if ((pool = gst_image_buffer_pool_new ()) == NULL) {
-      GST_ERROR_OBJECT (detection, "Failed to create image pool!");
-      return NULL;
-    }
-
-    if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
-      allocator = gst_fd_allocator_new ();
-      GST_INFO_OBJECT (detection, "Buffer pool uses GBM memory");
-    } else {
-      allocator = gst_qti_allocator_new (GST_FD_MEMORY_FLAG_KEEP_MAPPED);
-      GST_INFO_OBJECT (detection, "Buffer pool uses DMA memory");
-    }
-
-    if (allocator == NULL) {
-      GST_ERROR_OBJECT (detection, "Failed to create allocator");
-      gst_clear_object (&pool);
-      return NULL;
-    }
-
-    structure = gst_buffer_pool_get_config (pool);
-
-    gst_buffer_pool_config_set_allocator (structure, allocator, NULL);
-    g_object_unref (allocator);
-
-    gst_buffer_pool_config_add_option (structure,
-        GST_BUFFER_POOL_OPTION_VIDEO_META);
-    gst_buffer_pool_config_add_option (structure,
-        GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
-
-    if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
-      GST_ERROR_OBJECT (detection, "Failed to get alignment!");
-      gst_clear_object (&pool);
-      return NULL;
-    }
-
-    gst_buffer_pool_config_add_option (structure,
-        GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
-    gst_buffer_pool_config_set_video_alignment (structure, &align);
-
-    gst_buffer_pool_config_set_params (structure, caps, info.size,
-        DEFAULT_MIN_BUFFERS, DEFAULT_MAX_BUFFERS);
-  } else if (gst_structure_has_name (structure, "text/x-raw")) {
-    GST_INFO_OBJECT (detection, "Uses SYSTEM memory");
-    pool = gst_mem_buffer_pool_new (GST_MEMORY_BUFFER_POOL_TYPE_SYSTEM);
-
-    if (NULL == pool) {
-      GST_ERROR_OBJECT (detection, "Failed to create buffer pool!");
-      return NULL;
-    }
-
-    structure = gst_buffer_pool_get_config (pool);
-    gst_buffer_pool_config_set_params (structure, caps, DEFAULT_TEXT_BUFFER_SIZE,
-        DEFAULT_MIN_BUFFERS, DEFAULT_MAX_BUFFERS);
+  if (!gst_video_info_from_caps (&info, caps)) {
+    GST_ERROR_OBJECT (detection, "Invalid caps %" GST_PTR_FORMAT, caps);
+    return NULL;
   }
+
+  if ((pool = gst_image_buffer_pool_new ()) == NULL) {
+    GST_ERROR_OBJECT (detection, "Failed to create image pool!");
+    return NULL;
+  }
+
+  if (gst_caps_has_feature (caps, GST_CAPS_FEATURE_MEMORY_GBM)) {
+    allocator = gst_fd_allocator_new ();
+    GST_INFO_OBJECT (detection, "Buffer pool uses GBM memory");
+  } else {
+    allocator = gst_qti_allocator_new (GST_FD_MEMORY_FLAG_KEEP_MAPPED);
+    GST_INFO_OBJECT (detection, "Buffer pool uses DMA memory");
+  }
+
+  if (allocator == NULL) {
+    GST_ERROR_OBJECT (detection, "Failed to create allocator");
+    gst_clear_object (&pool);
+    return NULL;
+  }
+
+  structure = gst_buffer_pool_get_config (pool);
+
+  gst_buffer_pool_config_set_allocator (structure, allocator, NULL);
+  g_object_unref (allocator);
+
+  gst_buffer_pool_config_add_option (structure,
+      GST_BUFFER_POOL_OPTION_VIDEO_META);
+  gst_buffer_pool_config_add_option (structure,
+      GST_IMAGE_BUFFER_POOL_OPTION_KEEP_MAPPED);
+
+  if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
+    GST_ERROR_OBJECT (detection, "Failed to get alignment!");
+    gst_clear_object (&pool);
+    return NULL;
+  }
+
+  gst_buffer_pool_config_add_option (structure,
+      GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
+  gst_buffer_pool_config_set_video_alignment (structure, &align);
+
+  gst_buffer_pool_config_set_params (structure, caps, info.size,
+      DEFAULT_MIN_BUFFERS, DEFAULT_MAX_BUFFERS);
 
   if (!gst_buffer_pool_set_config (pool, structure)) {
     GST_WARNING_OBJECT (detection, "Failed to set pool configuration!");
@@ -624,8 +608,8 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
     GstBuffer * buffer)
 {
   GstStructure *structure = NULL;
+  GstMemory *mem = NULL;
   gchar *string = NULL, *name = NULL;
-  GstMapInfo memmap = {};
   GValue list = G_VALUE_INIT, bboxes = G_VALUE_INIT;
   GValue array = G_VALUE_INIT, value = G_VALUE_INIT;
   guint idx = 0, num = 0, mrk = 0, n_entries = 0, sequence_idx = 0, id = 0;
@@ -765,41 +749,20 @@ gst_ml_video_detection_fill_text_output (GstMLVideoDetection * detection,
   g_value_unset (&array);
   g_value_unset (&bboxes);
 
-  // Map buffer memory blocks.
-  if (!gst_buffer_map_range (buffer, 0, 1, &memmap, GST_MAP_READWRITE)) {
-    GST_ERROR_OBJECT (detection, "Failed to map buffer memory block!");
-    return FALSE;
-  }
-
   // Serialize the predictions list into string format.
   string = gst_value_serialize (&list);
   g_value_unset (&list);
 
   if (string == NULL) {
     GST_ERROR_OBJECT (detection, "Failed serialize predictions structure!");
-    gst_buffer_unmap (buffer, &memmap);
     return FALSE;
   }
 
   // Increase the length by 1 byte for the '\0' character.
   length = strlen (string) + 1;
 
-  // Check whether the length +1 byte for the additional '\n' is within maxsize.
-  if ((length + 1) > memmap.maxsize) {
-    GST_ERROR_OBJECT (detection, "String size exceeds max buffer size!");
-
-    gst_buffer_unmap (buffer, &memmap);
-    g_free (string);
-
-    return FALSE;
-  }
-
-  // Copy the serialized GValue into the output buffer with '\n' termination.
-  length = g_snprintf ((gchar *) memmap.data, (length + 1), "%s\n", string);
-  g_free (string);
-
-  gst_buffer_unmap (buffer, &memmap);
-  gst_buffer_resize (buffer, 0, length);
+  mem = gst_memory_new_wrapped (0, string, length, 0, length, string, g_free);
+  gst_buffer_append_memory (buffer, mem);
 
   return TRUE;
 }
@@ -809,7 +772,6 @@ gst_ml_video_detection_decide_allocation (GstBaseTransform * base,
     GstQuery * query)
 {
   GstMLVideoDetection *detection = GST_ML_VIDEO_DETECTION (base);
-
   GstCaps *caps = NULL;
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
@@ -817,15 +779,16 @@ gst_ml_video_detection_decide_allocation (GstBaseTransform * base,
   guint size, minbuffers, maxbuffers;
   GstAllocationParams params;
 
+  gst_clear_object (&(detection->outpool));
+
+  if (detection->mode != OUTPUT_MODE_VIDEO)
+    return TRUE;
+
   gst_query_parse_allocation (query, &caps, NULL);
   if (!caps) {
     GST_ERROR_OBJECT (detection, "Failed to parse the allocation caps!");
     return FALSE;
   }
-
-  // Invalidate the cached pool if there is an allocation_query.
-  if (detection->outpool)
-    gst_object_unref (detection->outpool);
 
   // Create a new buffer pool.
   if ((pool = gst_ml_video_detection_create_pool (detection, caps)) == NULL) {
@@ -953,26 +916,27 @@ gst_ml_video_detection_prepare_output_buffer (GstBaseTransform * base,
     return GST_FLOW_OK;
   }
 
-  g_return_val_if_fail (pool != NULL, GST_FLOW_ERROR);
+  if (detection->mode == OUTPUT_MODE_VIDEO) {
+    if (!gst_buffer_pool_is_active (pool) &&
+        !gst_buffer_pool_set_active (pool, TRUE)) {
+      GST_ERROR_OBJECT (detection, "Failed to activate output buffer pool!");
+      return GST_FLOW_ERROR;
+    }
 
-  if (!gst_buffer_pool_is_active (pool) &&
-      !gst_buffer_pool_set_active (pool, TRUE)) {
-    GST_ERROR_OBJECT (detection, "Failed to activate output buffer pool!");
-    return GST_FLOW_ERROR;
-  }
+    // Input is marked as GAP, nothing to process. Create a GAP output buffer.
+    if ((gst_buffer_get_size (inbuffer) == 0) &&
+        GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP)) {
+      *outbuffer = gst_buffer_new ();
+      GST_BUFFER_FLAG_SET (*outbuffer, GST_BUFFER_FLAG_GAP);
+    }
 
-  // Input is marked as GAP, nothing to process. Create a GAP output buffer.
-  if ((detection->mode == OUTPUT_MODE_VIDEO) &&
-      (gst_buffer_get_size (inbuffer) == 0) &&
-      GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP)) {
+    if ((*outbuffer == NULL) &&
+        gst_buffer_pool_acquire_buffer (pool, outbuffer, NULL) != GST_FLOW_OK) {
+      GST_ERROR_OBJECT (detection, "Failed to create output buffer!");
+      return GST_FLOW_ERROR;
+    }
+  } else {
     *outbuffer = gst_buffer_new ();
-    GST_BUFFER_FLAG_SET (*outbuffer, GST_BUFFER_FLAG_GAP);
-  }
-
-  if ((*outbuffer == NULL) &&
-      gst_buffer_pool_acquire_buffer (pool, outbuffer, NULL) != GST_FLOW_OK) {
-    GST_ERROR_OBJECT (detection, "Failed to create output buffer!");
-    return GST_FLOW_ERROR;
   }
 
   // Copy the flags and timestamps from the input buffer.
