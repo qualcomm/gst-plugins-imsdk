@@ -92,6 +92,7 @@ G_DEFINE_TYPE (GstMLVideoSuperResolution, gst_ml_video_super_resolution,
     GST_TYPE_BASE_TRANSFORM);
 
 #define GST_TYPE_ML_MODULES (gst_ml_modules_get_type())
+#define GST_ML_MODULES_PREFIX "ml-vsuperresolution-"
 
 #define GST_ML_VIDEO_SUPER_RESOLUTION_VIDEO_FORMATS \
     "{ RGBA, BGRA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR }"
@@ -177,7 +178,7 @@ gst_ml_modules_get_type (void)
   if (gtype)
     return gtype;
 
-  variants = gst_ml_enumarate_modules ("ml-vsuperresolution-");
+  variants = gst_ml_enumarate_modules (GST_ML_MODULES_PREFIX);
   gtype = g_enum_register_static ("GstMLVideoSuperResolutionModules", variants);
 
   return gtype;
@@ -521,7 +522,8 @@ gst_ml_video_super_resolution_set_caps (GstBaseTransform * base, GstCaps * incap
   evalue = g_enum_get_value (eclass, super_resolution->mdlenum);
 
   gst_ml_module_free (super_resolution->module);
-  super_resolution->module = gst_ml_module_new (evalue->value_name);
+  super_resolution->module =
+      gst_ml_module_new (GST_ML_MODULES_PREFIX, evalue->value_nick);
 
   if (NULL == super_resolution->module) {
     GST_ELEMENT_ERROR (super_resolution, RESOURCE, FAILED, (NULL),
