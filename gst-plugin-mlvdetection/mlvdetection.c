@@ -95,6 +95,7 @@ G_DEFINE_TYPE (GstMLVideoDetection, gst_ml_video_detection,
     GST_TYPE_BASE_TRANSFORM);
 
 #define GST_TYPE_ML_MODULES (gst_ml_modules_get_type())
+#define GST_ML_MODULES_PREFIX "ml-vdetection-"
 
 #define GST_ML_VIDEO_DETECTION_VIDEO_FORMATS \
     "{ BGRA, BGRx, BGR16 }"
@@ -206,7 +207,7 @@ gst_ml_modules_get_type (void)
   if (gtype)
     return gtype;
 
-  variants = gst_ml_enumarate_modules ("ml-vdetection-");
+  variants = gst_ml_enumarate_modules (GST_ML_MODULES_PREFIX);
   gtype = g_enum_register_static ("GstMLVideoDetectionModules", variants);
 
   return gtype;
@@ -1142,7 +1143,8 @@ gst_ml_video_detection_set_caps (GstBaseTransform * base, GstCaps * incaps,
   evalue = g_enum_get_value (eclass, detection->mdlenum);
 
   gst_ml_module_free (detection->module);
-  detection->module = gst_ml_module_new (evalue->value_name);
+  detection->module =
+      gst_ml_module_new (GST_ML_MODULES_PREFIX, evalue->value_nick);
 
   if (NULL == detection->module) {
     GST_ELEMENT_ERROR (detection, RESOURCE, FAILED, (NULL),
