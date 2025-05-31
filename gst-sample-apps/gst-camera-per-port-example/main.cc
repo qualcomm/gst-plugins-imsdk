@@ -462,61 +462,18 @@ update_pipeline_state (GstElement * pipeline, GstState state)
   return TRUE;
 }
 
-static gboolean
-start_bayer_pipeline (GstPerPortCtx & ctx, GstState newstate)
-{
-  GstStateChangeReturn ret;
-
-  g_print ("Setting pipeline %s for camera %d to %s\n", ctx.pipe_name,
-      ctx.camera, gst_element_state_get_name (newstate));
-  ret = gst_element_set_state (ctx.pipeline, newstate);
-
-  switch (ret) {
-    case GST_STATE_CHANGE_FAILURE:
-      g_printerr ("ERROR: Failed to transition to PLAYING state!\n");
-      return FALSE;
-    case GST_STATE_CHANGE_NO_PREROLL:
-      g_print ("Pipeline is live and does not need PREROLL.\n");
-      break;
-    case GST_STATE_CHANGE_ASYNC:
-      g_print ("Pipeline is PREROLLING ...\n");
-
-      ret = gst_element_get_state (ctx.pipeline, NULL, NULL,
-          GST_CLOCK_TIME_NONE);
-
-      if (ret == GST_STATE_CHANGE_FAILURE) {
-        g_printerr ("Pipeline failed to PREROLL!\n");
-        return FALSE;
-      }
-      break;
-    case GST_STATE_CHANGE_SUCCESS:
-      g_print ("Pipeline state change was successful\n");
-      break;
-  }
-
-  GstState currstate;
-  while (currstate != GST_STATE_PLAYING) {
-    ret = gst_element_get_state (ctx.pipeline, &currstate, NULL,
-        GST_CLOCK_TIME_NONE);
-  }
-  ctx.active = 1;
-
-  return TRUE;
-}
-
 // Tries to change pipelines state
 static gboolean
 change_state_pipelines (std::vector < GstPerPortCtx > &ctx,
     std::vector < CameraGroupInfo > &camInfo, GstState newstate)
 {
   GstStateChangeReturn ret;
-  guint i = 1;
   ::camera::CameraMetadata * static_meta = NULL;
   ::camera::CameraMetadata * session_meta = NULL;
 
-  for (; i < ctx.size (); ++i) {
+  for (guint i= 0; i < ctx.size (); ++i) {
     // Only for first camera of group, send the session param
-    if (i == 1) {
+    if (i == 0) {
       GstElement *camsrc = NULL;
       if ((camsrc =
               get_element_from_pipeline (ctx[i].pipeline,
@@ -695,46 +652,13 @@ eos_cb (GstBus * bus, GstMessage * message, gpointer userdata)
 }
 
 static gint
-create_yuv_camera_pipeline (GstPerPortCtx * ctx, std::string yuv_pipeline)
+create_camera_pipeline (GstPerPortCtx * ctx, std::string cam_pipeline)
 {
   GError *error = NULL;
   gint status = -1;
   ctx->pipeline = NULL;
 
-  ctx->pipeline = gst_parse_launch (yuv_pipeline.c_str (), &error);
-
-  // Check for errors on pipe creation.
-  if ((NULL == ctx->pipeline) && (error != NULL)) {
-    g_printerr ("\nERROR: Failed to create pipeline, error: %s!\n",
-        GST_STR_NULL (error->message));
-    g_clear_error (&error);
-
-    return status;
-  } else if ((NULL == ctx->pipeline) && (NULL == error)) {
-    g_printerr ("\nERROR: Failed to create pipeline, unknown error!\n");
-
-    return status;
-  } else if ((ctx->pipeline != NULL) && (error != NULL)) {
-    g_printerr ("\nERROR: Erroneous pipeline, error: %s!\n",
-        GST_STR_NULL (error->message));
-
-    g_clear_error (&error);
-    return status;
-  }
-
-  status = 0;
-  return status;
-}
-
-
-static gint
-create_bayer_camera_pipeline (GstPerPortCtx * ctx, std::string bayer_pipeline)
-{
-  GError *error = NULL;
-  gint status = -1;
-  ctx->pipeline = NULL;
-
-  ctx->pipeline = gst_parse_launch (bayer_pipeline.c_str (), &error);
+  ctx->pipeline = gst_parse_launch (cam_pipeline.c_str (), &error);
 
   // Check for errors on pipe creation.
   if ((NULL == ctx->pipeline) && (error != NULL)) {
@@ -961,31 +885,22 @@ main (gint argc, gchar * argv[])
   // Initialize GST library.
   gst_init (&argc, &argv);
 
-  int bayer_cam_id;
-  std::cout << "Enter the bayer camera_id: ";
-  std::cin >> bayer_cam_id;
-  std::cin.ignore ();
-
-  std::string bayer_pipeline;
-  std::cout << "\nEnter the bayer camera pipeline: ";
-  std::getline (std::cin, bayer_pipeline);
-
   // Take input from user
   std::string camera_ids_str;
-  g_print ("\nEnter the YUV camera ID's you want to open (space separated):");
+  g_print ("\nEnter the camera ID's you want to open (space separated):");
   std::getline (std::cin, camera_ids_str);
 
   std::istringstream iss (camera_ids_str);
-  std::vector < guint > yuv_camera_ids;
+  std::vector < guint > camera_ids;
   std::string id;
   while (iss >> id) {
-    yuv_camera_ids.push_back (static_cast < guint > (std::stoul (id)));
+    camera_ids.push_back (static_cast < guint > (std::stoul (id)));
   }
 
-  std::vector < CameraGroupInfo > camInfo (yuv_camera_ids.size ());
+  std::vector < CameraGroupInfo > camInfo (camera_ids.size ());
 
   for (guint i = 0; i < camInfo.size (); ++i) {
-    camInfo[i].camera_id = yuv_camera_ids[i];
+    camInfo[i].camera_id = camera_ids[i];
     guint num_streams;
 
     // Take input from user
@@ -1017,42 +932,26 @@ main (gint argc, gchar * argv[])
     g_printerr ("\nERROR: Failed to create Main loop!\n");
     return -1;
   }
-  // Context for bayer camera.
-  GstPerPortCtx bayerctx;
-  bayerctx.camera = bayer_cam_id;
-  bayerctx.refcount = &refcounter;
-  bayerctx.mloop = mloop;
-  bayerctx.lock = &lock;
-
-  // Create pipes
-  bayerctx.pipe_name = "gst-bayer-camera-pipeline";
-  if (create_bayer_camera_pipeline (&bayerctx, bayer_pipeline) < 0) {
-    g_printerr ("ERROR: Failed to create first camera pipe!\n");
-    return -1;
-  }
-
-  ctx.push_back (bayerctx);
-  refcounter++;
 
   for (guint i = 0; i < camInfo.size (); ++i) {
-    GstPerPortCtx yuvctx;
-    yuvctx.camera = camInfo[i].camera_id;
-    yuvctx.refcount = &refcounter;
-    yuvctx.mloop = mloop;
-    yuvctx.lock = &lock;
-    yuvctx.pipe_name = "gst-yuv-camera-pipeline";
-    std::string yuv_pipeline;
-    std::cout << "\nEnter the yuv camera pipeline for camera "
+    GstPerPortCtx camctx;
+    camctx.camera = camInfo[i].camera_id;
+    camctx.refcount = &refcounter;
+    camctx.mloop = mloop;
+    camctx.lock = &lock;
+    camctx.pipe_name = "gst-camera-pipeline";
+    std::string cam_pipeline;
+    std::cout << "\nEnter the camera pipeline for camera "
         << camInfo[i].camera_id << ": ";
-    std::getline (std::cin, yuv_pipeline);
+    std::getline (std::cin, cam_pipeline);
 
-    if (create_yuv_camera_pipeline (&yuvctx, yuv_pipeline) < 0) {
+    if (create_camera_pipeline (&camctx, cam_pipeline) < 0) {
       g_printerr ("\nERROR: Failed to create %s for camera %d\n",
-          yuvctx.pipe_name, yuvctx.camera);
+          camctx.pipe_name, camctx.camera);
       return -1;
     }
 
-    ctx.push_back (yuvctx);
+    ctx.push_back (camctx);
     refcounter++;
   }
 
@@ -1093,14 +992,8 @@ main (gint argc, gchar * argv[])
       GIOCondition (G_IO_PRI | G_IO_IN), handle_stdin_source, &appctx);
   g_io_channel_unref (gio);
 
-  if (start_bayer_pipeline (appctx.ctx[0], GST_STATE_PLAYING)) {
-    g_print ("Bayer pipeline started\n");
-  } else {
-    goto exit;
-  }
-
   if (change_state_pipelines (appctx.ctx, camInfo, GST_STATE_PLAYING)) {
-    g_print ("YUV pipelines are started\n");
+    g_print ("pipelines are started\n");
   } else {
     goto exit;
   }
