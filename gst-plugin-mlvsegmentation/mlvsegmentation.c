@@ -361,8 +361,12 @@ gst_ml_video_segmentation_transform_caps (GstBaseTransform * base,
   GST_DEBUG_OBJECT (segmentation, "Filter caps: %" GST_PTR_FORMAT, filter);
 
   if (direction == GST_PAD_SRC) {
-    GstPad *pad = GST_BASE_TRANSFORM_SINK_PAD (base);
-    tmplcaps = gst_pad_get_pad_template_caps (pad);
+    if (NULL == segmentation->module) {
+      GstPad *pad = GST_BASE_TRANSFORM_SINK_PAD (base);
+      tmplcaps = gst_pad_get_pad_template_caps (pad);
+    } else {
+      tmplcaps = gst_ml_module_get_caps (segmentation->module);
+    }
   } else if (direction == GST_PAD_SINK) {
     GstPad *pad = GST_BASE_TRANSFORM_SRC_PAD (base);
     tmplcaps = gst_pad_get_pad_template_caps (pad);
@@ -509,33 +513,8 @@ gst_ml_video_segmentation_set_caps (GstBaseTransform * base, GstCaps * incaps,
   GstMLVideoSegmentation *segmentation = GST_ML_VIDEO_SEGMENTATION (base);
   GstCaps *modulecaps = NULL;
   GstStructure *structure = NULL;
-  GEnumClass *eclass = NULL;
-  GEnumValue *evalue = NULL;
   GstMLInfo ininfo;
   GstVideoInfo outinfo;
-
-  if (NULL == segmentation->labels) {
-    GST_ELEMENT_ERROR (segmentation, RESOURCE, NOT_FOUND, (NULL),
-        ("Labels not set!"));
-    return FALSE;
-  } else if (DEFAULT_PROP_MODULE == segmentation->mdlenum) {
-    GST_ELEMENT_ERROR (segmentation, RESOURCE, NOT_FOUND, (NULL),
-        ("Module name not set, automatic module pick up not supported!"));
-    return FALSE;
-  }
-
-  eclass = G_ENUM_CLASS (g_type_class_peek (GST_TYPE_ML_MODULES));
-  evalue = g_enum_get_value (eclass, segmentation->mdlenum);
-
-  gst_ml_module_free (segmentation->module);
-  segmentation->module =
-      gst_ml_module_new (GST_ML_MODULES_PREFIX, evalue->value_nick);
-
-  if (NULL == segmentation->module) {
-    GST_ELEMENT_ERROR (segmentation, RESOURCE, FAILED, (NULL),
-        ("Module creation failed!"));
-    return FALSE;
-  }
 
   modulecaps = gst_ml_module_get_caps (segmentation->module);
 
@@ -543,12 +522,6 @@ gst_ml_video_segmentation_set_caps (GstBaseTransform * base, GstCaps * incaps,
     GST_ELEMENT_ERROR (segmentation, RESOURCE, FAILED, (NULL),
         ("Module caps %" GST_PTR_FORMAT " do not intersect with the "
          "negotiated caps %" GST_PTR_FORMAT "!", modulecaps, incaps));
-    return FALSE;
-  }
-
-  if (!gst_ml_module_init (segmentation->module)) {
-    GST_ELEMENT_ERROR (segmentation, RESOURCE, FAILED, (NULL),
-        ("Module initialization failed!"));
     return FALSE;
   }
 
@@ -603,6 +576,72 @@ gst_ml_video_segmentation_set_caps (GstBaseTransform * base, GstCaps * incaps,
   GST_DEBUG_OBJECT (segmentation, "Output caps: %" GST_PTR_FORMAT, outcaps);
 
   return TRUE;
+}
+
+static GstStateChangeReturn
+gst_ml_video_segmentation_change_state (GstElement * element,
+    GstStateChange transition)
+{
+  GstMLVideoSegmentation *segmentation = GST_ML_VIDEO_SEGMENTATION (element);
+  GEnumClass *eclass = NULL;
+  GEnumValue *evalue = NULL;
+  GstStateChangeReturn ret = GST_STATE_CHANGE_SUCCESS;
+
+  switch (transition) {
+    case GST_STATE_CHANGE_NULL_TO_READY:
+    {
+      if (NULL == segmentation->labels) {
+        GST_ELEMENT_ERROR (segmentation, RESOURCE, NOT_FOUND, (NULL),
+            ("Labels file not set!"));
+        return GST_STATE_CHANGE_FAILURE;
+      }
+
+      if (DEFAULT_PROP_MODULE == segmentation->mdlenum) {
+        GST_ELEMENT_ERROR (segmentation, RESOURCE, NOT_FOUND, (NULL),
+            ("Module name not set, automatic module pick up not supported!"));
+        return GST_STATE_CHANGE_FAILURE;
+      }
+
+      eclass = G_ENUM_CLASS (g_type_class_peek (GST_TYPE_ML_MODULES));
+      evalue = g_enum_get_value (eclass, segmentation->mdlenum);
+
+      segmentation->module =
+          gst_ml_module_new (GST_ML_MODULES_PREFIX, evalue->value_nick);
+
+      if (NULL == segmentation->module) {
+        GST_ELEMENT_ERROR (segmentation, RESOURCE, FAILED, (NULL),
+            ("Module creation failed!"));
+        return GST_STATE_CHANGE_FAILURE;
+      }
+
+      if (!gst_ml_module_init (segmentation->module)) {
+        GST_ELEMENT_ERROR (segmentation, RESOURCE, FAILED, (NULL),
+            ("Module initialization failed!"));
+        return GST_STATE_CHANGE_FAILURE;
+      }
+
+      break;
+    }
+    default:
+      break;
+  }
+
+  ret = GST_ELEMENT_CLASS (parent_class)->change_state (element, transition);
+  if (ret != GST_STATE_CHANGE_SUCCESS) {
+    GST_ERROR_OBJECT (segmentation, "Failure");
+    return ret;
+  }
+
+  switch (transition) {
+    case GST_STATE_CHANGE_READY_TO_NULL:
+      gst_ml_module_free (segmentation->module);
+      segmentation->module = NULL;
+      break;
+    default:
+      break;
+  }
+
+  return ret;
 }
 
 static GstFlowReturn
@@ -814,6 +853,9 @@ gst_ml_video_segmentation_class_init (GstMLVideoSegmentationClass * klass)
       gst_ml_video_segmentation_sink_template ());
   gst_element_class_add_pad_template (element,
       gst_ml_video_segmentation_src_template ());
+
+  element->change_state =
+      GST_DEBUG_FUNCPTR (gst_ml_video_segmentation_change_state);
 
   base->decide_allocation =
       GST_DEBUG_FUNCPTR (gst_ml_video_segmentation_decide_allocation);

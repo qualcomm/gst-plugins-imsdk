@@ -358,8 +358,12 @@ gst_ml_video_super_resolution_transform_caps (GstBaseTransform * base,
   GST_DEBUG_OBJECT (super_resolution, "Filter caps: %" GST_PTR_FORMAT, filter);
 
   if (direction == GST_PAD_SRC) {
-    GstPad *pad = GST_BASE_TRANSFORM_SINK_PAD (base);
-    tmplcaps = gst_pad_get_pad_template_caps (pad);
+    if (NULL == super_resolution->module) {
+      GstPad *pad = GST_BASE_TRANSFORM_SINK_PAD (base);
+      tmplcaps = gst_pad_get_pad_template_caps (pad);
+    } else {
+      tmplcaps = gst_ml_module_get_caps (super_resolution->module);
+    }
   } else if (direction == GST_PAD_SINK) {
     GstPad *pad = GST_BASE_TRANSFORM_SRC_PAD (base);
     tmplcaps = gst_pad_get_pad_template_caps (pad);
@@ -507,29 +511,8 @@ gst_ml_video_super_resolution_set_caps (GstBaseTransform * base, GstCaps * incap
   GstMLVideoSuperResolution *super_resolution = GST_ML_VIDEO_SUPER_RESOLUTION (base);
   GstCaps *modulecaps = NULL;
   GstStructure *structure = NULL;
-  GEnumClass *eclass = NULL;
-  GEnumValue *evalue = NULL;
   GstMLInfo ininfo;
   GstVideoInfo outinfo;
-
-  if (DEFAULT_PROP_MODULE == super_resolution->mdlenum) {
-    GST_ELEMENT_ERROR (super_resolution, RESOURCE, NOT_FOUND, (NULL),
-        ("Module name not set, automatic module pick up not supported!"));
-    return FALSE;
-  }
-
-  eclass = G_ENUM_CLASS (g_type_class_peek (GST_TYPE_ML_MODULES));
-  evalue = g_enum_get_value (eclass, super_resolution->mdlenum);
-
-  gst_ml_module_free (super_resolution->module);
-  super_resolution->module =
-      gst_ml_module_new (GST_ML_MODULES_PREFIX, evalue->value_nick);
-
-  if (NULL == super_resolution->module) {
-    GST_ELEMENT_ERROR (super_resolution, RESOURCE, FAILED, (NULL),
-        ("Module creation failed!"));
-    return FALSE;
-  }
 
   modulecaps = gst_ml_module_get_caps (super_resolution->module);
 
@@ -537,12 +520,6 @@ gst_ml_video_super_resolution_set_caps (GstBaseTransform * base, GstCaps * incap
     GST_ELEMENT_ERROR (super_resolution, RESOURCE, FAILED, (NULL),
         ("Module caps %" GST_PTR_FORMAT " do not intersect with the "
          "negotiated caps %" GST_PTR_FORMAT "!", modulecaps, incaps));
-    return FALSE;
-  }
-
-  if (!gst_ml_module_init (super_resolution->module)) {
-    GST_ELEMENT_ERROR (super_resolution, RESOURCE, FAILED, (NULL),
-        ("Module initialization failed!"));
     return FALSE;
   }
 
@@ -596,6 +573,67 @@ gst_ml_video_super_resolution_set_caps (GstBaseTransform * base, GstCaps * incap
   GST_DEBUG_OBJECT (super_resolution, "Output caps: %" GST_PTR_FORMAT, outcaps);
 
   return TRUE;
+}
+
+static GstStateChangeReturn
+gst_ml_video_super_resolution_change_state (GstElement * element,
+    GstStateChange transition)
+{
+  GstMLVideoSuperResolution *super_resolution =
+      GST_ML_VIDEO_SUPER_RESOLUTION (element);
+  GEnumClass *eclass = NULL;
+  GEnumValue *evalue = NULL;
+  GstStateChangeReturn ret = GST_STATE_CHANGE_SUCCESS;
+
+  switch (transition) {
+    case GST_STATE_CHANGE_NULL_TO_READY:
+    {
+      if (DEFAULT_PROP_MODULE == super_resolution->mdlenum) {
+        GST_ELEMENT_ERROR (super_resolution, RESOURCE, NOT_FOUND, (NULL),
+            ("Module name not set, automatic module pick up not supported!"));
+        return GST_STATE_CHANGE_FAILURE;
+      }
+
+      eclass = G_ENUM_CLASS (g_type_class_peek (GST_TYPE_ML_MODULES));
+      evalue = g_enum_get_value (eclass, super_resolution->mdlenum);
+
+      super_resolution->module =
+          gst_ml_module_new (GST_ML_MODULES_PREFIX, evalue->value_nick);
+
+      if (NULL == super_resolution->module) {
+        GST_ELEMENT_ERROR (super_resolution, RESOURCE, FAILED, (NULL),
+            ("Module creation failed!"));
+        return GST_STATE_CHANGE_FAILURE;
+      }
+
+      if (!gst_ml_module_init (super_resolution->module)) {
+        GST_ELEMENT_ERROR (super_resolution, RESOURCE, FAILED, (NULL),
+            ("Module initialization failed!"));
+        return GST_STATE_CHANGE_FAILURE;
+      }
+
+      break;
+    }
+    default:
+      break;
+  }
+
+  ret = GST_ELEMENT_CLASS (parent_class)->change_state (element, transition);
+  if (ret != GST_STATE_CHANGE_SUCCESS) {
+    GST_ERROR_OBJECT (super_resolution, "Failure");
+    return ret;
+  }
+
+  switch (transition) {
+    case GST_STATE_CHANGE_READY_TO_NULL:
+      gst_ml_module_free (super_resolution->module);
+      super_resolution->module = NULL;
+      break;
+    default:
+      break;
+  }
+
+  return ret;
 }
 
 static GstFlowReturn
@@ -830,6 +868,9 @@ gst_ml_video_super_resolution_class_init (GstMLVideoSuperResolutionClass * klass
       gst_ml_video_super_resolution_sink_template ());
   gst_element_class_add_pad_template (element,
       gst_ml_video_super_resolution_src_template ());
+
+  element->change_state =
+      GST_DEBUG_FUNCPTR (gst_ml_video_super_resolution_change_state);
 
   base->decide_allocation =
       GST_DEBUG_FUNCPTR (gst_ml_video_super_resolution_decide_allocation);
