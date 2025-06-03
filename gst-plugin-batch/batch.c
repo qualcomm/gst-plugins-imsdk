@@ -95,26 +95,38 @@ gst_data_queue_free_item (gpointer userdata)
 }
 
 static void
-gst_caps_extract_video_framerate (GstStructure * structure, GValue * framerate)
+gst_caps_extract_video_framerate (GstCaps * caps, GValue * framerate)
 {
-  const GValue *value = NULL;
-  gdouble fps = 0.0, outfps = 0.0;
+  guint idx = 0, length = 0;
+  gdouble fps = 0.0;
 
-  if ((value = gst_structure_get_value (structure, "framerate")) == NULL)
-    return;
-
-  if (G_VALUE_TYPE (framerate) != GST_TYPE_FRACTION)
-    g_value_init (framerate, GST_TYPE_FRACTION);
-
-  value = gst_structure_get_value (structure, "framerate");
-
-  gst_util_fraction_to_double (gst_value_get_fraction_numerator (value),
-      gst_value_get_fraction_denominator (value), &fps);
   gst_util_fraction_to_double (gst_value_get_fraction_numerator (framerate),
-      gst_value_get_fraction_denominator (framerate), &outfps);
+      gst_value_get_fraction_denominator (framerate), &fps);
 
-  if (fps > outfps)
-    g_value_copy (value, framerate);
+  length = gst_caps_get_size (caps);
+
+  // Extract and remove the framerate field for video caps.
+  for (idx = 0; idx < length; idx++) {
+    GstStructure *structure = gst_caps_get_structure (caps, idx);
+    const GValue *value = gst_structure_get_value (structure, "framerate");
+    gdouble other_fps = 0.0;
+
+    if (value == NULL)
+      continue;
+
+    if (GST_VALUE_HOLDS_FRACTION (value)) {
+      gst_util_fraction_to_double (gst_value_get_fraction_numerator (value),
+          gst_value_get_fraction_denominator (value), &other_fps);
+    }
+
+    // Overwrite current framerate variable if fps is higher.
+    if (other_fps > fps) {
+      g_value_copy (value, framerate);
+      fps = other_fps;
+    }
+
+    gst_structure_remove_field (structure, "framerate");
+  }
 }
 
 static gboolean
@@ -123,10 +135,10 @@ gst_batch_all_sink_pads_flushing (GstBatch * batch, GstPad * pad)
   GList *list = NULL;
   gboolean flushing = TRUE;
 
-  GST_OBJECT_LOCK (batch);
+  GST_BATCH_LOCK (batch);
 
   // Check all whether other sink pads are in flushing state.
-  for (list = GST_ELEMENT (batch)->sinkpads; list; list = list->next) {
+  for (list = batch->sinkpads; list != NULL; list = list->next) {
     // Skip current sink pad as it is already in flushing state.
     if (g_strcmp0 (GST_PAD_NAME (list->data), GST_PAD_NAME (pad)) == 0)
       continue;
@@ -136,7 +148,7 @@ gst_batch_all_sink_pads_flushing (GstBatch * batch, GstPad * pad)
     GST_OBJECT_UNLOCK (GST_PAD (list->data));
   }
 
-  GST_OBJECT_UNLOCK (batch);
+  GST_BATCH_UNLOCK (batch);
 
   return flushing;
 }
@@ -147,10 +159,10 @@ gst_batch_all_sink_pads_non_flushing (GstBatch * batch, GstPad * pad)
   GList *list = NULL;
   gboolean flushing = FALSE;
 
-  GST_OBJECT_LOCK (batch);
+  GST_BATCH_LOCK (batch);
 
   // Check all whether other sink pads are in non flushing state.
-  for (list = GST_ELEMENT (batch)->sinkpads; list; list = list->next) {
+  for (list = batch->sinkpads; list != NULL; list = list->next) {
     // Skip current sink pad as it is already in flushing state.
     if (g_strcmp0 (GST_PAD_NAME (list->data), GST_PAD_NAME (pad)) == 0)
       continue;
@@ -160,7 +172,7 @@ gst_batch_all_sink_pads_non_flushing (GstBatch * batch, GstPad * pad)
     GST_OBJECT_UNLOCK (GST_PAD (list->data));
   }
 
-  GST_OBJECT_UNLOCK (batch);
+  GST_BATCH_UNLOCK (batch);
 
   return !flushing;
 }
@@ -171,10 +183,10 @@ gst_batch_all_sink_pads_eos (GstBatch * batch, GstPad * pad)
   GList *list = NULL;
   gboolean eos = TRUE;
 
-  GST_OBJECT_LOCK (batch);
+  GST_BATCH_LOCK (batch);
 
   // Check all whether other sink pads are in EOS state.
-  for (list = GST_ELEMENT (batch)->sinkpads; list; list = list->next) {
+  for (list = batch->sinkpads; list != NULL; list = list->next) {
     // Skip current sink pad as it is already in EOS state.
     if (g_strcmp0 (GST_PAD_NAME (list->data), GST_PAD_NAME (pad)) == 0)
       continue;
@@ -184,173 +196,81 @@ gst_batch_all_sink_pads_eos (GstBatch * batch, GstPad * pad)
     GST_OBJECT_UNLOCK (GST_PAD (list->data));
   }
 
-  GST_OBJECT_UNLOCK (batch);
+  GST_BATCH_UNLOCK (batch);
 
   return eos;
-}
-
-static gboolean
-gst_batch_sink_caps_negotiated (GstBatch * batch)
-{
-  GList *list = NULL;
-  gboolean negotiated = TRUE;
-
-  GST_OBJECT_LOCK (batch);
-
-  for (list = GST_ELEMENT (batch)->sinkpads; list; list = list->next)
-    negotiated &= gst_pad_has_current_caps (GST_PAD (list->data));
-
-  GST_OBJECT_UNLOCK (batch);
-
-  return negotiated;
 }
 
 static gboolean
 gst_batch_sink_buffers_available (GstBatch * batch)
 {
   GList *list = NULL;
-  gboolean available = TRUE;
+  gboolean available = TRUE, idle = TRUE;
 
   for (list = batch->sinkpads; list != NULL; list = g_list_next (list)) {
     GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (list->data);
 
-    GST_OBJECT_LOCK (sinkpad);
+    idle &= sinkpad->is_idle;
 
     // Pads which are in EOS or FLUSHING state are not included in the checks.
-    if (!GST_PAD_IS_EOS (list->data) && !GST_PAD_IS_FLUSHING (list->data))
-      available &= !gst_data_queue_is_empty (sinkpad->buffers);
+    if (sinkpad->is_idle)
+      continue;
 
-    GST_OBJECT_UNLOCK (sinkpad);
+    available &= !g_queue_is_empty (sinkpad->buffers);
   }
 
-  return available;
+  // If all pads are idle then ignore the cumulative buffers 'available' variable.
+  return !idle && available;
 }
 
 static gboolean
-gst_batch_update_src_caps (GstBatch * batch)
+gst_batch_update_src_caps (GstBatch * batch, GstCaps * caps)
 {
-  GstCaps *srccaps = NULL, *sinkcaps = NULL, *filter = NULL, *intersect = NULL;
   GstStructure *structure = NULL;
-  GList *list = NULL;
-  GValue framerate = G_VALUE_INIT;
-  guint idx = 0, length = 0;
+  const gchar *viewmode = NULL;
+  guint idx = 0, length = 0, n_views = 0;
   gboolean success = FALSE;
 
   // In case the RECONFIGURE flag was not set just return immediately.
   if (!gst_pad_check_reconfigure (batch->srcpad))
     return TRUE;
 
-  // Get the negotiated caps between the source pad and its peer.
-  srccaps = gst_pad_get_allowed_caps (batch->srcpad);
+  viewmode = gst_video_multiview_mode_to_caps_string (
+      GST_VIDEO_MULTIVIEW_MODE_SEPARATED);
 
-  srccaps = gst_caps_make_writable (srccaps);
-  length = gst_caps_get_size (srccaps);
+  GST_BATCH_LOCK (batch);
+  n_views = g_list_length (batch->sinkpads);
+  GST_BATCH_UNLOCK (batch);
 
-  // Extract and remove the framerate field for video caps.
-  for (idx = 0; idx < length; idx++) {
-    structure = gst_caps_get_structure (srccaps, idx);
-    gst_caps_extract_video_framerate (structure, &framerate);
-    gst_structure_remove_field (structure, "framerate");
-  }
-
-  GST_OBJECT_LOCK (batch);
-
-  // Iterate over all of the sink pads and verify their caps.
-  for (list = GST_ELEMENT (batch)->sinkpads; list; list = list->next) {
-    GstPad *pad = GST_PAD (list->data);
-
-    // Use currently set caps if they are set otherwise use template caps.
-    sinkcaps = gst_pad_has_current_caps (pad) ?
-        gst_pad_get_current_caps (pad) : gst_pad_get_pad_template_caps (pad);
-
-    GST_DEBUG_OBJECT (batch, "Sink caps %" GST_PTR_FORMAT, sinkcaps);
-
-    sinkcaps = gst_caps_make_writable (sinkcaps);
-    length = gst_caps_get_size (sinkcaps);
-
-    // Extract and remove the framerate field for video caps.
-    for (idx = 0; idx < length; idx++) {
-      structure = gst_caps_get_structure (sinkcaps, idx);
-      gst_caps_extract_video_framerate (structure, &framerate);
-      gst_structure_remove_field (structure, "framerate");
-    }
-
-    if (filter != NULL) {
-      // Intersect this sink pad caps with the previous sink pad caps.
-      intersect = gst_caps_intersect (sinkcaps, filter);
-
-      gst_caps_unref (filter);
-      filter = intersect;
-    } else {
-      // Use current sink pad caps as filter for next sink pad.
-      filter = gst_caps_ref (sinkcaps);
-    }
-
-    gst_caps_unref (sinkcaps);
-  }
-
-  GST_OBJECT_UNLOCK (batch);
-
-  GST_DEBUG_OBJECT (batch, "Update source caps based on caps %"
-      GST_PTR_FORMAT, filter);
-
-  intersect = gst_caps_intersect (srccaps, filter);
-  GST_DEBUG_OBJECT (batch, "Intersected caps %" GST_PTR_FORMAT, intersect);
-
-  gst_caps_unref (filter);
-  gst_caps_unref (srccaps);
-
-  srccaps = intersect;
-
-  if (srccaps == NULL || gst_caps_is_empty (srccaps)) {
-    GST_ELEMENT_ERROR (batch, CORE, NEGOTIATION, (NULL),
-        ("The sink and source caps do not intersect!"));
-    return FALSE;
-  }
-
-  length = gst_caps_get_size (srccaps);
+  length = gst_caps_get_size (caps);
 
   // Update the framerate field for video caps.
   for (idx = 0; idx < length; idx++) {
-    const gchar *viewmode = NULL;
-    gint n_views = 0;
-
-    structure = gst_caps_get_structure (srccaps, idx);
+    structure = gst_caps_get_structure (caps, idx);
 
     if (!gst_structure_has_name (structure, "video/x-raw"))
       continue;
 
-    viewmode = gst_video_multiview_mode_to_caps_string (
-        GST_VIDEO_MULTIVIEW_MODE_SEPARATED);
-    n_views = g_list_length (batch->sinkpads);
-
     // Set multiview mode separated which indicates the next plugin to read
     // the corresponding channel bit in the buffer universal offset field.
-    gst_structure_set (structure,
-        "multiview-mode", G_TYPE_STRING, viewmode,
+    gst_structure_set (structure, "multiview-mode", G_TYPE_STRING, viewmode,
         "views", G_TYPE_INT, n_views, NULL);
-
-    if (G_VALUE_TYPE (&framerate) == GST_TYPE_FRACTION)
-      gst_structure_set_value (structure, "framerate", &framerate);
   }
 
-  if (!gst_caps_is_fixed (srccaps))
-    srccaps = gst_caps_fixate (srccaps);
+  if (!gst_caps_is_fixed (caps))
+    caps = gst_caps_fixate (caps);
 
-  GST_DEBUG_OBJECT (batch, "Caps fixated to: %" GST_PTR_FORMAT, srccaps);
+  GST_DEBUG_OBJECT (batch, "Caps fixated to: %" GST_PTR_FORMAT, caps);
 
-  // Extract the frame duration from the caps.
-  if (G_VALUE_TYPE (&framerate) == GST_TYPE_FRACTION) {
-    GstBatchSrcPad *srcpad = GST_BATCH_SRC_PAD (batch->srcpad);
+  structure = gst_caps_get_structure (caps, 0);
 
-    if (G_VALUE_TYPE (&framerate) != GST_TYPE_FRACTION) {
-      structure = gst_caps_get_structure (srccaps, 0);
-      gst_caps_extract_video_framerate (structure, &framerate);
-    }
+  // Get the frame duration from the caps.
+  if (gst_structure_has_name (structure, "video/x-raw")) {
+    const GValue *value = gst_structure_get_value (structure, "framerate");
 
-    srcpad->duration = gst_util_uint64_scale_int (GST_SECOND,
-        gst_value_get_fraction_denominator (&framerate),
-        gst_value_get_fraction_numerator (&framerate));
+    batch->duration = gst_util_uint64_scale_int (GST_SECOND,
+        gst_value_get_fraction_denominator (value),
+        gst_value_get_fraction_numerator (value));
   } else {
     // TODO Add equivalent for Audio.
   }
@@ -368,9 +288,13 @@ gst_batch_update_src_caps (GstBatch * batch)
     GST_BATCH_SRC_PAD (batch->srcpad)->stmstart = TRUE;
   }
 
+  GST_BATCH_LOCK (batch);
+
   // Propagate fixates caps to the peer of the source pad.
-  success = gst_pad_set_caps (batch->srcpad, srccaps);
-  g_cond_broadcast (&(batch)->qwait);
+  success = gst_pad_set_caps (batch->srcpad, caps);
+  g_cond_broadcast (&batch->wakeup);
+
+  GST_BATCH_UNLOCK (batch);
 
   return success;
 }
@@ -379,8 +303,8 @@ static gboolean
 gst_batch_extract_sink_buffer (GstElement * element, GstPad * pad,
     gpointer userdata)
 {
+  GstBatch *batch = GST_BATCH (element);
   GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (pad);
-  GstDataQueueItem *item = NULL;
   GstBuffer *outbuffer = NULL, *inbuffer = NULL;
   GstVideoMeta *vmeta = NULL;
   GstVideoRegionOfInterestMeta *roimeta = NULL;
@@ -388,19 +312,16 @@ gst_batch_extract_sink_buffer (GstElement * element, GstPad * pad,
   guint num = 0, stream_id = 0;
 
   outbuffer = GST_BUFFER (userdata);
+  inbuffer = g_queue_peek_head (sinkpad->buffers);
 
-  if (gst_data_queue_is_empty (sinkpad->buffers) ||
-      !gst_data_queue_peek (sinkpad->buffers, &item))
+  // If NULL s returned then queue is empty, nothing further to do.
+  if (inbuffer == NULL)
     return TRUE;
-
-  // Take the buffer from the queue item and null the object pointer.
-  inbuffer = GST_BUFFER (item->object);
-  item->object = NULL;
 
   GST_TRACE_OBJECT (sinkpad, "Taking %" GST_PTR_FORMAT, inbuffer);
 
-  // Get the index of current sink pad.
-  stream_id = g_list_index (element->sinkpads, sinkpad);
+  // Get the index of current sink pad, which is going to be its stream ID.
+  stream_id = g_list_index (batch->sinkpads, sinkpad);
 
   // Create a structure that will contain information for decryption.
   structure = gst_structure_new (gst_mux_stream_name (stream_id),
@@ -416,10 +337,8 @@ gst_batch_extract_sink_buffer (GstElement * element, GstPad * pad,
 
   // GAP buffer, nothing further to do.
   if (gst_buffer_get_size (inbuffer) == 0 &&
-      GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP)) {
-    gst_buffer_unref (inbuffer);
+      GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP))
     return TRUE;
-  }
 
   // Append the memory block from input buffer into the new buffer.
   gst_buffer_append_memory (outbuffer, gst_buffer_get_memory (inbuffer, 0));
@@ -452,9 +371,6 @@ gst_batch_extract_sink_buffer (GstElement * element, GstPad * pad,
     roimeta = gst_buffer_get_video_region_of_interest_meta_id (inbuffer, ++num);
   }
 
-  // Reduce the reference count of the input buffer, it is no longer needed.
-  gst_buffer_unref (inbuffer);
-
   return TRUE;
 }
 
@@ -466,59 +382,17 @@ gst_batch_worker_task (gpointer userdata)
   GstBuffer *buffer = NULL;
   GstDataQueueItem *item = NULL;
   GList *list = NULL;
-  gint64 endtime = 0;
-
-  GST_BATCH_LOCK (batch);
-
-  // Initial block until all sink pads have negotiated their caps.
-  while (batch->active && !gst_batch_sink_caps_negotiated (batch))
-    g_cond_wait (&batch->wakeup, &(batch)->lock);
-
-  GST_BATCH_UNLOCK (batch);
-
-  if (!gst_batch_update_src_caps (batch)) {
-    GST_ELEMENT_ERROR (batch, CORE, NEGOTIATION, (NULL),
-        ("Output format not negotiated"));
-    return;
-  }
-
-  GST_BATCH_LOCK (batch);
-
-  // Wait until 1st buffers have arrived on all sink pads or signaled to stop.
-  while (batch->active && (GST_FORMAT_UNDEFINED == srcpad->segment.format) &&
-      !gst_batch_sink_buffers_available (batch))
-    g_cond_wait (&batch->wakeup, &(batch)->lock);
-
-  GST_BATCH_UNLOCK (batch);
-
-  GST_BATCH_SRC_LOCK (srcpad);
-
-  // Initialize and send the source segment for synchronization.
-  if (GST_FORMAT_UNDEFINED == srcpad->segment.format) {
-    GstEvent *event = NULL;
-
-    gst_segment_init (&(srcpad)->segment, GST_FORMAT_TIME);
-    event = gst_event_new_segment (&(srcpad)->segment);
-
-    gst_pad_push_event (GST_PAD (srcpad), event);
-  }
-
-  srcpad->basetime = (srcpad->basetime == (-1)) ?
-      g_get_monotonic_time () : srcpad->basetime;
-
-  endtime = srcpad->basetime;
-  endtime += gst_util_uint64_scale (srcpad->segment.position + srcpad->duration,
-      G_TIME_SPAN_SECOND, GST_SECOND);
-
-  GST_BATCH_SRC_UNLOCK (srcpad);
+  guint channels = 0;
 
   GST_BATCH_LOCK (batch);
 
   // Wait for data from all pads a maximum of average duration seconds.
   while (batch->active && !gst_batch_sink_buffers_available (batch)) {
-    if (!g_cond_wait_until (&batch->wakeup, &(batch)->lock, endtime)) {
-      GST_DEBUG_OBJECT (batch, "Clock to reached %" GST_TIME_FORMAT
-          ", not all pads have buffers!", GST_TIME_ARGS (endtime));
+    if (batch->endtime == (-1)) {
+      // End time not yet initialized, wait until first buffers are received.
+      g_cond_wait (&batch->wakeup, &batch->lock);
+    } else if (!g_cond_wait_until (&batch->wakeup, &batch->lock, batch->endtime)) {
+      GST_DEBUG_OBJECT (batch, "Clock timeout, not all pads have buffers!");
       break;
     }
   }
@@ -529,7 +403,12 @@ gst_batch_worker_task (gpointer userdata)
     return;
   }
 
-  GST_BATCH_UNLOCK (batch);
+  // Initialize the end time tracker when first buffers are received.
+  if (batch->endtime == (-1))
+    batch->endtime = g_get_monotonic_time () + (batch->duration / 1000);
+
+  // Add the output buffer duration to the end time for the next wait cycle.
+  batch->endtime += batch->duration / 1000;
 
   // Create a new buffer wrapper to hold a reference to input buffer.
   buffer = gst_buffer_new ();
@@ -539,10 +418,23 @@ gst_batch_worker_task (gpointer userdata)
   gst_element_foreach_sink_pad (GST_ELEMENT_CAST (batch),
       gst_batch_extract_sink_buffer, buffer);
 
+  GST_BATCH_UNLOCK (batch);
+
   GST_BATCH_SRC_LOCK (srcpad);
 
+  // Initialize and send the source segment for synchronization.
+  if (GST_FORMAT_UNDEFINED == srcpad->segment.format) {
+    GstEvent *event = NULL;
+
+    gst_segment_init (&(srcpad->segment), GST_FORMAT_TIME);
+    event = gst_event_new_segment (&(srcpad->segment));
+
+    GST_DEBUG_OBJECT (batch, "Sending new segment");
+    gst_pad_push_event (GST_PAD (srcpad), event);
+  }
+
   // Set buffer duration and timestamp.
-  GST_BUFFER_DURATION (buffer) = srcpad->duration;
+  GST_BUFFER_DURATION (buffer) = batch->duration;
   GST_BUFFER_TIMESTAMP (buffer) = srcpad->segment.position;
 
   // Adjust the segment position.
@@ -550,13 +442,10 @@ gst_batch_worker_task (gpointer userdata)
 
   GST_BATCH_SRC_UNLOCK (srcpad);
 
-  // In case there is no channel data loop back and wait again.
-  if (GST_BUFFER_OFFSET (buffer) == 0) {
-    gst_buffer_unref (buffer);
-    return;
-  }
+  // Save the set channel mask for later use.
+  channels = GST_BUFFER_OFFSET (buffer);
 
-  // If buffer is empty and channel mask is not null, mark this buffer as GAP.
+  // If buffer is empty, mark this buffer as GAP.
   if (gst_buffer_get_size (buffer) == 0)
     GST_BUFFER_FLAG_SET (buffer, GST_BUFFER_FLAG_GAP);
 
@@ -567,30 +456,30 @@ gst_batch_worker_task (gpointer userdata)
   item->visible = TRUE;
   item->destroy = gst_data_queue_free_item;
 
+  GST_TRACE_OBJECT (batch, "Submitting %" GST_PTR_FORMAT, buffer);
+
   // Push the buffer into the queue or free it on failure.
   if (!gst_data_queue_push (GST_BATCH_SRC_PAD (batch->srcpad)->buffers, item))
     item->destroy (item);
 
-  GST_OBJECT_LOCK (batch);
+  GST_BATCH_LOCK (batch);
 
-  // Buffer was sent to srcpad, remove and free the sinkpad item from the queue.
-  for (list = GST_ELEMENT (batch)->sinkpads; list; list = list->next) {
+  // Buffer was sent to srcpad, remove the sinkpad buffers from the queues.
+  for (list = batch->sinkpads; list != NULL; list = list->next) {
     GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (list->data);
+    guint stream_id = g_list_index (batch->sinkpads, sinkpad);
 
-    if (gst_data_queue_is_empty (sinkpad->buffers) ||
-        !gst_data_queue_peek (sinkpad->buffers, &item))
+    // Check if curent sink pad was used for the output buffer.
+    if (!(channels & (1 << stream_id)))
       continue;
 
-    if (item->object != NULL)
-      continue;
-
-    if (gst_data_queue_pop (sinkpad->buffers, &item))
-      item->destroy (item);
-
-    GST_BATCH_PAD_SIGNAL_IDLE (sinkpad, gst_data_queue_is_empty (sinkpad->buffers));
+    gst_buffer_unref (g_queue_pop_head (sinkpad->buffers));
   }
 
-  GST_OBJECT_UNLOCK (batch);
+  // Signal that buffers were removed from the sink pad queues.
+  g_cond_broadcast (&batch->wakeup);
+
+  GST_BATCH_UNLOCK (batch);
 
   return;
 }
@@ -598,6 +487,8 @@ gst_batch_worker_task (gpointer userdata)
 static gboolean
 gst_batch_start_worker_task (GstBatch * batch)
 {
+  GList *list = NULL;
+
   if (batch->worktask != NULL)
     return TRUE;
 
@@ -607,6 +498,10 @@ gst_batch_start_worker_task (GstBatch * batch)
   GST_INFO_OBJECT (batch, "Created task %p", batch->worktask);
 
   GST_BATCH_LOCK (batch);
+
+  for (list = batch->sinkpads; list != NULL; list = list->next)
+    GST_BATCH_SINK_PAD (list->data)->is_idle = FALSE;
+
   batch->active = TRUE;
   GST_BATCH_UNLOCK (batch);
 
@@ -622,6 +517,8 @@ gst_batch_start_worker_task (GstBatch * batch)
 static gboolean
 gst_batch_stop_worker_task (GstBatch * batch)
 {
+  GList *list = NULL;
+
   if (NULL == batch->worktask)
     return TRUE;
 
@@ -632,9 +529,13 @@ gst_batch_stop_worker_task (GstBatch * batch)
 
   GST_BATCH_LOCK (batch);
 
-  batch->active = FALSE;
-  g_cond_signal (&(batch)->wakeup);
+  for (list = batch->sinkpads; list != NULL; list = list->next)
+    GST_BATCH_SINK_PAD (list->data)->is_idle = TRUE;
 
+  batch->endtime = -1;
+  batch->active = FALSE;
+
+  g_cond_broadcast (&batch->wakeup);
   GST_BATCH_UNLOCK (batch);
 
   // Make sure task is not running.
@@ -650,6 +551,15 @@ gst_batch_stop_worker_task (GstBatch * batch)
 
   gst_object_unref (batch->worktask);
   batch->worktask = NULL;
+
+  GST_BATCH_LOCK (batch);
+
+  for (list = batch->sinkpads; list != NULL; list = list->next) {
+    GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (list->data);
+    g_queue_clear_full (sinkpad->buffers, (GDestroyNotify) gst_buffer_unref);
+  }
+
+  GST_BATCH_UNLOCK (batch);
 
   return TRUE;
 }
@@ -751,9 +661,12 @@ gst_batch_sink_acceptcaps (GstBatch * batch, GstPad * pad, GstCaps * caps)
 static gboolean
 gst_batch_sink_setcaps (GstBatch * batch, GstPad * pad, GstCaps * caps)
 {
-  GstCaps *srccaps = NULL, *intersect = NULL;
+  GstCaps *srccaps = NULL, *intersect = NULL, *othercaps = NULL;
   GstStructure *structure = NULL;
-  guint idx = 0, length = 0;
+  GList *list = NULL;
+  GValue framerate = G_VALUE_INIT;
+  guint idx = 0;
+  gboolean negotiated = TRUE, success = TRUE;
 
   GST_DEBUG_OBJECT (pad, "Setting caps %" GST_PTR_FORMAT, caps);
 
@@ -761,14 +674,11 @@ gst_batch_sink_setcaps (GstBatch * batch, GstPad * pad, GstCaps * caps)
   srccaps = gst_pad_get_allowed_caps (batch->srcpad);
   GST_DEBUG_OBJECT (pad, "Source caps %" GST_PTR_FORMAT, srccaps);
 
-  srccaps = gst_caps_make_writable (srccaps);
-  length = gst_caps_get_size (srccaps);
+  g_value_init (&framerate, GST_TYPE_FRACTION);
+  gst_value_set_fraction (&framerate, 0, 1);
 
-  // Extract and remove the framerate field for video caps.
-  for (idx = 0; idx < length; idx++) {
-    structure = gst_caps_get_structure (srccaps, idx);
-    gst_structure_remove_field (structure, "framerate");
-  }
+  srccaps = gst_caps_make_writable (srccaps);
+  gst_caps_extract_video_framerate (srccaps, &framerate);
 
   intersect = gst_caps_intersect (srccaps, caps);
   GST_DEBUG_OBJECT (pad, "Intersected caps %" GST_PTR_FORMAT, intersect);
@@ -777,14 +687,78 @@ gst_batch_sink_setcaps (GstBatch * batch, GstPad * pad, GstCaps * caps)
 
   if ((intersect == NULL) || gst_caps_is_empty (intersect)) {
     GST_ERROR_OBJECT (pad, "Source and sink caps do not intersect!");
-
-    if (intersect != NULL)
-      gst_caps_unref (intersect);
-
+    gst_caps_unref (intersect);
     return FALSE;
   }
 
-  return TRUE;
+  // Take the intersected caps as base src caps for further manipulations.
+  srccaps = g_steal_pointer (&intersect);
+
+  GST_BATCH_LOCK (batch);
+
+  // Iterate over all sink pads, check if negotiated and verify their caps.
+  for (list = batch->sinkpads; list != NULL; list = list->next) {
+    GstPad *sinkpad = GST_PAD (list->data);
+
+    // Skip current sink pad as it is already in negotiated.
+    if (sinkpad == pad)
+      continue;
+
+    // No need to continue any further if not all sink pads have been negotiated.
+    if (!(negotiated &= gst_pad_has_current_caps (sinkpad)))
+      break;
+
+    othercaps = gst_pad_get_current_caps (sinkpad);
+    GST_DEBUG_OBJECT (sinkpad, "Intersecting caps %" GST_PTR_FORMAT, othercaps);
+
+    othercaps = gst_caps_make_writable (othercaps);
+    gst_caps_extract_video_framerate (othercaps, &framerate);
+
+    // Intersect this sink pad caps with the sink caps base.
+    intersect = gst_caps_intersect (othercaps, srccaps);
+    GST_DEBUG_OBJECT (sinkpad, "Updated source caps %" GST_PTR_FORMAT, intersect);
+
+    g_clear_pointer (&othercaps, gst_caps_unref);
+    g_clear_pointer (&srccaps, gst_caps_unref);
+
+    if ((intersect == NULL) || gst_caps_is_empty (intersect)) {
+      GST_ERROR_OBJECT (sinkpad, "Caps between sink pads do not intersect!");
+      gst_caps_unref (intersect);
+      break;
+    }
+
+    // Take the intersected caps as base src caps for further manipulations.
+    srccaps = g_steal_pointer (&intersect);
+  }
+
+  GST_BATCH_UNLOCK (batch);
+
+  // Check if something in the caps verification went wrong.
+  if (srccaps == NULL)
+    return FALSE;
+
+  // Not all sink pads have negotiated their caps, nothing further to do.
+  if (!negotiated) {
+    gst_caps_unref (srccaps);
+    return TRUE;
+  }
+
+  // Update the framerate field for video caps.
+  for (idx = 0; idx < gst_caps_get_size (srccaps); idx++) {
+    structure = gst_caps_get_structure (srccaps, idx);
+
+    if (gst_structure_has_name (structure, "video/x-raw") &&
+        (gst_value_get_fraction_numerator (&framerate) > 0))
+      gst_structure_set_value (structure, "framerate", &framerate);
+  }
+
+  // All sink pads have negotiated thier caps with upstream, update src pad caps.
+  if (!(success = gst_batch_update_src_caps (batch, srccaps))) {
+    GST_ERROR_OBJECT (batch, "Failed to update source caps!");
+    gst_caps_unref (srccaps);
+  }
+
+  return success;
 }
 
 static gboolean
@@ -821,22 +795,24 @@ gst_batch_sink_query (GstPad * pad, GstObject * parent, GstQuery * query)
       return TRUE;
     }
     case GST_QUERY_DRAIN:
-      // When upstream elements query for drain state
-      // let sinkpad flush the buffers in internal queue
-      gst_data_queue_set_flushing (sinkpad->buffers, TRUE);
-      gst_data_queue_flush (sinkpad->buffers);
+      GST_BATCH_LOCK (batch);
 
-      gst_data_queue_set_flushing (sinkpad->buffers, FALSE);
+      // When upstream elements query for drain, flush buffers in the queue.
+      g_queue_clear_full (sinkpad->buffers, (GDestroyNotify) gst_buffer_unref);
+      g_cond_broadcast (&batch->wakeup);
+
+      GST_BATCH_UNLOCK (batch);
       return TRUE;
     case GST_QUERY_ALLOCATION:
       GST_BATCH_LOCK (batch);
 
-      // Hold the allocation query until srcpad caps are negotiated
+      // Hold the allocation query until srcpad caps are negotiated.
       while (batch->active && !gst_pad_has_current_caps (batch->srcpad))
-        g_cond_wait (&batch->qwait, &(batch)->lock);
+        g_cond_wait (&batch->wakeup, &batch->lock);
 
       GST_BATCH_UNLOCK (batch);
 
+      GST_DEBUG_OBJECT (pad, "Forwarding allocation query downstream");
       return gst_pad_peer_query (batch->srcpad, query);
     default:
       break;
@@ -864,7 +840,6 @@ gst_batch_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
       success = gst_batch_sink_setcaps (batch, pad, caps);
       gst_event_unref (event);
 
-      g_cond_signal (&(batch)->wakeup);
       return success;
     }
     case GST_EVENT_SEGMENT:
@@ -892,9 +867,13 @@ gst_batch_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
       return TRUE;
     }
     case GST_EVENT_FLUSH_START:
-      // Flush the sink pad buffer queue.
-      gst_data_queue_set_flushing (sinkpad->buffers, TRUE);
-      gst_data_queue_flush (sinkpad->buffers);
+      GST_BATCH_LOCK (batch);
+
+      g_queue_clear_full (sinkpad->buffers, (GDestroyNotify) gst_buffer_unref);
+      sinkpad->is_idle = TRUE;
+
+      g_cond_broadcast (&batch->wakeup);
+      GST_BATCH_UNLOCK (batch);
 
       // When all other sink pads are in flushing state push event to source.
       if (gst_batch_all_sink_pads_flushing (batch, pad))
@@ -904,9 +883,14 @@ gst_batch_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
       gst_event_unref (event);
       return TRUE;
     case GST_EVENT_FLUSH_STOP:
-      // Enable data queue and reset the sink pad segment element.
       gst_segment_init (&sinkpad->segment, GST_FORMAT_UNDEFINED);
-      gst_data_queue_set_flushing (sinkpad->buffers, FALSE);
+
+      GST_BATCH_LOCK (batch);
+
+      sinkpad->is_idle = FALSE;
+      g_cond_broadcast (&batch->wakeup);
+
+      GST_BATCH_UNLOCK (batch);
 
       // When all other sink pads are in non flushing state push event to source.
       if (gst_batch_all_sink_pads_non_flushing (batch, pad))
@@ -916,8 +900,23 @@ gst_batch_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
       gst_event_unref (event);
       return TRUE;
     case GST_EVENT_EOS:
+      GST_BATCH_LOCK (batch);
+      GST_TRACE_OBJECT (sinkpad, "Waiting until idle");
+
       // Wait until all queued input buffers have been processed.
-      GST_BATCH_PAD_WAIT_IDLE (GST_BATCH_SINK_PAD_CAST (pad));
+      while (batch->active && !g_queue_is_empty (sinkpad->buffers)) {
+        gint64 endtime = g_get_monotonic_time () + 1 * G_TIME_SPAN_SECOND;
+
+        if (!g_cond_wait_until (&batch->wakeup, &batch->lock, endtime))
+          GST_WARNING_OBJECT (sinkpad, "Timeout while waiting for idle!");
+      }
+
+      GST_TRACE_OBJECT (sinkpad, "Received idle");
+      sinkpad->is_idle = TRUE;
+
+      // Signal the worker task to not expect buffers from this pad.
+      g_cond_broadcast (&batch->wakeup);
+      GST_BATCH_UNLOCK (batch);
 
       // When all other sink pads are in EOS state push event to the source.
       if (gst_batch_all_sink_pads_eos (batch, pad)) {
@@ -949,22 +948,16 @@ gst_batch_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * buffer)
 {
   GstBatch *batch = GST_BATCH (parent);
   GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (pad);
-  GstDataQueueItem *item = NULL;
 
   GST_TRACE_OBJECT (pad, "Received %" GST_PTR_FORMAT, buffer);
 
-  item = g_slice_new0 (GstDataQueueItem);
-  item->object = GST_MINI_OBJECT (buffer);
-  item->size = gst_buffer_get_size (buffer);
-  item->duration = GST_BUFFER_DURATION (buffer);
-  item->visible = TRUE;
-  item->destroy = gst_data_queue_free_item;
+  GST_BATCH_LOCK (batch);
 
-  // Push the buffer into the queue or free it on failure.
-  if (!gst_data_queue_push (sinkpad->buffers, item))
-    item->destroy (item);
+  g_queue_push_tail (sinkpad->buffers, buffer);
+  g_cond_broadcast (&batch->wakeup);
 
-  g_cond_signal (&(batch)->wakeup);
+  GST_BATCH_UNLOCK (batch);
+
   return GST_FLOW_OK;
 }
 
@@ -1044,20 +1037,12 @@ gst_batch_change_state (GstElement * element, GstStateChange transition)
 {
   GstBatch *batch = GST_BATCH (element);
   GstStateChangeReturn ret = GST_STATE_CHANGE_SUCCESS;
-  GList *list = NULL;
 
   switch (transition) {
     case GST_STATE_CHANGE_READY_TO_PAUSED:
-      GST_OBJECT_LOCK (batch);
+      if (!gst_batch_start_worker_task (batch))
+        return GST_STATE_CHANGE_FAILURE;
 
-      for (list = GST_ELEMENT (batch)->sinkpads; list; list = list->next) {
-        GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (list->data);
-        gst_data_queue_set_flushing (sinkpad->buffers, FALSE);
-      }
-
-      GST_OBJECT_UNLOCK (batch);
-
-      gst_batch_start_worker_task (batch);
       break;
     default:
       break;
@@ -1067,23 +1052,16 @@ gst_batch_change_state (GstElement * element, GstStateChange transition)
 
   switch (transition) {
     case GST_STATE_CHANGE_PAUSED_TO_READY:
-      GST_OBJECT_LOCK (batch);
+    {
+      GstBatchSrcPad *srcpad = GST_BATCH_SRC_PAD (batch->srcpad);
 
-      for (list = GST_ELEMENT (batch)->sinkpads; list; list = list->next) {
-        GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (list->data);
+      if (!gst_batch_stop_worker_task (batch))
+        ret = GST_STATE_CHANGE_FAILURE;
 
-        gst_data_queue_set_flushing (sinkpad->buffers, TRUE);
-        gst_data_queue_flush (sinkpad->buffers);
-      }
-
-      GST_OBJECT_UNLOCK (batch);
-
-      gst_batch_stop_worker_task (batch);
-
-      gst_segment_init (&GST_BATCH_SRC_PAD (batch->srcpad)->segment,
-          GST_FORMAT_UNDEFINED);
-      GST_BATCH_SRC_PAD (batch->srcpad)->stmstart = FALSE;
+      gst_segment_init (&(srcpad->segment), GST_FORMAT_UNDEFINED);
+      srcpad->stmstart = FALSE;
       break;
+    }
     default:
       break;
   }
@@ -1120,7 +1098,6 @@ gst_batch_finalize (GObject * object)
 
   g_rec_mutex_clear (&batch->worklock);
   g_cond_clear (&batch->wakeup);
-  g_cond_clear (&batch->qwait);
 
   g_mutex_clear (&batch->lock);
 
@@ -1165,12 +1142,14 @@ gst_batch_init (GstBatch * batch)
   batch->nextidx = 0;
   batch->sinkpads = NULL;
 
+  batch->duration = GST_CLOCK_TIME_NONE;
+  batch->endtime = -1;
+
   batch->active = FALSE;
   batch->worktask = NULL;
 
   g_rec_mutex_init (&batch->worklock);
   g_cond_init (&batch->wakeup);
-  g_cond_init (&batch->qwait);
 
   template = gst_static_pad_template_get (&gst_batch_src_template);
   batch->srcpad = g_object_new (GST_TYPE_BATCH_SRC_PAD, "name", "src",
