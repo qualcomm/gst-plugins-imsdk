@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8.2)
-project(GST_PLUGINS_QTI_OSS_BASE LANGUAGES C CXX)
+project(gstreamer-qcom-oss-base-1.0 LANGUAGES C CXX)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
