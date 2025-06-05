@@ -128,14 +128,9 @@ void PrintTensorDetails (const TfLiteTensor* tensor, int index, const char* pref
   }
 }
 
-int main (int argc, char* argv[]) {
-  if (argc != 2) {
-    std::cerr << "Usage: " << argv[0] << " <model.tflite>" << std::endl;
-    return EXIT_FAILURE;
-  }
-
-  std::shared_ptr<void> handle (
-      dlopen ("libtensorflowlite_c.so", RTLD_NOW | RTLD_LOCAL),
+int InitializeHandle (std::shared_ptr<void>& handle, const std::string& lib_name) {
+  handle = std::shared_ptr<void> (
+      dlopen (lib_name.c_str (), RTLD_NOW | RTLD_LOCAL),
       [&](void* ptr) {
         if (ptr)
           dlclose (ptr);
@@ -143,6 +138,30 @@ int main (int argc, char* argv[]) {
 
   if (nullptr == handle) {
     std::cerr << "Failed to load " << dlerror () << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  return EXIT_SUCCESS;
+}
+
+int main (int argc, char* argv[]) {
+  if (argc != 2) {
+    std::cerr << "Usage: " << argv[0] << " <model.tflite>" << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  std::shared_ptr<void> handle = nullptr;
+  std::string lib_name = "libtensorflowlite_c.so";
+
+  bool success = (InitializeHandle (handle, lib_name) == EXIT_SUCCESS);
+
+  if (!success) {
+    lib_name = "libtensorflowlite_c.so." + std::string (TFLITE_VERSION);
+    success = (InitializeHandle (handle, lib_name) == EXIT_SUCCESS);
+  }
+
+  if (!success) {
+    std::cerr << "Failed to initialize handle" << std::endl;
     return EXIT_FAILURE;
   }
 
