@@ -7,6 +7,10 @@ check_include_file("DlContainer/DlContainer.h" HAVE_DL_CONTAINER_H)
 if(HAVE_DL_CONTAINER_H)
   add_executable(test-dl-snpe test-dl-snpe.cc)
 
+  target_include_directories(test-dl-snpe PUBLIC
+    ${GST_INCLUDE_DIRS}
+  )
+
   target_link_libraries(test-dl-snpe PRIVATE
     ${CMAKE_DL_LIBS}
   )
