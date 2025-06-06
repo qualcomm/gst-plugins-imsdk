@@ -50,7 +50,6 @@ target_link_libraries(${GST_SMART_RTSP_BIN} PRIVATE
   ${GST_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
   ${GST_RTSP_LIBRARIES}
-  gstapp-1.0
 )
 
 install(
