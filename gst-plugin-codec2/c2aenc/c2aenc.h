@@ -41,6 +41,8 @@ struct _GstC2AEncoder {
   GList           *headers;
   /// Contains audio info data as bitrate and channels number
   GstAudioInfo    ainfo;
+  /// Mutex for hash table.
+  GMutex          framesmutex;
   /// Map contains input samles count for the specific queued index
   GHashTable      *framesmap;
   /// Frame number counter
