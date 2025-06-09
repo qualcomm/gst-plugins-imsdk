@@ -293,19 +293,19 @@ gst_caps_get_num_subframes (const GstCaps * caps)
 
   multiview_mode = gst_structure_get_string (structure, "multiview-mode");
   if (multiview_mode == NULL)
-    return 0;
+    goto exit;
 
   switch (gst_video_multiview_mode_from_caps_string (multiview_mode)) {
     case GST_VIDEO_MULTIVIEW_MODE_MONO:
       if (!gst_structure_get_int (structure, "views", &n_subframes))
-        return 0;
-
-      GST_DEBUG ("Number of subframes: %d.", n_subframes);
+        goto exit;
       break;
     default:
       break;
   }
 
+exit:
+  GST_DEBUG ("Number of subframes: %d.", n_subframes);
   return (guint)n_subframes;
 }
 
@@ -1386,20 +1386,21 @@ gst_c2_venc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
 
   GST_DEBUG_OBJECT (c2venc, "Output state caps: %" GST_PTR_FORMAT, outstate->caps);
 
+  c2venc->n_subframes = gst_caps_get_num_subframes (state->caps);
+
   // Variable input fps and fixed output fps, get the duration for timestamp adjustment.
   if (((state->info.flags & GST_VIDEO_FLAG_VARIABLE_FPS) &&
       !(outstate->info.flags & GST_VIDEO_FLAG_VARIABLE_FPS)) ||
       ((outstate->info.fps_n != state->info.fps_n) ||
       (outstate->info.fps_d != state->info.fps_d))) {
-    c2venc->duration = gst_util_uint64_scale_int (GST_SECOND,
+    c2venc->duration = (c2venc->n_subframes ? c2venc->n_subframes : 1) *
+        gst_util_uint64_scale_int (GST_SECOND,
         GST_VIDEO_INFO_FPS_D (&outstate->info),
         GST_VIDEO_INFO_FPS_N (&outstate->info));
 
     GST_DEBUG_OBJECT (c2venc, "Different framerate. Set duration to %"
         GST_TIME_FORMAT, GST_TIME_ARGS (c2venc->duration));
   }
-
-  c2venc->n_subframes = gst_caps_get_num_subframes (state->caps);
 
   if (!gst_c2_venc_setup_parameters (c2venc, state, outstate)) {
     GST_ERROR_OBJECT (c2venc, "Failed to setup parameters!");
