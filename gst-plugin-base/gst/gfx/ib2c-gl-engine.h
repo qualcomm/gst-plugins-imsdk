@@ -50,6 +50,9 @@ class Engine : public IEngine {
   void Finish(std::uintptr_t fence) override;
 
  private:
+  std::string BindContext(EGLSurface draw, EGLSurface read, EGLContext context);
+  std::string UnbindContext(EGLContext context);
+
   std::string RenderYuvTexture(std::vector<GraphicTuple>& graphics, bool clean,
                                uint32_t color, uint32_t colorspace,
                                Objects& objects);
@@ -68,7 +71,6 @@ class Engine : public IEngine {
   std::string ColorTransmute(GLuint stgtex, Surface& surface,
                              std::vector<GraphicTuple>& graphics);
 
-  bool IsExtensionSupported(const std::string extname);
   bool IsSurfaceRenderable(const Surface& surface);
 
   GLuint GetStageTexture(const Surface& surface, const Objects& objects);
@@ -83,20 +85,11 @@ class Engine : public IEngine {
   std::vector<Surface> GetImageSurfaces(const Surface& surface, uint32_t flags);
 #endif // defined(ANDROID)
 
-  /// EGL function pointers for create/destroy image.
-  PFNEGLCREATEIMAGEKHRPROC            CreateImageKHR;
-  PFNEGLDESTROYIMAGEKHRPROC           DestroyImageKHR;
-
-  /// GL function pointer for associating image with external texture.
-  PFNGLEGLIMAGETARGETTEXTURE2DOESPROC ImageTargetTexture2DOES;
-
   /// Global mutex protecting EGL context switching and internal variables.
   std::mutex                       mutex_;
 
-  /// Main EGL environment.
-  std::unique_ptr<Environment>     m_egl_env_;
-  /// Secondary/Auxiliary EGL environment, used for waiting GLsync objects.
-  std::unique_ptr<Environment>     s_egl_env_;
+  /// EGL and GLES environment.
+  std::shared_ptr<Environment>     env_;
 
   /// GL frame buffer for rendering.
   GLuint                           fbo_;

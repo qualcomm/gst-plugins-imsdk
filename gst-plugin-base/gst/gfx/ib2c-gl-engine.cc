@@ -4,7 +4,6 @@
  */
 
 #include <cmath>
-#include <cstring>
 #include <algorithm>
 #include <array>
 
@@ -95,101 +94,79 @@ static const std::array<float, 16> kMatrix = {
 Engine::Engine() {
 
   // Initialize main instance of the EGL environment.
-  std::string error = Environment::NewEnvironment(m_egl_env_);
+  std::string error = Environment::NewEnvironment(env_);
   if (!error.empty()) throw std::runtime_error(error);
 
-  // Initialize secondary/auxiliary instance of the EGL environment.
-  error = Environment::NewEnvironment(s_egl_env_, m_egl_env_->Context());
+  error = env_->BindContext(ContextType::kPrimary, EGL_NO_SURFACE,
+                            EGL_NO_SURFACE);
   if (!error.empty()) throw std::runtime_error(error);
-
-  error = m_egl_env_->BindContext(EGL_NO_SURFACE, EGL_NO_SURFACE);
-  if (!error.empty()) throw std::runtime_error(error);
-
-  bool supported = IsExtensionSupported("EGL_EXT_image_dma_buf_import");
-  if (!supported) throw Exception("EGL_EXT_image_dma_buf_import not supported !");
-
-  supported = IsExtensionSupported("EGL_KHR_image_base");
-  if (!supported) throw Exception("EGL_KHR_image_base not supported !");
-
-  supported = IsExtensionSupported("GL_OES_EGL_image_external");
-  if (!supported) throw Exception("GL_OES_EGL_image_external not supported !");
-
-  CreateImageKHR = reinterpret_cast<PFNEGLCREATEIMAGEKHRPROC>(
-      eglGetProcAddress("eglCreateImageKHR"));
-  DestroyImageKHR = reinterpret_cast<PFNEGLDESTROYIMAGEKHRPROC>(
-      eglGetProcAddress("eglDestroyImageKHR"));
-
-  ImageTargetTexture2DOES =
-      reinterpret_cast<PFNGLEGLIMAGETARGETTEXTURE2DOESPROC>(
-          eglGetProcAddress("glEGLImageTargetTexture2DOES"));
-
-  if (CreateImageKHR == nullptr || DestroyImageKHR == nullptr ||
-      ImageTargetTexture2DOES == nullptr) {
-    throw Exception("Failed to load extention function pointers !");
-  }
 
   // Generate frame buffer.
-  glGenFramebuffers(1, &fbo_);
-  EXCEPTION_IF_GL_ERROR("Failed to generate stage frame buffer");
+  env_->Gles()->GenFramebuffers(1, &fbo_);
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to generate stage frame buffer");
 
-  auto shader = std::make_shared<ShaderProgram>(kVertexShader, kRgbFragmentShader);
+  auto shader = std::make_shared<ShaderProgram>(env_, kVertexShader,
+                                                kRgbFragmentShader);
   shaders_.emplace(ShaderType::kRGB, shader);
 
-  glEnableVertexAttribArray(shader->GetAttribLocation("vPosition"));
-  EXCEPTION_IF_GL_ERROR("Failed to enable position attribute array");
+  env_->Gles()->EnableVertexAttribArray(shader->GetAttribLocation("vPosition"));
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to enable position attribute array");
 
-  glEnableVertexAttribArray(shader->GetAttribLocation("inTexCoord"));
-  EXCEPTION_IF_GL_ERROR("Failed to enable texture coords attribute array");
+  env_->Gles()->EnableVertexAttribArray(shader->GetAttribLocation("inTexCoord"));
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to enable texture coords attribute array");
 
-  if (IsExtensionSupported("GL_EXT_YUV_target")) {
+  if (env_->QueryExtension("GL_EXT_YUV_target")) {
     // Create shader for direct rendering to YUV only if it is supported.
-    shader = std::make_shared<ShaderProgram>(kVertexShader, kYuvFragmentShader);
+    shader = std::make_shared<ShaderProgram>(env_, kVertexShader,
+                                             kYuvFragmentShader);
     shaders_.emplace(ShaderType::kYUV, shader);
 
-    glEnableVertexAttribArray(shader->GetAttribLocation("vPosition"));
-    EXCEPTION_IF_GL_ERROR("Failed to enable possition attribute array");
+    env_->Gles()->EnableVertexAttribArray(shader->GetAttribLocation("vPosition"));
+    EXCEPTION_IF_GL_ERROR(env_, "Failed to enable possition attribute array");
 
-    glEnableVertexAttribArray(shader->GetAttribLocation("inTexCoord"));
-    EXCEPTION_IF_GL_ERROR("Failed to enable texture coords attribute array");
+    env_->Gles()->EnableVertexAttribArray(shader->GetAttribLocation("inTexCoord"));
+    EXCEPTION_IF_GL_ERROR(env_, "Failed to enable texture coords attribute array");
   }
 
-  shader = std::make_shared<ShaderProgram>(kVertexShader, kLumaFragmentShader);
+  shader = std::make_shared<ShaderProgram>(env_, kVertexShader,
+                                           kLumaFragmentShader);
   shaders_.emplace(ShaderType::kLuma, shader);
 
-  glEnableVertexAttribArray(shader->GetAttribLocation("vPosition"));
-  EXCEPTION_IF_GL_ERROR("Failed to enable position attribute array");
+  env_->Gles()->EnableVertexAttribArray(shader->GetAttribLocation("vPosition"));
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to enable position attribute array");
 
-  glEnableVertexAttribArray(shader->GetAttribLocation("inTexCoord"));
-  EXCEPTION_IF_GL_ERROR("Failed to enable texture coords attribute array");
+  env_->Gles()->EnableVertexAttribArray(shader->GetAttribLocation("inTexCoord"));
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to enable texture coords attribute array");
 
-  shader = std::make_shared<ShaderProgram>(kVertexShader, kChromaFragmentShader);
+  shader = std::make_shared<ShaderProgram>(env_, kVertexShader,
+                                           kChromaFragmentShader);
   shaders_.emplace(ShaderType::kChroma, shader);
 
-  glEnableVertexAttribArray(shader->GetAttribLocation("vPosition"));
-  EXCEPTION_IF_GL_ERROR("Failed to enable position attribute array");
+  env_->Gles()->EnableVertexAttribArray(shader->GetAttribLocation("vPosition"));
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to enable position attribute array");
 
-  glEnableVertexAttribArray(shader->GetAttribLocation("inTexCoord"));
-  EXCEPTION_IF_GL_ERROR("Failed to enable texture coords attribute array");
+  env_->Gles()->EnableVertexAttribArray(shader->GetAttribLocation("inTexCoord"));
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to enable texture coords attribute array");
 
   // Construct shader code for 8-bit unaligned RGB(A) output textures.
   std::string code = kComputeHeader + kComputeOutputRgba8 + kComputeMainUnaligned;
 
-  shader = std::make_shared<ShaderProgram>(code);
+  shader = std::make_shared<ShaderProgram>(env_, code);
   shaders_.emplace(ShaderType::kUnaligned8, shader);
 
   // Construct shader code for 16-bit float unaligned RGB(A) output textures.
   code = kComputeHeader + kComputeOutputRgba16F + kComputeMainUnaligned;
 
-  shader = std::make_shared<ShaderProgram>(code);
+  shader = std::make_shared<ShaderProgram>(env_, code);
   shaders_.emplace(ShaderType::kUnaligned16F, shader);
 
   // Construct shader code for 32-bit float unaligned RGB(A) output textures.
   code = kComputeHeader + kComputeOutputRgba32F + kComputeMainUnaligned;
 
-  shader = std::make_shared<ShaderProgram>(code);
+  shader = std::make_shared<ShaderProgram>(env_, code);
   shaders_.emplace(ShaderType::kUnaligned32F, shader);
 
-  error = m_egl_env_->UnbindContext();
+  error = env_->UnbindContext(ContextType::kPrimary) ;
   if (!error.empty()) throw std::runtime_error(error);
 }
 
@@ -197,11 +174,11 @@ Engine::~Engine() {
 
   std::lock_guard<std::mutex> lk(mutex_);
 
-  m_egl_env_->BindContext(EGL_NO_SURFACE, EGL_NO_SURFACE);
+  env_->BindContext(ContextType::kPrimary, EGL_NO_SURFACE, EGL_NO_SURFACE);
 
   for (auto& pair : stage_textures_) {
     GLuint texture = pair.first;
-    glDeleteTextures(1, &texture);
+    env_->Gles()->DeleteTextures(1, &texture);
   }
 
   for (auto& pair : surfaces_) {
@@ -211,14 +188,14 @@ Engine::~Engine() {
       auto image = std::get<EGLImageKHR>(gltuple);
       auto texture = std::get<GLuint>(gltuple);
 
-      DestroyImageKHR(m_egl_env_->Display(), image);
-      glDeleteTextures(1, &texture);
+      env_->Egl()->DestroyImageKHR(env_->Display(), image);
+      env_->Gles()->DeleteTextures(1, &texture);
     }
   }
 
-  glDeleteFramebuffers(1, &fbo_);
+  env_->Gles()->DeleteFramebuffers(1, &fbo_);
 
-  m_egl_env_->UnbindContext();
+  env_->UnbindContext(ContextType::kPrimary) ;
 }
 
 uint64_t Engine::CreateSurface(const Surface& surface, uint32_t flags) {
@@ -236,11 +213,12 @@ uint64_t Engine::CreateSurface(const Surface& surface, uint32_t flags) {
   if (surfaces_.count(surface_id) != 0)
     return surface_id;
 
-  std::string error = m_egl_env_->BindContext(EGL_NO_SURFACE, EGL_NO_SURFACE);
+  std::string error = env_->BindContext(ContextType::kPrimary, EGL_NO_SURFACE,
+                                        EGL_NO_SURFACE);
   if (!error.empty()) throw std::runtime_error(error);
 
-  glActiveTexture(GL_TEXTURE0);
-  EXCEPTION_IF_GL_ERROR("Failed to set active texture unit 0");
+  env_->Gles()->ActiveTexture(GL_TEXTURE0);
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to set active texture unit 0");
 
 #if defined(ANDROID)
   std::vector<GraphicTuple> graphics = ImportAndroidSurface(surface, flags);
@@ -251,7 +229,7 @@ uint64_t Engine::CreateSurface(const Surface& surface, uint32_t flags) {
   SurfaceTuple stuple = std::make_tuple(std::move(graphics), surface, flags);
   surfaces_.emplace(surface_id, std::move(stuple));
 
-  error = m_egl_env_->UnbindContext();
+  error = env_->UnbindContext(ContextType::kPrimary) ;
   if (!error.empty()) throw std::runtime_error(error);
 
   return surface_id;
@@ -261,7 +239,8 @@ void Engine::DestroySurface(uint64_t id) {
 
   std::lock_guard<std::mutex> lk(mutex_);
 
-  std::string error = m_egl_env_->BindContext(EGL_NO_SURFACE, EGL_NO_SURFACE);
+  std::string error = env_->BindContext(ContextType::kPrimary, EGL_NO_SURFACE,
+                                        EGL_NO_SURFACE);
   if (!error.empty()) throw std::runtime_error(error);
 
   auto stuple = std::move(surfaces_.at(id));
@@ -273,16 +252,16 @@ void Engine::DestroySurface(uint64_t id) {
     auto image = std::get<EGLImageKHR>(gltuple);
     auto texture = std::get<GLuint>(gltuple);
 
-    if (!DestroyImageKHR(m_egl_env_->Display(), image)) {
+    if (!env_->Egl()->DestroyImageKHR(env_->Display(), image)) {
       throw Exception("Failed to destroy EGL image, error: ", std::hex,
-                      eglGetError(), "!");
+                      env_->Egl()->GetError(), "!");
     }
 
-    glDeleteTextures(1, &texture);
-    EXCEPTION_IF_GL_ERROR("Failed to delete GL texture!");
+    env_->Gles()->DeleteTextures(1, &texture);
+    EXCEPTION_IF_GL_ERROR(env_, "Failed to delete GL texture!");
   }
 
-  error = m_egl_env_->UnbindContext();
+  error = env_->UnbindContext(ContextType::kPrimary) ;
   if (!error.empty()) throw std::runtime_error(error);
 }
 
@@ -291,11 +270,12 @@ std::uintptr_t Engine::Compose(const Compositions& compositions,
 
   std::lock_guard<std::mutex> lk(mutex_);
 
-  std::string error = m_egl_env_->BindContext(EGL_NO_SURFACE, EGL_NO_SURFACE);
+  std::string error = env_->BindContext(ContextType::kPrimary, EGL_NO_SURFACE,
+                                        EGL_NO_SURFACE);
   if (!error.empty()) throw std::runtime_error(error);
 
-  glBindFramebuffer(GL_FRAMEBUFFER, fbo_);
-  EXCEPTION_IF_GL_ERROR("Failed to bind frame buffer");
+  env_->Gles()->BindFramebuffer(GL_FRAMEBUFFER, fbo_);
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to bind frame buffer");
 
   for (auto const& composition : compositions) {
     auto surface_id = std::get<uint64_t>(composition);
@@ -344,11 +324,11 @@ std::uintptr_t Engine::Compose(const Compositions& compositions,
     // Blending is not supported in combination with direct rendering into YUV.
     if (Format::IsRgb(surface.format) || (stgtex != 0) ||
         (Format::IsYuv(surface.format) && shaders_.count(ShaderType::kYUV) == 0)) {
-      glEnable(GL_BLEND);
-      EXCEPTION_IF_GL_ERROR("Failed to enable blend capability");
+      env_->Gles()->Enable(GL_BLEND);
+      EXCEPTION_IF_GL_ERROR(env_, "Failed to enable blend capability");
 
-      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-      EXCEPTION_IF_GL_ERROR("Failed to set blend function");
+      env_->Gles()->BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+      EXCEPTION_IF_GL_ERROR(env_, "Failed to set blend function");
     }
 
     if ((stgtex == 0) && Format::IsYuv(surface.format)) {
@@ -374,8 +354,8 @@ std::uintptr_t Engine::Compose(const Compositions& compositions,
     }
 
     // Make sure that blending is disabled for next stages.
-    glDisable(GL_BLEND);
-    EXCEPTION_IF_GL_ERROR("Failed to disable blend capability");
+    env_->Gles()->Disable(GL_BLEND);
+    EXCEPTION_IF_GL_ERROR(env_, "Failed to disable blend capability");
 
     // In case output is unaligned RGB, apply compute shader.
     if ((stgtex != 0) && Format::IsRgb(surface.format)) {
@@ -393,18 +373,18 @@ std::uintptr_t Engine::Compose(const Compositions& compositions,
   uintptr_t fence = reinterpret_cast<std::uintptr_t>(nullptr);
 
   if (synchronous) {
-    glFinish();
-    EXCEPTION_IF_GL_ERROR("Failed to execute submitted compositions");
+    env_->Gles()->Finish();
+    EXCEPTION_IF_GL_ERROR(env_, "Failed to execute submitted compositions");
 
     fence = reinterpret_cast<std::uintptr_t>(nullptr);
   } else {
-    GLsync sync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-    EXCEPTION_IF_GL_ERROR("Failed to create fence object");
+    GLsync sync = env_->Gles()->FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    EXCEPTION_IF_GL_ERROR(env_, "Failed to create fence object");
 
     fence = reinterpret_cast<std::uintptr_t>(sync);
   }
 
-  error = m_egl_env_->UnbindContext();
+  error = env_->UnbindContext(ContextType::kPrimary) ;
   if (!error.empty()) throw std::runtime_error(error);
 
   return fence;
@@ -417,20 +397,21 @@ void Engine::Finish(std::uintptr_t fence) {
 
   GLsync sync = reinterpret_cast<GLsync>(fence);
 
-  std::string error = s_egl_env_->BindContext(EGL_NO_SURFACE, EGL_NO_SURFACE);
+  std::string error = env_->BindContext(ContextType::kAuxilary, EGL_NO_SURFACE,
+                                        EGL_NO_SURFACE);
   if (!error.empty()) throw std::runtime_error(error);
 
-  auto status = glClientWaitSync(sync, GL_SYNC_FLUSH_COMMANDS_BIT,
-                                 GL_TIMEOUT_IGNORED);
+  auto status = env_->Gles()->ClientWaitSync(sync, GL_SYNC_FLUSH_COMMANDS_BIT,
+                                             GL_TIMEOUT_IGNORED);
 
   if (status == GL_WAIT_FAILED) {
     throw Exception("Failed to sync fence object ", fence, "!");
   }
 
-  glDeleteSync(sync);
-  EXCEPTION_IF_GL_ERROR("Failed to delete fence object");
+  env_->Gles()->DeleteSync(sync);
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to delete fence object");
 
-  error = s_egl_env_->UnbindContext();
+  error = env_->UnbindContext(ContextType::kAuxilary);
   if (!error.empty()) throw std::runtime_error(error);
 }
 
@@ -462,10 +443,10 @@ std::string Engine::RenderYuvTexture(std::vector<GraphicTuple>& graphics,
       textarget = GL_TEXTURE_EXTERNAL_OES;
 
     // Attach output texture to the rendering frame buffer.
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                           textarget, texture, 0);
-    RETURN_IF_GL_ERROR("Failed to attach output texture ", texture, " to frame "
-                       "buffer at color attachment 0 for YUV rendering");
+    env_->Gles()->FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                                       textarget, texture, 0);
+    RETURN_IF_GL_ERROR(env_, "Failed to attach output texture ", texture, " to",
+                       " frame buffer at color attachment 0 for YUV rendering");
 
     if (clean) {
       GLfloat luma = EXTRACT_RED_COLOR(color), alpha = EXTRACT_ALPHA_COLOR(color);
@@ -473,14 +454,14 @@ std::string Engine::RenderYuvTexture(std::vector<GraphicTuple>& graphics,
 
       // Set/Clear the background of the texture attached to the frame buffer.
       if (format == ColorFormat::kGRAY8)
-        glClearColor(luma, 0.0, 0.0, alpha);
+        env_->Gles()->ClearColor(luma, 0.0, 0.0, alpha);
       else if (format == ColorFormat::kRG88 || format == ColorFormat::kGR88)
-        glClearColor(cr, cb, 0.0, alpha);
+        env_->Gles()->ClearColor(cr, cb, 0.0, alpha);
       else
-        glClearColor(luma, cr, cb, alpha);
+        env_->Gles()->ClearColor(luma, cr, cb, alpha);
 
-      glClear(GL_COLOR_BUFFER_BIT);
-      RETURN_IF_GL_ERROR("Failed to clear buffer color bit");
+      env_->Gles()->Clear(GL_COLOR_BUFFER_BIT);
+      RETURN_IF_GL_ERROR(env_, "Failed to clear buffer color bit");
     }
 
     // Choose shader based on the image texture format.
@@ -502,18 +483,20 @@ std::string Engine::RenderYuvTexture(std::vector<GraphicTuple>& graphics,
 
     shader->SetInt("extTex", 0);
 
-    glActiveTexture(GL_TEXTURE0);
-    RETURN_IF_GL_ERROR("Failed to set active texture unit 0");
+    env_->Gles()->ActiveTexture(GL_TEXTURE0);
+    RETURN_IF_GL_ERROR(env_, "Failed to set active texture unit 0");
 
     // Depending on the format the plane image may have different size.
     float wscale = static_cast<float>(width) / maxwidth;
     float hscale = static_cast<float>(height) / maxheight;
 
     for (auto& object : objects) {
+      Region destination = object.destination;
+
       // Adjust destination coordinates which will be used for the view port.
-      glViewport(object.destination.x * wscale, object.destination.y * hscale,
-                 object.destination.w * wscale, object.destination.h * hscale);
-      RETURN_IF_GL_ERROR("Failed to set destination viewport");
+      env_->Gles()->Viewport(destination.x * wscale, destination.y * hscale,
+                             destination.w * wscale, destination.h * hscale);
+      RETURN_IF_GL_ERROR(env_, "Failed to set destination viewport");
 
       std::string error = DrawObject(shader, object);
       if (!error.empty()) return error;
@@ -532,17 +515,17 @@ std::string Engine::RenderRgbTexture(std::vector<GraphicTuple>& graphics,
   GLuint& texture = std::get<GLuint>(gltuple);
 
   // Attach output texture to the rendering frame buffer.
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                         GL_TEXTURE_2D, texture, 0);
-  RETURN_IF_GL_ERROR("Failed to attach output texture ", texture, " to frame "
-                     "buffer at color attachment 0 for RGB rendering");
+  env_->Gles()->FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                                     GL_TEXTURE_2D, texture, 0);
+  RETURN_IF_GL_ERROR(env_, "Failed to attach output texture ", texture, " to ",
+                     "frame buffer at color attachment 0 for RGB rendering");
 
   if (clean) {
     // Set/Clear the background of the texture attached to the frame buffer.
-    glClearColor(EXTRACT_RED_COLOR(color), EXTRACT_GREEN_COLOR(color),
-                 EXTRACT_BLUE_COLOR(color), EXTRACT_ALPHA_COLOR(color));
-    glClear(GL_COLOR_BUFFER_BIT);
-    RETURN_IF_GL_ERROR("Failed to clear buffer color bit");
+    env_->Gles()->ClearColor(EXTRACT_RED_COLOR(color), EXTRACT_GREEN_COLOR(color),
+                             EXTRACT_BLUE_COLOR(color), EXTRACT_ALPHA_COLOR(color));
+    env_->Gles()->Clear(GL_COLOR_BUFFER_BIT);
+    RETURN_IF_GL_ERROR(env_, "Failed to clear buffer color bit");
   }
 
   std::shared_ptr<ShaderProgram> shader = shaders_.at(ShaderType::kRGB);
@@ -558,14 +541,15 @@ std::string Engine::RenderRgbTexture(std::vector<GraphicTuple>& graphics,
 
   shader->SetInt("extTex", 0);
 
-  glActiveTexture(GL_TEXTURE0);
-  RETURN_IF_GL_ERROR("Failed to set active texture unit 0");
+  env_->Gles()->ActiveTexture(GL_TEXTURE0);
+  RETURN_IF_GL_ERROR(env_, "Failed to set active texture unit 0");
 
   for (auto& object : objects) {
     const Region& destination = object.destination;
 
-    glViewport(destination.x, destination.y, destination.w, destination.h);
-    RETURN_IF_GL_ERROR("Failed to set destination viewport");
+    env_->Gles()->Viewport(
+        destination.x, destination.y, destination.w, destination.h);
+    RETURN_IF_GL_ERROR(env_, "Failed to set destination viewport");
 
     std::string error = DrawObject(shader, object);
     if (!error.empty()) return error;
@@ -579,16 +563,16 @@ std::string Engine::RenderStageTexture(GLuint texture, uint32_t color,
                                        Normalization& normalize, Objects& objects) {
 
   // Attach staging texture to the rendering frame buffer.
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                         GL_TEXTURE_2D, texture, 0);
-  RETURN_IF_GL_ERROR("Failed to attach stage texture ", texture, " to frame "
-                     "buffer at color attachment 0 for intermediary rendering");
+  env_->Gles()->FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                                     GL_TEXTURE_2D, texture, 0);
+  RETURN_IF_GL_ERROR(env_, "Failed to attach stage texture ", texture, " to ",
+                     "frame buffer at color attachment 0 for stage rendering");
 
   // Set/Clear the background of the texture attached to the frame buffer.
-  glClearColor(EXTRACT_RED_COLOR(color), EXTRACT_GREEN_COLOR(color),
-               EXTRACT_BLUE_COLOR(color), EXTRACT_ALPHA_COLOR(color));
-  glClear(GL_COLOR_BUFFER_BIT);
-  RETURN_IF_GL_ERROR("Failed to clear buffer color bit");
+  env_->Gles()->ClearColor(EXTRACT_RED_COLOR(color), EXTRACT_GREEN_COLOR(color),
+                           EXTRACT_BLUE_COLOR(color), EXTRACT_ALPHA_COLOR(color));
+  env_->Gles()->Clear(GL_COLOR_BUFFER_BIT);
+  RETURN_IF_GL_ERROR(env_, "Failed to clear buffer color bit");
 
   std::shared_ptr<ShaderProgram> shader = shaders_.at(ShaderType::kRGB);
   shader->Use();
@@ -603,14 +587,15 @@ std::string Engine::RenderStageTexture(GLuint texture, uint32_t color,
 
   shader->SetInt("extTex", 0);
 
-  glActiveTexture(GL_TEXTURE0);
-  RETURN_IF_GL_ERROR("Failed to set active texture unit 0");
+  env_->Gles()->ActiveTexture(GL_TEXTURE0);
+  RETURN_IF_GL_ERROR(env_, "Failed to set active texture unit 0");
 
   for (auto& object : objects) {
     const Region& destination = object.destination;
 
-    glViewport(destination.x, destination.y, destination.w, destination.h);
-    RETURN_IF_GL_ERROR("Failed to set destination viewport");
+    env_->Gles()->Viewport(
+        destination.x, destination.y, destination.w,destination.h);
+    RETURN_IF_GL_ERROR(env_, "Failed to set destination viewport");
 
     std::string error = DrawObject(shader, object);
     if (!error.empty()) return error;
@@ -631,8 +616,8 @@ std::string Engine::DrawObject(std::shared_ptr<ShaderProgram>& shader,
   GLuint& intexture = std::get<GLuint>(gltuple);
 
   // Bind the input surface texture to EXTERNAL_OES for current active texture.
-  glBindTexture(GL_TEXTURE_EXTERNAL_OES, intexture);
-  RETURN_IF_GL_ERROR("Failed to bind input texture ", intexture);
+  env_->Gles()->BindTexture(GL_TEXTURE_EXTERNAL_OES, intexture);
+  RETURN_IF_GL_ERROR(env_, "Failed to bind input texture ", intexture);
 
   if (shader->HasVariable("globalAlpha"))
     shader->SetFloat("globalAlpha", (object.alpha / 255.0));
@@ -643,8 +628,9 @@ std::string Engine::DrawObject(std::shared_ptr<ShaderProgram>& shader,
   auto mask = object.mask & (ConfigMask::kHFlip | ConfigMask::kVFlip);
   GLuint pos = shader->GetAttribLocation("vPosition");
 
-  glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, 0, kVertices.at(mask).data());
-  RETURN_IF_GL_ERROR("Failed to define main vertex array");
+  env_->Gles()->VertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, 0,
+                                    kVertices.at(mask).data());
+  RETURN_IF_GL_ERROR(env_, "Failed to define main vertex array");
 
   const Region& source = object.source;
   std::array<float, 8> coords = kTextureCoords;
@@ -670,14 +656,15 @@ std::string Engine::DrawObject(std::shared_ptr<ShaderProgram>& shader,
 
   // Load the vertex position.
   GLuint texcoord = shader->GetAttribLocation("inTexCoord");
-  glVertexAttribPointer(texcoord, 2, GL_FLOAT, GL_FALSE, 0, coords.data());
-  RETURN_IF_GL_ERROR("Failed to define texture vertex array");
+  env_->Gles()->VertexAttribPointer(texcoord, 2, GL_FLOAT, GL_FALSE, 0,
+                                    coords.data());
+  RETURN_IF_GL_ERROR(env_, "Failed to define texture vertex array");
 
-  glEnableVertexAttribArray(texcoord);
-  RETURN_IF_GL_ERROR("Failed to enable vertex array");
+  env_->Gles()->EnableVertexAttribArray(texcoord);
+  RETURN_IF_GL_ERROR(env_, "Failed to enable vertex array");
 
-  glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-  RETURN_IF_GL_ERROR("Failed to render array data");
+  env_->Gles()->DrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+  RETURN_IF_GL_ERROR(env_, "Failed to render array data");
 
   return std::string();
 }
@@ -714,16 +701,17 @@ std::string Engine::DispatchCompute(GLuint stgtex, Surface& surface,
   shader->SetInt("numChannels", Format::NumChannels(surface.format));
   shader->SetInt("inTex", 1);
 
-  glActiveTexture(GL_TEXTURE1);
-  RETURN_IF_GL_ERROR("Failed to set active texture unit 1");
+  env_->Gles()->ActiveTexture(GL_TEXTURE1);
+  RETURN_IF_GL_ERROR(env_, "Failed to set active texture unit 1");
 
-  glBindTexture(GL_TEXTURE_2D, stgtex);
-  RETURN_IF_GL_ERROR("Failed to bind staging texture");
+  env_->Gles()->BindTexture(GL_TEXTURE_2D, stgtex);
+  RETURN_IF_GL_ERROR(env_, "Failed to bind staging texture");
 
   GLenum format = Format::ToGL(std::get<2>(imgparam));
 
-  glBindImageTexture(1, otexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, format);
-  RETURN_IF_GL_ERROR("Failed to bind output image texture ", otexture);
+  env_->Gles()->BindImageTexture(1, otexture, 0, GL_FALSE, 0, GL_WRITE_ONLY,
+                                 format);
+  RETURN_IF_GL_ERROR(env_, "Failed to bind output image texture ", otexture);
 
   // Align to the divisor for the number of X groups explained below.
   uint32_t n_pixels = (((width * height) + ((32 * 4) - 1)) & ~((32 * 4) - 1));
@@ -731,8 +719,8 @@ std::string Engine::DispatchCompute(GLuint stgtex, Surface& surface,
   // 32 because of the local size and 4 pixels are processed at a time.
   GLuint xgroups = n_pixels / (32 * 4);
 
-  glDispatchCompute(xgroups, 1, 1);
-  RETURN_IF_GL_ERROR("Failed to dispatch compute");
+  env_->Gles()->DispatchCompute(xgroups, 1, 1);
+  RETURN_IF_GL_ERROR(env_, "Failed to dispatch compute");
 
   return std::string();
 }
@@ -743,10 +731,10 @@ std::string Engine::ColorTransmute(GLuint stgtex, Surface& surface,
   auto& gltuple = graphics.at(0);
   GLuint& otexture = std::get<GLuint>(gltuple);
 
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                         GL_TEXTURE_EXTERNAL_OES, otexture, 0);
-  RETURN_IF_GL_ERROR("Failed to attach output texture ", otexture, " to frame "
-                     "buffer at color attachment 0 for color transmute");
+  env_->Gles()->FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                                     GL_TEXTURE_EXTERNAL_OES, otexture, 0);
+  RETURN_IF_GL_ERROR(env_, "Failed to attach output texture ", otexture, " to ",
+                     "frame buffer at color attachment 0 for color transmute");
 
 #if defined(ANDROID)
   uint32_t width = surface.buffer->width;
@@ -756,8 +744,8 @@ std::string Engine::ColorTransmute(GLuint stgtex, Surface& surface,
   uint32_t height = surface.height;
 #endif  // !ANDROID
 
-  glViewport(0, 0, width, height);
-  RETURN_IF_GL_ERROR("Failed to set destination viewport");
+  env_->Gles()->Viewport(0, 0, width, height);
+  RETURN_IF_GL_ERROR(env_, "Failed to set destination viewport");
 
   std::shared_ptr<ShaderProgram> shader = shaders_.at(ShaderType::kYUV);
   shader->Use();
@@ -770,60 +758,31 @@ std::string Engine::ColorTransmute(GLuint stgtex, Surface& surface,
   // Load the vertex position.
   GLuint pos = shader->GetAttribLocation("vPosition");
 
-  glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, 0, kVertices.at(0).data());
-  RETURN_IF_GL_ERROR("Failed to define main vertex array");
+  env_->Gles()->VertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, 0,
+                                    kVertices.at(0).data());
+  RETURN_IF_GL_ERROR(env_, "Failed to define main vertex array");
 
   // Load texture coordinates.
   GLuint texcoord = shader->GetAttribLocation("inTexCoord");
   std::array<float, 8> coords = kTextureCoords;
 
-  glVertexAttribPointer(texcoord, 2, GL_FLOAT, GL_FALSE, 0, coords.data());
-  RETURN_IF_GL_ERROR("Failed to define vertex array");
+  env_->Gles()->VertexAttribPointer(texcoord, 2, GL_FLOAT, GL_FALSE, 0,
+                                    coords.data());
+  RETURN_IF_GL_ERROR(env_, "Failed to define vertex array");
 
-  glEnableVertexAttribArray(texcoord);
-  RETURN_IF_GL_ERROR("Failed to enable vertex array");
+  env_->Gles()->EnableVertexAttribArray(texcoord);
+  RETURN_IF_GL_ERROR(env_, "Failed to enable vertex array");
 
-  glActiveTexture(GL_TEXTURE1);
-  RETURN_IF_GL_ERROR("Failed to set active texture unit 1");
+  env_->Gles()->ActiveTexture(GL_TEXTURE1);
+  RETURN_IF_GL_ERROR(env_, "Failed to set active texture unit 1");
 
-  glBindTexture(GL_TEXTURE_2D, stgtex);
-  RETURN_IF_GL_ERROR("Failed to bind staging texture");
+  env_->Gles()->BindTexture(GL_TEXTURE_2D, stgtex);
+  RETURN_IF_GL_ERROR(env_, "Failed to bind staging texture");
 
-  glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-  RETURN_IF_GL_ERROR("Failed to render array data");
+  env_->Gles()->DrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+  RETURN_IF_GL_ERROR(env_, "Failed to render array data");
 
   return std::string();
-}
-
-
-bool Engine::IsExtensionSupported(const std::string extname) {
-
-  auto extensions =
-      reinterpret_cast<const char *>(
-          eglQueryString(m_egl_env_->Display(), EGL_EXTENSIONS));
-
-  if (extensions == nullptr) {
-    throw Exception("Failed to query extensions, error: ", std::hex,
-                    eglGetError(), "!");
-  }
-
-  if (strstr(extensions, extname.c_str()) != nullptr)
-    return true;
-
-  GLint n_extensions;
-
-  glGetIntegerv(GL_NUM_EXTENSIONS, &n_extensions);
-  EXCEPTION_IF_GL_ERROR ("Failed to get number of supported extensions");
-
-  for (GLint idx = 0; idx < n_extensions; idx++) {
-    auto name = reinterpret_cast<const char *>(glGetStringi(GL_EXTENSIONS, idx));
-    EXCEPTION_IF_GL_ERROR ("Failed to get name of extension at index ", idx);
-
-    if (extname.compare(name) == 0)
-      return true;
-  }
-
-  return false;
 }
 
 bool Engine::IsSurfaceRenderable(const Surface& surface) {
@@ -898,17 +857,17 @@ GLuint Engine::GetStageTexture(const Surface& surface, const Objects& objects) {
 
   GLuint texture;
 
-  glGenTextures(1, &texture);
-  EXCEPTION_IF_GL_ERROR ("Failed to generate staging texture");
+  env_->Gles()->GenTextures(1, &texture);
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to generate staging texture");
 
-  glActiveTexture(GL_TEXTURE0);
-  EXCEPTION_IF_GL_ERROR("Failed to set active texture unit 0");
+  env_->Gles()->ActiveTexture(GL_TEXTURE0);
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to set active texture unit 0");
 
-  glBindTexture(GL_TEXTURE_2D, texture);
-  EXCEPTION_IF_GL_ERROR ("Failed to bind staging texture");
+  env_->Gles()->BindTexture(GL_TEXTURE_2D, texture);
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to bind staging texture");
 
-  glTexStorage2D(GL_TEXTURE_2D, 1, format, width, height);
-  EXCEPTION_IF_GL_ERROR ("Failed to set staging texture storage");
+  env_->Gles()->TexStorage2D(GL_TEXTURE_2D, 1, format, width, height);
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to set staging texture storage");
 
   stage_textures_.emplace(
       texture, std::move(std::make_tuple(width, height, format)));
@@ -921,31 +880,32 @@ std::vector<GraphicTuple> Engine::ImportAndroidSurface(const Surface& surface,
                                                        uint32_t flags) {
 
   EGLImageKHR image =
-      CreateImageKHR(m_egl_env_->Display(), EGL_NO_CONTEXT,
-                     EGL_NATIVE_BUFFER_ANDROID, surface.buffer, NULL);
+      env_->Egl()->CreateImageKHR(env_->Display(), EGL_NO_CONTEXT,
+                                    EGL_NATIVE_BUFFER_ANDROID, surface.buffer,
+                                    nullptr);
 
   if (image == EGL_NO_IMAGE) {
     throw Exception("Failed to create EGL image, error: ", std::hex,
-                    eglGetError(), "!");
+                    env_->Egl()->GetError(), "!");
   }
 
-  glActiveTexture(GL_TEXTURE0);
-  EXCEPTION_IF_GL_ERROR("Failed to set active texture unit 0");
+  env_->Gles()->ActiveTexture(GL_TEXTURE0);
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to set active texture unit 0");
 
   // Create GL texture to the image will be binded.
   GLuint texture;
 
-  glGenTextures (1, &texture);
-  EXCEPTION_IF_GL_ERROR("Failed to generate GL texture!");
+  env_->Gles()->GenTextures (1, &texture);
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to generate GL texture!");
 
   // Bind the surface texture to EXTERNAL_OES.
-  glBindTexture(GL_TEXTURE_EXTERNAL_OES, texture);
-  EXCEPTION_IF_GL_ERROR("Failed to bind output texture ", texture);
+  env_->Gles()->BindTexture(GL_TEXTURE_EXTERNAL_OES, texture);
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to bind output texture ", texture);
 
-  ImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES,
-                          reinterpret_cast<GLeglImageOES>(image));
-  EXCEPTION_IF_GL_ERROR("Failed to associate image ", image,
-      " with external texture ", texture);
+  env_->Gles()->EGLImageTargetTexture2DOES(
+      GL_TEXTURE_EXTERNAL_OES, reinterpret_cast<GLeglImageOES>(image));
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to associate image ", image,
+                        " with external texture ", texture);
 
   ImageParam imgparam = std::make_tuple(
       surface.buffer->width, surface.buffer->height, surface.format);
@@ -1011,19 +971,20 @@ std::vector<GraphicTuple> Engine::ImportLinuxSurface(const Surface& surface,
 
     attribs[index] = EGL_NONE;
 
-    EGLImageKHR image = CreateImageKHR(m_egl_env_->Display(), EGL_NO_CONTEXT,
-                                       EGL_LINUX_DMA_BUF_EXT, NULL, attribs);
+    EGLImageKHR image =
+        env_->Egl()->CreateImageKHR(env_->Display(), EGL_NO_CONTEXT,
+                                      EGL_LINUX_DMA_BUF_EXT, NULL, attribs);
 
     if (image == EGL_NO_IMAGE) {
       throw Exception("Failed to create EGL image, error: ", std::hex,
-                      eglGetError(), "!");
+                      env_->Egl()->GetError(), "!");
     }
 
     GLuint texture;
 
     // Create GL texture to the image will be binded.
-    glGenTextures (1, &texture);
-    EXCEPTION_IF_GL_ERROR("Failed to generate GL texture!");
+    env_->Gles()->GenTextures (1, &texture);
+    EXCEPTION_IF_GL_ERROR(env_, "Failed to generate GL texture!");
 
     GLenum textarget = GL_TEXTURE_EXTERNAL_OES;
 
@@ -1034,12 +995,13 @@ std::vector<GraphicTuple> Engine::ImportLinuxSurface(const Surface& surface,
         (Format::IsYuv(surface.format) && (shaders_.count(ShaderType::kYUV) == 0))))
       textarget = GL_TEXTURE_2D;
 
-    glBindTexture(textarget, texture);
-    EXCEPTION_IF_GL_ERROR("Failed to bind output texture ", texture);
+    env_->Gles()->BindTexture(textarget, texture);
+    EXCEPTION_IF_GL_ERROR(env_, "Failed to bind output texture ", texture);
 
-    ImageTargetTexture2DOES(textarget, reinterpret_cast<GLeglImageOES>(image));
-    EXCEPTION_IF_GL_ERROR("Failed to associate image ", image,
-        " with external texture ", texture);
+    env_->Gles()->EGLImageTargetTexture2DOES(
+        textarget, reinterpret_cast<GLeglImageOES>(image));
+    EXCEPTION_IF_GL_ERROR(env_, "Failed to associate image ", image,
+                          " with external texture ", texture);
 
     ImageParam imgparam = std::make_tuple(
         subsurface.width, subsurface.height, subsurface.format);

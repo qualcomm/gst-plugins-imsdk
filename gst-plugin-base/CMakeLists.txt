@@ -9,12 +9,11 @@ link_directories(${SYSROOT_LIBDIR})
 find_package(PkgConfig)
 
 # Get the pkgconfigs exported by the automake tools
-pkg_check_modules(GST
-  REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(GST_ALLOC
-  REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(GST_VIDEO
-  REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_ALLOC REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_VIDEO REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(EGL egl)
+pkg_check_modules(GLES glesv2)
 
 include(CheckIncludeFile)
 include(CheckIncludeFileCXX)
@@ -38,9 +37,6 @@ check_include_file("linux/dma-heap.h" HAVE_LINUX_DMA_HEAP_H)
 
 # Check whether Adreno C2D header is present.
 check_include_file("adreno/c2d2.h" HAVE_ADRENO_C2D2_H)
-
-# Check whether GLES2 header is present.
-check_include_file("GLES2/gl2.h" HAVE_GLES2_H)
 
 # Check whether FastCV header is present.
 check_include_file("fastcv/fastcv.h" HAVE_FASTCV_H)

@@ -20,22 +20,6 @@ namespace ib2c {
 #define EXTRACT_BLUE_COLOR(color)  (((color >> 8) & 0xFF) / 255.0)
 #define EXTRACT_ALPHA_COLOR(color) (((color) & 0xFF) / 255.0)
 
-#define EXCEPTION_IF_GL_ERROR(...)                                   \
-do {                                                                 \
-  GLenum error = glGetError();                                       \
-                                                                     \
-  if (error != GL_NO_ERROR)                                          \
-    throw Exception(__VA_ARGS__, ", error: ", std::hex, error, "!"); \
-} while (false)
-
-#define RETURN_IF_GL_ERROR(...)                                   \
-do {                                                              \
-  GLenum error = glGetError();                                    \
-                                                                  \
-  if (error != GL_NO_ERROR)                                       \
-    return Error(__VA_ARGS__, ", error: ", std::hex, error, "!"); \
-} while (false)
-
 template<typename ...Args> void Log(Args&&... args) {
 
   std::stringstream s;
