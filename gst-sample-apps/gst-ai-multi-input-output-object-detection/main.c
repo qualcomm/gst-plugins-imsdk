@@ -67,6 +67,12 @@
 #define DEFAULT_CAMERA_FRAME_RATE 30
 
 /**
+ * Default width and height for output
+ */
+#define DEFAULT_OUTPUT_WIDTH 1920
+#define DEFAULT_OUTPUT_HEIGHT 1080
+
+/**
  * Maximum count of various sources possible to configure
  */
 #define MAX_CAMSRCS 2
@@ -873,7 +879,11 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   // 2.4 Set the properties for composer output
   filtercaps = gst_caps_new_simple ("video/x-raw",
-      "format", G_TYPE_STRING, "NV12", NULL);
+      "format", G_TYPE_STRING, "NV12",
+      "width", G_TYPE_INT, DEFAULT_OUTPUT_WIDTH,
+      "height", G_TYPE_INT, DEFAULT_OUTPUT_HEIGHT,
+      "interlace-mode", G_TYPE_STRING, "progressive",
+      "colorimetry", G_TYPE_STRING, "bt601", NULL);
   g_object_set (G_OBJECT (composer_caps), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
