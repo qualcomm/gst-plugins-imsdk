@@ -790,8 +790,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
       qtivsplit, qtivoverlay, qtivcomposer, NULL);
 
   if (options->sink_type == GST_WAYLANDSINK) {
-    gst_bin_add_many (GST_BIN (appctx->pipeline), fpsdisplaysink,
-        waylandsink, NULL);
+    gst_bin_add_many (GST_BIN (appctx->pipeline), fpsdisplaysink, NULL);
   } else if (options->sink_type == GST_VIDEO_ENCODE) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), sink_filter,
         v4l2h264enc, h264parse_encode, mp4mux, filesink, NULL);

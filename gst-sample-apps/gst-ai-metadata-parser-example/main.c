@@ -736,7 +736,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 
   gst_bin_add_many (GST_BIN (appctx->pipeline), qtimlvconverter,
       qtimlelement, qtimlvdetection[0], qtimlvdetection[1], detection_filter,
-      qtivcomposer, fpsdisplaysink, waylandsink, NULL);
+      qtivcomposer, fpsdisplaysink, NULL);
 
   gst_bin_add_many (GST_BIN (appctx->pipeline), appsink,
       appsink_caps, detection_tee, NULL);
