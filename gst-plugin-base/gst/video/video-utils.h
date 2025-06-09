@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -104,6 +104,21 @@ GST_VIDEO_API void
 gst_video_region_of_interest_coordinates_correction (
     GstVideoRegionOfInterestMeta * roimeta, GstVideoRectangle * source,
     GstVideoRectangle * destination);
+
+/**
+ * gst_buffer_has_valid_parent_meta:
+ * @buffer: The #GstBuffer containing the metadata.
+ * @parent_id: The parent metadata ID to validate.
+ *
+ * Helper function to check if the given parent ID refers to a valid
+ * GstVideoRegionOfInterestMeta that is not of type "ImageRegion".
+ * Used to determine whether a metadata entry should retain its parent
+ * association for further processing.
+ *
+ * Returns: TRUE if the parent is not of type "ImageRegion", FALSE otherwise.
+ */
+GST_VIDEO_API gboolean
+gst_buffer_has_valid_parent_meta (GstBuffer * buffer, gint parent_id);
 
 G_END_DECLS
 
