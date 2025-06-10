@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023 - 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2023 - 2025 Qualcomm Innovation Center, Inc. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -43,6 +43,7 @@
 #include <stdio.h>
 
 #include <gst/gst.h>
+#include <gst/utils/common-utils.h>
 #include <glib-unix.h>
 #include <qmmf-sdk/qmmf_camera_metadata.h>
 #include <qmmf-sdk/qmmf_vendor_tag_descriptor.h>
@@ -99,6 +100,8 @@ namespace camera = qmmf;
 #define DEFAULT_PIPELINE_SENSOR_NUM     2
 
 #define PIPELINE_SENSOR_SWITCH_SHIFT_MS 1000
+#define MENU_THREAD_MSG_EXIT            "Exit"
+#define MENU_THREAD_MSG_EMPTY           ""
 
 // stream default params
 #define DEFAULT_PREVIEW_STREAM_WIDTH    1920
@@ -126,6 +129,7 @@ typedef struct _GstSwitchStream             GstSwitchStream;
 typedef struct _GstUnifiedSwitchStream      GstUnifiedSwitchStream;
 typedef struct _GstSwitchPipelineControl    GstSwitchPipelineControl;
 typedef struct _GstSwitchPipeline           GstSwitchPipeline;
+typedef struct _GstPropMenuInfo             GstPropMenuInfo;
 
 typedef enum {
   GST_SWITCHSTREAM_TYPE_PREVIEW,
@@ -193,6 +197,7 @@ struct _GstSwitchPipelineInfo {
   gboolean              sensor_switch;
   gint                  sensor_num;
   GstLogCamMode         log_cam_mode;
+  gboolean              menu;
   GOptionEntry          *options;
 };
 
@@ -252,12 +257,20 @@ struct _GstUnifiedSwitchStream {
   } bin;
 };
 
+struct _GstPropMenuInfo {
+  GAsyncQueue *queue;
+  GIOChannel  *iochannel_stdin;
+  guint       watch_stdin;
+  GstElement  *camera;
+};
+
 struct _GstSwitchPipelineControl {
   GMainLoop           *mloop;
   gint                current_round;
   gboolean            exit;
   GstSwitchRunMode    mode;
-  gboolean            pipeline_runing;
+  GThread             *thread_menu;
+  GAsyncQueue         *menu_msgs;
 
   gint                sensor_switch_index;
   gint                sensor_switch_duration_ms;
@@ -326,7 +339,7 @@ pipeline_alloc_options (GstSwitchPipeline *pipeline)
   GOptionEntry *entries;
 
   // allocate option number + 1, last one should be { NULL }
-  entries = g_new0 (GOptionEntry, 9);
+  entries = g_new0 (GOptionEntry, 10);
 
   if (entries != NULL) {
     entries[0].long_name = "cameraid";
@@ -376,6 +389,12 @@ pipeline_alloc_options (GstSwitchPipeline *pipeline)
     entries[7].arg = G_OPTION_ARG_INT;
     entries[7].arg_data = (gpointer) &pipeline->info.log_cam_mode;
     entries[7].description = "logical camera mode, 0=SAT, 1=RTB, default none";
+
+    entries[8].long_name = "property-menu";
+    entries[8].short_name = 'm';
+    entries[8].arg = G_OPTION_ARG_NONE;
+    entries[8].arg_data = (gpointer) &pipeline->info.menu;
+    entries[8].description = "menu to set camera's dynamic properties";
 
     pipeline->info.options = entries;
   }
@@ -626,7 +645,7 @@ pipeline_streams_alloc (gint pnum, gint vnum)
 
 gboolean
 pipeline_streams_alloc_options (GOptionContext *ctx,
-                                         GstSwitchPipeline *pipeline)
+                                GstSwitchPipeline *pipeline)
 {
   GstSwitchPipelineControl *pcontrol = NULL;
   GOptionEntry *entries = NULL;
@@ -1449,6 +1468,12 @@ pipeline_streams_deinit (GstSwitchPipeline *pipeline)
     }
   }
 
+  if (pcontrol->menu_msgs)
+    g_async_queue_unref (pcontrol->menu_msgs);
+
+  if (pcontrol->thread_menu)
+    g_thread_join (pcontrol->thread_menu);
+
   pipeline_deinit (pipeline);
 }
 
@@ -1597,6 +1622,9 @@ pipeline_remove_streams (GstSwitchPipeline *pipeline)
 
   g_return_if_fail (pipeline != NULL);
   pcontrol = &pipeline->control;
+
+  if (pcontrol->exit && pcontrol->thread_menu)
+    g_async_queue_push (pcontrol->menu_msgs, g_strdup(MENU_THREAD_MSG_EXIT));
 
   SWITCH_DEBUG ("remove all streams from pipeline\n");
 
@@ -1954,12 +1982,17 @@ system_signal_handler (gpointer userdata)
 {
   GstSwitchPipeline *pipeline = (GstSwitchPipeline *)userdata;
   GstSwitchPipelineControl *pcontrol = &pipeline->control;
+  GstState state = GST_STATE_VOID_PENDING;
+
+  if (pcontrol->thread_menu)
+    g_async_queue_push (pcontrol->menu_msgs, g_strdup(MENU_THREAD_MSG_EXIT));
 
   SWITCH_MSG ("Receive CTRL+C, send EoS to pipeline\n");
 
   gst_element_send_event (pcontrol->pipeline, gst_event_new_eos ());
   pcontrol->exit = TRUE;
-  if (! pcontrol->pipeline_runing)
+  gst_element_get_state (pcontrol->pipeline, &state, NULL, GST_CLOCK_TIME_NONE);
+  if (state != GST_STATE_PLAYING)
     g_main_loop_quit (pcontrol->mloop);
 
   return TRUE;
@@ -1992,7 +2025,7 @@ gst_signal_handler(GstBus *bus, GstMessage *message, gpointer userdata)
 
         gst_message_parse_warning (message, &gerror, &debug);
         gst_object_default_error (GST_MESSAGE_SRC (message), gerror, debug);
-        g_error_free (gerror);
+        g_clear_error (&gerror);
         g_free (debug);
       }
       break;
@@ -2003,7 +2036,7 @@ gst_signal_handler(GstBus *bus, GstMessage *message, gpointer userdata)
 
         gst_message_parse_error (message, &gerror, &debug);
         gst_object_default_error (GST_MESSAGE_SRC (message), gerror, debug);
-        g_error_free (gerror);
+        g_clear_error (&gerror);
         g_free (debug);
         g_main_loop_quit (pcontrol->mloop);
       }
@@ -2017,9 +2050,6 @@ gst_signal_handler(GstBus *bus, GstMessage *message, gpointer userdata)
             gst_element_state_get_name (s_old),
             gst_element_state_get_name (s_new),
             gst_element_state_get_name (s_pending));
-
-        if (s_new == GST_STATE_PLAYING)
-          pcontrol->pipeline_runing = TRUE;
       }
       break;
     default:
@@ -2064,6 +2094,519 @@ pipeline_signals_register (GstSwitchPipeline *pipeline)
       system_signal_handler, pipeline);
 
   return TRUE;
+}
+
+
+gboolean
+retrieve_element_properties (GstElement *element, GstStructure *property)
+{
+  GParamSpec **prop_spec = NULL;
+  GString *options = NULL;
+  GstState state = GST_STATE_VOID_PENDING;
+  guint num_props = 0, index = 0;
+
+  g_return_val_if_fail (element != NULL, FALSE);
+  g_return_val_if_fail (property != NULL, FALSE);
+
+  options = g_string_new (NULL);
+
+  gst_element_get_state (element, &state, NULL, 0);
+  if (state < GST_STATE_PAUSED) {
+    SWITCH_ERROR ("element is not ready to set properties, state:%s\n",
+        gst_element_state_get_name (state));
+    return FALSE;
+  }
+
+  prop_spec = g_object_class_list_properties (
+      G_OBJECT_GET_CLASS (element), &num_props);
+  if (*prop_spec == NULL) {
+    SWITCH_ERROR ("failed to get properties list\n");
+    return FALSE;
+  }
+
+  for (guint i = 0; i < num_props; ++i) {
+    GParamSpec *param_spec = prop_spec[i];
+    gchar *field_value = NULL, *field_name = NULL;
+
+    if (!GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE (param_spec, state))
+      continue;
+
+    field_name = g_strdup_printf ("%u", index);
+    field_value = g_strdup (g_param_spec_get_name (param_spec));
+
+    gst_structure_set (property, field_name, G_TYPE_STRING, field_value, NULL);
+
+    g_string_append_printf (options, "   (%2u) %-25s: %s\n", index,
+        field_value, g_param_spec_get_blurb (param_spec));
+
+    ++index;
+
+    g_free (field_name);
+    g_free (field_value);
+  }
+
+  SWITCH_MSG ("****Prop Menu****\n%s", options->str);
+
+  g_string_free (options, TRUE);
+
+  return TRUE;
+}
+
+/*
+  This function will only return TRUE while terminating, otherwise return FALSE;
+  *msg will be null in case of empty input;
+  Call g_free (gpointer mem) to free *msg.
+*/
+gboolean
+take_stdin_message (GstPropMenuInfo *minfo, gchar **msg)
+{
+  GstPropMenuInfo *info = NULL;
+  gchar *message = NULL, *tmp_msg = NULL;
+
+  g_return_val_if_fail (minfo != NULL, FALSE);
+
+  info = minfo;
+
+  if (!info->watch_stdin) {
+    SWITCH_DEBUG ("read stdin removed, exiting menu thread.\n");
+    return TRUE;
+  }
+
+  message = (gchar *)g_async_queue_pop (info->queue);
+
+  if (g_str_equal (message, MENU_THREAD_MSG_EXIT))
+    goto exit;
+  else if (g_str_equal(message, MENU_THREAD_MSG_EMPTY))
+    tmp_msg = NULL;
+  else
+    tmp_msg = g_strdup (message);
+
+  g_free (message);
+  *msg = tmp_msg;
+
+  return FALSE;
+
+exit:
+  g_free (message);
+
+  return TRUE;
+}
+
+gboolean
+retrieve_option_info (GObject * object, GParamSpec *spec)
+{
+  GString *info = NULL;
+  gboolean ret = TRUE;
+
+  g_return_val_if_fail (object != NULL, FALSE);
+  g_return_val_if_fail (spec != NULL, FALSE);
+  g_return_val_if_fail (spec->flags & G_PARAM_READABLE, FALSE);
+
+  if (!(spec->flags & G_PARAM_READABLE)) {
+    SWITCH_MSG ("unreadable property.\n");
+    return FALSE;
+  }
+
+  info = g_string_new (NULL);
+
+  if (G_IS_PARAM_SPEC_CHAR (spec)) {
+    gint8 value;
+    GParamSpecChar *range = G_PARAM_SPEC_CHAR (spec);
+    g_object_get (object, spec->name, &value, NULL);
+
+    g_string_append_printf (info, " Current value: %d, Range: %d - %d\n",
+        value, range->minimum, range->maximum);
+  } else if (G_IS_PARAM_SPEC_UCHAR (spec)) {
+    guint8 value;
+    GParamSpecUChar *range = G_PARAM_SPEC_UCHAR (spec);
+    g_object_get (object, spec->name, &value, NULL);
+
+    g_string_append_printf (info, " Current value: %d, Range: %d - %d\n",
+        value, range->minimum, range->maximum);
+  } else if (G_IS_PARAM_SPEC_BOOLEAN (spec)) {
+    gboolean value;
+    g_object_get (object, spec->name, &value, NULL);
+
+    g_string_append_printf (info, " Current value: %s, Possible values: "
+        "0(false), 1(true)\n", value ? "true" : "false");
+  } else if (G_IS_PARAM_SPEC_INT (spec)) {
+    gint value;
+    GParamSpecInt *range = G_PARAM_SPEC_INT (spec);
+    g_object_get (object, spec->name, &value, NULL);
+
+    g_string_append_printf (info, " Current value: %d, Range: %d - %d\n",
+        value, range->minimum, range->maximum);
+  } else if (G_IS_PARAM_SPEC_UINT (spec)) {
+    guint value;
+    GParamSpecUInt *range = G_PARAM_SPEC_UINT (spec);
+    g_object_get (object, spec->name, &value, NULL);
+
+    g_string_append_printf (info, " Current value: %u, Range: %u - %u\n",
+        value, range->minimum, range->maximum);
+  } else if (G_IS_PARAM_SPEC_LONG (spec)) {
+    glong value;
+    GParamSpecLong *range = G_PARAM_SPEC_LONG (spec);
+    g_object_get (object, spec->name, &value, NULL);
+
+    g_string_append_printf (info, " Current value: %ld, Range: %ld - %ld\n",
+        value, range->minimum, range->maximum);
+  } else if (G_IS_PARAM_SPEC_ULONG (spec)) {
+    gulong value;
+    GParamSpecULong *range = G_PARAM_SPEC_ULONG (spec);
+    g_object_get (object, spec->name, &value, NULL);
+
+    g_string_append_printf (info, " Current value: %lu, Range: %lu - %lu\n",
+        value, range->minimum, range->maximum);
+  } else if (G_IS_PARAM_SPEC_INT64 (spec)) {
+    gint64 value;
+    GParamSpecInt64 *range = G_PARAM_SPEC_INT64 (spec);
+    g_object_get (object, spec->name, &value, NULL);
+
+    g_string_append_printf (info, " Current value: %" G_GINT64_FORMAT ", "
+        "Range: %" G_GINT64_FORMAT " - %" G_GINT64_FORMAT "\n", value,
+        range->minimum, range->maximum);
+  } else if (G_IS_PARAM_SPEC_UINT64 (spec)) {
+    guint64 value;
+    GParamSpecUInt64 *range = G_PARAM_SPEC_UINT64 (spec);
+    g_object_get (object, spec->name, &value, NULL);
+
+    g_string_append_printf (info, " Current value: %" G_GUINT64_FORMAT ", "
+        "Range: %" G_GUINT64_FORMAT " - %" G_GUINT64_FORMAT "\n", value,
+        range->minimum, range->maximum);
+  } else if (G_IS_PARAM_SPEC_UNICHAR (spec)) {
+    gunichar value;
+    GParamSpecUnichar *pspec = G_PARAM_SPEC_UNICHAR (spec);
+    g_object_get (object, spec->name, &value, NULL);
+
+    g_string_append_printf (info, "Default value: %u\n", pspec->default_value);
+  } else if (G_IS_PARAM_SPEC_ENUM(spec)) {
+    GEnumClass *klass = NULL;
+    const gchar *nick = NULL;
+    gint value = 0;
+    guint idx = 0;
+
+    g_object_get (object, spec->name, &value, NULL);
+    klass = G_ENUM_CLASS (g_type_class_ref (spec->value_type));
+    if (!klass) {
+      g_string_append_printf (info, "Failed to get enum class\n");
+      SWITCH_MSG ("%s", info->str);
+      g_string_free (info, TRUE);
+
+      return FALSE;
+    }
+
+    g_string_append_printf (info, "\n");
+
+    for (idx = 0; idx < klass->n_values; idx++) {
+      GEnumValue *genum = &(klass->values[idx]);
+
+      if (genum->value == value)
+        nick = genum->value_nick;
+
+      g_string_append_printf (info, "   (%d): %-16s - %s\n",
+          genum->value, genum->value_nick, genum->value_name);
+    }
+
+    g_type_class_unref (klass);
+
+    g_string_append_printf (info, "\n Current value: %d, \"%s\"\n",
+        value, nick);
+  } else if (G_IS_PARAM_SPEC_FLAGS (spec)) {
+    // TODO: pending add in case some plugins used
+    g_string_append_printf (info, "Unsupported GParamSpecFlags\n");
+    ret = FALSE;
+  } else if (G_IS_PARAM_SPEC_FLOAT (spec)) {
+    gfloat value;
+    GParamSpecFloat *range = G_PARAM_SPEC_FLOAT (spec);
+    g_object_get (object, spec->name, &value, NULL);
+
+    g_string_append_printf (info, " Current value: %15.7g, "
+        "Range: %15.7g - %15.7g\n", value, range->minimum, range->maximum);
+  } else if (G_IS_PARAM_SPEC_DOUBLE (spec)) {
+    gdouble value;
+    GParamSpecDouble *range = G_PARAM_SPEC_DOUBLE (spec);
+    g_object_get (object, spec->name, &value, NULL);
+
+    g_string_append_printf (info, " Current value: %15.7g, "
+        "Range: %15.7g - %15.7g\n", value, range->minimum, range->maximum);
+  } else if (G_IS_PARAM_SPEC_STRING (spec)) {
+    gchar *value;
+    g_object_get (object, spec->name, &value, NULL);
+
+    g_string_append_printf (info, " Current value: %s\n", value);
+    g_free (value);
+  } else if (G_IS_PARAM_SPEC_PARAM (spec)) {
+    // TODO: pending add in case some plugins used
+    g_string_append_printf (info, "Unsupported GParamSpecParam\n");
+    ret = FALSE;
+  } else if (G_IS_PARAM_SPEC_BOXED (spec)) {
+    // TODO: pending add in case of metadata
+    g_string_append_printf (info, "Unsupported GParamSpecBoxed\n");
+    ret = FALSE;
+  } else if (G_IS_PARAM_SPEC_POINTER (spec)) {
+    // TODO: pending add in case of metadata
+    g_string_append_printf (info, "Unsupported GParamSpecPointer\n");
+    ret = FALSE;
+  } else if (G_IS_PARAM_SPEC_OBJECT (spec)) {
+    // TODO: pending add in case some plugins used
+    g_string_append_printf (info, "Unsupported GParamSpecObject\n");
+    ret = FALSE;
+  } else if (G_IS_PARAM_SPEC_OVERRIDE (spec)) {
+    // TODO: pending add in case some plugins used
+    g_string_append_printf (info, "Unsupported GParamSpecOverride\n");
+    ret = FALSE;
+  } else if (G_IS_PARAM_SPEC_GTYPE (spec)) {
+    // TODO: pending add in case some plugins used
+    g_string_append_printf (info, "Unsupported GParamSpecGType\n");
+    ret = FALSE;
+  } else if (G_IS_PARAM_SPEC_VARIANT (spec)) {
+    // TODO: pending add in case some plugins used
+    g_string_append_printf (info, "Unsupported GParamSpecVariant\n");
+    ret = FALSE;
+  } else if (GST_IS_PARAM_SPEC_ARRAY_LIST (spec)) {
+    GValue value = G_VALUE_INIT;
+    gchar *string = NULL;
+
+    g_value_init (&value, GST_TYPE_ARRAY);
+    g_object_get_property (object, spec->name, &value);
+
+    string = gst_value_serialize (&value);
+    g_string_append_printf (info, "\n Current value: %s\n", string);
+
+    g_value_unset (&value);
+    g_free (string);
+  } else {
+    g_string_append_printf (info, "Unknown type %ld \"%s\"\n",
+      (glong) spec->value_type, g_type_name (spec->value_type));
+    ret = FALSE;
+  }
+
+  SWITCH_MSG ("%s", info->str);
+  g_string_free (info, TRUE);
+
+  return ret;
+}
+
+gboolean
+element_properties (GstPropMenuInfo *minfo)
+{
+  GstPropMenuInfo *info = NULL;
+  GstElement *element = NULL;
+  GstStructure *props = NULL;   // table saving properties
+  gchar *in_name = NULL;
+  gboolean ret = FALSE;         // TRUE: menu thread should exit
+
+  g_return_val_if_fail (minfo != NULL, TRUE);
+
+  info = minfo;
+  element = info->camera;
+  props = gst_structure_new_empty ("properties");
+
+  if (!retrieve_element_properties (element, props)) {
+    SWITCH_ERROR ("failed to print camera properties\n");
+    goto exit;
+  }
+
+  SWITCH_MSG ("Choose your option:\n");
+  ret = take_stdin_message (info, &in_name);
+  if (ret)
+    goto exit;
+  else if (!in_name)
+    goto cleanup;
+
+  if (gst_structure_has_field (props, in_name)) {
+    GObject *object = G_OBJECT (element);
+    GParamSpec *propspec = NULL;
+    GValue prop_value = G_VALUE_INIT;
+    const gchar *prop_name = NULL;
+    gchar *in_value = NULL;
+
+    prop_name = gst_structure_get_string (props, in_name);
+    g_free (in_name);
+
+    propspec = g_object_class_find_property (
+        G_OBJECT_GET_CLASS (object), prop_name);
+
+    if (!retrieve_option_info (G_OBJECT (element), propspec))
+      goto cleanup;
+
+    if (propspec->flags & G_PARAM_WRITABLE)
+      SWITCH_MSG ("Enter value:\n");
+    else
+      SWITCH_MSG ("none writable value, press enter to continue.\n");
+
+    ret = take_stdin_message (info, &in_value);
+    if (ret)
+      goto exit;
+    else if (!in_value)
+      goto cleanup;
+
+    if (!(propspec->flags & G_PARAM_WRITABLE)) {
+      g_free (in_value);
+      goto cleanup;
+    }
+
+    g_value_init (&prop_value, G_PARAM_SPEC_VALUE_TYPE (propspec));
+    gst_value_deserialize (&prop_value, in_value);
+    g_free (in_value);
+
+    g_object_set_property (G_OBJECT(element), prop_name, &prop_value);
+  } else {
+    SWITCH_ERROR ("Unsupport option: %s\n", GST_STR_NULL(in_name));
+    g_free (in_name);
+  }
+
+cleanup:
+  if (props)
+    gst_structure_free (props);
+
+  return FALSE;
+
+exit:
+  if (props)
+    gst_structure_free (props);
+
+  return TRUE;
+}
+
+gboolean
+read_stdin_messages (GIOChannel* source, GIOCondition condition, gpointer data)
+{
+  GAsyncQueue *queue = NULL;
+  gchar *input = NULL;
+  GIOStatus status = G_IO_STATUS_NORMAL;
+
+  g_return_val_if_fail (data != NULL, FALSE);
+
+  queue = (GAsyncQueue *)data;
+
+  do {
+    GError *error = NULL;
+
+    status = g_io_channel_read_line (source, &input, NULL, NULL, &error);
+    switch (status) {
+      case G_IO_STATUS_ERROR:
+        SWITCH_ERROR ("failed to read line from stdin, error: %s\n",
+          GST_STR_NULL (error->message));
+        g_clear_error (&error);
+        return FALSE;
+      case G_IO_STATUS_EOF:
+        SWITCH_ERROR ("IO status: EOF\n");
+        return FALSE;
+      case G_IO_STATUS_NORMAL:
+      case G_IO_STATUS_AGAIN:
+        break;
+      default:
+        SWITCH_ERROR ("Unknown IO status\n");
+        return FALSE;
+    }
+  } while (status == G_IO_STATUS_AGAIN);
+
+  g_async_queue_push (queue, (gpointer)g_strstrip (input));
+
+  return TRUE;
+}
+
+void
+read_stdin_removed (gpointer data)
+{
+  GstPropMenuInfo *info = NULL;
+
+  g_return_if_fail (data != NULL);
+
+  info = (GstPropMenuInfo *)data;
+
+  SWITCH_DEBUG ("stop reading from stdin.\n");
+  info->watch_stdin = 0;
+}
+
+void
+prop_menu_init (GstPropMenuInfo **minfo, gpointer userdata)
+{
+  GstPropMenuInfo *info = NULL;
+  GstSwitchPipelineControl *pcontrol = (GstSwitchPipelineControl *)userdata;
+
+  g_return_if_fail (pcontrol != NULL);
+  g_return_if_fail (pcontrol->camera != NULL);
+
+  info = g_new0 (GstPropMenuInfo, 1);
+  if (info == NULL) {
+    SWITCH_ERROR ("failed to allocate menu thread info\n");
+    g_free (info);
+    info = NULL;
+
+    return;
+  }
+
+  info->iochannel_stdin = g_io_channel_unix_new (fileno(stdin));
+  info->watch_stdin = g_io_add_watch_full (info->iochannel_stdin,
+      G_PRIORITY_DEFAULT, (GIOCondition)(G_IO_IN | G_IO_PRI),
+      read_stdin_messages, pcontrol->menu_msgs,
+      (GDestroyNotify)read_stdin_removed);
+  if (!info->iochannel_stdin || !info->watch_stdin) {
+    GError *error = NULL;
+
+    if (info->watch_stdin)
+      g_source_remove (info->watch_stdin);
+
+    if (info->iochannel_stdin)
+      g_io_channel_shutdown (info->iochannel_stdin, TRUE, &error);
+
+    g_clear_error (&error);
+
+    g_free (info);
+
+    return;
+  }
+
+  info->queue = pcontrol->menu_msgs;
+  info->camera = pcontrol->camera;
+  gst_object_ref (info->camera);
+
+  *minfo = info;
+}
+
+void
+prop_menu_deinit (GstPropMenuInfo *info)
+{
+  GError *error = NULL;
+
+  g_return_if_fail (info != NULL);
+
+  if (info->watch_stdin)
+    g_source_remove (info->watch_stdin);
+
+  if (info->iochannel_stdin)
+    g_io_channel_shutdown (info->iochannel_stdin, TRUE, &error);
+
+  g_clear_error (&error);
+
+  if (info->camera) {
+    gst_object_unref (info->camera);
+    info->camera = NULL;
+  }
+
+  g_free (info);
+
+  SWITCH_MSG ("menu thread cleaned\n");
+}
+
+static gpointer
+prop_menu (gpointer userdata)
+{
+  GstPropMenuInfo *info = NULL;
+
+  g_return_val_if_fail (userdata != NULL, NULL);
+
+  prop_menu_init (&info, userdata);
+  if (!info)
+    return NULL;
+
+  while (!element_properties (info)) {}
+
+  prop_menu_deinit (info);
+
+  return NULL;
 }
 
 gboolean
@@ -2121,7 +2664,22 @@ pipeline_prepare_to_run (GstSwitchPipeline *pipeline)
   ret = gst_element_set_state (pcontrol->pipeline, GST_STATE_PLAYING);
   SWITCH_MSG ("set pipeline to PLAYING state, return val(%d)\n", ret);
   gst_element_get_state (pcontrol->pipeline, &state, &pending,
-        GST_CLOCK_TIME_NONE);
+      GST_CLOCK_TIME_NONE);
+
+  // thread to set camera's dynamic properties.
+  if (pinfo->menu) {
+    pcontrol->thread_menu = g_thread_new ("PropMenu", prop_menu, pcontrol);
+    if (!pcontrol->thread_menu) {
+      SWITCH_ERROR ("failed to create menu thread!\n");
+      return FALSE;
+    }
+  }
+
+  pcontrol->menu_msgs = g_async_queue_new_full ((GDestroyNotify) g_free);
+  if (!pcontrol->menu_msgs) {
+    SWITCH_ERROR ("failed to allocate GAsyncQueue\n");
+    return FALSE;
+  }
 
   pcontrol->mode = GST_SWITCH_RUN_MODE_PREVIEW;
   SWITCH_MSG ("%d round start\n", pcontrol->current_round + 1);
@@ -2136,7 +2694,6 @@ pipeline_prepare_to_run (GstSwitchPipeline *pipeline)
 
   return TRUE;
 }
-
 
 gint
 main (gint argc, gchar* argv[])
