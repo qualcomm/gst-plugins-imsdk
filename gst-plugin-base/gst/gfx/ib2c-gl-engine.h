@@ -75,15 +75,8 @@ class Engine : public IEngine {
 
   GLuint GetStageTexture(const Surface& surface, const Objects& objects);
 
-#if defined(ANDROID)
-  std::vector<GraphicTuple> ImportAndroidSurface(const Surface& surface,
-                                                 uint32_t flags);
-#else // !ANDROID
-  std::vector<GraphicTuple> ImportLinuxSurface(const Surface& surface,
-                                               uint32_t flags);
-
+  std::vector<GraphicTuple> ImportSurface(const Surface& surface, uint32_t flags);
   std::vector<Surface> GetImageSurfaces(const Surface& surface, uint32_t flags);
-#endif // defined(ANDROID)
 
   /// Global mutex protecting EGL context switching and internal variables.
   std::mutex                       mutex_;
