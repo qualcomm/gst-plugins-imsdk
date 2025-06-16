@@ -15,11 +15,13 @@ GST_DEBUG_CATEGORY_EXTERN (gst_video_converter_engine_debug);
 
 
 // Composition flags valid only for the output frame.
-#define GST_VCE_FLAG_F32_FORMAT      (1)
-#define GST_VCE_FLAG_F16_FORMAT      (2)
-#define GST_VCE_FLAG_I32_FORMAT      (3)
-#define GST_VCE_FLAG_U32_FORMAT      (4)
-#define GST_VCE_FLAG_I8_FORMAT       (5)
+#define GST_VCE_FLAG_I8_FORMAT       (1)
+#define GST_VCE_FLAG_I16_FORMAT      (2)
+#define GST_VCE_FLAG_U16_FORMAT      (3)
+#define GST_VCE_FLAG_I32_FORMAT      (4)
+#define GST_VCE_FLAG_U32_FORMAT      (5)
+#define GST_VCE_FLAG_F16_FORMAT      (6)
+#define GST_VCE_FLAG_F32_FORMAT      (7)
 
 #define GST_VCE_BLIT_INIT \
     { NULL, {0, 0, 0, 0}, {0, 0, 0, 0}, 255, GST_VCE_ROTATE_0, GST_VCE_FLIP_NONE }

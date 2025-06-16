@@ -10,6 +10,8 @@
 #include <map>
 #include <tuple>
 
+#include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
 #include <GLES3/gl32.h>
 
 #include "ib2c.h"
@@ -40,6 +42,7 @@ class Format {
   static bool IsSwapped(uint32_t format);
 
   static bool IsSigned(uint32_t format);
+  static bool IsUnsigned(uint32_t format);
   static bool IsFloat(uint32_t format);
 
   static uint32_t ColorSpace(uint32_t format);
