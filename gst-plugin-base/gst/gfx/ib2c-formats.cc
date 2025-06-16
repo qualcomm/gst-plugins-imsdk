@@ -4,7 +4,7 @@
  */
 
 #include <drm/drm_fourcc.h>
-#if !defined(ANDROID) && defined(HAVE_GBM_PRIV_H)
+#ifdef HAVE_GBM_PRIV_H
 #include <gbm_priv.h>
 #else
 //TODO: Workaround due to Adreno not exporting the formats.
@@ -15,7 +15,7 @@
 #define GBM_FORMAT_RGB161616F                   fourcc_mod_code_qti(QCOM, 55)
 #define GBM_FORMAT_RGBA32323232F                fourcc_mod_code_qti(QCOM, 56)
 #define GBM_FORMAT_RGB323232F                   fourcc_mod_code_qti(QCOM, 57)
-#endif // !defined(ANDROID) && defined(HAVE_GBM_PRIV_H)
+#endif // defined(HAVE_GBM_PRIV_H)
 
 #include "ib2c-formats.h"
 #include "ib2c-utils.h"
@@ -53,7 +53,6 @@ const std::map<uint32_t, Format::RgbColorTuple> Format::kRgbColorTable = {
       { DRM_FORMAT_BGR888,        3, false, false } },
   { ColorFormat::kBGR888 | ColorMode::kSigned,
       { DRM_FORMAT_BGR888,        3, false, true  } },
-#ifndef ANDROID
   { ColorFormat::kRGB888 | ColorMode::kFloat16,
       { GBM_FORMAT_RGB161616F,    3, false, false } },
   { ColorFormat::kBGR888 | ColorMode::kFloat16,
@@ -62,7 +61,6 @@ const std::map<uint32_t, Format::RgbColorTuple> Format::kRgbColorTable = {
       { GBM_FORMAT_RGB323232F,    3, false, false } },
   { ColorFormat::kBGR888 | ColorMode::kFloat32,
       { GBM_FORMAT_RGB323232F,    3, false, true  } },
-#endif // ANDROID
   { ColorFormat::kARGB1555,
       { DRM_FORMAT_ABGR1555,      4, true,  false } },
   { ColorFormat::kABGR1555,
@@ -83,7 +81,6 @@ const std::map<uint32_t, Format::RgbColorTuple> Format::kRgbColorTable = {
       { DRM_FORMAT_ABGR8888,      4, true,  false } },
   { ColorFormat::kABGR8888,
       { DRM_FORMAT_ABGR8888,      4, true,  true  } },
-#ifndef ANDROID
   { ColorFormat::kARGB8888 | ColorMode::kFloat16,
       { GBM_FORMAT_RGBA16161616F, 4, true,  false } },
   { ColorFormat::kABGR8888 | ColorMode::kFloat16,
@@ -92,7 +89,6 @@ const std::map<uint32_t, Format::RgbColorTuple> Format::kRgbColorTable = {
       { GBM_FORMAT_RGBA32323232F, 4, true,  false } },
   { ColorFormat::kABGR8888 | ColorMode::kFloat32,
       { GBM_FORMAT_RGBA32323232F, 4, true,  true  } },
-#endif // ANDROID
   { ColorFormat::kRGBA8888,
       { DRM_FORMAT_ABGR8888,      4, false, false } },
   { ColorFormat::kBGRA8888,
@@ -101,7 +97,6 @@ const std::map<uint32_t, Format::RgbColorTuple> Format::kRgbColorTable = {
       { DRM_FORMAT_ABGR8888,      4, false, false } },
   { ColorFormat::kBGRA8888 | ColorMode::kSigned,
       { DRM_FORMAT_ABGR8888,      4, false, true  } },
-#ifndef ANDROID
   { ColorFormat::kRGBA8888 | ColorMode::kFloat16,
       { GBM_FORMAT_RGBA16161616F, 4, false, false } },
   { ColorFormat::kBGRA8888 | ColorMode::kFloat16,
@@ -110,7 +105,6 @@ const std::map<uint32_t, Format::RgbColorTuple> Format::kRgbColorTable = {
       { GBM_FORMAT_RGBA32323232F, 4, false, false } },
   { ColorFormat::kBGRA8888 | ColorMode::kFloat32,
       { GBM_FORMAT_RGBA32323232F, 4, false, true  } },
-#endif // ANDROID
   { ColorFormat::kXRGB8888,
       { DRM_FORMAT_ABGR8888,      4, true,  false } },
   { ColorFormat::kXBGR8888,
@@ -119,7 +113,6 @@ const std::map<uint32_t, Format::RgbColorTuple> Format::kRgbColorTable = {
       { DRM_FORMAT_ABGR8888,      4, true,  false } },
   { ColorFormat::kXBGR8888 | ColorMode::kSigned,
       { DRM_FORMAT_ABGR8888,      4, true,  true  } },
-#ifndef ANDROID
   { ColorFormat::kXRGB8888 | ColorMode::kFloat16,
       { GBM_FORMAT_RGBA16161616F, 4, true,  false } },
   { ColorFormat::kXBGR8888 | ColorMode::kFloat16,
@@ -128,7 +121,6 @@ const std::map<uint32_t, Format::RgbColorTuple> Format::kRgbColorTable = {
       { GBM_FORMAT_RGBA32323232F, 4, true,  false } },
   { ColorFormat::kXBGR8888 | ColorMode::kFloat32,
       { GBM_FORMAT_RGBA32323232F, 4, true,  true  } },
-#endif // ANDROID
   { ColorFormat::kRGBX8888,
       { DRM_FORMAT_ABGR8888,      4, false, false } },
   { ColorFormat::kBGRX8888,
@@ -137,7 +129,6 @@ const std::map<uint32_t, Format::RgbColorTuple> Format::kRgbColorTable = {
       { DRM_FORMAT_ABGR8888,      4, false, false } },
   { ColorFormat::kBGRX8888 | ColorMode::kSigned,
       { DRM_FORMAT_ABGR8888,      4, false, true  } },
-#ifndef ANDROID
   { ColorFormat::kRGBX8888 | ColorMode::kFloat16,
       { GBM_FORMAT_RGBA16161616F, 4, false, false } },
   { ColorFormat::kBGRX8888 | ColorMode::kFloat16,
@@ -146,7 +137,6 @@ const std::map<uint32_t, Format::RgbColorTuple> Format::kRgbColorTable = {
       { GBM_FORMAT_RGBA32323232F, 4, false, false } },
   { ColorFormat::kBGRX8888 | ColorMode::kFloat32,
       { GBM_FORMAT_RGBA32323232F, 4, false, true  } },
-#endif // ANDROID
 };
 
 const std::map<uint32_t, uint32_t> Format::kYuvColorTable = {

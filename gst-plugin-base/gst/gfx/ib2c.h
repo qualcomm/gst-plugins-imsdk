@@ -11,10 +11,6 @@
 #include <memory>
 #include <tuple>
 
-#ifdef ANDROID
-#include <nativebase/nativebase.h>
-#endif // ANDROID
-
 namespace ib2c {
 
 /** ColorFormat
@@ -122,24 +118,6 @@ enum SurfaceFlags : uint32_t {
   kOutput = (1 << 1),
 };
 
-#if defined(ANDROID)
-/** Surface
- * @buffer: Pointer to a Android Native Window buffer.
- * @format: Color format plus additional mode bits.
- * @size: Total size of the image surface in bytes.
- *
- * Structure for registering an image as a blit surface on Android platforms.
- */
-struct Surface {
-  ANativeWindowBuffer* buffer;
-  uint32_t             format;
-  uint64_t             size;
-
-  Surface() : buffer(nullptr), format(ColorFormat::kGRAY8), size(0) {}
-
-  Surface(const Surface& s) : buffer(s.buffer), format(s.format), size(s.size) {}
-};
-#else   // ANDROID
 /** Surface
  * @fd: Defines the image File Descriptor.
  * @format: Color format plus additional mode bits.
@@ -198,7 +176,6 @@ struct Surface {
         stride2(s.stride2),
         offset2(s.offset2) {}
 };
-#endif  // !ANDROID
 
 /** Normalize
  * @scale: Defines the scale factor with which the channel will be multiplied.
