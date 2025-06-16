@@ -653,11 +653,12 @@ std::string Engine::DispatchCompute(GLuint stgtex, Surface& surface,
                                     std::vector<GraphicTuple>& graphics) {
 
   ShaderType stype = ShaderType::kUnaligned8;
+  auto bitdepth = Format::BitDepth(surface.format);
 
   // Overwrite default shader type if necessary.
-  if (Format::IsFloat32(surface.format))
+  if (Format::IsFloat(surface.format) && (bitdepth == 32))
     stype = ShaderType::kUnaligned32F;
-  else if (Format::IsFloat16(surface.format))
+  else if (Format::IsFloat(surface.format) && (bitdepth == 16))
     stype = ShaderType::kUnaligned16F;
 
   std::shared_ptr<ShaderProgram> shader = shaders_.at(stype);
@@ -673,7 +674,7 @@ std::string Engine::DispatchCompute(GLuint stgtex, Surface& surface,
   shader->SetInt("targetWidth", width);
   shader->SetInt("imageWidth", std::get<0>(imgparam));
   shader->SetInt("numPixels", (width * height));
-  shader->SetInt("numChannels", Format::NumChannels(surface.format));
+  shader->SetInt("numChannels", Format::NumComponents(surface.format));
   shader->SetInt("inTex", 1);
 
   env_->Gles()->ActiveTexture(GL_TEXTURE1);
@@ -764,12 +765,12 @@ bool Engine::IsSurfaceRenderable(const Surface& surface) {
   if (Format::IsYuv(surface.format))
     return aligned;
 
-  uint32_t n_channels = Format::NumChannels(surface.format);
+  uint32_t n_components = Format::NumComponents(surface.format);
 
   // Unalined, signed or 3 channeled Float RGB surfaces are not renderable.
   // TODO Remove IsFloat when 3 channel RGB float formats are supported.
   return aligned && !Format::IsSigned(surface.format) &&
-      !(Format::IsFloat(surface.format) && (n_channels == 3));
+      !(Format::IsFloat(surface.format) && (n_components == 3));
 }
 
 GLuint Engine::GetStageTexture(const Surface& surface, const Objects& objects) {
@@ -788,7 +789,7 @@ GLuint Engine::GetStageTexture(const Surface& surface, const Objects& objects) {
 
         // Enable blending if atleast one object has global alpha or is RGBA.
         return (obj.alpha != 0xFF) ||
-            (Format::IsRgb(format) && Format::NumChannels(format) == 4);
+            (Format::IsRgb(format) && Format::NumComponents(format) == 4);
       }
   );
 
@@ -984,33 +985,39 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
     // Non-renderable RGB(A) output, reshape its dimensions and format.
     Surface subsurface(surface);
 
+    uint32_t n_components = Format::NumComponents(surface.format);
+    uint32_t bitdepth = Format::BitDepth(surface.format);
+
     // Overwrite the 3 channeled format to corresponding 4 channeled format.
     // This will make it compatible for creating EGL image and use in compute.
-    if (Format::NumChannels(surface.format) == 3) {
+    if (n_components == 3) {
       subsurface.format = ColorFormat::kRGBA8888;
 
-      if (Format::IsFloat16(surface.format))
-        subsurface.format |= ColorMode::kFloat16;
-      else if (Format::IsFloat32(surface.format))
-        subsurface.format |= ColorMode::kFloat32;
+      if (Format::IsFloat(surface.format) && (bitdepth == 16))
+        subsurface.format = ColorFormat::kRGBA16161616F;
+      else if (Format::IsFloat(surface.format) && (bitdepth == 32))
+        subsurface.format = ColorFormat::kRGBA32323232F;
+
+      n_components = Format::NumComponents(subsurface.format);
+      bitdepth = Format::BitDepth(subsurface.format);
     }
 
     uint32_t alignment = QueryAlignment();
 
-    uint32_t n_bytes = Format::BytesPerChannel(subsurface.format);
-    uint32_t n_channels = Format::NumChannels(subsurface.format);
+    // Divide by 8 in order to get Bytes Per Pixel.
+    uint32_t bpp = (bitdepth * n_components) / 8;
 
     // Adjust width, height and stride values for non-renderable RGB(A) surface.
     // Align stride and calculate the width for the compute texture.
     subsurface.stride0 =
         ((subsurface.stride0 + (alignment - 1)) & ~(alignment - 1));
-    subsurface.width = subsurface.stride0 / (n_channels * n_bytes);
+    subsurface.width = subsurface.stride0 / bpp;
 
     uint32_t size = subsurface.size - subsurface.offset0;
 
     // Calculate the aligned height value rounded up based on surface size.
-    subsurface.height = std::ceil(
-        (size / (n_channels * n_bytes)) / static_cast<float>(subsurface.width));
+    subsurface.height =
+        std::ceil((size / bpp) / static_cast<float>(subsurface.width));
 
     imgsurfaces.push_back(subsurface);
   } else {

@@ -55,7 +55,7 @@ struct _GstGlesVideoConverter
 };
 
 static gint
-gst_video_format_to_ib2c_format (GstVideoFormat format)
+gst_video_format_to_ib2c_format (GstVideoFormat format, const guint64 flags)
 {
   switch (format) {
     case GST_VIDEO_FORMAT_NV12:
@@ -78,31 +78,111 @@ gst_video_format_to_ib2c_format (GstVideoFormat format)
       return ::ib2c::ColorFormat::kYVYU;
     case GST_VIDEO_FORMAT_VYUY:
       return ::ib2c::ColorFormat::kVYUY;
-    case GST_VIDEO_FORMAT_RGB16:
-      return ::ib2c::ColorFormat::kRGB565;
-    case GST_VIDEO_FORMAT_BGR16:
-      return ::ib2c::ColorFormat::kBGR565;
     case GST_VIDEO_FORMAT_RGB:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kRGB888I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kRGB161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kRGB323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kRGB888;
     case GST_VIDEO_FORMAT_BGR:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kBGR888I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kBGR161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kBGR323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kBGR888;
     case GST_VIDEO_FORMAT_RGBA:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kRGBA8888I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kRGBA16161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kRGBA32323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kRGBA8888;
     case GST_VIDEO_FORMAT_BGRA:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kBGRA8888I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kBGRA16161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kBGRA32323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kBGRA8888;
     case GST_VIDEO_FORMAT_ARGB:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kARGB8888I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kARGB16161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kARGB32323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kARGB8888;
     case GST_VIDEO_FORMAT_ABGR:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kABGR8888I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kABGR16161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kABGR32323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kABGR8888;
     case GST_VIDEO_FORMAT_RGBx:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kRGBX8888I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kRGBX16161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kRGBX32323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kRGBX8888;
     case GST_VIDEO_FORMAT_BGRx:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kBGRX8888I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kBGRX16161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kBGRX32323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kBGRX8888;
     case GST_VIDEO_FORMAT_xRGB:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kXRGB8888I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kXRGB16161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kXRGB32323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kXRGB8888;
     case GST_VIDEO_FORMAT_xBGR:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kXBGR8888I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kXBGR16161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kXBGR32323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kXBGR8888;
     case GST_VIDEO_FORMAT_GRAY8:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kGRAY8I;
+
+      // Default value.
       return ::ib2c::ColorFormat::kGRAY8;
     default:
       GST_ERROR ("Unsupported format %s!", gst_video_format_to_string (format));
@@ -134,22 +214,20 @@ gst_gles_create_surface (GstGlesVideoConverter * convert, const gchar * directio
   format = gst_video_format_to_string (GST_VIDEO_FRAME_FORMAT (frame));
 
   surface.fd = gst_fd_memory_get_fd (memory);
-  surface.format = gst_video_format_to_ib2c_format (GST_VIDEO_FRAME_FORMAT (frame));
   surface.width = GST_VIDEO_FRAME_WIDTH (frame);
   surface.height = GST_VIDEO_FRAME_HEIGHT (frame);
   surface.size = gst_buffer_get_size (frame->buffer);
   surface.nplanes = GST_VIDEO_FRAME_N_PLANES (frame);
 
-  if (flags == GST_VCE_FLAG_F16_FORMAT) {
-    surface.format |= ::ib2c::ColorMode::kFloat16;
+  surface.format =
+      gst_video_format_to_ib2c_format (GST_VIDEO_FRAME_FORMAT (frame), flags);
+
+  if (flags == GST_VCE_FLAG_F16_FORMAT)
     mode = " FLOAT16";
-  } else if (flags == GST_VCE_FLAG_F32_FORMAT) {
-    surface.format |= ::ib2c::ColorMode::kFloat32;
+  else if (flags == GST_VCE_FLAG_F32_FORMAT)
     mode = " FLOAT32";
-  } else if (flags == GST_VCE_FLAG_I8_FORMAT) {
-    surface.format |= ::ib2c::ColorMode::kSigned;
+  else if (flags == GST_VCE_FLAG_I8_FORMAT)
     mode = " SIGNED";
-  }
 
   GST_TRACE ("%s surface FD[%d] - Width[%u] Height[%u] Format[%s%s] Planes[%u]",
       direction, surface.fd, surface.width, surface.height, format, mode,

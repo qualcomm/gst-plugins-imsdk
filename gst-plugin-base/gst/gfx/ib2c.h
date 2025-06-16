@@ -19,35 +19,60 @@ namespace ib2c {
  */
 enum ColorFormat : uint32_t {
   kGRAY8,
+  kGRAY8I,
 
   kRG88,
   kGR88,
 
-  kRGB565,
-  kBGR565,
-
   kRGB888,
+  kRGB888I,
+  kRGB161616F,
+  kRGB323232F,
+
   kBGR888,
+  kBGR888I,
+  kBGR161616F,
+  kBGR323232F,
 
-  kARGB1555,
-  kARGB4444,
   kARGB8888,
+  kARGB8888I,
+  kARGB16161616F,
+  kARGB32323232F,
+
   kXRGB8888,
+  kXRGB8888I,
+  kXRGB16161616F,
+  kXRGB32323232F,
 
-  kABGR1555,
-  kABGR4444,
   kABGR8888,
+  kABGR8888I,
+  kABGR16161616F,
+  kABGR32323232F,
+
   kXBGR8888,
+  kXBGR8888I,
+  kXBGR16161616F,
+  kXBGR32323232F,
 
-  kRGBA5551,
-  kRGBA4444,
   kRGBA8888,
-  kRGBX8888,
+  kRGBA8888I,
+  kRGBA16161616F,
+  kRGBA32323232F,
 
-  kBGRA4444,
-  kBGRA5551,
+  kRGBX8888,
+  kRGBX8888I,
+  kRGBX16161616F,
+  kRGBX32323232F,
+
   kBGRA8888,
+  kBGRA8888I,
+  kBGRA16161616F,
+  kBGRA32323232F,
+
   kBGRX8888,
+  kBGRX8888I,
+  kBGRX16161616F,
+  kBGRX32323232F,
 
   kYUYV,
   kYVYU,
@@ -78,10 +103,6 @@ enum ColorFormat : uint32_t {
  * @kBT601: YUV format is following BT 601 standard.
  * @kBT601FullRange: YUV format is full range following full BT 601 standard.
  * @kBT709: YUV format is following BT 709 standard.
- * @kUnsigned: The pixels in a RGB format are represented by unsigned 8-bit. (Default)
- * @kSigned: The pixels in a RGB format are represented by signed 8-bit.
- * @kFloat16: The pixels in a RGB format are represented by 16-bit float.
- * @kFloat32: The pixels in a RGB format are represented by 32-bit float.
  *
  * Definitions of color format modes, used together with color formats.
  */
@@ -90,10 +111,6 @@ enum ColorMode : uint32_t {
   kBT601          = (1 << 9),
   kBT601FullRange = (2 << 9),
   kBT709          = (3 << 9),
-  kUnsigned       = (0 << 11),
-  kSigned         = (1 << 11),
-  kFloat16        = (2 << 11),
-  kFloat32        = (3 << 11),
 };
 
 /** ConfigMask
