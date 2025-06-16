@@ -6,14 +6,14 @@
   "ApplicationIcon": "",
   "AIModelsNeededByApplication": [
     {
-      "ModelName": "yolov8_det_quantized.tflite",
-      "ModelLabelDownloadURL": "",
-      "LabelFile": "yolov8.labels",
+      "ModelName": "yolox_quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Yolo-X/resolve/main/Yolo-X_w8a8.tflite",
+      "LabelFile": "yolox.labels",
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
     },
     {
       "ModelName": "hrnet_pose_quantized.tflite",
-      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/HRNetPoseQuantized/resolve/main/HRNetPoseQuantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/HRNetPose/resolve/dbfe1866bd2dbfb9eecb32e54b8fcdc23d77098b/HRNetPose_w8a8.tflite",
       "LabelFile": "hrnet_pose.labels",
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/hrnet_pose.labels"
     }

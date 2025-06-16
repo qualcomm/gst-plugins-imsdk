@@ -6,9 +6,9 @@
   "ApplicationIcon": "",
   "AIModelsNeededByApplication": [
     {
-      "ModelName": "model-batch-4.tflite",
+      "ModelName": "yolov8_det_quantized.tflite",
       "ModelLabelDownloadURL": "",
-      "LabelFile": "model.labels",
+      "LabelFile": "yolov8.labels",
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
     }
   ],
