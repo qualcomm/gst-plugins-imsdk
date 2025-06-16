@@ -149,22 +149,30 @@ Engine::Engine() {
   EXCEPTION_IF_GL_ERROR(env_, "Failed to enable texture coords attribute array");
 
   // Construct shader code for 8-bit unaligned RGB(A) output textures.
-  std::string code = kComputeHeader + kComputeOutputRgba8 + kComputeMainUnaligned;
+  std::string code = kComputeHeader + kComputeOutputRGBA8 + kComputeMainUnaligned;
 
   shader = std::make_shared<ShaderProgram>(env_, code);
-  shaders_.emplace(ShaderType::kUnaligned8, shader);
+  shaders_.emplace(ShaderType::kCompute8, shader);
+
+  if (env_->QueryExtension("GL_NV_image_formats")) {
+    // Construct shader code for 16-bit unaligned RGB(A) output textures.
+    code = kComputeHeader + kComputeOutputRGBA16 + kComputeMainUnaligned;
+
+    shader = std::make_shared<ShaderProgram>(env_, code);
+    shaders_.emplace(ShaderType::kCompute16, shader);
+  }
 
   // Construct shader code for 16-bit float unaligned RGB(A) output textures.
-  code = kComputeHeader + kComputeOutputRgba16F + kComputeMainUnaligned;
+  code = kComputeHeader + kComputeOutputRGBA16F + kComputeMainUnaligned;
 
   shader = std::make_shared<ShaderProgram>(env_, code);
-  shaders_.emplace(ShaderType::kUnaligned16F, shader);
+  shaders_.emplace(ShaderType::kCompute16F, shader);
 
   // Construct shader code for 32-bit float unaligned RGB(A) output textures.
-  code = kComputeHeader + kComputeOutputRgba32F + kComputeMainUnaligned;
+  code = kComputeHeader + kComputeOutputRGBA32F + kComputeMainUnaligned;
 
   shader = std::make_shared<ShaderProgram>(env_, code);
-  shaders_.emplace(ShaderType::kUnaligned32F, shader);
+  shaders_.emplace(ShaderType::kCompute32F, shader);
 
   error = env_->UnbindContext(ContextType::kPrimary) ;
   if (!error.empty()) throw std::runtime_error(error);
@@ -655,14 +663,16 @@ std::string Engine::DrawObject(std::shared_ptr<ShaderProgram>& shader,
 std::string Engine::DispatchCompute(GLuint stgtex, Surface& surface,
                                     std::vector<GraphicTuple>& graphics) {
 
-  ShaderType stype = ShaderType::kUnaligned8;
+  ShaderType stype = ShaderType::kCompute8;
   auto bitdepth = Format::BitDepth(surface.format);
 
   // Overwrite default shader type if necessary.
   if (Format::IsFloat(surface.format) && (bitdepth == 32))
-    stype = ShaderType::kUnaligned32F;
+    stype = ShaderType::kCompute32F;
   else if (Format::IsFloat(surface.format) && (bitdepth == 16))
-    stype = ShaderType::kUnaligned16F;
+    stype = ShaderType::kCompute16F;
+  else if (!Format::IsFloat(surface.format) && (bitdepth == 16))
+    stype = ShaderType::kCompute16;
 
   std::shared_ptr<ShaderProgram> shader = shaders_.at(stype);
   shader->Use();
@@ -784,6 +794,12 @@ bool Engine::IsSurfaceRenderable(const Surface& surface) {
   // 3 channeled Float RGB surfaces are not renderable due to limitation.
   // TODO Remove when 3 channel RGB float formats are supported.
   if (Format::IsFloat(surface.format) && (n_components == 3))
+    return false;
+
+  // 3 channeled 16-bit integer RGB surfaces are not renderable, format missing.
+  // TODO Remove when 3 channel 16-bit integer RGB float formats are supported.
+  if (!Format::IsFloat(surface.format) && (n_components == 3) &&
+      (Format::BitDepth(surface.format) == 16))
     return false;
 
   return true;
@@ -1013,6 +1029,10 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
         subsurface.format = ColorFormat::kRGBA32323232F;
       else if (Format::IsFloat(surface.format) && (bitdepth == 16))
         subsurface.format = ColorFormat::kRGBA16161616F;
+      else if (Format::IsUnsigned(surface.format) && (bitdepth == 16))
+        subsurface.format = ColorFormat::kRGBA16161616;
+      else if (Format::IsSigned(surface.format) && (bitdepth == 16))
+        subsurface.format = ColorFormat::kRGBA16161616I;
       else if (Format::IsSigned(surface.format) && (bitdepth == 8))
         subsurface.format = ColorFormat::kRGBA8888I;
 
