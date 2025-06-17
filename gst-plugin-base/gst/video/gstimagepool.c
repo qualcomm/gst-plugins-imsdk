@@ -258,6 +258,12 @@ gbm_device_open (GstImageBufferPool * vpool)
   priv->gbmfd = open ("/dev/dma_heap/qcom,system", O_RDONLY | O_CLOEXEC);
 
   if (priv->gbmfd < 0) {
+    GST_WARNING_OBJECT (vpool, "Failed to open /dev/dma_heap/qcom,system, "
+        "error: %s! Falling back to /dev/dma_heap/system", g_strerror (errno));
+    priv->gbmfd = open ("/dev/dma_heap/system", O_RDONLY | O_CLOEXEC);
+  }
+
+  if (priv->gbmfd < 0) {
     GST_WARNING_OBJECT (vpool, "Falling back to /dev/ion");
     priv->gbmfd = open ("/dev/ion", O_RDONLY | O_CLOEXEC);
   }

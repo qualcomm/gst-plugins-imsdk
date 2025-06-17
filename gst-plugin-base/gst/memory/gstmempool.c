@@ -120,6 +120,12 @@ open_ion_device (GstMemBufferPool * mempool, gboolean secure)
   } else {
     GST_INFO_OBJECT (mempool, "Open /dev/dma_heap/qcom,system");
     priv->devfd = open ("/dev/dma_heap/qcom,system", O_RDONLY | O_CLOEXEC);
+
+    if (priv->devfd < 0) {
+      GST_WARNING_OBJECT (mempool, "Failed to open /dev/dma_heap/qcom,system, "
+          "error: %s! Falling back to /dev/dma_heap/system", g_strerror (errno));
+      priv->devfd = open ("/dev/dma_heap/system", O_RDONLY | O_CLOEXEC);
+    }
   }
 
   if (priv->devfd < 0) {
