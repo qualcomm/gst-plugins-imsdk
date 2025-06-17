@@ -19,9 +19,9 @@
             "/etc/media/video16.mp4"
         ],
 
-    "model": "/etc/models/model-detection.tflite",
-    "labels": "/etc/labels/detection.labels",
-    "constants": "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,q-scales=<3.0546178817749023, 0.003793874057009816, 1.0>;",
+    "model": "/etc/models/yolox_quantized.tflite",
+    "labels": "/etc/labels/yolox.labels",
+    "constants": "YOLOv8,q-offsets=<38.0, 0.0, 0.0>,q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;",
     "output-display": true,
     "use-case": 0
 }

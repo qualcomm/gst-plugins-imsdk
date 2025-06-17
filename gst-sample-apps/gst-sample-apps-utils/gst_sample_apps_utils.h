@@ -79,6 +79,7 @@ typedef enum {
  * @GST_YOLO_TYPE_V8  : Yolov8 Object Detection Model.
  * @GST_YOLO_TYPE_NAS : Yolonas Object Detection Model.
  * @GST_YOLO_TYPE_V7  : YoloV7 Object Detection Model.
+ * @GST_YOLO_TYPE_X   : Yolox Object Detection Model.
  *
  * Type of Yolo Model.
  */
@@ -87,7 +88,8 @@ typedef enum {
   GST_YOLO_TYPE_V5,
   GST_YOLO_TYPE_V8,
   GST_YOLO_TYPE_NAS,
-  GST_YOLO_TYPE_V7
+  GST_YOLO_TYPE_V7,
+  GST_YOLO_TYPE_X
 } GstYoloModelType;
 
 /**

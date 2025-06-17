@@ -51,10 +51,10 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_TFLITE_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.tflite"
+#define DEFAULT_TFLITE_YOLOX_MODEL "/etc/models/yolox_quantized.tflite"
 #define DEFAULT_TFLITE_POSE_MODEL \
     "/etc/models/hrnet_pose_quantized.tflite"
-#define DEFAULT_YOLOV8_LABELS "/etc/labels/yolov8.labels"
+#define DEFAULT_YOLOX_LABELS "/etc/labels/yolox.labels"
 #define DEFAULT_POSE_LABELS "/etc/labels/hrnet_pose.labels"
 
 /**
@@ -65,8 +65,8 @@
 /**
  * Default Scale and Offset constants
  */
-#define DEFAULT_YOLOV8_CONSTANT "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,\
-    q-scales=<3.0546178817749023, 0.003793874057009816, 1.0>;"
+#define DEFAULT_YOLOX_CONSTANT "YOLOX,q-offsets=<38.0, 0.0, 0.0>,\
+    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
 #define DEFAULT_HRNET_CONSTANT "hrnet,q-offsets=<8.0>,\
     q-scales=<0.0040499246679246426>;"
 
@@ -168,11 +168,11 @@ typedef struct {
   gchar *input_file_path;
   gchar *output_file_path;
   gchar *rtsp_ip_port;
-  gchar *yolov8_model_path;
+  gchar *yolox_model_path;
   gchar *hrnet_model_path;
-  gchar *yolov8_labels_path;
+  gchar *yolox_labels_path;
   gchar *hrnet_labels_path;
-  gchar *yolov8_constants;
+  gchar *yolox_constants;
   gchar *hrnet_constants;
   enum GstSinkType sink_type;
   GstStreamSourceType source_type;
@@ -264,9 +264,9 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options, gchar * c
     options->rtsp_ip_port = NULL;
   }
 
-  if (options->yolov8_model_path != (gchar *)(&DEFAULT_TFLITE_YOLOV8_MODEL) &&
-      options->yolov8_model_path != NULL) {
-    g_free ((gpointer)options->yolov8_model_path);
+  if (options->yolox_model_path != (gchar *)(&DEFAULT_TFLITE_YOLOX_MODEL) &&
+      options->yolox_model_path != NULL) {
+    g_free ((gpointer)options->yolox_model_path);
   }
 
   if (options->hrnet_model_path != (gchar *)(&DEFAULT_TFLITE_POSE_MODEL) &&
@@ -274,9 +274,9 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options, gchar * c
     g_free ((gpointer)options->hrnet_model_path);
   }
 
-  if (options->yolov8_labels_path != (gchar *)(&DEFAULT_YOLOV8_LABELS) &&
-      options->yolov8_labels_path != NULL) {
-    g_free ((gpointer)options->yolov8_labels_path);
+  if (options->yolox_labels_path != (gchar *)(&DEFAULT_YOLOX_LABELS) &&
+      options->yolox_labels_path != NULL) {
+    g_free ((gpointer)options->yolox_labels_path);
   }
 
   if (options->hrnet_labels_path != (gchar *)(&DEFAULT_POSE_LABELS) &&
@@ -284,9 +284,9 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options, gchar * c
     g_free ((gpointer)options->hrnet_labels_path);
   }
 
-  if (options->yolov8_constants != (gchar *)(&DEFAULT_YOLOV8_CONSTANT) &&
-      options->yolov8_constants != NULL) {
-    g_free ((gpointer)options->yolov8_constants);
+  if (options->yolox_constants != (gchar *)(&DEFAULT_YOLOX_CONSTANT) &&
+      options->yolox_constants != NULL) {
+    g_free ((gpointer)options->yolox_constants);
   }
 
   if (options->hrnet_constants != (gchar *)(&DEFAULT_HRNET_CONSTANT) &&
@@ -659,7 +659,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
     if (i == GST_DETECTION_TYPE_YOLO)
     {
       g_object_set (G_OBJECT (qtimlelement[i]),
-          "model", options->yolov8_model_path,
+          "model", options->yolox_model_path,
           "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
     }
     else
@@ -705,8 +705,8 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
     if (module_id != -1) {
       g_object_set (G_OBJECT (qtimlvdetection[i]),
           "threshold", 75.0, "results", 4,
-          "module", module_id, "labels", options->yolov8_labels_path,
-          "constants", options->yolov8_constants,
+          "module", module_id, "labels", options->yolox_labels_path,
+          "constants", options->yolox_constants,
           NULL);
       }
     else {
@@ -1168,12 +1168,12 @@ parse_json (gchar * config_file, GstAppOptions * options)
   }
 
   if (json_object_has_member (root_obj, "detection-model")) {
-    options->yolov8_model_path =
+    options->yolox_model_path =
         g_strdup (json_object_get_string_member (root_obj, "detection-model"));
   }
 
   if (json_object_has_member (root_obj, "detection-labels")) {
-    options->yolov8_labels_path =
+    options->yolox_labels_path =
         g_strdup (json_object_get_string_member (root_obj, "detection-labels"));
   }
 
@@ -1190,7 +1190,7 @@ parse_json (gchar * config_file, GstAppOptions * options)
   }
 
   if (json_object_has_member (root_obj, "detection-constants")) {
-    options->yolov8_constants =
+    options->yolox_constants =
         g_strdup (json_object_get_string_member (root_obj,
             "detection-constants"));
   }
@@ -1229,11 +1229,11 @@ main (gint argc, gchar * argv[])
   options.input_file_path = NULL;
   options.output_file_path = NULL;
   options.rtsp_ip_port = NULL;
-  options.yolov8_model_path = DEFAULT_TFLITE_YOLOV8_MODEL;
+  options.yolox_model_path = DEFAULT_TFLITE_YOLOX_MODEL;
   options.hrnet_model_path = DEFAULT_TFLITE_POSE_MODEL;
-  options.yolov8_labels_path = DEFAULT_YOLOV8_LABELS;
+  options.yolox_labels_path = DEFAULT_YOLOX_LABELS;
   options.hrnet_labels_path = DEFAULT_POSE_LABELS;
-  options.yolov8_constants = DEFAULT_YOLOV8_CONSTANT;
+  options.yolox_constants = DEFAULT_YOLOX_CONSTANT;
   options.hrnet_constants = DEFAULT_HRNET_CONSTANT;
   options.camera_source = FALSE;
   options.display = FALSE;
@@ -1277,12 +1277,12 @@ main (gint argc, gchar * argv[])
     "  %s"
     "  detection-model: \"/PATH\"\n"
     "      This is an optional parameter and overrides default path "
-    "for YOLOV8 detection model\n"
-    "      Default path for YOLOV8 model: "DEFAULT_TFLITE_YOLOV8_MODEL"\n"
+    "for YOLOX detection model\n"
+    "      Default path for YOLOX model: "DEFAULT_TFLITE_YOLOX_MODEL"\n"
     "  detection-labels: \"/PATH\"\n"
     "      This is an optional parameter and overrides default path "
-    " for YOLOV8 labels\n"
-    "      Default path for YOLOV8 labels: "DEFAULT_YOLOV8_LABELS"\n"
+    " for YOLOX labels\n"
+    "      Default path for YOLOX labels: "DEFAULT_YOLOX_LABELS"\n"
     "  pose-model: \"/PATH\"\n"
     "      This is an optional parameter and overrides default path "
     "for Pose Detection model\n"
@@ -1294,8 +1294,8 @@ main (gint argc, gchar * argv[])
     "      Default path for Pose Detection labels: "
     DEFAULT_POSE_LABELS"\n"
     "  detection-constants: \"CONSTANTS\"\n"
-    "      Constants, offsets and coefficients for YOLOV8 TFLITE model \n"
-    "      Default constants for YOLOV8: "DEFAULT_YOLOV8_CONSTANT"\n"
+    "      Constants, offsets and coefficients for YOLOX TFLITE model \n"
+    "      Default constants for YOLOX: "DEFAULT_YOLOX_CONSTANT"\n"
     "  pose-constants: \"CONSTANTS\"\n"
     "      Constants, offsets and coefficients for HRNET TFLITE model \n"
     "      Default constants for HRNET: "DEFAULT_HRNET_CONSTANT"\n"
@@ -1409,9 +1409,9 @@ main (gint argc, gchar * argv[])
     }
   }
 
-  if (!file_exists (options.yolov8_model_path)) {
+  if (!file_exists (options.yolox_model_path)) {
     g_printerr ("Invalid detection model file path: %s\n",
-        options.yolov8_model_path);
+        options.yolox_model_path);
     gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
@@ -1422,9 +1422,9 @@ main (gint argc, gchar * argv[])
     return -EINVAL;
   }
 
-  if (!file_exists (options.yolov8_labels_path)) {
+  if (!file_exists (options.yolox_labels_path)) {
     g_printerr ("Invalid detection labels file path: %s\n",
-        options.yolov8_labels_path);
+        options.yolox_labels_path);
     gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }
@@ -1447,7 +1447,7 @@ main (gint argc, gchar * argv[])
   g_print ("Running app with\n"
       "For Detection model: %s labels: %s\n"
       "For Pose model: %s labels: %s\n",
-      options.yolov8_model_path, options.yolov8_labels_path,
+      options.yolox_model_path, options.yolox_labels_path,
       options.hrnet_model_path, options.hrnet_labels_path);
 
   // Initialize GST library.
