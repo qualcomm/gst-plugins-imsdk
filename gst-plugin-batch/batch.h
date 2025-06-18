@@ -87,6 +87,12 @@ struct _GstBatch
   gint64         endtime;
   /// Condition for negotiating output caps and push/pop buffers from the queues.
   GCond          wakeup;
+  /// Depth indicating how many buffers should be accumulated from each stream.
+  guint          depth;
+
+  /// Properties
+  /// Indicating how many new buffers will be used for each output frame.
+  guint          moving_window_size;
 };
 
 struct _GstBatchClass {

@@ -55,6 +55,8 @@ GST_DEBUG_CATEGORY (gst_batch_debug);
 #define gst_batch_parent_class parent_class
 G_DEFINE_TYPE (GstBatch, gst_batch, GST_TYPE_ELEMENT);
 
+#define DEFAULT_PROP_MOVING_WINDOW_SIZE 1
+
 #define GST_BATCH_SINK_CAPS \
     "video/x-raw(ANY); "    \
     "audio/x-raw(ANY)"
@@ -66,6 +68,7 @@ G_DEFINE_TYPE (GstBatch, gst_batch, GST_TYPE_ELEMENT);
 enum
 {
   PROP_0,
+  PROP_MOVING_WINDOW_SIZE,
 };
 
 static GstStaticPadTemplate gst_batch_sink_template =
@@ -216,7 +219,7 @@ gst_batch_sink_buffers_available (GstBatch * batch)
     if (sinkpad->is_idle)
       continue;
 
-    available &= !g_queue_is_empty (sinkpad->buffers);
+    available &= (g_queue_get_length (sinkpad->buffers) >= batch->depth);
   }
 
   // If all pads are idle then ignore the cumulative buffers 'available' variable.
@@ -228,7 +231,7 @@ gst_batch_update_src_caps (GstBatch * batch, GstCaps * caps)
 {
   GstStructure *structure = NULL;
   const gchar *viewmode = NULL;
-  guint idx = 0, length = 0, n_views = 0;
+  guint idx = 0, length = 0;
   gboolean success = FALSE;
 
   // In case the RECONFIGURE flag was not set just return immediately.
@@ -237,10 +240,6 @@ gst_batch_update_src_caps (GstBatch * batch, GstCaps * caps)
 
   viewmode = gst_video_multiview_mode_to_caps_string (
       GST_VIDEO_MULTIVIEW_MODE_SEPARATED);
-
-  GST_BATCH_LOCK (batch);
-  n_views = g_list_length (batch->sinkpads);
-  GST_BATCH_UNLOCK (batch);
 
   length = gst_caps_get_size (caps);
 
@@ -254,7 +253,7 @@ gst_batch_update_src_caps (GstBatch * batch, GstCaps * caps)
     // Set multiview mode separated which indicates the next plugin to read
     // the corresponding channel bit in the buffer universal offset field.
     gst_structure_set (structure, "multiview-mode", G_TYPE_STRING, viewmode,
-        "views", G_TYPE_INT, n_views, NULL);
+        NULL);
   }
 
   if (!gst_caps_is_fixed (caps))
@@ -266,9 +265,23 @@ gst_batch_update_src_caps (GstBatch * batch, GstCaps * caps)
 
   // Get the frame duration from the caps.
   if (gst_structure_has_name (structure, "video/x-raw")) {
-    const GValue *value = gst_structure_get_value (structure, "framerate");
+    const GValue *value = NULL;
 
-    batch->duration = gst_util_uint64_scale_int (GST_SECOND,
+    if (gst_structure_has_field (structure, "views")) {
+      gst_structure_get_int (structure, "views", (gint *)&batch->depth);
+      GST_DEBUG_OBJECT (batch, "Setting depth to: %u", batch->depth);
+    }
+
+    if (batch->moving_window_size > batch->depth) {
+      GST_ERROR_OBJECT (batch, "Unsupported: moving window size cannot be "
+          "larger than depth! Moving window size = %u depth = %u",
+          batch->moving_window_size, batch->depth);
+      return FALSE;
+    }
+
+    value = gst_structure_get_value (structure, "framerate");
+
+    batch->duration = batch->depth * gst_util_uint64_scale_int (GST_SECOND,
         gst_value_get_fraction_denominator (value),
         gst_value_get_fraction_numerator (value));
   } else {
@@ -309,67 +322,80 @@ gst_batch_extract_sink_buffer (GstElement * element, GstPad * pad,
   GstVideoMeta *vmeta = NULL;
   GstVideoRegionOfInterestMeta *roimeta = NULL;
   GstStructure *structure = NULL;
-  guint num = 0, stream_id = 0;
+  guint num = 0, stream_id = 0, idx = 0, flags = 0;
 
-  outbuffer = GST_BUFFER (userdata);
-  inbuffer = g_queue_peek_head (sinkpad->buffers);
-
-  // If NULL s returned then queue is empty, nothing further to do.
-  if (inbuffer == NULL)
+  // If the number of buffers in the queue is less than the requered depth,
+  // not enough buffers have been accumulated for the current sink pad
+  if (g_queue_get_length (sinkpad->buffers) < batch->depth)
     return TRUE;
 
-  GST_TRACE_OBJECT (sinkpad, "Taking %" GST_PTR_FORMAT, inbuffer);
+  outbuffer = GST_BUFFER (userdata);
 
   // Get the index of current sink pad, which is going to be its stream ID.
   stream_id = g_list_index (batch->sinkpads, sinkpad);
 
+  // Iterate up to "depth" because that is the exact number of buffer that
+  // have to be extracted from the queue
+  for (idx = 0; idx < batch->depth; idx++) {
+    inbuffer = g_queue_peek_nth (sinkpad->buffers, idx);
+
+    GST_TRACE_OBJECT (sinkpad, "Taking %" GST_PTR_FORMAT, inbuffer);
+
+    flags |= GST_BUFFER_FLAGS (inbuffer);
+
+    // GAP buffer, nothing further to do.
+    // GAP buffers can occur only if depth == 1
+    if (gst_buffer_get_size (inbuffer) == 0 &&
+        GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP))
+      goto cleanup;
+
+    // Append the memory block from input buffer into the new buffer.
+    gst_buffer_append_memory (outbuffer, gst_buffer_get_memory (inbuffer, 0));
+
+    // Add parent meta, input buffer won't be released until new buffer is freed.
+    gst_buffer_add_parent_buffer_meta (outbuffer, inbuffer);
+
+    // If present transfer video metadata into the new buffer wrapper.
+    if ((vmeta = gst_buffer_get_video_meta (inbuffer)) != NULL) {
+      vmeta = gst_buffer_add_video_meta_full (outbuffer, vmeta->flags,
+          vmeta->format, vmeta->width, vmeta->height, vmeta->n_planes,
+          vmeta->offset, vmeta->stride);
+      vmeta->id = gst_buffer_n_memory (outbuffer) - 1;
+    }
+
+    // TODO add equivalent operation for GstAudioMeta.
+
+
+    // Transfer all ROI meta if present in the input buffer.
+    roimeta = gst_buffer_get_video_region_of_interest_meta_id (inbuffer, num);
+
+    // Copy ROI metadata for current memory block into the new buffer.
+    while (roimeta != NULL) {
+      roimeta = gst_buffer_add_video_region_of_interest_meta_id (outbuffer,
+          roimeta->roi_type, roimeta->x, roimeta->y, roimeta->w, roimeta->h);
+
+      // Prefix the original ROI ID with the stream ID.
+      roimeta->id = (stream_id << GST_MUX_STREAM_ID_OFFSET) + num;
+
+      roimeta = gst_buffer_get_video_region_of_interest_meta_id (inbuffer, ++num);
+    }
+
+  }
+
+cleanup:
+  // Take the timestamp of the first buffer in the queue
+  inbuffer = g_queue_peek_head (sinkpad->buffers);
   // Create a structure that will contain information for decryption.
   structure = gst_structure_new (gst_mux_stream_name (stream_id),
       "timestamp", G_TYPE_UINT64, GST_BUFFER_TIMESTAMP (inbuffer),
-      "duration", G_TYPE_UINT64, GST_BUFFER_DURATION (inbuffer),
-      "flags", G_TYPE_UINT, GST_BUFFER_FLAGS (inbuffer), NULL);
+      "duration", G_TYPE_UINT64, batch->duration,
+      "flags", G_TYPE_UINT, flags, NULL);
 
   // Add meta containing information for tensor decryption downstream.
   gst_buffer_add_protection_meta (outbuffer, structure);
 
   // Set the corresponding channel bit in the buffer universal offset field.
   GST_BUFFER_OFFSET (outbuffer) |= (1 << stream_id);
-
-  // GAP buffer, nothing further to do.
-  if (gst_buffer_get_size (inbuffer) == 0 &&
-      GST_BUFFER_FLAG_IS_SET (inbuffer, GST_BUFFER_FLAG_GAP))
-    return TRUE;
-
-  // Append the memory block from input buffer into the new buffer.
-  gst_buffer_append_memory (outbuffer, gst_buffer_get_memory (inbuffer, 0));
-
-  // Add parent meta, input buffer won't be released until new buffer is freed.
-  gst_buffer_add_parent_buffer_meta (outbuffer, inbuffer);
-
-  // If present transfer video metadata into the new buffer wrapper.
-  if ((vmeta = gst_buffer_get_video_meta (inbuffer)) != NULL) {
-    vmeta = gst_buffer_add_video_meta_full (outbuffer, vmeta->flags,
-        vmeta->format, vmeta->width, vmeta->height, vmeta->n_planes,
-        vmeta->offset, vmeta->stride);
-    vmeta->id = gst_buffer_n_memory (outbuffer) - 1;
-  }
-
-  // TODO add equivalent operation for GstAudioMeta.
-
-
-  // Transfer all ROI meta if present in the input buffer.
-  roimeta = gst_buffer_get_video_region_of_interest_meta_id (inbuffer, num);
-
-  // Copy ROI metadata for current memory block into the new buffer.
-  while (roimeta != NULL) {
-    roimeta = gst_buffer_add_video_region_of_interest_meta_id (outbuffer,
-        roimeta->roi_type, roimeta->x, roimeta->y, roimeta->w, roimeta->h);
-
-    // Prefix the original ROI ID with the stream ID.
-    roimeta->id = (stream_id << GST_MUX_STREAM_ID_OFFSET) + num;
-
-    roimeta = gst_buffer_get_video_region_of_interest_meta_id (inbuffer, ++num);
-  }
 
   return TRUE;
 }
@@ -383,6 +409,7 @@ gst_batch_worker_task (gpointer userdata)
   GstDataQueueItem *item = NULL;
   GList *list = NULL;
   guint channels = 0;
+  gboolean available = FALSE;
 
   GST_BATCH_LOCK (batch);
 
@@ -399,6 +426,24 @@ gst_batch_worker_task (gpointer userdata)
 
   // Immediately exit the worker task if signaled to stop.
   if (!batch->active) {
+    GST_BATCH_UNLOCK (batch);
+    return;
+  }
+
+  // In case of timeout, check if any sink pad has accumulated enough buffers
+  for (list = batch->sinkpads; list != NULL; list = g_list_next (list)) {
+    GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (list->data);
+
+    if (g_queue_get_length (sinkpad->buffers) >= batch->depth) {
+      available = TRUE;
+      break;
+    }
+  }
+
+  if (!available) {
+    GST_DEBUG_OBJECT (batch, "Could not accumulate enough buffers for any of "
+        "the sink pads");
+
     GST_BATCH_UNLOCK (batch);
     return;
   }
@@ -468,12 +513,19 @@ gst_batch_worker_task (gpointer userdata)
   for (list = batch->sinkpads; list != NULL; list = list->next) {
     GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (list->data);
     guint stream_id = g_list_index (batch->sinkpads, sinkpad);
+    guint idx = 0;
 
     // Check if curent sink pad was used for the output buffer.
     if (!(channels & (1 << stream_id)))
       continue;
 
-    gst_buffer_unref (g_queue_pop_head (sinkpad->buffers));
+    for (idx = 0; idx < batch->moving_window_size; idx++) {
+      if (g_queue_is_empty (sinkpad->buffers))
+        break;
+
+      gst_buffer_unref (g_queue_pop_head (sinkpad->buffers));
+    }
+
   }
 
   // Signal that buffers were removed from the sink pad queues.
@@ -664,7 +716,7 @@ gst_batch_sink_setcaps (GstBatch * batch, GstPad * pad, GstCaps * caps)
   GstCaps *srccaps = NULL, *intersect = NULL, *othercaps = NULL;
   GstStructure *structure = NULL;
   GList *list = NULL;
-  GValue framerate = G_VALUE_INIT;
+  GValue framerate = G_VALUE_INIT, multiview_mode = G_VALUE_INIT;
   guint idx = 0;
   gboolean negotiated = TRUE, success = TRUE;
 
@@ -677,8 +729,21 @@ gst_batch_sink_setcaps (GstBatch * batch, GstPad * pad, GstCaps * caps)
   g_value_init (&framerate, GST_TYPE_FRACTION);
   gst_value_set_fraction (&framerate, 0, 1);
 
+  g_value_init (&multiview_mode, G_TYPE_STRING);
+
   srccaps = gst_caps_make_writable (srccaps);
   gst_caps_extract_video_framerate (srccaps, &framerate);
+
+  // Extract and remove multiview mode value from srccaps
+  for (idx = 0; idx < gst_caps_get_size (srccaps); idx++) {
+    structure = gst_caps_get_structure (srccaps, idx);
+
+    const GValue *mode = gst_structure_get_value (structure, "multiview-mode");
+    if (mode != NULL && gst_value_is_fixed (mode))
+      g_value_copy (mode, &multiview_mode);
+
+    gst_structure_remove_field (structure, "multiview-mode");
+  }
 
   intersect = gst_caps_intersect (srccaps, caps);
   GST_DEBUG_OBJECT (pad, "Intersected caps %" GST_PTR_FORMAT, intersect);
@@ -751,6 +816,18 @@ gst_batch_sink_setcaps (GstBatch * batch, GstPad * pad, GstCaps * caps)
         (gst_value_get_fraction_numerator (&framerate) > 0))
       gst_structure_set_value (structure, "framerate", &framerate);
   }
+
+  // Update multiview mode for video caps
+  for (idx = 0; idx < gst_caps_get_size (srccaps); idx++) {
+    structure = gst_caps_get_structure (srccaps, idx);
+
+    if (gst_structure_has_name (structure, "video/x-raw") &&
+        g_value_get_string (&multiview_mode) != NULL) {
+      gst_structure_set_value (structure, "multiview-mode", &multiview_mode);
+    }
+  }
+
+  g_value_unset (&multiview_mode);
 
   // All sink pads have negotiated thier caps with upstream, update src pad caps.
   if (!(success = gst_batch_update_src_caps (batch, srccaps))) {
@@ -904,12 +981,16 @@ gst_batch_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
       GST_TRACE_OBJECT (sinkpad, "Waiting until idle");
 
       // Wait until all queued input buffers have been processed.
-      while (batch->active && !g_queue_is_empty (sinkpad->buffers)) {
+      while (batch->active &&
+            (g_queue_get_length (sinkpad->buffers) >= batch->depth)) {
         gint64 endtime = g_get_monotonic_time () + 1 * G_TIME_SPAN_SECOND;
 
         if (!g_cond_wait_until (&batch->wakeup, &batch->lock, endtime))
           GST_WARNING_OBJECT (sinkpad, "Timeout while waiting for idle!");
       }
+
+      if (!g_queue_is_empty (sinkpad->buffers))
+        g_queue_clear_full (sinkpad->buffers, (GDestroyNotify) gst_buffer_unref);
 
       GST_TRACE_OBJECT (sinkpad, "Received idle");
       sinkpad->is_idle = TRUE;
@@ -950,6 +1031,16 @@ gst_batch_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * buffer)
   GstBatchSinkPad *sinkpad = GST_BATCH_SINK_PAD (pad);
 
   GST_TRACE_OBJECT (pad, "Received %" GST_PTR_FORMAT, buffer);
+
+  // for depth > 1, only non gap buffers should be pushed in the sink pad's queue
+  if (batch->depth > 1 && (gst_buffer_get_size (buffer) == 0 &&
+      GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP))) {
+    GST_DEBUG_OBJECT (batch, "Using GAP buffers with depth > 1 is not supported!"
+        "Dropping %" GST_PTR_FORMAT, buffer);
+
+    gst_buffer_unref (buffer);
+    return GST_FLOW_OK;
+  }
 
   GST_BATCH_LOCK (batch);
 
@@ -1073,7 +1164,20 @@ static void
 gst_batch_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
 {
+  GstBatch *batch = GST_BATCH (object);
+  GstState state = GST_STATE (batch);
+  const gchar *propname = g_param_spec_get_name (pspec);
+
+  if (!GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE(pspec, state)) {
+    GST_WARNING ("Property '%s' change not supported in %s state!",
+        propname, gst_element_state_get_name (state));
+    return;
+  }
+
   switch (prop_id) {
+    case PROP_MOVING_WINDOW_SIZE:
+      batch->moving_window_size = g_value_get_uint (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -1084,7 +1188,12 @@ static void
 gst_batch_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec)
 {
+  GstBatch *batch = GST_BATCH (object);
+
   switch (prop_id) {
+    case PROP_MOVING_WINDOW_SIZE:
+      g_value_set_uint (value, batch->moving_window_size);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -1113,6 +1222,13 @@ gst_batch_class_init (GstBatchClass *klass)
   object->set_property = GST_DEBUG_FUNCPTR (gst_batch_set_property);
   object->get_property = GST_DEBUG_FUNCPTR (gst_batch_get_property);
   object->finalize     = GST_DEBUG_FUNCPTR (gst_batch_finalize);
+
+  g_object_class_install_property (object, PROP_MOVING_WINDOW_SIZE,
+      g_param_spec_uint ("moving-window-size", "Moving window size",
+          "Number of new buffers that will be used for output frames",
+          1, 16, DEFAULT_PROP_MOVING_WINDOW_SIZE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
 
   gst_element_class_add_static_pad_template_with_gtype (element,
       &gst_batch_sink_template, GST_TYPE_BATCH_SINK_PAD);
@@ -1147,6 +1263,9 @@ gst_batch_init (GstBatch * batch)
 
   batch->active = FALSE;
   batch->worktask = NULL;
+
+  batch->depth = 1;
+  batch->moving_window_size = DEFAULT_PROP_MOVING_WINDOW_SIZE;
 
   g_rec_mutex_init (&batch->worklock);
   g_cond_init (&batch->wakeup);
