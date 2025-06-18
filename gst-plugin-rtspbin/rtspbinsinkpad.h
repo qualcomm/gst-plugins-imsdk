@@ -47,9 +47,12 @@ struct _GstRtspBinSinkPad {
   GstCaps       *caps;
   /// Appsrc instance linked to the pad
   GstElement    *appsrc;
-  /// Timestamp offset from the begining of the stream start
-  GstClockTime  pts_offset;
-  GstClockTime  dts_offset;
+  /// Current timestamp from the begining of the stream start
+  GstClockTime  current_timestamp;
+  /// Last timestamp
+  GstClockTime  last_timestamp;
+  /// Pad buffers queue
+  GstDataQueue  *buffers;
 };
 
 struct _GstRtspBinSinkPadClass {

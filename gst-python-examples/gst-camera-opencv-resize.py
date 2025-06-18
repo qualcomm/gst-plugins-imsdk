@@ -79,19 +79,22 @@ def read_cam():
         fps = cap.get(cv2.CAP_PROP_FPS)
         print("Caps properties: ", width, height, fps)
 
-        while True:
-            ret_val, frame = cap.read()
-            if not ret_val:
-                break
-            resize = cv2.resize(frame, (args.outwidth, args.outheight))
-            cv2.imshow('demo', resize)
-            cv2.waitKey(1)
+        try:
+            while True:
+                ret_val, frame = cap.read()
+                if not ret_val:
+                    break
+                resize = cv2.resize(frame, (args.outwidth, args.outheight))
+                cv2.imshow('demo', resize)
+                cv2.waitKey(1)
+        except KeyboardInterrupt:
+            print("\nInterrupted by user. Exiting gracefully...")
+        finally:
+            cap.release()
+            cv2.destroyAllWindows()
     else:
         print("Capture API failed")
 
-    cap.release()
-    out.release()
-    cv2.destroyAllWindows()
 
 
 def main():

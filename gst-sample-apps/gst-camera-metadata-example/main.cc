@@ -716,7 +716,7 @@ find_tag_by_name (const gchar * section_name, const gchar * tag_name,
   g_free (tag);
 
   // Determine data type of the tag.
-  if (static_cast<gint32>(*tag_id) < VENDOR_SECTION_START)
+  if (*tag_id < static_cast<guint32>(VENDOR_SECTION_START))
     tag_type =
         ::camera::CameraMetadata::get_camera_metadata_tag_type (*tag_id);
   else

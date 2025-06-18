@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -8,6 +8,7 @@
 
 #include <gst/gst.h>
 #include <gst/base/gstbasetransform.h>
+#include "objtracker-algo.h"
 
 G_BEGIN_DECLS
 
@@ -26,15 +27,15 @@ typedef struct _GstObjTracker GstObjTracker;
 typedef struct _GstObjTrackerClass GstObjTrackerClass;
 
 struct _GstObjTracker {
-  GstBaseTransform       parent;
+  GstBaseTransform      parent;
 
-  BYTETracker *tracker;
+  /// Video object tracker algorithm.
+  GstObjTrackerAlgo     *algo;
 
-  // Mapping between ROI meta type(name) and its last recorded values.
-  GHashTable  *regions;
+  ///Properties
+  gchar                 *backend;
+  GstStructure          *algoparameters;
 
-  /// Settings.
-  guint       maxobjects;
 };
 
 struct _GstObjTrackerClass {

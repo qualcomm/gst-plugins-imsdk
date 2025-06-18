@@ -120,15 +120,17 @@ gst_c2_aenc_buffer_available (GstBuffer * buffer, gpointer userdata)
   // Get the frame index from the buffer offset field.
   index = GST_BUFFER_OFFSET (buffer);
 
+  g_mutex_lock (&c2aenc->framesmutex);
   guint samples_count = GPOINTER_TO_SIZE (
       g_hash_table_lookup (c2aenc->framesmap, GSIZE_TO_POINTER (index)));
   g_hash_table_remove (c2aenc->framesmap, GSIZE_TO_POINTER (index));
+  g_mutex_unlock (&c2aenc->framesmutex);
 
   if (GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_CORRUPTED)) {
     gst_buffer_unref (buffer);
     gst_audio_encoder_finish_frame (GST_AUDIO_ENCODER (c2aenc),
         NULL, samples_count);
-    GST_LOG_OBJECT (c2aenc, "Buffer dropped");
+    GST_DEBUG_OBJECT (c2aenc, "Buffer dropped");
     return;
   }
 
@@ -154,7 +156,7 @@ gst_c2_aenc_buffer_available (GstBuffer * buffer, gpointer userdata)
   ret = gst_audio_encoder_finish_frame (GST_AUDIO_ENCODER (c2aenc),
       buffer, samples_count);
   if (ret != GST_FLOW_OK) {
-    GST_LOG_OBJECT (c2aenc, "Failed to finish frame! - ret - %d", ret);
+    GST_WARNING_OBJECT (c2aenc, "Failed to finish frame! - ret - %d", ret);
     return;
   }
 
@@ -475,8 +477,10 @@ gst_c2_aenc_handle_frame (GstAudioEncoder * encoder, GstBuffer * inbuf)
     return GST_FLOW_ERROR;
   }
 
+  g_mutex_lock (&c2aenc->framesmutex);
   g_hash_table_insert (c2aenc->framesmap, GSIZE_TO_POINTER (c2aenc->framenum),
       GUINT_TO_POINTER (samples));
+  g_mutex_unlock (&c2aenc->framesmutex);
   c2aenc->framenum++;
 
   GST_TRACE_OBJECT (c2aenc, "Queued %" GST_PTR_FORMAT, inbuf);
@@ -552,6 +556,7 @@ gst_c2_aenc_finalize (GObject * object)
     gst_c2_engine_free (c2aenc->engine);
 
   g_hash_table_destroy (c2aenc->framesmap);
+  g_mutex_clear (&c2aenc->framesmutex);
 
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (c2aenc));
 }
@@ -599,6 +604,7 @@ gst_c2_aenc_init (GstC2AEncoder * c2aenc)
 
   c2aenc->framenum = 0;
   c2aenc->framesmap = g_hash_table_new (NULL, NULL);
+  g_mutex_init (&c2aenc->framesmutex);
 
   gst_audio_encoder_set_drainable (GST_AUDIO_ENCODER (c2aenc), TRUE);
 

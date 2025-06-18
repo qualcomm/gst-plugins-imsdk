@@ -1,27 +1,45 @@
-# GStreamer QTI CV base library.
-set(GST_QTI_CV_BASE gstqticvbase)
+project(gstreamer-qcom-oss-cv-1.0
+  VERSION 1.0.0
+  LANGUAGES C
+  DESCRIPTION "GStreamer QTI CV base library"
+)
 
-add_library(${GST_QTI_CV_BASE} SHARED
+set(TARGET_NAME gstqticvbase)
+
+add_library(${TARGET_NAME} SHARED
   gstcvmeta.c
 )
 
-set_target_properties(${GST_QTI_CV_BASE} PROPERTIES PUBLIC_HEADER
-  "gstcvmeta.h"
+set_target_properties(${TARGET_NAME} PROPERTIES
+  PUBLIC_HEADER "gstcvmeta.h"
+  VERSION ${PROJECT_VERSION}
+  SOVERSION ${PROJECT_VERSION_MAJOR}
 )
 
-target_include_directories(${GST_QTI_CV_BASE} PUBLIC
+target_include_directories(${TARGET_NAME} PUBLIC
   ${GST_INCLUDE_DIRS}
 )
 
-target_link_libraries(${GST_QTI_CV_BASE} PRIVATE
+target_link_libraries(${TARGET_NAME} PRIVATE
   ${GST_LIBRARIES}
 )
 
 install(
-  TARGETS ${GST_QTI_CV_BASE}
+  TARGETS ${TARGET_NAME}
   LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}
   PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
               GROUP_EXECUTE GROUP_READ
               WORLD_EXECUTE WORLD_READ
   PUBLIC_HEADER DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_INCDIR}/gstreamer-1.0/gst/cv/
+)
+
+configure_file(
+  ${CMAKE_SOURCE_DIR}/gst/common.pc.in
+  ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.pc
+  @ONLY
+)
+
+install(
+  FILES ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.pc
+  DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/pkgconfig
 )

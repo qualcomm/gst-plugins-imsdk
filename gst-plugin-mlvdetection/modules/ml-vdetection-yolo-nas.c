@@ -302,15 +302,14 @@ gst_ml_module_parse_tripleblock_frame (GstMLSubModule * submodule,
     GST_LOG ("Class: %u Confidence: %.2f Box[%.2f, %.2f, %.2f, %.2f]",
         class_idx, confidence, entry.top, entry.left, entry.bottom, entry.right);
 
+    // Keep dimensions within the region.
+    entry.left = MAX (entry.left, (gfloat) region.x);
+    entry.top = MAX (entry.top, (gfloat) region.y);
+    entry.right = MIN (entry.right, (gfloat) (region.x + region.w));
+    entry.bottom = MIN (entry.bottom, (gfloat) (region.y + region.h));
+
     // Adjust bounding box dimensions with extracted source tensor region.
     gst_ml_box_transform_dimensions (&entry, &region);
-
-    // Discard results with out of region coordinates.
-    if ((entry.top > 1.0)    || (entry.left > 1.0)  ||
-        (entry.bottom > 1.0) || (entry.right > 1.0) ||
-        (entry.top < 0.0)    || (entry.left < 0.0)  ||
-        (entry.bottom < 0.0) || (entry.right < 0.0))
-      continue;
 
     label = g_hash_table_lookup (
         submodule->labels, GUINT_TO_POINTER (class_idx));
@@ -411,15 +410,14 @@ gst_ml_module_parse_dualblock_frame (GstMLSubModule * submodule,
     GST_LOG ("Class: %u Confidence: %.2f Box[%.2f, %.2f, %.2f, %.2f]",
         class_idx, confidence, entry.top, entry.left, entry.bottom, entry.right);
 
+    // Keep dimensions within the region.
+    entry.left = MAX (entry.left, (gfloat) region.x);
+    entry.top = MAX (entry.top, (gfloat) region.y);
+    entry.right = MIN (entry.right, (gfloat) (region.x + region.w));
+    entry.bottom = MIN (entry.bottom, (gfloat) (region.y + region.h));
+
     // Adjust bounding box dimensions with extracted source tensor region.
     gst_ml_box_transform_dimensions (&entry, &region);
-
-    // Discard results with out of region coordinates.
-    if ((entry.top > 1.0)    || (entry.left > 1.0)  ||
-        (entry.bottom > 1.0) || (entry.right > 1.0) ||
-        (entry.top < 0.0)    || (entry.left < 0.0)  ||
-        (entry.bottom < 0.0) || (entry.right < 0.0))
-      continue;
 
     label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (class_idx));
 

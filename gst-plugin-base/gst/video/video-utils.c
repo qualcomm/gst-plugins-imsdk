@@ -26,8 +26,8 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
- * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2022-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -297,4 +297,24 @@ gst_video_region_of_interest_coordinates_correction (
   roimeta->h = roimeta->h * h_scale;
   roimeta->x = ((roimeta->x - source->x) * w_scale) + destination->x;
   roimeta->y = ((roimeta->y - source->y) * h_scale) + destination->y;
+}
+
+gboolean
+gst_buffer_has_valid_parent_meta (GstBuffer * buffer, gint parent_id)
+{
+  GstVideoRegionOfInterestMeta *parent_meta = NULL;
+
+  if (parent_id == -1)
+    return FALSE;
+
+  parent_meta =
+      gst_buffer_get_video_region_of_interest_meta_id (buffer, parent_id);
+
+  if (parent_meta == NULL)
+    return FALSE;
+
+  if (parent_meta->roi_type == g_quark_from_static_string ("ImageRegion"))
+    return FALSE;
+
+  return TRUE;
 }

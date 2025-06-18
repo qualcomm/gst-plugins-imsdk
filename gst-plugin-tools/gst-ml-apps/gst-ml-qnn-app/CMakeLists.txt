@@ -4,8 +4,19 @@ include(CheckIncludeFile)
 
 check_include_file("System/QnnSystemInterface.h" HAVE_QNN_SYSTEM_INTERFACE_H)
 
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
+
+include_directories(${SYSROOT_INCDIR})
+link_directories(${SYSROOT_LIBDIR})
+
+find_package(PkgConfig)
+
 if(HAVE_QNN_SYSTEM_INTERFACE_H)
   add_executable(test-dl-qnn test-dl-qnn.cc)
+
+  target_include_directories(test-dl-qnn PUBLIC
+    ${GST_INCLUDE_DIRS}
+  )
 
   target_link_libraries(test-dl-qnn PRIVATE
     ${CMAKE_DL_LIBS}
