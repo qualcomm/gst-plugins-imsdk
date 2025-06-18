@@ -56,13 +56,10 @@ class Module : public IModule {
                std::any& output) override;
 
  private:
-  int32_t CompareValues(const float *data,
-                        const uint32_t& l_idx, const uint32_t& r_idx);
-  uint64_t ScaleUint64Safe(const uint64_t val, const int32_t num,
-                           const int32_t denom);
-
   // Logging callback.
   LogCallback logger_;
+  // Confidence threshold value.
+  double       threshold_;
   // Labels parser.
   LabelsParser labels_parser_;
 };

@@ -86,32 +86,16 @@ bool Module::Configure(const std::string& labels_file,
   return true;
 }
 
-int32_t Module::CompareValues(const TensorType& mltype, const float *data,
-    uint32_t& l_idx, uint32_t& r_idx) {
+int32_t Module::CompareValues(const float *data,
+                              const uint32_t& l_idx, const uint32_t& r_idx) {
 
-  switch (mltype) {
-    case kInt8:
-      return ((int8_t*)data)[l_idx] > ((int8_t*)data)[r_idx] ? 1 :
-          ((int8_t*)data)[l_idx] < ((int8_t*)data)[r_idx] ? -1 : 0;
-    case kUint8:
-      return ((uint8_t*)data)[l_idx] > ((uint8_t*)data)[r_idx] ? 1 :
-          ((uint8_t*)data)[l_idx] < ((uint8_t*)data)[r_idx] ? -1 : 0;
-    case kInt32:
-      return ((int32_t*)data)[l_idx] > ((int32_t*)data)[r_idx] ? 1 :
-          ((int32_t*)data)[l_idx] < ((int32_t*)data)[r_idx] ? -1 : 0;
-    case kUint32:
-      return ((uint32_t*)data)[l_idx] > ((uint32_t*)data)[r_idx] ? 1 :
-          ((uint32_t*)data)[l_idx] < ((uint32_t*)data)[r_idx] ? -1 : 0;
-    case kFloat32:
-      return ((float*)data)[l_idx] > ((float*)data)[r_idx] ? 1 :
-          ((float*)data)[l_idx] < ((float*)data)[r_idx] ? -1 : 0;
-    default:
-      break;
-  }
-  return 0;
+  return ((float*)data)[l_idx] > ((float*)data)[r_idx] ? 1 :
+      ((float*)data)[l_idx] < ((float*)data)[r_idx] ? -1 : 0;
 }
 
-uint64_t Module::ScaleUint64Safe(uint64_t val, int32_t num, int32_t denom) {
+uint64_t Module::ScaleUint64Safe(const uint64_t val, const int32_t num,
+                                 const int32_t denom) {
+
   if (denom == 0)
     return UINT64_MAX;
 
@@ -179,7 +163,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 
       // Find the class index with best score if tensor has multiple class scores.
       for (uint32_t num = (idx + 1); num < (idx + n_scores); num++)
-        id = (CompareValues(tensors[0].type, indata, num, id) > 0) ? num : id;
+        id = (CompareValues(indata, num, id) > 0) ? num : id;
 
       // If there is no 4th dimension the tensor pixel contains the class ID.
       if (n_scores == 1)

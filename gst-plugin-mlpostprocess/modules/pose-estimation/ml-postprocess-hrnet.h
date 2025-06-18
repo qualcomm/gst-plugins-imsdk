@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021, The Linux Foundation. All rights reserved.
+* Copyright (c) 2020, The Linux Foundation. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
@@ -36,16 +36,30 @@
 #include "qti-ml-post-proccess.h"
 #include "qti-labels-parser.h"
 
-#include <cstdio>
-#include <cstdlib>
 #include <string>
-#include <cmath>
-#include <algorithm>
+
+struct RootPoint {
+  uint32_t id;
+  float    x;
+  float    y;
+  float    confidence;
+};
+
+struct KeypointLinkIds {
+  uint32_t s_kp_id;
+  uint32_t d_kp_id;
+
+  KeypointLinkIds()
+      : s_kp_id(0), d_kp_id(0) {};
+
+  KeypointLinkIds(uint32_t s_kp_id, uint32_t d_kp_id)
+      : s_kp_id(s_kp_id), d_kp_id(d_kp_id) {};
+};
 
 class Module : public IModule {
  public:
   Module(LogCallback cb);
-  ~Module() {};
+  ~Module();
 
   std::string Caps() override;
 
@@ -53,16 +67,22 @@ class Module : public IModule {
                  const std::string& json_settings) override;
 
   bool Process(const Tensors& tensors, Dictionary& mlparams,
-               std::any& output) override;
+                std::any& output) override;
 
  private:
-  int32_t CompareValues(const float *data,
-                        const uint32_t& l_idx, const uint32_t& r_idx);
-  uint64_t ScaleUint64Safe(const uint64_t val, const int32_t num,
-                           const int32_t denom);
+  void KeypointTransformCoordinates (Keypoint& keypoint,
+                                     const Region& region);
+  bool LoadConnections(const std::vector<JsonValue::Ptr>& nodes);
+  int32_t TensorCompareValues(const void *data,
+                              const uint32_t& l_idx, const uint32_t& r_idx);
 
   // Logging callback.
   LogCallback logger_;
+  // Confidence threshold value.
+  double       threshold_;
+
   // Labels parser.
   LabelsParser labels_parser_;
+
+  std::vector<KeypointLinkIds> connections_;
 };

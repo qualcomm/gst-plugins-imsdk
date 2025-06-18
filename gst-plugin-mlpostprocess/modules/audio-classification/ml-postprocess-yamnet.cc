@@ -39,7 +39,6 @@ std::string Module::Caps() {
 
 bool Module::Configure(const std::string& labels_file,
                        const std::string& json_settings) {
-
   if (!labels_parser_.LoadFromFile(labels_file)) {
     LOG(logger_, kError, "Failed to parse labels");
     return false;
@@ -61,7 +60,6 @@ bool Module::Configure(const std::string& labels_file,
 
 bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
                      std::any& output) {
-
   double confidence = 0.0;
 
   if (output.type() != typeid(AudioClassifications)) {

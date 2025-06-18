@@ -1,0 +1,43 @@
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
+
+set(TARGET_NAME ml-postprocess-posenet)
+
+add_library(${TARGET_NAME} SHARED
+  ml-postprocess-posenet.cc
+)
+
+install(
+  TARGETS ${TARGET_NAME}
+  LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0/ml/modules
+  PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
+              GROUP_EXECUTE GROUP_READ
+              WORLD_EXECUTE WORLD_READ
+)
+
+set(TARGET_NAME ml-postprocess-lite-3dmm)
+
+add_library(${TARGET_NAME} SHARED
+  ml-postprocess-lite-3dmm.cc
+)
+
+install(
+  TARGETS ${TARGET_NAME}
+  LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0/ml/modules
+  PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
+              GROUP_EXECUTE GROUP_READ
+              WORLD_EXECUTE WORLD_READ
+)
+
+set(TARGET_NAME ml-postprocess-hrnet)
+
+add_library(${TARGET_NAME} SHARED
+  ml-postprocess-hrnet.cc
+)
+
+install(
+  TARGETS ${TARGET_NAME}
+  LIBRARY DESTINATION ${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR}/gstreamer-1.0/ml/modules
+  PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
+              GROUP_EXECUTE GROUP_READ
+              WORLD_EXECUTE WORLD_READ
+)
