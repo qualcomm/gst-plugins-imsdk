@@ -456,13 +456,13 @@ class DemoWindow(Gtk.Window):
             found_device = self.check_usb_driver()
             if found_device == None:
                 return None
-            in_src = f"v4l2src io-mode=dmabuf-import device={found_device} ! video/x-raw ! queue ! qtivtransform ! video/x-raw,format=NV12"
+            in_src = f"v4l2src io-mode=dmabuf-import device={found_device} ! video/x-raw,width=640,height=480,framerate=30/1 ! queue ! qtivtransform ! video/x-raw,format=NV12_Q08C"
         elif src == "On-Device-Camera":
-            in_src = "qtiqmmfsrc name=camsrc ! video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1"
+            in_src = "qtiqmmfsrc name=camsrc ! video/x-raw,format=NV12,width=1280,height=720,framerate=30/1"
 
         if application == "Record live video":
            pipeline = "gst-launch-1.0 " + in_src + " ! queue ! tee name=split ! queue ! qtivcomposer ! queue ! \
-                gtksink split. ! queue ! video/x-raw,format=NV12,interlace-mode=progressive,colorimetry=bt601 ! v4l2h264enc capture-io-mode=4 output-io-mode=5 ! \
+                gtksink split. ! queue ! v4l2h264enc capture-io-mode=4 output-io-mode=5 ! \
                 h264parse ! mp4mux reserved-moov-update-period=1000000 reserved-bytes-per-sec=10000 reserved-max-duration=1000000000 ! filesink location=/etc/media/video_out.mp4"
 
         elif application == "DashCamera" and src == "On-Device-Camera":
@@ -549,7 +549,7 @@ class DemoWindow(Gtk.Window):
                     video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer."
             elif application == "Face Detection":
                 if src == "On-Device-Camera":
-                    in_src = "qtiqmmfsrc name=camsrc ! video/x-raw,format=NV12,width=1920,height=1440,framerate=30/1"
+                    in_src = "qtiqmmfsrc name=camsrc ! video/x-raw,format=NV12,width=640,height=480,framerate=30/1"
                 pipeline = "gst-launch-1.0 -e \
                     qtimlvconverter name=stage_01_preproc mode=image-batch-non-cumulative \
                     qtimltflite name=stage_01_inference model=/etc/models/face_det_lite_quantized.tflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options='QNNExternalDelegate,backend_type=htp;' \
@@ -583,16 +583,16 @@ class DemoWindow(Gtk.Window):
             elif application == "Multistream":
                 pipeline = "gst-launch-1.0 -e qtivcomposer name=mixer \
                     sink_0::position='<0, 0>' sink_0::dimensions='<480, 540>' \
-                    sink_1::position='<480, 0>' sink_2::dimensions='<480, 540>' \
-                    sink_2::position='<960, 0>' sink_4::dimensions='<480, 540>' \
-                    sink_3::position='<1440, 0>' sink_6::dimensions='<480, 540>' \
-                    sink_4::position='<0, 540>' sink_8::dimensions='<480, 540>' \
-                    sink_5::position='<480, 540>' sink_10::dimensions='<480, 540>' \
-                    sink_6::position='<960, 540>' sink_1::dimensions='<480, 540>' \
-                    sink_7::position='<1440, 540>' sink_3::dimensions='<480, 540>' \
-                    sink_8::position='<0, 0>' sink_5::dimensions='<480, 540>' \
-                    sink_9::position='<480, 0>' sink_7::dimensions='<480, 540>' \
-                    sink_10::position='<960, 0>' sink_9::dimensions='<480, 540>' \
+                    sink_1::position='<480, 0>' sink_1::dimensions='<480, 540>' \
+                    sink_2::position='<960, 0>' sink_2::dimensions='<480, 540>' \
+                    sink_3::position='<1440, 0>' sink_3::dimensions='<480, 540>' \
+                    sink_4::position='<0, 540>' sink_4::dimensions='<480, 540>' \
+                    sink_5::position='<480, 540>' sink_5::dimensions='<480, 540>' \
+                    sink_6::position='<960, 540>' sink_6::dimensions='<480, 540>' \
+                    sink_7::position='<1440, 540>' sink_7::dimensions='<480, 540>' \
+                    sink_8::position='<0, 0>' sink_8::dimensions='<480, 540>' \
+                    sink_9::position='<480, 0>' sink_9::dimensions='<480, 540>' \
+                    sink_10::position='<960, 0>' sink_10::dimensions='<480, 540>' \
                     sink_11::position='<1440, 0>' sink_11::dimensions='<480, 540>' \
                     sink_12::position='<0, 540>' sink_12::dimensions='<480, 540>' \
                     sink_13::position='<480, 540>' sink_13::dimensions='<480, 540>' \
@@ -615,14 +615,14 @@ class DemoWindow(Gtk.Window):
                     filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_6 ! queue ! mixer. \
                     filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_7 ! queue ! mixer. \
                     filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_8 ! queue ! mixer. \
-                    stage_01_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! queue ! mixer. \
-                    stage_02_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! queue ! mixer. \
-                    stage_03_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! queue ! mixer. \
-                    stage_04_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! queue ! mixer. \
-                    stage_05_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! queue ! mixer. \
-                    stage_06_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! queue ! mixer. \
-                    stage_07_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! queue ! mixer. \
-                    stage_08_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! queue ! mixer. "
+                    stage_01_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    stage_02_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    stage_03_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    stage_04_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    stage_05_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    stage_06_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    stage_07_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    stage_08_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. "
 
         if pipeline is not None:
             pipeline_thread = threading.Thread(target=self.execute, args=(pipeline,))

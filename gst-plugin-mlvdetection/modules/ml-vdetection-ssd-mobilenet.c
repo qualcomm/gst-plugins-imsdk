@@ -282,12 +282,14 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     entry.bottom = bboxes[(idx * 4) + 2] * submodule->inheight;
     entry.right = bboxes[(idx * 4) + 3] * submodule->inwidth;
 
+    // Keep dimensions within the region.
+    entry.left = MAX (entry.left, (gfloat) region.x);
+    entry.top = MAX (entry.top, (gfloat) region.y);
+    entry.right = MIN (entry.right, (gfloat) (region.x + region.w));
+    entry.bottom = MIN (entry.bottom, (gfloat) (region.y + region.h));
+
     // Adjust bounding box dimensions with extracted source tensor region.
     gst_ml_box_transform_dimensions (&entry, &region);
-
-    if ((entry.top > 1.0) || (entry.left > 1.0) ||
-        (entry.bottom > 1.0) || (entry.right > 1.0))
-      continue;
 
     label = g_hash_table_lookup (submodule->labels,
         GUINT_TO_POINTER (classes[idx]));

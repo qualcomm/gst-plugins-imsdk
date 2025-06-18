@@ -12,13 +12,13 @@
 #include "rtspbin.h"
 #include "rtspbinsinkpad.h"
 
-#include <gst/app/gstappsrc.h>
-
 #define GST_CAT_DEFAULT gst_rtsp_bin_debug
 GST_DEBUG_CATEGORY (gst_rtsp_bin_debug);
 
 #define gst_rtsp_bin_parent_class parent_class
 G_DEFINE_TYPE (GstRtspBin, gst_rtsp_bin, GST_TYPE_BIN);
+
+#define QUEUE_MAX_BUFFERS 5
 
 #define DEFAULT_PROP_ADDRESS "127.0.0.1"
 #define DEFAULT_PROP_PORT    "8900"
@@ -36,8 +36,7 @@ enum
     "video/x-h264; " \
     "video/x-h265; " \
     "audio/mpeg; "   \
-    "text/x-raw; "   \
-    "application/x-rtp"
+    "text/x-raw"
 
 static GstStaticPadTemplate gst_rtsp_bin_sink_template =
 GST_STATIC_PAD_TEMPLATE ("sink_%u",
@@ -61,9 +60,48 @@ gst_rtsp_media_unprepared (GstRTSPMedia * media, gpointer userdata)
     }
   }
 
-  rtspbin->media_prepared = FALSE;
-
   GST_INFO_OBJECT (rtspbin, "Media unprepared");
+}
+
+// This signal callback triggers when appsrc needs data
+static void
+appsrc_need_data (GstElement *appsrc, guint size, gpointer userdata)
+{
+  GstRtspBinSinkPad *sinkpad = GST_RTSP_BIN_SINKPAD (userdata);
+  GstDataQueueItem *item = NULL;
+  GstBuffer *buffer = NULL;
+  GstFlowReturn ret;
+  GstClockTime duration = 0;
+
+  if (!gst_data_queue_pop (sinkpad->buffers, &item)) {
+    return;
+  }
+
+  buffer = gst_buffer_ref (GST_BUFFER (item->object));
+  item->destroy (item);
+
+  if (GST_BUFFER_TIMESTAMP_IS_VALID (buffer)) {
+    if (sinkpad->last_timestamp != 0) {
+      duration = GST_BUFFER_PTS (buffer) - sinkpad->last_timestamp;
+    }
+    sinkpad->last_timestamp = GST_BUFFER_PTS (buffer);
+
+    // Increment current timestamp
+    sinkpad->current_timestamp += duration;
+
+    GST_BUFFER_PTS (buffer) = sinkpad->current_timestamp;
+    GST_BUFFER_DTS (buffer) = sinkpad->current_timestamp;
+  }
+
+  GST_BUFFER_OFFSET (buffer) = -1;
+  GST_BUFFER_OFFSET_END (buffer) = -1;
+
+  GST_DEBUG_OBJECT (sinkpad, "Push buffer timestamp - %ld",
+      GST_BUFFER_PTS (buffer));
+
+  g_signal_emit_by_name (sinkpad->appsrc, "push-buffer", buffer, &ret);
+  // Free the buffer
+  gst_buffer_unref (buffer);
 }
 
 // Called when a new media pipeline is constructed. We can query the
@@ -91,17 +129,20 @@ gst_rtsp_factory_media_configure (GstRTSPMediaFactory * factory,
       return;
     }
 
-    if (gst_structure_has_name (structure, "application/x-rtp")) {
-      snprintf (appsrc_name, sizeof (appsrc_name), "pay%d", idx);
-    } else {
-      snprintf (appsrc_name, sizeof (appsrc_name), "appsrc%d", idx);
-    }
+    snprintf (appsrc_name, sizeof (appsrc_name), "appsrc%d", idx);
 
     // Get appsrc instance
     sinkpad->appsrc =
         gst_bin_get_by_name_recurse_up (GST_BIN (element), appsrc_name);
     gst_util_set_object_arg (G_OBJECT (sinkpad->appsrc), "format", "time");
     g_object_set (G_OBJECT (sinkpad->appsrc), "caps", sinkpad->caps, NULL);
+
+    g_signal_connect (sinkpad->appsrc, "need-data",
+        G_CALLBACK (appsrc_need_data), sinkpad);
+
+    // Reset timestamps
+    sinkpad->current_timestamp = 0;
+    sinkpad->last_timestamp = 0;
 
     idx++;
   }
@@ -116,8 +157,6 @@ gst_rtsp_factory_media_configure (GstRTSPMediaFactory * factory,
       (GCallback) gst_rtsp_media_unprepared, rtspbin);
 
   GST_INFO_OBJECT (rtspbin, "Media configured");
-
-  rtspbin->media_prepared = TRUE;
 }
 
 static GstRTSPFilterResult
@@ -218,15 +257,13 @@ gst_rtsp_bin_init_server (GstRtspBin * rtspbin)
     }
 
     if (gst_structure_has_name (structure, "video/x-h264")) {
-      g_string_append_printf (string, "appsrc is-live=true name=appsrc%d ! queue ! rtph264pay name=pay%d pt=96 ", idx, idx);
+      g_string_append_printf (string, "appsrc is-live=true name=appsrc%d ! queue ! rtph264pay pt=96 ! queue name=pay%d ", idx, idx);
     } else if (gst_structure_has_name (structure, "video/x-h265")) {
-      g_string_append_printf (string, "appsrc is-live=true name=appsrc%d ! queue ! rtph265pay name=pay%d pt=97 ", idx, idx);
+      g_string_append_printf (string, "appsrc is-live=true name=appsrc%d ! queue ! rtph265pay pt=97 ! queue name=pay%d ", idx, idx);
     } else if (gst_structure_has_name (structure, "audio/mpeg")) {
-      g_string_append_printf (string, "appsrc is-live=true name=appsrc%d ! queue ! rtpmp4apay name=pay%d pt=97 ", idx, idx);
+      g_string_append_printf (string, "appsrc is-live=true name=appsrc%d ! queue ! rtpmp4apay pt=97 ! queue name=pay%d ", idx, idx);
     } else if (gst_structure_has_name (structure, "text/x-raw")) {
-      g_string_append_printf (string, "appsrc is-live=true name=appsrc%d ! queue ! rtpgstpay name=pay%d pt=98 ", idx, idx);
-    } else if (gst_structure_has_name (structure, "application/x-rtp")) {
-      g_string_append_printf (string, "appsrc is-live=true name=pay%d ", idx);
+      g_string_append_printf (string, "appsrc is-live=true name=appsrc%d ! queue ! rtpgstpay pt=98 ! queue name=pay%d ", idx, idx);
     }
 
     idx++;
@@ -263,36 +300,43 @@ gst_rtsp_bin_init_server (GstRtspBin * rtspbin)
   return TRUE;
 }
 
+static void
+gst_data_queue_free_item (gpointer userdata)
+{
+  GstDataQueueItem *item = userdata;
+
+  if (item->object != NULL)
+    gst_buffer_unref (GST_BUFFER (item->object));
+
+  g_slice_free (GstDataQueueItem, item);
+}
+
 static GstFlowReturn
 gst_rtsp_bin_sink_pad_chain (GstPad * pad, GstObject * parent,
     GstBuffer * buffer)
 {
-  GstRtspBin *rtspbin = GST_RTSP_BIN (parent);
   GstRtspBinSinkPad *sinkpad = GST_RTSP_BIN_SINKPAD (pad);
-  GstFlowReturn ret;
+  GstDataQueueItem *item = NULL;
+  GstDataQueueSize queuelevel;
 
-  if (rtspbin->media_prepared) {
-    // Update the timestamp
-    // When the first stream is created the timestamp should start from zero
-    if (GST_BUFFER_TIMESTAMP_IS_VALID (buffer)) {
-      GST_BUFFER_PTS (buffer) = GST_BUFFER_PTS (buffer) - sinkpad->pts_offset;
-      GST_BUFFER_DTS (buffer) = GST_BUFFER_DTS (buffer) - sinkpad->dts_offset;
+  gst_data_queue_get_level (sinkpad->buffers, &queuelevel);
+  if (queuelevel.visible >= QUEUE_MAX_BUFFERS) {
+    if (!gst_data_queue_pop (sinkpad->buffers, &item)) {
+      return GST_FLOW_ERROR;
     }
-
-    ret = gst_app_src_push_buffer (GST_APP_SRC (sinkpad->appsrc), buffer);
-    if (ret != GST_FLOW_OK) {
-      GST_WARNING_OBJECT (rtspbin, "Cannot push buffer to appsrc");
-      gst_buffer_unref (buffer);
-    }
-  } else {
-    // Save the current timestamp when there are no streams created
-    if (GST_BUFFER_TIMESTAMP_IS_VALID (buffer)) {
-      sinkpad->pts_offset = GST_BUFFER_PTS (buffer);
-      sinkpad->dts_offset = GST_BUFFER_DTS (buffer);
-    }
-
-    gst_buffer_unref (buffer);
+    item->destroy (item);
   }
+
+  item = g_slice_new0 (GstDataQueueItem);
+  item->object = GST_MINI_OBJECT (buffer);
+  item->size = gst_buffer_get_size (buffer);
+  item->duration = GST_BUFFER_DURATION (buffer);
+  item->visible = TRUE;
+  item->destroy = gst_data_queue_free_item;
+
+  // Push the buffer into the queue or free it on failure.
+  if (!gst_data_queue_push (sinkpad->buffers, item))
+    item->destroy (item);
 
   return GST_FLOW_OK;
 }
@@ -403,8 +447,16 @@ gst_rtsp_bin_change_state (GstElement * element, GstStateChange transition)
 {
   GstRtspBin *rtspbin = GST_RTSP_BIN (element);
   GstStateChangeReturn ret = GST_STATE_CHANGE_SUCCESS;
+  GList *list = NULL;
 
   switch (transition) {
+    case GST_STATE_CHANGE_READY_TO_PAUSED:
+      for (list = rtspbin->sinkpads; list; list = list->next) {
+        GstRtspBinSinkPad *sinkpad = GST_RTSP_BIN_SINKPAD (list->data);
+
+        gst_data_queue_set_flushing (sinkpad->buffers, FALSE);
+      }
+      break;
     default:
       break;
   }
@@ -413,6 +465,13 @@ gst_rtsp_bin_change_state (GstElement * element, GstStateChange transition)
 
   switch (transition) {
     case GST_STATE_CHANGE_PAUSED_TO_READY:
+      for (list = rtspbin->sinkpads; list; list = list->next) {
+        GstRtspBinSinkPad *sinkpad = GST_RTSP_BIN_SINKPAD (list->data);
+
+        gst_data_queue_set_flushing (sinkpad->buffers, TRUE);
+        gst_data_queue_flush (sinkpad->buffers);
+      }
+
       gst_rtsp_bin_deinit_server (rtspbin);
       break;
     default:
@@ -599,7 +658,6 @@ gst_rtsp_bin_init (GstRtspBin * rtspbin)
   rtspbin->sinkpads = NULL;
   rtspbin->server = NULL;
   rtspbin->factory = NULL;
-  rtspbin->media_prepared = FALSE;
 
   GST_OBJECT_FLAG_SET (rtspbin, GST_ELEMENT_FLAG_SINK);
 }
