@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.$
- * SPDX-License-Identifier: BSD-3-Clause-Clear$
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef __GST_PLUGIN_SUITE_H__
@@ -33,6 +33,7 @@ struct _GstPluginSuite {
   gint              iteration;
   gint              duration;
   Suite             *suite;
+  GList             *tcnames;
 };
 
 GST_API void
