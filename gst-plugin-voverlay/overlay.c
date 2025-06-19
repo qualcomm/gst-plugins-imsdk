@@ -547,13 +547,15 @@ gst_overlay_create_pool (GstVOverlay * overlay, GstCaps * caps)
 
 static gboolean
 gst_overlay_handle_classification_entry (GstVOverlay * overlay,
-   cairo_t * context, GstVideoBlit * blit, GstClassLabel * label)
+    cairo_t * context, GstVideoBlit * blit, GstClassLabel * label,
+    GstStructure * objparam)
 {
   gchar text[MAX_LABEL_LENGTH] = { 0, };
   GstVideoRectangle *source = NULL, *destination = NULL;
   gdouble x = 1.0, y = 1.0, fontsize = LABEL_FONTSIZE;
   guint length = 0, color = 0xFFFFFFFF;
   gboolean success = TRUE;
+  guint track_id = -1;
 
   source = &(blit->source);
   destination = &(blit->destination);
@@ -561,8 +563,15 @@ gst_overlay_handle_classification_entry (GstVOverlay * overlay,
   destination->w = source->w;
   destination->h = source->h;
 
-  length = g_snprintf (text, MAX_LABEL_LENGTH, "%s",
-      g_quark_to_string (label->name));
+  if (objparam != NULL &&
+      gst_structure_get_uint (objparam, "tracking-id", &track_id)) {
+    const gchar *name = g_quark_to_string (label->name);
+    length = g_snprintf (text, MAX_LABEL_LENGTH, "%s-%u", name, track_id);
+  } else {
+    length = g_snprintf (text, MAX_LABEL_LENGTH, "%s",
+       g_quark_to_string (label->name));
+  }
+
 
   color = label->color;
 
@@ -1237,7 +1246,7 @@ gst_overlay_draw_detection_entries (GstVOverlay * overlay,
         continue;
 
       success &= gst_overlay_handle_classification_entry (overlay, context,
-          blit, &(g_array_index (classmeta->labels, GstClassLabel, 0)));
+          blit, &(g_array_index (classmeta->labels, GstClassLabel, 0)), objparam);
 
       haslabel = TRUE;
       break;
@@ -1253,7 +1262,7 @@ gst_overlay_draw_detection_entries (GstVOverlay * overlay,
       gst_structure_get_double (objparam, "confidence", &(label.confidence));
 
       success &= gst_overlay_handle_classification_entry (overlay, context,
-          blit, &label);
+          blit, &label, objparam);
     }
 
     gst_cairo_draw_cleanup (blit->frame, surface, context);
@@ -1317,7 +1326,7 @@ gst_overlay_draw_classification_entries (GstVOverlay * overlay,
       g_return_val_if_fail (success, FALSE);
 
       success &= gst_overlay_handle_classification_entry (overlay, context,
-          blit, label);
+          blit, label, NULL);
       gst_cairo_draw_cleanup (blit->frame, surface, context);
 
       // Increase the Y axis offset for the next label blit.
