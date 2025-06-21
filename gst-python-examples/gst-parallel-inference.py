@@ -16,8 +16,8 @@ gi.require_version("GLib", "2.0")
 from gi.repository import Gst, GLib
 
 # Constants
-DEFAULT_TFLITE_OBJECT_DETECTION_MODEL = "/etc/models/YOLOv8-Detection-Quantized.tflite"
-DEFAULT_OBJECT_DETECTION_LABELS = "/etc/labels/yolov8.labels"
+DEFAULT_TFLITE_OBJECT_DETECTION_MODEL = "/etc/models/yolox_quantized.tflite"
+DEFAULT_OBJECT_DETECTION_LABELS = "/etc/labels/yolox.labels"
 DEFAULT_TFLITE_CLASSIFICATION_MODEL = "/etc/models/inception_v3_quantized.tflite"
 DEFAULT_CLASSIFICATION_LABELS = "/etc/labels/classification.labels"
 DEFAULT_TFLITE_POSE_DETECTION_MODEL = "/etc/models/hrnet_pose_quantized.tflite"
@@ -28,8 +28,8 @@ DELEGATE_PATH = "libQnnTFLiteDelegate.so"
 
 DEFAULT_CONSTANTS_CLASSIFICATION = "Mobilenet,q-offsets=<38.0>,\
     q-scales=<0.17039915919303894>;"
-DEFAULT_CONSTANTS_OBJECT_DETECTION = "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,\
-    q-scales=<3.093529462814331, 0.00390625, 1.0>;"
+DEFAULT_CONSTANTS_OBJECT_DETECTION = "YOLOX,q-offsets=<38.0, 0.0, 0.0>,\
+    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
 DEFAULT_CONSTANTS_POSE_DETECTION = "Posenet,q-offsets=<8.0>,\
     q-scales=<0.0040499246679246426>;"
 DEFAULT_CONSTANTS_SEGMENTATION = "deeplab,q-offsets=<0.0>,\
