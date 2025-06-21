@@ -14,20 +14,20 @@
   ],
   "AIModelsSupportedByApplication": [
     {
-      "ModelName": "FFNet-40S-Quantized.tflite",
-      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/FFNet-40S-Quantized/resolve/main/FFNet-40S-Quantized.tflite",
+      "ModelName": "FFNet-40S_w8a8.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/FFNet-40S/resolve/103f52b6c2d0b45464112d95704f4556ec7f480c/FFNet-40S_w8a8.tflite",
       "LabelFile": "deeplabv3_resnet50.labels",
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/deeplabv3_resnet50.labels"
     },
     {
-      "ModelName": "FFNet-54S-Quantized.tflite",
-      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/FFNet-54S-Quantized/resolve/main/FFNet-54S-Quantized.tflite",
+      "ModelName": "FFNet-54S_w8a8.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/FFNet-54S/resolve/55386d7b4c76761242d4b0f15d7a788c65d45571/FFNet-54S_w8a8.tflite",
       "LabelFile": "deeplabv3_resnet50.labels",
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/deeplabv3_resnet50.labels"
     },
     {
-      "ModelName": "FFNet-78S-Quantized.tflite",
-      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/FFNet-78S-Quantized/resolve/main/FFNet-78S-Quantized.tflite",
+      "ModelName": "FFNet-78S_w8a8.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/FFNet-78S/resolve/471dfa14687abf8004c188687022e2597279b29d/FFNet-78S_w8a8.tflite",
       "LabelFile": "deeplabv3_resnet50.labels",
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/deeplabv3_resnet50.labels"
     }
