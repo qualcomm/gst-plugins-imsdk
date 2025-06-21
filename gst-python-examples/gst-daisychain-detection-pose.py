@@ -23,14 +23,14 @@ camera, file and rtsp stream.
 The pipeline reads input, performs inference and displays
 output with preview on wayland display.
 """
-DEFAULT_TFLITE_YOLOV8_MODEL = "/etc/models/YOLOv8-Detection-Quantized.tflite"
-DEFAULT_YOLOV8_LABELS = "/etc/labels/yolov8.labels"
+DEFAULT_TFLITE_YOLOX_MODEL = "/etc/models/yolox_quantized.tflite"
+DEFAULT_YOLOX_LABELS = "/etc/labels/yolox.labels"
 DEFAULT_TFLITE_POSE_MODEL = "/etc/models/hrnet_pose_quantized.tflite"
 DEFAULT_POSE_LABELS = "/etc/labels/hrnet_pose.labels"
 DELEGATE_PATH = "libQnnTFLiteDelegate.so"
 
-DEFAULT_CONSTANTS_OBJECT_DETECTION = "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,\
-    q-scales=<3.093529462814331, 0.00390625, 1.0>;"
+DEFAULT_CONSTANTS_OBJECT_DETECTION = "YOLOX,q-offsets=<38.0, 0.0, 0.0>,\
+    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
 DEFAULT_CONSTANTS_POSE_DETECTION = "hrnet,q-offsets=<8.0>,\
     q-scales=<0.0040499246679246426>;"
 
@@ -142,13 +142,13 @@ def create_pipeline(pipeline):
         default=DEFAULT_CONSTANTS_POSE_DETECTION,
         help="Constants for Pose detection model"
     )
-    parser.add_argument("--tflite-yolov8-model", type=str,
-        default=DEFAULT_TFLITE_YOLOV8_MODEL,
-        help="Path to YOLOv8 TFLite model"
+    parser.add_argument("--tflite-yolo-model", type=str,
+        default=DEFAULT_TFLITE_YOLOX_MODEL,
+        help="Path to YOLOX TFLite model"
     )
-    parser.add_argument("--yolov8-labels", type=str,
-        default=DEFAULT_YOLOV8_LABELS,
-        help="Path to YOLOv8 labels"
+    parser.add_argument("--yolo-labels", type=str,
+        default=DEFAULT_YOLOX_LABELS,
+        help="Path to YOLOX labels"
     )
     parser.add_argument("--tflite-pose-model", type=str,
         default=DEFAULT_TFLITE_POSE_MODEL,
@@ -162,11 +162,11 @@ def create_pipeline(pipeline):
     args = parser.parse_args()
 
     # Check if all model and label files are present
-    if not os.path.exists(args.tflite_yolov8_model):
-        print(f"File {args.tflite_yolov8_model} does not exist")
+    if not os.path.exists(args.tflite_yolo_model):
+        print(f"File {args.tflite_yolo_model} does not exist")
         sys.exit(1)
-    if not os.path.exists(args.yolov8_labels):
-        print(f"File {args.yolov8_labels} does not exist")
+    if not os.path.exists(args.yolo_labels):
+        print(f"File {args.yolo_labels} does not exist")
         sys.exit(1)
     if not os.path.exists(args.tflite_pose_model):
         print(f"File {args.tflite_pose_model} does not exist")
@@ -337,7 +337,7 @@ def create_pipeline(pipeline):
     elements["qtimltflite0"].set_property(
         "external-delegate-path", DELEGATE_PATH)
     elements["qtimltflite0"].set_property(
-        "model", args.tflite_yolov8_model)
+        "model", args.tflite_yolo_model)
 
     options_structure0 = Gst.Structure.new_empty("QNNExternalDelegate")
     options_structure0.set_value("backend_type", "htp")
@@ -367,7 +367,7 @@ def create_pipeline(pipeline):
     elements["qtimlvdetection"].set_property("module", "yolov8")
     elements["qtimlvdetection"].set_property("threshold", 40.0)
     elements["qtimlvdetection"].set_property("results", 4)
-    elements["qtimlvdetection"].set_property("labels", args.yolov8_labels)
+    elements["qtimlvdetection"].set_property("labels", args.yolo_labels)
     elements["qtimlvdetection"].set_property("constants", args.constants_detection)
 
     elements["qtimlvpose"].set_property("module", "hrnet")
