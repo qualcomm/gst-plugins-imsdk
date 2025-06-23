@@ -63,13 +63,13 @@ gst_camera_reprocess_eis_get_type (void)
 {
   static GType gtype = 0;
   static const GEnumValue variants[] = {
+    { GST_CAMERA_REPROCESS_EIS_V3,
+      "Eis with version 3 which will consume future frames",
+      "v3"
+    },
     { GST_CAMERA_REPROCESS_EIS_V2,
         "Eis with version 2 which will consume previous frames",
         "v2"
-    },
-    { GST_CAMERA_REPROCESS_EIS_V3,
-        "Eis with version 3 which will consume future frames",
-        "v3"
     },
     { GST_CAMERA_REPROCESS_EIS_NONE,
         "None", "none"
