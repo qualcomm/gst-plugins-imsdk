@@ -39,7 +39,6 @@
 #include <gst/video/video.h>
 #include <gst/video/gstvideoencoder.h>
 #include <gst/base/gstdataqueue.h>
-#include <system/graphics.h>
 
 #include "jpegenc-context.h"
 

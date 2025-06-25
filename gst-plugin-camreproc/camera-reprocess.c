@@ -26,7 +26,7 @@ GST_DEBUG_CATEGORY_STATIC (camera_reprocess_debug);
 #define DEFAULT_PROP_EIS                   GST_CAMERA_REPROCESS_EIS_NONE
 
 // Pad Template
-#define GST_CAPS_FORMATS "{ NV12, NV12_Q08C }"
+#define GST_CAPS_FORMATS "{ NV12, NV12_Q08C, P010_10LE }"
 
 // GType
 #define GST_TYPE_CAMERA_REPROCESS_EIS (gst_camera_reprocess_eis_get_type())
