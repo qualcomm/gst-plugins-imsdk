@@ -32,7 +32,6 @@ target_include_directories(${TARGET_NAME} PRIVATE
 
 target_compile_definitions(${TARGET_NAME} PRIVATE
   $<$<BOOL:${GLES_FOUND}>:HAVE_GLES2_H>
-  $<$<BOOL:${HAVE_GBM_PRIV_H}>:HAVE_GBM_PRIV_H>
 )
 
 target_link_libraries(${TARGET_NAME} PRIVATE

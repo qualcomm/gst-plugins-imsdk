@@ -4,18 +4,30 @@
  */
 
 #include <drm/drm_fourcc.h>
-#ifdef HAVE_GBM_PRIV_H
-#include <gbm_priv.h>
-#else
-//TODO: Workaround due to Adreno not exporting the formats.
+
+//TODO: Workaround due to Adreno not using the proper DRM formats.
 #define fourcc_mod_code_qti(vendor, val) \
     ((((uint32_t)DRM_FORMAT_MOD_VENDOR_## vendor) << 28) | (val & 0x0fffffffULL))
 
-#define GBM_FORMAT_RGBA16161616F                fourcc_mod_code_qti(QCOM, 54)
-#define GBM_FORMAT_RGB161616F                   fourcc_mod_code_qti(QCOM, 55)
-#define GBM_FORMAT_RGBA32323232F                fourcc_mod_code_qti(QCOM, 56)
-#define GBM_FORMAT_RGB323232F                   fourcc_mod_code_qti(QCOM, 57)
-#endif // defined(HAVE_GBM_PRIV_H)
+#if defined(DRM_FORMAT_ABGR16161616F) && !defined(DRM_FORMAT_BGR161616F)
+#undef DRM_FORMAT_ABGR16161616F
+#endif // DRM_FORMAT_ABGR16161616F && !(DRM_FORMAT_BGR161616F)
+
+#if !defined(DRM_FORMAT_ABGR16161616F)
+#define DRM_FORMAT_ABGR16161616F  fourcc_mod_code_qti(QCOM, 54)
+#endif // DRM_FORMAT_ABGR16161616F
+
+#if !defined(DRM_FORMAT_BGR161616F)
+#define DRM_FORMAT_BGR161616F     fourcc_mod_code_qti(QCOM, 55)
+#endif // DRM_FORMAT_BGR161616F
+
+#if !defined(DRM_FORMAT_ABGR32323232F)
+#define DRM_FORMAT_ABGR32323232F  fourcc_mod_code_qti(QCOM, 56)
+#endif // DRM_FORMAT_ABGR32323232F
+
+#if !defined(DRM_FORMAT_BGR323232F)
+#define DRM_FORMAT_BGR323232F     fourcc_mod_code_qti(QCOM, 57)
+#endif // DRM_FORMAT_BGR323232F
 
 #include "ib2c-formats.h"
 #include "ib2c-utils.h"
@@ -47,10 +59,10 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
         { DRM_FORMAT_BGR888,
             { PixelType::kSigned,   3,   8, false, false } } },
     { ColorFormat::kRGB161616F,
-        { GBM_FORMAT_RGB161616F,
+        { DRM_FORMAT_BGR161616F,
             { PixelType::kFloat,    3,  16, false, false } } },
     { ColorFormat::kRGB323232F,
-        { GBM_FORMAT_RGB323232F,
+        { DRM_FORMAT_BGR323232F,
             { PixelType::kFloat,    3,  32, false, false } } },
     { ColorFormat::kBGR888,
         { DRM_FORMAT_BGR888,
@@ -59,10 +71,10 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
         { DRM_FORMAT_BGR888,
             { PixelType::kSigned,   3,   8, false, true  } } },
     { ColorFormat::kBGR161616F,
-        { GBM_FORMAT_RGB161616F,
+        { DRM_FORMAT_BGR161616F,
             { PixelType::kFloat,    3,  16, false, true  } } },
     { ColorFormat::kBGR323232F,
-        { GBM_FORMAT_RGB323232F,
+        { DRM_FORMAT_BGR323232F,
             { PixelType::kFloat,    3,  32, false, true  } } },
     { ColorFormat::kARGB8888,
         { DRM_FORMAT_ABGR8888,
@@ -71,10 +83,10 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
         { DRM_FORMAT_ABGR8888,
             { PixelType::kSigned,   4,   8, true,  false } } },
     { ColorFormat::kARGB16161616F,
-        { GBM_FORMAT_RGBA16161616F,
+        { DRM_FORMAT_ABGR16161616F,
             { PixelType::kFloat,    4,  16, true,  false } } },
     { ColorFormat::kARGB32323232F,
-        { GBM_FORMAT_RGBA32323232F,
+        { DRM_FORMAT_ABGR32323232F,
             { PixelType::kFloat,    4,  32, true,  false } } },
     { ColorFormat::kABGR8888,
         { DRM_FORMAT_ABGR8888,
@@ -83,10 +95,10 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
         { DRM_FORMAT_ABGR8888,
             { PixelType::kSigned,   4,   8, true,  true  } } },
     { ColorFormat::kABGR16161616F,
-        { GBM_FORMAT_RGBA16161616F,
+        { DRM_FORMAT_ABGR16161616F,
             { PixelType::kFloat,    4,  16, true,  true  } } },
     { ColorFormat::kABGR32323232F,
-        { GBM_FORMAT_RGBA32323232F,
+        { DRM_FORMAT_ABGR32323232F,
             { PixelType::kFloat,    4,  32, true,  true  } } },
     { ColorFormat::kRGBA8888,
         { DRM_FORMAT_ABGR8888,
@@ -95,10 +107,10 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
         { DRM_FORMAT_ABGR8888,
             { PixelType::kSigned,   4,   8, false, false } } },
     { ColorFormat::kRGBA16161616F,
-        { GBM_FORMAT_RGBA16161616F,
+        { DRM_FORMAT_ABGR16161616F,
             { PixelType::kFloat,    4,  16, false, false } } },
     { ColorFormat::kRGBA32323232F,
-        { GBM_FORMAT_RGBA32323232F,
+        { DRM_FORMAT_ABGR32323232F,
             { PixelType::kFloat,    4,  32, false, false } } },
     { ColorFormat::kBGRA8888,
         { DRM_FORMAT_ABGR8888,
@@ -107,10 +119,10 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
         { DRM_FORMAT_ABGR8888,
             { PixelType::kSigned,   4,   8, false, true  } } },
     { ColorFormat::kBGRA16161616F,
-        { GBM_FORMAT_RGBA16161616F,
+        { DRM_FORMAT_ABGR16161616F,
             { PixelType::kFloat,    4,  16, false, true  } } },
     { ColorFormat::kBGRA32323232F,
-        { GBM_FORMAT_RGBA32323232F,
+        { DRM_FORMAT_ABGR32323232F,
             { PixelType::kFloat,    4,  32, false, true  } } },
     { ColorFormat::kXRGB8888,
         { DRM_FORMAT_ABGR8888,
@@ -119,10 +131,10 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
         { DRM_FORMAT_ABGR8888,
             { PixelType::kSigned,   4,   8, true,  false } } },
     { ColorFormat::kXRGB16161616F,
-        { GBM_FORMAT_RGBA16161616F,
+        { DRM_FORMAT_ABGR16161616F,
             { PixelType::kFloat,    4,  16, true,  false } } },
     { ColorFormat::kXRGB32323232F,
-        { GBM_FORMAT_RGBA32323232F,
+        { DRM_FORMAT_ABGR32323232F,
             { PixelType::kFloat,    4,  32, true,  false } } },
     { ColorFormat::kXBGR8888,
         { DRM_FORMAT_ABGR8888,
@@ -131,10 +143,10 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
         { DRM_FORMAT_ABGR8888,
             { PixelType::kSigned,   4,   8, true,  true  } } },
     { ColorFormat::kXBGR16161616F,
-        { GBM_FORMAT_RGBA16161616F,
+        { DRM_FORMAT_ABGR16161616F,
             { PixelType::kFloat,    4,  16, true,  true  } } },
     { ColorFormat::kXBGR32323232F,
-        { GBM_FORMAT_RGBA32323232F,
+        { DRM_FORMAT_ABGR32323232F,
             { PixelType::kFloat,    4,  32, true,  true  } } },
     { ColorFormat::kRGBX8888,
         { DRM_FORMAT_ABGR8888,
@@ -143,10 +155,10 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
         { DRM_FORMAT_ABGR8888,
             { PixelType::kSigned,   4,   8, false, false } } },
     { ColorFormat::kRGBX16161616F,
-        { GBM_FORMAT_RGBA16161616F,
+        { DRM_FORMAT_ABGR16161616F,
             { PixelType::kFloat,    4,  16, false, false } } },
     { ColorFormat::kRGBX32323232F,
-        { GBM_FORMAT_RGBA32323232F,
+        { DRM_FORMAT_ABGR32323232F,
             { PixelType::kFloat,    4,  32, false, false } } },
     { ColorFormat::kBGRX8888,
         { DRM_FORMAT_ABGR8888,
@@ -155,10 +167,10 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
         { DRM_FORMAT_ABGR8888,
             { PixelType::kSigned,   4,   8, false, true  } } },
     { ColorFormat::kBGRX16161616F,
-        { GBM_FORMAT_RGBA16161616F,
+        { DRM_FORMAT_ABGR16161616F,
             { PixelType::kFloat,    4,  16, false, true  } } },
     { ColorFormat::kBGRX32323232F,
-        { GBM_FORMAT_RGBA32323232F,
+        { DRM_FORMAT_ABGR32323232F,
             { PixelType::kFloat,    4,  32, false, true  } } },
 };
 
