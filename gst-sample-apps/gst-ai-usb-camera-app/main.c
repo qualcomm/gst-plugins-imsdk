@@ -65,9 +65,11 @@
 #define DEFAULT_YOLOV5_LABELS "/etc/labels/yolov5.labels"
 #define DEFAULT_SNPE_YOLOV8_MODEL "/etc/models/yolov8.dlc"
 #define DEFAULT_YOLOV8_LABELS "/etc/labels/yolov8.labels"
+#define DEFAULT_YOLOX_LABELS "/etc/labels/yolox.labels"
 #define DEFAULT_SNPE_YOLONAS_MODEL "/etc/models/yolonas.dlc"
 #define DEFAULT_YOLONAS_LABELS "/etc/labels/yolonas.labels"
 #define DEFAULT_TFLITE_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.tflite"
+#define DEFAULT_TFLITE_YOLOX_MODEL "/etc/models/yolox_quantized.tflite"
 #define DEFAULT_TFLITE_YOLOV5_MODEL "/etc/models/yolov5.tflite"
 #define DEFAULT_TFLITE_YOLONAS_MODEL "/etc/models/yolonas_quantized.tflite"
 #define DEFAULT_YOLOV7_LABELS "/etc/labels/yolov7.labels"
@@ -95,6 +97,12 @@
 #define DEFAULT_CONSTANTS_YOLOV8 \
  "YOLOv8,q-offsets=<12.0, 0.0, 0.0>,q-scales=<2.8047633171081543, \
  0.00390625, 0.0>;"
+
+/**
+ * Default constants to dequantize values
+ */
+#define DEFAULT_CONSTANTS_YOLOX "YOLOx,q-offsets=<38.0, 0.0, 0.0>,\
+    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
 
 /**
  * Default constants to dequantize values
@@ -209,6 +217,7 @@ static void
       options->model_path != (gchar *) (&DEFAULT_SNPE_YOLOV8_MODEL) &&
       options->model_path != (gchar *) (&DEFAULT_SNPE_YOLONAS_MODEL) &&
       options->model_path != (gchar *) (&DEFAULT_TFLITE_YOLOV8_MODEL) &&
+      options->model_path != (gchar *) (&DEFAULT_TFLITE_YOLOX_MODEL) &&
       options->model_path != (gchar *) (&DEFAULT_TFLITE_YOLOV5_MODEL) &&
       options->model_path != (gchar *) (&DEFAULT_TFLITE_YOLONAS_MODEL) &&
       options->model_path != (gchar *) (&DEFAULT_TFLITE_YOLOV7_MODEL) &&
@@ -219,6 +228,7 @@ static void
 
   if (options->labels_path != (gchar *) (&DEFAULT_YOLOV5_LABELS) &&
       options->labels_path != (gchar *) (&DEFAULT_YOLOV8_LABELS) &&
+      options->labels_path != (gchar *) (&DEFAULT_YOLOX_LABELS) &&
       options->labels_path != (gchar *) (&DEFAULT_YOLONAS_LABELS) &&
       options->labels_path != (gchar *) (&DEFAULT_YOLOV7_LABELS) &&
       options->labels_path != NULL) {
@@ -387,9 +397,11 @@ parse_json (gchar * file, GstAppOptions * options, GstCameraAppContext * appctx)
         options->yolo_model_type = GST_YOLO_TYPE_NAS;
       else if (g_strcmp0 (yolo_model_type, "yolov7") == 0)
         options->yolo_model_type = GST_YOLO_TYPE_V7;
+      else if (g_strcmp0 (yolo_model_type, "yolox") == 0)
+        options->yolo_model_type = GST_YOLO_TYPE_X;
       else {
         gst_printerr ("yolo-model-type can only be one of "
-            "\"yolov5\", \"yolov8\" or \"yolonas\" or \"yolov7\"\n");
+            "\"yolov5\", \"yolov8\" or \"yolox\" or \"yolonas\" or \"yolov7\"\n");
         g_object_unref (parser);
         return -1;
       }
@@ -1318,6 +1330,24 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
             options->constants, NULL);
         g_printerr ("%s\n", options->constants);
         break;
+      // YOLO_X specific settings
+      case GST_YOLO_TYPE_X:
+        // set qtimlvdetection properties
+        g_object_set (G_OBJECT (qtimlvdetection), "labels",
+            options->labels_path, NULL);
+        module_id = get_enum_value (qtimlvdetection, "module", "yolov8");
+        if (module_id != -1) {
+            g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
+        } else {
+          g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
+          goto error_clean_elements;
+        }
+        g_object_set (G_OBJECT (qtimlvdetection), "threshold",
+            options->threshold, NULL);
+        g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
+        g_object_set (G_OBJECT (qtimlvdetection), "constants",
+            options->constants, NULL);
+        break;
         // YOLO_V5 specific settings
       case GST_YOLO_TYPE_V5:
         // set qtimlvdetection properties
@@ -1598,6 +1628,7 @@ main (gint argc, gchar * argv[])
       "      This is an optional parameter and overrides default path\n"
       "      Default labels path for YOLOV5: " DEFAULT_YOLOV5_LABELS "\n"
       "      Default labels path for YOLOV8: " DEFAULT_YOLOV8_LABELS "\n"
+      "      Default labels path for YOLOX: "DEFAULT_YOLOX_LABELS"\n"
       "      Default labels path for YOLO NAS: " DEFAULT_YOLONAS_LABELS "\n"
       "      Default labels path for YOLOV7: " DEFAULT_YOLOV7_LABELS "\n"
       "  constants: \"CONSTANTS\"\n"
@@ -1606,6 +1637,7 @@ main (gint argc, gchar * argv[])
       "  Applicable only for some modules\n"
       "      Default constants for YOLOV5: " DEFAULT_CONSTANTS_YOLOV5 "\n"
       "      Default constants for YOLOV8: " DEFAULT_CONSTANTS_YOLOV8 "\n"
+      "      Default constants for YOLOX: " DEFAULT_CONSTANTS_YOLOX"\n"
       "      Default constants for YOLO NAS: " DEFAULT_CONSTANTS_YOLONAS "\n"
       "      Default constants for YOLOV7: " DEFAULT_CONSTANTS_YOLOV7 "\n"
       "  threshold: 0 to 100\n"
@@ -1702,15 +1734,16 @@ main (gint argc, gchar * argv[])
       return -EINVAL;
     }
     if (options.yolo_model_type < GST_YOLO_TYPE_V5 ||
-        options.yolo_model_type > GST_YOLO_TYPE_V7) {
+        options.yolo_model_type > GST_YOLO_TYPE_X) {
       g_printerr ("Invalid model-version option selected\n"
           "Available options:\n"
           "    Yolov5: %d\n"
           "    Yolov8: %d\n"
           "    YoloNas: %d\n"
-          "    Yolov7: %d\n",
+          "    Yolov7: %d\n"
+          "    Yolox: %d\n",
           GST_YOLO_TYPE_V5, GST_YOLO_TYPE_V8, GST_YOLO_TYPE_NAS,
-          GST_YOLO_TYPE_V7);
+          GST_YOLO_TYPE_V7, GST_YOLO_TYPE_X);
       gst_app_context_free (appctx, &options, config_file);
       return -EINVAL;
     }
@@ -1752,10 +1785,12 @@ main (gint argc, gchar * argv[])
           options.model_path = DEFAULT_TFLITE_YOLONAS_MODEL;
         } else if (options.yolo_model_type == GST_YOLO_TYPE_V7) {
           options.model_path = DEFAULT_TFLITE_YOLOV7_MODEL;
-        } else {
-          g_print ("No tflite model provided, Using default Yolov8 Model\n");
+        } else if (options.yolo_model_type == GST_YOLO_TYPE_V8) {
           options.model_path = DEFAULT_TFLITE_YOLOV8_MODEL;
-          options.yolo_model_type = GST_YOLO_TYPE_V8;
+        } else {
+          g_print ("No tflite model provided, Using default Yolox Model\n");
+          options.model_path = DEFAULT_TFLITE_YOLOX_MODEL;
+          options.yolo_model_type = GST_YOLO_TYPE_X;
         }
       } else if (options.model_type == GST_MODEL_TYPE_QNN) {
         if (options.yolo_model_type == GST_YOLO_TYPE_V8) {
@@ -1805,20 +1840,18 @@ main (gint argc, gchar * argv[])
       options.labels_path =
           (options.yolo_model_type == GST_YOLO_TYPE_V5 ? DEFAULT_YOLOV5_LABELS :
           (options.yolo_model_type == GST_YOLO_TYPE_V8 ? DEFAULT_YOLOV8_LABELS :
-              (options.yolo_model_type ==
-                  GST_YOLO_TYPE_V7 ? DEFAULT_YOLOV7_LABELS :
-                  DEFAULT_YOLONAS_LABELS)));
+          (options.yolo_model_type == GST_YOLO_TYPE_V7 ? DEFAULT_YOLOV7_LABELS :
+          (options.yolo_model_type == GST_YOLO_TYPE_X ? DEFAULT_YOLOX_LABELS :
+          DEFAULT_YOLONAS_LABELS))));
     }
 
     if (options.model_type == GST_MODEL_TYPE_TFLITE
         && options.constants == NULL) {
       options.constants =
-          (options.yolo_model_type ==
-          GST_YOLO_TYPE_V5 ? DEFAULT_CONSTANTS_YOLOV5 : options.yolo_model_type
-          ==
-          GST_YOLO_TYPE_NAS ? DEFAULT_CONSTANTS_YOLONAS :
-          options.yolo_model_type ==
-          GST_YOLO_TYPE_V7 ? DEFAULT_CONSTANTS_YOLOV7 :
+          (options.yolo_model_type == GST_YOLO_TYPE_V5 ? DEFAULT_CONSTANTS_YOLOV5:
+          options.yolo_model_type == GST_YOLO_TYPE_NAS ? DEFAULT_CONSTANTS_YOLONAS:
+          options.yolo_model_type == GST_YOLO_TYPE_V7 ? DEFAULT_CONSTANTS_YOLOV7:
+          options.yolo_model_type == GST_YOLO_TYPE_X ? DEFAULT_CONSTANTS_YOLOX:
           DEFAULT_CONSTANTS_YOLOV8);
     }
 
