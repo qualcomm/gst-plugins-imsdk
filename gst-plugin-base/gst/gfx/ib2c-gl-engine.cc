@@ -279,17 +279,20 @@ std::uintptr_t Engine::Compose(const Compositions& compositions,
     Surface& surface = std::get<Surface>(stuple);
     auto& graphics = std::get<std::vector<GraphicTuple>>(stuple);
 
-    // Resize normalization length and apply conversion neeed for shaders.
+    // Resize normalization length and apply conversion needed for shaders.
     if (normalize.size() != 4) { normalize.resize(4); }
 
-    std::transform(normalize.begin(), normalize.end(), normalize.begin(),
-                  [&surface](Normalize n) {
-        // Adjust data range to match to fragment sharer data representation.
-        n.offset /= 255.0;
-        // Adjust date range for signed RGB format
-        n.scale *= Format::IsSigned(surface.format) ? 2.0 : 1.0;
-        return n;
-    });
+    for (auto& norm : normalize) {
+      // Adjust data range to match fragment shader data representation.
+      norm.offset /= 255.0;
+
+      if (!Format::IsSigned(surface.format))
+        continue;
+
+      // Additional coefficients required for unsigned to signed conversion.
+      norm.offset += 0.5;
+      norm.scale *= 2.0;
+    }
 
     // Use intermediary texture only if output surface is not renderable or
     // blending required and output is YUV as this combination is not suppoted.
@@ -768,12 +771,22 @@ bool Engine::IsSurfaceRenderable(const Surface& surface) {
   if (Format::IsYuv(surface.format))
     return aligned;
 
+  // Unalined RGB(A) surfaces are not renderable, nothing further to check.
+  if (!aligned)
+    return false;
+
+  // Signed integer RGB(A) surfaces are not renderable, nothing further to check.
+  if (Format::IsSigned(surface.format))
+    return false;
+
   uint32_t n_components = Format::NumComponents(surface.format);
 
-  // Unalined, signed or 3 channeled Float RGB surfaces are not renderable.
-  // TODO Remove IsFloat when 3 channel RGB float formats are supported.
-  return aligned && !Format::IsSigned(surface.format) &&
-      !(Format::IsFloat(surface.format) && (n_components == 3));
+  // 3 channeled Float RGB surfaces are not renderable due to limitation.
+  // TODO Remove when 3 channel RGB float formats are supported.
+  if (Format::IsFloat(surface.format) && (n_components == 3))
+    return false;
+
+  return true;
 }
 
 GLuint Engine::GetStageTexture(const Surface& surface, const Objects& objects) {
@@ -996,10 +1009,12 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
     if (n_components == 3) {
       subsurface.format = ColorFormat::kRGBA8888;
 
-      if (Format::IsFloat(surface.format) && (bitdepth == 16))
-        subsurface.format = ColorFormat::kRGBA16161616F;
-      else if (Format::IsFloat(surface.format) && (bitdepth == 32))
+      if (Format::IsFloat(surface.format) && (bitdepth == 32))
         subsurface.format = ColorFormat::kRGBA32323232F;
+      else if (Format::IsFloat(surface.format) && (bitdepth == 16))
+        subsurface.format = ColorFormat::kRGBA16161616F;
+      else if (Format::IsSigned(surface.format) && (bitdepth == 8))
+        subsurface.format = ColorFormat::kRGBA8888I;
 
       n_components = Format::NumComponents(subsurface.format);
       bitdepth = Format::BitDepth(subsurface.format);

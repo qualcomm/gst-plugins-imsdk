@@ -53,8 +53,8 @@ class Engine : public IEngine {
   std::string BindContext(EGLSurface draw, EGLSurface read, EGLContext context);
   std::string UnbindContext(EGLContext context);
 
-  std::string RenderYuvTexture(std::vector<GraphicTuple>& graphics, bool clean,
-                               uint32_t color, uint32_t colorspace,
+  std::string RenderYuvTexture(std::vector<GraphicTuple>& graphics,
+                               bool clean, uint32_t color, uint32_t colorspace,
                                Objects& objects);
   std::string RenderRgbTexture(std::vector<GraphicTuple>& graphics, bool clean,
                                uint32_t color, bool inverted, bool swapped,

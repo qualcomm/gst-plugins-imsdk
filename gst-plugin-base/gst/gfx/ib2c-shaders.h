@@ -66,7 +66,6 @@ layout(location = 0) out vec4 outColor;
 
 void main() {
     vec4 source = texture(extTex, texCoord);
-    source = clamp(source, 0.0, 1.0);
 
     source.a = source.a * globalAlpha;
     source = (source - rgbaOffset) * rgbaScale;
