@@ -15,6 +15,8 @@ gi.require_version('Gst', '1.0')
 gi.require_version("GLib", "2.0")
 from gi.repository import Gst, GLib
 
+DEFAULT_INPUT_FILESOURCE = "/etc/media/video.mp4"
+
 # Constants
 DESCRIPTION = """
 This app demonstrate video playback using opencv api's.
@@ -36,7 +38,7 @@ def read_file():
         )
     )
     parser.add_argument(
-        "--infile", type=str, required=True,
+        "--infile", type=str, default=DEFAULT_INPUT_FILESOURCE,
         help="Input file to stream"
     )
     args = parser.parse_args()

@@ -42,6 +42,8 @@
 #define EIGHT_STREAM_CNT 8
 #define SIXTEEN_STREAM_CNT 16
 
+#define INPUT_FILE_PATH "/etc/media/video.mp4"
+
 #define GST_APP_SUMMARY "This application performs concurrent " \
   "video playback for AVC codec and composition on display (video wall).\n" \
   "The application expects at least one input file from the user. If the " \
@@ -82,8 +84,8 @@ gst_app_context_new ()
 
   ctx->pipeline = NULL;
   ctx->mloop = NULL;
-  ctx->input_files = NULL;
   ctx->stream_cnt = TWO_STREAM_CNT;
+  ctx->input_files = g_new0 (gchar*, ctx->stream_cnt);
 
   return ctx;
 }
@@ -162,6 +164,13 @@ create_pipe (GstVideoAppContext *appctx)
     file_count++;
   }
 
+  // set input file count to default if no input passed
+  if (file_count == 0) {
+    for (gint i = 0; i < appctx->stream_cnt; i++) {
+      appctx->input_files[i] = g_strdup (INPUT_FILE_PATH);
+    }
+    file_count = appctx->stream_cnt;
+  }
   g_print ("Setting the file location\n");
   for (gint i = 0; i < appctx->stream_cnt; i++) {
     file_index = i % file_count;
