@@ -95,7 +95,7 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_TFLITE_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.tflite"
+#define DEFAULT_TFLITE_YOLOX_MODEL "/etc/models/yolox_quantized.tflite"
 #define DEFAULT_TFLITE_CLASSIFICATION_MODEL \
     "/etc/models/mobilenet_v2_quantized.tflite"
 #define DEFAULT_DETECTION_LABELS "/etc/labels/coco_labels.txt"
@@ -132,10 +132,10 @@
 #define GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX 1
 
 /**
- * Scale and Offset value for YOLOV8 for post processing
+ * Scale and Offset value for YOLOX for post processing
  */
-#define YOLOV8_CONSTANT "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,\
-    q-scales=<3.0546178817749023, 0.003793874057009816, 1.0>;"
+#define YOLOX_CONSTANT "YOLOX,q-offsets=<38.0, 0.0, 0.0>,\
+    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
 
 /**
  * Scale and Offset valu for Mobilenet for post processing
@@ -163,7 +163,7 @@ typedef struct
 
 /**
  * GstDaisyChainModelType:
- * @GST_DETECTION_TYPE_YOLO            : Yolov8 Object Detection Model.
+ * @GST_DETECTION_TYPE_YOLO            : Yolox Object Detection Model.
  * @GST_CLASSIFICATION_TYPE_INCEPTION  : Inception Classification Model.
  *
  * Type of Usecase.
@@ -210,7 +210,7 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options,
 
   if (options->detection_model_path != NULL &&
       options->detection_model_path !=
-      (gchar *) (&DEFAULT_TFLITE_YOLOV8_MODEL)) {
+      (gchar *) (&DEFAULT_TFLITE_YOLOX_MODEL)) {
     g_free ((gpointer) options->detection_model_path);
     options->detection_model_path = NULL;
   }
@@ -236,7 +236,7 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options,
   }
 
   if (options->detection_constants != NULL &&
-      options->detection_constants != (gchar *)(&YOLOV8_CONSTANT)) {
+      options->detection_constants != (gchar *)(&YOLOX_CONSTANT)) {
     g_free ((gpointer)options->detection_constants);
     options->detection_constants = NULL;
   }
@@ -1155,12 +1155,12 @@ main (gint argc, gchar * argv[])
       "  %s"
       "  detection-model: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path "
-      "for YOLOV8 detection model\n"
-      "      Default path for YOLOV8 model: "DEFAULT_TFLITE_YOLOV8_MODEL"\n"
+      "for YOLOX detection model\n"
+      "      Default path for YOLOX model: "DEFAULT_TFLITE_YOLOX_MODEL"\n"
       "  detection-labels: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path "
-      " for YOLOV8 labels\n"
-      "      Default path for YOLOV8 labels: "DEFAULT_DETECTION_LABELS"\n"
+      " for YOLOX labels\n"
+      "      Default path for YOLOX labels: "DEFAULT_DETECTION_LABELS"\n"
       "  classification-model: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path "
       "for classification model\n"
@@ -1172,8 +1172,8 @@ main (gint argc, gchar * argv[])
       "      Default path for classification labels: "
       DEFAULT_CLASSIFICATION_LABELS"\n"
       "  detection-constants: \"CONSTANTS\"\n"
-      "      Constants, offsets and coefficients for YOLOV8 TFLITE model \n"
-      "      Default constants for YOLOV8: "YOLOV8_CONSTANT"\n"
+      "      Constants, offsets and coefficients for YOLOX TFLITE model \n"
+      "      Default constants for YOLOX: "YOLOX_CONSTANT"\n"
       "  classification-constants: \"CONSTANTS\"\n"
       "      Constants, offsets and coefficients for MOBILENETV2 TFLITE model \n"
       "      Default constants for MOBILENETV2: "MOBILENETV2_CONSTANT"\n",
@@ -1271,7 +1271,7 @@ main (gint argc, gchar * argv[])
   }
 
   if (options.detection_model_path == NULL) {
-    options.detection_model_path = DEFAULT_TFLITE_YOLOV8_MODEL;
+    options.detection_model_path = DEFAULT_TFLITE_YOLOX_MODEL;
   }
   if (!file_exists (options.detection_model_path)) {
     g_printerr ("Invalid detection model file path: %s\n",
@@ -1317,7 +1317,7 @@ main (gint argc, gchar * argv[])
       options.classification_model_path, options.classification_labels_path);
 
   if (options.detection_constants == NULL) {
-    options.detection_constants = YOLOV8_CONSTANT;
+    options.detection_constants = YOLOX_CONSTANT;
   }
 
   if (options.classification_constants == NULL) {

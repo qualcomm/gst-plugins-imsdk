@@ -45,8 +45,8 @@
 /**
  * Default models and labels path, if not provided by user
  */
-#define DEFAULT_TFLITE_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.tflite"
-#define DEFAULT_YOLOV8_LABELS "/etc/labels/yolov8.labels"
+#define DEFAULT_TFLITE_YOLOX_MODEL "/etc/models/yolox_quantized.tflite"
+#define DEFAULT_YOLOX_LABELS "/etc/labels/yolox.labels"
 #define DEFAULT_TFLITE_INCEPTIONV3_MODEL \
     "/etc/models/inception_v3_quantized.tflite"
 #define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/classification.labels"
@@ -54,8 +54,8 @@
 /**
  * Default constants to dequantize values
  */
-#define DEFAULT_DETECTION_CONSTANTS "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,\
-    q-scales=<3.0546178817749023, 0.003793874057009816, 1.0>;"
+#define DEFAULT_DETECTION_CONSTANTS "YOLOx,q-offsets=<38.0, 0.0, 0.0>,\
+    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
 #define DEFAULT_CLASSIFICATION_CONSTANTS \
     "Inceptionv3,q-offsets=<38.0>,q-scales=<0.17039915919303894>;"
 
@@ -397,14 +397,14 @@ gst_app_context_free
   }
 
   if (options->model_path != NULL &&
-    options->model_path != (gchar *)(&DEFAULT_TFLITE_YOLOV8_MODEL) &&
+    options->model_path != (gchar *)(&DEFAULT_TFLITE_YOLOX_MODEL) &&
     options->model_path != (gchar *)(&DEFAULT_TFLITE_INCEPTIONV3_MODEL)) {
     g_free ((gpointer)options->model_path);
     options->model_path = NULL;
   }
 
   if (options->labels_path != NULL &&
-    options->labels_path != (gchar *)(&DEFAULT_YOLOV8_LABELS) &&
+    options->labels_path != (gchar *)(&DEFAULT_YOLOX_LABELS) &&
     options->labels_path != (gchar *)(&DEFAULT_CLASSIFICATION_LABELS)) {
     g_free ((gpointer)options->labels_path);
     options->labels_path = NULL;
@@ -1585,12 +1585,12 @@ main (gint argc, gchar * argv[])
       "  Maximum number of input streams: %d\n"
       "  model: path to model file\n"
       "      This is an optional parameter and overrides default path\n"
-      "      Default detection model path: " DEFAULT_TFLITE_YOLOV8_MODEL "\n"
+      "      Default detection model path: " DEFAULT_TFLITE_YOLOX_MODEL "\n"
       "      Default classification model path: "
       DEFAULT_TFLITE_INCEPTIONV3_MODEL "\n"
       "  labels: path to labels file\n"
       "      This is an optional parameter and overrides default path\n"
-      "      Default detection labels path: " DEFAULT_YOLOV8_LABELS "\n"
+      "      Default detection labels path: " DEFAULT_YOLOX_LABELS "\n"
       "      Default classification model path: "
       DEFAULT_CLASSIFICATION_LABELS "\n"
       "  constants: \"CONSTANTS\"\n"
@@ -1673,9 +1673,9 @@ main (gint argc, gchar * argv[])
 
   if (options.use_case == GST_OBJECT_DETECTION) {
     if (options.model_path ==  NULL)
-      options.model_path = DEFAULT_TFLITE_YOLOV8_MODEL;
+      options.model_path = DEFAULT_TFLITE_YOLOX_MODEL;
     if (options.labels_path ==  NULL)
-      options.labels_path = DEFAULT_YOLOV8_LABELS;
+      options.labels_path = DEFAULT_YOLOX_LABELS;
     if (options.constants ==  NULL)
       options.constants = DEFAULT_DETECTION_CONSTANTS;
   }

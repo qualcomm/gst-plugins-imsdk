@@ -1,9 +1,9 @@
 {
   "input-file": "/etc/media/video.mp4",
-  "detection-model": "/etc/models/yolov8_det_quantized.tflite",
+  "detection-model": "/etc/models/yolox_quantized.tflite",
   "detection-labels": "/etc/labels/coco_labels.txt",
   "classification-model": "/etc/models/mobilenet_v2_quantized.tflite",
   "classification-labels": "/etc/labels/imagenet_labels.txt",
-  "detection-constants": "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,q-scales=<3.0546178817749023, 0.003793874057009816, 1.0>;",
+  "detection-constants": "Yolox,q-offsets=<38.0, 0.0, 0.0>,q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;",
   "classification-constants": "Inceptionv3,q-offsets=<38.0>,q-scales=<0.17039915919303894>;"
 }

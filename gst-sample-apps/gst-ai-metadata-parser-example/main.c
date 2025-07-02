@@ -82,8 +82,8 @@
  * Default constants to dequantize values
  */
 #define DEFAULT_CONSTANTS \
-    "model,q-offsets=<21.0, 0.0, 0.0>, \
-    q-scales=<3.093529462814331, 0.00390625, 1.0>;"
+    "model,q-offsets=<38.0, 0.0, 0.0>, \
+    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
 
 /**
  * Number of Queues used for buffer caching between elements
@@ -668,7 +668,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   g_value_init (&layers, GST_TYPE_ARRAY);
   g_value_init (&value, G_TYPE_STRING);
 
-  // YOLO_V8 specific settings
+  // YOLO_X specific settings
   for (gint i = 0; i < DETECTION_COUNT; i++) {
     g_object_set (G_OBJECT (qtimlvdetection[i]), "labels",
         options->labels_path, NULL);
