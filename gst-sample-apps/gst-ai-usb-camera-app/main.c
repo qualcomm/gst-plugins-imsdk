@@ -1427,8 +1427,7 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
     gst_bin_add_many (GST_BIN (appctx->pipeline), v4l2h264enc, h264parse,
         qtirtspbin, NULL);
   } else {
-    gst_bin_add_many (GST_BIN (appctx->pipeline), fpsdisplaysink, waylandsink,
-        NULL);
+    gst_bin_add_many (GST_BIN (appctx->pipeline), fpsdisplaysink, NULL);
   }
   gst_bin_add_many (GST_BIN (appctx->pipeline), v4l2src, v4l2src_caps,
       tee, qtimlvconverter, qtimlelement, qtimlvdetection, detection_filter,

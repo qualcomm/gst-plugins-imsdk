@@ -1130,8 +1130,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options, guint htp_count)
       composer_caps, composer_tee, NULL);
 
   if (options->out_display) {
-    gst_bin_add_many (GST_BIN (appctx->pipeline), waylandsink,
-        fpsdisplaysink, NULL);
+    gst_bin_add_many (GST_BIN (appctx->pipeline), fpsdisplaysink, NULL);
   }
 
   if (options->out_file || options->out_rtsp) {
@@ -1345,7 +1344,7 @@ error_clean_elements:
       &composer_caps, &composer_tee, NULL);
 
   if (options->out_display) {
-    cleanup_gst (&waylandsink, NULL);
+    cleanup_gst (&waylandsink, &fpsdisplaysink, NULL);
   }
 
   if (options->out_file || options->out_rtsp) {

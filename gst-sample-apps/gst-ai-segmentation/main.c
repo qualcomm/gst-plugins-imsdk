@@ -596,7 +596,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
   gst_bin_add_many (GST_BIN (appctx->pipeline), qtimlvconverter,
       qtimlelement, qtimlvsegmentation, segmentation_filter,
-      qtivcomposer, fpsdisplaysink, waylandsink, NULL);
+      qtivcomposer, fpsdisplaysink, NULL);
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), queue[i], NULL);
