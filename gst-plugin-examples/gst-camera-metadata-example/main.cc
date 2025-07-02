@@ -358,7 +358,7 @@ select_element_from_pipeline (GstAppContext * appctx,
         NULL)
       g_printerr ("Invalid plugin index!\n");
 
-    *chosen_index = g_strdup("1");
+    *chosen_index = g_strdup("0");
   } else {
     // Choose a plugin to control.
     g_print ("\nEnter plugin name or its index (or press Enter to return): ");
