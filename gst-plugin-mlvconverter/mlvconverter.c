@@ -1702,10 +1702,6 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
         g_array_index (mlconverter->mean, gdouble, idx) : DEFAULT_PROP_MEAN;
     mlconverter->composition.scales[idx] = (idx < mlconverter->sigma->len) ?
         g_array_index (mlconverter->sigma, gdouble, idx) : DEFAULT_PROP_SIGMA;
-
-    // Apply coefficients for unsigned to singned conversion.
-    if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_INT8)
-      mlconverter->composition.offsets[idx] += SIGNED_CONVERSION_OFFSET;
   }
 
   GST_DEBUG_OBJECT (mlconverter, "Input caps: %" GST_PTR_FORMAT, incaps);

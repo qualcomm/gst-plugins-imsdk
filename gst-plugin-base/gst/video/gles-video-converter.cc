@@ -227,7 +227,9 @@ gst_gles_create_surface (GstGlesVideoConverter * convert, const gchar * directio
   else if (flags == GST_VCE_FLAG_F32_FORMAT)
     mode = " FLOAT32";
   else if (flags == GST_VCE_FLAG_I8_FORMAT)
-    mode = " SIGNED";
+    mode = " INT8";
+  else
+    mode = " UINT8";
 
   GST_TRACE ("%s surface FD[%d] - Width[%u] Height[%u] Format[%s%s] Planes[%u]",
       direction, surface.fd, surface.width, surface.height, format, mode,
