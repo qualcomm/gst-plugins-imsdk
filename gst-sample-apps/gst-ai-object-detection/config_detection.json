@@ -1,10 +1,10 @@
 {
   "file-path": "/etc/media/video.mp4",
   "ml-framework": "tflite",
-  "yolo-model-type": "yolov8",
-  "model": "/etc/models/yolov8_det_quantized.tflite",
-  "labels": "/etc/labels/yolov8.labels",
-  "constants": "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,q-scales=<3.0546178817749023, 0.003793874057009816, 1.0>;",
+  "yolo-model-type": "yolox",
+  "model": "/etc/models/yolox_quantized.tflite",
+  "labels": "/etc/labels/yolox.labels",
+  "constants": "Yolox,q-offsets=<38.0, 0.0, 0.0>,q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;",
   "threshold": 40,
   "runtime": "dsp"
 }
