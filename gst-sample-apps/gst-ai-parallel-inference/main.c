@@ -843,7 +843,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         tee, qtivcomposer, waylandsink, fpsdisplaysink, NULL);
   } else {
     gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc,  qmmfsrc_caps,
-        tee, qtivcomposer, fpsdisplaysink, waylandsink, NULL);
+        tee, qtivcomposer, fpsdisplaysink, NULL);
   }
 
   for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
@@ -996,7 +996,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 error_clean_elements:
   cleanup_gst (&qtiqmmfsrc, &qmmfsrc_caps, &filesrc, &qtdemux,
       &h264parse, &v4l2h264dec, &v4l2h264dec_caps, &rtspsrc,
-      &rtph264depay, &tee, &qtivcomposer, &fpsdisplaysink, NULL);
+      &rtph264depay, &tee, &qtivcomposer, &fpsdisplaysink, &waylandsink, NULL);
 
   for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
     cleanup_gst (GST_BIN (appctx->pipeline), qtimlvconverter[i],

@@ -639,7 +639,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     goto error_clean_elements;
   }
   gst_bin_add_many (GST_BIN (appctx->pipeline), qtimlvconverter, qtivcomposer,
-      tee, qtimlelement, qtimlvsegmentation, segmentation_filter, waylandsink,
+      tee, qtimlelement, qtimlvsegmentation, segmentation_filter,
       fpsdisplaysink, NULL);
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {

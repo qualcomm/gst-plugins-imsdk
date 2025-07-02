@@ -952,7 +952,7 @@ error_clean_elements:
   }
 
   cleanup_gst (&qtivsplit, &qtivcomposer, &fpsdisplaysink,
-      &video_caps_filter, NULL);
+      &waylandsink, &video_caps_filter, NULL);
 
   for (gint i = 0; i < CLASSIFICATION_COUNT; i++) {
     if (classification_filter[i]) {
