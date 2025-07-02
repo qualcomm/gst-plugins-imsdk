@@ -235,7 +235,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GstVideoFrame *vframe = (GstVideoFrame *) output;
   GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   guint8 *indata = NULL, *outdata = NULL;
-  guint idx = 0, bpp = 0, padding = 0;
+  guint inidx = 0, outidx = 0, bpp = 0, stride = 0;
   gint row = 0, column = 0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
@@ -251,9 +251,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   bpp = GST_VIDEO_FORMAT_INFO_BITS (vframe->info.finfo) *
       GST_VIDEO_INFO_N_COMPONENTS (&(vframe)->info) / CHAR_BIT;
 
-  // Calculate the row padding in bytes.
-  padding = GST_VIDEO_FRAME_PLANE_STRIDE (vframe, 0) -
-      (GST_VIDEO_FRAME_WIDTH (vframe) * bpp);
+  stride = GST_VIDEO_FRAME_PLANE_STRIDE (vframe, 0);
 
   indata = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
   outdata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
@@ -262,21 +260,23 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   // TODO: Right now this won't work with any output resolution.
   // TODO: Expolore the possible use of OpenGL or OpenCL
   for (row = 0; row < GST_VIDEO_FRAME_HEIGHT (vframe); row++) {
-    for (column = 0; column < GST_VIDEO_FRAME_WIDTH (vframe); column++) {
-      // Calculate the destination index.
-      idx = (((row * GST_VIDEO_FRAME_WIDTH (vframe)) + column) * bpp) +
-          (row * padding);
+    inidx = row * GST_VIDEO_FRAME_WIDTH (vframe) * bpp;
+    outidx = row * stride;
 
-      outdata[idx] = gst_ml_tensor_extract_value (mltype, indata, idx,
-            submodule->qoffsets[0], submodule->qscales[0]);
-      outdata[idx + 1] = gst_ml_tensor_extract_value (mltype, indata, (idx + 1),
-            submodule->qoffsets[0], submodule->qscales[0]);
-      outdata[idx + 2] = gst_ml_tensor_extract_value (mltype, indata, (idx + 2),
-            submodule->qoffsets[0], submodule->qscales[0]);
+    for (column = 0; column < GST_VIDEO_FRAME_WIDTH (vframe); column++) {
+      outdata[outidx] = gst_ml_tensor_extract_value (mltype, indata,
+            inidx, submodule->qoffsets[0], submodule->qscales[0]);
+      outdata[outidx + 1] = gst_ml_tensor_extract_value (mltype, indata,
+            (inidx + 1), submodule->qoffsets[0], submodule->qscales[0]);
+      outdata[outidx + 2] = gst_ml_tensor_extract_value (mltype, indata,
+            (inidx + 2), submodule->qoffsets[0], submodule->qscales[0]);
 
       // If output has an alpha channel set it to opaque.
       if (bpp == 4)
-        outdata[idx + 3] = 0xFF;
+        outdata[outidx + 3] = 0xFF;
+
+      inidx += bpp;
+      outidx += bpp;
     }
   }
 
