@@ -759,7 +759,10 @@ std::string Engine::ColorTransmute(GLuint stgtex, Surface& surface,
 bool Engine::IsSurfaceRenderable(const Surface& surface) {
 
   uint32_t alignment = QueryAlignment();
-  bool aligned = ((surface.stride0 % alignment) == 0) ? true : false;
+  uint32_t bytedepth = Format::BitDepth(surface.format) / 8;
+
+  bool aligned =
+      (((surface.stride0 / bytedepth) % alignment) == 0) ? true : false;
 
   // For YUV surfaces check only if it satisfies GPU alignment requirement.
   if (Format::IsYuv(surface.format))
@@ -1004,18 +1007,20 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
 
     uint32_t alignment = QueryAlignment();
 
-    // Divide by 8 in order to get Bytes Per Pixel.
-    uint32_t bpp = (bitdepth * n_components) / 8;
+    // Divide by 8 in order to get bytes depth and then Bytes Per Pixel.
+    uint32_t bytedepth = bitdepth / 8;
+    uint32_t bpp = bytedepth * n_components;
 
     // Adjust width, height and stride values for non-renderable RGB(A) surface.
     // Align stride and calculate the width for the compute texture.
+    uint32_t stride = subsurface.stride0 / bytedepth;
     subsurface.stride0 =
-        ((subsurface.stride0 + (alignment - 1)) & ~(alignment - 1));
+        ((stride + (alignment - 1)) & ~(alignment - 1)) * bytedepth;
+
     subsurface.width = subsurface.stride0 / bpp;
 
-    uint32_t size = subsurface.size - subsurface.offset0;
-
     // Calculate the aligned height value rounded up based on surface size.
+    uint32_t size = subsurface.size - subsurface.offset0;
     subsurface.height =
         std::ceil((size / bpp) / static_cast<float>(subsurface.width));
 
