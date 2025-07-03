@@ -59,6 +59,7 @@ endif () # ENABLE_CAMERA AND ENABLE_DISPLAY
 
 if (ENABLE_CAMERA AND ENABLE_VIDEO_ENCODE AND ENABLE_DISPLAY)
   add_subdirectory(gst-timelapse-example)
+  add_subdirectory(gst-ife-ipe-switch-streams-runtime)
 endif () # ENABLE_CAMERA AND ENABLE_VIDEO_ENCODE AND ENABLE_DISPLAY
 
 if (ENABLE_CAMERA AND (ENABLE_VIDEO_ENCODE OR ENABLE_DISPLAY))
