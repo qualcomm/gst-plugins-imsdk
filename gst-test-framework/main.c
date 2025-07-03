@@ -128,6 +128,9 @@ static gboolean gst_plugin_get_suite (GstPluginSuite *psuite)
     case GST_TEST_SUITE_CAMERA:
       GST_PLUGIN_GET_SUITE (camera, psuite);
       break;
+    case GST_TEST_SUITE_ML:
+      GST_PLUGIN_GET_SUITE (ml, psuite);
+      break;
     default:
       ret = FALSE;
       GST_WARNING ("Unknown suite index %d.", psuite->idx);
