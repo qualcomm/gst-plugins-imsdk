@@ -1051,7 +1051,11 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options, guint htp_count)
 
   // 2.4 Set the properties for composer output
   filtercaps = gst_caps_new_simple ("video/x-raw",
-      "format", G_TYPE_STRING, "NV12", NULL);
+      "format", G_TYPE_STRING, "NV12",
+      "width", G_TYPE_INT, DEFAULT_DISPLAY_WIDTH,
+      "height", G_TYPE_INT, DEFAULT_DISPLAY_HEIGHT,
+      "interlace-mode", G_TYPE_STRING, "progressive",
+      "colorimetry", G_TYPE_STRING, "bt601", NULL);
   g_object_set (G_OBJECT (composer_caps), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
