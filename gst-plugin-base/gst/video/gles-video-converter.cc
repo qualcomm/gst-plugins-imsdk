@@ -228,6 +228,10 @@ gst_video_format_to_ib2c_format (GstVideoFormat format, const guint64 flags)
 
       // Default value.
       return ::ib2c::ColorFormat::kGRAY8;
+    case GST_VIDEO_FORMAT_RGBP:
+      return ::ib2c::ColorFormat::kR8G8B8;
+    case GST_VIDEO_FORMAT_BGRP:
+      return ::ib2c::ColorFormat::kB8G8R8;
     default:
       GST_ERROR ("Unsupported format %s!", gst_video_format_to_string (format));
   }

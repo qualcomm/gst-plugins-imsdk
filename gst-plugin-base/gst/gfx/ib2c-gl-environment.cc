@@ -287,6 +287,7 @@ GlesLib::GlesLib() {
   LOAD_GL_SYMBOL(handle_, GetIntegerv);
   LOAD_GL_SYMBOL(handle_, GetStringi);
   LOAD_GL_SYMBOL(handle_, Viewport);
+  LOAD_GL_SYMBOL(handle_, DrawBuffers);
   LOAD_GL_SYMBOL(handle_, DrawArrays);
   LOAD_GL_SYMBOL(handle_, DispatchCompute);
   LOAD_GL_SYMBOL(handle_, Finish);
