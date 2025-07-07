@@ -62,6 +62,7 @@ typedef enum {
 
 /**
  * GstVideoConvBackend:
+ * @GST_VCE_BACKEND_NONE: Do not use any backend
  * @GST_VCE_BACKEND_C2D: Use C2D based video converter.
  * @GST_VCE_BACKEND_GLES: Use OpenGLES based video converter.
  * @GST_VCE_BACKEND_FCV: Use FastCV based video converter.
@@ -69,6 +70,7 @@ typedef enum {
  * The backend of the video converter engine.
  */
 typedef enum {
+  GST_VCE_BACKEND_NONE,
   GST_VCE_BACKEND_C2D,
   GST_VCE_BACKEND_GLES,
   GST_VCE_BACKEND_FCV,
