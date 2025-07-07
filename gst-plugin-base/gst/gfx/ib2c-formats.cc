@@ -43,7 +43,9 @@ const uint32_t Format::kFormatMask = 0xFF;
 const uint32_t Format::kColorSpaceMask = (0b11 << 9);
 
 // ColorFormat + PixelType mask and their corresponding tuple of:
-// <DRM Format, Pixel Type, Number of Channels, Bit depth, Inverted, Swapped RB>
+// { DRM Format,
+//     { Pixel Type, Number of Components, Bit depth, Inverted, Swapped RB }
+// }
 const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
     { ColorFormat::kGRAY8,
         { DRM_FORMAT_R8,
@@ -57,6 +59,12 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
     { ColorFormat::kGRAY16I,
         { DRM_FORMAT_R16,
             { PixelType::kSigned,   1,  16, false, false } } },
+    { ColorFormat::kR8G8B8,
+        { DRM_FORMAT_R8,
+            { PixelType::kUnsigned, 1,   8, false, false } } },
+    { ColorFormat::kB8G8R8,
+        { DRM_FORMAT_R8,
+            { PixelType::kUnsigned, 1,   8, false, true  } } },
     { ColorFormat::kRG88,
         { DRM_FORMAT_GR88,
             { PixelType::kUnsigned, 2,   8, false, false } } },
@@ -349,6 +357,16 @@ uint32_t Format::BitDepth(uint32_t format) {
 
   auto& info = std::get<RgbInfo>(kRgbFormatTable.at(format & kFormatMask));
   return info.bitdepth;
+}
+
+bool Format::IsPlanar(uint32_t format) {
+
+  // YUV color formats are all planar.
+  if (kYuvFormatTable.count(format & kFormatMask) != 0)
+    return true;
+
+  return ((format & kFormatMask) == ColorFormat::kR8G8B8) ||
+      ((format & kFormatMask) == ColorFormat::kB8G8R8);
 }
 
 bool Format::IsInverted(uint32_t format) {

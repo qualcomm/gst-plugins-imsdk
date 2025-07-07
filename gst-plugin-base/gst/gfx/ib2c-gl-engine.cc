@@ -105,9 +105,23 @@ Engine::Engine() {
   env_->Gles()->GenFramebuffers(1, &fbo_);
   EXCEPTION_IF_GL_ERROR(env_, "Failed to generate stage frame buffer");
 
-  auto shader = std::make_shared<ShaderProgram>(env_, kVertexShader,
-                                                kRgbFragmentShader);
+  // Construct fragment shader code for interleaved RGB(A) formats.
+  std::string fragment =
+      kRgbFragmentHeader + kRgbFragmentInterleavedOutput + kRgbFragmentMain;
+
+  auto shader = std::make_shared<ShaderProgram>(env_, kVertexShader, fragment);
   shaders_.emplace(ShaderType::kRGB, shader);
+
+  env_->Gles()->EnableVertexAttribArray(shader->GetAttribLocation("vPosition"));
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to enable position attribute array");
+
+  env_->Gles()->EnableVertexAttribArray(shader->GetAttribLocation("inTexCoord"));
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to enable texture coords attribute array");
+
+  fragment = kRgbFragmentHeader + kRgbFragmentPlanarOutput + kRgbFragmentMain;
+
+  shader = std::make_shared<ShaderProgram>(env_, kVertexShader, fragment);
+  shaders_.emplace(ShaderType::kPlanarRGB, shader);
 
   env_->Gles()->EnableVertexAttribArray(shader->GetAttribLocation("vPosition"));
   EXCEPTION_IF_GL_ERROR(env_, "Failed to enable position attribute array");
@@ -149,29 +163,29 @@ Engine::Engine() {
   EXCEPTION_IF_GL_ERROR(env_, "Failed to enable texture coords attribute array");
 
   // Construct shader code for 8-bit unaligned RGB(A) output textures.
-  std::string code = kComputeHeader + kComputeOutputRGBA8 + kComputeMainUnaligned;
+  std::string compute = kComputeHeader + kComputeOutputRGBA8 + kComputeMain;
 
-  shader = std::make_shared<ShaderProgram>(env_, code);
+  shader = std::make_shared<ShaderProgram>(env_, compute);
   shaders_.emplace(ShaderType::kCompute8, shader);
 
   if (env_->QueryExtension("GL_NV_image_formats")) {
     // Construct shader code for 16-bit unaligned RGB(A) output textures.
-    code = kComputeHeader + kComputeOutputRGBA16 + kComputeMainUnaligned;
+    compute = kComputeHeader + kComputeOutputRGBA16 + kComputeMain;
 
-    shader = std::make_shared<ShaderProgram>(env_, code);
+    shader = std::make_shared<ShaderProgram>(env_, compute);
     shaders_.emplace(ShaderType::kCompute16, shader);
   }
 
   // Construct shader code for 16-bit float unaligned RGB(A) output textures.
-  code = kComputeHeader + kComputeOutputRGBA16F + kComputeMainUnaligned;
+  compute = kComputeHeader + kComputeOutputRGBA16F + kComputeMain;
 
-  shader = std::make_shared<ShaderProgram>(env_, code);
+  shader = std::make_shared<ShaderProgram>(env_, compute);
   shaders_.emplace(ShaderType::kCompute16F, shader);
 
   // Construct shader code for 32-bit float unaligned RGB(A) output textures.
-  code = kComputeHeader + kComputeOutputRGBA32F + kComputeMainUnaligned;
+  compute = kComputeHeader + kComputeOutputRGBA32F + kComputeMain;
 
-  shader = std::make_shared<ShaderProgram>(env_, code);
+  shader = std::make_shared<ShaderProgram>(env_, compute);
   shaders_.emplace(ShaderType::kCompute32F, shader);
 
   error = env_->UnbindContext(ContextType::kPrimary) ;
@@ -507,14 +521,25 @@ std::string Engine::RenderRgbTexture(std::vector<GraphicTuple>& graphics,
                                      bool swapped, Normalization& normalize,
                                      Objects& objects) {
 
-  GraphicTuple& gltuple = graphics.at(0);
-  GLuint& texture = std::get<GLuint>(gltuple);
+  // Declare the list of color buffers to be drawn into.
+  std::vector<GLenum> buffers;
 
-  // Attach output texture to the rendering frame buffer.
-  env_->Gles()->FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                                     GL_TEXTURE_2D, texture, 0);
-  RETURN_IF_GL_ERROR(env_, "Failed to attach output texture ", texture, " to ",
-                     "frame buffer at color attachment 0 for RGB rendering");
+  for (size_t idx = 0; idx < graphics.size(); idx++) {
+    GraphicTuple& gltuple = graphics.at(idx);
+    GLuint& texture = std::get<GLuint>(gltuple);
+
+    // Attach output texture to the rendering frame buffer.
+    env_->Gles()->FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + idx,
+                                       GL_TEXTURE_2D, texture, 0);
+    RETURN_IF_GL_ERROR(env_, "Failed to attach output texture ", texture, " to ",
+                      "frame buffer at color attachment ", idx, " for RGB render");
+
+    buffers.push_back(GL_COLOR_ATTACHMENT0 + idx);
+  }
+
+  // Specify the list of color buffers to be drawn into.
+  env_->Gles()->DrawBuffers(buffers.size(), buffers.data());
+  RETURN_IF_GL_ERROR(env_, "Failed to set color buffers to be drawn into");
 
   if (clean) {
     // Set/Clear the background of the texture attached to the frame buffer.
@@ -524,7 +549,10 @@ std::string Engine::RenderRgbTexture(std::vector<GraphicTuple>& graphics,
     RETURN_IF_GL_ERROR(env_, "Failed to clear buffer color bit");
   }
 
-  std::shared_ptr<ShaderProgram> shader = shaders_.at(ShaderType::kRGB);
+  ShaderType stype =
+      (graphics.size() == 1) ? ShaderType::kRGB : ShaderType::kPlanarRGB;
+
+  std::shared_ptr<ShaderProgram> shader = shaders_.at(stype);
   shader->Use();
 
   shader->SetVec4("rgbaScale", normalize[0].scale, normalize[1].scale,
@@ -1010,6 +1038,29 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
       } else if (surface.format == ColorFormat::kNV16 ||
                  surface.format == ColorFormat::kNV61) {
         imgsurfaces[1].width /= 2;
+      }
+    }
+  } else if ((flags & SurfaceFlags::kOutput) && Format::IsRgb(surface.format) &&
+             Format::IsPlanar(surface.format) && IsSurfaceRenderable(surface)) {
+    // Planar RGB(A) needs to be split into multiple images for rendering.
+    imgsurfaces.resize(surface.nplanes);
+
+    for (uint32_t idx = 0; idx < surface.nplanes; idx++) {
+      imgsurfaces[idx].fd = surface.fd;
+      imgsurfaces[idx].width = surface.width;
+      imgsurfaces[idx].height = surface.height;
+      imgsurfaces[idx].format = ColorFormat::kGRAY8;
+      imgsurfaces[idx].nplanes = 1;
+
+      if (idx == 0) {
+        imgsurfaces[idx].stride0 = surface.stride0;
+        imgsurfaces[idx].offset0 = surface.offset0;
+      } else if (idx == 1) {
+        imgsurfaces[idx].stride0 = surface.stride1;
+        imgsurfaces[idx].offset0 = surface.offset1;
+      } else if (idx == 2) {
+        imgsurfaces[idx].stride0 = surface.stride2;
+        imgsurfaces[idx].offset0 = surface.offset2;
       }
     }
   } else if ((flags & SurfaceFlags::kOutput) && Format::IsRgb(surface.format) &&

@@ -23,6 +23,9 @@ enum ColorFormat : uint32_t {
   kGRAY16,
   kGRAY16I,
 
+  kR8G8B8,
+  kB8G8R8,
+
   kRG88,
   kGR88,
 
