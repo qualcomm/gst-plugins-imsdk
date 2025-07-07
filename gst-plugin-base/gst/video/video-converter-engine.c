@@ -113,6 +113,7 @@ gst_video_converter_backend_get_type (void)
   static GType gtype = 0;
 
   static const GEnumValue variants[] = {
+    { GST_VCE_BACKEND_NONE, "No backend used", "none" },
 #ifdef HAVE_ADRENO_C2D2_H
     { GST_VCE_BACKEND_C2D, "Use C2D based video converter", "c2d" },
 #endif // HAVE_ADRENO_C2D2_H
@@ -158,6 +159,10 @@ gst_video_converter_engine_new (GstVideoConvBackend backend,
   g_return_val_if_fail (engine != NULL, FALSE);
 
   switch (backend) {
+    case GST_VCE_BACKEND_NONE:
+      // No engine required
+      g_free (engine);
+      return NULL;
 #ifdef HAVE_ADRENO_C2D2_H
     case GST_VCE_BACKEND_C2D:
       engine->new = (GstVideoConvNewFunction) gst_c2d_video_converter_new;
