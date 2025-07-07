@@ -17,19 +17,19 @@ from gi.repository import Gst, GLib
 
 # Configurations for Detection (0)
 DEFAULT_DETECTION_INPUT_0 = "/etc/media/detection_input.mp4"
-DEFAULT_DETECTION_MODEL_0 = "/etc/models/YoloV8N_Detection_Quantized.tflite"
+DEFAULT_DETECTION_MODEL_0 = "/etc/models/yolox_quantized.tflite"
 DEFAULT_DETECTION_MODULE_0 = "yolov8"
-DEFAULT_DETECTION_LABELS_0 = "/etc/labels/yolov8n.labels"
-DEFAULT_DETECTION_CONSTANTS_0 = "YoloV8,q-offsets=<-107.0,-128.0,0.0>,\
-    q-scales=<3.093529462814331,0.00390625,1.0>;"
+DEFAULT_DETECTION_LABELS_0 = "/etc/labels/yolox.labels"
+DEFAULT_DETECTION_CONSTANTS_0 = "YOLOx,q-offsets=<38.0, 0.0, 0.0>,\
+    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
 
 # Configurations for Detection (1)
 DEFAULT_DETECTION_INPUT_1 = "/etc/media/detection_input.mp4"
-DEFAULT_DETECTION_MODEL_1 = "/etc/models/YoloV8N_Detection_Quantized.tflite"
+DEFAULT_DETECTION_MODEL_1 = "/etc/models/yolox_quantized.tflite"
 DEFAULT_DETECTION_MODULE_1 = "yolov8"
-DEFAULT_DETECTION_LABELS_1 = "/etc/labels/yolov8n.labels"
-DEFAULT_DETECTION_CONSTANTS_1 = "YoloV8,q-offsets=<-107.0,-128.0,0.0>,\
-    q-scales=<3.093529462814331,0.00390625,1.0>;"
+DEFAULT_DETECTION_LABELS_1 = "/etc/labels/yolox.labels"
+DEFAULT_DETECTION_CONSTANTS_1 = "YOLOx,q-offsets=<38.0, 0.0, 0.0>,\
+    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
 
 # Configurations for Classification
 DEFAULT_CLASSIFICATION_INPUT = "/etc/media/classification_input.mp4"
@@ -49,18 +49,18 @@ DEFAULT_SEGMENTATION_CONSTANTS = "FFNet-40S,q-offsets=<50.0>,\
 
 DESCRIPTION = f"""
 The application uses:
-- YOLOv8 TFLite model to identify the object in scene from video file and
+- A TFLite model to identify the object in scene from video file and
 overlay the bounding boxes over the detected objects
-- YOLOv8 TFLite model to identify the object in scene from video file and
+- A TFLite model to identify the object in scene from video file and
 overlay the bounding boxes over the detected objects
-- Resnet101 TFLite model to classify scene from video file and overlay the
+- A TFLite model to classify scene from video file and overlay the
 classification labels on the top left corner
-- FFNet40S TFLite model to produce semantic segmentations for video file
+- A TFLite model to produce semantic segmentations for video file
 Then the results are shown side by side on the display.
 
 The default file paths in the python script are as follows:
 - Input video for detection:      {DEFAULT_DETECTION_INPUT_0}
-- Detection model (YOLOv8):       {DEFAULT_DETECTION_MODEL_0}
+- Detection model:                {DEFAULT_DETECTION_MODEL_0}
 - Detection labels:               {DEFAULT_DETECTION_LABELS_0}
 - Input video for classification: {DEFAULT_CLASSIFICATION_INPUT}
 - Classification model:           {DEFAULT_CLASSIFICATION_MODEL}
