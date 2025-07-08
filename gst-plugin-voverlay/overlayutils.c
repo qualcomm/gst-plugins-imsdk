@@ -412,8 +412,13 @@ gst_extract_strings (const GValue * value, GArray * strings)
     if (gst_structure_has_field (structure, "contents")) {
       const gchar *contents = gst_structure_get_string (structure, "contents");
 
-      g_free (string->contents);
-      string->contents = g_strdup (contents);
+      // Raise the flag for clearing cached blit if contents is different.
+      changed |= (g_strcmp0 (contents, string->contents) != 0);
+
+      if (changed) {
+        g_free (string->contents);
+        string->contents = g_strdup (contents);
+      }
     }
 
     if (gst_structure_has_field (structure, "position")) {
@@ -451,7 +456,7 @@ gst_extract_strings (const GValue * value, GArray * strings)
     if (gst_structure_has_field (structure, "fontsize")) {
       gst_structure_get_int (structure, "fontsize", &fontsize);
 
-      // Raise the flag for clearing cached blit if color is different.
+      // Raise the flag for clearing cached blit if fontsize is different.
       changed |= string->fontsize != fontsize;
 
       string->fontsize = fontsize;
