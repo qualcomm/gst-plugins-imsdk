@@ -17,11 +17,11 @@ gi.require_version("GLib", "2.0")
 from gi.repository import Gst, GLib
 
 # Configurations for Detection
-DEFAULT_DETECTION_MODEL = "/etc/models/YoloV8N_Detection_Quantized.tflite"
-DEFAULT_DETECTION_LABELS = "/etc/labels/yolov8n.labels"
+DEFAULT_DETECTION_MODEL = "/etc/models/yolox_quantized.tflite"
 DEFAULT_DETECTION_MODULE = "yolov8"
-DEFAULT_DETECTION_CONSTANTS = "YoloV8,q-offsets=<-107.0,-128.0,0.0>,\
-    q-scales=<3.093529462814331,0.00390625,1.0>;"
+DEFAULT_DETECTION_LABELS = "/etc/labels/yolox.labels"
+DEFAULT_DETECTION_CONSTANTS = "YOLOx,q-offsets=<38.0, 0.0, 0.0>,\
+    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
 
 # Configurations for Classification
 DEFAULT_CLASSIFICATION_MODEL = "/etc/models/Resnet101_Quantized.tflite"
@@ -37,10 +37,10 @@ DEFAULT_OUTPUT_FILE = "/etc/media/test.mp4"
 DESCRIPTION = f"""
 The application:
 - Encodes camera stream and dump the output.
-- Uses YOLOv8 TFLite model to identify the object in scene from camera stream
+- Uses a TFLite model to identify the object in scene from camera stream
 and overlay the bounding boxes over the detected objects. The results are shown
 on the display.
-- Uses Resnet101 TFLite model to classify scene from camera stream and overlay
+- Uses a TFLite model to classify scene from camera stream and overlay
 the classification labels on the top left corner. The results are streamed over
 RTSP.
 

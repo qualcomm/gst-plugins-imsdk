@@ -57,8 +57,8 @@
  * Default models path and labels path
  */
 #define DEFAULT_TFLITE_OBJECT_DETECTION_MODEL \
-    "/etc/models/yolov8_det_quantized.tflite"
-#define DEFAULT_OBJECT_DETECTION_LABELS "/etc/labels/yolov8.labels"
+    "/etc/models/yolox_quantized.tflite"
+#define DEFAULT_OBJECT_DETECTION_LABELS "/etc/labels/yolox.labels"
 #define DEFAULT_TFLITE_CLASSIFICATION_MODEL \
     "/etc/models/inception_v3_quantized.tflite"
 #define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/classification.labels"
@@ -108,8 +108,8 @@
  * Default constants to dequantize values for object detection stream
  */
 #define DEFAULT_CONSTANTS_OBJECT_DETECTION \
-    "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,\
-    q-scales=<3.0546178817749023, 0.003793874057009816, 1.0>;"
+    "YOLOX,q-offsets=<38.0, 0.0, 0.0>,\
+    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
 
 /**
  * Default constants to dequantize values for pose detection stream
@@ -843,7 +843,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         tee, qtivcomposer, waylandsink, fpsdisplaysink, NULL);
   } else {
     gst_bin_add_many (GST_BIN (appctx->pipeline), qtiqmmfsrc,  qmmfsrc_caps,
-        tee, qtivcomposer, fpsdisplaysink, waylandsink, NULL);
+        tee, qtivcomposer, fpsdisplaysink, NULL);
   }
 
   for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
@@ -996,7 +996,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
 error_clean_elements:
   cleanup_gst (&qtiqmmfsrc, &qmmfsrc_caps, &filesrc, &qtdemux,
       &h264parse, &v4l2h264dec, &v4l2h264dec_caps, &rtspsrc,
-      &rtph264depay, &tee, &qtivcomposer, &fpsdisplaysink, NULL);
+      &rtph264depay, &tee, &qtivcomposer, &fpsdisplaysink, &waylandsink, NULL);
 
   for (gint i = 0; i < GST_PIPELINE_CNT; i++) {
     cleanup_gst (GST_BIN (appctx->pipeline), qtimlvconverter[i],

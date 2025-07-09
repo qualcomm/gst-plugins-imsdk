@@ -345,38 +345,28 @@ fill_metadata_from_properties (GstCameraReprocessContext *context,
       break;
     }
     case GST_CAMERA_REPROCESS_EIS_V2:
-    {
-      guint tag = 0;
-      guint8 val = 1;
-
-      tag = retrieve_vendor_tag_by_name (meta,
-          "org.codeaurora.qcamera3.sessionParameters.EnableEisV2");
-      if (tag > 0) {
-        if (!meta->update (tag, &val, 1))
-          GST_DEBUG ("Metadata EisV2 is updated.");
-        else
-          GST_ERROR ("Metadata EisV2 is failed to update.");
-      }
-      break;
-    }
     case GST_CAMERA_REPROCESS_EIS_V3:
     {
       guint tag = 0;
-      guint8 val = 1;
+      gint32 val = (gint32)context->eis;
 
       tag = retrieve_vendor_tag_by_name (meta,
-          "org.codeaurora.qcamera3.sessionParameters.EnableEisV3");
-      if (tag > 0) {
-        if (!meta->update (tag, &val, 1))
-          GST_DEBUG ("Metadata EisV3 is updated.");
-        else
-          GST_ERROR ("Metadata EisV3 is failed to update.");
+          "org.codeaurora.qcamera3.sessionParameters.EISMode");
+      if (tag == 0) {
+        GST_WARNING ("Unsupported vendortag.");
+        break;
       }
+
+      if (!meta->update (tag, &val, 1))
+        GST_DEBUG ("Metadata EISMode(%d) is updated.", val);
+      else
+        GST_ERROR ("Metadata EISMode(%d) failed to update.", val);
+
       break;
     }
     default:
     {
-      GST_WARNING ("Unknown Eis.");
+      GST_WARNING ("Unknown EISMode(%d).", (gint32)context->eis);
       break;
     }
   }

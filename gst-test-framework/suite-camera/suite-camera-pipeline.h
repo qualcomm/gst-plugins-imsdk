@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -62,7 +62,7 @@ camera_transform_display_pipeline (GstCapsParameters * params1,
 /**
  * camera_transform_display_pipeline:
  * @params1: Caps parameters for camera output.
- * @location: MP4 location for file source.
+ * @filename: File name, it should be Mp4 file.
  * @duration: The pipeline running time in seconds.
  *
  * Function for creating the camera and MP4 decode videos
@@ -72,11 +72,11 @@ camera_transform_display_pipeline (GstCapsParameters * params1,
  */
 void
 camera_composer_display_pipeline (GstCapsParameters * params1,
-    gchar *location, guint duration);
+    gchar *filename, guint duration);
 
 /**
  * camera_decoder_display_pipeline:
- * @filename: file source name, it should be Mp4 file.
+ * @filename: File name, it should be Mp4 file.
  * @duration: The pipeline running time in seconds.
  *
  * Function for decode MP4 videos to display.
