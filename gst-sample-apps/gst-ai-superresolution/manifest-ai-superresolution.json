@@ -7,27 +7,27 @@
   "AIModelsNeededByApplication": [
     {
       "ModelName": "quicksrnetsmall_quantized.tflite",
-      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/QuickSRNetSmall-Quantized/resolve/main/QuickSRNetSmall-Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/QuickSRNetSmall/resolve/977fb3092a065d512cd587c210cc1341b28b7161/QuickSRNetSmall_w8a8.tflite",
       "LabelFile": "",
       "LabelDownloadURL": ""
     }
   ],
   "AIModelsSupportedByApplication": [
     {
-      "ModelName": "QuickSRNetMedium-Quantized.tflite",
-      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/QuickSRNetMedium-Quantized/resolve/main/QuickSRNetMedium-Quantized.tflite",
+      "ModelName": "QuickSRNetMedium_w8a8.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/QuickSRNetMedium/resolve/530c29ac283d18572fe2ebfd95adaedcd01b0d39/QuickSRNetMedium_w8a8.tflite",
       "LabelFile": "",
       "LabelDownloadURL": ""
     },
     {
-      "ModelName": "QuickSRNetLarge-Quantized.tflite",
-      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/QuickSRNetLarge-Quantized/resolve/main/QuickSRNetLarge-Quantized.tflite",
+      "ModelName": "QuickSRNetLarge_w8a8.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/QuickSRNetLarge/resolve/8361177dd18a1b37d3d24b7d8604925db0cd78ac/QuickSRNetLarge_w8a8.tflite",
       "LabelFile": "",
       "LabelDownloadURL": ""
     },
     {
-      "ModelName": "XLSR-Quantized.tflite",
-      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/XLSR-Quantized/resolve/main/XLSR-Quantized.tflite",
+      "ModelName": "XLSR_w8a8.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/XLSR/resolve/e98863f9e1581f5f3e3114ee39aab7648b019377/XLSR_w8a8.tflite",
       "LabelFile": "",
       "LabelDownloadURL": ""
     }

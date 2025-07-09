@@ -356,7 +356,7 @@ main (gint argc, gchar * argv[])
   gboolean ret = FALSE;
   GstCameraSwitchCtx cameraswitchctx = {};
   cameraswitchctx.exit = false;
-  cameraswitchctx.use_display = false;
+  cameraswitchctx.use_display = TRUE;
   cameraswitchctx.camera0_id = 0;
   cameraswitchctx.camera1_id = 1;
   g_mutex_init (&cameraswitchctx.lock);

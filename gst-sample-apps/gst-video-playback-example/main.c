@@ -22,6 +22,12 @@
 
 #define GST_APP_CONTEXT_CAST(obj)           ((GstAppContext*)(obj))
 
+#define DEFAULT_INPUT_FILESOURCE  "/etc/media/video.mp4"
+
+#define DEFAULT_PIPELINE    "filesrc location=DEFAULT_INPUT_FILESOURCE ! qtdemux " \
+  "! queue ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 " \
+  "! video/x-raw,format=NV12 ! waylandsink enable-last-sample=false fullscreen=true" \
+
 #define GST_APP_SUMMARY \
   "This application enables users to create and utilize a video pipeline " \
   "for playback. It provides essential playback features such as play, " \
@@ -665,14 +671,6 @@ main (gint argc, gchar *argv[])
   }
   g_option_context_free (optctx);
 
-  if (pipeline == NULL) {
-    g_print ("You must provide a valid pipeline to play.\n\n");
-    g_print ("Usage: gst-video-playback-example <pipeline> [OPTION]\n");
-    g_print ("For help: gst-video-playback-example [-h | --help]");
-
-    return -1;
-  }
-
   if ((appctx = gst_app_context_new ()) == NULL) {
     g_printerr ("ERROR: Couldn't create app context!\n");
 
@@ -680,7 +678,11 @@ main (gint argc, gchar *argv[])
     return -1;
   }
 
-  appctx->pipeline = gst_parse_launchv ((const gchar **) pipeline, &error);
+  if (pipeline == NULL) {
+    appctx->pipeline = gst_parse_launchv ((const gchar **) DEFAULT_PIPELINE, &error);
+  } else {
+    appctx->pipeline = gst_parse_launchv ((const gchar **) pipeline, &error);
+  }
 
   // Check for errors on pipe creation.
   if ((NULL == appctx->pipeline) && (error != NULL)) {

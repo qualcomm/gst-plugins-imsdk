@@ -200,7 +200,7 @@ gst_qti_allocator_alloc (GstAllocator * allocator, gsize size,
   fd = alloc_data.fd;
 #endif // TARGET_ION_ABI_VERSION
 
-  memory = gst_fd_allocator_alloc (allocator, fd, size, priv->memflags);
+  memory = gst_fd_allocator_alloc (allocator, fd, maxsize, priv->memflags);
   GST_MINI_OBJECT_FLAG_SET (memory, params->flags);
 
   GST_DEBUG_OBJECT (qtiallocator, "Allocated memory %p of size %" G_GSIZE_FORMAT

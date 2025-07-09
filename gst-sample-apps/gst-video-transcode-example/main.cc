@@ -45,6 +45,7 @@
 
 #include <gst/sampleapps/gst_sample_apps_utils.h>
 
+#define DEFAULT_INPUT_FILENAME "/etc/media/video.mp4"
 #define DEFAULT_OUTPUT_FILENAME "/etc/media/transcoded_video.mp4"
 
 #define GST_APP_SUMMARY "This application is designed to showcase video "\
@@ -87,9 +88,9 @@ gst_app_context_new ()
   ctx->pipeline = NULL;
   ctx->plugins = NULL;
   ctx->mloop = NULL;
-  ctx->input_file = NULL;
+  ctx->input_file = g_strdup (DEFAULT_INPUT_FILENAME);
   ctx->output_file = const_cast<gchar *> (DEFAULT_OUTPUT_FILENAME);
-  ctx->input_format = GST_VCODEC_NONE;
+  ctx->input_format = GST_VCODEC_AVC;
 
   return ctx;
 }
@@ -134,7 +135,7 @@ gst_app_context_free (GstTranscodeAppContext * appctx)
   }
 
   if (appctx->input_file != NULL)
-    g_free ((gpointer)appctx->input_file);
+    g_free (appctx->input_file);
 
   if (appctx->output_file != NULL &&
     appctx->output_file != (gchar *)(&DEFAULT_OUTPUT_FILENAME))
@@ -292,12 +293,6 @@ main (gint argc, gchar *argv[])
   GstElement *pipeline = NULL;
   GstTranscodeAppContext *appctx = NULL;
   guint intrpt_watch_id = 0;
-
-  // if user gives only app name print the help option
-  if (argc < 2) {
-    g_print ("\n usage: gst-video-transcode-example --help \n");
-    return -1;
-  }
 
   // create the app context
   appctx = gst_app_context_new ();

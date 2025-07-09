@@ -860,8 +860,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions  options[],
         NULL);
   }
   if (source_count->out_display) {
-    gst_bin_add_many (GST_BIN (appctx->pipeline), waylandsink, fpsdisplaysink,
-        NULL);
+    gst_bin_add_many (GST_BIN (appctx->pipeline), fpsdisplaysink, NULL);
   }
 
   if (source_count->out_file) {
