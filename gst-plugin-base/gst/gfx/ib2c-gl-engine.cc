@@ -803,7 +803,7 @@ bool Engine::IsSurfaceRenderable(const Surface& surface) {
   uint32_t bytedepth = Format::BitDepth(surface.format) / 8;
 
   bool aligned =
-      (((surface.stride0 / bytedepth) % alignment) == 0) ? true : false;
+      (((surface.planes[0].stride / bytedepth) % alignment) == 0) ? true : false;
 
   // For YUV surfaces check only if it satisfies GPU alignment requirement.
   if (Format::IsYuv(surface.format))
@@ -918,34 +918,34 @@ std::vector<GraphicTuple> Engine::ImportSurface(const Surface& surface,
     attribs[index++] = EGL_DMA_BUF_PLANE0_FD_EXT;
     attribs[index++] = subsurface.fd;
     attribs[index++] = EGL_DMA_BUF_PLANE0_PITCH_EXT;
-    attribs[index++] = subsurface.stride0;
+    attribs[index++] = subsurface.planes[0].stride;
     attribs[index++] = EGL_DMA_BUF_PLANE0_OFFSET_EXT;
-    attribs[index++] = subsurface.offset0;
+    attribs[index++] = subsurface.planes[0].offset;
     attribs[index++] = EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT;
     attribs[index++] = std::get<1>(internal) & 0xFFFFFFFF;
     attribs[index++] = EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT;
     attribs[index++] = std::get<1>(internal) >> 32;
 
-    if (subsurface.nplanes >= 2) {
+    if (subsurface.planes.size() >= 2) {
       attribs[index++] = EGL_DMA_BUF_PLANE1_FD_EXT;
       attribs[index++] = subsurface.fd;
       attribs[index++] = EGL_DMA_BUF_PLANE1_PITCH_EXT;
-      attribs[index++] = subsurface.stride1;
+      attribs[index++] = subsurface.planes[1].stride;
       attribs[index++] = EGL_DMA_BUF_PLANE1_OFFSET_EXT;
-      attribs[index++] = subsurface.offset1;
+      attribs[index++] = subsurface.planes[1].offset;
       attribs[index++] = EGL_DMA_BUF_PLANE1_MODIFIER_LO_EXT;
       attribs[index++] = std::get<1>(internal) & 0xFFFFFFFF;
       attribs[index++] = EGL_DMA_BUF_PLANE1_MODIFIER_HI_EXT;
       attribs[index++] = std::get<1>(internal) >> 32;
     }
 
-    if (subsurface.nplanes == 3) {
+    if (subsurface.planes.size() == 3) {
       attribs[index++] = EGL_DMA_BUF_PLANE2_FD_EXT;
       attribs[index++] = subsurface.fd;
       attribs[index++] = EGL_DMA_BUF_PLANE2_PITCH_EXT;
-      attribs[index++] = subsurface.stride2;
+      attribs[index++] = subsurface.planes[2].stride;
       attribs[index++] = EGL_DMA_BUF_PLANE2_OFFSET_EXT;
-      attribs[index++] = subsurface.offset2;
+      attribs[index++] = subsurface.planes[2].offset;
       attribs[index++] = EGL_DMA_BUF_PLANE2_MODIFIER_LO_EXT;
       attribs[index++] = std::get<1>(internal) & 0xFFFFFFFF;
       attribs[index++] = EGL_DMA_BUF_PLANE2_MODIFIER_HI_EXT;
@@ -1003,65 +1003,52 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
   if ((flags & SurfaceFlags::kOutput) && Format::IsYuv(surface.format) &&
       (shaders_.count(ShaderType::kYUV) == 0)) {
     // Direct rendering into YUV buffer is not supported and output is YUV.
-    // A separate image must be created for each plane of the YUV surface.
-    imgsurfaces.resize(surface.nplanes);
+    // A separate sub-surface must be created for each plane of the YUV surface.
+    uint64_t size = (surface.planes.size() >= 2) ?
+        surface.planes[1].offset : surface.size;
 
-    // First image will contain only Luminosity info.
-    imgsurfaces[0].fd = surface.fd;
-    imgsurfaces[0].width = surface.width;
-    imgsurfaces[0].height = surface.height;
-    imgsurfaces[0].format = ColorFormat::kGRAY8;
-    imgsurfaces[0].nplanes = 1;
-    imgsurfaces[0].stride0 = surface.stride0;
-    imgsurfaces[0].offset0 = surface.offset0;
+    // First sub-surface will contain only Luminosity info.
+    Surface subsurface(surface.fd, ColorFormat::kGRAY8, surface.width,
+                       surface.height, size, Planes({surface.planes[0]}));
+    imgsurfaces.push_back(subsurface);
 
-    // Second image will represent the chroma info.
-    if (surface.nplanes >= 2) {
-      imgsurfaces[1].fd = surface.fd;
-      imgsurfaces[1].width = surface.width;
-      imgsurfaces[1].height = surface.height;
-      imgsurfaces[1].nplanes = 1;
-      imgsurfaces[1].stride0 = surface.stride1;
-      imgsurfaces[1].offset0 = surface.offset1;
-
-      imgsurfaces[1].format = ColorFormat::kRG88;
+    // Second sub-surface will represent the chroma info.
+    if (surface.planes.size() == 2) {
+      subsurface.planes[0] = surface.planes[1];
+      subsurface.size = surface.size - surface.planes[1].offset;
+      subsurface.format = ColorFormat::kRG88;
 
       if ((surface.format == ColorFormat::kNV21) ||
           (surface.format == ColorFormat::kNV61))
-        imgsurfaces[1].format = ColorFormat::kGR88;
+        subsurface.format = ColorFormat::kGR88;
 
       // Depending on the surface format the chroma plane has different size.
       if (surface.format == ColorFormat::kNV12 ||
           surface.format == ColorFormat::kNV21) {
-        imgsurfaces[1].width /= 2;
-        imgsurfaces[1].height /= 2;
+        subsurface.width /= 2;
+        subsurface.height /= 2;
       } else if (surface.format == ColorFormat::kNV16 ||
                  surface.format == ColorFormat::kNV61) {
-        imgsurfaces[1].width /= 2;
+        subsurface.width /= 2;
       }
+
+      imgsurfaces.push_back(subsurface);
     }
   } else if ((flags & SurfaceFlags::kOutput) && Format::IsRgb(surface.format) &&
              Format::IsPlanar(surface.format) && IsSurfaceRenderable(surface)) {
     // Planar RGB(A) needs to be split into multiple images for rendering.
-    imgsurfaces.resize(surface.nplanes);
+    uint32_t n_planes = surface.planes.size();
 
-    for (uint32_t idx = 0; idx < surface.nplanes; idx++) {
-      imgsurfaces[idx].fd = surface.fd;
-      imgsurfaces[idx].width = surface.width;
-      imgsurfaces[idx].height = surface.height;
-      imgsurfaces[idx].format = ColorFormat::kGRAY8;
-      imgsurfaces[idx].nplanes = 1;
+    for (uint32_t idx = 0; idx < n_planes; idx++) {
+      // Size of current plane is offset to the next one (or total size for last)
+      // minus the offset to previous (or 0 in the case of the first plane).
+      uint64_t size = ((idx + 1) < n_planes) ?
+          surface.planes[(idx + 1)].offset : surface.size;
+      size -= (idx == 0) ? 0 : surface.planes[idx].offset;
 
-      if (idx == 0) {
-        imgsurfaces[idx].stride0 = surface.stride0;
-        imgsurfaces[idx].offset0 = surface.offset0;
-      } else if (idx == 1) {
-        imgsurfaces[idx].stride0 = surface.stride1;
-        imgsurfaces[idx].offset0 = surface.offset1;
-      } else if (idx == 2) {
-        imgsurfaces[idx].stride0 = surface.stride2;
-        imgsurfaces[idx].offset0 = surface.offset2;
-      }
+      Surface subsurface(surface.fd, ColorFormat::kGRAY8, surface.width,
+                         surface.height, size, Planes({surface.planes[idx]}));
+      imgsurfaces.push_back(std::move(subsurface));
     }
   } else if ((flags & SurfaceFlags::kOutput) && Format::IsRgb(surface.format) &&
              !IsSurfaceRenderable(surface)) {
@@ -1099,14 +1086,14 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
 
     // Adjust width, height and stride values for non-renderable RGB(A) surface.
     // Align stride and calculate the width for the compute texture.
-    uint32_t stride = subsurface.stride0 / bytedepth;
-    subsurface.stride0 =
+    uint32_t stride = subsurface.planes[0].stride / bytedepth;
+    subsurface.planes[0].stride =
         ((stride + (alignment - 1)) & ~(alignment - 1)) * bytedepth;
 
-    subsurface.width = subsurface.stride0 / bpp;
+    subsurface.width = subsurface.planes[0].stride / bpp;
 
     // Calculate the aligned height value rounded up based on surface size.
-    uint32_t size = subsurface.size - subsurface.offset0;
+    uint32_t size = subsurface.size - subsurface.planes[0].offset;
     subsurface.height =
         std::ceil((size / bpp) / static_cast<float>(subsurface.width));
 

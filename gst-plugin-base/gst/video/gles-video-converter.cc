@@ -265,7 +265,8 @@ gst_gles_create_surface (GstGlesVideoConverter * convert, const gchar * directio
   surface.width = GST_VIDEO_FRAME_WIDTH (frame);
   surface.height = GST_VIDEO_FRAME_HEIGHT (frame);
   surface.size = gst_buffer_get_size (frame->buffer);
-  surface.nplanes = GST_VIDEO_FRAME_N_PLANES (frame);
+
+  surface.planes.resize(GST_VIDEO_FRAME_N_PLANES (frame));
 
   surface.format =
       gst_video_format_to_ib2c_format (GST_VIDEO_FRAME_FORMAT (frame), flags);
@@ -285,29 +286,29 @@ gst_gles_create_surface (GstGlesVideoConverter * convert, const gchar * directio
 
   GST_TRACE ("%s surface FD[%d] - Width[%u] Height[%u] Format[%s%s] Planes[%u]",
       direction, surface.fd, surface.width, surface.height, format, mode,
-      surface.nplanes);
+      GST_VIDEO_FRAME_N_PLANES (frame));
 
-  surface.stride0 = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0);
-  surface.offset0 = GST_VIDEO_FRAME_PLANE_OFFSET (frame, 0);
+  surface.planes[0].stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0);
+  surface.planes[0].offset = GST_VIDEO_FRAME_PLANE_OFFSET (frame, 0);
 
   GST_TRACE ("%s surface FD[%d] - Stride0[%u] Offset0[%u]", direction,
-      surface.fd, surface.stride0, surface.offset0);
+      surface.fd, surface.planes[0].stride, surface.planes[0].offset);
 
-  surface.stride1 = (surface.nplanes >= 2) ?
+  surface.planes[1].stride = (surface.planes.size() >= 2) ?
       GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1) : 0;
-  surface.offset1 = (surface.nplanes >= 2) ?
+  surface.planes[1].offset = (surface.planes.size() >= 2) ?
       GST_VIDEO_FRAME_PLANE_OFFSET (frame, 1) : 0;
 
   GST_TRACE ("%s surface FD[%d] - Stride1[%u] Offset1[%u]", direction,
-      surface.fd, surface.stride1, surface.offset1);
+      surface.fd, surface.planes[1].stride, surface.planes[1].offset);
 
-  surface.stride2 = (surface.nplanes >= 3) ?
+  surface.planes[2].stride = (surface.planes.size() >= 3) ?
       GST_VIDEO_FRAME_PLANE_STRIDE (frame, 2) : 0;
-  surface.offset2 = (surface.nplanes >= 3) ?
+  surface.planes[2].offset = (surface.planes.size() >= 3) ?
       GST_VIDEO_FRAME_PLANE_OFFSET (frame, 2) : 0;
 
   GST_TRACE ("%s surface FD[%d] - Stride2[%u] Offset2[%u]", direction,
-      surface.fd, surface.stride2, surface.offset2);
+      surface.fd, surface.planes[2].stride, surface.planes[2].offset);
 
   try {
     surface_id = convert->engine->CreateSurface (surface, type);
