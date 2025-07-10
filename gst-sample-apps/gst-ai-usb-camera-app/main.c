@@ -936,7 +936,8 @@ create_preview_pipe (GstCameraAppContext * appctx)
       ret = gst_element_link_many (v4l2src, capsfilter, waylandsink, NULL);
       if (!ret) {
         g_printerr
-            ("\n Pipeline elements cannot be linked from v4l2src to waylandsink. \n");
+            ("\n Pipeline elements cannot be linked from v4l2src ->"
+            "waylandsink. \n");
         goto error_clean_pipeline;
       }
     } else if (appctx->video_format == GST_MJPEG_VIDEO_FORMAT) {
@@ -944,7 +945,8 @@ create_preview_pipe (GstCameraAppContext * appctx)
           queue[0],waylandsink, NULL);
       if (!ret) {
         g_printerr
-            ("\n Pipeline elements cannot be linked from v4l2src to waylandsink. \n");
+            ("\n Pipeline elements cannot be linked from v4l2src-> jpegdec->"
+            "waylandsink. \n");
         goto error_clean_pipeline;
       }
     }
@@ -984,7 +986,9 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
   GstElement *qtimlvdetection = NULL, *detection_filter = NULL;
   GstElement *qtivcomposer = NULL, *fpsdisplaysink = NULL, *waylandsink = NULL;
   GstElement *filesink = NULL, *v4l2h264enc = NULL, *h264parse = NULL;
-  GstElement *mp4mux = NULL, *qtirtspbin = NULL;
+  GstElement *mp4mux = NULL, *qtirtspbin = NULL, *qtivtransform = NULL;
+  GstElement *qtivtransform_capsfilter = NULL, *videoconvert = NULL;
+  GstElement *jpegdec = NULL;
   GstCaps *pad_filter = NULL, *filtercaps = NULL;
   GstStructure *fcontrols = NULL;
   GstStructure *delegate_options = NULL;
@@ -1009,6 +1013,31 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
   if (!v4l2src_caps) {
     g_printerr ("Failed to create v4l2src_caps\n");
     goto error_clean_elements;
+  }
+  if (appctx->video_format == GST_MJPEG_VIDEO_FORMAT) {
+    // 1. Create qtivtransform plugin
+    qtivtransform = gst_element_factory_make ("qtivtransform", "qtivtransform");
+    if (!qtivtransform) {
+      g_printerr ("Failed to create qtivtransform\n");
+      goto error_clean_elements;
+    }
+    //transform filter caps
+    qtivtransform_capsfilter = gst_element_factory_make ("capsfilter",
+        "qtivtransform_capsfilter");
+    if (!qtivtransform_capsfilter) {
+      g_printerr ("Failed to create qtivtransform_capsfilter\n");
+      goto error_clean_elements;
+    }
+    videoconvert = gst_element_factory_make ("videoconvert", "videoconvert");
+    if (!videoconvert) {
+      g_printerr ("Failed to create videoconvert\n");
+      goto error_clean_elements;
+    }
+    jpegdec = gst_element_factory_make ("jpegdec", "jpegdec");
+    if (!jpegdec) {
+      g_printerr ("Failed to create jpegdec\n");
+      goto error_clean_elements;
+    }
   }
   // Create queue to decouple the processing on sink and source pad
   for (gint i = 0; i < QUEUE_COUNT; i++) {
@@ -1095,7 +1124,6 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
       g_printerr ("Failed to create mp4mux\n");
       goto error_clean_elements;
     }
-
   } else if (appctx->sinktype == GST_RTSP_STREAMING) {
     // Create H.264 Encoder plugin for file output
     v4l2h264enc = gst_element_factory_make ("v4l2h264enc", "v4l2h264enc");
@@ -1168,13 +1196,38 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
   }
 
   // 2.4 Set the capabilities of camera plugin output for inference
-  filtercaps = gst_caps_new_simple ("video/x-raw",
-      "format", G_TYPE_STRING, "NV12",
-      "width", G_TYPE_INT, appctx->width,
-      "height", G_TYPE_INT, appctx->height,
-      "framerate", GST_TYPE_FRACTION, appctx->framerate, 1, NULL);
-  g_object_set (G_OBJECT (v4l2src_caps), "caps", filtercaps, NULL);
-  gst_caps_unref (filtercaps);
+  if (appctx->video_format == GST_NV12_VIDEO_FORMAT) {
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, "NV12",
+        "width", G_TYPE_INT, appctx->width,
+        "height", G_TYPE_INT, appctx->height,
+        "framerate", GST_TYPE_FRACTION, appctx->framerate, 1, NULL);
+    g_object_set (G_OBJECT (v4l2src_caps), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
+  } else if (appctx->video_format == GST_YUV2_VIDEO_FORMAT) {
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+        "format", G_TYPE_STRING, "YUY2",
+        "width", G_TYPE_INT, appctx->width,
+        "height", G_TYPE_INT, appctx->height,
+        "framerate", GST_TYPE_FRACTION, appctx->framerate, 1, NULL);
+    g_object_set (G_OBJECT (v4l2src_caps), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
+  } else if (appctx->video_format == GST_MJPEG_VIDEO_FORMAT) {
+    filtercaps = gst_caps_new_simple ("image/jpeg",
+        "width", G_TYPE_INT, appctx->width,
+        "height", G_TYPE_INT, appctx->height,
+        "framerate", GST_TYPE_FRACTION, appctx->framerate, 1, NULL);
+    g_object_set (G_OBJECT (v4l2src_caps), "caps", filtercaps, NULL);
+    gst_caps_unref (filtercaps);
+    filtercaps = gst_caps_new_simple ("video/x-raw",
+    "format", G_TYPE_STRING, "NV12", NULL);
+    g_object_set (G_OBJECT (qtivtransform_capsfilter), "caps",
+        filtercaps, NULL);
+    gst_caps_unref (filtercaps);
+  } else {
+    g_printerr ("Invalid Video Format Type\n");
+    goto error_clean_elements;
+  }
 
   // 2.5 Select the HW to DSP/GPU/CPU for model inferencing using
   // delegate property
@@ -1462,6 +1515,10 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
   gst_bin_add_many (GST_BIN (appctx->pipeline), v4l2src, v4l2src_caps,
       tee, qtimlvconverter, qtimlelement, qtimlvdetection, detection_filter,
       qtivcomposer, NULL);
+  if (appctx->video_format == GST_MJPEG_VIDEO_FORMAT) {
+    gst_bin_add_many (GST_BIN (appctx->pipeline), qtivtransform,
+        qtivtransform_capsfilter, videoconvert, jpegdec, NULL);
+  }
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), queue[i], NULL);
@@ -1470,17 +1527,32 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
   g_print ("Linking elements...\n");
 
   // Create pipeline for object detection
-  ret = gst_element_link_many (v4l2src, v4l2src_caps, queue[0], tee, NULL);
-  if (!ret) {
-    g_printerr ("Pipeline elements cannot be linked for "
-        "qmmfsource->composer\n");
+  if (appctx->video_format == GST_YUV2_VIDEO_FORMAT ||
+      appctx->video_format == GST_NV12_VIDEO_FORMAT) {
+    ret = gst_element_link_many (v4l2src, v4l2src_caps, queue[0], tee, NULL);
+    if (!ret) {
+      g_printerr ("Pipeline elements cannot be linked for "
+          "usb_source->usb_caps->tee\n");
+      goto error_clean_pipeline;
+    }
+  } else if (appctx->video_format == GST_MJPEG_VIDEO_FORMAT) {
+    ret = gst_element_link_many (v4l2src, v4l2src_caps, jpegdec, videoconvert,
+        qtivtransform_capsfilter, qtivtransform, queue[0],
+        tee, NULL);
+    if (!ret) {
+      g_printerr ("Pipeline elements cannot be linked for "
+          "usb_source->usb_caps->qtivtransform->tee\n");
+      goto error_clean_pipeline;
+    }
+  } else {
+    g_printerr ("Invalid Video Format\n");
     goto error_clean_pipeline;
   }
 
   ret = gst_element_link_many (tee, queue[1], qtivcomposer, NULL);
   if (!ret) {
     g_printerr ("Pipeline elements cannot be linked for "
-        "qmmfsource->converter\n");
+        "tee->qtivcomposer\n");
     goto error_clean_pipeline;
   }
 
@@ -1498,7 +1570,7 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
         mp4mux, filesink, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
-          "qtivcomposer->fpsdisplaysink.\n");
+          "qtivcomposer->filesink.\n");
       goto error_clean_pipeline;
     }
   } else if (appctx->sinktype == GST_RTSP_STREAMING) {
@@ -1506,7 +1578,7 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
         qtirtspbin, NULL);
     if (!ret) {
       g_printerr ("Pipeline elements cannot be linked for"
-          "qtivcomposer->fpsdisplaysink.\n");
+          "qtivcomposer->qtirtspbin.\n");
       goto error_clean_pipeline;
     }
   } else {
@@ -1529,7 +1601,8 @@ error_clean_elements:
   cleanup_gst (&v4l2src, &v4l2src_caps, &tee, &qtimlvconverter,
       &qtimlelement, &qtimlvdetection, &qtivcomposer, &detection_filter,
       &waylandsink, &fpsdisplaysink, &filesink, &mp4mux, &qtirtspbin,
-      &h264parse, &v4l2h264enc, NULL);
+      &h264parse, &v4l2h264enc, &jpegdec, &videoconvert,
+      &qtivtransform_capsfilter, &qtivtransform, NULL);
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     gst_object_unref (queue[i]);
   }
@@ -1593,8 +1666,7 @@ main (gint argc, gchar * argv[])
       "  width: USB Camera Resolution width\n"
       "  height: USB Camera Resolution Height\n"
       "  framerate: USB Camera Frame Rate\n"
-      "  video-type: Video Type format can be nv12, yuy2 or mjpeg\n"
-      "      It is applicable only when enable-object-detection is set false"
+      "  video-format: Video Type format can be nv12, yuy2 or mjpeg\n"
       "  output: It can be either be waylandsink, filesink or rtspsink\n"
       "  output-file: Use this Parameter to set output file path\n"
       "      Default output file path is:" DEFAULT_OUTPUT_FILENAME "\n"
@@ -1606,8 +1678,8 @@ main (gint argc, gchar * argv[])
       "      Default port is:" DEFAULT_PORT "\n"
       "  enable-object-detection: Use this parameter to enable object detection.\n"
       "      eg: TRUE or FALSE\n"
-      "  yolo-model-type: \"yolov5\" or \"yolov8\" or \"yolonas\"\n"
-      "      Yolo Model version to Execute: Yolov5, Yolov8 or YoloNas\n"
+      "  yolo-model-type: \"yolov5\" or \"yolov8\" or \"yolox\" or \"yolonas\"\n"
+      "      Yolo Model version to Execute: Yolov5, Yolov8 or YoloNas or Yolox\n"
       "      Yolov7 Tflite Model works with yolov8 yolo-model-type\n"
       "  ml-framework: \"snpe\" or \"tflite\" or \"qnn\"\n"
       "      Execute Model in SNPE DLC or TFlite [Default] or QNN format\n"
@@ -1623,6 +1695,8 @@ main (gint argc, gchar * argv[])
       DEFAULT_TFLITE_YOLONAS_MODEL "\n"
       "      Default model path for YOLO_V7 TFLITE: "
       DEFAULT_TFLITE_YOLOV7_MODEL "\n"
+      "      Default model path for YOLOX TFLITE: " DEFAULT_TFLITE_YOLOX_MODEL
+      "\n"
       "      Default model path for YOLOV8 QNN: " DEFAULT_QNN_YOLOV8_MODEL "\n"
       "  labels: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
