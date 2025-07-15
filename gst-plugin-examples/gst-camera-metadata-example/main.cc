@@ -103,7 +103,7 @@ namespace camera = qmmf;
 #define PIPELINE_EOS_MESSAGE   "APP_PIPELINE_EOS_MSG"
 #define STDIN_MESSAGE          "APP_STDIN_MSG"
 
-#define GST_APP_CONTEXT_CAST(obj)           ((GstAppContext*)(obj))
+#define GST_APP_CONTEXT_CAST(obj)           ((GstAppContext*) (obj))
 
 typedef enum {
   VIDEO_METADATA_OPTION = 1,
@@ -892,6 +892,7 @@ get_tag (const gchar * section_name, const gchar * tag_name,
     ::camera::CameraMetadata * meta, gchar ** type)
 {
   gchar *tag_value = NULL;
+  GString *tag_value_gstr = g_string_new (NULL);
   status_t status = 0;
   guint32 tag_id = 0;
   gint tag_type = -1;
@@ -904,36 +905,96 @@ get_tag (const gchar * section_name, const gchar * tag_name,
     case TYPE_BYTE:
       *type = g_strdup ("Unsigned Int8");
       if (meta->exists (tag_id)) {
-        guint8 value = meta->find (tag_id).data.u8[0];
-        tag_value = g_strdup_printf ("%" G_GUINT16_FORMAT, value);
+        if (meta->find (tag_id).count == 1) {
+          guint8 value = meta->find (tag_id).data.u8[0];
+          tag_value = g_strdup_printf ("%" G_GUINT16_FORMAT, value);
+        } else {
+          tag_value_gstr = g_string_new ("<");
+          for (guint i = 0; i < meta->find (tag_id).count; i++) {
+            g_string_append_printf (tag_value_gstr, "%" G_GUINT16_FORMAT,
+                meta->find (tag_id).data.u8[i]);
+            if (i != meta->find (tag_id).count - 1)
+              g_string_append(tag_value_gstr, ",");
+          }
+          g_string_append(tag_value_gstr, ">");
+          tag_value = tag_value_gstr->str;
+        }
       }
       break;
     case TYPE_INT32:
       *type = g_strdup ("Int32");
       if (meta->exists (tag_id)) {
-        gint32 value = meta->find (tag_id).data.i32[0];
-        tag_value = g_strdup_printf ("%" G_GINT32_FORMAT, value);
+        if (meta->find (tag_id).count == 1) {
+          gint32 value = meta->find (tag_id).data.i32[0];
+          tag_value = g_strdup_printf ("%" G_GINT32_FORMAT, value);
+        } else {
+          tag_value_gstr = g_string_new ("<");
+          for (guint i = 0; i < meta->find (tag_id).count; i++) {
+            g_string_append_printf (tag_value_gstr, "%" G_GINT32_FORMAT,
+                meta->find (tag_id).data.i32[i]);
+            if (i != meta->find (tag_id).count - 1)
+              g_string_append(tag_value_gstr, ",");
+          }
+          g_string_append(tag_value_gstr, ">");
+          tag_value = tag_value_gstr->str;
+        }
       }
       break;
     case TYPE_FLOAT:
       *type = g_strdup ("Float");
       if (meta->exists (tag_id)) {
-        gfloat value = meta->find (tag_id).data.f[0];
-        tag_value = g_strdup_printf ("%f", value);
+        if (meta->find (tag_id).count == 1) {
+          gfloat value = meta->find (tag_id).data.f[0];
+          tag_value = g_strdup_printf ("%f", value);
+        } else {
+          tag_value_gstr = g_string_new ("<");
+          for (guint i = 0; i < meta->find (tag_id).count; i++) {
+            g_string_append_printf (tag_value_gstr, "%f",
+                meta->find (tag_id).data.f[i]);
+            if (i != meta->find (tag_id).count - 1)
+              g_string_append(tag_value_gstr, ",");
+          }
+          g_string_append(tag_value_gstr, ">");
+          tag_value = tag_value_gstr->str;
+        }
       }
       break;
     case TYPE_INT64:
       *type = g_strdup ("Int64");
       if (meta->exists (tag_id)) {
-        gint64 value = meta->find (tag_id).data.i64[0];
-        tag_value = g_strdup_printf ("%" G_GINT64_FORMAT, value);
+        if (meta->find (tag_id).count == 1) {
+          gint64 value = meta->find (tag_id).data.i64[0];
+          tag_value = g_strdup_printf ("%" G_GINT64_FORMAT, value);
+        } else {
+          tag_value_gstr = g_string_new ("<");
+          for (guint i = 0; i < meta->find (tag_id).count; i++) {
+            g_string_append_printf (tag_value_gstr, "%" G_GINT64_FORMAT,
+                meta->find (tag_id).data.i64[i]);
+            if (i != meta->find (tag_id).count - 1)
+              g_string_append(tag_value_gstr, ",");
+          }
+          g_string_append(tag_value_gstr, ">");
+          tag_value = tag_value_gstr->str;
+        }
       }
       break;
     case TYPE_DOUBLE:
       *type = g_strdup ("Double");
       if (meta->exists (tag_id)) {
-        gdouble value = meta->find (tag_id).data.d[0];
-        tag_value = g_strdup_printf ("%lf", value);
+        if (meta->find (tag_id).count == 1) {
+          gdouble value = meta->find (tag_id).data.d[0];
+          tag_value = g_strdup_printf ("%lf", value);
+        } else {
+          tag_value_gstr = g_string_new ("<");
+          for (guint i = 0; i < meta->find (tag_id).count; i++) {
+            g_string_append_printf (tag_value_gstr, "%lf",
+                meta->find (tag_id).data.d[i]);
+            if (i != meta->find (tag_id).count - 1)
+              g_string_append(tag_value_gstr, ",");
+          }
+          g_string_append(tag_value_gstr, ">");
+          tag_value = tag_value_gstr->str;
+        }
       }
       break;
     case TYPE_RATIONAL:
@@ -971,8 +1032,8 @@ set_tag (GstAppContext * appctx, const gchar * section_name,
   guint32 tag_id = 0;
   gint tag_type = -1;
 
-  if (NULL == camsrc) {
-    g_printerr ("ERROR: camsrc is NULL\n");
+  if (NULL == camsrc || NULL == new_value) {
+    g_printerr ("ERROR: camsrc or input is NULL\n");
     goto free;
   }
 
@@ -984,62 +1045,227 @@ set_tag (GstAppContext * appctx, const gchar * section_name,
 
   switch (tag_type) {
     case TYPE_BYTE: {
-      gchar *endptr;
-      const guint8 tag_value = g_ascii_strtoull ((const gchar *) new_value,
-          &endptr, 0);
+      if (meta->find (tag_id).count == 1) {
+        gchar *endptr;
+        const guint8 tag_value = g_ascii_strtoull ((const gchar *) new_value,
+            &endptr, 0);
 
-      if (*endptr == '\0' && new_value != endptr)
-        status = meta->update (tag_id, &tag_value, 1);
-      else
-        g_print ("Invalid input!\n");
+        if (*endptr == '\0' && new_value != endptr)
+          status = meta->update (tag_id, &tag_value, 1);
+        else
+          g_print ("Invalid input!\n");
+      } else {
+        guint count = (guint) (meta->find (tag_id).count);
+        guint8 *result = g_new0 (guint8, count);
+        gchar *endptr, *trimmed;
+        gchar **split_input;
+
+        if (strlen (new_value) < count * 2 + 1) {
+          g_printerr ("Invalid input. Use format: '<num0,num1,...>' (without quotes)\n");
+          break;
+        }
+
+        trimmed = g_strndup (new_value + 1, strlen (new_value) - 2);
+        split_input = g_strsplit (trimmed, ",", -1);
+        if (g_strv_length (split_input) != count) {
+          g_printerr ("Invalid input. Use format: '<num0,num1,...>' (without quotes)\n");
+          g_strfreev (split_input);
+          break;
+        }
+
+        for (guint i = 0; i < count; i++) {
+          g_strstrip (split_input[i]);
+          result[i] = g_ascii_strtoll ((const gchar *) split_input[i], &endptr, 0);
+
+          if (!(*endptr == '\0' && split_input[i] != endptr)) {
+            g_print ("Invalid input!\n");
+            g_strfreev (split_input);
+            break;
+          }
+        }
+        status = meta->update (tag_id, result, count);
+        g_strfreev (split_input);
+      }
 
       break;
     }
     case TYPE_INT32: {
-      gchar *endptr;
-      const gint32 tag_value = g_ascii_strtoll ((const gchar *) new_value,
-          &endptr, 0);
+      if (meta->find (tag_id).count == 1) {
+        gchar *endptr;
+        const gint32 tag_value = g_ascii_strtoll ((const gchar *) new_value,
+            &endptr, 0);
 
-      if (*endptr == '\0' && new_value != endptr)
-        status = meta->update (tag_id, &tag_value, 1);
-      else
-        g_print ("Invalid input!\n");
+        if (*endptr == '\0' && new_value != endptr)
+          status = meta->update (tag_id, &tag_value, 1);
+        else
+          g_print ("Invalid input!\n");
+      } else {
+        guint count = (guint) (meta->find (tag_id).count);
+        gint32 *result = g_new0 (gint32, count);
+        gchar *endptr, *trimmed;
+        gchar **split_input;
+
+        if (strlen (new_value) < count * 2 + 1) {
+          g_printerr ("Invalid input. Use format: '<num0,num1,...>' (without quotes)\n");
+          break;
+        }
+
+        trimmed = g_strndup (new_value + 1, strlen (new_value) - 2);
+        split_input = g_strsplit (trimmed, ",", -1);
+        if (g_strv_length (split_input) != count) {
+          g_printerr ("Invalid input. Use format: '<num0,num1,...>' (without quotes)\n");
+          g_strfreev (split_input);
+          break;
+        }
+
+        for (guint i = 0; i < count; i++) {
+          g_strstrip (split_input[i]);
+          result[i] = g_ascii_strtoll ((const gchar *) split_input[i], &endptr, 0);
+
+          if (!(*endptr == '\0' && split_input[i] != endptr)) {
+            g_print ("Invalid input!\n");
+            g_strfreev (split_input);
+            break;
+          }
+        }
+        status = meta->update (tag_id, result, count);
+        g_strfreev (split_input);
+      }
 
       break;
     }
     case TYPE_FLOAT: {
-      gchar *endptr;
-      const gfloat tag_value = g_ascii_strtod ((const gchar *) new_value,
-          &endptr);
+      if (meta->find (tag_id).count == 1) {
+        gchar *endptr;
+        const gfloat tag_value = g_ascii_strtod ((const gchar *) new_value,
+            &endptr);
 
-      if (*endptr == '\0' && new_value != endptr)
-        status = meta->update (tag_id, &tag_value, 1);
-      else
-        g_print ("Invalid input!\n");
+        if (*endptr == '\0' && new_value != endptr)
+          status = meta->update (tag_id, &tag_value, 1);
+        else
+          g_print ("Invalid input!\n");
+      } else {
+        guint count = (guint) (meta->find (tag_id).count);
+        gfloat *result = g_new0 (gfloat, count);
+        gchar *endptr, *trimmed;
+        gchar **split_input;
+
+        if (strlen (new_value) < count * 2 + 1) {
+          g_printerr ("Invalid input. Use format: '<num0,num1,...>' (without quotes)\n");
+          break;
+        }
+
+        trimmed = g_strndup (new_value + 1, strlen (new_value) - 2);
+        split_input = g_strsplit (trimmed, ",", -1);
+        if (g_strv_length (split_input) != count) {
+          g_printerr ("Invalid input. Use format: '<num0,num1,...>' (without quotes)\n");
+          g_strfreev (split_input);
+          break;
+        }
+
+        for (guint i = 0; i < count; i++) {
+          g_strstrip (split_input[i]);
+          result[i] = g_ascii_strtoll ((const gchar *) split_input[i], &endptr, 0);
+
+          if (!(*endptr == '\0' && split_input[i] != endptr)) {
+            g_print ("Invalid input!\n");
+            g_strfreev (split_input);
+            break;
+          }
+        }
+        status = meta->update (tag_id, result, count);
+        g_strfreev (split_input);
+      }
 
       break;
     }
     case TYPE_INT64: {
-      gchar *endptr;
-      const gint64 tag_value = g_ascii_strtoll ((const gchar *) new_value,
-          &endptr, 0);
+      if (meta->find (tag_id).count == 1) {
+        gchar *endptr;
+        const gint64 tag_value = g_ascii_strtoll ((const gchar *) new_value,
+            &endptr, 0);
 
-      if (*endptr == '\0' && new_value != endptr)
-        status = meta->update (tag_id, &tag_value, 1);
-      else
-        g_print ("Invalid input!\n");
+        if (*endptr == '\0' && new_value != endptr)
+          status = meta->update (tag_id, &tag_value, 1);
+        else
+          g_print ("Invalid input!\n");
+      } else {
+        guint count = (guint) (meta->find (tag_id).count);
+        gint64 *result = g_new0 (gint64, count);
+        gchar *endptr, *trimmed;
+        gchar **split_input;
+
+        if (strlen (new_value) < count * 2 + 1) {
+          g_printerr ("Invalid input. Use format: '<num0,num1,...>' (without quotes)\n");
+          break;
+        }
+
+        trimmed = g_strndup (new_value + 1, strlen (new_value) - 2);
+        split_input = g_strsplit (trimmed, ",", -1);
+        if (g_strv_length (split_input) != count) {
+          g_printerr ("Invalid input. Use format: '<num0,num1,...>' (without quotes)\n");
+          g_strfreev (split_input);
+          break;
+        }
+
+        for (guint i = 0; i < count; i++) {
+          g_strstrip (split_input[i]);
+          result[i] = g_ascii_strtoll ((const gchar *) split_input[i], &endptr, 0);
+
+          if (!(*endptr == '\0' && split_input[i] != endptr)) {
+            g_print ("Invalid input!\n");
+            g_strfreev (split_input);
+            break;
+          }
+        }
+        status = meta->update (tag_id, result, count);
+        g_strfreev (split_input);
+      }
 
       break;
     }
     case TYPE_DOUBLE: {
-      gchar *endptr;
-      const gdouble tag_value = g_ascii_strtod ((const gchar *) new_value,
-          &endptr);
+      if (meta->find (tag_id).count == 1) {
+        gchar *endptr;
+        const gdouble tag_value = g_ascii_strtod ((const gchar *) new_value,
+            &endptr);
 
-      if (*endptr == '\0' && new_value != endptr)
-        status = meta->update (tag_id, &tag_value, 1);
-      else
-        g_print ("Invalid input!\n");
+        if (*endptr == '\0' && new_value != endptr)
+          status = meta->update (tag_id, &tag_value, 1);
+        else
+          g_print ("Invalid input!\n");
+      } else {
+        guint count = (guint) (meta->find (tag_id).count);
+        gdouble *result = g_new0 (gdouble, count);
+        gchar *endptr, *trimmed;
+        gchar **split_input;
+
+        if (strlen (new_value) < count * 2 + 1) {
+          g_printerr ("Invalid input. Use format: '<num0,num1,...>' (without quotes)\n");
+          break;
+        }
+
+        trimmed = g_strndup (new_value + 1, strlen (new_value) - 2);
+        split_input = g_strsplit (trimmed, ",", -1);
+        if (g_strv_length (split_input) != count) {
+          g_printerr ("Invalid input. Use format: '<num0,num1,...>' (without quotes)\n");
+          g_strfreev (split_input);
+          break;
+        }
+
+        for (guint i = 0; i < count; i++) {
+          g_strstrip (split_input[i]);
+          result[i] = g_ascii_strtoll ((const gchar *) split_input[i], &endptr, 0);
+
+          if (!(*endptr == '\0' && split_input[i] != endptr)) {
+            g_print ("Invalid input!\n");
+            g_strfreev (split_input);
+            break;
+          }
+        }
+        status = meta->update (tag_id, result, count);
+        g_strfreev (split_input);
+      }
 
       break;
     }
