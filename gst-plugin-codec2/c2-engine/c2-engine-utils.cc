@@ -165,6 +165,8 @@ static const std::unordered_map<uint32_t, C2Param::Index> kParamIndexMap = {
       qc2::C2VideoLTRUseTuning::input::PARAM_TYPE},
   { GST_C2_PARAM_FLIP,
       qc2::C2VideoMirrorTuning::input::PARAM_TYPE },
+  { GST_C2_PARAM_VBV_DELAY,
+      qc2::C2VBVDelayTuning::input::PARAM_TYPE },
 };
 
 // Convenient map for printing the engine parameter name in string form.
@@ -218,6 +220,7 @@ static const std::unordered_map<uint32_t, const char*> kParamNameMap = {
   { GST_C2_PARAM_SUPER_FRAME, "SUPER_FRAME" },
   { GST_C2_PARAM_LTR_USE, "LTR_USE" },
   { GST_C2_PARAM_FLIP, "FLIP" },
+  { GST_C2_PARAM_VBV_DELAY, "VBV_DELAY"},
 };
 
 // Map for the GST_C2_PARAM_PROFILE_LEVEL parameter.
@@ -976,6 +979,13 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       c2param = C2Param::Copy(mirror);
       break;
     }
+    case GST_C2_PARAM_VBV_DELAY: {
+      qc2::C2VBVDelayTuning::input delay;
+
+      delay.value = *(reinterpret_cast<gint32*>(payload));
+      c2param = C2Param::Copy(delay);
+      break;
+    }
     default:
       GST_ERROR ("Unsupported parameter: %u!", type);
       return FALSE;
@@ -1391,6 +1401,13 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
 
       *(reinterpret_cast<GstC2VideoFlip*>(payload)) =
           static_cast<GstC2VideoFlip>(result->first);
+      break;
+    }
+    case GST_C2_PARAM_VBV_DELAY: {
+      auto delay =
+          reinterpret_cast<qc2::C2VBVDelayTuning::input*>(c2param.get());
+
+      *(reinterpret_cast<gint32*>(payload)) = delay->value;
       break;
     }
     default:

@@ -78,9 +78,10 @@ G_DEFINE_TYPE (GstC2VEncoder, gst_c2_venc, GST_TYPE_VIDEO_ENCODER);
 #define DEFAULT_PROP_ENTROPY_MODE         (0xffffffff)
 #define DEFAULT_PROP_LOOP_FILTER_MODE     (0xffffffff)
 #define DEFAULT_PROP_NUM_LTR_FRAMES       (0xffffffff)
-#define DEFAULT_PROP_PRIORITY             (0xffffffff)
+#define DEFAULT_PROP_PRIORITY             (0x7fffffff)
 #define DEFAULT_PROP_TEMPORAL_LAYER_NUM   (0xffffffff)
 #define DEFAULT_PROP_FLIP                 (GST_C2_FLIP_NONE)
+#define DEFAULT_PROP_VBV_DELAY            (0x7fffffff)
 
 #define GST_VIDEO_FORMATS "{ NV12, P010_10LE, NV12_Q08C, NV12_Q10LE32C }"
 
@@ -114,6 +115,7 @@ enum
   PROP_PRIORITY,
   PROP_TEMPORAL_LAYER,
   PROP_FLIP,
+  PROP_VBV_DELAY,
 };
 
 static GstStaticPadTemplate gst_c2_venc_sink_pad_template =
@@ -778,6 +780,15 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
         GST_C2_PARAM_SUPER_FRAME, GPOINTER_CAST (&c2venc->n_subframes));
     if (!success) {
       GST_ERROR_OBJECT (c2venc, "Failed to set super frame!");
+      return FALSE;
+    }
+  }
+
+  if (c2venc->vbv_delay != DEFAULT_PROP_VBV_DELAY) {
+    success = gst_c2_engine_set_parameter (c2venc->engine,
+        GST_C2_PARAM_VBV_DELAY, GPOINTER_CAST (&c2venc->vbv_delay));
+    if (!success) {
+      GST_ERROR_OBJECT (c2venc, "Failed to set vbv delay!");
       return FALSE;
     }
   }
@@ -1705,6 +1716,9 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
     case PROP_FLIP:
       c2venc->flip = g_value_get_enum (value);
       break;
+    case PROP_VBV_DELAY:
+      c2venc->vbv_delay = g_value_get_int (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -1849,6 +1863,9 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
     }
     case PROP_FLIP:
       g_value_set_enum (value, c2venc->flip);
+      break;
+    case PROP_VBV_DELAY:
+      g_value_set_int (value, c2venc->vbv_delay);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -2031,8 +2048,8 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
   g_object_class_install_property (gobject, PROP_PRIORITY,
       g_param_spec_int ("priority", "Priority",
           "The proirity of current video instance among concurrent cases,"
-          "(0xffffffff=component default)",
-          G_MININT32, G_MAXINT, DEFAULT_PROP_PRIORITY,
+          "(0x7fffffff=component default)",
+          G_MININT32, G_MAXINT32, DEFAULT_PROP_PRIORITY,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
   g_object_class_install_property (gobject, PROP_TEMPORAL_LAYER,
       gst_param_spec_array ("temporal-layer", "Temporal Layer",
@@ -2051,6 +2068,14 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
       g_param_spec_enum ("flip", "Flip",
           "Flip video image", GST_TYPE_C2_VIDEO_FLIP, DEFAULT_PROP_FLIP,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject, PROP_VBV_DELAY,
+      g_param_spec_int ("vbv-delay", "Video Buffer Verifier Delay",
+          "The buffering delay in milliseconds which is used to stabilize "
+          "bitrate, equivalent to target bitrate measured in thousandth unit."
+          "(0x7fffffff=component default, limited below 100 milliseconds, "
+          "i.e 1/10 of the target bitrate)",
+          0, G_MAXINT, DEFAULT_PROP_VBV_DELAY,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_PLAYING));
 
   g_signal_new_class_handler ("trigger-iframe", G_TYPE_FROM_CLASS (klass),
       G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION, G_CALLBACK (gst_c2_venc_trigger_iframe),
@@ -2143,8 +2168,8 @@ gst_c2_venc_init (GstC2VEncoder * c2venc)
   c2venc->priority = DEFAULT_PROP_PRIORITY;
   c2venc->temp_layer.n_layers = DEFAULT_PROP_TEMPORAL_LAYER_NUM;
   c2venc->temp_layer.n_blayers = DEFAULT_PROP_TEMPORAL_LAYER_NUM;
-
   c2venc->n_subframes = 0;
+  c2venc->vbv_delay = DEFAULT_PROP_VBV_DELAY;
 
   GST_DEBUG_CATEGORY_INIT (c2_venc_debug, "qtic2venc", 0,
       "QTI c2venc encoder");

@@ -117,6 +117,7 @@ enum {
   GST_C2_PARAM_SUPER_FRAME,          // guint32
   GST_C2_PARAM_LTR_USE,              // guint32
   GST_C2_PARAM_FLIP,                 // GstC2VideoFlip
+  GST_C2_PARAM_VBV_DELAY,            // gint32
 };
 
 typedef enum {
