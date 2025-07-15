@@ -14,7 +14,6 @@ pkg_check_modules(GST
 pkg_check_modules(GST_RTSP
   REQUIRED gstreamer-rtsp-server-1.0>=${GST_VERSION_REQUIRED})
 
-add_subdirectory(gst-ml-apps)
 add_subdirectory(gst-pipeline-app)
 add_subdirectory(gst-rtsp-server)
 add_subdirectory(gst-warmboot-app)
