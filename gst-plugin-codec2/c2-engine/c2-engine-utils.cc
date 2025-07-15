@@ -1529,7 +1529,9 @@ bool GstC2Utils::ExtractHandleInfo(GstBuffer* buffer,
       strides[0] = strides[1] = stride;
       offsets[1] = (stride * scanline);
 
-      if (gbm_format == GBM_FORMAT_YCbCr_420_SP_VENUS_UBWC) {
+      if (gbm_format == GBM_FORMAT_YCbCr_420_SP_VENUS_UBWC ||
+          (handle->mInts.usage_lo & GBM_BO_USAGE_UBWC_ALIGNED_QTI) != 0) {
+        format = GST_VIDEO_FORMAT_NV12_Q08C;
         auto metastride =
             MMM_COLOR_FMT_Y_META_STRIDE(MMM_COLOR_FMT_NV12_UBWC, width);
         auto metascanline =
