@@ -110,6 +110,10 @@ G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
 #define INT32_CONVERSION_OFFSET        2147483648.0
 // (2^32 - 1) / (2^8 - 1)
 #define UINT32_CONVERSION_SIGMA        16843009.0
+// 2^64 / 2
+#define INT64_CONVERSION_OFFSET        9223372036854775808.0
+// (2^64 - 1) / (2^8 - 1)
+#define UINT64_CONVERSION_SIGMA        72340172838076673.0
 
 
 #define GET_MEAN_VALUE(mean, idx) (mean->len > idx) ? \
@@ -352,6 +356,12 @@ gst_ml_convert_uint8_to_mltype (GstMLType mltype, gdouble value) {
       break;
     case GST_ML_TYPE_UINT32:
       value = value * UINT32_CONVERSION_SIGMA;
+      break;
+    case GST_ML_TYPE_INT64:
+      value = value * UINT64_CONVERSION_SIGMA - INT64_CONVERSION_OFFSET;
+      break;
+    case GST_ML_TYPE_UINT64:
+      value = value * UINT64_CONVERSION_SIGMA;
       break;
     case GST_ML_TYPE_FLOAT16:
     case GST_ML_TYPE_FLOAT32:
