@@ -1,3 +1,9 @@
+cmake_minimum_required(VERSION 3.8.2)
+project(GST_PLUGIN_TOOLS LANGUAGES C CXX)
+
+include_directories(${SYSROOT_INCDIR})
+link_directories(${SYSROOT_LIBDIR})
+
 # Common CXX compiler flags.
 set(CMAKE_CXX_STANDARD 17)
 
