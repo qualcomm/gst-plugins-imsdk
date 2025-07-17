@@ -100,19 +100,14 @@ G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
 
 // 1.0 / (2^8 - 1)
 #define FLOAT_CONVERSION_SIGMA         (1.0 / 255.0)
-
 // 2^8 / 2
 #define INT8_CONVERSION_OFFSET         128.0
-
 // 2^16 / 2
 #define INT16_CONVERSION_OFFSET        32768.0
-
 // (2^16 - 1) / (2^8 - 1)
 #define UINT16_CONVERSION_SIGMA        257.0
-
 // 2^32 / 2
 #define INT32_CONVERSION_OFFSET        2147483648.0
-
 // (2^32 - 1) / (2^8 - 1)
 #define UINT32_CONVERSION_SIGMA        16843009.0
 
@@ -334,42 +329,6 @@ init_formats (GValue * formats, ...)
   }
 
   va_end (args);
-}
-
-static inline void
-gst_ml_tensor_assign_value (GstMLType mltype, gpointer data, guint index,
-    gdouble value)
-{
-  switch (mltype) {
-    case GST_ML_TYPE_INT8:
-      GINT8_PTR_CAST (data)[index] = (gint8) value;
-      break;
-    case GST_ML_TYPE_UINT8:
-      GUINT8_PTR_CAST (data)[index] = (guint8) value;
-      break;
-    case GST_ML_TYPE_INT16:
-      GINT16_PTR_CAST (data)[index] = (gint16) value;
-      break;
-    case GST_ML_TYPE_UINT16:
-      GUINT16_PTR_CAST (data)[index] = (guint16) value;
-      break;
-    case GST_ML_TYPE_INT32:
-      GINT32_PTR_CAST (data)[index] = (gint32) value;
-      break;
-    case GST_ML_TYPE_UINT32:
-      GUINT32_PTR_CAST (data)[index] = (guint32) value;
-      break;
-#if defined(__ARM_FP16_FORMAT_IEEE)
-    case GST_ML_TYPE_FLOAT16:
-      GFLOAT16_PTR_CAST (data)[index] = (__fp16) value;
-      break;
-#endif //__ARM_FP16_FORMAT_IEEE
-    case GST_ML_TYPE_FLOAT32:
-      GFLOAT_PTR_CAST (data)[index] = (gfloat) value;
-      break;
-    default:
-      break;
-  }
 }
 
 static inline gdouble
