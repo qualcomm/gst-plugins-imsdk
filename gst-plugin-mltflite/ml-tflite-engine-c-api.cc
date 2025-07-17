@@ -348,6 +348,10 @@ gst_ml_type_from_tflite_type (TfLiteType type)
     case kTfLiteUInt32:
       return GST_ML_TYPE_UINT32;
 #endif // !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+    case kTfLiteInt64:
+      return GST_ML_TYPE_INT64;
+    case kTfLiteUInt64:
+      return GST_ML_TYPE_UINT64;
     case kTfLiteFloat16:
       return GST_ML_TYPE_FLOAT16;
     case kTfLiteFloat32:
@@ -376,6 +380,10 @@ gst_ml_tflite_type_to_string (TfLiteType type)
 #endif // !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
     case kTfLiteInt32:
       return "INT32";
+    case kTfLiteUInt64:
+      return "UINT64";
+    case kTfLiteInt64:
+      return "INT64";
     case kTfLiteFloat16:
       return "FLOAT16";
     case kTfLiteFloat32:
@@ -451,6 +459,24 @@ gst_ml_frame_convert_to_float (GstMLFrame *mlframe, guint idx,
     case kTfLiteInt32:
     {
       int32_t *data = reinterpret_cast<int32_t *>(tensor_data);
+
+      for (size_t idx = 0; idx < n_elements; idx++)
+        output[idx] = (static_cast<float>(data[idx]) - offset) * scale;
+
+      break;
+    }
+    case kTfLiteUInt64:
+    {
+      uint64_t *data = reinterpret_cast<uint64_t *>(tensor_data);
+
+      for (size_t idx = 0; idx < n_elements; idx++)
+        output[idx] = (static_cast<float>(data[idx]) - offset) * scale;
+
+      break;
+    }
+    case kTfLiteInt64:
+    {
+      int64_t *data = reinterpret_cast<int64_t *>(tensor_data);
 
       for (size_t idx = 0; idx < n_elements; idx++)
         output[idx] = (static_cast<float>(data[idx]) - offset) * scale;

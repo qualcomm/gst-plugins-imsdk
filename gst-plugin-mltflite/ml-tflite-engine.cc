@@ -323,6 +323,24 @@ gst_ml_tflite_convert_to_float (GstMLFrame *mlframe, guint idx,
 
       break;
     }
+    case kTfLiteUInt64:
+    {
+      uint64_t *data = reinterpret_cast<uint64_t *>(tensor_data);
+
+      for (size_t idx = 0; idx < n_elements; idx++)
+        output[idx] = (static_cast<float>(data[idx]) - offset) * scale;
+
+      break;
+    }
+    case kTfLiteInt64:
+    {
+      int64_t *data = reinterpret_cast<int64_t *>(tensor_data);
+
+      for (size_t idx = 0; idx < n_elements; idx++)
+        output[idx] = (static_cast<float>(data[idx]) - offset) * scale;
+
+      break;
+    }
 #if defined(__ARM_FP16_FORMAT_IEEE)
     case kTfLiteFloat16:
     {
@@ -398,6 +416,10 @@ tflite_to_ml_type (TfLiteType type)
     case kTfLiteUInt32:
       return GST_ML_TYPE_UINT32;
 #endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+    case kTfLiteInt64:
+      return GST_ML_TYPE_INT64;
+    case kTfLiteUInt64:
+      return GST_ML_TYPE_UINT64;
     case kTfLiteFloat16:
       return GST_ML_TYPE_FLOAT16;
     case kTfLiteFloat32:
