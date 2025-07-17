@@ -124,8 +124,7 @@ typedef Qnn_ErrorHandle_t (*ComposeGraphsFn)(Qnn_BackendHandle_t,
     const uint32_t, GraphInfo_t ***, uint32_t *, bool, QnnLog_Callback_t,
     QnnLog_Level_t);
 
-typedef Qnn_ErrorHandle_t (*FreeGraphFn) (GraphInfo_t ***,
-    uint32_t);
+typedef Qnn_ErrorHandle_t (*FreeGraphFn) (GraphInfo_t ***, uint32_t);
 
 struct _GstMLQnnEngine
 {
@@ -162,6 +161,7 @@ struct _GstMLQnnEngine
   GraphInfo_t                    **graph_infos;
   uint32_t                       n_graphs;
   gboolean                       iscached;
+
   // QNNF library APIs
   FreeGraphFn                    FreeGraph;
 
@@ -218,6 +218,12 @@ qnn_to_ml_type (Qnn_DataType_t type)
     case QNN_DATATYPE_INT_8:
     case QNN_DATATYPE_SFIXED_POINT_8:
       return GST_ML_TYPE_INT8;
+    case QNN_DATATYPE_UINT_16:
+    case QNN_DATATYPE_UFIXED_POINT_16:
+      return GST_ML_TYPE_UINT16;
+    case QNN_DATATYPE_INT_16:
+    case QNN_DATATYPE_SFIXED_POINT_16:
+      return GST_ML_TYPE_INT16;
     case QNN_DATATYPE_UINT_32:
     case QNN_DATATYPE_UFIXED_POINT_32:
       return GST_ML_TYPE_UINT32;
@@ -851,11 +857,10 @@ gst_ml_qnn_engine_new (GstStructure *settings)
 {
   GstMLQnnEngine *engine = NULL;
   const GraphInfo_t *graph_info = NULL;
-  Qnn_Tensor_t *input_tensor = NULL;
-  Qnn_Tensor_t *output_tensor = NULL;
+  Qnn_Tensor_t *input_tensor = NULL, *output_tensor = NULL;
   GList * output_list = NULL;
   gboolean success = TRUE;
-  guint idx;
+  guint idx = 0;
 
   GST_DEBUG ("Creating engine");
 
@@ -905,8 +910,7 @@ gst_ml_qnn_engine_new (GstStructure *settings)
 
   // Translate information about input tensors to GstMLInfo.
   engine->ininfo->n_tensors = graph_info->numInputTensors;
-  engine->ininfo->type = qnn_to_ml_type (
-      QNN_TENSOR_DATA_TYPE (input_tensor));
+  engine->ininfo->type = qnn_to_ml_type (QNN_TENSOR_DATA_TYPE (input_tensor));
 
   GST_DEBUG ("Number of input tensors: %u",
       GST_ML_INFO_N_TENSORS (engine->ininfo));
