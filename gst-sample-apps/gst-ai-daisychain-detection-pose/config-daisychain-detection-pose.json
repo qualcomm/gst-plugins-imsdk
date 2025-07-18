@@ -1,5 +1,7 @@
 {
     "input-file": "/etc/media/video.mp4",
+    "pose-runtime":"dsp",
+    "detection-runtime":"dsp",
     "detection-model": "/etc/models/yolox_quantized.tflite",
     "detection-labels": "/etc/labels/yolox.labels",
     "pose-model": "/etc/models/hrnet_pose_quantized.tflite",
