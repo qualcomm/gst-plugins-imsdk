@@ -231,7 +231,7 @@ set_ml_params (GstElement * qtimlpostprocess,
         g_value_set_string (&value, options.snpe_layers[i]);
         gst_value_array_append_value (&layers, &value);
       }
-      g_object_set_property (G_OBJECT (qtielement), "tensors", &layers);
+      g_object_set_property (G_OBJECT (qtielement), "layers", &layers);
     }
     g_object_set (G_OBJECT (qtielement), "model", options.model_path,
         "delegate", GST_ML_SNPE_DELEGATE_DSP, NULL);
@@ -1062,7 +1062,7 @@ main (gint argc, gchar * argv[])
   struct rlimit rl;
   guint intrpt_watch_id = 0;
   gboolean ret = FALSE;
-  gchar help_description[1024];
+  gchar help_description[4096];
   gint streams = 0;
   gint htp_count = 1;
 
@@ -1099,12 +1099,28 @@ main (gint argc, gchar * argv[])
 
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
 
-  snprintf (help_description, 1023, "\nExample:\n"
+  snprintf (help_description, 4095, "\nExample:\n"
       "  %s --config-file=%s\n"
       "\nThis Sample App demonstrates multistream inference with various "
-      " input/output stream combinations",
+      "  input/output stream combinations\n"
+      "  input-type: It takes file as input\n"
+      "  input-file-path: It takes path of input files\n"
+      "  model-path: It takes path of Model file\n"
+      "  labels-path: It takes path of labels file\n"
+      "  post-process-plugin: It takes input as either qtimlvsegmentation"
+      "  or qtimlvdetection\n"
+      "  mlframework: It takes either tflite, snpe or qnn as input\n"
+      "  snpe-layers: <json array>\n"
+      "      Set output layers for SNPE model.\n"
+      "      Example:\n"
+      "      [\"/heads/Mul\", \"/heads/Sigmoid\"]\n"
+      "  constants: \"CONSTANTS\"\n"
+      "      Constants, offsets and coefficients used by the chosen module \n"
+      "      for post-processing of incoming tensors.\n"
+      "  output-type: It takes either wayland or filesink as output\n"
+      "  out-file: Path of output filename\n",
       app_name, DEFAULT_CONFIG_FILE);
-  help_description[1023] = '\0';
+  help_description[4095] = '\0';
 
   // Parse command line entries.
   if ((ctx = g_option_context_new (help_description)) != NULL) {
