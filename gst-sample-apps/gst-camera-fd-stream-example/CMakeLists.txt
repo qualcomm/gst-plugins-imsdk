@@ -34,6 +34,7 @@ target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_LIBRARIES}
   qmmf_camera_metadata
   camera_metadata
+  gstappsutils
 )
 
 install(
