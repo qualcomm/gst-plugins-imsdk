@@ -122,18 +122,19 @@ def construct_pipeline(pipe):
         "deccaps":      create_element("capsfilter", "deccaps"),
         "tee":          create_element("tee", "split"),
         "mlvconverter": create_element("qtimlvconverter", "converter"),
-        "queue_0":      create_element("queue", "queue0"),
         "mltflite":     create_element("qtimltflite", "inference"),
-        "queue_1":      create_element("queue", "queue1"),
         "mlvdetection": create_element("qtimlvdetection", "detection"),
         "capsfilter_1": create_element("capsfilter", "metamuxmetacaps"),
-        "queue_2":      create_element("queue", "queue2"),
         "metamux":      create_element("qtimetamux", "metamux"),
         "overlay":      create_element("qtivoverlay", "overlay"),
-        "queue_4":      create_element("queue", "queue4"),
         "display":      create_element("waylandsink", "display")
     }
     # fmt: on
+
+    queue_count = 6
+    for i in range(queue_count):
+        queue_name = f"queue_{i}"
+        elements[queue_name] = create_element("queue", queue_name)
 
     # Set element properties
     Gst.util_set_object_arg(elements["rtspsrc"], "location", args.rtsp)
@@ -194,11 +195,11 @@ def construct_pipeline(pipe):
     link_orders = [
         [
             "rtph264depay", "capsfilter_0", "h264parse", "v4l2h264dec", "deccaps",
-            "tee", "metamux", "overlay", "queue_4", "display"
+            "tee", "queue_0", "metamux", "overlay", "queue_1", "display"
         ],
         [
-            "tee", "mlvconverter", "queue_0", "mltflite", "queue_1",
-            "mlvdetection", "capsfilter_1", "queue_2", "metamux"
+            "tee", "queue_2", "mlvconverter", "queue_3", "mltflite", "queue_4",
+            "mlvdetection", "capsfilter_1", "queue_5", "metamux"
         ]
     ]
     # fmt: on

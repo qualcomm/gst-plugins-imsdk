@@ -233,12 +233,9 @@ def construct_pipeline(pipe):
         "deccaps_0":         create_element("capsfilter", "deccaps0"),
         "tee_0":             create_element("tee", "split0"),
         "mlvconverter_0":    create_element("qtimlvconverter", "converter0"),
-        "queue_0":           create_element("queue", "queue0"),
         "mltflite_0":        create_element("qtimltflite", "inference0"),
-        "queue_1":           create_element("queue", "queue1"),
         "mlvdetection_0":    create_element("qtimlvdetection", "detection0"),
         "capsfilter_0":      create_element("capsfilter", "metamux0metacaps"),
-        "queue_2":           create_element("queue", "queue2"),
         "metamux_0":         create_element("qtimetamux", "metamux0"),
         "overlay_0":         create_element("qtivoverlay", "overlay0"),
         # Stream 1
@@ -249,12 +246,9 @@ def construct_pipeline(pipe):
         "deccaps_1":         create_element("capsfilter", "deccaps1"),
         "tee_1":             create_element("tee", "split1"),
         "mlvconverter_1":    create_element("qtimlvconverter", "converter1"),
-        "queue_3":           create_element("queue", "queue3"),
         "mltflite_1":        create_element("qtimltflite", "inference1"),
-        "queue_4":           create_element("queue", "queue4"),
         "mlvdetection_1":    create_element("qtimlvdetection", "detection1"),
         "capsfilter_1":      create_element("capsfilter", "metamux1metacaps"),
-        "queue_5":           create_element("queue", "queue5"),
         "metamux_1":         create_element("qtimetamux", "metamux1"),
         "overlay_1":         create_element("qtivoverlay", "overlay1"),
         # Stream 2
@@ -265,12 +259,9 @@ def construct_pipeline(pipe):
         "deccaps_2":         create_element("capsfilter", "deccaps2"),
         "tee_2":             create_element("tee", "split2"),
         "mlvconverter_2":    create_element("qtimlvconverter", "converter2"),
-        "queue_6":           create_element("queue", "queue6"),
         "mltflite_2":        create_element("qtimltflite", "inference2"),
-        "queue_7":           create_element("queue", "queue7"),
         "mlvclassification": create_element("qtimlvclassification", "classification"),
         "capsfilter_2":      create_element("capsfilter", "metamux2metacaps"),
-        "queue_8":           create_element("queue", "queue8"),
         "metamux_2":         create_element("qtimetamux", "metamux2"),
         "overlay_2":         create_element("qtivoverlay", "overlay2"),
         # Stream 3
@@ -280,20 +271,20 @@ def construct_pipeline(pipe):
         "v4l2h264dec_3":     create_element("v4l2h264dec", "v4l2h264decoder3"),
         "deccaps_3":         create_element("capsfilter", "deccaps3"),
         "tee_3":             create_element("tee", "split3"),
-        "queue_9":           create_element("queue", "queue9"),
         "mlvconverter_3":    create_element("qtimlvconverter", "converter3"),
-        "queue_10":          create_element("queue", "queue10"),
         "mltflite_3":        create_element("qtimltflite", "inference3"),
-        "queue_11":          create_element("queue", "queue11"),
         "mlvsegmentation":   create_element("qtimlvsegmentation", "segmentation"),
         "capsfilter_3":      create_element("capsfilter", "metamux3metacaps"),
-        "queue_12":          create_element("queue", "queue12"),
         # Side by side all streams
         "composer":          create_element("qtivcomposer", "composer"),
-        "queue_13":          create_element("queue", "queue13"),
         "display":           create_element("waylandsink", "display")
     }
     # fmt: on
+
+    queue_count = 21
+    for i in range(queue_count):
+        queue_name = f"queue_{i}"
+        elements[queue_name] = create_element("queue", queue_name)
 
     # Set element properties
     # Stream 0
@@ -490,41 +481,41 @@ def construct_pipeline(pipe):
     link_orders = [
         [ "filesrc_0", "qtdemux_0" ],
         [
-            "h264parse_0", "v4l2h264dec_0", "deccaps_0", "tee_0", "metamux_0",
-            "overlay_0", "composer"
+            "h264parse_0", "v4l2h264dec_0", "deccaps_0", "tee_0", "queue_0",
+            "metamux_0", "overlay_0", "composer"
         ],
         [
-            "tee_0", "mlvconverter_0", "queue_0", "mltflite_0", "queue_1",
-            "mlvdetection_0", "queue_2", "capsfilter_0", "metamux_0"
+            "tee_0", "queue_1", "mlvconverter_0", "queue_2", "mltflite_0",
+            "queue_3", "mlvdetection_0", "queue_4", "capsfilter_0", "metamux_0"
         ],
         [ "filesrc_1", "qtdemux_1" ],
         [
-            "h264parse_1", "v4l2h264dec_1", "deccaps_1", "tee_1", "metamux_1",
-            "overlay_1", "composer"
+            "h264parse_1", "v4l2h264dec_1", "deccaps_1", "tee_1", "queue_5",
+            "metamux_1", "overlay_1", "composer"
         ],
         [
-            "tee_1", "mlvconverter_1", "queue_3", "mltflite_1", "queue_4",
-            "mlvdetection_1", "queue_5", "capsfilter_1", "metamux_1"
+            "tee_1", "queue_6", "mlvconverter_1", "queue_7", "mltflite_1",
+            "queue_8", "mlvdetection_1", "queue_9", "capsfilter_1", "metamux_1"
         ],
         [ "filesrc_2", "qtdemux_2" ],
         [
-            "h264parse_2", "v4l2h264dec_2", "deccaps_2", "tee_2", "metamux_2",
-            "overlay_2", "composer"
+            "h264parse_2", "v4l2h264dec_2", "deccaps_2", "tee_2", "queue_10",
+            "metamux_2", "overlay_2", "composer"
         ],
         [
-            "tee_2", "mlvconverter_2", "queue_6", "mltflite_2", "queue_7",
-            "mlvclassification", "queue_8", "capsfilter_2", "metamux_2"
+            "tee_2", "queue_11", "mlvconverter_2", "queue_12", "mltflite_2",
+            "queue_13", "mlvclassification", "queue_14", "capsfilter_2", "metamux_2"
         ],
         [ "filesrc_3", "qtdemux_3" ],
         [
-            "h264parse_3", "v4l2h264dec_3", "deccaps_3", "tee_3", "queue_9",
+            "h264parse_3", "v4l2h264dec_3", "deccaps_3", "tee_3", "queue_15",
             "composer"
         ],
         [
-            "tee_3", "mlvconverter_3", "queue_10", "mltflite_3", "queue_11",
-            "mlvsegmentation", "queue_12", "composer"
+            "tee_3", "queue_16", "mlvconverter_3", "queue_17", "mltflite_3",
+            "queue_18", "mlvsegmentation", "queue_19", "composer"
         ],
-        [ "composer", "queue_13", "display" ]
+        [ "composer", "queue_20", "display" ]
     ]
     # fmt: on
     link_elements(link_orders, elements)
