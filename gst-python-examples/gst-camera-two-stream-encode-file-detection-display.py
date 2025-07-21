@@ -112,28 +112,27 @@ def construct_pipeline(pipe):
         "qmmfsrc":      create_element("qtiqmmfsrc", "camsrc"),
         # Stream 0
         "capsfilter_0": create_element("capsfilter", "camout0caps"),
-        "queue_0":      create_element("queue", "queue0"),
         "v4l2h264enc":  create_element("v4l2h264enc", "v4l2h264encoder"),
         "h264parse":    create_element("h264parse", "h264parser"),
         "mp4mux":       create_element("mp4mux", "mp4muxer"),
         "filesink":     create_element("filesink", "filesink"),
         # Stream 1
         "capsfilter_1": create_element("capsfilter", "camout1caps"),
-        "queue_1":      create_element("queue", "queue1"),
         "tee":          create_element("tee", "split"),
         "mlvconverter": create_element("qtimlvconverter", "converter"),
-        "queue_2":      create_element("queue", "queue2"),
         "mltflite":     create_element("qtimltflite", "inference"),
-        "queue_3":      create_element("queue", "queue3"),
         "mlvdetection": create_element("qtimlvdetection", "detection"),
         "capsfilter_2": create_element("capsfilter", "metamuxmetacaps"),
-        "queue_4":      create_element("queue", "queue4"),
         "metamux":      create_element("qtimetamux", "metamux"),
         "overlay":      create_element("qtivoverlay", "overlay"),
-        "queue_5":      create_element("queue", "queue5"),
         "display":      create_element("waylandsink", "display")
     }
     # fmt: on
+
+    queue_count = 8
+    for i in range(queue_count):
+        queue_name = f"queue_{i}"
+        elements[queue_name] = create_element("queue", queue_name)
 
     # Set element properties
     Gst.util_set_object_arg(elements["qmmfsrc"], "camera", "0")
@@ -178,7 +177,7 @@ def construct_pipeline(pipe):
 
     Gst.util_set_object_arg(elements["mlvdetection"], "threshold", "75.0")
     Gst.util_set_object_arg(elements["mlvdetection"], "results", "4")
-    Gst.util_set_object_arg(elements["mlvdetection"], "module", "yolov8")
+    Gst.util_set_object_arg(elements["mlvdetection"], "module", detection["module"])
     Gst.util_set_object_arg(
         elements["mlvdetection"], "constants", detection["constants"],
     )
@@ -205,12 +204,12 @@ def construct_pipeline(pipe):
             "mp4mux", "filesink"
         ],
         [
-            "qmmfsrc", "capsfilter_1", "queue_1", "tee", "metamux", "overlay",
-            "queue_5", "display"
+            "qmmfsrc", "capsfilter_1", "queue_1", "tee", "queue_2", "metamux",
+            "overlay", "queue_3", "display"
         ],
         [
-            "tee", "mlvconverter", "queue_2", "mltflite", "queue_3",
-            "mlvdetection", "capsfilter_2", "queue_4", "metamux"
+            "tee", "queue_4", "mlvconverter", "queue_5", "mltflite", "queue_6",
+            "mlvdetection", "capsfilter_2", "queue_7", "metamux"
         ]
     ]
     # fmt: on
