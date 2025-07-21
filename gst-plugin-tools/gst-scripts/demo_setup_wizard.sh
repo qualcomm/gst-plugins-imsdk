@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 
 echo "Pipeline builder script initiated!"
-pipeline='export XDG_RUNTIME_DIR=/dev/socket/weston && export WAYLAND_DISPLAY=wayland-1 && gst-launch-1.0 -e '
+pipeline='gst-launch-1.0 -e '
 help="In order to run the pipeline:\n"
 usbsrc=false
 segmentation=false
@@ -139,8 +139,6 @@ do
                 pipeline+='fakesink'
                 echo "Unexpected livesrc: ${livesrc}! Using fakesink!"
             fi
-            help+="In order for the display to work, you need to have it connected during the device boot!\n"
-            help+="If you have booted the device and connected the display afterwards, please reboot the device while the display is connected!\n"
             help+="\n"
             break
             ;;
