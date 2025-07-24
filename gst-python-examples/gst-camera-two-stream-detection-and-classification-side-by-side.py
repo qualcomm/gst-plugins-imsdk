@@ -136,36 +136,32 @@ def construct_pipeline(pipe):
         "qmmfsrc":           create_element("qtiqmmfsrc", "camsrc"),
         # Stream 0
         "capsfilter_0":      create_element("capsfilter", "camout0caps"),
-        "queue_0":           create_element("queue", "queue0"),
         "tee_0":             create_element("tee", "split0"),
         "mlvconverter_0":    create_element("qtimlvconverter", "converter0"),
-        "queue_1":           create_element("queue", "queue1"),
         "mltflite_0":        create_element("qtimltflite", "inference0"),
-        "queue_2":           create_element("queue", "queue2"),
         "mlvdetection":      create_element("qtimlvdetection", "detection"),
         "capsfilter_1":      create_element("capsfilter", "metamux0metacaps"),
-        "queue_3":           create_element("queue", "queue3"),
         "metamux_0":         create_element("qtimetamux", "metamux0"),
         "overlay_0":         create_element("qtivoverlay", "overlay0"),
         # Stream 1
         "capsfilter_2":      create_element("capsfilter", "camout1caps"),
-        "queue_4":           create_element("queue", "queue4"),
         "tee_1":             create_element("tee", "split1"),
         "mlvconverter_1":    create_element("qtimlvconverter", "converter1"),
-        "queue_5":           create_element("queue", "queue5"),
         "mltflite_1":        create_element("qtimltflite", "inference1"),
-        "queue_6":           create_element("queue", "queue6"),
         "mlvclassification": create_element("qtimlvclassification", "classification"),
         "capsfilter_3":      create_element("capsfilter", "metamux1metacaps"),
-        "queue_7":           create_element("queue", "queue7"),
         "metamux_1":         create_element("qtimetamux", "metamux1"),
         "overlay_1":         create_element("qtivoverlay", "overlay1"),
         # Side by side all streams
         "composer":          create_element("qtivcomposer", "composer"),
-        "queue_8":           create_element("queue", "queue8"),
         "display":           create_element("waylandsink", "display")
     }
     # fmt: on
+
+    queue_count = 13
+    for i in range(queue_count):
+        queue_name = f"queue_{i}"
+        elements[queue_name] = create_element("queue", queue_name)
 
     # Set element properties
     Gst.util_set_object_arg(elements["qmmfsrc"], "camera", "0")
@@ -195,7 +191,7 @@ def construct_pipeline(pipe):
 
     Gst.util_set_object_arg(elements["mlvdetection"], "threshold", "75.0")
     Gst.util_set_object_arg(elements["mlvdetection"], "results", "4")
-    Gst.util_set_object_arg(elements["mlvdetection"], "module", "yolov8")
+    Gst.util_set_object_arg(elements["mlvdetection"], "module", detection["module"])
     Gst.util_set_object_arg(
         elements["mlvdetection"], "labels", detection["labels"]
     )
@@ -263,22 +259,22 @@ def construct_pipeline(pipe):
     # fmt: off
     link_orders = [
         [
-            "qmmfsrc", "capsfilter_0", "queue_0", "tee_0", "metamux_0",
-            "overlay_0", "composer"
+            "qmmfsrc", "capsfilter_0", "queue_0", "tee_0", "queue_1",
+            "metamux_0", "overlay_0", "composer"
         ],
         [
-            "tee_0", "mlvconverter_0", "queue_1", "mltflite_0", "queue_2",
-            "mlvdetection", "capsfilter_1", "queue_3", "metamux_0"
+            "tee_0", "queue_2", "mlvconverter_0", "queue_3", "mltflite_0",
+            "queue_4", "mlvdetection", "capsfilter_1", "queue_5", "metamux_0"
         ],
         [
-            "qmmfsrc", "capsfilter_2", "queue_4", "tee_1", "metamux_1",
-            "overlay_1", "composer"
+            "qmmfsrc", "capsfilter_2", "queue_6", "tee_1", "queue_7",
+            "metamux_1", "overlay_1", "composer"
         ],
         [
-            "tee_1", "mlvconverter_1", "queue_5", "mltflite_1", "queue_6",
-            "mlvclassification", "capsfilter_3", "queue_7", "metamux_1"
+            "tee_1", "queue_8", "mlvconverter_1", "queue_9", "mltflite_1",
+            "queue_10", "mlvclassification", "capsfilter_3", "queue_11", "metamux_1"
         ],
-        ["composer", "queue_8", "display"]
+        ["composer", "queue_12", "display"]
     ]
     # fmt: on
     link_elements(link_orders, elements)

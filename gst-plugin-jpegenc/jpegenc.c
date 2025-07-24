@@ -225,6 +225,8 @@ gst_jpeg_enc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   GstStructure *params = NULL;
   GstVideoCodecState *output_state = NULL;
   GstCaps *outcaps = NULL;
+  guint informat = GST_VIDEO_INFO_FORMAT (info);
+  guint outformat = GST_VIDEO_FORMAT_ENCODED;
 
   // Set output caps
   outcaps = gst_caps_new_simple ("image/jpeg",
@@ -255,10 +257,10 @@ gst_jpeg_enc_set_format (GstVideoEncoder * encoder, GstVideoCodecState * state)
   params = gst_structure_new ("qtijpegenc",
       GST_JPEG_ENC_INPUT_WIDTH, G_TYPE_UINT, GST_VIDEO_INFO_WIDTH (info),
       GST_JPEG_ENC_INPUT_HEIGHT, G_TYPE_UINT, GST_VIDEO_INFO_HEIGHT (info),
-      GST_JPEG_ENC_INPUT_FORMAT, G_TYPE_UINT, HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED,
+      GST_JPEG_ENC_INPUT_FORMAT, G_TYPE_UINT, informat,
       GST_JPEG_ENC_OUTPUT_WIDTH, G_TYPE_UINT, GST_VIDEO_INFO_WIDTH (info),
       GST_JPEG_ENC_OUTPUT_HEIGHT, G_TYPE_UINT, GST_VIDEO_INFO_HEIGHT (info),
-      GST_JPEG_ENC_OUTPUT_FORMAT, G_TYPE_UINT, HAL_PIXEL_FORMAT_BLOB,
+      GST_JPEG_ENC_OUTPUT_FORMAT, G_TYPE_UINT, outformat,
       GST_JPEG_ENC_QUALITY, G_TYPE_UINT, jpegenc->quality,
       GST_JPEG_ENC_ORIENTATION, GST_TYPE_JPEG_ENC_ORIENTATION,
           jpegenc->orientation,

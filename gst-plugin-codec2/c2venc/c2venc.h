@@ -110,6 +110,7 @@ struct _GstC2VEncoder {
   guint32              num_ltr_frames;
   gint32               priority;
   GstC2TemporalLayer   temp_layer;
+  gint32               vbv_delay;
 };
 
 struct _GstC2VEncoderClass {

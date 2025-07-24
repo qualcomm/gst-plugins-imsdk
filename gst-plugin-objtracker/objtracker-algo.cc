@@ -121,7 +121,7 @@ gst_region_meta_entry_new (GstVideoRegionOfInterestMeta * roimeta)
   region->w = roimeta->w;
   region->h = roimeta->h;
 
-  region->params = g_steal_pointer (&(roimeta->params));
+  region->params = (GList *) g_steal_pointer (&(roimeta->params));
 
   return region;
 }
@@ -524,7 +524,7 @@ gst_objtracker_algo_execute_buffer (GstObjTrackerAlgo * algo,
     roimeta->h = results[i].h;
     roimeta->id = region->id;
     roimeta->parent_id = region->parent_id;
-    roimeta->params = g_steal_pointer (&(region->params));
+    roimeta->params = (GList *) g_steal_pointer (&(region->params));
     g_hash_table_remove (algo->roiregions, key);
 
     param = gst_video_region_of_interest_meta_get_param (roimeta,
