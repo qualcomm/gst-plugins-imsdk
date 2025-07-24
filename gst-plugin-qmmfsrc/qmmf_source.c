@@ -868,6 +868,8 @@ static void
 qmmfsrc_event_callback (guint event, gpointer userdata)
 {
   GstQmmfSrc *qmmfsrc = GST_QMMFSRC (userdata);
+  GstStructure *event_msg = NULL;
+  GstMessage *message = NULL;
 
   switch (event) {
     case EVENT_SERVICE_DIED:
@@ -905,9 +907,45 @@ qmmfsrc_event_callback (guint event, gpointer userdata)
       GST_WARNING_OBJECT (qmmfsrc, "Camera device has encountered non-fatal "
           "metadata drop error !");
       break;
+    case EVENT_SOF_FREEZE:
+      GST_LOG_OBJECT (qmmfsrc, "SOF Freeze occured");
+      break;
+    case EVENT_RECOVERYFAILURE:
+      GST_LOG_OBJECT (qmmfsrc, "Recovery Failure occured");
+      break;
+    case EVENT_FATAL:
+      GST_LOG_OBJECT (qmmfsrc, "Fatal Error occured");
+      break;
+    case EVENT_RECOVERYSUCCESS:
+      GST_LOG_OBJECT (qmmfsrc, "Recovery success occured");
+      break;
+    case EVENT_INTERNAL_RECOVERY:
+      GST_LOG_OBJECT (qmmfsrc, "Internal Recovery occured");
+      break;
     default:
       GST_WARNING_OBJECT (qmmfsrc, "Unknown camera device event");
       break;
+  }
+
+  event_msg = gst_structure_new ("qmmfsrc-event",
+      "event-type", G_TYPE_UINT, event,
+      NULL);
+
+  if (!event_msg) {
+    GST_WARNING_OBJECT (qmmfsrc, "Failed to create structure for event %d", event);
+    return;
+  }
+
+  message = gst_message_new_element (GST_OBJECT (qmmfsrc), event_msg);
+  if (!message) {
+    gst_structure_free (event_msg);
+    GST_WARNING_OBJECT (qmmfsrc, "Failed to create message for event %d", event);
+    return;
+  }
+
+  if (!gst_element_post_message (GST_ELEMENT (qmmfsrc), message)) {
+    gst_message_unref(message);
+    GST_WARNING_OBJECT (qmmfsrc, "Failed to post message for event %d", event);
   }
 }
 
