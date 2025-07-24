@@ -75,11 +75,11 @@
 #include <tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h>
 
 #ifdef HAVE_HEXAGON_DELEGATE_H
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 3)
+#if !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 3)
 #include <tensorflow/lite/delegates/hexagon/hexagon_delegate.h>
 #else
 #include <tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h>
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 3)
+#endif // !defined(HAVE_TFLITE_VERSION_H) ||  TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 3)
 #endif // HAVE_HEXAGON_DELEGATE_H
 
 #ifdef HAVE_EXTERNAL_DELEGATE_H
@@ -395,10 +395,10 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
       // Save power and maintain high accuracy of inference
       options.execution_preference   =
           tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#if !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
       // Burst computation as same delegate is used for all inputs in pipeline
       options.use_burst_computation  = true;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#endif // !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
       if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
         GST_WARNING ("Failed to create NN Framework DSP delegate!");
         break;
@@ -415,12 +415,12 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
       // Save power and maintain high accuracy of inference
       options.execution_preference   =
           tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#if !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
       // Burst computation as same delegate is used for all inputs in pipeline
       options.use_burst_computation  = true;
       // Allow quant types to be converted to fp16 instead of fp32
       options.allow_fp16             = true;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#endif // !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
       if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
         GST_WARNING ("Failed to create NN Framework DSP delegate!");
         break;
@@ -437,10 +437,10 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
       // Save power and maintain high accuracy of inference
       options.execution_preference   =
           tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#if !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
       // Burst computation as same delegate is used for all inputs in pipeline
       options.use_burst_computation  = true;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#endif // !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
       if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
         GST_WARNING ("Failed to create NN Framework NPU delegate!");
         break;
@@ -653,11 +653,11 @@ gst_ml_tflite_engine_new (GstStructure * settings)
     case kTfLiteInt32:
       engine->ininfo->type = GST_ML_TYPE_INT32;
       break;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#if !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
     case kTfLiteUInt32:
       engine->ininfo->type = GST_ML_TYPE_UINT32;
       break;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#endif // !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
     case kTfLiteInt8:
       engine->ininfo->type = GST_ML_TYPE_INT8;
       break;
@@ -682,11 +682,11 @@ gst_ml_tflite_engine_new (GstStructure * settings)
     case kTfLiteInt32:
       engine->outinfo->type = GST_ML_TYPE_INT32;
       break;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#if !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
     case kTfLiteUInt32:
       engine->outinfo->type = GST_ML_TYPE_UINT32;
       break;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#endif // !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
     case kTfLiteInt8:
       engine->outinfo->type = GST_ML_TYPE_INT8;
       break;

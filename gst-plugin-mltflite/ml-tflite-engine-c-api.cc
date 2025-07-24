@@ -795,11 +795,11 @@ gst_ml_tflite_engine_new (GstStructure * settings)
     case kTfLiteInt32:
       engine->ininfo->type = GST_ML_TYPE_INT32;
       break;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#if !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
     case kTfLiteUInt32:
       engine->ininfo->type = GST_ML_TYPE_UINT32;
       break;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#endif // !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
     case kTfLiteInt8:
       engine->ininfo->type = GST_ML_TYPE_INT8;
       break;
@@ -827,11 +827,11 @@ gst_ml_tflite_engine_new (GstStructure * settings)
     case kTfLiteInt32:
       engine->outinfo->type = GST_ML_TYPE_INT32;
       break;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#if !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
     case kTfLiteUInt32:
       engine->outinfo->type = GST_ML_TYPE_UINT32;
       break;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#endif // !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
     case kTfLiteInt8:
       engine->outinfo->type = GST_ML_TYPE_INT8;
       break;
