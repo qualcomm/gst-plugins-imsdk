@@ -389,7 +389,10 @@ gst_ml_qnn_log_callback (const char* format, QnnLog_Level_t loglvl,
       break;
   }
 
-  GST_CAT_LEVEL_LOG (GST_CAT_QNN_SDK, level, NULL, format, varargs);
+  if (G_UNLIKELY ((level) <= GST_LEVEL_MAX && (level) <= _gst_debug_min)) {
+    gst_debug_log_valist (GST_CAT_QNN_SDK, level, __FILE__, GST_FUNCTION,
+        __LINE__, NULL, format, varargs);
+  }
 }
 
 static gboolean
