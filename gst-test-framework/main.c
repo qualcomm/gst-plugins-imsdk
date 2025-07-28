@@ -59,7 +59,7 @@ static gboolean parse_option_snames (GstAppContext* appctx, gchar **snames)
 
   if (snames == NULL || *snames == NULL) {
     appctx->allsuites = TRUE;
-    GST_INFO ("All suites are enabled\n");
+    g_print ("All suites are enabled\n");
     return TRUE;
   }
 
@@ -73,11 +73,11 @@ static gboolean parse_option_snames (GstAppContext* appctx, gchar **snames)
     val = g_enum_get_value_by_nick (enumclass, s);
 
     if (val == NULL) {
-      GST_WARNING ("unsupported suite %s\n", s);
+      g_printerr ("unsupported suite %s\n", s);
       temps++;
       continue;
     }
-    GST_LOG ("%s suite(%d) is enabled\n", val->value_nick, val->value);
+    g_print ("%s suite(%d) is enabled\n", val->value_nick, val->value);
     appctx->enabledsuites = g_list_append (appctx->enabledsuites,
         GINT_TO_POINTER (val->value));
     ret = TRUE;
@@ -128,9 +128,12 @@ static gboolean gst_plugin_get_suite (GstPluginSuite *psuite)
     case GST_TEST_SUITE_CAMERA:
       GST_PLUGIN_GET_SUITE (camera, psuite);
       break;
+    case GST_TEST_SUITE_ML:
+      GST_PLUGIN_GET_SUITE (ml, psuite);
+      break;
     default:
       ret = FALSE;
-      GST_WARNING ("Unknown suite index %d.", psuite->idx);
+      gst_printerr ("Unknown suite index %d.", psuite->idx);
       break;
   }
 
