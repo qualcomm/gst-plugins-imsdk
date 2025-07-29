@@ -110,7 +110,7 @@ RuntimeFlagsParser::GetFlag(const std::string& key) {
 
   std::string value = string_member;
 
-  if (boolean_map_.contains(ToUpper(value))) {
+  if (boolean_map_.count(ToUpper(value)) != 0) {
     return boolean_map_.at(ToUpper(value));
   }
 

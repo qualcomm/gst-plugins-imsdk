@@ -122,12 +122,45 @@ gst_caps_has_compression (const GstCaps * caps, const gchar * compression);
  *          GST_TYPE_STRUCTURE or G_TYPE_LIST.
  *
  * Parse a G_TYPE_STRING value containing either a list (or single) GValue in
- * string format or a file location which conatins that string data.
+ * string format or a file location which contains that string data.
  *
  * return: TRUE on success or FALSE on failure
  */
 GST_API gboolean
 gst_parse_string_property_value (const GValue * value, GValue * output);
+
+/**
+ * gst_structure_from_json_file:
+ * @filename: String containing file name and path.
+ *
+ * Extract the contents of a JSON file and convert it to GstStructure.
+ *
+ * return: Pointer to GstStructure or NULL on failure.
+ */
+GST_API GstStructure *
+gst_structure_from_json_file (const gchar * filename);
+
+/**
+ * gst_structure_from_json_string:
+ * @string: String in JSON containing JSON object
+ *
+ * Converts JSON string containing an object into GstStructure.
+ *
+ * return: Pointer to GstStructure or NULL on failure.
+ */
+GST_API GstStructure *
+gst_structure_from_json_string (const gchar * string);
+
+/**
+ * gst_structure_to_json_string:
+ * @structure: The #GStStructure which will be converted.
+ *
+ * Converts structure to a human-readable JSON string representation.
+ *
+ * return: Pointer to string or NULL on failure.
+ */
+GST_API gchar *
+gst_structure_to_json_string (GstStructure * structure);
 
 /**
  * gst_buffer_get_protection_meta_id:
