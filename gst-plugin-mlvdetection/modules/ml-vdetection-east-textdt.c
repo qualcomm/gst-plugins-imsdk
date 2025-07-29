@@ -48,7 +48,7 @@
 // MODULE_CAPS support input dim [32, 32] -> [1920, 1088]
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
-    "type = (string) { UINT8, FLOAT32 }, " \
+    "type = (string) { FLOAT32 }, " \
     "dimensions = (int) < <1, [8, 480], [8, 480], [1, 5]>, <1, [8, 480], [8, 480], [1, 5]> > ;"
 
 // Module caps instance
@@ -64,27 +64,15 @@ struct _GstMLSubModule {
   GHashTable *labels;
   // Confidence threshold value.
   gfloat     threshold;
-
-  // Offset values for each of the tensors for dequantization of some tensors.
-  gdouble    qoffsets[GST_ML_MAX_TENSORS];
-  // Scale values for each of the tensors for dequantization of some tensors.
-  gdouble    qscales[GST_ML_MAX_TENSORS];
 };
 
 gpointer
 gst_ml_module_open (void)
 {
   GstMLSubModule *submodule = NULL;
-  guint idx = 0;
 
   submodule = g_slice_new0 (GstMLSubModule);
   g_return_val_if_fail (submodule != NULL, NULL);
-
-  // Initialize the quantization offsets and scales.
-  for (idx = 0; idx < GST_ML_MAX_TENSORS; idx++) {
-    submodule->qoffsets[idx] = 0.0;
-    submodule->qscales[idx] = 1.0;
-  }
 
   return (gpointer) submodule;
 }
@@ -175,50 +163,6 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   gst_structure_get_double (settings, GST_ML_MODULE_OPT_THRESHOLD, &threshold);
   submodule->threshold = threshold / 100.0;
 
-  if (GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_UINT8) {
-    GstStructure *constants = NULL;
-    const GValue *qoffsets = NULL, *qscales = NULL;
-    guint idx = 0, n_tensors = 0;
-
-    success = gst_structure_has_field (settings, GST_ML_MODULE_OPT_CONSTANTS);
-    if (!success) {
-      GST_ERROR ("Settings stucture does not contain constants value!");
-      goto cleanup;
-    }
-
-    constants = GST_STRUCTURE (g_value_get_boxed (
-        gst_structure_get_value (settings, GST_ML_MODULE_OPT_CONSTANTS)));
-
-    if (!(success = gst_structure_has_field (constants, "q-offsets"))) {
-      GST_ERROR ("Missing quantization offsets coefficients!");
-      goto cleanup;
-    } else if (!(success = gst_structure_has_field (constants, "q-scales"))) {
-      GST_ERROR ("Missing quantization scales coefficients!");
-      goto cleanup;
-    }
-
-    qoffsets = gst_structure_get_value (constants, "q-offsets");
-    qscales = gst_structure_get_value (constants, "q-scales");
-    n_tensors = GST_ML_INFO_N_TENSORS (&(submodule->mlinfo));
-
-    if (!(success = (gst_value_array_get_size (qoffsets) == n_tensors))) {
-      GST_ERROR ("Expecting %u dequantization offsets entries but received "
-          "only %u!", n_tensors, gst_value_array_get_size (qoffsets));
-      goto cleanup;
-    } else if (!(success = (gst_value_array_get_size (qscales) == n_tensors))) {
-      GST_ERROR ("Expecting %u dequantization scales entries but received "
-          "only %u!", n_tensors, gst_value_array_get_size (qscales));
-      goto cleanup;
-    }
-
-    for (idx = 0; idx < n_tensors; idx++) {
-      submodule->qoffsets[idx] =
-          g_value_get_double (gst_value_array_get_value (qoffsets, idx));
-      submodule->qscales[idx] =
-          g_value_get_double (gst_value_array_get_value (qscales, idx));
-    }
-  }
-
 cleanup:
   if (caps != NULL)
     gst_caps_unref (caps);
@@ -236,9 +180,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GArray *predictions = (GArray *) output;
   GstProtectionMeta *pmeta = NULL;
   GstMLBoxPrediction *prediction = NULL;
-  gpointer scores = NULL, geometry = NULL;
+  gfloat *scores = NULL, *geometry = NULL;
   GstVideoRectangle region = { 0, };
-  GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   guint num = 0, idx = 0, n_rows = 0, n_cols = 0, x = 0, y = 0;
   gfloat x0 = 0, x1 = 0, x2 = 0, x3 = 0, angle = 0, cos_angle = 0, sin_angle = 0;
   gfloat confidence = 0, h = 0, w = 0;
@@ -257,16 +200,15 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   // Extract the source tensor region with actual data.
   gst_ml_structure_get_source_region (pmeta->info, &region);
 
-  mltype = GST_ML_FRAME_TYPE (mlframe);
   n_rows = GST_ML_FRAME_DIM (mlframe, 0, 1);
   n_cols = GST_ML_FRAME_DIM (mlframe, 0, 2);
 
   if (GST_ML_FRAME_DIM (mlframe, 0, 3) == 1) {
-    scores = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
-    geometry = GST_ML_FRAME_BLOCK_DATA (mlframe, 1);
+    scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+    geometry = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
   } else {
-    scores = GST_ML_FRAME_BLOCK_DATA (mlframe, 1);
-    geometry = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
+    scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+    geometry = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
   }
 
   for (y = 0; y < n_rows; y++) {
@@ -274,26 +216,20 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       GstMLLabel *label = NULL;
       GstMLBoxEntry entry = { 0, };
 
-      confidence = gst_ml_tensor_extract_value (mltype, scores, num,
-          submodule->qoffsets[0], submodule->qscales[0]);
+      confidence = scores[num];
 
       // Discard results below the minimum score threshold.
       if (confidence < submodule->threshold)
         continue;
 
       // Extracting the derive rotated boxes surround text
-      x0 = gst_ml_tensor_extract_value (mltype, geometry, idx,
-          submodule->qoffsets[1], submodule->qscales[1]);
-      x1 = gst_ml_tensor_extract_value (mltype, geometry, idx + 1,
-          submodule->qoffsets[1], submodule->qscales[1]);
-      x2 = gst_ml_tensor_extract_value (mltype, geometry, idx + 2,
-          submodule->qoffsets[1], submodule->qscales[1]);
-      x3 = gst_ml_tensor_extract_value (mltype, geometry, idx + 3,
-          submodule->qoffsets[1], submodule->qscales[1]);
+      x0 = geometry[idx];
+      x1 = geometry[idx + 1];
+      x2 = geometry[idx + 2];
+      x3 = geometry[idx + 3];
 
       // Extracting the rotation angle then computing the sine and cosine
-      angle = gst_ml_tensor_extract_value (mltype, geometry, idx + 4,
-          submodule->qoffsets[1], submodule->qscales[1]);
+      angle = geometry[idx + 4];
 
       cos_angle = cos (angle);
       sin_angle = sin (angle);

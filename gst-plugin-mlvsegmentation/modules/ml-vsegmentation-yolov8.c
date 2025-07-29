@@ -48,7 +48,7 @@
 
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
-    "type = (string) { INT8, UINT8, FLOAT32 }, " \
+    "type = (string) { FLOAT32 }, " \
     "dimensions = (int) < <1, [21, 42840], 4>, <1, [21, 42840]>, <1, [21, 42840], [1, 32]>, <1, [21, 42840]>, <1, [1, 32], [32, 2048], [32, 2048]> > "
 
 // Module caps instance
@@ -69,11 +69,6 @@ struct _GstMLSubModule {
   GHashTable *labels;
   // Confidence threshold value.
   gfloat     threshold;
-
-  // Offset values for each of the tensors for dequantization of some tensors.
-  gdouble    qoffsets[GST_ML_MAX_TENSORS];
-  // Scale values for each of the tensors for dequantization of some tensors.
-  gdouble    qscales[GST_ML_MAX_TENSORS];
 };
 
 static void
@@ -81,39 +76,31 @@ gst_ml_module_bbox_parse_tripleblock_tensors (GstMLSubModule * submodule,
     GstMLFrame * mlframe, GArray * bboxes, GArray * mask_matrix_indices)
 {
   GstMLLabel *label = NULL;
-  gpointer mlboxes = NULL, scores = NULL, classes = NULL;
-  GstMLType mltype = GST_ML_TYPE_UNKNOWN;
+  gfloat  *mlboxes = NULL, *scores = NULL, *classes = NULL;
   gint nms = -1, num = 0;
   guint idx = 0, class_idx = 0, n_paxels = 0;
   gfloat confidence = 0;
 
-  mltype = GST_ML_FRAME_TYPE (mlframe);
   n_paxels = GST_ML_FRAME_DIM (mlframe, 0, 1);
 
-  mlboxes = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
-  scores = GST_ML_FRAME_BLOCK_DATA (mlframe, 1);
-  classes = GST_ML_FRAME_BLOCK_DATA (mlframe, 3);
+  mlboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
+  scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
+  classes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
 
   for (idx = 0; idx < n_paxels; idx++) {
     GstMLBoxEntry bbox = { 0, };
 
-    confidence = gst_ml_tensor_extract_value (mltype, scores, idx,
-        submodule->qoffsets[1], submodule->qscales[1]);
-    class_idx = gst_ml_tensor_extract_value (mltype, classes, idx,
-        submodule->qoffsets[3], submodule->qscales[3]);
+    confidence = scores[idx];
+    class_idx = classes[idx];
 
     // Discard results below the minimum confidence threshold.
     if (confidence < submodule->threshold)
       continue;
 
-    bbox.left = gst_ml_tensor_extract_value (mltype, mlboxes, (idx * 4) + 0,
-        submodule->qoffsets[0], submodule->qscales[0]);
-    bbox.top = gst_ml_tensor_extract_value (mltype, mlboxes, (idx * 4) + 1,
-        submodule->qoffsets[0], submodule->qscales[0]);
-    bbox.right  = gst_ml_tensor_extract_value (mltype, mlboxes, (idx * 4) + 2,
-        submodule->qoffsets[0], submodule->qscales[0]);
-    bbox.bottom  = gst_ml_tensor_extract_value (mltype, mlboxes, (idx * 4) + 3,
-        submodule->qoffsets[0], submodule->qscales[0]);
+    bbox.left = mlboxes[idx * 4];
+    bbox.top = mlboxes[idx * 4 + 1];
+    bbox.right = mlboxes[idx * 4 + 2];
+    bbox.bottom = mlboxes[idx * 4 + 3];
 
     GST_TRACE ("Class: %u Box[%f, %f, %f, %f] Confidence: %f", class_idx,
         bbox.top, bbox.left, bbox.bottom, bbox.right, confidence);
@@ -158,19 +145,16 @@ gst_ml_module_colormask_parse_monoblock_tensor (GstMLSubModule * submodule,
     GstMLFrame * mlframe, GArray * bboxes, GArray * mask_matrix_indices)
 {
   guint32 *colormask = NULL;
-  gpointer masks = NULL, protos = NULL;
-  GstMLType mltype = GST_ML_TYPE_UNKNOWN;
+  gfloat *masks = NULL, *protos = NULL;
   guint idx = 0, num = 0, n_blocks = 0;
   guint row = 0, column = 0, top = 0, left = 0, bottom = 0, right = 0;
   gfloat confidence = 0;
 
-  mltype = GST_ML_FRAME_TYPE (mlframe);
-
   // Number blocks in the 5t (protos) tensor.
   n_blocks = GST_ML_FRAME_DIM (mlframe, 4, 3) * GST_ML_FRAME_DIM (mlframe, 4, 2);
 
-  masks = GST_ML_FRAME_BLOCK_DATA (mlframe, 2);
-  protos = GST_ML_FRAME_BLOCK_DATA (mlframe, 4);
+  masks = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
+  protos = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 4));
 
   // Allocate memory for the resulted segmentation mask.
   colormask = g_new0 (guint32, n_blocks);
@@ -198,12 +182,10 @@ gst_ml_module_colormask_parse_monoblock_tensor (GstMLSubModule * submodule,
         // Perform matrix multiplication for current macro block.
         for (num = 0; num < GST_ML_FRAME_DIM (mlframe, 2, 2); num++) {
           // Get the mask value for current channel/class.
-          m_value = gst_ml_tensor_extract_value (mltype, masks,
-              m_idx + num, submodule->qoffsets[2], submodule->qscales[2]);
+          m_value = masks[m_idx + num];
 
           // Get the protos value for current channel/class and macro block.
-          p_value = gst_ml_tensor_extract_value (mltype, protos,
-              b_idx + num * n_blocks, submodule->qoffsets[4], submodule->qscales[4]);
+          p_value = protos[b_idx + num * n_blocks];
 
           // Confidence score for this macro block.
           confidence += m_value * p_value;
@@ -224,16 +206,9 @@ gpointer
 gst_ml_module_open (void)
 {
   GstMLSubModule *submodule = NULL;
-  guint idx = 0;
 
   submodule = g_slice_new0 (GstMLSubModule);
   g_return_val_if_fail (submodule != NULL, NULL);
-
-  // Initialize the quantization offsets and scales.
-  for (idx = 0; idx < GST_ML_MAX_TENSORS; idx++) {
-    submodule->qoffsets[idx] = 0.0;
-    submodule->qscales[idx] = 1.0;
-  }
 
   return (gpointer) submodule;
 }
@@ -315,51 +290,6 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
     goto cleanup;
 
   submodule->threshold = 0.51;
-
-  if ((GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_INT8) ||
-      (GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_UINT8)) {
-    GstStructure *constants = NULL;
-    const GValue *qoffsets = NULL, *qscales = NULL;
-    guint idx = 0, n_tensors = 0;
-
-    success = gst_structure_has_field (settings, GST_ML_MODULE_OPT_CONSTANTS);
-    if (!success) {
-      GST_ERROR ("Settings stucture does not contain constants value!");
-      goto cleanup;
-    }
-
-    constants = GST_STRUCTURE (g_value_get_boxed (
-        gst_structure_get_value (settings, GST_ML_MODULE_OPT_CONSTANTS)));
-
-    if (!(success = gst_structure_has_field (constants, "q-offsets"))) {
-      GST_ERROR ("Missing quantization offsets coefficients!");
-      goto cleanup;
-    } else if (!(success = gst_structure_has_field (constants, "q-scales"))) {
-      GST_ERROR ("Missing quantization scales coefficients!");
-      goto cleanup;
-    }
-
-    qoffsets = gst_structure_get_value (constants, "q-offsets");
-    qscales = gst_structure_get_value (constants, "q-scales");
-    n_tensors = GST_ML_INFO_N_TENSORS (&(submodule->mlinfo));
-
-    if (!(success = (gst_value_array_get_size (qoffsets) == n_tensors))) {
-      GST_ERROR ("Expecting %u dequantization offsets entries but received "
-          "only %u!", n_tensors, gst_value_array_get_size (qoffsets));
-      goto cleanup;
-    } else if (!(success = (gst_value_array_get_size (qscales) == n_tensors))) {
-      GST_ERROR ("Expecting %u dequantization scales entries but received "
-          "only %u!", n_tensors, gst_value_array_get_size (qscales));
-      goto cleanup;
-    }
-
-    for (idx = 0; idx < n_tensors; idx++) {
-      submodule->qoffsets[idx] =
-          g_value_get_double (gst_value_array_get_value (qoffsets, idx));
-      submodule->qscales[idx] =
-          g_value_get_double (gst_value_array_get_value (qscales, idx));
-    }
-  }
 
 cleanup:
   if (caps != NULL)

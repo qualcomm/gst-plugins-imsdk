@@ -51,7 +51,7 @@
 //Person detection model output parameters
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
-    "type = (string) { UINT8, FLOAT32 }, " \
+    "type = (string) { FLOAT32 }, " \
     "dimensions = (int) < < 1, 120, 160, 3 >, < 1, 120, 160, 12 >, < 1, 120, 160, 34 >, < 1, 120, 160, 17 > >; "
 
 // Module caps instance
@@ -74,11 +74,6 @@ struct _GstMLSubModule {
   GHashTable *landmarks;
   // Confidence threshold value.
   gfloat     threshold;
-
-  // Offset values for each of the tensors for dequantization of some tensors.
-  gdouble    qoffsets[GST_ML_MAX_TENSORS];
-  // Scale values for each of the tensors for dequantization of some tensors.
-  gdouble    qscales[GST_ML_MAX_TENSORS];
 };
 
 static GHashTable *
@@ -134,16 +129,9 @@ gpointer
 gst_ml_module_open (void)
 {
   GstMLSubModule *submodule = NULL;
-  guint idx = 0;
 
   submodule = g_slice_new0 (GstMLSubModule);
   g_return_val_if_fail (submodule != NULL, NULL);
-
-  // Initialize the quantization offsets and scales.
-  for (idx = 0; idx < GST_ML_MAX_TENSORS; idx++) {
-    submodule->qoffsets[idx] = 0.0;
-    submodule->qscales[idx] = 1.0;
-  }
 
   return (gpointer) submodule;
 }
@@ -243,51 +231,6 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
   gst_structure_get_double (settings, GST_ML_MODULE_OPT_THRESHOLD, &threshold);
   submodule->threshold = threshold / 100.0;
 
-  if ((GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_INT8) ||
-      (GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_UINT8)) {
-    GstStructure *constants = NULL;
-    const GValue *qoffsets = NULL, *qscales = NULL;
-    guint idx = 0, n_tensors = 0;
-
-    success = gst_structure_has_field (settings, GST_ML_MODULE_OPT_CONSTANTS);
-    if (!success) {
-      GST_ERROR ("Settings stucture does not contain constants value!");
-      goto cleanup;
-    }
-
-    constants = GST_STRUCTURE (g_value_get_boxed (
-        gst_structure_get_value (settings, GST_ML_MODULE_OPT_CONSTANTS)));
-
-    if (!(success = gst_structure_has_field (constants, "q-offsets"))) {
-      GST_ERROR ("Missing quantization offsets coefficients!");
-      goto cleanup;
-    } else if (!(success = gst_structure_has_field (constants, "q-scales"))) {
-      GST_ERROR ("Missing quantization scales coefficients!");
-      goto cleanup;
-    }
-
-    qoffsets = gst_structure_get_value (constants, "q-offsets");
-    qscales = gst_structure_get_value (constants, "q-scales");
-    n_tensors = GST_ML_INFO_N_TENSORS (&(submodule->mlinfo));
-
-    if (!(success = (gst_value_array_get_size (qoffsets) == n_tensors))) {
-      GST_ERROR ("Expecting %u dequantization offsets entries but received "
-          "only %u!", n_tensors, gst_value_array_get_size (qoffsets));
-      goto cleanup;
-    } else if (!(success = (gst_value_array_get_size (qscales) == n_tensors))) {
-      GST_ERROR ("Expecting %u dequantization scales entries but received "
-          "only %u!", n_tensors, gst_value_array_get_size (qscales));
-      goto cleanup;
-    }
-
-    for (idx = 0; idx < n_tensors; idx++) {
-      submodule->qoffsets[idx] =
-          g_value_get_double (gst_value_array_get_value (qoffsets, idx));
-      submodule->qscales[idx] =
-          g_value_get_double (gst_value_array_get_value (qscales, idx));
-    }
-  }
-
 cleanup:
   if (caps != NULL)
     gst_caps_unref (caps);
@@ -305,9 +248,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   GArray *predictions = (GArray *)output;
   GstProtectionMeta *pmeta = NULL;
   GstMLBoxPrediction *prediction = NULL;
-  gpointer scores = NULL, landmarks = NULL, bboxes = NULL, lmkscores = NULL;
+  gfloat *scores = NULL, *landmarks = NULL, *bboxes = NULL, *lmkscores = NULL;
   GstVideoRectangle region = { 0, };
-  GstMLType mltype = GST_ML_TYPE_UNKNOWN;
   gfloat confidence = 0.0;
   guint idx = 0, num = 0, id = 0, class_idx = 0, size = 0.0;
   guint n_classes = 0, n_landmarks = 0, n_paxels = 0, paxelsize = 0;
@@ -333,20 +275,19 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   gst_ml_structure_get_source_region (pmeta->info, &region);
 
   // First tensor represents confidence scores.
-  scores = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
+  scores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
   // Second tensor represents the coordinates of the bounding boxes.
-  bboxes = GST_ML_FRAME_BLOCK_DATA (mlframe, 1);
+  bboxes = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
   // Third tensor represents the landmarks coordinates.
-  landmarks = GST_ML_FRAME_BLOCK_DATA (mlframe, 2);
+  landmarks = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
   // Fourth tensor represents landmark scores.
-  lmkscores = GST_ML_FRAME_BLOCK_DATA (mlframe, 3);
+  lmkscores = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 3));
 
   // The 1st tensor dimension represents the number of detection classes.
   n_classes = GST_ML_FRAME_DIM (mlframe, 0, 3);
   // The 3rd tensor dimension represents the number of landmark X & Y pairs.
   n_landmarks = GST_ML_FRAME_DIM (mlframe, 2, 3) / 2;
 
-  mltype = GST_ML_FRAME_TYPE (mlframe);
   // Calculate the number of macroblocks (paxels).
   n_paxels = GST_ML_FRAME_DIM (mlframe, 0, 1) * GST_ML_FRAME_DIM (mlframe, 0, 2);
   // Calculate the dimension of the square macro block.
@@ -358,8 +299,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     gfloat bbox[4] = { 0, }, x = 0.0, y = 0.0;
     guint lmk_idx = 0;
 
-    confidence = gst_ml_tensor_extract_value (mltype, scores, idx,
-        submodule->qoffsets[0], submodule->qscales[0]);
+    confidence = scores[idx];
 
     // Discard results below the minimum score threshold.
     if (confidence < submodule->threshold)
@@ -379,14 +319,10 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     cx = (idx / n_classes) % GST_ML_FRAME_DIM (mlframe, 2, 2);
     cy = (idx / n_classes) / GST_ML_FRAME_DIM (mlframe, 2, 2);
 
-    bbox[0] = gst_ml_tensor_extract_value (mltype, bboxes, (idx * 4),
-        submodule->qoffsets[1], submodule->qscales[1]);
-    bbox[1] = gst_ml_tensor_extract_value (mltype, bboxes, (idx * 4 + 1),
-        submodule->qoffsets[1], submodule->qscales[1]);
-    bbox[2] = gst_ml_tensor_extract_value (mltype, bboxes, (idx * 4 + 2),
-        submodule->qoffsets[1], submodule->qscales[1]);
-    bbox[3] = gst_ml_tensor_extract_value (mltype, bboxes, (idx * 4 + 3),
-        submodule->qoffsets[1], submodule->qscales[1]);
+    bbox[0] = bboxes[idx * 4];
+    bbox[1] = bboxes[idx * 4 + 1];
+    bbox[2] = bboxes[idx * 4 + 2];
+    bbox[3] = bboxes[idx * 4 + 3];
 
     entry.left = (cx - bbox[0]) * paxelsize;
     entry.top = (cy - bbox[1]) * paxelsize;
@@ -443,8 +379,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
       // Check whether the landmark is above the set threshold.
       id = (idx / n_classes) * n_landmarks + num;
 
-      confidence = gst_ml_tensor_extract_value (mltype, lmkscores, id,
-          submodule->qoffsets[3], submodule->qscales[3]);
+      confidence = lmkscores[id];
 
       if (confidence < 0.5)
         continue;
@@ -467,10 +402,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
 
       id = (idx / n_classes) * (n_landmarks * 2) + num;
 
-      x = gst_ml_tensor_extract_value (mltype, landmarks, id,
-          submodule->qoffsets[2], submodule->qscales[2]);
-      y = gst_ml_tensor_extract_value (mltype, landmarks, id + n_landmarks,
-          submodule->qoffsets[2], submodule->qscales[2]);
+      x = landmarks[id];
+      y = landmarks[id + n_landmarks];
 
       lmk->x = (cx + x) * paxelsize;
       lmk->y = (cy + y) * paxelsize;

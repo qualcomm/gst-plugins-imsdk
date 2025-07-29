@@ -24,7 +24,7 @@
 
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
-    "type = (string) { UINT8, FLOAT32 }, " \
+    "type = (string) { FLOAT32 }, " \
     "dimensions = (int) < <1, 512>, <1, 32>, <1, 2>, <1, 2>, <1, 2>, <1, 2> > "
 
 // Module caps instance
@@ -53,11 +53,6 @@ struct _GstMLSubModule {
   GHashTable *labels;
   // Confidence threshold value.
   gdouble    threshold;
-
-  // Offset values for each of the tensors for dequantization of some tensors.
-  gdouble    qoffsets[GST_ML_MAX_TENSORS];
-  // Scale values for each of the tensors for dequantization of some tensors.
-  gdouble    qscales[GST_ML_MAX_TENSORS];
 
   // Extra operations that need to apply
   gint       operation;
@@ -192,14 +187,13 @@ gst_ml_module_load_databases (GstMLSubModule * submodule, const GValue * list)
 }
 
 static gdouble
-gst_ml_tensor_softmax_sum (GstMLType mltype, gpointer data, guint n_entries,
-    gdouble qoffset, gdouble qscale)
+gst_ml_tensor_softmax_sum (gfloat * data, guint n_entries)
 {
   guint idx = 0;
   gdouble sum = 0, value = 0;
 
   for (idx = 0; idx < n_entries; ++idx) {
-    value = gst_ml_tensor_extract_value (mltype, data, idx, qoffset, qscale);
+    value = data[idx];
     sum += exp(value);
   }
 
@@ -207,15 +201,15 @@ gst_ml_tensor_softmax_sum (GstMLType mltype, gpointer data, guint n_entries,
 }
 
 static gfloat
-gst_ml_cosine_similarity_score (GstMLType mltype, gpointer data,
-    gfloat * database, guint n_entries, gdouble qoffset, gdouble qscale)
+gst_ml_cosine_similarity_score (gfloat * data,
+    gfloat * database, guint n_entries)
 {
   guint idx = 0;
   gdouble value = 0.0, v1_pow2_sum = 0.0, v2_pow2_sum = 0.0, product = 0.0;
 
   for (idx = 0; idx < n_entries; ++idx) {
     // Extract the tensor value in float format.
-    value = gst_ml_tensor_extract_value (mltype, data, idx, qoffset, qscale);
+    value = data[idx];
 
     // Calculate the vectors power of 2 sum and sum of the dot products.
     v1_pow2_sum += value * value;
@@ -231,15 +225,15 @@ gst_ml_cosine_similarity_score (GstMLType mltype, gpointer data,
 }
 
 static gfloat
-gst_ml_cosine_distance_score (GstMLType mltype, gpointer data,
-    gfloat * database, guint n_entries, gdouble qoffset, gdouble qscale)
+gst_ml_cosine_distance_score (gfloat * data,
+    gfloat * database, guint n_entries)
 {
   guint idx = 0;
   gfloat value = 0.0, v1_pow2_sum = 0.0, v2_pow2_sum = 0.0, product = 0.0;
 
   for (idx = 0; idx < n_entries; ++idx) {
     // Extract the tensor value in float format.
-    value = gst_ml_tensor_extract_value (mltype, data, idx, qoffset, qscale);
+    value = data[idx];
 
     // Calculate the vectors power of 2 sum and sum of the dot products.
     v1_pow2_sum += value * value;
@@ -260,14 +254,12 @@ gst_ml_module_face_recognition (GstMLSubModule * submodule,
 {
   GstFaceTemplate *face = NULL;
   GstFaceFeatures *features = NULL;
-  gpointer data = NULL;
-  GstMLType mltype = GST_ML_TYPE_UNKNOWN;
+  gfloat *data = NULL;
   guint num = 0, id = 0, n_features = 0;
   gfloat score = 0.0, maxscore = 0.0, maxconfidence = 0.0;
   gint pid = -1;
 
-  mltype = GST_ML_FRAME_TYPE (mlframe);
-  data = GST_ML_FRAME_BLOCK_DATA (mlframe, index);
+  data = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, index));
   n_features = GST_ML_FRAME_DIM (mlframe, index, 1);
 
   for (id = 0; id < submodule->database->len; id++, maxscore = 0.0) {
@@ -277,8 +269,7 @@ gst_ml_module_face_recognition (GstMLSubModule * submodule,
       features = &(g_array_index (face->features, GstFaceFeatures, num));
 
       // Calculate the similarity between the tensor data and the database.
-      score = gst_ml_cosine_similarity_score (mltype, data, features->whole,
-          n_features, submodule->qoffsets[index], submodule->qscales[index]);
+      score = gst_ml_cosine_similarity_score (data, features->whole, n_features);
 
       if (score <= maxscore)
         continue;
@@ -303,18 +294,15 @@ static gboolean
 gst_ml_module_face_has_liveliness (GstMLSubModule * submodule,
     GstFaceTemplate * face, GstMLFrame * mlframe, guint index)
 {
-  gpointer data = NULL;
-  GstMLType mltype = GST_ML_TYPE_UNKNOWN;
+  gfloat *data = NULL;
   guint n_features = 0;
   gdouble score = 0.0;
 
-  mltype = GST_ML_FRAME_TYPE (mlframe);
-  data = GST_ML_FRAME_BLOCK_DATA (mlframe, index);
+  data = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, index));
   n_features = GST_ML_FRAME_DIM (mlframe, index, 1);
 
   // Liveliness score using cosine distance between tensor data and database.
-  score = gst_ml_cosine_distance_score (mltype, data, face->liveliness,
-      n_features, submodule->qoffsets[index], submodule->qscales[index]);
+  score = gst_ml_cosine_distance_score (data, face->liveliness, n_features);
 
   GST_TRACE ("Face %s has liveliness score %f", face->name, score);
   return (score >= submodule->threshold) ? TRUE : FALSE;
@@ -325,13 +313,11 @@ static gfloat
 gst_ml_module_accessory_tensor_score (GstMLSubModule * submodule,
     GstMLFrame * mlframe, guint index)
 {
-  gpointer data = NULL;
-  GstMLType mltype = GST_ML_TYPE_UNKNOWN;
+  gfloat *data = NULL;
   guint n_values = 0;
   gfloat sum = 0.0, score = 0.0;
 
-  mltype = GST_ML_FRAME_TYPE (mlframe);
-  data = GST_ML_FRAME_BLOCK_DATA (mlframe, index);
+  data = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, index));
   n_values = GST_ML_FRAME_DIM (mlframe, index, 1);
 
   // Two possible values scores, TRUE or FALSE.
@@ -340,13 +326,11 @@ gst_ml_module_accessory_tensor_score (GstMLSubModule * submodule,
 
   if (GST_ML_OP_IS_SOFTMAX (submodule->operation)) {
     // Calculate the sum of the exponents for softmax function.
-    sum = gst_ml_tensor_softmax_sum (mltype, data, n_values,
-        submodule->qoffsets[index], submodule->qscales[index]);
+    sum = gst_ml_tensor_softmax_sum (data, n_values);
   }
 
   // Second value corresponds to TRUE score.
-  score = gst_ml_tensor_extract_value (mltype, data, 1,
-      submodule->qoffsets[index], submodule->qscales[index]);
+  score = data[1];
 
   // Apply softmax function on the confidence result.
   if (submodule->operation == GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX)
@@ -359,16 +343,9 @@ gpointer
 gst_ml_module_open (void)
 {
   GstMLSubModule *submodule = NULL;
-  guint idx = 0;
 
   submodule = g_slice_new0 (GstMLSubModule);
   g_return_val_if_fail (submodule != NULL, NULL);
-
-  // Initialize the quantization offsets and scales.
-  for (idx = 0; idx < GST_ML_MAX_TENSORS; idx++) {
-    submodule->qoffsets[idx] = 0.0;
-    submodule->qscales[idx] = 1.0;
-  }
 
   return (gpointer) submodule;
 }
@@ -488,51 +465,6 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
       &submodule->operation);
 
   GST_INFO ("Extra operation selected: %u", submodule->operation);
-
-  if ((GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_INT8) ||
-      (GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_UINT8)) {
-    GstStructure *constants = NULL;
-    const GValue *qoffsets = NULL, *qscales = NULL;
-    guint idx = 0, n_tensors = 0;
-
-    success = gst_structure_has_field (settings, GST_ML_MODULE_OPT_CONSTANTS);
-    if (!success) {
-      GST_ERROR ("Settings stucture does not contain constants value!");
-      goto cleanup;
-    }
-
-    constants = GST_STRUCTURE (g_value_get_boxed (
-        gst_structure_get_value (settings, GST_ML_MODULE_OPT_CONSTANTS)));
-
-    if (!(success = gst_structure_has_field (constants, "q-offsets"))) {
-      GST_ERROR ("Missing quantization offsets coefficients!");
-      goto cleanup;
-    } else if (!(success = gst_structure_has_field (constants, "q-scales"))) {
-      GST_ERROR ("Missing quantization scales coefficients!");
-      goto cleanup;
-    }
-
-    qoffsets = gst_structure_get_value (constants, "q-offsets");
-    qscales = gst_structure_get_value (constants, "q-scales");
-    n_tensors = GST_ML_INFO_N_TENSORS (&(submodule->mlinfo));
-
-    if (!(success = (gst_value_array_get_size (qoffsets) == n_tensors))) {
-      GST_ERROR ("Expecting %u dequantization offsets entries but received "
-          "only %u!", n_tensors, gst_value_array_get_size (qoffsets));
-      goto cleanup;
-    } else if (!(success = (gst_value_array_get_size (qscales) == n_tensors))) {
-      GST_ERROR ("Expecting %u dequantization scales entries but received "
-          "only %u!", n_tensors, gst_value_array_get_size (qscales));
-      goto cleanup;
-    }
-
-    for (idx = 0; idx < n_tensors; idx++) {
-      submodule->qoffsets[idx] =
-          g_value_get_double (gst_value_array_get_value (qoffsets, idx));
-      submodule->qscales[idx] =
-          g_value_get_double (gst_value_array_get_value (qscales, idx));
-    }
-  }
 
 cleanup:
   if (caps != NULL)
