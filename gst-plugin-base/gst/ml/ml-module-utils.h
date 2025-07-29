@@ -54,22 +54,6 @@ GST_API void
 gst_ml_stage_unregister_unique_index (gint8 index);
 
 /**
- * gst_ml_tensor_extract_value:
- * @mltype: ML type of the tensor.
- * @data: Pointer to the data in the ML tensor.
- * @idx: Index of the data in the tensor to be extracted.
- * @offset: Offset for dequantizing UINT8 and INT8 tensors.
- * @scale: Scale for dequantizing  UINT8 and INT8 tensors.
- *
- * Helper function for comparing values at two indexes inside the same tensor.
- *
- * return: Extracted tensor value in float format
- */
-gdouble
-gst_ml_tensor_extract_value (GstMLType mltype, gpointer data, guint idx,
-                             gdouble offset, gdouble scale);
-
-/**
  * gst_ml_tensor_compare_values:
  * @mltype: ML type of the tensor.
  * @data: Pointer to the data in the ML tensor.
