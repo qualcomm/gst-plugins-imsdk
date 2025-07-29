@@ -14,8 +14,8 @@ G_BEGIN_DECLS
 
 /**
  * camera_pipeline:
- * @params1: Caps parameters for preview stream.
- * @params2: Caps parameters for video stream.
+ * @params0: Caps parameters for preview stream.
+ * @params1: Caps parameters for video stream.
  * @rawparams: Caps parameters for raw snapshot stream.
  * @jpegparams: Caps parameters for jpeg snapshot stream.
  * @duration: The pipeline running time in seconds.
@@ -25,14 +25,14 @@ G_BEGIN_DECLS
  * return: None
  */
 void
-camera_pipeline (GstCapsParameters * params1,
-    GstCapsParameters * params2, GstCapsParameters * rawparams,
+camera_pipeline (GstCapsParameters * params0,
+    GstCapsParameters * params1, GstCapsParameters * rawparams,
     GstCapsParameters * jpegparams, guint duration);
 
 /**
  * camera_display_encode_pipeline:
- * @params1: Caps parameters for display stream.
- * @params2: Caps parameters for encoder stream.
+ * @params0: Caps parameters for display stream.
+ * @params1: Caps parameters for encoder stream.
  * @duration: The pipeline running time in seconds.
  *
  * Function for creating the camera display and camera encode
@@ -41,13 +41,13 @@ camera_pipeline (GstCapsParameters * params1,
  * return: None
  */
 void
-camera_display_encode_pipeline (GstCapsParameters * params1,
-    GstCapsParameters * params2, guint duration);
+camera_display_encode_pipeline (GstCapsParameters * params0,
+    GstCapsParameters * params1, guint duration);
 
 /**
  * camera_transform_display_pipeline:
- * @params1: Caps parameters for camera output.
- * @params2: Caps parameters for vtransform output.
+ * @params0: Caps parameters for camera output.
+ * @params1: Caps parameters for vtransform output.
  * @duration: The pipeline running time in seconds.
  *
  * Function for creating the camera vtransform and display
@@ -56,12 +56,12 @@ camera_display_encode_pipeline (GstCapsParameters * params1,
  * return: None
  */
 void
-camera_transform_display_pipeline (GstCapsParameters * params1,
-    GstCapsParameters * params2, guint duration);
+camera_transform_display_pipeline (GstCapsParameters * params0,
+    GstCapsParameters * params1, guint duration);
 
 /**
- * camera_transform_display_pipeline:
- * @params1: Caps parameters for camera output.
+ * camera_composer_display_pipeline:
+ * @params: Caps parameters for camera output.
  * @filename: File name, it should be Mp4 file.
  * @duration: The pipeline running time in seconds.
  *
@@ -71,7 +71,7 @@ camera_transform_display_pipeline (GstCapsParameters * params1,
  * return: None
  */
 void
-camera_composer_display_pipeline (GstCapsParameters * params1,
+camera_composer_display_pipeline (GstCapsParameters * params,
     gchar *filename, guint duration);
 
 /**

@@ -162,6 +162,7 @@ ml_video_inference_pipeline (GstMLModelInfo *minfo,
   GstElement *pipeline, *filesrc, *demux, *parse, *vdec, *queue0, *tee,
       *mlvconvert, *queue1, *inference, *queue2, *postproc, *capsfilter,
       *queue3, *metamux, *queue4, *voverlay, *sink;
+  GList *plugins = NULL;
   GstPad *srcpad;
   GstStructure *delegate_options = NULL;
   gint i, moduleid;
@@ -192,6 +193,23 @@ ml_video_inference_pipeline (GstMLModelInfo *minfo,
       queue0 && tee && mlvconvert && queue1 && queue2 &&
       capsfilter && queue3 && metamux && queue4 && voverlay && sink);
 
+  // Add to GList.
+  plugins = g_list_append (plugins, filesrc);
+  plugins = g_list_append (plugins, demux);
+  plugins = g_list_append (plugins, parse);
+  plugins = g_list_append (plugins, vdec);
+  plugins = g_list_append (plugins, tee);
+  plugins = g_list_append (plugins, mlvconvert);
+  plugins = g_list_append (plugins, capsfilter);
+  plugins = g_list_append (plugins, metamux);
+  plugins = g_list_append (plugins, voverlay);
+  plugins = g_list_append (plugins, sink);
+  plugins = g_list_append (plugins, queue0);
+  plugins = g_list_append (plugins, queue1);
+  plugins = g_list_append (plugins, queue2);
+  plugins = g_list_append (plugins, queue3);
+  plugins = g_list_append (plugins, queue4);
+
   if (minfo->inferencetype == GST_ML_OBJECT_DETECTION)
     postproc = gst_element_factory_make ("qtimlvdetection", NULL);
   else if (minfo->inferencetype == GST_ML_CLASSIFICATION)
@@ -201,6 +219,8 @@ ml_video_inference_pipeline (GstMLModelInfo *minfo,
   else
     fail ();
   fail_unless (postproc);
+
+  plugins = g_list_append (plugins, postproc);
 
   // Create inference plugin and set properties.
   if (minfo->type == GST_ML_MODEL_TFLITE) {
@@ -212,6 +232,8 @@ ml_video_inference_pipeline (GstMLModelInfo *minfo,
     fail_unless (inference);
     fail_unless (ml_video_set_mlqnn_property (inference, minfo->delegate));
   }
+
+  plugins = g_list_append (plugins, inference);
   g_object_set (G_OBJECT (inference), "model", minfo->modelpath, NULL);
 
   // Set filesrc location.
@@ -266,5 +288,5 @@ ml_video_inference_pipeline (GstMLModelInfo *minfo,
 
   gst_buffer_straw_stop_pipeline (pipeline, srcpad);
   gst_object_unref (srcpad);
-  gst_object_unref (pipeline);
+  gst_destroy_pipeline (&pipeline, &plugins);
 }
