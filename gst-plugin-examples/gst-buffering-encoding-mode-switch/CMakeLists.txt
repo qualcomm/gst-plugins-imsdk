@@ -8,8 +8,8 @@ pkg_check_modules(GST_ALLOC
 pkg_check_modules(GST_VIDEO
   REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
 
-# GStreamer gst-ife-ipe-switch-streams-runtime-example
-set(GST_EXAMPLE_BIN gst-ife-ipe-switch-streams-runtime-example)
+# GStreamer gst-buffering-encoding-mode-switch-example
+set(GST_EXAMPLE_BIN gst-buffering-encoding-mode-switch-example)
 
 add_executable(${GST_EXAMPLE_BIN}
   main.cc
