@@ -85,6 +85,8 @@ gst_ml_tensor_meta_init (GstMeta * meta, gpointer params, GstBuffer * buffer)
 
   mlmeta->type = GST_ML_TYPE_UNKNOWN;
   mlmeta->n_dimensions = 0;
+  mlmeta->qscale = 1.0f;
+  mlmeta->qoffset = 0.0f;
   memset (mlmeta->dimensions, 0, sizeof (mlmeta->dimensions));
 
   return TRUE;
