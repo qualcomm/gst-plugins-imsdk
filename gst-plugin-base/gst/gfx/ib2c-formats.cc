@@ -4,18 +4,35 @@
  */
 
 #include <drm/drm_fourcc.h>
-#ifdef HAVE_GBM_PRIV_H
-#include <gbm_priv.h>
-#else
-//TODO: Workaround due to Adreno not exporting the formats.
+
+//TODO: Workaround due to Adreno not using the proper DRM formats.
 #define fourcc_mod_code_qti(vendor, val) \
     ((((uint32_t)DRM_FORMAT_MOD_VENDOR_## vendor) << 28) | (val & 0x0fffffffULL))
 
-#define GBM_FORMAT_RGBA16161616F                fourcc_mod_code_qti(QCOM, 54)
-#define GBM_FORMAT_RGB161616F                   fourcc_mod_code_qti(QCOM, 55)
-#define GBM_FORMAT_RGBA32323232F                fourcc_mod_code_qti(QCOM, 56)
-#define GBM_FORMAT_RGB323232F                   fourcc_mod_code_qti(QCOM, 57)
-#endif // defined(HAVE_GBM_PRIV_H)
+#if defined(DRM_FORMAT_ABGR16161616F) && !defined(DRM_FORMAT_BGR161616F)
+#undef DRM_FORMAT_ABGR16161616F
+#endif // DRM_FORMAT_ABGR16161616F && !(DRM_FORMAT_BGR161616F)
+
+#if !defined(DRM_FORMAT_ABGR16161616F)
+#define DRM_FORMAT_ABGR16161616F  fourcc_mod_code_qti(QCOM, 54)
+#endif // DRM_FORMAT_ABGR16161616F
+
+#if !defined(DRM_FORMAT_BGR161616F)
+#define DRM_FORMAT_BGR161616F     fourcc_mod_code_qti(QCOM, 55)
+#endif // DRM_FORMAT_BGR161616F
+
+#if !defined(DRM_FORMAT_ABGR32323232F)
+#define DRM_FORMAT_ABGR32323232F  fourcc_mod_code_qti(QCOM, 56)
+#endif // DRM_FORMAT_ABGR32323232F
+
+#if !defined(DRM_FORMAT_BGR323232F)
+#define DRM_FORMAT_BGR323232F     fourcc_mod_code_qti(QCOM, 57)
+#endif // DRM_FORMAT_BGR323232F
+
+// TODO: Workaround for missing 16 bpp RGB format. Just a placeholder.
+#if !defined(DRM_FORMAT_BGR161616)
+#define DRM_FORMAT_BGR161616      0
+#endif // DRM_FORMAT_BGR161616
 
 #include "ib2c-formats.h"
 #include "ib2c-utils.h"
@@ -26,7 +43,7 @@ const uint32_t Format::kFormatMask = 0xFF;
 const uint32_t Format::kColorSpaceMask = (0b11 << 9);
 
 // ColorFormat + PixelType mask and their corresponding tuple of:
-// <DRM/GBM Format, Pixel Type, Number of Channels, Bit depth per Channel, Inverted, Swapped RB>
+// <DRM Format, Pixel Type, Number of Channels, Bit depth, Inverted, Swapped RB>
 const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
     { ColorFormat::kGRAY8,
         { DRM_FORMAT_R8,
@@ -34,6 +51,12 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
     { ColorFormat::kGRAY8I,
         { DRM_FORMAT_R8,
             { PixelType::kSigned,   1,   8, false, false } } },
+    { ColorFormat::kGRAY16,
+        { DRM_FORMAT_R16,
+            { PixelType::kUnsigned, 1,  16, false, false } } },
+    { ColorFormat::kGRAY16I,
+        { DRM_FORMAT_R16,
+            { PixelType::kSigned,   1,  16, false, false } } },
     { ColorFormat::kRG88,
         { DRM_FORMAT_GR88,
             { PixelType::kUnsigned, 2,   8, false, false } } },
@@ -46,11 +69,17 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
     { ColorFormat::kRGB888I,
         { DRM_FORMAT_BGR888,
             { PixelType::kSigned,   3,   8, false, false } } },
+    { ColorFormat::kRGB161616,
+        { DRM_FORMAT_BGR161616,
+            { PixelType::kUnsigned, 3,  16, false, false } } },
+    { ColorFormat::kRGB161616I,
+        { DRM_FORMAT_BGR161616,
+            { PixelType::kSigned,   3,  16, false, false } } },
     { ColorFormat::kRGB161616F,
-        { GBM_FORMAT_RGB161616F,
+        { DRM_FORMAT_BGR161616F,
             { PixelType::kFloat,    3,  16, false, false } } },
     { ColorFormat::kRGB323232F,
-        { GBM_FORMAT_RGB323232F,
+        { DRM_FORMAT_BGR323232F,
             { PixelType::kFloat,    3,  32, false, false } } },
     { ColorFormat::kBGR888,
         { DRM_FORMAT_BGR888,
@@ -58,11 +87,17 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
     { ColorFormat::kBGR888I,
         { DRM_FORMAT_BGR888,
             { PixelType::kSigned,   3,   8, false, true  } } },
+    { ColorFormat::kBGR161616,
+        { DRM_FORMAT_BGR161616,
+            { PixelType::kUnsigned, 3,  16, false, true  } } },
+    { ColorFormat::kBGR161616I,
+        { DRM_FORMAT_BGR161616,
+            { PixelType::kSigned,   3,  16, false, true  } } },
     { ColorFormat::kBGR161616F,
-        { GBM_FORMAT_RGB161616F,
+        { DRM_FORMAT_BGR161616F,
             { PixelType::kFloat,    3,  16, false, true  } } },
     { ColorFormat::kBGR323232F,
-        { GBM_FORMAT_RGB323232F,
+        { DRM_FORMAT_BGR323232F,
             { PixelType::kFloat,    3,  32, false, true  } } },
     { ColorFormat::kARGB8888,
         { DRM_FORMAT_ABGR8888,
@@ -70,11 +105,17 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
     { ColorFormat::kARGB8888I,
         { DRM_FORMAT_ABGR8888,
             { PixelType::kSigned,   4,   8, true,  false } } },
+    { ColorFormat::kARGB16161616,
+        { DRM_FORMAT_ABGR16161616,
+            { PixelType::kUnsigned, 4,  16, true,  false } } },
+    { ColorFormat::kARGB16161616I,
+        { DRM_FORMAT_ABGR16161616,
+            { PixelType::kSigned,   4,  16, true,  false } } },
     { ColorFormat::kARGB16161616F,
-        { GBM_FORMAT_RGBA16161616F,
+        { DRM_FORMAT_ABGR16161616F,
             { PixelType::kFloat,    4,  16, true,  false } } },
     { ColorFormat::kARGB32323232F,
-        { GBM_FORMAT_RGBA32323232F,
+        { DRM_FORMAT_ABGR32323232F,
             { PixelType::kFloat,    4,  32, true,  false } } },
     { ColorFormat::kABGR8888,
         { DRM_FORMAT_ABGR8888,
@@ -82,11 +123,17 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
     { ColorFormat::kABGR8888I,
         { DRM_FORMAT_ABGR8888,
             { PixelType::kSigned,   4,   8, true,  true  } } },
+    { ColorFormat::kABGR16161616,
+        { DRM_FORMAT_ABGR16161616,
+            { PixelType::kUnsigned, 4,  16, true,  true  } } },
+    { ColorFormat::kABGR16161616I,
+        { DRM_FORMAT_ABGR16161616,
+            { PixelType::kSigned,   4,  16, true,  true  } } },
     { ColorFormat::kABGR16161616F,
-        { GBM_FORMAT_RGBA16161616F,
+        { DRM_FORMAT_ABGR16161616F,
             { PixelType::kFloat,    4,  16, true,  true  } } },
     { ColorFormat::kABGR32323232F,
-        { GBM_FORMAT_RGBA32323232F,
+        { DRM_FORMAT_ABGR32323232F,
             { PixelType::kFloat,    4,  32, true,  true  } } },
     { ColorFormat::kRGBA8888,
         { DRM_FORMAT_ABGR8888,
@@ -94,11 +141,17 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
     { ColorFormat::kRGBA8888I,
         { DRM_FORMAT_ABGR8888,
             { PixelType::kSigned,   4,   8, false, false } } },
+    { ColorFormat::kRGBA16161616,
+        { DRM_FORMAT_ABGR16161616,
+            { PixelType::kUnsigned, 4,  16, false, false } } },
+    { ColorFormat::kRGBA16161616I,
+        { DRM_FORMAT_ABGR16161616,
+            { PixelType::kSigned,   4,  16, false, false } } },
     { ColorFormat::kRGBA16161616F,
-        { GBM_FORMAT_RGBA16161616F,
+        { DRM_FORMAT_ABGR16161616F,
             { PixelType::kFloat,    4,  16, false, false } } },
     { ColorFormat::kRGBA32323232F,
-        { GBM_FORMAT_RGBA32323232F,
+        { DRM_FORMAT_ABGR32323232F,
             { PixelType::kFloat,    4,  32, false, false } } },
     { ColorFormat::kBGRA8888,
         { DRM_FORMAT_ABGR8888,
@@ -106,11 +159,17 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
     { ColorFormat::kBGRA8888I,
         { DRM_FORMAT_ABGR8888,
             { PixelType::kSigned,   4,   8, false, true  } } },
+    { ColorFormat::kBGRA16161616,
+        { DRM_FORMAT_ABGR16161616,
+            { PixelType::kUnsigned, 4,  16, false, true  } } },
+    { ColorFormat::kBGRA16161616I,
+        { DRM_FORMAT_ABGR16161616,
+            { PixelType::kSigned,   4,  16, false, true  } } },
     { ColorFormat::kBGRA16161616F,
-        { GBM_FORMAT_RGBA16161616F,
+        { DRM_FORMAT_ABGR16161616F,
             { PixelType::kFloat,    4,  16, false, true  } } },
     { ColorFormat::kBGRA32323232F,
-        { GBM_FORMAT_RGBA32323232F,
+        { DRM_FORMAT_ABGR32323232F,
             { PixelType::kFloat,    4,  32, false, true  } } },
     { ColorFormat::kXRGB8888,
         { DRM_FORMAT_ABGR8888,
@@ -118,11 +177,17 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
     { ColorFormat::kXRGB8888I,
         { DRM_FORMAT_ABGR8888,
             { PixelType::kSigned,   4,   8, true,  false } } },
+    { ColorFormat::kXRGB16161616,
+        { DRM_FORMAT_ABGR16161616,
+            { PixelType::kUnsigned, 4,  16, true,  false } } },
+    { ColorFormat::kXRGB16161616I,
+        { DRM_FORMAT_ABGR16161616,
+            { PixelType::kSigned,   4,  16, true,  false } } },
     { ColorFormat::kXRGB16161616F,
-        { GBM_FORMAT_RGBA16161616F,
+        { DRM_FORMAT_ABGR16161616F,
             { PixelType::kFloat,    4,  16, true,  false } } },
     { ColorFormat::kXRGB32323232F,
-        { GBM_FORMAT_RGBA32323232F,
+        { DRM_FORMAT_ABGR32323232F,
             { PixelType::kFloat,    4,  32, true,  false } } },
     { ColorFormat::kXBGR8888,
         { DRM_FORMAT_ABGR8888,
@@ -130,11 +195,17 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
     { ColorFormat::kXBGR8888I,
         { DRM_FORMAT_ABGR8888,
             { PixelType::kSigned,   4,   8, true,  true  } } },
+    { ColorFormat::kXBGR16161616,
+        { DRM_FORMAT_ABGR16161616,
+            { PixelType::kUnsigned, 4,  16, true,  true  } } },
+    { ColorFormat::kXBGR16161616I,
+        { DRM_FORMAT_ABGR16161616,
+            { PixelType::kSigned,   4,  16, true,  true  } } },
     { ColorFormat::kXBGR16161616F,
-        { GBM_FORMAT_RGBA16161616F,
+        { DRM_FORMAT_ABGR16161616F,
             { PixelType::kFloat,    4,  16, true,  true  } } },
     { ColorFormat::kXBGR32323232F,
-        { GBM_FORMAT_RGBA32323232F,
+        { DRM_FORMAT_ABGR32323232F,
             { PixelType::kFloat,    4,  32, true,  true  } } },
     { ColorFormat::kRGBX8888,
         { DRM_FORMAT_ABGR8888,
@@ -142,11 +213,17 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
     { ColorFormat::kRGBX8888I,
         { DRM_FORMAT_ABGR8888,
             { PixelType::kSigned,   4,   8, false, false } } },
+    { ColorFormat::kRGBX16161616,
+        { DRM_FORMAT_ABGR16161616,
+            { PixelType::kUnsigned, 4,  16, false, false } } },
+    { ColorFormat::kRGBX16161616I,
+        { DRM_FORMAT_ABGR16161616,
+            { PixelType::kSigned,   4,  16, false, false } } },
     { ColorFormat::kRGBX16161616F,
-        { GBM_FORMAT_RGBA16161616F,
+        { DRM_FORMAT_ABGR16161616F,
             { PixelType::kFloat,    4,  16, false, false } } },
     { ColorFormat::kRGBX32323232F,
-        { GBM_FORMAT_RGBA32323232F,
+        { DRM_FORMAT_ABGR32323232F,
             { PixelType::kFloat,    4,  32, false, false } } },
     { ColorFormat::kBGRX8888,
         { DRM_FORMAT_ABGR8888,
@@ -154,11 +231,17 @@ const std::map<uint32_t, Format::RgbFormatTuple> Format::kRgbFormatTable = {
     { ColorFormat::kBGRX8888I,
         { DRM_FORMAT_ABGR8888,
             { PixelType::kSigned,   4,   8, false, true  } } },
+    { ColorFormat::kBGRX16161616,
+        { DRM_FORMAT_ABGR16161616,
+            { PixelType::kUnsigned, 4,  16, false, true  } } },
+    { ColorFormat::kBGRX16161616I,
+        { DRM_FORMAT_ABGR16161616,
+            { PixelType::kSigned,   4,  16, false, true  } } },
     { ColorFormat::kBGRX16161616F,
-        { GBM_FORMAT_RGBA16161616F,
+        { DRM_FORMAT_ABGR16161616F,
             { PixelType::kFloat,    4,  16, false, true  } } },
     { ColorFormat::kBGRX32323232F,
-        { GBM_FORMAT_RGBA32323232F,
+        { DRM_FORMAT_ABGR32323232F,
             { PixelType::kFloat,    4,  32, false, true  } } },
 };
 
@@ -226,6 +309,10 @@ GLenum Format::ToGL(uint32_t format) {
     return GL_RGBA32F;
   else if ((info.pixtype == PixelType::kFloat) && (info.bitdepth == 16))
     return GL_RGBA16F;
+  else if ((info.pixtype == PixelType::kSigned) && (info.bitdepth == 16))
+    return GL_RGBA16_SNORM_EXT;
+  else if ((info.pixtype == PixelType::kUnsigned) && (info.bitdepth == 16))
+    return GL_RGBA16_EXT;
   else if ((info.pixtype == PixelType::kSigned) && (info.bitdepth == 8))
     return GL_RGBA8_SNORM;
 
@@ -289,6 +376,15 @@ bool Format::IsSigned(uint32_t format) {
 
   auto& info = std::get<RgbInfo>(kRgbFormatTable.at(format & kFormatMask));
   return (info.pixtype == PixelType::kSigned);
+}
+
+bool Format::IsUnsigned(uint32_t format) {
+
+  if (kRgbFormatTable.count(format & kFormatMask) == 0)
+    return false;
+
+  auto& info = std::get<RgbInfo>(kRgbFormatTable.at(format & kFormatMask));
+  return (info.pixtype == PixelType::kUnsigned);
 }
 
 bool Format::IsFloat(uint32_t format) {

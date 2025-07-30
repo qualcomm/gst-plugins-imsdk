@@ -15,9 +15,10 @@ enum class ShaderType : uint32_t {
   kYUV,
   kLuma,
   kChroma,
-  kUnaligned8,
-  kUnaligned16F,
-  kUnaligned32F,
+  kCompute8,
+  kCompute16,
+  kCompute16F,
+  kCompute32F,
 };
 
 static const std::string kVertexShader = R"(
@@ -66,7 +67,6 @@ layout(location = 0) out vec4 outColor;
 
 void main() {
     vec4 source = texture(extTex, texCoord);
-    source = clamp(source, 0.0, 1.0);
 
     source.a = source.a * globalAlpha;
     source = (source - rgbaOffset) * rgbaScale;
@@ -211,6 +211,7 @@ void main() {
 
 static const std::string kComputeHeader = R"(
 #version 320 es
+#extension GL_NV_image_formats : warn
 
 uniform int targetWidth;
 uniform int imageWidth;
@@ -223,17 +224,22 @@ layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
 
 )";
 
-static const std::string kComputeOutputRgba8 = R"(
+static const std::string kComputeOutputRGBA8 = R"(
 layout (binding = 1, rgba8) writeonly mediump uniform image2D outTex;
 
 )";
 
-static const std::string kComputeOutputRgba16F = R"(
+static const std::string kComputeOutputRGBA16 = R"(
+layout (binding = 1, rgba16) writeonly mediump uniform image2D outTex;
+
+)";
+
+static const std::string kComputeOutputRGBA16F = R"(
 layout (binding = 1, rgba16f) writeonly mediump uniform image2D outTex;
 
 )";
 
-static const std::string kComputeOutputRgba32F = R"(
+static const std::string kComputeOutputRGBA32F = R"(
 layout (binding = 1, rgba32f) writeonly mediump uniform image2D outTex;
 
 )";
