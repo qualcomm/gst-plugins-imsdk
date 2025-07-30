@@ -29,7 +29,7 @@ static const std::map<uint32_t, ColorCoeffcients> kColorSpaceCoefficients = {
 static uint32_t kAlignment = 0;
 static std::mutex kAlignmentLock;
 
-static inline uint32_t GetGpuAlignment() {
+uint32_t GetAlignment() {
 
   std::lock_guard<std::mutex> lk(kAlignmentLock);
 
@@ -65,8 +65,7 @@ static inline uint32_t GetGpuAlignment() {
   return kAlignment;
 }
 
-// Convert RGB color code to YUV color code.
-uint32_t RgbToYuv(uint32_t color, uint32_t standard) {
+uint32_t ToYuvColorCode(uint32_t color, uint32_t standard) {
 
   auto& coeffcients = kColorSpaceCoefficients.at(standard);
 
@@ -86,52 +85,6 @@ uint32_t RgbToYuv(uint32_t color, uint32_t standard) {
       (blue * (-(kb / (1.0 - kr)) / 2));
 
   return (y << 24) + (u << 16) + (v << 8) + alpha;
-}
-
-bool IsAligned(const Surface& surface) {
-
-  uint32_t alignment = GetGpuAlignment();
-
-#if defined(ANDROID)
-  return ((surface.buffer->stride % alignment) == 0) ? true : false;
-#else // ANDROID
-  return ((surface.stride0 % alignment) == 0) ? true : false;
-#endif // !ANDROID
-}
-
-std::tuple<uint32_t, uint32_t> AlignedDimensions(const Surface& surface) {
-
-  uint32_t n_channels = Format::NumChannels(surface.format);
-  uint32_t n_bytes = Format::BytesPerChannel(surface.format);
-
-  uint32_t alignment = GetGpuAlignment();
-
-#if defined(ANDROID)
-  uint32_t width = surface.buffer->width;
-#else // ANDROID
-  uint32_t width = surface.width;
-#endif // !ANDROID
-
-  // Find the equivalent width alignment based on the GPU stride alignment.
-  // TODO Channels is 4 because staged texture is GL_RGBA8.
-  while ((alignment % (4 * n_bytes)) != 0)
-    alignment += GetGpuAlignment();
-
-  alignment /= (4 * n_bytes);
-  width = (((width) + (alignment - 1)) & ~(alignment - 1));
-
-  uint32_t xgroup = n_channels * 32;
-
-  // Loop until there is a width value, multiple of alignment, which is
-  // divisible by the size of a compute shader X group with no remainder.
-  while ((width % xgroup) != 0)
-    width += alignment;
-
-  // Calculate the aligned height value rounded up.
-  uint32_t height = std::ceil(
-      (surface.size / (n_channels * n_bytes)) / static_cast<float>(width));
-
-  return std::make_tuple(width, height);
 }
 
 } // namespace ib2c

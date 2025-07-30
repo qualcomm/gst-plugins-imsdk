@@ -168,7 +168,7 @@ const std::map<uint32_t, uint32_t> Format::kYuvColorTable = {
   { ColorFormat::kYVU444, DRM_FORMAT_YVU444 },
 };
 
-std::tuple<uint32_t, uint64_t> Format::ToInternal(uint32_t format, bool aligned) {
+std::tuple<uint32_t, uint64_t> Format::ToInternal(uint32_t format) {
 
   uint32_t external = format & kFormatMask;
   uint64_t modifier = 0;
@@ -177,9 +177,8 @@ std::tuple<uint32_t, uint64_t> Format::ToInternal(uint32_t format, bool aligned)
     modifier = DRM_FORMAT_MOD_QCOM_COMPRESSED;
 
   // First check whether it is YUV format or not.
-  if (kYuvColorTable.count(external) != 0) {
+  if (kYuvColorTable.count(external) != 0)
     return {kYuvColorTable.at(external), modifier};
-  }
 
   external = format & (kFormatMask | kPixelTypeMask);
 
@@ -188,21 +187,6 @@ std::tuple<uint32_t, uint64_t> Format::ToInternal(uint32_t format, bool aligned)
     throw Exception("Unsuppoted format ", format);
 
   uint32_t internal = std::get<uint32_t>(kRgbColorTable.at(external));
-
-  // Overwrite the format in some cases.
-  // TODO Without this the RGB EGL images seems are not properly interpreted.
-  if ((internal == DRM_FORMAT_BGR888) && (!aligned || Format::IsSigned(format)))
-    internal = DRM_FORMAT_ABGR8888;
-
-#ifndef ANDROID
-  // TODO This should be needed only for unligned format.
-  if ((internal == GBM_FORMAT_RGB161616F))
-    internal = GBM_FORMAT_RGBA16161616F;
-
-  // TODO This should be needed only for unligned format.
-  if ((internal == GBM_FORMAT_RGB323232F))
-    internal = GBM_FORMAT_RGBA32323232F;
-#endif // ANDROID
 
   return {internal, modifier};
 }
@@ -280,6 +264,14 @@ bool Format::IsSwapped(uint32_t format) {
   return std::get<3>(kRgbColorTable.at(format & mask));
 }
 
+bool Format::IsSigned(uint32_t format) {
+
+  if (kRgbColorTable.count(format & (kFormatMask | kPixelTypeMask)) == 0)
+    return false;
+
+  return ((format & kPixelTypeMask) == ColorMode::kSigned);
+}
+
 bool Format::IsFloat(uint32_t format) {
 
   if (kRgbColorTable.count(format & (kFormatMask | kPixelTypeMask)) == 0)
@@ -289,12 +281,20 @@ bool Format::IsFloat(uint32_t format) {
       ((format & kPixelTypeMask) == ColorMode::kFloat32);
 }
 
-bool Format::IsSigned(uint32_t format) {
+bool Format::IsFloat16(uint32_t format) {
 
   if (kRgbColorTable.count(format & (kFormatMask | kPixelTypeMask)) == 0)
     return false;
 
-  return ((format & kPixelTypeMask) == ColorMode::kSigned);
+  return ((format & kPixelTypeMask) == ColorMode::kFloat16);
+}
+
+bool Format::IsFloat32(uint32_t format) {
+
+  if (kRgbColorTable.count(format & (kFormatMask | kPixelTypeMask)) == 0)
+    return false;
+
+  return ((format & kPixelTypeMask) == ColorMode::kFloat32);
 }
 
 uint32_t Format::ColorSpace(uint32_t format) {

@@ -70,13 +70,10 @@ template<typename ...Args> std::string Error(Args&&... args) {
   return s.str();
 }
 
+// Return the stride alignment requirement in bytes.
+uint32_t GetAlignment();
+
 // Convert RGB color code to YUV color code.
-uint32_t RgbToYuv(uint32_t color, uint32_t standard);
-
-// Checks if the surface has the correct alignment based on the GPU.
-bool IsAligned(const Surface& surface);
-
-// Calculate the aligned width and height to be used for compute shaders.
-std::tuple<uint32_t, uint32_t> AlignedDimensions(const Surface& surface);
+uint32_t ToYuvColorCode(uint32_t color, uint32_t standard);
 
 } // namespace ib2c
