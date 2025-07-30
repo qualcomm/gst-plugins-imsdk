@@ -355,8 +355,11 @@ snpe_to_ml_type (Snpe_UserBufferEncoding_ElementType_t type)
       return GST_ML_TYPE_INT32;
     case SNPE_USERBUFFERENCODING_ELEMENTTYPE_UINT32:
       return GST_ML_TYPE_UINT32;
+    case SNPE_USERBUFFERENCODING_ELEMENTTYPE_TF16:
+    case SNPE_USERBUFFERENCODING_ELEMENTTYPE_UINT16:
+      return GST_ML_TYPE_UINT16;
     default:
-      GST_ERROR ("Unsupported SNPE element type %x!", type);
+      GST_ERROR ("Unsupported SNPE element type 0x%x!", type);
       break;
   }
 

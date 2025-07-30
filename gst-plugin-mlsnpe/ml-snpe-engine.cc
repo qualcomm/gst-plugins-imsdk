@@ -288,6 +288,9 @@ snpe_to_ml_type (zdl::DlSystem::UserBufferEncoding::ElementType_t type)
     case zdl::DlSystem::UserBufferEncoding::ElementType_t::TF8:
     case zdl::DlSystem::UserBufferEncoding::ElementType_t::UINT8:
       return GST_ML_TYPE_UINT8;
+    case zdl::DlSystem::UserBufferEncoding::ElementType_t::TF16:
+    case zdl::DlSystem::UserBufferEncoding::ElementType_t::UINT16:
+      return GST_ML_TYPE_UINT16;
     case zdl::DlSystem::UserBufferEncoding::ElementType_t::INT32:
       return GST_ML_TYPE_INT32;
     case zdl::DlSystem::UserBufferEncoding::ElementType_t::UINT32:
