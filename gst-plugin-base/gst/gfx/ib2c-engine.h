@@ -26,8 +26,33 @@ typedef std::tuple<GLsizei, GLsizei, GLenum> TextureTuple;
 // Map of <Shader Type, Shader Program>
 typedef std::map<ShaderType, std::shared_ptr<ShaderProgram>> ShaderPrograms;
 
-// Tuple of <GL texture, EGl image, Surface>
-typedef std::tuple<GLuint, EGLImageKHR, Surface> GraphicTuple;
+// Tuple of <GL textures, EGL image>
+typedef std::tuple<GLuint, EGLImageKHR> GraphicTuple;
+
+// Tuple of <List of GL textures and EGL images, Surface>
+typedef std::tuple<std::vector<GraphicTuple>, Surface> SurfaceTuple;
+
+struct ImagePlane {
+  uint32_t stride;
+  uint32_t offset;
+
+  ImagePlane() : stride(0), offset(0) {}
+
+  ImagePlane(uint32_t stride, uint32_t offset)
+      : stride(stride), offset(offset) {}
+};
+
+struct ImageParam {
+  uint32_t                width;
+  uint32_t                height;
+  uint32_t                format;
+  std::vector<ImagePlane> planes;
+
+  ImageParam()
+      : width(0), height(0), format(ColorFormat::kGRAY8), planes() {}
+
+  ImageParam& operator=(const ImageParam&) = default;
+};
 
 class Engine : public IEngine {
  public:
@@ -42,17 +67,25 @@ class Engine : public IEngine {
   void Finish(std::uintptr_t fence) override;
 
  private:
-  std::shared_ptr<ShaderProgram> SetupRgbShader(Surface& surface,
-                                                Normalization normalization);
-  std::shared_ptr<ShaderProgram> SetupYuvShader(Surface& surface);
-
   std::string DrawObject(std::shared_ptr<ShaderProgram>& shader,
                          const Object& object);
 
   std::string DispatchCompute(GLuint& stgtex, GLuint& texture, Surface& surface);
   std::string Transform(GLuint& stgtex, GLuint& texture, Surface& surface);
 
+  bool IsSurfaceRenderable(const Surface& surface);
+
   GLuint GetStageTexture(const Surface& surface, const Objects& objects);
+
+#if defined(ANDROID)
+  std::vector<GraphicTuple> ImportAndroidSurface(const Surface& surface,
+                                                 uint32_t flags);
+#else // !ANDROID
+  std::vector<GraphicTuple> ImportLinuxSurface(const Surface& surface,
+                                               uint32_t flags);
+
+  ImageParam GetImageParams(const Surface& surface, uint32_t flags);
+#endif // defined(ANDROID)
 
   /// Global mutex protecting EGL context switching and internal variables.
   std::mutex                       mutex_;
@@ -70,8 +103,8 @@ class Engine : public IEngine {
   /// Map of <ShaderType, ShaderProgram>
   ShaderPrograms                   shaders_;
 
-  /// Map of surface_id and its GL texture, EGL image and Surface.
-  std::map<uint64_t, GraphicTuple> graphics_;
+  /// Map of surface_id and its GL textures, EGL images and Surface.
+  std::map<uint64_t, SurfaceTuple>  surfaces_;
 };
 
 } // namespace ib2c

@@ -255,7 +255,7 @@ struct Region {
  * @source: Region from the source surface.
  * @destination: Position and scaling in target surface.
  * @alpha: Object alpha value. 0 = fully transparent, 255 = fully opaque.
- * @rotation: Clock-wise rotation in degrees.
+ * @rotation: Clock-wise rotation around the Z-axis.
  *
  * Encapsulates the blit parameters for a source surface.
  */

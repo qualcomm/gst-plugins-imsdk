@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <algorithm>
+#include <array>
 
 #include "ib2c-engine.h"
 #include "ib2c-formats.h"
@@ -14,26 +15,78 @@ namespace ib2c {
 // Prefix for the higher 32 bits of the surface ID.
 static const uint64_t kSurfaceIdPrefix = 0x00001B2C00000000;
 
-static const float kPositions[] = {
-  -1.0f, -1.0f,
-  -1.0f,  1.0f,
-   1.0f, -1.0f,
-   1.0f,  1.0f,
+/** X and Y axis vertex coordinates depending on the flip flags in the mask.
+ *
+ *            Y|
+ *   -1,1      |      1,1
+ *     +-------+-------+
+ *     |       |       |
+ *     |       |       |
+ * ----+-------+-------+----
+ *     |       |0,0    |   X
+ *     |       |       |
+ *     +-------+-------+
+ *   -1,-1     |      1,-1
+ *             |
+ */
+static const std::map<uint32_t, std::array<float, 8>> kVertices = {
+  { 0,
+    {
+      -1.0f,  1.0f,
+      -1.0f, -1.0f,
+       1.0f,  1.0f,
+       1.0f, -1.0f,
+    }
+  },
+  { ConfigMask::kHFlip,
+    {
+       1.0f,  1.0f,
+       1.0f, -1.0f,
+      -1.0f,  1.0f,
+      -1.0f, -1.0f,
+    }
+  },
+  { ConfigMask::kVFlip,
+    {
+      -1.0f, -1.0f,
+      -1.0f,  1.0f,
+       1.0f, -1.0f,
+       1.0f,  1.0f,
+    }
+  },
+  { ConfigMask::kHFlip | ConfigMask::kVFlip,
+    {
+       1.0f, -1.0f,
+       1.0f,  1.0f,
+      -1.0f, -1.0f,
+      -1.0f,  1.0f,
+    }
+  },
 };
 
-static const float kTextureCoords[] = {
-  0.0f, 0.0f,
+/** Default X and Y axis vertex coordinates for textures.
+ *
+ * 0,1           1,1
+ *  +-------------+
+ *  |             |
+ *  |             |
+ *  |             |
+ *  +-------------+
+ * 0,0           1,0
+ */
+static const std::array<float, 8> kTextureCoords = {
   0.0f, 1.0f,
-  1.0f, 0.0f,
+  0.0f, 0.0f,
   1.0f, 1.0f,
+  1.0f, 0.0f,
 };
 
-// X and Y axis coordinates multipliers depending on the configuration mask.
-const std::map<uint32_t, std::pair<float, float>> kPosFactors = {
-  { 0,                                       {  1.0f, -1.0f } },
-  { ConfigMask::kHFlip,                      { -1.0f, -1.0f } },
-  { ConfigMask::kVFlip,                      {  1.0f,  1.0f } },
-  { ConfigMask::kHFlip | ConfigMask::kVFlip, { -1.0f,  1.0f } },
+// Default/Identity matrix layout.
+static const std::array<float, 16> kMatrix = {
+  1.0, 0.0, 0.0, 0.0,
+  0.0, 1.0, 0.0, 0.0,
+  0.0, 0.0, 1.0, 0.0,
+  0.0, 0.0, 0.0, 1.0,
 };
 
 Engine::Engine() {
@@ -65,20 +118,18 @@ Engine::Engine() {
   shader->SetBool("rbSwapped", false);
   shader->SetFloat("globalAlpha", 1.0);
 
-  shader->SetFloat("xPosFactor", std::get<0>(kPosFactors.at(0)));
-  shader->SetFloat("yPosFactor", std::get<1>(kPosFactors.at(0)));
-  shader->SetFloat("rotationAngle", 0);
+  shader->SetFloat("rotationAngle", 0.0);
 
-  GLuint pos    = shader->GetAttribLocation("position");
+  GLuint pos    = shader->GetAttribLocation("vPosition");
   GLuint coords = shader->GetAttribLocation("inTexCoord");
 
-  glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, 0, kPositions);
+  glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, 0, kVertices.at(0).data());
   EXCEPTION_IF_GL_ERROR("Failed to define position data");
 
   glEnableVertexAttribArray(pos);
   EXCEPTION_IF_GL_ERROR("Failed to enable position attribute array");
 
-  glVertexAttribPointer(coords, 2, GL_FLOAT, GL_FALSE, 0, kTextureCoords);
+  glVertexAttribPointer(coords, 2, GL_FLOAT, GL_FALSE, 0, kTextureCoords.data());
   EXCEPTION_IF_GL_ERROR("Failed to define texture coords attribute array");
 
   glEnableVertexAttribArray(coords);
@@ -94,38 +145,45 @@ Engine::Engine() {
   shader->SetInt("colorSpace", ColorMode::kBT601);
   shader->SetBool("stageInput", false);
 
-  shader->SetFloat("xPosFactor", std::get<0>(kPosFactors.at(0)));
-  shader->SetFloat("yPosFactor", std::get<1>(kPosFactors.at(0)));
-  shader->SetFloat("rotationAngle", 0);
+  shader->SetFloat("rotationAngle", 0.0);
 
-  pos    = shader->GetAttribLocation("position");
+  pos    = shader->GetAttribLocation("vPosition");
   coords = shader->GetAttribLocation("inTexCoord");
 
-  glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, 0, kPositions);
+  glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, 0, kVertices.at(0).data());
   EXCEPTION_IF_GL_ERROR("Failed to define position attribute array");
 
   glEnableVertexAttribArray(pos);
   EXCEPTION_IF_GL_ERROR("Failed to enable position attribute array");
 
-  glVertexAttribPointer(coords, 2, GL_FLOAT, GL_FALSE, 0, kTextureCoords);
+  glVertexAttribPointer(coords, 2, GL_FLOAT, GL_FALSE, 0, kTextureCoords.data());
   EXCEPTION_IF_GL_ERROR("Failed to define texture coords attribute array");
 
   glEnableVertexAttribArray(coords);
   EXCEPTION_IF_GL_ERROR("Failed to enable texture coords attribute array");
 
-  shader = std::make_shared<ShaderProgram>(kUnaligned8CShaderCode);
+  // Construct shader code for 8-bit unaligned RGB(A) output textures.
+  std::string code = kComputeHeader + kComputeOutputRgba8 + kComputeMainUnaligned;
+
+  shader = std::make_shared<ShaderProgram>(code);
   shaders_.emplace(ShaderType::kUnaligned8, shader);
 
   shader->Use();
   shader->SetInt("inTex", 2);
 
-  shader = std::make_shared<ShaderProgram>(kUnaligned16FCShaderCode);
+  // Construct shader code for 16-bit float unaligned RGB(A) output textures.
+  code = kComputeHeader + kComputeOutputRgba16F + kComputeMainUnaligned;
+
+  shader = std::make_shared<ShaderProgram>(code);
   shaders_.emplace(ShaderType::kUnaligned16F, shader);
 
   shader->Use();
   shader->SetInt("inTex", 2);
 
-  shader = std::make_shared<ShaderProgram>(kUnaligned32FCShaderCode);
+  // Construct shader code for 32-bit float unaligned RGB(A) output textures.
+  code = kComputeHeader + kComputeOutputRgba32F + kComputeMainUnaligned;
+
+  shader = std::make_shared<ShaderProgram>(code);
   shaders_.emplace(ShaderType::kUnaligned32F, shader);
 
   shader->Use();
@@ -146,12 +204,16 @@ Engine::~Engine() {
     glDeleteTextures(1, &texture);
   }
 
-  for (auto& pair : graphics_) {
-    auto image = std::get<EGLImageKHR>(pair.second);
-    eglDestroyImageKHR(m_egl_env_->Display(), image);
+  for (auto& pair : surfaces_) {
+    auto graphics = std::get<std::vector<GraphicTuple>>(pair.second);
 
-    auto texture = std::get<GLuint>(pair.second);
-    glDeleteTextures(1, &texture);
+    for (auto& gltuple : graphics) {
+      auto image = std::get<EGLImageKHR>(gltuple);
+      auto texture = std::get<GLuint>(gltuple);
+
+      eglDestroyImageKHR(m_egl_env_->Display(), image);
+      glDeleteTextures(1, &texture);
+    }
   }
 
   glDeleteFramebuffers(1, &stage_fbo_);
@@ -169,98 +231,22 @@ uint64_t Engine::CreateSurface(const Surface& surface, uint32_t flags) {
   int32_t fd = surface.fd;
 #endif  // !ANDROID
 
-  if (graphics_.count(kSurfaceIdPrefix | fd) != 0) {
-    return (kSurfaceIdPrefix | fd);
-  }
+  uint64_t surface_id = kSurfaceIdPrefix | fd;
+
+  if (surfaces_.count(surface_id) != 0)
+    return surface_id;
 
   std::string error = m_egl_env_->BindContext(EGL_NO_SURFACE, EGL_NO_SURFACE);
   if (!error.empty()) throw std::runtime_error(error);
 
 #if defined(ANDROID)
-  EGLImageKHR image =
-      eglCreateImageKHR(m_egl_env_->Display(), EGL_NO_CONTEXT,
-                        EGL_NATIVE_BUFFER_ANDROID, surface.buffer, NULL);
+  std::vector<GraphicTuple> graphics = ImportAndroidSurface(surface, flags);
 #else // ANDROID
-  EGLint attribs[32] = {
-    EGL_WIDTH, 0,
-    EGL_HEIGHT, 0,
-    EGL_LINUX_DRM_FOURCC_EXT, 0,
-    EGL_DMA_BUF_PLANE0_FD_EXT, 0,
-    EGL_DMA_BUF_PLANE0_PITCH_EXT, 0,
-    EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
-    EGL_NONE
-  };
-
-  bool aligned = IsAligned(surface);
-
-  // Retrieve the tuple of DRM format and its modifier.
-  std::tuple<uint32_t, uint64_t> internal =
-      Format::ToInternal(surface.format, aligned);
-
-  attribs[1] = surface.width;
-  attribs[3] = surface.height;
-  attribs[5] = std::get<0>(internal);
-  attribs[7] = surface.fd;
-  attribs[9] = surface.stride0;
-  attribs[11] = surface.offset0;
-
-  // Adjust width, height and stride values for unaligned RGB(A) images.
-  if ((flags & SurfaceFlags::kOutput) && Format::IsRgb(surface.format) &&
-      (!aligned || (Format::IsFloat(surface.format) &&
-          Format::NumChannels(surface.format) == 3) ||
-      Format::IsSigned(surface.format))) {
-    auto dims = AlignedDimensions(surface);
-
-    attribs[1] = std::get<0>(dims);
-    attribs[3] = std::get<1>(dims);
-
-    // TODO Channels is 4 because staged texture is GL_RGBA8.
-    attribs[9] = std::get<0>(dims) * 4 * Format::BytesPerChannel(surface.format);
-  }
-
-  if (surface.nplanes >= 2) {
-    attribs[12] = EGL_DMA_BUF_PLANE1_PITCH_EXT;
-    attribs[13] = surface.stride1;
-    attribs[14] = EGL_DMA_BUF_PLANE1_OFFSET_EXT;
-    attribs[15] = surface.offset1;
-    attribs[16] = EGL_NONE;
-
-    if (std::get<1>(internal) != 0) {
-      attribs[16] = EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT;
-      attribs[17] = std::get<1>(internal) & 0xFFFFFFFF;
-      attribs[18] = EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT;
-      attribs[19] = std::get<1>(internal) >> 32;
-      attribs[20] = EGL_NONE;
-    }
-  }
-
-  if (surface.nplanes == 3) {
-    attribs[16] = EGL_DMA_BUF_PLANE2_PITCH_EXT;
-    attribs[17] = surface.stride2;
-    attribs[18] = EGL_DMA_BUF_PLANE2_OFFSET_EXT;
-    attribs[19] = surface.offset2;
-    attribs[20] = EGL_NONE;
-  }
-
-  EGLImageKHR image =
-      eglCreateImageKHR (m_egl_env_->Display(), EGL_NO_CONTEXT,
-                         EGL_LINUX_DMA_BUF_EXT, NULL, attribs);
+  std::vector<GraphicTuple> graphics = ImportLinuxSurface(surface, flags);
 #endif // !ANDROID
 
-  if (image == EGL_NO_IMAGE) {
-    throw Exception("Failed to create EGL image, error: ", std::hex,
-                    eglGetError(), "!");
-  }
-
-  GLuint texture;
-
-  // Create GL texture to the image will be binded.
-  glGenTextures (1, &texture);
-  EXCEPTION_IF_GL_ERROR("Failed to generate GL texture!");
-
-  uint64_t surface_id = kSurfaceIdPrefix | fd;
-  graphics_.emplace(
-      surface_id, std::move(std::make_tuple(texture, image, surface)));
+  SurfaceTuple stuple = std::make_tuple(std::move(graphics), surface);
+  surfaces_.emplace(surface_id, std::move(stuple));
 
   error = m_egl_env_->UnbindContext();
   if (!error.empty()) throw std::runtime_error(error);
@@ -272,22 +258,26 @@ void Engine::DestroySurface(uint64_t id) {
 
   std::lock_guard<std::mutex> lk(mutex_);
 
-  auto tuple = std::move(graphics_.at(id));
-  graphics_.erase(id);
-
   std::string error = m_egl_env_->BindContext(EGL_NO_SURFACE, EGL_NO_SURFACE);
   if (!error.empty()) throw std::runtime_error(error);
 
-  EGLImageKHR image = std::get<1>(tuple);
-  if (!eglDestroyImageKHR(m_egl_env_->Display(), image)) {
-    throw Exception("Failed to destroy EGL image, error: ", std::hex,
-                    eglGetError(), "!");
+  auto stuple = std::move(surfaces_.at(id));
+  surfaces_.erase(id);
+
+  auto& graphics = std::get<std::vector<GraphicTuple>>(stuple);
+
+  for (auto& gltuple : graphics) {
+    auto image = std::get<EGLImageKHR>(gltuple);
+    auto texture = std::get<GLuint>(gltuple);
+
+    if (!eglDestroyImageKHR(m_egl_env_->Display(), image)) {
+      throw Exception("Failed to destroy EGL image, error: ", std::hex,
+                      eglGetError(), "!");
+    }
+
+    glDeleteTextures(1, &texture);
+    EXCEPTION_IF_GL_ERROR("Failed to delete GL texture!");
   }
-
-  GLuint texture= std::get<0>(tuple);
-
-  glDeleteTextures(1, &texture);
-  EXCEPTION_IF_GL_ERROR("Failed to delete GL texture!");
 
   error = m_egl_env_->UnbindContext();
   if (!error.empty()) throw std::runtime_error(error);
@@ -308,11 +298,12 @@ std::uintptr_t Engine::Compose(const Compositions& compositions,
     auto normalization = std::get<Normalization>(composition);
     auto objects = std::get<Objects>(composition);
 
-    GraphicTuple& otuple = graphics_.at(surface_id);
+    SurfaceTuple& otuple = surfaces_.at(surface_id);
+    Surface& osurface = std::get<Surface>(otuple);
+    auto& graphics = std::get<std::vector<GraphicTuple>>(otuple);
 
-    GLuint& otexture = std::get<0>(otuple);
-    EGLImageKHR& oimage = std::get<1>(otuple);
-    Surface& osurface = std::get<2>(otuple);
+    auto& gltuple = graphics.at(0);
+    GLuint& otexture = std::get<GLuint>(gltuple);
 
     glActiveTexture(GL_TEXTURE0);
     EXCEPTION_IF_GL_ERROR("Failed to set active texture unit 0");
@@ -320,11 +311,6 @@ std::uintptr_t Engine::Compose(const Compositions& compositions,
     // Bind the output surface texture to EXTERNAL_OES for current active texture.
     glBindTexture(GL_TEXTURE_EXTERNAL_OES, otexture);
     EXCEPTION_IF_GL_ERROR("Failed to bind output texture ", otexture);
-
-    glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES,
-                                 reinterpret_cast<GLeglImageOES>(oimage));
-    EXCEPTION_IF_GL_ERROR("Failed to associate output image ", oimage,
-        " with external texture");
 
     // Get the staging texture if required.
     GLuint stgtex = GetStageTexture(osurface, objects);
@@ -342,7 +328,7 @@ std::uintptr_t Engine::Compose(const Compositions& compositions,
     if (clean || (stgtex != 0)) {
       // Convert RGB to YUV channel values of output is directly to YUV.
       if ((stgtex == 0) && Format::IsYuv(osurface.format))
-        color = RgbToYuv(color, Format::ColorSpace(osurface.format));
+        color = ToYuvColorCode(color, Format::ColorSpace(osurface.format));
 
       // Set/Clear the background of the texture attached to the frame buffer.
       glClearColor(EXTRACT_RED_COLOR(color), EXTRACT_GREEN_COLOR(color),
@@ -486,32 +472,31 @@ std::string Engine::DrawObject(std::shared_ptr<ShaderProgram>& shader,
   glViewport(destination.x, destination.y, destination.w, destination.h);
   RETURN_IF_GL_ERROR("Failed to set destination viewport");
 
-  GraphicTuple& intuple = graphics_.at(object.id);
-
-  GLuint& intexture = std::get<GLuint>(intuple);
-  EGLImageKHR& inimage = std::get<EGLImageKHR>(intuple);
+  SurfaceTuple& intuple = surfaces_.at(object.id);
   Surface& insurface = std::get<Surface>(intuple);
+  auto& graphics = std::get<std::vector<GraphicTuple>>(intuple);
+
+  auto& gltuple = graphics.at(0);
+  GLuint& intexture = std::get<GLuint>(gltuple);
 
   // Bind the input surface texture to EXTERNAL_OES for current active texture.
   glBindTexture(GL_TEXTURE_EXTERNAL_OES, intexture);
   RETURN_IF_GL_ERROR("Failed to bind input texture ", intexture);
 
-  glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES,
-                               reinterpret_cast<GLeglImageOES>(inimage));
-  RETURN_IF_GL_ERROR("Failed to associate input image ", inimage);
-
   if (shader->HasVariable("globalAlpha"))
     shader->SetFloat("globalAlpha", (object.alpha / 255.0));
 
-  auto mask = object.mask & (ConfigMask::kHFlip | ConfigMask::kVFlip);
-  shader->SetFloat("xPosFactor", std::get<0>(kPosFactors.at(mask)));
-  shader->SetFloat("yPosFactor", std::get<1>(kPosFactors.at(mask)));
-
   // Rotation angle in radians.
-  shader->SetFloat("rotationAngle", (object.rotation * M_PI / 180));
+  shader->SetFloat("rotationAngle", object.rotation * M_PI / 180);
+
+  auto mask = object.mask & (ConfigMask::kHFlip | ConfigMask::kVFlip);
+  GLuint pos = shader->GetAttribLocation("vPosition");
+
+  glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, 0, kVertices.at(mask).data());
+  RETURN_IF_GL_ERROR("Failed to define main vertex array");
 
   const Region& source = object.source;
-  float coords[8] = { 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0 };
+  std::array<float, 8> coords = kTextureCoords;
 
 #if defined(ANDROID)
   uint32_t width = insurface.buffer->width;
@@ -534,8 +519,8 @@ std::string Engine::DrawObject(std::shared_ptr<ShaderProgram>& shader,
 
   // Load the vertex position.
   GLuint texcoord = shader->GetAttribLocation("inTexCoord");
-  glVertexAttribPointer(texcoord, 2, GL_FLOAT, GL_FALSE, 0, coords);
-  RETURN_IF_GL_ERROR("Failed to define vertex array");
+  glVertexAttribPointer(texcoord, 2, GL_FLOAT, GL_FALSE, 0, coords.data());
+  RETURN_IF_GL_ERROR("Failed to define texture vertex array");
 
   glEnableVertexAttribArray(texcoord);
   RETURN_IF_GL_ERROR("Failed to enable vertex array");
@@ -549,33 +534,34 @@ std::string Engine::DrawObject(std::shared_ptr<ShaderProgram>& shader,
 std::string Engine::DispatchCompute(GLuint& stgtex, GLuint& texture,
                                     Surface& surface) {
 
-  std::shared_ptr<ShaderProgram> shader;
+  ShaderType stype = ShaderType::kUnaligned8;
 
-  if ((surface.format & (0b11 << 11)) == ColorMode::kFloat32) {
-    shader = shaders_.at(ShaderType::kUnaligned32F);
-  } else if ((surface.format & (0b11 << 11)) == ColorMode::kFloat16) {
-    shader = shaders_.at(ShaderType::kUnaligned16F);
-  } else {
-    shader = shaders_.at(ShaderType::kUnaligned8);
-  }
+  // Overwrite default shader type if necessary.
+  if (Format::IsFloat32(surface.format))
+    stype = ShaderType::kUnaligned32F;
+  else if (Format::IsFloat16(surface.format))
+    stype = ShaderType::kUnaligned16F;
 
-  glActiveTexture(GL_TEXTURE2);
-  RETURN_IF_GL_ERROR("Failed to set active texture unit 2");
-
-  auto dims = AlignedDimensions(surface);
-
+  std::shared_ptr<ShaderProgram> shader = shaders_.at(stype);
   shader->Use();
 
 #if defined(ANDROID)
-  shader->SetInt("targetWidth", surface.buffer->width);
-  shader->SetInt("targetHeight", surface.buffer->height);
+  uint32_t width = surface.buffer->width;
+  uint32_t height = surface.buffer->height;
+  uint32_t imgwidth = width;
 #else   // ANDROID
-  shader->SetInt("targetWidth", surface.width);
-  shader->SetInt("targetHeight", surface.height);
+  uint32_t width = surface.width;
+  uint32_t height = surface.height;
+  uint32_t imgwidth = GetImageParams(surface, SurfaceFlags::kOutput).width;
 #endif  // !ANDROID
 
-  shader->SetInt("alignedWidth", std::get<0>(dims));
+  shader->SetInt("targetWidth", width);
+  shader->SetInt("imageWidth", imgwidth);
+  shader->SetInt("numPixels", (width * height));
   shader->SetInt("numChannels", Format::NumChannels(surface.format));
+
+  glActiveTexture(GL_TEXTURE2);
+  RETURN_IF_GL_ERROR("Failed to set active texture unit 2");
 
   glBindTexture(GL_TEXTURE_2D, stgtex);
   RETURN_IF_GL_ERROR("Failed to bind staging texture ", stgtex);
@@ -585,10 +571,13 @@ std::string Engine::DispatchCompute(GLuint& stgtex, GLuint& texture,
   glBindImageTexture(1, texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, format);
   RETURN_IF_GL_ERROR("Failed to bind output image texture ", texture);
 
-  GLuint xgroups = std::get<0>(dims) / (Format::NumChannels(surface.format) * 32);
-  GLuint ygroups = std::get<1>(dims);
+  // Align to the divisor for the number of X groups explained below.
+  uint32_t n_pixels = (((width * height) + ((32 * 4) - 1)) & ~((32 * 4) - 1));
 
-  glDispatchCompute(xgroups, ygroups, 1);
+  // 32 because of the local size and 4 pixels are processed at a time.
+  GLuint xgroups = n_pixels / (32 * 4);
+
+  glDispatchCompute(xgroups, 1, 1);
   RETURN_IF_GL_ERROR("Failed to dispatch compute");
 
   return std::string();
@@ -630,9 +619,9 @@ std::string Engine::Transform(GLuint& stgtex, GLuint& texture,
 
   // Load the vertex position.
   GLuint texcoord = shader->GetAttribLocation("inTexCoord");
+  std::array<float, 8> coords = kTextureCoords;
 
-  float coords[8] = { 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0 };
-  glVertexAttribPointer(texcoord, 2, GL_FLOAT, GL_FALSE, 0, coords);
+  glVertexAttribPointer(texcoord, 2, GL_FLOAT, GL_FALSE, 0, coords.data());
   RETURN_IF_GL_ERROR("Failed to define vertex array");
 
   glEnableVertexAttribArray(texcoord);
@@ -644,36 +633,46 @@ std::string Engine::Transform(GLuint& stgtex, GLuint& texture,
   return std::string();
 }
 
+bool Engine::IsSurfaceRenderable(const Surface& surface) {
+
+  // Currently this check concerns only RGB surfaces.
+  if (!Format::IsRgb(surface.format))
+    return true;
+
+  uint32_t alignment = GetAlignment();
+
+#if defined(ANDROID)
+  bool aligned = ((surface.buffer->stride % alignment) == 0) ? true : false;
+#else // ANDROID
+  bool aligned = ((surface.stride0 % alignment) == 0) ? true : false;
+#endif // !ANDROID
+
+  uint32_t n_channels = Format::NumChannels(surface.format);
+
+  // Unalined, signed or 3 channeled Float RGB surfaces are not renderable.
+  // TODO Remove IsFloat when 3 channel RGB float formats are supported.
+  return aligned && !Format::IsSigned(surface.format) &&
+      !(Format::IsFloat(surface.format) && (n_channels == 3));
+}
+
 GLuint Engine::GetStageTexture(const Surface& surface, const Objects& objects) {
 
-  bool aligned = IsAligned(surface);
-
-  // TODO Remove IsFloat when 3 channel RGB float formats are supported.
-  if (Format::IsRgb(surface.format) && aligned &&
-      !(Format::IsFloat(surface.format) &&
-          Format::NumChannels(surface.format) == 3) &&
-      !Format::IsSigned(surface.format))
+  if (Format::IsRgb(surface.format) && IsSurfaceRenderable(surface))
     return 0;
 
-  bool blending = false;
-
   // Iterate over the objects and determine if alpha blending is required.
-  for (auto const& object : objects) {
-    // Enable blending if atleats one object has alpha mask.
-    if (object.alpha != 0xFF) {
-      blending = true;
-      break;
-    }
+  auto iter = std::find_if(objects.begin(), objects.end(),
+      [&](const Object& obj) -> bool {
+        SurfaceTuple& stuple = surfaces_.at(obj.id);
+        uint32_t format = std::get<Surface>(stuple).format;
 
-    GraphicTuple& tuple = graphics_.at(object.id);
-    uint32_t format = std::get<Surface>(tuple).format;
+        // Enable blending if atleast one object has mask or is RGB with alpha.
+        return (obj.alpha != 0xFF) ||
+            (Format::IsRgb(format) && Format::NumChannels(format) == 4);
+      }
+  );
 
-    // Enable blending if atleast one object is RGB with alpha channel.
-    if (Format::IsRgb(format) && Format::NumChannels(format) == 4) {
-      blending = true;
-      break;
-    }
-  }
+  bool blending = (iter != objects.end()) ? true : false;
 
   if ((Format::IsYuv(surface.format) && !blending))
     return 0;
@@ -716,6 +715,184 @@ GLuint Engine::GetStageTexture(const Surface& surface, const Objects& objects) {
 
   return texture;
 }
+
+#if defined(ANDROID)
+std::vector<GraphicTuple> Engine::ImportAndroidSurface(const Surface& surface,
+                                                       uint32_t flags) {
+
+  EGLImageKHR image =
+      eglCreateImageKHR(m_egl_env_->Display(), EGL_NO_CONTEXT,
+                        EGL_NATIVE_BUFFER_ANDROID, surface.buffer, NULL);
+
+  if (image == EGL_NO_IMAGE) {
+    throw Exception("Failed to create EGL image, error: ", std::hex,
+                    eglGetError(), "!");
+  }
+
+  glActiveTexture(GL_TEXTURE0);
+  EXCEPTION_IF_GL_ERROR("Failed to set active texture unit 0");
+
+  // Create GL texture to the image will be binded.
+  GLuint texture;
+
+  glGenTextures (1, &texture);
+  EXCEPTION_IF_GL_ERROR("Failed to generate GL texture!");
+
+  // Bind the surface texture to EXTERNAL_OES.
+  glBindTexture(GL_TEXTURE_EXTERNAL_OES, texture);
+  EXCEPTION_IF_GL_ERROR("Failed to bind output texture ", texture);
+
+  glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES,
+                                reinterpret_cast<GLeglImageOES>(image));
+  EXCEPTION_IF_GL_ERROR("Failed to associate image ", image,
+      " with external texture ", texture);
+
+  return { std::make_tuple(texture, image) };
+}
+#else // !ANDROID
+std::vector<GraphicTuple> Engine::ImportLinuxSurface(const Surface& surface,
+                                                     uint32_t flags) {
+
+  ImageParam imgparam = GetImageParams(surface, flags);
+
+  // Retrieve the tuple of DRM format and its modifier.
+  std::tuple<uint32_t, uint64_t> internal = Format::ToInternal(imgparam.format);
+
+  EGLint attribs[64] = { EGL_NONE };
+  uint32_t index = 0;
+
+  attribs[index++] = EGL_WIDTH;
+  attribs[index++] = imgparam.width;
+  attribs[index++] = EGL_HEIGHT;
+  attribs[index++] = imgparam.height;
+  attribs[index++] = EGL_LINUX_DRM_FOURCC_EXT;
+  attribs[index++] = std::get<0>(internal);
+  attribs[index++] = EGL_DMA_BUF_PLANE0_FD_EXT;
+  attribs[index++] = surface.fd;
+  attribs[index++] = EGL_DMA_BUF_PLANE0_PITCH_EXT;
+  attribs[index++] = imgparam.planes[0].stride;
+  attribs[index++] = EGL_DMA_BUF_PLANE0_OFFSET_EXT;
+  attribs[index++] = imgparam.planes[0].offset;
+  attribs[index++] = EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT;
+  attribs[index++] = std::get<1>(internal) & 0xFFFFFFFF;
+  attribs[index++] = EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT;
+  attribs[index++] = std::get<1>(internal) >> 32;
+
+  if (imgparam.planes.size() >= 2) {
+    attribs[index++] = EGL_DMA_BUF_PLANE1_PITCH_EXT;
+    attribs[index++] = imgparam.planes[1].stride;
+    attribs[index++] = EGL_DMA_BUF_PLANE1_OFFSET_EXT;
+    attribs[index++] = imgparam.planes[1].offset;
+    attribs[index++] = EGL_DMA_BUF_PLANE1_MODIFIER_LO_EXT;
+    attribs[index++] = std::get<1>(internal) & 0xFFFFFFFF;
+    attribs[index++] = EGL_DMA_BUF_PLANE1_MODIFIER_HI_EXT;
+    attribs[index++] = std::get<1>(internal) >> 32;
+  }
+
+  if (imgparam.planes.size() == 3) {
+    attribs[index++] = EGL_DMA_BUF_PLANE2_PITCH_EXT;
+    attribs[index++] = imgparam.planes[2].stride;
+    attribs[index++] = EGL_DMA_BUF_PLANE2_OFFSET_EXT;
+    attribs[index++] = imgparam.planes[2].offset;
+    attribs[index++] = EGL_DMA_BUF_PLANE2_MODIFIER_LO_EXT;
+    attribs[index++] = std::get<1>(internal) & 0xFFFFFFFF;
+    attribs[index++] = EGL_DMA_BUF_PLANE2_MODIFIER_HI_EXT;
+    attribs[index++] = std::get<1>(internal) >> 32;
+  }
+
+  attribs[index] = EGL_NONE;
+
+  EGLImageKHR image = eglCreateImageKHR(m_egl_env_->Display(), EGL_NO_CONTEXT,
+                                        EGL_LINUX_DMA_BUF_EXT, NULL, attribs);
+
+  if (image == EGL_NO_IMAGE) {
+    throw Exception("Failed to create EGL image, error: ", std::hex,
+                    eglGetError(), "!");
+  }
+
+  glActiveTexture(GL_TEXTURE0);
+  EXCEPTION_IF_GL_ERROR("Failed to set active texture unit 0");
+
+  GLuint texture;
+
+  // Create GL texture to the image will be binded.
+  glGenTextures (1, &texture);
+  EXCEPTION_IF_GL_ERROR("Failed to generate GL texture!");
+
+  // Bind the surface texture to EXTERNAL_OES.
+  glBindTexture(GL_TEXTURE_EXTERNAL_OES, texture);
+  EXCEPTION_IF_GL_ERROR("Failed to bind output texture ", texture);
+
+  glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES,
+                               reinterpret_cast<GLeglImageOES>(image));
+  EXCEPTION_IF_GL_ERROR("Failed to associate image ", image,
+      " with external texture ", texture);
+
+  return { std::make_tuple(texture, image) };
+}
+
+ImageParam Engine::GetImageParams(const Surface& surface, uint32_t flags) {
+
+  ImageParam param;
+
+  param.width = surface.width;
+  param.height = surface.height;
+  param.format = surface.format;
+
+  param.planes.emplace_back(surface.stride0, surface.offset0);
+
+  if (surface.nplanes >= 2)
+    param.planes.emplace_back(surface.stride1, surface.offset1);
+
+  if (surface.nplanes >= 3)
+    param.planes.emplace_back(surface.stride2, surface.offset2);
+
+  // If surface is input then there is no need for any reshaping of its params.
+  // If output surface is not renderable, reshape its dimensions and format.
+  // This will make it compatible for creating EGL image and use in compute.
+  if ((flags & SurfaceFlags::kInput) ||
+      ((flags & SurfaceFlags::kOutput) && IsSurfaceRenderable(surface)))
+    return param;
+
+  // Overwrite the 3 channeled format to corresponding 4 channeled format.
+  if (Format::NumChannels(surface.format) == 3) {
+    param.format = ColorFormat::kRGBA8888;
+
+    if (Format::IsFloat16(surface.format))
+      param.format |= ColorMode::kFloat16;
+    else if (Format::IsFloat32(surface.format))
+      param.format |= ColorMode::kFloat32;
+  }
+
+  // Adjust width, height and stride values for non-renderable RGB(A) surface.
+  uint32_t width = surface.width;
+  uint32_t stride = surface.stride0;
+  uint32_t offset = surface.offset0;
+
+  uint32_t alignment = GetAlignment();
+
+  uint32_t n_bytes = Format::BytesPerChannel(param.format);
+  uint32_t n_channels = Format::NumChannels(param.format);
+
+  // Align stride and calculate the width for the compute texture.
+  stride = ((stride + (alignment - 1)) & ~(alignment - 1));
+  width = stride / (n_channels * n_bytes);
+
+  uint32_t size = surface.size - offset;
+
+  // Calculate the aligned height value rounded up based on surface size.
+  uint32_t height = std::ceil(
+      (size / (n_channels * n_bytes)) / static_cast<float>(width));
+
+  param.width = width;
+  param.height = height;
+
+  param.planes[0].stride = stride;
+  param.planes[0].offset = offset;
+
+  return param;
+}
+#endif // defined(ANDROID)
 
 IEngine* NewGlEngine() {
 
