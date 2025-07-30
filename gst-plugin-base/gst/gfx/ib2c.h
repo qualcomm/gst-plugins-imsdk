@@ -24,6 +24,9 @@ namespace ib2c {
 enum ColorFormat : uint32_t {
   kGRAY8,
 
+  kRG88,
+  kGR88,
+
   kRGB565,
   kBGR565,
 
@@ -80,9 +83,9 @@ enum ColorFormat : uint32_t {
  * @kBT601FullRange: YUV format is full range following full BT 601 standard.
  * @kBT709: YUV format is following BT 709 standard.
  * @kUnsigned: The pixels in a RGB format are represented by unsigned 8-bit. (Default)
+ * @kSigned: The pixels in a RGB format are represented by signed 8-bit.
  * @kFloat16: The pixels in a RGB format are represented by 16-bit float.
  * @kFloat32: The pixels in a RGB format are represented by 32-bit float.
- * @kSigned: The pixels in a RGB format are represented by signed 8-bit.
  *
  * Definitions of color format modes, used together with color formats.
  */
@@ -92,9 +95,9 @@ enum ColorMode : uint32_t {
   kBT601FullRange = (2 << 9),
   kBT709          = (3 << 9),
   kUnsigned       = (0 << 11),
-  kFloat16        = (1 << 11),
-  kFloat32        = (2 << 11),
-  kSigned         = (3 << 11),
+  kSigned         = (1 << 11),
+  kFloat16        = (2 << 11),
+  kFloat32        = (3 << 11),
 };
 
 /** ConfigMask
@@ -192,7 +195,7 @@ struct Surface {
         offset0(s.offset0),
         stride1(s.stride1),
         offset1(s.offset1),
-        stride2(s.stride1),
+        stride2(s.stride2),
         offset2(s.offset2) {}
 };
 #endif  // !ANDROID
@@ -344,6 +347,6 @@ class IEngine {
  *
  * return: Pointer to new engine instance.
  **/
-extern "C" IEngine* NewGlEngine();
+IEngine* NewGlEngine();
 
 } // namespace ib2c
