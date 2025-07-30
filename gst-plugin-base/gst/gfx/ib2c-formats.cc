@@ -34,6 +34,11 @@
 #define DRM_FORMAT_BGR161616      0
 #endif // DRM_FORMAT_BGR161616
 
+// TODO: Workaround for missing 16 bpp RGBA format. Just a placeholder.
+#if !defined(DRM_FORMAT_ABGR1616161616)
+#define DRM_FORMAT_ABGR1616161616 0
+#endif // DRM_FORMAT_ABGR1616161616
+
 #include "ib2c-formats.h"
 #include "ib2c-utils.h"
 
