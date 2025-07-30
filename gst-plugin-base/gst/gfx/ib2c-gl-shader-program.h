@@ -9,14 +9,18 @@
 #include <cstdint>
 #include <string>
 
-#include <GLES3/gl32.h>
+#include "ib2c-gl-environment.h"
 
 namespace ib2c {
 
+namespace gl {
+
 class ShaderProgram {
  public:
-  ShaderProgram(const std::string& vshader, const std::string& fshader);
-  ShaderProgram(const std::string& cshader);
+  ShaderProgram(std::shared_ptr<Environment> environment,
+                const std::string& vshader, const std::string& fshader);
+  ShaderProgram(std::shared_ptr<Environment> environment,
+                const std::string& cshader);
 
   ~ShaderProgram();
 
@@ -32,11 +36,16 @@ class ShaderProgram {
 
   bool HasVariable(const char* name) const;
 
-  int GetAttribLocation(const char* name) const;
+  GLint GetAttribLocation(const char* name) const;
 
  private:
+  /// Interface to the Dynamically loaded EGL and GLES libraries.
+  std::shared_ptr<Environment> env_;
+
   /// GL program identification.
-  GLuint id_;
+  GLuint                       id_;
 };
+
+} // namespace gl
 
 } // namespace ib2c

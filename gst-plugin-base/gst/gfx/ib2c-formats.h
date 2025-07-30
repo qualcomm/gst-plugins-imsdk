@@ -35,10 +35,13 @@ class Format {
   static bool IsFloat32(uint32_t format);
 
   static uint32_t ColorSpace(uint32_t format);
+  static uint32_t ToYuvColor(uint32_t color, uint32_t colorspace);
 
  private:
   // Tuple of <DRM/GBM Format, Number of Channels, Inverted, Swapped RB>
   typedef std::tuple<uint32_t, uint8_t, bool, bool> RgbColorTuple;
+  // Coeffcients for red, green and blue channels.
+  typedef std::tuple<float, float, float> ColorCoeffcients;
 
   static const uint32_t kFormatMask;
   static const uint32_t kColorSpaceMask;
@@ -46,6 +49,8 @@ class Format {
 
   static const std::map<uint32_t, uint32_t> kYuvColorTable;
   static const std::map<uint32_t, RgbColorTuple> kRgbColorTable;
+
+  static const std::map<uint32_t, ColorCoeffcients> kColorSpaceCoefficients;
 };
 
 } // namespace ib2c

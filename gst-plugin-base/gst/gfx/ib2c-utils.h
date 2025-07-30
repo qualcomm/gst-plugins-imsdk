@@ -13,32 +13,12 @@
 #include <chrono>
 #include <iomanip>
 
-#include <GLES3/gl32.h>
-
-#include "ib2c.h"
-
 namespace ib2c {
 
 #define EXTRACT_RED_COLOR(color)   (((color >> 24) & 0xFF) / 255.0)
 #define EXTRACT_GREEN_COLOR(color) (((color >> 16) & 0xFF) / 255.0)
 #define EXTRACT_BLUE_COLOR(color)  (((color >> 8) & 0xFF) / 255.0)
 #define EXTRACT_ALPHA_COLOR(color) (((color) & 0xFF) / 255.0)
-
-#define EXCEPTION_IF_GL_ERROR(...)                                   \
-do {                                                                 \
-  GLenum error = glGetError();                                       \
-                                                                     \
-  if (error != GL_NO_ERROR)                                          \
-    throw Exception(__VA_ARGS__, ", error: ", std::hex, error, "!"); \
-} while (false)
-
-#define RETURN_IF_GL_ERROR(...)                                   \
-do {                                                              \
-  GLenum error = glGetError();                                    \
-                                                                  \
-  if (error != GL_NO_ERROR)                                       \
-    return Error(__VA_ARGS__, ", error: ", std::hex, error, "!"); \
-} while (false)
 
 template<typename ...Args> void Log(Args&&... args) {
 
@@ -70,10 +50,7 @@ template<typename ...Args> std::string Error(Args&&... args) {
   return s.str();
 }
 
-// Return the stride alignment requirement in bytes.
-uint32_t GetAlignment();
-
-// Convert RGB color code to YUV color code.
-uint32_t ToYuvColorCode(uint32_t color, uint32_t standard);
+// Return Adreno alignment requirement in bytes.
+int32_t QueryAlignment();
 
 } // namespace ib2c
