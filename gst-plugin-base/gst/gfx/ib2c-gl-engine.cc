@@ -202,13 +202,7 @@ uint64_t Engine::CreateSurface(const Surface& surface, uint32_t flags) {
 
   std::lock_guard<std::mutex> lk(mutex_);
 
-#if defined(ANDROID)
-  int32_t fd = surface.buffer->handle->data[0];
-#else   // ANDROID
-  int32_t fd = surface.fd;
-#endif  // !ANDROID
-
-  uint64_t surface_id = kSurfaceIdPrefix | fd;
+  uint64_t surface_id = kSurfaceIdPrefix | surface.fd;
 
   if (surfaces_.count(surface_id) != 0)
     return surface_id;
@@ -220,11 +214,7 @@ uint64_t Engine::CreateSurface(const Surface& surface, uint32_t flags) {
   env_->Gles()->ActiveTexture(GL_TEXTURE0);
   EXCEPTION_IF_GL_ERROR(env_, "Failed to set active texture unit 0");
 
-#if defined(ANDROID)
-  std::vector<GraphicTuple> graphics = ImportAndroidSurface(surface, flags);
-#else // ANDROID
-  std::vector<GraphicTuple> graphics = ImportLinuxSurface(surface, flags);
-#endif // !ANDROID
+  std::vector<GraphicTuple> graphics = ImportSurface(surface, flags);
 
   SurfaceTuple stuple = std::make_tuple(std::move(graphics), surface, flags);
   surfaces_.emplace(surface_id, std::move(stuple));
@@ -310,13 +300,8 @@ std::uintptr_t Engine::Compose(const Compositions& compositions,
     if (!clean && (stgtex != 0)) {
       objects.insert(objects.begin(), Object());
 
-#if defined(ANDROID)
-      objects[0].source.w = objects[0].destination.w = surface.buffer->width;
-      objects[0].source.h = objects[0].destination.h = surface.buffer->height;
-#else   // ANDROID
       objects[0].source.w = objects[0].destination.w = surface.width;
       objects[0].source.h = objects[0].destination.h = surface.height;
-#endif  // !ANDROID
 
       objects[0].id = surface_id;
     }
@@ -635,13 +620,8 @@ std::string Engine::DrawObject(std::shared_ptr<ShaderProgram>& shader,
   const Region& source = object.source;
   std::array<float, 8> coords = kTextureCoords;
 
-#if defined(ANDROID)
-  uint32_t width = insurface.buffer->width;
-  uint32_t height = insurface.buffer->height;
-#else   // ANDROID
   uint32_t width = insurface.width;
   uint32_t height = insurface.height;
-#endif  // !ANDROID
 
   if ((source.w != 0) && (source.h != 0)) {
     coords[0] = static_cast<float>(source.x) / width;
@@ -673,23 +653,19 @@ std::string Engine::DispatchCompute(GLuint stgtex, Surface& surface,
                                     std::vector<GraphicTuple>& graphics) {
 
   ShaderType stype = ShaderType::kUnaligned8;
+  auto bitdepth = Format::BitDepth(surface.format);
 
   // Overwrite default shader type if necessary.
-  if (Format::IsFloat32(surface.format))
+  if (Format::IsFloat(surface.format) && (bitdepth == 32))
     stype = ShaderType::kUnaligned32F;
-  else if (Format::IsFloat16(surface.format))
+  else if (Format::IsFloat(surface.format) && (bitdepth == 16))
     stype = ShaderType::kUnaligned16F;
 
   std::shared_ptr<ShaderProgram> shader = shaders_.at(stype);
   shader->Use();
 
-#if defined(ANDROID)
-  uint32_t width = surface.buffer->width;
-  uint32_t height = surface.buffer->height;
-#else   // ANDROID
   uint32_t width = surface.width;
   uint32_t height = surface.height;
-#endif  // !ANDROID
 
   auto& gltuple = graphics.at(0);
   GLuint& otexture = std::get<GLuint>(gltuple);
@@ -698,7 +674,7 @@ std::string Engine::DispatchCompute(GLuint stgtex, Surface& surface,
   shader->SetInt("targetWidth", width);
   shader->SetInt("imageWidth", std::get<0>(imgparam));
   shader->SetInt("numPixels", (width * height));
-  shader->SetInt("numChannels", Format::NumChannels(surface.format));
+  shader->SetInt("numChannels", Format::NumComponents(surface.format));
   shader->SetInt("inTex", 1);
 
   env_->Gles()->ActiveTexture(GL_TEXTURE1);
@@ -736,13 +712,8 @@ std::string Engine::ColorTransmute(GLuint stgtex, Surface& surface,
   RETURN_IF_GL_ERROR(env_, "Failed to attach output texture ", otexture, " to ",
                      "frame buffer at color attachment 0 for color transmute");
 
-#if defined(ANDROID)
-  uint32_t width = surface.buffer->width;
-  uint32_t height = surface.buffer->height;
-#else   // ANDROID
   uint32_t width = surface.width;
   uint32_t height = surface.height;
-#endif  // !ANDROID
 
   env_->Gles()->Viewport(0, 0, width, height);
   RETURN_IF_GL_ERROR(env_, "Failed to set destination viewport");
@@ -788,23 +759,21 @@ std::string Engine::ColorTransmute(GLuint stgtex, Surface& surface,
 bool Engine::IsSurfaceRenderable(const Surface& surface) {
 
   uint32_t alignment = QueryAlignment();
+  uint32_t bytedepth = Format::BitDepth(surface.format) / 8;
 
-#if defined(ANDROID)
-  bool aligned = ((surface.buffer->stride % alignment) == 0) ? true : false;
-#else // ANDROID
-  bool aligned = ((surface.stride0 % alignment) == 0) ? true : false;
-#endif // !ANDROID
+  bool aligned =
+      (((surface.stride0 / bytedepth) % alignment) == 0) ? true : false;
 
   // For YUV surfaces check only if it satisfies GPU alignment requirement.
   if (Format::IsYuv(surface.format))
     return aligned;
 
-  uint32_t n_channels = Format::NumChannels(surface.format);
+  uint32_t n_components = Format::NumComponents(surface.format);
 
   // Unalined, signed or 3 channeled Float RGB surfaces are not renderable.
   // TODO Remove IsFloat when 3 channel RGB float formats are supported.
   return aligned && !Format::IsSigned(surface.format) &&
-      !(Format::IsFloat(surface.format) && (n_channels == 3));
+      !(Format::IsFloat(surface.format) && (n_components == 3));
 }
 
 GLuint Engine::GetStageTexture(const Surface& surface, const Objects& objects) {
@@ -823,7 +792,7 @@ GLuint Engine::GetStageTexture(const Surface& surface, const Objects& objects) {
 
         // Enable blending if atleast one object has global alpha or is RGBA.
         return (obj.alpha != 0xFF) ||
-            (Format::IsRgb(format) && Format::NumChannels(format) == 4);
+            (Format::IsRgb(format) && Format::NumComponents(format) == 4);
       }
   );
 
@@ -833,13 +802,8 @@ GLuint Engine::GetStageTexture(const Surface& surface, const Objects& objects) {
   if (Format::IsYuv(surface.format) && !blending)
     return 0;
 
-#if defined(ANDROID)
-  GLsizei width = surface.buffer->width;
-  GLsizei height = surface.buffer->height;
-#else   // ANDROID
   GLsizei width = surface.width;
   GLsizei height = surface.height;
-#endif  // !ANDROID
 
   GLenum format = Format::ToGL(surface.format);
 
@@ -875,46 +839,8 @@ GLuint Engine::GetStageTexture(const Surface& surface, const Objects& objects) {
   return texture;
 }
 
-#if defined(ANDROID)
-std::vector<GraphicTuple> Engine::ImportAndroidSurface(const Surface& surface,
-                                                       uint32_t flags) {
-
-  EGLImageKHR image =
-      env_->Egl()->CreateImageKHR(env_->Display(), EGL_NO_CONTEXT,
-                                    EGL_NATIVE_BUFFER_ANDROID, surface.buffer,
-                                    nullptr);
-
-  if (image == EGL_NO_IMAGE) {
-    throw Exception("Failed to create EGL image, error: ", std::hex,
-                    env_->Egl()->GetError(), "!");
-  }
-
-  env_->Gles()->ActiveTexture(GL_TEXTURE0);
-  EXCEPTION_IF_GL_ERROR(env_, "Failed to set active texture unit 0");
-
-  // Create GL texture to the image will be binded.
-  GLuint texture;
-
-  env_->Gles()->GenTextures (1, &texture);
-  EXCEPTION_IF_GL_ERROR(env_, "Failed to generate GL texture!");
-
-  // Bind the surface texture to EXTERNAL_OES.
-  env_->Gles()->BindTexture(GL_TEXTURE_EXTERNAL_OES, texture);
-  EXCEPTION_IF_GL_ERROR(env_, "Failed to bind output texture ", texture);
-
-  env_->Gles()->EGLImageTargetTexture2DOES(
-      GL_TEXTURE_EXTERNAL_OES, reinterpret_cast<GLeglImageOES>(image));
-  EXCEPTION_IF_GL_ERROR(env_, "Failed to associate image ", image,
-                        " with external texture ", texture);
-
-  ImageParam imgparam = std::make_tuple(
-      surface.buffer->width, surface.buffer->height, surface.format);
-
-  return { std::make_tuple(texture, image, std::move(imgparam)) };
-}
-#else // !ANDROID
-std::vector<GraphicTuple> Engine::ImportLinuxSurface(const Surface& surface,
-                                                     uint32_t flags) {
+std::vector<GraphicTuple> Engine::ImportSurface(const Surface& surface,
+                                                uint32_t flags) {
 
   std::vector<Surface> imgsurfaces = GetImageSurfaces(surface, flags);
   std::vector<GraphicTuple> graphics;
@@ -973,7 +899,7 @@ std::vector<GraphicTuple> Engine::ImportLinuxSurface(const Surface& surface,
 
     EGLImageKHR image =
         env_->Egl()->CreateImageKHR(env_->Display(), EGL_NO_CONTEXT,
-                                      EGL_LINUX_DMA_BUF_EXT, NULL, attribs);
+                                    EGL_LINUX_DMA_BUF_EXT, NULL, attribs);
 
     if (image == EGL_NO_IMAGE) {
       throw Exception("Failed to create EGL image, error: ", std::hex,
@@ -1062,33 +988,41 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
     // Non-renderable RGB(A) output, reshape its dimensions and format.
     Surface subsurface(surface);
 
+    uint32_t n_components = Format::NumComponents(surface.format);
+    uint32_t bitdepth = Format::BitDepth(surface.format);
+
     // Overwrite the 3 channeled format to corresponding 4 channeled format.
     // This will make it compatible for creating EGL image and use in compute.
-    if (Format::NumChannels(surface.format) == 3) {
+    if (n_components == 3) {
       subsurface.format = ColorFormat::kRGBA8888;
 
-      if (Format::IsFloat16(surface.format))
-        subsurface.format |= ColorMode::kFloat16;
-      else if (Format::IsFloat32(surface.format))
-        subsurface.format |= ColorMode::kFloat32;
+      if (Format::IsFloat(surface.format) && (bitdepth == 16))
+        subsurface.format = ColorFormat::kRGBA16161616F;
+      else if (Format::IsFloat(surface.format) && (bitdepth == 32))
+        subsurface.format = ColorFormat::kRGBA32323232F;
+
+      n_components = Format::NumComponents(subsurface.format);
+      bitdepth = Format::BitDepth(subsurface.format);
     }
 
     uint32_t alignment = QueryAlignment();
 
-    uint32_t n_bytes = Format::BytesPerChannel(subsurface.format);
-    uint32_t n_channels = Format::NumChannels(subsurface.format);
+    // Divide by 8 in order to get bytes depth and then Bytes Per Pixel.
+    uint32_t bytedepth = bitdepth / 8;
+    uint32_t bpp = bytedepth * n_components;
 
     // Adjust width, height and stride values for non-renderable RGB(A) surface.
     // Align stride and calculate the width for the compute texture.
+    uint32_t stride = subsurface.stride0 / bytedepth;
     subsurface.stride0 =
-        ((subsurface.stride0 + (alignment - 1)) & ~(alignment - 1));
-    subsurface.width = subsurface.stride0 / (n_channels * n_bytes);
+        ((stride + (alignment - 1)) & ~(alignment - 1)) * bytedepth;
 
-    uint32_t size = subsurface.size - subsurface.offset0;
+    subsurface.width = subsurface.stride0 / bpp;
 
     // Calculate the aligned height value rounded up based on surface size.
-    subsurface.height = std::ceil(
-        (size / (n_channels * n_bytes)) / static_cast<float>(subsurface.width));
+    uint32_t size = subsurface.size - subsurface.offset0;
+    subsurface.height =
+        std::ceil((size / bpp) / static_cast<float>(subsurface.width));
 
     imgsurfaces.push_back(subsurface);
   } else {
@@ -1098,7 +1032,6 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
 
   return imgsurfaces;
 }
-#endif // defined(ANDROID)
 
 } // namespace gl
 
