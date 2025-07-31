@@ -61,6 +61,8 @@ class Format {
     bool      inverted;
     /// Whether R abd B channel have swapped positions (e.g. BGR).
     bool      swapped;
+    /// Whether is planar format
+    bool      planar;
   };
 
   // Tuple of <DRM/GBM Format, Information for the RGB format>

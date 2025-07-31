@@ -23,6 +23,11 @@ enum class ShaderType : uint32_t {
   kCompute16,
   kCompute16F,
   kCompute32F,
+
+  kComputePlanar8,
+  kComputePlanar16,
+  kComputePlanar16F,
+  kComputePlanar32F,
 };
 
 static const std::string kVertexShader = R"(
@@ -244,6 +249,7 @@ static const std::string kComputeHeader = R"(
 #extension GL_NV_image_formats : warn
 
 uniform int targetWidth;
+uniform int targetHeight;
 uniform int imageWidth;
 uniform int numPixels;
 uniform int numChannels;
@@ -322,6 +328,50 @@ void main() {
             imageStore(outTex, outPos0, out0);
             imageStore(outTex, outPos1, out1);
             imageStore(outTex, outPos2, out2);
+        }
+    }
+}
+)";
+
+static const std::string kComputeMainPlanar = R"(
+void main() {
+    int pixelId = int(gl_GlobalInvocationID.y * gl_NumWorkGroups.x * gl_WorkGroupSize.x);
+    pixelId = 4 * (int(gl_GlobalInvocationID.x) + pixelId);
+
+    if ((pixelId + 3) < numPixels) {
+        int plane0PixelId = pixelId / 4;
+        int plane1PixelId = plane0PixelId + targetWidth * targetHeight / 4;
+        int plane2PixelId = plane1PixelId + targetWidth * targetHeight / 4;
+
+        ivec2 pos0 = ivec2(pixelId % targetWidth, pixelId / targetWidth);
+        ivec2 pos1 = ivec2((pixelId + 1) % targetWidth, (pixelId + 1) / targetWidth);
+        ivec2 pos2 = ivec2((pixelId + 2) % targetWidth, (pixelId + 2) / targetWidth);
+        ivec2 pos3 = ivec2((pixelId + 3) % targetWidth, (pixelId + 3) / targetWidth);
+
+        vec4 p0 = texelFetch(inTex, pos0, 0);
+        vec4 p1 = texelFetch(inTex, pos1, 0);
+        vec4 p2 = texelFetch(inTex, pos2, 0);
+        vec4 p3 = texelFetch(inTex, pos3, 0);
+
+        vec4 outp0 = vec4(p0.x, p1.x, p2.x, p3.x);
+        vec4 outp1 = vec4(p0.y, p1.y, p2.y, p3.y);
+        vec4 outp2 = vec4(p0.z, p1.z, p2.z, p3.z);
+
+        ivec2 outPos0 = ivec2(plane0PixelId % imageWidth, plane0PixelId / imageWidth);
+        ivec2 outPos1 = ivec2(plane1PixelId % imageWidth, plane1PixelId / imageWidth);
+        ivec2 outPos2 = ivec2(plane2PixelId % imageWidth, plane2PixelId / imageWidth);
+
+        imageStore(outTex, outPos0, outp0);
+        imageStore(outTex, outPos1, outp1);
+        imageStore(outTex, outPos2, outp2);
+
+        if (numChannels == 4) {
+            vec4 outp3 = vec4(p0.w, p1.w, p2.w, p3.w);
+
+            int plane3PixelId = plane2PixelId + targetWidth * targetHeight / 4;
+            ivec2 outPos3 = ivec2(plane3PixelId % imageWidth, plane3PixelId / imageWidth);
+
+            imageStore(outTex, outPos3, outp3);
         }
     }
 }

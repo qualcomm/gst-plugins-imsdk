@@ -188,6 +188,29 @@ Engine::Engine() {
   shader = std::make_shared<ShaderProgram>(env_, compute);
   shaders_.emplace(ShaderType::kCompute32F, shader);
 
+  // Construct shader code for 8-bit unaligned RGB(A) output textures.
+  compute = kComputeHeader + kComputeOutputRGBA8 + kComputeMainPlanar;
+  shader = std::make_shared<ShaderProgram>(env_, compute);
+  shaders_.emplace(ShaderType::kComputePlanar8, shader);
+
+  if (env_->QueryExtension("GL_NV_image_formats")) {
+    // Construct shader code for 16-bit unaligned RGB(A) output textures.
+    compute = kComputeHeader + kComputeOutputRGBA16 + kComputeMainPlanar;
+
+    shader = std::make_shared<ShaderProgram>(env_, compute);
+    shaders_.emplace(ShaderType::kComputePlanar16, shader);
+  }
+
+  // Construct shader code for 16-bit float unaligned RGB(A) output textures.
+  compute = kComputeHeader + kComputeOutputRGBA16F + kComputeMainPlanar;
+  shader = std::make_shared<ShaderProgram>(env_, compute);
+  shaders_.emplace(ShaderType::kComputePlanar16F, shader);
+
+  // Construct shader code for 16-bit float unaligned RGB(A) output textures.
+  compute = kComputeHeader + kComputeOutputRGBA32F + kComputeMainPlanar;
+  shader = std::make_shared<ShaderProgram>(env_, compute);
+  shaders_.emplace(ShaderType::kComputePlanar32F, shader);
+
   error = env_->UnbindContext(ContextType::kPrimary) ;
   if (!error.empty()) throw std::runtime_error(error);
 }
@@ -696,11 +719,17 @@ std::string Engine::DispatchCompute(GLuint stgtex, Surface& surface,
 
   // Overwrite default shader type if necessary.
   if (Format::IsFloat(surface.format) && (bitdepth == 32))
-    stype = ShaderType::kCompute32F;
+    stype = Format::IsPlanar(surface.format) ?
+        ShaderType::kComputePlanar32F : ShaderType::kCompute32F;
   else if (Format::IsFloat(surface.format) && (bitdepth == 16))
-    stype = ShaderType::kCompute16F;
+    stype = Format::IsPlanar(surface.format) ? ShaderType::kComputePlanar16F :
+        ShaderType::kCompute16F;
   else if (!Format::IsFloat(surface.format) && (bitdepth == 16))
-    stype = ShaderType::kCompute16;
+    stype = Format::IsPlanar(surface.format) ? ShaderType::kComputePlanar16 :
+        ShaderType::kCompute16;
+  else
+    stype = Format::IsPlanar(surface.format) ? ShaderType::kComputePlanar8 :
+        ShaderType::kCompute8;
 
   std::shared_ptr<ShaderProgram> shader = shaders_.at(stype);
   shader->Use();
@@ -713,6 +742,7 @@ std::string Engine::DispatchCompute(GLuint stgtex, Surface& surface,
   ImageParam& imgparam = std::get<ImageParam>(gltuple);
 
   shader->SetInt("targetWidth", width);
+  shader->SetInt("targetHeight", height);
   shader->SetInt("imageWidth", std::get<0>(imgparam));
   shader->SetInt("numPixels", (width * height));
   shader->SetInt("numChannels", Format::NumComponents(surface.format));
@@ -818,6 +848,10 @@ bool Engine::IsSurfaceRenderable(const Surface& surface) {
     return false;
 
   uint32_t n_components = Format::NumComponents(surface.format);
+
+  // RGB(A) planar formats are not renderable
+  if (Format::IsPlanar(surface.format))
+    return false;
 
   // 3 channeled Float RGB surfaces are not renderable due to limitation.
   // TODO Remove when 3 channel RGB float formats are supported.
