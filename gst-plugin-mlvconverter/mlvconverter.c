@@ -1690,6 +1690,10 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
     mlconverter->composition.flags |= GST_VCE_FLAG_I32_FORMAT;
   else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_UINT32)
     mlconverter->composition.flags |= GST_VCE_FLAG_U32_FORMAT;
+  else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_INT16)
+    mlconverter->composition.flags |= GST_VCE_FLAG_I16_FORMAT;
+  else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_UINT16)
+    mlconverter->composition.flags |= GST_VCE_FLAG_U16_FORMAT;
   else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_FLOAT16)
     mlconverter->composition.flags |= GST_VCE_FLAG_F16_FORMAT;
   else if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_FLOAT32)
@@ -1702,10 +1706,6 @@ gst_ml_video_converter_set_caps (GstBaseTransform * base, GstCaps * incaps,
         g_array_index (mlconverter->mean, gdouble, idx) : DEFAULT_PROP_MEAN;
     mlconverter->composition.scales[idx] = (idx < mlconverter->sigma->len) ?
         g_array_index (mlconverter->sigma, gdouble, idx) : DEFAULT_PROP_SIGMA;
-
-    // Apply coefficients for unsigned to singned conversion.
-    if (GST_ML_INFO_TYPE (&mlinfo) == GST_ML_TYPE_INT8)
-      mlconverter->composition.offsets[idx] += SIGNED_CONVERSION_OFFSET;
   }
 
   GST_DEBUG_OBJECT (mlconverter, "Input caps: %" GST_PTR_FORMAT, incaps);

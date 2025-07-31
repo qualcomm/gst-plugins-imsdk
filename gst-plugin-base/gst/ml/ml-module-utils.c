@@ -69,27 +69,6 @@ gst_ml_stage_unregister_unique_index (gint8 index)
   G_UNLOCK (ml_stage_mutex);
 }
 
-gdouble
-gst_ml_tensor_extract_value (GstMLType mltype, gpointer data, guint idx,
-    gdouble offset, gdouble scale)
-{
-  switch (mltype) {
-    case GST_ML_TYPE_INT8:
-      return ((GINT8_PTR_CAST (data))[idx] - offset) * scale;
-    case GST_ML_TYPE_UINT8:
-      return ((GUINT8_PTR_CAST (data))[idx] - offset) * scale;
-    case GST_ML_TYPE_INT32:
-      return (GINT32_PTR_CAST (data))[idx];
-    case GST_ML_TYPE_UINT32:
-      return (GUINT32_PTR_CAST (data))[idx];
-    case GST_ML_TYPE_FLOAT32:
-      return ((GFLOAT_PTR_CAST (data))[idx] - offset) * scale;
-    default:
-      break;
-  }
-  return 0.0;
-}
-
 gint
 gst_ml_tensor_compare_values (GstMLType mltype, gpointer data, guint l_idx,
     guint r_idx)

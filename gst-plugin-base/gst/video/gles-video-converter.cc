@@ -1,36 +1,7 @@
 /*
-* Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted (subject to the limitations in the
-* disclaimer below) provided that the following conditions are met:
-*
-*    * Redistributions of source code must retain the above copyright
-*      notice, this list of conditions and the following disclaimer.
-*
-*    * Redistributions in binary form must reproduce the above
-*      copyright notice, this list of conditions and the following
-*      disclaimer in the documentation and/or other materials provided
-*      with the distribution.
-*
-*    * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
-*      contributors may be used to endorse or promote products derived
-*      from this software without specific prior written permission.
-*
-* NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
-* GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
-* HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
-* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-* MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-* IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
-* ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-* DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
-* GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-* INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
-* IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-* OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
-* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include "gles-video-converter.h"
 
@@ -39,7 +10,7 @@
 #include <cstdint>
 #include <cmath>
 
-#include <iot-core-algs/ib2c.h>
+#include <gst/gfx/ib2c.h>
 
 
 #define GST_CAT_DEFAULT gst_video_converter_engine_debug
@@ -79,15 +50,12 @@ struct _GstGlesVideoConverter
   // List of not yet processed IB2C fence objects.
   GList           *fences;
 
-  // IB2C library handle.
-  gpointer        ib2chandle;
-
   // IB2C engine interface.
   ::ib2c::IEngine *engine;
 };
 
 static gint
-gst_video_format_to_ib2c_format (GstVideoFormat format)
+gst_video_format_to_ib2c_format (GstVideoFormat format, const guint64 flags)
 {
   switch (format) {
     case GST_VIDEO_FORMAT_NV12:
@@ -110,31 +78,155 @@ gst_video_format_to_ib2c_format (GstVideoFormat format)
       return ::ib2c::ColorFormat::kYVYU;
     case GST_VIDEO_FORMAT_VYUY:
       return ::ib2c::ColorFormat::kVYUY;
-    case GST_VIDEO_FORMAT_RGB16:
-      return ::ib2c::ColorFormat::kRGB565;
-    case GST_VIDEO_FORMAT_BGR16:
-      return ::ib2c::ColorFormat::kBGR565;
     case GST_VIDEO_FORMAT_RGB:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kRGB888I;
+      else if (flags == GST_VCE_FLAG_U16_FORMAT)
+        return ::ib2c::ColorFormat::kRGB161616;
+      else if (flags == GST_VCE_FLAG_I16_FORMAT)
+        return ::ib2c::ColorFormat::kRGB161616I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kRGB161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kRGB323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kRGB888;
     case GST_VIDEO_FORMAT_BGR:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kBGR888I;
+      else if (flags == GST_VCE_FLAG_U16_FORMAT)
+        return ::ib2c::ColorFormat::kBGR161616;
+      else if (flags == GST_VCE_FLAG_I16_FORMAT)
+        return ::ib2c::ColorFormat::kBGR161616I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kBGR161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kBGR323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kBGR888;
     case GST_VIDEO_FORMAT_RGBA:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kRGBA8888I;
+      else if (flags == GST_VCE_FLAG_U16_FORMAT)
+        return ::ib2c::ColorFormat::kRGBA16161616;
+      else if (flags == GST_VCE_FLAG_I16_FORMAT)
+        return ::ib2c::ColorFormat::kRGBA16161616I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kRGBA16161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kRGBA32323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kRGBA8888;
     case GST_VIDEO_FORMAT_BGRA:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kBGRA8888I;
+      else if (flags == GST_VCE_FLAG_U16_FORMAT)
+        return ::ib2c::ColorFormat::kBGRA16161616;
+      else if (flags == GST_VCE_FLAG_I16_FORMAT)
+        return ::ib2c::ColorFormat::kBGRA16161616I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kBGRA16161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kBGRA32323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kBGRA8888;
     case GST_VIDEO_FORMAT_ARGB:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kARGB8888I;
+      else if (flags == GST_VCE_FLAG_U16_FORMAT)
+        return ::ib2c::ColorFormat::kARGB16161616;
+      else if (flags == GST_VCE_FLAG_I16_FORMAT)
+        return ::ib2c::ColorFormat::kARGB16161616I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kARGB16161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kARGB32323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kARGB8888;
     case GST_VIDEO_FORMAT_ABGR:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kABGR8888I;
+      else if (flags == GST_VCE_FLAG_U16_FORMAT)
+        return ::ib2c::ColorFormat::kABGR16161616;
+      else if (flags == GST_VCE_FLAG_I16_FORMAT)
+        return ::ib2c::ColorFormat::kABGR16161616I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kABGR16161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kABGR32323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kABGR8888;
     case GST_VIDEO_FORMAT_RGBx:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kRGBX8888I;
+      else if (flags == GST_VCE_FLAG_U16_FORMAT)
+        return ::ib2c::ColorFormat::kRGBX16161616;
+      else if (flags == GST_VCE_FLAG_I16_FORMAT)
+        return ::ib2c::ColorFormat::kRGBX16161616I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kRGBX16161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kRGBX32323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kRGBX8888;
     case GST_VIDEO_FORMAT_BGRx:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kBGRX8888I;
+      else if (flags == GST_VCE_FLAG_U16_FORMAT)
+        return ::ib2c::ColorFormat::kBGRX16161616;
+      else if (flags == GST_VCE_FLAG_I16_FORMAT)
+        return ::ib2c::ColorFormat::kBGRX16161616I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kBGRX16161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kBGRX32323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kBGRX8888;
     case GST_VIDEO_FORMAT_xRGB:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kXRGB8888I;
+      else if (flags == GST_VCE_FLAG_U16_FORMAT)
+        return ::ib2c::ColorFormat::kXRGB16161616;
+      else if (flags == GST_VCE_FLAG_I16_FORMAT)
+        return ::ib2c::ColorFormat::kXRGB16161616I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kXRGB16161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kXRGB32323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kXRGB8888;
     case GST_VIDEO_FORMAT_xBGR:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kXBGR8888I;
+      else if (flags == GST_VCE_FLAG_U16_FORMAT)
+        return ::ib2c::ColorFormat::kXBGR16161616;
+      else if (flags == GST_VCE_FLAG_I16_FORMAT)
+        return ::ib2c::ColorFormat::kXBGR16161616I;
+      else if (flags == GST_VCE_FLAG_F16_FORMAT)
+        return ::ib2c::ColorFormat::kXBGR16161616F;
+      else if (flags == GST_VCE_FLAG_F32_FORMAT)
+        return ::ib2c::ColorFormat::kXBGR32323232F;
+
+      // Default value.
       return ::ib2c::ColorFormat::kXBGR8888;
     case GST_VIDEO_FORMAT_GRAY8:
+      if (flags == GST_VCE_FLAG_I8_FORMAT)
+        return ::ib2c::ColorFormat::kGRAY8I;
+      else if (flags == GST_VCE_FLAG_U16_FORMAT)
+        return ::ib2c::ColorFormat::kGRAY16;
+      else if (flags == GST_VCE_FLAG_I16_FORMAT)
+        return ::ib2c::ColorFormat::kGRAY16I;
+
+      // Default value.
       return ::ib2c::ColorFormat::kGRAY8;
     default:
       GST_ERROR ("Unsupported format %s!", gst_video_format_to_string (format));
@@ -166,22 +258,26 @@ gst_gles_create_surface (GstGlesVideoConverter * convert, const gchar * directio
   format = gst_video_format_to_string (GST_VIDEO_FRAME_FORMAT (frame));
 
   surface.fd = gst_fd_memory_get_fd (memory);
-  surface.format = gst_video_format_to_ib2c_format (GST_VIDEO_FRAME_FORMAT (frame));
   surface.width = GST_VIDEO_FRAME_WIDTH (frame);
   surface.height = GST_VIDEO_FRAME_HEIGHT (frame);
   surface.size = gst_buffer_get_size (frame->buffer);
   surface.nplanes = GST_VIDEO_FRAME_N_PLANES (frame);
 
-  if (flags == GST_VCE_FLAG_F16_FORMAT) {
-    surface.format |= ::ib2c::ColorMode::kFloat16;
+  surface.format =
+      gst_video_format_to_ib2c_format (GST_VIDEO_FRAME_FORMAT (frame), flags);
+
+  if (flags == GST_VCE_FLAG_F16_FORMAT)
     mode = " FLOAT16";
-  } else if (flags == GST_VCE_FLAG_F32_FORMAT) {
-    surface.format |= ::ib2c::ColorMode::kFloat32;
+  else if (flags == GST_VCE_FLAG_F32_FORMAT)
     mode = " FLOAT32";
-  } else if (flags == GST_VCE_FLAG_I8_FORMAT) {
-    surface.format |= ::ib2c::ColorMode::kSigned;
-    mode = " SIGNED";
-  }
+  else if (flags == GST_VCE_FLAG_I16_FORMAT)
+    mode = " INT16";
+  else if (flags == GST_VCE_FLAG_U16_FORMAT)
+    mode = " UINT16";
+  else if (flags == GST_VCE_FLAG_I8_FORMAT)
+    mode = " INT8";
+  else
+    mode = " UINT8";
 
   GST_TRACE ("%s surface FD[%d] - Width[%u] Height[%u] Format[%s%s] Planes[%u]",
       direction, surface.fd, surface.width, surface.height, format, mode,
@@ -685,26 +781,14 @@ GstGlesVideoConverter *
 gst_gles_video_converter_new (GstStructure * settings)
 {
   GstGlesVideoConverter *convert = NULL;
-  ::ib2c::NewIEngine NewEngine;
 
   convert = g_slice_new0 (GstGlesVideoConverter);
   g_return_val_if_fail (convert != NULL, NULL);
 
   g_mutex_init (&convert->lock);
 
-  if ((convert->ib2chandle = dlopen ("libIB2C.so", RTLD_NOW)) == NULL) {
-    GST_ERROR ("Failed to open IB2C library, error: %s!", dlerror());
-    goto cleanup;
-  }
-
-  NewEngine = (::ib2c::NewIEngine) dlsym(convert->ib2chandle, IB2C_ENGINE_NEW_FUNC);
-  if (NewEngine == NULL) {
-    GST_ERROR ("Failed to load IB2C symbol, error: %s!", dlerror());
-    goto cleanup;
-  }
-
   try {
-    convert->engine = NewEngine();
+    convert->engine = ::ib2c::NewGlEngine();
   } catch (std::exception& e) {
     GST_ERROR ("Failed to create and init new engine, error: '%s'!", e.what());
     goto cleanup;
@@ -759,9 +843,6 @@ gst_gles_video_converter_free (GstGlesVideoConverter * convert)
 
   if (convert->engine != NULL)
     delete convert->engine;
-
-  if (convert->ib2chandle != NULL)
-    dlclose (convert->ib2chandle);
 
   g_mutex_clear (&convert->lock);
 

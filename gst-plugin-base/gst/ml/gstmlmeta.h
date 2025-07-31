@@ -61,6 +61,10 @@ struct _GstMLTensorMeta {
   GstMLType type;
   guint     n_dimensions;
   guint     dimensions[GST_ML_TENSOR_MAX_DIMS];
+
+  // Dequantization parameters.
+  gfloat    qscale;
+  gfloat    qoffset;
 };
 
 GST_API

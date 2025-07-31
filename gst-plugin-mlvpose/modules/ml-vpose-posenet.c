@@ -83,7 +83,7 @@
 
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
-    "type = (string) { INT8, UINT8 }, " \
+    "type = (string) { FLOAT32 }, " \
     "dimensions = (int) < <1, [5, 251], [5, 251], [1, 17]>, <1, [5, 251], [5, 251], [2, 34]>, <1, [5, 251], [5, 251], [4, 64]> >"
 
 // Module caps instance
@@ -117,11 +117,6 @@ struct _GstMLSubModule {
 
   // Confidence threshold value.
   gfloat     threshold;
-
-  // Offset values for each of the tensors for dequantization of some tensors.
-  gdouble    qoffsets[GST_ML_MAX_TENSORS];
-  // Scale values for each of the tensors for dequantization of some tensors.
-  gdouble    qscales[GST_ML_MAX_TENSORS];
 };
 
 static inline gint
@@ -190,13 +185,10 @@ gst_ml_module_extract_rootpoints (GstMLSubModule * submodule,
     GstMLFrame * mlframe)
 {
   GArray *rootpoints = NULL;
-  gpointer heatmap = NULL, offsets = NULL;;
-  GstMLType mltype = GST_ML_TYPE_UNKNOWN;
+  gfloat *heatmap = NULL, *offsets = NULL;;
   gint row = 0, column = 0, n_rows = 0, n_columns = 0;
   guint idx = 0, num = 0, n_parts = 0, paxelsize[2] = {0, 0};
   gfloat threshold = 0.0, confidence = 0.0;
-
-  mltype = GST_ML_FRAME_TYPE (mlframe);
 
   // The 2nd dimension of each tensor represents the matrix height.
   n_rows = GST_ML_FRAME_DIM (mlframe, 0, 1);
@@ -206,9 +198,9 @@ gst_ml_module_extract_rootpoints (GstMLSubModule * submodule,
   n_parts = GST_ML_FRAME_DIM (mlframe, 0, 3);
 
   // Convenient pointer to the keypoints heatmap inside the 1st tensor.
-  heatmap = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
+  heatmap = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
   // Pointer to the keypoints coordinate offsets inside the 2nd tensor.
-  offsets = GST_ML_FRAME_BLOCK_DATA (mlframe, 1);
+  offsets = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
 
   // The width (position 0) and height (position 1) of the paxel block.
   paxelsize[0] = (submodule->inwidth - 1) / (n_columns - 1);
@@ -230,9 +222,8 @@ gst_ml_module_extract_rootpoints (GstMLSubModule * submodule,
 
         idx = (((row * n_columns) + column) * n_parts) + num;
 
-        // Dequantize the keypoint heatmap confidence.
-        confidence = gst_ml_tensor_extract_value (mltype, heatmap, idx,
-            submodule->qoffsets[0], submodule->qscales[0]);
+        // Extract the keypoint heatmap confidence.
+        confidence = heatmap[idx];
 
         // Discard results below the minimum confidence threshold.
         if (confidence < threshold)
@@ -250,8 +241,7 @@ gst_ml_module_extract_rootpoints (GstMLSubModule * submodule,
           for (x = xmin; (confidence >= score) && (x < xmax); x++) {
             idx = (((y * n_columns) + x) * n_parts) + num;
 
-            score = gst_ml_tensor_extract_value (mltype, heatmap, idx,
-                submodule->qoffsets[0], submodule->qscales[0]);
+            score = heatmap[idx];
           }
         }
 
@@ -271,12 +261,10 @@ gst_ml_module_extract_rootpoints (GstMLSubModule * submodule,
         idx = (((y * n_columns) + x) * n_parts * 2) + num;
 
         // Dequantize the keypoint Y axis offset and add it ot the end coordinate.
-        rootpoint.y += gst_ml_tensor_extract_value (mltype, offsets, idx,
-            submodule->qoffsets[1], submodule->qscales[1]);
+        rootpoint.y += offsets[idx];
 
         // Dequantize the keypoint X axis offset and add it ot the end coordinate.
-        rootpoint.x += gst_ml_tensor_extract_value (mltype, offsets,
-            idx + n_parts, submodule->qoffsets[1], submodule->qscales[1]);
+        rootpoint.x += offsets[idx + n_parts];
 
         GST_TRACE ("Root Keypoint %u [%.2f x %.2f], confidence %.2f",
             rootpoint.id, rootpoint.x, rootpoint.y, rootpoint.confidence);
@@ -299,14 +287,11 @@ gst_ml_module_traverse_skeleton_links (GstMLSubModule * submodule,
   GstMLKeypointsLink *link =NULL;
   GstMLKeypoint *s_kp = NULL, *d_kp = NULL;
   GstMLLabel *label = NULL;
-  gpointer heatmap = NULL, offsets = NULL, displacements = NULL;
-  GstMLType mltype = GST_ML_TYPE_UNKNOWN;
+  gfloat *heatmap = NULL, *offsets = NULL, *displacements = NULL;
   gfloat displacement = 0.0, offset = 0.0, confidence = 0.0;
   guint idx = 0, num = 0, id = 0, n_rows = 0, n_columns = 0, n_parts = 0;
   guint row = 0, column = 0, s_kp_id = 0, d_kp_id = 0, paxelsize[2] = {0, 0};
   gint edge = 0, n_edges = 0, base = 0;
-
-  mltype = GST_ML_FRAME_TYPE (mlframe);
 
   // The 2nd dimension of each tensor represents the matrix height.
   n_rows = GST_ML_FRAME_DIM (mlframe, 0, 1);
@@ -320,11 +305,11 @@ gst_ml_module_traverse_skeleton_links (GstMLSubModule * submodule,
   n_edges = GST_ML_FRAME_DIM (mlframe, 2, 3) / 4;
 
   // Pointer to the keypoints heatmap inside the 1st tensor.
-  heatmap = GST_ML_FRAME_BLOCK_DATA (mlframe, 0);
+  heatmap = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
   // Pointer to the keypoints coordinate offsets inside the 2nd tensor.
-  offsets = GST_ML_FRAME_BLOCK_DATA (mlframe, 1);
+  offsets = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 1));
   // Pointer to the displacement data inside the 3rd tensor.
-  displacements = GST_ML_FRAME_BLOCK_DATA (mlframe, 2);
+  displacements = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 2));
 
   // The width (position 0) and height (position 1) of the paxel block.
   paxelsize[0] = (submodule->inwidth - 1) / (n_columns - 1);
@@ -356,13 +341,11 @@ gst_ml_module_traverse_skeleton_links (GstMLSubModule * submodule,
     idx += backwards ? (n_edges * 2) : 0;
 
     // Calculate the displaced Y axis value in the matrix coordinate system.
-    displacement = gst_ml_tensor_extract_value (mltype, displacements, idx,
-        submodule->qoffsets[2], submodule->qscales[2]);
+    displacement = displacements[idx];
     d_kp->y = s_kp->y + displacement;
 
     // Calculate the displaced X axis value in the matrix coordinate system.
-    displacement = gst_ml_tensor_extract_value (mltype, displacements,
-        idx + n_edges, submodule->qoffsets[2], submodule->qscales[2]);
+    displacement = displacements[idx + n_edges];
     d_kp->x = s_kp->x + displacement;
 
     // Refine the destination keypoint coordinates.
@@ -375,13 +358,11 @@ gst_ml_module_traverse_skeleton_links (GstMLSubModule * submodule,
       idx = (((row * n_columns) + column) * n_parts * 2) + d_kp_id;
 
       // Dequantize the keypoint Y axis offset and add it ot the end coordinate.
-      offset = gst_ml_tensor_extract_value (mltype, offsets, idx,
-          submodule->qoffsets[1], submodule->qscales[1]);
+      offset = offsets[idx];
       d_kp->y = row * paxelsize[1] + offset;
 
       // Dequantize the keypoint X axis offset and add it ot the end coordinate.
-      offset = gst_ml_tensor_extract_value (mltype, offsets, idx + n_parts,
-          submodule->qoffsets[1], submodule->qscales[1]);
+      offset = offsets[idx + n_parts];
       d_kp->x = column * paxelsize[0] + offset;
     } while (++num < NUM_REFINEMENT_STEPS);
 
@@ -396,9 +377,8 @@ gst_ml_module_traverse_skeleton_links (GstMLSubModule * submodule,
     // Calculate the position of target keypoint inside the heatmap tensor.
     idx = (((row * n_columns) + column) * n_parts) + d_kp_id;
 
-    // Dequantize the keypoint heatmap confidence.
-    confidence = gst_ml_tensor_extract_value (mltype, heatmap, idx,
-        submodule->qoffsets[0], submodule->qscales[0]);
+    // Extract the keypoint heatmap confidence.
+    confidence = heatmap[idx];
     // Apply a sigmoid function in order to normalize the heatmap confidence.
     confidence = 1.0 / (1.0 + expf (- confidence));
 
@@ -423,16 +403,9 @@ gpointer
 gst_ml_module_open (void)
 {
   GstMLSubModule *submodule = NULL;
-  guint idx = 0;
 
   submodule = g_slice_new0 (GstMLSubModule);
   g_return_val_if_fail (submodule != NULL, NULL);
-
-  // Initialize the quantization offsets and scales.
-  for (idx = 0; idx < GST_ML_MAX_TENSORS; idx++) {
-    submodule->qoffsets[idx] = 0.0;
-    submodule->qscales[idx] = 1.0;
-  }
 
   return (gpointer) submodule;
 }
@@ -559,51 +532,6 @@ gst_ml_module_configure (gpointer instance, GstStructure * settings)
 
   gst_structure_get_double (settings, GST_ML_MODULE_OPT_THRESHOLD, &threshold);
   submodule->threshold = threshold / 100.0;
-
-  if ((GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_INT8) ||
-      (GST_ML_INFO_TYPE (&(submodule->mlinfo)) == GST_ML_TYPE_UINT8)) {
-    GstStructure *constants = NULL;
-    const GValue *qoffsets = NULL, *qscales = NULL;
-    guint idx = 0, n_tensors = 0;
-
-    success = gst_structure_has_field (settings, GST_ML_MODULE_OPT_CONSTANTS);
-    if (!success) {
-      GST_ERROR ("Settings stucture does not contain constants value!");
-      goto cleanup;
-    }
-
-    constants = GST_STRUCTURE (g_value_get_boxed (
-        gst_structure_get_value (settings, GST_ML_MODULE_OPT_CONSTANTS)));
-
-    if (!(success = gst_structure_has_field (constants, "q-offsets"))) {
-      GST_ERROR ("Missing quantization offsets coefficients!");
-      goto cleanup;
-    } else if (!(success = gst_structure_has_field (constants, "q-scales"))) {
-      GST_ERROR ("Missing quantization scales coefficients!");
-      goto cleanup;
-    }
-
-    qoffsets = gst_structure_get_value (constants, "q-offsets");
-    qscales = gst_structure_get_value (constants, "q-scales");
-    n_tensors = GST_ML_INFO_N_TENSORS (&(submodule->mlinfo));
-
-    if (!(success = (gst_value_array_get_size (qoffsets) == n_tensors))) {
-      GST_ERROR ("Expecting %u dequantization offsets entries but received "
-          "only %u!", n_tensors, gst_value_array_get_size (qoffsets));
-      goto cleanup;
-    } else if (!(success = (gst_value_array_get_size (qscales) == n_tensors))) {
-      GST_ERROR ("Expecting %u dequantization scales entries but received "
-          "only %u!", n_tensors, gst_value_array_get_size (qscales));
-      goto cleanup;
-    }
-
-    for (idx = 0; idx < n_tensors; idx++) {
-      submodule->qoffsets[idx] =
-          g_value_get_double (gst_value_array_get_value (qoffsets, idx));
-      submodule->qscales[idx] =
-          g_value_get_double (gst_value_array_get_value (qscales, idx));
-    }
-  }
 
 cleanup:
   if (caps != NULL)
