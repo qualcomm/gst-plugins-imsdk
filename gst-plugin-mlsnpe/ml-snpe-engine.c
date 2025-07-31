@@ -92,6 +92,8 @@ struct _GstMLSnpeEngine
   // SNPE model interpreter.
   Snpe_SNPE_Handle_t          interpreter;
 
+  // List of output tensor names.
+  Snpe_StringList_Handle_t    outnames;
   // Map between SNPE input tensor names and corresponding User Buffer.
   Snpe_UserBufferMap_Handle_t inputs;
   // Map between SNPE output tensor names and corresponding User Buffer.
@@ -140,6 +142,7 @@ struct _GstMLSnpeEngine
         Snpe_RuntimeList_Handle_t, Snpe_Runtime_t);
 
   SNPE_API Snpe_StringList_Handle_t (*StringListCreate) ();
+  SNPE_API Snpe_StringList_Handle_t (*StringListCreateCopy) (Snpe_StringList_Handle_t);
   SNPE_API Snpe_ErrorCode_t (*StringListDelete) (Snpe_StringList_Handle_t);
   SNPE_API Snpe_ErrorCode_t (*StringListAppend) (
       Snpe_StringList_Handle_t, const char*);
@@ -379,7 +382,7 @@ gst_ml_snpe_engine_setup_input_tensors (GstMLSnpeEngine *engine)
   gboolean success = FALSE;
 
   if ((engine->inputs = engine->UserBufferMapCreate ()) == NULL) {
-    GST_ERROR ("Failed to create map for teh input user buffers!");
+    GST_ERROR ("Failed to create map for the input user buffers!");
     return FALSE;
   }
 
@@ -420,7 +423,7 @@ gst_ml_snpe_engine_setup_input_tensors (GstMLSnpeEngine *engine)
     success = (rank <= GST_ML_TENSOR_MAX_DIMS) ? TRUE : FALSE;
 
     if (!success) {
-      GST_ERROR ("Input tensor '%s' rank is not uspported!", name);
+      GST_ERROR ("Input tensor '%s' rank is not supported!", name);
       engine->TensorShapeDelete (shape);
       engine->IBufferAttributesDelete (attribs);
       goto cleanup;
@@ -456,7 +459,7 @@ gst_ml_snpe_engine_setup_input_tensors (GstMLSnpeEngine *engine)
     engine->IBufferAttributesDelete (attribs);
 
     if (!success) {
-      GST_ERROR ("Fialed to create buffer for tensor %d!", idx);
+      GST_ERROR ("Failed to create buffer for tensor %d!", idx);
       goto cleanup;
     }
 
@@ -478,7 +481,6 @@ cleanup:
 static gboolean
 gst_ml_snpe_engine_setup_output_tensors (GstMLSnpeEngine *engine)
 {
-  Snpe_StringList_Handle_t names = NULL;
   Snpe_IBufferAttributes_Handle_t attribs = NULL;
   Snpe_TensorShape_Handle_t shape = NULL, strides = NULL;
   Snpe_UserBufferEncoding_Handle_t encoding = NULL;
@@ -488,23 +490,15 @@ gst_ml_snpe_engine_setup_output_tensors (GstMLSnpeEngine *engine)
   gboolean success = FALSE;
 
   if ((engine->outputs = engine->UserBufferMapCreate ()) == NULL) {
-    GST_ERROR ("Failed to create map for teh input user buffers!");
+    GST_ERROR ("Failed to create map for the input user buffers!");
     return FALSE;
   }
 
-  names = engine->SNPE_GetOutputTensorNames (engine->interpreter);
-  success = (names != NULL) ? TRUE : FALSE;
-
-  if (!success) {
-    GST_ERROR ("Failed to retrieve input tensor names!");
-    return FALSE;
-  }
-
-  n_tensors = engine->StringListSize (names);
+  n_tensors = engine->StringListSize (engine->outnames);
   engine->outinfo->n_tensors = n_tensors;
 
   for (idx = 0; idx < n_tensors; idx++) {
-    const char *name = engine->StringListAt (names, idx);
+    const char *name = engine->StringListAt (engine->outnames, idx);
     size_t stride[GST_ML_TENSOR_MAX_DIMS] = { 0, };
 
     GST_DEBUG ("Output tensor[%u] name: %s", idx, name);
@@ -516,7 +510,7 @@ gst_ml_snpe_engine_setup_output_tensors (GstMLSnpeEngine *engine)
     if (!success) {
       GST_ERROR ("Failed to get attributes for output tensor '%s'!", name);
       engine->IBufferAttributesDelete (attribs);
-      goto cleanup;
+      return FALSE;
     }
 
     GST_ML_INFO_TYPE (engine->outinfo) =
@@ -529,10 +523,10 @@ gst_ml_snpe_engine_setup_output_tensors (GstMLSnpeEngine *engine)
     success = (rank <= GST_ML_TENSOR_MAX_DIMS) ? TRUE : FALSE;
 
     if (!success) {
-      GST_ERROR ("Output tensor '%s' rank is not uspported!", name);
+      GST_ERROR ("Output tensor '%s' rank is not supported!", name);
       engine->TensorShapeDelete (shape);
       engine->IBufferAttributesDelete (attribs);
-      goto cleanup;
+      return FALSE;
     }
 
     GST_ML_INFO_N_DIMENSIONS (engine->outinfo, idx) = rank;
@@ -565,8 +559,8 @@ gst_ml_snpe_engine_setup_output_tensors (GstMLSnpeEngine *engine)
     engine->IBufferAttributesDelete (attribs);
 
     if (!success) {
-      GST_ERROR ("Fialed to create buffer for tensor %d!", idx);
-      goto cleanup;
+      GST_ERROR ("Failed to create buffer for tensor %d!", idx);
+      return FALSE;
     }
 
     engine->UserBufferMapAdd (engine->outputs, name, usrbuffer);
@@ -576,10 +570,6 @@ gst_ml_snpe_engine_setup_output_tensors (GstMLSnpeEngine *engine)
       GST_ML_INFO_N_TENSORS (engine->outinfo));
   GST_DEBUG ("Output tensors type: %s",
       gst_ml_type_to_string (GST_ML_INFO_TYPE (engine->outinfo)));
-
-cleanup:
-  if (names != NULL)
-    engine->StringListDelete (names);
 
   return success;
 }
@@ -772,6 +762,19 @@ gst_ml_snpe_engine_setup_backend (GstMLSnpeEngine *engine,
   version = engine->SNPE_GetModelVersion (engine->interpreter);
   GST_INFO ("Created Interpreter for model version '%s'", version);
 
+  if (settings->is_tensor) {
+    engine->outnames = engine->StringListCreateCopy (strlist);
+  } else {
+    engine->outnames = engine->SNPE_GetOutputTensorNames (engine->interpreter);
+  }
+
+  success = (engine->outnames != NULL) ? TRUE : FALSE;
+
+  if (!success) {
+    GST_ERROR ("Failed to get output tensor names!");
+    goto cleanup;
+  }
+
 cleanup:
   if (rtlist != NULL)
     engine->RuntimeListDelete (rtlist);
@@ -791,6 +794,7 @@ gst_ml_snpe_engine_new (GstMLSnpeSettings * settings)
   engine = g_new0 (GstMLSnpeEngine, 1);
   g_return_val_if_fail (engine != NULL, NULL);
 
+  engine->outnames = NULL;
   engine->ininfo = gst_ml_info_new ();
   engine->outinfo = gst_ml_info_new ();
 
@@ -848,6 +852,8 @@ gst_ml_snpe_engine_new (GstMLSnpeSettings * settings)
 
   success &= load_symbol ((gpointer*)&engine->StringListCreate,
       engine->libhandle, "Snpe_StringList_Create");
+  success &= load_symbol ((gpointer*)&engine->StringListCreateCopy,
+      engine->libhandle, "Snpe_StringList_CreateCopy");
   success &= load_symbol ((gpointer*)&engine->StringListDelete,
       engine->libhandle, "Snpe_StringList_Delete");
   success &= load_symbol ((gpointer*)&engine->StringListAppend,
@@ -948,15 +954,13 @@ gst_ml_snpe_engine_free (GstMLSnpeEngine * engine)
   }
 
   if (engine->outputs != NULL) {
-    Snpe_StringList_Handle_t names = NULL;
     Snpe_IUserBuffer_Handle_t usrbuffer = NULL;
     guint idx = 0, n_tensors = 0;
 
-    names = engine->SNPE_GetOutputTensorNames (engine->interpreter);
-    n_tensors = engine->StringListSize (names);
+    n_tensors = engine->StringListSize (engine->outnames);
 
     for (idx = 0; idx < n_tensors; idx++) {
-      const char *name = engine->StringListAt (names, idx);
+      const char *name = engine->StringListAt (engine->outnames, idx);
 
       usrbuffer = engine->UserBufferMapGet (engine->outputs, name);
       engine->UserBufferMapRemove (engine->outputs, name);
@@ -964,8 +968,11 @@ gst_ml_snpe_engine_free (GstMLSnpeEngine * engine)
       engine->IUserBufferDelete (usrbuffer);
     }
 
-    engine->StringListDelete (names);
     engine->UserBufferMapDelete (engine->outputs);
+  }
+
+  if (engine->outnames != NULL) {
+    engine->StringListDelete (engine->outnames);
   }
 
   if (engine->inputs != NULL) {
@@ -1051,7 +1058,6 @@ gst_ml_snpe_engine_get_output_caps  (GstMLSnpeEngine * engine)
 gboolean
 gst_ml_snpe_engine_update_output_caps (GstMLSnpeEngine * engine, GstCaps * caps)
 {
-  Snpe_StringList_Handle_t names = NULL;
   Snpe_IBufferAttributes_Handle_t attribs = NULL;
   Snpe_TensorShape_Handle_t shape = NULL, strides = NULL;
   Snpe_UserBufferEncoding_Handle_t encoding = NULL;
@@ -1072,24 +1078,16 @@ gst_ml_snpe_engine_update_output_caps (GstMLSnpeEngine * engine, GstCaps * caps)
   if (gst_ml_info_is_equal (&mlinfo, engine->outinfo))
     return TRUE;
 
-  names = engine->SNPE_GetOutputTensorNames (engine->interpreter);
-  success = (names != NULL) ? TRUE : FALSE;
-
-  if (!success) {
-    GST_ERROR ("Failed to retrieve output tensor names!");
-    goto cleanup;
-  }
-
-  n_tensors = engine->StringListSize (names);
+  n_tensors = engine->StringListSize (engine->outnames);
   success = (GST_ML_INFO_N_TENSORS (&mlinfo) == n_tensors) ? TRUE : FALSE;
 
   if (!success) {
     GST_ERROR ("Updated info has invalid number of tensors!");
-    goto cleanup;
+    return FALSE;
   }
 
   for (idx = 0; idx < n_tensors; idx++) {
-    const char *name = engine->StringListAt (names, idx);
+    const char *name = engine->StringListAt (engine->outnames, idx);
     size_t stride[GST_ML_TENSOR_MAX_DIMS] = { 0, };
 
     GST_DEBUG ("Output tensor[%u] name: %s", idx, name);
@@ -1100,7 +1098,7 @@ gst_ml_snpe_engine_update_output_caps (GstMLSnpeEngine * engine, GstCaps * caps)
 
     if (!success) {
       GST_ERROR ("Failed to get attributes for output tensor '%s'!", name);
-      goto cleanup;
+      return FALSE;
     }
 
     shape = engine->IBufferAttributesGetDims (attribs);
@@ -1113,7 +1111,7 @@ gst_ml_snpe_engine_update_output_caps (GstMLSnpeEngine * engine, GstCaps * caps)
       GST_ERROR ("Output tensor %d has invalid number of dimensions!", idx);
       engine->TensorShapeDelete (shape);
       engine->IBufferAttributesDelete (attribs);
-      goto cleanup;
+      return FALSE;
     }
 
     for (num = 0; num < ((gint) rank); ++num) {
@@ -1129,7 +1127,7 @@ gst_ml_snpe_engine_update_output_caps (GstMLSnpeEngine * engine, GstCaps * caps)
         GST_ERROR ("Updated tensor %d has invalid dimension %d!", idx, num);
         engine->TensorShapeDelete (shape);
         engine->IBufferAttributesDelete (attribs);
-        goto cleanup;
+        return FALSE;
       }
 
       GST_DEBUG ("Output tensor[%d] Dimension[%d]: %u", idx, num,
@@ -1165,7 +1163,7 @@ gst_ml_snpe_engine_update_output_caps (GstMLSnpeEngine * engine, GstCaps * caps)
 
     if (!success) {
       GST_ERROR ("Unsupported encoding for tensor %d!", idx);
-      goto cleanup;
+      return FALSE;
     }
 
     // Remove and deallocate previous buffer for that tensor.
@@ -1188,8 +1186,8 @@ gst_ml_snpe_engine_update_output_caps (GstMLSnpeEngine * engine, GstCaps * caps)
     engine->IBufferAttributesDelete (attribs);
 
     if (!success) {
-      GST_ERROR ("Fialed to create buffer for tensor %d!", idx);
-      goto cleanup;
+      GST_ERROR ("Failed to create buffer for tensor %d!", idx);
+      return FALSE;
     }
 
     engine->UserBufferMapAdd (engine->outputs, name, usrbuffer);
@@ -1202,10 +1200,6 @@ gst_ml_snpe_engine_update_output_caps (GstMLSnpeEngine * engine, GstCaps * caps)
       GST_ML_INFO_N_TENSORS (engine->outinfo));
   GST_DEBUG ("Output tensors type: %s",
       gst_ml_type_to_string (GST_ML_INFO_TYPE (engine->outinfo)));
-
-cleanup:
-  if (names != NULL)
-    engine->StringListDelete (names);
 
   return success;
 }
@@ -1244,17 +1238,14 @@ gst_ml_snpe_engine_execute (GstMLSnpeEngine * engine,
   }
 
   engine->StringListDelete (names);
-  names = engine->SNPE_GetOutputTensorNames (engine->interpreter);
 
   for (idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
-    const char *name = engine->StringListAt (names, idx);
+    const char *name = engine->StringListAt (engine->outnames, idx);
     void *vaddress = GST_ML_FRAME_BLOCK_DATA (outframe, idx);
 
     usrbuffer = engine->UserBufferMapGet (engine->outputs, name);
     engine->IUserBufferSetBufferAddress (usrbuffer, vaddress);
   }
-
-  engine->StringListDelete (names);
 
   error = engine->SNPE_ExecuteUserBuffers (engine->interpreter, engine->inputs,
       engine->outputs);
