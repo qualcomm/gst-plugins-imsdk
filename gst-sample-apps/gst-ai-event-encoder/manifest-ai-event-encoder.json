@@ -1,0 +1,25 @@
+{
+  "Version": "1.4",
+  "ApplicationName": "gst-ai-event-encoder",
+  "ApplicationType": "AI",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "AIModelsNeededByApplication": [
+    {
+      "ModelName": "yolox_quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Yolo-X/resolve/cbf6ab9cb121ac116357986f3f7013a67ddadd06/Yolo-X_w8a8.tflite",
+      "LabelFile": "yolox.labels",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
+    }
+  ],
+  "AIModelsSupportedByApplication": [],
+  "AIModelLocation": "/etc/models/",
+  "AILabelLocation": "/etc/labels/",
+  "ConfigFile": "config-event-encoder.json",
+  "ConfigFileLocation": "/etc/configs/",
+  "ApplicationKeyWords": [
+    "EventEncoder",
+    "EventEncoderExample"
+  ],
+  "ApplicationTextDescription": "This application demonstrates video encoding when there is a person in the frame, otherwise only preview will run on the input video coming from camera, file or rtsp stream"
+}
