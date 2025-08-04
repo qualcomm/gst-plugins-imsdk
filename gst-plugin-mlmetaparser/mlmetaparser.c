@@ -64,6 +64,43 @@ gst_ml_meta_parser_modules_get_type (void)
   return gtype;
 }
 
+static gboolean
+gst_ml_meta_parser_propose_allocation (GstBaseTransform * base,
+    GstQuery * inquery, GstQuery * outquery)
+{
+  GstMlMetaParser *mlmetaparser = GST_ML_META_PARSER (base);
+  GstCaps *caps = NULL;
+  GstStructure *structure = NULL;
+
+  if (!GST_BASE_TRANSFORM_CLASS (parent_class)->propose_allocation (
+      base, inquery, outquery))
+    return FALSE;
+
+  // No input query, nothing to do.
+  if (NULL == inquery)
+    return TRUE;
+
+  // Extract caps from the query.
+  gst_query_parse_allocation (outquery, &caps, NULL);
+
+  if (NULL == caps) {
+    GST_ERROR_OBJECT (mlmetaparser, "Failed to extract caps from query!");
+    return FALSE;
+  }
+
+  structure = gst_caps_get_structure (caps, 0);
+  if (NULL == structure) {
+    GST_ERROR_OBJECT (mlmetaparser, "Failed to get structure from caps!");
+    return FALSE;
+  }
+
+  // Request video meta from the upstream
+  if (gst_structure_has_name (structure, "video/x-raw"))
+    gst_query_add_allocation_meta (outquery, GST_VIDEO_META_API_TYPE, NULL);
+
+  return TRUE;
+}
+
 static GstFlowReturn
 gst_ml_meta_parser_prepare_output_buffer (GstBaseTransform * base,
     GstBuffer * inbuffer, GstBuffer ** outbuffer)
@@ -289,6 +326,9 @@ gst_ml_meta_parser_class_init (GstMlMetaParserClass * klass)
       gst_static_pad_template_get (&gst_ml_meta_parser_sink_template));
   gst_element_class_add_pad_template (element,
       gst_static_pad_template_get (&gst_ml_meta_parser_src_template));
+
+  base->propose_allocation =
+      GST_DEBUG_FUNCPTR (gst_ml_meta_parser_propose_allocation);
 
   base->prepare_output_buffer =
       GST_DEBUG_FUNCPTR (gst_ml_meta_parser_prepare_output_buffer);
