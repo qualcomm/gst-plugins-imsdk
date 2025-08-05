@@ -97,6 +97,7 @@ G_DEFINE_TYPE (GstMLVideoClassification, gst_ml_video_classification,
     GST_TYPE_BASE_TRANSFORM);
 
 #define GST_TYPE_ML_MODULES (gst_ml_modules_get_type())
+#define GST_ML_MODULES_PREFIX "ml-vclassification-"
 
 #define GST_ML_VIDEO_CLASSIFICATION_VIDEO_FORMATS \
     "{ BGRA, BGRx, BGR16 }"
@@ -207,7 +208,7 @@ gst_ml_modules_get_type (void)
   if (gtype)
     return gtype;
 
-  variants = gst_ml_enumarate_modules ("ml-vclassification-");
+  variants = gst_ml_enumarate_modules (GST_ML_MODULES_PREFIX);
   gtype = g_enum_register_static ("GstMLVideoClassificationModules", variants);
 
   return gtype;
@@ -921,7 +922,8 @@ gst_ml_video_classification_set_caps (GstBaseTransform * base, GstCaps * incaps,
   evalue = g_enum_get_value (eclass, classification->mdlenum);
 
   gst_ml_module_free (classification->module);
-  classification->module = gst_ml_module_new (evalue->value_name);
+  classification->module =
+      gst_ml_module_new (GST_ML_MODULES_PREFIX, evalue->value_nick);
 
   if (NULL == classification->module) {
     GST_ELEMENT_ERROR (classification, RESOURCE, FAILED, (NULL),
