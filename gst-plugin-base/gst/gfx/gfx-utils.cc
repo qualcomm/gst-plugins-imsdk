@@ -18,7 +18,10 @@ gst_gfx_adreno_get_alignment ()
   try {
     alignment = ::ib2c::QueryAlignment();
   } catch (std::exception& e) {
-    GST_ERROR ("Failed to query alignment requirements, error: '%s'!", e.what());
+    alignment = 128;
+
+    g_critical ("Failed to query alignment requirements and using default "
+        "alignment %d, error: '%s'!", alignment, e.what());
   }
 #else
   // Default alignment when platform doesn't have GPU.
