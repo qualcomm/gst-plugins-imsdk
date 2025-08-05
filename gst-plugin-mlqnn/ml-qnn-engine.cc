@@ -12,6 +12,8 @@
 
 #include <dlfcn.h>
 
+#include <gst/ml/gstmlmeta.h>
+
 #include <QnnInterface.h>
 #include <System/QnnSystemInterface.h>
 #include <System/QnnSystemContext.h>
@@ -932,6 +934,9 @@ gst_ml_qnn_engine_new (GstStructure *settings)
     engine->ininfo->n_dimensions[idx] =
         QNN_TENSOR_RANK (input_tensor);
 
+    GST_DEBUG ("Input tensor[%u] name: %s", idx,
+        QNN_TENSOR_NAME (input_tensor));
+
     for (guint num = 0; num < engine->ininfo->n_dimensions[idx]; ++num) {
       engine->ininfo->tensors[idx][num] =
           QNN_TENSOR_DIMENSION (input_tensor, num);
@@ -988,6 +993,9 @@ gst_ml_qnn_engine_new (GstStructure *settings)
     }
 
     engine->outinfo->n_dimensions[idx] = QNN_TENSOR_RANK (output_tensor);
+
+    GST_DEBUG ("Output tensor[%u] name: %s", idx,
+        QNN_TENSOR_NAME (output_tensor));
 
     for (guint num = 0; num < engine->outinfo->n_dimensions[idx]; ++num) {
       engine->outinfo->tensors[idx][num] = QNN_TENSOR_DIMENSION (output_tensor, num);
@@ -1106,6 +1114,7 @@ gboolean
 gst_ml_qnn_engine_execute (GstMLQnnEngine *engine, GstMLFrame *inframe,
     GstMLFrame *outframe)
 {
+  GstMLTensorMeta *mlmeta = NULL;
   const GraphInfo_t *graph_info = engine->graph_infos[0];
   guint idx;
 
@@ -1148,6 +1157,18 @@ gst_ml_qnn_engine_execute (GstMLQnnEngine *engine, GstMLFrame *inframe,
     return FALSE;
   }
 
+  for (idx = 0; idx < engine->ininfo->n_tensors; ++idx) {
+    Qnn_Tensor_t *tensor = &(graph_info->inputTensors[idx]);
+
+    if (engine->graphindices != NULL) {
+      guint num = g_array_index (engine->graphindices, guint, idx);
+      tensor = &(graph_info->inputTensors[num]);
+    }
+
+    mlmeta = gst_buffer_get_ml_tensor_meta_id (inframe->buffer, idx);
+    mlmeta->name = g_quark_from_string (QNN_TENSOR_NAME (tensor));
+  }
+
   for (idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
     Qnn_Tensor_t *tensor = &(graph_info->outputTensors[idx]);
 
@@ -1158,6 +1179,9 @@ gst_ml_qnn_engine_execute (GstMLQnnEngine *engine, GstMLFrame *inframe,
 
     GST_LOG ("Converting Native tensor type to Float");
     gst_ml_qnn_convert_to_float (outframe, idx, tensor);
+
+    mlmeta = gst_buffer_get_ml_tensor_meta_id (outframe->buffer, idx);
+    mlmeta->name = g_quark_from_string (QNN_TENSOR_NAME (tensor));
   }
 
   return TRUE;
