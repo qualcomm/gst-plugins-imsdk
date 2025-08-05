@@ -813,7 +813,7 @@ gst_ml_video_pose_transform_caps (GstBaseTransform * base,
     GstPadDirection direction, GstCaps * caps, GstCaps * filter)
 {
   GstMLVideoPose *vpose = GST_ML_VIDEO_POSE (base);
-  GstCaps *result = NULL;
+  GstCaps *tmplcaps = NULL, *result = NULL;
   const GValue *value = NULL;
 
   GST_DEBUG_OBJECT (vpose, "Transforming caps: %" GST_PTR_FORMAT
@@ -821,12 +821,19 @@ gst_ml_video_pose_transform_caps (GstBaseTransform * base,
   GST_DEBUG_OBJECT (vpose, "Filter caps: %" GST_PTR_FORMAT, filter);
 
   if (direction == GST_PAD_SRC) {
-    GstPad *pad = GST_BASE_TRANSFORM_SINK_PAD (base);
-    result = gst_pad_get_pad_template_caps (pad);
+    if (NULL == vpose->module) {
+      GstPad *pad = GST_BASE_TRANSFORM_SINK_PAD (base);
+      tmplcaps = gst_pad_get_pad_template_caps (pad);
+    } else {
+      tmplcaps = gst_ml_module_get_caps (vpose->module);
+    }
   } else if (direction == GST_PAD_SINK) {
     GstPad *pad = GST_BASE_TRANSFORM_SRC_PAD (base);
-    result = gst_pad_get_pad_template_caps (pad);
+    tmplcaps = gst_pad_get_pad_template_caps (pad);
   }
+
+  result = gst_caps_copy (tmplcaps);
+
   // Extract the rate and propagate it to result caps.
   value = gst_structure_get_value (gst_caps_get_structure (caps, 0),
       (direction == GST_PAD_SRC) ? "framerate" : "rate");
@@ -941,32 +948,8 @@ gst_ml_video_pose_set_caps (GstBaseTransform * base, GstCaps * incaps,
   GstCaps *modulecaps = NULL;
   GstQuery *query = NULL;
   GstStructure *structure = NULL;
-  GEnumClass *eclass = NULL;
-  GEnumValue *evalue = NULL;
   GstMLInfo ininfo;
   guint idx = 0;
-
-  if (NULL == vpose->labels) {
-    GST_ELEMENT_ERROR (vpose, RESOURCE, NOT_FOUND, (NULL),
-        ("Labels file not set!"));
-    return FALSE;
-  } else if (DEFAULT_PROP_MODULE == vpose->mdlenum) {
-    GST_ELEMENT_ERROR (vpose, RESOURCE, NOT_FOUND, (NULL),
-        ("Module name not set, automatic module pick up not supported!"));
-    return FALSE;
-  }
-
-  eclass = G_ENUM_CLASS (g_type_class_peek (GST_TYPE_ML_MODULES));
-  evalue = g_enum_get_value (eclass, vpose->mdlenum);
-
-  gst_ml_module_free (vpose->module);
-  vpose->module = gst_ml_module_new (GST_ML_MODULES_PREFIX, evalue->value_nick);
-
-  if (NULL == vpose->module) {
-    GST_ELEMENT_ERROR (vpose, RESOURCE, FAILED, (NULL),
-        ("Module creation failed!"));
-    return FALSE;
-  }
 
   modulecaps = gst_ml_module_get_caps (vpose->module);
 
@@ -974,12 +957,6 @@ gst_ml_video_pose_set_caps (GstBaseTransform * base, GstCaps * incaps,
     GST_ELEMENT_ERROR (vpose, RESOURCE, FAILED, (NULL),
         ("Module caps %" GST_PTR_FORMAT " do not intersect with the "
          "negotiated caps %" GST_PTR_FORMAT "!", modulecaps, incaps));
-    return FALSE;
-  }
-
-  if (!gst_ml_module_init (vpose->module)) {
-    GST_ELEMENT_ERROR (vpose, RESOURCE, FAILED, (NULL),
-        ("Module initialization failed!"));
     return FALSE;
   }
 
@@ -1059,6 +1036,71 @@ gst_ml_video_pose_set_caps (GstBaseTransform * base, GstCaps * incaps,
 
   gst_base_transform_set_passthrough (base, FALSE);
   return TRUE;
+}
+
+static GstStateChangeReturn
+gst_ml_video_pose_change_state (GstElement * element, GstStateChange transition)
+{
+  GstMLVideoPose *vpose = GST_ML_VIDEO_POSE (element);
+  GEnumClass *eclass = NULL;
+  GEnumValue *evalue = NULL;
+  GstStateChangeReturn ret = GST_STATE_CHANGE_SUCCESS;
+
+  switch (transition) {
+    case GST_STATE_CHANGE_NULL_TO_READY:
+    {
+      if (NULL == vpose->labels) {
+        GST_ELEMENT_ERROR (vpose, RESOURCE, NOT_FOUND, (NULL),
+            ("Labels file not set!"));
+        return GST_STATE_CHANGE_FAILURE;
+      }
+
+      if (DEFAULT_PROP_MODULE == vpose->mdlenum) {
+        GST_ELEMENT_ERROR (vpose, RESOURCE, NOT_FOUND, (NULL),
+            ("Module name not set, automatic module pick up not supported!"));
+        return GST_STATE_CHANGE_FAILURE;
+      }
+
+      eclass = G_ENUM_CLASS (g_type_class_peek (GST_TYPE_ML_MODULES));
+      evalue = g_enum_get_value (eclass, vpose->mdlenum);
+
+      vpose->module =
+          gst_ml_module_new (GST_ML_MODULES_PREFIX, evalue->value_nick);
+
+      if (NULL == vpose->module) {
+        GST_ELEMENT_ERROR (vpose, RESOURCE, FAILED, (NULL),
+            ("Module creation failed!"));
+        return GST_STATE_CHANGE_FAILURE;
+      }
+
+      if (!gst_ml_module_init (vpose->module)) {
+        GST_ELEMENT_ERROR (vpose, RESOURCE, FAILED, (NULL),
+            ("Module initialization failed!"));
+        return GST_STATE_CHANGE_FAILURE;
+      }
+
+      break;
+    }
+    default:
+      break;
+  }
+
+  ret = GST_ELEMENT_CLASS (parent_class)->change_state (element, transition);
+  if (ret != GST_STATE_CHANGE_SUCCESS) {
+    GST_ERROR_OBJECT (vpose, "Failure");
+    return ret;
+  }
+
+  switch (transition) {
+    case GST_STATE_CHANGE_READY_TO_NULL:
+      gst_ml_module_free (vpose->module);
+      vpose->module = NULL;
+      break;
+    default:
+      break;
+  }
+
+  return ret;
 }
 
 static GstFlowReturn
@@ -1239,6 +1281,9 @@ gst_ml_video_pose_class_init (GstMLVideoPoseClass * klass)
       gst_ml_video_pose_sink_template ());
   gst_element_class_add_pad_template (element,
       gst_ml_video_pose_src_template ());
+
+  element->change_state =
+      GST_DEBUG_FUNCPTR (gst_ml_video_pose_change_state);
 
   base->decide_allocation =
       GST_DEBUG_FUNCPTR (gst_ml_video_pose_decide_allocation);

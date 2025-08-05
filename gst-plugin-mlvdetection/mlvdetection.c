@@ -983,8 +983,12 @@ gst_ml_video_detection_transform_caps (GstBaseTransform * base,
   GST_DEBUG_OBJECT (detection, "Filter caps: %" GST_PTR_FORMAT, filter);
 
   if (direction == GST_PAD_SRC) {
-    GstPad *pad = GST_BASE_TRANSFORM_SINK_PAD (base);
-    tmplcaps = gst_pad_get_pad_template_caps (pad);
+    if (NULL == detection->module) {
+      GstPad *pad = GST_BASE_TRANSFORM_SINK_PAD (base);
+      tmplcaps = gst_pad_get_pad_template_caps (pad);
+    } else {
+      tmplcaps = gst_ml_module_get_caps (detection->module);
+    }
   } else if (direction == GST_PAD_SINK) {
     GstPad *pad = GST_BASE_TRANSFORM_SRC_PAD (base);
     tmplcaps = gst_pad_get_pad_template_caps (pad);
@@ -1123,34 +1127,9 @@ gst_ml_video_detection_set_caps (GstBaseTransform * base, GstCaps * incaps,
   GstCaps *modulecaps = NULL;
   GstQuery *query = NULL;
   GstStructure *structure = NULL;
-  GEnumClass *eclass = NULL;
-  GEnumValue *evalue = NULL;
   GstMLInfo ininfo;
   gboolean success = FALSE;
   guint idx = 0;
-
-  if (NULL == detection->labels) {
-    GST_ELEMENT_ERROR (detection, RESOURCE, NOT_FOUND, (NULL),
-        ("Labels file not set!"));
-    return FALSE;
-  } else if (DEFAULT_PROP_MODULE == detection->mdlenum) {
-    GST_ELEMENT_ERROR (detection, RESOURCE, NOT_FOUND, (NULL),
-        ("Module name not set, automatic module pick up not supported!"));
-    return FALSE;
-  }
-
-  eclass = G_ENUM_CLASS (g_type_class_peek (GST_TYPE_ML_MODULES));
-  evalue = g_enum_get_value (eclass, detection->mdlenum);
-
-  gst_ml_module_free (detection->module);
-  detection->module =
-      gst_ml_module_new (GST_ML_MODULES_PREFIX, evalue->value_nick);
-
-  if (NULL == detection->module) {
-    GST_ELEMENT_ERROR (detection, RESOURCE, FAILED, (NULL),
-        ("Module creation failed!"));
-    return FALSE;
-  }
 
   modulecaps = gst_ml_module_get_caps (detection->module);
 
@@ -1158,12 +1137,6 @@ gst_ml_video_detection_set_caps (GstBaseTransform * base, GstCaps * incaps,
     GST_ELEMENT_ERROR (detection, RESOURCE, FAILED, (NULL),
         ("Module caps %" GST_PTR_FORMAT " do not intersect with the "
          "negotiated caps %" GST_PTR_FORMAT "!", modulecaps, incaps));
-    return FALSE;
-  }
-
-  if (!gst_ml_module_init (detection->module)) {
-    GST_ELEMENT_ERROR (detection, RESOURCE, FAILED, (NULL),
-        ("Module initialization failed!"));
     return FALSE;
   }
 
@@ -1265,6 +1238,72 @@ gst_ml_video_detection_set_caps (GstBaseTransform * base, GstCaps * incaps,
 
   gst_base_transform_set_passthrough (base, FALSE);
   return TRUE;
+}
+
+static GstStateChangeReturn
+gst_ml_video_detection_change_state (GstElement * element,
+    GstStateChange transition)
+{
+  GstMLVideoDetection *detection = GST_ML_VIDEO_DETECTION (element);
+  GEnumClass *eclass = NULL;
+  GEnumValue *evalue = NULL;
+  GstStateChangeReturn ret = GST_STATE_CHANGE_SUCCESS;
+
+  switch (transition) {
+    case GST_STATE_CHANGE_NULL_TO_READY:
+    {
+      if (NULL == detection->labels) {
+        GST_ELEMENT_ERROR (detection, RESOURCE, NOT_FOUND, (NULL),
+            ("Labels file not set!"));
+        return GST_STATE_CHANGE_FAILURE;
+      }
+
+      if (DEFAULT_PROP_MODULE == detection->mdlenum) {
+        GST_ELEMENT_ERROR (detection, RESOURCE, NOT_FOUND, (NULL),
+            ("Module name not set, automatic module pick up not supported!"));
+        return GST_STATE_CHANGE_FAILURE;
+      }
+
+      eclass = G_ENUM_CLASS (g_type_class_peek (GST_TYPE_ML_MODULES));
+      evalue = g_enum_get_value (eclass, detection->mdlenum);
+
+      detection->module =
+          gst_ml_module_new (GST_ML_MODULES_PREFIX, evalue->value_nick);
+
+      if (NULL == detection->module) {
+        GST_ELEMENT_ERROR (detection, RESOURCE, FAILED, (NULL),
+            ("Module creation failed!"));
+        return GST_STATE_CHANGE_FAILURE;
+      }
+
+      if (!gst_ml_module_init (detection->module)) {
+        GST_ELEMENT_ERROR (detection, RESOURCE, FAILED, (NULL),
+            ("Module initialization failed!"));
+        return GST_STATE_CHANGE_FAILURE;
+      }
+
+      break;
+    }
+    default:
+      break;
+  }
+
+  ret = GST_ELEMENT_CLASS (parent_class)->change_state (element, transition);
+  if (ret != GST_STATE_CHANGE_SUCCESS) {
+    GST_ERROR_OBJECT (detection, "Failure");
+    return ret;
+  }
+
+  switch (transition) {
+    case GST_STATE_CHANGE_READY_TO_NULL:
+      gst_ml_module_free (detection->module);
+      detection->module = NULL;
+      break;
+    default:
+      break;
+  }
+
+  return ret;
 }
 
 static GstFlowReturn
@@ -1464,6 +1503,9 @@ gst_ml_video_detection_class_init (GstMLVideoDetectionClass * klass)
       gst_ml_video_detection_sink_template ());
   gst_element_class_add_pad_template (element,
       gst_ml_video_detection_src_template ());
+
+  element->change_state =
+      GST_DEBUG_FUNCPTR (gst_ml_video_detection_change_state);
 
   base->decide_allocation =
       GST_DEBUG_FUNCPTR (gst_ml_video_detection_decide_allocation);
