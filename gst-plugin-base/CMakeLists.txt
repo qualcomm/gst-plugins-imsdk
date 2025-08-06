@@ -44,6 +44,9 @@ check_include_file("fastcv/fastcv.h" HAVE_FASTCV_H)
 # Check whether GBM header is present.
 check_include_file("gbm_priv.h" HAVE_GBM_PRIV_H)
 
+# Check whether DMA header is present.
+check_include_file("linux/dma-buf.h" HAVE_LINUX_DMA_BUF_H)
+
 # Common compiler flags.
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
