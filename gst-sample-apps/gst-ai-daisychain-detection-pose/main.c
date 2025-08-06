@@ -60,6 +60,8 @@
     "/etc/models/hrnet_pose_quantized.tflite"
 #define DEFAULT_YOLOX_LABELS "/etc/labels/yolox.labels"
 #define DEFAULT_POSE_LABELS "/etc/labels/hrnet_pose.labels"
+#define DEFAULT_IP "127.0.0.1"
+#define DEFAULT_PORT "8900"
 
 /**
  * Default path of config file
@@ -174,6 +176,8 @@ typedef struct {
   gboolean camera_source;
   gchar *input_file_path;
   gchar *output_file_path;
+  gchar *output_ip_address;
+  gchar *port_num;
   gchar *rtsp_ip_port;
   gchar *yolox_model_path;
   gchar *hrnet_model_path;
@@ -377,6 +381,16 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options, gchar * c
     options->output_file_path = NULL;
   }
 
+  if (options->output_ip_address != (gchar *)(&DEFAULT_IP) &&
+      options->output_ip_address != NULL) {
+    g_free ((gpointer)options->output_ip_address);
+  }
+
+  if (options->port_num != (gchar *)(&DEFAULT_PORT) &&
+      options->port_num != NULL) {
+    g_free ((gpointer)options->port_num);
+  }
+
   if (config_file != NULL && config_file != (gchar *) (&DEFAULT_CONFIG_FILE)) {
     g_free ((gpointer) config_file);
     config_file = NULL;
@@ -420,6 +434,8 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
   GstElement *v4l2src = NULL, *v4l2src_caps = NULL, *qtivtransform = NULL;
   GstElement *qtivtransform_capsfilter = NULL;
   GstElement *videoconvert = NULL, *jpegdec = NULL;
+  GstElement *v4l2h264enc_rtsp = NULL, *h264parse_enc_rtsp = NULL;
+  GstElement *qtirtspbin = NULL;
   GstCaps *pad_filter = NULL, *filtercaps = NULL;
   GstStructure *delegate_options = NULL;
   gboolean ret = FALSE;
@@ -714,19 +730,41 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
       g_printerr ("Failed to create v4l2h264enc\n");
       goto error_clean_elements;
     }
-
     mp4mux = gst_element_factory_make ("mp4mux", "mp4mux");
     if (!mp4mux) {
       g_printerr ("Failed to create mp4mux\n");
       goto error_clean_elements;
     }
-
     // Generic filesink plugin to write file on disk
     filesink = gst_element_factory_make ("filesink", "filesink");
     if (!filesink) {
       g_printerr ("Failed to create filesink\n");
       goto error_clean_elements;
     }
+  } else if (options->sink_type == GST_RTSP_STREAMING) {
+    // Create Encoder plugin
+    v4l2h264enc_rtsp = gst_element_factory_make ("v4l2h264enc",
+        "v4l2h264enc_rtsp");
+    if (!v4l2h264enc_rtsp) {
+      g_printerr ("Failed to create v4l2h264enc_rtsp\n");
+      goto error_clean_elements;
+    }
+    // Create frame parser plugin
+    h264parse_enc_rtsp = gst_element_factory_make ("h264parse",
+        "h264parse_enc_rtsp");
+    if (!h264parse_enc_rtsp) {
+      g_printerr ("Failed to create h264parse_enc_rtsp\n");
+      goto error_clean_elements;
+    }
+    // Generic qtirtspbin plugin for streaming
+    qtirtspbin = gst_element_factory_make ("qtirtspbin", "qtirtspbin");
+    if (!qtirtspbin) {
+      g_printerr ("Failed to create qtirtspbin\n");
+      goto error_clean_elements;
+    }
+  } else {
+    g_printerr ("Invalid output Sink Type\n");
+    goto error_clean_elements;
   }
 
   // 2. Set properties for all GST plugin elements
@@ -974,6 +1012,16 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
 
     g_object_set (G_OBJECT (filesink), "location", options->output_file_path,
         NULL);
+  } else if (options->sink_type == GST_RTSP_STREAMING) {
+    gst_element_set_enum_property (v4l2h264enc_rtsp, "capture-io-mode", "dmabuf");
+    gst_element_set_enum_property (v4l2h264enc_rtsp, "output-io-mode",
+        "dmabuf-import");
+    g_object_set (G_OBJECT (h264parse_enc_rtsp), "config-interval", 1, NULL);
+    g_object_set (G_OBJECT (qtirtspbin), "address", options->output_ip_address,
+        "port", options->port_num, NULL);
+  } else {
+    g_printerr ("Incorrect output sink type\n");
+    goto error_clean_elements;
   }
 
   // 3. Setup pipeline
@@ -1007,6 +1055,12 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
   } else if (options->sink_type == GST_VIDEO_ENCODE) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), sink_filter,
         v4l2h264enc, h264parse_encode, mp4mux, filesink, NULL);
+  } else if (options->sink_type == GST_RTSP_STREAMING) {
+    gst_bin_add_many (GST_BIN (appctx->pipeline), v4l2h264enc_rtsp,
+        h264parse_enc_rtsp, qtirtspbin, NULL);
+  } else {
+    g_printerr ("Incorrect output sink type\n");
+    goto error_clean_elements;
   }
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
@@ -1209,6 +1263,17 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
           " ->filesink cannot be linked. Exiting.\n");
       goto error_clean_pipeline;
     }
+  } else if (options->sink_type == GST_RTSP_STREAMING) {
+    ret = gst_element_link_many (qtivcomposer, queue[18],
+        qtivoverlay, v4l2h264enc_rtsp, h264parse_enc_rtsp, qtirtspbin, NULL);
+    if (!ret) {
+      g_printerr ("Pipeline elements cannot be linked for"
+          " qtivcomposer->qtirtspbin\n");
+      goto error_clean_pipeline;
+    }
+  } else {
+      g_printerr ("Invalid output sink type\n");
+      goto error_clean_pipeline;
   }
 
   g_print ("All elements are linked successfully\n");
@@ -1309,8 +1374,9 @@ error_clean_elements:
   } else if (options->sink_type == GST_VIDEO_ENCODE) {
     cleanup_gst (&sink_filter, &v4l2h264enc, &h264parse_encode, &mp4mux,
         &filesink, NULL);
+  } else if (options->sink_type == GST_RTSP_STREAMING) {
+    cleanup_gst (&v4l2h264enc_rtsp, &h264parse_enc_rtsp, &qtirtspbin, NULL);
   }
-
   cleanup_gst (&qtivsplit, &qtivcomposer, NULL);
 
   for (gint i = 0; i < SPLIT_COUNT; i++) {
@@ -1475,6 +1541,18 @@ parse_json (gchar * config_file, GstAppOptions * options)
             "output-file"));
   }
 
+  if (json_object_has_member (root_obj, "output-ip-address")) {
+    options->output_ip_address =
+        g_strdup (json_object_get_string_member (root_obj, "output-ip-address"));
+    g_print ("Output Ip Address : %s\n", options->output_ip_address);
+  }
+
+  if (json_object_has_member (root_obj, "port")) {
+    options->port_num =
+        g_strdup (json_object_get_string_member (root_obj, "port"));
+    g_print ("Port Number : %s\n", options->port_num);
+  }
+
   if (json_object_has_member (root_obj, "video-format")) {
     const gchar *video_format_type =
         json_object_get_string_member (root_obj, "video-format");
@@ -1579,6 +1657,8 @@ main (gint argc, gchar * argv[])
   options.height = USB_CAMERA_OUTPUT_HEIGHT;
   options.video_format = GST_NV12_VIDEO_FORMAT;
   options.framerate = DEFAULT_CAMERA_FRAME_RATE;
+  options.output_ip_address = NULL;
+  options.port_num = NULL;
 
   // Set Display environment variables
   setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
@@ -1649,7 +1729,13 @@ main (gint argc, gchar * argv[])
     "  width: USB Camera Resolution width\n"
     "  height: USB Camera Resolution Height\n"
     "  framerate: USB Camera Frame Rate\n"
-    "  video-format:USB Video Format format can be nv12, yuy2 or mjpeg\n",
+    "  video-format: USB Video Format format can be nv12, yuy2 or mjpeg\n"
+    "  output-ip-address: Use this parameter to provide the rtsp output address.\n"
+    "      eg: 127.0.0.1\n"
+    "  port: Use this parameter to provide the rtsp output port.\n"
+    "      eg: 8900\n"
+    "  pose-runtime: It can take cpu, gpu, dsp as input.\n"
+    "  detection-runtime: It can take cpu, gpu, dsp as input.\n",
     app_name, DEFAULT_CONFIG_FILE, camera_description);
   help_description[4095] = '\0';
 
@@ -1697,9 +1783,10 @@ main (gint argc, gchar * argv[])
     return -EINVAL;
   }
 
-  if (options.display && options.output_file_path) {
-    g_printerr ("Both Display and Output file are provided as input! - "
-        "Select either Display or Output file\n");
+  if ((options.display && options.output_file_path && options.output_ip_address) ||
+      (options.display && options.output_file_path) || (options.output_file_path &&
+      options.output_ip_address) || (options.display && options.output_ip_address)) {
+    g_printerr ("Multiple sinks are selected, please select one.\n");
     gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   } else if (options.display) {
@@ -1709,6 +1796,10 @@ main (gint argc, gchar * argv[])
     options.sink_type = GST_VIDEO_ENCODE;
     g_print ("Selected sink type as Output file with path = %s\n",
         options.output_file_path);
+  } else if (options.output_ip_address) {
+    options.sink_type = GST_RTSP_STREAMING;
+    g_print ("Selected sink type as RTSP adn ip-address = %s\n",
+        options.output_ip_address);
   } else {
     options.sink_type = GST_WAYLANDSINK;
     g_print ("Using Wayland Display as Default\n");
