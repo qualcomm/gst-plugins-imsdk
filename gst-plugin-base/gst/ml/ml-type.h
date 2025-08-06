@@ -46,6 +46,7 @@ G_BEGIN_DECLS
  * @GST_ML_TYPE_UINT16: Data is represented as 2 byte of unsigned integer value.
  * @GST_ML_TYPE_INT32: Data is represented as 4 byte of signed integer value.
  * @GST_ML_TYPE_UINT32: Data is represented as 4 byte of unsigned integer value.
+ * @GST_ML_TYPE_FLOAT16: Data is represented as 2 bytes of floating point value.
  * @GST_ML_TYPE_FLOAT32: Data is represented as 4 bytes of floating point value.
  *
  * The possible values of the #GstMLType describing the tensor format.

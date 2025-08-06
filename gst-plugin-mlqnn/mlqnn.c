@@ -33,7 +33,7 @@ G_DEFINE_TYPE (GstMLQnn, gst_ml_qnn, GST_TYPE_BASE_TRANSFORM);
 
 #define MAX_NUM_CDSP_BACKENDS 16
 
-#define GST_ML_QNN_TENSOR_TYPES "{ INT8, UINT8, INT32, UINT32, FLOAT16, FLOAT32 }"
+#define GST_ML_QNN_TENSOR_TYPES "{ INT8, UINT8, INT16, UINT16, INT32, UINT32, FLOAT16, FLOAT32 }"
 
 #define GST_ML_QNN_CAPS                           \
     "neural-network/tensors, "                    \

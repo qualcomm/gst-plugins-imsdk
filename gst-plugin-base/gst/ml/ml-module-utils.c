@@ -116,12 +116,23 @@ gst_ml_tensor_compare_values (GstMLType mltype, gpointer data, guint l_idx,
     case GST_ML_TYPE_UINT8:
       return GUINT8_PTR_CAST (data)[l_idx] > GUINT8_PTR_CAST (data)[r_idx] ? 1 :
           GUINT8_PTR_CAST (data)[l_idx] < GUINT8_PTR_CAST (data)[r_idx] ? -1 : 0;
+    case GST_ML_TYPE_INT16:
+      return GINT16_PTR_CAST (data)[l_idx] > GINT16_PTR_CAST (data)[r_idx] ? 1 :
+          GINT16_PTR_CAST (data)[l_idx] < GINT16_PTR_CAST (data)[r_idx] ? -1 : 0;
+    case GST_ML_TYPE_UINT16:
+      return GUINT16_PTR_CAST (data)[l_idx] > GUINT16_PTR_CAST (data)[r_idx] ? 1 :
+          GUINT16_PTR_CAST (data)[l_idx] < GUINT16_PTR_CAST (data)[r_idx] ? -1 : 0;
     case GST_ML_TYPE_INT32:
       return GINT32_PTR_CAST (data)[l_idx] > GINT32_PTR_CAST (data)[r_idx] ? 1 :
           GINT32_PTR_CAST (data)[l_idx] < GINT32_PTR_CAST (data)[r_idx] ? -1 : 0;
     case GST_ML_TYPE_UINT32:
       return GUINT32_PTR_CAST (data)[l_idx] > GUINT32_PTR_CAST (data)[r_idx] ? 1 :
           GUINT32_PTR_CAST (data)[l_idx] < GUINT32_PTR_CAST (data)[r_idx] ? -1 : 0;
+#if defined(__ARM_FP16_FORMAT_IEEE)
+    case GST_ML_TYPE_FLOAT16:
+      return GFLOAT16_PTR_CAST (data)[l_idx] > GFLOAT16_PTR_CAST (data)[r_idx] ? 1 :
+          GFLOAT16_PTR_CAST (data)[l_idx] < GFLOAT16_PTR_CAST (data)[r_idx] ? -1 : 0;
+#endif //__ARM_FP16_FORMAT_IEEE
     case GST_ML_TYPE_FLOAT32:
       return GFLOAT_PTR_CAST (data)[l_idx] > GFLOAT_PTR_CAST (data)[r_idx] ? 1 :
           GFLOAT_PTR_CAST (data)[l_idx] < GFLOAT_PTR_CAST (data)[r_idx] ? -1 : 0;
