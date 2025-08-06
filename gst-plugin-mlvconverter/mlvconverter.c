@@ -98,8 +98,24 @@ G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
 #define DEFAULT_PROP_MEAN              0.0
 #define DEFAULT_PROP_SIGMA             1.0
 
-#define SIGNED_CONVERSION_OFFSET       128.0
-#define FLOAT_CONVERSION_SIGMA         255.0
+// 1.0 / (2^8 - 1)
+#define FLOAT_CONVERSION_SIGMA         (1.0 / 255.0)
+
+// 2^8 / 2
+#define INT8_CONVERSION_OFFSET         128.0
+
+// 2^16 / 2
+#define INT16_CONVERSION_OFFSET        32768.0
+
+// (2^16 - 1) / (2^8 - 1)
+#define UINT16_CONVERSION_SIGMA        257.0
+
+// 2^32 / 2
+#define INT32_CONVERSION_OFFSET        2147483648.0
+
+// (2^32 - 1) / (2^8 - 1)
+#define UINT32_CONVERSION_SIGMA        16843009.0
+
 
 #define GET_MEAN_VALUE(mean, idx) (mean->len > idx) ? \
     g_array_index (mean, gdouble, idx) : DEFAULT_PROP_MEAN
@@ -123,7 +139,7 @@ G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
 #define GST_ML_VIDEO_FORMATS \
     "{ RGBA, BGRA, ABGR, ARGB, RGBx, BGRx, xRGB, xBGR, BGR, RGB, GRAY8, NV12, NV21, YUY2, UYVY, NV12_Q08C }"
 
-#define GST_ML_TENSOR_TYPES "{ INT8, UINT8, INT32, UINT32, FLOAT16, FLOAT32 }"
+#define GST_ML_TENSOR_TYPES "{ INT8, UINT8, INT16, UINT16, INT32, UINT32, FLOAT16, FLOAT32 }"
 
 #define GST_ML_VIDEO_CONVERTER_SRC_CAPS    \
     "neural-network/tensors, "             \
@@ -331,18 +347,63 @@ gst_ml_tensor_assign_value (GstMLType mltype, gpointer data, guint index,
     case GST_ML_TYPE_UINT8:
       GUINT8_PTR_CAST (data)[index] = (guint8) value;
       break;
+    case GST_ML_TYPE_INT16:
+      GINT16_PTR_CAST (data)[index] = (gint16) value;
+      break;
+    case GST_ML_TYPE_UINT16:
+      GUINT16_PTR_CAST (data)[index] = (guint16) value;
+      break;
     case GST_ML_TYPE_INT32:
       GINT32_PTR_CAST (data)[index] = (gint32) value;
       break;
     case GST_ML_TYPE_UINT32:
       GUINT32_PTR_CAST (data)[index] = (guint32) value;
       break;
+#if defined(__ARM_FP16_FORMAT_IEEE)
+    case GST_ML_TYPE_FLOAT16:
+      GFLOAT16_PTR_CAST (data)[index] = (__fp16) value;
+      break;
+#endif //__ARM_FP16_FORMAT_IEEE
     case GST_ML_TYPE_FLOAT32:
       GFLOAT_PTR_CAST (data)[index] = (gfloat) value;
       break;
     default:
       break;
   }
+}
+
+static inline gdouble
+gst_ml_convert_uint8_to_mltype (GstMLType mltype, gdouble value) {
+
+  switch (mltype) {
+    case GST_ML_TYPE_INT8:
+      value = value - INT8_CONVERSION_OFFSET;
+      break;
+    case GST_ML_TYPE_UINT8:
+      // Nothing to do
+      break;
+    case GST_ML_TYPE_INT16:
+      value = value * UINT16_CONVERSION_SIGMA - INT16_CONVERSION_OFFSET;
+      break;
+    case GST_ML_TYPE_UINT16:
+      value = value * UINT16_CONVERSION_SIGMA;
+      break;
+    case GST_ML_TYPE_INT32:
+      value = value * UINT32_CONVERSION_SIGMA - INT32_CONVERSION_OFFSET;
+      break;
+    case GST_ML_TYPE_UINT32:
+      value = value * UINT32_CONVERSION_SIGMA;
+      break;
+    case GST_ML_TYPE_FLOAT16:
+    case GST_ML_TYPE_FLOAT32:
+      value = value * FLOAT_CONVERSION_SIGMA;
+      break;
+    default:
+      GST_ERROR ("Unsupported mltype: %d", mltype);
+      break;
+  }
+
+  return value;
 }
 
 static inline gboolean
@@ -949,7 +1010,7 @@ gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
 {
   guint8 *source = NULL;
   gpointer destination = NULL;
-  gdouble mean[4] = {0}, sigma[4] = {0};
+  gdouble mean[4] = {0}, sigma[4] = {0}, value = 0.0f;
   gint row = 0, column = 0, width = 0, height = 0;
   guint idx = 0, bpp = 0;
 
@@ -962,15 +1023,6 @@ gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
   for (idx = 0; idx < bpp; idx++) {
     mean[idx] = GET_MEAN_VALUE (mlconverter->mean, idx);
     sigma[idx] = GET_SIGMA_VALUE (mlconverter->sigma, idx);
-
-    // Apply coefficients for usigned to signed conversion.
-    if (GST_ML_INFO_TYPE (mlconverter->mlinfo) == GST_ML_TYPE_INT8)
-      mean[idx] += SIGNED_CONVERSION_OFFSET;
-
-    // Apply coefficients for float conversion.
-    if (GST_ML_INFO_TYPE (mlconverter->mlinfo) == GST_ML_TYPE_FLOAT16 ||
-        GST_ML_INFO_TYPE (mlconverter->mlinfo) == GST_ML_TYPE_FLOAT32)
-      sigma[idx] /= FLOAT_CONVERSION_SIGMA;
   }
 
   source = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
@@ -984,8 +1036,15 @@ gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
     for (column = ((width * bpp) - 1); column >= 0; column--) {
       idx = (row * width * bpp) + column;
 
-      gst_ml_tensor_assign_value (GST_ML_INFO_TYPE (mlconverter->mlinfo),
-          destination, idx, (source[idx] - mean[idx % bpp]) * sigma[idx % bpp]);
+      // Convert value to actual tensor type
+      value = gst_ml_convert_uint8_to_mltype (
+          GST_ML_INFO_TYPE (mlconverter->mlinfo), source[idx]);
+
+      // Apply normalization
+      value = (value - mean[idx % bpp]) * sigma[idx % bpp];
+
+      gst_ml_tensor_assign_value (
+          GST_ML_INFO_TYPE (mlconverter->mlinfo), destination, idx, value);
     }
   }
 
@@ -1020,15 +1079,6 @@ gst_ml_video_converter_normalize (GstMLVideoConverter * mlconverter,
   for (idx = 0; idx < (guint)bpp; idx++) {
     mean[idx] = GET_MEAN_VALUE (mlconverter->mean, idx);
     sigma[idx] = GET_SIGMA_VALUE (mlconverter->sigma, idx);
-
-    // Apply coefficients for unsigned and signed conversion.
-    if (GST_ML_INFO_TYPE (mlconverter->mlinfo) == GST_ML_TYPE_INT8)
-      mean[idx] += SIGNED_CONVERSION_OFFSET;
-
-    // Apply coefficients for float conversion.
-    if (GST_ML_INFO_TYPE (mlconverter->mlinfo) == GST_ML_TYPE_FLOAT16 ||
-        GST_ML_INFO_TYPE (mlconverter->mlinfo) == GST_ML_TYPE_FLOAT32)
-      sigma[idx] /= FLOAT_CONVERSION_SIGMA;
   }
 
   source = GST_VIDEO_FRAME_PLANE_DATA (inframe, 0);
@@ -1054,10 +1104,17 @@ gst_ml_video_converter_normalize (GstMLVideoConverter * mlconverter,
 
       // Assign a normalized value for each byte in the pixel.
       for (num = 0; num < bpp; num++, outidx++) {
-        guint8 value = (inidx != -1) ? source[inidx++] : 0;
+        gdouble value = (inidx != -1) ? source[inidx++] : 0;
 
-        gst_ml_tensor_assign_value (GST_ML_INFO_TYPE (mlconverter->mlinfo),
-            destination, outidx, (value - mean[num]) * sigma[num]);
+        // Convert value to actual tensor type
+        value = gst_ml_convert_uint8_to_mltype (
+            GST_ML_INFO_TYPE (mlconverter->mlinfo), value);
+
+        // Apply normalization
+        value = (value - mean[num]) * sigma[num];
+
+        gst_ml_tensor_assign_value (
+            GST_ML_INFO_TYPE (mlconverter->mlinfo), destination, outidx, value);
       }
     }
   }
@@ -1929,7 +1986,8 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
 
     // If the conversion request was successful apply normalization.
     if (success && (mlconverter->backend != GST_VCE_BACKEND_GLES) &&
-        ((mlconverter->mean->len != 0) && (mlconverter->sigma->len != 0)))
+        (GST_ML_INFO_TYPE (mlconverter->mlinfo) != GST_ML_TYPE_UINT8 ||
+            ((mlconverter->mean->len != 0) && (mlconverter->sigma->len != 0))))
       success = gst_ml_video_converter_normalize_ip (mlconverter, outframe);
   } else {
     // There is not need for frame conversion, apply only normalization.
