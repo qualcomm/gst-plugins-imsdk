@@ -1499,19 +1499,56 @@ gst_ml_video_converter_transform_caps (GstBaseTransform * base,
 {
   GstMLVideoConverter *mlconverter = GST_ML_VIDEO_CONVERTER (base);
   GstCaps *result = NULL, *intersection = NULL;
+  GstPad *pad = NULL;
   const GValue *value = NULL;
 
   GST_DEBUG_OBJECT (mlconverter, "Transforming caps: %" GST_PTR_FORMAT
       " in direction %s", caps, (direction == GST_PAD_SINK) ? "sink" : "src");
   GST_DEBUG_OBJECT (mlconverter, "Filter caps: %" GST_PTR_FORMAT, filter);
 
-
   if (direction == GST_PAD_SINK) {
-    GstPad *pad = GST_BASE_TRANSFORM_SRC_PAD (base);
+    pad = GST_BASE_TRANSFORM_SRC_PAD (base);
     result = gst_pad_get_pad_template_caps (pad);
-  } else if (direction == GST_PAD_SRC) {
-    GstPad *pad = GST_BASE_TRANSFORM_SINK_PAD (base);
+  } else {
+    pad = GST_BASE_TRANSFORM_SINK_PAD (base);
+
     result = gst_pad_get_pad_template_caps (pad);
+
+    // Try to negotiate precice video caps if engine is NONE.
+    if (mlconverter->backend == GST_VCE_BACKEND_NONE) {
+      GstCaps *videocaps = NULL;
+      gint idx = 0, length = 0, maxwidth = 0, maxheight = 0;
+
+      videocaps = gst_ml_video_converter_translate_ml_caps (mlconverter, caps);
+      length = gst_caps_get_size (videocaps);
+
+      for (idx = 0; idx < length; idx++) {
+        GstStructure *structure = gst_caps_get_structure (videocaps, idx);
+
+        if (!gst_structure_has_field (structure, "width") &&
+            !gst_structure_has_field (structure, "height"))
+          continue;
+
+        gst_structure_get_int (structure, "width", &maxwidth);
+        gst_structure_get_int (structure, "height", &maxheight);
+
+        gst_structure_set (structure, "width", GST_TYPE_INT_RANGE, 1, maxwidth,
+            "height", GST_TYPE_INT_RANGE, 1, maxheight, NULL);
+
+        if (mlconverter->disposition != GST_ML_VIDEO_DISPOSITION_STRETCH) {
+          gst_structure_set (structure,
+              "pixel-aspect-ratio", GST_TYPE_FRACTION , 1, 1, NULL);
+        }
+      }
+
+      intersection = gst_caps_intersect_full (result, videocaps,
+          GST_CAPS_INTERSECT_FIRST);
+
+      gst_caps_unref (videocaps);
+      gst_caps_unref (result);
+
+      result = intersection;
+    }
   }
 
   // Extract the framerate and propagate it to result caps.
