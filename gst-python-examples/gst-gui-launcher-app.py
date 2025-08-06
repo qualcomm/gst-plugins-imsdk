@@ -463,7 +463,7 @@ class DemoWindow(Gtk.Window):
         if application == "Record live video":
            pipeline = "gst-launch-1.0 " + in_src + " ! queue ! tee name=split ! queue ! qtivcomposer ! queue ! \
                 gtksink split. ! queue ! v4l2h264enc capture-io-mode=4 output-io-mode=5 ! \
-                h264parse ! mp4mux reserved-moov-update-period=1000000 reserved-bytes-per-sec=10000 reserved-max-duration=1000000000 ! filesink location=/etc/media/video_out.mp4"
+                h264parse ! mp4mux reserved-moov-update-period=1000000000 reserved-bytes-per-sec=10000 reserved-max-duration=600000000000 ! filesink location=/etc/media/video_out.mp4"
 
         elif application == "DashCamera" and src == "On-Device-Camera":
             pipeline = "gst-launch-1.0 -e qtivcomposer name=mix sink_0::position='<0, 0>' sink_0::dimensions='<640, 360>' \
