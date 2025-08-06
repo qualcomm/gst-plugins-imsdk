@@ -230,6 +230,10 @@ qnn_to_ml_type (Qnn_DataType_t type)
     case QNN_DATATYPE_INT_32:
     case QNN_DATATYPE_SFIXED_POINT_32:
       return GST_ML_TYPE_INT32;
+    case QNN_DATATYPE_UINT_64:
+      return GST_ML_TYPE_UINT64;
+    case QNN_DATATYPE_INT_64:
+      return GST_ML_TYPE_INT64;
     case QNN_DATATYPE_FLOAT_16:
       return GST_ML_TYPE_FLOAT16;
     case QNN_DATATYPE_FLOAT_32:

@@ -278,10 +278,6 @@ static GstMLType
 snpe_to_ml_type (zdl::DlSystem::UserBufferEncoding::ElementType_t type)
 {
   switch (type) {
-    case zdl::DlSystem::UserBufferEncoding::ElementType_t::FLOAT16:
-      return GST_ML_TYPE_FLOAT16;
-    case zdl::DlSystem::UserBufferEncoding::ElementType_t::FLOAT:
-      return GST_ML_TYPE_FLOAT32;
     case zdl::DlSystem::UserBufferEncoding::ElementType_t::INT8:
       return GST_ML_TYPE_INT8;
     case zdl::DlSystem::UserBufferEncoding::ElementType_t::UNSIGNED8BIT:
@@ -297,6 +293,14 @@ snpe_to_ml_type (zdl::DlSystem::UserBufferEncoding::ElementType_t type)
       return GST_ML_TYPE_INT32;
     case zdl::DlSystem::UserBufferEncoding::ElementType_t::UINT32:
       return GST_ML_TYPE_UINT32;
+    case zdl::DlSystem::UserBufferEncoding::ElementType_t::INT64:
+      return GST_ML_TYPE_INT64;
+    case zdl::DlSystem::UserBufferEncoding::ElementType_t::UINT64:
+      return GST_ML_TYPE_UINT64;
+    case zdl::DlSystem::UserBufferEncoding::ElementType_t::FLOAT16:
+      return GST_ML_TYPE_FLOAT16;
+    case zdl::DlSystem::UserBufferEncoding::ElementType_t::FLOAT:
+      return GST_ML_TYPE_FLOAT32;
     default:
       GST_ERROR ("Unsupported format %x!", static_cast<uint32_t>(type));
       break;
