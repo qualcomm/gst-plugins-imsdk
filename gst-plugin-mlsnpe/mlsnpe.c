@@ -88,7 +88,7 @@ G_DEFINE_TYPE (GstMLSnpe, gst_ml_snpe, GST_TYPE_BASE_TRANSFORM);
 #define DEFAULT_PROP_MIN_BUFFERS 2
 #define DEFAULT_PROP_MAX_BUFFERS 10
 
-#define GST_ML_SNPE_TENSOR_TYPES "{ INT8, UINT8, INT32, UINT32, FLOAT32 }"
+#define GST_ML_SNPE_TENSOR_TYPES "{ INT8, UINT8, INT16, UINT16, INT32, UINT32, FLOAT16, FLOAT32 }"
 
 #define GST_ML_SNPE_CAPS                        \
     "neural-network/tensors, "                  \
