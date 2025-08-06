@@ -770,7 +770,8 @@ gst_ml_snpe_class_init (GstMLSnpeClass * klass)
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_TENSORS,
      gst_param_spec_array ("tensors", "Tensors",
-          "List of output tensors. Alternative to output layer list",
+          "List of output tensors. Alternative to output layer list. "
+          "The outputs will be generated in the order defined in this list.",
           g_param_spec_string ("name", "Tensor Name",
               "Name of the output tensor.", NULL,
               G_PARAM_WRITABLE | G_PARAM_STATIC_STRINGS),
