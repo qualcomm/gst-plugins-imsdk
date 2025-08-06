@@ -69,6 +69,42 @@ gst_ml_stage_unregister_unique_index (gint8 index)
   G_UNLOCK (ml_stage_mutex);
 }
 
+void
+gst_ml_tensor_assign_value (GstMLType mltype, gpointer data, guint index,
+    gdouble value)
+{
+  switch (mltype) {
+    case GST_ML_TYPE_INT8:
+      GINT8_PTR_CAST (data)[index] = (gint8) value;
+      break;
+    case GST_ML_TYPE_UINT8:
+      GUINT8_PTR_CAST (data)[index] = (guint8) value;
+      break;
+    case GST_ML_TYPE_INT16:
+      GINT16_PTR_CAST (data)[index] = (gint16) value;
+      break;
+    case GST_ML_TYPE_UINT16:
+      GUINT16_PTR_CAST (data)[index] = (guint16) value;
+      break;
+    case GST_ML_TYPE_INT32:
+      GINT32_PTR_CAST (data)[index] = (gint32) value;
+      break;
+    case GST_ML_TYPE_UINT32:
+      GUINT32_PTR_CAST (data)[index] = (guint32) value;
+      break;
+#if defined(__ARM_FP16_FORMAT_IEEE)
+    case GST_ML_TYPE_FLOAT16:
+      GFLOAT16_PTR_CAST (data)[index] = (__fp16) value;
+      break;
+#endif //__ARM_FP16_FORMAT_IEEE
+    case GST_ML_TYPE_FLOAT32:
+      GFLOAT_PTR_CAST (data)[index] = (gfloat) value;
+      break;
+    default:
+      break;
+  }
+}
+
 gint
 gst_ml_tensor_compare_values (GstMLType mltype, gpointer data, guint l_idx,
     guint r_idx)
