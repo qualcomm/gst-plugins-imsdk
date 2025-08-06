@@ -24,10 +24,6 @@ pkg_check_modules(GST_ALLOC
 configure_file(config.h.in config.h @ONLY)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-# Check whether DMA header is present.
-include(CheckIncludeFile)
-check_include_file("linux/dma-buf.h" HAVE_LINUX_DMA_BUF_H)
-
 # Precompiler definitions.
 add_definitions(-DHAVE_CONFIG_H)
 
@@ -41,10 +37,6 @@ set(GST_QTI_VIDEO_SPLIT gstqtivsplit)
 add_library(${GST_QTI_VIDEO_SPLIT} SHARED
   videosplit.c
   videosplitpads.c
-)
-
-target_compile_definitions(${GST_QTI_VIDEO_SPLIT} PRIVATE
-  $<$<BOOL:${HAVE_LINUX_DMA_BUF_H}>:HAVE_LINUX_DMA_BUF_H>
 )
 
 target_include_directories(${GST_QTI_VIDEO_SPLIT} PUBLIC

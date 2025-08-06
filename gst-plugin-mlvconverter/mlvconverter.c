@@ -81,11 +81,6 @@
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
 
-#ifdef HAVE_LINUX_DMA_BUF_H
-#include <sys/ioctl.h>
-#include <linux/dma-buf.h>
-#endif // HAVE_LINUX_DMA_BUF_H
-
 #define GST_CAT_DEFAULT gst_ml_video_converter_debug
 GST_DEBUG_CATEGORY_STATIC (gst_ml_video_converter_debug);
 
@@ -1885,18 +1880,6 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
     return GST_FLOW_ERROR;
   }
 
-#ifdef HAVE_LINUX_DMA_BUF_H
-  if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
-    struct dma_buf_sync bufsync;
-    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
-
-    bufsync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
-
-    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
-      GST_WARNING_OBJECT (mlconverter, "DMA IOCTL SYNC START failed!");
-  }
-#endif // HAVE_LINUX_DMA_BUF_H
-
   n_blits = mlconverter->composition.n_blits;
   inframe = mlconverter->composition.blits[0].frame;
   outframe = mlconverter->composition.frame;
@@ -1916,18 +1899,6 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
     success = gst_ml_video_converter_normalize (mlconverter,
         &(mlconverter->composition.blits[0]), outframe);
   }
-
-#ifdef HAVE_LINUX_DMA_BUF_H
-  if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
-    struct dma_buf_sync bufsync;
-    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
-
-    bufsync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
-
-    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
-      GST_WARNING_OBJECT (mlconverter, "DMA IOCTL SYNC END failed!");
-  }
-#endif // HAVE_LINUX_DMA_BUF_H
 
   gst_ml_video_converter_cleanup_composition (mlconverter);
   time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
