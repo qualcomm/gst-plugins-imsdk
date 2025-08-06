@@ -81,11 +81,6 @@
 #include <gst/utils/common-utils.h>
 #include <gst/utils/batch-utils.h>
 
-#ifdef HAVE_LINUX_DMA_BUF_H
-#include <sys/ioctl.h>
-#include <linux/dma-buf.h>
-#endif // HAVE_LINUX_DMA_BUF_H
-
 #define GST_CAT_DEFAULT gst_ml_video_converter_debug
 GST_DEBUG_CATEGORY_STATIC (gst_ml_video_converter_debug);
 
@@ -103,8 +98,23 @@ G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
 #define DEFAULT_PROP_MEAN              0.0
 #define DEFAULT_PROP_SIGMA             1.0
 
-#define SIGNED_CONVERSION_OFFSET       128.0
-#define FLOAT_CONVERSION_SIGMA         255.0
+// 1.0 / (2^8 - 1)
+#define FLOAT_CONVERSION_SIGMA         (1.0 / 255.0)
+// 2^8 / 2
+#define INT8_CONVERSION_OFFSET         128.0
+// 2^16 / 2
+#define INT16_CONVERSION_OFFSET        32768.0
+// (2^16 - 1) / (2^8 - 1)
+#define UINT16_CONVERSION_SIGMA        257.0
+// 2^32 / 2
+#define INT32_CONVERSION_OFFSET        2147483648.0
+// (2^32 - 1) / (2^8 - 1)
+#define UINT32_CONVERSION_SIGMA        16843009.0
+// 2^64 / 2
+#define INT64_CONVERSION_OFFSET        9223372036854775808.0
+// (2^64 - 1) / (2^8 - 1)
+#define UINT64_CONVERSION_SIGMA        72340172838076673.0
+
 
 #define GET_MEAN_VALUE(mean, idx) (mean->len > idx) ? \
     g_array_index (mean, gdouble, idx) : DEFAULT_PROP_MEAN
@@ -128,7 +138,7 @@ G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
 #define GST_ML_VIDEO_FORMATS \
     "{ RGBA, BGRA, ABGR, ARGB, RGBx, BGRx, xRGB, xBGR, BGR, RGB, GRAY8, NV12, NV21, YUY2, UYVY, NV12_Q08C }"
 
-#define GST_ML_TENSOR_TYPES "{ INT8, UINT8, INT32, UINT32, FLOAT16, FLOAT32 }"
+#define GST_ML_TENSOR_TYPES "{ INT8, UINT8, INT16, UINT16, INT32, UINT32, FLOAT16, FLOAT32 }"
 
 #define GST_ML_VIDEO_CONVERTER_SRC_CAPS    \
     "neural-network/tensors, "             \
@@ -325,29 +335,44 @@ init_formats (GValue * formats, ...)
   va_end (args);
 }
 
-static inline void
-gst_ml_tensor_assign_value (GstMLType mltype, gpointer data, guint index,
-    gdouble value)
-{
+static inline gdouble
+gst_ml_convert_uint8_to_mltype (GstMLType mltype, gdouble value) {
+
   switch (mltype) {
     case GST_ML_TYPE_INT8:
-      GINT8_PTR_CAST (data)[index] = (gint8) value;
+      value = value - INT8_CONVERSION_OFFSET;
       break;
     case GST_ML_TYPE_UINT8:
-      GUINT8_PTR_CAST (data)[index] = (guint8) value;
+      // Nothing to do
+      break;
+    case GST_ML_TYPE_INT16:
+      value = value * UINT16_CONVERSION_SIGMA - INT16_CONVERSION_OFFSET;
+      break;
+    case GST_ML_TYPE_UINT16:
+      value = value * UINT16_CONVERSION_SIGMA;
       break;
     case GST_ML_TYPE_INT32:
-      GINT32_PTR_CAST (data)[index] = (gint32) value;
+      value = value * UINT32_CONVERSION_SIGMA - INT32_CONVERSION_OFFSET;
       break;
     case GST_ML_TYPE_UINT32:
-      GUINT32_PTR_CAST (data)[index] = (guint32) value;
+      value = value * UINT32_CONVERSION_SIGMA;
       break;
+    case GST_ML_TYPE_INT64:
+      value = value * UINT64_CONVERSION_SIGMA - INT64_CONVERSION_OFFSET;
+      break;
+    case GST_ML_TYPE_UINT64:
+      value = value * UINT64_CONVERSION_SIGMA;
+      break;
+    case GST_ML_TYPE_FLOAT16:
     case GST_ML_TYPE_FLOAT32:
-      GFLOAT_PTR_CAST (data)[index] = (gfloat) value;
+      value = value * FLOAT_CONVERSION_SIGMA;
       break;
     default:
+      GST_ERROR ("Unsupported mltype: %d", mltype);
       break;
   }
+
+  return value;
 }
 
 static inline gboolean
@@ -954,7 +979,7 @@ gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
 {
   guint8 *source = NULL;
   gpointer destination = NULL;
-  gdouble mean[4] = {0}, sigma[4] = {0};
+  gdouble mean[4] = {0}, sigma[4] = {0}, value = 0.0f;
   gint row = 0, column = 0, width = 0, height = 0;
   guint idx = 0, bpp = 0;
 
@@ -967,15 +992,6 @@ gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
   for (idx = 0; idx < bpp; idx++) {
     mean[idx] = GET_MEAN_VALUE (mlconverter->mean, idx);
     sigma[idx] = GET_SIGMA_VALUE (mlconverter->sigma, idx);
-
-    // Apply coefficients for usigned to signed conversion.
-    if (GST_ML_INFO_TYPE (mlconverter->mlinfo) == GST_ML_TYPE_INT8)
-      mean[idx] += SIGNED_CONVERSION_OFFSET;
-
-    // Apply coefficients for float conversion.
-    if (GST_ML_INFO_TYPE (mlconverter->mlinfo) == GST_ML_TYPE_FLOAT16 ||
-        GST_ML_INFO_TYPE (mlconverter->mlinfo) == GST_ML_TYPE_FLOAT32)
-      sigma[idx] /= FLOAT_CONVERSION_SIGMA;
   }
 
   source = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
@@ -989,8 +1005,15 @@ gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
     for (column = ((width * bpp) - 1); column >= 0; column--) {
       idx = (row * width * bpp) + column;
 
-      gst_ml_tensor_assign_value (GST_ML_INFO_TYPE (mlconverter->mlinfo),
-          destination, idx, (source[idx] - mean[idx % bpp]) * sigma[idx % bpp]);
+      // Convert value to actual tensor type
+      value = gst_ml_convert_uint8_to_mltype (
+          GST_ML_INFO_TYPE (mlconverter->mlinfo), source[idx]);
+
+      // Apply normalization
+      value = (value - mean[idx % bpp]) * sigma[idx % bpp];
+
+      gst_ml_tensor_assign_value (
+          GST_ML_INFO_TYPE (mlconverter->mlinfo), destination, idx, value);
     }
   }
 
@@ -999,54 +1022,70 @@ gst_ml_video_converter_normalize_ip (GstMLVideoConverter * mlconverter,
 
 static gboolean
 gst_ml_video_converter_normalize (GstMLVideoConverter * mlconverter,
-    GstVideoFrame * inframe, GstVideoFrame * outframe)
+    GstVideoBlit * vblit, GstVideoFrame * outframe)
 {
   guint8 *source = NULL;
+  GstVideoFrame *inframe = vblit->frame;
   gpointer destination = NULL;
   gdouble mean[4] = {0}, sigma[4] = {0};
-  guint idx = 0, size = 0, bpp = 0;
+  guint idx = 0;
+  gint inidx = 0, outidx = 0, outwidth = 0, outheight = 0;
+  gint row = 0, column = 0, instride = 0, num = 0, bpp = 0;
 
   // Sanity checks, input and output frame must differ only in type.
   g_return_val_if_fail (GST_VIDEO_FRAME_FORMAT (inframe) ==
       GST_VIDEO_FRAME_FORMAT (outframe), FALSE);
-  g_return_val_if_fail (GST_VIDEO_FRAME_WIDTH (inframe) ==
-      GST_VIDEO_FRAME_WIDTH (outframe), FALSE);
-  g_return_val_if_fail (GST_VIDEO_FRAME_HEIGHT (inframe) ==
-      GST_VIDEO_FRAME_HEIGHT (outframe), FALSE);
+
+  g_return_val_if_fail (vblit->source.w == vblit->destination.w, FALSE);
+  g_return_val_if_fail (vblit->source.h == vblit->destination.h, FALSE);
 
   // Retrive the input frame Bytes Per Pixel for later calculations.
   bpp = GST_VIDEO_FORMAT_INFO_BITS (inframe->info.finfo) *
       GST_VIDEO_FORMAT_INFO_N_COMPONENTS (inframe->info.finfo);
   bpp /= 8;
 
-  // Number of individual channels we need to normalize.
-  size = GST_VIDEO_FRAME_SIZE (outframe) /
-      gst_ml_type_get_size (mlconverter->mlinfo->type);
-
-  // Sanity check, input frame size must be equal to adjusted output size.
-  g_return_val_if_fail (GST_VIDEO_FRAME_SIZE (inframe) == size, FALSE);
-
   // Convinient local variables for per channel mean and sigma values.
-  for (idx = 0; idx < bpp; idx++) {
+  for (idx = 0; idx < (guint)bpp; idx++) {
     mean[idx] = GET_MEAN_VALUE (mlconverter->mean, idx);
     sigma[idx] = GET_SIGMA_VALUE (mlconverter->sigma, idx);
-
-    // Apply coefficients for unsigned and signed conversion.
-    if (GST_ML_INFO_TYPE (mlconverter->mlinfo) == GST_ML_TYPE_INT8)
-      mean[idx] += SIGNED_CONVERSION_OFFSET;
-
-    // Apply coefficients for float conversion.
-    if (GST_ML_INFO_TYPE (mlconverter->mlinfo) == GST_ML_TYPE_FLOAT16 ||
-        GST_ML_INFO_TYPE (mlconverter->mlinfo) == GST_ML_TYPE_FLOAT32)
-      sigma[idx] /= FLOAT_CONVERSION_SIGMA;
   }
 
   source = GST_VIDEO_FRAME_PLANE_DATA (inframe, 0);
   destination = GST_VIDEO_FRAME_PLANE_DATA (outframe, 0);
 
-  for (idx = 0; idx < size; idx++) {
-    gst_ml_tensor_assign_value (GST_ML_INFO_TYPE (mlconverter->mlinfo),
-        destination, idx, (source[idx] - mean[idx % bpp]) * sigma[idx % bpp]);
+  outwidth = GST_VIDEO_FRAME_WIDTH (outframe);
+  outheight = GST_VIDEO_FRAME_HEIGHT (outframe);
+  instride = GST_VIDEO_FRAME_PLANE_STRIDE (inframe, 0);
+
+  inframe = vblit->frame;
+
+  for (row = 0; row < outheight; row++) {
+    outidx = row * outwidth * bpp;
+
+    for (column = 0; column < outwidth; column++, inidx = -1) {
+      // Take the value from source only if it is within its coordinates.
+      if ((row >= vblit->destination.y) && (column >= vblit->destination.x) &&
+          (row < (vblit->destination.y + vblit->destination.h)) &&
+          (column < (vblit->destination.x + vblit->destination.w))) {
+        inidx = (vblit->source.y + (row - vblit->destination.y)) * instride;
+        inidx += (vblit->source.x + (column - vblit->destination.x)) * bpp;
+      }
+
+      // Assign a normalized value for each byte in the pixel.
+      for (num = 0; num < bpp; num++, outidx++) {
+        gdouble value = (inidx != -1) ? source[inidx++] : 0;
+
+        // Convert value to actual tensor type
+        value = gst_ml_convert_uint8_to_mltype (
+            GST_ML_INFO_TYPE (mlconverter->mlinfo), value);
+
+        // Apply normalization
+        value = (value - mean[num]) * sigma[num];
+
+        gst_ml_tensor_assign_value (
+            GST_ML_INFO_TYPE (mlconverter->mlinfo), destination, outidx, value);
+      }
+    }
   }
 
   return TRUE;
@@ -1486,19 +1525,56 @@ gst_ml_video_converter_transform_caps (GstBaseTransform * base,
 {
   GstMLVideoConverter *mlconverter = GST_ML_VIDEO_CONVERTER (base);
   GstCaps *result = NULL, *intersection = NULL;
+  GstPad *pad = NULL;
   const GValue *value = NULL;
 
   GST_DEBUG_OBJECT (mlconverter, "Transforming caps: %" GST_PTR_FORMAT
       " in direction %s", caps, (direction == GST_PAD_SINK) ? "sink" : "src");
   GST_DEBUG_OBJECT (mlconverter, "Filter caps: %" GST_PTR_FORMAT, filter);
 
-
   if (direction == GST_PAD_SINK) {
-    GstPad *pad = GST_BASE_TRANSFORM_SRC_PAD (base);
+    pad = GST_BASE_TRANSFORM_SRC_PAD (base);
     result = gst_pad_get_pad_template_caps (pad);
-  } else if (direction == GST_PAD_SRC) {
-    GstPad *pad = GST_BASE_TRANSFORM_SINK_PAD (base);
+  } else {
+    pad = GST_BASE_TRANSFORM_SINK_PAD (base);
+
     result = gst_pad_get_pad_template_caps (pad);
+
+    // Try to negotiate precice video caps if engine is NONE.
+    if (mlconverter->backend == GST_VCE_BACKEND_NONE) {
+      GstCaps *videocaps = NULL;
+      gint idx = 0, length = 0, maxwidth = 0, maxheight = 0;
+
+      videocaps = gst_ml_video_converter_translate_ml_caps (mlconverter, caps);
+      length = gst_caps_get_size (videocaps);
+
+      for (idx = 0; idx < length; idx++) {
+        GstStructure *structure = gst_caps_get_structure (videocaps, idx);
+
+        if (!gst_structure_has_field (structure, "width") &&
+            !gst_structure_has_field (structure, "height"))
+          continue;
+
+        gst_structure_get_int (structure, "width", &maxwidth);
+        gst_structure_get_int (structure, "height", &maxheight);
+
+        gst_structure_set (structure, "width", GST_TYPE_INT_RANGE, 1, maxwidth,
+            "height", GST_TYPE_INT_RANGE, 1, maxheight, NULL);
+
+        if (mlconverter->disposition != GST_ML_VIDEO_DISPOSITION_STRETCH) {
+          gst_structure_set (structure,
+              "pixel-aspect-ratio", GST_TYPE_FRACTION , 1, 1, NULL);
+        }
+      }
+
+      intersection = gst_caps_intersect_full (result, videocaps,
+          GST_CAPS_INTERSECT_FIRST);
+
+      gst_caps_unref (videocaps);
+      gst_caps_unref (result);
+
+      result = intersection;
+    }
   }
 
   // Extract the framerate and propagate it to result caps.
@@ -1867,48 +1943,26 @@ gst_ml_video_converter_transform (GstBaseTransform * base,
     return GST_FLOW_ERROR;
   }
 
-#ifdef HAVE_LINUX_DMA_BUF_H
-  if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
-    struct dma_buf_sync bufsync;
-    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
-
-    bufsync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
-
-    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
-      GST_WARNING_OBJECT (mlconverter, "DMA IOCTL SYNC START failed!");
-  }
-#endif // HAVE_LINUX_DMA_BUF_H
-
   n_blits = mlconverter->composition.n_blits;
   inframe = mlconverter->composition.blits[0].frame;
   outframe = mlconverter->composition.frame;
 
-  if ((n_blits > 1) || is_conversion_required (inframe, outframe) ||
-      ((mlconverter->mean->len != 0) && (mlconverter->sigma->len != 0))) {
+  if (mlconverter->backend != GST_VCE_BACKEND_NONE &&
+      ((n_blits > 1) || is_conversion_required (inframe, outframe) ||
+          ((mlconverter->mean->len != 0) && (mlconverter->sigma->len != 0)))) {
     success = gst_video_converter_engine_compose (mlconverter->converter,
         &(mlconverter->composition), 1, NULL);
 
     // If the conversion request was successful apply normalization.
     if (success && (mlconverter->backend != GST_VCE_BACKEND_GLES) &&
-        ((mlconverter->mean->len != 0) && (mlconverter->sigma->len != 0)))
+        (GST_ML_INFO_TYPE (mlconverter->mlinfo) != GST_ML_TYPE_UINT8 ||
+            ((mlconverter->mean->len != 0) && (mlconverter->sigma->len != 0))))
       success = gst_ml_video_converter_normalize_ip (mlconverter, outframe);
-  } else if ((mlconverter->backend != GST_VCE_BACKEND_GLES) &&
-             ((mlconverter->mean->len != 0) && (mlconverter->sigma->len != 0))) {
+  } else {
     // There is not need for frame conversion, apply only normalization.
-    success = gst_ml_video_converter_normalize (mlconverter, inframe, outframe);
+    success = gst_ml_video_converter_normalize (mlconverter,
+        &(mlconverter->composition.blits[0]), outframe);
   }
-
-#ifdef HAVE_LINUX_DMA_BUF_H
-  if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
-    struct dma_buf_sync bufsync;
-    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
-
-    bufsync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
-
-    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
-      GST_WARNING_OBJECT (mlconverter, "DMA IOCTL SYNC END failed!");
-  }
-#endif // HAVE_LINUX_DMA_BUF_H
 
   gst_ml_video_converter_cleanup_composition (mlconverter);
   time = GST_CLOCK_DIFF (time, gst_util_get_timestamp ());
@@ -2170,6 +2224,8 @@ gst_ml_video_converter_init (GstMLVideoConverter * mlconverter)
 
   mlconverter->next_roi_id = -1;
   mlconverter->next_mem_idx = -1;
+
+  mlconverter->converter = NULL;
 
   mlconverter->backend = DEFAULT_PROP_ENGINE_BACKEND;
   mlconverter->disposition = DEFAULT_PROP_IMAGE_DISPOSITION;

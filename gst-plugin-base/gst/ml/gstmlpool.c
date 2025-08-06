@@ -122,6 +122,12 @@ open_ion_device (GstMLBufferPool * mlpool)
   priv->devfd = open ("/dev/dma_heap/qcom,system", O_RDONLY | O_CLOEXEC);
 
   if (priv->devfd < 0) {
+    GST_WARNING_OBJECT (mlpool, "Failed to open /dev/dma_heap/qcom,system, "
+        "error: %s! Falling back to /dev/dma_heap/system", g_strerror (errno));
+    priv->devfd = open ("/dev/dma_heap/system", O_RDONLY | O_CLOEXEC);
+  }
+
+  if (priv->devfd < 0) {
     GST_WARNING_OBJECT (mlpool, "Falling back to /dev/ion");
     priv->devfd = open ("/dev/ion", O_RDONLY | O_CLOEXEC);
   }

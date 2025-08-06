@@ -54,6 +54,7 @@ target_link_libraries(${GST_QTI_ML_META_PARSER} PRIVATE
   ${GST_LIBRARIES}
   ${GST_BASE_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
+  ${GST_VIDEO_LIBRARIES}
   gstqtiutilsbase
   gstqtivideobase
 )

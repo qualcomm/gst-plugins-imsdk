@@ -16,8 +16,15 @@ G_BEGIN_DECLS
 
 #define GINT8_PTR_CAST(data)        ((gint8*) data)
 #define GUINT8_PTR_CAST(data)       ((guint8*) data)
+#define GINT16_PTR_CAST(data)       ((gint16*) data)
+#define GUINT16_PTR_CAST(data)      ((guint16*) data)
 #define GINT32_PTR_CAST(data)       ((gint32*) data)
 #define GUINT32_PTR_CAST(data)      ((guint32*) data)
+#define GINT64_PTR_CAST(data)       ((gint64*) data)
+#define GUINT64_PTR_CAST(data)      ((guint64*) data)
+#if defined(__ARM_FP16_FORMAT_IEEE)
+#define GFLOAT16_PTR_CAST(data)       ((__fp16*) data)
+#endif // __ARM_FP16_FORMAT_IEEE
 #define GFLOAT_PTR_CAST(data)       ((gfloat*) data)
 
 /**
@@ -48,10 +55,25 @@ gst_ml_stage_register_unique_index (gint8 index);
  *
  * Remove an index number from the internal mapping.
  *
- * return: TRUE on success or FALSE on failure
+ * return: None
  */
 GST_API void
 gst_ml_stage_unregister_unique_index (gint8 index);
+
+/**
+ * gst_ml_tensor_assign_value:
+ * @mltype: ML type of the tensor.
+ * @data: Pointer to the data in the ML tensor.
+ * @idx: Index of the data in the tensor to be extracted.
+ * @value: The value which to assign to the tensor in gdouble format.
+ *
+ * Helper function for assigning a value to a tensor.
+ *
+ * return: None
+ */
+GST_API void
+gst_ml_tensor_assign_value (GstMLType mltype, gpointer data, guint idx,
+                            gdouble value);
 
 /**
  * gst_ml_tensor_compare_values:
@@ -66,7 +88,7 @@ gst_ml_stage_unregister_unique_index (gint8 index);
  *         (-1) If value at right index is greater.
  *         (0) If both values are equal
  */
-gint
+GST_API gint
 gst_ml_tensor_compare_values (GstMLType mltype, gpointer data, guint l_idx,
                               guint r_idx);
 
@@ -81,7 +103,7 @@ gst_ml_tensor_compare_values (GstMLType mltype, gpointer data, guint l_idx,
  *
  * return: None
  */
-void
+GST_API void
 gst_ml_structure_set_source_dimensions (GstStructure * structure,
                                         guint width, guint height);
 
@@ -96,7 +118,7 @@ gst_ml_structure_set_source_dimensions (GstStructure * structure,
  *
  * return: None
  */
-void
+GST_API void
 gst_ml_structure_get_source_dimensions (const GstStructure * structure,
                                         guint * width, guint * height);
 
@@ -110,7 +132,7 @@ gst_ml_structure_get_source_dimensions (const GstStructure * structure,
  *
  * return: None
  */
-void
+GST_API void
 gst_ml_structure_set_source_region (GstStructure * structure,
                                     GstVideoRectangle * region);
 
@@ -124,7 +146,7 @@ gst_ml_structure_set_source_region (GstStructure * structure,
  *
  * return: None
  */
-void
+GST_API void
 gst_ml_structure_get_source_region (const GstStructure * structure,
                                     GstVideoRectangle * region);
 

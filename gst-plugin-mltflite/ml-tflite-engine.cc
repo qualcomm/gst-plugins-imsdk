@@ -75,11 +75,11 @@
 #include <tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h>
 
 #ifdef HAVE_HEXAGON_DELEGATE_H
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 3)
+#if !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 3)
 #include <tensorflow/lite/delegates/hexagon/hexagon_delegate.h>
 #else
 #include <tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h>
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 3)
+#endif // !defined(HAVE_TFLITE_VERSION_H) ||  TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 3)
 #endif // HAVE_HEXAGON_DELEGATE_H
 
 #ifdef HAVE_EXTERNAL_DELEGATE_H
@@ -236,10 +236,10 @@ gst_ml_tflite_type_to_string (TfLiteType type)
       return "UINT16";
     case kTfLiteInt16:
       return "INT16";
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#if !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
     case kTfLiteUInt32:
       return "UINT32";
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#endif // !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
     case kTfLiteInt32:
       return "INT32";
     case kTfLiteFloat16:
@@ -323,6 +323,24 @@ gst_ml_tflite_convert_to_float (GstMLFrame *mlframe, guint idx,
 
       break;
     }
+    case kTfLiteUInt64:
+    {
+      uint64_t *data = reinterpret_cast<uint64_t *>(tensor_data);
+
+      for (size_t idx = 0; idx < n_elements; idx++)
+        output[idx] = (static_cast<float>(data[idx]) - offset) * scale;
+
+      break;
+    }
+    case kTfLiteInt64:
+    {
+      int64_t *data = reinterpret_cast<int64_t *>(tensor_data);
+
+      for (size_t idx = 0; idx < n_elements; idx++)
+        output[idx] = (static_cast<float>(data[idx]) - offset) * scale;
+
+      break;
+    }
 #if defined(__ARM_FP16_FORMAT_IEEE)
     case kTfLiteFloat16:
     {
@@ -380,6 +398,38 @@ get_opt_structure (GstStructure * settings, const gchar * opt)
 }
 #endif // HAVE_EXTERNAL_DELEGATE_H
 
+static GstMLType
+tflite_to_ml_type (TfLiteType type)
+{
+  switch (type) {
+    case kTfLiteInt8:
+      return GST_ML_TYPE_INT8;
+    case kTfLiteUInt8:
+      return GST_ML_TYPE_UINT8;
+    case kTfLiteInt16:
+      return GST_ML_TYPE_INT16;
+    case kTfLiteUInt16:
+      return GST_ML_TYPE_UINT16;
+    case kTfLiteInt32:
+      return GST_ML_TYPE_INT32;
+#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+    case kTfLiteUInt32:
+      return GST_ML_TYPE_UINT32;
+#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+    case kTfLiteInt64:
+      return GST_ML_TYPE_INT64;
+    case kTfLiteUInt64:
+      return GST_ML_TYPE_UINT64;
+    case kTfLiteFloat16:
+      return GST_ML_TYPE_FLOAT16;
+    case kTfLiteFloat32:
+      return GST_ML_TYPE_FLOAT32;
+    default:
+      GST_ERROR ("Unsupported tensors format!");
+      return GST_ML_TYPE_UNKNOWN;
+  }
+}
+
 static TfLiteDelegate *
 gst_ml_tflite_engine_delegate_new (GstStructure * settings)
 {
@@ -395,10 +445,10 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
       // Save power and maintain high accuracy of inference
       options.execution_preference   =
           tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#if !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
       // Burst computation as same delegate is used for all inputs in pipeline
       options.use_burst_computation  = true;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#endif // !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
       if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
         GST_WARNING ("Failed to create NN Framework DSP delegate!");
         break;
@@ -415,12 +465,12 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
       // Save power and maintain high accuracy of inference
       options.execution_preference   =
           tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#if !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
       // Burst computation as same delegate is used for all inputs in pipeline
       options.use_burst_computation  = true;
       // Allow quant types to be converted to fp16 instead of fp32
       options.allow_fp16             = true;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#endif // !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
       if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
         GST_WARNING ("Failed to create NN Framework DSP delegate!");
         break;
@@ -437,10 +487,10 @@ gst_ml_tflite_engine_delegate_new (GstStructure * settings)
       // Save power and maintain high accuracy of inference
       options.execution_preference   =
           tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#if !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
       // Burst computation as same delegate is used for all inputs in pipeline
       options.use_burst_computation  = true;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
+#endif // !defined(HAVE_TFLITE_VERSION_H) || TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
       if ((delegate = new tflite::StatefulNnApiDelegate (options)) == NULL) {
         GST_WARNING ("Failed to create NN Framework NPU delegate!");
         break;
@@ -643,60 +693,22 @@ gst_ml_tflite_engine_new (GstStructure * settings)
 
   idx = engine->interpreter->inputs()[0];
 
-  switch (engine->interpreter->tensor(idx)->type) {
-    case kTfLiteFloat16:
-      engine->ininfo->type = GST_ML_TYPE_FLOAT16;
-      break;
-    case kTfLiteFloat32:
-      engine->ininfo->type = GST_ML_TYPE_FLOAT32;
-      break;
-    case kTfLiteInt32:
-      engine->ininfo->type = GST_ML_TYPE_INT32;
-      break;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
-    case kTfLiteUInt32:
-      engine->ininfo->type = GST_ML_TYPE_UINT32;
-      break;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
-    case kTfLiteInt8:
-      engine->ininfo->type = GST_ML_TYPE_INT8;
-      break;
-    case kTfLiteUInt8:
-      engine->ininfo->type = GST_ML_TYPE_UINT8;
-      break;
-    default:
-      GST_ERROR ("Unsupported input tensors format!");
-      gst_ml_tflite_engine_free (engine);
-      return NULL;
+  engine->ininfo->type =
+      tflite_to_ml_type (engine->interpreter->tensor(idx)->type);
+
+  if (engine->ininfo->type == GST_ML_TYPE_UNKNOWN) {
+    gst_ml_tflite_engine_free (engine);
+    return NULL;
   }
 
   idx = engine->interpreter->outputs()[0];
 
-  switch (engine->interpreter->tensor(idx)->type) {
-    case kTfLiteFloat16:
-      engine->outinfo->type = GST_ML_TYPE_FLOAT16;
-      break;
-    case kTfLiteFloat32:
-      engine->outinfo->type = GST_ML_TYPE_FLOAT32;
-      break;
-    case kTfLiteInt32:
-      engine->outinfo->type = GST_ML_TYPE_INT32;
-      break;
-#if TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
-    case kTfLiteUInt32:
-      engine->outinfo->type = GST_ML_TYPE_UINT32;
-      break;
-#endif // TF_MAJOR_VERSION > 2 || (TF_MAJOR_VERSION == 2 && TF_MINOR_VERSION >= 5)
-    case kTfLiteInt8:
-      engine->outinfo->type = GST_ML_TYPE_INT8;
-      break;
-    case kTfLiteUInt8:
-      engine->outinfo->type = GST_ML_TYPE_UINT8;
-      break;
-    default:
-      GST_ERROR ("Unsupported output tensors format!");
-      gst_ml_tflite_engine_free (engine);
-      return NULL;
+  engine->outinfo->type =
+      tflite_to_ml_type (engine->interpreter->tensor(idx)->type);
+
+  if (engine->outinfo->type == GST_ML_TYPE_UNKNOWN) {
+    gst_ml_tflite_engine_free (engine);
+    return NULL;
   }
 
   GST_DEBUG ("Number of input tensors: %u", engine->ininfo->n_tensors);

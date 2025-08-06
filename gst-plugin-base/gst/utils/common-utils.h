@@ -53,6 +53,28 @@ G_BEGIN_DECLS
 #define GST_META_ID_GET_ENTRY(id) (id & 0xFF)
 
 /**
+ * gst_buffer_dma_sync_start:
+ * @buffer: Buffer which will be accessed.
+ *
+ * Indicates the start of a map access session.
+ *
+ * return: NONE
+ */
+GST_API void
+gst_buffer_dma_sync_start (GstBuffer * buffer);
+
+/**
+ * gst_buffer_dma_sync_end:
+ * @buffer: Buffer which will be accessed.
+ *
+ * Indicates the end of a map access session.
+ *
+ * return: NONE
+ */
+GST_API void
+gst_buffer_dma_sync_end (GstBuffer * buffer);
+
+/**
  * gst_mux_stream_name:
  * @index: The index of the muxed stream inside the buffer.
  *

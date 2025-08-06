@@ -30,6 +30,9 @@ check_include_file("tensorflow/lite/core/shims/c/c_api_experimental.h" HAVE_CORE
 check_include_file("tensorflow/lite/core/c/c_api_experimental.h" HAVE_CORE_C_API_H)
 check_include_file("tensorflow/lite/c/c_api.h" HAVE_C_API_H)
 
+# Version header not found only when building against TFLITE master branch headers
+check_include_file("tensorflow/lite/version.h" HAVE_TFLITE_VERSION_H)
+
 # Support for the External delegate appears after the tensorflow lite 2.10.0
 # the reason is to determine if we are on a new or old version of tflite
 # and on elder versions dynamic loading is not supported

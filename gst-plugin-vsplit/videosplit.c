@@ -45,11 +45,6 @@
 #include <gst/video/gstvideoclassificationmeta.h>
 #include <gst/video/gstvideolandmarksmeta.h>
 
-#ifdef HAVE_LINUX_DMA_BUF_H
-#include <sys/ioctl.h>
-#include <linux/dma-buf.h>
-#endif // HAVE_LINUX_DMA_BUF_H
-
 #include "videosplitpads.h"
 
 #define GST_CAT_DEFAULT gst_video_split_debug
@@ -437,18 +432,6 @@ gst_video_split_acquire_video_frame (GstVideoSplitSrcPad * srcpad,
     return FALSE;
   }
 
-#ifdef HAVE_LINUX_DMA_BUF_H
-  if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
-    struct dma_buf_sync bufsync;
-    gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
-
-    bufsync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
-
-    if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
-      GST_WARNING_OBJECT (srcpad, "DMA IOCTL SYNC START failed!");
-  }
-#endif // HAVE_LINUX_DMA_BUF_H
-
   return TRUE;
 }
 
@@ -510,18 +493,6 @@ gst_video_split_srcpad_push_buffer (GstElement * element, GstPad * pad,
     GstVideoFrame *vframe = &(g_array_index (vframes, GstVideoFrame, idx));
 
     outbuffer = vframe->buffer;
-
-  #ifdef HAVE_LINUX_DMA_BUF_H
-    if (gst_is_fd_memory (gst_buffer_peek_memory (outbuffer, 0))) {
-      struct dma_buf_sync bufsync;
-      gint fd = gst_fd_memory_get_fd (gst_buffer_peek_memory (outbuffer, 0));
-
-      bufsync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
-
-      if (ioctl (fd, DMA_BUF_IOCTL_SYNC, &bufsync) != 0)
-        GST_WARNING_OBJECT (pad, "DMA IOCTL SYNC END failed!");
-    }
-  #endif // HAVE_LINUX_DMA_BUF_H
 
     gst_video_frame_unmap (vframe);
     vframe->buffer = NULL;
