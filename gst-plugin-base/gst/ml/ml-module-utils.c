@@ -92,6 +92,12 @@ gst_ml_tensor_assign_value (GstMLType mltype, gpointer data, guint index,
     case GST_ML_TYPE_UINT32:
       GUINT32_PTR_CAST (data)[index] = (guint32) value;
       break;
+    case GST_ML_TYPE_INT64:
+      GINT64_PTR_CAST (data)[index] = (gint64) value;
+      break;
+    case GST_ML_TYPE_UINT64:
+      GUINT64_PTR_CAST (data)[index] = (guint64) value;
+      break;
 #if defined(__ARM_FP16_FORMAT_IEEE)
     case GST_ML_TYPE_FLOAT16:
       GFLOAT16_PTR_CAST (data)[index] = (__fp16) value;
@@ -128,6 +134,12 @@ gst_ml_tensor_compare_values (GstMLType mltype, gpointer data, guint l_idx,
     case GST_ML_TYPE_UINT32:
       return GUINT32_PTR_CAST (data)[l_idx] > GUINT32_PTR_CAST (data)[r_idx] ? 1 :
           GUINT32_PTR_CAST (data)[l_idx] < GUINT32_PTR_CAST (data)[r_idx] ? -1 : 0;
+    case GST_ML_TYPE_INT64:
+      return GINT64_PTR_CAST (data)[l_idx] > GINT64_PTR_CAST (data)[r_idx] ? 1 :
+          GINT64_PTR_CAST (data)[l_idx] < GINT64_PTR_CAST (data)[r_idx] ? -1 : 0;
+    case GST_ML_TYPE_UINT64:
+      return GUINT64_PTR_CAST (data)[l_idx] > GUINT64_PTR_CAST (data)[r_idx] ? 1 :
+          GUINT64_PTR_CAST (data)[l_idx] < GUINT64_PTR_CAST (data)[r_idx] ? -1 : 0;
 #if defined(__ARM_FP16_FORMAT_IEEE)
     case GST_ML_TYPE_FLOAT16:
       return GFLOAT16_PTR_CAST (data)[l_idx] > GFLOAT16_PTR_CAST (data)[r_idx] ? 1 :

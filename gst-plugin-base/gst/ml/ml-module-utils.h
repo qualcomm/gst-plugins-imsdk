@@ -20,6 +20,8 @@ G_BEGIN_DECLS
 #define GUINT16_PTR_CAST(data)      ((guint16*) data)
 #define GINT32_PTR_CAST(data)       ((gint32*) data)
 #define GUINT32_PTR_CAST(data)      ((guint32*) data)
+#define GINT64_PTR_CAST(data)       ((gint64*) data)
+#define GUINT64_PTR_CAST(data)      ((guint64*) data)
 #if defined(__ARM_FP16_FORMAT_IEEE)
 #define GFLOAT16_PTR_CAST(data)       ((__fp16*) data)
 #endif // __ARM_FP16_FORMAT_IEEE
