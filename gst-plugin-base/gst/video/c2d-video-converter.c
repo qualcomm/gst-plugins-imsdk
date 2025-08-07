@@ -1139,9 +1139,6 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
     return FALSE;
   else if (fence != NULL)
     *fence = requests;
-  else
-    // DMA buffer SYNC End
-    gst_buffer_dma_sync_end (outframe->buffer);
 
   return TRUE;
 
