@@ -67,28 +67,32 @@ int32_t QueryAlignment() {
 
     kAlignment = kGpuAlignment.at(model);
   } catch (std::exception& e) {
-    Log("Fallback to using Adreno utils library for GPU alignment.");
-    void *handle = dlopen("libadreno_utils.so.1", RTLD_NOW);
+    try {
+      void *handle = dlopen("libadreno_utils.so.1", RTLD_NOW);
 
-    if (nullptr == handle) {
-      throw Exception(e.what(), "Fallback to Adreno utils. Failed to load "
-                      "library, error: ", dlerror());
-    }
+      if (nullptr == handle) {
+        throw Exception(e.what(), "Fallback to Adreno utils. Failed to load "
+                        "library, error: ", dlerror());
+      }
 
-    get_gpu_pixel_alignment GetGpuPixelAlignment =
-          (get_gpu_pixel_alignment) dlsym(handle, "get_gpu_pixel_alignment");
+      get_gpu_pixel_alignment GetGpuPixelAlignment =
+            (get_gpu_pixel_alignment) dlsym(handle, "get_gpu_pixel_alignment");
 
-    if (nullptr == GetGpuPixelAlignment) {
+      if (nullptr == GetGpuPixelAlignment) {
+        dlclose(handle);
+        throw Exception(e.what(), "Fallback to Adreno utils. Failed to load "
+                        "symbol, error: ", dlerror());
+      }
+
+      // Fetch the GPU Pixel Alignment.
+      kAlignment = GetGpuPixelAlignment();
+
+      // Close the library as it is no longer needed.
       dlclose(handle);
-      throw Exception(e.what(), "Fallback to Adreno utils. Failed to load "
-                      "symbol, error: ", dlerror());
+    } catch (std::exception& excp) {
+      Log("CRITICAL: '", excp.what(), "' Using default alignment of 128!");
+      kAlignment = 128;
     }
-
-    // Fetch the GPU Pixel Alignment.
-    kAlignment = GetGpuPixelAlignment();
-
-    // Close the library as it is no longer needed.
-    dlclose(handle);
   }
 
   return kAlignment;

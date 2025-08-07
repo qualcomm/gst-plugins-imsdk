@@ -15,14 +15,7 @@ gst_gfx_adreno_get_alignment ()
   gint alignment = -1;
 
 #ifdef HAVE_GLES2_H
-  try {
-    alignment = ::ib2c::QueryAlignment();
-  } catch (std::exception& e) {
-    alignment = 128;
-
-    g_critical ("Failed to query alignment requirements and using default "
-        "alignment %d, error: '%s'!", alignment, e.what());
-  }
+  alignment = ::ib2c::QueryAlignment();
 #else
   // Default alignment when platform doesn't have GPU.
   alignment = 4;
