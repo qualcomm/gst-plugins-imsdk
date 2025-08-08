@@ -4,7 +4,6 @@
  */
 
 #include "fcv-video-converter.h"
-#include <gst/utils/common-utils.h>
 
 #include <unistd.h>
 #include <dlfcn.h>
@@ -2204,9 +2203,6 @@ gst_fcv_video_converter_compose (GstFcvVideoConverter * convert,
       n_objects += 2;
     }
 
-    // DMA buffer SYNC Start
-    gst_buffer_dma_sync_start (outframe->buffer);
-
     if (compositions[idx].bgfill && (area > 0)) {
       guint32 color = compositions[idx].bgcolor;
       gst_fcv_video_converter_fill_background (convert, outframe, color);
@@ -2216,9 +2212,6 @@ gst_fcv_video_converter_compose (GstFcvVideoConverter * convert,
       GST_ERROR ("Failed to process frames for composition %u!", idx);
       return FALSE;
     }
-
-    // DMA buffer SYNC End
-    gst_buffer_dma_sync_end (outframe->buffer);
   }
 
   return TRUE;
