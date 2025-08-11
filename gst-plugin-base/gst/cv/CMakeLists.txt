@@ -34,7 +34,7 @@ install(
 )
 
 configure_file(
-  ${CMAKE_SOURCE_DIR}/gst/common.pc.in
+  ${BASE_COMMON_PC_IN}
   ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.pc
   @ONLY
 )
