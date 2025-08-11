@@ -19,6 +19,8 @@ pkg_check_modules(GST_VIDEO
   REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_AUDIO
   REQUIRED gstreamer-audio-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_QCOM_UTILS
+  REQUIRED gstreamer-qcom-oss-utils-1.0>=1.0.0)
 
 # Generate configuration header file.
 configure_file(config.h.in config.h @ONLY)
@@ -41,6 +43,7 @@ add_library(${GST_QTI_BATCH} SHARED
 
 target_include_directories(${GST_QTI_BATCH} PUBLIC
   ${GST_INCLUDE_DIRS}
+  ${GST_QCOM_UTILS_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_BATCH} PRIVATE
@@ -48,7 +51,7 @@ target_link_libraries(${GST_QTI_BATCH} PRIVATE
   ${GST_BASE_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
   ${GST_AUDIO_LIBRARIES}
-  gstqtiutilsbase
+  ${GST_QCOM_UTILS_LIBRARIES}
 )
 
 install(

@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.8.2)
 # Get the pkgconfigs exported by the automake tools
 pkg_check_modules(GST
   REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_QCOM_UTILS
+  REQUIRED gstreamer-qcom-oss-utils-1.0>=1.0.0)
 
 # GStreamer gst-fastswitch-example
 set(GST_EXAMPLE_BIN gst-fastswitch-example)
@@ -13,12 +15,13 @@ add_executable(${GST_EXAMPLE_BIN}
 
 target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_INCLUDE_DIRS}
+  ${GST_QCOM_UTILS_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_LIBRARIES}
   qmmf_camera_metadata
-  gstqtiutilsbase
+  ${GST_QCOM_UTILS_LIBRARIES}
 )
 
 install(

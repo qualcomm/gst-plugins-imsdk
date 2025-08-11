@@ -14,11 +14,25 @@ find_package(PkgConfig)
 set(ENV{PKG_CONFIG_PATH} "$ENV{PKG_CONFIG_PATH}:${SYSROOT_LIBDIR}/pkgconfig")
 
 # Get the pkgconfigs exported by the automake tools
-pkg_check_modules(GST REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(GST_BASE REQUIRED gstreamer-base-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(GST_ALLOC REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(GST_VIDEO REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST
+  REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_BASE
+  REQUIRED gstreamer-base-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_ALLOC
+  REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_VIDEO
+  REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(CAIRO REQUIRED cairo)
+pkg_check_modules(GST_QCOM_UTILS
+  REQUIRED gstreamer-qcom-oss-utils-1.0>=1.0.0)
+pkg_check_modules(GST_QCOM_VIDEO
+  REQUIRED gstreamer-qcom-oss-video-1.0>=1.0.0)
+pkg_check_modules(GST_QCOM_ALLOC
+  REQUIRED gstreamer-qcom-oss-allocators-1.0>=1.0.0)
+pkg_check_modules(GST_QCOM_ML
+  REQUIRED gstreamer-qcom-oss-ml-1.0>=1.0.0)
+pkg_check_modules(GST_QCOM_MEM
+  REQUIRED gstreamer-qcom-oss-memory-1.0>=1.0.0)
 
 # Generate configuration header file.
 configure_file(config.h.in config.h @ONLY)
@@ -49,6 +63,11 @@ target_compile_definitions(${GST_QTI_ML_POST_PROCESS} PRIVATE
 
 target_include_directories(${GST_QTI_ML_POST_PROCESS} PUBLIC
   ${GST_INCLUDE_DIRS}
+  ${GST_QCOM_UTILS_INCLUDE_DIRS}
+  ${GST_QCOM_VIDEO_INCLUDE_DIRS}
+  ${GST_QCOM_ALLOC_INCLUDE_DIRS}
+  ${GST_QCOM_ML_INCLUDE_DIRS}
+  ${GST_QCOM_MEM_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_ML_POST_PROCESS} PRIVATE
@@ -57,10 +76,11 @@ target_link_libraries(${GST_QTI_ML_POST_PROCESS} PRIVATE
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
   ${CAIRO_LIBRARIES}
-  gstqtimlbase
-  gstqtivideobase
-  gstqtiutilsbase
-  gstqtiallocatorsbase
+  ${GST_QCOM_ML_LIBRARIES}
+  ${GST_QCOM_VIDEO_LIBRARIES}
+  ${GST_QCOM_MEM_LIBRARIES}
+  ${GST_QCOM_UTILS_LIBRARIES}
+  ${GST_QCOM_ALLOC_LIBRARIES}
 )
 
 install(

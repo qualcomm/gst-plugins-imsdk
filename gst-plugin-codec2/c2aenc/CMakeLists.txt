@@ -10,6 +10,7 @@ add_library(${GST_QTI_C2_AENC} SHARED
 target_include_directories(${GST_QTI_C2_AENC} PRIVATE
   ${CMAKE_SOURCE_DIR}
   ${GST_INCLUDE_DIRS}
+  ${GST_QCOM_UTILS_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_C2_AENC} PRIVATE
@@ -18,7 +19,7 @@ target_link_libraries(${GST_QTI_C2_AENC} PRIVATE
   ${GST_VIDEO_LIBRARIES}
   ${GST_AUDIO_LIBRARIES}
   ${GST_PBUTILS_LIBRARIES}
-  gstqtiutilsbase
+  ${GST_QCOM_UTILS_LIBRARIES}
   c2engine
 )
 

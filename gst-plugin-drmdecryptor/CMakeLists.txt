@@ -16,6 +16,8 @@ pkg_check_modules(GST
   REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_ALLOC
   REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_QCOM_MEM
+  REQUIRED gstreamer-qcom-oss-memory-1.0>=1.0.0)
 
 # Generate configuration header file.
 configure_file(config.h.in config.h @ONLY)
@@ -46,13 +48,14 @@ add_library(${GST_QTI_DRM_DECRYPTOR} SHARED
 
 target_include_directories(${GST_QTI_DRM_DECRYPTOR} PUBLIC
   ${GST_INCLUDE_DIRS}
+  ${GST_QCOM_ML_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_DRM_DECRYPTOR} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   cutils
-  gstqtimemorybase
+  ${GST_QCOM_MEM_LIBRARIES}
   $<$<BOOL:${HAVE_CDM_H}>:widevine_ce_cdm_shared>
   $<$<BOOL:${HAVE_CDM_H}>:oemcrypto>
 )

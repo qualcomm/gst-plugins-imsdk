@@ -4,7 +4,7 @@ project(GST-CAMERA-BURST-CAPTURE-EXAMPLE LANGUAGES C CXX)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 include_directories(${SYSROOT_INCDIR})
-link_directories(${SYSROOT_LIBDIR})
+link_directories(${SYSROOT_LIBDIR} ${SYSROOT_LIBDIR}/${TARGET_BOARD_PLATFORM})
 link_directories(${GST_PLUGINS_QTI_OSS_INSTALL_LIBDIR})
 
 find_package(PkgConfig)
