@@ -27,7 +27,7 @@ target_link_libraries(${GST_QTI_OBJTRACKER_BYTETRACK} PRIVATE
 )
 
 configure_file(
-  ${CMAKE_SOURCE_DIR}/algorithm/common.pc.in
+  ${OBJTRACKER_COMMON_PC_IN}
   ${CMAKE_CURRENT_BINARY_DIR}/${GST_QTI_OBJTRACKER_BYTETRACK}.pc
   @ONLY
 )

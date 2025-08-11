@@ -60,6 +60,9 @@ include_directories(
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/gstreamer-1.0>
 )
 
+# Define the path to the common pkg-config template file used by all subdirectories
+set(BASE_COMMON_PC_IN ${CMAKE_CURRENT_SOURCE_DIR}/gst/common.pc.in)
+
 add_subdirectory(gst/gfx)
 add_subdirectory(gst/utils)
 add_subdirectory(gst/video)
