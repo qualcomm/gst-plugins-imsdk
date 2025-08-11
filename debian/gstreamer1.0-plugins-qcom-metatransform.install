@@ -1,0 +1,2 @@
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/libgstqtimetatransform.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/meta/modules/libmeta-transform-roi-label-moving-average.so

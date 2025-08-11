@@ -1,0 +1,4 @@
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/libgstqtimlvpose.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-vpose-hrnet.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-vpose-posenet.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-vpose-lite-3dmm.so

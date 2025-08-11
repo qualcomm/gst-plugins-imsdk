@@ -1,0 +1,2 @@
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/libgstqtimlvsuperresolution.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-vsuperresolution-srnet.so

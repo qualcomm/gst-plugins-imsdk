@@ -1,0 +1,4 @@
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/libgstqtimlvclassification.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-vclassification-mobilenet.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-vclassification-ocr.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-vclassification-qfr.so
