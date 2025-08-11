@@ -1,0 +1,5426 @@
+gst-plugins-qti-oss (1.7.0-qcom0) noble; urgency=medium
+
+  [ Bala Sai Kosuri ]
+  * gst-plugins-qti-oss: Add initial debian packaging files
+  * gst-plugin-qmmfsrc, gst-plugin-jpegenc, gst-plugin-camreproc: Include lib path for ubuntu build
+  * base, sample-apps: Generate versioned libs
+  * gst-plugin-base, gst-plugin-objtracker: Use absolute path for .pc file configuration
+  * gst-plugins-qti-oss, gst-sample-apps: Add top-level CMake files to enable unified project build for debian.
+
+  [ Angel Ivanov ]
+  * examples: remove tracking-cam-app example
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-voverlay: Add support for inverse privacy mask"
+
+  [ Tushar Patra Jamula ]
+  * mlvconverter: Check if positon is avaialable and then pop the buffer from queue.
+
+  [ QCTECMDR Service ]
+  * Merge "redissink: Rename library and source files to match qcom plugins"
+  * Merge "mlpostprocess: Fix QPD landmark coordinate drift"
+  * Merge "mlvconverter: Improve logic for handling tensors with depth"
+
+  [ Tushar Patra Jamula ]
+  * redissink: Rename library and source files to match qcom plugins
+
+  [ QCTECMDR Service ]
+  * Merge "mlpostprocess: Added B-Box stabilization"
+
+  [ Nitesh Kumar Pathak ]
+  * mlpostprocess: Fix QPD landmark coordinate drift
+
+  [ shrasoma ]
+  * gst-plugin-voverlay: Add support for inverse privacy mask
+
+  [ Ventsislav Dzhenev ]
+  * mlpostprocess: Added B-Box stabilization
+
+  [ Petar G. Georgiev ]
+  * mlvconverter: Improve logic for handling tensors with depth
+
+  [ QCTECMDR Service ]
+  * Merge "mlpostprocess: Fix typo in the header name"
+  * Merge "gst-plugin-dngpacker"
+  * Merge "OpenCV: Add support for GRAY8 conversion"
+  * Merge "gst-ai-sample-apps: Updating Manifest file"
+  * Merge "mlpostprocess : Expand caps for midas-v2 module to handle tensor dimensions of larger size"
+
+  [ Angel Ivanov ]
+  * OpenCV: Add support for GRAY8 conversion
+
+  [ aditsaur ]
+  * gst-ai-sample-apps: Updating Manifest file
+
+  [ Angel Hitov ]
+  * mlmetaextractor: Fix detection landmarks
+
+  [ Nikolay Hristozov ]
+  * mlpostprocess: Fix typo in the header name
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-daisychain-detection-classification: Includes below change"
+  * Merge "test framework: use new post processing plugin for ML cases"
+
+  [ FengChen ]
+  * gst-plugin-dngpacker
+
+  [ nitepath ]
+  * mlpostprocess : Expand caps for midas-v2 module to handle tensor dimensions of larger size
+
+  [ Angel Ivanov ]
+  * OpenCV: Hotfixes and code cleanup
+
+  [ Petar G. Georgiev ]
+  * base: ib2c: Add support for grayscale output in compute shader
+  * base: ib2c: Fix and improve handling for planar RGB formats
+
+  [ QCTECMDR Service ]
+  * Merge "mlpostprocess: add support for gesture recognition"
+
+  [ Kin Zhao ]
+  * test framework: use new post processing plugin for ML cases
+
+  [ QCTECMDR Service ]
+  * Merge "mlpostprocess : Add post-processing support for EasyOCR detector model"
+  * Merge "base: Add new video converter backend using OpenCV"
+
+  [ Filip Kardzhaliyski ]
+  * mlpostprocess: add support for gesture recognition
+  * mlpostprocess: hand landmark keypoints modules
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-sample-apps: Updating help section"
+
+  [ nitepath ]
+  * mlpostprocess : Add post-processing support for EasyOCR detector model
+
+  [ Angel Ivanov ]
+  * base: Add new video converter backend using OpenCV
+
+  [ QCTECMDR Service ]
+  * Merge "qticamimgreproc:add ipe offline plugin for handle image"
+  * Merge "mlpostprocess: add postprocessing support for ocr-recognizer"
+
+  [ Guangde ]
+  * qticamimgreproc:add ipe offline plugin for handle image
+
+  [ Yashaswini Guvvala ]
+  * mlpostprocess: add postprocessing support for ocr-recognizer
+
+  [ QCTECMDR Service ]
+  * Merge "base: allocator: Align memory only if requested in allocation params"
+  * Merge "mlpostprocess: Add wave2vec post processing module"
+  * Merge "gst-plugin-qmmfsrc: Separate BT601 and BT601FULL for compatibility."
+
+  [ Nikolay Hristozov ]
+  * mlpostprocess: Add wave2vec post processing module
+
+  [ aditsaur ]
+  * gst-ai-daisychain-detection-classification: Includes below change
+
+  [ Tushar Patra Jamula ]
+  * base: allocator: Align memory only if requested in allocation params
+
+  [ aditsaur ]
+  * gst-ai-sample-apps: Updating help section
+
+  [ QCTECMDR Service ]
+  * Merge "gst-gui-launcher-app.py: update download script to 1.6"
+  * Merge "gst-plugin-qmmfsrc: add support for batch mode with 60 fps."
+  * Merge "qtisocket: improve socket send/receive logic with length-prefixing and dynamic buffer handling"
+
+  [ Sumith Kumar Budha ]
+  * gst-gui-launcher-app.py: update download script to 1.6
+
+  [ Raja Ganapathi Busam ]
+  * qtisocket: improve socket send/receive logic with length-prefixing and dynamic buffer handling
+
+  [ QCTECMDR Service ]
+  * Merge "demo_setup_wizard: Update postprocess plugins in wizard script"
+
+  [ shukulk ]
+  * gst-camera-per-port-example Enhancement
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-python-app: Adding postprocessing change"
+
+  [ Hongyong Huang ]
+  * gst-plugin-qmmfsrc: Separate BT601 and BT601FULL for compatibility.
+
+  [ QCTECMDR Service ]
+  * Merge "codec2: support encode properties."
+  * Merge "rtspbin: Add async/sync mode"
+  * Merge "gst-plugin-qmmfsrc: Add colorimetry."
+
+  [ Nikolay Hristozov ]
+  * rtspbin: Add async/sync mode
+
+  [ QCTECMDR Service ]
+  * Merge "test framework: release plugins when pipeline finished"
+
+  [ Ishu Raj ]
+  * demo_setup_wizard: Update postprocess plugins in wizard script
+
+  [ QCTECMDR Service ]
+  * Merge "gst-weston-composition-example: update enum properties for decoder"
+
+  [ Tushar Patra Jamula ]
+  * base: gfx: Reset display to EGL_NO_DISPLAY after termination.
+
+  [ aditsaur ]
+  * gst-ai-python-app: Adding postprocessing change
+
+  [ Ziyi Gai ]
+  * gst-plugin-qmmfsrc: add support for batch mode with 60 fps.
+
+  [ Kin Zhao ]
+  * codec2: support encode properties.
+
+  [ QCTECMDR Service ]
+  * Merge "mlpostprocess: Segformer and models"
+  * Merge "gst-scripts: Remove weston export variables"
+  * Merge "smartvencbin: fix regression due to text format change in mlvdetection"
+  * Merge "Revert^2 "qmmfsrc: support more formats for super buffer mode""
+  * Merge "gst-plugin-mlpostprocess: Add clamp logic to avoid out of region pose estimation"
+
+  [ Girish K ]
+  * Revert^2 "qmmfsrc: support more formats for super buffer mode"
+
+  [ QCTECMDR Service ]
+  * Merge "Sample Application for gst-rtmp-stream-example"
+
+  [ Tony Gogoi ]
+  * smartvencbin: fix regression due to text format change in mlvdetection
+
+  [ QCTECMDR Service ]
+  * Merge "qtiobjtracker: Update Algorithm backend property to enum and set default"
+
+  [ Hari Krishna C ]
+  * Sample Application for gst-rtmp-stream-example
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-multistream-batch-inference: Include below changes"
+
+  [ Tushar Darote ]
+  * gst-plugin-mlpostprocess: Add clamp logic to avoid out of region pose estimation
+
+  [ QCTECMDR Service ]
+  * Merge "ml-vpose-hrnet: Cleanup Clamp logic"
+  * Merge "mlqnn, mltflite, mlsnpe: Return GST_FLOW_ERROR on failure"
+
+  [ Tushar Patra Jamula ]
+  * mlqnn, mltflite, mlsnpe: Return GST_FLOW_ERROR on failure
+
+  [ QCTECMDR Service ]
+  * Merge "examples: WebRTC: Link only one version of libsoup"
+
+  [ Hongyong Huang ]
+  * gst-plugin-qmmfsrc: Add colorimetry.
+
+  [ aditsaur ]
+  * gst-ai-multistream-batch-inference: Include below changes
+
+  [ QCTECMDR Service ]
+  * Merge "gst-camera-metadata-example: Enable input new vendor tag."
+
+  [ skomakul ]
+  * qmmfsrc: enable logical camera
+
+  [ Arunn D ]
+  * gst-weston-composition-example: update enum properties for decoder
+
+  [ QCTECMDR Service ]
+  * Merge "changes in gst-camera-metadata-example for camera metadata"
+  * Merge "gst-camera-opencv-resize.py: Add check to set Wayland vars for linux"
+  * Merge "gst-ai-sample-apps: updating postprocessing changes"
+  * Merge "gst-python-examples: fix help option and update input file path"
+  * Merge "gst-ai-smartcodec-example: Switch to qtimlpostprocess"
+  * Merge "gst-ai-smartcodec-example: add config and json"
+  * Merge "mlpostprocess, mlvsegmentation: Minor improvements in module"
+
+  [ Raja Ganapathi Busam ]
+  * qtiobjtracker: Update Algorithm backend property to enum and set default
+
+  [ QCTECMDR Service ]
+  * Merge "ml-vpose-hrnet: Add Clamp logic to avoid points in out of region"
+  * Merge "ml: Propagate the tensor name via mldemux"
+
+  [ Tushar Darote ]
+  * ml-vpose-hrnet: Cleanup Clamp logic
+
+  [ Tushar Patra Jamula ]
+  * mlpostprocess, mlvsegmentation: Minor improvements in module
+
+  [ Hari Krishna C ]
+  * changes in gst-camera-metadata-example for camera metadata
+
+  [ QCTECMDR Service ]
+  * Merge "gst-sample-apps: update postprocess to qtimlpostprocess"
+
+  [ Nikolay Hristozov ]
+  * ml: Propagate the tensor name via mldemux
+
+  [ Linux Build Service Account ]
+  * Merge "Revert "qmmfsrc: support more formats for super buffer mode"" into le-gst.lnx.2.1
+
+  [ Girish K ]
+  * Revert "qmmfsrc: support more formats for super buffer mode"
+
+  [ QCTECMDR Service ]
+  * Merge "gst-jpg-decode-example: set default width, height and input file path"
+
+  [ Ishu Raj ]
+  * gst-scripts: Remove weston export variables
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-base: Update renamed fastcv pkg-config"
+  * Merge "mlpostprocess: Fix wrong confidence calculation"
+  * Merge "mlpostprocess: Fix incorrect handling of detection events"
+  * Merge "mlpostprocess: Fix input indexing"
+  * Merge "qmmfsrc: increase the support of no. of camera's"
+
+  [ Divya Theja K P ]
+  * mlpostprocess: Segformer and models
+
+  [ QCTECMDR Service ]
+  * Merge "qmmfsrc: support more formats for super buffer mode"
+
+  [ vicky kumar ]
+  * gst-ai-smartcodec-example: Switch to qtimlpostprocess
+
+  [ QCTECMDR Service ]
+  * Merge "mlpostprocess: Enable video MAE model tensor dimensions"
+
+  [ purushottam choudhary ]
+  * gst-ai-smartcodec-example: add config and json
+
+  [ Sumith Kumar Budha ]
+  * gst-sample-apps: update postprocess to qtimlpostprocess
+
+  [ QCTECMDR Service ]
+  * Merge "mlvconverter: Add support for NDHWC tensors"
+
+  [ aditsaur ]
+  * gst-ai-sample-apps: updating postprocessing changes
+
+  [ QCTECMDR Service ]
+  * Merge "batch: add support for buffer accumulation"
+
+  [ Nikolay Hristozov ]
+  * mlpostprocess: Fix incorrect handling of detection events
+  * mlpostprocess: Fix wrong confidence calculation
+
+  [ QCTECMDR Service ]
+  * Merge "gst-activate-deactivate-streams-runtime-example: update reserved space for muxer"
+
+  [ Nikolay Hristozov ]
+  * mlpostprocess: Fix input indexing
+
+  [ QCTECMDR Service ]
+  * Merge "gst-audio-video-playback: update enum properties for decoder"
+
+  [ Tushar Darote ]
+  * ml-vpose-hrnet: Add Clamp logic to avoid points in out of region
+
+  [ Filip Kardzhaliyski ]
+  * batch: add support for buffer accumulation
+
+  [ Arunn D ]
+  * gst-opencv-transform.py: Fix for QLI ubuntu server variant
+
+  [ purushottam choudhary ]
+  * gst-camera-opencv-resize.py: Add check to set Wayland vars for linux
+
+  [ Angel Hitov ]
+  * mlvconverter: Add support for NDHWC tensors
+
+  [ purushottam choudhary ]
+  * gst-python-examples: fix help option and update input file path
+
+  [ QCTECMDR Service ]
+  * Merge "base: ib2c: Probe different displays in precedence order"
+  * Merge "postprocess: deprecating old postprocess plugins"
+
+  [ Angel Hitov ]
+  * mlpostprocess: Enable video MAE model tensor dimensions
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-event-encoder: New sample app"
+
+  [ Petar G. Georgiev ]
+  * base: ib2c: Probe different displays in precedence order
+
+  [ QCTECMDR Service ]
+  * Merge "mlpostprocess: Minor fixes"
+  * Merge "mlpostprocess: Implementing modules in new API"
+  * Merge "mlpostprocess: New post processing implementation"
+
+  [ Nikolay Hristozov ]
+  * mlpostprocess: Minor fixes
+
+  [ Victor Sokolov ]
+  * mlpostprocess: Implementing modules in new API
+
+  [ Nikolay Hristozov ]
+  * mlpostprocess: New post processing implementation
+
+  [ QCTECMDR Service ]
+  * Merge "base: ib2c: Downgrade GLSL version requirements to 3.10"
+
+  [ purushottam choudhary ]
+  * gst-jpg-decode-example: set default width, height and input file path
+
+  [ QCTECMDR Service ]
+  * Merge "ml: Add tensor names in ml tensor meta"
+
+  [ Victor Sokolov ]
+  * postprocess: deprecating old postprocess plugins
+
+  [ Nikolay Hristozov ]
+  * ml: Add tensor names in ml tensor meta
+
+  [ Petar G. Georgiev ]
+  * base: ib2c: Downgrade GLSL version requirements to 3.10
+
+  [ QCTECMDR Service ]
+  * Merge "ml-vsegmentation: expand deeplab-argmax output tensor range"
+
+  [ Tushar Darote ]
+  * gst-plugin-base: Update renamed fastcv pkg-config
+  * gst-plugins-qti-oss: Add dlopen changes for versioned based libs
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-daisychain-detection-pose: Adding rtspsink support"
+  * Merge "gst-ai-daisychain-detection-pose: Includes below changes"
+  * Merge "gst-ai-daisychain-detection-classification: Includes below change"
+
+  [ Muni Bhavana Konidala ]
+  * ml-vsegmentation: expand deeplab-argmax output tensor range
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-codec2: support more batch formats"
+  * Merge "base: Add width padding for RGB/BGR formats to align with GPU requirements"
+
+  [ aditsaur ]
+  * gst-ai-daisychain-detection-pose: Adding rtspsink support
+  * gst-ai-daisychain-detection-pose: Includes below changes
+  * gst-ai-daisychain-detection-classification: Includes below change
+
+  [ QCTECMDR Service ]
+  * Merge "base: ib2c: Add compute shader for planar RGB support"
+  * Merge "gst-ai-daisychain-detection-classification: Includes below changes"
+  * Merge "gst-plugin-examples: rename app and remove camera-related terminology"
+  * Merge "gst-ai-usb-camera-app: Includes below changes"
+
+  [ Tushar Patra Jamula ]
+  * base: Add width padding for RGB/BGR formats to align with GPU requirements
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-multistream-batch-inference: Added help section"
+  * Merge "mlmetaparser: fix undefined symbol"
+  * Merge "mlvconverter: Enable planar RGB formats for NCHW tensor support"
+  * Merge "gst-examples: Remove not allowed linkage"
+  * Merge "gst-ai-pose-detection: Includes below changes"
+  * Merge "gst-ai-classification: Includes below changes"
+  * Merge "mlsnpe: Update the property description of tensors"
+  * Merge "base: ib2c: Fix fallback to 128 alignment"
+
+  [ Hongyong Huang ]
+  * gst-camera-metadata-example: Enable input new vendor tag.
+
+  [ Filip Kardzhaliyski ]
+  * mlmetaparser: fix undefined symbol
+
+  [ Ivan Evlogiev ]
+  * gst-examples: Remove not allowed linkage
+
+  [ skomakul ]
+  * qmmfsrc: increase the support of no. of camera's
+
+  [ Angel Hitov ]
+  * mlvconverter: Enable planar RGB formats for NCHW tensor support
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-object-detection: Includes below changes"
+
+  [ Arunn D ]
+  * gst-activate-deactivate-streams-runtime-example: update reserved space for muxer
+  * gst-audio-video-playback: update enum properties for decoder
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-meta-data-parser: Adding queue for buffering"
+
+  [ Nikolay Hristozov ]
+  * Revert "gst-plugin-base: utils: Add DMA buffer sync only to C2D and FastCV"
+
+  [ Tushar Patra Jamula ]
+  * mlsnpe: Update the property description of tensors
+
+  [ aditsaur ]
+  * gst-ai-pose-detection: Includes below changes
+  * gst-ai-daisychain-detection-classification: Includes below changes
+  * gst-ai-object-detection: Includes below changes
+  * gst-ai-classification: Includes below changes
+
+  [ Petar G. Georgiev ]
+  * base: ib2c: Fix fallback to 128 alignment
+
+  [ Linux Build Service Account ]
+  * Merge "gst-plugin-base: utils: fix compilation issue in C2D" into le-gst.lnx.2.1
+
+  [ Rahul Khandelwal ]
+  * gst-ai-event-encoder: New sample app
+
+  [ Konstantin Motov ]
+  * gst-plugin-base: utils: fix compilation issue in C2D
+
+  [ QCTECMDR Service ]
+  * Merge "mlsnpe: Set the order of output tensors"
+  * Merge "base: Fallback to /dev/dma_heap/system"
+  * Merge "base: gfx: Add fallback alignment to 128 when alignment query fails"
+  * Merge "ml: Initial support for INT64 and UINT64"
+  * Merge "ml: Add missing INT16, UINT16 and FLOAT16 support"
+  * Merge "base: mlvconverter: Move gst_ml_tensor_assign_value to base"
+
+  [ Petar G. Georgiev ]
+  * ml: Initial support for INT64 and UINT64
+
+  [ QCTECMDR Service ]
+  * Merge "mlmetaparser: add propose allocation function"
+
+  [ Petar G. Georgiev ]
+  * ml: Add missing INT16, UINT16 and FLOAT16 support
+  * base: mlvconverter: Move gst_ml_tensor_assign_value to base
+
+  [ QCTECMDR Service ]
+  * Merge "Add support for missing formats while FastCV engine used"
+  * Merge "mlvconverter: improve caps negotiation"
+  * Merge "mlmetaextractor: Change parent to base_transform"
+  * Merge "gst-plugin-base: utils: Add DMA buffer sync only to C2D and FastCV"
+  * Merge "mlvconverter: Add none video engine support"
+  * Merge "gst-python-examples: add support for long duration recording"
+
+  [ Tushar Patra Jamula ]
+  * mlsnpe: Set the order of output tensors
+
+  [ Angel Hitov ]
+  * Add support for missing formats while FastCV engine used
+
+  [ Teodor Boyanov ]
+  * mlvconverter: improve caps negotiation
+
+  [ QCTECMDR Service ]
+  * Merge "mltflite: Add support for tflite master branch compilation"
+  * Merge "qnn: Avoid double allocation and output tensor copy"
+  * Merge "ml: Use postprocessing module caps in transform_caps"
+  * Merge "ml: add caps for ml modules in postprocess plugins"
+
+  [ Petar G. Georgiev ]
+  * base: gfx: Add fallback alignment to 128 when alignment query fails
+
+  [ Filip Kardzhaliyski ]
+  * mlmetaparser: add propose allocation function
+
+  [ aditsaur ]
+  * gst-ai-meta-data-parser: Adding queue for buffering
+
+  [ Angel Hitov ]
+  * base: ib2c: Add compute shader for planar RGB support
+
+  [ Filip Kardzhaliyski ]
+  * base: ib2c: Fix missing format on some SIs
+
+  [ aditsaur ]
+  * gst-ai-multistream-batch-inference: Added help section
+
+  [ Angel Hitov ]
+  * mlvconverter: Add none video engine support
+  * qnn: Avoid double allocation and output tensor copy
+  * ml: Use postprocessing module caps in transform_caps
+
+  [ Filip Kardzhaliyski ]
+  * ml: add caps for ml modules in postprocess plugins
+
+  [ Petar G. Georgiev ]
+  * base: ib2c: Fix missing format on some SIs
+
+  [ Nikolay Hristozov ]
+  * base: Fallback to /dev/dma_heap/system
+
+  [ Stilyan Uzunov ]
+  * mltflite: Add support for tflite master branch compilation
+
+  [ Linux Build Service Account ]
+  * Merge changes I0a16320e,I30935d52,Ia45b5c2d,I6ab3ddb0 into le-gst.lnx.2.1
+  * Merge changes I23fe102b,I3e8f61d4,Ie0e87af6 into le-gst.lnx.2.1
+  * Merge changes I8a6eba14,I5aab883a,Ieb5d7fcd,Ie7cae827,I36113f3d, ... into le-gst.lnx.2.1
+  * Merge changes I6a7a317c,Iafe17450,Icafbeb51,I78a063a3 into le-gst.lnx.2.1
+  * Merge "base: mlsnpe: add support for int16 in snpe" into le-gst.lnx.2.1
+  * Merge "base: ib2c: Image blending, composition and conversion library" into le-gst.lnx.2.1
+
+  [ QCTECMDR Service ]
+  * Merge "video-template: Video Template Plugin"
+  * Merge "mltflite: Implement output tensors dequantization in inference plugin"
+  * Merge "ml: Remove dequantization from postprocessing plugins"
+
+  [ Angel Hitov ]
+  * mltflite: Implement output tensors dequantization in inference plugin
+  * ml: Remove dequantization from postprocessing plugins
+
+  [ Yashaswini Guvvala ]
+  * gst-plugin-examples: rename app and remove camera-related terminology
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-examples: Add delay to accommodate initial buffer latency"
+
+  [ Kin Zhao ]
+  * test framework: release plugins when pipeline finished
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-mlqnn:Fix Qnn log printing crash"
+
+  [ Hui Liu ]
+  * qmmfsrc: support more formats for super buffer mode
+
+  [ QCTECMDR Service ]
+  * Merge "test framework: add ml pipelines"
+
+  [ aditsaur ]
+  * gst-ai-usb-camera-app: Includes below changes
+
+  [ jiafwu ]
+  * gst-plugin-mlqnn:Fix Qnn log printing crash
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-example: add menu thread."
+  * Merge "gst-camera-fd-stream-example: Fix undefined reference issue"
+
+  [ Hui Liu ]
+  * gst-plugin-codec2: support more batch formats
+
+  [ Linux Build Service Account ]
+  * Merge "gst-plugin-camreproc: support P010 format" into le-gst.lnx.2.1
+
+  [ Petar G. Georgiev ]
+  * base: ib2c: Update the Surface struct
+  * base: ib2c: Add fragment shader support for Planar RGB
+  * base: ib2c: Fallback to Adreno utils for alignment query
+  * base: ib2c: Fix calculations for non-renderable RGB(A) surfaces
+  * base: ib2c: Dynamically load EGL and GLES libs
+  * base: ib2c: Initial support for multiple textures per surface
+  * base: ib2c: Image blending, composition and conversion library
+  * base: ib2c: Add support for UINT16/INT16
+  * base: ib2c: Remove pixel type flags from ColorMode
+  * base: gfx: video: Remove dependency on adreno_utils
+  * base: ib2c: Proper renderable check and param reshape, cleanup utils
+  * base: ib2c: Use only DRM float format definitions
+  * base: ib2c: Remove all deprecated references to ANDROID
+  * base: ib2c: Separate YUV rendering when EXT_YUV_target not supported
+  * base: ib2c: Cleanup shaders and optimize surface creation.
+  * base: ib2c: Fix signed conversion for RGB formats
+  * base: ib2c: Add checks for extensions and dynamically load EXT APIs
+  * base: ib2c: Cleanup: Remove the flip factors and define vertices instead
+  * base: ib2c: Define sub-namespaces for GL and EGL related classes
+  * base: ib2c: Reorganization and some renaming of the files
+  * base: ib2c: Major overhaul and cleanup
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-codec2:Fix the inconsistency between the format in buffer meta and in fixed caps"
+  * Merge "python-examples: Add queue after tee for parallel processing"
+
+  [ Tushar Patra Jamula ]
+  * python-examples: Add queue after tee for parallel processing
+
+  [ Yashaswini Guvvala ]
+  * gst-plugin-examples: Add delay to accommodate initial buffer latency
+
+  [ Deepali Reddy Karra ]
+  * gst-camera-fd-stream-example: Fix undefined reference issue
+
+  [ jiafwu ]
+  * gst-plugin-codec2:Fix the inconsistency between the format in buffer meta and in fixed caps
+
+  [ Victor Sokolov ]
+  * base: mlsnpe: add support for int16 in snpe
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugins-qti-oss: Separate ml tools and tools"
+
+  [ Ziyi Gai ]
+  * gst-plugin-example: add menu thread.
+
+  [ Tony Gogoi ]
+  * video-template: Video Template Plugin
+
+  [ Ivan Evlogiev ]
+  * gst-plugins-qti-oss: Separate ml tools and tools
+
+  [ QCTECMDR Service ]
+  * Merge "gst-camera-fd-stream-example: Add support for camera based fd stream usecase"
+  * Merge "gst-plugin-codec2: support VBV buffer delay."
+  * Merge "gst-camera-metadata-example: Fix array setting in video metadata."
+  * Merge "qtiobjtracker: Add explicit type casting."
+
+  [ Kin Zhao ]
+  * test framework: add ml pipelines
+
+  [ Angel Ivanov ]
+  * mlmetaextractor: Change parent to base_transform
+
+  [ Deepali Reddy Karra ]
+  * gst-camera-fd-stream-example: Add support for camera based fd stream usecase
+
+  [ Linux Build Service Account ]
+  * Merge "Revert "test_framework: add ml case"" into le-gst.lnx.2.1
+
+  [ Bing Li ]
+  * Revert "test_framework: add ml case"
+
+  [ QCTECMDR Service ]
+  * Merge "voverlay: change font size of labels from 24 to 40"
+  * Merge "voverlay: fix caching issue in strings property"
+  * Merge "gst-ai-multi-input-output-object-detection: sample app update"
+
+  [ Guangde ]
+  * qtiobjtracker: Add explicit type casting.
+
+  [ QCTECMDR Service ]
+  * Merge "python-examples: Update the default detection model to yolox"
+
+  [ Rama Mahidhar Reddy Kancharla ]
+  * voverlay: change font size of labels from 24 to 40
+
+  [ Ziyi Gai ]
+  * gst-plugin-codec2: support VBV buffer delay.
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-multistream-inference: sample app update"
+  * Merge "test_framework: add ml case"
+
+  [ Nikolay Hristozov ]
+  * examples: WebRTC: Link only one version of libsoup
+
+  [ Tushar Patra Jamula ]
+  * python-examples: Update the default detection model to yolox
+
+  [ Guangde ]
+  * gst-plugin-camreproc: support P010 format
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-examples: Add support for runtime switch between"
+  * Merge "gst-ai-usb-camera-app: Adding support for yolox model"
+  * Merge "gst-ai-sample apps: replace yolov8 with yolox"
+  * Merge "gst-ai-sample apps: sample app update"
+  * Merge "gst-sample-app: "Add default config changes for sample apps to support IDE""
+
+  [ mohanga ]
+  * gst-python-examples: add support for long duration recording
+
+  [ QCTECMDR Service ]
+  * Merge "mlvsuperresolution: Fix input indexing"
+
+  [ Yashaswini Guvvala ]
+  * gst-plugin-examples: Add support for runtime switch between
+
+  [ QCTECMDR Service ]
+  * Merge "qtiallocator: Use padded buffer size for fd allocator alloc"
+  * Merge "gst-camera-metadata-example: Fix choose index."
+  * Merge "qmmfsrc: support new colorimetry bt2100-hlg-full"
+
+  [ Hongyong Huang ]
+  * gst-camera-metadata-example: Fix array setting in video metadata.
+
+  [ aditsaur ]
+  * gst-ai-usb-camera-app: Adding support for yolox model
+
+  [ Tushar Patra Jamula ]
+  * mlvsuperresolution: Fix input indexing
+
+  [ Hongyong Huang ]
+  * gst-camera-metadata-example: Fix choose index.
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-camreproc: modify eis property aligned with multiple SPs."
+  * Merge "gst-ai-usb-camera-app: Addition of below changes"
+  * Merge "gst-plugin-jpegenc: select bufferpool(DMA) as used to be."
+  * Merge "gst-ai-sample-apps: Updating download model URL"
+  * Merge "gst-ai-python-examples: model update"
+
+  [ aditsaur ]
+  * gst-ai-usb-camera-app: Addition of below changes
+
+  [ Bing Li ]
+  * test_framework: add ml case
+
+  [ QCTECMDR Service ]
+  * Merge "voverlay: Display Track ID alongside detected object name"
+  * Merge "test-framework: Optimize camera pipelines and implement help function"
+
+  [ aditsaur ]
+  * gst-ai-sample-apps: Updating download model URL
+
+  [ quic_srijaror ]
+  * gst-ai-python-examples: model update
+
+  [ aditsaur ]
+  * gst-ai-sample apps: replace yolov8 with yolox
+
+  [ QCTECMDR Service ]
+  * Merge "gst-camera-metadata-example: Fix to determine the tag type of Android tags"
+
+  [ Dipesh Shobhraj Vadhwani ]
+  * voverlay: Display Track ID alongside detected object name
+
+  [ Raja Ganapathi Busam ]
+  * qtiallocator: Use padded buffer size for fd allocator alloc
+
+  [ Kin Zhao ]
+  * test-framework: Optimize camera pipelines and implement help function
+
+  [ quic_srijaror ]
+  * gst-ai-multistream-inference: sample app update
+
+  [ Tushar Patra Jamula ]
+  * voverlay, vcomposer: Ensure correct landmark rendering when composing buffers from vsplit
+
+  [ Deepali Reddy Karra ]
+  * gst-camera-metadata-example: Fix to determine the tag type of Android tags
+
+  [ QCTECMDR Service ]
+  * Merge "codec2: add mutex for hash table operations"
+  * Merge "c2venc: Fix slow motion in super buffer mode."
+
+  [ quic_srijaror ]
+  * gst-ai-sample apps: sample app update
+  * gst-ai-multi-input-output-object-detection: sample app update
+
+  [ QCTECMDR Service ]
+  * Merge "rtspbin: Fix instability using VLC player"
+  * Merge "ml: remove buffer pools in text mode"
+  * Merge "gst-gui-launcher-app.py: updated camera resolution to support GMSL"
+
+  [ Kin Zhao ]
+  * codec2: add mutex for hash table operations
+
+  [ Guangde ]
+  * qmmfsrc: support new colorimetry bt2100-hlg-full
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-multistream-batch-inference: Adding layers in Config"
+  * Merge "gst-plugin-tools: add pckconfig version check for tflite"
+  * Merge "gst-plugin-tools: update test-dl-snpe application"
+  * Merge "gst-plugin-tools: add test-dl-tflite application"
+
+  [ Angel Ivanov ]
+  * ml: remove buffer pools in text mode
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-base: utils: Add DMA buffer sync only to C2D and FastCV
+
+  [ QCTECMDR Service ]
+  * Merge "gst-camera-metadata-example: Add plugin mode for multi-qtiqmmfsrc."
+
+  [ Mustafa Ali ]
+  * gst-plugin-tools: add pckconfig version check for tflite
+  * gst-plugin-tools: update test-dl-snpe application
+  * gst-plugin-tools: add test-dl-tflite application
+
+  [ Hongyong Huang ]
+  * c2venc: Fix slow motion in super buffer mode.
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-mlvdetection: Handle corner case for out of region coordinates"
+  * Merge "base: Add package config file and versioning for shared libs"
+  * Merge "batch: Improve source caps negotiation and cleanup worker task"
+
+  [ sbudha ]
+  * gst-gui-launcher-app.py: updated camera resolution to support GMSL
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-tools: update test-dl-qnn application"
+  * Merge "gst-plugins-qti-oss: dlopen changes for versioned based VideoCtrl library"
+  * Merge "gst-sample-app: make per port sample app generic"
+  * Merge "gst-ai-multi-input-output-object-detection: sample app update"
+  * Merge "qtiobjtracker: Adjust the file structure."
+
+  [ aditsaur ]
+  * gst-ai-multistream-batch-inference: Adding layers in Config
+
+  [ Tushar Darote ]
+  * gst-plugin-mlvdetection: Handle corner case for out of region coordinates
+
+  [ Mustafa Ali ]
+  * gst-plugin-tools: update test-dl-qnn application
+
+  [ Hongyong Huang ]
+  * gst-camera-metadata-example: Add plugin mode for multi-qtiqmmfsrc.
+
+  [ Petar G. Georgiev ]
+  * batch: Improve source caps negotiation and cleanup worker task
+
+  [ QCTECMDR Service ]
+  * Merge "gst-jpg-image-decode.py: fix for display co-ordinates issue"
+  * Merge "gst-python-examples: Ensure app exit gracefully with Ctrl+C."
+
+  [ Tushar Patra Jamula ]
+  * base: Add package config file and versioning for shared libs
+
+  [ Guangde Zhang ]
+  * qtiobjtracker: Adjust the file structure.
+
+  [ Arunn D ]
+  * gst-sample-app: "Add default config changes for sample apps to support IDE"
+
+  [ skomakul ]
+  * gst-sample-app: make per port sample app generic
+
+  [ quic_srijaror ]
+  * gst-ai-multi-input-output-object-detection: sample app update
+
+  [ QCTECMDR Service ]
+  * Merge "gst-camera-metadata-example: Print per frame vendor tag values"
+  * Merge "gst-plugin-tools: Add built-in camera source for wizard script"
+  * Merge "gst-ai-multi-input-output-object-detection: update correct rtsp name"
+  * Merge "qtisocket: Transfer metadata from video buffer"
+  * Merge "gst-ai-audio-classification: Update pipeline and params"
+
+  [ Deepali Reddy Karra ]
+  * gst-camera-metadata-example: Print per frame vendor tag values
+
+  [ QCTECMDR Service ]
+  * Merge "mlmetaextractor: Create plugin"
+  * Merge "gst-plugin-tools: Fix implicit-function-declaration compilation error"
+
+  [ Ziyi Gai ]
+  * gst-plugin-jpegenc: select bufferpool(DMA) as used to be.
+
+  [ Rahul Khandelwal ]
+  * gst-ai-multi-input-output-object-detection: update correct rtsp name
+
+  [ quic_srijaror ]
+  * gst-ai-audio-classification: Update pipeline and params
+
+  [ Ziyi Gai ]
+  * gst-plugin-camreproc: modify eis property aligned with multiple SPs.
+
+  [ Arunn D ]
+  * gst-python-examples: Ensure app exit gracefully with Ctrl+C.
+
+  [ Angel Krastev ]
+  * gst-plugin-tools: Add built-in camera source for wizard script
+
+  [ Tushar Darote ]
+  * gst-plugins-qti-oss: dlopen changes for versioned based VideoCtrl library
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-daisychain-detection-pose: Removing redundant enum"
+  * Merge "gst-gui-launcher-app.py: added face detection,multistream and daisychain pose pipelines"
+  * Merge "gst-gui-launcher-app: add usb camera source"
+  * Merge "gst-ai-multi-input-output-object-detection: sample app update"
+  * Merge "gst-camera-switch-appsrc-example: Ensure flushing is TRUE."
+  * Merge "gst-plugin-codec2: modify idr_interval."
+
+  [ Arunn D ]
+  * gst-jpg-image-decode.py: fix for display co-ordinates issue
+
+  [ aditsaur ]
+  * gst-ai-daisychain-detection-pose: Removing redundant enum
+
+  [ QCTECMDR Service ]
+  * Merge "base: P010 video compose via fastcv"
+  * Merge "gst-plugin-mlvdetection: Handle corner case for out of region coordinates"
+  * Merge "test-framework: send eos event for encode pipeline"
+
+  [ Ziyi Gai ]
+  * gst-plugin-codec2: modify idr_interval.
+
+  [ Angel Ivanov ]
+  * mlmetaextractor: Create plugin
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-tools: Fix GetProviders return handling"
+
+  [ jiafwu ]
+  * gst-plugin-tools: Fix implicit-function-declaration compilation error
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-mlqnn: Add runtime number of DSPs check"
+
+  [ Angel Krastev ]
+  * qtisocket: Transfer metadata from video buffer
+
+  [ QCTECMDR Service ]
+  * Merge "gst-sample-apps: replace of default media path"
+  * Merge "gst-sample-apps: Update mode while checking for files"
+  * Merge "base: video: return default alignment when missing Adreno lib"
+  * Merge "gst-ai-segmentation: Adding image-disposition field in config-file"
+  * Merge "gst-ai-multistream-batch: Enabing QNN and SNPE Model"
+  * Merge "examples: WebRTC fix a certificate issues"
+  * Merge "python-examples: Add option to configure camera"
+  * Merge "python-examples: Change default camera resolution set to 720p"
+  * Merge "gst-plugins: scarthgap bringup for talos"
+  * Merge "base: set correct plane offset for P010 format"
+
+  [ Tushar Darote ]
+  * gst-plugin-mlvdetection: Handle corner case for out of region coordinates
+
+  [ QCTECMDR Service ]
+  * Merge "codec2: support encode properties."
+
+  [ Kin Zhao ]
+  * base: P010 video compose via fastcv
+
+  [ sbudha ]
+  * gst-gui-launcher-app.py: added face detection,multistream and daisychain pose pipelines
+
+  [ quic_srijaror ]
+  * gst-ai-multi-input-output-object-detection: sample app update
+
+  [ mohanga ]
+  * gst-gui-launcher-app: add usb camera source
+
+  [ Tushar Patra Jamula ]
+  * python-examples: Change default camera resolution set to 720p
+
+  [ Hongyong Huang ]
+  * gst-camera-switch-appsrc-example: Ensure flushing is TRUE.
+
+  [ Stilyan Uzunov ]
+  * gst-plugin-tools: Fix GetProviders return handling
+  * gst-plugin-mlqnn: Add runtime number of DSPs check
+
+  [ aditsaur ]
+  * gst-ai-segmentation: Adding image-disposition field in config-file
+
+  [ Kin Zhao ]
+  * base: video: return default alignment when missing Adreno lib
+
+  [ aditsaur ]
+  * gst-ai-multistream-batch: Enabing QNN and SNPE Model
+
+  [ Nikolay Hristozov ]
+  * examples: WebRTC fix a certificate issues
+
+  [ QCTECMDR Service ]
+  * Merge "examples: Change default webrtc pipelines"
+
+  [ Tushar Patra Jamula ]
+  * python-examples: Add option to configure camera
+
+  [ Victor Sokolov ]
+  * voverlay: fix caching issue in strings property
+
+  [ Kin Zhao ]
+  * base: set correct plane offset for P010 format
+
+  [ Nikolay Hristozov ]
+  * examples: Change default webrtc pipelines
+
+  [ Kin Zhao ]
+  * test-framework: send eos event for encode pipeline
+  * codec2: support encode properties.
+
+  [ skomakul ]
+  * qmmfsrc: remove guarding for mono format check
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-superresolution: sample app update"
+  * Merge "gst-ai-daisychain-detection-pose: sample app update"
+  * Merge "gst-ai-parallel-inference: sample app update"
+  * Merge "qmmfsrc: Add support for RGB format"
+  * Merge "video: Remove the temporary qtibufferpool"
+  * Merge "video: Overhaul imagepool to work with qtiallocator"
+  * Merge "base: allocators: Cleanup and optimize the qtiallocator"
+  * Merge "video: Replace the workaround compute_alignment function"
+
+  [ quic_srijaror ]
+  * gst-ai-multistream-inference: sample app update
+
+  [ QCTECMDR Service ]
+  * Merge "video: Add function for retrieving the GPU alignment requirement"
+  * Merge "video: Declare common memory:GBM feature define and cleanup"
+  * Merge "ml: Add parent_id to metas and attach derived metas as separate"
+  * Merge "voverlay: Fix draw of multiple classification labels"
+  * Merge "voverlay: Optimize and cleanup drawing of landmarks metadata"
+  * Merge "ml: Rename "source-region-id" to "parent-id""
+  * Merge "ml: Remove redundant batch index fields from ML predictions"
+  * Merge "gst-ai-classification: Fix for small text overlay"
+  * Merge "gst-ai-usb-camera-app: Fix for misplaced Bounding Box"
+
+  [ Deepali Reddy Karra ]
+  * qmmfsrc: Add support for RGB format
+
+  [ QCTECMDR Service ]
+  * Merge "mlmetaparser: code cleanup"
+  * Merge "ml-meta-parser-json: add support fot tracking-id"
+  * Merge "mlmetaparser: Parse custom ML parameters"
+  * Merge "metamux: Add support for attaching last meta at timeout in sync mode"
+  * Merge "metamux: Fix timeout when operating in sync mode"
+
+  [ Petar G. Georgiev ]
+  * video: Remove the temporary qtibufferpool
+  * video: Overhaul imagepool to work with qtiallocator
+  * base: allocators: Cleanup and optimize the qtiallocator
+  * video: Replace the workaround compute_alignment function
+
+  [ quic_srijaror ]
+  * gst-ai-daisychain-detection-pose: sample app update
+
+  [ Aditya Saurabh ]
+  * gst-ai-usb-camera-app: Fix for misplaced Bounding Box
+  * gst-ai-classification: Fix for small text overlay
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugins-tools: update wizard script for scarthgap"
+  * Merge "test_framework: add decoder-display case to camera suite"
+  * Merge "gst-camera-switch-appsrc-example: Ensure buffers_task_func() return even buffers_queue is set flushing to FALSE."
+
+  [ quic_srijaror ]
+  * gst-ai-superresolution: sample app update
+  * gst-ai-parallel-inference: sample app update
+
+  [ Amrutha Sai Gattu ]
+  * gst-plugins-tools: update wizard script for scarthgap
+
+  [ Sanjay Chitroda ]
+  * gst-plugins: scarthgap bringup for talos
+
+  [ skomakul ]
+  * sample-app: per port compilation failure
+
+  [ QCTECMDR Service ]
+  * Merge "sample-app: Per port grouping of cameras example."
+
+  [ Mustafa Ali ]
+  * gst-sample-apps: replace of default media path
+  * gst-sample-apps: Update mode while checking for files
+
+  [ QCTECMDR Service ]
+  * Merge "changing the property of mux:reserved max duration"
+  * Merge "mlvdetection: Fix crash in qfd submodule"
+  * Merge "changes for scrathgap upgrade: gst-ai-smartcodec-example application"
+  * Merge "gst-gui-launcher-app.py: python script for out of the box demo experience"
+  * Merge "gst-smart-codec-example: calling extra buffers on video pad"
+  * Merge "changes for scrathgap upgrade: gst-smartcodec-example application"
+
+  [ Petar G. Georgiev ]
+  * video: Add function for retrieving the GPU alignment requirement
+  * video: Declare common memory:GBM feature define and cleanup
+  * ml: Add parent_id to metas and attach derived metas as separate
+  * voverlay: Fix draw of multiple classification labels
+  * voverlay: Optimize and cleanup drawing of landmarks metadata
+
+  [ skomakul ]
+  * sample-app: Per port grouping of cameras example.
+
+  [ sbudha ]
+  * gst-gui-launcher-app.py: python script for out of the box demo experience
+
+  [ QCTECMDR Service ]
+  * Merge "qtisocket: adopt socket sink plugin to v4l2 allocation requirements"
+  * Merge "qtisocket: Resolve an issue with not returned buffers"
+  * Merge "gst-sample-app-utils: Update sysfs entry of display modes"
+
+  [ Konstantin Motov ]
+  * qtisocket: adopt socket sink plugin to v4l2 allocation requirements
+
+  [ Angel Hitov ]
+  * qtisocket: Resolve an issue with not returned buffers
+
+  [ QCTECMDR Service ]
+  * Merge "gst-python-examples: making a python script executable"
+  * Merge "adding colorimetry property for gst-transform-example"
+
+  [ Petar G. Georgiev ]
+  * ml: Rename "source-region-id" to "parent-id"
+  * ml: Remove redundant batch index fields from ML predictions
+
+  [ Filip Kardzhaliyski ]
+  * mlmetaparser: code cleanup
+  * ml-meta-parser-json: add support fot tracking-id
+
+  [ Angel Hitov ]
+  * mlmetaparser: Parse custom ML parameters
+
+  [ Petar G. Georgiev ]
+  * metamux: Add support for attaching last meta at timeout in sync mode
+  * metamux: Fix timeout when operating in sync mode
+
+  [ QCTECMDR Service ]
+  * Merge "gst-python-examples: changed camera resolution to support GMSL camera"
+  * Merge "gst-multi-camera-example and gst-multi-stream-example:changes for scrathgap upgrade"
+  * Merge "gst-ai-sample-apps: Update pipeline and help section"
+  * Merge "gst-ai-metadata-parser-example:Enable GMSL Camera"
+
+  [ Hongyong Huang ]
+  * gst-camera-switch-appsrc-example: Ensure buffers_task_func() return even buffers_queue is set flushing to FALSE.
+
+  [ QCTECMDR Service ]
+  * Merge "scarthgap changes for gst-activate-deactivate-streams-runtime, gst-add-remove-streams-runtime, gst-add-streams-as-bundle-example MM sample apps"
+  * Merge "gst-ai-usb-camera-app:add support for user configurable resolution"
+  * Merge "gst-daisychain-detection-pose.py: pipeline updates"
+  * Merge "gst-ai-sample-apps: Update manifest files for IDE"
+  * Merge "gst-python-examples: Minor Updates with description."
+  * Merge "smartvencbin: Add property to set the min buffers"
+  * Merge "gst-camera-switch-example: sync state with parent after linking"
+  * Merge "gst-camera-switch-example: changes for scrathgap upgrade"
+  * Merge "gst-camera-metadata-example: Add zoom property support."
+  * Merge "Consider GstAllocationParams from downstream plugin in allocation query"
+  * Merge "qtivsplit,qtivtransform: Consider downstream video alignment for output buffer"
+
+  [ Yashaswini Guvvala ]
+  * gst-camera-switch-example: sync state with parent after linking
+
+  [ Hari Krishna C ]
+  * gst-camera-switch-example: changes for scrathgap upgrade
+
+  [ QCTECMDR Service ]
+  * Merge "test-framework: update camera pipeline"
+  * Merge "qmmfsrc: add NV12_Q10C to support 10bit ubwc format"
+  * Merge "qmmfsrc: add support to get the camera capabilities"
+  * Merge "gst-plugin-camreproc: support NV12_Q08C."
+  * Merge "gst-plugin-codec2: add NV12_Q08C and NV12_Q10LE32C format."
+  * Merge "gst-plugin-codec2: Batch format implementation."
+
+  [ Arunn D ]
+  * gst-python-examples: making a python script executable
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-face-detection: Fix bounding box shift issue"
+  * Merge "gst-ai-face-detection: Enabling face detection App"
+
+  [ skomakul ]
+  * qmmfsrc: add support to get the camera capabilities
+
+  [ Rahul Khandelwal ]
+  * gst-ai-sample-apps: Update manifest files for IDE
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-sample-apps: Add manifest files new AI Sample apps"
+  * Merge "gst-ai-sample-apps: Add manifest files for AI Sample apps"
+  * Merge "mlvdetection: Add support for FLOAT32 qpd model"
+
+  [ Rahul Khandelwal ]
+  * gst-ai-sample-apps: Add manifest files new AI Sample apps
+  * gst-ai-sample-apps: Add manifest files for AI Sample apps
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-mlvdetection: Add bbox correction based on facial landmark"
+
+  [ Rahul Khandelwal ]
+  * gst-sample-app-utils: Update sysfs entry of display modes
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-audio-classification: pipeline update for video input"
+
+  [ Aditya Saurabh ]
+  * gst-ai-face-detection: Fix bounding box shift issue
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-audio-classification: Added mlaconverter params"
+  * Merge "gst-webrtc-sendrecv-example: Add support for libsoup 2.4 and 3.0"
+
+  [ Aditya Saurabh ]
+  * gst-ai-face-detection: Enabling face detection App
+
+  [ QCTECMDR Service ]
+  * Merge "qmmfsrc: get superframerate from vendor tag in non-slave mode"
+
+  [ Tushar Darote ]
+  * gst-plugin-mlvdetection: Add bbox correction based on facial landmark
+
+  [ Hui Liu ]
+  * qmmfsrc: add NV12_Q10C to support 10bit ubwc format
+
+  [ QCTECMDR Service ]
+  * Merge "qmmfsrc: Add support for sw tnr"
+  * Merge "mlaconverter: Audio Features Addition"
+  * Merge "mlaconverter, mlvclassification: Minor fixes"
+  * Merge "batch: Hold allocation query until src pad caps are negotiated"
+  * Merge "gst-ai-daisychain-detection-pose:FPS drop fix, added perf mode"
+  * Merge "gst-ai-daisychain-detection-pose: updating threshold"
+  * Merge "gst-plugin-mlvpose: Update offset, scale support for 1st Vertices tensor"
+
+  [ Hari Krishna C ]
+  * gst-smart-codec-example: calling extra buffers on video pad
+  * changes for scrathgap upgrade: gst-smartcodec-example application
+
+  [ Petar G. Georgiev ]
+  * mlvdetection: Fix crash in qfd submodule
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-face-recogniton: Enabling face recognition app"
+  * Merge "gst-mm-sample-apps: Add manifest files for MM Sample apps"
+  * Merge "gst-videocodec-concurrent-playback: fix for YUV output corrutpion"
+  * Merge "c2venc: Add slow motion support and modify variable fps logic."
+  * Merge "mlvdetection: Increase max detections count to 50"
+
+  [ Jai Shiv ]
+  * qmmfsrc: Add support for sw tnr
+
+  [ Pratik Pachange ]
+  * batch: Hold allocation query until src pad caps are negotiated
+
+  [ Aditya Saurabh ]
+  * gst-ai-daisychain-detection-pose:FPS drop fix, added perf mode
+
+  [ Raja Ganapathi Busam ]
+  * Consider GstAllocationParams from downstream plugin in allocation query
+
+  [ Aditya Saurabh ]
+  * gst-ai-daisychain-detection-pose: updating threshold
+
+  [ Tushar Darote ]
+  * gst-plugin-mlvpose: Update offset, scale support for 1st Vertices tensor
+
+  [ quic_srijaror ]
+  * gst-ai-audio-classification: pipeline update for video input
+
+  [ Rahul Khandelwal ]
+  * gst-ai-audio-classification: Added mlaconverter params
+
+  [ Tushar Patra Jamula ]
+  * gst-python-examples: Minor Updates with description.
+
+  [ Arunn D ]
+  * gst-videocodec-concurrent-playback: fix for YUV output corrutpion
+
+  [ Hongyong Huang ]
+  * gst-camera-metadata-example: Add zoom property support.
+
+  [ Tushar Patra Jamula ]
+  * smartvencbin: Add property to set the min buffers
+
+  [ Hari Krishna C ]
+  * changes for scrathgap upgrade: gst-ai-smartcodec-example application
+  * changing the property of mux:reserved max duration
+
+  [ Aditya Saurabh ]
+  * gst-ai-face-recogniton: Enabling face recognition app
+
+  [ Bing Li ]
+  * test_framework: add decoder-display case to camera suite
+
+  [ quic_srijaror ]
+  * gst-python-examples: changed camera resolution to support GMSL camera
+
+  [ Arunn D ]
+  * gst-mm-sample-apps: Add manifest files for MM Sample apps
+
+  [ Nikolay Hristozov ]
+  * gst-webrtc-sendrecv-example: Add support for libsoup 2.4 and 3.0
+
+  [ Hari Krishna C ]
+  * adding colorimetry property for gst-transform-example
+
+  [ Ziyi Gai ]
+  * gst-plugin-camreproc: support NV12_Q08C.
+
+  [ Hui Liu ]
+  * qmmfsrc: get superframerate from vendor tag in non-slave mode
+
+  [ Ziyi Gai ]
+  * gst-plugin-codec2: add NV12_Q08C and NV12_Q10LE32C format.
+
+  [ Raja Ganapathi Busam ]
+  * qtivsplit,qtivtransform: Consider downstream video alignment for output buffer
+
+  [ Ziyi Gai ]
+  * gst-plugin-codec2: Batch format implementation.
+
+  [ Stilyan Uzunov ]
+  * overlay: Include header explicitly
+
+  [ Ishu Raj ]
+  * mlvdetection: Add support for FLOAT32 qpd model
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-codec2: wait all queued buffers coming back in drain."
+
+  [ Divya Theja K P ]
+  * mlvdetection: Increase max detections count to 50
+
+  [ Arunn D ]
+  * scarthgap changes for gst-activate-deactivate-streams-runtime, gst-add-remove-streams-runtime, gst-add-streams-as-bundle-example MM sample apps
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-base: fix critical assertion"
+
+  [ Hongyong Huang ]
+  * c2venc: Add slow motion support and modify variable fps logic.
+
+  [ Aditya Saurabh ]
+  * gst-ai-sample-apps: Update pipeline and help section
+
+  [ mohanga ]
+  * gst-ai-usb-camera-app:add support for user configurable resolution
+
+  [ Petar G. Georgiev ]
+  * vcomposer: Transition to GstVideoAggregator as base class
+  * base: Redesign GstVideoBlit to contain a single source/destination pair
+  * base: video: Fix video-uitls header
+
+  [ quic_srijaror ]
+  * gst-daisychain-detection-pose.py: pipeline updates
+
+  [ Ziyi Gai ]
+  * gst-plugin-codec2: wait all queued buffers coming back in drain.
+
+  [ Hari Krishna C ]
+  * gst-multi-camera-example and gst-multi-stream-example:changes for scrathgap upgrade
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-mlvdetection: Add support for AI-HUB qfd model"
+  * Merge "gst-plugin-mlvclassification: Add support for AI-HUB qfr quantized model"
+  * Merge "changes for scrathgap updagrade: gst-multi-stream-example and gst-transform-example"
+  * Merge "gst-plugin-mlvpose: Add Support for AI-HUB model"
+  * Merge "qmmfsrc: Fix missing QMMFSRC_VIDEO_BAYER_CAPS."
+
+  [ Aditya Saurabh ]
+  * gst-ai-metadata-parser-example:Enable GMSL Camera
+
+  [ Divya Theja K P ]
+  * mlaconverter: Audio Features Addition
+
+  [ Hari Krishna C ]
+  * changes for scrathgap updagrade: gst-multi-stream-example and gst-transform-example
+
+  [ QCTECMDR Service ]
+  * Merge "qtivcomposer: workaround: Consider downstream video alignment for output buffer"
+
+  [ Raja Ganapathi Busam ]
+  * qtivcomposer: workaround: Consider downstream video alignment for output buffer
+
+  [ Kin Zhao ]
+  * test-framework: update camera pipeline
+
+  [ Tushar Darote ]
+  * gst-plugin-mlvdetection: Add support for AI-HUB qfd model
+
+  [ quic_srijaror ]
+  * gst-ai-python-examples: minor updates
+
+  [ QCTECMDR Service ]
+  * Merge "gst-python-examples: Remove redundant checks in gst-parallel-infererence"
+  * Merge "gst-dfs-plugin: Decouple rvSDK for DFS plugin"
+  * Merge "vsplit, vcomposer: Fix transfer of nested VideoLandmarks meta"
+  * Merge "vpose: lite-3dmm: Export roll, yaw and pitch angles in xtraparams"
+  * Merge "ml: Add support for custom parameters for some ML post-processes"
+  * Merge "vsplit: Add ID from derived VideoLandmarks and ImageClassification"
+  * Merge "metamux: Add ID to VideoLandmarks and ImageClassification"
+  * Merge "qtimvlclassification: One ID for all labels in ImageClassification"
+
+  [ Tushar Darote ]
+  * gst-plugin-mlvpose: Add Support for AI-HUB model
+
+  [ QCTECMDR Service ]
+  * Merge "gst-camera-shdr-ldc-eis-example:changes for scrathgap upgrade"
+  * Merge "gst-multi-camera-example:changes for scarthgap upgrade"
+  * Merge "gst-plugin-example: set state from READY to PAUSED."
+  * Merge "smartvencbin: Fix for crash at the end of stream"
+  * Merge "gst-ai-metadata-parser-example: new sample app"
+  * Merge "gst-ai-usb-camera-app: enable object detection for usb camera example"
+  * Merge "gst-weston-composition-example:changes for scarthgap upgrade"
+
+  [ Petar G. Georgiev ]
+  * vsplit, vcomposer: Fix transfer of nested VideoLandmarks meta
+  * vpose: lite-3dmm: Export roll, yaw and pitch angles in xtraparams
+  * ml: Add support for custom parameters for some ML post-processes
+
+  [ Hari Krishna C ]
+  * gst-camera-shdr-ldc-eis-example:changes for scrathgap upgrade
+
+  [ QCTECMDR Service ]
+  * Merge "gst-multi-stream-example:changes for scarthgap upgrade"
+
+  [ Hongyong Huang ]
+  * qmmfsrc: Fix missing QMMFSRC_VIDEO_BAYER_CAPS.
+
+  [ QCTECMDR Service ]
+  * Merge "gst-jpg-decode-example:app to demonstrate decode of jpg files"
+  * Merge "gst-audio-video-playback:changes for scarthgap upgrade"
+  * Merge "smartvencbin - remove gbm support on scarthgap"
+  * Merge "gst-opencv-transform: app to demontrate videoplayback and render using opencv"
+  * Merge "gst-ai-audio-classification: Sample reference application"
+  * Merge "gst-ai-sample app:Updating Constants and resolution for GMSL"
+  * Merge "gst-ai-daisychain-detection-classification: Scartgap update"
+
+  [ quic_srijaror ]
+  * gst-ai-metadata-parser-example: new sample app
+
+  [ mohanga ]
+  * gst-ai-usb-camera-app: enable object detection for usb camera example
+
+  [ Arunn D ]
+  * gst-opencv-transform: app to demontrate videoplayback and render using opencv
+
+  [ Linux Build Service Account ]
+  * Merge "gst-ai-python-examples: Scarthgap updates" into le-gst.lnx.2.1
+  * Merge "python-apps: Update for Scarthgap" into le-gst.lnx.2.1
+  * Merge "gst-camera-opencv-resize: app to demonstrate live camera stream using opencv api's which include color conversion and resize." into le-gst.lnx.2.1
+
+  [ Tushar Darote ]
+  * gst-plugin-mlvclassification: Add support for AI-HUB qfr quantized model
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-object-detection: read snpe output layers from config file"
+
+  [ Divya Theja K P ]
+  * gst-ai-audio-classification: Sample reference application
+
+  [ QCTECMDR Service ]
+  * Merge "codec2: override close function to free engine"
+
+  [ Yashaswini Guvvala ]
+  * smartvencbin - remove gbm support on scarthgap
+
+  [ Aditya Saurabh ]
+  * gst-ai-sample app:Updating Constants and resolution for GMSL
+  * gst-ai-daisychain-detection-classification: Scartgap update
+
+  [ Hari Krishna C ]
+  * gst-weston-composition-example:changes for scarthgap upgrade
+  * gst-multi-stream-example:changes for scarthgap upgrade
+  * gst-multi-camera-example:changes for scarthgap upgrade
+
+  [ Tushar Patra Jamula ]
+  * python-apps: Update for Scarthgap
+
+  [ QCTECMDR Service ]
+  * Merge "camreproc: fix a memory leak issue"
+
+  [ darunn ]
+  * gst-camera-opencv-resize: app to demonstrate live camera stream using opencv api's which include color conversion and resize.
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-codec2: query parameter to check if is it supported first."
+  * Merge "gst-ai-multistream-inference: sample app update"
+  * Merge "gst-ai-multi-input-output-object-detection: minor changes"
+  * Merge "gst-sample-apps:fix for green screen preview"
+
+  [ Rahul Khandelwal ]
+  * gst-ai-multistream-inference: sample app update
+
+  [ quic_srijaror ]
+  * gst-ai-multi-input-output-object-detection: minor changes
+
+  [ Divya Theja K P ]
+  * mlaconverter, mlvclassification: Minor fixes
+
+  [ QCTECMDR Service ]
+  * Merge "gst-python-examples: app to demonstrates the jpeg image decode"
+  * Merge "gst-ai-sample-app: Update config file installation path"
+
+  [ mohanga ]
+  * gst-sample-apps:fix for green screen preview
+
+  [ Ziyi Gai ]
+  * gst-plugin-example: set state from READY to PAUSED.
+
+  [ Hari Krishna C ]
+  * gst-jpg-decode-example:app to demonstrate decode of jpg files
+  * gst-audio-video-playback:changes for scarthgap upgrade
+
+  [ Mustafa Ali ]
+  * gst-dfs-plugin: Decouple rvSDK for DFS plugin
+
+  [ Stilyan Uzunov ]
+  * gst-python-examples: Remove redundant checks in gst-parallel-infererence
+
+  [ quic_srijaror ]
+  * gst-ai-python-examples: Scarthgap updates
+
+  [ Ziyi Gai ]
+  * gst-plugin-codec2: query parameter to check if is it supported first.
+
+  [ quic_srijaror ]
+  * gst-ai-object-detection: read snpe output layers from config file
+
+  [ QCTECMDR Service ]
+  * Merge "qmmfsrc: Add support for Offline IFE Usecase"
+
+  [ Rahul Khandelwal ]
+  * gst-ai-sample-app: Update config file installation path
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-example: set type to preview as default type is video."
+
+  [ Hui Liu ]
+  * codec2: override close function to free engine
+
+  [ skomakul ]
+  * qmmfsrc: Add support for Offline IFE Usecase
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-qmmfsrc: support super buffer function"
+
+  [ Ziyi Gai ]
+  * gst-plugin-example: set type to preview as default type is video.
+  * gst-plugin-codec2: add format NV12_Q08C (NV12 + UBWC).
+
+  [ QCTECMDR Service ]
+  * Merge "base: Fallback to /dev/ion to create device while checking GBM supported"
+  * Merge "gst-plugin-codec2: support superframe."
+  * Merge "gst-python-examples: apps changes for scarthgap upgrade"
+  * Merge "gst-daisychain-detection-pose.py: replace qtioverlay with qtivoverlay"
+  * Merge "gst-plugin-base: Move gstqtiallocator to allocator directory"
+  * Merge "gst-plugins-qti-oss: Update gstqtiallocator header path and library"
+
+  [ mohanga ]
+  * gst-python-examples: apps changes for scarthgap upgrade
+
+  [ Ziyi Gai ]
+  * gst-plugin-codec2: support superframe.
+
+  [ Hui Liu ]
+  * gst-plugin-qmmfsrc: support super buffer function
+
+  [ QCTECMDR Service ]
+  * Merge "qtimlaclassification: Add post-processing plugin"
+  * Merge "gst-plugin-base: Support for Audio Classification"
+  * Merge "gst-plugin-metamux: forward the sink pad allocation query"
+  * Merge "qtimlaconverter: add audio converter for ML"
+
+  [ quic_srijaror ]
+  * gst-daisychain-detection-pose.py: replace qtioverlay with qtivoverlay
+
+  [ Raja Ganapathi Busam ]
+  * base: Fallback to /dev/ion to create device while checking GBM supported
+
+  [ QCTECMDR Service ]
+  * Merge "gst-sample-apps: apps changes for scarthgap upgrade"
+  * Merge "gst-ai-multistream-inference: Sample app update"
+
+  [ Hui Liu ]
+  * camreproc: fix a memory leak issue
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-mlqnn: filesystem is supported since C++17."
+
+  [ Rahul Khandelwal ]
+  * gst-ai-multistream-inference: Sample app update
+
+  [ Aditya Saurabh ]
+  * gst-ai-sample apps: Sample app scarthgap changes
+  * gst-ai-sample-apps: Sample apps update for scarthgap changes
+  * gst-ai-object-detection: Adding Yolonas, yolov7 Tflite Support
+
+  [ quic_srijaror ]
+  * gst-ai-sample-app: Adding Config file support
+  * gst-sample-apps: replace /opt/ with /etc/* for default artifacts
+
+  [ Deepali Reddy Karra ]
+  * gst-plugin-base: Move gstqtiallocator to allocator directory
+  * gst-plugins-qti-oss: Update gstqtiallocator header path and library
+
+  [ Yashaswini Guvvala ]
+  * gst-plugin-metamux: forward the sink pad allocation query
+
+  [ Angel Krastev ]
+  * vsplit: Add ID from derived VideoLandmarks and ImageClassification
+  * metamux: Add ID to VideoLandmarks and ImageClassification
+  * qtimvlclassification: One ID for all labels in ImageClassification
+
+  [ Linux Build Service Account ]
+  * Merge "mlvconverter: Add NV12_Q08C format" into le-gst.lnx.2.1
+
+  [ Jiadong Huang ]
+  * qtimlaclassification: Add post-processing plugin
+  * gst-plugin-base: Support for Audio Classification
+
+  [ Divya Theja Kanikala ]
+  * qtimlaconverter: add audio converter for ML
+
+  [ mohanga ]
+  * gst-sample-apps: apps changes for scarthgap upgrade
+
+  [ Ishu Raj ]
+  * c2d-video-converter: Remove usage of isubwc flag
+
+  [ mohanga ]
+  * gst-python-examples: app to demonstrates the jpeg image decode
+
+  [ Ishu Raj ]
+  * gst-plugin-overlay: Update to guard downstream GBM code
+
+  [ Pratik Pachange ]
+  * base: Fix header path for check_include_file
+
+  [ shrasoma ]
+  * gst-plugin-overlay: Remove unused downstream GBM code
+  * gst-plugin-qti-oss: isubwc flag removal
+
+  [ Tushar Patra Jamula ]
+  * mlvconverter: Add NV12_Q08C format
+
+  [ Linux Build Service Account ]
+  * Merge "mlvdetection: GBM removal changes" into le-gst.lnx.2.1
+  * Merge "mlvclassification: GBM removal changes" into le-gst.lnx.2.1
+  * Merge "mlvpose: GBM removal changes" into le-gst.lnx.2.1
+  * Merge "mlvsegmentation: GBM removal changes" into le-gst.lnx.2.1
+  * Merge "mlvconverter: GBM removal changes" into le-gst.lnx.2.1
+  * Merge "mlvsuperresolution: GBM removal changes" into le-gst.lnx.2.1
+
+  [ Tushar Patra Jamula ]
+  * mlvconverter: GBM removal changes
+  * mlvdetection: GBM removal changes
+  * mlvpose: GBM removal changes
+  * mlvclassification: GBM removal changes
+  * mlvsuperresolution: GBM removal changes
+  * mlvsegmentation: GBM removal changes
+
+  [ shrasoma ]
+  * gst-plugin-base: Add utils to get alignment
+
+  [ Linux Build Service Account ]
+  * Merge "base: Add qtiallocator and qtibufferpool" into le-gst.lnx.2.1
+  * Merge "gst-plugin-base: Add support for NV12_Q08C" into le-gst.lnx.2.1
+
+  [ Shyam Komakula ]
+  * gst-plugin-vsplit: add support for DMABuf enablement
+
+  [ Linux Build Service Account ]
+  * Merge "qtivcomposer: gbm removal changes" into le-gst.lnx.2.1
+  * Merge "voverlay: gbm removal changes" into le-gst.lnx.2.1
+  * Merge "imagepool: Update to guard downstream GBM code" into le-gst.lnx.2.1
+  * Merge "qtivtransform: gbm removal changes" into le-gst.lnx.2.1
+
+  [ shrasoma ]
+  * voverlay: gbm removal changes
+  * qtivcomposer: gbm removal changes
+
+  [ Pratik Pachange ]
+  * imagepool: Update to guard downstream GBM code
+
+  [ ppachang ]
+  * base: Add qtiallocator and qtibufferpool
+
+  [ shrasoma ]
+  * qtivtransform: gbm removal changes
+  * gst-plugin-base: Add support for NV12_Q08C
+
+  [ skomakul ]
+  * gst-plugin-qmmfsrc: add support of NV12_Q08C for QLI
+
+  [ Aashish Patel ]
+  * qmmfsrc: Add support for dmabuf allocator and guard GBM caps
+
+  [ Pratik Pachange ]
+  * imagepool: Guard downstream GBM related code
+
+  [ QCTECMDR Service ]
+  * Merge "gst-camera-burst-intervalcapture-example: Fix cam mode enum."
+  * Merge "Codec2: remove workaround for stride calculation of 10bit and 10bitUBWC"
+
+  [ Hongyong Huang ]
+  * gst-camera-burst-intervalcapture-example: Fix cam mode enum.
+
+  [ QCTECMDR Service ]
+  * Merge "codec2: Support key-frame insertion when GstForceKeyUnit event is received"
+  * Merge "code2: remove Drain() API in stop"
+  * Merge "gst-python-examples: Add option to configure ML properties"
+
+  [ Nikolay Hristozov ]
+  * rtspbin: Fix instability using VLC player
+
+  [ Tushar Patra Jamula ]
+  * gst-python-examples: Add option to configure ML properties
+
+  [ QCTECMDR Service ]
+  * Merge "gst-umd-daemon: Add -n to use non-ml video mode pipeline."
+
+  [ Filip Kardzhaliyski ]
+  * gst-plugin-base: fix critical assertion
+
+  [ Kin Zhao ]
+  * codec2: Support key-frame insertion when GstForceKeyUnit event is received
+
+  [ QCTECMDR Service ]
+  * Merge "fastswitch-example: refactor and support multiple preview streams"
+  * Merge "gst-plugin-qmmfsrc: add signal to control video activation"
+  * Merge "gst-plugin-mltflite: Fix header file path for low version TFLite."
+  * Merge "gst-plugin-qmmfsrc: downgrade log level from error to info"
+
+  [ Ziyi Gai ]
+  * gst-plugin-mlqnn: filesystem is supported since C++17.
+
+  [ QCTECMDR Service ]
+  * Merge "gst-usb-single-camera-example: fix the dev node open issue"
+  * Merge "gst-ai-smartcodec-example: fix the sample app crash issue"
+  * Merge "gst-plugins-qti-oss: Minor memory issue fixes"
+  * Merge "gst-plugin-tools: Add snpe and qnn test apps"
+  * Merge "gst-plugin-qmmfsrc: none selection is no error."
+
+  [ FengChen ]
+  * gst-plugin-qmmfsrc: add signal to control video activation
+
+  [ Bing Li ]
+  * code2: remove Drain() API in stop
+
+  [ FengChen ]
+  * fastswitch-example: refactor and support multiple preview streams
+
+  [ mohanga ]
+  * gst-usb-single-camera-example: fix the dev node open issue
+
+  [ Hongyong Huang ]
+  * gst-umd-daemon: Add -n to use non-ml video mode pipeline.
+
+  [ Hui Liu ]
+  * Codec2: remove workaround for stride calculation of 10bit and 10bitUBWC
+
+  [ FengChen ]
+  * gst-plugin-qmmfsrc: session cleanup, remove pause/resume APIs
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-camreproc: rename, add ubwc and scale support."
+  * Merge "gst-plugin-offlinecamera: initial comment for a new plugin."
+
+  [ mohanga ]
+  * gst-ai-smartcodec-example: fix the sample app crash issue
+
+  [ QCTECMDR Service ]
+  * Merge "gst-sample-apps: Initialize defined variables"
+  * Merge "gst-python-examples: Add arguments in python examples"
+  * Merge "gst-sample-apps: Add option to set output file paths"
+
+  [ Hongyong Huang ]
+  * gst-plugin-mltflite: Fix header file path for low version TFLite.
+
+  [ Mustafa Ali ]
+  * gst-plugins-qti-oss: Minor memory issue fixes
+
+  [ QCTECMDR Service ]
+  * Merge "parallel-inference: update segmentation constants"
+
+  [ FengChen ]
+  * gst-plugin-qmmfsrc: downgrade log level from error to info
+
+  [ Kemal Rasim Sh ]
+  * gst-sample-apps: Initialize defined variables
+
+  [ Mustafa Ali ]
+  * gst-python-examples: Add arguments in python examples
+
+  [ quic_srijaror ]
+  * gst-ai-sample-app: setting config-interval=1 in rtspsink
+  * parallel-inference: update segmentation constants
+
+  [ QCTECMDR Service ]
+  * Merge "gst-sample-apps: Replace rtspsink plugin with qtirtspbin plugin"
+  * Merge "gst-sample-apps: Fix memory corruption"
+  * Merge "test framework: codes style"
+
+  [ Mustafa Ali ]
+  * gst-sample-apps: Fix memory corruption
+
+  [ Aditya Saurabh ]
+  * gst-sample-apps: Replace rtspsink plugin with qtirtspbin plugin
+
+  [ Ivan Evlogiev ]
+  * gst-plugin-tools: Add snpe and qnn test apps
+
+  [ Stilyan Uzunov ]
+  * gst-sample-apps: Add option to set output file paths
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugins-qti-oss: Add CMake CXX flags"
+
+  [ Aditya Saurabh ]
+  * gst-sample-apps: Replace rtspsink plugin with  qtirtspbin plugin
+
+  [ Mustafa Ali ]
+  * gst-plugins-qti-oss: Add CMake CXX flags
+  * gst-sample-apps: Add CMake C and CXX flags
+  * gst-sample-apps: Remove ENABLE_CAMERA from CMake files
+
+  [ Ziyi Gai ]
+  * gst-plugin-camreproc: rename, add ubwc and scale support.
+  * gst-plugin-offlinecamera: initial comment for a new plugin.
+
+  [ QCTECMDR Service ]
+  * Merge "gst-python-examples: Add success msg at the end"
+  * Merge "gst-ai-object-detection: add support for QNN models"
+  * Merge "gst-ai-daisychain-detection-pose: Added queue element to the pipeline for buffering support"
+  * Merge "gst-sample-apps: add checks for presence of model and label files"
+  * Merge "gst-sample-apps: updated help section"
+
+  [ Tushar Patra Jamula ]
+  * gst-python-examples: Add success msg at the end
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-msgbroker: Decouple mosquitto library"
+  * Merge "gst-plugins-qti-oss: Remove CAMERA_SERVICE"
+  * Merge "gst-plugin-qmmfsrc: Remove redundant flag in CMake"
+  * Merge "gst-sample-apps: Remove linkage to camera_metadata"
+
+  [ quic_srijaror ]
+  * gst-sample-apps: updated help section
+  * gst-sample-apps: add checks for presence of model and label files
+  * gst-ai-object-detection: add support for QNN models
+
+  [ Mustafa Ali ]
+  * gst-plugin-msgbroker: Decouple mosquitto library
+  * gst-sample-apps: Remove ENABLE_CAMERA
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-base: utils: Add runtime flags parser"
+
+  [ Aditya Saurabh ]
+  * gst-ai-daisychain-detection-pose: Added queue element to the pipeline for buffering support
+
+  [ QCTECMDR Service ]
+  * Merge "gst-python-examples: Add user configurations"
+
+  [ Mustafa Ali ]
+  * gst-plugins-qti-oss: Remove CAMERA_SERVICE
+
+  [ Stilyan Uzunov ]
+  * gst-plugin-qmmfsrc: Remove redundant flag in CMake
+
+  [ Mustafa Ali ]
+  * gst-sample-apps: Remove linkage to camera_metadata
+  * gst-plugin-base: utils: Add runtime flags parser
+
+  [ Tushar Patra Jamula ]
+  * gst-python-examples: Add user configurations
+
+  [ Kin Zhao ]
+  * test framework: codes style
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-face-detection: Added support for face detection"
+  * Merge "gst-sample-apps: add ai based smartcodec application"
+  * Merge "gst-concurrent-videoplay-composition: app to demonstrate concurrrent video stream using python"
+  * Merge "gst-ai-face-recognition: Adding support for gst-ai-face-recognition"
+
+  [ mohanga ]
+  * gst-sample-apps: add ai based smartcodec application
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-multistream-batch-inference: Update htp core count from filesystem"
+  * Merge "gst-daisychain-detection-pose.py & gst-parallel-inference.py: minor updates"
+  * Merge "gst-python-examples: Set htp_precision to FP16 for YOLOv8N"
+
+  [ quic_srijaror ]
+  * gst-daisychain-detection-pose.py & gst-parallel-inference.py: minor updates
+
+  [ Aditya Saurabh ]
+  * gst-ai-multistream-batch-inference: Update htp core count from filesystem
+
+  [ QCTECMDR Service ]
+  * Merge "gst-daisychain-detection-pose.py: AI based daisychain of object detection and pose detection"
+  * Merge "gst-parallel-inference.py: Demonstrate AI parallel inference (Detection, Classification, Pose, Segmentation) on live stream (file, camera)"
+  * Merge "gst-python-examples: app to demonstrates the multicamera camera use case with preview or encode option"
+
+  [ Raja Ganapathi Busam ]
+  * smartvencbin: Fix for crash at the end of stream
+
+  [ Arunn D ]
+  * gst-concurrent-videoplay-composition: app to demonstrate concurrrent video stream using python
+
+  [ Tushar Patra Jamula ]
+  * gst-python-examples: Set htp_precision to FP16 for YOLOv8N
+
+  [ Ziyi Gai ]
+  * gst-plugin-qmmfsrc: none selection is no error.
+
+  [ quic_srijaror ]
+  * gst-daisychain-detection-pose.py: AI based daisychain of object detection and pose detection
+  * gst-parallel-inference.py: Demonstrate AI parallel inference (Detection, Classification, Pose, Segmentation) on live stream (file, camera)
+
+  [ mohanga ]
+  * gst-usb-single-camera-app: enable the usb camera app
+
+  [ chari ]
+  * gst-python-examples: app to demonstrates the multicamera camera use case with preview or encode option
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-monodepth: Adding QNN Model,INT8 Tflite Model and Config file."
+  * Merge "gst-ai-segmentation: update pipeline for camera input, add QNN support, take input from config file, add sample config file"
+  * Merge "gst-ai-daisychain-detection-classification: add config file support for user input and provide sample config file"
+  * Merge "gst-ai-classification: update pipeline for camera input, add qnn support, take input from config file, add sample config file"
+  * Merge "gst-ai-object-detection: update pipeline for camera input and take input paramters from config file"
+  * Merge "gst-ai-daisychain-detection-pose:Adding parameter in commandline"
+  * Merge "gst-ai-pose-detection: update pipeline for camera input, add QNN support, take input from config file, add sample config file"
+  * Merge "gst-ai-multistream-batch-inference: Add queue to fix FD leak issue Fix FD leak issue when using different models in multistream batch inference"
+
+  [ quic_srijaror ]
+  * gst-ai-pose-detection: update pipeline for camera input, add QNN support, take input from config file, add sample config file
+
+  [ Aditya Saurabh ]
+  * gst-ai-monodepth: Adding QNN Model,INT8 Tflite Model and Config file.
+
+  [ quic_srijaror ]
+  * gst-ai-segmentation: update pipeline for camera input, add QNN support, take input from config file, add sample config file
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-parallel-inference: Changing all models to Tflite, adding constants and using qtivcomposer to enable on lemans."
+  * Merge "gst-sample-apps-utils: Adding QNN Container in GstModelType Enum"
+  * Merge "mlvsuperresolution: Extend the scale and offset properties to float ML data type"
+
+  [ Rahul Khandelwal ]
+  * gst-ai-multistream-batch-inference: Add queue to fix FD leak issue Fix FD leak issue when using different models in multistream batch inference
+
+  [ QCTECMDR Service ]
+  * Merge "Plugin tests: gst-test-app based on gstcheck."
+  * Merge "gst-plugin-tools: fix paths in gst-wizard"
+
+  [ Raja Ganapathi Busam ]
+  * mlvsuperresolution: Extend the scale and offset properties to float ML data type
+
+  [ quic_srijaror ]
+  * gst-ai-classification: update pipeline for camera input, add qnn support, take input from config file, add sample config file
+
+  [ Aditya Saurabh ]
+  * gst-sample-apps-utils: Adding QNN Container in GstModelType Enum
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-cv-optclflow: change step_size config for 1080p support"
+  * Merge "gst-plugins: Add KEEP_MAPPED flag to all image pools"
+
+  [ Amrutha Sai Gattu ]
+  * gst-plugin-tools: fix paths in gst-wizard
+
+  [ quic_srijaror ]
+  * gst-ai-object-detection: update pipeline for camera input and take input paramters from config file
+  * gst-ai-daisychain-detection-classification: add config file support for user input and provide sample config file
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-qmmfsrc: fix qmmfsrc gst-inspect crash"
+
+  [ Nikolay Hristozov ]
+  * gst-plugins: Add KEEP_MAPPED flag to all image pools
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-tools: update wizard script"
+  * Merge "mlqnn: Add property for specifying output tensor order"
+
+  [ Amrutha Sai Gattu ]
+  * gst-plugin-tools: update wizard script
+
+  [ Jiadong Huang ]
+  * qtimlsnpe: Fix memory leak issue
+
+  [ FengChen ]
+  * gst-plugin-qmmfsrc: fix qmmfsrc gst-inspect crash
+
+  [ Angel Ivanov ]
+  * metatransform: Use track_id to get roimeta id
+
+  [ QCTECMDR Service ]
+  * Merge "mlvdetection: update qpd post-process for tflite model"
+  * Merge "qtiobjtracker: Created plugin for object tracking"
+
+  [ Amrutha Sai Gattu ]
+  * mlvdetection: update qpd post-process for tflite model
+
+  [ Tushar Patra Jamula ]
+  * mlqnn: Add property for specifying output tensor order
+
+  [ Angel Ivanov ]
+  * qtiobjtracker: Created plugin for object tracking
+
+  [ Aditya Saurabh ]
+  * gst-ai-daisychain-detection-pose:Adding parameter in commandline
+  * gst-ai-face-recognition: Adding support for gst-ai-face-recognition
+  * gst-ai-face-detection: Added support for face detection
+  * gst-ai-parallel-inference: Changing all models to Tflite, adding constants and using qtivcomposer to enable on lemans.
+
+  [ Angel Krastev ]
+  * gst-plugin-tools: Add pipeline wizard script
+
+  [ QCTECMDR Service ]
+  * Merge "qtimlvdetection: caps mismatch fix for yolo-nas on snpe"
+  * Merge "gst-plugin-mlqnn: Add logs with qnn versions"
+  * Merge "gst-plugin-examples, gst-sample-apps: Add execute permissions for world"
+  * Merge "voverlay: Fix broken timestamps property"
+  * Merge "python-examples: Add arguments"
+
+  [ Ivan Evlogiev ]
+  * gst-plugin-mlqnn: Add logs with qnn versions
+
+  [ QCTECMDR Service ]
+  * Merge "voverlay: Separate the drawing of blits into functions"
+  * Merge "qtimlmetaparser: Remove bufferpool"
+  * Merge "qtisocket: Return proper code at stop if socketsrc never connected"
+
+  [ Victor Sokolov ]
+  * python-examples: Add arguments
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-qmmfsrc: expand physical camera id (scope: 0 ~ 15)."
+  * Merge "mlvdetection: Do not return error at downstream event"
+  * Merge "qtisocket: Add support for protection metadata"
+  * Merge "qtisocket: add support for multiple GST buffer memory blocks"
+  * Merge "qtisocket: add support for tensors"
+
+  [ Ivan Evlogiev ]
+  * gst-plugin-examples, gst-sample-apps: Add execute permissions for world
+
+  [ QCTECMDR Service ]
+  * Merge "qtisocket: fix out-of-order frames"
+
+  [ Linux Build Service Account ]
+  * Merge "gst-plugin-qmmfsrc: save zoom value before it is enabled." into le-gst.lnx.2.1
+
+  [ Angel Hitov ]
+  * qtisocket: Return proper code at stop if socketsrc never connected
+  * mlvdetection: Do not return error at downstream event
+  * qtisocket: Add support for protection metadata
+
+  [ Angel Ivanov ]
+  * qtisocket: add support for multiple GST buffer memory blocks
+
+  [ Angel Hitov ]
+  * qtisocket: add support for tensors
+
+  [ Konstantin Motov ]
+  * qtisocket: fix out-of-order frames
+
+  [ Linux Build Service Account ]
+  * Merge "gst-ai-multistream-batch-inference: Modify HTP external delegate parameters" into le-gst.lnx.2.1
+
+  [ Ziyi Gai ]
+  * gst-plugin-qmmfsrc: expand physical camera id (scope: 0 ~ 15).
+
+  [ Rahul Khandelwal ]
+  * gst-ai-multistream-batch-inference: Modify HTP external delegate parameters
+
+  [ Ivan Evlogiev ]
+  * gst-plugin-mltflite: Improve dynamic loading of tflite
+
+  [ Angel Krastev ]
+  * qtimlmetaparser: Remove bufferpool
+
+  [ QCTECMDR Service ]
+  * Merge "qtiredissink: fix FD and memory leak"
+
+  [ Petar G. Georgiev ]
+  * voverlay: Fix broken timestamps property
+
+  [ Ziyi Gai ]
+  * gst-plugin-qmmfsrc: save zoom value before it is enabled.
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-qmmfsrc: add new property logical-stream-type for pads."
+
+  [ Konstantin Motov ]
+  * qtiredissink: fix FD and memory leak
+
+  [ Petar G. Georgiev ]
+  * voverlay: Separate the drawing of blits into functions
+
+  [ QCTECMDR Service ]
+  * Merge "gst-python-examples: Minor improvements in apps"
+
+  [ Tushar Patra Jamula ]
+  * gst-python-examples: Minor improvements in apps
+
+  [ Ziyi Gai ]
+  * gst-plugin-qmmfsrc: add new property logical-stream-type for pads.
+
+  [ QCTECMDR Service ]
+  * Merge "gst-python-examples: Minor changes"
+
+  [ Ishu Raj ]
+  * gst-python-examples: Minor changes
+
+  [ Linux Build Service Account ]
+  * Merge "qmmfsrc: support physical camera switch within one logical camera" into le-gst.lnx.2.1
+
+  [ Kin Zhao ]
+  * Plugin tests: gst-test-app based on gstcheck.
+
+  [ Angel Krastev ]
+  * python-examples: Refactor scripts
+
+  [ QCTECMDR Service ]
+  * Merge "gst-python-examples: Add new example apps"
+  * Merge "gst-python-examples: Add python gst sample apps"
+  * Merge "python-examples: Add new example"
+  * Merge "qtimlmetaparser: Rework ml metadata parsing"
+
+  [ FengChen ]
+  * qmmfsrc: support physical camera switch within one logical camera
+
+  [ Petar Georgiev ]
+  * mlvdetection, metamux: Fix rectangle dimensions in string form
+  * metamux: Remove the unnecessary ABS for ROIs
+
+  [ QCTECMDR Service ]
+  * Merge "mlvdetection: Person detection module"
+  * Merge "gst-ai-multi-input-output-object-detection: Updating external delegate parameter and removing fpsdisplaysink"
+  * Merge "gst-ai-parallel-inference: Change sync=FALSE for waylandsink"
+  * Merge "gst-ai-multistream-inference: Modify HTP external delegate parameters"
+  * Merge "qtirestrictedzonedbg: Adding seperate plugin for restricted zone"
+
+  [ Rahul Khandelwal ]
+  * gst-ai-multistream-inference: Modify HTP external delegate parameters
+
+  [ Aditya Saurabh ]
+  * gst-ai-multi-input-output-object-detection: Updating external delegate parameter and removing fpsdisplaysink
+
+  [ Rahul Khandelwal ]
+  * gst-ai-parallel-inference: Change sync=FALSE for waylandsink
+
+  [ Angel Hitov ]
+  * qtimlmetaparser: Rework ml metadata parsing
+
+  [ Ishu Raj ]
+  * gst-python-examples: Add python gst sample apps
+  * gst-python-examples: Add python gst sample apps
+
+  [ Tushar Patra Jamula ]
+  * gst-python-examples: Add new example apps
+
+  [ Divya Theja K P ]
+  * qtirestrictedzonedbg: Adding seperate plugin for restricted zone
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-multi-input-output-object-detection: Adding Constants in commandline parameter, FPS support for Wayland and fixing error handling"
+  * Merge "gst-ai-monodepth: Added queue element to the pipeline for thread boundary and buffering support."
+  * Merge "gst-ai-object-detection: Adding Yolov5 Tflite Model Support and changing naming of model-type to ml-framework"
+
+  [ Divya Theja K P ]
+  * mlvdetection: Person detection module
+
+  [ Angel Krastev ]
+  * python-examples: Add new example
+  * python-examples: Add example rtspsrc+ml+display
+  * python-examples: Add new examples
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-mltflite: Use separate interfaces of TF"
+
+  [ Aditya Saurabh ]
+  * gst-ai-monodepth: Added queue element to the pipeline for thread boundary and buffering support.
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-segmentation: Fixation of High FPS On File Source"
+  * Merge "gst-ai-multistream-inference: add default model and label details for classification"
+  * Merge "metamux: Prevent holding too many buffers in the queues"
+
+  [ Aditya Saurabh ]
+  * gst-ai-object-detection: Adding Yolov5 Tflite Model Support and changing naming of model-type to ml-framework
+
+  [ Nikolay Hristozov ]
+  * metamux: Prevent holding too many buffers in the queues
+
+  [ Aditya Saurabh ]
+  * gst-ai-multi-input-output-object-detection: Adding Constants in commandline parameter, FPS support for Wayland and fixing error handling
+
+  [ satchel ]
+  * qtimlvdetection: caps mismatch fix for yolo-nas on snpe
+
+  [ Mustafa Ali ]
+  * gst-plugin-mltflite: Use separate interfaces of TF
+
+  [ Nikolay Hristozov ]
+  * rtspbin: Fix hang on EOS
+
+  [ Aditya Saurabh ]
+  * gst-ai-segmentation: Fixation of High FPS On File Source
+  * gst-ai-multistream-inference: add default model and label details for classification
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-base: Add counter for each FD"
+  * Merge "gst-sample-app: issue: crash with video files with audio fix: handled audio caps"
+  * Merge "gst-smartcodec-example:adding support for filesource"
+  * Merge "python-examples: Initial commit"
+  * Merge "gst-ai-multistream-batch-inference: added support for multistream batching"
+
+  [ Angel Krastev ]
+  * python-examples: Initial commit
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-mltflite: Migration to C API of TF Lite"
+
+  [ sbudha ]
+  * gst-ai-multistream-batch-inference: added support for multistream batching
+
+  [ chari ]
+  * gst-smartcodec-example:adding support for filesource
+
+  [ sbudha ]
+  * gst-sample-app: issue: crash with video files with audio fix: handled audio caps
+
+  [ Mustafa Ali ]
+  * gst-plugin-mltflite: Migration to C API of TF Lite
+
+  [ sbudha ]
+  * gst-ai-superresolution: updated offset value to compensate AIHub models from INT8 to UINT8
+
+  [ QCTECMDR Service ]
+  * Merge "gst-sample-apps: create a separate recipe and cmake for each sample application"
+
+  [ mohanga ]
+  * gst-sample-apps: create a separate recipe and cmake for each sample application
+
+  [ Mustafa Ali ]
+  * gst-plugin-mlqnn: Avoid hardcoded declarations
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-qti-oss: Added Caps Supports for AIHUB Midas models"
+
+  [ Tushar Darote ]
+  * gst-plugin-qti-oss: Added Caps Supports for AIHUB Midas models
+
+  [ QCTECMDR Service ]
+  * Merge "qtimlqnn: Add option for selecting backend device id"
+
+  [ Tushar Patra Jamula ]
+  * qtimlqnn: Add option for selecting backend device id
+
+  [ Linux Build Service Account ]
+  * Merge "mlvclassification: Add new submodule for face recognition" into le-gst.lnx.2.1
+
+  [ QCTECMDR Service ]
+  * Merge "mlvpose: Add support for lite-3dmm submodule"
+  * Merge "gst-ai-object-detection: Removing HardCoded Yolov8 Label File"
+  * Merge "metatransform: Module for averaing ROI label results"
+
+  [ Petar G. Georgiev ]
+  * mlvclassification: Add new submodule for face recognition
+
+  [ Linux Build Service Account ]
+  * Merge "qtiredissink: Remove meta parser from redissink plugin" into le-gst.lnx.2.1
+
+  [ Petar G. Georgiev ]
+  * metatransform: Module for averaing ROI label results
+
+  [ Angel Hitov ]
+  * qtiredissink: Remove meta parser from redissink plugin
+  * qtimlmetaparser: Add ML metadata parser plugin.
+
+  [ Jiadong Huang ]
+  * gst-plugin-base: Add counter for each FD
+
+  [ Aditya Saurabh ]
+  * gst-ai-object-detection: Removing HardCoded Yolov8 Label File
+
+  [ QCTECMDR Service ]
+  * Merge "metatransform: New plugin with modules for processing buffer meta"
+  * Merge "qtiredissink: Redis plugin enhancements"
+  * Merge "metamux: Make checks for buffer writable when really needed"
+  * Merge "voverlay: Add support for ROI landmarks"
+  * Merge "mlvdetection: qfd: Add support for another set of tensors"
+  * Merge "gst-ai-multistream: Application for 16 stream AI inference"
+  * Merge "smartvencbin: Fix for buffer timestamp initialization"
+
+  [ Shyam Komakula ]
+  * gst-plugin-qmmfsrc:add message for ROI Info in reprocess usecase
+
+  [ QCTECMDR Service ]
+  * Merge "gst-transform-example: enable target based input source"
+
+  [ sbudha ]
+  * gst-ai-multistream: Application for 16 stream AI inference
+
+  [ QCTECMDR Service ]
+  * Merge "gst-transform-example: app to demonstrate downscale, rotate and flip on gpu for camera and filesource"
+
+  [ Petar G. Georgiev ]
+  * mlvpose: Add support for lite-3dmm submodule
+
+  [ QCTECMDR Service ]
+  * Merge "gst-ai-monodepth: Add support for rtsp and file input stream"
+  * Merge "gst-ai-daisychain-detection-pose: added support for daisychain object detction and pose estimation"
+
+  [ Linux Build Service Account ]
+  * Merge "ml, base: Support for optional landmarks field in submodules" into le-gst.lnx.2.1
+
+  [ mohanga ]
+  * gst-transform-example: enable target based input source
+
+  [ chari ]
+  * gst-transform-example: app to demonstrate downscale, rotate and flip on gpu for camera and filesource
+
+  [ Raja Ganapathi Busam ]
+  * smartvencbin: Fix for buffer timestamp initialization
+
+  [ sbudha ]
+  * gst-ai-daisychain-detection-pose: added support for daisychain object detction and pose estimation
+
+  [ Rahul Khandelwal ]
+  * gst-ai-monodepth: Add support for rtsp and file input stream
+
+  [ Bing Li ]
+  * gst-plugin-cv-optclflow: change step_size config for 1080p support
+
+  [ QCTECMDR Service ]
+  * Merge "AI Sample Apps: Enable target based input source"
+
+  [ Angel Hitov ]
+  * qtiredissink: Redis plugin enhancements
+
+  [ QCTECMDR Service ]
+  * Merge "metamux: Fix deadlock at high loads"
+  * Merge "voverlay: Fix drawing inherited metas"
+
+  [ Petar G. Georgiev ]
+  * voverlay: Add support for ROI landmarks
+  * metatransform: New plugin with modules for processing buffer meta
+  * mlvdetection: qfd: Add support for another set of tensors
+
+  [ Petar Georgiev ]
+  * mlvdetection: Renamed face-detect submodule to more accurate qfd
+
+  [ Petar G. Georgiev ]
+  * metamux: Make checks for buffer writable when really needed
+
+  [ Aditya Saurabh ]
+  * AI Sample Apps: Enable target based input source
+
+  [ Petar Georgiev ]
+  * ml, base: Support for optional landmarks field in submodules
+
+  [ QCTECMDR Service ]
+  * Merge "ml, vsplit: Fix lost of meta inheritance with vsplit"
+  * Merge "ml: Overhaul the system for ML stage assignment"
+
+  [ Petar G. Georgiev ]
+  * ml, vsplit: Fix lost of meta inheritance with vsplit
+  * metamux: Fix deadlock at high loads
+  * ml: Overhaul the system for ML stage assignment
+
+  [ Tushar Patra Jamula ]
+  * qtimlqnn: Add support for loading model graph using cached context binary
+
+  [ QCTECMDR Service ]
+  * Merge "mlvdetection: Fix yolov5 triple block post-process"
+  * Merge "gst-plugin-mlqnn: Add support for qnn tensor version 1 and 2"
+  * Merge "voverlay, ml: Improve label quality and polygon mask"
+
+  [ Petar Georgiev ]
+  * mlvdetection: Fix yolov5 triple block post-process
+
+  [ Petar G. Georgiev ]
+  * voverlay: Fix drawing inherited metas
+
+  [ Petar Georgiev ]
+  * voverlay, ml: Improve label quality and polygon mask
+  * base, ml, voverlay: Fix wrong color exraction
+
+  [ QCTECMDR Service ]
+  * Merge "vsplit: Fix meta propagation issue"
+  * Merge "mlvdetection: Disable stabilization by default"
+
+  [ sbudha ]
+  * gst-ai-superresolution: added support for super resolution
+
+  [ Petar Georgiev ]
+  * voverlay: Improve label quality and internal functions
+  * voverlay: Add support for polygon mask and infill option
+
+  [ Petar G. Georgiev ]
+  * voverlay: Add support for inheritated metadata
+
+  [ Mustafa Ali ]
+  * gst-plugin-mlqnn: Add support for qnn tensor version 1 and 2
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-msgbroker: support for MQTT communication."
+  * Merge "gst-ai-pose-detection: Add HRNET model support for Pose detection"
+
+  [ Nikolay Hristozov ]
+  * mlvdetection: Disable stabilization by default
+
+  [ QCTECMDR Service ]
+  * Merge "sample app act_deact: Fix stream block during deactivate pad."
+  * Merge "gst-ai-parallel-inference: added file and rtsp support"
+
+  [ Rahul Khandelwal ]
+  * gst-ai-pose-detection: Add HRNET model support for Pose detection
+
+  [ Petar Georgiev ]
+  * vsplit: Fix meta propagation issue
+
+  [ QCTECMDR Service ]
+  * Merge "gst-smartcodec-example: app to demonstrate video smartcodec encode"
+  * Merge "gst-ai-segmentation: Add input support for file and rtsp stream"
+  * Merge "gst-ai-object-detection: Add support for rtsp and filesrc"
+  * Merge "gst-ai-pose-detection: Add input support for file and rtsp stream"
+  * Merge "gst-ai-multi-input-output-object-detection: Replace C++ with C file with some minor cleanup"
+
+  [ Rahul Khandelwal ]
+  * gst-ai-parallel-inference: added file and rtsp support
+
+  [ QCTECMDR Service ]
+  * Merge "gst-plugin-qmmfsrc:SHDR switch enhancement."
+
+  [ Rahul Khandelwal ]
+  * gst-ai-segmentation: Add input support for file and rtsp stream
+  * gst-ai-multi-input-output-object-detection: Replace C++ with C file with some minor cleanup
+  * gst-ai-object-detection: Add support for rtsp and filesrc
+  * gst-ai-pose-detection: Add input support for file and rtsp stream
+
+  [ sbudha ]
+  * gst-ai-daisychain-detection-classification: added rtsp support
+
+  [ Petar G. Georgiev ]
+  * voverlay: Add support or the new video metas
+  * voverlay: Optimize overlay blitting
+
+  [ QCTECMDR Service ]
+  * Merge "gst-usb-single-camera-app: :app to demonstrate the usb camera use with different output"
+  * Merge "gst-camera-shdr-ldc-eis-example: app to demonstrate camera features of shdr ldc eis"
+  * Merge "qtiredissink: Add redis sink plugin"
+
+  [ Rahul Khandelwal ]
+  * gst-ai-classification: Add input support for file and rtsp stream
+
+  [ Petar G. Georgiev ]
+  * voverlay: Fix property caching issue
+  * voverlay: Rename Cvp to Cv
+  * voverlay: Support new video converter interface
+  * voverlay: Initial implementation
+
+  [ QCTECMDR Service ]
+  * Merge "mlvdetection: Add bboxes stabilization"
+
+  [ Angel Hitov ]
+  * qtiredissink: Add redis sink plugin
+
+  [ QCTECMDR Service ]
+  * Merge "ml: Fix for 3 level Daisy Chain"
+  * Merge "mlvpose, mlvdetection: Use source region for filling video output"
+  * Merge "ml: Slight renaming & arguments change of some ML utils functions"
+  * Merge "rtspbin: Add RTSP bin plugin"
+
+  [ mohanga ]
+  * gst-smartcodec-example: app to demonstrate video smartcodec encode
+  * gst-usb-single-camera-app: :app to demonstrate the usb camera use with different output
+
+  [ Ziyi Gai ]
+  * gst-plugin-msgbroker: support for MQTT communication.
+
+  [ Nikolay Hristozov ]
+  * mlvdetection: Add bboxes stabilization
+
+  [ chari ]
+  * gst-camera-shdr-ldc-eis-example: app to demonstrate camera features of shdr ldc eis
+
+  [ Nikolay Hristozov ]
+  * rtspbin: Add RTSP bin plugin
+
+  [ Linux Build Service Account ]
+  * Merge "smartvencbin: Add support for V4L2 encoder" into le-gst.lnx.2.1
+
+  [ Nikolay Hristozov ]
+  * ml: Fix for 3 level Daisy Chain
+
+  [ Petar G. Georgiev ]
+  * mlvpose, mlvdetection: Use source region for filling video output
+  * ml: Slight renaming & arguments change of some ML utils functions
+
+  [ QCTECMDR Service ]
+  * Merge "overlay: Fix Y axis scale correction for pose estimation keypoints"
+
+  [ Shyam Komakula ]
+  * gst-plugin-qmmfsrc:SHDR switch enhancement.
+
+  [ QCTECMDR Service ]
+  * Merge "mltflite: Fix and minor cleanup of the #ifdef"
+  * Merge "overlay: fix default engine/backend"
+  * Merge "plugins: Remove deprecated plugins"
+  * Merge "vsplit, mlvpose: Fix variable type and improper access to variable"
+  * Merge "metamux: Fix for corruption when old buffer is sent after caps changed"
+  * Merge "examples: WebRTC: Do not exit the app on disconnect"
+  * Merge "overlay: Fix handling for derived and non-derived classification"
+
+  [ Arunn D ]
+  * sample app act_deact: Fix stream block during deactivate pad.
+
+  [ Linux Build Service Account ]
+  * Merge "qtimlqnn: Add support for QNN_TENSOR_VERSION_2" into le-gst.lnx.2.1
+
+  [ Zhang Jun ]
+  * qtimlqnn: Add support for QNN_TENSOR_VERSION_2
+
+  [ Petar G. Georgiev ]
+  * overlay: Fix Y axis scale correction for pose estimation keypoints
+
+  [ Raja Ganapathi Busam ]
+  * smartvencbin: Add support for V4L2 encoder
+
+  [ Petar G. Georgiev ]
+  * vsplit, mlvpose: Fix variable type and improper access to variable
+
+  [ QCTECMDR Service ]
+  * Merge "mlsnpe: Fix improper setup of layers and tensors in C implementation"
+  * Merge "gst-sample-apps: Add support for adding constants in gst-ai-segmentation"
+  * Merge "qmmfsrc: get_vendor_tag should not be called in NULL state."
+
+  [ Konstantin Motov ]
+  * overlay: fix default engine/backend
+
+  [ Petar G. Georgiev ]
+  * mlsnpe: Fix improper setup of layers and tensors in C implementation
+
+  [ Nikolay Hristozov ]
+  * examples: WebRTC: Do not exit the app on disconnect
+
+  [ Petar G. Georgiev ]
+  * mltflite: Fix and minor cleanup of the #ifdef
+  * plugins: Remove deprecated plugins
+
+  [ Nikolay Hristozov ]
+  * metamux: Fix for corruption when old buffer is sent after caps changed
+
+  [ Petar G. Georgiev ]
+  * overlay: Fix handling for derived and non-derived classification
+  * metamux: Do not add Classification meta if there are no labels
+  * base: Add GArray copy function for glib < 2.62
+
+  [ QCTECMDR Service ]
+  * Merge "examples: WebRTC: Implement parsing the pipeline for second stream from parameter"
+
+  [ Shyam Komakula ]
+  * qmmfsrc: get_vendor_tag should not be called in NULL state.
+
+  [ QCTECMDR Service ]
+  * Merge "qmmfsrc: add support vhdr modes for qclinux"
+  * Merge "ml: Support new accumulative batching"
+  * Merge "vcomposer: Propagate some metas from the inputs to the output"
+  * Merge "vsplit: Fix wrong calculation in ROI modes"
+
+  [ Petar G. Georgiev ]
+  * ml: Support new accumulative batching
+  * metamux: Add support for parsing id and source-region-id
+  * ml post-process: Add prerequisites for batch support
+  * ml: Switch to using the new headers from ML base
+  * base: ml: Move submodule headers and functions into base
+
+  [ QCTECMDR Service ]
+  * Merge "mlsnpe: add support for additional properties"
+  * Merge "mlsnpe: Fix library linking when using C++ APIs"
+  * Merge "mlvconverter, ml: Support for custom pre-process region"
+
+  [ Amrutha Sai Gattu ]
+  * overlay: fix opencl lib load typo
+
+  [ Petar G. Georgiev ]
+  * vcomposer: Propagate some metas from the inputs to the output
+  * vsplit: Fix wrong calculation in ROI modes
+  * vsplit: Add support for propagating derived metas
+  * overlay: Fix issue with both derived and regular meta
+
+  [ Ivan Evlogiev ]
+  * overlay: Fix error check for loading open cl lib
+
+  [ QCTECMDR Service ]
+  * Merge "mlvpose: Move prediction generation into separate function"
+
+  [ Petar G. Georgiev ]
+  * mlsnpe: Fix library linking when using C++ APIs
+
+  [ QCTECMDR Service ]
+  * Merge "mlvpose: Small fixes and improvements to posenet submodule"
+
+  [ Nikolay Hristozov ]
+  * examples: WebRTC: Implement parsing the pipeline for second stream from parameter
+
+  [ Petar G. Georgiev ]
+  * mlvconverter, ml: Support for custom pre-process region
+
+  [ Angel Ivanov ]
+  * mlsnpe: add support for additional properties
+
+  [ QCTECMDR Service ]
+  * Merge "mlqnn: Fix compilation issue"
+  * Merge "cv-imgpyramid: Fix handling of EOS event"
+  * Merge "vsplit: Fix handling of EOS event"
+  * Merge "base: Add a support for opensource labels format"
+
+  [ Rahul Khandelwal ]
+  * gst-sample-apps: Add support for adding constants in gst-ai-segmentation
+
+  [ Petar G. Georgiev ]
+  * mlqnn: Fix compilation issue
+
+  [ QCTECMDR Service ]
+  * Merge "examples: add webrtc example application"
+
+  [ Petar G. Georgiev ]
+  * ml, metamux, overlay: Incorporate new video metas
+  * mlvpose: Move prediction generation into separate function
+  * plugins: Switch to using common utils
+  * mlvpose: Small fixes and improvements to posenet submodule
+  * base: ml: Define common ML utils header and source files
+  * vsplit: Fix handling of EOS event
+  * mltflite, mlsnpe, mlqnn: Transfer all protection meta from input
+  * base: Add new video metas
+  * base: Initial implementation of common functions sub-directory
+  * metamux: Fix handling of GAP buffers
+  * ml: Rename GstLabel to the more accurate GstMLLabel
+  * metamux: Fix handling of EOS event
+  * mlvdetection: Move prediction generation into separate function
+  * mlvconverter: Improve handling for batched inputs
+  * mlvclassification: Move prediction generation into separate function
+  * batch: Fill the 'views' field on batched/multiview output
+  * batch: Fix handling of EOS event
+  * mldemux: Rename the demuxed protection meta
+  * mldemux: Fix handling of EOS event
+
+  [ Nikolay Hristozov ]
+  * base: Add a support for opensource labels format
+
+  [ Petar G. Georgiev ]
+  * Revert "mlvconverter: Fix input range for INT8 network"
+
+  [ Konstantin Motov ]
+  * base, mlvconverter: add support for INT8 tensors
+
+  [ Petar G. Georgiev ]
+  * superresolution: Fix issues not addressed in previous patch
+
+  [ Konstantin Motov ]
+  * base, mlvconverter: fix sigma and scale units
+
+  [ Petar G. Georgiev ]
+  * cv-imgpyramid: Fix handling of EOS event
+  * cv-imgpyramid: Minor code fixes
+
+  [ Nikolay Hristozov ]
+  * examples: add webrtc example application
+
+  [ Ivan Evlogiev ]
+  * overlay: Decouple libOpenCl
+
+  [ Nikolay Hristozov ]
+  * overlay: Remove dependency to properties.h
+
+  [ Petar G. Georgiev ]
+  * mlsnpe: Rework engine to use dlopen
+
+  [ Mustafa Ali ]
+  * gst-plugins-qti-oss: Fix build errors
+
+  [ QCTECMDR Service ]
+  * Merge "qmmfsrc: support multiple camera op mode concurrency"
+
+  [ qctecmdr ]
+  * Merge "gst-fastswitch-example: support frameselection and fastswitch concurrency"
+  * Merge "gst-sample-apps: add set state completion check and other improvements"
+  * Merge "gst-ai-object-detection: updated model path for tflite"
+  * Merge "qtimlvsuperresolution: added plugin support for super resolution"
+
+  [ mohanga ]
+  * gst-sample-apps: add set state completion check and other improvements
+
+  [ sbudha ]
+  * gst-ai-object-detection: updated model path for tflite
+
+  [ Aashish Patel ]
+  * qmmfsrc: add support vhdr modes for qclinux
+
+  [ qctecmdr ]
+  * Merge "gst-ai-daisychain-detection-classification: added unref pipeline"
+  * Merge "mlvconverter: Fix input range for INT8 network"
+
+  [ Ziyi Gai ]
+  * gst-fastswitch-example: support frameselection and fastswitch concurrency
+
+  [ FengChen ]
+  * qmmfsrc: support multiple camera op mode concurrency
+
+  [ qctecmdr ]
+  * Merge "codec2: support layer encoding in cyclic mode"
+
+  [ sbudha ]
+  * qtimlvsuperresolution: added plugin support for super resolution
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-dfs: adapt rvSDK new API"
+  * Merge "qmmfsrc: Add support for EIS modes"
+
+  [ sbudha ]
+  * gst-ai-daisychain-detection-classification: added unref pipeline
+
+  [ qctecmdr ]
+  * Merge "mlvdetection: Extend YOLO-NAS module"
+
+  [ Divya Theja K P ]
+  * mlvdetection: Extend YOLO-NAS module
+
+  [ sbudha ]
+  * gst-ai-daisychain-detection-classification: Updated command line arguments
+
+  [ qctecmdr ]
+  * Merge "gst-sample-apps: Add support for tflite models in gst-ai-object-detection"
+  * Merge "smartvencbin: Rework video-ctrl apis"
+  * Merge "smartvencbin: Provide real stride value to the video-ctrl"
+  * Merge "smartvencbin: Synchronize the ML with HD streams"
+  * Merge "smartvencbin: Smart GOP length support"
+  * Merge "qtivsplit: Fix for video format conversion failure"
+  * Merge "gst-sample-apps: remove the async=false from video decode apps"
+
+  [ Shyam Komakula ]
+  * qmmfsrc: Add support for EIS modes
+
+  [ Linux Build Service Account ]
+  * Merge "gst-sample-apps: Add support for adding constants in gst-ai-classification" into le-gst.lnx.2.1
+  * Merge "qtioverlay: Fix for Privacy Mask runtime" into le-gst.lnx.2.1
+  * Merge "gst-ai-daisychain-detection-classification: app to demonstrate daisy chain pipeline for detection and classification" into le-gst.lnx.2.1
+  * Merge "gst-sample-apps: add user option to set ip address and port num" into le-gst.lnx.2.1
+
+  [ Kin Zhao ]
+  * codec2: support layer encoding in cyclic mode
+
+  [ Jai Shiv ]
+  * qmmfsrc: disable c2d based tags if c2d is not present
+
+  [ Rahul Khandelwal ]
+  * gst-sample-apps: Add support for tflite models in gst-ai-object-detection
+
+  [ shrasoma ]
+  * qtivsplit: Fix for video format conversion failure
+
+  [ Rahul Khandelwal ]
+  * gst-sample-apps: Add support for adding constants in gst-ai-classification
+
+  [ mohanga ]
+  * gst-sample-apps: remove the async=false from video decode apps
+  * gst-sample-apps: add user option to set ip address and port num
+
+  [ shrasoma ]
+  * qtioverlay: Fix for Privacy Mask runtime
+
+  [ sbudha ]
+  * gst-ai-daisychain-detection-classification: app to demonstrate daisy chain pipeline for detection and classification
+
+  [ Bing Li ]
+  * gst-plugin-dfs: adapt rvSDK new API
+
+  [ Nikolay Hristozov ]
+  * smartvencbin: Rework video-ctrl apis
+
+  [ Raja Ganapathi Busam ]
+  * vcomposer: Fix for src pad caps reconfiguration in update_src_caps
+
+  [ qctecmdr ]
+  * Merge "mlvsegmentation: Add support for 1 more type of midas tensor"
+
+  [ ppachang ]
+  * mlvsegmentation: Add support for 1 more type of midas tensor
+
+  [ Hari Krishna C ]
+  * gst-camera-burst-capture-example:app to demonstrate camera burst capture
+
+  [ sbudha ]
+  * gst-ai-daisychain-detection-classification: app to demonstrate daisy chain pipeline for detection and classification
+
+  [ mohanga ]
+  * gst-camera-switch-example:app to demonstrate the switch between two cameras
+
+  [ qctecmdr ]
+  * Merge "gst-add-remove-streams-runtime: app to demonstrate add and remove multiple streams dynamically"
+  * Merge "gst-add-streams-as-bundle-example:add/remove the streams with once camera reconfiguration"
+  * Merge "gst-ai-monodepth: application for monodepth"
+  * Merge "gst-ai-multi-input-output-object-detection: fix for rtsp streaming"
+
+  [ Arunn D ]
+  * gst-add-remove-streams-runtime: app to demonstrate add and remove multiple streams dynamically
+
+  [ mohanga ]
+  * gst-add-streams-as-bundle-example:add/remove the streams with once camera reconfiguration
+  * gst-ai-monodepth: application for monodepth
+  * gst-ai-multi-input-output-object-detection: fix for rtsp streaming
+  * gst-sample-apps: update XDG_RUNTIME_DIR variable value
+
+  [ qctecmdr ]
+  * Merge "smartvencbin: Smart video encoder bin"
+
+  [ Arunn D ]
+  * gst-camera-metadata-example: fix for camera metadata header file missing error
+
+  [ Rahul Khandelwal ]
+  * gst-sample-apps: Added support for AI-HUB INT8 models
+
+  [ shrasoma ]
+  * qtioverlay: add support for polygon privacy mask
+
+  [ Nikolay Hristozov ]
+  * smartvencbin: Provide real stride value to the video-ctrl
+  * smartvencbin: Synchronize the ML with HD streams
+  * smartvencbin: Smart GOP length support
+
+  [ Petar G. Georgiev ]
+  * smartvencbin: Smart video encoder bin
+
+  [ qctecmdr ]
+  * Merge "mlvpose: Add support for HRNet submodule"
+  * Merge "codec2: Add support for multiple audio profiles"
+
+  [ Petar G. Georgiev ]
+  * mlvpose: Add support for HRNet submodule
+  * mlvdetection: Small optimization of the yolov5 submodule
+  * mlvdetection: Enhance and improve YoloV8 submodule
+  * mlvsegmentation: Add YoloV8 post-processing module
+  * mltflite: Fix compilation errors
+
+  [ Divya Theja K P ]
+  * mlvconverter: Fix input range for INT8 network
+
+  [ qctecmdr ]
+  * Merge "mlvsegmentation: Add support for post-processing constants/coefficients"
+  * Merge "base: Fix calculations for FastCV composition area"
+  * Merge "base: Fix incorrect value passed at C2D Draw"
+  * Merge "mlvconverter: Improve normalization and add more ML types"
+  * Merge "mlvconverter: Remove optimization in normalize function"
+  * Merge "base, mlvconverter: Fix default normalization values"
+  * Merge "mlvconverter: Fix dimensions for destination in ML frame/tensor"
+  * Merge "mlvconverter: Add missing ML types in the GstCaps"
+  * Merge "mlaic, mlsnpe, mltflite, mlqnn: Add missing ML types"
+  * Merge "codec2: support video scalar."
+  * Merge "gst-sample-apps: fix the issues reported for sample apps"
+
+  [ Petar G. Georgiev ]
+  * mlvsegmentation: Add support for post-processing constants/coefficients
+  * base: Fix calculations for FastCV composition area
+  * base: Fix incorrect value passed at C2D Draw
+  * mlvconverter: Improve normalization and add more ML types
+  * mlvconverter: Remove optimization in normalize function
+  * base, mlvconverter: Fix default normalization values
+  * mlvconverter: Fix dimensions for destination in ML frame/tensor
+  * mlvconverter: Add missing ML types in the GstCaps
+  * mlaic, mlsnpe, mltflite, mlqnn: Add missing ML types
+
+  [ Nikolay Hristozov ]
+  * codec2: Add support for multiple audio profiles
+
+  [ qctecmdr ]
+  * Merge "codec2: Proper handling of error state for audio enc/dec"
+
+  [ Kin Zhao ]
+  * codec2: support video scalar.
+
+  [ Aashish Patel ]
+  * mlsnpe: fix double free of outputs
+
+  [ Raja Ganapathi Busam ]
+  * gst-plugin-mlvclassification: Added an option to perform SoftMax operation
+
+  [ Nikolay Hristozov ]
+  * codec2: Proper handling of error state for audio enc/dec
+
+  [ mohanga ]
+  * gst-sample-apps: fix the issues reported for sample apps
+  * gst-activate-deactivate-streams-runtime: set preview stream
+  * gst-sample-apps: set preview stream
+  * gst-transform-example: fix for downscale issue
+
+  [ qctecmdr ]
+  * Merge "gst-sample-apps: add check for models and labels for gst-ai-parallel-inference"
+
+  [ Linux Build Service Account ]
+  * Merge "mlvclassification: Add support for post-processing constants/coefficients" into le-gst.lnx.2.1
+  * Merge "vcomposer: Fix mem leak in vcomposer plugin" into le-gst.lnx.2.1
+
+  [ Rahul Khandelwal ]
+  * gst-sample-apps: add check for models and labels for gst-ai-parallel-inference
+  * gst-sample-apps: add check for invalid camera id in multi input output app
+
+  [ ppachang ]
+  * vcomposer: Fix mem leak in vcomposer plugin
+
+  [ mohanga ]
+  * gst-sample-apps: minor fixes in application
+
+  [ qctecmdr ]
+  * Merge "gst-camera-metadata-example: add app summary, display environment and remove capture option."
+
+  [ Petar G. Georgiev ]
+  * mlvclassification: Add support for post-processing constants/coefficients
+
+  [ Arunn D ]
+  * gst-camera-metadata-example: add app summary, display environment and remove capture option.
+
+  [ qctecmdr ]
+  * Merge "gst-sample-apps: Update application configuration"
+  * Merge "gst-sample-apps: enhancements in applications"
+  * Merge "gst-activate-deactivate-streams-runtime:adding display environment variables and others"
+
+  [ Rahul Khandelwal ]
+  * gst-sample-apps: Update application configuration
+
+  [ qctecmdr ]
+  * Merge "gst-audio-decode-example: add support for flac format"
+  * Merge "qtiqmmfsrc: Fix for default colorimetry to BT601 in fixate_caps"
+  * Merge "gst-sample-apps: Dynamic configuration of waylandsink coordinates"
+  * Merge "qmmfsrc,mltflite: remove android mention in properties"
+  * Merge "gst-sample-apps: Switch classification tflite model to inception v3"
+  * Merge "gst-sample-apps: Switch model to yolov5 tflite for multi input output app"
+  * Merge "gst-weston-composition-example:fix the video playback issue."
+  * Merge "gst-audio-video-encode: app to demonstrate audio video encode"
+  * Merge "vsplit: Fixate srcpad caps"
+
+  [ iraj ]
+  * vsplit: Fixate srcpad caps
+
+  [ mohanga ]
+  * gst-sample-apps: enhancements in applications
+
+  [ Hari Krishna C ]
+  * gst-activate-deactivate-streams-runtime:adding display environment variables and others
+  * gst-audio-decode-example: add support for flac format
+
+  [ Rahul Khandelwal ]
+  * gst-sample-apps: Switch classification tflite model to inception v3
+  * gst-sample-apps: Switch model to yolov5 tflite for multi input output app
+  * gst-sample-apps: Dynamic configuration of waylandsink coordinates
+
+  [ Linux Build Service Account ]
+  * Merge "gst-sample-apps: add check for model, labels and other file paths" into le-gst.lnx.2.1
+
+  [ Hari Krishna C ]
+  * gst-audio-video-encode: app to demonstrate audio video encode
+
+  [ Linux Build Service Account ]
+  * Merge "gst-concurrent-videoplay-composition:app to demonstrate video concurrent videoplay" into le-gst.lnx.2.1
+
+  [ Shyam Komakula ]
+  * qmmfsrc,mltflite: remove android mention in properties
+
+  [ mohanga ]
+  * gst-weston-composition-example:fix the video playback issue.
+
+  [ Swinder Pal Singh Juneja ]
+  * gst-sample-apps: add check for model, labels and other file paths
+
+  [ mohanga ]
+  * gst-concurrent-videoplay-composition:app to demonstrate video concurrent videoplay
+  * gst-video-transcode-example:app to demonstrate video transcode
+
+  [ Hari Krishna C ]
+  * gst-multi-stream-example:app to demonstrate multistream from single camera usecases
+  * gst-multi-camera-example:app to demonstrate the multicamera usecases
+  * gst-camera-single-stream-example: add support for video encode and rtsp stream
+
+  [ Linux Build Service Account ]
+  * Merge "gst-activate-deactivate-streams-runtime: app to demonstrate activate deactivate the streams runtime without a reconfiguration" into le-gst.lnx.2.1
+
+  [ Rahul Khandelwal ]
+  * gst-sample-apps: Make Display environment variables as part of app
+
+  [ Arunn D ]
+  * gst-activate-deactivate-streams-runtime: app to demonstrate activate deactivate the streams runtime without a reconfiguration
+  * gst-camera-metadata-example: App to support get/set vendor tags"
+  * gst-transform-example: app to demonstrate downscale, rotate and flip on gpu
+
+  [ qctecmdr ]
+  * Merge "gst-snapshot-stream-example: app to demonstrate snapshot capture with preview stream."
+  * Merge "qmmfsrc: update zoom default values"
+  * Merge "codec2: Fix for unsupported audio formats"
+  * Merge "gst-sample-apps : fix sample app review comments."
+  * Merge "gst-ai-sample-apps: Added fpsdisplaysink support for gst-ai-parallel-inference"
+
+  [ Raja Ganapathi Busam ]
+  * qtiqmmfsrc: Fix for default colorimetry to BT601 in fixate_caps
+
+  [ Linux Build Service Account ]
+  * Merge "gst-ai-sample-apps: Added fpsdisplaysink support" into le-gst.lnx.2.1
+
+  [ Rahul Khandelwal ]
+  * gst-ai-sample-apps: Added fpsdisplaysink support for gst-ai-parallel-inference
+
+  [ Arunn D ]
+  * gst-snapshot-stream-example: app to demonstrate snapshot capture with preview stream.
+  * gst-sample-apps : fix sample app review comments.
+
+  [ Rahul Khandelwal ]
+  * gst-ai-sample-apps: Added fpsdisplaysink support
+
+  [ qctecmdr ]
+  * Merge "gst-sample-apps: add gst-ai-multi-input-output-object-detection"
+
+  [ Linux Build Service Account ]
+  * Merge "tflite-plugin: Conditionally add hexagon delegate support" into le-gst.lnx.2.1
+  * Merge "gst-docker-ref: Prepares the container layers for h/w acceleration demo. 	- demonstrates video transform from container 	- demonstrates multi container communication 	- demonstrates mltool running inside container" into le-gst.lnx.2.1
+  * Merge "codec2: Fix incorrect codec config in case of video decoder" into le-gst.lnx.2.1
+
+  [ Divya Theja K P ]
+  * tflite-plugin: Conditionally add hexagon delegate support
+
+  [ Nikolay Hristozov ]
+  * codec2: Fix for unsupported audio formats
+
+  [ Aashish Patel ]
+  * qmmfsrc: update zoom default values
+
+  [ Arjun Singh ]
+  * gst-docker-ref: Prepares the container layers for h/w acceleration demo. 	- demonstrates video transform from container 	- demonstrates multi container communication 	- demonstrates mltool running inside container
+
+  [ Swinder Pal Singh Juneja ]
+  * gst-sample-apps: add gst-ai-multi-input-output-object-detection
+
+  [ Kin Zhao ]
+  * codec2: fix race condition and dead lock issue
+
+  [ mohanga ]
+  * gst-video-playback-example: porting app from gst-plugin-examples to gst-sample-apps
+
+  [ Rahul Khandelwal ]
+  * gst-ai-apps: Add AI-ML apps for SNPE and TFLITE based inferencing
+
+  [ Hari Krishna C ]
+  * gst-appsink-example: app to demonstrate the use of appsink plugin with camera
+  * gst-weston-composition-example: app to demonstrate the composition of waylandsink and qtivcomposer
+  * gst-camera-single-stream-example: demonstrates camera live on waylandsink or dumping the camera yuv to filesink
+
+  [ mohanga ]
+  * gst-audio-video-playback: Sample Application to demonstrate the use of audio video playback
+  * gst-videocodec-concurrent-playback: app to demonstrate concurrent video decode (avc and hevc)
+
+  [ Hari Krishna C ]
+  * gst-audio-encode-example: app to demonstrate audio encode of format flac and wav
+  * gst-audio-decode-example: app to demonstrate audio decode of wav and mp3
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-overlay: Fix unexpected GPU clock bumping up."
+
+  [ Kin Zhao ]
+  * codec2: set default tier to main in h265 encoding
+
+  [ qctecmdr ]
+  * Merge "mlsnpe: added new property for tensor output"
+  * Merge "gst-plugin-example: fix gst-camera-switch-appsrc-example stuck issue."
+
+  [ Nikolay Hristozov ]
+  * codec2: Fix incorrect codec config in case of video decoder
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-examples: Add examples for SNPEv2"
+  * Merge "codec2: Implement support for audio encoder and decoder"
+
+  [ Angel Ivanov ]
+  * mlsnpe: added new property for tensor output
+
+  [ Linux Build Service Account ]
+  * Merge "gst-plugin-examples: Refactor the example apps" into le-gst.lnx.2.1
+
+  [ Jiadong Huang ]
+  * gst-plugin-examples: Add examples for SNPEv2
+
+  [ iraj ]
+  * gst-plugin-examples: Refactor the example apps
+
+  [ Ziyi Gai ]
+  * gst-plugin-example: fix gst-camera-switch-appsrc-example stuck issue.
+
+  [ Guangde Zhang ]
+  * gst-plugin-codec2: add input fd type check
+
+  [ qctecmdr ]
+  * Merge "qmmfsrc: update for K2L"
+
+  [ Aashish Patel ]
+  * qmmfsrc: update for K2L
+
+  [ Alexander Nikolov ]
+  * qmmfsrc: switch from AOSP to QMMF-SDK meta/tags
+
+  [ qctecmdr ]
+  * Merge "examples: add gst-gbm-appsrc"
+  * Merge "qtisocket:  setup qtisocketsrc base class GstPushSrc to send time segment"
+
+  [ Linux Build Service Account ]
+  * Merge "gst-plugin-overlay: Handle Andoridisms" into le-gst.lnx.2.1
+  * Merge "gst-plugin-codec2: Fix unknown colorspace issue" into le-gst.lnx.2.1
+
+  [ Zhang Jun ]
+  * qtisocket:  setup qtisocketsrc base class GstPushSrc to send time segment
+
+  [ Tushar Patra Jamula ]
+  * gst-plugin-overlay: Handle Andoridisms
+
+  [ qctecmdr ]
+  * Merge "gst-pipeline-app: Fix input buffer g_free when return FALSE."
+
+  [ Linux Build Service Account ]
+  * Merge "gst-plugin-qmmfsrc: add colorimetry" into le-gst.lnx.2.1
+  * Merge "codec2: add colorimetry for encode" into le-gst.lnx.2.1
+
+  [ qctecmdr ]
+  * Merge "qtisocket: added fd caching for qtisocket plugins"
+  * Merge "qtivcomposer: Enlarge the size of buffer pool"
+  * Merge "qtivcomposer: Avoid too many ERROR logs"
+
+  [ Zhi Chen ]
+  * qtisocket: added fd caching for qtisocket plugins
+
+  [ qctecmdr ]
+  * Merge "gst-camera-burst-intervalcapture-example: Fix gmetas for capture."
+
+  [ Guangde Zhang ]
+  * gst-plugin-qmmfsrc: add colorimetry
+
+  [ Satchel French ]
+  * examples: add gst-gbm-appsrc
+
+  [ Hongyong Huang ]
+  * gst-camera-metadata-example: Modify meta clear in handle_tag_menu().
+
+  [ Guangde Zhang ]
+  * codec2: add colorimetry for encode
+
+  [ Hongyong Huang ]
+  * gst-camera-burst-intervalcapture-example: Fix gmetas for capture.
+
+  [ Jiadong Huang ]
+  * qtivcomposer: Enlarge the size of buffer pool
+  * qtimlqnn: Fix QNN GPU issue
+
+  [ qctecmdr ]
+  * Merge "Discard out of range prediction results"
+  * Merge "Destroy the input surfaces if the input buffer is not from pool"
+  * Merge "gst-video-playback-example: Disable stop temporarily."
+  * Merge "mlvconverter: Fix number of blits when batching"
+  * Merge "base: Improve the method for setting SRC/DEST rectangles"
+  * Merge "gst-camera-metadata-example: Check NULL in handle_stdin_source and wait_stdin_message."
+  * Merge "codec2: use GBM_FORMAT_NV12_HEIF for heic encoding"
+
+  [ Jiadong Huang ]
+  * qtivcomposer: Avoid too many ERROR logs
+
+  [ shrasoma ]
+  * gst-plugin-codec2: Fix unknown colorspace issue
+
+  [ qctecmdr ]
+  * Merge "qtiqmmfsrc: Implement a buffer pool for video and image pad"
+
+  [ Raja Ganapathi Busam ]
+  * Discard out of range prediction results
+
+  [ iraj ]
+  * gst-video-playback-example: Disable stop temporarily.
+
+  [ Raja Ganapathi Busam ]
+  * Destroy the input surfaces if the input buffer is not from pool
+
+  [ Hongyong Huang ]
+  * gst-camera-metadata-example: Check NULL in handle_stdin_source and wait_stdin_message.
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-qmmfsrc: Enable kNV12HEIF if subformat is heif."
+
+  [ Petar G. Georgiev ]
+  * mlvconverter: Fix number of blits when batching
+  * base: Fix wrong flip/rotate of FCV and make Blit flip as enum
+  * base: Address comments from previous gerrits
+  * base: Unify the Video Converter interfaces
+  * base: Overhaul the interfaces of the video converter engines
+  * Revert "vtransform: Create a new derived plugin that uses FCV engine"
+  * vtransform: Create a new derived plugin that uses FCV engine
+  * vtransform: Add support for FastCV video converter
+  * mlvconverter: Add support for FastCV video converter
+  * base: Implement FastCV based video converter
+  * base: Improve the method for setting SRC/DEST rectangles
+
+  [ Raja Ganapathi Busam ]
+  * qtiqmmfsrc: Implement a buffer pool for video and image pad
+
+  [ qctecmdr ]
+  * Merge "gst-video-playback-example: Add a sample app to play a video file."
+
+  [ iraj ]
+  * gst-video-playback-example: Add a sample app to play a video file.
+
+  [ qctecmdr ]
+  * Merge "codec2: Fix avc profile name"
+  * Merge "gst-plugin-examples: Add Phase2 for gst-camera-burst-intervalcapture-example."
+  * Merge "gst-plugin-examples: add new example (gst-timelapse-example)."
+  * Merge "gst-fastswitch-exmaple: Add support for second video stream and test round."
+
+  [ Linux Build Service Account ]
+  * Merge "gst-plugin-qmmfsrc: support session metadata" into le-gst.lnx.2.1
+  * Merge "base: imagepool: Add support for GBM grayscale format" into le-gst.lnx.2.1
+
+  [ Nikolay Hristozov ]
+  * codec2: Implement support for audio encoder and decoder
+
+  [ qctecmdr ]
+  * Merge "base: Close GBM memory FD based on GBM FD_WITH_NEW"
+
+  [ Hongyong Huang ]
+  * gst-plugin-examples: Add Phase2 for gst-camera-burst-intervalcapture-example.
+
+  [ qctecmdr ]
+  * Merge "codec2: remove Drain() API in stop()"
+  * Merge "gst-umd-daemon: fixed ML broken cases of UVC"
+
+  [ Linux Build Service Account ]
+  * Merge "gst-plugin-examples: Modify gst-camera-burst-intervalcapture-example." into le-gst.lnx.2.1
+  * Merge "gst-camera-metadata-example: Add session-metadata and related function." into le-gst.lnx.2.1
+
+  [ Ziyi Gai ]
+  * gst-plugin-examples: add new example (gst-timelapse-example).
+  * gst-fastswitch-exmaple: Add support for second video stream and test round.
+
+  [ Kin Zhao ]
+  * codec2: use GBM_FORMAT_NV12_HEIF for heic encoding
+  * gst-plugin-qmmfsrc: Enable kNV12HEIF if subformat is heif.
+
+  [ yguvvala ]
+  * gst-plugins-qti-oss: Remove the c2-component code from the directory
+
+  [ Hongyong Huang ]
+  * gst-plugin-examples: Modify gst-camera-burst-intervalcapture-example.
+  * gst-camera-metadata-example: Add session-metadata and related function.
+
+  [ iraj ]
+  * gst-drm-player-example : Add support to play Widevine DRM content
+
+  [ Linux Build Service Account ]
+  * Merge "gst-plugin-examples: Add gst-camera-burst-intervalcapture-example." into le-gst.lnx.2.1
+  * Merge "metamux & overlay: additional implementation caused by eva opticalflow" into le-gst.lnx.2.1
+
+  [ Hongyong Huang ]
+  * gst-pipeline-app: Fix input buffer g_free when return FALSE.
+
+  [ Guangde Zhang ]
+  * gst-plugin-qmmfsrc: support session metadata
+
+  [ Bing Li ]
+  * metamux & overlay: additional implementation caused by eva opticalflow
+  * gst-plugin-cv-opticlflow:enhancements and add eva support
+
+  [ Linux Build Service Account ]
+  * Merge "gst-plugins-qti-oss ：Name change of Cvp to Cv" into le-gst.lnx.2.1
+
+  [ Zhi Chen ]
+  * gst-umd-daemon: fixed ML broken cases of UVC
+
+  [ Jerry Bae ]
+  * gst-plugin-overlay: Fix unexpected GPU clock bumping up.
+
+  [ FengChen ]
+  * gst-plugin-qmmfsrc: revert stream visit
+
+  [ Kin Zhao ]
+  * codec2: remove Drain() API in stop()
+
+  [ Hongyong Huang ]
+  * gst-plugin-examples: Add gst-camera-burst-intervalcapture-example.
+
+  [ FengChen ]
+  * gst-plugin-qmmfsrc:add fastswitch in camera operation property
+
+  [ qctecmdr ]
+  * Merge "mlvdetection: Support for 5D output tensor for SSD detection"
+  * Merge "qtimlqnn: QNN based ML inferencing plugin"
+
+  [ Petar G. Georgiev ]
+  * base: imagepool: Add support for GBM grayscale format
+  * base: Close GBM memory FD based on GBM FD_WITH_NEW
+
+  [ Arindam Biswas ]
+  * mlvdetection: Support for 5D output tensor for SSD detection
+  * qtimlqnn: QNN based ML inferencing plugin
+
+  [ qctecmdr ]
+  * Merge "codec2: Proper flush handling of encoder"
+
+  [ Linux Build Service Account ]
+  * Merge "gst-single-4k-example: add rc mode for codec2" into le-gst.lnx.2.1
+
+  [ qctecmdr ]
+  * Merge "mlsnpe: Fix the way we storing the userbuffers"
+
+  [ iraj ]
+  * drmdecryptor : Add support for Widevine DRM
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-qmmfsrc: support multiple snapshot"
+  * Merge "gst-plugin-examples: add new example (gst-fastswitch-example)."
+
+  [ Nikolay Hristozov ]
+  * codec2: Proper flush handling of encoder
+
+  [ Ziyi Gai ]
+  * gst-plugin-examples: add new example (gst-fastswitch-example).
+
+  [ qctecmdr ]
+  * Merge "gst-umd-daemon: Add H.264 encoding support"
+
+  [ Bing Li ]
+  * gst-plugins-qti-oss ：Name change of Cvp to Cv
+
+  [ Zhi Chen ]
+  * gst-umd-daemon: Add H.264 encoding support
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-examples: fix the examples for tflite"
+  * Merge "gst-plugin-qmmfsrc: add support for Input ROI reprocess"
+
+  [ Jiadong Huang ]
+  * gst-plugin-examples: fix the examples for tflite
+
+  [ qctecmdr ]
+  * Merge "metamux: limit dataqueue size to 1 second"
+  * Merge "gst-camera-metadata-example: Fix stale metadata in get and set tag menus."
+
+  [ Guangde Zhang ]
+  * gst-single-4k-example: add rc mode for codec2
+
+  [ qctecmdr ]
+  * Merge "mlvdetection: Support face detection for SNPEv2"
+  * Merge "gst-plugin-examples: Add constants for posenet"
+
+  [ Aashish Patel ]
+  * metamux: limit dataqueue size to 1 second
+
+  [ qctecmdr ]
+  * Merge "codec2: Handle resolution change at decoder output"
+
+  [ Nikolay Hristozov ]
+  * mlsnpe: Fix the way we storing the userbuffers
+
+  [ Jiadong Huang ]
+  * mlvdetection: Support face detection for SNPEv2
+
+  [ Guangde Zhang ]
+  * gst-plugin-qmmfsrc: support multiple snapshot
+
+  [ Nikolay Hristozov ]
+  * codec2: Fix avc profile name
+
+  [ Jiadong Huang ]
+  * gst-plugin-examples: Add constants for posenet
+
+  [ Linux Build Service Account ]
+  * Merge "imgpyramid: enhancements and eva support" into le-gst.lnx.2.1
+
+  [ Shyam Komakula ]
+  * gst-plugin-qmmfsrc: add support for Input ROI reprocess
+
+  [ iraj ]
+  * gst-camera-metadata-example: Fix stale metadata in get and set tag menus.
+
+  [ qctecmdr ]
+  * Merge "codec2: Handle empty decoder output buffers"
+  * Merge "gst-plugin-qmmfsrc: support raw video variable framerates"
+  * Merge "codec2: support timpe lapse encode"
+  * Merge "codec2: fix dead lock when stop the engine"
+  * Merge "vtransform: Flush video converter on signal"
+  * Merge "gst-plugin-qmmfsrc: fix null pointer of event callback"
+  * Merge "mlvdetection: Unify yolov5m and yolov5s into single yolov5 module"
+  * Merge "mlvdetection: Update yolonas module to support uint8."
+  * Merge "ml: Add support for setting post-processing constants/coefficients"
+  * Merge "mlvclassification: Add OCR module for text recognition."
+  * Merge "mlvdetection: add EAST text detection module."
+  * Merge "vsplit, vcomposer: Add and change limit of maximum buffer queue length."
+  * Merge "gst-plugin-qmmfsrc:support camera opration mode property"
+
+  [ ppachang ]
+  * codec2: Handle resolution change at decoder output
+  * codec2: Handle empty decoder output buffers
+
+  [ Aashish Patel ]
+  * imgpyramid: enhancements and eva support
+
+  [ Kin Zhao ]
+  * codec2: support timpe lapse encode
+  * gst-plugin-qmmfsrc: support raw video variable framerates
+  * codec2: fix dead lock when stop the engine
+
+  [ Petar G. Georgiev ]
+  * mlvdetection: Unify yolov5m and yolov5s into single yolov5 module
+
+  [ Tri Dung Le ]
+  * mlvdetection: Update yolonas module to support uint8.
+
+  [ Petar G. Georgiev ]
+  * ml: Add support for setting post-processing constants/coefficients
+
+  [ Linh Nguyen Duc ]
+  * mlvclassification: Add OCR module for text recognition.
+  * mlvdetection: add EAST text detection module.
+  * mlvdetection: Update yolov8 module to support uint8.
+
+  [ Petar G. Georgiev ]
+  * mlvdetection: Move common functions in the submodule header
+  * ml: Add mandatory submodule parameter for caps configuration
+  * mlvdetection: Overhaul face detection submodule
+
+  [ FengChen ]
+  * gst-plugin-qmmfsrc:support camera opration mode property
+
+  [ Raja Ganapathi Busam ]
+  * mltflite: Adding external delegate support in qtimltflite plugin
+
+  [ Zhi Chen ]
+  * gst-plugin-qmmfsrc: fix null pointer of event callback
+
+  [ Hongyong Huang ]
+  * vsplit, vcomposer: Add and change limit of maximum buffer queue length.
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-qmmfsrc: adding standby support."
+  * Merge "mlvconverter: Set the backgorund CLEAR flag"
+  * Merge "gst-camera-standby-example : Add an example app to demonstrate camera standby mode"
+
+  [ Linux Build Service Account ]
+  * Merge "gst-umd-daemon: Delete adevice in umd_gadget_new()." into le-gst.lnx.2.1
+
+  [ iraj ]
+  * gst-camera-standby-example : Add an example app to demonstrate camera standby mode
+
+  [ Shyam Komakula ]
+  * gst-plugin-qmmfsrc: adding standby support.
+
+  [ Hongyong Huang ]
+  * gst-umd-daemon: Delete adevice in umd_gadget_new().
+
+  [ Shudan Liu ]
+  * codec2: Fix the issue of failing to add protection meta
+
+  [ Petar G. Georgiev ]
+  * mlvconverter: Set the backgorund CLEAR flag
+
+  [ iraj ]
+  * gst-camera-metadata-example : Add support to input a custom pipeline
+
+  [ qctecmdr ]
+  * Merge "codec2: Add processing capability for gap buffers"
+  * Merge "vcomposer: Fix convert issue when input buffers are all GAP buffers"
+  * Merge "gst-plugin-codec2: remove unnecessary map on frame available"
+  * Merge "codec2: qp info and LTR mark support"
+  * Merge "gst-plugin-codec2: memleak in c2 encoder plugin"
+
+  [ Shudan Liu ]
+  * codec2: Add processing capability for gap buffers
+
+  [ Kin Zhao ]
+  * codec2: qp info and LTR mark support
+
+  [ ppachang ]
+  * codec2: Fix to print the correct error code in event handler
+
+  [ Shudan Liu ]
+  * vcomposer: Fix convert issue when input buffers are all GAP buffers
+
+  [ Shyam Komakula ]
+  * gst-plugin-codec2: memleak in c2 encoder plugin
+  * gst-plugin-codec2: remove unnecessary map on frame available
+
+  [ qctecmdr ]
+  * Merge "mlaic: remove log getId to avoid backward compatible with SDK 1.10.0.193"
+  * Merge "gst-plugin-jpegenc: add CAMERA_METADATA macro definition."
+  * Merge "Object Detection and posenet examples with TfLite"
+  * Merge "gst-plugin-qmmfsrc: NV12 snapshot support"
+  * Merge "codec2: enable intra refresh cyclic mode"
+
+  [ Tri Dung Le ]
+  * mlaic: remove log getId to avoid backward compatible with SDK 1.10.0.193
+
+  [ qctecmdr ]
+  * Merge "mlvdetection: Remove hardcode at yolov5s to support customized yolo model."
+  * Merge "ml: Incorporate the new threshold module parameter in all submodules"
+
+  [ ppachang ]
+  * codec2: Fix SIGSEGV fault on drain with EOS
+
+  [ Divya Theja Kanikala ]
+  * Object Detection and posenet examples with TfLite
+
+  [ Kin Zhao ]
+  * gst-plugin-qmmfsrc: NV12 snapshot support
+
+  [ Ziyi Gai ]
+  * gst-plugin-jpegenc: add CAMERA_METADATA macro definition.
+
+  [ Kin Zhao ]
+  * codec2: enable intra refresh cyclic mode
+
+  [ Linh Nguyen Duc ]
+  * mlvdetection: Remove hardcode at yolov5s to support customized yolo model.
+
+  [ Petar G. Georgiev ]
+  * ml: Incorporate the new threshold module parameter in all submodules
+
+  [ Shyam Komakula ]
+  * gst-plugin-codec2: add support for HDR static metadata
+
+  [ qctecmdr ]
+  * Merge "codec2: make sure last frame pushed to next plugin"
+  * Merge "examples: set the pipeline to NULl on error message"
+  * Merge "gst-plugin-qmmfsrc: add meta info for image data"
+  * Merge "drmdecryptor: Add bufferpool for secure buffers at the output"
+
+  [ Shyam Komakula ]
+  * examples: set the pipeline to NULl on error message
+
+  [ Linux Build Service Account ]
+  * Merge "base: Add support for secure dma buffers in mempool" into le-gst.lnx.2.1
+
+  [ Kin Zhao ]
+  * gst-plugin-qmmfsrc: add meta info for image data
+
+  [ qctecmdr ]
+  * Merge "codec2: Fix dynamic resolution change in codec2 decoder"
+
+  [ ppachang ]
+  * base: Add support for secure dma buffers in mempool
+  * drmdecryptor: Add bufferpool for secure buffers at the output
+  * codec2: Fix dynamic resolution change in codec2 decoder
+
+  [ qctecmdr ]
+  * Merge "mlsnpe: Corrected output tensor size."
+  * Merge "gst-drm-player-app : E2E App for playing DRM content"
+
+  [ Nikolay Hristozov ]
+  * vtransform: Flush video converter on signal
+
+  [ iraj ]
+  * gst-drm-player-app : E2E App for playing DRM content
+
+  [ Tri Dung Le ]
+  * mlvdetection: Discard prediction results with out of region coordinates
+
+  [ Linh Nguyen Duc ]
+  * mlsnpe: Corrected output tensor size.
+
+  [ qctecmdr ]
+  * Merge "mlvdetection: Add post-process for yolov8"
+
+  [ Kin Zhao ]
+  * codec2: make sure last frame pushed to next plugin
+
+  [ Linh Nguyen Duc ]
+  * mlvdetection: Add post-process for yolov8
+
+  [ ppachang ]
+  * codec2: Dup fd on importing linear dma buffer
+
+  [ qctecmdr ]
+  * Merge "tools: gst-pipeline-app: repeat menu when menu input NULL."
+  * Merge "mlvdetection: Add post-process for YOLO-NAS"
+  * Merge "gst-plugin-qmmfsrc: Add support for Stream Orientation"
+
+  [ Linh Nguyen Duc ]
+  * mlvdetection: Add post-process for YOLO-NAS
+
+  [ Hongyong Huang ]
+  * tools: gst-pipeline-app: repeat menu when menu input NULL.
+
+  [ qctecmdr ]
+  * Merge "base: ml: Add threshold define for gstmlmodule"
+  * Merge "mlvconverter: Add input tensor height/width meta infor."
+
+  [ Linh Nguyen Duc ]
+  * mlvconverter: Add input tensor height/width meta infor.
+  * base: ml: Add threshold define for gstmlmodule
+
+  [ Shyam Komakula ]
+  * gst-plugin-qmmfsrc: Add support for Stream Orientation
+
+  [ Zhi Chen ]
+  * vsplit: Add limit to maximum buffer queue length
+
+  [ qctecmdr ]
+  * Merge "gst-umd-daemon: Fix for enabling ECNS in audio playback pipeline"
+  * Merge "codec2: Disable encoder output linear buffer pool"
+  * Merge "gst-camera-metadata-example : modify parammeter scope"
+  * Merge "gst-plugin-codec2: make correct conditional logic"
+  * Merge "gst-plugin-codec2: fetch aligned width for TP10/P010"
+  * Merge "vsplit: Fix caps negotiation, pad properties and buffer pool"
+
+  [ Deepali Reddy Karra ]
+  * gst-umd-daemon: Fix for enabling ECNS in audio playback pipeline
+
+  [ Guangde Zhang ]
+  * gst-camera-metadata-example : modify parammeter scope
+
+  [ Kin Zhao ]
+  * gst-plugin-codec2: make correct conditional logic
+  * gst-plugin-codec2: fetch aligned width for TP10/P010
+
+  [ Petar G. Georgiev ]
+  * vsplit: Fix caps negotiation, pad properties and buffer pool
+
+  [ qctecmdr ]
+  * Merge "base: gles-video-converter: Implement flush API"
+
+  [ Petar G. Georgiev ]
+  * codec2: Disable encoder output linear buffer pool
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-codec2: video priority configuration"
+  * Merge "codec2: Add support to import linear dma buffer"
+  * Merge "gst-plugins-qti-oss : Remove gst-hibernate-example from this folder"
+  * Merge "gst-plugin-mlvdetection: Correct model caps for sdk1.10"
+
+  [ iraj ]
+  * gst-plugins-qti-oss : Remove gst-hibernate-example from this folder
+
+  [ ppachang ]
+  * codec2: Add support to import linear dma buffer
+
+  [ Linux Build Service Account ]
+  * Merge "gst-plugin-codec2: Add support for TP10_UBWC,P010 format in c2vdec" into le-gst.lnx.2.1
+
+  [ Tri Dung Le ]
+  * gst-plugin-mlvdetection: Correct model caps for sdk1.10
+
+  [ Linux Build Service Account ]
+  * Merge "gst-camera-metadata-example : Add support to get/set vendor and Android tags" into le-gst.lnx.2.1
+  * Merge "drmdecryptor: Playready DRM Decryptor Plugin" into le-gst.lnx.2.1
+  * Merge "examples: Added concurrent running cameras example" into le-gst.lnx.2.1
+
+  [ Petar G. Georgiev ]
+  * base: gles-video-converter: Implement flush API
+
+  [ Linux Build Service Account ]
+  * Merge "mlaic: Fix compile issue for sdk version >=1.10" into le-gst.lnx.2.1
+
+  [ Kin Zhao ]
+  * gst-plugin-codec2: video priority configuration
+
+  [ Alexander Nikolov ]
+  * examples: Added concurrent running cameras example
+
+  [ qctecmdr ]
+  * Merge "qmmfsrc: Propagate transition errors"
+
+  [ Shyam Komakula ]
+  * gst-plugin-codec2: Add support for TP10_UBWC,P010 format in c2vdec
+
+  [ ppachang ]
+  * drmdecryptor: Playready DRM Decryptor Plugin
+
+  [ iraj ]
+  * gst-camera-metadata-example : Add support to get/set vendor and Android tags
+
+  [ Alexander Nikolov ]
+  * qmmfsrc: Propagate transition errors
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-codec2: clear eos flag of stringstream"
+
+  [ Tri Dung Le ]
+  * mlaic: Fix compile issue for sdk version >=1.10
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-examples: Set NULL to elements first and then unlink them."
+  * Merge "gst-plugin-codec2: Fix improper vp8 and vp9 caps in c2vdec"
+  * Merge "gst-plugin-codec2: Add support for framerate propagation"
+  * Merge "gst-plugin-codec2: memleak in c2 decoder plugin"
+  * Merge "gst-plugin-qmmfsrc: Fix qtivcomposer crash when using latency fix."
+
+  [ Ziyi Gai ]
+  * gst-plugin-examples: Set NULL to elements first and then unlink them.
+
+  [ Shyam Komakula ]
+  * gst-plugin-codec2: Add Secure property
+  * gst-plugin-codec2: Fix improper vp8 and vp9 caps in c2vdec
+
+  [ Kin Zhao ]
+  * gst-plugin-codec2: clear eos flag of stringstream
+
+  [ Shyam Komakula ]
+  * gst-plugin-codec2: memleak in c2 decoder plugin
+
+  [ Linux Build Service Account ]
+  * Merge "base: gles-video-converter: Update used APIs" into le-gst.lnx.2.1
+
+  [ Hongyong Huang ]
+  * gst-plugin-qmmfsrc: Fix qtivcomposer crash when using latency fix.
+
+  [ qctecmdr ]
+  * Merge "codec2: Fix state transitions in component on start/stop"
+  * Merge "gst-plugin-codec2: change WORLD permission of c2vdec.so"
+  * Merge "gst-plugin-codec2: Decode support GBM capability"
+  * Merge "gst-plugin-codec2: bframe support"
+
+  [ Shyam Komakula ]
+  * gst-plugin-codec2: Add support for framerate propagation
+
+  [ Ziyi Gai ]
+  * gst-plugin-codec2: change WORLD permission of c2vdec.so
+
+  [ Petar G. Georgiev ]
+  * codec2: Fix Memory corruption
+  * base: gles-video-converter: Update used APIs
+  * codec2: Fix state transitions in component on start/stop
+
+  [ Guangde Zhang ]
+  * gst-plugin-codec2: Decode support GBM capability
+
+  [ Kin Zhao ]
+  * gst-plugin-codec2: bframe support
+
+  [ Amrutha Sai Gattu ]
+  * qmmfsrc: add support to enable multi camera exposure time
+
+  [ qctecmdr ]
+  * Merge "vsplit: Add support for allocation query"
+  * Merge "vsplit: Overhaul mode property & add additional functionality"
+  * Merge "vsplit: Fix usage of GstMiniObject and rename GstConverterRequest"
+  * Merge "base: Optimize C2D Draw for multiple compositions"
+  * Merge "codec2: venc: Fix buffer copy on non-FD backed buffers"
+  * Merge "gst-plugin-codec2: remove csdinfo handle in FrameAvailable()"
+  * Merge "codec2: venc: Properly handle incomplete buffers"
+  * Merge "gst-plugin-codec2: ROI parameter update for codec configuration V2"
+
+  [ Jiadong Huang ]
+  * gst-plugin-qmmfsrc: Fix signal invalid
+
+  [ Kin Zhao ]
+  * gst-plugin-codec2: ROI parameter update for codec configuration V2
+  * gst-plugin-codec2: remove csdinfo handle in FrameAvailable()
+
+  [ Petar G. Georgiev ]
+  * codec2: venc: Properly handle incomplete buffers
+  * codec2: venc: Fix buffer copy on non-FD backed buffers
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-qmmfsrc: Fix latency query failed"
+
+  [ Nikolay Hristozov ]
+  * vsplit: Add support for allocation query
+
+  [ Petar G. Georgiev ]
+  * vsplit: Overhaul mode property & add additional functionality
+
+  [ Bing Li ]
+  * examples: work around for mp4mux issue
+
+  [ Petar G. Georgiev ]
+  * vsplit: Fix usage of GstMiniObject and rename GstConverterRequest
+  * base: Optimize C2D Draw for multiple compositions
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-codec2: change C2PixelFormat P010 value to match with it in codec2"
+  * Merge "gst-plugin-qmmfsrc: update preview stream support"
+  * Merge "gst-plugin-dfs: enable for qrb5165 and cleanup"
+
+  [ Kin Zhao ]
+  * gst-plugin-codec2: change C2PixelFormat P010 value to match with it in codec2
+
+  [ FengChen ]
+  * gst-plugin-qmmfsrc: update preview stream support
+
+  [ Jiadong Huang ]
+  * gst-plugin-qmmfsrc: Fix latency query failed
+
+  [ Petar G. Georgiev ]
+  * codec2: venc: Prepend SPS/PPS header to sync frames
+  * codec2: Overall design cleanup and improvement
+
+  [ Aashish Patel ]
+  * gst-plugin-dfs: enable for qrb5165 and cleanup
+
+  [ Zhi Chen ]
+  * gst-plugin-qmmfsrc: fixed qmmfsrc stream start warning
+
+  [ qctecmdr ]
+  * Merge "examples: work around for mp4mux issue"
+  * Merge "examples: port fixes from link-unlink app in activate-deactivate app"
+  * Merge "examples: fix empty files creation"
+  * Merge "[offlineJPEG] enable change JPEG quality"
+
+  [ Konstantin Motov ]
+  * examples: work around for mp4mux issue
+  * examples: port fixes from link-unlink app in activate-deactivate app
+  * examples: fix empty files creation
+
+  [ qctecmdr ]
+  * Merge "overlay: Fix incorrect text for bounding boxes"
+  * Merge "examples: fix stream unlink sequence"
+  * Merge "examples: refactor of activate-deactivate-streams-runtime app"
+  * Merge "gst-plugin-codec2: remove the workaround code for codec2."
+  * Merge "codec2: Fix code style"
+
+  [ Konstantin Motov ]
+  * examples: fix stream unlink sequence
+  * examples: refactor of activate-deactivate-streams-runtime app
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-codec2: decode modify UV offset"
+
+  [ Petar G. Georgiev ]
+  * overlay: Fix incorrect text for bounding boxes
+
+  [ Tri Dung Le ]
+  * [offlineJPEG] enable change JPEG quality
+
+  [ qctecmdr ]
+  * Merge "vcomposer, qmmfsrc, jpegenc: Fix memleak and state change failure"
+  * Merge "gst-plugin-jpegenc: Fix possible race condition"
+
+  [ Kin Zhao ]
+  * gst-plugin-codec2: remove the workaround code for codec2.
+
+  [ Petar G. Georgiev ]
+  * codec2: Fix code style
+
+  [ Guangde Zhang ]
+  * gst-plugin-codec2: decode modify UV offset
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-qmmfsrc: add preview stream support"
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-jpegenc: Fix possible race condition
+
+  [ Linh Nguyen Duc ]
+  * vcomposer, qmmfsrc, jpegenc: Fix memleak and state change failure
+
+  [ Petar G. Georgiev ]
+  * codec2: Fix property names, values, heic caps and profile/level naming
+
+  [ FengChen ]
+  * gst-plugin-qmmfsrc: add preview stream support
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-codec2: fix memory leak and crash"
+  * Merge "examples: fix memory leak"
+
+  [ Konstantin Motov ]
+  * examples: fix memory leak
+
+  [ FengChen ]
+  * gst-plugin-jpegenc: use implement_defined format for inbuf
+
+  [ qctecmdr ]
+  * Merge "gst-umd-daemon: Add support for 2 way audio"
+
+  [ FengChen ]
+  * gst-plugin-jpegenc:fix memory leak
+
+  [ Konstantin Motov ]
+  * gst-plugin-codec2: fix memory leak and crash
+
+  [ Jai Shiv ]
+  * gst-umd-daemon: Add support for 2 way audio
+
+  [ Kin Zhao ]
+  * gst-plugin-codec2: decode with block pool
+
+  [ qctecmdr ]
+  * Merge "mltflite: Small readability improvement in the cmake file"
+  * Merge "gst-plugin-qmmfsrc: update bayper param check support for UHR"
+  * Merge "gst-plugin-vtransform: fixed compiling issue"
+
+  [ FengChen ]
+  * gst-plugin-qmmfsrc: update bayper param check support for UHR
+
+  [ Zhi Chen ]
+  * gst-plugin-vtransform: fixed compiling issue
+
+  [ Konstantin Motov ]
+  * base: fix handling of GBM buffer FD
+
+  [ qctecmdr ]
+  * Merge "examples: Fix file naming convention and cmake files"
+  * Merge "vtransform: Remove the custom adjustment of output PAR"
+  * Merge "gst-plugin-codec2: update config parameters to support codec2 config_v2"
+  * Merge "gst-plugin-overlay: fix OpenCL in overlay-lib when use DMA buffer."
+  * Merge "overlay: Add support for IB2C and DMA"
+
+  [ Petar G. Georgiev ]
+  * examples: Fix file naming convention and cmake files
+  * vtransform: Remove the custom adjustment of output PAR
+
+  [ qctecmdr ]
+  * Merge "base: Add support for DMA HEAP allocation"
+  * Merge "base: Overhaul of the GstIonBufferPool"
+  * Merge "gst-plugin-batch: Set flag to notify next plugins to use batching"
+
+  [ Kin Zhao ]
+  * gst-plugin-codec2: update config parameters to support codec2 config_v2
+
+  [ qctecmdr ]
+  * Merge "base: Prefer /dev/dma_heap/qcom,system for ION/DMA/GBM"
+  * Merge "base: c2d-video-converter: Small improvement to object draw"
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-batch: Set flag to notify next plugins to use batching
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-qmmfsrc: raw need support 4624x3472 in SAT mode"
+  * Merge "gst-plugin-codec2: add support for Tp10 UBWC and P010 formats in c2-engine"
+  * Merge "base, vtransform: Add support for P010 and NV12_10LE32 UBWC"
+  * Merge "base, optclflow: Add X/Y origin to CVP meta & filter properties"
+
+  [ Hongyong Huang ]
+  * gst-plugin-overlay: fix OpenCL in overlay-lib when use DMA buffer.
+
+  [ Petar G. Georgiev ]
+  * base: c2d-video-converter: Small improvement to object draw
+  * overlay: Add support for IB2C and DMA
+  * base, optclflow: Add X/Y origin to CVP meta & filter properties
+  * base, vtransform: Add support for P010 and NV12_10LE32 UBWC
+  * base, optclflow: Use the new GBM tag for stride, scanline and size
+
+  [ Kin Zhao ]
+  * gst-plugin-codec2: add support for Tp10 UBWC and P010 formats in c2-engine
+  * gst-plugin-qmmfsrc: raw need support 4624x3472 in SAT mode
+
+  [ Petar G. Georgiev ]
+  * base: gles-video-converter: Fix rotation coordinates
+  * base: Add support for DMA HEAP allocation
+  * base: Overhaul of the GstIonBufferPool
+  * base: Prefer /dev/dma_heap/qcom,system for ION/DMA/GBM
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-qmmfsrc: IFE direct stream support"
+
+  [ Nikolay Hristozov ]
+  * examples: Add application for camera switch using appsrc
+
+  [ FengChen ]
+  * gst-plugin-qmmfsrc: IFE direct stream support
+
+  [ Zhi Chen ]
+  * gst-plugins-qti-oss: modified media format header file for kalama
+  * gst-plugin-codec2: Fix compiling issue on kalama
+
+  [ Aashish Patel ]
+  * cvp-imgpyramid: cvp image pyramid scaler plugin
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-vcomposer: Provide image pool even if caps are not fixated"
+
+  [ Zhi Chen ]
+  * gst-plugins-qti-oss: Fix camera metadata namespace
+
+  [ qctecmdr ]
+  * Merge "gst-plugins-qti-oss: Remove volatile keyword from gtype"
+  * Merge "vtransform: Sync output buffer cache"
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-vcomposer: Provide image pool even if caps are not fixated
+
+  [ Zhi Chen ]
+  * gst-plugins-qti-oss: Remove volatile keyword from gtype
+
+  [ Petar G. Georgiev ]
+  * mltflite: Small readability improvement in the cmake file
+
+  [ qctecmdr ]
+  * Merge "mldemux: correct segment start time"
+
+  [ Biao Long ]
+  * mldemux: correct segment start time
+
+  [ Petar G. Georgiev ]
+  * vtransform: Sync output buffer cache
+
+  [ Nikolay Hristozov ]
+  * examples: Add few example applications
+
+  [ qctecmdr ]
+  * Merge "gst-hibernate-example: Design updation"
+  * Merge "gst-plugin-mltflite: Conditionally link mltflite against tensorflow-lite"
+
+  [ Mohammad Sheraj ]
+  * gst-hibernate-example: Design updation
+
+  [ Kemal Rasim Sh ]
+  * gst-plugin-mltflite: Conditionally link mltflite against tensorflow-lite
+
+  [ Zhi Chen ]
+  * gst-plugin-codec2: Fix unpaired use of g_slice_ APIs
+
+  [ Kin Zhao ]
+  * gst-plugin-codec2: set roi info through worklet tunings
+
+  [ Jean Xiao ]
+  * gst-plugin-codec2: support heic grid output
+
+  [ qctecmdr ]
+  * Merge "c2d-video-converter: fix multi input crop"
+
+  [ Petar G. Georgiev ]
+  * vsplit: Add handling when pixel-aspect-ratio is not set at the input
+
+  [ qctecmdr ]
+  * Merge "gst-hibernate-example: Initial commit"
+  * Merge "umd-daemon: Fix for camera backlight compensation"
+
+  [ Deepali Reddy Karra ]
+  * umd-daemon: Fix for camera backlight compensation
+
+  [ Mohammad Sheraj ]
+  * gst-hibernate-example: Initial commit
+
+  [ daopingl ]
+  * examples: Example to use depth to assist auto focus
+
+  [ qctecmdr ]
+  * Merge "examples: Add example for capturing burst and continuous snapshots"
+  * Merge "qmmfsrc: Small overhaul of metadata related properties & signals"
+  * Merge "qmmfsrc: Add support for burst and continuous image capture"
+
+  [ Petar G. Georgiev ]
+  * examples: Add example for capturing burst and continuous snapshots
+  * examples: Extend the Camera Metadata example
+  * qmmfsrc: Small overhaul of metadata related properties & signals
+  * qmmfsrc: Add support for burst and continuous image capture
+
+  [ Jai Shiv ]
+  * gst-umd-daemon: Fix for seg fault for UAC only use case
+
+  [ qctecmdr ]
+  * Merge "qmmfsrc: add support for TP10 UBWC video format"
+  * Merge "examples: gst-add-streams-as-bundle-example send EOS when stop"
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-codec2: Fix decoder run out of memory
+  * gst-plugin-codec2: Add support for META ROI encoding
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-examples: add camera ID option for camera switching example"
+  * Merge "tools: gst-pipeline-app: Add support for signals with arguments"
+
+  [ Konstantin Motov ]
+  * c2d-video-converter: fix multi input crop
+
+  [ Petar G. Georgiev ]
+  * tools: gst-pipeline-app: Add support for signals with arguments
+
+  [ Nikolay Hristozov ]
+  * examples: gst-add-streams-as-bundle-example send EOS when stop
+
+  [ Zhi Chen ]
+  * gst-plugin-examples: add camera ID option for camera switching example
+
+  [ qctecmdr ]
+  * Merge "hexagon, roimux: Remove deprecated plugins"
+
+  [ Konstantin Motov ]
+  * qmmfsrc: add support for TP10 UBWC video format
+
+  [ Deepali Reddy Karra ]
+  * umd-daemon: Modify the ML pipeline to incorporate the new ML plugins.
+
+  [ Petar G. Georgiev ]
+  * umd-daemon: Overhaul UVC control vlaues
+  * gst-plugins: Fix code style for internal gst_sample_release func
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-examples: add example application to test configure streams in a bundle"
+  * Merge "ml: Append timestamp to post-process result"
+
+  [ Petar G. Georgiev ]
+  * metamux: Add support for timestamp synchronization
+  * ml: Append timestamp to post-process result
+  * hexagon, roimux: Remove deprecated plugins
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-examples: add example application to test configure streams in a bundle
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-dfs: fix point cloud buffer overflow"
+
+  [ Guangde Zhang ]
+  * gst-plugin-codec2: add IDR frame check
+
+  [ qctecmdr ]
+  * Merge "qmmfsrc: expose urgent metadata as separate signal"
+
+  [ Alexander Nikolov ]
+  * vcrop: Fixed breaking superfluous unref of buffer
+
+  [ Konstantin Motov ]
+  * qmmfsrc: expose urgent metadata as separate signal
+
+  [ qctecmdr ]
+  * Merge "mlvconverter: Fix normalization when C2D converter is used"
+  * Merge "gst-plugin-examples: fix usage of new-sample appsink signal"
+
+  [ Zhi Chen ]
+  * gst-plugin-dfs: fix point cloud buffer overflow
+
+  [ Petar G. Georgiev ]
+  * mlvconverter: Fix normalization when C2D converter is used
+
+  [ Konstantin Motov ]
+  * gst-plugin-examples: fix usage of new-sample appsink signal
+
+  [ qctecmdr ]
+  * Merge "mlvdetection: Add postprocess for yolov5s"
+  * Merge "gst-plugin-codec2: encode support ubwc"
+  * Merge "mlvdetection:Process efficientdet's inferences"
+
+  [ Guangde Zhang ]
+  * gst-plugin-codec2: encode support ubwc
+
+  [ qctecmdr ]
+  * Merge "TfLite GPU Delegate: Enabling GPU delegate options"
+  * Merge "mltflite:Handling nnapi delegate setup"
+
+  [ Divya Theja ]
+  * mlvdetection:Process efficientdet's inferences
+
+  [ qctecmdr ]
+  * Merge "mlvdetection: Update ssd-mobilenet submodule"
+  * Merge "mlvdetection: add post process for face detect"
+  * Merge "examples: Add support for codec2 in example apps"
+  * Merge "gst-plugin-codec2: Fix state transition issue"
+
+  [ Petar G. Georgiev ]
+  * mlvdetection: Update ssd-mobilenet submodule
+
+  [ qctecmdr ]
+  * Merge "mlvsegmentation: Update the deeplab module"
+
+  [ Konstantin Motov ]
+  * qmmfsrc: fix port deactivation
+
+  [ Nikolay Hristozov ]
+  * examples: Add support for codec2 in example apps
+
+  [ Divya Theja ]
+  * TfLite GPU Delegate: Enabling GPU delegate options
+  * mltflite:Handling nnapi delegate setup
+
+  [ Nikolay Hristozov ]
+  * mlvdetection: Add postprocess for yolov5s
+  * gst-plugin-codec2: Fix state transition issue
+
+  [ Amrutha Sai Gattu ]
+  * gst-camera-metadata-example: enable sensor temperature read
+
+  [ Konstantin Motov ]
+  * mlvdetection: add post process for face detect
+
+  [ qctecmdr ]
+  * Merge "examples: Add support for codec2 in camera switch example"
+  * Merge "batch: Fix the idx range in update_src_caps"
+
+  [ Nikolay Hristozov ]
+  * examples: Add support for codec2 in camera switch example
+  * gst-plugin-examples: add application for camera switch via link/unlink
+
+  [ Guangde Zhang ]
+  * gst-plugin-codec2: Add encode rotate property
+
+  [ qctecmdr ]
+  * Merge "mlvdetection: Adding caps structure for EfficientDet"
+
+  [ Amrutha Sai Gattu ]
+  * gst-camera-metadata-example: fix fetch data from tag
+
+  [ Petar G. Georgiev ]
+  * mlvsegmentation: Update the deeplab module
+
+  [ Divya Theja ]
+  * batch: Fix the idx range in update_src_caps
+  * mlvdetection: Adding caps structure for EfficientDet
+
+  [ Amrutha Sai Gattu ]
+  * tracking-cam-app: update afr params being used
+  * examples: fetch metadata from following tags:
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-examples: Add appsink raw plus yuv app"
+  * Merge "overlay: Add support for new type of pose metadata"
+  * Merge "overlay: Handle multiple classification metas and add font size prop"
+  * Merge "qmmfsrc: Propagate original timestamp in GstBuffer OFFSET_END field"
+  * Merge "qmmfsrc: add support for stream frame rate control mode"
+  * Merge "mlvdtetection, mlvcladssification: Fix miscalculation with label index"
+  * Merge "examples: get original buffer timestamp from GstBuffer"
+  * Merge "examples: Example to set and get metadata to the qmmf"
+
+  [ Stilyan Uzunov ]
+  * gst-plugin-examples: Add appsink raw plus yuv app
+
+  [ Konstantin Motov ]
+  * qmmfsrc: add support for stream frame rate control mode
+
+  [ Petar G. Georgiev ]
+  * vtransform: Add support for GLES converter engine
+  * vcomposer: Add support for GLES converter engine
+  * base: Transition GLES converter to new engine
+  * mlvdtetection, mlvcladssification: Fix miscalculation with label index
+
+  [ qctecmdr ]
+  * Merge "mlvpose: Refactor code to comply with new module standard"
+  * Merge "gst-plugins-qti-oss: remove mle plugins"
+
+  [ Amrutha Sai Gattu ]
+  * mlsnpe: add README to enable SNPE GStreamer plugins
+  * examples: get original buffer timestamp from GstBuffer
+
+  [ Nikolay Hristozov ]
+  * examples: Example to set and get metadata to the qmmf
+
+  [ Petar G. Georgiev ]
+  * qmmfsrc: Propagate original timestamp in GstBuffer OFFSET_END field
+
+  [ Amrutha Sai Gattu ]
+  * gst-plugins-qti-oss: remove mle plugins
+
+  [ Petar G. Georgiev ]
+  * mlvpose: Refactor code to comply with new module standard
+
+  [ qctecmdr ]
+  * Merge "mlvdetection: Add support for new tensor set in yolov5m module"
+
+  [ Petar G. Georgiev ]
+  * mlvdetection: Add support for new tensor set in yolov5m module
+  * overlay: Add support for new type of pose metadata
+
+  [ Nikolay Hristozov ]
+  * overlay: Handle multiple classification metas and add font size prop
+
+  [ Petar G. Georgiev ]
+  * mlaic: Decrease the buffers count and fix parent unref
+  * base: Enhancements to the ML module helper functions
+  * mlsnpe: Support dequantize output tensor and variable dimensions
+  * mlvclassification, mlvdetection: Minor improvements
+
+  [ qctecmdr ]
+  * Merge "base: Remove unnecessary fields from GstCvpOptclFlowMeta"
+  * Merge "gst-mltflite: Added xnnpack delegate support"
+
+  [ Divya Theja ]
+  * gst-mltflite: Added xnnpack delegate support
+
+  [ Petar G. Georgiev ]
+  * base: Remove unnecessary fields from GstCvpOptclFlowMeta
+
+  [ Nikolay Hristozov ]
+  * qmmfsrc: Implement set and get metadata from the client
+
+  [ Petar G. Georgiev ]
+  * qmmfsrc: Attach GstProtectionMeta with original timestamp
+
+  [ skomakul ]
+  * examples: Hotplug app memleak
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-dfs: Add Disparity and Point Cloud Output Support"
+  * Merge "gst-plugin-mle: Add support for tflite 2.6 and higher"
+  * Merge "gst-plugin-mltflite: Add support for tflite 2.6 and higher"
+
+  [ Aditya Surabi ]
+  * gst-plugin-dfs: Add Disparity and Point Cloud Output Support
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-dfs: Update to support RVSDK v202206"
+
+  [ Kemal Rasim Sh ]
+  * gst-plugin-mltflite: Add support for tflite 2.6 and higher
+
+  [ Guangde Zhang ]
+  * gst-plugin-codec2: Add support EOS handle in decode
+  * gst-plugin-codec2: Add encode new properties
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-codec2: Runtime parameters update
+
+  [ Guangde Zhang ]
+  * gst-plugin-codec2: remove redundant codes
+
+  [ Wanghao Wei ]
+  * gst-plugin-codec2: add lock for protect out_pending_buffers_
+
+  [ Kemal Rasim Sh ]
+  * gst-plugin-mle: Add support for tflite 2.6 and higher
+
+  [ Aditya Surabi ]
+  * gst-plugin-dfs: Update to support RVSDK v202206
+
+  [ Petar G. Georgiev ]
+  * gst-plugins: Make all query/event logs as TRACE
+  * vtransform: Properly setup parent class buffer pool variables
+
+  [ qctecmdr ]
+  * Merge "umd-daemon: fix compilation after AFR API update"
+  * Merge "base: Add KEEPMAPPED option to the video image pool"
+  * Merge "metamux: Add worker tasks"
+  * Merge "base: Properly free memory held by GstCvpOptclFlowMeta"
+
+  [ Konstantin Motov ]
+  * umd-daemon: fix compilation after AFR API update
+
+  [ Petar G. Georgiev ]
+  * base: Add KEEPMAPPED option to the video image pool
+  * vtransform, optclflow, mlvdetection, mlvclassification: Minor fixes
+  * mlvdetection, mlvclassification, mlvsegmentation: Add modules README
+  * ml: Overhaul post-processing submodule system
+  * mlvdetection, mlvclassification, mlvsegmentation: Optimizations
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-qmmfsrc: Add support for defog related vendor tags."
+
+  [ ppachang ]
+  * gst-plugin-qmmfsrc: Add support for defog related vendor tags.
+
+  [ Jehan Bing ]
+  * mlvposenet: Add Posenet tensor post-processing plugin
+
+  [ Petar G. Georgiev ]
+  * metamux: Add worker tasks
+  * base: Properly free memory held by GstCvpOptclFlowMeta
+
+  [ Aditya Surabi ]
+  * gst-plugin-dfs: Add support for config file
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-codec2: Add support for ROI encoding"
+  * Merge "vsplit: Add support for C2D converter"
+  * Merge "gst-plugin-codec2: Add support for qp-ranges"
+  * Merge "gst-plugin-codec2: Add codec2 encoder GST plugin"
+
+  [ Aashish Patel ]
+  * overlay: use mask stride for openCL blit
+
+  [ qctecmdr ]
+  * Merge "c2d-video-converter: update C2D surface when needed"
+
+  [ Petar G. Georgiev ]
+  * vsplit: Add support for C2D converter
+
+  [ Jai Shiv ]
+  * umd-daemon: Fix for wrong tilt direction
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-codec2: Add support for ROI encoding
+  * gst-plugin-codec2: Add support for IDR and I frame only mode
+
+  [ Guangde Zhang ]
+  * gst-plugin-codec2: Add support for encode local file
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-codec2: Configure the framerate of the Codec2
+  * gst-plugin-codec2: Fix possible dead lock
+
+  [ Arindam Biswas ]
+  * gst-plugin-codec2: Add video decoder plugin
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-codec2: Cleanup and cosmetic changes
+  * gst-plugin-codec2: Add support for qp-ranges
+  * gst-plugin-codec2: Add codec2 encoder GST plugin
+
+  [ Divya Theja ]
+  * c2d-video-converter: update C2D surface when needed
+
+  [ qctecmdr ]
+  * Merge "examples : fix Hotplug POV cam unplug not working"
+
+  [ Aashish Patel ]
+  * qtioverlay: add separate sequence for ROI ids
+
+  [ skomakul ]
+  * examples : fix Hotplug POV cam unplug not working
+
+  [ qctecmdr ]
+  * Merge "vsplit: Plugin for spliting video stream into multiple streams"
+
+  [ Petar G. Georgiev ]
+  * vsplit: Plugin for spliting video stream into multiple streams
+  * cvp-optclflow, metamux: Support cvp/optical-flow in metamux
+
+  [ qctecmdr ]
+  * Merge "qtioverlay: fix memory leak"
+  * Merge "base: make GstC2dVideoRotation enum registration threadsafe"
+  * Merge "ml, batch: Add handling of GAP buffers"
+  * Merge "mlvsegmentation: Add module for mono depth estimation"
+  * Merge "mltflite: Add support for direct GPU delegate"
+  * Merge "metamux: Improve internal layout and fix caps"
+  * Merge "vtransform, vcomposer: Minor layout and GAP buffer fixes"
+  * Merge "vtransform: Remove compression field for non memory:GBM caps"
+  * Merge "vcomposer: Fix sink pad caps errors"
+  * Merge "base: fix grayscale format support"
+  * Merge "mlsnpe: add support for TF8 SNPE element type"
+
+  [ Petar G. Georgiev ]
+  * ml, batch: Add handling of GAP buffers
+
+  [ Amrutha Sai Gattu ]
+  * base: make GstC2dVideoRotation enum registration threadsafe
+
+  [ Petar G. Georgiev ]
+  * mlvsegmentation: Add module for mono depth estimation
+
+  [ Konstantin Motov ]
+  * qtioverlay: fix memory leak
+
+  [ qctecmdr ]
+  * Merge "mldemux: Init and send new segment on each source pad"
+
+  [ Konstantin Motov ]
+  * base: fix grayscale format support
+  * mlsnpe: add support for TF8 SNPE element type
+
+  [ Petar G. Georgiev ]
+  * vcomposer: Fix sink pad caps errors
+  * metamux: Improve internal layout and fix caps
+  * mltflite: Add support for direct GPU delegate
+  * vtransform: Remove compression field for non memory:GBM caps
+
+  [ Divya Theja ]
+  * qtibatch: Handle GST_QUERY_DRAIN at each sink pad
+
+  [ Petar G. Georgiev ]
+  * mldemux: Init and send new segment on each source pad
+  * vtransform, vcomposer: Minor layout and GAP buffer fixes
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-dfs: Add DFS plugin"
+
+  [ Cindy Fan Chiang ]
+  * gst-plugin-optclflow: restructure code
+
+  [ Aditya Surabi ]
+  * gst-plugin-dfs: Add DFS plugin
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-examples: sHDR toggle app"
+  * Merge "mlvconverter: Fix compilation issue"
+  * Merge "base: Fix C2D RGB formats"
+
+  [ Petar G. Georgiev ]
+  * mlvconverter: Fix compilation issue
+
+  [ Konstantin Motov ]
+  * gst-plugin-examples: sHDR toggle app
+
+  [ Petar G. Georgiev ]
+  * batch, mlvconvert, mldemux: Propagate original timestamp
+  * base: Fix C2D RGB formats
+  * vtransform: Prioritize memory:GBM caps and other improvements
+  * base: Add support for multiple C2D source/destination rectangles
+  * vtransform: Add support for in/out caps with different features
+  * gst-plugins-qti-oss: Minor fixes and layout adjustments
+  * base, ml: Rework GLES converter APIs and several ML fixes
+
+  [ qctecmdr ]
+  * Merge "mlaic, mldemux: Replace memory_share with memory_copy"
+  * Merge "mlaic: Maintain a map of in/out buffers"
+  * Merge "batch: Improve caps negotiation"
+
+  [ Yongsheng Li ]
+  * videocomposer: Add support uyvy format for video composer plugin
+
+  [ Petar G. Georgiev ]
+  * mlaic, mldemux: Replace memory_share with memory_copy
+  * mlaic: Maintain a map of in/out buffers
+  * batch: Improve caps negotiation
+
+  [ qctecmdr ]
+  * Merge "mlvconverter: Add support for UYVY format"
+
+  [ Biao Long ]
+  * mlvconverter: Add support for UYVY format
+
+  [ Jai Shiv ]
+  * umd-daemon: Fix for antibanding mode
+
+  [ qctecmdr ]
+  * Merge "gst: qmmfsrc: enable yuy422 uyvy format"
+
+  [ Konstantin Motov ]
+  * qmmfsrc: add support for runtime SHDR enable and disable
+
+  [ Yongsheng Li ]
+  * gst: qmmfsrc: enable yuy422 uyvy format
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-base: Prevent releasing of the buffer due to different sizes"
+  * Merge "qmmfsrc: fix mem leak"
+  * Merge "gst-plugins-qti-oss: Minor fixes"
+  * Merge "mldemux: Redesign of the plugin"
+  * Merge "gst-plugin-examples: added linking basic scenario"
+
+  [ Aashish Patel ]
+  * qmmfsrc: fix mem leak
+
+  [ qctecmdr ]
+  * Merge "qmmfsrc: call stop session on unplug"
+  * Merge "base, mlvconverter: Rename some build flags"
+
+  [ Petar G. Georgiev ]
+  * gst-plugins-qti-oss: Minor fixes
+  * mldemux: Redesign of the plugin
+
+  [ qctecmdr ]
+  * Merge "base, mlvconverter: Add support for UBWC input in GLES converter"
+  * Merge "batch: Redesign of the plugin"
+  * Merge "base: Add reference counter for init/deinit C2D library"
+  * Merge "base, mlaic: Fix order of AIC tensors and minor fixes in base"
+
+  [ Petar G. Georgiev ]
+  * base, mlvconverter: Add support for UBWC input in GLES converter
+  * base, mlvconverter: Rename some build flags
+  * batch: Redesign of the plugin
+  * base: Add reference counter for init/deinit C2D library
+
+  [ Divya Theja ]
+  * ssd-yolo module: Conditionally build ssd-yolo module
+
+  [ Petar G. Georgiev ]
+  * base, mlaic: Fix order of AIC tensors and minor fixes in base
+
+  [ Nikolay Hristozov ]
+  * mlvdetection: Add YOLOv5 postprocessing using NMS
+
+  [ Petar G. Georgiev ]
+  * ml: Various ML related improvements and fixes
+  * base, mlvconverter: Fix mean/sigma propagation & update GLES API
+
+  [ qctecmdr ]
+  * Merge "umd-daemon: add support for UVC config file"
+  * Merge "mlvdetection, mlvclassification: Fix text conversion & modules path"
+  * Merge "overlay: Add support for drawing bbox with ROI meta"
+  * Merge "base: Remove KEEP_MAPPED optimization"
+
+  [ Petar G. Georgiev ]
+  * mlvdetection, mlvclassification: Fix text conversion & modules path
+
+  [ Aashish Patel ]
+  * qmmfsrc: call stop session on unplug
+
+  [ qctecmdr ]
+  * Merge "examples : Reference app for hotpluggable POV cam"
+
+  [ Petar G. Georgiev ]
+  * overlay: Add support for drawing bbox with ROI meta
+
+  [ qctecmdr ]
+  * Merge "metamux: Plugin for muxing video/audio with meta stream"
+
+  [ Petar G. Georgiev ]
+  * metamux: Plugin for muxing video/audio with meta stream
+
+  [ qctecmdr ]
+  * Merge "mlaic: ML plugin based on AIC"
+  * Merge "base, mlvconverter: Add ROI crop cupport"
+
+  [ Taruntej Kanakamalla ]
+  * examples : Reference app for hotpluggable POV cam
+
+  [ Alexander Nikolov ]
+  * gst-plugin-examples: added linking basic scenario
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-examples: add application for activate/deactivate streams"
+  * Merge "qmmfsrc: handle pad activate/deactivate"
+  * Merge "gst-plugin-examples: add application for runtime add/remove streams"
+  * Merge "qmmfsrc: support for runtime pad link/unlink"
+  * Merge "qtivideobase: Add Crop support to Gles converter"
+
+  [ Petar G. Georgiev ]
+  * mlaic: ML plugin based on AIC
+  * base, mlvconverter: Add ROI crop cupport
+
+  [ Nikolay Hristozov ]
+  * qmmfsrc: handle pad activate/deactivate
+  * qmmfsrc: support for runtime pad link/unlink
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-jpegenc: Update qmmf-sdk apis and other fixes"
+
+  [ Divya Theja ]
+  * qtivideobase: Add Crop support to Gles converter
+
+  [ qctecmdr ]
+  * Merge "umd-daemon: Adjust pan & tilt calculations because ranges have changed"
+  * Merge "qmmfsrc: expuse camera control mode GST property"
+  * Merge "umd-daemon: update ML stream resolution to 720p"
+
+  [ Petar G. Georgiev ]
+  * base: Remove KEEP_MAPPED optimization
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-examples: add application for activate/deactivate streams
+  * gst-plugin-examples: add application for runtime add/remove streams
+  * gst-plugin-jpegenc: Update qmmf-sdk apis and other fixes
+
+  [ Konstantin Motov ]
+  * umd-daemon: add support for UVC config file
+
+  [ Petar G. Georgiev ]
+  * umd-daemon: Adjust pan & tilt calculations because ranges have changed
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-jpegenc: Update the configure QMMF API"
+  * Merge "gst-plugin-jpegenc: Add Jpeg encoder plugin"
+  * Merge "base: clear c2d hash maps on flush"
+  * Merge "base, mlvconverter: Fix various minor issues with GLES converter"
+  * Merge "mlvdetection, mlvsegmentation: Add DMABuf synchronization"
+  * Merge "base, mlvconverter: use gles_converter engine"
+
+  [ Petar G. Georgiev ]
+  * mlvdetection, mlvsegmentation: Add DMABuf synchronization
+  * base, mlvconverter: Fix various minor issues with GLES converter
+
+  [ Konstantin Motov ]
+  * qmmfsrc: expuse camera control mode GST property
+
+  [ Amrutha Sai Gattu ]
+  * umd-daemon: update ML stream resolution to 720p
+
+  [ Petar G. Georgiev ]
+  * umd-daemon: Adjust zoom calculations as pan & tilt ranges changed
+
+  [ Divya Theja ]
+  * base, mlvconverter: use gles_converter engine
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-base: Prevent releasing of the buffer due to different sizes
+
+  [ Aashish Patel ]
+  * base: clear c2d hash maps on flush
+
+  [ qctecmdr ]
+  * Merge "mux serialize: Initial change"
+  * Merge "qtibatch: Add batch plugin"
+  * Merge "streamdemux: Add streamdemux plugin"
+
+  [ Tingwei Zhang ]
+  * qtibatch: Add batch plugin
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-jpegenc: Update the configure QMMF API
+  * gst-plugin-jpegenc: Add Jpeg encoder plugin
+
+  [ Petar Georgiev ]
+  * qmmfsrc: Update Recorder APIs after qmmf-sdk cleanup
+
+  [ Tingwei Zhang ]
+  * mux serialize: Initial change
+  * streamdemux: Add streamdemux plugin
+
+  [ qctecmdr ]
+  * Merge "qmmfsrc: change the max value of sensor-mode"
+
+  [ Amrutha Sai Gattu ]
+  * umd-daemon: pass contrast values according to it's range
+  * qmmfsrc: change the range for contrast property
+
+  [ qctecmdr ]
+  * Merge "umd-daemon: stop uvc camera when user switches camera from host app"
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-roimux: remove the dependency to CVP headers
+  * gst-plugin-cvp-optclflow: parse motion vectors and stats in a separate buffer
+
+  [ Taruntej Kanakamalla ]
+  * qmmfsrc: change the max value of sensor-mode
+
+  [ Amrutha Sai Gattu ]
+  * umd-daemon: stop uvc camera when user switches camera from host app
+
+  [ Fudong Zhang ]
+  * base/overlay: Add kernel-5.4 vidc header path for compatibility
+
+  [ Petar G. Georgiev ]
+  * gst-qti-oss-plugins: CMake install fix and various other fixes
+
+  [ Amrutha Sai Gattu ]
+  * vtrans: add support for GRAY8 format
+
+  [ qctecmdr ]
+  * Merge "qmmfsrc: Fixate output Pixel Aspect Ratio"
+  * Merge "base & ml: Add plugins for Tensor based Machine Learning"
+
+  [ Taruntej Kanakamalla ]
+  * qmmfsrc: Force camera sensor mode
+
+  [ qctecmdr ]
+  * Merge "qmmfsrc: add IR cut filter on and off mode"
+  * Merge "base: Call the C2D Fill function only when it is actually needed"
+  * Merge "vtrans: Runtime support for background, rotate and passthrough"
+
+  [ Aashish Patel ]
+  * qmmfsrc: add IR cut filter on and off mode
+
+  [ Petar G. Georgiev ]
+  * qmmfsrc: Fixate output Pixel Aspect Ratio
+  * base & ml: Add plugins for Tensor based Machine Learning
+  * base: Call the C2D Fill function only when it is actually needed
+
+  [ Amrutha Sai Gattu ]
+  * base: add support for RGBA format in c2d converter
+
+  [ Petar G. Georgiev ]
+  * vtrans: Runtime support for background, rotate and passthrough
+
+  [ Amrutha Sai Gattu ]
+  * umd-daemon: enable gain control
+  * umd-daemon: fix ml detection meta leak
+
+  [ qctecmdr ]
+  * Merge "umd-daemon: init video and audio pipelines exclusively"
+  * Merge "umd-daemon: Update stream ID macros"
+
+  [ Cindy Fan Chiang ]
+  * gst-plugin-cvp-optclflow: Code cleanup and get fps from gst
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-cvp-optclflow: refactor the plugin to use base transform class
+
+  [ Cindy Fan Chiang ]
+  * gst-plugin-cvp-optclflow: Buffer Improvement
+  * gst-plugin-cvp-optclflow: Add cvp optical flow plugin
+  * ml-metadata: Add CVP Optical Flow metadata
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-base: Add support for allocating ion pool"
+  * Merge "gst-plugin-overlay: Add support for arrows item type"
+  * Merge "gst-plugin-roimux: Add support for cvp/optiflow input caps"
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-base: Add support for allocating ion pool
+  * gst-plugin-overlay: Add support for arrows item type
+  * gst-plugin-roimux: Add support for cvp/optiflow input caps
+  * gst-plugin-vcrop: Change the name of the plugin type since already exist
+  * gst-plugin-vcrop: Add a property for output buffers count
+
+  [ Amrutha Sai Gattu ]
+  * umd-daemon: init video and audio pipelines exclusively
+
+  [ Petar Georgiev ]
+  * umd-daemon: Update stream ID macros
+
+  [ qctecmdr ]
+  * Merge "Add qtisocketsink and qtisocketsrc GST plugins."
+  * Merge "qmmfsrc: Add property for LCAC mode"
+  * Merge "qmmfsrc: Remove encoder support"
+
+  [ Angel Hitov ]
+  * Add qtisocketsink and qtisocketsrc GST plugins.
+
+  [ qctecmdr ]
+  * Merge "base: using uniform formats for C2D and imagepool"
+
+  [ Nikolay Hristozov ]
+  * base: using uniform formats for C2D and imagepool
+  * gst-plugin-base: Workaround for incorect GBM stride
+
+  [ Petar G. Georgiev ]
+  * qmmfsrc: Remove encoder support
+
+  [ Mohammad Sheraj ]
+  * qmmfsrc: Add property for LCAC mode
+
+  [ Amrutha Sai Gattu ]
+  * gst-pipeline-app: fix gst_element_get_state return value check
+
+  [ Mohammad Sheraj ]
+  * gst-pipeline-app: Fix app hang on eos
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-roi-mux: Add roi mux plugin"
+  * Merge "gst-plugin-vcrop: Add videocrop plugin"
+  * Merge "umd-daemon: Disable GAIN and return proper values for mode controls"
+  * Merge "qmmfsrc: Add properties for contrast, manual iso and more"
+  * Merge "umd-daemon: Add support for more UMD controls"
+  * Merge "qmmfsrc: Propagate events from the qmmf recoder to the plugin"
+  * Merge "umd-daemon: enable gst pipeline for UAC"
+  * Merge "qmmfsrc: add support for saturation control"
+  * Merge "mle: Send error on the pipeline bus on engine creation failure"
+
+  [ Petar G. Georgiev ]
+  * qmmfsrc: Propagate events from the qmmf recoder to the plugin
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-roi-mux: Add roi mux plugin
+  * gst-plugin-vcrop: Add videocrop plugin
+
+  [ Petar G. Georgiev ]
+  * qmmfsrc: Add properties for contrast, manual iso and more
+
+  [ qctecmdr ]
+  * Merge "qmmfsrc: Add support for kBayerRDI16BIT format"
+  * Merge "qmmfsrc: Add support for YUV422/NV16 format"
+
+  [ Petar G. Georgiev ]
+  * umd-daemon: Disable GAIN and return proper values for mode controls
+  * mle: Send error on the pipeline bus on engine creation failure
+
+  [ Aditya Surabi ]
+  * qmmfsrc: add support for saturation control
+
+  [ qctecmdr ]
+  * Merge "umd-daemon: Disable sync on pipe runtime for MLE and UMD sinks"
+  * Merge "gst-plugin-mle: Update gst property from int to enum"
+  * Merge "gst-plugin-mle: add float post process for segmentation"
+  * Merge "qmmfsrc: expose extra buffer count pad property"
+
+  [ Petar G. Georgiev ]
+  * umd-daemon: Add support for more UMD controls
+
+  [ Amrutha Sai Gattu ]
+  * umd-daemon: enable gst pipeline for UAC
+
+  [ Petar G. Georgiev ]
+  * umd-daemon: Disable sync on pipe runtime for MLE and UMD sinks
+
+  [ Konstantin Motov ]
+  * qmmfsrc: expose extra buffer count pad property
+
+  [ Cindy Fan Chiang ]
+  * gst-plugin-mle: Update gst property from int to enum
+
+  [ Nikolay Hristozov ]
+  * qmmfsrc: Add support for kBayerRDI16BIT format
+  * qmmfsrc: Add support for YUV422/NV16 format
+  * gst-plugin-hexagon-nn: use correct FastCV api for chroma downscale
+  * gst-plugin-mle: use correct FastCV api for chroma downscale
+  * gst-plugin-mle: add float post process for segmentation
+  * qtioverlay: add support for usage of multiple CL kernels
+
+  [ Konstantin Motov ]
+  * qtioverlay: add support for work surface format
+
+  [ Amrutha Sai Gattu ]
+  * gst-plugins-qti-oss: enable tracking camera app conditionally
+
+  [ Petar G. Georgiev ]
+  * umd-daemon: Various improvements
+  * qmmfsrc: Fix pads worker task and GstSegment issues
+
+  [ qctecmdr ]
+  * Merge "gst-umd-daemon: open auto framing algo with dlopen"
+  * Merge "gst-umd-daemon: Initial release"
+  * Merge "base: Add YUY2 to image-pool & fix c2d converter planes issue"
+  * Merge "App: ML-based tracking camera - improve the tracking algorithm"
+
+  [ Petar G. Georgiev ]
+  * base: Add YUY2 to image-pool & fix c2d converter planes issue
+
+  [ Kai Xing ]
+  * overlay: set right of size in text and datetime
+
+  [ Nikolay Hristozov ]
+  * gst-umd-daemon: open auto framing algo with dlopen
+
+  [ Petar G. Georgiev ]
+  * vtrans: Reinitialize converter at each new caps setup
+
+  [ qctecmdr ]
+  * Merge "examples: Add example for weston composition and appsink"
+
+  [ Nikolay Hristozov ]
+  * App: ML-based tracking camera - improve the tracking algorithm
+
+  [ Petar G. Georgiev ]
+  * gst-umd-daemon: Initial release
+  * vtrans: Remove passthrough optimization
+  * vtrans: Add destination rectangle property
+  * vtrans: Rework the crop property to align with unified design
+
+  [ qctecmdr ]
+  * Merge "Qmmfsrc: Update max supported image size"
+
+  [ Zhenlin Lian ]
+  * Qmmfsrc: Update max supported image size
+
+  [ Petar G. Georgiev ]
+  * examples: Add example for weston composition and appsink
+
+  [ Konstantin Motov ]
+  * qtioverlay: fix stride issue
+
+  [ Aashish Patel ]
+  * qmmfsrc: Add support for JPEG video pad and dynamic cropping
+
+  [ qctecmdr ]
+  * Merge "qtioverlay: select the blit type with property instead of define"
+  * Merge "App: ML-based tracking camera - add crop type and format parameters"
+  * Merge "qtioverlay: use antialiasing for PrivacyMask"
+  * Merge "qmmfsrc: Add YUY2 format"
+  * Merge "App: ML-based tracking camera"
+  * Merge "gst-plugin-mle: use C2D for color conversion"
+  * Merge "qtioverlay: improve the quality of the blit CL kernel"
+
+  [ Nikolay Hristozov ]
+  * App: ML-based tracking camera - add crop type and format parameters
+  * App: ML-based tracking camera
+  * vtrans: Add support for YUY2 format
+  * qtioverlay: select the blit type with property instead of define
+  * qtioverlay: use antialiasing for PrivacyMask
+  * qtioverlay: improve the quality of the blit CL kernel
+  * qmmfsrc: Add YUY2 format
+  * gst-plugin-mle: use C2D for color conversion
+
+  [ Sagar Sahu ]
+  * MLE-TFlite: Create standalone thread for tflite
+
+  [ qctecmdr ]
+  * Merge "Qmmfsrc:Fix unable to grab image after AE mode is off"
+
+  [ Ruijie Zhang ]
+  * Qmmfsrc:Fix unable to grab image after AE mode is off
+
+  [ Aashish Patel ]
+  * gst-pipeline-app: add quit option
+
+  [ Konstantin Motov ]
+  * qtioverlay: fix compilation error in 32-bit build
+
+  [ qctecmdr ]
+  * Merge "qmmfsrc: Improve properties naming"
+  * Merge "gst-plugin-tools: Improve gst-pipeline-app and gst-rtsp-server"
+  * Merge "qtioverlay: increase the default height of the text rect"
+  * Merge "gst-plugin-hexagon-nn: add support for GST logging"
+
+  [ Nikolay Hristozov ]
+  * qtioverlay: clean up the QMMF and Android dependencies
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-mle: fix logging"
+  * Merge "qtioverlay: add overlay lib from qmmf-sdk"
+  * Merge "gst-plugin-mle: add support for C2D downscale in MLE preprocess"
+  * Merge "gst-plugin-hexagon-nn: Posenet 5.1.0"
+
+  [ Konstantin Motov ]
+  * gst-plugin-mle: fix logging
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-mle: add support for C2D downscale in MLE preprocess
+  * qtioverlay: add overlay lib from qmmf-sdk
+
+  [ Petar G. Georgiev ]
+  * gst-plugin-tools: Improve gst-pipeline-app and gst-rtsp-server
+
+  [ sagar sahu ]
+  * ml-metadata: Free label name in MLE Detection
+  * MLE & Hexagon-nn: Only allow one thread to initialise fastcv
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-hexagon-nn: add support for GST logging
+  * qtioverlay: increase the default height of the text rect
+
+  [ Petar G. Georgiev ]
+  * qmmfsrc: Improve properties naming
+
+  [ Cindy Fan Chiang ]
+  * gst-plugin-hexagon-nn: Posenet 5.1.0
+
+  [ qctecmdr ]
+  * Merge "mle-tflite: Check delegate support before compiling"
+
+  [ Nikolay Hristozov ]
+  * qtioverlay: initialize a correct default destination rect
+
+  [ Cindy Fan Chiang ]
+  * mle-tflite: Check delegate support before compiling
+  * gst-plugin-mle: tflite - Add nnapi, hexagon, gpu, xnnpack delegates
+
+  [ Konstantin Motov ]
+  * gst-plugins-qti-oss: fix setting ot FastCV mode
+
+  [ Cindy Fan Chiang ]
+  * gst-plugin-mle: Add preprocessing accelerator property to snpe and tflite
+
+  [ Jai Shiv ]
+  * qtiqmmfsrc: Fix for abruptly closing GST pipeline
+
+  [ Petar G. Georgiev ]
+  * qmmfsrc: Remove obsolete singleton QMMF Recorder implementation
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-hexagon-nn: create new class for HVX driver"
+  * Merge "gst-plugin-hexagon-nn: DirectNN 5.1.0"
+
+  [ Konstantin Motov ]
+  * gst-plugin-hexagon-nn: create new class for HVX driver
+  * gst-plugin-hexagon-nn: DirectNN 5.1.0
+
+  [ Jai Shiv ]
+  * qtiqmmfsrc: Fix for monochrome effect
+
+  [ qctecmdr ]
+  * Merge "vcomposer: Stop processing if all sink pads have reached EOS"
+  * Merge "gst-plugin-hexagon-nn: Fix issue with Posenet Postprocessing"
+  * Merge "qmmfsrc: Update the default camera parameters"
+  * Merge "vcomposer: Properly cleanup requests queue items on flush"
+  * Merge "c2d-video-converter: Add API for flushing pending requests"
+  * Merge "qmmfsrc: Add handling for QMMF service events."
+  * Merge "gst-plugin-hexagon-nn: Fix engines loading path"
+  * Merge "gst-plugin-mle: Fix issue with Posenet postprocessing"
+  * Merge "vcomposer: Add logic to prefer memory:GBM caps during negotiate"
+
+  [ Cindy Fan Chiang ]
+  * gst-plugin-hexagon-nn: Fix issue with Posenet Postprocessing
+
+  [ Konstantin Motov ]
+  * gst-plugin-hexagon-nn: ssd: fix scale back ratio
+
+  [ Nikolay Hristozov ]
+  * qmmfsrc: Update the default camera parameters
+
+  [ Petar G. Georgiev ]
+  * vcomposer: Stop processing if all sink pads have reached EOS
+
+  [ Martin Asenov ]
+  * gst-plugin-mle: Fix issue with Posenet postprocessing
+
+  [ Petar G. Georgiev ]
+  * vcomposer: Properly cleanup requests queue items on flush
+  * c2d-video-converter: Add API for flushing pending requests
+
+  [ Konstantin Motov ]
+  * gst-plugin-hexagon-nn: Fix engines loading path
+  * qtioverlay: add support for privacy mask user overlay
+
+  [ Petar G. Georgiev ]
+  * vcomposer: Add logic to prefer memory:GBM caps during negotiate
+  * qmmfsrc: Add handling for QMMF service events.
+
+  [ Aishwary Gupta ]
+  * gst-plugin-mle: use correct datatype for logging variables
+
+  [ qctecmdr ]
+  * Merge "qtihexagonnn: fix g_param_spec assertion warning"
+  * Merge "qmmfsrc: Add proper support for bayer streams"
+
+  [ Nikolay Hristozov ]
+  * qmmfsrc: add support for MWB CCT and GAINS
+
+  [ Petar G. Georgiev ]
+  * qmmfsrc: Add proper support for bayer streams
+
+  [ Aashish Patel ]
+  * qtihexagonnn: fix g_param_spec assertion warning
+
+  [ Petar G. Georgiev ]
+  * qmmfsrc: Fix various minor issues
+
+  [ qctecmdr ]
+  * Merge "vcomposer & qmmfsrc: Properly check state when setting property"
+  * Merge "gst-plugin-mle: use correct API for creating tflite delegate"
+
+  [ Aishwary Gupta ]
+  * gst-plugin-mle: use correct API for creating tflite delegate
+
+  [ Petar G. Georgiev ]
+  * vcomposer & qmmfsrc: Properly check state when setting property
+
+  [ Aishwary Gupta ]
+  * gst-plugin-hexagon-nn: correct variable's datatype
+
+  [ Petar G. Georgiev ]
+  * gst-rtsp-server: Initial implementation
+
+  [ qctecmdr ]
+  * Merge "overlay: Use buffer_get_size API instead of FRAME_SIZE macro"
+  * Merge "gst-plugin-mle: update mle_gst_snpe README"
+  * Merge "gst-plugins-qti-oss: Properly set plugins installation paths"
+  * Merge "gst-plugin-mle: Add support for GPU and AIP runtime on SNPE"
+  * Merge "gst-plugin-hexagon-nn: remove duplicated source and headers"
+
+  [ Petar G. Georgiev ]
+  * overlay: Use buffer_get_size API instead of FRAME_SIZE macro
+
+  [ Aishwary Gupta ]
+  * gst-plugin-mle: update mle_gst_snpe README
+
+  [ Martin Asenov ]
+  * gst-plugin-mle: Add support for GPU and AIP runtime on SNPE
+
+  [ Jai Shiv ]
+  * qmmfsrc: add support for Image mode
+  * qmmfsrc: add support for JPEG and BAYER feature
+
+  [ Petar G. Georgiev ]
+  * gst-plugins-qti-oss: Properly set plugins installation paths
+
+  [ Konstantin Motov ]
+  * gst-plugin-hexagon-nn: remove duplicated source and headers
+
+  [ Jai Shiv ]
+  * qmmfsrc: adopt to new ConfigImageCapture/CaptureImage API specs
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-mle: Replace JSON with GstStructure"
+  * Merge "gst-plugin-mle: Add proper instalation directory for mle engine"
+  * Merge "gst-plugin-hexagon-nn: Fix PreProcessing"
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-mle: Replace JSON with GstStructure
+
+  [ qctecmdr ]
+  * Merge "qmmfsrc: Do not initialize camera params in slave mode"
+  * Merge "qmmfsrc: add support for setting idr-interval"
+  * Merge "qmmfsrc: Add support for sharpness strength"
+  * Merge "gst-plugins-qti-oss: remove copy of rpcmem.h"
+
+  [ Konstantin Motov ]
+  * gst-plugins-qti-oss: remove copy of rpcmem.h
+
+  [ Jai Shiv ]
+  * qmmfsrc: fix issue for wrong iso settings
+  * qmmfsrc: add support for setting idr-interval
+
+  [ Nikolay Hristozov ]
+  * qmmfsrc: Do not initialize camera params in slave mode
+  * gst-plugin-mle: Add proper instalation directory for mle engine
+
+  [ Petar G. Georgiev ]
+  * qmmfsrc: Add proper support for platform specific definitions
+  * qmmfsrc: Add support for NV12 UBWC and other minor fixes
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-mle: remove SNPE hardcoded variables from cmake"
+
+  [ Nikolay Hristozov ]
+  * qmmfsrc: Use plain gint instead of grefcount type
+
+  [ Jai Shiv ]
+  * qmmfsrc: Add support for sharpness strength
+
+  [ qctecmdr ]
+  * Merge "gst-plugin-mle: Add frameworks version info"
+
+  [ Aishwary Gupta ]
+  * gst-plugin-mle: remove SNPE hardcoded variables from cmake
+
+  [ qctecmdr ]
+  * Merge "base, vtrans & vcomposer: Add support for NV12 UBWC"
+  * Merge "base, vtrans & vcomposer: Various fixes"
+  * Merge "gst-pipeline-app: Add support for warm-boot feature"
+  * Merge "qtioverlay: Fix compilation issue"
+
+  [ Jai Shiv ]
+  * gst-pipeline-app: Add support for warm-boot feature
+
+  [ Martin Asenov ]
+  * gst-plugin-hexagon-nn: Fix PreProcessing
+
+  [ qctecmdr ]
+  * Merge "gst-plugins-qti-oss: Fix incorrect cast of 64 bits pointers"
+
+  [ Petar G. Georgiev ]
+  * base, vtrans & vcomposer: Add support for NV12 UBWC
+  * base, vtrans & vcomposer: Various fixes
+
+  [ qctecmdr ]
+  * Merge "qtioverlay: Fix resources clean up"
+
+  [ Nikolay Hristozov ]
+  * gst-plugin-mle: Fix 64bit compilation issue
+
+  [ Martin Asenov ]
+  * qtioverlay: Fix resources clean up
+
+  [ Nikolay Hristozov ]
+  * qtioverlay: Fix compilation issue
+
+  [ Martin Asenov ]
+  * gst-plugin-mle: Add proper resource clean-up
+
+  [ Nikolay Hristozov ]
+  * gst-plugins-qti-oss: Fix incorrect cast of 64 bits pointers
+
+  [ Martin Asenov ]
+  * gst-plugin-mle: Fix PreProcessing parameters
+  * gst-plugin-mle: Add frameworks version info
+
+  [ Linux Build Service Account ]
+  * Merge "gst-plugin-mle: Update MLE"
+  * Merge "gst-plugins-qti-oss: Add Mobilenet SSD in qtihexagonnn"
+  * Merge "gst-plugins-qti-oss: add PoseNet GST plugin"
+
+  [ Petar G. Georgiev ]
+  * mle: Fix plugin names
+  * plugins: Rename qmmfsrc and mle
+
+  [ Linux Build Service Account ]
+  * Merge "vtrans & vcomposer: Fix compilation errors"
+
+  [ Konstantin Motov ]
+  * gst-plugins-qti-oss: Add Mobilenet SSD in qtihexagonnn
+  * gst-plugins-qti-oss: add PoseNet GST plugin
+
+  [ Martin Asenov ]
+  * gst-plugin-mle: Update MLE
+  * gst-plugin-mle: Fix compilation issues
+  * gst-plugin-mle: Rework MLE
+
+  [ Petar G. Georgiev ]
+  * vtrans & vcomposer: Fix compilation errors
+  * vtrans: Overhaul to use common image buffer pool & C2D converter
+  * vcomposer: Video composer plugin
+  * base: Base classes for qti oss plugin
+
+  [ Linux Build Service Account ]
+  * Merge "gst-plugin-mle: mletflite: Enhance TFLite plugin"
+  * Merge "gst-plugin-mle: mlesnpe: Enhance SNPE plugin"
+  * Merge "qtioverlay: add support for user overlay"
+
+  [ Konstantin Motov ]
+  * qtioverlay: add support for user overlay
+
+  [ Jai Shiv ]
+  * qmmfsrc: Fix for setting correct bitrate-control
+  * qmmfsrc: add support for noise reduction tuning
+  * qmmfsrc: Fix for TNR mode setting
+  * qmmfsrc: Add video pad properties
+
+  [ Petar G. Georgiev ]
+  * qmmfsrc: Add property for LDC mode
+
+  [ Jai Shiv ]
+  * qmmfsrc: Fix for setting initial camera param
+
+  [ Linux Build Service Account ]
+  * Merge "gst-plugin-mle: MLE clean up"
+  * Merge "gst-plugin-mle: Add additional static caps"
+
+  [ Martin Asenov ]
+  * gst-plugin-mle: Add additional static caps
+  * gst-plugin-mle: mletflite: Enhance TFLite plugin
+  * gst-plugin-mle: mlesnpe: Enhance SNPE plugin
+  * gst-plugin-mle: MLE clean up
+
+  [ Cindy Fan Chiang ]
+  * gst-plugins-qti-oss: Add aspect ratio scaling in mletflite
+
+  [ Konstantin Motov ]
+  * qmmfsrc: fix default video and camera settings
+
+  [ Jai Shiv ]
+  * qmmfsrc: add support for local tone mapping
+  * qmmfsrc: add support for ADRC feature
+
+  [ sagar sahu ]
+  * gst-plugin-mle: Add flags for delegate support
+
+  [ Linux Build Service Account ]
+  * Merge "vtransform: Leave only some YUV and RGB formats in GstCaps"
+
+  [ Petar G. Georgiev ]
+  * qmmfsrc: Fix improper refcount increase
+  * vtransform: Leave only some YUV and RGB formats in GstCaps
+
+  [ Linux Build Service Account ]
+  * Merge "gst-plugins-qti-oss: Add README for snpe"
+
+  [ Jai Shiv ]
+  * qmmfsrc: Fix issue for dual cam use case
+
+  [ Cindy Fan Chiang ]
+  * gst-plugins-qti-oss: Add README for snpe
+
+  [ Linux Build Service Account ]
+  * Merge "qmmfsrc: Add support for dynamic camera features."
+
+  [ sagar sahu ]
+  * gst-plugin-mle: Add NNAPI delegate support
+
+  [ Neha Rani ]
+  * qmmfsrc: Add support for dynamic camera features.
+
+  [ Amrutha Sai Gattu ]
+  * qmmfsrc: remove support for audio
+
+  [ Linux Build Service Account ]
+  * Merge "gst-plugin-mle: Change TFLite preprocessing"
+  * Merge "gst-plugin-mle: Add tensorflow lite headers path"
+
+  [ Nikolay Hristozov ]
+  * qmmfsrc: Add support for slave mode
+
+  [ Martin Asenov ]
+  * gst-plugin-mle: Change TFLite preprocessing
+
+  [ Sagar Sahu ]
+  * gst-plugin-mle: Add tensorflow lite headers path
+
+  [ Linux Build Service Account ]
+  * Merge "qmmfsrc: Initiate a dummy capture when there is a image pad"
+
+  [ Konstantin Motov ]
+  * gst-plugins-qti-oss: add user text and date to overlay
+
+  [ Petar G. Georgiev ]
+  * qmmfsrc: Initiate a dummy capture when there is a image pad
+
+  [ Konstantin Motov ]
+  * gst-plugins-qti-oss: Add PoseNet support in qtioverlay
+
+  [ Nikolay Hristozov ]
+  * qmmfsrc: Delete image streams before video streams
+
+  [ Jai Shiv ]
+  * qmmfsrc: Add support for h265 encode
+  * qmmfsrc: add support for 4k video resolution
+
+  [ Neha Rani ]
+  * qmmfsrc: Add support for static camera properties
+  * qmmfsrc: Add support for YUV and bayer snapshot
+
+  [ Nikolay Hristozov ]
+  * qmmfsrc: Replace GHashTable with GList for correct pad order
+
+  [ Petar G. Georgiev ]
+  * qmmfsrc: Fix buffer timestamp offset, data queue flush & minor fixes
+
+  [ Konstantin Motov ]
+  * gst-plugins-qti-oss: add segmentation GST plugin
+
+  [ Linux Build Service Account ]
+  * Merge "gst-plugins-qti-oss: Add MLE plugins"
+  * Merge "gst-pipeline-app: Add support for pad properties"
+  * Merge "gst-plugins-qti-oss: add overlay plugin"
+
+  [ Martin Asenov ]
+  * gst-plugins-qti-oss: Add MLE plugins
+
+  [ Konstantin Motov ]
+  * gst-plugins-qti-oss: add overlay plugin
+  * gst-plugins-qti-oss: add machine learning meta for GST plugins
+
+  [ Petar G. Georgiev ]
+  * gst-pipeline-app: Add support for pad properties
+
+  [ Nikolay Hristozov ]
+  * qmmfsrc: Implement PauseSession
+
+  [ Petar G. Georgiev ]
+  * qmmfsrc: Overhaul implementation
+  * qmmfsrc: Enable image capture and enchance test application
+
+  [ Amrutha Sai Gattu ]
+  * qmmfsrc: correct the audio duration passed
+
+  [ Petar G. Georgiev ]
+  * qmmfsrc: Choose camera id with property instead of using caps
+  * qmmfsrc: Add support for PCM audio
+
+  [ Neha Rani ]
+  * qmmfsrc: Add support for camera params and snapshot pad.
+
+  [ Petar G. Georgiev ]
+  * videotransform: Properly fill PAR during fixate_caps
+  * gst-plugins-qti-oss: Add videotransform plugin
+
+  [ Neha Rani ]
+  * gst-plugins-qti-oss: Add linked tracks for qmmfsrc plugin.
+  * gst-plugins-qti-oss: Add gstreamer plugin qmmfsrc.
+
+  [ Bo Fang ]
+  * qscreencapsrc: fix crash issue during state change play->NULL->play
+
+  [ Lily Li ]
+  * gst-plugin-qscreencapsrc: add support RGBA8888_UBWC format
+
+  [ Linux Build Service Account ]
+  * Merge "destroy wl_buf before free gstbuf"
+
+  [ Laisheng Hu ]
+  * destroy wl_buf before free gstbuf
+  * check redraw_pending flag each 500us
+  * qscreencapsrc: fix kw issues
+  * add gst-plugin-qscreencapsrc source code
+
+  [ Jingtao Chen ]
+  * qvblend: Fix security problems
+  * Add qvblend plugin
+
+  [ Git User ]
+  * Initial empty repository
+
+ -- Bala Sai Kosuri <bkosuri@qti.qualcomm.com>  Thu Oct 16 01:06:11 PM +0530 2025

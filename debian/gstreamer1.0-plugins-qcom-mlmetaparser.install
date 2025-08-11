@@ -1,0 +1,2 @@
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/libgstqtimlmetaparser.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/mlmetaparser/modules/libml-meta-parser-json.so
