@@ -18,9 +18,8 @@ DESCRIPTION = """
 This app sets up GStreamer pipeline to read the jpg images and display.
 Usage:
 For Preview on Display:
-python3 /usr/bin/gst-jpg-image-decode.py -i /etc/media/frame%d.JPG
-"""
-DEFAULT_OUTPUT_FILE = "/etc/media/frame%d.JPG"
+python3 /usr/bin/gst-jpg-image-decode.py -i /etc/media/imagefiles_%d.jpg"""
+DEFAULT_INPUT_FILE = "/etc/media/imagefiles_%d.jpg"
 
 waiting_for_eos = False
 eos_received = False
@@ -89,8 +88,8 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        '-i', "--filepath", type=str, default=DEFAULT_OUTPUT_FILE,
-        help="Output File Path /etc/media/frame%d.JPG"
+        '-i', "--filepath", type=str, default=DEFAULT_INPUT_FILE,
+        help="Input File Path"
     )
 
     return parser.parse_args()
@@ -130,12 +129,23 @@ def create_pipeline(pipeline, args):
     ]
     link_elements(link_order, elements)
 
+def is_linux():
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if "Linux" in line:
+                    return True
+    except FileNotFoundError:
+        return False
+    return False
+
 def main():
     """Main function to set up and run the GStreamer pipeline."""
 
     # Set the environment
-    os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
-    os.environ["WAYLAND_DISPLAY"] = "wayland-1"
+    if is_linux():
+        os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
+        os.environ["WAYLAND_DISPLAY"] = "wayland-1"
 
     # Initialize GStreamer
     Gst.init(None)
