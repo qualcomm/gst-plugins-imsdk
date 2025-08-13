@@ -6,5 +6,6 @@
   "labels": "/etc/labels/yolox.labels",
   "constants": "Yolox,q-offsets=<38.0, 0.0, 0.0>,q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;",
   "threshold": 40,
-  "runtime": "dsp"
+  "runtime": "dsp",
+  "output-type": "waylandsink"
 }
