@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.8.2)
-project(GST_SAMPLE_APPS_UTILS_LIB LANGUAGES C CXX)
+project(GST_SAMPLE_APPS_UTILS_LIB
+  VERSION ${GST_PLUGINS_QTI_OSS_VERSION}
+  LANGUAGES C CXX
+)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
@@ -18,8 +21,10 @@ add_library(${GST_SAMPLE_APPS_UTILS} SHARED
   gst_sample_apps_utils.c
 )
 
-set_target_properties(${GST_SAMPLE_APPS_UTILS} PROPERTIES PUBLIC_HEADER
-  "gst_sample_apps_utils.h;gst_sample_apps_pipeline.h"
+set_target_properties(${GST_SAMPLE_APPS_UTILS} PROPERTIES
+  VERSION ${PROJECT_VERSION}
+  SOVERSION ${PROJECT_VERSION_MAJOR}
+  PUBLIC_HEADER "gst_sample_apps_utils.h;gst_sample_apps_pipeline.h"
 )
 
 target_include_directories(${GST_SAMPLE_APPS_UTILS} PUBLIC
