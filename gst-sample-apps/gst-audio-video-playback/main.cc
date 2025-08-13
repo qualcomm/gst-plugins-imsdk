@@ -237,10 +237,6 @@ create_pipe (GstVideoAppContext *appctx)
   appctx->plugins = g_list_append (appctx->plugins, pulsesink);
   appctx->plugins = g_list_append (appctx->plugins, vsink);
 
-  // Set decoder properties
-  g_object_set (G_OBJECT (vdecoder), "capture-io-mode", "dmabuf", NULL);
-  g_object_set (G_OBJECT (vdecoder), "output-io-mode", "dmabuf", NULL);
-
   // Set location
   g_object_set (G_OBJECT (filesrc), "location", appctx->input_file, NULL);
 
@@ -286,6 +282,10 @@ create_pipe (GstVideoAppContext *appctx)
 
   // link demux audio track pad to audio queue
   g_signal_connect (qtdemux, "pad-added", G_CALLBACK (on_pad_added), queue2);
+
+  // Set decoder properties
+  gst_element_set_enum_property (vdecoder, "capture-io-mode", "dmabuf");
+  gst_element_set_enum_property (vdecoder, "output-io-mode", "dmabuf");
 
   g_print ("All elements are linked successfully\n");
 
