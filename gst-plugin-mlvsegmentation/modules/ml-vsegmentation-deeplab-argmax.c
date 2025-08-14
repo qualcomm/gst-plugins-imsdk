@@ -77,7 +77,7 @@
     "dimensions = (int) < <1, [32, 2048], [32, 2048]> >; " \
     "neural-network/tensors, " \
     "type = (string) { FLOAT32 }, " \
-    "dimensions = (int) < <1, [32, 2048], [32, 2048], [1, 21]> >"
+    "dimensions = (int) < <1, [32, 2048], [32, 2048], [1, 150]> >"
 
 // Module caps instance
 static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
