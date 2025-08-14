@@ -1013,9 +1013,14 @@ get_tag (const gchar * section_name, const gchar * tag_name,
   }
 
   if (!meta->exists (tag_id)) {
-    g_print ("Tag doesn't exist in the meta.\n");
     tag_value = g_strdup ("null");
-    *type = g_strdup ("null");
+
+    if (*type == NULL) {
+      g_print ("Tag cannot be got from name, and doesn't exist in the meta.\n");
+      *type = g_strdup ("null");
+    } else {
+      g_print ("Tag can be got from name, but doesn't exist in the meta.\n");
+    }
   }
 
   return tag_value;
@@ -1023,7 +1028,8 @@ get_tag (const gchar * section_name, const gchar * tag_name,
 
 static gint
 set_tag (GstAppContext * appctx, const gchar * section_name,
-    const gchar * tag_name, gchar * new_value, gchar * chosen_index)
+    const gchar * tag_name, gchar * new_value, gchar * chosen_index,
+    gboolean newinsert)
 {
   GstElement *camsrc = auto_select_qmmf_element_from_pipeline (appctx,
       chosen_index);
@@ -1045,7 +1051,7 @@ set_tag (GstAppContext * appctx, const gchar * section_name,
 
   switch (tag_type) {
     case TYPE_BYTE: {
-      if (meta->find (tag_id).count == 1) {
+      if (meta->find (tag_id).count == 1 || newinsert) {
         gchar *endptr;
         const guint8 tag_value = g_ascii_strtoull ((const gchar *) new_value,
             &endptr, 0);
@@ -1090,7 +1096,7 @@ set_tag (GstAppContext * appctx, const gchar * section_name,
       break;
     }
     case TYPE_INT32: {
-      if (meta->find (tag_id).count == 1) {
+      if (meta->find (tag_id).count == 1 || newinsert) {
         gchar *endptr;
         const gint32 tag_value = g_ascii_strtoll ((const gchar *) new_value,
             &endptr, 0);
@@ -1135,7 +1141,7 @@ set_tag (GstAppContext * appctx, const gchar * section_name,
       break;
     }
     case TYPE_FLOAT: {
-      if (meta->find (tag_id).count == 1) {
+      if (meta->find (tag_id).count == 1 || newinsert) {
         gchar *endptr;
         const gfloat tag_value = g_ascii_strtod ((const gchar *) new_value,
             &endptr);
@@ -1180,7 +1186,7 @@ set_tag (GstAppContext * appctx, const gchar * section_name,
       break;
     }
     case TYPE_INT64: {
-      if (meta->find (tag_id).count == 1) {
+      if (meta->find (tag_id).count == 1 || newinsert) {
         gchar *endptr;
         const gint64 tag_value = g_ascii_strtoll ((const gchar *) new_value,
             &endptr, 0);
@@ -1225,7 +1231,7 @@ set_tag (GstAppContext * appctx, const gchar * section_name,
       break;
     }
     case TYPE_DOUBLE: {
-      if (meta->find (tag_id).count == 1) {
+      if (meta->find (tag_id).count == 1 || newinsert) {
         gchar *endptr;
         const gdouble tag_value = g_ascii_strtod ((const gchar *) new_value,
             &endptr);
@@ -1832,7 +1838,7 @@ handle_tag_menu (GstAppContext * appctx, gchar * prop,
 {
   gchar *str = NULL;
   gchar *section = NULL, *tag = NULL, *type = NULL, *value = NULL;
-  gboolean active = TRUE;
+  gboolean active = TRUE, newinsert = FALSE;
 
   ::camera::CameraMetadata *meta = nullptr;
   GstElement *camsrc = NULL;
@@ -1882,13 +1888,21 @@ handle_tag_menu (GstAppContext * appctx, gchar * prop,
 
     if (option == SET_TAG) {
       g_print ("Type: %s\n", type);
+
+      if (g_strcmp0(value, "null") == 0 && g_strcmp0(type, "null") != 0) {
+        newinsert = TRUE;
+        g_print ("Array length of this tag can't be got. Input a single value.");
+      } else {
+        newinsert = FALSE;
+      }
+
       g_print ("Enter the new value: ");
 
       if (!wait_stdin_message (appctx->messages, &str))
         return FALSE;
 
       if (!g_str_equal (str, "\n"))
-        set_tag (appctx, section, tag, str, chosen_index);
+        set_tag (appctx, section, tag, str, chosen_index, newinsert);
     }
     g_free (section);
     g_free (tag);
