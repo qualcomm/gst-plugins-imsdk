@@ -13,39 +13,46 @@ namespace ib2c {
 
 namespace gl {
 
-#define LOAD_EGL_SYMBOL(handle, symbol)                                     \
-do {                                                                        \
-  symbol = (typeof(symbol)) dlsym(handle, "egl"#symbol);                    \
-                                                                            \
-  if (nullptr == symbol)                                                    \
-    throw Exception("Failed to load egl", #symbol, ", error: ", dlerror()); \
-} while (false)
+#define LOAD_EGL_SYMBOL(handle, symbol)                                         \
+    do {                                                                        \
+      symbol = (typeof(symbol)) dlsym(handle, "egl"#symbol);                    \
+                                                                                \
+      if (nullptr == symbol)                                                    \
+        throw Exception("Failed to load egl", #symbol, ", error: ", dlerror()); \
+    } while (false)
 
-#define LOAD_GL_SYMBOL(handle, symbol)                                     \
-do {                                                                       \
-  symbol = (typeof(symbol)) dlsym(handle, "gl"#symbol);                    \
-                                                                           \
-  if (nullptr == symbol)                                                   \
-    throw Exception("Failed to load gl", #symbol, ", error: ", dlerror()); \
-} while (false)
+#define LOAD_GL_SYMBOL(handle, symbol)                                         \
+    do {                                                                       \
+      symbol = (typeof(symbol)) dlsym(handle, "gl"#symbol);                    \
+                                                                               \
+      if (nullptr == symbol)                                                   \
+        throw Exception("Failed to load gl", #symbol, ", error: ", dlerror()); \
+    } while (false)
 
-#define GET_EGL_SYMBOL(libegl, symbol)                               \
-do {                                                                 \
-  libegl->symbol =                                                   \
-      (typeof(libegl->symbol)) libegl->GetProcAddress("egl"#symbol); \
-                                                                     \
-  if (nullptr == libegl->symbol)                                     \
-    throw Exception("Failed to get egl", #symbol, " !");             \
-} while (false)
+#define GET_EGL_SYMBOL(libegl, symbol)                                   \
+    do {                                                                 \
+      libegl->symbol =                                                   \
+          (typeof(libegl->symbol)) libegl->GetProcAddress("egl"#symbol); \
+                                                                         \
+      if (nullptr == libegl->symbol)                                     \
+        throw Exception("Failed to get egl", #symbol, " !");             \
+    } while (false)
 
-#define GET_GL_SYMBOL(libgles, libegl, symbol)                       \
-do {                                                                 \
-  libgles->symbol =                                                  \
-      (typeof(libgles->symbol)) libegl->GetProcAddress("gl"#symbol); \
-                                                                     \
-  if (nullptr == libgles->symbol)                                    \
-    throw Exception("Failed to get gl", #symbol, " !");              \
-} while (false)
+#define GET_GL_SYMBOL(libgles, libegl, symbol)                           \
+    do {                                                                 \
+      libgles->symbol =                                                  \
+          (typeof(libgles->symbol)) libegl->GetProcAddress("gl"#symbol); \
+                                                                         \
+      if (nullptr == libgles->symbol)                                    \
+        throw Exception("Failed to get gl", #symbol, " !");              \
+    } while (false)
+
+#define LOG_EGL_ERROR(libegl, ...)                                    \
+    Log(__VA_ARGS__, ", error: ", std::hex, libegl->GetError(), "!");
+
+#define EGL_DISPLAY_TERMINATE_AND_NULL(libegl, display) \
+    egl_lib_->Terminate(display);                       \
+    display = EGL_NO_DISPLAY;
 
 std::mutex Environment::mutex_;
 EglLib*    Environment::egl_lib_ = nullptr;
@@ -89,14 +96,83 @@ std::string Environment::Initialize() {
     egl_lib_ = new EglLib();
     gles_lib_ = new GlesLib();
 
-    display_ = egl_lib_->GetDisplay(EGL_DEFAULT_DISPLAY);
+    GET_EGL_SYMBOL(egl_lib_, GetPlatformDisplay);
+
+    EGLint major = 0, minor = 0;
+
+    // Try each one in order of precedence.
+    if (QueryExtension("EGL_KHR_platform_wayland") ||
+        QueryExtension("EGL_EXT_platform_wayland")) {
+      display_ = egl_lib_->GetPlatformDisplay(EGL_PLATFORM_WAYLAND_KHR,
+                                              EGL_DEFAULT_DISPLAY, nullptr);
+
+      if (display_ == EGL_NO_DISPLAY) {
+        LOG_EGL_ERROR(egl_lib_, "Failed to get Wayland EGL display");
+      } else if (!egl_lib_->Initialize(display_, &major, &minor)) {
+        LOG_EGL_ERROR(egl_lib_, "Failed to initialize Wayland EGL display");
+        EGL_DISPLAY_TERMINATE_AND_NULL(egl_lib_, display_);
+      }
+    }
+
+    if (display_ == EGL_NO_DISPLAY && (QueryExtension("EGL_KHR_platform_x11") ||
+            QueryExtension("EGL_EXT_platform_x11"))) {
+      display_ = egl_lib_->GetPlatformDisplay(EGL_PLATFORM_X11_KHR,
+                                              EGL_DEFAULT_DISPLAY, nullptr);
+
+      if (display_ == EGL_NO_DISPLAY) {
+        LOG_EGL_ERROR(egl_lib_, "Failed to get X11 EGL display");
+      } else if (!egl_lib_->Initialize(display_, &major, &minor)) {
+        LOG_EGL_ERROR(egl_lib_, "Failed to initialize X11 EGL display");
+        EGL_DISPLAY_TERMINATE_AND_NULL(egl_lib_, display_);
+      }
+    }
+
+    if (display_ == EGL_NO_DISPLAY && (QueryExtension("EGL_MESA_platform_gbm") ||
+            QueryExtension("EGL_KHR_platform_gbm"))) {
+      display_ = egl_lib_->GetPlatformDisplay(EGL_PLATFORM_GBM_KHR,
+                                              EGL_DEFAULT_DISPLAY, nullptr);
+
+      if (display_ == EGL_NO_DISPLAY) {
+        LOG_EGL_ERROR(egl_lib_, "Failed to get GBM EGL display");
+      } else if (!egl_lib_->Initialize(display_, &major, &minor)) {
+        LOG_EGL_ERROR(egl_lib_, "Failed to initialize GBM EGL display");
+        EGL_DISPLAY_TERMINATE_AND_NULL(egl_lib_, display_);
+      }
+    }
+
+    if (display_ == EGL_NO_DISPLAY && (QueryExtension("EGL_EXT_device_base") ||
+            QueryExtension("EGL_EXT_platform_device"))) {
+      display_ = egl_lib_->GetPlatformDisplay(EGL_PLATFORM_DEVICE_EXT,
+                                              EGL_DEFAULT_DISPLAY, nullptr);
+
+      if (display_ == EGL_NO_DISPLAY) {
+        LOG_EGL_ERROR(egl_lib_, "Failed to get Device EGL display");
+      } else if (!egl_lib_->Initialize(display_, &major, &minor)) {
+        LOG_EGL_ERROR(egl_lib_, "Failed to initialize Device EGL display");
+        EGL_DISPLAY_TERMINATE_AND_NULL(egl_lib_, display_);
+      }
+    }
+
+    if (display_ == EGL_NO_DISPLAY &&
+        QueryExtension("EGL_MESA_platform_surfaceless")) {
+      display_ = egl_lib_->GetPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA,
+                                              EGL_DEFAULT_DISPLAY, nullptr);
+
+      if (display_ == EGL_NO_DISPLAY) {
+        LOG_EGL_ERROR(egl_lib_, "Failed to get Surfaceless EGL display");
+      } else if (!egl_lib_->Initialize(display_, &major, &minor)) {
+        LOG_EGL_ERROR(egl_lib_, "Failed to initialize Surfaceless EGL display");
+        EGL_DISPLAY_TERMINATE_AND_NULL(egl_lib_, display_);
+      }
+    }
+
+    if (display_ == EGL_NO_DISPLAY)
+      display_ = egl_lib_->GetDisplay(EGL_DEFAULT_DISPLAY);
 
     if (display_ == EGL_NO_DISPLAY) {
       return Error("Failed to get EGL display, error: ", std::hex,
                    egl_lib_->GetError(), "!");
     }
-
-    EGLint major = 0, minor = 0;
 
     // Initialize the display.
     if (!egl_lib_->Initialize(display_, &major, &minor)) {

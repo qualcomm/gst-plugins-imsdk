@@ -65,6 +65,7 @@ class EglLib {
   decltype(eglQueryString)*       QueryString;
 
   // Extension functions.
+  PFNEGLGETPLATFORMDISPLAYEXTPROC GetPlatformDisplay;
   PFNEGLCREATEIMAGEKHRPROC        CreateImageKHR;
   PFNEGLDESTROYIMAGEKHRPROC       DestroyImageKHR;
 
