@@ -94,10 +94,11 @@ typedef enum {
 
 /**
  * GstStreamSourceType:
- * @GST_STREAM_TYPE_NONE    : Invalid Stream Type.
- * @GST_STREAM_TYPE_CAMERA  : Camera Stream.
- * @GST_STREAM_TYPE_FILE    : Video File Stream.
- * @GST_STREAM_TYPE_RTSP    : RTSP Stream.
+ * @GST_STREAM_TYPE_NONE          : Invalid Stream Type.
+ * @GST_STREAM_TYPE_CAMERA        : Camera Stream.
+ * @GST_STREAM_TYPE_FILE          : Video File Stream.
+ * @GST_STREAM_TYPE_RTSP          : RTSP Stream.
+ * @GST_STREAM_TYPE_USB_CAMERA    : USB Camera Stream.
  *
  * Type of Stream.
  */
@@ -105,7 +106,8 @@ typedef enum {
   GST_STREAM_TYPE_NONE,
   GST_STREAM_TYPE_CAMERA,
   GST_STREAM_TYPE_FILE,
-  GST_STREAM_TYPE_RTSP
+  GST_STREAM_TYPE_RTSP,
+  GST_STREAM_TYPE_USB_CAMERA
 } GstStreamSourceType;
 
 /**
