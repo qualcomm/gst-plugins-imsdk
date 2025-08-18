@@ -11,14 +11,23 @@ namespace ib2c {
 
 enum class ShaderType : uint32_t {
   kNone,
+
   kRGB,
+  kPlanarRGB,
+
   kYUV,
   kLuma,
   kChroma,
+
   kCompute8,
   kCompute16,
   kCompute16F,
   kCompute32F,
+
+  kComputePlanar8,
+  kComputePlanar16,
+  kComputePlanar16F,
+  kComputePlanar32F,
 };
 
 static const std::string kVertexShader = R"(
@@ -46,7 +55,7 @@ void main() {
 }
 )";
 
-static const std::string kRgbFragmentShader = R"(
+static const std::string kRgbFragmentHeader = R"(
 #version 320 es
 #extension GL_OES_EGL_image_external_essl3 : require
 
@@ -63,8 +72,34 @@ uniform bool rbSwapped;
 uniform float globalAlpha;
 
 in vec2 texCoord;
+
+)";
+
+static const std::string kRgbFragmentInterleavedOutput = R"(
 layout(location = 0) out vec4 outColor;
 
+void assignColor(in vec4 source)
+{
+  outColor = source;
+}
+
+)";
+
+static const std::string kRgbFragmentPlanarOutput = R"(
+layout(location = 0) out vec4 outColor0;
+layout(location = 1) out vec4 outColor1;
+layout(location = 2) out vec4 outColor2;
+
+void assignColor(in vec4 source)
+{
+    outColor0 = vec4(source.r, 0.0, 0.0, source.a);
+    outColor1 = vec4(source.g, 0.0, 0.0, source.a);
+    outColor2 = vec4(source.b, 0.0, 0.0, source.a);
+}
+
+)";
+
+static const std::string kRgbFragmentMain = R"(
 void main() {
     vec4 source = texture(extTex, texCoord);
 
@@ -79,7 +114,7 @@ void main() {
         source = source.bgra;
     }
 
-    outColor = source;
+    assignColor(source);
 }
 )";
 
@@ -214,6 +249,7 @@ static const std::string kComputeHeader = R"(
 #extension GL_NV_image_formats : warn
 
 uniform int targetWidth;
+uniform int targetHeight;
 uniform int imageWidth;
 uniform int numPixels;
 uniform int numChannels;
@@ -244,7 +280,7 @@ layout (binding = 1, rgba32f) writeonly mediump uniform image2D outTex;
 
 )";
 
-static const std::string kComputeMainUnaligned = R"(
+static const std::string kComputeMain = R"(
 void main() {
     int pixelId = int(gl_GlobalInvocationID.y * gl_NumWorkGroups.x * gl_WorkGroupSize.x);
     pixelId = 4 * (int(gl_GlobalInvocationID.x) + pixelId);
@@ -292,6 +328,50 @@ void main() {
             imageStore(outTex, outPos0, out0);
             imageStore(outTex, outPos1, out1);
             imageStore(outTex, outPos2, out2);
+        }
+    }
+}
+)";
+
+static const std::string kComputeMainPlanar = R"(
+void main() {
+    int pixelId = int(gl_GlobalInvocationID.y * gl_NumWorkGroups.x * gl_WorkGroupSize.x);
+    pixelId = 4 * (int(gl_GlobalInvocationID.x) + pixelId);
+
+    if ((pixelId + 3) < numPixels) {
+        int plane0PixelId = pixelId / 4;
+        int plane1PixelId = plane0PixelId + targetWidth * targetHeight / 4;
+        int plane2PixelId = plane1PixelId + targetWidth * targetHeight / 4;
+
+        ivec2 pos0 = ivec2(pixelId % targetWidth, pixelId / targetWidth);
+        ivec2 pos1 = ivec2((pixelId + 1) % targetWidth, (pixelId + 1) / targetWidth);
+        ivec2 pos2 = ivec2((pixelId + 2) % targetWidth, (pixelId + 2) / targetWidth);
+        ivec2 pos3 = ivec2((pixelId + 3) % targetWidth, (pixelId + 3) / targetWidth);
+
+        vec4 p0 = texelFetch(inTex, pos0, 0);
+        vec4 p1 = texelFetch(inTex, pos1, 0);
+        vec4 p2 = texelFetch(inTex, pos2, 0);
+        vec4 p3 = texelFetch(inTex, pos3, 0);
+
+        vec4 outp0 = vec4(p0.x, p1.x, p2.x, p3.x);
+        vec4 outp1 = vec4(p0.y, p1.y, p2.y, p3.y);
+        vec4 outp2 = vec4(p0.z, p1.z, p2.z, p3.z);
+
+        ivec2 outPos0 = ivec2(plane0PixelId % imageWidth, plane0PixelId / imageWidth);
+        ivec2 outPos1 = ivec2(plane1PixelId % imageWidth, plane1PixelId / imageWidth);
+        ivec2 outPos2 = ivec2(plane2PixelId % imageWidth, plane2PixelId / imageWidth);
+
+        imageStore(outTex, outPos0, outp0);
+        imageStore(outTex, outPos1, outp1);
+        imageStore(outTex, outPos2, outp2);
+
+        if (numChannels == 4) {
+            vec4 outp3 = vec4(p0.w, p1.w, p2.w, p3.w);
+
+            int plane3PixelId = plane2PixelId + targetWidth * targetHeight / 4;
+            ivec2 outPos3 = ivec2(plane3PixelId % imageWidth, plane3PixelId / imageWidth);
+
+            imageStore(outTex, outPos3, outp3);
         }
     }
 }

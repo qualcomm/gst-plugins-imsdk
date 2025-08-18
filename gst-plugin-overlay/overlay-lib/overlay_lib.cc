@@ -1146,11 +1146,12 @@ int32_t Overlay::ApplyOverlay_GLES (const OverlayTargetBuffer& buffer)
     outsurface.width = buffer.width;
     outsurface.height = buffer.height;
     outsurface.size = buffer.frame_len;
-    outsurface.stride0 = buffer.stride[0];
-    outsurface.stride1 = buffer.stride[1];
-    outsurface.offset0 = buffer.offset[0];
-    outsurface.offset1 = buffer.offset[1];
-    outsurface.nplanes = 2;
+
+    outsurface.planes.resize(2);
+    outsurface.planes[0].stride = buffer.stride[0];
+    outsurface.planes[1].stride = buffer.stride[1];
+    outsurface.planes[0].offset = buffer.offset[0];
+    outsurface.planes[1].offset = buffer.offset[1];
 
     try {
       surface_id = ib2c_engine_->CreateSurface(outsurface,
@@ -1825,9 +1826,10 @@ int32_t OverlayItem::MapOverlaySurface (OverlaySurface &surface,
     insurface.width = surface.width_;
     insurface.height = surface.height_;
     insurface.size = mem_info.size;
-    insurface.stride0 = surface.stride_;
-    insurface.offset0 = 0;
-    insurface.nplanes = 1;
+
+    insurface.planes.resize(1);
+    insurface.planes[0].stride = surface.stride_;
+    insurface.planes[0].offset = 0;
 
     try {
       surface.ib2c_surface_id_ = ib2c_engine_->CreateSurface(insurface,
