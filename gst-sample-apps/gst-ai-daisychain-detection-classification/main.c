@@ -119,6 +119,9 @@
 #define USB_CAMERA_OUTPUT_WIDTH 1280
 #define USB_CAMERA_OUTPUT_HEIGHT 720
 #define DEFAULT_CAMERA_FRAME_RATE 30
+#define DEFAULT_OUTPUT_FILENAME "/etc/media/daisychain_detection_classification.mp4"
+#define DEFAULT_IP "127.0.0.1"
+#define DEFAULT_PORT "8900"
 #define MAX_VID_DEV_CNT 64
 
 /**
@@ -162,10 +165,14 @@ typedef struct
   gchar *classification_model_path;
   gchar *detection_labels_path;
   gchar *classification_labels_path;
+  gchar *output_file;
+  gchar *output_ip_address;
+  gchar *port_num;
   gchar *detection_constants;
   gchar *classification_constants;
   gchar *enable_usb_camera;
   gchar dev_video[16];
+  enum GstSinkType sinktype;
   enum GstVideoFormat video_format;
   GstStreamSourceType source_type;
   gboolean classification_use_cpu;
@@ -265,6 +272,21 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options,
       options->classification_constants != (gchar *)(&MOBILENETV2_CONSTANT)) {
     g_free ((gpointer)options->classification_constants);
     options->classification_constants = NULL;
+  }
+
+  if (options->output_file != (gchar *)(&DEFAULT_OUTPUT_FILENAME) &&
+      options->output_file != NULL) {
+    g_free ((gpointer)options->output_file);
+  }
+
+  if (options->output_ip_address != (gchar *)(&DEFAULT_IP) &&
+      options->output_ip_address != NULL) {
+    g_free ((gpointer)options->output_ip_address);
+  }
+
+  if (options->port_num != (gchar *)(&DEFAULT_PORT) &&
+      options->port_num != NULL) {
+    g_free ((gpointer)options->port_num);
   }
 
   if (config_file != NULL && config_file != (gchar *) (&DEFAULT_CONFIG_FILE)) {
@@ -424,9 +446,12 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   GstElement *filesrc = NULL, *qtdemux = NULL, *h264parse = NULL;
   GstElement *rtspsrc = NULL, *rtph264depay = NULL, *v4l2h264dec = NULL;
   GstElement *v4l2src = NULL, *v4l2src_caps = NULL, *qtivtransform = NULL;
-  GstElement *qtivtransform_capsfilter = NULL;
+  GstElement *qtivtransform_capsfilter = NULL, *v4l2h264enc_file = NULL;
   GstElement *videoconvert = NULL, *jpegdec = NULL;
   GstElement *v4l2h264dec_caps = NULL, *video_caps_filter = NULL;
+  GstElement *h264parse_enc_file = NULL, *mp4mux = NULL, *filesink = NULL;
+  GstElement *v4l2h264enc_rtsp = NULL, *h264parse_enc_rtsp = NULL;
+  GstElement *qtirtspbin = NULL;
   GstCaps *pad_filter = NULL, *filtercaps = NULL;
   GstStructure *delegate_options = NULL;
   gboolean ret = FALSE;
@@ -671,19 +696,71 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     }
   }
 
+  if (options.sinktype == GST_WAYLANDSINK) {
   // Create Wayland compositor to render output on Display
   waylandsink = gst_element_factory_make ("waylandsink", "waylandsink");
-  if (!waylandsink) {
-    g_printerr ("Failed to create waylandsink \n");
-    goto error_clean_elements;
-  }
-
-  // Create fpsdisplaysink to display the current and
-  // average framerate as a text overlay
-  fpsdisplaysink =
-      gst_element_factory_make ("fpsdisplaysink", "fpsdisplaysink");
-  if (!fpsdisplaysink ) {
-    g_printerr ("Failed to create fpsdisplaysink\n");
+    if (!waylandsink) {
+      g_printerr ("Failed to create waylandsink \n");
+      goto error_clean_elements;
+    }
+    // Create fpsdisplaysink to display the current and
+    // average framerate as a text overlay
+    fpsdisplaysink = gst_element_factory_make ("fpsdisplaysink",
+        "fpsdisplaysink");
+    if (!fpsdisplaysink) {
+      g_printerr ("Failed to create fpsdisplaysink\n");
+      goto error_clean_elements;
+    }
+  } else if (options.sinktype == GST_VIDEO_ENCODE) {
+    // Create Encoder plugin
+    v4l2h264enc_file = gst_element_factory_make ("v4l2h264enc",
+        "v4l2h264enc_file");
+    if (!v4l2h264enc_file) {
+      g_printerr ("Failed to create v4l2h264enc_file\n");
+      goto error_clean_elements;
+    }
+    // Create frame parser plugin
+    h264parse_enc_file = gst_element_factory_make ("h264parse",
+        "h264parse_enc_file");
+    if (!h264parse_enc_file) {
+      g_printerr ("Failed to create h264parse_enc_file\n");
+      goto error_clean_elements;
+    }
+    // Create mp4mux plugin to save file in mp4 container
+    mp4mux = gst_element_factory_make ("mp4mux", "mp4mux");
+    if (!mp4mux) {
+      g_printerr ("Failed to create mp4mux\n");
+      goto error_clean_elements;
+    }
+    // Generic filesink plugin to write file on disk
+    filesink = gst_element_factory_make ("filesink", "filesink");
+    if (!filesink) {
+      g_printerr ("Failed to create filesink\n");
+      goto error_clean_elements;
+    }
+  } else if (options.sinktype == GST_RTSP_STREAMING) {
+    // Create Encoder plugin
+    v4l2h264enc_rtsp = gst_element_factory_make ("v4l2h264enc",
+        "v4l2h264enc_rtsp");
+    if (!v4l2h264enc_rtsp) {
+      g_printerr ("Failed to create v4l2h264enc_rtsp\n");
+      goto error_clean_elements;
+    }
+    // Create frame parser plugin
+    h264parse_enc_rtsp = gst_element_factory_make ("h264parse",
+        "h264parse_enc_rtsp");
+    if (!h264parse_enc_rtsp) {
+      g_printerr ("Failed to create h264parse_enc_rtsp\n");
+      goto error_clean_elements;
+    }
+    // Generic qtirtspbin plugin for streaming
+    qtirtspbin = gst_element_factory_make ("qtirtspbin", "qtirtspbin");
+    if (!qtirtspbin) {
+      g_printerr ("Failed to create qtirtspbin\n");
+      goto error_clean_elements;
+    }
+  } else {
+    g_printerr ("Invalid output Sink Type\n");
     goto error_clean_elements;
   }
 
@@ -864,17 +941,32 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     }
   }
 
-  // 2.8 Set the properties of Wayland compositor
-  g_object_set (G_OBJECT (waylandsink), "sync", TRUE, NULL);
-  g_object_set (G_OBJECT (waylandsink), "fullscreen", TRUE, NULL);
-
-  // 2.9 Set the properties of fpsdisplaysink plugin- sync,
-  // signal-fps-measurements, text-overlay and video-sink
-  g_object_set (G_OBJECT (fpsdisplaysink), "sync", TRUE, NULL);
-  g_object_set (G_OBJECT (fpsdisplaysink), "signal-fps-measurements", TRUE,
-      NULL);
-  g_object_set (G_OBJECT (fpsdisplaysink), "text-overlay", TRUE, NULL);
-  g_object_set (G_OBJECT (fpsdisplaysink), "video-sink", waylandsink, NULL);
+  if (options.sinktype == GST_WAYLANDSINK) {
+    // 2.7 Set the properties of Wayland compositor
+    g_object_set (G_OBJECT (waylandsink), "sync", FALSE, NULL);
+    g_object_set (G_OBJECT (waylandsink), "fullscreen", TRUE, NULL);
+    // 2.8 Set the properties of fpsdisplaysink plugin- sync,
+    // signal-fps-measurements, text-overlay and video-sink
+    g_object_set (G_OBJECT (fpsdisplaysink), "signal-fps-measurements", TRUE, NULL);
+    g_object_set (G_OBJECT (fpsdisplaysink), "text-overlay", TRUE, NULL);
+    g_object_set (G_OBJECT (fpsdisplaysink), "video-sink", waylandsink, NULL);
+    g_object_set (G_OBJECT (fpsdisplaysink), "sync", TRUE, NULL);
+  } else if (options.sinktype == GST_VIDEO_ENCODE) {
+    gst_element_set_enum_property (v4l2h264enc_file, "capture-io-mode", "dmabuf");
+    gst_element_set_enum_property (v4l2h264enc_file, "output-io-mode",
+        "dmabuf-import");
+    g_object_set (G_OBJECT (filesink), "location", options.output_file, NULL);
+  } else if (options.sinktype == GST_RTSP_STREAMING) {
+    gst_element_set_enum_property (v4l2h264enc_rtsp, "capture-io-mode", "dmabuf");
+    gst_element_set_enum_property (v4l2h264enc_rtsp, "output-io-mode",
+        "dmabuf-import");
+    g_object_set (G_OBJECT (h264parse_enc_rtsp), "config-interval", 1, NULL);
+    g_object_set (G_OBJECT (qtirtspbin), "address", options.output_ip_address,
+        "port", options.port_num, NULL);
+  } else {
+    g_printerr ("Incorrect output sink type\n");
+    goto error_clean_elements;
+  }
 
   // 3. Setup the pipeline
   g_print ("Adding all elements to the pipeline...\n");
@@ -900,8 +992,20 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   }
 
   gst_bin_add_many (GST_BIN (appctx->pipeline),
-      qtimetamux, qtivsplit, qtivcomposer, fpsdisplaysink, video_caps_filter,
-          NULL);
+      qtimetamux, qtivsplit, qtivcomposer, video_caps_filter, NULL);
+
+  if (options.sinktype == GST_WAYLANDSINK) {
+    gst_bin_add_many (GST_BIN (appctx->pipeline), fpsdisplaysink, NULL);
+  } else if (options.sinktype == GST_VIDEO_ENCODE) {
+    gst_bin_add_many (GST_BIN (appctx->pipeline), v4l2h264enc_file, h264parse_enc_file,
+        mp4mux, filesink, NULL);
+  } else if (options.sinktype == GST_RTSP_STREAMING) {
+    gst_bin_add_many (GST_BIN (appctx->pipeline), v4l2h264enc_rtsp,
+        h264parse_enc_rtsp, qtirtspbin, NULL);
+  } else {
+    g_printerr ("Incorrect output sink type\n");
+    goto error_clean_elements;
+  }
 
   for (gint i = 0; i < QUEUE_COUNT; i++) {
     gst_bin_add_many (GST_BIN (appctx->pipeline), queue[i], NULL);
@@ -1104,11 +1208,32 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     }
   }
 
-  ret = gst_element_link_many (qtivcomposer, fpsdisplaysink, NULL);
-  if (!ret) {
-    g_printerr ("\n pipeline elements qtivcomposer -> fpsdisplaysink "
-        "cannot be linked. Exiting.\n");
-    goto error_clean_pipeline;
+  if (options.sinktype == GST_WAYLANDSINK) {
+    ret = gst_element_link_many (qtivcomposer, fpsdisplaysink, NULL);
+    if (!ret) {
+      g_printerr ("\n pipeline elements qtivcomposer -> fpsdisplaysink "
+          "cannot be linked. Exiting.\n");
+      goto error_clean_pipeline;
+    }
+  } else if (options.sinktype == GST_VIDEO_ENCODE) {
+    ret = gst_element_link_many (qtivcomposer, v4l2h264enc_file,
+        h264parse_enc_file, mp4mux, filesink, NULL);
+    if (!ret) {
+      g_printerr ("Pipeline elements cannot be linked for"
+          " qtivcomposer->filesink\n");
+      goto error_clean_pipeline;
+    }
+  } else if (options.sinktype == GST_RTSP_STREAMING) {
+    ret = gst_element_link_many (qtivcomposer, v4l2h264enc_rtsp,
+        h264parse_enc_rtsp, qtirtspbin, NULL);
+    if (!ret) {
+      g_printerr ("Pipeline elements cannot be linked for"
+          " qtivcomposer->qtirtspbin\n");
+      goto error_clean_pipeline;
+    }
+  } else {
+      g_printerr ("Invalid output sink type\n");
+      goto error_clean_pipeline;
   }
 
   g_print ("All elements are linked successfully\n");
@@ -1203,7 +1328,9 @@ error_clean_elements:
   }
 
   cleanup_gst (&qtivsplit, &qtivcomposer, &fpsdisplaysink,
-      &waylandsink, &video_caps_filter, NULL);
+      &waylandsink, &video_caps_filter, &v4l2h264enc_file,
+      &h264parse_enc_file, &mp4mux, &filesink, &v4l2h264enc_rtsp,
+      &h264parse_enc_rtsp, &qtirtspbin, NULL);
 
   for (gint i = 0; i < CLASSIFICATION_COUNT; i++) {
     if (classification_filter[i]) {
@@ -1318,6 +1445,12 @@ parse_json (gchar * config_file, GstAppOptions * options)
       options->camera_source = TRUE;
   }
 
+  if (json_object_has_member (root_obj, "output-file")) {
+    options->output_file =
+        g_strdup (json_object_get_string_member (root_obj, "output-file"));
+    g_print ("Output File Name : %s\n", options->output_file);
+  }
+
   if (json_object_has_member (root_obj, "detection-model")) {
     options->detection_model_path =
         g_strdup (json_object_get_string_member (root_obj, "detection-model"));
@@ -1402,6 +1535,23 @@ parse_json (gchar * config_file, GstAppOptions * options)
     }
   }
 
+  if (json_object_has_member (root_obj, "output-type")) {
+    const gchar *output_type =
+        json_object_get_string_member (root_obj, "output-type");
+    if (g_strcmp0 (output_type, "waylandsink") == 0)
+      options->sinktype = GST_WAYLANDSINK;
+    else if (g_strcmp0 (output_type, "filesink") == 0)
+      options->sinktype = GST_VIDEO_ENCODE;
+    else if (g_strcmp0 (output_type, "rtspsink") == 0)
+      options->sinktype = GST_RTSP_STREAMING;
+    else {
+      gst_printerr ("output-type can only be one of "
+          "\"waylandsink\", \"filesink\" or \"rtspsink\"\n");
+      g_object_unref (parser);
+      return -1;
+    }
+  }
+
   if (json_object_has_member (root_obj, "width")) {
     options->width = json_object_get_int_member (root_obj, "width");
     g_print ("Width : %d\n", options->width);
@@ -1415,6 +1565,18 @@ parse_json (gchar * config_file, GstAppOptions * options)
   if (json_object_has_member (root_obj, "framerate")) {
     options->framerate = json_object_get_int_member (root_obj, "framerate");
     g_print ("Frame Rate : %d\n", options->framerate);
+  }
+
+  if (json_object_has_member (root_obj, "output-ip-address")) {
+    options->output_ip_address =
+        g_strdup (json_object_get_string_member (root_obj, "output-ip-address"));
+    g_print ("Output Ip Address : %s\n", options->output_ip_address);
+  }
+
+  if (json_object_has_member (root_obj, "port")) {
+    options->port_num =
+        g_strdup (json_object_get_string_member (root_obj, "port"));
+    g_print ("Port Number : %s\n", options->port_num);
   }
 
   g_object_unref (parser);
@@ -1454,6 +1616,9 @@ main (gint argc, gchar * argv[])
   options.height = USB_CAMERA_OUTPUT_HEIGHT;
   options.video_format = GST_NV12_VIDEO_FORMAT;
   options.framerate = DEFAULT_CAMERA_FRAME_RATE;
+  options.output_file = DEFAULT_OUTPUT_FILENAME;
+  options.output_ip_address = DEFAULT_IP;
+  options.port_num = DEFAULT_PORT;
 
   // Set Display environment variables
   setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
@@ -1522,7 +1687,18 @@ main (gint argc, gchar * argv[])
       "      This can be either TRUE or FALSE.\n"
       "  width: USB Camera Resolution width.\n"
       "  height: USB Camera Resolution Height.\n"
-      "  framerate: USB Camera Frame Rate.\n",
+      "  framerate: USB Camera Frame Rate.\n"
+      "  output-type: It can be either be waylandsink, filesink or rtspsink\n"
+      "  output-file: Use this Parameter to set output file path\n"
+      "      Default output file path is:" DEFAULT_OUTPUT_FILENAME "\n"
+      "  output-ip-address: Use this parameter to provide the rtsp output address.\n"
+      "      eg: 127.0.0.1\n"
+      "      Default ip is:" DEFAULT_IP "\n"
+      "  port: Use this parameter to provide the rtsp output port.\n"
+      "      eg: 8900\n"
+      "      Default port is:" DEFAULT_PORT "\n"
+      "  classification-runtime: It can take cpu, gpu, dsp as input.\n"
+      "  detection-runtime: It can take cpu, gpu, dsp as input.\n",
       app_name, DEFAULT_CONFIG_FILE, camera_description);
   help_description[4095] = '\0';
 

@@ -2,6 +2,7 @@
   "input-file": "/etc/media/video.mp4",
   "detection-runtime": "dsp",
   "classification-runtime": "dsp",
+  "output-type":"waylandsink",
   "detection-model": "/etc/models/yolox_quantized.tflite",
   "detection-labels": "/etc/labels/coco_labels.txt",
   "classification-model": "/etc/models/mobilenet_v2_quantized.tflite",
