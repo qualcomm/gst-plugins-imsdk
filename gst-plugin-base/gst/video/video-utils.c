@@ -127,6 +127,7 @@ gboolean
 gst_video_retrieve_gpu_alignment (GstVideoInfo * info, GstVideoAlignment * align)
 {
   const GstVideoFormatInfo *vfinfo = info->finfo;
+  const GstVideoFormat format = GST_VIDEO_INFO_FORMAT(info);
   guint num = 0;
 
   for (num = 0; num < GST_VIDEO_INFO_N_PLANES (info); num++) {
@@ -137,6 +138,14 @@ gst_video_retrieve_gpu_alignment (GstVideoInfo * info, GstVideoAlignment * align
     alignment = GST_VIDEO_FORMAT_INFO_SCALE_WIDTH (vfinfo, comp[0], alignment);
 
     align->stride_align[num] = alignment - 1;
+  }
+
+  // Adreno GPUs require 24bpp formats (e.g., RGB, BGR) to be aligned as 32bpp.
+  // Each pixel is 3 bytes, but the GPU expects 4-byte alignment for efficiency.
+  // To simulate 32bpp layout, we add (width / 3) pixels of padding to each row.
+  // This adds 'width' bytes, improving memory access and bandwidth usage.
+  if (format == GST_VIDEO_FORMAT_RGB || format == GST_VIDEO_FORMAT_BGR) {
+    align->padding_right = info->width / 3;
   }
 
   return gst_video_info_align (info, align);
