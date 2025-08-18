@@ -38,6 +38,7 @@ class Format {
   static uint32_t NumComponents(uint32_t format);
   static uint32_t BitDepth(uint32_t format);
 
+  static bool IsPlanar(uint32_t format);
   static bool IsInverted(uint32_t format);
   static bool IsSwapped(uint32_t format);
 
@@ -60,6 +61,8 @@ class Format {
     bool      inverted;
     /// Whether R abd B channel have swapped positions (e.g. BGR).
     bool      swapped;
+    /// Whether is planar format
+    bool      planar;
   };
 
   // Tuple of <DRM/GBM Format, Information for the RGB format>
@@ -69,7 +72,6 @@ class Format {
 
   static const uint32_t kFormatMask;
   static const uint32_t kColorSpaceMask;
-  static const uint32_t kPixelTypeMask;
 
   static const std::map<uint32_t, uint32_t> kYuvFormatTable;
   static const std::map<uint32_t, RgbFormatTuple> kRgbFormatTable;
