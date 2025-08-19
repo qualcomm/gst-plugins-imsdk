@@ -80,7 +80,6 @@ bool Module::Configure(const std::string& labels_file,
 
     threshold_ = root->GetNumber("confidence");
     threshold_ /= 100.0;
-    LOG(logger_, kError, "Failed to parse labels");
   }
 
   return true;

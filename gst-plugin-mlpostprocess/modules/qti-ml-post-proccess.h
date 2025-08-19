@@ -22,13 +22,6 @@
  */
 #define ML_POST_PROCESS_MODULE_NEW_FUNC "NewModule"
 
-/** LogCallback
- *
- * Definitions of the callback function for logging.
- */
-using LogCallback =
-    std::function<void(uint32_t level, const char* msg)>;
-
 /** LOG
  *
  * Definitions of the macro for logging.
@@ -39,6 +32,13 @@ using LogCallback =
     snprintf(buff, sizeof(buff), fmt, ##__VA_ARGS__); \
     logger(level, buff); \
   }
+
+/** LogCallback
+ *
+ * Definitions of the callback function for logging.
+ */
+using LogCallback =
+    std::function<void(uint32_t level, const char* msg)>;
 
 /** Log level
  *
@@ -53,11 +53,11 @@ enum LogLevel : uint32_t {
   kLog,
 };
 
-/** Format
+/** VideoFormat
  *
  * Definitions of possible RGB color formats.
  */
-enum Format : uint32_t {
+enum VideoFormat : uint32_t {
   kGRAY8,
 
   kRGB888,
@@ -100,7 +100,7 @@ struct Plane {
 // Variable vector of video plane structures for an image.
 typedef std::vector<Plane> Planes;
 
-/** Frame:
+/** VideoFrame:
  * @width: Width in pixels.
  * @height: Height in pixels.
  * @bits: The number of bits used to pack data items.
@@ -110,20 +110,20 @@ typedef std::vector<Plane> Planes;
  *
  * Encapsulates image data along with information describing its properties.
  */
-struct Frame {
-  uint32_t width;
-  uint32_t height;
-  uint32_t bits;
-  uint32_t n_components;
-  Format   format;
-  Planes   planes;
+struct VideoFrame {
+  uint32_t    width;
+  uint32_t    height;
+  uint32_t    bits;
+  uint32_t    n_components;
+  VideoFormat format;
+  Planes      planes;
 
-  Frame()
+  VideoFrame()
       : width(0), height(0), bits(0), n_components(0),
-        format(Format::kGRAY8), planes(0) {};
+        format(VideoFormat::kGRAY8), planes(0) {};
 
-  Frame(uint32_t width, uint32_t height, uint32_t bits, uint32_t n_components,
-      Format format, Planes& planes)
+  VideoFrame(uint32_t width, uint32_t height, uint32_t bits, uint32_t n_components,
+      VideoFormat format, Planes& planes)
       : width(width), height(height), bits(bits), n_components(n_components),
         format(format), planes(planes) {};
 };
@@ -493,8 +493,8 @@ class IModule {
    *    Audio Classification: Variable vector of AudioClassPrediction.
    *    Object Detection: Variable vector of DetectionPrediction.
    *    Pose Estimation: Variable vector of PosePrediction.
-   *    Image Segmentation: Image mask represented by Frame.
-   *    Super Resolution: Scaled image represented by Frame.
+   *    Image Segmentation: Image mask represented by VideoFrame.
+   *    Super Resolution: Scaled image represented by VideoFrame.
    *    Text Generation: Variable vector of TextPrediction.
    *    Tensor Generation: Tensor output represented by Tensors.
    *

@@ -46,15 +46,15 @@ class Module : public IModule {
   std::vector<GstFaceTemplate_ *> face_database_;
   bool LoadFaceDatabase(const uint32_t idx, const std::string filename);
   void FaceRecognition (int32_t& person_id, float& confidence,
-                   const Tensors& tensors, const uint32_t index);
+                        const Tensors& tensors, const uint32_t index);
 
   float CosineSimilarityScore (const float * data,
-                         const std::vector<float> database,
-                         const uint32_t n_entries);
+                               const std::vector<float> database,
+                               const uint32_t n_entries);
 
   bool FaceHasLiveliness (const GstFaceTemplate_ * face,
-                     const Tensors& tensors,
-                     const uint32_t index);
+                          const Tensors& tensors,
+                          const uint32_t index);
 
   float CosineDistanceScore (const float * data,
                              std::vector<float> database, uint32_t n_entries);

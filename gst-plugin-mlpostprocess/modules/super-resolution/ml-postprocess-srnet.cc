@@ -79,13 +79,13 @@ bool Module::Configure(const std::string& labels_file,
 bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
                      std::any& output) {
 
-  if (output.type() != typeid(Frame)) {
+  if (output.type() != typeid(VideoFrame)) {
     LOG(logger_, kError, "Unexpected output type!");
     return false;
   }
 
-  Frame& frame =
-      std::any_cast<Frame&>(output);
+  VideoFrame& frame =
+      std::any_cast<VideoFrame&>(output);
 
   // Retrive the video frame Bytes Per Pixel for later calculations.
   uint32_t bpp = frame.bits *
