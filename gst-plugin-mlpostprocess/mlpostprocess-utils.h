@@ -129,9 +129,8 @@ gst_ml_modules_get_type (void);
  * return: Score.
  **/
 gfloat
-gst_ml_post_process_boxes_intersection_score (
-    ObjectDetection& l_box,
-    ObjectDetection& r_box);
+gst_ml_post_process_boxes_intersection_score (ObjectDetection& l_box,
+                                              ObjectDetection& r_box);
 
 /* gst_ml_post_process_box_displacement_correction
  *
@@ -140,8 +139,8 @@ gst_ml_post_process_boxes_intersection_score (
  * return: None.
  **/
 void
-gst_ml_post_process_box_displacement_correction (
-    ObjectDetection &l_box, ObjectDetections& boxes);
+gst_ml_post_process_box_displacement_correction (ObjectDetection &l_box,
+                                                 ObjectDetections& boxes);
 
 /* gst_ml_module_caps_get_type
  *
@@ -197,14 +196,14 @@ gst_ml_pose_estimation_sort_and_push (std::any& output, std::any& predictions);
 void
 gst_ml_text_generation_sort_and_push (std::any& output, std::any& predictions);
 
-/* gst_video_frame_convert
+/* gst_video_frame_to_module_frame
  *
- * Helper function to convert GstVideoFrame to Frame.
+ * Helper function to convert GstVideoFrame to VideoFrame.
  *
  * return: Success.
  **/
 gboolean
-gst_video_frame_convert (GstVideoFrame &vframe, Frame &frame);
+gst_video_frame_to_module_frame (const GstVideoFrame &vframe, VideoFrame &frame);
 
 /* gst_cairo_draw_setup
  *

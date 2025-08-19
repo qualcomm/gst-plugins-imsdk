@@ -394,8 +394,7 @@ gst_ml_modules_get_type (void)
 }
 
 gfloat
-gst_ml_post_process_boxes_intersection_score (
-    ObjectDetection& l_box,
+gst_ml_post_process_boxes_intersection_score (ObjectDetection& l_box,
     ObjectDetection& r_box)
 {
   gfloat width = 0, height = 0, intersection = 0, l_area = 0, r_area = 0;
@@ -434,8 +433,8 @@ gst_ml_post_process_boxes_intersection_score (
 }
 
 void
-gst_ml_post_process_box_displacement_correction (
-    ObjectDetection &l_box, ObjectDetections& boxes)
+gst_ml_post_process_box_displacement_correction (ObjectDetection &l_box,
+    ObjectDetections& boxes)
 {
   gdouble score = 0.0;
   guint idx = 0;
@@ -549,7 +548,7 @@ gst_ml_text_generation_sort_and_push (std::any& output, std::any& predictions)
 }
 
 gboolean
-gst_video_frame_convert (GstVideoFrame &vframe, Frame &frame)
+gst_video_frame_to_module_frame (const GstVideoFrame &vframe, VideoFrame &frame)
 {
   guint idx = 0;
 
