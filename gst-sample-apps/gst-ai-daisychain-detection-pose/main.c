@@ -58,8 +58,9 @@
 #define DEFAULT_TFLITE_YOLOX_MODEL "/etc/models/yolox_quantized.tflite"
 #define DEFAULT_TFLITE_POSE_MODEL \
     "/etc/models/hrnet_pose_quantized.tflite"
-#define DEFAULT_YOLOX_LABELS "/etc/labels/yolox.labels"
-#define DEFAULT_POSE_LABELS "/etc/labels/hrnet_pose.labels"
+#define DEFAULT_YOLOX_LABELS "/etc/labels/yolox.json"
+#define DEFAULT_POSE_LABELS "/etc/labels/hrnet_pose.json"
+#define DEFAULT_POSE_SETTINGS_PATH "/etc/labels/hrnet_settings.json"
 #define DEFAULT_IP "127.0.0.1"
 #define DEFAULT_PORT "8900"
 
@@ -67,14 +68,6 @@
  * Default path of config file
  */
 #define DEFAULT_CONFIG_FILE "/etc/configs/config-daisychain-detection-pose.json"
-
-/**
- * Default Scale and Offset constants
- */
-#define DEFAULT_YOLOX_CONSTANT "YOLOX,q-offsets=<38.0, 0.0, 0.0>,\
-    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
-#define DEFAULT_HRNET_CONSTANT "hrnet,q-offsets=<8.0>,\
-    q-scales=<0.0040499246679246426>;"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
@@ -185,6 +178,7 @@ typedef struct {
   gchar *hrnet_labels_path;
   gchar *yolox_constants;
   gchar *hrnet_constants;
+  gchar *pose_settings_path;
   gchar *enable_usb_camera;
   gchar dev_video[16];
   enum GstVideoFormat video_format;
@@ -366,14 +360,9 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options, gchar * c
     g_free ((gpointer)options->hrnet_labels_path);
   }
 
-  if (options->yolox_constants != (gchar *)(&DEFAULT_YOLOX_CONSTANT) &&
-      options->yolox_constants != NULL) {
-    g_free ((gpointer)options->yolox_constants);
-  }
-
-  if (options->hrnet_constants != (gchar *)(&DEFAULT_HRNET_CONSTANT) &&
-      options->hrnet_constants != NULL) {
-    g_free ((gpointer)options->hrnet_constants);
+  if (options->pose_settings_path != (gchar *)(&DEFAULT_POSE_SETTINGS_PATH) &&
+      options->pose_settings_path != NULL) {
+    g_free ((gpointer)options->pose_settings_path);
   }
 
   if (options->output_file_path != NULL) {
@@ -439,7 +428,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
   GstCaps *pad_filter = NULL, *filtercaps = NULL;
   GstStructure *delegate_options = NULL;
   gboolean ret = FALSE;
-  gchar element_name[128];
+  gchar element_name[128], settings[128];
   gint daisychain_width = DEFAULT_DAISYCHAIN_OUTPUT_WIDTH;
   gint daisychain_height = DEFAULT_DAISYCHAIN_OUTPUT_HEIGHT;
   gint preview_width = DEFAULT_CAMERA_PREVIEW_OUTPUT_WIDTH;
@@ -658,7 +647,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
   for (gint i = 0; i < DETECTION_COUNT; i++) {
     snprintf (element_name, 127, "qtimlvdetection-%d", i);
     qtimlvdetection[i] =
-        gst_element_factory_make ("qtimlvdetection", element_name);
+        gst_element_factory_make ("qtimlpostprocess", element_name);
     if (!qtimlvdetection[i]) {
       g_printerr ("Failed to create qtimlvdetection %d\n", i);
       goto error_clean_elements;
@@ -680,7 +669,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
   for (gint i = 0; i < POSE_COUNT; i++) {
     snprintf (element_name, 127, "qtimlvpose-%d", i);
     qtimlvpose[i] =
-        gst_element_factory_make ("qtimlvpose", element_name);
+        gst_element_factory_make ("qtimlpostprocess", element_name);
     if (!qtimlvpose[i]) {
       g_printerr ("Failed to create qtimlvpose %d\n", i);
       goto error_clean_elements;
@@ -947,11 +936,10 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
   for (gint i = 0; i < DETECTION_COUNT; i++) {
     module_id = get_enum_value (qtimlvdetection[i], "module", "yolov8");
     if (module_id != -1) {
+      snprintf (settings, 127, "{\"confidence\": %.1f}", 75.0);
       g_object_set (G_OBJECT (qtimlvdetection[i]),
-          "threshold", 75.0, "results", 4,
-          "module", module_id, "labels", options->yolox_labels_path,
-          "constants", options->yolox_constants,
-          NULL);
+          "results", 4, "module", module_id, "labels", options->yolox_labels_path,
+          "settings", settings, NULL);
       }
     else {
       g_printerr ("Module yolov8 is not available in qtimlvdetection.\n");
@@ -964,11 +952,10 @@ create_pipe (GstAppContext * appctx, const GstAppOptions *options)
   for (gint i = 0; i < POSE_COUNT; i++) {
     module_id = get_enum_value (qtimlvpose[i], "module", "hrnet");
     if (module_id != -1) {
+      snprintf (settings, 127, "%s", options->pose_settings_path);
       g_object_set (G_OBJECT (qtimlvpose[i]),
-          "threshold", 51.0, "results", 1,
-          "module", module_id, "labels", options->hrnet_labels_path,
-          "constants", options->hrnet_constants,
-          NULL);
+          "results", 1, "module", module_id, "labels",
+          options->hrnet_labels_path, "settings", settings, NULL);
       }
     else {
       g_printerr ("Module hrnet is not available in qtimlvpose.\n");
@@ -1523,18 +1510,6 @@ parse_json (gchar * config_file, GstAppOptions * options)
             "pose-labels"));
   }
 
-  if (json_object_has_member (root_obj, "detection-constants")) {
-    options->yolox_constants =
-        g_strdup (json_object_get_string_member (root_obj,
-            "detection-constants"));
-  }
-
-  if (json_object_has_member (root_obj, "pose-constants")) {
-    options->hrnet_constants =
-        g_strdup (json_object_get_string_member (root_obj,
-            "pose-constants"));
-  }
-
   if (json_object_has_member (root_obj, "output-file")) {
     options->output_file_path =
         g_strdup (json_object_get_string_member (root_obj,
@@ -1644,8 +1619,7 @@ main (gint argc, gchar * argv[])
   options.hrnet_model_path = DEFAULT_TFLITE_POSE_MODEL;
   options.yolox_labels_path = DEFAULT_YOLOX_LABELS;
   options.hrnet_labels_path = DEFAULT_POSE_LABELS;
-  options.yolox_constants = DEFAULT_YOLOX_CONSTANT;
-  options.hrnet_constants = DEFAULT_HRNET_CONSTANT;
+  options.pose_settings_path = DEFAULT_POSE_SETTINGS_PATH;
   options.camera_source = FALSE;
   options.display = FALSE;
   options.use_usb = FALSE;
@@ -1715,12 +1689,6 @@ main (gint argc, gchar * argv[])
     " for Pose Detection labels\n"
     "      Default path for Pose Detection labels: "
     DEFAULT_POSE_LABELS"\n"
-    "  detection-constants: \"CONSTANTS\"\n"
-    "      Constants, offsets and coefficients for YOLOX TFLITE model \n"
-    "      Default constants for YOLOX: "DEFAULT_YOLOX_CONSTANT"\n"
-    "  pose-constants: \"CONSTANTS\"\n"
-    "      Constants, offsets and coefficients for HRNET TFLITE model \n"
-    "      Default constants for HRNET: "DEFAULT_HRNET_CONSTANT"\n"
     "  output-file: \"/PATH\"\n"
     "      Output file path\n"
     "      If this field is not filled, then display output is selected\n"
@@ -1877,6 +1845,12 @@ main (gint argc, gchar * argv[])
   if (!file_exists (options.hrnet_labels_path)) {
     g_printerr ("Invalid pose labels file path: %s\n",
         options.hrnet_labels_path);
+    gst_app_context_free (&appctx, &options, config_file);
+    return -EINVAL;
+  }
+
+  if (!file_exists (options.pose_settings_path)) {
+    g_print ("Invalid pose settings path: %s\n", options.pose_settings_path);
     gst_app_context_free (&appctx, &options, config_file);
     return -EINVAL;
   }

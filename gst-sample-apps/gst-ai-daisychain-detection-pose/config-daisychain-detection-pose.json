@@ -3,9 +3,8 @@
     "pose-runtime":"dsp",
     "detection-runtime":"dsp",
     "detection-model": "/etc/models/yolox_quantized.tflite",
-    "detection-labels": "/etc/labels/yolox.labels",
+    "detection-labels": "/etc/labels/yolox.json",
     "pose-model": "/etc/models/hrnet_pose_quantized.tflite",
-    "pose-labels": "/etc/labels/hrnet_pose.labels",
-    "detection-constants": "Yolox,q-offsets=<38.0, 0.0, 0.0>,q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;",
-    "pose-constants": "hrnet,q-offsets=<8.0>,q-scales=<0.0040499246679246426>;"
+    "pose-labels": "/etc/labels/hrnet_pose.json",
+    "pose-settings-path":"/etc/labels/hrnet_settings.json"
 }

@@ -8,7 +8,7 @@
     {
       "ModelName": "yolox_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Yolo-X/resolve/main/Yolo-X_w8a8.tflite",
-      "LabelFile": "yolox.labels",
+      "LabelFile": "yolox.json",
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
     }
   ],
@@ -16,7 +16,7 @@
     {
       "ModelName": "inception_v3_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Inception-v3/resolve/ba8121b0a74c7e28b45b250064c26efc7e7da29e/Inception-v3_w8a8.tflite",
-      "LabelFile": "classification.labels",
+      "LabelFile": "classification.json",
       "LabelDownloadURL": "https://github.com/quic/ai-hub-models/blob/main/qai_hub_models/labels/imagenet_labels.txt"
     }
   ],
