@@ -48,10 +48,6 @@ set_target_properties(${TARGET_NAME} PROPERTIES
   SOVERSION ${PROJECT_VERSION_MAJOR}
 )
 
-target_compile_definitions(${TARGET_NAME} PRIVATE
-  $<$<BOOL:${HAVE_LINUX_DMA_BUF_H}>:HAVE_LINUX_DMA_BUF_H>
-)
-
 target_include_directories(${TARGET_NAME} PUBLIC
   ${GST_INCLUDE_DIRS}
   ${RUNTIME_FLAGS_PARSER_TARGET_INCLUDES}

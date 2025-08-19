@@ -33,6 +33,13 @@ enum ColorFormat : uint32_t {
   kRGB161616F,
   kRGB323232F,
 
+  kR8G8B8,
+  kR8G8B8I,
+  kR16G16B16,
+  kR16G16B16I,
+  kR16G16B16F,
+  kR32G32B32F,
+
   kBGR888,
   kBGR888I,
   kBGR161616,
@@ -40,12 +47,24 @@ enum ColorFormat : uint32_t {
   kBGR161616F,
   kBGR323232F,
 
+  kB8G8R8,
+  kB8G8R8I,
+  kB16G16R16,
+  kB16G16R16I,
+  kB16G16R16F,
+  kB32G32R32F,
+
   kARGB8888,
   kARGB8888I,
   kARGB16161616,
   kARGB16161616I,
   kARGB16161616F,
   kARGB32323232F,
+
+  kA8R8G8B8,
+  kA8R8G8B8I,
+  kA16R16G16B16F,
+  kA32R32G32B32F,
 
   kXRGB8888,
   kXRGB8888I,
@@ -60,6 +79,11 @@ enum ColorFormat : uint32_t {
   kABGR16161616I,
   kABGR16161616F,
   kABGR32323232F,
+
+  kA8B8G8R8,
+  kA8B8G8R8I,
+  kA16B16G16R16F,
+  kA32B32G32R32F,
 
   kXBGR8888,
   kXBGR8888I,
@@ -157,19 +181,26 @@ enum SurfaceFlags : uint32_t {
   kOutput = (1 << 1),
 };
 
+/** Plane
+ * @stride: Defines stride in bytes.
+ * @offset: Defines the offset to the plane.
+ *
+ * Structure containing image plane offset and stride.
+ */
+struct Plane {
+  uint32_t stride;
+  uint32_t offset;
+};
+
+typedef std::vector<Plane> Planes;
+
 /** Surface
  * @fd: Defines the image File Descriptor.
- * @format: Color format plus additional mode bits.
  * @width: Defines width in pixels.
  * @height: Defines height in pixels.
+ * @format: Color format plus additional mode bits.
  * @size: Total size of the image surface in bytes.
- * @nplanes: Number of available/active planes.
- * @stride0: Defines stride in bytes for whole buffer if not planar.
- * @offset0: Defines the offset to plane 0 or whole buffer if not planar.
- * @stride1: Defines stride in bytes for plane 1, ignored if not planar.
- * @offset1: Defines the offset to plane 1, ignored if not planar.
- * @stride2: Defines stride in bytes for plane 2, ignored if not planar.
- * @offset2: Defines the offset to plane 2, ignored if not planar.
+ * @planes: Offsets and strides of the image planes.
  *
  * Structure for registering an image as a blit surface on Linux platforms.
  */
@@ -179,27 +210,19 @@ struct Surface {
   uint32_t width;
   uint32_t height;
   uint64_t size;
-  uint32_t nplanes;
-  uint32_t stride0;
-  uint32_t offset0;
-  uint32_t stride1;
-  uint32_t offset1;
-  uint32_t stride2;
-  uint32_t offset2;
+  Planes   planes;
 
   Surface()
-      : fd(0),
-        format(ColorFormat::kGRAY8),
-        width(0),
-        height(0),
-        size(0),
-        nplanes(0),
-        stride0(0),
-        offset0(0),
-        stride1(0),
-        offset1(0),
-        stride2(0),
-        offset2(0) {}
+      : fd(0), format(ColorFormat::kGRAY8), width(0), height(0), size(0) {}
+
+  Surface(const uint32_t fd, const uint32_t format, const uint32_t width,
+          const uint32_t height, const uint64_t size, const Planes& planes)
+      : fd(fd),
+        format(format),
+        width(width),
+        height(height),
+        size(size),
+        planes(planes) {}
 
   Surface(const Surface& s)
       : fd(s.fd),
@@ -207,13 +230,7 @@ struct Surface {
         width(s.width),
         height(s.height),
         size(s.size),
-        nplanes(s.nplanes),
-        stride0(s.stride0),
-        offset0(s.offset0),
-        stride1(s.stride1),
-        offset1(s.offset1),
-        stride2(s.stride2),
-        offset2(s.offset2) {}
+        planes(s.planes) {}
 };
 
 /** Normalize

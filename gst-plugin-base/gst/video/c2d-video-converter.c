@@ -62,7 +62,6 @@
  */
 
 #include "c2d-video-converter.h"
-#include <gst/utils/common-utils.h>
 
 #include <stdint.h>
 #include <dlfcn.h>
@@ -1109,9 +1108,6 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
       goto cleanup;
     }
 
-    // DMA buffer SYNC Start
-    gst_buffer_dma_sync_start (outframe->buffer);
-
     // Fill the surface if there is visible background area.
     if (composition->bgfill && (area > 0)) {
       GST_LOG ("Fill output surface %x", surface_id);
@@ -1139,9 +1135,6 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
     return FALSE;
   else if (fence != NULL)
     *fence = requests;
-  else
-    // DMA buffer SYNC End
-    gst_buffer_dma_sync_end (outframe->buffer);
 
   return TRUE;
 
@@ -1178,10 +1171,6 @@ gst_c2d_video_converter_wait_fence (GstC2dVideoConverter * convert,
   }
 
   g_array_free (requests, TRUE);
-
-  // DMA buffer SYNC End
-  gst_buffer_dma_sync_end (outframe->buffer);
-
   return success;
 }
 

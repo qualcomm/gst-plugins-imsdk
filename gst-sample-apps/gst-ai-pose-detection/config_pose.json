@@ -5,5 +5,6 @@
   "labels": "/etc/labels/hrnet_pose.labels",
   "constants": "hrnet,q-offsets=<8.0>,q-scales=<0.0040499246679246426>;",
   "threshold": 51,
-  "runtime": "dsp"
+  "runtime": "dsp",
+  "output-type": "waylandsink"
 }

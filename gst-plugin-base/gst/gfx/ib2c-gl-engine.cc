@@ -105,9 +105,23 @@ Engine::Engine() {
   env_->Gles()->GenFramebuffers(1, &fbo_);
   EXCEPTION_IF_GL_ERROR(env_, "Failed to generate stage frame buffer");
 
-  auto shader = std::make_shared<ShaderProgram>(env_, kVertexShader,
-                                                kRgbFragmentShader);
+  // Construct fragment shader code for interleaved RGB(A) formats.
+  std::string fragment =
+      kRgbFragmentHeader + kRgbFragmentInterleavedOutput + kRgbFragmentMain;
+
+  auto shader = std::make_shared<ShaderProgram>(env_, kVertexShader, fragment);
   shaders_.emplace(ShaderType::kRGB, shader);
+
+  env_->Gles()->EnableVertexAttribArray(shader->GetAttribLocation("vPosition"));
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to enable position attribute array");
+
+  env_->Gles()->EnableVertexAttribArray(shader->GetAttribLocation("inTexCoord"));
+  EXCEPTION_IF_GL_ERROR(env_, "Failed to enable texture coords attribute array");
+
+  fragment = kRgbFragmentHeader + kRgbFragmentPlanarOutput + kRgbFragmentMain;
+
+  shader = std::make_shared<ShaderProgram>(env_, kVertexShader, fragment);
+  shaders_.emplace(ShaderType::kPlanarRGB, shader);
 
   env_->Gles()->EnableVertexAttribArray(shader->GetAttribLocation("vPosition"));
   EXCEPTION_IF_GL_ERROR(env_, "Failed to enable position attribute array");
@@ -149,30 +163,53 @@ Engine::Engine() {
   EXCEPTION_IF_GL_ERROR(env_, "Failed to enable texture coords attribute array");
 
   // Construct shader code for 8-bit unaligned RGB(A) output textures.
-  std::string code = kComputeHeader + kComputeOutputRGBA8 + kComputeMainUnaligned;
+  std::string compute = kComputeHeader + kComputeOutputRGBA8 + kComputeMain;
 
-  shader = std::make_shared<ShaderProgram>(env_, code);
+  shader = std::make_shared<ShaderProgram>(env_, compute);
   shaders_.emplace(ShaderType::kCompute8, shader);
 
   if (env_->QueryExtension("GL_NV_image_formats")) {
     // Construct shader code for 16-bit unaligned RGB(A) output textures.
-    code = kComputeHeader + kComputeOutputRGBA16 + kComputeMainUnaligned;
+    compute = kComputeHeader + kComputeOutputRGBA16 + kComputeMain;
 
-    shader = std::make_shared<ShaderProgram>(env_, code);
+    shader = std::make_shared<ShaderProgram>(env_, compute);
     shaders_.emplace(ShaderType::kCompute16, shader);
   }
 
   // Construct shader code for 16-bit float unaligned RGB(A) output textures.
-  code = kComputeHeader + kComputeOutputRGBA16F + kComputeMainUnaligned;
+  compute = kComputeHeader + kComputeOutputRGBA16F + kComputeMain;
 
-  shader = std::make_shared<ShaderProgram>(env_, code);
+  shader = std::make_shared<ShaderProgram>(env_, compute);
   shaders_.emplace(ShaderType::kCompute16F, shader);
 
   // Construct shader code for 32-bit float unaligned RGB(A) output textures.
-  code = kComputeHeader + kComputeOutputRGBA32F + kComputeMainUnaligned;
+  compute = kComputeHeader + kComputeOutputRGBA32F + kComputeMain;
 
-  shader = std::make_shared<ShaderProgram>(env_, code);
+  shader = std::make_shared<ShaderProgram>(env_, compute);
   shaders_.emplace(ShaderType::kCompute32F, shader);
+
+  // Construct shader code for 8-bit unaligned RGB(A) output textures.
+  compute = kComputeHeader + kComputeOutputRGBA8 + kComputeMainPlanar;
+  shader = std::make_shared<ShaderProgram>(env_, compute);
+  shaders_.emplace(ShaderType::kComputePlanar8, shader);
+
+  if (env_->QueryExtension("GL_NV_image_formats")) {
+    // Construct shader code for 16-bit unaligned RGB(A) output textures.
+    compute = kComputeHeader + kComputeOutputRGBA16 + kComputeMainPlanar;
+
+    shader = std::make_shared<ShaderProgram>(env_, compute);
+    shaders_.emplace(ShaderType::kComputePlanar16, shader);
+  }
+
+  // Construct shader code for 16-bit float unaligned RGB(A) output textures.
+  compute = kComputeHeader + kComputeOutputRGBA16F + kComputeMainPlanar;
+  shader = std::make_shared<ShaderProgram>(env_, compute);
+  shaders_.emplace(ShaderType::kComputePlanar16F, shader);
+
+  // Construct shader code for 16-bit float unaligned RGB(A) output textures.
+  compute = kComputeHeader + kComputeOutputRGBA32F + kComputeMainPlanar;
+  shader = std::make_shared<ShaderProgram>(env_, compute);
+  shaders_.emplace(ShaderType::kComputePlanar32F, shader);
 
   error = env_->UnbindContext(ContextType::kPrimary) ;
   if (!error.empty()) throw std::runtime_error(error);
@@ -507,14 +544,25 @@ std::string Engine::RenderRgbTexture(std::vector<GraphicTuple>& graphics,
                                      bool swapped, Normalization& normalize,
                                      Objects& objects) {
 
-  GraphicTuple& gltuple = graphics.at(0);
-  GLuint& texture = std::get<GLuint>(gltuple);
+  // Declare the list of color buffers to be drawn into.
+  std::vector<GLenum> buffers;
 
-  // Attach output texture to the rendering frame buffer.
-  env_->Gles()->FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                                     GL_TEXTURE_2D, texture, 0);
-  RETURN_IF_GL_ERROR(env_, "Failed to attach output texture ", texture, " to ",
-                     "frame buffer at color attachment 0 for RGB rendering");
+  for (size_t idx = 0; idx < graphics.size(); idx++) {
+    GraphicTuple& gltuple = graphics.at(idx);
+    GLuint& texture = std::get<GLuint>(gltuple);
+
+    // Attach output texture to the rendering frame buffer.
+    env_->Gles()->FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + idx,
+                                       GL_TEXTURE_2D, texture, 0);
+    RETURN_IF_GL_ERROR(env_, "Failed to attach output texture ", texture, " to ",
+                      "frame buffer at color attachment ", idx, " for RGB render");
+
+    buffers.push_back(GL_COLOR_ATTACHMENT0 + idx);
+  }
+
+  // Specify the list of color buffers to be drawn into.
+  env_->Gles()->DrawBuffers(buffers.size(), buffers.data());
+  RETURN_IF_GL_ERROR(env_, "Failed to set color buffers to be drawn into");
 
   if (clean) {
     // Set/Clear the background of the texture attached to the frame buffer.
@@ -524,7 +572,10 @@ std::string Engine::RenderRgbTexture(std::vector<GraphicTuple>& graphics,
     RETURN_IF_GL_ERROR(env_, "Failed to clear buffer color bit");
   }
 
-  std::shared_ptr<ShaderProgram> shader = shaders_.at(ShaderType::kRGB);
+  ShaderType stype =
+      (graphics.size() == 1) ? ShaderType::kRGB : ShaderType::kPlanarRGB;
+
+  std::shared_ptr<ShaderProgram> shader = shaders_.at(stype);
   shader->Use();
 
   shader->SetVec4("rgbaScale", normalize[0].scale, normalize[1].scale,
@@ -668,11 +719,17 @@ std::string Engine::DispatchCompute(GLuint stgtex, Surface& surface,
 
   // Overwrite default shader type if necessary.
   if (Format::IsFloat(surface.format) && (bitdepth == 32))
-    stype = ShaderType::kCompute32F;
+    stype = Format::IsPlanar(surface.format) ?
+        ShaderType::kComputePlanar32F : ShaderType::kCompute32F;
   else if (Format::IsFloat(surface.format) && (bitdepth == 16))
-    stype = ShaderType::kCompute16F;
+    stype = Format::IsPlanar(surface.format) ? ShaderType::kComputePlanar16F :
+        ShaderType::kCompute16F;
   else if (!Format::IsFloat(surface.format) && (bitdepth == 16))
-    stype = ShaderType::kCompute16;
+    stype = Format::IsPlanar(surface.format) ? ShaderType::kComputePlanar16 :
+        ShaderType::kCompute16;
+  else
+    stype = Format::IsPlanar(surface.format) ? ShaderType::kComputePlanar8 :
+        ShaderType::kCompute8;
 
   std::shared_ptr<ShaderProgram> shader = shaders_.at(stype);
   shader->Use();
@@ -685,6 +742,7 @@ std::string Engine::DispatchCompute(GLuint stgtex, Surface& surface,
   ImageParam& imgparam = std::get<ImageParam>(gltuple);
 
   shader->SetInt("targetWidth", width);
+  shader->SetInt("targetHeight", height);
   shader->SetInt("imageWidth", std::get<0>(imgparam));
   shader->SetInt("numPixels", (width * height));
   shader->SetInt("numChannels", Format::NumComponents(surface.format));
@@ -775,7 +833,7 @@ bool Engine::IsSurfaceRenderable(const Surface& surface) {
   uint32_t bytedepth = Format::BitDepth(surface.format) / 8;
 
   bool aligned =
-      (((surface.stride0 / bytedepth) % alignment) == 0) ? true : false;
+      (((surface.planes[0].stride / bytedepth) % alignment) == 0) ? true : false;
 
   // For YUV surfaces check only if it satisfies GPU alignment requirement.
   if (Format::IsYuv(surface.format))
@@ -790,6 +848,10 @@ bool Engine::IsSurfaceRenderable(const Surface& surface) {
     return false;
 
   uint32_t n_components = Format::NumComponents(surface.format);
+
+  // RGB(A) planar formats are not renderable
+  if (Format::IsPlanar(surface.format))
+    return false;
 
   // 3 channeled Float RGB surfaces are not renderable due to limitation.
   // TODO Remove when 3 channel RGB float formats are supported.
@@ -890,34 +952,34 @@ std::vector<GraphicTuple> Engine::ImportSurface(const Surface& surface,
     attribs[index++] = EGL_DMA_BUF_PLANE0_FD_EXT;
     attribs[index++] = subsurface.fd;
     attribs[index++] = EGL_DMA_BUF_PLANE0_PITCH_EXT;
-    attribs[index++] = subsurface.stride0;
+    attribs[index++] = subsurface.planes[0].stride;
     attribs[index++] = EGL_DMA_BUF_PLANE0_OFFSET_EXT;
-    attribs[index++] = subsurface.offset0;
+    attribs[index++] = subsurface.planes[0].offset;
     attribs[index++] = EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT;
     attribs[index++] = std::get<1>(internal) & 0xFFFFFFFF;
     attribs[index++] = EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT;
     attribs[index++] = std::get<1>(internal) >> 32;
 
-    if (subsurface.nplanes >= 2) {
+    if (subsurface.planes.size() >= 2) {
       attribs[index++] = EGL_DMA_BUF_PLANE1_FD_EXT;
       attribs[index++] = subsurface.fd;
       attribs[index++] = EGL_DMA_BUF_PLANE1_PITCH_EXT;
-      attribs[index++] = subsurface.stride1;
+      attribs[index++] = subsurface.planes[1].stride;
       attribs[index++] = EGL_DMA_BUF_PLANE1_OFFSET_EXT;
-      attribs[index++] = subsurface.offset1;
+      attribs[index++] = subsurface.planes[1].offset;
       attribs[index++] = EGL_DMA_BUF_PLANE1_MODIFIER_LO_EXT;
       attribs[index++] = std::get<1>(internal) & 0xFFFFFFFF;
       attribs[index++] = EGL_DMA_BUF_PLANE1_MODIFIER_HI_EXT;
       attribs[index++] = std::get<1>(internal) >> 32;
     }
 
-    if (subsurface.nplanes == 3) {
+    if (subsurface.planes.size() == 3) {
       attribs[index++] = EGL_DMA_BUF_PLANE2_FD_EXT;
       attribs[index++] = subsurface.fd;
       attribs[index++] = EGL_DMA_BUF_PLANE2_PITCH_EXT;
-      attribs[index++] = subsurface.stride2;
+      attribs[index++] = subsurface.planes[2].stride;
       attribs[index++] = EGL_DMA_BUF_PLANE2_OFFSET_EXT;
-      attribs[index++] = subsurface.offset2;
+      attribs[index++] = subsurface.planes[2].offset;
       attribs[index++] = EGL_DMA_BUF_PLANE2_MODIFIER_LO_EXT;
       attribs[index++] = std::get<1>(internal) & 0xFFFFFFFF;
       attribs[index++] = EGL_DMA_BUF_PLANE2_MODIFIER_HI_EXT;
@@ -975,42 +1037,52 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
   if ((flags & SurfaceFlags::kOutput) && Format::IsYuv(surface.format) &&
       (shaders_.count(ShaderType::kYUV) == 0)) {
     // Direct rendering into YUV buffer is not supported and output is YUV.
-    // A separate image must be created for each plane of the YUV surface.
-    imgsurfaces.resize(surface.nplanes);
+    // A separate sub-surface must be created for each plane of the YUV surface.
+    uint64_t size = (surface.planes.size() >= 2) ?
+        surface.planes[1].offset : surface.size;
 
-    // First image will contain only Luminosity info.
-    imgsurfaces[0].fd = surface.fd;
-    imgsurfaces[0].width = surface.width;
-    imgsurfaces[0].height = surface.height;
-    imgsurfaces[0].format = ColorFormat::kGRAY8;
-    imgsurfaces[0].nplanes = 1;
-    imgsurfaces[0].stride0 = surface.stride0;
-    imgsurfaces[0].offset0 = surface.offset0;
+    // First sub-surface will contain only Luminosity info.
+    Surface subsurface(surface.fd, ColorFormat::kGRAY8, surface.width,
+                       surface.height, size, Planes({surface.planes[0]}));
+    imgsurfaces.push_back(subsurface);
 
-    // Second image will represent the chroma info.
-    if (surface.nplanes >= 2) {
-      imgsurfaces[1].fd = surface.fd;
-      imgsurfaces[1].width = surface.width;
-      imgsurfaces[1].height = surface.height;
-      imgsurfaces[1].nplanes = 1;
-      imgsurfaces[1].stride0 = surface.stride1;
-      imgsurfaces[1].offset0 = surface.offset1;
-
-      imgsurfaces[1].format = ColorFormat::kRG88;
+    // Second sub-surface will represent the chroma info.
+    if (surface.planes.size() == 2) {
+      subsurface.planes[0] = surface.planes[1];
+      subsurface.size = surface.size - surface.planes[1].offset;
+      subsurface.format = ColorFormat::kRG88;
 
       if ((surface.format == ColorFormat::kNV21) ||
           (surface.format == ColorFormat::kNV61))
-        imgsurfaces[1].format = ColorFormat::kGR88;
+        subsurface.format = ColorFormat::kGR88;
 
       // Depending on the surface format the chroma plane has different size.
       if (surface.format == ColorFormat::kNV12 ||
           surface.format == ColorFormat::kNV21) {
-        imgsurfaces[1].width /= 2;
-        imgsurfaces[1].height /= 2;
+        subsurface.width /= 2;
+        subsurface.height /= 2;
       } else if (surface.format == ColorFormat::kNV16 ||
                  surface.format == ColorFormat::kNV61) {
-        imgsurfaces[1].width /= 2;
+        subsurface.width /= 2;
       }
+
+      imgsurfaces.push_back(subsurface);
+    }
+  } else if ((flags & SurfaceFlags::kOutput) && Format::IsRgb(surface.format) &&
+             Format::IsPlanar(surface.format) && IsSurfaceRenderable(surface)) {
+    // Planar RGB(A) needs to be split into multiple images for rendering.
+    uint32_t n_planes = surface.planes.size();
+
+    for (uint32_t idx = 0; idx < n_planes; idx++) {
+      // Size of current plane is offset to the next one (or total size for last)
+      // minus the offset to previous (or 0 in the case of the first plane).
+      uint64_t size = ((idx + 1) < n_planes) ?
+          surface.planes[(idx + 1)].offset : surface.size;
+      size -= (idx == 0) ? 0 : surface.planes[idx].offset;
+
+      Surface subsurface(surface.fd, ColorFormat::kGRAY8, surface.width,
+                         surface.height, size, Planes({surface.planes[idx]}));
+      imgsurfaces.push_back(std::move(subsurface));
     }
   } else if ((flags & SurfaceFlags::kOutput) && Format::IsRgb(surface.format) &&
              !IsSurfaceRenderable(surface)) {
@@ -1048,14 +1120,14 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
 
     // Adjust width, height and stride values for non-renderable RGB(A) surface.
     // Align stride and calculate the width for the compute texture.
-    uint32_t stride = subsurface.stride0 / bytedepth;
-    subsurface.stride0 =
+    uint32_t stride = subsurface.planes[0].stride / bytedepth;
+    subsurface.planes[0].stride =
         ((stride + (alignment - 1)) & ~(alignment - 1)) * bytedepth;
 
-    subsurface.width = subsurface.stride0 / bpp;
+    subsurface.width = subsurface.planes[0].stride / bpp;
 
     // Calculate the aligned height value rounded up based on surface size.
-    uint32_t size = subsurface.size - subsurface.offset0;
+    uint32_t size = subsurface.size - subsurface.planes[0].offset;
     subsurface.height =
         std::ceil((size / bpp) / static_cast<float>(subsurface.width));
 

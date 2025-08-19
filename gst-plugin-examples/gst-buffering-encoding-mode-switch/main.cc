@@ -5,17 +5,17 @@
 
 /*
  * GStreamer Application:
- * Dynamic Stream Switching Between IFE and IPE.
+ * Dynamic Stream Switching Between Buffering Mode and Encoding Mode.
  *
  * Description:
  * This application demonstrates runtime switching of streams using GStreamer.
  * It supports two operational modes:
  *   - Buffering Mode:
- *       - Activates 1080p IFE stream for encoding
- *       - Activates 480p FD stream for encoding
+ *       - Activates 1080p stream for encoding
+ *       - Activates 480p stream for encoding
  *   - Encoding Mode:
- *       - Activates 1080p IPE stream for encoding
- *       - Activates 480p IPE stream for display (Wayland)
+ *       - Activates 1080p stream for encoding
+ *       - Activates 480p stream for display (Wayland)
  *
  * Features:
  *   - Safe pad linking/unlinking using pad probes
@@ -23,7 +23,7 @@
  *   - Interactive runtime mode switching via user input
  *
  * Usage:
- *   gst-ife-ipe-switch-streams-runtime-example
+ *   gst-buffering-encoding-mode-switch-example
  *
  * **************************************************
  * Pipeline Overview:
@@ -465,7 +465,7 @@ create_dummy_stream (_GstBufferingEncodingAppContext * appctx,
 
   GstPad *sink_pad = gst_element_get_static_pad (capsfilter, "sink");
   if (gst_pad_link (stream->qmmf_pad, sink_pad) != GST_PAD_LINK_OK) {
-    g_printerr ("Failed to link IFE stream pad to capsfilter_0 sink pad\n");
+    g_printerr ("Failed to link stream[0] stream pad to capsfilter_0 sink pad\n");
     gst_object_unref (sink_pad);
     goto cleanup;
   }
@@ -823,7 +823,7 @@ release_all_streams (_GstBufferingEncodingAppContext *appctx)
 }
 
 static gboolean
-handle_ife_stream (_GstBufferingEncodingAppContext *appctx, gboolean link,
+handle_buffering_mode_stream (_GstBufferingEncodingAppContext *appctx, gboolean link,
     gboolean use_probe)
 {
   GstElement *capsfilter = gst_bin_get_by_name (GST_BIN (appctx->pipeline),
@@ -835,7 +835,7 @@ handle_ife_stream (_GstBufferingEncodingAppContext *appctx, gboolean link,
 
   if (link && !gst_pad_is_linked (stream->qmmf_pad)) {
     if (gst_pad_link (stream->qmmf_pad, sink_pad) != GST_PAD_LINK_OK) {
-      g_printerr ("Failed to link IFE stream pad to capsfilter_1 sink pad\n");
+      g_printerr ("Failed to link stream[1] stream pad to capsfilter_1 sink pad\n");
       gst_object_unref (sink_pad);
       gst_object_unref (capsfilter);
       gst_object_unref (qtiqmmfsrc);
@@ -863,7 +863,7 @@ handle_ife_stream (_GstBufferingEncodingAppContext *appctx, gboolean link,
 }
 
 static gboolean
-handle_ipe_streams (_GstBufferingEncodingAppContext *appctx, gboolean link,
+handle_encoding_mode_streams (_GstBufferingEncodingAppContext *appctx, gboolean link,
   gboolean use_probe)
 {
   GstElement *qtiqmmfsrc = gst_bin_get_by_name (GST_BIN (appctx->pipeline),
@@ -880,7 +880,7 @@ handle_ipe_streams (_GstBufferingEncodingAppContext *appctx, gboolean link,
 
   if (link && !gst_pad_is_linked (stream->qmmf_pad)) {
     if (gst_pad_link (stream->qmmf_pad, sink_pad) != GST_PAD_LINK_OK) {
-      g_printerr ("Failed to link IPE stream[%d] pad to %s sink pad\n",
+      g_printerr ("Failed to link encoding mode 1080p stream[%d] pad to %s sink pad\n",
           0, capsfilter_name);
       gst_object_unref (sink_pad);
       gst_object_unref (capsfilter);
@@ -994,18 +994,18 @@ switch_to_stream (_GstBufferingEncodingAppContext *appctx, _StreamMode mode,
 
     g_usleep (STREAM_SWITCH_DELAY);
 
-    success = handle_ipe_streams (appctx, FALSE, use_probe);
-    GST_DEBUG ("unlinked IPE stream");
+    success = handle_encoding_mode_streams (appctx, FALSE, use_probe);
+    GST_DEBUG ("unlinked encoding mode 1080p stream");
     if (!success) {
-      g_printerr ("Failed to unlink IPE streams.\n");
+      g_printerr ("Failed to unlink encoding mode 1080p streams.\n");
       gst_object_unref (qtiqmmfsrc);
       return;
     }
 
-    success = handle_ife_stream (appctx, TRUE, use_probe);
-    GST_DEBUG ("linked IFE stream");
+    success = handle_buffering_mode_stream (appctx, TRUE, use_probe);
+    GST_DEBUG ("linked buffering mode 1080p stream");
     if (!success) {
-      g_printerr ("Failed to link IFE streams.\n");
+      g_printerr ("Failed to link buffering mode 1080p streams.\n");
       gst_object_unref (qtiqmmfsrc);
       return;
     }
@@ -1028,18 +1028,18 @@ switch_to_stream (_GstBufferingEncodingAppContext *appctx, _StreamMode mode,
 
     g_usleep (STREAM_SWITCH_DELAY);
 
-    success = handle_ife_stream (appctx, FALSE, use_probe);
-    GST_DEBUG ("unlinked IFE stream");
+    success = handle_buffering_mode_stream (appctx, FALSE, use_probe);
+    GST_DEBUG ("unlinked buffering mode 1080p stream");
     if (!success) {
-      g_printerr ("Failed to unlink IFE streams.\n");
+      g_printerr ("Failed to unlink buffering mode 1080p streams.\n");
       gst_object_unref (qtiqmmfsrc);
       return;
     }
 
-    success = handle_ipe_streams (appctx, TRUE, use_probe);
-    GST_DEBUG ("linked IPE stream");
+    success = handle_encoding_mode_streams (appctx, TRUE, use_probe);
+    GST_DEBUG ("linked encoding mode 1080p stream");
     if (!success) {
-      g_printerr ("Failed to link IPE streams.\n");
+      g_printerr ("Failed to link encoding mode 1080p streams.\n");
       gst_object_unref (qtiqmmfsrc);
       return;
     }

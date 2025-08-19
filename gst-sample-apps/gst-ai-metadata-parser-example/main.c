@@ -88,7 +88,7 @@
 /**
  * Number of Queues used for buffer caching between elements
  */
-#define QUEUE_COUNT 8
+#define QUEUE_COUNT 9
 
 /**
  * Number of post-processing plugins used
@@ -843,7 +843,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   ret = gst_element_link_many (detection_tee, qtimlvdetection[1],
-      appsink_caps, appsink, NULL);
+      appsink_caps, queue[8], appsink, NULL);
   if (!ret) {
     g_printerr ("Pipeline elements cannot be linked for "
         "detection_tee -> post proc -> appsink.\n");

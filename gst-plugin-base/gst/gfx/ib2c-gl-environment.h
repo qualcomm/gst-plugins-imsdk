@@ -117,6 +117,7 @@ class GlesLib {
 
   PFNGLVIEWPORTPROC                   Viewport;
 
+  PFNGLDRAWBUFFERSPROC                DrawBuffers;
   PFNGLDRAWARRAYSPROC                 DrawArrays;
   PFNGLDISPATCHCOMPUTEPROC            DispatchCompute;
 
