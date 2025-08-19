@@ -331,8 +331,8 @@ void Module::TraverseSkeletonLinks(const Tensors& tensors,
   }
 }
 
-bool Module::LoadLinks(const std::vector<JsonValue::Ptr>& nodes, uint32_t idx,
-                       std::vector<KeypointLinkIds>& links) {
+bool Module::LoadLinks(const std::vector<JsonValue::Ptr>& nodes,
+                       const uint32_t idx, std::vector<KeypointLinkIds>& links) {
 
   if (idx >= nodes.size())
     return false;

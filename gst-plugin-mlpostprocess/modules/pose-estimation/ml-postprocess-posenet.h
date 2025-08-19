@@ -84,13 +84,13 @@ class Module : public IModule {
       Region& region);
   int32_t NonMaxSuppression(PoseEstimation &l_entry, PoseEstimations &entries);
   void ExtractRootpoints(const Tensors& tensors,
-      std::vector<RootPoint>& rootpoints);
+                         std::vector<RootPoint>& rootpoints);
   void TraverseSkeletonLinks (const Tensors& tensors, PoseEstimation &l_entry,
-      bool backwards);
+                              bool backwards);
   bool LoadConnections(const std::vector<JsonValue::Ptr>& nodes,
-      std::vector<KeypointLinkIds>& connections);
-  bool LoadLinks(const std::vector<JsonValue::Ptr>& nodes, uint32_t idx,
-      std::vector<KeypointLinkIds>& links);
+                       std::vector<KeypointLinkIds>& connections);
+  bool LoadLinks(const std::vector<JsonValue::Ptr>& nodes, const uint32_t idx,
+                 std::vector<KeypointLinkIds>& links);
 
   // Logging callback.
   LogCallback logger_;
