@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -91,6 +91,18 @@ gst_ml_tensor_assign_value (GstMLType mltype, gpointer data, guint idx,
 GST_API gint
 gst_ml_tensor_compare_values (GstMLType mltype, gpointer data, guint l_idx,
                               guint r_idx);
+/**
+ * gst_ml_structure_has_source_dimensions:
+ * @structure: #GstStructure for ML post-processing parameters.
+ *
+ * Helper function for retrieving if the the postion and dimensions of
+ * the region exists
+ *
+ * return: (TRUE) The source region fields exists.
+ *         (FALSE) The source region fields doesn't exists.
+ */
+gboolean
+gst_ml_structure_has_source_dimensions (const GstStructure * structure);
 
 /**
  * gst_ml_structure_set_source_dimensions:
@@ -98,10 +110,10 @@ gst_ml_tensor_compare_values (GstMLType mltype, gpointer data, guint l_idx,
  * @width: Width of the source tensor.
  * @height: Height of the source tensor.
  *
- * Helper function for populating the width and height of the model source
- * image tensor. Primary to be used in some post-processing modules.
+ * Helper function for retrieving if the width and height exist.
  *
- * return: None
+ * return: (TRUE) The width and height fields exists.
+ *         (FALSE) The width and height fields doesn't exists.
  */
 GST_API void
 gst_ml_structure_set_source_dimensions (GstStructure * structure,
@@ -121,6 +133,19 @@ gst_ml_structure_set_source_dimensions (GstStructure * structure,
 GST_API void
 gst_ml_structure_get_source_dimensions (const GstStructure * structure,
                                         guint * width, guint * height);
+
+/**
+ * gst_ml_structure_has_source_region:
+ * @structure: #GstStructure for ML post-processing parameters.
+ *
+ * Helper function for retrieving if the the postion and dimensions of
+ * the region exists
+ *
+ * return: (TRUE) The source region fields exists.
+ *         (FALSE) The source region fields doesn't exists.
+ */
+gboolean
+gst_ml_structure_has_source_region (const GstStructure * structure);
 
 /**
  * gst_ml_structure_set_source_region:
