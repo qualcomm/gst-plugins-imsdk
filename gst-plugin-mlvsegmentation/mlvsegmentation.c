@@ -885,6 +885,10 @@ gst_ml_video_segmentation_init (GstMLVideoSegmentation * segmentation)
 
   GST_DEBUG_CATEGORY_INIT (gst_ml_video_segmentation_debug, "qtimlvsegmentation",
       0, "QTI ML image segmentation plugin");
+
+  g_warning ("This mlvsegmentation plugin will be deprecated in the future!"
+      "Use qtimlpostprocess instead.");
+
 }
 
 static gboolean
