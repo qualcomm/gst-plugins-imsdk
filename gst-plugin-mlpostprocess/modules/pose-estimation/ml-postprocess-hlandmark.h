@@ -33,9 +33,8 @@ public:
 
   bool Process(const Tensors& tensors, Dictionary& mlparams,
                 std::any& output) override;
-
 private:
-  void KeypointTransformCoordinates (Keypoint& keypoint,
+  void KeypointTransformCoordinates(Keypoint& keypoint,
                                      const Region& region);
   bool LoadConnections(const std::vector<JsonValue::Ptr>& nodes);
 

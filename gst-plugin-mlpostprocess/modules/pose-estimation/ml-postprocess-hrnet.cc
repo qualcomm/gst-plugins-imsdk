@@ -36,10 +36,9 @@
 #include <cfloat>
 #include <utility>
 
-#define DEFAULT_THRESHOLD 0.70
+static const float kDefaultThreshold = 0.70;
 
-
-static const char* moduleCaps = R"(
+static const std::string kModuleCaps = R"(
 {
   "type": "pose-estimation",
   "tensors": [
@@ -55,7 +54,7 @@ static const char* moduleCaps = R"(
 
 Module::Module(LogCallback cb)
     : logger_(cb),
-      threshold_(DEFAULT_THRESHOLD) {
+      threshold_(kDefaultThreshold) {
 
 }
 
@@ -72,24 +71,24 @@ void Module::KeypointTransformCoordinates(Keypoint& keypoint,
 
 std::string Module::Caps() {
 
-  return std::string(moduleCaps);
+  return kModuleCaps;
 }
 
 bool Module::Configure(const std::string& labels_file,
                        const std::string& json_settings) {
 
   if (!labels_parser_.LoadFromFile(labels_file)) {
-    LOG (logger_, kError, "Failed to parse labels");
+    LOG(logger_, kError, "Failed to parse labels");
     return false;
   }
 
   if (!json_settings.empty()) {
     auto root = JsonValue::Parse(json_settings);
+
     if (!root || root->GetType() != JsonType::Object) return false;
 
-    threshold_ = root->GetNumber("confidence");
-    threshold_ /= 100.0;
-    LOG (logger_, kLog, "Threshold: %f", threshold_);
+    threshold_ = root->GetNumber("confidence") / 100.0;
+    LOG(logger_, kLog, "Threshold: %f", threshold_);
 
     auto nodes = root->GetArray("connections");
 
@@ -113,8 +112,9 @@ bool Module::LoadConnections(const std::vector<JsonValue::Ptr>& nodes) {
     uint32_t label_id = static_cast<uint32_t>(node->GetNumber("id"));
     uint32_t con_id = static_cast<uint32_t>(node->GetNumber("connection"));
 
-    connections_.push_back({label_id, con_id});
+    connections_.emplace_back(label_id, con_id);
   }
+
   return true;
 }
 
@@ -123,14 +123,14 @@ int32_t Module::TensorCompareValues(const void *data,
                                     const uint32_t& r_idx) {
 
   return ((float*)data)[l_idx] > ((float*)data)[r_idx] ? 1 :
-      ((float*)data)[l_idx] < ((float*)data)[r_idx] ? -1 : 0;
+     ((float*)data)[l_idx] < ((float*)data)[r_idx] ? -1 : 0;
 }
 
 bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
                      std::any& output) {
 
   if (output.type() != typeid(PoseEstimations)) {
-    LOG (logger_, kError, "Unexpected predictions type!");
+    LOG(logger_, kError, "Unexpected predictions type!");
     return false;
   }
 
@@ -169,21 +169,21 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     uint32_t x = (id / n_keypoints) % width;
     uint32_t y = (id / n_keypoints) / width;
 
-    LOG (logger_, kDebug, "Keypoint: %u [%u x %u], confidence %.2f",
+    LOG(logger_, kDebug, "Keypoint: %u [%u x %u], confidence %.2f",
         idx, x, y, confidence);
 
     uint32_t lf = (y * (x + 1) * n_keypoints) + idx;
     uint32_t rf = (y * (x - 1) * n_keypoints) + idx;
 
     if ((x > 1) && (x < (width - 1)) && (y > 0) && (y < height)) {
-      dx = TensorCompareValues (heatmap, lf, rf);
+      dx = TensorCompareValues(heatmap, lf, rf);
     }
 
     uint32_t ls = ((y + 1) * x * n_keypoints) + idx;
     uint32_t rs = ((y - 1) * x * n_keypoints) + idx;
 
     if ((y > 1) && (y < (height - 1)) && (x > 0) && (x < width)) {
-      dy = TensorCompareValues (heatmap, ls, rs);
+      dy = TensorCompareValues(heatmap, ls, rs);
     }
 
     Keypoint& kp = entry.keypoints[idx];
@@ -200,8 +200,8 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     KeypointTransformCoordinates(kp, region);
 
     // clamp key-point to avoid point going out of region
-    kp.x = std::min (std::max (kp.x, 0.0f), 1.0f);
-    kp.y = std::min (std::max (kp.y, 0.0f), 1.0f);
+    kp.x = std::min(std::max(kp.x, 0.0f), 1.0f);
+    kp.y = std::min(std::max(kp.y, 0.0f), 1.0f);
   }
 
   entry.confidence /= n_keypoints;
@@ -210,21 +210,21 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     return true;
 
   KeypointLinks links;
+
   for (uint32_t num = 0; num < connections_.size(); num++) {
     KeypointLinkIds& lk = connections_[num];
 
-    links.push_back(
-        KeypointLink(entry.keypoints[lk.s_kp_id],
-            entry.keypoints[lk.d_kp_id]));
+    links.emplace_back(entry.keypoints[lk.s_kp_id], entry.keypoints[lk.d_kp_id]);
   }
 
   entry.links = std::move(links);
 
-  estimations.push_back(entry);
+  estimations.emplace_back(std::move(entry));
 
   return true;
 }
 
 IModule* NewModule(LogCallback logger) {
+
   return new Module(logger);
 }

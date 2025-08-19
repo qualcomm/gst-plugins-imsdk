@@ -8,15 +8,12 @@
 #include <cmath>
 
 // Layer index at which the object score resides.
-#define SCORE_IDX              4
-
+static const uint32_t kScoreIdx = 4;
 // Layer index from which the class labels begin.
-#define CLASSES_IDX            5
-
+static const uint32_t kClassesIdx = 5;
+static const float kDefaultThreshold = 0.70;
 // Non-maximum Suppression (NMS) threshold (50%), corresponding to 2/3 overlap.
-#define NMS_INTERSECTION_THRESHOLD 0.5F
-
-#define DEFAULT_THRESHOLD 0.70
+static const float kNMSIntersectionTreshold = 0.5;
 
 // Bounding box weights for each of the 3 tensors used for normalization.
 static const uint32_t weights[3] = { 8, 16, 32 };
@@ -27,7 +24,7 @@ static const uint32_t anchors[3][3][2] = {
     { {116, 90}, {156, 198}, {373, 326} },
 };
 
-static const char* moduleCaps = R"(
+static const std::string kModuleCaps = R"(
 {
   "type": "object-detection",
   "tensors": [
@@ -59,7 +56,7 @@ static const char* moduleCaps = R"(
 
 Module::Module(LogCallback cb)
     : logger_(cb),
-      threshold_(DEFAULT_THRESHOLD) {
+      threshold_(kDefaultThreshold) {
 
 }
 
@@ -81,10 +78,10 @@ float Module::IntersectionScore(const ObjectDetection &l_box,
 
   // Figure out the width of the intersecting rectangle.
   // 1st: Find out the X axis coordinate of left most Top-Right point.
-  float width = fmin (l_box.right, r_box.right);
+  float width = std::min(l_box.right, r_box.right);
   // 2nd: Find out the X axis coordinate of right most Top-Left point
   // and substract from the previously found value.
-  width -= fmax (l_box.left, r_box.left);
+  width -= std::max(l_box.left, r_box.left);
 
   // Negative width means that there is no overlapping.
   if (width <= 0.0F)
@@ -92,10 +89,10 @@ float Module::IntersectionScore(const ObjectDetection &l_box,
 
   // Figure out the height of the intersecting rectangle.
   // 1st: Find out the Y axis coordinate of bottom most Left-Top point.
-  float height = fmin (l_box.bottom, r_box.bottom);
+  float height = std::min(l_box.bottom, r_box.bottom);
   // 2nd: Find out the Y axis coordinate of top most Left-Bottom point
   // and substract from the previously found value.
-  height -= fmax (l_box.top, r_box.top);
+  height -= std::max(l_box.top, r_box.top);
 
   // Negative height means that there is no overlapping.
   if (height <= 0.0F)
@@ -122,10 +119,10 @@ int32_t Module::NonMaxSuppression(const ObjectDetection &l_box,
     if (l_box.name != r_box.name)
       continue;
 
-    float score = IntersectionScore (l_box, r_box);
+    float score = IntersectionScore(l_box, r_box);
 
     // If the score is below the threshold, continue with next list entry.
-    if (score <= NMS_INTERSECTION_THRESHOLD)
+    if (score <= kNMSIntersectionTreshold)
       continue;
 
     // If confidence of current box is higher, remove the old entry.
@@ -145,7 +142,7 @@ int32_t Module::TensorCompareValues(const float *data,
     const uint32_t& l_idx, const uint32_t& r_idx) {
 
   return ((float*)data)[l_idx] > ((float*)data)[r_idx] ? 1 :
-      ((float*)data)[l_idx] < ((float*)data)[r_idx] ? -1 : 0;
+     ((float*)data)[l_idx] < ((float*)data)[r_idx] ? -1 : 0;
 }
 
 
@@ -153,7 +150,7 @@ void Module::ParseMonoblockFrame(const Tensors& tensors, Dictionary& mlparams,
                                  std::any& output) {
 
   if (output.type() != typeid(ObjectDetections)) {
-    LOG (logger_, kError, "Unexpected output type!");
+    LOG(logger_, kError, "Unexpected output type!");
     return;
   }
 
@@ -176,17 +173,18 @@ void Module::ParseMonoblockFrame(const Tensors& tensors, Dictionary& mlparams,
   uint32_t n_layers = tensors[0].dimensions[2];
 
   uint32_t idx = 0;
+
   for (uint32_t num = 0; num < n_paxels; num++, idx += n_layers) {
     ObjectDetection entry;
 
-    float score = data[idx + SCORE_IDX];
+    float score = data[idx + kScoreIdx];
 
     if (score < threshold_)
       continue;
 
-    uint32_t id = idx + CLASSES_IDX;
+    uint32_t id = idx + kClassesIdx;
 
-    for (uint32_t m = (idx + CLASSES_IDX + 1);  m < (idx + n_layers); m++)
+    for (uint32_t m = (idx + kClassesIdx + 1);  m < (idx + n_layers); m++)
       id = (TensorCompareValues(data, m, id) > 0) ? m : id;
 
     float confidence = data[id];
@@ -209,16 +207,18 @@ void Module::ParseMonoblockFrame(const Tensors& tensors, Dictionary& mlparams,
     TransformDimensions(entry, region);
 
     // Keep dimensions within the region.
-    entry.top = std::max(entry.top, (float)region.y);
-    entry.left = std::max(entry.left, (float)region.x);
-    entry.bottom = std::min(entry.bottom, (float)(region.y + region.height));
-    entry.right = std::min(entry.right, (float)(region.x + region.width));
+    entry.top = std::max(entry.top,static_cast<float>(region.y));
+    entry.left = std::max(entry.left, static_cast<float>(region.x));
+    entry.bottom = std::min(entry.bottom,
+        static_cast<float>((region.y + region.height)));
+    entry.right = std::min(entry.right,
+        static_cast<float>((region.x + region.width)));
 
     entry.confidence = confidence * 100.0f;
-    entry.name = labels_parser_.GetLabel(id - (idx + CLASSES_IDX));
-    entry.color = labels_parser_.GetColor(id - (idx + CLASSES_IDX));
+    entry.name = labels_parser_.GetLabel(id - (idx + kClassesIdx));
+    entry.color = labels_parser_.GetColor(id - (idx + kClassesIdx));
 
-    nms = NonMaxSuppression (entry, detections);
+    nms = NonMaxSuppression(entry, detections);
 
     if (nms == (-2))
       continue;
@@ -226,7 +226,7 @@ void Module::ParseMonoblockFrame(const Tensors& tensors, Dictionary& mlparams,
     if (nms >= 0)
       detections.erase(detections.begin() + nms);
 
-    detections.push_back(entry);
+    detections.emplace_back(std::move(entry));
   }
 }
 
@@ -240,7 +240,7 @@ void Module::ParseTripleblockFrame(const Tensors& tensors,
   int nms = -1;
 
   if (output.type() != typeid(ObjectDetections)) {
-    LOG (logger_, kError, "Unexpected predictions type!");
+    LOG(logger_, kError, "Unexpected predictions type!");
     return;
   }
 
@@ -285,17 +285,17 @@ void Module::ParseTripleblockFrame(const Tensors& tensors,
       for (uint32_t anchor = 0; anchor < n_anchors; anchor++, num += n_layers) {
         ObjectDetection entry;
 
-        float score = data[num + SCORE_IDX];
+        float score = data[num + kScoreIdx];
 
         if (score < threshold_)
           continue;
 
-        uint32_t id = num + CLASSES_IDX;
+        uint32_t id = num + kClassesIdx;
 
-        for (uint32_t m = (num + CLASSES_IDX + 1); m < (num + n_layers); m++)
+        for (uint32_t m = (num + kClassesIdx + 1); m < (num + n_layers); m++)
           id = (TensorCompareValues(data, m, id) > 0 ? m : id);
 
-        uint32_t class_idx = id - (num + CLASSES_IDX);
+        uint32_t class_idx = id - (num + kClassesIdx);
 
         float confidence = data[id];
 
@@ -303,9 +303,9 @@ void Module::ParseTripleblockFrame(const Tensors& tensors,
           continue;
 
         // Apply a sigmoid function in order to normalize the confidence.
-        confidence = 1 / (1 + expf (- confidence));
+        confidence = 1 / (1 + expf(- confidence));
         // Normalize the end confidence with the object score value.
-        confidence *= 1 / (1 + expf (- score));
+        confidence *= 1 / (1 + expf(- score));
 
         // Aquire the bounding box parameters.
         bbox[0] = data[num];
@@ -313,10 +313,10 @@ void Module::ParseTripleblockFrame(const Tensors& tensors,
         bbox[2] = data[num + 2];
         bbox[3] = data[num + 3];
 
-        bbox[0] = 1 / (1 + expf (- bbox[0]));
-        bbox[1] = 1 / (1 + expf (- bbox[1]));
-        bbox[2] = 1 / (1 + expf (- bbox[2]));
-        bbox[3] = 1 / (1 + expf (- bbox[3]));
+        bbox[0] = 1 / (1 + expf(- bbox[0]));
+        bbox[1] = 1 / (1 + expf(- bbox[1]));
+        bbox[2] = 1 / (1 + expf(- bbox[2]));
+        bbox[3] = 1 / (1 + expf(- bbox[3]));
 
         uint32_t x = pxl_idx % width;
         uint32_t y = pxl_idx / width;
@@ -324,42 +324,44 @@ void Module::ParseTripleblockFrame(const Tensors& tensors,
         // Special calculations for the bounding box parameters.
         bbox[0] = (bbox[0] * 2 - 0.5F + x) * paxelsize;
         bbox[1] = (bbox[1] * 2 - 0.5F + y) * paxelsize;
-        bbox[2] = pow ((bbox[2] * 2), 2) * anchors[w_idx][anchor][0];
-        bbox[3] = pow ((bbox[3] * 2), 2) * anchors[w_idx][anchor][1];
+        bbox[2] = pow((bbox[2] * 2), 2) * anchors[w_idx][anchor][0];
+        bbox[3] = pow((bbox[3] * 2), 2) * anchors[w_idx][anchor][1];
 
         entry.top = bbox[1] - (bbox[3] / 2);
         entry.left = bbox[0] - (bbox[2] / 2);
         entry.bottom = bbox[1] + (bbox[3] / 2);
         entry.right = bbox[0] + (bbox[2] / 2);
 
-        LOG (logger_, kTrace, "Class: %u Confidence: %.2f Box[%f, %f, %f, %f]",
+        LOG(logger_, kTrace, "Class: %u Confidence: %.2f Box[%f, %f, %f, %f]",
             class_idx, confidence, entry.top, entry.left, entry.bottom, entry.right);
 
         // Keep dimensions within the region.
-        entry.top = std::max(entry.top, (float)region.y);
-        entry.left = std::max(entry.left, (float)region.x);
-        entry.bottom = std::min(entry.bottom, (float)(region.y + region.height));
-        entry.right = std::min(entry.right, (float)(region.x + region.width));
+        entry.top = std::max(entry.top, static_cast<float>(region.y));
+        entry.left = std::max(entry.left, static_cast<float>(region.x));
+        entry.bottom = std::min(entry.bottom,
+            static_cast<float>((region.y + region.height)));
+        entry.right = std::min(entry.right,
+            static_cast<float>((region.x + region.width)));
 
-        TransformDimensions (entry, region);
+        TransformDimensions(entry, region);
 
-        entry.name = labels_parser_.GetLabel(id - (num + CLASSES_IDX));
-        entry.color = labels_parser_.GetColor(id - (num + CLASSES_IDX));
+        entry.name = labels_parser_.GetLabel(id - (num + kClassesIdx));
+        entry.color = labels_parser_.GetColor(id - (num + kClassesIdx));
         entry.confidence = confidence * 100.0f;
 
-        nms = NonMaxSuppression (entry, detections);
+        nms = NonMaxSuppression(entry, detections);
 
         if (nms == (-2))
           continue;
 
-        LOG (logger_, kTrace, "TRIPLEBLOCK Label: %s Confidence: %.2f Box[%f, %f, %f, %f]",
+        LOG(logger_, kTrace, "TRIPLEBLOCK Label: %s Confidence: %.2f Box[%f, %f, %f, %f]",
             entry.name.c_str(), entry.confidence, entry.top,
             entry.left, entry.bottom, entry.right);
 
         if (nms >= 0)
           detections.erase(detections.begin() + nms);
 
-        detections.push_back(entry);
+        detections.emplace_back(std::move(entry));
       }
     }
   }
@@ -367,39 +369,40 @@ void Module::ParseTripleblockFrame(const Tensors& tensors,
 
 std::string Module::Caps() {
 
-  return std::string(moduleCaps);
+  return kModuleCaps;
 }
 
 bool Module::Configure(const std::string& labels_file,
                        const std::string& json_settings) {
 
   if (!labels_parser_.LoadFromFile(labels_file)) {
-    LOG (logger_, kError, "Failed to parse labels");
+    LOG(logger_, kError, "Failed to parse labels");
     return false;
   }
 
   if (!json_settings.empty()) {
     auto root = JsonValue::Parse(json_settings);
+
     if (!root || root->GetType() != JsonType::Object) return false;
 
-    threshold_ = root->GetNumber("confidence");
-    threshold_ /= 100.0;
-    LOG (logger_, kLog, "Threshold: %f", threshold_);
+    threshold_ = root->GetNumber("confidence") / 100;
+    LOG(logger_, kLog, "Threshold: %f", threshold_);
   }
+
   return true;
 }
 
 bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
                      std::any& output) {
 
-  LOG (logger_, kDebug, "Module Process - %ld", tensors.size());
+  LOG(logger_, kDebug, "Module Process - %ld", tensors.size());
 
   if (tensors.size() == 3) {
-    ParseTripleblockFrame (tensors, mlparams, output);
+    ParseTripleblockFrame(tensors, mlparams, output);
   } else if (tensors.size() == 1) {
-    ParseMonoblockFrame (tensors, mlparams, output);
+    ParseMonoblockFrame(tensors, mlparams, output);
   } else {
-    LOG (logger_, kError, "Ml frame with unsupported post-processing procedure!");
+    LOG(logger_, kError, "Ml frame with unsupported post-processing procedure!");
     return false;
   }
 
@@ -407,5 +410,6 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 }
 
 IModule* NewModule(LogCallback logger) {
+
   return new Module(logger);
 }

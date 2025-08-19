@@ -29,7 +29,6 @@ class LabelsParser {
   int32_t Size() const {
     return labels.size();
   }
-
  private:
   std::map<int32_t, Label> labels;
 

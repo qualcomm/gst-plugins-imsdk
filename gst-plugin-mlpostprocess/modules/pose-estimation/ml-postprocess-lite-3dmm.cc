@@ -8,13 +8,12 @@
 #include <cfloat>
 #include <cmath>
 
-#define DEFAULT_THRESHOLD 0.70
-
-#define ALPHA_ID_SIZE          219
-#define ALPHA_EXP_SIZE         39
+static const float kDefaultThreshold  = 0.70;
+static const uint32_t kAlphaIDSize    = 219;
+static const uint32_t kAlphaExpSize   = 39;
 
 // List of for the true index for each supported landmark.
-std::vector<uint32_t> lmk_idx = {
+static const std::vector<uint32_t> kLandmarkIds = {
     662, 660, 659, 669, 750, 700, 583, 560, 561, 608, 966, 712, 708, 707, 557,
     554, 880, 2278, 2275, 2276, 2284, 2360, 2314, 2203, 2181, 2180, 2227, 2553,
     2325, 2321, 2322, 2176, 2175, 1852, 1867, 1877, 1869, 1870, 1848, 1851,
@@ -25,7 +24,7 @@ std::vector<uint32_t> lmk_idx = {
     2130, 506, 498, 2163, 540, 536, 2161, 534, 0, 256
 };
 
-static const char* moduleCaps = R"(
+static const std::string kModuleCaps = R"(
 {
   "type": "pose-estimation",
   "tensors": [
@@ -47,7 +46,7 @@ static const char* moduleCaps = R"(
 
 Module::Module(LogCallback cb)
     : logger_(cb),
-      threshold_(DEFAULT_THRESHOLD) {
+      threshold_(kDefaultThreshold) {
 
 }
 
@@ -64,23 +63,23 @@ void Module::KeypointTransformCoordinates(Keypoint& keypoint,
 
 std::string Module::Caps() {
 
-  return std::string(moduleCaps);
+  return kModuleCaps;
 }
 
 bool Module::Configure(const std::string& labels_file,
                        const std::string& json_settings) {
 
   if (json_settings.empty()) {
-    LOG (logger_, kError, "No json settings");
+    LOG(logger_, kError, "No json settings");
     return false;
   }
 
   auto root = JsonValue::Parse(json_settings);
+
   if (!root || root->GetType() != JsonType::Object) return false;
 
-  threshold_ = root->GetNumber("confidence");
-  threshold_ /= 100.0;
-  LOG (logger_, kLog, "Threshold: %f", threshold_);
+  threshold_ = root->GetNumber("confidence") / 100.0;
+  LOG(logger_, kLog, "Threshold: %f", threshold_);
 
   std::map<std::string, std::string> settings_db;
   auto dbs = root->GetArray("databases");
@@ -98,15 +97,16 @@ bool Module::Configure(const std::string& labels_file,
   return true;
 }
 
-std::vector<float> Module::LoadBinaryDatabase (const std::string filename,
+std::vector<float> Module::LoadBinaryDatabase(const std::string filename,
                                                const uint32_t n_values) {
 
   std::vector<float> database;
   std::vector<float> contents;
 
   std::ifstream file(filename, std::ios::binary | std::ios::ate);
+
   if (!file) {
-    LOG (logger_, kError, "Failed to open %s", filename.c_str());
+    LOG(logger_, kError, "Failed to open %s", filename.c_str());
     return database;
   }
 
@@ -117,32 +117,32 @@ std::vector<float> Module::LoadBinaryDatabase (const std::string filename,
   contents.resize(num_floats);
 
   if (!file.read(reinterpret_cast<char*>(contents.data()), size_in_bytes)) {
-    LOG (logger_, kError, "Failed to read contents from %s", filename.c_str());
+    LOG(logger_, kError, "Failed to read contents from %s", filename.c_str());
     return database;
   }
 
-  database.resize(lmk_idx.size() * 3 * n_values);
+  database.resize(kLandmarkIds.size() * 3 * n_values);
 
-  for (uint32_t idx = 0; idx < lmk_idx.size(); idx++) {
+  for (uint32_t idx = 0; idx < kLandmarkIds.size(); idx++) {
     for (uint32_t num = 0; num < n_values; num++) {
       database[(idx * 3 + 0) * n_values + num] =
-          contents[(lmk_idx[idx] * 3 + 0) * n_values + num];
+          contents[(kLandmarkIds[idx] * 3 + 0) * n_values + num];
 
       database[(idx * 3 + 1) * n_values + num] =
-          contents[(lmk_idx[idx] * 3 + 1) * n_values + num];
+          contents[(kLandmarkIds[idx] * 3 + 1) * n_values + num];
 
       database[(idx * 3 + 2) * n_values + num] =
-          contents[(lmk_idx[idx] * 3 + 2) * n_values + num];
+          contents[(kLandmarkIds[idx] * 3 + 2) * n_values + num];
     }
   }
 
   return database;
 }
 
-bool Module::LoadDatabases (std::map<std::string, std::string> settings){
+bool Module::LoadDatabases(std::map<std::string, std::string> settings){
 
   if (settings.size() != 3) {
-    LOG (logger_, kError, "Expecting 3 values in labels but got %ld",
+    LOG(logger_, kError, "Expecting 3 values in labels but got %ld",
         settings.size());
     return false;
   }
@@ -150,43 +150,43 @@ bool Module::LoadDatabases (std::map<std::string, std::string> settings){
   std::vector<std::string> label_entries;
 
   for (uint32_t idx = 0; idx < settings.size(); idx++) {
-    label_entries.push_back(labels_parser_.GetLabel(idx));
+    label_entries.emplace_back(std::move(labels_parser_.GetLabel(idx)));
   }
 
   if (settings.find("mean-face") == settings.end()) {
-    LOG (logger_, kError, "Missing entry for mean-face");
+    LOG(logger_, kError, "Missing entry for mean-face");
   }
 
   std::string location = settings["mean-face"];
   meanface_ = LoadBinaryDatabase(location, 1);
 
   if (meanface_.empty()) {
-    LOG (logger_, kError, "Failed to load meanface");
+    LOG(logger_, kError, "Failed to load meanface");
     return false;
   }
 
   if (settings.find("shape-basis") == settings.end()) {
-    LOG (logger_, kError, "Missing entry for shape-basis");
+    LOG(logger_, kError, "Missing entry for shape-basis");
   }
 
   location = settings["shape-basis"];
-  shapebasis_ = LoadBinaryDatabase (location, ALPHA_ID_SIZE);
+  shapebasis_ = LoadBinaryDatabase(location, kAlphaIDSize);
 
   if (shapebasis_.empty()) {
-    LOG (logger_, kError, "Failed to load shapebasis");
+    LOG(logger_, kError, "Failed to load shapebasis");
     return false;
   }
 
   if (settings.find("blend-shape") == settings.end()) {
-    LOG (logger_, kError, "Missing entry for blend-shape");
+    LOG(logger_, kError, "Missing entry for blend-shape");
     return false;
   }
 
   location = settings["blend-shape"];
-  blendshape_ = LoadBinaryDatabase (location, ALPHA_EXP_SIZE);
+  blendshape_ = LoadBinaryDatabase(location, kAlphaExpSize);
 
   if (blendshape_.empty()) {
-    LOG (logger_, kError, "Failed to load blendhsape");
+    LOG(logger_, kError, "Failed to load blendhsape");
     return false;
   }
 
@@ -199,13 +199,13 @@ bool Module::MatrixMultiplication(Matrix3f& outmatrix,
 
   for (size_t row = 0; row < 3; ++row) {
     for (size_t col = 0; col < 3; ++col) {
-        float sum = 0.0f;
+      float sum = 0.0f;
 
-        for (size_t idx = 0; idx < 3; ++idx) {
-            sum += l_matrix[row][idx] * r_matrix[idx][col];
-        }
+      for (size_t idx = 0; idx < 3; ++idx) {
+          sum += l_matrix[row][idx] * r_matrix[idx][col];
+      }
 
-        outmatrix[row][col] = sum;
+      outmatrix[row][col] = sum;
     }
   }
 
@@ -216,7 +216,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
                      std::any& output) {
 
   if (output.type() != typeid(PoseEstimations)) {
-    LOG (logger_, kError, "Unexpected output type!");
+    LOG(logger_, kError, "Unexpected output type!");
     return false;
   }
 
@@ -227,9 +227,6 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   // Get video resolution
   Resolution& resolution =
       std::any_cast<Resolution&>(mlparams["input-tensor-dimensions"]);
-
-  uint32_t source_width = resolution.width;
-  uint32_t source_height = resolution.height;
 
   PoseEstimations& estimations =
     std::any_cast<PoseEstimations&>(output);
@@ -245,7 +242,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 
   float confidence = vertices[n_vertices - 1];
 
-  LOG (logger_, kLog, "Confidence [%f]", confidence);
+  LOG(logger_, kLog, "Confidence [%f]", confidence);
 
   if (confidence < threshold_)
     return true;
@@ -254,13 +251,13 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   float ty = vertices[n_vertices - 3] * 60.0f;
   float tx = vertices[n_vertices - 4] * 60.0f;
 
-  LOG (logger_, kLog, "Translation coordinates X[%f] Y[%f] F[%f]", tx, ty, tf);
+  LOG(logger_, kLog, "Translation coordinates X[%f] Y[%f] F[%f]", tx, ty, tf);
 
   float roll = vertices[n_vertices - 5] * M_PI / 2;
   float yaw = vertices[n_vertices - 6] * M_PI / 2;
   float pitch = vertices[n_vertices - 7] * M_PI / 2 + M_PI;
 
-  LOG (logger_, kDebug, "Roll[%f] Yaw[%f] Pitch[%f]", roll, yaw, pitch);
+  LOG(logger_, kDebug, "Roll[%f] Yaw[%f] Pitch[%f]", roll, yaw, pitch);
 
   roll_matrix_[0][0] = cos(-roll);
   roll_matrix_[0][1] = -sin(-roll);
@@ -282,7 +279,6 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   yaw_matrix_[2][1] = 0.0;
   yaw_matrix_[2][2] = cos(-yaw);
 
-
   pitch_matrix_[0][0] = 1.0;
   pitch_matrix_[0][1] = 0.0;
   pitch_matrix_[0][2] = 0.0;
@@ -295,15 +291,15 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 
   Matrix3f matrix;
 
-  MatrixMultiplication (matrix, pitch_matrix_, roll_matrix_);
-  MatrixMultiplication (roll_matrix_, yaw_matrix_, matrix);
+  MatrixMultiplication(matrix, pitch_matrix_, roll_matrix_);
+  MatrixMultiplication(roll_matrix_, yaw_matrix_, matrix);
 
   PoseEstimation entry;
 
   entry.confidence = confidence * 100.0;
-  entry.keypoints.resize(lmk_idx.size() / 2);
+  entry.keypoints.resize(kLandmarkIds.size() / 2);
 
-  for (uint32_t idx = 0; idx < lmk_idx.size(); idx+=2) {
+  for (uint32_t idx = 0; idx < kLandmarkIds.size(); idx+=2) {
     Keypoint& kp = entry.keypoints[idx / 2];
 
     uint32_t id = idx * 3;
@@ -312,45 +308,45 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     float y = meanface_[id + 1];
     float z = meanface_[id + 2];
 
-    for (uint32_t num = 0; num < ALPHA_ID_SIZE; num++) {
+    for (uint32_t num = 0; num < kAlphaIDSize; num++) {
       float value = vertices[num] * 3.0f;
 
-      id = idx * 3 * ALPHA_ID_SIZE + num;
+      id = idx * 3 * kAlphaIDSize + num;
       x += value * shapebasis_[id];
 
-      id = (idx * 3 + 1) * ALPHA_ID_SIZE + num;
+      id = (idx * 3 + 1) * kAlphaIDSize + num;
       y += value * shapebasis_[id];
 
-      id = (idx * 3 + 2) * ALPHA_ID_SIZE + num;
+      id = (idx * 3 + 2) * kAlphaIDSize + num;
       z += value * shapebasis_[id];
     }
 
-    for (uint32_t num = 0; num < ALPHA_EXP_SIZE; num++) {
-      float value = vertices[ALPHA_ID_SIZE + num] * 0.5f + 0.5f;
+    for (uint32_t num = 0; num < kAlphaExpSize; num++) {
+      float value = vertices[kAlphaIDSize + num] * 0.5f + 0.5f;
 
-      id = idx * 3 * ALPHA_EXP_SIZE + num;
+      id = idx * 3 * kAlphaExpSize + num;
       x += value * blendshape_[id];
 
-      id = (idx * 3 + 1) * ALPHA_EXP_SIZE + num;
+      id = (idx * 3 + 1) * kAlphaExpSize + num;
       y += value * blendshape_[id];
 
-      id = (idx * 3 + 2) * ALPHA_EXP_SIZE + num;
+      id = (idx * 3 + 2) * kAlphaExpSize + num;
       z += value * blendshape_[id];
     }
 
     float tmp_x = (x * roll_matrix_[0][0]) +
-        (y * roll_matrix_[0][1]) + (z * roll_matrix_[0][2]);
+       (y * roll_matrix_[0][1]) + (z * roll_matrix_[0][2]);
     float tmp_y = (x * roll_matrix_[1][0]) +
-        (y * roll_matrix_[1][1]) + (z * roll_matrix_[1][2]);
+       (y * roll_matrix_[1][1]) + (z * roll_matrix_[1][2]);
     float tmp_z = (x * roll_matrix_[2][0]) +
-        (y * roll_matrix_[2][1]) + (z * roll_matrix_[2][2]);
+       (y * roll_matrix_[2][1]) + (z * roll_matrix_[2][2]);
 
     x = tmp_x + tx;
     y = tmp_y + ty;
     z = tmp_z + 500.0F;
 
-    kp.x = (x * tf / 500.0F) + (source_width / 2);
-    kp.y = (y * tf / 500.0F) + (source_height / 2);
+    kp.x = (x * tf / 500.0F) + (resolution.width / 2);
+    kp.y = (y * tf / 500.0F) + (resolution.height / 2);
 
     KeypointTransformCoordinates(kp, region);
 
@@ -358,7 +354,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     kp.color = 0xFF0000FF;
     kp.confidence = confidence * 100.0;
 
-    LOG (logger_, kDebug, "Keypoint: %u [%f x %f], confidence %f",
+    LOG(logger_, kDebug, "Keypoint: %u [%f x %f], confidence %f",
         idx / 2, kp.x, kp.y,
         kp.confidence);
   }
@@ -369,11 +365,12 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     {"pitch", pitch}
   });
 
-  estimations.push_back(entry);
+  estimations.emplace_back(std::move(entry));
 
   return true;
 }
 
 IModule* NewModule(LogCallback logger) {
+
   return new Module(logger);
 }

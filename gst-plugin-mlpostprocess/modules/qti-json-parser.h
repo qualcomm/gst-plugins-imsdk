@@ -177,7 +177,6 @@ class JsonValue {
     if (type != JsonType::Object) throw std::runtime_error("Not an object");
     return object_value;
   }
-
  private:
   JsonType type;
   bool bool_value = false;
@@ -235,7 +234,7 @@ class JsonValue {
     while (*s && *s != '"') {
       if (*s == '\\') {
         ++s;
-        switch (*s) {
+        switch(*s) {
             case '"': result += '"'; break;
             case '\\': result += '\\'; break;
             case '/': result += '/'; break;
@@ -375,7 +374,7 @@ class JsonValue {
 
   static void StringifyValue(const Ptr& value, std::string& out) {
 
-    switch (value->type) {
+    switch(value->type) {
       case JsonType::Null:
         out += "null";
         break;

@@ -8,10 +8,10 @@
 #include <cmath>
 #include <cxxabi.h>
 
-#define DEFAULT_THRESHOLD       0.70
-#define FACE_PID_SIZE           20
+static const float kDefaultThreshold = 0.70;
+static const uint32_t kFacePIDSize   = 20;
 
-static const char* moduleCaps = R"(
+static const std::string kModuleCaps = R"(
 {
   "type": "image-classification",
   "tensors": [
@@ -32,7 +32,7 @@ static const char* moduleCaps = R"(
 
 Module::Module(LogCallback cb)
     : logger_(cb),
-      threshold_(DEFAULT_THRESHOLD) {
+      threshold_(kDefaultThreshold) {
 
 }
 Module::~Module() {
@@ -41,7 +41,7 @@ Module::~Module() {
 
 std::string Module::Caps() {
 
-  return std::string(moduleCaps);
+  return kModuleCaps;
 }
 
 bool Module::Configure(const std::string& labels_file,
@@ -54,21 +54,22 @@ bool Module::Configure(const std::string& labels_file,
 
   if (!json_settings.empty()) {
     auto root = JsonValue::Parse(json_settings);
+
     if (!root || root->GetType() != JsonType::Object) return false;
 
-    threshold_ = root->GetNumber("confidence");
-    threshold_ /= 100.0;
+    threshold_ = root->GetNumber("confidence") / 100.0;
     LOG(logger_, kLog, "Threshold: %f", threshold_);
 
-    int idx = 0;
     auto databases = root->GetArray("databases");
-    for (const auto& database : databases) {
-      if (!database || database->GetType() != JsonType::Object) continue;
 
-      std::string filename = database->GetString("database");
+    for (size_t idx = 0; idx < databases.size(); idx++) {
+
+      if (!databases[idx] || databases[idx]->GetType() != JsonType::Object)
+        continue;
+
+      std::string filename = databases[idx]->GetString("database");
 
       LoadFaceDatabase(idx, filename);
-      idx++;
     }
   }
 
@@ -79,9 +80,10 @@ bool Module::LoadFaceDatabase(const uint32_t idx,
                               const std::string filename) {
 
   std::ifstream file(filename, std::ios::binary);
+
   if (!file) {
-      LOG(logger_, kError, "Failed to open file: %s", filename.c_str());
-      return false;
+    LOG(logger_, kError, "Failed to open file: %s", filename.c_str());
+    return false;
   }
 
   uint32_t version = 0, n_features = 0, n_lvns_features = 0;
@@ -92,16 +94,17 @@ bool Module::LoadFaceDatabase(const uint32_t idx,
   file.read(reinterpret_cast<char*>(&n_lvns_features), sizeof(n_lvns_features));
 
   if (!file || n_features != 512 || n_lvns_features != 32) {
-    LOG (logger_, kError, "Invalid header or feature dimensions!");
+    LOG(logger_, kError, "Invalid header or feature dimensions!");
     return false;
   }
 
-  face_database_.push_back(new GstFaceTemplate_());
-  GstFaceTemplate_* face = face_database_[idx];
+  face_database_.emplace_back(new FaceTemplate());
 
-  char name_buffer[FACE_PID_SIZE] = {};
-  file.read(name_buffer, FACE_PID_SIZE);
-  face->name.assign(name_buffer, strnlen(name_buffer, FACE_PID_SIZE));
+  FaceTemplate* face = face_database_[idx];
+
+  char name_buffer[kFacePIDSize] = {};
+  file.read(name_buffer, kFacePIDSize);
+  face->name.assign(name_buffer, strnlen(name_buffer, kFacePIDSize));
 
   face->liveliness.resize(n_lvns_features);
 
@@ -114,14 +117,13 @@ bool Module::LoadFaceDatabase(const uint32_t idx,
     return false;
   }
 
-  LOG (logger_, kTrace, "Face %u [%s] has %u feature templates",
+  LOG(logger_, kTrace, "Face %u [%s] has %u feature templates",
       idx, face->name.c_str(), n_feature_templates);
-
 
   face->features.resize(n_feature_templates);
 
   for (uint32_t i = 0; i < n_feature_templates; ++i) {
-    GstFaceFeatures_& features = face->features[i];
+    FaceFeatures& features = face->features[i];
     features.half.resize(n_features);
     features.whole.resize(n_features);
 
@@ -129,7 +131,8 @@ bool Module::LoadFaceDatabase(const uint32_t idx,
     file.read(reinterpret_cast<char*>(features.whole.data()), sizeof(float) * n_features);
 
     if (!file) {
-      LOG (logger_, kError, "Failed to read features for template %u", i);
+      LOG(logger_, kError, "Failed to read features for template %u", i);
+
       return false;
     }
   }
@@ -138,7 +141,7 @@ bool Module::LoadFaceDatabase(const uint32_t idx,
 }
 
 float
-Module::CosineSimilarityScore (const float * data,
+Module::CosineSimilarityScore(const float * data,
                                const std::vector<float> database,
                                const uint32_t n_entries) {
 
@@ -155,11 +158,11 @@ Module::CosineSimilarityScore (const float * data,
   if ((v1_pow2_sum < 0.1) || (v2_pow2_sum < 0.1))
     return 0.0;
 
-  return product / sqrt (v1_pow2_sum) / sqrt (v2_pow2_sum);
+  return product / sqrt(v1_pow2_sum) / sqrt(v2_pow2_sum);
 }
 
 void
-Module::FaceRecognition (int32_t& person_id, float& confidence,
+Module::FaceRecognition(int32_t& person_id, float& confidence,
                          const Tensors& tensors, const uint32_t index) {
 
   float maxscore = 0.0, maxconfidence = 0.0;
@@ -169,10 +172,10 @@ Module::FaceRecognition (int32_t& person_id, float& confidence,
   uint32_t n_features = tensors[index].dimensions[1];
 
   for (uint32_t id = 0; id < face_database_.size(); id++, maxscore = 0.0) {
-    Module::GstFaceTemplate_* face = face_database_[id];
+    Module::FaceTemplate* face = face_database_[id];
 
     for (uint32_t num = 0; num < face->features.size(); num++) {
-      Module::GstFaceFeatures_* features = &(face->features[num]);
+      Module::FaceFeatures* features = &(face->features[num]);
 
       float score = CosineSimilarityScore(data, features->whole, n_features);
 
@@ -182,7 +185,7 @@ Module::FaceRecognition (int32_t& person_id, float& confidence,
       maxscore = score;
     }
 
-    LOG (logger_, kTrace, "Face %u [%s] in database scored %f",
+    LOG(logger_, kTrace, "Face %u [%s] in database scored %f",
         id, face->name.c_str(), maxscore);
 
     if (maxscore < maxconfidence)
@@ -197,7 +200,7 @@ Module::FaceRecognition (int32_t& person_id, float& confidence,
 }
 
 float
-Module::CosineDistanceScore (const float * data,
+Module::CosineDistanceScore(const float * data,
                              const std::vector<float> database,
                              const uint32_t n_entries) {
 
@@ -214,12 +217,12 @@ Module::CosineDistanceScore (const float * data,
   if ((v1_pow2_sum < 0.1) || (v2_pow2_sum < 0.1))
     return 0.0;
 
-  value = product / (sqrt (v1_pow2_sum) * sqrt (v2_pow2_sum));
-  return sqrtf (2 * (1 - value));
+  value = product / (sqrt(v1_pow2_sum) * sqrt(v2_pow2_sum));
+  return sqrtf(2 * (1 - value));
 }
 
 bool
-Module::FaceHasLiveliness (const GstFaceTemplate_ * face,
+Module::FaceHasLiveliness(const FaceTemplate * face,
                            const Tensors& tensors,
                            const uint32_t idx) {
 
@@ -228,14 +231,14 @@ Module::FaceHasLiveliness (const GstFaceTemplate_ * face,
 
   double score = CosineDistanceScore(data, face->liveliness, n_features);
 
-  LOG (logger_, kTrace, "Face %s has liveliness score %f",
+  LOG(logger_, kTrace, "Face %s has liveliness score %f",
       face->name.c_str(), score);
 
   return (score >= threshold_) ? true : false;
 }
 
 float
-Module::AccessoryTensorScore (const Tensors& tensors, const uint32_t idx) {
+Module::AccessoryTensorScore(const Tensors& tensors, const uint32_t idx) {
 
   const float * data = reinterpret_cast<const float *>(tensors[idx].data);
   uint32_t n_values = tensors[idx].dimensions[1];
@@ -251,8 +254,7 @@ Module::AccessoryTensorScore (const Tensors& tensors, const uint32_t idx) {
     sum += exp(value);
   }
 
-  float score = data[1];
-  score = (exp (score) / sum);
+  float score = (exp(data[1]) / sum);
 
   return score;
 }
@@ -261,7 +263,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
                      std::any& output) {
 
   if (output.type() != typeid(ImageClassifications)) {
-    LOG (logger_, kError, "Unexpected predictions type!");
+    LOG(logger_, kError, "Unexpected predictions type!");
     return false;
   }
 
@@ -272,14 +274,13 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 
   ImageClassification& entry = classifications[0];
 
-
   entry.name = "UNKNOWN";
   entry.color = 0xFF0000FF;
 
   int32_t pid = -1;
   float confidence = 0.0f;
 
-  FaceRecognition (pid, confidence, tensors, 0);
+  FaceRecognition(pid, confidence, tensors, 0);
 
   entry.confidence = (pid != -1) ? confidence : (100.0 - confidence);
   entry.confidence *= 100.0;
@@ -287,38 +288,39 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   if ((pid == -1) || (confidence < threshold_))
     return true;
 
-  GstFaceTemplate_* face = face_database_[pid];
+  FaceTemplate* face = face_database_[pid];
 
   entry.name = labels_parser_.GetLabel(pid);
   entry.color = labels_parser_.GetColor(pid);
 
-  LOG (logger_, kTrace, "Recognized face %d [%s] in the database", pid, face->name.c_str());
+  LOG(logger_, kTrace, "Recognized face %d [%s] in the database", pid, face->name.c_str());
 
   float score = AccessoryTensorScore(tensors, 2);
   bool has_open_eyes = (score >=  threshold_) ? true : false;
 
-  LOG (logger_, kTrace, "Face %s has open eyes score %f", face->name.c_str(), score);
+  LOG(logger_, kTrace, "Face %s has open eyes score %f", face->name.c_str(), score);
 
   score = AccessoryTensorScore(tensors, 3);
   bool has_glasses = (score >= threshold_) ? true : false;
 
-  LOG (logger_, kTrace, "Face %s has glasses score %f", face->name.c_str(), score);
+  LOG(logger_, kTrace, "Face %s has glasses score %f", face->name.c_str(), score);
 
   score = AccessoryTensorScore(tensors, 4);
   bool has_mask = (score >= threshold_) ? true : false;
 
-  LOG (logger_, kTrace, "Face %s has mask score %f", face->name.c_str(), score);
+  LOG(logger_, kTrace, "Face %s has mask score %f", face->name.c_str(), score);
 
   score = AccessoryTensorScore(tensors, 5);
   bool has_sunglasses = (score >= threshold_) ? true : false;
 
-  LOG (logger_, kTrace, "Face %s has sunglasses score %f", face->name.c_str(), score);
+  LOG(logger_, kTrace, "Face %s has sunglasses score %f", face->name.c_str(), score);
 
   bool has_lvns = false;
-  if (!has_mask)
-    has_lvns = FaceHasLiveliness (face, tensors, 1);
 
-  LOG (logger_, kTrace, "Face %s, Lively: %s, Open Eyes: %s, Mask: %s, Glasses: %s, "
+  if (!has_mask)
+    has_lvns = FaceHasLiveliness(face, tensors, 1);
+
+  LOG(logger_, kTrace, "Face %s, Lively: %s, Open Eyes: %s, Mask: %s, Glasses: %s, "
       "Sunglasses: %s", entry.name.c_str(), has_lvns ? "YES" : "NO",
       has_open_eyes ? "YES" : "NO", has_mask ? "YES" : "NO",
       has_glasses ? "YES" : "NO", has_sunglasses ? "YES" : "NO");
@@ -327,5 +329,6 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 }
 
 IModule* NewModule(LogCallback logger) {
+
   return new Module(logger);
 }

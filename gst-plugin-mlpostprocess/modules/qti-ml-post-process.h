@@ -188,6 +188,8 @@ enum TensorType : uint32_t {
  * @name: Tensor name.
  * @dimensions: Vector with the tensor dimensions.
  * @data: Pointer to the mapped tensor data.
+ * @qscale: Dequantization scale.
+ * @qoffset: Dequantization offset.
  *
  * Encapsulates tensor data along with information describing its properties.
  */
@@ -196,13 +198,18 @@ struct Tensor {
   std::string           name;
   std::vector<uint32_t> dimensions;
   void*                 data;
+  float                 qscale;
+  float                 qoffset;
 
   Tensor()
-      : type(TensorType::kUint8), name("unknown"), dimensions(0), data(nullptr) {};
+      : type(TensorType::kUint8), name("unknown"), dimensions(0), data(nullptr),
+        qscale(1.0), qoffset(0.0) {};
 
   Tensor(TensorType type, std::string name,
-         std::vector<uint32_t>& dimensions, void* data)
-      : type(type), name(name), dimensions(dimensions), data(data) {};
+         std::vector<uint32_t>& dimensions, void* data,
+         float qscale, float qoffset)
+      : type(type), name(name), dimensions(dimensions), data(data),
+        qscale(qscale), qoffset(qoffset) {};
 };
 
 // Variable vector of tensor structures.
@@ -313,7 +320,7 @@ typedef std::vector<ImageClassifications> ImageClassPrediction;
  *
  * Information describing keypoint location and confidence score.
  *
- * The fields x and y must be set in (0.0 to 1.0) relative coordinate system.
+ * The fields x and y must be set in(0.0 to 1.0) relative coordinate system.
  */
 struct Keypoint {
   std::string             name;
@@ -402,7 +409,7 @@ typedef std::vector<PoseEstimations> PosePrediction;
  * Information describing prediction result from object detection models.
  * All fields are mandatory and need to be filled by the submodule.
  *
- * The fields top, left, bottom and right must be set in (0.0 to 1.0) relative
+ * The fields top, left, bottom and right must be set in(0.0 to 1.0) relative
  * coordinate system.
  */
 struct ObjectDetection {

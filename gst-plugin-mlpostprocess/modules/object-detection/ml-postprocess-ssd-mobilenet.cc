@@ -35,11 +35,10 @@
 
 #include <cmath>
 
-#define NMS_INTERSECTION_THRESHOLD 0.5F
+static const float kDefaultThreshold         = 0.70;
+static const float kNMSIntersectionTreshold  = 0.5;
 
-#define DEFAULT_THRESHOLD 0.70
-
-static const char* moduleCaps = R"(
+static const std::string kModuleCaps = R"(
 {
   "type": "object-detection",
   "tensors": [
@@ -73,7 +72,7 @@ static const char* moduleCaps = R"(
 
 Module::Module(LogCallback cb)
     : logger_(cb),
-      threshold_(DEFAULT_THRESHOLD) {
+      threshold_(kDefaultThreshold) {
 
 }
 
@@ -83,24 +82,24 @@ Module::~Module() {
 
 std::string Module::Caps() {
 
-  return std::string(moduleCaps);
+  return kModuleCaps;
 }
 
 bool Module::Configure(const std::string& labels_file,
                        const std::string& json_settings) {
 
   if (!labels_parser_.LoadFromFile(labels_file)) {
-    LOG (logger_, kError, "Failed to parse labels");
+    LOG(logger_, kError, "Failed to parse labels");
     return false;
   }
 
   if (!json_settings.empty()) {
     auto root = JsonValue::Parse(json_settings);
+
     if (!root || root->GetType() != JsonType::Object) return false;
 
-    threshold_ = root->GetNumber("confidence");
-    threshold_ /= 100.0;
-    LOG (logger_, kLog, "Threshold: %f", threshold_);
+    threshold_ = root->GetNumber("confidence") / 100.0;
+    LOG(logger_, kLog, "Threshold: %f", threshold_);
   }
 
   return true;
@@ -120,10 +119,10 @@ float Module::IntersectionScore(const ObjectDetection &l_box,
 
   // Figure out the width of the intersecting rectangle.
   // 1st: Find out the X axis coordinate of left most Top-Right point.
-  float width = fmin (l_box.right, r_box.right);
+  float width = std::min(l_box.right, r_box.right);
   // 2nd: Find out the X axis coordinate of right most Top-Left point
   // and substract from the previously found value.
-  width -= fmax (l_box.left, r_box.left);
+  width -= std::max(l_box.left, r_box.left);
 
   // Negative width means that there is no overlapping.
   if (width <= 0.0F)
@@ -131,10 +130,10 @@ float Module::IntersectionScore(const ObjectDetection &l_box,
 
   // Figure out the height of the intersecting rectangle.
   // 1st: Find out the Y axis coordinate of bottom most Left-Top point.
-  float height = fmin (l_box.bottom, r_box.bottom);
+  float height = std::min(l_box.bottom, r_box.bottom);
   // 2nd: Find out the Y axis coordinate of top most Left-Bottom point
   // and substract from the previously found value.
-  height -= fmax (l_box.top, r_box.top);
+  height -= std::max(l_box.top, r_box.top);
 
   // Negative height means that there is no overlapping.
   if (height <= 0.0F)
@@ -161,10 +160,10 @@ int32_t Module::NonMaxSuppression(const ObjectDetection &l_box,
     if (l_box.name != r_box.name)
       continue;
 
-    double score = IntersectionScore (l_box, r_box);
+    double score = IntersectionScore(l_box, r_box);
 
     // If the score is below the threshold, continue with next list entry.
-    if (score <= NMS_INTERSECTION_THRESHOLD)
+    if (score <= kNMSIntersectionTreshold)
       continue;
 
     // If confidence of current box is higher, remove the old entry.
@@ -187,7 +186,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   const float *scores = nullptr, *n_boxes = nullptr;
 
   if (output.type() != typeid(ObjectDetections)) {
-    LOG (logger_, kError, "Unexpected predictions type!");
+    LOG(logger_, kError, "Unexpected predictions type!");
     return false;
   }
 
@@ -238,18 +237,18 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     entry.right = bboxes[(idx * 4) + 3] * resolution.width;
 
     // Adjust bounding box dimensions with extracted source tensor region.
-    TransformDimensions (entry, region);
+    TransformDimensions(entry, region);
 
     if ((entry.top > 1.0) || (entry.left > 1.0) ||
-        (entry.bottom > 1.0) || (entry.right > 1.0))
+       (entry.bottom > 1.0) || (entry.right > 1.0))
       continue;
 
     entry.confidence = scores[idx] * 100;
     entry.name = labels_parser_.GetLabel(classes[idx]);
     entry.color = labels_parser_.GetColor(classes[idx]);
 
-    // Non-Max Suppression (NMS) algorithm.
-    int32_t nms = NonMaxSuppression (entry, detections);
+    // Non-Max Suppression(NMS) algorithm.
+    int32_t nms = NonMaxSuppression(entry, detections);
 
     // If the NMS result is -2 don't add the prediction to the list.
     if (nms == (-2))
@@ -259,12 +258,13 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     if (nms >= 0)
       detections.erase(detections.begin() + nms);
 
-    detections.push_back(entry);
+    detections.emplace_back(std::move(entry));
   }
   // sort entries
   return true;
 }
 
 IModule* NewModule(LogCallback logger) {
+
   return new Module(logger);
 }

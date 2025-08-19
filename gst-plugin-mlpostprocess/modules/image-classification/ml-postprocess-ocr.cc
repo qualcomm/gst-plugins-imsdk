@@ -34,11 +34,11 @@
 #include "ml-postprocess-ocr.h"
 #include "qti-json-parser.h"
 
-static const char alphabet[] = "_0123456789abcdefghijklmnopqrstuvwxyz";
+static const char kAlphabet[] = "_0123456789abcdefghijklmnopqrstuvwxyz";
 
-#define DEFAULT_THRESHOLD 0.70
+static const float kDefaultThreshold = 0.70;
 
-static const char* moduleCaps = R"(
+static const std::string kModuleCaps = R"(
 {
   "type": "image-classification",
   "tensors": [
@@ -60,7 +60,7 @@ static const char* moduleCaps = R"(
 
 Module::Module(LogCallback cb)
     : logger_(cb),
-      threshold_(DEFAULT_THRESHOLD) {
+      threshold_(kDefaultThreshold) {
 
 }
 
@@ -70,7 +70,7 @@ Module::~Module() {
 
 std::string Module::Caps() {
 
-  return std::string(moduleCaps);
+  return kModuleCaps;
 }
 
 bool Module::Configure(const std::string& labels_file,
@@ -78,10 +78,10 @@ bool Module::Configure(const std::string& labels_file,
 
   if (!json_settings.empty()) {
     auto root = JsonValue::Parse(json_settings);
+
     if (!root || root->GetType() != JsonType::Object) return false;
 
-    threshold_ = root->GetNumber("confidence");
-    threshold_ /= 100.0;
+    threshold_ = root->GetNumber("confidence") / 100.0;
     LOG(logger_, kLog, "Threshold: %f", threshold_);
   }
 
@@ -97,13 +97,13 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     LOG(logger_, kError, "Unexpected output type!");
     return false;
   }
+
   ImageClassifications& classifications =
       std::any_cast<ImageClassifications&>(output);
 
-
   uint32_t n_characters = tensors[0].dimensions[2];
   uint32_t n_rows = tensors[0].dimensions[0];
-  float * data = (float *) tensors[0].data;
+  const float* data = reinterpret_cast<const float *>(tensors[0].data);
 
   if (n_rows == 1)
     n_rows = tensors[0].dimensions[1];
@@ -111,10 +111,11 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   LOG(logger_, kTrace, "n_rows: %d, n_characters: %d", n_rows, n_characters);
 
   uint32_t idx = 0;
+
   for (idx = 0; idx < n_rows; ++idx) {
     uint32_t num = 0, c_id = 0;
 
-    float* pclass = data + (n_characters * idx);
+    const float* pclass = data + (n_characters * idx);
 
      // Find the character ID with the highest confidence.
     for (num = 1; num < n_characters; ++num)
@@ -123,7 +124,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     if (!c_id)
       continue;
 
-    result = result + alphabet[c_id];
+    result += kAlphabet[c_id];
   }
 
   if (result.empty())
@@ -135,11 +136,12 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   entry.name = result;
   entry.color = 0x00FF00FF;
 
-  classifications.push_back(entry);
+  classifications.emplace_back(std::move(entry));
 
   return true;
 }
 
 IModule* NewModule(LogCallback logger) {
+
   return new Module(logger);
 }

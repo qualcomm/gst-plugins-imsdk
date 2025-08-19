@@ -33,14 +33,13 @@
 
 #include "ml-postprocess-mobilenet-softmax.h"
 
-#define DEFAULT_THRESHOLD 0.70
-
+static const float kDefaultThreshold = 0.70;
 
 /* kModuleCaps
 *
 * Description of the supported caps and the type of the module.
 */
-static const char* kModuleCaps = R"(
+static const std::string kModuleCaps = R"(
 {
   "type": "image-classification",
   "tensors": [
@@ -56,13 +55,13 @@ static const char* kModuleCaps = R"(
 
 Module::Module(LogCallback cb)
     : logger_(cb),
-      threshold_(DEFAULT_THRESHOLD) {
+      threshold_(kDefaultThreshold) {
 
 }
 
 std::string Module::Caps() {
 
-  return std::string(kModuleCaps);
+  return kModuleCaps;
 }
 
 bool Module::Configure(const std::string& labels_file,
@@ -79,8 +78,7 @@ bool Module::Configure(const std::string& labels_file,
     if (!root || root->GetType() != JsonType::Object)
       return false;
 
-    threshold_ = root->GetNumber("confidence");
-    threshold_ /= 100.0;
+    threshold_ = root->GetNumber("confidence") / 100.0;
     LOG(logger_, kLog, "Threshold: %f", threshold_);
   }
 
@@ -101,19 +99,16 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
       std::any_cast<ImageClassifications&>(output);
 
   uint32_t n_inferences = tensors[0].dimensions[1];
-
   const float *data = static_cast<const float*>(tensors[0].data);
 
   // Calculate the sum of the exponents for softmax function.
   for (uint32_t idx = 0; idx < n_inferences; ++idx) {
-    confidence = data[idx];
-    sum += exp(confidence);
+    sum += exp(data[idx]);
   }
 
   // Fill the prediction table.
   for (uint32_t idx = 0; idx < n_inferences; ++idx) {
-    confidence = data[idx];
-    confidence = (exp(confidence) / sum) * 100;
+    confidence = (exp(data[idx]) / sum) * 100;
 
     // Discard results with confidence below the set threshold.
     if (confidence < threshold_)
@@ -124,12 +119,13 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     entry.name = labels_parser_.GetLabel(idx);
     entry.color = labels_parser_.GetColor(idx);
 
-    classifications.push_back(entry);
+    classifications.emplace_back(std::move(entry));
   }
 
   return true;
 }
 
 IModule* NewModule(LogCallback logger) {
+
   return new Module(logger);
 }

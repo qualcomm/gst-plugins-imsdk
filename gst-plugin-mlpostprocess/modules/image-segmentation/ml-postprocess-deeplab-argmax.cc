@@ -40,12 +40,11 @@
 #define EXTRACT_BLUE_COLOR(color)  ((color >> 8) & 0xFF)
 #define EXTRACT_ALPHA_COLOR(color) ((color) & 0xFF)
 
-
 /* kModuleCaps
 *
 * Description of the supported caps and the type of the module.
 */
-static const char* kModuleCaps = R"(
+static const std::string kModuleCaps = R"(
 {
   "type": "image-segmentation",
   "tensors": [
@@ -72,7 +71,7 @@ Module::Module(LogCallback cb)
 
 std::string Module::Caps() {
 
-  return std::string(kModuleCaps);
+  return kModuleCaps;
 }
 
 bool Module::Configure(const std::string& labels_file,
@@ -90,21 +89,7 @@ int32_t Module::CompareValues(const float *data,
                               const uint32_t& l_idx, const uint32_t& r_idx) {
 
   return ((float*)data)[l_idx] > ((float*)data)[r_idx] ? 1 :
-      ((float*)data)[l_idx] < ((float*)data)[r_idx] ? -1 : 0;
-}
-
-uint64_t Module::ScaleUint64Safe(const uint64_t val, const int32_t num,
-                                 const int32_t denom) {
-
-  if (denom == 0)
-    return UINT64_MAX;
-
-  // If multiplication won't overflow, perform it directly
-  if (val < (std::numeric_limits<uint64_t>::max() / num))
-    return (val * num) / denom;
-  else
-    // Use division first to avoid overflow
-    return (val / denom) * num + ((val % denom) * num) / denom;
+     ((float*)data)[l_idx] < ((float*)data)[r_idx] ? -1 : 0;
 }
 
 bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
@@ -138,10 +123,10 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
       tensors[0].dimensions[3];
 
   // Transform source tensor region dimensions to dimensions in the color mask.
-  region.x *= (tensors[0].dimensions[2] / (float)resolution.width);
-  region.y *= (tensors[0].dimensions[1] / (float)resolution.height);
-  region.width *= (tensors[0].dimensions[2] / (float)resolution.width);
-  region.height *= (tensors[0].dimensions[1] / (float)resolution.height);
+  region.x *= (tensors[0].dimensions[2] / static_cast<float>(resolution.width));
+  region.y *= (tensors[0].dimensions[1] / static_cast<float>(resolution.height));
+  region.width *= (tensors[0].dimensions[2] / static_cast<float>(resolution.width));
+  region.height *= (tensors[0].dimensions[1] / static_cast<float>(resolution.height));
 
   for (uint32_t row = 0; row < frame.height; row++) {
     uint32_t outidx = row * frame.planes[0].stride;
@@ -149,10 +134,10 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     for (uint32_t column = 0; column < frame.width; column++, outidx += bpp) {
       // Calculate the source index. First calculate the row offset.
       uint32_t inidx = tensors[0].dimensions[2] *
-          (region.y + ScaleUint64Safe(row, region.height, frame.height));
+         (region.y + row * (region.height / static_cast<double>(frame.height)));
 
       // Calculate the source index. Second calculate the column offset.
-      inidx += region.x + ScaleUint64Safe(column, region.width, frame.width);
+      inidx += region.x + column * (region.width / static_cast<double>(frame.width));
 
       // Calculate the source index. Lastly multiply by the number of class scores.
       inidx *= n_scores;
@@ -185,5 +170,6 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 }
 
 IModule* NewModule(LogCallback logger) {
+
   return new Module(logger);
 }
