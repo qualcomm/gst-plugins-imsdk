@@ -203,7 +203,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   gfloat *indata = NULL;
   guint8 *outdata = NULL;
   GstVideoRectangle region = { 0, };
-  guint idx = 0, num = 0, id = 0, bpp = 0, padding = 0, color = 0, n_scores = 0;
+  guint inidx = 0, outidx = 0, num = 0, id = 0, color = 0, n_scores = 0;
+  guint bpp = 0, stride = 0;
   gint row = 0, column = 0, width = 0, height = 0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
@@ -217,8 +218,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   bpp = GST_VIDEO_FORMAT_INFO_BITS (vframe->info.finfo) *
       GST_VIDEO_INFO_N_COMPONENTS (&(vframe)->info) / CHAR_BIT;
 
-  // Calculate the row padding in bytes.
-  padding = GST_VIDEO_FRAME_PLANE_STRIDE (vframe, 0) - (width * bpp);
+  stride = GST_VIDEO_FRAME_PLANE_STRIDE (vframe, 0);
 
   indata = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
   outdata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
@@ -247,45 +247,43 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   region.h *= (GST_ML_FRAME_DIM (mlframe, 0, 1) / (gfloat) submodule->inheight);
 
   for (row = 0; row < height; row++) {
-    for (column = 0; column < width; column++) {
+    outidx = row * stride;
+
+    for (column = 0; column < width; column++, outidx += bpp) {
       GstMLLabel *label = NULL;
 
       // Calculate the source index. First calculate the row offset.
-      idx = GST_ML_FRAME_DIM (mlframe, 0, 2) *
+      inidx = GST_ML_FRAME_DIM (mlframe, 0, 2) *
           (region.y + gst_util_uint64_scale_int (row, region.h, height));
 
       // Calculate the source index. Second calculate the column offset.
-      idx += region.x + gst_util_uint64_scale_int (column, region.w, width);
+      inidx += region.x + gst_util_uint64_scale_int (column, region.w, width);
 
       // Calculate the source index. Lastly multiply by the number of class scores.
-      idx *= n_scores;
+      inidx *= n_scores;
 
       // Initialize the class ID value.
-      id = idx;
+      id = inidx;
 
       // Find the class index with best score if tensor has multiple class scores.
-      for (num = (idx + 1); num < (idx + n_scores); num++)
+      for (num = (inidx + 1); num < (inidx + n_scores); num++)
         id = (gst_ml_tensor_compare_values (mltype, indata, num, id) > 0) ? num : id;
 
       // If there is no 4th dimension the tensor pixel contains the class ID.
       if (n_scores == 1)
         id = indata[id];
       else
-        id = (id - idx);
+        id = (id - inidx);
 
       label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (id));
       color = (label != NULL) ? label->color : 0x000000FF;
 
-      // Calculate the destination index.
-      idx = (((row * GST_VIDEO_FRAME_WIDTH (vframe)) + column) * bpp) +
-          (row * padding);
-
-      outdata[idx] = EXTRACT_RED_COLOR (color);
-      outdata[idx + 1] = EXTRACT_GREEN_COLOR (color);
-      outdata[idx + 2] = EXTRACT_BLUE_COLOR (color);
+      outdata[outidx] = EXTRACT_RED_COLOR (color);
+      outdata[outidx + 1] = EXTRACT_GREEN_COLOR (color);
+      outdata[outidx + 2] = EXTRACT_BLUE_COLOR (color);
 
       if (bpp == 4)
-        outdata[idx + 3] = EXTRACT_ALPHA_COLOR (color);
+        outdata[outidx + 3] = EXTRACT_ALPHA_COLOR (color);
     }
   }
 
