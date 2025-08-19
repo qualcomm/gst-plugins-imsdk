@@ -91,13 +91,13 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   double mindepth = std::numeric_limits<double>::max();
   double maxdepth = std::numeric_limits<double>::min();
 
-  if (output.type() != typeid(Frame)) {
+  if (output.type() != typeid(VideoFrame)) {
     LOG (logger_, kError, "Unexpected output type!");
     return false;
   }
 
-  Frame& frame =
-      std::any_cast<Frame&>(output);
+  VideoFrame& frame =
+      std::any_cast<VideoFrame&>(output);
 
   // Get region
   Region& region =

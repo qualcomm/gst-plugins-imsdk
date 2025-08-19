@@ -291,7 +291,7 @@ gst_ml_post_process_module_execute (GstMLPostProcess * postprocess,
   g_return_val_if_fail (output.has_value(), FALSE);
 
   if (gst_buffer_get_size (buffer) == 0 &&
-    GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP))
+      GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP))
     needproc = FALSE;
 
   if (needproc &&
@@ -1773,24 +1773,25 @@ gst_ml_post_process_sink_event (GstBaseTransform * base, GstEvent * event)
 {
   GstMLPostProcess *postprocess = GST_ML_POST_PROCESS (base);
 
-  if (GST_IS_DETECTION_TYPE (postprocess->type)) {
-    switch (GST_EVENT_TYPE (event)) {
-      case GST_EVENT_CUSTOM_DOWNSTREAM:
-      {
-        const GstStructure *structure = gst_event_get_structure (event);
-
-        // Not a supported custom event, pass it to the default handling function.
-        if ((structure == NULL) ||
-            !gst_structure_has_name (structure, "ml-detection-information"))
-          break;
-
-        // Consume downstream information from previous postprocess stage.
-        gst_event_unref (event);
-        return TRUE;
-      }
-      default:
+  switch (GST_EVENT_TYPE (event)) {
+    case GST_EVENT_CUSTOM_DOWNSTREAM:
+    {
+      if (GST_IS_DETECTION_TYPE (postprocess->type))
         break;
+
+      const GstStructure *structure = gst_event_get_structure (event);
+
+      // Not a supported custom event, pass it to the default handling function.
+      if ((structure == NULL) ||
+          !gst_structure_has_name (structure, "ml-detection-information"))
+        break;
+
+      // Consume downstream information from previous postprocess stage.
+      gst_event_unref (event);
+      return TRUE;
     }
+    default:
+      break;
   }
 
   return GST_BASE_TRANSFORM_CLASS (parent_class)->sink_event (base, event);
@@ -2196,9 +2197,9 @@ gst_ml_post_process_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     }
 #endif // HAVE_LINUX_DMA_BUF_H
 
-    Frame frame;
+    VideoFrame frame;
 
-    if (gst_video_frame_convert (vframe, frame)) {
+    if (gst_video_frame_to_module_frame (vframe, frame)) {
       output = frame;
     } else {
       GST_ERROR_OBJECT (postprocess, "Convert video frame failed!");

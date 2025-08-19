@@ -248,13 +248,13 @@ uint64_t Module::ScaleUint64Safe(const uint64_t val,
 bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     std::any& output) {
 
-  if (output.type() != typeid(Frame)) {
+  if (output.type() != typeid(VideoFrame)) {
     LOG (logger_, kError, "Unexpected output type!");
     return false;
   }
 
-  Frame& frame =
-      std::any_cast<Frame&>(output);
+  VideoFrame& frame =
+      std::any_cast<VideoFrame&>(output);
 
   // Get video resolution
   Resolution& resolution =

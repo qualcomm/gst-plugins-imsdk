@@ -81,7 +81,7 @@ struct _GstMLPostProcess {
   gpointer             handle;
 
   /// Module interface functions.
-  IModule *module;
+  IModule              *module;
 
   /// Post processing type.
   GQuark               type;
