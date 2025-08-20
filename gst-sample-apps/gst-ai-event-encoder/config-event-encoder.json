@@ -1,0 +1,8 @@
+{
+  "file-path": "/etc/media/video.mp4",
+  "model": "/etc/models/yolox_quantized.tflite",
+  "labels": "/etc/labels/yolox.labels",
+  "constants": "model,q-offsets=<38.0, 0.0, 0.0>,q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;",
+  "threshold": 40,
+  "runtime": "dsp"
+}
