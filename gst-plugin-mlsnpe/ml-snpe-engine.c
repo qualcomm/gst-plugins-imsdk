@@ -1214,6 +1214,7 @@ gboolean
 gst_ml_snpe_engine_execute (GstMLSnpeEngine * engine,
     GstMLFrame * inframe, GstMLFrame * outframe)
 {
+  GstMLTensorMeta *mlmeta = NULL;
   Snpe_StringList_Handle_t names = NULL;
   Snpe_IUserBuffer_Handle_t usrbuffer = NULL;
   Snpe_ErrorCode_t error = SNPE_SUCCESS;
@@ -1241,6 +1242,9 @@ gst_ml_snpe_engine_execute (GstMLSnpeEngine * engine,
 
     usrbuffer = engine->UserBufferMapGet (engine->inputs, name);
     engine->IUserBufferSetBufferAddress (usrbuffer, vaddress);
+
+    mlmeta = gst_buffer_get_ml_tensor_meta_id (inframe->buffer, idx);
+    mlmeta->name = g_quark_from_string (name);
   }
 
   engine->StringListDelete (names);
@@ -1251,6 +1255,9 @@ gst_ml_snpe_engine_execute (GstMLSnpeEngine * engine,
 
     usrbuffer = engine->UserBufferMapGet (engine->outputs, name);
     engine->IUserBufferSetBufferAddress (usrbuffer, vaddress);
+
+    mlmeta = gst_buffer_get_ml_tensor_meta_id (outframe->buffer, idx);
+    mlmeta->name = g_quark_from_string (name);
   }
 
   error = engine->SNPE_ExecuteUserBuffers (engine->interpreter, engine->inputs,

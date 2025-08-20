@@ -31,7 +31,7 @@ enum class ShaderType : uint32_t {
 };
 
 static const std::string kVertexShader = R"(
-#version 320 es
+#version 310 es
 
 precision mediump float;
 
@@ -56,7 +56,7 @@ void main() {
 )";
 
 static const std::string kRgbFragmentHeader = R"(
-#version 320 es
+#version 310 es
 #extension GL_OES_EGL_image_external_essl3 : require
 
 precision mediump samplerExternalOES;
@@ -119,7 +119,7 @@ void main() {
 )";
 
 static const std::string kYuvFragmentShader = R"(
-#version 320 es
+#version 310 es
 #extension GL_OES_EGL_image_external_essl3 : require
 #extension GL_EXT_YUV_target : require
 
@@ -160,7 +160,7 @@ void main() {
 )";
 
 static const std::string kLumaFragmentShader = R"(
-#version 320 es
+#version 310 es
 #extension GL_OES_EGL_image_external_essl3 : require
 
 precision mediump samplerExternalOES;
@@ -200,7 +200,7 @@ void main() {
 )";
 
 static const std::string kChromaFragmentShader = R"(
-#version 320 es
+#version 310 es
 #extension GL_OES_EGL_image_external_essl3 : require
 
 precision mediump samplerExternalOES;
@@ -245,7 +245,7 @@ void main() {
 )";
 
 static const std::string kComputeHeader = R"(
-#version 320 es
+#version 310 es
 #extension GL_NV_image_formats : warn
 
 uniform int targetWidth;

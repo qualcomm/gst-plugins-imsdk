@@ -721,6 +721,9 @@ gst_ml_tflite_engine_new (GstStructure * settings)
 
     engine->ininfo->n_dimensions[idx] = dimensions->size;
 
+    GST_DEBUG ("Input tensor[%u] name: %s", idx,
+        engine->interpreter->GetInputName (idx));
+
     for (num = 0; num < dimensions->size; ++num) {
       engine->ininfo->tensors[idx][num] = dimensions->data[num];
       GST_DEBUG ("Input tensor[%u] Dimension[%u]: %u", idx, num,
@@ -737,6 +740,9 @@ gst_ml_tflite_engine_new (GstStructure * settings)
     TfLiteIntArray* dimensions = engine->interpreter->tensor(output)->dims;
 
     engine->outinfo->n_dimensions[idx] = dimensions->size;
+
+    GST_DEBUG ("Output tensor[%u] name: %s", idx,
+        engine->interpreter->GetOutputName (idx));
 
     for (num = 0; num < dimensions->size; ++num) {
       engine->outinfo->tensors[idx][num] = dimensions->data[num];
@@ -856,6 +862,10 @@ gst_ml_tflite_engine_execute (GstMLTFLiteEngine * engine,
 
     memcpy (tensor->data.raw, GST_ML_FRAME_BLOCK_DATA (inframe, idx),
         GST_ML_FRAME_BLOCK_SIZE (inframe, idx));
+
+    mlmeta = gst_buffer_get_ml_tensor_meta_id (inframe->buffer, idx);
+    mlmeta->name =
+        g_quark_from_string (engine->interpreter->GetInputName (idx));
   }
 
   if (!(success = (engine->interpreter->Invoke() == 0)))
@@ -875,11 +885,8 @@ gst_ml_tflite_engine_execute (GstMLTFLiteEngine * engine,
         tensor->type, scale, offset);
 
     mlmeta = gst_buffer_get_ml_tensor_meta_id (outframe->buffer, idx);
-
-    if (mlmeta == NULL) {
-      GST_ERROR ("Invalid tensor meta: %p", mlmeta);
-      return FALSE;
-    }
+    mlmeta->name =
+        g_quark_from_string (engine->interpreter->GetOutputName (idx));
 
     if (outframe->info.type != GST_ML_TYPE_FLOAT32 &&
         outframe->info.type != GST_ML_TYPE_FLOAT16) {

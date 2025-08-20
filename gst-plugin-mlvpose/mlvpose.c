@@ -1324,6 +1324,10 @@ gst_ml_video_pose_init (GstMLVideoPose * vpose)
 
   GST_DEBUG_CATEGORY_INIT (gst_ml_video_pose_debug, "qtimlvpose", 0,
       "QTI ML pose estimation plugin");
+
+  g_warning ("This mlvpose plugin will be deprecated in the future!"
+      "Use qtimlpostprocess instead.");
+
 }
 
 static gboolean

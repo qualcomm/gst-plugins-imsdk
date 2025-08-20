@@ -899,6 +899,9 @@ gst_ml_video_super_resolution_init (GstMLVideoSuperResolution * super_resolution
 
   GST_DEBUG_CATEGORY_INIT (gst_ml_video_super_resolution_debug,
       "qtimlvsuperresolution", 0, "QTI ML image super resolution plugin");
+
+  g_warning ("This mlvsuperresolution plugin will be deprecated in the future!"
+      "Use qtimlpostprocess instead.");
 }
 
 static gboolean

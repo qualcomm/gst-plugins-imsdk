@@ -744,6 +744,7 @@ gboolean
 gst_ml_snpe_engine_execute (GstMLSnpeEngine * engine,
     GstMLFrame * inframe, GstMLFrame * outframe)
 {
+  GstMLTensorMeta *mlmeta = NULL;
   gboolean success = FALSE;
   guint idx = 0;
 
@@ -765,15 +766,23 @@ gst_ml_snpe_engine_execute (GstMLSnpeEngine * engine,
       engine->interpreter->getInputTensorNames();
 
   for (idx = 0; idx < engine->ininfo->n_tensors; ++idx) {
+    const char *name = inoptnames.at(idx);
     zdl::DlSystem::IUserBuffer *usrbuffer =
         engine->usrbuffers[(*inoptnames).at(idx)].get();
     usrbuffer->setBufferAddress(GST_ML_FRAME_BLOCK_DATA (inframe, idx));
+
+    mlmeta = gst_buffer_get_ml_tensor_meta_id (inframe->buffer, idx);
+    mlmeta->name = g_quark_from_string (name);
   }
 
   for (idx = 0; idx < engine->outinfo->n_tensors; ++idx) {
+    const char *name = (*engine->outoptnames).at(idx);
     zdl::DlSystem::IUserBuffer *usrbuffer =
-        engine->usrbuffers[(*engine->outoptnames).at(idx)].get();
+        engine->usrbuffers[name].get();
     usrbuffer->setBufferAddress(GST_ML_FRAME_BLOCK_DATA (outframe, idx));
+
+    mlmeta = gst_buffer_get_ml_tensor_meta_id (outframe->buffer, idx);
+    mlmeta->name = g_quark_from_string (name);
   }
 
   if (!(success = engine->interpreter->execute(engine->inputs, engine->outputs)))

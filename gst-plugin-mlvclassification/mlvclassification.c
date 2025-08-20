@@ -1307,6 +1307,10 @@ gst_ml_video_classification_init (GstMLVideoClassification * classification)
 
   GST_DEBUG_CATEGORY_INIT (gst_ml_video_classification_debug,
       "qtimlvclassification", 0, "QTI ML image categorization plugin");
+
+  g_warning ("This mlvclassification plugin will be deprecated in the future!"
+      "Use qtimlpostprocess instead.");
+
 }
 
 static gboolean
