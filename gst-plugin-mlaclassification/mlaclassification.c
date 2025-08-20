@@ -1147,6 +1147,9 @@ gst_ml_audio_classification_init (GstMLAudioClassification * classification)
 
   GST_DEBUG_CATEGORY_INIT (gst_ml_audio_classification_debug,
       "qtimlaclassification", 0, "QTI ML audio classification plugin");
+
+  g_warning ("This mlaclassification plugin will be deprecated in the future!"
+      "Use qtimlpostprocess instead.");
 }
 
 static gboolean

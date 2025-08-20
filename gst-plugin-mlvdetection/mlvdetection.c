@@ -1553,6 +1553,10 @@ gst_ml_video_detection_init (GstMLVideoDetection * detection)
 
   GST_DEBUG_CATEGORY_INIT (gst_ml_video_detection_debug, "qtimlvdetection", 0,
       "QTI ML image object detection plugin");
+
+  g_warning ("This mlvdetection plugin will be deprecated in the future!"
+      "Use qtimlpostprocess instead.");
+
 }
 
 static gboolean
