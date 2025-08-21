@@ -91,27 +91,27 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   uint32_t bpp = frame.bits *
       frame.n_components / CHAR_BIT;
 
-  // Calculate the row padding in bytes.
-  uint32_t padding = frame.planes[0].stride - (frame.width * bpp);
-
   const float *indata = static_cast<const float*>(tensors[0].data);
   uint8_t *outdata = frame.planes[0].data;
 
   // TODO: Right now this won't work with any output resolution.
   // TODO: Expolore the possible use of OpenGL or OpenCL
   for (uint32_t row = 0; row < frame.height; row++) {
-    for (uint32_t column = 0; column < frame.width; column++) {
-      // Calculate the destination index.
-      uint32_t idx = (((row * frame.width) + column) * bpp) +
-          (row * padding);
+    uint32_t inidx = row * frame.width * bpp;
+    uint32_t outidx = row * frame.planes[0].stride;
 
-      outdata[idx] = (uint8_t)(indata[idx] * 255.0f);
-      outdata[idx + 1] = (uint8_t)(indata[idx + 1] * 255.0f);
-      outdata[idx + 2] = (uint8_t)(indata[idx + 2] * 255.0f);
+    for (uint32_t column = 0; column < frame.width; column++) {
+
+      outdata[outidx] = (uint8_t)(indata[inidx] * 255.0f);
+      outdata[outidx + 1] = (uint8_t)(indata[inidx + 1] * 255.0f);
+      outdata[outidx + 2] = (uint8_t)(indata[inidx + 2] * 255.0f);
 
       // If output has an alpha channel set it to opaque.
       if (bpp == 4)
-        outdata[idx + 3] = 0xFF;
+        outdata[outidx + 3] = 0xFF;
+
+      inidx += bpp;
+      outidx += bpp;
     }
   }
 
