@@ -8,8 +8,8 @@
     {
       "ModelName": "yolov5.tflite",
       "ModelLabelDownloadURL": "",
-      "LabelFile": "yolov5.labels",
-      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
+      "LabelFile": "yolov5.json",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.json"
     }
   ],
   "AIModelsSupportedByApplication": [],

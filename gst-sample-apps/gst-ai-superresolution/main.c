@@ -59,11 +59,6 @@
 #define COMPOSER_SINK_COUNT 2
 
 /**
- * Scale and Offset value for post processing
- */
-#define DEFAULT_CONSTANTS "srnet,q-offsets=<0.0>,q-scales=<1.0>;"
-
-/**
  * Default path of config file
  */
 #define DEFAULT_CONFIG_FILE "/etc/configs/config-superresolution.json"
@@ -80,7 +75,6 @@
 typedef struct {
   const gchar *input_file_path;
   const gchar *model_path;
-  const gchar *constants;
   const gchar *output_file_path;
   enum GstSinkType sink_type;
   gboolean display;
@@ -111,12 +105,6 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options, gchar * c
   if (appctx->pipeline != NULL) {
     gst_object_unref (appctx->pipeline);
     appctx->pipeline = NULL;
-  }
-
-  if (options->constants != (gchar *)(&DEFAULT_CONSTANTS) &&
-      options->constants != NULL) {
-    g_free ((gpointer)options->constants);
-    options->constants = NULL;
   }
 
   if (options->model_path != (gchar *)(&DEFAULT_TFLITE_MODEL) &&
@@ -306,9 +294,9 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
     goto error_clean_elements;
   }
 
-  // Create plugin for ML postprocessing for super resolution
+  // Create plugin for ML postprocessing
   qtimlvsuperresolution =
-      gst_element_factory_make ("qtimlvsuperresolution", "qtimlvsuperresolution");
+      gst_element_factory_make ("qtimlpostprocess", "qtimlpostprocess");
   if (!qtimlvsuperresolution) {
     g_printerr ("Failed to create qtimlvsuperresolution\n");
     goto error_clean_elements;
@@ -393,11 +381,11 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
       "external-delegate-options", delegate_options, NULL);
   gst_structure_free (delegate_options);
 
-  // 2.3 Set properties for postproc plugins- module and constants
+  // 2.3 Set properties for postproc plugins- module
   module_id = get_enum_value (qtimlvsuperresolution, "module", "srnet");
   if (module_id != -1) {
     g_object_set (G_OBJECT (qtimlvsuperresolution),
-        "module", module_id, "constants", options.constants, NULL);
+        "module", module_id, NULL);
   }
   else {
     g_printerr ("Module srnet is not available in qtimlvsuperresolution.\n");
@@ -608,11 +596,6 @@ parse_json(gchar * config_file, GstAppOptions * options)
         g_strdup (json_object_get_string_member (root_obj, "model"));
   }
 
-  if (json_object_has_member (root_obj, "constants")) {
-    options->constants =
-        g_strdup (json_object_get_string_member (root_obj, "constants"));
-  }
-
   if (json_object_has_member (root_obj, "output-file-path")) {
     options->output_file_path =
         g_strdup (json_object_get_string_member (root_obj, "output-file-path"));
@@ -637,7 +620,6 @@ main (gint argc, gchar * argv[])
   gchar help_description[1024];
   guint intrpt_watch_id = 0;
 
-  options.constants = NULL;
   options.input_file_path = NULL;
   options.model_path = NULL;
   options.output_file_path = NULL;
@@ -669,14 +651,10 @@ main (gint argc, gchar * argv[])
     "  model: \"/PATH\"\n"
     "      This is an optional parameter and overrides default path\n"
     "      Default model path: " DEFAULT_TFLITE_MODEL"\n"
-    "  constants: CONSTANTS\n"
-    "      Constants, offsets and coefficients used by the chosen module \n"
-    "      for post-processing of incoming tensors.\n"
-    "      Default constants: \"" DEFAULT_CONSTANTS"\"\n"
     "  output-file-path: \"/PATH\"\n"
     "      Output file path. If not set, then display output is selected\n",
     app_name, DEFAULT_CONFIG_FILE);
-help_description[1023] = '\0';
+  help_description[1023] = '\0';
 
   // Parse command line entries.
   if ((ctx = g_option_context_new (help_description)) != NULL) {
@@ -747,11 +725,6 @@ help_description[1023] = '\0';
   if (options.model_path == NULL) {
     g_print ("Using Default model: %s\n",DEFAULT_TFLITE_MODEL);
     options.model_path = DEFAULT_TFLITE_MODEL;
-  }
-
-  if (options.constants == NULL) {
-    g_print ("Using Default constants: %s\n",DEFAULT_CONSTANTS);
-    options.constants = DEFAULT_CONSTANTS;
   }
 
   if (!file_exists (options.input_file_path)) {

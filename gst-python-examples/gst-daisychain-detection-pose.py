@@ -24,15 +24,11 @@ The pipeline reads input, performs inference and displays
 output with preview on wayland display.
 """
 DEFAULT_TFLITE_YOLOX_MODEL = "/etc/models/yolox_quantized.tflite"
-DEFAULT_YOLOX_LABELS = "/etc/labels/yolox.labels"
+DEFAULT_YOLOX_LABELS = "/etc/labels/yolox.json"
 DEFAULT_TFLITE_POSE_MODEL = "/etc/models/hrnet_pose_quantized.tflite"
-DEFAULT_POSE_LABELS = "/etc/labels/hrnet_pose.labels"
+DEFAULT_POSE_LABELS = "/etc/labels/hrnet_pose.json"
+DEFAULT_POSE_SETTINGS = "/etc/labels/hrnet_pose_settings.json"
 DELEGATE_PATH = "libQnnTFLiteDelegate.so"
-
-DEFAULT_CONSTANTS_OBJECT_DETECTION = "YOLOX,q-offsets=<38.0, 0.0, 0.0>,\
-    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
-DEFAULT_CONSTANTS_POSE_DETECTION = "hrnet,q-offsets=<8.0>,\
-    q-scales=<0.0040499246679246426>;"
 
 QUEUE_COUNT = 20
 
@@ -134,14 +130,6 @@ def create_pipeline(pipeline):
         "--rtsp", type=str, default=None,
         help="RTSP URL"
     )
-    parser.add_argument("--constants-detection", type=str,
-        default=DEFAULT_CONSTANTS_OBJECT_DETECTION,
-        help="Constants for Object detection model"
-    )
-    parser.add_argument("--constants-pose", type=str,
-        default=DEFAULT_CONSTANTS_POSE_DETECTION,
-        help="Constants for Pose detection model"
-    )
     parser.add_argument("--tflite-yolo-model", type=str,
         default=DEFAULT_TFLITE_YOLOX_MODEL,
         help="Path to YOLOX TFLite model"
@@ -158,6 +146,10 @@ def create_pipeline(pipeline):
         default=DEFAULT_POSE_LABELS,
         help="Path to pose labels"
     )
+    parser.add_argument("--pose-settings", type=str,
+        default=DEFAULT_POSE_SETTINGS,
+        help="Path to pose settings"
+    )
 
     args = parser.parse_args()
 
@@ -173,6 +165,9 @@ def create_pipeline(pipeline):
         sys.exit(1)
     if not os.path.exists(args.pose_labels):
         print(f"File {args.pose_labels} does not exist")
+        sys.exit(1)
+    if not os.path.exists(args.pose_settings):
+        print(f"File {args.pose_settings} does not exist")
         sys.exit(1)
 
     if not args.camera and args.file is None and args.rtsp is None:
@@ -267,8 +262,8 @@ def create_pipeline(pipeline):
     elements["qtimltflite1"] = create_element("qtimltflite", "qtimltflite-1")
 
     # Create post-processing plugins
-    elements["qtimlvdetection"] = create_element("qtimlvdetection", "qtimlvdetection")
-    elements["qtimlvpose"] = create_element("qtimlvpose", "qtimlvpose")
+    elements["qtimlvdetection"] = create_element("qtimlpostprocess", "qtimlvdetection")
+    elements["qtimlvpose"] = create_element("qtimlpostprocess", "qtimlvpose")
 
     # Create capsfilter for detection
     elements["detection_filter"] = create_element("capsfilter", "capsfilter")
@@ -364,17 +359,17 @@ def create_pipeline(pipeline):
     elements["qtimlvconverter1"].set_property(
         "image-disposition", "centre")
 
+    threshold = 75.0
+    settings = f'{{"confidence": {threshold:.1f}}}'
+    elements["qtimlvdetection"].set_property("settings", settings)
     elements["qtimlvdetection"].set_property("module", "yolov8")
-    elements["qtimlvdetection"].set_property("threshold", 40.0)
     elements["qtimlvdetection"].set_property("results", 4)
     elements["qtimlvdetection"].set_property("labels", args.yolo_labels)
-    elements["qtimlvdetection"].set_property("constants", args.constants_detection)
 
+    elements["qtimlvpose"].set_property("settings", args.pose_settings)
     elements["qtimlvpose"].set_property("module", "hrnet")
-    elements["qtimlvpose"].set_property("threshold", 51.0)
     elements["qtimlvpose"].set_property("results", 1)
     elements["qtimlvpose"].set_property("labels", args.pose_labels)
-    elements["qtimlvpose"].set_property("constants", args.constants_pose)
 
     elements["qtivoverlay"].set_property("engine", "gles")
 

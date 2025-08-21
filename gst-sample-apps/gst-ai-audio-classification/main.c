@@ -44,7 +44,7 @@
 */
 #define DEFAULT_TFLITE_CLASSIFICATION_MODEL \
     "/etc/models/yamnet.tflite"
-#define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/yamnet.labels"
+#define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/yamnet.json"
 
 /**
 * Default path of config file
@@ -201,7 +201,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstPad *vcomposer_sink[2];
   GstStructure *delegate_options = NULL;
   gboolean ret = FALSE;
-  gchar element_name[128];
+  gchar element_name[128], settings[128];
   gint pos_vals[2], dim_vals[2];
   gint module_id;
 
@@ -345,9 +345,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     goto error_clean_elements;
   }
 
-  // Create plugin for ML postprocessing for audio classification
-  qtimlaclassification = gst_element_factory_make ("qtimlaclassification",
-      "qtimlaclassification");
+  // Create plugin for ML postprocessing
+  qtimlaclassification = gst_element_factory_make ("qtimlpostprocess",
+      "qtimlpostprocess");
   if (!qtimlaclassification) {
     g_printerr ("Failed to create qtimlaclassification\n");
     goto error_clean_elements;
@@ -430,9 +430,11 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   // 2.6 Set properties for ML postproc plugins- module, threshold, labels
   module_id = get_enum_value (qtimlaclassification, "module", "yamnet");
   if (module_id != -1) {
+    snprintf (settings, 127, "{\"confidence\": %.1f}", options->threshold);
     g_object_set (G_OBJECT (qtimlaclassification),
-        "threshold", options->threshold, "results", 3,
-        "module", module_id, "labels", options->labels_path, NULL);
+        "results", 3, "module", module_id,
+        "labels", options->labels_path,
+        "settings", settings, NULL);
   } else {
     g_printerr ("Module yamnet is not available in qtimlaclassification.\n");
     goto error_clean_elements;
