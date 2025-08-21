@@ -79,7 +79,7 @@
 #define GST_ML_MODULE_CAPS \
     "neural-network/tensors, " \
     "type = (string) { FLOAT32 }, " \
-    "dimensions = (int) < <1, [ 1000, 1001 ]> >"
+    "dimensions = (int) < <1, [ 1000, 6440 ]> >"
 
 // Module caps instance
 static GstStaticCaps modulecaps = GST_STATIC_CAPS (GST_ML_MODULE_CAPS);
