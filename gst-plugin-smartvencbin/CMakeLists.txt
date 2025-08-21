@@ -54,9 +54,11 @@ target_link_libraries(${GST_SMART_VENC_BIN} PRIVATE
   gstqtivideobase
 )
 
+string(REGEX MATCH "^[0-9]+" QCOM_VIDEO_CTRL_VERSION_MAJOR ${QCOM_VIDEO_CTRL_VERSION})
+
 # Pass the VideoCtrl library version as a macro
 target_compile_definitions(${GST_SMART_VENC_BIN} PRIVATE
-  VIDEO_CTRL_VERSION="${QCOM_VIDEO_CTRL_VERSION_MAJOR}"
+  VIDEO_CTRL_VERSION_MAJOR="${QCOM_VIDEO_CTRL_VERSION_MAJOR}"
 )
 
 install(
