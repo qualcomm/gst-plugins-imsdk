@@ -2236,15 +2236,20 @@ GstFcvVideoConverter *
 gst_fcv_video_converter_new (GstStructure * settings)
 {
   GstFcvVideoConverter *convert = NULL;
+  gchar libname[256] = "libfastcvopt.so";
   gboolean success = TRUE;
   gint opmode = FASTCV_OP_PERFORMANCE;
+
+#if FASTCV_PKG_FOUND
+  g_snprintf (libname, sizeof (libname), "libfastcvopt.so.%s", FASTCV_VERSION_MAJOR);
+#endif
 
   convert = g_slice_new0 (GstFcvVideoConverter);
   g_return_val_if_fail (convert != NULL, NULL);
 
   g_mutex_init (&convert->lock);
 
-  if ((convert->fcvhandle = dlopen ("libfastcvopt.so", RTLD_NOW)) == NULL) {
+  if ((convert->fcvhandle = dlopen (libname, RTLD_NOW)) == NULL) {
     GST_ERROR ("Failed to open FastCV library, error: %s!", dlerror());
     goto cleanup;
   }
