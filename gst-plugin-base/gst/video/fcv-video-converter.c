@@ -414,23 +414,6 @@ gst_fcv_stage_buffer_free (gpointer data)
 }
 
 static inline guint
-gst_fcv_translate_flip (const GstVideoConvFlip flip)
-{
-  switch (flip) {
-    case GST_VCE_FLIP_HORIZONTAL:
-      return FASTCV_FLIP_HORIZ;
-    case GST_VCE_FLIP_VERTICAL:
-      return FASTCV_FLIP_VERT;
-    case GST_VCE_FLIP_BOTH:
-      return FASTCV_FLIP_BOTH;
-    default:
-      break;
-  }
-
-  return 0;
-}
-
-static inline guint
 gst_fcv_translate_rotation (const GstVideoConvRotate rotate)
 {
   switch (rotate) {
@@ -525,8 +508,7 @@ gst_fcv_copy_object (GstFcvObject * l_object, GstFcvObject * r_object)
 static inline void
 gst_fcv_update_object (GstFcvObject * object, const gchar * type,
     const GstVideoFrame * frame, const GstVideoRectangle * region,
-    const GstVideoConvFlip flip, const GstVideoConvRotate rotate,
-    const guint64 flags)
+    const guint flip, const guint rotate, const guint64 flags)
 {
   const gchar *mode = NULL;
   gint x = 0, y = 0, width = 0, height = 0;
@@ -583,8 +565,8 @@ gst_fcv_update_object (GstFcvObject * object, const gchar * type,
   else if (GST_VIDEO_INFO_IS_GRAY (&(frame->info)))
     object->flags |= GST_FCV_FLAG_GRAY;
 
-  object->flip = gst_fcv_translate_flip (flip);
-  object->rotate = gst_fcv_translate_rotation (rotate);
+  object->flip = flip;
+  object->rotate = rotate;
 
   object->format = GST_VIDEO_FRAME_FORMAT (frame);
   object->n_planes = GST_VIDEO_FRAME_N_PLANES (frame);
@@ -2177,23 +2159,65 @@ gst_fcv_video_converter_compose (GstFcvVideoConverter * convert,
     for (num = 0; num < n_blits; num++) {
       GstVideoBlit *blit = &(blits[num]);
       GstFcvObject *object = NULL;
+      GstVideoRectangle rectangle = {0, 0, 0, 0};
+      guint flip = 0, rotate = 0;
 
       if (n_objects >= GST_FCV_MAX_DRAW_OBJECTS) {
         GST_ERROR ("Number of objects exceeds %d!", GST_FCV_MAX_DRAW_OBJECTS);
         return FALSE;
       }
 
+      if ((blit->mask & GST_VCE_MASK_FLIP_VERTICAL) &&
+          (blit->mask & GST_VCE_MASK_FLIP_HORIZONTAL))
+        flip = FASTCV_FLIP_BOTH;
+      else if (blit->mask & GST_VCE_MASK_FLIP_VERTICAL)
+        flip = FASTCV_FLIP_VERT;
+      else if (blit->mask & GST_VCE_MASK_FLIP_HORIZONTAL)
+        flip = FASTCV_FLIP_HORIZ;
+
+      if (blit->mask & GST_VCE_MASK_ROTATION)
+        rotate = gst_fcv_translate_rotation (blit->rotate);
+
       // Intialization of the source FCV object.
       object = &(objects[n_objects]);
 
-      gst_fcv_update_object (object, "Source", blit->frame, &(blit->source),
-          blit->flip, blit->rotate, 0);
+      if (blit->mask & GST_VCE_MASK_SOURCE) {
+        if (!gst_video_quadrilateral_is_rectangle (&(blit->source))) {
+          GST_ERROR ("Composition %u: Blit %u: Source quadrilateral is not a "
+              "rectangle! A(%f, %f) B(%f, %f) C(%fd, %f) D(%f, %f)", idx, num,
+              blit->source.a.x, blit->source.a.y, blit->source.b.x,
+              blit->source.b.y, blit->source.c.x, blit->source.c.y,
+              blit->source.d.x, blit->source.d.y);
+          return FALSE;
+        }
+
+        rectangle.x = blit->source.a.x;
+        rectangle.y = blit->source.a.y;
+        rectangle.w = blit->source.d.x - blit->source.a.x;
+        rectangle.h = blit->source.d.y - blit->source.a.y;
+      } else {
+        rectangle.x = rectangle.y = 0;
+        rectangle.w = GST_VIDEO_FRAME_WIDTH (blit->frame);
+        rectangle.h = GST_VIDEO_FRAME_HEIGHT (blit->frame);
+      }
+
+      gst_fcv_update_object (object, "Source", blit->frame, &rectangle,
+          flip, rotate, 0);
 
       // Intialization of the destination FCV object.
       object = &(objects[n_objects + 1]);
 
-      gst_fcv_update_object (object, "Destination", outframe, &(blit->destination),
-          GST_VCE_FLIP_NONE, GST_VCE_ROTATE_0, compositions[idx].flags);
+      // Setup the source quadrilateral.
+      if (blit->mask & GST_VCE_MASK_DESTINATION) {
+        rectangle = blit->destination;
+      } else {
+        rectangle.x = rectangle.y = 0;
+        rectangle.w = GST_VIDEO_FRAME_WIDTH (outframe);
+        rectangle.h = GST_VIDEO_FRAME_HEIGHT (outframe);
+      }
+
+      gst_fcv_update_object (object, "Destination", outframe, &rectangle,
+          0, 0, compositions[idx].flags);
 
       // Subtract blit area from total area.
       if (area != 0)

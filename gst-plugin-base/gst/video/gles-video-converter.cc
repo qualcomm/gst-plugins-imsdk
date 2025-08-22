@@ -407,6 +407,7 @@ static void
 gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
     const GstVideoBlit * vblit, const GstVideoFrame * outframe)
 {
+  GstVideoConvRotate rotate = GST_VCE_ROTATE_0;
   gint x = 0, y = 0, width = 0, height = 0;
 
   object->id = surface_id;
@@ -415,154 +416,74 @@ gst_gles_update_object (::ib2c::Object * object, const guint64 surface_id,
   object->alpha = vblit->alpha;
   GST_TRACE ("Input surface %lx - Global alpha: %u", surface_id, object->alpha);
 
-  // Setup the source rectangle.
-  if ((vblit->source.w != 0) && (vblit->source.h != 0)) {
-    x = vblit->source.x;
-    y = vblit->source.y;
-    width = vblit->source.w;
-    height = vblit->source.h;
+  // Setup the source quadrilateral.
+  if (vblit->mask & GST_VCE_MASK_SOURCE) {
+    object->source.a = ::ib2c::Point(vblit->source.a.x, vblit->source.a.y);
+    object->source.b = ::ib2c::Point(vblit->source.b.x, vblit->source.b.y);
+    object->source.c = ::ib2c::Point(vblit->source.c.x, vblit->source.c.y);
+    object->source.d = ::ib2c::Point(vblit->source.d.x, vblit->source.d.y);
+
+    object->mask |= ::ib2c::ConfigMask::kSource;
   }
 
-  width = (width == 0) ? GST_VIDEO_FRAME_WIDTH (vblit->frame) :
-      MIN (width, GST_VIDEO_FRAME_WIDTH (vblit->frame) - x);
-  height = (height == 0) ? GST_VIDEO_FRAME_HEIGHT (vblit->frame) :
-      MIN (height, GST_VIDEO_FRAME_HEIGHT (vblit->frame) - y);
-
-  object->source.x = x;
-  object->source.y = y;
-  object->source.w = width;
-  object->source.h = height;
-
-  if ((vblit->flip == GST_VCE_FLIP_VERTICAL) ||
-      (vblit->flip == GST_VCE_FLIP_BOTH)) {
+  if (vblit->mask & GST_VCE_MASK_FLIP_VERTICAL) {
     object->mask |= ::ib2c::ConfigMask::kVFlip;
     GST_TRACE ("Input surface %lx - Flip Vertically", surface_id);
   }
 
-  if ((vblit->flip == GST_VCE_FLIP_HORIZONTAL) ||
-      (vblit->flip == GST_VCE_FLIP_BOTH)) {
+  if (vblit->mask & GST_VCE_MASK_FLIP_HORIZONTAL) {
     object->mask |= ::ib2c::ConfigMask::kHFlip;
     GST_TRACE ("Input surface %lx - Flip Horizontally", surface_id);
   }
 
-  // Reset the local dimension variables.
-  x = y = width = height = 0;
-
   // Setup the target rectangle.
-  if ((vblit->destination.w != 0) && (vblit->destination.h != 0)) {
-    x = vblit->destination.x;
-    y = vblit->destination.y;
-    width = vblit->destination.w;
-    height = vblit->destination.h;
+  if (vblit->mask & GST_VCE_MASK_DESTINATION) {
+    x = object->destination.x = vblit->destination.x;
+    y = object->destination.y = vblit->destination.y;
+    width = object->destination.w = vblit->destination.w;
+    height = object->destination.h = vblit->destination.h;
+
+    object->mask |= ::ib2c::ConfigMask::kDestination;
+  } else {
+    width = GST_VIDEO_FRAME_WIDTH (outframe);
+    height = GST_VIDEO_FRAME_HEIGHT (outframe);
   }
 
-  object->destination.x = ((width != 0) && (height != 0)) ? x : 0;
-  object->destination.y = ((width != 0) && (height != 0)) ? y : 0;
+  if (vblit->mask & GST_VCE_MASK_ROTATION)
+    rotate = vblit->rotate;
 
   // Setup rotation angle and adjustments.
-  switch (vblit->rotate) {
+  switch (rotate) {
     case GST_VCE_ROTATE_90:
-    {
-      gint dar_n = 0, dar_d = 0;
-
-      gst_util_fraction_multiply (
-          GST_VIDEO_FRAME_WIDTH (vblit->frame),
-          GST_VIDEO_FRAME_HEIGHT (vblit->frame),
-          GST_VIDEO_INFO_PAR_N (&(vblit->frame)->info),
-          GST_VIDEO_INFO_PAR_D (&(vblit->frame)->info),
-          &dar_n, &dar_d
-      );
-
       GST_TRACE ("Input surface %lx - rotate 90° clockwise", surface_id);
 
-      // Adjust the target rectangle dimensions.
-      width = (width != 0) ? width :
-          GST_VIDEO_FRAME_HEIGHT (outframe) * dar_d / dar_n;
-      height = (height != 0) ? height : GST_VIDEO_FRAME_HEIGHT (outframe);
-
-      // Align to multiple of 4 due to hardware requirements.
-      width = ((width % 4) >= 2) ? GST_ROUND_UP_4 (width) :
-          GST_ROUND_DOWN_4 (width);
-
-      object->destination.w = width;
-      object->destination.h = height;
-
-      x = ((vblit->destination.w != 0) && (vblit->destination.h != 0)) ?
-          x : (GST_VIDEO_FRAME_WIDTH (outframe) - width) / 2;
-
-      // Adjust the target rectangle coordinates.
-      object->destination.x = GST_VIDEO_FRAME_WIDTH (outframe) - (x + width);
-      object->destination.y = y;
-
       object->rotation = 90.0;
+      object->mask |= ::ib2c::ConfigMask::kRotation;
       break;
-    }
     case GST_VCE_ROTATE_180:
       GST_TRACE ("Input surface %lx - rotate 180°", surface_id);
 
-      // Adjust the target rectangle dimensions.
-      width = (width == 0) ? GST_VIDEO_FRAME_WIDTH (outframe) : width;
-      height = (height == 0) ? GST_VIDEO_FRAME_HEIGHT (outframe) : height;
-
-      object->destination.w = width;
-      object->destination.h = height;
-
       object->rotation = 180.0;
+      object->mask |= ::ib2c::ConfigMask::kRotation;
       break;
     case GST_VCE_ROTATE_270:
-    {
-      gint dar_n = 0, dar_d = 0;
-
-      gst_util_fraction_multiply (
-          GST_VIDEO_FRAME_WIDTH (vblit->frame),
-          GST_VIDEO_FRAME_HEIGHT (vblit->frame),
-          GST_VIDEO_INFO_PAR_N (&(vblit->frame)->info),
-          GST_VIDEO_INFO_PAR_D (&(vblit->frame)->info),
-          &dar_n, &dar_d
-      );
-
       GST_TRACE ("Input surface %lx - rotate 90° counter-clockwise", surface_id);
 
-      // Adjust the target rectangle dimensions.
-      width = (width != 0) ? width :
-          GST_VIDEO_FRAME_HEIGHT (outframe) * dar_d / dar_n;
-      height = (height != 0) ? height : GST_VIDEO_FRAME_HEIGHT (outframe);
-
-      // Align to multiple of 4 due to hardware requirements.
-      width = ((width % 4) >= 2) ? GST_ROUND_UP_4 (width) :
-          GST_ROUND_DOWN_4 (width);
-
-      object->destination.w = width;
-      object->destination.h = height;
-
-      x = ((vblit->destination.w != 0) && (vblit->destination.h != 0)) ?
-          x : (GST_VIDEO_FRAME_WIDTH (outframe) - width) / 2;
-
-      // Adjust the target rectangle coordinates.
-      object->destination.x = GST_VIDEO_FRAME_WIDTH (outframe) - (x + width);
-      object->destination.y = y;
-
       object->rotation = 270.0;
+      object->mask |= ::ib2c::ConfigMask::kRotation;
       break;
-    }
     default:
-      width = (width == 0) ? GST_VIDEO_FRAME_WIDTH (outframe) : width;
-      height = (height == 0) ? GST_VIDEO_FRAME_HEIGHT (outframe) : height;
-
-      object->destination.w = width;
-      object->destination.h = height;
-
       object->rotation = 0.0;
       break;
   }
 
-  GST_TRACE ("Input surface %lx - Source rectangle: x(%d) y(%d) w(%d) h(%d)",
-      surface_id, object->source.x, object->source.y,
-      object->source.w, object->source.h);
+  GST_TRACE ("Input surface %lx - Source quadrilateral: A(%f, %f) B(%f, %f) "
+      "C(%f, %f) D(%f, %f)", surface_id, object->source.a.x, object->source.a.y,
+      object->source.b.x, object->source.b.y, object->source.c.x,
+      object->source.c.y, object->source.d.x, object->source.d.y);
 
   GST_TRACE ("Input surface %lx - Target rectangle: x(%d) y(%d) w(%d) h(%d)",
-      surface_id, object->destination.x, object->destination.y,
-      object->destination.w, object->destination.h);
+      surface_id, x, y, width, height);
 }
 
 static guint64

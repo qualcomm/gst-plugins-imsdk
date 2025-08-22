@@ -1194,15 +1194,23 @@ int32_t Overlay::ApplyOverlay_GLES (const OverlayTargetBuffer& buffer)
 
         object.id = draw_infos[i].ib2cSurfaceId;
         if (draw_infos[i].in_width) {
-          object.source.x = draw_infos[i].in_x;
-          object.source.y = draw_infos[i].in_y;
-          object.source.w = draw_infos[i].in_width;
-          object.source.h = draw_infos[i].in_height;
+          object.source.a.x = draw_infos[i].in_x;
+          object.source.a.y = draw_infos[i].in_y;
+          object.source.b.x = draw_infos[i].in_x;
+          object.source.b.y = draw_infos[i].in_y + draw_infos[i].in_height;
+          object.source.c.x = draw_infos[i].in_x + draw_infos[i].in_width;
+          object.source.c.y = draw_infos[i].in_y;
+          object.source.d.x = draw_infos[i].in_x + draw_infos[i].in_width;
+          object.source.d.y = draw_infos[i].in_y + draw_infos[i].in_height;
+
+          object.mask |= ::ib2c::ConfigMask::kSource;
         }
         object.destination.x = draw_infos[i].x;
         object.destination.y = draw_infos[i].y;
         object.destination.w = draw_infos[i].width;
         object.destination.h = draw_infos[i].height;
+
+        object.mask |= ::ib2c::ConfigMask::kDestination;
 
         GST_LOG ("object[%u].surface_id=%lx", i,
             object.id);
