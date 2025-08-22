@@ -367,7 +367,7 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
       // Transfer the memory block for this batch number.
     for (num = 0; num < n_memory; ++num) {
       GstMemory *memory = gst_buffer_peek_memory (inbuffer, num);
-      GstMLTensorMeta *mlmeta = NULL;
+      GstMLTensorMeta *mlmeta = NULL, *inpmlmeta = NULL;
       guint offset = 0, size = 0;
 
       // Set the size of memory that needs to be shared.
@@ -383,6 +383,11 @@ gst_ml_demux_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuffer)
       mlmeta = gst_buffer_add_ml_tensor_meta (outbuffer, srcpad->mlinfo->type,
           srcpad->mlinfo->n_dimensions[num], srcpad->mlinfo->tensors[num]);
       mlmeta->id = num;
+
+      // Get tensor name from mlmeta
+      inpmlmeta = gst_buffer_get_ml_tensor_meta_id (inbuffer, num);
+      if (inpmlmeta != NULL)
+        mlmeta->name = inpmlmeta->name;
     }
 
     // If input is a GAP buffer set the GAP flag for the output buffer.
