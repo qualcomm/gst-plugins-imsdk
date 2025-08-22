@@ -310,49 +310,26 @@ gst_gles_create_surface (GstGlesVideoConverter * convert, const gchar * directio
       direction, surface.fd, surface.width, surface.height, format, mode,
       GST_VIDEO_FRAME_N_PLANES (frame));
 
-  // TODO: WA for ib2c planar support only one plane.
-  if (surface.format == ::ib2c::ColorFormat::kR8G8B8I ||
-      surface.format == ::ib2c::ColorFormat::kR16G16B16 ||
-      surface.format == ::ib2c::ColorFormat::kR16G16B16I ||
-      surface.format == ::ib2c::ColorFormat::kR16G16B16F ||
-      surface.format == ::ib2c::ColorFormat::kR32G32B32F ||
-      surface.format == ::ib2c::ColorFormat::kR8G8B8 ||
-      surface.format == ::ib2c::ColorFormat::kB8G8R8I ||
-      surface.format == ::ib2c::ColorFormat::kB16G16R16 ||
-      surface.format == ::ib2c::ColorFormat::kB16G16R16I ||
-      surface.format == ::ib2c::ColorFormat::kB16G16R16F ||
-      surface.format == ::ib2c::ColorFormat::kB32G32R32F ||
-      surface.format == ::ib2c::ColorFormat::kB8G8R8) {
-    surface.planes.resize (1);
-    surface.planes[0].stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0) *
-        GST_VIDEO_FRAME_N_PLANES (frame);
-    surface.planes[0].offset = 0;
+  surface.planes.resize (GST_VIDEO_FRAME_N_PLANES (frame));
 
-    GST_ERROR ("%s surface FD[%d] - Stride0[%u] Offset0[%u]", direction,
-        surface.fd, surface.planes[0].stride, surface.planes[0].offset);
+  surface.planes[0].stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0);
+  surface.planes[0].offset = GST_VIDEO_FRAME_PLANE_OFFSET (frame, 0);
 
-  } else {
-    surface.planes.resize (GST_VIDEO_FRAME_N_PLANES (frame));
+  GST_TRACE ("%s surface FD[%d] - Stride0[%u] Offset0[%u]", direction,
+      surface.fd, surface.planes[0].stride, surface.planes[0].offset);
 
-    surface.planes[0].stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0);
-    surface.planes[0].offset = GST_VIDEO_FRAME_PLANE_OFFSET (frame, 0);
+  surface.planes[1].stride = (surface.planes.size() >= 2) ?
+      GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1) : 0;
+  surface.planes[1].offset = (surface.planes.size() >= 2) ?
+      GST_VIDEO_FRAME_PLANE_OFFSET (frame, 1) : 0;
 
-    GST_TRACE ("%s surface FD[%d] - Stride0[%u] Offset0[%u]", direction,
-        surface.fd, surface.planes[0].stride, surface.planes[0].offset);
+  GST_TRACE ("%s surface FD[%d] - Stride1[%u] Offset1[%u]", direction,
+      surface.fd, surface.planes[1].stride, surface.planes[1].offset);
 
-    surface.planes[1].stride = (surface.planes.size() >= 2) ?
-        GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1) : 0;
-    surface.planes[1].offset = (surface.planes.size() >= 2) ?
-        GST_VIDEO_FRAME_PLANE_OFFSET (frame, 1) : 0;
-
-    GST_TRACE ("%s surface FD[%d] - Stride1[%u] Offset1[%u]", direction,
-        surface.fd, surface.planes[1].stride, surface.planes[1].offset);
-
-    surface.planes[2].stride = (surface.planes.size() >= 3) ?
-        GST_VIDEO_FRAME_PLANE_STRIDE (frame, 2) : 0;
-    surface.planes[2].offset = (surface.planes.size() >= 3) ?
-        GST_VIDEO_FRAME_PLANE_OFFSET (frame, 2) : 0;
-  }
+  surface.planes[2].stride = (surface.planes.size() >= 3) ?
+      GST_VIDEO_FRAME_PLANE_STRIDE (frame, 2) : 0;
+  surface.planes[2].offset = (surface.planes.size() >= 3) ?
+      GST_VIDEO_FRAME_PLANE_OFFSET (frame, 2) : 0;
 
   GST_TRACE ("%s surface FD[%d] - Stride2[%u] Offset2[%u]", direction,
       surface.fd, surface.planes[2].stride, surface.planes[2].offset);

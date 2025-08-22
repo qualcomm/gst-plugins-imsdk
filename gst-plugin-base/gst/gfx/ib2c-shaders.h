@@ -333,7 +333,7 @@ void main() {
 }
 )";
 
-static const std::string kComputeMainPlanar = R"(
+static const std::string kComputePlanarMain = R"(
 void main() {
     int pixelId = int(gl_GlobalInvocationID.y * gl_NumWorkGroups.x * gl_WorkGroupSize.x);
     pixelId = 4 * (int(gl_GlobalInvocationID.x) + pixelId);
