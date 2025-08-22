@@ -30,11 +30,15 @@
 #include <gst/gst.h>
 #include <gst/sampleapps/gst_sample_apps_utils.h>
 
+#define DEFAULT_WIDTH 1280
+#define DEFAULT_HEIGHT 720
+#define DEFAULT_INPUT_PATH "/etc/media/imagefiles_%d.jpg"
+
 #define GST_APP_SUMMARY                                                       \
   "This application showcases the decoding of JPG files on waylandsink  " \
    "\nCommand:\n" \
-  "\n gst-jpg-decode-example -w 1280 -h 720 -i /etc/media/<imagefiles_%d>.jpg \n" \
-  "\n File names must be <imagefiles_1>.jpg,<imagefiles_2>.jpg,<imagefiles_3>.jpg and many"
+  "\n gst-jpg-decode-example -w 1280 -h 720 -i /etc/media/imagefiles_%d.jpg \n" \
+  "\n File names must be imagefiles_1.jpg,imagefiles_2.jpg,imagefiles_3.jpg and many"
 
 // Structure to hold the application context
 struct GstComposeAppContext : GstAppContext {
@@ -64,7 +68,9 @@ gst_app_context_new ()
   ctx->pipeline = NULL;
   ctx->mloop = NULL;
   ctx->plugins = NULL;
-  ctx->input_file = NULL;
+  ctx->width = DEFAULT_WIDTH;
+  ctx->height = DEFAULT_HEIGHT;
+  ctx->input_file = g_strdup(DEFAULT_INPUT_PATH);
   return ctx;
 }
 
