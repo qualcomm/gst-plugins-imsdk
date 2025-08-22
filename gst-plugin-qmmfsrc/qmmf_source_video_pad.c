@@ -880,6 +880,8 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
 #endif // GST_VIDEO_TYPE_SUPPORT
+#endif // ENABLE_RUNTIME_PARSER
+
 #ifdef FEATURE_LOGICAL_CAMERA_SUPPORT
   g_object_class_install_property (gobject, PROP_VIDEO_LOGICAL_STREAM_TYPE,
       g_param_spec_enum ("logical-stream-type", "Stream type for logical camera",
@@ -889,7 +891,6 @@ qmmfsrc_video_pad_class_init (GstQmmfSrcVideoPadClass * klass)
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PAUSED));
 #endif // FEATURE_LOGICAL_CAMERA_SUPPORT
-#endif // ENABLE_RUNTIME_PARSER
 
   signals[SIGNAL_PAD_RECONFIGURE] =
       g_signal_new ("reconfigure", G_TYPE_FROM_CLASS (klass),
