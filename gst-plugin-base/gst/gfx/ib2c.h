@@ -162,12 +162,18 @@ enum ColorMode : uint32_t {
 /** ConfigMask
  * @kHFlip: Enables horizontal flipping.
  * @kVFlip: Enables vertical flipping.
+ * @kRotation: Enables rotation field.
+ * @kSource: Enables source region field.
+ * @kDestination: Enables destination region field.
  *
  * Configuration bits, used in the mask field of Object struct.
  */
 enum ConfigMask : uint32_t {
-  kHFlip = (1 << 0),
-  kVFlip = (1 << 1),
+  kHFlip       = (1 << 0),
+  kVFlip       = (1 << 1),
+  kRotation    = (1 << 2),
+  kSource      = (1 << 3),
+  kDestination = (1 << 4),
 };
 
 /** SurfaceFlags
@@ -258,7 +264,56 @@ struct Normalize {
       : scale(n.scale), offset(n.offset) {}
 };
 
-/** Region
+/** Point
+ * @x: X axis coordinate in pixels.
+ * @y: Y axis coordinate in pixels.
+ *
+ * Point definition.
+ */
+struct Point {
+  float x;
+  float y;
+
+  Point ()
+      : x(0), y(0) {}
+
+  Point (float rx, float ry)
+      : x(rx), y(ry) {}
+};
+
+/** Quadrilateral
+ * @a: Upper-left point coordinate.
+ * @b: Bottom-left point coordinate.
+ * @c: Upper-right point coordinate.
+ * @d: Bottom-right point coordinate.
+ *
+ * Quadrilateral region definition.
+ *
+ *  a             c
+ *  +-------------+
+ *  |             |
+ *  |             |
+ *  |             |
+ *  +-------------+
+ *  b             d
+ */
+struct Quadrilateral {
+  Point a;
+  Point b;
+  Point c;
+  Point d;
+
+  Quadrilateral ()
+      : a({0, 0}), b({0, 0}), c({0, 0}), d({0, 0}) {}
+
+  Quadrilateral (float w, float h)
+      : a({0, 0}), b({0, h}), c({w, 0}), d({w, h}) {}
+
+  Quadrilateral (float x, float y, float w, float h)
+      : a({x, y}), b({x, (y + h)}), c({(x + w), y}), d({(x + w), (y + h)}) {}
+};
+
+/** Rectangle
  * @x: Upper-left X axis coordinate.
  * @y: Upper-left Y axis coordinate.
  * @w: Width.
@@ -266,23 +321,20 @@ struct Normalize {
  *
  * Rectangle definition.
  */
-struct Region {
+struct Rectangle {
   int32_t x;
   int32_t y;
   int32_t w;
   int32_t h;
 
-  Region ()
+  Rectangle ()
       : x(0), y(0), w(0), h(0) {}
 
-  Region (int32_t rw, int32_t rh)
+  Rectangle (int32_t rw, int32_t rh)
       : x(0), y(0), w(rw), h(rh) {}
 
-  Region (int32_t rx, int32_t ry, int32_t rw, int32_t rh)
+  Rectangle (int32_t rx, int32_t ry, int32_t rw, int32_t rh)
       : x(rx), y(ry), w(rw), h(rh) {}
-
-  Region (const Region& r)
-      : x(r.x), y(r.y), w(r.w), h(r.h) {}
 };
 
 /** Object
@@ -296,15 +348,15 @@ struct Region {
  * Encapsulates the blit parameters for a source surface.
  */
 struct Object {
-  uint64_t id;
+  uint64_t      id;
 
-  uint32_t mask;
+  uint32_t      mask;
 
-  Region   source;
-  Region   destination;
+  Quadrilateral source;
+  Rectangle     destination;
 
-  uint8_t  alpha;
-  float    rotation;
+  uint8_t       alpha;
+  float         rotation;
 
   Object ()
       : id(0), mask(0), source(), destination(), alpha(255), rotation(0.0) {}

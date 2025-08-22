@@ -150,18 +150,33 @@ gst_video_composition_populate_output_metas (GstVideoComposer * vcomposer,
     GstVideoComposition * composition)
 {
   GstBuffer *inbuffer = NULL, *outbuffer = NULL;
-  GstVideoRectangle *source = NULL, *destination = NULL;
   GstMeta *meta = NULL;
   gpointer state = NULL;
+  GstVideoBlit *vblit = NULL;
+  GstVideoRectangle source = {0}, destination = {0};
   guint idx = 0;
 
   outbuffer = composition->frame->buffer;
 
   for (idx = 0; idx < composition->n_blits; idx++) {
-    inbuffer = composition->blits[idx].frame->buffer;
+    vblit = &(composition->blits[idx]);
+    inbuffer = vblit->frame->buffer;
 
-    source = &(composition->blits[idx].source);
-    destination = &(composition->blits[idx].destination);
+    if (vblit->mask & GST_VCE_MASK_SOURCE) {
+      gst_video_quadrilateral_to_rectangle (&(vblit->source), &source);
+    } else {
+      source.x = source.y = 0;
+      source.w = GST_VIDEO_FRAME_WIDTH (vblit->frame);
+      source.h = GST_VIDEO_FRAME_HEIGHT (vblit->frame);
+    }
+
+    if (vblit->mask & GST_VCE_MASK_DESTINATION) {
+      destination = vblit->destination;
+    } else {
+      destination.x = destination.y = 0;
+      destination.w = GST_VIDEO_FRAME_WIDTH (composition->frame);
+      destination.h = GST_VIDEO_FRAME_HEIGHT (composition->frame);
+    }
 
     while ((meta = gst_buffer_iterate_meta (inbuffer, &state))) {
       if (meta->info->api == GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE) {
@@ -173,8 +188,8 @@ gst_video_composition_populate_output_metas (GstVideoComposer * vcomposer,
           continue;
 
         roimeta = gst_buffer_copy_video_region_of_interest_meta (outbuffer, roimeta);
-        gst_video_region_of_interest_coordinates_correction (roimeta, source,
-            destination);
+        gst_video_region_of_interest_coordinates_correction (roimeta, &source,
+            &destination);
 
         if (!gst_buffer_has_valid_parent_meta (inbuffer, roimeta->parent_id))
           roimeta->parent_id = -1;
@@ -199,7 +214,7 @@ gst_video_composition_populate_output_metas (GstVideoComposer * vcomposer,
         GstVideoLandmarksMeta *lmkmeta = GST_VIDEO_LANDMARKS_META_CAST (meta);
 
         lmkmeta = gst_buffer_copy_video_landmarks_meta (outbuffer, lmkmeta);
-        gst_video_landmarks_coordinates_correction (lmkmeta, source, destination);
+        gst_video_landmarks_coordinates_correction (lmkmeta, &source, &destination);
 
         if (!gst_buffer_has_valid_parent_meta (inbuffer, lmkmeta->parent_id))
           lmkmeta->parent_id = -1;
@@ -210,19 +225,6 @@ gst_video_composition_populate_output_metas (GstVideoComposer * vcomposer,
       }
     }
   }
-}
-
-static inline GstVideoConvFlip
-gst_video_composer_translate_flip (gboolean flip_h, gboolean flip_v)
-{
-  if (flip_h && flip_v)
-   return GST_VCE_FLIP_BOTH;
-  else if (flip_h)
-    return GST_VCE_FLIP_HORIZONTAL;
-  else if (flip_v)
-    return GST_VCE_FLIP_VERTICAL;
-
-  return GST_VCE_FLIP_NONE;
 }
 
 static inline GstVideoConvRotate
@@ -781,22 +783,29 @@ gst_video_composer_aggregate_frames (GstVideoAggregator * vaggregator,
     GST_VIDEO_COMPOSER_SINKPAD_LOCK (sinkpad);
 
     vblit->alpha = sinkpad->alpha * G_MAXUINT8;
-    vblit->flip = gst_video_composer_translate_flip (sinkpad->flip_h, sinkpad->flip_v);
-    vblit->rotate = gst_video_composer_translate_rotation (sinkpad->rotation);
-    vblit->source = sinkpad->crop;
-    vblit->destination = sinkpad->destination;
+
+    if ((sinkpad->crop.w != 0) && (sinkpad->crop.h != 0)) {
+      gst_video_rectangle_to_quadrilateral (&(sinkpad->crop), &(vblit->source));
+      vblit->mask |= GST_VCE_MASK_SOURCE;
+    }
+
+    if ((sinkpad->destination.w != 0) && (sinkpad->destination.h != 0)) {
+      vblit->destination = sinkpad->destination;
+      vblit->mask |= GST_VCE_MASK_DESTINATION;
+    }
+
+    if (sinkpad->flip_h)
+      vblit->mask |= GST_VCE_MASK_FLIP_HORIZONTAL;
+
+    if (sinkpad->flip_v)
+      vblit->mask |= GST_VCE_MASK_FLIP_VERTICAL;
+
+    if (sinkpad->rotation != GST_VIDEO_COMPOSER_ROTATE_NONE) {
+      vblit->rotate = gst_video_composer_translate_rotation (sinkpad->rotation);
+      vblit->mask |= GST_VCE_MASK_ROTATION;
+    }
 
     GST_VIDEO_COMPOSER_SINKPAD_UNLOCK (sinkpad);
-
-    if ((vblit->source.w == 0) && (vblit->source.h == 0)) {
-      vblit->source.w = GST_VIDEO_FRAME_WIDTH (vblit->frame);
-      vblit->source.h = GST_VIDEO_FRAME_HEIGHT (vblit->frame);
-    }
-
-    if ((vblit->destination.w == 0) && (vblit->destination.h == 0)) {
-      vblit->destination.w = GST_VIDEO_INFO_WIDTH (&(vaggregator->info));
-      vblit->destination.h = GST_VIDEO_INFO_HEIGHT (&(vaggregator->info));
-    }
 
     // Increase the number of populated blit objects.
     n_inputs++;

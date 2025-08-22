@@ -177,27 +177,11 @@ custom_lib_process_buffer (CustomLib * custom_lib,
     GstVideoBlit blit = GST_VCE_BLIT_INIT;
     GstVideoComposition composition = GST_VCE_COMPOSITION_INIT;
     GstClockTime time = GST_CLOCK_TIME_NONE;
-    GstVideoRectangle in_rect, out_rect;
-
-    in_rect.x = 0;
-    in_rect.y = 0;
-    in_rect.w = GST_VIDEO_INFO_WIDTH (&custom_lib->ininfo_);
-    in_rect.h = GST_VIDEO_INFO_HEIGHT (&custom_lib->ininfo_);
-
-    out_rect.x = 0;
-    out_rect.y = 0;
-    out_rect.w = GST_VIDEO_INFO_WIDTH (&custom_lib->outinfo_);
-    out_rect.h = GST_VIDEO_INFO_HEIGHT (&custom_lib->outinfo_);
 
     time = gst_util_get_timestamp ();
 
     blit.frame = &inframe;
-
-    blit.source = in_rect;
-    blit.destination = out_rect;
-
-    blit.flip = GST_VCE_FLIP_VERTICAL;
-    blit.rotate = 0;
+    blit.mask |= GST_VCE_MASK_FLIP_VERTICAL;
 
     composition.blits = &blit;
     composition.n_blits = 1;
