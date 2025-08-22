@@ -88,6 +88,7 @@ gst_ml_tensor_meta_init (GstMeta * meta, gpointer params, GstBuffer * buffer)
   mlmeta->qscale = 1.0f;
   mlmeta->qoffset = 0.0f;
   memset (mlmeta->dimensions, 0, sizeof (mlmeta->dimensions));
+  mlmeta->name = g_quark_from_static_string (NULL);
 
   return TRUE;
 }
