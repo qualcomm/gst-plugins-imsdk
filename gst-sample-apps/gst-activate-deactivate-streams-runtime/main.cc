@@ -62,6 +62,7 @@ struct _GstStreamInf
   GstElement *mp4mux;
   GstElement *encoder;
   GstElement *filesink;
+  GstElement *queue;
   GstPad     *qmmf_pad;
   GstCaps    *qmmf_caps;
   gint        width;
@@ -257,16 +258,20 @@ create_encoder_stream (GstActivateDeactivateAppContext * appctx, GstStreamInf * 
   snprintf (temp_str, sizeof (temp_str), "h264parse_%d", appctx->stream_cnt);
   stream->h264parse = gst_element_factory_make ("h264parse", temp_str);
 
+  snprintf (temp_str, sizeof (temp_str), "queue_%d", appctx->stream_cnt);
+  stream->queue = gst_element_factory_make ("queue", temp_str);
+
   snprintf (temp_str, sizeof (temp_str), "mp4mux_%d", appctx->stream_cnt);
   stream->mp4mux = gst_element_factory_make ("mp4mux", temp_str);
 
   if (!stream->capsfilter || !stream->encoder || !stream->filesink ||
-      !stream->h264parse || !stream->mp4mux) {
+      !stream->h264parse || !stream->mp4mux || !stream->queue) {
     gst_object_unref (stream->capsfilter);
     gst_object_unref (stream->encoder);
     gst_object_unref (stream->filesink);
     gst_object_unref (stream->h264parse);
     gst_object_unref (stream->mp4mux);
+    gst_object_unref (stream->queue);
     g_printerr ("One element could not be created of found. Exiting.\n");
     return FALSE;
   }
@@ -279,11 +284,7 @@ create_encoder_stream (GstActivateDeactivateAppContext * appctx, GstStreamInf * 
   gst_element_set_enum_property (stream->encoder, "output-io-mode", "dmabuf-import");
 
   // Set mp4mux in robust mode
-  g_object_set (G_OBJECT (stream->mp4mux), "reserved-moov-update-period",
-      1000000, NULL);
-  g_object_set (G_OBJECT (stream->mp4mux), "reserved-bytes-per-sec", 10000,
-      NULL);
-  g_object_set (G_OBJECT (stream->mp4mux), "reserved-max-duration", 1000000000,
+  g_object_set (G_OBJECT (stream->mp4mux), "faststart", TRUE,
       NULL);
 
   snprintf (temp_str, sizeof (temp_str), "/etc/media/video_%d.mp4", output_cnt++);
@@ -291,12 +292,13 @@ create_encoder_stream (GstActivateDeactivateAppContext * appctx, GstStreamInf * 
 
   gst_bin_add_many (GST_BIN (appctx->pipeline),
       stream->capsfilter, stream->encoder, stream->h264parse,
-      stream->mp4mux, stream->filesink, NULL);
+      stream->queue, stream->mp4mux, stream->filesink, NULL);
 
   // Sync the elements state to the curtent pipeline state
   gst_element_sync_state_with_parent (stream->capsfilter);
   gst_element_sync_state_with_parent (stream->encoder);
   gst_element_sync_state_with_parent (stream->h264parse);
+  gst_element_sync_state_with_parent (stream->queue);
   gst_element_sync_state_with_parent (stream->mp4mux);
   gst_element_sync_state_with_parent (stream->filesink);
 
@@ -311,7 +313,8 @@ create_encoder_stream (GstActivateDeactivateAppContext * appctx, GstStreamInf * 
 
   // Link the elements
   if (!gst_element_link_many (stream->capsfilter, stream->encoder,
-          stream->h264parse, stream->mp4mux, stream->filesink, NULL)) {
+          stream->h264parse, stream->queue, stream->mp4mux,
+          stream->filesink, NULL)) {
     g_printerr ("Error: Link cannot be done!\n");
     goto cleanup;
   }
@@ -323,13 +326,14 @@ cleanup:
   gst_element_set_state (stream->capsfilter, GST_STATE_NULL);
   gst_element_set_state (stream->encoder, GST_STATE_NULL);
   gst_element_set_state (stream->h264parse, GST_STATE_NULL);
+  gst_element_set_state (stream->queue, GST_STATE_NULL);
   gst_element_set_state (stream->mp4mux, GST_STATE_NULL);
   gst_element_set_state (stream->filesink, GST_STATE_NULL);
 
   // Remove the elements from the pipeline
   gst_bin_remove_many (GST_BIN (appctx->pipeline),
       stream->capsfilter, stream->encoder, stream->h264parse,
-      stream->mp4mux, stream->filesink, NULL);
+      stream->queue, stream->mp4mux, stream->filesink, NULL);
 
   return FALSE;
 }
@@ -355,22 +359,25 @@ release_encoder_stream (GstActivateDeactivateAppContext * appctx, GstStreamInf *
   gst_element_set_state (stream->capsfilter, GST_STATE_NULL);
   gst_element_set_state (stream->encoder, GST_STATE_NULL);
   gst_element_set_state (stream->h264parse, GST_STATE_NULL);
+  gst_element_set_state (stream->queue, GST_STATE_NULL);
   gst_element_set_state (stream->mp4mux, GST_STATE_NULL);
   gst_element_set_state (stream->filesink, GST_STATE_NULL);
 
   // Unlink the elements of this stream
   gst_element_unlink_many (stream->capsfilter, stream->encoder,
-      stream->h264parse, stream->mp4mux, stream->filesink, NULL);
+      stream->h264parse, stream->queue, stream->mp4mux,
+      stream->filesink, NULL);
   g_print ("Unlinked successfully \n");
 
   // Remove the elements from the pipeline
   gst_bin_remove_many (GST_BIN (appctx->pipeline),
       stream->capsfilter, stream->encoder, stream->h264parse,
-      stream->mp4mux, stream->filesink, NULL);
+      stream->queue, stream->mp4mux, stream->filesink, NULL);
 
   stream->capsfilter = NULL;
   stream->encoder = NULL;
   stream->h264parse = NULL;
+  stream->queue = NULL;
   stream->mp4mux = NULL;
   stream->filesink = NULL;
 

@@ -112,6 +112,7 @@ typedef enum {
 
 typedef struct {
   gint n;
+  gint d;
   gint h;
   gint w;
   gint c;
@@ -146,6 +147,9 @@ struct _GstMLVideoConverter {
 
   /// Tracker for the current batch position to be filled in the tensor.
   guint                batch_idx;
+
+  /// Tracker for the current depth position to be filled in the tensor.
+  guint                depth_idx;
 
   /// The next image block in the queued muxed stream buffer to be processed.
   gint                 next_mem_idx;

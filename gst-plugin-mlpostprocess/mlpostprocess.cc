@@ -1776,7 +1776,7 @@ gst_ml_post_process_sink_event (GstBaseTransform * base, GstEvent * event)
   switch (GST_EVENT_TYPE (event)) {
     case GST_EVENT_CUSTOM_DOWNSTREAM:
     {
-      if (GST_IS_DETECTION_TYPE (postprocess->type))
+      if (!GST_IS_DETECTION_TYPE (postprocess->type))
         break;
 
       const GstStructure *structure = gst_event_get_structure (event);

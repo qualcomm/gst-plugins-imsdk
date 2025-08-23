@@ -47,7 +47,7 @@ static const char* kModuleCaps = R"(
     {
       "format": ["FLOAT32"],
       "dimensions": [
-        [1, [1000, 1001]]
+        [1, [400, 1001]]
       ]
     }
   ]
