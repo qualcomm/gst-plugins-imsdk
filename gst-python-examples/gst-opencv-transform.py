@@ -24,6 +24,15 @@ Parse input video file and capture frame using cv videocapture and
 stream videoplay and composite to display using waylandsink.
 """
 
+def is_linux():
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if "Linux" in line:
+                    return True
+    except FileNotFoundError:
+        return False
+    return False
 
 def read_file():
     print(cv2.getBuildInformation())
@@ -86,8 +95,9 @@ def main():
     """Main function to set up and run the OpenCV with GStreamer plugins."""
 
     # Set the environment
-    os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
-    os.environ["WAYLAND_DISPLAY"] = "wayland-1"
+    if is_linux():
+        os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
+        os.environ["WAYLAND_DISPLAY"] = "wayland-1"
 
     read_file()
     print("App execution successful")

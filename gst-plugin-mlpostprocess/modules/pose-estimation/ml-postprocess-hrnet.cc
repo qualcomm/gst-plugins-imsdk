@@ -190,7 +190,7 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     kp.x = ((x + dx * 0.25) / width) * resolution.width;
     kp.y = ((y + dy * 0.25) / height) * resolution.height;
 
-    kp.confidence = confidence * 100;
+    kp.confidence = confidence;
     entry.confidence += kp.confidence;
 
     kp.name = labels_parser_.GetLabel(idx);

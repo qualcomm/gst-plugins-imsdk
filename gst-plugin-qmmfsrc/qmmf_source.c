@@ -1857,7 +1857,7 @@ qmmfsrc_class_init (GstQmmfSrcClass * klass)
   g_object_class_install_property (gobject, PROP_CAMERA_ID,
       g_param_spec_uint ("camera", "Camera ID",
           "Camera device ID to be used by video/image pads",
-          0, 10, DEFAULT_PROP_CAMERA_ID,
+          0, 32, DEFAULT_PROP_CAMERA_ID,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_CAMERA_SLAVE,
       g_param_spec_boolean ("slave", "Slave mode",
