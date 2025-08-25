@@ -130,9 +130,6 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   uint32_t bpp = frame.bits *
       frame.n_components / CHAR_BIT;
 
-  // Calculate the row padding in bytes.
-  uint32_t padding = frame.planes[0].stride - (frame.width * bpp);
-
   const float *indata = static_cast<const float*>(tensors[0].data);
   uint8_t *outdata = frame.planes[0].data;
 
@@ -147,42 +144,40 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   region.height *= (tensors[0].dimensions[1] / (float)resolution.height);
 
   for (uint32_t row = 0; row < frame.height; row++) {
-    for (uint32_t column = 0; column < frame.width; column++) {
+    uint32_t outidx = row * frame.planes[0].stride;
+
+    for (uint32_t column = 0; column < frame.width; column++, outidx += bpp) {
       // Calculate the source index. First calculate the row offset.
-      uint32_t idx = tensors[0].dimensions[2] *
+      uint32_t inidx = tensors[0].dimensions[2] *
           (region.y + ScaleUint64Safe(row, region.height, frame.height));
 
       // Calculate the source index. Second calculate the column offset.
-      idx += region.x + ScaleUint64Safe(column, region.width, frame.width);
+      inidx += region.x + ScaleUint64Safe(column, region.width, frame.width);
 
       // Calculate the source index. Lastly multiply by the number of class scores.
-      idx *= n_scores;
+      inidx *= n_scores;
 
       // Initialize the class ID value.
-      uint32_t id = idx;
+      uint32_t id = inidx;
 
       // Find the class index with best score if tensor has multiple class scores.
-      for (uint32_t num = (idx + 1); num < (idx + n_scores); num++)
+      for (uint32_t num = (inidx + 1); num < (inidx + n_scores); num++)
         id = (CompareValues(indata, num, id) > 0) ? num : id;
 
       // If there is no 4th dimension the tensor pixel contains the class ID.
       if (n_scores == 1)
         id = indata[id];
       else
-        id = (id - idx);
+        id = (id - inidx);
 
       uint32_t color = labels_parser_.GetColor(id);
 
-      // Calculate the destination index.
-      idx = (((row * frame.width) + column) * bpp) +
-          (row * padding);
-
-      outdata[idx] = EXTRACT_RED_COLOR(color);
-      outdata[idx + 1] = EXTRACT_GREEN_COLOR(color);
-      outdata[idx + 2] = EXTRACT_BLUE_COLOR(color);
+      outdata[outidx] = EXTRACT_RED_COLOR(color);
+      outdata[outidx + 1] = EXTRACT_GREEN_COLOR(color);
+      outdata[outidx + 2] = EXTRACT_BLUE_COLOR(color);
 
       if (bpp == 4)
-        outdata[idx + 3] = EXTRACT_ALPHA_COLOR(color);
+        outdata[outidx + 3] = EXTRACT_ALPHA_COLOR(color);
     }
   }
 
