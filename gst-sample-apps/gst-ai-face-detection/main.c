@@ -57,10 +57,6 @@
 #define DEFAULT_TFLITE_FACE_DETECTION_MODEL "/etc/models/face_det_lite_quantized.tflite"
 #define DEFAULT_FACE_DETECTION_LABELS "/etc/labels/face_detection.labels"
 
-#define DEFAULT_CONSTANTS \
-    "qfd,q-offsets=<204.0, 12.0, 102.0>,\
-    q-scales=<0.0365355908870697,0.23025865852832794, 0.10316766798496246>;"
-
 /**
  * Default settings of camera output resolution, Scaling of camera output
  * will be done in qtimlvconverter based on model input
@@ -131,7 +127,6 @@ typedef struct
   const gchar *rtsp_ip_port;
   const gchar *model_path;
   const gchar *labels_path;
-  gchar *constants;
   GstCameraSourceType camera_type;
   GstModelType model_type;
   gdouble threshold;
@@ -174,11 +169,6 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options,
   if (options->labels_path != (gchar *)(&DEFAULT_FACE_DETECTION_LABELS) &&
       options->labels_path != NULL) {
     g_free ((gpointer)options->labels_path);
-  }
-
-  if (options->constants != (gchar *)(&DEFAULT_CONSTANTS) &&
-      options->constants != NULL) {
-    g_free ((gpointer)options->constants);
   }
 
   if (config_file != NULL && config_file != (gchar *) (&DEFAULT_CONFIG_FILE)) {
@@ -242,7 +232,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstCaps *pad_filter = NULL , *filtercaps = NULL;
   GstStructure *delegate_options;
   gboolean ret = FALSE;
-  gchar element_name[128];
+  gchar element_name[128], settings[128];
   gint primary_camera_preview_width = PRIMARY_CAMERA_PREVIEW_OUTPUT_WIDTH;
   gint primary_camera_preview_height = PRIMARY_CAMERA_PREVIEW_OUTPUT_HEIGHT;
   gint secondary_camera_preview_width = SECONDARY_CAMERA_PREVIEW_OUTPUT_WIDTH;
@@ -409,8 +399,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   // Create plugin for ML postprocessing for Detection
-  qtimlvdetection = gst_element_factory_make ("qtimlvdetection",
-      "qtimlvdetection");
+  qtimlvdetection = gst_element_factory_make ("qtimlpostprocess",
+      "qtimlpostprocess");
   if (!qtimlvdetection) {
     g_printerr ("Failed to create qtimlvdetection\n");
     goto error_clean_elements;
@@ -501,10 +491,10 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   // 2.6 set the property of qtimlvtetection
   module_id = get_enum_value (qtimlvdetection, "module", "qfd");
   if (module_id != -1) {
+    snprintf (settings, 127, "{\"confidence\": %.1f}", options->threshold);
     g_object_set (G_OBJECT (qtimlvdetection),
-        "threshold", options->threshold, "results", 6,
-        "module", module_id, "labels", options->labels_path,
-        "constants", options->constants, NULL);
+        "results", 6, "module", module_id, "labels", options->labels_path,
+        "settings", settings, NULL);
   } else {
     g_printerr ("Module qfd is not available in qtimlvdetection.\n");
     goto error_clean_elements;
@@ -801,11 +791,6 @@ parse_json (gchar * config_file, GstAppOptions * options)
         g_strdup (json_object_get_string_member (root_obj, "labels"));
   }
 
-  if (json_object_has_member (root_obj, "constants")) {
-    options->constants =
-        g_strdup (json_object_get_string_member (root_obj, "constants"));
-  }
-
   if (json_object_has_member (root_obj, "threshold")) {
     options->threshold = json_object_get_int_member (root_obj, "threshold");
   }
@@ -903,11 +888,6 @@ main (gint argc, gchar * argv[])
       "  labels: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
       "      Default labels path: " DEFAULT_FACE_DETECTION_LABELS "\n"
-      "  constants: \"CONSTANTS\"\n"
-      "      Constants, offsets and coefficients used by the chosen module\n"
-      "      for post-processing of incoming tensors.\n"
-      "      Applicable only for some modules.\n"
-      "      Default constants: " DEFAULT_CONSTANTS "\n"
       "  threshold: 0 to 100\n"
       "      This is an optional parameter and overides "
       "default threshold value 51\n"

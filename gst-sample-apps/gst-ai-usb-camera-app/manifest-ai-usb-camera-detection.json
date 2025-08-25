@@ -8,7 +8,7 @@
     {
       "ModelName": "yolox_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Yolo-X/resolve/main/Yolo-X_w8a8.tflite",
-      "LabelFile": "yolox.labels",
+      "LabelFile": "yolox.json",
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
     }
   ],

@@ -91,39 +91,6 @@
  */
 #define DEFAULT_SNPE_DELEGATE GST_ML_SNPE_DELEGATE_DSP
 
-/**
- * Default constants to dequantize values
- */
-#define DEFAULT_CONSTANTS_YOLOV8 \
- "YOLOv8,q-offsets=<12.0, 0.0, 0.0>,q-scales=<2.8047633171081543, \
- 0.00390625, 0.0>;"
-
-/**
- * Default constants to dequantize values
- */
-#define DEFAULT_CONSTANTS_YOLOX "YOLOx,q-offsets=<38.0, 0.0, 0.0>,\
-    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
-
-/**
- * Default constants to dequantize values
- */
-#define DEFAULT_CONSTANTS_YOLOV5 \
- "YoloV5,q-offsets=<3.0>,q-scales=<0.005047998391091824>;"
-
-/**
-* Default constants to dequantize values
-*/
-#define DEFAULT_CONSTANTS_YOLONAS \
- "YoloNas,q-offsets=<37.0, 0.0, 0.0>,q-scales=<3.416602611541748, \
- 0.00390625, 1.0>;"
-
-/**
-* Default constants to dequantize values
-*/
-#define DEFAULT_CONSTANTS_YOLOV7 \
- "Yolov7,q-offsets=<30.0, 0.0, 0.0>,q-scales=<3.320857286453247, \
- 0.0037717572413384914, 1.0>;"
-
 // Structure to hold the application context
 struct GstCameraAppCtx
 {
@@ -150,7 +117,6 @@ typedef struct
   gchar *file_path;
   gchar *model_path;
   gchar *labels_path;
-  gchar *constants;
   gchar **snpe_layers;
   GstCameraSourceType camera_type;
   GstModelType model_type;
@@ -233,14 +199,6 @@ static void
       options->labels_path != (gchar *) (&DEFAULT_YOLOV7_LABELS) &&
       options->labels_path != NULL) {
     g_free ((gpointer) options->labels_path);
-  }
-
-  if (options->constants != (gchar *) (&DEFAULT_CONSTANTS_YOLOV5) &&
-      options->constants != (gchar *) (&DEFAULT_CONSTANTS_YOLOV8) &&
-      options->constants != (gchar *) (&DEFAULT_CONSTANTS_YOLONAS) &&
-      options->constants != (gchar *) (&DEFAULT_CONSTANTS_YOLOV7) &&
-      options->constants != NULL) {
-    g_free ((gpointer) options->constants);
   }
 
   if (options->snpe_layers != NULL) {
@@ -436,12 +394,6 @@ parse_json (gchar * file, GstAppOptions * options, GstCameraAppContext * appctx)
   if (json_object_has_member (root_obj, "labels")) {
     options->labels_path =
         g_strdup (json_object_get_string_member (root_obj, "labels"));
-  }
-
-  if (json_object_has_member (root_obj, "constants")) {
-    options->constants =
-        g_strdup (json_object_get_string_member (root_obj, "constants"));
-    g_print ("constants : %s\n", options->constants);
   }
 
   if (json_object_has_member (root_obj, "threshold")) {
@@ -993,7 +945,7 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
   GstStructure *fcontrols = NULL;
   GstStructure *delegate_options = NULL;
   gboolean ret = FALSE;
-  gchar element_name[128];
+  gchar element_name[128], settings[128];
   GValue layers = G_VALUE_INIT;
   GValue value = G_VALUE_INIT;
   gint module_id;
@@ -1078,8 +1030,8 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
     goto error_clean_elements;
   }
   // Create plugin for ML postprocessing for object detection
-  qtimlvdetection = gst_element_factory_make ("qtimlvdetection",
-      "qtimlvdetection");
+  qtimlvdetection = gst_element_factory_make ("qtimlpostprocess",
+      "qtimlpostprocess");
   if (!qtimlvdetection) {
     g_printerr ("Failed to create qtimlvdetection\n");
     goto error_clean_elements;
@@ -1302,6 +1254,7 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
         // get enum values of module properties from qtimlvdetection plugin
         module_id = get_enum_value (qtimlvdetection, "module", "yolov5");
         if (module_id != -1) {
+          snprintf (settings, 127, "{\"confidence\": %.1f}", options->threshold);
           g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
         } else {
           g_printerr ("Module yolov5 is not available in qtimlvdetection\n");
@@ -1310,9 +1263,8 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
         // set qtimlvdetection properties
         g_object_set (G_OBJECT (qtimlvdetection), "labels",
             options->labels_path, NULL);
-        g_object_set (G_OBJECT (qtimlvdetection), "threshold",
-            options->threshold, NULL);
         g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
+        g_object_set (G_OBJECT (qtimlvdetection), "settings", settings, NULL);
         break;
 
         // YOLO_V8 specific settings
@@ -1323,6 +1275,7 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
         // get enum values of module property frrom qtimlvdetection plugin
         module_id = get_enum_value (qtimlvdetection, "module", "yolov8");
         if (module_id != -1) {
+          snprintf (settings, 127, "{\"confidence\": %.1f}", options->threshold);
           g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
         } else {
           g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
@@ -1331,9 +1284,8 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
         // set qtimlvdetection properties
         g_object_set (G_OBJECT (qtimlvdetection), "labels",
             options->labels_path, NULL);
-        g_object_set (G_OBJECT (qtimlvdetection), "threshold",
-            options->threshold, NULL);
         g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
+        g_object_set (G_OBJECT (qtimlvdetection), "settings", settings, NULL);
         break;
 
         // YOLO_NAS specific settings
@@ -1344,6 +1296,7 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
         // get enum values of module property frrom qtimlvdetection plugin
         module_id = get_enum_value (qtimlvdetection, "module", "yolo-nas");
         if (module_id != -1) {
+          snprintf (settings, 127, "{\"confidence\": %.1f}", options->threshold);
           g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
         } else {
           g_printerr ("Module yolo-nas is not available in qtimlvdetection\n");
@@ -1352,9 +1305,8 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
         // set qtimlvdetection properties
         g_object_set (G_OBJECT (qtimlvdetection), "labels",
             options->labels_path, NULL);
-        g_object_set (G_OBJECT (qtimlvdetection), "threshold",
-            options->threshold, NULL);
         g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
+        g_object_set (G_OBJECT (qtimlvdetection), "settings", settings, NULL);
         break;
 
       default:
@@ -1371,17 +1323,14 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
             options->labels_path, NULL);
         module_id = get_enum_value (qtimlvdetection, "module", "yolov8");
         if (module_id != -1) {
+          snprintf (settings, 127, "{\"confidence\": %.1f}", options->threshold);
           g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
         } else {
           g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
           goto error_clean_elements;
         }
-        g_object_set (G_OBJECT (qtimlvdetection), "threshold",
-            options->threshold, NULL);
         g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
-        g_object_set (G_OBJECT (qtimlvdetection), "constants",
-            options->constants, NULL);
-        g_printerr ("%s\n", options->constants);
+        g_object_set (G_OBJECT (qtimlvdetection), "settings", settings, NULL);
         break;
       // YOLO_X specific settings
       case GST_YOLO_TYPE_X:
@@ -1390,16 +1339,14 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
             options->labels_path, NULL);
         module_id = get_enum_value (qtimlvdetection, "module", "yolov8");
         if (module_id != -1) {
-            g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
+          snprintf (settings, 127, "{\"confidence\": %.1f}", options->threshold);
+          g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
         } else {
           g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
           goto error_clean_elements;
         }
-        g_object_set (G_OBJECT (qtimlvdetection), "threshold",
-            options->threshold, NULL);
         g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
-        g_object_set (G_OBJECT (qtimlvdetection), "constants",
-            options->constants, NULL);
+        g_object_set (G_OBJECT (qtimlvdetection), "settings", settings, NULL);
         break;
         // YOLO_V5 specific settings
       case GST_YOLO_TYPE_V5:
@@ -1409,16 +1356,14 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
             options->labels_path, NULL);
         module_id = get_enum_value (qtimlvdetection, "module", "yolov5");
         if (module_id != -1) {
+          snprintf (settings, 127, "{\"confidence\": %.1f}", options->threshold);
           g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
         } else {
           g_printerr ("Module yolov5 is not available in qtimlvdetection\n");
           goto error_clean_elements;
         }
-        g_object_set (G_OBJECT (qtimlvdetection), "threshold",
-            options->threshold, NULL);
         g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
-        g_object_set (G_OBJECT (qtimlvdetection), "constants",
-            options->constants, NULL);
+        g_object_set (G_OBJECT (qtimlvdetection), "settings", settings, NULL);
         break;
         // YOLO_NAS specific settings
       case GST_YOLO_TYPE_NAS:
@@ -1428,16 +1373,14 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
             options->labels_path, NULL);
         module_id = get_enum_value (qtimlvdetection, "module", "yolo-nas");
         if (module_id != -1) {
+          snprintf (settings, 127, "{\"confidence\": %.1f}", options->threshold);
           g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
         } else {
           g_printerr ("Module yolonas is not available in qtimlvdetection\n");
           goto error_clean_elements;
         }
-        g_object_set (G_OBJECT (qtimlvdetection), "threshold",
-            options->threshold, NULL);
+        g_object_set (G_OBJECT (qtimlvdetection), "settings", settings, NULL);
         g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
-        g_object_set (G_OBJECT (qtimlvdetection), "constants",
-            options->constants, NULL);
         break;
         // YOLOV7 specific settings
       case GST_YOLO_TYPE_V7:
@@ -1447,16 +1390,14 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
             options->labels_path, NULL);
         module_id = get_enum_value (qtimlvdetection, "module", "yolov8");
         if (module_id != -1) {
+          snprintf (settings, 127, "{\"confidence\": %.1f}", options->threshold);
           g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
         } else {
           g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
           goto error_clean_elements;
         }
-        g_object_set (G_OBJECT (qtimlvdetection), "threshold",
-            options->threshold, NULL);
+        g_object_set (G_OBJECT (qtimlvdetection), "settings", settings, NULL);
         g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
-        g_object_set (G_OBJECT (qtimlvdetection), "constants",
-            options->constants, NULL);
         break;
       default:
         g_printerr ("Unsupported TFLITE model, Use YoloV5 or "
@@ -1472,16 +1413,14 @@ create_pipe (GstCameraAppContext * appctx, GstAppOptions * options)
             options->labels_path, NULL);
         module_id = get_enum_value (qtimlvdetection, "module", "yolov8");
         if (module_id != -1) {
+          snprintf (settings, 127, "{\"confidence\": %.1f}", options->threshold);
           g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
         } else {
           g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
           goto error_clean_elements;
         }
-        g_object_set (G_OBJECT (qtimlvdetection), "threshold",
-            options->threshold, NULL);
+        g_object_set (G_OBJECT (qtimlvdetection), "settings", settings, NULL);
         g_object_set (G_OBJECT (qtimlvdetection), "results", 10, NULL);
-        g_object_set (G_OBJECT (qtimlvdetection), "constants",
-            options->constants, NULL);
         break;
 
       default:
@@ -1644,7 +1583,6 @@ main (gint argc, gchar * argv[])
   options.yolo_model_type = GST_YOLO_TYPE_NAS;
   options.model_path = NULL;
   options.labels_path = NULL;
-  options.constants = NULL;
   options.snpe_layers = NULL;
 
   // Structure to define the user options selected
@@ -1705,15 +1643,6 @@ main (gint argc, gchar * argv[])
       "      Default labels path for YOLOX: "DEFAULT_YOLOX_LABELS"\n"
       "      Default labels path for YOLO NAS: " DEFAULT_YOLONAS_LABELS "\n"
       "      Default labels path for YOLOV7: " DEFAULT_YOLOV7_LABELS "\n"
-      "  constants: \"CONSTANTS\"\n"
-      "      Constants, offsets and coefficients used by the chosen module \n"
-      "      for post-processing of incoming tensors."
-      "  Applicable only for some modules\n"
-      "      Default constants for YOLOV5: " DEFAULT_CONSTANTS_YOLOV5 "\n"
-      "      Default constants for YOLOV8: " DEFAULT_CONSTANTS_YOLOV8 "\n"
-      "      Default constants for YOLOX: " DEFAULT_CONSTANTS_YOLOX"\n"
-      "      Default constants for YOLO NAS: " DEFAULT_CONSTANTS_YOLONAS "\n"
-      "      Default constants for YOLOV7: " DEFAULT_CONSTANTS_YOLOV7 "\n"
       "  threshold: 0 to 100\n"
       "      This is an optional parameter and overides "
       "  default threshold value 40\n"
@@ -1840,11 +1769,6 @@ main (gint argc, gchar * argv[])
       return -EINVAL;
     }
 
-    if(options.constants == NULL) {
-      g_print ("Using default Constants\n");
-      options.constants = DEFAULT_CONSTANTS_YOLOV8;
-    }
-
     if (options.model_path == NULL) {
       if (options.model_type == GST_MODEL_TYPE_SNPE) {
         options.model_path =
@@ -1917,16 +1841,6 @@ main (gint argc, gchar * argv[])
           (options.yolo_model_type == GST_YOLO_TYPE_V7 ? DEFAULT_YOLOV7_LABELS :
           (options.yolo_model_type == GST_YOLO_TYPE_X ? DEFAULT_YOLOX_LABELS :
           DEFAULT_YOLONAS_LABELS))));
-    }
-
-    if (options.model_type == GST_MODEL_TYPE_TFLITE
-        && options.constants == NULL) {
-      options.constants =
-          (options.yolo_model_type == GST_YOLO_TYPE_V5 ? DEFAULT_CONSTANTS_YOLOV5:
-          options.yolo_model_type == GST_YOLO_TYPE_NAS ? DEFAULT_CONSTANTS_YOLONAS:
-          options.yolo_model_type == GST_YOLO_TYPE_V7 ? DEFAULT_CONSTANTS_YOLOV7:
-          options.yolo_model_type == GST_YOLO_TYPE_X ? DEFAULT_CONSTANTS_YOLOX:
-          DEFAULT_CONSTANTS_YOLOV8);
     }
 
     if (!file_exists (options.model_path)) {

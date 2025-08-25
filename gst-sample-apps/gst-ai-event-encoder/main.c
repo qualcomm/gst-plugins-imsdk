@@ -53,7 +53,7 @@
  * Default models and labels path, if not provided by user
  */
 #define DEFAULT_TFLITE_MODEL "/etc/models/yolox_quantized.tflite"
-#define DEFAULT_LABELS "/etc/labels/yolox.labels"
+#define DEFAULT_LABELS "/etc/labels/yolox.json"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
@@ -80,13 +80,6 @@
 * Default path of config file
 */
 #define DEFAULT_CONFIG_FILE "/etc/configs/config-event-encoder.json"
-
-/**
- * Default constants to dequantize values
- */
-#define DEFAULT_CONSTANTS \
-    "model,q-offsets=<38.0, 0.0, 0.0>, \
-    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
 
 /**
 * Number of Queues used for buffer caching between elements
@@ -158,7 +151,6 @@ typedef struct
   gchar *rtsp_ip_port;
   gchar *model_path;
   gchar *labels_path;
-  gchar *constants;
   GstCameraSourceType camera_type;
   gdouble threshold;
   gint delegate_type;
@@ -259,8 +251,7 @@ recording_eos_cb (GstBus * bus, GstMessage * message, gpointer userdata)
  * @param config_file Config File
  */
 static void
-    gst_app_context_free
-    (GstAppsContext * appctx, GstAppOptions * options, gchar * config_file)
+gst_app_context_free (GstAppsContext * appctx, GstAppOptions * options, gchar * config_file)
 {
   // If specific pointer is not NULL, unref it
   if (appctx->mloop != NULL) {
@@ -284,11 +275,6 @@ static void
   if (options->labels_path != (gchar *) (&DEFAULT_LABELS) &&
       options->labels_path != NULL) {
     g_free ((gpointer) options->labels_path);
-  }
-
-  if (options->constants != (gchar *) (&DEFAULT_CONSTANTS) &&
-      options->constants != NULL) {
-    g_free ((gpointer) options->constants);
   }
 
   if (config_file != NULL && config_file != (gchar *) (&DEFAULT_CONFIG_FILE)) {
@@ -624,7 +610,7 @@ create_pipe (GstAppsContext * appctx, GstAppOptions * options)
   GstStructure *delegate_options = NULL;
   GstPad *qtiqmmfsrc_type = NULL;
   gboolean ret = FALSE;
-  gchar element_name[128];
+  gchar element_name[128], settings[128];
   GValue layers = G_VALUE_INIT;
   GValue value = G_VALUE_INIT;
   gint pos_vals[2], dim_vals[2];
@@ -787,7 +773,7 @@ create_pipe (GstAppsContext * appctx, GstAppOptions * options)
   // Create plugin for ML postprocessing for object detection
   for (gint i = 0; i < DETECTION_COUNT; i++) {
     snprintf (element_name, 127, "qtimlvdetection-%d", i);
-    qtimlvdetection[i] = gst_element_factory_make ("qtimlvdetection",
+    qtimlvdetection[i] = gst_element_factory_make ("qtimlpostprocess",
         element_name);
     if (!qtimlvdetection[i]) {
       g_printerr ("Failed to create qtimlvdetection %d\n", i);
@@ -1010,8 +996,10 @@ create_pipe (GstAppsContext * appctx, GstAppOptions * options)
   }
   module_id = get_enum_value (qtimlvdetection[0], "module", "yolov8");
   if (module_id != -1) {
+    snprintf (settings, 127, "{\"confidence\": %.1f}", options->threshold);
     for (gint i = 0; i < DETECTION_COUNT; i++) {
       g_object_set (G_OBJECT (qtimlvdetection[i]), "module", module_id, NULL);
+      g_object_set (G_OBJECT (qtimlvdetection[i]), "settings", settings, NULL);
     }
   } else {
     g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
@@ -1021,8 +1009,6 @@ create_pipe (GstAppsContext * appctx, GstAppOptions * options)
     g_object_set (G_OBJECT (qtimlvdetection[i]), "threshold",
         options->threshold, NULL);
     g_object_set (G_OBJECT (qtimlvdetection[i]), "results", 10, NULL);
-    g_object_set (G_OBJECT (qtimlvdetection[i]), "constants",
-        options->constants, NULL);
   }
 
   // 2.7 Set the properties for Wayland compositer
@@ -1392,11 +1378,6 @@ parse_json (gchar * config_file, GstAppOptions * options)
         g_strdup (json_object_get_string_member (root_obj, "labels"));
   }
 
-  if (json_object_has_member (root_obj, "constants")) {
-    options->constants =
-        g_strdup (json_object_get_string_member (root_obj, "constants"));
-  }
-
   if (json_object_has_member (root_obj, "threshold")) {
     options->threshold = json_object_get_int_member (root_obj, "threshold");
   }
@@ -1434,6 +1415,7 @@ main (gint argc, gchar * argv[])
   GstAppsContext appctx = { };
   gchar help_description[4096];
   gboolean ret = FALSE;
+  gboolean camera_is_available = FALSE;
   guint intrpt_watch_id = 0;
   GstAppOptions options = { };
   gchar *config_file = NULL;
@@ -1452,7 +1434,6 @@ main (gint argc, gchar * argv[])
   options.camera_type = GST_CAMERA_TYPE_NONE;
   options.model_path = NULL;
   options.labels_path = NULL;
-  options.constants = NULL;
 
   appctx.recording_pipeline_state = PAUSED;
   appctx.video_count = 0;
@@ -1469,7 +1450,7 @@ main (gint argc, gchar * argv[])
 
   app_name = strrchr (argv[0], '/') ? (strrchr (argv[0], '/') + 1) : argv[0];
 
-  gboolean camera_is_available = is_camera_available ();
+  camera_is_available = is_camera_available ();
 
   gchar camera_description[128] = { };
 
@@ -1498,11 +1479,6 @@ main (gint argc, gchar * argv[])
       "  labels: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
       "      Default labels path: " DEFAULT_LABELS "\n"
-      "  constants: \"CONSTANTS\"\n"
-      "      Constants, offsets and coefficients used by the chosen module \n"
-      "      for post-processing of incoming tensors."
-      " Applicable only for some modules\n"
-      "      Default constants: " DEFAULT_CONSTANTS "\n"
       "  threshold: 0 to 100\n"
       "      This is an optional parameter and overides "
       "default threshold value 40\n"
@@ -1641,10 +1617,6 @@ main (gint argc, gchar * argv[])
   // Set default label path for execution
   if (options.labels_path == NULL) {
     options.labels_path = DEFAULT_LABELS;
-  }
-
-  if (options.constants == NULL) {
-    options.constants = DEFAULT_CONSTANTS;
   }
 
   if (!file_exists (options.model_path)) {

@@ -8,7 +8,7 @@
     {
       "ModelName": "face_det_lite_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Lightweight-Face-Detection/resolve/e80b4d954ffaaefe2958e70b27bee77e74cc8550/Lightweight-Face-Detection_w8a8.tflite",
-      "LabelFile": "face_detection.labels",
+      "LabelFile": "face_detection.json",
       "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/face_detection.labels"
     }
   ],

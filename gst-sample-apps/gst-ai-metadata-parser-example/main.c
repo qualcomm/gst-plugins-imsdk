@@ -79,13 +79,6 @@
 #define DEFAULT_CONFIG_FILE "/etc/configs/config-metadata-parser.json"
 
 /**
- * Default constants to dequantize values
- */
-#define DEFAULT_CONSTANTS \
-    "model,q-offsets=<38.0, 0.0, 0.0>, \
-    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
-
-/**
  * Number of Queues used for buffer caching between elements
  */
 #define QUEUE_COUNT 9
@@ -109,7 +102,6 @@ typedef struct
   gchar *rtsp_ip_port;
   gchar *model_path;
   gchar *labels_path;
-  gchar *constants;
   GstCameraSourceType camera_type;
   gdouble threshold;
   gint delegate_type;
@@ -152,11 +144,6 @@ gst_app_context_free
   if (options->labels_path != (gchar *) (&DEFAULT_LABELS) &&
       options->labels_path != NULL) {
     g_free ((gpointer) options->labels_path);
-  }
-
-  if (options->constants != (gchar *) (&DEFAULT_CONSTANTS) &&
-      options->constants != NULL) {
-    g_free ((gpointer) options->constants);
   }
 
   if (config_file != NULL && config_file != (gchar *) (&DEFAULT_CONFIG_FILE)) {
@@ -362,7 +349,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstStructure *delegate_options = NULL;
   GstPad *qtiqmmfsrc_type = NULL;
   gboolean ret = FALSE;
-  gchar element_name[128];
+  gchar element_name[128], settings[128];
   GValue layers = G_VALUE_INIT;
   GValue value = G_VALUE_INIT;
   gint pos_vals[2], dim_vals[2];
@@ -524,7 +511,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   // Create plugin for ML postprocessing for object detection
   for (gint i = 0; i < DETECTION_COUNT; i++) {
     snprintf (element_name, 127, "qtimlvdetection-%d", i);
-    qtimlvdetection[i] = gst_element_factory_make ("qtimlvdetection",
+    qtimlvdetection[i] = gst_element_factory_make ("qtimlpostprocess",
         element_name);
     if (!queue[i]) {
       g_printerr ("Failed to create qtimlvdetection %d\n", i);
@@ -675,6 +662,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
   module_id = get_enum_value (qtimlvdetection[0], "module", "yolov8");
   if (module_id != -1) {
+    snprintf (settings, 127, "{\"confidence\": %.1f}", options->threshold);
     for (gint i = 0; i < DETECTION_COUNT; i++) {
       g_object_set (G_OBJECT (qtimlvdetection[i]), "module", module_id, NULL);
     }
@@ -683,11 +671,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     goto error_clean_elements;
   }
   for (gint i = 0; i < DETECTION_COUNT; i++) {
-    g_object_set (G_OBJECT (qtimlvdetection[i]), "threshold",
-        options->threshold, NULL);
+    g_object_set (G_OBJECT (qtimlvdetection[i]), "settings", settings, NULL);
     g_object_set (G_OBJECT (qtimlvdetection[i]), "results", 10, NULL);
-    g_object_set (G_OBJECT (qtimlvdetection[i]), "constants",
-        options->constants, NULL);
   }
 
   // 2.7 Set the properties for Wayland compositer
@@ -988,11 +973,6 @@ parse_json (gchar * config_file, GstAppOptions * options)
         g_strdup (json_object_get_string_member (root_obj, "labels"));
   }
 
-  if (json_object_has_member (root_obj, "constants")) {
-    options->constants =
-        g_strdup (json_object_get_string_member (root_obj, "constants"));
-  }
-
   if (json_object_has_member (root_obj, "threshold")) {
     options->threshold = json_object_get_int_member (root_obj, "threshold");
   }
@@ -1047,7 +1027,6 @@ main (gint argc, gchar * argv[])
   options.camera_type = GST_CAMERA_TYPE_NONE;
   options.model_path = NULL;
   options.labels_path = NULL;
-  options.constants = NULL;
 
   // Structure to define the user options selected
   GOptionEntry entries[] = {
@@ -1090,11 +1069,6 @@ main (gint argc, gchar * argv[])
       "  labels: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
       "      Default labels path: " DEFAULT_LABELS "\n"
-      "  constants: \"CONSTANTS\"\n"
-      "      Constants, offsets and coefficients used by the chosen module \n"
-      "      for post-processing of incoming tensors."
-      " Applicable only for some modules\n"
-      "      Default constants: " DEFAULT_CONSTANTS "\n"
       "  threshold: 0 to 100\n"
       "      This is an optional parameter and overides "
       "default threshold value 40\n"
@@ -1235,10 +1209,6 @@ main (gint argc, gchar * argv[])
   // Set default label path for execution
   if (options.labels_path == NULL) {
     options.labels_path = DEFAULT_LABELS;
-  }
-
-  if (options.constants == NULL) {
-    options.constants = DEFAULT_CONSTANTS;
   }
 
   if (!file_exists (options.model_path)) {
