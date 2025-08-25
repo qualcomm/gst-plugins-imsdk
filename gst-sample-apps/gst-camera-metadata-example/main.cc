@@ -1142,6 +1142,77 @@ apply_tags (GstElement * pipeline, ::camera::CameraMetadata * meta_collect)
 }
 
 static void
+print_android_tags (::qmmf::CameraMetadata * meta, FILE * file)
+{
+  gchar *header = g_new0 (gchar, MAX_SIZE);
+
+  if (file != NULL) {
+    g_snprintf (header, MAX_SIZE, "\n%.41s Android tags %.40s\n\n",
+        DASH_LINE, DASH_LINE);
+    fputs (header, file);
+
+    g_snprintf (header, MAX_SIZE, "%.8s SECTION %.8s %.4s %.15s TAG %.15s %.4s %.8s "
+        "VALUE %.8s\n", DASH_LINE, DASH_LINE, SPACE, DASH_LINE, DASH_LINE,
+        SPACE, DASH_LINE, DASH_LINE);
+    fputs (header, file);
+  } else {
+    g_print ("\n%.36s Android tags %.36s\n\n", DASH_LINE, DASH_LINE);
+    g_print ("%.3s TAG ID %.3s %.4s %.8s SECTION %.8s %.4s %.15s TAG %.15s\n",
+        DASH_LINE, DASH_LINE, SPACE, DASH_LINE, DASH_LINE, SPACE, DASH_LINE,
+        DASH_LINE);
+  }
+
+  {
+    gchar* value = NULL, *type = NULL;
+    gchar line[MAX_SIZE];
+    gint padding = 0;
+
+    for (size_t section = 0; section < ANDROID_SECTION_COUNT; section++) {
+      guint start = meta->camera_metadata_section_bounds[section][0];
+      guint end = meta->camera_metadata_section_bounds[section][1];
+
+      const gchar *section_name = meta->get_camera_metadata_section_name (start);
+
+      for (size_t i = start; i < end; i++) {
+        if (!meta->exists (i))
+          continue;
+
+        const gchar *tag_name = meta->get_camera_metadata_tag_name (i);
+        if (section_name == NULL || tag_name == NULL)
+          continue;
+
+        if (file == NULL) {
+          // List all tags on console.
+          g_print ("%-14ld %.4s %-25s %.4s %-35s\n", i, SPACE, section_name,
+              SPACE, tag_name);
+          continue;
+        }
+
+        // Dump all tags in a file.
+        value = get_tag (section_name, tag_name, meta, &type);
+        padding = 10 - ceil (strlen (value)/2);
+
+        g_snprintf (line, MAX_SIZE, "%-25s %.4s %-35s %.4s %.*s%s\n",
+            section_name, SPACE, tag_name, SPACE, padding, SPACE, value);
+        fputs (line, file);
+
+        g_free (type);
+        g_free (value);
+      }
+    }
+  }
+
+  if (file != NULL) {
+    g_snprintf (header, MAX_SIZE, "\n%s%.25s\n\n\n", DASH_LINE, DASH_LINE);
+    fputs (header, file);
+  } else {
+    g_print ("\n%s%.16s\n\n", DASH_LINE, DASH_LINE);
+  }
+
+  g_free (header);
+}
+
+static void
 print_vendor_tags (::camera::CameraMetadata * meta, FILE * file)
 {
   gchar *header = NULL;
@@ -1193,7 +1264,6 @@ print_vendor_tags (::camera::CameraMetadata * meta, FILE * file)
         // List all tags on console.
         g_print ("%-14u %.4s %-53s %.4s %-41s\n", vtagsId[i], SPACE,
             section_name, SPACE, tag_name);
-
         continue;
       }
 
@@ -1228,6 +1298,7 @@ list_all_tags (::camera::CameraMetadata * meta)
   g_print ("\nNumber of entries : %ld\n", meta->entryCount());
 
   print_vendor_tags (meta, NULL);
+  print_android_tags (meta, NULL);
 }
 
 static void
@@ -1251,6 +1322,7 @@ dump_all_tags (::camera::CameraMetadata * meta, gchar * prop)
   g_free (header);
 
   print_vendor_tags (meta, file);
+  print_android_tags (meta, file);
   fclose (file);
 
   g_print ("\nValues of all tags saved to %s successfully.\n", filename);
@@ -2045,16 +2117,13 @@ main (gint argc, gchar *argv[])
     return -1;
   }
 
-  // Set Display environment variables
-  if (display) {
+  if (pipeline == NULL && display)
+    pipeline = g_strdup (GST_CAMERA_PIPELINE);
+  else if (pipeline == NULL) {
     setenv ("XDG_RUNTIME_DIR", "/dev/socket/weston", 0);
     setenv ("WAYLAND_DISPLAY", "wayland-1", 0);
-  }
-
-  if (pipeline == NULL && display)
     pipeline = g_strdup (GST_CAMERA_PIPELINE_DISPLAY);
-  else if (pipeline == NULL)
-    pipeline = g_strdup (GST_CAMERA_PIPELINE);
+  }
 
   g_print ("Creating pipeline %s\n", pipeline);
   appctx->pipeline = gst_parse_launch (pipeline, &error);
