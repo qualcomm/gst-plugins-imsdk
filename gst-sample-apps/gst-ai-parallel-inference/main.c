@@ -58,16 +58,17 @@
  */
 #define DEFAULT_TFLITE_OBJECT_DETECTION_MODEL \
     "/etc/models/yolox_quantized.tflite"
-#define DEFAULT_OBJECT_DETECTION_LABELS "/etc/labels/yolox.labels"
+#define DEFAULT_OBJECT_DETECTION_LABELS "/etc/labels/yolox.json"
 #define DEFAULT_TFLITE_CLASSIFICATION_MODEL \
     "/etc/models/inception_v3_quantized.tflite"
-#define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/classification.labels"
+#define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/classification.json"
 #define DEFAULT_TFLITE_POSE_DETECTION_MODEL \
     "/etc/models/hrnet_pose_quantized.tflite"
-#define DEFAULT_POSE_DETECTION_LABELS "/etc/labels/hrnet_pose.labels"
+#define DEFAULT_POSE_DETECTION_LABELS "/etc/labels/hrnet_pose.json"
 #define DEFAULT_TFLITE_SEGMENTATION_MODEL \
     "/etc/models/deeplabv3_plus_mobilenet_quantized.tflite"
-#define DEFAULT_SEGMENTATION_LABELS "/etc/labels/deeplabv3_resnet50.labels"
+#define DEFAULT_SEGMENTATION_LABELS "/etc/labels/deeplabv3_resnet50.json"
+#define DEFAULT_POSE_SETTINGS_PATH "/etc/labels/hrnet_settings.json"
 
 /**
  * Default path of config file
@@ -99,39 +100,9 @@
 #define DEFAULT_DISPLAY_HEIGHT 1080
 
 /**
- * Default constants to dequantize values for classification stream
- */
-#define DEFAULT_CONSTANTS_CLASSIFICATION \
-    "Inceptionv3,q-offsets=<38.0>,q-scales=<0.17039915919303894>;"
-
-/**
- * Default constants to dequantize values for object detection stream
- */
-#define DEFAULT_CONSTANTS_OBJECT_DETECTION \
-    "YOLOX,q-offsets=<38.0, 0.0, 0.0>,\
-    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
-
-/**
- * Default constants to dequantize values for pose detection stream
- */
-#define DEFAULT_CONSTANTS_POSE_DETECTION \
-    "Posenet,q-offsets=<8.0>,q-scales=<0.0040499246679246426>;"
-
-/**
- * Default constants to dequantize values for segmentation stream
- */
-#define DEFAULT_CONSTANTS_SEGMENTATION \
-    "deeplab,q-offsets=<0.0>,q-scales=<1.0>;"
-
-/**
  * Number of Queues used for buffer caching between elements
  */
 #define QUEUE_COUNT 25
-
-/**
- * To enable softmax operation for post processing
- */
-#define GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX 1
 
 /**
  * PipelineData:
@@ -163,16 +134,13 @@ typedef struct {
   gchar *rtsp_ip_port;
   gchar *object_detection_model_path;
   gchar *object_detection_labels_path;
-  gchar *object_detection_constants;
   gchar *pose_detection_model_path;
   gchar *pose_detection_labels_path;
-  gchar *pose_detection_constants;
   gchar *segmentation_model_path;
   gchar *segmentation_labels_path;
-  gchar *segmentation_constants;
   gchar *classification_model_path;
   gchar *classification_labels_path;
-  gchar *classification_constants;
+  gchar *pose_settings_path;
   GstPipelineData *pipeline_data;
   GstCameraSourceType camera_type;
   gboolean use_file;
@@ -290,7 +258,7 @@ GstPipelineData *create_ml_pipeline_data (char **options_models,
       "qtimltflite");
   snprintf (output_pipeline_data[GST_OBJECT_DETECTION].postproc,
       INFERENCE_PROPERTIES_LEN * sizeof (gchar), "%s",
-      "qtimlvdetection");
+      "qtimlpostprocess");
 
   output_pipeline_data[GST_OBJECT_DETECTION].delegate =
       GST_ML_TFLITE_DELEGATE_EXTERNAL;
@@ -311,7 +279,7 @@ GstPipelineData *create_ml_pipeline_data (char **options_models,
       "qtimltflite");
   snprintf (output_pipeline_data[GST_CLASSIFICATION].postproc,
       INFERENCE_PROPERTIES_LEN * sizeof (gchar), "%s",
-      "qtimlvclassification");
+      "qtimlpostprocess");
 
   output_pipeline_data[GST_CLASSIFICATION].delegate =
       GST_ML_TFLITE_DELEGATE_EXTERNAL;
@@ -332,7 +300,7 @@ GstPipelineData *create_ml_pipeline_data (char **options_models,
       "qtimltflite");
   snprintf (output_pipeline_data[GST_POSE_DETECTION].postproc,
       INFERENCE_PROPERTIES_LEN * sizeof (gchar), "%s",
-      "qtimlvpose");
+      "qtimlpostprocess");
 
   output_pipeline_data[GST_POSE_DETECTION].delegate =
       GST_ML_TFLITE_DELEGATE_EXTERNAL;
@@ -353,7 +321,7 @@ GstPipelineData *create_ml_pipeline_data (char **options_models,
       "qtimltflite");
   snprintf (output_pipeline_data[GST_SEGMENTATION].postproc,
       INFERENCE_PROPERTIES_LEN * sizeof (gchar), "%s",
-      "qtimlvsegmentation");
+      "qtimlpostprocess");
 
   output_pipeline_data[GST_SEGMENTATION].delegate =
       GST_ML_TFLITE_DELEGATE_EXTERNAL;
@@ -395,12 +363,6 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options, gchar * c
     g_free ((gpointer)options->object_detection_labels_path);
   }
 
-  if (options->object_detection_constants != (gchar *)(
-      &DEFAULT_CONSTANTS_OBJECT_DETECTION) &&
-      options->object_detection_constants != NULL) {
-    g_free ((gpointer)options->object_detection_constants);
-  }
-
   if (options->pose_detection_model_path != (gchar *)(
       &DEFAULT_TFLITE_POSE_DETECTION_MODEL) &&
       options->pose_detection_model_path != NULL) {
@@ -411,12 +373,6 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options, gchar * c
       &DEFAULT_POSE_DETECTION_LABELS) &&
       options->pose_detection_labels_path != NULL) {
     g_free ((gpointer)options->pose_detection_labels_path);
-  }
-
-  if (options->pose_detection_constants != (gchar *)(
-      &DEFAULT_CONSTANTS_POSE_DETECTION) &&
-      options->pose_detection_constants != NULL) {
-    g_free ((gpointer)options->pose_detection_constants);
   }
 
   if (options->segmentation_model_path != (gchar *)(
@@ -431,12 +387,6 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options, gchar * c
     g_free ((gpointer)options->segmentation_labels_path);
   }
 
-  if (options->segmentation_constants != (gchar *)(
-      &DEFAULT_CONSTANTS_SEGMENTATION) &&
-      options->segmentation_constants != NULL) {
-    g_free ((gpointer)options->segmentation_constants);
-  }
-
   if (options->classification_model_path != (gchar *)(
       &DEFAULT_TFLITE_CLASSIFICATION_MODEL) &&
       options->classification_model_path != NULL) {
@@ -449,10 +399,9 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options, gchar * c
     g_free ((gpointer)options->classification_labels_path);
   }
 
-  if (options->classification_constants != (gchar *)(
-      &DEFAULT_CONSTANTS_CLASSIFICATION) &&
-      options->classification_constants != NULL) {
-    g_free ((gpointer)options->classification_constants);
+  if (options->pose_settings_path != (gchar *)(&DEFAULT_POSE_SETTINGS_PATH) &&
+      options->pose_settings_path != NULL) {
+    g_free ((gpointer)options->pose_settings_path);
   }
 
   if (options->pipeline_data != NULL) {
@@ -496,7 +445,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstVideoRectangle coordinates[GST_PIPELINE_CNT];
   GstCaps *filtercaps = NULL;
   gboolean ret = FALSE;
-  gchar element_name[128];
+  gchar element_name[128], settings[128];
   gint module_id;
   gint framerate = DEFAULT_CAMERA_FRAME_RATE;
 
@@ -733,6 +682,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       case GST_OBJECT_DETECTION:
         module_id = get_enum_value (qtimlvpostproc[i], "module", "yolov8");
         if (module_id != -1) {
+          snprintf (settings, 127, "{\"confidence\": %.1f}", 40.0);
           g_object_set (G_OBJECT (qtimlvpostproc[i]),
               "module", module_id, NULL);
         } else {
@@ -741,20 +691,17 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
         }
         // Set the object detection module threshold limit
         g_object_set (G_OBJECT (qtimlvpostproc[GST_OBJECT_DETECTION]),
-            "threshold", 40.0, "results", 10, "constants",
-            options->object_detection_constants, NULL);
+            "results", 10, "settings", settings, NULL);
         break;
 
       case GST_CLASSIFICATION:
-        module_id = get_enum_value (qtimlvpostproc[i], "module", "mobilenet");
+        module_id = get_enum_value (qtimlvpostproc[i], "module", "mobilenet-softmax");
         if (module_id != -1) {
-          g_object_set (G_OBJECT (qtimlvpostproc[i]), "threshold", 40.0,
-              "results", 2, "module", module_id,
-              "extra-operation", GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX,
-              "constants", options->classification_constants,
-              NULL);
+          snprintf (settings, 127, "{\"confidence\": %.1f}", 40.0);
+          g_object_set (G_OBJECT (qtimlvpostproc[i]), "results", 2,
+              "module", module_id, "settings", settings, NULL);
         } else {
-          g_printerr ("Module mobilenet not available in "
+          g_printerr ("Module mobilenet-softmax not available in "
               "qtimlvclassifivation\n");
           goto error_clean_elements;
         }
@@ -763,10 +710,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
       case GST_POSE_DETECTION:
         module_id = get_enum_value (qtimlvpostproc[i], "module", "hrnet");
         if (module_id != -1) {
-          g_object_set (G_OBJECT (qtimlvpostproc[i]), "threshold", 40.0,
-              "results", 2, "module", module_id,
-              "constants", options->pose_detection_constants,
-              NULL);
+          snprintf (settings, 127, "%s", options->pose_settings_path);
+          g_object_set (G_OBJECT (qtimlvpostproc[i]), "results", 2,
+          "module", module_id, "settings", settings, NULL);
         } else {
           g_printerr ("Module hrnet is not available in qtimlvpose\n");
           goto error_clean_elements;
@@ -778,8 +724,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
             "deeplab-argmax");
         if (module_id != -1) {
           g_object_set (G_OBJECT (qtimlvpostproc[i]),
-              "module", module_id, "constants", options->segmentation_constants,
-               NULL);
+              "module", module_id, NULL);
         } else {
           g_printerr ("Module deeplab-argmax is not available in "
               "qtimlvsegmentation\n");
@@ -1076,11 +1021,6 @@ parse_json (gchar * config_file, GstAppOptions * options)
         g_strdup (json_object_get_string_member (root_obj, "detection-labels"));
   }
 
-  if (json_object_has_member (root_obj, "detection-constants")) {
-    options->object_detection_constants =
-        g_strdup (json_object_get_string_member (root_obj, "detection-constants"));
-  }
-
   if (json_object_has_member (root_obj, "pose-model")) {
     options->pose_detection_model_path =
         g_strdup (json_object_get_string_member (root_obj, "pose-model"));
@@ -1089,11 +1029,6 @@ parse_json (gchar * config_file, GstAppOptions * options)
   if (json_object_has_member (root_obj, "pose-labels")) {
     options->pose_detection_labels_path =
         g_strdup (json_object_get_string_member (root_obj, "pose-labels"));
-  }
-
-  if (json_object_has_member (root_obj, "pose-constants")) {
-    options->pose_detection_constants =
-        g_strdup (json_object_get_string_member (root_obj, "pose-constants"));
   }
 
   if (json_object_has_member (root_obj, "segmentation-model")) {
@@ -1106,11 +1041,6 @@ parse_json (gchar * config_file, GstAppOptions * options)
         g_strdup (json_object_get_string_member (root_obj, "segmentation-labels"));
   }
 
-  if (json_object_has_member (root_obj, "segmentation-constants")) {
-    options->segmentation_constants =
-        g_strdup (json_object_get_string_member (root_obj, "segmentation-constants"));
-  }
-
   if (json_object_has_member (root_obj, "classification-model")) {
     options->classification_model_path =
         g_strdup (json_object_get_string_member (root_obj, "classification-model"));
@@ -1119,11 +1049,6 @@ parse_json (gchar * config_file, GstAppOptions * options)
   if (json_object_has_member (root_obj, "classification-labels")) {
     options->classification_labels_path =
         g_strdup (json_object_get_string_member (root_obj, "classification-labels"));
-  }
-
-  if (json_object_has_member (root_obj, "classification-constants")) {
-    options->classification_constants =
-        g_strdup (json_object_get_string_member (root_obj, "classification-constants"));
   }
 
   g_object_unref (parser);
@@ -1152,22 +1077,19 @@ main (gint argc, gchar * argv[])
       DEFAULT_TFLITE_OBJECT_DETECTION_MODEL;
   options.object_detection_labels_path =
       DEFAULT_OBJECT_DETECTION_LABELS;
-  options.object_detection_constants = DEFAULT_CONSTANTS_OBJECT_DETECTION;
   options.pose_detection_model_path =
       DEFAULT_TFLITE_POSE_DETECTION_MODEL;
   options.pose_detection_labels_path =
       DEFAULT_POSE_DETECTION_LABELS;
-  options.pose_detection_constants = DEFAULT_CONSTANTS_POSE_DETECTION;
   options.segmentation_model_path =
       DEFAULT_TFLITE_SEGMENTATION_MODEL;
   options.segmentation_labels_path =
       DEFAULT_SEGMENTATION_LABELS;
-  options.segmentation_constants = DEFAULT_CONSTANTS_SEGMENTATION;
   options.classification_model_path =
       DEFAULT_TFLITE_CLASSIFICATION_MODEL;
   options.classification_labels_path =
       DEFAULT_CLASSIFICATION_LABELS;
-  options.classification_constants = DEFAULT_CONSTANTS_CLASSIFICATION;
+  options.pose_settings_path = DEFAULT_POSE_SETTINGS_PATH;
   options.use_file = FALSE;
   options.use_rtsp = FALSE;
   options.use_camera = FALSE;
@@ -1220,11 +1142,6 @@ main (gint argc, gchar * argv[])
     "      Path to Object Detection labels\n"
     "      Default Object Detection labels: "
     DEFAULT_OBJECT_DETECTION_LABELS"\n"
-    "  detection-constants: \"CONSTANTS\"\n"
-    "      Constants used by the Object Detection module\n"
-    "      for processing of incoming tensors.\n"
-    "      Default Object Detection constants: "
-    DEFAULT_CONSTANTS_OBJECT_DETECTION"\n"
     "  pose-model: \"/PATH\"\n"
     "      Path to Pose Detection model\n"
     "      Default Pose Detection model: "
@@ -1233,11 +1150,6 @@ main (gint argc, gchar * argv[])
     "      Path to Pose Detection labels\n"
     "      Default Pose Detection labels: "
     DEFAULT_POSE_DETECTION_LABELS"\n"
-    "  pose-constants: \"CONSTANTS\"\n"
-    "      Constants used by the Pose Detection module\n"
-    "      for processing of incoming tensors.\n"
-    "      Default Pose Detection constants: "
-    DEFAULT_CONSTANTS_POSE_DETECTION"\n"
     "  segmentation-model: \"/PATH\"\n"
     "      Path to Segmentation model\n"
     "      Default Segmentation model: "
@@ -1246,11 +1158,6 @@ main (gint argc, gchar * argv[])
     "      Path to Segmentation labels\n"
     "      Default Segmentation labels: "
     DEFAULT_SEGMENTATION_LABELS"\n"
-    "  segmentation-constants: \"CONSTANTS\"\n"
-    "      Constants used by the Segmentation module\n"
-    "      for processing of incoming tensors.\n"
-    "      Default Segmentation constants: "
-    DEFAULT_CONSTANTS_SEGMENTATION"\n"
     "  classification-model: \"/PATH\"\n"
     "      Path to Classification model\n"
     "      Default Classification model: "
@@ -1258,12 +1165,7 @@ main (gint argc, gchar * argv[])
     "  classification-labels: \"/PATH\"\n"
     "      Path to Classification labels\n"
     "      Default Classification labels: "
-    DEFAULT_CLASSIFICATION_LABELS"\n"
-    "  classification-constants: \"CONSTANTS\"\n"
-    "      Constants used by the Classification module\n"
-    "      for processing of incoming tensors.\n"
-    "      Default Classification constants: "
-    DEFAULT_CONSTANTS_CLASSIFICATION"\n",
+    DEFAULT_CLASSIFICATION_LABELS"\n",
     app_name, DEFAULT_CONFIG_FILE, camera_description);
   help_description[4095] = '\0';
 
@@ -1409,6 +1311,12 @@ main (gint argc, gchar * argv[])
       gst_app_context_free (&appctx, &options, config_file);
       return -EINVAL;
     }
+  }
+
+  if (!file_exists (options.pose_settings_path)) {
+    g_print ("Invalid pose settings path: %s\n", options.pose_settings_path);
+    gst_app_context_free (&appctx, &options, config_file);
+    return -EINVAL;
   }
 
   // Initialize GST library.

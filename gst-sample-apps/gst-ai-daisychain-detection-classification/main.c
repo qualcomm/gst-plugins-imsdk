@@ -137,23 +137,6 @@
 #define SINGLE_ROI_META 2
 
 /**
- * To enable softmax operation for post processing
- */
-#define GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX 1
-
-/**
- * Scale and Offset value for YOLOX for post processing
- */
-#define YOLOX_CONSTANT "YOLOX,q-offsets=<38.0, 0.0, 0.0>,\
-    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
-
-/**
- * Scale and Offset valu for Mobilenet for post processing
- */
-#define MOBILENETV2_CONSTANT \
-    "Inceptionv3,q-offsets=<38.0>,q-scales=<0.17039915919303894>;"
-
-/**
  * Structure for various application specific options
  */
 typedef struct
@@ -168,8 +151,6 @@ typedef struct
   gchar *output_file;
   gchar *output_ip_address;
   gchar *port_num;
-  gchar *detection_constants;
-  gchar *classification_constants;
   gchar *enable_usb_camera;
   gchar dev_video[16];
   enum GstSinkType sinktype;
@@ -260,18 +241,6 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options,
       (gchar *) (&DEFAULT_CLASSIFICATION_LABELS)) {
     g_free ((gpointer) options->classification_labels_path);
     options->classification_labels_path = NULL;
-  }
-
-  if (options->detection_constants != NULL &&
-      options->detection_constants != (gchar *)(&YOLOX_CONSTANT)) {
-    g_free ((gpointer)options->detection_constants);
-    options->detection_constants = NULL;
-  }
-
-  if (options->classification_constants != NULL &&
-      options->classification_constants != (gchar *)(&MOBILENETV2_CONSTANT)) {
-    g_free ((gpointer)options->classification_constants);
-    options->classification_constants = NULL;
   }
 
   if (options->output_file != (gchar *)(&DEFAULT_OUTPUT_FILENAME) &&
@@ -455,7 +424,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   GstCaps *pad_filter = NULL, *filtercaps = NULL;
   GstStructure *delegate_options = NULL;
   gboolean ret = FALSE;
-  gchar element_name[128];
+  gchar element_name[128], settings[128];
   gint preview_width = DEFAULT_CAMERA_PREVIEW_OUTPUT_WIDTH;
   gint preview_height = DEFAULT_CAMERA_PREVIEW_OUTPUT_HEIGHT;
   gint framerate = DEFAULT_CAMERA_FRAME_RATE;
@@ -678,7 +647,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   for (gint i = 0; i < DETECTION_COUNT; i++) {
     snprintf (element_name, 127, "qtimlvdetection-%d", i);
     qtimlvdetection[i] =
-        gst_element_factory_make ("qtimlvdetection", element_name);
+        gst_element_factory_make ("qtimlpostprocess", element_name);
     if (!qtimlvdetection[i]) {
       g_printerr ("Failed to create qtimlvdetection %d\n", i);
       goto error_clean_elements;
@@ -689,7 +658,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   for (gint i = 0; i < CLASSIFICATION_COUNT; i++) {
     snprintf (element_name, 127, "qtimlvclassification-%d", i);
     qtimlvclassification[i] =
-        gst_element_factory_make ("qtimlvclassification", element_name);
+        gst_element_factory_make ("qtimlpostprocess", element_name);
     if (!qtimlvclassification[i]) {
       g_printerr ("Failed to create qtimlvclassification %d\n", i);
       goto error_clean_elements;
@@ -913,10 +882,10 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   for (gint i = 0; i < DETECTION_COUNT; i++) {
     module_id = get_enum_value (qtimlvdetection[i], "module", "yolov8");
     if (module_id != -1) {
+      snprintf (settings, 127, "{\"confidence\": %.1f}", 75.0);
       g_object_set (G_OBJECT (qtimlvdetection[i]),
-          "threshold", 75.0, "results", 4,
-          "module", module_id, "labels", options.detection_labels_path,
-          "constants", options.detection_constants, NULL);
+          "results", 4,
+          "module", module_id, "labels", options.detection_labels_path, NULL);
     } else {
       g_printerr ("Module yolov8 is not available in qtimlvdetection.\n");
       goto error_clean_elements;
@@ -926,17 +895,17 @@ create_pipe (GstAppContext * appctx, const GstAppOptions options)
   // 2.7 Set properties for classification postproc plugins- module, labels,
   // threshold
   for (gint i = 0; i < CLASSIFICATION_COUNT; i++) {
-    module_id = get_enum_value (qtimlvclassification[i], "module", "mobilenet");
+    module_id = get_enum_value (qtimlvclassification[i], "module",
+        "mobilenet-softmax");
     if (module_id != -1) {
+      snprintf (settings, 127, "{\"confidence\": %.1f}", 60.0);
       g_object_set (G_OBJECT (qtimlvclassification[i]),
-          "threshold", 60.0, "results", 3,
+          "results", 3,
           "module", module_id,
-          "labels", options.classification_labels_path,
-          "constants", options.classification_constants,
-          "extra-operation", GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX, NULL);
+          "labels", options.classification_labels_path, NULL);
     } else {
       g_printerr
-          ("Module mobilenet is not available in qtimlvclassification.\n");
+          ("Module mobilenet-softmax is not available in qtimlvclassification.\n");
       goto error_clean_elements;
     }
   }
@@ -1473,18 +1442,6 @@ parse_json (gchar * config_file, GstAppOptions * options)
             "classification-labels"));
   }
 
-  if (json_object_has_member (root_obj, "detection-constants")) {
-    options->detection_constants =
-        g_strdup (json_object_get_string_member (root_obj,
-            "detection-constants"));
-  }
-
-  if (json_object_has_member (root_obj, "classification-constants")) {
-    options->classification_constants =
-        g_strdup (json_object_get_string_member (root_obj,
-            "classification-constants"));
-  }
-
   if (json_object_has_member (root_obj, "detection-runtime")) {
     const gchar *delegate = json_object_get_string_member (root_obj,
         "detection-runtime");
@@ -1605,8 +1562,6 @@ main (gint argc, gchar * argv[])
   options.classification_model_path = NULL;
   options.detection_labels_path = NULL;
   options.classification_labels_path = NULL;
-  options.detection_constants = NULL;
-  options.classification_constants = NULL;
   options.classification_use_cpu = FALSE, options.classification_use_gpu = FALSE;
   options.classification_use_dsp = FALSE;
   options.detection_use_cpu = FALSE, options.detection_use_gpu = FALSE;
@@ -1677,12 +1632,6 @@ main (gint argc, gchar * argv[])
       " for classification labels\n"
       "      Default path for classification labels: "
       DEFAULT_CLASSIFICATION_LABELS"\n"
-      "  detection-constants: \"CONSTANTS\"\n"
-      "      Constants, offsets and coefficients for YOLOX TFLITE model \n"
-      "      Default constants for YOLOX: "YOLOX_CONSTANT"\n"
-      "  classification-constants: \"CONSTANTS\"\n"
-      "      Constants, offsets and coefficients for MOBILENETV2 TFLITE model \n"
-      "      Default constants for MOBILENETV2: "MOBILENETV2_CONSTANT"\n"
       "  enable-usb-camera: Use this Parameter to enable-usb-camera\n"
       "      This can be either TRUE or FALSE.\n"
       "  width: USB Camera Resolution width.\n"
@@ -1857,14 +1806,6 @@ main (gint argc, gchar * argv[])
       "For Classification model: %s labels: %s\n",
       options.detection_model_path, options.detection_labels_path,
       options.classification_model_path, options.classification_labels_path);
-
-  if (options.detection_constants == NULL) {
-    options.detection_constants = YOLOX_CONSTANT;
-  }
-
-  if (options.classification_constants == NULL) {
-    options.classification_constants = MOBILENETV2_CONSTANT;
-  }
 
   // Initialize GST library.
   gst_init (&argc, &argv);
