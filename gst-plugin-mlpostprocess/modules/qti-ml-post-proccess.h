@@ -191,7 +191,7 @@ struct Tensor {
   TensorType            type;
   std::string           name;
   std::vector<uint32_t> dimensions;
-  const void*           data;
+  void*                 data;
 
   Tensor()
       : type(TensorType::kUint8), dimensions(0), data(nullptr) {};

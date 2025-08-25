@@ -65,10 +65,15 @@ typedef struct _GstMLPostProcessClass GstMLPostProcessClass;
 struct _GstMLPostProcess {
   GstBaseTransform     parent;
 
-  GstMLInfo            *mlinfo;
+  /// Input video info.
   GstVideoInfo         *vinfo;
+  /// Input ML info.
+  GstMLInfo            *mlinfo;
 
-  /// Output mode (video or text)
+  /// Output ML info.
+  GstMLInfo            *outmlinfo;
+
+  /// Output mode (video, text or tensor)
   guint                mode;
 
   /// Buffer pools.
