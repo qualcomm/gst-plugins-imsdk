@@ -297,25 +297,26 @@ class DemoWindow(Gtk.Window):
         """
 
         file_path = "/etc/media/download_artifacts.sh"
-        DEFAULT_SNPE_OBJECT_DETECTION_MODEL = "/etc/models/yolonas.dlc"
+        DEFAULT_TFLITE_OBJECT_DETECTION_MODEL = "/etc/models/yolox_quantized.tflite"
         DEFAULT_TFLITE_CLASSIFICATION_MODEL = "/etc/models/inception_v3_quantized.tflite"
         DEFAULT_TFLITE_POSE_DETECTION_MODEL = "/etc/models/hrnet_pose_quantized.tflite"
         DEFAULT_TFLITE_SEGMENTATION_MODEL = "/etc/models/deeplabv3_plus_mobilenet_quantized.tflite"
         DEFAULT_TFLITE_FACE_DETECTION_MODEL = "/etc/models/face_det_lite_quantized.tflite"
-        DEFAULT_OBJECT_DETECTION_LABELS = "/etc/labels/yolonas.labels"
-        DEFAULT_CLASSIFICATION_LABELS = "/etc/labels/classification.labels"
-        DEFAULT_POSE_DETECTION_LABELS = "/etc/labels/posenet_mobilenet_v1.labels"
-        DEFAULT_SEGMENTATION_LABELS = "/etc/labels/deeplabv3_resnet50.labels"
-        DEFAULT_FACE_DETECTION_LABELS = "/etc/labels/face_detection.labels"
+        DEFAULT_OBJECT_DETECTION_LABELS = "/etc/labels/yolox.json"
+        DEFAULT_CLASSIFICATION_LABELS = "/etc/labels/classification.json"
+        DEFAULT_POSE_DETECTION_LABELS = "/etc/labels/hrnet_pose.json"
+        DEFAULT_SEGMENTATION_LABELS = "/etc/labels/deeplabv3_resnet50.json"
+        DEFAULT_FACE_DETECTION_LABELS = "/etc/labels/face_detection.json"
+        DEFAULT_POSE_SETTINGS = "/etc/labels/hrnet_pose_settings.json"
         DEFAULT_INPUT_VIDEO = "/etc/media/video.mp4"
 
-        version = "GA1.4-rel"
+        version = "GA1.5-rel"
         target = "QCS6490"
         output_path = "/etc/models/"
 
         # Check if all required files and models exist
         if os.path.exists(file_path) \
-                and os.path.exists(DEFAULT_SNPE_OBJECT_DETECTION_MODEL) \
+                and os.path.exists(DEFAULT_TFLITE_OBJECT_DETECTION_MODEL) \
                 and os.path.exists(DEFAULT_TFLITE_CLASSIFICATION_MODEL) \
                 and os.path.exists(DEFAULT_TFLITE_POSE_DETECTION_MODEL) \
                 and os.path.exists(DEFAULT_TFLITE_SEGMENTATION_MODEL) \
@@ -325,6 +326,7 @@ class DemoWindow(Gtk.Window):
                 and os.path.exists(DEFAULT_POSE_DETECTION_LABELS) \
                 and os.path.exists(DEFAULT_SEGMENTATION_LABELS) \
                 and os.path.exists(DEFAULT_FACE_DETECTION_LABELS) \
+                and os.path.exists(DEFAULT_POSE_SETTINGS) \
                 and os.path.exists(DEFAULT_INPUT_VIDEO):
             print("Artifacts already exist.")
             # Close the popup window
@@ -451,6 +453,10 @@ class DemoWindow(Gtk.Window):
         if self.check_download is not None:
             self.check_download.join()
         pipeline = None
+        TFLITE_DELEGATE =  "delegate=external \
+            external-delegate-path=libQnnTFLiteDelegate.so \
+            external-delegate-options='QNNExternalDelegate,backend_type=htp,\
+            htp_device_id=(string)0,htp_performance_mode=(string)2'"
 
         if src == "USB-Camera":
             found_device = self.check_usb_driver()
@@ -531,39 +537,39 @@ class DemoWindow(Gtk.Window):
                     sink_5::position='<0, 540>' sink_5::dimensions='<960, 540>' \
                     sink_6::position='<960, 540>' sink_6::dimensions='<960, 540>' \
                     sink_7::position='<960, 540>' sink_7::dimensions='<960, 540>' sink_7::alpha=0.5 \
-                    mixer. ! queue ! fpsdisplaysink sync=true signal-fps-measurements=true text-overlay=true video-sink='gtksink' " + in_src + "! queue ! tee name=split \
+                    mixer. ! queue ! fpsdisplaysink signal-fps-measurements=true text-overlay=true video-sink='gtksink' " + in_src + f"! queue ! tee name=split \
                     split. ! queue ! mixer. \
-                    split. ! queue ! qtimlvconverter ! queue ! qtimlsnpe delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite {TFLITE_DELEGATE} model=/etc/models/yolox_quantized.tflite ! queue ! qtimlpostprocess settings='{{\"confidence\": 51.0}}' results=10 module=yolov8 labels=/etc/labels/yolox.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
                     split. ! queue ! mixer. \
-                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options='QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,htp_performance_mode=(string)2' model=/etc/models/inception_v3_quantized.tflite ! queue ! qtimlvclassification extra-operation=1 threshold=40.0 results=2 module=mobilenet labels=/etc/labels/classification.labels constants='Mobilenet,q-offsets=<38.0>,q-scales=<0.15008972585201263>;' ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite {TFLITE_DELEGATE} model=/etc/models/inception_v3_quantized.tflite ! queue ! qtimlpostprocess settings='{{\"confidence\": 40.0}}' results=2 module=mobilenet-softmax labels=/etc/labels/classification.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
                     split. ! queue ! mixer. \
-                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options='QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,htp_performance_mode=(string)2' model=/etc/models/hrnet_pose_quantized.tflite ! queue ! qtimlvpose threshold=51.0 results=2 module=hrnet labels=/etc/labels/posenet_mobilenet_v1.labels constants='hrnet,q-offsets=<8.0>,q-scales=<0.0040499246679246426>;' ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite {TFLITE_DELEGATE} model=/etc/models/hrnet_pose_quantized.tflite ! queue ! qtimlpostprocess settings=/etc/labels/hrnet_pose_settings.json results=2 module=hrnet labels=/etc/labels/hrnet_pose.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
                     split. ! queue ! mixer. \
-                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options='QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,htp_performance_mode=(string)2' model=/etc/models/deeplabv3_plus_mobilenet_quantized.tflite ! queue ! qtimlvsegmentation module=deeplab-argmax labels=/etc/labels/deeplabv3_resnet50.labels constants='deeplab,q-offsets=<0.0>,q-scales=<1.0>;' ! video/x-raw,format=BGRA,width=256,height=144 ! queue ! mixer. \
+                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite {TFLITE_DELEGATE} model=/etc/models/deeplabv3_plus_mobilenet_quantized.tflite ! queue ! qtimlpostprocess module=deeplab-argmax labels=/etc/labels/deeplabv3_resnet50.json ! video/x-raw,format=BGRA,width=256,height=144 ! queue ! mixer. \
                     "
             elif application == "ObjectDetection":
-                pipeline = "gst-launch-1.0 " + in_src + "! queue ! tee name=split \
+                pipeline = "gst-launch-1.0 " + in_src + f"! queue ! tee name=split \
                     split. ! queue ! qtivcomposer name=mixer ! queue ! gtksink \
-                    split. ! queue ! qtimlvconverter ! queue ! qtimlsnpe delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' ! queue ! \
-                    qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! \
+                    split. ! queue ! qtimlvconverter ! queue ! qtimltflite {TFLITE_DELEGATE} model='/etc/models/yolox_quantized.tflite' ! queue ! \
+                    qtimlpostprocess settings='{{\"confidence\": 51.0}}' results=10 module=yolov8 labels='/etc/labels/yolox.json' ! \
                     video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer."
             elif application == "Face Detection":
                 if src == "On-Device-Camera":
                     in_src = "qtiqmmfsrc name=camsrc ! video/x-raw,format=NV12,width=640,height=480,framerate=30/1"
-                pipeline = "gst-launch-1.0 -e \
+                pipeline = f"gst-launch-1.0 -e \
                     qtimlvconverter name=stage_01_preproc mode=image-batch-non-cumulative \
-                    qtimltflite name=stage_01_inference model=/etc/models/face_det_lite_quantized.tflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options='QNNExternalDelegate,backend_type=htp;' \
-                    qtimlvdetection name=stage_01_postproc stabilization=false threshold=51.0 results=6 module=qfd labels=/etc/labels/face_detection.labels constants='qfd,q-offsets=<178.0, 0.0, 102.0>,q-scales=<0.03400895744562149, 0.21995200216770172, 0.1414264440536499>;' \
+                    qtimltflite name=stage_01_inference model=/etc/models/face_det_lite_quantized.tflite {TFLITE_DELEGATE} \
+                    qtimlpostprocess name=stage_01_postproc settings='{{\"confidence\": 51.0}}' results=6 module=qfd labels=/etc/labels/face_detection.json \
                     " + in_src + " ! queue ! tee name=split ! queue ! qtivcomposer name=mixer ! queue ! gtksink \
                     split. ! queue ! stage_01_preproc. stage_01_preproc. ! queue ! stage_01_inference. stage_01_inference. ! queue ! stage_01_postproc. stage_01_postproc. ! video/x-raw ! queue ! mixer."
             elif application == "Daisychain Pose":
-                pipeline = "gst-launch-1.0 -e \
+                pipeline = f"gst-launch-1.0 -e \
                     qtimlvconverter name=stage_01_preproc mode=image-batch-non-cumulative \
-                    qtimlsnpe name=stage_01_inference delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' \
-                    qtimlvdetection name=stage_01_postproc threshold=51.0 results=4 module=yolo-nas labels=/etc/labels/yolonas.labels \
+                    qtimltflite name=stage_01_inference {TFLITE_DELEGATE} model='/etc/models/yolox_quantized.tflite' \
+                    qtimlpostprocess name=stage_01_postproc settings='{{\"confidence\": 51.0}}' results=4 module=yolov8 labels=/etc/labels/yolox.json \
                     qtimlvconverter name=stage_02_preproc mode=roi-batch-cumulative image-disposition=centre  \
-                    qtimltflite name=stage_02_inference delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options='QNNExternalDelegate,backend_type=htp;' model=/etc/models/hrnet_pose_quantized.tflite \
-                    qtimlvpose name=stage_02_postproc threshold=51.0 results=1 module=hrnet constants='hrnet,q-offsets=<0.0>,q-scales=<0.0035696658305823803>;' labels=/etc/labels/hrnet_pose.labels \
+                    qtimltflite name=stage_02_inference {TFLITE_DELEGATE} model=/etc/models/hrnet_pose_quantized.tflite \
+                    qtimlpostprocess name=stage_02_postproc settings=/etc/labels/hrnet_pose_settings.json results=1 module=hrnet labels=/etc/labels/hrnet_pose.json \
                     " + in_src + " ! queue ! tee name=t_split_1 \
                     t_split_1. ! queue ! metamux_1. \
                     t_split_1. ! queue ! stage_01_preproc. stage_01_preproc. ! queue ! stage_01_inference. stage_01_inference. ! queue ! stage_01_postproc. stage_01_postproc. ! text/x-raw ! queue ! metamux_1. \
@@ -581,49 +587,28 @@ class DemoWindow(Gtk.Window):
                     sink_2::position='<1680, 0>' sink_2::dimensions='<240, 480>' \
                     mixer. ! queue ! qtivoverlay  engine=gles ! gtksink"
             elif application == "Multistream":
-                pipeline = "gst-launch-1.0 -e qtivcomposer name=mixer \
-                    sink_0::position='<0, 0>' sink_0::dimensions='<480, 540>' \
-                    sink_1::position='<480, 0>' sink_1::dimensions='<480, 540>' \
-                    sink_2::position='<960, 0>' sink_2::dimensions='<480, 540>' \
-                    sink_3::position='<1440, 0>' sink_3::dimensions='<480, 540>' \
-                    sink_4::position='<0, 540>' sink_4::dimensions='<480, 540>' \
-                    sink_5::position='<480, 540>' sink_5::dimensions='<480, 540>' \
-                    sink_6::position='<960, 540>' sink_6::dimensions='<480, 540>' \
-                    sink_7::position='<1440, 540>' sink_7::dimensions='<480, 540>' \
-                    sink_8::position='<0, 0>' sink_8::dimensions='<480, 540>' \
-                    sink_9::position='<480, 0>' sink_9::dimensions='<480, 540>' \
-                    sink_10::position='<960, 0>' sink_10::dimensions='<480, 540>' \
-                    sink_11::position='<1440, 0>' sink_11::dimensions='<480, 540>' \
-                    sink_12::position='<0, 540>' sink_12::dimensions='<480, 540>' \
-                    sink_13::position='<480, 540>' sink_13::dimensions='<480, 540>' \
-                    sink_14::position='<960, 540>' sink_14::dimensions='<480, 540>' \
-                    sink_15::position='<1440, 540>' sink_15::dimensions='<480, 540>' \
+                pipeline = f"gst-launch-1.0 -e qtivcomposer name=mixer \
+                    sink_0::position='<0, 0>' sink_0::dimensions='<960, 540>' \
+                    sink_1::position='<960, 0>' sink_1::dimensions='<960, 540>' \
+                    sink_2::position='<0, 540>' sink_2::dimensions='<960, 540>' \
+                    sink_3::position='<960, 540>' sink_3::dimensions='<960, 540>' \
+                    sink_4::position='<0, 0>' sink_4::dimensions='<960, 540>' \
+                    sink_5::position='<960, 0>' sink_5::dimensions='<960, 540>' \
+                    sink_6::position='<0, 540>' sink_6::dimensions='<960, 540>' \
+                    sink_7::position='<960, 540>' sink_7::dimensions='<960, 540>' \
                     mixer. ! queue ! gtksink \
-                    split_1. ! qtimlvconverter ! qtimlsnpe name=stage_01_inference delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' \
-                    split_2. ! qtimlvconverter ! qtimlsnpe name=stage_02_inference delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' \
-                    split_3. ! qtimlvconverter ! qtimlsnpe name=stage_03_inference delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' \
-                    split_4. ! qtimlvconverter ! qtimlsnpe name=stage_04_inference delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' \
-                    split_5. ! qtimlvconverter ! qtimlsnpe name=stage_05_inference delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' \
-                    split_6. ! qtimlvconverter ! qtimlsnpe name=stage_06_inference delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' \
-                    split_7. ! qtimlvconverter ! qtimlsnpe name=stage_07_inference delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' \
-                    split_8. ! qtimlvconverter ! qtimlsnpe name=stage_08_inference delegate=dsp model=/etc/models/yolonas.dlc layers='</heads/Mul,/heads/Sigmoid>' \
-                    " + in_src + " ! tee name=split_1 ! queue ! mixer. \
+                    split_1. ! qtimlvconverter ! qtimltflite name=stage_01_inference {TFLITE_DELEGATE} model=/etc/models/yolox_quantized.tflite \
+                    split_2. ! qtimlvconverter ! qtimltflite name=stage_02_inference {TFLITE_DELEGATE} model=/etc/models/yolox_quantized.tflite \
+                    split_3. ! qtimlvconverter ! qtimltflite name=stage_03_inference {TFLITE_DELEGATE} model=/etc/models/yolox_quantized.tflite \
+                    split_4. ! qtimlvconverter ! qtimltflite name=stage_04_inference {TFLITE_DELEGATE} model=/etc/models/yolox_quantized.tflite \
+                    " + in_src + f" ! tee name=split_1 ! queue ! mixer. \
                     filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_2 ! queue ! mixer. \
                     filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_3 ! queue ! mixer. \
                     filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_4 ! queue ! mixer. \
-                    filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_5 ! queue ! mixer. \
-                    filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_6 ! queue ! mixer. \
-                    filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_7 ! queue ! mixer. \
-                    filesrc location=/etc/media/video.mp4 ! qtdemux ! h264parse ! v4l2h264dec capture-io-mode=4 output-io-mode=4 ! video/x-raw,format=NV12 ! tee name=split_8 ! queue ! mixer. \
-                    stage_01_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
-                    stage_02_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
-                    stage_03_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
-                    stage_04_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
-                    stage_05_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
-                    stage_06_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
-                    stage_07_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
-                    stage_08_inference. ! queue ! qtimlvdetection threshold=40.0 results=10 module=yolo-nas labels=/etc/labels/yolonas.labels ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. "
-
+                    stage_01_inference. ! queue ! qtimlpostprocess settings='{{\"confidence\": 51.0}}' results=10 module=yolov8 labels=/etc/labels/yolox.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    stage_02_inference. ! queue ! qtimlpostprocess settings='{{\"confidence\": 51.0}}' results=10 module=yolov8 labels=/etc/labels/yolox.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    stage_03_inference. ! queue ! qtimlpostprocess settings='{{\"confidence\": 51.0}}' results=10 module=yolov8 labels=/etc/labels/yolox.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. \
+                    stage_04_inference. ! queue ! qtimlpostprocess settings='{{\"confidence\": 51.0}}' results=10 module=yolov8 labels=/etc/labels/yolox.json ! video/x-raw,format=BGRA,width=640,height=360 ! queue ! mixer. "
         if pipeline is not None:
             pipeline_thread = threading.Thread(target=self.execute, args=(pipeline,))
             pipeline_thread.start()

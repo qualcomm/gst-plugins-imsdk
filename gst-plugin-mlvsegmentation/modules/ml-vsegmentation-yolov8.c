@@ -312,7 +312,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   guint8 *outdata = NULL;
   GstVideoRectangle region = { 0, };
   gint row = 0, column = 0, width = 0, height = 0;
-  guint idx = 0, num = 0, bpp = 0, padding = 0;
+  guint idx = 0, num = 0, bpp = 0, stride = 0;
 
   g_return_val_if_fail (submodule != NULL, FALSE);
   g_return_val_if_fail (mlframe != NULL, FALSE);
@@ -334,8 +334,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   bpp = GST_VIDEO_FORMAT_INFO_BITS (vframe->info.finfo) *
       GST_VIDEO_INFO_N_COMPONENTS (&(vframe)->info) / CHAR_BIT;
 
-  // Calculate the row padding in bytes.
-  padding = GST_VIDEO_FRAME_PLANE_STRIDE (vframe, 0) - (width * bpp);
+  stride = GST_VIDEO_FRAME_PLANE_STRIDE (vframe, 0);
 
   // Initialize the array with bounding box predictions.
   bboxes = g_array_new (FALSE, FALSE, sizeof (GstMLBoxEntry));
@@ -368,16 +367,15 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   outdata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
 
   for (row = 0; row < height; row++) {
-    for (column = 0; column < width; column++) {
+    idx = row * stride;
+
+    for (column = 0; column < width; column++, idx += bpp) {
       // Calculate the source index. First calculate the row offset.
       num = GST_ML_FRAME_DIM (mlframe, 4, 3) *
           (region.y + gst_util_uint64_scale_int (row, region.h, height));
 
       // Calculate the source index. Second calculate the column offset.
       num += region.x + gst_util_uint64_scale_int (column, region.w, width);
-
-      // Calculate the destination index.
-      idx = (((row * width) + column) * bpp) + (row * padding);
 
       outdata[idx] = EXTRACT_RED_COLOR (colormask[num]);
       outdata[idx + 1] = EXTRACT_GREEN_COLOR (colormask[num]);

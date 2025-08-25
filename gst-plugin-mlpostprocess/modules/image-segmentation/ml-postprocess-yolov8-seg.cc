@@ -270,9 +270,6 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   uint32_t bpp = frame.bits *
       frame.n_components / CHAR_BIT;
 
-  // Calculate the row padding in bytes.
-  uint32_t padding = frame.planes[0].stride - (width * bpp);
-
   std::vector<uint32_t> mask_matrix_indices;
   std::vector<ObjectDetection> bboxes;
 
@@ -297,20 +294,20 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   uint8_t *outdata = frame.planes[0].data;
 
   for (uint32_t row = 0; row < height; row++) {
-    for (uint32_t column = 0; column < width; column++) {
+    uint32_t outidx = row * frame.planes[0].stride;
+
+    for (uint32_t column = 0; column < width; column++, outidx += bpp) {
       uint32_t num = tensors[4].dimensions[3] *
           (region.y + ScaleUint64Safe (row, region.height, height));
 
       num += region.x + ScaleUint64Safe (column, region.width, width);
 
-      uint32_t idx = (((row * width) + column) * bpp) + (row * padding);
-
-      outdata[idx] = EXTRACT_RED_COLOR (colormask[num]);
-      outdata[idx + 1] = EXTRACT_GREEN_COLOR (colormask[num]);
-      outdata[idx + 2] = EXTRACT_BLUE_COLOR (colormask[num]);
+      outdata[outidx] = EXTRACT_RED_COLOR (colormask[num]);
+      outdata[outidx + 1] = EXTRACT_GREEN_COLOR (colormask[num]);
+      outdata[outidx + 2] = EXTRACT_BLUE_COLOR (colormask[num]);
 
       if (bpp == 4)
-        outdata[idx + 3] = EXTRACT_ALPHA_COLOR (colormask[num]);
+        outdata[outidx + 3] = EXTRACT_ALPHA_COLOR (colormask[num]);
     }
   }
 

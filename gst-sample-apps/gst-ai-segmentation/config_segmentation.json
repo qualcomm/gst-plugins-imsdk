@@ -2,8 +2,7 @@
   "file-path": "/etc/media/video.mp4",
   "ml-framework": "tflite",
   "model": "/etc/models/deeplabv3_plus_mobilenet_quantized.tflite",
-  "labels": "/etc/labels/deeplabv3_resnet50.labels",
-  "constants": "deeplab,q-offsets=<0.0>,q-scales=<1.0>;",
+  "labels": "/etc/labels/deeplabv3_resnet50.json",
   "runtime": "dsp",
   "video-disposition":"stretch"
 }
