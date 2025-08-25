@@ -175,6 +175,20 @@ GST_API void
 gst_ml_structure_get_source_region (const GstStructure * structure,
                                     GstVideoRectangle * region);
 
+
+/**
+ * gst_ml_clamp_value:
+ * @value: float value which need to clamp between min and max
+ * @min: min clamp threshold
+ * @max: max clamp threshold
+ *
+ * Helper function for claming value between given 2 thresholds.
+ *
+ * return: clamped float resulted value
+ */
+GST_API gfloat
+gst_ml_clamp_value (gfloat value, gfloat min, gfloat max);
+
 G_END_DECLS
 
 #endif /* __GST_QTI_ML_MODULE_UTILS_H__ */
