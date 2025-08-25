@@ -20,6 +20,14 @@ DESCRIPTION = """
 This application demonstrate live camera stream using opencv api's which include color conversion and resize.
 App capture camera frame as an input using cv videocapture and convert to RGBA using downstream plugin
 and resize to user specified resolution. Resize output will display on screen.
+
+To enable Qt applications to run using the Wayland display server with EGL rendering.
+Use mentioned below recommended Environment Variable:
+
+export QT_QPA_PLATFORM=wayland-egl
+
+usecase:
+gst-camera-opencv-resize.py --inwidth 1280 --inheight 720 --outwidth 640 --outheight 480
 """
 
 DEFAULT_INPUT_WIDTH = 1280
@@ -95,14 +103,23 @@ def read_cam():
     else:
         print("Capture API failed")
 
-
+def is_linux():
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if "Linux" in line:
+                    return True
+    except FileNotFoundError:
+        return False
+    return False
 
 def main():
     """Main function to set up and run the OpenCV with color conversion and resize  plugins."""
 
     # Set the environment
-    os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
-    os.environ["WAYLAND_DISPLAY"] = "wayland-1"
+    if is_linux():
+        os.environ["XDG_RUNTIME_DIR"] = "/dev/socket/weston"
+        os.environ["WAYLAND_DISPLAY"] = "wayland-1"
 
     read_cam()
     print("App execution successful")
