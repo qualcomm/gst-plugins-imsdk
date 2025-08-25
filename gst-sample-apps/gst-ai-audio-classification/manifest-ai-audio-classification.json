@@ -8,16 +8,16 @@
     {
       "ModelName": "yamnet.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/YamNet/resolve/4167a3af6245a2b611c9f7918fddefd8b0de52dc/YamNet.tflite",
-      "LabelFile": "yamnet.labels",
-      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/yamnet.labels"
+      "LabelFile": "yamnet.json",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/yamnet.json"
     }
   ],
   "AIModelsSupportedByApplication": [
     {
       "ModelName": "yamnet.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/YamNet/resolve/4167a3af6245a2b611c9f7918fddefd8b0de52dc/YamNet.tflite",
-      "LabelFile": "yamnet.labels",
-      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/yamnet.labels"
+      "LabelFile": "yamnet.json",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/yamnet.json"
     }
   ],
   "ConfigFile": "config-audio-classification.json",

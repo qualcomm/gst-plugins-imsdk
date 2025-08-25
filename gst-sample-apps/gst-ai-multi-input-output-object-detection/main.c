@@ -45,18 +45,12 @@
  * Default models and labels path, if not provided by user
  */
 #define DEFAULT_TFLITE_YOLOV5_MODEL "/etc/models/yolov5.tflite"
-#define DEFAULT_YOLOV5_LABELS "/etc/labels/yolov5.labels"
+#define DEFAULT_YOLOV5_LABELS "/etc/labels/yolov5.json"
 
 /**
  * Default rtsp input port address, if not provided by user
  */
 #define DEFAULT_RTSP_IP_PORT "127.0.0.1:8554"
-
-/**
- * Default constants to dequantize values
- */
-#define DEFAULT_CONSTANTS \
-    "YoloV5,q-offsets=<3.0>,q-scales=<0.005047998391091824>;"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
@@ -107,7 +101,6 @@ typedef struct {
   gchar *out_file;
   gchar *ip_address;
   gchar *port_num;
-  gchar *constants;
   gint num_camera;
   gint num_file;
   gint num_rtsp;
@@ -161,11 +154,6 @@ gst_app_context_free
     g_free ((gpointer)options->labels_path);
   }
 
-  if (options->constants != (gchar *)(&DEFAULT_CONSTANTS) &&
-      options->constants != NULL) {
-    g_free ((gpointer)options->constants);
-  }
-
   if (options->ip_address != (gchar *)(&DEFAULT_IP) &&
       options->ip_address != NULL) {
     g_free ((gpointer)options->ip_address);
@@ -212,6 +200,7 @@ set_ml_params (GstElement * qtimlelement, GstElement * qtimlvdetection,
   GstStructure *delegate_options;
   GstCaps *pad_filter;
   gint module_id;
+  gchar settings[128];
 
   // Set delegate and model for AI framework
   delegate_options = gst_structure_from_string (
@@ -225,19 +214,18 @@ set_ml_params (GstElement * qtimlelement, GstElement * qtimlvdetection,
       "external-delegate-options", delegate_options, NULL);
   gst_structure_free (delegate_options);
 
-  // Set properties for ML postproc plugins- labels, module, threshold & constants
-  g_object_set (G_OBJECT (qtimlvdetection), "labels", options->labels_path, NULL);
-
+  // Set properties for ML postproc plugins- labels, module, threshold
   module_id = get_enum_value (qtimlvdetection, "module", "yolov5");
   if (module_id != -1) {
-    g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
+    snprintf (settings, 127, "{\"confidence\": %.1f}", 50.0);
+    g_object_set (G_OBJECT (qtimlvdetection),
+        "results", 10, "module", module_id,
+        "labels", options->labels_path,
+        "settings", settings, NULL);
   } else {
     g_printerr ("Module yolov5 is not available in qtimlvdetection\n");
     return FALSE;
   }
-
-  g_object_set (G_OBJECT (qtimlvdetection), "threshold", 50.0, "results", 10,
-      "constants", options->constants, NULL);
 
   // Set the properties of pad_filter for negotiation with qtivcomposer
   pad_filter = gst_caps_new_simple ("video/x-raw",
@@ -527,7 +515,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     // Create post processing plugin
     snprintf (element_name, 127, "cam_qtimlvdetection-%d", i);
     cam_qtimlvdetection[i] = gst_element_factory_make (
-        "qtimlvdetection", element_name);
+        "qtimlpostprocess", element_name);
     if (!cam_qtimlvdetection[i]) {
       g_printerr ("Failed to create cam_qtimlvdetection-%d\n", i);
       goto error_clean_elements;
@@ -613,7 +601,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     // Create post processing plugin
     snprintf (element_name, 127, "file_qtimlvdetection-%d", i);
     file_qtimlvdetection[i] = gst_element_factory_make (
-        "qtimlvdetection", element_name);
+        "qtimlpostprocess", element_name);
     if (!file_qtimlvdetection[i]) {
       g_printerr ("Failed to create file_qtimlvdetection-%d\n", i);
       goto error_clean_elements;
@@ -707,7 +695,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     // Create post processing plugin
     snprintf (element_name, 127, "rtsp_qtimlvdetection-%d", i);
     rtsp_qtimlvdetection[i] = gst_element_factory_make (
-        "qtimlvdetection", element_name);
+        "qtimlpostprocess", element_name);
     if (!rtsp_qtimlvdetection[i]) {
       g_printerr ("Failed to create rtsp_qtimlvdetection-%d\n", i);
       goto error_clean_elements;
@@ -1251,11 +1239,6 @@ parse_json (gchar * config_file, GstAppOptions * options)
         g_strdup (json_object_get_string_member (root_obj, "labels"));
   }
 
-  if (json_object_has_member (root_obj, "constants")) {
-    options->constants =
-        g_strdup (json_object_get_string_member (root_obj, "constants"));
-  }
-
   if (json_object_has_member (root_obj, "output-file-path")) {
     options->out_file =
         g_strdup (json_object_get_string_member (root_obj, "output-file-path"));
@@ -1319,7 +1302,6 @@ main (gint argc, gchar * argv[])
   //Set default IP and Port
   options.ip_address = DEFAULT_IP;
   options.port_num = DEFAULT_PORT;
-  options.constants = DEFAULT_CONSTANTS;
 
   gboolean camera_is_available = is_camera_available ();
 
@@ -1374,11 +1356,6 @@ main (gint argc, gchar * argv[])
     "  labels: path to labels file\n"
     "      This is an optional parameter and overrides default path\n"
     "      Default detection labels path: " DEFAULT_YOLOV5_LABELS "\n"
-    "  constants: \"CONSTANTS\"\n"
-    "      Constants, offsets and coefficients used by the chosen module "
-    "      for post-processing of incoming tensors.\n"
-    "      Applicable only for some modules\n"
-    "      Default detection constants: " DEFAULT_CONSTANTS "\n"
     "  output-file-path: /PATH\n"
     "      Path to save H.264 Encoded file\n"
     "  output-ip-address: valid IP address\n"

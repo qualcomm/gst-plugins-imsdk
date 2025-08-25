@@ -8,20 +8,20 @@
     {
       "ModelName": "face_attrib_net_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Facial-Attribute-Detection/resolve/228624993581944d488f232ae50174795d489661/Facial-Attribute-Detection_w8a8.tflite",
-      "LabelFile": "face_recognition.labels",
-      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/face_recognition.labels"
+      "LabelFile": "face_recognition.json",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/face_recognition.json"
     },
     {
       "ModelName": "face_det_lite_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Lightweight-Face-Detection/resolve/e80b4d954ffaaefe2958e70b27bee77e74cc8550/Lightweight-Face-Detection_w8a8.tflite",
-      "LabelFile": "face_detection.labels",
-      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/face-detection.labels"
+      "LabelFile": "face_detection.json",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/face-detection.json"
     },
     {
       "ModelName": "facemap_3dmm_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Facial-Landmark-Detection/resolve/2353f012b24fd407902e38d0c5fdd591cd2b1380/Facial-Landmark-Detection_w8a8.tflite",
-      "LabelFile": "face_landmark.labels",
-      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/face_landmark.labels"
+      "LabelFile": "face_landmark.json",
+      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/face_landmark.json"
     }
   ],
   "AIModelsSupportedByApplication": [],

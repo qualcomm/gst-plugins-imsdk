@@ -55,7 +55,7 @@
 #define DEFAULT_SNPE_MONODEPTH_MODEL "/etc/models/midasv2.dlc"
 #define DEFAULT_TFLITE_MONODEPTH_MODEL "/etc/models/midas_quantized.tflite"
 #define DEFAULT_QNN_MONODEPTH_MODEL "/etc/models/midas_quantized.bin"
-#define DEFAULT_MONODEPTH_LABELS "/etc/labels/monodepth.labels"
+#define DEFAULT_MONODEPTH_LABELS "/etc/labels/monodepth.json"
 
 /**
  * Default path of config file
@@ -81,12 +81,6 @@
 #define DEFAULT_DISPLAY_HEIGHT 1080
 
 /**
- * Default constants to dequantize values
- */
-#define DEFAULT_CONSTANTS \
-    "Midas,q-offsets=<0.0>,q-scales=<6.846843242645264>;"
-
-/**
  * Number of Queues used for buffer caching between elements
  */
 #define QUEUE_COUNT 10
@@ -109,7 +103,6 @@ typedef struct {
   const gchar *rtsp_ip_port;
   const gchar *model_path;
   const gchar *labels_path;
-  gchar *constants;
   GstCameraSourceType camera_type;
   GstModelType model_type;
   gint delegate_type;
@@ -204,11 +197,6 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options, gchar * c
   if (options->labels_path != (gchar *)(&DEFAULT_MONODEPTH_LABELS) &&
       options->labels_path != NULL) {
     g_free ((gpointer)options->labels_path);
-  }
-
-  if (options->constants != (gchar *)(&DEFAULT_CONSTANTS) &&
-      options->constants != NULL) {
-    g_free ((gpointer)options->constants);
   }
 
   if (config_file != NULL &&
@@ -437,9 +425,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     goto error_clean_elements;
   }
 
-  // Create plugin for ML postprocessing for Segmentation
-  qtimlvsegmentation = gst_element_factory_make ("qtimlvsegmentation",
-      "qtimlvsegmentation");
+  // Create plugin for ML postprocessing
+  qtimlvsegmentation = gst_element_factory_make ("qtimlpostprocess",
+      "qtimlpostprocess");
   if (!qtimlvsegmentation) {
     g_printerr ("Failed to create qtimlvSegmentation\n");
     goto error_clean_elements;
@@ -592,11 +580,6 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   if (module_id != -1) {
     g_object_set (G_OBJECT (qtimlvsegmentation),
         "module", module_id, "labels", options->labels_path, NULL);
-    if (options->model_type == GST_MODEL_TYPE_TFLITE ||
-        options->model_type == GST_MODEL_TYPE_QNN) {
-      g_object_set (G_OBJECT (qtimlvsegmentation),
-          "constants", options->constants, NULL);
-    }
   } else {
     g_printerr ("Module midas-v2 is not available in qtimlvsegmentation\n");
     goto error_clean_elements;
@@ -902,11 +885,6 @@ parse_json(gchar * config_file, GstAppOptions * options)
         g_strdup (json_object_get_string_member (root_obj, "labels"));
   }
 
-  if (json_object_has_member (root_obj, "constants")) {
-    options->constants =
-        g_strdup (json_object_get_string_member (root_obj, "constants"));
-  }
-
   if (json_object_has_member (root_obj, "runtime")) {
     const gchar* delegate =
         json_object_get_string_member (root_obj, "runtime");
@@ -952,7 +930,6 @@ main (gint argc, gchar * argv[])
   options.file_path = NULL;
   options.rtsp_ip_port = NULL;
   options.labels_path = DEFAULT_MONODEPTH_LABELS;
-  options.constants = DEFAULT_CONSTANTS;
   options.use_cpu = FALSE, options.use_gpu = FALSE, options.use_dsp = FALSE;
   options.use_file = FALSE, options.use_rtsp = FALSE, options.use_camera = FALSE;
   options.model_type = GST_MODEL_TYPE_SNPE;
@@ -1007,11 +984,6 @@ main (gint argc, gchar * argv[])
       "  labels: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
       "      Default labels path: "DEFAULT_MONODEPTH_LABELS"\n"
-      "  constants: \"CONSTANTS\"\n"
-      "      Constants, offsets and coefficients used by the chosen module \n"
-      "      for post-processing of incoming tensors.\n"
-      "      Applicable only for some modules.\n"
-      "      Default constants: \"" DEFAULT_CONSTANTS"\"\n"
       "  runtime: \"cpu\" or \"gpu\" or \"dsp\"\n"
       "      This is an optional parameter. If not filled, "
       "then default dsp runtime is selected\n",

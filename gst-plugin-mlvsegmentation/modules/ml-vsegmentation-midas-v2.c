@@ -173,7 +173,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   gfloat *indata = NULL;
   guint8 *outdata = NULL;
   GstVideoRectangle region = { 0, };
-  guint idx = 0, bpp = 0, padding = 0, color = 0;
+  guint inidx = 0, outidx = 0, bpp = 0, stride = 0, color = 0;
   gint row = 0, column = 0, width = 0, height = 0;
   gint mlwidth = 0, mlheight = 0;
   gdouble mindepth = G_MAXDOUBLE, maxdepth = G_MINDOUBLE;
@@ -190,8 +190,7 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   bpp = GST_VIDEO_FORMAT_INFO_BITS (vframe->info.finfo) *
       GST_VIDEO_INFO_N_COMPONENTS (&(vframe)->info) / CHAR_BIT;
 
-  // Calculate the row padding in bytes.
-  padding = GST_VIDEO_FRAME_PLANE_STRIDE (vframe, 0) - (width * bpp);
+  stride = GST_VIDEO_FRAME_PLANE_STRIDE (vframe, 0);
 
   indata = GFLOAT_PTR_CAST (GST_ML_FRAME_BLOCK_DATA (mlframe, 0));
   outdata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
@@ -220,8 +219,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   // Find the minimum and maximum depth values in the region mask.
   for (row = region.y; row < region.h; row++) {
     for (column = region.x; column < region.w; column++) {
-      idx = row * mlwidth + column;
-      value = indata[idx];
+      inidx = row * mlwidth + column;
+      value = indata[inidx];
 
       if (value > maxdepth)
         maxdepth = value;
@@ -232,32 +231,31 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
   }
 
   for (row = 0; row < height; row++) {
-    for (column = 0; column < width; column++) {
+    outidx = row * stride;
+
+    for (column = 0; column < width; column++, outidx += bpp) {
       GstMLLabel *label = NULL;
       guint id = G_MAXUINT8;
 
       // Calculate the source index. First calculate the row offset.
-      idx = mlwidth * (region.y + gst_util_uint64_scale_int (row, region.h, height));
+      inidx = mlwidth * (region.y + gst_util_uint64_scale_int (row, region.h, height));
 
       // Calculate the source index. Second calculate the column offset.
-      idx += region.x + gst_util_uint64_scale_int (column, region.w, width);
+      inidx += region.x + gst_util_uint64_scale_int (column, region.w, width);
 
-      value = indata[idx];
+      value = indata[inidx];
 
       id *= (value - mindepth) / (maxdepth - mindepth);
 
       label = g_hash_table_lookup (submodule->labels, GUINT_TO_POINTER (id));
       color = (label != NULL) ? label->color : 0x000000FF;
 
-      // Calculate the destination index.
-      idx = (((row * width) + column) * bpp) + (row * padding);
-
-      outdata[idx] = EXTRACT_RED_COLOR (color);
-      outdata[idx + 1] = EXTRACT_GREEN_COLOR (color);
-      outdata[idx + 2] = EXTRACT_BLUE_COLOR (color);
+      outdata[outidx] = EXTRACT_RED_COLOR (color);
+      outdata[outidx + 1] = EXTRACT_GREEN_COLOR (color);
+      outdata[outidx + 2] = EXTRACT_BLUE_COLOR (color);
 
       if (bpp == 4)
-        outdata[idx + 3] = EXTRACT_ALPHA_COLOR (color);
+        outdata[outidx + 3] = EXTRACT_ALPHA_COLOR (color);
     }
   }
 

@@ -3,10 +3,9 @@
   "face-detection-model":"/etc/models/face_det_lite_quantized.tflite",
   "face-landmark-model":"/etc/models/facemap_3dmm_quantized.tflite",
   "face-recognition-model":"/etc/models/face_attrib_net_quantized.tflite",
-  "face-detection-labels": "/etc/labels/face_detection.labels",
-  "face-landmark-labels": "/etc/labels/face_landmark.labels",
-  "face-recognition-labels": "/etc/labels/face_recognition.labels",
-  "face-detection-constants": "DET,q-offsets=<178.0, 0.0, 102.0>,q-scales=<0.03400895744562149, 0.21995200216770172, 0.1414264440536499>;",
-  "face-landmark-constants":"DMM,q-offsets=<211.0>,q-scales=<0.06002333015203476>;",
-  "face-recognition-constants":"qfr,q-offsets=<124.0, 153.0, 125.0, 133.0, 126.0, 0.0>,\nq-scales=<0.1948956549167633, 0.00791067536920309, 0.06736132502555847, 0.029019491747021675, 0.08928389847278595, 0.00390625>;"
+  "face-detection-labels": "/etc/labels/face_detection.json",
+  "face-landmark-labels": "/etc/labels/face_landmark.json",
+  "face-recognition-labels": "/etc/labels/face_recognition.json",
+  "face-recognition-settings": "/etc/labels/face_recognition_settings.json",
+  "facemap-3dmm-settings": "/etc/labels/facemap_3dmm_settings.json"
 }

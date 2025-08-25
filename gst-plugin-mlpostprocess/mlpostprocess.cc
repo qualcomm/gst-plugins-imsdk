@@ -355,7 +355,8 @@ gst_ml_post_process_module_execute (GstMLPostProcess * postprocess,
             return FALSE;
         }
 
-        tensor.name = std::string (g_quark_to_string (mlmeta->name));
+        const char *name = g_quark_to_string (mlmeta->name);
+        tensor.name = std::string (name != NULL ? name : "");
 
         // Always set batch index to 1, the postprocess will not process batching
         tensor.dimensions.push_back(1);

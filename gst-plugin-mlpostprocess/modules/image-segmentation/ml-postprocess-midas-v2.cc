@@ -115,7 +115,6 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 
   uint32_t bpp = frame.bits *
       frame.n_components / CHAR_BIT;
-  uint32_t padding = frame.planes[0].stride - (width * bpp);
 
   const float *indata = reinterpret_cast<const float *>(tensors[0].data);
   uint8_t* outdata = frame.planes[0].data;
@@ -130,9 +129,9 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
 
   for (uint32_t row = 0; row < region.height; row++) {
     for (uint32_t column = 0; column < region.width; column++) {
-      uint32_t idx = row * mlwidth + column;
+      uint32_t inidx = row * mlwidth + column;
 
-      double value = indata[idx];
+      double value = indata[inidx];
 
       if (value > maxdepth)
         maxdepth = value;
@@ -143,29 +142,28 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   }
 
   for (uint32_t row = 0; row < height; row++) {
-    for (uint32_t column = 0; column < width; column++) {
+    uint32_t outidx = row * frame.planes[0].stride;
+
+    for (uint32_t column = 0; column < width; column++, outidx += bpp) {
       uint32_t id = std::numeric_limits<uint8_t>::max();
 
-      uint32_t idx = mlwidth * (region.y +
+      uint32_t inidx = mlwidth * (region.y +
          ScaleUint64Safe(row, region.height, height));
 
-      idx += region.x + ScaleUint64Safe(column, region.width, width);
+      inidx += region.x + ScaleUint64Safe(column, region.width, width);
 
-      float value = indata[idx];
+      float value = indata[inidx];
 
       id *= (value - mindepth) / (maxdepth - mindepth);
 
       uint32_t color = labels_parser_.GetColor(id);
 
-      idx = (((row * width) + column) * bpp) + (row * padding);
-
-
-      outdata[idx] = EXTRACT_RED_COLOR (color);
-      outdata[idx + 1] = EXTRACT_GREEN_COLOR (color);
-      outdata[idx + 2] = EXTRACT_BLUE_COLOR (color);
+      outdata[outidx] = EXTRACT_RED_COLOR (color);
+      outdata[outidx + 1] = EXTRACT_GREEN_COLOR (color);
+      outdata[outidx + 2] = EXTRACT_BLUE_COLOR (color);
 
       if (bpp == 4) {
-        outdata[idx + 3] = EXTRACT_ALPHA_COLOR (color);
+        outdata[outidx + 3] = EXTRACT_ALPHA_COLOR (color);
       }
     }
   }

@@ -51,7 +51,7 @@
     "/etc/models/deeplabv3_plus_mobilenet_quantized.tflite"
 #define DEFAULT_QNN_SEGMENTATION_MODEL \
     "/etc/models/deeplabv3_plus_mobilenet_quantized.bin"
-#define DEFAULT_SEGMENTATION_LABELS "/etc/labels/deeplabv3_resnet50.labels"
+#define DEFAULT_SEGMENTATION_LABELS "/etc/labels/deeplabv3_resnet50.json"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
@@ -69,12 +69,6 @@
  * Default path of config file
  */
 #define DEFAULT_CONFIG_FILE "/etc/configs/config_segmentation.json"
-
-/**
- * Default constants to dequantize values
- */
-#define DEFAULT_CONSTANTS \
-    "deeplab,q-offsets=<0.0>,q-scales=<1.0>;"
 
 /**
  * Number of Queues used for buffer caching between elements
@@ -95,7 +89,6 @@ typedef struct
   gchar *rtsp_ip_port;
   gchar *model_path;
   gchar *labels_path;
-  gchar *constants;
   GstCameraSourceType camera_type;
   GstModelType model_type;
   GstVideoDisposition video_disposition;
@@ -141,11 +134,6 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options,
   if (options->labels_path != (gchar *) (&DEFAULT_SEGMENTATION_LABELS) &&
       options->labels_path != NULL) {
     g_free ((gpointer) options->labels_path);
-  }
-
-  if (options->constants != (gchar *) (&DEFAULT_CONSTANTS) &&
-      options->constants != NULL) {
-    g_free ((gpointer) options->constants);
   }
 
   if (config_file != NULL && config_file != (gchar *) (&DEFAULT_CONFIG_FILE)) {
@@ -384,9 +372,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     g_printerr ("Failed to create qtimlelement\n");
     goto error_clean_elements;
   }
-  // Create plugin for ML postprocessing for segmentation
-  qtimlvsegmentation = gst_element_factory_make ("qtimlvsegmentation",
-      "qtimlvsegmentation");
+  // Create plugin for ML postprocessing
+  qtimlvsegmentation = gst_element_factory_make ("qtimlpostprocess",
+      "qtimlpostprocess");
   if (!qtimlvsegmentation) {
     g_printerr ("Failed to create qtimlvsegmentation\n");
     goto error_clean_elements;
@@ -547,11 +535,6 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   if (module_id != -1) {
     g_object_set (G_OBJECT (qtimlvsegmentation),
         "module", module_id, "labels", options->labels_path, NULL);
-    if (options->model_type == GST_MODEL_TYPE_TFLITE ||
-        options->model_type == GST_MODEL_TYPE_QNN) {
-      g_object_set (G_OBJECT (qtimlvsegmentation),
-          "constants", options->constants, NULL);
-    }
   } else {
     g_printerr
         ("Module deeplab-argmax is not available in qtimlvsegmentation\n");
@@ -867,11 +850,6 @@ parse_json (gchar * config_file, GstAppOptions * options)
         g_strdup (json_object_get_string_member (root_obj, "labels"));
   }
 
-  if (json_object_has_member (root_obj, "constants")) {
-    options->constants =
-        g_strdup (json_object_get_string_member (root_obj, "constants"));
-  }
-
   if (json_object_has_member (root_obj, "runtime")) {
     const gchar *delegate = json_object_get_string_member (root_obj, "runtime");
 
@@ -917,7 +895,6 @@ main (gint argc, gchar * argv[])
   options.file_path = NULL;
   options.rtsp_ip_port = NULL;
   options.labels_path = DEFAULT_SEGMENTATION_LABELS;
-  options.constants = DEFAULT_CONSTANTS;
   options.use_cpu = FALSE, options.use_gpu = FALSE, options.use_dsp = FALSE;
   options.use_file = FALSE, options.use_rtsp = FALSE, options.use_camera =
       FALSE;
@@ -970,11 +947,7 @@ main (gint argc, gchar * argv[])
       "\n" "  labels: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
       "      Default labels path: " DEFAULT_SEGMENTATION_LABELS "\n"
-      "  constants: \"CONSTANTS\"\n"
-      "      Constants, offsets and coefficients used by the chosen module \n"
-      "      for post-processing of incoming tensors.\n"
-      "      Applicable only for some modules\n" "      Default constants: "
-      DEFAULT_CONSTANTS "\n" "  runtime: \"cpu\" or \"gpu\" or \"dsp\"\n"
+      "  runtime: \"cpu\" or \"gpu\" or \"dsp\"\n"
       "      This is an optional parameter. If not filled, "
       "      then default dsp runtime is selected\n"
       "  video-disposition: Use this parameter to provide video disposition type.\n"
