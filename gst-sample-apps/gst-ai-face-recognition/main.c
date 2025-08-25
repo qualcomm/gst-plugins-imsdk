@@ -60,29 +60,10 @@
 #define DEFAULT_TFLITE_FACE_DETECTION_MODEL "/etc/models/face_det_lite_quantized.tflite"
 #define DEFAULT_TFLITE_FACE_LANDMARK_MODEL "/etc/models/facemap_3dmm_quantized.tflite"
 #define DEFAULT_TFLITE_FACE_RECOGNITION_MODEL "/etc/models/face_attrib_net_quantized.tflite"
-#define DEFAULT_FACE_DETECTION_LABELS "/etc/labels/face_detection.labels"
-#define DEFAULT_FACE_LANDMARK_LABELS "/etc/labels/face_landmark.labels"
-#define DEFAULT_FACE_RECOGNITION_LABELS "/etc/labels/face_recognition.labels"
-
-/**
- * Default constants to dequantize values
- */
-#define DEFAULT_FACE_DETECTION_MODEL_CONSTANTS \
-    "DET,q-offsets=<178.0, 0.0, 102.0>,\
-    q-scales=<0.03400895744562149, 0.21995200216770172, 0.1414264440536499>;"
-
-/**
- * Default constants to dequantize values
- */
-#define DEFAULT_FACE_LANDMARK_MODEL_CONSTANTS \
-    "DMM,q-offsets=<211.0>,q-scales=<0.06002333015203476>;"
-
-/**
- * Default constants to dequantize values
- */
-#define DEFAULT_FACE_RECOGNITION_MODEL_CONSTANTS \
-    "qfr,q-offsets=<124.0, 153.0, 125.0, 133.0, 126.0, 0.0>,\
-    q-scales=<0.1948956549167633, 0.00791067536920309, 0.06736132502555847, 0.029019491747021675, 0.08928389847278595, 0.00390625>;"
+#define DEFAULT_FACE_DETECTION_LABELS "/etc/labels/face_detection.json"
+#define DEFAULT_FACE_RECOGNITION_LABELS "/etc/labels/face_recognition.json"
+#define DEFAULT_FACEMAP_3DMM_SETTINGS "/etc/labels/facemap_3dmm_settings.json"
+#define DEFAULT_FACE_RECOGNITION_SETTINGS "/etc/labels/face_recognition_settings.json"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
@@ -168,11 +149,9 @@ typedef struct
   gchar *face_landmark_model_path;
   gchar *face_recognition_model_path;
   gchar *face_detection_labels_path;
-  gchar *face_landmark_labels_path;
   gchar *face_recognition_labels_path;
-  gchar *face_detection_model_constants;
-  gchar *face_landmark_model_constants;
-  gchar *face_recognition_model_constants;
+  gchar *facemap_3dmm_settings;
+  gchar *face_recognition_settings;
   GstCameraSourceType camera_type;
   GstModelType model_type;
   gboolean use_rtsp;
@@ -222,34 +201,22 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options,
     g_free ((gpointer) options->face_detection_labels_path);
   }
 
-  if (options->face_landmark_labels_path !=
-      (gchar *) (&DEFAULT_FACE_LANDMARK_LABELS)
-      && options->face_landmark_labels_path != NULL) {
-    g_free ((gpointer) options->face_landmark_labels_path);
-  }
-
   if (options->face_recognition_labels_path !=
       (gchar *) (&DEFAULT_FACE_RECOGNITION_LABELS)
       && options->face_recognition_labels_path != NULL) {
     g_free ((gpointer) options->face_recognition_labels_path);
   }
 
-  if (options->face_detection_model_constants !=
-      (gchar *) (&DEFAULT_FACE_DETECTION_MODEL_CONSTANTS)
-      && options->face_detection_model_constants != NULL) {
-    g_free ((gpointer) options->face_detection_model_constants);
+  if (options->face_recognition_settings !=
+      (gchar *) (&DEFAULT_FACE_RECOGNITION_SETTINGS)
+      && options->face_recognition_settings != NULL) {
+    g_free ((gpointer) options->face_recognition_settings);
   }
 
-  if (options->face_landmark_model_constants !=
-      (gchar *) (&DEFAULT_FACE_LANDMARK_MODEL_CONSTANTS)
-      && options->face_landmark_model_constants != NULL) {
-    g_free ((gpointer) options->face_landmark_model_constants);
-  }
-
-  if (options->face_recognition_model_constants !=
-      (gchar *) (&DEFAULT_FACE_RECOGNITION_MODEL_CONSTANTS)
-      && options->face_recognition_model_constants != NULL) {
-    g_free ((gpointer) options->face_recognition_model_constants);
+  if (options->facemap_3dmm_settings !=
+      (gchar *) (&DEFAULT_FACEMAP_3DMM_SETTINGS)
+      && options->facemap_3dmm_settings != NULL) {
+    g_free ((gpointer) options->facemap_3dmm_settings);
   }
 
   if (appctx->pipeline != NULL) {
@@ -311,7 +278,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstCaps *pad_filter = NULL, *filtercaps = NULL;
   GstStructure *delegate_options = NULL;
   gboolean ret = FALSE;
-  gchar element_name[128];
+  gchar element_name[128], settings[128];
   gint primary_camera_preview_width = PRIMARY_CAMERA_PREVIEW_OUTPUT_WIDTH;
   gint primary_camera_preview_height = PRIMARY_CAMERA_PREVIEW_OUTPUT_HEIGHT;
   gint secondary_camera_preview_width = SECONDARY_CAMERA_PREVIEW_OUTPUT_WIDTH;
@@ -429,20 +396,20 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   // Create plugin for ML postprocessing for Detection
-  qtimlvdetection = gst_element_factory_make ("qtimlvdetection",
+  qtimlvdetection = gst_element_factory_make ("qtimlpostprocess",
       "qtimlvdetection");
   if (!qtimlvdetection) {
     g_printerr ("Failed to create qtimlvdetection \n");
     goto error_clean_elements;
   }
   // Create plugin for ML postprocessing for Pose estimation
-  qtimlvpose = gst_element_factory_make ("qtimlvpose", "qtimlvpose");
+  qtimlvpose = gst_element_factory_make ("qtimlpostprocess", "qtimlvpose");
   if (!qtimlvpose) {
     g_printerr ("Failed to create qtimlvpose \n");
     goto error_clean_elements;
   }
   // Create plugin for ML postprocessing for Classification
-  qtimlvclassification = gst_element_factory_make ("qtimlvclassification",
+  qtimlvclassification = gst_element_factory_make ("qtimlpostprocess",
       "qtimlvclassification");
   if (!qtimlvclassification) {
     g_printerr ("Failed to create qtimlvclassification \n");
@@ -531,11 +498,12 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   // 2.5 set the property of qtimlvtetection
   module_id = get_enum_value (qtimlvdetection, "module", "qfd");
   if (module_id != -1) {
+    snprintf (settings, 127, "{\"confidence\": %.1f}", DEFAULT_DETECTION_THRESHOLD_VALUE);
     g_object_set (G_OBJECT (qtimlvdetection),
-        "threshold", DEFAULT_DETECTION_THRESHOLD_VALUE, "results", 6,
-        "stabilization", FALSE, "module", module_id, "labels",
-        options->face_detection_labels_path, "constants",
-        options->face_detection_model_constants, NULL);
+        "results", 6,
+        "module", module_id, "labels",
+        options->face_detection_labels_path,
+        "settings", settings, NULL);
   } else {
     g_printerr ("Module qfd is not available in qtimlvdetection.\n");
     goto error_clean_elements;
@@ -544,9 +512,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   module_id = get_enum_value (qtimlvpose, "module", "lite-3dmm");
   if (module_id != -1) {
     g_object_set (G_OBJECT (qtimlvpose),
-        "threshold", DEFAULT_POSE_THRESHOLD_VALUE, "results", 6,
-        "module", module_id, "labels", options->face_landmark_labels_path,
-        "constants", options->face_landmark_model_constants, NULL);
+        "results", 6,
+        "module", module_id,
+        "settings", options->facemap_3dmm_settings, NULL);
   } else {
     g_printerr ("Module lite-3dmm is not available in qtimlvpose.\n");
     goto error_clean_elements;
@@ -555,9 +523,9 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   module_id = get_enum_value (qtimlvclassification, "module", "qfr");
   if (module_id != -1) {
     g_object_set (G_OBJECT (qtimlvclassification),
-        "threshold", DEFAULT_CLASSIFICATION_THRESHOLD_VALUE, "results", 6,
+        "results", 6,
         "module", module_id, "labels", options->face_recognition_labels_path,
-        "constants", options->face_recognition_model_constants, NULL);
+        "settings", options->face_recognition_settings, NULL);
   } else {
     g_printerr ("Module qfr is not available in qtimlvclassification.\n");
     goto error_clean_elements;
@@ -879,34 +847,22 @@ parse_json (gchar * config_file, GstAppOptions * options)
             "face-detection-labels"));
   }
 
-  if (json_object_has_member (root_obj, "face-landmark-labels")) {
-    options->face_landmark_labels_path =
-        g_strdup (json_object_get_string_member (root_obj,
-            "face-landmark-labels"));
-  }
-
   if (json_object_has_member (root_obj, "face-recognition-labels")) {
     options->face_recognition_labels_path =
         g_strdup (json_object_get_string_member (root_obj,
             "face-recognition-labels"));
   }
 
-  if (json_object_has_member (root_obj, "face-detection-constants")) {
-    options->face_detection_model_constants =
+  if (json_object_has_member (root_obj, "face-recognition-settings")) {
+    options->face_recognition_settings =
         g_strdup (json_object_get_string_member (root_obj,
-            "face-detection-constants"));
+            "face-recognition-settings"));
   }
 
-  if (json_object_has_member (root_obj, "face-landmark-constants")) {
-    options->face_landmark_model_constants =
+  if (json_object_has_member (root_obj, "facemap-3dmm-settings")) {
+    options->facemap_3dmm_settings =
         g_strdup (json_object_get_string_member (root_obj,
-            "face-landmark-constants"));
-  }
-
-  if (json_object_has_member (root_obj, "face-recognition-constants")) {
-    options->face_recognition_model_constants =
-        g_strdup (json_object_get_string_member (root_obj,
-            "face-recognition-constants"));
+            "facemap-3dmm-settings"));
   }
 
   g_object_unref (parser);
@@ -938,13 +894,9 @@ main (gint argc, gchar * argv[])
   options.face_landmark_model_path = NULL;
   options.face_recognition_model_path = NULL;
   options.face_detection_labels_path = DEFAULT_FACE_DETECTION_LABELS;
-  options.face_landmark_labels_path = DEFAULT_FACE_LANDMARK_LABELS;
   options.face_recognition_labels_path = DEFAULT_FACE_RECOGNITION_LABELS;
-  options.face_detection_model_constants =
-      DEFAULT_FACE_DETECTION_MODEL_CONSTANTS;
-  options.face_landmark_model_constants = DEFAULT_FACE_LANDMARK_MODEL_CONSTANTS;
-  options.face_recognition_model_constants =
-      DEFAULT_FACE_RECOGNITION_MODEL_CONSTANTS;
+  options.facemap_3dmm_settings = DEFAULT_FACEMAP_3DMM_SETTINGS;
+  options.face_recognition_settings = DEFAULT_FACE_RECOGNITION_SETTINGS;
   options.use_rtsp = FALSE, options.use_camera = FALSE;
   options.model_type = GST_MODEL_TYPE_TFLITE;
   options.camera_type = GST_CAMERA_TYPE_NONE;
@@ -1009,31 +961,17 @@ main (gint argc, gchar * argv[])
       "  Face detection labels: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
       "      Default Face detection labels path: " DEFAULT_FACE_DETECTION_LABELS
-      "\n" "  Face landmark labels: \"/PATH\"\n"
-      "      This is an optional parameter and overrides default path\n"
-      "      Default Face landmark labels path: " DEFAULT_FACE_LANDMARK_LABELS
       "\n" "  Face recognition labels: \"/PATH\"\n"
       "      This is an optional parameter and overrides default path\n"
       "      Default Face recognition labels path: "
       DEFAULT_FACE_RECOGNITION_LABELS "\n"
-      "  Face detection constants: \"CONSTANTS\"\n"
-      "      Constants, offsets and coefficients used by the chosen module\n"
-      "      for post-processing of incoming tensors.\n"
-      "      Applicable only for some modules.\n"
-      "      Default Face detection constants: "
-      DEFAULT_FACE_DETECTION_MODEL_CONSTANTS "\n"
-      "  Face landmark constants: \"CONSTANTS\"\n"
-      "      Constants, offsets and coefficients used by the chosen module\n"
-      "      for post-processing of incoming tensors.\n"
-      "      Applicable only for some modules.\n"
-      "      Default Face landmark constants: "
-      DEFAULT_FACE_LANDMARK_MODEL_CONSTANTS "\n"
-      "  Face recognition constants: \"CONSTANTS\"\n"
-      "      Constants, offsets and coefficients used by the chosen module\n"
-      "      for post-processing of incoming tensors.\n"
-      "      Applicable only for some modules.\n"
-      "      Default Face recognition constants: "
-      DEFAULT_FACE_RECOGNITION_MODEL_CONSTANTS "\n", app_name,
+      "  Face map settings: \"/PATH\"\n"
+      "      This is an optional parameter and overrides default path\n"
+      "      Default Face map settings path: " DEFAULT_FACEMAP_3DMM_SETTINGS
+      "\n" "  Face recognition settings: \"/PATH\"\n"
+      "      This is an optional parameter and overrides default path\n"
+      "      Default Face recognition settings path: " 
+      DEFAULT_FACE_RECOGNITION_SETTINGS, app_name,
       DEFAULT_CONFIG_FILE, camera_description);
   help_description[8191] = '\0';
 
@@ -1191,13 +1129,6 @@ main (gint argc, gchar * argv[])
     return -EINVAL;
   }
 
-  if (!file_exists (options.face_landmark_labels_path)) {
-    g_print ("Invalid labels file path: %s\n",
-        options.face_landmark_labels_path);
-    gst_app_context_free (&appctx, &options, config_file);
-    return -EINVAL;
-  }
-
   if (!file_exists (options.face_recognition_labels_path)) {
     g_print ("Invalid labels file path: %s\n",
         options.face_recognition_labels_path);
@@ -1205,11 +1136,25 @@ main (gint argc, gchar * argv[])
     return -EINVAL;
   }
 
+  if (!file_exists (options.facemap_3dmm_settings)) {
+    g_print ("Invalid settings file path: %s\n",
+        options.facemap_3dmm_settings);
+    gst_app_context_free (&appctx, &options, config_file);
+    return -EINVAL;
+  }
+
+  if (!file_exists (options.face_recognition_settings)) {
+    g_print ("Invalid settings file path: %s\n",
+        options.face_recognition_settings);
+    gst_app_context_free (&appctx, &options, config_file);
+    return -EINVAL;
+  }
+
   g_print ("Running app with Face detection model: %s and labels: %s\n",
       options.face_detection_model_path, options.face_detection_labels_path);
 
-  g_print ("Running app with Face landmark model: %s and labels: %s\n",
-      options.face_landmark_model_path, options.face_landmark_labels_path);
+  g_print ("Running app with Face landmark model: %s and settings: %s\n",
+      options.face_landmark_model_path, options.facemap_3dmm_settings);
 
   g_print ("Running app with Face recognition model: %s and labels: %s\n",
       options.face_recognition_model_path,

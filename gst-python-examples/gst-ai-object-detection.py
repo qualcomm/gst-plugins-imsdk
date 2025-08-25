@@ -147,9 +147,6 @@ def parse_arguments():
     parser.add_argument('-l', '--labels', type=str, required=True,
                         help='Path to the labels file.')
 
-    parser.add_argument('-k', '--constants', type=str,
-                        help='Constants, offsets and coefficients used by the module for post-processing of incoming tensors.')
-
     parser.add_argument('--layers', type=str, help='Comma-separated list of layer names.')
 
     parser.add_argument('-p', '--threshold', type=float, default=75.0,
@@ -169,8 +166,6 @@ def parse_arguments():
     # Validate arguments based on ml-framework
     if args.ml_framework == SNPE and not args.layers:
         parser.error("--layers is required when --ml-framework is 1 (SNPE)")
-    if args.ml_framework == TFLITE and not args.constants:
-        parser.error("--constants is required when --ml-framework is 2 (TFLite)")
 
     # Convert the layers argument to a list if provided
     if args.layers:
@@ -261,7 +256,6 @@ def set_tflite_properties(elements, args):
         elements["ml"].set_property("external-delegate-path", DELEGATE_PATH)
         elements["ml"].set_property("external-delegate-options", delegate_options)
 
-    elements["detection"].set_property("constants", args.constants)
 
 
 def create_link_orders(args):
@@ -300,7 +294,7 @@ def create_pipeline(pipeline, args):
         "overlay"   : create_element("qtivoverlay", "overlay"),
         "converter" : create_element("qtimlvconverter", "converter"),
         "ml"        : create_element(ML_PLUGINS.get(args.ml_framework), "ml"),
-        "detection" : create_element("qtimlvdetection", "detection"),
+        "detection" : create_element("qtimlpostprocess", "detection"),
         "capsfilter": create_element("capsfilter", "capsfilter")
     }
 
@@ -323,7 +317,8 @@ def create_pipeline(pipeline, args):
     elif args.ml_framework == TFLITE:
         set_tflite_properties(elements, args)
 
-    elements["detection"].set_property("threshold", args.threshold)
+    settings = f'{{"confidence": {args.threshold:.1f}}}'
+    elements["detection"].set_property("settings", settings)
     elements["detection"].set_property("results", 10)
     elements["detection"].set_property("module", args.module)
     elements["detection"].set_property("labels", args.labels)
