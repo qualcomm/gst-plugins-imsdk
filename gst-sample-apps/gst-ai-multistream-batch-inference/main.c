@@ -69,9 +69,6 @@
           # Labels path
           "labels-path":"/etc/labels/deeplabv3_resnet50.labels",
 
-          # Constant values from model
-          "constants":"deeplab,q-offsets=<0.0>,q-scales=<1.0>;",
-
           # Post process plugin qtimlvsegmentation/qtimlvdetection
           "post-process-plugin": "qtimlvsegmentation"
         }
@@ -122,7 +119,6 @@ typedef struct {
   gchar *model_path;
   gchar *labels_path;
   gchar *post_process;
-  gchar *constants;
   gchar **snpe_layers;
   gchar *file_path[DEFAULT_BATCH_SIZE];
   GstModelType model_type;
@@ -202,7 +198,7 @@ set_ml_params (GstElement * qtimlpostprocess,
   const gchar *module = NULL;
   GstStructure *delegate_options = NULL;
   gint module_id;
-  gchar delegate_string[128];
+  gchar delegate_string[128], settings[128];
   GValue layers = G_VALUE_INIT;
   GValue value = G_VALUE_INIT;
 
@@ -221,8 +217,6 @@ set_ml_params (GstElement * qtimlpostprocess,
     g_object_set (G_OBJECT (qtielement),
         "external-delegate-options", delegate_options, NULL);
     gst_structure_free (delegate_options);
-    g_object_set (G_OBJECT (qtimlpostprocess),
-        "constants", options.constants, NULL);
   } else if (options.model_type == GST_MODEL_TYPE_SNPE) {
     if (g_strcmp0 (options.post_process, "qtimlvdetection") == 0 ) {
       g_value_init (&layers, GST_TYPE_ARRAY);
@@ -252,7 +246,7 @@ set_ml_params (GstElement * qtimlpostprocess,
     return FALSE;
   }
 
-  // Set properties for ML postproc plugins- labels, module, threshold & constants
+  // Set properties for ML postproc plugins- labels, module, threshold
   g_object_set (G_OBJECT (qtimlpostprocess),
       "labels", options.labels_path, NULL);
   if (g_strcmp0 (options.post_process, "qtimlvsegmentation") == 0) {
@@ -281,8 +275,8 @@ set_ml_params (GstElement * qtimlpostprocess,
     // set qtimlvdetection properties
     g_object_set (G_OBJECT (qtimlpostprocess),
         "labels", options.labels_path, NULL);
-    g_object_set (G_OBJECT (qtimlpostprocess), "threshold",
-      DEFAULT_THRESHOLD_VALUE, NULL);
+    snprintf (settings, 127, "{\"confidence\": %.1f}", DEFAULT_THRESHOLD_VALUE);
+    g_object_set (G_OBJECT (qtimlpostprocess), "settings", settings, NULL);
     g_object_set (G_OBJECT (qtimlpostprocess), "results", 10, NULL);
     pad_filter = gst_caps_new_simple ("video/x-raw",
         "format", G_TYPE_STRING, "BGRA",
@@ -463,10 +457,6 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions options[],
         g_free ((gpointer)options[i].snpe_layers[j]);
       }
       g_free ((gpointer) options[i].snpe_layers);
-    }
-    if (options[i].constants != NULL) {
-      g_free (options[i].constants);
-      options[i].constants = NULL;
     }
     if (options[i].post_process != NULL) {
       g_free (options[i].post_process);
@@ -649,7 +639,7 @@ create_pipe (GstAppContext * appctx, const GstAppOptions  options[],
       snprintf (element_name, 127, "file_qtimlpostprocess-%d",
           i * DEFAULT_BATCH_SIZE + j);
       file_qtimlpostprocess[i * DEFAULT_BATCH_SIZE + j] =
-          gst_element_factory_make (options[i].post_process, element_name);
+          gst_element_factory_make ("qtimlpostprocess", element_name);
       if (!file_qtimlpostprocess[i * DEFAULT_BATCH_SIZE + j]) {
         g_printerr ("Failed to create file_qtimlpostprocess-%d\n", i);
         goto error_clean_elements;
@@ -1114,9 +1104,6 @@ main (gint argc, gchar * argv[])
       "      Set output layers for SNPE model.\n"
       "      Example:\n"
       "      [\"/heads/Mul\", \"/heads/Sigmoid\"]\n"
-      "  constants: \"CONSTANTS\"\n"
-      "      Constants, offsets and coefficients used by the chosen module \n"
-      "      for post-processing of incoming tensors.\n"
       "  output-type: It takes either wayland or filesink as output\n"
       "  out-file: Path of output filename\n",
       app_name, DEFAULT_CONFIG_FILE);
@@ -1238,21 +1225,24 @@ main (gint argc, gchar * argv[])
       return -1;
     }
 
-    snpe_layers = json_object_get_array_member (info, "snpe-layers");
-    options[id].snpe_layer_count = json_array_get_length (snpe_layers);
-    options[id].snpe_layers = (gchar **) g_malloc (
-        sizeof (gchar **) * options[id].snpe_layer_count);
-    for (gint i = 0; i < options[id].snpe_layer_count; i++) {
-      options[id].snpe_layers[i] =
-          g_strdup (json_array_get_string_element (snpe_layers, i));
+    // Check if snpe-layers exists before accessing it
+    if (json_object_has_member(info, "snpe-layers")) {
+      snpe_layers = json_object_get_array_member (info, "snpe-layers");
+      options[id].snpe_layer_count = json_array_get_length (snpe_layers);
+      options[id].snpe_layers = (gchar **) g_malloc (
+          sizeof (gchar **) * options[id].snpe_layer_count);
+      for (gint i = 0; i < options[id].snpe_layer_count; i++) {
+        options[id].snpe_layers[i] =
+            g_strdup (json_array_get_string_element (snpe_layers, i));
+      }
+    } else {
+      options[id].snpe_layer_count = 0;
+      options[id].snpe_layers = NULL;
     }
 
-    options[id].constants =
-        g_strdup (json_object_get_string_member (info, "constants"));
     g_print ("Model Path: %s\n", options[id].model_path);
     g_print ("Labels path: %s\n", options[id].labels_path);
     g_print ("Post process: %s\n", options[id].post_process);
-    g_print ("Constants: %s\n\n", options[id].constants);
     if ((g_strcmp0 (options[id].post_process, "qtimlvsegmentation") != 0) &&
         (g_strcmp0 (options[id].post_process, "qtimlvdetection") != 0)) {
       g_printerr ("Only qtimlvsegmentation and "

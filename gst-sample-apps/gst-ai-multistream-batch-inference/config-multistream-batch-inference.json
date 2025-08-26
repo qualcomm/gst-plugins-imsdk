@@ -15,8 +15,7 @@
       ],
       "mlframework":"tflite",
       "model-path":"/etc/models/yolov8_det_quantized.tflite",
-      "labels-path":"/etc/labels/yolov8.labels",
-      "constants":"yolov8,q-offsets=<24.0, 0.0, 0.0>,q-scales=<3.146998405456543, 0.003778052283450961, 1.0>;",
+      "labels-path":"/etc/labels/yolov8.json",
       "post-process-plugin": "qtimlvdetection"
     }
   ]
