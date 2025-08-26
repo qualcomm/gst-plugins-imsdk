@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -12,10 +12,10 @@
  * from camera input using Qualcomm GStreamer plugins.
  *
  * Usage:
- * gst-smartcodec-example --width=1920 --height=1080
+ * gst-ai-smartcodec-example --width=1920 --height=1080
  *
  * Help:
- * gst-smartcodec-example --help
+ * gst-ai-smartcodec-example --help
  *
  * *******************************************************************
  * Pipeline for camera stream:
@@ -28,21 +28,13 @@
 
 #include <glib-unix.h>
 
+#include <json-glib/json-glib.h>
 #include <gst/gst.h>
 #include <gst/sampleapps/gst_sample_apps_utils.h>
 
-#define DEFAULT_OUTPUT_FILENAME      "/etc/media/video.mp4"
-#define DEFAULT_WIDTH                1280
-#define DEFAULT_HEIGHT               720
 #define NOISE_REDUCTION_HIGH_QUALITY 2
 #define STREAM_TYPE_PREVIEW          1   // camera preview stream
 #define STREAM_TYPE_VIDEO          0
-#define DEFAULT_MODEL                "/etc/models/object_detection.tflite"
-#define DEFAULT_THRESHOLD            50.0
-#define DEFAULT_RESULTS              5
-#define DEFAULT_LABELS               "/etc/labels/coco_labels.txt"
-#define DEFAULT_CONSTANTS_YOLOV8 \
-  "YOLOv8,q-offsets=<21.0, 0.0, 0.0>,q-scales=<3.0546178817749023, 0.003793874057009816, 1.0>;"
 #define QUEUE_COUNT 6
 
 #define GST_APP_SUMMARY                                                   \
@@ -51,10 +43,12 @@
   " using Qualcomm SmartCodec plugins"                                    \
   "\nCommand For camera source :\n"                                       \
   "gst-ai-smartcodec-example -w 1920 -h 1080 -o video.mp4 "               \
-  "-m /etc/models/YOLOv8-Detection-Quantized.tflite "                     \
+  "-m /etc/models/yolov8_det_quantized.tflite "                           \
   "-l /etc/labels/coco_labels.txt \n"                                     \
   "\nOutput :\n"                                                          \
   " Upon execution,application will generates output as encoded mp4 file"
+
+#define DEFAULT_CONFIG_FILE "/etc/configs/config_smartcodec.json"
 
 // Structure to hold the application context
 struct _GstSmartCodecContext
@@ -66,9 +60,58 @@ struct _GstSmartCodecContext
   gchar *labels_path;
   gint width;
   gint height;
+  gfloat threshold;
+  gint results;
 };
 
 typedef struct _GstSmartCodecContext GstSmartCodecContext;
+
+gboolean load_config_from_json (GstSmartCodecContext * ctx,
+    const gchar * config_file);
+
+gboolean
+load_config_from_json (GstSmartCodecContext * ctx, const gchar * config_file)
+{
+  JsonParser *parser = json_parser_new ();
+  GError *error = NULL;
+
+  if (!json_parser_load_from_file (parser, config_file, &error)) {
+    g_printerr ("Failed to load config file: %s\n", error->message);
+    g_error_free (error);
+    g_object_unref (parser);
+    return FALSE;
+  }
+
+  JsonNode *root = json_parser_get_root (parser);
+  JsonObject *object = json_node_get_object (root);
+
+  const gchar *required_keys[] = {
+    "width", "height", "output_file", "model", "labels", "threshold", "results"
+  };
+
+
+  for (size_t i = 0; i < sizeof (required_keys) / sizeof (required_keys[0]);
+      i++) {
+    if (!json_object_has_member (object, required_keys[i])) {
+      g_printerr ("Missing required config key: %s\n", required_keys[i]);
+      g_object_unref (parser);
+      return FALSE;
+    }
+  }
+
+  ctx->width = json_object_get_int_member (object, "width");
+  ctx->height = json_object_get_int_member (object, "height");
+  ctx->output_file =
+      g_strdup (json_object_get_string_member (object, "output_file"));
+  ctx->model_path = g_strdup (json_object_get_string_member (object, "model"));
+  ctx->labels_path =
+      g_strdup (json_object_get_string_member (object, "labels"));
+  ctx->threshold = json_object_get_double_member (object, "threshold");
+  ctx->results = json_object_get_int_member (object, "results");
+
+  g_object_unref (parser);
+  return TRUE;
+}
 
 /**
  * Create and initialize application context:
@@ -91,11 +134,13 @@ gst_app_context_new ()
   // Initialize the context fields
   ctx->pipeline = NULL;
   ctx->mloop = NULL;
-  ctx->width = DEFAULT_WIDTH;
-  ctx->height = DEFAULT_HEIGHT;
-  ctx->model_path = DEFAULT_MODEL;
-  ctx->labels_path = DEFAULT_LABELS;
-  ctx->output_file = NULL;
+
+  if (!load_config_from_json (ctx, DEFAULT_CONFIG_FILE)) {
+    g_printerr ("Failed to load config. Exiting.\n");
+    g_free (ctx);
+    return NULL;
+}
+
   return ctx;
 }
 
@@ -120,10 +165,10 @@ gst_app_context_free (GstSmartCodecContext * appctx)
   }
 
   if (appctx->output_file != NULL)
-    g_free ((gpointer)appctx->output_file);
+    g_free ((gpointer) appctx->output_file);
 
   if (appctx->model_path != NULL)
-    g_free ((gpointer)appctx->model_path);
+    g_free ((gpointer) appctx->model_path);
 
   if (appctx->labels_path != NULL)
     g_free (appctx->labels_path);
@@ -146,8 +191,8 @@ create_pipe (GstSmartCodecContext * appctx)
 {
   GstElement *qtiqmmfsrc, *capsfilter_ctrl, *capsfilter_enc, *qtismartvencbin,
       *tee, *h264parse, *mp4mux,
-      *filesink, *queue_ctrl, *queue_sc, *queue_tee, *queue_ml, *detection_filter,
-      *qtimlvconverter, *qtimlelement, *qtimlvdetection,
+      *filesink, *queue_ctrl, *queue_sc, *queue_tee, *queue_ml,
+      *detection_filter, *qtimlvconverter, *qtimlelement, *qtimlvdetection,
       *queue[QUEUE_COUNT];
   GstCaps *filtercaps, *pad_filter;
   GstPad *qmmf_pad, *pqmmf_pad, *sc_src, *ctrl_src, *sc_sink, *ctrl_sink;
@@ -166,8 +211,8 @@ create_pipe (GstSmartCodecContext * appctx)
   qtimlvconverter = gst_element_factory_make ("qtimlvconverter",
       "qtimlvconverter");
   qtimlelement = gst_element_factory_make ("qtimltflite", "qtimlelement");
-  qtimlvdetection = gst_element_factory_make ("qtimlvdetection",
-      "qtimlvdetection");
+  qtimlvdetection = gst_element_factory_make ("qtimlpostprocess",
+      "qtimlpostprocess");
 
   // Create h264parse element for parsing the stream
   h264parse = gst_element_factory_make ("h264parse", "h264parse");
@@ -215,30 +260,33 @@ create_pipe (GstSmartCodecContext * appctx)
   g_print ("Using DSP delegate\n");
 
   // Set delegate and model for AI framework
-  delegate_options = gst_structure_from_string (
-    "QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,\
+  delegate_options = gst_structure_from_string ("QNNExternalDelegate,backend_type=htp,htp_device_id=(string)0,\
     htp_performance_mode=(string)2,htp_precision=(string)1;",
-    NULL);
-  g_object_set (G_OBJECT (qtimlelement), "model", appctx->model_path, "delegate",
-      GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
+      NULL);
+  g_object_set (G_OBJECT (qtimlelement), "model", appctx->model_path,
+      "delegate", GST_ML_TFLITE_DELEGATE_EXTERNAL, NULL);
   g_object_set (G_OBJECT (qtimlelement), "external_delegate_path",
       "libQnnTFLiteDelegate.so", NULL);
   g_object_set (G_OBJECT (qtimlelement), "external_delegate_options",
       delegate_options, NULL);
   gst_structure_free (delegate_options);
 
+  gchar settings[128];
+  snprintf (settings, 127, "{\"confidence\": %.1f, \"results\": %d}",
+      appctx->threshold, appctx->results);
+  g_object_set (G_OBJECT (qtimlvdetection), "settings", settings, NULL);
+
   // set qtimlvdetection properties
-  g_object_set (G_OBJECT (qtimlvdetection), "labels", appctx->labels_path, NULL);
+  g_object_set (G_OBJECT (qtimlvdetection), "labels", appctx->labels_path,
+      NULL);
   module_id = get_enum_value (qtimlvdetection, "module", "yolov8");
   if (module_id != -1) {
     g_object_set (G_OBJECT (qtimlvdetection), "module", module_id, NULL);
   } else {
     g_printerr ("Module yolov8 is not available in qtimlvdetection\n");
   }
-  g_object_set (G_OBJECT (qtimlvdetection), "threshold", DEFAULT_THRESHOLD, NULL);
-  g_object_set (G_OBJECT (qtimlvdetection), "results", DEFAULT_RESULTS, NULL);
-  g_object_set (G_OBJECT (qtimlvdetection), "constants", DEFAULT_CONSTANTS_YOLOV8,
-      NULL);
+
+  g_object_set (G_OBJECT (qtimlvdetection), "results", appctx->results, NULL);
 
   // Set the properties of pad_filter for detection
   pad_filter = gst_caps_new_simple ("text/x-raw", NULL, NULL);
@@ -252,7 +300,7 @@ create_pipe (GstSmartCodecContext * appctx)
   g_object_set (G_OBJECT (filesink), "location", appctx->output_file, NULL);
 
   // Create first source element set the first camera
-    qtiqmmfsrc = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
+  qtiqmmfsrc = gst_element_factory_make ("qtiqmmfsrc", "qtiqmmfsrc");
 
   // Create capsfilter element for the encoder to set properties
   capsfilter_enc = gst_element_factory_make ("capsfilter", "capsfilter_enc");
@@ -264,17 +312,20 @@ create_pipe (GstSmartCodecContext * appctx)
   }
 
   // Configure the capsfilter_ctrl stream caps
-  filtercaps = gst_caps_new_simple ("video/x-raw", "format", G_TYPE_STRING,
-      "NV12_Q08C", "width", G_TYPE_INT, 640, "height", G_TYPE_INT, 480, "framerate",
-      GST_TYPE_FRACTION, 15, 1, NULL);
+  filtercaps = gst_caps_new_simple ("video/x-raw",
+      "format", G_TYPE_STRING, "NV12_Q08C",
+      "width", G_TYPE_INT, 640,
+      "height", G_TYPE_INT, 480, "framerate", GST_TYPE_FRACTION, 15, 1, NULL);
 
   g_object_set (G_OBJECT (capsfilter_ctrl), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
 
   // Configure the encode stream caps
-  filtercaps = gst_caps_new_simple ("video/x-raw", "format", G_TYPE_STRING,
-      "NV12_Q08C", "width", G_TYPE_INT, appctx->width, "height", G_TYPE_INT,
-      appctx->height, "framerate", GST_TYPE_FRACTION, 30, 1, NULL);
+  filtercaps = gst_caps_new_simple ("video/x-raw",
+      "format", G_TYPE_STRING, "NV12_Q08C",
+      "width", G_TYPE_INT, appctx->width,
+      "height", G_TYPE_INT, appctx->height,
+      "framerate", GST_TYPE_FRACTION, 30, 1, NULL);
 
   g_object_set (G_OBJECT (capsfilter_enc), "caps", filtercaps, NULL);
   gst_caps_unref (filtercaps);
@@ -283,9 +334,9 @@ create_pipe (GstSmartCodecContext * appctx)
   GstElementClass *qtiqmmfsrc_klass = GST_ELEMENT_GET_CLASS (qtiqmmfsrc);
 
   // Get qmmfsrc pad template
-  GstPadTemplate *
-      qtiqmmfsrc_template = gst_element_class_get_pad_template (qtiqmmfsrc_klass,
-          "video_%u");
+  GstPadTemplate *qtiqmmfsrc_template =
+      gst_element_class_get_pad_template (qtiqmmfsrc_klass,
+      "video_%u");
 
   // Request a pad from qmmfsrc
   qmmf_pad = gst_element_request_pad (qtiqmmfsrc, qtiqmmfsrc_template,
@@ -310,9 +361,9 @@ create_pipe (GstSmartCodecContext * appctx)
 
   g_object_set (G_OBJECT (pqmmf_pad), "type", STREAM_TYPE_PREVIEW, NULL);
   g_object_set (G_OBJECT (qmmf_pad), "type", STREAM_TYPE_VIDEO, NULL);
-  //g_object_set (G_OBJECT (pqmmf_pad), "extra-buffers", 20, NULL);
   g_object_set (G_OBJECT (qmmf_pad), "extra-buffers", 20, NULL);
-  g_object_set (G_OBJECT (qtiqmmfsrc), "noise-reduction", NOISE_REDUCTION_HIGH_QUALITY, NULL);
+  g_object_set (G_OBJECT (qtiqmmfsrc), "noise-reduction",
+      NOISE_REDUCTION_HIGH_QUALITY, NULL);
   gst_object_unref (qmmf_pad);
   gst_object_unref (pqmmf_pad);
 
@@ -330,8 +381,8 @@ create_pipe (GstSmartCodecContext * appctx)
   // Linking the encoder stream
   ret = gst_element_link_many (qtiqmmfsrc, capsfilter_enc, queue_sc, NULL);
   if (!ret) {
-    g_printerr (
-        "\n Video Smart Codec Pipeline elements cannot be linked. Exiting.\n");
+    g_printerr
+        ("\n Video Smart Codec Pipeline elements cannot be linked. Exiting.\n");
     gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter_enc,
         queue_sc, NULL);
     return FALSE;
@@ -342,7 +393,8 @@ create_pipe (GstSmartCodecContext * appctx)
   ret = gst_element_link_many (qtismartvencbin, queue[0], h264parse, mp4mux,
       queue[1], filesink, NULL);
   if (!ret) {
-    g_printerr ("\n Video Encoder Pipeline elements cannot be linked. Exiting.\n");
+    g_printerr
+        ("\n Video Encoder Pipeline elements cannot be linked. Exiting.\n");
     gst_bin_remove_many (GST_BIN (appctx->pipeline), qtismartvencbin, h264parse,
         mp4mux, filesink, queue[0], queue[1], NULL);
     return FALSE;
@@ -358,8 +410,8 @@ create_pipe (GstSmartCodecContext * appctx)
       queue_ctrl, NULL);
   if (!ret) {
     g_printerr ("\n sink_ctrl Pipeline elements cannot be linked. Exiting.\n");
-    gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc, capsfilter_ctrl,
-        tee, queue[2], queue_ctrl, NULL);
+    gst_bin_remove_many (GST_BIN (appctx->pipeline), qtiqmmfsrc,
+        capsfilter_ctrl, tee, queue[2], queue_ctrl, NULL);
     return FALSE;
   }
 
@@ -385,7 +437,7 @@ create_pipe (GstSmartCodecContext * appctx)
   ret = gst_element_link_filtered (qtimlvdetection, queue_ml, filtercaps);
   if (!ret) {
     g_printerr ("\n pipeline elements qtimlvdetection -> qtimetamux "
-                "cannot be linked. Exiting.\n");
+        "cannot be linked. Exiting.\n");
   }
 
   ctrl_src = gst_element_get_static_pad (queue_ml, "src");
@@ -429,23 +481,21 @@ main (gint argc, gchar * argv[])
 
   // Configure input parameters
   GOptionEntry entries[] = {
-  {"width", 'w', 0, G_OPTION_ARG_INT, &appctx->width,
-      "width", "image width"},
-  {"height", 'h', 0, G_OPTION_ARG_INT, &appctx->height, "height",
-      "image height"},
-  {"output_file", 'o', 0, G_OPTION_ARG_STRING, &appctx->output_file,
-      "Output Filename" ,
-      "-o /etc/media/video.mp4"},
-   { "model", 'm', 0, G_OPTION_ARG_STRING,
-    &appctx->model_path,
-    "This is an optional parameter and overrides default path\n",
-    "    Default model path for YOLOV8 TFLITE: "DEFAULT_MODEL"\n",},
-  { "labels", 'l', 0, G_OPTION_ARG_STRING,
-    &appctx->labels_path,
-    "This is an optional parameter and overrides default path\n",
-    "    Default labels path for YOLOV8: "DEFAULT_LABELS"\n"},
-  { NULL, 0, 0, (GOptionArg)0, NULL, NULL, NULL }
+    {"width", 'w', 0, G_OPTION_ARG_INT, &appctx->width,
+        "Override width from config", "image width"},
+    {"height", 'h', 0, G_OPTION_ARG_INT, &appctx->height,
+        "Override height from config", "image height"},
+    {"output_file", 'o', 0, G_OPTION_ARG_STRING, &appctx->output_file,
+        "Override output file path", "file path"},
+    {"model", 'm', 0, G_OPTION_ARG_STRING, &appctx->model_path,
+        "Override model path", "model file"},
+    {"labels", 'l', 0, G_OPTION_ARG_STRING, &appctx->labels_path,
+        "Override labels path", "labels file"},
+    {"threshold", 't', 0, G_OPTION_ARG_DOUBLE, &appctx->threshold,
+        "Override threshold", "value"},
+    {NULL, 0, 0, G_OPTION_ARG_NONE, NULL, NULL, NULL}
   };
+
 
   // Parse command line entries.
   if ((ctx = g_option_context_new (GST_APP_SUMMARY)) != NULL) {
@@ -475,27 +525,14 @@ main (gint argc, gchar * argv[])
     return -1;
   }
 
-  gboolean camera_is_available = is_camera_available ();
-
-  // Check for input source
-  if (camera_is_available)
-    g_print ("TARGET Can support camera source only \n");
-
-  // set the Output Filename
-  if (appctx->output_file == NULL)
-    appctx->output_file = g_strdup (DEFAULT_OUTPUT_FILENAME);
-
-  if (appctx->model_path == NULL)
-    appctx->model_path = g_strdup (DEFAULT_MODEL);
-
-  if (appctx->labels_path == NULL)
-    appctx->labels_path = g_strdup (DEFAULT_LABELS);
+  // Print the final resolved output path
+  g_print ("\n Output video will be saved to: %s\n", appctx->output_file);
 
   // Initialize GST library.
   gst_init (&argc, &argv);
 
   // Create the pipeline
-  pipeline = gst_pipeline_new ("gst-smartcodec-example");
+  pipeline = gst_pipeline_new ("gst-ai-smartcodec-example");
   if (!pipeline) {
     g_printerr ("\n failed to create pipeline.\n");
     gst_app_context_free (appctx);
@@ -529,8 +566,8 @@ main (gint argc, gchar * argv[])
 
   // Watch for messages on the pipeline's bus
   gst_bus_add_signal_watch (bus);
-  g_signal_connect (bus, "message::state-changed", G_CALLBACK (state_changed_cb),
-      pipeline);
+  g_signal_connect (bus, "message::state-changed",
+      G_CALLBACK (state_changed_cb), pipeline);
   g_signal_connect (bus, "message::warning", G_CALLBACK (warning_cb), NULL);
   g_signal_connect (bus, "message::error", G_CALLBACK (error_cb), mloop);
   g_signal_connect (bus, "message::eos", G_CALLBACK (eos_cb), mloop);

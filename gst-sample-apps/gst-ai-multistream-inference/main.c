@@ -46,18 +46,10 @@
  * Default models and labels path, if not provided by user
  */
 #define DEFAULT_TFLITE_YOLOX_MODEL "/etc/models/yolox_quantized.tflite"
-#define DEFAULT_YOLOX_LABELS "/etc/labels/yolox.labels"
+#define DEFAULT_YOLOX_LABELS "/etc/labels/yolox.json"
 #define DEFAULT_TFLITE_INCEPTIONV3_MODEL \
     "/etc/models/inception_v3_quantized.tflite"
-#define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/classification.labels"
-
-/**
- * Default constants to dequantize values
- */
-#define DEFAULT_DETECTION_CONSTANTS "YOLOx,q-offsets=<38.0, 0.0, 0.0>,\
-    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
-#define DEFAULT_CLASSIFICATION_CONSTANTS \
-    "Inceptionv3,q-offsets=<38.0>,q-scales=<0.17039915919303894>;"
+#define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/classification.json"
 
 /**
  * To enable softmax operation for post processing
@@ -128,7 +120,6 @@ typedef struct {
   GstInputStreamType input_type;
   gchar *labels_path;
   gchar *out_file;
-  gchar *constants;
   gchar *ip_address;
   gchar *port_num;
   gint num_camera;
@@ -201,7 +192,7 @@ set_ml_params (GstElement * qtimlelement, GstElement * qtimlpostprocess,
   GstCaps *pad_filter;
   gint module_id;
   const gchar *module = NULL;
-  gchar delegate_string[128];
+  gchar delegate_string[128], settings[128];
 
   snprintf (delegate_string, 127, "QNNExternalDelegate,backend_type=htp,"
       "htp_device_id=(string)%u,htp_performance_mode=(string)2,"
@@ -218,29 +209,26 @@ set_ml_params (GstElement * qtimlelement, GstElement * qtimlpostprocess,
       "external-delegate-options", delegate_options, NULL);
   gst_structure_free (delegate_options);
 
-  // Set properties for ML postproc plugins- labels, module, threshold & constants
+  // Set properties for ML postproc plugins- labels, module, threshold
   g_object_set (G_OBJECT (qtimlpostprocess),
       "labels", options->labels_path, NULL);
 
   if (options->use_case == GST_OBJECT_DETECTION) {
     module = "yolov8";
   } else if (options->use_case == GST_CLASSIFICATION) {
-    module = "mobilenet";
+    module = "mobilenet-softmax";
   }
   module_id = get_enum_value (qtimlpostprocess, "module", module);
   if (module_id != -1) {
+    snprintf (settings, 127, "{\"confidence\": %.1f}", DEFAULT_THRESHOLD_VALUE);
     g_object_set (G_OBJECT (qtimlpostprocess), "module", module_id, NULL);
   } else {
     g_printerr ("Module %s is not available in qtimlpostprocess\n", module);
     return FALSE;
   }
 
-  g_object_set (G_OBJECT (qtimlpostprocess), "threshold", DEFAULT_THRESHOLD_VALUE,
-    "results", 2, "constants", options->constants, NULL);
-  if (options->use_case == GST_CLASSIFICATION) {
-    g_object_set (G_OBJECT (qtimlpostprocess), "extra-operation",
-        GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX, NULL);
-  }
+  g_object_set (G_OBJECT (qtimlpostprocess), "results", 2,
+      "settings", settings, NULL);
 
   // Set the properties of pad_filter for negotiation with qtivcomposer
   pad_filter = gst_caps_new_simple ("video/x-raw",
@@ -415,13 +403,6 @@ gst_app_context_free
     options->out_file = NULL;
   }
 
-  if (options->constants != NULL &&
-    options->constants != (gchar *)(&DEFAULT_DETECTION_CONSTANTS) &&
-    options->constants != (gchar *)(&DEFAULT_CLASSIFICATION_CONSTANTS)) {
-    g_free ((gpointer)options->constants);
-    options->constants = NULL;
-  }
-
   if (options->ip_address != NULL &&
     options->ip_address != (gchar *)(&DEFAULT_IP)) {
     g_free ((gpointer)options->ip_address);
@@ -577,10 +558,10 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options, guint htp_count)
     snprintf (element_name, 127, "cam_qtimlpostprocess-%d", i);
     if (options->use_case == GST_OBJECT_DETECTION) {
       cam_qtimlpostprocess[i] = gst_element_factory_make (
-          "qtimlvdetection", element_name);
+          "qtimlpostprocess", element_name);
     } else if (options->use_case == GST_CLASSIFICATION) {
       cam_qtimlpostprocess[i] = gst_element_factory_make (
-          "qtimlvclassification", element_name);
+          "qtimlpostprocess", element_name);
     } else {
       g_printerr ("Invalid use case for cam_qtimlpostprocess-%d\n", i);
     }
@@ -701,10 +682,10 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options, guint htp_count)
 
     if (options->use_case == GST_OBJECT_DETECTION) {
       file_qtimlpostprocess[i] = gst_element_factory_make (
-          "qtimlvdetection", element_name);
+          "qtimlpostprocess", element_name);
     } else if (options->use_case == GST_CLASSIFICATION) {
       file_qtimlpostprocess[i] = gst_element_factory_make (
-          "qtimlvclassification", element_name);
+          "qtimlpostprocess", element_name);
     } else {
       g_printerr ("Invalid use case for file_qtimlpostprocess-%d\n", i);
     }
@@ -835,10 +816,10 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options, guint htp_count)
     snprintf (element_name, 127, "rtsp_qtimlpostprocess-%d", i);
     if (options->use_case == GST_OBJECT_DETECTION) {
       rtsp_qtimlpostprocess[i] = gst_element_factory_make (
-          "qtimlvdetection", element_name);
+          "qtimlpostprocess", element_name);
     } else if (options->use_case == GST_CLASSIFICATION) {
       rtsp_qtimlpostprocess[i] = gst_element_factory_make (
-          "qtimlvclassification", element_name);
+          "qtimlpostprocess", element_name);
     } else {
       g_printerr ("Invalid use case for rtsp_qtimlpostprocess-%d\n", i);
     }
@@ -1462,11 +1443,6 @@ parse_json (gchar * config_file, GstAppOptions * options)
         g_strdup (json_object_get_string_member (root_obj, "labels"));
   }
 
-  if (json_object_has_member (root_obj, "constants")) {
-    options->constants =
-        g_strdup (json_object_get_string_member (root_obj, "constants"));
-  }
-
   if (json_object_has_member (root_obj, "output-file-path")) {
     options->out_file =
         g_strdup (json_object_get_string_member (root_obj, "output-file-path"));
@@ -1597,13 +1573,6 @@ main (gint argc, gchar * argv[])
       "      Default detection labels path: " DEFAULT_YOLOX_LABELS "\n"
       "      Default classification model path: "
       DEFAULT_CLASSIFICATION_LABELS "\n"
-      "  constants: \"CONSTANTS\"\n"
-      "      Constants, offsets and coefficients used by the chosen module "
-      "      for post-processing of incoming tensors.\n"
-      "      Applicable only for some modules\n"
-      "      Default detection constants: " DEFAULT_DETECTION_CONSTANTS "\n"
-      "      Default classification path: "
-      DEFAULT_CLASSIFICATION_CONSTANTS "\n"
       "  output-file-path: /PATH\n"
       "      Path to save H.264 Encoded file\n"
       "  output-ip-address: valid IP address\n"
@@ -1680,8 +1649,6 @@ main (gint argc, gchar * argv[])
       options.model_path = DEFAULT_TFLITE_YOLOX_MODEL;
     if (options.labels_path ==  NULL)
       options.labels_path = DEFAULT_YOLOX_LABELS;
-    if (options.constants ==  NULL)
-      options.constants = DEFAULT_DETECTION_CONSTANTS;
   }
 
   g_print ("model_path=%s labels_path=%s\n",
@@ -1692,8 +1659,6 @@ main (gint argc, gchar * argv[])
       options.model_path = DEFAULT_TFLITE_INCEPTIONV3_MODEL;
     if (options.labels_path ==  NULL)
       options.labels_path = DEFAULT_CLASSIFICATION_LABELS;
-    if (options.constants ==  NULL)
-      options.constants = DEFAULT_CLASSIFICATION_CONSTANTS;
   }
 
   if (options.num_camera > MAX_CAMSRCS) {

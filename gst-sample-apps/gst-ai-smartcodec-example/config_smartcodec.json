@@ -1,0 +1,10 @@
+{
+  "width": 1280,
+  "height": 720,
+  "output_file": "/etc/media/video.mp4",
+  "model": "/etc/models/yolov8_det_quantized.tflite",
+  "labels": "/etc/labels/coco_labels.txt",
+  "threshold": 50,
+  "results": 5,
+  "runtime": "dsp"
+}

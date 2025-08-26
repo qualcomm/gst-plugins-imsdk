@@ -57,7 +57,7 @@
 #define DEFAULT_TFLITE_CLASSIFICATION_MODEL \
     "/etc/models/inception_v3_quantized.tflite"
 #define DEFAULT_QNN_CLASSIFICATION_MODEL "/etc/models/inception_v3_quantized.bin"
-#define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/classification.labels"
+#define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/classification.json"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
@@ -88,12 +88,6 @@
 #define GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX 1
 
 /**
- * Default constants to dequantize values
- */
-#define DEFAULT_CONSTANTS \
-    "Inceptionv3,q-offsets=<38.0>,q-scales=<0.17039915919303894>;"
-
-/**
  * Number of Queues used for buffer caching between elements
  */
 #define QUEUE_COUNT 8
@@ -119,7 +113,6 @@ typedef struct {
   gchar *output_file;
   gchar *output_ip_address;
   gchar *port_num;
-  gchar *constants;
   gchar *enable_usb_camera;
   gchar dev_video[16];
   enum GstSinkType sinktype;
@@ -182,11 +175,6 @@ gst_app_context_free (GstAppContext * appctx, GstAppOptions * options, gchar * c
   if (options->labels_path != (gchar *)(&DEFAULT_CLASSIFICATION_LABELS) &&
       options->labels_path != NULL) {
     g_free ((gpointer)options->labels_path);
-  }
-
-  if (options->constants != (gchar *)(&DEFAULT_CONSTANTS) &&
-      options->constants != NULL) {
-    g_free ((gpointer)options->constants);
   }
 
   if (options->output_file != (gchar *)(&DEFAULT_OUTPUT_FILENAME) &&
@@ -353,7 +341,7 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   GstStructure *delegate_options = NULL;
   GstPad *qtiqmmfsrc_type = NULL;
   gboolean ret = FALSE;
-  gchar element_name[128];
+  gchar element_name[128], settings[128];
   gint pos_vals[2], dim_vals[2];
   gint primary_camera_width = DEFAULT_CAMERA_OUTPUT_WIDTH;
   gint primary_camera_height = DEFAULT_CAMERA_OUTPUT_HEIGHT;
@@ -535,8 +523,8 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
     goto error_clean_elements;
   }
   // Create plugin for ML postprocessing for classification
-  qtimlvclassification = gst_element_factory_make ("qtimlvclassification",
-      "qtimlvclassification");
+  qtimlvclassification = gst_element_factory_make ("qtimlpostprocess",
+      "qtimlpostprocess");
   if (!qtimlvclassification) {
     g_printerr ("Failed to create qtimlvclassification\n");
     goto error_clean_elements;
@@ -765,19 +753,15 @@ create_pipe (GstAppContext * appctx, GstAppOptions * options)
   }
 
   // 2.6 Set properties for ML postproc plugins- module, threshold
-  module_id = get_enum_value (qtimlvclassification, "module", "mobilenet");
+  module_id = get_enum_value (qtimlvclassification, "module", "mobilenet-softmax");
   if (module_id != -1) {
+    snprintf (settings, 127, "{\"confidence\": %.1f}", options->threshold);
     g_object_set (G_OBJECT (qtimlvclassification),
-        "threshold", options->threshold, "results", 2,
-        "module", module_id, "labels", options->labels_path, NULL);
-    if (options->model_type == GST_MODEL_TYPE_TFLITE ||
-        options->model_type == GST_MODEL_TYPE_QNN) {
-      g_object_set (G_OBJECT (qtimlvclassification),
-          "extra-operation", GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX,
-          "constants", options->constants, NULL);
-    }
+        "results", 2, "module", module_id,
+        "labels", options->labels_path,
+        "settings", settings, NULL);
   } else {
-    g_printerr ("Module mobilenet is not available in qtimlvclassification.\n");
+    g_printerr ("Module mobilenet-softmax is not available in qtimlvclassification.\n");
     goto error_clean_elements;
   }
 
@@ -1166,11 +1150,6 @@ parse_json(gchar * config_file, GstAppOptions * options)
         g_strdup (json_object_get_string_member (root_obj, "labels"));
   }
 
-  if (json_object_has_member (root_obj, "constants")) {
-    options->constants =
-        g_strdup (json_object_get_string_member (root_obj, "constants"));
-  }
-
   if (json_object_has_member (root_obj, "threshold")) {
     options->threshold =
         json_object_get_int_member (root_obj, "threshold");
@@ -1284,7 +1263,6 @@ main (gint argc, gchar * argv[])
   options.file_path = NULL;
   options.rtsp_ip_port = NULL;
   options.labels_path = DEFAULT_CLASSIFICATION_LABELS;
-  options.constants = DEFAULT_CONSTANTS;
   options.use_cpu = FALSE, options.use_gpu = FALSE, options.use_dsp = FALSE;
   options.use_file = FALSE, options.use_rtsp = FALSE, options.use_camera = FALSE;
   options.use_usb = FALSE;
@@ -1358,11 +1336,6 @@ main (gint argc, gchar * argv[])
       "  width: USB Camera Resolution width\n"
       "  height: USB Camera Resolution Height\n"
       "  framerate: USB Camera Frame Rate\n"
-      "  constants: CONSTANTS\n"
-      "      Constants, offsets and coefficients used by the chosen module \n"
-      "      for post-processing of incoming tensors."
-      "      Applicable only for some modules\n"
-      "      Default constants: \"" DEFAULT_CONSTANTS"\"\n"
       "  threshold: 0 to 100\n"
       "      This is an optional parameter and overides default threshold value 40\n"
       "  runtime: \"cpu\" or \"gpu\" or \"dsp\"\n"
