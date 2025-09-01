@@ -106,6 +106,7 @@ struct _GstMLTFLite {
   GstStructure        *ext_delegate_opts;
 #endif // HAVE_EXTERNAL_DELEGATE_H
   GstMLTFLiteDelegate delegate;
+  GstMLTFLitePriority priority;
   guint               n_threads;
 };
 

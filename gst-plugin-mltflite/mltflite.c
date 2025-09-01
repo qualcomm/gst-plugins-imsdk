@@ -80,6 +80,7 @@ G_DEFINE_TYPE (GstMLTFLite, gst_ml_tflite, GST_TYPE_BASE_TRANSFORM);
 #define DEFAULT_PROP_MODEL       NULL
 #define DEFAULT_PROP_DELEGATE    GST_ML_TFLITE_DELEGATE_NONE
 #define DEFAULT_PROP_THREADS     1
+#define DEFAULT_PROP_PRIORITY    GST_ML_TFLITE_PRIORITY_MIN_LATENCY
 
 #ifdef HAVE_EXTERNAL_DELEGATE_H
 #define DEFAULT_PROP_EXT_DELEGATE_PATH    NULL
@@ -105,6 +106,7 @@ enum
   PROP_MODEL,
   PROP_DELEGATE,
   PROP_THREADS,
+  PROP_PRIORITY,
 #ifdef HAVE_EXTERNAL_DELEGATE_H
   PROP_EXT_DELEGATE_PATH,
   PROP_EXT_DELEGATE_OPTS,
@@ -491,6 +493,8 @@ gst_ml_tflite_change_state (GstElement * element, GstStateChange transition)
           tflite->delegate,
           GST_ML_TFLITE_ENGINE_OPT_THREADS, G_TYPE_UINT,
           tflite->n_threads,
+          GST_ML_TFLITE_ENGINE_OPT_PRIORITY, GST_TYPE_ML_TFLITE_PRIORITY,
+          tflite->priority,
           NULL);
 
       if (settings == NULL) {
@@ -603,6 +607,9 @@ gst_ml_tflite_set_property (GObject * object, guint prop_id,
     case PROP_THREADS:
       tflite->n_threads = g_value_get_uint (value);
       break;
+    case PROP_PRIORITY:
+      tflite->priority = g_value_get_enum (value);
+      break;
 #ifdef HAVE_EXTERNAL_DELEGATE_H
     case PROP_EXT_DELEGATE_PATH:
       g_free (tflite->ext_delegate_path);
@@ -638,6 +645,9 @@ gst_ml_tflite_get_property (GObject * object, guint prop_id, GValue * value,
       break;
     case PROP_THREADS:
       g_value_set_uint (value, tflite->n_threads);
+      break;
+    case PROP_PRIORITY:
+      g_value_set_enum (value, tflite->priority);
       break;
 #ifdef HAVE_EXTERNAL_DELEGATE_H
     case PROP_EXT_DELEGATE_PATH:
@@ -713,6 +723,11 @@ gst_ml_tflite_class_init (GstMLTFLiteClass * klass)
       g_param_spec_uint ("threads", "Threads",
           "Number of threads", 1, 4, DEFAULT_PROP_THREADS,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject, PROP_PRIORITY,
+      g_param_spec_enum ("priority", "Priority",
+          "Set inference priority explicitly for gpu delegate precision only",
+          GST_TYPE_ML_TFLITE_PRIORITY, DEFAULT_PROP_PRIORITY,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 #ifdef HAVE_EXTERNAL_DELEGATE_H
   g_object_class_install_property (gobject, PROP_EXT_DELEGATE_PATH,
       g_param_spec_string ("external-delegate-path", "External Delegate Path",
@@ -765,6 +780,7 @@ gst_ml_tflite_init (GstMLTFLite * tflite)
 
   tflite->model = DEFAULT_PROP_MODEL;
   tflite->delegate = DEFAULT_PROP_DELEGATE;
+  tflite->priority = DEFAULT_PROP_PRIORITY;
 #ifdef HAVE_EXTERNAL_DELEGATE_H
   tflite->ext_delegate_path = DEFAULT_PROP_EXT_DELEGATE_PATH;
   tflite->ext_delegate_opts = DEFAULT_PROP_EXT_DELEGATE_OPTS;
