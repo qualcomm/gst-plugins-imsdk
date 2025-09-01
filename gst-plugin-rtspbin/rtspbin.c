@@ -18,15 +18,17 @@ GST_DEBUG_CATEGORY (gst_rtsp_bin_debug);
 #define gst_rtsp_bin_parent_class parent_class
 G_DEFINE_TYPE (GstRtspBin, gst_rtsp_bin, GST_TYPE_BIN);
 
-#define QUEUE_MAX_BUFFERS 5
+#define GST_TYPE_RTSPBIN_MODE    (gst_rtsp_bin_mode_get_type())
 
-#define DEFAULT_PROP_ADDRESS "127.0.0.1"
-#define DEFAULT_PROP_PORT    "8900"
-#define DEFAULT_PROP_MPOINT   "/live"
+#define DEFAULT_PROP_MODE        GST_RTSPBIN_MODE_ASYNC
+#define DEFAULT_PROP_ADDRESS     "127.0.0.1"
+#define DEFAULT_PROP_PORT        "8900"
+#define DEFAULT_PROP_MPOINT      "/live"
 
 enum
 {
   PROP_0,
+  PROP_MODE,
   PROP_ADDRESS,
   PROP_PORT,
   PROP_MPOINT,
@@ -45,6 +47,33 @@ GST_STATIC_PAD_TEMPLATE ("sink_%u",
     GST_STATIC_CAPS (GST_RTSP_BIN_CAPS)
 );
 
+static GType
+gst_rtsp_bin_mode_get_type (void)
+{
+  static GType gtype = 0;
+  static const GEnumValue variants[] = {
+    { GST_RTSPBIN_MODE_ASYNC,
+        "Return buffers immediately if no client is connected. "
+        "If client is connected enqueue all buffers not matter how fast the "
+        "client read them.",
+        "async"
+    },
+    { GST_RTSPBIN_MODE_SYNC,
+        "There is a restriction of the number of the input buffers. "
+        "When it's reached, the processing will be paused until the client "
+        "start reading buffers. All incoming buffers will be sent "
+        "to the client.",
+        "sync"
+    },
+    {0, NULL, NULL},
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstRtspBinMode", variants);
+
+  return gtype;
+}
+
 // Called when the media pipeline is uninitialized
 static void
 gst_rtsp_media_unprepared (GstRTSPMedia * media, gpointer userdata)
@@ -52,12 +81,22 @@ gst_rtsp_media_unprepared (GstRTSPMedia * media, gpointer userdata)
   GstRtspBin *rtspbin = (GstRtspBin *) userdata;
   GList *list = NULL;
 
+  GST_RTSP_BIN_LOCK (rtspbin);
+  rtspbin->media_prepared = FALSE;
+  GST_RTSP_BIN_UNLOCK (rtspbin);
+
   for (list = rtspbin->sinkpads; list; list = list->next) {
     GstRtspBinSinkPad *sinkpad = GST_RTSP_BIN_SINKPAD (list->data);
 
-    if (sinkpad->appsrc) {
+    GST_RTSP_BIN_SINKPAD_LOCK (sinkpad);
+
+    if (sinkpad->appsrc)
       g_clear_pointer (&(sinkpad->appsrc), gst_object_unref);
-    }
+
+    gst_data_queue_set_flushing (sinkpad->buffers, TRUE);
+    gst_data_queue_flush (sinkpad->buffers);
+
+    GST_RTSP_BIN_SINKPAD_UNLOCK (sinkpad);
   }
 
   GST_INFO_OBJECT (rtspbin, "Media unprepared");
@@ -65,7 +104,7 @@ gst_rtsp_media_unprepared (GstRTSPMedia * media, gpointer userdata)
 
 // This signal callback triggers when appsrc needs data
 static void
-appsrc_need_data (GstElement *appsrc, guint size, gpointer userdata)
+gst_appsrc_need_data (GstElement *appsrc, guint size, gpointer userdata)
 {
   GstRtspBinSinkPad *sinkpad = GST_RTSP_BIN_SINKPAD (userdata);
   GstDataQueueItem *item = NULL;
@@ -73,7 +112,10 @@ appsrc_need_data (GstElement *appsrc, guint size, gpointer userdata)
   GstFlowReturn ret;
   GstClockTime duration = 0;
 
+  GST_RTSP_BIN_SINKPAD_LOCK (sinkpad);
+
   if (!gst_data_queue_pop (sinkpad->buffers, &item)) {
+    GST_RTSP_BIN_SINKPAD_UNLOCK (sinkpad);
     return;
   }
 
@@ -100,8 +142,11 @@ appsrc_need_data (GstElement *appsrc, guint size, gpointer userdata)
       GST_BUFFER_PTS (buffer));
 
   g_signal_emit_by_name (sinkpad->appsrc, "push-buffer", buffer, &ret);
+
   // Free the buffer
   gst_buffer_unref (buffer);
+
+  GST_RTSP_BIN_SINKPAD_UNLOCK (sinkpad);
 }
 
 // Called when a new media pipeline is constructed. We can query the
@@ -138,13 +183,15 @@ gst_rtsp_factory_media_configure (GstRTSPMediaFactory * factory,
     g_object_set (G_OBJECT (sinkpad->appsrc), "caps", sinkpad->caps, NULL);
 
     g_signal_connect (sinkpad->appsrc, "need-data",
-        G_CALLBACK (appsrc_need_data), sinkpad);
+        G_CALLBACK (gst_appsrc_need_data), sinkpad);
 
     // Reset timestamps
     sinkpad->current_timestamp = 0;
     sinkpad->last_timestamp = 0;
 
     idx++;
+
+    gst_data_queue_set_flushing (sinkpad->buffers, FALSE);
   }
 
   // Make sure datails freed when the media is gone
@@ -157,6 +204,10 @@ gst_rtsp_factory_media_configure (GstRTSPMediaFactory * factory,
       (GCallback) gst_rtsp_media_unprepared, rtspbin);
 
   GST_INFO_OBJECT (rtspbin, "Media configured");
+
+  GST_RTSP_BIN_LOCK (rtspbin);
+  rtspbin->media_prepared = TRUE;
+  GST_RTSP_BIN_UNLOCK (rtspbin);
 }
 
 static GstRTSPFilterResult
@@ -315,17 +366,19 @@ static GstFlowReturn
 gst_rtsp_bin_sink_pad_chain (GstPad * pad, GstObject * parent,
     GstBuffer * buffer)
 {
+  GstRtspBin *rtspbin = GST_RTSP_BIN (parent);
   GstRtspBinSinkPad *sinkpad = GST_RTSP_BIN_SINKPAD (pad);
   GstDataQueueItem *item = NULL;
-  GstDataQueueSize queuelevel;
 
-  gst_data_queue_get_level (sinkpad->buffers, &queuelevel);
-  if (queuelevel.visible >= QUEUE_MAX_BUFFERS) {
-    if (!gst_data_queue_pop (sinkpad->buffers, &item)) {
-      return GST_FLOW_ERROR;
-    }
-    item->destroy (item);
+  GST_RTSP_BIN_LOCK (rtspbin);
+
+  if (rtspbin->mode == GST_RTSPBIN_MODE_ASYNC && !rtspbin->media_prepared) {
+    gst_buffer_unref (buffer);
+    GST_RTSP_BIN_UNLOCK (rtspbin);
+    return GST_FLOW_OK;
   }
+
+  GST_RTSP_BIN_UNLOCK (rtspbin);
 
   item = g_slice_new0 (GstDataQueueItem);
   item->object = GST_MINI_OBJECT (buffer);
@@ -416,9 +469,8 @@ gst_rtsp_bin_sink_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
       GstRtspBinSinkPad *sinkpad = GST_RTSP_BIN_SINKPAD (pad);
 
       // Send EOS to the appsrc attached to the pad
-      if (sinkpad->appsrc) {
+      if (sinkpad->appsrc)
         gst_element_send_event (sinkpad->appsrc, gst_event_new_eos ());
-      }
 
       // When all other sink pads are in EOS state post EOS.
       if (gst_rtsp_bin_all_sink_pads_eos (rtspbin, pad)) {
@@ -451,11 +503,6 @@ gst_rtsp_bin_change_state (GstElement * element, GstStateChange transition)
 
   switch (transition) {
     case GST_STATE_CHANGE_READY_TO_PAUSED:
-      for (list = rtspbin->sinkpads; list; list = list->next) {
-        GstRtspBinSinkPad *sinkpad = GST_RTSP_BIN_SINKPAD (list->data);
-
-        gst_data_queue_set_flushing (sinkpad->buffers, FALSE);
-      }
       break;
     default:
       break;
@@ -556,6 +603,9 @@ gst_rtsp_bin_set_property (GObject * object, guint prop_id,
   GST_RTSP_BIN_LOCK (rtspbin);
 
   switch (prop_id) {
+    case PROP_MODE:
+      rtspbin->mode = g_value_get_enum (value);
+      break;
     case PROP_ADDRESS:
       rtspbin->address = g_strdup (g_value_get_string (value));
       break;
@@ -582,6 +632,9 @@ gst_rtsp_bin_get_property (GObject * object, guint prop_id, GValue * value,
   GST_RTSP_BIN_LOCK (rtspbin);
 
   switch (prop_id) {
+    case PROP_MODE:
+      g_value_set_enum (value, rtspbin->mode);
+      break;
     case PROP_ADDRESS:
       g_value_set_string (value, rtspbin->address);
       break;
@@ -625,6 +678,11 @@ gst_rtsp_bin_class_init (GstRtspBinClass *klass)
   element->request_new_pad = GST_DEBUG_FUNCPTR (gst_rtsp_bin_request_pad);
   element->release_pad = GST_DEBUG_FUNCPTR (gst_rtsp_bin_release_pad);
 
+  g_object_class_install_property (gobject, PROP_MODE,
+      g_param_spec_enum ("mode", "Mode", "Operational mode",
+          GST_TYPE_RTSPBIN_MODE, DEFAULT_PROP_MODE,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
   g_object_class_install_property (gobject, PROP_ADDRESS,
       g_param_spec_string ("address", "Address",
           "IP address of the server",
@@ -650,6 +708,7 @@ gst_rtsp_bin_init (GstRtspBin * rtspbin)
 {
   g_mutex_init (&rtspbin->lock);
 
+  rtspbin->mode = DEFAULT_PROP_MODE;
   rtspbin->address = DEFAULT_PROP_ADDRESS;
   rtspbin->port = DEFAULT_PROP_PORT;
   rtspbin->mpoint = DEFAULT_PROP_MPOINT;
@@ -658,6 +717,7 @@ gst_rtsp_bin_init (GstRtspBin * rtspbin)
   rtspbin->sinkpads = NULL;
   rtspbin->server = NULL;
   rtspbin->factory = NULL;
+  rtspbin->media_prepared = FALSE;
 
   GST_OBJECT_FLAG_SET (rtspbin, GST_ELEMENT_FLAG_SINK);
 }
