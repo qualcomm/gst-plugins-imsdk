@@ -11,7 +11,7 @@
 * This application demonstrates the camera per port grouping
 *
 * Usage:
-* gst-camera-per-port-example
+* gst-camera-per-port-example [-custom | -default [-c NUM_CAMERAS] [-s NUM_STREAMS]]
 *
 */
 
@@ -880,51 +880,186 @@ main (gint argc, gchar * argv[])
   guint refcounter = 0;
   std::vector < GstPerPortCtx > ctx;
 
+  // Declare command-line argument variables and GOptionEntry locally
+  gint num_cameras_cli = 0;
+  gint num_streams_per_camera_cli = 0;
+  gboolean custom_mode = FALSE;
+  gboolean default_mode = FALSE;
+
+  GOptionEntry entries[] = {
+    { "cameras", 'c', 0, G_OPTION_ARG_INT,
+      &num_cameras_cli,
+      "Number of cameras to instantiate", "NUM_CAMERAS"
+    },
+    { "streams", 's', 0, G_OPTION_ARG_INT,
+      &num_streams_per_camera_cli,
+      "Number of streams per camera", "NUM_STREAMS"
+    },
+    { "custom", 0, 0, G_OPTION_ARG_NONE,
+      &custom_mode,
+      "Enable custom (interactive) input mode", NULL
+    },
+    { "default", 0, 0, G_OPTION_ARG_NONE,
+      &default_mode,
+      "Enable default (auto-generated) input mode", NULL
+    },
+    { "help", 'h', 0, G_OPTION_ARG_NONE, NULL,
+      "Show help options", NULL
+    },
+    { 0, 0, 0, G_OPTION_ARG_NONE, NULL, NULL, NULL }
+  };
+
+
   g_mutex_init (&lock);
 
-  // Initialize GST library.
+  // Initialize GST library and parse command line options.
   gst_init (&argc, &argv);
 
-  // Take input from user
-  std::string camera_ids_str;
-  g_print ("\nEnter the camera ID's you want to open (space separated):");
-  std::getline (std::cin, camera_ids_str);
+  GOptionContext *context = g_option_context_new ("- GStreamer camera per port example");
+  g_option_context_add_main_entries (context, entries, NULL);
+  GError *error = NULL;
 
-  std::istringstream iss (camera_ids_str);
-  std::vector < guint > camera_ids;
-  std::string id;
-  while (iss >> id) {
-    camera_ids.push_back (static_cast < guint > (std::stoul (id)));
+  if (!g_option_context_parse (context, &argc, &argv, &error)) {
+    g_printerr ("option parsing failed: %s\n", error->message);
+    g_error_free (error);
+    return 1;
   }
 
-  std::vector < CameraGroupInfo > camInfo (camera_ids.size ());
+  // Check for conflicting options
+  if (custom_mode && default_mode) {
+    g_printerr ("ERROR: Cannot specify both --custom and --default modes.\n");
+    g_option_context_free (context);
+    return 1;
+  }
+  if (custom_mode && (num_cameras_cli > 0 || num_streams_per_camera_cli > 0)) {
+    g_printerr ("ERROR: --custom mode is exclusive and does not take -c or -s arguments.\n");
+    g_option_context_free (context);
+    return 1;
+  }
+  // If no --custom or --default flag is provided, explicitly error out.
+  // This enforces that the user must choose a mode.
+  if (!custom_mode && !default_mode) {
+    g_printerr ("ERROR: No mode specified. Please use "
+        "--custom or --default "
+        "(with -c/-s if applicable).\n");
+    g_option_context_free (context);
+    return 1;
+  }
 
-  for (guint i = 0; i < camInfo.size (); ++i) {
-    camInfo[i].camera_id = camera_ids[i];
-    guint num_streams;
+  std::vector < CameraGroupInfo > camInfo;
+  guint num_of_cameras = 0;
+  guint number_of_streams = 0;
 
-    // Take input from user
-    std::cout <<
-        "\nEnter the number of streams for camera " << camInfo[i].
-        camera_id << ": ";
-    std::cin >> num_streams;
-    std::cin.ignore ();
-    camInfo[i].streamconfig.resize (num_streams);
+  if (custom_mode) { // Custom (interactive) input mode
+    std::string camera_ids_str;
+    g_print ("\nEnter the camera ID's you want to open (space separated):");
+    std::getline (std::cin, camera_ids_str);
+    std::istringstream iss (camera_ids_str);
+    std::vector < guint > camera_ids;
+    std::string id;
 
-    for (guint j = 0; j < num_streams; ++j) {
-      std::cout << "\nEnter the WIDTH for stream " << j +
-          1 << " of camera " << camInfo[i].camera_id << ": ";
-      std::cin >> camInfo[i].streamconfig[j].width;
-      std::cin.ignore ();
-      std::cout << "\nEnter the HEIGHT for stream " << j +
-          1 << " of camera " << camInfo[i].camera_id << ": ";
-      std::cin >> camInfo[i].streamconfig[j].height;
-      std::cin.ignore ();
-      std::cout << "\nEnter the FRAMERATE for stream " << j +
-          1 << " of camera " << camInfo[i].camera_id << ": ";
-      std::cin >> camInfo[i].streamconfig[j].framerate;
-      std::cin.ignore ();
+    while (iss >> id) {
+      camera_ids.push_back (static_cast < guint > (std::stoul (id)));
     }
+
+    num_of_cameras = camera_ids.size();
+    camInfo.resize(num_of_cameras);
+
+    for (guint i = 0; i < num_of_cameras; ++i) {
+      camInfo[i].camera_id = camera_ids[i];
+      guint num_streams;
+      // Take input from user for number of streams
+      std::cout << "\nEnter the number of streams for camera " << camInfo[i].camera_id << ": ";
+      std::cin >> num_streams;
+      std::cin.ignore ();
+
+      camInfo[i].streamconfig.resize (num_streams);
+      if (num_streams > number_of_streams) { // Keep track of max streams
+        number_of_streams = num_streams;
+      }
+
+      for (guint j = 0; j < num_streams; ++j) {
+        std::cout << "\nEnter the WIDTH for stream " << j +
+            1 << " of camera " << camInfo[i].camera_id << ": ";
+        std::cin >> camInfo[i].streamconfig[j].width;
+        std::cin.ignore ();
+        std::cout << "\nEnter the HEIGHT for stream " << j +
+            1 << " of camera " << camInfo[i].camera_id << ": ";
+        std::cin >> camInfo[i].streamconfig[j].height;
+        std::cin.ignore ();
+        std::cout << "\nEnter the FRAMERATE for stream " << j +
+            1 << " of camera " << camInfo[i].camera_id << ": ";
+        std::cin >> camInfo[i].streamconfig[j].framerate;
+        std::cin.ignore ();
+      }
+    }
+  } else if (default_mode) { // Default (auto-generated) input mode
+    // Enforce that -c and -s must be provided with --default
+    if (num_cameras_cli <= 0 || num_streams_per_camera_cli <= 0) {
+      g_printerr ("ERROR: When using --default mode, "
+          "you must specify both -c (number of cameras) "
+          "and -s (number of streams).\n");
+      g_option_context_free (context);
+      return 1;
+    }
+    num_of_cameras = num_cameras_cli;
+    number_of_streams = num_streams_per_camera_cli;
+
+    std::vector < guint > camera_ids;
+    for (guint i = 0; i < num_of_cameras; i++) {
+      camera_ids.push_back (i);
+    }
+    camInfo.resize (num_of_cameras);
+    for (guint i = 0; i < num_of_cameras; i++) {
+      camInfo[i].camera_id = camera_ids[i];
+    }
+
+    // Stream configurations based on command-line arguments for streams
+    if (num_of_cameras > 4) {
+      for (guint i = 0; i < 4; i++) {
+        camInfo[i].streamconfig.resize (number_of_streams);
+        for(guint j = 0; j < number_of_streams; j++) {
+          camInfo[i].streamconfig[j].width = 1824;
+          camInfo[i].streamconfig[j].height = 1536;
+          camInfo[i].streamconfig[j].framerate = 30;
+        }
+      }
+      for (guint i = 4; i < num_of_cameras; i++) {
+        camInfo[i].streamconfig.resize (number_of_streams);
+        for (guint j = 0; j < number_of_streams; j++) {
+          camInfo[i].streamconfig[j].width = 1920;
+          camInfo[i].streamconfig[j].height = 1536;
+          camInfo[i].streamconfig[j].framerate = 30;
+        }
+      }
+    } else { // num_of_cameras <= 4
+      for (guint i = 0; i < num_of_cameras; i++) {
+        camInfo[i].streamconfig.resize (number_of_streams);
+        for (guint j = 0; j < number_of_streams; j++) {
+          camInfo[i].streamconfig[j].width = 1824;
+          camInfo[i].streamconfig[j].height = 1536;
+          camInfo[i].streamconfig[j].framerate = 30;
+        }
+      }
+    }
+  } else {
+    g_printerr ("ERROR: No mode specified. Please use --custom "
+        "or --default (with -c/-s if applicable).\n");
+    g_option_context_free (context);
+    return 1;
+  }
+  g_option_context_free (context);
+
+  std::cout<<"\nNumber of cameras: "<<num_of_cameras<<"\n";
+  for (guint i = 0; i < num_of_cameras; ++i) {
+    std::cout << "Camera ID: " << camInfo[i].camera_id << "\n";
+    for (guint j = 0; j < camInfo[i].streamconfig.size(); ++j) {
+      std::cout << "  Stream " << j + 1 << " -> "
+          << "Width: " << camInfo[i].streamconfig[j].width << ", "
+          << "Height: " << camInfo[i].streamconfig[j].height << ", "
+          << "Framerate: " << camInfo[i].streamconfig[j].framerate << "\n";
+    }
+    std::cout << "\n";
   }
 
   // Initialize main loop.
@@ -941,9 +1076,58 @@ main (gint argc, gchar * argv[])
     camctx.lock = &lock;
     camctx.pipe_name = "gst-camera-pipeline";
     std::string cam_pipeline;
-    std::cout << "\nEnter the camera pipeline for camera "
-        << camInfo[i].camera_id << ": ";
-    std::getline (std::cin, cam_pipeline);
+
+    // Use custom pipeline input if custom_mode is enabled, else generate dynamically
+    if (custom_mode) {
+      std::cout << "\nEnter the camera pipeline for camera " << camInfo[i].camera_id << ": ";
+      std::getline (std::cin, cam_pipeline);
+    } else { // default_mode is active or implied
+      if (camInfo[i].streamconfig.size () == 1) {
+        // Single stream pipeline
+        std::string caps_str = "video/x-raw,format=NV12";
+        caps_str += ",width=" + std::to_string (camInfo[i].streamconfig[0].width);
+        caps_str += ",height=" + std::to_string (camInfo[i].streamconfig[0].height);
+        caps_str += ",framerate=" + std::
+            to_string (camInfo[i].streamconfig[0].framerate) + "/1";
+
+        cam_pipeline = "qtiqmmfsrc name=camsrc" + std::to_string (camInfo[i].camera_id) +
+            " camera=" + std::to_string (camInfo[i].camera_id) + " video_0::type=video ! " +
+            caps_str + " ! multifilesink location=/data/frame" +
+            std::to_string (camInfo[i].camera_id) + "_%d.yuv sync=true max-files=2";
+        g_print ("Generated single stream pipeline for camera %u: %s\n",
+            camInfo[i].camera_id, cam_pipeline.c_str ());
+      } else if (camInfo[i].streamconfig.size () == 2) {
+        std::string qtiqmmfsrc_props = "";
+        std::string stream_links = "";
+        // Stream 0: preview, format NV12_Q08C
+        qtiqmmfsrc_props += " video_0::type=preview";
+        std::string caps_str_0 = "video/x-raw,format=NV12_Q08C";
+        caps_str_0 += ",width=" + std::to_string (camInfo[i].streamconfig[0].width);
+        caps_str_0 += ",height=" + std::to_string (camInfo[i].streamconfig[0].height);
+        caps_str_0 += ",framerate=" + std::to_string (camInfo[i].streamconfig[0].framerate) + "/1";
+        stream_links += " camsrc.video_0 ! " + caps_str_0 +
+            " ! multifilesink location=/data/frame" + std::to_string (camInfo[i].camera_id) +
+            "_stream0_%d.yuv sync=true max-files=2 ";
+
+        // Stream 1: format NV12, using camsrc.
+        std::string caps_str_1 = "video/x-raw,format=NV12";
+        caps_str_1 += ",width=" + std::to_string (camInfo[i].streamconfig[1].width);
+        caps_str_1 += ",height=" + std::to_string (camInfo[i].streamconfig[1].height);
+        caps_str_1 += ",framerate=" + std::to_string (camInfo[i].streamconfig[1].framerate) + "/1";
+        stream_links += " camsrc. ! " + caps_str_1 +
+            " ! multifilesink location=/data/frame" + std::to_string (camInfo[i].camera_id) +
+            "_stream1_%d.yuv sync=true max-files=2";
+        cam_pipeline = "qtiqmmfsrc name=camsrc camera=" + std::to_string (camInfo[i].camera_id) +
+            qtiqmmfsrc_props + " " + stream_links;
+        g_print ("Generated two stream pipeline for camera %u: %s\n",
+            camInfo[i].camera_id, cam_pipeline.c_str ());
+      } else {
+        g_printerr ("ERROR: Unsupported number of streams (%lu) for camera %u. "
+            "Only 1 or 2 streams are currently supported per camera.\n",
+            camInfo[i].streamconfig.size (), camInfo[i].camera_id);
+        return -1;
+      }
+    }
 
     if (create_camera_pipeline (&camctx, cam_pipeline) < 0) {
       g_printerr ("\nERROR: Failed to create %s for camera %d\n",
