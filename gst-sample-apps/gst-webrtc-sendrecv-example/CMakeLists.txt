@@ -57,11 +57,20 @@ target_include_directories(${GST_EXAMPLE_BIN} PRIVATE
 target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
   ${GST_LIBRARIES}
   ${GST_JSON_LIBRARIES}
-  ${GST_SOUP_LIBRARIES}
   ${GST_WEBRTC_LIBRARIES}
   ${GST_SDP_LIBRARIES}
   gstapp-1.0
 )
+
+if(GST_SOUP3)
+target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
+  soup-3.0
+)
+else()
+target_link_libraries(${GST_EXAMPLE_BIN} PRIVATE
+  soup-2.4
+)
+endif()
 
 install(
   TARGETS ${GST_EXAMPLE_BIN}
