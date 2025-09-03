@@ -325,8 +325,8 @@ gst_ml_module_process (gpointer instance, GstMLFrame * mlframe, gpointer output)
     gst_ml_keypoint_transform_coordinates (kp, &region);
 
     // clamp key-point to avoid point going out of region
-    kp->x = gst_ml_clamp_value (kp->x, 0.0f, 1.0f);
-    kp->y = gst_ml_clamp_value (kp->y, 0.0f, 1.0f);
+    kp->x = MIN (MAX (kp->x, 0.0f), 1.0f);
+    kp->y = MIN (MAX (kp->y, 0.0f), 1.0f);
 
   }
 
