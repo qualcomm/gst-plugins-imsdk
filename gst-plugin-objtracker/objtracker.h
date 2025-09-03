@@ -33,7 +33,7 @@ struct _GstObjTracker {
   GstObjTrackerAlgo     *algo;
 
   ///Properties
-  gchar                 *backend;
+  gint                  backend;
   GstStructure          *algoparameters;
 
 };
