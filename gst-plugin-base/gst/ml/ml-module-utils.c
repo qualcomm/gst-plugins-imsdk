@@ -213,15 +213,3 @@ gst_ml_structure_get_source_region (const GstStructure * structure,
   gst_structure_get_int (structure, "input-region-width", &(region->w));
   gst_structure_get_int (structure, "input-region-height", &(region->h));
 }
-
-gfloat
-gst_ml_clamp_value (gfloat value, gfloat min, gfloat max)
-{
-  if (value < min)
-    return min;
-
-  if (value > max)
-    return max;
-
-  return value;
-}
