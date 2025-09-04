@@ -1535,7 +1535,10 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
   }
 
   if (vpad->super_buffer_mode &&
-      !(vpad->format == GST_VIDEO_FORMAT_NV12_Q08C &&
+      !((vpad->format == GST_VIDEO_FORMAT_NV12_Q08C ||
+          vpad->format == GST_VIDEO_FORMAT_NV12 ||
+          vpad->format == GST_VIDEO_FORMAT_P010_10LE ||
+          vpad->format == GST_VIDEO_FORMAT_NV12_Q10LE32C) &&
           vpad->framerate >= GST_QMMF_CONTEXT_HFR_FPS_THRESHOLD)) {
     GST_ERROR ("Super buffer mode enabled but negotiated caps are not proper!");
     GST_QMMFSRC_VIDEO_PAD_UNLOCK (vpad);
@@ -1544,17 +1547,20 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
 
   switch (vpad->format) {
     case GST_VIDEO_FORMAT_NV12:
-      format = ::qmmf::recorder::VideoFormat::kNV12;
+      format = !vpad->super_buffer_mode ? ::qmmf::recorder::VideoFormat::kNV12 :
+          ::qmmf::recorder::VideoFormat::kNV12FLEX;
       break;
     case GST_VIDEO_FORMAT_NV12_Q08C:
       format = !vpad->super_buffer_mode ? ::qmmf::recorder::VideoFormat::kNV12UBWC :
           ::qmmf::recorder::VideoFormat::kNV12UBWCFLEX;
       break;
     case GST_VIDEO_FORMAT_P010_10LE:
-      format = ::qmmf::recorder::VideoFormat::kP010;
+      format = !vpad->super_buffer_mode ? ::qmmf::recorder::VideoFormat::kP010 :
+          ::qmmf::recorder::VideoFormat::kP010FLEX;
       break;
     case GST_VIDEO_FORMAT_NV12_Q10LE32C:
-      format = ::qmmf::recorder::VideoFormat::kTP10UBWC;
+      format = !vpad->super_buffer_mode ? ::qmmf::recorder::VideoFormat::kTP10UBWC :
+          ::qmmf::recorder::VideoFormat::kTP10UBWCFLEX;
       break;
     case GST_VIDEO_FORMAT_NV16:
       format = ::qmmf::recorder::VideoFormat::kNV16;
