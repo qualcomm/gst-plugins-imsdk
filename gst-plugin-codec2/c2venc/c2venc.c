@@ -448,6 +448,14 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
       GST_ERROR_OBJECT (c2venc, "Failed to enable QP report parameter!");
       return FALSE;
     }
+
+    success = gst_c2_engine_set_parameter (c2venc->engine,
+        GST_C2_PARAM_VUI_TIMING_INFO, GPOINTER_CAST (&(enable)));
+
+    if (!success) {
+      GST_ERROR_OBJECT (c2venc, "Failed to enable VUI timing info paramter!");
+      return FALSE;
+    }
   }
 #endif // CODEC2_CONFIG_VERSION_2_0
 
@@ -582,7 +590,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
       return FALSE;
     }
 #else
-    GstC2TemporalLayer templayer = {2, 2};
+    GstC2TemporalLayer templayer = {2, 2, NULL};
 
     success = gst_c2_engine_set_parameter (c2venc->engine,
         GST_C2_PARAM_HIER_BPRECONDITIONS, GPOINTER_CAST (&enable));
@@ -595,8 +603,17 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
     // Bframes will be adjusted to 0 in driver if blayers are disabled.
     // Hence, enable blayers to driver when bframe is set. The values will be
     // updated if temporal layer property is set.
+    templayer.bitrate_ratios =
+        g_array_sized_new (FALSE, FALSE, sizeof (gfloat), 2);
+    g_array_set_size (templayer.bitrate_ratios, 2);
+
+    g_array_index (templayer.bitrate_ratios, gfloat, 0) = 0.5;
+    g_array_index (templayer.bitrate_ratios, gfloat, 1) = 1.0;
+
     success = gst_c2_engine_set_parameter (c2venc->engine,
         GST_C2_PARAM_TEMPORAL_LAYERING, GPOINTER_CAST (&templayer));
+
+    g_array_free (templayer.bitrate_ratios, TRUE);
 
     if (!success) {
       GST_ERROR_OBJECT (c2venc, "Failed to set temporal layering parameter!");
@@ -1549,7 +1566,8 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
     case PROP_RATE_CONTROL:
       c2venc->control_rate = g_value_get_enum (value);
       break;
-    case PROP_TARGET_BITRATE: {
+    case PROP_TARGET_BITRATE:
+    {
       c2venc->target_bitrate = g_value_get_uint (value);
 
       if ((c2venc->engine != NULL) &&
@@ -1561,7 +1579,8 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
       }
       break;
     }
-    case PROP_IDR_INTERVAL: {
+    case PROP_IDR_INTERVAL:
+    {
       c2venc->idr_interval = g_value_get_int (value);
 
       if ((c2venc->engine != NULL) && (c2venc->instate != NULL) &&
@@ -1692,25 +1711,41 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
       break;
     case PROP_TEMPORAL_LAYER:
     {
-      gint size = 0, layers = 0, blayers = 0;
+      gint idx = 0, size = 0, n_layers = 0;
+      gfloat ratio = 0.0;
 
-      // Sanity check, must have 2 values.
-      if ((size = gst_value_array_get_size (value)) != 2) {
-        GST_ERROR_OBJECT (c2venc, "Invalid number for temporal layer, "
-            "expecting 2 but received %d !", size);
+      // Sanity check, at least 3 values: <1,0,100>.
+      if ((size = gst_value_array_get_size (value)) < 3) {
+        GST_ERROR_OBJECT (c2venc, "Invalid number or values for temporal layer,"
+            " expecting at least 3 but received %d !", size);
         break;
       }
-      layers = g_value_get_int (gst_value_array_get_value (value, 0));
-      blayers = g_value_get_int (gst_value_array_get_value (value, 1));
+      n_layers = g_value_get_int (gst_value_array_get_value (value, 0));
 
-      if (layers < blayers) {
-        GST_ERROR_OBJECT (c2venc, "Invalid layers number, "
-            "expecting layers >= blayers");
+      if (n_layers != (size - 2)) {
+        GST_ERROR_OBJECT (c2venc, "Invalid number or bitrate ratios for "
+            "temporal layer, expecting %d but received %d !", n_layers,
+            (size - 2));
         break;
       }
 
-      c2venc->temp_layer.n_layers = layers;
-      c2venc->temp_layer.n_blayers = blayers;
+      c2venc->temp_layer.n_layers = n_layers;
+      c2venc->temp_layer.n_blayers =
+          g_value_get_int (gst_value_array_get_value (value, 1));
+
+      // Remove all old values.
+      g_array_set_size (c2venc->temp_layer.bitrate_ratios, 0);
+
+      // Convert to ratio in float.
+      for (idx = 2; idx < gst_value_array_get_size (value); idx++) {
+        ratio =
+            g_value_get_int (gst_value_array_get_value (value, idx)) / 100.0;
+        g_array_insert_val (c2venc->temp_layer.bitrate_ratios, idx - 2, ratio);
+      }
+
+      // Shrink the array in case the current allocated size is greater.
+      g_array_set_size (c2venc->temp_layer.bitrate_ratios, size - 2);
+
       break;
     }
     case PROP_FLIP:
@@ -1848,6 +1883,8 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
       break;
     case PROP_TEMPORAL_LAYER:
     {
+      guint idx = 0;
+      gfloat ratio = 0.0;
       GValue val = G_VALUE_INIT;
 
       g_value_init (&val, G_TYPE_INT);
@@ -1857,6 +1894,15 @@ gst_c2_venc_get_property (GObject * object, guint prop_id,
 
       g_value_set_int (&val, c2venc->temp_layer.n_blayers);
       gst_value_array_append_value (value, &val);
+
+      for (idx = 0; idx < c2venc->temp_layer.bitrate_ratios->len; idx++) {
+        ratio =
+            g_array_index (c2venc->temp_layer.bitrate_ratios, gfloat, idx);
+        g_value_set_int (&val, (gint)(ratio * 100));
+
+        // Append ratio to the output GST array.
+        gst_value_array_append_value (value, &val);
+      }
 
       g_value_unset (&val);
       break;
@@ -1882,6 +1928,8 @@ gst_c2_venc_finalize (GObject * object)
 
   g_array_free (c2venc->roi_quant_boxes, TRUE);
   gst_structure_free (c2venc->roi_quant_values);
+
+  g_array_free (c2venc->temp_layer.bitrate_ratios, TRUE);
 
   if (c2venc->instate)
     gst_video_codec_state_unref (c2venc->instate);
@@ -2053,17 +2101,20 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
   g_object_class_install_property (gobject, PROP_TEMPORAL_LAYER,
       gst_param_spec_array ("temporal-layer", "Temporal Layer",
-          "Set temporal layer number for layer encoding, include layers ("
-          "p-layers + b-layers) number, b-layers number (e.g. '<4,0>;'). "
-          "layers number couldn't be larger than 6."
+          "Set temporal layer value for layer encoding, include layers ("
+          "p-layers and b-layers) number, b-layers number and bitrate-ratios "
+          "in integer percent (e.g. '<4,0,25,50,75,100>;'). layers number "
+          "couldn't be larger than 6."
 #if !defined(CODEC2_CONFIG_VERSION_2_0)
           "blayers number is ignored if profile is not HEVC_MAIN"
 #endif // CODEC2_CONFIG_VERSION_2_0
-          "b-layers number couldn't be larger than layers number.",
+          "b-layers number couldn't be larger than "
+          "layers number, bitrate-ratios couldn't be larger than 100 and last "
+          "layer's budget is always 100.",
           g_param_spec_int ("temporal-layer", "Temporal Layer",
-              "One of layers number, b-layers number", G_MININT,
+              "One of layers number, b-layers number, ratios", G_MININT,
               G_MAXINT, 0, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS),
-          G_PARAM_READWRITE |G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
+              G_PARAM_READWRITE |G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
   g_object_class_install_property (gobject, PROP_FLIP,
       g_param_spec_enum ("flip", "Flip",
           "Flip video image", GST_TYPE_C2_VIDEO_FLIP, DEFAULT_PROP_FLIP,
@@ -2168,6 +2219,8 @@ gst_c2_venc_init (GstC2VEncoder * c2venc)
   c2venc->priority = DEFAULT_PROP_PRIORITY;
   c2venc->temp_layer.n_layers = DEFAULT_PROP_TEMPORAL_LAYER_NUM;
   c2venc->temp_layer.n_blayers = DEFAULT_PROP_TEMPORAL_LAYER_NUM;
+  c2venc->temp_layer.bitrate_ratios =
+      g_array_new (FALSE, FALSE, sizeof (gfloat));
   c2venc->n_subframes = 0;
   c2venc->vbv_delay = DEFAULT_PROP_VBV_DELAY;
 

@@ -138,6 +138,8 @@ static const std::unordered_map<uint32_t, C2Param::Index> kParamIndexMap = {
 #if defined(CODEC2_CONFIG_VERSION_2_0)
   { GST_C2_PARAM_REPORT_AVG_QP,
       C2AndroidStreamAverageBlockQuantizationInfo::output::PARAM_TYPE },
+  { GST_C2_PARAM_VUI_TIMING_INFO,
+      qc2::C2VuiTimingInfo::output::PARAM_TYPE },
 #endif // CODEC2_CONFIG_VERSION_2_0
   { GST_C2_PARAM_IN_SAMPLE_RATE,
       C2StreamSampleRateInfo::input::PARAM_TYPE },
@@ -198,9 +200,9 @@ static const std::unordered_map<uint32_t, const char*> kParamNameMap = {
   { GST_C2_PARAM_QP_RANGES, "QP_RANGES" },
   { GST_C2_PARAM_ROI_ENCODE, "ROI_ENCODE" },
   { GST_C2_PARAM_TRIGGER_SYNC_FRAME, "TRIGGER_SYNC_FRAME" },
-  { GST_C2_PARAM_NATIVE_RECORDING, "NATIVE_RECORDING"},
-  { GST_C2_PARAM_TEMPORAL_LAYERING, "TEMPORAL_LAYERING"},
-  { GST_C2_PARAM_PRIORITY, "PRIORITY"},
+  { GST_C2_PARAM_NATIVE_RECORDING, "NATIVE_RECORDING" },
+  { GST_C2_PARAM_TEMPORAL_LAYERING, "TEMPORAL_LAYERING" },
+  { GST_C2_PARAM_PRIORITY, "PRIORITY" },
   { GST_C2_PARAM_COLOR_ASPECTS_TUNING, "COLOR_ASPECTS" },
 #if (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
   { GST_C2_PARAM_HDR_STATIC_METADATA, "HDR_STATIC_METADATA" },
@@ -220,7 +222,8 @@ static const std::unordered_map<uint32_t, const char*> kParamNameMap = {
   { GST_C2_PARAM_SUPER_FRAME, "SUPER_FRAME" },
   { GST_C2_PARAM_LTR_USE, "LTR_USE" },
   { GST_C2_PARAM_FLIP, "FLIP" },
-  { GST_C2_PARAM_VBV_DELAY, "VBV_DELAY"},
+  { GST_C2_PARAM_VBV_DELAY, "VBV_DELAY" },
+  { GST_C2_PARAM_VUI_TIMING_INFO, "VUI_TIMING_INFO" },
 };
 
 // Map for the GST_C2_PARAM_PROFILE_LEVEL parameter.
@@ -720,12 +723,18 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
     }
     case GST_C2_PARAM_TEMPORAL_LAYERING: {
       GstC2TemporalLayer *templayer = reinterpret_cast<GstC2TemporalLayer*>(payload);
+      uint32_t ratiosize = templayer->bitrate_ratios->len;
 
       auto c2templayer =
-          C2StreamTemporalLayeringTuning::output::AllocUnique(2);
+          C2StreamTemporalLayeringTuning::output::AllocUnique(ratiosize);
 
       c2templayer->m.layerCount = templayer->n_layers;
       c2templayer->m.bLayerCount = templayer->n_blayers;
+
+      for (uint32_t i = 0; i < ratiosize; i++) {
+        c2templayer->m.bitrateRatios[i] =
+            g_array_index (templayer->bitrate_ratios, gfloat, i);
+      }
 
       c2param = C2Param::Copy(*c2templayer);
       break;
@@ -952,6 +961,12 @@ bool GstC2Utils::UnpackPayload(uint32_t type, void* payload,
       C2AndroidStreamAverageBlockQuantizationInfo::output avg_qp;
       avg_qp.value = *(reinterpret_cast<int32_t*>(payload));
       c2param = C2Param::Copy(avg_qp);
+      break;
+    }
+    case GST_C2_PARAM_VUI_TIMING_INFO: {
+      qc2::C2VuiTimingInfo::output timing;
+      timing.value = *(reinterpret_cast<gboolean*>(payload));
+      c2param = C2Param::Copy(timing);
       break;
     }
 #endif // CODEC2_CONFIG_VERSION_2_0
@@ -1213,6 +1228,18 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
           c2templayer->m.layerCount;
       reinterpret_cast<GstC2TemporalLayer*>(payload)->n_blayers =
           c2templayer->m.bLayerCount;
+
+      float ratio = 0;
+      uint32_t ratiosize = c2templayer->flexCount();
+
+      if (reinterpret_cast<GstC2TemporalLayer*>(payload)->bitrate_ratios != NULL) {
+        GArray* temp =
+            reinterpret_cast<GstC2TemporalLayer*>(payload)->bitrate_ratios;
+        for (uint32_t i = 0; i < ratiosize; i++) {
+          ratio = c2templayer->m.bitrateRatios[i];
+          g_array_append_val (temp, ratio);
+        }
+      }
       break;
     }
     case GST_C2_PARAM_ENTROPY_MODE: {
@@ -1359,6 +1386,12 @@ bool GstC2Utils::PackPayload(uint32_t type, std::unique_ptr<C2Param>& c2param,
       auto avg_qp = reinterpret_cast<
           C2AndroidStreamAverageBlockQuantizationInfo::output*>(c2param.get());
       *(reinterpret_cast<guint32*>(payload)) = avg_qp->value;
+      break;
+    }
+    case GST_C2_PARAM_VUI_TIMING_INFO: {
+      auto timing = reinterpret_cast<
+          qc2::C2VuiTimingInfo::output*>(c2param.get());
+      *(reinterpret_cast<gboolean*>(payload)) = timing->value;
       break;
     }
 #endif // CODEC2_CONFIG_VERSION_2_0
