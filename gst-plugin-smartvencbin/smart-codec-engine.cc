@@ -517,63 +517,83 @@ gst_smartcodec_engine_push_ml_buff (SmartCodecEngine * engine, gchar * data,
 
   std::vector<::videoctrl::RoiQPRectangle> rects;
 
-  char *next = NULL, *remaining = data;
-  int32_t idx = 0;
-  char *token = NULL;
+  char *remaining = data, *token = NULL;
+  guint idx = 0;
 
   while ((token = strtok_r (remaining, "\n", &remaining))) {
     GValue value_list = G_VALUE_INIT;
     g_value_init (&value_list, GST_TYPE_LIST);
     bool success = gst_value_deserialize (&value_list, token);
-    GST_DEBUG ("idx=%d token='%s'", idx, token);
+    GST_DEBUG ("idx=%u token='%s'", idx, token);
 
     if (!success) {
-      GST_DEBUG ("failed to deserialize data");
+      GST_ERROR ("failed to deserialize data");
       continue;
     }
 
-    const uint32_t list_size = gst_value_list_get_size (&value_list);
-    GST_DEBUG ("list_size=%d", list_size);
+    const guint list_size = gst_value_list_get_size (&value_list);
 
-    for (int32_t i = 0; i < list_size; ++i) {
+    for (guint i = 0; i < list_size; ++i) {
       ::videoctrl::RoiQPRectangle rect;
       const GValue *list_entry = gst_value_list_get_value (&value_list, i);
       GstStructure *structure = GST_STRUCTURE (g_value_get_boxed (list_entry));
 
-      // Skip the 'Parameters' structure as this is not a prediction result.
-      if (gst_structure_has_name (structure, "Parameters")) {
-        GST_INFO ("skip parameters at idx %d", i);
+      if (!gst_structure_has_name (structure, "ObjectDetection")) {
+        GST_DEBUG("gst_structure ObjectDetection not found");
         continue;
       }
 
       // Fetch bounding box rectangle if it exists and fill ROI coordinates.
-      const GValue *entry = gst_structure_get_value (structure, "rectangle");
-      if (NULL == entry) {
+      const GValue *bounding_boxes =
+        gst_structure_get_value(structure, "bounding-boxes");
+
+      if (NULL == bounding_boxes) {
+        GST_DEBUG("failed to get bounding-boxes");
         continue;
       }
 
-      if (gst_value_array_get_size (entry) != 4) {
-        GST_DEBUG ("Badly formed ROI rectangle, expected 4 "
-          "entries but received %u!", gst_value_array_get_size (entry));
-        continue;
+      guint size = gst_value_array_get_size (bounding_boxes);
+      GST_DEBUG("got %u bounding-boxes", size);
+
+      for (guint idx = 0; idx < size; idx++) {
+        const GValue *value = gst_value_array_get_value (bounding_boxes, idx);
+        GstStructure *roi_entry = GST_STRUCTURE (g_value_get_boxed (value));
+        if (!roi_entry) {
+          GST_ERROR("no roi_entry for idx %d", idx);
+          continue;
+        }
+
+        const gchar *label = gst_structure_get_name(roi_entry);
+        double confidence = 0;
+        gst_structure_get_double(roi_entry, "confidence", &confidence);
+
+        if (NULL == label) {
+          continue;
+        }
+
+        // Fetch bounding box rectangle if it exists and fill ROI coordinates.
+        value = gst_structure_get_value (roi_entry, "rectangle");
+
+        if (gst_value_array_get_size (value) != 4) {
+          GST_ERROR ("Badly formed ROI rectangle, expected 4 "
+            "entries but received %u!", gst_value_array_get_size (value));
+          continue;
+        }
+
+        rect.left = g_value_get_float (gst_value_array_get_value (value, 0));
+        rect.top = g_value_get_float (gst_value_array_get_value (value, 1));
+        gfloat width = g_value_get_float (gst_value_array_get_value (value, 2));
+        gfloat height = g_value_get_float (gst_value_array_get_value (value, 3));
+        rect.right = rect.left + width;
+        rect.bottom = rect.top + height;
+
+        GST_DEBUG("bbox %u:  Label='%s' Confidence %.3lf "
+          "[left,top](%.3f,%.3f) [width,height]:%.3f,%.3f",
+          idx, label, confidence, rect.left, rect.top, width, height);
+
+        g_strlcpy (rect.label, label, sizeof (rect.label));
+        rects.push_back (rect);
       }
-
-      float left = 0.0, right = 0.0, top = 0.0, bottom = 0.0;
-      const char *label = NULL;
-
-      rect.top    = g_value_get_float (gst_value_array_get_value (entry, 0));
-      rect.left   = g_value_get_float (gst_value_array_get_value (entry, 1));
-      rect.bottom = g_value_get_float (gst_value_array_get_value (entry, 2));
-      rect.right  = g_value_get_float (gst_value_array_get_value (entry, 3));
-
-      label = gst_structure_get_string (structure, "label");
-
-      GST_DEBUG ("ROI: label=%s top,left:(%.4f,%.4f) bottom,right:(%.4f,%.4f)",
-          (label ? label : "NO_LABEL"), rect.top, rect.left,
-          rect.bottom, rect.right);
-
-      g_strlcpy (rect.label, label, sizeof (rect.label));
-      rects.push_back (rect);
     }
 
     ++idx;
