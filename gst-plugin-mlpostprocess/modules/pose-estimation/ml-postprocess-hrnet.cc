@@ -34,6 +34,7 @@
 #include "ml-postprocess-hrnet.h"
 
 #include <cfloat>
+#include <utility>
 
 #define DEFAULT_THRESHOLD 0.70
 
@@ -197,6 +198,10 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     kp.color = labels_parser_.GetColor(idx);
 
     KeypointTransformCoordinates(kp, region);
+
+    // clamp key-point to avoid point going out of region
+    kp.x = std::min (std::max (kp.x, 0.0f), 1.0f);
+    kp.y = std::min (std::max (kp.y, 0.0f), 1.0f);
   }
 
   entry.confidence /= n_keypoints;
