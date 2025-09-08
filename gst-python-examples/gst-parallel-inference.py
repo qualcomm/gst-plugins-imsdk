@@ -17,23 +17,15 @@ from gi.repository import Gst, GLib
 
 # Constants
 DEFAULT_TFLITE_OBJECT_DETECTION_MODEL = "/etc/models/yolox_quantized.tflite"
-DEFAULT_OBJECT_DETECTION_LABELS = "/etc/labels/yolox.labels"
+DEFAULT_OBJECT_DETECTION_LABELS = "/etc/labels/yolox.json"
 DEFAULT_TFLITE_CLASSIFICATION_MODEL = "/etc/models/inception_v3_quantized.tflite"
-DEFAULT_CLASSIFICATION_LABELS = "/etc/labels/classification.labels"
+DEFAULT_CLASSIFICATION_LABELS = "/etc/labels/classification.json"
 DEFAULT_TFLITE_POSE_DETECTION_MODEL = "/etc/models/hrnet_pose_quantized.tflite"
-DEFAULT_POSE_DETECTION_LABELS = "/etc/labels/posenet_mobilenet_v1.labels"
+DEFAULT_POSE_DETECTION_LABELS = "/etc/labels/hrnet_pose.json"
+DEFAULT_POSE_SETTING_LABELS = "/etc/labels/hrnet_settings.json"
 DEFAULT_TFLITE_SEGMENTATION_MODEL = "/etc/models/deeplabv3_plus_mobilenet_quantized.tflite"
-DEFAULT_SEGMENTATION_LABELS = "/etc/labels/deeplabv3_resnet50.labels"
+DEFAULT_SEGMENTATION_LABELS = "/etc/labels/deeplabv3_resnet50.json"
 DELEGATE_PATH = "libQnnTFLiteDelegate.so"
-
-DEFAULT_CONSTANTS_CLASSIFICATION = "Mobilenet,q-offsets=<38.0>,\
-    q-scales=<0.17039915919303894>;"
-DEFAULT_CONSTANTS_OBJECT_DETECTION = "YOLOX,q-offsets=<38.0, 0.0, 0.0>,\
-    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
-DEFAULT_CONSTANTS_POSE_DETECTION = "Posenet,q-offsets=<8.0>,\
-    q-scales=<0.0040499246679246426>;"
-DEFAULT_CONSTANTS_SEGMENTATION = "deeplab,q-offsets=<0.0>,\
-    q-scales=<1.0>;"
 
 DESCRIPTION = f"""
 This app sets up GStreamer pipeline to carry out Object Detection,
@@ -47,6 +39,7 @@ Default Classification model:      {DEFAULT_TFLITE_CLASSIFICATION_MODEL}
 Default Classification labels:     {DEFAULT_CLASSIFICATION_LABELS}
 Default Pose Detection model:      {DEFAULT_TFLITE_POSE_DETECTION_MODEL}
 Default Pose Detection labels:     {DEFAULT_POSE_DETECTION_LABELS}
+Default Pose Settings labels:      {DEFAULT_POSE_SETTING_LABELS}
 Default Segmentation model:        {DEFAULT_TFLITE_SEGMENTATION_MODEL}
 Default Segmentation Labels:       {DEFAULT_SEGMENTATION_LABELS}
 """
@@ -158,22 +151,6 @@ def create_pipeline(pipeline):
         "--rtsp", type=str, default=None,
         help="RTSP URL"
     )
-    parser.add_argument("--constants-detection", type=str,
-        default=DEFAULT_CONSTANTS_OBJECT_DETECTION,
-        help="Constants for Object detection model"
-    )
-    parser.add_argument("--constants-classification", type=str,
-        default=DEFAULT_CONSTANTS_CLASSIFICATION,
-        help="Constants for Object detection model"
-    )
-    parser.add_argument("--constants-pose", type=str,
-        default=DEFAULT_CONSTANTS_POSE_DETECTION,
-        help="Constants for Object detection model"
-    )
-    parser.add_argument("--constants-segmentation", type=str,
-        default=DEFAULT_CONSTANTS_SEGMENTATION,
-        help="Constants for Object detection model"
-    )
     parser.add_argument("--tflite-object-detection-model", type=str,
         default=DEFAULT_TFLITE_OBJECT_DETECTION_MODEL,
         help="Path to TfLite object detection model"
@@ -197,6 +174,10 @@ def create_pipeline(pipeline):
     parser.add_argument("--tflite-pose-detection-labels", type=str,
         default=DEFAULT_POSE_DETECTION_LABELS,
         help="Path to TfLite pose detection labels"
+    )
+    parser.add_argument("--tflite-pose-settings-labels", type=str,
+        default=DEFAULT_POSE_SETTING_LABELS,
+        help="Path to TfLite pose settings labels"
     )
     parser.add_argument("--tflite-segmentation-model", type=str,
         default=DEFAULT_TFLITE_SEGMENTATION_MODEL,
@@ -228,6 +209,9 @@ def create_pipeline(pipeline):
     if not os.path.exists(args.tflite_pose_detection_labels):
         print(f"File {args.tflite_pose_detection_labels} does not exist")
         sys.exit(1)
+    if not os.path.exists(args.tflite_pose_settings_labels):
+        print(f"File {args.tflite_pose_settings_labels} does not exist")
+        sys.exit(1)
     if not os.path.exists(args.tflite_segmentation_model):
         print(f"File {args.tflite_segmentation_model} does not exist")
         sys.exit(1)
@@ -249,7 +233,7 @@ def create_pipeline(pipeline):
             "labels": args.object_detection_labels,
             "preproc": "qtimlvconverter",
             "mlframework": "qtimltflite",
-            "postproc": "qtimlvdetection",
+            "postproc": "qtimlpostprocess",
             "delegate": "external"
         },
         {
@@ -257,7 +241,7 @@ def create_pipeline(pipeline):
             "labels": args.tflite_classification_labels,
             "preproc": "qtimlvconverter",
             "mlframework": "qtimltflite",
-            "postproc": "qtimlvclassification",
+            "postproc": "qtimlpostprocess",
             "delegate": "external"
         },
         {
@@ -265,7 +249,7 @@ def create_pipeline(pipeline):
             "labels": args.tflite_pose_detection_labels,
             "preproc": "qtimlvconverter",
             "mlframework": "qtimltflite",
-            "postproc": "qtimlvpose",
+            "postproc": "qtimlpostprocess",
             "delegate": "external"
         },
         {
@@ -273,7 +257,7 @@ def create_pipeline(pipeline):
             "labels": args.tflite_segmentation_labels,
             "preproc": "qtimlvconverter",
             "mlframework": "qtimltflite",
-            "postproc": "qtimlvsegmentation",
+            "postproc": "qtimlpostprocess",
             "delegate": "external"
         }
     ]
@@ -426,33 +410,27 @@ def create_pipeline(pipeline):
         elements[f"qtimlvpostproc{i}"].set_property(
             "labels", pipeline_data[i]["labels"])
         if i == GST_OBJECT_DETECTION:
+            detection_threshold = 40.0
+            detection_settings = f'{{"confidence": {detection_threshold:.1f}}}'
             elements[f"qtimlvpostproc{i}"].set_property("module", "yolov8")
-            elements[f"qtimlvpostproc{i}"].set_property("threshold", 40.0)
+            elements[f"qtimlvpostproc{i}"].set_property("settings", detection_settings)
             elements[f"qtimlvpostproc{i}"].set_property("results", 10)
-            elements[f"qtimlvpostproc{i}"].set_property(
-                "constants", args.constants_detection)
 
         elif i == GST_CLASSIFICATION:
-            elements[f"qtimlvpostproc{i}"].set_property("module", "mobilenet")
-            elements[f"qtimlvpostproc{i}"].set_property("threshold", 40.0)
+            classification_threshold = 40.0
+            classification_settings = f'{{"confidence": {classification_threshold:.1f}}}'
+            elements[f"qtimlvpostproc{i}"].set_property("module", "mobilenet-softmax")
+            elements[f"qtimlvpostproc{i}"].set_property("settings", classification_settings)
             elements[f"qtimlvpostproc{i}"].set_property("results", 2)
-            elements[f"qtimlvpostproc{i}"].set_property(
-                "extra-operation", GST_VIDEO_CLASSIFICATION_OPERATION_SOFTMAX)
-            elements[f"qtimlvpostproc{i}"].set_property(
-                "constants", args.constants_classification)
 
         elif i == GST_POSE_DETECTION:
             elements[f"qtimlvpostproc{i}"].set_property("module", "hrnet")
-            elements[f"qtimlvpostproc{i}"].set_property("threshold", 40.0)
+            elements[f"qtimlvpostproc{i}"].set_property("settings", args.tflite_pose_settings_labels)
             elements[f"qtimlvpostproc{i}"].set_property("results", 2)
-            elements[f"qtimlvpostproc{i}"].set_property(
-                "constants", args.constants_pose)
 
         elif i == GST_SEGMENTATION:
             elements[f"qtimlvpostproc{i}"].set_property(
                 "module", "deeplab-argmax")
-            elements[f"qtimlvpostproc{i}"].set_property(
-                "constants", args.constants_segmentation)
 
     for i in range(GST_PIPELINE_CNT):
         if i == GST_SEGMENTATION:
