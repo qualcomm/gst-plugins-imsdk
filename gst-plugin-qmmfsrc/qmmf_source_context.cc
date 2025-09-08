@@ -88,7 +88,7 @@ namespace camera = qmmf;
 #define GST_QMMF_CONTEXT_UNLOCK(obj) \
   g_mutex_unlock(GST_QMMF_CONTEXT_GET_LOCK(obj))
 
-#define GST_QMMF_CONTEXT_HFR_FPS_THRESHOLD 120
+#define GST_QMMF_CONTEXT_HFR_FPS_THRESHOLD 60
 
 #define GST_CAT_DEFAULT qmmf_context_debug_category()
 static GstDebugCategory *
