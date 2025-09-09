@@ -116,7 +116,7 @@ gst_qti_allocator_alloc (GstAllocator * allocator, gsize size,
 #endif // !defined(TARGET_ION_ABI_VERSION)
 #endif // defined(HAVE_LINUX_DMA_HEAP_H)
   GstMapInfo mapinfo = {0,};
-  gsize maxsize = 0, align = DEFAULT_PAGE_ALIGNMENT;
+  gsize maxsize = 0;
   gint result = 0, fd = -1;
 
   g_mutex_lock (&priv->lock);
@@ -143,15 +143,10 @@ gst_qti_allocator_alloc (GstAllocator * allocator, gsize size,
   }
 
   // Couldn't find an available memory block, allocate a new one.
-  align = MAX (params->align, DEFAULT_PAGE_ALIGNMENT);
-
-  // Calculate the common alignment for the memory block.
-  while (((params->align > 0) && (align % params->align != 0)) ||
-         (align % DEFAULT_PAGE_ALIGNMENT != 0))
-    align += MAX (params->align, DEFAULT_PAGE_ALIGNMENT);
-
   maxsize = size + params->prefix + params->padding;
-  maxsize = GST_ROUND_UP_N (maxsize, align);
+
+  if (params->align > 0)
+    maxsize = GST_ROUND_UP_N (maxsize, params->align);
 
   alloc_data.fd = 0;
   alloc_data.len = maxsize;
