@@ -1314,6 +1314,7 @@ main (gint argc, gchar * argv[])
       "      Input should be provided as rtsp://<ip>:<port>/<stream>,\n"
       "      eg: rtsp://192.168.1.110:8554/live.mkv\n"
       "  enable-usb-camera: Use this Parameter to enable-usb-camera\n"
+      "      It can take TRUE or FALSE as input\n"
       "  ml-framework: \"snpe\" or \"tflite\" or \"qnn\"\n"
       "      Execute Model in SNPE DLC or TFlite or QNN format\n"
       "      Default model format: SNPE DLC\n"

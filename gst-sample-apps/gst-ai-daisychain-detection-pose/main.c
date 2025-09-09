@@ -1510,6 +1510,12 @@ parse_json (gchar * config_file, GstAppOptions * options)
             "pose-labels"));
   }
 
+  if (json_object_has_member (root_obj, "pose-settings-path")) {
+    options->pose_settings_path =
+        g_strdup (json_object_get_string_member (root_obj,
+            "pose-settings-path"));
+  }
+
   if (json_object_has_member (root_obj, "output-file")) {
     options->output_file_path =
         g_strdup (json_object_get_string_member (root_obj,
@@ -1689,6 +1695,11 @@ main (gint argc, gchar * argv[])
     " for Pose Detection labels\n"
     "      Default path for Pose Detection labels: "
     DEFAULT_POSE_LABELS"\n"
+    "  pose-settings-path: \"/PATH\"\n"
+    "      This is an optional parameter and overrides default path "
+    " for Pose setting\n"
+    "      Default path for Pose Settings: "
+    DEFAULT_POSE_SETTINGS_PATH"\n"
     "  output-file: \"/PATH\"\n"
     "      Output file path\n"
     "      If this field is not filled, then display output is selected\n"
