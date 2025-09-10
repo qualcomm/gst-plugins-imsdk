@@ -181,3 +181,37 @@ gst_element_send_eos (GstElement *element)
 
   return ret;
 }
+
+void
+gst_destroy_pipeline (GstElement **pipeline, GList **plugins)
+{
+  GstElement * element_1;
+  GstElement * element_2;
+
+  g_return_if_fail (*pipeline != NULL);
+  g_return_if_fail (*plugins != NULL);
+
+  element_1 = GST_ELEMENT_CAST (g_list_nth_data (*plugins, 0));
+  if (!element_1) {
+    GST_WARNING ("First element in plugins list is NULL!");
+    goto cleanup;
+  }
+  GList *list = (GList*)(*plugins)->next;
+
+  for ( ; list != NULL; list = list->next) {
+    element_2 = GST_ELEMENT_CAST (list->data);
+    if (!element_2) {
+      GST_WARNING ("Found NULL element in plugins list!");
+      continue;
+    }
+    gst_element_unlink (element_1, element_2);
+    gst_bin_remove (GST_BIN (*pipeline), element_1);
+    element_1 = element_2;
+  }
+  gst_bin_remove (GST_BIN (*pipeline), element_1);
+
+cleanup:
+  g_list_free (*plugins);
+  *plugins = NULL;
+  gst_object_unref (*pipeline);
+}
