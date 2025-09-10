@@ -30,10 +30,15 @@ G_BEGIN_DECLS
 typedef struct _GstRtspBin GstRtspBin;
 typedef struct _GstRtspBinClass GstRtspBinClass;
 
+typedef enum {
+  GST_RTSPBIN_MODE_ASYNC,
+  GST_RTSPBIN_MODE_SYNC,
+} GstRtspBinMode;
+
 struct _GstRtspBin
 {
   // Inherited parent structure.
-  GstBin              bin;
+  GstBin              parent;
   // Global mutex lock.
   GMutex              lock;
   /// Next available index for the sink pads.
@@ -44,8 +49,11 @@ struct _GstRtspBin
   GstRTSPServer       *server;
   /// RTSP factory instance
   GstRTSPMediaFactory *factory;
+  /// Prepared flag
+  gboolean            media_prepared;
 
   /// Properties.
+  GstRtspBinMode      mode;
   gchar               *address;
   gchar               *port;
   gchar               *mpoint;

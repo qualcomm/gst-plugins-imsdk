@@ -5,6 +5,8 @@
 
 #include "rtspbinsinkpad.h"
 
+#define MAX_BUFFERS 30
+
 GST_DEBUG_CATEGORY_STATIC (gst_rtsp_bin_sinkpad_debug);
 #define GST_CAT_DEFAULT gst_rtsp_bin_sinkpad_debug
 
@@ -48,8 +50,7 @@ static gboolean
 queue_is_full_cb (GstDataQueue * queue, guint visible, guint bytes,
                   guint64 time, gpointer checkdata)
 {
-  // There won't be any condition limiting for the buffer queue size.
-  return FALSE;
+  return (visible >= MAX_BUFFERS) ? TRUE : FALSE;
 }
 
 static void
