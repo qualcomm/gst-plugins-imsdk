@@ -14,14 +14,10 @@ find_package(PkgConfig)
 set(ENV{PKG_CONFIG_PATH} "$ENV{PKG_CONFIG_PATH}:${SYSROOT_LIBDIR}/pkgconfig")
 
 # Get the pkgconfigs exported by the automake tools
-pkg_check_modules(GST
-  REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(GST_BASE
-  REQUIRED gstreamer-base-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(GST_ALLOC
-  REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
-pkg_check_modules(GST_VIDEO
-  REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_BASE REQUIRED gstreamer-base-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_ALLOC REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_VIDEO REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(CAIRO REQUIRED cairo)
 
 # Generate configuration header file.
@@ -37,7 +33,6 @@ add_definitions(-DHAVE_CONFIG_H)
 
 # Common compiler flags.
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
 
 # GStreamer ML post process plugin.
 set(GST_QTI_ML_POST_PROCESS gstqtimlpostprocess)
@@ -64,7 +59,6 @@ target_link_libraries(${GST_QTI_ML_POST_PROCESS} PRIVATE
   ${CAIRO_LIBRARIES}
   gstqtimlbase
   gstqtivideobase
-  gstqtimemorybase
   gstqtiutilsbase
   gstqtiallocatorsbase
 )
