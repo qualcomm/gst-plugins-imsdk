@@ -18,9 +18,7 @@ from gi.repository import Gst, GLib
 # Configurations for Detection
 DEFAULT_DETECTION_MODEL = "/etc/models/yolox_quantized.tflite"
 DEFAULT_DETECTION_MODULE = "yolov8"
-DEFAULT_DETECTION_LABELS = "/etc/labels/yolox.labels"
-DEFAULT_DETECTION_CONSTANTS = "YOLOx,q-offsets=<38.0, 0.0, 0.0>,\
-    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
+DEFAULT_DETECTION_LABELS = "/etc/labels/yolox.json"
 
 DEFAULT_OUTPUT_FILE = "/etc/media/test.mp4"
 
@@ -36,7 +34,7 @@ The default file paths in the python script are as follows:
 - Detection labels: {DEFAULT_DETECTION_LABELS}
 
 To override the default settings,
-please configure the corresponding module and constants as well.
+please configure the corresponding module well.
 """
 
 eos_received = False
@@ -92,18 +90,13 @@ def construct_pipeline(pipe):
         "--detection_labels", type=str, default=DEFAULT_DETECTION_LABELS,
         help="Path to TfLite Object Detection Labels"
     )
-    parser.add_argument(
-        "--detection_constants", type=str, default=DEFAULT_DETECTION_CONSTANTS,
-        help="Constants for TfLite Object Detection Model"
-    )
 
     args = parser.parse_args()
 
     detection = {
         "model": args.detection_model,
         "module": args.detection_module,
-        "labels": args.detection_labels,
-        "constants": args.detection_constants
+        "labels": args.detection_labels
     }
 
     # Create all elements
@@ -121,7 +114,7 @@ def construct_pipeline(pipe):
         "tee":          create_element("tee", "split"),
         "mlvconverter": create_element("qtimlvconverter", "converter"),
         "mltflite":     create_element("qtimltflite", "inference"),
-        "mlvdetection": create_element("qtimlvdetection", "detection"),
+        "mlvdetection": create_element("qtimlpostprocess", "detection"),
         "capsfilter_2": create_element("capsfilter", "metamuxmetacaps"),
         "metamux":      create_element("qtimetamux", "metamux"),
         "overlay":      create_element("qtivoverlay", "overlay"),
@@ -175,12 +168,11 @@ def construct_pipeline(pipe):
         elements["mltflite"], "model", detection["model"],
     )
 
-    Gst.util_set_object_arg(elements["mlvdetection"], "threshold", "75.0")
+    threshold = 75.0
+    settings = f'{{"confidence": {threshold:.1f}}}'
+    Gst.util_set_object_arg(elements["mlvdetection"], "settings", settings)
     Gst.util_set_object_arg(elements["mlvdetection"], "results", "4")
     Gst.util_set_object_arg(elements["mlvdetection"], "module", detection["module"])
-    Gst.util_set_object_arg(
-        elements["mlvdetection"], "constants", detection["constants"],
-    )
     Gst.util_set_object_arg(
         elements["mlvdetection"], "labels", detection["labels"]
     )
