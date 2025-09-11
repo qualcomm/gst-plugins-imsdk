@@ -18,16 +18,12 @@ from gi.repository import Gst, GLib
 # Configurations for Detection
 DEFAULT_DETECTION_MODEL = "/etc/models/yolox_quantized.tflite"
 DEFAULT_DETECTION_MODULE = "yolov8"
-DEFAULT_DETECTION_LABELS = "/etc/labels/yolox.labels"
-DEFAULT_DETECTION_CONSTANTS = "YOLOx,q-offsets=<38.0, 0.0, 0.0>,\
-    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
+DEFAULT_DETECTION_LABELS = "/etc/labels/yolox.json"
 
 # Configurations for Classification
-DEFAULT_CLASSIFICATION_MODEL = "/etc/models/Resnet101_Quantized.tflite"
-DEFAULT_CLASSIFICATION_MODULE = "mobilenet"
-DEFAULT_CLASSIFICATION_LABELS = "/etc/labels/resnet101.labels"
-DEFAULT_CLASSIFICATION_CONSTANTS = "Mobilenet,q-offsets=<-82.0>,\
-    q-scales=<0.21351955831050873>;"
+DEFAULT_CLASSIFICATION_MODEL = "/etc/models/inception_v3_quantized.tflite"
+DEFAULT_CLASSIFICATION_MODULE = "mobilenet-softmax"
+DEFAULT_CLASSIFICATION_LABELS = "/etc/labels/classification.json"
 
 DESCRIPTION = f"""
 The application uses:
@@ -44,7 +40,7 @@ The default file paths in the python script are as follows:
 - Classification labels: {DEFAULT_CLASSIFICATION_LABELS}
 
 To override the default settings,
-please configure the corresponding module and constants as well.
+please configure the corresponding module as well.
 """
 
 eos_received = False
@@ -95,10 +91,6 @@ def construct_pipeline(pipe):
         help="Path to TfLite Object Detection Labels"
     )
     parser.add_argument(
-        "--detection_constants", type=str, default=DEFAULT_DETECTION_CONSTANTS,
-        help="Constants for TfLite Object Detection Model"
-    )
-    parser.add_argument(
         "--classification_model", type=str, default=DEFAULT_CLASSIFICATION_MODEL,
         help="Path to TfLite Classification Model"
     )
@@ -110,24 +102,18 @@ def construct_pipeline(pipe):
         "--classification_labels", type=str, default=DEFAULT_CLASSIFICATION_LABELS,
         help="Path to TfLite Classification Labels"
     )
-    parser.add_argument(
-        "--classification_constants", type=str, default=DEFAULT_CLASSIFICATION_CONSTANTS,
-        help="Constants for TfLite Classification Model"
-    )
 
     args = parser.parse_args()
 
     detection = {
         "model": args.detection_model,
         "module": args.detection_module,
-        "labels": args.detection_labels,
-        "constants": args.detection_constants
+        "labels": args.detection_labels
     }
     classification = {
         "model": args.classification_model,
         "module": args.classification_module,
-        "labels": args.classification_labels,
-        "constants": args.classification_constants
+        "labels": args.classification_labels
     }
 
     # Create all elements
@@ -139,7 +125,7 @@ def construct_pipeline(pipe):
         "tee_0":             create_element("tee", "split0"),
         "mlvconverter_0":    create_element("qtimlvconverter", "converter0"),
         "mltflite_0":        create_element("qtimltflite", "inference0"),
-        "mlvdetection":      create_element("qtimlvdetection", "detection"),
+        "mlvdetection":      create_element("qtimlpostprocess", "detection"),
         "capsfilter_1":      create_element("capsfilter", "metamux0metacaps"),
         "metamux_0":         create_element("qtimetamux", "metamux0"),
         "overlay_0":         create_element("qtivoverlay", "overlay0"),
@@ -148,7 +134,7 @@ def construct_pipeline(pipe):
         "tee_1":             create_element("tee", "split1"),
         "mlvconverter_1":    create_element("qtimlvconverter", "converter1"),
         "mltflite_1":        create_element("qtimltflite", "inference1"),
-        "mlvclassification": create_element("qtimlvclassification", "classification"),
+        "mlvclassification": create_element("qtimlpostprocess", "classification"),
         "capsfilter_3":      create_element("capsfilter", "metamux1metacaps"),
         "metamux_1":         create_element("qtimetamux", "metamux1"),
         "overlay_1":         create_element("qtivoverlay", "overlay1"),
@@ -189,14 +175,13 @@ def construct_pipeline(pipe):
         elements["mltflite_0"], "model", detection["model"],
     )
 
-    Gst.util_set_object_arg(elements["mlvdetection"], "threshold", "75.0")
+    detection_threshold = 75.0
+    settings = f'{{"confidence": {detection_threshold:.1f}}}'
+    Gst.util_set_object_arg(elements["mlvdetection"], "settings", settings)
     Gst.util_set_object_arg(elements["mlvdetection"], "results", "4")
     Gst.util_set_object_arg(elements["mlvdetection"], "module", detection["module"])
     Gst.util_set_object_arg(
         elements["mlvdetection"], "labels", detection["labels"]
-    )
-    Gst.util_set_object_arg(
-        elements["mlvdetection"], "constants", detection["constants"],
     )
 
     Gst.util_set_object_arg(elements["capsfilter_1"], "caps", "text/x-raw")
@@ -226,19 +211,15 @@ def construct_pipeline(pipe):
         elements["mltflite_1"], "model", classification["model"]
     )
 
-    Gst.util_set_object_arg(elements["mlvclassification"], "threshold", "51.0")
+    classification_threshold = 75.0
+    settings = f'{{"confidence": {classification_threshold:.1f}}}'
+    Gst.util_set_object_arg(elements["mlvclassification"], "settings", settings)
     Gst.util_set_object_arg(elements["mlvclassification"], "results", "5")
     Gst.util_set_object_arg(
         elements["mlvclassification"], "module", classification["module"]
     )
     Gst.util_set_object_arg(
         elements["mlvclassification"], "labels", classification["labels"]
-    )
-    Gst.util_set_object_arg(
-        elements["mlvclassification"], "extra-operation", "softmax"
-    )
-    Gst.util_set_object_arg(
-        elements["mlvclassification"], "constants", classification["constants"],
     )
 
     Gst.util_set_object_arg(elements["capsfilter_3"], "caps", "text/x-raw")
