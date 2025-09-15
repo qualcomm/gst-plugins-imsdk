@@ -216,7 +216,7 @@ gst_socket_serialize_roi_meta (GstVideoRegionOfInterestMeta * roi_meta)
   GstVideoRoiMetaPayload *roi_meta_pl =
       g_malloc (sizeof (GstVideoRoiMetaPayload));
   const GstStructure *object_detection = NULL, *xtraparams = NULL;
-  gchar *label = NULL;
+  const gchar *label = NULL;
   gsize label_size = 0, label_maxsize = 0;
 
   roi_meta_pl->identity = MESSAGE_VIDEO_ROI_META;
@@ -274,7 +274,7 @@ gst_socket_serialize_roi_meta (GstVideoRegionOfInterestMeta * roi_meta)
     }
 
     memmove (roi_meta_pl->xtraparams, xp, xp_size);
-    roi_meta_pl->det_meta[xp_size - 1] = '\0';
+    roi_meta_pl->xtraparams[xp_size - 1] = '\0';
     g_free (xp);
     roi_meta_pl->xtraparams_size = xp_size;
   }
@@ -306,7 +306,7 @@ gst_socket_serialize_class_meta (GstVideoClassificationMeta * class_meta)
   for (guint i = 0; i < labels->len && i < labels_maxsize; i++) {
     GstClassLabel *l = &(g_array_index (labels, GstClassLabel, i));
 
-    gchar *label = g_quark_to_string(l->name);
+    const gchar *label = g_quark_to_string(l->name);
     gsize label_size = strlen (label) + 1;
     gsize label_maxsize = sizeof (class_meta_pl->labels[i].name);
 
@@ -371,7 +371,7 @@ gst_socket_serialize_lm_meta (GstVideoLandmarksMeta *lm_meta)
   for (guint i = 0; i < kps->len && i < kps_maxsize; i++) {
     GstVideoKeypoint *kp = &(g_array_index (kps, GstVideoKeypoint, i));
 
-    gchar *keypoint = g_quark_to_string(kp->name);
+    const gchar *keypoint = g_quark_to_string(kp->name);
     gsize keypoint_size = strlen (keypoint) + 1;
     gsize keypoint_maxsize = sizeof (lm_meta_pl->kps[i].name);
 
