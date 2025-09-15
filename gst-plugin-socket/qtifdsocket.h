@@ -51,8 +51,8 @@
     (((GstPayloadInfo *)(pl_info))->message != NULL) && \
     (((GstPayloadInfo *)(pl_info))->message->identity == msg_id)
 #define GST_PL_INFO_GET_N_FDS(pl_info) \
-    (((GstPayloadInfo *)(pl_info))->fd_count != NULL) ? \
-    (((GstPayloadInfo *)(pl_info))->fd_count->n_fds) : 0
+    ((((GstPayloadInfo *)(pl_info))->fd_count != NULL) ? \
+    (((GstPayloadInfo *)(pl_info))->fd_count->n_fds) : 0 )
 
 #define GST_EXPECTED_MEM_BLOCKS(socket) \
     (socket->mode == DATA_MODE_TENSOR ? socket->mlinfo->n_tensors : \

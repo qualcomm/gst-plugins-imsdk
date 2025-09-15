@@ -32,6 +32,9 @@
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
+#include <arpa/inet.h>
+#include <stdint.h>
+
 #include "qtifdsocket.h"
 
 void
@@ -91,6 +94,7 @@ send_socket_message (gint sock, GstPayloadInfo * pl_info)
   struct msghdr msg = {0};
   gchar buf[CMSG_SPACE (sizeof (*pl_info->fds) * GST_PL_INFO_GET_N_FDS (pl_info))];
 
+  uint32_t payload_len = 0, msg_len_net;
   gint data_size = 0;
 
   memset (buf, 0, sizeof (buf));
@@ -147,6 +151,7 @@ send_socket_message (gint sock, GstPayloadInfo * pl_info)
 
     io[i].iov_base = ptr;
     io[i].iov_len = get_payload_size (ptr);
+    payload_len += io[i].iov_len;
   }
 
   msg.msg_name = NULL;
@@ -169,6 +174,15 @@ send_socket_message (gint sock, GstPayloadInfo * pl_info)
     memmove (CMSG_DATA (cmsg), pl_info->fds, cmsg->cmsg_len);
   }
 
+  // Send the message length first as prefix
+  // Convert to network byte order, for compatibility with different host env
+  msg_len_net = htonl (payload_len);
+  data_size = send (sock, &msg_len_net, sizeof (msg_len_net), 0);
+  if (data_size != sizeof (msg_len_net)) {
+    GST_ERROR ("Failed to send message length");
+    return data_size;
+  }
+
   errno = 0;
   data_size = sendmsg (sock, &msg, 0);
 
@@ -180,14 +194,29 @@ receive_socket_message (gint sock, GstPayloadInfo * pl_info, int msg_flags)
 {
   struct msghdr msg = {0};
   struct iovec io;
-  gchar io_buf[65536];
-  gchar buf[CMSG_SPACE (sizeof (gint) * GST_MAX_MEM_BLOCKS)] = {0};
-  gint data_size;
+  g_autofree gchar *io_buf = NULL;
+  gchar buf[CMSG_SPACE (sizeof (*pl_info->fds) * GST_MAX_MEM_BLOCKS)] = {0};
+  ssize_t recv_len;
+  uint32_t msg_len_net, msg_len;
+
+  recv_len = recv (sock, &msg_len_net, sizeof (msg_len_net), msg_flags | MSG_WAITALL);
+  if (recv_len != sizeof (msg_len_net)) {
+      GST_ERROR ("Failed to read message length, returned %zd", recv_len);
+      return recv_len;
+  }
+
+  // Convert to host byte order
+  msg_len = ntohl (msg_len_net);
+
+  // Allocate buffer for the full message
+  io_buf = g_malloc (msg_len);
+  if (!io_buf) {
+      GST_ERROR ("Failed to allocate buffer %s", strerror (errno));
+      return -1;
+  }
 
   io.iov_base = io_buf;
-  io.iov_len = sizeof (io_buf);
-
-  memset (io_buf, -1, sizeof(io_buf));
+  io.iov_len = msg_len;
 
   msg.msg_name = NULL;
   msg.msg_namelen = 0;
@@ -199,47 +228,62 @@ receive_socket_message (gint sock, GstPayloadInfo * pl_info, int msg_flags)
   msg.msg_controllen = sizeof (buf);
 
   errno = 0;
-  data_size = recvmsg (sock, &msg, msg_flags);
+  recv_len = recvmsg (sock, &msg, msg_flags | MSG_WAITALL);
 
-  if (data_size < 0)
-    return data_size;
+  if (recv_len < 0)
+    return recv_len;
 
-  for (gchar * iterator = io_buf; (iterator != NULL);) {
-    gpointer ptr = NULL;
-    gint size = get_payload_size ((gpointer) iterator);
+  for (uint32_t offset = 0; offset < recv_len; ) {
+    gpointer payload;
+    gpointer iterator = io_buf + offset;
+    gint size = get_payload_size (iterator);
 
     if (size == -1) {
       break;
     }
 
-    ptr = malloc (size);
-    memmove (ptr, iterator, size);
+    payload = malloc (size);
+    memmove (payload, iterator, size);
 
-    GST_DEBUG ("Received ptr with msg_id %d and size %d",
-        GST_SOCKET_MSG_IDENTITY (ptr), size);
+    GST_DEBUG ("Received payload with msg_id %d and size %d",
+        GST_SOCKET_MSG_IDENTITY (payload), size);
 
-    if (GST_SOCKET_MSG_IDENTITY (ptr) == MESSAGE_EOS ||
-        GST_SOCKET_MSG_IDENTITY (ptr) == MESSAGE_DISCONNECT) {
-      pl_info->message = (GstMessagePayload *) ptr;
-    } else if (GST_SOCKET_MSG_IDENTITY (ptr) == MESSAGE_BUFFER_INFO) {
-      pl_info->buffer_info = (GstBufferPayload *) ptr;
-    } else if (GST_SOCKET_MSG_IDENTITY (ptr) == MESSAGE_RETURN_BUFFER) {
-      pl_info->return_buffer = (GstReturnBufferPayload *) ptr;
-    } else if (GST_SOCKET_MSG_IDENTITY (ptr) == MESSAGE_FD_COUNT) {
-      pl_info->fd_count = (GstFdCountPayload *) ptr;
-    } else if (GST_SOCKET_MSG_IDENTITY (ptr) == MESSAGE_PROTECTION_META) {
-      g_ptr_array_add (pl_info->protection_metadata_info, ptr);
-    } else if (GST_SOCKET_MSG_IDENTITY (ptr) == MESSAGE_VIDEO_ROI_META) {
-      g_ptr_array_add (pl_info->roi_meta_info, ptr);
-    } else if (GST_SOCKET_MSG_IDENTITY (ptr) == MESSAGE_VIDEO_CLASS_META) {
-      g_ptr_array_add (pl_info->class_meta_info, ptr);
-    } else if (GST_SOCKET_MSG_IDENTITY (ptr) == MESSAGE_VIDEO_LM_META) {
-      g_ptr_array_add (pl_info->lm_meta_info, ptr);
-    } else {
-      g_ptr_array_add (pl_info->mem_block_info, ptr);
+    switch (GST_SOCKET_MSG_IDENTITY (payload)) {
+      case MESSAGE_EOS:
+      case MESSAGE_DISCONNECT:
+        pl_info->message = (GstMessagePayload *) payload;
+        break;
+      case MESSAGE_BUFFER_INFO:
+        pl_info->buffer_info = (GstBufferPayload *) payload;
+        break;
+      case MESSAGE_FRAME:
+      case MESSAGE_TENSOR:
+      case MESSAGE_TEXT:
+        g_ptr_array_add (pl_info->mem_block_info, payload);
+        break;
+      case MESSAGE_RETURN_BUFFER:
+        pl_info->return_buffer = (GstReturnBufferPayload *) payload;
+        break;
+      case MESSAGE_FD_COUNT:
+        pl_info->fd_count = (GstFdCountPayload *) payload;
+        break;
+      case MESSAGE_PROTECTION_META:
+        g_ptr_array_add (pl_info->protection_metadata_info, payload);
+        break;
+      case MESSAGE_VIDEO_ROI_META:
+        g_ptr_array_add (pl_info->roi_meta_info, payload);
+        break;
+      case MESSAGE_VIDEO_CLASS_META:
+        g_ptr_array_add (pl_info->class_meta_info, payload);
+        break;
+      case MESSAGE_VIDEO_LM_META:
+        g_ptr_array_add (pl_info->lm_meta_info, payload);
+        break;
+      default:
+        break;
     }
 
-    iterator += size;
+    offset += size;
   }
 
   if ((pl_info->fds != NULL) && (pl_info->fd_count != NULL) &&
@@ -252,7 +296,7 @@ receive_socket_message (gint sock, GstPayloadInfo * pl_info, int msg_flags)
     }
   }
 
-  return data_size;
+  return recv_len;
 }
 
 gint
