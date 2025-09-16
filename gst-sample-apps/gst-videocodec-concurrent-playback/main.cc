@@ -35,8 +35,8 @@
 
 #define ARRAY_LENGTH 20
 #define STREAM_CNT 2
-#define DEFAULT_AVC_FILESOURCE "/etc/media/Animals_000_720p_180s_30FPS.mp4"
-#define DEFAULT_HEVC_FILESOURCE "/etc/media/Animals_000_720p_180s_30FPS.mp4"
+#define DEFAULT_AVC_FILESOURCE "/etc/media/video.mp4"
+#define DEFAULT_HEVC_FILESOURCE "/etc/media/video_hevc.mp4"
 #define DEFAULT_YUV_FILESINK "/etc/media/h265_dump.yuv"
 
 
@@ -53,7 +53,7 @@
   "engine decoding the different video codecs content concurrently. \n" \
   "The first file should be H264 and the second file should be HEVC with MP4 container.\n" \
   "\nCommand:\n" \
-  "  gst-videocodec-concurrent-playback -i <h264_file>.mp4 -i <h265_file>.mp4 "\
+  "  gst-videocodec-concurrent-playback -i /etc/media/video.mp4 -i /etc/media/video_hevc.mp4 "\
   "-o <filename>.yuv \n" \
   "\nOutput:\n" \
   "  H264 content goes to the display and HEVC content is dumped to YUV file.\n"
