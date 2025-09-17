@@ -27,8 +27,12 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
+#include <cstdint>
 #ifndef LAPJV_H
 #define LAPJV_H
+
+namespace lapjv
+{
 
 #define LARGE 1000000
 
@@ -86,7 +90,9 @@ typedef char boolean;
 typedef enum fp_t { FP_1 = 1, FP_2 = 2, FP_DYNAMIC = 3 } fp_t;
 
 extern int_t lapjv_internal(
-	const uint_t n, cost_t *cost[],
-	int_t *x, int_t *y);
+    const int_t n, cost_t *cost[],
+    int_t *x, int_t *y);
+
+} // namespace
 
 #endif // LAPJV_H

@@ -29,60 +29,75 @@
 
 #pragma once
 
+#include <list>
 #include <map>
 
 #include "kalmanFilter.h"
+#include "utils_log.h"
 
-//using namespace cv;
+// using namespace cv;
 using namespace std;
 
 enum TrackState { New = 0, Tracked, Lost, Removed };
 
-class STrack
-{
-public:
-    STrack(vector<float> tlwh_, float score, int det_id = -1);
-	~STrack();
+class STrack {
+ public:
+  STrack(vector<float> tlwh_, float score, int det_id = -1);
+  ~STrack();
 
-	vector<float> static tlbr_to_tlwh(vector<float> &tlbr);
-	void static multi_predict(vector<STrack*> &stracks, byte_kalman::KalmanFilter &kalman_filter);
-	void static_tlwh();
-	void static_tlbr();
-	vector<float> tlwh_to_xyah(vector<float> tlwh_tmp);
-	vector<float> to_xyah();
-	void mark_lost();
-	void mark_removed();
-	int next_id();
-	int end_frame();
+  vector<float> static tlbr_to_tlwh(vector<float> &tlbr);
+  void static multi_predict(vector<STrack*> &stracks,
+      byte_kalman::KalmanFilter &kalman_filter);
+  void static_tlwh();
+  void static_tlbr();
+  vector<float> tlwh_to_xyah(vector<float> tlwh_tmp);
+  vector<float> to_xyah();
+  void mark_lost();
+  void mark_removed();
+  int next_id();
+  int end_frame();
 
-	void activate(byte_kalman::KalmanFilter &kalman_filter, int frame_id);
-	void re_activate(STrack &new_track, int frame_id, bool new_id = false, float iou_score = 0);
-	void update(STrack &new_track, int frame_id, float iou_score = 0, float sz_smooth_factor = 0.9f);
+  void activate(byte_kalman::KalmanFilter &kalman_filter, int frame_id);
+  void re_activate(STrack &new_track, int frame_id, bool new_id = false,
+      float iou_score = 0);
+  void update(STrack &new_track, int frame_id, float iou_score = 0,
+      float sz_smooth_factor = 0.9f);
 
-public:
-	bool is_activated; //flag for confirmed and unconfirmed tracks
-	int track_id;
-	int state;
+  void update_reid(vector<float> &feature, int bbox_size, int frame_id);
 
-	vector<float> _tlwh;
-	vector<float> tlwh;
-	vector<float> tlbr;
-	int frame_id;
-	int tracklet_len;
-	int start_frame;
+ public:
+  bool                            is_activated; // flag for confirmed and unconfirmed tracks
+  int                             track_id;
+  int                             state;
 
-    vector<float> smoothed_wh; //size of two
+  vector<float>                   _tlwh; // detection box when initializd, will not change
+  vector<float>                   tlwh;
+  vector<float>                   tlbr;
+  int                             frame_id;
+  int                             tracklet_len;
+  int                             start_frame;
 
-	KAL_MEAN mean;
-	KAL_COVA covariance;
-	float score;
+  vector<float>                   smoothed_wh; // size of two
 
-    //ADDED members
-    int   matched_detection_id; //original index of the matched detection
-    float iou_with_det;
+  KAL_MEAN                        mean;
+  KAL_COVA                        covariance;
+  float                           score;
 
+  // ADDED members
+  int                             matched_detection_id; // original index of the matched detection
+  float                           iou_with_det;
+  vector<float>                   current_detection_tlbr;
+  vector<float>                   prev_motion; // for temporal smoothing
 
+  // ReID related members
+  float                           adjacency_overlap; // maximum overlap ratio (IOU) with other detection boxes
+  list<vector<float>>             reid_feature_list;
+  list<int>                       reid_timestamp_list;
+  list<int>                       bbox_size_list;
+  int                             reid_priority;
+  int                             max_reid_capacity;
+  bool                            ambiguous_iou;
 
-private:
-	byte_kalman::KalmanFilter kalman_filter;
+ private:
+  byte_kalman::KalmanFilter       kalman_filter;
 };
