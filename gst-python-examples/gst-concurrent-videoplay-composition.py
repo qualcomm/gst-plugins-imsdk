@@ -15,6 +15,8 @@ gi.require_version('Gst', '1.0')
 gi.require_version("GLib", "2.0")
 from gi.repository import Gst, GLib
 
+DEFAULT_INPUT_VIDEO_PATH = "/etc/media/video.mp4"
+
 # Constants
 DESCRIPTION = """
 This app sets up GStreamer pipeline for concurrent video playback
@@ -105,7 +107,7 @@ def main():
         )
     )
     parser.add_argument(
-        "--infile", type=str, required=True,
+        "--infile", type=str, default=DEFAULT_INPUT_VIDEO_PATH,
         help="Input file to stream"
     )
     parser.add_argument(
