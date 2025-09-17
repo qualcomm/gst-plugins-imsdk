@@ -4,7 +4,6 @@
   "face-landmark-model":"/etc/models/facemap_3dmm_quantized.tflite",
   "face-recognition-model":"/etc/models/face_attrib_net_quantized.tflite",
   "face-detection-labels": "/etc/labels/face_detection.json",
-  "face-landmark-labels": "/etc/labels/face_landmark.json",
   "face-recognition-labels": "/etc/labels/face_recognition.json",
   "face-recognition-settings": "/etc/labels/face_recognition_settings.json",
   "facemap-3dmm-settings": "/etc/labels/facemap_3dmm_settings.json"
