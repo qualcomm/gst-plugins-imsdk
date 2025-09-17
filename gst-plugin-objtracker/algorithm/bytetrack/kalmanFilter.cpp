@@ -28,8 +28,7 @@
  */
 
 #include "kalmanFilter.h"
-
-#include "Eigen/Cholesky"
+#include <Eigen/Cholesky>
 
 namespace byte_kalman
 {
