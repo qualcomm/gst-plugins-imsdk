@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
-#include "objtracker-data.h"
 #include "BYTETracker.h"
+
+#include "objtracker-data.h"
 
 BYTETracker *tracker;
 
@@ -18,6 +19,7 @@ extern "C" {
 void *TrackerAlgoCreate (std::map<std::string, ParameterType> params)
 {
   ByteTrackerConfig config;
+  std::map<std::string, ParameterType>::iterator it;
 
   if (params.size() == 0) {
     config.frame_rate = 30;
@@ -26,46 +28,40 @@ void *TrackerAlgoCreate (std::map<std::string, ParameterType> params)
     config.track_thresh = 0.5;
     config.high_thresh = 0.6;
   } else {
-    std::map<std::string, ParameterType>::iterator it;
+    it = params.find ("frame-rate");
+    if (it == params.end()) {
+      return NULL;
+    }
+    config.frame_rate = std::get<int> (it->second);
 
-    it = params.find("frame-rate");
-    if (it != params.end()) {
-        config.frame_rate = std::get<int>(it->second);
-    } else {
-        goto cleanup;
+    it = params.find ("track-buffer");
+    if (it == params.end()) {
+      return NULL;
     }
-    it = params.find("track-buffer");
-    if (it != params.end()) {
-        config.track_buffer = std::get<int>(it->second);
-    } else {
-        goto cleanup;
+    config.track_buffer = std::get<int> (it->second);
+
+    it = params.find ("wh-smooth-factor");
+    if (it == params.end()) {
+      return NULL;
     }
-    it = params.find("wh-smooth-factor");
-    if (it != params.end()) {
-        config.wh_smooth_factor = std::get<float>(it->second);
-    } else {
-        goto cleanup;
+    config.wh_smooth_factor = std::get<float> (it->second);
+
+    it = params.find ("track-thresh");
+    if (it == params.end()) {
+      return NULL;
     }
-    it = params.find("track-thresh");
-    if (it != params.end()) {
-        config.track_thresh = std::get<float>(it->second);
-    } else {
-        goto cleanup;
+    config.track_thresh = std::get<float> (it->second);
+
+    it = params.find ("high-thresh");
+    if (it == params.end()) {
+      return NULL;
     }
-    it = params.find("high-thresh");
-    if (it != params.end()) {
-        config.high_thresh = std::get<float>(it->second);
-    } else {
-        goto cleanup;
-    }
+    config.high_thresh = std::get<float> (it->second);
   }
 
-  tracker = new BYTETracker(config);
+  tracker = new BYTETracker (config);
 
   return tracker;
-
-cleanup:
-  return NULL;
 }
 
 std::vector<TrackerAlgoOutputData> TrackerAlgoExecute (void *tracker,
@@ -76,7 +72,7 @@ std::vector<TrackerAlgoOutputData> TrackerAlgoExecute (void *tracker,
   TrackerAlgoOutputData result;
   std::vector<TrackerAlgoOutputData> results;
 
-  for (size_t i = 0; i < data.size(); i++) {
+  for (size_t i = 0; i < data.size (); i++) {
     object.bounding_box[0] = data[i].x;
     object.bounding_box[1] = data[i].y;
     object.bounding_box[2] = data[i].x + data[i].w;
@@ -84,10 +80,10 @@ std::vector<TrackerAlgoOutputData> TrackerAlgoExecute (void *tracker,
     object.prob = data[i].prob / 100.0;
     object.label = data[i].detection_id;
 
-    objects.push_back(object);
+    objects.push_back (object);
   }
 
-  std::vector<STrack> stracks = ((BYTETracker *)tracker)->update(objects);
+  std::vector<STrack> stracks = ((BYTETracker *)tracker)->update (objects);
 
   for (const auto& strack : stracks) {
     if (strack.state == TrackState::Removed)
@@ -103,7 +99,7 @@ std::vector<TrackerAlgoOutputData> TrackerAlgoExecute (void *tracker,
     result.matched_detection_id = strack.matched_detection_id;
     result.track_id = strack.track_id;
 
-    results.push_back(result);
+    results.push_back (result);
   }
 
   return results;

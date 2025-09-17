@@ -8,6 +8,7 @@
 
 #include <gst/gst.h>
 #include <gst/base/gstbasetransform.h>
+
 #include "objtracker-algo.h"
 
 G_BEGIN_DECLS
@@ -35,7 +36,6 @@ struct _GstObjTracker {
   ///Properties
   gint                  backend;
   GstStructure          *algoparameters;
-
 };
 
 struct _GstObjTrackerClass {
@@ -46,4 +46,4 @@ G_GNUC_INTERNAL GType gst_objtracker_get_type (void);
 
 G_END_DECLS
 
-#endif // __GST_QTI_OBJTRACKER_H__
+#endif /* __GST_QTI_OBJTRACKER_H__ */

@@ -3,12 +3,14 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
+#include "objtracker-algo.h"
+
+#include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <dlfcn.h>
 #include <unistd.h>
+
 #include "objtracker-data.h"
-#include "objtracker-algo.h"
 
 #define GST_CAT_DEFAULT gst_objtracker_algo_debug
 GST_DEBUG_CATEGORY (gst_objtracker_algo_debug);
@@ -251,95 +253,108 @@ gboolean
 gst_objtracker_algo_set_opts (GstObjTrackerAlgo * algo,
     GstStructure * options)
 {
-  gboolean success = TRUE;
-  gdouble value;
   GstStructure *parameters = NULL;
   std::map<std::string, ParameterType> params;
   const GValue *frame_rate = NULL, *track_buffer = NULL,
-      *wh_smooth_factor = NULL, *track_thresh = NULL,
-      *high_thresh = NULL;
+      *wh_smooth_factor = NULL, *track_thresh = NULL, *high_thresh = NULL;
+  gdouble value;
+  gboolean success = TRUE;
 
   g_return_val_if_fail (algo != NULL, FALSE);
 
-  if (options != NULL) {
-    success = gst_structure_has_field (options,
-        GST_OBJTRACKER_ALGO_OPT_PARAMETERS);
-
-    parameters = GST_STRUCTURE (g_value_get_boxed (
-        gst_structure_get_value (options,
-        GST_OBJTRACKER_ALGO_OPT_PARAMETERS)));
-    if (!(success = gst_structure_has_field (parameters, "frame-rate"))) {
-      GST_ERROR ("Missing bytetrack rate value paramter!");
-      goto cleanup;
-    } else if (!(success = gst_structure_has_field (parameters,
-        "track-buffer"))) {
-      GST_ERROR ("Missing bytetrack track buffer paramter!");
-      goto cleanup;
-    } else if (!(success = gst_structure_has_field (parameters,
-        "wh-smooth-factor"))) {
-      GST_ERROR ("Missing bytetrack wh smooth factor paramter!");
-      goto cleanup;
-    } else if (!(success = gst_structure_has_field (parameters,
-        "track-thresh"))) {
-      GST_ERROR ("Missing bytetrack track thresh paramter!");
-      goto cleanup;
-    } else if (!(success = gst_structure_has_field (parameters,
-        "high-thresh"))) {
-      GST_ERROR ("Missing bytetrack high thresh paramter!");
-      goto cleanup;
-    }
-
-    frame_rate = gst_structure_get_value (parameters, "frame-rate");
-    track_buffer = gst_structure_get_value (parameters, "track-buffer");
-    wh_smooth_factor =
-        gst_structure_get_value (parameters, "wh-smooth-factor");
-    track_thresh = gst_structure_get_value (parameters, "track-thresh");
-    high_thresh = gst_structure_get_value (parameters, "high-thresh");
-
-    if (!(success = (gst_value_array_get_size (frame_rate) == 1))) {
-      GST_ERROR ("Expecting %u frame-rate entries but received "
-          "%u!", 1, gst_value_array_get_size (frame_rate));
-      goto cleanup;
-    } else if (!(success = (gst_value_array_get_size (track_buffer) == 1))) {
-      GST_ERROR ("Expecting %u track-buffer entries but received "
-          "%u!", 1, gst_value_array_get_size (track_buffer));
-      goto cleanup;
-    } else if (!(success =
-        (gst_value_array_get_size (wh_smooth_factor) == 1))) {
-      GST_ERROR ("Expecting %u wh_smooth_factor entries but received "
-          "%u!", 1, gst_value_array_get_size (wh_smooth_factor));
-      goto cleanup;
-    } else if (!(success = (gst_value_array_get_size (track_thresh) == 1))) {
-      GST_ERROR ("Expecting %u track_thresh entries but received "
-          "%u!", 1, gst_value_array_get_size (track_thresh));
-      goto cleanup;
-    } else if (!(success = (gst_value_array_get_size (high_thresh) == 1))) {
-      GST_ERROR ("Expecting %u high_thresh entries but received "
-          "%u!", 1, gst_value_array_get_size (high_thresh));
-      goto cleanup;
-    }
-
-    params.emplace("frame-rate",
-        g_value_get_int (gst_value_array_get_value (frame_rate, 0)));
-    params.emplace("track-buffer",
-        g_value_get_int (gst_value_array_get_value (track_buffer, 0)));
-    value = g_value_get_double (
-        gst_value_array_get_value (wh_smooth_factor, 0));
-    params.emplace("wh-smooth-factor", (float)value);
-    value = g_value_get_double (gst_value_array_get_value (track_thresh, 0));
-    params.emplace("track-thresh", (float)value);
-    value = g_value_get_double (gst_value_array_get_value (high_thresh, 0));
-    params.emplace("high-thresh", (float)value);
+  if (options == NULL) {
+    algo->subalgo = algo->algocreate (params);
+    return (algo->subalgo != NULL);
   }
 
-  algo->subalgo = algo->algocreate(params);
-  if (algo->subalgo == NULL)
-    goto cleanup;
+  success = gst_structure_has_field (options,
+      GST_OBJTRACKER_ALGO_OPT_PARAMETERS);
+  if (!success) {
+    GST_ERROR ("Missing parameters field!");
+    return FALSE;
+  }
 
-  return TRUE;
+  parameters = GST_STRUCTURE (g_value_get_boxed (
+      gst_structure_get_value (options, GST_OBJTRACKER_ALGO_OPT_PARAMETERS)));
 
-cleanup:
-  return FALSE;
+  if (!gst_structure_has_field (parameters, "frame-rate")) {
+    GST_ERROR ("Missing bytetrack rate value paramter!");
+    return FALSE;
+  }
+
+  if (!gst_structure_has_field (parameters, "track-buffer")) {
+    GST_ERROR ("Missing bytetrack track buffer paramter!");
+    return FALSE;
+  }
+
+  if (!gst_structure_has_field (parameters, "wh-smooth-factor")) {
+    GST_ERROR ("Missing bytetrack wh smooth factor paramter!");
+    return FALSE;
+  }
+
+  if (!gst_structure_has_field (parameters, "track-thresh")) {
+    GST_ERROR ("Missing bytetrack track thresh paramter!");
+    return FALSE;
+  }
+
+  if (!gst_structure_has_field (parameters, "high-thresh")) {
+    GST_ERROR ("Missing bytetrack high thresh paramter!");
+    return FALSE;
+  }
+
+  frame_rate = gst_structure_get_value (parameters, "frame-rate");
+  track_buffer = gst_structure_get_value (parameters, "track-buffer");
+  wh_smooth_factor = gst_structure_get_value (parameters, "wh-smooth-factor");
+  track_thresh = gst_structure_get_value (parameters, "track-thresh");
+  high_thresh = gst_structure_get_value (parameters, "high-thresh");
+
+  if (gst_value_array_get_size (frame_rate) != 1) {
+    GST_ERROR ("Expecting %u frame-rate entries but received %u!", 1,
+        gst_value_array_get_size (frame_rate));
+    return FALSE;
+  }
+
+  if (gst_value_array_get_size (track_buffer) != 1) {
+    GST_ERROR ("Expecting %u track-buffer entries but received %u!", 1,
+        gst_value_array_get_size (track_buffer));
+    return FALSE;
+  }
+
+  if (gst_value_array_get_size (wh_smooth_factor) != 1) {
+    GST_ERROR ("Expecting %u wh_smooth_factor entries but received %u!", 1,
+        gst_value_array_get_size (wh_smooth_factor));
+    return FALSE;
+  }
+
+  if (gst_value_array_get_size (track_thresh) != 1) {
+    GST_ERROR ("Expecting %u track_thresh entries but received %u!", 1,
+        gst_value_array_get_size (track_thresh));
+    return FALSE;
+  }
+
+  if (gst_value_array_get_size (high_thresh) != 1) {
+    GST_ERROR ("Expecting %u high_thresh entries but received %u!", 1,
+        gst_value_array_get_size (high_thresh));
+    return FALSE;
+  }
+
+  params.emplace ("frame-rate",
+      g_value_get_int (gst_value_array_get_value (frame_rate, 0)));
+  params.emplace ("track-buffer",
+      g_value_get_int (gst_value_array_get_value (track_buffer, 0)));
+
+  value = g_value_get_double (gst_value_array_get_value (wh_smooth_factor, 0));
+  params.emplace ("wh-smooth-factor", (float)value);
+
+  value = g_value_get_double (gst_value_array_get_value (track_thresh, 0));
+  params.emplace ("track-thresh", (float)value);
+
+  value = g_value_get_double (gst_value_array_get_value (high_thresh, 0));
+  params.emplace ("high-thresh", (float)value);
+
+  algo->subalgo = algo->algocreate (params);
+
+  return (algo->subalgo != NULL);
 }
 
 gboolean
