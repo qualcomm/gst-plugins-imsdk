@@ -1099,9 +1099,9 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
       subsurface.planes[0].stride *= n_components;
     }
 
-    // Overwrite the 3 channeled format to corresponding 4 channeled format.
+    // Overwrite formats to corresponding 4 channeled format if necessary.
     // This will make it compatible for creating EGL image and use in compute.
-    if (n_components == 3) {
+    if (n_components != 4) {
       subsurface.format = ColorFormat::kRGBA8888;
 
       if (Format::IsFloat(surface.format) && (bitdepth == 32))
