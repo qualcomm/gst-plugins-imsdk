@@ -916,14 +916,16 @@ qmmfsrc_gst_get_stream_colorimetry (gchar *colorimetry)
   if (colorimetry == NULL)
     return ::qmmf::recorder::VideoColorimetry::kBT601;
 #if (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
-  else if (g_strcmp0 (colorimetry, GST_VIDEO_COLORIMETRY_BT2100_HLG_FULL) == 0)
-    return ::qmmf::recorder::VideoColorimetry::kBT2100HLG;
-  else if (g_strcmp0 (colorimetry, GST_VIDEO_COLORIMETRY_BT2100_PQ_FULL) == 0)
-    return ::qmmf::recorder::VideoColorimetry::kBT2100PQ;
-  else if (g_strcmp0 (colorimetry, GST_VIDEO_COLORIMETRY_BT601_FULL) == 0)
+  else if (g_strcmp0 (colorimetry, GST_VIDEO_COLORIMETRY_BT601) == 0)
     return ::qmmf::recorder::VideoColorimetry::kBT601;
+  else if (g_strcmp0 (colorimetry, GST_VIDEO_COLORIMETRY_BT2100_HLG_FULL) == 0)
+    return ::qmmf::recorder::VideoColorimetry::kBT2100HLGFULL;
+  else if (g_strcmp0 (colorimetry, GST_VIDEO_COLORIMETRY_BT2100_PQ_FULL) == 0)
+    return ::qmmf::recorder::VideoColorimetry::kBT2100PQFULL;
+  else if (g_strcmp0 (colorimetry, GST_VIDEO_COLORIMETRY_BT601_FULL) == 0)
+    return ::qmmf::recorder::VideoColorimetry::kBT601FULL;
   else if (g_strcmp0 (colorimetry, GST_VIDEO_COLORIMETRY_BT709_FULL) == 0)
-    return ::qmmf::recorder::VideoColorimetry::kBT709;
+    return ::qmmf::recorder::VideoColorimetry::kBT709FULL;
 #endif // (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
   else {
     GST_WARNING ("Colorimetry value %s is invalid default to BT.601",
@@ -1777,9 +1779,9 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
 #if (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
     tag_id = get_vendor_tag_by_name (
         "org.quic.camera2.streamconfigs", "HDRVideoMode");
-    if (!g_strcmp0 (vpad->colorimetry, GST_VIDEO_COLORIMETRY_BT2100_HLG_FULL))
+    if (g_strcmp0 (vpad->colorimetry, GST_VIDEO_COLORIMETRY_BT2100_HLG_FULL) == 0)
       streamhdrmode = 1;
-    else if (!g_strcmp0 (vpad->colorimetry, GST_VIDEO_COLORIMETRY_BT2100_PQ_FULL))
+    else if (g_strcmp0 (vpad->colorimetry, GST_VIDEO_COLORIMETRY_BT2100_PQ_FULL) == 0)
       streamhdrmode = 2;
     else
       streamhdrmode = 0;
