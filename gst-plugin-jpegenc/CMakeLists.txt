@@ -7,7 +7,7 @@ project(GST_PLUGIN_QTI_OSS_JPEGENC
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 include_directories(${SYSROOT_INCDIR})
-link_directories(${SYSROOT_LIBDIR})
+link_directories(${SYSROOT_LIBDIR} ${SYSROOT_LIBDIR}/${TARGET_BOARD_PLATFORM})
 
 find_package(PkgConfig)
 
