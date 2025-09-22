@@ -198,8 +198,6 @@ create_pipe_qtivcomposer (GstComposeAppContext * appctx)
   // create the video decoder and parse element
   h264parse = gst_element_factory_make ("h264parse", "h264parse");
   v4l2h264dec = gst_element_factory_make ("v4l2h264dec", "v4l2h264dec");
-  g_object_set(G_OBJECT(v4l2h264dec), "capture-io-mode", "dmabuf", NULL);
-  g_object_set(G_OBJECT(v4l2h264dec), "output-io-mode", "dmabuf", NULL);
 
   // Create display capsfilter
   dis_capsfilter = gst_element_factory_make ("capsfilter", "dis_capsfilter");
@@ -264,6 +262,10 @@ create_pipe_qtivcomposer (GstComposeAppContext * appctx)
 
   // link demux video track pad to video parse
   g_signal_connect (qtdemux, "pad-added", G_CALLBACK (on_pad_added), h264parse);
+
+  // Set decoder properties
+  gst_element_set_enum_property (v4l2h264dec, "capture-io-mode", "dmabuf");
+  gst_element_set_enum_property (v4l2h264dec, "output-io-mode", "dmabuf");
 
   // Append all elements in a list
   appctx->plugins = g_list_append (appctx->plugins, qtiqmmfsrc);

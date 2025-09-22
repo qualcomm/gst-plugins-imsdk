@@ -118,6 +118,7 @@ enum {
   GST_C2_PARAM_LTR_USE,              // guint32
   GST_C2_PARAM_FLIP,                 // GstC2VideoFlip
   GST_C2_PARAM_VBV_DELAY,            // gint32
+  GST_C2_PARAM_VUI_TIMING_INFO,      // gboolean
 };
 
 typedef enum {
@@ -389,6 +390,7 @@ struct _GstC2QuantRegions {
 struct _GstC2TemporalLayer {
   guint32 n_layers;
   guint32 n_blayers;
+  GArray  *bitrate_ratios;
 };
 
 guint gst_c2_utils_h264_profile_from_string (const gchar * profile);

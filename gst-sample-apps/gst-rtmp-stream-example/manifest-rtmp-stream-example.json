@@ -1,0 +1,8 @@
+{
+  "Version": "1.6",
+  "ApplicationName": "gst-rtmp-stream-example",
+  "ApplicationType": "Camera",
+  "ApplicationSourceCheckSum": "",
+  "ApplicationIcon": "",
+  "ApplicationTextDescription": "This application demonstrates RTMP streaming usecases of ISP camera to RTMP and RTSP Camera to RTMP"
+}

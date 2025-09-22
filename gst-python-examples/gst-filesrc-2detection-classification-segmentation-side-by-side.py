@@ -16,36 +16,28 @@ gi.require_version("GLib", "2.0")
 from gi.repository import Gst, GLib
 
 # Configurations for Detection (0)
-DEFAULT_DETECTION_INPUT_0 = "/etc/media/detection_input.mp4"
+DEFAULT_DETECTION_INPUT_0 = "/etc/media/video.mp4"
 DEFAULT_DETECTION_MODEL_0 = "/etc/models/yolox_quantized.tflite"
 DEFAULT_DETECTION_MODULE_0 = "yolov8"
-DEFAULT_DETECTION_LABELS_0 = "/etc/labels/yolox.labels"
-DEFAULT_DETECTION_CONSTANTS_0 = "YOLOx,q-offsets=<38.0, 0.0, 0.0>,\
-    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
+DEFAULT_DETECTION_LABELS_0 = "/etc/labels/yolox.json"
 
 # Configurations for Detection (1)
-DEFAULT_DETECTION_INPUT_1 = "/etc/media/detection_input.mp4"
+DEFAULT_DETECTION_INPUT_1 = "/etc/media/video.mp4"
 DEFAULT_DETECTION_MODEL_1 = "/etc/models/yolox_quantized.tflite"
 DEFAULT_DETECTION_MODULE_1 = "yolov8"
-DEFAULT_DETECTION_LABELS_1 = "/etc/labels/yolox.labels"
-DEFAULT_DETECTION_CONSTANTS_1 = "YOLOx,q-offsets=<38.0, 0.0, 0.0>,\
-    q-scales=<3.6124823093414307, 0.003626860911026597, 1.0>;"
+DEFAULT_DETECTION_LABELS_1 = "/etc/labels/yolox.json"
 
 # Configurations for Classification
-DEFAULT_CLASSIFICATION_INPUT = "/etc/media/classification_input.mp4"
-DEFAULT_CLASSIFICATION_MODEL = "/etc/models/Resnet101_Quantized.tflite"
-DEFAULT_CLASSIFICATION_MODULE = "mobilenet"
-DEFAULT_CLASSIFICATION_LABELS = "/etc/labels/resnet101.labels"
-DEFAULT_CLASSIFICATION_CONSTANTS = "Mobilenet,q-offsets=<-82.0>,\
-    q-scales=<0.21351955831050873>;"
+DEFAULT_CLASSIFICATION_INPUT = "/etc/media/video.mp4"
+DEFAULT_CLASSIFICATION_MODEL = "/etc/models/inception_v3_quantized.tflite"
+DEFAULT_CLASSIFICATION_MODULE = "mobilenet-softmax"
+DEFAULT_CLASSIFICATION_LABELS = "/etc/labels/classification.json"
 
 # Configurations for Segmentation
-DEFAULT_SEGMENTATION_INPUT = "/etc/media/segmentation_input.MOV"
-DEFAULT_SEGMENTATION_MODEL = "/etc/models/ffnet_40s_quantized.tflite"
+DEFAULT_SEGMENTATION_INPUT = "/etc/media/video.mp4"
+DEFAULT_SEGMENTATION_MODEL = "/etc/models/deeplabv3_plus_mobilenet_quantized.tflite"
 DEFAULT_SEGMENTATION_MODULE = "deeplab-argmax"
-DEFAULT_SEGMENTATION_LABELS = "/etc/labels/dv3-argmax.labels"
-DEFAULT_SEGMENTATION_CONSTANTS = "FFNet-40S,q-offsets=<50.0>,\
-    q-scales=<0.31378185749053955>;"
+DEFAULT_SEGMENTATION_LABELS = "/etc/labels/deeplabv3_resnet50.json"
 
 DESCRIPTION = f"""
 The application uses:
@@ -70,7 +62,7 @@ The default file paths in the python script are as follows:
 - Segmentation labels:            {DEFAULT_SEGMENTATION_LABELS}
 
 To override the default settings,
-please configure the corresponding module and constants as well.
+please configure the corresponding module as well.
 """
 
 eos_received = False
@@ -125,10 +117,6 @@ def construct_pipeline(pipe):
         help="Path to TfLite Object Detection Labels (0)"
     )
     parser.add_argument(
-        "--detection_constants_0", type=str, default=DEFAULT_DETECTION_CONSTANTS_0,
-        help="Constants for TfLite Object Detection Model (0)"
-    )
-    parser.add_argument(
         "--detection_input_1", type=str, default=DEFAULT_DETECTION_INPUT_1,
         help="Input File Path for Detection (1)"
     )
@@ -143,10 +131,6 @@ def construct_pipeline(pipe):
     parser.add_argument(
         "--detection_labels_1", type=str, default=DEFAULT_DETECTION_LABELS_1,
         help="Path to TfLite Object Detection Labels (1)"
-    )
-    parser.add_argument(
-        "--detection_constants_1", type=str, default=DEFAULT_DETECTION_CONSTANTS_1,
-        help="Constants for TfLite Object Detection Model (1)"
     )
     parser.add_argument(
         "--classification_input", type=str, default=DEFAULT_CLASSIFICATION_INPUT,
@@ -165,10 +149,6 @@ def construct_pipeline(pipe):
         help="Path to TfLite Classification Labels"
     )
     parser.add_argument(
-        "--classification_constants", type=str, default=DEFAULT_CLASSIFICATION_CONSTANTS,
-        help="Constants for TfLite Classification Model"
-    )
-    parser.add_argument(
         "--segmentation_input", type=str, default=DEFAULT_SEGMENTATION_INPUT,
         help="Input File Path for Segmentation"
     )
@@ -184,10 +164,6 @@ def construct_pipeline(pipe):
         "--segmentation_labels", type=str, default=DEFAULT_SEGMENTATION_LABELS,
         help="Path to TfLite Segmentation Labels"
     )
-    parser.add_argument(
-        "--segmentation_constants", type=str, default=DEFAULT_SEGMENTATION_CONSTANTS,
-        help="Constants for TfLite Segmentation Model"
-    )
 
     args = parser.parse_args()
 
@@ -196,30 +172,26 @@ def construct_pipeline(pipe):
         "input": args.detection_input_0,
         "model": args.detection_model_0,
         "module": args.detection_module_0,
-        "labels": args.detection_labels_0,
-        "constants": args.detection_constants_0
+        "labels": args.detection_labels_0
         },
         {
         "input": args.detection_input_1,
         "model": args.detection_model_1,
         "module": args.detection_module_1,
-        "labels": args.detection_labels_1,
-        "constants": args.detection_constants_1
+        "labels": args.detection_labels_1
         }
     ]
     classification = {
         "input": args.classification_input,
         "model": args.classification_model,
         "module": args.classification_module,
-        "labels": args.classification_labels,
-        "constants": args.classification_constants
+        "labels": args.classification_labels
     }
     segmentation = {
         "input": args.segmentation_input,
         "model": args.segmentation_model,
         "module": args.segmentation_module,
-        "labels": args.segmentation_labels,
-        "constants": args.segmentation_constants
+        "labels": args.segmentation_labels
     }
 
     # Create all elements
@@ -234,7 +206,7 @@ def construct_pipeline(pipe):
         "tee_0":             create_element("tee", "split0"),
         "mlvconverter_0":    create_element("qtimlvconverter", "converter0"),
         "mltflite_0":        create_element("qtimltflite", "inference0"),
-        "mlvdetection_0":    create_element("qtimlvdetection", "detection0"),
+        "mlvdetection_0":    create_element("qtimlpostprocess", "detection0"),
         "capsfilter_0":      create_element("capsfilter", "metamux0metacaps"),
         "metamux_0":         create_element("qtimetamux", "metamux0"),
         "overlay_0":         create_element("qtivoverlay", "overlay0"),
@@ -247,7 +219,7 @@ def construct_pipeline(pipe):
         "tee_1":             create_element("tee", "split1"),
         "mlvconverter_1":    create_element("qtimlvconverter", "converter1"),
         "mltflite_1":        create_element("qtimltflite", "inference1"),
-        "mlvdetection_1":    create_element("qtimlvdetection", "detection1"),
+        "mlvdetection_1":    create_element("qtimlpostprocess", "detection1"),
         "capsfilter_1":      create_element("capsfilter", "metamux1metacaps"),
         "metamux_1":         create_element("qtimetamux", "metamux1"),
         "overlay_1":         create_element("qtivoverlay", "overlay1"),
@@ -260,7 +232,7 @@ def construct_pipeline(pipe):
         "tee_2":             create_element("tee", "split2"),
         "mlvconverter_2":    create_element("qtimlvconverter", "converter2"),
         "mltflite_2":        create_element("qtimltflite", "inference2"),
-        "mlvclassification": create_element("qtimlvclassification", "classification"),
+        "mlvclassification": create_element("qtimlpostprocess", "classification"),
         "capsfilter_2":      create_element("capsfilter", "metamux2metacaps"),
         "metamux_2":         create_element("qtimetamux", "metamux2"),
         "overlay_2":         create_element("qtivoverlay", "overlay2"),
@@ -273,7 +245,7 @@ def construct_pipeline(pipe):
         "tee_3":             create_element("tee", "split3"),
         "mlvconverter_3":    create_element("qtimlvconverter", "converter3"),
         "mltflite_3":        create_element("qtimltflite", "inference3"),
-        "mlvsegmentation":   create_element("qtimlvsegmentation", "segmentation"),
+        "mlvsegmentation":   create_element("qtimlpostprocess", "segmentation"),
         "capsfilter_3":      create_element("capsfilter", "metamux3metacaps"),
         # Side by side all streams
         "composer":          create_element("qtivcomposer", "composer"),
@@ -318,16 +290,15 @@ def construct_pipeline(pipe):
         detection[0]["model"],
     )
 
-    Gst.util_set_object_arg(elements["mlvdetection_0"], "threshold", "75.0")
+    detection_threshold = 75.0
+    settings = f'{{"confidence": {detection_threshold:.1f}}}'
+    Gst.util_set_object_arg(elements["mlvdetection_0"], "settings", settings)
     Gst.util_set_object_arg(elements["mlvdetection_0"], "results", "4")
     Gst.util_set_object_arg(
         elements["mlvdetection_0"], "module", detection[0]["module"]
     )
     Gst.util_set_object_arg(
         elements["mlvdetection_0"], "labels", detection[0]["labels"]
-    )
-    Gst.util_set_object_arg(
-        elements["mlvdetection_0"], "constants", detection[0]["constants"],
     )
 
     Gst.util_set_object_arg(elements["capsfilter_0"], "caps", "text/x-raw")
@@ -365,14 +336,13 @@ def construct_pipeline(pipe):
         detection[1]["model"],
     )
 
-    Gst.util_set_object_arg(elements["mlvdetection_1"], "threshold", "75.0")
+    det_threshold = 75.0
+    settings = f'{{"confidence": {det_threshold:.1f}}}'
+    Gst.util_set_object_arg(elements["mlvdetection_1"], "settings", settings)
     Gst.util_set_object_arg(elements["mlvdetection_1"], "results", "4")
     Gst.util_set_object_arg(elements["mlvdetection_1"], "module", detection[1]["module"])
     Gst.util_set_object_arg(
         elements["mlvdetection_1"], "labels", detection[1]["labels"]
-    )
-    Gst.util_set_object_arg(
-        elements["mlvdetection_1"], "constants", detection[1]["constants"],
     )
 
     Gst.util_set_object_arg(elements["capsfilter_1"], "caps", "text/x-raw")
@@ -408,19 +378,15 @@ def construct_pipeline(pipe):
         elements["mltflite_2"], "model", classification["model"]
     )
 
-    Gst.util_set_object_arg(elements["mlvclassification"], "threshold", "51.0")
+    classification_threshold = 51.0
+    settings = f'{{"confidence": {classification_threshold:.1f}}}'
+    Gst.util_set_object_arg(elements["mlvclassification"], "settings", settings)
     Gst.util_set_object_arg(elements["mlvclassification"], "results", "5")
     Gst.util_set_object_arg(
         elements["mlvclassification"], "module", classification["module"]
     )
     Gst.util_set_object_arg(
         elements["mlvclassification"], "labels", classification["labels"]
-    )
-    Gst.util_set_object_arg(
-        elements["mlvclassification"], "extra-operation", "softmax"
-    )
-    Gst.util_set_object_arg(
-        elements["mlvclassification"], "constants", classification["constants"],
     )
 
     Gst.util_set_object_arg(elements["capsfilter_2"], "caps", "text/x-raw")
@@ -461,9 +427,6 @@ def construct_pipeline(pipe):
     )
     Gst.util_set_object_arg(
         elements["mlvsegmentation"], "labels", segmentation["labels"]
-    )
-    Gst.util_set_object_arg(
-        elements["mlvsegmentation"], "constants", segmentation["constants"],
     )
 
     # Side by side all streams

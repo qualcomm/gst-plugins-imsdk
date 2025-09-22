@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 
 echo "Pipeline builder script initiated!"
-pipeline='export XDG_RUNTIME_DIR=/dev/socket/weston && export WAYLAND_DISPLAY=wayland-1 && gst-launch-1.0 -e '
+pipeline='gst-launch-1.0 -e '
 help="In order to run the pipeline:\n"
 usbsrc=false
 segmentation=false
@@ -51,7 +51,7 @@ do
         "4")
             echo "Selected input: Built-in camera!"
             read -p 'Please specify the camera id for qtiqmmfsrc camera property (for ex: 0):' cam_id
-            pipeline+="qtiqmmfsrc camera=${cam_id} ! video/x-raw, format=NV12, width=1920, height=1080, framerate=30/1 ! "
+            pipeline+="qtiqmmfsrc camera=${cam_id} ! video/x-raw, format=NV12, width=1280, height=720, framerate=30/1 ! "
             livesrc=true
             help+="Please make sure that the camera id for qtiqmmfsrc camera property matches an existing camera.\n"
             help+="\n"
@@ -79,21 +79,21 @@ do
     case $input in
         "1")
             echo "Selected model: Detection - FootTrackNet Quantized!"
-            pipeline+='tee name=t_split_0 t_split_0. ! qtimetamux name=metamux t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/etc/models/foot_track_net_quantized.tflite ! queue ! qtimlvdetection threshold=90.0 results=10 module=qpd constants="qpd,q-offsets=<0.0,95.0,114.0,0.0>,q-scales=<0.0037073439452797174,0.4590655267238617,2.336696147918701,0.00390625>;" labels=/etc/labels/foot_track_net.labels ! text/x-raw ! queue ! metamux. metamux. ! qtivoverlay engine=gles ! queue ! '
+            pipeline+='tee name=t_split_0 t_split_0. ! qtimetamux name=metamux t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/etc/models/foot_track_net_quantized.tflite ! queue ! qtimlpostprocess results=10 module=qpd labels=/etc/labels/foot_track_net.json settings=/etc/labels/foot_track_net_settings.json ! text/x-raw ! queue ! metamux. metamux. ! qtivoverlay engine=gles ! queue ! '
             help+="Please download the model and label files from here: https://aihub.qualcomm.com/models/foot_track_net\n"
             help+="Make sure to select your device, then select 'TFLite' under 'Choose runtime' and 'w8a8' under 'Choose Precision' before downloading!\n"
             help+="Push the Model file on the device at '/etc/models/' and name it 'foot_track_net_quantized.tflite'\n"
-            help+="Push the label file on the device at '/etc/labels/foot_track_net.labels'\n"
+            help+="Push the label file on the device at '/etc/labels/foot_track_net.json'\n"
             help+="\n"
             break
             ;;
         "2")
             echo "Selected model: Classification - ResNet101 Quantized!"
-            pipeline+='tee name=t_split_0 t_split_0. ! qtimetamux name=metamux t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/etc/models/resnet101_quantized.tflite ! queue ! qtimlvclassification threshold=51.0 results=5 module=mobilenet labels=/etc/labels/resnet101.labels extra-operation=softmax constants="Mobilenet,q-offsets=<51.0>,q-scales=<0.14674407243728638>;" ! text/x-raw ! queue ! metamux. metamux. ! qtioverlay engine=gles ! queue ! '
+            pipeline+='tee name=t_split_0 t_split_0. ! qtimetamux name=metamux t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/etc/models/resnet101_quantized.tflite ! queue ! qtimlpostprocess results=1 module=mobilenet-softmax labels=/etc/labels/mobilenet.json settings="{\"confidence\": 51.0}" ! text/x-raw ! queue ! metamux. metamux. ! qtioverlay engine=gles ! queue ! '
             help+="Please download the model and label files from here: https://aihub.qualcomm.com/models/resnet101\n"
             help+="Make sure to select your device, then select 'TFLite' under 'Choose runtime' and 'w8a8' under 'Choose Precision' before downloading!\n"
             help+="Push the Model file on the device at '/etc/models/' and name it 'resnet101_quantized.tflite'\n"
-            help+="Push the label file on the device at '/etc/labels/resnet101.labels'\n"
+            help+="Push the label file on the device at '/etc/labels/mobilenet.json'\n"
             help+="\n"
             break
             ;;
@@ -103,11 +103,11 @@ do
                 pipeline+='video/x-raw\,format=RGB ! '
             fi
             segmentation=true
-            pipeline+='tee name=t_split_0 t_split_0. ! queue ! mixer. t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/etc/models/ffnet_40s_quantized.tflite ! queue ! qtimlvsegmentation module=deeplab-argmax labels=/etc/labels/dv3-argmax.labels constants="FFNet-40S,q-offsets=<178.0>,q-scales=<0.34114333987236023>;" ! queue ! mixer. qtivcomposer name=mixer background=0 sink_0::position="<0, 0>" sink_0::dimensions="<1280, 720>" sink_1::position="<0, 0>" sink_1::dimensions="<1280, 720>" sink_1::alpha=0.5 mixer. ! queue ! '
+            pipeline+='tee name=t_split_0 t_split_0. ! queue ! mixer. t_split_0. ! qtimlvconverter ! queue ! qtimltflite delegate=external external-delegate-path=libQnnTFLiteDelegate.so external-delegate-options="QNNExternalDelegate,backend_type=htp;" model=/etc/models/ffnet_40s_quantized.tflite ! queue ! qtimlpostprocess module=deeplab-argmax labels=/etc/labels/dv3-argmax.json ! queue ! mixer. qtivcomposer name=mixer background=0 sink_0::position="<0, 0>" sink_0::dimensions="<1280, 720>" sink_1::position="<0, 0>" sink_1::dimensions="<1280, 720>" sink_1::alpha=0.5 mixer. ! queue ! '
             help+="Please download the model and label files from here: https://aihub.qualcomm.com/models/ffnet_40s\n"
             help+="Make sure to select your device, then select 'TFLite' under 'Choose runtime' and 'w8a8' under 'Choose Precision' before downloading!\n"
             help+="Push the Model file on the device at '/etc/models/' and name it 'ffnet_40s_quantized.tflite'\n"
-            help+="Push the label file on the device at '/etc/labels/dv3-argmax.labels'\n"
+            help+="Push the label file on the device at '/etc/labels/dv3-argmax.json'\n"
             help+="\n"
             break
             ;;
@@ -139,8 +139,7 @@ do
                 pipeline+='fakesink'
                 echo "Unexpected livesrc: ${livesrc}! Using fakesink!"
             fi
-            help+="In order for the display to work, you need to have it connected during the device boot!\n"
-            help+="If you have booted the device and connected the display afterwards, please reboot the device while the display is connected!\n"
+            help+="The output will be visible on display.\n"
             help+="\n"
             break
             ;;
@@ -181,7 +180,7 @@ echo -e "\n"
 echo "The pipeline built is saved at /etc/media/gst_wizard_pipeline.sh"
 help+="The pipeline can be run using \"bash /etc/media/gst_wizard_pipeline.sh\""
 help+="\n"
-help+="If you want to run AI pipeline with your own video files, AI model and labels, then push them to location '/etc/media','/etc/models','/etc/labels' respectively and update GST launch command accordingly with the name/path of the Model file, label file and sample video file\n"
+help+="If you want to run AI pipeline with your own video files, AI model and labels, then push them to location '/etc/media','/etc/models','/etc/labels' respectively and update GST launch command accordingly with the name/path of the Model file, label file and sample video file.\n"
 help+="\n"
 
 echo -e "\n\n"

@@ -165,6 +165,18 @@ gst_element_on_pad_added (GstElement *element, GstPad *pad,
 GST_API gboolean
 gst_element_send_eos (GstElement *element);
 
+/**
+ * gst_destroy_pipeline:
+ * @pipeline: GStreamer bin.
+ * @plugins: GStreamer plugins that bin contains.
+ *
+ * Function for unlink elements and remove them from bin.
+ *
+ * return: None
+ */
+GST_API void
+gst_destroy_pipeline (GstElement **pipeline, GList **plugins);
+
 G_END_DECLS
 
 #endif /* __GST_SUITE_UTILS_H__ */

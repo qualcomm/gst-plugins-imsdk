@@ -27,7 +27,19 @@ G_DEFINE_TYPE (GstObjTracker, gst_objtracker, GST_TYPE_BASE_TRANSFORM);
     "video/x-raw(ANY);" \
     "text/x-raw, format = utf8"
 
-#define DEFAULT_PROP_ALGO_BACKEND           NULL
+/**
+ * GstObjTrackerBackend:
+ * @GST_OBJTRACK_BACKEND_BYTETRACK: Use Bytetracker.
+ *
+ * The backend of the object tracker backend.
+ */
+typedef enum {
+  GST_OBJTRACK_BACKEND_BYTETRACK,
+} GstObjTrackerBackend;
+
+#define GST_TYPE_OBJTRACKER_BACKEND         (gst_objtracker_backend_get_type())
+
+#define DEFAULT_PROP_ALGO_BACKEND           GST_OBJTRACK_BACKEND_BYTETRACK
 #define DEFAULT_PROP_PARAMETERS             NULL
 
 enum
@@ -49,6 +61,22 @@ static GstStaticPadTemplate gst_objtracker_src_template =
         GST_PAD_ALWAYS,
         GST_STATIC_CAPS (GST_OBJ_TRACKER_SRC_CAPS)
     );
+
+GType
+gst_objtracker_backend_get_type (void)
+{
+  static GType gtype = 0;
+
+  static const GEnumValue variants[] = {
+    { GST_OBJTRACK_BACKEND_BYTETRACK, "Use Bytetracker", "bytetrack" },
+    { 0, NULL, NULL },
+  };
+
+  if (!gtype)
+    gtype = g_enum_register_static ("GstObjTrackerBackend", variants);
+
+  return gtype;
+}
 
 static GstFlowReturn
 gst_objtracker_prepare_output_buffer (GstBaseTransform *base,
@@ -77,19 +105,19 @@ gst_objtracker_set_caps (GstBaseTransform * base, GstCaps * incaps,
 {
   GstObjTracker *objtracker = GST_OBJ_TRACKER (base);
   GstStructure *structure = gst_caps_get_structure (incaps, 0);
-
-  if (NULL == objtracker->backend) {
-    GST_ELEMENT_ERROR (objtracker, RESOURCE, NOT_FOUND, (NULL),
-        ("Algo name not set!"));
-    return FALSE;
-  }
+  GEnumClass *eclass = NULL;
+  GEnumValue *evalue = NULL;
 
   gst_base_transform_set_passthrough (base, FALSE);
   gst_base_transform_set_in_place (base,
       gst_structure_has_name (structure, "video/x-raw"));
 
   gst_objtracker_algo_free (objtracker->algo);
-  objtracker->algo = gst_objtracker_algo_new (objtracker->backend);
+
+  eclass = G_ENUM_CLASS (g_type_class_peek (GST_TYPE_OBJTRACKER_BACKEND));
+  evalue = g_enum_get_value (eclass, objtracker->backend);
+
+  objtracker->algo = gst_objtracker_algo_new (evalue->value_nick);
 
   if (NULL == objtracker->algo) {
     GST_ELEMENT_ERROR (objtracker, RESOURCE, FAILED, (NULL),
@@ -218,8 +246,7 @@ gst_objtracker_set_property (GObject * object, guint prop_id,
 
   switch (prop_id) {
     case PROP_ALGO_BACKEND:
-      g_free (objtracker->backend);
-      objtracker->backend = g_strdup (g_value_get_string (value));
+      objtracker->backend = g_value_get_enum (value);
       break;
     case PROP_PARAMETERS:
     {
@@ -254,7 +281,7 @@ gst_objtracker_get_property (GObject * object, guint prop_id,
 
   switch (prop_id) {
     case PROP_ALGO_BACKEND:
-      g_value_set_string (value, objtracker->backend);
+      g_value_set_enum (value, objtracker->backend);
       break;
     case PROP_PARAMETERS:
     {
@@ -301,10 +328,10 @@ gst_objtracker_class_init (GstObjTrackerClass * klass)
   gobject->finalize     = GST_DEBUG_FUNCPTR (gst_objtracker_finalize);
 
   g_object_class_install_property (gobject, PROP_ALGO_BACKEND,
-      g_param_spec_string ("algo", "Algorithm",
-          "Algorithm name that used for the video tracker",
-          DEFAULT_PROP_ALGO_BACKEND,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+      g_param_spec_enum ("algo", "Algorithm",
+          "Algorithm name that used for the object tracker",
+          GST_TYPE_OBJTRACKER_BACKEND, DEFAULT_PROP_ALGO_BACKEND,
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_PARAMETERS,
       g_param_spec_string ("parameters", "Parameters",
           "Parameters, parameters used by chosen object tracker algorithm "
@@ -335,6 +362,7 @@ gst_objtracker_init (GstObjTracker * objtracker)
 {
   objtracker->backend = DEFAULT_PROP_ALGO_BACKEND;
 
+  objtracker->algo = NULL;
   objtracker->algoparameters = DEFAULT_PROP_PARAMETERS;
 
   // Handle buffers with GAP flag internally.

@@ -310,7 +310,7 @@ class DemoWindow(Gtk.Window):
         DEFAULT_POSE_SETTINGS = "/etc/labels/hrnet_pose_settings.json"
         DEFAULT_INPUT_VIDEO = "/etc/media/video.mp4"
 
-        version = "GA1.5-rel"
+        version = "GA1.6-rel"
         target = "QCS6490"
         output_path = "/etc/models/"
 

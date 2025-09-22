@@ -51,8 +51,10 @@ namespace gl {
     Log(__VA_ARGS__, ", error: ", std::hex, libegl->GetError(), "!");
 
 #define EGL_DISPLAY_TERMINATE_AND_NULL(libegl, display) \
-    egl_lib_->Terminate(display);                       \
-    display = EGL_NO_DISPLAY;
+    {                                                   \
+      libegl->Terminate(display);                       \
+      display = EGL_NO_DISPLAY;                         \
+    }
 
 std::mutex Environment::mutex_;
 EglLib*    Environment::egl_lib_ = nullptr;
@@ -81,7 +83,7 @@ Environment::~Environment() {
   std::lock_guard<std::mutex> lk(mutex_);
 
   if ((--refcnt_) == 0)  {
-    egl_lib_->Terminate(display_);
+    EGL_DISPLAY_TERMINATE_AND_NULL(egl_lib_, display_);
 
     delete gles_lib_;
     delete egl_lib_;

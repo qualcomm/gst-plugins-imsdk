@@ -549,6 +549,7 @@ gst_ml_tflite_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   GstMLFrame inframe, outframe;
   GstClockTime ts_begin = GST_CLOCK_TIME_NONE, ts_end = GST_CLOCK_TIME_NONE;
   GstClockTimeDiff tsdelta = GST_CLOCK_STIME_NONE;
+  gboolean success = FALSE;
 
   // GAP buffer, nothing to do. Propagate output buffer downstream.
   if (gst_buffer_get_size (outbuffer) == 0 &&
@@ -570,18 +571,23 @@ gst_ml_tflite_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 
   ts_begin = gst_util_get_timestamp ();
 
-  gst_ml_tflite_engine_execute (tflite->engine, &inframe, &outframe);
+  success = gst_ml_tflite_engine_execute (tflite->engine, &inframe, &outframe);
 
   ts_end = gst_util_get_timestamp ();
+
+  gst_ml_frame_unmap (&outframe);
+  gst_ml_frame_unmap (&inframe);
+
+  if (!success) {
+    GST_ERROR_OBJECT (tflite, "Failed to execute!");
+    return GST_FLOW_ERROR;
+  }
 
   tsdelta = GST_CLOCK_DIFF (ts_begin, ts_end);
 
   GST_LOG_OBJECT (tflite, "Execute took %" G_GINT64_FORMAT ".%03"
       G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (tsdelta),
       (GST_TIME_AS_USECONDS (tsdelta) % 1000));
-
-  gst_ml_frame_unmap (&outframe);
-  gst_ml_frame_unmap (&inframe);
 
   return GST_FLOW_OK;
 }
