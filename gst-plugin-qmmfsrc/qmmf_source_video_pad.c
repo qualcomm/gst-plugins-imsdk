@@ -419,12 +419,13 @@ video_pad_update_params (GstPad * pad, GstStructure * structure)
 
   if (gst_structure_has_field (structure, "colorimetry")) {
     const gchar *string = gst_structure_get_string (structure, "colorimetry");
+    gchar *new_colorimetry = g_strdup (string);
 
     reconfigure |= (g_strcmp0 (string, vpad->colorimetry) != 0);
 
     if (vpad->colorimetry != NULL)
-      free(vpad->colorimetry);
-    vpad->colorimetry = g_strdup (string);
+      g_free (vpad->colorimetry);
+    vpad->colorimetry = new_colorimetry;
   }
 
   GST_QMMFSRC_VIDEO_PAD_UNLOCK (pad);

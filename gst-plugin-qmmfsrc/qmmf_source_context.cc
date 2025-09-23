@@ -910,27 +910,27 @@ qmmfsrc_gst_get_stream_rotaion (gint rotate)
   }
 }
 
-::qmmf::recorder::VideoColorimetry
+::qmmf::recorder::Colorimetry
 qmmfsrc_gst_get_stream_colorimetry (gchar *colorimetry)
 {
   if (colorimetry == NULL)
-    return ::qmmf::recorder::VideoColorimetry::kBT601;
+    return ::qmmf::recorder::Colorimetry::kBT601;
 #if (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
   else if (g_strcmp0 (colorimetry, GST_VIDEO_COLORIMETRY_BT601) == 0)
-    return ::qmmf::recorder::VideoColorimetry::kBT601;
+    return ::qmmf::recorder::Colorimetry::kBT601;
   else if (g_strcmp0 (colorimetry, GST_VIDEO_COLORIMETRY_BT2100_HLG_FULL) == 0)
-    return ::qmmf::recorder::VideoColorimetry::kBT2100HLGFULL;
+    return ::qmmf::recorder::Colorimetry::kBT2100HLGFULL;
   else if (g_strcmp0 (colorimetry, GST_VIDEO_COLORIMETRY_BT2100_PQ_FULL) == 0)
-    return ::qmmf::recorder::VideoColorimetry::kBT2100PQFULL;
+    return ::qmmf::recorder::Colorimetry::kBT2100PQFULL;
   else if (g_strcmp0 (colorimetry, GST_VIDEO_COLORIMETRY_BT601_FULL) == 0)
-    return ::qmmf::recorder::VideoColorimetry::kBT601FULL;
+    return ::qmmf::recorder::Colorimetry::kBT601FULL;
   else if (g_strcmp0 (colorimetry, GST_VIDEO_COLORIMETRY_BT709_FULL) == 0)
-    return ::qmmf::recorder::VideoColorimetry::kBT709FULL;
+    return ::qmmf::recorder::Colorimetry::kBT709FULL;
 #endif // (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
   else {
     GST_WARNING ("Colorimetry value %s is invalid default to BT.601",
         colorimetry);
-    return ::qmmf::recorder::VideoColorimetry::kBT601;
+    return ::qmmf::recorder::Colorimetry::kBT601;
   }
 }
 
@@ -1516,7 +1516,7 @@ gst_qmmf_context_create_video_stream (GstQmmfContext * context, GstPad * pad)
   ::qmmf::recorder::TrackCb track_cbs;
   ::qmmf::recorder::VideoExtraParam extraparam;
   ::qmmf::recorder::Rotation rotate;
-  ::qmmf::recorder::VideoColorimetry colorimetry;
+  ::qmmf::recorder::Colorimetry colorimetry;
   gint status = 0;
 #if (GST_VERSION_MAJOR >= 1) && (GST_VERSION_MINOR >= 18)
   guchar streamhdrmode = 0;
@@ -1826,11 +1826,15 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad)
   ::qmmf::recorder::Recorder *recorder = context->recorder;
   ::qmmf::recorder::ImageParam imgparam;
   ::qmmf::recorder::ImageExtraParam xtraparam;
+  ::qmmf::recorder::Colorimetry colorimetry;
   gint status = 0;
 
   GST_TRACE ("Create QMMF context image stream");
 
   GST_QMMFSRC_IMAGE_PAD_LOCK (ipad);
+  colorimetry = qmmfsrc_gst_get_stream_colorimetry (ipad->colorimetry);
+  imgparam.colorimetry = colorimetry;
+
   imgparam.mode = ::qmmf::recorder::ImageMode::kSnapshot;
   imgparam.width = ipad->width;
   imgparam.height = ipad->height;
