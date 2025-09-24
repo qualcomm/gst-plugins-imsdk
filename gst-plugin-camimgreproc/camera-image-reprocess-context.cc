@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -7,7 +7,7 @@
 #include "config.h"
 #endif
 
-#include "camera-reprocess-context.h"
+#include "camera-image-reprocess-context.h"
 
 #include <gst/allocators/allocators.h>
 
@@ -18,7 +18,7 @@
 
 namespace camera = qmmf;
 
-#define GST_CAT_DEFAULT camera_reprocess_context_debug_category()
+#define GST_CAT_DEFAULT camera_image_reproc_context_debug_category()
 
 #define PROCESS_MODE_OFFSET     4
 
@@ -27,40 +27,47 @@ namespace camera = qmmf;
 typedef enum {
   PROCESS_MODE_FLAG_UNKNOWN = 0,
   PROCESS_MODE_FLAG_YUV     = (1 << 0),
+  PROCESS_MODE_FLAG_RAW     = (1 << 1),
+  PROCESS_MODE_FLAG_JPEG    = (1 << 2),
 } ProcessModeFlag;
 
 typedef enum {
   PROCESS_MODE_INVALID    = 0,
   PROCESS_MODE_YUV_TO_YUV =
       ((PROCESS_MODE_FLAG_YUV << PROCESS_MODE_OFFSET) | PROCESS_MODE_FLAG_YUV),
+  PROCESS_MODE_RAW_TO_YUV =
+      ((PROCESS_MODE_FLAG_RAW << PROCESS_MODE_OFFSET) | PROCESS_MODE_FLAG_YUV),
+  PROCESS_MODE_RAW_TO_JPEG =
+      ((PROCESS_MODE_FLAG_RAW << PROCESS_MODE_OFFSET)
+      | PROCESS_MODE_FLAG_JPEG),
 } ProcessMode;
 
 static GstDebugCategory *
-camera_reprocess_context_debug_category (void)
+camera_image_reproc_context_debug_category (void)
 {
   static gsize catgonce = 0;
 
   if (g_once_init_enter (&catgonce)) {
-    gsize catdone = (gsize) _gst_debug_category_new ("qticamreproc", 0,
-        "Camera reprocess context");
+    gsize catdone = (gsize) _gst_debug_category_new ("qticamimgreproc", 0,
+        "Camera Image reprocess context");
     g_once_init_leave (&catgonce, catdone);
   }
   return (GstDebugCategory *) catgonce;
 }
 
 // Data Structure
-struct _GstCameraReprocessContext {
+struct _GstCameraImageReprocContext {
   /// QMMF Recorder instance
   ::qmmf::recorder::Recorder      *recorder;
 
-  /// Callback to bring event to CameraReprocessContext
-  GstCameraReprocessEventCb       event_cb;
+  /// Callback to bring event to CameraImageReprocContext
+  GstCameraImageReprocEventCb     event_cb;
 
-  /// Callback to bring data to CameraReprocessContext
-  GstCameraReprocessDataCb        data_cb;
+  /// Callback to bring data to CameraImageReprocContext
+  GstCameraImageReprocDataCb      data_cb;
 
   /// Plugin instance
-  gpointer                        camreproc;
+  gpointer                        camimgreproc;
 
   /// Table recording all requests
   GHashTable                      *requests;
@@ -72,22 +79,19 @@ struct _GstCameraReprocessContext {
   GCond                           requests_clear;
 
   /// Camera id to process
-  guint                           camera_id;
+  guint                           camera_id[OFFLINE_CAMERA_INPUT_IMAGE_MAX_NUM];
 
   /// Request metadata path
-  gchar                           *req_meta_path;
+  gchar                           *req_meta_path[OFFLINE_CAMERA_INPUT_IMAGE_MAX_NUM];
   /// Request metadata step
-  guint                           req_meta_step;
+  guint                           req_meta_step[OFFLINE_CAMERA_INPUT_IMAGE_MAX_NUM];
 
   /// Electronic Image Stabilization
-  GstCameraReprocessEis           eis;
-
-  /// Session metadata
-  camera::CameraMetadata          *session_metadata;
+  GstCameraImageReprocEis         eis[OFFLINE_CAMERA_INPUT_IMAGE_MAX_NUM];
 };
 
 static void
-event_callback (GstCameraReprocessContext * context,
+event_callback (GstCameraImageReprocContext * context,
     ::qmmf::recorder::EventType type, void * payload, size_t size)
 {
   guint event = 0;
@@ -124,37 +128,41 @@ event_callback (GstCameraReprocessContext * context,
       return;
   }
 
-  context->event_cb (event, context->camreproc);
+  context->event_cb (event, context->camimgreproc);
 }
 
-GstCameraReprocessContext*
-gst_camera_reprocess_context_new ()
+GstCameraImageReprocContext*
+gst_camera_image_reproc_context_new (void)
 {
-  GstCameraReprocessContext *context = NULL;
+  GstCameraImageReprocContext *context = NULL;
+  gint idx;
 
-  context = g_slice_new0 (GstCameraReprocessContext);
+  context = g_slice_new0 (GstCameraImageReprocContext);
   g_return_val_if_fail (context != NULL, NULL);
 
   context->recorder = new ::qmmf::recorder::Recorder ();
   if (!context->recorder) {
     GST_ERROR ("Failed to create Recorder.");
-    g_slice_free (GstCameraReprocessContext, context);
+    g_slice_free (GstCameraImageReprocContext, context);
     return NULL;
   }
 
   context->requests = g_hash_table_new (NULL, NULL);
+  for (idx = 0; idx < OFFLINE_CAMERA_INPUT_IMAGE_MAX_NUM; idx++) {
+    context->camera_id[idx] = -1;
+    context->req_meta_path[idx] = NULL;
+    context->req_meta_step[idx] = 0;
+  }
 
   g_mutex_init (&context->lock);
   g_cond_init (&context->requests_clear);
-
-  context->session_metadata = NULL;
 
   return context;
 }
 
 gboolean
-gst_camera_reprocess_context_connect (GstCameraReprocessContext *context,
-    GstCameraReprocessEventCb callback, gpointer userdata)
+gst_camera_image_reproc_context_connect (GstCameraImageReprocContext *context,
+    GstCameraImageReprocEventCb callback, gpointer userdata)
 {
   ::qmmf::recorder::RecorderCb cbs;
 
@@ -177,13 +185,13 @@ gst_camera_reprocess_context_connect (GstCameraReprocessContext *context,
   GST_INFO ("Connected to QMMF Recorder.");
 
   context->event_cb = callback;
-  context->camreproc = userdata;
+  context->camimgreproc = userdata;
 
   return TRUE;
 }
 
 gboolean
-gst_camera_reprocess_context_disconnect (GstCameraReprocessContext *context)
+gst_camera_image_reproc_context_disconnect (GstCameraImageReprocContext *context)
 {
   g_return_val_if_fail (context != NULL, FALSE);
   g_return_val_if_fail (context->recorder != NULL, FALSE);
@@ -201,8 +209,10 @@ gst_camera_reprocess_context_disconnect (GstCameraReprocessContext *context)
 }
 
 void
-gst_camera_reprocess_context_free (GstCameraReprocessContext *context)
+gst_camera_image_reproc_context_free (GstCameraImageReprocContext *context)
 {
+  gint idx;
+
   delete context->recorder;
   context->recorder = NULL;
 
@@ -215,20 +225,23 @@ gst_camera_reprocess_context_free (GstCameraReprocessContext *context)
   g_mutex_clear (&context->lock);
   g_cond_clear (&context->requests_clear);
 
-  g_free (context->req_meta_path);
+  for (idx = 0; idx < OFFLINE_CAMERA_INPUT_IMAGE_MAX_NUM; idx++) {
+    if (context->req_meta_path[idx] != NULL)
+      g_free (context->req_meta_path[idx]);
+  }
 
-  g_slice_free (GstCameraReprocessContext, context);
+  g_slice_free (GstCameraImageReprocContext, context);
 
-  GST_INFO ("GstCameraReprocessContext freed.");
+  GST_INFO ("GstCameraImageReprocContext freed.");
 }
 
 static void
-data_callback (GstCameraReprocessContext *context, guint fd, guint size)
+gst_data_callback (GstCameraImageReprocContext *context, guint fd, guint size)
 {
   GPtrArray *array = NULL;
 
   g_return_if_fail (context != NULL);
-  g_return_if_fail (context->camreproc != NULL);
+  g_return_if_fail (context->camimgreproc != NULL);
 
   GST_LOG ("Callback calling, outbuf fd(%u).", fd);
 
@@ -243,7 +256,7 @@ data_callback (GstCameraReprocessContext *context, guint fd, guint size)
   }
 
   // Callback will invoke gst_pad_push to push data downstream
-  context->data_cb ((gpointer *)array, context->camreproc);
+  context->data_cb ((gpointer *)array, context->camimgreproc);
 
   g_ptr_array_unref(array);
 
@@ -255,7 +268,7 @@ data_callback (GstCameraReprocessContext *context, guint fd, guint size)
 }
 
 static ProcessMode
-parse_process_mode (GstVideoFormat in_format, GstVideoFormat out_format)
+gst_parse_process_mode (GstVideoFormat in_format, GstVideoFormat out_format)
 {
   ProcessModeFlag in_flag = PROCESS_MODE_FLAG_UNKNOWN;
   ProcessModeFlag out_flag = PROCESS_MODE_FLAG_UNKNOWN;
@@ -266,6 +279,9 @@ parse_process_mode (GstVideoFormat in_format, GstVideoFormat out_format)
     case GST_VIDEO_FORMAT_NV12_Q08C:
     case GST_VIDEO_FORMAT_P010_10LE:
       in_flag = PROCESS_MODE_FLAG_YUV;
+      break;
+    case GST_VIDEO_FORMAT_UNKNOWN:
+      in_flag = PROCESS_MODE_FLAG_RAW;
       break;
     default:
       GST_WARNING ("Unsupported input format(%s) for camera reprocess.",
@@ -279,6 +295,9 @@ parse_process_mode (GstVideoFormat in_format, GstVideoFormat out_format)
     case GST_VIDEO_FORMAT_P010_10LE:
       out_flag = PROCESS_MODE_FLAG_YUV;
       break;
+    case GST_VIDEO_FORMAT_ENCODED:
+      out_flag = PROCESS_MODE_FLAG_JPEG;
+      break;
     default:
       GST_WARNING ("Unsupported output format(%s) for camera reprocess.",
           gst_video_format_to_string (out_format));
@@ -291,11 +310,17 @@ parse_process_mode (GstVideoFormat in_format, GstVideoFormat out_format)
 }
 
 static ::qmmf::recorder::VideoFormat
-convert_to_video_format (const GstCameraReprocessBufferParams param)
+gst_convert_to_video_format (GstVideoFormat videoformat)
 {
   qmmf::recorder::VideoFormat format;
 
-  switch (param.format) {
+  switch (videoformat) {
+    case GST_VIDEO_FORMAT_UNKNOWN:
+      format = ::qmmf::recorder::VideoFormat::kBayerRDI10BIT;
+      break;
+    case GST_VIDEO_FORMAT_ENCODED:
+      format = ::qmmf::recorder::VideoFormat::kJPEG;
+      break;
     case GST_VIDEO_FORMAT_NV12:
       format = ::qmmf::recorder::VideoFormat::kNV12;
       break;
@@ -307,7 +332,7 @@ convert_to_video_format (const GstCameraReprocessBufferParams param)
       break;
     default:
       GST_ERROR ("Unsupported format(%s).",
-          gst_video_format_to_string (param.format));
+          gst_video_format_to_string (videoformat));
       format = ::qmmf::recorder::VideoFormat::kNV12;
       break;
   }
@@ -316,7 +341,8 @@ convert_to_video_format (const GstCameraReprocessBufferParams param)
 }
 
 static guint
-retrieve_vendor_tag_by_name (::camera::CameraMetadata *meta, const gchar * name)
+gst_retrieve_vendor_tag_by_name (::camera::CameraMetadata *meta,
+    const gchar * name)
 {
   std::shared_ptr<VendorTagDescriptor> vtags;
   guint tag_id = 0;
@@ -338,24 +364,25 @@ retrieve_vendor_tag_by_name (::camera::CameraMetadata *meta, const gchar * name)
 }
 
 static void
-fill_metadata_from_properties (GstCameraReprocessContext *context,
-    ::camera::CameraMetadata *meta)
+gst_fill_metadata_from_properties (GstCameraImageReprocContext *context,
+    gint idx, ::camera::CameraMetadata *meta)
 {
   g_return_if_fail (context->recorder != NULL);
+  g_return_if_fail (idx < OFFLINE_CAMERA_INPUT_IMAGE_MAX_NUM);
 
   // Eis
-  switch (context->eis) {
-    case GST_CAMERA_REPROCESS_EIS_NONE:
+  switch (context->eis[idx]) {
+    case GST_CAMERA_IMAGE_REPROC_EIS_NONE:
     {
       break;
     }
-    case GST_CAMERA_REPROCESS_EIS_V2:
-    case GST_CAMERA_REPROCESS_EIS_V3:
+    case GST_CAMERA_IMAGE_REPROC_EIS_V2:
+    case GST_CAMERA_IMAGE_REPROC_EIS_V3:
     {
       guint tag = 0;
-      gint32 val = (gint32)context->eis;
+      gint32 val = (gint32)context->eis[idx];
 
-      tag = retrieve_vendor_tag_by_name (meta,
+      tag = gst_retrieve_vendor_tag_by_name (meta,
           "org.codeaurora.qcamera3.sessionParameters.EISMode");
       if (tag == 0) {
         GST_WARNING ("Unsupported vendortag.");
@@ -371,53 +398,74 @@ fill_metadata_from_properties (GstCameraReprocessContext *context,
     }
     default:
     {
-      GST_WARNING ("Unknown EISMode(%d).", (gint32)context->eis);
+      GST_WARNING ("Unknown EISMode(%d).", (gint32)context->eis[0]);
       break;
     }
   }
 }
 
+void
+gst_camera_image_reproc_context_update (GstCameraImageReprocContext *context,
+    guint idx, guint camera_id, gchar *req_meta_path, guint req_meta_step,
+    GstCameraImageReprocEis eis)
+{
+  if (idx >= OFFLINE_CAMERA_INPUT_IMAGE_MAX_NUM) {
+    GST_ERROR ("Exceeded the maximum supported");
+    return;
+  }
+
+  context->camera_id[idx] = camera_id;
+
+  if (context->req_meta_path[idx] != NULL)
+    g_free (context->req_meta_path[idx]);
+  context->req_meta_path[idx] = req_meta_path;
+
+  context->req_meta_step[idx] = req_meta_step;
+  context->eis[idx] = eis;
+}
+
 gboolean
-gst_camera_reprocess_context_create (GstCameraReprocessContext *context,
-    const GstCameraReprocessBufferParams params[2],
-    GstCameraReprocessDataCb callback)
+gst_camera_image_reproc_context_create (GstCameraImageReprocContext *context,
+    const GstCameraImageParams params[2], GstCameraImageReprocDataCb callback)
 {
   qmmf::OfflineCameraCreateParams offcam_params = {};
   ProcessMode process_mode = PROCESS_MODE_INVALID;
-  const gchar *req_meta_path = NULL;
   ::camera::CameraMetadata meta;
+  gint rc;
 
   g_return_val_if_fail (context != NULL, FALSE);
   g_return_val_if_fail (params != NULL, FALSE);
   g_return_val_if_fail (callback != NULL, FALSE);
 
   // Fill CreateParams
-    // CameraID
-  offcam_params.camera_id[0] = context->camera_id;
-    // BufferParams of input
+  // CameraID
+  offcam_params.camera_id[0] = context->camera_id[0];
+  offcam_params.camera_id[1] = context->camera_id[1];
+
+  // BufferParams of input
   offcam_params.in_buffer.width = params[0].width;
   g_return_val_if_fail (offcam_params.in_buffer.width > 0, FALSE);
   offcam_params.in_buffer.height = params[0].height;
   g_return_val_if_fail (offcam_params.in_buffer.height > 0, FALSE);
-  offcam_params.in_buffer.format = convert_to_video_format (params[0]);
+  offcam_params.in_buffer.format = gst_convert_to_video_format (params[0].format);
 
   GST_DEBUG ("InputParam: %u x %u, %s",
       offcam_params.in_buffer.width, offcam_params.in_buffer.height,
       gst_video_format_to_string (params[0].format));
 
-    // BufferParams of output
+  // BufferParams of output
   offcam_params.out_buffer.width = params[1].width;
   g_return_val_if_fail (offcam_params.out_buffer.width > 0, FALSE);
   offcam_params.out_buffer.height = params[1].height;
   g_return_val_if_fail (offcam_params.out_buffer.height > 0, FALSE);
-  offcam_params.out_buffer.format = convert_to_video_format (params[1]);
+  offcam_params.out_buffer.format = gst_convert_to_video_format (params[1].format);
 
   GST_DEBUG ("OutputParam: %u x %u, %s",
       offcam_params.out_buffer.width, offcam_params.out_buffer.height,
       gst_video_format_to_string (params[1].format));
 
-    // Process mode
-  process_mode = parse_process_mode (params[0].format, params[1].format);
+  // Process mode
+  process_mode = gst_parse_process_mode (params[0].format, params[1].format);
   switch (process_mode) {
     case PROCESS_MODE_INVALID:
       GST_ERROR ("Invalid process-mode.");
@@ -426,36 +474,45 @@ gst_camera_reprocess_context_create (GstCameraReprocessContext *context,
       offcam_params.process_mode = qmmf::YUVToYUV;
       GST_DEBUG ("Process-mode: YUVToYUV.");
       break;
+    case PROCESS_MODE_RAW_TO_YUV:
+      offcam_params.process_mode = qmmf::RAWToYUV;
+      GST_DEBUG ("Process-mode: RAWToYUV.");
+      break;
+    case PROCESS_MODE_RAW_TO_JPEG:
+      offcam_params.process_mode = qmmf::RAWToJPEGSBS;
+      GST_DEBUG ("Process-mode: RAWToJPEGSBS.");
+      break;
     default:
       GST_ERROR ("Unknown process-mode.");
       return FALSE;
   }
 
-    // Request metadata path
-  if (context->req_meta_path != NULL)
+  // Request metadata path
+  if (context->req_meta_path[0] != NULL)
     g_strlcpy (offcam_params.request_metadata_path[0],
-        context->req_meta_path, OFFLINE_CAMERA_REQ_METADATA_PATH_MAX);
+        context->req_meta_path[0], OFFLINE_CAMERA_REQ_METADATA_PATH_MAX);
+  if (context->req_meta_path[1] != NULL)
+    g_strlcpy (offcam_params.request_metadata_path[1],
+        context->req_meta_path[1], OFFLINE_CAMERA_REQ_METADATA_PATH_MAX);
 
-    // Request metadata step
-  offcam_params.metadata_step[0] = context->req_meta_step;
+  // Request metadata step
+  offcam_params.metadata_step[0] = context->req_meta_step[0];
+  offcam_params.metadata_step[1] = context->req_meta_step[1];
   GST_DEBUG ("request meta path: %s, request meta step: %u.",
       offcam_params.request_metadata_path[0], offcam_params.metadata_step[0]);
 
-    // Fill metadata
-  if (context->session_metadata == NULL) {
-    GST_DEBUG ("Fill metadata from properties.");
-    fill_metadata_from_properties (context, &meta);
-    offcam_params.session_meta[0] = meta;
-  } else {
-    GST_DEBUG ("Fill metadata from external pointer.");
-    offcam_params.session_meta[0] = *context->session_metadata;
-  }
+  // Fill metadata
+  gst_fill_metadata_from_properties (context, 0, &meta);
+  offcam_params.session_meta[0] = meta;
+  gst_fill_metadata_from_properties (context, 1, &meta);
+  offcam_params.session_meta[1] = meta;
 
   qmmf::recorder::OfflineCameraCb offcam_cb =
       [&, context] (guint buf_fd, guint encoded_size)
-      { data_callback (context, buf_fd, encoded_size); };
+      { gst_data_callback (context, buf_fd, encoded_size); };
 
-  if (context->recorder->CreateOfflineCamera (offcam_params, offcam_cb) != 0) {
+  rc = context->recorder->CreateOfflineCamera (offcam_params, offcam_cb);
+  if (rc != 0) {
     GST_ERROR ("Failed to CreateOfflineCamera.");
     return FALSE;
   }
@@ -466,48 +523,58 @@ gst_camera_reprocess_context_create (GstCameraReprocessContext *context,
 }
 
 gboolean
-gst_camera_reprocess_context_process (GstCameraReprocessContext *context,
-    GstBuffer *inbuf, GstBuffer *outbuf)
+gst_camera_image_reproc_context_process (GstCameraImageReprocContext *context,
+    guint inbufnum, GstBuffer *inbuf[OFFLINE_CAMERA_INPUT_IMAGE_MAX_NUM],
+    GstBuffer *outbuf)
 {
   GstMemory *inmem = NULL;
   GstMemory *outmem = NULL;
   GPtrArray *ptr_array = NULL;
   qmmf::OfflineCameraProcessParams params;
-  gint in_buf_fd = -1;
+  guint idx = 0;
+  gint in_buf_fd[OFFLINE_CAMERA_INPUT_IMAGE_MAX_NUM] = {-1};
   gint out_buf_fd = -1;
 
   g_return_val_if_fail (context != NULL, FALSE);
-  g_return_val_if_fail (inbuf != NULL, FALSE);
+  g_return_val_if_fail (inbuf[0] != NULL, FALSE);
   g_return_val_if_fail (outbuf != NULL, FALSE);
+  g_return_val_if_fail (inbufnum <= OFFLINE_CAMERA_INPUT_IMAGE_MAX_NUM, FALSE);
 
-  inmem = gst_buffer_peek_memory (inbuf, 0);
-  if (!inmem) {
-    GST_ERROR ("Failed to peek memory from input buffer(%p).", inbuf);
-    return FALSE;
+  for (idx = 0; idx < inbufnum; idx++) {
+    inmem = gst_buffer_peek_memory (inbuf[idx], 0);
+    if ((!inmem) || (!gst_is_fd_memory(inmem))) {
+      GST_ERROR ("Failed to peek memory from input buffer(%p).", inbuf[idx]);
+      return FALSE;
+    }
+
+    in_buf_fd[idx] = gst_fd_memory_get_fd (inmem);
+    g_return_val_if_fail (in_buf_fd[idx] >= 0, GST_FLOW_ERROR);
   }
-  in_buf_fd = gst_fd_memory_get_fd (inmem);
-  g_return_val_if_fail (in_buf_fd >= 0, GST_FLOW_ERROR);
 
   outmem = gst_buffer_peek_memory (outbuf, 0);
-  if (!outmem) {
+  if ((!outmem) || (!gst_is_fd_memory(outmem))) {
     GST_ERROR ("Failed to peek memory from output buffer(%p).", outbuf);
     return FALSE;
   }
+
   out_buf_fd = gst_fd_memory_get_fd (outmem);
   g_return_val_if_fail (out_buf_fd >= 0, GST_FLOW_ERROR);
 
-  params.in_buf_fd[0] = in_buf_fd;
-  params.in_buf_fd[1] = -1;
+  params.in_buf_fd[0] = in_buf_fd[0];
+  params.in_buf_fd[1] = in_buf_fd[1];
   params.out_buf_fd = out_buf_fd;
-  GST_LOG ("inbuf fd(%u), outbuf fd(%u).", params.in_buf_fd[0], params.out_buf_fd);
 
-  ptr_array = g_ptr_array_sized_new (2);
+  GST_LOG ("inbuf fd0(%u), inbuf fd1(%u), outbuf fd(%u).", params.in_buf_fd[0],
+      params.in_buf_fd[1], params.out_buf_fd);
+
+  ptr_array = g_ptr_array_sized_new (OFFLINE_CAMERA_INPUT_IMAGE_MAX_NUM + 1);
   if (ptr_array == NULL) {
     GST_ERROR ("Failed to allocate GPtrArray.");
     return FALSE;
   }
 
-  g_ptr_array_add (ptr_array, inbuf);
+  for (idx = 0; idx < OFFLINE_CAMERA_INPUT_IMAGE_MAX_NUM; idx++)
+    g_ptr_array_add (ptr_array, inbuf[idx]);
   g_ptr_array_add (ptr_array, outbuf);
 
   g_mutex_lock (&context->lock);
@@ -517,7 +584,8 @@ gst_camera_reprocess_context_process (GstCameraReprocessContext *context,
 
   if (context->recorder->ProcessOfflineCamera (params) != 0) {
     GST_ERROR ("Failed to ProcessOfflineCamera.");
-    g_hash_table_remove (context->requests, GINT_TO_POINTER (params.out_buf_fd));
+    g_hash_table_remove (context->requests,
+        GINT_TO_POINTER (params.out_buf_fd));
     g_ptr_array_free (ptr_array, TRUE);
     g_mutex_unlock (&context->lock);
     return FALSE;
@@ -529,7 +597,7 @@ gst_camera_reprocess_context_process (GstCameraReprocessContext *context,
 }
 
 gboolean
-gst_camera_reprocess_context_destroy (GstCameraReprocessContext *context)
+gst_camera_image_reproc_context_destroy (GstCameraImageReprocContext *context)
 {
   guint size = 0;
 
@@ -537,19 +605,26 @@ gst_camera_reprocess_context_destroy (GstCameraReprocessContext *context)
 
   // Wait all requests back
   g_mutex_lock (&context->lock);
+
   size = g_hash_table_size (context->requests);
   if (size > 0) {
-    GST_DEBUG ("Waiting last %u requests to return in 2 seconds.", size);
-    gint64 wait_time = g_get_monotonic_time () + G_GINT64_CONSTANT (2000000);
-    gboolean timeout = g_cond_wait_until (&context->requests_clear,
-        &context->lock, wait_time);
-    if (!timeout) {
+    gint64 wait_time;
+    gboolean timeout;
+
+    GST_DEBUG ("Waiting last %u requests to return in %d microseconds.", size,
+        OFFLINE_CAMERA_TIMEOUT);
+
+    wait_time = g_get_monotonic_time () + OFFLINE_CAMERA_TIMEOUT;
+    timeout = g_cond_wait_until (&context->requests_clear, &context->lock,
+        wait_time);
+    if (!timeout)
       GST_ERROR ("Timeout on wait for all requests to be received");
-    }
+
     GST_DEBUG ("All request are received");
   } else {
     GST_DEBUG ("No pending requests");
   }
+
   g_mutex_unlock (&context->lock);
 
   if (context->recorder->DestroyOfflineCamera () != 0) {
@@ -558,57 +633,4 @@ gst_camera_reprocess_context_destroy (GstCameraReprocessContext *context)
   }
 
   return TRUE;
-}
-
-void
-gst_camera_reprocess_context_set_property (GstCameraReprocessContext *context,
-    guint param_id, const GValue *value)
-{
-  switch (param_id) {
-    case PARAM_CAMERA_ID:
-      context->camera_id = g_value_get_uint (value);
-      break;
-    case PARAM_REQ_META_PATH:
-      context->req_meta_path = g_strdup (g_value_get_string (value));
-      break;
-    case PARAM_REQ_META_STEP:
-      context->req_meta_step = g_value_get_uint (value);
-      break;
-    case PARAM_EIS:
-      context->eis = (GstCameraReprocessEis)g_value_get_enum (value);
-      break;
-    case PARAM_SESSION_METADATA:
-      context->session_metadata =
-          (camera::CameraMetadata *)g_value_get_pointer (value);
-      break;
-    default:
-      GST_ERROR ("CameraReprocessContext doesn't support this property.");
-      break;
-  }
-}
-
-void
-gst_camera_reprocess_context_get_property (GstCameraReprocessContext *context,
-    guint param_id, GValue *value)
-{
-  switch (param_id) {
-    case PARAM_CAMERA_ID:
-      g_value_set_uint (value, context->camera_id);
-      break;
-    case PARAM_REQ_META_PATH:
-      g_value_set_string (value, context->req_meta_path);
-      break;
-    case PARAM_REQ_META_STEP:
-      g_value_set_uint (value, context->req_meta_step);
-      break;
-    case PARAM_EIS:
-      g_value_set_enum (value, context->eis);
-      break;
-    case PARAM_SESSION_METADATA:
-      g_value_set_pointer (value, (gpointer)context->session_metadata);
-      break;
-    default:
-      GST_ERROR ("CameraReprocessContext doesn't support this property.");
-      break;
-  }
 }
