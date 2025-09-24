@@ -855,7 +855,7 @@ gst_ml_video_converter_setup_composition (GstMLVideoConverter * mlconverter,
   n_positions = n_batch * depth;
 
   // Pop buffers from the queue and fill the blit parameters of the composition.
-  while ((inbuffer = g_queue_pop_head (mlconverter->bufqueue)) && n_positions != 0) {
+  while (n_positions != 0 && (inbuffer = g_queue_pop_head (mlconverter->bufqueue))) {
     GST_TRACE_OBJECT (mlconverter, "Processing %" GST_PTR_FORMAT, inbuffer);
 
     // Get current memory index and number of memory blocks in the buffer.
