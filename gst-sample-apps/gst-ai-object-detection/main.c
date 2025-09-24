@@ -53,19 +53,19 @@
  * Default models and labels path, if not provided by user
  */
 #define DEFAULT_SNPE_YOLOV5_MODEL "/etc/models/yolov5.dlc"
-#define DEFAULT_YOLOV5_LABELS "/etc/labels/yolov5.labels"
 #define DEFAULT_SNPE_YOLOV8_MODEL "/etc/models/yolov8.dlc"
-#define DEFAULT_YOLOV8_LABELS "/etc/labels/yolov8.labels"
-#define DEFAULT_YOLOX_LABELS "/etc/labels/yolox.labels"
 #define DEFAULT_SNPE_YOLONAS_MODEL "/etc/models/yolonas.dlc"
-#define DEFAULT_YOLONAS_LABELS "/etc/labels/yolonas.labels"
 #define DEFAULT_TFLITE_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.tflite"
 #define DEFAULT_TFLITE_YOLOX_MODEL "/etc/models/yolox_quantized.tflite"
 #define DEFAULT_TFLITE_YOLOV5_MODEL "/etc/models/yolov5.tflite"
 #define DEFAULT_TFLITE_YOLONAS_MODEL "/etc/models/yolonas_quantized.tflite"
-#define DEFAULT_YOLOV7_LABELS "/etc/labels/yolov7.labels"
 #define DEFAULT_TFLITE_YOLOV7_MODEL "/etc/models/Yolo-v7-Quantized.tflite"
 #define DEFAULT_QNN_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.bin"
+#define DEFAULT_YOLOV5_LABELS "/etc/labels/yolov5.json"
+#define DEFAULT_YOLOV8_LABELS "/etc/labels/yolov8.json"
+#define DEFAULT_YOLOX_LABELS "/etc/labels/yolox.json"
+#define DEFAULT_YOLONAS_LABELS "/etc/labels/yolonas.json"
+#define DEFAULT_YOLOV7_LABELS "/etc/labels/yolov7.json"
 
 /**
  * Default settings of camera output resolution, Scaling of camera output
@@ -102,11 +102,6 @@
 
 /**
  * default value of delegate
- */
-#define DEFAULT_SNPE_DELEGATE GST_ML_SNPE_DELEGATE_DSP
-
-/**
- * Default value of delegate
  */
 #define DEFAULT_SNPE_DELEGATE GST_ML_SNPE_DELEGATE_DSP
 
@@ -1551,6 +1546,7 @@ main (gint argc, gchar * argv[])
       "      Input should be provided as rtsp://<ip>:<port>/<stream>,\n"
       "      eg: rtsp://192.168.1.110:8554/live.mkv\n"
       "  enable-usb-camera: Use this Parameter to enable-usb-camera\n"
+      "      It can take TRUE or FALSE as input\n"
       "  yolo-model-type: \"yolov5\" or \"yolov8\" or \"yolox\" or \"yolonas\"\n"
       "      Yolo Model version to Execute: Yolov5, Yolov8 or YoloNas "
       "or Yolox [Default]\n"
