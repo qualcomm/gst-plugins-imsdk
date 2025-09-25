@@ -14,6 +14,9 @@
 #ifdef HAVE_FASTCV_H
 #include "fcv-video-converter.h"
 #endif // HAVE_FASTCV_H
+#ifdef HAVE_OPENCV_H
+#include "ocv-video-converter.h"
+#endif // HAVE_OPENCV_H
 
 
 #define GST_CAT_DEFAULT gst_video_converter_engine_debug
@@ -123,6 +126,9 @@ gst_video_converter_backend_get_type (void)
 #ifdef HAVE_FASTCV_H
     { GST_VCE_BACKEND_FCV, "Use FastCV based video converter", "fcv" },
 #endif // HAVE_FASTCV_H
+#ifdef HAVE_OPENCV_H
+    { GST_VCE_BACKEND_OCV, "Use OpenCV based video converter", "ocv" },
+#endif // HAVE_OPENCV_H
     { 0, NULL, NULL },
   };
 
@@ -141,7 +147,9 @@ gst_video_converter_default_backend (void)
   backend = GST_VCE_BACKEND_GLES;
 #elif defined(HAVE_ADRENO_C2D2_H)
   backend = GST_VCE_BACKEND_C2D;
-#endif // !HAVE_GLES2_H && !HAVE_ADRENO_C2D2_H
+#elif defined(HAVE_OPENCV_H)
+  backend = GST_VCE_BACKEND_OCV;
+#endif // !HAVE_IOT_CORE_IB2C_H && !HAVE_ADRENO_C2D2_H && ! HAVE_OPENCV_H
 
   return backend;
 }
@@ -196,6 +204,18 @@ gst_video_converter_engine_new (GstVideoConvBackend backend,
       engine->flush = (GstVideoConvFlushFunction) gst_fcv_video_converter_flush;
       break;
 #endif // HAVE_FASTCV_H
+#ifdef HAVE_OPENCV_H
+    case GST_VCE_BACKEND_OCV:
+      GST_WARNING ("Selected ocv backend; Adding engine functions");
+      engine->new = (GstVideoConvNewFunction) gst_ocv_video_converter_new;
+      engine->free = (GstVideoConvFreeFunction) gst_ocv_video_converter_free;
+      engine->compose =
+          (GstVideoConvComposeFunction) gst_ocv_video_converter_compose;
+      engine->wait_fence =
+          (GstVideoConvWaitFenceFunction) gst_ocv_video_converter_wait_fence;
+      engine->flush = (GstVideoConvFlushFunction) gst_ocv_video_converter_flush;
+      break;
+#endif // HAVE_OPENCV_H
     default:
       GST_ERROR ("Unsupported video converter backend: 0x%X !", backend);
       goto cleanup;
