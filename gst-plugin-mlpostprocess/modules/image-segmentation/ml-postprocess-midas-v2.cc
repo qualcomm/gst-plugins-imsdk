@@ -23,13 +23,13 @@ static const char* moduleCaps = R"(
     {
       "format": ["FLOAT32"],
       "dimensions": [
-        [ 1, 256, 256, 1 ]
+        [ 1, [256,518], [256,518], 1 ]
       ]
     },
     {
       "format": ["FLOAT32"],
       "dimensions": [
-        [ 1, 256, 256 ]
+        [ 1, [256,518], [256,518] ]
       ]
     }
   ]
