@@ -206,7 +206,6 @@ gst_video_converter_engine_new (GstVideoConvBackend backend,
 #endif // HAVE_FASTCV_H
 #ifdef HAVE_OPENCV_H
     case GST_VCE_BACKEND_OCV:
-      GST_WARNING ("Selected ocv backend; Adding engine functions");
       engine->new = (GstVideoConvNewFunction) gst_ocv_video_converter_new;
       engine->free = (GstVideoConvFreeFunction) gst_ocv_video_converter_free;
       engine->compose =

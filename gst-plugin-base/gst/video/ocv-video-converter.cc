@@ -17,11 +17,6 @@
 #define GST_OCV_PLANE_ARGS(plane) \
     (plane)->width, (plane)->height, (plane)->stride, (plane)->data
 
-#define EXTRACT_RED_VALUE(color)    ((color >> 24) & 0xFF)
-#define EXTRACT_GREEN_VALUE(color)  ((color >> 16) & 0xFF)
-#define EXTRACT_BLUE_VALUE(color)   ((color >> 8) & 0xFF)
-#define EXTRACT_ALPHA_VALUE(color)  ((color) & 0xFF)
-
 #define GST_OCV_GET_LOCK(obj)       (&((GstOcvVideoConverter *)obj)->lock)
 #define GST_OCV_LOCK(obj)           g_mutex_lock (GST_OCV_GET_LOCK(obj))
 #define GST_OCV_UNLOCK(obj)         g_mutex_unlock (GST_OCV_GET_LOCK(obj))
@@ -32,8 +27,6 @@
 
 #define GST_OCV_INVALID_STAGE_ID    (-1)
 #define GST_OCV_MAX_DRAW_OBJECTS    50
-
-#define GST_OCV_WIDTH_ALIGN         8
 
 #define GST_OCV_GET_FLIP(flip) \
     ((flip == GST_VCE_FLIP_BOTH) ? OPENCV_FLIP_BOTH : \
@@ -237,16 +230,19 @@ gst_ocv_update_object (GstOcvObject * object, const gchar * type,
           (y * object->planes[0].stride) + x * bpp);
 
   object->planes[0].stgid = GST_OCV_INVALID_STAGE_ID;
-  object->planes[0].channels = CV_8UC3;
+
+  if (object->flags & GST_OCV_FLAG_YUV || object->flags & GST_OCV_FLAG_GRAY)
+    object->planes[0].channels = CV_8UC1;
+  else if (object->flags & GST_OCV_FLAG_RGB)
+    object->planes[0].channels = CV_8UC3;
 
   // Initialize the secondary plane depending on the format.
   switch (object->format) {
     case GST_VIDEO_FORMAT_NV12:
     case GST_VIDEO_FORMAT_NV21:
-      object->planes[0].channels = CV_8UC1;
       object->planes[1].stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1);
-      object->planes[1].width = GST_ROUND_UP_2 (width) / 2;
-      object->planes[1].height = GST_ROUND_UP_2 (height) / 2;
+      object->planes[1].width = object->planes[0].width / 2;
+      object->planes[1].height = object->planes[0].height / 2;
       object->planes[1].channels = CV_8UC2;
 
       bpp = GST_VIDEO_INFO_COMP_PSTRIDE(&(frame->info), 1);
@@ -258,10 +254,9 @@ gst_ocv_update_object (GstOcvObject * object, const gchar * type,
       break;
     case GST_VIDEO_FORMAT_NV16:
     case GST_VIDEO_FORMAT_NV61:
-      object->planes[0].channels = CV_8UC1;
       object->planes[1].stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1);
-      object->planes[1].width = GST_ROUND_UP_2 (width) / 2;
-      object->planes[1].height = height;
+      object->planes[1].width = object->planes[0].width / 2;
+      object->planes[1].height = object->planes[0].height;
       object->planes[1].channels = CV_8UC2;
 
       bpp = GST_VIDEO_INFO_COMP_PSTRIDE(&(frame->info), 1);
@@ -271,10 +266,9 @@ gst_ocv_update_object (GstOcvObject * object, const gchar * type,
       object->planes[1].stgid = GST_OCV_INVALID_STAGE_ID;
       break;
     case GST_VIDEO_FORMAT_NV24:
-      object->planes[0].channels = CV_8UC1;
       object->planes[1].stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1);
-      object->planes[1].width = width * 2;
-      object->planes[1].height = height;
+      object->planes[1].width = object->planes[0].width * 2;
+      object->planes[1].height = object->planes[0].height;
       object->planes[1].channels = CV_8UC2;
       object->planes[1].data =
           (gpointer) ((guint8 *) GST_VIDEO_FRAME_PLANE_DATA (frame, 1) +
@@ -282,14 +276,13 @@ gst_ocv_update_object (GstOcvObject * object, const gchar * type,
       object->planes[1].stgid = GST_OCV_INVALID_STAGE_ID;
       break;
     case GST_VIDEO_FORMAT_P010_10LE:
-      object->planes[0].channels = CV_8UC1;
       // Update plane 0 offset.
       object->planes[0].data =
           (gpointer) ((guint8 *) GST_VIDEO_FRAME_PLANE_DATA (frame, 0) +
               (y * object->planes[0].stride) + x * 2);
       object->planes[1].stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1);
-      object->planes[1].width = GST_ROUND_UP_2 (width);
-      object->planes[1].height = GST_ROUND_UP_2 (height) / 2;
+      object->planes[1].width = object->planes[0].width;
+      object->planes[1].height = object->planes[0].height / 2;
       object->planes[1].channels = CV_8UC2;
       object->planes[1].data =
           (gpointer) ((guint8 *) GST_VIDEO_FRAME_PLANE_DATA (frame, 1) +
@@ -361,7 +354,6 @@ gst_ocv_video_converter_release_stage_buffer (GstOcvVideoConverter * convert,
       buffer->idx, buffer->data, buffer->size);
 }
 
-// TODO: Try to remove this
 static inline gboolean
 gst_ocv_video_converter_stage_object_init (GstOcvVideoConverter * convert,
     GstOcvObject * obj, guint width, guint height, GstVideoFormat format)
@@ -857,12 +849,12 @@ gst_ocv_video_converter_cvt_color (GstOcvVideoConverter * convert,
   cv::Mat uv_plane (s_obj->planes[1].height, s_obj->planes[1].width,
       s_obj->planes[1].channels, s_obj->planes[1].data, s_obj->planes[1].stride);
 
-  GST_INFO ("created y_plane with %d rows (height) and %d cols (width) from"
+  GST_INFO ("created y_plane mat with %d rows (height) and %d cols (width) from"
       "s_obj->plane[0] with .width: %d; .height: %d; .stide: %d",
       y_plane.rows, y_plane.cols,
       s_obj->planes[0].width, s_obj->planes[0].height, s_obj->planes[0].stride);
 
-  GST_INFO ("created uv_plane with %d rows (height) and %d cols (width) from"
+  GST_INFO ("created uv_plane mat with %d rows (height) and %d cols (width) from"
       "s_obj->plane[1] with .width: %d; .height: %d; .stide: %d",
       uv_plane.rows, uv_plane.cols,
       s_obj->planes[1].width, s_obj->planes[1].height, s_obj->planes[1].stride);
@@ -875,25 +867,8 @@ gst_ocv_video_converter_cvt_color (GstOcvVideoConverter * convert,
       cv::Mat output_matrix (d_obj->planes[0].height, d_obj->planes[0].width,
           d_obj->planes[0].channels, d_obj->planes[0].data, d_obj->planes[0].stride);
 
-      GST_INFO ("created output_matrix with %d rows (height) and %d cols (width)"
-          " from d_obj->plane[0] with .width: %d; .height: %d; .stide: %d",
-          output_matrix .rows, output_matrix.cols, d_obj->planes[0].width,
-          d_obj->planes[0].height, d_obj->planes[0].stride);
-
-      GST_INFO ("before conversion output_matrix has size: rows: %d, cols: %d",
-          output_matrix.rows, output_matrix.cols);
-
-      GST_INFO ("y_plane type: %d, size:%dx%d", y_plane.type(), y_plane.cols,
-          y_plane.rows);
-      GST_INFO ("uv_plane type: %d, size:%dx%d", uv_plane.type(), uv_plane.cols,
-          uv_plane.rows);
-      GST_INFO ("output_matrix type: %d, size:%dx%d", output_matrix.type(),
-          output_matrix.cols, output_matrix.rows);
-
       cv::cvtColorTwoPlane (y_plane, uv_plane, output_matrix,
           gst_ocv_get_conversion_mode (s_obj, d_obj));
-      GST_WARNING ("after conversion output_matrix has size: rows: %d, cols: %d",
-          output_matrix.rows, output_matrix.cols);
 
       success = true;
     } else {
@@ -922,7 +897,7 @@ gst_ocv_video_converter_process (GstOcvVideoConverter * convert,
   gfloat w_scale = 0.0, h_scale = 0.0, scale = 0.0;
   gboolean downscale = false, upscale = false, cvt_color = false;
 
-  GST_WARNING ("In function ocv_process, n_objects is: %d", n_objects);
+  GST_INFO ("Processing %d objects", n_objects);
 
   for (idx = 0; idx < n_objects; idx += 2) {
     s_obj = &(objects[idx]);
@@ -992,15 +967,15 @@ gst_ocv_video_converter_process (GstOcvVideoConverter * convert,
       return false;
     }
 
-    // Fourth, perform color conversion if necessary.
-    if (cvt_color && !gst_ocv_video_converter_cvt_color (convert, s_obj, d_obj)) {
-      GST_ERROR ("Failed to convert image format!");
+    // Fourth, upscale output if needed
+    if (upscale && !gst_ocv_video_converter_resize (convert, s_obj, d_obj)) {
+      GST_ERROR ("Failed to upscale image!");
       return false;
     }
 
-    // Fifth, upscale output if needed
-    if (upscale && !gst_ocv_video_converter_resize (convert, s_obj, d_obj)) {
-      GST_ERROR ("Failed to upscale image!");
+    // Fifth, perform color conversion if necessary.
+    if (cvt_color && !gst_ocv_video_converter_cvt_color (convert, s_obj, d_obj)) {
+      GST_ERROR ("Failed to convert image format!");
       return false;
     }
   }
