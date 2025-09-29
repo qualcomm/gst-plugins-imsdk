@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -66,6 +66,7 @@ typedef enum {
  * @GST_VCE_BACKEND_C2D: Use C2D based video converter.
  * @GST_VCE_BACKEND_GLES: Use OpenGLES based video converter.
  * @GST_VCE_BACKEND_FCV: Use FastCV based video converter.
+ * @GST_VCE_BACKEND_OCV: Use OpenCV based video converter.
  *
  * The backend of the video converter engine.
  */
@@ -74,6 +75,7 @@ typedef enum {
   GST_VCE_BACKEND_C2D,
   GST_VCE_BACKEND_GLES,
   GST_VCE_BACKEND_FCV,
+  GST_VCE_BACKEND_OCV,
 } GstVideoConvBackend;
 
 GST_VIDEO_API GType gst_video_converter_backend_get_type (void);

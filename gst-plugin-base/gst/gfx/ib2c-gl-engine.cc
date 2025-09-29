@@ -189,25 +189,25 @@ Engine::Engine() {
   shaders_.emplace(ShaderType::kCompute32F, shader);
 
   // Construct shader code for 8-bit unaligned RGB(A) output textures.
-  compute = kComputeHeader + kComputeOutputRGBA8 + kComputeMainPlanar;
+  compute = kComputeHeader + kComputeOutputRGBA8 + kComputePlanarMain;
   shader = std::make_shared<ShaderProgram>(env_, compute);
   shaders_.emplace(ShaderType::kComputePlanar8, shader);
 
   if (env_->QueryExtension("GL_NV_image_formats")) {
     // Construct shader code for 16-bit unaligned RGB(A) output textures.
-    compute = kComputeHeader + kComputeOutputRGBA16 + kComputeMainPlanar;
+    compute = kComputeHeader + kComputeOutputRGBA16 + kComputePlanarMain;
 
     shader = std::make_shared<ShaderProgram>(env_, compute);
     shaders_.emplace(ShaderType::kComputePlanar16, shader);
   }
 
   // Construct shader code for 16-bit float unaligned RGB(A) output textures.
-  compute = kComputeHeader + kComputeOutputRGBA16F + kComputeMainPlanar;
+  compute = kComputeHeader + kComputeOutputRGBA16F + kComputePlanarMain;
   shader = std::make_shared<ShaderProgram>(env_, compute);
   shaders_.emplace(ShaderType::kComputePlanar16F, shader);
 
-  // Construct shader code for 16-bit float unaligned RGB(A) output textures.
-  compute = kComputeHeader + kComputeOutputRGBA32F + kComputeMainPlanar;
+  // Construct shader code for 32-bit float unaligned RGB(A) output textures.
+  compute = kComputeHeader + kComputeOutputRGBA32F + kComputePlanarMain;
   shader = std::make_shared<ShaderProgram>(env_, compute);
   shaders_.emplace(ShaderType::kComputePlanar32F, shader);
 
@@ -847,11 +847,12 @@ bool Engine::IsSurfaceRenderable(const Surface& surface) {
   if (Format::IsSigned(surface.format))
     return false;
 
-  uint32_t n_components = Format::NumComponents(surface.format);
-
-  // RGB(A) planar formats are not renderable
-  if (Format::IsPlanar(surface.format))
+  // Float planar RGB formats are not rederable as there is no DRM format.
+  // TODO Remove when float planar RGB formats are supported.
+  if (Format::IsFloat(surface.format) && Format::IsPlanar(surface.format))
     return false;
+
+  uint32_t n_components = Format::NumComponents(surface.format);
 
   // 3 channeled Float RGB surfaces are not renderable due to limitation.
   // TODO Remove when 3 channel RGB float formats are supported.
@@ -1092,9 +1093,15 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
     uint32_t n_components = Format::NumComponents(surface.format);
     uint32_t bitdepth = Format::BitDepth(surface.format);
 
-    // Overwrite the 3 channeled format to corresponding 4 channeled format.
+    // For planar formats reset to single plane and adjust stride.
+    if (Format::IsPlanar(surface.format)) {
+      subsurface.planes.resize(1);
+      subsurface.planes[0].stride *= n_components;
+    }
+
+    // Overwrite formats to corresponding 4 channeled format if necessary.
     // This will make it compatible for creating EGL image and use in compute.
-    if (n_components == 3) {
+    if (n_components != 4) {
       subsurface.format = ColorFormat::kRGBA8888;
 
       if (Format::IsFloat(surface.format) && (bitdepth == 32))

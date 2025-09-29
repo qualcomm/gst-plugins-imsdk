@@ -425,7 +425,7 @@ bool Format::IsPlanar(uint32_t format) {
     return true;
 
   if (kRgbFormatTable.count(format & kFormatMask) == 0)
-    return false;
+    throw Exception("Unsuppoted format ", format);
 
   auto& info = std::get<RgbInfo>(kRgbFormatTable.at(format & kFormatMask));
   return info.planar;
