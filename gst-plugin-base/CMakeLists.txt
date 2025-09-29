@@ -15,6 +15,7 @@ pkg_check_modules(GST_VIDEO REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED
 pkg_check_modules(FASTCV qcom-fastcv-binaries)
 pkg_check_modules(EGL egl)
 pkg_check_modules(GLES glesv2)
+pkg_check_modules(OPEN_CV opencv4)
 
 include(CheckIncludeFile)
 include(CheckIncludeFileCXX)

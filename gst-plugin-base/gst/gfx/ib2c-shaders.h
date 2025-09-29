@@ -311,7 +311,7 @@ void main() {
             imageStore(outTex, outPos1, out1);
             imageStore(outTex, outPos2, out2);
             imageStore(outTex, outPos3, out3);
-        } else {
+        } else if (numChannels == 3) {
             // Recalculate the pixelId for the output 3 channeled (RGB) texture.
             // 3 / 4 because we process 4 pixels from the stage RGBA input texture which are
             // then compressed in 3 pixels of the output RGBA texture which is actually RGB.
@@ -328,12 +328,23 @@ void main() {
             imageStore(outTex, outPos0, out0);
             imageStore(outTex, outPos1, out1);
             imageStore(outTex, outPos2, out2);
+        } else {
+            // Recalculate the pixelId for the output 1 channeled (GRAY) texture.
+            pixelId = pixelId / 4;
+
+            float out0 = 0.299 * p0.x + 0.587 * p0.y + 0.114 * p0.z;
+            float out1 = 0.299 * p1.x + 0.587 * p1.y + 0.114 * p1.z;
+            float out2 = 0.299 * p2.x + 0.587 * p2.y + 0.114 * p2.z;
+            float out3 = 0.299 * p3.x + 0.587 * p3.y + 0.114 * p3.z;
+
+            ivec2 outPos = ivec2(pixelId % imageWidth, pixelId / imageWidth);
+            imageStore(outTex, outPos, vec4(out0, out1, out2, out3));
         }
     }
 }
 )";
 
-static const std::string kComputeMainPlanar = R"(
+static const std::string kComputePlanarMain = R"(
 void main() {
     int pixelId = int(gl_GlobalInvocationID.y * gl_NumWorkGroups.x * gl_WorkGroupSize.x);
     pixelId = 4 * (int(gl_GlobalInvocationID.x) + pixelId);

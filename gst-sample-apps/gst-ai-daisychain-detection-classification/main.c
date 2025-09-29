@@ -1637,6 +1637,7 @@ main (gint argc, gchar * argv[])
       "  width: USB Camera Resolution width.\n"
       "  height: USB Camera Resolution Height.\n"
       "  framerate: USB Camera Frame Rate.\n"
+      "  video-format: USB Video Format format can be nv12, yuy2 or mjpeg\n"
       "  output-type: It can be either be waylandsink, filesink or rtspsink\n"
       "  output-file: Use this Parameter to set output file path\n"
       "      Default output file path is:" DEFAULT_OUTPUT_FILENAME "\n"
