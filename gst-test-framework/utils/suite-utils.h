@@ -69,14 +69,22 @@ typedef enum  {
 
 /**
  * GstMLModuleType:
- * @GST_YOLO_TYPE_NONE: Invalid module type.
- * @GST_YOLO_TYPE_V8: Yolov8 object detection module.
+ * @GST_ML_MODULE_NONE: Invalid module type.
+ * @GST_ML_MODULE_YOLO_V5: Yolov5 object detection Model.
+ * @GST_ML_MODULE_YOLO_V8: Yolov8 object detection module.
+ * @GST_ML_MODULE_MOBILENET: Mobilenet module.
+ * @GST_ML_MODULE_SSD_MOBILENET: SSD-MOBILENET detection module.
+ * @GST_ML_MODULE_MOBILENET_SOFTMAX: Mobilenet with softmax classification module.
  *
  * Type of inference module.
  */
 typedef enum {
   GST_ML_MODULE_NONE,
+  GST_ML_MODULE_YOLO_V5,
   GST_ML_MODULE_YOLO_V8,
+  GST_ML_MODULE_MOBILENET,
+  GST_ML_MODULE_SSD_MOBILENET,
+  GST_ML_MODULE_MOBILENET_SOFTMAX,
 } GstMLModuleType;
 
 typedef enum {
@@ -114,11 +122,9 @@ struct _GstMLModelInfo {
   GstMLModelType     type;
   gchar              *modelpath;
   gchar              *labelspath;
-  gboolean           useconstants;
-  gchar              *constants;
+  gchar              *settings;
   gint               moduletype;
   gint               results;
-  gfloat             threshold;
   GstMLDelegate      delegate;
 };
 
