@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 project(GST_SAMPLE_APPS LANGUAGES C CXX)
 
+# Few applications have been disabled for now due to unavailable dependent packages.
 add_subdirectory(gst-activate-deactivate-streams-runtime)
 add_subdirectory(gst-add-remove-streams-runtime)
 add_subdirectory(gst-add-streams-as-bundle-example)
@@ -27,8 +28,8 @@ add_subdirectory(gst-audio-decode-example)
 add_subdirectory(gst-audio-encode-example)
 add_subdirectory(gst-audio-video-encode)
 add_subdirectory(gst-audio-video-playback)
-add_subdirectory(gst-camera-burst-capture-example)
-add_subdirectory(gst-camera-metadata-example)
+#add_subdirectory(gst-camera-burst-capture-example)
+#add_subdirectory(gst-camera-metadata-example)
 add_subdirectory(gst-camera-shdr-ldc-eis-example)
 add_subdirectory(gst-camera-single-stream-example)
 add_subdirectory(gst-camera-switch-example)
