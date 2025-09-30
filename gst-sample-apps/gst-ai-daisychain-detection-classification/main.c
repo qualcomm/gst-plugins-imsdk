@@ -101,9 +101,9 @@
  */
 #define DEFAULT_TFLITE_YOLOX_MODEL "/etc/models/yolox_quantized.tflite"
 #define DEFAULT_TFLITE_CLASSIFICATION_MODEL \
-    "/etc/models/mobilenet_v2_quantized.tflite"
-#define DEFAULT_DETECTION_LABELS "/etc/labels/coco_labels.txt"
-#define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/imagenet_labels.txt"
+    "/etc/models/inception_v3_quantized.tflite"
+#define DEFAULT_DETECTION_LABELS "/etc/labels/yolox.json"
+#define DEFAULT_CLASSIFICATION_LABELS "/etc/labels/classification.json"
 
 /**
  * Default path of config file

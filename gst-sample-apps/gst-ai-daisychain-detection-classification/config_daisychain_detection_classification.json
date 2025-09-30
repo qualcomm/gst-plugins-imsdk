@@ -5,6 +5,6 @@
   "output-type":"waylandsink",
   "detection-model": "/etc/models/yolox_quantized.tflite",
   "detection-labels": "/etc/labels/yolox.json",
-  "classification-model": "/etc/models/mobilenet_v2_quantized.tflite",
+  "classification-model": "/etc/models/inception_v3_quantized.tflite",
   "classification-labels": "/etc/labels/classification.json"
 }
