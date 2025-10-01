@@ -62,17 +62,17 @@
  * Default models and labels path, if not provided by user
  */
 #define DEFAULT_SNPE_YOLOV5_MODEL "/etc/models/yolov5.dlc"
-#define DEFAULT_YOLOV5_LABELS "/etc/labels/yolov5.labels"
+#define DEFAULT_YOLOV5_LABELS "/etc/labels/yolov5.json"
 #define DEFAULT_SNPE_YOLOV8_MODEL "/etc/models/yolov8.dlc"
-#define DEFAULT_YOLOV8_LABELS "/etc/labels/yolov8.labels"
-#define DEFAULT_YOLOX_LABELS "/etc/labels/yolox.labels"
+#define DEFAULT_YOLOV8_LABELS "/etc/labels/yolov8.json"
+#define DEFAULT_YOLOX_LABELS "/etc/labels/yolox.json"
 #define DEFAULT_SNPE_YOLONAS_MODEL "/etc/models/yolonas.dlc"
-#define DEFAULT_YOLONAS_LABELS "/etc/labels/yolonas.labels"
+#define DEFAULT_YOLONAS_LABELS "/etc/labels/yolonas.json"
 #define DEFAULT_TFLITE_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.tflite"
 #define DEFAULT_TFLITE_YOLOX_MODEL "/etc/models/yolox_quantized.tflite"
 #define DEFAULT_TFLITE_YOLOV5_MODEL "/etc/models/yolov5.tflite"
 #define DEFAULT_TFLITE_YOLONAS_MODEL "/etc/models/yolonas_quantized.tflite"
-#define DEFAULT_YOLOV7_LABELS "/etc/labels/yolov7.labels"
+#define DEFAULT_YOLOV7_LABELS "/etc/labels/yolov7.json"
 #define DEFAULT_TFLITE_YOLOV7_MODEL "/etc/models/yolov7_quantized.tflite"
 #define DEFAULT_QNN_YOLOV8_MODEL "/etc/models/yolov8_det_quantized.bin"
 
