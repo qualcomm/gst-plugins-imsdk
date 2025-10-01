@@ -125,9 +125,6 @@ enum
   PARAM_CAMERA_INPUT_ROI_INFO,
   PARAM_CAMERA_PHYISICAL_CAMERA_SWITCH,
   PARAM_CAMERA_SUPER_FRAMERATE,
-#ifdef FEATURE_OFFLINE_IFE_SUPPORT
-  PARAM_CAMERA_MULTICAMERA_HINT,
-#endif // FEATURE_OFFLINE_IFE_SUPPORT
   PARAM_CAMERA_SW_TNR,
   PARAM_CAMERA_STATIC_METADATAS,
 };
@@ -201,6 +198,12 @@ gst_qmmf_context_get_device_status_camera_id (GstQmmfContext * context);
 
 GST_API gboolean
 gst_qmmf_context_get_device_status_is_present (GstQmmfContext * context);
+
+GST_API void
+gst_qmmf_context_get_static_meta ();
+
+guint
+get_vendor_tag_by_name (const gchar * section, const gchar * name);
 
 G_END_DECLS
 
