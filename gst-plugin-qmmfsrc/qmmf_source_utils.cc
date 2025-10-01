@@ -33,8 +33,9 @@
  */
 
 #include "qmmf_source_utils.h"
-
-#include <system/camera_metadata_tags.h>
+#include <qmmf-sdk/qmmf_vendor_tag_descriptor.h>
+#include <qmmf-sdk/qmmf_camera_metadata.h>
+#include <qmmf_source_context.h>
 
 // Declare Qmmf buffer pool
 G_DEFINE_TYPE(GstQmmfBufferPool, gst_qmmf_buffer_pool, GST_TYPE_BUFFER_POOL);
@@ -609,7 +610,6 @@ gst_qmmfsrc_frc_mode_get_type (void)
   return gtype;
 }
 
-#ifdef EIS_MODES_ENABLE
 GType
 gst_qmmfsrc_eis_mode_get_type (void)
 {
@@ -636,7 +636,6 @@ gst_qmmfsrc_eis_mode_get_type (void)
 
   return gtype;
 }
-#endif // EIS_MODES_ENABLE
 
 #ifdef VHDR_MODES_ENABLE
 GType
@@ -773,11 +772,8 @@ gst_qmmfsrc_pad_logical_stream_type_get_type (void)
 
   variants[i].value = GST_PAD_LOGICAL_STREAM_TYPE_NONE;
   variants[i].value_name = "None";
-  variants[i++].value_nick = "none";
+  variants[i].value_nick = "none";
 
-  variants[i].value = 0;
-  variants[i].value_name = NULL;
-  variants[i].value_nick = NULL;
 
   gtype = g_enum_register_static ("GstQmmfSrcPadLogicalStreamType", variants);
 
@@ -805,7 +801,7 @@ gst_qmmfsrc_pad_activation_mode_get_type (void)
 }
 
 guchar
-gst_qmmfsrc_control_mode_android_value (const guint value)
+gst_qmmfsrc_control_mode_android_value (const gint value)
 {
   static guint idx = 0;
 
@@ -828,7 +824,7 @@ gst_qmmfsrc_android_value_control_mode (const guchar value)
 }
 
 guchar
-gst_qmmfsrc_effect_mode_android_value (const guint value)
+gst_qmmfsrc_effect_mode_android_value (const gint value)
 {
   static guint idx = 0;
   for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(effect_mode_map); ++idx) {
@@ -850,7 +846,7 @@ gst_qmmfsrc_android_value_effect_mode (const guchar value)
 }
 
 guchar
-gst_qmmfsrc_scene_mode_android_value (const guint value)
+gst_qmmfsrc_scene_mode_android_value (const gint value)
 {
   static guint idx = 0;
   for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(scene_mode_map); ++idx) {
@@ -872,7 +868,7 @@ gst_qmmfsrc_android_value_scene_mode (const guchar value)
 }
 
 guchar
-gst_qmmfsrc_antibanding_android_value (const guint value)
+gst_qmmfsrc_antibanding_android_value (const gint value)
 {
   static guint idx = 0;
   for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(antibanding_map); ++idx) {
@@ -894,7 +890,7 @@ gst_qmmfsrc_android_value_antibanding (const guchar value)
 }
 
 guchar
-gst_qmmfsrc_exposure_mode_android_value (const guint value)
+gst_qmmfsrc_exposure_mode_android_value (const gint value)
 {
   static guint idx = 0;
   for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(exposure_mode_map); ++idx) {
@@ -916,7 +912,7 @@ gst_qmmfsrc_android_value_exposure_mode (const guchar value)
 }
 
 guchar
-gst_qmmfsrc_white_balance_mode_android_value (const guint value)
+gst_qmmfsrc_white_balance_mode_android_value (const gint value)
 {
   static guint idx = 0;
   for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(white_balance_mode_map); ++idx) {
@@ -938,7 +934,7 @@ gst_qmmfsrc_android_value_white_balance_mode (const guchar value)
 }
 
 guchar
-gst_qmmfsrc_focus_mode_android_value (const guint value)
+gst_qmmfsrc_focus_mode_android_value (const gint value)
 {
   static guint idx = 0;
   for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(focus_mode_map); ++idx) {
@@ -960,7 +956,7 @@ gst_qmmfsrc_android_value_focus_mode (const guchar value)
 }
 
 guchar
-gst_qmmfsrc_noise_reduction_android_value (const guint value)
+gst_qmmfsrc_noise_reduction_android_value (const gint value)
 {
   static guint idx = 0;
   for (idx = 0; idx < QMMFSRC_PROPERTY_MAP_SIZE(noise_reduction_map); ++idx) {
@@ -1002,6 +998,452 @@ gst_qmmf_video_format_to_string (gint format)
     default:
       return "unknown";
   }
+}
+
+GHashTable*
+gst_qmmf_get_static_metas (void) {
+  static GHashTable *static_metas = NULL;
+
+  if (!static_metas)
+    static_metas = g_hash_table_new (NULL, NULL);
+  return static_metas;
+}
+
+void
+gst_qmmf_cleanup_static_metas (void) {
+  GHashTable *metas = gst_qmmf_get_static_metas ();
+
+  if (metas) {
+    GList *keys = g_hash_table_get_keys (metas);
+
+    for (GList *key = keys; key; key = key->next) {
+      ::qmmf::CameraMetadata *meta =
+        static_cast<::qmmf::CameraMetadata *>(g_hash_table_lookup (metas, key->data));
+      if (meta) {
+        delete meta;
+      }
+    }
+    g_list_free (keys);
+    g_hash_table_destroy (metas);
+
+    GST_INFO ("Cleaned up global static_metas hash table");
+  }
+}
+
+guint
+gst_qmmfsrc_check_sw_tnr_support () {
+  guint tag_id = get_vendor_tag_by_name ("org.quic.camera.swcapabilities", "SWTNREnable");
+
+  if (tag_id == 0) {
+    GST_INFO ("SW_TNR not supported: tag_id is 0");
+    return 0;
+  }
+  GST_INFO ("SW_TNR supported: tag_id = %u", tag_id);
+  return 1;
+}
+
+guint
+gst_qmmfsrc_check_eis_support () {
+  guint tag_id = get_vendor_tag_by_name ("com.qti.node.supportedEISmodes","EISModes");
+
+  if (tag_id == 0) {
+    GST_INFO ("tag_id is 0");
+    return 0;
+  }
+  GST_INFO ("tag_id is present");
+  return 1;
+}
+
+guint
+gst_qmmfsrc_get_max_fps ()
+{
+  guint max_fps = 0;
+  gboolean has_high_speed = FALSE;
+
+  GList *keys = g_hash_table_get_keys(gst_qmmf_get_static_metas());
+
+  for (GList *key = keys; key; key = key->next) {
+    ::qmmf::CameraMetadata *meta =
+      static_cast<::qmmf::CameraMetadata *>(g_hash_table_lookup(gst_qmmf_get_static_metas(),
+                                              key->data));
+
+    // check if HIGH_SPEED_VIDEO_CONFIGURATIONS is available
+    if (meta->exists(ANDROID_CONTROL_AVAILABLE_HIGH_SPEED_VIDEO_CONFIGURATIONS)) {
+      has_high_speed = TRUE;
+      auto entry = meta->find(ANDROID_CONTROL_AVAILABLE_HIGH_SPEED_VIDEO_CONFIGURATIONS);
+
+      for (uint32_t i = 0; i < entry.count; i += 5) {
+        guint fps = entry.data.i32[i + 3];
+
+        if (fps > max_fps)
+          max_fps = fps;
+      }
+    }
+  }
+
+  // If HIGH_SPEED not available, use AVAILABLE_TARGET_FPS_RANGES
+  if (!has_high_speed) {
+    for (GList *key = keys; key; key = key->next) {
+      ::qmmf::CameraMetadata *meta =
+        static_cast<::qmmf::CameraMetadata *>(g_hash_table_lookup(gst_qmmf_get_static_metas(),
+                                                key->data));
+
+      if (meta->exists(ANDROID_CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)) {
+        auto entry = meta->find(ANDROID_CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
+
+        for (uint32_t i = 0; i < entry.count; i += 2) {
+          guint fps = entry.data.i32[i + 1];
+
+          if (fps > max_fps)
+            max_fps = fps;
+        }
+      }
+    }
+  }
+
+  g_list_free(keys);
+  return max_fps;
+}
+
+void
+gst_qmmfsrc_get_jpeg_resolution_range (GstQmmfSrcResolutionRange *range)
+{
+  if (!range)
+    return;
+
+  range->max_width = 0;
+  range->max_height = 0;
+  range->min_width = G_MAXUINT;
+  range->min_height = G_MAXUINT;
+
+  GList *keys = g_hash_table_get_keys(gst_qmmf_get_static_metas());
+
+  for (GList *key = keys; key; key = key->next) {
+    ::qmmf::CameraMetadata *meta =
+      static_cast<::qmmf::CameraMetadata *>(g_hash_table_lookup(gst_qmmf_get_static_metas(),
+                                              key->data));
+
+    // Get maximum resolution from appropriate configuration
+    camera_metadata_tag max_config_tag = ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS;
+#if defined(HAS_ANDROID_REQUEST_AVAILABLE_CAPABILITIES_ULTRA_HIGH_RESOLUTION_SENSOR) && \
+    defined(HAS_ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_MAXIMUM_RESOLUTION)
+    // Check if sensor supports ULTRA_HIGH_RESOLUTION
+    if (meta->exists(ANDROID_REQUEST_AVAILABLE_CAPABILITIES)) {
+      auto cap_entry = meta->find(ANDROID_REQUEST_AVAILABLE_CAPABILITIES);
+      for (uint32_t i = 0; i < cap_entry.count; i++) {
+        if (cap_entry.data.u8[i] ==
+            ANDROID_REQUEST_AVAILABLE_CAPABILITIES_ULTRA_HIGH_RESOLUTION_SENSOR) {
+          max_config_tag = ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_MAXIMUM_RESOLUTION;
+          GST_INFO ("Sensor has ULTRA_HIGH_RESOLUTION_SENSOR capability");
+          GST_INFO ("Using MAXIMUM_RESOLUTION configurations for max resolution");
+          break;
+        }
+      }
+    }
+    if (max_config_tag == ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS) {
+      GST_INFO ("Using standard STREAM_CONFIGURATIONS for max resolution");
+    }
+#else
+    GST_INFO ("Using standard STREAM_CONFIGURATIONS for max resolution");
+#endif
+
+    if (meta->exists(max_config_tag)) {
+      auto entry = meta->find(max_config_tag);
+      for (uint32_t i = 0; i < entry.count; i += 4) {
+        if (HAL_PIXEL_FORMAT_BLOB == entry.data.i32[i]) {
+          if (ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_OUTPUT ==
+              entry.data.i32[i+3]) {
+            guint width = entry.data.i32[i+1];
+            guint height = entry.data.i32[i+2];
+
+            if (width > range->max_width)
+              range->max_width = width;
+            if (height > range->max_height)
+              range->max_height = height;
+          }
+        }
+      }
+    }
+
+    // Always get minimum resolution from standard STREAM_CONFIGURATIONS
+    if (meta->exists(ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS)) {
+      auto entry = meta->find(ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS);
+      for (uint32_t i = 0; i < entry.count; i += 4) {
+        if (HAL_PIXEL_FORMAT_BLOB == entry.data.i32[i]) {
+          if (ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_OUTPUT ==
+              entry.data.i32[i+3]) {
+            guint width = entry.data.i32[i+1];
+            guint height = entry.data.i32[i+2];
+
+            if (width < range->min_width)
+              range->min_width = width;
+            if (height < range->min_height)
+              range->min_height = height;
+          }
+        }
+      }
+    }
+  }
+
+  g_list_free(keys);
+
+  GST_INFO ("JPEG resolution range: %ux%u to %ux%u\n",
+            range->min_width, range->min_height,
+            range->max_width, range->max_height);
+}
+
+void
+gst_qmmfsrc_get_bayer_resolution_range (GstQmmfSrcResolutionRange *range)
+{
+  if (!range)
+    return;
+
+  range->max_width = 0;
+  range->max_height = 0;
+  range->min_width = G_MAXUINT;
+  range->min_height = G_MAXUINT;
+
+  GList *keys = g_hash_table_get_keys(gst_qmmf_get_static_metas());
+
+  for (GList *key = keys; key; key = key->next) {
+    ::qmmf::CameraMetadata *meta =
+      static_cast<::qmmf::CameraMetadata *>(g_hash_table_lookup(gst_qmmf_get_static_metas(),
+                                              key->data));
+
+    // Get maximum resolution from appropriate configuration
+    camera_metadata_tag max_config_tag = ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS;
+#if defined(HAS_ANDROID_REQUEST_AVAILABLE_CAPABILITIES_ULTRA_HIGH_RESOLUTION_SENSOR) && \
+    defined(HAS_ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_MAXIMUM_RESOLUTION)
+    // Check if sensor supports ULTRA_HIGH_RESOLUTION
+    if (meta->exists(ANDROID_REQUEST_AVAILABLE_CAPABILITIES)) {
+      auto cap_entry = meta->find(ANDROID_REQUEST_AVAILABLE_CAPABILITIES);
+      for (uint32_t i = 0; i < cap_entry.count; i++) {
+        if (cap_entry.data.u8[i] ==
+            ANDROID_REQUEST_AVAILABLE_CAPABILITIES_ULTRA_HIGH_RESOLUTION_SENSOR) {
+          max_config_tag = ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_MAXIMUM_RESOLUTION;
+          GST_INFO ("Sensor has ULTRA_HIGH_RESOLUTION_SENSOR capability");
+          GST_INFO ("Using MAXIMUM_RESOLUTION configurations for max resolution");
+          break;
+        }
+      }
+    }
+    if (max_config_tag == ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS) {
+      GST_INFO ("Using standard STREAM_CONFIGURATIONS for max resolution");
+    }
+#else
+    GST_INFO ("Using standard STREAM_CONFIGURATIONS for max resolution");
+#endif
+
+    if (meta->exists(max_config_tag)) {
+      auto entry = meta->find(max_config_tag);
+
+      for (uint32_t i = 0; i < entry.count; i += 4) {
+        gint32 format = entry.data.i32[i];
+
+        if (HAL_PIXEL_FORMAT_RAW8 == format ||
+            HAL_PIXEL_FORMAT_RAW10 == format ||
+            HAL_PIXEL_FORMAT_RAW12 == format ||
+            HAL_PIXEL_FORMAT_RAW16 == format) {
+          if (ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_OUTPUT ==
+              entry.data.i32[i+3]) {
+            guint width = entry.data.i32[i+1];
+            guint height = entry.data.i32[i+2];
+
+            if (width > range->max_width)
+              range->max_width = width;
+            if (height > range->max_height)
+              range->max_height = height;
+          }
+        }
+      }
+    }
+
+    // Always get minimum resolution from standard STREAM_CONFIGURATIONS
+    if (meta->exists(ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS)) {
+      auto entry = meta->find(ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS);
+
+      for (uint32_t i = 0; i < entry.count; i += 4) {
+        gint32 format = entry.data.i32[i];
+
+        if (HAL_PIXEL_FORMAT_RAW8 == format ||
+            HAL_PIXEL_FORMAT_RAW10 == format ||
+            HAL_PIXEL_FORMAT_RAW12 == format ||
+            HAL_PIXEL_FORMAT_RAW16 == format) {
+          if (ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_OUTPUT ==
+              entry.data.i32[i+3]) {
+            guint width = entry.data.i32[i+1];
+            guint height = entry.data.i32[i+2];
+
+            if (width < range->min_width)
+              range->min_width = width;
+            if (height < range->min_height)
+              range->min_height = height;
+          }
+        }
+      }
+    }
+  }
+
+  g_list_free(keys);
+
+  GST_INFO ("Bayer resolution range: %ux%u to %ux%u",
+            range->min_width, range->min_height,
+            range->max_width, range->max_height);
+}
+
+void
+gst_qmmfsrc_get_raw_resolution_range (GstQmmfSrcResolutionRange *range)
+{
+  if (!range)
+    return;
+
+  range->max_width = 0;
+  range->max_height = 0;
+  range->min_width = G_MAXUINT;
+  range->min_height = G_MAXUINT;
+
+  GList *keys = g_hash_table_get_keys(gst_qmmf_get_static_metas());
+
+  for (GList *key = keys; key; key = key->next) {
+    ::qmmf::CameraMetadata *meta =
+      static_cast<::qmmf::CameraMetadata *>(g_hash_table_lookup(gst_qmmf_get_static_metas(),
+                                              key->data));
+
+    // Get maximum resolution from appropriate configuration
+    camera_metadata_tag max_config_tag = ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS;
+#if defined(HAS_ANDROID_REQUEST_AVAILABLE_CAPABILITIES_ULTRA_HIGH_RESOLUTION_SENSOR) && \
+    defined(HAS_ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_MAXIMUM_RESOLUTION)
+    // Check if sensor supports ULTRA_HIGH_RESOLUTION
+    if (meta->exists(ANDROID_REQUEST_AVAILABLE_CAPABILITIES)) {
+      auto cap_entry = meta->find(ANDROID_REQUEST_AVAILABLE_CAPABILITIES);
+      for (uint32_t i = 0; i < cap_entry.count; i++) {
+        if (cap_entry.data.u8[i] ==
+            ANDROID_REQUEST_AVAILABLE_CAPABILITIES_ULTRA_HIGH_RESOLUTION_SENSOR) {
+          max_config_tag = ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_MAXIMUM_RESOLUTION;
+          GST_INFO ("Sensor has ULTRA_HIGH_RESOLUTION_SENSOR capability");
+          GST_INFO ("Using MAXIMUM_RESOLUTION configurations for max resolution");
+          break;
+        }
+      }
+    }
+    if (max_config_tag == ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS) {
+      GST_INFO ("Using standard STREAM_CONFIGURATIONS for max resolution");
+    }
+#else
+    GST_INFO ("Using standard STREAM_CONFIGURATIONS for max resolution");
+#endif
+
+    if (meta->exists(max_config_tag)) {
+      auto entry = meta->find(max_config_tag);
+
+      for (uint32_t i = 0; i < entry.count; i += 4) {
+        if (HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED == entry.data.i32[i]) {
+          if (ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_OUTPUT ==
+              entry.data.i32[i+3]) {
+            guint width = entry.data.i32[i+1];
+            guint height = entry.data.i32[i+2];
+
+            if (width > range->max_width)
+              range->max_width = width;
+            if (height > range->max_height)
+              range->max_height = height;
+          }
+        }
+      }
+    }
+
+    // Always get minimum resolution from standard STREAM_CONFIGURATIONS
+    if (meta->exists(ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS)) {
+      auto entry = meta->find(ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS);
+
+      for (uint32_t i = 0; i < entry.count; i += 4) {
+        if (HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED == entry.data.i32[i]) {
+          if (ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_OUTPUT ==
+              entry.data.i32[i+3]) {
+            guint width = entry.data.i32[i+1];
+            guint height = entry.data.i32[i+2];
+
+            if (width < range->min_width)
+              range->min_width = width;
+            if (height < range->min_height)
+              range->min_height = height;
+          }
+        }
+      }
+    }
+  }
+
+  g_list_free(keys);
+
+  GST_INFO ("RAW resolution range: %ux%u to %ux%u",
+            range->min_width, range->min_height,
+            range->max_width, range->max_height);
+}
+
+gboolean
+gst_qmmfsrc_check_format (PixFormat format) {
+  GList *keys = g_hash_table_get_keys (gst_qmmf_get_static_metas ());
+
+  for (GList *key = keys; key; key = key->next) {
+    ::qmmf::CameraMetadata *meta =
+      static_cast<::qmmf::CameraMetadata *> (g_hash_table_lookup (gst_qmmf_get_static_metas (),
+                                             key->data));
+
+    if (meta->exists (ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS)) {
+      auto entry =
+          meta->find (ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS);
+
+      for (guint j = 0; j < entry.count; j += 4) {
+        if (entry.data.i32[j] == format) {
+          g_list_free (keys);
+          return TRUE;
+        }
+      }
+    }
+  }
+  g_list_free (keys);
+  return FALSE;
+}
+
+static void
+parse_logical_cam_support (::qmmf::CameraMetadata *meta,
+  gboolean &is_logical_cam) {
+  camera_metadata_entry entry;
+
+  entry = meta->find (ANDROID_REQUEST_AVAILABLE_CAPABILITIES);
+
+  if (entry.count != 0) {
+    guint8 *cap_req_keys = entry.data.u8;
+    size_t i = 0;
+
+    for (i = 0; i < entry.count; i++) {
+      if (ANDROID_REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA ==
+          cap_req_keys[i]) {
+        is_logical_cam = TRUE;
+        break;
+      }
+    }
+  }
+}
+
+gboolean
+gst_qmmfsrc_check_logical_cam_support () {
+  gboolean is_logical_cam = FALSE;
+  gsize catonce = 0;
+
+  if (g_once_init_enter (&catonce)) {
+    GList *keys = g_hash_table_get_keys (gst_qmmf_get_static_metas ());
+    for (GList *key = keys; key; key = key->next) {
+      ::qmmf::CameraMetadata *meta =
+        static_cast<::qmmf::CameraMetadata *> (g_hash_table_lookup (gst_qmmf_get_static_metas (),
+                                               key->data));
+
+      parse_logical_cam_support (meta, is_logical_cam);
+    }
+    g_list_free (keys);
+    g_once_init_leave (&catonce, 1);
+  }
+  return is_logical_cam;
 }
 
 static void
