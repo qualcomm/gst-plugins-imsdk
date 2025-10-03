@@ -320,18 +320,20 @@ gst_video_composer_create_pool (GstVideoComposer * vcomposer, GstCaps * caps,
 
 static gboolean
 gst_video_composer_propose_allocation (GstAggregator * aggregator,
-    GstAggregatorPad * pad, GstQuery * inquery, GstQuery * outquery)
+    GstAggregatorPad * pad, GstQuery * decide_query, GstQuery * query)
 {
   GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER_CAST (aggregator);
   GstCaps *caps = NULL;
   GstBufferPool *pool = NULL;
+  GstStructure *config = NULL;
+  GstVideoAlignment align = { 0, };
   GstVideoInfo info;
   gboolean needpool = FALSE;
 
   GST_DEBUG_OBJECT (vcomposer, "Pad %s:%s", GST_DEBUG_PAD_NAME (pad));
 
   // Extract caps from the query.
-  gst_query_parse_allocation (outquery, &caps, &needpool);
+  gst_query_parse_allocation (query, &caps, &needpool);
 
   if (NULL == caps) {
     GST_ERROR_OBJECT (vcomposer, "Failed to extract caps from query!");
@@ -343,39 +345,42 @@ gst_video_composer_propose_allocation (GstAggregator * aggregator,
     return FALSE;
   }
 
-  if (needpool) {
-    GstStructure *structure = NULL;
-    GstAllocator *allocator = NULL;
-    GstVideoAlignment align = { 0, };
+  if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
+    GST_ERROR_OBJECT (vcomposer, "Failed to get alignment!");
+    return FALSE;
+  }
 
-    if (!gst_video_retrieve_gpu_alignment (&info, &align)) {
-      GST_ERROR_OBJECT (vcomposer, "Failed to get alignment!");
-      return FALSE;
-    }
+  if (needpool) {
+    GstAllocator *allocator = NULL;
 
     pool = gst_video_composer_create_pool (vcomposer, caps, &align, NULL);
-    structure = gst_buffer_pool_get_config (pool);
+    config = gst_buffer_pool_get_config (pool);
 
     // Set caps and size in query.
-    gst_buffer_pool_config_set_params (structure, caps, info.size, 0, 0);
+    gst_buffer_pool_config_set_params (config, caps, info.size, 0, 0);
 
-    gst_buffer_pool_config_get_allocator (structure, &allocator, NULL);
-    gst_query_add_allocation_param (outquery, allocator, NULL);
+    gst_buffer_pool_config_get_allocator (config, &allocator, NULL);
+    gst_query_add_allocation_param (query, allocator, NULL);
 
-    if (!gst_buffer_pool_set_config (pool, structure)) {
+    if (!gst_buffer_pool_set_config (pool, config)) {
       GST_ERROR_OBJECT (vcomposer, "Failed to set buffer pool configuration!");
       gst_object_unref (pool);
       return FALSE;
     }
   }
 
-  // If upstream does't have a pool requirement, set only size in query.
-  gst_query_add_allocation_pool (outquery, pool, info.size, 0, 0);
+  // If upstream doesn't have a pool requirement, set only size in query.
+  gst_query_add_allocation_pool (query, pool, info.size, 0, 0);
 
   if (pool != NULL)
     gst_object_unref (pool);
 
-  gst_query_add_allocation_meta (outquery, GST_VIDEO_META_API_TYPE, NULL);
+  config = gst_structure_new_empty ("video-meta");
+  gst_buffer_pool_config_set_video_alignment (config, &align);
+
+  // Add video meta with alignment information for upstream.
+  gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, config);
+
   return TRUE;
 }
 
@@ -457,8 +462,6 @@ gst_video_composer_decide_allocation (GstAggregator * aggregator,
   else
     gst_query_add_allocation_pool (query, pool, size, minbuffers,
         maxbuffers);
-
-  gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, NULL);
 
   vcomposer->outpool = pool;
 
