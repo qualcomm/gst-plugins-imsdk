@@ -49,6 +49,11 @@
 #define GST_OCV_PLANE_ARGS(plane) \
     (plane)->width, (plane)->height, (plane)->stride, (plane)->data
 
+#define EXTRACT_RED_VALUE(color)    ((color >> 24) & 0xFF)
+#define EXTRACT_GREEN_VALUE(color)  ((color >> 16) & 0xFF)
+#define EXTRACT_BLUE_VALUE(color)   ((color >> 8) & 0xFF)
+#define EXTRACT_ALPHA_VALUE(color)  ((color) & 0xFF)
+
 #define GST_OCV_GET_LOCK(obj)       (&((GstOcvVideoConverter *)obj)->lock)
 #define GST_OCV_LOCK(obj)           g_mutex_lock (GST_OCV_GET_LOCK(obj))
 #define GST_OCV_UNLOCK(obj)         g_mutex_unlock (GST_OCV_GET_LOCK(obj))
@@ -170,6 +175,64 @@ gst_ocv_stage_buffer_free (gpointer data)
 {
   GstOcvStageBuffer *buffer = (GstOcvStageBuffer *) data;
   g_free (buffer->data);
+}
+
+static inline guint
+gst_ocv_regions_overlapping_area (GstVideoRectangle * l_rect,
+    GstVideoRectangle * r_rect)
+{
+  gint width = 0, height = 0;
+
+  // Figure out the width of the intersecting rectangle.
+  // 1st: Find out the X axis coordinate of left most Top-Right point.
+  width = MIN ((l_rect->x + l_rect->w), (r_rect->x + r_rect->w));
+  // 2nd: Find out the X axis coordinate of right most Top-Left point
+  // and substract from the previously found value.
+  width -= MAX (l_rect->x, r_rect->x);
+
+  // Negative width means that there is no overlapping, zero the value.
+  width = (width < 0) ? 0 : width;
+
+  // Figure out the height of the intersecting rectangle.
+  // 1st: Find out the Y axis coordinate of bottom most Left-Top point.
+  height = MIN ((l_rect->y + l_rect->h), (r_rect->y + r_rect->h));
+  // 2nd: Find out the Y axis coordinate of top most Left-Bottom point
+  // and substract from the previously found value.
+  height -= MAX (l_rect->y, r_rect->y);
+
+  // Negative height means that there is no overlapping, zero the value.
+  height = (height < 0) ? 0 : height;
+
+  return (width * height);
+}
+
+static inline guint
+gst_ocv_composition_blit_area (GstVideoFrame * outframe, GstVideoBlit * blits,
+    guint index)
+{
+  GstVideoBlit *blit = NULL;
+  GstVideoRectangle *region = NULL, *l_region = NULL;
+  guint num = 0, area = 0;
+
+  // Fetch the blit at current index to which we will compare all others.
+  blit = &(blits[index]);
+
+  // If there are no destination region then the whole frame is the region.
+  if ((blit->destination.w == 0) || (blit->destination.h == 0))
+    return GST_VIDEO_FRAME_WIDTH (outframe) * GST_VIDEO_FRAME_HEIGHT (outframe);
+
+  // Calculate the destination area filled with frame content.
+  region = &(blit->destination);
+  area = region->w * region->h;
+
+  // Iterate destination region for each blit and subtract overlapping area.
+  for (num = 0; num < index; num++) {
+    // Subtract overlapping are of the destination regions in that blit object.
+    l_region = &(blits[num].destination);
+    area -= gst_ocv_regions_overlapping_area (region, l_region);
+  }
+
+  return area;
 }
 
 static inline void
@@ -1529,6 +1592,183 @@ gst_ocv_video_converter_cvt_color (GstOcvVideoConverter * convert,
 }
 
 static inline gboolean
+gst_ocv_video_converter_fill_background (GstOcvVideoConverter * convert,
+    GstVideoFrame * frame, guint32 color)
+{
+  gint height = GST_VIDEO_FRAME_HEIGHT (frame);
+  gint width = GST_VIDEO_FRAME_WIDTH (frame);
+  guint8 red = 0x00, green = 0x00, blue = 0x00, alpha = 0x00;
+  guint8 luma = 0x00;
+  guint16 cb = 0x00, cr = 0x00;
+
+  red = EXTRACT_RED_VALUE (color);
+  green = EXTRACT_GREEN_VALUE (color);
+  blue = EXTRACT_BLUE_VALUE (color);
+  alpha = EXTRACT_ALPHA_VALUE (color);
+
+  // Convert color code BT601 YUV color scape.
+  if (GST_VIDEO_INFO_IS_YUV (&(frame->info))) {
+    gfloat kr = 0.299, kg = 0.587, kb = 0.114;
+
+    luma = (red * kr) + (green * kg) + (blue * kb);
+    cb = 128 + (red * (-(kr / (1.0 - kb)) / 2)) +
+        (green * (-(kg / (1.0 - kb)) / 2)) + (blue * 0.5);
+    cr = 128 + (red * 0.5) + (green * (-(kg / (1.0 - kr)) / 2)) +
+        (blue * (-(kb / (1.0 - kr)) / 2));
+  }
+
+  GST_TRACE ("Fill buffer %p with 0x%X - %ux%u %s", frame->buffer, color,
+      width, height, gst_video_format_to_string (GST_VIDEO_FRAME_FORMAT (frame)));
+
+  // TODO: Fix YUV Formats
+  switch (GST_VIDEO_FRAME_FORMAT (frame)) {
+    case GST_VIDEO_FORMAT_GRAY8:
+    {
+      cv::Mat y_plane (height, width, CV_8UC1,
+          GST_VIDEO_FRAME_PLANE_DATA (frame, 0),
+          GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0));
+
+      y_plane.setTo (luma);
+      break;
+    }
+    case GST_VIDEO_FORMAT_NV12:
+    {
+      guint16 uv = (cr << 8) | cb;
+
+      cv::Mat y_plane (height, width, CV_8UC1,
+          GST_VIDEO_FRAME_PLANE_DATA (frame, 0),
+          GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0));
+
+      cv::Mat uv_plane (height / 2, width / 2, CV_16UC1,
+          GST_VIDEO_FRAME_PLANE_DATA (frame, 1),
+          GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1));
+
+      y_plane.setTo (luma);
+      uv_plane.setTo (uv);
+      break;
+    }
+    case GST_VIDEO_FORMAT_NV21:
+    {
+      guint16 vu = (cb << 8) | cr;
+
+      cv::Mat y_plane (height, width, CV_8UC1,
+          GST_VIDEO_FRAME_PLANE_DATA (frame, 0),
+          GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0));
+
+      cv::Mat uv_plane (height / 2, width / 2, CV_16UC1,
+          GST_VIDEO_FRAME_PLANE_DATA (frame, 1),
+          GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1));
+
+      y_plane.setTo (luma);
+      uv_plane.setTo (vu);
+      break;
+    }
+    case GST_VIDEO_FORMAT_NV16:
+    {
+      guint16 uv = (cr << 8) | cb;
+
+      cv::Mat y_plane (height, width, CV_8UC1,
+          GST_VIDEO_FRAME_PLANE_DATA (frame, 0),
+          GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0));
+
+      cv::Mat uv_plane (height, width / 2, CV_16UC1,
+          GST_VIDEO_FRAME_PLANE_DATA (frame, 1),
+          GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1));
+
+      y_plane.setTo (luma);
+      uv_plane.setTo (uv);
+      break;
+    }
+    case GST_VIDEO_FORMAT_NV61:
+    {
+      guint16 vu = (cb << 8) | cr;
+
+      cv::Mat y_plane (height, width, CV_8UC1,
+          GST_VIDEO_FRAME_PLANE_DATA (frame, 0),
+          GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0));
+
+      cv::Mat uv_plane (height, width / 2, CV_16UC1,
+          GST_VIDEO_FRAME_PLANE_DATA (frame, 1),
+          GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1));
+
+      y_plane.setTo (luma);
+      uv_plane.setTo (vu);
+      break;
+    }
+    case GST_VIDEO_FORMAT_NV24:
+    {
+      guint16 uv = (cr << 8) | cb;
+
+      cv::Mat y_plane (height, width, CV_8UC1,
+          GST_VIDEO_FRAME_PLANE_DATA (frame, 0),
+          GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0));
+
+      cv::Mat uv_plane (height, width, CV_16UC1,
+          GST_VIDEO_FRAME_PLANE_DATA (frame, 1),
+          GST_VIDEO_FRAME_PLANE_STRIDE (frame, 1));
+
+      y_plane.setTo (luma);
+      uv_plane.setTo (uv);
+      break;
+    }
+    case GST_VIDEO_FORMAT_RGB:
+    {
+      cv::Vec3b rgb_color (red, green, blue);
+
+      cv::Mat rgb_plane (height, width, CV_8UC3,
+          GST_VIDEO_FRAME_PLANE_DATA (frame, 0),
+          GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0));
+
+      rgb_plane.setTo (rgb_color);
+      break;
+    }
+    case GST_VIDEO_FORMAT_BGR:
+    {
+      cv::Vec3b bgr_color (blue, green, red);
+
+      cv::Mat bgr_plane (height, width, CV_8UC3,
+          GST_VIDEO_FRAME_PLANE_DATA (frame, 0),
+          GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0));
+
+      bgr_plane.setTo (bgr_color);
+      break;
+    }
+    case GST_VIDEO_FORMAT_RGBA:
+    case GST_VIDEO_FORMAT_RGBx:
+    {
+      cv::Vec4b rgba_color (red, green, blue, alpha);
+
+      cv::Mat rgba_plane (height, width, CV_8UC3,
+          GST_VIDEO_FRAME_PLANE_DATA (frame, 0),
+          GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0));
+
+      rgba_plane.setTo (rgba_color);
+      break;
+    }
+    case GST_VIDEO_FORMAT_BGRA:
+    case GST_VIDEO_FORMAT_BGRx:
+    {
+      cv::Vec4b bgra_color (blue, green, red, alpha);
+
+      cv::Mat bgra_plane (height, width, CV_8UC3,
+          GST_VIDEO_FRAME_PLANE_DATA (frame, 0),
+          GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0));
+
+      bgra_plane.setTo (bgra_color);
+      break;
+    }
+    default:
+    {
+      GST_ERROR ("Unsupported format %s!",
+          gst_video_format_to_string (GST_VIDEO_FRAME_FORMAT (frame)));
+      return FALSE;
+    }
+  }
+
+  return TRUE;
+}
+
+static inline gboolean
 gst_ocv_video_converter_process (GstOcvVideoConverter * convert,
     GstOcvObject * objects, guint n_objects)
 {
@@ -1616,7 +1856,7 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
     GstVideoComposition * compositions, guint n_compositions, gpointer * fence)
 {
   GstOcvObject objects[GST_OCV_MAX_DRAW_OBJECTS] = {};
-  guint32 idx = 0, n_objects = 0, num = 0;
+  guint32 idx = 0, n_objects = 0, num = 0, area = 0;
   gboolean success = FALSE;
 
   // TODO: Implement async operations via threads.
@@ -1642,6 +1882,10 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
       GST_ERROR ("Failed to map input buffer!");
       return FALSE;
     }
+
+    // Total area of the output frame that is to be used in later calculations
+    // to determine whether there are unoccupied background pixels to be filled.
+    area = GST_VIDEO_FRAME_WIDTH (&outframe) * GST_VIDEO_FRAME_HEIGHT (&outframe);
 
     // Iterate over the input blit entries and update each OCV object.
     for (num = 0; num < n_blits; num++) {
@@ -1717,18 +1961,25 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
       gst_ocv_update_object (object, "Destination", &outframe, &rectangle,
           GST_OCV_FLIP_NONE, GST_VCE_ROTATE_0, composition->datatype);
 
+      // Subtract blit area from total area.
+      if (area != 0)
+        area -= gst_ocv_composition_blit_area (&outframe, blits, num);
+
       // Increment the objects counter by 2 for for Source/Destination pair.
       n_objects += 2;
     }
 
     // Sanity checks, output frame and blit entries must not be NULL.
-    g_return_val_if_fail (blits != NULL, FALSE);
+    g_return_val_if_fail (&outframe != NULL && blits != NULL, FALSE);
 
-    for (num = 0; num < n_blits; num++) {
-      if (!gst_ocv_video_converter_process (convert, objects, n_objects)) {
-        GST_ERROR ("Failed to process frames for composition %u!", idx);
-        return FALSE;
-      }
+    if (compositions[idx].bgfill && (area > 0)) {
+      guint32 color = compositions[idx].bgcolor;
+      gst_ocv_video_converter_fill_background (convert, &outframe, color);
+    }
+
+    if (!gst_ocv_video_converter_process (convert, objects, n_objects)) {
+      GST_ERROR ("Failed to process frames for composition %u!", idx);
+      return FALSE;
     }
 
     success = gst_video_frame_normalize_ip (&outframe,
