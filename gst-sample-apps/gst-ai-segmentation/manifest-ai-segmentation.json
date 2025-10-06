@@ -7,9 +7,9 @@
   "AIModelsNeededByApplication": [
     {
       "ModelName": "deeplabv3_plus_mobilenet_quantized.tflite",
-      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/DeepLabV3-Plus-MobileNet-Quantized/resolve/main/DeepLabV3-Plus-MobileNet-Quantized.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/DeepLabV3-Plus-MobileNet/resolve/2751392b3ca5e6e8cd3316f4c62501aa17c268e8/DeepLabV3-Plus-MobileNet_w8a8.tflite",
       "LabelFile": "deeplabv3_resnet50.json",
-      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/deeplabv3_resnet50.json"
+      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/deeplabv3_resnet50.json"
     }
   ],
   "AIModelsSupportedByApplication": [
@@ -17,19 +17,19 @@
       "ModelName": "FFNet-40S_w8a8.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/FFNet-40S/resolve/103f52b6c2d0b45464112d95704f4556ec7f480c/FFNet-40S_w8a8.tflite",
       "LabelFile": "deeplabv3_resnet50.json",
-      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/deeplabv3_resnet50.json"
+      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/deeplabv3_resnet50.json"
     },
     {
       "ModelName": "FFNet-54S_w8a8.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/FFNet-54S/resolve/55386d7b4c76761242d4b0f15d7a788c65d45571/FFNet-54S_w8a8.tflite",
       "LabelFile": "deeplabv3_resnet50.json",
-      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/deeplabv3_resnet50.json"
+      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/deeplabv3_resnet50.json"
     },
     {
       "ModelName": "FFNet-78S_w8a8.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/FFNet-78S/resolve/471dfa14687abf8004c188687022e2597279b29d/FFNet-78S_w8a8.tflite",
       "LabelFile": "deeplabv3_resnet50.json",
-      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/deeplabv3_resnet50.json"
+      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/deeplabv3_resnet50.json"
     }
   ],
   "AIModelLocation": "/etc/models/",
