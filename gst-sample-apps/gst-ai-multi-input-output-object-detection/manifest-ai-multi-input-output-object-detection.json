@@ -9,7 +9,7 @@
       "ModelName": "yolov5.tflite",
       "ModelLabelDownloadURL": "",
       "LabelFile": "yolov5.json",
-      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.json"
+      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/yolox.json"
     }
   ],
   "AIModelsSupportedByApplication": [],
