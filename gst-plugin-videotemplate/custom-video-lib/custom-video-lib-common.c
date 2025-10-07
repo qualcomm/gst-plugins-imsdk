@@ -187,7 +187,7 @@ custom_lib_process_buffer (CustomLib * custom_lib,
     composition.n_blits = 1;
 
     composition.frame = &outframe;
-    composition.flags = 0;
+    composition.datatype = 0;
 
     composition.bgcolor = 0;
     composition.bgfill = FALSE;

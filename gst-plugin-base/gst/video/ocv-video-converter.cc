@@ -156,7 +156,7 @@ static inline void
 gst_ocv_update_object (GstOcvObject * object, const gchar * type,
     const GstVideoFrame * frame, const GstVideoRectangle * region,
     const GstOpenCVFlip flip, const GstVideoConvRotate rotate,
-    const guint64 flags)
+    const guint64 datatype)
 {
   const gchar *mode = NULL;
   gint x = 0, y = 0, width = 0, height = 0, bpp = 0;
@@ -170,23 +170,23 @@ gst_ocv_update_object (GstOcvObject * object, const gchar * type,
   width = MIN (((region->x + region->w) - x), (width - x));
   height = MIN (((region->y + region->h) - y), (height - y));
 
-  if (flags == GST_VCE_FLAG_I8_FORMAT)
+  if (datatype == GST_VCE_DATA_TYPE_I8)
     mode = " INT8";
-  else if (flags == GST_VCE_FLAG_U16_FORMAT)
+  else if (datatype == GST_VCE_DATA_TYPE_U16)
     mode = " UINT16";
-  else if (flags == GST_VCE_FLAG_I16_FORMAT)
+  else if (datatype == GST_VCE_DATA_TYPE_I16)
     mode = " INT16";
-  else if (flags == GST_VCE_FLAG_U32_FORMAT)
+  else if (datatype == GST_VCE_DATA_TYPE_U32)
     mode = " UINT32";
-  else if (flags == GST_VCE_FLAG_I32_FORMAT)
+  else if (datatype == GST_VCE_DATA_TYPE_I32)
     mode = " INT32";
-  else if (flags == GST_VCE_FLAG_U64_FORMAT)
+  else if (datatype == GST_VCE_DATA_TYPE_U64)
     mode = " UINT64";
-  else if (flags == GST_VCE_FLAG_I64_FORMAT)
+  else if (datatype == GST_VCE_DATA_TYPE_I64)
     mode = " INT64";
-  else if (flags == GST_VCE_FLAG_F16_FORMAT)
+  else if (datatype == GST_VCE_DATA_TYPE_F16)
     mode = " FLOAT16";
-  else if (flags == GST_VCE_FLAG_F32_FORMAT)
+  else if (datatype == GST_VCE_DATA_TYPE_F32)
     mode = " FLOAT32";
   else
     mode = " UINT8";
@@ -218,6 +218,17 @@ gst_ocv_update_object (GstOcvObject * object, const gchar * type,
 
   // Initialize the mandatory first plane.
   object->planes[0].stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, 0);
+
+  // Reduce object stride to equivalent UINT8 as engine cannot operate otherwise.
+  // Normalization to end pixel type will be done after all other operations.
+  if (datatype == GST_VCE_DATA_TYPE_U16 || datatype == GST_VCE_DATA_TYPE_I16 ||
+      datatype == GST_VCE_DATA_TYPE_F16)
+    object->planes[0].stride /= 2;
+  else if (datatype == GST_VCE_DATA_TYPE_U32 || datatype == GST_VCE_DATA_TYPE_I32 ||
+      datatype == GST_VCE_DATA_TYPE_F32)
+    object->planes[0].stride /= 4;
+  else if (datatype == GST_VCE_DATA_TYPE_U64 || datatype == GST_VCE_DATA_TYPE_I64)
+    object->planes[0].stride /= 8;
 
   object->planes[0].width = GST_ROUND_DOWN_8 (width);
   object->planes[0].height = GST_ROUND_DOWN_2 (height);
@@ -1053,15 +1064,17 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
 {
   GstOcvObject objects[GST_OCV_MAX_DRAW_OBJECTS] = {};
   guint32 idx = 0, n_objects = 0, num = 0;
+  gboolean success = FALSE;
 
   // TODO: Implement async operations via threads.
   if (fence != NULL)
     GST_WARNING ("Asynchronous composition operations are not supported!");
 
   for (idx = 0; idx < n_compositions; idx++) {
-    GstVideoFrame *outframe = compositions[idx].frame;
+    GstVideoComposition *composition = &compositions[idx];
+    GstVideoFrame *outframe = composition->frame;
     GstVideoBlit *blits = compositions[idx].blits;
-    guint n_blits = compositions[idx].n_blits;
+    guint n_blits = composition->n_blits;
 
     // Iterate over the input blit entries and update each OCV object.
     for (num = 0; num < n_blits; num++) {
@@ -1126,7 +1139,7 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
       }
 
       gst_ocv_update_object (object, "Destination", outframe, &rectangle,
-          GST_OCV_FLIP_NONE, GST_VCE_ROTATE_0, compositions[idx].flags);
+          GST_OCV_FLIP_NONE, GST_VCE_ROTATE_0, composition->datatype);
 
       // Increment the objects counter by 2 for for Source/Destination pair.
       n_objects += 2;
@@ -1140,6 +1153,14 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
         GST_ERROR ("Failed to process frames for composition %u!", idx);
         return false;
       }
+    }
+
+    success = gst_video_frame_normalize_ip (composition->frame,
+        composition->datatype, composition->offsets, composition->scales);
+
+    if (!success) {
+      GST_ERROR ("Failed to normalize output frame for composition %u!", idx);
+      return FALSE;
     }
   }
 

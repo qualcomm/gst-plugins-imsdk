@@ -18,10 +18,20 @@
 #include "ocv-video-converter.h"
 #endif // HAVE_OPENCV_H
 
+#include <gst/utils/common-utils.h>
+
 
 #define GST_CAT_DEFAULT gst_video_converter_engine_debug
 GST_DEBUG_CATEGORY (gst_video_converter_engine_debug);
 
+#define INT8_CONVERSION_OFFSET   (G_MAXUINT8 / 2 + 1)
+#define INT16_CONVERSION_OFFSET  (G_MAXUINT16 / 2 + 1)
+#define UINT16_CONVERSION_SCALE  (G_MAXUINT16 / G_MAXUINT8)
+#define INT32_CONVERSION_OFFSET  (G_MAXUINT32 / 2 + 1)
+#define UINT32_CONVERSION_SCALE  (G_MAXUINT32 / G_MAXUINT8)
+#define INT64_CONVERSION_OFFSET  (G_MAXUINT64 / 2 + 1)
+#define UINT64_CONVERSION_SCALE  (G_MAXUINT64 / G_MAXUINT8)
+#define FLOAT_CONVERSION_SCALE   (1.0 / G_MAXUINT8)
 
 /**
  * GstVideoConvNewFunction:
@@ -105,9 +115,84 @@ gst_video_conv_engine_init_debug_category (void)
 
   if (g_once_init_enter (&catonce)) {
     GST_DEBUG_CATEGORY_INIT (gst_video_converter_engine_debug,
-        "video-converter-engine", 0, "QTI Video Converter Engine ");
+        "video-converter-engine", 0, "QTI Video Converter Engine");
     g_once_init_leave (&catonce, TRUE);
   }
+}
+
+static inline gboolean
+gst_data_normalization (gpointer data, guint idx, gdouble value,
+    gdouble mean, gdouble sigma, guint64 datatype) {
+
+  switch (datatype) {
+    case GST_VCE_DATA_TYPE_U8:
+    {
+      GUINT8_PTR_CAST (data)[idx] = (guint8) ((value - mean) * sigma);
+      break;
+    }
+    case GST_VCE_DATA_TYPE_I8:
+    {
+      gint8 newvalue = value - INT8_CONVERSION_OFFSET;
+      GINT8_PTR_CAST (data)[idx] = (gint8) ((newvalue - mean) * sigma);
+      break;
+    }
+    case GST_VCE_DATA_TYPE_U16:
+    {
+      guint16 newvalue = value * UINT16_CONVERSION_SCALE;
+      GUINT16_PTR_CAST (data)[idx] = (guint16) ((newvalue - mean) * sigma);
+      break;
+    }
+    case GST_VCE_DATA_TYPE_I16:
+    {
+      gint16 newvalue = value * UINT16_CONVERSION_SCALE - INT16_CONVERSION_OFFSET;
+      GINT16_PTR_CAST (data)[idx] = (gint16) ((newvalue - mean) * sigma);
+      break;
+    }
+    case GST_VCE_DATA_TYPE_U32:
+    {
+      guint32 newvalue = value * UINT32_CONVERSION_SCALE;
+      GUINT32_PTR_CAST (data)[idx] = (guint32) ((newvalue - mean) * sigma);
+      break;
+    }
+    case GST_VCE_DATA_TYPE_I32:
+    {
+      gint32 newvalue = value * UINT32_CONVERSION_SCALE - INT32_CONVERSION_OFFSET;
+      GINT32_PTR_CAST (data)[idx] = (gint32) ((newvalue - mean) * sigma);
+      break;
+    }
+    case GST_VCE_DATA_TYPE_U64:
+    {
+      guint64 newvalue = ((guint64) value) * UINT64_CONVERSION_SCALE;
+      GUINT64_PTR_CAST (data)[idx] = (guint64) ((newvalue - mean) * sigma);
+      break;
+    }
+    case GST_VCE_DATA_TYPE_I64:
+    {
+      gint64 newvalue = ((gint64) value) * UINT64_CONVERSION_SCALE -
+          INT64_CONVERSION_OFFSET;
+      GINT64_PTR_CAST (data)[idx] = (gint64) ((newvalue - mean) * sigma);
+      break;
+    }
+#if defined(__ARM_FP16_FORMAT_IEEE)
+    case GST_VCE_DATA_TYPE_F16:
+    {
+      __fp16 newvalue = value * FLOAT_CONVERSION_SCALE;
+      GFLOAT16_PTR_CAST (data)[idx] = (__fp16) ((newvalue - mean) * sigma);
+      break;
+    }
+#endif //__ARM_FP16_FORMAT_IEEE
+    case GST_VCE_DATA_TYPE_F32:
+    {
+      gfloat newvalue = value * FLOAT_CONVERSION_SCALE;
+      GFLOAT_PTR_CAST (data)[idx] = (gfloat) ((newvalue - mean) * sigma);
+      break;
+    }
+    default:
+      GST_ERROR ("Unsupported type: %lX", datatype);
+      return FALSE;
+  }
+
+  return TRUE;
 }
 
 GType
@@ -169,6 +254,55 @@ gst_video_quadrilateral_to_rectangle (
   rectangle->y = quadrilateral->a.y;
   rectangle->w = quadrilateral->d.x - quadrilateral->a.x;
   rectangle->h = quadrilateral->d.y - quadrilateral->a.y;
+}
+
+gboolean
+gst_video_frame_normalize_ip (GstVideoFrame * vframe, guint64 datatype,
+    gdouble offsets[GST_VCE_MAX_CHANNELS], gdouble scales[GST_VCE_MAX_CHANNELS])
+{
+  guint8 *indata = NULL;
+  gpointer outdata = NULL;
+  gint row = 0, column = 0, width = 0, height = 0, idx = 0, bpp = 0;
+  gboolean success = TRUE, normalize = FALSE;
+
+  // Raise the normalization flag if output is not UINT8.
+  normalize = (datatype != GST_VCE_DATA_TYPE_U8);
+
+  // The flag will be raised also if there are custom nomalization params.
+  for (idx = 0; idx < GST_VCE_MAX_CHANNELS; idx++)
+    normalize |= (offsets[idx] != 0) || (scales[idx] != 1);
+
+  if (!normalize)
+    return TRUE;
+
+  GST_TRACE ("Normalization for %" GST_PTR_FORMAT, vframe->buffer);
+
+  // Retrive the video frame Bytes Per Pixel for later calculations.
+  bpp = GST_VIDEO_FORMAT_INFO_BITS (vframe->info.finfo) *
+      GST_VIDEO_FORMAT_INFO_N_COMPONENTS (vframe->info.finfo);
+  bpp /= 8;
+
+  indata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
+  outdata = GST_VIDEO_FRAME_PLANE_DATA (vframe, 0);
+
+  width = GST_VIDEO_FRAME_WIDTH (vframe);
+  height = GST_VIDEO_FRAME_HEIGHT (vframe);
+
+  // Normalize in reverse as front bytes are occupied.
+  for (row = (height - 1); row >= 0; row--) {
+    for (column = ((width * bpp) - 1); (column >= 0) && success; column--) {
+      idx = (row * width * bpp) + column;
+
+      // Convert value to actual type and apply normalization.
+      success = gst_data_normalization (outdata, idx, indata[idx],
+          offsets[idx % bpp], scales[idx % bpp], datatype);
+    }
+  }
+
+  if (!success)
+    GST_ERROR ("Normalization failed for %" GST_PTR_FORMAT, vframe->buffer);
+
+  return success;
 }
 
 GstVideoConvBackend
