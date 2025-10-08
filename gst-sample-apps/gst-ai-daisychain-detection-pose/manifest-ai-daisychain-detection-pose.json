@@ -7,15 +7,17 @@
   "AIModelsNeededByApplication": [
     {
       "ModelName": "yolox_quantized.tflite",
-      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Yolo-X/resolve/main/Yolo-X_w8a8.tflite",
+      "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Yolo-X/resolve/v0.30.5/Yolo-X_w8a8.tflite",
       "LabelFile": "yolox.json",
-      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
+      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/yolox.json"
     },
     {
       "ModelName": "hrnet_pose_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/HRNetPose/resolve/dbfe1866bd2dbfb9eecb32e54b8fcdc23d77098b/HRNetPose_w8a8.tflite",
       "LabelFile": "hrnet_pose.json",
-      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/hrnet_pose.labels"
+      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/hrnet_pose.json",
+      "LabelSettingsFile": "hrnet_settings.json",
+      "LabelSettingsDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/hrnet_settings.json"
     }
   ],
   "AIModelsSupportedByApplication": [],

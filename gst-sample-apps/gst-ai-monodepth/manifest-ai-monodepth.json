@@ -9,7 +9,7 @@
       "ModelName": "midas_quantized.tflite",
       "ModelLabelDownloadURL": "https://huggingface.co/qualcomm/Midas-V2/resolve/d182b62632d80d3d1690f6e13fec18dd09c05fdf/Midas-V2_w8a8.tflite",
       "LabelFile": "monodepth.json",
-      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/monodepth.json"
+      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/monodepth.json"
     }
   ],
   "AIModelsSupportedByApplication": [],

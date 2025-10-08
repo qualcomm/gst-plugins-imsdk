@@ -9,7 +9,7 @@
       "ModelName": "yolov8_det_quantized.tflite",
       "ModelLabelDownloadURL": "",
       "LabelFile": "yolov8.json",
-      "LabelDownloadURL": "https://github.com/quic/sample-apps-for-qualcomm-linux/blob/main/artifacts/labels/detection.labels"
+      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/yolov8.json"
     }
   ],
   "AIModelsSupportedByApplication": [
@@ -17,7 +17,7 @@
       "ModelName": "deeplabv3_plus_mobilenet_quantized.tflite",
       "ModelLabelDownloadURL": "",
       "LabelFile": "deeplabv3_resnet50.json",
-      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/labels/deeplabv3_resnet50.labels"
+      "LabelDownloadURL": "https://raw.githubusercontent.com/quic/sample-apps-for-qualcomm-linux/refs/heads/main/artifacts/json_labels/deeplabv3_resnet50.json"
     }
   ],
   "AIModelLocation": "/etc/models/",
