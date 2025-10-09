@@ -162,8 +162,8 @@ gst_ml_snpe_create_pool (GstMLSnpe * snpe, GstCaps * caps)
     return NULL;
   }
 
-  GST_INFO_OBJECT (snpe, "Uses ION memory");
-  pool = gst_ml_buffer_pool_new (GST_ML_BUFFER_POOL_TYPE_ION);
+  GST_INFO_OBJECT (snpe, "Uses DMA memory");
+  pool = gst_ml_buffer_pool_new (GST_ML_BUFFER_POOL_TYPE_DMA);
 
   config = gst_buffer_pool_get_config (pool);
   gst_buffer_pool_config_set_params (config, caps, gst_ml_info_size (&info),

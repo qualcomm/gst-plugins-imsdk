@@ -160,8 +160,8 @@ gst_cv_optclflow_create_pool (GstCvOptclFlow * optclflow)
 
   gst_cv_optclflow_engine_sizes (optclflow->engine, &mvsize, &statsize);
 
-  GST_INFO_OBJECT (optclflow, "Uses ION memory");
-  pool = gst_mem_buffer_pool_new (GST_MEMORY_BUFFER_POOL_TYPE_ION);
+  GST_INFO_OBJECT (optclflow, "Uses DMA memory");
+  pool = gst_mem_buffer_pool_new (GST_MEMORY_BUFFER_POOL_TYPE_DMA);
 
   config = gst_buffer_pool_get_config (pool);
   gst_buffer_pool_config_set_params (config, NULL, (mvsize + statsize),

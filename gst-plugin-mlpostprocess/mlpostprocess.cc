@@ -395,7 +395,7 @@ gst_ml_post_process_create_pool (GstMLPostProcess * postprocess,
   }
 
   if (postprocess->mode == OUTPUT_MODE_TENSOR)
-    pool = gst_ml_buffer_pool_new (GST_ML_BUFFER_POOL_TYPE_ION);
+    pool = gst_ml_buffer_pool_new (GST_ML_BUFFER_POOL_TYPE_DMA);
   else
     pool = gst_image_buffer_pool_new ();
 
