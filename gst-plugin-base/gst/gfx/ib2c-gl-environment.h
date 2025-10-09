@@ -115,6 +115,7 @@ class GlesLib {
 
   PFNGLGETINTEGERVPROC                GetIntegerv;
   PFNGLGETSTRINGIPROC                 GetStringi;
+  PFNGLGETSTRINGPROC                  GetString;
 
   PFNGLVIEWPORTPROC                   Viewport;
 

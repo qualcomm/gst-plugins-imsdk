@@ -752,9 +752,10 @@ int32_t Overlay::Init (OverlayBlitType blit_type)
 #endif // ENABLE_C2D
   } else if (blit_type_ == OverlayBlitType::kGLES) {
 #ifdef ENABLE_GLES
+    const char *vendor = NULL, *renderer = NULL;
+
     ib2c_engine_ = std::shared_ptr<::ib2c::IEngine>(
-        ::ib2c::NewGlEngine(), [](::ib2c::IEngine* e) { delete e; }
-    );
+        ::ib2c::NewGlEngine(&vendor, &renderer));
 #else
     GST_ERROR ("GLES converter is not supported!");
     return -1;

@@ -49,6 +49,9 @@ class Engine : public IEngine {
                          bool synchronous) override;
   void Finish(std::uintptr_t fence) override;
 
+  const char* GetVendor();
+  const char* GetRenderer();
+
  private:
   std::string BindContext(EGLSurface draw, EGLSurface read, EGLContext context);
   std::string UnbindContext(EGLContext context);

@@ -448,6 +448,16 @@ void Engine::Finish(std::uintptr_t fence) {
   if (!error.empty()) throw std::runtime_error(error);
 }
 
+const char* Engine::GetVendor() {
+
+  return reinterpret_cast<const char*>(env_->Gles()->GetString(GL_VENDOR));
+}
+
+const char* Engine::GetRenderer() {
+
+  return reinterpret_cast<const char*>(env_->Gles()->GetString(GL_RENDERER));
+}
+
 std::string Engine::RenderYuvTexture(std::vector<GraphicTuple>& graphics,
                                      bool clean, uint32_t color,
                                      uint32_t colorspace, Objects& objects) {
@@ -1172,9 +1182,14 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
 
 } // namespace gl
 
-IEngine* NewGlEngine() {
+IEngine* NewGlEngine(const char** vendor, const char** renderer) {
 
-  return new gl::Engine();
+  auto engine = new gl::Engine();
+
+  *vendor = engine->GetVendor();
+  *renderer = engine->GetRenderer();
+
+  return engine;
 }
 
 } // namespace ib2c
