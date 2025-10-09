@@ -841,7 +841,7 @@ gst_c2_venc_handle_region_encode (GstC2VEncoder * c2venc,
     GstStructure *s = NULL;
     const gchar *label = NULL;
 
-    if (roimeta->roi_type != g_quark_from_static_string ("ObjectDetection"))
+    if (roimeta->roi_type == g_quark_from_static_string ("ImageRegion"))
       continue;
 
     if (GST_C2_MAX_RECT_ROI_NUM == roiparam->n_rects) {
@@ -850,8 +850,7 @@ gst_c2_venc_handle_region_encode (GstC2VEncoder * c2venc,
       break;
     }
 
-    s = gst_video_region_of_interest_meta_get_param (roimeta, "ObjectDetection");
-    label = gst_structure_get_string (s, "label");
+    label = g_quark_to_string (roimeta->roi_type);
 
     GST_LOG_OBJECT (c2venc, "Input buffer ROI: label=%s id=%d (%d, %d) %dx%d",
         label, roimeta->id, roimeta->x, roimeta->y, roimeta->w, roimeta->h);
