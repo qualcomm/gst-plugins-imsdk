@@ -21,7 +21,7 @@
 #include <unistd.h>
 #include <cairo/cairo.h>
 
-#include "modules/qti-ml-post-proccess.h"
+#include "modules/qti-ml-post-process.h"
 #include "modules/qti-json-parser.h"
 
 #define DISPLACEMENT_THRESHOLD      0.7F

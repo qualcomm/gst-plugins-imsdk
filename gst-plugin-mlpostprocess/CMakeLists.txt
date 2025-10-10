@@ -39,7 +39,7 @@ add_definitions(-DHAVE_CONFIG_H)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-parameter")
 
-# GStreamer ML post proccess plugin.
+# GStreamer ML post process plugin.
 set(GST_QTI_ML_POST_PROCESS gstqtimlpostprocess)
 
 add_library(${GST_QTI_ML_POST_PROCESS} SHARED
