@@ -143,6 +143,16 @@ void
 gst_ml_post_process_box_displacement_correction (ObjectDetection &l_box,
                                                  ObjectDetections& boxes);
 
+/* gst_ml_box_compare_entries_by_position
+ *
+ * Helper function to compare boxes by position.
+ *
+ * return: TRUE if arguments in order.
+ **/
+gboolean
+gst_ml_box_compare_entries_by_position (ObjectDetection& l_entry,
+                                        ObjectDetection& r_entry);
+
 /* gst_ml_module_caps_get_type
  *
  * Helper function to get module type from JSON.
