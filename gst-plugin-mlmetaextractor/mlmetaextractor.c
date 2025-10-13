@@ -539,23 +539,18 @@ gst_mlmeta_extractor_add_detection_structs_to_list (GstMLMetaExtractor *extracto
 
       for (index = 0; index < incoming_landmarks->len; index++) {
         GstStructure *landmark = NULL;
-        GQuark landmark_name = 0;
-        guint x = 0, y = 0;
+        GstVideoKeypoint *kp = NULL;
 
-        GstStructure *str_landmark = g_array_index (
-            incoming_landmarks, GstStructure*, index);
-
-        gst_structure_get_uint (str_landmark, "name", &landmark_name);
-        gst_structure_get_uint (str_landmark, "x", &x);
-        gst_structure_get_uint (str_landmark, "y", &y);
+        kp = &(g_array_index (
+            incoming_landmarks, GstVideoKeypoint, index));
 
         // Replace empty spaces otherwise subsequent stream parse call will fail.
-        name = g_strdup (g_quark_to_string (landmark_name));
+        name = g_strdup (g_quark_to_string (kp->name));
         name = g_strdelimit (name, " ", '.');
 
         landmark = gst_structure_new (name,
-            "x", G_TYPE_UINT, x,
-            "y", G_TYPE_UINT, y,
+            "x", G_TYPE_UINT, kp->x,
+            "y", G_TYPE_UINT, kp->y,
             NULL);
 
         g_free (name);

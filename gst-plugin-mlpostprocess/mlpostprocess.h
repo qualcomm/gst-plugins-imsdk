@@ -38,7 +38,7 @@
 #include <gst/base/gstbasetransform.h>
 #include <gst/ml/ml-module-utils.h>
 
-#include "modules/qti-ml-post-proccess.h"
+#include "modules/qti-ml-post-process.h"
 #include "modules/qti-json-parser.h"
 
 G_BEGIN_DECLS

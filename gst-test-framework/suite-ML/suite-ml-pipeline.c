@@ -12,7 +12,7 @@
 #include <gst/base/gstbasesink.h>
 #include <gst/video/gstvideometa.h>
 
-#define ML_DETECTION_CHECK_BUFFER_COUNT    300
+#define ML_CHECK_BUFFER_COUNT    300
 
 /**
  * Get enum for property nick name
@@ -126,6 +126,9 @@ ml_video_get_moduleid (GstElement *postproc,
     case GST_ML_MODULE_YOLO_V8:
       name= "yolov8";
       break;
+    case GST_ML_MODULE_MOBILENET_SOFTMAX:
+      name = "mobilenet-softmax";
+      break;
     default:
       break;
   }
@@ -179,6 +182,8 @@ ml_video_inference_pipeline (GstMLModelInfo *minfo,
   tee = gst_element_factory_make ("tee", NULL);
 
   mlvconvert = gst_element_factory_make ("qtimlvconverter", NULL);
+  postproc = gst_element_factory_make ("qtimlpostprocess", NULL);
+
   capsfilter = gst_element_factory_make ("capsfilter", NULL);
   metamux = gst_element_factory_make ("qtimetamux", "metamux");
   voverlay = gst_element_factory_make ("qtivoverlay", NULL);
@@ -190,7 +195,7 @@ ml_video_inference_pipeline (GstMLModelInfo *minfo,
   queue4 = gst_element_factory_make ("queue", NULL);
 
   fail_unless (pipeline && filesrc && demux && parse && vdec &&
-      queue0 && tee && mlvconvert && queue1 && queue2 &&
+      queue0 && tee && mlvconvert && queue1 && queue2 && postproc &&
       capsfilter && queue3 && metamux && queue4 && voverlay && sink);
 
   // Add to GList.
@@ -209,17 +214,6 @@ ml_video_inference_pipeline (GstMLModelInfo *minfo,
   plugins = g_list_append (plugins, queue2);
   plugins = g_list_append (plugins, queue3);
   plugins = g_list_append (plugins, queue4);
-
-  if (minfo->inferencetype == GST_ML_OBJECT_DETECTION)
-    postproc = gst_element_factory_make ("qtimlvdetection", NULL);
-  else if (minfo->inferencetype == GST_ML_CLASSIFICATION)
-    postproc = gst_element_factory_make ("qtimlvclassification", NULL);
-  else if (minfo->inferencetype == GST_ML_POSE_DETECTION)
-    postproc = gst_element_factory_make ("qtimlvpose", NULL);
-  else
-    fail ();
-  fail_unless (postproc);
-
   plugins = g_list_append (plugins, postproc);
 
   // Create inference plugin and set properties.
@@ -245,10 +239,8 @@ ml_video_inference_pipeline (GstMLModelInfo *minfo,
   // Set post processing plugin properties.
   moduleid = ml_video_get_moduleid(postproc, minfo->moduletype);
   g_object_set (G_OBJECT (postproc),
-      "threshold", minfo->threshold, "results", minfo->results,
-      "module", moduleid, "labels", minfo->labelspath, NULL);
-  if (minfo->useconstants && minfo->constants)
-    g_object_set (G_OBJECT (postproc), "constants", minfo->constants, NULL);
+      "results", minfo->results, "module", moduleid,
+      "labels", minfo->labelspath, "settings", minfo->settings, NULL);
 
   g_object_set (G_OBJECT (sink), "sync", FALSE, NULL);
 
@@ -277,12 +269,14 @@ ml_video_inference_pipeline (GstMLModelInfo *minfo,
 
   gst_buffer_straw_start_pipeline (pipeline, srcpad);
 
-  for (i = 0; i < ML_DETECTION_CHECK_BUFFER_COUNT; ++i) {
+  for (i = 0; i < ML_CHECK_BUFFER_COUNT; ++i) {
     GstBuffer *buf;
     buf = gst_buffer_straw_get_buffer (pipeline, srcpad);
 
     // Check if meta num is expected.
-    fail_unless (ml_video_detection_check (vinfo, buf, i));
+    if (minfo->inferencetype == GST_ML_OBJECT_DETECTION)
+      fail_unless (ml_video_detection_check (vinfo, buf, i));
+
     gst_buffer_unref (buf);
   }
 

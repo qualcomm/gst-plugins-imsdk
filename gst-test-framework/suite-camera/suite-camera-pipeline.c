@@ -219,7 +219,7 @@ camera_display_encode_pipeline (GstCapsParameters * params0,
 
   // Set filesink properties
   location = g_strdup_printf ("%s/encode_%dx%d.mp4",
-      CAMERA_FILE_PREFIX, params1->width, params1->height);
+      TF_MEDIA_PREFIX, params1->width, params1->height);
   g_object_set (G_OBJECT (filesink), "location", location, NULL);
   g_object_set (G_OBJECT (filesink), "enable-last-sample", FALSE, NULL);
 
@@ -313,7 +313,7 @@ camera_transform_display_pipeline (GstCapsParameters * params0,
   fail_unless (pipeline && qmmfsrc && capsfilter0 && queue &&
       vtrans && capsfilter1 && wayland);
 
- // Add to GList.
+  // Add to GList.
   plugins = g_list_append (plugins, qmmfsrc);
   plugins = g_list_append (plugins, capsfilter0);
   plugins = g_list_append (plugins, queue);
@@ -387,7 +387,7 @@ camera_composer_display_pipeline (GstCapsParameters * params,
   GstCaps *filtercaps;
   GstMessage *msg;
   gchar *codec = NULL;
-  gchar *location = g_strdup_printf ("%s/%s", CAMERA_FILE_PREFIX, filename);
+  gchar *location = g_strdup_printf ("%s/%s", TF_MEDIA_PREFIX, filename);
 
   // Check if file is existing and is Mp4.
   fail_unless_equals_int (gst_mp4_verification (location,
@@ -529,7 +529,7 @@ camera_decoder_display_pipeline (gchar *filename, guint duration)
   GstElement *pipeline, *filesrc, *demux, *parse, *vdec, *queue, *wayland;
   GList *plugins = NULL;
   GstMessage *msg;
-  gchar *location = g_strdup_printf ("%s/%s", CAMERA_FILE_PREFIX, filename);
+  gchar *location = g_strdup_printf ("%s/%s", TF_MEDIA_PREFIX, filename);
   gchar *codec = NULL;
 
   // Check if file is existing and is Mp4.

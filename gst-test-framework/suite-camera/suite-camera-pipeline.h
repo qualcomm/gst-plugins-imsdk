@@ -8,8 +8,6 @@
 
 #include "suite-utils.h"
 
-#define CAMERA_FILE_PREFIX       "/etc/media"
-
 G_BEGIN_DECLS
 
 /**

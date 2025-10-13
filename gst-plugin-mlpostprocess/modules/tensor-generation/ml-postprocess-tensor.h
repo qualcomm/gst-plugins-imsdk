@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "qti-ml-post-proccess.h"
+#include "qti-ml-post-process.h"
 
 #include <string>
 
