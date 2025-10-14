@@ -22,8 +22,10 @@ GST_DEBUG_CATEGORY_STATIC (gst_ml_meta_parser_debug);
 G_DEFINE_TYPE (GstMlMetaParser, gst_ml_meta_parser, GST_TYPE_BASE_TRANSFORM);
 
 #define DEFAULT_PROP_MODULE 0
+#define DEFAULT_PROP_MODULE_PARAMS NULL
 
 #define GST_ML_META_PARSER_SINK_CAPS \
+    "image/jpeg; " \
     "video/x-raw(ANY); " \
     "text/x-raw, format = (string) utf8"
 
@@ -33,7 +35,8 @@ G_DEFINE_TYPE (GstMlMetaParser, gst_ml_meta_parser, GST_TYPE_BASE_TRANSFORM);
 enum
 {
   PROP_0,
-  PROP_MODULE
+  PROP_MODULE,
+  PROP_MODULE_PARAMS,
 };
 
 static GstStaticPadTemplate gst_ml_meta_parser_sink_template =
@@ -189,6 +192,7 @@ gst_ml_meta_parser_set_caps (GstBaseTransform * base, GstCaps * incaps,
   GstStructure *structure = NULL;
   gboolean success = FALSE;
   GstDataType datatype = GST_DATA_TYPE_NONE;
+  gint width = 0, height = 0;
 
   // TODO Could be used for some initialization of a core component.
   // If not used should be removed.
@@ -213,14 +217,26 @@ gst_ml_meta_parser_set_caps (GstBaseTransform * base, GstCaps * incaps,
     datatype = GST_DATA_TYPE_TEXT;
   } else if (gst_structure_has_name (structure, "video/x-raw")) {
     datatype = GST_DATA_TYPE_VIDEO;
+  } else if (gst_structure_has_name (structure, "image/jpeg")) {
+    datatype = GST_DATA_TYPE_JPEG;
   } else {
     GST_ELEMENT_ERROR (mlmetaparser, RESOURCE, FAILED, (NULL),
         ("Unsupported data type!"));
     return FALSE;
   }
 
-  structure = gst_structure_new ("options", GST_PARSER_MODULE_OPT_DATA_TYPE,
-      G_TYPE_ENUM, datatype, NULL);
+  if (datatype == GST_DATA_TYPE_VIDEO || datatype == GST_DATA_TYPE_JPEG) {
+    gst_structure_get_int (structure, "width", &width);
+    gst_structure_get_int (structure, "height", &height);
+  }
+
+
+  structure = gst_structure_copy (mlmetaparser->params);
+
+  gst_structure_set (structure,
+      GST_PARSER_MODULE_OPT_DATA_TYPE, G_TYPE_ENUM, datatype,
+      "width", G_TYPE_INT, width,
+      "height", G_TYPE_INT, height, NULL);
 
   success = gst_parser_module_set_opts (mlmetaparser->module, structure);
   gst_structure_free (structure);
@@ -273,6 +289,24 @@ gst_ml_meta_parser_set_property (GObject * object, guint prop_id,
     case PROP_MODULE:
       mlmetaparser->mdlenum = g_value_get_enum (value);
       break;
+    case PROP_MODULE_PARAMS:
+    {
+      GValue structure = G_VALUE_INIT;
+
+      g_value_init (&structure, GST_TYPE_STRUCTURE);
+
+      if (!gst_parse_string_property_value (value, &structure)) {
+        GST_ERROR_OBJECT (mlmetaparser, "Failed to parse constants!");
+        break;
+      }
+
+      if (mlmetaparser->params != NULL)
+        gst_structure_free (mlmetaparser->params);
+
+      mlmetaparser->params = GST_STRUCTURE (g_value_dup_boxed (&structure));
+      g_value_unset (&structure);
+      break;
+    }
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -289,6 +323,16 @@ gst_ml_meta_parser_get_property (GObject * object, guint prop_id,
     case PROP_MODULE:
       g_value_set_enum (value, mlmetaparser->mdlenum);
       break;
+    case PROP_MODULE_PARAMS:
+    {
+      gchar *string = NULL;
+
+      if (mlmetaparser->params != NULL)
+        string = gst_structure_to_string (mlmetaparser->params);
+
+      g_value_take_string (value, string);
+      break;
+    }
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -299,6 +343,10 @@ static void
 gst_ml_meta_parser_finalize (GObject * object)
 {
   GstMlMetaParser *mlmetaparser = GST_ML_META_PARSER (object);
+
+  if (mlmetaparser->params != NULL)
+    gst_structure_free (mlmetaparser->params);
+
   G_OBJECT_CLASS (parent_class)->finalize (G_OBJECT (mlmetaparser));
 }
 
@@ -318,6 +366,11 @@ gst_ml_meta_parser_class_init (GstMlMetaParserClass * klass)
           "Module name that is going to be used for parsing metadata",
           GST_TYPE_PARSER_MODULES, DEFAULT_PROP_MODULE,
           G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject, PROP_MODULE_PARAMS,
+      g_param_spec_string ("module-params", "Module Parameters",
+          "Parameters specific to the chosen module for parsing buffer metas. "
+          "The format is in GstStructure string.",
+          DEFAULT_PROP_MODULE_PARAMS, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_set_static_metadata (element,
       "Meta parser", "Filter/Effect/Converter", "Meta parsing plugin", "QTI");
@@ -343,6 +396,8 @@ gst_ml_meta_parser_class_init (GstMlMetaParserClass * klass)
 static void
 gst_ml_meta_parser_init (GstMlMetaParser * mlmetaparser)
 {
+  mlmetaparser->params = gst_structure_new_empty ("params");
+
   // Handle buffers with GAP flag internally.
   gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM (mlmetaparser), TRUE);
 

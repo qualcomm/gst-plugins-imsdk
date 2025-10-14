@@ -35,6 +35,7 @@ struct _GstMlMetaParser {
 
   /// Properties.
   gint            mdlenum;
+  GstStructure    *params;
 };
 
 struct _GstMlMetaParserClass {
