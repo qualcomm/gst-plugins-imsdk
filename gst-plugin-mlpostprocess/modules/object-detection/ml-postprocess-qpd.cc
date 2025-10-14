@@ -180,7 +180,8 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   uint32_t n_classes = tensors[0].dimensions[3];
   uint32_t n_landmarks = tensors[2].dimensions[3] / 2;
   uint32_t n_paxels = tensors[0].dimensions[1] * tensors[0].dimensions[2];
-  uint32_t paxelsize = resolution.width / tensors[2].dimensions[2];
+  uint32_t paxelwidth = resolution.width / tensors[2].dimensions[2];
+  uint32_t paxelheight = resolution.height / tensors[2].dimensions[1];
 
   for (uint32_t idx = 0; idx < (n_paxels * n_classes); idx++) {
     float bbox[4] = { 0, }, x = 0.0, y = 0.0;
@@ -207,10 +208,10 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
     bbox[2] = bboxes[idx * 4 + 2];
     bbox[3] = bboxes[idx * 4 + 3];
 
-    entry.left = (cx - bbox[0]) * paxelsize;
-    entry.top = (cy - bbox[1]) * paxelsize;
-    entry.right = (cx + bbox[2]) * paxelsize;
-    entry.bottom = (cy + bbox[3]) * paxelsize;
+    entry.left = (cx - bbox[0]) * paxelwidth;
+    entry.top = (cy - bbox[1]) * paxelheight;
+    entry.right = (cx + bbox[2]) * paxelwidth;
+    entry.bottom = (cy + bbox[3]) * paxelheight;
 
     uint32_t size = (entry.right - entry.left) * (entry.bottom - entry.top);
 
@@ -269,14 +270,12 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
       x = landmarks[id];
       y = landmarks[id + n_landmarks];
 
-      lmk.x = (cx + x) * paxelsize;
-      lmk.y = (cx + y) * paxelsize;
+      lmk.x = (cx + x) * paxelwidth;
+      lmk.y = (cy + y) * paxelheight;
 
-      lmk.x -= region.x + (entry.left * region.width);
-      lmk.y -= region.y + (entry.top * region.height);
+      lmk.x = (lmk.x - region.x) / region.width;
+      lmk.y = (lmk.y - region.y) / region.height;
 
-      lmk.x /= (entry.right - entry.left) * region.width;
-      lmk.y /= (entry.bottom - entry.top) * region.height;
 
       lmk.x = std::min (std::max (lmk.x, 0.0f), 1.0f);
       lmk.y = std::min (std::max (lmk.y, 0.0f), 1.0f);
