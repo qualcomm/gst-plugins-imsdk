@@ -23,6 +23,7 @@ typedef struct _GstParserModule GstParserModule;
 typedef enum {
   GST_DATA_TYPE_NONE,
   GST_DATA_TYPE_VIDEO,
+  GST_DATA_TYPE_JPEG,
   GST_DATA_TYPE_TEXT,
 } GstDataType;
 
