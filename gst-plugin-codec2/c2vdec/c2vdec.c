@@ -69,7 +69,10 @@ GST_STATIC_PAD_TEMPLATE ("sink",
         "video/mpeg,"
         "mpegversion = (int)2;"
         "video/x-vp8;"
-        "video/x-vp9")
+        "video/x-vp9;"
+        "video/x-av1,"
+        "stream-format = (string) { obu-stream },"
+        "alignment = (string) { tu }")
 );
 
 static GstStaticPadTemplate gst_c2_vdec_src_pad_template =
@@ -490,6 +493,8 @@ gst_c2_vdec_set_format (GstVideoDecoder * decoder, GstVideoCodecState * state)
     name = "c2.qti.vp9.decoder";
   else if (gst_structure_has_name (structure, "video/mpeg"))
     name = "c2.qti.mpeg2.decoder";
+  else if (gst_structure_has_name (structure, "video/x-av1"))
+    name = "c2.qti.av1.decoder";
 
   if (name == NULL) {
     GST_ERROR_OBJECT (c2vdec, "Unknown component!");
