@@ -98,6 +98,8 @@ class Engine : public IEngine {
 
   /// Map of surface_id and its GL textures, EGL images and Surface.
   std::map<uint64_t, SurfaceTuple> surfaces_;
+
+  std::string                      vendor_;
 };
 
 } // namespace gl

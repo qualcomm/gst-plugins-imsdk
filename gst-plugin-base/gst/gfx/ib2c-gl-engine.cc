@@ -211,6 +211,8 @@ Engine::Engine() {
   shader = std::make_shared<ShaderProgram>(env_, compute);
   shaders_.emplace(ShaderType::kComputePlanar32F, shader);
 
+  vendor_ = GetVendor();
+
   error = env_->UnbindContext(ContextType::kPrimary) ;
   if (!error.empty()) throw std::runtime_error(error);
 }
@@ -903,6 +905,10 @@ bool Engine::IsSurfaceRenderable(const Surface& surface) {
       (Format::BitDepth(surface.format) == 16))
     return false;
 
+  // 3 channeled RGB surfaces are not renderable due to freedreno limitation.
+  if (vendor_ == "freedreno" && n_components == 3)
+    return false;
+
   return true;
 }
 
@@ -1171,10 +1177,21 @@ std::vector<Surface> Engine::GetImageSurfaces(const Surface& surface,
 
     subsurface.width = subsurface.planes[0].stride / bpp;
 
-    // Calculate the aligned height value rounded up based on surface size.
-    uint32_t size = subsurface.size - subsurface.planes[0].offset;
+    // Exact size needed for computation.
+    uint32_t size = surface.width * surface.height *
+        Format::NumComponents(surface.format) * bytedepth;
+
+    // Calculate the aligned height value rounded up based on size.
     subsurface.height =
-        std::ceil((size / bpp) / static_cast<float>(subsurface.width));
+        std::ceil(size / static_cast<float>(subsurface.width) / bpp);
+
+    // Round up to multiple of 4
+    subsurface.height = ((subsurface.height + 3) &  ~3);
+
+    // Sanity check for size of the allocated bufffer
+    if (size > subsurface.size - subsurface.planes[0].offset)
+      throw Exception("Allocated buffer size is not big enough! Actual: ",
+          subsurface.size, ", Expected: ", size);
 
     imgsurfaces.push_back(subsurface);
   } else {
