@@ -51,6 +51,7 @@ G_DEFINE_TYPE (GstMetaMux, gst_metamux, GST_TYPE_ELEMENT);
 #define DEFAULT_PROP_QUEUE_SIZE     10
 
 #define GST_METAMUX_MEDIA_CAPS \
+    "image/jpeg(ANY); "        \
     "video/x-raw(ANY); "       \
     "audio/x-raw(ANY)"
 
@@ -1210,7 +1211,8 @@ gst_metamux_main_sink_pad_setcaps (GstMetaMux * muxer, GstPad * pad,
   gst_caps_unref (intersect);
 
   // Extract audio/video information from caps.
-  if (gst_caps_is_media_type (caps, "video/x-raw")) {
+  if (gst_caps_is_media_type (caps, "video/x-raw") ||
+      gst_caps_is_media_type (caps, "image/jpeg")) {
     if (muxer->vinfo != NULL)
       gst_video_info_free (muxer->vinfo);
 
@@ -1221,7 +1223,7 @@ gst_metamux_main_sink_pad_setcaps (GstMetaMux * muxer, GstPad * pad,
       gst_caps_unref (caps);
       return FALSE;
     }
-  } else {
+  } else if (gst_caps_is_media_type (caps, "audio/x-raw")) {
     if (muxer->ainfo != NULL)
       gst_audio_info_free (muxer->ainfo);
 
