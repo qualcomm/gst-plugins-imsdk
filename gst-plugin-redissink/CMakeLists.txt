@@ -28,10 +28,10 @@ add_definitions(-DHAVE_CONFIG_H)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra")
 
 # GStreamer sink plugin.
-set(GST_QTI_REDISSINK qtiredissink)
+set(GST_QTI_REDISSINK gstqtiredissink)
 
 add_library(${GST_QTI_REDISSINK} SHARED
-  qtiredissink.c
+  redissink.c
 )
 
 target_include_directories(${GST_QTI_REDISSINK} PUBLIC
