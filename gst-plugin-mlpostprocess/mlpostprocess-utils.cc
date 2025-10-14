@@ -464,6 +464,23 @@ gst_ml_post_process_box_displacement_correction (ObjectDetection &l_box,
   return;
 }
 
+gboolean
+gst_ml_box_compare_entries_by_position (ObjectDetection& l_entry,
+    ObjectDetection& r_entry)
+{
+  gfloat delta = l_entry.left - r_entry.left;
+
+  if (fabs (delta) > POSITION_THRESHOLD)
+    return (delta < 0);
+
+  delta = l_entry.top - r_entry.top;
+
+  if (fabs (delta) > POSITION_THRESHOLD)
+    return (delta < 0);
+
+  return TRUE;
+}
+
 GQuark
 gst_ml_module_caps_get_type (const std::string& json)
 {

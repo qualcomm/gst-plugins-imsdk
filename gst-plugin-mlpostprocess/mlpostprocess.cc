@@ -116,18 +116,19 @@ G_DEFINE_TYPE (GstMLPostProcess, gst_ml_post_process,
 #define GST_ML_POST_PROCESS_SINK_CAPS \
     "neural-network/tensors"
 
-#define DEFAULT_PROP_MODULE         0
-#define DEFAULT_PROP_LABELS         NULL
-#define DEFAULT_PROP_NUM_RESULTS    5
-#define DEFAULT_PROP_SETTINGS       NULL
+#define DEFAULT_PROP_MODULE             0
+#define DEFAULT_PROP_LABELS             NULL
+#define DEFAULT_PROP_NUM_RESULTS        5
+#define DEFAULT_PROP_SETTINGS           NULL
+#define DEFAULT_PROP_BBOX_STABILIZATION FALSE
 
-#define DEFAULT_MIN_BUFFERS         2
-#define DEFAULT_MAX_BUFFERS         10
-#define DEFAULT_VIDEO_WIDTH         320
-#define DEFAULT_VIDEO_HEIGHT        240
+#define DEFAULT_MIN_BUFFERS             2
+#define DEFAULT_MAX_BUFFERS             10
+#define DEFAULT_VIDEO_WIDTH             320
+#define DEFAULT_VIDEO_HEIGHT            240
 
-#define DEFAULT_FONT_SIZE           24
-#define MAX_TEXT_LENGTH             25
+#define DEFAULT_FONT_SIZE               24
+#define MAX_TEXT_LENGTH                 25
 
 enum
 {
@@ -136,6 +137,7 @@ enum
   PROP_LABELS,
   PROP_NUM_RESULTS,
   PROP_SETTINGS,
+  PROP_BBOX_STABILIZATION,
 };
 
 enum
@@ -458,6 +460,52 @@ gst_ml_post_process_create_pool (GstMLPostProcess * postprocess,
   }
 
   return pool;
+}
+
+static void
+gst_ml_post_process_bbox_stabilization (GstMLPostProcess * postprocess,
+    std::any& output)
+{
+  guint idx = 0, num = 0;
+
+  if (output.type () != typeid (DetectionPrediction)) {
+    GST_WARNING ("Invalid output type for post-processing");
+    return;
+  }
+
+  DetectionPrediction& predictions = std::any_cast<DetectionPrediction&> (output);
+
+  for (idx = 0; idx < predictions.size (); idx++) {
+    ObjectDetections& detections = predictions[idx];
+    ObjectDetections empty;
+    ObjectDetections* mlboxes = idx < postprocess->stashedmlboxes->size ()
+        ? &postprocess->stashedmlboxes->at (idx) : &empty;
+
+    for (num = 0; num < detections.size (); num++) {
+      ObjectDetection& entry = detections[num];
+
+      // Overwrite current box with previously detected one if required.
+      gst_ml_post_process_box_displacement_correction (entry, *mlboxes);
+    }
+
+    // Stash the previous prediction results.
+    if (idx < postprocess->stashedmlboxes->size ()) {
+      postprocess->stashedmlboxes->erase (
+          postprocess->stashedmlboxes->begin () + idx);
+    }
+
+    postprocess->stashedmlboxes->push_back (detections);
+
+    // Clear lower confidence results before position sort.
+    if (detections.size () > postprocess->n_results) {
+      guint index = postprocess->n_results;
+      detections.erase (detections.begin () + index, detections.end ());
+    }
+
+    // Sort bboxes by position.
+    std::sort (detections.begin (), detections.end (),
+        gst_ml_box_compare_entries_by_position);
+  }
 }
 
 static gboolean
@@ -2297,6 +2345,10 @@ gst_ml_post_process_transform (GstBaseTransform * base, GstBuffer * inbuffer,
       G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
       (GST_TIME_AS_USECONDS (time) % 1000));
 
+  // Apply stabilization for fluctuating bboxes
+  if (GST_IS_DETECTION_TYPE (postprocess->type) && postprocess->bbox_stabilization)
+    gst_ml_post_process_bbox_stabilization (postprocess, output);
+
   time = gst_util_get_timestamp ();
 
   if (postprocess->mode == OUTPUT_MODE_VIDEO) {
@@ -2381,6 +2433,9 @@ gst_ml_post_process_set_property (GObject * object, guint prop_id,
       g_free (postprocess->settings);
       postprocess->settings = g_strdup (g_value_get_string (value));
       break;
+    case PROP_BBOX_STABILIZATION:
+      postprocess->bbox_stabilization = g_value_get_boolean (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -2406,6 +2461,9 @@ gst_ml_post_process_get_property (GObject * object, guint prop_id,
     case PROP_SETTINGS:
       g_value_set_string (value, postprocess->settings);
       break;
+    case PROP_BBOX_STABILIZATION:
+      g_value_set_boolean (value, postprocess->bbox_stabilization);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -2417,6 +2475,9 @@ gst_ml_post_process_finalize (GObject * object)
 {
   GstMLPostProcess *postprocess = GST_ML_POST_PROCESS (object);
   guint idx = 0;
+
+  if (postprocess->stashedmlboxes)
+    delete postprocess->stashedmlboxes;
 
   g_ptr_array_free (postprocess->info, TRUE);
 
@@ -2473,6 +2534,11 @@ gst_ml_post_process_class_init (GstMLPostProcessClass * klass)
           "Applicable only for some modules.",
           DEFAULT_PROP_SETTINGS, static_cast <GParamFlags> (
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+  g_object_class_install_property (gobject, PROP_BBOX_STABILIZATION,
+      g_param_spec_boolean ("bbox-stabilization", "BBox Stabilization enable",
+          "Enable stabilization of bboxes", DEFAULT_PROP_BBOX_STABILIZATION,
+          static_cast <GParamFlags> (
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
   gst_element_class_set_static_metadata (element,
       "Machine Learning postprocess", "Filter/Effect/Converter",
@@ -2520,10 +2586,13 @@ gst_ml_post_process_init (GstMLPostProcess * postprocess)
 
   postprocess->info = g_ptr_array_new ();
 
+  postprocess->stashedmlboxes = new DetectionPrediction();
+
   postprocess->mdlenum = DEFAULT_PROP_MODULE;
   postprocess->labels = DEFAULT_PROP_LABELS;
   postprocess->n_results = DEFAULT_PROP_NUM_RESULTS;
   postprocess->settings = DEFAULT_PROP_SETTINGS;
+  postprocess->bbox_stabilization = DEFAULT_PROP_BBOX_STABILIZATION;
 
   // Handle buffers with GAP flag internally.
   gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM (postprocess), TRUE);
