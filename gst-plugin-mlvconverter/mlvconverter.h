@@ -147,7 +147,6 @@ struct _GstMLVideoConverter {
 
   /// Tracker for the current batch position to be filled in the tensor.
   guint                batch_idx;
-
   /// Tracker for the current depth position to be filled in the tensor.
   guint                depth_idx;
 
