@@ -462,6 +462,8 @@ gst_ml_post_process_create_pool (GstMLPostProcess * postprocess,
   return pool;
 }
 
+// Lightweight stabilization of the bounding boxes.
+// Repeats the coordinates of the last known bounding boxes until a new intersection occurs.
 static void
 gst_ml_post_process_bbox_stabilization (GstMLPostProcess * postprocess,
     std::any& output)
@@ -475,36 +477,27 @@ gst_ml_post_process_bbox_stabilization (GstMLPostProcess * postprocess,
 
   DetectionPrediction& predictions = std::any_cast<DetectionPrediction&> (output);
 
+  // Resize stashed bboxes to batch size
+  if (postprocess->stashedmlboxes->size () < predictions.size ())
+    postprocess->stashedmlboxes->resize (predictions.size ());
+
   for (idx = 0; idx < predictions.size (); idx++) {
     ObjectDetections& detections = predictions[idx];
-    ObjectDetections empty;
-    ObjectDetections* mlboxes = idx < postprocess->stashedmlboxes->size ()
-        ? &postprocess->stashedmlboxes->at (idx) : &empty;
+    DetectionPrediction& stashed = postprocess->stashedmlboxes->at (idx);
 
-    for (num = 0; num < detections.size (); num++) {
+    for (num = 0; num < detections.size () && idx < stashed.size (); num++) {
+      ObjectDetections& mlboxes = stashed.at (idx);
       ObjectDetection& entry = detections[num];
 
-      // Overwrite current box with previously detected one if required.
-      gst_ml_post_process_box_displacement_correction (entry, *mlboxes);
+      // Overwrite current box with previously detected one if interects.
+      gst_ml_post_process_box_displacement_correction (entry, mlboxes);
     }
 
     // Stash the previous prediction results.
-    if (idx < postprocess->stashedmlboxes->size ()) {
-      postprocess->stashedmlboxes->erase (
-          postprocess->stashedmlboxes->begin () + idx);
-    }
+    if (idx < stashed.size ())
+      stashed.erase (stashed.begin () + idx);
 
-    postprocess->stashedmlboxes->push_back (detections);
-
-    // Clear lower confidence results before position sort.
-    if (detections.size () > postprocess->n_results) {
-      guint index = postprocess->n_results;
-      detections.erase (detections.begin () + index, detections.end ());
-    }
-
-    // Sort bboxes by position.
-    std::sort (detections.begin (), detections.end (),
-        gst_ml_box_compare_entries_by_position);
+    stashed.push_back (detections);
   }
 }
 
@@ -2586,7 +2579,7 @@ gst_ml_post_process_init (GstMLPostProcess * postprocess)
 
   postprocess->info = g_ptr_array_new ();
 
-  postprocess->stashedmlboxes = new DetectionPrediction();
+  postprocess->stashedmlboxes = new std::vector<DetectionPrediction>();
 
   postprocess->mdlenum = DEFAULT_PROP_MODULE;
   postprocess->labels = DEFAULT_PROP_LABELS;

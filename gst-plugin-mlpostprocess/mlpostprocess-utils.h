@@ -140,7 +140,7 @@ gst_ml_post_process_boxes_intersection_score (ObjectDetection& l_box,
  * return: None.
  **/
 void
-gst_ml_post_process_box_displacement_correction (ObjectDetection &l_box,
+gst_ml_post_process_box_displacement_correction (ObjectDetection& l_box,
                                                  ObjectDetections& boxes);
 
 /* gst_ml_box_compare_entries_by_position
