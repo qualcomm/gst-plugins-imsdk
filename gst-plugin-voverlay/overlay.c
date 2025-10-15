@@ -219,7 +219,7 @@ gst_cairo_draw_line (cairo_t * context, guint color, gdouble x, gdouble y,
 
 static inline gboolean
 gst_cairo_draw_rectangle (cairo_t * context, guint color, gdouble x, gdouble y,
-    gdouble width, gdouble height, gdouble linewidth, gboolean filled)
+    gdouble width, gdouble height, gdouble linewidth, gboolean filled, gboolean inverse)
 {
   // Set color.
   cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
@@ -232,6 +232,15 @@ gst_cairo_draw_rectangle (cairo_t * context, guint color, gdouble x, gdouble y,
   // Set rectangle position and dimensions.
   cairo_rectangle (context, x, y, width, height);
 
+  if (inverse) {
+    cairo_surface_t* surface = cairo_get_target (context);
+    gint surface_width = cairo_image_surface_get_width (surface);
+    gint surface_height = cairo_image_surface_get_height (surface);
+
+    cairo_rectangle (context, 0, 0, surface_width, surface_height);
+    cairo_set_fill_rule (context, CAIRO_FILL_RULE_EVEN_ODD);
+  }
+
   if (filled)
     cairo_fill (context);
   else
@@ -242,7 +251,7 @@ gst_cairo_draw_rectangle (cairo_t * context, guint color, gdouble x, gdouble y,
 
 static inline gboolean
 gst_cairo_draw_circle (cairo_t * context, guint color, gdouble x, gdouble y,
-    gdouble radius, gdouble linewidth, gboolean filled)
+    gdouble radius, gdouble linewidth, gboolean filled, gboolean inverse)
 {
   // Set color.
   cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
@@ -255,6 +264,15 @@ gst_cairo_draw_circle (cairo_t * context, guint color, gdouble x, gdouble y,
   // Set circle position and dimensions.
   cairo_arc (context, x, y, radius, 0, 2 * G_PI);
 
+  if (inverse) {
+    cairo_surface_t* surface = cairo_get_target (context);
+    gint surface_width = cairo_image_surface_get_width (surface);
+    gint surface_height = cairo_image_surface_get_height (surface);
+
+    cairo_rectangle (context, 0, 0, surface_width, surface_height);
+    cairo_set_fill_rule (context, CAIRO_FILL_RULE_EVEN_ODD);
+  }
+
   if (filled)
     cairo_fill (context);
   else
@@ -266,7 +284,7 @@ gst_cairo_draw_circle (cairo_t * context, guint color, gdouble x, gdouble y,
 static inline gboolean
 gst_cairo_draw_polygon (cairo_t * context, guint color,
     gdouble coords[GST_VIDEO_POLYGON_MAX_POINTS * 2], guint n_coords,
-    gdouble linewidth, gboolean filled)
+    gdouble linewidth, gboolean filled, gboolean inverse)
 {
   guint idx = 0;
 
@@ -284,6 +302,15 @@ gst_cairo_draw_polygon (cairo_t * context, guint color,
   cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
       EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
       EXTRACT_FLOAT_ALPHA_COLOR (color));
+
+  if (inverse) {
+    cairo_surface_t* surface = cairo_get_target (context);
+    gint surface_width = cairo_image_surface_get_width (surface);
+    gint surface_height = cairo_image_surface_get_height (surface);
+
+    cairo_rectangle (context, 0, 0, surface_width, surface_height);
+    cairo_set_fill_rule (context, CAIRO_FILL_RULE_EVEN_ODD);
+  }
 
   if (filled) {
     cairo_stroke_preserve (context);
@@ -632,7 +659,7 @@ gst_overlay_handle_landmarks_entry (GstVOverlay * overlay, cairo_t * context,
         kp->confidence, kp->color);
 
     success &=
-        gst_cairo_draw_circle (context, kp->color, x, y, 2.0, linewidth, TRUE);
+        gst_cairo_draw_circle (context, kp->color, x, y, 2.0, linewidth, TRUE, FALSE);
   }
 
   for (idx = 0; (links != NULL) && (idx < links->len); idx++) {
@@ -745,7 +772,7 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, cairo_t * context,
       source->x, source->y, source->w, source->h, color);
 
   success = gst_cairo_draw_rectangle (context, color, source->x, source->y,
-      source->w, source->h, linewidth, FALSE);
+      source->w, source->h, linewidth, FALSE, FALSE);
 
   GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
       "[%d %d %d %d]", source->x, source->y, source->w, source->h,
@@ -798,7 +825,7 @@ gst_overlay_handle_bbox_entry (GstVOverlay * overlay, GstVideoBlit * blit,
       source->x, source->y, source->w, source->h, color);
 
   success = gst_cairo_draw_rectangle (context, color, source->x, source->y,
-      source->w, source->h, linewidth, FALSE);
+      source->w, source->h, linewidth, FALSE, FALSE);
 
   gst_cairo_draw_cleanup (blit->frame, surface, context);
   return success;
@@ -954,7 +981,7 @@ gst_overlay_handle_mask_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   GstVideoRectangle *source = NULL, *destination = NULL;
   gdouble x = 0.0, y = 0.0, linewidth = 0.0, scale = 0.0;
   guint color = 0;
-  gboolean success = FALSE, infill = TRUE;
+  gboolean success = FALSE, infill = TRUE, inverse=FALSE;
 
   success = gst_cairo_draw_setup (blit->frame, &surface, &context);
   g_return_val_if_fail (success, FALSE);
@@ -992,6 +1019,19 @@ gst_overlay_handle_mask_entry (GstVOverlay * overlay, GstVideoBlit * blit,
 
   color = mask->color;
   infill = mask->infill;
+  inverse = mask->inverse;
+
+  if (inverse) {
+    destination->x = 0;
+    destination->y = 0;
+    destination->w = GST_VIDEO_INFO_WIDTH (overlay->vinfo);
+    destination->h = GST_VIDEO_INFO_HEIGHT (overlay->vinfo);
+
+    if (destination->w > destination->h)
+      source->h = (source->w * destination->h) / destination->w;
+    else if (destination->w < destination->h)
+      source->w = (source->h * destination->w) / destination->h;
+  }
 
   // Adjust mask source dimensions so that it fits inside the overlay frame.
   gst_overlay_update_rectangle_dimensions (overlay, vframe, source);
@@ -1007,25 +1047,38 @@ gst_overlay_handle_mask_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   if (GST_OVERLAY_MASK_RECTANGLE == mask->type) {
     gdouble width = 0.0, height = 0.0;
 
-    width = source->w;
-    height = source->h;
+    if (inverse) {
+      x = (mask->dims.rectangle.x - destination->x) / scale;
+      y = (mask->dims.rectangle.y - destination->y) / scale;
+      width = mask->dims.rectangle.w / scale;
+      height = mask->dims.rectangle.h / scale;
+    } else {
+      width = source->w;
+      height = source->h;
+    }
 
     GST_TRACE_OBJECT (overlay, "Rectangle: [%.2f %.2f %.2f %.2f], Color: 0x%X",
         x, y, width, height, color);
 
     success = gst_cairo_draw_rectangle (context, color, x, y, width, height,
-        linewidth, infill);
+        linewidth, infill, inverse);
   } else if (GST_OVERLAY_MASK_CIRCLE == mask->type) {
     gdouble radius = 0.0;
 
-    radius = source->w / 2.0;
-    x = y = radius;
+    if (inverse) {
+      x = (mask->dims.circle.x - destination->x) / scale;
+      y = (mask->dims.circle.y - destination->y) / scale;
+      radius = mask->dims.circle.radius / scale;
+    } else {
+      radius = source->w / 2.0;
+      x = y = radius;
+    }
 
     GST_TRACE_OBJECT (overlay, "Circle: [%.2f %.2f %.2f], Color: 0x%X", x, y,
         radius, color);
 
     success = gst_cairo_draw_circle (context, color, x, y, radius,
-        linewidth, infill);
+        linewidth, infill, inverse);
   } else if (GST_OVERLAY_MASK_POLYGON == mask->type) {
     gdouble coords[GST_VIDEO_POLYGON_MAX_POINTS * 2];
     guint idx = 0, num = 0, n_coords = 0;
@@ -1041,7 +1094,7 @@ gst_overlay_handle_mask_entry (GstVOverlay * overlay, GstVideoBlit * blit,
     }
 
     success = gst_cairo_draw_polygon (context, color, coords, n_coords,
-        linewidth, infill);
+        linewidth, infill, inverse);
   }
 
   gst_cairo_draw_cleanup (blit->frame, surface, context);
