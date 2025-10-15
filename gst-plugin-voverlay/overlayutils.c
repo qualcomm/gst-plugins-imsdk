@@ -489,7 +489,7 @@ gst_extract_masks (const GValue * value, GArray * masks)
   GstStructure *structure = NULL;
   guint idx = 0, num = 0, size = 0;
   gint x = -1, y = -1, width = 0, height = 0, radius = 0, color = 0;
-  gboolean changed = FALSE, infill = FALSE;
+  gboolean changed = FALSE, infill = FALSE, inverse = FALSE;
 
   size = gst_value_list_get_size (value);
 
@@ -537,6 +537,7 @@ gst_extract_masks (const GValue * value, GArray * masks)
       mask->enable = TRUE;
       mask->color = GST_OVERLAY_DEFAULT_COLOR;
       mask->infill = TRUE;
+      mask->inverse = FALSE;
 
       memset(&(mask->dims), -1, sizeof (mask->dims));
     }
@@ -684,8 +685,16 @@ gst_extract_masks (const GValue * value, GArray * masks)
       mask->infill = infill;
     }
 
-    GST_TRACE ("%s: Color: 0x%X, Infill: %s", name, mask->color,
-        mask->infill ? "YES" : "NO");
+    if (gst_structure_has_field (structure, "inverse")) {
+      gst_structure_get_boolean (structure, "inverse", &inverse);
+
+      // Raise the flag for clearing cached blit if inverse is changed.
+      changed |= mask->inverse != inverse;
+      mask->inverse = inverse;
+    }
+
+    GST_TRACE ("%s: Color: 0x%X, Infill: %s, Inverse: %s", name, mask->color,
+        mask->infill ? "YES" : "NO", mask->inverse ? "YES" : "NO");
 
     // Clear the cached blit if the flag has been raised.
     if (changed && (mask->blit.frame != NULL))
@@ -1035,7 +1044,7 @@ gst_serialize_masks (GArray * masks)
 
     entry = gst_structure_new (g_quark_to_string (mask->name),
         "color", G_TYPE_UINT, mask->color, "infill", G_TYPE_BOOLEAN,
-        mask->infill, NULL);
+        mask->infill, "inverse", G_TYPE_BOOLEAN, mask->inverse, NULL);
 
     g_value_init (&value, G_TYPE_INT);
     g_value_init (&array, GST_TYPE_ARRAY);
