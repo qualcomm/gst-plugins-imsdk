@@ -112,6 +112,14 @@ typedef void (*GstJPEGEncoderCallback) (GstVideoCodecFrame * frame,
 #define GST_JPEG_ENC_ORIENTATION \
     "GstJPEGEncoder.orientation"
 
+/**
+ * GST_JPEG_ENC_CAMERA_ID:
+ *
+ * #G_TYPE_UINT, camera id
+ */
+#define GST_JPEG_ENC_CAMERA_ID \
+    "GstJPEGEncoder.camera-id"
+
 enum {
   EVENT_UNKNOWN,
   EVENT_SERVICE_DIED,
