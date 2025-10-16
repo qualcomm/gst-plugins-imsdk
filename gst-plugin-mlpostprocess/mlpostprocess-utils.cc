@@ -433,7 +433,7 @@ gst_ml_post_process_boxes_intersection_score (ObjectDetection& l_box,
 }
 
 void
-gst_ml_post_process_box_displacement_correction (ObjectDetection &l_box,
+gst_ml_post_process_box_displacement_correction (ObjectDetection& l_box,
     ObjectDetections& boxes)
 {
   gdouble score = 0.0;
