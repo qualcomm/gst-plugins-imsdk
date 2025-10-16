@@ -172,8 +172,8 @@ gst_ml_audio_converter_create_pool (GstMLAudioConverter * mlconverter,
   GST_DEBUG_OBJECT (mlconverter, "Create buffer pool based on caps: %"
       GST_PTR_FORMAT, caps);
 
-  GST_INFO ("Uses ION memory");
-  pool = gst_ml_buffer_pool_new (GST_ML_BUFFER_POOL_TYPE_ION);
+  GST_INFO ("Uses DMA memory");
+  pool = gst_ml_buffer_pool_new (GST_ML_BUFFER_POOL_TYPE_DMA);
 
   config = gst_buffer_pool_get_config (pool);
   gst_buffer_pool_config_set_params (config, caps, gst_ml_info_size (&info),

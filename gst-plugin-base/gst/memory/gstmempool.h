@@ -82,11 +82,11 @@ G_BEGIN_DECLS
 #define GST_MEM_BUFFER_POOL_CAST(obj) ((GstMemBufferPool*)(obj))
 
 /**
- * GST_MEMORY_BUFFER_POOL_TYPE_ION:
+ * GST_MEMORY_BUFFER_POOL_TYPE_DMA:
  *
  * Type of memory that the pool will use for allocating buffers.
  */
-#define GST_MEMORY_BUFFER_POOL_TYPE_ION "GstBufferPoolTypeIonMemory"
+#define GST_MEMORY_BUFFER_POOL_TYPE_DMA "GstBufferPoolTypeDmaMemory"
 
 /**
  * GST_MEMORY_BUFFER_POOL_TYPE_SYSTEM:
