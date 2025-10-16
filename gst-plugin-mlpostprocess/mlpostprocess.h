@@ -95,7 +95,7 @@ struct _GstMLPostProcess {
   GPtrArray            *info;
 
   // Stashed ML boxes used fot stabilization
-  DetectionPrediction  *stashedmlboxes;
+  std::vector<DetectionPrediction> *stashedmlboxes;
 
   /// Properties.
   gint                 mdlenum;
