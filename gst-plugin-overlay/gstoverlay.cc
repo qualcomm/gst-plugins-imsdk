@@ -40,7 +40,6 @@
 #include <string>
 
 #include <gst/allocators/gstfdmemory.h>
-#include <ml-meta/ml_meta.h>
 #include <gst/cv/gstcvmeta.h>
 #include <gst/utils/common-utils.h>
 #include <gst/video/gstvideoclassificationmeta.h>
@@ -96,21 +95,6 @@ G_DEFINE_TYPE (GstOverlay, gst_overlay, GST_TYPE_VIDEO_FILTER);
 #define GST_OVERLAY_MASK_STRING_SIZE 100
 
 #define GST_OVERLAY_UNUSED(var) ((void)var)
-
-static GstMLKeyPointsType PoseChain [][2] {
-  {LEFT_SHOULDER,  RIGHT_SHOULDER},
-  {LEFT_SHOULDER,  LEFT_ELBOW},
-  {LEFT_SHOULDER,  LEFT_HIP},
-  {RIGHT_SHOULDER, RIGHT_ELBOW},
-  {RIGHT_SHOULDER, RIGHT_HIP},
-  {LEFT_ELBOW,     LEFT_WRIST},
-  {RIGHT_ELBOW,    RIGHT_WRIST},
-  {LEFT_HIP,       RIGHT_HIP},
-  {LEFT_HIP,       LEFT_KNEE},
-  {RIGHT_HIP,      RIGHT_KNEE},
-  {LEFT_KNEE,      LEFT_ANKLE},
-  {RIGHT_KNEE,     RIGHT_ANKLE}
-};
 
 /* Supported GST properties
  * PROP_OVERLAY_TEXT - overlays user defined text
@@ -443,39 +427,6 @@ gst_overlay_apply_bbox_item (GstOverlay * gst_overlay, GstVideoRectangle * bbox,
 }
 
 /**
- * gst_overlay_apply_ml_bbox_item:
- * @gst_overlay: context
- * @metadata: machine learning metadata entry
- * @item_id: pointer to overlay item instance id
- *
- * Converts GstMLDetectionMeta metadata to overlay configuration and applies it
- * as bounding box overlay.
- *
- * Return true if succeed.
- */
-static gboolean
-gst_overlay_apply_ml_bbox_item (GstOverlay * gst_overlay, gpointer metadata,
-    uint32_t * item_id)
-{
-  g_return_val_if_fail (gst_overlay != NULL, FALSE);
-  g_return_val_if_fail (metadata != NULL, FALSE);
-  g_return_val_if_fail (item_id != NULL, FALSE);
-
-  GstMLDetectionMeta * meta = (GstMLDetectionMeta *) metadata;
-  GstMLClassificationResult * result =
-      (GstMLClassificationResult *) g_slist_nth_data (meta->box_info, 0);
-
-  GstVideoRectangle bbox;
-  bbox.x = meta->bounding_box.x;
-  bbox.y = meta->bounding_box.y;
-  bbox.w = meta->bounding_box.width;
-  bbox.h = meta->bounding_box.height;
-
-  return gst_overlay_apply_bbox_item (gst_overlay, &bbox, result->name,
-      gst_overlay->bbox_color, gst_overlay->bbox_font_size, item_id);
-}
-
-/**
  * gst_overlay_apply_user_bbox_item:
  * @data: context
  * @user_data: overlay configuration of GstOverlayUsrBBox type
@@ -577,43 +528,6 @@ gst_overlay_apply_simg_item (GstOverlay *gst_overlay, gpointer img_buffer,
   }
 
   return TRUE;
-}
-
-/**
- * gst_overlay_apply_ml_simg_item:
- * @gst_overlay: context
- * @metadata: machine learning metadata entry
- * @item_id: pointer to overlay item instance id
- *
- * Converts GstMLSegmentationMeta metadata to overlay configuration and applies
- * it as static image overlay.
- *
- * Return true if succeed.
- */
-static gboolean
-gst_overlay_apply_ml_simg_item (GstOverlay *gst_overlay, gpointer metadata,
-    uint32_t *item_id)
-{
-  g_return_val_if_fail (gst_overlay != NULL, FALSE);
-  g_return_val_if_fail (metadata != NULL, FALSE);
-  g_return_val_if_fail (item_id != NULL, FALSE);
-
-  GstMLSegmentationMeta *meta = (GstMLSegmentationMeta *) metadata;
-
-  GstVideoRectangle dst_rect;
-  dst_rect.x = 0;
-  dst_rect.y = 0;
-  dst_rect.w = gst_overlay->width;
-  dst_rect.h = gst_overlay->height;
-
-  GstVideoRectangle src_rect;
-  src_rect.x = 0;
-  src_rect.y = 0;
-  src_rect.w = meta->img_width;
-  src_rect.h = meta->img_height;
-
-  return gst_overlay_apply_simg_item (gst_overlay, meta->img_buffer,
-    meta->img_size, &src_rect, &dst_rect, item_id);
 }
 
 /**
@@ -729,323 +643,6 @@ gst_overlay_apply_text_item (GstOverlay * gst_overlay, const gchar * name,
   return TRUE;
 }
 
-/**
- * gst_overlay_apply_pose_item:
- * @gst_overlay: context
- * @keypoints: array of pose keypoints
- * @item_id: pointer to overlay item instance id
- *
- * Converts GstMLPoseNetMeta metadata to overlay configuration and applies
- * it as graph overlay.
- *
- * Return true if succeed.
- */
-static gboolean
-gst_overlay_apply_pose_item (GstOverlay *gst_overlay,
-    GstMLKeyPoint keypoints[KEY_POINTS_COUNT], uint32_t * item_id)
-{
-  OverlayParam ov_param;
-  int32_t ret = 0;
-
-  g_return_val_if_fail (gst_overlay != NULL, FALSE);
-  g_return_val_if_fail (keypoints != NULL, FALSE);
-  g_return_val_if_fail (item_id != NULL, FALSE);
-
-  static float kScoreTreshold = 0.1;
-
-  if (!(*item_id)) {
-    ov_param = {};
-    ov_param.type = OverlayType::kGraph;
-    ov_param.color = gst_overlay->pose_color;
-  } else {
-    ret = gst_overlay->overlay->GetOverlayParams (*item_id, ov_param);
-    if (ret != 0) {
-      GST_ERROR_OBJECT (gst_overlay, "Overlay get param failed! ret: %d", ret);
-      return FALSE;
-    }
-  }
-
-  ov_param.dst_rect.start_x = 0;
-  ov_param.dst_rect.start_y = 0;
-  ov_param.dst_rect.width = gst_overlay->width;
-  ov_param.dst_rect.height = gst_overlay->height;
-
-  gint count = 0;
-  gint points[KEY_POINTS_COUNT];
-
-  if (keypoints[NOSE].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = keypoints[NOSE].x;
-    ov_param.graph.points[count].y = keypoints[NOSE].y;
-    points[NOSE] = count;
-    count++;
-  }
-
-  if (keypoints[LEFT_EYE].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = keypoints[LEFT_EYE].x;
-    ov_param.graph.points[count].y = keypoints[LEFT_EYE].y;
-    points[LEFT_EYE] = count;
-    count++;
-  }
-
-  if (keypoints[RIGHT_EYE].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = keypoints[RIGHT_EYE].x;
-    ov_param.graph.points[count].y = keypoints[RIGHT_EYE].y;
-    points[RIGHT_EYE] = count;
-    count++;
-  }
-
-  if (keypoints[LEFT_EAR].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = keypoints[LEFT_EAR].x;
-    ov_param.graph.points[count].y = keypoints[LEFT_EAR].y;
-    points[LEFT_EAR] = count;
-    count++;
-  }
-
-  if (keypoints[RIGHT_EAR].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = keypoints[RIGHT_EAR].x;
-    ov_param.graph.points[count].y = keypoints[RIGHT_EAR].y;
-    points[RIGHT_EAR] = count;
-    count++;
-  }
-
-  if (keypoints[LEFT_SHOULDER].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = keypoints[LEFT_SHOULDER].x;
-    ov_param.graph.points[count].y = keypoints[LEFT_SHOULDER].y;
-    points[LEFT_SHOULDER] = count;
-    count++;
-  }
-
-  if (keypoints[RIGHT_SHOULDER].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = keypoints[RIGHT_SHOULDER].x;
-    ov_param.graph.points[count].y = keypoints[RIGHT_SHOULDER].y;
-    points[RIGHT_SHOULDER] = count;
-    count++;
-  }
-
-  if (keypoints[LEFT_ELBOW].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = keypoints[LEFT_ELBOW].x;
-    ov_param.graph.points[count].y = keypoints[LEFT_ELBOW].y;
-    points[LEFT_ELBOW] = count;
-    count++;
-  }
-
-  if (keypoints[RIGHT_ELBOW].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = keypoints[RIGHT_ELBOW].x;
-    ov_param.graph.points[count].y = keypoints[RIGHT_ELBOW].y;
-    points[RIGHT_ELBOW] = count;
-    count++;
-  }
-
-  if (keypoints[LEFT_WRIST].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = keypoints[LEFT_WRIST].x;
-    ov_param.graph.points[count].y = keypoints[LEFT_WRIST].y;
-    points[LEFT_WRIST] = count;
-    count++;
-  }
-
-  if (keypoints[RIGHT_WRIST].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = keypoints[RIGHT_WRIST].x;
-    ov_param.graph.points[count].y = keypoints[RIGHT_WRIST].y;
-    points[RIGHT_WRIST] = count;
-    count++;
-  }
-
-  if (keypoints[LEFT_HIP].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = keypoints[LEFT_HIP].x;
-    ov_param.graph.points[count].y = keypoints[LEFT_HIP].y;
-    points[LEFT_HIP] = count;
-    count++;
-  }
-
-  if (keypoints[RIGHT_HIP].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = keypoints[RIGHT_HIP].x;
-    ov_param.graph.points[count].y = keypoints[RIGHT_HIP].y;
-    points[RIGHT_HIP] = count;
-    count++;
-  }
-
-  if (keypoints[LEFT_KNEE].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = keypoints[LEFT_KNEE].x;
-    ov_param.graph.points[count].y = keypoints[LEFT_KNEE].y;
-    points[LEFT_KNEE] = count;
-    count++;
-  }
-
-  if (keypoints[RIGHT_KNEE].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = keypoints[RIGHT_KNEE].x;
-    ov_param.graph.points[count].y = keypoints[RIGHT_KNEE].y;
-    points[RIGHT_KNEE] = count;
-    count++;
-  }
-
-  if (keypoints[LEFT_ANKLE].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = keypoints[LEFT_ANKLE].x;
-    ov_param.graph.points[count].y = keypoints[LEFT_ANKLE].y;
-    points[LEFT_ANKLE] = count;
-    count++;
-  }
-
-  if (keypoints[RIGHT_ANKLE].score > kScoreTreshold) {
-    ov_param.graph.points[count].x = keypoints[RIGHT_ANKLE].x;
-    ov_param.graph.points[count].y = keypoints[RIGHT_ANKLE].y;
-    points[RIGHT_ANKLE] = count;
-    count++;
-  }
-  ov_param.graph.points_count = count;
-
-  count = 0;
-  ov_param.graph.chain_count = 0;
-  for (guint i = 0; i < sizeof (PoseChain) / sizeof (PoseChain[0]); i++) {
-    GstMLKeyPointsType point0 = PoseChain[i][0];
-    GstMLKeyPointsType point1 = PoseChain[i][1];
-    if (keypoints[point0].score > kScoreTreshold &&
-        keypoints[point1].score > kScoreTreshold) {
-      ov_param.graph.chain[count][0] = points[point0];
-      ov_param.graph.chain[count][1] = points[point1];
-      count++;
-    }
-  }
-  ov_param.graph.chain_count = count;
-
-  if (!(*item_id)) {
-    ret = gst_overlay->overlay->CreateOverlayItem (ov_param, item_id);
-    if (ret != 0) {
-      GST_ERROR_OBJECT (gst_overlay, "Overlay create failed! ret: %d", ret);
-      return FALSE;
-    }
-
-    ret = gst_overlay->overlay->EnableOverlayItem (*item_id);
-    if (ret != 0) {
-      GST_ERROR_OBJECT (gst_overlay, "Overlay enable failed! ret: %d", ret);
-      return FALSE;
-    }
-  } else {
-    ret = gst_overlay->overlay->UpdateOverlayParams (*item_id, ov_param);
-    if (ret != 0) {
-      GST_ERROR_OBJECT (gst_overlay, "Overlay set param failed! ret: %d", ret);
-      return FALSE;
-    }
-  }
-
-  return TRUE;
-}
-
-/**
- * gst_overlay_apply_roi_item:
- * @gst_overlay: context
- * @metadata: machine learning metadata entry
- * @item_id: pointer to overlay item instance id
- *
- * Converts GstVideoRegionOfInterestMeta to overlay configuration and applies
- * it as overlay.
- *
- * Return true if succeed.
- */
-static gboolean
-gst_overlay_apply_roi_item (GstOverlay * gst_overlay, gpointer meta,
-    uint32_t * item_id)
-{
-  GstVideoRegionOfInterestMeta *roimeta = (GstVideoRegionOfInterestMeta*) meta;
-  GstStructure *param = NULL;
-  GList *list = NULL;
-  GstVideoRectangle bbox;
-  const gchar *name = NULL;
-  guint color = 0x00000000;
-
-  g_return_val_if_fail (gst_overlay != NULL, FALSE);
-  g_return_val_if_fail (meta != NULL, FALSE);
-  g_return_val_if_fail (item_id != NULL, FALSE);
-
-  param = gst_video_region_of_interest_meta_get_param (roimeta, "ObjectDetection");
-
-  name = g_quark_to_string (roimeta->roi_type);
-  gst_structure_get_uint (param, "color", &color);
-
-  bbox.x = roimeta->x;
-  bbox.y = roimeta->y;
-  bbox.w = roimeta->w;
-  bbox.h = roimeta->h;
-
-  // Process attached meta entries that were derived from this ROI.
-  for (list = roimeta->params; list != NULL; list = g_list_next (list)) {
-    GQuark id = 0;
-    uint32_t *sub_item_id = NULL;
-
-    param = GST_STRUCTURE_CAST (list->data);
-    id = gst_structure_get_name_id (param);
-
-    if (id == g_quark_from_static_string ("VideoLandmarks")) {
-      GArray *keypoints = NULL;
-      GstMLKeyPoint mlkeypoints[KEY_POINTS_COUNT];
-      static GQuark kp_names[KEY_POINTS_COUNT];
-      guint idx = 0, num = 0;
-
-      keypoints = (GArray*) g_value_get_boxed (
-          gst_structure_get_value (param, "keypoints"));
-      gst_overlay->n_landmark_metas++;
-
-      if (gst_overlay->n_landmark_metas >
-              (guint) g_sequence_get_length (gst_overlay->pose_id))
-        g_sequence_append(gst_overlay->pose_id, calloc(1, sizeof(uint32_t)));
-
-      sub_item_id = (uint32_t *) g_sequence_get (g_sequence_get_iter_at_pos (
-          gst_overlay->pose_id, gst_overlay->n_landmark_metas - 1));
-
-      // Due to the legacy nature of this plugin we need to translate the keypoints.
-      kp_names[NOSE] = g_quark_from_static_string ("nose");
-      kp_names[LEFT_EYE] = g_quark_from_static_string ("left eye");
-      kp_names[RIGHT_EYE] = g_quark_from_static_string ("right eye");
-      kp_names[LEFT_EAR] = g_quark_from_static_string ("left ear");
-      kp_names[RIGHT_EAR] = g_quark_from_static_string ("right ear");
-      kp_names[LEFT_SHOULDER] = g_quark_from_static_string ("left shoulder");
-      kp_names[RIGHT_SHOULDER] = g_quark_from_static_string ("right shoulder");
-      kp_names[LEFT_ELBOW] = g_quark_from_static_string ("left elbow");
-      kp_names[RIGHT_ELBOW] = g_quark_from_static_string ("right elbow");
-      kp_names[LEFT_WRIST] = g_quark_from_static_string ("left wrist");
-      kp_names[RIGHT_WRIST] = g_quark_from_static_string ("right wrist");
-      kp_names[LEFT_HIP] = g_quark_from_static_string ("left hip");
-      kp_names[RIGHT_HIP] = g_quark_from_static_string ("right hip");
-      kp_names[LEFT_KNEE] = g_quark_from_static_string ("left knee");
-      kp_names[RIGHT_KNEE] = g_quark_from_static_string ("right knee");
-      kp_names[LEFT_ANKLE] = g_quark_from_static_string ("left ankle");
-      kp_names[RIGHT_ANKLE] = g_quark_from_static_string ("right ankle");
-
-      for (num = 0; num < KEY_POINTS_COUNT; num++) {
-        GstVideoKeypoint *kp = NULL;
-
-        for (idx = 0; idx < keypoints->len; idx++) {
-          kp = &(g_array_index (keypoints, GstVideoKeypoint, idx));
-
-          if (kp->name != kp_names[num])
-            continue;
-
-          mlkeypoints[num].score = kp->confidence;
-          mlkeypoints[num].x = kp->x + roimeta->x;
-          mlkeypoints[num].y = kp->y + roimeta->y;
-
-          break;
-        }
-      }
-
-      if (!gst_overlay_apply_pose_item (gst_overlay, mlkeypoints, sub_item_id))
-        return FALSE;
-
-    } else if (id == g_quark_from_static_string ("ImageClassification")) {
-      GArray *labels = (GArray*) g_value_get_boxed (
-          gst_structure_get_value (param, "labels"));
-
-      // Due to limitation apply only the 1st item with most confidence.
-      if (labels->len != 0) {
-        GstClassLabel *label = &(g_array_index (labels, GstClassLabel, 0));
-        name = g_quark_to_string (label->name);
-      }
-    }
-  }
-
-  return gst_overlay_apply_bbox_item (gst_overlay, &bbox, name, color,
-      gst_overlay->bbox_font_size, item_id);
-}
-
 static gboolean
 gst_overlay_apply_classification_item (GstOverlay * gst_overlay, gpointer meta,
     uint32_t * item_id)
@@ -1065,58 +662,6 @@ gst_overlay_apply_classification_item (GstOverlay * gst_overlay, gpointer meta,
   return gst_overlay_apply_text_item (gst_overlay,
       g_quark_to_string (label->name), label->color,
       gst_overlay->text_font_size, &rect, item_id);
-}
-
-static gboolean
-gst_overlay_apply_landmarks_item (GstOverlay * gst_overlay, gpointer meta,
-    uint32_t * item_id)
-{
-  GstVideoLandmarksMeta *lm_meta = (GstVideoLandmarksMeta*) meta;
-  GstMLKeyPoint keypoints[KEY_POINTS_COUNT];
-  guint idx = 0, num = 0;
-
-  if (lm_meta->keypoints == NULL)
-    return TRUE;
-
-  // Due to the legacy nature of this plugin we need to translate the keypoints.
-  static GQuark kp_names[KEY_POINTS_COUNT];
-
-  kp_names[NOSE] = g_quark_from_static_string ("nose");
-  kp_names[LEFT_EYE] = g_quark_from_static_string ("left eye");
-  kp_names[RIGHT_EYE] = g_quark_from_static_string ("right eye");
-  kp_names[LEFT_EAR] = g_quark_from_static_string ("left ear");
-  kp_names[RIGHT_EAR] = g_quark_from_static_string ("right ear");
-  kp_names[LEFT_SHOULDER] = g_quark_from_static_string ("left shoulder");
-  kp_names[RIGHT_SHOULDER] = g_quark_from_static_string ("right shoulder");
-  kp_names[LEFT_ELBOW] = g_quark_from_static_string ("left elbow");
-  kp_names[RIGHT_ELBOW] = g_quark_from_static_string ("right elbow");
-  kp_names[LEFT_WRIST] = g_quark_from_static_string ("left wrist");
-  kp_names[RIGHT_WRIST] = g_quark_from_static_string ("right wrist");
-  kp_names[LEFT_HIP] = g_quark_from_static_string ("left hip");
-  kp_names[RIGHT_HIP] = g_quark_from_static_string ("right hip");
-  kp_names[LEFT_KNEE] = g_quark_from_static_string ("left knee");
-  kp_names[RIGHT_KNEE] = g_quark_from_static_string ("right knee");
-  kp_names[LEFT_ANKLE] = g_quark_from_static_string ("left ankle");
-  kp_names[RIGHT_ANKLE] = g_quark_from_static_string ("right ankle");
-
-  for (num = 0; num < KEY_POINTS_COUNT; num++) {
-    GstVideoKeypoint *keypoint = NULL;
-
-    for (idx = 0; idx < lm_meta->keypoints->len; idx++) {
-      keypoint = &(g_array_index (lm_meta->keypoints, GstVideoKeypoint, idx));
-
-      if (keypoint->name != kp_names[num])
-        continue;
-
-      keypoints[num].score = keypoint->confidence;
-      keypoints[num].x = keypoint->x;
-      keypoints[num].y = keypoint->y;
-
-      break;
-    }
-  }
-
-  return gst_overlay_apply_pose_item (gst_overlay, keypoints, item_id);
 }
 
 /**
@@ -1154,7 +699,7 @@ gst_overlay_apply_user_text_item (gpointer data, gpointer user_data)
  * @metadata: optical flow metadata entry
  * @item_id: pointer to overlay item instance id
  *
- * Converts GstCvpOpticalFlowMeta metadata to overlay
+ * Converts GstCvOptclFlowMeta  metadata to overlay
  * configuration and applies it as arrows overlay.
  *
  * Return true if succeed.
@@ -1514,22 +1059,6 @@ gst_overlay_apply_overlay (GstOverlay *gst_overlay, GstVideoFrame *frame)
 }
 
 static GSList *
-gst_buffer_get_roi_meta (GstBuffer * buffer)
-{
-  GSList *list = NULL;
-  GstMeta *meta = NULL;
-  gpointer state = NULL;
-
-  g_return_val_if_fail (buffer != NULL, NULL);
-
-  while ((meta = gst_buffer_iterate_meta_filtered (buffer, &state,
-      GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE)) != NULL)
-    list = g_slist_prepend (list, meta);
-
-  return list;
-}
-
-static GSList *
 gst_buffer_get_vid_classification_meta (GstBuffer * buffer)
 {
   GSList *list = NULL;
@@ -1540,22 +1069,6 @@ gst_buffer_get_vid_classification_meta (GstBuffer * buffer)
 
   while ((meta = gst_buffer_iterate_meta_filtered (buffer, &state,
       GST_VIDEO_CLASSIFICATION_META_API_TYPE)) != NULL)
-    list = g_slist_prepend (list, meta);
-
-  return list;
-}
-
-static GSList *
-gst_buffer_get_landmarks_meta (GstBuffer * buffer)
-{
-  GSList *list = NULL;
-  GstMeta *meta = NULL;
-  gpointer state = NULL;
-
-  g_return_val_if_fail (buffer != NULL, NULL);
-
-  while ((meta = gst_buffer_iterate_meta_filtered (buffer, &state,
-      GST_VIDEO_LANDMARKS_META_API_TYPE)) != NULL)
     list = g_slist_prepend (list, meta);
 
   return list;
@@ -2897,24 +2410,6 @@ gst_overlay_transform_frame_ip (GstVideoFilter *filter, GstVideoFrame *frame)
   }
 
   res = gst_overlay_apply_item_list (gst_overlay,
-                            gst_buffer_get_detection_meta (frame->buffer),
-                            gst_overlay_apply_ml_bbox_item,
-                            gst_overlay->bbox_id);
-  if (!res) {
-    GST_ERROR_OBJECT (gst_overlay, "Overlay apply bbox item list failed!");
-    return GST_FLOW_ERROR;
-  }
-
-  res = gst_overlay_apply_item_list (gst_overlay,
-                            gst_buffer_get_roi_meta (frame->buffer),
-                            gst_overlay_apply_roi_item,
-                            gst_overlay->roi_id);
-  if (!res) {
-    GST_ERROR_OBJECT (gst_overlay, "Overlay apply bbox item list failed!");
-    return GST_FLOW_ERROR;
-  }
-
-  res = gst_overlay_apply_item_list (gst_overlay,
                             gst_buffer_get_vid_classification_meta (frame->buffer),
                             gst_overlay_apply_classification_item,
                             gst_overlay->text_id);
@@ -2923,26 +2418,8 @@ gst_overlay_transform_frame_ip (GstVideoFilter *filter, GstVideoFrame *frame)
     return GST_FLOW_ERROR;
   }
 
-  res = gst_overlay_apply_item_list (gst_overlay,
-                            gst_buffer_get_landmarks_meta (frame->buffer),
-                            gst_overlay_apply_landmarks_item,
-                            gst_overlay->pose_id);
-  if (!res) {
-    GST_ERROR_OBJECT (gst_overlay, "Overlay apply pose item list failed!");
-    return GST_FLOW_ERROR;
-  }
-
   // Reset the trackers for the inherited metas.
   gst_overlay->n_landmark_metas = 0;
-
-  res = gst_overlay_apply_item_list (gst_overlay,
-                            gst_buffer_get_segmentation_meta (frame->buffer),
-                            gst_overlay_apply_ml_simg_item,
-                            gst_overlay->simg_id);
-  if (!res) {
-    GST_ERROR_OBJECT (gst_overlay, "Overlay apply image item list failed!");
-    return GST_FLOW_ERROR;
-  }
 
   res = gst_overlay_apply_item_list (gst_overlay,
                             gst_buffer_get_optclflow_meta (frame->buffer),
