@@ -198,6 +198,8 @@ gst_jpeg_enc_context_create (GstJPEGEncoderContext * context,
 
   jpeg_params.process_mode = 0;
   gst_structure_get_uint (
+      params, GST_JPEG_ENC_CAMERA_ID, &jpeg_params.camera_id);
+  gst_structure_get_uint (
       params, GST_JPEG_ENC_INPUT_WIDTH, &jpeg_params.in_buffer.width);
   gst_structure_get_uint (
       params, GST_JPEG_ENC_INPUT_HEIGHT, &jpeg_params.in_buffer.height);
