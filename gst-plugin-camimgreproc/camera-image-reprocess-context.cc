@@ -532,13 +532,16 @@ gst_camera_image_reproc_context_process (GstCameraImageReprocContext *context,
   GPtrArray *ptr_array = NULL;
   qmmf::OfflineCameraProcessParams params;
   guint idx = 0;
-  gint in_buf_fd[OFFLINE_CAMERA_INPUT_IMAGE_MAX_NUM] = {-1};
+  gint in_buf_fd[OFFLINE_CAMERA_INPUT_IMAGE_MAX_NUM];
   gint out_buf_fd = -1;
 
   g_return_val_if_fail (context != NULL, FALSE);
   g_return_val_if_fail (inbuf[0] != NULL, FALSE);
   g_return_val_if_fail (outbuf != NULL, FALSE);
   g_return_val_if_fail (inbufnum <= OFFLINE_CAMERA_INPUT_IMAGE_MAX_NUM, FALSE);
+
+  for (idx = 0; idx < OFFLINE_CAMERA_INPUT_IMAGE_MAX_NUM; idx++)
+    in_buf_fd[idx] = -1;
 
   for (idx = 0; idx < inbufnum; idx++) {
     inmem = gst_buffer_peek_memory (inbuf[idx], 0);
