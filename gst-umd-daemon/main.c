@@ -67,7 +67,6 @@
 #include <glib-unix.h>
 #include <gst/gst.h>
 
-#include <ml-meta/ml_meta.h>
 #include <iot-core-algs/umd-gadget.h>
 #include <sys/epoll.h>
 
