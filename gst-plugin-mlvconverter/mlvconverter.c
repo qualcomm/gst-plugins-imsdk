@@ -1882,6 +1882,7 @@ gst_ml_video_converter_transform_caps (GstBaseTransform * base,
   GstPad *pad = NULL;
   const GValue *rate = NULL, *dims = NULL, *depth = NULL;
   gint idx = 0, length = 0;
+  GstStructure *structure = NULL;
 
   GST_DEBUG_OBJECT (mlconverter, "Transforming caps: %" GST_PTR_FORMAT
       " in direction %s", caps, (direction == GST_PAD_SINK) ? "sink" : "src");
@@ -1899,12 +1900,20 @@ gst_ml_video_converter_transform_caps (GstBaseTransform * base,
     if (mlconverter->backend == GST_VCE_BACKEND_NONE) {
       GstCaps *videocaps = NULL;
       gint idx = 0, length = 0, maxwidth = 0, maxheight = 0;
+      GstCaps *localcaps = gst_caps_copy (caps);
 
-      videocaps = gst_ml_video_converter_translate_ml_caps (mlconverter, caps);
+      // Removing non-fixated framerate field for caps translation
+      if (!gst_caps_is_empty (localcaps)) {
+        structure = gst_caps_get_structure (localcaps, 0);
+        gst_structure_remove_field (structure, "rate");
+      }
+
+      videocaps = gst_ml_video_converter_translate_ml_caps (mlconverter, localcaps);
       length = gst_caps_get_size (videocaps);
+      gst_caps_unref (localcaps);
 
       for (idx = 0; idx < length; idx++) {
-        GstStructure *structure = gst_caps_get_structure (videocaps, idx);
+        structure = gst_caps_get_structure (videocaps, idx);
 
         if (!gst_structure_has_field (structure, "width") &&
             !gst_structure_has_field (structure, "height"))
@@ -1934,7 +1943,7 @@ gst_ml_video_converter_transform_caps (GstBaseTransform * base,
 
   // Extract the framerate and propagate it to result caps.
   if (!gst_caps_is_empty (caps)) {
-    GstStructure *structure = gst_caps_get_structure (caps, 0);
+    structure = gst_caps_get_structure (caps, 0);
 
     rate = gst_structure_get_value (structure,
         (direction == GST_PAD_SRC) ? "rate" : "framerate");
@@ -1956,7 +1965,7 @@ gst_ml_video_converter_transform_caps (GstBaseTransform * base,
   length = gst_caps_get_size (result);
 
   for (idx = 0; idx < length; idx++) {
-    GstStructure *structure = gst_caps_get_structure (result, idx);
+    structure = gst_caps_get_structure (result, idx);
 
     if (rate != NULL) {
       gst_structure_set_value (structure,
