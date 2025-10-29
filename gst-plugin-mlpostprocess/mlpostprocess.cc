@@ -40,6 +40,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <numeric>
 
 #include <gst/ml/gstmlpool.h>
 #include <gst/ml/gstmlmeta.h>
@@ -89,16 +90,6 @@ G_DEFINE_TYPE (GstMLPostProcess, gst_ml_post_process,
     (type == g_quark_from_static_string (GST_TEXT_GENERATION_TYPE))
 #define GST_IS_TENSOR_TYPE(type) \
     (type == g_quark_from_static_string (GST_TENSOR_TYPE))
-
-#define GST_IS_INVALID_TYPE(type) \
-    (!GST_IS_DETECTION_TYPE(type) && \
-      !GST_IS_CLASSIFICATION_TYPE(type) && \
-      !GST_IS_POSE_TYPE(type) && \
-      !GST_IS_SEGMENTATION_TYPE(type) && \
-      !GST_IS_SUPER_RESOLUTION_TYPE(type) && \
-      !GST_IS_AUDIO_CLASSIFICATION_TYPE(type) && \
-      !GST_IS_TEXT_GENERATION_TYPE(type) && \
-      !GST_IS_TENSOR_TYPE(type))
 
 #define GST_ML_POST_PROCESS_VIDEO_FORMATS \
     "{ BGRA, RGBA, ARGB, ABGR, RGBx, BGRx, xRGB, xBGR, RGB, BGR, BGR16 }"
@@ -222,133 +213,134 @@ gst_ml_post_process_module_new (GstMLPostProcess * postprocess,
   gchar *location = NULL;
   NewIModule NewModule;
 
-  location = g_strdup_printf("%s/lib%s%s.so", GST_ML_MODULES_DIR,
+  location = g_strdup_printf ("%s/lib%s%s.so", GST_ML_MODULES_DIR,
       GST_ML_MODULES_PREFIX, name);
 
   postprocess->handle = dlopen (location, RTLD_NOW);
-
   g_free (location);
 
   if (postprocess->handle == NULL) {
     GST_ERROR_OBJECT (postprocess, "Failed to open %s library, error: %s!",
         name, dlerror());
-    gst_ml_post_process_module_free (postprocess);
-    return FALSE;
+    goto error;
   }
 
-  NewModule = (NewIModule) dlsym(postprocess->handle,
+  NewModule = (NewIModule) dlsym (postprocess->handle,
       ML_POST_PROCESS_MODULE_NEW_FUNC);
   if (NewModule == NULL) {
-    GST_ERROR_OBJECT (postprocess,
-        "Failed to link library method %s, error: %s!", name, dlerror());
-    gst_ml_post_process_module_free (postprocess);
-    return FALSE;
+    GST_ERROR_OBJECT (postprocess, "Failed to link library method %s, "
+        "error: %s!", name, dlerror());
+    goto error;
   }
 
   try {
     postprocess->module = NewModule (gst_module_logging);
   } catch (std::exception& e) {
-    GST_ERROR_OBJECT (postprocess,
-        "Failed to create and init new module, error: %s!", e.what());
-    gst_ml_post_process_module_free (postprocess);
-    return FALSE;
+    GST_ERROR_OBJECT (postprocess, "Failed to create and init new module, "
+        "error: %s!", e.what());
+    goto error;
   }
 
   GST_INFO_OBJECT (postprocess, "Created %s module.", name);
   return TRUE;
+
+error:
+  gst_ml_post_process_module_free (postprocess);
+  return FALSE;
 }
 
 static gboolean
-gst_ml_post_process_module_set_opts (GstMLPostProcess * postprocess,
-    gchar * labels, gchar * settings)
+gst_ml_post_process_module_set_opts (GstMLPostProcess * postprocess)
 {
-  std::string labels_contents;
-  std::string settings_contents;
+  std::string labels, settings;
 
-  if (labels)
-    labels_contents = std::string(labels);
+  labels = std::string(postprocess->labels != NULL ? postprocess->labels : "");
 
-  if (settings && g_file_test (settings, G_FILE_TEST_IS_REGULAR)) {
+  if ((postprocess->settings != NULL) &&
+      g_file_test (postprocess->settings, G_FILE_TEST_IS_REGULAR)) {
     GError *error = NULL;
-    gchar *file_content = NULL;
+    gchar *contents = NULL;
 
-    if (!g_file_get_contents (settings, &file_content, NULL, &error)) {
-      GST_ERROR_OBJECT (postprocess,
-          "Failed to get settings file contents, error: %s!",
-          GST_STR_NULL (error->message));
+    if (!g_file_get_contents (postprocess->settings, &contents, NULL, &error)) {
+      GST_ERROR_OBJECT (postprocess, "Failed to get settings file contents, "
+          "error: %s!", GST_STR_NULL (error->message));
       g_clear_error (&error);
       return FALSE;
     }
 
-    settings_contents = std::string(file_content);
-    g_free (file_content);
-  } else if (settings) {
-    settings_contents = std::string(settings);
+    settings = std::string(contents);
+    g_free (contents);
+  } else if (postprocess->settings != NULL) {
+    settings = std::string(postprocess->settings);
   }
 
-  return postprocess->module->Configure (labels_contents, settings_contents);
+  return postprocess->module->Configure (labels, settings);
 }
 
 static gboolean
 gst_ml_post_process_module_execute (GstMLPostProcess * postprocess,
     GstBuffer * buffer, std::any& output)
 {
-  GstMLFrame mlframe;
-  gboolean needproc = TRUE;
-
-  g_return_val_if_fail (output.has_value(), FALSE);
+  GstMLFrame mlframe = {};
+  guint idx = 0, n_batch = 0, size = 0;
+  gboolean success = FALSE;
 
   if (gst_buffer_get_size (buffer) == 0 &&
       GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_GAP))
-    needproc = FALSE;
+    return TRUE;
 
-  if (needproc &&
-      !gst_ml_frame_map (&mlframe, postprocess->mlinfo, buffer, GST_MAP_READ)) {
-    GST_ERROR_OBJECT (postprocess, "Failed to map buffer!");
+  if (!gst_ml_frame_map (&mlframe, postprocess->mlinfo, buffer, GST_MAP_READ)) {
+    GST_ERROR_OBJECT (postprocess, "Failed to map input ML buffer!");
     return FALSE;
   }
 
-  // Iterate all batches and execute the process
-  for (guint idx = 0; idx <
-      GST_ML_INFO_TENSOR_DIM (postprocess->mlinfo, 0, 0); ++idx) {
+  n_batch = GST_ML_INFO_TENSOR_DIM (postprocess->mlinfo, 0, 0);
 
-    GstProtectionMeta *pmeta = NULL;
-    Dictionary mlparams;
+  // Iterate all batches and execute the process
+  for (idx = 0; idx < n_batch; ++idx) {
     Tensors tensors;
 
-    pmeta = gst_buffer_get_protection_meta_id (buffer,
-        gst_batch_channel_name (idx));
-
-    g_ptr_array_add (postprocess->info, pmeta->info);
-
-    if (needproc) {
-
-      mlparams = gst_ml_structure_to_module_params (pmeta->info);
-
-      if (!gst_ml_tensors_convert (mlframe, buffer, tensors)) {
-        GST_ERROR_OBJECT (postprocess, "Convert ml frame failed!");
-        gst_ml_frame_unmap (&mlframe);
-        return FALSE;
-      }
-    }
+    Dictionary mlparams = gst_ml_structure_to_module_params (
+        GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, idx)));
 
     std::any predictions;
-    if (GST_IS_DETECTION_TYPE (postprocess->type))
-      predictions = ObjectDetections();
-    else if (GST_IS_CLASSIFICATION_TYPE (postprocess->type))
-      predictions = ImageClassifications();
-    else if (GST_IS_AUDIO_CLASSIFICATION_TYPE (postprocess->type))
-      predictions = AudioClassifications();
-    else if (GST_IS_POSE_TYPE (postprocess->type))
-      predictions = PoseEstimations();
-    else
-      predictions = output;
 
-    if (needproc &&
-        !postprocess->module->Process (tensors, mlparams, predictions)) {
+    if (GST_IS_DETECTION_TYPE (postprocess->type)) {
+      predictions = ObjectDetections();
+    } else if (GST_IS_CLASSIFICATION_TYPE (postprocess->type)) {
+      predictions = ImageClassifications();
+    } else if (GST_IS_AUDIO_CLASSIFICATION_TYPE (postprocess->type)) {
+      predictions = AudioClassifications();
+    } else if (GST_IS_POSE_TYPE (postprocess->type)) {
+      predictions = PoseEstimations();
+    } else if (GST_IS_TEXT_GENERATION_TYPE (postprocess->type)) {
+      predictions = TextGenerations();
+    } else if (GST_IS_TENSOR_TYPE (postprocess->type)) {
+      tensors = std::any_cast<Tensors>(output);
+
+      // Set batch index to 1 and recalculate the data pointer offset.
+      for (auto& tensor : tensors) {
+        tensor.dimensions[0] = 1;
+        size = std::accumulate(tensor.dimensions.begin(), tensor.dimensions.end(),
+                               1, std::multiplies<uint32_t>());
+        tensor.data = reinterpret_cast<uint8_t*>(tensor.data) + (idx * size);
+      }
+
+      predictions = tensors;
+    } else {
+      predictions = output;
+    }
+
+    if (!(success = gst_ml_frame_to_module_tensors (&mlframe, idx, tensors))) {
+      GST_ERROR_OBJECT (postprocess, "Failed to translate input ML frame!");
+      goto cleanup;
+    }
+
+    success = postprocess->module->Process (tensors, mlparams, predictions);
+
+    if (!success) {
       GST_ERROR_OBJECT (postprocess, "Failed to execute process!");
-      gst_ml_frame_unmap (&mlframe);
-      return FALSE;
+      goto cleanup;
     }
 
     // Sorting entries
@@ -360,14 +352,13 @@ gst_ml_post_process_module_execute (GstMLPostProcess * postprocess,
       gst_ml_audio_classifications_sort_and_push (output, predictions);
     else if (GST_IS_POSE_TYPE (postprocess->type))
       gst_ml_pose_estimation_sort_and_push (output, predictions);
-    else if (GST_IS_TENSOR_TYPE (postprocess->type))
-      output = predictions;
+    else if (GST_IS_TEXT_GENERATION_TYPE (postprocess->type))
+      gst_ml_text_generation_sort_and_push (output, predictions);
   }
 
-  if (needproc)
-    gst_ml_frame_unmap (&mlframe);
-
-  return TRUE;
+cleanup:
+  gst_ml_frame_unmap (&mlframe);
+  return success;
 }
 
 static GstBufferPool *
@@ -503,7 +494,7 @@ gst_ml_post_process_bbox_stabilization (GstMLPostProcess * postprocess,
 
 static gboolean
 gst_ml_video_detection_fill_video_output (GstMLPostProcess * postprocess,
-    std::any& output, GstBuffer * buffer, GstVideoFrame * vframe)
+    std::any& output, GstVideoFrame * vframe)
 {
   cairo_surface_t* surface = NULL;
   cairo_t* context = NULL;
@@ -512,8 +503,7 @@ gst_ml_video_detection_fill_video_output (GstMLPostProcess * postprocess,
   guint idx = 0, num = 0, mrk = 0, n_entries = 0, color = 0, length = 0;
   gboolean success = FALSE;
 
-  auto& predictions =
-      std::any_cast<DetectionPrediction&>(output);
+  auto& predictions = std::any_cast<DetectionPrediction&>(output);
 
   success = gst_cairo_draw_setup (vframe, &surface, &context);
   g_return_val_if_fail (success, FALSE);
@@ -535,7 +525,7 @@ gst_ml_video_detection_fill_video_output (GstMLPostProcess * postprocess,
       continue;
 
     // Get saved info for the current batch
-    info = (GstStructure *) g_ptr_array_index (postprocess->info, idx);
+    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, idx));
 
     // Extract the source tensor region with actual data.
     gst_ml_structure_get_source_region (info, &region);
@@ -670,8 +660,8 @@ gst_ml_video_detection_fill_text_output (GstMLPostProcess * postprocess,
   gfloat x = 0.0, y = 0.0, width = 0.0, height = 0.0;
   gsize length = 0;
 
-  auto& predictions =
-      std::any_cast<DetectionPrediction&>(output);
+  auto& predictions = std::any_cast<DetectionPrediction&>(output);
+  predictions.resize(GST_ML_INFO_TENSOR_DIM (postprocess->mlinfo, 0, 0));
 
   g_value_init (&list, GST_TYPE_LIST);
   g_value_init (&bboxes, GST_TYPE_ARRAY);
@@ -686,7 +676,7 @@ gst_ml_video_detection_fill_text_output (GstMLPostProcess * postprocess,
         detections.size() : postprocess->n_results;
 
     // Get saved info for the current batch
-    info = (GstStructure *) g_ptr_array_index (postprocess->info, idx);
+    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, idx));
 
     if (gst_structure_has_field (info, "sequence-index"))
         gst_structure_get_uint (info, "sequence-index", &sequence_idx);
@@ -831,7 +821,7 @@ gst_ml_video_detection_fill_text_output (GstMLPostProcess * postprocess,
 
 static gboolean
 gst_ml_video_classification_fill_video_output (GstMLPostProcess * postprocess,
-    std::any& output, GstBuffer *buffer, GstVideoFrame * vframe)
+    std::any& output, GstVideoFrame * vframe)
 {
   cairo_surface_t* surface = NULL;
   cairo_t* context = NULL;
@@ -839,8 +829,7 @@ gst_ml_video_classification_fill_video_output (GstMLPostProcess * postprocess,
   gdouble width = 0.0, height = 0.0;
   gboolean success = FALSE;
 
-  auto& predictions =
-      std::any_cast<ImageClassPrediction&>(output);
+  auto& predictions = std::any_cast<ImageClassPrediction&>(output);
 
   success = gst_cairo_draw_setup (vframe, &surface, &context);
   g_return_val_if_fail (success, FALSE);
@@ -917,8 +906,8 @@ gst_ml_video_classification_fill_text_output (GstMLPostProcess * postprocess,
   guint idx = 0, num = 0, n_entries = 0, sequence_idx = 0, id = 0;
   gsize length = 0;
 
-  auto& predictions =
-      std::any_cast<ImageClassPrediction&>(output);
+  auto& predictions = std::any_cast<ImageClassPrediction&>(output);
+  predictions.resize(GST_ML_INFO_TENSOR_DIM (postprocess->mlinfo, 0, 0));
 
   g_value_init (&list, GST_TYPE_LIST);
   g_value_init (&labels, GST_TYPE_ARRAY);
@@ -933,7 +922,7 @@ gst_ml_video_classification_fill_text_output (GstMLPostProcess * postprocess,
         classifications.size() : postprocess->n_results;
 
     // Get saved info for the current batch
-    info = (GstStructure *) g_ptr_array_index (postprocess->info, idx);
+    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, idx));
 
     if (gst_structure_has_field (info, "sequence-index"))
         gst_structure_get_uint (info, "sequence-index", &sequence_idx);
@@ -1025,7 +1014,7 @@ gst_ml_video_classification_fill_text_output (GstMLPostProcess * postprocess,
 
 static gboolean
 gst_ml_audio_classification_fill_video_output (GstMLPostProcess * postprocess,
-    std::any& output, GstBuffer *buffer, GstVideoFrame * vframe)
+    std::any& output, GstVideoFrame * vframe)
 {
   cairo_surface_t* surface = NULL;
   cairo_t* context = NULL;
@@ -1033,8 +1022,7 @@ gst_ml_audio_classification_fill_video_output (GstMLPostProcess * postprocess,
   gdouble width = 0.0, height = 0.0;
   gboolean success = FALSE;
 
-  auto& predictions =
-      std::any_cast<AudioClassPrediction&>(output);
+  auto& predictions = std::any_cast<AudioClassPrediction&>(output);
 
   success = gst_cairo_draw_setup (vframe, &surface, &context);
   g_return_val_if_fail (success, FALSE);
@@ -1111,8 +1099,8 @@ gst_ml_audio_classification_fill_text_output (GstMLPostProcess * postprocess,
   guint idx = 0, num = 0, n_entries = 0, sequence_idx = 0, id = 0;
   gsize length = 0;
 
-  auto& predictions =
-      std::any_cast<AudioClassPrediction&>(output);
+  auto& predictions = std::any_cast<AudioClassPrediction&>(output);
+  predictions.resize(GST_ML_INFO_TENSOR_DIM (postprocess->mlinfo, 0, 0));
 
   g_value_init (&list, GST_TYPE_LIST);
   g_value_init (&labels, GST_TYPE_ARRAY);
@@ -1127,7 +1115,7 @@ gst_ml_audio_classification_fill_text_output (GstMLPostProcess * postprocess,
         classifications.size() : postprocess->n_results;
 
     // Get saved info for the current batch
-    info = (GstStructure *) g_ptr_array_index (postprocess->info, idx);
+    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, idx));
 
     if (gst_structure_has_field (info, "sequence-index"))
         gst_structure_get_uint (info, "sequence-index", &sequence_idx);
@@ -1219,7 +1207,7 @@ gst_ml_audio_classification_fill_text_output (GstMLPostProcess * postprocess,
 
 static gboolean
 gst_ml_video_pose_fill_video_output (GstMLPostProcess * postprocess,
-    std::any& output, GstBuffer * buffer, GstVideoFrame * vframe)
+    std::any& output, GstVideoFrame * vframe)
 {
   cairo_surface_t* surface = NULL;
   cairo_t* context = NULL;
@@ -1227,8 +1215,7 @@ gst_ml_video_pose_fill_video_output (GstMLPostProcess * postprocess,
   guint idx = 0, num = 0, m = 0, n_entries = 0;
   gboolean success = FALSE;
 
-  auto& predictions =
-      std::any_cast<PosePrediction&>(output);
+  auto& predictions = std::any_cast<PosePrediction&>(output);
 
   success = gst_cairo_draw_setup (vframe, &surface, &context);
   g_return_val_if_fail (success, FALSE);
@@ -1255,7 +1242,7 @@ gst_ml_video_pose_fill_video_output (GstMLPostProcess * postprocess,
       continue;
 
     // Get saved info for the current batch
-    info = (GstStructure *) g_ptr_array_index (postprocess->info, idx);
+    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, idx));
 
     // Extract the source tensor region with actual data.
     gst_ml_structure_get_source_region (info, &region);
@@ -1357,8 +1344,8 @@ gst_ml_video_pose_fill_text_output (GstMLPostProcess * postprocess,
   guint idx = 0, num = 0, seqnum = 0, n_entries = 0, sequence_idx = 0, id = 0;
   gsize length = 0;
 
-  auto& predictions =
-      std::any_cast<PosePrediction&>(output);
+  auto& predictions = std::any_cast<PosePrediction&>(output);
+  predictions.resize(GST_ML_INFO_TENSOR_DIM (postprocess->mlinfo, 0, 0));
 
   g_value_init (&list, GST_TYPE_LIST);
   g_value_init (&poses, GST_TYPE_ARRAY);
@@ -1375,7 +1362,7 @@ gst_ml_video_pose_fill_text_output (GstMLPostProcess * postprocess,
         estimations.size() : postprocess->n_results;
 
     // Get saved info for the current batch
-    info = (GstStructure *) g_ptr_array_index (postprocess->info, idx);
+    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, idx));
 
     if (gst_structure_has_field (info, "sequence-index"))
         gst_structure_get_uint (info, "sequence-index", &sequence_idx);
@@ -1521,7 +1508,7 @@ gst_ml_video_pose_fill_text_output (GstMLPostProcess * postprocess,
 
 static gboolean
 gst_ml_text_generation_fill_video_output (GstMLPostProcess * postprocess,
-    std::any& output, GstBuffer *buffer, GstVideoFrame * vframe)
+    std::any& output, GstVideoFrame * vframe)
 {
   cairo_surface_t* surface = NULL;
   cairo_t* context = NULL;
@@ -1529,8 +1516,7 @@ gst_ml_text_generation_fill_video_output (GstMLPostProcess * postprocess,
   gdouble width = 0.0, height = 0.0;
   gboolean success = FALSE;
 
-  auto& predictions =
-      std::any_cast<TextPrediction&>(output);
+  auto& predictions = std::any_cast<TextPrediction&>(output);
 
   success = gst_cairo_draw_setup (vframe, &surface, &context);
   g_return_val_if_fail (success, FALSE);
@@ -1608,8 +1594,8 @@ gst_ml_text_generation_fill_text_output (GstMLPostProcess * postprocess,
   guint idx = 0, num = 0, n_entries = 0, id = 0;
   gsize length = 0;
 
-  auto& predictions =
-      std::any_cast<TextPrediction&>(output);
+  auto& predictions = std::any_cast<TextPrediction&>(output);
+  predictions.resize(GST_ML_INFO_TENSOR_DIM (postprocess->mlinfo, 0, 0));
 
   g_value_init (&list, GST_TYPE_LIST);
   g_value_init (&labels, GST_TYPE_ARRAY);
@@ -1660,7 +1646,7 @@ gst_ml_text_generation_fill_text_output (GstMLPostProcess * postprocess,
     g_value_reset (&labels);
 
     // Get saved info for the current batch
-    info = (GstStructure *) g_ptr_array_index (postprocess->info, idx);
+    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, idx));
 
     val = gst_structure_get_value (info, "timestamp");
     gst_structure_set_value (structure, "timestamp", val);
@@ -1703,13 +1689,12 @@ gst_ml_post_process_decide_allocation (GstBaseTransform * base,
     GstQuery * query)
 {
   GstMLPostProcess *postprocess = GST_ML_POST_PROCESS (base);
-
   GstCaps *caps = NULL;
   GstBufferPool *pool = NULL;
   GstStructure *config = NULL;
   GstAllocator *allocator = NULL;
-  guint size, minbuffers, maxbuffers;
-  GstAllocationParams params;
+  GstAllocationParams params = {};
+  guint size = 0, minbuffers = 0, maxbuffers = 0;
 
   gst_clear_object (&(postprocess->outpool));
 
@@ -1763,6 +1748,7 @@ gst_ml_post_process_prepare_output_buffer (GstBaseTransform * base,
 {
   GstMLPostProcess *postprocess = GST_ML_POST_PROCESS (base);
   GstBufferPool *pool = postprocess->outpool;
+  guint idx = 0, n_batch = 0;
 
   if (gst_base_transform_is_passthrough (base)) {
     GST_DEBUG_OBJECT (postprocess, "Passthrough, no need to do anything");
@@ -1771,7 +1757,7 @@ gst_ml_post_process_prepare_output_buffer (GstBaseTransform * base,
   }
 
   if ((postprocess->mode == OUTPUT_MODE_VIDEO) ||
-       postprocess->mode == OUTPUT_MODE_TENSOR) {
+      (postprocess->mode == OUTPUT_MODE_TENSOR)) {
     if (!gst_buffer_pool_is_active (pool) &&
         !gst_buffer_pool_set_active (pool, TRUE)) {
       GST_ERROR_OBJECT (postprocess, "Failed to activate output buffer pool!");
@@ -1797,29 +1783,24 @@ gst_ml_post_process_prepare_output_buffer (GstBaseTransform * base,
   // Copy the flags and timestamps from the input buffer.
   gst_buffer_copy_into (*outbuffer, inbuffer, GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
 
-  if (postprocess->mode != OUTPUT_MODE_TENSOR)
-    return GST_FLOW_OK;
+  // Clear previously stored values and populate the new ml params for later use.
+  g_ptr_array_remove_range (postprocess->info, 0, postprocess->info->len);
+  n_batch = GST_ML_INFO_TENSOR_DIM (postprocess->mlinfo, 0, 0);
 
-  // Populate protection meta for each batch for tensor output
-  gst_buffer_copy_protection_meta (*outbuffer, inbuffer);
-
-  // Iterate all batches
-  for (guint idx = 0; idx <
-      GST_ML_INFO_TENSOR_DIM (postprocess->mlinfo, 0, 0); ++idx) {
-    GstProtectionMeta *pmeta = NULL;
-
-    pmeta = gst_buffer_get_protection_meta_id (*outbuffer,
+  for (idx = 0; idx < n_batch; ++idx) {
+    GstProtectionMeta *pmeta = gst_buffer_get_protection_meta_id (inbuffer,
         gst_batch_channel_name (idx));
 
-    if (pmeta == NULL) {
-      GST_ERROR_OBJECT (postprocess, "No protection meta for batch idx: %u", idx);
-      return GST_FLOW_ERROR;
-    }
+    g_ptr_array_add (postprocess->info, pmeta->info);
 
-    if (!gst_is_valid_protection_meta (pmeta))
-      return GST_FLOW_ERROR;
+    if (postprocess->mode != OUTPUT_MODE_TENSOR)
+      continue;
 
-    // remove the tensor and region data
+    // Propagate ML protection meta downstream if output is a tensor.
+    pmeta = gst_buffer_add_protection_meta (*outbuffer,
+        gst_structure_copy (pmeta->info));
+
+    // TODO: We should only add the mandatory fields instead of removing some.
     gst_structure_remove_field (pmeta->info, "input-region-x");
     gst_structure_remove_field (pmeta->info, "input-region-y");
     gst_structure_remove_field (pmeta->info, "input-region-width");
@@ -1865,7 +1846,7 @@ gst_ml_post_process_transform_caps (GstBaseTransform * base,
     GstPadDirection direction, GstCaps * caps, GstCaps * filter)
 {
   GstMLPostProcess *postprocess = GST_ML_POST_PROCESS (base);
-  GstCaps *tmplcaps = NULL, *result = NULL;
+  GstCaps *tmplcaps = NULL, *result = NULL, *intersection = NULL;
   guint idx = 0, num = 0, length = 0;
 
   GST_DEBUG_OBJECT (postprocess, "Transforming caps: %" GST_PTR_FORMAT
@@ -1897,6 +1878,12 @@ gst_ml_post_process_transform_caps (GstBaseTransform * base,
       structure = gst_caps_get_structure (tmplcaps, idx);
       features = gst_caps_get_features (tmplcaps, idx);
 
+      // Segmentation and Super Resolution do not support text outputs.
+      if (gst_structure_has_name (structure, "text/x-raw") &&
+          (GST_IS_SEGMENTATION_TYPE (postprocess->type) ||
+              GST_IS_SUPER_RESOLUTION_TYPE (postprocess->type)))
+        continue;
+
       // Make a copy that will be modified.
       structure = gst_structure_copy (structure);
 
@@ -1922,7 +1909,7 @@ gst_ml_post_process_transform_caps (GstBaseTransform * base,
   }
 
   if (filter != NULL) {
-    GstCaps *intersection  =
+    intersection =
         gst_caps_intersect_full (filter, result, GST_CAPS_INTERSECT_FIRST);
     gst_caps_unref (result);
     result = intersection;
@@ -1999,6 +1986,7 @@ gst_ml_post_process_fixate_caps (GstBaseTransform * base,
         // 2nd dimension correspond to height, 3rd dimension correspond to width.
         width = GST_ROUND_DOWN_16 (mlinfo.tensors[0][2]);
       }
+
       gst_structure_set (output, "width", G_TYPE_INT, width, NULL);
       value = gst_structure_get_value (output, "width");
     }
@@ -2019,6 +2007,7 @@ gst_ml_post_process_fixate_caps (GstBaseTransform * base,
         // 2nd dimension correspond to height, 3rd dimension correspond to width.
         height = mlinfo.tensors[0][1];
       }
+
       gst_structure_set (output, "height", G_TYPE_INT, height, NULL);
       value = gst_structure_get_value (output, "height");
     }
@@ -2044,11 +2033,9 @@ gst_ml_post_process_set_caps (GstBaseTransform * base, GstCaps * incaps,
   GstCaps *modulecaps = NULL;
   GstQuery *query = NULL;
   GstStructure *structure = NULL;
-  GstMLInfo inmlinfo;
-  GstMLInfo outmlinfo;
-  GstVideoInfo vinfo;
+  GstMLInfo inmlinfo = {}, outmlinfo = {};
+  GstVideoInfo vinfo = {};
   gboolean success = FALSE;
-  guint idx = 0;
 
   modulecaps = gst_ml_caps_from_json (postprocess->module->Caps ());
 
@@ -2078,10 +2065,7 @@ gst_ml_post_process_set_caps (GstBaseTransform * base, GstCaps * incaps,
   // Free the query instance as it is no longer needed and we are the owners.
   gst_query_unref (query);
 
-  success = gst_ml_post_process_module_set_opts (postprocess,
-      postprocess->labels, postprocess->settings);
-
-  if (!success) {
+  if (!gst_ml_post_process_module_set_opts (postprocess)) {
     GST_ELEMENT_ERROR (postprocess, RESOURCE, FAILED, (NULL),
         ("Failed to set module options!"));
     return FALSE;
@@ -2168,16 +2152,17 @@ gst_ml_video_post_process_change_state (GstElement * element,
     GstStateChange transition)
 {
   GstMLPostProcess *postprocess = GST_ML_POST_PROCESS (element);
-  GEnumClass *eclass = NULL;
-  GEnumValue *evalue = NULL;
   GstStateChangeReturn ret = GST_STATE_CHANGE_SUCCESS;
 
   switch (transition) {
     case GST_STATE_CHANGE_NULL_TO_READY:
     {
+      GEnumClass *eclass = NULL;
+      GEnumValue *evalue = NULL;
+
       if (DEFAULT_PROP_MODULE == postprocess->mdlenum) {
-        GST_ELEMENT_ERROR (postprocess, RESOURCE, NOT_FOUND, (NULL),
-            ("Module name not set, automatic module pick up not supported!"));
+        GST_ERROR_OBJECT (postprocess, "Module name not set, automatic module "
+            "pick up not supported!");
         return GST_STATE_CHANGE_FAILURE;
       }
 
@@ -2187,16 +2172,15 @@ gst_ml_video_post_process_change_state (GstElement * element,
       gst_ml_post_process_module_free (postprocess);
 
       if (!gst_ml_post_process_module_new (postprocess, evalue->value_nick)) {
-        GST_ELEMENT_ERROR (postprocess, RESOURCE, FAILED, (NULL),
-            ("Module creation failed!"));
+        GST_ERROR_OBJECT (postprocess, "Module creation failed!");
         return GST_STATE_CHANGE_FAILURE;
       }
 
       postprocess->type =
           gst_ml_module_caps_get_type (postprocess->module->Caps ());
-      if (GST_IS_INVALID_TYPE (postprocess->type)) {
-        GST_ELEMENT_ERROR (postprocess, RESOURCE, FAILED, (NULL),
-            ("Failed to get module type!"));
+
+      if (postprocess->type == g_quark_from_string ("unknown")) {
+        GST_ERROR_OBJECT (postprocess, "Failed to get module type!");
         return GST_STATE_CHANGE_FAILURE;
       }
 
@@ -2228,10 +2212,10 @@ gst_ml_post_process_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     GstBuffer * outbuffer)
 {
   GstMLPostProcess *postprocess = GST_ML_POST_PROCESS (base);
-  GstClockTime time = GST_CLOCK_TIME_NONE;
-  gboolean success = FALSE;
   GstVideoFrame vframe = { 0, };
   GstMLFrame mlframe = {};
+  GstClockTime time = GST_CLOCK_TIME_NONE;
+  gboolean success = FALSE;
   std::any output;
 
   // GAP buffer, nothing to do. Propagate output buffer downstream.
@@ -2241,9 +2225,6 @@ gst_ml_post_process_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 
   // Perform pre-processing on the input buffer.
   time = gst_util_get_timestamp ();
-
-  // Clear previously stored values.
-  g_ptr_array_remove_range (postprocess->info, 0, postprocess->info->len);
 
   // Set the maximum number of predictions based on the batch size.
   if (GST_IS_DETECTION_TYPE (postprocess->type)) {
@@ -2258,9 +2239,10 @@ gst_ml_post_process_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     output = TextPrediction();
   } else if (GST_IS_SEGMENTATION_TYPE (postprocess->type) ||
       GST_IS_SUPER_RESOLUTION_TYPE (postprocess->type)) {
+    VideoFrame frame;
 
     if (!gst_video_frame_map (&vframe, postprocess->vinfo, outbuffer,
-          (GstMapFlags) (GST_MAP_READWRITE | GST_VIDEO_FRAME_MAP_FLAG_NO_REF))) {
+            (GstMapFlags) (GST_MAP_READWRITE | GST_VIDEO_FRAME_MAP_FLAG_NO_REF))) {
       GST_ERROR_OBJECT (postprocess, "Failed to map output buffer!");
       return GST_FLOW_ERROR;
     }
@@ -2277,32 +2259,29 @@ gst_ml_post_process_transform (GstBaseTransform * base, GstBuffer * inbuffer,
     }
 #endif // HAVE_LINUX_DMA_BUF_H
 
-    VideoFrame frame;
-
-    if (gst_video_frame_to_module_frame (vframe, frame)) {
-      output = frame;
-    } else {
-      GST_ERROR_OBJECT (postprocess, "Convert video frame failed!");
+    if (!gst_video_frame_to_module_frame (&vframe, frame)) {
+      GST_ERROR_OBJECT (postprocess, "Failed to translate video frame!");
       gst_video_frame_unmap (&vframe);
       return GST_FLOW_ERROR;
     }
+
+    output = std::move(frame);
   } else if (GST_IS_TENSOR_TYPE (postprocess->type)) {
+    Tensors tensors;
 
     if (!gst_ml_frame_map (&mlframe, postprocess->outmlinfo, outbuffer,
-          GST_MAP_READWRITE)) {
+            GST_MAP_READWRITE)) {
       GST_ERROR_OBJECT (postprocess, "Failed to map output buffer!");
       return GST_FLOW_ERROR;
     }
 
-    Tensors tensors;
-
-    if (!gst_ml_tensors_convert (mlframe, outbuffer, tensors)) {
+    if (!gst_ml_frame_to_module_tensors (&mlframe, -1, tensors)) {
       GST_ERROR_OBJECT (postprocess, "Convert ml frame failed!");
       gst_ml_frame_unmap (&mlframe);
       return GST_FLOW_ERROR;
     }
 
-    output = tensors;
+    output = std::move(tensors);
   }
 
   // Call the submodule process funtion.
@@ -2345,33 +2324,30 @@ gst_ml_post_process_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   time = gst_util_get_timestamp ();
 
   if (postprocess->mode == OUTPUT_MODE_VIDEO) {
-    GstVideoFrame vframe = {0};
-
     if (!gst_video_frame_map (&vframe, postprocess->vinfo, outbuffer,
-          (GstMapFlags) (GST_MAP_READWRITE  | GST_VIDEO_FRAME_MAP_FLAG_NO_REF))) {
+            (GstMapFlags) (GST_MAP_READWRITE | GST_VIDEO_FRAME_MAP_FLAG_NO_REF))) {
       GST_ERROR_OBJECT (postprocess, "Failed to map output video buffer!");
       return GST_FLOW_ERROR;
     }
 
     if (GST_IS_DETECTION_TYPE (postprocess->type)) {
       success = gst_ml_video_detection_fill_video_output (postprocess,
-          output, outbuffer, &vframe);
+          output, &vframe);
     } else if (GST_IS_CLASSIFICATION_TYPE (postprocess->type)) {
       success = gst_ml_video_classification_fill_video_output (postprocess,
-          output, outbuffer, &vframe);
+          output, &vframe);
     } else if (GST_IS_AUDIO_CLASSIFICATION_TYPE (postprocess->type)) {
       success = gst_ml_audio_classification_fill_video_output (postprocess,
-          output, outbuffer, &vframe);
+          output, &vframe);
     } else if (GST_IS_POSE_TYPE (postprocess->type)) {
       success = gst_ml_video_pose_fill_video_output (postprocess,
-          output, outbuffer, &vframe);
+          output, &vframe);
     } else if (GST_IS_TEXT_GENERATION_TYPE (postprocess->type)) {
       success = gst_ml_text_generation_fill_video_output (postprocess,
-          output, outbuffer, &vframe);
+          output, &vframe);
     }
 
     gst_video_frame_unmap (&vframe);
-
   } else if (postprocess->mode == OUTPUT_MODE_TEXT) {
     if (GST_IS_DETECTION_TYPE (postprocess->type)) {
       success = gst_ml_video_detection_fill_text_output (postprocess,
@@ -2402,7 +2378,7 @@ gst_ml_post_process_transform (GstBaseTransform * base, GstBuffer * inbuffer,
       G_GINT64_FORMAT " ms", GST_TIME_AS_MSECONDS (time),
       (GST_TIME_AS_USECONDS (time) % 1000));
 
-  return GST_FLOW_OK;
+  return success ? GST_FLOW_OK : GST_FLOW_ERROR;
 }
 
 static void
@@ -2467,13 +2443,11 @@ static void
 gst_ml_post_process_finalize (GObject * object)
 {
   GstMLPostProcess *postprocess = GST_ML_POST_PROCESS (object);
-  guint idx = 0;
 
   if (postprocess->stashedmlboxes)
     delete postprocess->stashedmlboxes;
 
   g_ptr_array_free (postprocess->info, TRUE);
-
   gst_ml_post_process_module_free (postprocess);
 
   if (postprocess->mlinfo != NULL)
@@ -2574,6 +2548,7 @@ gst_ml_post_process_init (GstMLPostProcess * postprocess)
 
   postprocess->module = NULL;
   postprocess->handle = NULL;
+  postprocess->type = g_quark_from_string ("unknown");
 
   postprocess->stage_id = 0;
 
