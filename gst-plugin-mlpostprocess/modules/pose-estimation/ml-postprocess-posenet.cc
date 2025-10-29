@@ -59,6 +59,16 @@ static const std::string kModuleCaps = R"(
         [1, [5, 251], [5, 251], [2, 34]],
         [1, [5, 251], [5, 251], [4, 64]],
       ]
+    },
+    {
+      "format": ["FLOAT32"],
+      "dimensions": [
+        [1, 17, 33, 17],
+        [1, 34, 33, 17],
+        [1, 32, 33, 17],
+        [1, 32, 33, 17],
+        [1, 17, 33, 17]
+      ]
     }
   ]
 }
@@ -124,12 +134,18 @@ static bool MlCompareRootpoints(RootPoint& a, RootPoint& b) {
 void Module::ExtractRootpoints(const Tensors& tensors,
                               std::vector<RootPoint>& rootpoints) {
 
-  // The 2nd dimension of each tensor represents the matrix height.
-  int32_t n_rows = tensors[0].dimensions[1];
-  // The 3rd dimension of each tensor represents the matrix width.
-  int32_t n_columns = tensors[0].dimensions[2];
-  // The 4th dimension of 1st tensor represents the number of parts in the pose.
-  uint32_t n_parts = tensors[0].dimensions[3];
+  bool is_five_tensor = (tensors.size() == 5);
+
+  int32_t n_keypoints, n_rows, n_columns;
+  if (is_five_tensor) {
+    n_keypoints = tensors[0].dimensions[1];
+    n_rows = tensors[0].dimensions[2];
+    n_columns = tensors[0].dimensions[3];
+  } else {
+    n_rows = tensors[0].dimensions[1];
+    n_columns = tensors[0].dimensions[2];
+    n_keypoints = tensors[0].dimensions[3];
+  }
 
   // Convenient pointer to the keypoints heatmap inside the 1st tensor.
   const float *heatmap = static_cast<const float*>(tensors[0].data);
@@ -145,15 +161,18 @@ void Module::ExtractRootpoints(const Tensors& tensors,
   float threshold = log(threshold_ / (1 - threshold_));
 
   // Iterate the heatmap and find the keypoint with highest score for each block.
-  for (int32_t row = 0; row < n_rows; row++) {
-    for (int32_t column = 0; column < n_columns; column++) {
-      for (uint32_t num = 0; num < n_parts; num++) {
-
+  for (int32_t kp_idx = 0; kp_idx < n_keypoints; kp_idx++) {
+    for (int32_t row = 0; row < n_rows; row++) {
+      for (int32_t column = 0; column < n_columns; column++) {
         RootPoint rootpoint;
         uint32_t x = 0, y = 0, xmin = 0, xmax = 0, ymin = 0, ymax = 0;
         float score = FLT_MIN;
 
-        uint32_t idx = (((row * n_columns) + column) * n_parts) + num;
+        uint32_t idx;
+        if (is_five_tensor)
+          idx = (((kp_idx * n_rows) + row) * n_columns) + column;
+        else
+          idx = (((row * n_columns) + column) * n_keypoints) + kp_idx;
 
         // Extract the keypoint heatmap confidence.
         float confidence = heatmap[idx];
@@ -170,11 +189,16 @@ void Module::ExtractRootpoints(const Tensors& tensors,
         xmax = std::min(column + kLocalMaximumRadius + 1, n_columns);
 
         // Check if this root point is the maximum in the local window.
-        for (y = ymin;(confidence >= score) && (y < ymax); y++) {
-          for (x = xmin;(confidence >= score) && (x < xmax); x++) {
-            idx = (((y * n_columns) + x) * n_parts) + num;
+        for (y = ymin; y < ymax; y++) {
+          for (x = xmin; x < xmax; x++) {
+            if (is_five_tensor)
+              idx = (((kp_idx * n_rows) + y) * n_columns) + x;
+            else
+              idx = (((y * n_columns) + x) * n_keypoints) + kp_idx;
 
-            score = heatmap[idx];
+            float current_score = heatmap[idx];
+            if (current_score > score)
+              score = current_score;
           }
         }
 
@@ -185,19 +209,24 @@ void Module::ExtractRootpoints(const Tensors& tensors,
         // Apply a sigmoid function in order to normalize the heatmap confidence.
         confidence = 1.0 / (1.0 + expf(- confidence));
 
-        rootpoint.id = num;
+        rootpoint.id = kp_idx;
         rootpoint.confidence = confidence * 100.0;
 
         rootpoint.x = column * paxelsize[0];
         rootpoint.y = row * paxelsize[1];
 
-        idx = (((y * n_columns) + x) * n_parts * 2) + num;
-
-        // Dequantize the keypoint Y axis offset and add it ot the end coordinate.
-        rootpoint.y += offsets[idx];
-
-        // Dequantize the keypoint X axis offset and add it ot the end coordinate.
-        rootpoint.x += offsets[idx + n_parts];
+        // Calculate offset indices based on tensor format
+        if (is_five_tensor) {
+          rootpoint.y += offsets[idx];
+          idx = ((((kp_idx + n_keypoints) * n_rows) + row) * n_columns) + column;
+          rootpoint.x += offsets[idx];
+        } else {
+          idx = (((row * n_columns) + column) * n_keypoints * 2) + kp_idx;
+          // Dequantize the keypoint Y axis offset and add it to the end coordinate.
+          rootpoint.y += offsets[idx];
+          // Dequantize the keypoint X axis offset and add it to the end coordinate.
+          rootpoint.x += offsets[idx + n_keypoints];
+        }
 
         LOG(logger_, kTrace, "Root Keypoint %u [%.2f x %.2f], confidence %.2f",
             rootpoint.id, rootpoint.x, rootpoint.y, rootpoint.confidence);
@@ -215,24 +244,35 @@ void Module::ExtractRootpoints(const Tensors& tensors,
 void Module::TraverseSkeletonLinks(const Tensors& tensors,
                                    PoseEstimation &entry, bool backwards) {
 
+  bool is_five_tensor = (tensors.size() == 5);
   uint32_t num = 0;
-  // The 2nd dimension of each tensor represents the matrix height.
-  uint32_t n_rows = tensors[0].dimensions[1];
-  // The 3rd dimension of each tensor represents the matrix width.
-  uint32_t n_columns = tensors[0].dimensions[2];
-  // The 4th dimension of 1st tensor represents the number of keypoints.
-  uint32_t n_parts = tensors[0].dimensions[3];
 
-  // The 4th dimension of 3rd tensor represents the number of keypoint links.
-  // Division by 4 due to X and Y coordinates and backwards and forward values.
-  int32_t n_edges = tensors[2].dimensions[3] / 4;
+  int32_t n_keypoints, n_rows, n_columns, n_edges;
+  if (is_five_tensor) {
+    n_keypoints = tensors[0].dimensions[1];
+    n_rows = tensors[0].dimensions[2];
+    n_columns = tensors[0].dimensions[3];
+    n_edges = tensors[2].dimensions[1] / 2;
+  } else {
+    n_rows = tensors[0].dimensions[1];
+    n_columns = tensors[0].dimensions[2];
+    n_keypoints = tensors[0].dimensions[3];
+    // Division by 4 due to X and Y coordinates and backwards and forward values.
+    n_edges = tensors[2].dimensions[3] / 4;
+  }
 
   // Pointer to the keypoints heatmap inside the 1st tensor.
   const float *heatmap = static_cast<const float*>(tensors[0].data);
   // Pointer to the keypoints coordinate offsets inside the 2nd tensor.
   const float *offsets = static_cast<const float*>(tensors[1].data);
-  // Pointer to the displacement data inside the 3rd tensor.
-  const float *displacements = static_cast<const float*>(tensors[2].data);
+  // Pointer to the displacement data
+  const float *displacements;
+  if (is_five_tensor)
+    displacements = backwards ?
+        static_cast<const float*>(tensors[3].data) :
+        static_cast<const float*>(tensors[2].data);
+  else
+    displacements = static_cast<const float*>(tensors[2].data);
 
   // The width(position 0) and height(position 1) of the paxel block.
   uint32_t paxelsize[2] = {0, 0};
@@ -263,36 +303,64 @@ void Module::TraverseSkeletonLinks(const Tensors& tensors,
        (double)0,(double)(n_columns - 1));
 
     // Calculate the position of source keypoint inside the displacements tensor.
-    uint32_t idx = (((row * n_columns) + column) * (n_edges * 4)) + id;
-    // For reverse iteration an additional offset by half of the edges is needed.
-    idx += backwards ?(n_edges * 2) : 0;
+    uint32_t idx;
+    if (is_five_tensor) {
+      idx = (((id * n_rows) + row) * n_columns) + column;
+      float displacement = displacements[idx];
+      d_kp.y = s_kp.y + displacement;
 
-    // Calculate the displaced Y axis value in the matrix coordinate system.
-    float displacement = displacements[idx];
-    d_kp.y = s_kp.y + displacement;
+      idx = ((((id + n_edges) * n_rows) + row) * n_columns) + column;
+      displacement = displacements[idx];
+      d_kp.x = s_kp.x + displacement;
+    } else {
+      idx = (((row * n_columns) + column) * (n_edges * 4)) + id;
+      // For reverse iteration an additional offset by half of the edges is needed.
+      idx += backwards ? (n_edges * 2) : 0;
 
-    // Calculate the displaced X axis value in the matrix coordinate system.
-    displacement = displacements[idx + n_edges];
-    d_kp.x = s_kp.x + displacement;
+      // Calculate the displaced Y axis value in the matrix coordinate system.
+      float displacement = displacements[idx];
+      d_kp.y = s_kp.y + displacement;
+
+      // Calculate the displaced X axis value in the matrix coordinate system.
+      displacement = displacements[idx + n_edges];
+      d_kp.x = s_kp.x + displacement;
+    }
 
     // Refine the destination keypoint coordinates.
     do {
       // Calculate original X & Y axis values in the matrix coordinate system.
-      row = std::clamp(round(d_kp.y / paxelsize[1]),
-         (double)0,(double)(n_rows - 1));
-      column = std::clamp(round(d_kp.x / paxelsize[0]),
-         (double)0,(double)(n_columns - 1));
+      if (is_five_tensor) {
+        row = std::clamp(round(d_kp.y / paxelsize[1]),
+            (double)0, (double)(n_rows - 1));
+        column = std::clamp(round(d_kp.x / paxelsize[0]),
+            (double)0, (double)(n_columns - 1));
 
-      // Calculate the position of target keypoint inside the offsets tensor.
-      idx = (((row * n_columns) + column) * n_parts * 2) + d_kp_id;
+        uint32_t y_idx = (((d_kp_id * n_rows) + row) * n_columns) + column;
+        uint32_t x_idx = ((((d_kp_id + n_keypoints) * n_rows) + row) *
+            n_columns) + column;
 
-      // Dequantize the keypoint Y axis offset and add it ot the end coordinate.
-      float offset = offsets[idx];
-      d_kp.y = row * paxelsize[1] + offset;
+        float y_offset = offsets[y_idx];
+        d_kp.y = row * paxelsize[1] + y_offset;
 
-      // Dequantize the keypoint X axis offset and add it ot the end coordinate.
-      offset = offsets[idx + n_parts];
-      d_kp.x = column * paxelsize[0] + offset;
+        float x_offset = offsets[x_idx];
+        d_kp.x = column * paxelsize[0] + x_offset;
+      } else {
+        row = std::clamp(round(d_kp.y / paxelsize[1]),
+            (double)0, (double)(n_rows - 1));
+        column = std::clamp(round(d_kp.x / paxelsize[0]),
+            (double)0, (double)(n_columns - 1));
+
+        // Calculate the position of target keypoint inside the offsets tensor.
+        idx = (((row * n_columns) + column) * n_keypoints * 2) + d_kp_id;
+
+        // Dequantize the keypoint Y axis offset and add it to the end coordinate.
+        float offset = offsets[idx];
+        d_kp.y = row * paxelsize[1] + offset;
+
+        // Dequantize the keypoint X axis offset and add it to the end coordinate.
+        offset = offsets[idx + n_keypoints];
+        d_kp.x = column * paxelsize[0] + offset;
+      }
     } while (++num < kNumRefinementSteps);
 
     // Clamp values outside the range.
@@ -308,7 +376,10 @@ void Module::TraverseSkeletonLinks(const Tensors& tensors,
        (double)0,(double)(n_columns - 1));
 
     // Calculate the position of target keypoint inside the heatmap tensor.
-    idx = (((row * n_columns) + column) * n_parts) + d_kp_id;
+    if (is_five_tensor)
+      idx = (((d_kp_id * n_rows) + row) * n_columns) + column;
+    else
+      idx = (((row * n_columns) + column) * n_keypoints) + d_kp_id;
 
     // Extract the keypoint heatmap confidence.
     float confidence = heatmap[idx];
@@ -326,7 +397,7 @@ void Module::TraverseSkeletonLinks(const Tensors& tensors,
         d_kp.name.c_str(), d_kp.x, d_kp.y, d_kp.confidence);
 
     // Increase the overall prediction confidence with the found keypoint.
-    entry.confidence += d_kp.confidence / n_parts;
+    entry.confidence += d_kp.confidence / n_keypoints;
   }
 }
 
@@ -396,6 +467,93 @@ void Module::KeypointTransformCoordinates(Keypoint& keypoint,
   keypoint.y = (keypoint.y - region.y) / region.height;
 }
 
+void Module::ParseTensorFrame(const Tensors& tensors, Dictionary& mlparams,
+                              std::any& output) {
+  std::vector<RootPoint> rootpoints;
+
+  PoseEstimations& estimations =
+      std::any_cast<PoseEstimations&>(output);
+
+  // Get region
+  Region& region =
+      std::any_cast<Region&>(mlparams["input-tensor-region"]);
+
+  bool is_five_tensor = (tensors.size() == 5);
+
+  // Determine number of keypoints based on tensor format
+  uint32_t n_keypoints;
+  if (is_five_tensor)
+    n_keypoints = tensors[0].dimensions[1];
+  else
+    n_keypoints = tensors[0].dimensions[3];
+
+  // Find the keypoints with highest score for each block inside the heatmap.
+  ExtractRootpoints(tensors, rootpoints);
+
+  // Iterate over the root keypoints and build up pose predictions.
+  for (uint32_t idx = 0; idx < rootpoints.size(); idx++) {
+    RootPoint& rootpoint = rootpoints[idx];
+    PoseEstimation entry;
+
+    entry.keypoints.resize(n_keypoints);
+
+    Keypoint& keypoint = entry.keypoints[rootpoint.id];
+    keypoint.x = rootpoint.x;
+    keypoint.y = rootpoint.y;
+    keypoint.confidence = rootpoint.confidence;
+
+    keypoint.name = labels_parser_.GetLabel(rootpoint.id);
+    keypoint.color = labels_parser_.GetColor(rootpoint.id);
+
+    entry.confidence = keypoint.confidence / n_keypoints;
+
+    LOG(logger_, kTrace, "Seed Keypoint: '%s' [%.2f x %.2f], confidence %.2f",
+        keypoint.name.c_str(), keypoint.x, keypoint.y, keypoint.confidence);
+
+    // Iterate backwards over the skeleton links to find the seed keypoint.
+    TraverseSkeletonLinks(tensors, entry, true);
+    // Iterate forward over the skeleton links to find all other keypoints.
+    TraverseSkeletonLinks(tensors, entry, false);
+
+    // Non-Max Suppression (NMS) algorithm.
+    // If the NMS result is below 0 don't create new pose prediction.
+    int32_t nms = NonMaxSuppression(entry, estimations);
+
+    // If the NMS result is -2 don't add the prediction to the list.
+    if (nms == (-2))
+      continue;
+
+    KeypointLinks links;
+    for (uint32_t num = 0; num < connections_.size(); num++) {
+      KeypointLinkIds& lk = connections_[num];
+      links.push_back(
+          KeypointLink(entry.keypoints[lk.s_kp_id],
+              entry.keypoints[lk.d_kp_id]));
+    }
+
+    if (is_five_tensor)
+      entry.links = std::move(links);
+    else
+      entry.links = links;
+
+    // If the NMS result is above -1 remove the entry with the nms index.
+    if (nms >= 0)
+      estimations.erase(estimations.begin() + nms);
+
+    estimations.push_back(entry);
+  }
+
+  // Transform coordinates to relative with extracted source aspect ratio.
+  for (uint32_t idx = 0; idx < estimations.size(); idx++) {
+    PoseEstimation& entry = estimations[idx];
+
+    for (uint32_t num = 0; num < entry.keypoints.size(); num++) {
+      Keypoint& keypoint = entry.keypoints[num];
+      KeypointTransformCoordinates(keypoint, region);
+    }
+  }
+}
+
 std::string Module::Caps() {
 
   return kModuleCaps;
@@ -433,19 +591,10 @@ bool Module::Configure(const std::string& labels_file,
 bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
                      std::any& output) {
 
-  std::vector<RootPoint> rootpoints;
-
   if (output.type() != typeid(PoseEstimations)) {
     LOG(logger_, kError, "Unexpected output type!");
     return false;
   }
-
-  PoseEstimations& estimations =
-      std::any_cast<PoseEstimations&>(output);
-
-  // Get region
-  Region& region =
-      std::any_cast<Region&>(mlparams["input-tensor-region"]);
 
   // Get video resolution
   Resolution& resolution =
@@ -454,75 +603,11 @@ bool Module::Process(const Tensors& tensors, Dictionary& mlparams,
   source_width_ = resolution.width;
   source_height_ = resolution.height;
 
-  // The 4th dimension of 1st tensor represents the number of parts in the pose.
-  uint32_t n_parts = tensors[0].dimensions[3];
-
-  // Find the keypoints with highest score for each block inside the heatmap.
-  ExtractRootpoints(tensors, rootpoints);
-
-  // Iterate over the root keypoints and build up pose predictions.
-  for (uint32_t idx = 0; idx < rootpoints.size(); idx++) {
-    RootPoint& rootpoint = rootpoints[idx];
-    PoseEstimation entry;
-
-    // Init all keypoints
-    for (uint32_t num = 0; num < n_parts; num++) {
-      Keypoint kp;
-      entry.keypoints.emplace_back(std::move(kp));
-    }
-
-    Keypoint& keypoint = entry.keypoints[rootpoint.id];
-    keypoint.x = rootpoint.x;
-    keypoint.y = rootpoint.y;
-    keypoint.confidence = rootpoint.confidence;
-
-    keypoint.name = labels_parser_.GetLabel(rootpoint.id);
-    keypoint.color = labels_parser_.GetColor(rootpoint.id);
-
-    entry.confidence = keypoint.confidence / n_parts;
-
-    LOG(logger_, kTrace, "Seed Keypoint: '%s' [%.2f x %.2f], confidence %.2f",
-        keypoint.name.c_str(), keypoint.x, keypoint.y, keypoint.confidence);
-
-    // Iterate backwards over the skeleton links to find the seed keypoint.
-    TraverseSkeletonLinks(tensors, entry, true);
-    // Iterate forward over the skeleton links to find all other keypoints.
-    TraverseSkeletonLinks(tensors, entry, false);
-
-    // Non-Max Suppression(NMS) algorithm.
-    // If the NMS result is below 0 don't create new pose prediction.
-    int32_t nms = NonMaxSuppression(entry, estimations);
-
-    // If the NMS result is -2 don't add the prediction to the list.
-    if (nms == (-2)) {
-      continue;
-    }
-
-    KeypointLinks links;
-
-    for (uint32_t num = 0; num < connections_.size(); num++) {
-      KeypointLinkIds& lk = connections_[num];
-      links.emplace_back(entry.keypoints[lk.s_kp_id],
-                         entry.keypoints[lk.d_kp_id]);
-    }
-    entry.links = links;
-
-    // If the NMS result is above -1 remove the entry with the nms index.
-    if (nms >= 0)
-      estimations.erase(estimations.begin() + nms);
-
-    estimations.emplace_back(std::move(entry));
-  }
-
-  // TODO Optimize?
-  // Transform coordinates to relative with extracted source aspect ratio.
-  for (uint32_t idx = 0; idx < estimations.size(); idx++) {
-    PoseEstimation& entry = estimations[idx];
-
-    for (uint32_t num = 0; num < entry.keypoints.size(); num++) {
-      Keypoint& keypoint = entry.keypoints[num];
-      KeypointTransformCoordinates(keypoint, region);
-    }
+  if (tensors.size() == 5 || tensors.size() == 3)
+    ParseTensorFrame(tensors, mlparams, output);
+  else {
+    LOG(logger_, kError, "ML frame with unsupported post-processing procedure!");
+    return false;
   }
 
   return true;
