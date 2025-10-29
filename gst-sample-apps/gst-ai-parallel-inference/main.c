@@ -1051,6 +1051,11 @@ parse_json (gchar * config_file, GstAppOptions * options)
         g_strdup (json_object_get_string_member (root_obj, "classification-labels"));
   }
 
+  if (json_object_has_member (root_obj, "pose-settings-path")) {
+    options->pose_settings_path =
+        g_strdup (json_object_get_string_member (root_obj, "pose-settings-path"));
+  }
+
   g_object_unref (parser);
   return 0;
 }
@@ -1165,7 +1170,12 @@ main (gint argc, gchar * argv[])
     "  classification-labels: \"/PATH\"\n"
     "      Path to Classification labels\n"
     "      Default Classification labels: "
-    DEFAULT_CLASSIFICATION_LABELS"\n",
+    DEFAULT_CLASSIFICATION_LABELS"\n"
+    "  pose-settings-path: \"/PATH\"\n"
+    "      Path to pose-settings-labels labels\n"
+    "      Default pose settings labels: "
+    DEFAULT_POSE_SETTINGS_PATH"\n"
+    ,
     app_name, DEFAULT_CONFIG_FILE, camera_description);
   help_description[4095] = '\0';
 
