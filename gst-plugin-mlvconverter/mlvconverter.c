@@ -69,6 +69,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <dlfcn.h>
 #include <unistd.h>
 
@@ -120,6 +121,7 @@ G_DEFINE_TYPE (GstMLVideoConverter, gst_ml_video_converter,
 // (2^64 - 1) / (2^8 - 1)
 #define UINT64_CONVERSION_SIGMA        72340172838076673.0
 
+#define MATRIX_MAX_SIZE                8
 
 #define GET_MEAN_VALUE(mean, idx) (mean->len > idx) ? \
     g_array_index (mean, gdouble, idx) : DEFAULT_PROP_MEAN
@@ -546,6 +548,134 @@ gst_video_frame_unmap_and_reset (GstVideoFrame * frame)
   gst_video_info_init (&(frame->info));
 }
 
+static gboolean
+gst_matrix_inverse (const gdouble matrix[MATRIX_MAX_SIZE][MATRIX_MAX_SIZE],
+    const guint size, gdouble inverse[MATRIX_MAX_SIZE][MATRIX_MAX_SIZE])
+{
+  guint row = 0, column = 0, idx = 0, num = 0, maxrow = 0;
+  gdouble value = 0.0, augmented[MATRIX_MAX_SIZE][2 * MATRIX_MAX_SIZE] = {0};
+
+  // Form augmented matrix with the help of input and an identity matrix.
+  for (row = 0; row < size; row++) {
+    for (column = 0; column < size; column++) {
+      augmented[row][column] = matrix[row][column];
+      augmented[row][size + column] = (row == column) ? 1.0 : 0.0;
+    }
+  }
+
+  // Find the inverse matrix using Gauss-Jordan elimination.
+  for (row = 0; row < size; row++, maxrow = row) {
+    // Find the row with the highest pivot point among current and remaining rows.
+    for (idx = row + 1; idx < size; idx++)
+      maxrow = fabs(augmented[idx][row]) > fabs(augmented[maxrow][row]) ? idx : maxrow;
+
+    // Check if pivot is 0 - meaning a singular matrix.
+    if (augmented[maxrow][row] == 0.0)
+      return FALSE;
+
+    // Swap rows if there is a nother row with higher pivot value.
+    for (column = 0; (maxrow != row) && (column < (2 * size)); column++) {
+      value = augmented[row][column];
+      augmented[row][column] = augmented[maxrow][column];
+      augmented[maxrow][column] = value;
+    }
+
+    // Normalize the current row by making the value of the pivot element to 1.
+    value = augmented[row][row];
+
+    for (column = 0; column < (2 * size); column++)
+      augmented[row][column] /= value;
+
+    // Eliminate all elements above and under the pivot point (row-reduction).
+    for (idx = 0, column = row; idx < size; idx++) {
+      if (idx == column)
+        continue;
+
+      value = augmented[idx][column];
+
+      for (num = 0; num < (2 * size); num++)
+        augmented[idx][num] -= augmented[row][num] * value;
+    }
+  }
+
+  // Extract the inverse matrix values from the augmented matrix.
+  for (row = 0; row < size; row++)
+    for (column = 0; column < size; column++)
+      inverse[row][column] = augmented[row][size + column];
+
+  return TRUE;
+}
+
+static gboolean
+gst_video_source_inverse_affine_matrix (GstVideoQuadrilateral * source,
+    gdouble matrix[MATRIX_MAX_SIZE][MATRIX_MAX_SIZE])
+{
+  GstVideoPoint inpoints[4] = {0}, outpoints[4] = {0};
+  gdouble intermediary[MATRIX_MAX_SIZE][MATRIX_MAX_SIZE] = {0};
+  gdouble inverse[MATRIX_MAX_SIZE][MATRIX_MAX_SIZE] = {0};
+  gdouble affine[MATRIX_MAX_SIZE][MATRIX_MAX_SIZE] = {0};
+  guint idx = 0, num = 0, row = 0, column = 0;
+
+  inpoints[0] = source->a;
+  inpoints[1] = source->b;
+  inpoints[2] = source->c;
+  inpoints[3] = source->d;
+
+  // End points are in relative coordinates as post-process outputs are relative.
+  outpoints[0] = (GstVideoPoint) {0, 0};
+  outpoints[1] = (GstVideoPoint) {0, 1};
+  outpoints[2] = (GstVideoPoint) {1, 0};
+  outpoints[3] = (GstVideoPoint) {1, 1};
+
+  // Represent the system of 8 linear equations for the 4 points as a matrix.
+  // x' = (A0 * x + A1 * y + A2) / (C0 * x + C1 * y + C2)
+  // y' = (B0 * x + B1 * y + B2) / (C0 * x + C1 * y + C2)
+  //
+  // System has 8 unknowns with C2 element equal to 1. After simplification:
+  // | ax  ay  1   0   0  0  -ax*ax'  -ay*ax' | | A0 |   | ax' |
+  // |  0   0  0  ax  ay  1  -ax*ay'  -ay*ay' | | A1 |   | ay' |
+  // | bx  by  1   0   0  0  -bx*bx'  -by*bx' | | A2 |   | bx' |
+  // |  0   0  0  bx  by  1  -bx*by'  -by*by' | | B0 | = | by' |
+  // | cx  cy  1   0   0  0  -cx*cx'  -cy*cx' | | B1 |   | cx' |
+  // |  0   0  0  cx  cy  1  -cx*cy'  -cy*cy' | | B2 |   | cy' |
+  // | dx  dy  1   0   0  0  -dx*dx'  -dy*dx' | | C0 |   | dx' |
+  // |  0   0  0  dx  dy  1  -dx*dy'  -dy*dy' | | C1 |   | dy' |
+  for (num = 0, idx = 0; num < 4; num++, idx += 2) {
+    intermediary[idx][0] = inpoints[num].x;
+    intermediary[idx][1] = inpoints[num].y;
+    intermediary[idx][2] = 1;
+    intermediary[idx][6] = -inpoints[num].x * outpoints[num].x;
+    intermediary[idx][7] = -inpoints[num].y * outpoints[num].x;
+
+    intermediary[idx + 1][3] = inpoints[num].x;
+    intermediary[idx + 1][4] = inpoints[num].y;
+    intermediary[idx + 1][5] = 1;
+    intermediary[idx + 1][6] = -inpoints[num].x * outpoints[num].y;
+    intermediary[idx + 1][7] = -inpoints[num].y * outpoints[num].y;
+  }
+
+  // Find the inverse matrix for usage in A x X = B -> inv(A) x B = X
+  if (!gst_matrix_inverse (intermediary, 8, inverse))
+    return FALSE;
+
+  // Find the matrix for the affine transformation from source to destination.
+  for (idx = 0; idx < 8; idx++, row = (idx / 3), column = (idx % 3)) {
+    for (num = 0; num < 4; num++) {
+      affine[row][column] += inverse[idx][num * 2] * outpoints[num].x;
+      affine[row][column] += inverse[idx][num * 2 + 1] * outpoints[num].y;
+    }
+  }
+
+  // Last element C2 of the affine matrix is 1 as per initial condition.
+  affine[2][2] = 1.0;
+
+  // Find the inverse matrix which post-process will use for correction.
+  if (!gst_matrix_inverse (affine, 3, matrix))
+    return FALSE;
+
+  return TRUE;
+}
+
 static GstProtectionMeta*
 gst_ml_video_converter_retrieve_protection_meta (GstMLVideoConverter * mlconverter,
       GstBuffer * inbuffer, GstBuffer * outbuffer)
@@ -587,33 +717,177 @@ gst_ml_video_converter_retrieve_protection_meta (GstMLVideoConverter * mlconvert
   return pmeta;
 }
 
+static gboolean
+gst_ml_video_converter_update_source (GstMLVideoConverter * mlconverter,
+    GstVideoRegionOfInterestMeta * roimeta, GstVideoBlit * vblit,
+    GstProtectionMeta * pmeta)
+{
+  GstVideoQuadrilateral *source = NULL;
+  GstStructure *param = NULL, *xtraparams = NULL;
+  const GValue *value = NULL;
+  GValue matvals = G_VALUE_INIT, val = G_VALUE_INIT;
+  gdouble matrix[3][3] = {0}, inverse[MATRIX_MAX_SIZE][MATRIX_MAX_SIZE] = {0};
+  gdouble intermediary[MATRIX_MAX_SIZE][MATRIX_MAX_SIZE] = {0};
+  guint idx = 0, num = 0, row = 0, column = 0;
+
+  source = &(vblit->source);
+  vblit->mask |= GST_VCE_MASK_SOURCE;
+
+  // Initialize the source region with full dimensions of the blit frame.
+  source->a.x = source->a.y = source->b.x = source->c.y = 0;
+  source->c.x = source->d.x = GST_VIDEO_FRAME_WIDTH (vblit->frame);
+  source->b.y = source->d.y = GST_VIDEO_FRAME_HEIGHT (vblit->frame);
+
+  if (roimeta == NULL)
+    return TRUE;
+
+  // Update the quadrilateral coordinates with the data from the ROI meta.
+  source->a = (GstVideoPoint){roimeta->x, roimeta->y};
+  source->b = (GstVideoPoint){roimeta->x, roimeta->y + roimeta->h};
+  source->c = (GstVideoPoint){roimeta->x + roimeta->w, roimeta->y};
+  source->d = (GstVideoPoint){roimeta->x + roimeta->w, roimeta->y + roimeta->h};
+
+  GST_TRACE_OBJECT (mlconverter, "ROI[%d %d %d %d]: A(%f, %f) B(%f, %f) "
+      "C(%f, %f) D(%f, %f)", roimeta->x, roimeta->y, roimeta->w, roimeta->h,
+      source->a.x, source->a.y, source->b.x, source->b.y, source->c.x,
+      source->c.y, source->d.x, source->d.y);
+
+  // Propagate the ID of the ROI from which this batch position was created.
+  // TODO Protection meta needs revision when tensors with depth are involved.
+  gst_structure_set (pmeta->info, "parent-id", G_TYPE_INT, roimeta->id, NULL);
+
+  param = gst_video_region_of_interest_meta_get_param (roimeta, "ObjectDetection");
+  if (param == NULL)
+    return TRUE;
+
+  if ((value = gst_structure_get_value (param, "xtraparams")) == NULL)
+    return TRUE;
+
+  xtraparams = GST_STRUCTURE (g_value_get_boxed (value));
+  value = gst_structure_get_value (xtraparams, "affine-matrix");
+
+  if (value == NULL)
+    return TRUE;
+
+  // Expected number of values is 9 for a 3x3 affine matrix.
+  if (gst_value_array_get_size (value) != 9) {
+    GST_ERROR_OBJECT (mlconverter, "Invalid number of values in the "
+        "'affine-matrix' field!");
+    return FALSE;
+  }
+
+  for (idx = 0; idx < 9; idx++, row = (idx / 3), num = (idx % 3))
+    matrix[row][num] = g_value_get_double (gst_value_array_get_value (value, idx));
+
+  gst_video_point_affine_correction (&(source->a), matrix);
+  gst_video_point_affine_correction (&(source->b), matrix);
+  gst_video_point_affine_correction (&(source->c), matrix);
+  gst_video_point_affine_correction (&(source->d), matrix);
+
+  GST_TRACE_OBJECT (mlconverter, "Affine transformation quadrilateral: A(%f, %f)"
+      " B(%f, %f) C(%f, %f) D(%f, %f)", source->a.x, source->a.y, source->b.x,
+      source->b.y, source->c.x, source->c.y, source->d.x, source->d.y);
+
+  // Calcualte the inverse affine matrix for source -> relative destination.
+  if (!gst_video_source_inverse_affine_matrix (source, inverse)) {
+    GST_ERROR_OBJECT (mlconverter, "The inverse affine matrix is singular!");
+    return FALSE;
+  }
+
+  // Matrix for converting the coordinates after inverse affine into relative.
+  intermediary[0][0] = 1.0 / roimeta->w;
+  intermediary[1][1] = 1.0 / roimeta->h;
+  intermediary[0][2] = -((gdouble) roimeta->x / roimeta->w);
+  intermediary[1][2] = -((gdouble) roimeta->y / roimeta->h);
+  intermediary[2][2] = 1.0;
+
+  // Multiply the matrices from above in order to get final matrix.
+  for (row = 0; row < 3; row++) {
+    for (column = 0; column < 3; column++) {
+      matrix[row][column] = 0;
+
+      for (num = 0; num < 3; num++)
+        matrix[row][column] += intermediary[row][num] * inverse[num][column];
+    }
+  }
+
+  // Create an inverse affine matrix entry for correction downstream.
+  g_value_init (&matvals, GST_TYPE_ARRAY);
+  g_value_init (&val, G_TYPE_DOUBLE);
+
+  for (row = 0; row < 3; row++) {
+    for (column = 0; column < 3; column++) {
+      g_value_set_double (&val, matrix[row][column]);
+      gst_value_array_append_value (&matvals, &val);
+    }
+  }
+
+  // Propagate the affine matrix for correction of the results in post-process.
+  gst_structure_take_value (pmeta->info, "inverse-affine-matrix", &matvals);
+
+  g_value_unset (&val);
+  g_value_unset (&matvals);
+
+  return TRUE;
+}
+
 static void
 gst_ml_video_converter_update_destination (GstMLVideoConverter * mlconverter,
-    const GstVideoRectangle * source, GstVideoRectangle * destination)
+    GstVideoBlit * vblit, GstProtectionMeta * pmeta)
 {
-  gint maxwidth = 0, maxheight = 0;
+  GstVideoQuadrilateral *source = NULL;
+  GstVideoRectangle *destination = NULL;
+  guint n_batch = 0, depth = 0;
+  gint inwidth = 0, inheight = 0, maxwidth = 0, maxheight = 0;
+
+  destination = &(vblit->destination);
+  vblit->mask |= GST_VCE_MASK_DESTINATION;
+
+  n_batch = GST_ML_INFO_TENSOR_DIM_N (mlconverter->tensorlayout,
+      mlconverter->mlinfo);
+  depth = GST_ML_INFO_TENSOR_DIM_D (mlconverter->tensorlayout,
+      mlconverter->mlinfo);
+
+  maxwidth = GST_VIDEO_FRAME_WIDTH (mlconverter->composition.frame);
+  maxheight = GST_VIDEO_FRAME_HEIGHT (mlconverter->composition.frame) /
+      (n_batch * depth);
+
+  destination->y = destination->x = 0;
+  destination->w = maxwidth;
+  destination->h = maxheight;
 
   // If the image disposition is simply to stretch simply return, nothing to do.
   if (mlconverter->disposition == GST_ML_VIDEO_DISPOSITION_STRETCH)
-    return;
+    goto exit;
 
-  maxwidth = destination->w;
-  maxheight = destination->h;
+  source = &(vblit->source);
+
+  // Get the dimensions of the source rectangle, even if it is tilted.
+  inwidth = sqrt (((source->a.x - source->c.x) * (source->a.x - source->c.x)) +
+      ((source->a.y - source->c.y) * (source->a.y - source->c.y)));
+  inheight = sqrt (((source->a.x - source->b.x) * (source->a.x - source->b.x)) +
+      ((source->a.y - source->b.y) * (source->a.y - source->b.y)));
 
   // Disposition is one of two modes with AR (Aspect Ratio) preservation.
   // Recalculate the destination width or height depending on the ratios.
-  if ((source->w * destination->h) > (source->h * destination->w))
-    destination->h = gst_util_uint64_scale_int (maxwidth, source->h, source->w);
-  else if ((source->w * destination->h) < (source->h * destination->w))
-    destination->w = gst_util_uint64_scale_int (maxheight, source->w, source->h);
+  if ((inwidth * destination->h) > (inheight * destination->w))
+    destination->h = gst_util_uint64_scale_int (maxwidth, inheight, inwidth);
+  else if ((inwidth * destination->h) < (inheight * destination->w))
+    destination->w = gst_util_uint64_scale_int (maxheight, inwidth, inheight);
 
   // No additional adjustment to the X and Y axis are needed, simply return.
   if (mlconverter->disposition == GST_ML_VIDEO_DISPOSITION_TOP_LEFT)
-    return;
+    goto exit;
 
   // Additional correction of X and Y axis for centred image disposition.
   destination->x = (maxwidth - destination->w) / 2;
   destination->y += (maxheight - destination->h) / 2;
+
+exit:
+  // Populate the tensor region actually populated with data for decryption.
+  // Each region is given in separate coordinates, exclude the later added offset.
+  // TODO Protection meta needs revision when tensors with depth are involved.
+  gst_ml_structure_set_source_region (pmeta->info, destination);
 }
 
 static gint
@@ -625,9 +899,9 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
   GstBuffer *outbuffer = NULL;
   GstVideoRegionOfInterestMeta *roimeta = NULL;
   GstProtectionMeta *pmeta = NULL;
+  GstVideoQuadrilateral *source = NULL;
+  GstVideoRectangle *destination = NULL;
   gpointer state = NULL;
-  GstVideoRectangle source = {0}, destination = {0};
-  gint maxwidth = 0, maxheight = 0, offset = 0;
   guint idx = 0, num = 0, depth = 0, n_batch = 0, n_regions = 1, n_positions = 0;
   gboolean success = FALSE;
 
@@ -639,10 +913,6 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
       mlconverter->mlinfo);
   depth = GST_ML_INFO_TENSOR_DIM_D (mlconverter->tensorlayout,
       mlconverter->mlinfo);
-
-  // Fill the maximum width and height of destination rectangles.
-  maxwidth = GST_VIDEO_FRAME_WIDTH (composition->frame);
-  maxheight = GST_VIDEO_FRAME_HEIGHT (composition->frame) / (n_batch * depth);
 
   if GST_CONVERSION_MODE_IS_ROI (mlconverter->mode) {
     n_regions = gst_buffer_get_region_of_interest_n_meta (inbuffer,
@@ -698,65 +968,31 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
 
       // Reset the stashed ROI ID in case it was previously set.
       mlconverter->next_roi_id = -1;
-
-      source.x = roimeta->x;
-      source.y = roimeta->y;
-      source.w = roimeta->w;
-      source.h = roimeta->h;
     } else { // GST_CONVERSION_MODE_IS_IMAGE (mlconverter->mode)
       // Check whether the image was produced as a split from some base image.
       while ((roimeta = GST_BUFFER_ITERATE_ROI_METAS (inbuffer, state)) != NULL) {
         if (roimeta->roi_type == g_quark_from_static_string ("ImageRegion"))
           break;
       }
-
-      if (roimeta != NULL) {
-        source.x = roimeta->x;
-        source.y = roimeta->y;
-        source.w = roimeta->w;
-        source.h = roimeta->h;
-      } else {
-        source.x = source.y = 0;
-        source.w = GST_VIDEO_FRAME_WIDTH (vblit->frame);
-        source.h = GST_VIDEO_FRAME_HEIGHT (vblit->frame);
-      }
     }
-
-    // The Y axis offset for this ROI meta in the output buffer.
-    offset = mlconverter->batch_idx * depth + mlconverter->depth_idx;
-    offset *= maxheight;
-
-    destination.y = offset;
-    destination.x = 0;
-    destination.w = maxwidth;
-    destination.h = maxheight;
-
-    // Update destination dimensions and coordinates based on the disposition.
-    gst_ml_video_converter_update_destination (mlconverter, &source, &destination);
 
     // TODO Protection meta needs revision.
     pmeta = gst_ml_video_converter_retrieve_protection_meta (mlconverter,
         inbuffer, outbuffer);
 
-    // Propagate the ID of the ROI from which this batch position was created.
-    // TODO Protection meta needs revision when tensors with depth are involved.
-    if (roimeta != NULL)
-      gst_structure_set (pmeta->info, "parent-id", G_TYPE_INT, roimeta->id, NULL);
+    // Update blit source quadrilateral and decryption meta based on the ROI meta.
+    if (!gst_ml_video_converter_update_source (mlconverter, roimeta, vblit, pmeta))
+      return -1;
 
-    // Remove the Y axis offset as each region is given in separate coordinates.
-    destination.y -= offset;
+    // Update blit destination rectangle based on the disposition.
+    gst_ml_video_converter_update_destination (mlconverter, vblit, pmeta);
 
-    // Add the tensor region actually populated with data for decryption.
-    // TODO Protection meta needs revision when tensors with depth are involved.
-    gst_ml_structure_set_source_region (pmeta->info, &destination);
+    source = &(vblit->source);
+    destination = &(vblit->destination);
 
-    // Resore the Y axis offset for the composition.
-    destination.y += offset;
-
-    gst_video_rectangle_to_quadrilateral(&source, &(vblit->source));
-
-    vblit->destination = destination;
-    vblit->mask = (GST_VCE_MASK_SOURCE | GST_VCE_MASK_DESTINATION);
+    // Add the Y axis offset for this ROI meta in the output buffer.
+    destination->y += (mlconverter->batch_idx * depth + mlconverter->depth_idx) *
+        (GST_VIDEO_FRAME_HEIGHT (composition->frame) / (n_batch * depth));
 
     // Increment the tracker for the current depth position and if this is the
     // end of a new batch of depth positions then increment the batch index.
@@ -764,10 +1000,12 @@ gst_ml_video_converter_update_blit_params (GstMLVideoConverter * mlconverter,
       GST_BUFFER_OFFSET (outbuffer) |= 1 << mlconverter->batch_idx++;
 
     GST_TRACE_OBJECT (mlconverter, "Sequence[%u / %u] Batch[%u / %u] Depth[%u "
-        "/ %u] Region[%u]: [%d %d %d %d] -> [%d %d %d %d]", mlconverter->seq_idx,
-        mlconverter->n_seq_entries, mlconverter->batch_idx, n_batch,
-        mlconverter->depth_idx, depth, idx, source.x, source.y, source.w,
-        source.h, destination.x, destination.y, destination.w, destination.h);
+        "/ %u] Source[%u]: [A(%f, %f) B(%f, %f) C(%f, %f) D(%f, %f)] Destination"
+        "[%d %d %d %d]", mlconverter->seq_idx, mlconverter->n_seq_entries,
+        mlconverter->batch_idx, n_batch, mlconverter->depth_idx, depth, idx,
+        source->a.x, source->a.y, source->b.x, source->b.y, source->c.x,
+        source->c.y, source->d.x, source->d.y, destination->x, destination->y,
+        destination->w, destination->h);
 
     // Increament the number of populated blits.
     composition->n_blits++;
