@@ -656,14 +656,14 @@ gst_ocv_video_converter_rotate (GstOcvVideoConverter * convert,
     GstOcvObject * s_obj, GstOcvObject * d_obj)
 {
   GstOcvObject l_obj = {};
-  GstVideoConvFlip flip = GST_VCE_FLIP_NONE;
-  gint rotate = 0;
+  GstVideoConvRotate rotate = GST_VCE_ROTATE_0;
+  GstOpenCVFlip flip = GST_OCV_FLIP_NONE;
   guint8 idx = 0;
   gboolean resize = false, cvt_color = false;
 
   // Cache the flip, rotation, resize and color convert flags.
   flip = s_obj->flip;
-  rotate = GST_OCV_GET_ROTATE (s_obj->rotate);
+  rotate = s_obj->rotate;
   resize = s_obj->resize;
   cvt_color = s_obj->cvt_color;
 
@@ -678,8 +678,7 @@ gst_ocv_video_converter_rotate (GstOcvVideoConverter * convert,
     height = s_obj->planes[0].height;
 
     // Dimensions are swapped if 90/270 degree rotation is required.
-    if (rotate == cv::ROTATE_90_CLOCKWISE ||
-        rotate == cv::ROTATE_90_COUNTERCLOCKWISE) {
+    if (rotate == GST_VCE_ROTATE_90 || rotate == GST_VCE_ROTATE_270) {
       width = s_obj->planes[0].height;
       height = s_obj->planes[0].width;
     }
@@ -710,7 +709,7 @@ gst_ocv_video_converter_rotate (GstOcvVideoConverter * convert,
     cv::Mat dst_mat (d_plane->height, d_plane->width, d_plane->channels,
         d_plane->data, d_plane->stride);
 
-    cv::rotate (src_mat, dst_mat, rotate);
+    cv::rotate (src_mat, dst_mat, GST_OCV_GET_ROTATE (rotate));
 
     GST_TRACE ("Rotated plane No. %u", idx);
   }
@@ -740,13 +739,13 @@ gst_ocv_video_converter_flip (GstOcvVideoConverter * convert,
     GstOcvObject * s_obj, GstOcvObject * d_obj)
 {
   GstOcvObject l_obj = {};
-  gint flip = 0;
-  guint8 idx = 0;
   GstVideoConvRotate rotate = GST_VCE_ROTATE_0;
+  GstOpenCVFlip flip = GST_OCV_FLIP_NONE;
+  guint8 idx = 0;
   gboolean resize = false, cvt_color = false;
 
   // Cache the flip, rotation, resize and color convert flags.
-  flip = GST_OCV_GET_FLIP (s_obj->flip);
+  flip = s_obj->flip;
   rotate = s_obj->rotate;
   resize = s_obj->resize;
   cvt_color = s_obj->cvt_color;
@@ -794,7 +793,7 @@ gst_ocv_video_converter_flip (GstOcvVideoConverter * convert,
     cv::Mat dst_mat (d_plane->height, d_plane->width, d_plane->channels,
         d_plane->data, d_plane->stride);
 
-    cv::flip (src_mat, dst_mat, flip);
+    cv::flip (src_mat, dst_mat, GST_OCV_GET_FLIP (flip));
 
     GST_TRACE ("Flipped plane No. %u", idx);
   }
@@ -824,9 +823,9 @@ gst_ocv_video_converter_resize (GstOcvVideoConverter * convert,
     GstOcvObject * s_obj, GstOcvObject * d_obj)
 {
   GstOcvObject l_obj = {};
-  guint8 idx = 0;
-  GstVideoConvFlip flip = GST_VCE_FLIP_NONE;
+  GstOpenCVFlip flip = GST_OCV_FLIP_NONE;
   GstVideoConvRotate rotate = GST_VCE_ROTATE_0;
+  guint8 idx = 0;
   gboolean cvt_color = false;
 
   // Cache the flip, rotation, resize and color convert flags.
@@ -1159,7 +1158,7 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
       }
 
       gst_ocv_update_object (object, "Destination", outframe, &rectangle,
-          GST_VCE_FLIP_NONE, GST_VCE_ROTATE_0, compositions[idx].flags);
+          GST_OCV_FLIP_NONE, GST_VCE_ROTATE_0, compositions[idx].flags);
 
       // Increment the objects counter by 2 for for Source/Destination pair.
       n_objects += 2;
