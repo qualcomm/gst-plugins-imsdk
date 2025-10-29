@@ -270,7 +270,7 @@ gst_buffer_find_region_of_interest_meta (GstBuffer * buffer, const guint index)
     if (roimeta->parent_id != -1)
       continue;
 
-    if (++num == index)
+    if (num++ == index)
       return roimeta;
   }
 
@@ -704,7 +704,7 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
       continue;
 
     // Skip this pad as there is no corresponding ROI meta in single ROI mode.
-    if ((srcpad->mode == GST_VSPLIT_MODE_ROI_SINGLE) && (num++ >= n_metas))
+    if ((srcpad->mode == GST_VSPLIT_MODE_ROI_SINGLE) && (num >= n_metas))
       continue;
 
     // Skip this pad as there is no ROI meta in batched ROI mode.
@@ -763,6 +763,8 @@ gst_video_split_populate_frames_and_compositions (GstVideoSplit * vsplit,
         roimeta = gst_buffer_find_region_of_interest_meta (inframe->buffer, num);
       else if (srcpad->mode == GST_VSPLIT_MODE_ROI_BATCH)
         roimeta = gst_buffer_find_region_of_interest_meta (inframe->buffer, idx);
+
+      num += (srcpad->mode == GST_VSPLIT_MODE_ROI_SINGLE) ? 1 : 0;
 
       // Update source/destination regions and output buffer meta.
       gst_video_split_composition_update_regions (srcpad, composition, roimeta);
