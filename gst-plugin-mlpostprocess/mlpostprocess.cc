@@ -2288,10 +2288,6 @@ gst_ml_video_post_process_change_state (GstElement * element,
   }
 
   ret = GST_ELEMENT_CLASS (parent_class)->change_state (element, transition);
-  if (ret != GST_STATE_CHANGE_SUCCESS) {
-    GST_ERROR_OBJECT (postprocess, "Failure");
-    return ret;
-  }
 
   switch (transition) {
     case GST_STATE_CHANGE_READY_TO_NULL:
