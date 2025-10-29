@@ -277,10 +277,98 @@ gst_ml_post_process_module_set_opts (GstMLPostProcess * postprocess)
   return postprocess->module->Configure (labels, settings);
 }
 
+static void
+gst_ml_post_process_objects_affine_correction (GstMLPostProcess * postprocess,
+    GstStructure * info, ObjectDetections& objects)
+{
+  const GValue *value = NULL;
+  GstVideoPoint a = {}, b = {}, c = {}, d = {};
+  gdouble matrix[3][3] = {0}, top = 0, left = 0, bottom = 0, right = 0;
+  guint idx = 0, row = 0, col = 0;
+
+  if ((value = gst_structure_get_value (info, "inverse-affine-matrix")) == NULL)
+    return;
+
+  for (idx = 0; idx < 9; idx++, row = (idx / 3), col = (idx % 3))
+    matrix[row][col] = g_value_get_double (gst_value_array_get_value (value, idx));
+
+  for (auto& object : objects) {
+    a = (GstVideoPoint) {object.left, object.top};
+    b = (GstVideoPoint) {object.left, object.bottom};
+    c = (GstVideoPoint) {object.right, object.top};
+    d = (GstVideoPoint) {object.right, object.bottom};
+
+    gst_video_point_affine_correction (&a, matrix);
+    gst_video_point_affine_correction (&b, matrix);
+    gst_video_point_affine_correction (&c, matrix);
+    gst_video_point_affine_correction (&d, matrix);
+
+    // Adjusted bounding box so that incoporates the new ABCD quadrilateral.
+    left = MIN (MIN (a.x, b.x), MIN (c.x, d.x));
+    top = MIN (MIN (a.y, b.y), MIN (c.y, d.y));
+    right = MAX (MAX (a.x, b.x), MAX (c.x, d.x));
+    bottom = MAX (MAX (a.y, b.y), MAX (c.y, d.y));
+
+    GST_TRACE_OBJECT (postprocess, "Object %s: [%.2f, %.2f, %.2f, %.2f] -> "
+        "[%.2f, %.2f, %.2f, %.2f]", object.name.c_str(), object.left,
+        object.top, object.right, object.bottom, left, top, right, bottom);
+
+    object.left = left;
+    object.top = top;
+    object.right = right;
+    object.bottom = bottom;
+
+    if (!object.landmarks)
+      continue;
+
+    for (auto& landmark : object.landmarks.value()) {
+      GstVideoPoint point = {landmark.x, landmark.y};
+
+      gst_video_point_affine_correction (&point, matrix);
+
+      GST_TRACE_OBJECT (postprocess, "Object %s: Landmark: [%.2f, %.2f] -> [%.2f "
+          "%.2f]", object.name.c_str(), landmark.x, landmark.y, point.x, point.y);
+
+      landmark.x = point.x;
+      landmark.y = point.y;
+    }
+  }
+}
+
+static void
+gst_ml_post_process_poses_affine_correction (GstMLPostProcess * postprocess,
+    GstStructure * info, PoseEstimations& poses)
+{
+  const GValue *value = NULL;
+  gdouble matrix[3][3] = {0};
+  guint idx = 0, row = 0, col = 0;
+
+  if ((value = gst_structure_get_value (info, "inverse-affine-matrix")) == NULL)
+    return;
+
+  for (idx = 0; idx < 9; idx++, row = (idx / 3), col = (idx % 3))
+    matrix[row][col] = g_value_get_double (gst_value_array_get_value (value, idx));
+
+  for (auto& pose : poses) {
+    for (auto& keypoint : pose.keypoints) {
+      GstVideoPoint point = {keypoint.x, keypoint.y};
+
+      gst_video_point_affine_correction (&point, matrix);
+
+      GST_TRACE_OBJECT (postprocess, "Pose %s: Keypoint: [%.2f, %.2f] -> [%.2f "
+          "%.2f]", pose.name.c_str(), keypoint.x, keypoint.y, point.x, point.y);
+
+      keypoint.x = point.x;
+      keypoint.y = point.y;
+    }
+  }
+}
+
 static gboolean
 gst_ml_post_process_module_execute (GstMLPostProcess * postprocess,
     GstBuffer * buffer, std::any& output)
 {
+  GstStructure *info = NULL;
   GstMLFrame mlframe = {};
   guint idx = 0, n_batch = 0, size = 0;
   gboolean success = FALSE;
@@ -343,17 +431,25 @@ gst_ml_post_process_module_execute (GstMLPostProcess * postprocess,
       goto cleanup;
     }
 
+    // Get saved info for the current batch
+    info = GST_STRUCTURE_CAST (g_ptr_array_index (postprocess->info, idx));
+
     // Sorting entries
-    if (GST_IS_DETECTION_TYPE (postprocess->type))
+    if (GST_IS_DETECTION_TYPE (postprocess->type)) {
+      gst_ml_post_process_objects_affine_correction (postprocess, info,
+          std::any_cast<ObjectDetections&>(predictions));
       gst_ml_object_detections_sort_and_push (output, predictions);
-    else if (GST_IS_CLASSIFICATION_TYPE (postprocess->type))
+    } else if (GST_IS_CLASSIFICATION_TYPE (postprocess->type)) {
       gst_ml_image_classifications_sort_and_push (output, predictions);
-    else if (GST_IS_AUDIO_CLASSIFICATION_TYPE (postprocess->type))
+    } else if (GST_IS_AUDIO_CLASSIFICATION_TYPE (postprocess->type)) {
       gst_ml_audio_classifications_sort_and_push (output, predictions);
-    else if (GST_IS_POSE_TYPE (postprocess->type))
+    } else if (GST_IS_POSE_TYPE (postprocess->type)) {
+      gst_ml_post_process_poses_affine_correction (postprocess, info,
+          std::any_cast<PoseEstimations&>(predictions));
       gst_ml_pose_estimation_sort_and_push (output, predictions);
-    else if (GST_IS_TEXT_GENERATION_TYPE (postprocess->type))
+    } else if (GST_IS_TEXT_GENERATION_TYPE (postprocess->type)) {
       gst_ml_text_generation_sort_and_push (output, predictions);
+    }
   }
 
 cleanup:
@@ -583,6 +679,7 @@ gst_ml_video_detection_fill_video_output (GstMLPostProcess * postprocess,
       // Draw landmarks if present.
       if (entry.landmarks) {
         length = entry.landmarks.value().size();
+
         for (mrk = 0; mrk < length; mrk++) {
           Keypoint& kp = entry.landmarks.value()[mrk];
 
