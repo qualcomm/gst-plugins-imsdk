@@ -310,7 +310,7 @@ gst_c2d_blits_compatible (const GstVideoComposition * l_composition,
     const GstVideoComposition * r_composition)
 {
   GstVideoBlit *l_blit = NULL, *r_blit = NULL;
-  GstVideoRectangle *l_rect = NULL, *r_rect = NULL;
+  GstVideoRectangle l_rect = {0,}, r_rect = {0,};
   guint idx = 0, l_fd = 0, r_fd = 0;
 
   // TODO For now, support only same object ordering.
@@ -318,10 +318,10 @@ gst_c2d_blits_compatible (const GstVideoComposition * l_composition,
     l_blit = &(l_composition->blits[idx]);
     r_blit = &(r_composition->blits[idx]);
 
-    // Both entries need to have the same flip, rotate and global alpha.
+    // Both entries need to have the same mask, rotate and global alpha.
     if ((l_blit->rotate != r_blit->rotate) ||
         (l_blit->alpha != r_blit->alpha) ||
-        (l_blit->flip != r_blit->flip))
+        (l_blit->mask != r_blit->mask))
       return FALSE;
 
     l_fd = gst_fd_memory_get_fd (
@@ -333,39 +333,41 @@ gst_c2d_blits_compatible (const GstVideoComposition * l_composition,
     if (l_fd != r_fd)
       return FALSE;
 
-    l_rect = &(l_blit->source);
-    r_rect = &(r_blit->source);
+    gst_video_quadrilateral_to_rectangle (&(l_blit->source), &l_rect);
+    gst_video_quadrilateral_to_rectangle (&(r_blit->source), &r_rect);
 
     // Source rectangles must match.
-    if ((l_rect->x != r_rect->x) || (l_rect->y != r_rect->y) ||
-        (l_rect->w != r_rect->w) || (l_rect->h != r_rect->h))
+    if ((l_rect.x != r_rect.x) || (l_rect.y != r_rect.y) ||
+        (l_rect.w != r_rect.w) || (l_rect.h != r_rect.h))
       return FALSE;
 
-    l_rect = &(l_blit->destination);
-    r_rect = &(r_blit->destination);
+    l_rect = l_blit->destination;
+    r_rect = r_blit->destination;
 
     // Adjust the dimensions of the target rectangles to be in the same scale.
-    r_rect->x = gst_util_uint64_scale_int (r_rect->x,
+    r_rect.x = gst_util_uint64_scale_int (r_rect.x,
         GST_VIDEO_FRAME_WIDTH (l_composition->frame),
         GST_VIDEO_FRAME_WIDTH (r_composition->frame));
 
-    r_rect->y = gst_util_uint64_scale_int (r_rect->y,
+    r_rect.y = gst_util_uint64_scale_int (r_rect.y,
         GST_VIDEO_FRAME_HEIGHT (l_composition->frame),
         GST_VIDEO_FRAME_HEIGHT (r_composition->frame));
 
-    r_rect->w = gst_util_uint64_scale_int (r_rect->w,
+    r_rect.w = gst_util_uint64_scale_int (r_rect.w,
         GST_VIDEO_FRAME_WIDTH (l_composition->frame),
         GST_VIDEO_FRAME_WIDTH (r_composition->frame));
 
-    r_rect->h = gst_util_uint64_scale_int (r_rect->h,
+    r_rect.h = gst_util_uint64_scale_int (r_rect.h,
         GST_VIDEO_FRAME_HEIGHT (l_composition->frame),
         GST_VIDEO_FRAME_HEIGHT (r_composition->frame));
 
     // Target rectangles may not match but must have maximum of 1 pixel delta.
-    if ((ABS (l_rect->x - r_rect->x) > 1) || (ABS (l_rect->y - r_rect->y) > 1) ||
-        (ABS (l_rect->w - r_rect->w) > 1) || (ABS (l_rect->h - r_rect->h) > 1))
+    if ((ABS (l_rect.x - r_rect.x) > 1) || (ABS (l_rect.y - r_rect.y) > 1) ||
+        (ABS (l_rect.w - r_rect.w) > 1) || (ABS (l_rect.h - r_rect.h) > 1))
       return FALSE;
   }
+
+  r_blit->destination = r_rect;
 
   return TRUE;
 }
@@ -783,6 +785,7 @@ static void
 gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
     const GstVideoBlit * vblit, const GstVideoFrame * outframe)
 {
+  GstVideoConvRotate rotate = GST_VCE_ROTATE_0;
   gint x = 0, y = 0, width = 0, height = 0;
 
   object->surface_id = surface_id;
@@ -795,12 +798,15 @@ gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
   if (object->global_alpha != G_MAXUINT8)
     object->config_mask |= C2D_GLOBAL_ALPHA_BIT;
 
+  if (vblit->mask & GST_VCE_MASK_ROTATION)
+    rotate = vblit->rotate;
+
   // Setup the source rectangle.
-  if ((vblit->source.w != 0) && (vblit->source.h != 0)) {
-    x = vblit->source.x;
-    y = vblit->source.y;
-    width = vblit->source.w;
-    height = vblit->source.h;
+  if (vblit->mask & GST_VCE_MASK_SOURCE) {
+    x = vblit->source.a.x;
+    y = vblit->source.a.y;
+    width = vblit->source.d.x - vblit->source.a.x;
+    height = vblit->source.d.y - vblit->source.a.y;
   }
 
   width = (width == 0) ? GST_VIDEO_FRAME_WIDTH (vblit->frame) :
@@ -816,14 +822,12 @@ gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
   // Apply the flip bits to the object configure mask if set.
   object->config_mask &= ~(C2D_MIRROR_V_BIT | C2D_MIRROR_H_BIT);
 
-  if ((vblit->flip == GST_VCE_FLIP_VERTICAL) ||
-      (vblit->flip == GST_VCE_FLIP_BOTH)) {
+  if (vblit->mask & GST_VCE_MASK_FLIP_VERTICAL) {
     object->config_mask |= C2D_MIRROR_V_BIT;
     GST_TRACE ("Input surface %x - Flip Vertically", surface_id);
   }
 
-  if ((vblit->flip == GST_VCE_FLIP_HORIZONTAL) ||
-      (vblit->flip == GST_VCE_FLIP_BOTH)) {
+  if (vblit->mask & GST_VCE_MASK_FLIP_HORIZONTAL) {
     object->config_mask |= C2D_MIRROR_H_BIT;
     GST_TRACE ("Input surface %x - Flip Horizontally", surface_id);
   }
@@ -832,7 +836,7 @@ gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
   x = y = width = height = 0;
 
   // Setup the target rectangle.
-  if ((vblit->destination.w != 0) && (vblit->destination.h != 0)) {
+  if (vblit->mask & GST_VCE_MASK_DESTINATION) {
     x = vblit->destination.x;
     y = vblit->destination.y;
     width = vblit->destination.w;
@@ -840,7 +844,7 @@ gst_c2d_update_object (C2D_OBJECT * object, const guint surface_id,
   }
 
   // Setup rotation angle and adjustments.
-  switch (vblit->rotate) {
+  switch (rotate) {
     case GST_VCE_ROTATE_90:
     {
       gint dar_n = 0, dar_d = 0;
@@ -1079,6 +1083,16 @@ gst_c2d_video_converter_compose (GstC2dVideoConverter * convert,
 
       if (n_objects >= GST_C2D_MAX_DRAW_OBJECTS) {
         GST_ERROR ("Number of objects exceeds %d!", GST_C2D_MAX_DRAW_OBJECTS);
+        goto cleanup;
+      }
+
+      if ((blit->mask & GST_VCE_MASK_SOURCE) &&
+          !gst_video_quadrilateral_is_rectangle (&(blit->source))) {
+        GST_ERROR ("Composition %u: Blit %u: Source quadrilateral is not a "
+            "rectangle! A(%f, %f) B(%f, %f) C(%f, %f) D(%f, %f)", idx, num,
+            blit->source.a.x, blit->source.a.y, blit->source.b.x,
+            blit->source.b.y, blit->source.c.x, blit->source.c.y,
+            blit->source.d.x, blit->source.d.y);
         goto cleanup;
       }
 

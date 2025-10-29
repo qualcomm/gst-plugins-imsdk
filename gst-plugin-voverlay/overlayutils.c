@@ -48,8 +48,10 @@ gst_video_blit_release (GstVideoBlit * blit)
 {
   GstBuffer *buffer = NULL;
 
-  blit->source.x = blit->source.y = 0;
-  blit->source.w = blit->source.h = 0;
+  blit->source.a.x = blit->source.a.y = 0;
+  blit->source.b.x = blit->source.b.y = 0;
+  blit->source.c.x = blit->source.c.y = 0;
+  blit->source.d.x = blit->source.d.y = 0;
 
   blit->destination.x = blit->destination.y = 0;
   blit->destination.w = blit->destination.h = 0;

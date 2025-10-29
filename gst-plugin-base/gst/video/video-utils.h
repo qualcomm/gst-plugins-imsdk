@@ -14,6 +14,20 @@ G_BEGIN_DECLS
 
 #define GST_CAPS_FEATURE_MEMORY_GBM  "memory:GBM"
 
+typedef struct _GstVideoPoint GstVideoPoint;
+
+/**
+ * GstVideoPoint:
+ * @x: X Axis coordinate in pixels.
+ * @y: Y Axis coordinate in pixels.
+ *
+ * Point coordinates in pixels.
+ */
+struct _GstVideoPoint {
+  gfloat x;
+  gfloat y;
+};
+
 /**
  * gst_gbm_qcom_backend_is_supported:
  *
