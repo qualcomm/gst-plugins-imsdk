@@ -179,6 +179,8 @@ gst_ml_tflite_create_pool (GstMLTFLite * tflite, GstCaps * caps)
   gst_buffer_pool_config_set_allocator (config, allocator, NULL);
   gst_buffer_pool_config_add_option (
       config, GST_ML_BUFFER_POOL_OPTION_TENSOR_META);
+  gst_buffer_pool_config_add_option (
+      config, GST_ML_BUFFER_POOL_OPTION_KEEP_MAPPED);
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING_OBJECT (tflite, "Failed to set pool configuration!");
