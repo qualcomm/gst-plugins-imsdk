@@ -508,6 +508,10 @@ gst_objtracker_algo_execute_buffer (GstObjTrackerAlgo * algo,
 
     param = gst_video_region_of_interest_meta_get_param (roimeta,
         "ObjectDetection");
+
+    if (param == NULL)
+      continue;
+
     gst_structure_get_double (param, "confidence", &confidence);
     item.prob = confidence;
 
