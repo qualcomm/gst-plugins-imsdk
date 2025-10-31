@@ -17,6 +17,7 @@ Build-Depends:
  libcairo2-dev,
  qcom-property-vault-dev,
  libjson-glib-dev,
+ librdkafka-dev,
  libmosquitto-dev,
  libhiredis-dev,
  qcom-video-ctrl-dev,
