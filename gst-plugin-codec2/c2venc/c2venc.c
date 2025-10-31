@@ -1713,6 +1713,7 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
     {
       gint idx = 0, size = 0, n_layers = 0;
       gfloat ratio = 0.0;
+      const GValue* val = NULL;
 
       // Sanity check, at least 3 values: <1,0,100>.
       if ((size = gst_value_array_get_size (value)) < 3) {
@@ -1720,7 +1721,14 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
             " expecting at least 3 but received %d !", size);
         break;
       }
-      n_layers = g_value_get_int (gst_value_array_get_value (value, 0));
+
+      // Validate type of first value (n_layers)
+      val = gst_value_array_get_value (value, 0);
+      if (!G_VALUE_HOLDS_INT (val)) {
+        GST_ERROR_OBJECT (c2venc, "First value (n_layers) is not an integer");
+        break;
+      }
+      n_layers = g_value_get_int (val);
 
       if (n_layers != (size - 2)) {
         GST_ERROR_OBJECT (c2venc, "Invalid number or bitrate ratios for "
@@ -1729,23 +1737,27 @@ gst_c2_venc_set_property (GObject * object, guint prop_id,
         break;
       }
 
+      val = gst_value_array_get_value (value, 1);
       c2venc->temp_layer.n_layers = n_layers;
-      c2venc->temp_layer.n_blayers =
-          g_value_get_int (gst_value_array_get_value (value, 1));
+      c2venc->temp_layer.n_blayers = g_value_get_int (val);
 
-      // Remove all old values.
-      g_array_set_size (c2venc->temp_layer.bitrate_ratios, 0);
+      // Ensure bitrate_ratios array is initialized
+      if (c2venc->temp_layer.bitrate_ratios == NULL)
+        c2venc->temp_layer.bitrate_ratios = g_array_new (FALSE, FALSE, sizeof (gfloat));
+      else // Remove all old values.
+        g_array_set_size (c2venc->temp_layer.bitrate_ratios, 0);
 
       // Convert to ratio in float.
-      for (idx = 2; idx < gst_value_array_get_size (value); idx++) {
-        ratio =
-            g_value_get_int (gst_value_array_get_value (value, idx)) / 100.0;
-        g_array_insert_val (c2venc->temp_layer.bitrate_ratios, idx - 2, ratio);
+      for (idx = 2; idx < size; idx++) {
+        val = gst_value_array_get_value (value, idx);
+        ratio = g_value_get_int (val) / 100.0;
+        if (ratio < 0 || ratio > 100) {
+          GST_WARNING_OBJECT (c2venc, "Unusual bitrate ratio value "
+              "(%d) at index %d", ratio, idx);
+        }
+
+        g_array_append_val (c2venc->temp_layer.bitrate_ratios, ratio);
       }
-
-      // Shrink the array in case the current allocated size is greater.
-      g_array_set_size (c2venc->temp_layer.bitrate_ratios, size - 2);
-
       break;
     }
     case PROP_FLIP:
