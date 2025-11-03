@@ -436,7 +436,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
     return FALSE;
   }
 
-#if defined(CODEC2_CONFIG_VERSION_2_0)
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2)
   gboolean enable = TRUE;
 
   // Enable codec2 avg qp info report, only avaiable in h264/h265.
@@ -457,7 +457,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
       return FALSE;
     }
   }
-#endif // CODEC2_CONFIG_VERSION_2_0
+#endif // CODEC2_CONFIG_VERSION_MAJOR
 
   if (c2venc->priority != DEFAULT_PROP_PRIORITY) {
     success = gst_c2_engine_set_parameter (c2venc->engine,
@@ -518,7 +518,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
       return FALSE;
     }
 
-#if defined(CODEC2_CONFIG_VERSION_2_0)
+#if (CODEC2_CONFIG_VERSION_MAJOR == 2)
     if (c2venc->intra_refresh.mode != GST_C2_INTRA_REFRESH_DISABLED) {
       success = gst_c2_engine_set_parameter (c2venc->engine,
           GST_C2_PARAM_INTRA_REFRESH_MODE,
@@ -529,7 +529,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
         return FALSE;
       }
     }
-#endif // CODEC2_CONFIG_VERSION_2_0
+#endif // CODEC2_CONFIG_VERSION_MAJOR
   }
 
   success = gst_c2_engine_get_parameter (c2venc->engine,
@@ -559,7 +559,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
   if (c2venc->bframes != DEFAULT_PROP_B_FRAMES) {
     gboolean enable = TRUE;
 
-#if !defined(CODEC2_CONFIG_VERSION_2_0)
+#if (CODEC2_CONFIG_VERSION_MAJOR == 1)
     // Sanity check
     if (c2venc->temp_layer.n_layers > c2venc->temp_layer.n_blayers &&
         g_str_has_suffix (c2venc->name, "avc.encoder"))
@@ -589,7 +589,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
       GST_ERROR_OBJECT (c2venc, "Failed to set adaptive B frames parameter!");
       return FALSE;
     }
-#else
+#elif (CODEC2_CONFIG_VERSION_MAJOR == 2)
     GstC2TemporalLayer templayer = {2, 2, NULL};
 
     success = gst_c2_engine_set_parameter (c2venc->engine,
@@ -619,13 +619,13 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
       GST_ERROR_OBJECT (c2venc, "Failed to set temporal layering parameter!");
       return FALSE;
     }
-#endif // CODEC2_CONFIG_VERSION_2_0
+#endif // CODEC2_CONFIG_VERSION_MAJOR
   }
 
   if (c2venc->temp_layer.n_layers != DEFAULT_PROP_TEMPORAL_LAYER_NUM) {
     gboolean enable = TRUE;
 
-#if !defined(CODEC2_CONFIG_VERSION_2_0)
+#if (CODEC2_CONFIG_VERSION_MAJOR == 1)
     if (c2venc->temp_layer.n_blayers == 0 &&
         c2venc->profile == GST_C2_PROFILE_HEVC_MAIN) {
       enable = FALSE;
@@ -660,7 +660,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
       GST_WARNING_OBJECT (c2venc, "Temporal Layer: b-layers count is ignored"
           "if profile is not HEVC_MAIN!");
     }
-#else
+#elif (CODEC2_CONFIG_VERSION_MAJOR == 2)
     if (c2venc->temp_layer.n_blayers > 0 ) {
        success = gst_c2_engine_set_parameter (c2venc->engine,
            GST_C2_PARAM_HIER_BPRECONDITIONS, GPOINTER_CAST (&enable));
@@ -683,7 +683,7 @@ gst_c2_venc_setup_parameters (GstC2VEncoder * c2venc,
          return FALSE;
       }
     }
-#endif // CODEC2_CONFIG_VERSION_2_0
+#endif // CODEC2_CONFIG_VERSION_MAJOR
 
     success = gst_c2_engine_set_parameter (c2venc->engine,
         GST_C2_PARAM_TEMPORAL_LAYERING, GPOINTER_CAST (&c2venc->temp_layer));
@@ -841,7 +841,7 @@ gst_c2_venc_handle_region_encode (GstC2VEncoder * c2venc,
     GstStructure *s = NULL;
     const gchar *label = NULL;
 
-    if (roimeta->roi_type != g_quark_from_static_string ("ObjectDetection"))
+    if (roimeta->roi_type == g_quark_from_static_string ("ImageRegion"))
       continue;
 
     if (GST_C2_MAX_RECT_ROI_NUM == roiparam->n_rects) {
@@ -850,8 +850,7 @@ gst_c2_venc_handle_region_encode (GstC2VEncoder * c2venc,
       break;
     }
 
-    s = gst_video_region_of_interest_meta_get_param (roimeta, "ObjectDetection");
-    label = gst_structure_get_string (s, "label");
+    label = g_quark_to_string (roimeta->roi_type);
 
     GST_LOG_OBJECT (c2venc, "Input buffer ROI: label=%s id=%d (%d, %d) %dx%d",
         label, roimeta->id, roimeta->x, roimeta->y, roimeta->w, roimeta->h);
@@ -1991,10 +1990,10 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
       g_param_spec_uint ("b-frames", "B Frames",
           "Number of B-frames between neighboring P-frame and "
           "P-frame/I-frame (0xffffffff=component default). "
-#if !defined(CODEC2_CONFIG_VERSION_2_0)
+#if (CODEC2_CONFIG_VERSION_MAJOR == 1)
           "B-frame will be disabled if temporal layer has non-zero p-layer"
           " count for AVC or b-layer count less than 2 for HEVC"
-#endif // CODEC2_CONFIG_VERSION_2_0
+#endif // CODEC2_CONFIG_VERSION_MAJOR
           "Allow B-frame only for VBR(_CFR/VFR) RC modes.",
           0, G_MAXUINT, DEFAULT_PROP_B_FRAMES,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_MUTABLE_READY));
@@ -2105,9 +2104,9 @@ gst_c2_venc_class_init (GstC2VEncoderClass * klass)
           "p-layers and b-layers) number, b-layers number and bitrate-ratios "
           "in integer percent (e.g. '<4,0,25,50,75,100>;'). layers number "
           "couldn't be larger than 6."
-#if !defined(CODEC2_CONFIG_VERSION_2_0)
+#if (CODEC2_CONFIG_VERSION_MAJOR == 1)
           "blayers number is ignored if profile is not HEVC_MAIN"
-#endif // CODEC2_CONFIG_VERSION_2_0
+#endif // CODEC2_CONFIG_VERSION_MAJOR
           "b-layers number couldn't be larger than "
           "layers number, bitrate-ratios couldn't be larger than 100 and last "
           "layer's budget is always 100.",

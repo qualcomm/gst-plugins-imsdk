@@ -212,19 +212,6 @@ gst_video_transform_src_template (void)
       gst_video_transform_src_caps ());
 }
 
-static inline GstVideoConvFlip
-gst_video_transform_translate_flip (gboolean flip_h, gboolean flip_v)
-{
-  if (flip_h && flip_v)
-   return GST_VCE_FLIP_BOTH;
-  else if (flip_h)
-    return GST_VCE_FLIP_HORIZONTAL;
-  else if (flip_v)
-    return GST_VCE_FLIP_VERTICAL;
-
-  return GST_VCE_FLIP_NONE;
-}
-
 static inline GstVideoConvRotate
 gst_video_transform_translate_rotation (GstVideoTransformRotate rotation)
 {
@@ -256,12 +243,12 @@ gst_video_transform_determine_passthrough (GstVideoTransform * vtrans)
         vtrans->ininfo->finfo->format == vtrans->outinfo->finfo->format;
     passthrough &= (vtrans->crop.w == 0 || vtrans->crop.h == 0) ||
         (vtrans->crop.x == 0 && vtrans->crop.y == 0 &&
-        vtrans->crop.w == vtrans->ininfo->width &&
-        vtrans->crop.h == vtrans->ininfo->height);
+            vtrans->crop.w == vtrans->ininfo->width &&
+            vtrans->crop.h == vtrans->ininfo->height);
     passthrough &= (vtrans->destination.w == 0 || vtrans->destination.h == 0) ||
         (vtrans->destination.x == 0 && vtrans->destination.y == 0 &&
-        vtrans->destination.w == vtrans->outinfo->width &&
-        vtrans->destination.h == vtrans->outinfo->height);
+            vtrans->destination.w == vtrans->outinfo->width &&
+            vtrans->destination.h == vtrans->outinfo->height);
   } else {
     passthrough &= vtrans->crop.w == 0 || vtrans->crop.h == 0;
     passthrough &= vtrans->destination.w == 0 || vtrans->destination.h == 0;
@@ -702,16 +689,6 @@ gst_video_transform_set_caps (GstBaseTransform * base, GstCaps * incaps,
   feature = gst_caps_has_feature (outcaps, GST_CAPS_FEATURE_MEMORY_GBM) ?
       GST_CAPS_FEATURE_MEMORY_GBM : NULL;
   vtrans->outfeature = g_quark_from_static_string (feature);
-
-  if ((vtrans->crop.w == 0) && (vtrans->crop.h == 0)) {
-    vtrans->crop.w = GST_VIDEO_INFO_WIDTH (vtrans->ininfo);
-    vtrans->crop.h = GST_VIDEO_INFO_HEIGHT (vtrans->ininfo);
-  }
-
-  if ((vtrans->destination.w == 0) && (vtrans->destination.h == 0)) {
-    vtrans->destination.w = GST_VIDEO_INFO_WIDTH (vtrans->outinfo);
-    vtrans->destination.h = GST_VIDEO_INFO_HEIGHT (vtrans->outinfo);
-  }
 
   if (vtrans->converter != NULL)
     gst_video_converter_engine_free (vtrans->converter);
@@ -1632,12 +1609,28 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
   GST_VIDEO_TRANSFORM_LOCK (vtrans);
 
   blit.frame = &inframe;
+  blit.mask = 0;
 
-  blit.source = vtrans->crop;
-  blit.destination = vtrans->destination;
+  if ((vtrans->crop.w != 0) && (vtrans->crop.h != 0)) {
+    gst_video_rectangle_to_quadrilateral (&(vtrans->crop), &(blit.source));
+    blit.mask |= GST_VCE_MASK_SOURCE;
+  }
 
-  blit.flip = gst_video_transform_translate_flip (vtrans->flip_h, vtrans->flip_v);
-  blit.rotate = gst_video_transform_translate_rotation (vtrans->rotation);
+  if ((vtrans->destination.w != 0) && (vtrans->destination.h != 0)) {
+    blit.destination = vtrans->destination;
+    blit.mask |= GST_VCE_MASK_DESTINATION;
+  }
+
+  if (vtrans->flip_h)
+    blit.mask |= GST_VCE_MASK_FLIP_HORIZONTAL;
+
+  if (vtrans->flip_v)
+    blit.mask |= GST_VCE_MASK_FLIP_VERTICAL;
+
+  if (vtrans->rotation != GST_VIDEO_TRANSFORM_ROTATE_NONE) {
+    blit.rotate = gst_video_transform_translate_rotation (vtrans->rotation);
+    blit.mask |= GST_VCE_MASK_ROTATION;
+  }
 
   composition.blits = &blit;
   composition.n_blits = 1;
@@ -1647,7 +1640,6 @@ gst_video_transform_transform (GstBaseTransform * base, GstBuffer * inbuffer,
 
   composition.bgcolor = vtrans->background;
   composition.bgfill = TRUE;
-
 
   success = gst_video_converter_engine_compose (vtrans->converter,
       &composition, 1, NULL);

@@ -1,0 +1,5 @@
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/libgstqtimsgpub.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/libgstqtimsgsub.so
+usr/lib/${DEB_HOST_MULTIARCH}/libgstqtimqttadaptor.so
+usr/lib/${DEB_HOST_MULTIARCH}/libgstqtikafkaadaptor.so
+usr/lib/${DEB_HOST_MULTIARCH}/libgstqtimsgadaptor.so

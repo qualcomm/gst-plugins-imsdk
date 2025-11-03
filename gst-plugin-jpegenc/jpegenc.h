@@ -62,9 +62,13 @@ typedef struct _GstVideoFrameData GstVideoFrameData;
 
 struct _GstJPEGEncoder {
   GstVideoEncoder          parent;
+
   /// Properties.
   gint                     quality;
   GstJpegEncodeOrientation orientation;
+  /// Camera id to process
+  guint                    camera_id;
+
   // Output buffer pool
   GstBufferPool            *outpool;
   /// Jpeg encoder context

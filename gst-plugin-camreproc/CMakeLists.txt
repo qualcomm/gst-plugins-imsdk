@@ -7,7 +7,7 @@ project(GST_PLUGIN_QTI_OSS_CAMERA_REPROCESS
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 include_directories(${SYSROOT_INCDIR})
-link_directories(${SYSROOT_LIBDIR})
+link_directories(${SYSROOT_LIBDIR} ${SYSROOT_LIBDIR}/${TARGET_BOARD_PLATFORM})
 
 find_package(PkgConfig)
 
@@ -18,6 +18,10 @@ pkg_check_modules(GST_ALLOC
   REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_VIDEO
   REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_QCOM_VIDEO
+  REQUIRED gstreamer-qcom-oss-video-1.0>=1.0.0)
+pkg_check_modules(GST_QCOM_UTILS
+  REQUIRED gstreamer-qcom-oss-utils-1.0>=1.0.0)
 
 # Generate configuration header file.
 configure_file(config.h.in config.h @ONLY)
@@ -40,6 +44,8 @@ add_library(${CAMERA_REPROCESS} SHARED
 
 target_include_directories(${CAMERA_REPROCESS} PUBLIC
   ${GST_INCLUDE_DIRS}
+  ${GST_QCOM_UTILS_INCLUDE_DIRS}
+  ${GST_QCOM_VIDEO_INCLUDE_DIRS}
 )
 
 target_compile_definitions(${CAMERA_REPROCESS} PRIVATE
@@ -54,8 +60,8 @@ target_link_libraries(${CAMERA_REPROCESS} PRIVATE
   ${GST_ALLOC_LIBRARIES}
   qmmf_recorder_client
   qmmf_camera_metadata
-  gstqtiutilsbase
-  gstqtivideobase
+  ${GST_QCOM_UTILS_LIBRARIES}
+  ${GST_QCOM_VIDEO_LIBRARIES}
 )
 
 install(

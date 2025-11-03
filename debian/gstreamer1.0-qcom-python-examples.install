@@ -1,0 +1,16 @@
+usr/bin/gst-ai-object-detection.py
+usr/bin/gst-camera-encode.py
+usr/bin/gst-camera-opencv-resize.py
+usr/bin/gst-camera-rotate-downscale-file.py
+usr/bin/gst-camera-three-stream-encode-file-detection-display-classification-rtsp.py
+usr/bin/gst-camera-two-stream-detection-and-classification-side-by-side.py
+usr/bin/gst-camera-two-stream-encode-file-detection-display.py
+usr/bin/gst-concurrent-videoplay-composition.py
+usr/bin/gst-daisychain-detection-pose.py
+usr/bin/gst-filesrc-2detection-classification-segmentation-side-by-side.py
+usr/bin/gst-gui-launcher-app.py
+usr/bin/gst-jpg-image-decode.py
+usr/bin/gst-multi-camera-stream-example.py
+usr/bin/gst-opencv-transform.py
+usr/bin/gst-parallel-inference.py
+usr/bin/gst-rtspsrc-detection-display.py

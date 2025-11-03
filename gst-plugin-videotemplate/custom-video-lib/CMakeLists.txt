@@ -7,14 +7,15 @@ add_library(${GST_QTI_VIDEO_TEMPLATE_SIMPLE} SHARED
 
 target_include_directories(${GST_QTI_VIDEO_TEMPLATE_SIMPLE} PUBLIC
   ${GST_INCLUDE_DIRS}
+  ${GST_PLUGIN_BASE_DIR}
 )
 
 target_link_libraries(${GST_QTI_VIDEO_TEMPLATE_SIMPLE} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
-  gstqtiutilsbase
-  gstqtivideobase
+  ${GST_QCOM_UTILS_LIBRARIES}
+  ${GST_QCOM_VIDEO_LIBRARIES}
   gstqtivideotemplatedefs
 )
 
@@ -35,14 +36,16 @@ add_library(${GST_QTI_VIDEO_TEMPLATE_ASYNC} SHARED
 
 target_include_directories(${GST_QTI_VIDEO_TEMPLATE_ASYNC} PUBLIC
   ${GST_INCLUDE_DIRS}
+  ${GST_QCOM_UTILS_INCLUDE_DIRS}
+  ${GST_QCOM_VIDEO_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_VIDEO_TEMPLATE_ASYNC} PRIVATE
   ${GST_LIBRARIES}
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
-  gstqtiutilsbase
-  gstqtivideobase
+  ${GST_QCOM_UTILS_LIBRARIES}
+  ${GST_QCOM_VIDEO_LIBRARIES}
   gstqtivideotemplatedefs
 )
 

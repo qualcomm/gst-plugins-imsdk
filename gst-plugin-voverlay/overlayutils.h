@@ -209,6 +209,7 @@ struct _GstOverlayString {
  * @dims: Union for the dimensions of the privacy mask.
  * @color: Color code in hex format - 0xRRGGBBAA.
  * @infill: Whether or not ot fill the whole mask area or just the borders.
+ * @inverse: Whether or not to fill mask area or the remaining area.
  * @enable: Whether or not to apply the overlay object.
  * @blit: Cached overlay blit with the drawn object.
  *
@@ -227,6 +228,7 @@ struct _GstOverlayMask {
 
   gint32              color;
   gboolean            infill;
+  gboolean            inverse;
 
   gboolean            enable;
   GstVideoBlit        blit;

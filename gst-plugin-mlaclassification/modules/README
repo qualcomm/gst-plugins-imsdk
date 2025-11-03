@@ -34,7 +34,7 @@ This README file includes instructions on how to create and compile custom post-
 
 	target_link_libraries(${GST_QTI_ML_MODULE} PRIVATE
 	  ${GST_LIBRARIES}
-	  gstqtimlbase
+	  ${GST_QCOM_ML_LIBRARIES}
 	)
 
 	install(

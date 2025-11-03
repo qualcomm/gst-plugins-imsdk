@@ -41,11 +41,11 @@ gst_module_logging (uint32_t level, const char * msg)
 }
 
 GstStructure*
-gst_structure_from_dictionary (const Dictionary& dict)
+gst_structure_from_dictionary (const Dictionary& dictionary)
 {
   GstStructure *structure = gst_structure_new_empty("xtraparams");
 
-  for (const auto& [key, val] : dict) {
+  for (const auto& [key, val] : dictionary) {
     if (val.type() == typeid(int32_t)) {
       gst_structure_set(structure, key.c_str(),
           G_TYPE_INT, std::any_cast<int32_t>(val), NULL);
@@ -116,6 +116,147 @@ gst_ml_structure_to_module_params (const GstStructure * structure)
   }
 
   return mlparams;
+}
+
+gboolean
+gst_video_frame_to_module_frame (const GstVideoFrame * vframe, VideoFrame& frame)
+{
+  guint idx = 0;
+
+  switch (GST_VIDEO_FRAME_FORMAT (vframe)) {
+    case GST_VIDEO_FORMAT_GRAY8:
+      frame.format = VideoFormat::kGRAY8;
+      break;
+    case GST_VIDEO_FORMAT_RGB:
+      frame.format = VideoFormat::kRGB888;
+      break;
+    case GST_VIDEO_FORMAT_BGR:
+      frame.format = VideoFormat::kBGR888;
+      break;
+    case GST_VIDEO_FORMAT_ARGB:
+      frame.format = VideoFormat::kARGB8888;
+      break;
+    case GST_VIDEO_FORMAT_ABGR:
+      frame.format = VideoFormat::kABGR8888;
+      break;
+    case GST_VIDEO_FORMAT_xRGB:
+      frame.format = VideoFormat::kXRGB8888;
+      break;
+    case GST_VIDEO_FORMAT_xBGR:
+      frame.format = VideoFormat::kXBGR8888;
+      break;
+    case GST_VIDEO_FORMAT_RGBA:
+      frame.format = VideoFormat::kRGBA8888;
+      break;
+    case GST_VIDEO_FORMAT_RGBx:
+      frame.format = VideoFormat::kRGBX8888;
+      break;
+    case GST_VIDEO_FORMAT_BGRA:
+      frame.format = VideoFormat::kBGRA8888;
+      break;
+    case GST_VIDEO_FORMAT_BGRx:
+      frame.format = VideoFormat::kBGRX8888;
+      break;
+    default:
+      GST_ERROR ("Unsupported video format: %s!",
+          gst_video_format_to_string (GST_VIDEO_FRAME_FORMAT (vframe)));
+      return FALSE;
+  }
+
+  frame.width = GST_VIDEO_FRAME_WIDTH (vframe);
+  frame.height = GST_VIDEO_FRAME_HEIGHT (vframe);
+  frame.bits = GST_VIDEO_FORMAT_INFO_BITS (vframe->info.finfo);
+  frame.n_components = GST_VIDEO_FRAME_N_COMPONENTS (vframe);
+  frame.planes.resize(GST_VIDEO_FRAME_N_PLANES (vframe));
+
+  for (idx = 0; idx < GST_VIDEO_FRAME_N_PLANES (vframe);  idx++) {
+    Plane& plane = frame.planes[idx];
+
+    plane.data = (uint8_t *) GST_VIDEO_FRAME_PLANE_DATA (vframe, idx);
+    plane.offset = GST_VIDEO_FRAME_PLANE_OFFSET (vframe, idx);
+    plane.stride = GST_VIDEO_FRAME_PLANE_STRIDE (vframe, idx);
+
+    // Size of current plane is offset to the next one (or total size for last)
+    // minus the offset to previous (or 0 in the case of the first plane).
+    plane.size = ((idx + 1) < frame.planes.size()) ?
+        GST_VIDEO_FRAME_PLANE_OFFSET (vframe, idx + 1) :
+            GST_VIDEO_FRAME_SIZE (vframe);
+    plane.size -= (idx == 0) ? 0 : GST_VIDEO_FRAME_PLANE_OFFSET (vframe, idx);
+  }
+
+  return TRUE;
+}
+
+gboolean
+gst_ml_frame_to_module_tensors (const GstMLFrame * mlframe, const gint index,
+    Tensors& tensors)
+{
+  GstMLTensorMeta *mlmeta = NULL;
+  guint num = 0, pos = 0, size = 1;
+
+  tensors.clear();
+  tensors.resize(GST_ML_FRAME_N_TENSORS (mlframe));
+
+  for (num = 0; num < GST_ML_FRAME_N_TENSORS (mlframe); ++num, size = 1) {
+    Tensor& tensor = tensors[num];
+
+    switch (GST_ML_FRAME_TYPE (mlframe)) {
+      case GST_ML_TYPE_INT8:
+        tensor.type = TensorType::kInt8;
+        break;
+      case GST_ML_TYPE_UINT8:
+        tensor.type = TensorType::kUint8;
+        break;
+      case GST_ML_TYPE_INT16:
+        tensor.type = TensorType::kInt16;
+        break;
+      case GST_ML_TYPE_UINT16:
+        tensor.type = TensorType::kUint16;
+        break;
+      case GST_ML_TYPE_INT32:
+        tensor.type = TensorType::kInt32;
+        break;
+      case GST_ML_TYPE_UINT32:
+        tensor.type = TensorType::kUint32;
+        break;
+      case GST_ML_TYPE_INT64:
+        tensor.type = TensorType::kInt64;
+        break;
+      case GST_ML_TYPE_UINT64:
+        tensor.type = TensorType::kUint64;
+        break;
+      case GST_ML_TYPE_FLOAT16:
+        tensor.type = TensorType::kFloat16;
+        break;
+      case GST_ML_TYPE_FLOAT32:
+        tensor.type = TensorType::kFloat32;
+        break;
+      default:
+        GST_ERROR ("Unsupported ML type %u!", GST_ML_FRAME_TYPE (mlframe));
+        return FALSE;
+    }
+
+    mlmeta = gst_buffer_get_ml_tensor_meta_id (mlframe->buffer, num);
+
+    // Overwrite default name with the information from the meta.
+    if ((mlmeta != NULL) && (mlmeta->name != 0))
+      tensor.name = std::string(g_quark_to_string (mlmeta->name));
+
+    // Set batch index to 1 when not asked to convert a specific batch index.
+    tensor.dimensions.push_back(
+        (index != -1) ? 1 : GST_ML_FRAME_DIM (mlframe, num, 0));
+
+    for (pos = 1; pos < GST_ML_FRAME_N_DIMENSIONS (mlframe, num); ++pos) {
+      tensor.dimensions.push_back(GST_ML_FRAME_DIM (mlframe, num, pos));
+      size *= GST_ML_FRAME_DIM (mlframe, num, pos);
+    }
+
+    // Additional offset based on whether we are asked to convert a batch index.
+    tensor.data = GST_ML_FRAME_BLOCK_DATA (mlframe, num) +
+        ((index != -1) ? (index * size) : 0);
+  }
+
+  return TRUE;
 }
 
 GstCaps *
@@ -393,6 +534,21 @@ gst_ml_modules_get_type (void)
   return gtype;
 }
 
+GQuark
+gst_ml_module_caps_get_type (const std::string& json)
+{
+  auto root = JsonValue::Parse (json);
+
+  if (!root || root->GetType() != JsonType::Object)
+    return g_quark_from_string ("unknown");
+
+  try {
+    return g_quark_from_string (root->GetString ("type").c_str ());
+  } catch (...) {
+    return g_quark_from_string ("unknown");
+  }
+}
+
 gfloat
 gst_ml_post_process_boxes_intersection_score (ObjectDetection& l_box,
     ObjectDetection& r_box)
@@ -433,7 +589,7 @@ gst_ml_post_process_boxes_intersection_score (ObjectDetection& l_box,
 }
 
 void
-gst_ml_post_process_box_displacement_correction (ObjectDetection &l_box,
+gst_ml_post_process_box_displacement_correction (ObjectDetection& l_box,
     ObjectDetections& boxes)
 {
   gdouble score = 0.0;
@@ -464,18 +620,21 @@ gst_ml_post_process_box_displacement_correction (ObjectDetection &l_box,
   return;
 }
 
-GQuark
-gst_ml_module_caps_get_type (const std::string& json)
+gboolean
+gst_ml_box_compare_entries_by_position (ObjectDetection& l_entry,
+    ObjectDetection& r_entry)
 {
-  auto root = JsonValue::Parse (json);
-  if (!root || root->GetType() != JsonType::Object)
-    return g_quark_from_string ("");
+  gfloat delta = l_entry.left - r_entry.left;
 
-  try {
-    return g_quark_from_string (root->GetString ("type").c_str ());
-  } catch (...) {
-    return g_quark_from_string ("");
-  }
+  if (fabs (delta) > POSITION_THRESHOLD)
+    return (delta < 0);
+
+  delta = l_entry.top - r_entry.top;
+
+  if (fabs (delta) > POSITION_THRESHOLD)
+    return (delta < 0);
+
+  return TRUE;
 }
 
 void
@@ -545,68 +704,6 @@ gst_ml_text_generation_sort_and_push (std::any& output, std::any& predictions)
       });
 
   std::any_cast<TextPrediction&>(output).push_back (texts);
-}
-
-gboolean
-gst_video_frame_to_module_frame (const GstVideoFrame &vframe, VideoFrame &frame)
-{
-  guint idx = 0;
-
-  frame.width = GST_VIDEO_FRAME_WIDTH (&vframe);
-  frame.height = GST_VIDEO_FRAME_HEIGHT (&vframe);
-  frame.bits = GST_VIDEO_FORMAT_INFO_BITS (vframe.info.finfo);
-  frame.n_components = GST_VIDEO_INFO_N_COMPONENTS (&vframe.info);
-
-  switch (GST_VIDEO_FRAME_FORMAT (&vframe)) {
-    case GST_VIDEO_FORMAT_GRAY8:
-      frame.format = kGRAY8;
-      break;
-    case GST_VIDEO_FORMAT_RGB:
-      frame.format = kRGB888;
-      break;
-    case GST_VIDEO_FORMAT_BGR:
-      frame.format = kBGR888;
-      break;
-    case GST_VIDEO_FORMAT_ARGB:
-      frame.format = kARGB8888;
-      break;
-    case GST_VIDEO_FORMAT_ABGR:
-      frame.format = kABGR8888;
-      break;
-    case GST_VIDEO_FORMAT_xRGB:
-      frame.format = kXRGB8888;
-      break;
-    case GST_VIDEO_FORMAT_xBGR:
-      frame.format = kXBGR8888;
-      break;
-    case GST_VIDEO_FORMAT_RGBA:
-      frame.format = kRGBA8888;
-      break;
-    case GST_VIDEO_FORMAT_RGBx:
-      frame.format = kRGBX8888;
-      break;
-    case GST_VIDEO_FORMAT_BGRA:
-      frame.format = kBGRA8888;
-      break;
-    case GST_VIDEO_FORMAT_BGRx:
-      frame.format = kBGRX8888;
-      break;
-    default:
-      GST_ERROR ("Unsupported video format: %s!",
-          gst_video_format_to_string (GST_VIDEO_FRAME_FORMAT (&vframe)));
-      return FALSE;
-  }
-
-  for (idx = 0; idx < GST_VIDEO_FRAME_N_PLANES (&vframe);  idx++) {
-    Plane plane;
-    plane.data = (uint8_t *) GST_VIDEO_FRAME_PLANE_DATA (&vframe, idx);
-    plane.offset = GST_VIDEO_FRAME_PLANE_OFFSET (&vframe, idx);
-    plane.stride = GST_VIDEO_FRAME_PLANE_STRIDE (&vframe, idx);
-
-    frame.planes.push_back (plane);
-  }
-
-  return TRUE;
 }
 
 gboolean
@@ -700,92 +797,4 @@ gst_cairo_draw_cleanup (GstVideoFrame * frame, cairo_surface_t * surface,
       GST_WARNING ("DMA IOCTL SYNC END failed!");
   }
 #endif // HAVE_LINUX_DMA_BUF_H
-}
-
-gboolean
-gst_ml_tensors_convert (const GstMLFrame& mlframe, GstBuffer * buffer,
-    Tensors& tensors)
-{
-  for (guint num = 0; num < GST_ML_FRAME_N_TENSORS (&mlframe); ++num) {
-    TensorType type;
-    std::string name;
-    std::vector<uint32_t> dimensions;
-    void* data = NULL;
-    GstMLTensorMeta *mlmeta = NULL;
-    guint size = 1;
-
-    mlmeta = gst_buffer_get_ml_tensor_meta_id (buffer, num);
-
-    if (mlmeta == NULL) {
-      GST_ERROR ("Invalid tensor meta: %p", mlmeta);
-      return FALSE;
-    }
-
-    switch (GST_ML_FRAME_TYPE (&mlframe)) {
-      case GST_ML_TYPE_INT8:
-        type = kInt8;
-        break;
-      case GST_ML_TYPE_UINT8:
-        type = kUint8;
-        break;
-      case GST_ML_TYPE_INT32:
-        type = kInt32;
-        break;
-      case GST_ML_TYPE_UINT32:
-        type = kUint32;
-        break;
-      case GST_ML_TYPE_FLOAT16:
-        type = kFloat16;
-        break;
-      case GST_ML_TYPE_FLOAT32:
-        type = kFloat32;
-        break;
-      default:
-        GST_ERROR ("Unsupported ML type!");
-        return FALSE;
-    }
-
-    // Workaround: Sometimes mlmeta->name is NULL
-    const char *meta_name = g_quark_to_string (mlmeta->name);
-    name = std::string ((meta_name != NULL) ? meta_name : "");
-
-    // Always set batch index to 1, the postprocess will not process batching
-    dimensions.push_back (1);
-
-    for (guint pos = 1; pos < GST_ML_FRAME_N_DIMENSIONS (&mlframe, num); ++pos) {
-      dimensions.push_back (GST_ML_FRAME_DIM (&mlframe, num, pos));
-      size *= GST_ML_FRAME_DIM (&mlframe, num, pos);
-    }
-
-    // Increment the pointer with the size of single batch and current index.
-    data = GST_ML_FRAME_BLOCK_DATA (&mlframe, num);
-
-    tensors.emplace_back(type, name, dimensions, data);
-  }
-
-  return TRUE;
-}
-
-gboolean
-gst_is_valid_protection_meta (const GstProtectionMeta *pmeta)
-{
-  g_return_val_if_fail (pmeta != NULL, FALSE);
-
-  const GstStructure *structure = pmeta->info;
-  gboolean success = TRUE;
-
-  // Check all required fields for protection meta
-  success &= gst_structure_has_field (structure, "timestamp");
-  if (!success)
-    GST_ERROR ("Protection meta has no timestamp!");
-
-  success &= gst_structure_has_field (structure, "sequence-index");
-  if (!success)
-    GST_ERROR ("Protection meta has no sequence-index!");
-
-  success &= gst_structure_has_field (structure, "sequence-num-entries");
-  if (!success)
-    GST_ERROR ("Protection meta has no sequence-num-entries!");
-
-  return success;
 }

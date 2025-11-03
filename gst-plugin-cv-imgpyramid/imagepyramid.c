@@ -384,7 +384,7 @@ gst_cv_imgpyramid_create_pool (GstCvImgPyramid * imgpyramid, GArray * sizes)
 
   for (idx = 1; idx < imgpyramid->n_levels; idx++) {
     size = g_array_index (sizes, guint, idx);
-    pool = gst_mem_buffer_pool_new (GST_MEMORY_BUFFER_POOL_TYPE_ION);
+    pool = gst_mem_buffer_pool_new (GST_MEMORY_BUFFER_POOL_TYPE_DMA);
 
     if (pool == NULL) {
       GST_ERROR_OBJECT (imgpyramid, "Failed to create pool of size (%u)!", size);

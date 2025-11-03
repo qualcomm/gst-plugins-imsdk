@@ -16,6 +16,8 @@ pkg_check_modules(GST
   REQUIRED gstreamer-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_BASE
   REQUIRED gstreamer-base-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_QCOM_UTILS
+  REQUIRED gstreamer-qcom-oss-utils-1.0>=1.0.0)
 
 # Generate configuration header file.
 configure_file(config.h.in config.h @ONLY)
@@ -28,20 +30,21 @@ add_definitions(-DHAVE_CONFIG_H)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra")
 
 # GStreamer sink plugin.
-set(GST_QTI_REDISSINK qtiredissink)
+set(GST_QTI_REDISSINK gstqtiredissink)
 
 add_library(${GST_QTI_REDISSINK} SHARED
-  qtiredissink.c
+  redissink.c
 )
 
 target_include_directories(${GST_QTI_REDISSINK} PUBLIC
   ${GST_INCLUDE_DIRS}
+  ${GST_QCOM_UTILS_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_REDISSINK} PRIVATE
   ${GST_LIBRARIES}
   ${GST_BASE_LIBRARIES}
-  gstqtiutilsbase
+  ${GST_QCOM_UTILS_LIBRARIES}
   hiredis
 )
 

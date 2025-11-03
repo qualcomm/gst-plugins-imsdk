@@ -18,6 +18,12 @@ pkg_check_modules(GST_ALLOC
   REQUIRED gstreamer-allocators-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GST_VIDEO
   REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
+pkg_check_modules(GST_QCOM_UTILS
+  REQUIRED gstreamer-qcom-oss-utils-1.0>=1.0.0)
+pkg_check_modules(GST_QCOM_VIDEO
+  REQUIRED gstreamer-qcom-oss-video-1.0>=1.0.0)
+pkg_check_modules(GST_QCOM_ALLOC
+  REQUIRED gstreamer-qcom-oss-allocators-1.0>=1.0.0)
 
 # Generate configuration header file.
 configure_file(config.h.in config.h @ONLY)
@@ -41,6 +47,9 @@ add_library(${CAMERA_IMAGE_REPROCESS} SHARED
 
 target_include_directories(${CAMERA_IMAGE_REPROCESS} PUBLIC
   ${GST_INCLUDE_DIRS}
+  ${GST_QCOM_UTILS_INCLUDE_DIRS}
+  ${GST_QCOM_VIDEO_INCLUDE_DIRS}
+  ${GST_QCOM_ALLOC_INCLUDE_DIRS}
 )
 
 target_link_libraries(${CAMERA_IMAGE_REPROCESS} PRIVATE
@@ -49,9 +58,9 @@ target_link_libraries(${CAMERA_IMAGE_REPROCESS} PRIVATE
   ${GST_ALLOC_LIBRARIES}
   qmmf_recorder_client
   qmmf_camera_metadata
-  gstqtiutilsbase
-  gstqtivideobase
-  gstqtiallocatorsbase
+  ${GST_QCOM_UTILS_LIBRARIES}
+  ${GST_QCOM_VIDEO_LIBRARIES}
+  ${GST_QCOM_ALLOC_LIBRARIES}
 )
 
 install(

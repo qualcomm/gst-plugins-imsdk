@@ -1,0 +1,4 @@
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/libgstqtimlvsegmentation.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-vsegmentation-deeplab-argmax.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-vsegmentation-midas-v2.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-vsegmentation-yolov8.so

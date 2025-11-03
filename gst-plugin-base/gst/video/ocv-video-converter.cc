@@ -21,10 +21,6 @@
 #define GST_OCV_LOCK(obj)           g_mutex_lock (GST_OCV_GET_LOCK(obj))
 #define GST_OCV_UNLOCK(obj)         g_mutex_unlock (GST_OCV_GET_LOCK(obj))
 
-#define OPENCV_FLIP_HORIZ           1
-#define OPENCV_FLIP_VERT            0
-#define OPENCV_FLIP_BOTH            -1
-
 #define GST_OCV_INVALID_STAGE_ID    (-1)
 #define GST_OCV_MAX_DRAW_OBJECTS    50
 
@@ -33,9 +29,9 @@
 #define GST_OCV_OBJ_IS_GRAY(obj)    (obj && (obj->flags & GST_OCV_FLAG_GRAY))
 
 #define GST_OCV_GET_FLIP(flip) \
-    ((flip == GST_VCE_FLIP_BOTH) ? OPENCV_FLIP_BOTH : \
-    ((flip == GST_VCE_FLIP_HORIZONTAL) ? OPENCV_FLIP_HORIZ : \
-    ((flip == GST_VCE_FLIP_VERTICAL) ? OPENCV_FLIP_VERT : 0)))
+    ((flip == GST_OCV_FLIP_HORIZONTAL) ? 1 : \
+    ((flip == GST_OCV_FLIP_VERTICAL) ? 0 : \
+    ((flip == GST_OCV_FLIP_BOTH) ? (-1) : 0)))
 
 #define GST_OCV_GET_ROTATE(rotate) \
     ((rotate == GST_VCE_ROTATE_90) ? cv::ROTATE_90_CLOCKWISE : \
@@ -56,6 +52,13 @@ enum {
   GST_OCV_FLAG_F16    = (1 << 6),
   GST_OCV_FLAG_F32    = (1 << 7),
 };
+
+typedef enum {
+  GST_OCV_FLIP_NONE,
+  GST_OCV_FLIP_HORIZONTAL,
+  GST_OCV_FLIP_VERTICAL,
+  GST_OCV_FLIP_BOTH
+} GstOpenCVFlip;
 
 /**
  * GstOcvPlane:
@@ -93,8 +96,9 @@ struct _GstOcvObject
   GstVideoFormat     format;
   guint32            flags;
 
+  GstOpenCVFlip      flip;
   GstVideoConvRotate rotate;
-  GstVideoConvFlip   flip;
+
   gboolean           resize;
   gboolean           cvt_color;
 
@@ -155,7 +159,7 @@ gst_ocv_copy_object (GstOcvObject * l_object, GstOcvObject * r_object)
 static inline void
 gst_ocv_update_object (GstOcvObject * object, const gchar * type,
     const GstVideoFrame * frame, const GstVideoRectangle * region,
-    const GstVideoConvFlip flip, const GstVideoConvRotate rotate,
+    const GstOpenCVFlip flip, const GstVideoConvRotate rotate,
     const guint64 flags)
 {
   const gchar *mode = NULL;
@@ -461,7 +465,7 @@ gst_ocv_video_converter_stage_object_init (GstOcvVideoConverter * convert,
   obj->format = format;
   obj->flags |= GST_OCV_FLAG_STAGED;
 
-  obj->flip = GST_VCE_FLIP_NONE;
+  obj->flip = GST_OCV_FLIP_NONE;
   obj->rotate = GST_VCE_ROTATE_0;
 
   // Fetch stage buffer for each plane and set the data pointer and index.
@@ -652,14 +656,14 @@ gst_ocv_video_converter_rotate (GstOcvVideoConverter * convert,
     GstOcvObject * s_obj, GstOcvObject * d_obj)
 {
   GstOcvObject l_obj = {};
-  GstVideoConvFlip flip = GST_VCE_FLIP_NONE;
-  gint rotate = 0;
+  GstVideoConvRotate rotate = GST_VCE_ROTATE_0;
+  GstOpenCVFlip flip = GST_OCV_FLIP_NONE;
   guint8 idx = 0;
   gboolean resize = false, cvt_color = false;
 
   // Cache the flip, rotation, resize and color convert flags.
   flip = s_obj->flip;
-  rotate = GST_OCV_GET_ROTATE (s_obj->rotate);
+  rotate = s_obj->rotate;
   resize = s_obj->resize;
   cvt_color = s_obj->cvt_color;
 
@@ -674,8 +678,7 @@ gst_ocv_video_converter_rotate (GstOcvVideoConverter * convert,
     height = s_obj->planes[0].height;
 
     // Dimensions are swapped if 90/270 degree rotation is required.
-    if (rotate == cv::ROTATE_90_CLOCKWISE ||
-        rotate == cv::ROTATE_90_COUNTERCLOCKWISE) {
+    if (rotate == GST_VCE_ROTATE_90 || rotate == GST_VCE_ROTATE_270) {
       width = s_obj->planes[0].height;
       height = s_obj->planes[0].width;
     }
@@ -706,7 +709,7 @@ gst_ocv_video_converter_rotate (GstOcvVideoConverter * convert,
     cv::Mat dst_mat (d_plane->height, d_plane->width, d_plane->channels,
         d_plane->data, d_plane->stride);
 
-    cv::rotate (src_mat, dst_mat, rotate);
+    cv::rotate (src_mat, dst_mat, GST_OCV_GET_ROTATE (rotate));
 
     GST_TRACE ("Rotated plane No. %u", idx);
   }
@@ -736,13 +739,13 @@ gst_ocv_video_converter_flip (GstOcvVideoConverter * convert,
     GstOcvObject * s_obj, GstOcvObject * d_obj)
 {
   GstOcvObject l_obj = {};
-  gint flip = 0;
-  guint8 idx = 0;
   GstVideoConvRotate rotate = GST_VCE_ROTATE_0;
+  GstOpenCVFlip flip = GST_OCV_FLIP_NONE;
+  guint8 idx = 0;
   gboolean resize = false, cvt_color = false;
 
   // Cache the flip, rotation, resize and color convert flags.
-  flip = GST_OCV_GET_FLIP (s_obj->flip);
+  flip = s_obj->flip;
   rotate = s_obj->rotate;
   resize = s_obj->resize;
   cvt_color = s_obj->cvt_color;
@@ -790,7 +793,7 @@ gst_ocv_video_converter_flip (GstOcvVideoConverter * convert,
     cv::Mat dst_mat (d_plane->height, d_plane->width, d_plane->channels,
         d_plane->data, d_plane->stride);
 
-    cv::flip (src_mat, dst_mat, flip);
+    cv::flip (src_mat, dst_mat, GST_OCV_GET_FLIP (flip));
 
     GST_TRACE ("Flipped plane No. %u", idx);
   }
@@ -803,7 +806,7 @@ gst_ocv_video_converter_flip (GstOcvVideoConverter * convert,
   gst_ocv_copy_object (d_obj, s_obj);
 
   // Transfer any pending resize, rotate and color convert and reset flip
-  s_obj->flip = GST_VCE_FLIP_NONE;
+  s_obj->flip = GST_OCV_FLIP_NONE;
   s_obj->rotate = rotate;
   s_obj->cvt_color = cvt_color;
   s_obj->resize = resize;
@@ -820,9 +823,9 @@ gst_ocv_video_converter_resize (GstOcvVideoConverter * convert,
     GstOcvObject * s_obj, GstOcvObject * d_obj)
 {
   GstOcvObject l_obj = {};
-  guint8 idx = 0;
-  GstVideoConvFlip flip = GST_VCE_FLIP_NONE;
+  GstOpenCVFlip flip = GST_OCV_FLIP_NONE;
   GstVideoConvRotate rotate = GST_VCE_ROTATE_0;
+  guint8 idx = 0;
   gboolean cvt_color = false;
 
   // Cache the flip, rotation, resize and color convert flags.
@@ -1096,24 +1099,66 @@ gst_ocv_video_converter_compose (GstOcvVideoConverter * convert,
     for (num = 0; num < n_blits; num++) {
       GstVideoBlit *blit = &(blits[num]);
       GstOcvObject *object = NULL;
+      GstVideoRectangle rectangle = {0, 0, 0, 0};
+      GstOpenCVFlip flip = GST_OCV_FLIP_NONE;
+      GstVideoConvRotate rotate = GST_VCE_ROTATE_0;
 
       if (n_objects >= GST_OCV_MAX_DRAW_OBJECTS) {
         GST_ERROR ("Number of objects exceeds %d!", GST_OCV_MAX_DRAW_OBJECTS);
         return false;
       }
 
+      if ((blit->mask & GST_VCE_MASK_FLIP_VERTICAL) &&
+          (blit->mask & GST_VCE_MASK_FLIP_HORIZONTAL))
+        flip = GST_OCV_FLIP_BOTH;
+      else if (blit->mask & GST_VCE_MASK_FLIP_VERTICAL)
+        flip = GST_OCV_FLIP_VERTICAL;
+      else if (blit->mask & GST_VCE_MASK_FLIP_HORIZONTAL)
+        flip = GST_OCV_FLIP_HORIZONTAL;
+
+      if (blit->mask & GST_VCE_MASK_ROTATION)
+        rotate = blit->rotate;
+
       // Intialization of the source OCV object.
       object = &(objects[n_objects]);
 
-      gst_ocv_update_object (object, "Source", blit->frame, &(blit->source),
-          blit->flip, blit->rotate, 0);
+      if (blit->mask & GST_VCE_MASK_SOURCE) {
+        if (!gst_video_quadrilateral_is_rectangle (&(blit->source))) {
+          GST_ERROR ("Composition %u: Blit %u: Source quadrilateral is not a "
+              "rectangle! A(%f, %f) B(%f, %f) C(%fd, %f) D(%f, %f)", idx, num,
+              blit->source.a.x, blit->source.a.y, blit->source.b.x,
+              blit->source.b.y, blit->source.c.x, blit->source.c.y,
+              blit->source.d.x, blit->source.d.y);
+          return FALSE;
+        }
+
+        rectangle.x = blit->source.a.x;
+        rectangle.y = blit->source.a.y;
+        rectangle.w = blit->source.d.x - blit->source.a.x;
+        rectangle.h = blit->source.d.y - blit->source.a.y;
+      } else {
+        rectangle.x = rectangle.y = 0;
+        rectangle.w = GST_VIDEO_FRAME_WIDTH (blit->frame);
+        rectangle.h = GST_VIDEO_FRAME_HEIGHT (blit->frame);
+      }
+
+      gst_ocv_update_object (object, "Source", blit->frame, &rectangle,
+          flip, rotate, 0);
 
       // Intialization of the destination OCV object.
       object = &(objects[n_objects + 1]);
 
-      gst_ocv_update_object (object, "Destination", outframe,
-          &(blit->destination), GST_VCE_FLIP_NONE, GST_VCE_ROTATE_0,
-          compositions[idx].flags);
+      // Setup the source quadrilateral.
+      if (blit->mask & GST_VCE_MASK_DESTINATION) {
+        rectangle = blit->destination;
+      } else {
+        rectangle.x = rectangle.y = 0;
+        rectangle.w = GST_VIDEO_FRAME_WIDTH (outframe);
+        rectangle.h = GST_VIDEO_FRAME_HEIGHT (outframe);
+      }
+
+      gst_ocv_update_object (object, "Destination", outframe, &rectangle,
+          GST_OCV_FLIP_NONE, GST_VCE_ROTATE_0, compositions[idx].flags);
 
       // Increment the objects counter by 2 for for Source/Destination pair.
       n_objects += 2;

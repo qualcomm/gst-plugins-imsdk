@@ -1,0 +1,8 @@
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/libgstqtimlvdetection.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-vdetection-east-textdt.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-vdetection-yolo-nas.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-vdetection-yolov5.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-vdetection-yolov8.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-vdetection-ssd-mobilenet.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-vdetection-qfd.so
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-vdetection-qpd.so

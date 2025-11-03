@@ -19,6 +19,10 @@ pkg_check_modules(GST_ALLOC
 pkg_check_modules(GST_VIDEO
   REQUIRED gstreamer-video-1.0>=${GST_VERSION_REQUIRED})
 pkg_check_modules(GBM REQUIRED gbm)
+pkg_check_modules(GST_QCOM_UTILS
+  REQUIRED gstreamer-qcom-oss-utils-1.0>=1.0.0)
+pkg_check_modules(GST_QCOM_MEM
+  REQUIRED gstreamer-qcom-oss-memory-1.0>=1.0.0)
 
 include(CheckIncludeFileCXX)
 # Check whether CVP pyramid header is present.
@@ -53,6 +57,8 @@ target_compile_definitions(${GST_QTI_CV_IMGPYRAMID} PRIVATE
 
 target_include_directories(${GST_QTI_CV_IMGPYRAMID} PUBLIC
   ${GST_INCLUDE_DIRS}
+  ${GST_QCOM_UTILS_INCLUDE_DIRS}
+  ${GST_QCOM_MEM_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_CV_IMGPYRAMID} PRIVATE
@@ -60,8 +66,8 @@ target_link_libraries(${GST_QTI_CV_IMGPYRAMID} PRIVATE
   ${GST_ALLOC_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
   ${GBM_LIBRARIES}
-  gstqtimemorybase
-  gstqtiutilsbase
+  ${GST_QCOM_MEM_LIBRARIES}
+  ${GST_QCOM_UTILS_LIBRARIES}
   $<$<BOOL:${HAVE_CVP_IMGPYRAMID_H}>:cvp2>
   $<$<BOOL:${HAVE_EVA_IMGPYRAMID_H}>:eva>
 )

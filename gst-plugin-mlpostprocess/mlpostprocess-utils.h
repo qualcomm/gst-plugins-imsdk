@@ -57,7 +57,7 @@ gst_module_logging (uint32_t level, const char * msg);
  * return: Pointer to GstStructure.
  **/
 GstStructure*
-gst_structure_from_dictionary (const Dictionary& dict);
+gst_structure_from_dictionary (const Dictionary& dictionary);
 
 /* gst_ml_structure_to_module_params
  *
@@ -68,6 +68,25 @@ gst_structure_from_dictionary (const Dictionary& dict);
  **/
 Dictionary
 gst_ml_structure_to_module_params (const GstStructure * structure);
+
+/* gst_video_frame_to_module_frame
+ *
+ * Helper function to translate GstVideoFrame to VideoFrame.
+ *
+ * return: TRUE on success or FALSE on failure.
+ **/
+gboolean
+gst_video_frame_to_module_frame (const GstVideoFrame * vframe, VideoFrame& frame);
+
+/* gst_ml_frame_to_module_tensors
+ *
+ * Helper function to translate GstMLFrame to per batch Tensors.
+ *
+ * return: Filled vector with Tensors on success or empty one on failure.
+ **/
+gboolean
+gst_ml_frame_to_module_tensors (const GstMLFrame * mlframe, const gint index,
+                                Tensors& tensors);
 
 /* gst_ml_caps_from_json
  *
@@ -123,6 +142,15 @@ gst_ml_enumarate_modules (const gchar * type);
 GType
 gst_ml_modules_get_type (void);
 
+/* gst_ml_module_caps_get_type
+ *
+ * Helper function to get module type from JSON.
+ *
+ * return: GQuark.
+ **/
+GQuark
+gst_ml_module_caps_get_type (const std::string& json);
+
 /* gst_ml_post_process_boxes_intersection_score
  *
  * Helper function to get intersection score between two boxes.
@@ -140,17 +168,18 @@ gst_ml_post_process_boxes_intersection_score (ObjectDetection& l_box,
  * return: None.
  **/
 void
-gst_ml_post_process_box_displacement_correction (ObjectDetection &l_box,
+gst_ml_post_process_box_displacement_correction (ObjectDetection& l_box,
                                                  ObjectDetections& boxes);
 
-/* gst_ml_module_caps_get_type
+/* gst_ml_box_compare_entries_by_position
  *
- * Helper function to get module type from JSON.
+ * Helper function to compare boxes by position.
  *
- * return: GQuark.
+ * return: TRUE if arguments in order.
  **/
-GQuark
-gst_ml_module_caps_get_type (const std::string& json);
+gboolean
+gst_ml_box_compare_entries_by_position (ObjectDetection& l_entry,
+                                        ObjectDetection& r_entry);
 
 /* gst_ml_object_detections_sort_and_push
  *
@@ -197,15 +226,6 @@ gst_ml_pose_estimation_sort_and_push (std::any& output, std::any& predictions);
 void
 gst_ml_text_generation_sort_and_push (std::any& output, std::any& predictions);
 
-/* gst_video_frame_to_module_frame
- *
- * Helper function to convert GstVideoFrame to VideoFrame.
- *
- * return: Success.
- **/
-gboolean
-gst_video_frame_to_module_frame (const GstVideoFrame &vframe, VideoFrame &frame);
-
 /* gst_cairo_draw_setup
  *
  * Helper function to prepare cairo for draw.
@@ -214,7 +234,7 @@ gst_video_frame_to_module_frame (const GstVideoFrame &vframe, VideoFrame &frame)
  **/
 gboolean
 gst_cairo_draw_setup (GstVideoFrame * frame, cairo_surface_t ** surface,
-    cairo_t ** context);
+                      cairo_t ** context);
 
 /* gst_cairo_draw_cleanup
  *
@@ -224,23 +244,4 @@ gst_cairo_draw_setup (GstVideoFrame * frame, cairo_surface_t ** surface,
  **/
 void
 gst_cairo_draw_cleanup (GstVideoFrame * frame, cairo_surface_t * surface,
-    cairo_t * context);
-
-/* gst_ml_tensors_convert
- *
- * Helper function to convert GstMLFrame to Tensors.
- *
- * return: Success.
- **/
-gboolean
-gst_ml_tensors_convert (const GstMLFrame& mlframe, GstBuffer * buffer,
-    Tensors& tensors);
-
-/* gst_is_valid_protection_meta
- *
- * Helper function to check if necessary fields are present in protection meta.
- *
- * return: Success.
- **/
-gboolean
-gst_is_valid_protection_meta (const GstProtectionMeta *pmeta);
+                        cairo_t * context);

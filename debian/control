@@ -1,0 +1,380 @@
+Source: gst-plugins-qti-oss
+Section: libs
+Priority: optional
+Maintainer: Bala Sai Kosuri <bkosuri@qti.qualcomm.com>
+Rules-Requires-Root: no
+Build-Depends:
+ debhelper-compat (= 13),
+ dh-cmake,
+ cmake,
+ libgstreamer1.0-dev,
+ libgstreamer-plugins-qcom-base1.0-dev,
+ qcom-syslog-plumber-dev,
+ libgbm-dev,
+ qcom-fastcv-binaries-dev,
+ linux-libc-dev-qcom,
+ libgstrtspserver-1.0-dev,
+ libcairo2-dev,
+ qcom-property-vault-dev,
+ libjson-glib-dev,
+ librdkafka-dev,
+ libmosquitto-dev,
+ libhiredis-dev,
+ qcom-video-ctrl-dev,
+ libsoup2.4-dev,
+ libgstreamer-plugins-bad1.0-dev,
+ libeigen3-dev,
+ libopencv-dev,
+ opencl-c-headers,
+ libcairo2-dev,
+Standards-Version: 4.6.2
+
+Package: gstreamer1.0-plugins-qcom
+Section: metapackages
+Architecture: arm64
+Depends:
+ gstreamer1.0-plugins-qcom-batch,
+ gstreamer1.0-plugins-qcom-metamux,
+ gstreamer1.0-plugins-qcom-metatransform,
+ gstreamer1.0-plugins-qcom-mlaclassification,
+ gstreamer1.0-plugins-qcom-mlaconverter,
+ gstreamer1.0-plugins-qcom-mldemux,
+ gstreamer1.0-plugins-qcom-mlmetaextractor,
+ gstreamer1.0-plugins-qcom-mlmetaparser,
+ gstreamer1.0-plugins-qcom-mlpostprocess,
+ gstreamer1.0-plugins-qcom-mlvclassification,
+ gstreamer1.0-plugins-qcom-mlvconverter,
+ gstreamer1.0-plugins-qcom-mlvdetection,
+ gstreamer1.0-plugins-qcom-mlvpose,
+ gstreamer1.0-plugins-qcom-mlvsegmentation,
+ gstreamer1.0-plugins-qcom-mlvsuperresolution,
+ gstreamer1.0-plugins-qcom-msgbroker,
+ gstreamer1.0-plugins-qcom-objtracker,
+ gstreamer1.0-plugins-qcom-redissink,
+ gstreamer1.0-plugins-qcom-restricted-zone,
+ gstreamer1.0-plugins-qcom-rtspbin,
+ gstreamer1.0-plugins-qcom-smartvencbin,
+ gstreamer1.0-plugins-qcom-socket,
+ gstreamer1.0-plugins-qcom-tools,
+ gstreamer1.0-plugins-qcom-vcomposer,
+ gstreamer1.0-plugins-qcom-videotemplate,
+ gstreamer1.0-plugins-qcom-voverlay,
+ gstreamer1.0-plugins-qcom-vsplit,
+ gstreamer1.0-plugins-qcom-vtransform,
+Description: Meta‑package that pulls in all Qualcomm GStreamer plugins.
+
+Package: gstreamer1.0-plugins-qcom-batch
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: batch.
+
+Package: gstreamer1.0-plugins-qcom-metamux
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: metamux.
+
+Package: gstreamer1.0-plugins-qcom-metatransform
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: metatransform.
+
+Package: gstreamer1.0-plugins-qcom-mlaclassification
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: mlaclassification.
+
+Package: gstreamer1.0-plugins-qcom-mlaconverter
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: mlaconverter.
+
+Package: gstreamer1.0-plugins-qcom-mldemux
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: mldemux.
+
+Package: gstreamer1.0-plugins-qcom-mlmetaextractor
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: mlmetaextractor.
+
+Package: gstreamer1.0-plugins-qcom-mlmetaparser
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+ gstreamer1.0-plugins-qcom-mlmeta,
+Description: GStreamer plugin for Qualcomm: mlmetaparser.
+
+Package: gstreamer1.0-plugins-qcom-mlpostprocess
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: mlpostprocess.
+
+Package: gstreamer1.0-plugins-qcom-mlvclassification
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: mlvclassification.
+
+Package: gstreamer1.0-plugins-qcom-mlvconverter
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: mlvconverter.
+
+Package: gstreamer1.0-plugins-qcom-mlvdetection
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: mlvdetection.
+
+Package: gstreamer1.0-plugins-qcom-mlvpose
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: mlvpose.
+
+Package: gstreamer1.0-plugins-qcom-mlvsegmentation
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: mlvsegmentation.
+
+Package: gstreamer1.0-plugins-qcom-mlvsuperresolution
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: mlvsuperresolution.
+
+Package: gstreamer1.0-plugins-qcom-msgbroker
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: msgbroker.
+
+Package: gstreamer1.0-plugins-qcom-objtracker
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: objtracker.
+
+Package: gstreamer1.0-plugins-qcom-redissink
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: redissink.
+
+Package: gstreamer1.0-plugins-qcom-restricted-zone
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: restricted zone.
+
+Package: gstreamer1.0-plugins-qcom-rtspbin
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: rtspbin.
+
+Package: gstreamer1.0-plugins-qcom-smartvencbin
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+ qcom-video-ctrl1,
+Description: GStreamer plugin for Qualcomm: smartvencbin.
+
+Package: gstreamer1.0-plugins-qcom-socket
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: socket.
+
+Package: gstreamer1.0-plugins-qcom-tools
+Section: utils
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+Description: GStreamer plugin for Qualcomm: tools.
+
+Package: gstreamer1.0-plugins-qcom-vcomposer
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: vcomposer.
+
+Package: gstreamer1.0-plugins-qcom-videotemplate
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: videotemplate.
+
+Package: gstreamer1.0-plugins-qcom-voverlay
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: voverlay.
+
+Package: gstreamer1.0-plugins-qcom-vsplit
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: vsplit.
+
+Package: gstreamer1.0-plugins-qcom-vtransform
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: GStreamer plugin for Qualcomm: vtransform.
+
+Package: gstreamer1.0-plugins-qcom-base
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ libgbm1,
+ qcom-fastcv-binaries1,
+Description: GStreamer plugin for Qualcomm: base.
+
+Package: libgstreamer1.0-plugins-qcom-base-dev
+Section: libdevel
+Architecture: arm64
+Depends:
+  gstreamer1.0-plugins-qcom-base (= ${binary:Version}),
+  ${misc:Depends},
+Description: Development files for the base GStreamer plugin.
+
+Package: gstreamer1.0-qcom-sample-apps-utils
+Section: libs
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom-base,
+Description: Sample applications or utilities for Qualcomm GStreamer (sample apps utils).
+
+Package: libgstreamer1.0-qcom-sample-apps-utils-dev
+Section: libdevel
+Architecture: arm64
+Depends:
+ gstreamer1.0-qcom-sample-apps-utils (= ${binary:Version}),
+ ${misc:Depends},
+Description: GStreamer plugin package: libgstreamer1.0-qcom-sample-apps-utils-dev.
+
+Package: gstreamer1.0-qcom-sample-apps
+Section: utils
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom,
+Description: Sample applications or utilities for Qualcomm GStreamer (sample apps).
+
+Package: gstreamer1.0-qcom-python-examples
+Section: utils
+Architecture: arm64
+Depends:
+ python3,
+ python3-gst-1.0,
+ python3-opencv,
+ gstreamer1.0-plugins-qcom,
+Description: Sample applications or utilities for Qualcomm GStreamer (python examples).
+
+Package: gstreamer1.0-qcom-test-framework
+Section: utils
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ gstreamer1.0-plugins-qcom,
+Description: Sample applications or utilities for Qualcomm GStreamer (test framework).

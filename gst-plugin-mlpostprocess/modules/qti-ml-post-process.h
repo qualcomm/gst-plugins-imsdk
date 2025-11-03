@@ -173,8 +173,12 @@ struct Resolution {
 enum TensorType : uint32_t {
   kInt8,
   kUint8,
+  kInt16,
+  kUint16,
   kInt32,
   kUint32,
+  kInt64,
+  kUint64,
   kFloat16,
   kFloat32,
 };
@@ -194,7 +198,7 @@ struct Tensor {
   void*                 data;
 
   Tensor()
-      : type(TensorType::kUint8), dimensions(0), data(nullptr) {};
+      : type(TensorType::kUint8), name("unknown"), dimensions(0), data(nullptr) {};
 
   Tensor(TensorType type, std::string name,
          std::vector<uint32_t>& dimensions, void* data)

@@ -8,7 +8,7 @@
 #include "config.h"
 #endif
 
-#include "qtiredissink.h"
+#include "redissink.h"
 #include <gst/utils/common-utils.h>
 
 #define gst_redis_sink_parent_class parent_class

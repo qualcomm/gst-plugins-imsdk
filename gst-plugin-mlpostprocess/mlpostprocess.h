@@ -94,11 +94,15 @@ struct _GstMLPostProcess {
   /// Array with info for each batch.
   GPtrArray            *info;
 
+  // Stashed ML boxes used fot stabilization
+  std::vector<DetectionPrediction> *stashedmlboxes;
+
   /// Properties.
   gint                 mdlenum;
   gchar                *labels;
   guint                n_results;
   gchar                *settings;
+  gboolean             bbox_stabilization;
 };
 
 struct _GstMLPostProcessClass {

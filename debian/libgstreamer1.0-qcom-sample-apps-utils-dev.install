@@ -1,0 +1,2 @@
+usr/include/gstreamer-1.0/gst/sampleapps/*
+usr/lib/${DEB_HOST_MULTIARCH}/libgstappsutils.so

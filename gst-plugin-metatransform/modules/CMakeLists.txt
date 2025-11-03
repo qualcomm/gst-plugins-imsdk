@@ -9,13 +9,15 @@ add_library(${GST_QTI_META_MODULE} SHARED
 
 target_include_directories(${GST_QTI_META_MODULE} PUBLIC
   ${GST_INCLUDE_DIRS}
+  ${GST_QCOM_UTILS_INCLUDE_DIRS}
+  ${GST_QCOM_VIDEO_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_META_MODULE} PRIVATE
   ${GST_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
-  gstqtiutilsbase
-  gstqtivideobase
+  ${GST_QCOM_UTILS_LIBRARIES}
+  ${GST_QCOM_VIDEO_LIBRARIES}
 )
 
 install(

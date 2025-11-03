@@ -66,8 +66,8 @@
 #include <dlfcn.h>
 #include <glib-unix.h>
 #include <gst/gst.h>
+#include <gst/video/video.h>
 
-#include <ml-meta/ml_meta.h>
 #include <iot-core-algs/umd-gadget.h>
 #include <sys/epoll.h>
 

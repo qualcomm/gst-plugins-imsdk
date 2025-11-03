@@ -219,7 +219,7 @@ gst_cairo_draw_line (cairo_t * context, guint color, gdouble x, gdouble y,
 
 static inline gboolean
 gst_cairo_draw_rectangle (cairo_t * context, guint color, gdouble x, gdouble y,
-    gdouble width, gdouble height, gdouble linewidth, gboolean filled)
+    gdouble width, gdouble height, gdouble linewidth, gboolean filled, gboolean inverse)
 {
   // Set color.
   cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
@@ -232,6 +232,15 @@ gst_cairo_draw_rectangle (cairo_t * context, guint color, gdouble x, gdouble y,
   // Set rectangle position and dimensions.
   cairo_rectangle (context, x, y, width, height);
 
+  if (inverse) {
+    cairo_surface_t* surface = cairo_get_target (context);
+    gint surface_width = cairo_image_surface_get_width (surface);
+    gint surface_height = cairo_image_surface_get_height (surface);
+
+    cairo_rectangle (context, 0, 0, surface_width, surface_height);
+    cairo_set_fill_rule (context, CAIRO_FILL_RULE_EVEN_ODD);
+  }
+
   if (filled)
     cairo_fill (context);
   else
@@ -242,7 +251,7 @@ gst_cairo_draw_rectangle (cairo_t * context, guint color, gdouble x, gdouble y,
 
 static inline gboolean
 gst_cairo_draw_circle (cairo_t * context, guint color, gdouble x, gdouble y,
-    gdouble radius, gdouble linewidth, gboolean filled)
+    gdouble radius, gdouble linewidth, gboolean filled, gboolean inverse)
 {
   // Set color.
   cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
@@ -255,6 +264,15 @@ gst_cairo_draw_circle (cairo_t * context, guint color, gdouble x, gdouble y,
   // Set circle position and dimensions.
   cairo_arc (context, x, y, radius, 0, 2 * G_PI);
 
+  if (inverse) {
+    cairo_surface_t* surface = cairo_get_target (context);
+    gint surface_width = cairo_image_surface_get_width (surface);
+    gint surface_height = cairo_image_surface_get_height (surface);
+
+    cairo_rectangle (context, 0, 0, surface_width, surface_height);
+    cairo_set_fill_rule (context, CAIRO_FILL_RULE_EVEN_ODD);
+  }
+
   if (filled)
     cairo_fill (context);
   else
@@ -266,7 +284,7 @@ gst_cairo_draw_circle (cairo_t * context, guint color, gdouble x, gdouble y,
 static inline gboolean
 gst_cairo_draw_polygon (cairo_t * context, guint color,
     gdouble coords[GST_VIDEO_POLYGON_MAX_POINTS * 2], guint n_coords,
-    gdouble linewidth, gboolean filled)
+    gdouble linewidth, gboolean filled, gboolean inverse)
 {
   guint idx = 0;
 
@@ -284,6 +302,15 @@ gst_cairo_draw_polygon (cairo_t * context, guint color,
   cairo_set_source_rgba (context, EXTRACT_FLOAT_BLUE_COLOR (color),
       EXTRACT_FLOAT_GREEN_COLOR (color), EXTRACT_FLOAT_RED_COLOR (color),
       EXTRACT_FLOAT_ALPHA_COLOR (color));
+
+  if (inverse) {
+    cairo_surface_t* surface = cairo_get_target (context);
+    gint surface_width = cairo_image_surface_get_width (surface);
+    gint surface_height = cairo_image_surface_get_height (surface);
+
+    cairo_rectangle (context, 0, 0, surface_width, surface_height);
+    cairo_set_fill_rule (context, CAIRO_FILL_RULE_EVEN_ODD);
+  }
 
   if (filled) {
     cairo_stroke_preserve (context);
@@ -551,17 +578,17 @@ gst_overlay_handle_classification_entry (GstVOverlay * overlay,
     GstStructure * objparam)
 {
   gchar text[MAX_LABEL_LENGTH] = { 0, };
-  GstVideoRectangle *source = NULL, *destination = NULL;
+  GstVideoRectangle source = {0}, *destination = NULL;
   gdouble x = 1.0, y = 1.0, fontsize = LABEL_FONTSIZE;
   guint length = 0, color = 0xFFFFFFFF;
   gboolean success = TRUE;
   guint track_id = -1;
 
-  source = &(blit->source);
+  gst_video_quadrilateral_to_rectangle (&(blit->source), &source);
   destination = &(blit->destination);
 
-  destination->w = source->w;
-  destination->h = source->h;
+  destination->w = source.w;
+  destination->h = source.h;
 
   if (objparam != NULL &&
       gst_structure_get_uint (objparam, "tracking-id", &track_id)) {
@@ -592,16 +619,17 @@ gst_overlay_handle_classification_entry (GstVOverlay * overlay,
   success = gst_cairo_draw_text (context, color, x, y, text, fontsize);
 
   // Update the source and destination with the actual text dimensions.
-  destination->w = source->w = ceil (length * fontsize * 3.0F / 5.0F);
+  destination->w = source.w = ceil (length * fontsize * 3.0F / 5.0F);
 
   // The default value is for 1080p resolution, scale up/down based on that.
   destination->w *= (GST_VIDEO_INFO_HEIGHT (overlay->vinfo) / 1080.0F);
   destination->h *= (GST_VIDEO_INFO_HEIGHT (overlay->vinfo) / 1080.0F);
 
   GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
-      "[%d %d %d %d]", source->x, source->y, source->w, source->h,
+      "[%d %d %d %d]", source.x, source.y, source.w, source.h,
       destination->x, destination->y, destination->w, destination->h);
 
+  gst_video_rectangle_to_quadrilateral (&source, &(blit->source));
   return success;
 }
 
@@ -609,16 +637,16 @@ static gboolean
 gst_overlay_handle_landmarks_entry (GstVOverlay * overlay, cairo_t * context,
     GstVideoBlit * blit, GArray * keypoints, GArray * links)
 {
-  GstVideoRectangle *source = NULL, *destination = NULL;
+  GstVideoRectangle source = {0}, *destination = NULL;
   gdouble x = 0.0, y = 0.0, dx = 0.0, dy = 0.0, scale = 0.0, linewidth = 0.0;
   guint idx = 0;
   gboolean success = TRUE;
 
-  source = &(blit->source);
+  gst_video_quadrilateral_to_rectangle (&(blit->source), &source);
   destination = &(blit->destination);
 
   // Set the most appropriate box line width based on frame and box dimensions.
-  gst_util_fraction_to_double (destination->w, source->w, &scale);
+  gst_util_fraction_to_double (destination->w, source.w, &scale);
   linewidth = (scale > 1.0F) ? (4.0F / scale) : 4.0F;
 
   for (idx = 0; idx < keypoints->len; idx++) {
@@ -632,7 +660,7 @@ gst_overlay_handle_landmarks_entry (GstVOverlay * overlay, cairo_t * context,
         kp->confidence, kp->color);
 
     success &=
-        gst_cairo_draw_circle (context, kp->color, x, y, 2.0, linewidth, TRUE);
+        gst_cairo_draw_circle (context, kp->color, x, y, 2.0, linewidth, TRUE, FALSE);
   }
 
   for (idx = 0; (links != NULL) && (idx < links->len); idx++) {
@@ -657,7 +685,7 @@ gst_overlay_handle_landmarks_entry (GstVOverlay * overlay, cairo_t * context,
   }
 
   GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
-      "[%d %d %d %d]", source->x, source->y, source->w, source->h,
+      "[%d %d %d %d]", source.x, source.y, source.w, source.h,
       destination->x, destination->y, destination->w, destination->h);
 
   return success;
@@ -669,15 +697,15 @@ gst_overlay_handle_optclflow_entry (GstVOverlay * overlay, cairo_t * context,
 {
   GstCvMotionVector *mvector = NULL;
   GstCvOptclFlowStats *cvstats = NULL;
-  GstVideoRectangle *source = NULL, *destination = NULL;
+  GstVideoRectangle source = {0}, *destination = NULL;
   guint num = 0, color = 0xFFFFFFFF;
   gdouble x = 0.0, y = 0.0, dx = 0.0, dy = 0.0, xscale = 0.0, yscale = 0.0;
 
-  source = &(blit->source);
+  gst_video_quadrilateral_to_rectangle (&(blit->source), &source);
   destination = &(blit->destination);
 
   GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
-      "[%d %d %d %d]", source->x, source->y, source->w, source->h,
+      "[%d %d %d %d]", source.x, source.y, source.w, source.h,
       destination->x, destination->y, destination->w, destination->h);
 
   gst_util_fraction_to_double (GST_VIDEO_INFO_WIDTH (overlay->vinfo),
@@ -715,19 +743,20 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, cairo_t * context,
     GstVideoBlit * blit, GstVideoRegionOfInterestMeta * roimeta)
 {
   GstStructure *objparam = NULL;
-  GstVideoRectangle *source = NULL, *destination = NULL;
+  GstVideoRectangle source = {0}, *destination = NULL;
   gdouble scale = 0.0, linewidth = 0.0;
   guint color = 0x000000FF;
   gboolean success = TRUE;
 
-  source = &(blit->source);
+  gst_video_quadrilateral_to_rectangle (&(blit->source), &source);
   destination = &(blit->destination);
 
-  source->w = destination->w = roimeta->w;
-  source->h = destination->h = roimeta->h;
+  source.w = destination->w = roimeta->w;
+  source.h = destination->h = roimeta->h;
 
   // Adjust bbox dimensions so that it fits inside the overlay frame.
-  gst_overlay_update_rectangle_dimensions (overlay, blit->frame, source);
+  gst_overlay_update_rectangle_dimensions (overlay, blit->frame, &source);
+  gst_video_rectangle_to_quadrilateral (&source, &(blit->source));
 
   destination->x = roimeta->x;
   destination->y = roimeta->y;
@@ -738,17 +767,17 @@ gst_overlay_handle_detection_entry (GstVOverlay * overlay, cairo_t * context,
   gst_structure_get_uint (objparam, "color", &color);
 
   // Set the most appropriate box line width based on frame and box dimensions.
-  gst_util_fraction_to_double (destination->w, source->w, &scale);
+  gst_util_fraction_to_double (destination->w, source.w, &scale);
   linewidth = (scale > 1.0F) ? (4.0F / scale) : 4.0F;
 
   GST_TRACE_OBJECT (overlay, "Rectangle: [%d %d %d %d], Color: 0x%X",
-      source->x, source->y, source->w, source->h, color);
+      source.x, source.y, source.w, source.h, color);
 
-  success = gst_cairo_draw_rectangle (context, color, source->x, source->y,
-      source->w, source->h, linewidth, FALSE);
+  success = gst_cairo_draw_rectangle (context, color, source.x, source.y,
+      source.w, source.h, linewidth, FALSE, FALSE);
 
   GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
-      "[%d %d %d %d]", source->x, source->y, source->w, source->h,
+      "[%d %d %d %d]", source.x, source.y, source.w, source.h,
       destination->x, destination->y, destination->w, destination->h);
 
   return success;
@@ -761,7 +790,7 @@ gst_overlay_handle_bbox_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   cairo_surface_t *surface = NULL;
   cairo_t *context = NULL;
   GstVideoFrame *vframe = NULL;
-  GstVideoRectangle *source = NULL, *destination = NULL;
+  GstVideoRectangle source = {0}, *destination = NULL;
   gdouble scale = 0.0, linewidth = 0.0;
   guint color = 0;
   gboolean success = FALSE;
@@ -770,35 +799,35 @@ gst_overlay_handle_bbox_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   g_return_val_if_fail (success, FALSE);
 
   vframe = blit->frame;
-  source = &(blit->source);
   destination = &(blit->destination);
 
   destination->x = bbox->destination.x;
   destination->y = bbox->destination.y;
 
-  source->x = source->y = 0;
+  source.x = source.y = 0;
 
-  source->w = destination->w = bbox->destination.w;
-  source->h = destination->h = bbox->destination.h;
+  source.w = destination->w = bbox->destination.w;
+  source.h = destination->h = bbox->destination.h;
 
   color = bbox->color;
 
   // Adjust bbox dimensions so that it fits inside the overlay frame.
-  gst_overlay_update_rectangle_dimensions (overlay, vframe, source);
+  gst_overlay_update_rectangle_dimensions (overlay, vframe, &source);
+  gst_video_rectangle_to_quadrilateral (&source, &(blit->source));
 
   GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
-      "[%d %d %d %d]", source->x, source->y, source->w, source->h,
+      "[%d %d %d %d]", source.x, source.y, source.w, source.h,
       destination->x, destination->y, destination->w, destination->h);
 
   // Set the most appropriate box line width based on frame and box dimensions.
-  gst_util_fraction_to_double (destination->w, source->w, &scale);
+  gst_util_fraction_to_double (destination->w, source.w, &scale);
   linewidth = (scale > 1.0F) ? (4.0F / scale) : 4.0F;
 
   GST_TRACE_OBJECT (overlay, "Rectangle: [%d %d %d %d], Color: 0x%X",
-      source->x, source->y, source->w, source->h, color);
+      source.x, source.y, source.w, source.h, color);
 
-  success = gst_cairo_draw_rectangle (context, color, source->x, source->y,
-      source->w, source->h, linewidth, FALSE);
+  success = gst_cairo_draw_rectangle (context, color, source.x, source.y,
+      source.w, source.h, linewidth, FALSE, FALSE);
 
   gst_cairo_draw_cleanup (blit->frame, surface, context);
   return success;
@@ -811,7 +840,7 @@ gst_overlay_handle_timestamp_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   cairo_surface_t *surface = NULL;
   cairo_t *context = NULL;
   GstVideoFrame *vframe = NULL;
-  GstVideoRectangle *source = NULL, *destination = NULL;
+  GstVideoRectangle source = {0}, *destination = NULL;
   gchar *text = NULL;
   gdouble fontsize = 0.0, n_chars = 0.0, scale = 0.0;
   guint color = 0;
@@ -821,7 +850,8 @@ gst_overlay_handle_timestamp_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   g_return_val_if_fail (success, FALSE);
 
   vframe = blit->frame;
-  source = &(blit->source);
+
+  gst_video_quadrilateral_to_rectangle (&(blit->source), &source);
   destination = &(blit->destination);
 
   destination->x = timestamp->position.x;
@@ -871,7 +901,7 @@ gst_overlay_handle_timestamp_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   destination->h *= (scale > 1.0) ? scale : 1;
 
   GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
-      "[%d %d %d %d]", source->x, source->y, source->w, source->h,
+      "[%d %d %d %d]", source.x, source.y, source.w, source.h,
       destination->x, destination->y, destination->w, destination->h);
 
   GST_TRACE_OBJECT (overlay, "String: '%s', Color: 0x%X, Position: [%d %d]",
@@ -891,7 +921,7 @@ gst_overlay_handle_string_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   cairo_surface_t *surface = NULL;
   cairo_t *context = NULL;
   GstVideoFrame *vframe = NULL;
-  GstVideoRectangle *source = NULL, *destination = NULL;
+  GstVideoRectangle source = {0}, *destination = NULL;
   gchar *text = NULL;
   gdouble fontsize = 0.0, n_chars = 0.0, scale = 0.0;
   guint color = 0;
@@ -901,7 +931,8 @@ gst_overlay_handle_string_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   g_return_val_if_fail (success, FALSE);
 
   vframe = blit->frame;
-  source = &(blit->source);
+
+  gst_video_quadrilateral_to_rectangle (&(blit->source), &source);
   destination = &(blit->destination);
 
   destination->x = string->position.x;
@@ -931,7 +962,7 @@ gst_overlay_handle_string_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   destination->h *= (scale > 1.0) ? scale : 1;
 
   GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
-      "[%d %d %d %d]", source->x, source->y, source->w, source->h,
+      "[%d %d %d %d]", source.x, source.y, source.w, source.h,
       destination->x, destination->y, destination->w, destination->h);
 
   GST_TRACE_OBJECT (overlay, "String: '%s', Color: 0x%X, Position: [%d %d]",
@@ -951,36 +982,35 @@ gst_overlay_handle_mask_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   cairo_surface_t *surface = NULL;
   cairo_t *context = NULL;
   GstVideoFrame *vframe = NULL;
-  GstVideoRectangle *source = NULL, *destination = NULL;
+  GstVideoRectangle source = {0}, *destination = NULL;
   gdouble x = 0.0, y = 0.0, linewidth = 0.0, scale = 0.0;
   guint color = 0;
-  gboolean success = FALSE, infill = TRUE;
+  gboolean success = FALSE, infill = TRUE, inverse=FALSE;
 
   success = gst_cairo_draw_setup (blit->frame, &surface, &context);
   g_return_val_if_fail (success, FALSE);
 
   vframe = blit->frame;
-  source = &(blit->source);
   destination = &(blit->destination);
 
   switch (mask->type) {
     case GST_OVERLAY_MASK_RECTANGLE:
-      source->w = destination->w = mask->dims.rectangle.w;
-      source->h = destination->h = mask->dims.rectangle.h;
+      source.w = destination->w = mask->dims.rectangle.w;
+      source.h = destination->h = mask->dims.rectangle.h;
 
       destination->x = mask->dims.rectangle.x;
       destination->y = mask->dims.rectangle.y;
       break;
     case GST_OVERLAY_MASK_CIRCLE:
-      source->w = destination->w = mask->dims.circle.radius * 2;
-      source->h = destination->h = mask->dims.circle.radius * 2;
+      source.w = destination->w = mask->dims.circle.radius * 2;
+      source.h = destination->h = mask->dims.circle.radius * 2;
 
       destination->x = mask->dims.circle.x - mask->dims.circle.radius;
       destination->y = mask->dims.circle.y - mask->dims.circle.radius;
       break;
     case GST_OVERLAY_MASK_POLYGON:
-      source->w = destination->w = mask->dims.polygon.region.w;
-      source->h = destination->h = mask->dims.polygon.region.h;
+      source.w = destination->w = mask->dims.polygon.region.w;
+      source.h = destination->h = mask->dims.polygon.region.h;
 
       destination->x = mask->dims.polygon.region.x;
       destination->y = mask->dims.polygon.region.y;
@@ -992,40 +1022,66 @@ gst_overlay_handle_mask_entry (GstVOverlay * overlay, GstVideoBlit * blit,
 
   color = mask->color;
   infill = mask->infill;
+  inverse = mask->inverse;
+
+  if (inverse) {
+    destination->x = destination->y = 0;
+    destination->w = GST_VIDEO_INFO_WIDTH (overlay->vinfo);
+    destination->h = GST_VIDEO_INFO_HEIGHT (overlay->vinfo);
+
+    if (destination->w > destination->h)
+      source.h = (source.w * destination->h) / destination->w;
+    else if (destination->w < destination->h)
+      source.w = (source.h * destination->w) / destination->h;
+  }
 
   // Adjust mask source dimensions so that it fits inside the overlay frame.
-  gst_overlay_update_rectangle_dimensions (overlay, vframe, source);
+  gst_overlay_update_rectangle_dimensions (overlay, vframe, &source);
+  gst_video_rectangle_to_quadrilateral (&source, &(blit->source));
 
   GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
-      "[%d %d %d %d]", source->x, source->y, source->w, source->h,
+      "[%d %d %d %d]", source.x, source.y, source.w, source.h,
       destination->x, destination->y, destination->w, destination->h);
 
   // Set the most appropriate box line width based on frame and box dimensions.
-  gst_util_fraction_to_double (destination->w, source->w, &scale);
+  gst_util_fraction_to_double (destination->w, source.w, &scale);
   linewidth = (scale > 1.0F) ? (4.0F / scale) : 4.0F;
 
   if (GST_OVERLAY_MASK_RECTANGLE == mask->type) {
     gdouble width = 0.0, height = 0.0;
 
-    width = source->w;
-    height = source->h;
+    if (inverse) {
+      x = (mask->dims.rectangle.x - destination->x) / scale;
+      y = (mask->dims.rectangle.y - destination->y) / scale;
+      width = mask->dims.rectangle.w / scale;
+      height = mask->dims.rectangle.h / scale;
+    } else {
+      width = source.w;
+      height = source.h;
+    }
 
     GST_TRACE_OBJECT (overlay, "Rectangle: [%.2f %.2f %.2f %.2f], Color: 0x%X",
         x, y, width, height, color);
 
     success = gst_cairo_draw_rectangle (context, color, x, y, width, height,
-        linewidth, infill);
+        linewidth, infill, inverse);
   } else if (GST_OVERLAY_MASK_CIRCLE == mask->type) {
     gdouble radius = 0.0;
 
-    radius = source->w / 2.0;
-    x = y = radius;
+    if (inverse) {
+      x = (mask->dims.circle.x - destination->x) / scale;
+      y = (mask->dims.circle.y - destination->y) / scale;
+      radius = mask->dims.circle.radius / scale;
+    } else {
+      radius = source.w / 2.0;
+      x = y = radius;
+    }
 
     GST_TRACE_OBJECT (overlay, "Circle: [%.2f %.2f %.2f], Color: 0x%X", x, y,
         radius, color);
 
     success = gst_cairo_draw_circle (context, color, x, y, radius,
-        linewidth, infill);
+        linewidth, infill, inverse);
   } else if (GST_OVERLAY_MASK_POLYGON == mask->type) {
     gdouble coords[GST_VIDEO_POLYGON_MAX_POINTS * 2];
     guint idx = 0, num = 0, n_coords = 0;
@@ -1041,7 +1097,7 @@ gst_overlay_handle_mask_entry (GstVOverlay * overlay, GstVideoBlit * blit,
     }
 
     success = gst_cairo_draw_polygon (context, color, coords, n_coords,
-        linewidth, infill);
+        linewidth, infill, inverse);
   }
 
   gst_cairo_draw_cleanup (blit->frame, surface, context);
@@ -1055,21 +1111,22 @@ gst_overlay_handle_image_entry (GstVOverlay * overlay, GstVideoBlit * blit,
   GstVideoFrame *vframe = NULL;
   GError *error = NULL;
   gchar *contents = NULL, *data = NULL;
-  GstVideoRectangle *source = NULL, *destination = NULL;
+  GstVideoRectangle source = {0}, *destination = NULL;
   gint x = 0, num = 0, id = 0;
 
   vframe = blit->frame;
-  source = &(blit->source);
 
-  source->w = simage->width;
-  source->h = simage->height;
+  source.w = simage->width;
+  source.h = simage->height;
 
   blit->destination = simage->destination;
   destination = &(blit->destination);
 
   GST_TRACE_OBJECT (overlay, "Source/Destination Rectangles: [%d %d %d %d] -> "
-      "[%d %d %d %d]", source->x, source->y, source->w, source->h,
+      "[%d %d %d %d]", source.x, source.y, source.w, source.h,
       destination->x, destination->y, destination->w, destination->h);
+
+  gst_video_rectangle_to_quadrilateral (&source, &(blit->source));
 
   // Load static image file contents in case it was not already loaded.
   if (simage->width > GST_VIDEO_FRAME_WIDTH (vframe)) {
@@ -1129,6 +1186,7 @@ gst_overlay_video_blit_initialize (GstVOverlay * overlay, guint ovltype,
   }
 
   blit->frame = g_slice_new0 (GstVideoFrame);
+  blit->mask = (GST_VCE_MASK_SOURCE | GST_VCE_MASK_DESTINATION);
 
   if (!gst_video_frame_map (blit->frame, info, buffer,
           GST_MAP_READWRITE  | GST_VIDEO_FRAME_MAP_FLAG_NO_REF)) {
@@ -1140,9 +1198,10 @@ gst_overlay_video_blit_initialize (GstVOverlay * overlay, guint ovltype,
   blit->alpha = G_MAXUINT8;
 
   // Initialize the blit source rectangle.
-  blit->source.x = blit->source.y = 0;
-  blit->source.w = GST_VIDEO_FRAME_WIDTH (blit->frame);
-  blit->source.h = GST_VIDEO_FRAME_HEIGHT (blit->frame);
+  blit->source.a.x = blit->source.a.y = 0;
+  blit->source.b.x = blit->source.c.y = 0;
+  blit->source.c.x = blit->source.d.x = GST_VIDEO_FRAME_WIDTH (blit->frame);
+  blit->source.b.y = blit->source.d.y = GST_VIDEO_FRAME_HEIGHT (blit->frame);
 
   // Initialize the blit destination rectangle.
   blit->destination.x = blit->destination.y = 0;
@@ -1352,6 +1411,7 @@ gst_overlay_draw_landmarks_entries (GstVOverlay * overlay,
   GstBuffer *outbuffer = composition->frame->buffer;
   GstVideoLandmarksMeta *lmkmeta = NULL;
   GstVideoBlit *blit = NULL;
+  GstVideoRectangle source = {0}, *destination = NULL;
   GstMeta *meta = NULL;
   gpointer state = NULL;
   gboolean success = TRUE;
@@ -1373,16 +1433,18 @@ gst_overlay_draw_landmarks_entries (GstVOverlay * overlay,
         GST_OVERLAY_TYPE_POSE_ESTIMATION, blit);
     g_return_val_if_fail (success, FALSE);
 
-    // Find the coordinates of the rectangle in which the pose fits.
-    gst_video_keypoints_calculate_region (lmkmeta->keypoints,
-        &(blit->destination));
+    gst_video_quadrilateral_to_rectangle (&(blit->source), &source);
+    destination = &(blit->destination);
 
-    blit->source.w = blit->destination.w;
-    blit->source.h = blit->destination.h;
+    // Find the coordinates of the rectangle in which the pose fits.
+    gst_video_keypoints_calculate_region (lmkmeta->keypoints, destination);
+
+    source.w = blit->destination.w;
+    source.h = blit->destination.h;
 
     // Adjust pose rectangle so that it fits inside the overlay frame.
-    gst_overlay_update_rectangle_dimensions (overlay, blit->frame,
-        &(blit->source));
+    gst_overlay_update_rectangle_dimensions (overlay, blit->frame, &source);
+    gst_video_rectangle_to_quadrilateral (&source, &(blit->source));
 
     success = gst_cairo_draw_setup (blit->frame, &surface, &context);
     g_return_val_if_fail (success, FALSE);

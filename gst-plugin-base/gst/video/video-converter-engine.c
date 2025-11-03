@@ -138,6 +138,39 @@ gst_video_converter_backend_get_type (void)
   return gtype;
 }
 
+gboolean
+gst_video_quadrilateral_is_rectangle (const GstVideoQuadrilateral * quadrilateral)
+{
+  return (quadrilateral->a.x == quadrilateral->b.x) &&
+      (quadrilateral->c.x == quadrilateral->d.x) &&
+      (quadrilateral->a.y == quadrilateral->c.y) &&
+      (quadrilateral->b.y == quadrilateral->d.y);
+}
+
+void
+gst_video_rectangle_to_quadrilateral (const GstVideoRectangle * rectangle,
+    GstVideoQuadrilateral * quadrilateral)
+{
+  quadrilateral->a.x = rectangle->x;
+  quadrilateral->a.y = rectangle->y;
+  quadrilateral->b.x = rectangle->x;
+  quadrilateral->b.y = rectangle->y + rectangle->h;
+  quadrilateral->c.x = rectangle->x + rectangle->w;
+  quadrilateral->c.y = rectangle->y;
+  quadrilateral->d.x = rectangle->x + rectangle->w;
+  quadrilateral->d.y = rectangle->y + rectangle->h;
+}
+
+void
+gst_video_quadrilateral_to_rectangle (
+    const GstVideoQuadrilateral * quadrilateral, GstVideoRectangle * rectangle)
+{
+  rectangle->x = quadrilateral->a.x;
+  rectangle->y = quadrilateral->a.y;
+  rectangle->w = quadrilateral->d.x - quadrilateral->a.x;
+  rectangle->h = quadrilateral->d.y - quadrilateral->a.y;
+}
+
 GstVideoConvBackend
 gst_video_converter_default_backend (void)
 {

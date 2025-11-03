@@ -14,14 +14,16 @@ add_library(${GST_QTI_PARSER_MODULE} SHARED
 target_include_directories(${GST_QTI_PARSER_MODULE} PUBLIC
   ${GST_INCLUDE_DIRS}
   ${JSON_INCLUDE_DIRS}
+  ${GST_QCOM_UTILS_INCLUDE_DIRS}
+  ${GST_QCOM_VIDEO_INCLUDE_DIRS}
 )
 
 target_link_libraries(${GST_QTI_PARSER_MODULE} PRIVATE
   ${GST_LIBRARIES}
   ${GST_VIDEO_LIBRARIES}
   ${JSON_LIBRARIES}
-  gstqtiutilsbase
-  gstqtivideobase
+  ${GST_QCOM_UTILS_LIBRARIES}
+  ${GST_QCOM_VIDEO_LIBRARIES}
 )
 
 install(

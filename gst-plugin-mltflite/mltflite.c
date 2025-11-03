@@ -167,8 +167,8 @@ gst_ml_tflite_create_pool (GstMLTFLite * tflite, GstCaps * caps)
     return NULL;
   }
 
-  GST_INFO_OBJECT (tflite, "Uses ION memory");
-  pool = gst_ml_buffer_pool_new (GST_ML_BUFFER_POOL_TYPE_ION);
+  GST_INFO_OBJECT (tflite, "Uses DMA memory");
+  pool = gst_ml_buffer_pool_new (GST_ML_BUFFER_POOL_TYPE_DMA);
 
   config = gst_buffer_pool_get_config (pool);
   gst_buffer_pool_config_set_params (config, caps, gst_ml_info_size (&info),
@@ -521,10 +521,6 @@ gst_ml_tflite_change_state (GstElement * element, GstStateChange transition)
   }
 
   ret = GST_ELEMENT_CLASS (parent_class)->change_state (element, transition);
-  if (ret != GST_STATE_CHANGE_SUCCESS) {
-    GST_ERROR_OBJECT (tflite, "Failure");
-    return ret;
-  }
 
   switch (transition) {
     case GST_STATE_CHANGE_READY_TO_NULL:
@@ -532,9 +528,6 @@ gst_ml_tflite_change_state (GstElement * element, GstStateChange transition)
       tflite->engine = NULL;
       break;
     default:
-      // This is to catch PAUSED->PAUSED and PLAYING->PLAYING transitions.
-      ret = (GST_STATE_TRANSITION_NEXT (transition) == GST_STATE_PAUSED) ?
-          GST_STATE_CHANGE_NO_PREROLL : GST_STATE_CHANGE_SUCCESS;
       break;
   }
 
