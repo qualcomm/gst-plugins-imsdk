@@ -172,6 +172,7 @@ gst_camera_image_reproc_create_buffer_pool (GstCameraImageReproc *reprocess,
       DEFAULT_PROP_MIN_BUFFERS, DEFAULT_PROP_MAX_BUFFERS);
 
   gst_buffer_pool_config_set_allocator (config, allocator, NULL);
+  gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
 
   if (!gst_buffer_pool_set_config (pool, config)) {
     GST_WARNING_OBJECT (reprocess, "Failed to set pool configuration!");
