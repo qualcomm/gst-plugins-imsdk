@@ -679,22 +679,6 @@ gst_video_composer_fixate_src_caps (GstAggregator * aggregator, GstCaps * caps)
 }
 
 static gboolean
-gst_video_composer_negotiated_src_caps (GstAggregator * aggregator,
-    GstCaps * caps)
-{
-  GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER (aggregator);
-
-  GST_DEBUG_OBJECT (vcomposer, "Negotiated caps %" GST_PTR_FORMAT, caps);
-
-  if (vcomposer->converter != NULL)
-    gst_video_converter_engine_free (vcomposer->converter);
-
-  vcomposer->converter = gst_video_converter_engine_new (vcomposer->backend, NULL);
-
-  return GST_AGGREGATOR_CLASS (parent_class)->negotiated_src_caps (aggregator, caps);
-}
-
-static gboolean
 gst_video_composer_stop (GstAggregator * aggregator)
 {
   GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER (aggregator);
@@ -937,11 +921,56 @@ gst_video_composer_release_pad (GstElement * element, GstPad * pad)
   gst_pad_mark_reconfigure (GST_AGGREGATOR_SRC_PAD (vcomposer));
 }
 
+static GstStateChangeReturn
+gst_video_composer_change_state (GstElement * element, GstStateChange transition)
+{
+  GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER (element);
+  GstStateChangeReturn ret = GST_STATE_CHANGE_SUCCESS;
+
+  switch (transition) {
+    case GST_STATE_CHANGE_NULL_TO_READY:
+      if (vcomposer->converter != NULL)
+        gst_video_converter_engine_free (vcomposer->converter);
+
+      vcomposer->converter =
+          gst_video_converter_engine_new (vcomposer->backend, NULL);
+
+      if (vcomposer->converter == NULL) {
+        GST_ERROR_OBJECT (vcomposer, "Failed to create engine!");
+        return GST_STATE_CHANGE_FAILURE;
+      }
+      break;
+    default:
+      break;
+  }
+
+  ret = GST_ELEMENT_CLASS (parent_class)->change_state (element, transition);
+
+  switch (transition) {
+    case GST_STATE_CHANGE_READY_TO_NULL:
+      gst_video_converter_engine_free (vcomposer->converter);
+      vcomposer->converter = NULL;
+      break;
+    default:
+      break;
+  }
+
+  return ret;
+}
+
 static void
 gst_video_composer_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
 {
   GstVideoComposer *vcomposer = GST_VIDEO_COMPOSER (object);
+  const gchar *propname = g_param_spec_get_name (pspec);
+  GstState state = GST_STATE (vcomposer);
+
+  if (!GST_PROPERTY_IS_MUTABLE_IN_CURRENT_STATE (pspec, state)) {
+    GST_WARNING_OBJECT (vcomposer, "Property '%s' change not supported in %s "
+        "state!", propname, gst_element_state_get_name (state));
+    return;
+  }
 
   GST_VIDEO_COMPOSER_LOCK (vcomposer);
 
@@ -1020,7 +1049,7 @@ gst_video_composer_class_init (GstVideoComposerClass * klass)
       g_param_spec_enum ("engine", "Engine",
           "Engine backend used for the conversion operations",
           GST_TYPE_VCE_BACKEND, DEFAULT_PROP_ENGINE_BACKEND,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject, PROP_BACKGROUND,
       g_param_spec_uint ("background", "Background",
           "Background color", 0, 0xFFFFFFFF, DEFAULT_PROP_BACKGROUND,
@@ -1038,6 +1067,7 @@ gst_video_composer_class_init (GstVideoComposerClass * klass)
 
   element->request_new_pad = GST_DEBUG_FUNCPTR (gst_video_composer_request_pad);
   element->release_pad = GST_DEBUG_FUNCPTR (gst_video_composer_release_pad);
+  element->change_state = GST_DEBUG_FUNCPTR (gst_video_composer_change_state);
 
   aggregator->propose_allocation =
       GST_DEBUG_FUNCPTR (gst_video_composer_propose_allocation);
@@ -1046,8 +1076,6 @@ gst_video_composer_class_init (GstVideoComposerClass * klass)
   aggregator->sink_query = GST_DEBUG_FUNCPTR (gst_video_composer_sink_query);
   aggregator->fixate_src_caps =
       GST_DEBUG_FUNCPTR (gst_video_composer_fixate_src_caps);
-  aggregator->negotiated_src_caps =
-      GST_DEBUG_FUNCPTR (gst_video_composer_negotiated_src_caps);
   aggregator->stop = GST_DEBUG_FUNCPTR (gst_video_composer_stop);
   aggregator->flush = GST_DEBUG_FUNCPTR (gst_video_composer_flush);
 
@@ -1072,6 +1100,7 @@ gst_video_composer_init (GstVideoComposer * vcomposer)
 
   vcomposer->backend = DEFAULT_PROP_ENGINE_BACKEND;
   vcomposer->background = DEFAULT_PROP_BACKGROUND;
+  vcomposer->converter = NULL;
 
   GST_AGGREGATOR_PAD (GST_AGGREGATOR (vcomposer)->srcpad)->segment.position =
       GST_CLOCK_TIME_NONE;
