@@ -1909,6 +1909,15 @@ gst_qmmf_context_create_image_stream (GstQmmfContext * context, GstPad * pad)
       case GST_VIDEO_FORMAT_NV21:
         imgparam.format = ::qmmf::recorder::ImageFormat::kNV21;
         break;
+      case GST_VIDEO_FORMAT_NV12_Q08C:
+        imgparam.format = ::qmmf::recorder::ImageFormat::kNV12UBWC;
+        break;
+      case GST_VIDEO_FORMAT_P010_10LE:
+        imgparam.format = ::qmmf::recorder::ImageFormat::kP010;
+        break;
+      case GST_VIDEO_FORMAT_NV12_Q10LE32C:
+        imgparam.format = ::qmmf::recorder::ImageFormat::kTP10UBWC;
+        break;
       case GST_BAYER_FORMAT_BGGR:
       case GST_BAYER_FORMAT_RGGB:
       case GST_BAYER_FORMAT_GBRG:
