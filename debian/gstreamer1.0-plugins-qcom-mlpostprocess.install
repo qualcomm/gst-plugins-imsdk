@@ -24,4 +24,4 @@ usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-postprocess-easy-oc
 usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-postprocess-hlandmark.so
 usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-postprocess-ocr-recognizer.so
 usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-postprocess-tensor.so
-
+usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/ml/modules/libml-postprocess-palmd.so
