@@ -434,7 +434,8 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
   need_alignment = gst_buffer_pool_config_has_option (config,
       GST_BUFFER_POOL_OPTION_VIDEO_ALIGNMENT);
 
-  if (need_alignment && priv->addmeta) {
+  // TODO: Accept video alignments only for non-GBM allocations.
+  if (GST_IS_QTI_ALLOCATOR (allocator) && need_alignment && priv->addmeta) {
     gst_buffer_pool_config_get_video_alignment (config, &priv->align);
 
     if (!gst_video_info_align (&info, &priv->align)) {
@@ -446,7 +447,11 @@ gst_image_buffer_pool_set_config (GstBufferPool * pool, GstStructure * config)
   }
 
   priv->params = params;
-  info.size = MAX (size, info.size);
+
+  // Take the larger size only when non-GBM allocation is done.
+  if (GST_IS_QTI_ALLOCATOR (allocator))
+    info.size = MAX (size, info.size);
+
   priv->info = info;
 
   // Allocate GBM memory when the allocator is FD backed but not QTI allocator.
