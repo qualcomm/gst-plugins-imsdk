@@ -481,7 +481,7 @@ gst_video_transform_prepare_output_buffer (GstBaseTransform * base,
 {
   GstVideoTransform *vtrans = GST_VIDEO_TRANSFORM_CAST (base);
   GstBufferPool *pool = vtrans->outpool;
-  gboolean passthrough = FALSE, writable = TRUE;
+  gboolean passthrough = FALSE, writable = TRUE, success = FALSE;
 
   // Check whether passthrough should be true/false based on parameters.
   gst_video_transform_determine_passthrough (vtrans);
@@ -518,9 +518,13 @@ gst_video_transform_prepare_output_buffer (GstBaseTransform * base,
     return GST_FLOW_ERROR;
   }
 
-  // Copy the flags and timestamps from the input buffer.
-  gst_buffer_copy_into (*outbuffer, inbuffer,
-      GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
+  success = GST_BASE_TRANSFORM_CLASS (parent_class)->copy_metadata (
+      base, inbuffer, *outbuffer);
+
+  if (!success) {
+    GST_ELEMENT_WARNING (vtrans, STREAM, NOT_IMPLEMENTED,
+        ("could not copy metadata"), (NULL));
+  }
 
   return GST_FLOW_OK;
 }
